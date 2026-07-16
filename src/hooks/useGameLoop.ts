@@ -34,7 +34,8 @@ import {
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
-  EVENT_QUEST_DWELL_MS, EVENT_QUEST_LINES, EVENT_QUEST_LINES_SUB, EVENT_QUEST_REWARD_GOLD,
+  EVENT_QUEST_DWELL_MS, EVENT_QUEST_REWARD_GOLD,
+  NPC_DIALOGUE_MS, NPC_DIALOGUE_GAP_MS,
   RN_ENEMY_FORCE,
   FIRST_AID_KIT_THROW_DAMAGE,
   PHASER_INDEX, BASE_SOLDIER_COUNT
@@ -162,6 +163,12 @@ import { selectGateProgram, type GateProgram, type GateProgramId } from '../util
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
 import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, recordChronicle, type GateMeta } from '../data/progress';
+// 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
+import {
+  getEventQuestConfig, EVENT_QUEST_LINES_FORCED, EVENT_QUEST_ENCOUNTER_LINES,
+  eventQuestSubAcceptLines, eventQuestSubCompleteLines,
+} from '../utils/eventQuest';
+import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, buildSupportSniperShot, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
@@ -389,6 +396,12 @@ const RED_NIGHT_RUN_CHANCE = 0.3;        // 出撃ごとの発生確率(社長�
 // ゲート1中もchaffは通常のディレクター駆動のまま(gate1.ts参照)。
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
 const ARENA_HORDE_DURATION_MS = 40000; // ゾンビ版の制限時間保険(段階スポーン約18秒化に合わせ30→40へ)。基本は全滅で終了
+
+// the ONE ストーリーボス(M7/EX): 導入(会話)明けにプレイヤーの前方(上)へ出現させる距離(px)。
+// 画面内で「目の前に現れて即戦闘」になる近さ(統合正本10.2「いきなり出現。即戦闘開始」)。
+const STORY_BOSS_SPAWN_DIST = 380;
+// 洋館再訪: 保存槽(洋館=castleEvent位置)接近で［グレンの薬を使う］を出す距離(px)。
+const MEDICINE_USE_RADIUS = 160;
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
 const ARENA_BOSS_DURATION_MS = 60000;  // ボス版の制限時間保険(基本は撃破で終了)
 // PACING_PUZZLE.md §5.21 M20 stage④: 囲いゲート2(城ボスユニーク×2)の制限時間保険。ハードゲート=
@@ -1034,6 +1047,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
   const castleAttnRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
+  // the ONE ストーリーボス(M7/EX)の進行: 出現済みか / 終幕(勝利化)予定時刻(0=未予約)。
+  const storyBossSpawnedRef = useRef(false);
+  const storyBossWinAtRef = useRef(0);
+  // 洋館再訪: 開始時に洋館(保存槽)へ一度だけカメラアテンションを出したか。
+  const revisitAttnShownRef = useRef(false);
   // 拠点制圧カウントの直近値(増加検出で開放SEを鳴らす)。
   const suppCaptureCountRef = useRef<number>(0);
   // 直近の区域インデックス(エリア遷移バナー用)。-1=未判定(開始/リワインド直後は黙って採用し、開始地点では出さない)。
@@ -1541,6 +1559,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
         const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする
+        // the ONE(統合正本M7/EX): ストーリーボス専用ラン=通常湧き/城ボス/ハンター/ゲート/紅き夜/死神/
+        // 演出波を全停止(下の各ゲートに配線)し、専用コントローラ(会話→ボス→終幕→勝利)だけ動かす。
+        const storyBoss = loopState.storyBossMode;
+        // 洋館［SUB］再訪: 通常ステージと同様に敵が湧く(統合正本9.3)が、城ボス(M6ストーリーボス)だけは
+        // 出さない(洋館=保存槽の目的地。ボス再戦は正史に無い)。
+        const revisitRun = loopState.revisitMode;
         const snowTheme = loopState.farBackdrop === 'snow'; // ステージ4(雪原): 新型 lich を湧きプールに含める
 
         // PACING_PUZZLE.md §5.18 M17: 被ダメ5経路(src/utils/combatTick.ts)へ渡す演出コールバック+
@@ -1802,6 +1826,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           zoneTickRef.current = 0;               // 区域判定の間引きカウンタも再アーム
           directorRef.current = { state: createDirectorState(), prevHp: 0, prevKills: 0, nextSampleMs: 0 }; // AIディレクターも新ランで初期化
           resetDirectorSamples(); // リザルトのタイムライン記録も新ランでクリア
+          storyBossSpawnedRef.current = false; // the ONE ストーリーボス進行も新ランで再アーム
+          storyBossWinAtRef.current = 0;
+          revisitAttnShownRef.current = false;
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -1809,7 +1836,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 骨格を残すため対象外(§2「7:00城ボス=既存PHASESのbossフェーズだけ残す」)。curPhaseは
         // まだこの位置では未計算(ずっと下の別ブロックで初めて求まる)ので、既存の他箇所と同じく
         // phaseAt()を軽量に再呼び出しする(同種の再計算は無視できるコスト・既存踏襲)。
-        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && phaseAt(newGameTime).kind !== 'boss';
+        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && phaseAt(newGameTime).kind !== 'boss';
 
         const castle = useGameStore.getState().castleEvent;
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
@@ -1818,7 +1845,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 以前は制圧イベント中(ステージ1メイン)は出さない仕様だったが、社長指示で撤回=制圧中でも
         // 時間が来たら出現するように変更(拠点制圧の完了を待たない)。
         const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
-        if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && castleBossReady) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !revisitRun && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
@@ -1844,6 +1871,85 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           playSfx('boss-appear');
         }
 
+        // --- the ONE ストーリーボス(M7=グレン巨大化 / EX=異常変異体) ---
+        // 統合正本M7/10章: storyBossOnly ステージは通常湧き・各種イベントを全停止(上下の各ゲート)し、
+        // 「導入会話(M7・会話なし=EXは即)→ボス出現→撃破→終幕→勝利」だけで構成する。ボスは既存の
+        // giantbat(城ボス)を流用(新規アート禁止=指示書1)。勝利は帰還サークルを経由せず直接 gameWon。
+        if (storyBoss && !danceTest) {
+          const sbs = useGameStore.getState();
+          // 導入完了 = 会話あり(M7)なら「会話を出し終えて閉じた」/ 会話なし(EX)なら登場演出が明けた瞬間。
+          const introDone = sbs.introDialogueLines.length > 0
+            ? (sbs.introDialogueShown && !sbs.introDialogueActive)
+            : !isGameTimeStopped();
+          if (!storyBossSpawnedRef.current && introDone) {
+            storyBossSpawnedRef.current = true;
+            const scx = player.x + player.width / 2;
+            const scy = player.y + player.height / 2 - STORY_BOSS_SPAWN_DIST;
+            const boss = spawnEnemyAt('giantbat', scx, scy, newGameTime);
+            boss.vx = 0;
+            boss.vy = 0; // dormantにしない=出現した瞬間から戦闘(即戦闘・統合正本10.2)
+            addEnemy(boss);
+            spawnFlash('rgba(127,29,29,0.28)', 420);
+            spawnRing(scx, scy, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
+            spawnRing(scx, scy, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
+            useGameStore.getState().spawnGlow(scx, scy, 150, 'rgba(239,68,68,', 900);
+            spawnBurst(scx, scy + 20, '#7f1d1d', 28);
+            useGameStore.getState().triggerAttention(scx, scy);
+            playSfx('boss-appear');
+            if (getSelectedStageId() === 'stage-7') {
+              // グレン巨大化の咆哮(確定台詞・指示書4.7)。
+              useGameStore.getState().enqueueNpcDialogue([{ name: 'グレン', text: 'グガガガガガガガガ！' }]);
+            } else {
+              // EX: ボス表示は「異常変異体」のみ(PHILL/フィルの名は出さない=統合正本10.3)。
+              useGameStore.setState({ eventBannerText: '異常変異体', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            }
+          } else if (storyBossSpawnedRef.current && storyBossWinAtRef.current === 0) {
+            // 撃破検知: 場から giantbat が消えたら終幕へ(storyBossランには他の giantbat 供給経路がない)。
+            // 画面揺れ+背景で崩れる演出は triggerDramaticDeath(既存)が担う。
+            const alive = sbs.enemies.some(e => e.type === 'giantbat');
+            if (!alive) {
+              if (getSelectedStageId() === 'stage-7') {
+                // 撃破後・共通/サブ3本完了分岐(統合正本M7撃破後・指示書4.8)。グレン「……」は削除しない。
+                const lines: { name: string; text: string }[] = [{ name: 'ミラ', text: 'ありがとう……ありがとう……' }];
+                if (subsAllCompletedFromMeta()) {
+                  lines.push({ name: 'ミラ', text: 'グレンの薬を託すよ' }, { name: 'グレン', text: '……' });
+                }
+                useGameStore.getState().enqueueNpcDialogue(lines);
+                storyBossWinAtRef.current = newGameTime + lines.length * (NPC_DIALOGUE_MS + NPC_DIALOGUE_GAP_MS) + 900;
+              } else {
+                // EX: 台詞・通信・正体表示なし、そのままクリア(統合正本10.4)。崩壊演出の余韻だけ置く。
+                storyBossWinAtRef.current = newGameTime + 2600;
+              }
+            }
+          }
+          // 終幕の間が明けたら勝利(帰還サークルなしの直接クリア)。
+          if (storyBossWinAtRef.current > 0 && newGameTime >= storyBossWinAtRef.current && !sbs.gameWon) {
+            useGameStore.setState({ gameWon: true });
+          }
+        }
+
+        // --- the ONE 洋館［SUB］再訪(統合正本9章) ---
+        // 通常ステージと同様に敵が湧く中で洋館(=保存槽)へ向かい、接近すると［グレンの薬を使う］を表示。
+        // 使用(useGlenMedicine)後は短い間を置いて勝利(成功/失敗の説明・演出は置かない)。
+        if (revisitRun && !danceTest) {
+          const rvs = useGameStore.getState();
+          // 開始時に一度だけ洋館へカメラアテンション(目的地の提示。登場演出明け)。
+          if (!revisitAttnShownRef.current && !isGameTimeStopped() && !rvs.attention) {
+            revisitAttnShownRef.current = true;
+            rvs.triggerAttention(rvs.castleEvent.x, rvs.castleEvent.y);
+          }
+          if (rvs.medicineUsedAt === 0) {
+            const pcx = player.x + player.width / 2;
+            const pcy = player.y + player.height / 2;
+            const near = Math.hypot(rvs.castleEvent.x - pcx, rvs.castleEvent.y - pcy) <= MEDICINE_USE_RADIUS;
+            if (near !== rvs.medicinePromptVisible) {
+              useGameStore.setState({ medicinePromptVisible: near }); // 変化時のみ書く(購読者を毎フレ起こさない)
+            }
+          } else if (!rvs.gameWon && Date.now() - rvs.medicineUsedAt >= 1600) {
+            useGameStore.setState({ gameWon: true });
+          }
+        }
+
         // --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
         // 開始2分以降にランダムで1回だけ発火。開始時に囲い周辺の通常敵を一掃し、イベント用の敵
         // (ゾンビ大量 or giantbot ミニボス)を円内に湧かせる。終了=全滅/撃破 or 制限時間。
@@ -1854,7 +1960,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 「進行(スポーン段階/クリア判定/タイムアウト)」は M20 の新経路(軸1退屈補正の囲い等)が
         // puzzleActiveNow=true(通常プレイ)中に activeEvent をセットするケースでも動く必要があるため、
         // ゲートを「発火」側だけに絞る(進行側は常時稼働=puzzleActiveNow=falseの旧来挙動は無変更)。
-        if (!danceTest && !indoor && !labTheme) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss) {
           // PACING_PUZZLE.md §5.21-追補5(社長決定v0.25.1555): ゲート発火待ちが立っていて、かつ城ボス
           // 以外のイベント(レスキュー/退屈囲い=kind 'rescue'|'horde')が進行中なら、それを強制解除して
           // ゲートを発火可能にする(「ゲート>他イベント」の優先を発火時に効かせる)。城ボスは PHASE
@@ -2325,7 +2431,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ゲーム開始3分後に1回だけ発動。警告10秒→本番20秒→暗転終了。
         // 本番中: 全敵ステータス×2・経験値×2・画面赤染め。
         // 拠点近接 or 商人に話しかけると「やり過ごした」で即脱出(商人側は performAttack 内で処理)。
-        if (!danceTest && !indoor && !labTheme) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss) {
           const rnGs = useGameStore.getState();
           const rn = rnGs.redNight;
 
@@ -2434,8 +2540,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // --- ハンター変異体イベント(専用コントローラ・社長指示) ---------------------
         // 屋内/練習モードでは出さない。出現〜索敵〜発見〜追跡〜撤退〜増援を状態機械で管理。
         // ステージ2(研究所スキン=labTheme)にも出さない(社長指示v0.25.1753。凶悪ハンター含む
-        // コントローラごと停止=死神をlabで止めるのと同じ扱い)。
-        if (!danceTest && !indoor && !labTheme) {
+        // コントローラごと停止=死神をlabで止めるのと同じ扱い)。ストーリーボス専用ラン(M7/EX)も出さない。
+        if (!danceTest && !indoor && !labTheme && !storyBoss) {
           const H = hunterRef.current;
           const hs = useGameStore.getState();
           const hpx = hs.player.x + hs.player.width / 2;
@@ -2750,8 +2856,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // --- 死神(深奥リスク)システム v1 ---
         // 原点(スタート/商人付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
         // 横切り=無害な演出(reaperCross をセット→pixiScene が描画)、追跡=本物の reaper 敵。
-        // 研究所スキンは「ラボ敵以外は沸かない」(社長指示)=死神も出さない。
-        if (!danceTest && !indoor && !labTheme) {
+        // 研究所スキンは「ラボ敵以外は沸かない」(社長指示)=死神も出さない。ストーリーボス専用ランも同様。
+        if (!danceTest && !indoor && !labTheme && !storyBoss) {
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
@@ -5233,20 +5339,36 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const turnInReady = q.status === 'accepted' && qsNow.eventQuestKills >= qsNow.eventQuestGoalCount;
               if (q.status === 'available' || turnInReady) {
                 const nd = q.dwellMs + deltaTime * 1000;
+                const qStageId = getSelectedStageId();
                 if (nd < EVENT_QUEST_DWELL_MS) {
                   useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: nd } }));
                 } else if (q.status === 'available') {
-                  useGameStore.getState().acceptEventQuest();
-                  const accepted = useGameStore.getState();
-                  if (accepted.eventQuestNpc.status === 'accepted') {
-                    accepted.enqueueNpcDialogue(accepted.eventQuestActive === 'forced' ? EVENT_QUEST_LINES : EVENT_QUEST_LINES_SUB);
+                  // M5(統合正本4.5)= 遭遇のみ: 確定会話を流して完了(受注・報酬なし)。
+                  if (getEventQuestConfig(qStageId)?.encounterOnly) {
+                    useGameStore.getState().completeEventEncounter();
+                    useGameStore.getState().enqueueNpcDialogue(EVENT_QUEST_ENCOUNTER_LINES);
                     spawnRing(q.x, q.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, 520);
-                    accepted.spawnGlow(q.x, q.y - 30, 68, 'rgba(96,165,250,', 520);
-                    accepted.spawnCallout(q.x, q.y - 76, 'QUEST', '#bfdbfe');
+                    useGameStore.getState().spawnGlow(q.x, q.y - 30, 68, 'rgba(96,165,250,', 520);
                     playSfx('event-start');
+                  } else {
+                    useGameStore.getState().acceptEventQuest();
+                    const accepted = useGameStore.getState();
+                    if (accepted.eventQuestNpc.status === 'accepted') {
+                      // 会話=統合正本の確定稿(強制=M1初遭遇 / サブ=ステージ別の受注会話)。
+                      accepted.enqueueNpcDialogue(
+                        accepted.eventQuestActive === 'forced' ? EVENT_QUEST_LINES_FORCED : eventQuestSubAcceptLines(qStageId)
+                      );
+                      spawnRing(q.x, q.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, 520);
+                      accepted.spawnGlow(q.x, q.y - 30, 68, 'rgba(96,165,250,', 520);
+                      accepted.spawnCallout(q.x, q.y - 76, 'QUEST', '#bfdbfe');
+                      playSfx('event-start');
+                    }
                   }
                 } else {
+                  // 納品。サブは完了会話(統合正本の確定稿)を流す(強制納品の会話は正本に無い=従来どおり無し)。
+                  const wasSub = useGameStore.getState().eventQuestActive === 'sub';
                   useGameStore.getState().completeEventQuest();
+                  if (wasSub) useGameStore.getState().enqueueNpcDialogue(eventQuestSubCompleteLines(qStageId));
                   spawnRing(q.x, q.y - 22, 12, 62, 'rgba(253,230,138,0.85)', 3, 520);
                   useGameStore.getState().spawnGlow(q.x, q.y - 30, 68, 'rgba(253,230,138,', 520);
                   // §6.10 M33⑪: ゴールドラッシュの獲得倍率を表示にも反映(付与額=completeEventQuestと同じ式)。
@@ -7467,6 +7589,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (
           !danceTest &&
           !indoor &&
+          !storyBoss && // ストーリーボス専用ラン(M7/EX)は通常湧きなし(統合正本10.3)
           !confining &&
           !bossChasingNow && // 裏ボスが画面内で追跡中だけ通常湧きを止める(非追跡=画面外/帰巣中は湧く・社長指摘)
           !puzzleActiveNow &&
@@ -7689,7 +7812,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // consumeDueWaves fires each event exactly once.
         // 研究所スキンは森系の演出波(plant/pumpkin/zombie/skeleton/werewolf)を出さない=
         // 湧きはラボ用ゾンビのみ。クリアボス(giantbat)は別経路(城ボス)で維持。
-        if (SETPIECE_ENABLED && !danceTest && !indoor && !labTheme && !confining) {
+        if (SETPIECE_ENABLED && !danceTest && !indoor && !labTheme && !storyBoss && !confining) {
           const waveEnemies = consumeDueWaves(
             gameTime,
             consumedWavesRef.current,

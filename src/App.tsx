@@ -3,6 +3,7 @@ import Game from './components/Game';
 import MissionSelect from './components/MissionSelect';
 import TitleScreen from './components/TitleScreen';
 import GameOverScreen from './components/GameOverScreen';
+import EndingScreen from './components/EndingScreen';
 import LoadingScreen from './components/LoadingScreen';
 import OrientationGuard from './components/OrientationGuard';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
@@ -10,7 +11,12 @@ import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio, preloadStageBgm, setAudioSuspended, clearSfxThrottle } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
-import { getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared, syncQuestStageClear } from './data/progress';
+import {
+  getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared, syncQuestStageClear,
+  getSelectedMission, getStoryFlags, updateStoryFlags,
+} from './data/progress';
+import { unlockRecordsForStage } from './data/storyArchive';
+import { subsAllCompletedFromMeta, endingFollowup } from './utils/storyProgress';
 import { getEventQuestConfig } from './utils/eventQuest';
 import { getStage, STAGES } from './data/campaign';
 import { isPixiRenderer } from './config/renderer';
@@ -24,6 +30,9 @@ function App() {
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
   const pendingBenchmarkRef = useRef(false);
   const smokeHandledRef = useRef(false);
+  // the ONE 通常エンディング(統合正本7章): M7(stage-7)勝利後、リザルトから「メニューに戻る」で
+  // 聴取記録エンディングを挟む予約。出撃(startGame)でクリア=古い予約を持ち越さない。
+  const pendingEndingRef = useRef(false);
   const resetGame = useGameStore(state => state.resetGame);
   const gameStats = useGameStore(state => state.gameStats);
   // Pixi レンダラの初フレームが出るまで true にならない(PixiStage が setRendererReady)。
@@ -119,17 +128,23 @@ function App() {
     await ensurePreload();
     // 屋内(研究施設)ステージか。resetGame が labMap で初期化するため reset 前に渡す。ベンチは除外。
     const stageForRun = benchmark ? undefined : getStage(getSelectedStageId());
+    pendingEndingRef.current = false; // 新しい出撃で古いエンディング予約を破棄
+    // 洋館［SUB］再訪(統合正本9章): selectedMission='revisit' かつ stage-6 の出撃だけ再訪ラン。
+    const revisitRun = !benchmark && !getSelectedFreeMode()
+      && getSelectedMission() === 'revisit' && stageForRun?.id === 'stage-6';
     useGameStore.getState().setPendingIndoor(!!stageForRun?.indoor);
     useGameStore.getState().setPendingStageTheme(stageForRun?.theme === 'lab' ? 'lab' : 'forest');
     useGameStore.getState().setPendingFarBackdrop(stageForRun?.farBackdrop ?? '');
     useGameStore.getState().setPendingNearHorizon(stageForRun?.nearHorizon ?? '');
     useGameStore.getState().setPendingSuppression(stageForRun?.mainEvent === 'suppression');
+    useGameStore.getState().setPendingStoryBoss(!benchmark && !!stageForRun?.storyBossOnly);
+    useGameStore.getState().setPendingRevisit(revisitRun);
     useGameStore.getState().setPendingHiddenBoss(stageForRun?.hiddenBoss ?? null);
     resetGame(validClass);
     clearSfxThrottle(); // ラン開始でSEスロットル記録をリセット(前ランの終わり際の音が次ラン頭でブロックされるのを防ぐ)
-    // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチは空=会話なし。
+    // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチ/再訪(通信なし)は空=会話なし。
     const free = getSelectedFreeMode();
-    const selectedStage = (benchmark || free) ? undefined : stageForRun;
+    const selectedStage = (benchmark || free || revisitRun) ? undefined : stageForRun;
     useGameStore.getState().setIntroDialogueLines(selectedStage?.main.dialogue ?? []);
     setBenchmarkMode(pendingBenchmarkRef.current);
     setGameState('playing');
@@ -165,9 +180,15 @@ function App() {
     // (社長裁定v0.25.1686 #4)。勝利(帰還)そのものでは解放せず、両フラグが揃った時だけクリア扱い
     // (城ボス討伐時/強制納品時にも同じ同期が走る=どちらが後でもその瞬間に解放される)。
     const stageId = getSelectedStageId();
+    const revisitRun = getSelectedMission() === 'revisit' && stageId === 'stage-6';
     if (stageId && !getSelectedFreeMode()) {
-      if (getEventQuestConfig(stageId)) syncQuestStageClear(stageId);
+      if (revisitRun) {
+        // 洋館再訪(秘密任務)はステージクリア扱いにしない(進行は useGlenMedicine が
+        // storyFlags/ミッション単位クリアへ保存済み。軍向けの記録は残さない=統合正本9.4)。
+      } else if (getEventQuestConfig(stageId)) syncQuestStageClear(stageId);
       else markStageCleared(stageId);
+      // M7(stage-7)クリア → リザルトの後(メニューに戻る時)に通常エンディングを流す予約。
+      if (!revisitRun && stageId === 'stage-7') pendingEndingRef.current = true;
     }
     setGameState('victory');
   };
@@ -175,6 +196,26 @@ function App() {
   const returnToMenu = () => {
     setBenchmarkMode(false);
     setBenchmarkResult(null);
+    // the ONE: M7勝利後の「メニューに戻る」は聴取記録エンディングを挟む(統合正本7章)。
+    if (pendingEndingRef.current) {
+      pendingEndingRef.current = false;
+      setGameState('ending');
+      return;
+    }
+    setGameState('menu');
+  };
+
+  // エンディング終了(統合正本8章 / 指示書6章): endingSeen を立て、サブ3本完了なら「グレンの薬」を
+  // 付与+資料室へ解放(冪等・重複解放なし)。解放の通知はメニューの既存「資料が追加されました」
+  // ポップアップ(latestUnlockedRecordIds)が拾う。未完了時のヒントはメニュー側(初回のみ)が出す。
+  const finishEnding = () => {
+    const follow = endingFollowup(getStoryFlags(), subsAllCompletedFromMeta());
+    if (follow === 'medicine') {
+      updateStoryFlags({ endingSeen: true, medicineOwned: true });
+      unlockRecordsForStage('stage-7', ['mission-glen-medicine']);
+    } else {
+      updateStoryFlags({ endingSeen: true });
+    }
     setGameState('menu');
   };
 
@@ -202,6 +243,9 @@ function App() {
       )}
 
       {gameState === 'loading' && <LoadingScreen startup />}
+
+      {/* the ONE 通常エンディング(聴取記録→暗転→PHILL→スタッフロール)。終了でメニューへ。 */}
+      {gameState === 'ending' && <EndingScreen onDone={finishEnding} />}
       
       {gameState === 'playing' && (
         <Game

@@ -60,6 +60,7 @@ import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle,
   getEventQuestMeta, setEventQuestMeta, markCastleBossCleared, syncQuestStageClear,
+  updateStoryFlags, markMissionCleared,
   type WallMeta,
 } from '../data/progress';
 import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
@@ -82,7 +83,7 @@ import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torc
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, GACHA_PULL_COST, GACHA_REFUND_BY_RARITY } from '../data/campaign';
+import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, GACHA_PULL_COST, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
@@ -286,8 +287,8 @@ const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: s
 // 軍人名簿の人数(=ESCORT_SPRITE_BASE のスプライト数と一致)。援護射撃のNPC選定で使うためexport。
 export const BASE_SOLDIER_COUNT = BASE_SOLDIERS.length;
 // NPCセリフのHUD表示タイミング(gameTime ms)。1行の表示時間と、次の行までの間隔。
-const NPC_DIALOGUE_MS = 2800;     // 1行の表示時間
-const NPC_DIALOGUE_GAP_MS = 500;  // 行間の空き(連続表示でも詰めすぎない)
+export const NPC_DIALOGUE_MS = 2800;     // 1行の表示時間(ストーリーボスの終幕台詞の尺計算でも使用)
+export const NPC_DIALOGUE_GAP_MS = 500;  // 行間の空き(連続表示でも詰めすぎない)
 const NPC_SAME_NPC_CD_MS = 10000; // 同一NPCの連続発話を抑制(管理表 8〜12秒)
 // 「敵に囲まれた時」検知/抑制(社長指示・管理表 High=危機/カテゴリCD必須)。
 const SURROUND_RADIUS = 200;      // この距離内の敵数で「囲まれ」を判定
@@ -409,20 +410,11 @@ const createEventQuestNpc = (): EventQuestNpc => {
 // EVENT_QUEST_DWELL_MS(3秒)居続けると強制受領(拠点解放と同じメーター表示)。会話は左上のNPC会話
 // (npcDialogueQueue)へ流す。行データは旧EventQuestMenuのDIALOGUEから移設。
 export const EVENT_QUEST_DWELL_MS = 3000;
-// 話者名は社長命名(v0.25.1719): 女=ミラ / 男=グレン(NpcDialogueのバストアップ対応と一致させること)。
-export const EVENT_QUEST_LINES: { name: string; text: string }[] = [
-  { name: 'ミラ', text: '隊長！感染者じゃなさそう！' },
-  { name: 'グレン', text: '・・・フム、何も見なかった事にしろ。' },
-  { name: 'ミラ', text: '感染者サンプルを探してるの！' },
-  { name: 'グレン', text: 'ばか言うな！・・・知られたからには手伝ってもらう。' },
-];
+// 二人組の会話文面は統合正本の確定稿へ移行(utils/eventQuest.ts の EVENT_QUEST_LINES_FORCED /
+// EVENT_QUEST_SUB_ACCEPT_LINES / EVENT_QUEST_SUB_COMPLETE_LINES / EVENT_QUEST_ENCOUNTER_LINES)。
+// 旧仮テキスト(v0.25.1719)は廃止。話者名は据え置き: 女=ミラ / 男=グレン(NpcDialogueのバストアップ対応)。
 // 納品(完了)報酬のゴールド(社長裁定v0.25.1686 #5「報酬は100で」。強制/サブ各)。
 export const EVENT_QUEST_REWARD_GOLD = 100;
-// サブ「とにかくサンプルを集めてきて」受領時の台詞(★仮テキスト=会話は後で社長が詰める)。
-export const EVENT_QUEST_LINES_SUB: { name: string; text: string }[] = [
-  { name: 'ミラ', text: 'まだ足りないの！とにかくサンプルを集めてきて！' },
-  { name: 'グレン', text: '・・・数が要る。頼む。' },
-];
 const loadMeleeDropPct = (): number => {
   try {
     const v = localStorage.getItem(DROP_PCT_KEY);
@@ -2179,6 +2171,14 @@ interface GameState {
   suppressionCaptureCount: number; // 制圧した累計回数(base-capture SE 検出用。軍人名簿indexはランダム割当)
   safeBaseId: string | null;     // 武器商人が現在いる拠点(=安全地帯。HP回復・陥落しない)
   pendingSuppression: boolean;   // 出撃が制圧イベント(ステージ1)か。resetGame で suppressionActive へ
+  // the ONE(統合正本M7/EX): ストーリーボス専用ステージ(通常湧き/イベント全停止→会話→ボス→勝利)。
+  pendingStoryBoss: boolean;     // 出撃前にAppがセット(Stage.storyBossOnly)。resetGame で storyBossMode へ
+  storyBossMode: boolean;        // このラン=ストーリーボス専用(useGameLoopの停止ゲート+ボス進行が参照)
+  // the ONE(統合正本9章): 洋館［SUB］再訪(秘密任務)。保存槽ゴール+［グレンの薬を使う］。
+  pendingRevisit: boolean;       // 出撃前にAppがセット(selectedMission='revisit')。resetGame で revisitMode へ
+  revisitMode: boolean;          // このラン=洋館再訪(城ボス停止・洋館=保存槽マーカー・薬ボタン)
+  medicineUsedAt: number;        // 薬を使った時刻(Date.now)。0=未使用。使用後 useGameLoop が短い間を置いて勝利化
+  medicinePromptVisible: boolean; // ［グレンの薬を使う］ボタンの表示(保存槽接近中のみ。HUDが購読)
   // 帰還サークル: フィナーレ撃破/終了アイテム後に出現。中心に dwellMs(ms)とどまると gameWon。null=非表示。
   returnCircle: { x: number; y: number; radius: number; dwellMs: number } | null;
   // 商人「帰還」で任意撤収したフラグ(Game.tsx が監視→onReturn)。スコア計上・クリアボーナス/進行なし・装備は持ち帰り。
@@ -2535,6 +2535,10 @@ interface GameState {
   pendingFarBackdrop: string;                           // 出撃ステージの遠景差し替えキー(resetGame で farBackdrop へ)
   setPendingFarBackdrop: (key: string) => void;
   setPendingSuppression: (on: boolean) => void;   // 出撃が制圧イベント(ステージ1メイン)か
+  setPendingStoryBoss: (on: boolean) => void;     // 出撃がストーリーボス専用(M7/EX)か
+  setPendingRevisit: (on: boolean) => void;       // 出撃が洋館［SUB］再訪か
+  completeEventEncounter: () => void;             // M5遭遇のみ(統合正本4.5): 会話→完了(受注/報酬なし)
+  useGlenMedicine: () => void;                    // 再訪: ［グレンの薬を使う］(統合正本9.3)
   farBackdrop: string;                                  // この出撃の遠景差し替えキー(''=既定の森遠景 / 'city'=夜の廃都。描画が参照)
   pendingNearHorizon: string;                           // 出撃ステージの遠景森2キー(resetGame で nearHorizon へ)
   setPendingNearHorizon: (key: string) => void;
@@ -2775,6 +2779,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   suppressionCaptureCount: 0,
   safeBaseId: null,
   pendingSuppression: false,
+  pendingStoryBoss: false,
+  storyBossMode: false,
+  pendingRevisit: false,
+  revisitMode: false,
+  medicineUsedAt: 0,
+  medicinePromptVisible: false,
   returnCircle: null,
   gameReturned: false,
   meleeAmmoDropPercent: loadMeleeDropPct(),
@@ -6105,11 +6115,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   acceptEventQuest: () => {
     // 受領(EVENT_QUEST_DESIGN.md): 強制が未納品(ステージ1のみ課される)なら強制、
-    // 納品済み(または最初からクリア済み扱い=3/4/5)ならサブを受ける。
+    // 納品済み(または最初からクリア済み扱い=3/4)ならサブを受ける。
     // 強制の受領時は「二人と反対側の研究対象区域」にネームド(パンプキンか犬・宿敵と同じ個体強化)を配置。
     const stageId = getSelectedStageId();
     const cfg = getEventQuestConfig(stageId);
     if (!cfg) return; // 設定なしステージでは二人が出ない(resetGateでgone)ため来ないはずの保険
+    if (cfg.encounterOnly) return; // 遭遇のみ(stage-5)は completeEventEncounter 経路。ここには来ない保険
     const forcedPending = cfg.forced && !getEventQuestMeta(stageId).forced;
     if (forcedPending) {
       const q = get().eventQuestNpc;
@@ -8593,11 +8604,45 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingSuppression: (on) => {
     set({ pendingSuppression: on });
   },
+  setPendingStoryBoss: (on) => {
+    set({ pendingStoryBoss: on });
+  },
+  setPendingRevisit: (on) => {
+    set({ pendingRevisit: on });
+  },
   setPendingNearHorizon: (key) => {
     set({ pendingNearHorizon: key });
   },
   setPendingHiddenBoss: (t) => {
     set({ pendingHiddenBoss: t });
+  },
+
+  // M5 遭遇のみ(統合正本4.5 / utils/eventQuest.ts encounterOnly): サークル滞在3秒で確定会話を流して
+  // 完了。クエスト受注・報酬なし。サブ納品と同じ永続フラグ(meta.sub)を立てる=以後このステージに
+  // 二人は出現しない(そのプレイ中は completed の立ち姿のまま)。会話のenqueueは呼び出し側(useGameLoop)。
+  completeEventEncounter: () => {
+    const stageId = getSelectedStageId();
+    const meta = getEventQuestMeta(stageId);
+    setEventQuestMeta(stageId, { ...meta, sub: true });
+    set(state => ({
+      eventQuestNpc: { ...state.eventQuestNpc, status: 'completed', dwellMs: 0 },
+      eventQuestActive: null,
+    }));
+  },
+
+  // 洋館［SUB］再訪(統合正本9.3-9.4): ［グレンの薬を使う］。成功/失敗は説明しない=演出は最小
+  // (小さな光のみ)。進行は永続へ即保存(medicineUsed/revisitCleared+ミッション単位クリア)。
+  // 勝利化は useGameLoop が medicineUsedAt からの短い間(1.6秒)を置いて行う。
+  useGlenMedicine: () => {
+    const s = get();
+    if (!s.revisitMode || s.medicineUsedAt > 0 || s.gameWon) return;
+    updateStoryFlags({ medicineUsed: true, revisitCleared: true });
+    markMissionCleared(REVISIT_MISSION_ID);
+    const castle = s.castleEvent;
+    set({ medicineUsedAt: Date.now(), medicinePromptVisible: false });
+    // 最小の視覚フィードバック(明確な成功演出は置かない=統合正本9.3)。
+    get().spawnRing(castle.x, castle.y - 20, 10, 90, 'rgba(253,230,138,0.7)', 3, 620);
+    get().spawnGlow(castle.x, castle.y - 30, 42, 'rgba(253,230,138,', 620);
   },
 
   triggerEventVictory: () => {
@@ -9711,6 +9756,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         suppressionActive: state.pendingSuppression && !indoor && stageTheme !== 'lab',
         suppressionCaptureCount: 0,
         safeBaseId: null,
+        // the ONE: ストーリーボス専用(M7/EX)/洋館再訪。pending→run状態へ(App.startGameがセット)。
+        storyBossMode: state.pendingStoryBoss && !indoor && stageTheme !== 'lab',
+        revisitMode: state.pendingRevisit && !indoor && stageTheme !== 'lab',
+        medicineUsedAt: 0,
+        medicinePromptVisible: false,
         returnCircle: null,
         gameReturned: false,
         meleeFinishComboCount: 0,
