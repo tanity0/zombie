@@ -18,7 +18,10 @@ import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/s
 import { FlareGunFlare, activeFlareTargets, FLARE_GUN_CD_MS_BY_LEVEL, FLARE_GUN_FLIGHT_MS, FLARE_GUN_DURATION_MS } from '../utils/flareGun';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis } from '../utils/bomberScatter';
-import { recordSubUse, recordOverclockProc, resetBotTelemetry } from '../utils/botTelemetry';
+import {
+  recordSubUse, recordOverclockProc, resetBotTelemetry,
+  recordDamageDealt, recordFinisherKill, recordMeleeSwing,
+} from '../utils/botTelemetry';
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -2393,7 +2396,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean) => boolean; // nonLethalBoss=爆発系: ボス系にトドメを刺さない / crit=裏ボスの完全気絶カウント用 / viaMeleeFinish=近接フィニッシュ経由(§5.21-追補4 finishKillOnlyのトドメを許可)
+  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null) => boolean; // nonLethalBoss=爆発系: ボス系にトドメを刺さない / crit=裏ボスの完全気絶カウント用 / viaMeleeFinish=近接フィニッシュ経由(§5.21-追補4 finishKillOnlyのトドメを許可) / damageChannel=§6.21 M46計測用(既定'other'。gun系projectile命中経路のみ'gun'を渡す。プレイヤー起因でない場合はnull)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -3271,6 +3274,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         },
       };
     });
+    // §6.21 M46: スキル(スケーターバッシュ)によるダメージ計測。channel='other'(近接カウンター振りではない)。
+    if (hitAt.length > 0) recordDamageDealt('other', dmg * hitAt.length);
 
     // 撃破報酬(XP/通貨/弾薬)はバッシュと同じく grantMeleeKillRewards で。
     if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
@@ -3357,6 +3362,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         finaleDefeated: s.finaleDefeated || bossKilled,
       };
     });
+    // §6.21 M46: スキル(投擲スケボー着弾バッシュ)によるダメージ計測。channel='other'。
+    if (hitAt.length > 0) recordDamageDealt('other', dmg * hitAt.length);
     if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
     get().spawnRing(x, y, 8, SKATEBOARD_BASH_RANGE, 'rgba(190,242,100,0.62)', 4, 260);
     get().spawnBurst(x, y, '#bef264', 14);
@@ -3930,6 +3937,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         killed.push({ enemy, finisher: true }); // normal instant execute
+        recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死
         continue;
       }
       // Melee weapons carry a fixed crit chance (varies by weapon). A crit
@@ -4002,6 +4010,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const knifeCombo = computeKnifeCombo(player, gameTime, meleeHitLanded);
     // スキル: コンボマスター = フィニッシュコンボ窓 +1s。
     const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
+    // §6.21 M46: 近接カウンター振り(通常ナイフ)の計測。channel='melee'。1振り=1回(hitCount=命中数)。
+    const meleeSwingDamage = meleeDamageNumbers.reduce((sum, n) => sum + n.value, 0);
+    recordDamageDealt('melee', meleeSwingDamage);
+    recordMeleeSwing(slashAt.length);
     set(state => ({
       // このスイングで近接ダメージを受けた敵(lastHit===now)に meleeAggro を付与(救助で以後プレイヤー狙い)。
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
@@ -4014,8 +4026,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeFinishers: state.gameStats.meleeFinishers + killed.reduce((n, k) => n + (k.finisher ? 1 : 0), 0),
         eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
-        damageDealt: state.gameStats.damageDealt +
-          meleeDamageNumbers.reduce((sum, n) => sum + n.value, 0),
+        damageDealt: state.gameStats.damageDealt + meleeSwingDamage,
         maxCombo: comboFinishCount > 0
           ? Math.max(
               state.gameStats.maxCombo,
@@ -4280,6 +4291,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finisherHit = killed.some(k => k.finisher);
     // スキル: ナイフマスターのコンボ加算(§6.10 M33⑧: 分身のヒットでも貯める。倍率は既に乗っている)。
     const cloneKnifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
+    // §6.21 M46: 分身(サブウェポン)によるダメージ計測。channel='other'(プレイヤー自身の近接カウンター
+    // 振りではなくサブウェポンの自律攻撃のため。finisher即死もrecordFinisherKillの対象外=★未決事項参照)。
+    const cloneStrikeDamage = damageNumbers.reduce((sum, n) => sum + n.value, 0);
+    recordDamageDealt('other', cloneStrikeDamage);
     set(state => ({
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
       // 専用の meleeHitAt もスタンプ(gun/爆発は damageEnemy 側の別経路なので対象外)。ミゲル以外は
@@ -4291,7 +4306,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeFinishers: state.gameStats.meleeFinishers + killed.reduce((n, k) => n + (k.finisher ? 1 : 0), 0),
         eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
-        damageDealt: state.gameStats.damageDealt + damageNumbers.reduce((sum, n) => sum + n.value, 0),
+        damageDealt: state.gameStats.damageDealt + cloneStrikeDamage,
       },
       player: { ...state.player, knifeComboCount: cloneKnifeCombo.count, knifeComboUntil: cloneKnifeCombo.until },
       // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
@@ -4600,6 +4615,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         killed.push({ enemy, finisher: true }); // 通常ナイフと同じ即時フィニッシュ
+        recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死(刀)
         continue;
       }
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil
@@ -4668,6 +4684,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const bossKilled = killed.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
     const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
     const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
+    // §6.21 M46: 近接カウンター振り(刀のオート斬撃/一閃)の計測。channel='melee'。1呼び出し=1回(hitCount=命中数)。
+    const katanaSwingDamage = damageNumbers.reduce((sum, n) => sum + n.value, 0);
+    recordDamageDealt('melee', katanaSwingDamage);
+    recordMeleeSwing(slashAt.length);
     set(state => ({
       // このスイングで近接ダメージを受けた敵(lastHit===now)に meleeAggro を付与(救助で以後プレイヤー狙い)。
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
@@ -4680,8 +4700,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeFinishers: state.gameStats.meleeFinishers + killed.reduce((n, k) => n + (k.finisher ? 1 : 0), 0),
         eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
-        damageDealt: state.gameStats.damageDealt +
-          damageNumbers.reduce((sum, n) => sum + n.value, 0),
+        damageDealt: state.gameStats.damageDealt + katanaSwingDamage,
         maxCombo: comboFinishCount > 0
           ? Math.max(
               state.gameStats.maxCombo,
@@ -4802,6 +4821,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         killed.push({ enemy, finisher: true });
+        recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死(鞭)
         continue;
       }
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
@@ -4834,6 +4854,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const bossKilled = killed.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
     const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
     const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
+    // §6.21 M46: 近接カウンター振り(鞭)の計測。channel='melee'。1振り=1回(hitCount=命中数)。
+    const whipSwingDamage = damageNumbers.reduce((s, n) => s + n.value, 0);
+    recordDamageDealt('melee', whipSwingDamage);
+    recordMeleeSwing(slashAt.length);
     set(state => ({
       // このスイングで近接ダメージを受けた敵(lastHit===now)に meleeAggro を付与(救助で以後プレイヤー狙い)。
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
@@ -4846,7 +4870,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeFinishers: state.gameStats.meleeFinishers + killed.reduce((n, k) => n + (k.finisher ? 1 : 0), 0),
         eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
-        damageDealt: state.gameStats.damageDealt + damageNumbers.reduce((s, n) => s + n.value, 0),
+        damageDealt: state.gameStats.damageDealt + whipSwingDamage,
         maxCombo: comboFinishCount > 0
           ? Math.max(state.gameStats.maxCombo, state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
           : state.gameStats.maxCombo,
@@ -6234,13 +6258,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false) => {
+  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other') => {
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
     let namedFoeKilled: Enemy | null = null; // §5.14 M13: 宿敵討伐(set後にREVENGE演出+報酬)
     let deathPopAt: { ex: number; ey: number; fromX: number; fromY: number } | null = null; // §5.23 M22 A3(set後に発火)
     let dramaticDeathAt: { enemy: Enemy; x: number; y: number } | null = null; // juice: FF風クランブル(set後に発火)
+    let appliedDamage = 0; // §6.21 M46計測用: 実際に加算された生ダメージ(HP床クランプ前・紅き夜補正後=既存damageDealtと同値)
 
     set(state => {
       const { enemies, gameStats } = state;
@@ -6254,6 +6279,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
       const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(amount / 2)) : amount;
+      appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)
       let newHealth = Math.max(0, enemy.health - eff);
       // nonLethalBoss: 廃止(v0.25.1571) 爆発もボスを倒せる。互換のため引数は残置
       // PACING_PUZZLE.md §5.21-追補4: ゲート1台本/ゲート2ボス(finishKillOnly)は近接フィニッシュ
@@ -6313,6 +6339,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
+
+    // §6.21 M46: プレイヤー起因ダメージの計測(channel別)。damageChannel=null(護衛NPC弾等・
+    // プレイヤー起因ではない)は加算しない。appliedDamage=0(対象なし/ジャンプ無敵で何も起きなかった)は
+    // 加算してもスカラー0で無害。
+    if (damageChannel !== null) recordDamageDealt(damageChannel, appliedDamage);
 
     // 裏ボスが完全気絶(紫)に移行: 紫の衝撃リング＋発光＋コールアウトで知らせる。
     if (bossFullStunAt) {

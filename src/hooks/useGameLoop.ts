@@ -153,7 +153,7 @@ import {
   getKillTotals, resetKillTelemetry, setPhaseKillDebug, resetPhaseKillDebug, getCurrentStyle, getLastKillAt,
   getPhaseKillDebug, snapshotKillTotals, snapshotSpawns
 } from '../utils/killTelemetryState';
-import { recordSubUse, recordOverclockProc, getBotTelemetry } from '../utils/botTelemetry';
+import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
 import { calculateResultScore } from '../utils/resultScoring';
 import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
@@ -1151,6 +1151,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         calculateResultScore(s.gameStats, outcome === 'clear', s.stageTheme === 'lab').goldEarned
         * skillGoldRushMult(s.player)
       ),
+      // M46(§6.21): 与ダメ/即死/近接ペース計測(gun/melee/otherチャネル・total=出力時に合算)。
+      damageDealt: {
+        gun: Math.round(botTele.damageDealt.gun),
+        melee: Math.round(botTele.damageDealt.melee),
+        other: Math.round(botTele.damageDealt.other),
+        total: Math.round(botTele.damageDealt.gun + botTele.damageDealt.melee + botTele.damageDealt.other),
+      },
+      finisherKills: botTele.finisherKills,
+      meleeSwings: botTele.meleeSwings,
+      meleeHits: botTele.meleeHits,
     };
     console.log('[BOT_REPORT]', JSON.stringify(report));
     (window as unknown as Record<string, unknown>).__BOT_REPORT__ = report;
@@ -6163,7 +6173,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : isEscortShot
               ? damage * critMult
               : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
-          const enemyKilled = damageEnemy(enemyId, dmg, false, hitCrit);
+          // §6.21 M46: gun/otherチャネル分類(護衛NPC弾はnull=計測除外)。純関数=classifyProjectileDamageChannel。
+          const dmgChannel = classifyProjectileDamageChannel(projectile?.weaponType, projectile?.weaponKey);
+          const enemyKilled = damageEnemy(enemyId, dmg, false, hitCrit, false, dmgChannel);
           // 護衛NPCの弾の被弾音も、発砲音と同じ距離減衰をかける(遠いNPCの攻撃は被弾音も小さく/画面外は無音)。
           // プレイヤー自身の弾は等倍(gain=1)。
           let hitSfxGain = 1;

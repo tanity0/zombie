@@ -56,6 +56,7 @@ import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
   NOOP_COMBAT_EFFECTS, type CombatTunables,
 } from './combatTick';
+import { classifyProjectileDamageChannel } from './botTelemetry';
 
 const MAX_ENEMIES = 10; // useGameLoop.ts と同じ既定(コマ管理はcapForStateが実効上限を別途決める)
 
@@ -166,7 +167,9 @@ const applyBotProjectileHits = (gameTime: number): void => {
     const critMult = hitCrit ? skillCritMult(player, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) : 1;
     const comboMasterMult = skillComboMasterMult(player, gameTime, st.meleeFinishComboCount, st.meleeFinishComboUntil);
     const dmg = damage * critMult * skillOutgoingDamageMult(player) * sniperGunMult(player, enemy) * comboMasterMult;
-    const killed = st.damageEnemy(enemyId, dmg, false, hitCrit);
+    // §6.21 M46: gun/otherチャネル分類(useGameLoop.tsの実装と同じ純関数=classifyProjectileDamageChannel)。
+    const dmgChannel = classifyProjectileDamageChannel(projectile.weaponType, projectile.weaponKey);
+    const killed = st.damageEnemy(enemyId, dmg, false, hitCrit, false, dmgChannel);
     // despawn則(useGameLoop.ts:6507-6523と同じ): pierce=N発貫通 / passthrough=キルで停止 / それ以外=1発で消滅。
     const removeIt = projectile.pierce !== undefined
       ? projectile.hitEnemies.length > projectile.pierce

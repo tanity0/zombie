@@ -1,5 +1,55 @@
 # Development Log
 
+## v0.25.1784 — M46実装: ボットレポート計測拡張 第2弾=与ダメ/即死/近接ペース(§6.21)【2026-07-16 21:54 JST】
+- ※仕様確定は v0.25.1783(§6.21新設・doc-onlyの先行push=打刻はこのエントリに併記)。
+- 実装=Sonnetサブエージェント。検証=設計チャット(typecheck+botTelemetry15+playtest+sim=37件green・
+  diffレビュー: 近接3種の計測は既存gameStats.damageDealtと同一集計値の流用=二重計上なし、ボス5×
+  フィニッシュ打はmeleeに包含、damageEnemyのchannel既定'other'で後方互換)。
+- **チャネル帰属の★未決5点は設計チャットが裁定=全て実装のまま採用**(§6.21に理由と運用注意を記録。
+  要点: スラッシャー追撃=other→ソークではビルドから外す/グレラン=直撃gun+爆風other→ソークは非爆発銃で)。
+- 以下、実装内容(Sonnet報告):
+- **背景**: ナイフ系DPSがt4以降で銃を逆転する実測(TEST_HANDOFF)を受け、調整の前後比較用に実効DPS/
+  即死チャネル寄与/近接ペースをボットで測れるようにする計測バッチ(M35と同思想・**計測のみ=挙動不変**)。
+- **`src/utils/botTelemetry.ts`**: `recordDamageDealt(channel, amount)` / `recordFinisherKill()` /
+  `recordMeleeSwing(hitCount)` を追加(`resetBotTelemetry`で0化・`snapshotBotTelemetry`でディープコピー)。
+  純関数 `classifyProjectileDamageChannel(weaponType, weaponKey)` を追加(gun/other/計測除外nullの分類。
+  weaponKeyの`'sub-'`接頭辞でサブウェポン発の"銃と同じ見た目"projectileをotherへ、`'escort'`は除外)。
+- **`src/store/gameStore.ts`**: `damageEnemy` に第6引数 `damageChannel?: 'gun' | 'other' | null`(既定
+  `'other'`)を追加。**この一元化により、爆発/DoT/サブウェポン/カウンター反撃クリ/救難信号アライ等の
+  ほぼ全プレイヤー起因ダメージ経路が自動的に計測対象になった**(damageEnemyを経由しない独自の敵HP直接
+  操作を持つ5箇所だけ個別に差し込み: `triggerCounter`通常ナイフ振り/`performKatanaStrike`/
+  `performWhipStrike`=channel='melee'+recordMeleeSwing、`triggerSkaterBash`/`skaterBoardHit`
+  =channel='other'。`shadowCloneStrike`もchannel='other'・finisherKillは対象外=★未決)。
+  `recordFinisherKill()`は`killed.push({enemy, finisher:true})`の3箇所(通常ナイフ/刀/鞭)に差し込み。
+- **`src/hooks/useGameLoop.ts`**: 汎用弾ヒット処理(`projectileEnemyCollisions.forEach`)で
+  `classifyProjectileDamageChannel`によりgun/other判定→`damageEnemy`へchannel引数として渡す。
+  `[BOT_REPORT]`に`damageDealt{gun,melee,other,total}`/`finisherKills`/`meleeSwings`/`meleeHits`を追加。
+- **`src/utils/playtestDriver.ts`**: ヘッドレスの弾ヒット処理(`applyBotProjectileHits`)にも同じ純関数で
+  gun判定を差し込み(実機と同じ分類ロジック)。
+- **`src/store/playtest.test.ts`**: `RunReport`に同項目を追加+短縮スモーク(2ラン)へ受け入れ条件2の
+  assert追加(`damageDealt.total>0`/`meleeSwings>0`、2ラン合算でチェック)。
+- **`src/utils/botTelemetry.test.ts`**: 新規15テスト(加算/リセット/ディープコピー/分類純関数6件/
+  `damageEnemy`配線=既定other・明示channel上書き・null除外・HP減少量はchannel引数に関わらず不変の確認)。
+- **検証**: typecheck green / `npx eslint`(変更6ファイル)clean / `botTelemetry.test.ts`15件green /
+  `playtest.test.ts`6件green・1skip(短縮スモークの出力例: warrior=dmgDealt[gun=3025/melee=2618/
+  other=605/total=6248] finisherKills=13 meleeSwings=119、kiter=総gun寄り・meleeSwings=1で
+  gun/melee/otherが実際に分離して出ていることを確認)/ `sim.test.ts`16件green・1skip(既存damageEnemy
+  呼び出しの後方互換=channel省略で既定'other') / `vitest related`(変更ファイル起点)144件green・2skip。
+  負荷1/10(スカラー加算のみ・per-frame新規ループ無し)。
+- **otherの未計測経路**: 実装中に`damageEnemy`がプレイヤー起因ダメージのほぼ唯一の合流点と判明したため、
+  channel引数1個の追加で網羅できた。「未計測のまま漏れている経路」は無い認識。ただし**チャネルの
+  帰属先の解釈**で4点の★未決事項をPACING_PUZZLE.md §6.21に記載(鞭ハリケーンのmelee/other/スラッシャー
+  追撃のmelee/other/分身フィニッシュをfinisherKillsに含めるか/護衛NPC弾の完全除外の是非/グレネード
+  ランチャー直撃とその爆風がgun/otherに分裂する点)。挙動には一切影響しない解釈論点のみ。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触なし(カウンタ加算のみの計測差し込み・
+  ダメージ量/HP/キル判定/CD/スポーン等のゲームロジックは無変更。sim.test.ts/playtest.test.ts双方が
+  既存の不変条件チェックを含めて全green)。
+- Files: `src/utils/botTelemetry.ts`, `src/utils/botTelemetry.test.ts`, `src/store/gameStore.ts`,
+  `src/hooks/useGameLoop.ts`, `src/utils/playtestDriver.ts`, `src/store/playtest.test.ts`,
+  `PACING_PUZZLE.md`, `DEVELOPMENT_LOG.md`。(package.json version bump/コミット/pushは実施していない
+  =設計チャットの検証後に付与。)
+
+
 ## v0.25.1782 — ストーリー修正差分の適用(Drive「02_修正差分メモ 2026-07-16」D-01〜D-11)【2026-07-16 20:52 JST】
 - 社長のストーリー加筆修正(Drive 02=差分メモ・00=統合正本も同日更新済み)をゲームへ適用。
   **ゲーム内文言に触れる差分のみ実装**(D-01/02/03/04/06/08/11は内部設定=現行文言と矛盾なしを全検索で確認):

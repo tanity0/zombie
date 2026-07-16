@@ -50,6 +50,11 @@ interface RunReport {
   scrapSpent: number;           // gameStats.strapsSpent
   damageTaken: number;          // gameStats.damageTaken
   goldEarned: number;           // リザルト画面と同じ式(resultScoring+ゴールドラッシュ倍率)を終了時点で評価
+  // PACING_PUZZLE.md §6.21 M46: 与ダメ/即死/近接ペース計測(gun/melee/otherチャネル)。
+  damageDealt: { gun: number; melee: number; other: number; total: number };
+  finisherKills: number;        // 気絶中の敵への近接即死(通常ナイフ/刀/鞭)の件数
+  meleeSwings: number;          // 近接カウンター振りの回数(ヒット0含む)
+  meleeHits: number;            // 近接カウンター振りで実際に命中した延べ数
 }
 
 const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: number, wanderSeed: number): RunReport => {
@@ -153,6 +158,16 @@ const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: numb
         calculateResultScore(endState.gameStats, false, endState.stageTheme === 'lab').goldEarned
         * skillGoldRushMult(endState.player)
       ),
+      // §6.21 M46: gun/melee/otherチャネル(total=出力時に合算)+即死/近接ペース。
+      damageDealt: {
+        gun: Math.round(tele.damageDealt.gun),
+        melee: Math.round(tele.damageDealt.melee),
+        other: Math.round(tele.damageDealt.other),
+        total: Math.round(tele.damageDealt.gun + tele.damageDealt.melee + tele.damageDealt.other),
+      },
+      finisherKills: tele.finisherKills,
+      meleeSwings: tele.meleeSwings,
+      meleeHits: tele.meleeHits,
     };
   } finally {
     vi.useRealTimers();
@@ -171,6 +186,8 @@ const printReport = (label: string, reports: RunReport[]): void => {
     // §6.12 M35: サブ発動/オーバークロック/スクラップ収支/被ダメ/リザルト式ゴールドも1行で出す。
     const subUsesStr = Object.entries(r.subUses).map(([k, n]) => `${k}:${n}`).join(',') || '-';
     console.log(`      subUses=[${subUsesStr}] overclock=${r.overclockProcs} scrap=+${r.scrapEarned}/-${r.scrapSpent} dmgTaken=${r.damageTaken} gold=${r.goldEarned}`);
+    // §6.21 M46: 与ダメ(gun/melee/other)/即死/近接ペースも1行で出す。
+    console.log(`      dmgDealt[gun=${r.damageDealt.gun}/melee=${r.damageDealt.melee}/other=${r.damageDealt.other}/total=${r.damageDealt.total}] finisherKills=${r.finisherKills} meleeSwings=${r.meleeSwings} meleeHits=${r.meleeHits}`);
     for (const v of r.violations.slice(0, 5)) console.log(`      - ${v}`);
   }
 };
@@ -187,6 +204,12 @@ describe('playtest bot (M9: 自動テストプレイ=デバッグボット)', ()
     printReport('short (CI)', reports);
     const allViolations = reports.flatMap(r => r.violations);
     expect(allViolations, allViolations.slice(0, 20).join('\n')).toEqual([]);
+    // PACING_PUZZLE.md §6.21 M46 受け入れ条件2: 計測配線がヘッドレスへ繋がっていることの機械的証明
+    // (2ラン合算でチェック=個別ペルソナが5分中たまたま近接0でも安定させるため)。
+    const totalDamageDealt = reports.reduce((sum, r) => sum + r.damageDealt.total, 0);
+    expect(totalDamageDealt).toBeGreaterThan(0);
+    const totalMeleeSwings = reports.reduce((sum, r) => sum + r.meleeSwings, 0);
+    expect(totalMeleeSwings).toBeGreaterThan(0);
   });
 
   // Nightly fuzz (SIM_FUZZ=1) と `npm run playtest`(同じ環境変数)専用のフル版。

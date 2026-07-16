@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1784',
+    items: [
+      '開発向け: ボットの計測を拡張(与ダメージの内訳/即死キル数/近接ペース)。近接バランス調整の実測準備で、ゲーム内の挙動に変化はありません。',
+    ],
+  },
+  {
     version: '0.25.1783',
     items: [
       '開発向け: ボット計測拡張(与ダメージ/即死/近接ペース)の仕様書を追加(バッチM46)。ゲーム内の変化はありません。',
