@@ -579,8 +579,13 @@ const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): n
 //    (HOLD..RELEASE 間で線形ブレンド=境界でサイズが跳ねない)。
 //  ・歩行スカッシュ等の演出係数はスナップの外側に掛かる(演出は殺さない。動作中の僅かな
 //    まだらは動きで見えない=静止時が完全にくっきりであることを優先)。
-const PLAYER_TEXEL_SNAP_HOLD = 0.10;    // 誤差この割合まではスナップ維持
-const PLAYER_TEXEL_SNAP_RELEASE = 0.16; // ここで完全に素のスケールへ(間は線形ブレンド)
+// 帯幅は機種網羅から逆算(v0.25.1774・アプリ化=フルスクリーン前提の対応方針):
+//  フルスクリーン係数は iPhone SE2〜16ProMax=0.926〜1.086(ずれ≤8%) / Android 412dp級=1.02 /
+//  **Android 360dp級(Galaxy S標準表示・台数最多)=0.889(ずれ12.5%)** → HOLD=13%で全常用機をカバー。
+//  帯内ではプレイヤーが世界に対して最大~13%大きめに描かれるトレード(SE2フル=8%で違和感なし・社長実機)。
+//  帯外(iPhone SE1=0.79 / タブレット=1.64)は既知の制限(ENGINEERING_NOTES参照)。
+const PLAYER_TEXEL_SNAP_HOLD = 0.13;    // 誤差この割合まではスナップ維持(360dp級Android=12.5%を含める)
+const PLAYER_TEXEL_SNAP_RELEASE = 0.19; // ここで完全に素のスケールへ(間は線形ブレンド)
 const TEXEL_SNAP_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('psnap') !== '0';
 // プレイヤー本体の二次モーション(歩行スカッシュ&ストレッチ/リーン/上下bob・発砲反動・近接踏み込み・
