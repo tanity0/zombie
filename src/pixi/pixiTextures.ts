@@ -36,10 +36,10 @@ const isClassSpriteName = (name: string): boolean =>
   SOFT_CLASS_PREFIXES.some((pre) => name.startsWith(pre));
 const isSoftClassSprite = (name: string): boolean => SPRITE_SMOOTH && isClassSpriteName(name);
 
-// プレイヤー立ち絵の「表示基準幅」(px)。現行素材の実寸=78px幅がそのまま画面上の表示サイズ。
-// 社長決定(v0.25.1763・エリオット式=NPC方式): 立ち絵素材は将来「同じ構図のまま整数倍(×2〜×4)の
-// キャンバスで描き出し」て差し替える。表示側は常にこの基準幅へ縮小するので、素材を同名で
-// 上書きするだけで画面上のサイズは変わらず密度だけ上がる(pixiScene.playerBaseScale が参照)。
+// プレイヤー立ち絵の「表示基準幅」(px)=素材キャンバスの実寸。取込み規約(v0.25.1769確定)は
+// 「÷Nドット保持焼きで幅78へ焼き切り+nearest等倍+ピクセルスナップ(pixiScene.snapTexelScale)」。
+// ※「高解像度素材のままlinear/mipmapで縮小表示」案(v0.25.1763-1765)は res不問で滲むため撤回済み
+//   (トリリニア補間が常に隣画素/mip間をブレンドする)。詳細は ENGINEERING_NOTES.md。
 export const PLAYER_ART_BASE_W = 78;
 
 // Load the atlas + player image and slice every named frame. Idempotent: the
@@ -409,13 +409,11 @@ export const ensureTextures = (): Promise<void> => {
         if (scaleMode) tex.source.scaleMode = scaleMode;
         // M8改(§5.9): ソフト系3クラスはミップマップONで縮小を均一に(linearと併用)。
         if (isSoftClassSprite(name)) tex.source.autoGenerateMipmaps = true;
-        // 高解像度プレイヤー素材の自動受け入れ(社長決定v0.25.1763・エリオット式=NPC方式):
-        // クラス立ち絵が基準幅78pxより大きい=高密度版が届いたら、その素材だけ linear+mipmap で
-        // 滑らかに縮小する(NPC/裏ボスの「詳細イラスト調」と同じ扱い)。等倍素材(現行)は従来どおり
-        // nearest=挙動不変。素材を同名で上書きするだけで切り替わる(コード変更不要)。
+        // 基準幅超のクラス立ち絵=取込み規約(÷Nドット保持焼き)を通っていない規格外素材の疑い。
+        // 旧v0.25.1763-1765の「自動でlinear+mipmap縮小」は滲みの原因だったため撤去(v0.25.1769)。
+        // 警告だけ出して従来どおり描く(壊さない)。正しくは import-player-sprites.mjs --dot N で焼き直す。
         if (isClassSpriteName(name) && tex.width > PLAYER_ART_BASE_W) {
-          tex.source.scaleMode = 'linear';
-          tex.source.autoGenerateMipmaps = true;
+          console.warn(`[sprites] ${name}: 幅${tex.width}px>基準${PLAYER_ART_BASE_W}px。ドット保持焼き(--dot)を通していない素材の疑い`);
         }
         textures.set(name, tex);
       }),

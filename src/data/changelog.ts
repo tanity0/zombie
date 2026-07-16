@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1769',
+    items: [
+      'プレイヤー描画の新方式(ドット保持焼き+ピクセルスナップ)を正式採用(実機確認済み)。見た目はv0.25.1768と同じです。',
+    ],
+  },
+  {
     version: '0.25.1768',
     items: [
       'テスト: プレイヤーのドット潰れ対策=ピクセルスナップ(1ドット=画面ちょうど1pxに固定)。待機ズームや遠近でプレイヤーの大きさが微変動しなくなります(?psnap=0で従来へ)。',
