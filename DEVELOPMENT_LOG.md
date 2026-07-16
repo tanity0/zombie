@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1795 — メニュー透明のまま問題の安全側修正(社長報告「更新した最初だけ拠点メニューの透明度が0」)【2026-07-17 06:16 JST】
+- **構造的原因**: 入場アニメ(menu-item-in等)が `animation-fill-mode: both` だったため、
+  「アニメが一度も開始されない」(更新直後の初回起動・iOSの復帰タイミング等の環境要因)と
+  from状態=opacity:0 のまま固定される事故モードを持っていた。トリガー自体は環境依存で再現不能。
+- **対策**: to状態が素のスタイルと同一(opacity:1/transform無し)の入場アニメ6種を `both`→`backwards` へ
+  (menu-item-in/menu-stagger/screen-in/portrait-rise/info-rise/upgrade-menu 3種)。走った時の見た目は同一、
+  走らなかった時は「アニメなしで普通に表示」に倒れる。フェードアウト系(gacha-*等・to≠素)は対象外
+  (forwardsが必要なため触っていない)。透明で固まると最も痛いレベルアップ選択肢も同修正に含む。
+- 検証: typecheck green。再発時は「アニメ無しで表示される」に変わるので実害なし+発生の観測が可能。
+- Files: `src/index.css`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1794 — 散らばりナイフも回転対象に(社長指示「ナイフもお願い」)【2026-07-17 06:12 JST】
 - 血染めナイフ(r1-c8)に rotateDeg:[10,150] を追加(v1793の銃7種と同じ仕組み)。1行のみ。
 - 検証: typecheck green。

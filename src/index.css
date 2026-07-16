@@ -83,14 +83,14 @@
     opacity: 0.55;
   }
   .upgrade-menu-backdrop {
-    animation: upgrade-backdrop-in 220ms ease-out both;
+    animation: upgrade-backdrop-in 220ms ease-out backwards;
   }
   .upgrade-menu-panel {
     transform-origin: 50% 54%;
-    animation: upgrade-panel-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: upgrade-panel-in 360ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
   .upgrade-menu-option {
-    animation: upgrade-option-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: upgrade-option-in 420ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
   .upgrade-menu-option:nth-child(2) {
     animation-delay: 35ms;
@@ -316,7 +316,7 @@
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-.screen-in { animation: screen-in 220ms ease-out both; }
+.screen-in { animation: screen-in 220ms ease-out backwards; }
 @media (prefers-reduced-motion: reduce) {
   .screen-in { animation: none; }
 }
@@ -326,7 +326,7 @@
   from { opacity: 0; transform: translateY(8%); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.portrait-rise { animation: portrait-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.portrait-rise { animation: portrait-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
 @media (prefers-reduced-motion: reduce) {
   .portrait-rise { animation: none; }
 }
@@ -336,7 +336,7 @@
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.info-rise { animation: info-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.info-rise { animation: info-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
 @media (prefers-reduced-motion: reduce) {
   .info-rise { animation: none; }
 }
@@ -346,13 +346,18 @@
   from { opacity: 0; transform: translateX(-14px); }
   to   { opacity: 1; transform: translateX(0); }
 }
-.menu-item-in { animation: menu-item-in 260ms ease-out both; }
+/* fill-mode は backwards(遅延中のみ from=透明を適用)にする。both(=forwards込み)だと
+   「アニメが一度も開始されなかった」時に opacity:0 のまま固定される事故モードを持つ
+   (社長報告v0.25.1795: 更新後の初回起動で拠点メニューが透明のまま)。to状態は素の
+   スタイルと同じ(opacity:1/transform無し)なので、backwards でも走った時の見た目は同一。
+   走らなかった時だけ「アニメなしで普通に表示」へ安全側に倒れる。 */
+.menu-item-in { animation: menu-item-in 260ms ease-out backwards; }
 @media (prefers-reduced-motion: reduce) {
   .menu-item-in { animation: none; }
 }
 
 /* コンテナに付けると直下の各子要素が左から順にカスケード(他メニューへ一括適用用)。 */
-.menu-stagger > * { animation: menu-item-in 260ms ease-out both; animation-delay: 0ms; }
+.menu-stagger > * { animation: menu-item-in 260ms ease-out backwards; animation-delay: 0ms; }
 .menu-stagger > *:nth-child(2)  { animation-delay: 45ms; }
 .menu-stagger > *:nth-child(3)  { animation-delay: 90ms; }
 .menu-stagger > *:nth-child(4)  { animation-delay: 135ms; }

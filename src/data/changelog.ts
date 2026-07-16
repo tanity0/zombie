@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1795',
+    items: [
+      '更新後の初回起動などで、拠点メニュー等がまれに透明のまま表示されない問題への対策(登場アニメが動かなかった場合でも必ず表示されるように)。',
+    ],
+  },
+  {
     version: '0.25.1794',
     items: [
       'ステージ5の散らばりナイフも銃と同じくランダム回転(10〜150度)で置くように。',
