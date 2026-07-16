@@ -45,6 +45,7 @@ import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
+import { snapTexelRatio } from '../utils/texelSnap';
 import { getGlowTexture, getEggTexture, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
@@ -571,21 +572,14 @@ const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): n
     p.characterClass === 'rogue' || p.characterClass === 'necromancer';
   return knownClass ? PLAYER_ART_BASE_W / tex.width : containScale(boxW, boxH, tex.width, tex.height);
 };
-// プレイヤーのピクセルスナップ(案1・テスト v0.25.1768): 1ドット=キャンバス整数px へ丸めて
+// プレイヤーのピクセルスナップ(v0.25.1768-1774): 1ドット=キャンバス整数px へ丸めて
 // 「半端な拡大率」由来のドット潰れ(1px/2px列のまだら)を根治する。復帰フラグ ?psnap=0。
-//  ・res1では通常 k≈1.06(画面フィット)×待機ズーム(〜1.05)≒1.0〜1.12 → 整数1へスナップ
-//    (=プレイヤーは帯内でキャンバス等倍固定。待機ズームや遠近ではサイズが変わらなくなる)。
-//  ・ズーム演出(KILLパンチ/文脈ズーム引き)で帯を外れたら滑らかに素のスケールへ戻す
-//    (HOLD..RELEASE 間で線形ブレンド=境界でサイズが跳ねない)。
-//  ・歩行スカッシュ等の演出係数はスナップの外側に掛かる(演出は殺さない。動作中の僅かな
-//    まだらは動きで見えない=静止時が完全にくっきりであることを優先)。
-// 帯幅は機種網羅から逆算(v0.25.1774・アプリ化=フルスクリーン前提の対応方針):
-//  フルスクリーン係数は iPhone SE2〜16ProMax=0.926〜1.086(ずれ≤8%) / Android 412dp級=1.02 /
-//  **Android 360dp級(Galaxy S標準表示・台数最多)=0.889(ずれ12.5%)** → HOLD=13%で全常用機をカバー。
-//  帯内ではプレイヤーが世界に対して最大~13%大きめに描かれるトレード(SE2フル=8%で違和感なし・社長実機)。
-//  帯外(iPhone SE1=0.79 / タブレット=1.64)は既知の制限(ENGINEERING_NOTES参照)。
-const PLAYER_TEXEL_SNAP_HOLD = 0.13;    // 誤差この割合まではスナップ維持(360dp級Android=12.5%を含める)
-const PLAYER_TEXEL_SNAP_RELEASE = 0.19; // ここで完全に素のスケールへ(間は線形ブレンド)
+//  ・帯内(常用機のフルスクリーン係数0.889〜1.086)では整数1へスナップ=プレイヤーはキャンバス等倍固定
+//    (待機ズームや遠近ではサイズが変わらない)。ズーム演出で帯を外れたら線形ブレンドで素へ(跳ねない)。
+//  ・歩行スカッシュ等の演出係数はスナップの外側に掛かる(演出は殺さない。動作中の僅かなまだらは
+//    知覚されない=v0.25.1770-1771のA/Bで確定)。
+// 数学部分と帯幅(HOLD13%/RELEASE19%)の根拠は utils/texelSnap.ts(純関数・規律4)。
+// 機種網羅の不変条件は utils/deviceCoverage.test.ts がCIで機械検査(規律6)。
 const TEXEL_SNAP_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('psnap') !== '0';
 // プレイヤー本体の二次モーション(歩行スカッシュ&ストレッチ/リーン/上下bob・発砲反動・近接踏み込み・
@@ -2032,24 +2026,17 @@ export class PixiScene {
 
   // ---- top-level frame sync ------------------------------------------------
 
-  // プレイヤーのピクセルスナップ(案1・?psnap=0で無効)。sc(ワールド単位のスプライトスケール)を
+  // プレイヤーのピクセルスナップ(?psnap=0で無効)。sc(ワールド単位のスプライトスケール)を
   // 「1テクセル=キャンバス整数px」になるよう丸める。累積スケールは actorLayer.worldTransform
   // (フィット×ズーム。前フレーム値=変化が緩やかなので1フレ遅れは無害)×レンダラ解像度で算出。
-  // 視覚のみ(判定不変)。帯の端は HOLD..RELEASE で線形ブレンドし、ズーム演出で跳ねない。
+  // 視覚のみ(判定不変)。数学は utils/texelSnap.ts の純関数(ユニットテスト対象)。
   private snapTexelScale(sc: number): number {
     if (!TEXEL_SNAP_ENABLED || sc <= 0) return sc;
     const worldScale = this.L.actorLayer.worldTransform.a || 1;
     const res = getAppliedResolution() || 1;
-    const k = sc * worldScale * res;               // 現在の「キャンバスpx/テクセル」
-    const k2 = Math.round(k);
-    if (k2 < 1) return sc;                          // ズーム大引き(1px未満)はスナップしない
-    const off = Math.abs(k2 - k) / k;
-    if (off <= PLAYER_TEXEL_SNAP_HOLD) return k2 / (worldScale * res);
-    if (off < PLAYER_TEXEL_SNAP_RELEASE) {
-      const t = (off - PLAYER_TEXEL_SNAP_HOLD) / (PLAYER_TEXEL_SNAP_RELEASE - PLAYER_TEXEL_SNAP_HOLD);
-      return (k2 / (worldScale * res)) * (1 - t) + sc * t;
-    }
-    return sc;
+    const k = sc * worldScale * res; // 現在の「キャンバスpx/テクセル」
+    const k2 = snapTexelRatio(k);
+    return k2 === k ? sc : sc * (k2 / k);
   }
 
   // Visual-only depth scale for an object given its foot world-Y. >1 in front

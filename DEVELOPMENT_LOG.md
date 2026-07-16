@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.1775 — 端末特有問題のテスト機械化(社長指示「テスト機能に盛り込みたい」)【2026-07-16 17:36 JST】
+- **①数値の不変条件(CI・毎push)**: スナップ数学を `utils/texelSnap.ts` へ純関数化(規律4)し、
+  `texelSnap.test.ts`(帯内/帯外/待機ズーム吸収/境界の連続性/×2スナップ=5件)+
+  `deviceCoverage.test.ts`(**常用機13種=スナップ帯内・既知制限3種=帯外のまま**、係数スポット
+  チェック込み17件)を追加。機種リストの正=`utils/deviceCoverage.ts`。VIEW_CORE/MAX・スナップ帯・
+  機種リストのどれかを将来変えて矛盾が出たらCIが赤くなる(規律6)。pixiSceneは純関数を呼ぶだけに変更
+  (挙動不変・v1774と同値)。
+- **②見た目のスイープツール**: `scripts/device-sweep.mjs` 新設——主要13機種(制限3種含む)の
+  ビューポートで起動し、全画面+プレイヤー周辺を一括スクショ(ドット潰れ/DoFピント/UIの端末差の
+  目視確認用)。実走確認済み(13/13撮影成功・SE2フルでプレイヤーくっきり)。
+- ENGINEERING_NOTESの検証手順を「この2つを通す」へ更新。
+- 検証: typecheck green・新テスト22/22 pass・lint clean。ゲーム内挙動の変化なし。
+- Files: `src/utils/texelSnap.ts`(新), `src/utils/texelSnap.test.ts`(新), `src/utils/deviceCoverage.ts`(新),
+  `src/utils/deviceCoverage.test.ts`(新), `scripts/device-sweep.mjs`(新), `src/pixi/pixiScene.ts`,
+  `ENGINEERING_NOTES.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1774 — ピクセルスナップ帯拡張=常用機フルカバー(アプリ化前提・社長方針)【2026-07-16 17:21 JST】
 - **社長方針確定**: 「基本WEBブラウザでプレイはさせない=アプリ化(フルスクリーン)前提」。SE2の潰れは
   ホームアプリ化で解消を社長実機確認(フル375×667=係数0.926=帯内・理論どおり)。

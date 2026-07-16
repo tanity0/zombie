@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1775',
+    items: [
+      '開発テストの強化のみ(端末ごとの表示問題を自動検査するテストと検証ツールを追加)。ゲーム内の変化はありません。',
+    ],
+  },
+  {
     version: '0.25.1774',
     items: [
       'ドット潰れ対策(ピクセルスナップ)の対応範囲を拡大: Android 360dp級(Galaxy S標準表示など)でもプレイヤーがくっきり表示されるように(フルスクリーン起動の主要iPhone/Androidを全カバー)。',
