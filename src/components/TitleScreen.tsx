@@ -5,6 +5,7 @@ import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { CHANGELOG } from '../data/changelog';
 import { getSelectedStageId, getWallMeta, loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data/progress';
 import { spritePath } from '../utils/spriteLoader';
+import { getLoadProgress, subscribeLoadProgress } from '../utils/loadProgress';
 import { deepestReachedBadge } from '../utils/wallProgress';
 import { clampRank } from '../utils/rankAssessor';
 import { normalizeNamedNamesInText } from '../utils/namedEnemy';
@@ -208,6 +209,15 @@ const ChronicleTimeline: React.FC = () => {
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDone }) => {
   const [phase, setPhase] = useState<'notice' | 'title' | 'blackout' | 'loading'>('notice');
   const doneRef = useRef(false);
+  // ローディング%表示(社長指示v0.25.1776)。購読は loading フェーズ中だけ(他フェーズを
+  // バックグラウンド先読みの進捗で再描画しない)。更新はファイル完了ごと=毎フレームではない。
+  const [loadPct, setLoadPct] = useState(0);
+  useEffect(() => {
+    if (phase !== 'loading') return;
+    const update = () => setLoadPct(Math.round(getLoadProgress() * 100));
+    update();
+    return subscribeLoadProgress(update);
+  }, [phase]);
 
   const finish = () => {
     if (doneRef.current) return;
@@ -322,12 +332,12 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
               <Ff7rButton
                 onClick={(e) => { e.stopPropagation(); agree(); }}
                 className="w-full"
-                ariaLabel="はじめる"
+                ariaLabel="OK"
                 emphasis
                 fade="both"
                 paddingY="0.75rem"
               >
-                はじめる
+                OK
               </Ff7rButton>
             </div>
           </div>
@@ -360,7 +370,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
           <div className="pointer-events-none absolute inset-0 z-30 bg-black/55" />
           <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-end pb-[6%]">
             <div className="h-9 w-9 animate-spin rounded-full border-2 border-purple-400/20 border-t-purple-300/85" />
-            <span className="mt-4 text-[11px] tracking-[0.34em] text-purple-200/55">LOADING…</span>
+            <span className="mt-4 text-[11px] tracking-[0.34em] tabular-nums text-purple-200/55">LOADING… {loadPct}%</span>
           </div>
         </>
       )}

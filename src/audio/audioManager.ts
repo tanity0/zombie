@@ -2,6 +2,7 @@
 // their normal media route; short SFX use Web Audio to avoid frame hitches.
 
 import { ASSET_VERSION } from '../config/assetVersion';
+import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 
 const MUTED_KEY = 'zombie:audioMuted';
 const LEGACY_BGM_MUTED_KEY = 'zombie:bgmMuted';
@@ -804,10 +805,14 @@ export const preloadAllAudio = (): Promise<void> => {
     return waitAudioReady(el);
   });
   const sfxWaits = Array.from(sfxLoading.values()).map(p => p.catch(() => {}));
+  // ローディング%(社長指示v0.25.1776): 音声ぶん(メインBGM1+ダンス3+SFX)を登録し、
+  // 1ファイル完了ごとに進める。waitAudioReady/sfxWaits は reject しない(then で十分)。
+  loadProgressBegin(1 + danceWaits.length + sfxWaits.length);
+  const track = <T,>(p: Promise<T>): Promise<T> => p.then(v => { loadProgressDone(); return v; });
   return Promise.all([
-    waitAudioReady(bgm),
-    Promise.allSettled(danceWaits),
-    Promise.allSettled(sfxWaits),
+    track(waitAudioReady(bgm)),
+    Promise.allSettled(danceWaits.map(track)),
+    Promise.allSettled(sfxWaits.map(track)),
   ]).then(() => {});
 };
 

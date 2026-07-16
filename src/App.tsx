@@ -11,6 +11,7 @@ import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio, preloadStageBgm, setAudioSuspended, clearSfxThrottle } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
+import { loadProgressBegin, loadProgressDone } from './utils/loadProgress';
 import {
   getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared, syncQuestStageClear,
   getSelectedMission, getStoryFlags, updateStoryFlags,
@@ -53,13 +54,15 @@ function App() {
   const ensurePreload = (): Promise<void> => {
     if (!preloadPromiseRef.current) {
       const started = performance.now();
+      loadProgressBegin(1); // ローディング%(v0.25.1776): フォント待ちも1ユニットとして計上
       preloadPromiseRef.current = Promise.all([
         ensureTextures().catch(() => {}),
         preloadBackgrounds().catch(() => {}), // 背景パノラマ/床/地平帯=出撃時フラッシュ防止のため先読み
         preloadAllAudio(),
         // ゲームフォント(?font=)の読込完了を待つ。Pixi のダメージ数字アトラス/テキストが
         // フォールバックで焼かれて差し替わらないのを防ぐ(main.tsx で load を開始済み)。
-        (typeof document !== 'undefined' && document.fonts ? document.fonts.ready : Promise.resolve()),
+        (typeof document !== 'undefined' && document.fonts ? document.fonts.ready : Promise.resolve())
+          .then(() => loadProgressDone()),
       ]).then(async () => {
         const remaining = LOADING_MIN_MS - (performance.now() - started);
         if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));

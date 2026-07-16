@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1776',
+    items: [
+      '起動時のローディングに読み込み進捗の%表示を追加。',
+      'この更新情報画面のボタンを「はじめる」から「OK」に変更。',
+    ],
+  },
+  {
     version: '0.25.1775',
     items: [
       '開発テストの強化のみ(端末ごとの表示問題を自動検査するテストと検証ツールを追加)。ゲーム内の変化はありません。',

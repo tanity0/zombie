@@ -12,6 +12,7 @@
 import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
+import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 import { STAGE_PROPS } from '../world/cityProps';
 import { setEnemyArtAspect } from './renderSpec';
 
@@ -349,6 +350,16 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'hunter', scaleMode: 'nearest' as const },
     ];
 
+    // ステージ1セット(アトラスの敵/ピックアップ/木)のドット絵上書き名。後段で使うが、
+    // ローディング%の総数登録(下の loadProgressBegin)に個数が要るためここで定義。
+    const atlasPxNames = ['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'tree',
+      'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red', 'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest'];
+
+    // ローディング%(社長指示v0.25.1776): このローダが読むファイル総数を先に一括登録する
+    // (atlas 1 + standalone + 色キー5 + atlas-px上書き + 単発3=tree-new2/tree-snow/castle-church)。
+    // 完了カウントは loadOne / loadKeyed の finally が1ずつ進める。
+    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 3);
+
     // 1アセットのロード失敗が全体を巻き込まないよう個別に握りつぶす。失敗した絵は
     // 未登録(getTexture=null)になり、その描画だけスキップ/手続き描画にフォールバック。
     // 以前は Promise.all で1つでも失敗すると ready が永久に立たず画面が真っ暗になっていた。
@@ -358,6 +369,8 @@ export const ensureTextures = (): Promise<void> => {
       } catch (e) {
         console.warn(`[pixiTextures] failed to load sprite "${name}":`, e);
         return null;
+      } finally {
+        loadProgressDone();
       }
     };
 
@@ -387,6 +400,8 @@ export const ensureTextures = (): Promise<void> => {
         textures.set(name, tex);
       } catch (e) {
         console.warn(`[pixiTextures] failed to color-key "${name}":`, e);
+      } finally {
+        loadProgressDone();
       }
     };
 
@@ -426,8 +441,6 @@ export const ensureTextures = (): Promise<void> => {
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)をドット絵で上書き(社長指示)。
     // atlas 切り出しの後に textures.set で確実に置換。ドット絵なので nearest。
-    const atlasPxNames = ['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'tree',
-      'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red', 'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest'];
     await Promise.all(atlasPxNames.map(async (n) => {
       const t = await loadOne(`atlas-px2/${n}`);
       if (t) { t.source.scaleMode = 'nearest'; textures.set(n, t); }
@@ -499,8 +512,9 @@ let bgLoading: Promise<void> | null = null;
 export const preloadBackgrounds = (): Promise<void> => {
   if (!bgLoading) {
     const BASE = import.meta.env.BASE_URL;
+    loadProgressBegin(BACKGROUND_PATHS.length); // ローディング%(v0.25.1776): 背景ぶんを登録
     bgLoading = Promise.all(
-      BACKGROUND_PATHS.map((p) => Assets.load(`${BASE}${p}`).catch(() => null))
+      BACKGROUND_PATHS.map((p) => Assets.load(`${BASE}${p}`).catch(() => null).finally(() => loadProgressDone()))
     ).then(() => {});
   }
   return bgLoading;

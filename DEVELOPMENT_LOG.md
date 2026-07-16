@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.1776 — 更新情報ボタン「OK」化+ローディング%表示(社長指示)【2026-07-16 18:01 JST】
+- **①更新情報のボタン文言**: 「はじめる」→「OK」(TitleScreen・ariaLabel共。文言のみ・挙動不変)。
+- **②ローディングの%表示**: START後のローディング(年表画面)の「LOADING…」に読み込み進捗%を追加。
+  - 正本=`src/utils/loadProgress.ts`(新): 純カウンタ(begin/done/subscribe)。各ローダが開始時に
+    担当ファイル数を登録し1ファイル完了ごとに進める。**登録は全ローダとも ensurePreload の同一tick内
+    =%は単調増加**(後から総数が増えて%が下がる、が起きない)。
+  - 計数化: `pixiTextures.ensureTextures`(atlas1+standalone+色キー5+atlas-px上書き+単発3。
+    atlasPxNames定義を総数登録のため前方へ移動=挙動不変)/`preloadBackgrounds`(18)/
+    `audioManager.preloadAllAudio`(BGM1+ダンス3+SFX)/フォント待ち1(App)。ユニット=ファイル1個
+    (サイズ非考慮の近似)。
+  - UI: TitleScreen loading フェーズ中だけ subscribe(React再描画規律: 他フェーズを先読み進捗で
+    再描画しない。更新はファイル完了ごと=毎フレームではない)。tabular-numsで桁ブレ防止。
+- 負荷スコア: 1/10(カウンタ増分+ロード中のみのReact再描画。ゲーム中コストゼロ)。
+- 検証: typecheck green。ゲーム内挙動・ロード順序の変化なし(計数はfinally/thenの後付けのみ)。
+- Files: `src/utils/loadProgress.ts`(新), `src/pixi/pixiTextures.ts`, `src/audio/audioManager.ts`,
+  `src/App.tsx`, `src/components/TitleScreen.tsx`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1775 — 端末特有問題のテスト機械化(社長指示「テスト機能に盛り込みたい」)【2026-07-16 17:36 JST】
 - **①数値の不変条件(CI・毎push)**: スナップ数学を `utils/texelSnap.ts` へ純関数化(規律4)し、
   `texelSnap.test.ts`(帯内/帯外/待機ズーム吸収/境界の連続性/×2スナップ=5件)+
