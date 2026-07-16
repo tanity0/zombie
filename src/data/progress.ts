@@ -418,6 +418,85 @@ export const syncQuestStageClear = (stageId: string): void => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
+// the ONE ストーリー分岐フラグ(統合正本8〜10章 / 一括制作指示書9章)。
+// 旧セーブ移行: キー不在・フィールド欠損は全て false 扱い(安全な初期値・additive)。
+//   endingSeen     = 通常エンディング(聴取記録)を最後まで見た
+//   hintShown      = サブ未完了ヒント(8.2)を表示済み(初回のみ表示)
+//   medicineOwned  = グレンの薬を所持(任意サブ3本完了でM7クリア→ED後に付与)
+//   medicineUsed   = 洋館再訪で薬を使用済み(=EX解放条件)
+//   revisitCleared = 洋館［SUB］再訪クリア
+export interface StoryFlags {
+  endingSeen: boolean;
+  hintShown: boolean;
+  medicineOwned: boolean;
+  medicineUsed: boolean;
+  revisitCleared: boolean;
+}
+const STORY_FLAGS_KEY = 'zombie.progress.storyFlags';
+
+export const emptyStoryFlags = (): StoryFlags => ({
+  endingSeen: false,
+  hintShown: false,
+  medicineOwned: false,
+  medicineUsed: false,
+  revisitCleared: false,
+});
+
+export const getStoryFlags = (): StoryFlags => {
+  const base = emptyStoryFlags();
+  if (typeof localStorage === 'undefined') return base;
+  try {
+    const raw = localStorage.getItem(STORY_FLAGS_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    if (obj && typeof obj === 'object') {
+      for (const k of Object.keys(base) as (keyof StoryFlags)[]) {
+        const v = (obj as Record<string, unknown>)[k];
+        if (typeof v === 'boolean') base[k] = v;
+      }
+    }
+    return base;
+  } catch {
+    return base;
+  }
+};
+
+export const setStoryFlags = (flags: StoryFlags): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(STORY_FLAGS_KEY, JSON.stringify(flags)); } catch { /* ignore */ }
+};
+
+// 部分更新(読み→マージ→保存)。更新後のフラグを返す。
+export const updateStoryFlags = (patch: Partial<StoryFlags>): StoryFlags => {
+  const next = { ...getStoryFlags(), ...patch };
+  setStoryFlags(next);
+  return next;
+};
+
+// 出撃するミッションの選択('main'=各ステージのメイン / 'revisit'=洋館［SUB］再訪)。
+// MissionSelect の出撃導線が設定し、App(会話/勝利処理)とリザルトが参照する。既定は 'main'。
+export type SelectedMission = 'main' | 'revisit';
+const SELECTED_MISSION_KEY = 'zombie.progress.selectedMission';
+
+export const getSelectedMission = (): SelectedMission => {
+  if (typeof localStorage === 'undefined') return 'main';
+  try {
+    return localStorage.getItem(SELECTED_MISSION_KEY) === 'revisit' ? 'revisit' : 'main';
+  } catch {
+    return 'main';
+  }
+};
+
+export const setSelectedMission = (m: SelectedMission): void => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (m === 'revisit') localStorage.setItem(SELECTED_MISSION_KEY, 'revisit');
+    else localStorage.removeItem(SELECTED_MISSION_KEY);
+  } catch {
+    /* ignore */
+  }
+};
+
+// ───────────────────────────────────────────────────────────────────────────
 // 歴史年表(chronicle): 各ステージの要所マイルストーンを「初回のみ」永続記録する読み取り専用の記録
 // (社長決定v0.25.1628)。タイトル画面に縦の年表として時系列で並べる(各個人の軌跡)。
 //   ・記録タイミング = マイルストーン達成の瞬間に即載せ(個別討伐と同じA方式=死亡/帰還/タスクキルに
@@ -494,4 +573,6 @@ export const resetProgress = (): void => {
   writeCastleBossSet(new Set()); // 城ボスクリアフラグも進行リセットで消す(開発用)
   try { localStorage.removeItem(LEGACY_EVENT_QUEST_DONE_KEY); } catch { /* ignore */ } // 旧v1684キーの掃除
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
+  setStoryFlags(emptyStoryFlags()); // the ONE ストーリー分岐フラグも進行リセットで消す(開発用)
+  setSelectedMission('main');
 };

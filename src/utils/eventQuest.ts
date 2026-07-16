@@ -22,15 +22,82 @@ export interface EventQuestConfig {
   forced: boolean;          // 強制クエスト(ネームド討伐)を実際に課すか(=falseなら最初からクリア済み扱い)
   namedTypes: EnemyType[];  // 強制のネームド候補型(社長指示「パンプキンか犬で」=受領時にランダム1体)
   sub: EventQuestSubGoal;
+  // 統合正本M5(4.5)/指示書: 遭遇のみ。サークル滞在で確定会話を流して完了(クエスト受注・報酬なし)。
+  // 完了はサブ納品と同じ永続フラグ(meta.sub)=以後そのステージに二人は出現しない。
+  encounterOnly?: boolean;
 }
 
 // ステージ毎の設定。ここに無いステージには二人は出現しない(社長裁定#6)。
+// 任意サブ3本=ステージ1/3/4(統合正本「任意サブ3本」)。ステージ5は遭遇のみ(encounterOnly・sub目標は未使用)。
 export const EVENT_QUEST_CONFIG: Record<string, EventQuestConfig> = {
   'stage-1': { forced: true,  namedTypes: ['pumpkin', 'werewolf'], sub: { tier: null,     count: 10 } },
   'stage-3': { forced: false, namedTypes: ['pumpkin', 'werewolf'], sub: { tier: 'blue',   count: 5 } },
   'stage-4': { forced: false, namedTypes: ['pumpkin', 'werewolf'], sub: { tier: 'purple', count: 5 } },
-  'stage-5': { forced: false, namedTypes: ['pumpkin', 'werewolf'], sub: { tier: 'red',    count: 5 } },
+  'stage-5': { forced: false, namedTypes: ['pumpkin', 'werewolf'], sub: { tier: 'red',    count: 5 }, encounterOnly: true },
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// 二人組の確定会話(統合正本M1/任意サブ1〜3/M5・一括制作指示書4章)。一言一句変更しない。
+// 話者名はNPC会話バストアップの対応(NpcDialogue.tsx)と一致させる: グレン(男)/ミラ(女)。
+export interface EventQuestLine { name: string; text: string }
+
+// M1 強制初遭遇(救助後)= 強制クエスト受領時に流す(統合正本4.1)。
+export const EVENT_QUEST_LINES_FORCED: EventQuestLine[] = [
+  { name: 'ミラ', text: 'この国の人？　助かったよ！' },
+  { name: 'グレン', text: '俺はグレン。こいつはミラだ。礼を言う。では……' },
+  { name: 'ミラ', text: '私たち、隣の国から任務で来たの！' },
+  { name: 'グレン', text: 'こら、極秘だぞ' },
+  { name: 'ミラ', text: 'わっ！　……またね！' },
+];
+
+// 任意サブ受注(サブ1=stage-1 / サブ2=stage-3 / サブ3=stage-4)。
+export const EVENT_QUEST_SUB_ACCEPT_LINES: Record<string, EventQuestLine[]> = {
+  'stage-1': [
+    { name: 'グレン', text: 'またお前か。頼みがある。極秘のミッションでな。理由は聞くな' },
+    { name: 'ミラ', text: 'そう！　血液サンプルを持ち帰って、独自開発した製剤の有用性を極秘で調べるんだよ！' },
+    { name: 'グレン', text: '……' },
+  ],
+  'stage-3': [
+    { name: 'グレン', text: 'また会ったな。実は頼みがある。理由は聞くなよ' },
+    { name: 'ミラ', text: '秘密だからね！　通常個体とは違う血液が、こっちの試料にどう反応するか――' },
+    { name: 'グレン', text: '……あっ、後ろに変異体だ、ミラ！' },
+    { name: 'ミラ', text: 'わっ！　どこ！？' },
+  ],
+  'stage-4': [
+    { name: 'グレン', text: 'よく会うな。追っかけか？　まあいい、頼みがある' },
+    { name: 'ミラ', text: 'うぐ……めっちゃ怒られるから、理由は言えないの……' },
+    { name: 'グレン', text: '頼んだぞ' },
+  ],
+};
+
+// 任意サブ納品(完了)。「ミラがグレンの物を勝手に渡す」掛け合い=M7撃破後の反転(グレン「……」)への布石。
+export const EVENT_QUEST_SUB_COMPLETE_LINES: Record<string, EventQuestLine[]> = {
+  'stage-1': [
+    { name: 'ミラ', text: 'ありがと！　これ、報酬ね！' },
+    { name: 'グレン', text: 'それ俺のだろ' },
+  ],
+  'stage-3': [
+    { name: 'グレン', text: '報酬はそうだなぁ……' },
+    { name: 'ミラ', text: 'もう渡したよ！' },
+    { name: 'グレン', text: 'また俺の……' },
+  ],
+  'stage-4': [
+    { name: 'グレン', text: '今日は俺の物を渡すなよ' },
+    { name: 'ミラ', text: 'もう渡したよ！' },
+    { name: 'グレン', text: '……' },
+  ],
+};
+
+// M5 強制再遭遇(統合正本4.5)。グレンは体調不良で発話しない=ミラのみ。
+export const EVENT_QUEST_ENCOUNTER_LINES: EventQuestLine[] = [
+  { name: 'ミラ', text: 'なんか大変なことになった！' },
+  { name: 'ミラ', text: 'と、とにかくありがとう！　どろん！' },
+];
+
+export const eventQuestSubAcceptLines = (stageId: string): EventQuestLine[] =>
+  EVENT_QUEST_SUB_ACCEPT_LINES[stageId] ?? [];
+export const eventQuestSubCompleteLines = (stageId: string): EventQuestLine[] =>
+  EVENT_QUEST_SUB_COMPLETE_LINES[stageId] ?? [];
 
 export const getEventQuestConfig = (stageId: string): EventQuestConfig | null =>
   EVENT_QUEST_CONFIG[stageId] ?? null;

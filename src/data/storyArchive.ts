@@ -62,6 +62,18 @@ export const ARCHIVE_RECORDS: ArchiveRecord[] = [
     ],
     unlockStageId: 'stage-2',
   },
+  {
+    // 統合正本8.3「グレンの薬」確定文面(一言一句変更しない)。解放=任意サブ3本完了で
+    // 通常エンディング後(App側の endingFollowup 'medicine' 経路)。ミッションクリアの
+    // unlockedRecordIds には載せない(条件付き解放のためステージ勝利では解放しない)。
+    id: 'mission-glen-medicine',
+    category: 'mission',
+    title: 'グレンの薬',
+    body: [
+      'ミラから託された未登録薬剤。',
+      '変異体を治療するためのものなのか、グレンが最後に調合したと思われる薬。現状は効果不明。',
+    ],
+  },
 ];
 
 export const getArchiveRecord = (id: string): ArchiveRecord | undefined =>
