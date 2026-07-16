@@ -1701,11 +1701,17 @@ export class PixiScene {
     this.updateStageLightShafts(w, h);
 
     // Pin the DoF filter to the screen and put its sharp band at TILT_SHIFT_BAND.
+    // ★シェーダの uStart/uEnd/gradientBlur は「フィルタ入力テクスチャpx=CSS px」解釈(v0.25.1773判明)。
+    // 論理px(w/h)のまま渡すとビューポートスケール≠1の端末(SE2等の縦短端末=0.77)でピント面が下へずれる。
+    // 初期値もCSS px換算で渡す(毎フレームの追従ブロックが同じ換算で上書きし続ける)。
     if (this.tiltShift) {
       this.L.filteredWorld.filterArea = new Rectangle(0, 0, w, h);
-      const bandY = h * TILT_SHIFT_BAND;
+      const vpScale = this.L.stage.scale.x || 1;
+      const bandY = h * TILT_SHIFT_BAND * vpScale;
       this.tiltShift.start = { x: 0, y: bandY };
-      this.tiltShift.end = { x: w, y: bandY };
+      this.tiltShift.end = { x: w * vpScale, y: bandY };
+      this.tiltShift.gradientBlur = TILT_SHIFT_GRADIENT * vpScale;
+      this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale;
     }
   }
 
@@ -2663,10 +2669,19 @@ export class PixiScene {
     // start/endは画面px扱い(上のfilterArea追従でズーム中も画面基準のまま)なので、ズーム込みの
     // 実画面Yを渡す=プレイヤーは常にピント(ボケ0)。ボケの絵作り(上下のDoF)は従来のまま。
     if (this.tiltShift) {
+      // ★単位換算(v0.25.1773・SE2ずれ修正): シェーダは uStart/uEnd/gradientBlur を
+      // 「フィルタ入力テクスチャpx=CSS px」で解釈する(vTextureCoord×uInputSize と直接比較)。
+      // ここまでの bandY は論理px(stageローカル)なので、ビューポートスケール(論理→CSS)を掛けて渡す。
+      // 常用機(CSS幅390-430)は係数≈0.96-1.06でほぼ不変。SE2+Safariバー(375×553)は0.77となり、
+      // 旧実装ではピント面が約100px下(手前NPC側)へずれてプレイヤーが薄ボケ帯に入っていた。
+      // グラデ幅/ボケ強さも同換算=どの端末でも世界に対して同じDoF(チューニング値は論理px基準で不変)。
       const tz = this.L.worldGroup.scale.x || 1;
-      const bandY = (this.L.world.position.y + zpy) * tz + this.L.worldGroup.position.y;
+      const vpScale = this.L.stage.scale.x || 1;
+      const bandY = ((this.L.world.position.y + zpy) * tz + this.L.worldGroup.position.y) * vpScale;
       this.tiltShift.start = { x: 0, y: bandY };
-      this.tiltShift.end = { x: this.screenW, y: bandY };
+      this.tiltShift.end = { x: this.screenW * vpScale, y: bandY };
+      this.tiltShift.gradientBlur = TILT_SHIFT_GRADIENT * vpScale;
+      this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale;
     }
     // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。

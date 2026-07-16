@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.1773 — SE2の被写界深度ずれ修正(フィルタ座標の単位換算・社長「おけ」=案A)【2026-07-16 17:01 JST】
+- **症状(社長SE2実機)**: 縦の短い端末(SE2+Safariバー=CSS 375×~553)でピント面がプレイヤーから手前NPC側へ
+  ずれ、プレイヤーごと薄ボケ。ヘッドレス375×553で再現→修正後は解消を確認(常用430×932は不変)。
+- **根因**: pixi-filters TiltShiftのuStart/uEnd/gradientBlurは「フィルタ入力テクスチャpx≈CSS px」解釈
+  (シェーダで vTextureCoord×uInputSize と直接比較)なのに、論理pxで渡していた。換算係数=ビューポート
+  スケール。常用機≈1で無症状=v1758検証をすり抜け。SE2は縦containで0.77→帯が約100px下へ。
+- **修正(案A・最小)**: 帯追従ブロックとresize初期値の2箇所で、bandY/end.x/gradientBlur/blur を
+  `×stage.scale(論理→CSS)` でCSS pxへ換算して渡す。チューニング値(?tsblur/tsgrad/tsband)は
+  「論理px基準」として意味固定=常用機の見た目ほぼ不変・全端末で世界基準の同一DoF。負荷ゼロ(乗算のみ)。
+- **教訓の機械化**: ENGINEERING_NOTES §2(描画地雷)へ「フィルタuniform座標はCSS px/検証は375×553を
+  必ず1枚」を追記。
+- 検証: typecheck green・375×553/430×932の前後スクショ比較(プレイヤー鮮明・両端末一致)。
+- Files: `src/pixi/pixiScene.ts`, `ENGINEERING_NOTES.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1772 — ステージ選択UI整理+年表「初ミッション」(社長指示)【2026-07-16 16:45 JST】
 - **ステージ選択(社長指示「SUBが押せないボタンに見える。ボタンは日付+場所に」)**: ノード全体を1つの
   ボタン化(親見出し=日付+場所+シェブロン/ロック)。ミッション(MAIN/SUB/再訪)は枠なしの状態行

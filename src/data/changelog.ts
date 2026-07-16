@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1773',
+    items: [
+      '縦の短い端末(iPhone SE等・ブラウザバー表示時)で被写界深度のピントがプレイヤーからずれてぼやける問題を修正。全端末で同じ絵作りになります。',
+    ],
+  },
+  {
     version: '0.25.1772',
     items: [
       'ステージ選択のUIを整理: 「日付+場所」がボタンになり、MAIN/SUBのミッションは枠なしの状態表示に(押せないボタンに見える紛らわしさを解消)。再訪(SUB)の出撃はミッション詳細ページから。',
