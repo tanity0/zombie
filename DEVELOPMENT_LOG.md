@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1778 — タイトルの「前回終了」診断行を非表示化(社長指示)【2026-07-16 18:22 JST】
+- タイトル画面右上の「前回終了: 敵x 弾x…」(クラッシュ診断・スマホ真っ白現象の手がかり用)を
+  既定非表示に。**診断機能自体は残し、調査が要る時だけ `?hb=1` で表示**(heartbeatの書き込み側=
+  crashDiagnostics は不変)。
+- あわせて社長依頼の「メニュー文言の世界観リネーム」は**提案のみ**をチャットで提出(実装は採否待ち)。
+- 検証: typecheck green。
+- Files: `src/components/TitleScreen.tsx`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1777 — ステージ選択のSUB表示をn/N集約(B案・社長決定)【2026-07-16 18:20 JST】
 - **背景**: サブミッションは今後増える予定。旧UI(v1772)はノード内にSUB行を縦積み=増えるほど
   ボタンが肥大。社長提示のA案(ボタン外へぶら下げ)/B案(n/N集約)から**B案を採用**(AskUserQuestionで確認)。

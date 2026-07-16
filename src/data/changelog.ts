@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1778',
+    items: [
+      'タイトル画面の「前回終了: 敵…」という開発向け診断表示を非表示にしました。',
+    ],
+  },
+  {
     version: '0.25.1777',
     items: [
       'ステージ選択の表示を整理: サブミッションはタイトルを並べず「SUB n/N」(クリア数/総数)に集約。サブが増えてもノードが縦に伸びません(内訳はミッション詳細ページで確認)。',

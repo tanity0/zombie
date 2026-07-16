@@ -12,6 +12,11 @@ import { normalizeNamedNamesInText } from '../utils/namedEnemy';
 
 // 前回セッション末尾の状態(クラッシュ診断・社長報告のスマホ真っ白現象の手がかり用)。タイトル表示のたび
 // 読み直しても軽い(localStorageの読み取り1回)ので、レンダー内で直接読む(state化するほどでもない)。
+// 社長指示v0.25.1778: 通常は非表示(世界観に合わない)。クラッシュ調査時だけ ?hb=1 で表示する。
+const SHOW_HEARTBEAT: boolean = (() => {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('hb') === '1';
+})();
 const formatHeartbeat = (): string | null => {
   const h = getLastHeartbeat();
   if (!h) return null;
@@ -251,7 +256,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
     if ((e.key === 'Enter' || e.key === ' ') && phase === 'title') { e.preventDefault(); tapStart(); }
   };
 
-  const heartbeatLine = phase === 'title' ? formatHeartbeat() : null;
+  const heartbeatLine = SHOW_HEARTBEAT && phase === 'title' ? formatHeartbeat() : null;
   const wallBadgeLine = phase === 'title' ? formatWallBadge() : null;
 
   return (
