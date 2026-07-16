@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1792',
+    items: [
+      'ステージ5の散らばり物を大幅増量(1区画あたり約12〜18個)。通行を妨げる障害物の数は据え置きで、武器・遺留品などの雰囲気物だけを増やしています。',
+    ],
+  },
+  {
     version: '0.25.1791',
     items: [
       'ステージ5に旋回型の敵(ステージ4の新型と同種)が出現するように。見た目はステージ5専用のフード付き亡霊。',
