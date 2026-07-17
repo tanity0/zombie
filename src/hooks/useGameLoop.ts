@@ -7735,6 +7735,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextAmmoDropDelayRef.current = 50000 + Math.random() * 10000; // first drop ~50-60s in
         }
         if (
+          !tutorialStage && // チュートリアルはアイテム(弾薬エアドロップ)も無し(社長指示v0.25.1818)
           worldAmmoCount < MAX_WORLD_AMMO_DROPS &&
           !hasSkill(useGameStore.getState().player, 'knife-master') && // ナイフマスターは弾薬ドロップ0%(社長指示)
           gameTime - lastAmmoDropRef.current > nextAmmoDropDelayRef.current

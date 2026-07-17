@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.1818 — チュートリアル: 環境要素の全撤去(社長指示「アイテムも通常NPCも通信も無し!エリアも何もかも無し!全てイベントで特別仕様のみ」)【2026-07-17 19:00 JST】
+- v1814の敵自動湧き停止に続き、**残る環境要素を全撤去**(farBackdrop==='tutorial'ゲート):
+  - **護衛NPC(通常NPC)**: escortRoster空 → 出撃セリフ(npcDialogueQueue)・道中の掛け合いも自然消滅。
+  - **商人**: 不在状態が型に無いため到達不能座標(1e9, radius 0)へ=描画カリング・interact不成立。
+    ※撤退(商人「帰還」)も不可になる=チュートリアルの終了はイベントで実装予定。
+  - **松明(=破壊可能プロップ・資材ドロップ源)**: `setTorchesDisabled` を world 層に新設
+    (setTreesDisabledと同じ一括ゲート・torches.test.ts 3件を同コミットで追加=規律4)。
+  - **弾薬エアドロップ**: !tutorialStage ゲート。
+  - **ヘリ降下の出撃演出**: introUntil=0(練習モードと同じ「演出なし」経路)。
+  - 既に無し(確認のみ): 通信/無線=ステージ台本駆動でtutorialは空・二人組クエストNPC=設定なしで
+    自動gone・区域バナー=死神ブロック内(v1814で停止済み)・拠点=制圧イベント専用・
+    城/帰還サークル=城ボス停止済みで到達不能。
+- 検証: typecheck green・torches.test 3件green・ヘッドレス=プレイヤー1人だけの素の洞窟を確認
+  (護衛/セリフ/ヘリ/敵/商人が全て不在)。ステージ1側は条件にtutorial限定を足しただけ=挙動不変。
+- Files: `src/world/torches.ts`, `src/world/torches.test.ts`(新), `src/store/gameStore.ts`,
+  `src/hooks/useGameLoop.ts`, `TUTORIAL_STAGE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1817 — 岩帯10px上へ+岩帯2(遠景森2)を手前レイヤーに追加(社長指示2件)【2026-07-17 18:49 JST】
 - **①岩帯(遠景森1)10px上へ**: `TUTORIAL_HORIZON_HEAD_PX 34→44`(上端アンカーなので帯全体が10px上)。
 - **②岩帯2=遠景森2スロットに配線**(社長支給素材・指示「この岩帯2を1の手前レイヤーに表示」):

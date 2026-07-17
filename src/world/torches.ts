@@ -25,9 +25,16 @@ const torchInCell = (cx: number, cy: number): TorchInstance | null => {
   return { id: `torch-${cx}_${cy}`, footX, footY, scale };
 };
 
+// チュートリアル等「松明(=破壊可能プロップ/資材ドロップ源)を一切出さない」ステージ用の一括ゲート
+// (setTreesDisabled と同じ流儀・社長指示v0.25.1818「アイテムも何もかも無し」)。
+// torchesInRegion が唯一の生成源なので、描画・当たり判定・ドロップ源がこの1点で同時に消える。
+let torchesDisabled = false;
+export const setTorchesDisabled = (disabled: boolean): void => { torchesDisabled = disabled; };
+
 export const torchesInRegion = (
   minX: number, minY: number, maxX: number, maxY: number
 ): TorchInstance[] => {
+  if (torchesDisabled) return [];
   const startX = Math.floor(minX / TORCH_CELL) * TORCH_CELL;
   const startY = Math.floor(minY / TORCH_CELL) * TORCH_CELL;
   const out: TorchInstance[] = [];

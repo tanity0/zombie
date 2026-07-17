@@ -82,7 +82,7 @@ import {
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
-import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
+import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled } from '../world/torches';
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
@@ -9591,6 +9591,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ステージ5(戦場)=残骸プロップに置換・チュートリアル(洞窟)=木なし(社長指示2026-07-17)。
       // world層のゲートを毎ラン設定(描画/幹当たり/配置回避が treesInRegion 経由で一括に空になる)。
       setTreesDisabled(farBackdrop === 'stage5' || farBackdrop === 'tutorial');
+      // チュートリアル: 松明(破壊可能プロップ=資材ドロップ源)も出さない(社長指示v0.25.1818
+      // 「アイテムも通常NPCも何もかも無し。全てイベントで特別仕様のみ」)。
+      setTorchesDisabled(farBackdrop === 'tutorial');
       // 遠景森2(手前の帯)は forest/lab どちらでも有効(ダンステストのみ無効)。lab は機材シルエット帯。
       const nearHorizon = !state.danceTestMode ? state.pendingNearHorizon : '';
       // 裏ボス(深層域)。屋外(非ラボ/非屋内)・非ダンステストのときだけ有効。
@@ -9654,7 +9657,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // World is infinite; player starts at the origin and the camera
       // follows. No need to pre-center within bounds.
       // 護衛NPCの名簿は1度だけ作り、出撃セリフ(sortie)も同じロスターから選ぶ(フェイザー等のランダム名簿に追従)。
-      const escortRoster = (!indoor && stageTheme !== 'lab') ? makeEscorts(spawnTL.x, spawnTL.y) : [];
+      // チュートリアル: 護衛NPC(通常NPC)も出さない=出撃セリフ(npcDialogueQueue)も自然に消える(社長指示v0.25.1818)。
+      const escortRoster = (!indoor && stageTheme !== 'lab' && farBackdrop !== 'tutorial') ? makeEscorts(spawnTL.x, spawnTL.y) : [];
       const sortieEsc = escortRoster.length ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
       const sortieSol = sortieEsc ? BASE_SOLDIERS[((sortieEsc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length] : null;
       return {
@@ -9769,7 +9773,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           equipBonus: runEquipBonus
         },
         // 登場演出をアーム(初フレームで終了時刻確定)。練習モードは演出なし。
-        introUntil: state.danceTestMode ? 0 : -1,
+        // チュートリアル(地下洞窟)もヘリ降下演出なし(社長指示v0.25.1818「何もかも無し。全てイベントで特別仕様のみ」)。
+        introUntil: (state.danceTestMode || farBackdrop === 'tutorial') ? 0 : -1,
         introDialogueActive: false,
         introDialogueStartedAt: 0,
         introDialogueShown: false,
@@ -9807,7 +9812,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         castleEvent: createCastleEvent(),
         weaponMerchant: indoor
           ? { x: LAB_MERCHANT.x, y: LAB_MERCHANT.y, radius: MERCHANT_INTERACT_RADIUS }
-          : createWeaponMerchant(),
+          // チュートリアル: 商人も出さない(社長指示v0.25.1818)。不在状態が型に無いため到達不能座標へ
+          // (描画は画面外カリング・interactは距離判定=radius 0 で成立しない)。
+          : farBackdrop === 'tutorial'
+            ? { x: 1e9, y: 1e9, radius: 0 }
+            : createWeaponMerchant(),
         // 二人組(クエストNPC): クエスト設定のあるステージ(1/3/4/5)のみ出現(社長裁定v0.25.1686 #6)。
         // サブ納品済みステージにも以後出現しない(そのプレイ中に消えないのは completeEventQuest 側)。
         eventQuestNpc: (() => {
