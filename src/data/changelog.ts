@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1806',
+    items: [
+      'チュートリアルステージ(開発中): 洞窟の遠景に川の流れを追加しました(オクトパストラベラー風の2層スクロール)。',
+    ],
+  },
+  {
     version: '0.25.1805',
     items: [
       'チュートリアルステージ(開発中): 地面を洞窟の岩土に差し替え、森の木を撤去しました。',

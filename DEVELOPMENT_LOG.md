@@ -1,5 +1,27 @@
 # Development Log
 
+## v0.25.1806 — チュートリアル: 川の流れ(オクトラ風・2層スクロール)実装【2026-07-17 15:49 JST】
+- **素材3点(GPT生成・社長支給)を処理**: ①遠景「川入り」版(1672x941)→jpg化して
+  `tutorial-far.jpg` に**同名差し替え=ASSET_VERSION 53→54**(地雷回避)。
+  ②③流れの筋レイヤー2枚→緑キー抜き+**左右端3pxに掛かる筋を連結成分ごと除去**
+  (横ループの継ぎ目で筋が突然消えるポップ防止。flow-1で4本除去→141本/31本)→
+  `sprites/tutorial-river-flow-1.png` / `-2.png`(遠景と同寸=同ジオメトリで重ねれば川に自動整列)。
+- **配線(pixiScene)**: `setRiverFlowTextures(t1,t2)` + `layoutRiverFlow(farH,farScale)`
+  =遠景と同ジオメトリ(同tileScale/同y/同高さ)のTilingSprite2枚を遠景直上に配置。
+  ticker内で `tilePosition.x = -camera.x*FAR_BACKDROP_PARALLAX_X - (now/1000)*速度`
+  (**速度差2層: [18,10]px/s**)+アルファのサイン揺らぎ(基準[0.85,0.65]・±[0.08,0.06]・
+  周期[1400,2300]ms)。発光はbloom任せ=強glow追加なし。**負荷1/10**(TilingSprite2枚・
+  レンダリングのみ・farBackdropと同型の定数コスト。tutorial以外のステージでは非表示)。
+- PixiStage/pixiTexturesにpreload+注入を追加(BACKGROUND_PATHS)。
+- 検証: typecheck green。ヘッドレス実機シム(stage-tutorial)で2時点(4秒差)スクショ→
+  輝度4xブーストdiffで川帯に筋の横移動を確認(=流れている)。暗いシーンなので視認性・
+  速度・アルファは**叩き台=社長の実機確認で調整**。
+- Files: `public/backgrounds/tutorial-far.jpg`(差し替え), `public/sprites/tutorial-river-flow-1.png`(新),
+  `public/sprites/tutorial-river-flow-2.png`(新), `src/pixi/pixiScene.ts`, `src/pixi/PixiStage.tsx`,
+  `src/pixi/pixiTextures.ts`, `src/config/assetVersion.ts`, `TUTORIAL_STAGE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1805 — チュートリアル: 地面差し替え+木の撤去(社長指示「地面素材です/木は消して/花も消して」)【2026-07-17 15:21 JST】
 - **地面**: 社長支給の洞窟岩土タイル(1254x1254・シームレス・不透過確認)をjpg化(480KB)し、
   `setGroundOverride('tutorial')` で差し替え(stage4/5と同経路)。

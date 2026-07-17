@@ -126,6 +126,12 @@ const FAR_BACKDROP_PARALLAX_X = 0.09;
 // チュートリアル(洞窟)の遠景は他ステージより縦を大きく使う(社長仕様2026-07-17: ステージは横長で
 // 上下移動が少なく、横長素材の2/3程度しか画面に映らない前提)。0.55=叩き台(実機調整前提)。
 const TUTORIAL_FAR_HEIGHT_RATIO = 0.55;
+// 川の流れ(オクトラ風・社長相談2026-07-17): 遠景と同ジオメトリのハイライト筋レイヤー2枚を
+// 速度差でスクロール(1枚目=速い/2枚目=遅い)。明部は既存bloomが拾って光る。数値は全て叩き台。
+const RIVER_FLOW_SPEED_PX_S = [18, 10];   // tilePositionの流速(表示px/秒)
+const RIVER_FLOW_ALPHA = [0.85, 0.65];    // 基本アルファ
+const RIVER_FLOW_WOBBLE = [0.08, 0.06];   // アルファの揺らぎ振幅
+const RIVER_FLOW_WOBBLE_MS = [1400, 2300];// 揺らぎ周期
 const FAR_BACKDROP_BLUR = 1.1;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
 const HORIZON_FOREST_BLUR = 0.65; // 地平の森(遠景森)を少しだけぼかす(0=なし)。少し弱めた
@@ -2285,6 +2291,13 @@ export class PixiScene {
     this.farBackdropOverrides[key] = t;
     this.currentFarKey = ''; // 注入後に applyFarBackdrop を再評価させる(遅延注入対応)
   }
+  // 川の流れ(チュートリアル): 遠景に重ねるハイライト筋レイヤー(PixiStageが注入)。
+  private riverFlowTexs: (Texture | null)[] = [null, null];
+  private riverFlowSprites: TilingSprite[] = [];
+  setRiverFlowTextures(t1: Texture | null, t2: Texture | null) {
+    this.riverFlowTexs = [t1, t2];
+    this.currentFarKey = ''; // 再適用(可視判定とレイアウトをやり直す)
+  }
   // ステージ3(昼/city)用の床・地平帯の差し替えテクスチャ(PixiStage が注入)。
   private stage3GroundTex: Texture | null = null;
   private stage3HorizonTex: Texture | null = null;
@@ -2477,6 +2490,29 @@ export class PixiScene {
     this.L.farBackdrop.width = this.screenW;
     this.L.farBackdrop.height = farH;
     this.L.farBackdrop.tileScale.set(farScale);
+    this.layoutRiverFlow(farH, farScale);
+  }
+  // 川の流れレイヤー(チュートリアルのみ): 遠景と同ジオメトリで重ねる(素材3枚が同寸=位置合わせ不要)。
+  private layoutRiverFlow(farH: number, farScale: number) {
+    const show = this.currentFarKey === 'tutorial';
+    for (let i = 0; i < 2; i++) {
+      const tex = this.riverFlowTexs[i];
+      let sp = this.riverFlowSprites[i];
+      if (!show || !tex) { if (sp) sp.visible = false; continue; }
+      if (!sp) {
+        sp = new TilingSprite({ texture: tex });
+        const parent = this.L.farBackdrop.parent!;
+        parent.addChildAt(sp, parent.getChildIndex(this.L.farBackdrop) + 1); // 遠景の直上
+        this.riverFlowSprites[i] = sp;
+      }
+      sp.texture = tex;
+      sp.visible = true;
+      sp.width = this.screenW;
+      sp.height = farH;
+      sp.tileScale.set(farScale);
+      sp.alpha = RIVER_FLOW_ALPHA[i];
+      // tint無し(白)=明るい筋のままbloomに拾わせる(遠景本体のENV_TINTは掛けない)。
+    }
   }
   private applyOutdoorGroundTheme(theme: StageTheme, farKey = '') {
     const strips = this.L.groundStrips;
@@ -2764,6 +2800,17 @@ export class PixiScene {
       -s.camera.x * FAR_BACKDROP_PARALLAX_X,
       0
     );
+    // 川の流れ(チュートリアル): 遠景と同じパララックス+速度差の横流し+アルファの微揺らぎ。
+    for (let i = 0; i < 2; i++) {
+      const sp = this.riverFlowSprites[i];
+      if (!sp || !sp.visible) continue;
+      sp.position.set(sx * 0.25, 0);
+      sp.tilePosition.set(
+        -s.camera.x * FAR_BACKDROP_PARALLAX_X - (now / 1000) * RIVER_FLOW_SPEED_PX_S[i],
+        0
+      );
+      sp.alpha = RIVER_FLOW_ALPHA[i] + Math.sin(now / RIVER_FLOW_WOBBLE_MS[i] * Math.PI * 2) * RIVER_FLOW_WOBBLE[i];
+    }
     const horizonH = this.horizonForestHeight();
     this.L.horizonForest.position.set(0, this.horizonForestY(farH, horizonH));
     this.L.horizonForest.tilePosition.set(
