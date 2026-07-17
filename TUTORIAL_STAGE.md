@@ -21,7 +21,8 @@
 | 遠景(洞窟パノラマ) | `public/backgrounds/tutorial-far.jpg` (1672x710) | v1800→v1806で川入り版に同名差し替え→**v1808でy=710クロップ**(描き込み地面を排除) | ループ素材=横はみ出し前提(社長確認v1801)。jpg化済み。※背景類はASSET_VERSION管轄外(ETag自動更新)=バンプ不要(v1807採録) |
 | 川の流れ 筋レイヤー×2 | `public/sprites/tutorial-river-flow-1.png` / `-2.png` (1672x710・遠景と同寸) | v1806(v1808で遠景と同クロップ・v1809で水面帯へ再配置) | GPT生成(緑キー抜き+左右端3px掛かり筋の除去=ループ継ぎ目ポップ防止。筋141本/31本) |
 | 岩帯(遠景森1) | `public/backgrounds/tutorial-horizon-rocks.png` (2172x166) | v1810 | 社長支給(2172x724緑背景)を緑キー+縁1pxフェザー+縦bboxクロップ。横ループ維持。川辺の岩稜線=シーム被覆 |
-| 岩帯2(遠景森2) | `public/backgrounds/tutorial-near-rocks.png` (2172x368) | v1817 | 社長支給(同上規格)。岩帯1の手前レイヤー(nearHorizon)。高さ130px・底=境界線+45px・パララックス0.5(叩き台) |
+| 岩帯2(遠景森2) | `public/backgrounds/tutorial-near-rocks.png` (2172x368) | v1817 | 社長支給(同上規格)。岩帯1の手前レイヤー(nearHorizon)。高さ140px・底=境界線+25px・パララックス0.5 |
+| 手前岩(近景森1) | `public/backgrounds/tutorial-front-rocks.png` (2172x332) | v1824 | 社長支給(同上規格)。画面手前・下寄せ・ぼかし(FRONT_FOREST_BLUR)。パララックス0.68。ツララ帯も同係数でカメラ連動化 |
 | 天井帯(鍾乳石) | `public/sprites/tutorial-ceiling-band.png` (2508x627) | v1802 | 上寄せループ。緑キー+縁1pxフェザー。寸法不変(ループ整合) |
 | BGM | `public/audio/tutorial.mp3` | v1800 | GAME_BGMキー未登録 |
 | 衛生兵 歩き4コマ | `public/sprites/npc/medic-walk-{0..3}.png` (78x64) | v1799 | **ピンポン再生**(0→1→2→3→2→1→…)。--dot 4規約焼き(頭合わせ済み) |

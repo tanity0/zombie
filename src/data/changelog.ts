@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1824',
+    items: [
+      'チュートリアルステージ(開発中): 画面手前・下寄せの岩(ぼかし)を追加し、天井のツララが移動に合わせて手前の岩と同じ速度で流れるようになりました。',
+    ],
+  },
+  {
     version: '0.25.1823',
     items: [
       'チュートリアルステージ(開発中): 軍人NPCと衛生兵が出撃し、プレイヤーに付いてくるようになりました(軍人→衛生兵の順)。',

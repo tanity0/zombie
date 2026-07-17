@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.1824 — 画面手前の下寄せ岩(ぼかし)+ツララ帯のカメラ連動(社長指示2件)【2026-07-17 20:28 JST】
+- **①近景森1=手前岩**(社長支給素材「画面手前、下寄せの岩素材。ぼかしで使用」): 緑キー+縁フェザー+
+  縦bboxクロップ(2172x724→**2172x332**)→ `backgrounds/tutorial-front-rocks.png`。
+  `setFrontOverride('tutorial')` で既存の近景森1スロットへ(snow/stage5と同経路)。
+  ぼかし=既存の近景ブラー(FRONT_FOREST_BLUR)がそのまま掛かる。
+- **②ツララ帯(天井)のカメラ連動**(社長指示「画面と連動して動くように。この🪨と同じ速度」):
+  天井帯を Sprite(完全固定)→ **TilingSprite化**(横ループ素材の本来の使い方・見た目スケールは
+  従来と同一=1ループ=画面幅)し、チュートリアルのみ `tilePosition.x = -camera.x ×
+  FRONT_FOREST_PARALLAX_X(0.68)`=**手前岩と同じ係数**で流す。lab(ステージ2ケーブル帯)は従来どおり固定。
+- 検証: typecheck green・ヘッドレスで手前岩(ぼかし)の表示と隊列の重なりを確認。
+- Files: `public/backgrounds/tutorial-front-rocks.png`(新), `src/pixi/pixiScene.ts`,
+  `src/pixi/PixiStage.tsx`, `src/pixi/pixiTextures.ts`, `TUTORIAL_STAGE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1823 — 随行NPC(軍人+衛生兵の追従)+岩間霧の方式変更+40px上(社長指示3件)【2026-07-17 20:04 JST】
 - **①随行NPC**(社長指示「軍人NPCと衛生兵も出撃。基本プレイヤーについてくる。軍人、衛生兵の順番」):
   - **EscortSoldier流用**(描画/影/地平フェード/y-sortを共用)。`makeTutorialCompanions`=軍人(エドガー・

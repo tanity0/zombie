@@ -521,6 +521,7 @@ const BACKGROUND_PATHS = [
   'backgrounds/tutorial-ground.jpg', // チュートリアル(洞窟)の地面タイル
   'backgrounds/tutorial-horizon-rocks.png', // チュートリアルの地平帯=岩帯(川に頭が少し被る)
   'backgrounds/tutorial-near-rocks.png', // チュートリアルの遠景森2=岩帯2(岩帯1の手前)
+  'backgrounds/tutorial-front-rocks.png', // チュートリアルの近景森1=画面手前・下寄せの岩(ぼかし)
   'sprites/tutorial-river-flow-1.png', // 川の流れ筋レイヤー1(速い)
   'sprites/tutorial-river-flow-2.png', // 川の流れ筋レイヤー2(遅い)
   'sprites/lab-floor/lab-floor-stage2.png',

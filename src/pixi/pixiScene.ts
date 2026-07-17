@@ -1324,7 +1324,7 @@ export class PixiScene {
   private frontForestBlur: BlurFilter | null = null;
   private horizonForestBlur: BlurFilter | null = null;
   private nearHorizonBlur: BlurFilter | null = null;
-  private labCeiling: Sprite | null = null; // 研究所スキンの最前面 天井ケーブル帯(上寄せ・半透明)
+  private labCeiling: TilingSprite | null = null; // 最前面の天井帯(上寄せ・半透明・横ループ)。lab=固定/チュートリアル=カメラ連動
   // 可視可能ゾーン(研究所スキン): RenderTexture に「暗幕 + erase で円形の穴」を描き、その1枚を
   // 画面に重ねる。erase はテクスチャのアルファを削る=円形・なだらかな穴(マスクのステンシル矩形問題を回避)。
   private renderer: Renderer | null = null;
@@ -2949,7 +2949,8 @@ export class PixiScene {
     this.updateLabCeiling(
       s.stageTheme === 'lab' && !s.indoorMode ? 'lab/lab-ceiling-band'
         : s.farBackdrop === 'tutorial' ? 'tutorial-ceiling-band'
-        : null
+        : null,
+      s.farBackdrop === 'tutorial' ? s.camera.x : 0 // ツララ帯=近景と同係数でカメラ連動(labは従来どおり固定)
     );
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
@@ -3871,21 +3872,27 @@ export class PixiScene {
   // 最前面の天井帯オーバーレイ: screen-space で画面上端に上寄せ配置。半透明(LAB_CEILING_ALPHA)。
   // frontForest の直前(uiLayer の下)に置く=ゲームプレイ/前景森より手前。アスペクト維持で画面幅にフィット。
   // texName=lab のケーブル帯 or チュートリアルの鍾乳石帯(同仕様)。null=非表示。
-  private updateLabCeiling(texName: string | null) {
+  // scrollX: カメラ連動の横スクロール量(world px)。0=固定(lab従来)。チュートリアルのツララ帯は
+  // 近景森と同じ係数(FRONT_FOREST_PARALLAX_X)で流す(社長指示v0.25.1824「画面と連動して動くように。
+  // この🪨と同じ速度」)。TilingSprite化(横ループ素材の本来の使い方)=見た目のスケールは従来と同一
+  // (1ループ=画面幅)。
+  private updateLabCeiling(texName: string | null, scrollX = 0) {
     const tex = texName ? getTexture(texName) : null;
     if (!tex || LAB_CEILING_ALPHA <= 0) { if (this.labCeiling) this.labCeiling.visible = false; return; }
     if (!this.labCeiling) {
-      const sp = new Sprite(tex);
-      sp.anchor.set(0, 0); // 左上基準=上寄せ
+      const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
       const parent = this.L.frontForest.parent!;
       parent.addChildAt(sp, parent.getChildIndex(this.L.frontForest) + 1); // frontForest の手前・uiLayer の下
       this.labCeiling = sp;
     }
     const sp = this.labCeiling;
     sp.visible = true;
-    sp.texture = tex;
+    if (sp.texture !== tex) sp.texture = tex;
+    const h = this.screenW * (tex.height / tex.width); // アスペクト維持(従来と同じ見た目スケール)
     sp.width = this.screenW;
-    sp.height = this.screenW * (tex.height / tex.width); // アスペクト維持
+    sp.height = h;
+    sp.tileScale.set(h / tex.height);
+    sp.tilePosition.set(-scrollX * FRONT_FOREST_PARALLAX_X, 0);
     sp.position.set(0, 0);
     sp.alpha = LAB_CEILING_ALPHA;
   }
