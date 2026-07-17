@@ -170,12 +170,12 @@ const TUTORIAL_HORIZON_HEIGHT_TRIM_PX = 40; // v0.25.1819: 社長指示「高さ
 // チュートリアルの遠景森2=岩帯2(v0.25.1817・社長指示「この岩帯2を1の手前レイヤーに表示」)。
 // ステージ5と同じ実寸px指定(高さ+底=境界線からの下オフセット)。素材2172x368(下端は浮き石の散り)。
 // 数値は叩き台(実機調整前提)。
-const TUTORIAL_NEAR_HORIZON_HEIGHT_PX = 130; // 岩帯2の高さ(px)
+const TUTORIAL_NEAR_HORIZON_HEIGHT_PX = 140; // 岩帯2の高さ(px)(v0.25.1821: 社長指示「+10px」で130→140)
 const TUTORIAL_NEAR_HORIZON_DOWN_PX = 25;    // 岩帯2の底=境界線(farH)から下へ(px)(v0.25.1819: 社長指示「20px上へ」で45→25)
 // チュートリアルの手前霧(v0.25.1820・社長指示「手前を漂ってる霧を、岩1と岩2の間に、50%の大きさで」):
 // frontBank霧(通常=最前面・画面下部)を、z=岩帯1と岩帯2の間へ移し、50%サイズで岩帯の重なり帯に漂わせる。
 const TUTORIAL_FRONT_FOG_SCALE = 0.5;        // 霧の大きさ(帯の高さ・柄とも50%)
-const TUTORIAL_FRONT_FOG_CENTER_UP_PX = 72;  // 霧帯の中心=境界線(farH)から上へ(岩1下端と岩2上端の中間・叩き台)
+const TUTORIAL_FRONT_FOG_CENTER_UP_PX = 82;  // 霧帯の中心=境界線(farH)から上へ(v0.25.1821: 社長指示「10px上へ」で72→82)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い

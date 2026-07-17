@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1821',
+    items: [
+      'チュートリアルステージ(開発中): 岩帯2の高さ+10px、岩裏の霧を10px上へ調整しました。',
+    ],
+  },
+  {
     version: '0.25.1820',
     items: [
       'チュートリアルステージ(開発中): 手前の霧を岩帯1と2の間のレイヤーへ50%サイズで移動しました。',

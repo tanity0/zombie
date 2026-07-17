@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1821 — 岩帯2の高さ+10px/岩裏の霧を10px上へ(社長指示)【2026-07-17 19:42 JST】
+- `TUTORIAL_NEAR_HORIZON_HEIGHT_PX 130→140`(底アンカー不変=上端が10px上がる)。
+- `TUTORIAL_FRONT_FOG_CENTER_UP_PX 72→82`(霧帯の中心10px上へ)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1820 — 手前霧を岩帯の間へ(50%)+緑卵/武器箱/商人マーカー停止(社長指示3件)【2026-07-17 19:29 JST】
 - **①手前霧の移設**(社長指示「手前を漂ってる霧を、岩1と岩2の間に、50%の大きさで」):
   手前の霧2層(森下=fog-alpha/森上=frontBank)を、チュートリアルのみ **z=岩帯1と岩帯2の間**
