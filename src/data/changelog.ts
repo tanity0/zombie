@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1811',
+    items: [
+      '内部メモの更新のみ。ゲーム内の変化はありません。',
+    ],
+  },
+  {
     version: '0.25.1810',
     items: [
       'チュートリアルステージ(開発中): 川辺に岩の帯を追加しました(川に頭が少し被る位置・地面との継ぎ目を覆います)。',
