@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1809',
+    items: [
+      'チュートリアルステージ(開発中): 川のきらめきが水面からずれて岸に乗っていたのを修正しました(きらめきを水面の帯に再配置)。',
+    ],
+  },
+  {
     version: '0.25.1808',
     items: [
       'チュートリアルステージ(開発中): 遠景に描き込まれていた石畳の地面を取り除き、実際の地面と二重に見えていたのを解消しました(川の大きさは不変)。',
