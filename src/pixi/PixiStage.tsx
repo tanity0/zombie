@@ -137,6 +137,20 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       // devビルド限定: シーングラフ診断用ハンドル(ヘッドレス調査でレイヤー状態を覗く)。prodには出ない。
       if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__pixiScene = scene;
 
+      // ゲーム画面キャプチャの提供者(チュートリアルポップアップの挿絵=実画面・v0.25.1831)。
+      // 「見えている画面そのまま」を撮るため、1フレーム描画した直後のキャンバスを dataURL 化する
+      // (extract(stage)だとオーバースキャンの霧レイヤー等でstage境界が画面より広く、中央帯だけの
+  // 変な切り抜きになる)。preserveDrawingBuffer無しでもrender直後の同期toDataURLは有効。
+      useGameStore.getState().setCaptureFrame(() => {
+        try {
+          app.render();
+          const c = app.canvas as HTMLCanvasElement;
+          return c.toDataURL ? c.toDataURL('image/png') : null;
+        } catch {
+          return null;
+        }
+      });
+
       // コア(森)の初回フレームを作ってから即キャンバス表示=黒画面を出さない。
       // 重要(黒画面対策): キャンバスの表示は「ステージ別テクスチャの読み込み」を待たない。
       // 待つと、稀にそのロードが遅延した時にキャンバス未挿入のまま=真っ暗になる(社長報告)。
@@ -239,6 +253,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
     return () => {
       cancelled = true;
       window.clearTimeout(readyFailsafe);
+      try { useGameStore.getState().setCaptureFrame(null); } catch { /* ignore */ } // 破棄済みrendererでのキャプチャを防ぐ
       try { useGameStore.getState().setRendererReady(false); } catch { /* ignore */ } // 次マウント(再戦)も初フレームまで保持
       const a = appRef.current;
       const tick = tickerCallbackRef.current;

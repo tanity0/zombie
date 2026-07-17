@@ -11,21 +11,25 @@ const PANEL_STYLE: React.CSSProperties = {
   borderLeft: '1px solid rgba(168,85,247,0.75)',
 };
 
-// 挿絵: ドラッグ移動の図解(指の軌跡+キャラの移動方向)。素材レス=インラインSVG。
-const MoveArt: React.FC = () => (
-  <svg viewBox="0 0 320 150" className="h-auto w-full">
-    <rect x="0" y="0" width="320" height="150" fill="rgba(88,60,140,0.10)" />
-    <rect x="0.5" y="0.5" width="319" height="149" fill="none" stroke="rgba(168,85,247,0.28)" />
-    {/* キャラ(簡略) */}
-    <circle cx="110" cy="62" r="10" fill="rgba(233,213,255,0.85)" />
-    <rect x="102" y="72" width="16" height="22" rx="4" fill="rgba(233,213,255,0.7)" />
+// 注釈(移動): 進行矢印+指のドラッグ軌跡。実画面スクショの上に重ねる(bg=なし)。
+// shotが無い時のフォールバック(単体表示)では薄い下地を敷く。
+const MoveArt: React.FC<{ overlay?: boolean }> = ({ overlay }) => (
+  <svg viewBox="0 0 320 150" className={overlay ? 'pointer-events-none absolute inset-0 h-full w-full' : 'h-auto w-full'} preserveAspectRatio={overlay ? 'none' : undefined}>
+    {!overlay && <rect x="0" y="0" width="320" height="150" fill="rgba(88,60,140,0.10)" />}
+    {!overlay && (
+      <>
+        {/* キャラ(簡略・フォールバック時のみ。スクショ時は実プレイヤーが写っている) */}
+        <circle cx="110" cy="62" r="10" fill="rgba(233,213,255,0.85)" />
+        <rect x="102" y="72" width="16" height="22" rx="4" fill="rgba(233,213,255,0.7)" />
+      </>
+    )}
     {/* 進行方向の矢印 */}
-    <line x1="132" y1="80" x2="196" y2="80" stroke="rgba(74,222,128,0.9)" strokeWidth="4" strokeLinecap="round" />
-    <polygon points="212,80 192,70 192,90" fill="rgba(74,222,128,0.9)" />
+    <line x1="132" y1="80" x2="196" y2="80" stroke="rgba(74,222,128,0.95)" strokeWidth="5" strokeLinecap="round" />
+    <polygon points="214,80 193,69 193,91" fill="rgba(74,222,128,0.95)" />
     {/* 指のドラッグ軌跡(点線)+タッチ円 */}
-    <path d="M 228 118 Q 252 108 272 92" fill="none" stroke="rgba(216,180,254,0.75)" strokeWidth="3" strokeDasharray="2 7" strokeLinecap="round" />
-    <circle cx="228" cy="118" r="13" fill="none" stroke="rgba(216,180,254,0.9)" strokeWidth="2.5" />
-    <circle cx="228" cy="118" r="5" fill="rgba(216,180,254,0.9)" />
+    <path d="M 228 118 Q 252 108 272 92" fill="none" stroke="rgba(233,213,255,0.9)" strokeWidth="3.5" strokeDasharray="2 7" strokeLinecap="round" />
+    <circle cx="228" cy="118" r="13" fill="none" stroke="rgba(233,213,255,0.95)" strokeWidth="2.5" />
+    <circle cx="228" cy="118" r="5" fill="rgba(233,213,255,0.95)" />
   </svg>
 );
 
@@ -40,11 +44,23 @@ const TutorialPopup: React.FC = () => {
           <h2 className="pb-1 text-[13px] font-bold tracking-[0.18em] text-white" style={{ borderBottom: '1px solid rgba(168,85,247,0.6)' }}>
             {popup.title}
           </h2>
-          {popup.art === 'move' && (
+          {popup.img ? (
+            // 事前撮影アセット(静止画/GIFアニメ・プレイヤー中心に切り出し済み)。v0.25.1831。
+            <div className="relative mt-4 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
+              <img src={`${import.meta.env.BASE_URL}${popup.img}`} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              {popup.art === 'move' && <MoveArt overlay />}
+            </div>
+          ) : popup.shot ? (
+            // 実画面スクショ(表示直前にキャプチャ)+注釈オーバーレイ。プレイヤー付近(縦の約62%)を中心に切り出す。
+            <div className="relative mt-4 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
+              <img src={popup.shot} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: 'center 62%' }} />
+              {popup.art === 'move' && <MoveArt overlay />}
+            </div>
+          ) : popup.art === 'move' ? (
             <div className="mt-4">
               <MoveArt />
             </div>
-          )}
+          ) : null}
           <ul className="mt-4 space-y-2 text-[12.5px] leading-relaxed text-white/80">
             {popup.lines.map((line, i) => (
               <li key={i}>{line}</li>

@@ -2220,10 +2220,16 @@ interface GameState {
   introUntil: number; // キャラ登場演出の終了時刻(Date.now基準)。-1=未確定(初フレームで確定)、0=演出なし
   rendererReady: boolean; // レンダラ(Pixi)が初フレームを表示済みか。冷間リロード時に登場演出が黒画面で進行=「まっくら」を防ぐため、初フレーム表示まで演出を t=0 で保持する。
   // チュートリアルの操作説明ポップアップ(v0.25.1830・社長「ポップアップで操作方法を説明してくれるやつ」)。
-  // 表示中はisPaused=true(シーン停止・PauseMenuはGame側でポップアップ優先ゲート)。artは挿絵の種類。
-  tutorialPopup: { title: string; lines: string[]; art?: 'move' } | null;
+  // 表示中はisPaused=true(シーン停止・PauseMenuはGame側でポップアップ優先ゲート)。artは注釈の種類。
+  // shot=表示直前のゲーム画面キャプチャ(dataURL・v0.25.1831「このスクショをゲーム画面で再現」)。
+  // img=事前撮影アセットのパス(静止画/GIF・v0.25.1831「各アクションシーンを撮影して持っておく」)。
+  // img指定時はライブキャプチャを撮らない(img優先)。
+  tutorialPopup: { title: string; lines: string[]; art?: 'move'; shot?: string | null; img?: string } | null;
   tutorialPopupShown: boolean; // このランで表示済みか(resetGameでリセット)
-  showTutorialPopup: (p: { title: string; lines: string[]; art?: 'move' }) => void;
+  // ゲーム画面のキャプチャ提供者(PixiStageが登録・renderer.extractでstageをdataURL化)。
+  captureFrame: (() => string | null) | null;
+  setCaptureFrame: (fn: (() => string | null) | null) => void;
+  showTutorialPopup: (p: { title: string; lines: string[]; art?: 'move'; img?: string }) => void;
   closeTutorialPopup: () => void;
   introDialogueActive: boolean;  // 登場セリフ表示中(時間停止)
   introDialogueStartedAt: number; // セリフ開始時刻(Date.now。オートタイプ基準)
@@ -2870,6 +2876,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   rendererReady: false,
   tutorialPopup: null,
   tutorialPopupShown: false,
+  captureFrame: null,
   introDialogueActive: false,
   introDialogueStartedAt: 0,
   introDialogueShown: false,
@@ -8605,8 +8612,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ introUntil: Date.now() + PLAYER_INTRO_MS, introDialogueActive: false, introDialogueShown: false });
   },
 
+  setCaptureFrame: (fn) => set({ captureFrame: fn }),
   showTutorialPopup: (p) => {
-    set({ tutorialPopup: p, tutorialPopupShown: true, isPaused: true }); // 表示中はゲーム停止(読み物の間、敵/時計を進めない)
+    // 挿絵の優先順: img(事前撮影アセット)> ライブキャプチャ > SVG図解のみ。
+    // img指定が無い時だけ表示直前のゲーム画面をキャプチャ(取得失敗時はnull=フォールバック)。
+    let shot: string | null = null;
+    if (!p.img) {
+      try { shot = get().captureFrame?.() ?? null; } catch { shot = null; }
+    }
+    set({ tutorialPopup: { ...p, shot }, tutorialPopupShown: true, isPaused: true }); // 表示中はゲーム停止
   },
   closeTutorialPopup: () => {
     set({ tutorialPopup: null, isPaused: false });
@@ -10403,3 +10417,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   dequeueWallEvent: () => set(state => ({ wallEventQueue: state.wallEventQueue.slice(1) })),
 }));
+
+// DEVビルド限定のデバッグハンドル(__pixiSceneと同じ趣旨・v0.25.1831)。ヘッドレス実機テストが
+// page.evaluateからstoreの実値を読む/captureFrameを叩くために使う。本番ビルドでは付かない。
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__gameStore = useGameStore;
+}

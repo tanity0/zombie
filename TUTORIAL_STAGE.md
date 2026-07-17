@@ -94,6 +94,19 @@
   EscortSoldier流用+追従チェーン(companionFollow.ts)。衛生兵=npc/medic-walk 4コマピンポン・
   静止時は0コマ目。セリフ系は全ゲート(イベントで組む)。**軍人のキャストは仮=裁定待ち**。
   岩間霧は「専用スプライト方式」に変更(手前霧はストックのまま)+中心=境界線−132px。
+- **v0.25.1831: ポップアップの挿絵=実ゲーム画面**(社長指示2本立て)。
+  1) **ライブキャプチャ**: 表示直前の画面を `captureFrame`(PixiStage登録・`app.render()`+
+     `canvas.toDataURL()`)で撮って挿絵に。SVG注釈(矢印・指ドラッグ)を上に重ねる。
+  2) **事前撮影アセット**(社長「裏側で実機テストまわして各アクションシーンを撮影して持っておけば」+
+     「GIFアニメとかでもいいかも」): ヘッドレスボットラン(ヘビーガンナー=warrior固定・stage-1・
+     bot=standard)でシーンを自動検知して連写→プレイヤー中心400x250に切り出し→GIF化。
+     **`public/tutorial/action-{move,shoot,melee,counter}.gif`**(12コマ・各~430KB)。
+     counterは実フィニッシャー(Kill!+青斬撃アーク・スローモー寄り)の実写。
+     `showTutorialPopup({img:'tutorial/action-counter.gif'})` で表示(img>ライブ>SVGの優先順)。
+  - 撮影パイプライン=scratchpadの `capture-actions.mjs`(検知・連写)+`make-gifs.mjs`(gifenc)。
+    再撮影時の地雷: ①ヘッドレスはシミュが実時間の~1/9=連写間隔は**gameTimeの進み**で刻む
+    ②プレイヤーのスクリーン座標は `playerView.container` の親チェーン `toGlobal(ワールド座標)`
+    (container自体は常に(0,0))。DEVハンドル `window.__gameStore` を今回常設(__pixiScene と同趣旨)。
 
 ## チュートリアル候補の機能一覧(設計チャット調べ・2026-07-17。採否と順序は社長裁定)
 - **A. 必修=操作の根幹**: ①移動(タッチ/スワイプ) ②自動射撃の仕組み(近い敵を自動で狙う)

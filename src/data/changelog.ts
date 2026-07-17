@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1831',
+    items: [
+      '操作説明ポップアップに実際のゲーム画面が挿絵として入るようになりました(表示直前の画面キャプチャ、またはアクションシーンの事前撮影GIFアニメ)。',
+    ],
+  },
+  {
     version: '0.25.1830',
     items: [
       'チュートリアルステージ(開発中): 操作説明ポップアップの試作を追加(開始直後に「移動」の説明。図解+OKで再開)。',

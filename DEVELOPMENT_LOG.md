@@ -1,5 +1,32 @@
 # Development Log
 
+## v0.25.1831 — ポップアップ挿絵=実ゲーム画面(ライブキャプチャ+アクションGIFライブラリ)【2026-07-17 22:19 JST】
+- 社長指示2本立て: 「このスクショをゲーム画面で再現できないか」+「裏側で実機テストまわして、
+  各アクションシーンを撮影して持っておけばいいのでは?キャラはヘビーガンナー固定でも。
+  GIFアニメとかでもいいかも、むずければ静止画でもいい」。
+- **①ライブキャプチャ**: store `captureFrame` 提供者API(PixiStageが登録=`app.render()`直後の
+  `canvas.toDataURL('image/png')`。extract(stage)はオーバースキャン霧でstage境界が画面より広く
+  中央帯だけになるためNG)。`showTutorialPopup`が表示直前に撮って挿絵に(縦62%中心で切り出し)+
+  SVG注釈(矢印・指ドラッグ)を上に重ねる。取得失敗時は従来のSVG単体にフォールバック。
+- **②アクションGIFライブラリ**: ヘッドレスボットラン(warrior固定・stage-1・bot=standard)で
+  シーン自動検知→連写→プレイヤー中心400x250切り出し→GIF化(gifenc・12コマ・delay100ms)。
+  **`public/tutorial/action-{move,shoot,melee,counter}.gif`**(各~400-440KB)。counterは実際の
+  フィニッシャー発動(Kill!+青斬撃アーク)の実写。popupは `img` 指定で表示(**img>ライブshot>SVG**
+  の優先順。img指定時はライブキャプチャを撮らない)。パスは`BASE_URL`前置=Pages配下でも正。
+- **DEVハンドル `window.__gameStore` 常設**(DEVビルド限定・`__pixiScene`と同趣旨): ヘッドレス
+  実機テストがstoreの実値読み/captureFrame起動に使う。本番ビルドには付かない。
+- 撮影の地雷(scratchpad `capture-actions.mjs`/`make-gifs.mjs`・再撮影者向け):
+  ①ヘッドレス(swiftshader)はシミュが実時間の約1/9→**連写間隔はgameTimeの進みで刻む**(実時間刻みだと
+  ほぼ静止GIFになる)。②プレイヤーのスクリーン座標は`playerView.container`の**親チェーン
+  `toGlobal(ワールド座標)`**で取る(container自体は常に(0,0)。getGlobalPositionだとワールド原点に
+  張り付き=プレイヤーが原点から離れると外れる)。
+- 検証: typecheck green。ヘッドレスで①移動ポップアップに実画面+注釈表示、②`img:'tutorial/
+  action-counter.gif'`でGIF挿絵表示、を実機スクショ確認。4シーン全捕捉。
+- 自己点検: 挙動変更なし(ポップアップは既存試作の挿絵強化のみ・シミュ/バランス無変更)。憲法抵触なし。
+- Files: `src/store/gameStore.ts`, `src/components/TutorialPopup.tsx`, `src/pixi/PixiStage.tsx`,
+  `public/tutorial/action-*.gif`(新4), `TUTORIAL_STAGE.md`, `package.json`, `src/data/changelog.ts`,
+  `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1830 — 操作説明ポップアップの試作(社長「ポップアップで操作方法を説明してくれるやつ、即興で作れる?」)【2026-07-17 21:36 JST】
 - **汎用チュートリアルポップアップ**を新設(`TutorialPopup.tsx`・更新情報と同じFF7R風パネル+Ff7rButton):
   タイトル+挿絵スロット+説明行+OK。**表示中はisPaused=true**(シーン停止・PauseMenuは
