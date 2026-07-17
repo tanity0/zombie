@@ -9580,6 +9580,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const loDedup = state.pendingLoadout.filter((k, i) => state.pendingLoadout.indexOf(k) === i).slice(0, 1);
       const runSubs: SubWeaponKey[] = state.danceTestMode
         ? ['shijin']
+        // チュートリアル: 銃と近接以外は強制的に無し(社長指示v0.25.1825)=サブウェポン0
+        // (クラス固有サブ・装備サブとも)。レベルアップ候補/商人陳列も所持サブ基準なので自動で絞られる。
+        : state.pendingFarBackdrop === 'tutorial' ? []
         : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup]));
       // 装備スキル(別枠アクティブ・最大2)。出撃時に player.skills へ反映(効果は今後配線)。
       const runSkills: SkillKey[] = state.danceTestMode

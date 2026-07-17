@@ -1,5 +1,27 @@
 # Development Log
 
+## v0.25.1825 — エドガー素材差し替え+チュートリアル調整4件(社長指示)【2026-07-17 20:39 JST】
+- **①エドガー(npc/edgar-0..2)を新3コマで同名差し替え**(社長支給・透過シート1672x941):
+  alpha境界でスライス→共通キャンバス264x293・**頭中心x合わせ(median)**・足元下端。
+  ネイティブ解像度保存(現行npc規格=実行時humanNpcScaleで等倍化)。**ASSET_VERSION 53→54**
+  (npc/*はspriteLoaderの?v=管轄=バンプ必須の方)。
+- **②衛生兵のサイズ統一**(「衛生兵が小さいので大きさ揃えて」): 衛生兵はドット規格78x64=横長
+  キャンバスのため contain-fit(65px箱)だと幅律速で53px相当に縮んでいた→**高さ基準スケール**
+  (RESCUE_NPC_DISPLAY_H/texH)に変更し他NPCと同表示高へ。
+- **③手前岩をさらに100px下**: `TUTORIAL_FRONT_Y_OFFSET_PX 100→200`。
+- **④ツララ帯1.5倍**: `TUTORIAL_CEILING_SCALE=1.5`(updateLabCeilingにscale引数追加・labは等倍)。
+- **⑤チュートリアルの装備=銃+近接のみ**(「銃と近接武器以外は強制的に無し」): `runSubs`を
+  tutorial時に空へ(クラス固有サブ・装備サブとも0)。レベルアップ候補/商人陳列は所持サブ基準の
+  ため自動で追従(サブ関連が出ない)。装備スキル(パッシブ)は武器ではないため据え置き。
+- 補足: 社長質問「死神とかも出ないようにしてある?」→**v1814で停止済み**(死神/紅き夜/ハンター/
+  叫喚/城ボス/囲い/関所/通常湧き/コマ盤面の全stop・80秒0体実測)。
+- 検証: typecheck green・ヘッドレス=新エドガー表示/衛生兵の等身統一/手前岩位置/ツララ1.5倍/
+  サブウェポンUI消滅を確認。
+- Files: `public/sprites/npc/edgar-{0,1,2}.png`(差し替え), `src/config/assetVersion.ts`,
+  `src/pixi/pixiScene.ts`, `src/store/gameStore.ts`, `TUTORIAL_STAGE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1824 — 画面手前の下寄せ岩(ぼかし)+ツララ帯のカメラ連動(社長指示2件)【2026-07-17 20:28 JST】
 - **①近景森1=手前岩**(社長支給素材「画面手前、下寄せの岩素材。ぼかしで使用」): 緑キー+縁フェザー+
   縦bboxクロップ(2172x724→**2172x332**)→ `backgrounds/tutorial-front-rocks.png`。

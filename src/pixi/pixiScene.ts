@@ -176,7 +176,8 @@ const TUTORIAL_NEAR_HORIZON_DOWN_PX = 25;    // 岩帯2の底=境界線(farH)か
 // frontBank霧(通常=最前面・画面下部)を、z=岩帯1と岩帯2の間へ移し、50%サイズで岩帯の重なり帯に漂わせる。
 const TUTORIAL_FRONT_FOG_SCALE = 0.5;        // 霧の大きさ(帯の高さ・柄とも50%)
 const TUTORIAL_FRONT_FOG_CENTER_UP_PX = 132; // 霧帯の中心=境界線(farH)から上へ(v0.25.1823: 社長指示「40px上へ」で92→132)
-const TUTORIAL_FRONT_Y_OFFSET_PX = 100;      // 手前岩(近景森1)を下へずらす量(v0.25.1824: 社長指示「100px下に」)
+const TUTORIAL_FRONT_Y_OFFSET_PX = 200;      // 手前岩(近景森1)を下へずらす量(v0.25.1825: 社長指示「もう100px下へ」で100→200)
+const TUTORIAL_CEILING_SCALE = 1.5;          // ツララ帯の表示倍率(v0.25.1825: 社長指示「1.5倍に」)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
@@ -2952,7 +2953,8 @@ export class PixiScene {
       s.stageTheme === 'lab' && !s.indoorMode ? 'lab/lab-ceiling-band'
         : s.farBackdrop === 'tutorial' ? 'tutorial-ceiling-band'
         : null,
-      s.farBackdrop === 'tutorial' ? s.camera.x : 0 // ツララ帯=近景と同係数でカメラ連動(labは従来どおり固定)
+      s.farBackdrop === 'tutorial' ? s.camera.x : 0, // ツララ帯=近景と同係数でカメラ連動(labは従来どおり固定)
+      s.farBackdrop === 'tutorial' ? TUTORIAL_CEILING_SCALE : 1 // ツララ帯=1.5倍(labは等倍)
     );
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
@@ -3878,7 +3880,7 @@ export class PixiScene {
   // 近景森と同じ係数(FRONT_FOREST_PARALLAX_X)で流す(社長指示v0.25.1824「画面と連動して動くように。
   // この🪨と同じ速度」)。TilingSprite化(横ループ素材の本来の使い方)=見た目のスケールは従来と同一
   // (1ループ=画面幅)。
-  private updateLabCeiling(texName: string | null, scrollX = 0) {
+  private updateLabCeiling(texName: string | null, scrollX = 0, scale = 1) {
     const tex = texName ? getTexture(texName) : null;
     if (!tex || LAB_CEILING_ALPHA <= 0) { if (this.labCeiling) this.labCeiling.visible = false; return; }
     if (!this.labCeiling) {
@@ -3890,7 +3892,7 @@ export class PixiScene {
     const sp = this.labCeiling;
     sp.visible = true;
     if (sp.texture !== tex) sp.texture = tex;
-    const h = this.screenW * (tex.height / tex.width); // アスペクト維持(従来と同じ見た目スケール)
+    const h = this.screenW * (tex.height / tex.width) * scale; // アスペクト維持(scale=表示倍率。1ループ=画面幅×scale)
     sp.width = this.screenW;
     sp.height = h;
     sp.tileScale.set(h / tex.height);
@@ -7106,7 +7108,11 @@ export class PixiScene {
       const baseAlpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now);
       if (tex) {
         sp.texture = tex;
-        const sc = this.humanNpcScale(tex.width, tex.height, esc.y); // プレイヤーと同寸
+        // 衛生兵はドット規格(78x64=横長キャンバス)のため contain-fit だと幅律速で小さくなる。
+        // 高さ基準で他NPCと同じ表示高に揃える(社長指示v0.25.1825「大きさ揃えて」)。
+        const sc = esc.soldierIndex === TUTORIAL_MEDIC_INDEX
+          ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y)
+          : this.humanNpcScale(tex.width, tex.height, esc.y); // プレイヤーと同寸
         sp.scale.set(sc * walkSqX * faceSign, sc * walkSqY);
         sp.rotation = walkLean;
         // 登場演出中はヘリ離陸タイミングでフェードイン(プレイヤーと同期)。上下左右の4人がこれに該当。

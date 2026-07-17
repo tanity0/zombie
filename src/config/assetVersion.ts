@@ -107,4 +107,7 @@
 //      よってこのバンプは無効打(全スプライト/音声の無駄な再DLだけ発生)なので撤回。
 //      教訓: ASSET_VERSIONを上げるのは spriteLoader/audioManager 経由(sprites/*.png・audio)の
 //      同名差し替えのみ。背景の同名差し替えはバンプ不要。
-export const ASSET_VERSION = '53';
+// v54: 護衛NPCエドガー(npc/edgar-0..2)を社長支給の新3コマ(透過シート)で同名差し替え。
+//      ネイティブ解像度保存(264x293)・頭中心x合わせ・足元下端(頭揺れ0px)。npc/*はspriteLoaderの
+//      ?v=管轄内なのでバンプ必須(背景類とは違い本当に必要な方)。
+export const ASSET_VERSION = '54';
