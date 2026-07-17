@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1797 — ヘビーガンナー走り6コマ差し替え(社長支給・正規規約取込み)【2026-07-17 12:28 JST】
+- 社長支給シート(1320x264・6コマ)を検収→**4pxグリッド整列100%**(21780/21780ブロック一致)を機械検証
+  →`import-player-sprites.mjs player-shotgun run=… --dot 4` で取込み(÷4 NEAREST・頭中心x合わせ・
+  足元下端・統一キャンバス78x65)。コマ数6=既存と同数のため配線変更なし(絵の差し替えのみ)。
+- 目視検収: 6コマの頭位置揃い・接地・既存walkとのキャラ密度一致を確認(モンタージュ)。
+- 同名差し替え=**ASSET_VERSION 52→53**。検証: typecheck green。実機の走り確認は社長へ。
+- Files: `public/sprites/player-shotgun-run-{0..5}.png`, `src/config/assetVersion.ts`,
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1796 — 敵の縁フェザー+服の回転(社長指示)【2026-07-17 07:03 JST】
 - **①敵10枚の縁の白ノイズ対策**: 不透明画素のうち透明に接する最外周1px=α50%・その内側1px=α75%に
   フェザー(社長指示の方式どおり)。JPEG切り出し境界の白ハロが暗背景で目立たなくなったのを

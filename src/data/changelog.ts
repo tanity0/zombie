@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1797',
+    items: [
+      'ヘビーガンナーの走りモーションを新素材(6コマ)に差し替え。',
+    ],
+  },
+  {
     version: '0.25.1796',
     items: [
       'ステージ5の敵の縁の白いノイズを軽減(輪郭1〜2pxを半透明化して背景に馴染むように)。',
