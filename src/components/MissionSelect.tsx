@@ -480,8 +480,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   // ミッション詳細(出撃ページ。メインミッションのブリーフィング + サブミッション)
   // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-3: ヘッダ=日時/場所名/ミッション名 →
-  // 状況説明(synopsis) → 任務目標(summary) → 特殊条件(specialConditions・あれば) →
-  // 特殊支給装備(specialEquipment・あれば)。開発コード(M1等)はここでも表示しない。
+  // 状況説明(synopsis) → 任務後の記録(debrief・クリア後のみ) → 任務目標(summary) →
+  // 特殊条件(specialConditions・あれば) → 特殊支給装備(specialEquipment・あれば)。
+  // 開発コード(M1等)はここでも表示しない。
   // ====================================================================
   const renderMissionDetail = (stageId: string, missionKind: SelectedMission = 'main') => {
     const stage = getStage(stageId);
@@ -494,20 +495,27 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       : 'hidden';
     const m = isRevisit ? REVISIT_MISSION : stage.main;
     const done = isRevisit ? getStoryFlags().revisitCleared : cleared.has(stage.id);
-    // クリア後の記録(debrief)が空のミッション(再訪=秘密行動)は状況説明のまま。
-    const descLines = done && m.debrief.length > 0 ? m.debrief : m.synopsis;
     return (
       <>
         <Header title={stageDateLabel(stage)} subtitle={stage.locationTitle} onBack={() => setScreen({ name: 'stageSelect' })} />
         <div className="menu-stagger p-3 space-y-3">
           <h2 className="px-1 text-[18px] font-bold tracking-wide text-white">{m.title}</h2>
 
-          {/* 説明欄: 未クリアは「状況説明」、クリア後は「クリア後の記録(debrief)」を表示。 */}
-          <Section label={done && m.debrief.length > 0 ? '任務後の記録' : '状況説明'}>
-            {descLines.map((line, i) => (
+          {/* 状況説明は常時表示。クリア後は差し替えず、下に「任務後の記録(debrief)」を追加表示
+              (社長指示v0.25.1836)。debrief空のミッション(再訪=秘密行動)は状況説明のみ。 */}
+          <Section label="状況説明">
+            {m.synopsis.map((line, i) => (
               <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
             ))}
           </Section>
+
+          {done && m.debrief.length > 0 && (
+            <Section label="任務後の記録">
+              {m.debrief.map((line, i) => (
+                <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
+              ))}
+            </Section>
+          )}
 
           <Section label="任務目標">
             <p className="text-[13px] leading-relaxed text-white/85">{m.summary}</p>

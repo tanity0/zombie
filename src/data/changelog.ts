@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1836',
+    items: [
+      '任務詳細: クリア後も「状況説明」を残し、その下に「任務後の記録」を追加表示するようにしました(これまでは差し替え)。',
+    ],
+  },
+  {
     version: '0.25.1835',
     items: [
       '資料室の「世界観」セクションを削除しました(世界観は任務の文章と回収資料で描きます)。',
