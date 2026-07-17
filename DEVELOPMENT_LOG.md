@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1841 — 攻撃・システム系の手本素材6本を追加収録(社長指示「考えうるやつ全部」・素材のみ/未配線)【2026-07-18 02:28 JST】
+- 追加収録6本(`public/tutorial/demo-*.gif`・未配線=ゲーム挙動不変): 射撃戦闘(shoot)/近接キル(melee)/
+  武器クレート+弾薬回収(pickup)/レベルアップ選択メニュー(levelup・DOM込み)/城ボス出現
+  (castle-boss・?castlenow=1・HPバー+警告リング)/紅き夜(red-night・?rednight=1・DOM込み)。
+  カウンターは既存 `action-counter.gif`(v0.25.1831収録・KILL!+青斬撃)を充当予定。
+- 収録テク追記(TUTORIAL_STAGE.md v0.25.1841節): 敵の即席配置=既存敵のクローン注入が確実/
+  レベルアップ=experienceを盛ってキル発火/城ボスは?castlenow=1で開始直後に城へ湧く。
+- 手本ライブラリ現況: move(洞窟・配線済み)+demo系12本+旧action系4本(森・counter流用予定)。
+- 自己点検: 素材追加+文書のみ・コード/挙動不変。憲法非該当。
+- Files: `public/tutorial/demo-{shoot,melee,pickup,levelup,castle-boss,red-night}.gif`(新規),
+  `TUTORIAL_STAGE.md`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1840 — チュートリアル手本素材6本を追加収録(社長指示・素材のみ/未配線)【2026-07-18 02:13 JST】
 - 社長指示「チュートリアル素材一通り動画撮ってきて」。実プレイのヘッドレス収録で手本GIF6本を制作し
   `public/tutorial/demo-*.gif` に格納(全て**未配線=ゲーム挙動の変更なし**。配線は各ポップアップ実装時):
