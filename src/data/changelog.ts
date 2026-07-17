@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1815',
+    items: [
+      'チュートリアルステージ(開発中): 川辺の岩の帯を上端合わせ・高さ140px固定にしました(端末による大きさの差をなくす)。',
+    ],
+  },
+  {
     version: '0.25.1814',
     items: [
       'チュートリアルステージ(開発中): 敵が自動で湧かないようにしました(今後はイベントでのみ出現予定)。',

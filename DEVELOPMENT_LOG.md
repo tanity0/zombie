@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1815 — 岩帯: 上端合わせ・高さ140px固定(社長指示「上合わせで、高さを140pxに」)【2026-07-17 18:28 JST】
+- 岩帯(遠景森1)の高さを比率式(farH×0.273+34≈120-140px・端末依存)から **140px固定**
+  (stage5と同じ固定px方式)へ。アンカーは**上端**=水面下端−34px(頭の川被り不変)。
+  下端は成り行き(小さい画面では境界線を跨いで地面を覆う/大きい画面ではほぼ境界線)。
+  `TUTORIAL_HORIZON_FOREST_HEIGHT_PX=140` 新設・`TUTORIAL_HORIZON_DOWN_PX` 廃止。
+- Files: `src/pixi/pixiScene.ts`, `TUTORIAL_STAGE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1814 — チュートリアル: 敵の自動湧き全停止+岩帯20px上へ+きらめき減光(社長指示3件)【2026-07-17 18:16 JST】
 - **①敵の自動湧き停止**(社長指示「このステージは自動で敵沸かないようにして。イベントでしか沸かせない予定」):
   `useGameLoop` に `tutorialStage`(=farBackdrop==='tutorial'・setTreesDisabledと同じrun識別慣例)を
