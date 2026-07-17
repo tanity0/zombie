@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1813',
+    items: [
+      'チュートリアルステージ(開発中): 川のきらめきの帯をさらに上下に狭めました。',
+    ],
+  },
+  {
     version: '0.25.1812',
     items: [
       'チュートリアルステージ(開発中): 川のきらめきのはみ出しを上下とも詰め、明るさをさらに落として背景に馴染ませました。',
