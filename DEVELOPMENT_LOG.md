@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1798 — 新素材2点の受領・保管(社長指示「まだ使わない」=未配線)【2026-07-17 14:17 JST】
+- **①`phill-cryopod.png`(292x589)**: PHILLの冷凍保存槽(中に本人)。**クリア後の洋館(再訪)で使う予定**。
+  紫背景キー+切り出し済み。未配線(現在の再訪は洋館=castleEvent位置を保存槽扱いにしている。
+  差し込む時は再訪ランの保存槽ビジュアルとして配置する想定)。
+- **②`medic-mutant.png`(472x428)**: 変異後の衛生兵(敵・赤十字の腕章と救急鞄)。**将来の敵として使う予定**。
+  緑背景キー+切り出し済み。未配線(EnemyType未追加)。
+- どちらも public/sprites/ 直下に保管のみ(ロードもしていない=ゲーム内変化なし・ASSET_VERSION不要)。
+- Files: `public/sprites/phill-cryopod.png`(新), `public/sprites/medic-mutant.png`(新),
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1797 — ヘビーガンナー走り6コマ差し替え(社長支給・正規規約取込み)【2026-07-17 12:28 JST】
 - 社長支給シート(1320x264・6コマ)を検収→**4pxグリッド整列100%**(21780/21780ブロック一致)を機械検証
   →`import-player-sprites.mjs player-shotgun run=… --dot 4` で取込み(÷4 NEAREST・頭中心x合わせ・

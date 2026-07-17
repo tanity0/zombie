@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1798',
+    items: [
+      '内部準備のみ(新素材2点の受領・保管)。ゲーム内の変化はありません。',
+    ],
+  },
+  {
     version: '0.25.1797',
     items: [
       'ヘビーガンナーの走りモーションを新素材(6コマ)に差し替え。',
