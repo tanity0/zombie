@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1800',
+    items: [
+      '内部準備のみ(チュートリアルステージ用の遠景とBGMの受領)。ゲーム内の変化はありません。',
+    ],
+  },
+  {
     version: '0.25.1799',
     items: [
       '内部準備のみ(衛生兵NPCの歩き・倒れモーション素材の受領と焼き込み)。ゲーム内の変化はありません。',

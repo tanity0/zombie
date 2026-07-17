@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1800 — チュートリアルステージ素材の受領(遠景+BGM・未配線)【2026-07-17 14:49 JST】
+- **①遠景** `backgrounds/tutorial-far.jpg`(2172x724・284KB): 洞窟のパノラマ(ランタン・木箱・岩壁)。
+  社長支給PNG(2.8MB)を不透過確認のうえ遠景の慣例どおりjpg(q0.85)へ変換。絵は同一シーンの2周繰り返し
+  =横タイル前提の作りに見える(配線時に farBackdrop キーとして使用予定)。
+- **②BGM** `audio/tutorial.mp3`(4.3MB): チュートリアルステージ用。GAME_BGMキー未登録(未配線)。
+- チュートリアルステージ自体は未実装。素材の揃い: 衛生兵(歩き/倒れ/変異後・v1798-99)+遠景+BGM。
+- Files: `public/backgrounds/tutorial-far.jpg`(新), `public/audio/tutorial.mp3`(新),
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1799 — 衛生兵NPC素材の受領・焼き込み(未配線・社長指示)【2026-07-17 14:25 JST】
 - **①歩き4コマ** `npc/medic-walk-{0..3}.png`(78x64): **ピンポン再生**指定(0→1→2→3→2→1→…)。
   **チュートリアルステージ(まだ存在しない)で登場予定**。4pxグリッド100%検証→`--dot 4`正規規約で焼き
