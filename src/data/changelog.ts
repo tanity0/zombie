@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1803',
+    items: [
+      '内部メモのみ(チュートリアルステージの設計メモを新設)。ゲーム内の変化はありません。',
+    ],
+  },
+  {
     version: '0.25.1802',
     items: [
       '内部準備のみ(チュートリアル用の天井帯素材の受領)。ゲーム内の変化はありません。',
