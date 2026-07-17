@@ -1746,6 +1746,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const newRealGameTime = loopState.realGameTime + baseDeltaTime * 1000;
         setGameTime(newGameTime, newRealGameTime);
         useGameStore.getState().updateNpcDialogue(newGameTime); // NPCセリフの表示進行(時間停止なし)
+        useGameStore.getState().updateMerchantDwell(deltaTime * 1000); // 商人サークル3秒滞在→話しかけ(社長指示v0.25.1842)
         updateGameStats({ timeAlive: gameTime / 1000 });
 
         // Detect a fresh run (gameTime rewound to ~0) and reset scripted

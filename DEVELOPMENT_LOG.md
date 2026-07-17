@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.1842 — 仕様変更: 武器商人=サークル3秒滞在で話しかけ+ハンター/死神素材(社長指示)【2026-07-18 03:07 JST】
+- **仕様変更(社長指示「武器商人、サークルに3秒滞在で話しかけれる」)**: 商人への話しかけを
+  「サークル内に3秒連続滞在」方式へ変更。`MERCHANT_TALK_DWELL_MS=3000`、store新フィールド
+  `merchantDwellMs`+アクション`updateMerchantDwell`(useGameLoopがsim毎フレーム呼ぶ)。進捗は
+  白アーク(帰還/クエスト円と同じ意匠・12時起点)をpixiSceneの商人サークルに描画。
+  **旧・商人付近の近接スイングで開く方式は撤去**(誤オープン事故=v0.25.1732系が構造的に消える)。
+  紅き夜中の「やり過ごした」も同じ滞在満了へ移植。円外/メニュー中/reopen待ち(1.5秒)で滞在0リセット。
+  拠点の武器庫(ARMORY・指離しで開く)は対象外=従来どおり。
+  - 検証: 実機ヘッドレスで「スイングでは開かない」「3秒滞在で開く(アーク表示)」を確認。typecheck緑。
+- **手本素材3本**(社長指示「ハンターと死神も」): `demo-hunter-chase.gif`(ハンター本体の突進)/
+  `demo-reaper.gif`(死神接近)/`demo-merchant.gif`(新仕様の滞在アーク→ショップ・旧スイング版を差し替え)。
+  死神の横切り演出はヘッドレス暗部で判読不能=3回で打ち切り(実機収録向きとしてTUTORIAL_STAGE.mdに記録)。
+- 自己点検: 仕様変更は商人の話しかけ方式のみ(社長指示どおり)。周辺(武器庫/ショップ内容/reopen遅延)は
+  不変。憲法非該当。
+- Files: `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`,
+  `public/tutorial/demo-{hunter-chase,reaper,merchant}.gif`, `TUTORIAL_STAGE.md`,
+  `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1841 — 攻撃・システム系の手本素材6本を追加収録(社長指示「考えうるやつ全部」・素材のみ/未配線)【2026-07-18 02:28 JST】
 - 追加収録6本(`public/tutorial/demo-*.gif`・未配線=ゲーム挙動不変): 射撃戦闘(shoot)/近接キル(melee)/
   武器クレート+弾薬回収(pickup)/レベルアップ選択メニュー(levelup・DOM込み)/城ボス出現

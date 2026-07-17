@@ -171,6 +171,9 @@ const CASTLE_COLLISION_H = 50;  // 42 * 1.2 ≈ 50
 const CASTLE_FOOT_OFFSET_Y = 38;
 const MERCHANT_INTERACT_RADIUS = 58;
 const MERCHANT_REOPEN_DELAY_MS = 1500;
+// 武器商人: サークル内に連続滞在でショップが開くまでの時間(社長指示v0.25.1842「サークルに3秒滞在で
+// 話しかけれる」=旧・近接スイング開店を置換)。帰還/クエスト円の3秒滞在と同じ操作感。
+export const MERCHANT_TALK_DWELL_MS = 3000;
 const EVENT_NPC_MIN_DISTANCE = 460;
 const EVENT_NPC_MAX_DISTANCE = 950;
 const EVENT_NPC_INTERACT_RADIUS = 64;
@@ -2167,6 +2170,10 @@ interface GameState {
   // 叫喚型(screamer)の強化が有効な gameTime(ms)。これを過ぎるまで通常敵の移動速度・与ダメージ×1.2。
   screamerBuffUntil: number;
   weaponMerchant: WeaponMerchant;
+  // 商人サークル内の連続滞在時間(ms)。MERCHANT_TALK_DWELL_MSで満了=話しかける(ショップ/紅き夜やり過ごし)。
+  // pixiSceneが進捗アーク描画に読む。円外/メニュー中/再開待ちで0リセット。
+  merchantDwellMs: number;
+  updateMerchantDwell: (deltaMs: number) => void;
   eventQuestNpc: EventQuestNpc;
   // 二人組クエストのrun内状態(EVENT_QUEST_DESIGN.md)。受領中のクエスト種別と討伐進捗。
   // HUD(右上スクラップ下の n/N 表示)はこのプリミティブ群だけを購読する(React再描画規律)。
@@ -2795,6 +2802,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   redNight: null,
   screamerBuffUntil: 0,
   weaponMerchant: createWeaponMerchant(),
+  merchantDwellMs: 0,
   eventQuestNpc: createEventQuestNpc(),
   eventQuestActive: null,
   eventQuestKills: 0,
@@ -3445,7 +3453,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   triggerCounter: () => {
     const now = Date.now();
     const {
-      player, gameTime, realGameTime, enemies, projectiles, weaponMerchant,
+      player, gameTime, realGameTime, enemies, projectiles,
       showShopMenu, showUpgradeMenu,
       shopReopenAt
     } = get();
@@ -3631,42 +3639,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
-    const mdx = weaponMerchant.x - pcx;
-    const mdy = weaponMerchant.y - pcy;
-    if (
-      !showShopMenu &&
-      !showUpgradeMenu &&
-      gameTime >= shopReopenAt &&
-      mdx * mdx + mdy * mdy <= weaponMerchant.radius * weaponMerchant.radius
-    ) {
-      // 紅き夜中は商人への話しかけで逃げる(やり過ごした)。ショップは開かない。
-      if (get().redNight?.phase === 'active') {
-        get().skipRedNight();
-        set(state => ({
-          eventBannerText: 'やり過ごした',
-          eventBannerUntil: state.gameTime + 3500,
-          hitstopUntil: Date.now() + 450,
-        }));
-        get().spawnFlash('rgba(0,0,0,0.68)', 500);
-        return { swung: true, hit: true, finish: false, killed: 0 };
-      }
-      set({
-        showShopMenu: true,
-        isPaused: true,
-        touchActive: false,
-        swipeDirection: null,
-        swipeStrength: 1,
-        player: {
-          ...player,
-          counterWindowEnd: now + COUNTER_WINDOW,
-          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
-        }
-      });
-      get().spawnRing(weaponMerchant.x, weaponMerchant.y - 26, 12, 58, 'rgba(251,191,36,0.88)', 3, SHOP_INTERACT_RING_MS);
-      get().spawnGlow(weaponMerchant.x, weaponMerchant.y - 28, 62, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
-      get().spawnCallout(weaponMerchant.x, weaponMerchant.y - 70, 'SHOP', '#fde68a');
-      return { swung: true, hit: true, finish: false, killed: 0 };
-    }
+    // 武器商人への話しかけは「サークルに3秒滞在」(updateMerchantDwell)へ変更(社長指示v0.25.1842)。
+    // 旧・商人付近の近接スイングで開く方式は撤去(誤オープン=v0.25.1732系の事故も構造的に消える)。
 
     // 武器庫(制圧拠点中央の小サークル)で指を離す = 遠隔で武器商人を利用(社長指示)。矢印は出さない。
     // 紅き夜中は開かない(拠点近接の「やり過ごし」が別途処理)。
@@ -6210,6 +6184,48 @@ export const useGameStore = create<GameState>((set, get) => ({
       swipeDirection: null,
       swipeStrength: 1
     });
+  },
+
+  // 武器商人: サークルに3秒連続滞在で話しかける(社長指示v0.25.1842・旧スイング開店を置換)。
+  // useGameLoopがsim毎フレーム呼ぶ。紅き夜中は「やり過ごした」(旧スイング時の挙動を移植)。
+  updateMerchantDwell: (deltaMs) => {
+    const s = get();
+    const { weaponMerchant, player } = s;
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const mdx = weaponMerchant.x - pcx;
+    const mdy = weaponMerchant.y - pcy;
+    const inCircle = mdx * mdx + mdy * mdy <= weaponMerchant.radius * weaponMerchant.radius;
+    if (!inCircle || s.showShopMenu || s.showUpgradeMenu || s.gameTime < s.shopReopenAt) {
+      if (s.merchantDwellMs !== 0) set({ merchantDwellMs: 0 });
+      return;
+    }
+    const next = s.merchantDwellMs + deltaMs;
+    if (next < MERCHANT_TALK_DWELL_MS) {
+      set({ merchantDwellMs: next });
+      return;
+    }
+    set({ merchantDwellMs: 0 });
+    if (get().redNight?.phase === 'active') {
+      get().skipRedNight();
+      set(state => ({
+        eventBannerText: 'やり過ごした',
+        eventBannerUntil: state.gameTime + 3500,
+        hitstopUntil: Date.now() + 450,
+      }));
+      get().spawnFlash('rgba(0,0,0,0.68)', 500);
+      return;
+    }
+    set({
+      showShopMenu: true,
+      isPaused: true,
+      touchActive: false,
+      swipeDirection: null,
+      swipeStrength: 1,
+    });
+    get().spawnRing(weaponMerchant.x, weaponMerchant.y - 26, 12, 58, 'rgba(251,191,36,0.88)', 3, SHOP_INTERACT_RING_MS);
+    get().spawnGlow(weaponMerchant.x, weaponMerchant.y - 28, 62, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
+    get().spawnCallout(weaponMerchant.x, weaponMerchant.y - 70, 'SHOP', '#fde68a');
   },
 
   closeShop: () => {
@@ -9903,6 +9919,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         showShopMenu: false,
         showEventQuestMenu: false,
         shopReopenAt: 0,
+        merchantDwellMs: 0,
         eventQuestReopenAt: 0,
         vaccinePurchased: false,
         gameWon: false,

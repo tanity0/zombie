@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
@@ -2968,7 +2968,7 @@ export class PixiScene {
       this.syncCastle(s.castleEvent, now);
       this.syncEventQuestNpc(s.eventQuestNpc, s.player, now);
     }
-    this.syncMerchant(s.weaponMerchant, s.player, now); // 商人は屋内でも(最初の部屋に)出す
+    this.syncMerchant(s.weaponMerchant, s.player, now, s.merchantDwellMs); // 商人は屋内でも(最初の部屋に)出す
     this.syncBreakableProps(s.breakableProps, now);
     this.syncPickups(s.pickups, now);
     this.syncPumpkinTelegraph(s.enemies, now); // ジャンプ攻撃の着地予告(赤い影)
@@ -3517,7 +3517,7 @@ export class PixiScene {
     }
   }
 
-  private syncMerchant(merchant: WeaponMerchant, player: Player, now: number) {
+  private syncMerchant(merchant: WeaponMerchant, player: Player, now: number, dwellMs: number) {
     const tex = getTexture('weapon-merchant');
     if (!tex) {
       this.merchantView.visible = false;
@@ -3565,6 +3565,17 @@ export class PixiScene {
         .stroke({ width: 2 * d, color: 0xfbbf24, alpha: 0.38 + pulse * 0.22 });
       g.circle(0, -targetH * 0.82, 4 * d)
         .fill({ color: 0xfde68a, alpha: 0.82 + pulse * 0.16 });
+    }
+    // 滞在→話しかけの進捗アーク(社長指示v0.25.1842「サークルに3秒滞在」)。帰還/クエスト円の
+    // 白アーク・12時起点と同じ意匠(既存のdwellメーターと操作感を揃える)。
+    if (dwellMs > 0) {
+      const frac = Math.max(0, Math.min(1, dwellMs / MERCHANT_TALK_DWELL_MS));
+      const start = -Math.PI / 2;
+      const rr = (merchant.radius + 6) * d;
+      const cyw = -8 * d;
+      g.moveTo(Math.cos(start) * rr, cyw + Math.sin(start) * rr)
+        .arc(0, cyw, rr, start, start + Math.PI * 2 * frac)
+        .stroke({ width: 4 * d, color: 0xfff7cc, alpha: 0.95 });
     }
   }
 
