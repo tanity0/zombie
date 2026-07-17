@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   STAGES, getStage, stageDateLabel, REVISIT_MISSION, REVISIT_MISSION_ID, SUB_RESCUE_MISSION,
-  WORLD_INTRO, type Stage, type StageMission,
+  type Stage, type StageMission,
 } from './campaign';
 import { ENDING_HEADER, ENDING_SCRIPT, ENDING_FINAL_WORD } from './ending';
 import { getArchiveRecord } from './storyArchive';
@@ -73,12 +73,10 @@ describe('開発番号の非露出(指示書12「M1〜M7番号がプレイヤー
 });
 
 describe('旧案文面の削除・置換監査(指示書10章)', () => {
-  it('可視ステージと世界観文にワクチン/息子/少年/蘇生/始祖宿主/腕足反復の旧案が残っていない', () => {
+  it('可視ステージにワクチン/息子/少年/蘇生/始祖宿主/腕足反復の旧案が残っていない', () => {
+    // (旧「世界観」導入文 WORLD_INTRO は社長指示で削除済み=v0.25.1835・監査対象からも除外)
     const banned = ['ワクチン', '息子', '少年', '蘇生', '始祖宿主', '足でも生やそ', '助……て'];
-    const texts = [
-      ...STAGES.filter(x => !x.hidden).flatMap(playerFacingStrings),
-      ...WORLD_INTRO,
-    ];
+    const texts = STAGES.filter(x => !x.hidden).flatMap(playerFacingStrings);
     for (const text of texts) {
       for (const word of banned) {
         expect(text, text).not.toContain(word);

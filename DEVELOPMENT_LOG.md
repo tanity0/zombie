@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1835 — 資料室「世界観」セクション削除(社長指示)【2026-07-18 00:29 JST】
+- 資料室画面の「世界観」セクション(WORLD_INTRO 3行の導入文)を削除。データ(campaign.tsの
+  WORLD_INTRO)ごと撤去し、storyCanon.test.tsの旧案監査からも除外(可視ステージ文面の監査は継続)。
+  資料室は「任務記録/武器・特殊装備/アイテム/用語/変異体図鑑」構成に。
+- 自己点検: 表示削除のみ・ゲーム挙動不変。憲法非該当。
+- Files: `src/components/MissionSelect.tsx`, `src/data/campaign.ts`, `src/data/storyCanon.test.ts`,
+  `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1834 — 正史『the ONE』M0〜M3制作差分の実装(B1文面+M0会話・社長「実装お願いします」)【2026-07-17 23:46 JST】
 - **B1: 文面差し替え+D-02名称統一**(STORY_M0_M3.md準拠)。campaign.tsのM0〜M3の
   synopsis(出撃前説明)/debrief(リザルト)を正史確定文面へ全面差し替え。施設名を全文

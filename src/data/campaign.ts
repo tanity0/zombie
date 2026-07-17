@@ -832,13 +832,8 @@ export const gachaPromotePercent = (rarity: SkillRarity, curLv: number, dupeCoun
   return Math.round((above / total) * 100);
 };
 
-// --- 資料室(世界観 / 変異体図鑑)のドラフト -------------------------------
-export const WORLD_INTRO: string[] = [
-  '軍用再生薬計画の事故をきっかけに、各地で「変異体」が発生した。',
-  'それは死者の復活ではなく、生きたまま細胞が異常増殖を繰り返した姿だという。',
-  '元は人間であった何か——その正体を追って、任務は続く。',
-];
-
+// --- 資料室(変異体図鑑)のドラフト -------------------------------
+// (旧「世界観」導入文 WORLD_INTRO は社長指示で削除=v0.25.1835。世界観はミッション文面・資料で語る。)
 export interface BestiaryEntry {
   id: string;
   name: string;

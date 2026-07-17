@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1835',
+    items: [
+      '資料室の「世界観」セクションを削除しました(世界観は任務の文章と回収資料で描きます)。',
+    ],
+  },
+  {
     version: '0.25.1834',
     items: [
       'ストーリー(the ONE)序盤を最新の正史へ更新: M1〜M3の任務説明・報告文と、施設名称を「PHILL再生医療研究所」「東部医療科学センター」に統一しました。',
