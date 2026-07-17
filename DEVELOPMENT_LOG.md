@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1802 — チュートリアル天井帯の受領(上寄せループ・未配線)【2026-07-17 14:54 JST】
+- `sprites/tutorial-ceiling-band.png`(2508x627・寸法不変): 洞窟の鍾乳石帯。**仕様=ステージ2の上寄せ帯
+  (lab-ceiling-band)と同じ**: 最前面・上寄せ・横ループ(はみ出し前提)・半透明オーバーレイ。
+  緑背景をキー(緑かぶり対策の緑支配判定込み)+縁1pxフェザー。**ループ整合のため切り出しはせず
+  キャンバス寸法そのまま**。未配線(チュートリアルステージ実装時に lab-ceiling-band と同経路で使用)。
+- チュートリアル素材の揃い: 衛生兵3種/洞窟遠景/BGM/天井帯。
+- Files: `public/sprites/tutorial-ceiling-band.png`(新), `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1800 — チュートリアルステージ素材の受領(遠景+BGM・未配線)【2026-07-17 14:49 JST】
 - **①遠景** `backgrounds/tutorial-far.jpg`(2172x724・284KB): 洞窟のパノラマ(ランタン・木箱・岩壁)。
   社長支給PNG(2.8MB)を不透過確認のうえ遠景の慣例どおりjpg(q0.85)へ変換。
