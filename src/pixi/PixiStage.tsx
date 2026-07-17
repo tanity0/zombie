@@ -143,6 +143,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
   // 変な切り抜きになる)。preserveDrawingBuffer無しでもrender直後の同期toDataURLは有効。
       useGameStore.getState().setCaptureFrame(() => {
         try {
+          // 撮影前にsceneをstoreの現在状態へ同期してから描く。tickerの同期より後に呼ばれる保証が
+          // 無いため、同期せず撮ると直近tickerフレーム(実機では更に古いフレーム)が写り
+          // 「スクショが巻き戻る」(社長報告v0.25.1838)。
+          scene.sync();
           app.render();
           const c = app.canvas as HTMLCanvasElement;
           return c.toDataURL ? c.toDataURL('image/png') : null;

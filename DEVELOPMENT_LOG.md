@@ -1,5 +1,24 @@
 # Development Log
 
+## v0.25.1838 — M0序盤会話を左上の通信へ変更+ポップアップ挿絵の巻き戻り修正(社長報告2件)【2026-07-18 01:09 JST】
+- **①M0序盤会話の表示方式を修正**: 「このゲームで時間を止めて会話するシーンは存在しません!左上の通信です!」
+  (社長)。v0.25.1837のVNボックス(startIntroDialogue=時間停止)を廃止し、**左上の通信
+  (NpcDialogue・時間停止なし・1行2.8秒+間0.5秒で順次)**へ変更。「移動」ポップアップを閉じた直後に
+  4行(グレッグ2→ジュン2)をnpcDialogueQueueへ直積み(tryNpcLineのキャップ3を通さない/CD不干渉)。
+  1出撃1回(tutorialConvoQueuedRef・新ラン検知でリセット)。会話文面(campaign.tsのdialogue)は不変=
+  正史完全一致テスト継続。
+  - 原因メモ: チュートリアルはヘリ登場演出なし(introUntil=0)のため汎用の開始時会話ブロックは走らず、
+    社長が見たVNボックスはv0.25.1837のポップアップ閉トリガー起点のもの。
+- **②操作説明ポップアップの挿絵スクショ「巻き戻り」修正**: captureFrameが scene.sync() を挟まず
+  app.render() していたため、直近tickerフレーム(実機ではさらに古いフレーム)が写り得た。
+  **撮影直前に scene.sync()→app.render()** で「表示直前の画面そのまま」を保証(既存の他箇所と同じ
+  sync+renderパターン)。
+- 検証: 実機ヘッドレスで OK→左上通信で1〜3行目順次表示(4行目も同機構)・isPaused=false・VN不出現を確認。
+  挿絵shotも現在シーン(プレイヤー+NPC2名)を確認。typecheck緑。
+- 自己点検: チュートリアル演出の表示方式変更+キャプチャの純バグ修正のみ。他ステージ挙動不変。憲法非該当。
+- Files: `src/hooks/useGameLoop.ts`, `src/pixi/PixiStage.tsx`, `STORY_M0_M3.md`,
+  `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1837 — チュートリアル: M0序盤会話の発火を「移動ポップアップを閉じた直後」へ(社長指示)【2026-07-18 00:38 JST】
 - M0序盤会話(グレッグ2行→ジュン2行)の発火条件を変更: 旧「右へ約400px歩いた地点
   (TUTORIAL_CONVO_TRIGGER_X)」→ **「移動」説明ポップアップを閉じた直後**(tutorialPopupShown &&

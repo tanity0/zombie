@@ -819,6 +819,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
   const rescueRespawnRef = useRef(0); // 救助イベント: 次の攻撃者復活の予定 gameTime(0=空き無し/未予約)
   const rescueFiredRef = useRef(false); // 救助イベントは1出撃で最大1回(社長指示)。発生済みなら以降の抽選から除外。
+  // チュートリアルのM0序盤会話(グレッグ/ジュン)を左上の通信キューへ積んだか(1出撃1回)。
+  const tutorialConvoQueuedRef = useRef(false);
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -1760,6 +1762,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           redNightFiredRef.current = false;
           redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
+          tutorialConvoQueuedRef.current = false; // チュートリアルM0序盤会話も新ランで再有効化
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
           hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0 };
           hunterKillsRef.current = [];
@@ -2824,11 +2827,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               st.tryNpcLine('軍人', 'tutorial-left-wall', 'そっちじゃないぞ。', 6000);
             }
             // M0序盤会話(正史STORY_M0_M3.md・グレッグ2行→ジュン2行): 「移動」ポップアップを
-            // 閉じた直後に流す(社長指示v0.25.1837「歩き方閉じたらM0の序盤会話を流す」。
-            // 旧: 右へ400px歩いた地点=TUTORIAL_CONVO_TRIGGER_X)。IntroDialogue流用=時間停止+
-            // オートタイプ。ループ側の汎用ブロックが総時間経過で自動終了。
-            if (!st.introDialogueShown && st.introDialogueLines.length > 0 && st.tutorialPopupShown && !st.tutorialPopup) {
-              st.startIntroDialogue();
+            // 閉じた直後に、左上の通信(NpcDialogue=時間停止なし・軍人セリフと同じ枠)で1行ずつ流す
+            // (社長指示v0.25.1838「時間を止めて会話するシーンは存在しません!左上の通信です」。
+            // 旧v0.25.1837のVNボックス=startIntroDialogueは廃止)。キュー直積み=tryNpcLineの
+            // 詰まり防止キャップ(3)を通さず4行を確実に順次再生。CD類にも触らない。
+            if (!tutorialConvoQueuedRef.current && st.tutorialPopupShown && !st.tutorialPopup && st.introDialogueLines.length > 0) {
+              tutorialConvoQueuedRef.current = true;
+              useGameStore.setState(s2 => ({
+                npcDialogueQueue: [
+                  ...s2.npcDialogueQueue,
+                  ...s2.introDialogueLines
+                    .filter(l => l.speaker && !l.speaker.startsWith('__'))
+                    .map(l => ({ name: l.speaker as string, text: l.text })),
+                ],
+              }));
             }
           }
           if (st.escorts.length) {
