@@ -239,9 +239,6 @@ export const TUTORIAL_MOVE_Y_LIMIT_PX = 100; // v0.25.1828: 社長指示「100px
 const TUTORIAL_RETURN_CIRCLE_X = 3000;
 // チュートリアルの左端(プレイヤー中心xの下限=スタートから左100pxで透明な壁・社長指示v0.25.1829)。
 export const TUTORIAL_MOVE_X_MIN_PX = -100;
-// M0序盤会話の発火x(プレイヤー中心がこの地点まで右へ歩いたら初回のみ・正史「戦闘が激しくなる前の
-// 移動中」STORY_M0_M3.md)。叩き台=移動説明ポップアップを閉じて数歩ぶん。
-export const TUTORIAL_CONVO_TRIGGER_X = 400;
 const PHASER_GUN_OFFSET = 5;           // 2丁拳銃の左右ずらし幅(px。進行方向に直交)
 const PHASER_APPEAR_CHANCE = 0.2;      // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)

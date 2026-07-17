@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1837 — チュートリアル: M0序盤会話の発火を「移動ポップアップを閉じた直後」へ(社長指示)【2026-07-18 00:38 JST】
+- M0序盤会話(グレッグ2行→ジュン2行)の発火条件を変更: 旧「右へ約400px歩いた地点
+  (TUTORIAL_CONVO_TRIGGER_X)」→ **「移動」説明ポップアップを閉じた直後**(tutorialPopupShown &&
+  !tutorialPopup)。社長指示「チュートリアル、歩き方閉じたらM0の序盤会話を流す」。
+  TUTORIAL_CONVO_TRIGGER_X 定数は撤去。会話の中身・演出(IntroDialogue=時間停止+オートタイプ+SKIP)は不変。
+- 検証: 実機ヘッドレスで OK押下→即会話開始(1行目グレッグ)→4行→自動終了→時間再開を確認。typecheck緑。
+- 自己点検: チュートリアル専用の発火タイミング変更のみ・他ステージ/挙動不変。憲法非該当。
+- Files: `src/hooks/useGameLoop.ts`, `src/store/gameStore.ts`, `STORY_M0_M3.md`,
+  `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1836 — 任務詳細: クリア後debriefを状況説明の下に追加表示(社長指示)【2026-07-18 00:31 JST】
 - 任務詳細ページの説明欄を変更: これまで「クリア後は状況説明(synopsis)を任務後の記録(debrief)に
   差し替え」だったのを、**状況説明は常時表示+クリア後はその下に『任務後の記録』セクションを追加表示**へ

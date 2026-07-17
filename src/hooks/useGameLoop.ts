@@ -39,7 +39,7 @@ import {
   RN_ENEMY_FORCE,
   FIRST_AID_KIT_THROW_DAMAGE,
   PHASER_INDEX, BASE_SOLDIER_COUNT,
-  TUTORIAL_MOVE_X_MIN_PX, TUTORIAL_CONVO_TRIGGER_X
+  TUTORIAL_MOVE_X_MIN_PX
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -2823,10 +2823,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (st.player.isMoving && pcxNow <= TUTORIAL_MOVE_X_MIN_PX + 6) {
               st.tryNpcLine('軍人', 'tutorial-left-wall', 'そっちじゃないぞ。', 6000);
             }
-            // M0序盤会話(正史STORY_M0_M3.md「戦闘が激しくなる前の移動中。初回のみ」):
-            // 右へ少し歩いた地点で、ミッションのdialogue(グレッグ2行→ジュン2行)を時間停止+
-            // オートタイプで流す(IntroDialogue流用。ループ側の汎用ブロックが総時間経過で自動終了)。
-            if (!st.introDialogueShown && st.introDialogueLines.length > 0 && pcxNow >= TUTORIAL_CONVO_TRIGGER_X) {
+            // M0序盤会話(正史STORY_M0_M3.md・グレッグ2行→ジュン2行): 「移動」ポップアップを
+            // 閉じた直後に流す(社長指示v0.25.1837「歩き方閉じたらM0の序盤会話を流す」。
+            // 旧: 右へ400px歩いた地点=TUTORIAL_CONVO_TRIGGER_X)。IntroDialogue流用=時間停止+
+            // オートタイプ。ループ側の汎用ブロックが総時間経過で自動終了。
+            if (!st.introDialogueShown && st.introDialogueLines.length > 0 && st.tutorialPopupShown && !st.tutorialPopup) {
               st.startIntroDialogue();
             }
           }

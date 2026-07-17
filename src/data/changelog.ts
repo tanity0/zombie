@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1837',
+    items: [
+      'チュートリアル: グレッグとジュンの序盤会話が、「移動」説明を閉じた直後に流れるようになりました(これまでは少し歩いた地点)。',
+    ],
+  },
+  {
     version: '0.25.1836',
     items: [
       '任務詳細: クリア後も「状況説明」を残し、その下に「任務後の記録」を追加表示するようにしました(これまでは差し替え)。',
