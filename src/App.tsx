@@ -19,7 +19,7 @@ import {
 import { unlockRecordsForStage } from './data/storyArchive';
 import { subsAllCompletedFromMeta, endingFollowup } from './utils/storyProgress';
 import { getEventQuestConfig } from './utils/eventQuest';
-import { getStage, STAGES } from './data/campaign';
+import { getStage } from './data/campaign';
 import { isPixiRenderer } from './config/renderer';
 
 const LOADING_MIN_MS = 650;
@@ -162,7 +162,8 @@ function App() {
     if (smokeParam === null) return;
     smokeHandledRef.current = true;
     const benchmark = smokeParam === 'bench' || params.get('bench') === '1';
-    setSelectedStageId(params.get('stage') || STAGES[0].id);
+    // 既定はステージ1(STAGES[0]はチュートリアル追加で先頭が変わったため固定・従来挙動を維持)。
+    setSelectedStageId(params.get('stage') || 'stage-1');
     void startGame(params.get('class') ?? 'warrior', benchmark);
   }, []);
 

@@ -254,6 +254,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab/lab-horizon-band' },  // 地平の機械帯(紫=透過)
       { name: 'lab/lab-front-band' },    // 手前のボヤけ機械帯(紫=透過。ブラーは既存フィルタで継続)
       { name: 'lab/lab-ceiling-band' },  // 最前面の天井ケーブル帯(紫=透過・上寄せ・半透明オーバーレイ)
+      { name: 'tutorial-ceiling-band' }, // チュートリアル(洞窟)の鍾乳石帯(lab-ceiling-bandと同仕様・上寄せループ)
       // 背景の天井/void プレート(外周マージンに低速パララックスで敷く・縦横シームレス)。
       { name: 'lab/lab-bg-void', scaleMode: 'nearest' },
       { name: 'lab-uv-bar', scaleMode: 'nearest' }, // 研究所のUVライトバー(松明の代わり)
@@ -512,6 +513,7 @@ const BACKGROUND_PATHS = [
   'backgrounds/stage4-horizon.png',
   'backgrounds/stage5-ground.jpg',
   'backgrounds/stage3-front-rooftops.png',
+  'backgrounds/tutorial-far.jpg', // チュートリアル(洞窟)の遠景パノラマ
   'sprites/lab-floor/lab-floor-stage2.png',
 ];
 let bgLoading: Promise<void> | null = null;

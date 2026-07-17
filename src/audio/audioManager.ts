@@ -16,6 +16,8 @@ const DEFAULT_SFX_VOLUME = 1;
 // 未割当 key は default(stage1)へフォールバック。
 const GAME_BGM: Record<string, string> = {
   default: `${import.meta.env.BASE_URL}audio/stage1.mp3`,
+  tutorial: `${import.meta.env.BASE_URL}audio/tutorial.mp3`, // チュートリアル(洞窟)。stage.bgm='tutorial'で選択
+
   lab: `${import.meta.env.BASE_URL}audio/lab-stage.mp3`, // 研究所(ステージ2)。theme==='lab' で選択
   stage3: `${import.meta.env.BASE_URL}audio/stage3.mp3`, // 廃都(ステージ3)。stage.bgm='stage3' で選択
   stage4: `${import.meta.env.BASE_URL}audio/stage4.mp3`, // 封鎖地域/雪原(ステージ4)。stage.bgm='stage4'

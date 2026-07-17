@@ -118,6 +118,34 @@ export const REVISIT_MISSION: StageMission = {
 // ミッション詳細から選べる(社長指示)。'free' kind の独立ステージは廃止。
 export const STAGES: Stage[] = [
   {
+    // チュートリアルステージ(社長指示2026-07-17「ステージ1をコピーして作り始めて」)。
+    // ベース=ステージ1の構造から、ステージ1固有のストーリー要素(制圧イベント/裏ボスmimir/サブクエスト/
+    // 資料解放)を外した素の生存ステージ+洞窟スキン(遠景tutorial-far/天井帯/専用BGM)。
+    // 文面・日時表示・進行内容は仮置き(正式仕様は TUTORIAL_STAGE.md の★未決で社長確定待ち)。
+    id: 'stage-tutorial',
+    index: 0,
+    kind: 'main',
+    name: '洞窟',
+    area: '地下洞窟 / 訓練',
+    unlockBy: null,
+    day: 25,
+    time: '08:00',
+    timeLabel: '訓練記録', // 仮
+    locationTitle: '地下訓練場', // 仮
+    farBackdrop: 'tutorial', // 洞窟パノラマ(高さ大きめ表示・pixiScene側で専用比率)
+    bgm: 'tutorial',
+    subs: [],
+    main: {
+      code: 'M0',
+      title: 'チュートリアル', // 仮
+      summary: '基本操作の訓練を行う。', // 仮
+      synopsis: ['基本操作の訓練を行う。'], // 仮
+      briefing: [],
+      debrief: ['訓練を完了した。'], // 仮
+      dialogue: [],
+    },
+  },
+  {
     id: 'stage-1',
     index: 1,
     kind: 'main',

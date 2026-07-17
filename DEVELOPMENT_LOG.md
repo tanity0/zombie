@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.1804 — チュートリアルステージのベース実装(社長指示「ステージ1をコピーして作り始めて」)【2026-07-17 15:10 JST】
+- **`stage-tutorial` 新設(STAGES先頭・unlockBy:null=常時解放・仮表示)**: ステージ1の構造から
+  固有ストーリー要素(制圧イベント/裏ボスmimir/サブクエスト/資料解放)を外した素の生存ステージ。
+  文面は全て仮(タイトル「チュートリアル」/「地下訓練場」/timeLabel「訓練記録」)。正式仕様=TUTORIAL_STAGE.md。
+- **洞窟スキン配線**: ①遠景 farBackdrop='tutorial'(preload+PixiStage注入+**専用高さ=画面の55%**
+  =TUTORIAL_FAR_HEIGHT_RATIO・叩き台。社長仕様「横長素材の2/3だけ映る・高さを使う」の実装)
+  ②天井帯=updateLabCeilingをテクスチャ名引数に一般化し、labケーブル帯/チュートリアル鍾乳石帯を
+  同経路で出し分け ③BGM=GAME_BGM['tutorial']。
+- 付随修正: App.tsxのスモーク既定ステージを STAGES[0]→'stage-1' 固定(先頭変更の巻き込み防止)。
+- 検証: typecheck green・storyCanon/constitution 31件green・ヘッドレス実機シム(stage-tutorial)で
+  洞窟遠景(縦大きめ)+鍾乳石天井帯+ステージ1地面での起動を確認。
+- **既知の未調整**(TUTORIAL_STAGE.mdに記録): 森の地平帯(青シルエット)が洞窟内に見える/森の木が生える/
+  地面が苔のまま=洞窟用素材の支給or指示待ち。
+- Files: `src/data/campaign.ts`, `src/App.tsx`, `src/audio/audioManager.ts`, `src/pixi/pixiTextures.ts`,
+  `src/pixi/PixiStage.tsx`, `src/pixi/pixiScene.ts`, `TUTORIAL_STAGE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1803 — TUTORIAL_STAGE.md 新設(社長仕様の集約)【2026-07-17 14:56 JST】
 - チュートリアルステージの素材と仕様が溜まってきたため、**集約点となる設計メモ `TUTORIAL_STAGE.md` を新設**。
 - 今回の社長仕様を記録: **①ステージは横長で上下にはあまり移動しない前提 ②遠景は他ステージより

@@ -123,6 +123,9 @@ const FAR_BACKDROP_HEIGHT_RATIO = 0.26; // 旧 0.22 → 0.30(広げすぎたの�
 const FAR_BACKDROP_HEIGHT_CAP = 0.38;   // 旧 0.30 → 0.44(少し戻す)
 const FAR_BACKDROP_MIN_HEIGHT = 168;    // 旧 150 → 185(少し戻す)
 const FAR_BACKDROP_PARALLAX_X = 0.09;
+// チュートリアル(洞窟)の遠景は他ステージより縦を大きく使う(社長仕様2026-07-17: ステージは横長で
+// 上下移動が少なく、横長素材の2/3程度しか画面に映らない前提)。0.55=叩き台(実機調整前提)。
+const TUTORIAL_FAR_HEIGHT_RATIO = 0.55;
 const FAR_BACKDROP_BLUR = 1.1;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
 const HORIZON_FOREST_BLUR = 0.65; // 地平の森(遠景森)を少しだけぼかす(0=なし)。少し弱めた
@@ -1816,6 +1819,8 @@ export class PixiScene {
   }
 
   private farBackdropHeight() {
+    // チュートリアル(洞窟)だけ縦を大きく使う(TUTORIAL_FAR_HEIGHT_RATIO参照)。
+    if (this.currentFarKey === 'tutorial') return this.screenH * TUTORIAL_FAR_HEIGHT_RATIO;
     return Math.min(this.screenH * FAR_BACKDROP_HEIGHT_CAP, Math.max(FAR_BACKDROP_MIN_HEIGHT, this.screenH * FAR_BACKDROP_HEIGHT_RATIO));
   }
 
@@ -2792,7 +2797,12 @@ export class PixiScene {
     this.syncLabProps(); // 遮蔽物プロップ(研究所スキン・区画生成。森/屋内では no-op)
     this.syncCityProps(); // ステージ3(廃都)の散布オブジェクト(その他ステージでは no-op)
     this.syncForestFlowers(); // ステージ1(森)の装飾花(その他ステージでは no-op)
-    this.updateLabCeiling(s.stageTheme === 'lab' && !s.indoorMode); // 最前面の天井ケーブル帯(lab テーマのみ)
+    // 最前面の天井帯: lab=ケーブル帯 / チュートリアル(洞窟)=鍾乳石帯(同仕様・上寄せループ)。
+    this.updateLabCeiling(
+      s.stageTheme === 'lab' && !s.indoorMode ? 'lab/lab-ceiling-band'
+        : s.farBackdrop === 'tutorial' ? 'tutorial-ceiling-band'
+        : null
+    );
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
     this.revisitMarker = s.revisitMode === true;
@@ -3704,11 +3714,11 @@ export class PixiScene {
     }
   }
 
-  // 研究所スキンの最前面オーバーレイ: 天井から吊られたケーブル帯を screen-space で画面上端に上寄せ配置。
-  // 半透明(LAB_CEILING_ALPHA)。frontForest の直前(uiLayer の下)に置く=ゲームプレイ/前景森より手前。
-  // アスペクト維持で画面幅にフィット(縦は溢れた透過部がクリップされるだけ)。lab テーマ以外は非表示。
-  private updateLabCeiling(show: boolean) {
-    const tex = show ? getTexture('lab/lab-ceiling-band') : null;
+  // 最前面の天井帯オーバーレイ: screen-space で画面上端に上寄せ配置。半透明(LAB_CEILING_ALPHA)。
+  // frontForest の直前(uiLayer の下)に置く=ゲームプレイ/前景森より手前。アスペクト維持で画面幅にフィット。
+  // texName=lab のケーブル帯 or チュートリアルの鍾乳石帯(同仕様)。null=非表示。
+  private updateLabCeiling(texName: string | null) {
+    const tex = texName ? getTexture(texName) : null;
     if (!tex || LAB_CEILING_ALPHA <= 0) { if (this.labCeiling) this.labCeiling.visible = false; return; }
     if (!this.labCeiling) {
       const sp = new Sprite(tex);
