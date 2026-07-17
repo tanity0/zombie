@@ -163,9 +163,10 @@ const STAGE5_HORIZON_FOREST_DOWN_PX = 20;    // 森1の底=境界線から下へ
 // farH からの比率で上端を決め、下端は stage5 と同じく境界線(farH)+固定pxで地面へ食い込ませる。
 const TUTORIAL_HORIZON_WATER_BOTTOM_FRAC = 516 / 710; // 遠景内の水面下端(クロップ後710px基準)
 const TUTORIAL_HORIZON_HEAD_PX = 34;  // 帯上端が水面に被る量(v0.25.1814: 社長指示「20px上へ」で14→34)
-// v0.25.1815(社長指示「上合わせで、高さを140pxに」): 高さは比率式をやめ固定px(stage5と同じ流儀)。
-// 上端(川被り34px)を固定アンカーにし、下端は成り行き(小さい画面では境界線を跨いで地面を覆う)。
-const TUTORIAL_HORIZON_FOREST_HEIGHT_PX = 140;
+// v0.25.1816(社長指示「追従する式に戻しつつ、相対的に20px落として」): 高さ=端末追従式−20px。
+// 追従式=上端(水面下端−34px)から境界線(farH)までの距離。−20pxのぶん下端が境界線の20px上で
+// 終わり、その下は遠景自身の岩肌が見える(岩on岩なので馴染む想定)。上端アンカー(川被り34px)は不変。
+const TUTORIAL_HORIZON_HEIGHT_TRIM_PX = 20;
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
@@ -1866,7 +1867,11 @@ export class PixiScene {
     );
     // ステージ5は実寸150px固定(社長指示v0.25.1742。比率×クランプ×倍率だと端末次第で伸びないため)。
     // 地平の薄消し線(horizonActorHideScreenY)は帯の実位置から導出しているので自動で追従する。
-    if (this.currentFarKey === 'tutorial') return TUTORIAL_HORIZON_FOREST_HEIGHT_PX; // 140px固定(上端合わせ)
+    if (this.currentFarKey === 'tutorial') {
+      // 追従式(上端=水面下端−HEAD_PX から境界線まで)−TRIM。上端合わせなので下端がTRIMぶん上がる。
+      const farH = this.farBackdropHeight();
+      return farH * (1 - TUTORIAL_HORIZON_WATER_BOTTOM_FRAC) + TUTORIAL_HORIZON_HEAD_PX - TUTORIAL_HORIZON_HEIGHT_TRIM_PX;
+    }
     return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base;
   }
 
