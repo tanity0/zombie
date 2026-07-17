@@ -19,6 +19,18 @@ export const loadProgressDone = (units = 1): void => {
 // 0..1。未登録(total=0)は 0 を返す。done がなんらかの理由で total を超えても 1 で止める。
 export const getLoadProgress = (): number => (total <= 0 ? 0 : Math.min(1, done / total));
 
+// --- 出撃ローディング用の「ウィンドウ」(v0.25.1827・社長指示「出撃ローディングにも%表示」) ---
+// リセット時点を基準(base)にし、それ以降に登録された begin/done だけで%を出す。
+// 起動時ロードで total/done が既に進んでいても、出撃時に 0% から始められる。
+let baseTotal = 0;
+let baseDone = 0;
+export const loadProgressResetWindow = (): void => { baseTotal = total; baseDone = done; emit(); };
+export const getLoadProgressWindow = (): number => {
+  const t = total - baseTotal;
+  const d = done - baseDone;
+  return t <= 0 ? 0 : Math.min(1, d / t);
+};
+
 export const subscribeLoadProgress = (fn: () => void): (() => void) => {
   listeners.add(fn);
   return () => { listeners.delete(fn); };

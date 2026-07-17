@@ -228,6 +228,10 @@ export const PHASER_INDEX = 7;
 // チュートリアルの随行衛生兵(EscortSoldier流用)の特別soldierIndex。名簿(BASE_SOLDIERS)外なので
 // セリフ系はtutorialゲートで全停止し、描画はpixiScene側で 'npc/medic-walk'(4コマピンポン)に差し替える。
 export const TUTORIAL_MEDIC_INDEX = 100;
+// チュートリアルの随行軍人=レスキューイベントのヘルメット兵(社長指示v0.25.1827「軍人はレスキュー
+// イベントの時のヘルメットしてるNPC」)。名簿外indexにすると drawEscorts の ESCORT_SPRITE_BASE
+// フォールバック('rescue/shooter')がそのまま使われる(2コマ歩行)。
+export const TUTORIAL_SOLDIER_INDEX = 101;
 // チュートリアルの上下移動制限(プレイヤー中心yがスポーン(0)から±この値まで・透明な壁)。
 // 縦固定カメラ(useGameLoop側)とセットで、被写界深度の構図を守る(社長指示v0.25.1826)。
 export const TUTORIAL_MOVE_Y_LIMIT_PX = 50;
@@ -251,7 +255,7 @@ const makeBaseSoldiers = (cx: number, cy: number): { x: number; y: number; hx: n
 // 軍人、衛生兵の順番」)。EscortSoldierを流用(描画/影/地平フェードを共用)し、移動はuseGameLoopの
 // 追従チェーン(stepFollowChain)が担当。軍人=エドガー(index0・仮キャスト)/衛生兵=専用index。
 const makeTutorialCompanions = (px: number, py: number): EscortSoldier[] => [
-  { id: 'escort-tutorial-soldier', baseId: 'base-0', x: px - 46, y: py + 8, face: 1, soldierIndex: 0, fireAt: 0, dwellMs: 0, moving: false },
+  { id: 'escort-tutorial-soldier', baseId: 'base-0', x: px - 46, y: py + 8, face: 1, soldierIndex: TUTORIAL_SOLDIER_INDEX, fireAt: 0, dwellMs: 0, moving: false },
   { id: 'escort-tutorial-medic', baseId: 'base-1', x: px - 92, y: py + 16, face: 1, soldierIndex: TUTORIAL_MEDIC_INDEX, fireAt: 0, dwellMs: 0, moving: false },
 ];
 

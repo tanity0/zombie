@@ -4288,11 +4288,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (Math.hypot(baseCamX - camX, baseCamY - camY) > CAMERA_SNAP_DIST) {
           camX = baseCamX; camY = baseCamY; look.x = 0; look.y = 0;
         }
-        // チュートリアル: 縦は固定カメラ(社長指示v0.25.1826「プレイヤーが動いても画面が動かないように」)。
-        // 上下移動は±50px(store側の透明な壁)なので、カメラyはスポーン構図(プレイヤー中心y=0)で固定
-        // =岩レイヤー/川/被写界深度の構図が崩れない。横は通常追従のまま。
+        // チュートリアル: 縦はプレイヤー1:1追従(遅延・先読みなし)=プレイヤーの画面上の縦位置を完全固定
+        // (社長指示v0.25.1827「上下移動で地面がぬるっと動く体験は残しつつ、プレイヤーは画面位置固定」)。
+        // 背景レイヤー(遠景/岩帯/川/霧/ツララ)は画面固定なので構図は不変、動くのは地面と周囲の物だけ。
+        // 上下±50px(store側の透明な壁)がその可動域。横は通常追従のまま。
         if (tutorialStage) {
-          camY = -gameBounds.height / 2 - camDownOff;
+          camY = baseCamY;
           look.y = 0;
         }
         // 屋内はカメラを「野外マージン込みの外周」にクランプ。壁の外に野外を設けたので、端でも

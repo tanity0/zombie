@@ -1,5 +1,26 @@
 # Development Log
 
+## v0.25.1827 — 随行軍人=ヘルメット兵へ+縦カメラ=プレイヤー画面固定式+出撃ローディング%(社長指示3件)【2026-07-17 21:02 JST】
+- **①随行軍人の配役修正**(社長指示「軍人はレスキューイベントの時のヘルメットしてるNPC」):
+  エドガー(仮)→ **rescue/shooter(ヘルメット兵・2コマ歩行)**。`TUTORIAL_SOLDIER_INDEX=101`
+  (名簿外index=drawEscortsのフォールバックが rescue/shooter を使う)。エドガー新素材(v1825)は
+  他ステージの護衛用として有効のまま。
+- **②縦カメラ方式の変更**(社長指示「上下移動で地面がぬるっと動く体験は残しつつ、プレイヤーは
+  画面位置固定」): v1826の「カメラ固定」→ **プレイヤー1:1追従(遅延・先読みなし)**へ。プレイヤーの
+  画面上の縦位置が完全固定になり(実測footScreenY=523で不動)、上下±50pxの移動では地面と周囲の
+  物だけが動く。背景レイヤー(遠景/岩帯/川/霧/ツララ)は画面固定なので構図は不変。
+- **③出撃ローディングの%表示**(社長指示「出撃ローディングにも%出せないんだっけ?」):
+  loadProgressに**ウィンドウAPI**(`loadProgressResetWindow`/`getLoadProgressWindow`)を追加し、
+  PixiStage初期化の素材読込(マニフェスト+コア背景4+ステージ別約26)を計上。出撃オーバーレイ
+  (黒画面)にタイトルと同スタイルの「LOADING… n%」を表示(SortieLoadingOverlayコンポーネント)。
+  キャッシュ済みなら一瞬=%が見えるのは実際に読み込んでいる時だけ。begin登録は同一式内で先に揃う
+  =単調増加(v1776の流儀を踏襲)。
+- 検証: typecheck green・ヘッドレス=ヘルメット兵の隊列(プレイヤー→軍人→衛生兵)を確認。
+- Files: `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/utils/loadProgress.ts`,
+  `src/pixi/PixiStage.tsx`, `src/App.tsx`, `TUTORIAL_STAGE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1826 — 「一瞬森」修正+チュートリアル縦移動制限&固定カメラ+社長決定の記録【2026-07-17 20:52 JST】
 - **①「一瞬森が映る」修正(全ステージ共通・社長指示「絶対にどうにかしたい」)**: 原因=ローディング解除
   (rendererReady)が「森ベースの初フレーム」直後で、ステージ別テクスチャの非同期注入完了を待って

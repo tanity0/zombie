@@ -6,6 +6,7 @@ import GameOverScreen from './components/GameOverScreen';
 import EndingScreen from './components/EndingScreen';
 import LoadingScreen from './components/LoadingScreen';
 import OrientationGuard from './components/OrientationGuard';
+import { getLoadProgressWindow, subscribeLoadProgress } from './utils/loadProgress';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
@@ -23,6 +24,19 @@ import { getStage } from './data/campaign';
 import { isPixiRenderer } from './config/renderer';
 
 const LOADING_MIN_MS = 650;
+
+// 出撃ローディングのオーバーレイ(v0.25.1827・社長指示「出撃ローディングにも%表示」)。
+// PixiStage初期化のウィンドウ進捗(loadProgressResetWindow基準)を購読して%を出す。
+// キャッシュ済みなら一瞬で消えるので、%が見えるのは実際に読み込みが走っている時だけ。
+function SortieLoadingOverlay() {
+  const [pct, setPct] = useState(() => Math.round(getLoadProgressWindow() * 100));
+  useEffect(() => subscribeLoadProgress(() => setPct(Math.round(getLoadProgressWindow() * 100))), []);
+  return (
+    <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center">
+      <span className="text-[11px] tracking-[0.34em] tabular-nums text-purple-200/55">LOADING… {pct}%</span>
+    </div>
+  );
+}
 
 function App() {
   const [gameState, setGameState] = useState<GameState>('title'); // 最初にタイトル(the ONE)を即表示
@@ -277,7 +291,7 @@ function App() {
           z-[100] でHUD(z-40)や各種バッジ(z-50)より上、OrientationGuard(z-[9999])より下。
           レンダラ準備完了(初フレーム表示)で自動的に外れる。 */}
       {gameState === 'playing' && isPixiRenderer() && !rendererReady && !loadOverlayTimedOut && (
-        <div className="fixed inset-0 z-[100] bg-black" />
+        <SortieLoadingOverlay />
       )}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}

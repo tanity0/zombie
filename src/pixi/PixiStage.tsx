@@ -6,6 +6,7 @@ import { PixiScene } from './pixiScene';
 import { useGameStore } from '../store/gameStore';
 import { setAudioSuspended } from '../audio/audioManager';
 import { computeViewport } from '../utils/viewport';
+import { loadProgressBegin, loadProgressDone, loadProgressResetWindow } from '../utils/loadProgress';
 import { setAppliedResolution } from '../config/renderer';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
@@ -60,6 +61,9 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
     appRef.current = app; // 早期に保持: 非同期init中にunmountしても cleanup で確実に破棄できる
 
     (async () => {
+      // 出撃ローディングの%(v0.25.1827): この初期化で読む素材をウィンドウ計上する。
+      // 通常はキャッシュ済みで一瞬だが、キャッシュ未温(初回/デプロイ直後)は実進捗が見える。
+      loadProgressResetWindow();
       await app.init({
         width,
         height,
@@ -71,16 +75,20 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       });
       setAppliedResolution(app.renderer.resolution); // 診断表示用(実際に効いている値)
       if (cancelled) return;
+      loadProgressBegin(1); // スプライトマニフェスト一式(通常キャッシュ済み=瞬時)を1ユニットとして計上
       await ensureTextures();
+      loadProgressDone();
       const BASE = import.meta.env.BASE_URL;
       // コア背景4枚だけ並列で待ってシーンを即起動(黒画面を最短化)。ステージ別の追加テクスチャは
       // シーン開始後に非同期注入する(セッターは遅延注入対応=後から差し替わる)。
+      loadProgressBegin(4);
       const [farTexture, groundTexture, horizonForestTexture, frontForestTexture] = await Promise.all([
         Assets.load(`${BASE}backgrounds/distant-night-panorama.jpg`),
         Assets.load(`${BASE}backgrounds/ground-moss-dirt.jpg`),
         Assets.load(`${BASE}backgrounds/horizon-forest-band.png`),
         Assets.load(`${BASE}backgrounds/front-forest-foreground.png`),
       ]);
+      loadProgressDone(4);
       frontForestTexture.source.scaleMode = 'linear';
       if (cancelled) return;
 
@@ -152,7 +160,11 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       // ステージ別/ラボの追加テクスチャは「表示後」に非同期注入(セッターは遅延注入対応)。
       // 起動時 preloadBackgrounds でキャッシュ済みなので通常はマイクロタスクで解決=初回tick前に注入完了
       // ≒フラッシュ無し。万一キャッシュ未温(稀)でも、表示済みなので黒画面にはならず一瞬森が見えるだけ。
-      const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null);
+      // 各ステージ別テクスチャも1ユニットずつウィンドウ計上(呼び出しは同一式内=beginが先に揃う→単調増加)。
+      const load = (p: string) => {
+        loadProgressBegin(1);
+        return Assets.load(`${BASE}${p}`).catch(() => null).finally(() => loadProgressDone());
+      };
       void (async () => {
         const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks] = await Promise.all([
           load('sprites/lab-floor/lab-floor-stage2.png'),
