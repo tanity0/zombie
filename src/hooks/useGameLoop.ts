@@ -2812,7 +2812,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (!st.tutorialPopupShown && newGameTime >= 1200) {
             st.showTutorialPopup({
               title: '移動',
-              lines: ['画面のどこでもいい、指でなぞった方向に歩く。', 'まずは右へ──帰還地点の緑のマークを目指せ。'],
+              lines: ['指でなぞった方向に移動。', '右へ。緑のマークが帰還地点。'],
               art: 'move',
             });
           }
