@@ -2807,6 +2807,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ついてくる。軍人、衛生兵の順番」)。escorts流用・拠点前進/射撃はupdateSuppression側で停止済み。
         if (tutorialStage) {
           const st = useGameStore.getState();
+          // 操作説明ポップアップ(試作v0.25.1830): 開始1.2秒で「移動」の説明を1回だけ表示(ゲーム停止)。
+          // 本実装ではイベント台本から任意のタイミング/内容で showTutorialPopup を呼ぶ想定。
+          if (!st.tutorialPopupShown && newGameTime >= 1200) {
+            st.showTutorialPopup({
+              title: '移動',
+              lines: ['画面のどこでもいい、指でなぞった方向に歩く。', 'まずは右へ──帰還地点の緑のマークを目指せ。'],
+              art: 'move',
+            });
+          }
           // 左壁(スタートから−100px)に突っ込んでいる間、軍人が窘める(社長指示v0.25.1829
           // 「軍人NPCが『そっちじゃないぞ。』という」)。カテゴリCD6秒=押し続けても連発しない。
           {

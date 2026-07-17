@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.1830 — 操作説明ポップアップの試作(社長「ポップアップで操作方法を説明してくれるやつ、即興で作れる?」)【2026-07-17 21:36 JST】
+- **汎用チュートリアルポップアップ**を新設(`TutorialPopup.tsx`・更新情報と同じFF7R風パネル+Ff7rButton):
+  タイトル+挿絵スロット+説明行+OK。**表示中はisPaused=true**(シーン停止・PauseMenuは
+  ポップアップ優先ゲートで出さない)。OKで再開。
+- store: `tutorialPopup/tutorialPopupShown` + `showTutorialPopup/closeTutorialPopup`。
+  **イベント台本から任意のタイミング・内容で呼べる汎用API**(今回の自動発火はデモ)。
+- デモ発火: チュートリアル開始1.2秒で「移動」(図解=インラインSVG: キャラ+進行矢印+指のドラッグ軌跡。
+  素材レス。実スクショに差し替える場合は挿絵スロットを<img>にするだけ)。
+  文言=「画面のどこでもいい、指でなぞった方向に歩く。/まずは右へ──帰還地点の緑のマークを目指せ。」(叩き台)。
+- 検証: typecheck green・ヘッドレスでポップアップ表示(ゲーム停止)を確認。
+- Files: `src/components/TutorialPopup.tsx`(新), `src/components/Game.tsx`, `src/store/gameStore.ts`,
+  `src/hooks/useGameLoop.ts`, `TUTORIAL_STAGE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1829 — 出撃%の逆行修正+帰還サークル常設&マーカー+左壁&軍人の一言(社長指示3件)【2026-07-17 21:18 JST】
 - **①出撃ローディング%の逆行修正**(社長報告「100-99-98-97%とかなって開始される」): 原因=分母(begin)を
   段階登録していたため、キャッシュ済みで即completeする環境では「先に100%→後から分母が増えて減算表示」。

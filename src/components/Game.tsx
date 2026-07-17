@@ -14,6 +14,7 @@ import WallBand from './WallBand';
 import WallInscription from './WallInscription';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
+import TutorialPopup from './TutorialPopup';
 import ShopMenu from './ShopMenu';
 import IntroDialogue from './IntroDialogue';
 import MobileControls from './MobileControls';
@@ -69,6 +70,7 @@ const Game: React.FC<GameProps> = ({
   );
 
   const isPaused = useGameStore(state => state.isPaused);
+  const tutorialPopupOpen = useGameStore(state => state.tutorialPopup !== null); // boolean派生=開閉時のみ再描画
   const showStatsOverlay = useGameStore(state => state.showStatsOverlay);
   // 凍結診断オンスクリーン表示(?debug=1)。
   const debugOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
@@ -233,7 +235,9 @@ const Game: React.FC<GameProps> = ({
       )}
       {isTouch && <MobileControls />}
       
-      {isPaused && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && (
+      {/* チュートリアルの操作説明ポップアップ(表示中はisPaused=trueだがPauseMenuは出さない=ポップアップ優先) */}
+      <TutorialPopup />
+      {isPaused && !tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && (
         <PauseMenu onResume={() => setPaused(false)} onQuit={onGameOver} />
       )}
       

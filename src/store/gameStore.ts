@@ -2219,6 +2219,12 @@ interface GameState {
   showStatsOverlay: boolean; // 撃破/DMG/SCRAP + FPS/負荷オーバーレイの表示(TOPで選択。既定OFF)
   introUntil: number; // キャラ登場演出の終了時刻(Date.now基準)。-1=未確定(初フレームで確定)、0=演出なし
   rendererReady: boolean; // レンダラ(Pixi)が初フレームを表示済みか。冷間リロード時に登場演出が黒画面で進行=「まっくら」を防ぐため、初フレーム表示まで演出を t=0 で保持する。
+  // チュートリアルの操作説明ポップアップ(v0.25.1830・社長「ポップアップで操作方法を説明してくれるやつ」)。
+  // 表示中はisPaused=true(シーン停止・PauseMenuはGame側でポップアップ優先ゲート)。artは挿絵の種類。
+  tutorialPopup: { title: string; lines: string[]; art?: 'move' } | null;
+  tutorialPopupShown: boolean; // このランで表示済みか(resetGameでリセット)
+  showTutorialPopup: (p: { title: string; lines: string[]; art?: 'move' }) => void;
+  closeTutorialPopup: () => void;
   introDialogueActive: boolean;  // 登場セリフ表示中(時間停止)
   introDialogueStartedAt: number; // セリフ開始時刻(Date.now。オートタイプ基準)
   introDialogueShown: boolean;   // この登場で既にセリフを出したか(再トリガー防止)
@@ -2862,6 +2868,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   showStatsOverlay: false,
   introUntil: 0,
   rendererReady: false,
+  tutorialPopup: null,
+  tutorialPopupShown: false,
   introDialogueActive: false,
   introDialogueStartedAt: 0,
   introDialogueShown: false,
@@ -8597,6 +8605,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ introUntil: Date.now() + PLAYER_INTRO_MS, introDialogueActive: false, introDialogueShown: false });
   },
 
+  showTutorialPopup: (p) => {
+    set({ tutorialPopup: p, tutorialPopupShown: true, isPaused: true }); // 表示中はゲーム停止(読み物の間、敵/時計を進めない)
+  },
+  closeTutorialPopup: () => {
+    set({ tutorialPopup: null, isPaused: false });
+  },
+
   setRendererReady: (ready) => {
     if (useGameStore.getState().rendererReady === ready) return; // 同値書き込みで購読者を起こさない
     set({ rendererReady: ready });
@@ -9906,6 +9921,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         returnCircle: farBackdrop === 'tutorial'
           ? { x: TUTORIAL_RETURN_CIRCLE_X, y: 0, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 }
           : null,
+        tutorialPopup: null,
+        tutorialPopupShown: false,
         gameReturned: false,
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
