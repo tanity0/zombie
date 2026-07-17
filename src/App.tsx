@@ -6,7 +6,7 @@ import GameOverScreen from './components/GameOverScreen';
 import EndingScreen from './components/EndingScreen';
 import LoadingScreen from './components/LoadingScreen';
 import OrientationGuard from './components/OrientationGuard';
-import { getLoadProgressWindow, subscribeLoadProgress } from './utils/loadProgress';
+import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow } from './utils/loadProgress';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
@@ -164,6 +164,9 @@ function App() {
     const selectedStage = (benchmark || free || revisitRun) ? undefined : stageForRun;
     useGameStore.getState().setIntroDialogueLines(selectedStage?.main.dialogue ?? []);
     setBenchmarkMode(pendingBenchmarkRef.current);
+    // 出撃ローディング%のウィンドウをここでリセット(v0.25.1829): オーバーレイの初期描画が
+    // 前回ウィンドウの100%を一瞬見せないように(PixiStage側のリセットより先=マウント前に0%へ)。
+    loadProgressResetWindow();
     setGameState('playing');
   };
 

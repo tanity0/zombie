@@ -9356,6 +9356,37 @@ export class PixiScene {
       }
     }
 
+    // 帰還サークルの方角マーカー(v0.25.1829・社長指示「チュートリアルは最初から帰還サークル+マークも表示」)。
+    // 画面外のときだけ画面端に緑の二重円+矢印。チュートリアルの常設ゴールに限らず、フィナーレの
+    // 帰還サークルにも同じ誘導が付く(従来は城マーカー頼みだった)。
+    {
+      const rc = useGameStore.getState().returnCircle;
+      if (rc) {
+        const rx = rc.x - camera.x, ry = rc.y - camera.y;
+        if (rx < 0 || rx > this.screenW || ry < 0 || ry > this.screenH) {
+          const angle = Math.atan2(ry - cyC, rx - cxC);
+          const dx = Math.cos(angle), dy = Math.sin(angle);
+          let tdist = Infinity;
+          if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+          else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+          if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+          else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+          if (isFinite(tdist)) {
+            const ex = cxC + dx * tdist, ey = cyC + dy * tdist;
+            const color = 0x34d399; // 帰還=エメラルド
+            g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
+            g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.92 });
+            g.circle(ex, ey, 5.5).stroke({ width: 1.5, color, alpha: 0.6 + 0.3 * pulse }); // 二重円=帰還サークル
+            g.circle(ex, ey, 1.8).fill({ color, alpha: 0.9 });
+            const hx = ex + dx * 15, hy = ey + dy * 15;
+            const ca = Math.cos(angle), sa = Math.sin(angle);
+            const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+            g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+          }
+        }
+      }
+    }
+
     // 担当NPC(護衛軍人)の方角矢印: プレイヤーが居る担当エリア(セクター)の担当NPC のみ表示(社長指示)。
     // 担当外のNPCは出さない。画面外のときだけ矢印(画面内マーカーは無し)。制圧後も(NPCが拠点に居る間)表示。
     if (playerCenter && escorts.length) {

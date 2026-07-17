@@ -38,7 +38,8 @@ import {
   NPC_DIALOGUE_MS, NPC_DIALOGUE_GAP_MS,
   RN_ENEMY_FORCE,
   FIRST_AID_KIT_THROW_DAMAGE,
-  PHASER_INDEX, BASE_SOLDIER_COUNT
+  PHASER_INDEX, BASE_SOLDIER_COUNT,
+  TUTORIAL_MOVE_X_MIN_PX
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -2806,6 +2807,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ついてくる。軍人、衛生兵の順番」)。escorts流用・拠点前進/射撃はupdateSuppression側で停止済み。
         if (tutorialStage) {
           const st = useGameStore.getState();
+          // 左壁(スタートから−100px)に突っ込んでいる間、軍人が窘める(社長指示v0.25.1829
+          // 「軍人NPCが『そっちじゃないぞ。』という」)。カテゴリCD6秒=押し続けても連発しない。
+          {
+            const pcxNow = st.player.x + st.player.width / 2;
+            if (st.player.isMoving && pcxNow <= TUTORIAL_MOVE_X_MIN_PX + 6) {
+              st.tryNpcLine('軍人', 'tutorial-left-wall', 'そっちじゃないぞ。', 6000);
+            }
+          }
           if (st.escorts.length) {
             const pcx0 = st.player.x + st.player.width / 2;
             const pcy0 = st.player.y + st.player.height / 2;

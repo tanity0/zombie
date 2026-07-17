@@ -1,5 +1,26 @@
 # Development Log
 
+## v0.25.1829 — 出撃%の逆行修正+帰還サークル常設&マーカー+左壁&軍人の一言(社長指示3件)【2026-07-17 21:18 JST】
+- **①出撃ローディング%の逆行修正**(社長報告「100-99-98-97%とかなって開始される」): 原因=分母(begin)を
+  段階登録していたため、キャッシュ済みで即completeする環境では「先に100%→後から分母が増えて減算表示」。
+  → **分母を初期化冒頭で一括登録**(`SORTIE_STAGE_TEXTURE_PATHS`配列で一元管理・以後doneのみ=構造的に
+  単調増加)+**出撃開始時(startGame)にもウィンドウをリセット**(オーバーレイ初期描画が前回の100%を
+  一瞬見せないように)。
+- **②帰還サークル常設+誘導マーカー**(社長指示「最初から帰還サークルを右3000px地点に設置。マークも表示」):
+  resetGameでtutorial時 `returnCircle={x:3000, y:0}` を常設(3秒滞在で任務達成=既存経路)。
+  syncArrowsに**帰還サークルの画面端マーカー**(緑の二重円+矢印)を新設 — チュートリアルに限らず
+  フィナーレの帰還サークルにも同じ誘導が付く(従来は城マーカー頼み)。
+  ※壁(関所境界)は物理ブロックではなくイベント境界(半径ゾーン)のため、右3000pxへは歩いて到達可能。
+- **③左の透明壁+軍人の一言**(社長指示「左は100pxまで。軍人NPCが『そっちじゃないぞ。』という」):
+  movePlayerでtutorial時 中心x≥−100にクランプ(`TUTORIAL_MOVE_X_MIN_PX`)。壁に突っ込んで移動中は
+  軍人が「そっちじゃないぞ。」(tryNpcLine・カテゴリCD6秒=連発しない)。
+- 検証: typecheck green・ヘッドレス=右端に緑マーカー表示を確認(武器スロットUIと若干重なる=気になる
+  なら高さ調整可)。
+- Files: `src/pixi/PixiStage.tsx`, `src/App.tsx`, `src/utils/loadProgress.ts`, `src/store/gameStore.ts`,
+  `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`, `TUTORIAL_STAGE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1828 — チュートリアルの上下移動を±100pxへ(社長指示)【2026-07-17 21:06 JST】
 - `TUTORIAL_MOVE_Y_LIMIT_PX 50→100`(透明壁の可動域拡大。縦カメラ=プレイヤー画面固定式は不変)。
 - Files: `src/store/gameStore.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。

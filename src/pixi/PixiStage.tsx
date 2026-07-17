@@ -7,6 +7,37 @@ import { useGameStore } from '../store/gameStore';
 import { setAudioSuspended } from '../audio/audioManager';
 import { computeViewport } from '../utils/viewport';
 import { loadProgressBegin, loadProgressDone, loadProgressResetWindow } from '../utils/loadProgress';
+
+// 出撃時に注入するステージ別テクスチャの一覧。ローディング%の分母を初期化冒頭で全登録するため
+// 配列で一元管理(v0.25.1829: 分母を後から増やすと%が逆行する=「100→99→98…」社長報告の修正)。
+// ※読み込み結果の分割代入(下方)と位置結合=並びを変える時は両方を同順で更新すること。
+const SORTIE_STAGE_TEXTURE_PATHS = [
+  'sprites/lab-floor/lab-floor-stage2.png',
+  'backgrounds/stage3-distant-city-day.jpg',
+  'backgrounds/stage3-ground-cobble2.jpg',
+  'backgrounds/stage3-horizon-city.png',
+  'backgrounds/stage3-near-horizon-city.png',
+  'backgrounds/stage1-near-forest.png',
+  'backgrounds/stage2-lab-far.jpg',
+  'backgrounds/stage2-near-horizon2.png',
+  'backgrounds/stage4-far.jpg',
+  'backgrounds/stage4-front2.png',
+  'backgrounds/stage4-ground.jpg',
+  'backgrounds/stage4-horizon.png',
+  'backgrounds/stage3-front-rooftops.png',
+  'backgrounds/stage5-far.jpg',
+  'backgrounds/stage5-horizon.png',
+  'backgrounds/stage5-near-horizon.png',
+  'backgrounds/stage5-front.png',
+  'backgrounds/stage5-ground.jpg',
+  'backgrounds/tutorial-far.jpg',
+  'backgrounds/tutorial-ground.jpg',
+  'sprites/tutorial-river-flow-1.png',
+  'sprites/tutorial-river-flow-2.png',
+  'backgrounds/tutorial-horizon-rocks.png',
+  'backgrounds/tutorial-near-rocks.png',
+  'backgrounds/tutorial-front-rocks.png',
+] as const;
 import { setAppliedResolution } from '../config/renderer';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
@@ -63,7 +94,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
     (async () => {
       // 出撃ローディングの%(v0.25.1827): この初期化で読む素材をウィンドウ計上する。
       // 通常はキャッシュ済みで一瞬だが、キャッシュ未温(初回/デプロイ直後)は実進捗が見える。
+      // 分母(ユニット総数)はここで一括登録=以後はdoneだけ→%は単調増加(v0.25.1829: 逆行修正)。
+      // 内訳: スプライトマニフェスト一式=1 + コア背景4 + ステージ別テクスチャ。
       loadProgressResetWindow();
+      loadProgressBegin(1 + 4 + SORTIE_STAGE_TEXTURE_PATHS.length);
       await app.init({
         width,
         height,
@@ -75,13 +109,11 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       });
       setAppliedResolution(app.renderer.resolution); // 診断表示用(実際に効いている値)
       if (cancelled) return;
-      loadProgressBegin(1); // スプライトマニフェスト一式(通常キャッシュ済み=瞬時)を1ユニットとして計上
       await ensureTextures();
-      loadProgressDone();
+      loadProgressDone(); // マニフェスト一式=1ユニット
       const BASE = import.meta.env.BASE_URL;
       // コア背景4枚だけ並列で待ってシーンを即起動(黒画面を最短化)。ステージ別の追加テクスチャは
       // シーン開始後に非同期注入する(セッターは遅延注入対応=後から差し替わる)。
-      loadProgressBegin(4);
       const [farTexture, groundTexture, horizonForestTexture, frontForestTexture] = await Promise.all([
         Assets.load(`${BASE}backgrounds/distant-night-panorama.jpg`),
         Assets.load(`${BASE}backgrounds/ground-moss-dirt.jpg`),
@@ -160,39 +192,12 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       // ステージ別/ラボの追加テクスチャは「表示後」に非同期注入(セッターは遅延注入対応)。
       // 起動時 preloadBackgrounds でキャッシュ済みなので通常はマイクロタスクで解決=初回tick前に注入完了
       // ≒フラッシュ無し。万一キャッシュ未温(稀)でも、表示済みなので黒画面にはならず一瞬森が見えるだけ。
-      // 各ステージ別テクスチャも1ユニットずつウィンドウ計上(呼び出しは同一式内=beginが先に揃う→単調増加)。
-      const load = (p: string) => {
-        loadProgressBegin(1);
-        return Assets.load(`${BASE}${p}`).catch(() => null).finally(() => loadProgressDone());
-      };
+      // 各ステージ別テクスチャ(SORTIE_STAGE_TEXTURE_PATHS)。ユニットはinit冒頭で全登録済み=ここではdoneのみ。
+      const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null).finally(() => loadProgressDone());
       void (async () => {
-        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks] = await Promise.all([
-          load('sprites/lab-floor/lab-floor-stage2.png'),
-          load('backgrounds/stage3-distant-city-day.jpg'),
-          load('backgrounds/stage3-ground-cobble2.jpg'),
-          load('backgrounds/stage3-horizon-city.png'),
-          load('backgrounds/stage3-near-horizon-city.png'),
-          load('backgrounds/stage1-near-forest.png'),
-          load('backgrounds/stage2-lab-far.jpg'),
-          load('backgrounds/stage2-near-horizon2.png'),
-          load('backgrounds/stage4-far.jpg'),
-          load('backgrounds/stage4-front2.png'),
-          load('backgrounds/stage4-ground.jpg'),
-          load('backgrounds/stage4-horizon.png'),
-          load('backgrounds/stage3-front-rooftops.png'),
-          load('backgrounds/stage5-far.jpg'),
-          load('backgrounds/stage5-horizon.png'),
-          load('backgrounds/stage5-near-horizon.png'),
-          load('backgrounds/stage5-front.png'),
-          load('backgrounds/stage5-ground.jpg'),
-          load('backgrounds/tutorial-far.jpg'),
-          load('backgrounds/tutorial-ground.jpg'),
-          load('sprites/tutorial-river-flow-1.png'),
-          load('sprites/tutorial-river-flow-2.png'),
-          load('backgrounds/tutorial-horizon-rocks.png'),
-          load('backgrounds/tutorial-near-rocks.png'),
-          load('backgrounds/tutorial-front-rocks.png'),
-        ]);
+        // 注意: 分割代入の並びは SORTIE_STAGE_TEXTURE_PATHS の並びと1:1対応(位置結合)。追加時は両方を同順で。
+        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks] =
+          await Promise.all(SORTIE_STAGE_TEXTURE_PATHS.map(load));
         if (cancelled || sceneRef.current !== scene) return;
         scene.setLabGroundTexture(labGround);            // 研究所スキンの床
         scene.setFarBackdropTexture('lab', s2Far);       // ステージ2(lab)の遠景

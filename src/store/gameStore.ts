@@ -235,6 +235,10 @@ export const TUTORIAL_SOLDIER_INDEX = 101;
 // チュートリアルの上下移動制限(プレイヤー中心yがスポーン(0)から±この値まで・透明な壁)。
 // 縦カメラ=プレイヤー1:1追従とセットで、被写界深度の構図を守る(社長指示v0.25.1826)。
 export const TUTORIAL_MOVE_Y_LIMIT_PX = 100; // v0.25.1828: 社長指示「100pxに増やします」で50→100
+// チュートリアルの帰還サークル位置(最初から常設・社長指示v0.25.1829「最初から帰還サークルを右3000px地点に設置」)。
+const TUTORIAL_RETURN_CIRCLE_X = 3000;
+// チュートリアルの左端(プレイヤー中心xの下限=スタートから左100pxで透明な壁・社長指示v0.25.1829)。
+export const TUTORIAL_MOVE_X_MIN_PX = -100;
 const PHASER_GUN_OFFSET = 5;           // 2丁拳銃の左右ずらし幅(px。進行方向に直交)
 const PHASER_APPEAR_CHANCE = 0.2;      // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)
@@ -3070,11 +3074,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         newX = wallResolved.x;
         newY = wallResolved.y;
-        // チュートリアル: 上下移動は中心(スポーンy=0)から±50pxまで=透明な壁(社長指示v0.25.1826)。
-        // 固定カメラ(縦)の被写界深度構図を守るため。横は自由。
+        // チュートリアル: 上下移動は中心(スポーンy=0)から±100pxまで=透明な壁(社長指示v0.25.1826/1828)。
+        // 左はスタートから−100pxまで(社長指示v0.25.1829)。右は自由(帰還サークルへ進む)。
         if (get().farBackdrop === 'tutorial') {
           const half = player.height / 2;
           newY = Math.max(-TUTORIAL_MOVE_Y_LIMIT_PX - half, Math.min(TUTORIAL_MOVE_Y_LIMIT_PX - half, newY));
+          newX = Math.max(TUTORIAL_MOVE_X_MIN_PX - player.width / 2, newX);
         }
       }
       // 囲い系イベント中はプレイヤーを円(囲い)の内側へ拘束(円コリジョン)。壁解決の後に最終クランプ。
@@ -9896,7 +9901,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         revisitMode: state.pendingRevisit && !indoor && stageTheme !== 'lab',
         medicineUsedAt: 0,
         medicinePromptVisible: false,
-        returnCircle: null,
+        // チュートリアル: 帰還サークルを最初から右3000px地点に常設(社長指示v0.25.1829)。
+        // updateReturnPhaseは returnCircle があれば毎フレーム動く=3秒滞在で任務達成(既存経路)。
+        returnCircle: farBackdrop === 'tutorial'
+          ? { x: TUTORIAL_RETURN_CIRCLE_X, y: 0, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 }
+          : null,
         gameReturned: false,
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
