@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1817',
+    items: [
+      'チュートリアルステージ(開発中): 川辺の岩帯を10px上へ移動し、その手前に2つ目の岩帯レイヤーを追加しました(奥行きの表現)。',
+    ],
+  },
+  {
     version: '0.25.1816',
     items: [
       'チュートリアルステージ(開発中): 川辺の岩の帯を端末追従の高さに戻し、そこから20px低くしました。',

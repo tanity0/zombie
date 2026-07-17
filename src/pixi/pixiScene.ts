@@ -162,11 +162,16 @@ const STAGE5_HORIZON_FOREST_DOWN_PX = 20;    // 森1の底=境界線から下へ
 // 水面の下端(遠景テクスチャ y516/710)を基準に、帯の上端(トゲ岩の先端)が少しだけ川へ食い込むよう
 // farH からの比率で上端を決め、下端は stage5 と同じく境界線(farH)+固定pxで地面へ食い込ませる。
 const TUTORIAL_HORIZON_WATER_BOTTOM_FRAC = 516 / 710; // 遠景内の水面下端(クロップ後710px基準)
-const TUTORIAL_HORIZON_HEAD_PX = 34;  // 帯上端が水面に被る量(v0.25.1814: 社長指示「20px上へ」で14→34)
+const TUTORIAL_HORIZON_HEAD_PX = 44;  // 帯上端が水面に被る量(v0.25.1817: 社長指示「10px上へ」で34→44。上端アンカーなので帯全体が10px上がる)
 // v0.25.1816(社長指示「追従する式に戻しつつ、相対的に20px落として」): 高さ=端末追従式−20px。
 // 追従式=上端(水面下端−34px)から境界線(farH)までの距離。−20pxのぶん下端が境界線の20px上で
 // 終わり、その下は遠景自身の岩肌が見える(岩on岩なので馴染む想定)。上端アンカー(川被り34px)は不変。
 const TUTORIAL_HORIZON_HEIGHT_TRIM_PX = 20;
+// チュートリアルの遠景森2=岩帯2(v0.25.1817・社長指示「この岩帯2を1の手前レイヤーに表示」)。
+// ステージ5と同じ実寸px指定(高さ+底=境界線からの下オフセット)。素材2172x368(下端は浮き石の散り)。
+// 数値は叩き台(実機調整前提)。
+const TUTORIAL_NEAR_HORIZON_HEIGHT_PX = 130; // 岩帯2の高さ(px)
+const TUTORIAL_NEAR_HORIZON_DOWN_PX = 45;    // 岩帯2の底=境界線(farH)から下へ(px)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
@@ -2401,10 +2406,14 @@ export class PixiScene {
     // 遠景森2の高さ(サイズ)はステージ2だけ低め(社長指示)。他ステージは原典の0.42。
     // ステージ5は実寸px指定(社長指示v0.25.1742): 高さ100px・底=境界線(farH)+50px下。
     const stage5 = this.nearHorizonKeyNow === 'stage5';
+    const tutorial = this.nearHorizonKeyNow === 'tutorial'; // 岩帯2もステージ5と同じ実寸px指定
     const heightRatio = this.isLabStage ? LAB_NEAR_HORIZON_HEIGHT_RATIO : NEAR_HORIZON_HEIGHT_RATIO;
-    const height = stage5 ? STAGE5_NEAR_HORIZON_HEIGHT_PX : this.screenH * heightRatio;
+    const height = stage5 ? STAGE5_NEAR_HORIZON_HEIGHT_PX
+      : tutorial ? TUTORIAL_NEAR_HORIZON_HEIGHT_PX
+      : this.screenH * heightRatio;
     const bottom = stage5
       ? farH + STAGE5_NEAR_HORIZON_DOWN_PX
+      : tutorial ? farH + TUTORIAL_NEAR_HORIZON_DOWN_PX
       : farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
     // 横オーバースキャン: 引いた時に左右が切れないよう画面より広く中央寄せ(worldGroup内=スケール対象)。
     const nhMarginX = (this.screenW * ZOOM_OVERSCAN - this.screenW) / 2;

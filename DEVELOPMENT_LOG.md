@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1817 — 岩帯10px上へ+岩帯2(遠景森2)を手前レイヤーに追加(社長指示2件)【2026-07-17 18:49 JST】
+- **①岩帯(遠景森1)10px上へ**: `TUTORIAL_HORIZON_HEAD_PX 34→44`(上端アンカーなので帯全体が10px上)。
+- **②岩帯2=遠景森2スロットに配線**(社長支給素材・指示「この岩帯2を1の手前レイヤーに表示」):
+  緑キー+縁1pxフェザー+縦bboxクロップ(2172x724→**2172x368**・下端は浮き石の散り)→
+  `backgrounds/tutorial-near-rocks.png`。`setNearHorizonTexture('tutorial')` +
+  campaign `nearHorizon:'tutorial'` + layoutNearHorizonにステージ5と同じ実寸px分岐
+  (**高さ130px・底=境界線+45px・叩き台**)。パララックス0.5(既定)=岩帯1(0.16)より速い=手前の遠近。
+- 検証: typecheck green・ヘッドレスで岩帯1の手前に岩帯2(明るめの岩+浮き石)の奥行きを確認。
+- Files: `public/backgrounds/tutorial-near-rocks.png`(新), `src/pixi/pixiScene.ts`, `src/pixi/PixiStage.tsx`,
+  `src/pixi/pixiTextures.ts`, `src/data/campaign.ts`, `TUTORIAL_STAGE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1816 — 岩帯: 高さを追従式−20pxへ(社長指示「勘違いしてた。追従する式に戻しつつ、相対的に20px落として」)【2026-07-17 18:37 JST】
 - v1815の140px固定を撤回し、v1814の**端末追従式に戻して−20px**(`TUTORIAL_HORIZON_HEIGHT_TRIM_PX=20`)。
   上端アンカー(川被り34px)は不変=下端が境界線の20px上で終わり、その下は遠景自身の岩肌が見える

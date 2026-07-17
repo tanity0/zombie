@@ -133,6 +133,7 @@ export const STAGES: Stage[] = [
     timeLabel: '訓練記録', // 仮
     locationTitle: '地下訓練場', // 仮
     farBackdrop: 'tutorial', // 洞窟パノラマ(高さ大きめ表示・pixiScene側で専用比率)
+    nearHorizon: 'tutorial', // 遠景森2=岩帯2(岩帯1の手前・v0.25.1817社長支給)
     bgm: 'tutorial',
     subs: [],
     main: {
