@@ -5,6 +5,7 @@
   縦bboxクロップ(2172x724→**2172x332**)→ `backgrounds/tutorial-front-rocks.png`。
   `setFrontOverride('tutorial')` で既存の近景森1スロットへ(snow/stage5と同経路)。
   ぼかし=既存の近景ブラー(FRONT_FOREST_BLUR)がそのまま掛かる。
+  配置は**100px下寄せ**(`TUTORIAL_FRONT_Y_OFFSET_PX=100`・社長指示「100px下に」)。
 - **②ツララ帯(天井)のカメラ連動**(社長指示「画面と連動して動くように。この🪨と同じ速度」):
   天井帯を Sprite(完全固定)→ **TilingSprite化**(横ループ素材の本来の使い方・見た目スケールは
   従来と同一=1ループ=画面幅)し、チュートリアルのみ `tilePosition.x = -camera.x ×

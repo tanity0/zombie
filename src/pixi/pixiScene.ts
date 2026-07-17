@@ -176,6 +176,7 @@ const TUTORIAL_NEAR_HORIZON_DOWN_PX = 25;    // 岩帯2の底=境界線(farH)か
 // frontBank霧(通常=最前面・画面下部)を、z=岩帯1と岩帯2の間へ移し、50%サイズで岩帯の重なり帯に漂わせる。
 const TUTORIAL_FRONT_FOG_SCALE = 0.5;        // 霧の大きさ(帯の高さ・柄とも50%)
 const TUTORIAL_FRONT_FOG_CENTER_UP_PX = 132; // 霧帯の中心=境界線(farH)から上へ(v0.25.1823: 社長指示「40px上へ」で92→132)
+const TUTORIAL_FRONT_Y_OFFSET_PX = 100;      // 手前岩(近景森1)を下へずらす量(v0.25.1824: 社長指示「100px下に」)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
@@ -1896,6 +1897,7 @@ export class PixiScene {
   private frontForestYOffset(frontH: number) {
     if (this.snowStage) return FRONT_SNOW_Y_OFFSET;
     if (this.stage5Stage) return frontH * FRONT_STAGE5_Y_OFFSET_RATIO;
+    if (this.currentFarKey === 'tutorial') return TUTORIAL_FRONT_Y_OFFSET_PX; // 手前岩を100px下へ(下寄せ)
     return 0;
   }
 
