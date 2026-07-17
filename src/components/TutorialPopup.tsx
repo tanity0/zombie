@@ -45,15 +45,10 @@ const TutorialPopup: React.FC = () => {
             {popup.title}
           </h2>
           {popup.img ? (
-            // 事前撮影アセット(静止画/GIFアニメ・プレイヤー中心に切り出し済み)。v0.25.1831。
+            // 事前収録の手本アセット(静止画/GIFアニメ・プレイヤー中心に切り出し済み)。
+            // 社長決定v0.25.1839「やる前に手本を見せる」=挿絵は収録素材で統一(ライブ撮影は廃止)。
             <div className="relative mt-4 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
               <img src={`${import.meta.env.BASE_URL}${popup.img}`} alt="" className="absolute inset-0 h-full w-full object-cover" />
-              {popup.art === 'move' && <MoveArt overlay />}
-            </div>
-          ) : popup.shot ? (
-            // 実画面スクショ(表示直前にキャプチャ)+注釈オーバーレイ。プレイヤー付近(縦の約62%)を中心に切り出す。
-            <div className="relative mt-4 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
-              <img src={popup.shot} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: 'center 62%' }} />
               {popup.art === 'move' && <MoveArt overlay />}
             </div>
           ) : popup.art === 'move' ? (

@@ -2817,6 +2817,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               title: '移動',
               lines: ['指でなぞった方向に移動。', '右へ。緑のマークが帰還地点。'],
               art: 'move',
+              // 手本GIF(事前収録・洞窟で右歩行+随行NPC)。社長決定v0.25.1839「基本的に全部
+              // 事前に(手本を)見せるカタチ」=挿絵はライブ撮影でなく収録済み素材で統一。
+              img: 'tutorial/move.gif',
             });
           }
           // 左壁(スタートから−100px)に突っ込んでいる間、軍人が窘める(社長指示v0.25.1829

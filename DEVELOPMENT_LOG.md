@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.1839 — 操作説明の挿絵=事前収録の手本GIFへ統一(社長決定)【2026-07-18 01:34 JST】
+- **社長決定「基本的に全部、やる前に手本を見せるカタチ」**を実装。ポップアップ挿絵の
+  ライブキャプチャ(shot)を廃止し、優先順を img(事前収録の手本素材)>SVG図解 の2段へ。
+- **移動の手本GIFを新規収録**: チュートリアル洞窟でプレイヤー(warrior)が右へ歩き、グレッグ/ジュンが
+  随行する実プレイをヘッドレス収録(ゲーム内時間100ms刻み×14コマ・プレイヤー中心16:10切り出し)
+  → `public/tutorial/move.gif`(480x300・665KB・gifenc)。移動ポップアップは img 指定で表示
+  (SVG矢印+指ドラッグの注釈は従来どおり上に重ねる)。
+- captureFrame(PixiStage)はゲーム内未使用になるが**収録・デバッグ用ツールとして温存**(型コメントに
+  明記。次のcounter等の手本収録でも使う)。天秤メモ: Sonnet発注より調査文脈を持つ設計チャットが
+  直接実装(収録パイプラインが本件の大半のため)。
+- 旧 `action-*.gif`(v0.25.1831・stage-1森収録)は未配線のまま残置=counter等の実装時に洞窟文脈で
+  撮り直して置き換える想定(TUTORIAL_STAGE.mdに記録)。
+- 検証: 実機ヘッドレスでポップアップにGIF表示(404なし・注釈オーバーレイ正常)を目視確認。typecheck緑。
+- 自己点検: 挿絵の供給方式変更のみ・ゲーム挙動不変。憲法非該当。
+- Files: `public/tutorial/move.gif`(新規), `src/hooks/useGameLoop.ts`, `src/store/gameStore.ts`,
+  `src/components/TutorialPopup.tsx`, `TUTORIAL_STAGE.md`, `src/data/changelog.ts`, `package.json`,
+  `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1838 — M0序盤会話を左上の通信へ変更+ポップアップ挿絵の巻き戻り修正(社長報告2件)【2026-07-18 01:09 JST】
 - **①M0序盤会話の表示方式を修正**: 「このゲームで時間を止めて会話するシーンは存在しません!左上の通信です!」
   (社長)。v0.25.1837のVNボックス(startIntroDialogue=時間停止)を廃止し、**左上の通信

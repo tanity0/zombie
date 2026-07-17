@@ -2221,12 +2221,12 @@ interface GameState {
   rendererReady: boolean; // レンダラ(Pixi)が初フレームを表示済みか。冷間リロード時に登場演出が黒画面で進行=「まっくら」を防ぐため、初フレーム表示まで演出を t=0 で保持する。
   // チュートリアルの操作説明ポップアップ(v0.25.1830・社長「ポップアップで操作方法を説明してくれるやつ」)。
   // 表示中はisPaused=true(シーン停止・PauseMenuはGame側でポップアップ優先ゲート)。artは注釈の種類。
-  // shot=表示直前のゲーム画面キャプチャ(dataURL・v0.25.1831「このスクショをゲーム画面で再現」)。
-  // img=事前撮影アセットのパス(静止画/GIF・v0.25.1831「各アクションシーンを撮影して持っておく」)。
-  // img指定時はライブキャプチャを撮らない(img優先)。
-  tutorialPopup: { title: string; lines: string[]; art?: 'move'; shot?: string | null; img?: string } | null;
+  // img=事前収録の手本アセットのパス(静止画/GIF)。社長決定v0.25.1839「やる前に手本を見せる」=
+  // 挿絵は収録済み素材で統一(旧・表示直前ライブキャプチャ(shot)はv0.25.1839で廃止)。
+  tutorialPopup: { title: string; lines: string[]; art?: 'move'; img?: string } | null;
   tutorialPopupShown: boolean; // このランで表示済みか(resetGameでリセット)
-  // ゲーム画面のキャプチャ提供者(PixiStageが登録・renderer.extractでstageをdataURL化)。
+  // ゲーム画面のキャプチャ提供者(PixiStageが登録)。ゲーム内では未使用(v0.25.1839でポップアップの
+  // ライブ撮影を廃止)。手本GIF収録・デバッグ用ツールとして温存(ヘッドレス収録が st.captureFrame() を叩く)。
   captureFrame: (() => string | null) | null;
   setCaptureFrame: (fn: (() => string | null) | null) => void;
   showTutorialPopup: (p: { title: string; lines: string[]; art?: 'move'; img?: string }) => void;
@@ -8614,13 +8614,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setCaptureFrame: (fn) => set({ captureFrame: fn }),
   showTutorialPopup: (p) => {
-    // 挿絵の優先順: img(事前撮影アセット)> ライブキャプチャ > SVG図解のみ。
-    // img指定が無い時だけ表示直前のゲーム画面をキャプチャ(取得失敗時はnull=フォールバック)。
-    let shot: string | null = null;
-    if (!p.img) {
-      try { shot = get().captureFrame?.() ?? null; } catch { shot = null; }
-    }
-    set({ tutorialPopup: { ...p, shot }, tutorialPopupShown: true, isPaused: true }); // 表示中はゲーム停止
+    // 挿絵の優先順: img(事前収録の手本アセット)> SVG図解。社長決定v0.25.1839「基本的に全部
+    // 事前に手本を見せるカタチ」=表示直前のライブキャプチャは廃止(素材は一度収録して使い回す)。
+    set({ tutorialPopup: p, tutorialPopupShown: true, isPaused: true }); // 表示中はゲーム停止
   },
   closeTutorialPopup: () => {
     set({ tutorialPopup: null, isPaused: false });

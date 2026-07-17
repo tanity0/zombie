@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1839',
+    items: [
+      'チュートリアルの操作説明を「やる前に手本を見せる」方式に統一: 移動ポップアップの挿絵が、実際に洞窟を右へ歩く手本アニメ(事前収録GIF)になりました。',
+    ],
+  },
+  {
     version: '0.25.1838',
     items: [
       'チュートリアル: グレッグとジュンの序盤会話を、左上の通信表示(時間停止なし)に変更しました(中央の会話ボックスは廃止)。',
