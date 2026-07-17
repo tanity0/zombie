@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
@@ -175,7 +175,7 @@ const TUTORIAL_NEAR_HORIZON_DOWN_PX = 25;    // 岩帯2の底=境界線(farH)か
 // チュートリアルの手前霧(v0.25.1820・社長指示「手前を漂ってる霧を、岩1と岩2の間に、50%の大きさで」):
 // frontBank霧(通常=最前面・画面下部)を、z=岩帯1と岩帯2の間へ移し、50%サイズで岩帯の重なり帯に漂わせる。
 const TUTORIAL_FRONT_FOG_SCALE = 0.5;        // 霧の大きさ(帯の高さ・柄とも50%)
-const TUTORIAL_FRONT_FOG_CENTER_UP_PX = 92;  // 霧帯の中心=境界線(farH)から上へ(v0.25.1822: 社長指示「さらに10px上」で82→92)
+const TUTORIAL_FRONT_FOG_CENTER_UP_PX = 132; // 霧帯の中心=境界線(farH)から上へ(v0.25.1823: 社長指示「40px上へ」で92→132)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
@@ -2385,25 +2385,25 @@ export class PixiScene {
     if (!t) return;
     this.nearHorizonOverrides[key] = t;
   }
-  // チュートリアル: 手前霧(frontBank)を岩帯1と岩帯2の間(z)へ移す/戻す(社長指示v0.25.1820)。
-  // 差分時のみ付け替え。復元は生成時(constructor)と同じ「vignetteの直下」へ。
+  // チュートリアルの岩間霧(v0.25.1823で方式変更): 既存の手前霧レイヤーの移設は廃止(移設だと
+  // 画面下の手前霧が消える=社長報告)。手前の霧2層はストックのまま一切触らず、岩帯1と岩帯2の間に
+  // **専用の霧スプライト**(fog-alphaテクスチャ使い回し・50%サイズ)を1枚足す。
   private tutorialFogPlaced = false;
+  private tutorialMist: TilingSprite | null = null;
   private applyTutorialFrontFog(active: boolean) {
     if (active === this.tutorialFogPlaced) return;
     this.tutorialFogPlaced = active;
-    const wg = this.L.worldGroup;
-    if (active) {
-      // 森下霧(fog-alpha)だけ岩帯1と岩帯2の間へ。最前面の低い霧(frontBank)は画面下部に残す
-      // (v0.25.1822・社長報告「下の手前の霧がなくなっちゃった」=2層とも移したのを1層に戻す)。
-      wg.addChildAt(this.forestUnderLayer, wg.getChildIndex(this.L.nearHorizon));
-    } else {
-      // 生成時(constructor)と同じ位置へ復元(ズーム打ち消しの変換も恒等へ戻す)。
-      const fogStage = this.L.uiLayer.parent;
-      if (fogStage) fogStage.addChildAt(this.forestUnderLayer, fogStage.getChildIndex(this.L.frontForest));
-      else this.L.uiLayer.addChildAt(this.forestUnderLayer, 0);
-      this.forestUnderLayer.scale.set(1);
-      this.forestUnderLayer.position.set(0, 0);
+    if (!active) { if (this.tutorialMist) this.tutorialMist.visible = false; return; }
+    if (!this.tutorialMist) {
+      const sp = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
+      sp.tint = 0xffffff;
+      sp.blendMode = 'normal'; // fog-alpha はアルファ透過素材=通常合成(森下霧と同じ)
+      sp.eventMode = 'none';
+      this.tutorialMist = sp;
     }
+    const wg = this.L.worldGroup;
+    wg.addChildAt(this.tutorialMist, wg.getChildIndex(this.L.nearHorizon)); // 岩帯1の上・岩帯2の下
+    this.tutorialMist.visible = true;
   }
 
   // 遠景森2をキー(s.nearHorizon)で出し分け。差分時にテクスチャ差し替え+再レイアウト、tint は昼夜連動。
@@ -2809,15 +2809,34 @@ export class PixiScene {
     // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。
     this.bgCloudLayer.position.set(s.camera.x - sx, s.camera.y - sy);
-    // チュートリアルの岩間霧: worldGroupのズーム(待機/文脈)につられて伸縮しないよう、層側で
-    // ズーム変換を毎フレーム打ち消す(社長指示v0.25.1822「上の霧は動きにつられないで」)。
-    // worldGroupの変換は S = L×z + pivot×(1−z)。層に scale=1/z・position=−p/z を与えると恒等になる。
-    if (this.tutorialFogPlaced) {
-      const wz = this.L.worldGroup.scale.x || 1;
-      this.forestUnderLayer.scale.set(1 / wz);
-      this.forestUnderLayer.position.set(-this.L.worldGroup.position.x / wz, -this.L.worldGroup.position.y / wz);
-    }
     if (this.fogT0 === 0) this.fogT0 = now;
+    // チュートリアル専用の岩間霧(手前霧とは独立の1枚)。ズーム(待機/文脈)につられないよう、
+    // worldGroupのズーム変換を毎フレーム打ち消す(S=L×z+p → scale=1/z・position補正で恒等)。
+    // 位置=岩帯付近(farH−CENTER_UP)+縦揺らぎ、柄=fog-alphaの50%、横は右へゆっくり流す(森下霧と同係数)。
+    if (this.tutorialFogPlaced && this.tutorialMist) {
+      const mist = this.tutorialMist;
+      if (mist.texture.width <= 1) { const mt = getTexture('fog-alpha'); if (mt) mist.texture = mt; }
+      if (mist.texture.width > 1) {
+        const wz = this.L.worldGroup.scale.x || 1;
+        const w = this.screenW * 2.2;
+        const h = this.screenH * 0.95 * TUTORIAL_FRONT_FOG_SCALE;
+        const mistT = (now - this.fogT0) * 0.030 * FOG_SPEED + Math.sin(now * 0.0008 * FOG_SPEED + 3.1) * 26;
+        mist.width = w;
+        mist.height = h;
+        mist.tileScale.set((w / mist.texture.width) * TUTORIAL_FRONT_FOG_SCALE, h / mist.texture.height);
+        mist.alpha = FOG_FRONT_ALPHA;
+        const mx = (this.screenW - w) / 2;
+        const my = this.farBackdropHeight() - TUTORIAL_FRONT_FOG_CENTER_UP_PX - h / 2
+          + Math.sin(now * 0.0004 * FOG_SPEED + 0.7) * 9;
+        // ズーム打ち消し: worldGroup変換の逆を座標/スケールに織り込む(スプライト単体なのでここで完結)。
+        mist.scale.set(1 / wz);
+        mist.position.set(
+          (mx - this.L.worldGroup.position.x) / wz,
+          (my - this.L.worldGroup.position.y) / wz
+        );
+        mist.tilePosition.set(mistT, 0);
+      }
+    }
     const fogT = now - this.fogT0;
     const labThemeFog = s.stageTheme === 'lab'; // 研究所スキンは森の霧を出さない(床を見せる)
     for (const f of this.fogLayers) {
@@ -2834,25 +2853,6 @@ export class PixiScene {
       }
       f.sp.x = (this.screenW - f.sp.width) / 2; // 画面中央に固定(横の動きは texture スクロールで)
       f.sp.y = f.yFrac * this.screenH - f.sp.height / 2 + Math.sin(now * f.spdY * FOG_SPEED + f.ph) * f.ampY; // 縦の揺らめき
-      // チュートリアル: 森下霧(fog-alpha)は岩帯の重なり帯に50%サイズで漂わせる(z移設はapplyTutorialFrontFog)。
-      // 最前面の低い霧(frontBank)は通常どおり画面下部。寸法は差分時のみ再設定(復元も同経路)。
-      if (f.sp.parent === this.forestUnderLayer) {
-        const stdH = this.screenH * f.heightFrac;
-        const tw = f.sp.texture.width || 1;
-        const th = f.sp.texture.height || 1;
-        if (this.tutorialFogPlaced) {
-          const h50 = stdH * TUTORIAL_FRONT_FOG_SCALE;
-          if (Math.abs(f.sp.height - h50) > 0.5) {
-            f.sp.height = h50;
-            f.sp.tileScale.set((f.sp.width / tw) * TUTORIAL_FRONT_FOG_SCALE, h50 / th); // 柄も50%(アスペクト維持・横はタイル)
-          }
-          f.sp.y = this.farBackdropHeight() - TUTORIAL_FRONT_FOG_CENTER_UP_PX - h50 / 2
-            + Math.sin(now * f.spdY * FOG_SPEED + f.ph) * f.ampY;
-        } else if (Math.abs(f.sp.height - stdH) > 0.5) {
-          f.sp.height = stdH;
-          f.sp.tileScale.set(f.sp.width / tw, stdH / th);
-        }
-      }
       f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;    // 右へ流れる+横の揺らめき
       f.sp.tilePosition.y = 0;
     }
@@ -7063,9 +7063,15 @@ export class PixiScene {
       let sp = this.escortSprites.get(esc.id);
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.escortSprites.set(esc.id, sp); }
       // soldierIndex ごとのユニーク立ち絵(社長提供)。未提供のNPCは従来の shooter 素材へフォールバック。
-      const base = ESCORT_SPRITE_BASE[esc.soldierIndex] ?? 'rescue/shooter';
-      const seq = getTexture(`${base}-2`) ? PixiScene.ESCORT_WALK_SEQ_3 : PixiScene.ESCORT_WALK_SEQ_2;
-      const walkFrame = seq[step % seq.length];
+      // チュートリアルの衛生兵(TUTORIAL_MEDIC_INDEX)は専用4コマ(ピンポン)。
+      const base = esc.soldierIndex === TUTORIAL_MEDIC_INDEX
+        ? 'npc/medic-walk'
+        : (ESCORT_SPRITE_BASE[esc.soldierIndex] ?? 'rescue/shooter');
+      const seq = getTexture(`${base}-3`) ? PixiScene.ESCORT_WALK_SEQ_4
+        : getTexture(`${base}-2`) ? PixiScene.ESCORT_WALK_SEQ_3 : PixiScene.ESCORT_WALK_SEQ_2;
+      // 追従NPC(moving=false)は静止=0コマ目で止める(その場行進を防ぐ)。
+      const animate = esc.moving !== false;
+      const walkFrame = animate ? seq[step % seq.length] : 0;
       const tex = getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
       // クロスフェード補間(対象NPCのみ): コマ内の進行率 frac で「次コマ」を上に α=frac で重ね、
       // 170msごとのパッ切り替えを連続化する。隣接コマは常に接地↔通過なので混色=中間歩に見える。
@@ -7079,10 +7085,10 @@ export class PixiScene {
       // 通過コマに合わせる。接地(lift=0)で縦に潰れ横に広がり、遊脚(lift=1)で縦に伸び横が締まる＋左右リーン。
       const cycleMs = seq.length * PixiScene.RESCUE_WALK_FRAME_MS;
       const phase = (now / cycleMs) * Math.PI * 2;
-      const stepS = Math.sin(phase);
-      const lift = Math.abs(stepS); // 0=接地 / 1=遊脚中(最高点)
-      const walkSqY = 1 + PLAYER_WALK_SQUASH * lift - PLAYER_WALK_SQUASH * 0.5 * (1 - lift);
-      const walkSqX = 1 - PLAYER_WALK_SQUASH * 0.8 * lift + PLAYER_WALK_SQUASH * 0.4 * (1 - lift);
+      const stepS = animate ? Math.sin(phase) : 0;
+      const lift = Math.abs(stepS); // 0=接地 / 1=遊脚中(最高点)。静止中は常に接地扱い
+      const walkSqY = animate ? 1 + PLAYER_WALK_SQUASH * lift - PLAYER_WALK_SQUASH * 0.5 * (1 - lift) : 1;
+      const walkSqX = animate ? 1 - PLAYER_WALK_SQUASH * 0.8 * lift + PLAYER_WALK_SQUASH * 0.4 * (1 - lift) : 1;
       const walkLean = stepS * PLAYER_WALK_LEAN_RAD;
 
       const bob = lift * PLAYER_WALK_BOB_PX * this.depthScale(esc.y); // 接地↔遊脚の上下動(遠近スケール連動)
@@ -7269,6 +7275,7 @@ export class PixiScene {
   private static readonly RESCUE_WALK_FRAME_MS = 170;
   private static readonly ESCORT_WALK_SEQ_2 = [0, 1];          // 2コマ立ち絵の歩行
   private static readonly ESCORT_WALK_SEQ_3 = [0, 1, 2, 1];    // 3コマ立ち絵(社長提供): 接地A→通過→接地B→通過
+  private static readonly ESCORT_WALK_SEQ_4 = [0, 1, 2, 3, 2, 1]; // 4コマ立ち絵(衛生兵): ピンポン(社長指定)
   // 人型NPC(レスキュー/護衛/駐留兵)をプレイヤーと同じくらいの見た目サイズで描く(社長指示)。
   // 表示基準高さ RESCUE_NPC_DISPLAY_H の枠へ contain-fit ＋ プレイヤーと同じ遠近曲線(depthScale)。
   private humanNpcScale(texW: number, texH: number, footY: number): number {

@@ -225,6 +225,9 @@ const ESCORT_DMG = 8;                   // 1射のダメージ
 // ただしレアなので出現率が低い(社長指示)。
 // フェイザーの名簿index(レア枠)。援護射撃のNPC選定(supportSniper)もこの値でレア性を保つためexport。
 export const PHASER_INDEX = 7;
+// チュートリアルの随行衛生兵(EscortSoldier流用)の特別soldierIndex。名簿(BASE_SOLDIERS)外なので
+// セリフ系はtutorialゲートで全停止し、描画はpixiScene側で 'npc/medic-walk'(4コマピンポン)に差し替える。
+export const TUTORIAL_MEDIC_INDEX = 100;
 const PHASER_GUN_OFFSET = 5;           // 2丁拳銃の左右ずらし幅(px。進行方向に直交)
 const PHASER_APPEAR_CHANCE = 0.2;      // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)
@@ -241,6 +244,14 @@ const makeBaseSoldiers = (cx: number, cy: number): { x: number; y: number; hx: n
   }
   return arr;
 };
+// チュートリアルの随行NPC(社長指示v0.25.1823「軍人NPCと衛生兵も出撃。基本プレイヤーについてくる。
+// 軍人、衛生兵の順番」)。EscortSoldierを流用(描画/影/地平フェードを共用)し、移動はuseGameLoopの
+// 追従チェーン(stepFollowChain)が担当。軍人=エドガー(index0・仮キャスト)/衛生兵=専用index。
+const makeTutorialCompanions = (px: number, py: number): EscortSoldier[] => [
+  { id: 'escort-tutorial-soldier', baseId: 'base-0', x: px - 46, y: py + 8, face: 1, soldierIndex: 0, fireAt: 0, dwellMs: 0, moving: false },
+  { id: 'escort-tutorial-medic', baseId: 'base-1', x: px - 92, y: py + 16, face: 1, soldierIndex: TUTORIAL_MEDIC_INDEX, fireAt: 0, dwellMs: 0, moving: false },
+];
+
 // 護衛軍人NPCを4人生成(各拠点 base-0..3 担当)。プレイヤー出撃地点の近傍に少し散らして配置。
 const makeEscorts = (px: number, py: number): EscortSoldier[] => {
   const arr: EscortSoldier[] = [];
@@ -6471,6 +6482,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   npcKillReact: (x, y) => {
     const s = get();
+    if (s.farBackdrop === 'tutorial') return; // チュートリアル: 随行NPCの汎用セリフは全停止(イベントで特別に組む)
     let best: EscortSoldier | null = null; let bd = NPC_KILL_MAX_DIST * NPC_KILL_MAX_DIST;
     for (const e of s.escorts) {
       const d = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
@@ -6483,7 +6495,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // イベント系クリア地点(x,y)に対応する地域NPC(最寄り拠点担当)が反応。救助成功は「救助者保護(rescueReturned)」を出す。
   npcOpPrepReact: (x, y) => {
     const s = get();
-    if (s.escorts.length === 0) return; // 護衛NPCが居る出撃のみ
+    if (s.escorts.length === 0 || s.farBackdrop === 'tutorial') return; // 護衛NPCが居る出撃のみ(チュートリアルは全停止)
     let bestIdx = -1; let bd = Infinity;
     for (const b of s.baseSites) {
       const d = (b.x - x) * (b.x - x) + (b.y - y) * (b.y - y);
@@ -6502,6 +6514,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   npcPraiseReact: () => {
     const s = get();
+    if (s.farBackdrop === 'tutorial') return; // チュートリアル: 随行NPCの汎用セリフは全停止
     const p = s.player; const px = p.x + p.width / 2, py = p.y + p.height / 2;
     let best: EscortSoldier | null = null; let bd = PRAISE_WITNESS_DIST * PRAISE_WITNESS_DIST;
     for (const e of s.escorts) {
@@ -6515,7 +6528,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 担当エリア(セクター)に入った時=その担当NPCが「遠い時用(neglectFar)」コメント(社長指示・#1と連動)。
   npcAreaEnterReact: (sectorIdx) => {
     const s = get();
-    if (s.escorts.length === 0) return; // 護衛NPCが居る出撃のみ
+    if (s.escorts.length === 0 || s.farBackdrop === 'tutorial') return; // 護衛NPCが居る出撃のみ(チュートリアルは全停止)
     // その sector(担当拠点 base-${sectorIdx})に居る護衛の「素性(soldierIndex)」でセリフを選ぶ。
     // 名簿はランダム(フェイザーがレアで入る)なので sectorIdx 直引きではなく baseId で実体を引く。
     const esc = s.escorts.find(e => e.baseId === `base-${sectorIdx}`);
@@ -8821,6 +8834,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // 拠点候補地(仕様10): サークル内滞在を計測。10秒で制圧→武器商人がその地点へ移動し、元の商人地点は候補に戻る。
   updateSuppression: (deltaTime) => {
+    // チュートリアル: 随行NPC(escorts流用)は拠点前進/射撃/制圧を一切しない(移動はuseGameLoopの
+    // 追従チェーンが担当・社長指示v0.25.1823)。
+    if (get().farBackdrop === 'tutorial') return [];
     const state = get();
     // 拠点は屋外(非ラボ・非屋内)なら常に機能する。屋内/ラボ/勝利後は無処理。
     // イベント(suppressionActive)かどうかは「全拠点制圧」した時のゴール有無だけが違う(下部参照)。
@@ -9660,9 +9676,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // World is infinite; player starts at the origin and the camera
       // follows. No need to pre-center within bounds.
       // 護衛NPCの名簿は1度だけ作り、出撃セリフ(sortie)も同じロスターから選ぶ(フェイザー等のランダム名簿に追従)。
-      // チュートリアル: 護衛NPC(通常NPC)も出さない=出撃セリフ(npcDialogueQueue)も自然に消える(社長指示v0.25.1818)。
-      const escortRoster = (!indoor && stageTheme !== 'lab' && farBackdrop !== 'tutorial') ? makeEscorts(spawnTL.x, spawnTL.y) : [];
-      const sortieEsc = escortRoster.length ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
+      // チュートリアル: 通常の護衛4人は出さず、随行NPC(軍人+衛生兵・追従)を出す(社長指示v0.25.1823)。
+      // 出撃セリフ(sortieEsc)はチュートリアルでは使わない(セリフは全てイベントで特別に組む)。
+      const escortRoster = (indoor || stageTheme === 'lab') ? []
+        : farBackdrop === 'tutorial' ? makeTutorialCompanions(spawnTL.x, spawnTL.y)
+        : makeEscorts(spawnTL.x, spawnTL.y);
+      const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
       const sortieSol = sortieEsc ? BASE_SOLDIERS[((sortieEsc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length] : null;
       return {
         unlockedShopSkillCards: runShopUnlocks,

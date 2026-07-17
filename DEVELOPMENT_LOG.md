@@ -1,5 +1,28 @@
 # Development Log
 
+## v0.25.1823 — 随行NPC(軍人+衛生兵の追従)+岩間霧の方式変更+40px上(社長指示3件)【2026-07-17 20:04 JST】
+- **①随行NPC**(社長指示「軍人NPCと衛生兵も出撃。基本プレイヤーについてくる。軍人、衛生兵の順番」):
+  - **EscortSoldier流用**(描画/影/地平フェード/y-sortを共用)。`makeTutorialCompanions`=軍人(エドガー・
+    **仮キャスト**)+衛生兵(`TUTORIAL_MEDIC_INDEX=100`)の2人編成をチュートリアルのescortsへ。
+  - **移動=追従チェーン**: 純関数 `stepFollowChain`(utils/companionFollow.ts・テスト3件=規律4)。
+    軍人→プレイヤー・衛生兵→軍人を各gap 64pxで追従、速度=プレイヤー×1.15、gap内で停止。
+  - **描画**: drawEscortsに衛生兵の専用4コマピンポン(`npc/medic-walk-0..3`・[0,1,2,3,2,1])と
+    **静止対応**(moving=false→0コマ目・スクワッシュ/bob停止=その場行進を防ぐ)を追加。
+    EscortSoldierに `moving?: boolean` を追加。medic-walkテクスチャ4枚をマニフェスト登録。
+  - **抑止**: updateSuppression(拠点前進/射撃/制圧)をtutorialで早期return・NPC汎用セリフ4系統
+    (npcKill/opPrep/praise/areaEnter)と出撃セリフ(sortieEsc)もtutorialゲート=セリフは全てイベントで組む。
+- **②岩間霧の方式変更**(社長報告「画面手前の霧復活してない。一瞬森が映るけどそこにはいる」):
+  v1820の「手前霧レイヤーの移設」を全廃(移設だと下の手前霧が消える)。手前霧2層はストックのまま、
+  **専用TilingSprite 1枚**(fog-alphaテクスチャ使い回し・50%・通常合成)を岩帯1と2の間に新設。
+  ズーム打ち消しはスプライト単体の逆変換で完結。負荷=+TilingSprite1枚(1/10)。
+- **③岩裏霧40px上**: `TUTORIAL_FRONT_FOG_CENTER_UP_PX 92→132`。
+- 検証: typecheck green・companionFollowテスト3件green・ヘッドレス実機シム=軍人→衛生兵の追従隊列/
+  下の手前霧の復活/岩間霧の位置を確認。
+- Files: `src/utils/companionFollow.ts`(新), `src/utils/companionFollow.test.ts`(新),
+  `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`, `src/pixi/pixiTextures.ts`,
+  `src/types/game.ts`, `TUTORIAL_STAGE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1822 — 下の手前霧を復活+岩間霧のズーム非連動化&10px上+ボス城の撤去(社長指示3件)【2026-07-17 19:50 JST】
 - **①下の手前霧の復活**(社長報告「下の手前の霧がなくなっちゃった」): v1820で2層とも岩間へ移したのを
   **森下霧(fog-alpha)1層だけ**に戻し、最前面の低い霧(frontBank)は従来どおり画面下部へ復元。

@@ -290,6 +290,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/edgar-0', scaleMode: 'nearest' },
       { name: 'npc/edgar-1', scaleMode: 'nearest' },
       { name: 'npc/edgar-2', scaleMode: 'nearest' },     // 3コマ歩行(社長提供)
+      { name: 'npc/medic-walk-0', scaleMode: 'nearest' }, // 衛生兵(チュートリアル随行・4コマピンポン)
+      { name: 'npc/medic-walk-1', scaleMode: 'nearest' },
+      { name: 'npc/medic-walk-2', scaleMode: 'nearest' },
+      { name: 'npc/medic-walk-3', scaleMode: 'nearest' },
       { name: 'npc/joseph-0', scaleMode: 'nearest' },
       { name: 'npc/joseph-1', scaleMode: 'nearest' },
       { name: 'npc/joseph-2', scaleMode: 'nearest' },    // 3コマ歩行(社長提供)

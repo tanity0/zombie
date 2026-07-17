@@ -174,6 +174,7 @@ import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, buildSupportSniperShot, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
+import { stepFollowChain, FOLLOW_SPEED_MULT } from '../utils/companionFollow';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
 import {
@@ -2798,6 +2799,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             addEnemy(sc);
             useGameStore.setState({ eventBannerText: '叫喚型 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             screamerRef.current.nextEligibleAt = newGameTime + SCREAMER_RESPAWN_CD_MS;
+          }
+        }
+
+        // チュートリアル: 随行NPC(軍人→衛生兵)の追従チェーン(社長指示v0.25.1823「基本プレイヤーに
+        // ついてくる。軍人、衛生兵の順番」)。escorts流用・拠点前進/射撃はupdateSuppression側で停止済み。
+        if (tutorialStage) {
+          const st = useGameStore.getState();
+          if (st.escorts.length) {
+            const pcx0 = st.player.x + st.player.width / 2;
+            const pcy0 = st.player.y + st.player.height / 2;
+            const next = stepFollowChain({ x: pcx0, y: pcy0 }, st.escorts, deltaTime, st.player.speed * FOLLOW_SPEED_MULT);
+            const changed = next.some((b, i) => {
+              const a = st.escorts[i];
+              return a.x !== b.x || a.y !== b.y || a.face !== b.face || (a.moving ?? false) !== (b.moving ?? false);
+            });
+            if (changed) {
+              useGameStore.setState({
+                escorts: st.escorts.map((e, i) => ({ ...e, x: next[i].x, y: next[i].y, face: next[i].face, moving: next[i].moving })),
+              });
+            }
           }
         }
 
