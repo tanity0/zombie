@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1840',
+    items: [
+      'ゲーム内容の変更はありません(チュートリアル用の手本アニメ素材6本を追加収録: 卵破壊/拠点解放/NPC進軍/ハンター発見/武器商人/レスキュー)。',
+    ],
+  },
+  {
     version: '0.25.1839',
     items: [
       'チュートリアルの操作説明を「やる前に手本を見せる」方式に統一: 移動ポップアップの挿絵が、実際に洞窟を右へ歩く手本アニメ(事前収録GIF)になりました。',

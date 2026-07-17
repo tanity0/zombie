@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.1840 — チュートリアル手本素材6本を追加収録(社長指示・素材のみ/未配線)【2026-07-18 02:13 JST】
+- 社長指示「チュートリアル素材一通り動画撮ってきて」。実プレイのヘッドレス収録で手本GIF6本を制作し
+  `public/tutorial/demo-*.gif` に格納(全て**未配線=ゲーム挙動の変更なし**。配線は各ポップアップ実装時):
+  卵破壊/拠点解放(護衛の円内10秒滞在)/NPC進軍/ハンター発見(バナー込み)/武器商人(ショップUI込み)/
+  レスキュー。収録手順と地雷は TUTORIAL_STAGE.md v0.25.1840 節に記録(?arenanowはpuzzle=0必須等)。
+- 収録パイプライン: scratchpad `lib-record.mjs`(canvas切り出し/DOM収録共通)+`demo-*.mjs`+
+  `encode-any.mjs`(gifenc)。captureFrame(v0.25.1839で温存した収録ツール)を使用。
+- 気づき(提案・実装せず): ショップに「ワクチン」(死亡時復活アイテム)の名称が残っている。ストーリーから
+  ワクチン筋を外した現在、アイテム名として残すか改名するかは社長判断待ち(旧案文言監査はストーリー文面
+  のみ対象のため機械検知外)。
+- 自己点検: 素材追加+文書のみ・コード/挙動不変。憲法非該当。
+- Files: `public/tutorial/demo-{egg-break,base-capture,npc-advance,hunter-detect,merchant,rescue}.gif`(新規),
+  `TUTORIAL_STAGE.md`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1839 — 操作説明の挿絵=事前収録の手本GIFへ統一(社長決定)【2026-07-18 01:34 JST】
 - **社長決定「基本的に全部、やる前に手本を見せるカタチ」**を実装。ポップアップ挿絵の
   ライブキャプチャ(shot)を廃止し、優先順を img(事前収録の手本素材)>SVG図解 の2段へ。
