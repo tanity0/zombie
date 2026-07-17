@@ -1578,6 +1578,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ステージ4(雪原)/ステージ5(戦場): 新型 lich を湧きプールに含める(社長裁定2026-07-17:
         // ステージ5の10体目=フード亡霊をlich扱いで出す)。変数名は歴史的経緯(元は雪原限定)。
         const snowTheme = loopState.farBackdrop === 'snow' || loopState.farBackdrop === 'stage5';
+        // チュートリアル: 敵の自動湧きを全停止(社長指示v0.25.1814「自動で敵沸かないようにして。
+        // イベントでしか沸かせない予定」)。ストーリーボス専用ラン(storyBoss)と同じ止め方で、
+        // 通常湧き/コマ盤面/囲い・関所発火/城ボス/ハンター/叫喚型/死神/紅き夜を全て止める。
+        // (farBackdrop==='tutorial' をrun識別に使うのは setTreesDisabled と同じ既存慣例。)
+        const tutorialStage = loopState.farBackdrop === 'tutorial';
 
         // PACING_PUZZLE.md §5.18 M17: 被ダメ5経路(src/utils/combatTick.ts)へ渡す演出コールバック+
         // チューニング値。値そのものは以下のローカル定数のまま(二重管理を避けるため引数化しただけ)。
@@ -1848,7 +1853,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 骨格を残すため対象外(§2「7:00城ボス=既存PHASESのbossフェーズだけ残す」)。curPhaseは
         // まだこの位置では未計算(ずっと下の別ブロックで初めて求まる)ので、既存の他箇所と同じく
         // phaseAt()を軽量に再呼び出しする(同種の再計算は無視できるコスト・既存踏襲)。
-        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && phaseAt(newGameTime).kind !== 'boss';
+        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && phaseAt(newGameTime).kind !== 'boss';
 
         const castle = useGameStore.getState().castleEvent;
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
@@ -1857,7 +1862,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 以前は制圧イベント中(ステージ1メイン)は出さない仕様だったが、社長指示で撤回=制圧中でも
         // 時間が来たら出現するように変更(拠点制圧の完了を待たない)。
         const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !revisitRun && !castle.bossSpawned && castleBossReady) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !revisitRun && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
@@ -1973,7 +1978,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 「進行(スポーン段階/クリア判定/タイムアウト)」は M20 の新経路(軸1退屈補正の囲い等)が
         // puzzleActiveNow=true(通常プレイ)中に activeEvent をセットするケースでも動く必要があるため、
         // ゲートを「発火」側だけに絞る(進行側は常時稼働=puzzleActiveNow=falseの旧来挙動は無変更)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage) {
           // PACING_PUZZLE.md §5.21-追補5(社長決定v0.25.1555): ゲート発火待ちが立っていて、かつ城ボス
           // 以外のイベント(レスキュー/退屈囲い=kind 'rescue'|'horde')が進行中なら、それを強制解除して
           // ゲートを発火可能にする(「ゲート>他イベント」の優先を発火時に効かせる)。城ボスは PHASE
@@ -2444,7 +2449,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ゲーム開始3分後に1回だけ発動。警告10秒→本番20秒→暗転終了。
         // 本番中: 全敵ステータス×2・経験値×2・画面赤染め。
         // 拠点近接 or 商人に話しかけると「やり過ごした」で即脱出(商人側は performAttack 内で処理)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage) {
           const rnGs = useGameStore.getState();
           const rn = rnGs.redNight;
 
@@ -2554,7 +2559,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 屋内/練習モードでは出さない。出現〜索敵〜発見〜追跡〜撤退〜増援を状態機械で管理。
         // ステージ2(研究所スキン=labTheme)にも出さない(社長指示v0.25.1753。凶悪ハンター含む
         // コントローラごと停止=死神をlabで止めるのと同じ扱い)。ストーリーボス専用ラン(M7/EX)も出さない。
-        if (!danceTest && !indoor && !labTheme && !storyBoss) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage) {
           const H = hunterRef.current;
           const hs = useGameStore.getState();
           const hpx = hs.player.x + hs.player.width / 2;
@@ -2870,7 +2875,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 原点(スタート/商人付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
         // 横切り=無害な演出(reaperCross をセット→pixiScene が描画)、追跡=本物の reaper 敵。
         // 研究所スキンは「ラボ敵以外は沸かない」(社長指示)=死神も出さない。ストーリーボス専用ランも同様。
-        if (!danceTest && !indoor && !labTheme && !storyBoss) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage) {
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
@@ -7605,6 +7610,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !danceTest &&
           !indoor &&
           !storyBoss && // ストーリーボス専用ラン(M7/EX)は通常湧きなし(統合正本10.3)
+          !tutorialStage && // チュートリアルは自動湧きなし(イベント湧きのみ予定・社長指示)
           !confining &&
           !bossChasingNow && // 裏ボスが画面内で追跡中だけ通常湧きを止める(非追跡=画面外/帰巣中は湧く・社長指摘)
           !puzzleActiveNow &&

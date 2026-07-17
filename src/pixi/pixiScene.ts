@@ -132,7 +132,7 @@ const TUTORIAL_FAR_HEIGHT_RATIO = 0.415;
 // 川の流れ(オクトラ風・社長相談2026-07-17): 遠景と同ジオメトリのハイライト筋レイヤー2枚を
 // 速度差でスクロール(1枚目=速い/2枚目=遅い)。明部は既存bloomが拾って光る。数値は全て叩き台。
 const RIVER_FLOW_SPEED_PX_S = [18, 10];   // tilePositionの流速(表示px/秒)
-const RIVER_FLOW_ALPHA = [0.4, 0.3];      // 基本アルファ(加算合成・v0.25.1812でさらに減=社長指示「もう少し落として。馴染んでない」)
+const RIVER_FLOW_ALPHA = [0.3, 0.22];     // 基本アルファ(加算合成・v0.25.1814でさらに減=社長指示「まだ明るいかも」)
 const RIVER_FLOW_WOBBLE = [0.08, 0.06];   // アルファの揺らぎ振幅
 const RIVER_FLOW_WOBBLE_MS = [1400, 2300];// 揺らぎ周期
 const FAR_BACKDROP_BLUR = 1.1;
@@ -162,8 +162,8 @@ const STAGE5_HORIZON_FOREST_DOWN_PX = 20;    // 森1の底=境界線から下へ
 // 水面の下端(遠景テクスチャ y516/710)を基準に、帯の上端(トゲ岩の先端)が少しだけ川へ食い込むよう
 // farH からの比率で上端を決め、下端は stage5 と同じく境界線(farH)+固定pxで地面へ食い込ませる。
 const TUTORIAL_HORIZON_WATER_BOTTOM_FRAC = 516 / 710; // 遠景内の水面下端(クロップ後710px基準)
-const TUTORIAL_HORIZON_HEAD_PX = 14;  // 帯上端が水面に被る量(叩き台)
-const TUTORIAL_HORIZON_DOWN_PX = 20;  // 帯下端=境界線から下へ(px)
+const TUTORIAL_HORIZON_HEAD_PX = 34;  // 帯上端が水面に被る量(v0.25.1814: 社長指示「20px上へ」で14→34)
+const TUTORIAL_HORIZON_DOWN_PX = 0;   // 帯下端=境界線から下へ(px)(同上: 20→0=帯全体を20px上へ)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い

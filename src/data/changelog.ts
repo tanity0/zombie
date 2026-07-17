@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1814',
+    items: [
+      'チュートリアルステージ(開発中): 敵が自動で湧かないようにしました(今後はイベントでのみ出現予定)。',
+      'チュートリアルステージ: 川辺の岩の帯を20px上へ移動し、川のきらめきをさらに暗くしました。',
+    ],
+  },
+  {
     version: '0.25.1813',
     items: [
       'チュートリアルステージ(開発中): 川のきらめきの帯をさらに上下に狭めました。',
