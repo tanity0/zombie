@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1822 — 下の手前霧を復活+岩間霧のズーム非連動化&10px上+ボス城の撤去(社長指示3件)【2026-07-17 19:50 JST】
+- **①下の手前霧の復活**(社長報告「下の手前の霧がなくなっちゃった」): v1820で2層とも岩間へ移したのを
+  **森下霧(fog-alpha)1層だけ**に戻し、最前面の低い霧(frontBank)は従来どおり画面下部へ復元。
+- **②岩間霧のズーム非連動**(社長指示「上の霧は動きにつられないで」): worldGroup内に移したため
+  待機/文脈ズームで伸縮していた→層側で毎フレーム逆変換(scale=1/z・position=−p/z)を掛けて恒等化。
+  復元時は恒等へ戻す。あわせて**中心をさらに10px上**(CENTER_UP 82→92)。
+- **③ボス城の撤去**(社長報告「ボス城がのこってる」): 城の構造物はスポナーと別で常設だった→
+  syncCastleにtutorial非表示ゲート+**当たり判定もスキップ**(プレイヤー3030/敵6606の
+  resolveCastleCollision両方・labと同じ流儀)。
+- 検証: typecheck green・ヘッドレスで下霧の復活/岩間霧の位置を確認(ズーム非連動は逆変換の恒等式)。
+- Files: `src/pixi/pixiScene.ts`, `src/store/gameStore.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1821 — 岩帯2の高さ+10px/岩裏の霧を10px上へ(社長指示)【2026-07-17 19:42 JST】
 - `TUTORIAL_NEAR_HORIZON_HEIGHT_PX 130→140`(底アンカー不変=上端が10px上がる)。
 - `TUTORIAL_FRONT_FOG_CENTER_UP_PX 72→82`(霧帯の中心10px上へ)。

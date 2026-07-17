@@ -3027,7 +3027,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           width: player.width,
           height: player.height,
         }, solidProps);
-        const castleResolved = labTheme ? resolved : resolveCastleCollision({
+        // チュートリアルは城なし(v0.25.1822)=当たり判定もスキップ(描画はpixiScene側で非表示)。
+        const castleResolved = (labTheme || get().farBackdrop === 'tutorial') ? resolved : resolveCastleCollision({
           x: resolved.x,
           y: resolved.y,
           width: player.width,
@@ -6603,7 +6604,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             const tr = labTheme ? { x: nx, y: ny } : resolveTreeCollision({ x: nx, y: ny, width: enemy.width, height: enemy.height });
             const torchR = resolveTorchCollision({ x: tr.x, y: tr.y, width: enemy.width, height: enemy.height }, solidProps);
             // 城(屋外・非ラボ)も敵にブロック(プレイヤーと同じ。従来は敵だけすり抜けていた)。
-            const castleR = labTheme ? torchR : resolveCastleCollision({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, state.castleEvent);
+            const castleR = (labTheme || state.farBackdrop === 'tutorial') ? torchR : resolveCastleCollision({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, state.castleEvent);
             // ラボ壁＋ラボプロップ(研究所スキン)。labProps も敵に当たり判定(従来は壁のみ=プロップすり抜け)。
             const labRects = labTheme ? [...labWallRects, ...labPropRects] : labWallRects;
             const wallR = labRects.length

@@ -175,7 +175,7 @@ const TUTORIAL_NEAR_HORIZON_DOWN_PX = 25;    // 岩帯2の底=境界線(farH)か
 // チュートリアルの手前霧(v0.25.1820・社長指示「手前を漂ってる霧を、岩1と岩2の間に、50%の大きさで」):
 // frontBank霧(通常=最前面・画面下部)を、z=岩帯1と岩帯2の間へ移し、50%サイズで岩帯の重なり帯に漂わせる。
 const TUTORIAL_FRONT_FOG_SCALE = 0.5;        // 霧の大きさ(帯の高さ・柄とも50%)
-const TUTORIAL_FRONT_FOG_CENTER_UP_PX = 82;  // 霧帯の中心=境界線(farH)から上へ(v0.25.1821: 社長指示「10px上へ」で72→82)
+const TUTORIAL_FRONT_FOG_CENTER_UP_PX = 92;  // 霧帯の中心=境界線(farH)から上へ(v0.25.1822: 社長指示「さらに10px上」で82→92)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
@@ -2393,15 +2393,16 @@ export class PixiScene {
     this.tutorialFogPlaced = active;
     const wg = this.L.worldGroup;
     if (active) {
-      // 手前の霧2層(森下=fog-alpha / 森上=frontBank)とも岩帯1と岩帯2の間へ(元の前後関係は維持)。
+      // 森下霧(fog-alpha)だけ岩帯1と岩帯2の間へ。最前面の低い霧(frontBank)は画面下部に残す
+      // (v0.25.1822・社長報告「下の手前の霧がなくなっちゃった」=2層とも移したのを1層に戻す)。
       wg.addChildAt(this.forestUnderLayer, wg.getChildIndex(this.L.nearHorizon));
-      wg.addChildAt(this.frontBankLayer, wg.getChildIndex(this.L.nearHorizon));
     } else {
-      // 生成時(constructor)と同じ位置へ復元。
+      // 生成時(constructor)と同じ位置へ復元(ズーム打ち消しの変換も恒等へ戻す)。
       const fogStage = this.L.uiLayer.parent;
       if (fogStage) fogStage.addChildAt(this.forestUnderLayer, fogStage.getChildIndex(this.L.frontForest));
       else this.L.uiLayer.addChildAt(this.forestUnderLayer, 0);
-      this.L.uiLayer.addChildAt(this.frontBankLayer, this.L.uiLayer.getChildIndex(this.vignette));
+      this.forestUnderLayer.scale.set(1);
+      this.forestUnderLayer.position.set(0, 0);
     }
   }
 
@@ -2808,6 +2809,14 @@ export class PixiScene {
     // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。
     this.bgCloudLayer.position.set(s.camera.x - sx, s.camera.y - sy);
+    // チュートリアルの岩間霧: worldGroupのズーム(待機/文脈)につられて伸縮しないよう、層側で
+    // ズーム変換を毎フレーム打ち消す(社長指示v0.25.1822「上の霧は動きにつられないで」)。
+    // worldGroupの変換は S = L×z + pivot×(1−z)。層に scale=1/z・position=−p/z を与えると恒等になる。
+    if (this.tutorialFogPlaced) {
+      const wz = this.L.worldGroup.scale.x || 1;
+      this.forestUnderLayer.scale.set(1 / wz);
+      this.forestUnderLayer.position.set(-this.L.worldGroup.position.x / wz, -this.L.worldGroup.position.y / wz);
+    }
     if (this.fogT0 === 0) this.fogT0 = now;
     const fogT = now - this.fogT0;
     const labThemeFog = s.stageTheme === 'lab'; // 研究所スキンは森の霧を出さない(床を見せる)
@@ -2825,9 +2834,9 @@ export class PixiScene {
       }
       f.sp.x = (this.screenW - f.sp.width) / 2; // 画面中央に固定(横の動きは texture スクロールで)
       f.sp.y = f.yFrac * this.screenH - f.sp.height / 2 + Math.sin(now * f.spdY * FOG_SPEED + f.ph) * f.ampY; // 縦の揺らめき
-      // チュートリアル: 手前の霧2層(森下/森上)は岩帯の重なり帯に50%サイズで漂わせる(z移設はapplyTutorialFrontFog)。
-      // 寸法は差分時のみ再設定(通常ステージへ戻った時はresize時の標準寸法へ復元)。
-      if (f.sp.parent === this.frontBankLayer || f.sp.parent === this.forestUnderLayer) {
+      // チュートリアル: 森下霧(fog-alpha)は岩帯の重なり帯に50%サイズで漂わせる(z移設はapplyTutorialFrontFog)。
+      // 最前面の低い霧(frontBank)は通常どおり画面下部。寸法は差分時のみ再設定(復元も同経路)。
+      if (f.sp.parent === this.forestUnderLayer) {
         const stdH = this.screenH * f.heightFrac;
         const tw = f.sp.texture.width || 1;
         const th = f.sp.texture.height || 1;
@@ -3425,6 +3434,12 @@ export class PixiScene {
   }
 
   private syncCastle(castle: CastleEvent, now: number) {
+    // チュートリアルは城(構造物)そのものを出さない(社長指示v0.25.1822「何もかも無し」・報告「ボス城がのこってる」)。
+    if (useGameStore.getState().farBackdrop === 'tutorial') {
+      this.castleView.visible = false;
+      this.castleShadow = null;
+      return;
+    }
     // ステージ3(廃都=farBackdrop 'city')は廃教会、それ以外(ステージ1の城など)は通常の城。
     const isCity = useGameStore.getState().farBackdrop === 'city';
     const tex = (isCity ? getTexture('castle-church') : null) ?? getTexture('castle');
