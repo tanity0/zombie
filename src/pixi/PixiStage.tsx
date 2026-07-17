@@ -54,6 +54,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
   useEffect(() => {
     let cancelled = false;
     let syncErrorLogged = false;
+    let readyFailsafe = 0; // ローディング解除のフェイルセーフタイマー(下記)
     const host = hostRef.current;
     const app = new Application();
     appRef.current = app; // 早期に保持: 非同期init中にunmountしても cleanup で確実に破棄できる
@@ -110,9 +111,14 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         host.appendChild(app.canvas);
       }
 
-      // 初フレームを画面に出した合図。useGameLoop はこれを待ってから登場演出の時計を開始する
-      // (冷間リロードで WebGL init/テクスチャ読込中に演出が黒画面で進む=「まっくら」を防ぐ)。
-      try { useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
+      // ローディング解除(rendererReady)は「ステージ別テクスチャの注入完了+シーン反映後」に出す
+      // (v0.25.1826・社長指示「一瞬森が映るのを絶対にどうにかしたい」)。従来はここ(森ベースの初フレーム)で
+      // 解除していたため、キャッシュ未温だと注入前の素の森スキンが見えていた(全スキンステージ共通)。
+      // キャンバス自体は挿入済み=解除まではローディングオーバーレイの下で描画が回る(黒画面にはならない)。
+      // 注入が遅延/失敗しても残り続けないよう4秒で強制解除(App側の6秒タイムアウトと二重保険)。
+      readyFailsafe = window.setTimeout(() => {
+        try { if (!cancelled) useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
+      }, 4000);
 
       // 1フレームの例外で描画が固まって真っ暗になるのを防ぐ(ログは初回だけ。再生は継続)。
       const tick = () => {
@@ -200,16 +206,22 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         scene.setHorizonOverride('snow', s4Horizon);     // 地平帯(遠景森1): 氷壁帯(ステージ4・下フェード)
         scene.setHorizonOverride('stage5', s5Horizon);   // 地平帯(遠景森1): 城塞の壁(ステージ5・社長提供)
         scene.setHorizonOverride('tutorial', tutRocks);  // 地平帯(遠景森1): 岩帯(チュートリアル・川に頭が少し被る配置)
+        // 注入をこのフレームのシーンへ反映してからローディングを外す=素の森スキンを1フレームも見せない。
+        try { scene.sync(); app.render(); } catch { /* ignore */ }
+        window.clearTimeout(readyFailsafe);
+        try { useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
       })();
     })().catch((e) => {
       console.error('[PixiStage] init error:', e);
       // フェイルセーフ: 初期化が例外で止まっても、ロードオーバーレイが永久に残らないよう ready にする
       // (背景/テクスチャ読込失敗・WebGL初期化失敗等)。描画は不完全でもソフトロックは防ぐ。
+      window.clearTimeout(readyFailsafe);
       try { if (!cancelled) useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
     });
 
     return () => {
       cancelled = true;
+      window.clearTimeout(readyFailsafe);
       try { useGameStore.getState().setRendererReady(false); } catch { /* ignore */ } // 次マウント(再戦)も初フレームまで保持
       const a = appRef.current;
       const tick = tickerCallbackRef.current;
