@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1819',
+    items: [
+      'チュートリアルステージ(開発中): 岩帯1を10px上へ+高さ10px縮小、岩帯2を20px上へ調整しました。',
+    ],
+  },
+  {
     version: '0.25.1818',
     items: [
       'チュートリアルステージ(開発中): 護衛NPC・商人・松明・弾薬補給・ヘリ降下演出も無しにしました(すべてイベントで特別に構成する舞台に)。',

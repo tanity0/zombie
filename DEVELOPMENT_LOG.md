@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1819 — 岩帯の位置調整2件(社長指示「岩1を10px上へ・高さ10px縮める/岩2を20px上へ」)【2026-07-17 19:12 JST】
+- 岩帯1: `TUTORIAL_HORIZON_HEAD_PX 44→54`(上端10px上)+`TRIM 20→40`(高さ−10px。下端=境界線−40px)。
+- 岩帯2: `TUTORIAL_NEAR_HORIZON_DOWN_PX 45→25`(帯全体20px上・高さ130px不変)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1818 — チュートリアル: 環境要素の全撤去(社長指示「アイテムも通常NPCも通信も無し!エリアも何もかも無し!全てイベントで特別仕様のみ」)【2026-07-17 19:00 JST】
 - v1814の敵自動湧き停止に続き、**残る環境要素を全撤去**(farBackdrop==='tutorial'ゲート):
   - **護衛NPC(通常NPC)**: escortRoster空 → 出撃セリフ(npcDialogueQueue)・道中の掛け合いも自然消滅。
