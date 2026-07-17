@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1834',
+    items: [
+      'ストーリー(the ONE)序盤を最新の正史へ更新: M1〜M3の任務説明・報告文と、施設名称を「PHILL再生医療研究所」「東部医療科学センター」に統一しました。',
+      'チュートリアル序盤に、グレッグとジュンの会話が入りました。',
+    ],
+  },
+  {
     version: '0.25.1833',
     items: [
       'ゲーム内容の変更はありません(開発資料の更新)。',

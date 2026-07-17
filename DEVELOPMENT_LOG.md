@@ -1,5 +1,31 @@
 # Development Log
 
+## v0.25.1834 — 正史『the ONE』M0〜M3制作差分の実装(B1文面+M0会話・社長「実装お願いします」)【2026-07-17 23:46 JST】
+- **B1: 文面差し替え+D-02名称統一**(STORY_M0_M3.md準拠)。campaign.tsのM0〜M3の
+  synopsis(出撃前説明)/debrief(リザルト)を正史確定文面へ全面差し替え。施設名を全文
+  「PHILL再生医療研究所」/共同研究先を「東部医療科学センター」に統一(D-02)。
+  - M1: 旧・救助筋(偵察部隊/抗体部隊/radio/エドガー voices)を撤去→大型変異体殲滅・進路確保筋へ。
+  - M2: clearReport(STORY_UI_SPEC例文)を正史リザルトへ一本化(PHILL計画資料回収→東部医療科学センター連絡)。
+  - M3: 施設名を東部医療科学センターへ・旧「腕でも生やそう」台詞削除・ジュン投与/北部搬送を記載。
+  - 資料室: 'mission-remote-lab-comm-log' のタイトル/本文を「東部医療科学センターとの通信履歴」へ。
+- **M0序盤会話**(正史M0・一言一句)。グレッグ×2→ジュン×2の4行をstage-tutorialのdialogueに載せ、
+  チュートリアルで右へ約400px歩いた初回に発火(TUTORIAL_CONVO_TRIGGER_X・IntroDialogue流用=時間停止/
+  オートタイプ/SKIP・総尺約9秒)。実機ヘッドレスで発火→4行(グレッグ/ジュン・話者色分け)→自動終了→
+  時間再開を確認。発火x=叩き台(要実機調整)。
+- **⚠️挙動変更(要社長確認・報告に明記)**: 正史M1「通常ステージとして進行する」に合わせ、stage-1の
+  4拠点制圧イベント(mainEvent:'suppression')を外した。stage-1は通常サバイバル→終盤の城ボス
+  (giantbat=大型変異体・森ステージ共通の7分フィナーレ=制圧と独立)撃破でクリアになる=正史M1構造。
+  制圧の4拠点占拠ミニイベントがstage-1から消える。制圧システム自体は温存=データ1行で差し戻せる。
+- テスト: storyCanon.test.tsにM0〜M3完全一致5件+旧称監査を追加、旧・腕台詞テストを差分正史へ更新。
+  data配下+sim=73件緑(typecheck緑)。
+- 自己点検: 憲法第4条(初心者ゾーン)非該当。挙動変更は制圧除去の1点のみ(正史M1準拠・要確認と明記)、
+  他は文面/新規会話=既存挙動不変。
+- **未実装(STORY_M0_M3.mdステータス参照)**: B2資料室初期解放(調査記録01/02の本文未支給)/
+  B3 M0終盤ハンター追跡→グレッグ死亡/B4 M3ジュン曝露イベント本体。
+- Files: `src/data/campaign.ts`, `src/data/storyArchive.ts`, `src/data/storyCanon.test.ts`,
+  `src/hooks/useGameLoop.ts`, `src/store/gameStore.ts`, `STORY_M0_M3.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1833 — ストーリー正史『the ONE』M0〜M3制作差分の記録(社長支給・ゲーム未実装)【2026-07-17 23:12 JST】
 - **STORY_M0_M3.md 新設**: 社長支給の正史差分(D-01資料室初期解放/D-02施設名称統一=
   「PHILL再生医療研究所」/M0〜M3の出撃前説明・構造・会話・リザルト)を全文記録。

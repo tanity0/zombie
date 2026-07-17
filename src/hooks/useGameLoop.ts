@@ -39,7 +39,7 @@ import {
   RN_ENEMY_FORCE,
   FIRST_AID_KIT_THROW_DAMAGE,
   PHASER_INDEX, BASE_SOLDIER_COUNT,
-  TUTORIAL_MOVE_X_MIN_PX
+  TUTORIAL_MOVE_X_MIN_PX, TUTORIAL_CONVO_TRIGGER_X
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -2822,6 +2822,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const pcxNow = st.player.x + st.player.width / 2;
             if (st.player.isMoving && pcxNow <= TUTORIAL_MOVE_X_MIN_PX + 6) {
               st.tryNpcLine('軍人', 'tutorial-left-wall', 'そっちじゃないぞ。', 6000);
+            }
+            // M0序盤会話(正史STORY_M0_M3.md「戦闘が激しくなる前の移動中。初回のみ」):
+            // 右へ少し歩いた地点で、ミッションのdialogue(グレッグ2行→ジュン2行)を時間停止+
+            // オートタイプで流す(IntroDialogue流用。ループ側の汎用ブロックが総時間経過で自動終了)。
+            if (!st.introDialogueShown && st.introDialogueLines.length > 0 && pcxNow >= TUTORIAL_CONVO_TRIGGER_X) {
+              st.startIntroDialogue();
             }
           }
           if (st.escorts.length) {
