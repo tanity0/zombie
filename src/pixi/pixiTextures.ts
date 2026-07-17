@@ -514,6 +514,7 @@ const BACKGROUND_PATHS = [
   'backgrounds/stage5-ground.jpg',
   'backgrounds/stage3-front-rooftops.png',
   'backgrounds/tutorial-far.jpg', // チュートリアル(洞窟)の遠景パノラマ
+  'backgrounds/tutorial-ground.jpg', // チュートリアル(洞窟)の地面タイル
   'sprites/lab-floor/lab-floor-stage2.png',
 ];
 let bgLoading: Promise<void> | null = null;

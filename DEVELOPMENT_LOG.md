@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1805 — チュートリアル: 地面差し替え+木の撤去(社長指示「地面素材です/木は消して/花も消して」)【2026-07-17 15:21 JST】
+- **地面**: 社長支給の洞窟岩土タイル(1254x1254・シームレス・不透過確認)をjpg化(480KB)し、
+  `setGroundOverride('tutorial')` で差し替え(stage4/5と同経路)。
+- **木**: `setTreesDisabled` をチュートリアル(farBackdrop='tutorial')にも適用=描画・幹当たり・配置回避が
+  world層ゲートで一括消滅(ステージ5と同方式)。
+- **花**: もともとステージ1限定散布(forestDecor.FLOWER_STAGES={'stage-1'})のためチュートリアルには
+  出ない(ゲート確認のみ・変更なし)。
+- 検証: typecheck green・ヘッドレス実機シム=岩土地面+木なし+洞窟遠景+天井帯を確認。
+  残る森要素=地平帯(青シルエット)のみ(TUTORIAL_STAGE.mdに記録・指示待ち)。
+- Files: `public/backgrounds/tutorial-ground.jpg`(新), `src/pixi/pixiTextures.ts`, `src/pixi/PixiStage.tsx`,
+  `src/store/gameStore.ts`, `TUTORIAL_STAGE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1804 — チュートリアルステージのベース実装(社長指示「ステージ1をコピーして作り始めて」)【2026-07-17 15:10 JST】
 - **`stage-tutorial` 新設(STAGES先頭・unlockBy:null=常時解放・仮表示)**: ステージ1の構造から
   固有ストーリー要素(制圧イベント/裏ボスmimir/サブクエスト/資料解放)を外した素の生存ステージ。

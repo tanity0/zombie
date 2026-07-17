@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1805',
+    items: [
+      'チュートリアルステージ(開発中): 地面を洞窟の岩土に差し替え、森の木を撤去しました。',
+    ],
+  },
+  {
     version: '0.25.1804',
     items: [
       'チュートリアルステージ(開発中・仮)の土台を追加: 洞窟の遠景・鍾乳石の天井・専用BGMでステージ選択の先頭から出撃できます。中身はまだステージ1相当の仮です。',
