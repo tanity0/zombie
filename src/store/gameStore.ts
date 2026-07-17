@@ -233,8 +233,8 @@ export const TUTORIAL_MEDIC_INDEX = 100;
 // フォールバック('rescue/shooter')がそのまま使われる(2コマ歩行)。
 export const TUTORIAL_SOLDIER_INDEX = 101;
 // チュートリアルの上下移動制限(プレイヤー中心yがスポーン(0)から±この値まで・透明な壁)。
-// 縦固定カメラ(useGameLoop側)とセットで、被写界深度の構図を守る(社長指示v0.25.1826)。
-export const TUTORIAL_MOVE_Y_LIMIT_PX = 50;
+// 縦カメラ=プレイヤー1:1追従とセットで、被写界深度の構図を守る(社長指示v0.25.1826)。
+export const TUTORIAL_MOVE_Y_LIMIT_PX = 100; // v0.25.1828: 社長指示「100pxに増やします」で50→100
 const PHASER_GUN_OFFSET = 5;           // 2丁拳銃の左右ずらし幅(px。進行方向に直交)
 const PHASER_APPEAR_CHANCE = 0.2;      // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)

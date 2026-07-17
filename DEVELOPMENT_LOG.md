@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.1828 — チュートリアルの上下移動を±100pxへ(社長指示)【2026-07-17 21:06 JST】
+- `TUTORIAL_MOVE_Y_LIMIT_PX 50→100`(透明壁の可動域拡大。縦カメラ=プレイヤー画面固定式は不変)。
+- Files: `src/store/gameStore.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1827 — 随行軍人=ヘルメット兵へ+縦カメラ=プレイヤー画面固定式+出撃ローディング%(社長指示3件)【2026-07-17 21:02 JST】
 - **①随行軍人の配役修正**(社長指示「軍人はレスキューイベントの時のヘルメットしてるNPC」):
   エドガー(仮)→ **rescue/shooter(ヘルメット兵・2コマ歩行)**。`TUTORIAL_SOLDIER_INDEX=101`

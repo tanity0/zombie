@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1828',
+    items: [
+      'チュートリアルステージ(開発中): 上下の移動範囲を±100pxに拡大しました。',
+    ],
+  },
+  {
     version: '0.25.1827',
     items: [
       'チュートリアルステージ(開発中): 随行する軍人をヘルメットの兵士に変更/上下移動で地面が動き、プレイヤーは画面の同じ高さに固定されるカメラにしました。',
