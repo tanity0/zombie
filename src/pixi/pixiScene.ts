@@ -132,7 +132,7 @@ const TUTORIAL_FAR_HEIGHT_RATIO = 0.415;
 // 川の流れ(オクトラ風・社長相談2026-07-17): 遠景と同ジオメトリのハイライト筋レイヤー2枚を
 // 速度差でスクロール(1枚目=速い/2枚目=遅い)。明部は既存bloomが拾って光る。数値は全て叩き台。
 const RIVER_FLOW_SPEED_PX_S = [18, 10];   // tilePositionの流速(表示px/秒)
-const RIVER_FLOW_ALPHA = [0.85, 0.65];    // 基本アルファ(加算合成・叩き台)
+const RIVER_FLOW_ALPHA = [0.6, 0.45];     // 基本アルファ(加算合成・v0.25.1810で0.85/0.65から減=社長指示「透明度上げて馴染ませて」)
 const RIVER_FLOW_WOBBLE = [0.08, 0.06];   // アルファの揺らぎ振幅
 const RIVER_FLOW_WOBBLE_MS = [1400, 2300];// 揺らぎ周期
 const FAR_BACKDROP_BLUR = 1.1;
@@ -158,6 +158,12 @@ const LAB_NEAR_HORIZON_HEIGHT_RATIO = (() => {
 // 倍率が効かず「大きくならない」ため、固定pxに切り替え)。底は遠景境界線(farH)基準の下オフセット。
 const STAGE5_HORIZON_FOREST_HEIGHT_PX = 130; // 森1の高さ(px・社長指示v0.25.1743で150→130)
 const STAGE5_HORIZON_FOREST_DOWN_PX = 20;    // 森1の底=境界線から下へ(px)
+// チュートリアルの遠景森1=岩帯(社長指示v0.25.1810「川に少しだけ頭被るくらいの位置に遠景森1」)。
+// 水面の下端(遠景テクスチャ y516/710)を基準に、帯の上端(トゲ岩の先端)が少しだけ川へ食い込むよう
+// farH からの比率で上端を決め、下端は stage5 と同じく境界線(farH)+固定pxで地面へ食い込ませる。
+const TUTORIAL_HORIZON_WATER_BOTTOM_FRAC = 516 / 710; // 遠景内の水面下端(クロップ後710px基準)
+const TUTORIAL_HORIZON_HEAD_PX = 14;  // 帯上端が水面に被る量(叩き台)
+const TUTORIAL_HORIZON_DOWN_PX = 20;  // 帯下端=境界線から下へ(px)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
@@ -1847,6 +1853,9 @@ export class PixiScene {
   private horizonForestY(farH: number, horizonH: number): number {
     // ステージ5: 底=境界線(farH)+20px下(社長指示v0.25.1742の実寸指定)。
     if (this.stage5Stage) return farH + STAGE5_HORIZON_FOREST_DOWN_PX - horizonH;
+    // チュートリアル: 底=境界線+固定px(高さはhorizonForestHeightのtutorial分岐が
+    // 「上端=水面下端-HEAD_PX」になるよう算出済み=頭が川に少し被る)。
+    if (this.currentFarKey === 'tutorial') return farH + TUTORIAL_HORIZON_DOWN_PX - horizonH;
     return farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0);
   }
   private horizonForestHeight() {
@@ -1856,6 +1865,11 @@ export class PixiScene {
     );
     // ステージ5は実寸150px固定(社長指示v0.25.1742。比率×クランプ×倍率だと端末次第で伸びないため)。
     // 地平の薄消し線(horizonActorHideScreenY)は帯の実位置から導出しているので自動で追従する。
+    if (this.currentFarKey === 'tutorial') {
+      // 上端=水面下端(farH×FRAC)-HEAD_PX / 下端=farH+DOWN_PX → 高さ=その差(端末サイズに自動追従)。
+      const farH = this.farBackdropHeight();
+      return farH * (1 - TUTORIAL_HORIZON_WATER_BOTTOM_FRAC) + TUTORIAL_HORIZON_HEAD_PX + TUTORIAL_HORIZON_DOWN_PX;
+    }
     return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base;
   }
 
@@ -7372,7 +7386,10 @@ export class PixiScene {
     g.clear();
     g.rotation = 0;
     g.scale.set(1);
-    g.alpha = 1;
+    // 弾も敵/プロップと同じ地平線フェードで消す(社長指示v0.25.1810: 奥へ飛んだ弾が遠景の
+    // ボケ帯で巨大に滲んで見える対策)。見た目のみ・判定/飛距離は不変。手前(画面下端)の
+    // near-planeフェードは掛けない(プレイヤーが画面下端にいる時に自弾が薄くなるのを避ける)。
+    g.alpha = this.horizonActorAlpha(p.y + p.height);
     let drawX = p.x;
     let drawY = p.y;
     if (

@@ -31,9 +31,9 @@ export const STAGE_SKINS: Record<StageSkinKey, StageSkin> = {
   city:   { far: 'city', ground: 'city', horizon1Visible: true, horizon2: 'city', front: 'city', daylightNoon: true, topHang: null },
   // ステージ4: 封鎖地域(雪原の要塞)。遠景森2は無し、地平帯=氷壁。
   snow:   { far: 'snow', ground: 'snow', horizon1Visible: true, horizon2: null, front: 'snow', daylightNoon: false, topHang: null },
-  // チュートリアル: 洞窟。遠景森1(森シルエット帯)は出さない(社長指示2026-07-17:
-  // 「遠景森消しといて。あとで岩を重ねます」= 岩の帯素材が来たら差し替えで復活させる)。
-  tutorial: { far: 'tutorial', ground: 'tutorial', horizon1Visible: false, horizon2: null, front: 'forest', daylightNoon: false, topHang: null },
+  // チュートリアル: 洞窟。遠景森1=岩帯(tutorial-horizon-rocks・v0.25.1810で社長支給)。
+  // 配置は「川に少しだけ頭が被る」位置(pixiSceneのtutorial分岐参照)。
+  tutorial: { far: 'tutorial', ground: 'tutorial', horizon1Visible: true, horizon2: null, front: 'forest', daylightNoon: false, topHang: null },
 };
 
 // 現在の出撃状態(stageTheme / farBackdrop)からスキンキーを解決。屋外専用(屋内は別パイプライン)。
