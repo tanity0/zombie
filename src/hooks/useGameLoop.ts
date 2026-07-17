@@ -7783,6 +7783,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const CRATE_UNLOCK_TIMES = [50000, 140000, 180000];
         const CRATE_FORCE_AFTER_MS = 60000;
         if (
+          !tutorialStage && // チュートリアルはアイテム(武器箱の定期投下)も無し(社長指示v0.25.1818)
           cratesDroppedRef.current < CRATE_UNLOCK_TIMES.length &&
           gameTime >= CRATE_UNLOCK_TIMES[cratesDroppedRef.current] &&
           (curPhase.kind === 'buildup' ||

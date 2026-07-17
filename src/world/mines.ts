@@ -48,9 +48,17 @@ const minesInCell = (cx: number, cy: number): MineInstance[] => {
   return out;
 };
 
+// チュートリアル等「緑卵(地雷)を一切出さない」ステージ用の一括ゲート(setTreesDisabled/
+// setTorchesDisabled と同じ流儀・社長指示v0.25.1820「緑卵も非表示」)。ワールド生成の3関数
+// (region/pressure/ambush)を全て塞ぐ=描画・接触判定・影キャスタが同時に消える。
+// (敵の産卵・卵リングイベントは敵/イベント停止側で別途止まっている。)
+let minesDisabled = false;
+export const setMinesDisabled = (disabled: boolean): void => { minesDisabled = disabled; };
+
 export const minesInRegion = (
   minX: number, minY: number, maxX: number, maxY: number
 ): MineInstance[] => {
+  if (minesDisabled) return [];
   const startX = Math.floor(minX / MINE_CELL) * MINE_CELL;
   const startY = Math.floor(minY / MINE_CELL) * MINE_CELL;
   const out: MineInstance[] = [];
@@ -68,6 +76,7 @@ export const pressureMinesNearPlayer = (
   direction: { x: number; y: number } | null,
   gameTime: number
 ): MineInstance[] => {
+  if (minesDisabled) return [];
   const mag = direction ? Math.hypot(direction.x, direction.y) : 0;
   if (mag < 0.25) return [];
 
@@ -115,6 +124,7 @@ export const pressureMinesNearPlayer = (
 };
 
 export const mineAmbushAround = (anchor: MineAmbushAnchor): MineInstance[] => {
+  if (minesDisabled) return [];
   const count = 52;
   const rx = anchor.width * 0.62;
   const ry = anchor.height * 0.58;

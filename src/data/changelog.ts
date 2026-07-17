@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1820',
+    items: [
+      'チュートリアルステージ(開発中): 手前の霧を岩帯1と2の間のレイヤーへ50%サイズで移動しました。',
+      'チュートリアルステージ: 緑の卵・武器箱の投下・商人の誘導マーカーも出ないようにしました。',
+    ],
+  },
+  {
     version: '0.25.1819',
     items: [
       'チュートリアルステージ(開発中): 岩帯1を10px上へ+高さ10px縮小、岩帯2を20px上へ調整しました。',

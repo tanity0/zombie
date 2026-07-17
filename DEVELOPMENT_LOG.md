@@ -1,5 +1,25 @@
 # Development Log
 
+## v0.25.1820 — 手前霧を岩帯の間へ(50%)+緑卵/武器箱/商人マーカー停止(社長指示3件)【2026-07-17 19:29 JST】
+- **①手前霧の移設**(社長指示「手前を漂ってる霧を、岩1と岩2の間に、50%の大きさで」):
+  手前の霧2層(森下=fog-alpha/森上=frontBank)を、チュートリアルのみ **z=岩帯1と岩帯2の間**
+  (worldGroup内・nearHorizonの直前)へ差分付け替え(`applyTutorialFrontFog`・他ステージでは
+  生成時位置へ復元)。**サイズ50%**(帯高さ・柄ともアスペクト維持で半分・横はタイルで全幅維持)+
+  縦位置=岩帯の重なり帯中心(farH−72px・叩き台)。ズーム最大引き確認済み。
+- **②緑卵も非表示**(社長指示): 卵は敵由来だけでなく**ワールド生成**(minesInRegion/pressure/ambushの
+  決定的配置=木・松明と同類)があり、チュートリアルでも湧いていた。`setMinesDisabled` を world 層に
+  新設(3関数を一括ゲート・mines.test.ts 3件を同コミットで追加=規律4)。resetGameでtutorial時ON。
+- **③取り残しアイテム2件**(ズーム引き検証で発見):
+  - **武器箱の定期投下**(50/140/180秒)が未ゲート→ !tutorialStage 追加。
+  - **商人の画面端誘導マーカー**が退避先(1e9,1e9)を指し続けていた→ radius<=0 を「商人不在」の
+    印として syncArrows でマーカー抑止。
+- 検証: typecheck green・torches/mines テスト6件green・ヘッドレス(通常+zoomlock)で
+  霧の層位置/卵なし/マーカーなしを確認。
+- Files: `src/world/mines.ts`, `src/world/mines.test.ts`(新), `src/pixi/pixiScene.ts`,
+  `src/hooks/useGameLoop.ts`, `src/store/gameStore.ts`, `TUTORIAL_STAGE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1819 — 岩帯の位置調整2件(社長指示「岩1を10px上へ・高さ10px縮める/岩2を20px上へ」)【2026-07-17 19:12 JST】
 - 岩帯1: `TUTORIAL_HORIZON_HEAD_PX 44→54`(上端10px上)+`TRIM 20→40`(高さ−10px。下端=境界線−40px)。
 - 岩帯2: `TUTORIAL_NEAR_HORIZON_DOWN_PX 45→25`(帯全体20px上・高さ130px不変)。

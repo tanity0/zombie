@@ -83,7 +83,7 @@ import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled } from '../world/torches';
-import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
+import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, GACHA_PULL_COST, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID } from '../data/campaign';
@@ -9594,6 +9594,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // チュートリアル: 松明(破壊可能プロップ=資材ドロップ源)も出さない(社長指示v0.25.1818
       // 「アイテムも通常NPCも何もかも無し。全てイベントで特別仕様のみ」)。
       setTorchesDisabled(farBackdrop === 'tutorial');
+      // チュートリアル: 緑卵(地雷)のワールド生成も出さない(社長指示v0.25.1820「緑卵も非表示」)。
+      setMinesDisabled(farBackdrop === 'tutorial');
       // 遠景森2(手前の帯)は forest/lab どちらでも有効(ダンステストのみ無効)。lab は機材シルエット帯。
       const nearHorizon = !state.danceTestMode ? state.pendingNearHorizon : '';
       // 裏ボス(深層域)。屋外(非ラボ/非屋内)・非ダンステストのときだけ有効。

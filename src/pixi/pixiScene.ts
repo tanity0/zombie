@@ -172,6 +172,10 @@ const TUTORIAL_HORIZON_HEIGHT_TRIM_PX = 40; // v0.25.1819: 社長指示「高さ
 // 数値は叩き台(実機調整前提)。
 const TUTORIAL_NEAR_HORIZON_HEIGHT_PX = 130; // 岩帯2の高さ(px)
 const TUTORIAL_NEAR_HORIZON_DOWN_PX = 25;    // 岩帯2の底=境界線(farH)から下へ(px)(v0.25.1819: 社長指示「20px上へ」で45→25)
+// チュートリアルの手前霧(v0.25.1820・社長指示「手前を漂ってる霧を、岩1と岩2の間に、50%の大きさで」):
+// frontBank霧(通常=最前面・画面下部)を、z=岩帯1と岩帯2の間へ移し、50%サイズで岩帯の重なり帯に漂わせる。
+const TUTORIAL_FRONT_FOG_SCALE = 0.5;        // 霧の大きさ(帯の高さ・柄とも50%)
+const TUTORIAL_FRONT_FOG_CENTER_UP_PX = 72;  // 霧帯の中心=境界線(farH)から上へ(岩1下端と岩2上端の中間・叩き台)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
@@ -2381,6 +2385,26 @@ export class PixiScene {
     if (!t) return;
     this.nearHorizonOverrides[key] = t;
   }
+  // チュートリアル: 手前霧(frontBank)を岩帯1と岩帯2の間(z)へ移す/戻す(社長指示v0.25.1820)。
+  // 差分時のみ付け替え。復元は生成時(constructor)と同じ「vignetteの直下」へ。
+  private tutorialFogPlaced = false;
+  private applyTutorialFrontFog(active: boolean) {
+    if (active === this.tutorialFogPlaced) return;
+    this.tutorialFogPlaced = active;
+    const wg = this.L.worldGroup;
+    if (active) {
+      // 手前の霧2層(森下=fog-alpha / 森上=frontBank)とも岩帯1と岩帯2の間へ(元の前後関係は維持)。
+      wg.addChildAt(this.forestUnderLayer, wg.getChildIndex(this.L.nearHorizon));
+      wg.addChildAt(this.frontBankLayer, wg.getChildIndex(this.L.nearHorizon));
+    } else {
+      // 生成時(constructor)と同じ位置へ復元。
+      const fogStage = this.L.uiLayer.parent;
+      if (fogStage) fogStage.addChildAt(this.forestUnderLayer, fogStage.getChildIndex(this.L.frontForest));
+      else this.L.uiLayer.addChildAt(this.forestUnderLayer, 0);
+      this.L.uiLayer.addChildAt(this.frontBankLayer, this.L.uiLayer.getChildIndex(this.vignette));
+    }
+  }
+
   // 遠景森2をキー(s.nearHorizon)で出し分け。差分時にテクスチャ差し替え+再レイアウト、tint は昼夜連動。
   private nearHorizonKeyNow = ''; // layoutNearHorizon(resize経由含む)がステージ別高さ比を引くための現在キー
   private applyNearHorizon(key: string) {
@@ -2640,6 +2664,7 @@ export class PixiScene {
       this.vignette.texture = this.isLabStage ? getVignetteTextureNarrow() : getVignetteTexture();
     }
     this.applyNearHorizon(s.nearHorizon); // 遠景森2(ステージ別)
+    this.applyTutorialFrontFog(this.currentFarKey === 'tutorial'); // 手前霧のz移設(チュートリアルのみ)
     this.applyDaylight(this.daylight);
     // ヒットストップ中はアニメ時計(now)も停止させる。これで Date.now 基準で動くもの
     // (歩きアニメ・スモッグの流れ・グロー明滅・各種sin揺らぎ等)も止まり、画面ほぼ全停止の
@@ -2800,6 +2825,25 @@ export class PixiScene {
       }
       f.sp.x = (this.screenW - f.sp.width) / 2; // 画面中央に固定(横の動きは texture スクロールで)
       f.sp.y = f.yFrac * this.screenH - f.sp.height / 2 + Math.sin(now * f.spdY * FOG_SPEED + f.ph) * f.ampY; // 縦の揺らめき
+      // チュートリアル: 手前の霧2層(森下/森上)は岩帯の重なり帯に50%サイズで漂わせる(z移設はapplyTutorialFrontFog)。
+      // 寸法は差分時のみ再設定(通常ステージへ戻った時はresize時の標準寸法へ復元)。
+      if (f.sp.parent === this.frontBankLayer || f.sp.parent === this.forestUnderLayer) {
+        const stdH = this.screenH * f.heightFrac;
+        const tw = f.sp.texture.width || 1;
+        const th = f.sp.texture.height || 1;
+        if (this.tutorialFogPlaced) {
+          const h50 = stdH * TUTORIAL_FRONT_FOG_SCALE;
+          if (Math.abs(f.sp.height - h50) > 0.5) {
+            f.sp.height = h50;
+            f.sp.tileScale.set((f.sp.width / tw) * TUTORIAL_FRONT_FOG_SCALE, h50 / th); // 柄も50%(アスペクト維持・横はタイル)
+          }
+          f.sp.y = this.farBackdropHeight() - TUTORIAL_FRONT_FOG_CENTER_UP_PX - h50 / 2
+            + Math.sin(now * f.spdY * FOG_SPEED + f.ph) * f.ampY;
+        } else if (Math.abs(f.sp.height - stdH) > 0.5) {
+          f.sp.height = stdH;
+          f.sp.tileScale.set(f.sp.width / tw, stdH / th);
+        }
+      }
       f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;    // 右へ流れる+横の揺らめき
       f.sp.tilePosition.y = 0;
     }
@@ -9245,7 +9289,8 @@ export class PixiScene {
 
     const merchantX = merchant.x - camera.x;
     const merchantY = merchant.y - 28 - camera.y;
-    if (merchantX < 0 || merchantX > this.screenW || merchantY < 0 || merchantY > this.screenH) {
+    // radius<=0 は「商人不在」(チュートリアル=到達不能座標へ退避・v0.25.1820)。誘導マーカーも出さない。
+    if (merchant.radius > 0 && (merchantX < 0 || merchantX > this.screenW || merchantY < 0 || merchantY > this.screenH)) {
       const angle = Math.atan2(merchantY - cyC, merchantX - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;
