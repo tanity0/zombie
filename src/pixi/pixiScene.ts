@@ -129,7 +129,7 @@ const TUTORIAL_FAR_HEIGHT_RATIO = 0.55;
 // 川の流れ(オクトラ風・社長相談2026-07-17): 遠景と同ジオメトリのハイライト筋レイヤー2枚を
 // 速度差でスクロール(1枚目=速い/2枚目=遅い)。明部は既存bloomが拾って光る。数値は全て叩き台。
 const RIVER_FLOW_SPEED_PX_S = [18, 10];   // tilePositionの流速(表示px/秒)
-const RIVER_FLOW_ALPHA = [0.85, 0.65];    // 基本アルファ
+const RIVER_FLOW_ALPHA = [0.85, 0.65];    // 基本アルファ(加算合成・叩き台)
 const RIVER_FLOW_WOBBLE = [0.08, 0.06];   // アルファの揺らぎ振幅
 const RIVER_FLOW_WOBBLE_MS = [1400, 2300];// 揺らぎ周期
 const FAR_BACKDROP_BLUR = 1.1;
@@ -2294,6 +2294,7 @@ export class PixiScene {
   // 川の流れ(チュートリアル): 遠景に重ねるハイライト筋レイヤー(PixiStageが注入)。
   private riverFlowTexs: (Texture | null)[] = [null, null];
   private riverFlowSprites: TilingSprite[] = [];
+  private riverT0 = 0; // 川の流れの基準時刻(霧のfogT0と同じエポック桁あふれ対策)
   setRiverFlowTextures(t1: Texture | null, t2: Texture | null) {
     this.riverFlowTexs = [t1, t2];
     this.currentFarKey = ''; // 再適用(可視判定とレイアウトをやり直す)
@@ -2474,8 +2475,10 @@ export class PixiScene {
       this.L.farBackdrop.texture = tex;
       this.currentFarKey = desired;
       // 昼の廃都(city=正午ステージ)は夜用の暗転tintを外して本来の明るさで出す。
+      // チュートリアル(洞窟)も同様に素材本来の明るさ(素材自体が暗所として描かれており、
+      // ENV_TINTを重ねると川が読めなくなる=社長報告「そもそも川がない」v0.25.1807)。
       // それ以外(森/ラボ)は従来どおり環境の暗転tintを掛ける。
-      this.L.farBackdrop.tint = desired === 'city' ? 0xffffff : ENV_TINT;
+      this.L.farBackdrop.tint = (desired === 'city' || desired === 'tutorial') ? 0xffffff : ENV_TINT;
       // tileScale は resize() でしか計算されないため、差し替えテクスチャの寸法が違うと
       // 旧テクスチャ基準のスケールのまま=見た目が変わらない/崩れる。ここで再レイアウトする。
       this.layoutFarBackdrop();
@@ -2501,6 +2504,9 @@ export class PixiScene {
       if (!show || !tex) { if (sp) sp.visible = false; continue; }
       if (!sp) {
         sp = new TilingSprite({ texture: tex });
+        // 加算合成=水面のきらめきとして光らせる(bloomにも拾わせる)。既存スプライト2枚の
+        // ブレンド変更のみ=描画面積は不変(強glowのような多数の大面積加算とは別物・負荷増なし)。
+        sp.blendMode = 'add';
         const parent = this.L.farBackdrop.parent!;
         parent.addChildAt(sp, parent.getChildIndex(this.L.farBackdrop) + 1); // 遠景の直上
         this.riverFlowSprites[i] = sp;
@@ -2801,12 +2807,18 @@ export class PixiScene {
       0
     );
     // 川の流れ(チュートリアル): 遠景と同じパララックス+速度差の横流し+アルファの微揺らぎ。
+    // 重要: now はエポックms。そのまま速度を掛けると桁が大きすぎて(1e10px級)GPUのfloat32精度で
+    // UVが壊れ、筋が描けない/動かない(v0.25.1807の実バグ)。霧(fogT0)と同じ相対時刻に直し、
+    // さらにテクスチャ周期でmoduloして永久に桁を溜めない。
+    if (this.riverT0 === 0) this.riverT0 = now;
     for (let i = 0; i < 2; i++) {
       const sp = this.riverFlowSprites[i];
       if (!sp || !sp.visible) continue;
       sp.position.set(sx * 0.25, 0);
+      const period = sp.texture.width * sp.tileScale.x; // タイル1周のdest px
+      const drift = ((now - this.riverT0) / 1000) * RIVER_FLOW_SPEED_PX_S[i];
       sp.tilePosition.set(
-        -s.camera.x * FAR_BACKDROP_PARALLAX_X - (now / 1000) * RIVER_FLOW_SPEED_PX_S[i],
+        (-s.camera.x * FAR_BACKDROP_PARALLAX_X - drift) % period,
         0
       );
       sp.alpha = RIVER_FLOW_ALPHA[i] + Math.sin(now / RIVER_FLOW_WOBBLE_MS[i] * Math.PI * 2) * RIVER_FLOW_WOBBLE[i];

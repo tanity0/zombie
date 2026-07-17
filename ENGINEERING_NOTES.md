@@ -46,6 +46,12 @@
   (常用機13種がスナップ帯内・制限3種が帯外のまま、をCIで毎push機械検査。機種リストの正=
   `deviceCoverage.ts`)②見た目=`node scripts/device-sweep.mjs`(devサーバを起動して実行→
   主要13機種の全画面+プレイヤー周辺を一括スクショ)。画面系を触ったらこの2つを通すこと。
+- **時刻スクロールの`tilePosition`にエポックms由来の値を渡さない**(v0.25.1807実バグ=川の筋が
+  「描けない・動かない」)。`(Date.now()/1000)*速度`は1e10px級になり、GPUのfloat32ではこの桁の
+  ULPが数千px=UVの小数部が全損して模様が消える/フレーム間の1px未満の移動も精度以下で静止する。
+  JS(double)上の計算値は正しいためコード読みでは異常が見えない——**シーングラフの実値を覗いて発覚**
+  (tilePosition.x=-321億)。→ 霧(`fogT0`)と同じ「開始基準の相対時刻」+テクスチャ周期modulo を使う。
+  診断ハンドル: devビルドは `window.__pixiScene` でシーン実値を覗ける(v0.25.1807で常設・prod非搭載)。
 - 重い描画の順位: `Text`生成 > 毎フレームGraphics > 大きいαスプライト > 加算ライト ≫ 敵/弾。
   対処は数を減らすことではなく**描画方式を軽くする**(pooled sprite/bitmap font/焼き込み)。CLAUDE.md参照。
 
@@ -69,6 +75,10 @@
   (chen v0.25.1424・magnum v0.25.1431 の実バグ)。上げないと `?v=旧` のままキャッシュが残り、旧絵/
   不良版が配信され続ける。char-selectは`?v=__APP_VERSION__`で常に新しいが、**実機の in-game は
   ASSET_VERSION 依存**なので必須。
+  **ただし適用範囲に注意(v0.25.1807採録)**: `?v=`が付くのは spriteLoader(sprites/* のマニフェスト経由)と
+  audioManager だけ。**背景類(pixiTexturesの`BACKGROUND_PATHS`=遠景/床/地平帯/川筋)はクエリ無しの
+  URL直読み**=ASSET_VERSIONの管轄外(GH PagesのETag+max-age=600で最大10分後に自動更新される)。
+  背景の同名差し替えでのバンプは無駄打ち(全スプライト/音声の再DLを誘発するだけ)なので上げない。
 
 ### 音声(Web/iOS Safari)
 - **`HTMLAudio.currentTime`は同期の基準に使えない**: 精度が粗く「デコード位置」であって

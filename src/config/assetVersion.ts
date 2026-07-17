@@ -101,6 +101,10 @@
 //      暗背景に馴染ませる(社長指示「縁の白ノイズを内側線1-2px透明度50%上げるなどで目立ちづらく」)。
 // v53: ヘビーガンナー(=player-shotgun絵)の走り6コマを社長支給シートで差し替え(÷4ドット保持焼き・
 //      頭中心x合わせ・足元下端・78x65統一キャンバス。グリッド整列100%検証済み)。
-// v54: チュートリアル遠景(tutorial-far.jpg)を「川入り」版で同名差し替え(社長支給・GPT生成3点セットの
-//      ベース画)。川の筋レイヤー2枚(tutorial-river-flow-1/2.png)は新規名なのでバスト不要だが遠景差し替えで更新。
-export const ASSET_VERSION = '54';
+// v54(撤回→53へ戻し): チュートリアル遠景(tutorial-far.jpg)の川入り差し替えでバンプしたが、
+//      **背景類(pixiTexturesのBACKGROUND_PATHS=遠景/床/地平帯/川筋)は ?v= を付けずに直読みしており
+//      ASSET_VERSIONの管轄外**(GH PagesのETag+max-age=600で最大10分後に自動更新される)。
+//      よってこのバンプは無効打(全スプライト/音声の無駄な再DLだけ発生)なので撤回。
+//      教訓: ASSET_VERSIONを上げるのは spriteLoader/audioManager 経由(sprites/*.png・audio)の
+//      同名差し替えのみ。背景の同名差し替えはバンプ不要。
+export const ASSET_VERSION = '53';

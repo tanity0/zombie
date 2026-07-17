@@ -1,5 +1,29 @@
 # Development Log
 
+## v0.25.1807 — チュートリアル: 川が出ない実バグ修正+遠景森の撤去(社長報告「そもそも川がない。あと遠景森消しといて」)【2026-07-17 16:19 JST】
+- **実バグ: 川の筋が描けず・動かず**。tickerの `now` は**エポックms**(1.78e12)で、
+  `(now/1000)*流速` が **1e10px級のtilePosition** になっていた。GPUのfloat32ではこの桁の
+  ULPが数千px=UVの小数部が全損して筋が消える+フレーム間の0.3px移動も精度以下で静止。
+  JS上の計算は正しくコード読みでは見えない——**dev診断ハンドル `window.__pixiScene`(今回常設・
+  DEVビルド限定)でシーン実値を覗いて発覚**(tilePosition.x=-321億)。
+  → 修正: 霧(fogT0)と同じ**開始基準の相対時刻**+**テクスチャ周期modulo**(riverT0)。
+- **遠景の暗転tint解除**: 川が読めないもう一つの要因。チュートリアルの遠景を city(昼)と同じ
+  **tint=白(素材本来の明るさ)** に(素材自体が暗所として描かれておりENV_TINT×0.62の二重暗転は過剰)。
+- **筋を加算合成に**: きらめきとして光らせbloomにも拾わせる(既存2枚のブレンド変更のみ=負荷増なし)。
+  アルファは叩き台[0.85, 0.65]のまま。
+- **遠景森(地平帯の森シルエット)を撤去**: `STAGE_SKINS` に `tutorial` スキンを新設し
+  `horizon1Visible: false`(表駆動=stageSkins.tsの移行方針どおり)。社長が後で岩素材を重ねる予定。
+- **ASSET_VERSION 54→53 に撤回**: 背景類(BACKGROUND_PATHS)は `?v=` を付けないURL直読みで
+  **ASSET_VERSIONの管轄外**(ETag+max-age=600で自動更新)と判明。v1806のバンプは無駄打ち
+  (全素材再DLを誘発するだけ)のため戻した。教訓は assetVersion.ts コメント+ENGINEERING_NOTES に採録。
+- 検証: typecheck green。ヘッドレス実機シム=筋が明瞭に描画され2時点で移動(=流れ)を確認・
+  遠景森の消滅確認・`?zoomlock=1`(最大引き)で破綻なし。速度[18,10]px/s・アルファ[0.85,0.65]は
+  引き続き叩き台=実機での見た目確認待ち。
+- Files: `src/pixi/pixiScene.ts`, `src/pixi/PixiStage.tsx`, `src/data/stageSkins.ts`,
+  `src/config/assetVersion.ts`, `ENGINEERING_NOTES.md`, `TUTORIAL_STAGE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1806 — チュートリアル: 川の流れ(オクトラ風・2層スクロール)実装【2026-07-17 15:49 JST】
 - **素材3点(GPT生成・社長支給)を処理**: ①遠景「川入り」版(1672x941)→jpg化して
   `tutorial-far.jpg` に**同名差し替え=ASSET_VERSION 53→54**(地雷回避)。

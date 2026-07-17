@@ -93,6 +93,8 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       scene.resize(vp.logicalW, vp.logicalH);
 
       sceneRef.current = scene;
+      // devビルド限定: シーングラフ診断用ハンドル(ヘッドレス調査でレイヤー状態を覗く)。prodには出ない。
+      if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__pixiScene = scene;
 
       // コア(森)の初回フレームを作ってから即キャンバス表示=黒画面を出さない。
       // 重要(黒画面対策): キャンバスの表示は「ステージ別テクスチャの読み込み」を待たない。
