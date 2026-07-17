@@ -124,8 +124,11 @@ const FAR_BACKDROP_HEIGHT_CAP = 0.38;   // 旧 0.30 → 0.44(少し戻す)
 const FAR_BACKDROP_MIN_HEIGHT = 168;    // 旧 150 → 185(少し戻す)
 const FAR_BACKDROP_PARALLAX_X = 0.09;
 // チュートリアル(洞窟)の遠景は他ステージより縦を大きく使う(社長仕様2026-07-17: ステージは横長で
-// 上下移動が少なく、横長素材の2/3程度しか画面に映らない前提)。0.55=叩き台(実機調整前提)。
-const TUTORIAL_FAR_HEIGHT_RATIO = 0.55;
+// 上下移動が少なく、横長素材の2/3程度しか画面に映らない前提)。
+// v0.25.1808: 素材下部の描き込み地面(石畳)をy=710でクロップ(本物の地面レイヤーと二重だった=
+// 社長指示「地面のところは本物の地面レイヤーの下に隠す」)。0.55×710/941=0.415で表示倍率は不変
+// (川の大きさ維持)。遠景帯が縮んだぶん本物の地面上端(=farH連動)が上がって残りを覆う。
+const TUTORIAL_FAR_HEIGHT_RATIO = 0.415;
 // 川の流れ(オクトラ風・社長相談2026-07-17): 遠景と同ジオメトリのハイライト筋レイヤー2枚を
 // 速度差でスクロール(1枚目=速い/2枚目=遅い)。明部は既存bloomが拾って光る。数値は全て叩き台。
 const RIVER_FLOW_SPEED_PX_S = [18, 10];   // tilePositionの流速(表示px/秒)
@@ -1454,7 +1457,15 @@ export class PixiScene {
       strength: FAR_BACKDROP_BLUR,
       quality: 2,
     });
-    this.L.farBackdrop.filters = [this.farBackdropBlur];
+    // 遠景と川の筋レイヤーを同じグループに入れ、グループにブラーを掛ける(=筋も同じ被写界深度に
+    // 入る。社長指摘v0.25.1808「せせらぎが被写界深度の外にいる」)。フィルタパスは従来の遠景1枚分と
+    // 同じ1回=負荷増なし。
+    {
+      const farParent = this.L.farBackdrop.parent!;
+      farParent.addChildAt(this.farGroup, farParent.getChildIndex(this.L.farBackdrop));
+      this.farGroup.addChild(this.L.farBackdrop);
+      this.farGroup.filters = [this.farBackdropBlur];
+    }
 
     if (FRONT_FOREST_BLUR > 0) {
       this.frontForestBlur = new BlurFilter({
@@ -2295,6 +2306,7 @@ export class PixiScene {
   private riverFlowTexs: (Texture | null)[] = [null, null];
   private riverFlowSprites: TilingSprite[] = [];
   private riverT0 = 0; // 川の流れの基準時刻(霧のfogT0と同じエポック桁あふれ対策)
+  private farGroup = new Container(); // 遠景+川筋をまとめて同一ブラー(被写界深度)に入れる箱
   setRiverFlowTextures(t1: Texture | null, t2: Texture | null) {
     this.riverFlowTexs = [t1, t2];
     this.currentFarKey = ''; // 再適用(可視判定とレイアウトをやり直す)
@@ -2507,8 +2519,7 @@ export class PixiScene {
         // 加算合成=水面のきらめきとして光らせる(bloomにも拾わせる)。既存スプライト2枚の
         // ブレンド変更のみ=描画面積は不変(強glowのような多数の大面積加算とは別物・負荷増なし)。
         sp.blendMode = 'add';
-        const parent = this.L.farBackdrop.parent!;
-        parent.addChildAt(sp, parent.getChildIndex(this.L.farBackdrop) + 1); // 遠景の直上
+        this.farGroup.addChild(sp); // 遠景の直上(同グループ=同じ被写界深度ブラーに入る)
         this.riverFlowSprites[i] = sp;
       }
       sp.texture = tex;
