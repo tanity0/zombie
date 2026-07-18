@@ -41,6 +41,31 @@ const TypewriterLines: React.FC<{ lines: string[]; className: string; resetKey: 
     </>
   );
 };
+
+// クリア前ブリーフィング: 状況説明タイプ→完了で「任務目標」を一気にフェードイン(社長指示v0.25.1848)。
+// key付きでページごとにマウントし直すローカルstate=ページを跨いでtyped状態が残らない
+// (v0.25.1850「任務目標が一瞬チラついて消える」修正。旧実装は親の共有stateで前ページの完了が漏れて
+// 開いた瞬間に一瞬見えてから消えていた)。
+const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey: string }> = ({ synopsis, summary, resetKey }) => {
+  const [typed, setTyped] = useState(false);
+  return (
+    <>
+      <Section label="状況説明">
+        <TypewriterLines
+          lines={synopsis}
+          className="text-[13px] leading-relaxed text-white/85"
+          resetKey={resetKey}
+          onDone={() => setTyped(true)}
+        />
+      </Section>
+      <div style={{ opacity: typed ? 1 : 0, transition: 'opacity 600ms ease' }}>
+        <Section label="任務目標">
+          <p className="text-[13px] leading-relaxed text-white/85">{summary}</p>
+        </Section>
+      </div>
+    </>
+  );
+};
 import {
   Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Sparkles
 } from 'lucide-react';
@@ -525,9 +550,6 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 特殊条件(specialConditions・あれば) → 特殊支給装備(specialEquipment・あれば)。
   // 開発コード(M1等)はここでも表示しない。
   // ====================================================================
-  // 社長指示v0.25.1848: クリア前は「状況説明のタイプ完了後に任務目標を一気にフェードイン」。
-  // 完了したタイプ表示のresetKeyを記録し、一致するページだけ任務目標を出す(opacityで場所は確保=レイアウト不動)。
-  const [synopsisTypedKey, setSynopsisTypedKey] = useState('');
   const renderMissionDetail = (stageId: string, missionKind: SelectedMission = 'main') => {
     const stage = getStage(stageId);
     if (!stage) return null;
@@ -548,39 +570,36 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {/* 状況説明は常時表示。クリア後は差し替えず、下に「任務後の記録(debrief)」を追加表示
               (社長指示v0.25.1836)。debrief空のミッション(再訪=秘密行動)は状況説明のみ。
               タイピング表示(社長指示v0.25.1847): クリア前=状況説明をタイプ/クリア後=任務後の記録
-              のみタイプ(状況説明は既読扱い=即表示)。 */}
-          <Section label="状況説明">
-            {done ? (
-              m.synopsis.map((line, i) => (
-                <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
-              ))
-            ) : (
-              <TypewriterLines
-                lines={m.synopsis}
-                className="text-[13px] leading-relaxed text-white/85"
-                resetKey={`${stage.id}:${missionKind}:syn`}
-                onDone={() => setSynopsisTypedKey(`${stage.id}:${missionKind}:syn`)}
-              />
-            )}
-          </Section>
-
-          {done && m.debrief.length > 0 && (
-            <Section label="任務後の記録">
-              <TypewriterLines
-                lines={m.debrief}
-                className="text-[13px] leading-relaxed text-white/85"
-                resetKey={`${stage.id}:${missionKind}:deb`}
-              />
-            </Section>
+              のみタイプ(状況説明は既読扱い=即表示)。クリア前はPreClearBriefing(key=ページ毎マウント)に
+              集約=v0.25.1850「任務目標が一瞬チラつく」修正(ページを跨いで残るtyped状態を撲滅)。 */}
+          {done ? (
+            <>
+              <Section label="状況説明">
+                {m.synopsis.map((line, i) => (
+                  <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
+                ))}
+              </Section>
+              {m.debrief.length > 0 && (
+                <Section label="任務後の記録">
+                  <TypewriterLines
+                    lines={m.debrief}
+                    className="text-[13px] leading-relaxed text-white/85"
+                    resetKey={`${stage.id}:${missionKind}:deb`}
+                  />
+                </Section>
+              )}
+              <Section label="任務目標">
+                <p className="text-[13px] leading-relaxed text-white/85">{m.summary}</p>
+              </Section>
+            </>
+          ) : (
+            <PreClearBriefing
+              key={`${stage.id}:${missionKind}`}
+              synopsis={m.synopsis}
+              summary={m.summary}
+              resetKey={`${stage.id}:${missionKind}:syn`}
+            />
           )}
-
-          {/* 任務目標: クリア前は状況説明のタイプ完了後に一気にフェードイン(社長指示v0.25.1848)。
-              opacityのみ変える=場所は最初から確保しレイアウトを動かさない。クリア後は即表示。 */}
-          <div style={{ opacity: done || synopsisTypedKey === `${stage.id}:${missionKind}:syn` ? 1 : 0, transition: 'opacity 600ms ease' }}>
-            <Section label="任務目標">
-              <p className="text-[13px] leading-relaxed text-white/85">{m.summary}</p>
-            </Section>
-          </div>
 
           {m.specialConditions && m.specialConditions.length > 0 && (
             <Section label="特殊条件">
@@ -636,8 +655,14 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </Section>
           )}
 
-          {/* 出撃導線は「担当指名」(旧・出撃準備)のみ(フリー周回は廃止・社長指示)。上のメイン/サブ
-              ミッション欄は後日「出撃時の進捗表示」に置き換える予定(ボタンではない)。 */}
+        </div>
+        {/* 出撃導線=「ジョブ選択」(社長指示v0.25.1850: 旧「担当指名」から改名+最下部固定)。
+            ヘッダーのsticky topと対の sticky bottom=スクロール領域の最下部に常時固定し、上の内容が
+            下をくぐる。グラデ下地でくぐる文字を沈める。 */}
+        <div
+          className="sticky bottom-0 z-20 px-3 pb-3 pt-7"
+          style={{ background: 'linear-gradient(to top, rgba(11,9,16,0.96) 62%, rgba(11,9,16,0))' }}
+        >
           <Ff7rButton
             onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId, mission: missionKind }); }}
             className="w-full"
@@ -645,7 +670,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             fade="both"
             paddingY="0.8rem"
           >
-            ▶ 担当指名
+            ▶ ジョブ選択
           </Ff7rButton>
         </div>
       </>
