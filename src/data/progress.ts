@@ -275,9 +275,10 @@ export const setWallMeta = (stageId: string, meta: WallMeta): void => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// ランク持ち越し(社長決定v0.25.1844): 各ステージごとに「そのランの最終ランク−1」を次ランの
-// 開始ランクとして保持する。死亡/クリア/撤退(商人帰還)すべて同じ扱い。下限R1・上限R7。
-// 例: ステージ1をR3で死んだ→次のステージ1はR2スタート。
+// ランク持ち越し(社長決定v0.25.1844→再調整v0.25.1847): 各ステージごとに「そのランの最終ランク」を
+// **そのまま**次ランの開始ランクとして保持する(旧・−1は廃止)。死亡/クリア/撤退(商人帰還)すべて同じ扱い。
+// 下限R1・上限R7。次ランでは最初の査定サイクル(通常=仮査定+ピーク=検証)が通常どおり走るので、
+// 維持できなければそこで−1降格、余裕なら+1昇格する(=開始値は信用しつつ毎ランちゃんと再試験される)。
 const START_RANK_KEY = 'zombie.progress.startRank';
 type StartRankMap = Record<string, number>;
 
@@ -297,9 +298,9 @@ const saveStartRankMap = (m: StartRankMap): void => {
   try { localStorage.setItem(START_RANK_KEY, JSON.stringify(m)); } catch { /* ignore */ }
 };
 
-// 純関数: 最終ランク→次ランの開始ランク(−1・クランプ1..7)。
+// 純関数: 最終ランク→次ランの開始ランク(そのまま保持・クランプ1..7)。
 export const carryOverStartRank = (finalRank: number): number =>
-  Math.max(1, Math.min(7, Math.round(finalRank) - 1));
+  Math.max(1, Math.min(7, Math.round(finalRank)));
 
 export const getStartRank = (stageId: string): number => {
   const v = loadStartRankMap()[stageId];

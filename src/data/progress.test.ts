@@ -98,21 +98,22 @@ describe('歴史年表(chronicle)', () => {
 
 // ランク持ち越し(社長決定v0.25.1844): 各ステージごとに「最終ランク−1」を次ランの開始ランクへ。
 // 死亡/クリア/撤退すべて同じ扱い・下限R1・上限R7。
-describe('ランク持ち越し(startRank・社長決定v0.25.1844)', () => {
-  it('carryOverStartRank: 最終ランク−1・クランプ1..7', async () => {
+describe('ランク持ち越し(startRank・社長決定v0.25.1844→再調整v0.25.1847=そのまま保持)', () => {
+  it('carryOverStartRank: 最終ランクをそのまま保持・クランプ1..7', async () => {
     const { carryOverStartRank } = await import('./progress');
-    expect(carryOverStartRank(3)).toBe(2);  // R3で死亡→次はR2
+    expect(carryOverStartRank(3)).toBe(3);  // R3で死亡→次もR3(次ランの査定で維持/降格が再チェックされる)
     expect(carryOverStartRank(1)).toBe(1);  // 下限R1
-    expect(carryOverStartRank(7)).toBe(6);  // R7→R6
-    expect(carryOverStartRank(0)).toBe(1);  // 異常値も下限へ
+    expect(carryOverStartRank(7)).toBe(7);  // R7→R7
+    expect(carryOverStartRank(0)).toBe(1);  // 異常値は下限へ
+    expect(carryOverStartRank(9)).toBe(7);  // 異常値は上限へ
   });
   it('setStartRankFromFinal→getStartRank がステージ毎に独立して往復する', async () => {
     const { setStartRankFromFinal, getStartRank } = await import('./progress');
     expect(getStartRank('stage-1')).toBe(1); // 未保存=R1
     setStartRankFromFinal('stage-1', 3);
     setStartRankFromFinal('stage-3', 7);
-    expect(getStartRank('stage-1')).toBe(2);
-    expect(getStartRank('stage-3')).toBe(6);
+    expect(getStartRank('stage-1')).toBe(3);
+    expect(getStartRank('stage-3')).toBe(7);
     expect(getStartRank('stage-4')).toBe(1); // 他ステージは影響なし
   });
   it('stageId空は保存しない・壊れた保存値はR1へフォールバック', async () => {

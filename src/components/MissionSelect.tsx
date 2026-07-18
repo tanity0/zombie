@@ -1,5 +1,45 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+
+// 任務詳細のタイピング表示(社長指示v0.25.1847: クリア前=状況説明/クリア後=任務後の記録のみ)。
+// 行ごとに順に1文字ずつ表示(タイプ中は▌カーソル)。メニュー画面(ゲーム外)専用で、
+// 短周期の再レンダーはこの小コンポーネント内に閉じる(打ち終わったらタイマー停止)。
+const TYPE_CHAR_MS = 28;      // 1文字あたり(叩き台。IntroDialogueの55msより読み物向けに速め)
+const TYPE_LINE_GAP_MS = 260; // 行間の間
+const TypewriterLines: React.FC<{ lines: string[]; className: string; resetKey: string }> = ({ lines, className, resetKey }) => {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    setElapsed(0);
+    const startedAt = Date.now();
+    const total = lines.reduce((s, l) => s + l.length * TYPE_CHAR_MS + TYPE_LINE_GAP_MS, 0);
+    const iv = window.setInterval(() => {
+      const el = Date.now() - startedAt;
+      setElapsed(el);
+      if (el >= total) window.clearInterval(iv);
+    }, 33);
+    return () => window.clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey]);
+  let remaining = elapsed;
+  return (
+    <>
+      {lines.map((line, i) => {
+        const lineTotal = line.length * TYPE_CHAR_MS + TYPE_LINE_GAP_MS;
+        const local = remaining;
+        remaining -= lineTotal;
+        if (local <= 0) return null; // まだ到達していない行
+        const shown = Math.min(line.length, Math.floor(local / TYPE_CHAR_MS));
+        const typing = local < lineTotal && shown < line.length;
+        return (
+          <p key={i} className={className}>
+            {line.slice(0, shown)}
+            {typing && <span className="opacity-70">▌</span>}
+          </p>
+        );
+      })}
+    </>
+  );
+};
 import {
   Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Sparkles
 } from 'lucide-react';
@@ -502,18 +542,30 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <h2 className="px-1 text-[18px] font-bold tracking-wide text-white">{m.title}</h2>
 
           {/* 状況説明は常時表示。クリア後は差し替えず、下に「任務後の記録(debrief)」を追加表示
-              (社長指示v0.25.1836)。debrief空のミッション(再訪=秘密行動)は状況説明のみ。 */}
+              (社長指示v0.25.1836)。debrief空のミッション(再訪=秘密行動)は状況説明のみ。
+              タイピング表示(社長指示v0.25.1847): クリア前=状況説明をタイプ/クリア後=任務後の記録
+              のみタイプ(状況説明は既読扱い=即表示)。 */}
           <Section label="状況説明">
-            {m.synopsis.map((line, i) => (
-              <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
-            ))}
+            {done ? (
+              m.synopsis.map((line, i) => (
+                <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
+              ))
+            ) : (
+              <TypewriterLines
+                lines={m.synopsis}
+                className="text-[13px] leading-relaxed text-white/85"
+                resetKey={`${stage.id}:${missionKind}:syn`}
+              />
+            )}
           </Section>
 
           {done && m.debrief.length > 0 && (
             <Section label="任務後の記録">
-              {m.debrief.map((line, i) => (
-                <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
-              ))}
+              <TypewriterLines
+                lines={m.debrief}
+                className="text-[13px] leading-relaxed text-white/85"
+                resetKey={`${stage.id}:${missionKind}:deb`}
+              />
             </Section>
           )}
 
