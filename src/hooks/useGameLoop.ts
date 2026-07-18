@@ -163,7 +163,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, recordChronicle, type GateMeta } from '../data/progress';
+import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, recordChronicle, getStartRank, setStartRankFromFinal, type GateMeta } from '../data/progress';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
 import {
   getEventQuestConfig, EVENT_QUEST_LINES_FORCED, EVENT_QUEST_ENCOUNTER_LINES,
@@ -475,6 +475,15 @@ const syncWallDepth = (dist: number): void => {
 // - kind='death': 自己最深/自己最高ランクの「記録」だけをコミット(実際に到達した記録は残す)。
 //   踏破/ランク到達フラグ・ゲート恒久解除はコミットしない(死亡は解除しない=v0.25.1517則)。
 // 途中リロード/クラッシュはこの関数自体が一度も呼ばれないため、何も永続しない(症状の根治)。
+// ランク持ち越し(社長決定v0.25.1844): 開始ランク=そのステージの前ラン最終ランク−1(下限R1)。
+// 選択ステージ未確定(ダンス練習/ベンチ等)はR1のまま。
+const seededPuzzleClockState = (): PuzzleClockState => {
+  const s = createPuzzleClockState();
+  const stageId = getSelectedStageId();
+  if (stageId) s.rank = clampRank(getStartRank(stageId));
+  return s;
+};
+
 const commitRunEndProgress = (kind: 'death' | 'clear', gateMeta: GateMeta): void => {
   const stageId = getSelectedStageId();
   if (!stageId) return;
@@ -897,7 +906,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 実装精度の規律3)+その関所内で既に保証投入済みの型の集合。keyが変わったら(新しい関所)登り直す。
   const featureGuaranteeRef = useRef<{ key: string; startedAt: number; startSnapshot: Record<KillBucket, number> | null; satisfied: Set<GuaranteeType> }>({ key: '', startedAt: 0, startSnapshot: null, satisfied: new Set() });
   // PACING_PUZZLE.md バッチM2: ランク(コマをまたいで引き継ぐ持続状態)。
-  const puzzleClockRef = useRef<PuzzleClockState>(createPuzzleClockState());
+  // 社長決定v0.25.1844: 開始ランク=そのステージの前ラン最終ランク−1(progress.tsに永続・下限R1)。
+  const puzzleClockRef = useRef<PuzzleClockState>(seededPuzzleClockState());
   // バッチM6(§4-C): 4コマサイクル(リラックス→ハーベスト→通常→ピーク)の進行状態。
   // elapsedMsはボスフェーズ中は加算しない(§2「ボス中は査定・台本を停止、ボス後再開」)。
   // 通常/ピークは40秒経過後も台本が未片付きならコマ延長(処理待ち・上限+30秒)。
@@ -1178,6 +1188,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     if (WALL_ENABLED) syncWallDepth(runDeepestDistRef.current);
     // §5.21 M20追補(v0.25.1534): 死亡は「記録」のみコミット(踏破/ゲート恒久解除はコミットしない)。
     if (WALL_ENABLED) commitRunEndProgress('death', gateMetaRef.current);
+    // ランク持ち越し(社長決定v0.25.1844): 死亡でも最終ランク−1を保存(下限R1)。
+    { const sid = getSelectedStageId(); if (sid) setStartRankFromFinal(sid, puzzleClockRef.current.rank); }
     setHurricaneRumble(false); // 死亡で鳴動を止める(ループが回り続けても残響しない)
     setHeartbeatLoop(false); // 心音ループも死亡で止める
     setPeakLayer(false); // PEAK重ねSEも死亡で止める
@@ -1793,8 +1805,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           pressureCastRef.current = { order: null, pendingCast: null };
           featureGuaranteeRef.current = { key: '', startedAt: 0, startSnapshot: null, satisfied: new Set() }; // バッチM1-Cも新ランでリセット
           setGatePressureDebug(null);
-          // バッチM2/M3/M4/M6も新ランでリセット(ランク1・コマ=リラックス・湧きCD・被弾/緩め検知)。
-          puzzleClockRef.current = createPuzzleClockState();
+          // バッチM2/M3/M4/M6も新ランでリセット(コマ=リラックス・湧きCD・被弾/緩め検知)。
+          // ランクは持ち越し開始値(前ラン最終−1・社長決定v0.25.1844)から。
+          puzzleClockRef.current = seededPuzzleClockState();
           puzzleKomaRef.current = {
             kind: 'relax', elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
             lastPatternId: null, acc: createKomaAccumulator(), provisionalDelta: null, pendingFinalDelta: null,
@@ -2558,6 +2571,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (rs.gameWon || rs.gameReturned) {
             runEndCommittedRef.current = true;
             commitRunEndProgress('clear', gateMetaRef.current);
+            // ランク持ち越し(社長決定v0.25.1844): クリア/撤退(帰還)でも最終ランク−1を保存(死亡と同じ)。
+            { const sid = getSelectedStageId(); if (sid) setStartRankFromFinal(sid, puzzleClockRef.current.rank); }
           }
         }
 

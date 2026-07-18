@@ -275,6 +275,45 @@ export const setWallMeta = (stageId: string, meta: WallMeta): void => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
+// ランク持ち越し(社長決定v0.25.1844): 各ステージごとに「そのランの最終ランク−1」を次ランの
+// 開始ランクとして保持する。死亡/クリア/撤退(商人帰還)すべて同じ扱い。下限R1・上限R7。
+// 例: ステージ1をR3で死んだ→次のステージ1はR2スタート。
+const START_RANK_KEY = 'zombie.progress.startRank';
+type StartRankMap = Record<string, number>;
+
+const loadStartRankMap = (): StartRankMap => {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(START_RANK_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    return obj && typeof obj === 'object' ? obj as StartRankMap : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveStartRankMap = (m: StartRankMap): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(START_RANK_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+};
+
+// 純関数: 最終ランク→次ランの開始ランク(−1・クランプ1..7)。
+export const carryOverStartRank = (finalRank: number): number =>
+  Math.max(1, Math.min(7, Math.round(finalRank) - 1));
+
+export const getStartRank = (stageId: string): number => {
+  const v = loadStartRankMap()[stageId];
+  return typeof v === 'number' && Number.isFinite(v) ? Math.max(1, Math.min(7, Math.round(v))) : 1;
+};
+
+export const setStartRankFromFinal = (stageId: string, finalRank: number): void => {
+  if (!stageId) return;
+  const m = loadStartRankMap();
+  m[stageId] = carryOverStartRank(finalRank);
+  saveStartRankMap(m);
+};
+
+// ───────────────────────────────────────────────────────────────────────────
 // バッチM20(§5.21): 囲いゲート(1/2)の恒久解除メタ。ステージ毎に個別保持(WallMetaと同じ方針)。
 // 社長決定v0.25.1518: クリアし、そのランを死亡以外(クリア/撤退)で終えると以後のランで出現しなくなる。
 // ★簡略化(実装チャットの現時点の判断・後日精緻化の余地あり): 「死亡以外で終える」の正確な区別

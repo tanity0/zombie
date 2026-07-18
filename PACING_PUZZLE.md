@@ -118,6 +118,15 @@ PACING_REDESIGN.mdは前提知識(旧仕様)として参照可。矛盾したら
 - テスト: 昇格(capReached∧perfAvg経路・starveRatio単独経路も)/維持/降格/クランプ/R7中の上限成長±2と
   10〜20クランプ/被弾中はtarget据え置き/締めトリガー(無被弾+starving)、を全数検証。
 
+### 3-E. ランク持ち越し(社長決定v0.25.1844)
+- **ランクは各ステージごとに「そのランの最終ランク−1」で保持**し、次のランはそこから開始する。
+  死亡/クリア/撤退(商人帰還)の**3経路すべて同じ扱い**。下限R1・上限R7(例: R3で死亡→次はR2スタート。
+  R1で終えたら次もR1。R7クリア→次はR6)。
+- 保存はステージ毎(`progress.ts`の`startRank`マップ・localStorage)。参照する最終ランクは終了時点の
+  **現在ランク**(ラン中ピークではない)。盤面の目標数(boardTarget)は持ち越さない=従来どおり1体から。
+- 実装: `carryOverStartRank`(純関数)+`get/setStartRankFromFinal`(progress.ts)/
+  シードは`seededPuzzleClockState`(useGameLoop・新ラン検知でも同経路)。ユニット+実機E2E検証済み。
+
 ## 4. バッチM3: 盤面構成パズル(scriptPuzzle)【社長決定v0.25.1366=台本会議の結果】
 ※旧4-A/4-B/4-C(敵スコア×予算方式)は**社長指示で破棄**。以下が正。
 `src/utils/scriptPuzzle.ts`(新規・純関数)。

@@ -95,3 +95,31 @@ describe('歴史年表(chronicle)', () => {
     expect(stageChronicleLabel('stage-1')).toBe('ステージ1');
   });
 });
+
+// ランク持ち越し(社長決定v0.25.1844): 各ステージごとに「最終ランク−1」を次ランの開始ランクへ。
+// 死亡/クリア/撤退すべて同じ扱い・下限R1・上限R7。
+describe('ランク持ち越し(startRank・社長決定v0.25.1844)', () => {
+  it('carryOverStartRank: 最終ランク−1・クランプ1..7', async () => {
+    const { carryOverStartRank } = await import('./progress');
+    expect(carryOverStartRank(3)).toBe(2);  // R3で死亡→次はR2
+    expect(carryOverStartRank(1)).toBe(1);  // 下限R1
+    expect(carryOverStartRank(7)).toBe(6);  // R7→R6
+    expect(carryOverStartRank(0)).toBe(1);  // 異常値も下限へ
+  });
+  it('setStartRankFromFinal→getStartRank がステージ毎に独立して往復する', async () => {
+    const { setStartRankFromFinal, getStartRank } = await import('./progress');
+    expect(getStartRank('stage-1')).toBe(1); // 未保存=R1
+    setStartRankFromFinal('stage-1', 3);
+    setStartRankFromFinal('stage-3', 7);
+    expect(getStartRank('stage-1')).toBe(2);
+    expect(getStartRank('stage-3')).toBe(6);
+    expect(getStartRank('stage-4')).toBe(1); // 他ステージは影響なし
+  });
+  it('stageId空は保存しない・壊れた保存値はR1へフォールバック', async () => {
+    const { setStartRankFromFinal, getStartRank } = await import('./progress');
+    setStartRankFromFinal('', 5);
+    expect(getStartRank('')).toBe(1);
+    localStorage.setItem('zombie.progress.startRank', '{"stage-1":"junk"}');
+    expect(getStartRank('stage-1')).toBe(1);
+  });
+});

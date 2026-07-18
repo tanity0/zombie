@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.1844 — ランク持ち越し(ステージ毎に最終ランク−1・社長決定)【2026-07-18 09:47 JST】
+- **社長決定「ランクは各ステージごとに−1で保持。R3で死んだら次はR2から。クリア、帰還でも同じ」を実装**
+  (PACING_PUZZLE.md §3-E新設)。
+- 実装: `progress.ts`に`startRank`マップ(localStorage・ステージ毎)+純関数`carryOverStartRank`
+  (最終−1・クランプ1..7)+`getStartRank`/`setStartRankFromFinal`。保存は終了3経路すべて
+  (死亡=triggerPlayerDeath/クリア・撤退=runEndCommittedRefブロック)。開始シードは
+  `seededPuzzleClockState`(初期ref+新ラン検知リセットの両方)。boardTargetは持ち越さない(従来どおり1体から)。
+- 検証: ユニット3件追加(progress.test.ts=15件緑)。実機ヘッドレスE2E=startRank{stage-1:3}を事前書き込み
+  →`?director=1`オーバーレイが**R3/T1**で開始→実ダメージ経路で死亡→保存値**{stage-1:2}**を確認。typecheck緑。
+- 自己点検: 変更はランクの開始値と終了時保存のみ。査定式・コマ構成・台本表・目標数の育ちは不変。
+  憲法非該当(初心者ゾーン=R1床は下限クランプで維持)。
+- Files: `src/data/progress.ts`, `src/data/progress.test.ts`, `src/hooks/useGameLoop.ts`,
+  `PACING_PUZZLE.md`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1843 — エリア移動(深さの壁)の手本素材(社長指示「到達の文字のところ」・素材のみ/未配線)【2026-07-18 09:35 JST】
 - `demo-area-wall.gif` 追加(`public/tutorial/`): 1500px境界へ歩く→「この先——研究対象区域」帯(予告)→
   白い境界線を跨ぐ→区域バッジ+「研究対象区域——踏破 TRESPASS」銘打ち、まで15コマ。
