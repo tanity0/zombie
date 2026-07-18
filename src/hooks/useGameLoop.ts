@@ -2852,7 +2852,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           {
             const pcxNow = st.player.x + st.player.width / 2;
             if (st.player.isMoving && pcxNow <= TUTORIAL_MOVE_X_MIN_PX + 6) {
-              st.tryNpcLine('軍人', 'tutorial-left-wall', 'そっちじゃないぞ。', 6000);
+              // 話者=グレッグ(社長指示v0.25.1853。正史M0のキャスト確定に伴い仮名「軍人」を廃止。
+              // NPC_PORTRAIT登録済み=会話の立ち絵も出る)。
+              st.tryNpcLine('グレッグ', 'tutorial-left-wall', 'そっちじゃないぞ。', 6000);
             }
             // M0序盤会話(正史STORY_M0_M3.md・グレッグ2行→ジュン2行): 「移動」ポップアップを
             // 閉じた直後に、左上の通信(NpcDialogue=時間停止なし・軍人セリフと同じ枠)で1行ずつ流す

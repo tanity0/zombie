@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1853',
+    items: [
+      'チュートリアル左端の「そっちじゃないぞ。」の話者がグレッグになりました(立ち絵付き)。',
+    ],
+  },
+  {
     version: '0.25.1852',
     items: [
       '「ジョブ選択」ボタンが内容の短いページでも画面最下部に固定されるようになりました(前版の修正が不完全でした)。',
