@@ -1,22 +1,28 @@
 import { useGameStore } from '../store/gameStore';
 import { spritePath } from '../utils/spriteLoader';
 
-// 進軍NPC(護衛軍人)の名前 → ユニーク立ち絵のベース名。セリフ表示時に上半身(バスト)を出すのに使う。
-// pixiScene の ESCORT_SPRITE_BASE と同じ対応(index 0..7 = エドガー/ジョセフ/エリザベス/武蔵/
-// ムハンマド/チェン/ローレン/フェイザー)。
-const NPC_PORTRAIT_BASE: Record<string, string> = {
-  'エドガー': 'edgar',
-  'ジョセフ': 'joseph',
-  'エリザベス': 'elizabeth',
-  '武蔵': 'musashi',
-  'ムハンマド': 'muhammad',
-  'チェン': 'chen',
-  'ローレン': 'lauren',
-  'フェイザー': 'phaser',
+// 話者名 → 立ち絵のベースパス(spritePathの`${base}-0`)+枠幅。セリフ表示時に上半身(バスト)を出す。
+// 社長ルール(v0.25.1849): **このゲームの通信は基本的に全てモデル入り**(モデルが大きい場合は半身)。
+// 新しい通信話者を足す時はここに立ち絵を必ず登録する。boxW=表示幅(横に広い素材は文字被り防止で広げる)。
+// 護衛軍人はpixiSceneのESCORT_SPRITE_BASEと同じ対応(index 0..7)。
+const NPC_PORTRAIT: Record<string, { base: string; boxW: number }> = {
+  'エドガー': { base: 'npc/edgar', boxW: 40 },
+  'ジョセフ': { base: 'npc/joseph', boxW: 40 },
+  'エリザベス': { base: 'npc/elizabeth', boxW: 40 },
+  '武蔵': { base: 'npc/musashi', boxW: 40 },
+  'ムハンマド': { base: 'npc/muhammad', boxW: 40 },
+  'チェン': { base: 'npc/chen', boxW: 40 },
+  'ローレン': { base: 'npc/lauren', boxW: 40 },
+  'フェイザー': { base: 'npc/phaser', boxW: 40 },
   // 二人組(クエストNPC)。話者名=社長命名(v0.25.1719): グレン(男)/ミラ(女) → 専用バストアップ
-  // (社長素材v0.25.1716・sprites/npc/futari-*-0.png=頭〜胸の切り出し)。
-  'グレン': 'futari-man',
-  'ミラ': 'futari-woman',
+  // (社長素材v0.25.1716・sprites/npc/futari-*-0.png=頭〜胸の切り出し)。肩まで入る=枠広め(v0.25.1719)。
+  'グレン': { base: 'npc/futari-man', boxW: 62 },
+  'ミラ': { base: 'npc/futari-woman', boxW: 62 },
+  // チュートリアル随行(社長指示v0.25.1849「グレッグたちの通信にもモデル表示」):
+  // グレッグ=軍人(レスキューのヘルメット兵=rescue/shooter・92x120=縦長) / ジュン=衛生兵
+  // (npc/medic-walk 78x64=横長のためboxW広め)。
+  'グレッグ': { base: 'rescue/shooter', boxW: 40 },
+  'ジュン': { base: 'npc/medic-walk', boxW: 72 },
 };
 
 // NPCリアルタイムセリフのHUD表示(時間停止なし・軽量)。表示位置はアテンションバナーと同じ左上ゾーンで、
@@ -29,11 +35,9 @@ export const NpcDialogue = () => {
   if (!npc) return null;
   const topPx = 132 + (comboActive ? 58 : 0) + (bannerActive ? 58 : 0);
   // 話者の立ち絵(あれば)。上半身だけ見せるため、立ち絵を高さ基準で拡大し枠で上部だけ切り出す。
-  const portraitBase = NPC_PORTRAIT_BASE[npc.name];
-  // 二人組(futari-*)のバストアップは肩まで入っていて護衛の細長い立ち絵より横幅が広い
-  // (表示高さ64pxで幅≈58px)。護衛用の枠幅40だと文字に被るため、枠を実表示幅に合わせて広げる
-  // (社長報告v0.25.1719「絵が文字に被ってるのでNPC同様にずらして」)。
-  const portraitBoxW = portraitBase?.startsWith('futari') ? 62 : 40;
+  const portrait = NPC_PORTRAIT[npc.name];
+  const portraitBase = portrait?.base;
+  const portraitBoxW = portrait?.boxW ?? 40;
   return (
     <div
       className="absolute text-left"
@@ -53,7 +57,7 @@ export const NpcDialogue = () => {
           // バストは背景の高さ(=文字)に対して背が高く、下端を背景下端に合わせて上へはみ出させる。
           <div className="relative self-stretch shrink-0" style={{ width: portraitBoxW }}>
             <img
-              src={spritePath(`npc/${portraitBase}-0`)}
+              src={spritePath(`${portraitBase}-0`)}
               alt={npc.name}
               draggable={false}
               style={{

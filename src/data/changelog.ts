@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1849',
+    items: [
+      'チュートリアルのグレッグとジュンの通信に、キャラクターの姿が表示されるようになりました(他のNPC通信と同じ仕様)。',
+    ],
+  },
+  {
     version: '0.25.1848',
     items: [
       '境界ゲートのすり抜けを修正: 7:00〜7:30の時間帯に境界を越えるとゲートが出現しない穴がありました(ゲートは時間帯に関係なく発火するようになります)。',
