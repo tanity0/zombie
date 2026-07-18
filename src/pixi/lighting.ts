@@ -192,11 +192,12 @@ export const getCineSunTexture = (): Texture => {
   // 細い十字の光条(スターバースト)。横条+縦条を加算合成で。
   ctx.globalCompositeOperation = 'lighter';
   // 横光条
+  // フレア少し絞る(社長指示v0.25.1864): 十字光条の芯を弱める(横0.5→0.32・縦0.32→0.2)。
   const gx = ctx.createLinearGradient(0, cy, s, cy);
-  gx.addColorStop(0, 'rgba(255,200,140,0)'); gx.addColorStop(0.5, 'rgba(255,210,150,0.5)'); gx.addColorStop(1, 'rgba(255,200,140,0)');
+  gx.addColorStop(0, 'rgba(255,200,140,0)'); gx.addColorStop(0.5, 'rgba(255,210,150,0.32)'); gx.addColorStop(1, 'rgba(255,200,140,0)');
   ctx.fillStyle = gx; ctx.fillRect(0, cy - 1.5, s, 3);
   const gy = ctx.createLinearGradient(cx, 0, cx, s);
-  gy.addColorStop(0, 'rgba(255,190,130,0)'); gy.addColorStop(0.5, 'rgba(255,200,140,0.32)'); gy.addColorStop(1, 'rgba(255,190,130,0)');
+  gy.addColorStop(0, 'rgba(255,190,130,0)'); gy.addColorStop(0.5, 'rgba(255,200,140,0.2)'); gy.addColorStop(1, 'rgba(255,190,130,0)');
   ctx.fillStyle = gy; ctx.fillRect(cx - 1.5, 0, 3, s);
   cineSunTex = Texture.from(c); return cineSunTex;
 };

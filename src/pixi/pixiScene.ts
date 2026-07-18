@@ -84,6 +84,10 @@ const CINE_GRADE_TINT = 0x2f6474;          // teal 寄りの寒色乗算(既定 
 const CINE_GRADE_ALPHA = 0.52;             // 乗算の強さ(既定 0.4 よりやや強)
 const CINE_VIGNETTE_ALPHA = 0.82;          // 周辺減光を強め(既定 0.70。crushしすぎない)
 const CINE_WARM_ALPHA = 0.72;              // 残照オーバーレイ(screen)の濃さ(上部だけ・下は寒色のまま)
+// 影(社長指示v0.25.1864): 太陽が上(地平)なので影は手前=下方向へ+締めるため濃く/長く。
+const CINE_SHADOW_DIRECTION = { x: 0.16, y: 1 }; // ほぼ真下(わずかに右へ角度)
+const CINE_SHADOW_ALPHA = 0.55;            // 既定 moonlight 0.26 → 濃く(締まる)
+const CINE_SHADOW_LENGTH = 52;             // 既定 32 → 夕方の長い影
 const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
 const DEEP_ZONE_GRADE_SAT = (() => {
   const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
@@ -1715,7 +1719,7 @@ export class PixiScene {
     }
     this.cineWarm.alpha = CINE_WARM_ALPHA;
     this.cineClouds.alpha = 0.7;
-    this.cineSun.alpha = 0.9;
+    this.cineSun.alpha = 0.65; // フレア少し絞る(社長指示v0.25.1864・0.9→0.65)
     this.cineDust.alpha = 0.5;
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
@@ -1803,7 +1807,7 @@ export class PixiScene {
     this.cineWarm.height = h + 2;
     // 地平の太陽=画面上部(森の地平帯あたり)。フレアはそこを中心に大きめ。
     const sunY = h * 0.18;
-    const sunSize = Math.max(w, h) * 0.7;
+    const sunSize = Math.max(w, h) * 0.58; // フレア少し絞る(社長指示v0.25.1864・0.7→0.58)
     this.cineSun.anchor.set(0.5);
     this.cineSun.position.set(w * 0.5, sunY);
     this.cineSun.width = this.cineSun.height = sunSize;
@@ -4695,6 +4699,9 @@ export class PixiScene {
   private placeShadowSprite(id: string, footX: number, footY: number, w: number, alpha: number, seen: Set<string>, tint = 0x000000, alphaMult = 1, flatSize?: { w: number; h: number }) {
     if (alpha <= 0) return;
     const lighting = this.lighting();
+    // cine(?cine=1 & stage-6): 影を下方向・濃く・長く(太陽が上=地平のため。社長指示v0.25.1864)。
+    const shAlpha = this.cineEnabled ? CINE_SHADOW_ALPHA : lighting.shadowAlpha;
+    const shLength = this.cineEnabled ? CINE_SHADOW_LENGTH : lighting.shadowLength;
     // flatSize 指定時(裏ボス): 当たり判定と同じ大きさのフラットな楕円影。方向の伸びを付けず、
     // (footX, footY) を中心に w×h ちょうどへスケール(=影=当たり判定サイズ)。
     if (flatSize) {
@@ -4710,18 +4717,19 @@ export class PixiScene {
       fsp.rotation = 0;
       fsp.width = Math.max(3, flatSize.w);
       fsp.height = Math.max(3, flatSize.h);
-      fsp.alpha = Math.min(1, alpha * lighting.shadowAlpha * alphaMult);
+      fsp.alpha = Math.min(1, alpha * shAlpha * alphaMult);
       fsp.position.set(footX, footY);
       fsp.visible = true;
       return;
     }
     // ステージ2(lab)だけ影を右向きに(社長指示)。長さ/濃さは preset 据え置き。
-    const dir = this.isLabStage ? LAB_SHADOW_DIRECTION : lighting.direction;
+    // cine: 太陽が上=地平のため、影は手前(下)へ落とす(社長指示v0.25.1864)。
+    const dir = this.cineEnabled ? CINE_SHADOW_DIRECTION : this.isLabStage ? LAB_SHADOW_DIRECTION : lighting.direction;
     const mag = Math.hypot(dir.x, dir.y) || 1;
     const ux = dir.x / mag;
     const uy = dir.y / mag;
     const scale = Math.max(0.7, Math.min(1.55, w / 42));
-    const length = lighting.shadowLength * scale;               // 光方向への伸び
+    const length = shLength * scale;               // 光方向への伸び
     const radiusX = w * 0.55;
     const radiusY = w * 0.18;
     const width = Math.max(3, Math.hypot(radiusX * uy, radiusY * ux) * 2); // 断面(太さ)
@@ -4737,7 +4745,7 @@ export class PixiScene {
     sp.rotation = Math.atan2(uy, ux);
     sp.width = length + width;   // 全長 = 基部ブロブ + 伸び
     sp.height = width;           // 太さ
-    sp.alpha = Math.min(1, alpha * lighting.shadowAlpha * alphaMult);
+    sp.alpha = Math.min(1, alpha * shAlpha * alphaMult);
     // 中心を足元から光方向へ length/2 ずらし、足元→先端に伸びるように。
     sp.position.set(footX + ux * (length * 0.5), footY - 1 + uy * (length * 0.5));
     sp.visible = true;

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1864',
+    items: [
+      '開発(?cine=1): 影を手前(下)向きに落として濃く・長くし、太陽フレアを少し絞りました。通常プレイは変化なし。',
+    ],
+  },
+  {
     version: '0.25.1863',
     items: [
       '開発(?cine=1): 地平の太陽フレア・放射状の薄雲・大気の塵を追加(残り全要素を実装)。',

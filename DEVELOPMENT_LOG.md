@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1864 — cine影を手前へ・濃く・長く+太陽フレア少し絞る(社長3件)【2026-07-19 02:15 JST】
+- 社長指示3件(?cine=1・stage-6限定): ①影の向きを変える(太陽が上=地平のため手前=下へ落とす)②太陽フレア少し絞る(おすすめで)③影を強く(締める)。
+- `placeShadowSprite` にcine分岐を追加(通常時は完全に従来通り):
+  - 方向 `CINE_SHADOW_DIRECTION={x:0.16,y:1}`(ほぼ真下・わずかに右)=既定moonlight方向を上書き。
+  - 濃さ `CINE_SHADOW_ALPHA=0.55`(既定moonlight 0.26 → 濃く)、伸び `CINE_SHADOW_LENGTH=52`(既定32 → 長く)。
+  - flatSize枝(裏ボス影)も同じ `shAlpha` を適用。
+- 太陽フレア(おすすめで少し):`cineSun.alpha` 0.9→0.65、`sunSize` max(w,h)×0.7→0.58、`getCineSunTexture` の十字光条の芯を弱める(横0.5→0.32・縦0.32→0.2)。ベイクテクスチャなのでコスト増なし。
+- 挙動不変(CLAUDE.md仕様変更ルール順守): 影は**描画のみ**(当たり判定・攻撃範囲・移動距離は不変)。cine分岐は `this.cineEnabled`(cine=1 && stage-6)ゲート内=通常プレイは1バイトも変わらない。
+- 負荷: 1/10(既存の影スプライト経路の定数差し替えのみ・新規強glow/Text/per-frame Graphicsなし)。
+- 検証: typecheck緑。実機ヘッドレス(stage-6&cine=1&nospawn=1)で影が手前へ濃く長く落ち、フレアが小さく柔らかくなったことを確認。
+- Files: `src/pixi/pixiScene.ts`, `src/pixi/lighting.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1863 — cineに太陽フレア/放射雲/大気の塵を追加(社長「その他も全部積む」)【2026-07-19 01:45 JST】
 - `?cine=1`(stage-6)へ残り3要素を実装。全て一度だけベイクしたscreen合成スプライト=**per-frameの重い描画なし**:
   ① 太陽フレア(`getCineSunTexture`・白熱コア+暖色ハロー+細い十字光条)を地平(画面上部18%)に配置。
