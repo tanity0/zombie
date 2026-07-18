@@ -326,14 +326,15 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     }
   }
 
-  // 社長指示v0.25.1845: ランク条件(昇格判定)をその時点までの集計で満たした瞬間に、査定を待たず
-  // 左上の通信で「変異体が興奮し始めた」を流す(予兆)。査定コマ(通常/ピーク)ごとに1回。
+  // 社長指示v0.25.1845→用語整理v0.25.1851: ランク条件(昇格判定)をその時点までの集計で満たした瞬間に、
+  // 査定を待たず**通信(帯バナー=紅き月と同じ線)**で「変異体が興奮し始めた」を出す(予兆)。
+  // ※会話(モデル付き吹き出し=NpcDialogue)ではない(社長訂正)。査定コマ(通常/ピーク)ごとに1回。
   // コマ序盤はサンプル不足で誤発火しやすい(無被弾数秒でstarveRatioが立つ等)ため15秒経過後から判定(叩き台)。
   if (inScriptKoma && !koma.excitedThisKoma && koma.elapsedMs >= EXCITED_COMM_MIN_KOMA_MS) {
     const liveInput = finalizeKomaAssessmentInput(koma.acc, player.maxHealth);
     if (assessKomaDelta(liveInput) === 1) {
       koma.excitedThisKoma = true;
-      useGameStore.getState().tryNpcLine('通信', 'rank-excited', '変異体が興奮し始めた', 0);
+      useGameStore.setState({ eventBannerText: '変異体が興奮し始めた', eventBannerUntil: gameTime + 3500 });
     }
   }
 

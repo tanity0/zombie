@@ -2,9 +2,10 @@ import { useGameStore } from '../store/gameStore';
 import { spritePath } from '../utils/spriteLoader';
 
 // 話者名 → 立ち絵のベースパス(spritePathの`${base}-0`)+枠幅。セリフ表示時に上半身(バスト)を出す。
-// 社長ルール(v0.25.1849): **このゲームの通信は基本的に全てモデル入り**(モデルが大きい場合は半身)。
-// 新しい通信話者を足す時はここに立ち絵を必ず登録する。boxW=表示幅(横に広い素材は文字被り防止で広げる)。
-// 護衛軍人はpixiSceneのESCORT_SPRITE_BASEと同じ対応(index 0..7)。
+// 用語(社長決定v0.25.1851): この左上のモデル付き吹き出し=**「会話」**。会話は必ずモデル入り
+// (モデルが大きい場合は半身)。新しい会話話者を足す時はここに立ち絵を必ず登録する。
+// ※モデル無しの帯バナー(紅き月・変異体が興奮し始めた等)=「通信」で別系統(eventBanner)。
+// boxW=表示幅(横に広い素材は文字被り防止で広げる)。護衛軍人はpixiSceneのESCORT_SPRITE_BASEと同じ対応(index 0..7)。
 const NPC_PORTRAIT: Record<string, { base: string; boxW: number }> = {
   'エドガー': { base: 'npc/edgar', boxW: 40 },
   'ジョセフ': { base: 'npc/joseph', boxW: 40 },

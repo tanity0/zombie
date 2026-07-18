@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1851',
+    items: [
+      '「変異体が興奮し始めた」の予兆を、紅き月などと同じ画面上部のバナー表示に変更しました(キャラクター吹き出しから移動)。',
+    ],
+  },
+  {
     version: '0.25.1850',
     items: [
       '任務詳細(クリア前)で「任務目標」が開いた瞬間に一瞬チラついて消える問題を修正しました。',

@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1851 — 用語確定「通信/会話」+興奮予兆をバナーへ移設(社長決定)【2026-07-18 11:51 JST】
+- **用語確定(社長決定・ENGINEERING_NOTES 2.xに採録)**:
+  - **通信**=モデル無しのシステム告知(帯バナー=eventBanner: 紅き月警告/変異体が興奮/駆除成功等。
+    ミッション開始の通信ボックス=IntroDialogueも通信の一種)。
+  - **会話**=モデル表示ありきのテキスト(NpcDialogue=左上のモデル付き吹き出し)。会話は必ずモデル入り
+    (大きい場合は半身)=新話者はNPC_PORTRAIT登録必須。
+- **「変異体が興奮し始めた」を通信(帯バナー)へ移設**(社長訂正「通信ではなく紅き月とかと同じ線」):
+  tryNpcLine(話者「通信」)→ eventBanner(3.5秒)へ。v0.25.1849の残件(通信話者のモデル素材待ち)は
+  これで消滅(話者「通信」の会話は廃止)。
+- 自己点検: 表示系統の変更のみ(発火条件・頻度は不変)。憲法非該当。
+- Files: `src/utils/directorTick.ts`, `src/components/NpcDialogue.tsx`, `PACING_PUZZLE.md`,
+  `ENGINEERING_NOTES.md`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1850 — 任務目標チラつき修正+「ジョブ選択」改名・最下部固定(社長指示)【2026-07-18 11:43 JST】
 - **①チラつき修正(社長報告「クリア前 任務目標が一瞬チラついて消える」)**: 旧実装は親コンポーネントの
   共有state(synopsisTypedKey)にタイプ完了を記録=前に開いたページの完了が残り、開いた瞬間に一致判定が
