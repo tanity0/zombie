@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.1862 — cine残照を足元まで下げる(社長「照明もっと下まで」)【2026-07-19 01:38 JST】
+- `getCineWarmTexture` の縦グラデを緩やかにし、地平ピークから足元付近(0.80地点で0.08)まで暖色を届かせた。
+  最下部のみ寒色(teal)を残しコントラスト維持。他は不変。
+- Files: `src/pixi/lighting.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1861 — デバッグ ?nospawn=1(敵の湧き全停止・社長「一回敵の湧きを止めれる?」)【2026-07-19 01:34 JST】
 - 映像美の確認で自由に歩き回れるよう、敵の湧きを全て止めるデバッグフラグ `?nospawn=1` を追加。
   止める発生源: パズル盤面(runKomaBoardMaintenance)/旧スポナー/叫喚型/囲い・関所(arena/gate)/

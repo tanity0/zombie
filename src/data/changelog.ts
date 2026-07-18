@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1862',
+    items: [
+      '開発(?cine=1): 残照の照明を足元付近まで下げて広げました。',
+    ],
+  },
+  {
     version: '0.25.1861',
     items: [
       '開発: ?nospawn=1 で敵の湧きを全て止めるデバッグフラグを追加(映像美の確認用)。通常プレイは変化なし。',

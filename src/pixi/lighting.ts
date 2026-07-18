@@ -160,13 +160,13 @@ export const getCineWarmTexture = (): Texture => {
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d')!;
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  // 残照は上部(地平)だけに絞る=下半分は寒色gradeに任せて teal-orange のコントラストを出す。
+  // 残照は地平がピーク、そこから足元近くまで緩やかに届かせる(社長指示v0.25.1862「照明もっと下まで」)。
   g.addColorStop(0.00, 'rgba(255,150,70,0.78)');  // 画面最上部=残照の芯(強)
-  g.addColorStop(0.18, 'rgba(255,120,55,0.52)');  // 地平帯
-  g.addColorStop(0.30, 'rgba(220,90,50,0.20)');
-  g.addColorStop(0.44, 'rgba(150,70,60,0.05)');
-  g.addColorStop(0.60, 'rgba(80,50,70,0.0)');     // 中盤以降=無し(寒色のまま)
-  g.addColorStop(1.00, 'rgba(80,50,70,0.0)');
+  g.addColorStop(0.20, 'rgba(255,120,55,0.50)');  // 地平帯
+  g.addColorStop(0.40, 'rgba(230,95,52,0.30)');
+  g.addColorStop(0.60, 'rgba(190,80,55,0.18)');   // 中盤も暖色を残す
+  g.addColorStop(0.80, 'rgba(140,65,60,0.08)');   // 足元付近までうっすら
+  g.addColorStop(1.00, 'rgba(90,55,65,0.0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   cineWarmTex = Texture.from(canvas);
