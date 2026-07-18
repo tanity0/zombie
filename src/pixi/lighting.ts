@@ -173,6 +173,79 @@ export const getCineWarmTexture = (): Texture => {
   return cineWarmTex;
 };
 
+// シネマティック(?cine=1)の追加3要素(社長試作v0.25.1863「その他も全部積む」)。全て一度だけベイク=
+// screen合成の全画面/帯スプライト。per-frameの重い描画なし=負荷は各1枚(bloom/grade同経路)。
+// ① 地平の太陽フレア(白熱コア+暖色ハロー+細い十字光条)。
+let cineSunTex: Texture | null = null;
+export const getCineSunTexture = (): Texture => {
+  if (cineSunTex) return cineSunTex;
+  const s = 384; const c = document.createElement('canvas'); c.width = c.height = s;
+  const ctx = c.getContext('2d')!; const cx = s / 2, cy = s / 2;
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, s / 2);
+  halo.addColorStop(0.0, 'rgba(255,250,235,0.95)');
+  halo.addColorStop(0.06, 'rgba(255,225,170,0.9)');
+  halo.addColorStop(0.16, 'rgba(255,160,80,0.55)');
+  halo.addColorStop(0.34, 'rgba(220,90,45,0.22)');
+  halo.addColorStop(0.62, 'rgba(140,45,35,0.05)');
+  halo.addColorStop(1.0, 'rgba(120,40,40,0.0)');
+  ctx.fillStyle = halo; ctx.fillRect(0, 0, s, s);
+  // 細い十字の光条(スターバースト)。横条+縦条を加算合成で。
+  ctx.globalCompositeOperation = 'lighter';
+  // 横光条
+  const gx = ctx.createLinearGradient(0, cy, s, cy);
+  gx.addColorStop(0, 'rgba(255,200,140,0)'); gx.addColorStop(0.5, 'rgba(255,210,150,0.5)'); gx.addColorStop(1, 'rgba(255,200,140,0)');
+  ctx.fillStyle = gx; ctx.fillRect(0, cy - 1.5, s, 3);
+  const gy = ctx.createLinearGradient(cx, 0, cx, s);
+  gy.addColorStop(0, 'rgba(255,190,130,0)'); gy.addColorStop(0.5, 'rgba(255,200,140,0.32)'); gy.addColorStop(1, 'rgba(255,190,130,0)');
+  ctx.fillStyle = gy; ctx.fillRect(cx - 1.5, 0, 3, s);
+  cineSunTex = Texture.from(c); return cineSunTex;
+};
+
+// ② 放射状の薄雲(太陽=下端中央から扇状に伸びる暖色の筋)。帯スプライトとして地平の上に重ねる。
+let cineCloudTex: Texture | null = null;
+export const getCineCloudTexture = (): Texture => {
+  if (cineCloudTex) return cineCloudTex;
+  const w = 768, h = 384; const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d')!;
+  const ox = w / 2, oy = h * 0.98; // 放射の原点=下端中央(=地平の太陽)
+  ctx.globalCompositeOperation = 'lighter';
+  let seed = 20240718; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  for (let i = 0; i < 60; i++) {
+    const ang = -Math.PI / 2 + (rnd() - 0.5) * Math.PI * 1.15; // 上方向中心に扇状
+    const len = h * (0.4 + rnd() * 0.7);
+    const dist0 = h * (0.05 + rnd() * 0.5);
+    const x0 = ox + Math.cos(ang) * dist0, y0 = oy + Math.sin(ang) * dist0;
+    const x1 = ox + Math.cos(ang) * (dist0 + len), y1 = oy + Math.sin(ang) * (dist0 + len);
+    const thick = 4 + rnd() * 22;
+    const a = 0.05 + rnd() * 0.16;
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, `rgba(255,175,110,${a})`);
+    g.addColorStop(1, 'rgba(255,150,90,0)');
+    ctx.strokeStyle = g; ctx.lineWidth = thick; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+  cineCloudTex = Texture.from(c); return cineCloudTex;
+};
+
+// ③ 大気の塵(暖色のボケ粒。タイル化してゆっくりドリフト)。
+let cineDustTex: Texture | null = null;
+export const getCineDustTexture = (): Texture => {
+  if (cineDustTex) return cineDustTex;
+  const s = 256; const c = document.createElement('canvas'); c.width = c.height = s;
+  const ctx = c.getContext('2d')!;
+  let seed = 777; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 90; i++) {
+    const x = rnd() * s, y = rnd() * s;
+    const r = rnd() < 0.15 ? 4 + rnd() * 7 : 0.7 + rnd() * 2.2; // たまに大きめのボケ
+    const a = (0.12 + rnd() * 0.5) * (r > 4 ? 0.5 : 1);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(255,220,170,${a})`); g.addColorStop(1, 'rgba(255,190,130,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  cineDustTex = Texture.from(c); return cineDustTex;
+};
+
 // アーム済み(起爆待ち)の赤卵(社長仕様v0.25.1846「踏むと赤くプクプク」)。形状は緑卵と同一・
 // パレットだけ赤系に差し替えて一度だけベイク(tintで緑を赤くすると濁るため専用ベイク)。
 let eggTexArmed: Texture | null = null;

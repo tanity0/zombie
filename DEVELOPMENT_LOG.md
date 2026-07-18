@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1863 — cineに太陽フレア/放射雲/大気の塵を追加(社長「その他も全部積む」)【2026-07-19 01:45 JST】
+- `?cine=1`(stage-6)へ残り3要素を実装。全て一度だけベイクしたscreen合成スプライト=**per-frameの重い描画なし**:
+  ① 太陽フレア(`getCineSunTexture`・白熱コア+暖色ハロー+細い十字光条)を地平(画面上部18%)に配置。
+  ② 放射状の薄雲(`getCineCloudTexture`・太陽=下端中央から扇状の暖色筋60本ベイク)を上部帯に。
+  ③ 大気の塵(`getCineDustTexture`・暖色ボケ粒のタイル)を全画面にゆっくり斜めドリフト(per-frameは
+     tilePositionのみ=軽い)。
+- あわせて毎フレームの `gradeSprite.alpha` 再設定がcine値(0.52)を上書きしていた点を修正(cine時はCINE値維持)。
+- 負荷: 追加=全画面/帯スプライト3枚(grade/vignette/fogと同経路)。強glow・Text・per-frame Graphicsは無し=
+  合計でも 2〜3/10。?cine=1&stage-6限定=通常プレイ不変。
+- 検証: typecheck緑。stage-6で sun/clouds/dust visible=true を実測、実機ヘッドレスで映像確認。
+- Files: `src/pixi/lighting.ts`, `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1862 — cine残照を足元まで下げる(社長「照明もっと下まで」)【2026-07-19 01:38 JST】
 - `getCineWarmTexture` の縦グラデを緩やかにし、地平ピークから足元付近(0.80地点で0.08)まで暖色を届かせた。
   最下部のみ寒色(teal)を残しコントラスト維持。他は不変。

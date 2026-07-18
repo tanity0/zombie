@@ -46,7 +46,7 @@ import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
-import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, RING_TEX_BASES } from './lighting';
+import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineSunTexture, getCineCloudTexture, getCineDustTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -1258,6 +1258,9 @@ export class PixiScene {
   private gradeSprite = new Sprite(Texture.WHITE);
   // シネマティック残照オーバーレイ(?cine=1 & stage-6 のみ表示・screen合成)。
   private cineWarm = new Sprite(getCineWarmTexture());
+  private cineSun = new Sprite(getCineSunTexture());       // ①地平の太陽フレア
+  private cineClouds = new Sprite(getCineCloudTexture());  // ②放射状の薄雲
+  private cineDust = new TilingSprite({ texture: getCineDustTexture(), width: 1, height: 1 }); // ③大気の塵(ドリフト)
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-6';
   private playerLight = new Sprite(getGlowTexture());
   private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
@@ -1337,11 +1340,16 @@ export class PixiScene {
   // シネマティック調(?cine=1 & stage-6)。寒色gradeを teal 寄りへ+減光強め+残照overlay表示。
   // 非cineでは何もしない(=従来値のまま)。applyDaylight末尾から呼ぶ(daylightの上書きに勝つ)。
   private applyCineGrade() {
-    if (!this.cineEnabled) { this.cineWarm.visible = false; return; }
-    this.gradeSprite.tint = CINE_GRADE_TINT;
-    this.gradeSprite.alpha = CINE_GRADE_ALPHA;
-    this.vignette.alpha = CINE_VIGNETTE_ALPHA;
-    this.cineWarm.visible = true;
+    const on = this.cineEnabled;
+    if (on) {
+      this.gradeSprite.tint = CINE_GRADE_TINT;
+      this.gradeSprite.alpha = CINE_GRADE_ALPHA;
+      this.vignette.alpha = CINE_VIGNETTE_ALPHA;
+    }
+    this.cineWarm.visible = on;
+    this.cineSun.visible = on;
+    this.cineClouds.visible = on;
+    this.cineDust.visible = on;
   }
 
   // 現在の設定に応じて gameplay world(filteredWorld)のフィルタ配列を作り直す(bloom はON時のみ含める)。
@@ -1701,14 +1709,17 @@ export class PixiScene {
     // Screen-space overlays: cool multiply grade darkens/cools the whole scene
     // (multiply preserves detail/outlines), then the vignette, then damage
     // flash + off-screen arrows on top of everything.
-    // 残照overlay(cine)は寒色grade(乗算)の直後・vignetteの手前へ screen で重ねる=teal-orange。
-    this.cineWarm.blendMode = 'screen';
+    // cineオーバーレイ群。順序: grade(乗算)→ 雲/太陽/残照/塵(screen=teal-orange)→ vignette。
+    for (const sp of [this.cineWarm, this.cineSun, this.cineClouds, this.cineDust]) {
+      sp.blendMode = 'screen'; sp.visible = false; sp.eventMode = 'none';
+    }
     this.cineWarm.alpha = CINE_WARM_ALPHA;
-    this.cineWarm.visible = false; // applyCineGrade() が cine時のみ表示
-    this.cineWarm.eventMode = 'none';
+    this.cineClouds.alpha = 0.7;
+    this.cineSun.alpha = 0.9;
+    this.cineDust.alpha = 0.5;
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
-      this.gradeSprite, this.cineWarm, this.vignette,
+      this.gradeSprite, this.cineClouds, this.cineSun, this.cineWarm, this.cineDust, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
     this.applyCineGrade(); // 初期適用(applyDaylight前でもcine値を効かせる)
@@ -1790,6 +1801,21 @@ export class PixiScene {
     this.cineWarm.position.set(-1, -1);
     this.cineWarm.width = w + 2;
     this.cineWarm.height = h + 2;
+    // 地平の太陽=画面上部(森の地平帯あたり)。フレアはそこを中心に大きめ。
+    const sunY = h * 0.18;
+    const sunSize = Math.max(w, h) * 0.7;
+    this.cineSun.anchor.set(0.5);
+    this.cineSun.position.set(w * 0.5, sunY);
+    this.cineSun.width = this.cineSun.height = sunSize;
+    // 放射雲は太陽(下端中央)から上へ扇状に=上部帯を覆う。テクスチャ下端を地平(sunY)に合わせる。
+    this.cineClouds.anchor.set(0.5, 1);
+    this.cineClouds.position.set(w * 0.5, sunY + h * 0.06);
+    this.cineClouds.width = w * 1.1;
+    this.cineClouds.height = h * 0.5;
+    // 塵は全画面タイル。
+    this.cineDust.position.set(0, 0);
+    this.cineDust.width = w;
+    this.cineDust.height = h;
     // スモッグ各層: テクスチャ1枚分が帯にちょうど収まる tileScale(横1枚/縦1枚)。位置/流れは sync。
     for (const f of this.fogLayers) {
       f.sp.width = w * f.widthFrac;
@@ -2899,8 +2925,14 @@ export class PixiScene {
       f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;    // 右へ流れる+横の揺らめき
       f.sp.tilePosition.y = 0;
     }
+    // cine: 大気の塵をゆっくり斜めにドリフト(per-frameはtilePositionのみ=軽い)。
+    if (this.cineEnabled) {
+      this.cineDust.tilePosition.set((now * 0.006) % 256, (now * 0.004) % 256);
+    }
     // 研究所スキンは床/素材を見せるため、クール調整を弱める(森はそのまま)。
-    this.gradeSprite.alpha = labThemeFog ? GRADE_ALPHA * 0.45 : (this.daylight ? DAY_GRADE_ALPHA : GRADE_ALPHA);
+    // cine時は寒色gradeをCINE値で維持(labThemeFog/daylightの上書きに勝つ)。
+    this.gradeSprite.alpha = this.cineEnabled ? CINE_GRADE_ALPHA
+      : labThemeFog ? GRADE_ALPHA * 0.45 : (this.daylight ? DAY_GRADE_ALPHA : GRADE_ALPHA);
 
     // 死神の横切り演出(store.reaperCross から駆動)。world内レイヤーを画面へピン留め(被写界深度が乗る)。
     this.reaperCrossLayer.position.set(s.camera.x - sx, s.camera.y - sy);

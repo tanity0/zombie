@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1863',
+    items: [
+      '開発(?cine=1): 地平の太陽フレア・放射状の薄雲・大気の塵を追加(残り全要素を実装)。',
+    ],
+  },
+  {
     version: '0.25.1862',
     items: [
       '開発(?cine=1): 残照の照明を足元付近まで下げて広げました。',
