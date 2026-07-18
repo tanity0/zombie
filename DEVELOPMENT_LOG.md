@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.1865 — cine前景コントラスト(キャラ/オブジェクトの階調立て・社長「コントラストが必要なのでは」)【2026-07-19 02:24 JST】
+- 社長指摘: 画面全体の乗算grade+暖色overlayで地面と一緒にキャラ/オブジェクトまで眠く(コントラストが潰れて)なる。
+  → 「大気(地面)は柔らかいまま前景だけ階調を立てる」定石で対応。
+- 実装: `rebuildWorldFilters()` に cine 分岐を追加し、`filteredWorld`(=world: 背景/actor/効果)へ
+  ColorMatrixFilter(`contrast 0.2` + `saturate 0.12`)を1枚相乗り。**地面(groundBase)は filteredWorld の外**なので
+  対象外=大気は柔らかいまま前景(キャラ・木・オブジェクト・弾・効果)だけコントラストが乗る。
+- コスト: 既存の bloom/tilt-shift と同じ render target への追加1パス(ColorMatrix=blur無し・per-pixel 4x5)=**1/10**。
+  bloom の後段に置き、明部判定(=bloom量/強glow量)は不変に保つ。強glow・Text・per-frame Graphics は増やさない。
+- 挙動不変(CLAUDE.md仕様変更ルール順守): 描画のみ(当たり判定・攻撃範囲・移動は不変)。`this.cineEnabled`
+  (cine=1 && stage-6)ゲート内=通常プレイは1バイトも変わらない。
+- 数値(contrast 0.2 / saturate 0.12)は叩き台=実機で強弱調整前提。
+- 検証: typecheck緑(`.contrast()`/`.saturate()` API有効)。実機ヘッドレスで前景の階調が立ち地面が柔らかいまま
+  であることを before/after で確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1864 — cine影を手前へ・濃く・長く+太陽フレア少し絞る(社長3件)【2026-07-19 02:15 JST】
 - 社長指示3件(?cine=1・stage-6限定): ①影の向きを変える(太陽が上=地平のため手前=下へ落とす)②太陽フレア少し絞る(おすすめで)③影を強く(締める)。
 - `placeShadowSprite` にcine分岐を追加(通常時は完全に従来通り):

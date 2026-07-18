@@ -88,6 +88,10 @@ const CINE_WARM_ALPHA = 0.72;              // 残照オーバーレイ(screen)�
 const CINE_SHADOW_DIRECTION = { x: 0.16, y: 1 }; // ほぼ真下(わずかに右へ角度)
 const CINE_SHADOW_ALPHA = 0.55;            // 既定 moonlight 0.26 → 濃く(締まる)
 const CINE_SHADOW_LENGTH = 52;             // 既定 32 → 夕方の長い影
+// 前景(キャラ/木/オブジェクト)の階調立て(社長指示v0.25.1865)。地面(groundBase)は filteredWorld の
+// 外なので効かない=大気は柔らかいまま前景だけコントラストが乗る。既存フィルタと同じRTへ1パス相乗り。
+const CINE_ACTOR_CONTRAST = 0.2;           // 明暗のメリハリ(0=無変化)
+const CINE_ACTOR_SATURATE = 0.12;          // grade で抜けた彩度を少し戻す
 const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
 const DEEP_ZONE_GRADE_SAT = (() => {
   const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
@@ -1298,6 +1302,7 @@ export class PixiScene {
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
+  private cineContrast: ColorMatrixFilter | null = null; // cine前景の階調立て(遅延生成)
   private bloomActive = true; // 現在ブルームをフィルタ配列に入れているか(オプション反映用)
   private farBackdropBlur: BlurFilter | null = null;
   // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
@@ -1361,6 +1366,18 @@ export class PixiScene {
     const filters: Filter[] = [];
     if (this.bloom && this.bloomActive) filters.push(this.bloom);
     if (this.tiltShift) filters.push(this.tiltShift);
+    // cine(?cine=1 & stage-6): 前景(キャラ/木/オブジェクト)のコントラストを立てる(社長指示v0.25.1865)。
+    // filteredWorld=world(actor/背景/効果)だけ=地面(groundBase)は対象外で柔らかいまま。既存フィルタと
+    // 同じ render target への追加1パス=安い。bloom の後段に置き、明部判定(=bloom量)は不変に保つ。
+    if (this.cineEnabled) {
+      if (!this.cineContrast) {
+        const f = new ColorMatrixFilter();
+        f.contrast(CINE_ACTOR_CONTRAST, false);
+        f.saturate(CINE_ACTOR_SATURATE, true);
+        this.cineContrast = f;
+      }
+      filters.push(this.cineContrast);
+    }
     this.L.filteredWorld.filters = filters;
   }
   private nearGroundBlurFilters: BlurFilter[] = [];

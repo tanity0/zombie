@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1865',
+    items: [
+      '開発(?cine=1): 前景(キャラ・木・オブジェクト)のコントラストを立て、地面は柔らかいまま締めました。通常プレイは変化なし。',
+    ],
+  },
+  {
     version: '0.25.1864',
     items: [
       '開発(?cine=1): 影を手前(下)向きに落として濃く・長くし、太陽フレアを少し絞りました。通常プレイは変化なし。',
