@@ -109,6 +109,9 @@ export function computeNormalSpawnCap(
   return labTheme ? maxEnemies : Math.max(6, Math.round(dirCountCap * relaxAdjCapMult));
 }
 
+// 社長指示v0.25.1845: 「変異体が興奮し始めた」通信の判定開始(コマ経過ms)。序盤の誤発火防止(叩き台)。
+const EXCITED_COMM_MIN_KOMA_MS = 15000;
+
 // ============================================================================
 // 難易度⑥(ピンチ救済) upkeep
 // ============================================================================
@@ -158,6 +161,8 @@ export interface KomaState {
   pendingFinalDelta: RankDelta | null;
   chaffRamp: ChaffRampState;
   belowTargetMs: number;
+  // 社長指示v0.25.1845: 「変異体が興奮し始めた」通信をこのコマで出したか(査定コマごとに1回)。
+  excitedThisKoma: boolean;
 }
 
 export interface KomaMaintenanceRefs {
@@ -268,6 +273,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     koma.kind = nextKomaKind(koma.kind);
     koma.elapsedMs = 0;
     koma.acc = createKomaAccumulator();
+    koma.excitedThisKoma = false; // 興奮通信(v0.25.1845)はコマごとに再アーム
     if (koma.kind === 'normal') {
       // 確定査定の反映は「次の通常」から(§4-C。直後のリラックス/ハーベストはR1相当なので影響なし)。
       if (koma.pendingFinalDelta != null) {
@@ -275,6 +281,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
         puzzleClockRef.current = applyRankDelta(puzzleClockRef.current, koma.pendingFinalDelta);
         koma.pendingFinalDelta = null;
         // PACING_PUZZLE.md §5.17 M14: ランクの壁(査定確定=このタイミングのみ・予告なし)。
+        // 社長指示v0.25.1845「ランク演出について変更」: ①演出(銘打ち)は毎回何度でも出す
+        // (旧・isFirstRankReachの初回限定を撤廃。記録系=wallMeta/年表は従来どおり初回のみ)。
+        // ②降格もグレーバージョンで出す(SE指定なし=静かに)。
         const newRank = puzzleClockRef.current.rank;
         if (WALL_ENABLED && newRank > prevRank) {
           useGameStore.setState(state => ({
@@ -286,13 +295,17 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
             // のみ(useGameLoop.tsのcommitRunEndProgress)。ここではメモリ上のstoreだけ更新する。
             const nextMeta = markSelfHighestRank(markRankReached(st.wallMeta, newRank), newRank);
             useGameStore.setState({ wallMeta: nextMeta });
-            useGameStore.getState().enqueueWallEvent(
-              'rank', `${WALL_RANK_NAMES[newRank]} —— 到達`, WALL_RANK_NAMES_EN[newRank], '#ff6a55'
-            );
-            playSfx('level-up'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
-            // 歴史年表: ランク到達を初回のみ即載せ(社長決定v0.25.1628)。dedup=ランク値。
-            recordChronicle(getSelectedStageId(), 'rank', String(newRank), `ランク「${WALL_RANK_NAMES[newRank]}」に到達`);
           }
+          useGameStore.getState().enqueueWallEvent(
+            'rank', `${WALL_RANK_NAMES[newRank]} —— 到達`, WALL_RANK_NAMES_EN[newRank], '#ff6a55'
+          );
+          playSfx('level-up'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
+          // 歴史年表: 初回のみ載る(recordChronicle内部のdedup=ランク値で担保)。
+          recordChronicle(getSelectedStageId(), 'rank', String(newRank), `ランク「${WALL_RANK_NAMES[newRank]}」に到達`);
+        } else if (WALL_ENABLED && newRank < prevRank) {
+          useGameStore.getState().enqueueWallEvent(
+            'rank', `${WALL_RANK_NAMES[newRank]} —— 降格`, WALL_RANK_NAMES_EN[newRank], '#9ca3af'
+          );
         }
       }
       koma.script = null; // 緩明けは新しい台本から(§4-D。次フレームのローテーションが引く)
@@ -310,6 +323,17 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     } else if (prevKind === 'peak') {
       useGameStore.setState({ eventBannerText: '襲撃を凌いだ', eventBannerUntil: gameTime + 3500 });
       playSfx('gate-clear'); // 強襲突破ジングル(社長提供SE)
+    }
+  }
+
+  // 社長指示v0.25.1845: ランク条件(昇格判定)をその時点までの集計で満たした瞬間に、査定を待たず
+  // 左上の通信で「変異体が興奮し始めた」を流す(予兆)。査定コマ(通常/ピーク)ごとに1回。
+  // コマ序盤はサンプル不足で誤発火しやすい(無被弾数秒でstarveRatioが立つ等)ため15秒経過後から判定(叩き台)。
+  if (inScriptKoma && !koma.excitedThisKoma && koma.elapsedMs >= EXCITED_COMM_MIN_KOMA_MS) {
+    const liveInput = finalizeKomaAssessmentInput(koma.acc, player.maxHealth);
+    if (assessKomaDelta(liveInput) === 1) {
+      koma.excitedThisKoma = true;
+      useGameStore.getState().tryNpcLine('通信', 'rank-excited', '変異体が興奮し始めた', 0);
     }
   }
 

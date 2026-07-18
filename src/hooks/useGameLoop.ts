@@ -927,10 +927,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     pendingFinalDelta: RankDelta | null;
     chaffRamp: ChaffRampState;
     belowTargetMs: number;
+    // 社長指示v0.25.1845: 「変異体が興奮し始めた」通信をこのコマで出したか(査定コマごとに1回)。
+    excitedThisKoma: boolean;
   }>({
     kind: 'relax', elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
     lastPatternId: null, acc: createKomaAccumulator(), provisionalDelta: null, pendingFinalDelta: null,
-    chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0,
+    chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0, excitedThisKoma: false,
   });
   // バッチM6(§3-D改訂): 全コマ常時の「多少緩め」検知(直近10秒の被ダメ/Intensity/低HPのリング集計)。
   const puzzleSoftenRef = useRef<SoftenState>(createSoftenState());
@@ -1811,7 +1813,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           puzzleKomaRef.current = {
             kind: 'relax', elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
             lastPatternId: null, acc: createKomaAccumulator(), provisionalDelta: null, pendingFinalDelta: null,
-            chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0,
+            chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0, excitedThisKoma: false,
           };
           puzzleSoftenRef.current = createSoftenState();
           puzzleCdRef.current = { lastBaseSpawnAt: 0, lastNuisanceSpawnAt: 0, lastSpecialSpawnAt: 0 };

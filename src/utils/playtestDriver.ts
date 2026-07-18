@@ -109,7 +109,7 @@ export const createPlaytestRefs = (): PlaytestRefs => {
   const komaState: KomaState = {
     kind: 'relax', elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
     lastPatternId: null, acc: createKomaAccumulator(), provisionalDelta: null, pendingFinalDelta: null,
-    chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0,
+    chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0, excitedThisKoma: false,
   };
   const directorShared = { current: { state: createDirectorState(), prevHp: 0, prevKills: 0, nextSampleMs: 0 } };
   return {

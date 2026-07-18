@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.1845 — ランク演出の変更3点(毎回表示/降格グレー/興奮通信・社長指示)【2026-07-18 10:14 JST】
+- **社長指示「ランク演出について変更」を実装**(PACING_PUZZLE.md §3-F新設):
+  1. **到達の銘打ちは毎回何度でも出す**(旧・isFirstRankReachのステージ毎初回限定を撤廃。
+     記録系=wallMeta到達フラグ/歴史年表(内部dedup)は従来どおり初回のみ)。
+  2. **降格もグレーバージョン**: `{新ランク名} —— 降格`+EN名・#9ca3af。SEなし(指定なし=静かに。
+     要るなら1行で足せます)。
+  3. **「変異体が興奮し始めた」通信**: 査定コマ(通常/ピーク)中に、その時点までの集計で昇格条件
+     (§3-B同式=assessKomaDelta==+1)が立った瞬間、査定を待たず左上の通信(話者「通信」)で流す。
+     1コマ1回(excitedThisKoma・コマ切替/新ランで再アーム)。**コマ経過15秒から判定**
+     (叩き台=序盤のstarveRatio誤発火防止)。
+- 検証: typecheck緑+関連テスト79件緑(progress/rankAssessor/constitution)+起動スモーク(ループ進行・
+  エラーなし)。ランク変動の実機通し(数分スケール)は未実施=実機で1ラン確認を推奨。
+- 自己点検: 変更は演出・通信の表示のみ(査定式・ランク遷移・記録は不変)。憲法非該当。
+- Files: `src/utils/directorTick.ts`, `src/hooks/useGameLoop.ts`, `src/utils/playtestDriver.ts`,
+  `PACING_PUZZLE.md`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1844 — ランク持ち越し(ステージ毎に最終ランク−1・社長決定)【2026-07-18 09:47 JST】
 - **社長決定「ランクは各ステージごとに−1で保持。R3で死んだら次はR2から。クリア、帰還でも同じ」を実装**
   (PACING_PUZZLE.md §3-E新設)。

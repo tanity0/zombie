@@ -127,6 +127,14 @@ PACING_REDESIGN.mdは前提知識(旧仕様)として参照可。矛盾したら
 - 実装: `carryOverStartRank`(純関数)+`get/setStartRankFromFinal`(progress.ts)/
   シードは`seededPuzzleClockState`(useGameLoop・新ラン検知でも同経路)。ユニット+実機E2E検証済み。
 
+### 3-F. ランク演出の変更(社長指示v0.25.1845)
+- **演出(銘打ち)は毎回何度でも出す**(旧・isFirstRankReachのステージ毎初回限定を撤廃。
+  記録系=wallMeta到達フラグ/歴史年表は従来どおり初回のみ)。
+- **降格もグレーバージョンで出す**: `{ランク名} —— 降格`+EN名・色#9ca3af。SE無し(指定なし=静かに)。
+- **「変異体が興奮し始めた」通信**: 査定コマ(通常/ピーク)中、その時点までの集計で昇格条件
+  (§3-Bと同式)が立った瞬間に、査定を待たず左上の通信(NpcDialogue・話者「通信」)で流す(予兆)。
+  1コマ1回・コマ切替で再アーム。序盤の誤発火防止にコマ経過15秒から判定(叩き台=EXCITED_COMM_MIN_KOMA_MS)。
+
 ## 4. バッチM3: 盤面構成パズル(scriptPuzzle)【社長決定v0.25.1366=台本会議の結果】
 ※旧4-A/4-B/4-C(敵スコア×予算方式)は**社長指示で破棄**。以下が正。
 `src/utils/scriptPuzzle.ts`(新規・純関数)。
