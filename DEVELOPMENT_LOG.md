@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1843 — エリア移動(深さの壁)の手本素材(社長指示「到達の文字のところ」・素材のみ/未配線)【2026-07-18 09:35 JST】
+- `demo-area-wall.gif` 追加(`public/tutorial/`): 1500px境界へ歩く→「この先——研究対象区域」帯(予告)→
+  白い境界線を跨ぐ→区域バッジ+「研究対象区域——踏破 TRESPASS」銘打ち、まで15コマ。
+- 収録知見(TUTORIAL_STAGE.md v0.25.1843節): 銘打ち(WallInscription)のopacityアニメはヘッドレスの
+  スクショに写らない(DOMには存在)→ animation:none/opacity:1 を注入して最終状態を撮り歩行列へ差し込み。
+  **踏破儀式はステージ毎初回1回きり**(wallMeta永続=社長確認)。ヘッドレスは毎回新規プロファイルのため
+  毎回撮れる(実機では再発火しない)。
+- 自己点検: 素材追加+文書のみ・コード/挙動不変。憲法非該当。
+- Files: `public/tutorial/demo-area-wall.gif`(新規), `TUTORIAL_STAGE.md`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1842 — 仕様変更: 武器商人=サークル3秒滞在で話しかけ+ハンター/死神素材(社長指示)【2026-07-18 03:07 JST】
 - **仕様変更(社長指示「武器商人、サークルに3秒滞在で話しかけれる」)**: 商人への話しかけを
   「サークル内に3秒連続滞在」方式へ変更。`MERCHANT_TALK_DWELL_MS=3000`、store新フィールド
