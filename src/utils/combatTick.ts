@@ -32,7 +32,8 @@ import {
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { activeFlareTargets } from './flareGun';
 import { getActiveGun } from './weaponUtils';
-import { checkCollision, checkPlayerEnemyCollisions, checkProjectilePlayerCollisions } from './collisionUtils';
+import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions } from './collisionUtils';
+import { EGG_BLAST_RADIUS } from '../world/mines';
 import {
   useGameStore, isSeekerActive, skillLevel, skillCritMult, skillOutgoingDamageMult, enemyDeathLabel,
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
@@ -366,21 +367,26 @@ export const applyEnemyProjectileHits = (
   }
 };
 
-// ④ 地雷(緑卵)。社長仕様v0.25.1846: 踏んでも即ダメージではなく「アーム」(赤くプクプク)→
-// EGG_FUSE_MS(2秒)後に爆発(爆発処理はuseGameLoopのapplyEggExplosionsブロック=敵巻き込み/連鎖)。
+// ④ 地雷(緑卵)。社長仕様v0.25.1846→v0.25.1848改: **起爆範囲(EGG_BLAST_RADIUS)に入ったらアーム**
+// (旧: 卵の当たり判定を踏んだら)。赤くプクプク→EGG_FUSE_MS(2秒)後に爆発(爆発処理は
+// useGameLoopの起爆ブロック=敵巻き込み/連鎖)。範囲内の未アーム卵は同フレームで全てアームされる。
 // 近接で割る従来経路(breakPropsAlong→damageBreakableProp)は不変=アーム中でも無害に解除できる。
 export const applyMineDamage = (fx: CombatEffects): void => {
   const currentPlayerForMine = useGameStore.getState().player;
   const gameTimeNow = useGameStore.getState().gameTime;
-  const mineHit = useGameStore.getState().breakableProps.find(prop =>
-    prop.type === 'mine' && prop.armedAt === undefined && checkCollision(currentPlayerForMine, prop)
+  const pcx = currentPlayerForMine.x + currentPlayerForMine.width / 2;
+  const pcy = currentPlayerForMine.y + currentPlayerForMine.height / 2;
+  const triggered = useGameStore.getState().breakableProps.filter(prop =>
+    prop.type === 'mine' && prop.armedAt === undefined
+    && (prop.footX - pcx) ** 2 + (prop.footY - pcy) ** 2 <= EGG_BLAST_RADIUS * EGG_BLAST_RADIUS
   );
-  if (!mineHit) return;
+  if (triggered.length === 0) return;
+  const ids = new Set(triggered.map(p => p.id));
   useGameStore.setState(state => ({
-    breakableProps: state.breakableProps.map(p => p.id === mineHit.id ? { ...p, armedAt: gameTimeNow } : p),
+    breakableProps: state.breakableProps.map(p => ids.has(p.id) ? { ...p, armedAt: gameTimeNow } : p),
   }));
-  // アーム開始の合図: 小さな赤リング1発(SEなし=静かに導火が始まる)。
-  fx.spawnRing(mineHit.footX, mineHit.footY - mineHit.height * 0.5, 4, 26, 'rgba(248,113,113,0.85)', 2, 260);
+  // アーム開始の合図: 小さな赤リング(SEなし=静かに導火が始まる)。
+  for (const m of triggered) fx.spawnRing(m.footX, m.footY - m.height * 0.5, 4, 26, 'rgba(248,113,113,0.85)', 2, 260);
 };
 
 // ① 敵接触ダメージ。カウンター/パリィ(dashParried)・ワイヤー無効・トール特例・ジャンプ空中/

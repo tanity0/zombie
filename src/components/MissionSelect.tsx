@@ -6,16 +6,17 @@ import { createPortal } from 'react-dom';
 // 短周期の再レンダーはこの小コンポーネント内に閉じる(打ち終わったらタイマー停止)。
 const TYPE_CHAR_MS = 28;      // 1文字あたり(叩き台。IntroDialogueの55msより読み物向けに速め)
 const TYPE_LINE_GAP_MS = 260; // 行間の間
-const TypewriterLines: React.FC<{ lines: string[]; className: string; resetKey: string }> = ({ lines, className, resetKey }) => {
+const TypewriterLines: React.FC<{ lines: string[]; className: string; resetKey: string; onDone?: () => void }> = ({ lines, className, resetKey, onDone }) => {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     setElapsed(0);
     const startedAt = Date.now();
     const total = lines.reduce((s, l) => s + l.length * TYPE_CHAR_MS + TYPE_LINE_GAP_MS, 0);
+    if (total <= 0) { onDone?.(); return; }
     const iv = window.setInterval(() => {
       const el = Date.now() - startedAt;
       setElapsed(el);
-      if (el >= total) window.clearInterval(iv);
+      if (el >= total) { window.clearInterval(iv); onDone?.(); }
     }, 33);
     return () => window.clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -524,6 +525,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 特殊条件(specialConditions・あれば) → 特殊支給装備(specialEquipment・あれば)。
   // 開発コード(M1等)はここでも表示しない。
   // ====================================================================
+  // 社長指示v0.25.1848: クリア前は「状況説明のタイプ完了後に任務目標を一気にフェードイン」。
+  // 完了したタイプ表示のresetKeyを記録し、一致するページだけ任務目標を出す(opacityで場所は確保=レイアウト不動)。
+  const [synopsisTypedKey, setSynopsisTypedKey] = useState('');
   const renderMissionDetail = (stageId: string, missionKind: SelectedMission = 'main') => {
     const stage = getStage(stageId);
     if (!stage) return null;
@@ -555,6 +559,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 lines={m.synopsis}
                 className="text-[13px] leading-relaxed text-white/85"
                 resetKey={`${stage.id}:${missionKind}:syn`}
+                onDone={() => setSynopsisTypedKey(`${stage.id}:${missionKind}:syn`)}
               />
             )}
           </Section>
@@ -569,9 +574,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </Section>
           )}
 
-          <Section label="任務目標">
-            <p className="text-[13px] leading-relaxed text-white/85">{m.summary}</p>
-          </Section>
+          {/* 任務目標: クリア前は状況説明のタイプ完了後に一気にフェードイン(社長指示v0.25.1848)。
+              opacityのみ変える=場所は最初から確保しレイアウトを動かさない。クリア後は即表示。 */}
+          <div style={{ opacity: done || synopsisTypedKey === `${stage.id}:${missionKind}:syn` ? 1 : 0, transition: 'opacity 600ms ease' }}>
+            <Section label="任務目標">
+              <p className="text-[13px] leading-relaxed text-white/85">{m.summary}</p>
+            </Section>
+          </div>
 
           {m.specialConditions && m.specialConditions.length > 0 && (
             <Section label="特殊条件">

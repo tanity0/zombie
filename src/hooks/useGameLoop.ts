@@ -1876,6 +1876,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // まだこの位置では未計算(ずっと下の別ブロックで初めて求まる)ので、既存の他箇所と同じく
         // phaseAt()を軽量に再呼び出しする(同種の再計算は無視できるコスト・既存踏襲)。
         const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && phaseAt(newGameTime).kind !== 'boss';
+        // §5.21追補(社長報告v0.25.1848「ゲート1、クリアしなくても奥に行けちゃう」の修正):
+        // ゲート(境界囲い1/2)の発火は地理トリガー(境界踏破)なので、コマ/フェーズ表とは無関係に働く。
+        // 旧実装は puzzleActiveNow(=フェーズ表がboss扱いの7:00-7:30はfalse)でゲートしていたため、
+        // その時間帯に境界を跨ぐと発火が丸ごと止まり素通りできた(実測再現)。城ボスは城の固定位置・
+        // ゲートは境界=地理的に重ならないため、実戦闘との排他は不要。フェーズ条件だけ外した版を使う。
+        const gateFireOk = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage;
 
         const castle = useGameStore.getState().castleEvent;
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
@@ -2009,7 +2015,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 既にゲートがアクティブ(activeGateRef!=null)なら触らない(発火済みのゲートを消さない)。
           {
             const aePre = useGameStore.getState().activeEvent;
-            if (puzzleActiveNow && activeGateRef.current == null && aePre && aePre.kind !== 'boss') {
+            if (gateFireOk && activeGateRef.current == null && aePre && aePre.kind !== 'boss') {
               const gate1WouldFire = shouldTriggerGate1({
                 enabled: GATE_ENABLED,
                 wallIdx: gate1PendingRef.current ? 3 : null,
@@ -2037,7 +2043,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
              activeEventActive: false, // 既に !ae 内=activeEventは無い
              doneThisRun: gate1DoneThisRunRef.current, // §5.21-追補3: ラン内ガード(全滅後の再湧き対策)
            });
-           if (puzzleActiveNow && gate1Ready) {
+           if (gateFireOk && gate1Ready) {
             // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1(社長設計「ゲート>退屈補正」=優先発火)。
             // 未確認境界を未クリアで踏破した時点で gate1PendingRef が立つ(M14区域判定ブロック側)。
             // ここで activeEvent が空いた瞬間に発火する(他イベント進行中なら空くまで待つ)。
@@ -2100,7 +2106,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnFlash('rgba(88,28,135,0.24)', 360);
             useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
             useGameStore.getState().triggerTimeSlow(0.4, 520);
-           } else if (puzzleActiveNow && shouldTriggerGate2({
+           } else if (gateFireOk && shouldTriggerGate2({
              enabled: GATE_ENABLED,
              wallIdx: gate2PendingRef.current ? 4 : null,
              gate2Cleared: gateMetaRef.current.gate2Cleared,
@@ -2447,15 +2453,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // プレイヤーをそのゲートの境界より内側(手前エリア)へ強制ノックバック。doneThisRunは立てない
                 // ので、内側から再び境界を越えれば detectWallBreach が踏破を再検知しゲートが再発火する
                 // (=リトライループ。死神ペナルティは使わない=追補5抑止+ゲート地形で事実上眠る)。
-                const failedGate = activeGateRef.current;
-                const boundary = failedGate === 2 ? AREA_THRESHOLDS[3] : AREA_THRESHOLDS[2];
-                const targetD = Math.max(0, boundary - GATE_FAIL_KNOCKBACK_MARGIN);
-                const pl = useGameStore.getState().player;
-                const kpcx = pl.x + pl.width / 2, kpcy = pl.y + pl.height / 2;
-                const kd = Math.hypot(kpcx, kpcy) || 1;
-                const nx = (kpcx / kd) * targetD, ny = (kpcy / kd) * targetD;
+                // 社長指示v0.25.1848: 弾き出し先=「今のゲート円の外・かつスタート地点側」。
+                // ゲート中心から原点方向へ「半径+マージン」離れた点へ強制移動(旧: 境界−400の同心円上=
+                // ゲート円の内側に残ることがあった)。境界より内側にも自然に収まる(中心≒境界上のため)。
+                const gcd = Math.hypot(ae.x, ae.y) || 1;
+                const toOriginX = -ae.x / gcd, toOriginY = -ae.y / gcd;
+                const pushDist = ae.radius + GATE_FAIL_KNOCKBACK_MARGIN;
+                const nx = ae.x + toOriginX * pushDist, ny = ae.y + toOriginY * pushDist;
                 useGameStore.setState(s => ({ player: { ...s.player, x: nx - s.player.width / 2, y: ny - s.player.height / 2 } }));
-                areaZoneRef.current = areaZoneIndexFor(targetD); // prevZoneを内側へ=再クロスで踏破を再検知
+                areaZoneRef.current = areaZoneIndexFor(Math.hypot(nx, ny)); // prevZoneを内側へ=再クロスで踏破を再検知
                 useGameStore.setState({ eventBannerText: 'ゲート突破失敗 —— 押し戻された', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                 useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               }
