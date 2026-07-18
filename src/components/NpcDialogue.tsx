@@ -8,20 +8,21 @@ import { spritePath } from '../utils/spriteLoader';
 // boxW=表示幅(横に広い素材は文字被り防止で広げる)。護衛軍人はpixiSceneのESCORT_SPRITE_BASEと同じ対応(index 0..7)。
 // frame=立ち姿に使うコマ(社長指示v0.25.1854「会話の立ち姿は全員、足閉じてる方の絵」):
 // 護衛3コマ歩きは1=足閉じ(通過姿勢)/shooterは0/medic-walk(4コマ)は2/futariはバストアップ=0のみ。
-// imgH=表示高さ(既定64)。通常NPC(非軍人=グレン/ミラ)は0.8倍=51(社長指示v0.25.1857・全表示共通の縮小)。
+// imgH=表示高さ(既定64)。
+// NPC8人(出撃している護衛8人)は全表示0.8倍(社長指示v0.25.1858)=会話立ち絵もimgH51(64×0.8)・枠32。
 const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number; imgH?: number }> = {
-  'エドガー': { base: 'npc/edgar', boxW: 40, frame: 1 },
-  'ジョセフ': { base: 'npc/joseph', boxW: 40, frame: 1 },
-  'エリザベス': { base: 'npc/elizabeth', boxW: 40, frame: 1 },
-  '武蔵': { base: 'npc/musashi', boxW: 40, frame: 1 },
-  'ムハンマド': { base: 'npc/muhammad', boxW: 40, frame: 1 },
-  'チェン': { base: 'npc/chen', boxW: 40, frame: 1 },
-  'ローレン': { base: 'npc/lauren', boxW: 40, frame: 1 },
-  'フェイザー': { base: 'npc/phaser', boxW: 40, frame: 1 },
+  'エドガー': { base: 'npc/edgar', boxW: 32, frame: 1, imgH: 51 },
+  'ジョセフ': { base: 'npc/joseph', boxW: 32, frame: 1, imgH: 51 },
+  'エリザベス': { base: 'npc/elizabeth', boxW: 32, frame: 1, imgH: 51 },
+  '武蔵': { base: 'npc/musashi', boxW: 32, frame: 1, imgH: 51 },
+  'ムハンマド': { base: 'npc/muhammad', boxW: 32, frame: 1, imgH: 51 },
+  'チェン': { base: 'npc/chen', boxW: 32, frame: 1, imgH: 51 },
+  'ローレン': { base: 'npc/lauren', boxW: 32, frame: 1, imgH: 51 },
+  'フェイザー': { base: 'npc/phaser', boxW: 32, frame: 1, imgH: 51 },
   // 二人組(クエストNPC)。話者名=社長命名(v0.25.1719): グレン(男)/ミラ(女) → 専用バストアップ
   // (社長素材v0.25.1716・sprites/npc/futari-*-0.png=頭〜胸の切り出し)。肩まで入る=枠広め(v0.25.1719)。
-  'グレン': { base: 'npc/futari-man', boxW: 50, frame: 0, imgH: 51 },
-  'ミラ': { base: 'npc/futari-woman', boxW: 50, frame: 0, imgH: 51 },
+  'グレン': { base: 'npc/futari-man', boxW: 62, frame: 0 },
+  'ミラ': { base: 'npc/futari-woman', boxW: 62, frame: 0 },
   // チュートリアル随行(社長指示v0.25.1849「グレッグたちの通信にもモデル表示」):
   // グレッグ=軍人(レスキューのヘルメット兵=rescue/shooter・92x120=縦長) / ジュン=衛生兵
   // (npc/medic-walk 78x64=横長のためboxW広め)。

@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1858 — 0.8倍の対象を「NPC8人」へ付け替え(社長訂正)+用語採録【2026-07-18 13:26 JST】
+- **社長訂正「通常NPCとは出撃してるNPC8人のこと。今後はNPC8人って言う」**。v0.25.1857の
+  商人/二人組/救助civへの0.8倍は撤回(等倍へ復帰・実測: 商人70px)。
+- **NPC8人(護衛8人=soldierIndex 0..7)を全表示0.8倍**: ワールド描画(`NPC8_SCALE=0.8`・実測48px)+
+  会話立ち絵(imgH64→51・枠40→32)。チュートリアル随行(グレッグ/ジュン=index100/101)は等倍のまま。
+  当たり判定不変(視覚のみ)。
+- **用語採録(ENGINEERING_NOTES)**: 「NPC8人」=出撃している護衛8人。「通常NPC」という言い方は廃止。
+- Files: `src/pixi/pixiScene.ts`, `src/components/NpcDialogue.tsx`, `ENGINEERING_NOTES.md`,
+  `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1857 — 通常NPC(非軍人)を全表示0.8倍(社長指示)【2026-07-18 12:51 JST】
 - **対象=非軍人の通常NPC**: 武器商人(MERCHANT_TARGET_HEIGHT)/二人組グレン・ミラ(EVENT_NPC_TARGET_HEIGHT
   +会話立ち絵imgH64→51・枠62→50)/救助の生存者civ(humanNpcScale×0.8)。共通係数`CIV_NPC_SCALE=0.8`。
