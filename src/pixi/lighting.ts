@@ -149,6 +149,30 @@ export const getEggTexture = (): Texture => {
   return eggTex;
 };
 
+// シネマティック残照(社長試作v0.25.1860 `?cine=1`)。画面上部=地平の残照を暖色でscreen合成する
+// 縦グラデを一度だけベイク。上=血の残照(橙)がピーク→下(足元)へフェード。teal寄せの寒色grade(乗算)と
+// 合わせて teal-orange のシネマ調にする。負荷=全画面スプライト1枚(grade/vignetteと同経路)=軽い。
+let cineWarmTex: Texture | null = null;
+export const getCineWarmTexture = (): Texture => {
+  if (cineWarmTex) return cineWarmTex;
+  const w = 8, h = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  // 残照は上部(地平)だけに絞る=下半分は寒色gradeに任せて teal-orange のコントラストを出す。
+  g.addColorStop(0.00, 'rgba(255,150,70,0.78)');  // 画面最上部=残照の芯(強)
+  g.addColorStop(0.18, 'rgba(255,120,55,0.52)');  // 地平帯
+  g.addColorStop(0.30, 'rgba(220,90,50,0.20)');
+  g.addColorStop(0.44, 'rgba(150,70,60,0.05)');
+  g.addColorStop(0.60, 'rgba(80,50,70,0.0)');     // 中盤以降=無し(寒色のまま)
+  g.addColorStop(1.00, 'rgba(80,50,70,0.0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  cineWarmTex = Texture.from(canvas);
+  return cineWarmTex;
+};
+
 // アーム済み(起爆待ち)の赤卵(社長仕様v0.25.1846「踏むと赤くプクプク」)。形状は緑卵と同一・
 // パレットだけ赤系に差し替えて一度だけベイク(tintで緑を赤くすると濁るため専用ベイク)。
 let eggTexArmed: Texture | null = null;

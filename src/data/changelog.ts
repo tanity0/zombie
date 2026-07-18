@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1860',
+    items: [
+      '開発: シネマティック映像美の試作を追加(?cine=1 でステージ6のみ・地平の残照＋teal-orange調)。通常プレイは変化なし。',
+    ],
+  },
+  {
     version: '0.25.1859',
     items: [
       'NPC8人(出撃している護衛)のサイズを0.8倍から0.9倍に調整しました。',

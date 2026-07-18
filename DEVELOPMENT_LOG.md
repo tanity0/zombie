@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.1860 — シネマティック映像美の試作(?cine=1・ステージ6のみ・社長「試しにやってみて」)【2026-07-19 01:13 JST】
+- 参照写真(夕陽の放射雲=映像美)をこのゲームに落とす試作。**`?cine=1` かつ stage-6 のときだけON**
+  (`CINE_MODE && getSelectedStageId()==='stage-6'`)。他ステージ・非cineは**完全に従来通り**(cineWarm.visible=false)。
+- 構成(全て**描画のみ**=当たり判定/ゲーム不変・CLAUDE.md「Visual vs. hitbox」):
+  ① 既存の寒色grade(乗算)を **teal 寄り**へ(tint 0x7e93c9→0x2f6474・alpha 0.4→0.52)=影が teal。
+  ② **暖色の残照オーバーレイ**(新規: `getCineWarmTexture` の縦グラデ・**screen**合成・画面上部=地平だけ橙、
+     中盤以降は無し)を grade直後・vignette手前に1枚追加=teal-orange のコントラスト。
+  ③ ヴィネット強め(0.70→0.82)。④ bloom強め(threshold×0.82 / scale×1.25。ブルームはベンチほぼ無料)。
+- **負荷 1/10**(rendering): 追加は全画面スプライト1枚(grade/vignetteと同経路)+bloomパラメータ変更のみ。
+  強glow・Text・per-frame Graphics は一切足していない。res1.5(スマホ既定)で確認。
+- 検証: typecheck緑。実機ヘッドレスで stage-6 の ON/OFF を撮影比較(ON=`cineEnabled:true, cineWarm.visible:true`
+  を実測)。地平の残照+teal影+ヴィネットでシネマ調、プレイヤー/NPC/HUD(DOM)は視認性維持。
+- 次段の候補(未実装・要望あれば): 太陽フレアの地平配置/放射状の薄雲レイヤー/大気の塵パーティクル。
+- Files: `src/pixi/lighting.ts`(getCineWarmTexture新規), `src/pixi/pixiScene.ts`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1859 — NPC8人のサイズ0.8→0.9倍(社長指示)【2026-07-18 14:00 JST】
 - `NPC8_SCALE` 0.8→0.9(ワールド描画)+会話立ち絵 imgH51→58(64×0.9)・枠32→36。対象・除外は
   v0.25.1858のまま(NPC8人のみ。グレッグ/ジュン/商人/二人組/救助NPC=等倍)。

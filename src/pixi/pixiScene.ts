@@ -46,7 +46,7 @@ import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
-import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, RING_TEX_BASES } from './lighting';
+import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -75,6 +75,15 @@ const FORCE_DEEP_ZONE = DZ_PARAMS?.get('deepzone') === '1'; // 診断: ?deepzone
 // ?glow=0   … 強glow(加算合成の大面積オーバードロー=ベンチ唯一のFAIL G12)を描画しない(小glowは安いので残す)。
 // ?shadow=0 … 全アクターの足影(敵1体=影1枚・数に比例)を描画しない。
 const STRONG_GLOW_DISABLED = DZ_PARAMS?.get('glow') === '0';
+// シネマティック調(社長試作v0.25.1860)。?cine=1 かつステージ6(古い洋館)のときだけON。
+// teal-orange のシネマ グレード= 寒色をより teal 寄りに強め(乗算)+ 暖色の残照オーバーレイ(screen)+
+// ヴィネット強め + bloom強め。**描画のみ**(当たり判定/ゲームは不変)。他ステージ・非cineは完全に従来通り。
+// 負荷: 全画面スプライト1枚(残照)追加+既存gradeのtint/alpha変更のみ=軽い(1〜2/10)。強glowは足さない。
+const CINE_MODE = DZ_PARAMS?.get('cine') === '1';
+const CINE_GRADE_TINT = 0x2f6474;          // teal 寄りの寒色乗算(既定 0x7e93c9 より青緑・締まる=影が teal)
+const CINE_GRADE_ALPHA = 0.52;             // 乗算の強さ(既定 0.4 よりやや強)
+const CINE_VIGNETTE_ALPHA = 0.82;          // 周辺減光を強め(既定 0.70。crushしすぎない)
+const CINE_WARM_ALPHA = 0.72;              // 残照オーバーレイ(screen)の濃さ(上部だけ・下は寒色のまま)
 const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
 const DEEP_ZONE_GRADE_SAT = (() => {
   const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
@@ -1247,6 +1256,9 @@ export class PixiScene {
   // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
   private gradeSprite = new Sprite(Texture.WHITE);
+  // シネマティック残照オーバーレイ(?cine=1 & stage-6 のみ表示・screen合成)。
+  private cineWarm = new Sprite(getCineWarmTexture());
+  private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-6';
   private playerLight = new Sprite(getGlowTexture());
   private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
   private playerKatanaBack = new Sprite();                 // 背負い刀(刀/小烏丸 装備中・プレイヤー背面)
@@ -1313,12 +1325,23 @@ export class PixiScene {
     this.L.frontForest.tint = tint;
     this.gradeSprite.tint = on ? DAY_GRADE_TINT : GRADE_TINT;
     this.vignette.alpha = on ? DAY_VIGNETTE_ALPHA : ENV_VIGNETTE_ALPHA;
+    this.applyCineGrade(); // cine時は上の寒色grade/減光をシネマ値へ上書き(daylock後に効かせる)
     // 足元の光だまり: 昼=暖色 / 夜=寒色(月明り)。暖色のままだと夜に黄色く見える(社長指摘)。
     this.playerGroundPool.tint = on ? LIGHT_POOL_TINT : MOON_POOL_TINT;
     for (const f of this.fogLayers) f.sp.alpha = (f.baseAlpha ?? f.sp.alpha) * (on ? DAY_FOG_MULT : 1);
     // 斜め光(god ray)は resize 時しか再生成しないので、昼/夜切替時にここで描き直す
     // (色・濃さ・拡散具合が preset で変わるため)。
     this.updateStageLightShafts(this.screenW, this.screenH);
+  }
+
+  // シネマティック調(?cine=1 & stage-6)。寒色gradeを teal 寄りへ+減光強め+残照overlay表示。
+  // 非cineでは何もしない(=従来値のまま)。applyDaylight末尾から呼ぶ(daylightの上書きに勝つ)。
+  private applyCineGrade() {
+    if (!this.cineEnabled) { this.cineWarm.visible = false; return; }
+    this.gradeSprite.tint = CINE_GRADE_TINT;
+    this.gradeSprite.alpha = CINE_GRADE_ALPHA;
+    this.vignette.alpha = CINE_VIGNETTE_ALPHA;
+    this.cineWarm.visible = true;
   }
 
   // 現在の設定に応じて gameplay world(filteredWorld)のフィルタ配列を作り直す(bloom はON時のみ含める)。
@@ -1404,9 +1427,11 @@ export class PixiScene {
     // ブルーム/ティルトシフトのインスタンスは「常に」生成しておき、フィルタ配列への
     // 出し入れで切り替える(オプションのON/OFFをリロード無しで反映できる)。
     if (BLOOM_ENABLED) {
+      // cine時のみ bloom を少し強め(残照・光源のにじみを増やす。閾値↓/scale↑)。負荷差は僅少
+      // (ブルームはベンチ上ほぼ無料=CLAUDE.md render budget)。他は従来値。
       this.bloom = new AdvancedBloomFilter({
-        threshold: BLOOM_THRESHOLD,
-        bloomScale: BLOOM_SCALE,
+        threshold: this.cineEnabled ? BLOOM_THRESHOLD * 0.82 : BLOOM_THRESHOLD,
+        bloomScale: this.cineEnabled ? BLOOM_SCALE * 1.25 : BLOOM_SCALE,
         blur: BLOOM_BLUR,
         quality: 4,
       });
@@ -1676,11 +1701,17 @@ export class PixiScene {
     // Screen-space overlays: cool multiply grade darkens/cools the whole scene
     // (multiply preserves detail/outlines), then the vignette, then damage
     // flash + off-screen arrows on top of everything.
+    // 残照overlay(cine)は寒色grade(乗算)の直後・vignetteの手前へ screen で重ねる=teal-orange。
+    this.cineWarm.blendMode = 'screen';
+    this.cineWarm.alpha = CINE_WARM_ALPHA;
+    this.cineWarm.visible = false; // applyCineGrade() が cine時のみ表示
+    this.cineWarm.eventMode = 'none';
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
-      this.gradeSprite, this.vignette,
+      this.gradeSprite, this.cineWarm, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
+    this.applyCineGrade(); // 初期適用(applyDaylight前でもcine値を効かせる)
 
     // --- スモッグ。奥/森下(やまぎり)/森上 の3層を各1枚で揺らす ---
     // 奥=world内 actorLayer直前(キャラの後ろ)。森下=stageのfrontForest直前(=森の後ろ。森が手前で隠す)。森上=uiLayer最前面。
@@ -1756,6 +1787,9 @@ export class PixiScene {
     this.vignette.position.set(-1, -1);
     this.vignette.width = w + 2;
     this.vignette.height = h + 2;
+    this.cineWarm.position.set(-1, -1);
+    this.cineWarm.width = w + 2;
+    this.cineWarm.height = h + 2;
     // スモッグ各層: テクスチャ1枚分が帯にちょうど収まる tileScale(横1枚/縦1枚)。位置/流れは sync。
     for (const f of this.fogLayers) {
       f.sp.width = w * f.widthFrac;
