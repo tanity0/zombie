@@ -2,6 +2,20 @@ import { Rect, footRect } from './obstacles';
 
 export const MINE_CELL = 720;
 
+// ─── 起爆仕様(社長仕様v0.25.1846「踏むと赤くプクプク→2秒後に爆発。範囲内の卵は連鎖起爆」) ───
+export const EGG_FUSE_MS = 2000;      // アーム(踏む/連鎖)から爆発までの導火時間
+export const EGG_BLAST_RADIUS = 80;   // 爆発半径(px)。クラスタの広がり44〜64pxを丸ごと連鎖させる値(社長「任せる」)
+
+// 爆発期限が来たアーム済み卵(純関数・毎フレームのフィルタのみ=距離計算は爆発時だけ)。
+export interface ArmedEggLike { id: string; type: string; footX: number; footY: number; armedAt?: number }
+export const dueArmedEggs = <T extends ArmedEggLike>(props: T[], gameTime: number): T[] =>
+  props.filter(p => p.type === 'mine' && p.armedAt !== undefined && gameTime >= p.armedAt + EGG_FUSE_MS);
+
+// 爆心(cx,cy)の範囲内にある未アームの卵=連鎖アーム対象(純関数)。
+export const eggsToChainArm = <T extends ArmedEggLike>(props: T[], cx: number, cy: number, radius: number = EGG_BLAST_RADIUS): T[] =>
+  props.filter(p => p.type === 'mine' && p.armedAt === undefined
+    && (p.footX - cx) ** 2 + (p.footY - cy) ** 2 <= radius * radius);
+
 export interface MineInstance {
   id: string;
   footX: number;

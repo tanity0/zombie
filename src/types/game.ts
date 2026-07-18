@@ -806,6 +806,10 @@ export interface BreakableProp {
   maxHealth: number;
   type: BreakablePropType;
   lastHit: number;
+  // 緑卵(mine)のみ(社長仕様v0.25.1846): 踏まれてアーム(起爆待ち)になったgameTime。
+  // EGG_FUSE_MS後に爆発し、爆発範囲内の卵を連鎖アームする。undefined=未アーム。
+  // 近接で割れば従来どおり無害解除(damageBreakablePropが除去=爆発しない)。
+  armedAt?: number;
 }
 
 export type BreakablePropType = 'torch' | 'mine' | 'uv-bar';

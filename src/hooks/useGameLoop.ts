@@ -37,7 +37,7 @@ import {
   EVENT_QUEST_DWELL_MS, EVENT_QUEST_REWARD_GOLD,
   NPC_DIALOGUE_MS, NPC_DIALOGUE_GAP_MS,
   RN_ENEMY_FORCE,
-  FIRST_AID_KIT_THROW_DAMAGE,
+  FIRST_AID_KIT_THROW_DAMAGE, MINE_DAMAGE,
   PHASER_INDEX, BASE_SOLDIER_COUNT,
   TUTORIAL_MOVE_X_MIN_PX
 } from '../store/gameStore';
@@ -70,6 +70,7 @@ import {
 } from '../utils/collisionUtils';
 import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL } from '../utils/molotov';
 import { tickSensorMines, SENSOR_MINE_DAMAGE, SENSOR_MINE_RADIUS } from '../utils/sensorMine';
+import { dueArmedEggs, eggsToChainArm, EGG_BLAST_RADIUS } from '../world/mines';
 import {
   computeSupportSniperTick, computeSupportSniperEntry, pickSupportSniperSoldier,
   SUPPORT_SNIPER_CD_MS_BY_LEVEL, SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_INSET,
@@ -6738,9 +6739,57 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // stepping on one splashes corrosive green fluid and hurts the player.
         // The invulnerability window keeps a clustered patch from deleting the
         // whole HP bar at once.
-        // PACING_PUZZLE.md §5.18 M17: ④地雷。src/utils/combatTick.ts へ切り出し(挙動不変)。
+        // PACING_PUZZLE.md §5.18 M17: ④地雷。src/utils/combatTick.ts へ切り出し。
+        // 社長仕様v0.25.1846: 踏み=アーム(赤プクプク)のみ。ダメージは下の起爆ブロックが2秒後に適用。
         applyMineDamage(combatEffects);
-        
+
+        // 緑卵の起爆(社長仕様v0.25.1846「踏むと赤くプクプク→2秒後に爆発。範囲内の卵は連鎖起爆」)。
+        // プレイヤー=従来値MINE_DAMAGE(34・無敵中は無効)/敵=同値を対称適用(社長「はい」・ボス系は
+        // 手榴弾と同じ非致死)/範囲内の未アーム卵へ連鎖アーム(それぞれ2秒後に爆発)。壁遮蔽は
+        // 半径80pxでは体感差が無いため見ない(センサー地雷との差=意図的な簡略)。
+        {
+          const egDue = dueArmedEggs(useGameStore.getState().breakableProps, newGameTime);
+          if (egDue.length > 0) {
+            const chainIds = new Set<string>();
+            for (const egg of egDue) {
+              const ex0 = egg.footX, ey0 = egg.footY - egg.height * 0.5;
+              useGameStore.getState().damageBreakableProp(egg.id, 999); // 除去+destroyed登録(再生成防止)
+              playSfx('bomb');
+              spawnRing(ex0, ey0, 8, EGG_BLAST_RADIUS, 'rgba(248,113,113,0.85)', 4, 320);
+              spawnBurst(ex0, ey0, '#ef4444', 14);
+              spawnBurst(ex0, ey0, '#7f1d1d', 8);
+              useGameStore.getState().spawnGlow(ex0, ey0, 42, 'rgba(248,113,113,', 300);
+              const egP = useGameStore.getState().player;
+              const egPcx = egP.x + egP.width / 2, egPcy = egP.y + egP.height / 2;
+              const egPHalf = Math.max(egP.width, egP.height) / 2;
+              if (Math.hypot(egPcx - ex0, egPcy - ey0) <= EGG_BLAST_RADIUS + egPHalf && !egP.invulnerable) {
+                const egDied = useGameStore.getState().damagePlayer(MINE_DAMAGE, '地雷', ex0, ey0);
+                playSfx('player-damage');
+                spawnFlash('rgba(239,68,68,0.18)', 180);
+                if (egDied) triggerPlayerDeath(egPcx, egPcy);
+              }
+              for (const enemy of useGameStore.getState().enemies) {
+                if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
+                const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+                if (Math.hypot(ecx - ex0, ecy - ey0) > EGG_BLAST_RADIUS) continue;
+                const egKilled = damageEnemy(enemy.id, MINE_DAMAGE, true);
+                spawnDamageNumber(ecx, enemy.y, MINE_DAMAGE, false);
+                spawnBurst(ecx, ecy, '#b91c1c', 4);
+                if (egKilled) {
+                  playEnemyDeath();
+                  dropEnemyXp(enemy, ecx, ecy, 'pickup-xp-egg-blast');
+                }
+              }
+              for (const c of eggsToChainArm(useGameStore.getState().breakableProps, egg.footX, egg.footY)) chainIds.add(c.id);
+            }
+            if (chainIds.size > 0) {
+              useGameStore.setState(state => ({
+                breakableProps: state.breakableProps.map(p => chainIds.has(p.id) ? { ...p, armedAt: newGameTime } : p),
+              }));
+            }
+          }
+        }
+
         // ワイヤーアンカーの毎フレーム処理。
         // フリックで刺す(triggerWireAnchor)→ 1秒後(wirePlantUntil)に startWireDash で高速移動開始 →
         // 移動中は無敵+敵すり抜け(すり抜けた敵へ近接小ダメージ)→ 着地点爆撃は Lv3 のみ(ダメージ付き)。

@@ -1,5 +1,26 @@
 # Development Log
 
+## v0.25.1846 — 緑卵=起爆式へ(踏む→赤2秒→爆発・連鎖・敵巻き込み)(社長GO)【2026-07-18 10:51 JST】
+- **社長仕様「踏むと赤くプクプク動いて2秒後に爆発。爆発範囲にある卵は連鎖して起爆(2秒後に爆発)」を実装**。
+  裁定: 範囲=任せる→**半径80px**(クラスタ丸ごと連鎖)/プレイヤー被ダメ=**34そのまま**(無敵中無効・
+  従来のi-frameで多重ヒット抑制)/**敵も巻き込む**(同値34を対称適用・ボス系は手榴弾と同じ非致死)/
+  アーム中の近接割り=**無害解除**(既存のdamageBreakableProp経路そのまま)。
+- 実装: BreakablePropに`armedAt`追加(resyncは既存オブジェクト再利用のため生存確認済み)。
+  踏み(combatTick.applyMineDamage)=即ダメ廃止→アーム+小さな赤リング。起爆はuseGameLoopの新ブロック
+  (センサー地雷の爆発雛形を踏襲)。純関数`dueArmedEggs`/`eggsToChainArm`+定数`EGG_FUSE_MS=2000`/
+  `EGG_BLAST_RADIUS=80`(world/mines.ts・テスト3件)。壁遮蔽は半径80pxでは見ない(意図的簡略・コメント明記)。
+- 見た目: 赤卵は専用ベイクテクスチャ(緑にtintだと濁るため)+速いプクプク(85ms周期・振幅3倍)+
+  光だまり赤の速い明滅。**描画手法は不変(プールスプライト+小さな光1枚)=負荷2/10**
+  (強glow/Text/per-frame Graphics不使用。爆発FXはプール済みリング/バースト+glow半径42の流用)。
+- 検証: ユニット6件緑(mines.test.ts)+typecheck緑+実機E2E(踏む→アーム(赤・スクショ確認)→2秒後爆発→
+  4個連鎖全滅→プレイヤー110→42(2発分=i-frame切れ目)→敵HP40が爆死)。
+- 効果: 「即34ダメ」が「2秒の逃げ猶予+誘爆遊び」に=先日の「ちとうざい」への回答。発生量・頻度は不変
+  (別途調整レバーはv0.25.1845報告のA〜D)。
+- 自己点検: 変更は緑卵の被弾方式のみ(発生条件・近接処理・数は不変)。憲法非該当。
+- Files: `src/types/game.ts`, `src/world/mines.ts`, `src/world/mines.test.ts`, `src/utils/combatTick.ts`,
+  `src/hooks/useGameLoop.ts`, `src/pixi/lighting.ts`, `src/pixi/pixiScene.ts`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1845 — ランク演出の変更3点(毎回表示/降格グレー/興奮通信・社長指示)【2026-07-18 10:14 JST】
 - **社長指示「ランク演出について変更」を実装**(PACING_PUZZLE.md §3-F新設):
   1. **到達の銘打ちは毎回何度でも出す**(旧・isFirstRankReachのステージ毎初回限定を撤廃。

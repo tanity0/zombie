@@ -149,6 +149,41 @@ export const getEggTexture = (): Texture => {
   return eggTex;
 };
 
+// アーム済み(起爆待ち)の赤卵(社長仕様v0.25.1846「踏むと赤くプクプク」)。形状は緑卵と同一・
+// パレットだけ赤系に差し替えて一度だけベイク(tintで緑を赤くすると濁るため専用ベイク)。
+let eggTexArmed: Texture | null = null;
+export const getEggTextureArmed = (): Texture => {
+  if (eggTexArmed) return eggTexArmed;
+  const w = 64, h = 84;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  const cx = w / 2;
+  ctx.beginPath();
+  ctx.ellipse(cx, h - 6, 20, 6, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(16,7,7,0.38)';
+  ctx.fill();
+  const bodyCx = cx, bodyCy = 40, rx = 18, ry = 27;
+  const grad = ctx.createRadialGradient(bodyCx - 6, bodyCy - 12, 2, bodyCx, bodyCy, 32);
+  grad.addColorStop(0, 'rgba(235,140,110,1)');  // highlight(熱)
+  grad.addColorStop(0.4, 'rgba(190,55,40,1)');  // mid=赤
+  grad.addColorStop(1, 'rgba(56,10,10,1)');     // shadow=暗赤
+  ctx.beginPath();
+  ctx.ellipse(bodyCx, bodyCy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(30,6,6,0.55)';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(bodyCx - 7, bodyCy - 14, 4, 6, -0.3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,190,150,0.55)';
+  ctx.fill();
+  eggTexArmed = Texture.from(canvas);
+  return eggTexArmed;
+};
+
 // Visibility light: a near-solid white disc that drops off abruptly near the rim.
 // Used as a "hole" in the stage-2 darkness overlay (player + UV bars). The flat
 // core keeps the lit zone at full visibility, then it darkens sharply past ~radius

@@ -46,7 +46,7 @@ import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
-import { getGlowTexture, getEggTexture, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, RING_TEX_BASES } from './lighting';
+import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -4440,10 +4440,15 @@ export class PixiScene {
     if (prop.type === 'mine') {
       // 緑卵=ベイクしたプールスプライト1枚で描画(旧:per-frame Graphics の clear()+約12楕円塗りを撤去)。
       // 「息づく」脈動はスケールの微振動だけで再現(per-frame Graphics は使わない)。
-      const tex = getEggTexture();
+      // アーム済み(社長仕様v0.25.1846)=赤ベイク版テクスチャ+速く大きいプクプク+光も赤の速い明滅。
+      // 描画手法は不変(同じプールスプライト+小さな光1枚)=負荷据え置き。
+      const armed = prop.armedAt !== undefined;
+      const tex = armed ? getEggTextureArmed() : getEggTexture();
       const d = this.depthScale(prop.footY);
       const horizonAlpha = this.horizonActorAlpha(prop.footY);
-      const pulse = 0.97 + 0.03 * Math.sin(now / 320 + prop.footX * 0.04);
+      const pulse = armed
+        ? 0.94 + 0.10 * Math.sin(now / 85 + prop.footX * 0.04)
+        : 0.97 + 0.03 * Math.sin(now / 320 + prop.footX * 0.04);
 
       view.container.zIndex = prop.footY;
       view.container.alpha = horizonAlpha;
@@ -4451,13 +4456,17 @@ export class PixiScene {
       // 卵本体(sprite)は揺らさず、光(light)だけをフワフワ光らせて少し目立たせる。
       // α(明滅)と半径(伸縮)を別周期・位相で揺らし、機械的な明滅ではなく息づくような浮遊感にする
       // (追加スプライト無し=負荷は据え置き)。
-      const eggGlowAlphaPulse = 0.6 + 0.4 * Math.sin(now / 360 + prop.footX * 0.05);
-      const eggGlowSizePulse = 1 + 0.22 * Math.sin(now / 540 + prop.footX * 0.05 + 1.6);
+      const eggGlowAlphaPulse = armed
+        ? 0.55 + 0.45 * Math.sin(now / 110 + prop.footX * 0.05)
+        : 0.6 + 0.4 * Math.sin(now / 360 + prop.footX * 0.05);
+      const eggGlowSizePulse = armed
+        ? 1 + 0.3 * Math.sin(now / 140 + prop.footX * 0.05 + 1.6)
+        : 1 + 0.22 * Math.sin(now / 540 + prop.footX * 0.05 + 1.6);
       view.light.visible = horizonAlpha > 0;
       view.light.position.set(Math.round(prop.footX), Math.round(prop.footY - EGG_VISUAL_H * 0.35 * d));
-      view.light.tint = 0x4ade80; // 毒の緑
+      view.light.tint = armed ? 0xf87171 : 0x4ade80; // アーム=警告の赤 / 通常=毒の緑
       view.light.width = view.light.height = EGG_VISUAL_W * 2.6 * prop.scale * d * eggGlowSizePulse;
-      view.light.alpha = 0.34 * horizonAlpha * eggGlowAlphaPulse;
+      view.light.alpha = (armed ? 0.4 : 0.34) * horizonAlpha * eggGlowAlphaPulse;
       view.reflection.visible = false;
       view.flame.clear();
       view.sprite.visible = !!tex && horizonAlpha > 0;

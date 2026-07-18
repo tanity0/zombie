@@ -35,7 +35,7 @@ import { getActiveGun } from './weaponUtils';
 import { checkCollision, checkPlayerEnemyCollisions, checkProjectilePlayerCollisions } from './collisionUtils';
 import {
   useGameStore, isSeekerActive, skillLevel, skillCritMult, skillOutgoingDamageMult, enemyDeathLabel,
-  ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT, MINE_DAMAGE,
+  ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
   COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   KNOCKBACK_DURATION, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
@@ -366,28 +366,21 @@ export const applyEnemyProjectileHits = (
   }
 };
 
-// ④ 地雷。踏むと即破壊(999ダメージ扱い)+緑の飛沫。無敵中でなければプレイヤーへ MINE_DAMAGE。
+// ④ 地雷(緑卵)。社長仕様v0.25.1846: 踏んでも即ダメージではなく「アーム」(赤くプクプク)→
+// EGG_FUSE_MS(2秒)後に爆発(爆発処理はuseGameLoopのapplyEggExplosionsブロック=敵巻き込み/連鎖)。
+// 近接で割る従来経路(breakPropsAlong→damageBreakableProp)は不変=アーム中でも無害に解除できる。
 export const applyMineDamage = (fx: CombatEffects): void => {
   const currentPlayerForMine = useGameStore.getState().player;
+  const gameTimeNow = useGameStore.getState().gameTime;
   const mineHit = useGameStore.getState().breakableProps.find(prop =>
-    prop.type === 'mine' && checkCollision(currentPlayerForMine, prop)
+    prop.type === 'mine' && prop.armedAt === undefined && checkCollision(currentPlayerForMine, prop)
   );
   if (!mineHit) return;
-  const broken = useGameStore.getState().damageBreakableProp(mineHit.id, 999);
-  const fxX = mineHit.footX;
-  const fxY = mineHit.footY - mineHit.height * 0.5;
-  fx.spawnEggFluidSplash(fxX, fxY, 1.28);
-  if (broken && !currentPlayerForMine.invulnerable) {
-    const playerDied = useGameStore.getState().damagePlayer(MINE_DAMAGE, '地雷', fxX, fxY);
-    fx.playSfx('bomb');
-    fx.spawnFlash('rgba(239,68,68,0.18)', 180);
-    if (playerDied) {
-      fx.triggerPlayerDeath(
-        currentPlayerForMine.x + currentPlayerForMine.width / 2,
-        currentPlayerForMine.y + currentPlayerForMine.height / 2
-      );
-    }
-  }
+  useGameStore.setState(state => ({
+    breakableProps: state.breakableProps.map(p => p.id === mineHit.id ? { ...p, armedAt: gameTimeNow } : p),
+  }));
+  // アーム開始の合図: 小さな赤リング1発(SEなし=静かに導火が始まる)。
+  fx.spawnRing(mineHit.footX, mineHit.footY - mineHit.height * 0.5, 4, 26, 'rgba(248,113,113,0.85)', 2, 260);
 };
 
 // ① 敵接触ダメージ。カウンター/パリィ(dashParried)・ワイヤー無効・トール特例・ジャンプ空中/
