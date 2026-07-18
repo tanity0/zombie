@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1859 — NPC8人のサイズ0.8→0.9倍(社長指示)【2026-07-18 14:00 JST】
+- `NPC8_SCALE` 0.8→0.9(ワールド描画)+会話立ち絵 imgH51→58(64×0.9)・枠32→36。対象・除外は
+  v0.25.1858のまま(NPC8人のみ。グレッグ/ジュン/商人/二人組/救助NPC=等倍)。
+- Files: `src/pixi/pixiScene.ts`, `src/components/NpcDialogue.tsx`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1858 — 0.8倍の対象を「NPC8人」へ付け替え(社長訂正)+用語採録【2026-07-18 13:26 JST】
 - **社長訂正「通常NPCとは出撃してるNPC8人のこと。今後はNPC8人って言う」**。v0.25.1857の
   商人/二人組/救助civへの0.8倍は撤回(等倍へ復帰・実測: 商人70px)。

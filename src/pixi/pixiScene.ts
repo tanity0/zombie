@@ -211,7 +211,7 @@ const EVENT_NPC_TARGET_HEIGHT = 108;
 // v0.25.1857の商人/二人組/救助civへの適用は取り違えのため撤回=等倍へ戻した)。
 // グレッグ/ジュン(チュートリアル随行)・商人・二人組・救助NPCは対象外。
 // 視覚のみ=当たり判定は不変(CLAUDE.md「Visual vs. hitbox」)。会話立ち絵はNpcDialogue側で適用。
-const NPC8_SCALE = 0.8;
+const NPC8_SCALE = 0.9; // 0.8→0.9(社長指示v0.25.1859)
 const EVENT_QUEST_DWELL_VIS_MS = 3000; // 二人組の滞在受領メーターの満了時間(gameStore.EVENT_QUEST_DWELL_MSと一致)
 const EVENT_NPC_FADE_MS = 1100;
 // 鞭ハリケーン竜巻スプライト(視覚のみ。吸引半径/ダメージは store 定義のまま)。

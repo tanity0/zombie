@@ -9,16 +9,16 @@ import { spritePath } from '../utils/spriteLoader';
 // frame=立ち姿に使うコマ(社長指示v0.25.1854「会話の立ち姿は全員、足閉じてる方の絵」):
 // 護衛3コマ歩きは1=足閉じ(通過姿勢)/shooterは0/medic-walk(4コマ)は2/futariはバストアップ=0のみ。
 // imgH=表示高さ(既定64)。
-// NPC8人(出撃している護衛8人)は全表示0.8倍(社長指示v0.25.1858)=会話立ち絵もimgH51(64×0.8)・枠32。
+// NPC8人(出撃している護衛8人)は全表示0.9倍(社長指示v0.25.1859・0.8→0.9)=会話立ち絵imgH58(64×0.9)・枠36。
 const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number; imgH?: number }> = {
-  'エドガー': { base: 'npc/edgar', boxW: 32, frame: 1, imgH: 51 },
-  'ジョセフ': { base: 'npc/joseph', boxW: 32, frame: 1, imgH: 51 },
-  'エリザベス': { base: 'npc/elizabeth', boxW: 32, frame: 1, imgH: 51 },
-  '武蔵': { base: 'npc/musashi', boxW: 32, frame: 1, imgH: 51 },
-  'ムハンマド': { base: 'npc/muhammad', boxW: 32, frame: 1, imgH: 51 },
-  'チェン': { base: 'npc/chen', boxW: 32, frame: 1, imgH: 51 },
-  'ローレン': { base: 'npc/lauren', boxW: 32, frame: 1, imgH: 51 },
-  'フェイザー': { base: 'npc/phaser', boxW: 32, frame: 1, imgH: 51 },
+  'エドガー': { base: 'npc/edgar', boxW: 36, frame: 1, imgH: 58 },
+  'ジョセフ': { base: 'npc/joseph', boxW: 36, frame: 1, imgH: 58 },
+  'エリザベス': { base: 'npc/elizabeth', boxW: 36, frame: 1, imgH: 58 },
+  '武蔵': { base: 'npc/musashi', boxW: 36, frame: 1, imgH: 58 },
+  'ムハンマド': { base: 'npc/muhammad', boxW: 36, frame: 1, imgH: 58 },
+  'チェン': { base: 'npc/chen', boxW: 36, frame: 1, imgH: 58 },
+  'ローレン': { base: 'npc/lauren', boxW: 36, frame: 1, imgH: 58 },
+  'フェイザー': { base: 'npc/phaser', boxW: 36, frame: 1, imgH: 58 },
   // 二人組(クエストNPC)。話者名=社長命名(v0.25.1719): グレン(男)/ミラ(女) → 専用バストアップ
   // (社長素材v0.25.1716・sprites/npc/futari-*-0.png=頭〜胸の切り出し)。肩まで入る=枠広め(v0.25.1719)。
   'グレン': { base: 'npc/futari-man', boxW: 62, frame: 0 },

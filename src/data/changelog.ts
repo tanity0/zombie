@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1859',
+    items: [
+      'NPC8人(出撃している護衛)のサイズを0.8倍から0.9倍に調整しました。',
+    ],
+  },
+  {
     version: '0.25.1858',
     items: [
       '前版の縮小対象を修正: 0.8倍にするのは出撃しているNPC8人(エドガーたち護衛)でした。商人・二人組・救助の生存者は元のサイズに戻し、NPC8人をゲーム内・会話の立ち絵とも0.8倍にしました。',
