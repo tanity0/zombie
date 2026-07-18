@@ -24,7 +24,8 @@ const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number }
   // チュートリアル随行(社長指示v0.25.1849「グレッグたちの通信にもモデル表示」):
   // グレッグ=軍人(レスキューのヘルメット兵=rescue/shooter・92x120=縦長) / ジュン=衛生兵
   // (npc/medic-walk 78x64=横長のためboxW広め)。
-  'グレッグ': { base: 'rescue/shooter', boxW: 40, frame: 1 },
+  // shooterは0=足閉じ・1=足開き(4倍拡大で確認・v0.25.1856修正。ゲーム内静止コマ0とも一致)。
+  'グレッグ': { base: 'rescue/shooter', boxW: 40, frame: 0 },
   // ジュンのboxWは可視域採寸で46(素材78pxのうち左19/右13pxは透明マージン=枠を素材幅で取ると
   // 左に余白が空く・社長報告v0.25.1855)。
   'ジュン': { base: 'npc/medic-walk', boxW: 46, frame: 2 },

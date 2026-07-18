@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1856 — グレッグの会話立ち絵コマ修正(社長報告「足開いてる」)【2026-07-18 12:36 JST】
+- v0.25.1854で shooter のコマを取り違えていた(縮小表示の目視で誤判定)。4倍拡大で再確認:
+  **shooter-0=足閉じ/shooter-1=足開き**。グレッグの frame を1→0へ修正(ゲーム内静止コマ0とも一致)。
+- 教訓: ドット絵のコマ選定は等倍サムネで判定しない(拡大して確認)。
+- Files: `src/components/NpcDialogue.tsx`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1855 — 衛生兵の静止コマ=足閉じ+会話の左余白修正(社長指示)【2026-07-18 12:30 JST】
 - **①ゲーム内の衛生兵(随行NPC)の静止コマを0→2(足閉じ)へ**: pixiSceneのescort描画にidleFrame分岐を追加
   (TUTORIAL_MEDIC_INDEXのみ2・他NPCは従来どおり0)。実測: moving=false時のtexture=medic-walk-2。

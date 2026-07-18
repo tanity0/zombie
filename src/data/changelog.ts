@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1856',
+    items: [
+      '会話のグレッグの立ち絵を「足を閉じた」コマに修正しました(前版でコマを取り違えていました)。',
+    ],
+  },
+  {
     version: '0.25.1855',
     items: [
       '衛生兵(ジュン)が立ち止まっている時の姿を「足を閉じた」コマにしました。',
