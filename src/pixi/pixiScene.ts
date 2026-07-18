@@ -7100,9 +7100,11 @@ export class PixiScene {
         : (ESCORT_SPRITE_BASE[esc.soldierIndex] ?? 'rescue/shooter');
       const seq = getTexture(`${base}-3`) ? PixiScene.ESCORT_WALK_SEQ_4
         : getTexture(`${base}-2`) ? PixiScene.ESCORT_WALK_SEQ_3 : PixiScene.ESCORT_WALK_SEQ_2;
-      // 追従NPC(moving=false)は静止=0コマ目で止める(その場行進を防ぐ)。
+      // 追従NPC(moving=false)は静止コマで止める(その場行進を防ぐ)。衛生兵(4コマ)は2=足閉じ
+      // (社長指示v0.25.1855「立ち止まってる時の立ち絵を足閉じてるやつに」)。他(3コマ規約)は従来どおり0。
       const animate = esc.moving !== false;
-      const walkFrame = animate ? seq[step % seq.length] : 0;
+      const idleFrame = esc.soldierIndex === TUTORIAL_MEDIC_INDEX ? 2 : 0;
+      const walkFrame = animate ? seq[step % seq.length] : idleFrame;
       const tex = getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
       // クロスフェード補間(対象NPCのみ): コマ内の進行率 frac で「次コマ」を上に α=frac で重ね、
       // 170msごとのパッ切り替えを連続化する。隣接コマは常に接地↔通過なので混色=中間歩に見える。

@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1855 — 衛生兵の静止コマ=足閉じ+会話の左余白修正(社長指示)【2026-07-18 12:30 JST】
+- **①ゲーム内の衛生兵(随行NPC)の静止コマを0→2(足閉じ)へ**: pixiSceneのescort描画にidleFrame分岐を追加
+  (TUTORIAL_MEDIC_INDEXのみ2・他NPCは従来どおり0)。実測: moving=false時のtexture=medic-walk-2。
+- **②会話のジュンの左余白**: 原因=medic-walk素材(78px)の左19px/右13pxが透明マージンで、枠を素材幅基準
+  (72)で取ると左に空白が見えた。可視域採寸(46px)に枠を合わせて解消。スクショで絵と名前が詰まったのを確認。
+- 自己点検: 表示のみ・挙動不変。憲法非該当。
+- Files: `src/pixi/pixiScene.ts`, `src/components/NpcDialogue.tsx`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1854 — 会話の立ち姿=全員「足閉じ」コマへ統一(社長指示)【2026-07-18 12:12 JST】
 - NPC_PORTRAITに`frame`(立ち姿コマ)を追加し全話者を目視で選定: 護衛8名(3コマ歩き)=**1**(通過姿勢=足閉じ・
   edgar/musashi/phaserで確認)/グレッグ(rescue/shooter)=**1**/ジュン(npc/medic-walk 4コマ)=**2**/

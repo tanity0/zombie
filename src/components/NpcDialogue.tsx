@@ -25,7 +25,9 @@ const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number }
   // グレッグ=軍人(レスキューのヘルメット兵=rescue/shooter・92x120=縦長) / ジュン=衛生兵
   // (npc/medic-walk 78x64=横長のためboxW広め)。
   'グレッグ': { base: 'rescue/shooter', boxW: 40, frame: 1 },
-  'ジュン': { base: 'npc/medic-walk', boxW: 72, frame: 2 },
+  // ジュンのboxWは可視域採寸で46(素材78pxのうち左19/右13pxは透明マージン=枠を素材幅で取ると
+  // 左に余白が空く・社長報告v0.25.1855)。
+  'ジュン': { base: 'npc/medic-walk', boxW: 46, frame: 2 },
 };
 
 // NPCリアルタイムセリフのHUD表示(時間停止なし・軽量)。表示位置はアテンションバナーと同じ左上ゾーンで、
