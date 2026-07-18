@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1861 — デバッグ ?nospawn=1(敵の湧き全停止・社長「一回敵の湧きを止めれる?」)【2026-07-19 01:34 JST】
+- 映像美の確認で自由に歩き回れるよう、敵の湧きを全て止めるデバッグフラグ `?nospawn=1` を追加。
+  止める発生源: パズル盤面(runKomaBoardMaintenance)/旧スポナー/叫喚型/囲い・関所(arena/gate)/
+  紅き夜/ハンター/死神/城ボス。各湧きゲートに `!NOSPAWN` を相乗り。
+- 既存の敵・アイテム・地雷(緑卵の世界生成=シーナリー)には触らない。ゲーム/描画の他要素は不変。
+- 検証: typecheck緑。stage-6でnormal=湧く/nospawn=0体を実測。
+- Files: `src/hooks/useGameLoop.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1860 — シネマティック映像美の試作(?cine=1・ステージ6のみ・社長「試しにやってみて」)【2026-07-19 01:13 JST】
 - 参照写真(夕陽の放射雲=映像美)をこのゲームに落とす試作。**`?cine=1` かつ stage-6 のときだけON**
   (`CINE_MODE && getSelectedStageId()==='stage-6'`)。他ステージ・非cineは**完全に従来通り**(cineWarm.visible=false)。

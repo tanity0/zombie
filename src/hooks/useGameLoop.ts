@@ -511,6 +511,9 @@ const RESCUE_RESPAWN_MS = 3000;        // 救助イベント: 攻撃者を倒し
 const evParam = (key: string): string | null =>
   typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(key);
 const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss' / 'rescue'
+// デバッグ(社長試作v0.25.1861): ?nospawn=1 で敵の湧きを全て止める(パズル盤面/旧スポナー/叫喚/
+// 囲い・関所/紅き夜/ハンター/死神/城ボス)。映像美の確認用に自由に歩き回るため。ゲーム/描画の他要素は不変。
+const NOSPAWN = evParam('nospawn') === '1';
 // M26-L(PACING_PUZZLE.md §6.3): 実機オートパイロット。?bot=<persona> でヘッドレスボットの判断
 // (decideBotInput)を実プレイの入力へ注入する。null(無指定)=完全無効・通常プレイは1バイトも挙動を変えない。
 // 不正値は 'standard' へフォールバック。'rusher'(M19深層ラッシュ専用ペルソナ)も指定可。
@@ -1890,7 +1893,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 以前は制圧イベント中(ステージ1メイン)は出さない仕様だったが、社長指示で撤回=制圧中でも
         // 時間が来たら出現するように変更(拠点制圧の完了を待たない)。
         const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !revisitRun && !castle.bossSpawned && castleBossReady) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN && !revisitRun && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
@@ -2006,7 +2009,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 「進行(スポーン段階/クリア判定/タイムアウト)」は M20 の新経路(軸1退屈補正の囲い等)が
         // puzzleActiveNow=true(通常プレイ)中に activeEvent をセットするケースでも動く必要があるため、
         // ゲートを「発火」側だけに絞る(進行側は常時稼働=puzzleActiveNow=falseの旧来挙動は無変更)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN) {
           // PACING_PUZZLE.md §5.21-追補5(社長決定v0.25.1555): ゲート発火待ちが立っていて、かつ城ボス
           // 以外のイベント(レスキュー/退屈囲い=kind 'rescue'|'horde')が進行中なら、それを強制解除して
           // ゲートを発火可能にする(「ゲート>他イベント」の優先を発火時に効かせる)。城ボスは PHASE
@@ -2477,7 +2480,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ゲーム開始3分後に1回だけ発動。警告10秒→本番20秒→暗転終了。
         // 本番中: 全敵ステータス×2・経験値×2・画面赤染め。
         // 拠点近接 or 商人に話しかけると「やり過ごした」で即脱出(商人側は performAttack 内で処理)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN) {
           const rnGs = useGameStore.getState();
           const rn = rnGs.redNight;
 
@@ -2589,7 +2592,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 屋内/練習モードでは出さない。出現〜索敵〜発見〜追跡〜撤退〜増援を状態機械で管理。
         // ステージ2(研究所スキン=labTheme)にも出さない(社長指示v0.25.1753。凶悪ハンター含む
         // コントローラごと停止=死神をlabで止めるのと同じ扱い)。ストーリーボス専用ラン(M7/EX)も出さない。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN) {
           const H = hunterRef.current;
           const hs = useGameStore.getState();
           const hpx = hs.player.x + hs.player.width / 2;
@@ -2804,7 +2807,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 画面外に1体だけ出す。AIが距離を保ちつつ溜め→叫喚で画面内の通常敵を一時強化。溜め完了前に倒せば阻止。
         // PACING_PUZZLE.md(社長裁定v0.25.1378「1は一本化」): パズル方式ON時は本ディレクターを停止し、
         // 供給を特別枠(§4-A: エリア3〜・同時1・CD3秒)へ一本化する。?puzzle=0時のみ従来どおりここが動く。
-        if (!danceTest && !indoor && !puzzleActiveNow) {
+        if (!danceTest && !indoor && !puzzleActiveNow && !NOSPAWN) {
           const sS = useGameStore.getState();
           const aliveScreamer = sS.enemies.some(e => e.type === 'screamer');
           const sCinematic = sS.bossChasing || !!sS.attention || sS.redNight?.phase === 'active'
@@ -2963,7 +2966,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 原点(スタート/商人付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
         // 横切り=無害な演出(reaperCross をセット→pixiScene が描画)、追跡=本物の reaper 敵。
         // 研究所スキンは「ラボ敵以外は沸かない」(社長指示)=死神も出さない。ストーリーボス専用ランも同様。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN) {
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
@@ -7753,6 +7756,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (
           !danceTest &&
           !indoor &&
+          !NOSPAWN && // ?nospawn=1 デバッグ: 旧スポナーも止める(社長試作v0.25.1861)
           !storyBoss && // ストーリーボス専用ラン(M7/EX)は通常湧きなし(統合正本10.3)
           !tutorialStage && // チュートリアルは自動湧きなし(イベント湧きのみ予定・社長指示)
           !confining &&
@@ -7858,7 +7862,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (実装: src/utils/directorTick.ts の runKomaBoardMaintenance へ移設。挙動は不変)。
         // PACING_PUZZLE.md §5.21-追補4: 追補3の「ゲート1中はchaff目標=ピーク・CD0を強制」は撤回済み
         // (gate1.ts参照)。ゲート1中もkomaは通常どおりディレクター駆動のまま=ここに特別分岐は無い。
-        runKomaBoardMaintenance(
+        if (!NOSPAWN) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
           { puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef },
           {
             puzzleActiveNow, gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc,
