@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1852 — 「ジョブ選択」最下部固定の修正(社長報告「固定されてない」)【2026-07-18 11:56 JST】
+- 原因: Shellのパネルが`max-h-full`(内容に縮む)のため、内容が短い任務詳細ではstickyの押し下げ先が無く
+  ボタンが中腰に浮いた。修正: **任務詳細のみパネルを全高化**(Shellに`fill`プロップ追加=`h-full`)+
+  ページを`flex min-h-full flex-col`化し、フッターを`mt-auto`(短い時=パネル最下部)+`sticky bottom-0`
+  (長い時=スクロール中も画面下端固定)の両対応に。
+- 検証: 実フロー(洞窟地帯=短いページ)でボタン下端が画面下端に固定されるのを実測(y=867/932・
+  パネル外周パディング内の最下部)。typecheck緑。他画面(home等)はfill無し=従来レイアウト不変。
+- Files: `src/components/MissionSelect.tsx`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1851 — 用語確定「通信/会話」+興奮予兆をバナーへ移設(社長決定)【2026-07-18 11:51 JST】
 - **用語確定(社長決定・ENGINEERING_NOTES 2.xに採録)**:
   - **通信**=モデル無しのシステム告知(帯バナー=eventBanner: 紅き月警告/変異体が興奮/駆除成功等。

@@ -167,7 +167,7 @@ type Screen =
   | { name: 'characterSelect'; stageId: string; mission?: SelectedMission }
   | { name: 'loadout' };
 
-const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+const Shell: React.FC<{ children: React.ReactNode; fill?: boolean }> = ({ children, fill }) => (
   <div
     className="screen-in h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-hidden"
     style={{
@@ -183,7 +183,9 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   >
     {/* ページ全体(背景ごと)はスクロールさせない=ブラウザっぽさの元を排除。はみ出す時は
         枠(panel)の中だけがスクロールする(スクロールバーは全要素で非表示済み・overscroll-contain)。 */}
-    <div className="max-w-3xl w-full max-h-full glass-panel rounded-none overflow-y-auto overscroll-contain">{children}</div>
+    {/* fill=true(任務詳細): パネルを常に全高にする=内容が短くても最下部固定フッター(ジョブ選択)が
+        画面下端に落ちる(社長指示v0.25.1852。max-h-fullのままだと短いページでパネルが縮み中腰になる)。 */}
+    <div className={`max-w-3xl w-full glass-panel rounded-none overflow-y-auto overscroll-contain ${fill ? 'h-full' : 'max-h-full'}`}>{children}</div>
   </div>
 );
 
@@ -562,7 +564,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const m = isRevisit ? REVISIT_MISSION : stage.main;
     const done = isRevisit ? getStoryFlags().revisitCleared : cleared.has(stage.id);
     return (
-      <>
+      <div className="flex min-h-full flex-col">
         <Header title={stageDateLabel(stage)} subtitle={stage.locationTitle} onBack={() => setScreen({ name: 'stageSelect' })} />
         <div className="menu-stagger p-3 space-y-3">
           <h2 className="px-1 text-[18px] font-bold tracking-wide text-white">{m.title}</h2>
@@ -657,10 +659,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
         </div>
         {/* 出撃導線=「ジョブ選択」(社長指示v0.25.1850: 旧「担当指名」から改名+最下部固定)。
-            ヘッダーのsticky topと対の sticky bottom=スクロール領域の最下部に常時固定し、上の内容が
-            下をくぐる。グラデ下地でくぐる文字を沈める。 */}
+            mt-auto=内容が短い時もパネル最下部へ(Shell fill=全高パネルとセット・v0.25.1852)。
+            sticky bottom=内容が長い時はスクロール中も画面下端に常時固定し、上の内容が下をくぐる。
+            グラデ下地でくぐる文字を沈める。 */}
         <div
-          className="sticky bottom-0 z-20 px-3 pb-3 pt-7"
+          className="sticky bottom-0 z-20 mt-auto px-3 pb-3 pt-7"
           style={{ background: 'linear-gradient(to top, rgba(11,9,16,0.96) 62%, rgba(11,9,16,0))' }}
         >
           <Ff7rButton
@@ -673,7 +676,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             ▶ ジョブ選択
           </Ff7rButton>
         </div>
-      </>
+      </div>
     );
   };
 
@@ -1011,7 +1014,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
   if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId, screen.mission ?? 'main');
   return (
-    <Shell>
+    <Shell fill={screen.name === 'missionDetail'}>
       {screen.name === 'home' && renderHome()}
       {screen.name === 'stageSelect' && renderStageSelect()}
       {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId, screen.mission ?? 'main')}
