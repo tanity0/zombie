@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1854 — 会話の立ち姿=全員「足閉じ」コマへ統一(社長指示)【2026-07-18 12:12 JST】
+- NPC_PORTRAITに`frame`(立ち姿コマ)を追加し全話者を目視で選定: 護衛8名(3コマ歩き)=**1**(通過姿勢=足閉じ・
+  edgar/musashi/phaserで確認)/グレッグ(rescue/shooter)=**1**/ジュン(npc/medic-walk 4コマ)=**2**/
+  グレン・ミラ(バストアップ)=0のみ。実機ヘッドレスでグレッグ=shooter-1・ジュン=medic-walk-2の参照を確認。
+- 自己点検: 会話の立ち絵コマ指定のみ・挙動不変。憲法非該当。
+- Files: `src/components/NpcDialogue.tsx`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1853 — チュートリアル左端セリフの話者=グレッグへ(社長指示)【2026-07-18 12:01 JST】
 - チュートリアル左壁の「そっちじゃないぞ。」の話者を仮名「軍人」→**グレッグ**へ(正史M0キャスト確定に伴う)。
   NPC_PORTRAIT登録済みのため会話の立ち絵(ヘルメット兵)も自動で付く。文言・CD(6秒)不変。

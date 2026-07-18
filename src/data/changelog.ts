@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1854',
+    items: [
+      '会話の立ち絵を、全員「足を閉じて立っている」コマに統一しました(歩き途中の姿が出ないように)。',
+    ],
+  },
+  {
     version: '0.25.1853',
     items: [
       'チュートリアル左端の「そっちじゃないぞ。」の話者がグレッグになりました(立ち絵付き)。',

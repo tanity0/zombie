@@ -6,24 +6,26 @@ import { spritePath } from '../utils/spriteLoader';
 // (モデルが大きい場合は半身)。新しい会話話者を足す時はここに立ち絵を必ず登録する。
 // ※モデル無しの帯バナー(紅き月・変異体が興奮し始めた等)=「通信」で別系統(eventBanner)。
 // boxW=表示幅(横に広い素材は文字被り防止で広げる)。護衛軍人はpixiSceneのESCORT_SPRITE_BASEと同じ対応(index 0..7)。
-const NPC_PORTRAIT: Record<string, { base: string; boxW: number }> = {
-  'エドガー': { base: 'npc/edgar', boxW: 40 },
-  'ジョセフ': { base: 'npc/joseph', boxW: 40 },
-  'エリザベス': { base: 'npc/elizabeth', boxW: 40 },
-  '武蔵': { base: 'npc/musashi', boxW: 40 },
-  'ムハンマド': { base: 'npc/muhammad', boxW: 40 },
-  'チェン': { base: 'npc/chen', boxW: 40 },
-  'ローレン': { base: 'npc/lauren', boxW: 40 },
-  'フェイザー': { base: 'npc/phaser', boxW: 40 },
+// frame=立ち姿に使うコマ(社長指示v0.25.1854「会話の立ち姿は全員、足閉じてる方の絵」):
+// 護衛3コマ歩きは1=足閉じ(通過姿勢)/shooterは1/medic-walk(4コマ)は2/futariはバストアップ=0のみ。
+const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number }> = {
+  'エドガー': { base: 'npc/edgar', boxW: 40, frame: 1 },
+  'ジョセフ': { base: 'npc/joseph', boxW: 40, frame: 1 },
+  'エリザベス': { base: 'npc/elizabeth', boxW: 40, frame: 1 },
+  '武蔵': { base: 'npc/musashi', boxW: 40, frame: 1 },
+  'ムハンマド': { base: 'npc/muhammad', boxW: 40, frame: 1 },
+  'チェン': { base: 'npc/chen', boxW: 40, frame: 1 },
+  'ローレン': { base: 'npc/lauren', boxW: 40, frame: 1 },
+  'フェイザー': { base: 'npc/phaser', boxW: 40, frame: 1 },
   // 二人組(クエストNPC)。話者名=社長命名(v0.25.1719): グレン(男)/ミラ(女) → 専用バストアップ
   // (社長素材v0.25.1716・sprites/npc/futari-*-0.png=頭〜胸の切り出し)。肩まで入る=枠広め(v0.25.1719)。
-  'グレン': { base: 'npc/futari-man', boxW: 62 },
-  'ミラ': { base: 'npc/futari-woman', boxW: 62 },
+  'グレン': { base: 'npc/futari-man', boxW: 62, frame: 0 },
+  'ミラ': { base: 'npc/futari-woman', boxW: 62, frame: 0 },
   // チュートリアル随行(社長指示v0.25.1849「グレッグたちの通信にもモデル表示」):
   // グレッグ=軍人(レスキューのヘルメット兵=rescue/shooter・92x120=縦長) / ジュン=衛生兵
   // (npc/medic-walk 78x64=横長のためboxW広め)。
-  'グレッグ': { base: 'rescue/shooter', boxW: 40 },
-  'ジュン': { base: 'npc/medic-walk', boxW: 72 },
+  'グレッグ': { base: 'rescue/shooter', boxW: 40, frame: 1 },
+  'ジュン': { base: 'npc/medic-walk', boxW: 72, frame: 2 },
 };
 
 // NPCリアルタイムセリフのHUD表示(時間停止なし・軽量)。表示位置はアテンションバナーと同じ左上ゾーンで、
@@ -58,7 +60,7 @@ export const NpcDialogue = () => {
           // バストは背景の高さ(=文字)に対して背が高く、下端を背景下端に合わせて上へはみ出させる。
           <div className="relative self-stretch shrink-0" style={{ width: portraitBoxW }}>
             <img
-              src={spritePath(`${portraitBase}-0`)}
+              src={spritePath(`${portraitBase}-${portrait?.frame ?? 0}`)}
               alt={npc.name}
               draggable={false}
               style={{
