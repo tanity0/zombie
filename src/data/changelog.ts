@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1857',
+    items: [
+      '通常NPC(武器商人・謎の二人組・救助の生存者)の表示サイズを0.8倍にしました(軍人系のNPCはそのまま)。会話の立ち絵にも適用されます。',
+    ],
+  },
+  {
     version: '0.25.1856',
     items: [
       '会話のグレッグの立ち絵を「足を閉じた」コマに修正しました(前版でコマを取り違えていました)。',

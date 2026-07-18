@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1857 — 通常NPC(非軍人)を全表示0.8倍(社長指示)【2026-07-18 12:51 JST】
+- **対象=非軍人の通常NPC**: 武器商人(MERCHANT_TARGET_HEIGHT)/二人組グレン・ミラ(EVENT_NPC_TARGET_HEIGHT
+  +会話立ち絵imgH64→51・枠62→50)/救助の生存者civ(humanNpcScale×0.8)。共通係数`CIV_NPC_SCALE=0.8`。
+- **対象外(軍人系・等倍のまま)**: 護衛8名/グレッグ/ジュン(衛生兵)/救援shooter。
+  ストーリーNPC(ジブリル等・洋館)は今回対象に含めていない(必要なら指示ください)。
+- 視覚のみ=当たり判定・商人/クエストのサークル半径・滞在判定は不変(CLAUDE.md Visual vs. hitbox)。
+- 検証: typecheck緑+実測(商人スプライト高56=80×depth0.7。旧なら70)。
+- Files: `src/pixi/pixiScene.ts`, `src/components/NpcDialogue.tsx`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1856 — グレッグの会話立ち絵コマ修正(社長報告「足開いてる」)【2026-07-18 12:36 JST】
 - v0.25.1854で shooter のコマを取り違えていた(縮小表示の目視で誤判定)。4倍拡大で再確認:
   **shooter-0=足閉じ/shooter-1=足開き**。グレッグの frame を1→0へ修正(ゲーム内静止コマ0とも一致)。

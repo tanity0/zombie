@@ -7,8 +7,9 @@ import { spritePath } from '../utils/spriteLoader';
 // ※モデル無しの帯バナー(紅き月・変異体が興奮し始めた等)=「通信」で別系統(eventBanner)。
 // boxW=表示幅(横に広い素材は文字被り防止で広げる)。護衛軍人はpixiSceneのESCORT_SPRITE_BASEと同じ対応(index 0..7)。
 // frame=立ち姿に使うコマ(社長指示v0.25.1854「会話の立ち姿は全員、足閉じてる方の絵」):
-// 護衛3コマ歩きは1=足閉じ(通過姿勢)/shooterは1/medic-walk(4コマ)は2/futariはバストアップ=0のみ。
-const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number }> = {
+// 護衛3コマ歩きは1=足閉じ(通過姿勢)/shooterは0/medic-walk(4コマ)は2/futariはバストアップ=0のみ。
+// imgH=表示高さ(既定64)。通常NPC(非軍人=グレン/ミラ)は0.8倍=51(社長指示v0.25.1857・全表示共通の縮小)。
+const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number; imgH?: number }> = {
   'エドガー': { base: 'npc/edgar', boxW: 40, frame: 1 },
   'ジョセフ': { base: 'npc/joseph', boxW: 40, frame: 1 },
   'エリザベス': { base: 'npc/elizabeth', boxW: 40, frame: 1 },
@@ -19,8 +20,8 @@ const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number }
   'フェイザー': { base: 'npc/phaser', boxW: 40, frame: 1 },
   // 二人組(クエストNPC)。話者名=社長命名(v0.25.1719): グレン(男)/ミラ(女) → 専用バストアップ
   // (社長素材v0.25.1716・sprites/npc/futari-*-0.png=頭〜胸の切り出し)。肩まで入る=枠広め(v0.25.1719)。
-  'グレン': { base: 'npc/futari-man', boxW: 62, frame: 0 },
-  'ミラ': { base: 'npc/futari-woman', boxW: 62, frame: 0 },
+  'グレン': { base: 'npc/futari-man', boxW: 50, frame: 0, imgH: 51 },
+  'ミラ': { base: 'npc/futari-woman', boxW: 50, frame: 0, imgH: 51 },
   // チュートリアル随行(社長指示v0.25.1849「グレッグたちの通信にもモデル表示」):
   // グレッグ=軍人(レスキューのヘルメット兵=rescue/shooter・92x120=縦長) / ジュン=衛生兵
   // (npc/medic-walk 78x64=横長のためboxW広め)。
@@ -71,7 +72,7 @@ export const NpcDialogue = () => {
                 left: '50%',
                 bottom: 0,
                 transform: 'translateX(-50%)',
-                height: 64,
+                height: portrait?.imgH ?? 64,
                 width: 'auto',
                 maxWidth: 'none',
                 imageRendering: 'pixelated',

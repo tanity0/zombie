@@ -206,6 +206,10 @@ const CASTLE_FOOT_OFFSET_Y = 38;
 const CASTLE_TARGET_HEIGHT = 188; // 125 * 1.5(建物1.5倍指示)
 const MERCHANT_TARGET_HEIGHT = 100;
 const EVENT_NPC_TARGET_HEIGHT = 108;
+// 通常NPC(非軍人=商人/二人組/救助の生存者civ)の全表示共通の縮小率(社長指示v0.25.1857「通常NPCたちのみ
+// 大きさ0.8倍にして 全ての表示で」)。軍人系(護衛/グレッグ/ジュン/救援shooter)は対象外。
+// 視覚のみ=当たり判定・サークル半径は不変(CLAUDE.md「Visual vs. hitbox」)。会話立ち絵はNpcDialogue側で適用。
+const CIV_NPC_SCALE = 0.8;
 const EVENT_QUEST_DWELL_VIS_MS = 3000; // 二人組の滞在受領メーターの満了時間(gameStore.EVENT_QUEST_DWELL_MSと一致)
 const EVENT_NPC_FADE_MS = 1100;
 // 鞭ハリケーン竜巻スプライト(視覚のみ。吸引半径/ダメージは store 定義のまま)。
@@ -3533,7 +3537,7 @@ export class PixiScene {
     }
 
     const d = this.depthScale(merchant.y);
-    const targetH = MERCHANT_TARGET_HEIGHT * d;
+    const targetH = MERCHANT_TARGET_HEIGHT * CIV_NPC_SCALE * d;
     const sc = targetH / tex.height;
     const pulse = 0.5 + 0.5 * Math.sin(now / 420);
     const pcx = player.x + player.width / 2;
@@ -3610,7 +3614,7 @@ export class PixiScene {
     }
 
     const d = this.depthScale(npc.y);
-    const targetH = EVENT_NPC_TARGET_HEIGHT * d;
+    const targetH = EVENT_NPC_TARGET_HEIGHT * CIV_NPC_SCALE * d;
     const sc = targetH / tex.height;
     const breath = 0.5 + 0.5 * Math.sin(now / 760 + npc.questIndex * 0.7);
     const breathX = 1 + (breath - 0.5) * 0.012;
@@ -7333,7 +7337,8 @@ export class PixiScene {
       const footY = s.y + s.height;
       if (tex) {
         sp.texture = tex;
-        const sc = this.humanNpcScale(tex.width, tex.height, footY); // プレイヤーと同寸(同じスケール規定)
+        // プレイヤーと同寸規定。civ(通常NPC)のみ0.8倍(社長指示v0.25.1857)。救援shooter(軍人)は等倍のまま。
+        const sc = this.humanNpcScale(tex.width, tex.height, footY) * (s.subtype === 'shooter' ? 1 : CIV_NPC_SCALE);
         // 左右の向き: vx を平滑化(EMA)＋デッドゾーンで決め、パタパタ反転を防ぐ(素材は右向き想定)。
         let fs = this.rescueFace.get(s.id);
         if (!fs) { fs = { vx: s.vx, face: 1 }; this.rescueFace.set(s.id, fs); }
