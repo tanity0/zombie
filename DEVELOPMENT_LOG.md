@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1873 — cine時のstage-7ストーリーイベント抑止(社長「ステージ7のイベント消しといて」)【2026-07-19 11:53 JST】
+- cine実験の遊び場としてstage-7を使うため、**?cine=1 かつ stage-7 の時だけ**M7のストーリーイベント
+  (導入会話+グレン戦=storyBossOnly)を出さず、通常ステージとして自由に映像確認できるようにした。
+- 実装(App.tsx・出撃セットアップ): `cineTestbed = !benchmark && stage==='stage-7' && ?cine=1` を判定し、
+  `setPendingStoryBoss(... && !cineTestbed)`(storyBossMode=OFF=ボス/停止ゲート無効)+
+  `setIntroDialogueLines(cineTestbed ? [] : ...)`(導入会話を空に)。
+- **実プレイ(cine無し)は完全に不変**: 通常出撃では introLines=6 / storyBossMode=true を実測(M7の演出は無傷)。
+- cine時は introLines=0 / storyBossMode=false / giantbat=0 を実測=イベント消滅。※NPC8の環境チャット
+  (enqueueNpcDialogue系・エリザベス等)は別系統で残る(全ステージ共通・一過性)。全会話も消したいなら別途トグル可。
+- 挙動: cine限定のデバッグ的分岐=描画/仕様は通常不変。
+- 検証: typecheck緑。stage-7 cine=イベント無し / 通常=イベント有り を実測。
+- Files: `src/App.tsx`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1872 — M1遠景森の「白い格子」修正=mipmap撤回+素材焼き直し(社長「直ってない・白格子」)【2026-07-19 11:46 JST】
 - 症状: M1の遠景森2に**白い格子状の線**が森2と連動して動く(v1869のmipmap対応後に悪化)。
 - 原因(確定): `stage1-near-forest.png` の**透明ピクセルRGB=白(251,251,251,0)**。mipmapの平均で白が木のフチへ滲み、

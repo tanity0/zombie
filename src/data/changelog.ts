@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1873',
+    items: [
+      '開発(?cine=1): ステージ7を映像確認用に、ストーリーイベント(導入会話+ボス)を出さない自由ステージ化。通常プレイは変化なし。',
+    ],
+  },
+  {
     version: '0.25.1872',
     items: [
       '修正: ステージ1の遠景森に出ていた白い格子ノイズを解消(前回のmipmap対応が逆効果だったため撤回し、素材側で根治)。',
