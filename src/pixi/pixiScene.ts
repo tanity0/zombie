@@ -104,12 +104,8 @@ const CINE_SKY_WARM_BREATH = 0.11;         // 残照alphaの呼吸(±11%)
 const CINE_PARALLAX_CLOUD = 0.022;         // カメラ移動→雲オフセット係数(遠=小)
 const CINE_PARALLAX_SUN = 0.01;            // カメラ移動→太陽(最遠=最小)
 const CINE_PARALLAX_DUST = 0.055;          // カメラ移動→塵(近=大)
-// 遠景DoF(社長指示: 参照は遠景の被写界深度がハッキリ)。cine限定で遠景レイヤーのブラーを強め、
-// 遠くを soft にして手前と分離(空気遠近)。手前(near/front)の設定は不変=cineの遠景だけ効かせる。
-const CINE_FAR_DOF_MULT = (() => {              // 遠景ブラー倍率(地平の森0.65→2.3・遠景1.1→3.85)。?fardof=で生調整(1=無効)
-  const v = Number(DZ_PARAMS?.get('fardof'));
-  return Number.isFinite(v) && v > 0 ? v : 3.5;
-})();
+// (v0.25.1868の遠景DoF強化=CINE_FAR_DOF_MULTは撤回。社長指示v0.25.1870で「遠景はハッキリ」に方針転換
+//  =cineでは遠景ボケ(遠景/森1/森2レイヤーのblur+tilt-shift)を外す。空気遠近で奥行きを出す方向へ。)
 const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
 const DEEP_ZONE_GRADE_SAT = (() => {
   const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
@@ -1282,12 +1278,13 @@ export class PixiScene {
   // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
   private gradeSprite = new Sprite(Texture.WHITE);
-  // シネマティック残照オーバーレイ(?cine=1 & stage-6 のみ表示・screen合成)。
+  // シネマティック残照オーバーレイ(?cine=1 & stage-7 のみ表示・screen合成)。stage-6は洋館(室内)なので
+  // 屋外の黄昏空が合わず、逆探知地点(stage-7=未明の屋外)へ移設(社長指示v0.25.1870)。
   private cineWarm = new Sprite(getCineWarmTexture());
   private cineSun = new Sprite(getCineSunTexture());       // ①地平の太陽フレア
   private cineClouds = new Sprite(getCineCloudTexture());  // ②放射状の薄雲
   private cineDust = new TilingSprite({ texture: getCineDustTexture(), width: 1, height: 1 }); // ③大気の塵(ドリフト)
-  private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-6';
+  private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   private playerLight = new Sprite(getGlowTexture());
   private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
   private playerKatanaBack = new Sprite();                 // 背負い刀(刀/小烏丸 装備中・プレイヤー背面)
@@ -1364,7 +1361,7 @@ export class PixiScene {
     this.updateStageLightShafts(this.screenW, this.screenH);
   }
 
-  // シネマティック調(?cine=1 & stage-6)。寒色gradeを teal 寄りへ+減光強め+残照overlay表示。
+  // シネマティック調(?cine=1 & stage-7)。寒色gradeを teal 寄りへ+減光強め+残照overlay表示。
   // 非cineでは何もしない(=従来値のまま)。applyDaylight末尾から呼ぶ(daylightの上書きに勝つ)。
   private applyCineGrade() {
     const on = this.cineEnabled;
@@ -1383,8 +1380,10 @@ export class PixiScene {
   private rebuildWorldFilters() {
     const filters: Filter[] = [];
     if (this.bloom && this.bloomActive) filters.push(this.bloom);
-    if (this.tiltShift) filters.push(this.tiltShift);
-    // cine(?cine=1 & stage-6): 前景(キャラ/木/オブジェクト)のコントラストを立てる(社長指示v0.25.1865)。
+    // cine(stage-7)は遠景をハッキリさせる指示(社長v0.25.1870)。tilt-shiftは上(遠景)を大きくぼかす主因なので
+    // cine時は外す(参照シネマグラフも全面くっきり=光学ボケではなく空気遠近で奥行きを出す方針)。
+    if (this.tiltShift && !this.cineEnabled) filters.push(this.tiltShift);
+    // cine(?cine=1 & stage-7): 前景(キャラ/木/オブジェクト)のコントラストを立てる(社長指示v0.25.1865)。
     // filteredWorld=world(actor/背景/効果)だけ=地面(groundBase)は対象外で柔らかいまま。既存フィルタと
     // 同じ render target への追加1パス=安い。bloom の後段に置き、明部判定(=bloom量)は不変に保つ。
     if (this.cineEnabled) {
@@ -1556,17 +1555,18 @@ export class PixiScene {
     }
 
     this.farBackdropBlur = new BlurFilter({
-      strength: this.cineEnabled ? FAR_BACKDROP_BLUR * CINE_FAR_DOF_MULT : FAR_BACKDROP_BLUR,
+      strength: FAR_BACKDROP_BLUR,
       quality: 2,
     });
     // 遠景と川の筋レイヤーを同じグループに入れ、グループにブラーを掛ける(=筋も同じ被写界深度に
     // 入る。社長指摘v0.25.1808「せせらぎが被写界深度の外にいる」)。フィルタパスは従来の遠景1枚分と
     // 同じ1回=負荷増なし。
+    // cine(stage-7)は遠景をハッキリさせる(社長指示v0.25.1870)=遠景ボケを外す。
     {
       const farParent = this.L.farBackdrop.parent!;
       farParent.addChildAt(this.farGroup, farParent.getChildIndex(this.L.farBackdrop));
       this.farGroup.addChild(this.L.farBackdrop);
-      this.farGroup.filters = [this.farBackdropBlur];
+      this.farGroup.filters = this.cineEnabled ? [] : [this.farBackdropBlur];
     }
 
     if (FRONT_FOREST_BLUR > 0) {
@@ -1577,12 +1577,14 @@ export class PixiScene {
       this.L.frontForest.filters = [this.frontForestBlur];
     }
 
+    // cine(stage-7)は遠景森1/森2のボケも外してハッキリに(社長指示v0.25.1870)。mipmap(v1869)で
+    // 縮小モアレは別途抑えているので、ボケ無しでも斜め格子は出ない。
     if (HORIZON_FOREST_BLUR > 0) {
       this.horizonForestBlur = new BlurFilter({
-        strength: this.cineEnabled ? HORIZON_FOREST_BLUR * CINE_FAR_DOF_MULT : HORIZON_FOREST_BLUR,
+        strength: HORIZON_FOREST_BLUR,
         quality: 2,
       });
-      this.L.horizonForest.filters = [this.horizonForestBlur];
+      this.L.horizonForest.filters = this.cineEnabled ? [] : [this.horizonForestBlur];
     }
 
     if (NEAR_HORIZON_BLUR > 0) {
@@ -1590,7 +1592,7 @@ export class PixiScene {
         strength: NEAR_HORIZON_BLUR,
         quality: 2,
       });
-      this.L.nearHorizon.filters = [this.nearHorizonBlur];
+      this.L.nearHorizon.filters = this.cineEnabled ? [] : [this.nearHorizonBlur];
     }
 
     // Ambient fireflies: screen-space sprites driven by world coordinates.
@@ -4783,7 +4785,7 @@ export class PixiScene {
   private placeShadowSprite(id: string, footX: number, footY: number, w: number, alpha: number, seen: Set<string>, tint = 0x000000, alphaMult = 1, flatSize?: { w: number; h: number }) {
     if (alpha <= 0) return;
     const lighting = this.lighting();
-    // cine(?cine=1 & stage-6): 影を下方向・濃く・長く(太陽が上=地平のため。社長指示v0.25.1864)。
+    // cine(?cine=1 & stage-7): 影を下方向・濃く・長く(太陽が上=地平のため。社長指示v0.25.1864)。
     const shAlpha = this.cineEnabled ? CINE_SHADOW_ALPHA : lighting.shadowAlpha;
     const shLength = this.cineEnabled ? CINE_SHADOW_LENGTH : lighting.shadowLength;
     // flatSize 指定時(裏ボス): 当たり判定と同じ大きさのフラットな楕円影。方向の伸びを付けず、

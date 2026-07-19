@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1870',
+    items: [
+      '開発(?cine=1): シネマティック実験をステージ6(洋館)→ステージ7へ移設。遠景のボケを外してハッキリさせました。通常プレイは変化なし。',
+    ],
+  },
+  {
     version: '0.25.1869',
     items: [
       '修正: 遠景の森(帯)を縮小した時に出ていた斜めの格子ノイズ(モアレ)を解消(背景の帯だけ滑らかに縮小)。',

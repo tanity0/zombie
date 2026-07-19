@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.1870 — cine実験をstage-6→stage-7へ移設+遠景をハッキリに(社長指示2件)【2026-07-19 11:22 JST】
+- ①移設: stage-6は「古い洋館」(室内)で屋外の黄昏空が合わないため、cineゲートを **stage-7(逆探知地点・04:20未明の屋外)** へ。
+  `cineEnabled = CINE_MODE && getSelectedStageId()==='stage-7'`。関連コメントも stage-7 に統一。stage-6では一切出ない。
+- ②遠景ハッキリ: v0.25.1868で足した遠景DoF強化(`CINE_FAR_DOF_MULT`)は**撤回**。社長方針「遠景のボケを無くしてハッキリ」に転換
+  =cineでは遠景ボケを外す。
+  - 遠景/森1/森2レイヤーのblurを cine時は**非適用**(`farGroup/horizonForest/nearHorizon .filters = cine ? [] : [blur]`)。
+  - tilt-shift(上=遠景を大きくぼかす主因)を **cine時はフィルタ配列から外す**(`rebuildWorldFilters`)。参照シネマグラフも
+    全面くっきり(光学ボケでなく空気遠近で奥行き)=方針一致。
+  - **副作用注記**: tilt-shiftは上下対称なので外すと近景(中景)もシャープ化。ただし near-ground blur / front forest blur は
+    残しているので最前景の枠ソフトさは維持。「近景DoFを戻したい」場合は near限定blurで再現可(要相談)。
+- mipmap(v1869)は継続=ボケ無しでも遠景森の縮小モアレ(斜め格子)は出ない。
+- 負荷: フィルタを**減らす**方向=軽くなる。描画のみ・cineゲート内で通常プレイ不変。
+- 検証: typecheck緑。ヘッドレスで stage-7=cineEnabled/cineSun visible=true・stage-6=false を実測。stage-7実写で地平の森が
+  クッキリ(tilt-shift/遠景blur無し)を確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1869 — 遠景森2の斜め格子(モアレ)修正=背景バンドだけmipmap化(社長「この素材が悪さ」→A案)【2026-07-19 11:13 JST】
 - 症状: M1の遠景森2(nearHorizon)に斜め格子状の線。最初から出ていた(私の直近変更は全部cine=stage-6ゲート内=無関係)。
 - 診断(確定): 素材`stage1-near-forest.png`(1536×864)の**アルファ輪郭が極細(針葉)=超高周波**。森2は画面で縮小敷き
