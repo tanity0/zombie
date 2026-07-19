@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.1906 — cine光源の放射beam(光の線)に「出没の煌めき」+「外側フェード」(社長指示)【2026-07-20 02:07 JST】
+- 指示(社長・IMG_6715): この光源(cine=stage-7)の周りに伸びている光の線(=B:放射beam=cineClouds)を、
+  ①出たり消えたりさせて煌めき、②光源から外側へフェードアウト。(A:十字の光条=cineSunは対象外=不変)
+- 切り分け: 光源系は cineSun(ハロー＋十字光条)と cineClouds(放射streak=光の線)。社長の対象はB(cineClouds)。
+- 対処:
+  - ②外側フェード: `getCineCloudTexture` に「原点(光源=下端中央)からの放射フェード」を destination-in でベイク(runtime無料)。
+  - ①出没の煌めき: cineClouds を単一スプライト→**複数レイヤー(既定3・別seedのstreak群)**に分割し、各層を位相/速さちがいで
+    明滅(alpha 0.07↔0.6程度)。層ごとに出没=線が出たり消えたりの煌めき。従来の全体alpha揺れ(cloudShim)は廃止。
+  - 調整: `?cloudlayers= / ?cloudstreaks= / ?cloudspd= / ?cloudfloor=`(FLOOR=0で完全に消える)。
+  - 分離のため `getCineCloudTexture(variant, streaks)` に変更(variant別キャッシュ)。CINE_SUN_SHIMMER系は不使用化(残置)。
+- 検証: ヘッドレス(?cine=1)で4フレームの層alphaが独立変化([0.07,0.54,0.07]→[0.59,..]→..→[0.07,0.07,0.67])。
+  グリッドで放射線の出没＋外側フェードを確認。typecheck OK。cineSun(十字)は不変。
+- 負荷: 3/10(放射スプライト1→3枚=加算塗り増。ただし外側フェードで有効面積は減。cine=?cine=1のテスト/カットシーン専用で
+  通常プレイはOFF=コスト0)。重い場合は ?cloudlayers=2 等で下げられる。
+- 自己点検: 描画のみ。ゲーム挙動不変。憲法第4/5条に非抵触。
+- Files: `src/pixi/lighting.ts`, `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1905 — M7(光源テスト)の遠景森1/2・近景をM1と同じ数値にコピー(社長指示)【2026-07-20 01:21 JST】
 - 指示(社長): 「m7(光源テスト)の遠景1-2 近景はm1の数値をコピーして持ってきて」。M7=stage-7。
 - 実測で判明した差分(M1基準):

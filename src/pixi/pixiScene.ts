@@ -90,8 +90,7 @@ const CINE_SUN_X_FRAC = 0.62;
 // 光源(太陽)は常時最大で固定=煌めかせない(社長指示v0.25.1885)。煌めきは周りの放射光(cineClouds)側だけ。
 const CINE_SUN_ALPHA_MAX = 0.67;           // 光源(cineSun)の常時最大alpha(旧・煌めきの上端 0.5×1.34 を固定値化)
 const CINE_CLOUD_ALPHA_BASE = 0.7;         // 放射streak(cineClouds)の基準alpha
-const CINE_SUN_SHIMMER = 0.34;             // 薄↔濃の振幅(±。周りの放射光=cineCloudsの煌めき。社長v0.25.1877/1885)
-const CINE_SUN_SHIMMER_SPD = 0.0011;       // 煌めきの速さ(瞬き感)
+// 放射streak(光の線)の「出没=煌めき」定数は tsNum 定義後(下方)に置く(?cloud*= で現地調整可・社長指示v0.25.1906)。
 // 影(社長指示v0.25.1871): 光源が右上へ寄ったので、影は斜め左下へ(光源側を少し残す)。
 const CINE_SHADOW_DIRECTION = { x: -0.5, y: 1 }; // 斜め左下(光=右上)
 const CINE_SHADOW_ALPHA = 0.55;            // 既定 moonlight 0.26 → 濃く(締まる)
@@ -415,6 +414,12 @@ const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 // チュートリアル(M0)の川の手前の岩間霧を少しぼかす(0=なし。社長指示v0.25.1895)。?tutfogblur= で調整。
 const TUTORIAL_FRONT_FOG_BLUR = Math.max(0, tsNum('tutfogblur', 2));
+// cine光源の放射streak(光の線)の「出没=煌めき」(社長指示v0.25.1906・?cloud*= で調整)。テクスチャに関わる LAYERS/STREAKS は
+// 変更時リロードで再ベイク。SPD/FLOOR は明滅の速さ/下限(FLOOR=0で完全に消える)。
+const CINE_CLOUD_LAYERS = Math.max(1, Math.round(tsNum('cloudlayers', 3)));      // 明滅レイヤー数(多いほど細かい/わずかに重い)
+const CINE_CLOUD_STREAKS_PER_LAYER = Math.max(1, Math.round(tsNum('cloudstreaks', 22))); // 1層あたりの放射線本数(合計≈従来60)
+const CINE_CLOUD_TWINKLE_SPD = Math.max(0, tsNum('cloudspd', 0.0016));           // 明滅の速さ(瞬き感)
+const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.10))); // 各層の最小alpha倍率(0=完全に消える)
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 // 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
@@ -1334,7 +1339,8 @@ export class PixiScene {
   // 屋外の黄昏空が合わず、逆探知地点(stage-7=未明の屋外)へ移設(社長指示v0.25.1870)。
   private cineWarm = new Sprite(getCineWarmTexture());
   private cineSun = new Sprite(getCineSunTexture());       // ①地平の太陽フレア
-  private cineClouds = new Sprite(getCineCloudTexture());  // ②放射状の薄雲
+  // ②放射状の薄雲(光の線)。出没=煌めき用に複数レイヤー(別seedのstreak群)を位相ちがいで明滅。各層は外側フェード焼き込み済み。
+  private cineCloudLayers: Sprite[] = Array.from({ length: CINE_CLOUD_LAYERS }, (_, i) => new Sprite(getCineCloudTexture(i, CINE_CLOUD_STREAKS_PER_LAYER)));
   private cineDust = new TilingSprite({ texture: getCineDustTexture(), width: 1, height: 1 }); // ③大気の塵(ドリフト)
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   private playerLight = new Sprite(getGlowTexture());
@@ -1425,7 +1431,7 @@ export class PixiScene {
     }
     this.cineWarm.visible = on;
     this.cineSun.visible = on;
-    this.cineClouds.visible = on;
+    for (const sp of this.cineCloudLayers) sp.visible = on;
     this.cineDust.visible = on;
   }
 
@@ -1808,16 +1814,16 @@ export class PixiScene {
     // (multiply preserves detail/outlines), then the vignette, then damage
     // flash + off-screen arrows on top of everything.
     // cineオーバーレイ群。順序: grade(乗算)→ 雲/太陽/残照/塵(screen=teal-orange)→ vignette。
-    for (const sp of [this.cineWarm, this.cineSun, this.cineClouds, this.cineDust]) {
+    for (const sp of [this.cineWarm, this.cineSun, ...this.cineCloudLayers, this.cineDust]) {
       sp.blendMode = 'screen'; sp.visible = false; sp.eventMode = 'none';
     }
     this.cineWarm.alpha = CINE_WARM_ALPHA;
-    this.cineClouds.alpha = 0.7;
+    for (const sp of this.cineCloudLayers) sp.alpha = CINE_CLOUD_ALPHA_BASE;
     this.cineSun.alpha = CINE_SUN_ALPHA_MAX; // 光源は常時最大で固定(毎フレームも同値。煌めきはcineClouds側・社長v0.25.1885)
     this.cineDust.alpha = 0.5;
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
-      this.gradeSprite, this.cineClouds, this.cineSun, this.cineWarm, this.cineDust, this.vignette,
+      this.gradeSprite, ...this.cineCloudLayers, this.cineSun, this.cineWarm, this.cineDust, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
     this.applyCineGrade(); // 初期適用(applyDaylight前でもcine値を効かせる)
@@ -1906,11 +1912,13 @@ export class PixiScene {
     this.cineSun.anchor.set(0.5);
     this.cineSun.position.set(sunX, sunY);
     this.cineSun.width = this.cineSun.height = sunSize;
-    // 放射雲は太陽(下端中央)から上へ扇状に=上部帯を覆う。テクスチャ下端を地平(sunY)に合わせる。
-    this.cineClouds.anchor.set(0.5, 1);
-    this.cineClouds.position.set(sunX, sunY + h * 0.06);
-    this.cineClouds.width = w * 1.1;
-    this.cineClouds.height = h * 0.5;
+    // 放射雲は太陽(下端中央)から上へ扇状に=上部帯を覆う。テクスチャ下端を地平(sunY)に合わせる。全レイヤー同位置・同寸。
+    for (const sp of this.cineCloudLayers) {
+      sp.anchor.set(0.5, 1);
+      sp.position.set(sunX, sunY + h * 0.06);
+      sp.width = w * 1.1;
+      sp.height = h * 0.5;
+    }
     // 塵は全画面タイル。
     this.cineDust.position.set(0, 0);
     this.cineDust.width = w;
@@ -3121,11 +3129,18 @@ export class PixiScene {
       const sunX = w * CINE_SUN_X_FRAC; // 光源=右寄り(固定)。雲(放射streak)の原点も同じ。
       // 光フレア(太陽+放射streak)は位置固定=左右にも上下にも動かさない(社長v0.25.1877)。
       // 代わりに alpha を薄↔濃で揺らして「出たり消えたり=煌めき」だけ表現。雲と太陽で位相をずらす。
-      this.cineClouds.position.set(sunX, sunY + h * 0.06);
-      this.cineClouds.width = w * 1.1;
-      this.cineClouds.height = h * 0.5;
-      const cloudShim = Math.sin(now * CINE_SUN_SHIMMER_SPD) * 0.6 + Math.sin(now * CINE_SUN_SHIMMER_SPD * 1.7 + 1.1) * 0.4;
-      this.cineClouds.alpha = Math.max(0, CINE_CLOUD_ALPHA_BASE * (1 + cloudShim * CINE_SUN_SHIMMER));
+      // 放射streak(光の線)を各レイヤー位相ちがいで明滅=出たり消えたりの煌めき(社長指示v0.25.1906)。
+      for (let i = 0; i < this.cineCloudLayers.length; i++) {
+        const sp = this.cineCloudLayers[i];
+        sp.position.set(sunX, sunY + h * 0.06);
+        sp.width = w * 1.1;
+        sp.height = h * 0.5;
+        const ph = i * (Math.PI * 2 / CINE_CLOUD_LAYERS) + i * 0.9;
+        const spd = CINE_CLOUD_TWINKLE_SPD * (1 + i * 0.27); // 層ごとに速さも少し変える
+        let tw = Math.sin(now * spd + ph);        // -1..1
+        tw = Math.max(0, tw); tw = tw * tw;        // 0..1・低い側に滞在(出没感)
+        sp.alpha = Math.max(0, CINE_CLOUD_ALPHA_BASE * (CINE_CLOUD_TWINKLE_FLOOR + (1 - CINE_CLOUD_TWINKLE_FLOOR) * tw));
+      }
       this.cineSun.width = this.cineSun.height = Math.max(w, h) * 0.58;
       this.cineSun.position.set(sunX, sunY);
       // 光源(太陽)は常時最大で固定=煌めかせない。明滅(煌めき)は上の cineClouds(周りの放射光)側だけ(社長指示v0.25.1885)。

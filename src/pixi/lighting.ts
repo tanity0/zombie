@@ -202,16 +202,18 @@ export const getCineSunTexture = (): Texture => {
   cineSunTex = Texture.from(c); return cineSunTex;
 };
 
-// ② 放射状の薄雲(太陽=下端中央から扇状に伸びる暖色の筋)。帯スプライトとして地平の上に重ねる。
-let cineCloudTex: Texture | null = null;
-export const getCineCloudTexture = (): Texture => {
-  if (cineCloudTex) return cineCloudTex;
+// ② 放射状の薄雲(太陽=下端中央から扇状に伸びる暖色の筋=「光の線」)。帯スプライトとして地平の上に重ねる。
+// variant別に異なる線群を焼く(明滅=出没の煌めきを複数レイヤーの位相ちがいで作るため・社長指示v0.25.1906)。
+// 各テクスチャは「原点(光源=下端中央)から外側へフェードアウト」を destination-in の放射グラデで焼き込む。
+const cineCloudTexVariants: (Texture | null)[] = [];
+export const getCineCloudTexture = (variant = 0, streaks = 60): Texture => {
+  if (cineCloudTexVariants[variant]) return cineCloudTexVariants[variant]!;
   const w = 768, h = 384; const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d')!;
   const ox = w / 2, oy = h * 0.98; // 放射の原点=下端中央(=地平の太陽)
   ctx.globalCompositeOperation = 'lighter';
-  let seed = 20240718; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
-  for (let i = 0; i < 60; i++) {
+  let seed = 20240718 + variant * 90001; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  for (let i = 0; i < streaks; i++) {
     const ang = -Math.PI / 2 + (rnd() - 0.5) * Math.PI * 1.15; // 上方向中心に扇状
     const len = h * (0.4 + rnd() * 0.7);
     const dist0 = h * (0.05 + rnd() * 0.5);
@@ -225,7 +227,14 @@ export const getCineCloudTexture = (): Texture => {
     ctx.strokeStyle = g; ctx.lineWidth = thick; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
   }
-  cineCloudTex = Texture.from(c); return cineCloudTex;
+  // ② 光源(原点)から外側へフェードアウト: 放射グラデで alpha を掛ける(destination-in)。中心付近は不透明、外周で0。
+  ctx.globalCompositeOperation = 'destination-in';
+  const fade = ctx.createRadialGradient(ox, oy, 0, ox, oy, h * 1.02);
+  fade.addColorStop(0, 'rgba(255,255,255,1)');
+  fade.addColorStop(0.30, 'rgba(255,255,255,1)');
+  fade.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = fade; ctx.fillRect(0, 0, w, h);
+  const t = Texture.from(c); cineCloudTexVariants[variant] = t; return t;
 };
 
 // ③ 大気の塵(暖色のボケ粒。タイル化してゆっくりドリフト)。
