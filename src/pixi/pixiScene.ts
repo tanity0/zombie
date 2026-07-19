@@ -94,16 +94,16 @@ const CINE_ACTOR_CONTRAST = 0.2;           // 明暗のメリハリ(0=無変化)
 const CINE_ACTOR_SATURATE = 0.12;          // grade で抜けた彩度を少し戻す
 // 空を生かす(社長指示v0.25.1865・A+B): 参照シネマグラフの「生きた空気」。既存ベイクSpriteの
 // transform だけ=負荷1/10。A=idleドリフト+呼吸スケール、B=層ごとの視差(遠い層ほど遅い+カメラ移動に僅かに連動)。
-const CINE_SKY_DRIFT_SPD = 0.00006;        // idle横ドリフトの角速度(ゆっくり)
-const CINE_SKY_CLOUD_DRIFT = 12;           // 雲の横ドリフト振幅(px)
-const CINE_SKY_CLOUD_BOB = 5;              // 雲の縦揺れ振幅(px)
-const CINE_SKY_SUN_DRIFT = 4;              // 太陽のごく僅かな漂い(px)
-const CINE_SKY_BREATH = 0.02;              // 呼吸スケール振幅(±2%)
-const CINE_SKY_BREATH_SPD = 0.00022;       // 呼吸の角速度
-const CINE_SKY_WARM_BREATH = 0.05;         // 残照alphaの呼吸(±5%)
-const CINE_PARALLAX_CLOUD = 0.012;         // カメラ移動→雲オフセット係数(遠=小)
-const CINE_PARALLAX_SUN = 0.006;           // カメラ移動→太陽(最遠=最小)
-const CINE_PARALLAX_DUST = 0.03;           // カメラ移動→塵(近=大)
+const CINE_SKY_DRIFT_SPD = 0.00012;        // idle横ドリフトの角速度(v1866→強め・社長「よくわからない」)
+const CINE_SKY_CLOUD_DRIFT = 28;           // 雲の横ドリフト振幅(px)
+const CINE_SKY_CLOUD_BOB = 10;             // 雲の縦揺れ振幅(px)
+const CINE_SKY_SUN_DRIFT = 8;              // 太陽の漂い(px)
+const CINE_SKY_BREATH = 0.05;              // 呼吸スケール振幅(±5%)
+const CINE_SKY_BREATH_SPD = 0.00034;       // 呼吸の角速度
+const CINE_SKY_WARM_BREATH = 0.11;         // 残照alphaの呼吸(±11%)
+const CINE_PARALLAX_CLOUD = 0.022;         // カメラ移動→雲オフセット係数(遠=小)
+const CINE_PARALLAX_SUN = 0.01;            // カメラ移動→太陽(最遠=最小)
+const CINE_PARALLAX_DUST = 0.055;          // カメラ移動→塵(近=大)
 const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
 const DEEP_ZONE_GRADE_SAT = (() => {
   const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
