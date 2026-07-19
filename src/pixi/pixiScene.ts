@@ -214,7 +214,7 @@ const TUTORIAL_FRONT_FOG_CENTER_UP_PX = 132; // 霧帯の中心=境界線(farH)�
 const TUTORIAL_FRONT_Y_OFFSET_PX = 200;      // 手前岩(近景森1)を下へずらす量(v0.25.1825: 社長指示「もう100px下へ」で100→200)
 const TUTORIAL_CEILING_SCALE = 1.5;          // ツララ帯の表示倍率(v0.25.1825: 社長指示「1.5倍に」)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
-const STAGE5_NEAR_HORIZON_DOWN_PX = 40;      // 森2の底=境界線から下へ(px・社長指示v0.25.1744で50→40=10px上へ)
+const STAGE5_NEAR_HORIZON_DOWN_PX = 30;      // 森2の底=境界線から下へ(px・v1744で50→40、v1904で40→30=さらに10px上へ・社長指示)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
 const NEAR_HORIZON_BLUR = 0.35;              // 近いので地平の森より弱いブラー

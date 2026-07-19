@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1904 — M5の森2を上へ10px(森1は0のまま)(社長指示)【2026-07-20 01:14 JST】
+- 指示(社長): 「m5 森1は0で、森2は上に10px」。M5=stage-5。
+- 対処:
+  - 森1(horizonForest): `m5up` は既定0=変更なし(確認済み・posY 118.2)。
+  - 森2(nearHorizon): `STAGE5_NEAR_HORIZON_DOWN_PX` を 40→30(底=farH+DOWN なので10px上へ)。
+- 検証: ヘッドレス res3。森2 底 258.2(=farH+30、旧40比で10px上)/森1 top 118.2不変/森2可視・画面崩れなし。typecheck OK。
+- 負荷: 1/10(定数値のみ)。Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1903 — M3の遠景森1の上移動を50pxで決定(社長指示)【2026-07-20 01:10 JST】
 - 指示(社長): 「m3の森は50pxで決定」。M3=stage-3(city)。
 - 対処: `M3_HORIZON_FOREST_UP_PX`(?m3up=)の既定を 0→50。M3のみ。他ステージ不変。
