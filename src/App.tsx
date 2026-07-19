@@ -149,17 +149,17 @@ function App() {
     // 洋館［SUB］再訪(統合正本9章): selectedMission='revisit' かつ stage-6 の出撃だけ再訪ラン。
     const revisitRun = !benchmark && !getSelectedFreeMode()
       && getSelectedMission() === 'revisit' && stageForRun?.id === 'stage-6';
-    // cine映像の遊び場: ?cine=1 で stage-7 を選んだ時は、ストーリーイベント(導入会話+グレン戦)を出さず、
-    // 通常ステージとして自由に映像を確認できるようにする(社長指示v0.25.1873)。実プレイ(cine無し)は不変。
-    const cineTestbed = !benchmark && stageForRun?.id === 'stage-7'
-      && typeof window !== 'undefined'
-      && new URLSearchParams(window.location.search).get('cine') === '1';
+    // stage-7 は cine映像の実験台。ストーリーイベント(導入会話+グレン戦)を出さず、自由ステージにする
+    // (社長指示v0.25.1874: cine有無に関わらず常に=メニューから普通に入っても止める)。
+    // ※本編M7の climax を無効化する。戻す時はこのフラグを外すだけ。campaignデータ(main.dialogue/storyBossOnly)は
+    //   不変なので storyCanon テストは維持される(挙動のみ抑止)。
+    const stage7EventOff = !benchmark && stageForRun?.id === 'stage-7';
     useGameStore.getState().setPendingIndoor(!!stageForRun?.indoor);
     useGameStore.getState().setPendingStageTheme(stageForRun?.theme === 'lab' ? 'lab' : 'forest');
     useGameStore.getState().setPendingFarBackdrop(stageForRun?.farBackdrop ?? '');
     useGameStore.getState().setPendingNearHorizon(stageForRun?.nearHorizon ?? '');
     useGameStore.getState().setPendingSuppression(stageForRun?.mainEvent === 'suppression');
-    useGameStore.getState().setPendingStoryBoss(!benchmark && !!stageForRun?.storyBossOnly && !cineTestbed);
+    useGameStore.getState().setPendingStoryBoss(!benchmark && !!stageForRun?.storyBossOnly && !stage7EventOff);
     useGameStore.getState().setPendingRevisit(revisitRun);
     useGameStore.getState().setPendingHiddenBoss(stageForRun?.hiddenBoss ?? null);
     resetGame(validClass);
@@ -167,7 +167,7 @@ function App() {
     // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチ/再訪(通信なし)は空=会話なし。
     const free = getSelectedFreeMode();
     const selectedStage = (benchmark || free || revisitRun) ? undefined : stageForRun;
-    useGameStore.getState().setIntroDialogueLines(cineTestbed ? [] : (selectedStage?.main.dialogue ?? []));
+    useGameStore.getState().setIntroDialogueLines(stage7EventOff ? [] : (selectedStage?.main.dialogue ?? []));
     setBenchmarkMode(pendingBenchmarkRef.current);
     // 出撃ローディング%のウィンドウをここでリセット(v0.25.1829): オーバーレイの初期描画が
     // 前回ウィンドウの100%を一瞬見せないように(PixiStage側のリセットより先=マウント前に0%へ)。

@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.1874 — stage-7イベント抑止を無条件化+森2の境界霧(社長「イベント止まってない」「境界を曖昧に」)【2026-07-19 12:06 JST】
+- **①stage-7イベント抑止=無条件化(v1873の修正)**: v1873は `?cine=1` ゲートだったが、社長は**メニューから普通に入っても**
+  イベントが止まる想定だった(実機はcine無しでグレン導入会話+ヘリが出た=v1873の想定ズレ)。→ `stage7EventOff = stage==='stage-7'`
+  (cine不問)に変更。stage-7では常に導入会話(main.dialogue)を空+storyBossMode OFF。**本編M7 climaxを無効化**するので
+  戻す時はこのフラグ条件を外すだけ。campaignデータ(main.dialogue/storyBossOnly)は不変=storyCanonテスト維持。
+  検証: stage-7(cine無し)で introLines=0 / storyBossMode=false を実測。
+- **②森2の境界霧(新規・社長「m0みたいに森2の手前に霧を複製・半分サイズで/森と地面の境界を曖昧に」)**:
+  `nearHorizonMist`(fog-alpha・FOG_TINT・normal合成)を worldGroup の nearHorizon 直後(=森2の手前・gameplayの後ろ)へ挿入。
+  森2の底(`farBackdropHeight()+screenH*NEAR_HORIZON_BOTTOM_RATIO`=森と地面の境界)へ、帯高さ0.45screenH・柄は
+  TUTORIAL_FRONT_FOG_SCALE(0.5=半分)・α=`NEAR_HORIZON_MIST_ALPHA`(既定0.6・?nhmist=)で重ね、ゆっくりドリフト。
+  **'forest'系の森2の時だけ**表示(city/labは対象外)。森2と同じworldGroup-local座標系=ズーム(?zoomlock=1・wz0.935)でも
+  境界に一致することを実測。負荷: 全画面帯TilingSprite1枚=既存の森下霧と同経路=軽い(~1/10)。
+- Files: `src/App.tsx`(①), `src/pixi/pixiScene.ts`(②), `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1873 — cine時のstage-7ストーリーイベント抑止(社長「ステージ7のイベント消しといて」)【2026-07-19 11:53 JST】
 - cine実験の遊び場としてstage-7を使うため、**?cine=1 かつ stage-7 の時だけ**M7のストーリーイベント
   (導入会話+グレン戦=storyBossOnly)を出さず、通常ステージとして自由に映像確認できるようにした。

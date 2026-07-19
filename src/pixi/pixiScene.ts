@@ -373,6 +373,8 @@ const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.9));      // 森下霧(fog-al
 const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.65));  // 奥(遠景+地面・キャラの後ろ)
 const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前の森に被る最下部・薄め)
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
+// 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
+const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ
 interface FogLayer {
   sp: TilingSprite;
@@ -2529,6 +2531,7 @@ export class PixiScene {
   // **専用の霧スプライト**(fog-alphaテクスチャ使い回し・50%サイズ)を1枚足す。
   private tutorialFogPlaced = false;
   private tutorialMist: TilingSprite | null = null;
+  private nearHorizonMist: TilingSprite | null = null; // 森2の手前=森と地面の境界に重ねる霧(社長指示v0.25.1874・M0の岩間霧と同方式)
   private applyTutorialFrontFog(active: boolean) {
     if (active === this.tutorialFogPlaced) return;
     this.tutorialFogPlaced = active;
@@ -2975,6 +2978,40 @@ export class PixiScene {
           (my - this.L.worldGroup.position.y) / wz
         );
         mist.tilePosition.set(mistT, 0);
+      }
+    }
+    // 森2の手前に境界霧(社長指示v0.25.1874・M0の岩間霧と同方式): 森2の底(=森と地面の境界)へ、fog-alpha素材を
+    // 半分サイズで重ねて境界を曖昧にする。'forest'系の森2の時だけ。森2と同じ worldGroup-local 座標系で置くので
+    // ズーム(?zoomlock=1)でも森2と一致して破綻しない。負荷: 全画面帯TilingSprite1枚=既存の森下霧と同経路(軽い)。
+    {
+      const wantNhMist = this.L.nearHorizon.visible && this.nearHorizonKeyNow === 'forest';
+      if (wantNhMist && !this.nearHorizonMist) {
+        const sp = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
+        sp.tint = FOG_TINT; sp.blendMode = 'normal'; sp.eventMode = 'none';
+        this.nearHorizonMist = sp;
+        const wg = this.L.worldGroup;
+        wg.addChildAt(sp, wg.getChildIndex(this.L.nearHorizon) + 1); // 森2の「手前」(上に重ねる)・gameplayの後ろ
+      }
+      const nm = this.nearHorizonMist;
+      if (nm) {
+        if (!wantNhMist) { nm.visible = false; }
+        else {
+          if (nm.texture.width <= 1) { const mt = getTexture('fog-alpha'); if (mt) nm.texture = mt; }
+          if (nm.texture.width > 1) {
+            nm.visible = true;
+            const farH = this.farBackdropHeight();
+            const seamY = farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO; // 森2の底=森と地面の境界
+            const nhMarginX = (this.screenW * ZOOM_OVERSCAN - this.screenW) / 2;
+            const w = this.screenW * ZOOM_OVERSCAN;
+            const h = this.screenH * 0.45;                                  // 帯の高さ(境界を跨ぐ)
+            nm.width = w; nm.height = h;
+            nm.tileScale.set((w / nm.texture.width) * TUTORIAL_FRONT_FOG_SCALE, h / nm.texture.height); // 柄は半分サイズ
+            nm.alpha = NEAR_HORIZON_MIST_ALPHA;
+            nm.position.set(-nhMarginX, seamY - h * 0.5 + Math.sin(now * 0.0004 * FOG_SPEED + 1.9) * 7);
+            const nmT = (now - this.fogT0) * 0.024 * FOG_SPEED + Math.sin(now * 0.0007 * FOG_SPEED + 2.3) * 20;
+            nm.tilePosition.set(nmT, 0);
+          }
+        }
       }
     }
     const fogT = now - this.fogT0;

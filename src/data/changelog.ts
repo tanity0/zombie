@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1874',
+    items: [
+      '開発: ステージ7を映像実験用に、ストーリーイベント(導入会話+ボス戦)を一時停止(cine有無に関わらず)。',
+      '森ステージの遠景森と地面の境界に薄い霧を重ね、境目をなじませました(?nhmist=で濃さ調整)。',
+    ],
+  },
+  {
     version: '0.25.1873',
     items: [
       '開発(?cine=1): ステージ7を映像確認用に、ストーリーイベント(導入会話+ボス)を出さない自由ステージ化。通常プレイは変化なし。',
