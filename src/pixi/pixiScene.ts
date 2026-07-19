@@ -2584,6 +2584,24 @@ export class PixiScene {
     this.L.nearHorizon.tileScale.set(height / tex.height);
     this.L.nearHorizon.position.set(-nhMarginX, bottom - height);
   }
+  // 遠景バンド(森1/森2/森2境界霧)を worldGroup のズーム変換から切り離し、常に「意図した画面位置」へ固定する
+  // (社長指示v0.25.1880)。呼ぶ前に position は zoom=1 時の意図画面座標にセットされている前提。scale=1/wz と
+  // 逆変換した position で、worldGroup がどんなズーム(引き/寄り)でも同じ画面位置・同じ画面サイズに描く
+  // (=ズーム外の遠景パノラマと同じ挙動)。横パララックス(tilePosition)/縦tileScale は不変で効き続ける。
+  private pinFarLayerToScreen(layer: Container, mask?: Sprite | null) {
+    const wz = this.L.worldGroup.scale.x || 1;
+    if (Math.abs(wz - 1) < 0.0005) { // 等倍時は素通し(scaleを既定へ戻す)
+      layer.scale.set(1);
+      if (mask) { mask.scale.set(1); mask.position.copyFrom(layer.position); }
+      return;
+    }
+    const inv = 1 / wz;
+    const wgx = this.L.worldGroup.position.x, wgy = this.L.worldGroup.position.y;
+    const sx = layer.position.x, sy = layer.position.y; // 意図画面座標(zoom=1基準)
+    layer.scale.set(inv);
+    layer.position.set((sx - wgx) * inv, (sy - wgy) * inv);
+    if (mask) { mask.scale.set(inv); mask.position.copyFrom(layer.position); }
+  }
   setStage3Ground(t: Texture | null) {
     if (!t) return;
     try { const st = t.source.style as { addressMode?: string; update?: () => void }; st.addressMode = 'repeat'; st.update?.(); } catch { /* ignore */ }
@@ -3129,6 +3147,13 @@ export class PixiScene {
     if (this.L.nearHorizon.visible) {
       this.L.nearHorizon.tilePosition.set(-s.camera.x * NEAR_HORIZON_PARALLAX_X, 0);
     }
+    // 引きズーム対応(社長指示v0.25.1880「引き時に遠景森1/2が境界からズレる」): 遠景森1/2(と森2境界霧)は
+    // worldGroup の子なので文脈ズームで動いてしまい、ズーム外の遠景パノラマ(境界線)から分離する。
+    // worldGroup変換を打ち消して常に「意図した画面位置=境界線」へ固定(=パノラマと同じ画面固定挙動に揃える)。
+    // 横パララックス(tilePosition)はそのまま効く。
+    this.pinFarLayerToScreen(this.L.horizonForest, this.horizonForestFadeMask);
+    if (this.L.nearHorizon.visible) this.pinFarLayerToScreen(this.L.nearHorizon);
+    if (this.nearHorizonMist && this.nearHorizonMist.visible) this.pinFarLayerToScreen(this.nearHorizonMist);
     this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();
     // ?labpersp の研究所では床専用の強い遠近カーブを使う(屋外は従来定数)。
     const labPerspNow = s.indoorMode && LAB_PERSP;

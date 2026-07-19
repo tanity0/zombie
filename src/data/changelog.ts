@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1880',
+    items: [
+      '修正: デカボスや敵が増えて画面が引き(ズームアウト)になった時、遠景の森が境界線からズレていた問題を解消(遠景パノラマと同じく画面に固定)。',
+    ],
+  },
+  {
     version: '0.25.1879',
     items: [
       '開発(?cine=1): ステージ7の映像確認中は、護衛NPCの会話やボスなどイベント一切が動かない静かなステージにしました。通常プレイは変化なし。',

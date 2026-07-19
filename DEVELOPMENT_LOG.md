@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.1880 — 引きズーム時に遠景森1/2が境界からズレる修正(worldGroupズームを打ち消して画面固定)(社長指示)【2026-07-19 14:47 JST】
+- 症状: デカボス/敵増で文脈ズーム(引き)になると遠景森1(horizonForest)・森2(nearHorizon)が境界線からズレる。
+- 原因(実測確定): 森1/2は `worldGroup` の子なので文脈ズームで `screen = wgPos.y + localY*wz` に従って動くが、
+  遠景パノラマ(farBackdrop)は worldGroup の外=画面固定。→ 引き時に森1/2だけ動いてパノラマ(境界線)から分離。
+- 対処: `pinFarLayerToScreen(layer, mask?)` を追加し、森1(+fadeマスク)/森2/森2境界霧に毎フレーム適用。
+  worldGroup変換を打ち消す(`scale=1/wz`・`position=(意図画面座標−wgPos)/wz`)ことで、どんなズームでも常に同じ
+  **画面位置・画面サイズ**へ固定=パノラマと同じ挙動に揃える。横パララックス(tilePosition)/縦tileScaleは不変。
+  等倍(wz≈1)時は素通し(scale=1)で従来と完全一致。
+- 検証: ヘッドレスで森1/2の描画Yが zoom=1(wz1.04)と最大引き(wz0.92)で**同一**(hf 58.7 / nh -43.2 で不動・scale=1/wz)
+  を実測。zoom=1/引きの実写とも遠景森が境界に一致・マスク/霧の破綻なし(?zoomlock=0.8で確認)。
+  ※stage-1で確認。他ステージ(stage5実寸/tutorial/lab)も機構はステージ非依存(layoutが置いた位置を固定するだけ)だが
+    実機で最終確認推奨。
+- 負荷: 1/10(毎フレーム3レイヤーのscale/position差し替えのみ)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1879 — cineテスト中はM7イベント完全停止(護衛NPCの環境会話も)(社長「cineテスト中は動かないように」)【2026-07-19 13:30 JST】
 - 症状: cine時にグレン会話/ボスは止まっていたが、**護衛NPC(エリザベス等)の環境会話が出ていた**。
 - 原因: v1876で cine時に `pendingStoryBoss=false` にしたため stage-7 が「通常ステージ扱い」になり**護衛NPCが湧いた**
