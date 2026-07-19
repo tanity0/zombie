@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1902 — M2の遠景森1の上移動を60pxで固定(社長指示)【2026-07-20 00:59 JST】
+- 指示(社長): 「m2の森1は60pxで固定」。
+- 対処: `M2_HORIZON_FOREST_UP_PX`(?m2up=)の既定を 100→60。M2(lab)のみ。他ステージ不変。
+- 検証: typecheck OK(定数値のみ・?mXup=の移動関係はv1901で厳密一致を実測済み=60上でposY 98.3→38.3相当)。
+- 負荷: 1/10。Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1901 — 遠景森1の上移動パラメータを全ステージへ一般化(?mXup=)(社長指示)【2026-07-20 00:41 JST】
 - 指示(社長): 「全ステージの遠景森1に m1up みたいなパラメータつけといて」。
 - 対処: ステージ別の上移動px定数(m0up〜m7up, ex1up, ex2up)を追加し、`HORIZON_FOREST_UP_BY_STAGE`(stage id→px)で引く。
