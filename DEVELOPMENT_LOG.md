@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1895 — M0(チュートリアル)の川の手前の岩間霧を少しぼかす(社長指示)【2026-07-19 22:51 JST】
+- 指示(社長): 「m0の川の手前にいる霧、少しぼかして」。
+- 特定: M0=stage-tutorial(campaign code 'M0')。「川の手前の霧」=中央の白いモヤ=`tutorialMist`(岩間霧・岩帯1と2の間の
+  専用fog-alphaスプライト)。手前のスモッグ2層は既にぼけているが岩間霧だけブラー未適用でクッキリしていた。
+- 対処: `tutorialMist` 生成時に `BlurFilter({strength: TUTORIAL_FRONT_FOG_BLUR, quality:2})` を付与(既定2)。
+  `TUTORIAL_FRONT_FOG_BLUR` は tsNum で `?tutfogblur=` 調整可。0でブラー無効(従来)。他レイヤーは不変。
+- 検証: ヘッドレス res3 で b0/b2/b4 を提示。b2=筋が柔らかく自然な"少し"。typecheck OK(定数はtsNum定義後に配置し直し=当初のTDZエラーを修正)。
+- 自己点検: 描画のみ(チュートリアル専用の霧1枚にフィルタ)。ゲーム挙動不変。憲法第4/5条に非抵触。
+- 負荷: 2/10(チュートリアル限定・霧1枚にBlurFilter1パス/フレーム。戦闘の重ステージではない。frontForestに既にblur前例あり)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1894 — 北部の遠景森1の横パララックスを森2と同等に(社長指示)【2026-07-19 22:45 JST】
 - 指示(社長): 「この森(北部の氷壁=森1)の横の速さを、森2と同等にして」。
 - 事実確認: 森2(nearHorizon)は北部(snow)には無い(setNearHorizonTextureは city/forest/lab/stage5/tutorial のみ)。

@@ -384,6 +384,8 @@ const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.9));      // 森下霧(fog-al
 const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.65));  // 奥(遠景+地面・キャラの後ろ)
 const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前の森に被る最下部・薄め)
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
+// チュートリアル(M0)の川の手前の岩間霧を少しぼかす(0=なし。社長指示v0.25.1895)。?tutfogblur= で調整。
+const TUTORIAL_FRONT_FOG_BLUR = Math.max(0, tsNum('tutfogblur', 2));
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 // 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
@@ -2566,6 +2568,7 @@ export class PixiScene {
       sp.tint = 0xffffff;
       sp.blendMode = 'normal'; // fog-alpha はアルファ透過素材=通常合成(森下霧と同じ)
       sp.eventMode = 'none';
+      if (TUTORIAL_FRONT_FOG_BLUR > 0) sp.filters = [new BlurFilter({ strength: TUTORIAL_FRONT_FOG_BLUR, quality: 2 })]; // 少しぼかす(社長指示v0.25.1895)
       this.tutorialMist = sp;
     }
     const wg = this.L.worldGroup;
