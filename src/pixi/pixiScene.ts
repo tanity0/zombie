@@ -87,9 +87,10 @@ const CINE_WARM_ALPHA = 0.60;              // 残照オーバーレイ(screen)�
 // 光源(太陽/フレア)を右へ寄せる(社長指示v0.25.1871)。0.5=中央→0.62=右寄り。雲(放射原点)も追従。
 const CINE_SUN_X_FRAC = 0.62;
 // フレアの煌めき(社長指示v0.25.1871「動きは少し・薄濃で煌めき」): 位置ドリフトは減らし alpha を揺らす。
-const CINE_SUN_ALPHA_BASE = 0.5;           // フレアの基準alpha(淡く: 0.65→0.5)
-const CINE_SUN_SHIMMER = 0.16;             // 薄↔濃の振幅(±)
-const CINE_SUN_SHIMMER_SPD = 0.0011;       // 煌めきの速さ(idleドリフトより速い=瞬き感)
+const CINE_SUN_ALPHA_BASE = 0.5;           // 太陽フレアの基準alpha(淡く: 0.65→0.5)
+const CINE_CLOUD_ALPHA_BASE = 0.7;         // 放射streak(cineClouds)の基準alpha
+const CINE_SUN_SHIMMER = 0.34;             // 薄↔濃の振幅(±。煌めきをハッキリ: 0.16→0.34・社長v0.25.1877)
+const CINE_SUN_SHIMMER_SPD = 0.0011;       // 煌めきの速さ(瞬き感)
 // 影(社長指示v0.25.1871): 光源が右上へ寄ったので、影は斜め左下へ(光源側を少し残す)。
 const CINE_SHADOW_DIRECTION = { x: -0.5, y: 1 }; // 斜め左下(光=右上)
 const CINE_SHADOW_ALPHA = 0.55;            // 既定 moonlight 0.26 → 濃く(締まる)
@@ -98,18 +99,11 @@ const CINE_SHADOW_LENGTH = 52;             // 既定 32 → 夕方の長い影
 // 外なので効かない=大気は柔らかいまま前景だけコントラストが乗る。既存フィルタと同じRTへ1パス相乗り。
 const CINE_ACTOR_CONTRAST = 0.2;           // 明暗のメリハリ(0=無変化)
 const CINE_ACTOR_SATURATE = 0.12;          // grade で抜けた彩度を少し戻す
-// 空を生かす(社長指示v0.25.1865・A+B): 参照シネマグラフの「生きた空気」。既存ベイクSpriteの
-// transform だけ=負荷1/10。A=idleドリフト+呼吸スケール、B=層ごとの視差(遠い層ほど遅い+カメラ移動に僅かに連動)。
-const CINE_SKY_DRIFT_SPD = 0.00012;        // idle横ドリフトの角速度(v1866→強め・社長「よくわからない」)
-const CINE_SKY_CLOUD_DRIFT = 28;           // 雲の横ドリフト振幅(px)
-const CINE_SKY_CLOUD_BOB = 10;             // 雲の縦揺れ振幅(px)
-const CINE_SKY_SUN_DRIFT = 2;              // 太陽の漂い(px。動きは少しに: 8→2・社長v0.25.1871)
-const CINE_SKY_BREATH = 0.05;              // 呼吸スケール振幅(±5%)
-const CINE_SKY_BREATH_SPD = 0.00034;       // 呼吸の角速度
+// 空を生かす(社長指示v0.25.1865〜1877): 参照シネマグラフの「生きた空気」。既存ベイクSpriteのtransform/alphaだけ=負荷1/10。
+// フレア(太陽+放射streak)は位置固定=左右にも動かさず、alphaの薄↔濃(煌めき)だけ(社長v0.25.1877)。塵/残照は生きた動きを維持。
+const CINE_SKY_BREATH_SPD = 0.00034;       // 残照alpha呼吸の角速度
 const CINE_SKY_WARM_BREATH = 0.11;         // 残照alphaの呼吸(±11%)
-const CINE_PARALLAX_CLOUD = 0.022;         // カメラ移動→雲オフセット係数(遠=小)
-const CINE_PARALLAX_SUN = 0.01;            // カメラ移動→太陽(最遠=最小)
-const CINE_PARALLAX_DUST = 0.055;          // カメラ移動→塵(近=大)
+const CINE_PARALLAX_DUST = 0.055;          // カメラ移動→塵(近=大)=「生きた空気」は塵で担保(フレアは動かさない)
 // (v0.25.1868の遠景DoF強化=CINE_FAR_DOF_MULTは撤回。社長指示v0.25.1870で「遠景はハッキリ」に方針転換
 //  =cineでは遠景ボケ(遠景/森1/森2レイヤーのblur+tilt-shift)を外す。空気遠近で奥行きを出す方向へ。)
 const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
@@ -3046,23 +3040,18 @@ export class PixiScene {
       const w = this.screenW, h = this.screenH;
       const sunY = h * 0.18;
       const camX = s.camera.x, camY = s.camera.y;
-      const breath = 1 + Math.sin(now * CINE_SKY_BREATH_SPD) * CINE_SKY_BREATH;
-      const sunX = w * CINE_SUN_X_FRAC; // 光源は右寄り(社長v0.25.1871)。雲(放射原点)も追従。
-      // 雲(中景): 横ドリフト+縦揺れ+呼吸。視差=遠なので小さめ。anchor(0.5,1)なので地平で伸縮。
-      const cloudX = Math.sin(now * CINE_SKY_DRIFT_SPD) * CINE_SKY_CLOUD_DRIFT - camX * CINE_PARALLAX_CLOUD;
-      const cloudY = Math.sin(now * CINE_SKY_DRIFT_SPD * 1.6 + 1.3) * CINE_SKY_CLOUD_BOB - camY * CINE_PARALLAX_CLOUD * 0.5;
-      this.cineClouds.position.set(sunX + cloudX, sunY + h * 0.06 + cloudY);
-      this.cineClouds.width = w * 1.1 * breath;
-      this.cineClouds.height = h * 0.5 * breath;
-      // 太陽/フレア: 動きは少しに(位置ドリフト小・スケール呼吸なし)。代わりに alpha を薄↔濃で揺らして
-      // 「煌めき(瞬き)」を表現(社長v0.25.1871)。2つのsin重ねで自然な瞬き。
+      const sunX = w * CINE_SUN_X_FRAC; // 光源=右寄り(固定)。雲(放射streak)の原点も同じ。
+      // 光フレア(太陽+放射streak)は位置固定=左右にも上下にも動かさない(社長v0.25.1877)。
+      // 代わりに alpha を薄↔濃で揺らして「出たり消えたり=煌めき」だけ表現。雲と太陽で位相をずらす。
+      this.cineClouds.position.set(sunX, sunY + h * 0.06);
+      this.cineClouds.width = w * 1.1;
+      this.cineClouds.height = h * 0.5;
+      const cloudShim = Math.sin(now * CINE_SUN_SHIMMER_SPD) * 0.6 + Math.sin(now * CINE_SUN_SHIMMER_SPD * 1.7 + 1.1) * 0.4;
+      this.cineClouds.alpha = Math.max(0, CINE_CLOUD_ALPHA_BASE * (1 + cloudShim * CINE_SUN_SHIMMER));
       this.cineSun.width = this.cineSun.height = Math.max(w, h) * 0.58;
-      this.cineSun.position.set(
-        sunX + Math.sin(now * CINE_SKY_DRIFT_SPD * 0.7) * CINE_SKY_SUN_DRIFT - camX * CINE_PARALLAX_SUN,
-        sunY - camY * CINE_PARALLAX_SUN * 0.5,
-      );
-      const shimmer = Math.sin(now * CINE_SUN_SHIMMER_SPD) * 0.6 + Math.sin(now * CINE_SUN_SHIMMER_SPD * 1.7 + 1.1) * 0.4;
-      this.cineSun.alpha = Math.max(0, CINE_SUN_ALPHA_BASE * (1 + shimmer * CINE_SUN_SHIMMER));
+      this.cineSun.position.set(sunX, sunY);
+      const sunShim = Math.sin(now * CINE_SUN_SHIMMER_SPD + 0.9) * 0.6 + Math.sin(now * CINE_SUN_SHIMMER_SPD * 1.5 + 2.3) * 0.4;
+      this.cineSun.alpha = Math.max(0, CINE_SUN_ALPHA_BASE * (1 + sunShim * CINE_SUN_SHIMMER));
       // 残照(全画面グラデ): 端が出ないよう位置は動かさず、alphaだけ呼吸させて「生きている」感を出す。
       this.cineWarm.alpha = CINE_WARM_ALPHA * (1 + Math.sin(now * CINE_SKY_BREATH_SPD * 0.5) * CINE_SKY_WARM_BREATH);
       // 塵(近景): idle斜めドリフト+カメラ連動(最大)=最前面の視差。tilePositionは自動wrap。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1877',
+    items: [
+      '開発(?cine=1): 光フレア(太陽/放射光)を左右に動かさず位置固定にし、薄く濃くの煌めき(明滅)をハッキリさせました。',
+    ],
+  },
+  {
     version: '0.25.1876',
     items: [
       '会話を統一: 時間を止めて表示していたイベント会話を廃止し、すべて通常の会話(左上の通信・時間停止なし)に統一しました。',
