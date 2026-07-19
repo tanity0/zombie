@@ -1466,6 +1466,10 @@ export class PixiScene {
 
   constructor(layers: SceneLayers) {
     this.L = layers;
+    // 背景バンドの初期テクスチャ(森1/遠景)もmipmap化(縮小モアレ対策・社長指示v0.25.1869)。
+    // 森2(nearHorizon)は初期EMPTYで、ステージ別の実テクスチャは setNearHorizonTexture 側で適用。
+    this.applyBgMipmap(this.L.horizonForest.texture);
+    this.applyBgMipmap(this.L.farBackdrop.texture);
 
     // Bloom + tilt-shift depth-of-field over the gameplay world wrapper.
     // The fixed ground and horizon seam stay outside these filters so blur never
@@ -2432,6 +2436,7 @@ export class PixiScene {
   private currentFarKey = 'forest';
   setFarBackdropTexture(key: string, t: Texture | null) {
     if (!t) return;
+    this.applyBgMipmap(t); // 遠景バンドも縮小敷き=mipmapでモアレ回避(社長指示v0.25.1869)
     this.farBackdropOverrides[key] = t;
     this.currentFarKey = ''; // 注入後に applyFarBackdrop を再評価させる(遅延注入対応)
   }
@@ -2491,7 +2496,24 @@ export class PixiScene {
   private nearHorizonOverrides: Record<string, Texture | null> = {};
   setNearHorizonTexture(key: string, t: Texture | null) {
     if (!t) return;
+    this.applyBgMipmap(t); // 森2は縮小表示でモアレ(斜め格子)化する→背景バンドだけ linear+mipmap で解消(社長指示v0.25.1869)
     this.nearHorizonOverrides[key] = t;
+  }
+  // 背景バンド(森2/森1/遠景=縮小して敷くTilingSprite)専用: 高周波の縮小で出るモアレ(斜め格子)を
+  // GPUのmipmapで解消する。**キャラ等のスプライトには適用しない**(過去にlinear+mipmapでキャラが滲んで撤回=
+  // v0.25.1763。背景バンドは縮小前提なのでmipmapが正解)。描画のみ・負荷~1/10(mipmap生成は1度きり)。
+  private applyBgMipmap(t: Texture | null) {
+    if (!t) return;
+    try {
+      const src = t.source as unknown as {
+        scaleMode?: string; autoGenerateMipmaps?: boolean; update?: () => void;
+        style?: { scaleMode?: string; update?: () => void };
+      };
+      src.scaleMode = 'linear';
+      src.autoGenerateMipmaps = true;
+      if (src.style) { src.style.scaleMode = 'linear'; src.style.update?.(); }
+      src.update?.();
+    } catch { /* ignore */ }
   }
   // チュートリアルの岩間霧(v0.25.1823で方式変更): 既存の手前霧レイヤーの移設は廃止(移設だと
   // 画面下の手前霧が消える=社長報告)。手前の霧2層はストックのまま一切触らず、岩帯1と岩帯2の間に
@@ -2564,6 +2586,7 @@ export class PixiScene {
   }
   setStage3Horizon(t: Texture | null) {
     if (!t) return;
+    this.applyBgMipmap(t); // 森1(地平帯)差し替えもmipmap化(社長指示v0.25.1869)
     this.stage3HorizonTex = t;
     this.daylightApplied = null;
   }

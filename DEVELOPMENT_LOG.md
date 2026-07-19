@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.1869 — 遠景森2の斜め格子(モアレ)修正=背景バンドだけmipmap化(社長「この素材が悪さ」→A案)【2026-07-19 11:13 JST】
+- 症状: M1の遠景森2(nearHorizon)に斜め格子状の線。最初から出ていた(私の直近変更は全部cine=stage-6ゲート内=無関係)。
+- 診断(確定): 素材`stage1-near-forest.png`(1536×864)の**アルファ輪郭が極細(針葉)=超高周波**。森2は画面で縮小敷き
+  (native864→実機~300px・タイル)+ `nearest`(mipmapなし)描画のため、**高周波の縮小で点サンプリングが間引きに負けて
+  規則的な斜めパターン=モアレ**化。M1だけ目立つのは他ステージの森2(city/lab/戦場)がブロッキー=高周波が少ないから。
+- 対処(社長A案): **背景バンド(森2/森1/遠景)のテクスチャだけ `scaleMode='linear' + autoGenerateMipmaps`**。
+  縮小時にGPUが事前縮小mipを使う=モアレ解消。ヘルパ`applyBgMipmap`を setNearHorizonTexture / setFarBackdropTexture /
+  setStage3Horizon と constructorの初期森1/遠景に適用。**キャラ等スプライトには一切適用しない**(過去にlinear+mipmapで
+  キャラが滲み撤回=v0.25.1763。背景バンドは縮小前提なのでmipmapが正解=住み分け)。
+- 負荷: ~1/10(mipmap生成は各テクスチャ1度きり。縮小サンプルはむしろキャッシュ効率↑)。描画のみ・挙動不変。
+- 検証: typecheck緑。実機ヘッドレスで nearHorizon/horizonForest の source が `scaleMode='linear' / autoGenerateMipmaps=true`
+  に変わったことを実測。バンド描画崩れ無し。**モアレは解像度依存でヘッドレス≠実機のため、最終確認は実機スマホで社長に依頼**。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1868 — cine遠景の被写界深度を強化(社長「参考は遠景のDoFがハッキリ」)【2026-07-19 10:51 JST】
 - 社長観察: 参照の奥行き感は動きだけでなく遠景のDoF/空気遠近が効いている。確認したところ、うちのcineは
   DoF自体はある(tilt-shift blur14・帯0.54=遠/近をぼかす)が、**遠景レイヤーの追加ブラーが弱く(地平の森0.65/
