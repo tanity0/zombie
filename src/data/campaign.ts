@@ -432,6 +432,7 @@ export const STAGES: Stage[] = [
     time: '04:20',
     locationTitle: '指定座標地点',
     storyBossOnly: true, // 統合正本M7: 敵のいない短い導入→確定会話→グレン戦直結(通常湧きなし)
+    nearHorizon: 'forest', // 遠景森2(手前の森シルエット帯)= M1の値をコピー(社長指示v0.25.1905)
     subs: [],
     main: {
       code: 'M7',

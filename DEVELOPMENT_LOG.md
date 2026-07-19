@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.1905 — M7(光源テスト)の遠景森1/2・近景をM1と同じ数値にコピー(社長指示)【2026-07-20 01:21 JST】
+- 指示(社長): 「m7(光源テスト)の遠景1-2 近景はm1の数値をコピーして持ってきて」。M7=stage-7。
+- 実測で判明した差分(M1基準):
+  - 森1(horizonForest): M7 y78.3(m7up=0) vs M1 y38.3(m1up=40)=差40px。
+  - 森2(nearHorizon): **M7は非表示**(stage-7のcampaignに nearHorizon 未指定)vs M1 表示('forest')。
+  - 近景(frontForest): y467.8/h410/alpha0.78=**既に同一**(変更不要)。
+- 対処:
+  - 森1: `M7_HORIZON_FOREST_UP_PX`(?m7up=)既定 0→40(M1と同値)。[pixiScene.ts]
+  - 森2: stage-7 に `nearHorizon: 'forest'` を追加(M1と同じ森2を出す)。[campaign.ts]
+- 検証: ヘッドレスでM1とM7の3レイヤーが完全一致(森1 y38.3/森2 y-52.7・h368.7・表示/近景 y467.8・alpha0.78)。
+  M7スクショで森2(松林シルエット)が出た。typecheck OK。
+- 注: cine(?cine=1 & stage-7)時は従来どおり森1/2のブラーを外す挙動は不変(位置/表示のみM1へ合わせた)。
+- 自己点検: 描画/配置のみ。ゲーム挙動不変(storyBossOnly等は不変)。憲法第4/5条に非抵触。
+- 負荷: 1/10。Files: `src/pixi/pixiScene.ts`, `src/data/campaign.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1904 — M5の森2を上へ10px(森1は0のまま)(社長指示)【2026-07-20 01:14 JST】
 - 指示(社長): 「m5 森1は0で、森2は上に10px」。M5=stage-5。
 - 対処:
