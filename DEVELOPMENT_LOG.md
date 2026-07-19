@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.1876 — 会話を通常会話に統一(時間停止会話を廃止)+M7を本編復帰(護衛NPC無し・ボスあり)【2026-07-19 12:31 JST】
+- 社長指示「時間止める会話はゲーム内から全部排除・既存の通常会話(左上の通信=NpcDialogue)に統一」。作り替えではなく
+  既存システムへの寄せ(M0=チュートリアルが既にこの形)。時間停止VNボックス(startIntroDialogue/introDialogueActive)を退役。
+- 変更:
+  - **導入会話**(useGameLoop): `startIntroDialogue()`→ introDialogueLines を `npcDialogueQueue` へ直接積む(非停止)。
+    導入中の時間停止延長ブロック+ミッション中の introDialogueActive 停止ブロックを撤去。
+  - **撤退セリフ**(gameStore): 同じく `npcDialogueQueue` へ push(時間停止しない)。
+  - **storyBoss introDone**: 会話終了待ちを廃止=`!isGameTimeStopped()`(ヘリ登場明け)でボス出現。会話は並行再生。
+  - **M7=stage-7 を本編復帰**(社長「ボスは残す」): イベント抑止を `?cine=1` の時だけに戻す(cineTestbed)。通常プレイ=
+    導入会話(通常会話)+グレン戦あり。cine=クリーンな映像実験台。
+  - **護衛NPC**: storyBoss ステージ(M7/EX)は護衛4人を出さない(`state.pendingStoryBoss` を escortRoster 条件へ)。
+- 検証: typecheck緑。ヘッドレス実測—S7通常: 護衛0/storyBossMode=true/giantbat=1/introActiveEver=false/npc会話=グレン・ミラ。
+  S1通常: 護衛4/introActiveEver=false(時間停止会話ゼロ)。campaignデータ不変=storyCanonテスト維持。CIで全テスト走行。
+- Files: `src/hooks/useGameLoop.ts`, `src/store/gameStore.ts`, `src/App.tsx`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1875 — アテンション時のDoF焦点をカメラ中心へ追従(社長「フォーカス対象がボケる」)【2026-07-19 12:17 JST】
 - 症状: アテンション演出でカメラが対象へ寄っても、その対象がボケたまま(tilt-shiftのシャープ帯がプレイヤー固定のため)。
 - 原因: `bandY` の焦点=`zpy`(プレイヤー中心)固定。アテンション中はカメラが対象(attention.y)を中央へ寄せるので、

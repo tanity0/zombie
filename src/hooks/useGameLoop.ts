@@ -17,7 +17,6 @@ import {
   playerIntroCamFollow,
   CAMERA_INTRO_LIFT_FRAC,
   INTRO_DIALOGUE_TRIGGER_T,
-  introDialogueTotalMs,
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
   SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG,
@@ -1703,17 +1702,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // セリフ(登場時): ヘリが画面内に入った頃に時間停止して自動表示→流れ終わると再開。
           const introStateNow = useGameStore.getState();
           const rawIntroT = 1 - (introUntil - nowMs) / PLAYER_INTRO_MS;
-          // 会話があるミッションのみ開始(フリーミッション等=空なら会話自体発生しない)。
+          // 会話があるミッションのみ(フリーミッション等=空なら会話自体発生しない)。
+          // 時間停止VNボックス廃止(社長指示v0.25.1876「時間止める会話は全部排除・通常会話に統一」)。
+          // 導入会話もチュートリアルと同方式で、通常会話(左上の通信=NpcDialogue・非停止)のキューへ直接積む。
           if (!introStateNow.introDialogueShown && rawIntroT >= INTRO_DIALOGUE_TRIGGER_T && introStateNow.introDialogueLines.length > 0) {
-            useGameStore.getState().startIntroDialogue();
-          }
-          if (useGameStore.getState().introDialogueActive) {
-            if (nowMs - useGameStore.getState().introDialogueStartedAt >= introDialogueTotalMs(useGameStore.getState().introDialogueLines)) {
-              useGameStore.getState().endIntroDialogue(); // 流れ終わり → 再開
-            } else {
-              // 時間停止: 終了時刻を delta 分だけ後ろへ送り、登場進行 t を固定(ヘリ/キャラ静止)。
-              useGameStore.setState({ introUntil: introUntil + baseDeltaTime * 1000 });
-            }
+            useGameStore.setState(s2 => ({
+              introDialogueShown: true, // 再積み防止
+              npcDialogueQueue: [
+                ...s2.npcDialogueQueue,
+                ...s2.introDialogueLines
+                  .filter(l => l.speaker && !l.speaker.startsWith('__'))
+                  .map(l => ({ name: l.speaker as string, text: l.text })),
+              ],
+            }));
           }
           // カメラがステージを横断して飛行キャラXに追従(<1でキャラが少し左から入る)。
           // 縦はヘリ高度へ寄せる(introOff.y は上=負。被写体を上方に置く)→ 降下に同期して着地面へ戻る。
@@ -1743,19 +1744,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           introWasActiveRef.current = false;
         }
 
-        // ミッション開始以外でも introDialogue が立っている間は、開始時と同じく時間停止(simを進めない)。
-        // 制圧の軍人セリフ(確保/撤退)に流用。カメラ/アテンション(上で更新済み)は実時間で進むので、
-        // 撤退の吹き出しはアテンションのカメラ移動と同時に出る。総時間経過 or SKIP で自動終了。
-        if (useGameStore.getState().introDialogueActive) {
-          const ds = useGameStore.getState();
-          if (nowMs - ds.introDialogueStartedAt >= introDialogueTotalMs(ds.introDialogueLines)) {
-            useGameStore.getState().endIntroDialogue();
-          } else {
-            updateEffects(deltaTime);
-            frameRef.current = requestAnimationFrame(gameLoop);
-            return;
-          }
-        }
+        // (時間停止VNボックス廃止・社長指示v0.25.1876: 会話は全て通常会話=非停止に統一したため、
+        //  ここで sim を止めていた introDialogueActive の分岐は撤去。撤退セリフ等も通常会話キューへ。)
 
         // Update game time. realGameTime はポーズ中は止まるが slow-mo(timeScale)の影響を
         // 受けない「実効」時計(baseDeltaTime で進める)。スラッシャー追撃リングを slow-mo 中でも
@@ -1925,10 +1915,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // giantbat(城ボス)を流用(新規アート禁止=指示書1)。勝利は帰還サークルを経由せず直接 gameWon。
         if (storyBoss && !danceTest) {
           const sbs = useGameStore.getState();
-          // 導入完了 = 会話あり(M7)なら「会話を出し終えて閉じた」/ 会話なし(EX)なら登場演出が明けた瞬間。
-          const introDone = sbs.introDialogueLines.length > 0
-            ? (sbs.introDialogueShown && !sbs.introDialogueActive)
-            : !isGameTimeStopped();
+          // 導入完了 = 登場演出(ヘリ=時間停止)が明けた瞬間(社長指示v0.25.1876で会話は非停止化したため、
+          // 会話の終了待ちはしない。会話は通常会話キューで並行再生され、ボスは登場後すぐ出現=M7=導入→会話+グレン戦)。
+          const introDone = !isGameTimeStopped();
           if (!storyBossSpawnedRef.current && introDone) {
             storyBossSpawnedRef.current = true;
             const scx = player.x + player.width / 2;

@@ -9235,7 +9235,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(f.x, f.y, 14, BASE_CAPTURE_RADIUS, 'rgba(239,68,68,0.9)', 4, 560);
       get().triggerAttention(f.x, f.y); // カメラがそこへ→撤退の吹き出しはこのアテンションと同時に出す
       const sol = soldierByIndex(f.soldierIndex); // 撤退時(拠点喪失)の軍人セリフ。死亡ではなく撤退。
-      if (sol) { get().setIntroDialogueLines([{ speaker: sol.name, text: sol.retreat }]); get().startIntroDialogue(); }
+      // 時間停止VNボックス廃止(社長指示v0.25.1876): 撤退セリフも通常会話(左上の通信=非停止)のキューへ。
+      if (sol) set(s2 => ({ npcDialogueQueue: [...s2.npcDialogueQueue, { name: sol.name, text: sol.retreat }] }));
       set({ eventBannerText: '拠点陥落', eventBannerUntil: now + 2200 });
     }
     // 全拠点制圧 → 達成。未制圧→全制圧に変わった瞬間だけ発火(毎フレ再発火しない/陥落で再武装)。
@@ -9740,7 +9741,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 護衛NPCの名簿は1度だけ作り、出撃セリフ(sortie)も同じロスターから選ぶ(フェイザー等のランダム名簿に追従)。
       // チュートリアル: 通常の護衛4人は出さず、随行NPC(軍人+衛生兵・追従)を出す(社長指示v0.25.1823)。
       // 出撃セリフ(sortieEsc)はチュートリアルでは使わない(セリフは全てイベントで特別に組む)。
-      const escortRoster = (indoor || stageTheme === 'lab') ? []
+      // storyBoss ステージ(M7=グレン戦/EX)は護衛NPCを出さない(社長指示v0.25.1876「M7はNPCいない予定」。
+      // 拠点占拠の無いボス直行ステージなので護衛4人は元々そぐわない)。
+      const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss) ? []
         : farBackdrop === 'tutorial' ? makeTutorialCompanions(spawnTL.x, spawnTL.y)
         : makeEscorts(spawnTL.x, spawnTL.y);
       const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
