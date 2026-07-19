@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1875 — アテンション時のDoF焦点をカメラ中心へ追従(社長「フォーカス対象がボケる」)【2026-07-19 12:17 JST】
+- 症状: アテンション演出でカメラが対象へ寄っても、その対象がボケたまま(tilt-shiftのシャープ帯がプレイヤー固定のため)。
+- 原因: `bandY` の焦点=`zpy`(プレイヤー中心)固定。アテンション中はカメラが対象(attention.y)を中央へ寄せるので、
+  帯がプレイヤー(=画面外へ寄る)に残り、中央の対象がボケ帯に入る。
+- 対処: シャープ帯の焦点を「カメラが見ている中心」に追従(社長v0.25.1875「カメラがある中心は常にボヤけない」)。
+  `bandFocalY = attention ? attention.y : (zoomTarget中 ? zoomTargetY : zpy)`。アテンション/KILL寄りの軸に帯を合わせる。
+- 検証: ヘッドレスで attention を対象に張ると bandY が対象の画面Y(=attn)へ一致し、playerScrY とは別値になることを実測
+  (BEFORE band=player / AFTER band=attention target)。通常時はプレイヤー追従のまま(不変)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1874 — stage-7イベント抑止を無条件化+森2の境界霧(社長「イベント止まってない」「境界を曖昧に」)【2026-07-19 12:06 JST】
 - **①stage-7イベント抑止=無条件化(v1873の修正)**: v1873は `?cine=1` ゲートだったが、社長は**メニューから普通に入っても**
   イベントが止まる想定だった(実機はcine無しでグレン導入会話+ヘリが出た=v1873の想定ズレ)。→ `stage7EventOff = stage==='stage-7'`

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1875',
+    items: [
+      '修正: アテンション(注目演出)でカメラが対象へ寄った時、その対象がボケていた問題を修正。フォーカスの中心は常にくっきり出るようにしました。',
+    ],
+  },
+  {
     version: '0.25.1874',
     items: [
       '開発: ステージ7を映像実験用に、ストーリーイベント(導入会話+ボス戦)を一時停止(cine有無に関わらず)。',

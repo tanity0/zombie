@@ -2943,7 +2943,13 @@ export class PixiScene {
       // グラデ幅/ボケ強さも同換算=どの端末でも世界に対して同じDoF(チューニング値は論理px基準で不変)。
       const tz = this.L.worldGroup.scale.x || 1;
       const vpScale = this.L.stage.scale.x || 1;
-      const bandY = ((this.L.world.position.y + zpy) * tz + this.L.worldGroup.position.y) * vpScale;
+      // シャープ帯の焦点=カメラが見ている中心(社長指示v0.25.1875「カメラがある中心は常にボヤけない」)。
+      // 通常はプレイヤー(zpy)。アテンション中はカメラがフォーカス対象(attention.y)を中央に寄せるので、
+      // 帯もそこへ追従させる(=フォーカスした対象がボケない)。KILL寄り(zoomTarget)も同様に軸へ合わせる。
+      const bandFocalY = s.attention ? s.attention.y
+        : (s.zoomHasTarget && zoomDecay > 0) ? s.zoomTargetY
+        : zpy;
+      const bandY = ((this.L.world.position.y + bandFocalY) * tz + this.L.worldGroup.position.y) * vpScale;
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: this.screenW * vpScale, y: bandY };
       this.tiltShift.gradientBlur = TILT_SHIFT_GRADIENT * vpScale;
