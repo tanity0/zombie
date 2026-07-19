@@ -2593,18 +2593,27 @@ export class PixiScene {
   // zoom=1時の意図画面座標 Ly なら、layerPos = pivot + (Ly−pivot)/cz・layerScale = 1/cz)。
   // contextZoom≈1(引いてない=登場/待機/通常)は完全に素通し=従来挙動を一切変えない(=前回崩れた登場カメラを回避)。
   private pinFarLayerToScreen(layer: Container, mask?: Sprite | null) {
+    // 森レイヤーは TilingSprite。width/height は quad サイズで scale 非依存(=元の意図幅)。
+    const quadW = (layer as { width: number }).width;
+    const quadH = (layer as { height: number }).height;
     const cz = this.contextZoom || 1;
-    if (Math.abs(cz - 1) < 0.001) { // 引いてない時は素通し(idle/登場/punchズームはそのまま効く)
+    const noZoom = Math.abs(cz - 1) < 0.001; // 引いてない時(idle/登場/punch)は素通し
+    const inv = noZoom ? 1 : 1 / cz;
+    if (noZoom) {
       layer.scale.set(1);
-      if (mask) { mask.scale.set(1); mask.position.copyFrom(layer.position); }
-      return;
+    } else {
+      const pivotX = this.screenW / 2, pivotY = this.screenH / 2; // 文脈ズームのピボット=画面中央
+      const lx = layer.position.x, ly = layer.position.y; // 意図画面座標(zoom=1基準)
+      layer.scale.set(inv);
+      layer.position.set(pivotX + (lx - pivotX) * inv, pivotY + (ly - pivotY) * inv);
     }
-    const inv = 1 / cz;
-    const pivotX = this.screenW / 2, pivotY = this.screenH / 2; // 文脈ズームのピボット=画面中央
-    const lx = layer.position.x, ly = layer.position.y; // 意図画面座標(zoom=1基準)
-    layer.scale.set(inv);
-    layer.position.set(pivotX + (lx - pivotX) * inv, pivotY + (ly - pivotY) * inv);
-    if (mask) { mask.scale.set(inv); mask.position.copyFrom(layer.position); }
+    if (mask) {
+      // マスクは 4px 幅のグラデ Sprite。.scale を直書きすると横伸ばし(width/4)が壊れて森1が4px幅に
+      // 潰れる=消える(v0.25.1880/1881 の回帰)。森の画面上の矩形(quad×inv)に width/height で合わせる。
+      mask.width = quadW * inv;
+      mask.height = quadH * inv;
+      mask.position.copyFrom(layer.position);
+    }
   }
   setStage3Ground(t: Texture | null) {
     if (!t) return;

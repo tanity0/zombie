@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.1882 — 遠景森1が全ステージで消えていた回帰を修正(フェードマスクの横幅破壊)(社長「消えてるのもある」)【2026-07-19 16:20 JST】
+- 症状: 社長「スクショで全ステージみてきて まだ治りきってない。消えてるのもある」。全スクショ確認で
+  **遠景森1(horizonForest=地平の森)が全ステージで消えていた**(farBackdropパノラマと森2は出るので気づきにくい)。
+- 原因(実測確定): 森1のフェードマスクは **4px幅のグラデSprite** で、正しい横スケール=`width/4`(≈101倍)に
+  伸ばして全幅を覆う設計。ところが v1880/1881 で `pinFarLayerToScreen` が **`mask.scale.set(inv/1)` を毎フレーム
+  直書き**し、この横伸ばしを (1,1)/(inv,inv) に潰していた。→ マスクが実質4px幅になり森1が4px幅にクリップ=消滅。
+  ヘッドレス実測: 修正前 mask.sx=1・森1の描画bounds幅=**4.4px**。修正後 mask.sx=101.25・bounds幅=**860px**。
+- 対処: pin のマスク処理を `scale` 直書きから **`width`/`height` 指定**に変更(`mask.width = quadW*inv`・
+  `mask.height = quadH*inv`)。Spriteの width/height セッターは横伸ばし(width/tex幅)を保つので森1が全幅で出る。
+  森レイヤーの quad サイズ(TilingSpriteの width/height=scale非依存)に inv を掛けて森の画面矩形へ正確に一致させる。
+  ピン本体(森1/森2の位置・scale=1/cz)は v1881 のまま不変=距離感も維持。
+- 検証: ヘッドレス全7ステージ idle(cz=1・pin素通し)+ 強制引き(?zoomlock=1)で森1が全幅表示・森2と境界に整合。
+  数値 mask.sx 4→101.25 / 森1bounds 4.4→860 で確認。stage-4 は森2なし(雪原)=仕様どおり。
+- 負荷: 1/10(毎フレーム width/height 差し替えのみ・従来と同等)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1881 — v1880の遠景森ズレ対策の回帰修正(文脈ズームだけ相殺)+ステージ1境界霧を100px上へ(社長指示)【2026-07-19 15:07 JST】
 - 症状(回帰): v1880で `pinFarLayerToScreen` が worldGroup 全体のズーム(`scale=1/wz`)を打ち消したため、
   引き(文脈ズーム)以外の **idleズーム/登場(ヘリ降下)/KILLパンチ** まで相殺され、(1)通常プレイで森1/森2が
