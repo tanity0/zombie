@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1891 — 北部の遠景森の高さを確定(社長指示・100px上=northup 50)【2026-07-19 21:54 JST】
+- 経緯: v1890(down-50)から20/40/60/80/100/120px上の6段階スクショで社長が「100px」を選択。
+- 対処: `NORTH_FAR_FOREST_UP_PX` を -50→50(上=Y減算なので正=上げ)。北部(snow)のみ。?northup= で可変。
+- 検証: 既定(パラメータ無し)ヘッドレスで森1 posY top21.3・下端337.6=up100スクショと一致。
+- 負荷: 1/10(定数値のみ)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1890 — 北部の遠景森を50px下げ(社長指示)【2026-07-19 20:55 JST】
 - 指示(社長): 「森を50px下げて」(直近の北部調整の続き)。
 - 対処: `NORTH_FAR_FOREST_UP_PX` を 0→-50(上=Y減算なので負=下げ)。北部(snow)のみ。?northup= で可変。

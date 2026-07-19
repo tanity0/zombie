@@ -301,7 +301,7 @@ const LAB_PERSP = tsBool('labpersp', false);
 const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 // 北部(stage-4=snow)の遠景森1(氷壁)の拡大/上移動/高さトリム。?northscale= /?northup= /?northtrim= で現地調整可。
 const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
-const NORTH_FAR_FOREST_UP_PX = tsNum('northup', -50);           // 位置を上へ(px。上=Y減算)。v1889で0、v1890で-50=50px下げ(社長)
+const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
 const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻す(px)
 // 遠景森1の下端フェード幅(px)。素材下側(雪の地面等)を地面へ滑らかに溶かす。10だと事実上ハードカット。?horizonfade= で調整。
 const HORIZON_FOREST_BOTTOM_FADE_PX = tsNum('horizonfade', 120);
