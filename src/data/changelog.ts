@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1888',
+    items: [
+      '修正: 北部ステージの遠景森(氷壁素材)の下側=雪の地面部分がフェードせず切れていた不具合を解消(フェードマスクを森の高さに追従させて焼き直し)。',
+      '調整: 北部の遠景森の高さを100px戻しました。',
+    ],
+  },
+  {
     version: '0.25.1887',
     items: [
       '調整: 北部ステージの遠景森の位置をさらに100px上へ(合計150px上)。',

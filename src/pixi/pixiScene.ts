@@ -178,6 +178,7 @@ const FAR_FOREST_SIZE_SCALE = 1.5;
 // 北部(stage-4=唯一の farBackdrop 'snow')だけ遠景森1をさらに拡大＆上へ(社長指示v0.25.1886)。
 const NORTH_FAR_FOREST_EXTRA_SCALE = 1.5; // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
 const NORTH_FAR_FOREST_UP_PX = 150;       // 位置を上へ(px。上=Y減算)。社長指示v0.25.1886=50→v0.25.1887=さらに+100=150
+const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = 100; // 高さを戻す(px。社長指示v0.25.1888「高さを100px戻す」)
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const LAB_HORIZON_FOREST_EXTRA_DOWN = 20; // ステージ2だけ遠景森1を下げる量(px)。他ステージは0。
@@ -2006,9 +2007,10 @@ export class PixiScene {
       const farH = this.farBackdropHeight();
       return farH * (1 - TUTORIAL_HORIZON_WATER_BOTTOM_FRAC) + TUTORIAL_HORIZON_HEAD_PX - TUTORIAL_HORIZON_HEIGHT_TRIM_PX;
     }
-    // 北部(snow)は遠景森が雪原に溶けて小さく見えるため、さらに拡大(社長指示v0.25.1886)。
+    // 北部(snow)は遠景森が雪原に溶けて小さく見えるため、さらに拡大(社長指示v0.25.1886)。高さは-100px戻す(v0.25.1888)。
     const northExtra = this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_EXTRA_SCALE : 1;
-    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base * FAR_FOREST_SIZE_SCALE * northExtra;
+    const northTrim = this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_HEIGHT_TRIM_PX : 0;
+    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base * FAR_FOREST_SIZE_SCALE * northExtra - northTrim;
   }
 
   private frontForestHeight() {
@@ -2662,6 +2664,9 @@ export class PixiScene {
     // 横伸び防止: y 基準の均一スケール(横は自然比率でタイル)。resize と同方式。
     this.L.horizonForest.tileScale.set(horizonH / tex.height);
     this.L.horizonForest.position.set(-marginX, this.horizonForestY(this.farBackdropHeight(), horizonH));
+    // 高さがステージ別に変わる(北部=拡大等)ため、フェードマスクをこの高さで焼き直す。
+    // resize 時の高さのままだとマスクが森より短く、素材下側(地面)がフェードせず切れる(社長指示v0.25.1888「地面が斬られてる」)。
+    this.updateHorizonForestFadeMask(this.screenW, horizonH);
   }
   setLabGroundTexture(t: Texture | null) {
     this.labGroundTex = t;
