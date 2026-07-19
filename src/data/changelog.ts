@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1887',
+    items: [
+      '調整: 北部ステージの遠景森の位置をさらに100px上へ(合計150px上)。',
+    ],
+  },
+  {
     version: '0.25.1886',
     items: [
       '調整: 北部ステージの遠景森をさらに1.5倍(全体1.5倍に上乗せ)にし、位置を50px上へ。雪原に溶けて小さく見えていたのを大きくしました。',

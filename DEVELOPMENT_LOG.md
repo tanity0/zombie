@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1887 — 北部(stage-4)の遠景森をさらに100px上へ(合計150px)(社長指示)【2026-07-19 18:28 JST】
+- 指示(社長): 「北部の遠景森をさらに100px上へ」。
+- 対処: `NORTH_FAR_FOREST_UP_PX` を 50→150(=v1886の50にさらに+100)。北部(farBackdrop 'snow')のみ。
+- 検証: ヘッドレス実測 stage-4 森1 posY 3.3→-96.7(約100px上・合計150px上)。高さは416.3で不変。
+- 負荷: 1/10(定数値のみ)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1886 — 北部(stage-4)の遠景森だけさらに1.5倍＆50px上へ(社長指示)【2026-07-19 17:55 JST】
 - 指示(社長): 「北部の遠景森の大きさを1.5倍に、さらに位置を50px上に」。
 - 解釈: 森1は v1884 で全ステージ共通1.5倍済み。今回は**北部(stage-4=唯一の farBackdrop 'snow')だけ上乗せ**と解釈
