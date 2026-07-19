@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.1866 — cineの空を生かす(A+B・社長「abして」/参照シネマグラフの生きた空気)【2026-07-19 10:25 JST】
+- 参照(cyborg.digitalart「Infinite peace」・黄昏草原+天の川のシネマグラフ)の"動きの感じ"=ゆっくりした
+  カメラドリフト+奥行き視差+生きた空、を トップダウンに移せる形で cine の空へ実装(A+B)。
+- **A(idle living motion)**: 既存ベイクSprite(cineClouds/cineSun/cineWarm/cineDust)を毎フレーム
+  微速ドリフト+呼吸スケール(sin)。雲=横ドリフト+縦揺れ+呼吸(anchor下端=地平で伸縮)、太陽=僅かな漂い+弱呼吸、
+  残照=端が出ないようalphaだけ呼吸(±5%)、塵=斜めドリフト(従来)。
+- **B(parallax)**: 層ごとに動きの大きさを変え(太陽=最遠=最小 < 雲=中 < 塵=近=最大)、さらに **カメラ移動(s.camera)へ
+  僅かに連動**=プレイヤーが歩くと空が奥行きでずれる。係数は微小(雲0.012/太陽0.006/塵0.03)。
+- 負荷: **1/10**(既存Spriteのposition/width/alpha/tilePositionを差し替えるだけ・新規描画/強glow/Text/Graphicsなし)。
+- 挙動不変(CLAUDE.md仕様変更ルール順守): 描画のみ。`this.cineEnabled`(cine=1 && stage-6)ゲート内=通常プレイ不変。
+- 数値(ドリフト振幅/速度/呼吸/視差係数)は叩き台=実機で強弱調整前提。
+- 検証: typecheck緑。ヘッドレスで cineClouds/cineSun/cineWarm/cineDust の transform が5秒間で変化(ドリフト+呼吸)する
+  ことを実測(x±/w±/alpha±)。シーンの描画崩れ無し。視差(B)はカメラ移動時に効く(idle=Aのみ確認)。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+- 未対応(社長の"取り入れどころ"提案の残り・別途): C=cineの待機カメラ呼吸、D=草/前景の風揺れ、E=タイトル/選択画面を動く絵に。
+
 ## v0.25.1865 — cine前景コントラスト(キャラ/オブジェクトの階調立て・社長「コントラストが必要なのでは」)【2026-07-19 02:24 JST】
 - 社長指摘: 画面全体の乗算grade+暖色overlayで地面と一緒にキャラ/オブジェクトまで眠く(コントラストが潰れて)なる。
   → 「大気(地面)は柔らかいまま前景だけ階調を立てる」定石で対応。

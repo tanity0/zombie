@@ -92,6 +92,18 @@ const CINE_SHADOW_LENGTH = 52;             // 既定 32 → 夕方の長い影
 // 外なので効かない=大気は柔らかいまま前景だけコントラストが乗る。既存フィルタと同じRTへ1パス相乗り。
 const CINE_ACTOR_CONTRAST = 0.2;           // 明暗のメリハリ(0=無変化)
 const CINE_ACTOR_SATURATE = 0.12;          // grade で抜けた彩度を少し戻す
+// 空を生かす(社長指示v0.25.1865・A+B): 参照シネマグラフの「生きた空気」。既存ベイクSpriteの
+// transform だけ=負荷1/10。A=idleドリフト+呼吸スケール、B=層ごとの視差(遠い層ほど遅い+カメラ移動に僅かに連動)。
+const CINE_SKY_DRIFT_SPD = 0.00006;        // idle横ドリフトの角速度(ゆっくり)
+const CINE_SKY_CLOUD_DRIFT = 12;           // 雲の横ドリフト振幅(px)
+const CINE_SKY_CLOUD_BOB = 5;              // 雲の縦揺れ振幅(px)
+const CINE_SKY_SUN_DRIFT = 4;              // 太陽のごく僅かな漂い(px)
+const CINE_SKY_BREATH = 0.02;              // 呼吸スケール振幅(±2%)
+const CINE_SKY_BREATH_SPD = 0.00022;       // 呼吸の角速度
+const CINE_SKY_WARM_BREATH = 0.05;         // 残照alphaの呼吸(±5%)
+const CINE_PARALLAX_CLOUD = 0.012;         // カメラ移動→雲オフセット係数(遠=小)
+const CINE_PARALLAX_SUN = 0.006;           // カメラ移動→太陽(最遠=最小)
+const CINE_PARALLAX_DUST = 0.03;           // カメラ移動→塵(近=大)
 const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
 const DEEP_ZONE_GRADE_SAT = (() => {
   const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
@@ -2946,9 +2958,35 @@ export class PixiScene {
       f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;    // 右へ流れる+横の揺らめき
       f.sp.tilePosition.y = 0;
     }
-    // cine: 大気の塵をゆっくり斜めにドリフト(per-frameはtilePositionのみ=軽い)。
+    // cine: 空を生かす(A+B・社長指示v0.25.1865)。既存ベイクSpriteのtransformだけ=軽い。
+    //  A=idleドリフト+呼吸スケール(sin)、B=層ごとに違う速度+カメラ移動へ僅かに連動=奥行き視差。
+    //  遠い層ほど動きを小さく: 太陽(最遠)<雲(中)<塵(近)。
     if (this.cineEnabled) {
-      this.cineDust.tilePosition.set((now * 0.006) % 256, (now * 0.004) % 256);
+      const w = this.screenW, h = this.screenH;
+      const sunY = h * 0.18;
+      const camX = s.camera.x, camY = s.camera.y;
+      const breath = 1 + Math.sin(now * CINE_SKY_BREATH_SPD) * CINE_SKY_BREATH;
+      // 雲(中景): 横ドリフト+縦揺れ+呼吸。視差=遠なので小さめ。anchor(0.5,1)なので地平で伸縮。
+      const cloudX = Math.sin(now * CINE_SKY_DRIFT_SPD) * CINE_SKY_CLOUD_DRIFT - camX * CINE_PARALLAX_CLOUD;
+      const cloudY = Math.sin(now * CINE_SKY_DRIFT_SPD * 1.6 + 1.3) * CINE_SKY_CLOUD_BOB - camY * CINE_PARALLAX_CLOUD * 0.5;
+      this.cineClouds.position.set(w * 0.5 + cloudX, sunY + h * 0.06 + cloudY);
+      this.cineClouds.width = w * 1.1 * breath;
+      this.cineClouds.height = h * 0.5 * breath;
+      // 太陽(最遠): ごく僅かな漂い+弱い呼吸。視差最小。
+      const sunBreath = 1 + Math.sin(now * CINE_SKY_BREATH_SPD * 0.8 + 2.1) * CINE_SKY_BREATH * 0.6;
+      const sunSize = Math.max(w, h) * 0.58 * sunBreath;
+      this.cineSun.width = this.cineSun.height = sunSize;
+      this.cineSun.position.set(
+        w * 0.5 + Math.sin(now * CINE_SKY_DRIFT_SPD * 0.7) * CINE_SKY_SUN_DRIFT - camX * CINE_PARALLAX_SUN,
+        sunY - camY * CINE_PARALLAX_SUN * 0.5,
+      );
+      // 残照(全画面グラデ): 端が出ないよう位置は動かさず、alphaだけ呼吸させて「生きている」感を出す。
+      this.cineWarm.alpha = CINE_WARM_ALPHA * (1 + Math.sin(now * CINE_SKY_BREATH_SPD * 0.5) * CINE_SKY_WARM_BREATH);
+      // 塵(近景): idle斜めドリフト+カメラ連動(最大)=最前面の視差。tilePositionは自動wrap。
+      this.cineDust.tilePosition.set(
+        (now * 0.006 - camX * CINE_PARALLAX_DUST) % 256,
+        (now * 0.004 - camY * CINE_PARALLAX_DUST) % 256,
+      );
     }
     // 研究所スキンは床/素材を見せるため、クール調整を弱める(森はそのまま)。
     // cine時は寒色gradeをCINE値で維持(labThemeFog/daylightの上書きに勝つ)。
