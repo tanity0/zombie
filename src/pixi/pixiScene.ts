@@ -175,14 +175,11 @@ const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
 // 遠景森1(地平の森)のサイズ倍率(社長指示v0.25.1884「1.5倍」)。通常ステージのみ(stage5/tutorialは実寸固定)。
 const FAR_FOREST_SIZE_SCALE = 1.5;
-// 北部(stage-4=唯一の farBackdrop 'snow')だけ遠景森1をさらに拡大＆上へ(社長指示v0.25.1886)。
-const NORTH_FAR_FOREST_EXTRA_SCALE = 1.5; // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
-const NORTH_FAR_FOREST_UP_PX = 150;       // 位置を上へ(px。上=Y減算)。社長指示v0.25.1886=50→v0.25.1887=さらに+100=150
-const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = 100; // 高さを戻す(px。社長指示v0.25.1888「高さを100px戻す」)
+// 北部(stage-4=唯一の farBackdrop 'snow')の遠景森1の拡大/位置は tsNum 定数で下方に定義(?north* で現地調整可)。
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const LAB_HORIZON_FOREST_EXTRA_DOWN = 20; // ステージ2だけ遠景森1を下げる量(px)。他ステージは0。
-const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
+// 遠景森1の下端フェード幅は tsNum 定数(?horizonfade=)で下方に定義。10pxだと事実上ハードカット(社長「パッツリ切れてる」)。
 // 遠景手前森(ステージ3): 地平の森の「手前」に重なる近めの帯。closer=大きく/下/速いパララックス/弱ブラー。
 // 遠景森2の高さ(screenH比)。全ステージ共通の既定=0.42(原典)。
 const NEAR_HORIZON_HEIGHT_RATIO = 0.42;
@@ -302,6 +299,12 @@ const LAB_NEAR_HORIZON_TINT = (() => {
 const LAB_PERSP = tsBool('labpersp', false);
 // 研究所スキンの最前面オーバーレイ(天井から吊られたケーブル帯)。上寄せ・半透明。?ceil=0 で無効化可。
 const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
+// 北部(stage-4=snow)の遠景森1(氷壁)の拡大/上移動/高さトリム。?northscale= /?northup= /?northtrim= で現地調整可。
+const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
+const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 0);             // 位置を上へ(px。上=Y減算)。v1887で150にしたが上げすぎ(社長)→0へ戻す
+const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻す(px)
+// 遠景森1の下端フェード幅(px)。素材下側(雪の地面等)を地面へ滑らかに溶かす。10だと事実上ハードカット。?horizonfade= で調整。
+const HORIZON_FOREST_BOTTOM_FADE_PX = tsNum('horizonfade', 120);
 // 木/壁/建物/プロップの「裏に回ったら透ける」: プレイヤーを覆う(手前=footY大で重なる)障害物だけ
 // alpha をこの値へ滑らかに落とす。1=無効(常に不透明)。?seethru= で生調整。?seethrutau= はフェード時定数(秒)。
 const OBSTACLE_SEE_THROUGH_ALPHA = tsNum('seethru', 0.35);
