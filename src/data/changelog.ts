@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1890',
+    items: [
+      '調整: 北部ステージの遠景森を50px下げました。',
+    ],
+  },
+  {
     version: '0.25.1889',
     items: [
       '修正: 遠景森の下端が地面へフェードせず直線で「パッツリ切れて」いた問題を解消(フェード幅を10px→120pxに拡大)。全ステージの遠景森が地面へ滑らかに溶けます。',
