@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1900',
+    items: [
+      '調整: M2(研究所)の遠景森を100px上へ移動しました。',
+    ],
+  },
+  {
     version: '0.25.1899',
     items: [
       '調整: M1の遠景森の高さを確定(40px上)。',

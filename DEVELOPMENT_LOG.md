@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1900 — M2(lab)の遠景森1を100px上へ(社長指示)【2026-07-20 00:30 JST】
+- 指示(社長): 「m2 の遠景森1を100px上へ」。M2=stage-2(theme 'lab')。
+- 対処: `M2_HORIZON_FOREST_UP_PX`(?m2up=・既定100)を追加し、isLabStage の時だけ horizonForestY で Y減算。
+  既存の `LAB_HORIZON_FOREST_EXTRA_DOWN`(+20下)に上乗せ(theme 'lab' は stage-2 のみ=isLabStageで一意判別)。他ステージ不変。
+- 検証: ヘッドレス res3。M2 森1 posY 98.3→-1.7(=ちょうど100px上)。lab画面の機材シルエット帯(森2)健在・崩れなし。typecheck OK。
+- 負荷: 1/10(定数値のみ)。Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1899 — M1の遠景森1の上移動を40pxで確定(社長指示)【2026-07-20 00:27 JST】
 - 指示(社長): 「m1遠景森1は40pxで確定」。
 - 対処: `M1_HORIZON_FOREST_UP_PX` を 30→40。M1(stage-1)のみ。?m1up= で可変。
