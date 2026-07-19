@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1894 — 北部の遠景森1の横パララックスを森2と同等に(社長指示)【2026-07-19 22:45 JST】
+- 指示(社長): 「この森(北部の氷壁=森1)の横の速さを、森2と同等にして」。
+- 事実確認: 森2(nearHorizon)は北部(snow)には無い(setNearHorizonTextureは city/forest/lab/stage5/tutorial のみ)。
+  =「森2と同等」は森2の速度値 `NEAR_HORIZON_PARALLAX_X`(0.5)を指す。森1は従来 0.16(遅い=遠い)。
+- 対処(北部専用): `HORIZON_FOREST_SNOW_PARALLAX_X = NEAR_HORIZON_PARALLAX_X`(既定0.5)を追加し、
+  currentFarKey==='snow' のときだけ森1の tilePosition.x にこれを使う。他ステージの森1は従来どおり
+  `HORIZON_FOREST_PARALLAX_X`=0.16(森2と共存=奥行き維持のため触らない)。生調整: `?snowpara=`。
+- 検証: typecheck OK。係数置換のみ(tilePosition.x=-camera.x×係数)。速度は静止スクショに出ないため実機/移動時確認。
+- 自己点検: 描画のみ(横スクロール係数)。ゲーム挙動不変。憲法第4/5条に非抵触。
+- 負荷: 1/10(既存の毎フレーム tilePosition.set の係数を変えるだけ・新コスト無し)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1893 — 北部の遠景森フェード方向の修正(赤線より少し下まで不透明→地面へフェード)【2026-07-19 22:38 JST】
 - 社長訂正: v1892は逆だった。「赤いラインより少し下までにフェードイン、そこから上は透明度0(=不透明)」=
   氷壁+足元(赤線=約0.80)より**少し下まで完全不透明**にし、**そこから下端へ向かってフェード**(下ほど透明)。

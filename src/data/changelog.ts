@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1894',
+    items: [
+      '調整: 北部ステージの遠景森の横スクロール速度を森2と同等に(速く)しました。',
+    ],
+  },
+  {
     version: '0.25.1893',
     items: [
       '調整: 北部ステージの遠景森を氷壁の足元より少し下まで不透明にし、そこから地面へフェード(前景の半透明"幽霊"を解消)。',

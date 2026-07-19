@@ -309,6 +309,9 @@ const HORIZON_FOREST_BOTTOM_FADE_PX = tsNum('horizonfade', 120);
 // 少し下(≈0.86)まで完全不透明にし、そこから下端へ向かってフェード(下ほど透明)=素材の雪原前景の下端だけ地面へ溶かす。
 // これより上は透明度0(=不透明)。赤線の上で氷壁を薄めない(社長指示・赤線注釈v0.25.1893)。他ステージは従来どおり。?snowcut= で調整。
 const HORIZON_FOREST_SNOW_OPAQUE_UNTIL_FRAC = tsNum('snowcut', 0.86);
+// 【北部(snow)専用】遠景森1(氷壁)の横パララックスを森2(nearHorizon)と同等にする(社長指示v0.25.1894)。
+// 北部には森2が無い(=氷壁だけ)ため、森2の速度値と揃える。他ステージの森1は従来どおり HORIZON_FOREST_PARALLAX_X。?snowpara= で調整。
+const HORIZON_FOREST_SNOW_PARALLAX_X = tsNum('snowpara', NEAR_HORIZON_PARALLAX_X);
 // 木/壁/建物/プロップの「裏に回ったら透ける」: プレイヤーを覆う(手前=footY大で重なる)障害物だけ
 // alpha をこの値へ滑らかに落とす。1=無効(常に不透明)。?seethru= で生調整。?seethrutau= はフェード時定数(秒)。
 const OBSTACLE_SEE_THROUGH_ALPHA = tsNum('seethru', 0.35);
@@ -3158,8 +3161,10 @@ export class PixiScene {
     // 以前は x=0 固定でオーバースキャンが右だけに寄り、引きで左側が切れていた(社長指示v0.25.1884)。
     const horizonMarginX = (this.screenW * ZOOM_OVERSCAN - this.screenW) / 2;
     this.L.horizonForest.position.set(-horizonMarginX, this.horizonForestY(farH, horizonH));
+    // 北部(snow)は森1の横速度を森2と同等に(社長指示v0.25.1894)。他ステージは従来どおり。
+    const horizonParaX = this.currentFarKey === 'snow' ? HORIZON_FOREST_SNOW_PARALLAX_X : HORIZON_FOREST_PARALLAX_X;
     this.L.horizonForest.tilePosition.set(
-      -s.camera.x * HORIZON_FOREST_PARALLAX_X,
+      -s.camera.x * horizonParaX,
       0
     );
     this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
