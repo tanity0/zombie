@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.1907 — M7の遠景を星雲(宇宙)に差し替え(社長提供)【2026-07-20 02:14 JST】
+- 指示(社長・画像提供): 「m7遠景差し替え」。星雲の背景画像。
+- 素材: アップロードPNG(1672×941・2.9MB)を PIL で JPG化 → `public/backgrounds/stage7-far.jpg`(503KB・quality86)。
+- 配線:
+  - `SORTIE_STAGE_TEXTURE_PATHS` 末尾に `backgrounds/stage7-far.jpg` を追加、分割代入に `s7Far` を同順追加(PixiStage.tsx)。
+  - `scene.setFarBackdropTexture('stage7', s7Far)`。
+  - campaign stage-7 に `farBackdrop: 'stage7'` を追加(遠景キーを新設)。
+- 影響範囲: 遠景パノラマのみ差し替え。森1(applyHorizonOverride)・森2(nearHorizon 'forest')・地面・近景は全て'forest'既定=不変
+  (farKey 'stage7' に horizon/ground/front の override は無いため desired='forest' に落ちる)。tint=ENV_TINT(夜)で馴染む。
+- 検証: ヘッドレス res3。通常/cine とも currentFarKey='stage7'、空が星雲に。森/地面は森のまま。cine(光源テスト)は星雲＋
+  太陽フレア＋放射beam煌めきで良好。typecheck OK。
+- 負荷: 1/10(遠景TilingSprite 1枚のテクスチャ差し替えのみ。JPG 503KB=既存far assetと同等)。
+- Files: `src/pixi/PixiStage.tsx`, `src/data/campaign.ts`, `public/backgrounds/stage7-far.jpg`(新規), `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1906 — cine光源の放射beam(光の線)に「出没の煌めき」+「外側フェード」(社長指示)【2026-07-20 02:07 JST】
 - 指示(社長・IMG_6715): この光源(cine=stage-7)の周りに伸びている光の線(=B:放射beam=cineClouds)を、
   ①出たり消えたりさせて煌めき、②光源から外側へフェードアウト。(A:十字の光条=cineSunは対象外=不変)

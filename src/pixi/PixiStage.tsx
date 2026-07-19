@@ -37,6 +37,7 @@ const SORTIE_STAGE_TEXTURE_PATHS = [
   'backgrounds/tutorial-horizon-rocks.png',
   'backgrounds/tutorial-near-rocks.png',
   'backgrounds/tutorial-front-rocks.png',
+  'backgrounds/stage7-far.jpg', // M7の遠景(星雲・社長提供v0.25.1907)
 ] as const;
 import { setAppliedResolution } from '../config/renderer';
 
@@ -214,7 +215,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null).finally(() => loadProgressDone());
       void (async () => {
         // 注意: 分割代入の並びは SORTIE_STAGE_TEXTURE_PATHS の並びと1:1対応(位置結合)。追加時は両方を同順で。
-        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks] =
+        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks, s7Far] =
           await Promise.all(SORTIE_STAGE_TEXTURE_PATHS.map(load));
         if (cancelled || sceneRef.current !== scene) return;
         scene.setLabGroundTexture(labGround);            // 研究所スキンの床
@@ -223,6 +224,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         scene.setFarBackdropTexture('snow', s4Far);      // ステージ4の遠景(雪原の要塞)
         scene.setFarBackdropTexture('stage5', s5Far);    // ステージ5の遠景(紅き月の城塞・社長提供)
         scene.setFarBackdropTexture('tutorial', tutFar); // チュートリアルの遠景(洞窟・社長提供)
+        scene.setFarBackdropTexture('stage7', s7Far);    // M7の遠景(星雲・社長提供v0.25.1907)
         scene.setGroundOverride('tutorial', tutGround);  // 地面: 洞窟の岩土(チュートリアル・社長提供)
         scene.setRiverFlowTextures(tutFlow1, tutFlow2);  // 川の流れ筋2層(チュートリアル・社長提供)
         scene.setStage3Ground(s3Ground);                 // ステージ3の床(石畳)
