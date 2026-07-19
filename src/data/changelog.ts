@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1886',
+    items: [
+      '調整: 北部ステージの遠景森をさらに1.5倍(全体1.5倍に上乗せ)にし、位置を50px上へ。雪原に溶けて小さく見えていたのを大きくしました。',
+    ],
+  },
+  {
     version: '0.25.1885',
     items: [
       '開発(?cine=1・光源ステージ): 光源(太陽)を常時最大の明るさで固定し、煌めき(明滅)は周りの放射光の側だけに出すようにしました。',

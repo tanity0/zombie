@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1886 — 北部(stage-4)の遠景森だけさらに1.5倍＆50px上へ(社長指示)【2026-07-19 17:55 JST】
+- 指示(社長): 「北部の遠景森の大きさを1.5倍に、さらに位置を50px上に」。
+- 解釈: 森1は v1884 で全ステージ共通1.5倍済み。今回は**北部(stage-4=唯一の farBackdrop 'snow')だけ上乗せ**と解釈
+  し、現状比さらに1.5倍(=元base比2.25倍)＋位置を50px上へ。他ステージは不変(全体1.5倍のまま)。
+- 実装: `NORTH_FAR_FOREST_EXTRA_SCALE=1.5`(snowのみ horizonForestHeight に乗算)＋`NORTH_FAR_FOREST_UP_PX=50`
+  (snowのみ horizonForestY から減算=上へ)。判定は `currentFarKey==='snow'`(stage-4のみが snow)。
+- 検証: ヘッドレス実測 stage-4 hfH=416.3(=185×1.5×1.5)・posY=3.3(上へ)/stage-1 hfH=277.5(不変=上乗せ漏れなし)。
+  ※北部の森1は暗い針葉樹シルエットで雪原に溶けるため、サイズ拡大の見た目は控えめ(視認性を上げたい場合は
+    別途コントラスト/明度の相談=今回はサイズ/位置のみ)。
+- 負荷: 1/10(定数分岐のみ)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1885 — 光源ステージ(?cine=1・stage-7): 光源を常時最大で固定・煌めきは周りの放射光だけに(社長指示)【2026-07-19 17:33 JST】
 - 指示(社長): 「光源はずっと最大に光ってて、煌めくのは周りの線みたいなの(放射光)の方」。
 - 現状: cineSun(太陽=光源)と cineClouds(放射streak=周りの線)の両方が alpha で煌めいていた(v1877)。

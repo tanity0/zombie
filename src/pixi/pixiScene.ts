@@ -175,6 +175,9 @@ const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
 // 遠景森1(地平の森)のサイズ倍率(社長指示v0.25.1884「1.5倍」)。通常ステージのみ(stage5/tutorialは実寸固定)。
 const FAR_FOREST_SIZE_SCALE = 1.5;
+// 北部(stage-4=唯一の farBackdrop 'snow')だけ遠景森1をさらに拡大＆上へ(社長指示v0.25.1886)。
+const NORTH_FAR_FOREST_EXTRA_SCALE = 1.5; // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
+const NORTH_FAR_FOREST_UP_PX = 50;        // 位置を上へ(px。上=Y減算)
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const LAB_HORIZON_FOREST_EXTRA_DOWN = 20; // ステージ2だけ遠景森1を下げる量(px)。他ステージは0。
@@ -1988,7 +1991,8 @@ export class PixiScene {
     if (this.stage5Stage) return farH + STAGE5_HORIZON_FOREST_DOWN_PX - horizonH;
     // チュートリアル: 上端合わせ=水面下端(farH×FRAC)-HEAD_PX(頭が川に少し被る)。高さ140px固定。
     if (this.currentFarKey === 'tutorial') return farH * TUTORIAL_HORIZON_WATER_BOTTOM_FRAC - TUTORIAL_HORIZON_HEAD_PX;
-    return farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0);
+    return farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0)
+      - (this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_UP_PX : 0); // 北部だけ上へ(社長指示v0.25.1886)
   }
   private horizonForestHeight() {
     const base = Math.min(
@@ -2002,7 +2006,9 @@ export class PixiScene {
       const farH = this.farBackdropHeight();
       return farH * (1 - TUTORIAL_HORIZON_WATER_BOTTOM_FRAC) + TUTORIAL_HORIZON_HEAD_PX - TUTORIAL_HORIZON_HEIGHT_TRIM_PX;
     }
-    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base * FAR_FOREST_SIZE_SCALE;
+    // 北部(snow)は遠景森が雪原に溶けて小さく見えるため、さらに拡大(社長指示v0.25.1886)。
+    const northExtra = this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_EXTRA_SCALE : 1;
+    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base * FAR_FOREST_SIZE_SCALE * northExtra;
   }
 
   private frontForestHeight() {
