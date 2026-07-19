@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1897 — M5(stage-5)の遠景森1(城塞の壁)の半透明を修正=不透明に(社長指示)【2026-07-19 23:31 JST】
+- 症状(社長): 「M5の遠景森1が半透明になってる? しないで」。
+- 原因: stage5の森1は高さ固定130px。共通の下端フェード `HORIZON_FOREST_BOTTOM_FADE_PX`=120 が効くと、130pxのうち
+  下120px(=約92%)がフェード=ほぼ全面半透明(上端10pxだけ不透明)。v1889でフェードを10→120にした際の巻き添え回帰。
+  実測: horizonForest.alpha=1・height130・maskH130(sprite自体は不透明でマスクが犯人)。
+- 対処(stage5専用): `STAGE5_HORIZON_FOREST_FADE_PX`(?s5fade=・既定16)を追加し、`stage5Stage` の時だけ下端フェードに使う。
+  他ステージは従来どおり120。壁が不透明に戻る(下端16pxだけ微ソフト)。
+- 検証: ヘッドレス res3 で 旧120/新16/0 を比較。旧=壁が透ける/新16・0=壁くっきり不透明。typecheck OK。
+- 自己点検: 描画のみ(森1マスクのフェード幅)。ゲーム挙動不変。他ステージ不変(stage5Stage分岐)。憲法第4/5条に非抵触。
+- 負荷: 0/10(マスクtextureはレイアウト時のみ再生成・値が変わるだけ)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1896 — M1(stage-1)の遠景森1を30px上へ(社長指示)【2026-07-19 23:25 JST】
 - 指示(社長): 「M1の遠景森1を30px上へ」。M1=stage-1(campaign code 'M1')。
 - 注意点: stage-1/6/7 は farBackdrop・stageTheme が全て 'forest' 既定で共通=far/themeでは判別不可。

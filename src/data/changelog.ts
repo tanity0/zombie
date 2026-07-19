@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1897',
+    items: [
+      '修正: M5の遠景森(城塞の壁)が半透明になっていたのを不透明に戻しました。',
+    ],
+  },
+  {
     version: '0.25.1896',
     items: [
       '調整: M1(森ステージ)の遠景森を30px上へ移動しました。',
