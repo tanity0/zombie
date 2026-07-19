@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1885',
+    items: [
+      '開発(?cine=1・光源ステージ): 光源(太陽)を常時最大の明るさで固定し、煌めき(明滅)は周りの放射光の側だけに出すようにしました。',
+    ],
+  },
+  {
     version: '0.25.1884',
     items: [
       '修正: 引き(ズームアウト)時に遠景森の左右が切れて黒い帯が見えていた不具合を解消(横のオーバースキャンを中央寄せに)。',

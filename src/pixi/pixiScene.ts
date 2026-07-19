@@ -87,9 +87,10 @@ const CINE_WARM_ALPHA = 0.60;              // 残照オーバーレイ(screen)�
 // 光源(太陽/フレア)を右へ寄せる(社長指示v0.25.1871)。0.5=中央→0.62=右寄り。雲(放射原点)も追従。
 const CINE_SUN_X_FRAC = 0.62;
 // フレアの煌めき(社長指示v0.25.1871「動きは少し・薄濃で煌めき」): 位置ドリフトは減らし alpha を揺らす。
-const CINE_SUN_ALPHA_BASE = 0.5;           // 太陽フレアの基準alpha(淡く: 0.65→0.5)
+// 光源(太陽)は常時最大で固定=煌めかせない(社長指示v0.25.1885)。煌めきは周りの放射光(cineClouds)側だけ。
+const CINE_SUN_ALPHA_MAX = 0.67;           // 光源(cineSun)の常時最大alpha(旧・煌めきの上端 0.5×1.34 を固定値化)
 const CINE_CLOUD_ALPHA_BASE = 0.7;         // 放射streak(cineClouds)の基準alpha
-const CINE_SUN_SHIMMER = 0.34;             // 薄↔濃の振幅(±。煌めきをハッキリ: 0.16→0.34・社長v0.25.1877)
+const CINE_SUN_SHIMMER = 0.34;             // 薄↔濃の振幅(±。周りの放射光=cineCloudsの煌めき。社長v0.25.1877/1885)
 const CINE_SUN_SHIMMER_SPD = 0.0011;       // 煌めきの速さ(瞬き感)
 // 影(社長指示v0.25.1871): 光源が右上へ寄ったので、影は斜め左下へ(光源側を少し残す)。
 const CINE_SHADOW_DIRECTION = { x: -0.5, y: 1 }; // 斜め左下(光=右上)
@@ -1766,7 +1767,7 @@ export class PixiScene {
     }
     this.cineWarm.alpha = CINE_WARM_ALPHA;
     this.cineClouds.alpha = 0.7;
-    this.cineSun.alpha = CINE_SUN_ALPHA_BASE; // 初期値(毎フレーム煌めきalphaで上書き・社長v0.25.1871)
+    this.cineSun.alpha = CINE_SUN_ALPHA_MAX; // 光源は常時最大で固定(毎フレームも同値。煌めきはcineClouds側・社長v0.25.1885)
     this.cineDust.alpha = 0.5;
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
@@ -3059,8 +3060,8 @@ export class PixiScene {
       this.cineClouds.alpha = Math.max(0, CINE_CLOUD_ALPHA_BASE * (1 + cloudShim * CINE_SUN_SHIMMER));
       this.cineSun.width = this.cineSun.height = Math.max(w, h) * 0.58;
       this.cineSun.position.set(sunX, sunY);
-      const sunShim = Math.sin(now * CINE_SUN_SHIMMER_SPD + 0.9) * 0.6 + Math.sin(now * CINE_SUN_SHIMMER_SPD * 1.5 + 2.3) * 0.4;
-      this.cineSun.alpha = Math.max(0, CINE_SUN_ALPHA_BASE * (1 + sunShim * CINE_SUN_SHIMMER));
+      // 光源(太陽)は常時最大で固定=煌めかせない。明滅(煌めき)は上の cineClouds(周りの放射光)側だけ(社長指示v0.25.1885)。
+      this.cineSun.alpha = CINE_SUN_ALPHA_MAX;
       // 残照(全画面グラデ): 端が出ないよう位置は動かさず、alphaだけ呼吸させて「生きている」感を出す。
       this.cineWarm.alpha = CINE_WARM_ALPHA * (1 + Math.sin(now * CINE_SKY_BREATH_SPD * 0.5) * CINE_SKY_WARM_BREATH);
       // 塵(近景): idle斜めドリフト+カメラ連動(最大)=最前面の視差。tilePositionは自動wrap。
