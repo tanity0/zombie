@@ -369,6 +369,8 @@ const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
+// 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
+const NEAR_HORIZON_MIST_UP_PX = tsNum('nhmistup', 100);
 const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ
 interface FogLayer {
   sp: TilingSprite;
@@ -2584,22 +2586,24 @@ export class PixiScene {
     this.L.nearHorizon.tileScale.set(height / tex.height);
     this.L.nearHorizon.position.set(-nhMarginX, bottom - height);
   }
-  // 遠景バンド(森1/森2/森2境界霧)を worldGroup のズーム変換から切り離し、常に「意図した画面位置」へ固定する
-  // (社長指示v0.25.1880)。呼ぶ前に position は zoom=1 時の意図画面座標にセットされている前提。scale=1/wz と
-  // 逆変換した position で、worldGroup がどんなズーム(引き/寄り)でも同じ画面位置・同じ画面サイズに描く
-  // (=ズーム外の遠景パノラマと同じ挙動)。横パララックス(tilePosition)/縦tileScale は不変で効き続ける。
+  // 遠景バンド(森1/森2/森2境界霧)から「文脈ズーム(引き)だけ」を打ち消す(社長指示v0.25.1880/1881)。
+  // idleズーム/登場(ヘリ)ズーム/KILLパンチは従来どおり効かせ、引き(contextZoom<1)の分だけ相殺して
+  // 境界線(遠景パノラマ)に張り付かせる。worldGroupのズームは中心ピボット(画面中央)なので、その中心まわりで
+  // 1/contextZoom だけ逆スケールすれば、実効ズーム=idle×punch(=引き無し)相当になる(数式: 呼ぶ前の position が
+  // zoom=1時の意図画面座標 Ly なら、layerPos = pivot + (Ly−pivot)/cz・layerScale = 1/cz)。
+  // contextZoom≈1(引いてない=登場/待機/通常)は完全に素通し=従来挙動を一切変えない(=前回崩れた登場カメラを回避)。
   private pinFarLayerToScreen(layer: Container, mask?: Sprite | null) {
-    const wz = this.L.worldGroup.scale.x || 1;
-    if (Math.abs(wz - 1) < 0.0005) { // 等倍時は素通し(scaleを既定へ戻す)
+    const cz = this.contextZoom || 1;
+    if (Math.abs(cz - 1) < 0.001) { // 引いてない時は素通し(idle/登場/punchズームはそのまま効く)
       layer.scale.set(1);
       if (mask) { mask.scale.set(1); mask.position.copyFrom(layer.position); }
       return;
     }
-    const inv = 1 / wz;
-    const wgx = this.L.worldGroup.position.x, wgy = this.L.worldGroup.position.y;
-    const sx = layer.position.x, sy = layer.position.y; // 意図画面座標(zoom=1基準)
+    const inv = 1 / cz;
+    const pivotX = this.screenW / 2, pivotY = this.screenH / 2; // 文脈ズームのピボット=画面中央
+    const lx = layer.position.x, ly = layer.position.y; // 意図画面座標(zoom=1基準)
     layer.scale.set(inv);
-    layer.position.set((sx - wgx) * inv, (sy - wgy) * inv);
+    layer.position.set(pivotX + (lx - pivotX) * inv, pivotY + (ly - pivotY) * inv);
     if (mask) { mask.scale.set(inv); mask.position.copyFrom(layer.position); }
   }
   setStage3Ground(t: Texture | null) {
@@ -3025,7 +3029,7 @@ export class PixiScene {
             nm.width = w; nm.height = h;
             nm.tileScale.set((w / nm.texture.width) * TUTORIAL_FRONT_FOG_SCALE, h / nm.texture.height); // 柄は半分サイズ
             nm.alpha = NEAR_HORIZON_MIST_ALPHA;
-            nm.position.set(-nhMarginX, seamY - h * 0.5 + Math.sin(now * 0.0004 * FOG_SPEED + 1.9) * 7);
+            nm.position.set(-nhMarginX, seamY - h * 0.5 - NEAR_HORIZON_MIST_UP_PX + Math.sin(now * 0.0004 * FOG_SPEED + 1.9) * 7);
             const nmT = (now - this.fogT0) * 0.024 * FOG_SPEED + Math.sin(now * 0.0007 * FOG_SPEED + 2.3) * 20;
             nm.tilePosition.set(nmT, 0);
           }

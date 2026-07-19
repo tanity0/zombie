@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.1881 — v1880の遠景森ズレ対策の回帰修正(文脈ズームだけ相殺)+ステージ1境界霧を100px上へ(社長指示)【2026-07-19 15:07 JST】
+- 症状(回帰): v1880で `pinFarLayerToScreen` が worldGroup 全体のズーム(`scale=1/wz`)を打ち消したため、
+  引き(文脈ズーム)以外の **idleズーム/登場(ヘリ降下)/KILLパンチ** まで相殺され、(1)通常プレイで森1/森2が
+  同じ下ラインから始まる・(2)オープニングのヘリ降下カメラで大きくズレる、という崩れが出た。
+- 原因: 相殺すべきは「引き(contextZoom<1)」だけなのに、全ズーム成分(idle×context×punch)を一括で打ち消していた。
+- 対処: `pinFarLayerToScreen` を **contextZoom だけ相殺**に修正。文脈ズームのピボット=画面中央まわりで `scale=1/cz`・
+  `position=pivot+(意図画面座標−pivot)/cz` とし、実効ズーム=idle×punch(=引き無し)相当にする。
+  **contextZoom≈1(引いてない=登場/待機/通常)は完全に素通し**(`Math.abs(cz-1)<0.001`)=従来挙動を一切変えない。
+  → 登場カメラ・通常プレイは無干渉、引き時だけ遠景森を境界(パノラマ)に張り付かせる当初の目的も維持。
+- 追加(社長指示): ステージ1で森2の手前に足した境界霧(nearHorizonMist)を **100px上へ**移動。
+  定数 `NEAR_HORIZON_MIST_UP_PX=tsNum('nhmistup',100)`(正=上)を y に減算。?nhmistup= で調整可。m0等の他の霧は不変。
+- 検証: ヘッドレスで INTRO(wz1.014)/IDLE(wz1.045) は森1/森2の逆スケール=1(素通し=登場/待機で無干渉)、
+  ZOOMOUT(wz0.915=引き)でのみ hf/nh_scale≈1.127(=1/contextZoom)で作動を実測。実機での登場カメラ/引き時の
+  最終確認は社長に依頼(ヘッドレスのwz値はノイズあり)。
+- 負荷: 1/10(毎フレーム3レイヤーのscale/position差し替えのみ・v1880から変わらず)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1880 — 引きズーム時に遠景森1/2が境界からズレる修正(worldGroupズームを打ち消して画面固定)(社長指示)【2026-07-19 14:47 JST】
 - 症状: デカボス/敵増で文脈ズーム(引き)になると遠景森1(horizonForest)・森2(nearHorizon)が境界線からズレる。
 - 原因(実測確定): 森1/2は `worldGroup` の子なので文脈ズームで `screen = wgPos.y + localY*wz` に従って動くが、
