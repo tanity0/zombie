@@ -104,6 +104,12 @@ const CINE_SKY_WARM_BREATH = 0.11;         // 残照alphaの呼吸(±11%)
 const CINE_PARALLAX_CLOUD = 0.022;         // カメラ移動→雲オフセット係数(遠=小)
 const CINE_PARALLAX_SUN = 0.01;            // カメラ移動→太陽(最遠=最小)
 const CINE_PARALLAX_DUST = 0.055;          // カメラ移動→塵(近=大)
+// 遠景DoF(社長指示: 参照は遠景の被写界深度がハッキリ)。cine限定で遠景レイヤーのブラーを強め、
+// 遠くを soft にして手前と分離(空気遠近)。手前(near/front)の設定は不変=cineの遠景だけ効かせる。
+const CINE_FAR_DOF_MULT = (() => {              // 遠景ブラー倍率(地平の森0.65→2.3・遠景1.1→3.85)。?fardof=で生調整(1=無効)
+  const v = Number(DZ_PARAMS?.get('fardof'));
+  return Number.isFinite(v) && v > 0 ? v : 3.5;
+})();
 const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
 const DEEP_ZONE_GRADE_SAT = (() => {
   const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
@@ -1546,7 +1552,7 @@ export class PixiScene {
     }
 
     this.farBackdropBlur = new BlurFilter({
-      strength: FAR_BACKDROP_BLUR,
+      strength: this.cineEnabled ? FAR_BACKDROP_BLUR * CINE_FAR_DOF_MULT : FAR_BACKDROP_BLUR,
       quality: 2,
     });
     // 遠景と川の筋レイヤーを同じグループに入れ、グループにブラーを掛ける(=筋も同じ被写界深度に
@@ -1569,7 +1575,7 @@ export class PixiScene {
 
     if (HORIZON_FOREST_BLUR > 0) {
       this.horizonForestBlur = new BlurFilter({
-        strength: HORIZON_FOREST_BLUR,
+        strength: this.cineEnabled ? HORIZON_FOREST_BLUR * CINE_FAR_DOF_MULT : HORIZON_FOREST_BLUR,
         quality: 2,
       });
       this.L.horizonForest.filters = [this.horizonForestBlur];

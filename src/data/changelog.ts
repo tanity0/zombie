@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1868',
+    items: [
+      '開発(?cine=1): 遠景の被写界深度を強めて奥行きを分離(手前の設定は不変・?fardof=で調整)。通常プレイは変化なし。',
+    ],
+  },
+  {
     version: '0.25.1867',
     items: [
       '開発(?cine=1): 空の動き(ドリフト/呼吸/視差)を分かりやすい強さに調整。通常プレイは変化なし。',
