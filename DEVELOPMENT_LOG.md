@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1871 — cineフレア調整(右寄せ/煌めき/淡く/影斜め)(社長指示5件)【2026-07-19 11:33 JST】
+- 参照(明るい順光・キャラ左側に陰=光は右上)へ寄せる調整5件(全て?cine=1・stage-7ゲート内・通常不変):
+  - ①フレアの**動きは少しに**: 位置ドリフト `CINE_SKY_SUN_DRIFT` 8→2、スケール呼吸は廃止。
+  - ②**薄↔濃で煌めき**: 太陽alphaを2つのsin重ねで揺らす(`CINE_SUN_SHIMMER=±0.16`・`SPD=0.0011`=瞬き感)。
+  - ③**全体的に淡く**: grade 0.52→0.44 / vignette 0.82→0.72 / warm 0.72→0.60 / 太陽base 0.65→0.50。
+  - ④**光源/フレアを右へ**: `CINE_SUN_X_FRAC=0.62`(中央0.5→右)。雲(放射原点)も追従。
+  - ⑤**影を斜めへ**: 光源が右上に寄ったので `CINE_SHADOW_DIRECTION` {0.16,1}→{-0.5,1}(斜め左下=光源側を残す)。
+- 負荷: 1/10(既存transform/alphaの差し替えのみ・新規描画なし)。
+- 検証: typecheck緑。stage-7実写で sunX≈0.63w(右寄り)・sunAlpha=0.575(煌めき稼働)・影が斜め左下・grade淡めを確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+- 保留(相談中・未実装): 全オブジェクト/プレイヤー/敵への**自己影(左側の陰=フォームシャドウ)**の方式選定(軽さ)。回答をチャットで提示。
+
 ## v0.25.1870 — cine実験をstage-6→stage-7へ移設+遠景をハッキリに(社長指示2件)【2026-07-19 11:22 JST】
 - ①移設: stage-6は「古い洋館」(室内)で屋外の黄昏空が合わないため、cineゲートを **stage-7(逆探知地点・04:20未明の屋外)** へ。
   `cineEnabled = CINE_MODE && getSelectedStageId()==='stage-7'`。関連コメントも stage-7 に統一。stage-6では一切出ない。

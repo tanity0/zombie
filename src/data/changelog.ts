@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1871',
+    items: [
+      '開発(?cine=1): フレアを右へ寄せ煌めき(薄濃)を追加・動きは控えめに、全体を少し淡く、影を光源に合わせ斜めへ。通常プレイは変化なし。',
+    ],
+  },
+  {
     version: '0.25.1870',
     items: [
       '開発(?cine=1): シネマティック実験をステージ6(洋館)→ステージ7へ移設。遠景のボケを外してハッキリさせました。通常プレイは変化なし。',
