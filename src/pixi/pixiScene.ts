@@ -2519,7 +2519,7 @@ export class PixiScene {
         style?: { scaleMode?: string; update?: () => void };
       };
       src.scaleMode = 'linear';
-      src.autoGenerateMipmaps = true;
+      src.autoGenerateMipmaps = false; // mipmap撤回(社長v1872): 透明RGB=白がmip平均でフチに滲み「白い格子」化。linearのみに。
       if (src.style) { src.style.scaleMode = 'linear'; src.style.update?.(); }
       src.update?.();
     } catch { /* ignore */ }

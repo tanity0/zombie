@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1872',
+    items: [
+      '修正: ステージ1の遠景森に出ていた白い格子ノイズを解消(前回のmipmap対応が逆効果だったため撤回し、素材側で根治)。',
+    ],
+  },
+  {
     version: '0.25.1871',
     items: [
       '開発(?cine=1): フレアを右へ寄せ煌めき(薄濃)を追加・動きは控えめに、全体を少し淡く、影を光源に合わせ斜めへ。通常プレイは変化なし。',

@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.1872 — M1遠景森の「白い格子」修正=mipmap撤回+素材焼き直し(社長「直ってない・白格子」)【2026-07-19 11:46 JST】
+- 症状: M1の遠景森2に**白い格子状の線**が森2と連動して動く(v1869のmipmap対応後に悪化)。
+- 原因(確定): `stage1-near-forest.png` の**透明ピクセルRGB=白(251,251,251,0)**。mipmapの平均で白が木のフチへ滲み、
+  タイル(repeat)継ぎ目と相まって「白い格子」に(=v1869の完全な逆効果)。
+- 対処2段:
+  1. **mipmap撤回**: `applyBgMipmap` は `autoGenerateMipmaps=false`(linearのみ)。→白格子の直接原因を除去。
+  2. **素材を根治焼き直し**(`public/backgrounds/stage1-near-forest.png` 1672×941→910×512):
+     - 透明部の白RGBを**縁色ブリード**(不透明色を透明側へダイレート)で潰し、さらにプリマルチプライして
+       **Lanczos縮小**(針葉を事前ローパス=モアレ根絶)。透明RGBは黒(0,0,0)化=線形サンプルでも白が出ない。
+     - tileScaleは tex.height 基準なので表示サイズは不変(自動補正)。
+- これで**mipmap不要でも**モアレ(斜め格子)も白格子も出ない。cine(stage-7)は森2 blur無し=ハッキリのままでも
+  焼き直し素材なのでモアレ出にくい。
+- 負荷: 素材が軽くなる(1672→910幅)。描画方法はlinear1枚=従来同等。
+- 検証: typecheck緑。ヘッドレスで nearHorizon が 910×512/scaleMode=linear/autoMip=false を実測、M1描画崩れ無し。
+  焼き直し素材を単体確認(木のフチに白ハロー無し・針葉滑らか)。**白格子は解像度依存なので最終確認は実機で社長に依頼**。
+- Files: `public/backgrounds/stage1-near-forest.png`(焼き直し), `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+  - 原本は scratchpad に退避(`stage1-near-forest.orig.png`)。
+
 ## v0.25.1871 — cineフレア調整(右寄せ/煌めき/淡く/影斜め)(社長指示5件)【2026-07-19 11:33 JST】
 - 参照(明るい順光・キャラ左側に陰=光は右上)へ寄せる調整5件(全て?cine=1・stage-7ゲート内・通常不変):
   - ①フレアの**動きは少しに**: 位置ドリフト `CINE_SKY_SUN_DRIFT` 8→2、スケール呼吸は廃止。
