@@ -202,6 +202,13 @@ const ChronicleTimeline: React.FC = () => {
                   />
                 )}
                 {normalizeNamedNamesInText(e.label)}
+                {/* 開放した時の日時をグレーで(社長指示v0.25.1878。初ミッション行と同じ体裁)。at=Date.now()。 */}
+                <span
+                  className="block leading-snug"
+                  style={{ color: 'rgba(255,255,255,0.42)', fontSize: '10.5px', letterSpacing: '0.08em', marginTop: 2 }}
+                >
+                  {formatChronicleDate(e.at)}
+                </span>
               </li>
             </React.Fragment>
           ))}

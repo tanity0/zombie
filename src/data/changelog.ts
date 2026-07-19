@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1878',
+    items: [
+      '年表: 各記録の下に、開放した日付をグレー文字で表示するようにしました(初ミッション行と同じ体裁)。',
+    ],
+  },
+  {
     version: '0.25.1877',
     items: [
       '開発(?cine=1): 光フレア(太陽/放射光)を左右に動かさず位置固定にし、薄く濃くの煌めき(明滅)をハッキリさせました。',

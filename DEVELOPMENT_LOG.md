@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1878 — 年表の各記録に開放日付(グレー文字)を追加(社長「開放した時の日時がグレー文字入ってない」)【2026-07-19 12:48 JST】
+- 歴史年表(TitleScreen.tsx ChronicleTimeline)の各エントリは label のみ表示で、開放日時のグレー文字が無かった。
+  先頭の「初ミッション」行だけ実日付をグレー表示していたので、同じ体裁を各エントリにも付与。
+- 実装: 各 `<li>` の label 直後に `formatChronicleDate(e.at)` のグレー span(初ミッション行と同一style: 
+  `rgba(255,255,255,0.42)` / 10.5px)を追加。`e.at` は recordChronicle が刻む `Date.now()`(開放時刻)。
+- 検証: typecheck緑。既存の初ミッション日付spanの完全なミラー(同関数・同style)。年表は loading フェーズのみ表示で
+  ヘッドレスの遷移捕捉が難しいため、コード検証+typecheckで確認(実機で最終確認)。
+- Files: `src/components/TitleScreen.tsx`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1877 — cine光フレアを位置固定+煌めき(明滅)強化(社長「まだ左右に動く・煌めきしてない」)【2026-07-19 12:42 JST】
 - 症状: v1871で「動き少し+煌めき」にしたが、実機で①光フレアがまだ左右に動く ②煌めき(明滅)が見えない。
 - 原因: ①放射streak(cineClouds)の横ドリフト(28px)+カメラ視差(0.022)+太陽視差が残っていた。②煌めきは太陽alphaのみ±16%で弱く、
