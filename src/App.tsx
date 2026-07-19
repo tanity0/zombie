@@ -149,9 +149,11 @@ function App() {
     // 洋館［SUB］再訪(統合正本9章): selectedMission='revisit' かつ stage-6 の出撃だけ再訪ラン。
     const revisitRun = !benchmark && !getSelectedFreeMode()
       && getSelectedMission() === 'revisit' && stageForRun?.id === 'stage-6';
-    // stage-7 は本編M7(グレン戦・climax)に戻す(社長指示v0.25.1876「ボスは残す」)。ストーリーイベント
-    // (導入会話+グレン戦)は通常プレイでは通常どおり出す。cine映像の実験台として使う時だけ(?cine=1)は
-    // イベントを止めてクリーンに映像確認できるようにする。※M7の護衛NPCは別途 storyBoss ステージとして常に無し。
+    // stage-7 は本編M7(グレン戦・climax)。通常プレイは導入会話+グレン戦を出す。cine映像の実験台(?cine=1)の時だけ
+    // イベントを止めてクリーンに確認できるようにする(社長指示v0.25.1876/1879)。
+    // ※storyBossOnly は cine でも維持する=stage-7 を「storyBossステージ」のまま(通常湧き無し・護衛NPC無し)。
+    //   cine時に止めるのは「グレン戦のボス出現(useGameLoop側)」と「導入会話(下の setIntroDialogueLines)」だけ。
+    //   これで cine 実験台=護衛NPCの環境会話も出ない静かなステージになる(社長「cineテスト中は動かないように」)。
     const cineTestbed = !benchmark && stageForRun?.id === 'stage-7'
       && typeof window !== 'undefined'
       && new URLSearchParams(window.location.search).get('cine') === '1';
@@ -160,7 +162,7 @@ function App() {
     useGameStore.getState().setPendingFarBackdrop(stageForRun?.farBackdrop ?? '');
     useGameStore.getState().setPendingNearHorizon(stageForRun?.nearHorizon ?? '');
     useGameStore.getState().setPendingSuppression(stageForRun?.mainEvent === 'suppression');
-    useGameStore.getState().setPendingStoryBoss(!benchmark && !!stageForRun?.storyBossOnly && !cineTestbed);
+    useGameStore.getState().setPendingStoryBoss(!benchmark && !!stageForRun?.storyBossOnly);
     useGameStore.getState().setPendingRevisit(revisitRun);
     useGameStore.getState().setPendingHiddenBoss(stageForRun?.hiddenBoss ?? null);
     resetGame(validClass);

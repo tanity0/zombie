@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1879 — cineテスト中はM7イベント完全停止(護衛NPCの環境会話も)(社長「cineテスト中は動かないように」)【2026-07-19 13:30 JST】
+- 症状: cine時にグレン会話/ボスは止まっていたが、**護衛NPC(エリザベス等)の環境会話が出ていた**。
+- 原因: v1876で cine時に `pendingStoryBoss=false` にしたため stage-7 が「通常ステージ扱い」になり**護衛NPCが湧いた**
+  (護衛removeは pendingStoryBoss に紐付いていたため)→ その環境会話が再生。
+- 対処: **storyBossOnly は cine でも維持**(`setPendingStoryBoss` から `&& !cineTestbed` を撤去)=stage-7 は cine でも
+  storyBossステージのまま(通常湧き無し・護衛NPC無し)。cine時に止めるのは:
+  - **ボス出現**: useGameLoop の storyBoss 生成を `CINE_TESTBED && stage-7` の時スキップ(`cineSuppress`)。
+  - **導入会話**: `setIntroDialogueLines(cineTestbed ? [] : ...)`(既存)。
+  → cine実験台=護衛NPCの会話も出ない完全に静かなステージ。
+- 検証: ヘッドレス—cine: introLines=0/storyBossMode=true/giantbat=0/**npcSeen=[]**(エリザベス消滅)。
+  normal: introLines=6/storyBossMode=true/giantbat=1/npc=グレン・ミラ(本編は不変)。
+- Files: `src/App.tsx`, `src/hooks/useGameLoop.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1878 — 年表の各記録に開放日付(グレー文字)を追加(社長「開放した時の日時がグレー文字入ってない」)【2026-07-19 12:48 JST】
 - 歴史年表(TitleScreen.tsx ChronicleTimeline)の各エントリは label のみ表示で、開放日時のグレー文字が無かった。
   先頭の「初ミッション」行だけ実日付をグレー表示していたので、同じ体裁を各エントリにも付与。

@@ -513,6 +513,7 @@ const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ラ�
 // デバッグ(社長試作v0.25.1861): ?nospawn=1 で敵の湧きを全て止める(パズル盤面/旧スポナー/叫喚/
 // 囲い・関所/紅き夜/ハンター/死神/城ボス)。映像美の確認用に自由に歩き回るため。ゲーム/描画の他要素は不変。
 const NOSPAWN = evParam('nospawn') === '1';
+const CINE_TESTBED = evParam('cine') === '1'; // cine映像の実験台。stage-7で storyBoss(グレン)を出さない(社長v0.25.1879)。
 // M26-L(PACING_PUZZLE.md §6.3): 実機オートパイロット。?bot=<persona> でヘッドレスボットの判断
 // (decideBotInput)を実プレイの入力へ注入する。null(無指定)=完全無効・通常プレイは1バイトも挙動を変えない。
 // 不正値は 'standard' へフォールバック。'rusher'(M19深層ラッシュ専用ペルソナ)も指定可。
@@ -1918,7 +1919,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 導入完了 = 登場演出(ヘリ=時間停止)が明けた瞬間(社長指示v0.25.1876で会話は非停止化したため、
           // 会話の終了待ちはしない。会話は通常会話キューで並行再生され、ボスは登場後すぐ出現=M7=導入→会話+グレン戦)。
           const introDone = !isGameTimeStopped();
-          if (!storyBossSpawnedRef.current && introDone) {
+          // cine実験台(?cine=1 & stage-7)ではストーリーボス(グレン)を出さない=クリーンな映像確認(社長v0.25.1879)。
+          const cineSuppress = CINE_TESTBED && getSelectedStageId() === 'stage-7';
+          if (!storyBossSpawnedRef.current && introDone && !cineSuppress) {
             storyBossSpawnedRef.current = true;
             const scx = player.x + player.width / 2;
             const scy = player.y + player.height / 2 - STORY_BOSS_SPAWN_DIST;

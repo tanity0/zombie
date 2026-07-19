@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1879',
+    items: [
+      '開発(?cine=1): ステージ7の映像確認中は、護衛NPCの会話やボスなどイベント一切が動かない静かなステージにしました。通常プレイは変化なし。',
+    ],
+  },
+  {
     version: '0.25.1878',
     items: [
       '年表: 各記録の下に、開放した日付をグレー文字で表示するようにしました(初ミッション行と同じ体裁)。',
