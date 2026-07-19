@@ -303,10 +303,31 @@ const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
 const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
 const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻す(px)
-// M1(stage-1)だけ遠景森1(地平の森)を上へ(px。上=Y減算)。他ステージは不変(社長指示v0.25.1896・v1899で30→40確定)。?m1up= で調整。
+// 遠景森1(地平の森)の縦「上移動」px を全ステージ個別に持たせる(上=Y減算)。ミッションコード名の ?mXup= で現地調整
+// (m0up=tutorial 〜 m7up, ex1up/ex2up)。既定は現行維持(m1up=40, m2up=100, 他=0)。社長指示v0.25.1901。
+// 加算関係: snow は別途 northup も効く(加算)/ lab は別途 LAB_HORIZON_FOREST_EXTRA_DOWN(+20下)も効く。
+const M0_HORIZON_FOREST_UP_PX = tsNum('m0up', 0);
 const M1_HORIZON_FOREST_UP_PX = tsNum('m1up', 40);
-// M2(stage-2=lab)だけ遠景森1を上へ(px。上=Y減算)。既存の LAB_HORIZON_FOREST_EXTRA_DOWN(+20下)に上乗せ(社長指示v0.25.1900)。?m2up= で調整。
 const M2_HORIZON_FOREST_UP_PX = tsNum('m2up', 100);
+const M3_HORIZON_FOREST_UP_PX = tsNum('m3up', 0);
+const M4_HORIZON_FOREST_UP_PX = tsNum('m4up', 0);
+const M5_HORIZON_FOREST_UP_PX = tsNum('m5up', 0);
+const M6_HORIZON_FOREST_UP_PX = tsNum('m6up', 0);
+const M7_HORIZON_FOREST_UP_PX = tsNum('m7up', 0);
+const EX1_HORIZON_FOREST_UP_PX = tsNum('ex1up', 0);
+const EX2_HORIZON_FOREST_UP_PX = tsNum('ex2up', 0);
+const HORIZON_FOREST_UP_BY_STAGE: Record<string, number> = {
+  'stage-tutorial': M0_HORIZON_FOREST_UP_PX,
+  'stage-1': M1_HORIZON_FOREST_UP_PX,
+  'stage-2': M2_HORIZON_FOREST_UP_PX,
+  'stage-3': M3_HORIZON_FOREST_UP_PX,
+  'stage-4': M4_HORIZON_FOREST_UP_PX,
+  'stage-5': M5_HORIZON_FOREST_UP_PX,
+  'stage-6': M6_HORIZON_FOREST_UP_PX,
+  'stage-7': M7_HORIZON_FOREST_UP_PX,
+  'stage-ex1': EX1_HORIZON_FOREST_UP_PX,
+  'stage-ex2': EX2_HORIZON_FOREST_UP_PX,
+};
 // 遠景森1の下端フェード幅(px)。素材下側(雪の地面等)を地面へ滑らかに溶かす。10だと事実上ハードカット。?horizonfade= で調整。
 const HORIZON_FOREST_BOTTOM_FADE_PX = tsNum('horizonfade', 120);
 // 下端フェードは「絶対px」だと短い森1(tutorial 113px/stage5 130px等)で全体が半透明になる回帰を生む(v1889で10→120にした
@@ -1357,7 +1378,7 @@ export class PixiScene {
   private battlefieldStage = false; // ステージ5(farBackdrop'stage5'): 敵絵=戦場セット・木なし(残骸プロップに置換)
   private stage5Stage = false; // ステージ5(farBackdrop'stage5'): 近景森(戦場の残骸)を下げる
   private isLabStage = false; // 現在の出撃が lab テーマ(ステージ2)か。影向きの分岐に使用。
-  private m1Stage = false; // M1(stage-1)か。遠景森1の上移動に使用(farKey/themeが他forestステージと共通のためstage idで判別)。
+  private horizonForestUpNow = 0; // 現ステージの遠景森1 上移動px(HORIZON_FOREST_UP_BY_STAGE をstage idで引いてキャッシュ・1回/フレーム)。
   private daylightApplied: boolean | null = null;
   // 環境物(地面/木/森)の現在の暗転tint。昼=本来色、夜=ENV_TINT。
   private envTintNow() { return this.daylight ? DAY_ENV_TINT : ENV_TINT; }
@@ -2009,14 +2030,15 @@ export class PixiScene {
   // 帯が浮いたため、底を遠景の境界線(farH)に直接合わせる(社長指示v0.25.1740「遠景の境界線に合わせて」)。
   // 他ステージは従来式(重なり比+固定オフセット+lab追加下げ)のまま。
   private horizonForestY(farH: number, horizonH: number): number {
+    // 全ステージ共通の「上移動」(?mXup=)。上=Y減算。各分岐で最後に引く(社長指示v0.25.1901)。
+    const up = this.horizonForestUpNow;
     // ステージ5: 底=境界線(farH)+20px下(社長指示v0.25.1742の実寸指定)。
-    if (this.stage5Stage) return farH + STAGE5_HORIZON_FOREST_DOWN_PX - horizonH;
+    if (this.stage5Stage) return farH + STAGE5_HORIZON_FOREST_DOWN_PX - horizonH - up;
     // チュートリアル: 上端合わせ=水面下端(farH×FRAC)-HEAD_PX(頭が川に少し被る)。高さ140px固定。
-    if (this.currentFarKey === 'tutorial') return farH * TUTORIAL_HORIZON_WATER_BOTTOM_FRAC - TUTORIAL_HORIZON_HEAD_PX;
+    if (this.currentFarKey === 'tutorial') return farH * TUTORIAL_HORIZON_WATER_BOTTOM_FRAC - TUTORIAL_HORIZON_HEAD_PX - up;
     return farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0)
-      - (this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_UP_PX : 0) // 北部だけ上へ(社長指示v0.25.1886)
-      - (this.m1Stage ? M1_HORIZON_FOREST_UP_PX : 0) // M1(stage-1)だけ上へ(社長指示v0.25.1896)
-      - (this.isLabStage ? M2_HORIZON_FOREST_UP_PX : 0); // M2(lab)だけ上へ(社長指示v0.25.1900)
+      - (this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_UP_PX : 0) // 北部だけ別途 northup も加算(社長指示v0.25.1886)
+      - up; // 全ステージ共通の上移動(m1up=40/m2up=100/他=0。?mXup=)
   }
   private horizonForestHeight() {
     const base = Math.min(
@@ -2851,7 +2873,7 @@ export class PixiScene {
     this.battlefieldStage = s.farBackdrop === 'stage5';
     this.stage5Stage = s.farBackdrop === 'stage5';
     this.isLabStage = s.stageTheme === 'lab';
-    this.m1Stage = getSelectedStageId() === 'stage-1'; // M1判別(far/themeが他forestステージと共通のためstage idで)。1回/フレーム=無視できるコスト。
+    this.horizonForestUpNow = HORIZON_FOREST_UP_BY_STAGE[getSelectedStageId()] ?? 0; // 遠景森1のステージ別上移動(?mXup=)。1回/フレーム=無視できるコスト。
     // vignetteの明るい部分を狭めるのはステージ2だけ(他ステージは既定0.55の通常版)。差分時のみ差し替え。
     if (this.vignetteNarrow !== this.isLabStage) {
       this.vignetteNarrow = this.isLabStage;

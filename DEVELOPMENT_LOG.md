@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1901 — 遠景森1の上移動パラメータを全ステージへ一般化(?mXup=)(社長指示)【2026-07-20 00:41 JST】
+- 指示(社長): 「全ステージの遠景森1に m1up みたいなパラメータつけといて」。
+- 対処: ステージ別の上移動px定数(m0up〜m7up, ex1up, ex2up)を追加し、`HORIZON_FOREST_UP_BY_STAGE`(stage id→px)で引く。
+  毎フレームのstate同期ブロックで `this.horizonForestUpNow = map[getSelectedStageId()] ?? 0` をキャッシュ(m1Stage廃止=この機構へ統合)。
+  horizonForestY の3分岐(stage5/tutorial/共通)すべてで最後に `- up` を引く。既定=現行維持(m1up=40, m2up=100, 他=0)。
+  加算関係: snow は別途 northup(=50)も効く(m4upは追加ノブ)/ lab は別途 LAB_HORIZON_FOREST_EXTRA_DOWN(+20下)も効く。
+- 検証(ヘッドレス): 既定posY全ステージ不変(stage-1=38.3=m1up40 / stage-2=-1.7=m2up100 / snow=21.3 / stage5=118.2 / 他=78.3 / tutorial=210.8)。
+  ?mXup= の移動量が指定値と厳密一致(m0up50→Δ50 / m3up60→Δ60 / m5up40→Δ40 / m6up70→Δ70 / m7up25→Δ25 / ex1up30→Δ30)。typecheck OK。
+- 自己点検: 描画のみ(森1縦位置の調整ノブ追加)。既定挙動不変=ゲーム挙動/演出とも不変。憲法第4/5条に非抵触。
+- 負荷: 1/10(既存の getSelectedStageId 1回/フレームにmap引きを足すだけ)。changelogはプレイヤー向け変更なしのため据え置き。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1900 — M2(lab)の遠景森1を100px上へ(社長指示)【2026-07-20 00:30 JST】
 - 指示(社長): 「m2 の遠景森1を100px上へ」。M2=stage-2(theme 'lab')。
 - 対処: `M2_HORIZON_FOREST_UP_PX`(?m2up=・既定100)を追加し、isLabStage の時だけ horizonForestY で Y減算。
