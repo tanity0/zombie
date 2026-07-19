@@ -307,9 +307,10 @@ const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻
 const M1_HORIZON_FOREST_UP_PX = tsNum('m1up', 30);
 // 遠景森1の下端フェード幅(px)。素材下側(雪の地面等)を地面へ滑らかに溶かす。10だと事実上ハードカット。?horizonfade= で調整。
 const HORIZON_FOREST_BOTTOM_FADE_PX = tsNum('horizonfade', 120);
-// 【stage5(M5)専用】森1(城塞の壁)は高さが短い(130px固定)ため、共通の120px下端フェードだとほぼ全面が半透明になる
-// (v1889で10→120にした巻き添え回帰)。壁は不透明であるべきなので下端フェードを小さくする(社長指示v0.25.1897)。?s5fade= で調整。
-const STAGE5_HORIZON_FOREST_FADE_PX = tsNum('s5fade', 16);
+// 下端フェードは「絶対px」だと短い森1(tutorial 113px/stage5 130px等)で全体が半透明になる回帰を生む(v1889で10→120にした
+// 巻き添え。M0/M5で発覚)。そこで実効フェード幅を「森1高さ×この割合」で頭打ちにし、どのステージでも森1は不透明+下端だけ
+// 微ソフトに保つ。半透明の"溶かし"は指名(=snow)だけ(社長指示v0.25.1898)。0.12=stage5で≈16px(v1897承認値を踏襲)。?fadefrac= で調整。
+const HORIZON_FOREST_MAX_FADE_FRAC = tsNum('fadefrac', 0.12);
 // 【北部(snow)専用】遠景森1が「不透明のまま」でいる下端。horizonH に対する上からの比率。氷壁+足元(赤線=約0.80)より
 // 少し下(≈0.86)まで完全不透明にし、そこから下端へ向かってフェード(下ほど透明)=素材の雪原前景の下端だけ地面へ溶かす。
 // これより上は透明度0(=不透明)。赤線の上で氷壁を薄めない(社長指示・赤線注釈v0.25.1893)。他ステージは従来どおり。?snowcut= で調整。
@@ -2107,8 +2108,9 @@ export class PixiScene {
     // どちらも fadeEnd=下端で、fadeStart より上は不透明。
     const isSnow = this.currentFarKey === 'snow';
     const fadeEnd = canvas.height;
-    // stage5(M5)の森1は短い(130px)ため下端フェードを小さく=壁を不透明に(社長指示v0.25.1897)。
-    const bottomFadePx = this.stage5Stage ? STAGE5_HORIZON_FOREST_FADE_PX : HORIZON_FOREST_BOTTOM_FADE_PX;
+    // 非snow: 実効フェード幅を「高さ×MAX_FADE_FRAC」で頭打ち=短い森1(tutorial/stage5等)が全体半透明になる回帰を防ぐ
+    // (森1は不透明+下端だけ微ソフト)。半透明の"溶かし"は指名=snowのみ(社長指示v0.25.1898)。
+    const bottomFadePx = Math.min(HORIZON_FOREST_BOTTOM_FADE_PX, canvas.height * HORIZON_FOREST_MAX_FADE_FRAC);
     const fadeStart = isSnow
       ? Math.max(0, Math.min(canvas.height, Math.round(canvas.height * HORIZON_FOREST_SNOW_OPAQUE_UNTIL_FRAC)))
       : Math.max(0, canvas.height - bottomFadePx);
