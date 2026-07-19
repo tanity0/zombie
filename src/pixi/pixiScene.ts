@@ -2586,35 +2586,6 @@ export class PixiScene {
     this.L.nearHorizon.tileScale.set(height / tex.height);
     this.L.nearHorizon.position.set(-nhMarginX, bottom - height);
   }
-  // 遠景バンド(森1/森2/森2境界霧)から「文脈ズーム(引き)だけ」を打ち消す(社長指示v0.25.1880/1881)。
-  // idleズーム/登場(ヘリ)ズーム/KILLパンチは従来どおり効かせ、引き(contextZoom<1)の分だけ相殺して
-  // 境界線(遠景パノラマ)に張り付かせる。worldGroupのズームは中心ピボット(画面中央)なので、その中心まわりで
-  // 1/contextZoom だけ逆スケールすれば、実効ズーム=idle×punch(=引き無し)相当になる(数式: 呼ぶ前の position が
-  // zoom=1時の意図画面座標 Ly なら、layerPos = pivot + (Ly−pivot)/cz・layerScale = 1/cz)。
-  // contextZoom≈1(引いてない=登場/待機/通常)は完全に素通し=従来挙動を一切変えない(=前回崩れた登場カメラを回避)。
-  private pinFarLayerToScreen(layer: Container, mask?: Sprite | null) {
-    // 森レイヤーは TilingSprite。width/height は quad サイズで scale 非依存(=元の意図幅)。
-    const quadW = (layer as { width: number }).width;
-    const quadH = (layer as { height: number }).height;
-    const cz = this.contextZoom || 1;
-    const noZoom = Math.abs(cz - 1) < 0.001; // 引いてない時(idle/登場/punch)は素通し
-    const inv = noZoom ? 1 : 1 / cz;
-    if (noZoom) {
-      layer.scale.set(1);
-    } else {
-      const pivotX = this.screenW / 2, pivotY = this.screenH / 2; // 文脈ズームのピボット=画面中央
-      const lx = layer.position.x, ly = layer.position.y; // 意図画面座標(zoom=1基準)
-      layer.scale.set(inv);
-      layer.position.set(pivotX + (lx - pivotX) * inv, pivotY + (ly - pivotY) * inv);
-    }
-    if (mask) {
-      // マスクは 4px 幅のグラデ Sprite。.scale を直書きすると横伸ばし(width/4)が壊れて森1が4px幅に
-      // 潰れる=消える(v0.25.1880/1881 の回帰)。森の画面上の矩形(quad×inv)に width/height で合わせる。
-      mask.width = quadW * inv;
-      mask.height = quadH * inv;
-      mask.position.copyFrom(layer.position);
-    }
-  }
   setStage3Ground(t: Texture | null) {
     if (!t) return;
     try { const st = t.source.style as { addressMode?: string; update?: () => void }; st.addressMode = 'repeat'; st.update?.(); } catch { /* ignore */ }
@@ -3160,13 +3131,9 @@ export class PixiScene {
     if (this.L.nearHorizon.visible) {
       this.L.nearHorizon.tilePosition.set(-s.camera.x * NEAR_HORIZON_PARALLAX_X, 0);
     }
-    // 引きズーム対応(社長指示v0.25.1880「引き時に遠景森1/2が境界からズレる」): 遠景森1/2(と森2境界霧)は
-    // worldGroup の子なので文脈ズームで動いてしまい、ズーム外の遠景パノラマ(境界線)から分離する。
-    // worldGroup変換を打ち消して常に「意図した画面位置=境界線」へ固定(=パノラマと同じ画面固定挙動に揃える)。
-    // 横パララックス(tilePosition)はそのまま効く。
-    this.pinFarLayerToScreen(this.L.horizonForest, this.horizonForestFadeMask);
-    if (this.L.nearHorizon.visible) this.pinFarLayerToScreen(this.L.nearHorizon);
-    if (this.nearHorizonMist && this.nearHorizonMist.visible) this.pinFarLayerToScreen(this.nearHorizonMist);
+    // 遠景森1/2(と森2境界霧)は worldGroup の子として床と一緒に文脈ズームでスケール/移動する。
+    // 床と同一グループ=相対関係がズーム不変なので、引き(裏ボス等)でも森1が床の境界から剥がれず
+    // 「地面の切れ目」が出ない(v0.25.1880〜1882の画面固定ピンは森1を床から剥がして切れ目を生んだため撤回=v0.25.1883)。
     this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();
     // ?labpersp の研究所では床専用の強い遠近カーブを使う(屋外は従来定数)。
     const labPerspNow = s.indoorMode && LAB_PERSP;
