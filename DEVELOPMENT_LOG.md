@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1896 — M1(stage-1)の遠景森1を30px上へ(社長指示)【2026-07-19 23:25 JST】
+- 指示(社長): 「M1の遠景森1を30px上へ」。M1=stage-1(campaign code 'M1')。
+- 注意点: stage-1/6/7 は farBackdrop・stageTheme が全て 'forest' 既定で共通=far/themeでは判別不可。
+  スナップショット s に stage id は無いため `getSelectedStageId()==='stage-1'`(smoke含め有効)で判別。
+- 対処: `M1_HORIZON_FOREST_UP_PX`(?m1up=・既定30)を追加。フラグ `m1Stage` を毎フレームのstate同期ブロック
+  (isLabStage等と同じ場所=レイアウト前で順序保証)で設定し、horizonForestY で m1Stage の時だけ Y減算(上へ)。
+- 検証: ヘッドレス res3。stage-1 posY 78.3→48.3(=ちょうど30px上)/ stage-1 m1up=0 で78.3(baseline一致)/
+  stage-6 は m1=false・posY 78.3=不変。typecheck OK。
+- 自己点検: 描画のみ(森1の縦位置)。ゲーム挙動不変。他ステージ不変を実測確認。憲法第4/5条に非抵触。
+- 負荷: 1/10(localStorage getItem 1回/フレーム+減算1つ。無視できる)。
+- Files: `src/pixi/pixiScene.ts`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1895 — M0(チュートリアル)の川の手前の岩間霧を少しぼかす(社長指示)【2026-07-19 22:51 JST】
 - 指示(社長): 「m0の川の手前にいる霧、少しぼかして」。
 - 特定: M0=stage-tutorial(campaign code 'M0')。「川の手前の霧」=中央の白いモヤ=`tutorialMist`(岩間霧・岩帯1と2の間の

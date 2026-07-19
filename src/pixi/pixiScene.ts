@@ -303,6 +303,8 @@ const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
 const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
 const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻す(px)
+// M1(stage-1)だけ遠景森1(地平の森)を上へ(px。上=Y減算)。他ステージは不変(社長指示v0.25.1896)。?m1up= で調整。
+const M1_HORIZON_FOREST_UP_PX = tsNum('m1up', 30);
 // 遠景森1の下端フェード幅(px)。素材下側(雪の地面等)を地面へ滑らかに溶かす。10だと事実上ハードカット。?horizonfade= で調整。
 const HORIZON_FOREST_BOTTOM_FADE_PX = tsNum('horizonfade', 120);
 // 【北部(snow)専用】遠景森1が「不透明のまま」でいる下端。horizonH に対する上からの比率。氷壁+足元(赤線=約0.80)より
@@ -1349,6 +1351,7 @@ export class PixiScene {
   private battlefieldStage = false; // ステージ5(farBackdrop'stage5'): 敵絵=戦場セット・木なし(残骸プロップに置換)
   private stage5Stage = false; // ステージ5(farBackdrop'stage5'): 近景森(戦場の残骸)を下げる
   private isLabStage = false; // 現在の出撃が lab テーマ(ステージ2)か。影向きの分岐に使用。
+  private m1Stage = false; // M1(stage-1)か。遠景森1の上移動に使用(farKey/themeが他forestステージと共通のためstage idで判別)。
   private daylightApplied: boolean | null = null;
   // 環境物(地面/木/森)の現在の暗転tint。昼=本来色、夜=ENV_TINT。
   private envTintNow() { return this.daylight ? DAY_ENV_TINT : ENV_TINT; }
@@ -2005,7 +2008,8 @@ export class PixiScene {
     // チュートリアル: 上端合わせ=水面下端(farH×FRAC)-HEAD_PX(頭が川に少し被る)。高さ140px固定。
     if (this.currentFarKey === 'tutorial') return farH * TUTORIAL_HORIZON_WATER_BOTTOM_FRAC - TUTORIAL_HORIZON_HEAD_PX;
     return farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0)
-      - (this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_UP_PX : 0); // 北部だけ上へ(社長指示v0.25.1886)
+      - (this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_UP_PX : 0) // 北部だけ上へ(社長指示v0.25.1886)
+      - (this.m1Stage ? M1_HORIZON_FOREST_UP_PX : 0); // M1(stage-1)だけ上へ(社長指示v0.25.1896)
   }
   private horizonForestHeight() {
     const base = Math.min(
@@ -2837,6 +2841,7 @@ export class PixiScene {
     this.battlefieldStage = s.farBackdrop === 'stage5';
     this.stage5Stage = s.farBackdrop === 'stage5';
     this.isLabStage = s.stageTheme === 'lab';
+    this.m1Stage = getSelectedStageId() === 'stage-1'; // M1判別(far/themeが他forestステージと共通のためstage idで)。1回/フレーム=無視できるコスト。
     // vignetteの明るい部分を狭めるのはステージ2だけ(他ステージは既定0.55の通常版)。差分時のみ差し替え。
     if (this.vignetteNarrow !== this.isLabStage) {
       this.vignetteNarrow = this.isLabStage;
