@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1899',
+    items: [
+      '調整: M1の遠景森の高さを確定(40px上)。',
+    ],
+  },
+  {
     version: '0.25.1898',
     items: [
       '修正: 遠景森の半透明化を全ステージで是正(M0など短い遠景森が透けていたのを不透明に。溶かし表現は雪原ステージのみ)。',

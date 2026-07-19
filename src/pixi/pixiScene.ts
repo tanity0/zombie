@@ -303,8 +303,8 @@ const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
 const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
 const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻す(px)
-// M1(stage-1)だけ遠景森1(地平の森)を上へ(px。上=Y減算)。他ステージは不変(社長指示v0.25.1896)。?m1up= で調整。
-const M1_HORIZON_FOREST_UP_PX = tsNum('m1up', 30);
+// M1(stage-1)だけ遠景森1(地平の森)を上へ(px。上=Y減算)。他ステージは不変(社長指示v0.25.1896・v1899で30→40確定)。?m1up= で調整。
+const M1_HORIZON_FOREST_UP_PX = tsNum('m1up', 40);
 // 遠景森1の下端フェード幅(px)。素材下側(雪の地面等)を地面へ滑らかに溶かす。10だと事実上ハードカット。?horizonfade= で調整。
 const HORIZON_FOREST_BOTTOM_FADE_PX = tsNum('horizonfade', 120);
 // 下端フェードは「絶対px」だと短い森1(tutorial 113px/stage5 130px等)で全体が半透明になる回帰を生む(v1889で10→120にした
