@@ -172,6 +172,8 @@ const HORIZON_FOREST_BLUR = 0.65; // 地平の森(遠景森)を少しだけぼ�
 const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
 const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
+// 遠景森1(地平の森)のサイズ倍率(社長指示v0.25.1884「1.5倍」)。通常ステージのみ(stage5/tutorialは実寸固定)。
+const FAR_FOREST_SIZE_SCALE = 1.5;
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const LAB_HORIZON_FOREST_EXTRA_DOWN = 20; // ステージ2だけ遠景森1を下げる量(px)。他ステージは0。
@@ -1999,7 +2001,7 @@ export class PixiScene {
       const farH = this.farBackdropHeight();
       return farH * (1 - TUTORIAL_HORIZON_WATER_BOTTOM_FRAC) + TUTORIAL_HORIZON_HEAD_PX - TUTORIAL_HORIZON_HEIGHT_TRIM_PX;
     }
-    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base;
+    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base * FAR_FOREST_SIZE_SCALE;
   }
 
   private frontForestHeight() {
@@ -2085,7 +2087,8 @@ export class PixiScene {
     const texture = Texture.from(canvas);
     this.horizonForestFadeMask.texture = texture;
     this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
-    this.horizonForestFadeMask.width = w;
+    // マスクも森1と同じオーバースキャン幅にする(w だと中央寄せした森1の左右端が隠れて黒帯になる・v0.25.1884)。
+    this.horizonForestFadeMask.width = w * ZOOM_OVERSCAN;
     this.horizonForestFadeMask.height = horizonH;
     this.horizonForestFadeMaskTexture?.destroy(true);
     this.horizonForestFadeMaskTexture = texture;
@@ -2644,10 +2647,14 @@ export class PixiScene {
     const tex = this.L.horizonForest.texture;
     if (!tex || tex.width <= 0 || tex.height <= 0) return;
     const horizonH = this.horizonForestHeight();
-    this.L.horizonForest.width = this.screenW;
+    // 引き(ズームアウト)で左右が切れて黒帯が出ないよう、resize と同じく横オーバースキャンして中央寄せ。
+    // 以前はここで screenW(=等倍)に戻していたため resize のオーバースキャンが無効化され、引きで左右が黒くなっていた(v0.25.1884)。
+    const marginX = (this.screenW * ZOOM_OVERSCAN - this.screenW) / 2;
+    this.L.horizonForest.width = this.screenW * ZOOM_OVERSCAN;
     this.L.horizonForest.height = horizonH;
     // 横伸び防止: y 基準の均一スケール(横は自然比率でタイル)。resize と同方式。
     this.L.horizonForest.tileScale.set(horizonH / tex.height);
+    this.L.horizonForest.position.set(-marginX, this.horizonForestY(this.farBackdropHeight(), horizonH));
   }
   setLabGroundTexture(t: Texture | null) {
     this.labGroundTex = t;
@@ -3121,7 +3128,10 @@ export class PixiScene {
       sp.alpha = RIVER_FLOW_ALPHA[i] + Math.sin(now / RIVER_FLOW_WOBBLE_MS[i] * Math.PI * 2) * RIVER_FLOW_WOBBLE[i];
     }
     const horizonH = this.horizonForestHeight();
-    this.L.horizonForest.position.set(0, this.horizonForestY(farH, horizonH));
+    // 横オーバースキャンを中央寄せ(resizeと同一): 引き(ズームアウト)で森1の左右が切れて黒帯が出るのを防ぐ。
+    // 以前は x=0 固定でオーバースキャンが右だけに寄り、引きで左側が切れていた(社長指示v0.25.1884)。
+    const horizonMarginX = (this.screenW * ZOOM_OVERSCAN - this.screenW) / 2;
+    this.L.horizonForest.position.set(-horizonMarginX, this.horizonForestY(farH, horizonH));
     this.L.horizonForest.tilePosition.set(
       -s.camera.x * HORIZON_FOREST_PARALLAX_X,
       0
