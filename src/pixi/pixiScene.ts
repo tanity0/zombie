@@ -305,12 +305,10 @@ const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上�
 const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻す(px)
 // 遠景森1の下端フェード幅(px)。素材下側(雪の地面等)を地面へ滑らかに溶かす。10だと事実上ハードカット。?horizonfade= で調整。
 const HORIZON_FOREST_BOTTOM_FADE_PX = tsNum('horizonfade', 120);
-// 【北部(snow)専用】遠景森1のフェード完了位置=「消えきる下端(赤線)」。horizonH に対する上からの比率。
-// 素材の氷壁の足元(≈0.80)で消えるようにし、これより下(素材の雪原前景)は完全透明にする。前景がプレイ盤面へ
-// 半透明で二重に乗る"幽霊"の除去(社長指示・赤線注釈)。他ステージは従来どおり(下端フェードのみ)。?horizoncut= で調整。
-const HORIZON_FOREST_SNOW_FADE_END_FRAC = tsNum('horizoncut', 0.80);
-// 【北部(snow)専用】赤線カット時のフェード幅(px)。狭くして氷壁本体は不透明のまま足元だけ短くぼかす。?snowfade= で調整。
-const HORIZON_FOREST_SNOW_FADE_PX = tsNum('snowfade', 50);
+// 【北部(snow)専用】遠景森1が「不透明のまま」でいる下端。horizonH に対する上からの比率。氷壁+足元(赤線=約0.80)より
+// 少し下(≈0.86)まで完全不透明にし、そこから下端へ向かってフェード(下ほど透明)=素材の雪原前景の下端だけ地面へ溶かす。
+// これより上は透明度0(=不透明)。赤線の上で氷壁を薄めない(社長指示・赤線注釈v0.25.1893)。他ステージは従来どおり。?snowcut= で調整。
+const HORIZON_FOREST_SNOW_OPAQUE_UNTIL_FRAC = tsNum('snowcut', 0.86);
 // 木/壁/建物/プロップの「裏に回ったら透ける」: プレイヤーを覆う(手前=footY大で重なる)障害物だけ
 // alpha をこの値へ滑らかに落とす。1=無効(常に不透明)。?seethru= で生調整。?seethrutau= はフェード時定数(秒)。
 const OBSTACLE_SEE_THROUGH_ALPHA = tsNum('seethru', 0.35);
@@ -2092,22 +2090,22 @@ export class PixiScene {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // 北部(snow)は赤線(氷壁の足元)で消えきる=fadeEnd を horizonH の SNOW_FADE_END_FRAC に。他ステージは従来どおり
-    // 下端まで(cutFrac=1)フェードする。fadeEnd より下は完全透明(素材の雪原前景を盤面に出さない)。
+    // 北部(snow)は「赤線(氷壁足元)より少し下=SNOW_OPAQUE_UNTIL_FRAC」まで不透明のまま、そこから下端へフェード
+    // (下ほど透明)。氷壁とその足元は薄めない。他ステージは従来どおり下端 HORIZON_FOREST_BOTTOM_FADE_PX をフェード。
+    // どちらも fadeEnd=下端で、fadeStart より上は不透明。
     const isSnow = this.currentFarKey === 'snow';
-    const cutFrac = isSnow ? HORIZON_FOREST_SNOW_FADE_END_FRAC : 1;
-    const fadePx = isSnow ? HORIZON_FOREST_SNOW_FADE_PX : HORIZON_FOREST_BOTTOM_FADE_PX;
-    const fadeEnd = Math.max(0, Math.min(canvas.height, Math.round(canvas.height * cutFrac)));
-    const fadeStart = Math.max(0, fadeEnd - fadePx);
+    const fadeEnd = canvas.height;
+    const fadeStart = isSnow
+      ? Math.max(0, Math.min(canvas.height, Math.round(canvas.height * HORIZON_FOREST_SNOW_OPAQUE_UNTIL_FRAC)))
+      : Math.max(0, canvas.height - HORIZON_FOREST_BOTTOM_FADE_PX);
     const grad = ctx.createLinearGradient(0, fadeStart, 0, fadeEnd);
     grad.addColorStop(0, 'rgba(255,255,255,1)');
     grad.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = 'rgba(255,255,255,1)';
-    ctx.fillRect(0, 0, canvas.width, fadeStart);                 // 赤線より上のランプ手前=不透明
+    ctx.fillRect(0, 0, canvas.width, fadeStart);                 // ここより上=不透明(氷壁・足元)
     ctx.fillStyle = grad;
-    ctx.fillRect(0, fadeStart, canvas.width, fadeEnd - fadeStart); // ランプ(1→0、赤線で0)
-    // fadeEnd(赤線)より下は clearRect のまま=完全透明(素材の雪原前景を出さない)
+    ctx.fillRect(0, fadeStart, canvas.width, fadeEnd - fadeStart); // fadeStart→下端で 1→0(下ほど透明)
 
     const texture = Texture.from(canvas);
     this.horizonForestFadeMask.texture = texture;

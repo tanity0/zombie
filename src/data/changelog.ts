@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1893',
+    items: [
+      '調整: 北部ステージの遠景森を氷壁の足元より少し下まで不透明にし、そこから地面へフェード(前景の半透明"幽霊"を解消)。',
+    ],
+  },
+  {
     version: '0.25.1892',
     items: [
       '修正: 北部ステージの遠景森が氷壁の足元で消えきるように(前景が盤面へ半透明で二重に乗る現象を解消)。',
