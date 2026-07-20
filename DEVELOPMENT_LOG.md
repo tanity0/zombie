@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1946 — M7の光源+放射をM1に移植(左へ反転)【2026-07-20 17:52 JST】
+- 指示(社長): ①M7の光源(cineSun)+放射(cineCloudLayers=光の線)をM1にも出す ②M1では光源周りを左側に反転移動。
+- 対処:
+  - 可視: `applyCineGrade` で cineSun/cineCloudLayers を `on || stage1IsM1` に拡張(M1でも表示)。残照(cineWarm)/グレード/塵はcine(M7)限定のまま=**光源と放射だけ**移植。
+  - 位置/アニメ(M1): `updateStage1Light(now)` 新設(stage-1かつ非cineで自己ゲート)。sunX=`w×STAGE1_SUN_X_FRAC`(=1-0.62=0.38・左)、
+    スプライトを `scale.x=-|scale.x|` で**横反転**、放射の明滅(twinkle)はM7と同式。cine(M7)経路は不変(cineEnabledならupdateStage1Lightは即return)。
+  - 新param: `?s1sunx=`(M1光源のX比・既定0.38=M7右0.62の反転)。
+- 検証: ヘッドレス実機(stage-1)で cineSun/streak visible=true・x=154(=w×0.38・左)・scale.x<0(反転)・warmVis=false(残照なし)・pageErrors 0。
+  M7側は cineEnabled で updateStage1Light 即return=不変。typecheck OK。
+- 自己点検: 描画のみ・M1/M7限定。ゲーム挙動不変。負荷: 1/10(既存ベイクSprite流用・追加描画は光源1+放射Nの既存分がM1に出るだけ)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1945 — リザルトの任務報告を「日時/場所ヘッダー直下(〜に到達の上)」へ移設【2026-07-20 17:44 JST】
 - 指示(社長・スクショ赤ライン): リザルトの任務報告を、現在の最下部(スコア/報酬の下)から**赤ライン=DAY/場所ヘッダーの直下・「〜に到達」の上**へ挿入。
 - 対処(`GameOverScreen.tsx`): 任務報告ブロック(`won && clearReportLines.length>0`・回収資料ボタン込み)をヘッダー(`text-center`)セクションの

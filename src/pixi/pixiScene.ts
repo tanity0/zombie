@@ -447,6 +447,9 @@ const STAGE1_CASTLE_ALPHA = Math.max(0, Math.min(1, tsNum('s1castalpha', 1.0)));
 // 城の横パララックス(社長v0.25.1941「遠景森と同じくプレイヤーが動いたら動く。一番遠いから一番遅い」)。camera.x連動。
 // 既存: 銀河0.09 < 森1=0.16 < 森2=0.5。城は森1より遅い(=一番遠い風景)ので既定0.11。?s1castpara= で調整。
 const STAGE1_CASTLE_PARALLAX_X = tsNum('s1castpara', 0.11);
+// M1にもM7の光源(cineSun)+放射(cineCloudLayers)を移植(社長v0.25.1946)。位置はM7(右0.62)を左へ反転=1-0.62=0.38、
+// スプライトも横反転(scale.x<0)。M1のみ・cineの残照/グレード/塵は載せない(光源と放射だけ)。?s1sunx= で左右調整。
+const STAGE1_SUN_X_FRAC = tsNum('s1sunx', 1 - CINE_SUN_X_FRAC);
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 // 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
@@ -1470,8 +1473,10 @@ export class PixiScene {
       this.vignette.alpha = CINE_VIGNETTE_ALPHA;
     }
     this.cineWarm.visible = on && CINE_WARM_ON;   // オレンジ残照グラデ=?cinewarm=0でオフ(社長v0.25.1926)
-    this.cineSun.visible = on;
-    for (const sp of this.cineCloudLayers) sp.visible = on;
+    // 光源(cineSun)+放射(cineCloudLayers)は M1 にも移植(社長v0.25.1946)。残照/グレード/塵はcine(M7)限定のまま。
+    const sunOn = on || this.stage1IsM1;
+    this.cineSun.visible = sunOn;
+    for (const sp of this.cineCloudLayers) sp.visible = sunOn;
     this.cineDust.visible = on;
   }
 
@@ -2142,6 +2147,35 @@ export class PixiScene {
     }
     sp0.alpha = STAGE1_SKY_ALPHA;                          // 現コマ=常に全面(森の空を覆う)
     sp1.alpha = STAGE1_SKY_ALPHA * frac;                   // 次コマ=上に重ねてフェードイン
+  }
+
+  // M1にM7の光源(cineSun)+放射(cineCloudLayers)を移植(社長v0.25.1946)。位置は左(反転)・スプライトも横反転。
+  // cineの残照/グレード/塵は載せない(光源と放射だけ)。cine(M7)経路は既存のまま=このメソッドはstage-1かつ非cineのみ。
+  private updateStage1Light(now: number) {
+    if (!this.stage1IsM1 || this.cineEnabled) return;
+    const w = this.screenW, h = this.screenH;
+    const sunY = h * 0.18 + tsNum('sundown', 10);
+    const sunX = w * STAGE1_SUN_X_FRAC;                    // M7右0.62を左へ反転(既定0.38)
+    // 放射streak(光の線): M7と同じ明滅。左位置・横反転(scale.x<0)。anchor(0.5,1)で中心xを軸に鏡像。
+    for (let i = 0; i < this.cineCloudLayers.length; i++) {
+      const sp = this.cineCloudLayers[i];
+      sp.visible = true;
+      sp.anchor.set(0.5, 1);
+      sp.position.set(sunX, sunY + h * 0.06);
+      sp.width = w * 1.1;
+      sp.height = h * 0.5;
+      sp.scale.x = -Math.abs(sp.scale.x);                 // 横反転
+      const ph = i * (Math.PI * 2 / CINE_CLOUD_LAYERS) + i * 0.9;
+      const spd = CINE_CLOUD_TWINKLE_SPD * (1 + i * 0.27);
+      let tw = Math.sin(now * spd + ph); tw = Math.max(0, tw); tw = tw * tw;
+      sp.alpha = Math.max(0, CINE_CLOUD_ALPHA_BASE * (CINE_CLOUD_TWINKLE_FLOOR + (1 - CINE_CLOUD_TWINKLE_FLOOR) * tw));
+    }
+    this.cineSun.visible = true;
+    this.cineSun.anchor.set(0.5);
+    this.cineSun.width = this.cineSun.height = Math.max(w, h) * 0.58;
+    this.cineSun.scale.x = -Math.abs(this.cineSun.scale.x); // 横反転(太陽は対称なので実質同じだが一貫)
+    this.cineSun.position.set(sunX, sunY);
+    this.cineSun.alpha = CINE_SUN_ALPHA_MAX;
   }
 
   private updateStageLightShafts(w: number, h: number) {
@@ -3370,6 +3404,7 @@ export class PixiScene {
     }
     this.updateStage7Clouds(now); // M7の雲(farKeyで自己ゲート・cine非依存)
     this.updateStage1Sky(now, s.camera.x); // M1の遠景=星空6コマ+城パララックス(stage-1で自己ゲート)
+    this.updateStage1Light(now);   // M1の光源+放射(M7から移植・左へ反転。stage-1かつ非cineで自己ゲート)
     // 研究所スキンは床/素材を見せるため、クール調整を弱める(森はそのまま)。
     // cine時は寒色gradeをCINE値で維持(labThemeFog/daylightの上書きに勝つ)。
     this.gradeSprite.alpha = this.cineEnabled ? CINE_GRADE_ALPHA
