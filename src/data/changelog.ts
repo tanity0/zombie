@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1910',
+    items: [
+      '調整: M7の遠景(星空)を新しい銀河に差し替えました。',
+    ],
+  },
+  {
     version: '0.25.1909',
     items: [
       '追加: M7の空に、ゆっくり流れる夕焼け雲を重ねました。',

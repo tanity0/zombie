@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1910 — M7の遠景(星空)を新しい銀河に差し替え(社長提供・B確定)【2026-07-20 10:40 JST】
+- 指示(社長): 「夜空の差し替え」→ 対象確認で **B(M7の遠景=stage7-far)** に確定。
+- 対処(素材上書きのみ・コード変更なし): 新提供PNG(1672×941)を PIL で JPG化(quality86)→ `public/backgrounds/stage7-far.jpg` を上書き(503→534KB)。
+  パス・配線(setFarBackdropTexture('stage7')・campaign farBackdrop)は既存のまま。
+- 検証: ヘッドレス(通常/cine)でM7の空が新しい銀河(鮮やかな青紫＋天の川帯)に。雲(v1909)との重なり良好。
+- 負荷: 0/10(遠景テクスチャの差し替えのみ)。Files: `public/backgrounds/stage7-far.jpg`(上書き), `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1909 — M7の遠景に雲を重ねる=パースフロー(拡大＋クロスフェード)で流す(社長裁定A)【2026-07-20 10:25 JST】
 - 指示(社長): 雲を「うまいこと動いて見せる技術」→ **A(パースフロー)** で確定。雲は光源(cineSun/cineClouds)の上へ(焼き込み影で太陽が後ろ)。
 - 実装:
