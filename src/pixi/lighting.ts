@@ -204,7 +204,9 @@ export const getCineCoolTexture = (): Texture => {
 
 // シネマティック(?cine=1)の追加3要素(社長試作v0.25.1863「その他も全部積む」)。全て一度だけベイク=
 // screen合成の全画面/帯スプライト。per-frameの重い描画なし=負荷は各1枚(bloom/grade同経路)。
-// ① 地平の太陽フレア(白熱コア+暖色ハロー)。十字光条(スターバースト)は外した(社長指示v0.25.1963「十字はやらず光源だけ明るく」)。
+// ① 地平の太陽フレア(白熱コア+暖色ハロー+細い十字光条)。
+// 社長指示v0.25.1963→1965: 「光源(ハロー)だけ明るく・十字はあのまま(明るくしない)」。光源の明るさはスプライトα(CINE_SUN_ALPHA_MAX=0.95)で上げるが、
+// それだと十字も一緒に明るくなるため、十字の焼き込みαを元見え(α0.67時代:横0.32/縦0.2)に合わせて下げて補正(0.32→0.226・0.2→0.141=0.67/0.95倍)=十字は元の明るさのまま。
 let cineSunTex: Texture | null = null;
 export const getCineSunTexture = (): Texture => {
   if (cineSunTex) return cineSunTex;
@@ -218,6 +220,14 @@ export const getCineSunTexture = (): Texture => {
   halo.addColorStop(0.62, 'rgba(140,45,35,0.05)');
   halo.addColorStop(1.0, 'rgba(120,40,40,0.0)');
   ctx.fillStyle = halo; ctx.fillRect(0, 0, s, s);
+  // 十字の光条(スターバースト)。加算。焼き込みαは補正済み(スプライトα0.95でも元0.67時代の見えに一致=十字は明るくしない)。
+  ctx.globalCompositeOperation = 'lighter';
+  const gx = ctx.createLinearGradient(0, cy, s, cy);
+  gx.addColorStop(0, 'rgba(255,200,140,0)'); gx.addColorStop(0.5, 'rgba(255,210,150,0.226)'); gx.addColorStop(1, 'rgba(255,200,140,0)');
+  ctx.fillStyle = gx; ctx.fillRect(0, cy - 1.5, s, 3);
+  const gy = ctx.createLinearGradient(cx, 0, cx, s);
+  gy.addColorStop(0, 'rgba(255,190,130,0)'); gy.addColorStop(0.5, 'rgba(255,200,140,0.141)'); gy.addColorStop(1, 'rgba(255,190,130,0)');
+  ctx.fillStyle = gy; ctx.fillRect(cx - 1.5, 0, 3, s);
   cineSunTex = Texture.from(c); return cineSunTex;
 };
 
