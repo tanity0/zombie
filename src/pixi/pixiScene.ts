@@ -2185,7 +2185,7 @@ export class PixiScene {
     const breath = Math.max(0, 1 + Math.sin(now * Math.PI * 2 / Math.max(200, tsNum('s1moonbreathms', 4200))) * Math.max(0, tsNum('s1moonbreath', 0.22)));
     // M1の冷たい残照帯(M7 cineWarm の青版・社長指示v0.25.1960)。地平帯に screen で乗せる。全画面・縦グラデのピークが地平に来る。
     this.stage1CoolBand.visible = true;
-    this.stage1CoolBand.position.set(-1, -1);
+    this.stage1CoolBand.position.set(-1, -1 - tsNum('s1coolbandup', 20)); // 20px上へ(社長指示v0.25.1964)。?s1coolbandup=で調整。下端はグラデが透明なので隙間は見えない
     this.stage1CoolBand.width = w + 2;
     this.stage1CoolBand.height = h + 2;
     this.stage1CoolBand.alpha = tsNum('s1coolband', 0.6) * breath;   // 濃さ(?s1coolband=・既定=M7残照相当0.6)×呼吸

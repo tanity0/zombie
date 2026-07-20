@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1964 — M1の紫残照帯を20px上へ【2026-07-21 01:57 JST】
+- 指示(社長): 「紫帯、20px上へ」。
+- 対処: `stage1CoolBand` のY位置を `-1` → `-1 - s1coolbandup`(既定**20**)。帯全体(=グラデのピーク=地平帯)が20px上へ。下端はグラデが透明なので隙間は見えない。`?s1coolbandup=` で調整可。
+- 検証: ヘッドレス(stage-1)で band.y=-21(=-1-20)を確認。typecheck OK。
+- 自己点検: 描画のみ・M1限定・ゲーム挙動不変。負荷: 0/10(位置オフセットのみ)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1963 — M7の光源: 十字光条を撤去+丸い光源をさらに明るく(α0.82→0.95)【2026-07-21 01:55 JST】
 - 指示(社長): 「m7 十字はやらず光源だけもう少し明るく」。
 - 対処: ① `getCineSunTexture()` から十字光条(スターバースト=横gx/縦gy fillRect+lighter)を撤去=白熱コア+暖色ハローのみ。
