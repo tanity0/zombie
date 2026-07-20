@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1912 — 光の線を森2の裏へ＋M1/M2の近景森を一度不透明に(社長指示)【2026-07-20 10:58 JST】
+- 指示(社長): ①「光の線は遠景森2の裏に」 ②「m1 m2 の近景森が半透明?を一度やめてみて」。
+- ①光の線(cineClouds=放射streak)を uiLayer から外し、stage の worldGroup(森1/森2/地面/gameplay)の後ろへ移設
+  (farBackdrop手前・雲より奥)。=森2の裏。cineSun(太陽点)は uiLayer のまま前面。結果: 木々の間から光条が差す
+  「森を透かすgod ray」に。検証: M7 cine で光条が松林の裏へ。
+- ②近景森(frontForest)の alpha を M1(stage-1)/M2(stage-2)で 1(不透明)に。ヘルパー `frontForestAlpha()` を追加し
+  2箇所(layout/applyStage3Front)を置換。判定は **stage id**(isLabStage はレイアウト実行時に未確定で取りこぼす=
+  labの LAB_FRONT_FOREST_ALPHA が実際は効いておらず0.78だった既存の穴も是正)。他ステージは従来の半透明(0.78)＋maskのまま。
+  検証: M1/M2 とも frontForest.alpha 0.78→1。maskは据え置き(=お試し。完全ソリッドが要ればmaskも外す)。
+- 自己点検: 描画/z順のみ。ゲーム挙動不変。①はcine限定。②はM1/M2の見た目(前景の濃さ)のみ。憲法第4/5条に非抵触。
+- 負荷: 0/10(z順移設＋alpha値)。changelogは①cine限定・②お試しのため据え置き。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1911 — M7の雲を森1/2・地面より下のレイヤーへ(社長指示・奥行き修正)【2026-07-20 10:46 JST】
 - 指示(社長): 「雲は 遠景森1-2 地面より下のレイヤーに」。v1909では光源の上(uiLayer最前面)だったのを変更。
 - 対処: `stage7CloudGroup`(+mask)を uiLayer から **stage の farBackdrop と worldGroup の間**へ移設

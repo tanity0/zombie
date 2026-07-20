@@ -1858,16 +1858,18 @@ export class PixiScene {
     this.stage7CloudGroup.visible = false;
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
-      this.gradeSprite, ...this.cineCloudLayers, this.cineSun,
+      this.gradeSprite, this.cineSun, // 光の線(cineCloudLayers)は森2の裏へ移すのでここには入れない(社長指示v0.25.1912)
       this.cineWarm, this.cineDust, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
-    // 雲は森1/2・地面より下=worldGroup(森/地面/gameplay)の後ろ・farBackdrop(銀河)の手前へ。画面固定の空(社長指示v0.25.1911)。
+    // 光の線(cineClouds)と雲は worldGroup(森1/2・地面・gameplay)の後ろ・farBackdrop(銀河)の手前へ。画面固定の空。
+    // 順(奥→手前): 光の線 → 雲 → worldGroup(=森2は雲/光の線の手前)(社長指示v0.25.1911/1912)。
     const stageC = this.L.worldGroup.parent;
     if (stageC) {
-      const at = stageC.getChildIndex(this.L.worldGroup);
-      stageC.addChildAt(this.stage7CloudMask, at);   // mask(非描画)
-      stageC.addChildAt(this.stage7CloudGroup, at + 1); // 雲本体(worldGroupの直前=後ろ)
+      const idx = () => stageC.getChildIndex(this.L.worldGroup);
+      for (const sp of this.cineCloudLayers) stageC.addChildAt(sp, idx()); // 光の線=森2の裏
+      stageC.addChildAt(this.stage7CloudMask, idx());
+      stageC.addChildAt(this.stage7CloudGroup, idx());
     }
     this.applyCineGrade(); // 初期適用(applyDaylight前でもcine値を効かせる)
 
@@ -1934,7 +1936,7 @@ export class PixiScene {
     this.L.frontForest.width = w;
     this.L.frontForest.height = frontH;
     this.L.frontForest.tileScale.set(frontScale);
-    this.L.frontForest.alpha = this.isLabStage ? LAB_FRONT_FOREST_ALPHA : FRONT_FOREST_ALPHA;
+    this.L.frontForest.alpha = this.frontForestAlpha();
     this.updateFrontForestFadeMask(w, frontH);
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
     // Full-screen atmosphere overlays. サブピクセル/解像度丸めで下端などに1pxの未カバー行が
@@ -2576,6 +2578,14 @@ export class PixiScene {
   private farBackdropBaseTex: Texture | null = null;
   private horizonForestBaseTex: Texture | null = null;
   private frontForestBaseTex: Texture | null = null;
+  // 近景森(frontForest)のalpha。M1(stage-1)/M2(stage-2)は「一度」不透明に(半透明をやめる・社長指示v0.25.1912)。
+  // stage id で判定(isLabStage はレイアウト実行時に未確定のことがあり取りこぼす)。他ステージは従来の半透明のまま。
+  private frontForestAlpha(): number {
+    const id = getSelectedStageId();
+    if (id === 'stage-1' || id === 'stage-2') return 1;
+    if (this.isLabStage) return LAB_FRONT_FOREST_ALPHA;
+    return FRONT_FOREST_ALPHA;
+  }
   // ラボ床テクスチャ(PixiStage が森の地面と同じ Assets.load で読み込み、ここへ注入)。
   // マニフェスト(getTexture)が万一読めなくても、こちらを最優先で使う=確実に張り替わる。
   private labGroundTex: Texture | null = null;
@@ -2641,7 +2651,7 @@ export class PixiScene {
       this.L.frontForest.alpha = 1;
       this.L.frontForest.mask = null;
     } else {
-      this.L.frontForest.alpha = this.isLabStage ? LAB_FRONT_FOREST_ALPHA : FRONT_FOREST_ALPHA;
+      this.L.frontForest.alpha = this.frontForestAlpha();
       this.L.frontForest.mask = this.frontForestFadeMask;
     }
     this.currentFrontKey = desired;
