@@ -160,12 +160,16 @@ export const getCineWarmTexture = (): Texture => {
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d')!;
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  // 残照は地平がピーク、そこから足元近くまで緩やかに届かせる(社長指示v0.25.1862「照明もっと下まで」)。
-  g.addColorStop(0.00, 'rgba(255,150,70,0.78)');  // 画面最上部=残照の芯(強)
-  g.addColorStop(0.20, 'rgba(255,120,55,0.50)');  // 地平帯
-  g.addColorStop(0.40, 'rgba(230,95,52,0.30)');
-  g.addColorStop(0.60, 'rgba(190,80,55,0.18)');   // 中盤も暖色を残す
-  g.addColorStop(0.80, 'rgba(140,65,60,0.08)');   // 足元付近までうっすら
+  // 残照は「光源(sunY≈0.18)より下=地平帯」に集中させ、上はクリーンな銀河を残す(社長指示v0.25.1927・参照画像=
+  // 上は星空、オレンジは地平だけ)。上端〜光源上は透明、光源下〜地平(≈0.26-0.40)でピーク、以降は下へ淡くフェード。
+  g.addColorStop(0.00, 'rgba(255,150,70,0.0)');   // 最上部=透明(銀河をそのまま見せる)
+  g.addColorStop(0.16, 'rgba(255,150,70,0.0)');   // 光源(0.18)の直上まで透明=オレンジは光源より上に出さない
+  g.addColorStop(0.22, 'rgba(255,138,58,0.16)');  // 光源のすぐ下=残照の立ち上がり
+  g.addColorStop(0.30, 'rgba(255,126,50,0.46)');
+  g.addColorStop(0.38, 'rgba(255,118,48,0.55)');  // 地平帯=残照の芯(強・ここがピーク)
+  g.addColorStop(0.47, 'rgba(238,104,50,0.38)');
+  g.addColorStop(0.58, 'rgba(198,86,55,0.20)');   // 地平下=淡く
+  g.addColorStop(0.74, 'rgba(150,72,58,0.08)');   // 足元付近までうっすら(ゲーム面は明るくしすぎない)
   g.addColorStop(1.00, 'rgba(90,55,65,0.0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
