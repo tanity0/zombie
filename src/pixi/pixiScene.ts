@@ -423,16 +423,13 @@ const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.1
 // M7の遠景に重ねる雲(パースフロー: 消失点から拡大＋2枚クロスフェードでループ。社長指示v0.25.1909)。光源の上・空帯にマスク。?scloud*= で調整。
 // M7の雲=5コマのコマ送りアニメ(社長指示v0.25.1916・全画面の空が濃→薄へ散る素材に差替)。縦1列×5行のストリップ。
 // 1サイクル中はコマ0→4を全alphaでパッと切替(ブレンド無し)、継ぎ目(コマ4→次周回コマ0)だけ2枚目を重ねて台形alphaで
-// クロスフェード=ループのハード復帰を隠す。素材は同位置で散る(レジスト済)ので位置ドリフトは既定0=その場で散る。森より後ろ・空帯マスク維持。?scloud*= で調整。
+// クロスフェード=ループのハード復帰を隠す。表示は画面固定・横いっぱい(xy/ドリフト廃止=社長v0.25.1917「動かすとズレる」)。森より後ろ・空帯マスク維持。?scloud*= で調整。
 const STAGE7_CLOUD_COLS = 1;
 const STAGE7_CLOUD_ROWS = 5;
 const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 5
 const STAGE7_CLOUD_PERIOD_MS = Math.max(1500, tsNum('scloudperiod', 11000)); // 1周期(5コマ)ms。大きいほどゆっくり
 const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha
-const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)
-const STAGE7_CLOUD_DRIFT_X = Math.max(0, tsNum('sclouddx', 0));            // 横ドリフト振幅(px)。新素材は既定0=その場で散る
-const STAGE7_CLOUD_DRIFT_Y = Math.max(0, tsNum('sclouddy', 0));            // 縦ドリフト振幅(px)。新素材は既定0
-const STAGE7_CLOUD_Y_FRAC = tsNum('scloudy', 0.06);                        // 雲の基準Y(screenH比)
+const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)。位置は固定(xy/ドリフト廃止=社長v0.25.1917)
 const STAGE7_CLOUD_OVERLAP = Math.max(0, Math.min(0.45, tsNum('scloudol', 0.12))); // ループ継ぎ目だけ重ねるオーバーラップ幅(サイクル比)。0=瞬間切替
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
@@ -2033,21 +2030,14 @@ export class PixiScene {
     this.stage7CloudMask.position.set(0, 0);
     this.stage7CloudMask.width = w;
     this.stage7CloudMask.height = h * STAGE7_CLOUD_BAND_FRAC;
+    // 画面固定・横いっぱい(社長指示v0.25.1917「動かす/xy指定でズレるので画面一杯固定表示」)。位置は完全固定=
+    // 横中央(anchor0.5)・上端(y=0)、スケール=画面幅÷コマ幅(SIZE=1で横ぴったり)。ドリフト/xyオフセットは廃止=ズレない。
     const fw = this.stage7CloudFrames[0].width || 1;
     const baseScale = (w * STAGE7_CLOUD_SIZE) / fw;
-    const baseX = w * 0.5, baseY = h * STAGE7_CLOUD_Y_FRAC;
-    // 位置ドリフト経路: 左→右→左下→右。コマ中心で離散サンプル=コマ毎にパッと位置が変わる(滑らせない)。
-    const PATH: [number, number][] = [[-1, 0], [1, 0], [-1, 1], [1, 0]];
-    const posOf = (fi: number): [number, number] => {
-      const ph = (fi + 0.5) / STAGE7_CLOUD_FRAMES;             // コマ中心(離散)
-      const seg = ph * 4, s0 = Math.floor(seg) % 4, s1 = (s0 + 1) % 4, f = seg - Math.floor(seg);
-      const dx = (PATH[s0][0] + (PATH[s1][0] - PATH[s0][0]) * f) * STAGE7_CLOUD_DRIFT_X;
-      const dy = (PATH[s0][1] + (PATH[s1][1] - PATH[s0][1]) * f) * STAGE7_CLOUD_DRIFT_Y;
-      return [baseX + dx, baseY + dy];
-    };
+    const baseX = w * 0.5, baseY = 0;
     // 継ぎ目だけ重ねる。サイクル開始間隔=P·(1-OL)。隣接サイクルは交互スプライトに載せ、各サイクルは
     // 頭[0,OL]でフェードイン・尻[1-OL,1]でフェードアウト(=前後サイクルとの継ぎ目クロスフェード)、
-    // 中間[OL,1-OL]は全alphaでコマをパッと切替。両立ち上がり幅はコマ0/5の枠内(OL<1/6目安)。
+    // 中間[OL,1-OL]は全alphaでコマをパッと切替。両立ち上がり幅はコマ0/最終の枠内(OL<1/コマ数 目安)。
     const P = STAGE7_CLOUD_PERIOD_MS;
     const OL = STAGE7_CLOUD_OVERLAP;
     const effP = P * (1 - OL);
@@ -2058,7 +2048,7 @@ export class PixiScene {
       const localT = now - k * effP;
       if (localT < 0 || localT >= P) continue;                // このサイクルは表示範囲外
       const ph = localT / P;                                  // 0..1(サイクル内の進行)
-      const fi = Math.min(STAGE7_CLOUD_FRAMES - 1, Math.floor(ph * STAGE7_CLOUD_FRAMES)); // コマ0..5
+      const fi = Math.min(STAGE7_CLOUD_FRAMES - 1, Math.floor(ph * STAGE7_CLOUD_FRAMES)); // コマ0..(FRAMES-1)
       let env = 1;                                            // 台形エンベロープ
       if (OL > 0) {
         if (ph < OL) env = ph / OL;
@@ -2068,8 +2058,7 @@ export class PixiScene {
       sp.visible = true;
       if (sp.texture !== this.stage7CloudFrames[fi]) sp.texture = this.stage7CloudFrames[fi];
       sp.scale.set(baseScale);
-      const [px, py] = posOf(fi);
-      sp.position.set(px, py);
+      sp.position.set(baseX, baseY);                          // 完全固定(コマに依らず不動=ズレない)
       sp.alpha = STAGE7_CLOUD_ALPHA * Math.max(0, Math.min(1, env));
     }
   }
