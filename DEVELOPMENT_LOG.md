@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1936 — M1城遠景 s1casty を px単位に修正(1以上で消えるバグ)【2026-07-20 16:17 JST】
+- 指摘(社長): 「s1casty を1以上にすると消える」。原因=s1castyがscreenH**比率**だったため 1=画面1つ分下=画面外に落ちていた(単位ミスマッチ)。
+- 対処: `STAGE1_CASTLE_Y` を **px単位**に(`farH + this.screenH*STAGE1_CASTLE_Y` → `farH + STAGE1_CASTLE_Y`)。他の位置指定(sundown等)と同じpx流儀。既定0は不変。
+- 検証: ヘッドレス実機(stage-1)で s1casty=0→y228 / =1→y229(+1px・消えない) / =100→y328(+100px・画面内)。typecheck OK。
+- 負荷: 0/10(単位換算のみ)。changelog据え置き。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1935 — M7雲: 次波の湧きをフレーム4→フレーム3に変更(重なり更に増)【2026-07-20 16:09 JST】
 - 指示(社長): 「M7の雲、フレーム3のところでフレーム1のループを重ねて開始に変更」。
 - 対処: `scloudspawn` の既定を **4→3**(旧波フレーム3=fpos2で次波フレーム1が湧く)。S=P·3/6=P/2。下限3(=同時2波維持)ちょうど。

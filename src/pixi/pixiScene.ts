@@ -441,7 +441,7 @@ const STAGE1_SKY_PERIOD_MS = Math.max(3000, tsNum('s1skyperiod', 12000)); // 6�
 const STAGE1_SKY_ALPHA = Math.max(0, Math.min(1, tsNum('s1skyalpha', 1.0)));  // 星空の不透明度(1=森の空を完全に覆う)
 // M1の星空に重ねる城/山/霧の森(緑抜き・静止・社長指示v0.25.1934)。星空の手前・近景森の奥。?s1cast*= で調整。
 const STAGE1_CASTLE_SCALE = Math.max(0.2, tsNum('s1castscale', 1.0)); // 横スケール(画面幅比。1=横いっぱい)
-const STAGE1_CASTLE_Y = tsNum('s1casty', 0.0);                         // 底の位置調整(screenH比・+で下へ)。既定=底を地平(farH)
+const STAGE1_CASTLE_Y = tsNum('s1casty', 0);                           // 底の位置調整(px・+で下へ/−で上へ)。既定0=底を地平(farH)。※px単位(社長v0.25.1936「1以上で消える」修正)
 const STAGE1_CASTLE_ALPHA = Math.max(0, Math.min(1, tsNum('s1castalpha', 1.0))); // 不透明度
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
@@ -2102,7 +2102,7 @@ export class PixiScene {
       const cw = this.stage1Castle.texture.width || 1;
       this.stage1Castle.anchor.set(0.5, 1);                       // 底基準
       this.stage1Castle.scale.set((w * STAGE1_CASTLE_SCALE) / cw);
-      this.stage1Castle.position.set(w * 0.5, farH + this.screenH * STAGE1_CASTLE_Y);
+      this.stage1Castle.position.set(w * 0.5, farH + STAGE1_CASTLE_Y); // s1casty=px(比率ではない)
       this.stage1Castle.alpha = STAGE1_CASTLE_ALPHA;
     }
     if (!on) return;
