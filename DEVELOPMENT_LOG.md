@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1963 — M7の光源: 十字光条を撤去+丸い光源をさらに明るく(α0.82→0.95)【2026-07-21 01:55 JST】
+- 指示(社長): 「m7 十字はやらず光源だけもう少し明るく」。
+- 対処: ① `getCineSunTexture()` から十字光条(スターバースト=横gx/縦gy fillRect+lighter)を撤去=白熱コア+暖色ハローのみ。
+  ② `CINE_SUN_ALPHA_MAX` 0.82→**0.95**(丸い光源をさらに明るく)。M1は月へ移行済みなのでM7の太陽のみに効く。
+- 検証: ヘッドレス(stage-7・cine)で cineSun.α=0.95・visible。実描画で十字が消え、丸い暖色の光源だけが明るくなる(白飛びせず)のを確認。typecheck OK。
+- 自己点検: 描画のみ・M7限定・ゲーム挙動不変。負荷: 0/10(ベイクの十字描画を削減+定数変更=むしろ軽い)。
+- Files: `src/pixi/lighting.ts`, `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1962 — M1の残照帯を青→紫に【2026-07-21 01:48 JST】
 - 指示(社長): 「m1の青残照帯を紫にして」。
 - 対処: `getCineCoolTexture()` の各stopのRGBを青→紫(ヴァイオレット・ピーク≈rgba(190,125,255))へ。stop位置/α・screen合成・配置は不変。

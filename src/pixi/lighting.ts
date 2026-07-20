@@ -204,7 +204,7 @@ export const getCineCoolTexture = (): Texture => {
 
 // シネマティック(?cine=1)の追加3要素(社長試作v0.25.1863「その他も全部積む」)。全て一度だけベイク=
 // screen合成の全画面/帯スプライト。per-frameの重い描画なし=負荷は各1枚(bloom/grade同経路)。
-// ① 地平の太陽フレア(白熱コア+暖色ハロー+細い十字光条)。
+// ① 地平の太陽フレア(白熱コア+暖色ハロー)。十字光条(スターバースト)は外した(社長指示v0.25.1963「十字はやらず光源だけ明るく」)。
 let cineSunTex: Texture | null = null;
 export const getCineSunTexture = (): Texture => {
   if (cineSunTex) return cineSunTex;
@@ -218,16 +218,6 @@ export const getCineSunTexture = (): Texture => {
   halo.addColorStop(0.62, 'rgba(140,45,35,0.05)');
   halo.addColorStop(1.0, 'rgba(120,40,40,0.0)');
   ctx.fillStyle = halo; ctx.fillRect(0, 0, s, s);
-  // 細い十字の光条(スターバースト)。横条+縦条を加算合成で。
-  ctx.globalCompositeOperation = 'lighter';
-  // 横光条
-  // フレア少し絞る(社長指示v0.25.1864): 十字光条の芯を弱める(横0.5→0.32・縦0.32→0.2)。
-  const gx = ctx.createLinearGradient(0, cy, s, cy);
-  gx.addColorStop(0, 'rgba(255,200,140,0)'); gx.addColorStop(0.5, 'rgba(255,210,150,0.32)'); gx.addColorStop(1, 'rgba(255,200,140,0)');
-  ctx.fillStyle = gx; ctx.fillRect(0, cy - 1.5, s, 3);
-  const gy = ctx.createLinearGradient(cx, 0, cx, s);
-  gy.addColorStop(0, 'rgba(255,190,130,0)'); gy.addColorStop(0.5, 'rgba(255,200,140,0.2)'); gy.addColorStop(1, 'rgba(255,190,130,0)');
-  ctx.fillStyle = gy; ctx.fillRect(cx - 1.5, 0, 3, s);
   cineSunTex = Texture.from(c); return cineSunTex;
 };
 
