@@ -308,7 +308,7 @@ const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻
 // (m0up=tutorial 〜 m7up, ex1up/ex2up)。既定は現行維持(m1up=40, m2up=100, 他=0)。社長指示v0.25.1901。
 // 加算関係: snow は別途 northup も効く(加算)/ lab は別途 LAB_HORIZON_FOREST_EXTRA_DOWN(+20下)も効く。
 const M0_HORIZON_FOREST_UP_PX = tsNum('m0up', 0);
-const M1_HORIZON_FOREST_UP_PX = tsNum('m1up', 40);
+const M1_HORIZON_FOREST_UP_PX = tsNum('m1up', 60); // 40→60(社長v0.25.1942「森1を20px上へ」)
 const M2_HORIZON_FOREST_UP_PX = tsNum('m2up', 60);
 const M3_HORIZON_FOREST_UP_PX = tsNum('m3up', 50);
 const M4_HORIZON_FOREST_UP_PX = tsNum('m4up', 0);
