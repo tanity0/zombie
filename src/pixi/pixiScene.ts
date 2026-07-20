@@ -423,17 +423,16 @@ const CINE_CLOUD_STREAKS_PER_LAYER = Math.max(1, Math.round(tsNum('cloudstreaks'
 const CINE_CLOUD_TWINKLE_SPD = Math.max(0, tsNum('cloudspd', 0.0016));           // 明滅の速さ(瞬き感)
 const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.10))); // 各層の最小alpha倍率(0=完全に消える)
 // M7の遠景に重ねる雲(パースフロー: 消失点から拡大＋2枚クロスフェードでループ。社長指示v0.25.1909)。光源の上・空帯にマスク。?scloud*= で調整。
-// M7の雲=5コマの下降コンベア(社長指示v0.25.1922)。1波=フレーム1→5を連続クロスフェード(濃→薄に散る)しながら少しずつ下降、
-// フレーム5に来たら次の波が元の(上の)位置からフレーム1で被さって始まる、を繰り返す(=逆再生でも急リセットでもない)。
-// 波は最大2本同時(継ぎ目でだけ重なる)。各波は隣接2コマをクロスフェード=4枚(波A=[0,1]/波B=[2,3])。横位置固定・横いっぱい。森より後ろ・空帯マスク維持。?scloud*= で調整。
+// M7の雲=5コマの下降コンベア+コマ毎の三角クロスフェード(社長指示v0.25.1922/1929)。1波=各コマがフェードイン→ピーク(全alpha)→
+// フェードアウトの三角包絡で0→4を再生(次コマは前コマのピーク時に入り始め、前コマが0になる時に次コマがピーク)、頭(フレーム1)も尻(フレーム5)も
+// ちゃんとフェード。同時に少しずつ下降。フレーム5(尻フェード)で次波が元の上位置からフレーム1(頭フェード)で湧く=総alpha一定でシームレス。
+// 波は最大2本(継ぎ目でだけ重なる)。各波は隣接2コマ=4枚(波A=[0,1]/波B=[2,3])。横位置固定・横いっぱい。森より後ろ・空帯マスク維持。?scloud*= で調整。
 const STAGE7_CLOUD_COLS = 1;
 const STAGE7_CLOUD_ROWS = 5;
 const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 5
 const STAGE7_CLOUD_PERIOD_MS = Math.max(750, tsNum('scloudperiod', 1375)); // 1波(フレーム1→5)ms。大きいほどゆっくり(2倍速=2750→1375・社長v0.25.1923)
 const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha(各波の上限)
-const STAGE7_CLOUD_OVERLAP = Math.max(0.02, Math.min(0.6, tsNum('scloudol', 0.2))); // 継ぎ目の重なり(波比)。次波はフレーム5付近=旧波の残りOL地点で湧く(spawn間隔=P·(1-OL))
 const STAGE7_CLOUD_DROP = Math.max(0, Math.min(0.4, tsNum('sclouddrop', 0.03)));   // 1波の下降量(screenH比)。「少しだけ下に移動」。0=下降なし(移動距離半分=0.06→0.03・社長v0.25.1924)
-const STAGE7_CLOUD_FADE = tsNum('scloudfade', 0) > 0.5;                            // 各波の湧き/末尾フェードイン・アウト包絡。既定OFF(社長v0.25.1925「やめてみて」)。?scloudfade=1で復活
 const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)。横位置は固定(xy廃止=社長v0.25.1917)
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
@@ -2023,8 +2022,9 @@ export class PixiScene {
 
   private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
 
-  // M7の遠景に重ねる雲=5コマの下降コンベア(社長指示v0.25.1922)。1波=フレーム1→5を連続クロスフェードしながら下降(DROP)、
-  // フレーム5付近で次波が元の上位置からフレーム1で被さって湧く、を繰り返す。波は最大2本(継ぎ目だけ重なる)。各波2枚。
+  // M7の遠景に重ねる雲=5コマの下降コンベア+コマ毎三角クロスフェード(社長指示v0.25.1922/1929)。各コマは三角包絡
+  // (fpos=jでピーク・j±1で0)でフェードイン→ピーク→フェードアウト。頭(フレーム1)は fpos -1→0 で湧きフェードイン、
+  // 尻(フレーム5)は fpos 4→5 でフェードアウト。次波は尻フェードに頭フェードを重ねて湧く=総alpha一定。各波2枚。
   private updateStage7Clouds(now: number) {
     const on = this.currentFarKey === 'stage7' && this.stage7CloudFrames.length === STAGE7_CLOUD_FRAMES;
     this.stage7CloudGroup.visible = on;
@@ -2037,38 +2037,35 @@ export class PixiScene {
     const fw = this.stage7CloudFrames[0].width || 1;
     const baseScale = (w * STAGE7_CLOUD_SIZE) / fw;
     const baseX = w * 0.5, baseY = 0;                        // 横中央・上端(元の湧き位置)。横は固定。
-    const P = STAGE7_CLOUD_PERIOD_MS;                        // 1波(1→5)の長さ
-    const OL = STAGE7_CLOUD_OVERLAP;                         // 継ぎ目の重なり(波比)
-    const S = P * (1 - OL);                                  // 波の湧き間隔(次波は旧波の残りOLで湧く=フレーム5付近)
-    const drop = h * STAGE7_CLOUD_DROP;                      // 1波の下降量(px)
     const FR = STAGE7_CLOUD_FRAMES;                          // 5
+    const P = STAGE7_CLOUD_PERIOD_MS;                        // 1波の長さ(頭/尻フェード含む)
+    const tail = 1 / (FR + 1);                              // 頭/尻フェード幅=1コマ枠
+    const S = P * (1 - tail);                                // 波の湧き間隔(尻フェードと次波の頭フェードが重なる=総alpha一定)
+    const drop = h * STAGE7_CLOUD_DROP;                      // 1波の下降量(px)
     for (const sp of this.stage7Clouds) sp.visible = false;  // 生きてる波だけ下で可視化
     const kCur = Math.floor(now / S);
-    for (let k = kCur - 1; k <= kCur; k++) {                 // 生存しうるのはこの2波だけ(S>P/2)
+    for (let k = kCur - 1; k <= kCur; k++) {                 // 生存しうるのはこの2波だけ
       if (k < 0) continue;
       const tau = now - k * S;
       if (tau < 0 || tau >= P) continue;                     // この波は生存範囲外
-      const phase = tau / P;                                 // 0..1(フレーム1→5・巻き戻し無し)
-      const fp = phase * (FR - 1);                           // 0..(FR-1)
-      const iA = Math.min(FR - 1, Math.floor(fp));           // 現コマ
-      const iB = Math.min(FR - 1, iA + 1);                   // 次コマ(末尾はフレーム5で頭打ち)
-      const frac = fp - Math.floor(fp);
-      let env = 1;                                           // 湧き[0,OL]でフェードイン・末尾[1-OL,1]でフェードアウト(既定OFF)
-      if (STAGE7_CLOUD_FADE) {
-        if (phase < OL) env = phase / OL;
-        else if (phase > 1 - OL) env = (1 - phase) / OL;
-      }
+      const phase = tau / P;                                 // 0..1
+      const fpos = phase * (FR + 1) - 1;                     // -1..FR。コマjは fpos=j でピーク(全alpha)、j±1で0=三角
       const y = baseY + drop * phase;                        // 下降(元の上位置→少し下へ)
       const pair = ((k % 2) + 2) % 2;                        // 隣接波は別スプライト対=継ぎ目で共存
-      const spA = this.stage7Clouds[pair * 2], spB = this.stage7Clouds[pair * 2 + 1];
-      spA.visible = true; spB.visible = true;
-      if (spA.texture !== this.stage7CloudFrames[iA]) spA.texture = this.stage7CloudFrames[iA];
-      if (spB.texture !== this.stage7CloudFrames[iB]) spB.texture = this.stage7CloudFrames[iB];
-      spA.scale.set(baseScale); spB.scale.set(baseScale);
-      spA.position.set(baseX, y); spB.position.set(baseX, y);
-      const a = STAGE7_CLOUD_ALPHA * Math.max(0, Math.min(1, env));
-      spA.alpha = a * (1 - frac);                            // 現コマ=フェードアウト
-      spB.alpha = a * frac;                                  // 次コマ=フェードイン
+      const sprites = [this.stage7Clouds[pair * 2], this.stage7Clouds[pair * 2 + 1]];
+      let si = 0;
+      const j0 = Math.floor(fpos);
+      for (let j = j0; j <= j0 + 1; j++) {                   // fposを挟む隣接2コマ
+        if (j < 0 || j > FR - 1 || si >= sprites.length) continue;
+        const a = (1 - Math.abs(fpos - j)) * STAGE7_CLOUD_ALPHA; // 三角包絡=コマ毎フェードイン/アウト
+        if (a <= 0) continue;
+        const sp = sprites[si++];
+        sp.visible = true;
+        if (sp.texture !== this.stage7CloudFrames[j]) sp.texture = this.stage7CloudFrames[j];
+        sp.scale.set(baseScale);
+        sp.position.set(baseX, y);
+        sp.alpha = a;
+      }
     }
   }
 
