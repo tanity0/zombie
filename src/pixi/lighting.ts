@@ -206,32 +206,31 @@ export const getCineSunTexture = (): Texture => {
   cineSunTex = Texture.from(c); return cineSunTex;
 };
 
-// ①' M1用の月(光源)。太陽フレアの暖色/十字光条ではなく、冷たい青白い円盤+淡いハロー。
-// くっきりした縁の円盤を淡いハローに加算で重ねる=「月」として読める形。太陽と同じ cineSun スプライトに
-// テクスチャだけ差し替えて使う(M1のみ・社長指示v0.25.1948「m1、光源を月にして」)。
+// ①' M1用の月(光源)。太陽フレア(getCineSunTexture)と**まったく同じ形状**(白熱コア+ハロー+細い十字光条)で、
+// 色味だけ暖色→冷たい月光(青白)へ置き換えたもの。太陽と同じ cineSun スプライトにテクスチャだけ差し替えて使う
+// (M1のみ・社長指示v0.25.1948「m1、光源を月にして」→v0.25.1949「戻して 色味だけ変えて」=形は太陽のまま色だけ月に)。
 let cineMoonTex: Texture | null = null;
 export const getCineMoonTexture = (): Texture => {
   if (cineMoonTex) return cineMoonTex;
   const s = 384; const c = document.createElement('canvas'); c.width = c.height = s;
   const ctx = c.getContext('2d')!; const cx = s / 2, cy = s / 2;
-  // 冷たいハロー(月光の淡い青白い滲み)。太陽の暖色ハローの置き換え。
+  // ハロー: getCineSunTexture と同じ stop 位置/α、RGBだけ冷色(青白)へ。
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, s / 2);
-  halo.addColorStop(0.00, 'rgba(238,246,255,0.85)');
-  halo.addColorStop(0.12, 'rgba(212,228,252,0.52)');
-  halo.addColorStop(0.26, 'rgba(178,203,240,0.22)');
-  halo.addColorStop(0.50, 'rgba(148,178,224,0.07)');
-  halo.addColorStop(1.00, 'rgba(120,150,200,0.0)');
+  halo.addColorStop(0.0, 'rgba(240,248,255,0.95)');
+  halo.addColorStop(0.06, 'rgba(205,225,255,0.9)');
+  halo.addColorStop(0.16, 'rgba(150,185,240,0.55)');
+  halo.addColorStop(0.34, 'rgba(90,130,210,0.22)');
+  halo.addColorStop(0.62, 'rgba(50,80,160,0.05)');
+  halo.addColorStop(1.0, 'rgba(40,70,140,0.0)');
   ctx.fillStyle = halo; ctx.fillRect(0, 0, s, s);
-  // 月の円盤(くっきりした縁+淡い青白い本体)。加算でハローに重ねる。
+  // 十字の光条(スターバースト)。形状・α・太さは太陽と同一、色だけ冷色へ。
   ctx.globalCompositeOperation = 'lighter';
-  const r = s * 0.145;
-  const disc = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-  disc.addColorStop(0.00, 'rgba(248,251,255,0.98)');
-  disc.addColorStop(0.70, 'rgba(232,241,255,0.95)');
-  disc.addColorStop(0.90, 'rgba(212,226,250,0.9)');
-  disc.addColorStop(1.00, 'rgba(200,216,246,0.0)'); // 縁で素早く落として円形に
-  ctx.fillStyle = disc;
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  const gx = ctx.createLinearGradient(0, cy, s, cy);
+  gx.addColorStop(0, 'rgba(200,225,255,0)'); gx.addColorStop(0.5, 'rgba(210,232,255,0.32)'); gx.addColorStop(1, 'rgba(200,225,255,0)');
+  ctx.fillStyle = gx; ctx.fillRect(0, cy - 1.5, s, 3);
+  const gy = ctx.createLinearGradient(cx, 0, cx, s);
+  gy.addColorStop(0, 'rgba(190,220,255,0)'); gy.addColorStop(0.5, 'rgba(200,228,255,0.2)'); gy.addColorStop(1, 'rgba(190,220,255,0)');
+  ctx.fillStyle = gy; ctx.fillRect(cx - 1.5, 0, 3, s);
   cineMoonTex = Texture.from(c); return cineMoonTex;
 };
 
