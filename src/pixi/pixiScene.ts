@@ -2207,7 +2207,7 @@ export class PixiScene {
     // 前面のcineSun(太陽フレア用)はM1では使わない=非表示。素材未ロード時は月自体を出さない(ロードは開幕前に完了)。
     this.cineSun.visible = false;
     if (this.stage1MoonTex) {
-      const moonSize = Math.min(w, h) * tsNum('s1moonsize', 0.35); // 大きさ半分(0.7→0.35・社長指示v0.25.1953)。?s1moonsize= で微調整
+      const moonSize = Math.min(w, h) * tsNum('s1moonsize', 0.175); // 大きさ半分(0.35→0.175・社長指示v0.25.1967)。グロー/月暈は月基準で比例縮小。?s1moonsize= で微調整
       this.stage1Moon.visible = true;
       this.stage1Moon.anchor.set(0.5);
       this.stage1Moon.width = this.stage1Moon.height = moonSize;
