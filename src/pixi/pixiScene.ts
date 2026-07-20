@@ -1964,12 +1964,15 @@ export class PixiScene {
     const farH = this.farBackdropHeight();
     // M7(星雲)は高さで合わせる=画像の縦全体を帯に収める(横はタイルでループ)。cover(Math.max)だと
     // 横基準で拡大され下側が切れて地平線が黒い中域で終わっていた(社長指示v0.25.1947「横幅ではなく高さで合わせて夜景」)。
-    const farScale = this.currentFarKey === 'stage7'
-      ? farH / this.L.farBackdrop.texture.height
+    // 引きズーム(worldGroupのみ縮小/下降)時に地平の下へ黒帯が出るため、遠景(画面固定)の高さをs7farext倍に下延長=夜空を下へ余裕分引っ張る(社長指示v0.25.1957)。
+    const isM7far = this.currentFarKey === 'stage7';
+    const farDrawH = isM7far ? farH * Math.max(1, tsNum('s7farext', 1.35)) : farH;
+    const farScale = isM7far
+      ? farDrawH / this.L.farBackdrop.texture.height
       : Math.max(w / this.L.farBackdrop.texture.width, farH / this.L.farBackdrop.texture.height);
     this.L.farBackdrop.position.set(0, 0);
     this.L.farBackdrop.width = w;
-    this.L.farBackdrop.height = farH;
+    this.L.farBackdrop.height = farDrawH;
     this.L.farBackdrop.tileScale.set(farScale);
     this.L.farBackdrop.alpha = 1;
     const horizonH = this.horizonForestHeight();
@@ -3073,11 +3076,14 @@ export class PixiScene {
     if (!tex || tex.width <= 0 || tex.height <= 0) return;
     const farH = this.farBackdropHeight();
     // M7(星雲)は高さで合わせる(横はタイルでループ)。社長指示v0.25.1947。
-    const farScale = this.currentFarKey === 'stage7'
-      ? farH / tex.height
+    // 引きズームの地平黒帯対策で、遠景(画面固定)の高さをs7farext倍に下延長=夜空を下へ余裕分引っ張る(社長指示v0.25.1957)。
+    const isM7far = this.currentFarKey === 'stage7';
+    const farDrawH = isM7far ? farH * Math.max(1, tsNum('s7farext', 1.35)) : farH;
+    const farScale = isM7far
+      ? farDrawH / tex.height
       : Math.max(this.screenW / tex.width, farH / tex.height);
     this.L.farBackdrop.width = this.screenW;
-    this.L.farBackdrop.height = farH;
+    this.L.farBackdrop.height = farDrawH;
     this.L.farBackdrop.tileScale.set(farScale);
     this.layoutRiverFlow(farH, farScale);
   }
