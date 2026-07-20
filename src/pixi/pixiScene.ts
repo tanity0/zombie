@@ -427,7 +427,7 @@ const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.1
 const STAGE7_CLOUD_COLS = 1;
 const STAGE7_CLOUD_ROWS = 5;
 const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 5
-const STAGE7_CLOUD_PERIOD_MS = Math.max(1500, tsNum('scloudperiod', 11000)); // 1周期(5コマ)ms。大きいほどゆっくり
+const STAGE7_CLOUD_PERIOD_MS = Math.max(1500, tsNum('scloudperiod', 5500)); // 1周期(5コマ)ms。大きいほどゆっくり(2倍速=11000→5500・社長v0.25.1918)
 const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha
 const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)。位置は固定(xy/ドリフト廃止=社長v0.25.1917)
 const STAGE7_CLOUD_OVERLAP = Math.max(0, Math.min(0.45, tsNum('scloudol', 0.12))); // ループ継ぎ目だけ重ねるオーバーラップ幅(サイクル比)。0=瞬間切替
