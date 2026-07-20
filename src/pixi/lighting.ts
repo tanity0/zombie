@@ -206,15 +206,15 @@ export const getCineSunTexture = (): Texture => {
   cineSunTex = Texture.from(c); return cineSunTex;
 };
 
-// ①' M1用の月(光源)。太陽フレア(getCineSunTexture)と**まったく同じ形状**(白熱コア+ハロー+細い十字光条)で、
-// 色味だけ暖色→冷たい月光(青白)へ置き換えたもの。太陽と同じ cineSun スプライトにテクスチャだけ差し替えて使う
-// (M1のみ・社長指示v0.25.1948「m1、光源を月にして」→v0.25.1949「戻して 色味だけ変えて」=形は太陽のまま色だけ月に)。
+// ①' M1用の月(光源)。太陽フレアの白熱コア+ハローと同じ放射グラデを、RGBだけ冷たい月光(青白)へ置き換えたもの。
+// 太陽の十字光条(スターバースト)は月には不自然なので**外す**(社長指示v0.25.1950「十字ビームやめよう」)=柔らかい青白グローのみ。
+// 太陽と同じ cineSun スプライトにテクスチャだけ差し替えて使う(M1のみ・社長指示v0.25.1948〜)。
 let cineMoonTex: Texture | null = null;
 export const getCineMoonTexture = (): Texture => {
   if (cineMoonTex) return cineMoonTex;
   const s = 384; const c = document.createElement('canvas'); c.width = c.height = s;
   const ctx = c.getContext('2d')!; const cx = s / 2, cy = s / 2;
-  // ハロー: getCineSunTexture と同じ stop 位置/α、RGBだけ冷色(青白)へ。
+  // ハロー: getCineSunTexture と同じ stop 位置/α、RGBだけ冷色(青白)へ。十字光条は無し。
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, s / 2);
   halo.addColorStop(0.0, 'rgba(240,248,255,0.95)');
   halo.addColorStop(0.06, 'rgba(205,225,255,0.9)');
@@ -223,14 +223,6 @@ export const getCineMoonTexture = (): Texture => {
   halo.addColorStop(0.62, 'rgba(50,80,160,0.05)');
   halo.addColorStop(1.0, 'rgba(40,70,140,0.0)');
   ctx.fillStyle = halo; ctx.fillRect(0, 0, s, s);
-  // 十字の光条(スターバースト)。形状・α・太さは太陽と同一、色だけ冷色へ。
-  ctx.globalCompositeOperation = 'lighter';
-  const gx = ctx.createLinearGradient(0, cy, s, cy);
-  gx.addColorStop(0, 'rgba(200,225,255,0)'); gx.addColorStop(0.5, 'rgba(210,232,255,0.32)'); gx.addColorStop(1, 'rgba(200,225,255,0)');
-  ctx.fillStyle = gx; ctx.fillRect(0, cy - 1.5, s, 3);
-  const gy = ctx.createLinearGradient(cx, 0, cx, s);
-  gy.addColorStop(0, 'rgba(190,220,255,0)'); gy.addColorStop(0.5, 'rgba(200,228,255,0.2)'); gy.addColorStop(1, 'rgba(190,220,255,0)');
-  ctx.fillStyle = gy; ctx.fillRect(cx - 1.5, 0, 3, s);
   cineMoonTex = Texture.from(c); return cineMoonTex;
 };
 
