@@ -2179,7 +2179,7 @@ export class PixiScene {
   private updateStage1Light(now: number) {
     if (!this.stage1IsM1 || this.cineEnabled) return;
     const w = this.screenW, h = this.screenH;
-    const sunY = h * 0.18 + tsNum('sundown', 10);
+    const sunY = h * 0.18 + tsNum('sundown', 10) - tsNum('s1moonup', 20); // 月周り(月/グロー/月暈/放射)を20px上へ(社長指示v0.25.1968)。?s1moonup=で調整
     const sunX = w * STAGE1_SUN_X_FRAC;                    // M7右0.62を左へ反転(既定0.38)
     // 光の呼吸(月光全体をゆっくり明滅・社長指示v0.25.1956)。冷残照帯/月暈/月グローで共有。
     const breath = Math.max(0, 1 + Math.sin(now * Math.PI * 2 / Math.max(200, tsNum('s1moonbreathms', 4200))) * Math.max(0, tsNum('s1moonbreath', 0.22)));

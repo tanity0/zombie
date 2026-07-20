@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1968 — M1の月周りを20px上へ(s1moonup=20)【2026-07-21 02:40 JST】
+- 指示(社長): 「月周りを20px上へ」。
+- 対処: `updateStage1Light` の `sunY` に `-tsNum('s1moonup', 20)` を追加=月/グロー/月暈/放射(全てsunY基準)が20px上へ。冷残照帯(別オフセットs1coolbandup)は不変。
+- 検証: ヘッドレス(stage-1・パラメータ無し)で 月/グロー/月暈の y=148(=旧168−20)。typecheck OK。
+- 自己点検: 描画のみ・M1限定・ゲーム挙動不変。負荷: 0/10(位置オフセットのみ)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1967 — M1の月の大きさを半分に(s1moonsize 0.35→0.175)【2026-07-21 02:33 JST】
 - 指示(社長): 「月の大きさを半分に」。
 - 対処: 月サイズ既定 `s1moonsize` 0.35→**0.175**。グロー(×2)・月暈(×2.4)は月サイズ基準なので比例して半分に縮小。
