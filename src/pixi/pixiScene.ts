@@ -431,6 +431,7 @@ const STAGE7_CLOUD_PERIOD_MS = Math.max(750, tsNum('scloudperiod', 1375)); // 1�
 const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha(各波の上限)
 const STAGE7_CLOUD_OVERLAP = Math.max(0.02, Math.min(0.6, tsNum('scloudol', 0.2))); // 継ぎ目の重なり(波比)。次波はフレーム5付近=旧波の残りOL地点で湧く(spawn間隔=P·(1-OL))
 const STAGE7_CLOUD_DROP = Math.max(0, Math.min(0.4, tsNum('sclouddrop', 0.03)));   // 1波の下降量(screenH比)。「少しだけ下に移動」。0=下降なし(移動距離半分=0.06→0.03・社長v0.25.1924)
+const STAGE7_CLOUD_FADE = tsNum('scloudfade', 0) > 0.5;                            // 各波の湧き/末尾フェードイン・アウト包絡。既定OFF(社長v0.25.1925「やめてみて」)。?scloudfade=1で復活
 const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)。横位置は固定(xy廃止=社長v0.25.1917)
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
@@ -2050,9 +2051,11 @@ export class PixiScene {
       const iA = Math.min(FR - 1, Math.floor(fp));           // 現コマ
       const iB = Math.min(FR - 1, iA + 1);                   // 次コマ(末尾はフレーム5で頭打ち)
       const frac = fp - Math.floor(fp);
-      let env = 1;                                           // 湧き[0,OL]でフェードイン・末尾[1-OL,1]でフェードアウト
-      if (phase < OL) env = phase / OL;
-      else if (phase > 1 - OL) env = (1 - phase) / OL;
+      let env = 1;                                           // 湧き[0,OL]でフェードイン・末尾[1-OL,1]でフェードアウト(既定OFF)
+      if (STAGE7_CLOUD_FADE) {
+        if (phase < OL) env = phase / OL;
+        else if (phase > 1 - OL) env = (1 - phase) / OL;
+      }
       const y = baseY + drop * phase;                        // 下降(元の上位置→少し下へ)
       const pair = ((k % 2) + 2) % 2;                        // 隣接波は別スプライト対=継ぎ目で共存
       const spA = this.stage7Clouds[pair * 2], spB = this.stage7Clouds[pair * 2 + 1];
