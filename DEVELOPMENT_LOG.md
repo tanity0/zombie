@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1943 — M7の遠景森1も20px上へ(m7up 40→60)【2026-07-20 17:08 JST】
+- 指示(社長): 「同時にm7のも」(=M1と同じく森1を20px上へ)。
+- 対処: `M7_HORIZON_FOREST_UP_PX`(m7up)の既定を **40→60**(+20px上)。`?m7up=`で調整可。
+- 検証: typecheck OK(単一定数)。負荷: 0/10。changelog据え置き。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1942 — M1の遠景森1を20px上へ(m1up 40→60)【2026-07-20 17:06 JST】
 - 指示(社長): 「m1の遠景森1(奥の方)を20px上へ」。
 - 対処: `M1_HORIZON_FOREST_UP_PX`(m1up)の既定を **40→60**(+20px上)。M7の`m7up`は別定数(40)なので影響なし。`?m1up=`で調整可。
