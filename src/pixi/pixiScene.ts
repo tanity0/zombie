@@ -435,6 +435,10 @@ const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95)));
 const STAGE7_CLOUD_DROP = Math.max(0, Math.min(0.4, tsNum('sclouddrop', 0.03)));   // 1波の下降量(screenH比)。「少しだけ下に移動」。0=下降なし(移動距離半分=0.06→0.03・社長v0.25.1924)
 const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)。横位置は固定(xy廃止=社長v0.25.1917)
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
+// M1の遠景=星空6コマの巡回クロスフェード(社長指示v0.25.1931)。farBackdrop(森の空)を覆う・stage-1限定。縦1列×6行。?s1sky*= で調整。
+const STAGE1_SKY_FRAMES = 6;
+const STAGE1_SKY_PERIOD_MS = Math.max(3000, tsNum('s1skyperiod', 24000)); // 6コマ一巡ms(1コマ≈P/6)。大きいほどゆっくり
+const STAGE1_SKY_ALPHA = Math.max(0, Math.min(1, tsNum('s1skyalpha', 1.0)));  // 星空の不透明度(1=森の空を完全に覆う)
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 // 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
@@ -1364,6 +1368,10 @@ export class PixiScene {
   private stage7CloudFrames: Texture[] = []; // アトラスから切り出した5コマ
   private stage7CloudMask = new Sprite(Texture.WHITE);
   private stage7CloudMaskTex: Texture | null = null; // 縦グラデ(下端フェード)マスク
+  // M1の遠景=星空6コマアニメ。2枚クロスフェードで6コマを巡回。farBackdrop(森の空)を覆う=stage-1限定。
+  private stage1SkyFrames: Texture[] = []; // シートから切り出した6コマ
+  private stage1Sky: Sprite[] = [new Sprite(Texture.EMPTY), new Sprite(Texture.EMPTY)];
+  private stage1IsM1 = getSelectedStageId() === 'stage-1'; // M1判定(レイアウト時に確定)
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   private playerLight = new Sprite(getGlowTexture());
   private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
@@ -1647,6 +1655,8 @@ export class PixiScene {
       const farParent = this.L.farBackdrop.parent!;
       farParent.addChildAt(this.farGroup, farParent.getChildIndex(this.L.farBackdrop));
       this.farGroup.addChild(this.L.farBackdrop);
+      // M1の星空アニメ=farBackdrop(森の空)の手前・同グループ(同じ被写界深度)に置いて覆う。stage-1のみ可視。
+      for (const sp of this.stage1Sky) { sp.eventMode = 'none'; sp.visible = false; this.farGroup.addChild(sp); }
       this.farGroup.filters = this.cineEnabled ? [] : [this.farBackdropBlur];
     }
 
@@ -2067,6 +2077,33 @@ export class PixiScene {
         sp.alpha = a;
       }
     }
+  }
+
+  // M1の遠景=星空6コマの巡回クロスフェード(社長指示v0.25.1931)。stage-1のみ。farBackdrop(森の空)を覆う=現コマは常に全面、
+  // 次コマを上に重ねてフェードイン→入れ替え(=背景が透けない綺麗なクロスディゾルブ)。位置/サイズはfarBackdrop rectに合わせる。
+  private updateStage1Sky(now: number) {
+    const on = this.stage1IsM1 && this.stage1SkyFrames.length === STAGE1_SKY_FRAMES;
+    for (const sp of this.stage1Sky) sp.visible = on;
+    if (!on) return;
+    const w = this.screenW;
+    const farH = this.farBackdropHeight();
+    const P = STAGE1_SKY_PERIOD_MS;
+    const g = ((now / P) % 1 + 1) % 1;
+    const fp = g * STAGE1_SKY_FRAMES;
+    const fN = Math.floor(fp) % STAGE1_SKY_FRAMES;         // 現コマ(常に全面)
+    const nxt = (fN + 1) % STAGE1_SKY_FRAMES;              // 次コマ(上にフェードイン)
+    const frac = fp - Math.floor(fp);
+    const sp0 = this.stage1Sky[0], sp1 = this.stage1Sky[1];
+    if (sp0.texture !== this.stage1SkyFrames[fN]) sp0.texture = this.stage1SkyFrames[fN];
+    if (sp1.texture !== this.stage1SkyFrames[nxt]) sp1.texture = this.stage1SkyFrames[nxt];
+    for (const sp of this.stage1Sky) {
+      sp.anchor.set(0, 0);
+      sp.position.set(0, 0);
+      sp.width = w;                                        // farBackdrop rect(screenW × farH)に合わせて敷く
+      sp.height = farH;
+    }
+    sp0.alpha = STAGE1_SKY_ALPHA;                          // 現コマ=常に全面(森の空を覆う)
+    sp1.alpha = STAGE1_SKY_ALPHA * frac;                   // 次コマ=上に重ねてフェードイン
   }
 
   private updateStageLightShafts(w: number, h: number) {
@@ -2644,6 +2681,19 @@ export class PixiScene {
     }
     this.stage7CloudFrames = frames;
     for (const sp of this.stage7Clouds) sp.texture = frames[0];
+  }
+  // M1の遠景=星空6コマ(縦1列×6行のシート)を切り出す。PixiStageが注入。
+  setStage1SkyAnim(sheet: Texture | null) {
+    if (!sheet) return;
+    const fw = sheet.width;
+    const fh = Math.floor(sheet.height / STAGE1_SKY_FRAMES);
+    const frames: Texture[] = [];
+    for (let r = 0; r < STAGE1_SKY_FRAMES; r++) {
+      frames.push(new Texture({ source: sheet.source, frame: new Rectangle(0, r * fh, fw, fh) }));
+    }
+    this.stage1SkyFrames = frames;
+    for (const sp of this.stage1Sky) sp.texture = frames[0];
+    this.currentFarKey = ''; // 遠景レイアウトを再適用(可視判定)
   }
   // 川の流れ(チュートリアル): 遠景に重ねるハイライト筋レイヤー(PixiStageが注入)。
   private riverFlowTexs: (Texture | null)[] = [null, null];
@@ -3277,6 +3327,7 @@ export class PixiScene {
       );
     }
     this.updateStage7Clouds(now); // M7の雲(farKeyで自己ゲート・cine非依存)
+    this.updateStage1Sky(now);    // M1の遠景=星空6コマアニメ(stage-1で自己ゲート)
     // 研究所スキンは床/素材を見せるため、クール調整を弱める(森はそのまま)。
     // cine時は寒色gradeをCINE値で維持(labThemeFog/daylightの上書きに勝つ)。
     this.gradeSprite.alpha = this.cineEnabled ? CINE_GRADE_ALPHA

@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.1931 — M1の遠景を星空6コマアニメに(白枠除去して切り分け・巡回クロスフェード)【2026-07-20 15:44 JST】
+- 指示(社長): ステージ1(M1)の遠景を、支給の6枚(2列×3行・白枠付き)のアニメに。順=左列上→下→右列上→下。白枠は映さない。
+- 素材加工(python/PIL): 1536×1024から白線(行338-341/677-680・列767-769)を検出し、その内側で均一(760×330)に6枚をクロップ
+  (順=左列frame1-3→右列frame4-6・全コマ端の白%≈0を実測)。縦1列×6行の`public/backgrounds/stage1-sky-anim.jpg`(760×1980・615KB)。
+- 配線: PixiStage=パス追加+分割代入(s1Sky)+`setStage1SkyAnim`呼び出し。pixiScene=`setStage1SkyAnim`(6コマ切り出し)、
+  farGroup(遠景・同じ被写界深度)にクロスフェード2枚を追加(farBackdropの手前=森の空を覆う)、`updateStage1Sky`で6コマ巡回クロスディゾルブ
+  (現コマ常時全面+次コマを上にフェードイン=背景透けなし)。stage-1のみ自己ゲート。位置/サイズはfarBackdrop rect(screenW×farH)に敷く。
+  新param: `?s1skyperiod=`(6コマ一巡ms・既定24000=ゆっくり)、`?s1skyalpha=`。
+- 検証: ヘッドレス実機(stage-1)で isM1=true・6コマ(760×330)・2枚クロスフェード(alpha[1,0.18])・pageErrors 0・
+  実画面で森の後ろに紫の星空、森1/2は前面(=奥行き正)。typecheck OK。
+- 負荷: 2/10(シート1枚=VRAM≈6MB・同時2枚描画=軽い・M1限定・farGroupのDoFブラー共有)。
+- 自己点検: 描画のみ・M1限定。ゲーム挙動不変。憲法第4/5条に非抵触。
+- Files: `src/pixi/PixiStage.tsx`, `src/pixi/pixiScene.ts`, `public/backgrounds/stage1-sky-anim.jpg`(新規), `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1930 — M7 光源周り(太陽+放射streak)を10px下へ【2026-07-20 15:12 JST】
 - 指示(社長): 「光源周り10px下に」。
 - 対処: cineの `sunY = h*0.18` に **+10px**(`?sundown=`・既定10)。sunYは cineSun(太陽)と cineCloudLayers(放射streak=光の線)の

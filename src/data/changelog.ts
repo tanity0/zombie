@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1931',
+    items: [
+      '追加: ステージ1の遠景を、星空(6コマ)がゆっくり移り変わるアニメーションにしました。',
+    ],
+  },
+  {
     version: '0.25.1914',
     items: [
       '調整: M7の空の雲を、もくもく流れるコマ送りアニメにしました。',
