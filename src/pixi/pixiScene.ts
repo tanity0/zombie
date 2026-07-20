@@ -2032,9 +2032,9 @@ export class PixiScene {
 
   private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
 
-  // M7の遠景に重ねる雲=5コマの下降コンベア+コマ毎三角クロスフェード(社長指示v0.25.1922/1929)。各コマは三角包絡
+  // M7の遠景に重ねる雲=5コマの下降コンベア+コマ毎三角クロスフェード(社長指示v0.25.1922/1929/1932)。各コマは三角包絡
   // (fpos=jでピーク・j±1で0)でフェードイン→ピーク→フェードアウト。頭(フレーム1)は fpos -1→0 で湧きフェードイン、
-  // 尻(フレーム5)は fpos 4→5 でフェードアウト。次波は尻フェードに頭フェードを重ねて湧く=総alpha一定。各波2枚。
+  // 尻(フレーム5)は fpos 4→5 でフェードアウト。次波は旧波が spawnFrame(既定4)に来たらフレーム1を重ねて開始(?scloudspawn=)。各波2枚。
   private updateStage7Clouds(now: number) {
     const on = this.currentFarKey === 'stage7' && this.stage7CloudFrames.length === STAGE7_CLOUD_FRAMES;
     this.stage7CloudGroup.visible = on;
@@ -2049,8 +2049,10 @@ export class PixiScene {
     const baseX = w * 0.5, baseY = 0;                        // 横中央・上端(元の湧き位置)。横は固定。
     const FR = STAGE7_CLOUD_FRAMES;                          // 5
     const P = STAGE7_CLOUD_PERIOD_MS;                        // 1波の長さ(頭/尻フェード含む)
-    const tail = 1 / (FR + 1);                              // 頭/尻フェード幅=1コマ枠
-    const S = P * (1 - tail);                                // 波の湧き間隔(尻フェードと次波の頭フェードが重なる=総alpha一定)
+    // 次波が湧く「旧波のフレーム」(1..5)。既定4=旧波がフレーム4に来たら次波のフレーム1を重ねて開始(社長v0.25.1932)。
+    // spawn時の旧波fpos=spawnFrame-1、湧き間隔 S=P·spawnFrame/(FR+1)。3未満だと同時3波でスプライト不足のため下限3。
+    const spawnFrame = Math.max(3, Math.min(FR, Math.round(tsNum('scloudspawn', 4))));
+    const S = P * spawnFrame / (FR + 1);
     const drop = h * STAGE7_CLOUD_DROP;                      // 1波の下降量(px)
     for (const sp of this.stage7Clouds) sp.visible = false;  // 生きてる波だけ下で可視化
     const kCur = Math.floor(now / S);
