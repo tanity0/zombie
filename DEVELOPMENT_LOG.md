@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1934 — M1の星空に城/山/霧の森を重ねる(緑抜き遠景)【2026-07-20 16:08 JST】
+- 指示(社長): 支給画像(緑スクリーン=城+雪山+紫の霧の森)を「m1の夜景に重ねる」。
+- 素材加工(python/PIL): クロマキー(green excess・ramp40/130・スピル抑制)で緑抜き→1200×675に縮小→`public/backgrounds/stage1-castle.png`
+  (1169KB・VRAM3.2MB)。上~24%は透明(星空が透ける)、下=城/山/霧の森。
+- 配線: PixiStage=パス追加+分割代入(s1Castle)+`setStage1CastleTexture`。pixiScene=`stage1Castle`スプライトをfarGroup(星空stage1Skyの手前・
+  近景森の奥・同じ被写界深度)に追加。`updateStage1Sky`内で位置決め=底を地平(farH)・横中央・横いっぱい。stage-1のみ可視。
+  新param: `?s1castscale=`(横スケール・既定1)、`?s1casty=`(底位置・screenH比・+で下)、`?s1castalpha=`。
+- 検証: ヘッドレス実機(stage-1)で castle.visible=true・texW1200・底=地平・pageErrors 0。星空の手前・近景森の奥に城/山が乗る(奥行き正)。typecheck OK。
+- 負荷: 1/10(静止1枚・VRAM3.2MB・M1限定)。
+- ★調整待ち: 遠景が小さめ&近景森に一部隠れる=城を目立たせたい場合は `s1castscale`/`s1casty` で拡大・下げ(社長判断)。changelogは配置確定後に。
+- Files: `src/pixi/PixiStage.tsx`, `src/pixi/pixiScene.ts`, `public/backgrounds/stage1-castle.png`(新規), `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1933 — M1の夜景(星空)アニメを2倍速に(周期既定24000→12000ms)【2026-07-20 15:55 JST】
 - 指示(社長): 「m1の夜景、アニメの速さを2倍速」。
 - 対処: `STAGE1_SKY_PERIOD_MS`(6コマ一巡)の既定を **24000→12000ms**(=2倍速)。巡回クロスフェードの構造は不変、速さだけ倍。`?s1skyperiod=`で上書き可。
