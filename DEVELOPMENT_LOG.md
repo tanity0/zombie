@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1940 — M1遠景森2をループ素材差し替え＋M7 BGMをラスボス曲に【2026-07-20 16:53 JST】
+- 指示(社長): ①M1の遠景森2(手前)のループ素材差し替え(位置/大きさは既存に合わせる) ②M7のBGMをラスボス曲(渡してある)に。
+- ①森2: 支給の緑スクリーン森シルエット帯をクロマキー→**既存と同寸910×512**にリサイズ→`public/backgrounds/stage1-near-forest.png`差し替え
+  (RGBA・300KB)。setNearHorizonTexture('forest')がそのまま読む=位置/大きさ/タイル(ループ)は既存の描画のまま。※タイル端差 mean18.5/max90
+  (素材由来・気になれば要相談)。M7の森2も'forest'を共有=同時に反映。
+- ②M7 BGM: `GAME_BGM.stage7 = ashen-crown-oath.mp3`(=ラスボス曲と判断: 他の無参照曲 rotten-iron-march/rusting-grave-circuit は
+  旧・戦闘BGMとしてログに残置・pulse-gridはダンス層=消去法で ashen-crown-oath「灰の冠の誓い」が新規=渡された曲)を追加、campaign stage-7 に `bgm:'stage7'`。
+  ※別の曲が正なら1行で差し替え可(社長確認)。
+- 検証: ヘッドレス実機(stage-1)で新森シルエットが地平に表示・pageErrors 0。typecheck OK。BGMは設定(campaign+GAME_BGM)を静的確認。負荷: 0/10(素材+設定)。
+- Files: `public/backgrounds/stage1-near-forest.png`(差替), `src/audio/audioManager.ts`, `src/data/campaign.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1939 — M7の夜空(遠景)を新しい銀河に差し替え【2026-07-20 16:45 JST】
 - 指示(社長): 「m7の夜空差し替え」。支給の新しい銀河(青紫の星雲)。
 - 対処: `public/backgrounds/stage7-far.jpg` を差し替え(1672×941・同寸=コード変更なし・584KB)。farBackdrop='stage7'がそのまま新画像を読む。

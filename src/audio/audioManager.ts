@@ -23,6 +23,7 @@ const GAME_BGM: Record<string, string> = {
   stage4: `${import.meta.env.BASE_URL}audio/stage4.mp3`, // 封鎖地域/雪原(ステージ4)。stage.bgm='stage4'
   stage5: `${import.meta.env.BASE_URL}audio/stage5.mp3`, // 軍本部(ステージ5)。stage.bgm='stage5'
   stage6: `${import.meta.env.BASE_URL}audio/stage6.mp3`, // 古い洋館(ステージ6)。stage.bgm='stage6'
+  stage7: `${import.meta.env.BASE_URL}audio/ashen-crown-oath.mp3`, // M7=ラスボス曲(社長提供・灰の冠の誓い)。stage.bgm='stage7'(v0.25.1940)
 };
 // 深層域BGM(逆再生版)。屋外ステージごとに areverse 版を用意(命名 stageN-reverse.mp3)。
 // 深層域に入ると通常BGMを pause(位置保持)し、こちらを play で即時切替する(クロスフェード無し)。

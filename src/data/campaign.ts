@@ -434,6 +434,8 @@ export const STAGES: Stage[] = [
     storyBossOnly: true, // 統合正本M7: 敵のいない短い導入→確定会話→グレン戦直結(通常湧きなし)
     farBackdrop: 'stage7', // M7の遠景=星雲(社長指示v0.25.1907・遠景だけ差し替え。森1/2・近景・地面は森のまま)
     nearHorizon: 'forest', // 遠景森2(手前の森シルエット帯)= M1の値をコピー(社長指示v0.25.1905)
+    bgm: 'stage7', // M7=ラスボス曲(ashen-crown-oath.mp3・社長指示v0.25.1940)
+
     subs: [],
     main: {
       code: 'M7',
