@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1956',
+    items: [
+      '演出: ステージ1の月夜に、月暈(かさ)とゆっくり呼吸する月光を加えて幻想的にしました。',
+    ],
+  },
+  {
     version: '0.25.1948',
     items: [
       '調整: ステージ1の光源を、冷たく青白い月に変更しました。',

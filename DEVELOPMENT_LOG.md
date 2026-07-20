@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1956 — M1の月夜に月暈+光の呼吸を追加(幻想的に)【2026-07-21 00:47 JST】
+- 指示(社長): 「月暈と光の呼吸エフェクトを追加して 月夜を幻想的に」(先の提案②月暈・⑤呼吸の採用)。
+- 対処:
+  - **月暈(つきがさ)**: `lighting.ts` に `getMoonHaloTexture()` 新設(中心透明→中半径に細い冷色リング→外へフェード)。専用スプライト `stage1MoonHalo`(加算)を farGroup の**月の裏**にaddChild。サイズ=月×2.4(`?s1moonhaloscale=`)・淡さ=`?s1moonhalo`(既定0.7)。
+  - **光の呼吸**: `updateStage1Light` で `breath = 1 + sin(now·2π/T)·amp`(T=`?s1moonbreathms`既定4200ms・amp=`?s1moonbreath`既定0.22)を計算し、**グローと月暈のαに乗算**(月の円盤本体は据え置き=「光」だけ呼吸)。
+- 検証: ヘッドレス(stage-1)で halo visible・W=255(=月106×2.4)・blend=add。呼吸で 1.05秒差の2サンプルが halo α 0.55→0.85 / glow α 0.39→0.61(=0.7・0.5×(1±0.22)の範囲)と変動=明滅動作を確認。実描画で霧の湖上の月が淡いリングを纏いゆっくり明滅。typecheck OK。
+- 自己点検: 描画のみ・M1限定・ゲーム挙動不変。負荷: 1/10(加算スプライト計2枚=月グロー106px+月暈255px・単体・M1のみ・farGroup既存ブラー1パス内。多数同時強glowとは別物)。
+- Files: `src/pixi/lighting.ts`, `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1955 — M1の月グローを月の前面へ+透明度上げ(α1→0.5)【2026-07-21 00:42 JST】
 - 指示(社長): 「光源を月の前に持って来て透明度を上げて」。
 - 対処: ① `stage1MoonGlow` の addChild順を月の後(=前面)へ入替。z順=星空→月→**月グロー**→城(城の裏は維持)。

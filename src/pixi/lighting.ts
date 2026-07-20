@@ -226,6 +226,25 @@ export const getCineMoonTexture = (): Texture => {
   cineMoonTex = Texture.from(c); return cineMoonTex;
 };
 
+// ①'' 月暈(つきがさ)=月の周りの淡い光冠リング(大気の光冠)。中心は透明、中半径に細い冷色リング、外へフェード。
+// 加算で月より大きく重ねる=月の周りに1本の淡いリング(社長指示v0.25.1956「月暈と光の呼吸で幻想的に」)。
+let moonHaloTex: Texture | null = null;
+export const getMoonHaloTexture = (): Texture => {
+  if (moonHaloTex) return moonHaloTex;
+  const s = 512; const c = document.createElement('canvas'); c.width = c.height = s;
+  const ctx = c.getContext('2d')!; const cx = s / 2, cy = s / 2;
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, s / 2);
+  g.addColorStop(0.00, 'rgba(205,228,255,0.0)');
+  g.addColorStop(0.55, 'rgba(205,228,255,0.0)');   // 月とリングの間=透明(暗い隙間=暈らしさ)
+  g.addColorStop(0.66, 'rgba(210,232,255,0.06)');  // リングの立ち上がり
+  g.addColorStop(0.74, 'rgba(225,240,255,0.22)');  // リングの芯(細く淡く)
+  g.addColorStop(0.80, 'rgba(210,232,255,0.07)');  // 落ち
+  g.addColorStop(0.92, 'rgba(185,210,248,0.02)');  // 外側うっすら
+  g.addColorStop(1.00, 'rgba(165,195,238,0.0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+  moonHaloTex = Texture.from(c); return moonHaloTex;
+};
+
 // ② 放射状の薄雲(太陽=下端中央から扇状に伸びる暖色の筋=「光の線」)。帯スプライトとして地平の上に重ねる。
 // variant別に異なる線群を焼く(明滅=出没の煌めきを複数レイヤーの位相ちがいで作るため・社長指示v0.25.1906)。
 // 各テクスチャは「原点(光源=下端中央)から外側へフェードアウト」を destination-in の放射グラデで焼き込む。

@@ -46,7 +46,7 @@ import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
-import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineSunTexture, getCineMoonTexture, getCineCloudTexture, getCineDustTexture, RING_TEX_BASES } from './lighting';
+import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -1388,6 +1388,8 @@ export class PixiScene {
   private stage1Moon = new Sprite(Texture.EMPTY);
   // 月の裏の光源(同サイズの冷色グロー)=月を裏から発光させるコロナ(社長指示v0.25.1954「月の裏に同じ大きさの光源」)。加算合成。
   private stage1MoonGlow = new Sprite(getCineMoonTexture());
+  // 月暈(つきがさ)=月の周りの淡い光冠リング(社長指示v0.25.1956)。加算・月より大きい同心・月の裏。
+  private stage1MoonHalo = new Sprite(getMoonHaloTexture());
   private stage1IsM1 = getSelectedStageId() === 'stage-1'; // M1判定(レイアウト時に確定)
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   private playerLight = new Sprite(getGlowTexture());
@@ -1677,6 +1679,9 @@ export class PixiScene {
       this.farGroup.addChild(this.L.farBackdrop);
       // M1の星空アニメ=farBackdrop(森の空)の手前・同グループ(同じ被写界深度)に置いて覆う。stage-1のみ可視。
       for (const sp of this.stage1Sky) { sp.eventMode = 'none'; sp.visible = false; this.farGroup.addChild(sp); }
+      // 月暈=月より先にaddChild=月の裏の淡いリング(社長指示v0.25.1956)。加算。
+      this.stage1MoonHalo.eventMode = 'none'; this.stage1MoonHalo.visible = false; this.stage1MoonHalo.anchor.set(0.5);
+      this.stage1MoonHalo.blendMode = 'add'; this.farGroup.addChild(this.stage1MoonHalo);
       // 月=星空の手前・城の裏(社長指示v0.25.1952)。城より先にaddChild=城が月に重なる(城が手前)。
       this.stage1Moon.eventMode = 'none'; this.stage1Moon.visible = false; this.stage1Moon.anchor.set(0.5); this.farGroup.addChild(this.stage1Moon);
       // 月の前の光源(同サイズの冷色グロー・加算)=月より後にaddChild=月の前に来る(社長指示v0.25.1955「光源を月の前に」)。城の裏。
@@ -2194,16 +2199,27 @@ export class PixiScene {
       this.stage1Moon.width = this.stage1Moon.height = moonSize;
       this.stage1Moon.position.set(sunX, sunY);                                                  // 光源位置(左・上)。城の裏に重なる
       this.stage1Moon.alpha = tsNum('s1moonalpha', 1);                                            // 通常合成・不透明寄り(?s1moonalpha=)
-      // 月の前の光源=同じ大きさ・同じ位置の冷色グロー(加算)。月の前面から乗せる淡い発光(社長指示v0.25.1954→v0.25.1955「月の前へ・透明度上げる」)。
+      // 光の呼吸=月光(グロー+月暈)をゆっくり明滅(社長指示v0.25.1956)。月の円盤本体は据え置き=「光」だけ呼吸。
+      const breathMs = Math.max(200, tsNum('s1moonbreathms', 4200));
+      const breathAmp = Math.max(0, tsNum('s1moonbreath', 0.22));
+      const breath = Math.max(0, 1 + Math.sin(now * Math.PI * 2 / breathMs) * breathAmp);
+      // 月暈(つきがさ)=月より大きい同心の淡い光冠リング(加算・月の裏)。呼吸で明滅。
+      this.stage1MoonHalo.visible = true;
+      this.stage1MoonHalo.anchor.set(0.5);
+      this.stage1MoonHalo.width = this.stage1MoonHalo.height = moonSize * tsNum('s1moonhaloscale', 2.4); // 月比(?s1moonhaloscale=)
+      this.stage1MoonHalo.position.set(sunX, sunY);
+      this.stage1MoonHalo.alpha = tsNum('s1moonhalo', 0.7) * breath;                              // 淡さ(?s1moonhalo=)×呼吸
+      // 月の前の光源=同じ大きさ・同じ位置の冷色グロー(加算)。月の前面から乗せる淡い発光(社長指示v0.25.1954→v0.25.1955)。呼吸で明滅。
       this.stage1MoonGlow.visible = true;
       this.stage1MoonGlow.anchor.set(0.5);
       this.stage1MoonGlow.width = this.stage1MoonGlow.height = moonSize;                          // 月と同サイズ(?s1moonglowsize=で比率上書き可)
       this.stage1MoonGlow.scale.set(this.stage1MoonGlow.scale.x * tsNum('s1moonglowsize', 1));    // 既定=等倍(=同じ大きさ)
       this.stage1MoonGlow.position.set(sunX, sunY);
-      this.stage1MoonGlow.alpha = tsNum('s1moonglowalpha', 0.5);                                  // 透明度上げる(前面加算のため1→0.5・?s1moonglowalpha=)
+      this.stage1MoonGlow.alpha = tsNum('s1moonglowalpha', 0.5) * breath;                         // 透明度(?s1moonglowalpha=)×呼吸
     } else {
       this.stage1Moon.visible = false;
       this.stage1MoonGlow.visible = false;
+      this.stage1MoonHalo.visible = false;
     }
   }
 
