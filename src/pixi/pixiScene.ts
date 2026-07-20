@@ -427,7 +427,7 @@ const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.1
 const STAGE7_CLOUD_COLS = 1;
 const STAGE7_CLOUD_ROWS = 5;
 const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 5
-const STAGE7_CLOUD_PERIOD_MS = Math.max(1500, tsNum('scloudperiod', 2750)); // 1波(フレーム1→5)ms。大きいほどゆっくり(今の速度=2750・社長v0.25.1920/1922)
+const STAGE7_CLOUD_PERIOD_MS = Math.max(750, tsNum('scloudperiod', 1375)); // 1波(フレーム1→5)ms。大きいほどゆっくり(2倍速=2750→1375・社長v0.25.1923)
 const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha(各波の上限)
 const STAGE7_CLOUD_OVERLAP = Math.max(0.02, Math.min(0.6, tsNum('scloudol', 0.2))); // 継ぎ目の重なり(波比)。次波はフレーム5付近=旧波の残りOL地点で湧く(spawn間隔=P·(1-OL))
 const STAGE7_CLOUD_DROP = Math.max(0, Math.min(0.4, tsNum('sclouddrop', 0.06)));   // 1波の下降量(screenH比)。「少しだけ下に移動」。0=下降なし
