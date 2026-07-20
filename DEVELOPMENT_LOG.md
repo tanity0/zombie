@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1911 — M7の雲を森1/2・地面より下のレイヤーへ(社長指示・奥行き修正)【2026-07-20 10:46 JST】
+- 指示(社長): 「雲は 遠景森1-2 地面より下のレイヤーに」。v1909では光源の上(uiLayer最前面)だったのを変更。
+- 対処: `stage7CloudGroup`(+mask)を uiLayer から **stage の farBackdrop と worldGroup の間**へ移設
+  (`worldGroup.parent.addChildAt(..., getChildIndex(worldGroup))`)。=銀河(farBackdrop)の手前・worldGroup
+  (森1=horizonForest/森2=nearHorizon/地面=groundBase/gameplay)の後ろ。画面固定の空として振る舞う(farBackdropと同層帯)。
+- 影響: 森の松林が雲の手前に出る=正しい奥行き。雲は worldGroup より後ろ=cineグレード(乗算)の減光が乗り以前よりわずかに暗め
+  (夜景として自然)。太陽フレア(cineSun)は uiLayer のままなので雲の前(逆光の焼き込みより前面表示に変わる)。
+- 検証: ヘッドレス(通常/cine)。松が雲の手前・雲は空帯・プレイヤー無被り。typecheck OK。
+- 負荷: 0/10(z順の移設のみ)。Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1910 — M7の遠景(星空)を新しい銀河に差し替え(社長提供・B確定)【2026-07-20 10:40 JST】
 - 指示(社長): 「夜空の差し替え」→ 対象確認で **B(M7の遠景=stage7-far)** に確定。
 - 対処(素材上書きのみ・コード変更なし): 新提供PNG(1672×941)を PIL で JPG化(quality86)→ `public/backgrounds/stage7-far.jpg` を上書き(503→534KB)。

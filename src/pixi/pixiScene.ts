@@ -1834,7 +1834,7 @@ export class PixiScene {
     for (const sp of this.cineCloudLayers) sp.alpha = CINE_CLOUD_ALPHA_BASE;
     this.cineSun.alpha = CINE_SUN_ALPHA_MAX; // 光源は常時最大で固定(毎フレームも同値。煌めきはcineClouds側・社長v0.25.1885)
     this.cineDust.alpha = 0.5;
-    // M7の雲(パースフロー)。光源(cineSun)の上へ。2枚とも消失点anchor・normal合成、空帯マスクでクリップ。
+    // M7の雲(パースフロー)。森1/2・地面より下(=worldGroupの後ろ・銀河の手前)へ(社長指示v0.25.1911)。2枚とも消失点anchor・normal合成、空帯マスクでクリップ。
     for (const sp of this.stage7Clouds) {
       sp.anchor.set(0.5, STAGE7_CLOUD_VP_Y_FRAC);
       sp.blendMode = 'normal'; sp.eventMode = 'none';
@@ -1859,10 +1859,16 @@ export class PixiScene {
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
       this.gradeSprite, ...this.cineCloudLayers, this.cineSun,
-      this.stage7CloudGroup, this.stage7CloudMask, // 雲は光源の上・空帯マスク付き(社長指示v0.25.1909)
       this.cineWarm, this.cineDust, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
+    // 雲は森1/2・地面より下=worldGroup(森/地面/gameplay)の後ろ・farBackdrop(銀河)の手前へ。画面固定の空(社長指示v0.25.1911)。
+    const stageC = this.L.worldGroup.parent;
+    if (stageC) {
+      const at = stageC.getChildIndex(this.L.worldGroup);
+      stageC.addChildAt(this.stage7CloudMask, at);   // mask(非描画)
+      stageC.addChildAt(this.stage7CloudGroup, at + 1); // 雲本体(worldGroupの直前=後ろ)
+    }
     this.applyCineGrade(); // 初期適用(applyDaylight前でもcine値を効かせる)
 
     // --- スモッグ。奥/森下(やまぎり)/森上 の3層を各1枚で揺らす ---
