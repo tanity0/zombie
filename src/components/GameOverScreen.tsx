@@ -293,6 +293,24 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               {stageDateLabel(stage)}{'　'}{stage.locationTitle}{'　'}{mission.title}
             </p>
           )}
+          {/* 任務報告=日時/場所ヘッダー直下・「〜に到達」の上へ移設(社長指示v0.25.1945・赤ライン位置)。勝利クリア時のみ。text-leftで中央寄せ打ち消し。 */}
+          {won && clearReportLines.length > 0 && (
+            <div className="mt-3 mb-1 rounded-none bg-amber-400/5 px-3 py-2.5 text-left">
+              <div className="mb-1.5 text-[10px] uppercase tracking-widest text-amber-200/70">任務報告</div>
+              <div className="space-y-1 text-[12px] leading-relaxed text-white/85" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+                {clearReportLines.map((line, i) => <p key={i}>{line}</p>)}
+              </div>
+              {unlockedRecords.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { playSfx('ui-select'); setArchiveListOpen(true); }}
+                  className="mt-2.5 w-full rounded-none bg-amber-400/10 px-3 py-2 text-[11px] font-semibold text-amber-100"
+                >
+                  回収資料を見る（{unlockedRecords.length}）
+                </button>
+              )}
+            </div>
+          )}
           {/* 勝利時の「森を生き延びた」は撤去(社長指示v0.25.1671)。ベンチ/撤退の文言のみ残す。 */}
           {(isBenchmark || withdraw) && (
             <p className="text-[13px] text-white/60 mt-1">
@@ -655,26 +673,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               )}
             </>
           )}
-          {/* PACING_PUZZLE.md §6.17 M40 / STORY_UI_SPEC.md 5章: 任務報告(勝利クリア時のみ)。
-              スコア/報酬の下・[回収資料を見る]/次への上、というSTORY_UI_SPEC.mdの推奨レイアウト順。
-              死亡/撤退/ベンチには一切出さない(clearReportLines は won=false だと空になる)。 */}
-          {won && clearReportLines.length > 0 && (
-            <div className="mb-3 rounded-none bg-amber-400/5 px-3 py-2.5">
-              <div className="mb-1.5 text-[10px] uppercase tracking-widest text-amber-200/70">任務報告</div>
-              <div className="space-y-1 text-[12px] leading-relaxed text-white/85" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
-                {clearReportLines.map((line, i) => <p key={i}>{line}</p>)}
-              </div>
-              {unlockedRecords.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => { playSfx('ui-select'); setArchiveListOpen(true); }}
-                  className="mt-2.5 w-full rounded-none bg-amber-400/10 px-3 py-2 text-[11px] font-semibold text-amber-100"
-                >
-                  回収資料を見る（{unlockedRecords.length}）
-                </button>
-              )}
-            </div>
-          )}
+          {/* 任務報告は上(日時/場所ヘッダー直下)へ移設済み(社長指示v0.25.1945)。ここには出さない。 */}
           {showLostEquipmentBox && (
             <div className="mb-3 rounded-none bg-rose-400/5 px-3 py-2.5">
               {/* PACING_PUZZLE.md §5.19 M18③: ゴールド/所持ゴールドを「お金の枠」(ロスト装備の換金額と

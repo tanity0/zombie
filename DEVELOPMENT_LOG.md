@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1945 — リザルトの任務報告を「日時/場所ヘッダー直下(〜に到達の上)」へ移設【2026-07-20 17:44 JST】
+- 指示(社長・スクショ赤ライン): リザルトの任務報告を、現在の最下部(スコア/報酬の下)から**赤ライン=DAY/場所ヘッダーの直下・「〜に到達」の上**へ挿入。
+- 対処(`GameOverScreen.tsx`): 任務報告ブロック(`won && clearReportLines.length>0`・回収資料ボタン込み)をヘッダー(`text-center`)セクションの
+  日時/場所行(stageDateLabel+locationTitle+mission.title)直下へ移設。中央寄せ打ち消しに `text-left` 付与、余白を `mt-3 mb-1` に調整。
+  旧位置(px-4 pb-4 の下部)からは削除(重複なし=`clearReportLines.length>0`は1箇所のみ)。表示条件(勝利クリア時のみ)は不変。
+- 検証: typecheck OK。ブロック重複なし(grep確認)。※リザルト画面はheadless再現手段が無いため実画面確認は社長側(次のクリア時)。
+- 負荷: 0/10(JSX移設)。changelog据え置き(UI位置調整)。
+- Files: `src/components/GameOverScreen.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1944 — 社長「これで確定」= M7シネ既定ON＋雲/城の確定値を既定化【2026-07-20 17:28 JST】
 - 指示(社長): `?cine=1&scloudshrink=100&scloudspawn=4&scloudperiod=9000&sclouddrop=0.12&s1casty=100` 「これで確定」。各URLパラメータの値を既定に反映。
 - 反映:
