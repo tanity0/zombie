@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1944 — 社長「これで確定」= M7シネ既定ON＋雲/城の確定値を既定化【2026-07-20 17:28 JST】
+- 指示(社長): `?cine=1&scloudshrink=100&scloudspawn=4&scloudperiod=9000&sclouddrop=0.12&s1casty=100` 「これで確定」。各URLパラメータの値を既定に反映。
+- 反映:
+  - `CINE_MODE`: `==='1'` → `!=='0'`(**既定ON**)。M7のみ有効(cineEnabledでstage-7ゲート=他ステージ不変)。太陽フレア/残照/光条が常時表示。`?cine=0`で切れる。
+  - M7雲: `scloudshrink` 20→**100**(縦縮み)、`scloudspawn` 3→**4**(次波の湧きフレーム)、`scloudperiod` 1375→**9000**(ゆっくり)、`sclouddrop` 0.03→**0.12**(下降量)。
+  - M1城: `s1casty` 0→**100**(底位置px)。
+- 検証: ヘッドレス実機で **パラメータ無しで** M7=cineEnabled/sunVis/warmVis すべてtrue・M1城 y=farH+100(328)・pageErrors 0。typecheck OK。
+  実画面でM7=太陽光芒+地平の夕焼け+雲+銀河のシネマ夜空を確認。
+- 負荷: cine常時ON分がM7に乗る(bloom強め/残照/フレア=既存ベイクSprite中心・社長が実機で確認済の構成)。他ステージ0/10。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1943 — M7の遠景森1も20px上へ(m7up 40→60)【2026-07-20 17:08 JST】
 - 指示(社長): 「同時にm7のも」(=M1と同じく森1を20px上へ)。
 - 対処: `M7_HORIZON_FOREST_UP_PX`(m7up)の既定を **40→60**(+20px上)。`?m7up=`で調整可。

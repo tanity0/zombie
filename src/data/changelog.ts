@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1944',
+    items: [
+      '調整: M7の空を、太陽の光芒・地平の夕焼け・流れる雲つきのシネマティックな夜空に仕上げました。',
+    ],
+  },
+  {
     version: '0.25.1939',
     items: [
       '調整: M7の夜空(遠景)を新しい銀河に差し替えました。',

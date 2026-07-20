@@ -79,7 +79,7 @@ const STRONG_GLOW_DISABLED = DZ_PARAMS?.get('glow') === '0';
 // teal-orange のシネマ グレード= 寒色をより teal 寄りに強め(乗算)+ 暖色の残照オーバーレイ(screen)+
 // ヴィネット強め + bloom強め。**描画のみ**(当たり判定/ゲームは不変)。他ステージ・非cineは完全に従来通り。
 // 負荷: 全画面スプライト1枚(残照)追加+既存gradeのtint/alpha変更のみ=軽い(1〜2/10)。強glowは足さない。
-const CINE_MODE = DZ_PARAMS?.get('cine') === '1';
+const CINE_MODE = DZ_PARAMS?.get('cine') !== '0'; // 既定ON(社長v0.25.1944「これで確定」)。M7のみ有効(cineEnabledでstage-7ゲート)。?cine=0で切る
 const CINE_GRADE_TINT = 0x2f6474;          // teal 寄りの寒色乗算(既定 0x7e93c9 より青緑・締まる=影が teal)
 const CINE_GRADE_ALPHA = 0.44;             // 乗算の強さ(社長「全体的に淡く」v0.25.1871: 0.52→0.44)
 const CINE_VIGNETTE_ALPHA = 0.72;          // 周辺減光(淡く: 0.82→0.72)
@@ -430,10 +430,10 @@ const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.1
 const STAGE7_CLOUD_COLS = 1;
 const STAGE7_CLOUD_ROWS = 5;
 const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 5
-const STAGE7_CLOUD_PERIOD_MS = Math.max(750, tsNum('scloudperiod', 1375)); // 1波(フレーム1→5)ms。大きいほどゆっくり(2倍速=2750→1375・社長v0.25.1923)
+const STAGE7_CLOUD_PERIOD_MS = Math.max(750, tsNum('scloudperiod', 9000)); // 1波(フレーム1→5)ms。大きいほどゆっくり(社長v0.25.1944確定=9000)
 const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha(各波の上限)
-const STAGE7_CLOUD_DROP = Math.max(0, Math.min(0.4, tsNum('sclouddrop', 0.03)));   // 1波の下降量(screenH比)。「少しだけ下に移動」。0=下降なし(移動距離半分=0.06→0.03・社長v0.25.1924)
-const STAGE7_CLOUD_SHRINK = Math.max(0, tsNum('scloudshrink', 20)); // 1コマの寿命(湧き→消滅)で縦に縮む量(px・上下均等・横は不変)。社長v0.25.1938。0=縮み無し
+const STAGE7_CLOUD_DROP = Math.max(0, Math.min(0.4, tsNum('sclouddrop', 0.12)));   // 1波の下降量(screenH比)。0=下降なし(社長v0.25.1944確定=0.12)
+const STAGE7_CLOUD_SHRINK = Math.max(0, tsNum('scloudshrink', 100)); // 1コマの寿命(湧き→消滅)で縦に縮む量(px・上下均等・横は不変)。0=縮み無し(社長v0.25.1944確定=100)
 const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)。横位置は固定(xy廃止=社長v0.25.1917)
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
 // M1の遠景=星空6コマの巡回クロスフェード(社長指示v0.25.1931)。farBackdrop(森の空)を覆う・stage-1限定。縦1列×6行。?s1sky*= で調整。
@@ -442,7 +442,7 @@ const STAGE1_SKY_PERIOD_MS = Math.max(3000, tsNum('s1skyperiod', 12000)); // 6�
 const STAGE1_SKY_ALPHA = Math.max(0, Math.min(1, tsNum('s1skyalpha', 1.0)));  // 星空の不透明度(1=森の空を完全に覆う)
 // M1の星空に重ねる城/山/霧の森(緑抜き・静止・社長指示v0.25.1934)。星空の手前・近景森の奥。?s1cast*= で調整。
 const STAGE1_CASTLE_SCALE = Math.max(0.2, tsNum('s1castscale', 1.0)); // 横スケール(画面幅比。1=横いっぱい)
-const STAGE1_CASTLE_Y = tsNum('s1casty', 0);                           // 底の位置調整(px・+で下へ/−で上へ)。既定0=底を地平(farH)。※px単位(社長v0.25.1936「1以上で消える」修正)
+const STAGE1_CASTLE_Y = tsNum('s1casty', 100);                         // 底の位置調整(px・+で下へ/−で上へ)。※px単位(社長v0.25.1944確定=100)
 const STAGE1_CASTLE_ALPHA = Math.max(0, Math.min(1, tsNum('s1castalpha', 1.0))); // 不透明度
 // 城の横パララックス(社長v0.25.1941「遠景森と同じくプレイヤーが動いたら動く。一番遠いから一番遅い」)。camera.x連動。
 // 既存: 銀河0.09 < 森1=0.16 < 森2=0.5。城は森1より遅い(=一番遠い風景)ので既定0.11。?s1castpara= で調整。
@@ -2064,7 +2064,7 @@ export class PixiScene {
     const P = STAGE7_CLOUD_PERIOD_MS;                        // 1波の長さ(頭/尻フェード含む)
     // 次波が湧く「旧波のフレーム」(1..5)。既定3=旧波がフレーム3に来たら次波のフレーム1を重ねて開始(社長v0.25.1932/1935)。
     // spawn時の旧波fpos=spawnFrame-1、湧き間隔 S=P·spawnFrame/(FR+1)。3未満だと同時3波でスプライト不足のため下限3。
-    const spawnFrame = Math.max(3, Math.min(FR, Math.round(tsNum('scloudspawn', 3))));
+    const spawnFrame = Math.max(3, Math.min(FR, Math.round(tsNum('scloudspawn', 4))));
     const S = P * spawnFrame / (FR + 1);
     const drop = h * STAGE7_CLOUD_DROP;                      // 1波の下降量(px)
     for (const sp of this.stage7Clouds) sp.visible = false;  // 生きてる波だけ下で可視化
