@@ -437,7 +437,7 @@ const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // �
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
 // M1の遠景=星空6コマの巡回クロスフェード(社長指示v0.25.1931)。farBackdrop(森の空)を覆う・stage-1限定。縦1列×6行。?s1sky*= で調整。
 const STAGE1_SKY_FRAMES = 6;
-const STAGE1_SKY_PERIOD_MS = Math.max(3000, tsNum('s1skyperiod', 24000)); // 6コマ一巡ms(1コマ≈P/6)。大きいほどゆっくり
+const STAGE1_SKY_PERIOD_MS = Math.max(3000, tsNum('s1skyperiod', 12000)); // 6コマ一巡ms(1コマ≈P/6)。大きいほどゆっくり(2倍速=24000→12000・社長v0.25.1933)
 const STAGE1_SKY_ALPHA = Math.max(0, Math.min(1, tsNum('s1skyalpha', 1.0)));  // 星空の不透明度(1=森の空を完全に覆う)
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
