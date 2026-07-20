@@ -2185,7 +2185,7 @@ export class PixiScene {
     if (this.stage1MoonTex) {
       this.stage1Moon.visible = true;
       this.stage1Moon.anchor.set(0.5);
-      this.stage1Moon.width = this.stage1Moon.height = Math.min(w, h) * tsNum('s1moonsize', 0.7); // ?s1moonsize= で微調整
+      this.stage1Moon.width = this.stage1Moon.height = Math.min(w, h) * tsNum('s1moonsize', 0.35); // 大きさ半分(0.7→0.35・社長指示v0.25.1953)。?s1moonsize= で微調整
       this.stage1Moon.position.set(sunX, sunY);                                                  // 光源位置(左・上)。城の裏に重なる
       this.stage1Moon.alpha = tsNum('s1moonalpha', 1);                                            // 通常合成・不透明寄り(?s1moonalpha=)
     } else {

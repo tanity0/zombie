@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1953 — M1の月の大きさを半分に(s1moonsize 0.7→0.35)【2026-07-21 00:19 JST】
+- 指示(社長): 「次の大きさ半分に」(=月のサイズを半分)。
+- 対処: `updateStage1Light` の月サイズ既定 `s1moonsize` を 0.7→**0.35**(min(w,h)基準)。幅=212→106px相当。
+- 検証: ヘッドレス(stage-1)で stage1Moon.width が半分(106.3)になるのを確認。typecheck OK。
+- 自己点検: 描画のみ・M1限定・ゲーム挙動不変。負荷: 0/10(定数変更)。
+- 備考: 半分だと同じ光源位置(sunY=h×0.18)では月が城/山の稜線裏にほぼ収まり上端がわずかに覗く。露出を増やすなら `?sundown=`(上へ)で調整可。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1952 — M1の月を遠景の城の裏へ(z順=星空→月→城)【2026-07-20 23:59 JST】
 - 指示(社長): 「遠景の城の裏に」(月を遠景の城の後ろに回す)。
 - 対処: 月を**前面のcineSun(uiLayer)から専用スプライト `stage1Moon` へ分離**し、`farGroup` の**星空の手前・城(stage1Castle)の直前**にaddChild(=城が月に重なる)。
