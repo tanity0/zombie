@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1960 — M1に冷たい残照帯(M7オレンジ帯の青版)を追加【2026-07-21 01:42 JST】
+- 指示(社長): 「m7みたいなオレンジグラデ帯の青バージョンをm1に置いて」。
+- 対処: `lighting.ts` に `getCineCoolTexture()` 新設(M7の `getCineWarmTexture` と**stop位置/αは同一**でRGBだけ暖色→冷色(青)へ)。
+  専用スプライト `stage1CoolBand`(screen合成・全画面)を uiLayer(cineWarmの隣)に追加し、`updateStage1Light` で全画面配置+`?s1coolband`(既定0.6)×呼吸で表示。縦グラデのピークが地平帯に来る=冷たい残照(月夜の霞)。
+  呼吸は月光と共有(breathを関数先頭で一度算出し 残照帯/月暈/月グローで共用)。M1のみ(updateStage1LightはM7でearly-return=cineWarmは従来どおりM7のみ)。
+- 検証: ヘッドレス(stage-1)で band visible・blend=screen・全画面(407×880)・α≈0.6×呼吸。実描画で地平帯に冷たい青の残照が乗るのを確認。typecheck OK。
+- 自己点検: 描画のみ・M1限定・ゲーム挙動不変。負荷: 1/10(全画面screen合成スプライト1枚=M7 cineWarmと同経路・単発オーバーレイ1パス)。`?s1coolband=` で濃さ調整可。
+- Files: `src/pixi/lighting.ts`, `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1959 — M1の月光源のレイヤー(z順)を可変化(?s1moonglowz=)【2026-07-21 01:32 JST】
 - 指示(社長): 「光源のレイヤーも変えさせて」(他パラメータ同様、URLでz順を切替えたい)。
 - 対処: `updateStage1Light` に `?s1moonglowz=`(0=月の裏 / 1=月の前・城の裏=既定 / 2=城の前)を追加。値が変わった時だけ farGroup 内で glow を並べ替え(removeChild→addChildAt・stage1MoonGlowZで前回値ガード)。既定1=現状維持。

@@ -46,7 +46,7 @@ import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
-import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, RING_TEX_BASES } from './lighting';
+import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -1368,6 +1368,8 @@ export class PixiScene {
   // シネマティック残照オーバーレイ(?cine=1 & stage-7 のみ表示・screen合成)。stage-6は洋館(室内)なので
   // 屋外の黄昏空が合わず、逆探知地点(stage-7=未明の屋外)へ移設(社長指示v0.25.1870)。
   private cineWarm = new Sprite(getCineWarmTexture());
+  // M1用: M7の残照(cineWarm)の青版。地平帯に冷たい残照(月夜の霞)を screen で乗せる(社長指示v0.25.1960)。
+  private stage1CoolBand = new Sprite(getCineCoolTexture());
   private cineSun = new Sprite(getCineSunTexture());       // ①地平の太陽フレア
   // ②放射状の薄雲(光の線)。出没=煌めき用に複数レイヤー(別seedのstreak群)を位相ちがいで明滅。各層は外側フェード焼き込み済み。
   private cineCloudLayers: Sprite[] = Array.from({ length: CINE_CLOUD_LAYERS }, (_, i) => new Sprite(getCineCloudTexture(i, CINE_CLOUD_STREAKS_PER_LAYER)));
@@ -1879,7 +1881,7 @@ export class PixiScene {
     // (multiply preserves detail/outlines), then the vignette, then damage
     // flash + off-screen arrows on top of everything.
     // cineオーバーレイ群。順序: grade(乗算)→ 雲/太陽/残照/塵(screen=teal-orange)→ vignette。
-    for (const sp of [this.cineWarm, this.cineSun, ...this.cineCloudLayers, this.cineDust]) {
+    for (const sp of [this.cineWarm, this.stage1CoolBand, this.cineSun, ...this.cineCloudLayers, this.cineDust]) {
       sp.blendMode = 'screen'; sp.visible = false; sp.eventMode = 'none';
     }
     this.cineWarm.alpha = CINE_WARM_ALPHA;
@@ -1911,7 +1913,7 @@ export class PixiScene {
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
       this.gradeSprite, this.cineSun, // 光の線(cineCloudLayers)は森2の裏へ移すのでここには入れない(社長指示v0.25.1912)
-      this.cineWarm, this.cineDust, this.vignette,
+      this.cineWarm, this.stage1CoolBand, this.cineDust, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
     // 光の線(cineClouds)と雲は worldGroup(森1/2・地面・gameplay)の後ろ・farBackdrop(銀河)の手前へ。画面固定の空。
@@ -2179,6 +2181,14 @@ export class PixiScene {
     const w = this.screenW, h = this.screenH;
     const sunY = h * 0.18 + tsNum('sundown', 10);
     const sunX = w * STAGE1_SUN_X_FRAC;                    // M7右0.62を左へ反転(既定0.38)
+    // 光の呼吸(月光全体をゆっくり明滅・社長指示v0.25.1956)。冷残照帯/月暈/月グローで共有。
+    const breath = Math.max(0, 1 + Math.sin(now * Math.PI * 2 / Math.max(200, tsNum('s1moonbreathms', 4200))) * Math.max(0, tsNum('s1moonbreath', 0.22)));
+    // M1の冷たい残照帯(M7 cineWarm の青版・社長指示v0.25.1960)。地平帯に screen で乗せる。全画面・縦グラデのピークが地平に来る。
+    this.stage1CoolBand.visible = true;
+    this.stage1CoolBand.position.set(-1, -1);
+    this.stage1CoolBand.width = w + 2;
+    this.stage1CoolBand.height = h + 2;
+    this.stage1CoolBand.alpha = tsNum('s1coolband', 0.6) * breath;   // 濃さ(?s1coolband=・既定=M7残照相当0.6)×呼吸
     // 放射streak(光の線): M7と同じ明滅。左位置・横反転(scale.x<0)。anchor(0.5,1)で中心xを軸に鏡像。
     for (let i = 0; i < this.cineCloudLayers.length; i++) {
       const sp = this.cineCloudLayers[i];
@@ -2203,11 +2213,7 @@ export class PixiScene {
       this.stage1Moon.width = this.stage1Moon.height = moonSize;
       this.stage1Moon.position.set(sunX, sunY);                                                  // 光源位置(左・上)。城の裏に重なる
       this.stage1Moon.alpha = tsNum('s1moonalpha', 1);                                            // 通常合成・不透明寄り(?s1moonalpha=)
-      // 光の呼吸=月光(グロー+月暈)をゆっくり明滅(社長指示v0.25.1956)。月の円盤本体は据え置き=「光」だけ呼吸。
-      const breathMs = Math.max(200, tsNum('s1moonbreathms', 4200));
-      const breathAmp = Math.max(0, tsNum('s1moonbreath', 0.22));
-      const breath = Math.max(0, 1 + Math.sin(now * Math.PI * 2 / breathMs) * breathAmp);
-      // 月暈(つきがさ)=月より大きい同心の淡い光冠リング(加算・月の裏)。呼吸で明滅。
+      // 月暈(つきがさ)=月より大きい同心の淡い光冠リング(加算・月の裏)。呼吸(breath・上で算出)で明滅。
       this.stage1MoonHalo.visible = true;
       this.stage1MoonHalo.anchor.set(0.5);
       this.stage1MoonHalo.width = this.stage1MoonHalo.height = moonSize * tsNum('s1moonhaloscale', 2.4); // 月比(?s1moonhaloscale=)
