@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1954 — M1の月の裏に同サイズの光源(冷色グロー・加算)【2026-07-21 00:22 JST】
+- 指示(社長): 「月の裏に同じ大きさの光源」。
+- 対処: 専用スプライト `stage1MoonGlow`(冷色グロー=getCineMoonTexture・加算合成)を farGroup の**月の直前(=月の裏)**にaddChild。
+  z順=星空→**月グロー→月**→城。`updateStage1Light` で月と**同じ位置・同じ大きさ**(min(w,h)×s1moonsize)に追従。月を裏から発光させるコロナ。
+  微調整: `?s1moonglowsize=`(月比・既定1=同サイズ)、`?s1moonglowalpha=`(既定1)。
+- 検証: ヘッドレス(stage-1)で glow.visible=true・glowW=moonW(106.3・同サイズ)・blend=add・位置=月と同一。実描画で稜線上に月光コロナが出て月が発光するのを確認。typecheck OK。
+- 自己点検: 描画のみ・M1限定・ゲーム挙動不変。負荷: 1/10(加算グロー1枚=106px小面積・単体・M1のみ。farGroupの既存ブラー1パス内で面積不変。多数同時強glowとは別物)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1953 — M1の月の大きさを半分に(s1moonsize 0.7→0.35)【2026-07-21 00:19 JST】
 - 指示(社長): 「次の大きさ半分に」(=月のサイズを半分)。
 - 対処: `updateStage1Light` の月サイズ既定 `s1moonsize` を 0.7→**0.35**(min(w,h)基準)。幅=212→106px相当。
