@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1961 — M7の光源(太陽フレア)を少し明るく(α0.67→0.82)【2026-07-21 01:44 JST】
+- 指示(社長): 「m7の光源もう少し明るく」。
+- 対処: `CINE_SUN_ALPHA_MAX` 0.67→**0.82**。M1は月を専用スプライトに移行済み(cineSunは非表示)なので、この定数はM7の太陽フレアのみに効く。
+- 検証: ヘッドレス(stage-7・cine)で cineSun.visible=true・α=0.82。実描画で太陽の芯/ハロー/十字が明るくなり白飛びはしないのを確認。typecheck OK。
+- 自己点検: 描画のみ・M7限定・ゲーム挙動不変。負荷: 0/10(定数変更・screen合成の既存1枚)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1960 — M1に冷たい残照帯(M7オレンジ帯の青版)を追加【2026-07-21 01:42 JST】
 - 指示(社長): 「m7みたいなオレンジグラデ帯の青バージョンをm1に置いて」。
 - 対処: `lighting.ts` に `getCineCoolTexture()` 新設(M7の `getCineWarmTexture` と**stop位置/αは同一**でRGBだけ暖色→冷色(青)へ)。
