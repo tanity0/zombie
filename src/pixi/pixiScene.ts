@@ -2175,14 +2175,20 @@ export class PixiScene {
       sp.alpha = Math.max(0, CINE_CLOUD_ALPHA_BASE * (CINE_CLOUD_TWINKLE_FLOOR + (1 - CINE_CLOUD_TWINKLE_FLOOR) * tw));
     }
     this.cineSun.visible = true;
-    // M1の光源は月(冷たい青白い円盤)にする(社長指示v0.25.1948)。同じcineSunスプライトのテクスチャだけ差し替え。
-    // 同一テクスチャの再代入はPixi側で早期returnされるため毎フレームでも実質無コスト。M7(cineEnabled)はここに来ないので太陽のまま。
-    this.cineSun.texture = getCineMoonTexture();
+    // M1の光源=月。素材(クロマキー透過の月画像)が来ていればそれを、未ロード時はベイクの青白グローを暫定使用
+    // (社長指示v0.25.1948「月にして」→v0.25.1951「月の素材を光源に置いて」)。同じcineSunスプライトに割り当て。
+    const usingMoonImg = !!this.stage1MoonTex;
+    this.cineSun.texture = this.stage1MoonTex ?? getCineMoonTexture();
     this.cineSun.anchor.set(0.5);
-    this.cineSun.width = this.cineSun.height = Math.max(w, h) * 0.58;
-    this.cineSun.scale.x = -Math.abs(this.cineSun.scale.x); // 横反転(円盤は対称なので実質同じだが一貫)
+    // 月画像は実体のある円盤=短辺基準の穏当なサイズ。グロー暫定時は従来の大きな放射のまま。?s1moonsize= で微調整。
+    this.cineSun.width = this.cineSun.height = usingMoonImg
+      ? Math.min(w, h) * tsNum('s1moonsize', 0.7)
+      : Math.max(w, h) * 0.58;
+    // 月画像は模様があるので反転しない(グロー暫定時のみ左へ反転=一貫)。
+    this.cineSun.scale.x = usingMoonImg ? Math.abs(this.cineSun.scale.x) : -Math.abs(this.cineSun.scale.x);
     this.cineSun.position.set(sunX, sunY);
-    this.cineSun.alpha = CINE_SUN_ALPHA_MAX;
+    // 月画像は光源本体なので通常合成で不透明寄り(?s1moonalpha=)。グロー暫定時は従来値。
+    this.cineSun.alpha = usingMoonImg ? tsNum('s1moonalpha', 1) : CINE_SUN_ALPHA_MAX;
   }
 
   private updateStageLightShafts(w: number, h: number) {
@@ -2777,6 +2783,11 @@ export class PixiScene {
   // M1の星空に重ねる城/山/霧の森(緑抜き済PNG)。PixiStageが注入。
   setStage1CastleTexture(tex: Texture | null) {
     if (tex) this.stage1Castle.texture = tex;
+  }
+  // M1の光源=月(クロマキー透過素材・社長提供v0.25.1951)。updateStage1Lightで cineSun に割り当てる。
+  private stage1MoonTex: Texture | null = null;
+  setStage1MoonTexture(tex: Texture | null) {
+    if (tex) this.stage1MoonTex = tex;
   }
   // 川の流れ(チュートリアル): 遠景に重ねるハイライト筋レイヤー(PixiStageが注入)。
   private riverFlowTexs: (Texture | null)[] = [null, null];

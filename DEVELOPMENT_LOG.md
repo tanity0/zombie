@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1951 — M1の光源に月の素材(クロマキー透過画像)を配置【2026-07-20 23:44 JST】
+- 指示(社長・素材提供): 「月の素材 m1の光源に置いて」。緑背景(green screen)の幻想的な月画像。
+- 素材処理: PIL/numpyでクロマキー抜き(green=g-max(r,b)・α ramp LO60/HI140・緑スピル抑制)→768²へ縮小→`public/backgrounds/stage1-moon.png`(RGBA)。緑かぶり無しを暗背景合成で確認。
+- 配線: `PixiStage.tsx` の SORTIE_STAGE_TEXTURE_PATHS に追加(分割代入 s1Moon・`scene.setStage1MoonTexture` 呼び出し=1:1対応)。
+  `pixiScene.ts`: `stage1MoonTex` フィールド+setter新設。`updateStage1Light` で cineSun に月画像を割り当て(未ロード時はベイクの青白グローを暫定)。
+  月画像は通常合成・反転なし・サイズ=`min(w,h)×0.7`(`?s1moonsize=`)・α=1(`?s1moonalpha=`)。位置は既存の光源位置(左 sunX=w×0.38, sunY=h×0.18)。
+- 検証: ヘッドレス(stage-1)で cineSun.texture=768²(月画像)・visible・x=205(左)。実描画で湖上の空に幻想的な月が出るのを確認。typecheck OK。
+- 自己点検: 描画のみ・M1限定・ゲーム挙動不変(光源は演出=当たり判定/距離に不干渉)。負荷: 1/10(cineSunスプライト1枚のテクスチャ差し替え=描画枚数不変・通常合成で加算オーバードロー無し。768²RGBAテク常駐≈2.3MBのみ)。
+- 備考: サイズはやや大きめ既定(0.7)。大きすぎ/位置調整の要望あれば `?s1moonsize=`/`?s1sunx=`/`?sundown=` で即調整可。changelog据え置き(v1948「月」記載が継続)。
+- Files: `public/backgrounds/stage1-moon.png`(新規), `src/pixi/PixiStage.tsx`, `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1950 — M1の月から十字光条(スターバースト)を除去【2026-07-20 23:31 JST】
 - 指示(社長): 「十字ビームやめよう」。
 - 対処: `getCineMoonTexture()` から太陽由来の十字光条(横gx/縦gy fillRect+lighter)を削除。残るは柔らかい青白の放射グロー(ハロー)のみ。
