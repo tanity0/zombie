@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1938 — M7雲: 各コマが寿命で縦20px縮むモーション追加【2026-07-20 16:42 JST】
+- 指示(社長): 「1フレームがフェードインから少しずつ上下が縮んでいくモーション追加。消えるまでに20pxだけ縮んでいく」。
+- 対処(`updateStage7Clouds`): 各コマの寿命 t=0(湧き fpos=j-1)→1(消滅 fpos=j+1)に沿って、縦だけ縮める。
+  `scale.y = baseScale - SHRINK·t/frameH`(表示高さを最大SHRINK px減)、`scale.x`は不変(横は縮まない)。上端anchor(0.5,0)のため
+  `position.y += SHRINK·t/2` で上下均等(中心維持)に縮む。新param `?scloudshrink=`(px・既定20・0=無し)。三角クロスフェード/下降/コンベアは不変。
+- 検証: ヘッドレス実機で コマの表示高さが ~189→170px(delta≈20px)で縦に縮む・scale.x一定(横不変)・pageErrors 0。typecheck OK。
+- 負荷: 0/10(スケール/位置計算のみ)。changelog据え置き。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1937 — M1城遠景を「ゆっくり横ループ」に(ミラー二連でシームレス)【2026-07-20 16:37 JST】
 - 指示(社長): 「m1の城素材はゆーーっくり横ループ」。
 - 継ぎ目対策: 城素材の左右端は不一致(max126・p90 80=生タイルだと継ぎ目が目立つ)。→ 素材を **[A|左右反転A] のミラー二連**にベイク

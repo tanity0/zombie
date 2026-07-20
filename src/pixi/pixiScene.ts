@@ -433,6 +433,7 @@ const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 5
 const STAGE7_CLOUD_PERIOD_MS = Math.max(750, tsNum('scloudperiod', 1375)); // 1波(フレーム1→5)ms。大きいほどゆっくり(2倍速=2750→1375・社長v0.25.1923)
 const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha(各波の上限)
 const STAGE7_CLOUD_DROP = Math.max(0, Math.min(0.4, tsNum('sclouddrop', 0.03)));   // 1波の下降量(screenH比)。「少しだけ下に移動」。0=下降なし(移動距離半分=0.06→0.03・社長v0.25.1924)
+const STAGE7_CLOUD_SHRINK = Math.max(0, tsNum('scloudshrink', 20)); // 1コマの寿命(湧き→消滅)で縦に縮む量(px・上下均等・横は不変)。社長v0.25.1938。0=縮み無し
 const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)。横位置は固定(xy廃止=社長v0.25.1917)
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
 // M1の遠景=星空6コマの巡回クロスフェード(社長指示v0.25.1931)。farBackdrop(森の空)を覆う・stage-1限定。縦1列×6行。?s1sky*= で調整。
@@ -2054,6 +2055,7 @@ export class PixiScene {
     this.stage7CloudMask.width = w;
     this.stage7CloudMask.height = h * STAGE7_CLOUD_BAND_FRAC;
     const fw = this.stage7CloudFrames[0].width || 1;
+    const fhh = this.stage7CloudFrames[0].height || 1;
     const baseScale = (w * STAGE7_CLOUD_SIZE) / fw;
     const baseX = w * 0.5, baseY = 0;                        // 横中央・上端(元の湧き位置)。横は固定。
     const FR = STAGE7_CLOUD_FRAMES;                          // 5
@@ -2083,8 +2085,12 @@ export class PixiScene {
         const sp = sprites[si++];
         sp.visible = true;
         if (sp.texture !== this.stage7CloudFrames[j]) sp.texture = this.stage7CloudFrames[j];
-        sp.scale.set(baseScale);
-        sp.position.set(baseX, y);
+        // 縦縮み: このコマの寿命 t=0(湧き fpos=j-1)→1(消滅 fpos=j+1)で縦だけ SHRINK px 縮む(上下均等・横は不変)。
+        const t = Math.max(0, Math.min(1, (fpos - j + 1) / 2));
+        const shrink = STAGE7_CLOUD_SHRINK * t;
+        sp.scale.x = baseScale;
+        sp.scale.y = baseScale - shrink / fhh;               // 表示高さを shrink px 減らす
+        sp.position.set(baseX, y + shrink * 0.5);            // 上端anchor(0,)なので中心維持に+shrink/2=上下均等
         sp.alpha = a;
       }
     }
