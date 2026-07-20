@@ -2188,7 +2188,7 @@ export class PixiScene {
     this.stage1CoolBand.position.set(-1, -1 - tsNum('s1coolbandup', 20)); // 20px上へ(社長指示v0.25.1964)。?s1coolbandup=で調整。下端はグラデが透明なので隙間は見えない
     this.stage1CoolBand.width = w + 2;
     this.stage1CoolBand.height = h + 2;
-    this.stage1CoolBand.alpha = tsNum('s1coolband', 0.6) * breath;   // 濃さ(?s1coolband=・既定=M7残照相当0.6)×呼吸
+    this.stage1CoolBand.alpha = tsNum('s1coolband', 0.3) * breath;   // 濃さ(?s1coolband=・社長確定v0.25.1966: 0.3)×呼吸
     // 放射streak(光の線): M7と同じ明滅。左位置・横反転(scale.x<0)。anchor(0.5,1)で中心xを軸に鏡像。
     for (let i = 0; i < this.cineCloudLayers.length; i++) {
       const sp = this.cineCloudLayers[i];
@@ -2223,11 +2223,11 @@ export class PixiScene {
       this.stage1MoonGlow.visible = true;
       this.stage1MoonGlow.anchor.set(0.5);
       this.stage1MoonGlow.width = this.stage1MoonGlow.height = moonSize;                          // 基準=月サイズ
-      this.stage1MoonGlow.scale.set(this.stage1MoonGlow.scale.x * tsNum('s1moonglowsize', 2));    // 既定=月の2倍=月からはみ出してコロナに(社長A採用v0.25.1958)。?s1moonglowsize=で上書き
+      this.stage1MoonGlow.scale.set(this.stage1MoonGlow.scale.x * tsNum('s1moonglowsize', 2));    // 既定=月の2倍=コロナ(社長確定v0.25.1966: 2.0)。?s1moonglowsize=で上書き
       this.stage1MoonGlow.position.set(sunX, sunY);
-      this.stage1MoonGlow.alpha = tsNum('s1moonglowalpha', 0.6) * breath;                         // 透明度(?s1moonglowalpha=)×呼吸
+      this.stage1MoonGlow.alpha = tsNum('s1moonglowalpha', 3.0) * breath;                         // 強さ(?s1moonglowalpha=・社長確定v0.25.1966: 3.0=加算で強く光らせる)×呼吸
       // 光源グローのレイヤー(z順)を可変化(社長指示v0.25.1959)。0=月の裏 / 1=月の前・城の裏(既定) / 2=城の前。変化時のみ並べ替え。
-      const gz = Math.round(tsNum('s1moonglowz', 1));
+      const gz = Math.round(tsNum('s1moonglowz', 3));   // 社長確定v0.25.1966: 3(=2以上=城の前)
       if (gz !== this.stage1MoonGlowZ && this.stage1MoonGlow.parent === this.farGroup) {
         this.stage1MoonGlowZ = gz;
         const fg = this.farGroup;
