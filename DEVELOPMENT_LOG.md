@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1924 — M7雲の下降移動距離を半分に(sclouddrop 0.06→0.03)【2026-07-20 14:30 JST】
+- 指示(社長): 「移動距離を半分に」。
+- 対処: `STAGE7_CLOUD_DROP` の既定を **0.06→0.03**(screenH比・=下降距離を半分)。下降コンベアの他要素(速さ/湧き/継ぎ目)は不変。
+  `?sclouddrop=` で上書き可(0=下降なし)。
+- 検証: typecheck OK(既定値のみ)。負荷: 0/10。changelog据え置き。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1923 — M7雲(下降コンベア)を2倍速に(周期既定2750→1375ms)【2026-07-20 14:25 JST】
 - 指示(社長): 「2倍速で」。
 - 対処: `STAGE7_CLOUD_PERIOD_MS` の既定を **2750→1375ms**(=2倍速)。合わせて下限clampを1500→750に下げ(1375が上に丸められないように)。

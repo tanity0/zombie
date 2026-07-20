@@ -430,7 +430,7 @@ const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 5
 const STAGE7_CLOUD_PERIOD_MS = Math.max(750, tsNum('scloudperiod', 1375)); // 1波(フレーム1→5)ms。大きいほどゆっくり(2倍速=2750→1375・社長v0.25.1923)
 const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha(各波の上限)
 const STAGE7_CLOUD_OVERLAP = Math.max(0.02, Math.min(0.6, tsNum('scloudol', 0.2))); // 継ぎ目の重なり(波比)。次波はフレーム5付近=旧波の残りOL地点で湧く(spawn間隔=P·(1-OL))
-const STAGE7_CLOUD_DROP = Math.max(0, Math.min(0.4, tsNum('sclouddrop', 0.06)));   // 1波の下降量(screenH比)。「少しだけ下に移動」。0=下降なし
+const STAGE7_CLOUD_DROP = Math.max(0, Math.min(0.4, tsNum('sclouddrop', 0.03)));   // 1波の下降量(screenH比)。「少しだけ下に移動」。0=下降なし(移動距離半分=0.06→0.03・社長v0.25.1924)
 const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)。横位置は固定(xy廃止=社長v0.25.1917)
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
