@@ -46,7 +46,7 @@ import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
-import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineSunTexture, getCineMoonTexture, getCineCloudTexture, getCineDustTexture, RING_TEX_BASES } from './lighting';
+import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineSunTexture, getCineCloudTexture, getCineDustTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -1384,6 +1384,8 @@ export class PixiScene {
   private stage1Sky: Sprite[] = [new Sprite(Texture.EMPTY), new Sprite(Texture.EMPTY)];
   // M1の星空に重ねる城/山/霧の森(緑抜き・横ループ)。テクスチャは[A|左右反転A]のミラー二連=タイル継ぎ目がシームレス。星空の手前・近景森の奥。
   private stage1Castle = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
+  // M1の光源=月(素材画像)。星空の手前・城の裏(社長指示v0.25.1952「遠景の城の裏に」)。farGroup(同じ被写界深度)に置く専用スプライト。
+  private stage1Moon = new Sprite(Texture.EMPTY);
   private stage1IsM1 = getSelectedStageId() === 'stage-1'; // M1判定(レイアウト時に確定)
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   private playerLight = new Sprite(getGlowTexture());
@@ -1473,9 +1475,10 @@ export class PixiScene {
       this.vignette.alpha = CINE_VIGNETTE_ALPHA;
     }
     this.cineWarm.visible = on && CINE_WARM_ON;   // オレンジ残照グラデ=?cinewarm=0でオフ(社長v0.25.1926)
-    // 光源(cineSun)+放射(cineCloudLayers)は M1 にも移植(社長v0.25.1946)。残照/グレード/塵はcine(M7)限定のまま。
+    // 放射(cineCloudLayers)は M1 にも移植(社長v0.25.1946)。M1の光源=月は専用スプライト(stage1Moon・城の裏)に移したため
+    // 前面のcineSun(太陽フレア)はM7のみ表示(社長v0.25.1952)。残照/グレード/塵はcine(M7)限定のまま。
     const sunOn = on || this.stage1IsM1;
-    this.cineSun.visible = sunOn;
+    this.cineSun.visible = on;
     for (const sp of this.cineCloudLayers) sp.visible = sunOn;
     this.cineDust.visible = on;
   }
@@ -1672,6 +1675,8 @@ export class PixiScene {
       this.farGroup.addChild(this.L.farBackdrop);
       // M1の星空アニメ=farBackdrop(森の空)の手前・同グループ(同じ被写界深度)に置いて覆う。stage-1のみ可視。
       for (const sp of this.stage1Sky) { sp.eventMode = 'none'; sp.visible = false; this.farGroup.addChild(sp); }
+      // 月=星空の手前・城の裏(社長指示v0.25.1952)。城より先にaddChild=城が月に重なる(城が手前)。
+      this.stage1Moon.eventMode = 'none'; this.stage1Moon.visible = false; this.stage1Moon.anchor.set(0.5); this.farGroup.addChild(this.stage1Moon);
       // 城/山/霧の森=星空の手前(星空を透過部から見せる)・近景森の奥。同じくfarGroup。
       this.stage1Castle.eventMode = 'none'; this.stage1Castle.visible = false; this.farGroup.addChild(this.stage1Castle);
       this.farGroup.filters = this.cineEnabled ? [] : [this.farBackdropBlur];
@@ -2174,21 +2179,18 @@ export class PixiScene {
       let tw = Math.sin(now * spd + ph); tw = Math.max(0, tw); tw = tw * tw;
       sp.alpha = Math.max(0, CINE_CLOUD_ALPHA_BASE * (CINE_CLOUD_TWINKLE_FLOOR + (1 - CINE_CLOUD_TWINKLE_FLOOR) * tw));
     }
-    this.cineSun.visible = true;
-    // M1の光源=月。素材(クロマキー透過の月画像)が来ていればそれを、未ロード時はベイクの青白グローを暫定使用
-    // (社長指示v0.25.1948「月にして」→v0.25.1951「月の素材を光源に置いて」)。同じcineSunスプライトに割り当て。
-    const usingMoonImg = !!this.stage1MoonTex;
-    this.cineSun.texture = this.stage1MoonTex ?? getCineMoonTexture();
-    this.cineSun.anchor.set(0.5);
-    // 月画像は実体のある円盤=短辺基準の穏当なサイズ。グロー暫定時は従来の大きな放射のまま。?s1moonsize= で微調整。
-    this.cineSun.width = this.cineSun.height = usingMoonImg
-      ? Math.min(w, h) * tsNum('s1moonsize', 0.7)
-      : Math.max(w, h) * 0.58;
-    // 月画像は模様があるので反転しない(グロー暫定時のみ左へ反転=一貫)。
-    this.cineSun.scale.x = usingMoonImg ? Math.abs(this.cineSun.scale.x) : -Math.abs(this.cineSun.scale.x);
-    this.cineSun.position.set(sunX, sunY);
-    // 月画像は光源本体なので通常合成で不透明寄り(?s1moonalpha=)。グロー暫定時は従来値。
-    this.cineSun.alpha = usingMoonImg ? tsNum('s1moonalpha', 1) : CINE_SUN_ALPHA_MAX;
+    // M1の光源=月(素材画像)=専用スプライト stage1Moon(城の裏・farGroup)へ描く(社長指示v0.25.1951→v0.25.1952「遠景の城の裏に」)。
+    // 前面のcineSun(太陽フレア用)はM1では使わない=非表示。素材未ロード時は月自体を出さない(ロードは開幕前に完了)。
+    this.cineSun.visible = false;
+    if (this.stage1MoonTex) {
+      this.stage1Moon.visible = true;
+      this.stage1Moon.anchor.set(0.5);
+      this.stage1Moon.width = this.stage1Moon.height = Math.min(w, h) * tsNum('s1moonsize', 0.7); // ?s1moonsize= で微調整
+      this.stage1Moon.position.set(sunX, sunY);                                                  // 光源位置(左・上)。城の裏に重なる
+      this.stage1Moon.alpha = tsNum('s1moonalpha', 1);                                            // 通常合成・不透明寄り(?s1moonalpha=)
+    } else {
+      this.stage1Moon.visible = false;
+    }
   }
 
   private updateStageLightShafts(w: number, h: number) {
@@ -2784,10 +2786,10 @@ export class PixiScene {
   setStage1CastleTexture(tex: Texture | null) {
     if (tex) this.stage1Castle.texture = tex;
   }
-  // M1の光源=月(クロマキー透過素材・社長提供v0.25.1951)。updateStage1Lightで cineSun に割り当てる。
+  // M1の光源=月(クロマキー透過素材・社長提供v0.25.1951)。専用スプライト stage1Moon(城の裏)に割り当てる。
   private stage1MoonTex: Texture | null = null;
   setStage1MoonTexture(tex: Texture | null) {
-    if (tex) this.stage1MoonTex = tex;
+    if (tex) { this.stage1MoonTex = tex; this.stage1Moon.texture = tex; }
   }
   // 川の流れ(チュートリアル): 遠景に重ねるハイライト筋レイヤー(PixiStageが注入)。
   private riverFlowTexs: (Texture | null)[] = [null, null];

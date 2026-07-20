@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1952 — M1の月を遠景の城の裏へ(z順=星空→月→城)【2026-07-20 23:59 JST】
+- 指示(社長): 「遠景の城の裏に」(月を遠景の城の後ろに回す)。
+- 対処: 月を**前面のcineSun(uiLayer)から専用スプライト `stage1Moon` へ分離**し、`farGroup` の**星空の手前・城(stage1Castle)の直前**にaddChild(=城が月に重なる)。
+  farGroup は遠景の被写界深度ブラー(FAR_BACKDROP_BLUR=1.1)対象=月も遠景の空気感に馴染む。`updateStage1Light` は stage1Moon を駆動(位置=光源位置sunX/sunY・サイズ min(w,h)×0.7・α1)。
+  M1では前面 cineSun を非表示化(`applyCineGrade`/`updateStage1Light` 両方で visible=false)。放射(cineCloudLayers)は据え置き。未使用化した getCineMoonTexture の import を削除。
+- 検証: ヘッドレス(stage-1)で stage1Moon.visible=true・texW=768・cineSun.visible=false・castle.visible=true。実描画で月が城/山の稜線の裏に回り、稜線から上に月光が覗くのを確認。typecheck OK。
+- 自己点検: 描画のみ・M1限定・ゲーム挙動不変。負荷: 0/10(スプライト1枚の所属グループ変更=描画枚数不変。farGroupのブラーは既存1パスで面積不変)。
+- 備考: 月の露出(稜線からどれだけ覗くか)は位置で調整可=`?sundown=`(上下)/`?s1sunx=`(左右)/`?s1moonsize=`(大きさ)。もっと見せたい等あれば既定に焼き込む。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1951 — M1の光源に月の素材(クロマキー透過画像)を配置【2026-07-20 23:44 JST】
 - 指示(社長・素材提供): 「月の素材 m1の光源に置いて」。緑背景(green screen)の幻想的な月画像。
 - 素材処理: PIL/numpyでクロマキー抜き(green=g-max(r,b)・α ramp LO60/HI140・緑スピル抑制)→768²へ縮小→`public/backgrounds/stage1-moon.png`(RGBA)。緑かぶり無しを暗背景合成で確認。
