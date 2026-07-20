@@ -421,16 +421,15 @@ const CINE_CLOUD_STREAKS_PER_LAYER = Math.max(1, Math.round(tsNum('cloudstreaks'
 const CINE_CLOUD_TWINKLE_SPD = Math.max(0, tsNum('cloudspd', 0.0016));           // 明滅の速さ(瞬き感)
 const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.10))); // 各層の最小alpha倍率(0=完全に消える)
 // M7の遠景に重ねる雲(パースフロー: 消失点から拡大＋2枚クロスフェードでループ。社長指示v0.25.1909)。光源の上・空帯にマスク。?scloud*= で調整。
-// M7の雲=5コマのコマ送りアニメ(社長指示v0.25.1916・全画面の空が濃→薄へ散る素材に差替)。縦1列×5行のストリップ。
-// 1サイクル中はコマ0→4を全alphaでパッと切替(ブレンド無し)、継ぎ目(コマ4→次周回コマ0)だけ2枚目を重ねて台形alphaで
-// クロスフェード=ループのハード復帰を隠す。表示は画面固定・横いっぱい(xy/ドリフト廃止=社長v0.25.1917「動かすとズレる」)。森より後ろ・空帯マスク維持。?scloud*= で調整。
+// M7の雲=5コマの連続クロスフェードアニメ(社長指示v0.25.1916・全画面の空が濃→薄へ散る素材/v0.25.1919・全コマ間シームレス化)。
+// 縦1列×5行のストリップ。常に隣接2コマを表示し現コマ=フェードアウト/次コマ=フェードインで繋ぐ=全コマ間がシームレス
+// (ループ先頭コマ4→0も同扱い)。表示は画面固定・横いっぱい(xy/ドリフト廃止=社長v0.25.1917「動かすとズレる」)。森より後ろ・空帯マスク維持。?scloud*= で調整。
 const STAGE7_CLOUD_COLS = 1;
 const STAGE7_CLOUD_ROWS = 5;
 const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 5
-const STAGE7_CLOUD_PERIOD_MS = Math.max(1500, tsNum('scloudperiod', 5500)); // 1周期(5コマ)ms。大きいほどゆっくり(2倍速=11000→5500・社長v0.25.1918)
+const STAGE7_CLOUD_PERIOD_MS = Math.max(1500, tsNum('scloudperiod', 5500)); // 1巡(5コマ+先頭復帰)ms。大きいほどゆっくり(2倍速=11000→5500・社長v0.25.1918)
 const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha
 const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)。位置は固定(xy/ドリフト廃止=社長v0.25.1917)
-const STAGE7_CLOUD_OVERLAP = Math.max(0, Math.min(0.45, tsNum('scloudol', 0.12))); // ループ継ぎ目だけ重ねるオーバーラップ幅(サイクル比)。0=瞬間切替
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
@@ -2018,9 +2017,9 @@ export class PixiScene {
 
   private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
 
-  // M7の遠景に重ねる雲=5コマのコマ送りアニメ(全画面の空が濃→薄へ散る素材)。1サイクル中はコマを"パッと切替"
-  // (ブレンド無し・全alpha)で 0→4 を再生。継ぎ目(コマ4→次周回コマ0)だけ2枚目を重ねて台形alphaでクロスフェード
-  // =ループのハード復帰を隠す。素材はレジスト済(同位置で散る)ので位置ドリフトは既定0=その場で散る。森より後ろ・空帯マスクでクリップ。
+  // M7の遠景に重ねる雲=5コマの連続クロスフェード(全画面の空が濃→薄へ散る素材)。全コマ間をフェードイン/アウトで繋ぐ
+  // (社長指示v0.25.1919「最後の切り替わりを全コマに=シームレス」)。常に隣接2コマを表示: 現コマ(フェードアウト)+次コマ
+  // (フェードイン)。ループ先頭(コマ4→0)も同じクロスフェード=完全シームレス。位置は画面固定・横いっぱい。森より後ろ・空帯マスクでクリップ。
   private updateStage7Clouds(now: number) {
     const on = this.currentFarKey === 'stage7' && this.stage7CloudFrames.length === STAGE7_CLOUD_FRAMES;
     this.stage7CloudGroup.visible = on;
@@ -2030,37 +2029,25 @@ export class PixiScene {
     this.stage7CloudMask.position.set(0, 0);
     this.stage7CloudMask.width = w;
     this.stage7CloudMask.height = h * STAGE7_CLOUD_BAND_FRAC;
-    // 画面固定・横いっぱい(社長指示v0.25.1917「動かす/xy指定でズレるので画面一杯固定表示」)。位置は完全固定=
-    // 横中央(anchor0.5)・上端(y=0)、スケール=画面幅÷コマ幅(SIZE=1で横ぴったり)。ドリフト/xyオフセットは廃止=ズレない。
+    // 画面固定・横いっぱい(社長指示v0.25.1917)。位置は完全固定=横中央(anchor0.5)・上端(y=0)、スケール=画面幅÷コマ幅。
     const fw = this.stage7CloudFrames[0].width || 1;
     const baseScale = (w * STAGE7_CLOUD_SIZE) / fw;
     const baseX = w * 0.5, baseY = 0;
-    // 継ぎ目だけ重ねる。サイクル開始間隔=P·(1-OL)。隣接サイクルは交互スプライトに載せ、各サイクルは
-    // 頭[0,OL]でフェードイン・尻[1-OL,1]でフェードアウト(=前後サイクルとの継ぎ目クロスフェード)、
-    // 中間[OL,1-OL]は全alphaでコマをパッと切替。両立ち上がり幅はコマ0/最終の枠内(OL<1/コマ数 目安)。
+    // 全コマ連続クロスフェード。P=全5コマ+先頭復帰の一巡。fp=一巡内のコマ位置、fN=現コマ・nxt=次コマ、frac=次へのクロスフェード進行。
     const P = STAGE7_CLOUD_PERIOD_MS;
-    const OL = STAGE7_CLOUD_OVERLAP;
-    const effP = P * (1 - OL);
-    const curCycle = Math.floor(now / effP);
-    for (const sp of this.stage7Clouds) sp.visible = false;   // 担当サイクルだけ下で可視化
-    for (let k = curCycle - 1; k <= curCycle; k++) {
-      if (k < 0) continue;
-      const localT = now - k * effP;
-      if (localT < 0 || localT >= P) continue;                // このサイクルは表示範囲外
-      const ph = localT / P;                                  // 0..1(サイクル内の進行)
-      const fi = Math.min(STAGE7_CLOUD_FRAMES - 1, Math.floor(ph * STAGE7_CLOUD_FRAMES)); // コマ0..(FRAMES-1)
-      let env = 1;                                            // 台形エンベロープ
-      if (OL > 0) {
-        if (ph < OL) env = ph / OL;
-        else if (ph > 1 - OL) env = (1 - ph) / OL;
-      }
-      const sp = this.stage7Clouds[((k % 2) + 2) % 2];        // 隣接サイクルは別スプライト=継ぎ目で共存
-      sp.visible = true;
-      if (sp.texture !== this.stage7CloudFrames[fi]) sp.texture = this.stage7CloudFrames[fi];
-      sp.scale.set(baseScale);
-      sp.position.set(baseX, baseY);                          // 完全固定(コマに依らず不動=ズレない)
-      sp.alpha = STAGE7_CLOUD_ALPHA * Math.max(0, Math.min(1, env));
-    }
+    const g = ((now / P) % 1 + 1) % 1;                        // 0..1(全コマの一巡)
+    const fp = g * STAGE7_CLOUD_FRAMES;                       // 0..FRAMES
+    const fN = Math.floor(fp) % STAGE7_CLOUD_FRAMES;          // 現コマ
+    const nxt = (fN + 1) % STAGE7_CLOUD_FRAMES;               // 次コマ(コマ4の次=コマ0=先頭復帰も同じ扱い)
+    const frac = fp - Math.floor(fp);                         // 0..1 次コマへのクロスフェード進行
+    const sp0 = this.stage7Clouds[0], sp1 = this.stage7Clouds[1];
+    sp0.visible = true; sp1.visible = true;
+    if (sp0.texture !== this.stage7CloudFrames[fN]) sp0.texture = this.stage7CloudFrames[fN];
+    if (sp1.texture !== this.stage7CloudFrames[nxt]) sp1.texture = this.stage7CloudFrames[nxt];
+    sp0.scale.set(baseScale); sp1.scale.set(baseScale);
+    sp0.position.set(baseX, baseY); sp1.position.set(baseX, baseY);   // 2枚とも同座標に固定=ズレ無し
+    sp0.alpha = STAGE7_CLOUD_ALPHA * (1 - frac);              // 現コマ=フェードアウト
+    sp1.alpha = STAGE7_CLOUD_ALPHA * frac;                    // 次コマ=フェードイン
   }
 
   private updateStageLightShafts(w: number, h: number) {
