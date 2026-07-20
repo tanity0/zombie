@@ -1390,6 +1390,7 @@ export class PixiScene {
   private stage1MoonGlow = new Sprite(getCineMoonTexture());
   // 月暈(つきがさ)=月の周りの淡い光冠リング(社長指示v0.25.1956)。加算・月より大きい同心・月の裏。
   private stage1MoonHalo = new Sprite(getMoonHaloTexture());
+  private stage1MoonGlowZ = -1; // 光源グローのz順の適用済み値(?s1moonglowz=・変化時のみ並べ替え。社長指示v0.25.1959)
   private stage1IsM1 = getSelectedStageId() === 'stage-1'; // M1判定(レイアウト時に確定)
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   private playerLight = new Sprite(getGlowTexture());
@@ -2219,6 +2220,18 @@ export class PixiScene {
       this.stage1MoonGlow.scale.set(this.stage1MoonGlow.scale.x * tsNum('s1moonglowsize', 2));    // 既定=月の2倍=月からはみ出してコロナに(社長A採用v0.25.1958)。?s1moonglowsize=で上書き
       this.stage1MoonGlow.position.set(sunX, sunY);
       this.stage1MoonGlow.alpha = tsNum('s1moonglowalpha', 0.6) * breath;                         // 透明度(?s1moonglowalpha=)×呼吸
+      // 光源グローのレイヤー(z順)を可変化(社長指示v0.25.1959)。0=月の裏 / 1=月の前・城の裏(既定) / 2=城の前。変化時のみ並べ替え。
+      const gz = Math.round(tsNum('s1moonglowz', 1));
+      if (gz !== this.stage1MoonGlowZ && this.stage1MoonGlow.parent === this.farGroup) {
+        this.stage1MoonGlowZ = gz;
+        const fg = this.farGroup;
+        fg.removeChild(this.stage1MoonGlow);
+        let idx: number;
+        if (gz <= 0) idx = fg.getChildIndex(this.stage1Moon);                                     // 月の直前=月の裏
+        else if (gz === 1) idx = fg.getChildIndex(this.stage1Castle);                             // 城の直前=月の前・城の裏
+        else idx = Math.min(fg.getChildIndex(this.stage1Castle) + 1, fg.children.length);         // 城の直後=城の前
+        fg.addChildAt(this.stage1MoonGlow, idx);
+      }
     } else {
       this.stage1Moon.visible = false;
       this.stage1MoonGlow.visible = false;
