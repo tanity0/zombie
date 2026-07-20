@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1939',
+    items: [
+      '調整: M7の夜空(遠景)を新しい銀河に差し替えました。',
+    ],
+  },
+  {
     version: '0.25.1931',
     items: [
       '追加: ステージ1の遠景を、星空(6コマ)がゆっくり移り変わるアニメーションにしました。',

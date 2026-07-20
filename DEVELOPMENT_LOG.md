@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1939 — M7の夜空(遠景)を新しい銀河に差し替え【2026-07-20 16:45 JST】
+- 指示(社長): 「m7の夜空差し替え」。支給の新しい銀河(青紫の星雲)。
+- 対処: `public/backgrounds/stage7-far.jpg` を差し替え(1672×941・同寸=コード変更なし・584KB)。farBackdrop='stage7'がそのまま新画像を読む。
+- 検証: ヘッドレス実機(stage-7)で新銀河が遠景に表示・雲アニメは手前に維持・pageErrors 0。typecheck OK。
+- 負荷: 0/10(素材差替のみ)。
+- Files: `public/backgrounds/stage7-far.jpg`(差替), `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1938 — M7雲: 各コマが寿命で縦20px縮むモーション追加【2026-07-20 16:42 JST】
 - 指示(社長): 「1フレームがフェードインから少しずつ上下が縮んでいくモーション追加。消えるまでに20pxだけ縮んでいく」。
 - 対処(`updateStage7Clouds`): 各コマの寿命 t=0(湧き fpos=j-1)→1(消滅 fpos=j+1)に沿って、縦だけ縮める。
