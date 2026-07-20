@@ -443,6 +443,7 @@ const STAGE1_SKY_ALPHA = Math.max(0, Math.min(1, tsNum('s1skyalpha', 1.0)));  //
 const STAGE1_CASTLE_SCALE = Math.max(0.2, tsNum('s1castscale', 1.0)); // 横スケール(画面幅比。1=横いっぱい)
 const STAGE1_CASTLE_Y = tsNum('s1casty', 0);                           // 底の位置調整(px・+で下へ/−で上へ)。既定0=底を地平(farH)。※px単位(社長v0.25.1936「1以上で消える」修正)
 const STAGE1_CASTLE_ALPHA = Math.max(0, Math.min(1, tsNum('s1castalpha', 1.0))); // 不透明度
+const STAGE1_CASTLE_SPEED = tsNum('s1castspeed', 0.006); // 横ループ速度(px/ms・画面px基準)。ゆーっくり=既定0.006(≈6px/s)。負で逆方向
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 // 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
@@ -1375,7 +1376,8 @@ export class PixiScene {
   // M1の遠景=星空6コマアニメ。2枚クロスフェードで6コマを巡回。farBackdrop(森の空)を覆う=stage-1限定。
   private stage1SkyFrames: Texture[] = []; // シートから切り出した6コマ
   private stage1Sky: Sprite[] = [new Sprite(Texture.EMPTY), new Sprite(Texture.EMPTY)];
-  private stage1Castle = new Sprite(Texture.EMPTY); // M1の星空に重ねる城/山/霧の森(緑抜き・静止)。星空の手前・近景森の奥。
+  // M1の星空に重ねる城/山/霧の森(緑抜き・横ループ)。テクスチャは[A|左右反転A]のミラー二連=タイル継ぎ目がシームレス。星空の手前・近景森の奥。
+  private stage1Castle = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
   private stage1IsM1 = getSelectedStageId() === 'stage-1'; // M1判定(レイアウト時に確定)
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   private playerLight = new Sprite(getGlowTexture());
@@ -2095,14 +2097,22 @@ export class PixiScene {
     for (const sp of this.stage1Sky) sp.visible = on;
     const w = this.screenW;
     const farH = this.farBackdropHeight();
-    // 城/山/霧の森を星空の手前に重ねる(緑抜き済=透過部から星空が見える)。底を地平(farH)へ・横中央・横いっぱい。
+    // 城/山/霧の森を星空の手前に横ループ(緑抜き済=透過部から星空が見える)。テクスチャ=[A|反転A]のミラー二連でシームレス。
+    // 窓幅=画面幅(=Aひとつ分を表示)・tileScaleで拡縮・tilePosition.xをゆっくり流す。底を地平(farH)へ・横中央。
     const castleOn = on && this.stage1Castle.texture.width > 1;
     this.stage1Castle.visible = castleOn;
     if (castleOn) {
-      const cw = this.stage1Castle.texture.width || 1;
-      this.stage1Castle.anchor.set(0.5, 1);                       // 底基準
-      this.stage1Castle.scale.set((w * STAGE1_CASTLE_SCALE) / cw);
-      this.stage1Castle.position.set(w * 0.5, farH + STAGE1_CASTLE_Y); // s1casty=px(比率ではない)
+      const texW = this.stage1Castle.texture.width || 2;         // ミラー二連の全幅(=Aの2倍)
+      const texH = this.stage1Castle.texture.height || 1;
+      const s = (w * STAGE1_CASTLE_SCALE) / (texW / 2);          // Aひとつ分が画面幅×SCALEになる倍率
+      this.stage1Castle.tileScale.set(s);
+      this.stage1Castle.anchor.set(0.5, 1);                      // 底基準
+      this.stage1Castle.width = w;                               // 窓=画面幅(Aひとつ分)
+      this.stage1Castle.height = texH * s;                       // 縦は1タイル分だけ(縦リピート無し)
+      this.stage1Castle.position.set(w * 0.5, farH + STAGE1_CASTLE_Y); // s1casty=px
+      const period = texW * s;                                  // [A|反転A]一巡の表示幅=シームレス周期
+      this.stage1Castle.tilePosition.x = -(((now * STAGE1_CASTLE_SPEED) % period) + period) % period;
+      this.stage1Castle.tilePosition.y = 0;
       this.stage1Castle.alpha = STAGE1_CASTLE_ALPHA;
     }
     if (!on) return;

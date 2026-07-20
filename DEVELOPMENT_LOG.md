@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1937 — M1城遠景を「ゆっくり横ループ」に(ミラー二連でシームレス)【2026-07-20 16:37 JST】
+- 指示(社長): 「m1の城素材はゆーーっくり横ループ」。
+- 継ぎ目対策: 城素材の左右端は不一致(max126・p90 80=生タイルだと継ぎ目が目立つ)。→ 素材を **[A|左右反転A] のミラー二連**にベイク
+  (`public/backgrounds/stage1-castle.png`=1800×506・VRAM3.64MB)。全タイル境界が鏡像で一致=完全シームレス。
+- 配線: `stage1Castle` を Sprite→**TilingSprite** に変更。窓幅=画面幅(Aひとつ分)・tileScale=画面幅×SCALE/(texW/2)・縦は1タイル分(縦リピート無し)・
+  底=地平(farH)+s1casty(px)。`tilePosition.x = -((now·SPEED)%period)`(period=texW·tileScale=[A|反転A]一巡)でゆっくり流す。星空の手前・近景森の奥。
+  新param: `?s1castspeed=`(px/ms・既定0.006≈6px/s・負で逆)。
+- 検証: ヘッドレス実機(stage-1)で tilePosition.x が流れて周期でラップ(-581→-670→-132)・縦リピート無し(height=1タイル)・透過部から星空・pageErrors 0。typecheck OK。
+- 負荷: 1/10(TilingSprite1枚・VRAM3.64MB・per-frameはtilePos更新のみ・M1限定)。changelogは配置確定後に。
+- Files: `src/pixi/pixiScene.ts`, `public/backgrounds/stage1-castle.png`(ミラー二連に差替), `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1936 — M1城遠景 s1casty を px単位に修正(1以上で消えるバグ)【2026-07-20 16:17 JST】
 - 指摘(社長): 「s1casty を1以上にすると消える」。原因=s1castyがscreenH**比率**だったため 1=画面1つ分下=画面外に落ちていた(単位ミスマッチ)。
 - 対処: `STAGE1_CASTLE_Y` を **px単位**に(`farH + this.screenH*STAGE1_CASTLE_Y` → `farH + STAGE1_CASTLE_Y`)。他の位置指定(sundown等)と同じpx流儀。既定0は不変。
