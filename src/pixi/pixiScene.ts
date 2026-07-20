@@ -2215,10 +2215,10 @@ export class PixiScene {
       // 月の前の光源=同じ大きさ・同じ位置の冷色グロー(加算)。月の前面から乗せる淡い発光(社長指示v0.25.1954→v0.25.1955)。呼吸で明滅。
       this.stage1MoonGlow.visible = true;
       this.stage1MoonGlow.anchor.set(0.5);
-      this.stage1MoonGlow.width = this.stage1MoonGlow.height = moonSize;                          // 月と同サイズ(?s1moonglowsize=で比率上書き可)
-      this.stage1MoonGlow.scale.set(this.stage1MoonGlow.scale.x * tsNum('s1moonglowsize', 1));    // 既定=等倍(=同じ大きさ)
+      this.stage1MoonGlow.width = this.stage1MoonGlow.height = moonSize;                          // 基準=月サイズ
+      this.stage1MoonGlow.scale.set(this.stage1MoonGlow.scale.x * tsNum('s1moonglowsize', 2));    // 既定=月の2倍=月からはみ出してコロナに(社長A採用v0.25.1958)。?s1moonglowsize=で上書き
       this.stage1MoonGlow.position.set(sunX, sunY);
-      this.stage1MoonGlow.alpha = tsNum('s1moonglowalpha', 0.5) * breath;                         // 透明度(?s1moonglowalpha=)×呼吸
+      this.stage1MoonGlow.alpha = tsNum('s1moonglowalpha', 0.6) * breath;                         // 透明度(?s1moonglowalpha=)×呼吸
     } else {
       this.stage1Moon.visible = false;
       this.stage1MoonGlow.visible = false;
