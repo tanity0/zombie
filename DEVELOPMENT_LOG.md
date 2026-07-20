@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1969 — M7の光源セット(太陽+放射)を20px下へ(m7sundown=20)【2026-07-21 02:42 JST】
+- 指示(社長): 「m7の光源セットは20px下へ」。
+- 対処: M7 cineブロックの `sunY` に `+tsNum('m7sundown', 20)` を追加=太陽(cineSun)+放射(cineCloudLayers)が20px下へ。M7専用(cineEnabled内)なのでM1不変。共有の`sundown`(10)も不変。残照(cineWarm・全画面)は位置不動のまま。
+- 検証: ヘッドレス(stage-7・cine・パラメータ無し)で cineSun.y=175.8(=旧155.8+20)。typecheck OK。
+- 自己点検: 描画のみ・M7限定・ゲーム挙動不変。負荷: 0/10(位置オフセットのみ)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1968 — M1の月周りを20px上へ(s1moonup=20)【2026-07-21 02:40 JST】
 - 指示(社長): 「月周りを20px上へ」。
 - 対処: `updateStage1Light` の `sunY` に `-tsNum('s1moonup', 20)` を追加=月/グロー/月暈/放射(全てsunY基準)が20px上へ。冷残照帯(別オフセットs1coolbandup)は不変。

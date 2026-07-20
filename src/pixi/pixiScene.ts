@@ -3451,7 +3451,7 @@ export class PixiScene {
     //  遠い層ほど動きを小さく: 太陽(最遠)<雲(中)<塵(近)。
     if (this.cineEnabled) {
       const w = this.screenW, h = this.screenH;
-      const sunY = h * 0.18 + tsNum('sundown', 10); // 光源周り(太陽+放射streak)を少し下げる(社長指示v0.25.1930「10px下」・?sundown=で調整)
+      const sunY = h * 0.18 + tsNum('sundown', 10) + tsNum('m7sundown', 20); // 光源セット(太陽+放射streak)を下げる(社長指示v0.25.1930「10px下」+v0.25.1969「さらに20px下」・?sundown=/?m7sundown=で調整)
       const camX = s.camera.x, camY = s.camera.y;
       const sunX = w * CINE_SUN_X_FRAC; // 光源=右寄り(固定)。雲(放射streak)の原点も同じ。
       // 光フレア(太陽+放射streak)は位置固定=左右にも上下にも動かさない(社長v0.25.1877)。
