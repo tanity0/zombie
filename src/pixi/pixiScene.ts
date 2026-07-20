@@ -421,14 +421,15 @@ const CINE_CLOUD_STREAKS_PER_LAYER = Math.max(1, Math.round(tsNum('cloudstreaks'
 const CINE_CLOUD_TWINKLE_SPD = Math.max(0, tsNum('cloudspd', 0.0016));           // 明滅の速さ(瞬き感)
 const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.10))); // 各層の最小alpha倍率(0=完全に消える)
 // M7の遠景に重ねる雲(パースフロー: 消失点から拡大＋2枚クロスフェードでループ。社長指示v0.25.1909)。光源の上・空帯にマスク。?scloud*= で調整。
-// M7の雲=5コマの連続クロスフェードアニメ(社長指示v0.25.1916・全画面の空が濃→薄へ散る素材/v0.25.1919・全コマ間シームレス化)。
-// 縦1列×5行のストリップ。常に隣接2コマを表示し現コマ=フェードアウト/次コマ=フェードインで繋ぐ=全コマ間がシームレス
-// (ループ先頭コマ4→0も同扱い)。表示は画面固定・横いっぱい(xy/ドリフト廃止=社長v0.25.1917「動かすとズレる」)。森より後ろ・空帯マスク維持。?scloud*= で調整。
+// M7の雲=5コマの連続クロスフェードアニメ(社長指示v0.25.1916・全画面の空が濃→薄へ散る素材/v0.25.1919・全コマ間シームレス/
+// v0.25.1921・2波を位相ずらしで重ねて"薄→濃の急リセット"を消す)。縦1列×5行のストリップ。各波は隣接2コマをクロスフェード、
+// 2波を OFFSET だけ位相ずらしで常時重ねる=どの瞬間も雲が居る(空っぽ/急リセット無し・ピンポンでもない)。表示は画面固定・横いっぱい。森より後ろ・空帯マスク維持。?scloud*= で調整。
 const STAGE7_CLOUD_COLS = 1;
 const STAGE7_CLOUD_ROWS = 5;
 const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 5
 const STAGE7_CLOUD_PERIOD_MS = Math.max(1500, tsNum('scloudperiod', 2750)); // 1巡(5コマ+先頭復帰)ms。大きいほどゆっくり(更に2倍速=5500→2750・社長v0.25.1920)
-const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha
+const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha(各波の上限)
+const STAGE7_CLOUD_OFFSET = Math.max(0, Math.min(1, tsNum('scloudoff', 0.5))); // 2波の位相ずらし(0..1)。0.5=最も均一(常に片方が濃くもう片方が薄)。1(=0)で単波
 const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 1.0));         // 表示スケール=画面幅×これ÷コマ幅(全画面の空=既定1.0で横いっぱい)。位置は固定(xy/ドリフト廃止=社長v0.25.1917)
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
@@ -1355,8 +1356,9 @@ export class PixiScene {
   private cineDust = new TilingSprite({ texture: getCineDustTexture(), width: 1, height: 1 }); // ③大気の塵(ドリフト)
   // M7の遠景に重ねる雲(パースフロー)。光源の上・空帯にマスク。2枚クロスフェードでループ。テクスチャは setStage7Clouds で注入。
   private stage7CloudGroup = new Container();
-  private stage7Clouds: Sprite[] = [new Sprite(Texture.EMPTY), new Sprite(Texture.EMPTY)];
-  private stage7CloudFrames: Texture[] = []; // アトラスから切り出した6コマ
+  // 4枚=2波(各波が隣接2コマをクロスフェード)。2波を位相ずらしで重ねて"薄→濃の急リセット"を消す。
+  private stage7Clouds: Sprite[] = [new Sprite(Texture.EMPTY), new Sprite(Texture.EMPTY), new Sprite(Texture.EMPTY), new Sprite(Texture.EMPTY)];
+  private stage7CloudFrames: Texture[] = []; // アトラスから切り出した5コマ
   private stage7CloudMask = new Sprite(Texture.WHITE);
   private stage7CloudMaskTex: Texture | null = null; // 縦グラデ(下端フェード)マスク
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
@@ -2017,9 +2019,9 @@ export class PixiScene {
 
   private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
 
-  // M7の遠景に重ねる雲=5コマの連続クロスフェード(全画面の空が濃→薄へ散る素材)。全コマ間をフェードイン/アウトで繋ぐ
-  // (社長指示v0.25.1919「最後の切り替わりを全コマに=シームレス」)。常に隣接2コマを表示: 現コマ(フェードアウト)+次コマ
-  // (フェードイン)。ループ先頭(コマ4→0)も同じクロスフェード=完全シームレス。位置は画面固定・横いっぱい。森より後ろ・空帯マスクでクリップ。
+  // M7の遠景に重ねる雲=5コマ・2波の位相ずらし重ね(社長指示v0.25.1921)。各波は隣接2コマを連続クロスフェード(濃→薄に散る)、
+  // 2波を OFFSET だけ位相ずらしで常時重ねる=片方が薄い時もう片方が濃い=どの瞬間も雲が居る(空っぽ/薄→濃の急リセット無し・
+  // 逆再生=ピンポンでもない)。位置は画面固定・横いっぱい。森より後ろ・空帯マスクでクリップ。4枚(波0=[0,1]・波1=[2,3])。
   private updateStage7Clouds(now: number) {
     const on = this.currentFarKey === 'stage7' && this.stage7CloudFrames.length === STAGE7_CLOUD_FRAMES;
     this.stage7CloudGroup.visible = on;
@@ -2033,21 +2035,25 @@ export class PixiScene {
     const fw = this.stage7CloudFrames[0].width || 1;
     const baseScale = (w * STAGE7_CLOUD_SIZE) / fw;
     const baseX = w * 0.5, baseY = 0;
-    // 全コマ連続クロスフェード。P=全5コマ+先頭復帰の一巡。fp=一巡内のコマ位置、fN=現コマ・nxt=次コマ、frac=次へのクロスフェード進行。
     const P = STAGE7_CLOUD_PERIOD_MS;
-    const g = ((now / P) % 1 + 1) % 1;                        // 0..1(全コマの一巡)
-    const fp = g * STAGE7_CLOUD_FRAMES;                       // 0..FRAMES
-    const fN = Math.floor(fp) % STAGE7_CLOUD_FRAMES;          // 現コマ
-    const nxt = (fN + 1) % STAGE7_CLOUD_FRAMES;               // 次コマ(コマ4の次=コマ0=先頭復帰も同じ扱い)
-    const frac = fp - Math.floor(fp);                         // 0..1 次コマへのクロスフェード進行
-    const sp0 = this.stage7Clouds[0], sp1 = this.stage7Clouds[1];
-    sp0.visible = true; sp1.visible = true;
-    if (sp0.texture !== this.stage7CloudFrames[fN]) sp0.texture = this.stage7CloudFrames[fN];
-    if (sp1.texture !== this.stage7CloudFrames[nxt]) sp1.texture = this.stage7CloudFrames[nxt];
-    sp0.scale.set(baseScale); sp1.scale.set(baseScale);
-    sp0.position.set(baseX, baseY); sp1.position.set(baseX, baseY);   // 2枚とも同座標に固定=ズレ無し
-    sp0.alpha = STAGE7_CLOUD_ALPHA * (1 - frac);              // 現コマ=フェードアウト
-    sp1.alpha = STAGE7_CLOUD_ALPHA * frac;                    // 次コマ=フェードイン
+    const base = (now / P) % 1;                               // 波0の位相(0..1)
+    // 1波を2枚(spA=現コマ・spB=次コマ)で連続クロスフェードして描く。phase=波の位相(0..1)。
+    const drawWave = (phase: number, spA: Sprite, spB: Sprite) => {
+      const g = ((phase % 1) + 1) % 1;
+      const fp = g * STAGE7_CLOUD_FRAMES;                     // 0..FRAMES
+      const fN = Math.floor(fp) % STAGE7_CLOUD_FRAMES;        // 現コマ
+      const nxt = (fN + 1) % STAGE7_CLOUD_FRAMES;             // 次コマ(先頭復帰も同扱い)
+      const frac = fp - Math.floor(fp);                       // 0..1 次コマへのクロスフェード
+      spA.visible = true; spB.visible = true;
+      if (spA.texture !== this.stage7CloudFrames[fN]) spA.texture = this.stage7CloudFrames[fN];
+      if (spB.texture !== this.stage7CloudFrames[nxt]) spB.texture = this.stage7CloudFrames[nxt];
+      spA.scale.set(baseScale); spB.scale.set(baseScale);
+      spA.position.set(baseX, baseY); spB.position.set(baseX, baseY);
+      spA.alpha = STAGE7_CLOUD_ALPHA * (1 - frac);            // 現コマ=フェードアウト
+      spB.alpha = STAGE7_CLOUD_ALPHA * frac;                  // 次コマ=フェードイン
+    };
+    drawWave(base, this.stage7Clouds[0], this.stage7Clouds[1]);                       // 波0
+    drawWave(base + STAGE7_CLOUD_OFFSET, this.stage7Clouds[2], this.stage7Clouds[3]); // 波1(OFFSETずらし)
   }
 
   private updateStageLightShafts(w: number, h: number) {
