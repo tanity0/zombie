@@ -1677,11 +1677,11 @@ export class PixiScene {
       this.farGroup.addChild(this.L.farBackdrop);
       // M1の星空アニメ=farBackdrop(森の空)の手前・同グループ(同じ被写界深度)に置いて覆う。stage-1のみ可視。
       for (const sp of this.stage1Sky) { sp.eventMode = 'none'; sp.visible = false; this.farGroup.addChild(sp); }
-      // 月の裏の光源(同サイズの冷色グロー・加算)=月より先にaddChild=月の裏に来る(社長指示v0.25.1954)。
-      this.stage1MoonGlow.eventMode = 'none'; this.stage1MoonGlow.visible = false; this.stage1MoonGlow.anchor.set(0.5);
-      this.stage1MoonGlow.blendMode = 'add'; this.farGroup.addChild(this.stage1MoonGlow);
       // 月=星空の手前・城の裏(社長指示v0.25.1952)。城より先にaddChild=城が月に重なる(城が手前)。
       this.stage1Moon.eventMode = 'none'; this.stage1Moon.visible = false; this.stage1Moon.anchor.set(0.5); this.farGroup.addChild(this.stage1Moon);
+      // 月の前の光源(同サイズの冷色グロー・加算)=月より後にaddChild=月の前に来る(社長指示v0.25.1955「光源を月の前に」)。城の裏。
+      this.stage1MoonGlow.eventMode = 'none'; this.stage1MoonGlow.visible = false; this.stage1MoonGlow.anchor.set(0.5);
+      this.stage1MoonGlow.blendMode = 'add'; this.farGroup.addChild(this.stage1MoonGlow);
       // 城/山/霧の森=星空の手前(星空を透過部から見せる)・近景森の奥。同じくfarGroup。
       this.stage1Castle.eventMode = 'none'; this.stage1Castle.visible = false; this.farGroup.addChild(this.stage1Castle);
       this.farGroup.filters = this.cineEnabled ? [] : [this.farBackdropBlur];
@@ -2194,13 +2194,13 @@ export class PixiScene {
       this.stage1Moon.width = this.stage1Moon.height = moonSize;
       this.stage1Moon.position.set(sunX, sunY);                                                  // 光源位置(左・上)。城の裏に重なる
       this.stage1Moon.alpha = tsNum('s1moonalpha', 1);                                            // 通常合成・不透明寄り(?s1moonalpha=)
-      // 月の裏の光源=同じ大きさ・同じ位置の冷色グロー(加算)。月に裏から発光させるコロナ(社長指示v0.25.1954)。
+      // 月の前の光源=同じ大きさ・同じ位置の冷色グロー(加算)。月の前面から乗せる淡い発光(社長指示v0.25.1954→v0.25.1955「月の前へ・透明度上げる」)。
       this.stage1MoonGlow.visible = true;
       this.stage1MoonGlow.anchor.set(0.5);
       this.stage1MoonGlow.width = this.stage1MoonGlow.height = moonSize;                          // 月と同サイズ(?s1moonglowsize=で比率上書き可)
       this.stage1MoonGlow.scale.set(this.stage1MoonGlow.scale.x * tsNum('s1moonglowsize', 1));    // 既定=等倍(=同じ大きさ)
       this.stage1MoonGlow.position.set(sunX, sunY);
-      this.stage1MoonGlow.alpha = tsNum('s1moonglowalpha', 1);
+      this.stage1MoonGlow.alpha = tsNum('s1moonglowalpha', 0.5);                                  // 透明度上げる(前面加算のため1→0.5・?s1moonglowalpha=)
     } else {
       this.stage1Moon.visible = false;
       this.stage1MoonGlow.visible = false;
