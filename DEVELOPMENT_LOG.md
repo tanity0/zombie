@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1947 — M7星雲(遠景)を「高さで合わせる」に変更(下切れ/黒帯の解消)【2026-07-20 22:08 JST】
+- 指示(社長・IMG_6746): M7の夜景がもっと高さあるはずなのに下側が切れて黒い背景が見える。「これ横幅ではなく、高さで合わせて夜景」。
+- 原因: 遠景TilingSpriteのタイルスケールが cover(`Math.max(w/texW, farH/texH)`)=**横基準で拡大**。星雲(1672×941)を横で合わせると縦がfarHを大きく超え、
+  下側6〜7割がクロップ=画像の下端(地平と噛むはずの縁)が消えて、帯の底が星雲の暗い中域で終わる=「黒い背景」に見えていた。
+- 対処(`pixiScene.ts` 2箇所=`resize()`と`layoutFarBackdrop()`): **currentFarKey==='stage7' のときだけ** `farScale = farH/texH`(高さ合わせ)に分岐。
+  他ステージ(森/lab/city/snow/stage5/tutorial)は従来の cover(`Math.max`)のまま=**不変**。横は既存TilingSpriteがそのままタイルでループ(遠景はもともと視差ループ用)。
+- 検証: ヘッドレス(stage-7・wide 540×248)で tileScale 0.323→**0.100(=94.392/941=高さ合わせ)**・farKey=stage7。実描画で星雲の縦全体(斜めの帯)が帯に収まるのを確認。typecheck OK。
+- 自己点検: 描画のみ・M7限定(他ステージ遠景の合わせ方は不変)。ゲーム挙動不変。負荷: 0/10(タイルスケール計算の分岐のみ・描画面積/枚数は不変)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1946 — M7の光源+放射をM1に移植(左へ反転)【2026-07-20 17:52 JST】
 - 指示(社長): ①M7の光源(cineSun)+放射(cineCloudLayers=光の線)をM1にも出す ②M1では光源周りを左側に反転移動。
 - 対処:

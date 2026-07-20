@@ -1947,7 +1947,11 @@ export class PixiScene {
     this.screenW = w;
     this.screenH = h;
     const farH = this.farBackdropHeight();
-    const farScale = Math.max(w / this.L.farBackdrop.texture.width, farH / this.L.farBackdrop.texture.height);
+    // M7(星雲)は高さで合わせる=画像の縦全体を帯に収める(横はタイルでループ)。cover(Math.max)だと
+    // 横基準で拡大され下側が切れて地平線が黒い中域で終わっていた(社長指示v0.25.1947「横幅ではなく高さで合わせて夜景」)。
+    const farScale = this.currentFarKey === 'stage7'
+      ? farH / this.L.farBackdrop.texture.height
+      : Math.max(w / this.L.farBackdrop.texture.width, farH / this.L.farBackdrop.texture.height);
     this.L.farBackdrop.position.set(0, 0);
     this.L.farBackdrop.width = w;
     this.L.farBackdrop.height = farH;
@@ -3022,7 +3026,10 @@ export class PixiScene {
     const tex = this.L.farBackdrop.texture;
     if (!tex || tex.width <= 0 || tex.height <= 0) return;
     const farH = this.farBackdropHeight();
-    const farScale = Math.max(this.screenW / tex.width, farH / tex.height);
+    // M7(星雲)は高さで合わせる(横はタイルでループ)。社長指示v0.25.1947。
+    const farScale = this.currentFarKey === 'stage7'
+      ? farH / tex.height
+      : Math.max(this.screenW / tex.width, farH / tex.height);
     this.L.farBackdrop.width = this.screenW;
     this.L.farBackdrop.height = farH;
     this.L.farBackdrop.tileScale.set(farScale);

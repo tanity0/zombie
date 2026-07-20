@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1947',
+    items: [
+      '修正: M7の夜空(銀河)を高さに合わせて表示し、下側が切れて黒く見える問題を直しました。',
+    ],
+  },
+  {
     version: '0.25.1944',
     items: [
       '調整: M7の空を、太陽の光芒・地平の夕焼け・流れる雲つきのシネマティックな夜空に仕上げました。',
