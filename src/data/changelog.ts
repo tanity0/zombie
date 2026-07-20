@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1909',
+    items: [
+      '追加: M7の空に、ゆっくり流れる夕焼け雲を重ねました。',
+    ],
+  },
+  {
     version: '0.25.1907',
     items: [
       '調整: M7の遠景を星雲(宇宙)に差し替えました。',

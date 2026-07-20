@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.1909 — M7の遠景に雲を重ねる=パースフロー(拡大＋クロスフェード)で流す(社長裁定A)【2026-07-20 10:25 JST】
+- 指示(社長): 雲を「うまいこと動いて見せる技術」→ **A(パースフロー)** で確定。雲は光源(cineSun/cineClouds)の上へ(焼き込み影で太陽が後ろ)。
+- 実装:
+  - 素材: `stage7-clouds.png`(クロマキー済)を PixiStage で読み込み→`scene.setStage7Clouds()`。
+  - 雲2枚(`stage7Clouds`)を消失点(空上中央)anchorで**ゆっくり拡大**(scale BASE→BASE×ZOOM)、**半周期ずらして
+    alpha=sin(π·phase)でクロスフェード**=端で0=入替の継ぎ目を隠す無限ループ。少し横ドリフト。変形/alphaのみ=毎フレーム再描画なし。
+  - z順: uiLayerで cineSun の**上**・cineWarm/dust/vignette の下(`stage7CloudGroup`)。
+  - クリップ: 空帯マスク(`stage7CloudMask`)。当初ハードカット→**縦グラデ(下端フェード)マスク**に変更=雲が霧へ溶ける。プレイヤー/森へ被せない。
+  - 表示ゲート: currentFarKey==='stage7'(M7)。cine非依存(通常M7でも銀河＋雲)。
+  - 調整: `?scloudzoom= /scloudperiod= /scloudalpha= /sclouddrift= /scloudband= /scloudvp= /scloudw=`。
+- 検証: ヘッドレス(cine/非cine)。雲表示・2枚クロスフェード(alpha 0.32↔0.86・scale変化)・下端フェード・光源の上・プレイヤー無被り確認。typecheck OK。
+- 負荷: 2〜3/10(空帯のalphaスプライト2枚+グラデstencilマスク・変形のみ。M7=ボス導入で群れ戦ではない)。重ければ ?scloud* で調整。
+- Files: `src/pixi/pixiScene.ts`, `src/pixi/PixiStage.tsx`, `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1908 — M7の雲素材をクロマキー(緑抜き)して用意(配線は技術決定後)【2026-07-20 02:19 JST】
 - 指示(社長): 「m7の遠景に重ねる雲素材」。緑スクリーンの夕焼け雲(逆光の焼き込み影＋リム光)。動かす技術を相談中。
 - 対処(素材のみ): 提供PNGを PIL/numpy でクロマキー(green=g-max(r,b)閾値30〜110でalpha化＋グリーンスピル抑制)→

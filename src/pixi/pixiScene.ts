@@ -420,6 +420,14 @@ const CINE_CLOUD_LAYERS = Math.max(1, Math.round(tsNum('cloudlayers', 3)));     
 const CINE_CLOUD_STREAKS_PER_LAYER = Math.max(1, Math.round(tsNum('cloudstreaks', 22))); // 1層あたりの放射線本数(合計≈従来60)
 const CINE_CLOUD_TWINKLE_SPD = Math.max(0, tsNum('cloudspd', 0.0016));           // 明滅の速さ(瞬き感)
 const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.10))); // 各層の最小alpha倍率(0=完全に消える)
+// M7の遠景に重ねる雲(パースフロー: 消失点から拡大＋2枚クロスフェードでループ。社長指示v0.25.1909)。光源の上・空帯にマスク。?scloud*= で調整。
+const STAGE7_CLOUD_ZOOM = Math.max(1.01, tsNum('scloudzoom', 1.35));       // 1周期での拡大率(BASE→BASE×ZOOM)
+const STAGE7_CLOUD_PERIOD_MS = Math.max(2000, tsNum('scloudperiod', 46000)); // 1周期(ms)。大きいほどゆっくり
+const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.92))); // 雲のピークalpha
+const STAGE7_CLOUD_DRIFT_PX = Math.max(0, tsNum('sclouddrift', 26));       // 横風ドリフト振幅(px)
+const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
+const STAGE7_CLOUD_VP_Y_FRAC = tsNum('scloudvp', 0.02);                    // 消失点の画面Y(screenH比)
+const STAGE7_CLOUD_WIDTH_MULT = Math.max(1, tsNum('scloudw', 1.2));        // 基準スケール=画面幅×この倍率÷素材幅
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 // 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
@@ -1342,6 +1350,11 @@ export class PixiScene {
   // ②放射状の薄雲(光の線)。出没=煌めき用に複数レイヤー(別seedのstreak群)を位相ちがいで明滅。各層は外側フェード焼き込み済み。
   private cineCloudLayers: Sprite[] = Array.from({ length: CINE_CLOUD_LAYERS }, (_, i) => new Sprite(getCineCloudTexture(i, CINE_CLOUD_STREAKS_PER_LAYER)));
   private cineDust = new TilingSprite({ texture: getCineDustTexture(), width: 1, height: 1 }); // ③大気の塵(ドリフト)
+  // M7の遠景に重ねる雲(パースフロー)。光源の上・空帯にマスク。2枚クロスフェードでループ。テクスチャは setStage7Clouds で注入。
+  private stage7CloudGroup = new Container();
+  private stage7Clouds: Sprite[] = [new Sprite(Texture.EMPTY), new Sprite(Texture.EMPTY)];
+  private stage7CloudMask = new Sprite(Texture.WHITE);
+  private stage7CloudMaskTex: Texture | null = null; // 縦グラデ(下端フェード)マスク
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   private playerLight = new Sprite(getGlowTexture());
   private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
@@ -1821,9 +1834,33 @@ export class PixiScene {
     for (const sp of this.cineCloudLayers) sp.alpha = CINE_CLOUD_ALPHA_BASE;
     this.cineSun.alpha = CINE_SUN_ALPHA_MAX; // 光源は常時最大で固定(毎フレームも同値。煌めきはcineClouds側・社長v0.25.1885)
     this.cineDust.alpha = 0.5;
+    // M7の雲(パースフロー)。光源(cineSun)の上へ。2枚とも消失点anchor・normal合成、空帯マスクでクリップ。
+    for (const sp of this.stage7Clouds) {
+      sp.anchor.set(0.5, STAGE7_CLOUD_VP_Y_FRAC);
+      sp.blendMode = 'normal'; sp.eventMode = 'none';
+      this.stage7CloudGroup.addChild(sp);
+    }
+    // マスクは縦グラデ(上=不透明→下端で透明)=雲が空帯の下でハードカットせず溶ける。一度だけ生成。
+    if (!this.stage7CloudMaskTex) {
+      const mc = document.createElement('canvas'); mc.width = 4; mc.height = 256;
+      const mctx = mc.getContext('2d');
+      if (mctx) {
+        const grad = mctx.createLinearGradient(0, 0, 0, 256);
+        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(0.66, 'rgba(255,255,255,1)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        mctx.fillStyle = grad; mctx.fillRect(0, 0, 4, 256);
+        this.stage7CloudMaskTex = Texture.from(mc);
+        this.stage7CloudMask.texture = this.stage7CloudMaskTex;
+      }
+    }
+    this.stage7CloudGroup.mask = this.stage7CloudMask;
+    this.stage7CloudGroup.visible = false;
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
-      this.gradeSprite, ...this.cineCloudLayers, this.cineSun, this.cineWarm, this.cineDust, this.vignette,
+      this.gradeSprite, ...this.cineCloudLayers, this.cineSun,
+      this.stage7CloudGroup, this.stage7CloudMask, // 雲は光源の上・空帯マスク付き(社長指示v0.25.1909)
+      this.cineWarm, this.cineDust, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
     this.applyCineGrade(); // 初期適用(applyDaylight前でもcine値を効かせる)
@@ -1967,6 +2004,30 @@ export class PixiScene {
   }
 
   private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
+
+  // M7の遠景に重ねる雲(パースフロー)。消失点(空の上中央)基準で2枚をゆっくり拡大→薄れて入替=継ぎ目なしループ。
+  // 変形/alphaのみ(毎フレーム再描画なし)。farKey='stage7' のときだけ表示。空帯マスクでプレイヤーに被せない。
+  private updateStage7Clouds(now: number) {
+    const on = this.currentFarKey === 'stage7';
+    this.stage7CloudGroup.visible = on;
+    if (!on) return;
+    const w = this.screenW, h = this.screenH;
+    // 空帯マスク(上端〜BAND_FRAC)。プレイヤー/森より上に雲を留める。
+    this.stage7CloudMask.position.set(0, 0);
+    this.stage7CloudMask.width = w;
+    this.stage7CloudMask.height = h * STAGE7_CLOUD_BAND_FRAC;
+    const vpX = w * 0.5, vpY = h * STAGE7_CLOUD_VP_Y_FRAC;
+    const tex = this.stage7Clouds[0].texture;
+    const baseScale = tex && tex.width > 1 ? (w * STAGE7_CLOUD_WIDTH_MULT) / tex.width : 1;
+    for (let i = 0; i < this.stage7Clouds.length; i++) {
+      const sp = this.stage7Clouds[i];
+      const phase = ((now / STAGE7_CLOUD_PERIOD_MS + i * 0.5) % 1 + 1) % 1; // 2枚を半周期ずらす
+      sp.scale.set(baseScale * (1 + (STAGE7_CLOUD_ZOOM - 1) * phase));       // 消失点から拡大
+      const drift = Math.sin(now * 0.00004 + i * 3.1) * STAGE7_CLOUD_DRIFT_PX; // 横風
+      sp.position.set(vpX + drift, vpY);
+      sp.alpha = STAGE7_CLOUD_ALPHA * Math.sin(Math.PI * phase);              // 端で0=入替の継ぎ目を隠す
+    }
+  }
 
   private updateStageLightShafts(w: number, h: number) {
     const g = this.stageLightShaftGfx;
@@ -2521,6 +2582,11 @@ export class PixiScene {
     this.applyBgMipmap(t); // 遠景バンドも縮小敷き=mipmapでモアレ回避(社長指示v0.25.1869)
     this.farBackdropOverrides[key] = t;
     this.currentFarKey = ''; // 注入後に applyFarBackdrop を再評価させる(遅延注入対応)
+  }
+  // M7の遠景に重ねる雲(PixiStageが backgrounds/stage7-clouds.png を注入)。2枚に同テクスチャ。
+  setStage7Clouds(t: Texture | null) {
+    if (!t) return;
+    for (const sp of this.stage7Clouds) sp.texture = t;
   }
   // 川の流れ(チュートリアル): 遠景に重ねるハイライト筋レイヤー(PixiStageが注入)。
   private riverFlowTexs: (Texture | null)[] = [null, null];
@@ -3153,6 +3219,7 @@ export class PixiScene {
         (now * 0.004 - camY * CINE_PARALLAX_DUST) % 256,
       );
     }
+    this.updateStage7Clouds(now); // M7の雲(farKeyで自己ゲート・cine非依存)
     // 研究所スキンは床/素材を見せるため、クール調整を弱める(森はそのまま)。
     // cine時は寒色gradeをCINE値で維持(labThemeFog/daylightの上書きに勝つ)。
     this.gradeSprite.alpha = this.cineEnabled ? CINE_GRADE_ALPHA
