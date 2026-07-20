@@ -421,13 +421,18 @@ const CINE_CLOUD_STREAKS_PER_LAYER = Math.max(1, Math.round(tsNum('cloudstreaks'
 const CINE_CLOUD_TWINKLE_SPD = Math.max(0, tsNum('cloudspd', 0.0016));           // 明滅の速さ(瞬き感)
 const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.10))); // 各層の最小alpha倍率(0=完全に消える)
 // M7の遠景に重ねる雲(パースフロー: 消失点から拡大＋2枚クロスフェードでループ。社長指示v0.25.1909)。光源の上・空帯にマスク。?scloud*= で調整。
-const STAGE7_CLOUD_ZOOM = Math.max(1.01, tsNum('scloudzoom', 1.35));       // 1周期での拡大率(BASE→BASE×ZOOM)
-const STAGE7_CLOUD_PERIOD_MS = Math.max(2000, tsNum('scloudperiod', 46000)); // 1周期(ms)。大きいほどゆっくり
-const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.92))); // 雲のピークalpha
-const STAGE7_CLOUD_DRIFT_PX = Math.max(0, tsNum('sclouddrift', 26));       // 横風ドリフト振幅(px)
+// M7の雲=6コマ(3列×2行)のコマ送りアニメ(社長指示v0.25.1914)。2枚で半周期ずらし、コマ1→6(濃→薄=散る)を再生しつつ
+// 終盤クロスフェードで次周回を重ねてループ。位置は「左→右→左下→右」の経路をドリフト。森より後ろ・空帯マスクは維持。?scloud*= で調整。
+const STAGE7_CLOUD_COLS = 3;
+const STAGE7_CLOUD_ROWS = 2;
+const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 6
+const STAGE7_CLOUD_PERIOD_MS = Math.max(1500, tsNum('scloudperiod', 11000)); // 1周期(6コマ)ms。大きいほどゆっくり
+const STAGE7_CLOUD_ALPHA = Math.max(0, Math.min(1, tsNum('scloudalpha', 0.95))); // 雲のピークalpha
+const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 0.6));         // 表示スケール=画面幅×これ÷コマ幅(6割)
+const STAGE7_CLOUD_DRIFT_X = Math.max(0, tsNum('sclouddx', 100));          // 横ドリフト振幅(px。左右)
+const STAGE7_CLOUD_DRIFT_Y = Math.max(0, tsNum('sclouddy', 60));           // 縦ドリフト振幅(px。左下ぶん)
+const STAGE7_CLOUD_Y_FRAC = tsNum('scloudy', 0.06);                        // 雲の基準Y(screenH比)
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
-const STAGE7_CLOUD_VP_Y_FRAC = tsNum('scloudvp', 0.02);                    // 消失点の画面Y(screenH比)
-const STAGE7_CLOUD_WIDTH_MULT = Math.max(1, tsNum('scloudw', 1.2));        // 基準スケール=画面幅×この倍率÷素材幅
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 // 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
@@ -1353,6 +1358,7 @@ export class PixiScene {
   // M7の遠景に重ねる雲(パースフロー)。光源の上・空帯にマスク。2枚クロスフェードでループ。テクスチャは setStage7Clouds で注入。
   private stage7CloudGroup = new Container();
   private stage7Clouds: Sprite[] = [new Sprite(Texture.EMPTY), new Sprite(Texture.EMPTY)];
+  private stage7CloudFrames: Texture[] = []; // アトラスから切り出した6コマ
   private stage7CloudMask = new Sprite(Texture.WHITE);
   private stage7CloudMaskTex: Texture | null = null; // 縦グラデ(下端フェード)マスク
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
@@ -1836,7 +1842,7 @@ export class PixiScene {
     this.cineDust.alpha = 0.5;
     // M7の雲(パースフロー)。森1/2・地面より下(=worldGroupの後ろ・銀河の手前)へ(社長指示v0.25.1911)。2枚とも消失点anchor・normal合成、空帯マスクでクリップ。
     for (const sp of this.stage7Clouds) {
-      sp.anchor.set(0.5, STAGE7_CLOUD_VP_Y_FRAC);
+      sp.anchor.set(0.5, 0); // 上端基準(コマの雲は上寄り)。基準Yに上端を合わせる。
       sp.blendMode = 'normal'; sp.eventMode = 'none';
       this.stage7CloudGroup.addChild(sp);
     }
@@ -2013,10 +2019,10 @@ export class PixiScene {
 
   private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
 
-  // M7の遠景に重ねる雲(パースフロー)。消失点(空の上中央)基準で2枚をゆっくり拡大→薄れて入替=継ぎ目なしループ。
-  // 変形/alphaのみ(毎フレーム再描画なし)。farKey='stage7' のときだけ表示。空帯マスクでプレイヤーに被せない。
+  // M7の遠景に重ねる雲=6コマのコマ送りアニメ。2枚で半周期ずらし、コマ1→6(濃→薄=散る)を再生。alpha=sin(π·phase)で
+  // 終盤クロスフェード=次周回を重ねて継ぎ目なしループ。位置は「左→右→左下→右」の経路をドリフト。森より後ろ・空帯マスクでクリップ。
   private updateStage7Clouds(now: number) {
-    const on = this.currentFarKey === 'stage7';
+    const on = this.currentFarKey === 'stage7' && this.stage7CloudFrames.length === STAGE7_CLOUD_FRAMES;
     this.stage7CloudGroup.visible = on;
     if (!on) return;
     const w = this.screenW, h = this.screenH;
@@ -2024,16 +2030,22 @@ export class PixiScene {
     this.stage7CloudMask.position.set(0, 0);
     this.stage7CloudMask.width = w;
     this.stage7CloudMask.height = h * STAGE7_CLOUD_BAND_FRAC;
-    const vpX = w * 0.5, vpY = h * STAGE7_CLOUD_VP_Y_FRAC;
-    const tex = this.stage7Clouds[0].texture;
-    const baseScale = tex && tex.width > 1 ? (w * STAGE7_CLOUD_WIDTH_MULT) / tex.width : 1;
+    const fw = this.stage7CloudFrames[0].width || 1;
+    const baseScale = (w * STAGE7_CLOUD_SIZE) / fw;
+    const baseX = w * 0.5, baseY = h * STAGE7_CLOUD_Y_FRAC;
+    // 位置ドリフト経路: 左→右→左下→右(正規化・×振幅)。phaseで4点を巡回補間。
+    const PATH: [number, number][] = [[-1, 0], [1, 0], [-1, 1], [1, 0]];
     for (let i = 0; i < this.stage7Clouds.length; i++) {
       const sp = this.stage7Clouds[i];
       const phase = ((now / STAGE7_CLOUD_PERIOD_MS + i * 0.5) % 1 + 1) % 1; // 2枚を半周期ずらす
-      sp.scale.set(baseScale * (1 + (STAGE7_CLOUD_ZOOM - 1) * phase));       // 消失点から拡大
-      const drift = Math.sin(now * 0.00004 + i * 3.1) * STAGE7_CLOUD_DRIFT_PX; // 横風
-      sp.position.set(vpX + drift, vpY);
-      sp.alpha = STAGE7_CLOUD_ALPHA * Math.sin(Math.PI * phase);              // 端で0=入替の継ぎ目を隠す
+      const fi = Math.min(STAGE7_CLOUD_FRAMES - 1, Math.floor(phase * STAGE7_CLOUD_FRAMES)); // コマ0..5
+      if (sp.texture !== this.stage7CloudFrames[fi]) sp.texture = this.stage7CloudFrames[fi];
+      sp.scale.set(baseScale);
+      const seg = phase * 4, s0 = Math.floor(seg) % 4, s1 = (s0 + 1) % 4, f = seg - Math.floor(seg);
+      const dx = (PATH[s0][0] + (PATH[s1][0] - PATH[s0][0]) * f) * STAGE7_CLOUD_DRIFT_X;
+      const dy = (PATH[s0][1] + (PATH[s1][1] - PATH[s0][1]) * f) * STAGE7_CLOUD_DRIFT_Y;
+      sp.position.set(baseX + dx, baseY + dy);
+      sp.alpha = STAGE7_CLOUD_ALPHA * Math.sin(Math.PI * phase); // 端で0=次周回とのクロスフェード
     }
   }
 
@@ -2599,10 +2611,19 @@ export class PixiScene {
     this.farBackdropOverrides[key] = t;
     this.currentFarKey = ''; // 注入後に applyFarBackdrop を再評価させる(遅延注入対応)
   }
-  // M7の遠景に重ねる雲(PixiStageが backgrounds/stage7-clouds.png を注入)。2枚に同テクスチャ。
-  setStage7Clouds(t: Texture | null) {
-    if (!t) return;
-    for (const sp of this.stage7Clouds) sp.texture = t;
+  // M7の雲アニメ用アトラス(PixiStageが backgrounds/stage7-clouds-anim.png を注入)。3列×2行の6コマに切り出す。
+  setStage7CloudAnim(atlas: Texture | null) {
+    if (!atlas) return;
+    const fw = Math.floor(atlas.width / STAGE7_CLOUD_COLS);
+    const fh = Math.floor(atlas.height / STAGE7_CLOUD_ROWS);
+    const frames: Texture[] = [];
+    for (let row = 0; row < STAGE7_CLOUD_ROWS; row++) {
+      for (let col = 0; col < STAGE7_CLOUD_COLS; col++) {
+        frames.push(new Texture({ source: atlas.source, frame: new Rectangle(col * fw, row * fh, fw, fh) }));
+      }
+    }
+    this.stage7CloudFrames = frames;
+    for (const sp of this.stage7Clouds) sp.texture = frames[0];
   }
   // 川の流れ(チュートリアル): 遠景に重ねるハイライト筋レイヤー(PixiStageが注入)。
   private riverFlowTexs: (Texture | null)[] = [null, null];

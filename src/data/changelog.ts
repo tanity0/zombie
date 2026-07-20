@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1914',
+    items: [
+      '調整: M7の空の雲を、もくもく流れるコマ送りアニメにしました。',
+    ],
+  },
+  {
     version: '0.25.1910',
     items: [
       '調整: M7の遠景(星空)を新しい銀河に差し替えました。',

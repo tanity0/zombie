@@ -38,7 +38,7 @@ const SORTIE_STAGE_TEXTURE_PATHS = [
   'backgrounds/tutorial-near-rocks.png',
   'backgrounds/tutorial-front-rocks.png',
   'backgrounds/stage7-far.jpg', // M7の遠景(星雲・社長提供v0.25.1907)
-  'backgrounds/stage7-clouds.png', // M7の遠景に重ねる雲(クロマキー済・社長提供v0.25.1908)
+  'backgrounds/stage7-clouds-anim.png', // M7の遠景に重ねる雲=6コマアニメアトラス(クロマキー60%・社長提供v0.25.1913)
 ] as const;
 import { setAppliedResolution } from '../config/renderer';
 
@@ -226,7 +226,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         scene.setFarBackdropTexture('stage5', s5Far);    // ステージ5の遠景(紅き月の城塞・社長提供)
         scene.setFarBackdropTexture('tutorial', tutFar); // チュートリアルの遠景(洞窟・社長提供)
         scene.setFarBackdropTexture('stage7', s7Far);    // M7の遠景(星雲・社長提供v0.25.1907)
-        scene.setStage7Clouds(s7Clouds);                 // M7の遠景に重ねる雲(パースフロー・社長提供v0.25.1908)
+        scene.setStage7CloudAnim(s7Clouds);              // M7の遠景に重ねる雲=6コマアニメ(社長提供v0.25.1913)
         scene.setGroundOverride('tutorial', tutGround);  // 地面: 洞窟の岩土(チュートリアル・社長提供)
         scene.setRiverFlowTextures(tutFlow1, tutFlow2);  // 川の流れ筋2層(チュートリアル・社長提供)
         scene.setStage3Ground(s3Ground);                 // ステージ3の床(石畳)

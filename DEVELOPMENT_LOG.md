@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1914 — M7の雲を6コマのコマ送りアニメに(社長仕様確定)【2026-07-20 11:25 JST】
+- 指示(社長・確認済): 6コマ(3列×2行)/コマ順1→6(濃→薄=散る)/「左→右→左下→右」=位置ドリフト経路/終盤クロスフェードでループ/6割。
+- 実装:
+  - `setStage7CloudAnim(atlas)`: 922×614アトラスを3×2の6コマ(各307×307)Textureに切り出し。PixiStageで stage7-clouds-anim.png を読込→注入。
+  - `updateStage7Clouds`: 2枚を半周期ずらし、`phase*6`でコマ0→5を再生。`alpha=sin(π·phase)`で終盤クロスフェード=次周回を重ねて継ぎ目なしループ。
+    位置は `PATH=左[-1,0]→右[1,0]→左下[-1,1]→右[1,0]` を巡回補間して baseX/Y にドリフト(振幅 ?sclouddx/dy=)。表示スケール=画面幅×0.6÷コマ幅。
+  - レイヤ: 前回どおり worldGroup(森1/2・地面)の後ろ・farBackdrop手前、空帯グラデマスクでクリップ(森の後ろ・プレイヤー無被り)。
+  - パースフロー(拡大)は廃止。旧単一雲 stage7-clouds.png を削除。調整: `?scloudperiod/scloudalpha/scloudsize/sclouddx/sclouddy/scloudy/scloudband=`。
+- 検証: ヘッドレス(cine)で frames=6・可視・6フレーム連写でコマ変化＋位置ドリフト(x130〜268/y53〜105)＋alphaクロスフェード確認。typecheck OK。
+- 負荷: 2/10(同時1〜2枚のみ描画=コマ数によらず軽い。アトラス1枚=VRAM≈2.3MB。M7限定)。
+- Files: `src/pixi/pixiScene.ts`, `src/pixi/PixiStage.tsx`, `public/backgrounds/stage7-clouds.png`(削除), `changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1913 — M7雲アニメ用の6コマアトラスをクロマキー＆60%化して用意(配線は仕様確認後)【2026-07-20 11:14 JST】
 - 指示(社長): 雲をコマ送りアニメに。素材=緑スクリーンのスプライトシート(6コマ)。「6割/左→右→左下→右/終わり際で次を重ねてループ」。
 - 対処(素材のみ): 1536×1024の6コマ(3列×2行・各512×512・雲が濃い上段→薄い下段=散っていく)を PIL/numpy でクロマキー→
