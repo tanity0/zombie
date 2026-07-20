@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1941 — M1城遠景を「時間スクロール」→「カメラ連動パララックス(一番遅い)」に修正【2026-07-20 16:58 JST】
+- 指摘(社長): 「城の動きが違う。遠景森と同じくプレイヤーが動いたら動くループ素材の意味。一番遠くにあるから一番遅く動く」。
+  =v1937の時間自動スクロールは誤り。camera.x連動の横パララックスにする。
+- 対処: `STAGE1_CASTLE_SPEED`(px/ms時間スクロール)を廃し `STAGE1_CASTLE_PARALLAX_X`(camera.x係数・既定0.11・?s1castpara=)に。
+  `updateStage1Sky(now, cameraX)` へ引数追加、`tilePosition.x = -((cameraX·PARA)%period)`(ミラー二連でシームレス)。既存: 銀河0.09<森1=0.16<森2=0.5、
+  城=0.11(森1より遅い=一番遠い風景)。プレイヤー静止時は城も静止。
+- 検証: ヘッドレス実機(stage-1・移動)で castle.tilePos が camera.x·0.11(mod)に一致(-333.9/-789.7を式で確認)・森1=0.166/森2=0.519と一致・
+  城が最遅・静止時静止・pageErrors 0。typecheck OK。負荷: 0/10(パララックス計算のみ)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1940 — M1遠景森2をループ素材差し替え＋M7 BGMをラスボス曲に【2026-07-20 16:53 JST】
 - 指示(社長): ①M1の遠景森2(手前)のループ素材差し替え(位置/大きさは既存に合わせる) ②M7のBGMをラスボス曲(渡してある)に。
 - ①森2: 支給の緑スクリーン森シルエット帯をクロマキー→**既存と同寸910×512**にリサイズ→`public/backgrounds/stage1-near-forest.png`差し替え

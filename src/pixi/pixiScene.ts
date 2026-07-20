@@ -444,7 +444,9 @@ const STAGE1_SKY_ALPHA = Math.max(0, Math.min(1, tsNum('s1skyalpha', 1.0)));  //
 const STAGE1_CASTLE_SCALE = Math.max(0.2, tsNum('s1castscale', 1.0)); // 横スケール(画面幅比。1=横いっぱい)
 const STAGE1_CASTLE_Y = tsNum('s1casty', 0);                           // 底の位置調整(px・+で下へ/−で上へ)。既定0=底を地平(farH)。※px単位(社長v0.25.1936「1以上で消える」修正)
 const STAGE1_CASTLE_ALPHA = Math.max(0, Math.min(1, tsNum('s1castalpha', 1.0))); // 不透明度
-const STAGE1_CASTLE_SPEED = tsNum('s1castspeed', 0.006); // 横ループ速度(px/ms・画面px基準)。ゆーっくり=既定0.006(≈6px/s)。負で逆方向
+// 城の横パララックス(社長v0.25.1941「遠景森と同じくプレイヤーが動いたら動く。一番遠いから一番遅い」)。camera.x連動。
+// 既存: 銀河0.09 < 森1=0.16 < 森2=0.5。城は森1より遅い(=一番遠い風景)ので既定0.11。?s1castpara= で調整。
+const STAGE1_CASTLE_PARALLAX_X = tsNum('s1castpara', 0.11);
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
 // 森2境界霧の縦オフセット(社長指示v0.25.1881「100px上へ」)。正=上へ(px)。?nhmistup=で調整。
@@ -2098,7 +2100,7 @@ export class PixiScene {
 
   // M1の遠景=星空6コマの巡回クロスフェード(社長指示v0.25.1931)。stage-1のみ。farBackdrop(森の空)を覆う=現コマは常に全面、
   // 次コマを上に重ねてフェードイン→入れ替え(=背景が透けない綺麗なクロスディゾルブ)。位置/サイズはfarBackdrop rectに合わせる。
-  private updateStage1Sky(now: number) {
+  private updateStage1Sky(now: number, cameraX: number) {
     const on = this.stage1IsM1 && this.stage1SkyFrames.length === STAGE1_SKY_FRAMES;
     for (const sp of this.stage1Sky) sp.visible = on;
     const w = this.screenW;
@@ -2116,8 +2118,9 @@ export class PixiScene {
       this.stage1Castle.width = w;                               // 窓=画面幅(Aひとつ分)
       this.stage1Castle.height = texH * s;                       // 縦は1タイル分だけ(縦リピート無し)
       this.stage1Castle.position.set(w * 0.5, farH + STAGE1_CASTLE_Y); // s1casty=px
+      // 横パララックス: プレイヤー(camera.x)連動で流す。一番遠い風景=一番遅い(森1より小さい係数)。ミラー二連でシームレス。
       const period = texW * s;                                  // [A|反転A]一巡の表示幅=シームレス周期
-      this.stage1Castle.tilePosition.x = -(((now * STAGE1_CASTLE_SPEED) % period) + period) % period;
+      this.stage1Castle.tilePosition.x = -(((cameraX * STAGE1_CASTLE_PARALLAX_X) % period) + period) % period;
       this.stage1Castle.tilePosition.y = 0;
       this.stage1Castle.alpha = STAGE1_CASTLE_ALPHA;
     }
@@ -3366,7 +3369,7 @@ export class PixiScene {
       );
     }
     this.updateStage7Clouds(now); // M7の雲(farKeyで自己ゲート・cine非依存)
-    this.updateStage1Sky(now);    // M1の遠景=星空6コマアニメ(stage-1で自己ゲート)
+    this.updateStage1Sky(now, s.camera.x); // M1の遠景=星空6コマ+城パララックス(stage-1で自己ゲート)
     // 研究所スキンは床/素材を見せるため、クール調整を弱める(森はそのまま)。
     // cine時は寒色gradeをCINE値で維持(labThemeFog/daylightの上書きに勝つ)。
     this.gradeSprite.alpha = this.cineEnabled ? CINE_GRADE_ALPHA
