@@ -84,6 +84,8 @@ const CINE_GRADE_TINT = 0x2f6474;          // teal 寄りの寒色乗算(既定 
 const CINE_GRADE_ALPHA = 0.44;             // 乗算の強さ(社長「全体的に淡く」v0.25.1871: 0.52→0.44)
 const CINE_VIGNETTE_ALPHA = 0.72;          // 周辺減光(淡く: 0.82→0.72)
 const CINE_WARM_ALPHA = 0.60;              // 残照オーバーレイ(screen)の濃さ(淡く: 0.72→0.60)
+// オレンジ残照グラデ(光源から下へフェード)のオン/オフ(社長指示v0.25.1926)。既定ON。?cinewarm=0 で消す(ここはtsNum前=DZ_PARAMS直読み)。
+const CINE_WARM_ON = DZ_PARAMS?.get('cinewarm') !== '0';
 // 光源(太陽/フレア)を右へ寄せる(社長指示v0.25.1871)。0.5=中央→0.62=右寄り。雲(放射原点)も追従。
 const CINE_SUN_X_FRAC = 0.62;
 // フレアの煌めき(社長指示v0.25.1871「動きは少し・薄濃で煌めき」): 位置ドリフトは減らし alpha を揺らす。
@@ -1450,7 +1452,7 @@ export class PixiScene {
       this.gradeSprite.alpha = CINE_GRADE_ALPHA;
       this.vignette.alpha = CINE_VIGNETTE_ALPHA;
     }
-    this.cineWarm.visible = on;
+    this.cineWarm.visible = on && CINE_WARM_ON;   // オレンジ残照グラデ=?cinewarm=0でオフ(社長v0.25.1926)
     this.cineSun.visible = on;
     for (const sp of this.cineCloudLayers) sp.visible = on;
     this.cineDust.visible = on;

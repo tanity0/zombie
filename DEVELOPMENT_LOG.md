@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1926 — オレンジ残照グラデ(光源から下)にオン/オフを追加【2026-07-20 14:47 JST】
+- 指示(社長): 「オレンジのグラデ効果とオンオフほしい」→(確認)既存効果。=cine(?cine=1)の**残照オーバーレイ**
+  (`getCineWarmTexture`=画面上部オレンジ→下へフェードの縦グラデ・screen合成・`cineWarm`)。「光源から下」に一致。
+- 対処: トグル `CINE_WARM_ON`(`?cinewarm=0`でオフ・既定ON)を追加し、`applyCineGrade` の `cineWarm.visible = on && CINE_WARM_ON` で
+  ゲート。定数はtsNum定義前の位置のため DZ_PARAMS 直読み(既存 CINE_MODE と同型)。効果自体・濃さ(CINE_WARM_ALPHA)は不変。
+- 検証: ヘッドレス実機で `?cine=1` → cineWarm.visible=true(オレンジ乗る)/ `?cine=1&cinewarm=0` → false(オレンジ消え銀河の寒色が出る)。
+  太陽フレア(cineSun)は据え置き=残照だけ切れる。スクショで on/off 提示。typecheck OK。負荷: 0/10(可視フラグのみ)。
+- 自己点検: 描画のみ。ゲーム挙動不変。changelog据え置き。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1925 — M7雲の各波フェードイン/アウト包絡を既定OFFに(社長「やめてみて」)【2026-07-20 14:35 JST】
 - 指示(社長): 「フェードインアウトやめてみて」(お試し)。
 - 対処: 各波の湧き[0,OL]フェードイン・末尾[1-OL,1]フェードアウトの**包絡を既定OFF**に。`?scloudfade=1`で復活できるトグル。
