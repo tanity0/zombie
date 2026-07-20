@@ -177,8 +177,8 @@ export const getCineWarmTexture = (): Texture => {
   return cineWarmTex;
 };
 
-// M1用: getCineWarmTexture の「青版」。stop位置/αは同一で、RGBだけ暖色→冷色(青)へ。
-// 地平帯に冷たい残照(月夜の霞)を screen で乗せる(社長指示v0.25.1960「m7みたいなオレンジグラデ帯の青バージョンをm1に」)。
+// M1用: getCineWarmTexture の「紫版」。stop位置/αは同一で、RGBだけ暖色→紫(ヴァイオレット)へ
+// (社長指示v0.25.1960 青版→v0.25.1962「青残照帯を紫にして」)。地平帯に紫の残照(月夜の霞)を screen で乗せる。
 let cineCoolTex: Texture | null = null;
 export const getCineCoolTexture = (): Texture => {
   if (cineCoolTex) return cineCoolTex;
@@ -187,15 +187,15 @@ export const getCineCoolTexture = (): Texture => {
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d')!;
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0.00, 'rgba(90,150,255,0.0)');   // 最上部=透明(空/銀河をそのまま)
-  g.addColorStop(0.20, 'rgba(90,150,255,0.0)');   // 光源(月≈0.18)を越えるまで透明=光源より上に青を出さない
-  g.addColorStop(0.25, 'rgba(96,158,255,0.14)');  // 光源より下=残照の立ち上がり
-  g.addColorStop(0.33, 'rgba(110,172,255,0.44)');
-  g.addColorStop(0.41, 'rgba(120,180,255,0.55)'); // 地平帯=残照の芯(強・ピーク)
-  g.addColorStop(0.51, 'rgba(100,160,240,0.36)');
-  g.addColorStop(0.63, 'rgba(84,138,214,0.18)');  // 地平下=淡く
-  g.addColorStop(0.80, 'rgba(70,116,182,0.06)');  // 足元付近までうっすら
-  g.addColorStop(1.00, 'rgba(58,90,150,0.0)');
+  g.addColorStop(0.00, 'rgba(160,90,255,0.0)');   // 最上部=透明(空/銀河をそのまま)
+  g.addColorStop(0.20, 'rgba(160,90,255,0.0)');   // 光源(月≈0.18)を越えるまで透明=光源より上に紫を出さない
+  g.addColorStop(0.25, 'rgba(168,100,255,0.14)'); // 光源より下=残照の立ち上がり
+  g.addColorStop(0.33, 'rgba(180,115,255,0.44)');
+  g.addColorStop(0.41, 'rgba(190,125,255,0.55)'); // 地平帯=残照の芯(強・ピーク・紫)
+  g.addColorStop(0.51, 'rgba(168,105,240,0.36)');
+  g.addColorStop(0.63, 'rgba(146,88,214,0.18)');  // 地平下=淡く
+  g.addColorStop(0.80, 'rgba(120,74,182,0.06)');  // 足元付近までうっすら
+  g.addColorStop(1.00, 'rgba(96,60,150,0.0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   cineCoolTex = Texture.from(canvas);

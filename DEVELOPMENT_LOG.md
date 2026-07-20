@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1962 — M1の残照帯を青→紫に【2026-07-21 01:48 JST】
+- 指示(社長): 「m1の青残照帯を紫にして」。
+- 対処: `getCineCoolTexture()` の各stopのRGBを青→紫(ヴァイオレット・ピーク≈rgba(190,125,255))へ。stop位置/α・screen合成・配置は不変。
+- 検証: ヘッドレス(stage-1)で band visible・screen・全画面。実描画で地平帯の残照が紫になるのを確認。typecheck OK。
+- 自己点検: 描画のみ・M1限定・ゲーム挙動不変。負荷: 0/10(ベイクテクの色替えのみ)。
+- Files: `src/pixi/lighting.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1961 — M7の光源(太陽フレア)を少し明るく(α0.67→0.82)【2026-07-21 01:44 JST】
 - 指示(社長): 「m7の光源もう少し明るく」。
 - 対処: `CINE_SUN_ALPHA_MAX` 0.67→**0.82**。M1は月を専用スプライトに移行済み(cineSunは非表示)なので、この定数はM7の太陽フレアのみに効く。
