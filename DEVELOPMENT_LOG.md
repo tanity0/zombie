@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1948 — M1の光源を「月」に(冷たい青白い円盤)【2026-07-20 22:13 JST】
+- 指示(社長): 「m1、光源を月にして」。
+- 対処: `lighting.ts` に `getCineMoonTexture()` 新設(冷たい青白いハロー+くっきりした縁の円盤=「月」として読める形。太陽の暖色フレア/十字光条は無し)。
+  `updateStage1Light`(M1のみ・非cineで自己ゲート)で **cineSunスプライトのテクスチャだけ月に差し替え**。M7(cineEnabled)はupdateStage1Lightに来ないので太陽のまま=不変。
+  位置/サイズ/α/左反転は既存のまま(=光源の見た目=月だけを変更)。同一テクスチャ再代入はPixiで早期return=毎フレームでも実質無コスト。
+- 検証: ヘッドレス(stage-1)で cineSun.texture=384²(月テク)・visible・x=205(=w×0.38・左)・α0.67・scaleX<0。実描画で湖上に冷たい月が出るのを確認。typecheck OK。
+- 自己点検: 描画のみ・M1限定・ゲーム挙動不変。負荷: 0/10(ベイクテク1枚差し替え・描画枚数/面積は不変)。
+- 未対処(社長判断待ち): 放射(cineCloudLayers=光の線)は暖色のまま据え置き(「光源を月に」の指示範囲=光源のみ)。月に合わせ冷色化するかは要指示。
+- Files: `src/pixi/lighting.ts`, `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1947 — M7星雲(遠景)を「高さで合わせる」に変更(下切れ/黒帯の解消)【2026-07-20 22:08 JST】
 - 指示(社長・IMG_6746): M7の夜景がもっと高さあるはずなのに下側が切れて黒い背景が見える。「これ横幅ではなく、高さで合わせて夜景」。
 - 原因: 遠景TilingSpriteのタイルスケールが cover(`Math.max(w/texW, farH/texH)`)=**横基準で拡大**。星雲(1672×941)を横で合わせると縦がfarHを大きく超え、

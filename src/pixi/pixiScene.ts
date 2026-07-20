@@ -46,7 +46,7 @@ import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
-import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineSunTexture, getCineCloudTexture, getCineDustTexture, RING_TEX_BASES } from './lighting';
+import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineSunTexture, getCineMoonTexture, getCineCloudTexture, getCineDustTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -2175,9 +2175,12 @@ export class PixiScene {
       sp.alpha = Math.max(0, CINE_CLOUD_ALPHA_BASE * (CINE_CLOUD_TWINKLE_FLOOR + (1 - CINE_CLOUD_TWINKLE_FLOOR) * tw));
     }
     this.cineSun.visible = true;
+    // M1の光源は月(冷たい青白い円盤)にする(社長指示v0.25.1948)。同じcineSunスプライトのテクスチャだけ差し替え。
+    // 同一テクスチャの再代入はPixi側で早期returnされるため毎フレームでも実質無コスト。M7(cineEnabled)はここに来ないので太陽のまま。
+    this.cineSun.texture = getCineMoonTexture();
     this.cineSun.anchor.set(0.5);
     this.cineSun.width = this.cineSun.height = Math.max(w, h) * 0.58;
-    this.cineSun.scale.x = -Math.abs(this.cineSun.scale.x); // 横反転(太陽は対称なので実質同じだが一貫)
+    this.cineSun.scale.x = -Math.abs(this.cineSun.scale.x); // 横反転(円盤は対称なので実質同じだが一貫)
     this.cineSun.position.set(sunX, sunY);
     this.cineSun.alpha = CINE_SUN_ALPHA_MAX;
   }

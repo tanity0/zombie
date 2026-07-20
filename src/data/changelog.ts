@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1948',
+    items: [
+      '調整: ステージ1の光源を、冷たく青白い月に変更しました。',
+    ],
+  },
+  {
     version: '0.25.1947',
     items: [
       '修正: M7の夜空(銀河)を高さに合わせて表示し、下側が切れて黒く見える問題を直しました。',

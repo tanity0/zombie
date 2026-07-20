@@ -206,6 +206,35 @@ export const getCineSunTexture = (): Texture => {
   cineSunTex = Texture.from(c); return cineSunTex;
 };
 
+// ①' M1用の月(光源)。太陽フレアの暖色/十字光条ではなく、冷たい青白い円盤+淡いハロー。
+// くっきりした縁の円盤を淡いハローに加算で重ねる=「月」として読める形。太陽と同じ cineSun スプライトに
+// テクスチャだけ差し替えて使う(M1のみ・社長指示v0.25.1948「m1、光源を月にして」)。
+let cineMoonTex: Texture | null = null;
+export const getCineMoonTexture = (): Texture => {
+  if (cineMoonTex) return cineMoonTex;
+  const s = 384; const c = document.createElement('canvas'); c.width = c.height = s;
+  const ctx = c.getContext('2d')!; const cx = s / 2, cy = s / 2;
+  // 冷たいハロー(月光の淡い青白い滲み)。太陽の暖色ハローの置き換え。
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, s / 2);
+  halo.addColorStop(0.00, 'rgba(238,246,255,0.85)');
+  halo.addColorStop(0.12, 'rgba(212,228,252,0.52)');
+  halo.addColorStop(0.26, 'rgba(178,203,240,0.22)');
+  halo.addColorStop(0.50, 'rgba(148,178,224,0.07)');
+  halo.addColorStop(1.00, 'rgba(120,150,200,0.0)');
+  ctx.fillStyle = halo; ctx.fillRect(0, 0, s, s);
+  // 月の円盤(くっきりした縁+淡い青白い本体)。加算でハローに重ねる。
+  ctx.globalCompositeOperation = 'lighter';
+  const r = s * 0.145;
+  const disc = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  disc.addColorStop(0.00, 'rgba(248,251,255,0.98)');
+  disc.addColorStop(0.70, 'rgba(232,241,255,0.95)');
+  disc.addColorStop(0.90, 'rgba(212,226,250,0.9)');
+  disc.addColorStop(1.00, 'rgba(200,216,246,0.0)'); // 縁で素早く落として円形に
+  ctx.fillStyle = disc;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  cineMoonTex = Texture.from(c); return cineMoonTex;
+};
+
 // ② 放射状の薄雲(太陽=下端中央から扇状に伸びる暖色の筋=「光の線」)。帯スプライトとして地平の上に重ねる。
 // variant別に異なる線群を焼く(明滅=出没の煌めきを複数レイヤーの位相ちがいで作るため・社長指示v0.25.1906)。
 // 各テクスチャは「原点(光源=下端中央)から外側へフェードアウト」を destination-in の放射グラデで焼き込む。
