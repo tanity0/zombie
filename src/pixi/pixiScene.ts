@@ -421,8 +421,9 @@ const CINE_CLOUD_STREAKS_PER_LAYER = Math.max(1, Math.round(tsNum('cloudstreaks'
 const CINE_CLOUD_TWINKLE_SPD = Math.max(0, tsNum('cloudspd', 0.0016));           // 明滅の速さ(瞬き感)
 const CINE_CLOUD_TWINKLE_FLOOR = Math.max(0, Math.min(1, tsNum('cloudfloor', 0.10))); // 各層の最小alpha倍率(0=完全に消える)
 // M7の遠景に重ねる雲(パースフロー: 消失点から拡大＋2枚クロスフェードでループ。社長指示v0.25.1909)。光源の上・空帯にマスク。?scloud*= で調整。
-// M7の雲=6コマ(3列×2行)のコマ送りアニメ(社長指示v0.25.1914)。2枚で半周期ずらし、コマ1→6(濃→薄=散る)を再生しつつ
-// 終盤クロスフェードで次周回を重ねてループ。位置は「左→右→左下→右」の経路をドリフト。森より後ろ・空帯マスクは維持。?scloud*= で調整。
+// M7の雲=6コマ(3列×2行)のコマ送りアニメ(社長指示v0.25.1914)。1サイクル中はコマ0→5を全alphaでパッと切替(ブレンド無し)、
+// 継ぎ目(コマ5→次周回コマ0)だけ2枚目を重ねて台形alphaでクロスフェード=ループのハード復帰を隠す。位置は「左→右→左下→右」を
+// コマ毎に離散サンプル(滑らせない)。森より後ろ・空帯マスクは維持。?scloud*= で調整。
 const STAGE7_CLOUD_COLS = 3;
 const STAGE7_CLOUD_ROWS = 2;
 const STAGE7_CLOUD_FRAMES = STAGE7_CLOUD_COLS * STAGE7_CLOUD_ROWS; // 6
@@ -432,6 +433,7 @@ const STAGE7_CLOUD_SIZE = Math.max(0.1, tsNum('scloudsize', 0.6));         // �
 const STAGE7_CLOUD_DRIFT_X = Math.max(0, tsNum('sclouddx', 100));          // 横ドリフト振幅(px。左右)
 const STAGE7_CLOUD_DRIFT_Y = Math.max(0, tsNum('sclouddy', 60));           // 縦ドリフト振幅(px。左下ぶん)
 const STAGE7_CLOUD_Y_FRAC = tsNum('scloudy', 0.06);                        // 雲の基準Y(screenH比)
+const STAGE7_CLOUD_OVERLAP = Math.max(0, Math.min(0.45, tsNum('scloudol', 0.12))); // ループ継ぎ目だけ重ねるオーバーラップ幅(サイクル比)。0=瞬間切替
 const STAGE7_CLOUD_BAND_FRAC = Math.max(0.05, Math.min(1, tsNum('scloudband', 0.42))); // 雲を見せる空帯の下端(screenH比・maskの高さ)
 // 森2(遠景森2)の手前に重ねる境界霧の濃さ(社長指示v0.25.1874「森と地面の境界を曖昧に」)。?nhmist=で調整。
 const NEAR_HORIZON_MIST_ALPHA = Math.max(0, tsNum('nhmist', 0.6));
@@ -2019,8 +2021,9 @@ export class PixiScene {
 
   private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
 
-  // M7の遠景に重ねる雲=6コマのコマ送りアニメ。2枚で半周期ずらし、コマ1→6(濃→薄=散る)を再生。alpha=sin(π·phase)で
-  // 終盤クロスフェード=次周回を重ねて継ぎ目なしループ。位置は「左→右→左下→右」の経路をドリフト。森より後ろ・空帯マスクでクリップ。
+  // M7の遠景に重ねる雲=6コマのコマ送りアニメ。1サイクル中はコマを"パッと切替"(ブレンド無し・全alpha)で
+  // 0→5を再生し、位置もコマ毎に離散化(フレーム内で滑らせない=真のコマ送り)。継ぎ目(コマ5→次周回コマ0)だけ
+  // 2枚目を重ねて台形alphaでクロスフェード=ループのハード復帰を隠す。森より後ろ・空帯マスクでクリップ。
   private updateStage7Clouds(now: number) {
     const on = this.currentFarKey === 'stage7' && this.stage7CloudFrames.length === STAGE7_CLOUD_FRAMES;
     this.stage7CloudGroup.visible = on;
@@ -2033,19 +2036,41 @@ export class PixiScene {
     const fw = this.stage7CloudFrames[0].width || 1;
     const baseScale = (w * STAGE7_CLOUD_SIZE) / fw;
     const baseX = w * 0.5, baseY = h * STAGE7_CLOUD_Y_FRAC;
-    // 位置ドリフト経路: 左→右→左下→右(正規化・×振幅)。phaseで4点を巡回補間。
+    // 位置ドリフト経路: 左→右→左下→右。コマ中心で離散サンプル=コマ毎にパッと位置が変わる(滑らせない)。
     const PATH: [number, number][] = [[-1, 0], [1, 0], [-1, 1], [1, 0]];
-    for (let i = 0; i < this.stage7Clouds.length; i++) {
-      const sp = this.stage7Clouds[i];
-      const phase = ((now / STAGE7_CLOUD_PERIOD_MS + i * 0.5) % 1 + 1) % 1; // 2枚を半周期ずらす
-      const fi = Math.min(STAGE7_CLOUD_FRAMES - 1, Math.floor(phase * STAGE7_CLOUD_FRAMES)); // コマ0..5
-      if (sp.texture !== this.stage7CloudFrames[fi]) sp.texture = this.stage7CloudFrames[fi];
-      sp.scale.set(baseScale);
-      const seg = phase * 4, s0 = Math.floor(seg) % 4, s1 = (s0 + 1) % 4, f = seg - Math.floor(seg);
+    const posOf = (fi: number): [number, number] => {
+      const ph = (fi + 0.5) / STAGE7_CLOUD_FRAMES;             // コマ中心(離散)
+      const seg = ph * 4, s0 = Math.floor(seg) % 4, s1 = (s0 + 1) % 4, f = seg - Math.floor(seg);
       const dx = (PATH[s0][0] + (PATH[s1][0] - PATH[s0][0]) * f) * STAGE7_CLOUD_DRIFT_X;
       const dy = (PATH[s0][1] + (PATH[s1][1] - PATH[s0][1]) * f) * STAGE7_CLOUD_DRIFT_Y;
-      sp.position.set(baseX + dx, baseY + dy);
-      sp.alpha = STAGE7_CLOUD_ALPHA * Math.sin(Math.PI * phase); // 端で0=次周回とのクロスフェード
+      return [baseX + dx, baseY + dy];
+    };
+    // 継ぎ目だけ重ねる。サイクル開始間隔=P·(1-OL)。隣接サイクルは交互スプライトに載せ、各サイクルは
+    // 頭[0,OL]でフェードイン・尻[1-OL,1]でフェードアウト(=前後サイクルとの継ぎ目クロスフェード)、
+    // 中間[OL,1-OL]は全alphaでコマをパッと切替。両立ち上がり幅はコマ0/5の枠内(OL<1/6目安)。
+    const P = STAGE7_CLOUD_PERIOD_MS;
+    const OL = STAGE7_CLOUD_OVERLAP;
+    const effP = P * (1 - OL);
+    const curCycle = Math.floor(now / effP);
+    for (const sp of this.stage7Clouds) sp.visible = false;   // 担当サイクルだけ下で可視化
+    for (let k = curCycle - 1; k <= curCycle; k++) {
+      if (k < 0) continue;
+      const localT = now - k * effP;
+      if (localT < 0 || localT >= P) continue;                // このサイクルは表示範囲外
+      const ph = localT / P;                                  // 0..1(サイクル内の進行)
+      const fi = Math.min(STAGE7_CLOUD_FRAMES - 1, Math.floor(ph * STAGE7_CLOUD_FRAMES)); // コマ0..5
+      let env = 1;                                            // 台形エンベロープ
+      if (OL > 0) {
+        if (ph < OL) env = ph / OL;
+        else if (ph > 1 - OL) env = (1 - ph) / OL;
+      }
+      const sp = this.stage7Clouds[((k % 2) + 2) % 2];        // 隣接サイクルは別スプライト=継ぎ目で共存
+      sp.visible = true;
+      if (sp.texture !== this.stage7CloudFrames[fi]) sp.texture = this.stage7CloudFrames[fi];
+      sp.scale.set(baseScale);
+      const [px, py] = posOf(fi);
+      sp.position.set(px, py);
+      sp.alpha = STAGE7_CLOUD_ALPHA * Math.max(0, Math.min(1, env));
     }
   }
 
