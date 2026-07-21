@@ -78,7 +78,7 @@ const STRONG_GLOW_DISABLED = DZ_PARAMS?.get('glow') === '0';
 // 攻撃/爆発の「光フラッシュ」時に、画面(filteredWorld=アクター/背景/効果)のコントラストを一瞬パンチ=影締まり+ハイライト飛び
 // (参考: Octopath II の光/炎攻撃。社長試作v0.25.1971)。既定OFF・?punchgrade=1 で有効。既存の色フラッシュ(flashGfx)が色、これが階調。
 // 負荷: イベント時だけ全画面ColorMatrixFilter1パス(=bloom並み・実測で全画面フィルタは律速でない)。常時OFFなのでフラグOFFなら0。
-const PUNCH_GRADE = DZ_PARAMS?.get('punchgrade') === '1';
+const PUNCH_GRADE = DZ_PARAMS?.get('punchgrade') !== '0'; // 既定ON(社長v0.25.1977「最大値にして」=まず見せる)。?punchgrade=0で切る
 // フィールドに落とす「動く雲の影」(社長指示v0.25.1974)。屋外ステージのみ・地面の上に multiply の雲影タイルをドリフト。既定ON・?cloudshadow=0 で無効。
 const CLOUD_SHADOW_ON = DZ_PARAMS?.get('cloudshadow') !== '0';
 // フラッシュ色の明度(0..1)。暗転(黒)フラッシュはパンチしない=光だけ拾うための判定。
@@ -1541,15 +1541,15 @@ export class PixiScene {
       const a = Math.max(0, 1 - (now - e.createdAt) / e.duration);
       target = Math.max(target, a * lum);
     }
-    target = Math.min(1, target * tsNum('punchgain', 3.2)); // フラッシュ強度→パンチ強度の増幅(?punchgain=)
+    target = Math.min(1, target * tsNum('punchgain', 6)); // フラッシュ強度→パンチ強度の増幅。最大値へ(社長v0.25.1977)。?punchgain=
     // 立ち上がりは即・減衰はなめらかに(前フレームより下がる時だけ緩める)。
     this.punchStrength = target >= this.punchStrength ? target : this.punchStrength + (target - this.punchStrength) * 0.22;
     const active = this.punchStrength > 0.012;
     if (active) {
       if (!this.punchGrade) this.punchGrade = new ColorMatrixFilter();
       const k = this.punchStrength;
-      this.punchGrade.contrast(k * tsNum('punchcontrast', 0.55), false); // 影締まり+ハイライト飛び(?punchcontrast=)
-      this.punchGrade.brightness(1 + k * tsNum('punchbright', 0.12), true); // 全体を少し持ち上げ(?punchbright=)
+      this.punchGrade.contrast(k * tsNum('punchcontrast', 1.2), false); // 影締まり+ハイライト飛び。最大値へ(社長v0.25.1977)。?punchcontrast=
+      this.punchGrade.brightness(1 + k * tsNum('punchbright', 0.22), true); // 全体を持ち上げ(?punchbright=)
       if (!this.punchInList) { this.punchInList = true; this.L.worldGroup.filters = [this.punchGrade]; } // 立ち上がり時だけ worldGroup(地面含む画面全体)へ付ける
     } else if (this.punchInList) {
       this.punchStrength = 0; this.punchInList = false; this.L.worldGroup.filters = []; // 減衰しきったら外す
@@ -1574,12 +1574,14 @@ export class PixiScene {
     sp.width = overW;
     sp.height = this.screenH * ZOOM_OVERSCAN;
     const scale = tsNum('cloudshadowscale', night ? 1.7 : 1.4); // 夜=大きめ / 昼=標準(小さめ=動く塊が分かる)
-    sp.tileScale.set(scale);                          // 雲影の大きさ
-    sp.alpha = tsNum('cloudshadowalpha', night ? 0.42 : 0.5);   // 視認性UP(社長「どこに雲影ある？」v0.25.1976)。夜=淡め / 昼=濃く
-    const spd = tsNum('cloudshadowspeed', night ? 0.005 : 0.008); // 夜=ゆっくり / 昼=標準
-    // 斜めドリフト+ゆるいカメラ連動(接地感)。tilePositionはタイル周期(256×tileScale)で剰余=巨大値のfloat32精度落ち(カクつき)を防ぐ。
-    const period = 256 * scale;
-    sp.tilePosition.set((now * spd - cameraX * 0.4) % period, (now * spd * 0.55 - cameraY * 0.4) % period);
+    // 奥行き感: 縦を縮めて地面が奥へ倒れて見える遠近(社長指示v0.25.1977「奥行き感ほしい(縮めるとか)」)。?cloudshadowyscale=で比率調整。
+    const scaleY = scale * tsNum('cloudshadowyscale', 0.5);
+    sp.tileScale.set(scale, scaleY);                  // 縦を圧縮=接地した遠近感
+    sp.alpha = tsNum('cloudshadowalpha', 1.0);        // 濃さ=1.0(社長指示v0.25.1977)
+    const spd = tsNum('cloudshadowspeed', night ? 0.008 : 0.011); // もう少し速く(社長指示v0.25.1977)。夜=ゆっくりめ / 昼=標準
+    // 斜めドリフト+ゆるいカメラ連動(接地感)。tilePositionはタイル周期(256×tileScale)で剰余=巨大値のfloat32精度落ち(カクつき)を防ぐ。縦横で周期が違う。
+    const periodX = 256 * scale, periodY = 256 * scaleY;
+    sp.tilePosition.set((now * spd - cameraX * 0.4) % periodX, (now * spd * 0.55 - cameraY * 0.4) % periodY);
   }
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
