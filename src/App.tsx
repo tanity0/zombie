@@ -6,6 +6,7 @@ import GameOverScreen from './components/GameOverScreen';
 import EndingScreen from './components/EndingScreen';
 import LoadingScreen from './components/LoadingScreen';
 import OrientationGuard from './components/OrientationGuard';
+import OpeningScene from './components/OpeningScene';
 import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow } from './utils/loadProgress';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
@@ -40,6 +41,11 @@ function SortieLoadingOverlay() {
 
 function App() {
   const [gameState, setGameState] = useState<GameState>('title'); // 最初にタイトル(the ONE)を即表示
+  // オープニングシーン(社長支給v0.25.2002): 当面 ?opening=1 でプレビュー再生(タイトルの上に全画面オーバーレイ)。
+  // 本番の再生タイミング(タイトル前/ニューゲーム時等)は後で確定。暗転し切ったら外れてタイトルが見える。
+  const [showOpening, setShowOpening] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('opening') === '1'; } catch { return false; }
+  });
   const [benchmarkMode, setBenchmarkMode] = useState(false);
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
@@ -304,6 +310,9 @@ function App() {
       {gameState === 'playing' && isPixiRenderer() && !rendererReady && !loadOverlayTimedOut && (
         <SortieLoadingOverlay />
       )}
+
+      {/* オープニングシーン(?opening=1でプレビュー)。タイトルの上に全画面。暗転し切ったら onDone で外れる。 */}
+      {showOpening && <OpeningScene onDone={() => setShowOpening(false)} />}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}
       <OrientationGuard />
