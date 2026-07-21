@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1974',
+    items: [
+      '演出: 屋外ステージのフィールドに、ゆっくり流れる雲の影を落としました。',
+    ],
+  },
+  {
     version: '0.25.1956',
     items: [
       '演出: ステージ1の月夜に、月暈(かさ)とゆっくり呼吸する月光を加えて幻想的にしました。',

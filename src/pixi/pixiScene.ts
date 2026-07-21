@@ -46,7 +46,7 @@ import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
-import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, RING_TEX_BASES } from './lighting';
+import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -79,6 +79,8 @@ const STRONG_GLOW_DISABLED = DZ_PARAMS?.get('glow') === '0';
 // (参考: Octopath II の光/炎攻撃。社長試作v0.25.1971)。既定OFF・?punchgrade=1 で有効。既存の色フラッシュ(flashGfx)が色、これが階調。
 // 負荷: イベント時だけ全画面ColorMatrixFilter1パス(=bloom並み・実測で全画面フィルタは律速でない)。常時OFFなのでフラグOFFなら0。
 const PUNCH_GRADE = DZ_PARAMS?.get('punchgrade') === '1';
+// フィールドに落とす「動く雲の影」(社長指示v0.25.1974)。屋外ステージのみ・地面の上に multiply の雲影タイルをドリフト。既定ON・?cloudshadow=0 で無効。
+const CLOUD_SHADOW_ON = DZ_PARAMS?.get('cloudshadow') !== '0';
 // フラッシュ色の明度(0..1)。暗転(黒)フラッシュはパンチしない=光だけ拾うための判定。
 const flashLuminance = (color: string): number => {
   const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
@@ -1441,6 +1443,7 @@ export class PixiScene {
   private punchGrade: ColorMatrixFilter | null = null;   // 攻撃/爆発の光コントラストパンチ(?punchgrade=1・遅延生成)
   private punchStrength = 0;                             // 現在のパンチ強度(0..1・フラッシュ envelope 追従)
   private punchInList = false;                           // punchGrade が worldGroup.filters(地面含む画面全体)に入っているか(付け外し=イベント時のみ)
+  private cloudShadow = new TilingSprite({ texture: getCloudShadowTexture(), width: 1, height: 1 }); // フィールドの動く雲影(multiply・地面の上・屋外のみ)
   private bloomActive = true; // 現在ブルームをフィルタ配列に入れているか(オプション反映用)
   private farBackdropBlur: BlurFilter | null = null;
   // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
@@ -1551,6 +1554,28 @@ export class PixiScene {
     } else if (this.punchInList) {
       this.punchStrength = 0; this.punchInList = false; this.L.worldGroup.filters = []; // 減衰しきったら外す
     }
+  }
+
+  // フィールドに落とす「動く雲の影」(社長指示v0.25.1974)。屋外ステージのみ・地面の上(worldGroup内)に multiply の雲影タイルをドリフト。
+  // 参考: Octopath 0。負荷: TilingSprite1枚・tilePositionドリフト=軽い(1〜2/10)。?cloudshadow=0で無効・?cloudshadowalpha=/speed=/scale=で調整。
+  private updateCloudShadow(now: number, cameraX: number, cameraY: number, indoor: boolean) {
+    const sp = this.cloudShadow;
+    const on = CLOUD_SHADOW_ON && !indoor && this.currentFarKey !== 'lab' && this.currentFarKey !== 'tutorial'; // 屋外のみ(洞窟/ラボ除外)
+    if (sp.visible !== on) sp.visible = on;
+    if (!on) return;
+    const farH = this.farBackdropHeight();
+    const overW = this.screenW * ZOOM_OVERSCAN;
+    const marginX = (overW - this.screenW) / 2;
+    sp.position.set(-marginX, farH);                 // 地面帯の上端(farH)から下。横は引き対応でオーバースキャン中央寄せ
+    sp.width = overW;
+    sp.height = this.screenH * ZOOM_OVERSCAN;
+    const scale = tsNum('cloudshadowscale', 1.7);
+    sp.tileScale.set(scale);                          // 雲影の大きさ
+    sp.alpha = tsNum('cloudshadowalpha', 0.32);       // 濃さ
+    const spd = tsNum('cloudshadowspeed', 0.007);     // ドリフト速度(px/ms)
+    // 斜めドリフト+ゆるいカメラ連動(接地感)。tilePositionはタイル周期(256×tileScale)で剰余=巨大値のfloat32精度落ち(カクつき)を防ぐ。
+    const period = 256 * scale;
+    sp.tilePosition.set((now * spd - cameraX * 0.4) % period, (now * spd * 0.55 - cameraY * 0.4) % period);
   }
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
@@ -1968,6 +1993,12 @@ export class PixiScene {
       stageC.addChildAt(this.stage7CloudGroup, idx());
     }
     this.applyCineGrade(); // 初期適用(applyDaylight前でもcine値を効かせる)
+
+    // フィールドの動く雲影(社長指示v0.25.1974)。地面(groundBase)の直上・森/アクターの下(worldGroup内)。multiply。屋外のみ・毎フレームdrift。
+    this.cloudShadow.blendMode = 'multiply';
+    this.cloudShadow.eventMode = 'none';
+    this.cloudShadow.visible = false;
+    this.L.worldGroup.addChildAt(this.cloudShadow, this.L.worldGroup.getChildIndex(this.L.groundBase) + 1);
 
     // --- スモッグ。奥/森下(やまぎり)/森上 の3層を各1枚で揺らす ---
     // 奥=world内 actorLayer直前(キャラの後ろ)。森下=stageのfrontForest直前(=森の後ろ。森が手前で隠す)。森上=uiLayer最前面。
@@ -3722,6 +3753,7 @@ export class PixiScene {
     this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets);
     this.syncFlash(s.effects, now);
     this.updatePunchGrade(s.effects, now); // 攻撃/爆発の光でコントラストパンチ(?punchgrade=1・既定OFF)
+    this.updateCloudShadow(now, s.camera.x, s.camera.y, s.indoorMode); // フィールドの動く雲影(屋外のみ・?cloudshadow=0で無効)
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
     // (camera-offset already applied to the parent), so plain world coords.

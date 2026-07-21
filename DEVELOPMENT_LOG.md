@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1974 — フィールドに「動く雲の影」を追加(屋外ステージ・参考Octopath 0)【2026-07-21 09:44 JST】
+- 指示(社長): 各ステージのフィールドに雲の影を落として動かしたい(「雲影も願い」)。手法相談の結果=こちらで手続き生成で実装。
+- 実装:
+  - テクスチャ: `getCloudShadowTexture()`(白ベース+柔らかい暗い斑・8方向ラップでシームレス・multiply用)を手続き生成(256²・一度だけベイク)。
+  - 描画: `cloudShadow` TilingSprite を `worldGroup` の **groundBase直上・森/アクターの下** に配置(multiply)。`updateCloudShadow` で毎フレーム: farHから下をオーバースキャンで覆い、tilePositionを斜めドリフト+ゆるいカメラ連動。tilePositionはタイル周期(256×scale)で剰余=巨大値のfloat32精度落ち(カクつき)防止。
+  - ゲート: **屋外のみ**(`currentFarKey`が lab/tutorial(洞窟)を除外+`indoorMode`除外)。既定ON・`?cloudshadow=0`で無効。調整= `?cloudshadowalpha=`(既定0.32)/`?cloudshadowspeed=`(0.007)/`?cloudshadowscale=`(1.7)。
+- 検証: ヘッドレス(stage-1)で cloudShadow visible・blend=multiply・全画面オーバースキャン・tilePositionが小さい値でドリフト(38.7→49.3)・pageErrors0。実描画で地面に柔らかい雲影の斑が流れるのを確認。屋内(lab/tutorial)はゲートで非表示。typecheck OK。
+- 自己点検: 描画のみ・ゲーム挙動不変。負荷: **1〜2/10**(TilingSprite1枚・multiply・tilePositionドリフト=自動wrap・毎フレーム幾何演算なし・屋外1枚のみ。強glow塗り増ではない)。
+- 備考(任意の今後): 手描き一枚絵への差替は描画側そのままでテクスチャ差替のみで可。太陽/月の位置に影の向きを合わせる等も可能。
+- Files: `src/pixi/lighting.ts`, `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1973 — 光コントラストパンチを画面全体(地面含む)へ拡張【2026-07-21 09:36 JST】
 - 指示(社長・IMG_6755/6760): 発光は地面も=画面全体だよね。→ パンチが `filteredWorld`(地面除外)だったのを地面込みへ。
 - 対処: `punchGrade`(ColorMatrixFilter)の適用先を `filteredWorld` から **`worldGroup`(=groundBase+森1/2+filteredWorld=地面+背景+アクター+効果=画面の野原全体)** へ変更。`rebuildWorldFilters` からは外し、`updatePunchGrade` で `worldGroup.filters` を直接付け外し(強度>0の間だけ・イベント時のみ)。

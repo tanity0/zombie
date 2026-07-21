@@ -202,6 +202,32 @@ export const getCineCoolTexture = (): Texture => {
   return cineCoolTex;
 };
 
+// フィールドに落とす「雲の影」タイルテクスチャ(社長指示v0.25.1974)。白ベース+柔らかい暗い斑=multiply用。
+// 各斑を8方向のラップ位置にも描いてシームレスにタイル(TilingSpriteでドリフト)。参考: Octopath 0 の流れる雲影。
+let cloudShadowTex: Texture | null = null;
+export const getCloudShadowTexture = (): Texture => {
+  if (cloudShadowTex) return cloudShadowTex;
+  const s = 256; const c = document.createElement('canvas'); c.width = c.height = s;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, s, s); // 白ベース=multiplyで無変化
+  let seed = 987654321; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  ctx.globalCompositeOperation = 'multiply'; // 斑同士も重ねて濃淡
+  for (let i = 0; i < 11; i++) {
+    const bx = rnd() * s, by = rnd() * s;
+    const r = s * (0.13 + rnd() * 0.17);
+    const v = Math.round((0.44 + rnd() * 0.18) * 255); // 影の濃さ(小=濃い)
+    for (const ox of [-s, 0, s]) for (const oy of [-s, 0, s]) { // 8方向ラップ=シームレス
+      const g = ctx.createRadialGradient(bx + ox, by + oy, 0, bx + ox, by + oy, r);
+      g.addColorStop(0, `rgba(${v},${v},${v},1)`);
+      g.addColorStop(1, `rgba(${v},${v},${v},0)`);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(bx + ox, by + oy, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  cloudShadowTex = Texture.from(c);
+  return cloudShadowTex;
+};
+
 // シネマティック(?cine=1)の追加3要素(社長試作v0.25.1863「その他も全部積む」)。全て一度だけベイク=
 // screen合成の全画面/帯スプライト。per-frameの重い描画なし=負荷は各1枚(bloom/grade同経路)。
 // ① 地平の太陽フレア(白熱コア+暖色ハロー+細い十字光条)。
