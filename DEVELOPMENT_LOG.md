@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1996 — 遠景森1のスケール(比率)化を撤回=固定値に戻す(v1995の崩れ修正)【2026-07-21 21:20 JST】
+- 指示(社長): v1995で森1を森2基準の比率(スケール)にしたら実機で「びっくりするくらいずれて壊れた」。スケールをやめて固定値に戻して。
+- 対処: v1995の森1レイアウト変更(森2基準の比率・`nearHorizonHeightBottom`ヘルパ・`?hf2h`/`?hf2gap`)を**完全に撤回**し、`horizonForestHeight`/`horizonForestY`/`layoutNearHorizon`と関連定数(HORIZON_FOREST_HEIGHT_RATIO/MIN/MAX、FAR_FOREST_SIZE_SCALE、HORIZON_FOREST_OVERLAP_RATIO、HORIZON_FOREST_Y_OFFSET_PX、NORTH_FAR_FOREST_HEIGHT_TRIM_PX)を**v1994の元の式(clamp*1.5+固定オフセット)に復元**。
+- **v1995の他の変更は維持**: nospawnでstage7ボス抑止 / ステージ4の霧2倍・流れ2倍 / stage7雲影くっきり(cloudshadow7dark 0.3)。これらは森1と無関係。
+- 検証: typecheck OK・森2基準の参照(nearHorizonHeightBottom/hf2h/hf2gap)が残っていないことを確認。
+- 教訓: 端末アスペクトを跨ぐレイアウトの作り替えは、私のヘッドレス確認(stage1のみ)では崩れを取りこぼした。次に触るなら全ステージ×複数サイズを事前に撮って社長確認してから。今回は固定値方式のまま据え置き(比率化はしない)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1995 — 遠景森1を森2基準の比率に(下から出る崩れ修正)/nospawnでstage7ボス抑止/霧2倍/雲影くっきり【2026-07-21 20:37 JST】
 - 指示(社長・QAで発見): ①遠景森1(horizonForest)が森2(nearHorizon)に対し比率が崩れ、ステージ/画面サイズによって下から出る→森2基準の比率で保つ(固定値でなく比率) ②stage7のイベント(ボス)を`?nospawn=1`で出さない ③ステージ4の遠景霧を大きさ2倍・雲の流れ2倍 ④stage7の雲影をもっとくっきり。
 - 対処:

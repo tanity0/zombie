@@ -183,9 +183,14 @@ const RIVER_FLOW_WOBBLE_MS = [1400, 2300];// 揺らぎ周期
 const FAR_BACKDROP_BLUR = 1.1;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
 const HORIZON_FOREST_BLUR = 0.8; // 地平の森(遠景森)を少しだけぼかす(0=なし)。0.65→0.8(社長指示v0.25.1988)
-// 森1(地平の森)の高さ・位置は森2(nearHorizon)基準の比率で決める(?hf2h=高さ比 / ?hf2gap=底の食い込み・社長指示v0.25.1995)。
-// 旧・独立スケール(clamp(screenH*0.22,120,185)*1.5+固定オフセット)は端末により森2との比率が崩れ、森1が下から出たため撤去。
+const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
+const HORIZON_FOREST_MIN_HEIGHT = 120;
+const HORIZON_FOREST_MAX_HEIGHT = 185;
+// 遠景森1(地平の森)のサイズ倍率(社長指示v0.25.1884「1.5倍」)。通常ステージのみ(stage5/tutorialは実寸固定)。
+const FAR_FOREST_SIZE_SCALE = 1.5;
 // 北部(stage-4=唯一の farBackdrop 'snow')の遠景森1の拡大/位置は tsNum 定数で下方に定義(?north* で現地調整可)。
+const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
+const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const LAB_HORIZON_FOREST_EXTRA_DOWN = 20; // ステージ2だけ遠景森1を下げる量(px)。他ステージは0。
 // 遠景森1の下端フェード幅は tsNum 定数(?horizonfade=)で下方に定義。10pxだと事実上ハードカット(社長「パッツリ切れてる」)。
 // 遠景手前森(ステージ3): 地平の森の「手前」に重なる近めの帯。closer=大きく/下/速いパララックス/弱ブラー。
@@ -310,6 +315,7 @@ const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 // 北部(stage-4=snow)の遠景森1(氷壁)の拡大/上移動/高さトリム。?northscale= /?northup= /?northtrim= で現地調整可。
 const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
 const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
+const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻す(px)
 // 遠景森1(地平の森)の縦「上移動」px を全ステージ個別に持たせる(上=Y減算)。ミッションコード名の ?mXup= で現地調整
 // (m0up=tutorial 〜 m7up, ex1up/ex2up)。既定は現行維持(m1up=40, m2up=100, 他=0)。社長指示v0.25.1901。
 // 加算関係: snow は別途 northup も効く(加算)/ lab は別途 LAB_HORIZON_FOREST_EXTRA_DOWN(+20下)も効く。
@@ -2573,26 +2579,26 @@ export class PixiScene {
     if (this.stage5Stage) return farH + STAGE5_HORIZON_FOREST_DOWN_PX - horizonH - up;
     // チュートリアル: 上端合わせ=水面下端(farH×FRAC)-HEAD_PX(頭が川に少し被る)。高さ140px固定。
     if (this.currentFarKey === 'tutorial') return farH * TUTORIAL_HORIZON_WATER_BOTTOM_FRAC - TUTORIAL_HORIZON_HEAD_PX - up;
-    // 森1の底=森2底より森2高×GAPぶん上に置く(=森1の裾が常に森2の帯に隠れて「下から出ない」・社長指示v0.25.1995)。
-    // 森1トップ=その底−horizonH。森2基準なのでどの画面サイズでも相対位置が一定。lab/snow/upは従来どおり微調整で残す。
-    const nh = this.nearHorizonHeightBottom();
-    return nh.bottom - nh.height * tsNum('hf2gap', 0.32) - horizonH + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0)
+    return farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0)
       - (this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_UP_PX : 0) // 北部だけ別途 northup も加算(社長指示v0.25.1886)
       - up; // 全ステージ共通の上移動(m1up=40/m2up=100/他=0。?mXup=)
   }
   private horizonForestHeight() {
-    // ステージ5/チュートリアルは実寸px固定(社長指示v0.25.1742/1821。地平の薄消し線は帯の実位置から導出=自動追従)。
+    const base = Math.min(
+      HORIZON_FOREST_MAX_HEIGHT,
+      Math.max(HORIZON_FOREST_MIN_HEIGHT, this.screenH * HORIZON_FOREST_HEIGHT_RATIO)
+    );
+    // ステージ5は実寸150px固定(社長指示v0.25.1742。比率×クランプ×倍率だと端末次第で伸びないため)。
+    // 地平の薄消し線(horizonActorHideScreenY)は帯の実位置から導出しているので自動で追従する。
     if (this.currentFarKey === 'tutorial') {
       // 追従式(上端=水面下端−HEAD_PX から境界線まで)−TRIM。上端合わせなので下端がTRIMぶん上がる。
       const farH = this.farBackdropHeight();
       return farH * (1 - TUTORIAL_HORIZON_WATER_BOTTOM_FRAC) + TUTORIAL_HORIZON_HEAD_PX - TUTORIAL_HORIZON_HEIGHT_TRIM_PX;
     }
-    if (this.stage5Stage) return STAGE5_HORIZON_FOREST_HEIGHT_PX;
-    // 森1(遠景森)の高さ=森2(nearHorizon)の高さ×比率(社長指示v0.25.1995「森2基準で比率を守る」)。
-    // 旧: clamp(screenH*0.22,120,185)*1.5=クランプで端末により森2との比率が崩れ、森1の裾が森2より下に出ていた。
-    // 森2高に固定比率で追従させることで、どの画面サイズでも森1:森2の比が一定=下から出ない。北部(snow)だけ拡大係数を残す。
-    const snowMul = this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_EXTRA_SCALE : 1;
-    return this.nearHorizonHeightBottom().height * tsNum('hf2h', 0.78) * snowMul;
+    // 北部(snow)は遠景森が雪原に溶けて小さく見えるため、さらに拡大(社長指示v0.25.1886)。高さは-100px戻す(v0.25.1888)。
+    const northExtra = this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_EXTRA_SCALE : 1;
+    const northTrim = this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_HEIGHT_TRIM_PX : 0;
+    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base * FAR_FOREST_SIZE_SCALE * northExtra - northTrim;
   }
 
   private frontForestHeight() {
@@ -3210,26 +3216,23 @@ export class PixiScene {
     // lab は暗幕(地平下)で暗くされないので、白tint(全明)だと眩し過ぎ→グレー乗算で元素材寄りに落とす(?nhbright)。
     this.L.nearHorizon.tint = key === 'lab' ? LAB_NEAR_HORIZON_TINT : this.envTintNow();
   }
-  // 遠景森2(nearHorizon)の高さ・底を算出(森1をこれ基準の比率で配置するため共有・社長指示v0.25.1995)。
-  private nearHorizonHeightBottom(): { height: number; bottom: number } {
-    const farH = this.farBackdropHeight();
-    const stage5 = this.nearHorizonKeyNow === 'stage5';
-    const tutorial = this.nearHorizonKeyNow === 'tutorial';
-    const heightRatio = this.isLabStage ? LAB_NEAR_HORIZON_HEIGHT_RATIO : NEAR_HORIZON_HEIGHT_RATIO;
-    const height = stage5 ? STAGE5_NEAR_HORIZON_HEIGHT_PX
-      : tutorial ? TUTORIAL_NEAR_HORIZON_HEIGHT_PX
-      : this.screenH * heightRatio;
-    const bottom = stage5 ? farH + STAGE5_NEAR_HORIZON_DOWN_PX
-      : tutorial ? farH + TUTORIAL_NEAR_HORIZON_DOWN_PX
-      : farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
-    return { height, bottom };
-  }
-
   // 遠景手前森(nearHorizon)の寸法/位置を現在のテクスチャと画面から再計算。底を地面シーム少し下に置く。
   private layoutNearHorizon() {
     const tex = this.L.nearHorizon.texture;
     if (!tex || tex.width <= 1 || tex.height <= 1) return;
-    const { height, bottom } = this.nearHorizonHeightBottom();
+    const farH = this.farBackdropHeight();
+    // 遠景森2の高さ(サイズ)はステージ2だけ低め(社長指示)。他ステージは原典の0.42。
+    // ステージ5は実寸px指定(社長指示v0.25.1742): 高さ100px・底=境界線(farH)+50px下。
+    const stage5 = this.nearHorizonKeyNow === 'stage5';
+    const tutorial = this.nearHorizonKeyNow === 'tutorial'; // 岩帯2もステージ5と同じ実寸px指定
+    const heightRatio = this.isLabStage ? LAB_NEAR_HORIZON_HEIGHT_RATIO : NEAR_HORIZON_HEIGHT_RATIO;
+    const height = stage5 ? STAGE5_NEAR_HORIZON_HEIGHT_PX
+      : tutorial ? TUTORIAL_NEAR_HORIZON_HEIGHT_PX
+      : this.screenH * heightRatio;
+    const bottom = stage5
+      ? farH + STAGE5_NEAR_HORIZON_DOWN_PX
+      : tutorial ? farH + TUTORIAL_NEAR_HORIZON_DOWN_PX
+      : farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
     // 横オーバースキャン: 引いた時に左右が切れないよう画面より広く中央寄せ(worldGroup内=スケール対象)。
     const nhMarginX = (this.screenW * ZOOM_OVERSCAN - this.screenW) / 2;
     this.L.nearHorizon.width = this.screenW * ZOOM_OVERSCAN;
