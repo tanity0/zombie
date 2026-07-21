@@ -142,6 +142,18 @@ describe('applyKomaAssessment', () => {
     const s = applyKomaAssessment(createPuzzleClockState(), bad);
     expect(s.rank).toBe(1);
   });
+  it('respects a per-run minRank floor (社長決定v0.25.1988: 開始最低ランクの1つ下まで)', () => {
+    // stage-6 相当: minRank=4。R5から悪コマで降格すると4まで、さらに悪くても4で止まる。
+    const atR5 = { rank: 5 as const, r7Cap: R7_CAP_MIN, boardTarget: 10, belowTargetMs: 0, msSinceRampMs: 0, minRank: 4 };
+    const demoted = applyKomaAssessment(atR5, bad);
+    expect(demoted.rank).toBe(4);
+    expect(applyKomaAssessment(demoted, bad).rank).toBe(4); // 下限で頭打ち(3へは落ちない)
+    // minRank 未指定(=省略)は従来どおり全体下限1まで落ちる。
+    const noFloor = { rank: 2 as const, r7Cap: R7_CAP_MIN, boardTarget: 10, belowTargetMs: 0, msSinceRampMs: 0 };
+    expect(applyKomaAssessment(noFloor, bad).rank).toBe(1);
+    // 昇格は下限に関係なく通る(minRankは降格の下限のみ)。
+    expect(applyKomaAssessment(atR5, good).rank).toBe(6);
+  });
   it('promoting from rank 6 into rank 7 resets r7Cap to the minimum', () => {
     const atR6 = { rank: 6 as const, r7Cap: 18, boardTarget: 10, belowTargetMs: 0, msSinceRampMs: 0 };
     const s = applyKomaAssessment(atR6, good);

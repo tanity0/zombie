@@ -21,10 +21,11 @@ export interface PuzzleClockState {
   boardTarget: number;    // 盤面の目標数(コマをまたいで引き継ぐ・毎分リセットしない)
   belowTargetMs: number;  // 「盤面数<目標」の連続継続時間(ms)。追いついたら0へ(リアルタイム締めトリガー用)。
   msSinceRampMs: number;  // 直近の目標+1からの経過ms(ランプ間隔判定用)。
+  minRank?: number;       // ラン中の降格の絶対下限(社長決定v0.25.1988)。省略=1(全体下限)。開始最低ランクの1つ下=stageInRunFloorRank で与える。
 }
 
 export const createPuzzleClockState = (): PuzzleClockState => ({
-  rank: 1, r7Cap: R7_CAP_MIN, boardTarget: 1, belowTargetMs: 0, msSinceRampMs: 0,
+  rank: 1, r7Cap: R7_CAP_MIN, boardTarget: 1, belowTargetMs: 0, msSinceRampMs: 0, minRank: 1,
 });
 
 export const capForState = (state: PuzzleClockState): number => (state.rank === 7 ? state.r7Cap : BASE_CAP);
@@ -120,6 +121,9 @@ export const assessKomaDelta = (input: KomaAssessmentInput): RankDelta => {
 // M6(§4-C 2段査定): 確定デルタは検証査定側で合成する(combineCycleDelta)ため、デルタ適用だけを
 // 独立させたのがapplyRankDelta。applyKomaAssessmentは旧1段査定の互換ラッパー(挙動不変)。
 export const applyRankDelta = (state: PuzzleClockState, delta: RankDelta): PuzzleClockState => {
+  // ラン中の降格の絶対下限(社長決定v0.25.1988): 開始最低ランクの1つ下まで(minRank・省略=1)。
+  // R7の上限成長やR7→R6降格は minRank(最大でも4)より常に上なので、非R7経路の降格だけを下限で止める。
+  const floor = state.minRank ?? 1;
   if (state.rank === 7) {
     if (delta === 1) return { ...state, r7Cap: Math.min(R7_CAP_MAX, state.r7Cap + R7_CAP_STEP) };
     if (delta === -1) {
@@ -128,7 +132,7 @@ export const applyRankDelta = (state: PuzzleClockState, delta: RankDelta): Puzzl
     }
     return state;
   }
-  const nextRank = clampRank(state.rank + delta);
+  const nextRank = clampRank(Math.max(floor, state.rank + delta));
   if (nextRank === 7) return { ...state, rank: nextRank, r7Cap: R7_CAP_MIN }; // state.rank!==7はここまでで確定済み
   return { ...state, rank: nextRank };
 };

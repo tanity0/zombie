@@ -163,7 +163,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, recordChronicle, effectiveStartRank, setStartRankFromFinal, type GateMeta } from '../data/progress';
+import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, recordChronicle, effectiveStartRank, stageInRunFloorRank, setStartRankFromFinal, type GateMeta } from '../data/progress';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
 import {
   getEventQuestConfig, EVENT_QUEST_LINES_FORCED, EVENT_QUEST_ENCOUNTER_LINES,
@@ -482,8 +482,11 @@ const seededPuzzleClockState = (): PuzzleClockState => {
   const s = createPuzzleClockState();
   const stageId = getSelectedStageId();
   // 開始ランク=持ち越し値を優先しつつ、ステージ毎の最低ランクを下限にする(社長決定v0.25.1986)。
-  // ラン中はこの下限を割ってよい(=フロアは開始時のみ・チュートリアル/EX/未指定はフロア1=無効相当)。
-  if (stageId) s.rank = clampRank(effectiveStartRank(stageId));
+  // さらにラン中の降格の絶対下限=開始最低ランクの1つ下(社長決定v0.25.1988)。例: 最低5→ラン中は4まで。
+  if (stageId) {
+    s.rank = clampRank(effectiveStartRank(stageId));
+    s.minRank = stageInRunFloorRank(stageId);
+  }
   return s;
 };
 

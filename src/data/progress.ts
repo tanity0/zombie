@@ -340,6 +340,11 @@ export const stageMinStartRank = (stageId: string): number => {
 export const effectiveStartRank = (stageId: string): number =>
   Math.max(getStartRank(stageId), stageMinStartRank(stageId));
 
+// ラン中の降格の絶対下限(社長決定v0.25.1988): 開始最低ランクの「1つ下」まで落ちられる(それ以下には
+// 降格しない)。例: stage-6(最低5)はラン中は4まで/ stage-3(最低2)は1まで。全体下限はR1。
+export const stageInRunFloorRank = (stageId: string): number =>
+  Math.max(1, stageMinStartRank(stageId) - 1);
+
 // ───────────────────────────────────────────────────────────────────────────
 // バッチM20(§5.21): 囲いゲート(1/2)の恒久解除メタ。ステージ毎に個別保持(WallMetaと同じ方針)。
 // 社長決定v0.25.1518: クリアし、そのランを死亡以外(クリア/撤退)で終えると以後のランで出現しなくなる。

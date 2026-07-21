@@ -154,4 +154,14 @@ describe('開始最低ランク(stageMinStartRank / effectiveStartRank・v0.25.1
     setStartRankFromFinal('stage-1', 4);
     expect(effectiveStartRank('stage-1')).toBe(4);
   });
+  it('stageInRunFloorRank: ラン中の降格下限=最低ランクの1つ下(全体下限1)', async () => {
+    const { stageInRunFloorRank } = await import('./progress');
+    expect(stageInRunFloorRank('stage-6')).toBe(4); // 最低5→4まで(社長の例)
+    expect(stageInRunFloorRank('stage-5')).toBe(3); // 最低4→3まで
+    expect(stageInRunFloorRank('stage-4')).toBe(2); // 最低3→2まで
+    expect(stageInRunFloorRank('stage-3')).toBe(1); // 最低2→1まで
+    expect(stageInRunFloorRank('stage-1')).toBe(1); // 最低1→1(全体下限で頭打ち)
+    expect(stageInRunFloorRank('stage-7')).toBe(1);
+    expect(stageInRunFloorRank('stage-tutorial')).toBe(1);
+  });
 });

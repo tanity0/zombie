@@ -135,10 +135,15 @@ PACING_REDESIGN.mdは前提知識(旧仕様)として参照可。矛盾したら
   - stage-1/2=**1**(フロアなし相当) / stage-3=**2** / stage-4=**3** / stage-5=**4** / stage-6=**5**。
   - stage-7=**1**(ボス専用だが攻撃パターン切替に別軸で使う予定・社長メモ)。
   - **チュートリアル(stage-tutorial)・EX・未指定=フロアなし(=1)**=除外。
-- **フロアは「開始時のみ」**。ラン中はこの下限を割ってよい(例: stage-3=最低2で、査定で降格してランク1まで
-  落ちて死んでも、次ランはまた2から開始。ランク3で死んだら持ち越し3>最低2なので3から開始)。
+- **開始フロア**は「開始時のみ」効く(開始ランク=`max(持ち越し, 最低ランク)`)。ランク3で死んだら持ち越し3>
+  最低2なので3から開始。
+- **ラン中の降格下限(社長決定v0.25.1988)**: ラン中は開始最低ランクの**1つ下**まで落ちられるが、それ以下には
+  降格しない。例: stage-6(最低5)はラン中4まで/ stage-3(最低2)は1まで(=前の例「1で死んでもまた2から」と整合)。
+  全体下限はR1。**昇格は下限に関係なく通る**(下限は降格側のみ)。
 - 実装: `stageMinStartRank`(純関数・ステージ→最低ランク)+`effectiveStartRank`=`max(getStartRank, stageMinStartRank)`
-  (progress.ts)。シード`seededPuzzleClockState`が`getStartRank`→`effectiveStartRank`に切替。ユニット追加。
+  +`stageInRunFloorRank`=`max(1, stageMinStartRank-1)`(progress.ts)。シード`seededPuzzleClockState`が
+  `effectiveStartRank`で開始ランク、`stageInRunFloorRank`を`PuzzleClockState.minRank`にセット。`applyRankDelta`
+  (rankAssessor.ts)が非R7降格を`minRank`で頭打ち。ユニット追加(progress/rankAssessor)。
 
 ### 3-F. ランク演出の変更(社長指示v0.25.1845)
 - **演出(銘打ち)は毎回何度でも出す**(旧・isFirstRankReachのステージ毎初回限定を撤廃。

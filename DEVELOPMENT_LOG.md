@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1989 — ラン中の降格下限=開始最低ランクの1つ下【2026-07-21 16:01 JST】
+- 指示(社長): 最低ランクから下回るのは1ランクまでにする(例: 最低5なら4までしか下がらない)。
+- 対処: `PuzzleClockState`に`minRank?`(ラン中の降格の絶対下限・省略=1)を追加。`applyRankDelta`(rankAssessor.ts)の非R7降格を`Math.max(minRank, rank+delta)`で頭打ち。`progress.ts`に純関数`stageInRunFloorRank(stageId)=max(1, stageMinStartRank-1)`を追加し、`seededPuzzleClockState`が開始時に`minRank`へセット。**昇格は下限に無関係(下限は降格側のみ)**。R7の上限成長/R7→R6降格はminRank(最大4)より常に上なので非干渉。
+- 各ステージのラン中下限: stage-6=4 / stage-5=3 / stage-4=2 / stage-3=1 / stage-1・2・7=1(=従来どおり)。
+- 検証: typecheck OK。ユニット追加(progress.test.ts=stageInRunFloorRankの各値・18 tests / rankAssessor.test.ts=minRankで降格頭打ち・未指定は1まで・昇格は通る・52 tests、計70 green)。実機での降格下限は社長へ持ち越し。
+- 自己点検: 仕様追加=社長明示指示。第4条(初心者ゾーン=距離ゾーン・ランク非依存)非抵触・第5条(緩を荒らさない=昇格/緩急ロジックは不変・降格の下限のみ追加)非抵触。stage1/2/7=下限1=従来と同一挙動。
+- 負荷: 0/10(査定確定時の`max`一発・毎フレーム処理なし)。
+- Files: `src/utils/rankAssessor.ts`, `src/utils/rankAssessor.test.ts`, `src/data/progress.ts`, `src/data/progress.test.ts`, `src/hooks/useGameLoop.ts`, `PACING_PUZZLE.md`(§3-E'更新), `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1988 — 遠景の森1/森2のぼかしを増強【2026-07-21 15:25 JST】
 - 指示(社長): 地平の森1=0.8 / 近い森2=0.5 に変更。
 - 対処: `HORIZON_FOREST_BLUR` 0.65→**0.8**、`NEAR_HORIZON_BLUR` 0.35→**0.5**(`pixiScene.ts`)。遠景backdrop(1.1)・前景森(2.2)は据え置き。`?fardof=`倍率はこの新基準に掛かる。
