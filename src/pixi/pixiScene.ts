@@ -1616,6 +1616,14 @@ export class PixiScene {
     const scaleY = scale * tsNum('cloudshadowyscale', 0.5);
     sp.tileScale.set(scale, scaleY);                  // 縦を圧縮=接地した遠近感
     sp.alpha = tsNum('cloudshadowalpha', 1.0);        // 濃さ=1.0(社長指示v0.25.1977)
+    // ステージ7は影を濃く(社長指示v0.25.1994)。multiplyのalphaは1.0が上限なので、暗いtintで乗算を深める
+    // (小さいほど濃い=blob部だけ暗くなる。0.5=既定)。他ステージは白(=従来どおり)。?cloudshadow7dark=で調整。
+    if (this.currentFarKey === 'stage7') {
+      const g = Math.round(255 * Math.max(0, Math.min(1, tsNum('cloudshadow7dark', 0.5))));
+      sp.tint = (g << 16) | (g << 8) | g;
+    } else if (sp.tint !== 0xffffff) {
+      sp.tint = 0xffffff;
+    }
     const spd = tsNum('cloudshadowspeed', night ? 0.008 : 0.011); // もう少し速く(社長指示v0.25.1977)。夜=ゆっくりめ / 昼=標準
     // ステージ4(雪)は雲影のドリフト向きを雪と同じ(=現状の逆)にし、少し速く(社長指示v0.25.1984)。
     const snow = this.snowStage;
@@ -1689,15 +1697,18 @@ export class PixiScene {
     sp.width = this.screenW + 2;
     sp.height = this.screenH + 2;
     sp.alpha = tsNum('snowair', 0.4);
-    // 遠景森の前の霧(森2の手前)。地平帯に横長。雪と同じ向き(左)へ少し速く流す。
+    // 遠景森の前の霧(森2の手前)。地平帯(farH付近)に横長。雪と同じ向き(左)へ少し速く流す。
+    // 位置・高さは screenH ではなく farH(遠景の境界)基準=端末アスペクト非依存(社長指示v0.25.1994「縦画面で
+    // 全く見えない」対応=旧screenH基準だと縦長端末で帯が明るい氷原に伸びて薄まり不可視だった)。
     const farH = this.farBackdropHeight();
     const fw = this.snowHorizonFog;
-    fw.position.set(0, farH - this.screenH * tsNum('snowfogup', 0.05));
+    const bandH = Math.max(70, farH * tsNum('snowfogh', 0.55)); // 帯高=遠景高基準(最低70px)=地平に密な帯
+    fw.position.set(0, farH - bandH * tsNum('snowfogup', 0.7)); // 帯の大半を地平(森)より上に、一部を下へ
     fw.width = this.screenW;
-    fw.height = this.screenH * tsNum('snowfogh', 0.3);
+    fw.height = bandH;
     const ftex = fw.texture;
     if (ftex && ftex.width > 1) fw.tileScale.set((fw.width / ftex.width) * 1.5, fw.height / ftex.height);
-    fw.alpha = tsNum('snowfog', 0.7); // 遠景森前の霧の濃さ(0.38→0.7=はっきり見える濃さ・社長指示v0.25.1992)
+    fw.alpha = tsNum('snowfog', 0.7); // 遠景森前の霧の濃さ
     fw.tilePosition.x = (-now * tsNum('snowfogspeed', 0.03)) % 2048; // 左へ流す(雪と同じ向き)
   }
   private nearGroundBlurFilters: BlurFilter[] = [];

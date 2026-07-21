@@ -72,23 +72,27 @@ const VitalsOrb: React.FC = () => {
             </linearGradient>
           </defs>
 
-          {/* オーブ土台(暗い球) */}
-          <circle cx={CX} cy={CY} r={ORB_R} fill="rgba(10,10,16,0.78)" />
-          {/* HP 液面(下から満ちる) */}
-          <g clipPath="url(#orbClip)">
-            <rect
-              x={CX - ORB_R}
-              y={fillTopY}
-              width={ORB_R * 2}
-              height={Math.max(0, CY + ORB_R - fillTopY)}
-              fill="url(#hpFill)"
-              fillOpacity={0.7}
-              style={{ transition: 'y 280ms ease-out, height 280ms ease-out' }}
-            />
-            {/* 液面のハイライト線 */}
-            {hpFrac > 0.02 && hpFrac < 0.99 && (
-              <rect x={CX - ORB_R} y={fillTopY} width={ORB_R * 2} height={2} fill="rgba(255,255,255,0.35)" />
-            )}
+          {/* オーブ土台+HP液面をまとめて不透明度70%に(社長指示v0.25.1994「後ろの紫を70%」。
+              fill-opacityだけだと暗い土台の上で70%が沈んで見えない=グループ全体を70%にして地の背景を30%透かす)。
+              数字/ガラス艶/縁/EXPリングは据え置き=視認性維持。 */}
+          <g opacity={0.7}>
+            {/* オーブ土台(暗い球) */}
+            <circle cx={CX} cy={CY} r={ORB_R} fill="rgba(10,10,16,0.78)" />
+            {/* HP 液面(下から満ちる) */}
+            <g clipPath="url(#orbClip)">
+              <rect
+                x={CX - ORB_R}
+                y={fillTopY}
+                width={ORB_R * 2}
+                height={Math.max(0, CY + ORB_R - fillTopY)}
+                fill="url(#hpFill)"
+                style={{ transition: 'y 280ms ease-out, height 280ms ease-out' }}
+              />
+              {/* 液面のハイライト線 */}
+              {hpFrac > 0.02 && hpFrac < 0.99 && (
+                <rect x={CX - ORB_R} y={fillTopY} width={ORB_R * 2} height={2} fill="rgba(255,255,255,0.35)" />
+              )}
+            </g>
           </g>
           {/* ガラスの艶 */}
           <ellipse cx={CX} cy={CY - ORB_R * 0.42} rx={ORB_R * 0.6} ry={ORB_R * 0.32} fill="rgba(255,255,255,0.12)" />
