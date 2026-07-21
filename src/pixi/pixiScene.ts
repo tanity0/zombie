@@ -368,9 +368,10 @@ const LAB_PERSP_FAR = tsNum('labperspfar', 0.04);    // 奥のタイル縦縮み
 const LAB_PERSP_CURVE = tsNum('labperspcurve', 2.8); // 収束カーブ(大=手前が急に大きく/奥へ急収束)
 const TILT_SHIFT_ENABLED =typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ts') !== '0';
 const TILT_SHIFT_BLUR = tsNum('tsblur', 14);       // max blur strength at the edges
-// 上部(遠景側)の被写界深度ぼかしの倍率(社長指示v0.25.1983「上部の被写界深度を濃くするか否かのパラメータ」)。
-// TiltShiftは沿面対称なので、ピント面(TILT_SHIFT_BAND)より上=遠景側が最も強くボケる=上部DoFの体感濃度をこれで上下できる。1=従来。
-const TILT_SHIFT_UPPER = Math.max(0, tsNum('tsupper', 1));
+// 遠景の被写界深度ぼかしの倍率(社長指示v0.25.1985「被写界深度は遠景の話、森とセットで」)。
+// v1983の?tsupper=(プレイ面のtilt-shift)は狙いが違ったので撤去し、遠景レイヤー(遠景backdrop+地平の森1/
+// 近い森2)のブラー強度をまとめて上下する本パラメータへ付け替え。前景森(frontForest)は手前ボケなので対象外。1=従来。
+const FAR_DOF_MULT = Math.max(0, tsNum('fardof', 1));
 const TILT_SHIFT_GRADIENT = tsNum('tsgrad', 440);  // px over which sharp ramps into blur
 const TILT_SHIFT_BAND = tsNum('tsband', 0.54);     // sharp-band centre as a fraction of height(camdown=0.08でプレイヤーが0.58へ下がるのに合わせ下げる)
 
@@ -1840,7 +1841,7 @@ export class PixiScene {
     }
 
     this.farBackdropBlur = new BlurFilter({
-      strength: FAR_BACKDROP_BLUR,
+      strength: FAR_BACKDROP_BLUR * FAR_DOF_MULT, // ?fardof= で遠景の被写界深度を調整(遠景+森セット)
       quality: 2,
     });
     // 遠景と川の筋レイヤーを同じグループに入れ、グループにブラーを掛ける(=筋も同じ被写界深度に
@@ -1878,7 +1879,7 @@ export class PixiScene {
     // 縮小モアレは別途抑えているので、ボケ無しでも斜め格子は出ない。
     if (HORIZON_FOREST_BLUR > 0) {
       this.horizonForestBlur = new BlurFilter({
-        strength: HORIZON_FOREST_BLUR,
+        strength: HORIZON_FOREST_BLUR * FAR_DOF_MULT, // ?fardof= で遠景の森1も同倍率でぼかす
         quality: 2,
       });
       this.L.horizonForest.filters = this.cineEnabled ? [] : [this.horizonForestBlur];
@@ -1886,7 +1887,7 @@ export class PixiScene {
 
     if (NEAR_HORIZON_BLUR > 0) {
       this.nearHorizonBlur = new BlurFilter({
-        strength: NEAR_HORIZON_BLUR,
+        strength: NEAR_HORIZON_BLUR * FAR_DOF_MULT, // ?fardof= で近い森2も同倍率でぼかす
         quality: 2,
       });
       this.L.nearHorizon.filters = this.cineEnabled ? [] : [this.nearHorizonBlur];
@@ -2269,7 +2270,7 @@ export class PixiScene {
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: w * vpScale, y: bandY };
       this.tiltShift.gradientBlur = TILT_SHIFT_GRADIENT * vpScale;
-      this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale * TILT_SHIFT_UPPER; // ?tsupper= で上部DoFの濃さを調整
+      this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale;
     }
   }
 
@@ -3579,7 +3580,7 @@ export class PixiScene {
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: this.screenW * vpScale, y: bandY };
       this.tiltShift.gradientBlur = TILT_SHIFT_GRADIENT * vpScale;
-      this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale * TILT_SHIFT_UPPER; // ?tsupper= で上部DoFの濃さを調整
+      this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale;
     }
     // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。
@@ -4284,8 +4285,19 @@ export class PixiScene {
         f.y += f.vy * sec;
       }
       // Wrap into the visible band so density follows the camera.
-      if (f.x < minX) f.x = maxX; else if (f.x > maxX) f.x = minX;
-      if (f.y < minY) f.y = maxY; else if (f.y > maxY) f.y = minY;
+      if (snow) {
+        // 吹雪は定常の強風で全粒がほぼ同速で流れるため、ラップ時にyを保つと同じ高さの列に溜まって
+        // 「まとまり(縦の筋)」ができる。ラップした軸の反対側を毎回ランダムに散らして、端から新しい雪片
+        // として入り直させる=均一な降りに戻す(社長指示v0.25.1985「均一に出るようにしてほしい」)。
+        // Math.random()はラップ時(=端を越えた粒だけ)のみ=毎フレーム全粒には走らない=負荷据え置き。
+        if (f.x < minX) { f.x = maxX; f.y = minY + Math.random() * (maxY - minY); }
+        else if (f.x > maxX) { f.x = minX; f.y = minY + Math.random() * (maxY - minY); }
+        if (f.y > maxY) { f.y = minY; f.x = minX + Math.random() * (maxX - minX); }
+        else if (f.y < minY) { f.y = maxY; f.x = minX + Math.random() * (maxX - minX); }
+      } else {
+        if (f.x < minX) f.x = maxX; else if (f.x > maxX) f.x = minX;
+        if (f.y < minY) f.y = maxY; else if (f.y > maxY) f.y = minY;
+      }
       f.sprite.position.set(f.x - camera.x, f.y - camera.y);
       if (snow) {
         f.sprite.tint = SNOW_TINT;
