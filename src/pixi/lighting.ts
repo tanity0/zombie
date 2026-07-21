@@ -212,21 +212,22 @@ export const getCineSunTexture = (): Texture => {
   if (cineSunTex) return cineSunTex;
   const s = 384; const c = document.createElement('canvas'); c.width = c.height = s;
   const ctx = c.getContext('2d')!; const cx = s / 2, cy = s / 2;
+  // できる限り明るく(社長指示v0.25.1972): 白熱コアを完全(1.0)+明るい芯を広げる+ハローを強める。bloomにも強く拾わせる。
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, s / 2);
-  halo.addColorStop(0.0, 'rgba(255,250,235,0.95)');
-  halo.addColorStop(0.06, 'rgba(255,225,170,0.9)');
-  halo.addColorStop(0.16, 'rgba(255,160,80,0.55)');
-  halo.addColorStop(0.34, 'rgba(220,90,45,0.22)');
-  halo.addColorStop(0.62, 'rgba(140,45,35,0.05)');
+  halo.addColorStop(0.0, 'rgba(255,253,245,1.0)');  // 白熱コア=完全
+  halo.addColorStop(0.10, 'rgba(255,238,200,1.0)'); // 明るい芯を広げる(0.06→0.10)
+  halo.addColorStop(0.22, 'rgba(255,180,100,0.78)');// ハローを強く・広く
+  halo.addColorStop(0.40, 'rgba(230,105,55,0.34)');
+  halo.addColorStop(0.65, 'rgba(155,52,40,0.09)');
   halo.addColorStop(1.0, 'rgba(120,40,40,0.0)');
   ctx.fillStyle = halo; ctx.fillRect(0, 0, s, s);
-  // 十字の光条(スターバースト)。加算。焼き込みαは補正済み(スプライトα0.95でも元0.67時代の見えに一致=十字は明るくしない)。
+  // 十字の光条(スターバースト)。加算。焼き込みαは補正済み(スプライトα1.0でも元0.67時代の見えに一致=十字は明るくしない)。0.32×0.67=0.214 / 0.2×0.67=0.134。
   ctx.globalCompositeOperation = 'lighter';
   const gx = ctx.createLinearGradient(0, cy, s, cy);
-  gx.addColorStop(0, 'rgba(255,200,140,0)'); gx.addColorStop(0.5, 'rgba(255,210,150,0.226)'); gx.addColorStop(1, 'rgba(255,200,140,0)');
+  gx.addColorStop(0, 'rgba(255,200,140,0)'); gx.addColorStop(0.5, 'rgba(255,210,150,0.214)'); gx.addColorStop(1, 'rgba(255,200,140,0)');
   ctx.fillStyle = gx; ctx.fillRect(0, cy - 1.5, s, 3);
   const gy = ctx.createLinearGradient(cx, 0, cx, s);
-  gy.addColorStop(0, 'rgba(255,190,130,0)'); gy.addColorStop(0.5, 'rgba(255,200,140,0.141)'); gy.addColorStop(1, 'rgba(255,190,130,0)');
+  gy.addColorStop(0, 'rgba(255,190,130,0)'); gy.addColorStop(0.5, 'rgba(255,200,140,0.134)'); gy.addColorStop(1, 'rgba(255,190,130,0)');
   ctx.fillStyle = gy; ctx.fillRect(cx - 1.5, 0, 3, s);
   cineSunTex = Texture.from(c); return cineSunTex;
 };

@@ -100,7 +100,7 @@ const CINE_WARM_ON = DZ_PARAMS?.get('cinewarm') !== '0';
 const CINE_SUN_X_FRAC = 0.62;
 // フレアの煌めき(社長指示v0.25.1871「動きは少し・薄濃で煌めき」): 位置ドリフトは減らし alpha を揺らす。
 // 光源(太陽)は常時最大で固定=煌めかせない(社長指示v0.25.1885)。煌めきは周りの放射光(cineClouds)側だけ。
-const CINE_SUN_ALPHA_MAX = 0.95;           // 光源(cineSun=M7の太陽・十字なしの丸い光)の常時最大alpha(社長「光源だけもう少し明るく」v0.25.1961:0.67→0.82→v0.25.1963:0.95)
+const CINE_SUN_ALPHA_MAX = 1.0;            // 光源(cineSun=M7の太陽)の常時最大alpha(社長: 0.67→0.82→0.95→v0.25.1972「できる限り明るく」=1.0)
 const CINE_CLOUD_ALPHA_BASE = 0.7;         // 放射streak(cineClouds)の基準alpha
 // 放射streak(光の線)の「出没=煌めき」定数は tsNum 定義後(下方)に置く(?cloud*= で現地調整可・社長指示v0.25.1906)。
 // 影(社長指示v0.25.1871): 光源が右上へ寄ったので、影は斜め左下へ(光源側を少し残す)。
