@@ -214,9 +214,10 @@ export const getCloudShadowTexture = (cool = false): Texture => {
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, s, s); // 白ベース=multiplyで無変化
   let seed = 987654321; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
   ctx.globalCompositeOperation = 'multiply'; // 斑同士も重ねて濃淡
-  for (let i = 0; i < 11; i++) {
+  // 斑を少し減らし+小さく=影の面積(割合)を下げて光の余白を増やす(社長指示v0.25.1978「影の割合が少しだけ多い・濃さではなく」)。濃さ(α)は据え置き。
+  for (let i = 0; i < 9; i++) {
     const bx = rnd() * s, by = rnd() * s;
-    const r = s * (0.13 + rnd() * 0.17);
+    const r = s * (0.11 + rnd() * 0.15);
     const v = Math.round((0.24 + rnd() * 0.22) * 255); // 影の濃さ(小=濃い)。濃くして視認性UP(社長「どこに雲影ある？」v0.25.1976)
     // 夜=R/Gを多めに落とし青を残す=寒色の影。昼=中立グレー。
     const rr = cool ? Math.round(v * 0.80) : v;
