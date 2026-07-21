@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1982 — ステージ4もっと吹雪+ステージ3に明暗差(オクトラ風)【2026-07-21 14:41 JST】
+- 指示(社長): ①ステージ4もっと吹雪いて ②ステージ3=太陽光当たるところもっと明るく・オクトラのフィールド参考に明暗の差を出したい。
+- 対処:
+  - **stage-4 吹雪強化**: 雪数 120→**180**(`?snowcount=`)・横風 -140→**-210**(`?snowwind=`)・落下 1.7→**2.1**(`?snowfall=`)=より横殴りで密な吹雪。
+  - **stage-3 明暗差**: ①昼の斜光を強く= `SHAFT_DAY_BOOST` 1.6→**2.4**(太陽光当たるところ=光条をもっと明るく)。②**昼コントラスト** `dayContrast`(ColorMatrixFilter: contrast0.34+brightness+saturate)を **worldGroup(地面含む画面全体)に常時**適用(day限定・非cine)。`syncWorldGroupFilters`で昼コントラスト(常時)+光パンチ(イベント)を合成。明るいとこ明るく/暗いとこ暗く=オクトラ風のフィールド明暗差。
+- 検証: ヘッドレスで city=daylight・dayContrast worldGroupに付与(wgFilters1)・斜光bright、snow=雪180・dayContrast非適用。pageErrors0。実描画で city=石畳に明暗の強い光の帯(golden)+暗部、snow=より密な横殴り吹雪。typecheck OK。
+- 自己点検: 描画のみ・挙動不変。負荷: stage-4吹雪 3/10(additive粒180=pooled安価)。stage-3 dayContrast 2〜3/10(昼のみ常時の全画面ColorMatrix1パス=実測で全画面フィルタは律速でない)。`?daycontrast=` /?daybright= /?daysat= で調整。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1981 — ステージ5の戦争照明を遠景森2(nearHorizon)の裏へ【2026-07-21 14:34 JST】
 - 指示(社長): ステージ5のやつ(戦争照明)を遠景森2の裏に。
 - 対処: `stage5FireGlow`+`stage5Flashes`(4)を uiLayer(最前面)から **worldGroup内の nearHorizon(森2)直前** へ移設(加算)。z順=森1→戦争照明→森2。森2のシルエットが手前に立ち「遠くの戦火」感に。

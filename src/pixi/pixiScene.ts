@@ -403,7 +403,7 @@ const LAB_WALL_RISE = Math.max(0, tsNum('labrise', 38));
 const SHAFT_ALPHA = Math.max(0, tsNum('shaft', 0.5));
 // 昼ステージ(ステージ3=正午)の斜め日光シャフトだけ濃く(明るく)する倍率。夜(月明り)は不変。
 // ?shaftday= で生調整。既定1.6(社長指示で暫定確定)。
-const SHAFT_DAY_BOOST = Math.max(0, tsNum('shaftday', 1.6));
+const SHAFT_DAY_BOOST = Math.max(0, tsNum('shaftday', 2.4)); // 昼(city)の日差しを強く=太陽光当たるところをもっと明るく(社長指示v0.25.1982)
 // 環境光シャフトの横パララックス: 左右の移動(camera.x)に連動して森のように流れる。
 // 0=動かない。森より遅め(front forest=0.68)。?shaftpara= で生調整。
 const SHAFT_PARALLAX_X = Math.max(0, tsNum('shaftpara', 0.35));
@@ -601,7 +601,7 @@ const ACTIVE_STAGE_LIGHTING = STAGE_LIGHTING_PRESETS[ACTIVE_STAGE_LIGHTING_NAME]
 const FIREFLY_ENABLED = true;
 const FIREFLY_COUNT = 40;
 // ステージ4(snow)は蛍プールを雪に流用=吹雪化で数を増やす(社長指示v0.25.1979「もっと吹雪かせたい」)。?snowcount= で調整。M1(蛍)は40のまま。
-const SNOW_MOTE_COUNT = Math.max(1, Math.round(tsNum('snowcount', 120)));
+const SNOW_MOTE_COUNT = Math.max(1, Math.round(tsNum('snowcount', 180)));
 const FIREFLY_TINT = 0xcfe89a;   // soft warm green-yellow
 const FIREFLY_MARGIN = 90;       // spawn/recycle band around the visible view
 
@@ -1446,6 +1446,7 @@ export class PixiScene {
   private punchGrade: ColorMatrixFilter | null = null;   // 攻撃/爆発の光コントラストパンチ(?punchgrade=1・遅延生成)
   private punchStrength = 0;                             // 現在のパンチ強度(0..1・フラッシュ envelope 追従)
   private punchInList = false;                           // punchGrade が worldGroup.filters(地面含む画面全体)に入っているか(付け外し=イベント時のみ)
+  private dayContrast: ColorMatrixFilter | null = null;  // 昼(city)の明暗差を広げる常時コントラスト(worldGroup・day限定・オクトラ風。社長指示v0.25.1982)
   private cloudShadow = new TilingSprite({ texture: getCloudShadowTexture(), width: 1, height: 1 }); // フィールドの動く雲影(multiply・地面の上・屋外のみ)
   private bloomActive = true; // 現在ブルームをフィルタ配列に入れているか(オプション反映用)
   private farBackdropBlur: BlurFilter | null = null;
@@ -1493,6 +1494,7 @@ export class PixiScene {
     // 斜め光(god ray)は resize 時しか再生成しないので、昼/夜切替時にここで描き直す
     // (色・濃さ・拡散具合が preset で変わるため)。
     this.updateStageLightShafts(this.screenW, this.screenH);
+    this.syncWorldGroupFilters(); // 昼(city)は明暗差コントラストを worldGroup に付ける/夜は外す(社長指示v0.25.1982)
   }
 
   // シネマティック調(?cine=1 & stage-7)。寒色gradeを teal 寄りへ+減光強め+残照overlay表示。
@@ -1535,6 +1537,24 @@ export class PixiScene {
     this.L.filteredWorld.filters = filters;
   }
 
+  // worldGroup(=地面含む画面全体)のフィルタを、昼コントラスト(常時・day限定)+光パンチ(イベント時)から組み立てて反映。
+  // 昼(city)は明暗差を広げるコントラストを常時掛ける=「明るいところと暗いところの差」(オクトラ風・社長指示v0.25.1982)。
+  private syncWorldGroupFilters() {
+    const filters: Filter[] = [];
+    if (this.daylight && !this.cineEnabled) {
+      if (!this.dayContrast) {
+        const f = new ColorMatrixFilter();
+        f.contrast(tsNum('daycontrast', 0.34), false);    // 明暗差を広げる(明るいとこ明るく/暗いとこ暗く)
+        f.brightness(1 + tsNum('daybright', 0.04), true); // 全体を少しだけ持ち上げ
+        f.saturate(tsNum('daysat', 0.12), true);          // 彩度も少し
+        this.dayContrast = f;
+      }
+      filters.push(this.dayContrast);
+    }
+    if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
+    this.L.worldGroup.filters = filters;
+  }
+
   // 攻撃/爆発の「光フラッシュ」に追従して画面全体コントラストを一瞬パンチする(?punchgrade=1・既定OFF)。
   // 色は既存 flashGfx が担当。ここは階調(影締まり+ハイライト飛び)だけ。フィルタは強度>0の間だけ worldGroup(=地面+森+アクター+効果=画面全体)に入れる(社長v0.25.1973「発光は地面も=画面全体」)。
   private updatePunchGrade(effects: VisualEffect[], now: number) {
@@ -1557,9 +1577,9 @@ export class PixiScene {
       const k = this.punchStrength;
       this.punchGrade.contrast(k * tsNum('punchcontrast', 1.2), false); // 影締まり+ハイライト飛び。最大値へ(社長v0.25.1977)。?punchcontrast=
       this.punchGrade.brightness(1 + k * tsNum('punchbright', 0.22), true); // 全体を持ち上げ(?punchbright=)
-      if (!this.punchInList) { this.punchInList = true; this.L.worldGroup.filters = [this.punchGrade]; } // 立ち上がり時だけ worldGroup(地面含む画面全体)へ付ける
+      if (!this.punchInList) { this.punchInList = true; this.syncWorldGroupFilters(); } // 立ち上がり時だけ付ける(昼コントラストと合成)
     } else if (this.punchInList) {
-      this.punchStrength = 0; this.punchInList = false; this.L.worldGroup.filters = []; // 減衰しきったら外す
+      this.punchStrength = 0; this.punchInList = false; this.syncWorldGroupFilters(); // 減衰しきったら外す(昼コントラストは残る)
     }
   }
 
@@ -4209,8 +4229,8 @@ export class PixiScene {
     const snow = this.snowStage;
     let windX = 0, windY = 0;
     // 吹雪: 定常の強い横風(立ち止まっていても駆け抜ける)+落下加速(社長指示v0.25.1979「もっと吹雪かせたい」)。?snowwind= /?snowfall= で調整。
-    const blizzardWind = snow ? tsNum('snowwind', -140) : 0; // 定常の横風(左へ駆ける)
-    const fallBoost = snow ? tsNum('snowfall', 1.7) : 1;     // 落下速度の倍率
+    const blizzardWind = snow ? tsNum('snowwind', -210) : 0; // 定常の横風(左へ駆ける・もっと吹雪く v0.25.1982)
+    const fallBoost = snow ? tsNum('snowfall', 2.1) : 1;     // 落下速度の倍率(もっと吹雪く)
     if (snow) {
       const p = useGameStore.getState().player;
       windX = -(p.vx ?? 0) * SNOW_WIND_FACTOR; // 進む方向と逆へ雪が流れる=移動連動
