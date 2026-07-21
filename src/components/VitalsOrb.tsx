@@ -82,6 +82,7 @@ const VitalsOrb: React.FC = () => {
               width={ORB_R * 2}
               height={Math.max(0, CY + ORB_R - fillTopY)}
               fill="url(#hpFill)"
+              fillOpacity={0.7}
               style={{ transition: 'y 280ms ease-out, height 280ms ease-out' }}
             />
             {/* 液面のハイライト線 */}

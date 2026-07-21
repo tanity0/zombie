@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1990 — HPオーブの紫の液面を不透明度70%へ【2026-07-21 16:09 JST】
+- 指示(社長): HP表示の紫色のとこ、不透明度70%で。
+- 対処: `VitalsOrb.tsx`のHP液面(紫グラデ`url(#hpFill)`のrect)に `fillOpacity={0.7}` を追加。数字/土台/縁/EXPリングは不変。
+- 検証: typecheck OK。描画のみ・負荷0/10。
+- Files: `src/components/VitalsOrb.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1989 — ラン中の降格下限=開始最低ランクの1つ下【2026-07-21 16:01 JST】
 - 指示(社長): 最低ランクから下回るのは1ランクまでにする(例: 最低5なら4までしか下がらない)。
 - 対処: `PuzzleClockState`に`minRank?`(ラン中の降格の絶対下限・省略=1)を追加。`applyRankDelta`(rankAssessor.ts)の非R7降格を`Math.max(minRank, rank+delta)`で頭打ち。`progress.ts`に純関数`stageInRunFloorRank(stageId)=max(1, stageMinStartRank-1)`を追加し、`seededPuzzleClockState`が開始時に`minRank`へセット。**昇格は下限に無関係(下限は降格側のみ)**。R7の上限成長/R7→R6降格はminRank(最大4)より常に上なので非干渉。
