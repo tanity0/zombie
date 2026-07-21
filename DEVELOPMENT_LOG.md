@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1999 — M7ボス(グレン)の新アートを差し替え(社長支給・見た目のみ)【2026-07-21 23:02 JST】
+- 指示(社長): M7のボスの新アート(グレン・赤触手+黒マント)を支給→「組み込む(見た目差し替え)」選択。
+- 対処:
+  - 支給画像の**灰色背景を透過**(境界からのflood fill=キャラ内部のグレーは温存)+焼き込み影を除去→`public/sprites/glen-boss.png`(1096×868・透過PNG)。
+  - `pixiTextures.ts`で`glen-boss`をロード登録(linear=詳細イラスト調・トールの刀と同方針)。loadProgress件数+1。
+  - `drawEnemy`のテクスチャ選択に**stage-7のgiantbatだけ`glen-boss`へ差し替え**る分岐を最優先で追加。**挙動/攻撃/当たり判定/AIはgiantbatのまま流用=見た目だけ差し替え**(静止1ポーズ)。
+- 検証: typecheck OK。stage-7実走でボス出現時にグレン絵が出るか確認(ヘッドレス撮影)。
+- 自己点検: 描画のみ・stage-7のgiantbatのみ分岐(他ステージ/他敵は不変)。仕様(挙動)は不変。負荷: 0/10(1枚テクスチャの差し替え)。
+- 備考: 単一ポーズ=歩き/攻撃アニメは無し(社長選択どおり)。足元にわずかな焼き込み影残りがあれば追い処理可。
+- Files: `public/sprites/glen-boss.png`(新規), `src/pixi/pixiTextures.ts`, `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1998 — ステージ7の雲影を案A(通常合成の黒=プレイヤー影と同じ重ね方)に【2026-07-21 22:47 JST】
 - 指示(社長): 雲影とプレイヤー影の重ね方の違いを説明→「ステージ7だけaにしてみて」(案A=通常合成の黒)。
 - 対処: `updateCloudShadow`でステージ7だけ **blendMode 'multiply'→'normal' / tint 灰→黒(0x000000) / alpha=`?cloudshadow7alpha`(0.5)** に切替。乗算は暗い地面で黒に埋もれて消えるため、stage7はプレイヤー影と同じ「黒を通常αで塗る」方式=暗所でも黒い雲影が乗る。他ステージは従来の乗算のまま(光を遮る物理的な影)。

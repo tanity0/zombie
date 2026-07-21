@@ -6983,7 +6983,9 @@ export class PixiScene {
     // ステージ3(daylight=farBackdrop'city')は廃都セット、ステージ4(snowStage='snow')は雪原セットに敵絵を
     // 差し替え。次にlab、無ければ既定アトラス。
     const tex = getTexture(
-      (this.daylight ? stage3EnemyTextureName(e.type) : null)
+      // M7ボス=stage-7のgiantbatだけグレンの新アートに差し替え(社長支給v0.25.1999)。挙動/攻撃/当たり判定はgiantbat流用=見た目だけ。
+      ((this.currentFarKey === 'stage7' && e.type === 'giantbat') ? 'glen-boss' : null)
+      ?? (this.daylight ? stage3EnemyTextureName(e.type) : null)
       ?? (this.snowStage ? stage4EnemyTextureName(e.type) : null)
       ?? (this.battlefieldStage ? stage5EnemyTextureName(e.type) : null)
       ?? labEnemyTextureName(e.type, e.id)

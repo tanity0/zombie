@@ -367,7 +367,7 @@ export const ensureTextures = (): Promise<void> => {
     // ローディング%(社長指示v0.25.1776): このローダが読むファイル総数を先に一括登録する
     // (atlas 1 + standalone + 色キー5 + atlas-px上書き + 単発3=tree-new2/tree-snow/castle-church)。
     // 完了カウントは loadOne / loadKeyed の finally が1ずつ進める。
-    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 3);
+    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 4); // +4=tree-new2/tree-snow/castle-church/glen-boss
 
     // 1アセットのロード失敗が全体を巻き込まないよう個別に握りつぶす。失敗した絵は
     // 未登録(getTexture=null)になり、その描画だけスキップ/手続き描画にフォールバック。
@@ -465,6 +465,10 @@ export const ensureTextures = (): Promise<void> => {
     // farBackdrop により出し分ける(city=教会 / その他=castle.png)。
     const church = await loadOne('castle-church');
     if (church) { church.source.scaleMode = 'nearest'; textures.set('castle-church', church); }
+    // M7ボス=グレンの1枚絵(社長支給v0.25.1999・背景透過済み)。stage-7のgiantbatだけこの絵に差し替え(挙動はgiantbat流用)。
+    // 詳細イラスト調なので linear(トールの刀と同方針)。
+    const glenBoss = await loadOne('glen-boss');
+    if (glenBoss) { glenBoss.source.scaleMode = 'linear'; textures.set('glen-boss', glenBoss); }
 
     // 敵スプライトのアスペクト(texH/texW)を登録(PHILLサークルの頭スナップを実描画に合わせる)。
     const regAspect = (key: string, texName: string) => {
