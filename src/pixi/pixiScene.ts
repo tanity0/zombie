@@ -1912,7 +1912,7 @@ export class PixiScene {
     this.stage7CloudGroup.visible = false;
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
-      this.gradeSprite, this.cineSun, // 光の線(cineCloudLayers)は森2の裏へ移すのでここには入れない(社長指示v0.25.1912)
+      this.gradeSprite, // cineSun(M7の太陽)は遠景森1の裏へ移設=下のstageCへ(社長指示v0.25.1970)。光の線(cineCloudLayers)も同様に森の裏。
       this.cineWarm, this.stage1CoolBand, this.cineDust, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
@@ -1921,6 +1921,7 @@ export class PixiScene {
     const stageC = this.L.worldGroup.parent;
     if (stageC) {
       const idx = () => stageC.getChildIndex(this.L.worldGroup);
+      stageC.addChildAt(this.cineSun, idx()); // 太陽(M7の光源)=遠景森1の裏・放射の奥・銀河の手前(社長指示v0.25.1970「光源を遠景森1の後ろに」)。画面固定
       for (const sp of this.cineCloudLayers) stageC.addChildAt(sp, idx()); // 光の線=森2の裏
       stageC.addChildAt(this.stage7CloudMask, idx());
       stageC.addChildAt(this.stage7CloudGroup, idx());

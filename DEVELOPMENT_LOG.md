@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1970 — M7の光源(太陽)を遠景森1の後ろへ移設【2026-07-21 09:08 JST】
+- 指示(社長): 「m7の光源を遠景森1の後ろに」。
+- 対処: `cineSun`(M7の太陽)を uiLayer(最前面)から **stageC(worldGroupの直前=遠景森1/2・地面・gameplayの裏・銀河の手前)** へ移設。放射(cineCloudLayers)と同じ「画面固定の空」レイヤー。太陽を最も奥(放射の裏)に挿入=galaxy→太陽→放射→雲→worldGroup(森)。位置/サイズ/α(毎フレーム)は不変=スクリーン座標そのまま。
+- 検証: ヘッドレス(stage-7・cine)で cineSun.parent=stageC(uiLayerでない)・visible。実描画で太陽フレアが遠景森1の木立シルエットの裏に回り、梢の間から覗く(木漏れ日/地平の光)構図になるのを確認。typecheck OK。
+- 自己点検: 描画のみ・M7限定(cineSunはM1では非表示)・ゲーム挙動不変。負荷: 0/10(スプライト1枚の所属変更・描画枚数不変)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1969 — M7の光源セット(太陽+放射)を20px下へ(m7sundown=20)【2026-07-21 02:42 JST】
 - 指示(社長): 「m7の光源セットは20px下へ」。
 - 対処: M7 cineブロックの `sunY` に `+tsNum('m7sundown', 20)` を追加=太陽(cineSun)+放射(cineCloudLayers)が20px下へ。M7専用(cineEnabled内)なのでM1不変。共有の`sundown`(10)も不変。残照(cineWarm・全画面)は位置不動のまま。
