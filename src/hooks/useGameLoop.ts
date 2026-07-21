@@ -1926,8 +1926,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 会話の終了待ちはしない。会話は通常会話キューで並行再生され、ボスは登場後すぐ出現=M7=導入→会話+グレン戦)。
           const introDone = !isGameTimeStopped();
           // cine実験台(?cine=1 & stage-7)ではストーリーボス(グレン)を出さない=クリーンな映像確認(社長v0.25.1879)。
+          // ?nospawn=1 でもストーリーボスを出さない(=イベント不発火。社長指示v0.25.1995・QAのクリーン撮影用)。
           const cineSuppress = CINE_TESTBED && getSelectedStageId() === 'stage-7';
-          if (!storyBossSpawnedRef.current && introDone && !cineSuppress) {
+          if (!storyBossSpawnedRef.current && introDone && !cineSuppress && !NOSPAWN) {
             storyBossSpawnedRef.current = true;
             const scx = player.x + player.width / 2;
             const scy = player.y + player.height / 2 - STORY_BOSS_SPAWN_DIST;
