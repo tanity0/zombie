@@ -22,6 +22,10 @@ export interface ResultScore {
 
 export const LAB_PAR_TIME_SEC = 480;          // ラボ基準タイム 8:00
 export const SPEED_BONUS_PER_SEC = 100;       // 短縮1秒あたりの加点(ラボのみ)
+// 被弾スコア(survivalScore)が満額になるまでの生存時間(社長決定v0.25.1992)。開始60秒は0→満額へ線形ランプ。
+// 狙い: 「何もしない超短時間ラン(被弾0=満額20000→10G)」の穴を塞ぐ。survivalScore自体を時間スケールするので
+// totalScore(ハイスコア)・goldScore(換金)の両方に等しく効く。
+export const SURVIVAL_RAMP_SEC = 60;
 export const TREASURE_SCORE_PER_VALUE = 5000; // トレジャー価値1あたり
 export const CLEAR_BONUS = 30000;             // クリア時のフラット加点
 
@@ -46,7 +50,10 @@ export const calculateResultScore = (
   const comboScore = stats.maxCombo * 300;
   const eliteBossScore = stats.eliteKills * 3000 + stats.bossKills * 8000;
   const scrapScore = Math.floor(netScrap) * 20;
-  const survivalScore = Math.max(0, Math.round(20000 - stats.damageTaken * 80)); // 常に計上(死亡でも)
+  // 被弾の少なさ(常に計上・死亡でも)。ただし開始60秒は0→満額へランプ=何もしない超短時間ランで満額入る穴を塞ぐ(社長決定v0.25.1992)。
+  const survivalBase = Math.max(0, 20000 - stats.damageTaken * 80);
+  const survivalRamp = Math.max(0, Math.min(1, stats.timeAlive / SURVIVAL_RAMP_SEC));
+  const survivalScore = Math.round(survivalBase * survivalRamp);
   const speedBonus = (won && isLab)
     ? Math.round(Math.min(Math.max(0, LAB_PAR_TIME_SEC - stats.timeAlive) * SPEED_BONUS_PER_SEC, 20000))
     : 0;

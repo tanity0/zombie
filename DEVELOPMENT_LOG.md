@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1992 — ステージ4の霧を濃く/被弾スコアの時間ランプ(do-nothing穴塞ぎ)【2026-07-21 16:45 JST】
+- 指示(社長): ①ステージ4の霧を濃くして ②被弾スコアの穴(何もしないと20000入り10Gもらえる)をB案(60秒0→満額ランプ)で。
+- 対処:
+  - **①霧の濃度**: `snowfog` 既定 0.38→**0.7**(`pixiScene.ts`・遠景森前の霧のalphaのみ。帯高/速さは不変)。実機ヘッドレスで地平にはっきり霞が出るのを確認(添付)。
+  - **②被弾スコアの時間ランプ(B案)**: `resultScoring.ts` の survivalScore を「開始60秒は0→満額へ線形ランプ」に変更。`survivalScore = max(0, 20000 - damageTaken*80) * clamp(timeAlive/60,0,1)`。survivalScore自体を時間スケールするので totalScore(ハイスコア)・goldScore(換金)の両方に等しく効く。根因=旧式は被弾0(=何もしてない)で満額20000→floor(20000/2000)=10G。
+- 検証: typecheck OK。ユニット追加(`resultScoring.test.ts`・8 tests green)=0秒→survival0/goldEarned0・30秒→10000・60秒以上→20000頭打ち・被弾多→0。
+- 自己点検: ①描画のみ。②スコア仕様変更=社長明示指示(B案採用)。挙動意図(丁寧に生存したご褒美)は保ち、do-nothingの穴だけ塞ぐ。負荷: ①0/10 ②0/10。
+- Files: `src/pixi/pixiScene.ts`, `src/utils/resultScoring.ts`, `src/utils/resultScoring.test.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1991 — ステージ5に火の粉(画面全体)+残照【2026-07-21 16:31 JST】
 - 指示(社長): ステージ5、火の粉を画面全体に飛ばしたい。あと残照も。
 - 対処(蛍/雪プール流用・新規テクスチャなし):

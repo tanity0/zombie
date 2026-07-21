@@ -1690,7 +1690,7 @@ export class PixiScene {
     fw.height = this.screenH * tsNum('snowfogh', 0.3);
     const ftex = fw.texture;
     if (ftex && ftex.width > 1) fw.tileScale.set((fw.width / ftex.width) * 1.5, fw.height / ftex.height);
-    fw.alpha = tsNum('snowfog', 0.38);
+    fw.alpha = tsNum('snowfog', 0.7); // 遠景森前の霧の濃さ(0.38→0.7=はっきり見える濃さ・社長指示v0.25.1992)
     fw.tilePosition.x = (-now * tsNum('snowfogspeed', 0.03)) % 2048; // 左へ流す(雪と同じ向き)
   }
   private nearGroundBlurFilters: BlurFilter[] = [];
