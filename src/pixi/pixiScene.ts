@@ -600,6 +600,8 @@ const ACTIVE_STAGE_LIGHTING = STAGE_LIGHTING_PRESETS[ACTIVE_STAGE_LIGHTING_NAME]
 // Ambient fireflies drifting through the moonlit forest (soft additive motes).
 const FIREFLY_ENABLED = true;
 const FIREFLY_COUNT = 40;
+// ステージ4(snow)は蛍プールを雪に流用=吹雪化で数を増やす(社長指示v0.25.1979「もっと吹雪かせたい」)。?snowcount= で調整。M1(蛍)は40のまま。
+const SNOW_MOTE_COUNT = Math.max(1, Math.round(tsNum('snowcount', 120)));
 const FIREFLY_TINT = 0xcfe89a;   // soft warm green-yellow
 const FIREFLY_MARGIN = 90;       // spawn/recycle band around the visible view
 
@@ -1377,6 +1379,7 @@ export class PixiScene {
   // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
   private gradeSprite = new Sprite(Texture.WHITE);
+  private snowAir = new Sprite(Texture.WHITE); // ステージ4の「冷たい空気」=寒色の全画面グレード(霧ではない・社長指示v0.25.1979)
   // シネマティック残照オーバーレイ(?cine=1 & stage-7 のみ表示・screen合成)。stage-6は洋館(室内)なので
   // 屋外の黄昏空が合わず、逆探知地点(stage-7=未明の屋外)へ移設(社長指示v0.25.1870)。
   private cineWarm = new Sprite(getCineWarmTexture());
@@ -1582,6 +1585,18 @@ export class PixiScene {
     // 斜めドリフト+ゆるいカメラ連動(接地感)。tilePositionはタイル周期(256×tileScale)で剰余=巨大値のfloat32精度落ち(カクつき)を防ぐ。縦横で周期が違う。
     const periodX = 256 * scale, periodY = 256 * scaleY;
     sp.tilePosition.set((now * spd - cameraX * 0.4) % periodX, (now * spd * 0.55 - cameraY * 0.4) % periodY);
+  }
+
+  // ステージ4の「冷たい空気」=寒色の全画面グレード(乗算)。霧ではない均一な冷え(社長指示v0.25.1979)。snowのみ表示。?snowair=で濃さ。
+  private updateSnowAir() {
+    const sp = this.snowAir;
+    const on = this.snowStage;
+    if (sp.visible !== on) sp.visible = on;
+    if (!on) return;
+    sp.position.set(-1, -1);
+    sp.width = this.screenW + 2;
+    sp.height = this.screenH + 2;
+    sp.alpha = tsNum('snowair', 0.4);
   }
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
@@ -1798,7 +1813,10 @@ export class PixiScene {
     // them, but they are added before grade/vignette so atmosphere still binds.
     if (FIREFLY_ENABLED) {
       const tex = getGlowTexture();
-      for (let i = 0; i < FIREFLY_COUNT; i++) {
+      // ステージ4(snow)は雪プールを吹雪化=数を増やす(蛍プール流用)。それ以外(M1蛍)は従来の40。
+      const isSnowStage = typeof window !== 'undefined' && useGameStore.getState().farBackdrop === 'snow';
+      const moteCount = isSnowStage ? SNOW_MOTE_COUNT : FIREFLY_COUNT;
+      for (let i = 0; i < moteCount; i++) {
         const sprite = new Sprite(tex);
         sprite.anchor.set(0.5);
         sprite.tint = FIREFLY_TINT;
@@ -1946,6 +1964,11 @@ export class PixiScene {
     this.gradeSprite.tint = GRADE_TINT;
     this.gradeSprite.alpha = GRADE_ALPHA;
     this.gradeSprite.blendMode = 'multiply';
+    // 冷たい空気(ステージ4): 寒色の全画面グレード(乗算=R/Gを落として青を残す)。霧ではない=均一な冷え。updateSnowAirで可視/全画面化。
+    this.snowAir.tint = 0x9db6de;
+    this.snowAir.blendMode = 'multiply';
+    this.snowAir.eventMode = 'none';
+    this.snowAir.visible = false;
 
     this.vignette.alpha = ENV_VIGNETTE_ALPHA;
 
@@ -1985,6 +2008,7 @@ export class PixiScene {
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
       this.gradeSprite, // cineSun(M7の太陽)は遠景森1の裏へ移設=下のstageCへ(社長指示v0.25.1970)。光の線(cineCloudLayers)も同様に森の裏。
+      this.snowAir, // ステージ4の冷たい空気(寒色グレード・snowのみ)
       this.cineWarm, this.stage1CoolBand, this.cineDust, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
@@ -3760,6 +3784,7 @@ export class PixiScene {
     this.syncFlash(s.effects, now);
     this.updatePunchGrade(s.effects, now); // 攻撃/爆発の光でコントラストパンチ(?punchgrade=1・既定OFF)
     this.updateCloudShadow(now, s.camera.x, s.camera.y, s.indoorMode); // フィールドの動く雲影(屋外のみ・?cloudshadow=0で無効)
+    this.updateSnowAir(); // ステージ4の冷たい空気(寒色グレード・snowのみ)
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
     // (camera-offset already applied to the parent), so plain world coords.
@@ -4123,6 +4148,9 @@ export class PixiScene {
     // ステージ4は蛍をやめて雪に置き換え(社長指示)。雪は落下＋進行方向(プレイヤー速度)連動で流れる。
     const snow = this.snowStage;
     let windX = 0, windY = 0;
+    // 吹雪: 定常の強い横風(立ち止まっていても駆け抜ける)+落下加速(社長指示v0.25.1979「もっと吹雪かせたい」)。?snowwind= /?snowfall= で調整。
+    const blizzardWind = snow ? tsNum('snowwind', -140) : 0; // 定常の横風(左へ駆ける)
+    const fallBoost = snow ? tsNum('snowfall', 1.7) : 1;     // 落下速度の倍率
     if (snow) {
       const p = useGameStore.getState().player;
       windX = -(p.vx ?? 0) * SNOW_WIND_FACTOR; // 進む方向と逆へ雪が流れる=移動連動
@@ -4130,8 +4158,8 @@ export class PixiScene {
     }
     for (const f of this.fireflies) {
       if (snow) {
-        f.x += (f.snowDrift + windX) * sec;
-        f.y += (f.snowFall + windY) * sec; // +y=下へ落下
+        f.x += (f.snowDrift + windX + blizzardWind) * sec;
+        f.y += (f.snowFall * fallBoost + windY) * sec; // +y=下へ落下
       } else {
         f.x += f.vx * sec;
         f.y += f.vy * sec;
@@ -4142,8 +4170,8 @@ export class PixiScene {
       f.sprite.position.set(f.x - camera.x, f.y - camera.y);
       if (snow) {
         f.sprite.tint = SNOW_TINT;
-        f.sprite.alpha = f.base * 0.95;          // 雪はほぼ一定の淡い白(瞬きなし)
-        f.sprite.width = f.sprite.height = f.size * 0.7;
+        f.sprite.alpha = Math.min(1, f.base * 1.5); // 吹雪=はっきり見える白(瞬きなし・社長v0.25.1979)
+        f.sprite.width = f.sprite.height = f.size * 1.05; // 粒を大きめに(吹雪の視認性)
       } else {
         const twinkle = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now * f.freq + f.phase));
         f.sprite.tint = FIREFLY_TINT;
