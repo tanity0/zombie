@@ -182,7 +182,7 @@ const RIVER_FLOW_WOBBLE = [0.08, 0.06];   // アルファの揺らぎ振幅
 const RIVER_FLOW_WOBBLE_MS = [1400, 2300];// 揺らぎ周期
 const FAR_BACKDROP_BLUR = 1.1;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
-const HORIZON_FOREST_BLUR = 0.65; // 地平の森(遠景森)を少しだけぼかす(0=なし)。少し弱めた
+const HORIZON_FOREST_BLUR = 0.8; // 地平の森(遠景森)を少しだけぼかす(0=なし)。0.65→0.8(社長指示v0.25.1988)
 const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
 const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
@@ -230,7 +230,7 @@ const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 30;      // 森2の底=境界線から下へ(px・v1744で50→40、v1904で40→30=さらに10px上へ・社長指示)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
-const NEAR_HORIZON_BLUR = 0.35;              // 近いので地平の森より弱いブラー
+const NEAR_HORIZON_BLUR = 0.5;              // 近いので地平の森より弱いブラー。0.35→0.5(社長指示v0.25.1988)
 const HORIZON_ACTOR_HIDE_OFFSET_PX = 0;
 const HORIZON_ACTOR_FADE_PX = 120;
 // 非ボス敵の「手前(画面最下端=カメラ近接)で消える」near-plane フェード幅(px)。

@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1988 — 遠景の森1/森2のぼかしを増強【2026-07-21 15:25 JST】
+- 指示(社長): 地平の森1=0.8 / 近い森2=0.5 に変更。
+- 対処: `HORIZON_FOREST_BLUR` 0.65→**0.8**、`NEAR_HORIZON_BLUR` 0.35→**0.5**(`pixiScene.ts`)。遠景backdrop(1.1)・前景森(2.2)は据え置き。`?fardof=`倍率はこの新基準に掛かる。
+- 検証: typecheck OK。見え方は社長実機で。負荷: 0/10(既存blurの強度定数のみ)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1987 — ステージ5の演出の切り目を20px上へ【2026-07-21 15:12 JST】
 - 指示(社長): ステージ5の演出(戦争照明)を切るところ(マスクの下端)を20px上へ。
 - 対処: `updateStage5War`のマスク下端 `cutoff` を `- tsNum('s5warup', 20)` した=戦火の描画範囲の切り目が20px上がる(森2をより手前で切る)。既定20px・`?s5warup=`で調整可。
