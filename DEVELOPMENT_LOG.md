@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1987 — ステージ5の演出の切り目を20px上へ【2026-07-21 15:12 JST】
+- 指示(社長): ステージ5の演出(戦争照明)を切るところ(マスクの下端)を20px上へ。
+- 対処: `updateStage5War`のマスク下端 `cutoff` を `- tsNum('s5warup', 20)` した=戦火の描画範囲の切り目が20px上がる(森2をより手前で切る)。既定20px・`?s5warup=`で調整可。
+- 検証: typecheck OK。実描画での見え方(切り目の位置)は社長実機で。
+- 自己点検: 描画のみ・挙動不変(マスク範囲の下端位置だけ)。負荷: 0/10(定数減算のみ)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1986 — ステージ毎の開始最低ランク(フロア)【2026-07-21 15:10 JST】
 - 指示(社長): ステージごとにスタート時の最低ランクを設定。ステージ保持の値を優先するが、それ以下の場合はこの最低ランクからスタート。ラン中はこの下限を割ってよい(例: ステージ3=最低2で、ランク1まで落ちて死んでも、また2からスタート。3で死んだら3から)。チュートリアル除く。stage1-2=1/stage3=2/stage4=3/stage5=4/stage6=5/stage7=1(ボス専用だが攻撃パターン切替に別軸で使う予定)。
 - 対処: `progress.ts`に純関数を追加=`stageMinStartRank(stageId)`(ステージ別の開始最低ランク・未指定/チュートリアル/EX=1)+`effectiveStartRank(stageId)`=`max(getStartRank, stageMinStartRank)`(**持ち越し値を優先しつつ最低ランクを下限に**)。`useGameLoop.seededPuzzleClockState`のシードを`getStartRank`→`effectiveStartRank`に切替=開始時(初回+死亡/クリア/撤退後の新ラン)にフロアが効く。**フロアは開始時のみ**でラン中の降格は従来どおり(下限を割れる)。

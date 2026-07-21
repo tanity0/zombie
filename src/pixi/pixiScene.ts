@@ -1630,7 +1630,7 @@ export class PixiScene {
     if (!on) { for (const f of this.stage5Flashes) if (f.sprite.visible) f.sprite.visible = false; return; }
     const w = this.screenW, h = this.screenH;
     // マスク: 地平(森2の下端あたり)より上のみ描く=フラッシュ/火が森2を貫通して手前(フィールド)へ漏れない(社長指示v0.25.1984)。
-    const cutoff = this.farBackdropHeight() + h * tsNum('s5warmask', 0.05);
+    const cutoff = this.farBackdropHeight() + h * tsNum('s5warmask', 0.05) - tsNum('s5warup', 20); // 切り目を20px上へ(社長指示v0.25.1987)
     this.stage5WarMask.clear();
     this.stage5WarMask.rect(-w, -h * 2, w * 3, cutoff + h * 2).fill(0xffffff);
     // 炎のゆらめき照明: 地平上に横長の暖色グロー。複数sinで不規則に揺らぐが、激しすぎないよう振幅を抑える(社長指示v0.25.1984)。
