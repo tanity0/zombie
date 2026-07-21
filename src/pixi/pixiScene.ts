@@ -1619,7 +1619,7 @@ export class PixiScene {
     // ステージ7は影を濃く(社長指示v0.25.1994)。multiplyのalphaは1.0が上限なので、暗いtintで乗算を深める
     // (小さいほど濃い=blob部だけ暗くなる。0.5=既定)。他ステージは白(=従来どおり)。?cloudshadow7dark=で調整。
     if (this.currentFarKey === 'stage7') {
-      const g = Math.round(255 * Math.max(0, Math.min(1, tsNum('cloudshadow7dark', 0.3)))); // 0.5→0.3=もっとくっきり(社長指示v0.25.1995)
+      const g = Math.round(255 * Math.max(0, Math.min(1, tsNum('cloudshadow7dark', 0.5)))); // 0.3は暗い地面に沈んで消えたため0.5へ戻す(社長報告v0.25.1997)
       sp.tint = (g << 16) | (g << 8) | g;
     } else if (sp.tint !== 0xffffff) {
       sp.tint = 0xffffff;
@@ -3475,6 +3475,13 @@ export class PixiScene {
     this.applyNearHorizon(s.nearHorizon); // 遠景森2(ステージ別)
     this.applyTutorialFrontFog(this.currentFarKey === 'tutorial'); // 手前霧のz移設(チュートリアルのみ)
     this.applyDaylight(this.daylight);
+    // ステージ4(snow)の地面だけ夜tintより少し明るく(社長指示v0.25.1997)。森/前景/他ステージは触らない。
+    // applyDaylightのguard(day↔nightの変化時のみ)に依存せず毎フレーム確定=同値ならno-op(tint比較で早期スキップ)。?snowground=で調整(0.62=他ステージ夜と同値)。
+    if (this.snowStage) {
+      const gg = Math.round(255 * Math.max(0, Math.min(1, tsNum('snowground', 0.78))));
+      const snowGroundTint = (gg << 16) | (gg << 8) | gg;
+      for (const strip of this.L.groundStrips) if (strip.tint !== snowGroundTint) strip.tint = snowGroundTint;
+    }
     // ヒットストップ中はアニメ時計(now)も停止させる。これで Date.now 基準で動くもの
     // (歩きアニメ・スモッグの流れ・グロー明滅・各種sin揺らぎ等)も止まり、画面ほぼ全停止の
     // 「ストップ感」が出る。シミュレーション自体は useGameLoop 側の早期returnで既に凍結済み。

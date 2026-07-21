@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1997 — ステージ7雲影を0.5へ戻す(消えた修正)/ステージ4の地面を少し明るく【2026-07-21 21:29 JST】
+- 指示(社長): ①ステージ7の雲影が消えた ②ステージ4の地面をもう少し明るく。
+- 対処:
+  - **①雲影0.5へ戻す**: v1995で`cloudshadow7dark` 0.5→0.3にしたが、暗い地面では乗算をこれ以上濃くすると黒に埋もれて消える。**0.3→0.5に戻す**(前回見えていた濃さ)。※「くっきり」は暗い地面では"濃く"では実現できない(濃く=沈む)。エッジを立てたい場合は別途相談。
+  - **②ステージ4の地面を明るく**: 地面(groundStrips)は夜tint=`ENV_TINT`(0.62)。snowのみ`?snowground`(0.78)で少し明るく上書き。森/前景/他ステージは不変。applyDaylightのguard(day↔night変化時のみ)に依存しないよう毎フレーム確定(同値no-op=tint比較で早期スキップ)。
+- 検証: typecheck OK。縦画面ヘッドレスで確認(雲影が戻って見える・雪原の地面が明るくなった)。濃さ/明るさは`?cloudshadow7dark=`/`?snowground=`で調整可。
+- 自己点検: 描画のみ・他ステージ非影響(②snowのみ分岐)。負荷: 0/10(tint比較で毎フレームは実質no-op)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1996 — 遠景森1のスケール(比率)化を撤回=固定値に戻す(v1995の崩れ修正)【2026-07-21 21:20 JST】
 - 指示(社長): v1995で森1を森2基準の比率(スケール)にしたら実機で「びっくりするくらいずれて壊れた」。スケールをやめて固定値に戻して。
 - 対処: v1995の森1レイアウト変更(森2基準の比率・`nearHorizonHeightBottom`ヘルパ・`?hf2h`/`?hf2gap`)を**完全に撤回**し、`horizonForestHeight`/`horizonForestY`/`layoutNearHorizon`と関連定数(HORIZON_FOREST_HEIGHT_RATIO/MIN/MAX、FAR_FOREST_SIZE_SCALE、HORIZON_FOREST_OVERLAP_RATIO、HORIZON_FOREST_Y_OFFSET_PX、NORTH_FAR_FOREST_HEIGHT_TRIM_PX)を**v1994の元の式(clamp*1.5+固定オフセット)に復元**。
