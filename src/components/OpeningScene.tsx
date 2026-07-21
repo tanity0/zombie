@@ -38,9 +38,10 @@ const SHOTS: Shot[] = [
   { bg: A('arena-diag.jpg'), ox: 48, oy: 62, zf: 1.4, zt: 2.3, chars: [
     { src: TWIN, x: 44, y: 66, h: 22 }, { src: HERO, x: 50, y: 66.5, h: 24 }, { src: BOB, x: 56, y: 66, h: 22 },
   ] },
-  // 真横: ステージを横から(ステージは右手)。3人は右寄り・ステージ床の上。
-  { bg: A('arena-side.jpg'), ox: 60, oy: 72, zf: 1.6, zt: 2.7, chars: [
-    { src: TWIN, x: 57, y: 78, h: 26 }, { src: HERO, x: 63, y: 78.5, h: 28 }, { src: BOB, x: 69, y: 78, h: 26 },
+  // 真横: ステージを横から。社長支給の試し置き準拠=奥行きスタッガー(左ツイン=奥で小・中央ヒーロー・右ボブ=手前で大)。
+  // スケール/位置は arena-side 実測%(足元y・中心x・高さ)。cover切出でxは中央寄せ補正済。
+  { bg: A('arena-side.jpg'), ox: 49, oy: 82, zf: 1.7, zt: 2.1, chars: [
+    { src: TWIN, x: 43, y: 81, h: 25 }, { src: HERO, x: 49, y: 86, h: 28 }, { src: BOB, x: 58, y: 95, h: 35 },
   ] },
 ];
 
