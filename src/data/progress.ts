@@ -314,6 +314,32 @@ export const setStartRankFromFinal = (stageId: string, finalRank: number): void 
   saveStartRankMap(m);
 };
 
+// ステージ毎の「開始最低ランク」(社長決定v0.25.1986)。持ち越し値(getStartRank)を優先するが、それが
+// この最低ランク未満なら最低ランクからスタートする(=開始のフロア)。ラン中はこの下限を割ってよい
+// (例: ステージ3=最低2で、ランク1まで落ちて死んでも、次ランはまた2から)。
+// - stage-1/2=1(=フロアなし相当)/ stage-3=2 / stage-4=3 / stage-5=4 / stage-6=5。
+// - stage-7=1(ボス専用だが攻撃パターン切替に別軸で使う予定・社長メモ)。
+// - チュートリアル(stage-tutorial)・EX・未指定=フロアなし(=1)。
+const STAGE_MIN_START_RANK: Record<string, number> = {
+  'stage-1': 1,
+  'stage-2': 1,
+  'stage-3': 2,
+  'stage-4': 3,
+  'stage-5': 4,
+  'stage-6': 5,
+  'stage-7': 1,
+};
+
+// 純関数: ステージ毎の開始最低ランク(未指定=1・クランプ1..7)。
+export const stageMinStartRank = (stageId: string): number => {
+  const v = STAGE_MIN_START_RANK[stageId];
+  return typeof v === 'number' ? Math.max(1, Math.min(7, v)) : 1;
+};
+
+// 実際の開始ランク=持ち越し値(保持値=優先)と、ステージ最低ランク(下限)の大きい方。
+export const effectiveStartRank = (stageId: string): number =>
+  Math.max(getStartRank(stageId), stageMinStartRank(stageId));
+
 // ───────────────────────────────────────────────────────────────────────────
 // バッチM20(§5.21): 囲いゲート(1/2)の恒久解除メタ。ステージ毎に個別保持(WallMetaと同じ方針)。
 // 社長決定v0.25.1518: クリアし、そのランを死亡以外(クリア/撤退)で終えると以後のランで出現しなくなる。

@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1986 — ステージ毎の開始最低ランク(フロア)【2026-07-21 15:10 JST】
+- 指示(社長): ステージごとにスタート時の最低ランクを設定。ステージ保持の値を優先するが、それ以下の場合はこの最低ランクからスタート。ラン中はこの下限を割ってよい(例: ステージ3=最低2で、ランク1まで落ちて死んでも、また2からスタート。3で死んだら3から)。チュートリアル除く。stage1-2=1/stage3=2/stage4=3/stage5=4/stage6=5/stage7=1(ボス専用だが攻撃パターン切替に別軸で使う予定)。
+- 対処: `progress.ts`に純関数を追加=`stageMinStartRank(stageId)`(ステージ別の開始最低ランク・未指定/チュートリアル/EX=1)+`effectiveStartRank(stageId)`=`max(getStartRank, stageMinStartRank)`(**持ち越し値を優先しつつ最低ランクを下限に**)。`useGameLoop.seededPuzzleClockState`のシードを`getStartRank`→`effectiveStartRank`に切替=開始時(初回+死亡/クリア/撤退後の新ラン)にフロアが効く。**フロアは開始時のみ**でラン中の降格は従来どおり(下限を割れる)。
+- 検証: typecheck OK。ユニット追加(`progress.test.ts`・17 tests green)=stageMinStartRankのステージ別値/未指定=1、effectiveStartRank=持ち越しと最低の大きい方(stage-3で持ち越し1→2、持ち越し3→3、stage-1は持ち越しのみ)。実機での各ステージ開始ランク確認は社長へ持ち越し。
+- 自己点検: 仕様追加=社長明示指示。第4条(初心者ゾーン=エリア0-1の距離ゾーン=ランク非依存)に非抵触・第5条(緩を荒らさない)に非抵触(開始ランクのフロアのみ・ラン中の緩急/降格は不変)。stage1/2/7=フロア1=従来と同一挙動。
+- 負荷: 0/10(ラン開始時に1回の`max`だけ・毎フレーム処理なし)。
+- Files: `src/data/progress.ts`, `src/data/progress.test.ts`, `src/hooks/useGameLoop.ts`, `PACING_PUZZLE.md`(§3-E'追記), `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1985 — 緑卵1秒起爆/被写界深度を遠景(森セット)へ付替え/吹雪の均一化【2026-07-21 15:04 JST】
 - 指示(社長): ①緑卵の爆発までの時間を1秒に変更 ②被写界深度は遠景の話・森とセットで(ぼかし) ③ステージ4の吹雪、たまに雪がまとまって散らばってないので均一に出るように。
 - 対処:

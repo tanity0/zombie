@@ -163,7 +163,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, recordChronicle, getStartRank, setStartRankFromFinal, type GateMeta } from '../data/progress';
+import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, recordChronicle, effectiveStartRank, setStartRankFromFinal, type GateMeta } from '../data/progress';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
 import {
   getEventQuestConfig, EVENT_QUEST_LINES_FORCED, EVENT_QUEST_ENCOUNTER_LINES,
@@ -475,12 +475,15 @@ const syncWallDepth = (dist: number): void => {
 // - kind='death': 自己最深/自己最高ランクの「記録」だけをコミット(実際に到達した記録は残す)。
 //   踏破/ランク到達フラグ・ゲート恒久解除はコミットしない(死亡は解除しない=v0.25.1517則)。
 // 途中リロード/クラッシュはこの関数自体が一度も呼ばれないため、何も永続しない(症状の根治)。
-// ランク持ち越し(社長決定v0.25.1844): 開始ランク=そのステージの前ラン最終ランク−1(下限R1)。
-// 選択ステージ未確定(ダンス練習/ベンチ等)はR1のまま。
+// ランク持ち越し(社長決定v0.25.1844→v0.25.1847=最終ランクそのまま保持): 開始ランク=そのステージの
+// 前ラン最終ランク。さらに社長決定v0.25.1986で、ステージ毎の開始最低ランク(effectiveStartRank)を下限に
+// する(持ち越し値を優先しつつ、それ未満なら最低ランクから)。選択ステージ未確定(ダンス練習/ベンチ等)はR1。
 const seededPuzzleClockState = (): PuzzleClockState => {
   const s = createPuzzleClockState();
   const stageId = getSelectedStageId();
-  if (stageId) s.rank = clampRank(getStartRank(stageId));
+  // 開始ランク=持ち越し値を優先しつつ、ステージ毎の最低ランクを下限にする(社長決定v0.25.1986)。
+  // ラン中はこの下限を割ってよい(=フロアは開始時のみ・チュートリアル/EX/未指定はフロア1=無効相当)。
+  if (stageId) s.rank = clampRank(effectiveStartRank(stageId));
   return s;
 };
 

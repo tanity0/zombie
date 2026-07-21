@@ -124,3 +124,34 @@ describe('ランク持ち越し(startRank・社長決定v0.25.1844→再調整v0
     expect(getStartRank('stage-1')).toBe(1);
   });
 });
+
+// ステージ毎の開始最低ランク(社長決定v0.25.1986): 持ち越し値を優先しつつ最低ランクを下限にする。
+describe('開始最低ランク(stageMinStartRank / effectiveStartRank・v0.25.1986)', () => {
+  it('stageMinStartRank: ステージ別の最低ランク(未指定=1)', async () => {
+    const { stageMinStartRank } = await import('./progress');
+    expect(stageMinStartRank('stage-1')).toBe(1);
+    expect(stageMinStartRank('stage-2')).toBe(1);
+    expect(stageMinStartRank('stage-3')).toBe(2);
+    expect(stageMinStartRank('stage-4')).toBe(3);
+    expect(stageMinStartRank('stage-5')).toBe(4);
+    expect(stageMinStartRank('stage-6')).toBe(5);
+    expect(stageMinStartRank('stage-7')).toBe(1); // ボス専用だが最低1(別軸で使う予定)
+    expect(stageMinStartRank('stage-tutorial')).toBe(1); // チュートリアル除外=フロアなし
+    expect(stageMinStartRank('stage-ex1')).toBe(1);      // EX/未指定=フロアなし
+    expect(stageMinStartRank('')).toBe(1);
+  });
+  it('effectiveStartRank: 持ち越し値と最低ランクの大きい方(保持値を優先しつつ下限を効かせる)', async () => {
+    const { setStartRankFromFinal, effectiveStartRank } = await import('./progress');
+    // 未保存(=持ち越し1)のとき: stage-3 は最低2から始まる
+    expect(effectiveStartRank('stage-3')).toBe(2);
+    // ランク1で死んで持ち越し1でも、また最低2から(社長の例)
+    setStartRankFromFinal('stage-3', 1);
+    expect(effectiveStartRank('stage-3')).toBe(2);
+    // ランク3で死んだら持ち越し3=最低2より上なので3から(保持値を優先)
+    setStartRankFromFinal('stage-3', 3);
+    expect(effectiveStartRank('stage-3')).toBe(3);
+    // stage-1 は最低1=持ち越しのみが効く(従来どおり)
+    setStartRankFromFinal('stage-1', 4);
+    expect(effectiveStartRank('stage-1')).toBe(4);
+  });
+});

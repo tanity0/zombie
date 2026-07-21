@@ -129,6 +129,17 @@ PACING_REDESIGN.mdは前提知識(旧仕様)として参照可。矛盾したら
 - 実装: `carryOverStartRank`(純関数)+`get/setStartRankFromFinal`(progress.ts)/
   シードは`seededPuzzleClockState`(useGameLoop・新ラン検知でも同経路)。ユニット+実機E2E検証済み。
 
+### 3-E'. ステージ毎の開始最低ランク(フロア)(社長決定v0.25.1986)
+- **各ステージに「開始最低ランク」を設定**し、開始ランク=`max(持ち越し値, 最低ランク)`にする。
+  持ち越し値(3-E)を**優先**するが、それが最低ランク未満なら最低ランクからスタート(=開始のフロア)。
+  - stage-1/2=**1**(フロアなし相当) / stage-3=**2** / stage-4=**3** / stage-5=**4** / stage-6=**5**。
+  - stage-7=**1**(ボス専用だが攻撃パターン切替に別軸で使う予定・社長メモ)。
+  - **チュートリアル(stage-tutorial)・EX・未指定=フロアなし(=1)**=除外。
+- **フロアは「開始時のみ」**。ラン中はこの下限を割ってよい(例: stage-3=最低2で、査定で降格してランク1まで
+  落ちて死んでも、次ランはまた2から開始。ランク3で死んだら持ち越し3>最低2なので3から開始)。
+- 実装: `stageMinStartRank`(純関数・ステージ→最低ランク)+`effectiveStartRank`=`max(getStartRank, stageMinStartRank)`
+  (progress.ts)。シード`seededPuzzleClockState`が`getStartRank`→`effectiveStartRank`に切替。ユニット追加。
+
 ### 3-F. ランク演出の変更(社長指示v0.25.1845)
 - **演出(銘打ち)は毎回何度でも出す**(旧・isFirstRankReachのステージ毎初回限定を撤廃。
   記録系=wallMeta到達フラグ/歴史年表は従来どおり初回のみ)。
