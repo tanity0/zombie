@@ -1454,6 +1454,10 @@ export class PixiScene {
   private snowStage = false; // ステージ4(farBackdrop'snow'): 松明を焚き火スプライトに置き換え
   private battlefieldStage = false; // ステージ5(farBackdrop'stage5'): 敵絵=戦場セット・木なし(残骸プロップに置換)
   private stage5Stage = false; // ステージ5(farBackdrop'stage5'): 近景森(戦場の残骸)を下げる
+  // ステージ5の戦争照明(社長指示v0.25.1980「上部を爆発フラッシュ/炎のゆらめきで照らす」)。加算・上部のみ。
+  private stage5FireGlow = new Sprite(getGlowTexture()); // 炎のゆらめき(横長の暖色グロー)
+  private stage5Flashes: { sprite: Sprite; start: number; dur: number; peak: number }[] = []; // 遠くの爆発フラッシュ(プール)
+  private stage5NextFlashAt = 0; // 次の爆発の予定時刻
   private isLabStage = false; // 現在の出撃が lab テーマ(ステージ2)か。影向きの分岐に使用。
   private horizonForestUpNow = 0; // 現ステージの遠景森1 上移動px(HORIZON_FOREST_UP_BY_STAGE をstage idで引いてキャッシュ・1回/フレーム)。
   private daylightApplied: boolean | null = null;
@@ -1585,6 +1589,40 @@ export class PixiScene {
     // 斜めドリフト+ゆるいカメラ連動(接地感)。tilePositionはタイル周期(256×tileScale)で剰余=巨大値のfloat32精度落ち(カクつき)を防ぐ。縦横で周期が違う。
     const periodX = 256 * scale, periodY = 256 * scaleY;
     sp.tilePosition.set((now * spd - cameraX * 0.4) % periodX, (now * spd * 0.55 - cameraY * 0.4) % periodY);
+  }
+
+  // ステージ5の戦争照明(社長指示v0.25.1980)。上部の暗さを「単純に明るく」ではなく、炎のゆらめき照明+遠くの爆発フラッシュで戦争中感を出して照らす。加算。
+  private updateStage5War(now: number) {
+    const on = this.stage5Stage;
+    if (this.stage5FireGlow.visible !== on) this.stage5FireGlow.visible = on;
+    if (!on) { for (const f of this.stage5Flashes) if (f.sprite.visible) f.sprite.visible = false; return; }
+    const w = this.screenW, h = this.screenH;
+    // 炎のゆらめき照明: 地平上に横長の暖色グロー。複数sinで不規則に揺らぐ(遠くの火災に照らされる感)。
+    this.stage5FireGlow.position.set(w * 0.5, h * tsNum('s5firey', 0.2));
+    this.stage5FireGlow.width = w * 1.4;
+    this.stage5FireGlow.height = h * tsNum('s5fireh', 0.5);
+    const flick = 0.6 + 0.16 * Math.sin(now * 0.011) + 0.12 * Math.sin(now * 0.027 + 1.3) + 0.08 * Math.sin(now * 0.053 + 2.1);
+    this.stage5FireGlow.alpha = Math.max(0, tsNum('s5fire', 0.4) * flick);
+    // 遠くの爆発フラッシュ: 一定間隔でランダム位置に閃光(立ち上がり速い→減衰)。同時1〜2発。
+    if (now >= this.stage5NextFlashAt) {
+      const f = this.stage5Flashes.find(x => now >= x.start + x.dur);
+      if (f) {
+        f.start = now;
+        f.dur = 160 + Math.random() * 260;
+        f.peak = tsNum('s5flash', 0.9) * (0.7 + Math.random() * 0.6);
+        f.sprite.position.set(w * (0.1 + Math.random() * 0.8), h * (0.08 + Math.random() * 0.26)); // 上部のランダム位置
+        const sz = w * (0.28 + Math.random() * 0.4);
+        f.sprite.width = f.sprite.height = sz;
+      }
+      this.stage5NextFlashAt = now + tsNum('s5flashgap', 850) + Math.random() * tsNum('s5flashrand', 2400);
+    }
+    for (const f of this.stage5Flashes) {
+      const t = (now - f.start) / f.dur;
+      if (t < 0 || t > 1) { if (f.sprite.visible) f.sprite.visible = false; continue; }
+      const env = t < 0.14 ? t / 0.14 : Math.pow(Math.max(0, 1 - (t - 0.14) / 0.86), 1.7); // 速い立ち上がり→減衰
+      f.sprite.visible = true;
+      f.sprite.alpha = Math.max(0, f.peak * env);
+    }
   }
 
   // ステージ4の「冷たい空気」=寒色の全画面グレード(乗算)。霧ではない均一な冷え(社長指示v0.25.1979)。snowのみ表示。?snowair=で濃さ。
@@ -2023,6 +2061,27 @@ export class PixiScene {
       stageC.addChildAt(this.stage7CloudGroup, idx());
     }
     this.applyCineGrade(); // 初期適用(applyDaylight前でもcine値を効かせる)
+
+    // ステージ5の戦争照明(炎のゆらめき+爆発フラッシュ)。uiLayerのvignette直前(=世界の上・ヴィネットの下)へ加算で。
+    {
+      const vigIdx = () => this.L.uiLayer.getChildIndex(this.vignette);
+      this.stage5FireGlow.anchor.set(0.5);
+      this.stage5FireGlow.blendMode = 'add';
+      this.stage5FireGlow.eventMode = 'none';
+      this.stage5FireGlow.visible = false;
+      this.stage5FireGlow.tint = 0xff7a3a;
+      this.L.uiLayer.addChildAt(this.stage5FireGlow, vigIdx());
+      for (let i = 0; i < 4; i++) {
+        const sp = new Sprite(getGlowTexture());
+        sp.anchor.set(0.5);
+        sp.blendMode = 'add';
+        sp.tint = 0xffe0b0; // 爆発の閃光=暖白
+        sp.eventMode = 'none';
+        sp.visible = false;
+        this.L.uiLayer.addChildAt(sp, vigIdx());
+        this.stage5Flashes.push({ sprite: sp, start: -1e9, dur: 300, peak: 1 });
+      }
+    }
 
     // フィールドの動く雲影(社長指示v0.25.1974)。地面(groundBase)の直上・森/アクターの下(worldGroup内)。multiply。屋外のみ・毎フレームdrift。
     this.cloudShadow.blendMode = 'multiply';
@@ -3785,6 +3844,7 @@ export class PixiScene {
     this.updatePunchGrade(s.effects, now); // 攻撃/爆発の光でコントラストパンチ(?punchgrade=1・既定OFF)
     this.updateCloudShadow(now, s.camera.x, s.camera.y, s.indoorMode); // フィールドの動く雲影(屋外のみ・?cloudshadow=0で無効)
     this.updateSnowAir(); // ステージ4の冷たい空気(寒色グレード・snowのみ)
+    this.updateStage5War(now); // ステージ5の戦争照明(炎ゆらめき+爆発フラッシュ・stage5のみ)
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
     // (camera-offset already applied to the parent), so plain world coords.
