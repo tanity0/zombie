@@ -368,6 +368,9 @@ const LAB_PERSP_FAR = tsNum('labperspfar', 0.04);    // 奥のタイル縦縮み
 const LAB_PERSP_CURVE = tsNum('labperspcurve', 2.8); // 収束カーブ(大=手前が急に大きく/奥へ急収束)
 const TILT_SHIFT_ENABLED =typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ts') !== '0';
 const TILT_SHIFT_BLUR = tsNum('tsblur', 14);       // max blur strength at the edges
+// 上部(遠景側)の被写界深度ぼかしの倍率(社長指示v0.25.1983「上部の被写界深度を濃くするか否かのパラメータ」)。
+// TiltShiftは沿面対称なので、ピント面(TILT_SHIFT_BAND)より上=遠景側が最も強くボケる=上部DoFの体感濃度をこれで上下できる。1=従来。
+const TILT_SHIFT_UPPER = Math.max(0, tsNum('tsupper', 1));
 const TILT_SHIFT_GRADIENT = tsNum('tsgrad', 440);  // px over which sharp ramps into blur
 const TILT_SHIFT_BAND = tsNum('tsband', 0.54);     // sharp-band centre as a fraction of height(camdown=0.08でプレイヤーが0.58へ下がるのに合わせ下げる)
 
@@ -2232,7 +2235,7 @@ export class PixiScene {
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: w * vpScale, y: bandY };
       this.tiltShift.gradientBlur = TILT_SHIFT_GRADIENT * vpScale;
-      this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale;
+      this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale * TILT_SHIFT_UPPER; // ?tsupper= で上部DoFの濃さを調整
     }
   }
 
@@ -3542,7 +3545,7 @@ export class PixiScene {
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: this.screenW * vpScale, y: bandY };
       this.tiltShift.gradientBlur = TILT_SHIFT_GRADIENT * vpScale;
-      this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale;
+      this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale * TILT_SHIFT_UPPER; // ?tsupper= で上部DoFの濃さを調整
     }
     // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。
