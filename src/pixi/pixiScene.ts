@@ -1563,16 +1563,20 @@ export class PixiScene {
     const on = CLOUD_SHADOW_ON && !indoor && this.currentFarKey !== 'lab' && this.currentFarKey !== 'tutorial'; // 屋外のみ(洞窟/ラボ除外)
     if (sp.visible !== on) sp.visible = on;
     if (!on) return;
+    // 昼夜で雰囲気を変える(社長指示v0.25.1975)。夜(月夜)=青寄り・淡く・大きく・ゆっくり(夢想的)。昼=中立・濃く・くっきり。
+    const night = !this.daylight;
+    const tex = getCloudShadowTexture(night);
+    if (sp.texture !== tex) sp.texture = tex;
     const farH = this.farBackdropHeight();
     const overW = this.screenW * ZOOM_OVERSCAN;
     const marginX = (overW - this.screenW) / 2;
     sp.position.set(-marginX, farH);                 // 地面帯の上端(farH)から下。横は引き対応でオーバースキャン中央寄せ
     sp.width = overW;
     sp.height = this.screenH * ZOOM_OVERSCAN;
-    const scale = tsNum('cloudshadowscale', 1.7);
+    const scale = tsNum('cloudshadowscale', night ? 2.0 : 1.6); // 夜=大きめ / 昼=標準
     sp.tileScale.set(scale);                          // 雲影の大きさ
-    sp.alpha = tsNum('cloudshadowalpha', 0.32);       // 濃さ
-    const spd = tsNum('cloudshadowspeed', 0.007);     // ドリフト速度(px/ms)
+    sp.alpha = tsNum('cloudshadowalpha', night ? 0.24 : 0.34);  // 夜=淡く / 昼=濃く
+    const spd = tsNum('cloudshadowspeed', night ? 0.005 : 0.008); // 夜=ゆっくり / 昼=標準
     // 斜めドリフト+ゆるいカメラ連動(接地感)。tilePositionはタイル周期(256×tileScale)で剰余=巨大値のfloat32精度落ち(カクつき)を防ぐ。
     const period = 256 * scale;
     sp.tilePosition.set((now * spd - cameraX * 0.4) % period, (now * spd * 0.55 - cameraY * 0.4) % period);

@@ -204,9 +204,11 @@ export const getCineCoolTexture = (): Texture => {
 
 // フィールドに落とす「雲の影」タイルテクスチャ(社長指示v0.25.1974)。白ベース+柔らかい暗い斑=multiply用。
 // 各斑を8方向のラップ位置にも描いてシームレスにタイル(TilingSpriteでドリフト)。参考: Octopath 0 の流れる雲影。
-let cloudShadowTex: Texture | null = null;
-export const getCloudShadowTexture = (): Texture => {
-  if (cloudShadowTex) return cloudShadowTex;
+// cool=true(夜・月夜)は斑を青寄りに焼く=multiplyで寒色の影(白ベースは両方とも白=影以外は色を変えない)。社長指示v0.25.1975。
+const cloudShadowTex: (Texture | null)[] = [null, null]; // [0]=昼(中立グレー) / [1]=夜(青寄り)
+export const getCloudShadowTexture = (cool = false): Texture => {
+  const idx = cool ? 1 : 0;
+  if (cloudShadowTex[idx]) return cloudShadowTex[idx]!;
   const s = 256; const c = document.createElement('canvas'); c.width = c.height = s;
   const ctx = c.getContext('2d')!;
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, s, s); // 白ベース=multiplyで無変化
@@ -216,16 +218,20 @@ export const getCloudShadowTexture = (): Texture => {
     const bx = rnd() * s, by = rnd() * s;
     const r = s * (0.13 + rnd() * 0.17);
     const v = Math.round((0.44 + rnd() * 0.18) * 255); // 影の濃さ(小=濃い)
+    // 夜=R/Gを多めに落とし青を残す=寒色の影。昼=中立グレー。
+    const rr = cool ? Math.round(v * 0.80) : v;
+    const gg = cool ? Math.round(v * 0.90) : v;
+    const bb = cool ? Math.min(255, Math.round(v * 1.06)) : v;
     for (const ox of [-s, 0, s]) for (const oy of [-s, 0, s]) { // 8方向ラップ=シームレス
       const g = ctx.createRadialGradient(bx + ox, by + oy, 0, bx + ox, by + oy, r);
-      g.addColorStop(0, `rgba(${v},${v},${v},1)`);
-      g.addColorStop(1, `rgba(${v},${v},${v},0)`);
+      g.addColorStop(0, `rgba(${rr},${gg},${bb},1)`);
+      g.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(bx + ox, by + oy, r, 0, Math.PI * 2); ctx.fill();
     }
   }
   ctx.globalCompositeOperation = 'source-over';
-  cloudShadowTex = Texture.from(c);
-  return cloudShadowTex;
+  cloudShadowTex[idx] = Texture.from(c);
+  return cloudShadowTex[idx]!;
 };
 
 // シネマティック(?cine=1)の追加3要素(社長試作v0.25.1863「その他も全部積む」)。全て一度だけベイク=
