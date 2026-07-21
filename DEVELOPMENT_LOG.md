@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1981 — ステージ5の戦争照明を遠景森2(nearHorizon)の裏へ【2026-07-21 14:34 JST】
+- 指示(社長): ステージ5のやつ(戦争照明)を遠景森2の裏に。
+- 対処: `stage5FireGlow`+`stage5Flashes`(4)を uiLayer(最前面)から **worldGroup内の nearHorizon(森2)直前** へ移設(加算)。z順=森1→戦争照明→森2。森2のシルエットが手前に立ち「遠くの戦火」感に。
+- 検証: ヘッドレス(stage-5)で fireGlow.parent=worldGroup・idx3(森1=idx2 と 森2=idx8 の間)・強制発火2発・pageErrors0。実描画で暖色の爆発光が上部の要塞/瓦礫を照らし、森2(戦場の残骸)が手前に silhouette するのを確認。typecheck OK。
+- 自己点検: 描画のみ・挙動不変。負荷: 3/10(前版と同一・所属変更のみ)。※worldGroup移設で軽くズーム連動する(遠景として自然)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1980 — ステージ5の上部を「戦争照明」で照らす(炎ゆらめき+爆発フラッシュ)【2026-07-21 14:17 JST】
 - 指示(社長・全ステージ空気感): ステージ5上部がやたら暗い。単純に明るくするのではなく、戦争中感=爆発のフラッシュや炎のゆらめき照明で明るくする演出光源を足したい。
 - 対処(stage5のみ・加算・uiLayerのvignette直前):

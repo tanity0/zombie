@@ -2062,15 +2062,15 @@ export class PixiScene {
     }
     this.applyCineGrade(); // 初期適用(applyDaylight前でもcine値を効かせる)
 
-    // ステージ5の戦争照明(炎のゆらめき+爆発フラッシュ)。uiLayerのvignette直前(=世界の上・ヴィネットの下)へ加算で。
+    // ステージ5の戦争照明(炎のゆらめき+爆発フラッシュ)。遠景森2(nearHorizon)の裏へ=森2のシルエットが手前に立つ「遠くの戦火」感(社長指示v0.25.1981)。worldGroup内・加算。
     {
-      const vigIdx = () => this.L.uiLayer.getChildIndex(this.vignette);
+      const nhIdx = () => this.L.worldGroup.getChildIndex(this.L.nearHorizon);
       this.stage5FireGlow.anchor.set(0.5);
       this.stage5FireGlow.blendMode = 'add';
       this.stage5FireGlow.eventMode = 'none';
       this.stage5FireGlow.visible = false;
       this.stage5FireGlow.tint = 0xff7a3a;
-      this.L.uiLayer.addChildAt(this.stage5FireGlow, vigIdx());
+      this.L.worldGroup.addChildAt(this.stage5FireGlow, nhIdx());
       for (let i = 0; i < 4; i++) {
         const sp = new Sprite(getGlowTexture());
         sp.anchor.set(0.5);
@@ -2078,7 +2078,7 @@ export class PixiScene {
         sp.tint = 0xffe0b0; // 爆発の閃光=暖白
         sp.eventMode = 'none';
         sp.visible = false;
-        this.L.uiLayer.addChildAt(sp, vigIdx());
+        this.L.worldGroup.addChildAt(sp, nhIdx());
         this.stage5Flashes.push({ sprite: sp, start: -1e9, dur: 300, peak: 1 });
       }
     }
