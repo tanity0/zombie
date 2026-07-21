@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1993 — ステージ7の雲影を上方向・高速に【2026-07-21 16:50 JST】
+- 指示(社長): ステージ7にも雲の影追加。影は上に向かって流れて(背景の雲と同じ)。速さはすごく早い。
+- 対処: 雲影は元々屋外(stage7含む)で表示中だったが、ドリフトが斜めだった。`updateCloudShadow`に**stage7専用ブランチ**を追加=tilePosition.yを`-now*s7spd`で上へスクロール(横はほぼ固定)。速さは`?cloudshadow7speed=`(既定15=夜速度の15倍=すごく早い)。
+- 検証: typecheck OK。ヘッドレスで2フレーム比較=影が上へ流れるのを確認(下端の影が上へ抜ける)。方向はPixiのtilePosition標準(y増=下)に基づき`-now`で上。速さ/濃さは`?cloudshadow7speed=`/`?cloudshadowalpha=`で調整可。
+- 自己点検: 描画のみ・他ステージの雲影(非stage7)は分岐外で不変。負荷: 0/10(既存TilingSprite1枚のtilePosition式の分岐のみ)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1992 — ステージ4の霧を濃く/被弾スコアの時間ランプ(do-nothing穴塞ぎ)【2026-07-21 16:45 JST】
 - 指示(社長): ①ステージ4の霧を濃くして ②被弾スコアの穴(何もしないと20000入り10Gもらえる)をB案(60秒0→満額ランプ)で。
 - 対処:

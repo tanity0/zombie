@@ -1619,11 +1619,18 @@ export class PixiScene {
     const spd = tsNum('cloudshadowspeed', night ? 0.008 : 0.011); // もう少し速く(社長指示v0.25.1977)。夜=ゆっくりめ / 昼=標準
     // ステージ4(雪)は雲影のドリフト向きを雪と同じ(=現状の逆)にし、少し速く(社長指示v0.25.1984)。
     const snow = this.snowStage;
-    const dir = snow ? -1 : 1;
-    const driftSpd = spd * (snow ? tsNum('cloudshadowsnowspeed', 1.8) : 1);
-    // 斜めドリフト+ゆるいカメラ連動(接地感)。tilePositionはタイル周期(256×tileScale)で剰余=巨大値のfloat32精度落ち(カクつき)を防ぐ。縦横で周期が違う。
+    // tilePositionはタイル周期(256×tileScale)で剰余=巨大値のfloat32精度落ち(カクつき)を防ぐ。縦横で周期が違う。
     const periodX = 256 * scale, periodY = 256 * scaleY;
-    sp.tilePosition.set((dir * now * driftSpd - cameraX * 0.4) % periodX, (dir * now * driftSpd * 0.55 - cameraY * 0.4) % periodY);
+    if (this.currentFarKey === 'stage7') {
+      // ステージ7: 影は上へ「すごく早く」流す(社長指示v0.25.1993・背景の雲に合わせる)。横はほぼ動かさない。
+      const s7spd = spd * tsNum('cloudshadow7speed', 15); // すごく早い(既定=夜速度の15倍)
+      sp.tilePosition.set((-cameraX * 0.4) % periodX, (-now * s7spd - cameraY * 0.4) % periodY); // -now*=上へスクロール
+    } else {
+      const dir = snow ? -1 : 1;
+      const driftSpd = spd * (snow ? tsNum('cloudshadowsnowspeed', 1.8) : 1);
+      // 斜めドリフト+ゆるいカメラ連動(接地感)。
+      sp.tilePosition.set((dir * now * driftSpd - cameraX * 0.4) % periodX, (dir * now * driftSpd * 0.55 - cameraY * 0.4) % periodY);
+    }
   }
 
   // ステージ5の戦争照明(社長指示v0.25.1980)。上部の暗さを「単純に明るく」ではなく、炎のゆらめき照明+遠くの爆発フラッシュで戦争中感を出して照らす。加算。
