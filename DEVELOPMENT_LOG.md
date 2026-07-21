@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1973 — 光コントラストパンチを画面全体(地面含む)へ拡張【2026-07-21 09:36 JST】
+- 指示(社長・IMG_6755/6760): 発光は地面も=画面全体だよね。→ パンチが `filteredWorld`(地面除外)だったのを地面込みへ。
+- 対処: `punchGrade`(ColorMatrixFilter)の適用先を `filteredWorld` から **`worldGroup`(=groundBase+森1/2+filteredWorld=地面+背景+アクター+効果=画面の野原全体)** へ変更。`rebuildWorldFilters` からは外し、`updatePunchGrade` で `worldGroup.filters` を直接付け外し(強度>0の間だけ・イベント時のみ)。
+- 検証: ヘッドレス(stage-1・?punchgrade=1)で 光フラッシュ時 worldGroup にpunch付与・filteredWorld不変(2枚)・pageErrors0。実描画(強度固定)で**地面も含めて**コントラストが立つのを確認(旧=地面フラットのまま→今=地面も影締まり)。typecheck OK。
+- 自己点検: 描画のみ・当たり判定不変。負荷: OFF時0/10・ON時2〜3/10(worldGroup=画面サイズの全画面1パス・イベント時のみ・bloom並み)。※farBackdrop(遠景空)は別層で対象外=野原は全部入る。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1972 — M7の光源をできる限り明るく(α1.0+ハロー増強)【2026-07-21 09:29 JST】
 - 指示(社長): 「m7の光源、できる限り明るくして」。
 - 対処: `CINE_SUN_ALPHA_MAX` 0.95→**1.0**(最大)。`getCineSunTexture()` のハローを増強(白熱コア1.0・明るい芯を0.06→0.10へ広げ・ハロー0.55→0.78)=bloomにも強く拾わせる。

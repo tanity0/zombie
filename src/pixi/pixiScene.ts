@@ -1440,7 +1440,7 @@ export class PixiScene {
   private cineContrast: ColorMatrixFilter | null = null; // cine前景の階調立て(遅延生成)
   private punchGrade: ColorMatrixFilter | null = null;   // 攻撃/爆発の光コントラストパンチ(?punchgrade=1・遅延生成)
   private punchStrength = 0;                             // 現在のパンチ強度(0..1・フラッシュ envelope 追従)
-  private punchInList = false;                           // punchGrade が filteredWorld.filters に入っているか(付け外し=イベント時のみ)
+  private punchInList = false;                           // punchGrade が worldGroup.filters(地面含む画面全体)に入っているか(付け外し=イベント時のみ)
   private bloomActive = true; // 現在ブルームをフィルタ配列に入れているか(オプション反映用)
   private farBackdropBlur: BlurFilter | null = null;
   // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
@@ -1522,13 +1522,11 @@ export class PixiScene {
       }
       filters.push(this.cineContrast);
     }
-    // 攻撃/爆発の光コントラストパンチ(?punchgrade=1)。イベント時(punchInList)だけ追加=常時パスにしない。
-    if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
     this.L.filteredWorld.filters = filters;
   }
 
-  // 攻撃/爆発の「光フラッシュ」に追従して全画面コントラストを一瞬パンチする(?punchgrade=1・既定OFF)。
-  // 色は既存 flashGfx が担当。ここは階調(影締まり+ハイライト飛び)だけ。フィルタは強度>0の間だけ filteredWorld に入れる。
+  // 攻撃/爆発の「光フラッシュ」に追従して画面全体コントラストを一瞬パンチする(?punchgrade=1・既定OFF)。
+  // 色は既存 flashGfx が担当。ここは階調(影締まり+ハイライト飛び)だけ。フィルタは強度>0の間だけ worldGroup(=地面+森+アクター+効果=画面全体)に入れる(社長v0.25.1973「発光は地面も=画面全体」)。
   private updatePunchGrade(effects: VisualEffect[], now: number) {
     if (!PUNCH_GRADE) return;
     // 現在生きている「光」フラッシュ(暗転=黒は除外)の最大寄与を集計。フラッシュ自体が減衰するのでパンチも自然に減衰。
@@ -1549,9 +1547,9 @@ export class PixiScene {
       const k = this.punchStrength;
       this.punchGrade.contrast(k * tsNum('punchcontrast', 0.55), false); // 影締まり+ハイライト飛び(?punchcontrast=)
       this.punchGrade.brightness(1 + k * tsNum('punchbright', 0.12), true); // 全体を少し持ち上げ(?punchbright=)
-      if (!this.punchInList) { this.punchInList = true; this.rebuildWorldFilters(); } // 立ち上がり時だけ付ける
+      if (!this.punchInList) { this.punchInList = true; this.L.worldGroup.filters = [this.punchGrade]; } // 立ち上がり時だけ worldGroup(地面含む画面全体)へ付ける
     } else if (this.punchInList) {
-      this.punchStrength = 0; this.punchInList = false; this.rebuildWorldFilters(); // 減衰しきったら外す
+      this.punchStrength = 0; this.punchInList = false; this.L.worldGroup.filters = []; // 減衰しきったら外す
     }
   }
   private nearGroundBlurFilters: BlurFilter[] = [];
