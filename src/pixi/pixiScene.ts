@@ -606,7 +606,10 @@ const FIREFLY_ENABLED = true;
 const FIREFLY_COUNT = 40;
 // ステージ4(snow)は蛍プールを雪に流用=吹雪化で数を増やす(社長指示v0.25.1979「もっと吹雪かせたい」)。?snowcount= で調整。M1(蛍)は40のまま。
 const SNOW_MOTE_COUNT = Math.max(1, Math.round(tsNum('snowcount', 180)));
+// ステージ5(stage5=戦場)は蛍プールを火の粉に流用=画面全体に舞う暖色の粉(社長指示v0.25.1991)。?embercount= で調整。
+const EMBER_MOTE_COUNT = Math.max(1, Math.round(tsNum('embercount', 90)));
 const FIREFLY_TINT = 0xcfe89a;   // soft warm green-yellow
+const EMBER_TINT = 0xff8a3a;     // 火の粉=暖色オレンジ(加算)
 const FIREFLY_MARGIN = 90;       // spawn/recycle band around the visible view
 
 // Enemy ground lights: subtle self-emission plus a short brighter pulse when
@@ -1466,6 +1469,7 @@ export class PixiScene {
   private stage5NextFlashAt = 0; // 次の爆発の予定時刻
   private stage5WarGroup = new Container(); // 炎/フラッシュをまとめる箱(マスク対象)
   private stage5WarMask = new Graphics();   // 地平(森2の下)を貫通させないマスク(上部のみ・社長指示v0.25.1984)
+  private stage5Afterglow = new Sprite(Texture.WHITE); // ステージ5の残照=暖色の全画面グレード(screen・社長指示v0.25.1991)
   private isLabStage = false; // 現在の出撃が lab テーマ(ステージ2)か。影向きの分岐に使用。
   private horizonForestUpNow = 0; // 現ステージの遠景森1 上移動px(HORIZON_FOREST_UP_BY_STAGE をstage idで引いてキャッシュ・1回/フレーム)。
   private daylightApplied: boolean | null = null;
@@ -1627,8 +1631,14 @@ export class PixiScene {
     const on = this.stage5Stage;
     if (this.stage5WarGroup.visible !== on) this.stage5WarGroup.visible = on;
     if (this.stage5FireGlow.visible !== on) this.stage5FireGlow.visible = on;
+    if (this.stage5Afterglow.visible !== on) this.stage5Afterglow.visible = on;
     if (!on) { for (const f of this.stage5Flashes) if (f.sprite.visible) f.sprite.visible = false; return; }
     const w = this.screenW, h = this.screenH;
+    // 残照: 暖色の全画面グレード(screen=明るい所へ暖色を足す)。夕焼け/戦火の残り。?s5afterglow= で濃さ。
+    this.stage5Afterglow.position.set(-1, -1);
+    this.stage5Afterglow.width = w + 2;
+    this.stage5Afterglow.height = h + 2;
+    this.stage5Afterglow.alpha = tsNum('s5afterglow', 0.16);
     // マスク: 地平(森2の下端あたり)より上のみ描く=フラッシュ/火が森2を貫通して手前(フィールド)へ漏れない(社長指示v0.25.1984)。
     const cutoff = this.farBackdropHeight() + h * tsNum('s5warmask', 0.05) - tsNum('s5warup', 20); // 切り目を20px上へ(社長指示v0.25.1987)
     this.stage5WarMask.clear();
@@ -1898,9 +1908,12 @@ export class PixiScene {
     // them, but they are added before grade/vignette so atmosphere still binds.
     if (FIREFLY_ENABLED) {
       const tex = getGlowTexture();
-      // ステージ4(snow)は雪プールを吹雪化=数を増やす(蛍プール流用)。それ以外(M1蛍)は従来の40。
-      const isSnowStage = typeof window !== 'undefined' && useGameStore.getState().farBackdrop === 'snow';
-      const moteCount = isSnowStage ? SNOW_MOTE_COUNT : FIREFLY_COUNT;
+      // ステージ4(snow)は雪プールを吹雪化=数を増やす(蛍プール流用)。ステージ5(stage5)は火の粉プール。
+      // それ以外(M1蛍)は従来の40。
+      const fb = typeof window !== 'undefined' ? useGameStore.getState().farBackdrop : '';
+      const isSnowStage = fb === 'snow';
+      const isBattlefield = fb === 'stage5';
+      const moteCount = isSnowStage ? SNOW_MOTE_COUNT : isBattlefield ? EMBER_MOTE_COUNT : FIREFLY_COUNT;
       for (let i = 0; i < moteCount; i++) {
         const sprite = new Sprite(tex);
         sprite.anchor.set(0.5);
@@ -2054,6 +2067,11 @@ export class PixiScene {
     this.snowAir.blendMode = 'multiply';
     this.snowAir.eventMode = 'none';
     this.snowAir.visible = false;
+    // 残照(ステージ5): 暖色の全画面グレード(screen=明るい所へ暖色を足す=夕焼け/戦火の残り)。updateStage5Warで可視/全画面化。
+    this.stage5Afterglow.tint = 0xff7a3a;
+    this.stage5Afterglow.blendMode = 'screen';
+    this.stage5Afterglow.eventMode = 'none';
+    this.stage5Afterglow.visible = false;
 
     this.vignette.alpha = ENV_VIGNETTE_ALPHA;
 
@@ -2094,6 +2112,7 @@ export class PixiScene {
       this.stageLightShaftGfx,
       this.gradeSprite, // cineSun(M7の太陽)は遠景森1の裏へ移設=下のstageCへ(社長指示v0.25.1970)。光の線(cineCloudLayers)も同様に森の裏。
       this.snowAir, // ステージ4の冷たい空気(寒色グレード・snowのみ)
+      this.stage5Afterglow, // ステージ5の残照(暖色グレード・stage5のみ)
       this.cineWarm, this.stage1CoolBand, this.cineDust, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
@@ -4267,10 +4286,14 @@ export class PixiScene {
     const sec = dt / 1000;
     // ステージ4は蛍をやめて雪に置き換え(社長指示)。雪は落下＋進行方向(プレイヤー速度)連動で流れる。
     const snow = this.snowStage;
+    const ember = this.stage5Stage; // ステージ5(戦場)=火の粉(暖色・ゆらめき上昇・明滅)
     let windX = 0, windY = 0;
     // 吹雪: 定常の強い横風(立ち止まっていても駆け抜ける)+落下加速(社長指示v0.25.1979「もっと吹雪かせたい」)。?snowwind= /?snowfall= で調整。
     const blizzardWind = snow ? tsNum('snowwind', -210) : 0; // 定常の横風(左へ駆ける・もっと吹雪く v0.25.1982)
     const fallBoost = snow ? tsNum('snowfall', 2.1) : 1;     // 落下速度の倍率(もっと吹雪く)
+    // 火の粉: 上昇速度と横ゆらぎ振幅。?emberrise= / ?embersway= で調整。
+    const emberRise = ember ? tsNum('emberrise', 34) : 0;
+    const emberSway = ember ? tsNum('embersway', 26) : 0;
     if (snow) {
       const p = useGameStore.getState().player;
       windX = -(p.vx ?? 0) * SNOW_WIND_FACTOR; // 進む方向と逆へ雪が流れる=移動連動
@@ -4280,12 +4303,16 @@ export class PixiScene {
       if (snow) {
         f.x += (f.snowDrift + windX + blizzardWind) * sec;
         f.y += (f.snowFall * fallBoost + windY) * sec; // +y=下へ落下
+      } else if (ember) {
+        // 上へゆらゆら昇る+横ゆらぎ(sin)+粒ごとの微差(snowFall/Driftを流用)。
+        f.x += (f.snowDrift * 0.4 + Math.sin(now * f.freq * 2.2 + f.phase) * emberSway) * sec;
+        f.y -= (emberRise + f.snowFall * 0.35) * sec; // -y=上へ昇る
       } else {
         f.x += f.vx * sec;
         f.y += f.vy * sec;
       }
       // Wrap into the visible band so density follows the camera.
-      if (snow) {
+      if (snow || ember) {
         // 吹雪は定常の強風で全粒がほぼ同速で流れるため、ラップ時にyを保つと同じ高さの列に溜まって
         // 「まとまり(縦の筋)」ができる。ラップした軸の反対側を毎回ランダムに散らして、端から新しい雪片
         // として入り直させる=均一な降りに戻す(社長指示v0.25.1985「均一に出るようにしてほしい」)。
@@ -4303,6 +4330,11 @@ export class PixiScene {
         f.sprite.tint = SNOW_TINT;
         f.sprite.alpha = Math.min(1, f.base * 1.5); // 吹雪=はっきり見える白(瞬きなし・社長v0.25.1979)
         f.sprite.width = f.sprite.height = f.size * 1.05; // 粒を大きめに(吹雪の視認性)
+      } else if (ember) {
+        const flick = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(now * f.freq * 3 + f.phase)); // 明滅
+        f.sprite.tint = EMBER_TINT;
+        f.sprite.alpha = Math.min(1, f.base * 1.3 * flick);
+        f.sprite.width = f.sprite.height = f.size * 0.85; // 粒は小さめ(強glow回避=軽い)
       } else {
         const twinkle = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now * f.freq + f.phase));
         f.sprite.tint = FIREFLY_TINT;
