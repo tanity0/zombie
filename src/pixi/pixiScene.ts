@@ -1615,14 +1615,17 @@ export class PixiScene {
     // 奥行き感: 縦を縮めて地面が奥へ倒れて見える遠近(社長指示v0.25.1977「奥行き感ほしい(縮めるとか)」)。?cloudshadowyscale=で比率調整。
     const scaleY = scale * tsNum('cloudshadowyscale', 0.5);
     sp.tileScale.set(scale, scaleY);                  // 縦を圧縮=接地した遠近感
-    sp.alpha = tsNum('cloudshadowalpha', 1.0);        // 濃さ=1.0(社長指示v0.25.1977)
-    // ステージ7は影を濃く(社長指示v0.25.1994)。multiplyのalphaは1.0が上限なので、暗いtintで乗算を深める
-    // (小さいほど濃い=blob部だけ暗くなる。0.5=既定)。他ステージは白(=従来どおり)。?cloudshadow7dark=で調整。
+    // ステージ7だけ「通常合成の黒」(=プレイヤー影と同じ重ね方・案A・社長指示v0.25.1998「aにして」)。
+    // 乗算は暗い地面で黒に埋もれて消えるため、stage7は黒を通常αで塗る=暗所でも黒い雲影が乗る。
+    // 他ステージは従来の乗算(灰色を地面に掛ける=光を遮る物理的な影)。blendMode/tint/alphaをステージで切替。
     if (this.currentFarKey === 'stage7') {
-      const g = Math.round(255 * Math.max(0, Math.min(1, tsNum('cloudshadow7dark', 0.5)))); // 0.3は暗い地面に沈んで消えたため0.5へ戻す(社長報告v0.25.1997)
-      sp.tint = (g << 16) | (g << 8) | g;
-    } else if (sp.tint !== 0xffffff) {
-      sp.tint = 0xffffff;
+      if (sp.blendMode !== 'normal') sp.blendMode = 'normal';
+      if (sp.tint !== 0x000000) sp.tint = 0x000000;      // 黒を塗る
+      sp.alpha = tsNum('cloudshadow7alpha', 0.5);         // 黒影の濃さ(normal合成=そのまま影の濃さ)。?cloudshadow7alpha=で調整
+    } else {
+      if (sp.blendMode !== 'multiply') sp.blendMode = 'multiply';
+      if (sp.tint !== 0xffffff) sp.tint = 0xffffff;
+      sp.alpha = tsNum('cloudshadowalpha', 1.0);          // 濃さ=1.0(社長指示v0.25.1977)
     }
     const spd = tsNum('cloudshadowspeed', night ? 0.008 : 0.011); // もう少し速く(社長指示v0.25.1977)。夜=ゆっくりめ / 昼=標準
     // ステージ4(雪)は雲影のドリフト向きを雪と同じ(=現状の逆)にし、少し速く(社長指示v0.25.1984)。
