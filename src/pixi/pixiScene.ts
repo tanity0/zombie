@@ -75,6 +75,16 @@ const FORCE_DEEP_ZONE = DZ_PARAMS?.get('deepzone') === '1'; // 診断: ?deepzone
 // ?glow=0   … 強glow(加算合成の大面積オーバードロー=ベンチ唯一のFAIL G12)を描画しない(小glowは安いので残す)。
 // ?shadow=0 … 全アクターの足影(敵1体=影1枚・数に比例)を描画しない。
 const STRONG_GLOW_DISABLED = DZ_PARAMS?.get('glow') === '0';
+// 攻撃/爆発の「光フラッシュ」時に、画面(filteredWorld=アクター/背景/効果)のコントラストを一瞬パンチ=影締まり+ハイライト飛び
+// (参考: Octopath II の光/炎攻撃。社長試作v0.25.1971)。既定OFF・?punchgrade=1 で有効。既存の色フラッシュ(flashGfx)が色、これが階調。
+// 負荷: イベント時だけ全画面ColorMatrixFilter1パス(=bloom並み・実測で全画面フィルタは律速でない)。常時OFFなのでフラグOFFなら0。
+const PUNCH_GRADE = DZ_PARAMS?.get('punchgrade') === '1';
+// フラッシュ色の明度(0..1)。暗転(黒)フラッシュはパンチしない=光だけ拾うための判定。
+const flashLuminance = (color: string): number => {
+  const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (!m) return 1;
+  return (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]) / 255;
+};
 // シネマティック調(社長試作v0.25.1860)。?cine=1 かつステージ6(古い洋館)のときだけON。
 // teal-orange のシネマ グレード= 寒色をより teal 寄りに強め(乗算)+ 暖色の残照オーバーレイ(screen)+
 // ヴィネット強め + bloom強め。**描画のみ**(当たり判定/ゲームは不変)。他ステージ・非cineは完全に従来通り。
@@ -1428,6 +1438,9 @@ export class PixiScene {
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
   private cineContrast: ColorMatrixFilter | null = null; // cine前景の階調立て(遅延生成)
+  private punchGrade: ColorMatrixFilter | null = null;   // 攻撃/爆発の光コントラストパンチ(?punchgrade=1・遅延生成)
+  private punchStrength = 0;                             // 現在のパンチ強度(0..1・フラッシュ envelope 追従)
+  private punchInList = false;                           // punchGrade が filteredWorld.filters に入っているか(付け外し=イベント時のみ)
   private bloomActive = true; // 現在ブルームをフィルタ配列に入れているか(オプション反映用)
   private farBackdropBlur: BlurFilter | null = null;
   // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
@@ -1509,7 +1522,37 @@ export class PixiScene {
       }
       filters.push(this.cineContrast);
     }
+    // 攻撃/爆発の光コントラストパンチ(?punchgrade=1)。イベント時(punchInList)だけ追加=常時パスにしない。
+    if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
     this.L.filteredWorld.filters = filters;
+  }
+
+  // 攻撃/爆発の「光フラッシュ」に追従して全画面コントラストを一瞬パンチする(?punchgrade=1・既定OFF)。
+  // 色は既存 flashGfx が担当。ここは階調(影締まり+ハイライト飛び)だけ。フィルタは強度>0の間だけ filteredWorld に入れる。
+  private updatePunchGrade(effects: VisualEffect[], now: number) {
+    if (!PUNCH_GRADE) return;
+    // 現在生きている「光」フラッシュ(暗転=黒は除外)の最大寄与を集計。フラッシュ自体が減衰するのでパンチも自然に減衰。
+    let target = 0;
+    for (const e of effects) {
+      if (e.kind !== 'flash') continue;
+      const lum = flashLuminance(e.color);
+      if (lum < 0.25) continue; // 暗転(黒)フラッシュはパンチしない=光だけ
+      const a = Math.max(0, 1 - (now - e.createdAt) / e.duration);
+      target = Math.max(target, a * lum);
+    }
+    target = Math.min(1, target * tsNum('punchgain', 3.2)); // フラッシュ強度→パンチ強度の増幅(?punchgain=)
+    // 立ち上がりは即・減衰はなめらかに(前フレームより下がる時だけ緩める)。
+    this.punchStrength = target >= this.punchStrength ? target : this.punchStrength + (target - this.punchStrength) * 0.22;
+    const active = this.punchStrength > 0.012;
+    if (active) {
+      if (!this.punchGrade) this.punchGrade = new ColorMatrixFilter();
+      const k = this.punchStrength;
+      this.punchGrade.contrast(k * tsNum('punchcontrast', 0.55), false); // 影締まり+ハイライト飛び(?punchcontrast=)
+      this.punchGrade.brightness(1 + k * tsNum('punchbright', 0.12), true); // 全体を少し持ち上げ(?punchbright=)
+      if (!this.punchInList) { this.punchInList = true; this.rebuildWorldFilters(); } // 立ち上がり時だけ付ける
+    } else if (this.punchInList) {
+      this.punchStrength = 0; this.punchInList = false; this.rebuildWorldFilters(); // 減衰しきったら外す
+    }
   }
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
@@ -3680,6 +3723,7 @@ export class PixiScene {
     const liveScreamers = s.enemies.filter(e => e.type === 'screamer').map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
     this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets);
     this.syncFlash(s.effects, now);
+    this.updatePunchGrade(s.effects, now); // 攻撃/爆発の光でコントラストパンチ(?punchgrade=1・既定OFF)
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
     // (camera-offset already applied to the parent), so plain world coords.

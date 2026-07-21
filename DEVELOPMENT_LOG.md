@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1971 — 光コントラストパンチ(攻撃/爆発の光で全画面階調パンチ)試作【2026-07-21 09:24 JST】
+- 指示(社長): 攻撃/爆発の光エフェクト時に画面全体のコントラストを上げる(影/ハイライト極端化)ことは可能か+負荷? → 参考Octopath II。可能・軽い旨を回答し「お願い」で試作着手。
+- 実装(A案・**既定OFF**・`?punchgrade=1`で有効): `filteredWorld` に コントラスト用 `ColorMatrixFilter`(`punchGrade`)を**光フラッシュの間だけ**追加。
+  - 発火: 既存の store `flash` 効果に追従(renderer側`updatePunchGrade`)。**光フラッシュのみ**(色の明度<0.25=暗転/黒は除外)。強度=生存フラッシュの`alpha×明度`の最大×`punchgain`(既定3.2)。フラッシュ自体が減衰するのでパンチも追従減衰。
+  - 階調: `contrast(k×punchcontrast[0.55])` + `brightness(1+k×punchbright[0.12])`。**色は既存 flashGfx が担当**(このフィルタは影締まり+ハイライト飛びだけ)=合成で参考の見た目。
+  - フィルタは強度>0の間だけ filters に入れ(立上り/減衰しきりでのみ付け外し=常時全画面パスにしない)。
+- 検証: ヘッドレス(stage-1)で **flag OFF=完全無影響**(白フラッシュでも filters不変=2枚・strength0)。**flag ON**=白フラッシュで strength1・filter追加(3枚)、**黒暗転は不発火**(減衰のみ)、無フラッシュ40フレームで strength0・filter除去(2枚)。pageErrors 0。実描画(強度固定)でアクター/効果のコントラストが立つのを確認。typecheck OK。
+- 自己点検: 描画のみ・当たり判定/ゲーム挙動不変。負荷: **OFF時0/10**・**ON時2〜3/10**(イベント時だけ全画面ColorMatrixF1パス=bloom並み。実測で全画面フィルタは律速でない=強glow塗りが本丸)。常時化/効果ごと多重にしないこと。
+- ★未決(社長裁定待ち): ①採否 ②発火対象の絞り(現状=全「光」フラッシュ。攻撃/爆発だけに限定するか、サブウェポン/グレネードを含めるか=slow-mo同様の線引き) ③強さ(`?punchcontrast=`/`?punchgain=`/`?punchbright=`で実機調整) ④groundBaseは対象外(cineContrastと同じ)=地面も含めるか。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1970 — M7の光源(太陽)を遠景森1の後ろへ移設【2026-07-21 09:08 JST】
 - 指示(社長): 「m7の光源を遠景森1の後ろに」。
 - 対処: `cineSun`(M7の太陽)を uiLayer(最前面)から **stageC(worldGroupの直前=遠景森1/2・地面・gameplayの裏・銀河の手前)** へ移設。放射(cineCloudLayers)と同じ「画面固定の空」レイヤー。太陽を最も奥(放射の裏)に挿入=galaxy→太陽→放射→雲→worldGroup(森)。位置/サイズ/α(毎フレーム)は不変=スクリーン座標そのまま。
