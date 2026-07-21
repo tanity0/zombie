@@ -217,7 +217,7 @@ export const getCloudShadowTexture = (cool = false): Texture => {
   for (let i = 0; i < 11; i++) {
     const bx = rnd() * s, by = rnd() * s;
     const r = s * (0.13 + rnd() * 0.17);
-    const v = Math.round((0.44 + rnd() * 0.18) * 255); // 影の濃さ(小=濃い)
+    const v = Math.round((0.24 + rnd() * 0.22) * 255); // 影の濃さ(小=濃い)。濃くして視認性UP(社長「どこに雲影ある？」v0.25.1976)
     // 夜=R/Gを多めに落とし青を残す=寒色の影。昼=中立グレー。
     const rr = cool ? Math.round(v * 0.80) : v;
     const gg = cool ? Math.round(v * 0.90) : v;

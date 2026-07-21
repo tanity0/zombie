@@ -1573,9 +1573,9 @@ export class PixiScene {
     sp.position.set(-marginX, farH);                 // 地面帯の上端(farH)から下。横は引き対応でオーバースキャン中央寄せ
     sp.width = overW;
     sp.height = this.screenH * ZOOM_OVERSCAN;
-    const scale = tsNum('cloudshadowscale', night ? 2.0 : 1.6); // 夜=大きめ / 昼=標準
+    const scale = tsNum('cloudshadowscale', night ? 1.7 : 1.4); // 夜=大きめ / 昼=標準(小さめ=動く塊が分かる)
     sp.tileScale.set(scale);                          // 雲影の大きさ
-    sp.alpha = tsNum('cloudshadowalpha', night ? 0.24 : 0.34);  // 夜=淡く / 昼=濃く
+    sp.alpha = tsNum('cloudshadowalpha', night ? 0.42 : 0.5);   // 視認性UP(社長「どこに雲影ある？」v0.25.1976)。夜=淡め / 昼=濃く
     const spd = tsNum('cloudshadowspeed', night ? 0.005 : 0.008); // 夜=ゆっくり / 昼=標準
     // 斜めドリフト+ゆるいカメラ連動(接地感)。tilePositionはタイル周期(256×tileScale)で剰余=巨大値のfloat32精度落ち(カクつき)を防ぐ。
     const period = 256 * scale;
