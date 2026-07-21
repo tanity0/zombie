@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1984 — ステージ5(貫通防止+炎抑え)/ステージ4(森前の霧+雲/霧を雪と同方向へ速く)【2026-07-21 14:56 JST】
+- 指示(社長): ①stage5のフラッシュ/火が遠景森2を貫通しないで ②火のゆらめきが激しすぎるので抑えて ③stage4の遠景森の前にも霧 ④stage4は雲も霧も向きを雪と同じ(=逆)に少し速く。
+- 対処:
+  - **stage5 貫通防止**: 炎+フラッシュを `stage5WarGroup`(Container)にまとめ、`stage5WarMask`(地平=farH+5%h より上のみ)でマスク=森2の下(フィールド)へ漏れない。
+  - **stage5 炎抑え**: ゆらめきの振幅/速度を下げる(0.6±0.36→**0.78±0.18**・sin速度も低下)=激しすぎない照り。
+  - **stage4 森前の霧**: `snowHorizonFog`(screen・寒色白)を worldGroup の nearHorizon(森2)の**手前**に新設。地平帯に横長・snowのみ。`?snowfog=`(0.38)/`?snowfogh=`/`?snowfogup=`。
+  - **stage4 雲影の向き/速度**: snowのみドリフトを反転(`dir=-1`=雪と同じ左)+`?cloudshadowsnowspeed=`(1.8倍)。
+  - **stage4 霧の向き/速度**: snowのみ fog flow を反転+速く(`?snowfogflow=-1.8`)。前景霧も左へ流れる `?snowfogspeed=`(0.03)。
+- 検証: ヘッドレスで stage5=warGroup masked・fire抑え・pageErrors0 / stage4=snowHorizonFog visible(screen・地平y184)・雪流・pageErrors0。実描画で stage5=戦火が上部backdropのみを照らしフィールドへ漏れない / stage4=氷壁の前に霧の帯・雪と同方向の流れ。typecheck OK。
+- 自己点検: 描画のみ・挙動不変。負荷: stage5 mask=0/10増(Graphics1)。stage4 森前霧=1/10(screen TilingSprite1・snowのみ)。向き/速度=0/10。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1983 — 上部の被写界深度(DoF)ぼかしの濃さパラメータ ?tsupper=【2026-07-21 14:46 JST】
 - 指示(社長): ステージ全体の上部の被写界深度をもう少し濃く(ぼかし)するか否かのパラメータがほしい。
 - 対処: `TILT_SHIFT_UPPER = tsNum('tsupper', 1)` を追加し、tilt-shiftの `blur` に乗算(`TILT_SHIFT_BLUR × vpScale × tsupper`)。TiltShiftはピント面(TILT_SHIFT_BAND=0.54)から沿面対称にボケるため、面より上=遠景側が最も強くボケる=**上部DoFの体感濃度**をこの倍率で上下できる。既定1=従来(挙動不変)。

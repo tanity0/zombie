@@ -1383,6 +1383,7 @@ export class PixiScene {
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
   private gradeSprite = new Sprite(Texture.WHITE);
   private snowAir = new Sprite(Texture.WHITE); // ステージ4の「冷たい空気」=寒色の全画面グレード(霧ではない・社長指示v0.25.1979)
+  private snowHorizonFog = new TilingSprite({ texture: getFogTexture(), width: 1, height: 1 }); // ステージ4: 遠景森の前(森2の手前)の霧(社長指示v0.25.1984)
   // シネマティック残照オーバーレイ(?cine=1 & stage-7 のみ表示・screen合成)。stage-6は洋館(室内)なので
   // 屋外の黄昏空が合わず、逆探知地点(stage-7=未明の屋外)へ移設(社長指示v0.25.1870)。
   private cineWarm = new Sprite(getCineWarmTexture());
@@ -1462,6 +1463,8 @@ export class PixiScene {
   private stage5FireGlow = new Sprite(getGlowTexture()); // 炎のゆらめき(横長の暖色グロー)
   private stage5Flashes: { sprite: Sprite; start: number; dur: number; peak: number }[] = []; // 遠くの爆発フラッシュ(プール)
   private stage5NextFlashAt = 0; // 次の爆発の予定時刻
+  private stage5WarGroup = new Container(); // 炎/フラッシュをまとめる箱(マスク対象)
+  private stage5WarMask = new Graphics();   // 地平(森2の下)を貫通させないマスク(上部のみ・社長指示v0.25.1984)
   private isLabStage = false; // 現在の出撃が lab テーマ(ステージ2)か。影向きの分岐に使用。
   private horizonForestUpNow = 0; // 現ステージの遠景森1 上移動px(HORIZON_FOREST_UP_BY_STAGE をstage idで引いてキャッシュ・1回/フレーム)。
   private daylightApplied: boolean | null = null;
@@ -1609,22 +1612,31 @@ export class PixiScene {
     sp.tileScale.set(scale, scaleY);                  // 縦を圧縮=接地した遠近感
     sp.alpha = tsNum('cloudshadowalpha', 1.0);        // 濃さ=1.0(社長指示v0.25.1977)
     const spd = tsNum('cloudshadowspeed', night ? 0.008 : 0.011); // もう少し速く(社長指示v0.25.1977)。夜=ゆっくりめ / 昼=標準
+    // ステージ4(雪)は雲影のドリフト向きを雪と同じ(=現状の逆)にし、少し速く(社長指示v0.25.1984)。
+    const snow = this.snowStage;
+    const dir = snow ? -1 : 1;
+    const driftSpd = spd * (snow ? tsNum('cloudshadowsnowspeed', 1.8) : 1);
     // 斜めドリフト+ゆるいカメラ連動(接地感)。tilePositionはタイル周期(256×tileScale)で剰余=巨大値のfloat32精度落ち(カクつき)を防ぐ。縦横で周期が違う。
     const periodX = 256 * scale, periodY = 256 * scaleY;
-    sp.tilePosition.set((now * spd - cameraX * 0.4) % periodX, (now * spd * 0.55 - cameraY * 0.4) % periodY);
+    sp.tilePosition.set((dir * now * driftSpd - cameraX * 0.4) % periodX, (dir * now * driftSpd * 0.55 - cameraY * 0.4) % periodY);
   }
 
   // ステージ5の戦争照明(社長指示v0.25.1980)。上部の暗さを「単純に明るく」ではなく、炎のゆらめき照明+遠くの爆発フラッシュで戦争中感を出して照らす。加算。
   private updateStage5War(now: number) {
     const on = this.stage5Stage;
+    if (this.stage5WarGroup.visible !== on) this.stage5WarGroup.visible = on;
     if (this.stage5FireGlow.visible !== on) this.stage5FireGlow.visible = on;
     if (!on) { for (const f of this.stage5Flashes) if (f.sprite.visible) f.sprite.visible = false; return; }
     const w = this.screenW, h = this.screenH;
-    // 炎のゆらめき照明: 地平上に横長の暖色グロー。複数sinで不規則に揺らぐ(遠くの火災に照らされる感)。
+    // マスク: 地平(森2の下端あたり)より上のみ描く=フラッシュ/火が森2を貫通して手前(フィールド)へ漏れない(社長指示v0.25.1984)。
+    const cutoff = this.farBackdropHeight() + h * tsNum('s5warmask', 0.05);
+    this.stage5WarMask.clear();
+    this.stage5WarMask.rect(-w, -h * 2, w * 3, cutoff + h * 2).fill(0xffffff);
+    // 炎のゆらめき照明: 地平上に横長の暖色グロー。複数sinで不規則に揺らぐが、激しすぎないよう振幅を抑える(社長指示v0.25.1984)。
     this.stage5FireGlow.position.set(w * 0.5, h * tsNum('s5firey', 0.2));
     this.stage5FireGlow.width = w * 1.4;
     this.stage5FireGlow.height = h * tsNum('s5fireh', 0.5);
-    const flick = 0.6 + 0.16 * Math.sin(now * 0.011) + 0.12 * Math.sin(now * 0.027 + 1.3) + 0.08 * Math.sin(now * 0.053 + 2.1);
+    const flick = 0.78 + 0.08 * Math.sin(now * 0.008) + 0.06 * Math.sin(now * 0.019 + 1.3) + 0.04 * Math.sin(now * 0.037 + 2.1); // 抑えめ(振幅↓・速度↓)
     this.stage5FireGlow.alpha = Math.max(0, tsNum('s5fire', 0.4) * flick);
     // 遠くの爆発フラッシュ: 一定間隔でランダム位置に閃光(立ち上がり速い→減衰)。同時1〜2発。
     if (now >= this.stage5NextFlashAt) {
@@ -1649,15 +1661,26 @@ export class PixiScene {
   }
 
   // ステージ4の「冷たい空気」=寒色の全画面グレード(乗算)。霧ではない均一な冷え(社長指示v0.25.1979)。snowのみ表示。?snowair=で濃さ。
-  private updateSnowAir() {
+  private updateSnowAir(now: number) {
     const sp = this.snowAir;
     const on = this.snowStage;
     if (sp.visible !== on) sp.visible = on;
+    if (this.snowHorizonFog.visible !== on) this.snowHorizonFog.visible = on;
     if (!on) return;
     sp.position.set(-1, -1);
     sp.width = this.screenW + 2;
     sp.height = this.screenH + 2;
     sp.alpha = tsNum('snowair', 0.4);
+    // 遠景森の前の霧(森2の手前)。地平帯に横長。雪と同じ向き(左)へ少し速く流す。
+    const farH = this.farBackdropHeight();
+    const fw = this.snowHorizonFog;
+    fw.position.set(0, farH - this.screenH * tsNum('snowfogup', 0.05));
+    fw.width = this.screenW;
+    fw.height = this.screenH * tsNum('snowfogh', 0.3);
+    const ftex = fw.texture;
+    if (ftex && ftex.width > 1) fw.tileScale.set((fw.width / ftex.width) * 1.5, fw.height / ftex.height);
+    fw.alpha = tsNum('snowfog', 0.38);
+    fw.tilePosition.x = (-now * tsNum('snowfogspeed', 0.03)) % 2048; // 左へ流す(雪と同じ向き)
   }
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
@@ -2086,14 +2109,14 @@ export class PixiScene {
     this.applyCineGrade(); // 初期適用(applyDaylight前でもcine値を効かせる)
 
     // ステージ5の戦争照明(炎のゆらめき+爆発フラッシュ)。遠景森2(nearHorizon)の裏へ=森2のシルエットが手前に立つ「遠くの戦火」感(社長指示v0.25.1981)。worldGroup内・加算。
+    // グループ化してマスク(上部のみ)=森2の下(地平)を貫通しない(社長指示v0.25.1984)。
     {
       const nhIdx = () => this.L.worldGroup.getChildIndex(this.L.nearHorizon);
       this.stage5FireGlow.anchor.set(0.5);
       this.stage5FireGlow.blendMode = 'add';
       this.stage5FireGlow.eventMode = 'none';
-      this.stage5FireGlow.visible = false;
       this.stage5FireGlow.tint = 0xff7a3a;
-      this.L.worldGroup.addChildAt(this.stage5FireGlow, nhIdx());
+      this.stage5WarGroup.addChild(this.stage5FireGlow);
       for (let i = 0; i < 4; i++) {
         const sp = new Sprite(getGlowTexture());
         sp.anchor.set(0.5);
@@ -2101,10 +2124,21 @@ export class PixiScene {
         sp.tint = 0xffe0b0; // 爆発の閃光=暖白
         sp.eventMode = 'none';
         sp.visible = false;
-        this.L.worldGroup.addChildAt(sp, nhIdx());
+        this.stage5WarGroup.addChild(sp);
         this.stage5Flashes.push({ sprite: sp, start: -1e9, dur: 300, peak: 1 });
       }
+      this.stage5WarGroup.visible = false;
+      this.stage5WarGroup.mask = this.stage5WarMask;
+      this.L.worldGroup.addChildAt(this.stage5WarGroup, nhIdx());
+      this.L.worldGroup.addChildAt(this.stage5WarMask, nhIdx()); // マスクも表示ツリーに置く(描画はされない)
     }
+
+    // ステージ4: 遠景森の前(森2=nearHorizonの手前)の霧。snowのみ。地平帯に横長のscreen霧を雪と同じ向きへ流す(社長指示v0.25.1984)。
+    this.snowHorizonFog.blendMode = 'screen';
+    this.snowHorizonFog.tint = 0xdfe8f5; // 寒色寄りの白
+    this.snowHorizonFog.eventMode = 'none';
+    this.snowHorizonFog.visible = false;
+    this.L.worldGroup.addChildAt(this.snowHorizonFog, this.L.worldGroup.getChildIndex(this.L.nearHorizon) + 1); // 森2の手前
 
     // フィールドの動く雲影(社長指示v0.25.1974)。地面(groundBase)の直上・森/アクターの下(worldGroup内)。multiply。屋外のみ・毎フレームdrift。
     this.cloudShadow.blendMode = 'multiply';
@@ -3628,7 +3662,9 @@ export class PixiScene {
       }
       f.sp.x = (this.screenW - f.sp.width) / 2; // 画面中央に固定(横の動きは texture スクロールで)
       f.sp.y = f.yFrac * this.screenH - f.sp.height / 2 + Math.sin(now * f.spdY * FOG_SPEED + f.ph) * f.ampY; // 縦の揺らめき
-      f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;    // 右へ流れる+横の揺らめき
+      // ステージ4(雪)は霧の流れを雪と同じ向き(=通常の逆)にし、少し速く(社長指示v0.25.1984)。
+      const fogDir = this.snowStage ? tsNum('snowfogflow', -1.8) : 1;
+      f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED * fogDir + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX; // 流れ+横の揺らめき
       f.sp.tilePosition.y = 0;
     }
     // cine: 空を生かす(A+B・社長指示v0.25.1865)。既存ベイクSpriteのtransformだけ=軽い。
@@ -3866,7 +3902,7 @@ export class PixiScene {
     this.syncFlash(s.effects, now);
     this.updatePunchGrade(s.effects, now); // 攻撃/爆発の光でコントラストパンチ(?punchgrade=1・既定OFF)
     this.updateCloudShadow(now, s.camera.x, s.camera.y, s.indoorMode); // フィールドの動く雲影(屋外のみ・?cloudshadow=0で無効)
-    this.updateSnowAir(); // ステージ4の冷たい空気(寒色グレード・snowのみ)
+    this.updateSnowAir(now); // ステージ4の冷たい空気(寒色グレード)+遠景森前の霧(snowのみ)
     this.updateStage5War(now); // ステージ5の戦争照明(炎ゆらめき+爆発フラッシュ・stage5のみ)
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
