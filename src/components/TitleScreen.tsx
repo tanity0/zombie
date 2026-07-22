@@ -36,6 +36,9 @@ const formatWallBadge = (): string | null => {
 
 interface TitleScreenProps {
   onStart: () => void;                 // 同意時: BGM解禁(再生開始)
+  // 更新情報の「OK」直後に呼ぶ(オープニング再生トリガ・社長指示v0.25.2022)。
+  // 指定時は onStart の代わりにこちらを呼ぶ(音声解禁とBGM開始のタイミングを呼び側で制御するため)。
+  onNoticeOk?: () => void;
   waitForAssets?: () => Promise<void>; // STARTタップ後に待つ本物の素材ロード完了
   onDone: () => void;                  // ローディング完了でメニューへ
 }
@@ -218,7 +221,7 @@ const ChronicleTimeline: React.FC = () => {
   );
 };
 
-const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDone }) => {
+const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForAssets, onDone }) => {
   const [phase, setPhase] = useState<'notice' | 'title' | 'blackout' | 'loading'>('notice');
   const doneRef = useRef(false);
   // ローディング%表示(社長指示v0.25.1776)。購読は loading フェーズ中だけ(他フェーズを
@@ -237,11 +240,12 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
     onDone();
   };
 
-  // 同意 → BGM開始 → タイトルへ
+  // 同意 → (オープニング or BGM開始) → タイトルへ
   const agree = () => {
     if (phase !== 'notice') return;
     playSfx('ui-select');
-    onStart();          // 同意の瞬間にBGM解禁＆再生
+    // OK直後にオープニングを挟む場合は onNoticeOk(音声解禁+オープニング起動。メニューBGMはオープニング後)。
+    if (onNoticeOk) onNoticeOk(); else onStart();
     setPhase('title');
   };
 
