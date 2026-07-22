@@ -845,6 +845,27 @@ export const unlockDanceAudio = () => {
   }
 };
 
+// タイトルBGM(title.mp3)の事前解錠(v0.25.2061): オープニング終了時の setBgmScene('menu') は
+// 更新情報OKタップから約40秒後=ユーザー操作の有効期限切れ後の再生になるため、本物の bgm 要素を
+// タップのジェスチャ内で作って無音再生→停止し「操作済み」にしておく(後から作った要素はモバイルで
+// ブロックされ無音になる=蘇生パートの心拍SEと同じ罠・v0.25.2054)。srcもタイトル曲を先に積んでおく。
+export const primeMenuBgm = () => {
+  if (bgmActive) return; // 既にBGMが動いている文脈では触らない(再生中の曲を止めないため)
+  ensureBgm();
+  if (!bgm) return;
+  if (bgmSrc !== TITLE_TRACK) {
+    bgmSrc = TITLE_TRACK;
+    bgmTargetSrc = TITLE_TRACK;
+    bgm.src = TITLE_TRACK;
+    try { bgm.load(); } catch { /* ignore */ }
+  }
+  const el = bgm;
+  el.muted = true;
+  void el.play()
+    .then(() => { el.pause(); try { el.currentTime = 0; } catch { /* ignore */ } el.muted = false; })
+    .catch(() => { el.muted = false; });
+};
+
 export const isAudioMuted = () => muted;
 
 export const getBgmVolume = () => bgmVolume;

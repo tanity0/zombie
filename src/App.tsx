@@ -11,7 +11,7 @@ import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow }
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
-import { setBgmScene, preloadAllAudio, unlockDanceAudio, preloadStageBgm, setAudioSuspended, clearSfxThrottle } from './audio/audioManager';
+import { setBgmScene, preloadAllAudio, unlockDanceAudio, primeMenuBgm, preloadStageBgm, setAudioSuspended, clearSfxThrottle } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { loadProgressBegin, loadProgressDone } from './utils/loadProgress';
 import {
@@ -269,7 +269,7 @@ function App() {
           onStart={() => { unlockDanceAudio(); setBgmScene('menu'); }} // タップ瞬間にBGM解禁
           // 更新情報OK直後にオープニングを再生(社長指示v0.25.2022)。音声はOKのジェスチャで解禁し、
           // メニューBGMはオープニング終了後(onDone)に開始=OP中のアリーナ音源と被らない。
-          onNoticeOk={() => { unlockDanceAudio(); setShowOpening(true); }}
+          onNoticeOk={() => { unlockDanceAudio(); primeMenuBgm(); setShowOpening(true); }}
           waitForAssets={ensurePreload}                                // 同意後の本物ローディング(完了待ち)
           onDone={() => setGameState('menu')}                          // 暗転し切ったらセレクトへ
         />
@@ -317,7 +317,7 @@ function App() {
       )}
 
       {/* オープニングシーン(?opening=1でプレビュー)。タイトルの上に全画面。暗転し切ったら onDone で外れる。 */}
-      {showOpening && <OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} />}
+      {showOpening && <OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} onTitleReveal={() => setBgmScene('menu')} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} />}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}
       <OrientationGuard />

@@ -60,6 +60,9 @@ const PAN_SE_VOLUME = 0.64; // ゲーム内SE設定(audioManagerのhandgun-fire 
 const HEARTBEAT_SRC = `${BASE}audio/sfx/heartbeat.mp3`;
 const HEARTBEAT_LOOP_VOLUME = 0.5;    // 会話中の心拍ループ=低音量(spec「0.5前後」)
 const HEARTBEAT_ONESHOT_VOLUME = 0.6; // 最終行後の一発は句読点として少しだけ前に
+// 蘇生が黒に沈み切った後のタイトルフェードイン長(社長指示v0.25.2061)。背景を透過し黒幕を
+// フェードアウトして、下に居るタイトル画面を透かして見せる。明け切ったら finish でOPを外す。
+const TITLE_REVEAL_MS = 1500;
 
 // 紙吹雪(社長指示v0.25.2031→2033→2034修正)。2系統:
 // ①パーン=ステージ【両サイド】の砲から真上へ噴射し【画面場外まで突き抜けて消える】(落下はしない)。
@@ -235,13 +238,14 @@ const SPOTLIGHTS = SHOTS.map(s => s.chars.map((c, ci) => {
   };
 }));
 
-const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, startAtShoot, startAtRevival }) => {
+const OpeningScene: React.FC<{ onDone: () => void; onTitleReveal?: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, onTitleReveal, startAtShoot, startAtRevival }) => {
   const [ready, setReady] = useState(false); // 全素材decode完了までタイムラインを始めない(下記コメント)
   const [phase, setPhase] = useState(startAtRevival ? 4 : startAtShoot ? 3 : 0); // 0-2=アリーナ各アングル / 3=射撃シーン / 4=蘇生処置(字幕)
   const [prevShot, setPrevShot] = useState<number | null>(null); // クロスフェード中の前アングル(下敷き)
   const [step, setStep] = useState(0); // 射撃シーンのコマ番号(SHOOT_STEPS index)
   const [subIdx, setSubIdx] = useState(-1); // 蘇生パートの表示中字幕(OPENING_REVIVAL_LINES index / -1=非表示)
   const [revFading, setRevFading] = useState(false); // 蘇生パート終端の3秒フェードアウト中(社長指示v0.25.2055)
+  const [titleReveal, setTitleReveal] = useState(false); // 蘇生後のタイトルフェードイン中(社長指示v0.25.2061)
   const doneRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
   const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
@@ -304,7 +308,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           heartRef.current.forEach(a => { if (a) a.volume = Math.max(0, a.volume * (1 - k / 6)); });
         }, t + (REVIVAL_FADE_MS / 6) * k));
       }
-      ids.push(window.setTimeout(finish, t + REVIVAL_FADE_MS));
+      // 沈み切ったら【タイトルフェードイン+メニューBGM開始】(社長指示v0.25.2061)。
+      // onTitleReveal(App側で setBgmScene('menu'))を明けはじめと同時に呼び、黒幕をフェードアウト。
+      ids.push(window.setTimeout(() => { setTitleReveal(true); onTitleReveal?.(); }, t + REVIVAL_FADE_MS));
+      ids.push(window.setTimeout(finish, t + REVIVAL_FADE_MS + TITLE_REVEAL_MS));
     };
 
     // ?opening=3: 蘇生パート単独プレビュー。射撃/アリーナ素材のdecodeを待たず即開始(黒画面+字幕のみ)。
@@ -370,6 +377,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     SHOTS.map((s, i) => `@keyframes opzoom${i}{from{transform:scale(${s.zf})}to{transform:scale(${s.zt})}}`).join('\n') +
     `\n@keyframes opblack{from{opacity:0}to{opacity:1}}` +
     `\n@keyframes opfade{from{opacity:0}to{opacity:1}}` +
+    `\n@keyframes opfadeout{from{opacity:1}to{opacity:0}}` +
     `\n@keyframes opshzoom{from{transform:scale(1)}to{transform:scale(1.12)}}` +
     // 蘇生パート字幕: 行の切替を軽くフェードイン(任意・spec)。key=行indexで再マウントして毎行再生。
     `\n@keyframes opsub{from{opacity:0}to{opacity:1}}` +
@@ -391,7 +399,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     <div
       onClick={finish}
       // z-index はタイトルのモーダル(更新情報等)より上・OrientationGuard(9999)より下。
-      style={{ position: 'fixed', inset: 0, background: '#000', overflow: 'hidden', zIndex: 9990, cursor: 'pointer' }}
+      // タイトルフェードイン中(titleReveal)は背景を透過し、下のタイトル画面を透かして見せる。
+      style={{ position: 'fixed', inset: 0, background: titleReveal ? 'transparent' : '#000', overflow: 'hidden', zIndex: 9990, cursor: 'pointer' }}
     >
       <style>{css}</style>
 
@@ -596,6 +605,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           {/* シーン終わりの暗転 */}
           <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, pointerEvents: 'none', animation: `opblack ${SHOOT_FADE_MS}ms linear ${SHOOT_FADE_START}ms both` }} />
         </div>
+      ) : titleReveal ? (
+        // ── タイトルフェードイン(社長指示v0.25.2061): 蘇生が黒に沈み切った後、黒幕をフェードアウトして
+        //    下に居るタイトル画面を透かして見せる(ルート背景は透過済み)。明け切ったら finish でOPを外す。 ──
+        <div style={{ position: 'absolute', inset: 0, background: '#000', pointerEvents: 'none', animation: `opfadeout ${TITLE_REVEAL_MS}ms linear both` }} />
       ) : (
         // ── 蘇生処置パート(phase4): 黒背景の中央に字幕を1行ずつ。話者名・年代・PHILL等は絶対に出さない(spec §5/§6)。
         //    320px幅でも2〜3行に収まるよう max-width と自然折返しで担保。key=行indexで軽くフェードイン。 ──
@@ -638,8 +651,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 50, pointerEvents: 'none', animation: `opblack ${BLACK_MS}ms linear ${BLACK_START}ms both` }} />
       )}
 
-      {/* スキップ */}
-      <button
+      {/* スキップ(タイトルフェードイン中=実質OP終了後は出さない) */}
+      {!titleReveal && <button
         type="button"
         onClick={(e) => { e.stopPropagation(); finish(); }}
         style={{
@@ -649,7 +662,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         }}
       >
         スキップ ▶
-      </button>
+      </button>}
     </div>
   );
 };
