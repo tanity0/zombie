@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { playSfx, preloadSfx } from '../audio/audioManager';
+import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { CHANGELOG } from '../data/changelog';
@@ -234,9 +234,6 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
     return subscribeLoadProgress(update);
   }, [phase]);
 
-  // 更新情報を読んでいる間に、OK直後のオープニングで鳴らすSE(パン!)を先読みしておく
-  // (playSfxは未ロード初回が無音になるため・v0.25.2047)。
-  useEffect(() => { preloadSfx('handgun-fire'); }, []);
 
   const finish = () => {
     if (doneRef.current) return;

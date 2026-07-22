@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { playSfx, preloadSfx } from '../audio/audioManager';
+// パン!SEはWebAudio(playSfx)ではなくHTMLAudioで鳴らす(v0.25.2050):
+// 実機でアリーナ音源(HTMLAudio)は鳴るのにplaySfx経路のパン!だけ無音だったため、
+// 確実に鳴る同じ仕組みに統一(コンテキスト解錠・バッファ非同期の罠を回避)。
 
 // オープニングシーン(社長支給): 引きのアリーナ→中央ステージの3人にカメラが寄りつつ
 // 正面→斜め→真横とアングルを切替(回り込み)→暗転→【射撃シーン(backstage)】→暗転で終了。
@@ -45,6 +47,8 @@ const BLACK_START = 7600;
 const BLACK_MS = 1600;
 const SCENE_START = 9400; // 暗転し切ったら射撃シーンへハードカット
 const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
+const PAN_SE_SRC = `${BASE}audio/sfx/handgun-fire.wav`; // パン!(紙吹雪と発砲で同音・社長指示)
+const PAN_SE_VOLUME = 0.64; // ゲーム内SE設定(audioManagerのhandgun-fire volume)に合わせる
 
 // 紙吹雪(社長指示v0.25.2031→2033→2034修正)。2系統:
 // ①パーン=ステージ【両サイド】の砲から真上へ噴射し【画面場外まで突き抜けて消える】(落下はしない)。
@@ -152,8 +156,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
   const [prevShot, setPrevShot] = useState<number | null>(null); // クロスフェード中の前アングル(下敷き)
   const [step, setStep] = useState(0); // 射撃シーンのコマ番号(SHOOT_STEPS index)
   const doneRef = useRef(false);
-  const audioRef = useRef<HTMLAudioElement[]>([]);
-  const stopAudio = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; }); audioRef.current = []; };
+  const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
+  const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
+  const stopArena = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; }); audioRef.current = []; };
+  const stopAudio = () => { stopArena(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; };
   const finish = () => { if (!doneRef.current) { doneRef.current = true; stopAudio(); onDone(); } };
 
   useEffect(() => {
@@ -165,7 +171,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
     // 壊れ画像等で永久に待たないようフォールバック上限3秒。
     let cancelled = false;
     const ids: number[] = [];
-    preloadSfx('handgun-fire'); // パン!SEの保険先読み(?opening=1/2 直開き経路でも積む・v0.25.2047)
+    // パン!SE(HTMLAudio・2発ぶん事前生成=紙吹雪用と発砲用。currentTime巻き戻しの競合を避ける)。
+    panRef.current = [0, 1].map(() => { const a = new Audio(PAN_SE_SRC); a.preload = 'auto'; a.volume = PAN_SE_VOLUME; return a; });
+    const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; a.play().catch(() => {}); } catch { /* ignore */ } };
     const all = [
       ...SHOTS.map(s => s.bg), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
@@ -178,8 +186,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
       const base = startAtShoot ? 0 : SCENE_START;
       // 「パン!」のSE(社長指示v0.25.2040): 紙吹雪の発射と、射撃シーンの発砲に【同じ音=handgun-fire】。
       // 音声未解禁のURLプレビューでは鳴らない(本番=更新情報OKのジェスチャ後は鳴る)。
-      if (!startAtShoot) ids.push(window.setTimeout(() => playSfx('handgun-fire'), 1050)); // 紙吹雪パーン(1秒置いて)
-      ids.push(window.setTimeout(() => playSfx('handgun-fire'), base + 2000));           // 発砲(一閃の瞬間)
+      if (!startAtShoot) ids.push(window.setTimeout(() => firePan(0), 1050)); // 紙吹雪パーン(1秒置いて)
+      ids.push(window.setTimeout(() => firePan(1), base + 2000));           // 発砲(一閃の瞬間)
       if (!startAtShoot) {
         // アングル切替=クロスフェード: 切替時刻に次を出しつつ前を下敷きで残し、FADE_MS後に前を外す。
         [1, 2].forEach(i => {
@@ -195,7 +203,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
         [0.66, 0.33, 0.12].forEach((v, k) => {
           ids.push(window.setTimeout(() => audioRef.current.forEach(a => { a.volume = v; }), SCENE_START - 450 + k * 150));
         });
-        ids.push(window.setTimeout(stopAudio, SCENE_START));
+        ids.push(window.setTimeout(stopArena, SCENE_START)); // 発砲パン(場面転換後)を殺さないようアリーナだけ止める
       }
       SHOOT_STEPS.forEach((st, i) => { if (i > 0) ids.push(window.setTimeout(() => setStep(i), base + st.t)); });
       ids.push(window.setTimeout(finish, base + SHOOT_TOTAL));

@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.2050 — パン!が鳴らない件: HTMLAudio方式へ切替【2026-07-22 23:54 JST】
+- 指示(社長): パン!だけ鳴ってない(歓声は鳴る)。
+- 診断: 歓声=HTMLAudio・パン=WebAudio(playSfx)と経路が違い、WebAudio側だけ無音(コンテキスト解錠 or iOS制約とみられる)。設定(volume/ミュート/間引き)は無関係を確認。
+- 対処: パン!SEを**アリーナ音源と同じHTMLAudio方式**に切替(`handgun-fire.wav`をAudio要素×2で事前生成・音量0.64=ゲーム内設定と同値)。発砲用は場面転換後に鳴るため、アリーナ停止(SCENE_START)とは参照を分離(panRef)し、スキップ/終了時は両方停止。v0.25.2047のWebAudio先読み(TitleScreen)は撤去(パンが使わなくなった+ジェスチャ前のコンテキスト生成を避ける)。
+- 検証: typecheck OK。※音の実確認は実機(OK経由)で。
+- 自己点検: 音経路のみ。負荷: 0/10。
+- Files: `src/components/OpeningScene.tsx`, `src/components/TitleScreen.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2049 — パン!を1秒置いてから(冒頭に静かな間)【2026-07-22 23:45 JST】
 - 指示(社長): パン!1秒置いて。
 - 対処: 冒頭1秒は静かな引き絵→**パン!+噴射(1.0s)**→歓声(1.4s)→雨(2.0s)→ズーム開始(2.2s)。映像(噴射)とSEの同期を保ったまま全体を+1秒シフト(斜め4.2s/横5.2s/暗転7.6s/射撃9.4s)。
