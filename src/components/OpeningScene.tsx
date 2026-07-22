@@ -138,9 +138,9 @@ const SHOTS: Shot[] = [
   // 【共通アンカー(社長指示v0.25.2019→2022)】ヒーロー=(50%,86%)・ズーム原点もヒーロー自身=ズーム中ドリフト0。
   // 正面の着地点・斜めと画面座標が完全一致(彼女は動かず世界が回る)。シルエットは同Δで隊形維持・接地不変。
   // v0.25.2025: キャラ縮小(h25/28/35→17/19/24)+シルエットの足元をステージ面(花道の傾斜)に沿わせる。
-  // v0.25.2043(社長指示): 並び=奥ショートカット(小)/真中 色あり/手前ツインテール(大)。
+  // v0.25.2044(社長指示・図の文字通り): 斜め隊形=奥ショートカット(右上・小)/真中 色あり/手前ツインテール(左下・大)。
   { bg: A('arena-side.jpg'), ox: 50.7, oy: 86, zf: 1.7, zt: 2.1, flipScene: true, chars: [
-    { src: BOB, x: 45.5, y: 81, h: 17 }, { src: HERO, x: 50.7, y: 86, h: 19 }, { src: TWIN, x: 57, y: 92, h: 24 },
+    { src: BOB, x: 57.5, y: 80.5, h: 17 }, { src: HERO, x: 50.7, y: 86, h: 19 }, { src: TWIN, x: 44, y: 92.5, h: 24 },
   ] },
 ];
 
@@ -254,6 +254,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
                         style={{
                           position: 'absolute', left: `${c.x}%`, top: `${c.y}%`, height: `${c.h}%`,
                           transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
+                          // アリーナではシルエット2人を白に(社長指示v0.25.2044)。舞台裏(赤背景)は素の黒のまま。
+                          filter: c.src !== HERO ? 'brightness(0) invert(1)' : undefined,
                         }}
                       />
                     ))}
