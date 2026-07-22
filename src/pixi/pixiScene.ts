@@ -9241,7 +9241,8 @@ export class PixiScene {
         halo.width = r * 1.45 * 2; halo.height = r * 0.95 * 2;
         body.blendMode = 'normal'; body.tint = this.glowTint(e.color); body.alpha = 0.92 * this.cssAlpha(e.color);
         body.width = body.height = r * 2;
-        core.blendMode = 'normal'; core.tint = 0xd9f99d; core.alpha = 0.28;
+        // ハイライト芯: 既定は黄緑(卵液体の既存見た目)。血(stretch)は白=赤の中で自然に光る(v0.25.2041)。
+        core.blendMode = 'normal'; core.tint = e.stretch ? 0xffffff : 0xd9f99d; core.alpha = e.stretch ? 0.34 : 0.28;
         core.width = core.height = r * 0.34 * 2;
         core.position.set(-r * 0.28, -r * 0.22);
       } else {
@@ -9261,6 +9262,14 @@ export class PixiScene {
     view.visible = true;
     view.position.set(e.x, e.y);
     view.alpha = e.liquid ? Math.max(0, 1 - t * 0.88) : Math.max(0, 1 - t);
+    // 血飛沫(stretch): 速度方向に伸ばして線状の飛沫に(速いほど長く・少し薄く)。ZELTER風の
+    // 走る血しぶきをグロー無し(通常合成のscale/rotationのみ)で出す(v0.25.2041・負荷0)。
+    if (e.stretch) {
+      const sp = Math.hypot(e.vx, e.vy);
+      (view as Container).rotation = Math.atan2(e.vy, e.vx);
+      const st = Math.min(2.4, 1 + sp / 420);
+      (view as Container).scale.set(st, Math.max(0.62, 1.35 - st * 0.3));
+    }
   }
 
   // ring: 段階ベース半径で焼いた白アニュラス(色リング+白熱芯の2枚)を scale で拡げる。
