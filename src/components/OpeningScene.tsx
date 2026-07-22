@@ -22,6 +22,7 @@ const A = (f: string) => `${BASE}opening/${f}`;
 const HERO = A('hero-blue.png'), TWIN = A('sil-twin.png'), BOB = A('sil-bob.png');
 const SHOOTER = (n: number) => A(`shoot/shooter-${n}.png`);
 const VICTIM = (n: number) => A(`shoot/victim-${n}.png`);
+const BLOOD = (n: number) => A(`shoot/blood-${n}.png`);
 const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
 
 interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y=足元(画像%)、h=高さ(%)
@@ -49,11 +50,15 @@ const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3
 // 撃たれ側(v0.25.2011→2012→2014→2016): 被弾=赤反転と同期→(静止)→次0.4→次0.4→最後(倒れ伏す)は保持。
 const SHOOTER_TRACK = [{ t: 0, f: 1 }, { t: 1000, f: 3 }, { t: 2000, f: 4 }, { t: 2100, f: 5 }, { t: 4100, f: 2 }, { t: 4300, f: 6 }];
 const VICTIM_TRACK = [{ t: 0, f: 1 }, { t: 2100, f: 2 }, { t: 4100, f: 3 }, { t: 4500, f: 4 }, { t: 4900, f: 5 }];
+// 血飛沫(社長支給・v0.25.2020): 被弾の瞬間に後頭部から3コマを独立トラックで40msずつ→消える(f:0=非表示)。
+const BLOOD_TRACK = [{ t: 0, f: 0 }, { t: 2100, f: 1 }, { t: 2140, f: 2 }, { t: 2180, f: 3 }, { t: 2220, f: 0 }];
 const RED_FROM = 2100; // 跳ね上げの瞬間から背景を赤一色に(v0.25.2019で一閃の後ろへ移動。以降ずっと赤のまま暗転へ)
 const frameAt = (track: { t: number; f: number }[], t: number) => track.reduce((f, e) => (e.t <= t ? e.f : f), track[0].f);
-const SHOOT_STEPS = [...new Set([...SHOOTER_TRACK, ...VICTIM_TRACK].map(e => e.t))]
+const SHOOT_STEPS = [...new Set([...SHOOTER_TRACK, ...VICTIM_TRACK, ...BLOOD_TRACK].map(e => e.t))]
   .sort((a, b) => a - b)
-  .map(t => ({ t, s: frameAt(SHOOTER_TRACK, t), v: frameAt(VICTIM_TRACK, t), red: t >= RED_FROM }));
+  .map(t => ({ t, s: frameAt(SHOOTER_TRACK, t), v: frameAt(VICTIM_TRACK, t), b: frameAt(BLOOD_TRACK, t), red: t >= RED_FROM }));
+// 血飛沫の位置: 右端センター=傷口(後頭部)。被弾ポーズ(v2)の頭の左脇に置き、血は左へ飛ぶ。h=枠高%。
+const BLOOD_POS = { x: 36.5, y: 57, h: 18 };
 const SHOOT_FADE_START = 6200; // 最終コマを約1.3秒見せてから暗転(保持長は従来踏襲の叩き台)
 const SHOOT_FADE_MS = 1200;
 const SHOOT_TOTAL = 7600;
@@ -105,7 +110,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
     const ids: number[] = [];
     const all = [
       ...SHOTS.map(s => s.bg), HERO, TWIN, BOB, A('shoot-stage.png'),
-      ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM),
+      ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
     ];
     const decodes = all.map(src => { const im = new Image(); im.src = src; return im.decode().catch(() => {}); });
     const fallback = new Promise<void>(res => { ids.push(window.setTimeout(res, 3000)); });
@@ -221,6 +226,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
                   transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
                 }}
               />
+              {/* 血飛沫(被弾の瞬間・3コマ40msずつ)。右端センター=傷口を後頭部に合わせ、左へ飛ぶ。 */}
+              {cur.b > 0 && (
+                <img
+                  src={BLOOD(cur.b)} alt="" draggable={false}
+                  style={{
+                    position: 'absolute', left: `${BLOOD_POS.x}%`, top: `${BLOOD_POS.y}%`, height: `${BLOOD_POS.h}%`,
+                    transform: 'translate(-100%, -50%)', imageRendering: 'pixelated',
+                  }}
+                />
+              )}
             </div>
           </div>
           {/* シーン終わりの暗転 */}
