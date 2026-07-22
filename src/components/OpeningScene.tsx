@@ -57,12 +57,12 @@ const CONFETTI_BURST = Array.from({ length: 150 }, (_, i) => {
   const inward = (3 + Math.random() * 7) * (leftSide ? 1 : -1); // わずか内向き(ステージ中央へ)
   return {
     key: i,
-    x: leftSide ? 14 + Math.random() * 16 : 70 + Math.random() * 16, // 両サイドの砲口(枠%・やや広め)
-    y: 100 + Math.random() * 6,                  // 画面下部(枠の下端)から発射(社長指示v0.25.2040)
+    x: leftSide ? 14 + Math.random() * 16 : 70 + Math.random() * 16, // 両サイドの砲口(画面幅%)
+    y: 99 + Math.random() * 5,                   // 【画面(スクリーン)の下端】から発射(v0.25.2040→2042全画面化)
     cx1: inward * 0.8 + (Math.random() * 2 - 1) * 8, // 中間点(横散らばり広め=塊をほどく)
-    cy1: -(55 + Math.random() * 30),
+    cy1: -(50 + Math.random() * 25),             // 縦はvh(画面高)基準
     cx2: inward * 1.6 + (Math.random() * 2 - 1) * 12, // 終点=そのまま上へ
-    cy2: -(125 + Math.random() * 40),            // 下端発→画面上端の外まで突き抜ける(枠高%)
+    cy2: -(110 + Math.random() * 30),            // 画面上端の外まで突き抜ける(vh)
     dur: 0.7 + Math.random() * 0.7,              // 速度差大(0.7〜1.4秒)=柱が縦に伸びるジェット
     delay: Math.random() * 0.25,
     sd: 0.35 + Math.random() * 0.35,             // 飛翔中の回転(高速)
@@ -73,8 +73,10 @@ const CONFETTI_BURST = Array.from({ length: 150 }, (_, i) => {
   };
 });
 const CONFETTI_RAIN_START_MS = 1000; // 噴き上げが場外へ抜けた頃から雨を開始
-const CONFETTI_GLITTER = Array.from({ length: 140 }, (_, i) => {
-  const dur = 3.5 + Math.random() * 2.5;         // 上から下へ通過する時間
+// 雨はスクリーン全体(上端→下端・レターボックス帯の外も)に降らせる(社長指示v0.25.2042)。
+// 縦はvh基準(全画面)。密度維持のため180枚。
+const CONFETTI_GLITTER = Array.from({ length: 180 }, (_, i) => {
+  const dur = 6 + Math.random() * 4;             // 画面上端外→下端外を通過する時間(全画面ぶん)
   return {
     key: i,
     x: Math.random() * 100,                       // 画面全体に均等分布
@@ -205,8 +207,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
     // 紙吹雪: 軌道(パーン=急減速の噴き上げ→等速のヒラヒラ落下)と、紙の羽ばたき(3D回転+横揺れ)を分離。
     `\n@keyframes opconfT{0%{transform:translate(0,0);animation-timing-function:cubic-bezier(0.16,1,0.3,1)}16%{transform:translate(var(--cx1),var(--cy1));animation-timing-function:linear}100%{transform:translate(var(--cx2),var(--cy2))}}` +
     `\n@keyframes opconfS{0%{transform:rotateZ(0) rotateX(0) translateX(0)}25%{transform:rotateZ(var(--r1)) rotateX(72deg) translateX(var(--sw))}50%{transform:rotateZ(calc(var(--r1)*1.6)) rotateX(160deg) translateX(0)}75%{transform:rotateZ(var(--r1)) rotateX(250deg) translateX(calc(var(--sw)*-1))}100%{transform:rotateZ(0) rotateX(344deg) translateX(0)}}` +
-    // キラキラ層: 画面上端の外から下端の外まで通過するループ落下+きらめき(不透明度パルス+回転)。
-    `\n@keyframes opconfK{from{transform:translateY(-6vw)}to{transform:translateY(76vw)}}` +
+    // キラキラ層: 画面(スクリーン)上端の外から下端の外まで通過するループ落下+きらめき(不透明度パルス+回転)。
+    `\n@keyframes opconfK{from{transform:translateY(-4vh)}to{transform:translateY(106vh)}}` +
     `\n@keyframes opconfW{0%{opacity:0.25;transform:rotateZ(0) rotateX(0)}50%{opacity:1;transform:rotateZ(var(--r1)) rotateX(170deg)}100%{opacity:0.25;transform:rotateZ(0) rotateX(340deg)}}`;
 
   const cur = SHOOT_STEPS[step];
@@ -260,17 +262,17 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
             </div>
           ))}
           {/* 紙吹雪レイヤー(カメラ非追従・アングル切替を跨いで存続。zIndex=アングルより上・暗転(50)より下。
-              座標系: 横=vw(枠幅=画面幅)、縦=枠高換算(×0.667vw)。 */}
-          <div style={{ position: 'absolute', inset: 0, zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-            <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}`, overflow: 'hidden' }}>
-              {/* ①パーン: ステージ両サイドの砲から真上へ噴射→ヒラヒラ落下 */}
+              【画面全体】に描く(レターボックス帯の外も含む上端→下端・社長指示v0.25.2042)。横=vw/縦=vh。 */}
+          <div style={{ position: 'absolute', inset: 0, zIndex: 5, overflow: 'hidden', pointerEvents: 'none' }}>
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+              {/* ①パーン: 画面下端の両サイドから真上へ噴射→上端の外へ */}
               {CONFETTI_BURST.map(p => (
                 <div
                   key={p.key}
                   style={{
                     position: 'absolute', left: `${p.x}%`, top: `${p.y}%`,
-                    '--cx1': `${p.cx1.toFixed(1)}vw`, '--cy1': `${(p.cy1 * 0.667).toFixed(1)}vw`,
-                    '--cx2': `${p.cx2.toFixed(1)}vw`, '--cy2': `${(p.cy2 * 0.667).toFixed(1)}vw`,
+                    '--cx1': `${p.cx1.toFixed(1)}vw`, '--cy1': `${p.cy1.toFixed(1)}vh`,
+                    '--cx2': `${p.cx2.toFixed(1)}vw`, '--cy2': `${p.cy2.toFixed(1)}vh`,
                     animation: `opconfT ${p.dur.toFixed(2)}s both`, animationDelay: `${p.delay.toFixed(2)}s`,
                   } as React.CSSProperties}
                 >
