@@ -219,6 +219,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
                 style={{
                   position: 'absolute', left: `${VICTIM_POS.x + (VICTIM_DX[cur.v] ?? 0)}%`, top: `${VICTIM_POS.y}%`, height: `${VICTIM_POS.h}%`,
                   transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
+                  // 撃たれた瞬間のコマ(v2)だけ黒シルエット化(社長指示v0.25.2023)=赤バックに黒抜きのショックカット。
+                  filter: cur.v === 2 ? 'brightness(0)' : undefined,
                 }}
               />
               <img
@@ -235,6 +237,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
                   style={{
                     position: 'absolute', left: `${BLOOD_POS.x}%`, top: `${BLOOD_POS.y}%`, height: `${BLOOD_POS.h}%`,
                     transform: 'translate(-100%, -50%)', imageRendering: 'pixelated',
+                    // OPの血飛沫は黒シルエット(社長指示v0.25.2023・ゲーム内は赤のまま)。
+                    filter: 'brightness(0)',
                   }}
                 />
               )}
