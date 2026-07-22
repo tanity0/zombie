@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2053 — 蘇生シーンにHPピンチの赤ビネット点滅【2026-07-23 00:30 JST】
+- 指示(社長): 蘇生シーンはHPピンチの時の赤い点滅。
+- 対処: 蘇生パート(phase4)に本編の低HPビネット(LowHpVignette)と**同一のradial-gradient+`lowhp-heartbeat` keyframe(グローバルCSS共用・1100msの鼓動2連)**を敷いた。エッジのみ赤=中央の字幕は可読。心拍SEループと同じ鼓動感。
+- 検証: typecheck OK。ヘッドレスで赤縁の明滅+字幕可読を確認。
+- 自己点検: 演出のみ。負荷: 0/10(本編実績のあるDOM/CSS方式)。
+- Files: `src/components/OpeningScene.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2052 — OP蘇生処置シーン実装(暗転+心拍音+字幕11行・Opus実装/Fable検証)【2026-07-23 00:10 JST】
 - 指示(社長): 支給仕様書(OPENING_REVIVAL_SPEC.md)の実装GO。
 - 対処(Opusサブエージェント実装): OpeningSceneに**phase4=蘇生処置パート**を追加。射撃シーンの暗転し切り後、300msの間→**心拍SEループ(HTMLAudio・音量0.5)+字幕11行**(台本TS・話者名は表示コードに一切登場しない)→最終行の650ms後に**一発の心拍**→350msフェード→finish(一度だけ)。全タイマーは既存ids配列+cleanupで残存ゼロ。スキップは既存機構に統合(タップ/ボタン→字幕・心拍即停止)。`?opening=3`=蘇生パート単独プレビュー(App.tsx配線)。

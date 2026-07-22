@@ -435,6 +435,17 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         // ── 蘇生処置パート(phase4): 黒背景の中央に字幕を1行ずつ。話者名・年代・PHILL等は絶対に出さない(spec §5/§6)。
         //    320px幅でも2〜3行に収まるよう max-width と自然折返しで担保。key=行indexで軽くフェードイン。 ──
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5%' }}>
+          {/* HPピンチと同じ赤ビネットのドクドク点滅(社長指示v0.25.2053)。keyframeは本編と共用(index.cssのlowhp-heartbeat)。
+              周期1100ms=心拍SEと同じ鼓動感。エッジのみ赤で中央の字幕は読める。 */}
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute', inset: 0, pointerEvents: 'none',
+              background: 'radial-gradient(ellipse at center, rgba(120,0,0,0) 30%, rgba(150,0,0,0.40) 60%, rgba(190,0,0,0.92) 100%)',
+              animation: 'lowhp-heartbeat 1100ms ease-in-out infinite',
+              willChange: 'opacity',
+            }}
+          />
           {subIdx >= 0 && (
             <div
               key={subIdx}
