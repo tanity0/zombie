@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.2026 — 近接用の血飛沫(専用素材・プレイヤーへ向かって飛ぶ)【2026-07-22 12:36 JST】
+- 指示(社長): 近接用の血飛沫素材(3コマ・チロマキー)。①素材の向きが銃用と逆 ②近接は自分に向かって飛んでくる。
+- 対処(素材): 原本を`art-src/opening/blood-melee-sheet.png`に保存。チロマキー抜き+3コマ切り出し(コマ3の飛散粒はギャップ60pxで1コマに統合)→`fx/blood-melee-0..2.png`。この素材は**尖端(傷口)=右・左へ飛んで広がる**ので、キャンバスはコマ1=右寄せ(傷口が右端)・コマ2-3=左寄せ(下流へ流れる)。
+- 対処(配線): `spawnMeleeBlood(ex, ey, size)`=敵位置から**プレイヤーへ向かう方向を内部計算**して噴く(起点=敵中心をプレイヤー側へ寄せた点・×4.0/最低96px/3コマ×100ms=銃と同規則)。描画は既存drawBloodSpriteに`melee`分岐(専用テクスチャ+anchor右端+rotation=angle-π)。発火箇所=近接カウンター2種・スケーター/シールドバッシュ・ワイヤー通過・ワイヤースラムフィニッシュの敵ヒット地点(いずれも既存spawnSlashの隣)。
+- 検証: typecheck OK。実セッションで4方向の擬似敵位置からspawnMeleeBlood→全方向プレイヤーへ向かって飛散するのをスクショ確認。
+- 負荷: 2/10(rendering)。銃用bloodと同型のプールsprite・近接ヒット頻度は弾より低い。
+- 自己点検: 演出のみ(挙動不変)。
+- Files: `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`, `src/pixi/pixiTextures.ts`, `src/types/game.ts`, `art-src/opening/blood-melee-sheet.png`(新規), `public/sprites/fx/blood-melee-0..2.png`(新規), `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2025 — 血飛沫×2・100ms化/斜め・横のキャラ縮小+シルエットをステージ面に沿わせ【2026-07-22 12:30 JST】
 - 指示(社長): ①血飛沫の大きさ更に2倍 ②100msに変更 ③アリーナステージに対してキャラがでかい→斜めと横のキャラ小さく ④シルエットの立ち位置もステージに沿って。
 - 対処①②: ゲーム内=敵幅×4.0(最低96px)・duration 300ms(3コマ×100ms)。OP=BLOOD_TRACKを100msずつ(2100/2200/2300/2400)。

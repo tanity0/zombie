@@ -1938,6 +1938,7 @@ const applyMeleeFinishSkillSpread = (
     const ecy = e.y + e.height / 2;
     if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
     get().spawnSlash(ecx, ecy, 'rgba(168,85,247,0.95)');
+    get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫=プレイヤーへ向かって飛ぶ(v0.25.2026)
     if (isBossType(e.type)) {
       // ボスは即死しない=近接フィニッシュ相当ダメージ(×5)。フィニッシュ波及なのでviaMeleeFinish=true
       // (§5.21-追補4: finishKillOnlyボスもこの経路でならトドメを刺せる)。
@@ -2031,6 +2032,7 @@ const applySlasherTimedStrike = (
     const k = get().damageEnemy(e.id, dmg);
     get().spawnDamageNumber(ecx, e.y, dmg, false);
     get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.95)');
+    get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫(v0.25.2026)
     if (k) {
       killed += 1;
       get().spawnBurst(ecx, ecy, '#bef264', 10);
@@ -2653,7 +2655,8 @@ interface GameState {
   // 指定方向(dirX,dirY)へ円錐状に粒子を噴く(被弾の出口=背中側の破裂演出など)。色はランダムに使い分け。
   spawnSpray: (x: number, y: number, dirX: number, dirY: number, count: number, colors: string[]) => void;
   spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
-  spawnBlood: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ血飛沫(3コマ60msずつ・OP同素材)
+  spawnBlood: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ血飛沫(3コマ100msずつ・OP同素材)
+  spawnMeleeBlood: (ex: number, ey: number, size?: number) => void; // 近接ヒット時、敵からプレイヤーへ向かって飛ぶ血飛沫(専用素材)
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
@@ -3340,7 +3343,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const fcx = pcx + hx * 26, fcy = pcy + hy * 26; // プレイヤーの少し前方を中心に
     get().spawnRing(fcx, fcy, 8, SKATER_BASH_RANGE, 'rgba(190,242,100,0.62)', 4, 240);
     get().spawnBurst(fcx, fcy, '#bef264', 12);
-    for (const h of hitAt) get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)');
+    for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
     if (hitAt.length > 0) {
       get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0);
       set({ bashHitFxAt: Date.now() }); // 命中SE(heavy-impact)。useGameLoop が検出して再生。
@@ -3423,7 +3426,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
     get().spawnRing(x, y, 8, SKATEBOARD_BASH_RANGE, 'rgba(190,242,100,0.62)', 4, 260);
     get().spawnBurst(x, y, '#bef264', 14);
-    for (const h of hitAt) get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)');
+    for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
     if (hitAt.length > 0) { get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0); set({ bashHitFxAt: Date.now() }); }
   },
 
@@ -10201,6 +10204,27 @@ export const useGameStore = create<GameState>((set, get) => ({
       kind: 'blood',
       id: `fx-blood-${now}-${Math.random().toString(36).slice(2, 6)}`,
       x, y, angle, len, createdAt: now, duration: 300, // 3コマ×100ms(社長指定v0.25.2025・OP射撃シーンと同じ)
+    };
+    set(state => {
+      const next = [...state.effects, fx];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  },
+  // 近接の血飛沫(社長指示v0.25.2026): 敵(ex,ey)から【プレイヤーに向かって】飛ぶ。方向は内部計算。
+  // 起点=敵中心をプレイヤー側へ少し寄せた点(斬った面)。サイズ規則は銃と同じ(×4.0・最低96px)。
+  spawnMeleeBlood: (ex, ey, size = 40) => {
+    const now = Date.now();
+    const p = get().player;
+    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+    let dx = pcx - ex, dy = pcy - ey;
+    const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    const fx: VisualEffect = {
+      kind: 'blood',
+      id: `fx-mblood-${now}-${Math.random().toString(36).slice(2, 6)}`,
+      x: ex + dx * size * 0.4, y: ey + dy * size * 0.4,
+      angle: Math.atan2(dy, dx), len: Math.max(96, size * 4.0),
+      createdAt: now, duration: 300, melee: true,
     };
     set(state => {
       const next = [...state.effects, fx];

@@ -6879,6 +6879,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const killed = useGameStore.getState().damageEnemy(e.id, dmg);
               spawnDamageNumber(ecx, e.y, dmg, false);
               useGameStore.getState().spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
+              useGameStore.getState().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫(v0.25.2026)
               if (!killed && nowW >= (e.knockbackImmuneUntil ?? 0)) {
                 const dx = ecx - pcx, dy = ecy - pcy;
                 const dd = Math.hypot(dx, dy) || 1;
@@ -6915,6 +6916,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 useGameStore.getState().spawnSlash(tcx, tcy - 12, 'rgba(186,230,253,0.98)'); // 縦の斬り下ろし
                 useGameStore.getState().spawnSlash(tcx, tcy + 12, 'rgba(147,197,253,0.9)');
+                useGameStore.getState().spawnMeleeBlood(tcx, tcy, tgt.width); // 近接の血飛沫(v0.25.2026)
                 spawnBurst(tcx, tcy, '#bae6fd', 14);
                 playSfx('slash-damage');
               }

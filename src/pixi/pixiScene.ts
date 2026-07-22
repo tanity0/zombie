@@ -9460,15 +9460,19 @@ export class PixiScene {
       this.effects.set(e.id, sprite);
     }
     const sp = sprite as Sprite;
-    const idx = Math.min(2, Math.floor(t * 3)); // 3コマを等分(60msずつ)
-    const tex0 = getTexture('fx/blood-0');
-    const tex = getTexture(`fx/blood-${idx}`) ?? tex0;
+    const idx = Math.min(2, Math.floor(t * 3)); // 3コマを等分
+    // 近接(melee)は専用素材で向きが逆(尖端=右・飛散=-x)。anchor/rotationで吸収する。
+    const base = e.melee ? 'fx/blood-melee' : 'fx/blood';
+    const tex0 = getTexture(`${base}-0`);
+    const tex = getTexture(`${base}-${idx}`) ?? tex0;
     if (!tex || !tex0) { sp.visible = false; return; }
     if (sp.texture !== tex) sp.texture = tex;
+    sp.anchor.set(e.melee ? 1 : 0, 0.5); // 傷口(尖端)=銃素材は左端/近接素材は右端
     // 全コマ共通キャンバス(同寸)なので frame0 幅基準のスケールでコマ間の見た目が揃う。
     sp.scale.set(e.len / Math.max(1, tex0.width));
     sp.position.set(e.x, e.y);
-    sp.rotation = e.angle; // 素材の飛散方向=+x。進行方向へそのまま回す
+    // 素材の飛散方向: 銃=+x(rotation=angle) / 近接=-x(rotation=angle-π で飛散がangleを向く)。
+    sp.rotation = e.melee ? e.angle - Math.PI : e.angle;
     sp.alpha = 1; // フェード無し(コマが切り替わって消える)
     sp.visible = true;
   }
