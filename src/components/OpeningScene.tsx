@@ -25,7 +25,9 @@ const VICTIM = (n: number) => A(`shoot/victim-${n}.png`);
 const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
 
 interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y=足元(画像%)、h=高さ(%)
-interface Shot { bg: string; ox: number; oy: number; zf: number; zt: number; flip?: boolean; chars: CharPos[] }
+// flipScene: シーン全体を180度(左右)反転して見せる(社長指示v0.25.2009)。実装は背景imgを左右反転し、
+// キャラは素の座標/向きで置く(=画面全体としてミラーに見える。二重反転になる個別キャラflipは廃止)。
+interface Shot { bg: string; ox: number; oy: number; zf: number; zt: number; flipScene?: boolean; chars: CharPos[] }
 
 // ── アリーナ3アングルのタイムライン(ms) ──
 // 斜め・横への切替は早め(社長指示v0.25.2008)。各ショットのズームは切替までに完了させ、
@@ -65,8 +67,8 @@ const SHOTS: Shot[] = [
   { bg: A('arena-diag.jpg'), ox: 48, oy: 62, zf: 1.4, zt: 2.3, chars: [
     { src: TWIN, x: 44, y: 66, h: 22 }, { src: HERO, x: 50, y: 66.5, h: 24 }, { src: BOB, x: 56, y: 66, h: 22 },
   ] },
-  // 真横: ステージを横から。奥行きスタッガー。キャラの向きを反転(flip=左右ミラー)。
-  { bg: A('arena-side.jpg'), ox: 49, oy: 82, zf: 1.7, zt: 2.1, flip: true, chars: [
+  // 真横: ステージを横から。奥行きスタッガー。シーン全体を180度反転(flipScene・社長指示v0.25.2009)。
+  { bg: A('arena-side.jpg'), ox: 49, oy: 82, zf: 1.7, zt: 2.1, flipScene: true, chars: [
     { src: TWIN, x: 43, y: 81, h: 25 }, { src: HERO, x: 49, y: 86, h: 28 }, { src: BOB, x: 58, y: 95, h: 35 },
   ] },
 ];
@@ -161,9 +163,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
                 }}
               >
                 <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}` }}>
-                  <img src={SHOTS[si].bg} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                  {/* キャラ層。flip指定のアングルは左右ミラー(向きを反転)。 */}
-                  <div style={{ position: 'absolute', inset: 0, transform: SHOTS[si].flip ? 'scaleX(-1)' : undefined, transformOrigin: '50% 50%' }}>
+                  {/* flipScene=背景を左右反転(キャラは素の座標=画面全体がミラーに見える) */}
+                  <img src={SHOTS[si].bg} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined }} />
+                  <div style={{ position: 'absolute', inset: 0 }}>
                     {SHOTS[si].chars.map((c, ci) => (
                       <img
                         key={ci} src={c.src} alt="" draggable={false}
