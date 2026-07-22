@@ -57,7 +57,7 @@ import {
   QUEST_NAMED_AGGRO_RANGE,
 } from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed } from '../utils/enemyUtils';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
@@ -6953,7 +6953,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             let cdiry = cdy / cdist + (hpy / hl) * DASH_ATTACK_HOMING;
             const cdl = Math.hypot(cdirx, cdiry) || 1;
             cdirx /= cdl; cdiry /= cdl;
-            const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT * (enemy.type === 'hunter' ? HUNTER_JUMP_DASH_SPEED_MULT : 1); // 3倍速(ハンターは更に×2)・ほぼ直進+弱ホーミング
+            // ジャイアント(giantbat)のダッシュは犬(werewolf)と同じ速度(社長指示v0.25.2062)。
+            // 巡航速度70のままでは突進も遅い(70×3=210 vs 犬105×3=315)ため、突進の基準速度だけ犬の値を使う。
+            const dashBase = enemy.type === 'giantbat' ? getEnemyBaseSpeed('werewolf') : enemy.speed;
+            const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT * (enemy.type === 'hunter' ? HUNTER_JUMP_DASH_SPEED_MULT : 1); // 3倍速(ハンターは更に×2)・ほぼ直進+弱ホーミング
             const cvx = cdirx * cs, cvy = cdiry * cs;
             const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
             const moved = resolveMove(rawX, rawY);
