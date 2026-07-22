@@ -2981,6 +2981,8 @@ export class PixiScene {
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.length);
       case 'firejet':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.len);
+      case 'blood':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.len);
       case 'trail':
         return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
           this.isPointNearViewport(e.toX, e.toY, camera);
@@ -9183,6 +9185,8 @@ export class PixiScene {
         this.drawWhipSprite(e, now);
       } else if (e.kind === 'firejet') {
         this.drawFireJetSprite(e, now);
+      } else if (e.kind === 'blood') {
+        this.drawBloodSprite(e, now);
       } else if (e.kind === 'slash') {
         this.drawSlashSprite(e, now);
       } else if (e.kind === 'particle') {
@@ -9437,6 +9441,33 @@ export class PixiScene {
     sp.position.set(e.x, e.y);
     sp.rotation = e.angle;
     sp.alpha = t < 0.6 ? 1 : Math.max(0, 1 - (t - 0.6) / 0.4); // 終盤フェード
+    sp.visible = true;
+  }
+
+  // 血飛沫(OP射撃シーンと同素材・3コマ flipbook)。素材は「傷口=右端センター・血は左へ飛ぶ」絵なので、
+  // anchor(1,0.5)+rotation=angle-π で噴射方向(angle)へ向ける。通常合成(血は暗色=加算だと沈む)。
+  // プールsprite1枚・テクスチャ差し替えのみ=firejetと同コスト帯(安い)。
+  private drawBloodSprite(e: Extract<VisualEffect, { kind: 'blood' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let sprite = this.effects.get(e.id);
+    if (!(sprite instanceof Sprite)) {
+      if (sprite) sprite.destroy();
+      sprite = new Sprite();
+      (sprite as Sprite).anchor.set(1, 0.5); // 傷口(右中央)を出口点へ
+      this.L.effectLayer.addChild(sprite);
+      this.effects.set(e.id, sprite);
+    }
+    const sp = sprite as Sprite;
+    const idx = Math.min(2, Math.floor(t * 3)); // 3コマを等分(60msずつ)
+    const tex0 = getTexture('fx/blood-0');
+    const tex = getTexture(`fx/blood-${idx}`) ?? tex0;
+    if (!tex || !tex0) { sp.visible = false; return; }
+    if (sp.texture !== tex) sp.texture = tex;
+    // 全コマ共通キャンバス(同寸)なので frame0 幅基準のスケールでコマ間の見た目が揃う。
+    sp.scale.set(e.len / Math.max(1, tex0.width));
+    sp.position.set(e.x, e.y);
+    sp.rotation = e.angle - Math.PI; // 素材は左向き=πずらして進行方向へ
+    sp.alpha = 1; // フェード無し(コマが切り替わって消える)
     sp.visible = true;
   }
 

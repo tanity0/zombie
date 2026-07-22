@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.2021 — 血飛沫を60msに変更+通常プレイの敵ヒットにも適用【2026-07-22 12:04 JST】
+- 指示(社長): この血の描写、通常プレイ時の敵にも適用してみたい。60msに変更しつつ。
+- 対処(OP): BLOOD_TRACKを60msずつ(2100/2160/2220/2280)に変更。
+- 対処(通常プレイ): 新エフェクト`kind:'blood'`を追加。
+  - 素材: OP同素材3コマを`public/sprites/fx/blood-0..2.png`にコピーし`fx/blood-0..2`でロード(nearest)。
+  - 発火: **既存の火の破裂(firejet)と同じ場所・同じ間引き**(銃弾ヒットの出口点・敵1体につきFIRE_JET_DEDUP_MSに1回)で`spawnBlood(ox,oy,ang,len)`。長さ=敵幅×1.25(最低34px)。弾の進行方向へ噴く。
+  - 描画: `drawBloodSprite`=プールsprite1枚・テクスチャ差し替えのみ(firejet同型)。素材は左向き=anchor(1,0.5)+rotation=angle-πで進行方向へ。**通常合成**(血は暗色=加算だと沈む)。3コマ等分(60msずつ)・フェード無し。カリングにも'blood'追加。duration=180ms。
+- 検証: typecheck OK。ヘッドレス実機で店舗直spawn(4方向)→全方向正しい向き・傷口アンカーで描画を確認(スクショ)。ヒット配線はfirejetと同一ガード(ボットが銃ヒットを出さずヘッドレスでは未観測=実機プレイで要確認)。
+- 負荷: **2/10**(rendering)。プールsprite1枚×180ms・firejetと同コスト帯・同時数はfirejet間引き+effects400上限で抑制。強glow/加算大面積なし。フォールバック: 気になれば間引き窓拡大 or 敵種で無効化可。
+- 自己点検: 演出のみ(挙動・当たり判定不変)。憲法4条/5条抵触なし。
+- Files: `src/components/OpeningScene.tsx`, `src/types/game.ts`, `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`, `src/pixi/pixiTextures.ts`, `public/sprites/fx/blood-0..2.png`(新規), `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2020 — 被弾の瞬間の血飛沫(後頭部から3コマ・独立40msずつ)【2026-07-22 11:36 JST】
 - 指示(社長): 撃たれた時の血飛沫(素材支給・水色チロマキー3コマ)。丁度後頭部から3コマ(独立して40mmずつ)。
 - 対処: シートを`art-src/opening/blood-sheet.png`に恒久保存→チロマキー抜き(コーナー色距離+αランプ)で3コマ切り出し、**右端センター=傷口**の共通キャンバスに焼成(`blood-1..3.png`)。**独立トラックBLOOD_TRACK**で被弾の瞬間(2.1s)から**40msずつ**3コマ→消滅(計0.12s)。位置=被弾ポーズの後頭部(x36.5, y57)・右端アンカーで**左へ噴出**。h=枠高18%(叩き台)。

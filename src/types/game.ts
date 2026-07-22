@@ -1039,6 +1039,17 @@ export type VisualEffect =
       duration: number;
     }
   | {
+      // 銃弾ヒット時、被弾敵の背中側(=弾の出口方向)へ噴く血飛沫(3コマ flipbook・OP射撃シーンと同素材)。
+      // angle=噴射方向(rad・+x基準。素材は左向き=描画側でangle-πに回す)。len=噴出の長さ(px)。anchorは右中央(傷口)。
+      kind: 'blood';
+      id: string;
+      x: number; y: number;
+      angle: number;
+      len: number;
+      createdAt: number;
+      duration: number;
+    }
+  | {
       // A short slash streak drawn on an enemy struck in melee.
       kind: 'slash';
       id: string;

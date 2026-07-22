@@ -50,8 +50,8 @@ const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3
 // 撃たれ側(v0.25.2011→2012→2014→2016): 被弾=赤反転と同期→(静止)→次0.4→次0.4→最後(倒れ伏す)は保持。
 const SHOOTER_TRACK = [{ t: 0, f: 1 }, { t: 1000, f: 3 }, { t: 2000, f: 4 }, { t: 2100, f: 5 }, { t: 4100, f: 2 }, { t: 4300, f: 6 }];
 const VICTIM_TRACK = [{ t: 0, f: 1 }, { t: 2100, f: 2 }, { t: 4100, f: 3 }, { t: 4500, f: 4 }, { t: 4900, f: 5 }];
-// 血飛沫(社長支給・v0.25.2020): 被弾の瞬間に後頭部から3コマを独立トラックで40msずつ→消える(f:0=非表示)。
-const BLOOD_TRACK = [{ t: 0, f: 0 }, { t: 2100, f: 1 }, { t: 2140, f: 2 }, { t: 2180, f: 3 }, { t: 2220, f: 0 }];
+// 血飛沫(社長支給・v0.25.2020→2021で60msずつ): 被弾の瞬間に後頭部から3コマを独立トラックで60msずつ→消える(f:0=非表示)。
+const BLOOD_TRACK = [{ t: 0, f: 0 }, { t: 2100, f: 1 }, { t: 2160, f: 2 }, { t: 2220, f: 3 }, { t: 2280, f: 0 }];
 const RED_FROM = 2100; // 跳ね上げの瞬間から背景を赤一色に(v0.25.2019で一閃の後ろへ移動。以降ずっと赤のまま暗転へ)
 const frameAt = (track: { t: number; f: number }[], t: number) => track.reduce((f, e) => (e.t <= t ? e.f : f), track[0].f);
 const SHOOT_STEPS = [...new Set([...SHOOTER_TRACK, ...VICTIM_TRACK, ...BLOOD_TRACK].map(e => e.t))]

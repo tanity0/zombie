@@ -198,6 +198,10 @@ export const ensureTextures = (): Promise<void> => {
       // 銃弾ヒット時に被弾敵の背中側へ生やす火の破裂(2コマ。0=大きい爆発→1=細い噴射)。ピクセルアート=nearest。
       { name: 'fx/hitfire-0', scaleMode: 'nearest' },
       { name: 'fx/hitfire-1', scaleMode: 'nearest' },
+      // 血飛沫(OP射撃シーンと同素材・3コマ。傷口=右端センター・血は左向きに飛ぶ絵)。ピクセルアート=nearest。
+      { name: 'fx/blood-0', scaleMode: 'nearest' },
+      { name: 'fx/blood-1', scaleMode: 'nearest' },
+      { name: 'fx/blood-2', scaleMode: 'nearest' },
       // 斬撃エフェクト(ピクセル・5コマ)。burst=当たり判定の中央バースト / streak=斬撃の線(段々大きく)。
       { name: 'fx/slash-burst-0', scaleMode: 'nearest' },
       { name: 'fx/slash-burst-1', scaleMode: 'nearest' },
