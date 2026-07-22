@@ -28,12 +28,14 @@ interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y
 interface Shot { bg: string; ox: number; oy: number; zf: number; zt: number; flip?: boolean; chars: CharPos[] }
 
 // ── アリーナ3アングルのタイムライン(ms) ──
-const CUTS = [0, 2800, 5200];
-const SHOT_DUR = [2800, 2400, 2400];
+// 斜め・横への切替は早め(社長指示v0.25.2008)。各ショットのズームは切替までに完了させ、
+// 「寄り切ったサイズ≒次アングルの見え方」の繋がり(v0.25.2003)は維持したままテンポを上げる。
+const CUTS = [0, 2000, 3400];
+const SHOT_DUR = [2000, 1400, 2400];
 const FADE_MS = 700; // アングル間クロスフェード長(次がフェードインし切るまで前を重ねて表示)
-const BLACK_START = 7600;
+const BLACK_START = 5800;
 const BLACK_MS = 1600;
-const SCENE_START = 9400; // 暗転し切ったら射撃シーンへハードカット
+const SCENE_START = 7600; // 暗転し切ったら射撃シーンへハードカット
 const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
 
 // ── 射撃シーンのタイムライン(シーン内ms)と配置 ──
