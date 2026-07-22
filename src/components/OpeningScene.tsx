@@ -48,21 +48,23 @@ const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3
 // ②雨=その後(1.0s〜)、画面全体に均等な紙吹雪が降り続けるループ層(斜め・横でもきらめきながら継続。
 //   負のanimation-delayで表示された瞬間から空中に満ちている)。CSSアニメのみ=負荷1/10。
 const CONFETTI_COLORS = ['#fef08a', '#f9a8d4', '#a5f3fc', '#e9d5ff', '#ffffff', '#fda4af', '#fcd34d'];
-const CONFETTI_BURST = Array.from({ length: 60 }, (_, i) => {
+// v0.25.2036(社長指示「もっと勢いよく・アイドルのライブの噴射」): 噴射0.55〜0.9秒で場外へ・
+// 柱を細く垂直に・ほぼ一斉発射・80枚に増量・回転も高速。
+const CONFETTI_BURST = Array.from({ length: 80 }, (_, i) => {
   const leftSide = i % 2 === 0;                  // 半分ずつ左右の砲から
-  const inward = (4 + Math.random() * 10) * (leftSide ? 1 : -1); // 少し内向き(ステージ中央へ)
+  const inward = (3 + Math.random() * 7) * (leftSide ? 1 : -1); // わずか内向き(ステージ中央へ)
   return {
     key: i,
     x: leftSide ? 16 + Math.random() * 12 : 72 + Math.random() * 12, // 両サイドの砲口(枠%)
     y: 50 + Math.random() * 10,
-    cx1: inward + (Math.random() * 2 - 1) * 6,   // 中間点(真上+わずか内向き)
-    cy1: -(30 + Math.random() * 20),
-    cx2: inward * 1.8 + (Math.random() * 2 - 1) * 8, // 終点=そのまま上へ
-    cy2: -(80 + Math.random() * 35),             // 画面上端の外まで突き抜ける(枠高%)
-    dur: 1.0 + Math.random() * 0.6,              // 速い噴き上げ(1.0〜1.6秒で場外へ)
-    delay: Math.random() * 0.3,                  // パーンのバラつき
-    sd: 0.5 + Math.random() * 0.5,               // 飛翔中の回転(速め)
-    sw: (Math.random() * 2 - 1) * 10,
+    cx1: inward * 0.8 + (Math.random() * 2 - 1) * 4, // 中間点(細い柱=横ブレ小)
+    cy1: -(38 + Math.random() * 22),
+    cx2: inward * 1.6 + (Math.random() * 2 - 1) * 6, // 終点=そのまま上へ
+    cy2: -(85 + Math.random() * 35),             // 画面上端の外まで突き抜ける(枠高%)
+    dur: 0.55 + Math.random() * 0.35,            // 鋭い噴射(0.55〜0.9秒で場外へ)
+    delay: Math.random() * 0.15,                 // ほぼ一斉のパーン
+    sd: 0.35 + Math.random() * 0.35,             // 飛翔中の回転(高速)
+    sw: (Math.random() * 2 - 1) * 8,
     r1: `${Math.round((Math.random() * 2 - 1) * 200)}deg`,
     w: 5 + Math.random() * 5, h: 3 + Math.random() * 4,
     color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
