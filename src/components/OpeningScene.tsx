@@ -186,10 +186,11 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
           ids.push(window.setTimeout(() => setPrevShot(null), CUTS[i] + FADE_MS));
         });
         ids.push(window.setTimeout(() => setPhase(3), SCENE_START));
-        // アリーナBGM2音源を同時ループ再生。場面転換の直前に短フェードで止める(ブツ切りポップ防止)。
+        // アリーナ2音源(歓声+曲)は【パン!の後】に立ち上げる(社長指示v0.25.2048: パン!→歓声の順)。
+        // 場面転換の直前に短フェードで止める(ブツ切りポップ防止)。
         // 自動再生がブロックされる環境(ジェスチャ無しのプレビュー等)では黙って無音のまま進める。
-        audioRef.current = ARENA_AUDIO.map(src => { const a = new Audio(src); a.loop = true; return a; });
-        audioRef.current.forEach(a => { a.play().catch(() => {}); });
+        audioRef.current = ARENA_AUDIO.map(src => { const a = new Audio(src); a.loop = true; a.preload = 'auto'; return a; });
+        ids.push(window.setTimeout(() => { audioRef.current.forEach(a => { a.play().catch(() => {}); }); }, 400));
         [0.66, 0.33, 0.12].forEach((v, k) => {
           ids.push(window.setTimeout(() => audioRef.current.forEach(a => { a.volume = v; }), SCENE_START - 450 + k * 150));
         });
