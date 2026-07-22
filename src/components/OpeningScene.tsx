@@ -47,7 +47,8 @@ const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3
 // ①パーン=ステージ【両サイド】の砲から真上へ噴射し【画面場外まで突き抜けて消える】(落下はしない)。
 // ②雨=その後(1.0s〜)、画面全体に均等な紙吹雪が降り続けるループ層(斜め・横でもきらめきながら継続。
 //   負のanimation-delayで表示された瞬間から空中に満ちている)。CSSアニメのみ=負荷1/10。
-const CONFETTI_COLORS = ['#fef08a', '#f9a8d4', '#a5f3fc', '#e9d5ff', '#ffffff', '#fda4af', '#fcd34d'];
+// 赤一色(社長指示v0.25.2037)。単色ベタだと沈むので赤の明暗4トーン=「全部赤」の見え方できらめきは残す。
+const CONFETTI_COLORS = ['#f87171', '#ef4444', '#dc2626', '#b91c1c'];
 // v0.25.2036(社長指示「もっと勢いよく・アイドルのライブの噴射」): 噴射0.55〜0.9秒で場外へ・
 // 柱を細く垂直に・ほぼ一斉発射・80枚に増量・回転も高速。
 const CONFETTI_BURST = Array.from({ length: 80 }, (_, i) => {
