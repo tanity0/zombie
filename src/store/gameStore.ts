@@ -173,7 +173,7 @@ const buildBloodBurst = (x: number, y: number, angle: number, count: number, now
     const a = angle + spread * BLOOD_CONE;
     const speed = 190 + (1 - Math.abs(spread)) * 270 + Math.random() * 170; // 中心ほど速い(190〜630px/s・v0.25.2030で勢い増)
     const big = Math.random() < 0.3;                      // 約3割は塊感のある大粒
-    const size = big ? 3.5 + Math.random() * 2.5 : 1.5 + Math.random() * 1.5;
+    const size = big ? 4.5 + Math.random() * 3 : 2.2 + Math.random() * 1.8; // +約30%(v0.25.2045目立ち増強)
     const color = big ? BLOOD_BIG_COLOR : BLOOD_SMALL_COLORS[(Math.random() * BLOOD_SMALL_COLORS.length) | 0];
     fresh.push({
       kind: 'particle',
@@ -1897,10 +1897,13 @@ const grantMeleeKillRewards = (
       // Finisher juice: white shockwave + gold ring + sparks + glow + callout.
       get().spawnBurst(ex, ey, '#dc2626', 30, bdx, bdy);
       get().spawnBurst(ex, ey, '#7f1d1d', 14, bdx, bdy);
-      // KILL!は血飛沫も大量に(社長指示v0.25.2032→2041「真上にぶしゃーーっと」): 真上へ角度を
-      // 少しずらした2連バースト(len260→各43粒=血粒キャップ90をほぼ使い切る間欠泉。上昇→重力で降り注ぐ)。
-      get().spawnBlood(ex, ey, -Math.PI / 2 - 0.16, 260);
-      get().spawnBlood(ex, ey, -Math.PI / 2 + 0.16, 260);
+      // KILL!は血飛沫も大量に(社長指示v0.25.2032→2041「真上にぶしゃーーっと」→2045「ズーム停止の
+      // タイミングで噴射」): KILLズームは寄り切りまで MELEE_FINISH_ZOOM_MS - HOLD_MS(=100ms)なので、
+      // その瞬間に真上2連バースト(各43粒=キャップほぼ満杯の間欠泉)を発火=止まった画の中で噴き上がる。
+      window.setTimeout(() => {
+        get().spawnBlood(ex, ey, -Math.PI / 2 - 0.16, 260);
+        get().spawnBlood(ex, ey, -Math.PI / 2 + 0.16, 260);
+      }, MELEE_FINISH_ZOOM_MS - MELEE_FINISH_ZOOM_HOLD_MS);
       get().spawnRing(ex, ey, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
       get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
       get().spawnRing(ex, ey, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
@@ -10255,7 +10258,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const alive = countBloodParticles(get().effects);
     const room = BLOOD_PARTICLE_CAP - alive;
     if (room <= 0) return; // 既に上限=1粒も足さない(setも呼ばない=無駄な購読者起こしを避ける)
-    const desired = Math.max(16, Math.min(44, Math.round(len / 6)));
+    const desired = Math.max(18, Math.min(44, Math.round(len / 5))); // 粒数+20%(v0.25.2045目立ち増強)
     const fresh = buildBloodBurst(x, y, angle, Math.min(desired, room), now);
     set(state => {
       const next = [...state.effects, ...fresh];
@@ -10275,7 +10278,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const room = BLOOD_PARTICLE_CAP - alive;
     if (room <= 0) return;
     const len = Math.max(96, size * 4.0);
-    const desired = Math.max(16, Math.min(44, Math.round(len / 6)));
+    const desired = Math.max(18, Math.min(44, Math.round(len / 5))); // 粒数+20%(v0.25.2045目立ち増強)
     const fresh = buildBloodBurst(
       ex + dx * size * 0.4, ey + dy * size * 0.4, // 起点=既存計算のまま(斬った面)
       Math.atan2(dy, dx), Math.min(desired, room), now,

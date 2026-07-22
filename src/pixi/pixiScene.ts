@@ -9267,7 +9267,7 @@ export class PixiScene {
     if (e.stretch) {
       const sp = Math.hypot(e.vx, e.vy);
       (view as Container).rotation = Math.atan2(e.vy, e.vx);
-      const st = Math.min(2.4, 1 + sp / 420);
+      const st = Math.min(2.8, 1 + sp / 380); // 伸び上限拡大(v0.25.2045目立ち増強)
       (view as Container).scale.set(st, Math.max(0.62, 1.35 - st * 0.3));
     }
   }
