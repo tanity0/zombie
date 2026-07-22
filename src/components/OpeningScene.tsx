@@ -41,26 +41,44 @@ const BLACK_MS = 1600;
 const SCENE_START = 7600; // 暗転し切ったら射撃シーンへハードカット
 const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
 
-// 紙吹雪(社長指示v0.25.2031「アリーナシーンに紙吹雪パーン!斜め横のときはヒラヒラ」)。
-// 開幕にステージ中央付近から上向きに弾け(パーン)、以降は3D回転のヒラヒラで落下しながら
-// 斜め・横カットまで舞い続ける(レイヤーはカメラと独立・アングル切替を跨いで存続)。CSSアニメのみ=負荷1/10。
+// 紙吹雪(社長指示v0.25.2031→2033修正)。2系統:
+// ①パーン=ステージ【両サイド】の砲から真上に噴射(正面カット。左右の砲・少し内向き)。
+// ②キラキラ=斜め・横の間、画面全体に小さな紙が常時きらめきながら降り続けるループ層
+//   (負のanimation-delayで表示された瞬間から画面に満ちている)。CSSアニメのみ=負荷1/10。
 const CONFETTI_COLORS = ['#fef08a', '#f9a8d4', '#a5f3fc', '#e9d5ff', '#ffffff', '#fda4af', '#fcd34d'];
-const CONFETTI_PIECES = Array.from({ length: 60 }, (_, i) => ({
-  key: i,
-  x: 34 + Math.random() * 32,                    // 発射origin(ステージ中央帯・枠%)
-  y: 46 + Math.random() * 14,
-  cx1: (Math.random() * 2 - 1) * 26,             // パーンの頂点(横散らばり・枠幅%)
-  cy1: -(14 + Math.random() * 30),               // パーンの頂点(上昇・枠高%)
-  cx2: (Math.random() * 2 - 1) * 38,             // 落下終点(横%)
-  cy2: 42 + Math.random() * 40,                  // 落下終点(下%・枠外へ抜ける)
-  dur: 4.6 + Math.random() * 2.2,                // 軌道全体(秒)=暗転までヒラヒラが残る
-  delay: Math.random() * 0.35,                   // パーンのバラつき
-  sd: 0.9 + Math.random() * 0.8,                 // ヒラヒラ周期(秒)
-  sw: (Math.random() * 2 - 1) * 14,              // ヒラヒラ横揺れ(px)
-  r1: `${Math.round((Math.random() * 2 - 1) * 200)}deg`,
-  w: 5 + Math.random() * 5, h: 3 + Math.random() * 4,
-  color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-}));
+const CONFETTI_BURST = Array.from({ length: 60 }, (_, i) => {
+  const leftSide = i % 2 === 0;                  // 半分ずつ左右の砲から
+  const inward = 4 + Math.random() * 10;         // 少し内向き(ステージ中央へ)
+  return {
+    key: i,
+    x: leftSide ? 16 + Math.random() * 12 : 72 + Math.random() * 12, // 両サイドの砲口(枠%)
+    y: 50 + Math.random() * 10,
+    cx1: (leftSide ? inward : -inward) + (Math.random() * 2 - 1) * 6, // 頂点(真上+わずか内向き)
+    cy1: -(38 + Math.random() * 34),             // 高く噴き上げる(枠高%)
+    cx2: (Math.random() * 2 - 1) * 24,           // 落下終点(横流れ)
+    cy2: 34 + Math.random() * 46,                // 落下終点(下%・枠外へ抜ける)
+    dur: 4.6 + Math.random() * 2.2,
+    delay: Math.random() * 0.3,                  // パーンのバラつき
+    sd: 0.9 + Math.random() * 0.8,               // ヒラヒラ周期(秒)
+    sw: (Math.random() * 2 - 1) * 14,
+    r1: `${Math.round((Math.random() * 2 - 1) * 200)}deg`,
+    w: 5 + Math.random() * 5, h: 3 + Math.random() * 4,
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+  };
+});
+const CONFETTI_GLITTER = Array.from({ length: 60 }, (_, i) => {
+  const dur = 3.5 + Math.random() * 2.5;         // 上から下へ通過する時間
+  return {
+    key: i,
+    x: Math.random() * 100,                       // 画面全体に分布
+    dur,
+    delay: -Math.random() * dur,                  // 負のdelay=表示された瞬間すでに空中に満ちている
+    td: 0.4 + Math.random() * 0.5,                // きらめき周期(秒)
+    r1: `${Math.round((Math.random() * 2 - 1) * 240)}deg`,
+    w: 2.5 + Math.random() * 2.5, h: 2 + Math.random() * 2.5,
+    color: CONFETTI_COLORS[(i * 3 + 1) % CONFETTI_COLORS.length],
+  };
+});
 
 // ── 射撃シーンのタイムライン(シーン内ms)と配置 ──
 // 2人は独立テンポで進むため【トラックを別々に定義し、変化点のマージは自動生成】する。
@@ -175,7 +193,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
     `\n@keyframes opshzoom{from{transform:scale(1)}to{transform:scale(1.12)}}` +
     // 紙吹雪: 軌道(パーン=急減速の噴き上げ→等速のヒラヒラ落下)と、紙の羽ばたき(3D回転+横揺れ)を分離。
     `\n@keyframes opconfT{0%{transform:translate(0,0);animation-timing-function:cubic-bezier(0.16,1,0.3,1)}16%{transform:translate(var(--cx1),var(--cy1));animation-timing-function:linear}100%{transform:translate(var(--cx2),var(--cy2))}}` +
-    `\n@keyframes opconfS{0%{transform:rotateZ(0) rotateX(0) translateX(0)}25%{transform:rotateZ(var(--r1)) rotateX(72deg) translateX(var(--sw))}50%{transform:rotateZ(calc(var(--r1)*1.6)) rotateX(160deg) translateX(0)}75%{transform:rotateZ(var(--r1)) rotateX(250deg) translateX(calc(var(--sw)*-1))}100%{transform:rotateZ(0) rotateX(344deg) translateX(0)}}`;
+    `\n@keyframes opconfS{0%{transform:rotateZ(0) rotateX(0) translateX(0)}25%{transform:rotateZ(var(--r1)) rotateX(72deg) translateX(var(--sw))}50%{transform:rotateZ(calc(var(--r1)*1.6)) rotateX(160deg) translateX(0)}75%{transform:rotateZ(var(--r1)) rotateX(250deg) translateX(calc(var(--sw)*-1))}100%{transform:rotateZ(0) rotateX(344deg) translateX(0)}}` +
+    // キラキラ層: 画面上端の外から下端の外まで通過するループ落下+きらめき(不透明度パルス+回転)。
+    `\n@keyframes opconfK{from{transform:translateY(-6vw)}to{transform:translateY(76vw)}}` +
+    `\n@keyframes opconfW{0%{opacity:0.25;transform:rotateZ(0) rotateX(0)}50%{opacity:1;transform:rotateZ(var(--r1)) rotateX(170deg)}100%{opacity:0.25;transform:rotateZ(0) rotateX(340deg)}}`;
 
   const cur = SHOOT_STEPS[step];
 
@@ -226,11 +247,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
               </div>
             </div>
           ))}
-          {/* 紙吹雪レイヤー(カメラ非追従・アングル切替を跨いで存続=斜め・横でもヒラヒラ舞い続ける。
-              zIndex=アングルより上・暗転(50)より下。座標系: 横=vw(枠幅=画面幅)、縦=枠高換算(×0.667vw)。 */}
+          {/* 紙吹雪レイヤー(カメラ非追従・アングル切替を跨いで存続。zIndex=アングルより上・暗転(50)より下。
+              座標系: 横=vw(枠幅=画面幅)、縦=枠高換算(×0.667vw)。 */}
           <div style={{ position: 'absolute', inset: 0, zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
             <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}`, overflow: 'hidden' }}>
-              {CONFETTI_PIECES.map(p => (
+              {/* ①パーン: ステージ両サイドの砲から真上へ噴射→ヒラヒラ落下 */}
+              {CONFETTI_BURST.map(p => (
                 <div
                   key={p.key}
                   style={{
@@ -249,6 +271,27 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
                   />
                 </div>
               ))}
+              {/* ②キラキラ: 斜め・横の間(CUTS[1]〜)、画面全体できらめきながら降り続けるループ層。
+                  各粒は負のdelayで最初から空中に満ちている。 */}
+              <div style={{ position: 'absolute', inset: 0, opacity: 0, animation: `opfade 400ms linear ${CUTS[1]}ms both` }}>
+                {CONFETTI_GLITTER.map(p => (
+                  <div
+                    key={p.key}
+                    style={{
+                      position: 'absolute', left: `${p.x.toFixed(1)}%`, top: 0,
+                      animation: `opconfK ${p.dur.toFixed(2)}s linear infinite`, animationDelay: `${p.delay.toFixed(2)}s`,
+                    } as React.CSSProperties}
+                  >
+                    <div
+                      style={{
+                        width: p.w, height: p.h, background: p.color,
+                        '--r1': p.r1,
+                        animation: `opconfW ${p.td.toFixed(2)}s linear infinite`,
+                      } as React.CSSProperties}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </>
