@@ -64,6 +64,7 @@ import {
   getSelectedStageId, getWallMeta, recordChronicle,
   getEventQuestMeta, setEventQuestMeta, markCastleBossCleared, syncQuestStageClear,
   updateStoryFlags, markMissionCleared,
+  isKogarasuUnlocked, markKogarasuUnlocked,
   type WallMeta,
 } from '../data/progress';
 import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
@@ -923,6 +924,21 @@ export const maybeUnlockSageStone = (
   if (alchemyLevel(player) < 3 || !player.subWeapons.includes('alchemy')) return null;
   if ((unlocked['sage-stone'] ?? 0) >= 1) return null;
   return { ...unlocked, 'sage-stone': 1 };
+};
+
+// 小烏丸(murasame)が刀Lv3(MAX)で武器商人に並ぶ仕組み(賢者の石と同型)。ただし永続前提条件=
+// 裏ボス「トール」討伐済み(thorDefeated)。未討伐なら刀MAXでも並ばない(社長指示)。
+// 解禁が必要なら新しい unlockedShopSkillCards を返す。不要(未達/既解禁)なら null。
+// ※katanaLevel()はfloor=1かつ村雨所持で3を返すヘルパなので使わず、生のsubWeaponLevelsで判定する。
+export const maybeUnlockMurasame = (
+  player: Player,
+  unlocked: Partial<Record<SubWeaponKey, number>>,
+  thorDefeated: boolean,
+): Partial<Record<SubWeaponKey, number>> | null => {
+  if (!thorDefeated) return null;
+  if (!player.subWeapons.includes('katana') || (player.subWeaponLevels['katana'] ?? 0) < 3) return null;
+  if ((unlocked['murasame'] ?? 0) >= 1) return null;
+  return { ...unlocked, murasame: 1 };
 };
 
 // 装備スキル判定。effect 層はすべてこのヘルパで分岐(非装備時は完全に従来挙動)。
@@ -1791,6 +1807,15 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
       syncQuestStageClear(qStageId);
     }
   }
+  // 小烏丸解禁(社長指示): 裏ボス「トール」討伐の永続報酬。初回討伐なら永続フラグを立て、
+  // このランのリザルトで解禁ポップアップを1回出す。討伐時点で刀がLv3(MAX)なら、その場で
+  // このランの商人在庫にも並べる(以後のランは刀Lv3到達時に maybeUnlockMurasame が自動陳列)。
+  if (enemy.type === 'thor') {
+    if (markKogarasuUnlocked()) useGameStore.setState({ kogarasuUnlockedThisRun: true });
+    const st = get();
+    const muraUnlock = maybeUnlockMurasame(st.player, st.unlockedShopSkillCards, true);
+    if (muraUnlock) useGameStore.setState({ unlockedShopSkillCards: muraUnlock });
+  }
   // 討伐後のフェードアウト(既存の裏ボス演出を流用・pixiScene.syncBossCorpseが描画)。
   useGameStore.setState({
     bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now() },
@@ -2650,6 +2675,7 @@ interface GameState {
   bossChasing: boolean;                                 // 裏ボスが「追いかけてきている」状態(=他敵が逃げる/イベント抑制。コントローラが毎フレ更新)
   bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number } | null; // 討伐後のフェードアウト演出(描画のみが参照)
   hiddenBossDefeated: boolean;                          // 裏ボスを討伐済みか(方角矢印の表示打ち切り等に使用)
+  kogarasuUnlockedThisRun: boolean;                     // このランでトール初回討伐=小烏丸を永続解禁したか(リザルトの解禁ポップアップ用)
   debugLoopError: string;                               // 診断: ゲームループ本体で投げられた例外の要約(?debug=1 表示)
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
   beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
@@ -2933,6 +2959,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   bossChasing: false,
   bossCorpse: null,
   hiddenBossDefeated: false,
+  kogarasuUnlockedThisRun: false,
   debugLoopError: '',
   startWithTestStraps: false,
   showStatsOverlay: false,
@@ -5852,9 +5879,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (upgrade.type === 'subWeapon' && upgrade.subWeaponKey) {
         const nextPlayer = applySubWeaponCard(player, upgrade.subWeaponKey, upgrade.level);
         const sageUnlock = maybeUnlockSageStone(nextPlayer, state.unlockedShopSkillCards);
+        // 刀Lv3到達時の小烏丸陳列(トール討伐済みが前提条件)。賢者の石と直列に判定する。
+        const muraUnlock = maybeUnlockMurasame(nextPlayer, sageUnlock ?? state.unlockedShopSkillCards, isKogarasuUnlocked());
+        const shopUnlocks = muraUnlock ?? sageUnlock;
         return {
           player: nextPlayer,
-          ...(sageUnlock ? { unlockedShopSkillCards: sageUnlock } : {}),
+          ...(shopUnlocks ? { unlockedShopSkillCards: shopUnlocks } : {}),
           showUpgradeMenu: false,
           isPaused: false
         };
@@ -6162,7 +6192,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const result = spend(cost, applySubWeaponCard(state.player, subWeaponKey));
       if ('player' in result && result.player) {
         const sageUnlock = maybeUnlockSageStone(result.player as Player, state.unlockedShopSkillCards);
-        if (sageUnlock) return { ...result, unlockedShopSkillCards: sageUnlock };
+        const muraUnlock = maybeUnlockMurasame(result.player as Player, sageUnlock ?? state.unlockedShopSkillCards, isKogarasuUnlocked());
+        const shopUnlocks = muraUnlock ?? sageUnlock;
+        if (shopUnlocks) return { ...result, unlockedShopSkillCards: shopUnlocks };
       }
       return result;
     });
@@ -6189,9 +6221,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
       // 錬金術がLv3に達したら賢者の石を商人在庫へ解禁(村雨と同じ仕組み)。
       const sageUnlock = maybeUnlockSageStone(nextPlayer, state.unlockedShopSkillCards);
+      // 刀がLv3(MAX)に達したら小烏丸を商人在庫へ解禁(トール討伐済みが前提条件)。
+      const muraUnlock = maybeUnlockMurasame(nextPlayer, sageUnlock ?? state.unlockedShopSkillCards, isKogarasuUnlocked());
+      const shopUnlocks = muraUnlock ?? sageUnlock;
       return {
         player: nextPlayer,
-        ...(sageUnlock ? { unlockedShopSkillCards: sageUnlock } : {}),
+        ...(shopUnlocks ? { unlockedShopSkillCards: shopUnlocks } : {}),
         gameStats: {
           ...state.gameStats,
           strapsSpent: state.gameStats.strapsSpent + cost
@@ -9817,6 +9852,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossChasing: false,
         bossCorpse: null,
         hiddenBossDefeated: false,
+        kogarasuUnlockedThisRun: false,
         labDoors: runDoors,
         labButtons: runButtons,
         labProps: runProps,

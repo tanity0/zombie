@@ -101,6 +101,10 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const deathCause = useGameStore(s => s.lastDamageSource);
   // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の登場結果(このランで出現した場合のみ表示)。
   const namedFoeResult = useGameStore(s => s.namedFoeResult);
+  // 小烏丸解禁(社長指示): このランでトール初回討伐=小烏丸を永続解禁したか(静的画面なので毎フレ再描画なし)。
+  // 解禁したランのリザルトで1回だけ解禁ポップアップを出す(OK/×で閉じる=setKogarasuPopupOpen(false))。
+  const kogarasuUnlockedThisRun = useGameStore(s => s.kogarasuUnlockedThisRun);
+  const [kogarasuPopupOpen, setKogarasuPopupOpen] = useState(true);
   // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁(深さ×ランク)。ステージ毎の自己最深/自己最高ランク。
   const wallMeta = useGameStore(s => s.wallMeta);
   // PACING_PUZZLE.md §5.17-追補/§5.19 M18: 昇格度(惜しさ)。直近に完了した「通常」コマのスナップショット
@@ -863,6 +867,32 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* 小烏丸解禁ポップアップ(社長指示): 裏ボス「トール」初回討伐のランのリザルトで1回だけ出す。
+          won/lost/withdraw・resultClassicMode を問わず出すため、最外殻コンテナ(回収資料モーダルと同じ層)に置く。
+          既存リザルトと同じトーン(暗幕・glass-panel・金色アクセント=WEAPON MERCHANT見出し)。新規演出は無し(負荷1/10)。 */}
+      {kogarasuUnlockedThisRun && kogarasuPopupOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-3 bg-black/70">
+          <div className="glass-panel w-full max-w-sm rounded-none px-5 py-6 text-center">
+            <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">NEW WEAPON UNLOCKED</div>
+            <h3
+              className="mt-2 text-2xl font-bold text-amber-300"
+              style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
+            >
+              小烏丸 解放
+            </h3>
+            <p className="mt-3 text-[13px] leading-relaxed text-white/85">
+              裏ボス『トール』討伐報酬。刀をLv3(MAX)まで強化すると武器商人に小烏丸が並ぶ。
+            </p>
+            <button
+              type="button"
+              onClick={() => { playSfx('ui-select'); setKogarasuPopupOpen(false); }}
+              className="mt-5 w-full rounded-none bg-amber-400/15 px-3 py-2.5 text-sm font-bold text-amber-100"
+            >
+              OK
+            </button>
           </div>
         </div>
       )}

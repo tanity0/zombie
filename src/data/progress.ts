@@ -489,6 +489,26 @@ export const syncQuestStageClear = (stageId: string): void => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
+// 小烏丸(murasame)解禁フラグ(永続・全ステージ共通)。裏ボス「トール」初回討伐の瞬間に立てる
+// (年表と同じA方式=その後死亡しても取り消さない)。解禁後は刀Lv3(MAX)で武器商人に小烏丸が並ぶ
+// (gameStore.maybeUnlockMurasame)。
+const KOGARASU_KEY = 'zombie.progress.kogarasuUnlocked';
+
+export const isKogarasuUnlocked = (): boolean => {
+  if (typeof localStorage === 'undefined') return false;
+  try { return localStorage.getItem(KOGARASU_KEY) === '1'; } catch { return false; }
+};
+
+// 立てた瞬間だけ true を返す(既に立っていれば false)。リザルトの解禁ポップアップを
+// 初回討伐のランに限定するための戻り値。
+export const markKogarasuUnlocked = (): boolean => {
+  if (typeof localStorage === 'undefined') return false;
+  if (isKogarasuUnlocked()) return false;
+  try { localStorage.setItem(KOGARASU_KEY, '1'); } catch { /* ignore */ }
+  return true;
+};
+
+// ───────────────────────────────────────────────────────────────────────────
 // the ONE ストーリー分岐フラグ(統合正本8〜10章 / 一括制作指示書9章)。
 // 旧セーブ移行: キー不在・フィールド欠損は全て false 扱い(安全な初期値・additive)。
 //   endingSeen     = 通常エンディング(聴取記録)を最後まで見た
@@ -660,6 +680,7 @@ export const resetProgress = (): void => {
   saveGateMetaMap({}); // M20のゲート解除メタも進行リセットで消す(開発用)
   saveEventQuestMetaMap({}); // 二人組クエストの進捗メタも進行リセットで消す(開発用)
   writeCastleBossSet(new Set()); // 城ボスクリアフラグも進行リセットで消す(開発用)
+  try { localStorage.removeItem(KOGARASU_KEY); } catch { /* ignore */ } // 小烏丸解禁も進行リセットで消す(開発用)
   try { localStorage.removeItem(LEGACY_EVENT_QUEST_DONE_KEY); } catch { /* ignore */ } // 旧v1684キーの掃除
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
   try { localStorage.removeItem(CHRONICLE_START_KEY); } catch { /* ignore */ } // 初ミッション日付も消す(開発用)

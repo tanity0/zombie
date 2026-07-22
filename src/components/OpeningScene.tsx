@@ -126,11 +126,11 @@ const PENLIGHTS = PENLIGHT_REGIONS.map(r =>
       y: r.top + yr * (r.bottom - r.top),
       h: (5 + Math.random() * 3) * (0.6 + yr * 0.8), // 手前ほど大きく(遠近)
       w: 2 + yr * 1.2,
-      pa: `${(4 + Math.random() * 7).toFixed(1)}deg`, // 振り角
+      pa: `${(9 + Math.random() * 11).toFixed(1)}deg`, // 振り角(社長指示v0.25.2057: もう少し大きく=約2倍)
       sd: 0.7 + Math.random() * 0.8,                  // 振り周期(秒)
       delay: -Math.random() * 1.5,                    // 負のdelay=最初からバラバラに揺れている
       color: PENLIGHT_COLORS[(i * 5 + 1) % PENLIGHT_COLORS.length],
-      op: 0.55 + Math.random() * 0.45,
+      op: 0.7 + Math.random() * 0.3,                  // 発光強化に合わせ下限も持ち上げ(v0.25.2057)
     };
   })
 );
@@ -139,6 +139,24 @@ const VENUE_GLOWS = [
   { x: 30, y: 78, rx: 55, ry: 30, color: 'rgba(168,85,247,0.16)', dur: 3.2, delay: 0 },
   { x: 72, y: 80, rx: 55, ry: 28, color: 'rgba(244,114,182,0.13)', dur: 3.8, delay: -1.6 },
 ];
+
+// ── スポットライト(社長指示v0.25.2057): 各アングルの3人それぞれへ頭上から光錐を落とす ──
+// 幾何は SHOTS[si].chars(足元座標とキャラ高さ)から導出=ズーム/アングル切替に自動追従。
+// 台形の光錐(mix-blend:screen)+足元の光溜まり。ゆっくり明滅(opspot)。CSSのみ・OP中だけ。
+// ※SHOTSより後で定義できないため、導出は下のSHOTS定義の直後で行う(SPOTLIGHTS)。
+
+// ── 被写界深度(社長指示v0.25.2057): ステージ(3人)を焦点に周辺をぼかすチルトシフト風 ──
+// backdrop-filterブラーをradial-gradientマスクで切る=焦点は素通し・周辺ほどぼけ。
+// 負荷3/10: 全画面ぼかしはクロスフェード中のみ最大2枚・OP紙芝居限定でゲームプレイには載らない。
+// 非対応ブラウザは効果なしで自然劣化。焦点座標は各アングルのステージ位置(枠%)。
+const DOF_FOCUS = [
+  { x: 50, y: 47, rx: 46, ry: 34 },   // 正面: 中央ステージ
+  { x: 50, y: 63, rx: 48, ry: 34 },   // 斜め: 壇上の3人
+  { x: 50, y: 85, rx: 50, ry: 36 },   // 真横: 手前ステージ面
+];
+const DOF_BLUR = 'blur(3.5px)';
+const dofMask = (si: number) =>
+  `radial-gradient(ellipse ${DOF_FOCUS[si].rx}% ${DOF_FOCUS[si].ry}% at ${DOF_FOCUS[si].x}% ${DOF_FOCUS[si].y}%, rgba(0,0,0,0) 52%, #000 100%)`;
 
 // ── 射撃シーンのタイムライン(シーン内ms)と配置 ──
 // 2人は独立テンポで進むため【トラックを別々に定義し、変化点のマージは自動生成】する。
@@ -194,6 +212,18 @@ const SHOTS: Shot[] = [
     { src: BOB, x: 57.5, y: 80.5, h: 17 }, { src: HERO, x: 50.7, y: 86, h: 19 }, { src: TWIN, x: 44, y: 92.5, h: 24 },
   ] },
 ];
+
+// スポットライトの幾何(上のコメント参照)。charsの足元(x,y)とキャラ高さhから光錐と光溜まりを導出。
+const SPOTLIGHTS = SHOTS.map(s => s.chars.map((c, ci) => {
+  const bw = c.h * 0.85;               // 光錐の下端幅(枠w%・キャラ高さ比例)
+  const bh = c.h * 2.6;                // 光錐の高さ(枠h%)=頭上のさらに上から落ちる
+  const poolW = bw * 1.7;              // 足元の光溜まり(横長楕円)
+  return {
+    left: c.x - bw / 2, top: c.y - bh, w: bw, h: bh,
+    poolL: c.x - poolW / 2, poolT: c.y - poolW * 0.2, poolW, poolH: poolW * 0.4,
+    dur: 2.2 + ci * 0.5, delay: -ci * 0.7,   // 3本を微妙にずらして明滅
+  };
+}));
 
 const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, startAtShoot, startAtRevival }) => {
   const [ready, setReady] = useState(false); // 全素材decode完了までタイムラインを始めない(下記コメント)
@@ -341,7 +371,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     `\n@keyframes opconfW{0%{opacity:0.25;transform:rotateZ(0) rotateX(0)}50%{opacity:1;transform:rotateZ(var(--r1)) rotateX(170deg)}100%{opacity:0.25;transform:rotateZ(0) rotateX(340deg)}}` +
     // ペンライトの振り(足元起点で左右へ)と会場グローの明滅。
     `\n@keyframes oppl{from{transform:rotate(calc(var(--pa)*-1))}to{transform:rotate(var(--pa))}}` +
-    `\n@keyframes opvglow{0%{opacity:0.45}50%{opacity:1}100%{opacity:0.45}}`;
+    `\n@keyframes opvglow{0%{opacity:0.45}50%{opacity:1}100%{opacity:0.45}}` +
+    // スポットライトのゆっくり明滅(強すぎない0.8↔1.0)。
+    `\n@keyframes opspot{0%{opacity:0.8}50%{opacity:1}100%{opacity:0.8}}`;
 
   const cur = SHOOT_STEPS[step];
 
@@ -399,7 +431,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                           position: 'absolute', left: `${p.x.toFixed(1)}%`, top: `${p.y.toFixed(1)}%`,
                           width: p.w, height: p.h, borderRadius: 2,
                           background: p.color, opacity: p.op,
-                          boxShadow: `0 0 6px 1.5px ${p.color}`,
+                          // 発光強化(社長指示v0.25.2057): 芯+大きめの淡いハロの2層グロー。
+                          boxShadow: `0 0 9px 2px ${p.color}, 0 0 22px 8px ${p.color}66`,
                           transformOrigin: '50% 100%',
                           '--pa': p.pa,
                           animation: `oppl ${p.sd.toFixed(2)}s ease-in-out infinite alternate`,
@@ -408,6 +441,25 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                       />
                     ))}
                   </div>
+                  {/* スポットライト(社長指示v0.25.2057): 3人へ頭上から光錐+足元の光溜まり。
+                      キャラ描画の下に敷く=3人が光の中に立って見える。 */}
+                  {SPOTLIGHTS[si].map((sp, spi) => (
+                    <React.Fragment key={`sp${spi}`}>
+                      <div style={{
+                        position: 'absolute', left: `${sp.left}%`, top: `${sp.top}%`, width: `${sp.w}%`, height: `${sp.h}%`,
+                        clipPath: 'polygon(36% 0, 64% 0, 100% 100%, 0% 100%)',
+                        background: 'linear-gradient(to bottom, rgba(255,250,215,0.5), rgba(255,250,215,0.06))',
+                        mixBlendMode: 'screen', pointerEvents: 'none',
+                        animation: `opspot ${sp.dur}s ease-in-out infinite`, animationDelay: `${sp.delay}s`,
+                      }} />
+                      <div style={{
+                        position: 'absolute', left: `${sp.poolL}%`, top: `${sp.poolT}%`, width: `${sp.poolW}%`, height: `${sp.poolH}%`,
+                        background: 'radial-gradient(ellipse at center, rgba(255,250,215,0.34), rgba(0,0,0,0) 70%)',
+                        mixBlendMode: 'screen', pointerEvents: 'none',
+                        animation: `opspot ${sp.dur}s ease-in-out infinite`, animationDelay: `${sp.delay}s`,
+                      }} />
+                    </React.Fragment>
+                  ))}
                   <div style={{ position: 'absolute', inset: 0 }}>
                     {SHOTS[si].chars.map((c, ci) => (
                       <img
@@ -421,6 +473,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                       />
                     ))}
                   </div>
+                  {/* 被写界深度(社長指示v0.25.2057): 焦点(ステージ)以外をぼかす。マスクの透明部=素通し。 */}
+                  <div style={{
+                    position: 'absolute', inset: 0, pointerEvents: 'none',
+                    backdropFilter: DOF_BLUR, WebkitBackdropFilter: DOF_BLUR,
+                    maskImage: dofMask(si), WebkitMaskImage: dofMask(si),
+                  } as React.CSSProperties} />
                 </div>
               </div>
             </div>
