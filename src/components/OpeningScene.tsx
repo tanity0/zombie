@@ -201,6 +201,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const [prevShot, setPrevShot] = useState<number | null>(null); // クロスフェード中の前アングル(下敷き)
   const [step, setStep] = useState(0); // 射撃シーンのコマ番号(SHOOT_STEPS index)
   const [subIdx, setSubIdx] = useState(-1); // 蘇生パートの表示中字幕(OPENING_REVIVAL_LINES index / -1=非表示)
+  const [revFading, setRevFading] = useState(false); // 蘇生パート終端の3秒フェードアウト中(社長指示v0.25.2055)
   const doneRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
   const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
@@ -254,8 +255,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         const one = heartRef.current[1];
         if (one) { try { one.currentTime = 0; } catch { /* ignore */ } one.play().catch(() => {}); }
       }, t));
-      // fadeToTutorialMs 後にチュートリアルへ(黒のまま=字幕は既に消えている)。finishは一度だけ(doneRef)。
-      ids.push(window.setTimeout(finish, t + OPENING_REVIVAL_TIMING.fadeToTutorialMs));
+      // 終端フェードアウト3秒(社長指示v0.25.2055・旧: fadeToTutorialMs=350msで即終了)。
+      // 画面=黒オーバーレイをCSSで3秒かけて被せ(赤ビネットごと沈む)、音=心拍の音量を0.5秒刻みで0へ。
+      const REVIVAL_FADE_MS = 3000;
+      ids.push(window.setTimeout(() => setRevFading(true), t));
+      for (let k = 1; k <= 6; k++) {
+        ids.push(window.setTimeout(() => {
+          heartRef.current.forEach(a => { if (a) a.volume = Math.max(0, a.volume * (1 - k / 6)); });
+        }, t + (REVIVAL_FADE_MS / 6) * k));
+      }
+      ids.push(window.setTimeout(finish, t + REVIVAL_FADE_MS));
     };
 
     // ?opening=3: 蘇生パート単独プレビュー。射撃/アリーナ素材のdecodeを待たず即開始(黒画面+字幕のみ)。
@@ -545,6 +554,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
             >
               {OPENING_REVIVAL_LINES[subIdx].text}
             </div>
+          )}
+          {/* 終端の3秒フェードアウト(社長指示v0.25.2055): 黒を3秒かけて被せ、赤ビネットごと沈める。 */}
+          {revFading && (
+            <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, animation: 'opfade 3000ms linear both', pointerEvents: 'none' }} />
           )}
         </div>
       )}
