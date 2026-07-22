@@ -6315,11 +6315,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const fireLen = hitFireLen(projectile.weaponType, shotgunPelletHitsByEnemy.get(enemyId) ?? 1); // 銃系統で大きさ可変(社長指示)
             useGameStore.getState().spawnFireJet(ox, oy, ang, fireLen);
             useGameStore.getState().spawnGlow(ox, oy, 20, 'rgba(251,146,60,', 150); // 根元の小グロー(プール済み=安い)
-            // 血飛沫(OP射撃シーンと同素材・3コマ60msずつ・社長指示v0.25.2021)。火と同じ間引きで弾の進行方向へ。
-            // v0.25.2023: 火と完全重なりで見えなかったため、起点を火より外へずらし+敵幅×2.0に拡大
-            // (炎の先から血が突き出て見える)。pooled sprite 1枚=安い。
-            const bx = ecx + dx * (enemyForFx.width * 0.6), by = ecy + dy * (enemyForFx.height * 0.3);
-            useGameStore.getState().spawnBlood(bx, by, ang, Math.max(48, enemyForFx.width * 2.0));
+            // 血飛沫(OP射撃シーンと同素材・3コマ60msずつ・社長指示v0.25.2021)。
+            // v0.25.2024(社長指示「血は被弾後頭部から=弾丸の閃光と同じ位置同じ方角」): 火の破裂と
+            // 完全に同じ出口点(ox,oy)・同じ角度で噴く。サイズは敵幅×2.0(最低48px)。
+            useGameStore.getState().spawnBlood(ox, oy, ang, Math.max(48, enemyForFx.width * 2.0));
           }
           // NPCセリフ9: 護衛弾(weaponKey='escort')が敵を倒したら、撃破地点に最も近い護衛が反応(低頻度・CD)。
           if (enemyKilled && projectile?.weaponKey === 'escort' && enemyForFx) {

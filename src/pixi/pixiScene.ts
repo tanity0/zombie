@@ -8166,7 +8166,8 @@ export class PixiScene {
   private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number } | null, now: number) {
     const sp = this.bossCorpseSprite;
     if (!corpse) { if (sp.visible) sp.visible = false; return; }
-    const tex = getTexture(corpse.type);
+    // M7ボス=stage-7のgiantbatは生体と同じくグレン絵で倒れる(v0.25.2024: 死亡パスの上書き漏れ修正)。
+    const tex = getTexture((this.currentFarKey === 'stage7' && corpse.type === 'giantbat') ? 'glen-boss' : corpse.type);
     if (!tex) { sp.visible = false; return; }
     const FADE_MS = 2600; // useGameLoop の BOSS_FADE_MS と一致(超過後は store 側が corpse を消す)
     const t = Math.max(0, Math.min(1, (Date.now() - corpse.diedAt) / FADE_MS));
@@ -9444,16 +9445,17 @@ export class PixiScene {
     sp.visible = true;
   }
 
-  // 血飛沫(OP射撃シーンと同素材・3コマ flipbook)。素材は「傷口=右端センター・血は左へ飛ぶ」絵なので、
-  // anchor(1,0.5)+rotation=angle-π で噴射方向(angle)へ向ける。通常合成(血は暗色=加算だと沈む)。
-  // プールsprite1枚・テクスチャ差し替えのみ=firejetと同コスト帯(安い)。
+  // 血飛沫(OP射撃シーンと同素材・3コマ flipbook)。素材は「尖端(傷口)が左端・飛ぶほど右へ広がる」絵
+  // (v0.25.2024で向きの読みを訂正)。anchor(0,0.5)=尖端を出口点に置き、rotation=angle で噴射方向へ
+  // 広がる。コマ2-3はキャンバス右寄せ=傷口から離れて飛散していく見え方に自然になる。
+  // 通常合成(血は暗色=加算だと沈む)。プールsprite1枚・テクスチャ差し替えのみ=firejetと同コスト帯(安い)。
   private drawBloodSprite(e: Extract<VisualEffect, { kind: 'blood' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     let sprite = this.effects.get(e.id);
     if (!(sprite instanceof Sprite)) {
       if (sprite) sprite.destroy();
       sprite = new Sprite();
-      (sprite as Sprite).anchor.set(1, 0.5); // 傷口(右中央)を出口点へ
+      (sprite as Sprite).anchor.set(0, 0.5); // 尖端=傷口(左中央)を出口点へ
       this.L.effectLayer.addChild(sprite);
       this.effects.set(e.id, sprite);
     }
@@ -9466,7 +9468,7 @@ export class PixiScene {
     // 全コマ共通キャンバス(同寸)なので frame0 幅基準のスケールでコマ間の見た目が揃う。
     sp.scale.set(e.len / Math.max(1, tex0.width));
     sp.position.set(e.x, e.y);
-    sp.rotation = e.angle - Math.PI; // 素材は左向き=πずらして進行方向へ
+    sp.rotation = e.angle; // 素材の飛散方向=+x。進行方向へそのまま回す
     sp.alpha = 1; // フェード無し(コマが切り替わって消える)
     sp.visible = true;
   }

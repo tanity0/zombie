@@ -78,10 +78,10 @@ const SHOTS: Shot[] = [
     { src: TWIN, x: 48.7, y: 49.2, h: 1.8 }, { src: HERO, x: 50, y: 49.3, h: 2.0 }, { src: BOB, x: 51.3, y: 49.2, h: 1.8 },
   ] },
   // 斜め: ステージを斜めから。ズーム廃止=1.4で静止(社長指示v0.25.2015)。
-  // 【立ち位置合わせ(社長指示v0.25.2019)】色ありキャラの画面上の足元を横シーンと一致させる。
-  // 横の床は画面下寄りのため、斜めの3人を階段下の床(y79)へ下げて接地のまま揃えた(逆方向=横を上げると宙に浮く・実測で確認)。
-  { bg: A('arena-diag.jpg'), ox: 48, oy: 62, zf: 1.4, zt: 1.4, chars: [
-    { src: TWIN, x: 44, y: 78.6, h: 22 }, { src: HERO, x: 50, y: 79.1, h: 24 }, { src: BOB, x: 56, y: 78.6, h: 22 },
+  // 【立ち位置合わせv0.25.2024】3人は元のステージ壇上(y66=絵と接地が合う位置)に戻し、
+  // カメラ原点(48.3,17.8)側を動かしてヒーロー足元を共通アンカー(218,569)に一致させる(=絵とのズレ解消)。
+  { bg: A('arena-diag.jpg'), ox: 48.3, oy: 17.8, zf: 1.4, zt: 1.4, chars: [
+    { src: TWIN, x: 44, y: 66, h: 22 }, { src: HERO, x: 50, y: 66.5, h: 24 }, { src: BOB, x: 56, y: 66, h: 22 },
   ] },
   // 真横: ステージを横から。奥行きスタッガー。シーン全体を180度反転(flipScene・社長指示v0.25.2009)。
   // 【共通アンカー(社長指示v0.25.2019→2022)】ヒーロー=(50%,86%)・ズーム原点もヒーロー自身=ズーム中ドリフト0。
@@ -236,7 +236,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
                   src={BLOOD(cur.b)} alt="" draggable={false}
                   style={{
                     position: 'absolute', left: `${BLOOD_POS.x}%`, top: `${BLOOD_POS.y}%`, height: `${BLOOD_POS.h}%`,
-                    transform: 'translate(-100%, -50%)', imageRendering: 'pixelated',
+                    // scaleX(-1)=左右反転(v0.25.2024): 素材は「尖端(傷口)が左・飛ぶほど右へ広がる」絵。
+                    // 反転して尖端=右端(後頭部)に合わせ、左へ行くほど広がる=飛散方向へ正しく拡散。
+                    transform: 'translate(-100%, -50%) scaleX(-1)', imageRendering: 'pixelated',
                     // OPの血飛沫は黒シルエット(社長指示v0.25.2023・ゲーム内は赤のまま)。
                     filter: 'brightness(0)',
                   }}
