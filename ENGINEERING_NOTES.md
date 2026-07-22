@@ -29,6 +29,10 @@
 ## 2. プロジェクト固有の地雷(実バグ化したものだけを載せる)
 
 ### 描画(PixiJS v8)
+- **エフェクト色は`rgba(r,g,b,a)`形式で渡す(hexは白化する)**: `pixiScene.glowTint()`は
+  `rgba(...)`しかパースせず、**hex(`#rrggbb`)は0xffffff(白)フォールバック**。particle/glow/ring等の
+  `color`にhexを渡すと意図の色にならない(v0.25.2029実バグ=血飛沫粒子が白い綿毛になった)。既存の
+  hex渡し箇所(spawnBurst死亡飛沫等)も実は白寄りで描かれている=「直したい」場合は見た目が変わるので社長裁定。
 - **`Container.filterArea`はローカル座標**として解釈され`worldTransform`で画面へ写像される
   (`FilterSystem._calculateFilterArea`)。ズームで`worldGroup.scale`が変わると静的な枠は
   中央に縮み、**フィルタ枠の外は描画ごと消える**(=敵が切れる)+tilt-shiftの帯もずれる。

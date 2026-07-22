@@ -932,6 +932,9 @@ export type VisualEffect =
       duration: number;
       drag?: number;
       liquid?: boolean;
+      // 常に画面下方向へ加える重力加速度(px/s²)。血飛沫だけ指定=弧を描いて落ちる。
+      // 未指定=0で従来の他パーティクル(火花/egg fluid等)は挙動不変。
+      gravity?: number;
     }
   | {
       kind: 'damageNumber';

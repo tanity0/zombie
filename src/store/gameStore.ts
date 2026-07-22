@@ -148,6 +148,50 @@ const ENEMY_COLOR_TIER_FX: Record<EnemyColorTier, string> = {
   red: 'rgba(239,68,68,',
 };
 const NAMED_FX_COLOR = 'rgba(255,215,0,'; // NAMED_TINT(0xffd700)と同色。resolveNamedFoeDefeatの金色とも統一。
+// 血飛沫(ZELTER風・社長指示v0.25.2027): 旧3コマスプライトは素材に「重力で落ちる弧」が焼き込まれ、
+// 上/斜めに撃つと弧の向きが不自然だった。微粒子をヒット方向へ噴射し重力で落とす方式に置換=全方向で自然。
+// pooled particle経路(drawParticleSprite・liquid)にそのまま乗せる=新しい描画方式は作らない。
+const BLOOD_PARTICLE_CAP = 90;             // 生きている血粒子(id接頭辞 'fx-bloodp-')の同時上限(塗り面積の暴発止め)
+const BLOOD_CONE = (20 * Math.PI) / 180;   // 噴射コーン半角=±20°(社長指定)
+const BLOOD_GRAVITY = 420;                 // 血粒子だけ重力で常に画面下へ落とす(px/s²)。他パーティクルは未指定=0。
+// 【注意】粒子色は rgba() 形式で書くこと: 描画側の glowTint は rgba(...) しかパースできず、
+// hex(#rrggbb)は白(0xffffff)にフォールバックする(v0.25.2029で白い血になった実バグの教訓)。
+const BLOOD_BIG_COLOR = 'rgba(127,29,29,1)';         // 大粒(塊感)の暗赤(#7f1d1d相当)
+const BLOOD_SMALL_COLORS = ['rgba(220,38,38,1)', 'rgba(185,28,28,1)', 'rgba(153,27,27,1)']; // 小粒の赤(飛沫の主体)
+// 生きている血粒子の数(キャップ判定用)。id接頭辞で数える=旧'blood'kindや他fxと混ざらない。
+const countBloodParticles = (effects: VisualEffect[]): number => {
+  let n = 0;
+  for (const e of effects) if (e.id.startsWith('fx-bloodp-')) n++;
+  return n;
+};
+// (x,y)から方向angleへ円錐±20°で粒子を噴くバースト。塊感の大粒(約3割)+赤の小粒。中心ほど速く、
+// 少し上向きバイアスで噴き上げてから重力で落ちる。銃/近接どちらの血飛沫もこの1関数から作る(見た目統一)。
+const buildBloodBurst = (x: number, y: number, angle: number, count: number, now: number): VisualEffect[] => {
+  const fresh: VisualEffect[] = [];
+  for (let i = 0; i < count; i++) {
+    const spread = Math.random() * 2 - 1;                 // [-1,1]=コーン内の左右位置
+    const a = angle + spread * BLOOD_CONE;
+    const speed = 120 + (1 - Math.abs(spread)) * 180 + Math.random() * 120; // 中心ほど速い(120〜420px/s)
+    const big = Math.random() < 0.3;                      // 約3割は塊感のある大粒
+    const size = big ? 3.5 + Math.random() * 2.5 : 1.5 + Math.random() * 1.5;
+    const color = big ? BLOOD_BIG_COLOR : BLOOD_SMALL_COLORS[(Math.random() * BLOOD_SMALL_COLORS.length) | 0];
+    fresh.push({
+      kind: 'particle',
+      id: `fx-bloodp-${now}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+      x, y,
+      vx: Math.cos(a) * speed,
+      vy: Math.sin(a) * speed - Math.random() * 30,        // 少し上向きバイアス=噴き上げ感(控えめ)
+      color,
+      size,
+      createdAt: now,
+      duration: 380 + Math.random() * 240,                 // 380〜620ms
+      drag: 3.4,                                           // egg fluid splash と同じ液体の流儀
+      liquid: true,
+      gravity: BLOOD_GRAVITY,                              // 血だけ重力で落下(他呼び出しは未指定=挙動不変)
+    });
+  }
+  return fresh;
+};
 // 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
 export const XP_GAIN_MULT = 1 / 3;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
@@ -10198,36 +10242,41 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { effects: next };
     });
   },
+  // 銃弾ヒットの血飛沫(ZELTER風・社長指示v0.25.2027): (x,y)から方向angleへ円錐±20°で微粒子を噴き、重力で落とす。
+  // 粒子数は len(=傷の勢い)に比例させ 16〜44 に収める。旧'blood'kindは発行しない(素材は残置)。
   spawnBlood: (x, y, angle, len) => {
     const now = Date.now();
-    const fx: VisualEffect = {
-      kind: 'blood',
-      id: `fx-blood-${now}-${Math.random().toString(36).slice(2, 6)}`,
-      x, y, angle, len, createdAt: now, duration: 300, // 3コマ×100ms(社長指定v0.25.2025・OP射撃シーンと同じ)
-    };
+    // グローバルキャップ: 生きている血粒子が90を超えないよう、不足分だけ生成(超過分はスキップ)。
+    const alive = countBloodParticles(get().effects);
+    const room = BLOOD_PARTICLE_CAP - alive;
+    if (room <= 0) return; // 既に上限=1粒も足さない(setも呼ばない=無駄な購読者起こしを避ける)
+    const desired = Math.max(16, Math.min(44, Math.round(len / 6)));
+    const fresh = buildBloodBurst(x, y, angle, Math.min(desired, room), now);
     set(state => {
-      const next = [...state.effects, fx];
+      const next = [...state.effects, ...fresh];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
     });
   },
-  // 近接の血飛沫(社長指示v0.25.2026): 敵(ex,ey)から【プレイヤーに向かって】飛ぶ。方向は内部計算。
-  // 起点=敵中心をプレイヤー側へ少し寄せた点(斬った面)。サイズ規則は銃と同じ(×4.0・最低96px)。
+  // 近接の血飛沫(社長指示v0.25.2026→2027で粒子化): 敵(ex,ey)から【プレイヤーに向かって】飛ぶ。方向は内部計算。
+  // 起点=敵中心をプレイヤー側へ少し寄せた点(斬った面)。勢い(len)規則は銃と同じ(×4.0・最低96px)。
   spawnMeleeBlood: (ex, ey, size = 40) => {
     const now = Date.now();
     const p = get().player;
     const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
     let dx = pcx - ex, dy = pcy - ey;
     const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-    const fx: VisualEffect = {
-      kind: 'blood',
-      id: `fx-mblood-${now}-${Math.random().toString(36).slice(2, 6)}`,
-      x: ex + dx * size * 0.4, y: ey + dy * size * 0.4,
-      angle: Math.atan2(dy, dx), len: Math.max(96, size * 4.0),
-      createdAt: now, duration: 300, melee: true,
-    };
+    const alive = countBloodParticles(get().effects);
+    const room = BLOOD_PARTICLE_CAP - alive;
+    if (room <= 0) return;
+    const len = Math.max(96, size * 4.0);
+    const desired = Math.max(16, Math.min(44, Math.round(len / 6)));
+    const fresh = buildBloodBurst(
+      ex + dx * size * 0.4, ey + dy * size * 0.4, // 起点=既存計算のまま(斬った面)
+      Math.atan2(dy, dx), Math.min(desired, room), now,
+    );
     set(state => {
-      const next = [...state.effects, fx];
+      const next = [...state.effects, ...fresh];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
     });
@@ -10432,12 +10481,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (e.kind === 'particle') {
           const drag = e.drag ?? 0;
           const decay = drag > 0 ? Math.exp(-drag * deltaTime) : 1;
+          const g = e.gravity ?? 0; // 血飛沫だけ重力で常に下へ落ちる(未指定=0で従来挙動不変)
           live.push({
             ...e,
             x: e.x + e.vx * deltaTime,
             y: e.y + e.vy * deltaTime,
             vx: e.vx * decay,
-            vy: e.vy * decay
+            vy: e.vy * decay + g * deltaTime
           });
         } else if (e.kind === 'damageNumber') {
           // Damage numbers drift upward and slow over time
