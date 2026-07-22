@@ -67,7 +67,7 @@ const CONFETTI_BURST = Array.from({ length: 80 }, (_, i) => {
     sd: 0.35 + Math.random() * 0.35,             // 飛翔中の回転(高速)
     sw: (Math.random() * 2 - 1) * 8,
     r1: `${Math.round((Math.random() * 2 - 1) * 200)}deg`,
-    w: 5 + Math.random() * 5, h: 3 + Math.random() * 4,
+    w: 8 + Math.random() * 7, h: 5 + Math.random() * 6, // 粒大きめ(社長指示v0.25.2038)
     color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
   };
 });
@@ -81,7 +81,7 @@ const CONFETTI_GLITTER = Array.from({ length: 60 }, (_, i) => {
     delay: -Math.random() * dur,                  // 負のdelay=表示された瞬間すでに空中に満ちている
     td: 0.4 + Math.random() * 0.5,                // きらめき周期(秒)
     r1: `${Math.round((Math.random() * 2 - 1) * 240)}deg`,
-    w: 3 + Math.random() * 3, h: 2.5 + Math.random() * 2.5,
+    w: 5 + Math.random() * 5, h: 4 + Math.random() * 4, // 粒大きめ(社長指示v0.25.2038)
     color: CONFETTI_COLORS[(i * 3 + 1) % CONFETTI_COLORS.length],
   };
 });
