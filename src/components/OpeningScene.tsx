@@ -43,8 +43,8 @@ const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3
 // ── 射撃シーンのタイムライン(シーン内ms)と配置 ──
 // コマ: {t=切替時刻, s=撃つ子コマ番号, v=主人公コマ番号}。2人は独立テンポで進む(変化点の合併で表現)。
 // 撃つ側(社長指定v0.25.2010): 立ち1秒→構え1秒→撃つ0.1→次0.1→次0.2→最後(硝煙)は保持。
-// 撃たれ側(社長指定v0.25.2011→v0.25.2012で各コマ+0.5秒): 被弾=撃つと同期(2.0s)→次0.7→次0.8→最後(倒れ伏す)は保持。
-// ※v4の表示長は元々未指定→0.3秒の叩き台に+0.5=0.8秒。
+// 撃たれ側(社長指定v0.25.2011→2012で+0.5→2014で撃たれた後を-0.2): 被弾=撃つと同期(2.0s)→次0.5→次0.6→最後(倒れ伏す)は保持。
+// ※v4の表示長は元々未指定の叩き台(0.3+0.5-0.2=0.6秒)。
 // red=trueのコマから背景を赤一色に(社長指示v0.25.2013「撃った瞬間に後ろ赤一色に」。以降ずっと赤のまま暗転へ)。
 const SHOOT_STEPS = [
   { t: 0, s: 1, v: 1 },     // 対峙(立ち)
@@ -53,13 +53,16 @@ const SHOOT_STEPS = [
   { t: 2100, s: 5, v: 2, red: true },  // 撃つ側: 次(0.1s後)
   { t: 2200, s: 2, v: 2, red: true },  // 撃つ側: 次(0.2s)
   { t: 2400, s: 6, v: 2, red: true },  // 撃つ側: 硝煙(保持へ)
-  { t: 2700, s: 6, v: 3, red: true },  // 撃たれ側: 次(被弾から0.7s)
-  { t: 3500, s: 6, v: 4, red: true },  // 撃たれ側: 次(0.8s)
-  { t: 4300, s: 6, v: 5, red: true },  // 撃たれ側: 倒れ伏す(0.8s後・保持)
+  { t: 2500, s: 6, v: 3, red: true },  // 撃たれ側: 次(被弾から0.5s)
+  { t: 3100, s: 6, v: 4, red: true },  // 撃たれ側: 次(0.6s)
+  { t: 3700, s: 6, v: 5, red: true },  // 撃たれ側: 倒れ伏す(0.6s後・保持)
 ];
-const SHOOT_FADE_START = 5600; // 最終コマを約1.3秒見せてから暗転(保持長は従来踏襲の叩き台)
+const SHOOT_FADE_START = 5000; // 最終コマを約1.3秒見せてから暗転(保持長は従来踏襲の叩き台)
 const SHOOT_FADE_MS = 1200;
-const SHOOT_TOTAL = 7000;
+const SHOOT_TOTAL = 6400;
+// 倒れ伏し(v5)は足元重心アンカーの副作用で体がv4より右に出る(実測: 体重心 v4=36.7% vs v5=49.6%)
+// → v5だけ左へ寄せて落下位置を揃える(社長指示v0.25.2014「最後の倒れてる絵、少し左へ」)。単位=bg幅%。
+const VICTIM_DX: Record<number, number> = { 5: -4 };
 // 配置(backstage画像基準%・足元アンカー)。主人公=左、撃つ子=右(反転済=銃が左向き)。h=コマキャンバス高さ。
 const VICTIM_POS = { x: 38, y: 80, h: 26 };
 const SHOOTER_POS = { x: 66, y: 86, h: 30 };
@@ -206,7 +209,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
               <img
                 src={VICTIM(cur.v)} alt="" draggable={false}
                 style={{
-                  position: 'absolute', left: `${VICTIM_POS.x}%`, top: `${VICTIM_POS.y}%`, height: `${VICTIM_POS.h}%`,
+                  position: 'absolute', left: `${VICTIM_POS.x + (VICTIM_DX[cur.v] ?? 0)}%`, top: `${VICTIM_POS.y}%`, height: `${VICTIM_POS.h}%`,
                   transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
                 }}
               />
