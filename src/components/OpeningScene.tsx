@@ -473,12 +473,19 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                       />
                     ))}
                   </div>
-                  {/* 被写界深度(社長指示v0.25.2057): 焦点(ステージ)以外をぼかす。マスクの透明部=素通し。 */}
-                  <div style={{
-                    position: 'absolute', inset: 0, pointerEvents: 'none',
-                    backdropFilter: DOF_BLUR, WebkitBackdropFilter: DOF_BLUR,
-                    maskImage: dofMask(si), WebkitMaskImage: dofMask(si),
-                  } as React.CSSProperties} />
+                  {/* 被写界深度(社長指示v0.25.2057): 焦点(ステージ)以外をぼかす。マスクの透明部=素通し。
+                      【クロスフェード対策v0.25.2059】backdrop-filterは「下に描かれた全部」を拾うため、
+                      下敷き(prevShot)が外れる瞬間に合成が組み替わり前アングルがぼけ縁に一瞬残る(社長報告)。
+                      → フェード中はぼかしを出さず、下敷きが外れたのと同じコミットで短フェードインで復帰
+                      (=カットの後にピントが合い直すように見える。下敷き層には元々出さない)。 */}
+                  {si === phase && prevShot === null && (
+                    <div style={{
+                      position: 'absolute', inset: 0, pointerEvents: 'none',
+                      backdropFilter: DOF_BLUR, WebkitBackdropFilter: DOF_BLUR,
+                      maskImage: dofMask(si), WebkitMaskImage: dofMask(si),
+                      animation: 'opfade 350ms linear both',
+                    } as React.CSSProperties} />
+                  )}
                 </div>
               </div>
             </div>
