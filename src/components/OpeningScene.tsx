@@ -73,8 +73,8 @@ const SHOTS: Shot[] = [
   { bg: A('arena.jpg'), ox: 50, oy: 48, zf: 1.0, zt: 3.6, chars: [
     { src: TWIN, x: 48.7, y: 49.2, h: 1.8 }, { src: HERO, x: 50, y: 49.3, h: 2.0 }, { src: BOB, x: 51.3, y: 49.2, h: 1.8 },
   ] },
-  // 斜め: ステージを斜めから。3人は階段上・中央。
-  { bg: A('arena-diag.jpg'), ox: 48, oy: 62, zf: 1.4, zt: 2.3, chars: [
+  // 斜め: ステージを斜めから。3人は階段上・中央。ズーム廃止=1.4で静止(社長指示v0.25.2015)。
+  { bg: A('arena-diag.jpg'), ox: 48, oy: 62, zf: 1.4, zt: 1.4, chars: [
     { src: TWIN, x: 44, y: 66, h: 22 }, { src: HERO, x: 50, y: 66.5, h: 24 }, { src: BOB, x: 56, y: 66, h: 22 },
   ] },
   // 真横: ステージを横から。奥行きスタッガー。シーン全体を180度反転(flipScene・社長指示v0.25.2009)。
