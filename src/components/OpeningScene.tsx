@@ -341,6 +341,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
                 style={{
                   position: 'absolute', left: `${SHOOTER_POS.x}%`, top: `${SHOOTER_POS.y}%`, height: `${SHOOTER_POS.h}%`,
                   transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
+                  // 舞台裏も最初は白シルエット→撃った瞬間(発砲コマ2.0s)から黒(社長指示v0.25.2046)。
+                  filter: cur.t >= 2000 ? undefined : 'brightness(0) invert(1)',
                 }}
               />
               {/* 血飛沫(被弾の瞬間・3コマ40msずつ)。右端センター=傷口を後頭部に合わせ、左へ飛ぶ。 */}
