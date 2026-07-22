@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2051 — OP蘇生処置シーンの仕様書+台本データをステージング(実装はOpus発注中)【2026-07-23 00:03 JST】
+- 指示(社長): 支給の実装指示書(the_ONE_OP_revival_sequence)+台本TS「これなんだ?」→説明→「go」。
+- 対処: 仕様書を`OPENING_REVIVAL_SPEC.md`、台本データを`src/data/openingRevivalSequence.ts`として保存(アップロード消失対策)。**シーン本体(暗転+心拍音+字幕11行→既存遷移)はOpusサブエージェントに発注中**=完了検証後に別コミットで入る。
+- 検証: typecheck OK(データ配置のみ)。
+- Files: `OPENING_REVIVAL_SPEC.md`(新規), `src/data/openingRevivalSequence.ts`(新規), `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2050 — パン!が鳴らない件: HTMLAudio方式へ切替【2026-07-22 23:54 JST】
 - 指示(社長): パン!だけ鳴ってない(歓声は鳴る)。
 - 診断: 歓声=HTMLAudio・パン=WebAudio(playSfx)と経路が違い、WebAudio側だけ無音(コンテキスト解錠 or iOS制約とみられる)。設定(volume/ミュート/間引き)は無関係を確認。
