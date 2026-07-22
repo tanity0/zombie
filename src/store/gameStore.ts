@@ -1896,6 +1896,11 @@ const grantMeleeKillRewards = (
       // Finisher juice: white shockwave + gold ring + sparks + glow + callout.
       get().spawnBurst(ex, ey, '#dc2626', 30, bdx, bdy);
       get().spawnBurst(ex, ey, '#7f1d1d', 14, bdx, bdy);
+      // KILL!は血飛沫も大量に(社長指示v0.25.2032): 攻撃線の延長へ角度を少しずらした2連バースト
+      // (len260→各43粒=血粒キャップ90をほぼ使い切る一撃。KILLスロー中に映える)。
+      const bang = Math.atan2(bdy, bdx);
+      get().spawnBlood(ex, ey, bang - 0.22, 260);
+      get().spawnBlood(ex, ey, bang + 0.22, 260);
       get().spawnRing(ex, ey, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
       get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
       get().spawnRing(ex, ey, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
