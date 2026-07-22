@@ -33,12 +33,14 @@ interface Shot { bg: string; ox: number; oy: number; zf: number; zt: number; fli
 // ── アリーナ3アングルのタイムライン(ms) ──
 // 斜め・横への切替は早め(社長指示v0.25.2008)。各ショットのズームは切替までに完了させ、
 // 「寄り切ったサイズ≒次アングルの見え方」の繋がり(v0.25.2003)は維持したままテンポを上げる。
-const CUTS = [0, 2000, 3400];
+// v0.25.2035(社長指示): 冒頭は引きのまま紙吹雪の噴き上げを見せ(1.2s)、それからズーム開始。
+const FRONT_ZOOM_DELAY = 1200;
+const CUTS = [0, 1200 + 2000, 1200 + 3400];
 const SHOT_DUR = [2000, 1400, 2400];
 const FADE_MS = 700; // アングル間クロスフェード長(次がフェードインし切るまで前を重ねて表示)
-const BLACK_START = 5800;
+const BLACK_START = 7000;
 const BLACK_MS = 1600;
-const SCENE_START = 7600; // 暗転し切ったら射撃シーンへハードカット
+const SCENE_START = 8800; // 暗転し切ったら射撃シーンへハードカット
 const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
 
 // 紙吹雪(社長指示v0.25.2031→2033→2034修正)。2系統:
@@ -227,7 +229,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
                 style={{
                   position: 'relative', width: '100%',
                   transformOrigin: `${SHOTS[si].ox}% ${SHOTS[si].oy}%`,
-                  animation: `opzoom${si} ${SHOT_DUR[si]}ms linear both`,
+                  // 正面のみ: 紙吹雪の噴き上げを見せてからズーム開始(FRONT_ZOOM_DELAY)。
+                  animation: `opzoom${si} ${SHOT_DUR[si]}ms linear ${si === 0 ? FRONT_ZOOM_DELAY : 0}ms both`,
                 }}
               >
                 <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}` }}>
