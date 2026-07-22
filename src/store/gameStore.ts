@@ -171,7 +171,7 @@ const buildBloodBurst = (x: number, y: number, angle: number, count: number, now
   for (let i = 0; i < count; i++) {
     const spread = Math.random() * 2 - 1;                 // [-1,1]=コーン内の左右位置
     const a = angle + spread * BLOOD_CONE;
-    const speed = 120 + (1 - Math.abs(spread)) * 180 + Math.random() * 120; // 中心ほど速い(120〜420px/s)
+    const speed = 190 + (1 - Math.abs(spread)) * 270 + Math.random() * 170; // 中心ほど速い(190〜630px/s・v0.25.2030で勢い増)
     const big = Math.random() < 0.3;                      // 約3割は塊感のある大粒
     const size = big ? 3.5 + Math.random() * 2.5 : 1.5 + Math.random() * 1.5;
     const color = big ? BLOOD_BIG_COLOR : BLOOD_SMALL_COLORS[(Math.random() * BLOOD_SMALL_COLORS.length) | 0];
@@ -185,7 +185,7 @@ const buildBloodBurst = (x: number, y: number, angle: number, count: number, now
       size,
       createdAt: now,
       duration: 380 + Math.random() * 240,                 // 380〜620ms
-      drag: 3.4,                                           // egg fluid splash と同じ液体の流儀
+      drag: 2.7,                                           // 減衰やや軽め=飛距離を伸ばす(v0.25.2030で勢い増。egg=3.4)
       liquid: true,
       gravity: BLOOD_GRAVITY,                              // 血だけ重力で落下(他呼び出しは未指定=挙動不変)
     });
