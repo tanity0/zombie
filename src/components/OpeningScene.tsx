@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { playSfx } from '../audio/audioManager';
+import { playSfx, preloadSfx } from '../audio/audioManager';
 
 // オープニングシーン(社長支給): 引きのアリーナ→中央ステージの3人にカメラが寄りつつ
 // 正面→斜め→真横とアングルを切替(回り込み)→暗転→【射撃シーン(backstage)】→暗転で終了。
@@ -36,12 +36,13 @@ interface Shot { bg: string; ox: number; oy: number; zf: number; zt: number; fli
 // 「寄り切ったサイズ≒次アングルの見え方」の繋がり(v0.25.2003)は維持したままテンポを上げる。
 // v0.25.2035(社長指示): 冒頭は引きのまま紙吹雪の噴き上げを見せ(1.2s)、それからズーム開始。
 const FRONT_ZOOM_DELAY = 1200;
-const CUTS = [0, 1200 + 2000, 1200 + 3400];
-const SHOT_DUR = [2000, 1400, 2400];
+// 斜めは1秒表示(社長指示v0.25.2047・旧1.4秒)。
+const CUTS = [0, 1200 + 2000, 1200 + 3000];
+const SHOT_DUR = [2000, 1000, 2400];
 const FADE_MS = 700; // アングル間クロスフェード長(次がフェードインし切るまで前を重ねて表示)
-const BLACK_START = 7000;
+const BLACK_START = 6600;
 const BLACK_MS = 1600;
-const SCENE_START = 8800; // 暗転し切ったら射撃シーンへハードカット
+const SCENE_START = 8400; // 暗転し切ったら射撃シーンへハードカット
 const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
 
 // 紙吹雪(社長指示v0.25.2031→2033→2034修正)。2系統:
@@ -163,6 +164,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
     // 壊れ画像等で永久に待たないようフォールバック上限3秒。
     let cancelled = false;
     const ids: number[] = [];
+    preloadSfx('handgun-fire'); // パン!SEの保険先読み(?opening=1/2 直開き経路でも積む・v0.25.2047)
     const all = [
       ...SHOTS.map(s => s.bg), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),

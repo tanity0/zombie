@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.2047 — SE鳴らない修正(パン!の先読み)+斜め1秒化【2026-07-22 23:09 JST】
+- 指示(社長): ①紙吹雪と撃ち殺すところ、SE鳴ってない ②斜めのとこは1秒にして。
+- 診断①: `playSfx`は**未ロードキーの初回呼び出しで「ロードだけ開始して無音return」**する仕様。オープニングSEは本編の`warmSfxBuffers`(STARTタップ後のプリロード)より前に鳴るため、バッファ未ロード=無音だった。
+- 対処①: `preloadSfx(key)`をaudioManagerにexport(内部loadSfxBufferの公開)。**TitleScreenマウント時(更新情報を読んでいる間)に`handgun-fire`を先読み**+OpeningScene側でも保険先読み(?opening直開き経路)。ネットワーク実測でオープニング開始時のfetchを確認。※ジェスチャ無しのURL直開きプレビューはWebAudioがsuspendedのままなので引き続き無音(ブラウザ制約)。本番(OK経由)は鳴る。
+- 対処②: 斜めの表示窓1.4s→**1.0s**(CUTS[2] 4600→4200・BLACK_START 6600・SCENE_START 8400)。アンカー3点一致を再実測で確認。
+- 検証: typecheck OK。アンカー(218,569)3点一致。handgun-fireの先読みfetch確認。
+- 自己点検: 演出+音のみ。負荷: 0/10。
+- Files: `src/audio/audioManager.ts`, `src/components/TitleScreen.tsx`, `src/components/OpeningScene.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2046 — 舞台裏の撃つ子も最初は白→撃った瞬間に黒【2026-07-22 22:24 JST】
 - 指示(社長): シルエットアイドル、舞台裏も最初は白 打った瞬間 黒。
 - 対処: 射撃シーンの撃つ子に `filter: brightness(0) invert(1)`(白)を適用し、**発砲コマ(2.0s)から素の黒**へ切替(cur.t>=2000)。対峙〜構えは白シルエット、赤背景では黒。

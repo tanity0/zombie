@@ -770,6 +770,10 @@ const loadSfxBuffer = (key: SfxKey) => {
   sfxLoading.set(key, loading);
 };
 
+// 単発SEの事前ロード(v0.25.2047): オープニング等、本編のwarmSfxBuffersより前に鳴らすSEを
+// 個別に先読みする(playSfxは未ロード初回が「ロードだけして無音return」のため、先に積んでおく)。
+export const preloadSfx = (key: SfxKey) => loadSfxBuffer(key);
+
 const warmSfxBuffers = () => {
   resumeSfxContext();
   (Object.keys(SFX_SOURCES) as SfxKey[])
