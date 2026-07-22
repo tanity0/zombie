@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { playSfx } from '../audio/audioManager';
 
 // オープニングシーン(社長支給): 引きのアリーナ→中央ステージの3人にカメラが寄りつつ
 // 正面→斜め→真横とアングルを切替(回り込み)→暗転→【射撃シーン(backstage)】→暗転で終了。
@@ -51,17 +52,17 @@ const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3
 const CONFETTI_COLORS = ['#f87171', '#ef4444', '#dc2626', '#b91c1c'];
 // v0.25.2036「もっと勢いよく」→2039再調整: 粒の大型化で塊のまま一瞬で消えて見えたため、
 // 粒ごとの速度差を大きく(0.7〜1.4秒)して柱を縦に伸ばし(ジェットの尾)、横散らばりも広げて塊をほどく。
-const CONFETTI_BURST = Array.from({ length: 80 }, (_, i) => {
+const CONFETTI_BURST = Array.from({ length: 150 }, (_, i) => {
   const leftSide = i % 2 === 0;                  // 半分ずつ左右の砲から
   const inward = (3 + Math.random() * 7) * (leftSide ? 1 : -1); // わずか内向き(ステージ中央へ)
   return {
     key: i,
     x: leftSide ? 14 + Math.random() * 16 : 70 + Math.random() * 16, // 両サイドの砲口(枠%・やや広め)
-    y: 50 + Math.random() * 14,
+    y: 100 + Math.random() * 6,                  // 画面下部(枠の下端)から発射(社長指示v0.25.2040)
     cx1: inward * 0.8 + (Math.random() * 2 - 1) * 8, // 中間点(横散らばり広め=塊をほどく)
-    cy1: -(30 + Math.random() * 26),
+    cy1: -(55 + Math.random() * 30),
     cx2: inward * 1.6 + (Math.random() * 2 - 1) * 12, // 終点=そのまま上へ
-    cy2: -(85 + Math.random() * 40),             // 画面上端の外まで突き抜ける(枠高%)
+    cy2: -(125 + Math.random() * 40),            // 下端発→画面上端の外まで突き抜ける(枠高%)
     dur: 0.7 + Math.random() * 0.7,              // 速度差大(0.7〜1.4秒)=柱が縦に伸びるジェット
     delay: Math.random() * 0.25,
     sd: 0.35 + Math.random() * 0.35,             // 飛翔中の回転(高速)
@@ -72,7 +73,7 @@ const CONFETTI_BURST = Array.from({ length: 80 }, (_, i) => {
   };
 });
 const CONFETTI_RAIN_START_MS = 1000; // 噴き上げが場外へ抜けた頃から雨を開始
-const CONFETTI_GLITTER = Array.from({ length: 60 }, (_, i) => {
+const CONFETTI_GLITTER = Array.from({ length: 140 }, (_, i) => {
   const dur = 3.5 + Math.random() * 2.5;         // 上から下へ通過する時間
   return {
     key: i,
@@ -169,6 +170,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
       if (cancelled) return;
       setReady(true);
       const base = startAtShoot ? 0 : SCENE_START;
+      // 「パン!」のSE(社長指示v0.25.2040): 紙吹雪の発射と、射撃シーンの発砲に【同じ音=handgun-fire】。
+      // 音声未解禁のURLプレビューでは鳴らない(本番=更新情報OKのジェスチャ後は鳴る)。
+      if (!startAtShoot) ids.push(window.setTimeout(() => playSfx('handgun-fire'), 50)); // 紙吹雪パーン
+      ids.push(window.setTimeout(() => playSfx('handgun-fire'), base + 2000));           // 発砲(一閃の瞬間)
       if (!startAtShoot) {
         // アングル切替=クロスフェード: 切替時刻に次を出しつつ前を下敷きで残し、FADE_MS後に前を外す。
         [1, 2].forEach(i => {
