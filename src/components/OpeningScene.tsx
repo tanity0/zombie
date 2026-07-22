@@ -45,16 +45,17 @@ const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3
 // 撃つ側(社長指定v0.25.2010): 立ち1秒→構え1秒→撃つ0.1→次0.1→次0.2→最後(硝煙)は保持。
 // 撃たれ側(社長指定v0.25.2011→v0.25.2012で各コマ+0.5秒): 被弾=撃つと同期(2.0s)→次0.7→次0.8→最後(倒れ伏す)は保持。
 // ※v4の表示長は元々未指定→0.3秒の叩き台に+0.5=0.8秒。
+// red=trueのコマから背景を赤一色に(社長指示v0.25.2013「撃った瞬間に後ろ赤一色に」。以降ずっと赤のまま暗転へ)。
 const SHOOT_STEPS = [
   { t: 0, s: 1, v: 1 },     // 対峙(立ち)
   { t: 1000, s: 3, v: 1 },  // 構え
-  { t: 2000, s: 4, v: 2 },  // 発砲=被弾(同期)
-  { t: 2100, s: 5, v: 2 },  // 撃つ側: 次(0.1s後)
-  { t: 2200, s: 2, v: 2 },  // 撃つ側: 次(0.2s)
-  { t: 2400, s: 6, v: 2 },  // 撃つ側: 硝煙(保持へ)
-  { t: 2700, s: 6, v: 3 },  // 撃たれ側: 次(被弾から0.7s)
-  { t: 3500, s: 6, v: 4 },  // 撃たれ側: 次(0.8s)
-  { t: 4300, s: 6, v: 5 },  // 撃たれ側: 倒れ伏す(0.8s後・保持)
+  { t: 2000, s: 4, v: 2, red: true },  // 発砲=被弾(同期)・背景→赤一色
+  { t: 2100, s: 5, v: 2, red: true },  // 撃つ側: 次(0.1s後)
+  { t: 2200, s: 2, v: 2, red: true },  // 撃つ側: 次(0.2s)
+  { t: 2400, s: 6, v: 2, red: true },  // 撃つ側: 硝煙(保持へ)
+  { t: 2700, s: 6, v: 3, red: true },  // 撃たれ側: 次(被弾から0.7s)
+  { t: 3500, s: 6, v: 4, red: true },  // 撃たれ側: 次(0.8s)
+  { t: 4300, s: 6, v: 5, red: true },  // 撃たれ側: 倒れ伏す(0.8s後・保持)
 ];
 const SHOOT_FADE_START = 5600; // 最終コマを約1.3秒見せてから暗転(保持長は従来踏襲の叩き台)
 const SHOOT_FADE_MS = 1200;
@@ -198,7 +199,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
             }}
           >
             <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}` }}>
-              <img src={A('shoot-stage.png')} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+              {/* 撃った瞬間から背景=赤一色(舞台絵と差し替え)。キャラはその上に残る。 */}
+              {cur.red
+                ? <div style={{ position: 'absolute', inset: 0, background: '#d40000' }} />
+                : <img src={A('shoot-stage.png')} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
               <img
                 src={VICTIM(cur.v)} alt="" draggable={false}
                 style={{
