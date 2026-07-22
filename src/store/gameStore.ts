@@ -5401,6 +5401,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (result.finish) {
           get().spawnFlash('rgba(0,0,0,0.6)', 420);                      // 暗転
           get().spawnImageMark(zanX, zanY, 'zan', { scale: 1.0, duration: 1000 });
+          // 「斬」の瞬間もKILLと同じ大量の血飛沫(社長指示v0.25.2056): 軌道中央から真上へ2連の間欠泉。
+          get().spawnBlood(zanX, zanY, -Math.PI / 2 - 0.16, 260);
+          get().spawnBlood(zanX, zanY, -Math.PI / 2 + 0.16, 260);
         }
       }, KATANA_DASH_MS);
     }
