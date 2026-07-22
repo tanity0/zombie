@@ -49,25 +49,25 @@ const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3
 //   負のanimation-delayで表示された瞬間から空中に満ちている)。CSSアニメのみ=負荷1/10。
 // 赤一色(社長指示v0.25.2037)。単色ベタだと沈むので赤の明暗4トーン=「全部赤」の見え方できらめきは残す。
 const CONFETTI_COLORS = ['#f87171', '#ef4444', '#dc2626', '#b91c1c'];
-// v0.25.2036(社長指示「もっと勢いよく・アイドルのライブの噴射」): 噴射0.55〜0.9秒で場外へ・
-// 柱を細く垂直に・ほぼ一斉発射・80枚に増量・回転も高速。
+// v0.25.2036「もっと勢いよく」→2039再調整: 粒の大型化で塊のまま一瞬で消えて見えたため、
+// 粒ごとの速度差を大きく(0.7〜1.4秒)して柱を縦に伸ばし(ジェットの尾)、横散らばりも広げて塊をほどく。
 const CONFETTI_BURST = Array.from({ length: 80 }, (_, i) => {
   const leftSide = i % 2 === 0;                  // 半分ずつ左右の砲から
   const inward = (3 + Math.random() * 7) * (leftSide ? 1 : -1); // わずか内向き(ステージ中央へ)
   return {
     key: i,
-    x: leftSide ? 16 + Math.random() * 12 : 72 + Math.random() * 12, // 両サイドの砲口(枠%)
-    y: 50 + Math.random() * 10,
-    cx1: inward * 0.8 + (Math.random() * 2 - 1) * 4, // 中間点(細い柱=横ブレ小)
-    cy1: -(38 + Math.random() * 22),
-    cx2: inward * 1.6 + (Math.random() * 2 - 1) * 6, // 終点=そのまま上へ
-    cy2: -(85 + Math.random() * 35),             // 画面上端の外まで突き抜ける(枠高%)
-    dur: 0.55 + Math.random() * 0.35,            // 鋭い噴射(0.55〜0.9秒で場外へ)
-    delay: Math.random() * 0.15,                 // ほぼ一斉のパーン
+    x: leftSide ? 14 + Math.random() * 16 : 70 + Math.random() * 16, // 両サイドの砲口(枠%・やや広め)
+    y: 50 + Math.random() * 14,
+    cx1: inward * 0.8 + (Math.random() * 2 - 1) * 8, // 中間点(横散らばり広め=塊をほどく)
+    cy1: -(30 + Math.random() * 26),
+    cx2: inward * 1.6 + (Math.random() * 2 - 1) * 12, // 終点=そのまま上へ
+    cy2: -(85 + Math.random() * 40),             // 画面上端の外まで突き抜ける(枠高%)
+    dur: 0.7 + Math.random() * 0.7,              // 速度差大(0.7〜1.4秒)=柱が縦に伸びるジェット
+    delay: Math.random() * 0.25,
     sd: 0.35 + Math.random() * 0.35,             // 飛翔中の回転(高速)
     sw: (Math.random() * 2 - 1) * 8,
     r1: `${Math.round((Math.random() * 2 - 1) * 200)}deg`,
-    w: 8 + Math.random() * 7, h: 5 + Math.random() * 6, // 粒大きめ(社長指示v0.25.2038)
+    w: 7 + Math.random() * 6, h: 4 + Math.random() * 5, // 大きめは維持しつつ最大をやや絞る
     color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
   };
 });
