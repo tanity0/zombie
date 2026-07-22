@@ -38,7 +38,7 @@ const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
 interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y=足元(画像%)、h=高さ(%)
 // flipScene: シーン全体を180度(左右)反転して見せる(社長指示v0.25.2009)。実装は背景imgを左右反転し、
 // キャラは素の座標/向きで置く(=画面全体としてミラーに見える。二重反転になる個別キャラflipは廃止)。
-interface Shot { bg: string; ox: number; oy: number; zf: number; zt: number; flipScene?: boolean; chars: CharPos[] }
+interface Shot { bg: string; bgBlur: string; ox: number; oy: number; zf: number; zt: number; flipScene?: boolean; chars: CharPos[] }
 
 // ── アリーナ3アングルのタイムライン(ms) ──
 // 斜め・横への切替は早め(社長指示v0.25.2008)。各ショットのズームは切替までに完了させ、
@@ -111,18 +111,24 @@ const CONFETTI_GLITTER = Array.from({ length: 180 }, (_, i) => {
 // 世界に馴染む(紙吹雪のような画面固定ではない)。1本=縦長の光バー(box-shadowグロー付き)を
 // 足元起点でゆらゆら回転(観客が振っている)。下(手前)ほど大きく=遠近。CSSアニメのみ・OP中だけ。
 const PENLIGHT_COLORS = ['#c084fc', '#f472b6', '#60a5fa', '#e9d5ff', '#f9a8d4', '#93c5fd'];
-// 客席領域(枠%): 正面=ステージ下の全面 / 斜め=下端の帯 / 真横=下側の帯。
-const PENLIGHT_REGIONS = [
-  { top: 56, bottom: 98, count: 110 },
-  { top: 80, bottom: 99, count: 50 },
-  { top: 78, bottom: 99, count: 60 },
+// 客席領域(枠%・複数矩形可): 正面=ステージ下の全面 / 斜め=下端の帯 / 真横=客席フロアのみ
+// (社長指摘v0.25.2060: 全幅だとステージにも生えていた。表示は左右反転でステージ=画面左〜中央、
+//  花道=右上に伸びるため、右下の客席フロア+ステージ手前の細帯に限定)。
+const PENLIGHT_REGIONS: { top: number; bottom: number; left?: number; right?: number; count: number }[][] = [
+  [{ top: 56, bottom: 98, count: 110 }],
+  [{ top: 80, bottom: 99, count: 50 }],
+  [
+    { top: 88, bottom: 99, left: 60, right: 100, count: 40 },  // 花道より右下の客席フロア
+    { top: 96, bottom: 99.5, left: 0, right: 58, count: 20 },  // ステージ手前の最前列帯
+  ],
 ];
-const PENLIGHTS = PENLIGHT_REGIONS.map(r =>
+const PENLIGHTS = PENLIGHT_REGIONS.map(regions =>
+  regions.flatMap((r, ri) =>
   Array.from({ length: r.count }, (_, i) => {
     const yr = Math.random();                       // 0=奥(上)〜1=手前(下)
     return {
-      key: i,
-      x: Math.random() * 100,
+      key: ri * 1000 + i,
+      x: (r.left ?? 0) + Math.random() * ((r.right ?? 100) - (r.left ?? 0)),
       y: r.top + yr * (r.bottom - r.top),
       h: (5 + Math.random() * 3) * (0.6 + yr * 0.8), // 手前ほど大きく(遠近)
       w: 2 + yr * 1.2,
@@ -133,6 +139,7 @@ const PENLIGHTS = PENLIGHT_REGIONS.map(r =>
       op: 0.7 + Math.random() * 0.3,                  // 発光強化に合わせ下限も持ち上げ(v0.25.2057)
     };
   })
+  )
 );
 // 会場グローパルス(案B): 客席一帯に大きな柔らかい光を2枚重ね、ゆっくり明滅(mix-blend-mode:screenで持ち上げる)。
 const VENUE_GLOWS = [
@@ -145,16 +152,19 @@ const VENUE_GLOWS = [
 // 台形の光錐(mix-blend:screen)+足元の光溜まり。ゆっくり明滅(opspot)。CSSのみ・OP中だけ。
 // ※SHOTSより後で定義できないため、導出は下のSHOTS定義の直後で行う(SPOTLIGHTS)。
 
-// ── 被写界深度(社長指示v0.25.2057): ステージ(3人)を焦点に周辺をぼかすチルトシフト風 ──
-// backdrop-filterブラーをradial-gradientマスクで切る=焦点は素通し・周辺ほどぼけ。
-// 負荷3/10: 全画面ぼかしはクロスフェード中のみ最大2枚・OP紙芝居限定でゲームプレイには載らない。
-// 非対応ブラウザは効果なしで自然劣化。焦点座標は各アングルのステージ位置(枠%)。
+// ── 被写界深度(社長指示v0.25.2057→方式変更v0.25.2060): ステージ焦点のチルトシフト風 ──
+// 旧方式=backdrop-filter(3.5px)は実機で「切替時に前アングルが一瞬残る」残像が解消しきれず
+// (モバイルのbackdrop-filterは変形アニメ中の下層を古いスナップショットで返す既知の癖)、
+// 毎フレーム全画面再合成の負荷で紙吹雪パーンが飛ぶコマ落ちも疑われたため、【事前ブラー画像】へ変更:
+// ブラー済みbg(art-src/opening/blur-arena.mjsでChromium生成・素材基準10px)を鮮明bgの直上に
+// radial-gradientマスク(焦点=透明穴・周辺=表示)で重ねる。ランタイムぼかしゼロ=残像は構造的に不可能・
+// クロスフェードにもそのまま乗る。ズームするとぼけも拡大(寄るほど浅い被写界深度)=映画的挙動。
+// ペンライト等のエフェクトはブラーの上に描くため周辺でもシャープ(ボケ玉化は将来必要なら複製レイヤーで)。
 const DOF_FOCUS = [
   { x: 50, y: 47, rx: 46, ry: 34 },   // 正面: 中央ステージ
   { x: 50, y: 63, rx: 48, ry: 34 },   // 斜め: 壇上の3人
   { x: 50, y: 85, rx: 50, ry: 36 },   // 真横: 手前ステージ面
 ];
-const DOF_BLUR = 'blur(3.5px)';
 const dofMask = (si: number) =>
   `radial-gradient(ellipse ${DOF_FOCUS[si].rx}% ${DOF_FOCUS[si].ry}% at ${DOF_FOCUS[si].x}% ${DOF_FOCUS[si].y}%, rgba(0,0,0,0) 52%, #000 100%)`;
 
@@ -193,14 +203,14 @@ const SHOTS: Shot[] = [
   // 正面(引き): アリーナ全体。3人は中央ステージ上=遠く小さい点→大きくズームイン。センター配置。
   // 【共通アンカー(社長指示v0.25.2022)】ズームの着地点=ヒーロー足元が(枠x50%, y86%)に来るよう原点を設定。
   // 以降の斜め/横も同じ(50%,86%)にヒーローを固定=「彼女だけ動かず周りが回る」。
-  { bg: A('arena.jpg'), ox: 50, oy: 35.2, zf: 1.0, zt: 3.6, chars: [
+  { bg: A('arena.jpg'), bgBlur: A('arena-blur.jpg'), ox: 50, oy: 35.2, zf: 1.0, zt: 3.6, chars: [
     { src: TWIN, x: 48.7, y: 49.2, h: 1.8 }, { src: HERO, x: 50, y: 49.3, h: 2.0 }, { src: BOB, x: 51.3, y: 49.2, h: 1.8 },
   ] },
   // 斜め: ステージを斜めから。ズーム廃止=1.4で静止(社長指示v0.25.2015)。
   // 【立ち位置合わせv0.25.2024】3人は元のステージ壇上(y66=絵と接地が合う位置)に戻し、
   // カメラ原点(48.3,17.8)側を動かしてヒーロー足元を共通アンカー(218,569)に一致させる(=絵とのズレ解消)。
   // v0.25.2025: ステージに対してキャラが大きすぎ→縮小(h22/24→15/16)。間隔もサイズに合わせて詰める。
-  { bg: A('arena-diag.jpg'), ox: 48.3, oy: 17.8, zf: 1.4, zt: 1.4, chars: [
+  { bg: A('arena-diag.jpg'), bgBlur: A('arena-diag-blur.jpg'), ox: 48.3, oy: 17.8, zf: 1.4, zt: 1.4, chars: [
     { src: TWIN, x: 45.5, y: 66, h: 15 }, { src: HERO, x: 50, y: 66.5, h: 16 }, { src: BOB, x: 54.5, y: 66, h: 15 },
   ] },
   // 真横: ステージを横から。奥行きスタッガー。シーン全体を180度反転(flipScene・社長指示v0.25.2009)。
@@ -208,7 +218,7 @@ const SHOTS: Shot[] = [
   // 正面の着地点・斜めと画面座標が完全一致(彼女は動かず世界が回る)。シルエットは同Δで隊形維持・接地不変。
   // v0.25.2025: キャラ縮小(h25/28/35→17/19/24)+シルエットの足元をステージ面(花道の傾斜)に沿わせる。
   // v0.25.2044(社長指示・図の文字通り): 斜め隊形=奥ショートカット(右上・小)/真中 色あり/手前ツインテール(左下・大)。
-  { bg: A('arena-side.jpg'), ox: 50.7, oy: 86, zf: 1.7, zt: 2.1, flipScene: true, chars: [
+  { bg: A('arena-side.jpg'), bgBlur: A('arena-side-blur.jpg'), ox: 50.7, oy: 86, zf: 1.7, zt: 2.1, flipScene: true, chars: [
     { src: BOB, x: 57.5, y: 80.5, h: 17 }, { src: HERO, x: 50.7, y: 86, h: 19 }, { src: TWIN, x: 44, y: 92.5, h: 24 },
   ] },
 ];
@@ -316,7 +326,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         .catch(() => { a.muted = false; });
     });
     const all = [
-      ...SHOTS.map(s => s.bg), HERO, TWIN, BOB, A('shoot-stage.png'),
+      ...SHOTS.map(s => s.bg), ...SHOTS.map(s => s.bgBlur), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
     ];
     const decodes = all.map(src => { const im = new Image(); im.src = src; return im.decode().catch(() => {}); });
@@ -410,6 +420,13 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}` }}>
                   {/* flipScene=背景を左右反転(キャラは素の座標=画面全体がミラーに見える) */}
                   <img src={SHOTS[si].bg} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined }} />
+                  {/* 被写界深度(v0.25.2060方式): 事前ブラー版bgを焦点マスク(中心=透明穴)で重ねる。
+                      焦点(ステージ)は下の鮮明bgが素通しで見え、周辺ほどブラー版が出る。ランタイムぼかし無し。 */}
+                  <img src={SHOTS[si].bgBlur} alt="" draggable={false} style={{
+                    position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                    transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined,
+                    maskImage: dofMask(si), WebkitMaskImage: dofMask(si),
+                  } as React.CSSProperties} />
                   {/* 会場グローパルス(案B): 客席一帯をゆっくり明滅する柔らかい光で持ち上げる */}
                   {VENUE_GLOWS.map((g, gi) => (
                     <div
@@ -448,7 +465,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                       <div style={{
                         position: 'absolute', left: `${sp.left}%`, top: `${sp.top}%`, width: `${sp.w}%`, height: `${sp.h}%`,
                         clipPath: 'polygon(36% 0, 64% 0, 100% 100%, 0% 100%)',
-                        background: 'linear-gradient(to bottom, rgba(255,250,215,0.5), rgba(255,250,215,0.06))',
+                        // 上端は透明から立ち上げ=光錐の「生え際」の四角い切れ目を消す(v0.25.2060実写確認)。
+                        background: 'linear-gradient(to bottom, rgba(255,250,215,0) 0%, rgba(255,250,215,0.4) 22%, rgba(255,250,215,0.05) 100%)',
                         mixBlendMode: 'screen', pointerEvents: 'none',
                         animation: `opspot ${sp.dur}s ease-in-out infinite`, animationDelay: `${sp.delay}s`,
                       }} />
@@ -473,19 +491,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                       />
                     ))}
                   </div>
-                  {/* 被写界深度(社長指示v0.25.2057): 焦点(ステージ)以外をぼかす。マスクの透明部=素通し。
-                      【クロスフェード対策v0.25.2059】backdrop-filterは「下に描かれた全部」を拾うため、
-                      下敷き(prevShot)が外れる瞬間に合成が組み替わり前アングルがぼけ縁に一瞬残る(社長報告)。
-                      → フェード中はぼかしを出さず、下敷きが外れたのと同じコミットで短フェードインで復帰
-                      (=カットの後にピントが合い直すように見える。下敷き層には元々出さない)。 */}
-                  {si === phase && prevShot === null && (
-                    <div style={{
-                      position: 'absolute', inset: 0, pointerEvents: 'none',
-                      backdropFilter: DOF_BLUR, WebkitBackdropFilter: DOF_BLUR,
-                      maskImage: dofMask(si), WebkitMaskImage: dofMask(si),
-                      animation: 'opfade 350ms linear both',
-                    } as React.CSSProperties} />
-                  )}
+                  {/* (v0.25.2060: 旧backdrop-filterの被写界深度オーバーレイはブラー画像方式へ移行=上のbgBlur) */}
                 </div>
               </div>
             </div>
