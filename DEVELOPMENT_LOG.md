@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.2052 — OP蘇生処置シーン実装(暗転+心拍音+字幕11行・Opus実装/Fable検証)【2026-07-23 00:10 JST】
+- 指示(社長): 支給仕様書(OPENING_REVIVAL_SPEC.md)の実装GO。
+- 対処(Opusサブエージェント実装): OpeningSceneに**phase4=蘇生処置パート**を追加。射撃シーンの暗転し切り後、300msの間→**心拍SEループ(HTMLAudio・音量0.5)+字幕11行**(台本TS・話者名は表示コードに一切登場しない)→最終行の650ms後に**一発の心拍**→350msフェード→finish(一度だけ)。全タイマーは既存ids配列+cleanupで残存ゼロ。スキップは既存機構に統合(タップ/ボタン→字幕・心拍即停止)。`?opening=3`=蘇生パート単独プレビュー(App.tsx配線)。
+- タイムライン: 蘇生パートは21.4秒(字幕17.9s+間2.9s+前後の間)。フル`?opening=1`=38.4秒でチュートリアル(現状=既存遷移)へ。
+- 検証(Fable): typecheck OK。ヘッドレスで字幕が確定順・指定カデンツで進行(話者名なし)・heartbeat.mp3取得・スキップで全消去を確認。スクショで黒地中央の白字幕を確認。
+- 自己点検: 演出のみ(セーブ構造・遷移関数・M0不変=spec7章遵守)。負荷: 0/10(黒画面+テキスト)。
+- Files: `src/components/OpeningScene.tsx`, `src/App.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2051 — OP蘇生処置シーンの仕様書+台本データをステージング(実装はOpus発注中)【2026-07-23 00:03 JST】
 - 指示(社長): 支給の実装指示書(the_ONE_OP_revival_sequence)+台本TS「これなんだ?」→説明→「go」。
 - 対処: 仕様書を`OPENING_REVIVAL_SPEC.md`、台本データを`src/data/openingRevivalSequence.ts`として保存(アップロード消失対策)。**シーン本体(暗転+心拍音+字幕11行→既存遷移)はOpusサブエージェントに発注中**=完了検証後に別コミットで入る。

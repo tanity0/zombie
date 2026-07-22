@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { OPENING_REVIVAL_LINES, OPENING_REVIVAL_TIMING } from '../data/openingRevivalSequence';
 // パン!SEはWebAudio(playSfx)ではなくHTMLAudioで鳴らす(v0.25.2050):
 // 実機でアリーナ音源(HTMLAudio)は鳴るのにplaySfx経路のパン!だけ無音だったため、
 // 確実に鳴る同じ仕組みに統一(コンテキスト解錠・バッファ非同期の罠を回避)。
@@ -16,6 +17,12 @@ import React, { useEffect, useRef, useState } from 'react';
 // 撃つ子(ツインテのシルエット・左右反転済=銃は左向き)が右、主人公が左。
 // コマ順は社長指定: 撃つ子=1-3-4-5-2-6 / 主人公(被弾)=1-2-3-4-5。発砲(4)と被弾(2)を同期。
 // コマ画像は足元中心アンカーで共通キャンバスに焼いてあるので、src差し替えだけで芝居になる。
+//
+// 蘇生処置パート(OP最終ピース・OPENING_REVIVAL_SPEC.md): 射撃シーンが暗転し切った後、黒画面のまま
+// 心拍ループ(低音量HTMLAudio)+字幕会話(OPENING_REVIVAL_LINESを1行ずつ・話者名は絶対に出さない)を流し、
+// 最終行の後に一度だけの心拍→短フェードで finish()。台本尺は少数のsetTimeoutで刻む(毎フレーム更新なし)。
+// 音はWebAudio(playSfx)を使わず既存のHTMLAudio流儀(audioRef/panRef/stopAudio)に合わせる=実機でWebAudioだけ
+// 無音になる罠を回避(冒頭のパン!SEと同じ理由)。スキップ/破棄時は stopAudio+ids一括clearで残存させない。
 //
 // 【重要】ズームは CSS keyframe(コンポジタ駆動)。rAF毎フレームsetStateは残像不具合+React再描画禁止で不可。
 // フェーズ/コマ進行は少数のsetTimeoutのみ(毎フレーム更新なし)。
@@ -49,6 +56,10 @@ const SCENE_START = 9400; // 暗転し切ったら射撃シーンへハードカ
 const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
 const PAN_SE_SRC = `${BASE}audio/sfx/handgun-fire.wav`; // パン!(紙吹雪と発砲で同音・社長指示)
 const PAN_SE_VOLUME = 0.64; // ゲーム内SE設定(audioManagerのhandgun-fire volume)に合わせる
+// 蘇生パートの心拍(処置機器音の素材は無いので心拍のみ・spec)。会話中はループ・最終行後に一発だけ。
+const HEARTBEAT_SRC = `${BASE}audio/sfx/heartbeat.mp3`;
+const HEARTBEAT_LOOP_VOLUME = 0.5;    // 会話中の心拍ループ=低音量(spec「0.5前後」)
+const HEARTBEAT_ONESHOT_VOLUME = 0.6; // 最終行後の一発は句読点として少しだけ前に
 
 // 紙吹雪(社長指示v0.25.2031→2033→2034修正)。2系統:
 // ①パーン=ステージ【両サイド】の砲から真上へ噴射し【画面場外まで突き抜けて消える】(落下はしない)。
@@ -150,16 +161,19 @@ const SHOTS: Shot[] = [
   ] },
 ];
 
-const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = ({ onDone, startAtShoot }) => {
+const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, startAtShoot, startAtRevival }) => {
   const [ready, setReady] = useState(false); // 全素材decode完了までタイムラインを始めない(下記コメント)
-  const [phase, setPhase] = useState(startAtShoot ? 3 : 0); // 0-2=アリーナ各アングル / 3=射撃シーン
+  const [phase, setPhase] = useState(startAtRevival ? 4 : startAtShoot ? 3 : 0); // 0-2=アリーナ各アングル / 3=射撃シーン / 4=蘇生処置(字幕)
   const [prevShot, setPrevShot] = useState<number | null>(null); // クロスフェード中の前アングル(下敷き)
   const [step, setStep] = useState(0); // 射撃シーンのコマ番号(SHOOT_STEPS index)
+  const [subIdx, setSubIdx] = useState(-1); // 蘇生パートの表示中字幕(OPENING_REVIVAL_LINES index / -1=非表示)
   const doneRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
   const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
+  const heartRef = useRef<HTMLAudioElement[]>([]);   // 蘇生パート: [0]=会話中の心拍ループ / [1]=最終行後の一発(ループとは別要素)
   const stopArena = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; }); audioRef.current = []; };
-  const stopAudio = () => { stopArena(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; };
+  const stopHearts = () => { heartRef.current.forEach(a => { if (a) { a.pause(); a.src = ''; } }); heartRef.current = []; };
+  const stopAudio = () => { stopArena(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; stopHearts(); };
   const finish = () => { if (!doneRef.current) { doneRef.current = true; stopAudio(); onDone(); } };
 
   useEffect(() => {
@@ -171,6 +185,42 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
     // 壊れ画像等で永久に待たないようフォールバック上限3秒。
     let cancelled = false;
     const ids: number[] = [];
+
+    // ── 蘇生処置パート(phase4)の台本タイムラインを rBase(ready起点ms)から仕込む ──
+    // rBase = 射撃シーンが暗転し切った時刻(通常フロー)/ 0(?opening=3の単独プレビュー)。
+    // 音はHTMLAudio(既存流儀)。会話中の心拍ループと最終行後の一発は【別要素】(spec)。
+    const scheduleRevival = (rBase: number) => {
+      // 暗転後 blackHoldBeforeDialogueMs は「無音間」=心拍も鳴らさない。会話開始と同時にループを立ち上げる。
+      const dialogueStart = rBase + OPENING_REVIVAL_TIMING.blackHoldBeforeDialogueMs;
+      ids.push(window.setTimeout(() => {
+        const a = new Audio(HEARTBEAT_SRC); a.loop = true; a.preload = 'auto'; a.volume = HEARTBEAT_LOOP_VOLUME;
+        heartRef.current[0] = a; a.play().catch(() => {}); // ジェスチャ未解禁のプレビューでは黙って無音で進む
+      }, dialogueStart));
+      // 各行: minDurationMs 表示 → gapAfterMs は非表示(-1)で間を空けて次行。話者名(speaker)は絶対に出さない。
+      let t = dialogueStart;
+      OPENING_REVIVAL_LINES.forEach((line, i) => {
+        const showAt = t;
+        ids.push(window.setTimeout(() => setSubIdx(i), showAt));
+        ids.push(window.setTimeout(() => setSubIdx(-1), showAt + line.minDurationMs));
+        t = showAt + line.minDurationMs + line.gapAfterMs;
+      });
+      // t = 全行(最終行のgapAfterMs含む)終了時刻。ここで心拍を一度だけ(ループは止め、別要素で鳴らす)。
+      ids.push(window.setTimeout(() => {
+        heartRef.current[0]?.pause();
+        const one = new Audio(HEARTBEAT_SRC); one.volume = HEARTBEAT_ONESHOT_VOLUME;
+        heartRef.current[1] = one; one.play().catch(() => {});
+      }, t));
+      // fadeToTutorialMs 後にチュートリアルへ(黒のまま=字幕は既に消えている)。finishは一度だけ(doneRef)。
+      ids.push(window.setTimeout(finish, t + OPENING_REVIVAL_TIMING.fadeToTutorialMs));
+    };
+
+    // ?opening=3: 蘇生パート単独プレビュー。射撃/アリーナ素材のdecodeを待たず即開始(黒画面+字幕のみ)。
+    if (startAtRevival) {
+      setReady(true);
+      scheduleRevival(0);
+      return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
+    }
+
     // パン!SE(HTMLAudio・2発ぶん事前生成=紙吹雪用と発砲用。currentTime巻き戻しの競合を避ける)。
     panRef.current = [0, 1].map(() => { const a = new Audio(PAN_SE_SRC); a.preload = 'auto'; a.volume = PAN_SE_VOLUME; return a; });
     const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; a.play().catch(() => {}); } catch { /* ignore */ } };
@@ -206,7 +256,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
         ids.push(window.setTimeout(stopArena, SCENE_START)); // 発砲パン(場面転換後)を殺さないようアリーナだけ止める
       }
       SHOOT_STEPS.forEach((st, i) => { if (i > 0) ids.push(window.setTimeout(() => setStep(i), base + st.t)); });
-      ids.push(window.setTimeout(finish, base + SHOOT_TOTAL));
+      // 射撃シーンが暗転し切ったら【蘇生処置パート(phase4)】へ切替→そのまま字幕会話を再生し、
+      // 最後に finish()(旧: ここで直接 finish していたのを差し替え)。?opening=2 もこの経路で蘇生まで流れる。
+      ids.push(window.setTimeout(() => setPhase(4), base + SHOOT_TOTAL));
+      scheduleRevival(base + SHOOT_TOTAL);
     });
     return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,6 +270,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
     `\n@keyframes opblack{from{opacity:0}to{opacity:1}}` +
     `\n@keyframes opfade{from{opacity:0}to{opacity:1}}` +
     `\n@keyframes opshzoom{from{transform:scale(1)}to{transform:scale(1.12)}}` +
+    // 蘇生パート字幕: 行の切替を軽くフェードイン(任意・spec)。key=行indexで再マウントして毎行再生。
+    `\n@keyframes opsub{from{opacity:0}to{opacity:1}}` +
     // 紙吹雪: 軌道(パーン=急減速の噴き上げ→等速のヒラヒラ落下)と、紙の羽ばたき(3D回転+横揺れ)を分離。
     `\n@keyframes opconfT{0%{transform:translate(0,0);animation-timing-function:cubic-bezier(0.16,1,0.3,1)}16%{transform:translate(var(--cx1),var(--cy1));animation-timing-function:linear}100%{transform:translate(var(--cx2),var(--cy2))}}` +
     `\n@keyframes opconfS{0%{transform:rotateZ(0) rotateX(0) translateX(0)}25%{transform:rotateZ(var(--r1)) rotateX(72deg) translateX(var(--sw))}50%{transform:rotateZ(calc(var(--r1)*1.6)) rotateX(160deg) translateX(0)}75%{transform:rotateZ(var(--r1)) rotateX(250deg) translateX(calc(var(--sw)*-1))}100%{transform:rotateZ(0) rotateX(344deg) translateX(0)}}` +
@@ -324,7 +379,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
             </div>
           </div>
         </>
-      ) : (
+      ) : phase === 3 ? (
         // ── 射撃シーン(backstage)。コマ画像は足元アンカー共通キャンバス=src差し替えで芝居。 ──
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div
@@ -375,6 +430,26 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
           </div>
           {/* シーン終わりの暗転 */}
           <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, pointerEvents: 'none', animation: `opblack ${SHOOT_FADE_MS}ms linear ${SHOOT_FADE_START}ms both` }} />
+        </div>
+      ) : (
+        // ── 蘇生処置パート(phase4): 黒背景の中央に字幕を1行ずつ。話者名・年代・PHILL等は絶対に出さない(spec §5/§6)。
+        //    320px幅でも2〜3行に収まるよう max-width と自然折返しで担保。key=行indexで軽くフェードイン。 ──
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5%' }}>
+          {subIdx >= 0 && (
+            <div
+              key={subIdx}
+              style={{
+                maxWidth: '90%', textAlign: 'center',
+                color: 'rgba(255,255,255,0.92)',
+                fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif',
+                fontSize: 14, letterSpacing: '0.06em', lineHeight: 1.75,
+                textShadow: '0 1px 6px rgba(0,0,0,0.9)',
+                animation: 'opsub 260ms ease both',
+              }}
+            >
+              {OPENING_REVIVAL_LINES[subIdx].text}
+            </div>
+          )}
         </div>
       )}
 

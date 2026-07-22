@@ -42,11 +42,12 @@ function SortieLoadingOverlay() {
 function App() {
   const [gameState, setGameState] = useState<GameState>('title'); // 最初にタイトル(the ONE)を即表示
   // オープニングシーン(社長支給v0.25.2002): 当面 ?opening=1 でプレビュー再生(タイトルの上に全画面オーバーレイ)。
-  // ?opening=2 は射撃シーンから開始(調整用ショートカット)。本番の再生タイミングは後で確定。
+  // ?opening=2 は射撃シーンから開始(調整用ショートカット)。?opening=3 は蘇生処置パート(字幕)から開始。
+  // 本番の再生タイミングは後で確定。
   const [openingParam] = useState(() => {
     try { return new URLSearchParams(window.location.search).get('opening'); } catch { return null; }
   });
-  const [showOpening, setShowOpening] = useState(openingParam === '1' || openingParam === '2');
+  const [showOpening, setShowOpening] = useState(openingParam === '1' || openingParam === '2' || openingParam === '3');
   const [benchmarkMode, setBenchmarkMode] = useState(false);
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
@@ -316,7 +317,7 @@ function App() {
       )}
 
       {/* オープニングシーン(?opening=1でプレビュー)。タイトルの上に全画面。暗転し切ったら onDone で外れる。 */}
-      {showOpening && <OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} startAtShoot={openingParam === '2'} />}
+      {showOpening && <OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} />}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}
       <OrientationGuard />
