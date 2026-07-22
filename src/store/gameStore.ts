@@ -10200,7 +10200,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const fx: VisualEffect = {
       kind: 'blood',
       id: `fx-blood-${now}-${Math.random().toString(36).slice(2, 6)}`,
-      x, y, angle, len, createdAt: now, duration: 180, // 3コマ×60ms(社長指定・OP射撃シーンと同じ)
+      x, y, angle, len, createdAt: now, duration: 300, // 3コマ×100ms(社長指定v0.25.2025・OP射撃シーンと同じ)
     };
     set(state => {
       const next = [...state.effects, fx];
