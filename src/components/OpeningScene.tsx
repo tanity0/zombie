@@ -106,6 +106,40 @@ const CONFETTI_GLITTER = Array.from({ length: 180 }, (_, i) => {
   };
 });
 
+// ── コンサート演出(社長採用=案A+B・v0.25.2054): 客席のペンライト光点+会場グローパルス ──
+// ペンライトは各アングルの【客席領域(枠%)】に配置し、アングルのaspect枠内に描く=ズーム/切替に追従して
+// 世界に馴染む(紙吹雪のような画面固定ではない)。1本=縦長の光バー(box-shadowグロー付き)を
+// 足元起点でゆらゆら回転(観客が振っている)。下(手前)ほど大きく=遠近。CSSアニメのみ・OP中だけ。
+const PENLIGHT_COLORS = ['#c084fc', '#f472b6', '#60a5fa', '#e9d5ff', '#f9a8d4', '#93c5fd'];
+// 客席領域(枠%): 正面=ステージ下の全面 / 斜め=下端の帯 / 真横=下側の帯。
+const PENLIGHT_REGIONS = [
+  { top: 56, bottom: 98, count: 110 },
+  { top: 80, bottom: 99, count: 50 },
+  { top: 78, bottom: 99, count: 60 },
+];
+const PENLIGHTS = PENLIGHT_REGIONS.map(r =>
+  Array.from({ length: r.count }, (_, i) => {
+    const yr = Math.random();                       // 0=奥(上)〜1=手前(下)
+    return {
+      key: i,
+      x: Math.random() * 100,
+      y: r.top + yr * (r.bottom - r.top),
+      h: (5 + Math.random() * 3) * (0.6 + yr * 0.8), // 手前ほど大きく(遠近)
+      w: 2 + yr * 1.2,
+      pa: `${(4 + Math.random() * 7).toFixed(1)}deg`, // 振り角
+      sd: 0.7 + Math.random() * 0.8,                  // 振り周期(秒)
+      delay: -Math.random() * 1.5,                    // 負のdelay=最初からバラバラに揺れている
+      color: PENLIGHT_COLORS[(i * 5 + 1) % PENLIGHT_COLORS.length],
+      op: 0.55 + Math.random() * 0.45,
+    };
+  })
+);
+// 会場グローパルス(案B): 客席一帯に大きな柔らかい光を2枚重ね、ゆっくり明滅(mix-blend-mode:screenで持ち上げる)。
+const VENUE_GLOWS = [
+  { x: 30, y: 78, rx: 55, ry: 30, color: 'rgba(168,85,247,0.16)', dur: 3.2, delay: 0 },
+  { x: 72, y: 80, rx: 55, ry: 28, color: 'rgba(244,114,182,0.13)', dur: 3.8, delay: -1.6 },
+];
+
 // ── 射撃シーンのタイムライン(シーン内ms)と配置 ──
 // 2人は独立テンポで進むため【トラックを別々に定義し、変化点のマージは自動生成】する。
 // (v0.25.2016の教訓: 手動マージは片方の時刻を動かすと順序が壊れ、もう片方のコマが巻き戻る実バグになった)
@@ -186,6 +220,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     let cancelled = false;
     const ids: number[] = [];
 
+    // ── 心拍SE(蘇生パート用)を【マウント時に生成してプライミング】する(v0.25.2054修正) ──
+    // 旧実装は鳴らす瞬間に new Audio していたが、OKタップから約27秒後=ユーザー操作の有効期限切れ後の
+    // 新規要素はモバイルで再生ブロックされ無音になる(アリーナ音源が鳴るのはタップ数秒以内に再生開始するから)。
+    // → 要素はここ(タップ直後のマウント)で作り、ミュートで一瞬再生→停止して「操作済み」扱いにしておく。
+    {
+      const loop = new Audio(HEARTBEAT_SRC); loop.loop = true; loop.preload = 'auto'; loop.volume = HEARTBEAT_LOOP_VOLUME;
+      const one = new Audio(HEARTBEAT_SRC); one.preload = 'auto'; one.volume = HEARTBEAT_ONESHOT_VOLUME;
+      heartRef.current = [loop, one];
+    }
+
     // ── 蘇生処置パート(phase4)の台本タイムラインを rBase(ready起点ms)から仕込む ──
     // rBase = 射撃シーンが暗転し切った時刻(通常フロー)/ 0(?opening=3の単独プレビュー)。
     // 音はHTMLAudio(既存流儀)。会話中の心拍ループと最終行後の一発は【別要素】(spec)。
@@ -193,8 +237,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       // 暗転後 blackHoldBeforeDialogueMs は「無音間」=心拍も鳴らさない。会話開始と同時にループを立ち上げる。
       const dialogueStart = rBase + OPENING_REVIVAL_TIMING.blackHoldBeforeDialogueMs;
       ids.push(window.setTimeout(() => {
-        const a = new Audio(HEARTBEAT_SRC); a.loop = true; a.preload = 'auto'; a.volume = HEARTBEAT_LOOP_VOLUME;
-        heartRef.current[0] = a; a.play().catch(() => {}); // ジェスチャ未解禁のプレビューでは黙って無音で進む
+        const a = heartRef.current[0];
+        if (a) { try { a.currentTime = 0; } catch { /* ignore */ } a.play().catch(() => {}); } // 未解禁プレビューでは無音で進む
       }, dialogueStart));
       // 各行: minDurationMs 表示 → gapAfterMs は非表示(-1)で間を空けて次行。話者名(speaker)は絶対に出さない。
       let t = dialogueStart;
@@ -207,8 +251,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       // t = 全行(最終行のgapAfterMs含む)終了時刻。ここで心拍を一度だけ(ループは止め、別要素で鳴らす)。
       ids.push(window.setTimeout(() => {
         heartRef.current[0]?.pause();
-        const one = new Audio(HEARTBEAT_SRC); one.volume = HEARTBEAT_ONESHOT_VOLUME;
-        heartRef.current[1] = one; one.play().catch(() => {});
+        const one = heartRef.current[1];
+        if (one) { try { one.currentTime = 0; } catch { /* ignore */ } one.play().catch(() => {}); }
       }, t));
       // fadeToTutorialMs 後にチュートリアルへ(黒のまま=字幕は既に消えている)。finishは一度だけ(doneRef)。
       ids.push(window.setTimeout(finish, t + OPENING_REVIVAL_TIMING.fadeToTutorialMs));
@@ -224,6 +268,14 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // パン!SE(HTMLAudio・2発ぶん事前生成=紙吹雪用と発砲用。currentTime巻き戻しの競合を避ける)。
     panRef.current = [0, 1].map(() => { const a = new Audio(PAN_SE_SRC); a.preload = 'auto'; a.volume = PAN_SE_VOLUME; return a; });
     const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; a.play().catch(() => {}); } catch { /* ignore */ } };
+    // 【プライミング】タップ(更新情報OK)直後のマウント時に、後から鳴らす要素をミュートで一瞬再生→停止して
+    // 「ユーザー操作済み」扱いにしておく(v0.25.2054)。発砲パン(約11秒後)・心拍(約27秒後)は操作の有効期限
+    // 切れ後の再生になるため、これが無いとモバイルでブロックされ無音になる。未解禁プレビューではcatchで無視。
+    [...panRef.current, ...heartRef.current].forEach(a => {
+      a.muted = true;
+      a.play().then(() => { a.pause(); try { a.currentTime = 0; } catch { /* ignore */ } a.muted = false; })
+        .catch(() => { a.muted = false; });
+    });
     const all = [
       ...SHOTS.map(s => s.bg), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
@@ -277,7 +329,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     `\n@keyframes opconfS{0%{transform:rotateZ(0) rotateX(0) translateX(0)}25%{transform:rotateZ(var(--r1)) rotateX(72deg) translateX(var(--sw))}50%{transform:rotateZ(calc(var(--r1)*1.6)) rotateX(160deg) translateX(0)}75%{transform:rotateZ(var(--r1)) rotateX(250deg) translateX(calc(var(--sw)*-1))}100%{transform:rotateZ(0) rotateX(344deg) translateX(0)}}` +
     // キラキラ層: 画面(スクリーン)上端の外から下端の外まで通過するループ落下+きらめき(不透明度パルス+回転)。
     `\n@keyframes opconfK{from{transform:translateY(-4vh)}to{transform:translateY(106vh)}}` +
-    `\n@keyframes opconfW{0%{opacity:0.25;transform:rotateZ(0) rotateX(0)}50%{opacity:1;transform:rotateZ(var(--r1)) rotateX(170deg)}100%{opacity:0.25;transform:rotateZ(0) rotateX(340deg)}}`;
+    `\n@keyframes opconfW{0%{opacity:0.25;transform:rotateZ(0) rotateX(0)}50%{opacity:1;transform:rotateZ(var(--r1)) rotateX(170deg)}100%{opacity:0.25;transform:rotateZ(0) rotateX(340deg)}}` +
+    // ペンライトの振り(足元起点で左右へ)と会場グローの明滅。
+    `\n@keyframes oppl{from{transform:rotate(calc(var(--pa)*-1))}to{transform:rotate(var(--pa))}}` +
+    `\n@keyframes opvglow{0%{opacity:0.45}50%{opacity:1}100%{opacity:0.45}}`;
 
   const cur = SHOOT_STEPS[step];
 
@@ -314,6 +369,36 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}` }}>
                   {/* flipScene=背景を左右反転(キャラは素の座標=画面全体がミラーに見える) */}
                   <img src={SHOTS[si].bg} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined }} />
+                  {/* 会場グローパルス(案B): 客席一帯をゆっくり明滅する柔らかい光で持ち上げる */}
+                  {VENUE_GLOWS.map((g, gi) => (
+                    <div
+                      key={`vg${gi}`}
+                      style={{
+                        position: 'absolute', left: `${g.x - g.rx}%`, top: `${g.y - g.ry}%`, width: `${g.rx * 2}%`, height: `${g.ry * 2}%`,
+                        background: `radial-gradient(ellipse at center, ${g.color} 0%, rgba(0,0,0,0) 70%)`,
+                        mixBlendMode: 'screen', pointerEvents: 'none',
+                        animation: `opvglow ${g.dur}s ease-in-out infinite`, animationDelay: `${g.delay}s`,
+                      }}
+                    />
+                  ))}
+                  {/* ペンライトの海(案A): 客席領域で光のバーがそれぞれ揺れる(ズームに追従) */}
+                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                    {PENLIGHTS[si].map(p => (
+                      <div
+                        key={p.key}
+                        style={{
+                          position: 'absolute', left: `${p.x.toFixed(1)}%`, top: `${p.y.toFixed(1)}%`,
+                          width: p.w, height: p.h, borderRadius: 2,
+                          background: p.color, opacity: p.op,
+                          boxShadow: `0 0 6px 1.5px ${p.color}`,
+                          transformOrigin: '50% 100%',
+                          '--pa': p.pa,
+                          animation: `oppl ${p.sd.toFixed(2)}s ease-in-out infinite alternate`,
+                          animationDelay: `${p.delay.toFixed(2)}s`,
+                        } as React.CSSProperties}
+                      />
+                    ))}
+                  </div>
                   <div style={{ position: 'absolute', inset: 0 }}>
                     {SHOTS[si].chars.map((c, ci) => (
                       <img
