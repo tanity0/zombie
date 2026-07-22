@@ -41,41 +41,42 @@ const BLACK_MS = 1600;
 const SCENE_START = 7600; // 暗転し切ったら射撃シーンへハードカット
 const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
 
-// 紙吹雪(社長指示v0.25.2031→2033修正)。2系統:
-// ①パーン=ステージ【両サイド】の砲から真上に噴射(正面カット。左右の砲・少し内向き)。
-// ②キラキラ=斜め・横の間、画面全体に小さな紙が常時きらめきながら降り続けるループ層
-//   (負のanimation-delayで表示された瞬間から画面に満ちている)。CSSアニメのみ=負荷1/10。
+// 紙吹雪(社長指示v0.25.2031→2033→2034修正)。2系統:
+// ①パーン=ステージ【両サイド】の砲から真上へ噴射し【画面場外まで突き抜けて消える】(落下はしない)。
+// ②雨=その後(1.0s〜)、画面全体に均等な紙吹雪が降り続けるループ層(斜め・横でもきらめきながら継続。
+//   負のanimation-delayで表示された瞬間から空中に満ちている)。CSSアニメのみ=負荷1/10。
 const CONFETTI_COLORS = ['#fef08a', '#f9a8d4', '#a5f3fc', '#e9d5ff', '#ffffff', '#fda4af', '#fcd34d'];
 const CONFETTI_BURST = Array.from({ length: 60 }, (_, i) => {
   const leftSide = i % 2 === 0;                  // 半分ずつ左右の砲から
-  const inward = 4 + Math.random() * 10;         // 少し内向き(ステージ中央へ)
+  const inward = (4 + Math.random() * 10) * (leftSide ? 1 : -1); // 少し内向き(ステージ中央へ)
   return {
     key: i,
     x: leftSide ? 16 + Math.random() * 12 : 72 + Math.random() * 12, // 両サイドの砲口(枠%)
     y: 50 + Math.random() * 10,
-    cx1: (leftSide ? inward : -inward) + (Math.random() * 2 - 1) * 6, // 頂点(真上+わずか内向き)
-    cy1: -(38 + Math.random() * 34),             // 高く噴き上げる(枠高%)
-    cx2: (Math.random() * 2 - 1) * 24,           // 落下終点(横流れ)
-    cy2: 34 + Math.random() * 46,                // 落下終点(下%・枠外へ抜ける)
-    dur: 4.6 + Math.random() * 2.2,
+    cx1: inward + (Math.random() * 2 - 1) * 6,   // 中間点(真上+わずか内向き)
+    cy1: -(30 + Math.random() * 20),
+    cx2: inward * 1.8 + (Math.random() * 2 - 1) * 8, // 終点=そのまま上へ
+    cy2: -(80 + Math.random() * 35),             // 画面上端の外まで突き抜ける(枠高%)
+    dur: 1.0 + Math.random() * 0.6,              // 速い噴き上げ(1.0〜1.6秒で場外へ)
     delay: Math.random() * 0.3,                  // パーンのバラつき
-    sd: 0.9 + Math.random() * 0.8,               // ヒラヒラ周期(秒)
-    sw: (Math.random() * 2 - 1) * 14,
+    sd: 0.5 + Math.random() * 0.5,               // 飛翔中の回転(速め)
+    sw: (Math.random() * 2 - 1) * 10,
     r1: `${Math.round((Math.random() * 2 - 1) * 200)}deg`,
     w: 5 + Math.random() * 5, h: 3 + Math.random() * 4,
     color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
   };
 });
+const CONFETTI_RAIN_START_MS = 1000; // 噴き上げが場外へ抜けた頃から雨を開始
 const CONFETTI_GLITTER = Array.from({ length: 60 }, (_, i) => {
   const dur = 3.5 + Math.random() * 2.5;         // 上から下へ通過する時間
   return {
     key: i,
-    x: Math.random() * 100,                       // 画面全体に分布
+    x: Math.random() * 100,                       // 画面全体に均等分布
     dur,
     delay: -Math.random() * dur,                  // 負のdelay=表示された瞬間すでに空中に満ちている
     td: 0.4 + Math.random() * 0.5,                // きらめき周期(秒)
     r1: `${Math.round((Math.random() * 2 - 1) * 240)}deg`,
-    w: 2.5 + Math.random() * 2.5, h: 2 + Math.random() * 2.5,
+    w: 3 + Math.random() * 3, h: 2.5 + Math.random() * 2.5,
     color: CONFETTI_COLORS[(i * 3 + 1) % CONFETTI_COLORS.length],
   };
 });
@@ -271,9 +272,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean }> = (
                   />
                 </div>
               ))}
-              {/* ②キラキラ: 斜め・横の間(CUTS[1]〜)、画面全体できらめきながら降り続けるループ層。
-                  各粒は負のdelayで最初から空中に満ちている。 */}
-              <div style={{ position: 'absolute', inset: 0, opacity: 0, animation: `opfade 400ms linear ${CUTS[1]}ms both` }}>
+              {/* ②雨: 噴き上げ後(1.0s〜)、画面全体に均等な紙吹雪がきらめきながら降り続けるループ層。
+                  各粒は負のdelayで最初から空中に満ちている。斜め・横カットでも継続。 */}
+              <div style={{ position: 'absolute', inset: 0, opacity: 0, animation: `opfade 500ms linear ${CONFETTI_RAIN_START_MS}ms both` }}>
                 {CONFETTI_GLITTER.map(p => (
                   <div
                     key={p.key}
