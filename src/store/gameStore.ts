@@ -152,7 +152,7 @@ const NAMED_FX_COLOR = 'rgba(255,215,0,'; // NAMED_TINT(0xffd700)と同色。res
 // 血飛沫(ZELTER風・社長指示v0.25.2027): 旧3コマスプライトは素材に「重力で落ちる弧」が焼き込まれ、
 // 上/斜めに撃つと弧の向きが不自然だった。微粒子をヒット方向へ噴射し重力で落とす方式に置換=全方向で自然。
 // pooled particle経路(drawParticleSprite・liquid)にそのまま乗せる=新しい描画方式は作らない。
-const BLOOD_PARTICLE_CAP = 90;             // 生きている血粒子(id接頭辞 'fx-bloodp-')の同時上限(塗り面積の暴発止め)
+const BLOOD_PARTICLE_CAP = 120;            // 生きている血粒子(id接頭辞 'fx-bloodp-')の同時上限(塗り面積の暴発止め)。90→120(社長指示v0.25.2058増量・KILL2連が欠けない量)
 const BLOOD_CONE = (20 * Math.PI) / 180;   // 噴射コーン半角=±20°(社長指定)
 const BLOOD_GRAVITY = 420;                 // 血粒子だけ重力で常に画面下へ落とす(px/s²)。他パーティクルは未指定=0。
 // 【注意】粒子色は rgba() 形式で書くこと: 描画側の glowTint は rgba(...) しかパースできず、
@@ -10290,14 +10290,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
   // 銃弾ヒットの血飛沫(ZELTER風・社長指示v0.25.2027): (x,y)から方向angleへ円錐±20°で微粒子を噴き、重力で落とす。
-  // 粒子数は len(=傷の勢い)に比例させ 16〜44 に収める。旧'blood'kindは発行しない(素材は残置)。
+  // 粒子数は len(=傷の勢い)に比例させ 22〜56 に収める。旧'blood'kindは発行しない(素材は残置)。
   spawnBlood: (x, y, angle, len) => {
     const now = Date.now();
-    // グローバルキャップ: 生きている血粒子が90を超えないよう、不足分だけ生成(超過分はスキップ)。
+    // グローバルキャップ: 生きている血粒子が上限を超えないよう、不足分だけ生成(超過分はスキップ)。
     const alive = countBloodParticles(get().effects);
     const room = BLOOD_PARTICLE_CAP - alive;
     if (room <= 0) return; // 既に上限=1粒も足さない(setも呼ばない=無駄な購読者起こしを避ける)
-    const desired = Math.max(18, Math.min(44, Math.round(len / 5))); // 粒数+20%(v0.25.2045目立ち増強)
+    const desired = Math.max(22, Math.min(56, Math.round(len / 4))); // 粒数+25%(社長指示v0.25.2058もう少し増量)
     const fresh = buildBloodBurst(x, y, angle, Math.min(desired, room), now);
     set(state => {
       const next = [...state.effects, ...fresh];
@@ -10317,7 +10317,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const room = BLOOD_PARTICLE_CAP - alive;
     if (room <= 0) return;
     const len = Math.max(96, size * 4.0);
-    const desired = Math.max(18, Math.min(44, Math.round(len / 5))); // 粒数+20%(v0.25.2045目立ち増強)
+    const desired = Math.max(22, Math.min(56, Math.round(len / 4))); // 粒数+25%(社長指示v0.25.2058もう少し増量)
     const fresh = buildBloodBurst(
       ex + dx * size * 0.4, ey + dy * size * 0.4, // 起点=既存計算のまま(斬った面)
       Math.atan2(dy, dx), Math.min(desired, room), now,
