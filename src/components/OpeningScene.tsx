@@ -43,7 +43,7 @@ const BLOOD = (n: number) => A(`shoot/blood-${n}.png`);
 const WALK_BG = A('walk-stage-bg.png');
 const WALK_FRAMES = Array.from({ length: 4 }, (_, n) => A(`walk/hero-walk-${n}.png`)); // 4コマ歩きサイクル(社長支給・抜き済みシートを帯分割・v0.25.2115で正素材へ差し替え)
 const WALK_BG_AR = 1891 / 831;  // 舞台素材のアスペクト(幅/高さ)
-const WALK_SPEED = 120;         // 歩行速度(bg表示px/s)。v0.25.2116「もっとゆっくり」(旧200)
+const WALK_SPEED = 100;         // 歩行速度(bg表示px/s)。200→120(v0.25.2116)→100(v0.25.2137「もう少し遅く」)
 const WALK_ANIM_MS = 150;       // 歩きコマ間隔(4コマ=1周0.6s・叩き台)
 const WALK_FOOT_YR = 0.745;     // 足元ライン(bg高さ比)。v0.25.2134実測: 絵の内容は0.753で終端(以下真っ黒)=
                                 // 旧0.775は黒領域に立っていた(社長報告「まだ絵の上に乗れてない」)。舗装床の帯(~0.71-0.753)に乗せる。

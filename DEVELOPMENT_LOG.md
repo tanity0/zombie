@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2137 — OP廊下: プレイヤーをもう少し遅く【2026-07-24 01:03 JST】
+- 指示(社長): 廊下シーン、プレイヤーもう少し遅く。
+- 対処: WALK_SPEED 120→100(入場の自動歩き・NPC退場の歩きも同速で連動)。
+- 検証: typecheck・lint 0エラー(定数1点のみ)。
+- Files: `src/components/OpeningScene.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2136 — OP廊下: ぼかしを少しだけ強く【2026-07-24 00:58 JST】
 - 指示(社長): 廊下のぼかし、少しだけ強く。
 - 対処: WALK_DOF_ALPHA 0.8→0.9(範囲・マスクは不変=黄色ラインまで)。
