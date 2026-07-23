@@ -7,6 +7,7 @@ import EndingScreen from './components/EndingScreen';
 import LoadingScreen from './components/LoadingScreen';
 import OrientationGuard from './components/OrientationGuard';
 import OpeningScene from './components/OpeningScene';
+import MansionCorridorPreview from './components/MansionCorridorPreview';
 import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow } from './utils/loadProgress';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
@@ -48,6 +49,10 @@ function App() {
     try { return new URLSearchParams(window.location.search).get('opening'); } catch { return null; }
   });
   const [showOpening, setShowOpening] = useState(openingParam === '1' || openingParam === '2' || openingParam === '3');
+  // ステージ6(洋館)奥行き通路の単体プレビュー(?corridor=1・v0.25.2077の相談用プロトタイプ)。
+  const [corridorPreview] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('corridor') === '1'; } catch { return false; }
+  });
   const [benchmarkMode, setBenchmarkMode] = useState(false);
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
@@ -322,6 +327,9 @@ function App() {
       {/* BGMはオープニング完全終了(onDone=タイトルフェードイン明け)で開始(社長指示v0.25.2067
           「BGM流れるのは蘇生シーン終わってから」=フェードイン開始と同時のBGM開始を廃止)。 */}
       {showOpening && <OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} />}
+
+      {/* ステージ6(洋館)通路プレビュー(?corridor=1)。タイトル等の上に全画面。 */}
+      {corridorPreview && <MansionCorridorPreview />}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}
       <OrientationGuard />

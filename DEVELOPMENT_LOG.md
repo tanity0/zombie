@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.2077 — ステージ6(洋館)着手: 奥行き通路の柱ループのプロトタイプ(?corridor=1)【2026-07-23 15:52 JST】
+- 相談(社長): 奥行きのある洋館ステージ。柱素材を渡すので「上に進むと奥から手前へズームしながら流れてくる(ループ)」方法はあるか?→**可能**(1/z疑似投影+固定プール循環)と回答し、素材受領(「これでいける?」)→単体プロトタイプを実装。
+- 実装: ①素材加工=紫背景を境界フラッドフィルで透過し左右の柱に分割(`art-src/mansion/split-pillars.mjs`→`public/sprites/mansion/pillar-{left,right}.png`・原本は`art-src/mansion/pillars-src.png`) ②**投影の純関数**`src/utils/corridorProjection.ts`(d=mod(i·spacing−travel, loop)・scale=focal/(focal+d)・足元/横位置は消失点から相似拡大・奥は闇へフェード)+テスト5本 ③プレビュー`MansionCorridorPreview.tsx`(**?corridor=1**・canvas直描き=React再レンダなし・自動前進220px/s・床は仮の石畳+赤カーペット台形)。
+- 本実装への道筋: この投影式をPixiの遠景レイヤーへ移植し、前進量をプレイヤーYに直結(歩けば流れ・止まれば止まる)。床/奥の一枚絵/中景プロップも同式に乗せる。ゲームロジックはトップダウンのまま(通路幅クランプ等は別途仕様裁定)。
+- 検証: typecheck OK・投影テスト5本pass。ヘッドレス実写で「両側の柱列が消失点へ並び、手前へ流れる」を確認。**実機確認は ?corridor=1 で**(間隔/速度/フェード/消失点位置=全部叩き台・指示で調整)。
+- 自己点検: プレビューはゲーム本体に非配線(パラメータ時のみマウント)。負荷: プレビュー2/10(柱14枚のcanvas描画)・本実装見込み1〜2/10(pooled sprite十数枚)。
+- Files: `src/utils/corridorProjection.ts`(新規), `src/utils/corridorProjection.test.ts`(新規), `src/components/MansionCorridorPreview.tsx`(新規), `src/App.tsx`, `public/sprites/mansion/pillar-{left,right}.png`(新規), `art-src/mansion/{pillars-src.png,split-pillars.mjs}`(新規), `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2076 — M7: ボス出現を咆哮「グガガガガガガガガ！」の表示時へ変更【2026-07-23 15:31 JST】
 - 指示(社長): ステージ7のボス出現、グレンのグガガガガのところに変更。
 - 対処: 段取りを「最終行『……終わらせてあげて！』表示→**咆哮を会話キューへ積む**→**咆哮が表示された瞬間にボス出現**(=咆哮と同時に巨大化)」へ再構成(v0.25.2074の「最終行表示で即出現」から変更)。咆哮のenqueueは出現時→ゲート側へ移動。文言不一致やキュー消失時は出現側へ倒れる=詰みなし。EXは従来どおり即出現。
