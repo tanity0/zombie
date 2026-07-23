@@ -50,7 +50,7 @@ const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ
 const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
 const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
 const WALK_FADEIN_MS = 1000;    // 開始時のキャラのフェードイン
-const WALK_STAGE_Y_OFFSET = -100; // ステージ全体の縦オフセット(px)。v0.25.2116「50px上へ」→v0.25.2117「もう50px上へ」
+const WALK_STAGE_Y_OFFSET = -70; // ステージ全体の縦オフセット(px)。v0.25.2116/-50→2117/-100→v0.25.2118「30px下へ」で-70
 // 被写界深度(v0.25.2116「プレイヤーの直ぐ裏からぼかし」): 事前ブラー版bg(walk-stage-bg-blur.png・
 // blur9px焼き込み)を縦グラデマスクで重ねる=壁(奥)はボケ、彼女と歩いている床だけシャープ。
 // アリーナDOFと同じ「ランタイムぼかしゼロ」方式(モバイルのfilter/backdrop-filterの罠を回避)。
@@ -270,7 +270,8 @@ const SPOTLIGHTS = SHOTS.map(s => s.chars.map((c, ci) => {
 }));
 
 const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, startAtShoot, startAtRevival }) => {
-  const [ready, setReady] = useState(false); // 全素材decode完了までタイムラインを始めない(下記コメント)
+  const [ready, setReady] = useState(false); // 歩きシーンの素材が揃うまで開始しない(v0.25.2118で歩き用/本編用に分割)
+  const [mainReady, setMainReady] = useState(false); // 本編(アリーナ/射撃)素材のdecode完了。アリーナ開始の条件
   const [phase, setPhase] = useState(startAtRevival ? 4 : startAtShoot ? 3 : 0); // 0-2=アリーナ各アングル / 3=射撃シーン / 4=蘇生処置(字幕)
   const [step, setStep] = useState(0); // 射撃シーンのコマ番号(SHOOT_STEPS index)
   const [shootLine, setShootLine] = useState(-1); // 射撃シーンの会話行(SHOOT_LINES index / -1=非表示)
@@ -358,6 +359,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // ?opening=3: 蘇生パート単独プレビュー。射撃/アリーナ素材のdecodeを待たず即開始(黒画面+字幕のみ)。
     if (startAtRevival) {
       setReady(true);
+      setMainReady(true);
       scheduleRevival(0, ids);
       return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
     }
@@ -375,17 +377,24 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       a.play().then(() => { a.pause(); try { a.currentTime = 0; } catch { /* ignore */ } a.muted = false; })
         .catch(() => { a.muted = false; });
     });
-    const all = [
+    // 素材を2群に分割(v0.25.2118・社長報告「ローディング中に始まる/始まっても読み込み終わってない」):
+    // 旧実装は全素材一括+フォールバック3秒=モバイルの初回ロードで大物(廊下bg計2.7MB)が間に合わず
+    // 見切り発車していた。歩きシーンは自分の素材が揃うまで開始しない(壊れ画像保険の上限12秒)。
+    // 本編(アリーナ/射撃)素材は並行ロードし、アリーナ開始条件(mainReady)に組み込む=歩いている間に済む。
+    const dec = (srcs: string[]) => srcs.map(src => { const im = new Image(); im.src = src; return im.decode().catch(() => {}); });
+    const walkAssets = startAtShoot ? [] : [WALK_BG, WALK_BG_BLUR, ...WALK_FRAMES];
+    const mainAssets = [
       ...SHOTS.map(s => s.bg), ...SHOTS.map(s => s.bgBlur), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
-      WALK_BG, WALK_BG_BLUR, ...WALK_FRAMES, // 歩きシーン(アリーナ前・v0.25.2114)
     ];
-    const decodes = all.map(src => { const im = new Image(); im.src = src; return im.decode().catch(() => {}); });
-    const fallback = new Promise<void>(res => { ids.push(window.setTimeout(res, 3000)); });
-    Promise.race([Promise.all(decodes).then(() => {}), fallback]).then(() => {
-      if (cancelled) return;
-      setReady(true); // タイムラインの起動は walkDone エフェクト側(歩きシーン完了起点・v0.25.2114)
-    });
+    Promise.race([
+      Promise.all(dec(walkAssets)).then(() => {}),
+      new Promise<void>(res => { ids.push(window.setTimeout(res, 12000)); }),
+    ]).then(() => { if (!cancelled) setReady(true); });
+    Promise.race([
+      Promise.all(dec(mainAssets)).then(() => {}),
+      new Promise<void>(res => { ids.push(window.setTimeout(res, 20000)); }),
+    ]).then(() => { if (!cancelled) setMainReady(true); });
     return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -395,7 +404,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   // ?opening=2はwalkDone初期値true=従来どおり即開始。?opening=3(蘇生単独)はmount側で処理済み=ここは走らない。
   // CSSアニメ(アリーナのズーム等)もwalkDoneでツリーがマウントされる=タイマーと起点が揃う(readyゲートと同じ理屈)。
   useEffect(() => {
-    if (!ready || !walkDone || startAtRevival) return;
+    if (!mainReady || !walkDone || startAtRevival) return;
     const ids: number[] = [];
     const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; a.play().catch(() => {}); } catch { /* ignore */ } };
     {
@@ -434,13 +443,15 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     }
     return () => { ids.forEach(id => window.clearTimeout(id)); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, walkDone]);
+  }, [mainReady, walkDone]);
 
   // ── 歩きシーンの駆動(v0.25.2114): 押している間だけ右へ。rAFでrefのDOMを直接更新(60fpsのsetStateを避ける) ──
   useEffect(() => {
     if (!ready || walkDone) return;
     let raf = 0;
     let worldX = WALK_EDGE_PAD; // キャラ足元中心のbg座標(表示px)
+    let animT = 0;              // 歩きアニメ専用時計(歩行中のみ進む・停止でリセット)。v0.25.2118:
+                                // グローバル時刻基準だと歩き始めが周期の途中コマから始まり反応が変に見えた。
     let last = performance.now();
     const key = (e: KeyboardEvent, down: boolean) => {
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') walkDirRef.current = down ? 1 : (walkDirRef.current === 1 ? 0 : walkDirRef.current);
@@ -459,7 +470,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         const bgH = sh, bgW = sh * WALK_BG_AR; // 舞台は画面の高さいっぱい(横は素材アスペクト)
         const maxX = bgW - WALK_EDGE_PAD;
         const dir = walkDirRef.current; // v0.25.2117: 左右どちらへも歩ける(左端〜右端の範囲内)
-        if (dir !== 0) worldX = Math.max(WALK_EDGE_PAD, Math.min(maxX, worldX + dir * WALK_SPEED * dt / 1000));
+        if (dir !== 0) {
+          worldX = Math.max(WALK_EDGE_PAD, Math.min(maxX, worldX + dir * WALK_SPEED * dt / 1000));
+          animT += dt;
+        } else animT = 0; // 停止で即リセット=次の歩き出しは必ず0コマ目から
         const cam = Math.max(0, Math.min(bgW - sw, worldX - sw * WALK_CAM_ANCHOR));
         world.style.width = `${bgW}px`;
         world.style.transform = `translate(${-cam}px, ${WALK_STAGE_Y_OFFSET}px)`;
@@ -472,7 +486,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           char.style.transform = `translate(-50%, -100%) scaleX(${dir}) translateZ(0)`;
         }
         // 歩きコマ: ピンポン(0→1→2→3→2→1→…・社長指示v0.25.2117)。停止中は0コマ目=立ち。
-        const seq = Math.floor(now / WALK_ANIM_MS) % (WALK_FRAMES.length * 2 - 2);
+        // 時計はanimT(歩行中のみ進む)=押した瞬間に0コマ目から歩き出す(v0.25.2118反応改善)。
+        const seq = Math.floor(animT / WALK_ANIM_MS) % (WALK_FRAMES.length * 2 - 2);
         const fi = dir !== 0 ? (seq < WALK_FRAMES.length ? seq : WALK_FRAMES.length * 2 - 2 - seq) : 0;
         if (char.dataset.f !== String(fi)) { char.dataset.f = String(fi); char.src = WALK_FRAMES[fi]; }
         if (worldX >= maxX - 0.5) { setWalkDone(true); return; } // 右端到達=アリーナへ
@@ -517,7 +532,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     >
       <style>{css}</style>
 
-      {!ready ? null : !walkDone ? (
+      {!walkDone ? (!ready ? (
+        // 歩きシーン素材のロード待ち(v0.25.2118): 見切り発車しない代わりに待ちを可視化。
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.55)', fontSize: 13, letterSpacing: '0.2em' }}>
+          Loading...
+        </div>
+      ) : (
         // ── 楽屋通路の歩きシーン(アリーナ前・v0.25.2114): 左端からフェードイン→押している間だけ右へ歩く。
         //    タップは歩行操作なのでOPスキップ(root onClick)へは伝播させない。 ──
         <div
@@ -548,7 +568,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
             />
           </div>
         </div>
-      ) : phase < 3 ? (
+      )) : !mainReady ? null : phase < 3 ? (
         // ── アリーナ3アングル(即表示ハードカット・社長指示v0.25.2072)。key=アングル番号で
         //    切替時に再マウント=各アングルのズームは表示の瞬間から開始。 ──
         <>
@@ -831,7 +851,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       {/* アリーナ→射撃シーン間の暗転(phase<3の間だけ重ねる。phase3は上の分岐ごと消えるのでカットで明ける)
           walkDone必須(v0.25.2114): 歩きシーン中にマウントするとCSSの遅延が歩き中に消化されて
           アリーナ開幕が真っ黒になる(実測でハマった罠。CSS起点はアリーナツリーと同時マウントが原則)。 */}
-      {ready && walkDone && phase < 3 && !startAtShoot && (
+      {mainReady && walkDone && phase < 3 && !startAtShoot && (
         <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 50, pointerEvents: 'none', animation: `opblack ${BLACK_MS}ms linear ${BLACK_START}ms both` }} />
       )}
 
