@@ -191,7 +191,9 @@ const MansionCorridorPreview: React.FC = () => {
           const srcH = Math.max(0.5, (d1 - d0) / FLOOR_REPEAT * texH); // 下の行ほど奥(d1>d0)
           const fw = 2 * W * CORRIDOR_CFG.aisleHalfXr * s * FLOOR_W_MULT;
           const fx = W / 2 - fw / 2;
-          const fade = Math.max(0, Math.min(1, (s - 0.12) / 0.5));
+          // 天井専用フェード(v0.25.2094): 柱用の式(s-0.12)/0.5だと天井のsレンジ(0〜0.29)では
+          // ほぼ黒に潰れて「表示されていない」見え方になっていた(社長報告)。天井のレンジで正規化。
+          const fade = Math.max(0, Math.min(0.85, (s - 0.05) / 0.16));
           const w = dofFar(d0);
           const drawCeilSlice = (tex: HTMLImageElement, alpha: number) => {
             if (alpha <= 0.02 || !tex.naturalWidth) return;
@@ -235,16 +237,21 @@ const MansionCorridorPreview: React.FC = () => {
             ctx.drawImage(cBlur, cdx - cPad * k, cdy - cPad * k, cBlur.naturalWidth * k, cBlur.naturalHeight * k);
           }
         }
-        const r = m.h * 0.22;                 // 灯りの半径(柱の高さ比例=遠近追従)
+        // 火の揺らぎ(社長指示v0.25.2094): 各燭台の世界位置から位相を作り、2重サインで有機的に明滅。
+        // 半径もわずかに脈動。世界位置基準なので同じ燭台は常に同じ揺らぎ=循環しても連続。
+        const worldPos = m.depth + travel;
+        const tSec = now / 1000;
+        const flick = 0.78 + 0.14 * Math.sin(tSec * 7.3 + worldPos * 0.013) + 0.08 * Math.sin(tSec * 11.7 + worldPos * 0.021);
+        const r = m.h * 0.22 * (0.96 + 0.06 * flick); // 灯りの半径(柱の高さ比例=遠近追従+微脈動)
         const ly = m.y - m.h * GLOW_Y_R;      // 灯りの高さ=燭台の炎の位置
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = m.fade * 0.85;
+        ctx.globalAlpha = m.fade * 0.85 * flick;
         ctx.drawImage(glowTex, m.x - r, ly - r, r * 2, r * 2);
         // 明るい芯(小さめ同グローを重ねて「光源」らしく)。
-        ctx.globalAlpha = m.fade * 0.9;
+        ctx.globalAlpha = Math.min(1, m.fade * 0.9 * flick);
         ctx.drawImage(glowTex, m.x - r * 0.4, ly - r * 0.4, r * 0.8, r * 0.8);
         // 足元の床への照り返し(横長に潰した同グロー・弱め)。
-        ctx.globalAlpha = m.fade * 0.3;
+        ctx.globalAlpha = m.fade * 0.3 * flick;
         ctx.drawImage(glowTex, m.x - r * 1.1, m.y - r * 0.35, r * 2.2, r * 0.7);
         ctx.globalCompositeOperation = 'source-over';
       }
