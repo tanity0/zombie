@@ -648,7 +648,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                   />
                 </div>
                 <div className="self-center" style={{ whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
-                  <span className="font-bold text-amber-300/95 mr-1.5">？？？</span>
+                  {/* 会話は名前の後に一度改行(社長指示v0.25.2069・会話UI共通=本編NpcDialogueと同じ)。 */}
+                  <span className="block font-bold text-amber-300/95">？？？</span>
                   <span className="text-white/90">{SHOOT_LINES[shootLine]}</span>
                 </div>
               </div>

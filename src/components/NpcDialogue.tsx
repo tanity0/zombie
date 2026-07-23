@@ -82,7 +82,8 @@ export const NpcDialogue = () => {
           </div>
         )}
         <div className="self-center" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
-          <span className="font-bold text-amber-300/95 mr-1.5">{npc.name}</span>
+          {/* 会話は名前の後に一度改行(社長指示v0.25.2069・会話UI共通=OP射撃シーン側も同じ)。 */}
+          <span className="block font-bold text-amber-300/95">{npc.name}</span>
           <span className="text-white/90">{npc.text}</span>
         </div>
       </div>
