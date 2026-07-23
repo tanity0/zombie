@@ -45,17 +45,17 @@ const WALK_FRAMES = Array.from({ length: 4 }, (_, n) => A(`walk/hero-walk-${n}.p
 const WALK_BG_AR = 1891 / 831;  // 舞台素材のアスペクト(幅/高さ)
 const WALK_SPEED = 120;         // 歩行速度(bg表示px/s)。v0.25.2116「もっとゆっくり」(旧200)
 const WALK_ANIM_MS = 150;       // 歩きコマ間隔(4コマ=1周0.6s・叩き台)
-const WALK_FOOT_YR = 0.625;     // 足元ライン(bg高さ比=通路の床。スタッフの足元に合わせた叩き台)
+const WALK_FOOT_YR = 0.79;      // 足元ライン(bg高さ比)。v0.25.2117「ステージのかなり下+プレイ中と同じ画面位置」=床帯の最前縁(画面中心比≒57%)
 const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ~0.13より少し大きめ=主役・叩き台)
 const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
 const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
 const WALK_FADEIN_MS = 1000;    // 開始時のキャラのフェードイン
-const WALK_STAGE_Y_OFFSET = -50; // ステージ全体の縦オフセット(px)。v0.25.2116「50px上へ」
+const WALK_STAGE_Y_OFFSET = -100; // ステージ全体の縦オフセット(px)。v0.25.2116「50px上へ」→v0.25.2117「もう50px上へ」
 // 被写界深度(v0.25.2116「プレイヤーの直ぐ裏からぼかし」): 事前ブラー版bg(walk-stage-bg-blur.png・
 // blur9px焼き込み)を縦グラデマスクで重ねる=壁(奥)はボケ、彼女と歩いている床だけシャープ。
 // アリーナDOFと同じ「ランタイムぼかしゼロ」方式(モバイルのfilter/backdrop-filterの罠を回避)。
 const WALK_BG_BLUR = A('walk-stage-bg-blur.png');
-const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 50%, transparent 63%)'; // 63%≒床ライン
+const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 60%, transparent 74%)'; // 74%≒足元ライン(0.79)の少し上でシャープへ
 const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
 
 interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y=足元(画像%)、h=高さ(%)
@@ -279,7 +279,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const [titleReveal, setTitleReveal] = useState(false); // 蘇生後のタイトルフェードイン中(社長指示v0.25.2061)
   // 歩きシーン(アリーナ前・v0.25.2114)。?opening=2/3のプレビューはスキップ(=完了扱い)。
   const [walkDone, setWalkDone] = useState<boolean>(!!(startAtShoot || startAtRevival));
-  const walkHeldRef = useRef(false);                          // 押している間true=歩く
+  const walkDirRef = useRef<0 | -1 | 1>(0);                   // 押している間の歩行方向(0=停止/-1=左/1=右)。v0.25.2117で左移動対応
   const walkSceneRef = useRef<HTMLDivElement | null>(null);
   const walkWorldRef = useRef<HTMLDivElement | null>(null);
   const walkCharRef = useRef<HTMLImageElement | null>(null);
@@ -443,7 +443,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     let worldX = WALK_EDGE_PAD; // キャラ足元中心のbg座標(表示px)
     let last = performance.now();
     const key = (e: KeyboardEvent, down: boolean) => {
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') walkHeldRef.current = down;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') walkDirRef.current = down ? 1 : (walkDirRef.current === 1 ? 0 : walkDirRef.current);
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') walkDirRef.current = down ? -1 : (walkDirRef.current === -1 ? 0 : walkDirRef.current);
     };
     const kd = (e: KeyboardEvent) => key(e, true);
     const ku = (e: KeyboardEvent) => key(e, false);
@@ -457,16 +458,22 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         const sw = scene.clientWidth, sh = scene.clientHeight;
         const bgH = sh, bgW = sh * WALK_BG_AR; // 舞台は画面の高さいっぱい(横は素材アスペクト)
         const maxX = bgW - WALK_EDGE_PAD;
-        const moving = walkHeldRef.current;
-        if (moving) worldX = Math.min(maxX, worldX + WALK_SPEED * dt / 1000);
+        const dir = walkDirRef.current; // v0.25.2117: 左右どちらへも歩ける(左端〜右端の範囲内)
+        if (dir !== 0) worldX = Math.max(WALK_EDGE_PAD, Math.min(maxX, worldX + dir * WALK_SPEED * dt / 1000));
         const cam = Math.max(0, Math.min(bgW - sw, worldX - sw * WALK_CAM_ANCHOR));
         world.style.width = `${bgW}px`;
         world.style.transform = `translate(${-cam}px, ${WALK_STAGE_Y_OFFSET}px)`;
         char.style.height = `${bgH * WALK_HERO_HR}px`;
         char.style.left = `${worldX}px`;
         char.style.top = `${bgH * WALK_FOOT_YR}px`;
-        // 歩きコマ: 動いている間だけ回す(停止中は0コマ目=立ち)。src差し替えはコマ変化時のみ。
-        const fi = moving ? Math.floor(now / WALK_ANIM_MS) % WALK_FRAMES.length : 0;
+        // 左向きは反転(素材は右向き)。停止中は直前の向きを保持。translateZ(0)=iOSマスクz順対策(v2063)。
+        if (dir !== 0 && char.dataset.face !== String(dir)) {
+          char.dataset.face = String(dir);
+          char.style.transform = `translate(-50%, -100%) scaleX(${dir}) translateZ(0)`;
+        }
+        // 歩きコマ: ピンポン(0→1→2→3→2→1→…・社長指示v0.25.2117)。停止中は0コマ目=立ち。
+        const seq = Math.floor(now / WALK_ANIM_MS) % (WALK_FRAMES.length * 2 - 2);
+        const fi = dir !== 0 ? (seq < WALK_FRAMES.length ? seq : WALK_FRAMES.length * 2 - 2 - seq) : 0;
         if (char.dataset.f !== String(fi)) { char.dataset.f = String(fi); char.src = WALK_FRAMES[fi]; }
         if (worldX >= maxX - 0.5) { setWalkDone(true); return; } // 右端到達=アリーナへ
       }
@@ -516,10 +523,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         <div
           ref={walkSceneRef}
           onClick={e => e.stopPropagation()}
-          onPointerDown={e => { e.stopPropagation(); walkHeldRef.current = true; }}
-          onPointerUp={() => { walkHeldRef.current = false; }}
-          onPointerCancel={() => { walkHeldRef.current = false; }}
-          onPointerLeave={() => { walkHeldRef.current = false; }}
+          // タップ位置=画面の右半分なら右へ・左半分なら左へ(押している間だけ歩く・v0.25.2117)
+          onPointerDown={e => { e.stopPropagation(); walkDirRef.current = e.clientX >= window.innerWidth / 2 ? 1 : -1; }}
+          onPointerMove={e => { if (walkDirRef.current !== 0) walkDirRef.current = e.clientX >= window.innerWidth / 2 ? 1 : -1; }}
+          onPointerUp={() => { walkDirRef.current = 0; }}
+          onPointerCancel={() => { walkDirRef.current = 0; }}
+          onPointerLeave={() => { walkDirRef.current = 0; }}
           style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#000', touchAction: 'none', cursor: 'default' }}
         >
           <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
