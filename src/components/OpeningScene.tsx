@@ -37,6 +37,19 @@ const SHOOTER = (n: number) => A(`shoot/shooter-${n}.png`);
 // victim: v0.25.2102でドット絵5コマ(社長支給シート232×264等分)に同名差し替え→一回きりのバスター付き。
 const VICTIM = (n: number) => A(`shoot/victim-${n}.png?v=2102`);
 const BLOOD = (n: number) => A(`shoot/blood-${n}.png`);
+// ── 楽屋通路の歩きシーン(アリーナ前・社長指示v0.25.2114) ──
+// 左端からキャラがフェードインし、右へ歩く(プレイヤー操作=画面を押している間だけ歩く)。横スクロールのみ。
+// 右端に到達するとアリーナ(既存のOPタイムライン)が始まる=以降のタイマーは全て「歩き完了」起点。
+const WALK_BG = A('walk-stage-bg.png');
+const WALK_FRAMES = Array.from({ length: 10 }, (_, n) => A(`walk/hero-walk-${n}.png`)); // 10コマ歩きサイクル(社長支給シートを黒キー+帯分割)
+const WALK_BG_AR = 1891 / 831;  // 舞台素材のアスペクト(幅/高さ)
+const WALK_SPEED = 200;         // 歩行速度(bg表示px/s・叩き台)
+const WALK_ANIM_MS = 90;        // 歩きコマ間隔(10コマ=1周0.9s・叩き台)
+const WALK_FOOT_YR = 0.625;     // 足元ライン(bg高さ比=通路の床。スタッフの足元に合わせた叩き台)
+const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ~0.13より少し大きめ=主役・叩き台)
+const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
+const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
+const WALK_FADEIN_MS = 1000;    // 開始時のキャラのフェードイン
 const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
 
 interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y=足元(画像%)、h=高さ(%)
@@ -258,6 +271,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const [subIdx, setSubIdx] = useState(-1); // 蘇生パートの表示中字幕(OPENING_REVIVAL_LINES index / -1=非表示)
   const [revFading, setRevFading] = useState(false); // 蘇生パート終端の3秒フェードアウト中(社長指示v0.25.2055)
   const [titleReveal, setTitleReveal] = useState(false); // 蘇生後のタイトルフェードイン中(社長指示v0.25.2061)
+  // 歩きシーン(アリーナ前・v0.25.2114)。?opening=2/3のプレビューはスキップ(=完了扱い)。
+  const [walkDone, setWalkDone] = useState<boolean>(!!(startAtShoot || startAtRevival));
+  const walkHeldRef = useRef(false);                          // 押している間true=歩く
+  const walkSceneRef = useRef<HTMLDivElement | null>(null);
+  const walkWorldRef = useRef<HTMLDivElement | null>(null);
+  const walkCharRef = useRef<HTMLImageElement | null>(null);
   const doneRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
   const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
@@ -269,30 +288,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   // onDone側のsetBgmScene('menu')が同srcのため停止位置から途中再開してしまうのを防ぐ。
   const finish = () => { if (!doneRef.current) { doneRef.current = true; stopAudio(); rewindBgm(); onDone(); } };
 
-  useEffect(() => {
-    // 【重要】タイムライン(タイマー+CSSアニメ)は「素材が描ける状態」になってから開始する。
-    // mount起点だと初回ロード(コールド)では画面が出るまでに数秒かかり、その間に芝居が進んで
-    // 頭のコマが飛ぶ(ヘッドレス実測: コールドではstep0が写らずstep3から見えた)。
-    // 全imgをdecodeし切ってからreadyを立て、描画ツリーもreadyまでマウントしない
-    // (CSSアニメのdelayはマウント時起点のため、ツリーごと遅らせて同期を取る)。
-    // 壊れ画像等で永久に待たないようフォールバック上限3秒。
-    let cancelled = false;
-    const ids: number[] = [];
-
-    // ── 心拍SE(蘇生パート用)を【マウント時に生成してプライミング】する(v0.25.2054修正) ──
-    // 旧実装は鳴らす瞬間に new Audio していたが、OKタップから約27秒後=ユーザー操作の有効期限切れ後の
-    // 新規要素はモバイルで再生ブロックされ無音になる(アリーナ音源が鳴るのはタップ数秒以内に再生開始するから)。
-    // → 要素はここ(タップ直後のマウント)で作り、ミュートで一瞬再生→停止して「操作済み」扱いにしておく。
-    {
-      const loop = new Audio(HEARTBEAT_SRC); loop.loop = true; loop.preload = 'auto'; loop.volume = HEARTBEAT_LOOP_VOLUME;
-      const one = new Audio(HEARTBEAT_SRC); one.preload = 'auto'; one.volume = HEARTBEAT_ONESHOT_VOLUME;
-      heartRef.current = [loop, one];
-    }
-
-    // ── 蘇生処置パート(phase4)の台本タイムラインを rBase(ready起点ms)から仕込む ──
+  // ── 蘇生処置パート(phase4)の台本タイムラインを rBase 起点で仕込む(idsにタイマー登録) ──
     // rBase = 射撃シーンが暗転し切った時刻(通常フロー)/ 0(?opening=3の単独プレビュー)。
     // 音はHTMLAudio(既存流儀)。会話中の心拍ループと最終行後の一発は【別要素】(spec)。
-    const scheduleRevival = (rBase: number) => {
+    const scheduleRevival = (rBase: number, ids: number[]) => {
       // 暗転後 blackHoldBeforeDialogueMs は「無音間」=心拍も鳴らさない。会話開始と同時にループを立ち上げる。
       const dialogueStart = rBase + OPENING_REVIVAL_TIMING.blackHoldBeforeDialogueMs;
       ids.push(window.setTimeout(() => {
@@ -329,20 +328,43 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       ids.push(window.setTimeout(finish, t + REVIVAL_FADE_MS + TITLE_REVEAL_MS));
     };
 
+
+  useEffect(() => {
+    // 【重要】タイムライン(タイマー+CSSアニメ)は「素材が描ける状態」になってから開始する。
+    // mount起点だと初回ロード(コールド)では画面が出るまでに数秒かかり、その間に芝居が進んで
+    // 頭のコマが飛ぶ(ヘッドレス実測: コールドではstep0が写らずstep3から見えた)。
+    // 全imgをdecodeし切ってからreadyを立て、描画ツリーもreadyまでマウントしない
+    // (CSSアニメのdelayはマウント時起点のため、ツリーごと遅らせて同期を取る)。
+    // 壊れ画像等で永久に待たないようフォールバック上限3秒。
+    let cancelled = false;
+    const ids: number[] = [];
+
+    // ── 心拍SE(蘇生パート用)を【マウント時に生成してプライミング】する(v0.25.2054修正) ──
+    // 旧実装は鳴らす瞬間に new Audio していたが、OKタップから約27秒後=ユーザー操作の有効期限切れ後の
+    // 新規要素はモバイルで再生ブロックされ無音になる(アリーナ音源が鳴るのはタップ数秒以内に再生開始するから)。
+    // → 要素はここ(タップ直後のマウント)で作り、ミュートで一瞬再生→停止して「操作済み」扱いにしておく。
+    {
+      const loop = new Audio(HEARTBEAT_SRC); loop.loop = true; loop.preload = 'auto'; loop.volume = HEARTBEAT_LOOP_VOLUME;
+      const one = new Audio(HEARTBEAT_SRC); one.preload = 'auto'; one.volume = HEARTBEAT_ONESHOT_VOLUME;
+      heartRef.current = [loop, one];
+    }
+
     // ?opening=3: 蘇生パート単独プレビュー。射撃/アリーナ素材のdecodeを待たず即開始(黒画面+字幕のみ)。
     if (startAtRevival) {
       setReady(true);
-      scheduleRevival(0);
+      scheduleRevival(0, ids);
       return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
     }
 
     // パン!SE(HTMLAudio・2発ぶん事前生成=紙吹雪用と発砲用。currentTime巻き戻しの競合を避ける)。
     panRef.current = [0, 1].map(() => { const a = new Audio(PAN_SE_SRC); a.preload = 'auto'; a.volume = PAN_SE_VOLUME; return a; });
-    const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; a.play().catch(() => {}); } catch { /* ignore */ } };
+    // アリーナ2音源もここ(タップ直後)で生成+プライミング(v0.25.2114): 歩きシーンがプレイヤー操作で
+    // 長さ不定のため、アリーナ開始はジェスチャ有効期限切れ後になる。要素を今作って解錠しておく。
+    if (!startAtShoot) audioRef.current = ARENA_AUDIO.map(src => { const a = new Audio(src); a.loop = true; a.preload = 'auto'; return a; });
     // 【プライミング】タップ(更新情報OK)直後のマウント時に、後から鳴らす要素をミュートで一瞬再生→停止して
-    // 「ユーザー操作済み」扱いにしておく(v0.25.2054)。発砲パン(約11秒後)・心拍(約27秒後)は操作の有効期限
+    // 「ユーザー操作済み」扱いにしておく(v0.25.2054)。発砲パン・心拍・アリーナ音源は操作の有効期限
     // 切れ後の再生になるため、これが無いとモバイルでブロックされ無音になる。未解禁プレビューではcatchで無視。
-    [...panRef.current, ...heartRef.current].forEach(a => {
+    [...panRef.current, ...heartRef.current, ...audioRef.current].forEach(a => {
       a.muted = true;
       a.play().then(() => { a.pause(); try { a.currentTime = 0; } catch { /* ignore */ } a.muted = false; })
         .catch(() => { a.muted = false; });
@@ -350,12 +372,27 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     const all = [
       ...SHOTS.map(s => s.bg), ...SHOTS.map(s => s.bgBlur), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
+      WALK_BG, ...WALK_FRAMES, // 歩きシーン(アリーナ前・v0.25.2114)
     ];
     const decodes = all.map(src => { const im = new Image(); im.src = src; return im.decode().catch(() => {}); });
     const fallback = new Promise<void>(res => { ids.push(window.setTimeout(res, 3000)); });
     Promise.race([Promise.all(decodes).then(() => {}), fallback]).then(() => {
       if (cancelled) return;
-      setReady(true);
+      setReady(true); // タイムラインの起動は walkDone エフェクト側(歩きシーン完了起点・v0.25.2114)
+    });
+    return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── アリーナ以降のタイムライン(歩きシーン完了起点・v0.25.2114) ──
+  // 歩きシーンはプレイヤー操作で長さ不定のため、従来のmount起点タイマーを「ready かつ 歩き完了」起点に変更。
+  // ?opening=2はwalkDone初期値true=従来どおり即開始。?opening=3(蘇生単独)はmount側で処理済み=ここは走らない。
+  // CSSアニメ(アリーナのズーム等)もwalkDoneでツリーがマウントされる=タイマーと起点が揃う(readyゲートと同じ理屈)。
+  useEffect(() => {
+    if (!ready || !walkDone || startAtRevival) return;
+    const ids: number[] = [];
+    const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; a.play().catch(() => {}); } catch { /* ignore */ } };
+    {
       const base = startAtShoot ? 0 : SCENE_START;
       // 「パン!」のSE(社長指示v0.25.2040): 紙吹雪の発射と、射撃シーンの発砲に【同じ音=handgun-fire】。
       // 音声未解禁のURLプレビューでは鳴らない(本番=更新情報OKのジェスチャ後は鳴る)。
@@ -370,7 +407,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         // アリーナ2音源(歓声+曲)は【パン!の後】に立ち上げる(社長指示v0.25.2048: パン!→歓声の順)。
         // 場面転換の直前に短フェードで止める(ブツ切りポップ防止)。
         // 自動再生がブロックされる環境(ジェスチャ無しのプレビュー等)では黙って無音のまま進める。
-        audioRef.current = ARENA_AUDIO.map(src => { const a = new Audio(src); a.loop = true; a.preload = 'auto'; return a; });
+        // アリーナ2音源はmount時に生成+解錠済み(v0.25.2114)。ここでは再生開始だけ。
         ids.push(window.setTimeout(() => { audioRef.current.forEach(a => { a.play().catch(() => {}); }); }, 1400));
         [0.66, 0.33, 0.12].forEach((v, k) => {
           ids.push(window.setTimeout(() => audioRef.current.forEach(a => { a.volume = v; }), SCENE_START - 450 + k * 150));
@@ -387,11 +424,52 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       // 射撃シーンが暗転し切ったら【蘇生処置パート(phase4)】へ切替→そのまま字幕会話を再生し、
       // 最後に finish()(旧: ここで直接 finish していたのを差し替え)。?opening=2 もこの経路で蘇生まで流れる。
       ids.push(window.setTimeout(() => setPhase(4), base + SHOOT_TOTAL));
-      scheduleRevival(base + SHOOT_TOTAL);
-    });
-    return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
+      scheduleRevival(base + SHOOT_TOTAL, ids);
+    }
+    return () => { ids.forEach(id => window.clearTimeout(id)); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready, walkDone]);
+
+  // ── 歩きシーンの駆動(v0.25.2114): 押している間だけ右へ。rAFでrefのDOMを直接更新(60fpsのsetStateを避ける) ──
+  useEffect(() => {
+    if (!ready || walkDone) return;
+    let raf = 0;
+    let worldX = WALK_EDGE_PAD; // キャラ足元中心のbg座標(表示px)
+    let last = performance.now();
+    const key = (e: KeyboardEvent, down: boolean) => {
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') walkHeldRef.current = down;
+    };
+    const kd = (e: KeyboardEvent) => key(e, true);
+    const ku = (e: KeyboardEvent) => key(e, false);
+    window.addEventListener('keydown', kd);
+    window.addEventListener('keyup', ku);
+    const tick = (now: number) => {
+      const dt = Math.min(50, now - last);
+      last = now;
+      const scene = walkSceneRef.current, world = walkWorldRef.current, char = walkCharRef.current;
+      if (scene && world && char) {
+        const sw = scene.clientWidth, sh = scene.clientHeight;
+        const bgH = sh, bgW = sh * WALK_BG_AR; // 舞台は画面の高さいっぱい(横は素材アスペクト)
+        const maxX = bgW - WALK_EDGE_PAD;
+        const moving = walkHeldRef.current;
+        if (moving) worldX = Math.min(maxX, worldX + WALK_SPEED * dt / 1000);
+        const cam = Math.max(0, Math.min(bgW - sw, worldX - sw * WALK_CAM_ANCHOR));
+        world.style.width = `${bgW}px`;
+        world.style.transform = `translateX(${-cam}px)`;
+        char.style.height = `${bgH * WALK_HERO_HR}px`;
+        char.style.left = `${worldX}px`;
+        char.style.top = `${bgH * WALK_FOOT_YR}px`;
+        // 歩きコマ: 動いている間だけ回す(停止中は0コマ目=立ち)。src差し替えはコマ変化時のみ。
+        const fi = moving ? Math.floor(now / WALK_ANIM_MS) % WALK_FRAMES.length : 0;
+        if (char.dataset.f !== String(fi)) { char.dataset.f = String(fi); char.src = WALK_FRAMES[fi]; }
+        if (worldX >= maxX - 0.5) { setWalkDone(true); return; } // 右端到達=アリーナへ
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); };
+  }, [ready, walkDone]);
+
 
   const css =
     SHOTS.map((s, i) => `@keyframes opzoom${i}{from{transform:scale(${s.zf})}to{transform:scale(${s.zt})}}`).join('\n') +
@@ -426,7 +504,30 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     >
       <style>{css}</style>
 
-      {!ready ? null : phase < 3 ? (
+      {!ready ? null : !walkDone ? (
+        // ── 楽屋通路の歩きシーン(アリーナ前・v0.25.2114): 左端からフェードイン→押している間だけ右へ歩く。
+        //    タップは歩行操作なのでOPスキップ(root onClick)へは伝播させない。 ──
+        <div
+          ref={walkSceneRef}
+          onClick={e => e.stopPropagation()}
+          onPointerDown={e => { e.stopPropagation(); walkHeldRef.current = true; }}
+          onPointerUp={() => { walkHeldRef.current = false; }}
+          onPointerCancel={() => { walkHeldRef.current = false; }}
+          onPointerLeave={() => { walkHeldRef.current = false; }}
+          style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#000', touchAction: 'none', cursor: 'default' }}
+        >
+          <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
+            <img src={WALK_BG} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />
+            <img
+              ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false}
+              style={{
+                position: 'absolute', transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
+                animation: `opfade ${WALK_FADEIN_MS}ms ease-out both`, // 開始時フェードイン(社長指示)
+              }}
+            />
+          </div>
+        </div>
+      ) : phase < 3 ? (
         // ── アリーナ3アングル(即表示ハードカット・社長指示v0.25.2072)。key=アングル番号で
         //    切替時に再マウント=各アングルのズームは表示の瞬間から開始。 ──
         <>
@@ -706,8 +807,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         </div>
       )}
 
-      {/* アリーナ→射撃シーン間の暗転(phase<3の間だけ重ねる。phase3は上の分岐ごと消えるのでカットで明ける) */}
-      {ready && phase < 3 && !startAtShoot && (
+      {/* アリーナ→射撃シーン間の暗転(phase<3の間だけ重ねる。phase3は上の分岐ごと消えるのでカットで明ける)
+          walkDone必須(v0.25.2114): 歩きシーン中にマウントするとCSSの遅延が歩き中に消化されて
+          アリーナ開幕が真っ黒になる(実測でハマった罠。CSS起点はアリーナツリーと同時マウントが原則)。 */}
+      {ready && walkDone && phase < 3 && !startAtShoot && (
         <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 50, pointerEvents: 'none', animation: `opblack ${BLACK_MS}ms linear ${BLACK_START}ms both` }} />
       )}
 
