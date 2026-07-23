@@ -54,10 +54,15 @@ const BACK_DEPTH = 4200; // もっと奥に(社長指示v0.25.2084→2088・旧2
 const BACK_ALPHA = 0.9; // 距離フォグに沈めない(窓は光っている=闇の中の目標物)
 // 奥壁のサイズは【柱の高さ基準】(v0.25.2091): 旧・通路幅基準は柱を左右に広げるたび壁が巨大化して
 // 柱の高さと乖離した(社長報告)。高さ=同じ奥行きの柱×倍率・幅はアスペクト従属=通路幅と独立。
-// v0.25.2095: 横延長版素材(ガラス=素材高の約42%・旧素材は約60%)へ入れ替え。ガラスの見た目の高さを
-// 旧と同じに保つ換算=0.95×(0.60/0.42)≒1.36。
-const BACK_H_MULT = 1.36;
-const BACK_GLASS_CY = 0.51; // ガラス(窓)中心の高さ(素材高の上からの比率・月明かりのアンカー)
+// v0.25.2099(社長診断どおり): 横延長版素材は「シーン全体」の絵で、壁の実体はキャンバスの
+// 上18%〜下91.5%の帯だけ(上=真っ黒の虚空・下=虚空。ピクセル計測)。キャンバス全体を描くと
+// 黒余白ぶん壁が上下に縮んで見え、天井との間・月明かり光溜まりとの間に隙間が出ていた。
+// →ソース矩形を壁の実体だけに切り出して描く。倍率は【壁の実体の高さ】基準に再定義:
+// 天井ライン(奥壁の奥行きでの天井の縁 s×denomC≒画面高0.205)を少し越えて届く1.40。
+const BACK_SRC_TOP_R = 0.18;   // 壁コンテンツの上端(素材高比・計測値)
+const BACK_SRC_BOT_R = 0.915;  // 壁コンテンツの下端(同)
+const BACK_H_MULT = 1.40;      // 壁コンテンツの表示高=柱の高さ×この倍率
+const BACK_GLASS_CY = 0.45; // ガラス(窓)中心の高さ(切り出し後コンテンツ高の上からの比率。全高0.51→(0.51-0.18)/0.735)
 
 const MansionCorridorPreview: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -204,9 +209,8 @@ const MansionCorridorPreview: React.FC = () => {
           const fx = W / 2 - fw / 2;
           // 天井専用フェード(v0.25.2094): 柱用の式(s-0.12)/0.5だと天井のsレンジ(0〜0.29)では
           // ほぼ黒に潰れて「表示されていない」見え方になっていた(社長報告)。天井のレンジで正規化。
-          // v0.25.2098: 下限0.05→0.02=奥壁の上端(s≒0.10)での明度0.30→0.49。天井が奥まで届き
-          // 奥壁との間の「暗い隙間」を詰める(社長指示「もう少し奥まで・少しでいい」)。
-          const fade = Math.max(0, Math.min(0.85, (s - 0.02) / 0.16));
+          // (v0.25.2098で下限0.02に下げたが、隙間の真因は奥壁側の黒余白だったためv0.25.2099で0.05へ戻した)
+          const fade = Math.max(0, Math.min(0.85, (s - 0.05) / 0.16));
           const w = dofFar(d0);
           const drawCeilSlice = (tex: HTMLImageElement, alpha: number) => {
             if (alpha <= 0.02 || !tex.naturalWidth) return;
@@ -277,17 +281,20 @@ const MansionCorridorPreview: React.FC = () => {
         if (!b.naturalWidth) return;
         const s = CORRIDOR_CFG.focal / (CORRIDOR_CFG.focal + BACK_DEPTH);
         const footY = H * CORRIDOR_CFG.horizonYr + (H * CORRIDOR_CFG.footYr - H * CORRIDOR_CFG.horizonYr) * s;
-        const bh = H * CORRIDOR_CFG.pillarHr * s * BACK_H_MULT; // 柱の高さ基準(通路幅と独立)
-        const bw = (b.naturalWidth / b.naturalHeight) * bh;
+        // 壁の実体(黒余白を除いた帯)だけをソース矩形で切り出して描く(v0.25.2099)。
+        const srcY = b.naturalHeight * BACK_SRC_TOP_R;
+        const srcH = b.naturalHeight * (BACK_SRC_BOT_R - BACK_SRC_TOP_R);
+        const bh = H * CORRIDOR_CFG.pillarHr * s * BACK_H_MULT; // 壁コンテンツの表示高(柱の高さ基準)
+        const bw = (b.naturalWidth / srcH) * bh;                 // 幅は切り出し後アスペクト従属=歪みなし
         const bx = W / 2 - bw / 2, by = footY - bh;
         // 奥壁は常に遠方=強ブラー版(farblur)とクロスフェード(v0.25.2090)。
         const w = dofFar(BACK_DEPTH);
         ctx.globalAlpha = BACK_ALPHA * (1 - w);
-        ctx.drawImage(b, bx, by, bw, bh);
+        ctx.drawImage(b, 0, srcY, b.naturalWidth, srcH, bx, by, bw, bh);
         if (imgs.bF.naturalWidth) {
-          const k = bw / b.naturalWidth; // 表示スケール(ブラー版はpadぶん大きい)
+          // ブラー版はpadぶん大きいキャンバス=同じ帯をpadオフセットで切り出す。
           ctx.globalAlpha = BACK_ALPHA * w;
-          ctx.drawImage(imgs.bF, bx - FAR_BLUR_PAD * k, by - FAR_BLUR_PAD * k, imgs.bF.naturalWidth * k, imgs.bF.naturalHeight * k);
+          ctx.drawImage(imgs.bF, FAR_BLUR_PAD, FAR_BLUR_PAD + srcY, b.naturalWidth, srcH, bx, by, bw, bh);
         }
         // 月明かり(社長指示v0.25.2092・v0.25.2095で新素材のガラス位置へ再アンカー):
         // ①窓まわりのグロー ②手前下への淡い光条 ③床の光溜まり。
