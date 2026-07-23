@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.2105 — ステージ6「洋館・奥行き通路」をゲーム本体に統合(とりあえず版)【2026-07-23 18:32 JST】
+- 指示(社長): プレイヤーや敵は真ん中寄りで、とりあえずステージ6に配置してみよう+敵は上(奥)中心・一部下・左右は湧かない(壁)。
+- 実装(Opusサブエージェント・設計=このチャット): stage-6メイン出撃で通路モード(再訪/屋内/ベンチ/フリーは対象外)。
+  - `corridorProjection.ts`: `projectCorridorEntity()`+定数(PLAYER_VIEW_DEPTH=420 / CORRIDOR_LATERAL_CLAMP=260 / スケール×2.0)。テスト4本追加(±260端=柱ライン一致等・計10本pass)。
+  - `gameStore.ts`: corridorMode/pendingCorridor。木/トーチ/緑卵無効化+湧きゲート設定。プレイヤー横移動を±260にクランプ(壁解決後・横のみ。敵は非クランプ=とりあえず)。
+  - `enemyUtils.ts`: `setCorridorSpawn()`+`CORRIDOR_SPAWN_TOP_RATIO=0.7`(上7:下3叩き台)。generateEnemy一箇所で新規湧き/リサイクル両対応。左右湧き禁止。
+  - `corridorLayer.ts`(新規)+`pixiScene.ts`: プレビューのPixi移植(床/天井=Mode-7メッシュ・柱/燭台プール+2段DOF・壁灯グロー揺らぎ・奥壁帯切り出し+月明かり)。corridorMode時はworldGroupを隠し通路+スクリーン座標エンティティ(プレイヤー/敵/弾)を描画。OFFは完全従来動作。
+- 検証(設計チャット): typecheck pass・corridorProjection(10)+constitution(13)全pass・実写=stage-6でプレイヤー投影+奥から敵湧きを確認・stage-1リグレッションなし(護衛NPC/森テーマ正常)。playtestの2failは既存(grantMeleeKillRewardsのwindow参照・base再現確認済=本変更と無関係)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩)に非抵触(湧き数・敵種・AI・当たり判定は不変=位置の振り分けと描画のみ)。
+- 負荷: 5〜6/10(壁灯の加算グロー約30枚が主犯=CLAUDE.mdの「強glow最重」該当)。対策候補=同時数キャップ/半径縮小(未実装・実機FPS見て判断)。
+- 既知の割り切り(とりあえず版): 護衛NPC/pickup/effect等は通路では非表示。弾は黄色い円で代用。床/天井のDOFブラー未移植。スクリプト湧き(ボス等)は方向ゲート外。通常worldのsyncは隠すだけで走行(二重CPU・将来間引き)。
+- ★未決(社長裁定待ち): ①起動時に手前の柱ペアが画面直下に来る位相(travel=0)をずらすか ②敵も±260にクランプするか ③フリー周回のstage-6もcorridorにするか ④叩き台数値(上7:下3・視点深度420・±260・スケール2.0) ⑤奥へ進んだ先のゴール(ボス/イベント/距離)。
+- Files: `src/App.tsx`, `src/store/gameStore.ts`, `src/utils/{corridorProjection.ts,corridorProjection.test.ts,enemyUtils.ts}`, `src/pixi/{corridorLayer.ts(新規),pixiScene.ts}`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2104 — OP明けBGMを必ず曲頭から(途中再開バグ修正)【2026-07-23 18:28 JST】
 - 報告(社長): 蘇生シーンのBGM、途中から再生されちゃう。最初から流して。
 - 診断: タイトル曲が過去に再生済み(OP再視聴・タイトル画面経由等)だと、bgm要素のsrcが同一のためsetBgmScene('menu')→setBgmTrackの再ロード(=曲頭リセット)が走らず、停止位置のcurrentTimeから途中再開する構造。

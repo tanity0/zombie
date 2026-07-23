@@ -50,6 +50,8 @@ import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, 
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
+import { CorridorLayer } from './corridorLayer';
+import { projectCorridorEntity, CORRIDOR_TRAVEL_OFFSET, CORRIDOR_ENTITY_SCALE_BOOST } from '../utils/corridorProjection';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
   RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
@@ -1263,6 +1265,11 @@ export class PixiScene {
 
   private pickups = new Map<string, PickupView>();
   private projectiles = new Map<string, Graphics>();
+  // ステージ6(洋館・奥行き通路)。corridorMode の間だけ表示する遠景レイヤーと、エンティティを
+  // 通路投影で描く screen座標レイヤー(=通常のトップダウン world を隠して差し替える)。とりあえず統合v0.25.2105。
+  private corridorLayer: CorridorLayer | null = null;
+  private corridorEntityLayer = new Container();
+  private corridorEntitySprites = new Map<string, Sprite>();
   // 設置型シールドは actorLayer に置いて足元Yでy-sort(上部はキャラ被り)。
   private shieldViews = new Map<string, { container: Container; sprite: Sprite }>();
   // 設置型デコイ: 射程サークル(Graphics)+ 装置スプライト。
@@ -2220,6 +2227,16 @@ export class PixiScene {
     // 森上霧: 最前面・最下部。手前の森に被る低い霧。
     mkFog(this.frontBankLayer, getFogTexture(), FOG_TOP_ALPHA,
       { yFrac: 0.92, widthFrac: 2.2, heightFrac: 0.46, ampX: 18, ampY: 8, spdX: 0.00036, spdY: 0.0004, flow: 0.020, ph: 0.7 });
+
+    // ステージ6(洋館・奥行き通路)。遠景レイヤーとエンティティ投影レイヤーは stage 直下=カメラ非依存
+    // (screen座標)。frontForest より上・uiLayer(HUD/フラッシュ/ヴィネット)より下に置くため、追加後に
+    // uiLayer を最前へ戻す。corridorMode の間だけ visible=true(下の syncCorridor が切替)。
+    this.corridorLayer = new CorridorLayer();
+    this.corridorEntityLayer.sortableChildren = true; // 近い(scale大)ほど手前=zIndex で並べ替え
+    this.corridorEntityLayer.eventMode = 'none';
+    this.corridorEntityLayer.visible = false;
+    this.L.stage.addChild(this.corridorLayer.container, this.corridorEntityLayer);
+    this.L.stage.addChild(this.L.uiLayer); // 既存child(uiLayer)を最前へ移動=重なり順を維持
   }
 
   resize(w: number, h: number) {
@@ -3981,6 +3998,104 @@ export class PixiScene {
     this.syncRhythmScreenFx(s.rhythm, now);
     this.syncRhythmOverlay(s.rhythm, s.player, now);
     this.syncFireflies(s.camera, now);
+    this.syncCorridor(s, now); // ステージ6(洋館・奥行き通路)。corridorMode時のみ表示・通常worldを差し替え
+  }
+
+  // ステージ6(洋館・奥行き通路)の表示切替+遠景/エンティティ描画(とりあえず統合v0.25.2105)。
+  // corridorMode の間だけ通常のトップダウン world(と遠景/近景森)を隠し、通路遠景+エンティティ投影を出す。
+  // corridorMode=false の時は完全に従来どおり(worldGroupを表示に戻すだけ・他レイヤーは syncLab 等に委ねる)。
+  private syncCorridor(s: ReturnType<typeof useGameStore.getState>, now: number) {
+    const on = s.corridorMode;
+    if (on) {
+      // 通常world/遠景/近景森を隠す(worldGroupは自分が所有=毎フレーム確定)。
+      this.L.worldGroup.visible = false;
+      this.L.farBackdrop.visible = false;
+      this.L.frontForest.visible = false;
+    } else {
+      // 通常時: worldGroupを表示へ戻す。farBackdrop/frontForest は syncLab が毎フレーム設定済み=触らない。
+      this.L.worldGroup.visible = true;
+    }
+    if (this.corridorLayer) this.corridorLayer.container.visible = on;
+    this.corridorEntityLayer.visible = on;
+    if (!on) {
+      if (this.corridorEntitySprites.size) this.clearCorridorEntities(); // OFFへ切替時にプールを空に(リーク防止)
+      return;
+    }
+    const W = this.screenW, H = this.screenH;
+    // 前進量: 上(yが減る方向)へ進むと通路を前進。プレイヤーは原点(y=0)開始=travel≒0スタート。
+    const travel = CORRIDOR_TRAVEL_OFFSET - s.player.y;
+    this.corridorLayer?.update(travel, W, H, now);
+    this.syncCorridorEntities(s, W, H);
+  }
+
+  // エンティティ(プレイヤー/敵/弾)を通路投影で描く(renderer専用・描画のみ=当たり判定/AIは平面2Dのまま不変)。
+  // 素材は通常描画と同じ getTexture を流用。プールは mark-and-sweep。最小: プレイヤー+敵+弾(社長指示)。
+  private syncCorridorEntities(s: ReturnType<typeof useGameStore.getState>, W: number, H: number) {
+    const playerCY = s.player.y + s.player.height / 2;
+    const seen = new Set<string>();
+    // プレイヤー(自分の視深 d=PLAYER_VIEW_DEPTH に写る=画面中央寄り・下)。
+    if (s.player.health > 0) {
+      const p = s.player;
+      const tex = getTexture(playerTextureName(p, 0, false)) ?? getTexture('player');
+      if (tex) {
+        const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
+        this.drawCorridorEntity('pl', tex, p.x + p.width / 2, p.y + p.height / 2, playerCY,
+          PLAYER_ART_BASE_W, W, H, flip, false, 0xffffff);
+        seen.add('pl');
+      }
+    }
+    // 敵(通常アトラス=stage-6は差し替えなし)。足元ボックスの表示幅を素の大きさに使う。
+    for (const e of s.enemies) {
+      const tex = getTexture(e.type);
+      if (!tex) continue;
+      const fb = enemyFootBox(e);
+      const flip = (e.vx ?? 0) < 0; // とりあえず=速度x符号で左右反転(通常描画の facingLeft 相当の簡易版)
+      const id = 'e:' + e.id;
+      if (this.drawCorridorEntity(id, tex, e.x + e.width / 2, e.y + e.height / 2, playerCY,
+        fb.boxW, W, H, flip, false, 0xffffff)) seen.add(id);
+    }
+    // 弾(とりあえず=柔らかい円を黄色く色付けした点で代用)。中心アンカー・非加算(オーバードロー回避)。
+    const circ = getCircleTexture();
+    if (circ) for (const pj of s.projectiles) {
+      const id = 'pj:' + pj.id;
+      const normW = Math.max(10, pj.width * 1.6);
+      if (this.drawCorridorEntity(id, circ, pj.x + pj.width / 2, pj.y + pj.height / 2, playerCY,
+        normW, W, H, false, true, 0xffe680)) seen.add(id);
+    }
+    // sweep(消えたエンティティのスプライトを破棄)。
+    for (const [id, sp] of this.corridorEntitySprites) {
+      if (!seen.has(id)) { sp.destroy(); this.corridorEntitySprites.delete(id); }
+    }
+  }
+
+  // 1エンティティを通路投影で配置(戻り値=描画したか。カリング時false)。center=true で中心アンカー(弾)。
+  private drawCorridorEntity(
+    id: string, tex: Texture, centerX: number, centerY: number, playerCY: number,
+    normalW: number, W: number, H: number, flip: boolean, center: boolean, tint: number,
+  ): boolean {
+    const v = projectCorridorEntity(centerX, centerY, playerCY, W, H);
+    let sp = this.corridorEntitySprites.get(id);
+    if (!v.visible) { if (sp) sp.visible = false; return false; }
+    if (!sp) {
+      sp = new Sprite();
+      this.corridorEntityLayer.addChild(sp);
+      this.corridorEntitySprites.set(id, sp);
+    }
+    sp.visible = true;
+    sp.texture = tex;
+    sp.anchor.set(0.5, center ? 0.5 : 1); // キャラ=足元アンカー / 弾=中心
+    sp.tint = tint;
+    // 表示スケール: 素の表示幅(normalW)を s×2.0 で縮尺=プレイヤー視深(s=0.5)で等倍。
+    const sc = (normalW / tex.width) * v.scale * CORRIDOR_ENTITY_SCALE_BOOST;
+    sp.scale.set(flip ? -sc : sc, sc);
+    sp.position.set(v.x, v.y);
+    sp.zIndex = v.scale; // 近い(s大)ほど手前
+    return true;
+  }
+
+  private clearCorridorEntities() {
+    for (const [, sp] of this.corridorEntitySprites) sp.destroy();
+    this.corridorEntitySprites.clear();
   }
 
   // ---- 四神舞(リズム)UI: ミラーボール + 左右サークル + 矢印プロンプト -------
@@ -10666,6 +10781,11 @@ export class PixiScene {
   destroy() {
     try { this.labRT?.destroy(true); } catch { /* ignore */ }
     this.labRT = null;
+    // ステージ6(洋館通路)の遠景+エンティティ投影レイヤーを解放。
+    try { this.clearCorridorEntities(); } catch { /* ignore */ }
+    try { this.corridorEntityLayer.destroy({ children: true }); } catch { /* ignore */ }
+    try { this.corridorLayer?.destroy(); } catch { /* ignore */ }
+    this.corridorLayer = null;
     for (const e of this.trees.values()) e.sprite.destroy();
     for (const e of this.cityPropObjs.values()) e.sprite.destroy();
     for (const v of this.enemies.values()) {

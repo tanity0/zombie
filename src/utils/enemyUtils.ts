@@ -6,6 +6,15 @@ import { normalizeChaffMix, type ChaffMix } from './chaffMix';
 export const OFFSCREEN_SPAWN_MARGIN = 140;    // ビュー矩形の外側この距離で湧く(全辺一律)
 export const OFFSCREEN_RECYCLE_MARGIN = 240;  // ビュー矩形の外側この距離を超えたら画面外送り(湧き直し)。社長指示で 420→240=すぐ回収
 
+// ステージ6(洋館・奥行き通路)の湧き方向ゲート(社長指示・とりあえず統合v0.25.2105)。
+// trueの間、通常湧き(generateEnemy=新規湧き+距離リサイクルの両方)は「上(奥)主体・一部下(手前)」から
+// のみ湧かせ、左右(=壁)からは湧かせない。setTreesDisabled 等と同じく resetGame が毎ラン設定する。
+// 湧き数・敵種・AI・当たり判定は不変(=位置の左右→上下振り分けだけ)。
+let corridorSpawnEnabled = false;
+export const setCorridorSpawn = (enabled: boolean): void => { corridorSpawnEnabled = enabled; };
+// 上(奥)から湧く比率(叩き台=上7:下3)。定数化して調整可能に(社長指示)。
+export const CORRIDOR_SPAWN_TOP_RATIO = 0.7; // 叩き台
+
 // Mad-Forest port: a stat sheet per enemy type. Difficulty multiplier scales
 // the base values over time so a 25-minute zombie has more HP than a 1-minute
 // zombie, mirroring how VS ramps. Spawn weights for each type live in the
@@ -446,7 +455,11 @@ export const generateEnemy = (
     ? Math.hypot(pressureDirection.x, pressureDirection.y)
     : 0;
   let spawnSide = Math.floor(Math.random() * 4);
-  if (dirMag > 0.25 && Math.random() < 0.34) {
+  if (corridorSpawnEnabled) {
+    // 洋館通路: 左右(壁)からは湧かせない。上(奥=side0)主体・一部下(手前=side2)。
+    // pressureDirection(移動方向バイアス)は無視=通路の向きに固定。上下端の散布(x/y)は従来式を流用。
+    spawnSide = Math.random() < CORRIDOR_SPAWN_TOP_RATIO ? 0 : 2;
+  } else if (dirMag > 0.25 && Math.random() < 0.34) {
     const nx = pressureDirection!.x / dirMag;
     const ny = pressureDirection!.y / dirMag;
     spawnSide = Math.abs(nx) > Math.abs(ny)

@@ -57,7 +57,8 @@ import {
   QUEST_NAMED_AGGRO_RANGE,
 } from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn } from '../utils/enemyUtils';
+import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
@@ -2645,6 +2646,11 @@ interface GameState {
   lastKomaAssessmentInput: KomaAssessmentInput | null;
   // 屋内(研究施設)ステージ
   indoorMode: boolean;                                  // 屋内マップ(壁/カメラクランプ/湧き抑制)有効か
+  // ステージ6(洋館・奥行き通路)。true の間: 横移動を ±CORRIDOR_LATERAL_CLAMP に拘束し、
+  // 木/トーチ/緑卵を出さず、湧きは上(奥)主体、描画は通路投影(pixiScene/corridorLayer)。とりあえず統合v0.25.2105。
+  corridorMode: boolean;
+  pendingCorridor: boolean;                             // 出撃が洋館通路(stage-6メイン)か(startGame→resetGame で受け渡し)
+  setPendingCorridor: (on: boolean) => void;
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
   labButtons: LabButton[];                              // ボタン(押下状態)
   labProps: LabProp[];                                  // 障害物プロップ(木の代わり・当たり判定あり)
@@ -2939,6 +2945,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   wallEventSeq: 0,
   lastKomaAssessmentInput: null,
   indoorMode: false,
+  corridorMode: false,
+  pendingCorridor: false,
   labDoors: [],
   labButtons: [],
   labProps: [],
@@ -3184,6 +3192,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           const half = player.height / 2;
           newY = Math.max(-TUTORIAL_MOVE_Y_LIMIT_PX - half, Math.min(TUTORIAL_MOVE_Y_LIMIT_PX - half, newY));
           newX = Math.max(TUTORIAL_MOVE_X_MIN_PX - player.width / 2, newX);
+        }
+        // 洋館通路(corridorMode): プレイヤー中心xを ±CORRIDOR_LATERAL_CLAMP(world px)に拘束する
+        // (柱ライン=移動境界。renderer側の横写像Kと同じ値を共有)。敵は拘束しない(とりあえず)。
+        // 横のみ・壁解決の後・囲いクランプの前(社長指示・とりあえず統合v0.25.2105)。
+        if (state.corridorMode) {
+          const halfW = player.width / 2;
+          newX = Math.max(-CORRIDOR_LATERAL_CLAMP - halfW, Math.min(CORRIDOR_LATERAL_CLAMP - halfW, newX));
         }
       }
       // 囲い系イベント中はプレイヤーを円(囲い)の内側へ拘束(円コリジョン)。壁解決の後に最終クランプ。
@@ -8847,6 +8862,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingIndoor: (indoor) => {
     set({ pendingIndoor: indoor });
   },
+  setPendingCorridor: (on) => {
+    set({ pendingCorridor: on });
+  },
   setPendingStageTheme: (theme) => {
     set({ pendingStageTheme: theme });
   },
@@ -9761,14 +9779,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       const stageTheme: StageTheme = (!state.danceTestMode && state.pendingStageTheme === 'lab') ? 'lab' : 'forest';
       // 遠景差し替え(forestテーマの距離パノラマのみ。ダンステスト/labでは無効)。
       const farBackdrop = (!state.danceTestMode && stageTheme === 'forest') ? state.pendingFarBackdrop : '';
+      // ステージ6(洋館・奥行き通路)。stage-6メイン出撃(App側で pendingCorridor をゲート済み)かつ
+      // ダンステスト/屋内/再訪でないときだけ有効(とりあえず統合v0.25.2105・社長指示)。
+      const corridorMode = state.pendingCorridor && !state.danceTestMode && !indoor && !state.pendingRevisit;
       // ステージ5(戦場)=残骸プロップに置換・チュートリアル(洞窟)=木なし(社長指示2026-07-17)。
       // world層のゲートを毎ラン設定(描画/幹当たり/配置回避が treesInRegion 経由で一括に空になる)。
-      setTreesDisabled(farBackdrop === 'stage5' || farBackdrop === 'tutorial');
+      // 洋館通路も木/トーチ/緑卵を出さない(社長指示)。
+      setTreesDisabled(farBackdrop === 'stage5' || farBackdrop === 'tutorial' || corridorMode);
       // チュートリアル: 松明(破壊可能プロップ=資材ドロップ源)も出さない(社長指示v0.25.1818
       // 「アイテムも通常NPCも何もかも無し。全てイベントで特別仕様のみ」)。
-      setTorchesDisabled(farBackdrop === 'tutorial');
+      setTorchesDisabled(farBackdrop === 'tutorial' || corridorMode);
       // チュートリアル: 緑卵(地雷)のワールド生成も出さない(社長指示v0.25.1820「緑卵も非表示」)。
-      setMinesDisabled(farBackdrop === 'tutorial');
+      setMinesDisabled(farBackdrop === 'tutorial' || corridorMode);
+      // 洋館通路の湧き方向ゲート(上=奥 主体・左右は湧かせない)。generateEnemy が参照(新規/リサイクル両方)。
+      setCorridorSpawn(corridorMode);
       // 遠景森2(手前の帯)は forest/lab どちらでも有効(ダンステストのみ無効)。lab は機材シルエット帯。
       const nearHorizon = !state.danceTestMode ? state.pendingNearHorizon : '';
       // 裏ボス(深層域)。屋外(非ラボ/非屋内)・非ダンステストのときだけ有効。
@@ -9844,6 +9868,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return {
         unlockedShopSkillCards: runShopUnlocks,
         indoorMode: indoor,
+        corridorMode,
         stageTheme,
         farBackdrop,
         nearHorizon,

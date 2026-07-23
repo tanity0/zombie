@@ -162,6 +162,10 @@ function App() {
     // 洋館［SUB］再訪(統合正本9章): selectedMission='revisit' かつ stage-6 の出撃だけ再訪ラン。
     const revisitRun = !benchmark && !getSelectedFreeMode()
       && getSelectedMission() === 'revisit' && stageForRun?.id === 'stage-6';
+    // ステージ6(古い洋館)メイン出撃=奥行き通路モード(とりあえず統合v0.25.2105・社長指示)。
+    // 再訪(SUB)・屋内・ベンチ・フリー周回は対象外。resetGame が pendingCorridor から corridorMode を決める。
+    const corridorRun = !benchmark && !getSelectedFreeMode()
+      && stageForRun?.id === 'stage-6' && !revisitRun && !stageForRun?.indoor;
     // stage-7 は本編M7(グレン戦・climax)。通常プレイは導入会話+グレン戦を出す。cine映像の実験台(?cine=1)の時だけ
     // イベントを止めてクリーンに確認できるようにする(社長指示v0.25.1876/1879)。
     // ※storyBossOnly は cine でも維持する=stage-7 を「storyBossステージ」のまま(通常湧き無し・護衛NPC無し)。
@@ -177,6 +181,7 @@ function App() {
     useGameStore.getState().setPendingSuppression(stageForRun?.mainEvent === 'suppression');
     useGameStore.getState().setPendingStoryBoss(!benchmark && !!stageForRun?.storyBossOnly);
     useGameStore.getState().setPendingRevisit(revisitRun);
+    useGameStore.getState().setPendingCorridor(corridorRun);
     useGameStore.getState().setPendingHiddenBoss(stageForRun?.hiddenBoss ?? null);
     resetGame(validClass);
     clearSfxThrottle(); // ラン開始でSEスロットル記録をリセット(前ランの終わり際の音が次ラン頭でブロックされるのを防ぐ)
