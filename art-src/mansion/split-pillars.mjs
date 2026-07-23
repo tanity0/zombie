@@ -22,24 +22,11 @@ const result = await page.evaluate(async ({ b64, TOL }) => {
   const d = ctx.getImageData(0, 0, W, H);
   const p = d.data;
   const bg = [p[0], p[1], p[2]];
+  // 全画素グローバルキー(v0.25.2081): 境界フラッドフィルだと「閉じた隙間」(天使の楽器と体の間・
+  // 羽と柱の間など)に紫が残る(社長報告)。この素材はアート側に紫系が無いのでグローバルキーが安全。
   const isBg = (i4) => Math.abs(p[i4] - bg[0]) < TOL && Math.abs(p[i4 + 1] - bg[1]) < TOL && Math.abs(p[i4 + 2] - bg[2]) < TOL;
-  // 境界フラッドフィル(外側の紫だけ透過。アート内部の似色は残す)。
-  const seen = new Uint8Array(W * H);
-  const stack = [];
-  for (let x = 0; x < W; x++) { stack.push(x, (H - 1) * W + x); }
-  for (let y = 0; y < H; y++) { stack.push(y * W, y * W + W - 1); }
-  while (stack.length) {
-    const idx = stack.pop();
-    if (seen[idx]) continue;
-    seen[idx] = 1;
-    const i4 = idx * 4;
-    if (!isBg(i4)) continue;
-    p[i4 + 3] = 0;
-    const x = idx % W, y = (idx / W) | 0;
-    if (x > 0) stack.push(idx - 1);
-    if (x < W - 1) stack.push(idx + 1);
-    if (y > 0) stack.push(idx - W);
-    if (y < H - 1) stack.push(idx + W);
+  for (let i4 = 0; i4 < p.length; i4 += 4) {
+    if (isBg(i4)) p[i4 + 3] = 0;
   }
   ctx.putImageData(d, 0, 0);
   // 左半分/右半分それぞれの不透明ピクセルのバウンディングボックスを求めて切り出す。
