@@ -49,7 +49,9 @@ const WALK_FOOT_YR = 0.79;      // 足元ライン(bg高さ比)。v0.25.2117「�
 const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ~0.13より少し大きめ=主役・叩き台)
 const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
 const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
-const WALK_FADEIN_MS = 1000;    // 開始時のキャラのフェードイン
+const WALK_FADEIN_MS = 900;     // シーン全体のフェードイン(v0.25.2121: キャラ個別フェード→シーンフェードへ変更)
+const WALK_ENTRY_START_X = -80; // 入場開始位置(bg px・画面外左)。フェードイン中に歩いて入ってくる(社長指示)
+const WALK_ENTRY_STOP_X = 150;  // 入場完了位置(ここで操作をプレイヤーに渡す)
 const WALK_STAGE_Y_OFFSET = -40; // ステージ全体の縦オフセット(px)。v0.25.2116/-50→2117/-100→2118/-70→v0.25.2120「30px下へ」で-40
 // 被写界深度(v0.25.2116「プレイヤーの直ぐ裏からぼかし」): 事前ブラー版bg(walk-stage-bg-blur.png・
 // blur9px焼き込み)を縦グラデマスクで重ねる=壁(奥)はボケ、彼女と歩いている床だけシャープ。
@@ -382,7 +384,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // 見切り発車していた。歩きシーンは自分の素材が揃うまで開始しない(壊れ画像保険の上限12秒)。
     // 本編(アリーナ/射撃)素材は並行ロードし、アリーナ開始条件(mainReady)に組み込む=歩いている間に済む。
     const dec = (srcs: string[]) => srcs.map(src => { const im = new Image(); im.src = src; return im.decode().catch(() => {}); });
-    const walkAssets = startAtShoot ? [] : [WALK_BG, WALK_BG_BLUR, ...WALK_FRAMES];
+    const walkAssets = startAtShoot ? [] : [WALK_BG, WALK_BG_BLUR, ...WALK_FRAMES, HERO]; // HERO=停止中の立ち絵(v0.25.2121)
     const mainAssets = [
       ...SHOTS.map(s => s.bg), ...SHOTS.map(s => s.bgBlur), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
@@ -449,7 +451,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   useEffect(() => {
     if (!ready || walkDone) return;
     let raf = 0;
-    let worldX = WALK_EDGE_PAD; // キャラ足元中心のbg座標(表示px)
+    let worldX = WALK_ENTRY_START_X; // キャラ足元中心のbg座標。画面外左から入場(v0.25.2121)
+    let entering = true;             // 入場中=自動で右へ歩く(操作は無視)。STOP_Xで解放
     let animT = 0;              // 歩きアニメ専用時計(歩行中のみ進む・停止でリセット)。v0.25.2118:
                                 // グローバル時刻基準だと歩き始めが周期の途中コマから始まり反応が変に見えた。
     let last = performance.now();
@@ -469,9 +472,11 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         const sw = scene.clientWidth, sh = scene.clientHeight;
         const bgH = sh, bgW = sh * WALK_BG_AR; // 舞台は画面の高さいっぱい(横は素材アスペクト)
         const maxX = bgW - WALK_EDGE_PAD;
-        const dir = walkDirRef.current; // v0.25.2117: 左右どちらへも歩ける(左端〜右端の範囲内)
+        // 入場中(v0.25.2121): フェードイン中に画面外左から自動で歩き入ってくる。STOP_Xで操作をプレイヤーへ。
+        const dir: 0 | -1 | 1 = entering ? 1 : walkDirRef.current;
+        if (entering && worldX >= WALK_ENTRY_STOP_X) entering = false;
         if (dir !== 0) {
-          worldX = Math.max(WALK_EDGE_PAD, Math.min(maxX, worldX + dir * WALK_SPEED * dt / 1000));
+          worldX = Math.max(entering ? WALK_ENTRY_START_X : WALK_EDGE_PAD, Math.min(maxX, worldX + dir * WALK_SPEED * dt / 1000));
           animT += dt;
         } else animT = 0; // 停止で即リセット=次の歩き出しは必ず0コマ目から
         const cam = Math.max(0, Math.min(bgW - sw, worldX - sw * WALK_CAM_ANCHOR));
@@ -485,11 +490,17 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           char.dataset.face = String(dir);
           char.style.transform = `translate(-50%, -100%) scaleX(${dir}) translateZ(0)`;
         }
-        // 歩きコマ: ピンポン(0→1→2→3→2→1→…・社長指示v0.25.2117)。停止中は0コマ目=立ち。
+        // 歩きコマ: ピンポン(0→1→2→3→2→1→…・社長指示v0.25.2117)。
+        // 停止中は立ち絵(HERO=アリーナと同じ立ちスプライト・社長指示v0.25.2121)。
         // 時計はanimT(歩行中のみ進む)=押した瞬間に0コマ目から歩き出す(v0.25.2118反応改善)。
-        const seq = Math.floor(animT / WALK_ANIM_MS) % (WALK_FRAMES.length * 2 - 2);
-        const fi = dir !== 0 ? (seq < WALK_FRAMES.length ? seq : WALK_FRAMES.length * 2 - 2 - seq) : 0;
-        if (char.dataset.f !== String(fi)) { char.dataset.f = String(fi); char.src = WALK_FRAMES[fi]; }
+        if (dir !== 0) {
+          const seq = Math.floor(animT / WALK_ANIM_MS) % (WALK_FRAMES.length * 2 - 2);
+          const fi = seq < WALK_FRAMES.length ? seq : WALK_FRAMES.length * 2 - 2 - seq;
+          if (char.dataset.f !== String(fi)) { char.dataset.f = String(fi); char.src = WALK_FRAMES[fi]; }
+        } else if (char.dataset.f !== 'idle') {
+          char.dataset.f = 'idle';
+          char.src = HERO;
+        }
         if (worldX >= maxX - 0.5) { setWalkDone(true); return; } // 右端到達=アリーナへ
       }
       raf = requestAnimationFrame(tick);
@@ -549,7 +560,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           onPointerUp={() => { walkDirRef.current = 0; }}
           onPointerCancel={() => { walkDirRef.current = 0; }}
           onPointerLeave={() => { walkDirRef.current = 0; }}
-          style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#000', touchAction: 'none', cursor: 'default' }}
+          style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#000', touchAction: 'none', cursor: 'default', animation: `opfade ${WALK_FADEIN_MS}ms ease-out both` }}
         >
           <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
             <img src={WALK_BG} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />
@@ -562,8 +573,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false}
               style={{
                 // translateZ(0)=iOSのmaskedレイヤーz順バグ対策(v0.25.2063の教訓): DOFマスクの下に潜らせない。
+                // キャラ個別フェードは廃止(v0.25.2121: シーン全体フェード+画面外左から歩き入場へ)。
                 position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated',
-                animation: `opfade ${WALK_FADEIN_MS}ms ease-out both`, // 開始時フェードイン(社長指示)
               }}
             />
           </div>
