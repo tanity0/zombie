@@ -60,13 +60,11 @@ import {
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
-import {
-  mansionPropsInRegion, MANSION_FLOOR_HALF_W, MANSION_PILLAR_DISPLAY_H, MANSION_CANDLE_DISPLAY_H,
-} from '../world/mansionDecor';
 import { getSelectedStageId } from '../data/progress';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H } from '../world/labWalls';
 import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
+import { CorridorLayer } from './corridorLayer';
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------
 // 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
@@ -1029,34 +1027,6 @@ const GROUND_FIRE_VIEWPORT_MARGIN = 120;
 const SMALL_GLOW_SPRITE_RADIUS_MAX = STRONG_GLOW_RADIUS - 1;
 const SMALL_GLOW_RADIUS_SCALE = 0.88;
 const SMALL_GLOW_ALPHA_SCALE = 0.74;
-// ---- ステージ6(洋館・corridorMode)の見た目定数(全て叩き台・世界配置。配置の正は world/mansionDecor.ts) ----
-const MANSION_DARK_COLOR = 0x050508;      // 床(±MANSION_FLOOR_HALF_W)の外側を沈める暗闇の色
-const MANSION_DARK_ALPHA = 1;             // 暗闇の濃さ(1=完全に沈める)
-const MANSION_FLOOR_EDGE_PAD = 8;         // 床/暗闇の描画マージン(px。丸め/ズームの隙間対策)
-// 床の遠近ストリップ(v0.25.2111・社長指示「床もまったく奥行きない」): m0の地面(updatePerspectiveGround)と
-// 同じ「画面行ごとの縦圧縮」を洋館床にも適用する。定数は m0 と共有(GROUND_TILE_SCALE_Y_FAR/NEAR・CURVE)。
-// 横は world 固定(±MANSION_FLOOR_HALF_W)=柱/暗闇との整列を維持。縦の柄はプレイヤー付近(最下行)を
-// world にアンカーし、奥の行ほど圧縮されて多くの床を映す(=奥へ倒れる遠近)。
-const MANSION_FLOOR_STRIP_COUNT = 26;     // ストリップ本数(m0地面と同等の滑らかさ・TilingSprite26枚=安い)
-const MANSION_FLOOR_FAR_DARK = 0.30;      // 最遠行の明度倍率(奥は闇に沈む→上端ビスタへ繋ぐ)
-const MANSION_FLOOR_DARK_BAND = 0.35;     // 暗化を掛ける上端側の帯(t<この値のみ。中段まで暗くしない)
-// 柱/燭台の遠近投影(v0.25.2112・社長指示「奥から迫る感じを柱は再現できてない」):
-// ?corridor=1 プレビューで実証済みの 1/z 式をそのまま使う: s=focal/(focal+d)(d=プレイヤーより奥の距離)。
-// 表示位置=プレイヤー足元から A·(1−s) 上(A=足元→ビスタ下端の手前=漸近的に消失ラインへ収束)、
-// 表示サイズ=s。プレイヤーの高さで等倍・真位置、進むと奥の柱が 1/z の加速でせり出してくる。
-// (経緯: 行マッピング=画面最下端アンカー→プレイヤー周辺まで縮む誤り。screen位置ベースのground
-//  カーブ→画面上端で飽和し奥の柱が同サイズで固まる誤り。1/z 閉形式が正解=プレビューと同じ動き)
-const MANSION_PROP_FOCAL = 420;           // 焦点距離(プレビューCORRIDOR_CFG.focalと同値)
-const MANSION_PROP_MIN_K = 0.07;          // これ未満は描かない(豆粒カット=個数の上限にもなる)
-const MANSION_PROP_QUERY_UP = 2600;       // 奥側の候補列挙範囲(world px。~5ペアが圧縮されて連なる)
-const MANSION_PROP_VANISH_PAD = 20;       // 消失漸近線をビスタ下端よりこの分だけ手前に置く(world px)
-const MANSION_PROP_CONVERGE = 0.3;        // 横の収束率: 奥の柱ほど中央へ寄せる割合(0=平行のまま=奥の柱が手前の柱の真後ろに隠れて連なりが見えない/
-// 1=プレビューと同じ完全1/z=床が平行なのでカーペットの上に立って見える)。0.3=手前の柱の内側に
-// 奥の列がのぞく折衷(石畳の縁の範囲に収まる)。
-const MANSION_CANDLE_GLOW_RADIUS = 36;    // 燭台の炎glow半径(STRONG_GLOW_RADIUS=44未満厳守=安い小glow経路)
-const MANSION_CANDLE_GLOW_TINT = 0xffb45f; // 暖色(松明ライトと同色)
-const MANSION_CANDLE_GLOW_ALPHA = 0.4;    // glowのベースalpha(ゆらぎで脈動)
-const MANSION_CANDLE_FLAME_FRAC = 0.96;   // 炎の位置=表示高さのこの割合だけ足元から上(candle.pngの蝋燭先端)
 const PLAYER_DEATH_FADE_MS = 1000; // 死亡時に立ち絵をフェードアウトする長さ(社長指示=1秒)
 const GROUND_REFLECTION_ENABLED = true;
 const GROUND_REFLECTION_ALPHA = 0.28;
@@ -1255,14 +1225,6 @@ export class PixiScene {
   private propObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
-  // ステージ6(洋館・corridorMode)の見た目(世界配置の素材・v0.25.2108方針)。
-  // mansionGroup=床タイル+左右の暗闇(worldGroup内・遠景森1の下に敷き、毎フレーム world と同じ
-  // カメラオフセットを同期=1:1スクロール)。柱/燭台は木と同じ足元アンカーで actorLayer にy-sort。
-  private mansionGroup: Container | null = null;
-  private mansionFloorStrips: TilingSprite[] = []; // 遠近ストリップ(v0.25.2111。旧: 単一TilingSprite=奥行きなし)
-  private mansionDarkL: Sprite | null = null;
-  private mansionDarkR: Sprite | null = null;
-  private mansionProps = new Map<string, { sprite: Sprite; light: Sprite | null; baseScale: number; footX: number; footY: number }>();
   private enemies = new Map<string, ActorView>();
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プールを使い、シアンtintで描く。
   private summonViews = new Map<string, ActorView>();
@@ -1302,8 +1264,9 @@ export class PixiScene {
 
   private pickups = new Map<string, PickupView>();
   private projectiles = new Map<string, Graphics>();
-  // (v0.25.2108撤去) ステージ6の疑似3D投影レンダリングは社長裁定で廃止=通常のトップダウン描画に戻した。
-  // corridorMode はゲームロジック側(横クランプ/湧きゲート/木無効)のみ。洋館の見た目は世界配置の素材で作る。
+  // ステージ6(洋館): 疑似3D通路の背景レイヤー(v0.25.2113・社長指示「プレビューをまるっと再現」)。
+  // worldGroupの背後に敷く=見た目はプレビュー・ゲームは完全m0のまま上に乗る。
+  private corridorBackdrop: CorridorLayer | null = null;
   // 設置型シールドは actorLayer に置いて足元Yでy-sort(上部はキャラ被り)。
   private shieldViews = new Map<string, { container: Container; sprite: Sprite }>();
   // 設置型デコイ: 射程サークル(Graphics)+ 装置スプライト。
@@ -3896,7 +3859,7 @@ export class PixiScene {
     this.syncLabProps(); // 遮蔽物プロップ(研究所スキン・区画生成。森/屋内では no-op)
     this.syncCityProps(); // ステージ3(廃都)の散布オブジェクト(その他ステージでは no-op)
     this.syncForestFlowers(); // ステージ1(森)の装飾花(その他ステージでは no-op)
-    this.syncMansionCorridor(now); // ステージ6(洋館・corridorMode)の床/暗闇/柱/燭台(その他ステージでは no-op)
+    this.syncCorridorBackdrop(now); // ステージ6(洋館・corridorMode)の疑似3D通路背景(その他ステージでは no-op)
     // 最前面の天井帯: lab=ケーブル帯 / チュートリアル(洞窟)=鍾乳石帯(同仕様・上寄せループ)。
     this.updateLabCeiling(
       s.stageTheme === 'lab' && !s.indoorMode ? 'lab/lab-ceiling-band'
@@ -4864,191 +4827,33 @@ export class PixiScene {
     }
   }
 
-  // ---- ステージ6(洋館・corridorMode)の見た目: 床の縦無限リピート+左右の暗闇+柱/燭台 ----------
-  // 全て「世界配置の素材」(v0.25.2108方針=独自投影・スクリーン座標レイヤーなし)。
-  // 床/暗闇: worldGroup 内・遠景森1(horizonForest)の下=通常ステージの地面と同じ重なり順に敷き、
-  // 毎フレーム world と同じカメラオフセットを同期(danceUiLayer と同じ方式)=1:1スクロール。
-  // 柱/燭台: 木(syncTrees)と同じ足元アンカー(0.5,1)+zIndex=footY+depthScale で actorLayer に
-  // 可視範囲だけ生成/回収(有界カリング)。当たり判定なし(±クランプの外=届かない)。
-  // 燭台の炎は安い小glow経路(pooled additiveスプライト・半径36<STRONG_GLOW_RADIUS)+松明と同じ2周期サインのゆらぎ。
-  // 負荷: TilingSprite1枚+暗闇quad2枚+可視スプライト(柱~8/燭台~6)+小glow数個=2/10(強glow/Text/毎フレGraphicsなし)。
-  private syncMansionCorridor(now: number) {
+  // ---- ステージ6(洋館・corridorMode)の見た目: 疑似3D通路の背景(v0.25.2113) ----------
+  // ?corridor=1 プレビューのPixi移植(corridorLayer)を worldGroup の背後に敷く=見た目はプレビューそのまま
+  // (Mode-7床/天井・1/z柱・壁灯・奥壁+月明かり・事前ブラーDOF)。ゲーム(エンティティ/判定/速度/カメラ)は
+  // 完全m0のまま通常描画で上に乗る(背景のみ・ゲーム状態への書き込みなし)。travel=player.y に1:1連動
+  // =前進すると通路がプレイヤーの速度そのもので流れる。幾何はcorridorLayer側のCFG(footYr=0.744)で
+  // プレイヤー=画面中央前提に再調整済み(プレビューのCORRIDOR_CFGは不変)。
+  private syncCorridorBackdrop(now: number) {
     const s = useGameStore.getState();
-    const active = s.corridorMode && !s.indoorMode;
-    if (!active) {
-      if (this.mansionGroup) this.mansionGroup.visible = false;
-      if (this.mansionProps.size) {
-        for (const [, e] of this.mansionProps) { e.sprite.destroy(); e.light?.destroy(); }
-        this.mansionProps.clear();
-      }
+    const on = s.corridorMode && !s.indoorMode;
+    if (!on) {
+      if (this.corridorBackdrop) this.corridorBackdrop.container.visible = false;
       return;
     }
-    // 画面座標→world座標(現フレームの worldGroup ズーム+world カメラオフセットの逆変換)。
-    // 文脈ズーム最大引き(?zoomlock=1)でも「画面に映る world 範囲」を正確に覆う(CLAUDE.mdズーム引き考慮)。
+    if (!this.corridorBackdrop) {
+      const parent = this.L.worldGroup.parent;
+      if (!parent) return;
+      this.corridorBackdrop = new CorridorLayer();
+      parent.addChildAt(this.corridorBackdrop.container, parent.getChildIndex(this.L.worldGroup)); // worldの直後ろ=背景
+    }
+    this.corridorBackdrop.container.visible = true;
+    // 通路はworld x=0に固定: カメラ(プレイヤー追従)が動いたら背景を逆へ=横移動でカーペットの
+    // 端へ寄れる(通路がプレイヤーに付いてこない)。world x=0の画面位置を実トランスフォームから
+    // 直接求める(ズーム/シェイク込みで正確)。
     const gz = this.L.worldGroup.scale.x || 1;
-    const gx = this.L.worldGroup.position.x, gy = this.L.worldGroup.position.y;
-    const worldXAt = (screenX: number) => (screenX - gx) / gz - this.L.world.position.x;
-    const worldYAt = (screenY: number) => (screenY - gy) / gz - this.L.world.position.y;
-    // 床の上端=通常ステージの地面帯(groundBase)の上端と同じライン(screen farH・zoom追従も同一)。
-    // 上の継ぎ目は遠景森1(horizonForest)が覆う=既存の床と同じ流儀。
-    const topY = this.farBackdropHeight() - this.L.world.position.y;
-    const botY = worldYAt(this.screenH) + MANSION_FLOOR_EDGE_PAD;
-    const bandH = Math.max(0, botY - topY);
-
-    if (!this.mansionGroup) {
-      const group = new Container();
-      // 地面(groundBase)の上・遠景森1(horizonForest)の下に挿入=通常ステージの床と同じ重なり順。
-      this.L.worldGroup.addChildAt(group, this.L.worldGroup.getChildIndex(this.L.horizonForest));
-      const dl = new Sprite(Texture.WHITE);
-      const dr = new Sprite(Texture.WHITE);
-      dl.tint = MANSION_DARK_COLOR; dl.alpha = MANSION_DARK_ALPHA;
-      dr.tint = MANSION_DARK_COLOR; dr.alpha = MANSION_DARK_ALPHA;
-      group.addChild(dl, dr);
-      this.mansionDarkL = dl;
-      this.mansionDarkR = dr;
-      this.mansionGroup = group;
-    }
-    const group = this.mansionGroup;
-    group.visible = true;
-    group.position.copyFrom(this.L.world.position); // world と同じカメラオフセット=1:1スクロール(シェイク込み)
-
-    // 床(mansion/floor.png=中央カーペット+左右石畳)を x∈[-HALF_W,+HALF_W]にマップ+
-    // 【m0と同じ遠近ストリップ】(v0.25.2111): 画面を横帯に分割し、上(奥)の行ほど縦圧縮=奥へ倒れる床。
-    // テクスチャ注入待ちの遅延生成(他のステージ素材と同じ)。NPOT(1254²)なので wrap=repeat を明示。
-    if (!this.mansionFloorStrips.length) {
-      const tex = getTexture('mansion/floor');
-      if (tex) {
-        try {
-          const st = tex.source.style as { addressMode?: string; update?: () => void };
-          if (st.addressMode !== 'repeat') { st.addressMode = 'repeat'; st.update?.(); }
-        } catch { /* ignore */ }
-        for (let i = 0; i < MANSION_FLOOR_STRIP_COUNT; i++) {
-          const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
-          group.addChildAt(sp, 0); // 暗闇quadの下
-          this.mansionFloorStrips.push(sp);
-        }
-      }
-    }
-    if (this.mansionFloorStrips.length) {
-      const tex = this.mansionFloorStrips[0].texture;
-      const sc = (MANSION_FLOOR_HALF_W * 2) / tex.width; // 横: テクスチャ全幅=通路幅(world px/texel)
-      const floorPeriod = tex.height * sc;               // 柄1周のworld距離
-      const farHscr = this.farBackdropHeight();
-      const stripHscr = Math.max(1, (this.screenH - farHscr) / MANSION_FLOOR_STRIP_COUNT);
-      const env = this.envTintNow();
-      const er = (env >> 16) & 0xff, eg = (env >> 8) & 0xff, eb = env & 0xff;
-      // 柄のアンカー: 最下行の下端=world座標そのまま(プレイヤー付近は床とworldが1:1で流れる)。
-      // 上の行ほど 1/scaleY 倍の床を映しながら積み上げる(m0のsourceY累積と同じ考え方・向きが逆なだけ)。
-      let mBottom = botY;
-      for (let i = MANSION_FLOOR_STRIP_COUNT - 1; i >= 0; i--) {
-        const sp = this.mansionFloorStrips[i];
-        const t = MANSION_FLOOR_STRIP_COUNT <= 1 ? 1 : i / (MANSION_FLOOR_STRIP_COUNT - 1); // 0=最遠(上)
-        const persp = Math.pow(t, GROUND_PERSPECTIVE_CURVE);
-        const scaleY = GROUND_TILE_SCALE_Y_FAR + (GROUND_TILE_SCALE_Y_NEAR - GROUND_TILE_SCALE_Y_FAR) * persp;
-        const wTop = worldYAt(farHscr + i * stripHscr);
-        const wH = stripHscr / gz + 1; // +1px重ね=行間の隙間防止
-        sp.position.set(-MANSION_FLOOR_HALF_W, wTop);
-        sp.width = MANSION_FLOOR_HALF_W * 2;
-        sp.height = wH;
-        sp.tileScale.set(sc, sc * scaleY);
-        const mTop = mBottom - (stripHscr / gz) / scaleY; // この行が映す床区間の上端(world床座標)
-        const mMod = ((mTop % floorPeriod) + floorPeriod) % floorPeriod;
-        sp.tilePosition.set(0, -mMod * scaleY);
-        mBottom = mTop;
-        // 奥は闇に沈む(上端ビスタへ繋ぐ): 環境tintに行ごとの明度倍率を掛ける。
-        // perspベース(pow曲線)だと画面中段まで暗くなりすぎたため、上端側の帯(t<0.35)だけを沈める。
-        const f = t < MANSION_FLOOR_DARK_BAND
-          ? MANSION_FLOOR_FAR_DARK + (1 - MANSION_FLOOR_FAR_DARK) * (t / MANSION_FLOOR_DARK_BAND)
-          : 1;
-        sp.tint = (Math.round(er * f) << 16) | (Math.round(eg * f) << 8) | Math.round(eb * f);
-        sp.visible = true;
-      }
-    }
-    // 左右の暗闇: 床の外(|x|>MANSION_FLOOR_HALF_W)を world 固定の暗帯で沈める(縦の範囲は床と同じ)。
-    const dl = this.mansionDarkL, dr = this.mansionDarkR;
-    if (dl && dr) {
-      const leftEdge = worldXAt(0) - MANSION_FLOOR_EDGE_PAD;
-      const rightEdge = worldXAt(this.screenW) + MANSION_FLOOR_EDGE_PAD;
-      dl.position.set(leftEdge, topY);
-      dl.width = Math.max(0, -MANSION_FLOOR_HALF_W - leftEdge);
-      dl.height = bandH;
-      dr.position.set(MANSION_FLOOR_HALF_W, topY);
-      dr.width = Math.max(0, rightEdge - MANSION_FLOOR_HALF_W);
-      dr.height = bandH;
-    }
-
-    // 柱/燭台(区画生成+プール)。表示は【1/z 投影・焦点面=プレイヤー足元】(v0.25.2112)。
-    const farLineW = worldYAt(this.farBackdropHeight());
-    const propView = (m: number): { y: number; k: number; f: number } | null => {
-      const ref = this.depthRefY;
-      const d = ref - m; // プレイヤーより奥(上)の距離。負=手前(下)
-      let y: number, k: number;
-      if (d <= 0) {
-        y = m; k = 1; // 手前(プレイヤーより下)は素のworld・等倍(拡大はさせない)
-      } else {
-        const s01 = MANSION_PROP_FOCAL / (MANSION_PROP_FOCAL + d); // 1/z
-        const A = Math.max(40, ref - farLineW - MANSION_PROP_VANISH_PAD); // 足元→消失漸近線の距離
-        y = ref - A * (1 - s01);
-        k = s01;
-      }
-      if (k < MANSION_PROP_MIN_K) return null; // 豆粒=非表示
-      // 奥は闇に沈む(床の暗化帯と同じ式を表示位置基準で適用=床と一体で沈む)。
-      const t = Math.max(0, Math.min(1, (y - farLineW) / Math.max(1, botY - farLineW)));
-      const f = t < MANSION_FLOOR_DARK_BAND
-        ? MANSION_FLOOR_FAR_DARK + (1 - MANSION_FLOOR_FAR_DARK) * (t / MANSION_FLOOR_DARK_BAND)
-        : 1;
-      return { y, k, f };
-    };
-    const props = mansionPropsInRegion(this.depthRefY - MANSION_PROP_QUERY_UP, botY + MANSION_PILLAR_DISPLAY_H + 80);
-    const tint = this.envTintNow();
-    const tr = (tint >> 16) & 0xff, tg = (tint >> 8) & 0xff, tb = tint & 0xff;
-    const seen = new Set<string>();
-    for (const p of props) {
-      const view = propView(p.footY);
-      if (!view) continue; // 豆粒カット行より奥(seenに入れない=スイープで回収)
-      seen.add(p.id);
-      let entry = this.mansionProps.get(p.id);
-      if (!entry) {
-        const tex = p.kind === 'pillar'
-          ? getTexture(p.side < 0 ? 'mansion/pillar-left' : 'mansion/pillar-right')
-          : getTexture('mansion/candle');
-        const sprite = new Sprite(tex ?? undefined);
-        sprite.anchor.set(0.5, 1);
-        this.L.actorLayer.addChild(sprite);
-        const dispH = p.kind === 'pillar' ? MANSION_PILLAR_DISPLAY_H : MANSION_CANDLE_DISPLAY_H;
-        const baseScale = tex ? dispH / tex.height : 1;
-        let light: Sprite | null = null;
-        if (p.kind === 'candle') {
-          light = new Sprite(getGlowTexture());
-          light.anchor.set(0.5);
-          light.blendMode = 'add';
-          light.tint = MANSION_CANDLE_GLOW_TINT;
-          this.L.groundLayer.addChild(light); // 松明ライトと同じ層(アクターの下)
-        }
-        entry = { sprite, light, baseScale, footX: p.footX, footY: p.footY };
-        this.mansionProps.set(p.id, entry);
-      }
-      // 表示は1/z投影(propView)基準: 位置y・サイズk・暗化f(v0.25.2112)。横は奥ほど少し中央へ(収束)。
-      const dispX = entry.footX * (1 - MANSION_PROP_CONVERGE * (1 - view.k));
-      entry.sprite.position.set(dispX, view.y);
-      entry.sprite.zIndex = view.y; // 表示上の足元Yでプレイヤー/敵とY-sort
-      entry.sprite.tint = (Math.round(tr * view.f) << 16) | (Math.round(tg * view.f) << 8) | Math.round(tb * view.f);
-      entry.sprite.scale.set(entry.baseScale * view.k);
-      const alpha = this.foregroundActorAlpha(view.y); // 手前(下端)フェードのみ。奥は暗化fで沈める
-      entry.sprite.alpha = alpha;
-      if (entry.light) {
-        // 炎のゆらぎ: 松明と同じ2周期サイン合成(単調なサインに見えない)。位相は footX/footY で個体差。
-        const pulse = 0.8 + 0.13 * Math.sin(now / 125 + entry.footX * 0.03) + 0.07 * Math.sin(now / 53 + entry.footY * 0.05);
-        const flameY = view.y - MANSION_CANDLE_DISPLAY_H * view.k * MANSION_CANDLE_FLAME_FRAC;
-        entry.light.position.set(dispX, flameY);
-        entry.light.width = entry.light.height = MANSION_CANDLE_GLOW_RADIUS * 2 * view.k * pulse;
-        entry.light.alpha = MANSION_CANDLE_GLOW_ALPHA * pulse * alpha * view.f;
-        entry.light.visible = entry.light.alpha > 0.01;
-      }
-    }
-    for (const [id, e] of this.mansionProps) {
-      if (!seen.has(id)) { e.sprite.destroy(); e.light?.destroy(); this.mansionProps.delete(id); }
-    }
+    const worldZeroScreenX = this.L.world.position.x * gz + this.L.worldGroup.position.x;
+    this.corridorBackdrop.container.x = worldZeroScreenX - this.screenW / 2;
+    this.corridorBackdrop.update(-s.player.y, this.screenW, this.screenH, now);
   }
 
   // 最前面の天井帯オーバーレイ: screen-space で画面上端に上寄せ配置。半透明(LAB_CEILING_ALPHA)。
@@ -8869,6 +8674,11 @@ export class PixiScene {
     // 洋館(corridorMode): 屋外の演出ドレッシング(霧バンク/背景雲霧/月光シャフト)を出さない(v0.25.2110)。
     // 非corridorでは常時true=従来挙動(屋内は各自のパイプラインが管理・ここでは触らない)。
     const corridorDressOff = !indoor && s.corridorMode;
+    if (corridorDressOff) {
+      // 洋館: 遠景パノラマ/地面帯はcorridorLayer(疑似3D通路)が置き換える(v0.25.2113)。
+      this.L.farBackdrop.visible = false;
+      this.L.groundBase.visible = false;
+    }
     this.forestUnderLayer.visible = !corridorDressOff;
     this.frontBankLayer.visible = !corridorDressOff;
     this.bgCloudLayer.visible = !corridorDressOff;
@@ -10905,6 +10715,8 @@ export class PixiScene {
   destroy() {
     try { this.labRT?.destroy(true); } catch { /* ignore */ }
     this.labRT = null;
+    try { this.corridorBackdrop?.destroy(); } catch { /* ignore */ }
+    this.corridorBackdrop = null;
     for (const e of this.trees.values()) e.sprite.destroy();
     for (const e of this.cityPropObjs.values()) e.sprite.destroy();
     for (const v of this.enemies.values()) {

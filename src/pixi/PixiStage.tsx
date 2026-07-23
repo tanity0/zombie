@@ -42,7 +42,6 @@ const SORTIE_STAGE_TEXTURE_PATHS = [
   'backgrounds/stage1-sky-anim.jpg', // M1の遠景=星空6コマアニメ(縦1列×6行・社長提供v0.25.1931)
   'backgrounds/stage1-castle.png', // M1の星空に重ねる城/山/霧の森(クロマキー・社長提供v0.25.1934)
   'backgrounds/stage1-moon.png', // M1の光源=月(クロマキー透過・社長提供v0.25.1951)
-  'sprites/mansion/back.png', // ステージ6(洋館)の遠景差し替え(farBackdropキー'mansion'・仮=壁の一枚絵)
 ] as const;
 import { setAppliedResolution } from '../config/renderer';
 
@@ -220,7 +219,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null).finally(() => loadProgressDone());
       void (async () => {
         // 注意: 分割代入の並びは SORTIE_STAGE_TEXTURE_PATHS の並びと1:1対応(位置結合)。追加時は両方を同順で。
-        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks, s7Far, s7Clouds, s1Sky, s1Castle, s1Moon, mansionBack] =
+        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks, s7Far, s7Clouds, s1Sky, s1Castle, s1Moon] =
           await Promise.all(SORTIE_STAGE_TEXTURE_PATHS.map(load));
         if (cancelled || sceneRef.current !== scene) return;
         scene.setLabGroundTexture(labGround);            // 研究所スキンの床
@@ -230,7 +229,6 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         scene.setFarBackdropTexture('stage5', s5Far);    // ステージ5の遠景(紅き月の城塞・社長提供)
         scene.setFarBackdropTexture('tutorial', tutFar); // チュートリアルの遠景(洞窟・社長提供)
         scene.setFarBackdropTexture('stage7', s7Far);    // M7の遠景(星雲・社長提供v0.25.1907)
-        scene.setFarBackdropTexture('mansion', mansionBack); // ステージ6(洋館)の遠景(仮=壁の一枚絵。corridorMode時にpixiSceneが'mansion'を選ぶ)
         scene.setStage7CloudAnim(s7Clouds);              // M7の遠景に重ねる雲=6コマアニメ(社長提供v0.25.1913)
         scene.setStage1SkyAnim(s1Sky);                   // M1の遠景=星空6コマアニメ(社長提供v0.25.1931)
         scene.setStage1CastleTexture(s1Castle);          // M1の星空に重ねる城/山/霧の森(社長提供v0.25.1934)
