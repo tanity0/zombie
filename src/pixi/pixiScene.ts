@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
@@ -5698,6 +5698,14 @@ export class PixiScene {
   // 登場演出のフェードイン量(0→1)。ヘリが飛び立つ(takeoffStart)までは0、その後フェードイン。
   // 登場中でなければ常に1。プレイヤー本体＋開始時から地面に居る護衛軍人(escorts=上下左右の4人)を
   // 同じタイミングで出すために共有する(社長指示:演出用の別NPCは出さず、既存の兵士をフェードインさせる)。
+  // 洋館通路の走り込み入場フェード(v0.25.2123・社長指示「ダッシュ中は画面外からフェードイン」):
+  // 実座標の進行(player.y: CORRIDOR_RUNIN_DIST→0)に同期して 0→1(描画のみ)。護衛も同じ値で入場する。
+  private corridorRunInFade(): number {
+    const s = useGameStore.getState();
+    if (!s.corridorRunInActive) return 1;
+    return Math.max(0, Math.min(1, (CORRIDOR_RUNIN_DIST - s.player.y) / (CORRIDOR_RUNIN_DIST * 0.6)));
+  }
+
   private currentIntroFade(now: number): number {
     if (!this.introActive) return 1;
     const t = this.introUntil === -1
@@ -6698,7 +6706,7 @@ export class PixiScene {
     // lastCounterSuccessTime を同時刻に立てるので、両者一致=カウンター由来の無敵と判定して点滅を抑止。
     // 被弾i-frame は invulnerableTime のみ更新されるので一致せず、従来どおり点滅する。
     const counterInvuln = p.invulnerable && p.lastCounterSuccessTime === p.invulnerableTime;
-    view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable && !counterInvuln ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade * introFade;
+    view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable && !counterInvuln ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade * introFade * this.corridorRunInFade();
     view.container.zIndex = fb.footY;
     view.light.visible = false;
     view.reticle.clear();
@@ -8105,7 +8113,7 @@ export class PixiScene {
       const bob = lift * PLAYER_WALK_BOB_PX * this.depthScale(esc.y); // 接地↔遊脚の上下動(遠近スケール連動)
       const px = Math.round(esc.x), py = Math.round(esc.y - bob);
       const faceSign = esc.face < 0 ? -1 : 1;
-      const baseAlpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now);
+      const baseAlpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now) * this.corridorRunInFade();
       if (tex) {
         sp.texture = tex;
         // 衛生兵はドット規格(78x64=横長キャンバス)のため contain-fit だと幅律速で小さくなる。

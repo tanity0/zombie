@@ -314,7 +314,9 @@ const makeTutorialCompanions = (px: number, py: number): EscortSoldier[] => [
 ];
 
 // 護衛軍人NPCを4人生成(各拠点 base-0..3 担当)。プレイヤー出撃地点の近傍に少し散らして配置。
-const makeEscorts = (px: number, py: number): EscortSoldier[] => {
+// 洋館通路の護衛初期配置(v0.25.2123・社長指示): プレイヤーの真ん中を開けて横一列(重ならない)。
+const CORRIDOR_ESCORT_ROW_X = [-110, -55, 55, 110];
+const makeEscorts = (px: number, py: number, corridorRow = false): EscortSoldier[] => {
   const arr: EscortSoldier[] = [];
   // 名簿(素性)= フェイザー(7)を除く全軍人プールから、出撃ごとに BASE_SITE_COUNT 人をランダム抽選
   // (Fisher-Yates)。これで顔ぶれが毎回変わる(以前は 0..3 固定で常に同じ4人だった)。
@@ -330,12 +332,14 @@ const makeEscorts = (px: number, py: number): EscortSoldier[] => {
   }
   for (let i = 0; i < BASE_SITE_COUNT; i++) {
     const ang = (Math.PI * 2 * i) / BASE_SITE_COUNT;
+    const rowX = CORRIDOR_ESCORT_ROW_X[i] ?? (i - (BASE_SITE_COUNT - 1) / 2) * 60;
     arr.push({
       id: `escort-${i}`,
       baseId: `base-${i}`,
-      x: px + Math.cos(ang) * 36, // 出撃地点の周りに少し散らす(重ならないよう担当方向へ)
-      y: py + Math.sin(ang) * 36,
-      face: Math.cos(ang) < 0 ? -1 : 1,
+      // 通路: 横一列(中央=プレイヤーの枠を空ける)。通常: 出撃地点の周りに円形に散らす。
+      x: px + (corridorRow ? rowX : Math.cos(ang) * 36),
+      y: py + (corridorRow ? 8 : Math.sin(ang) * 36),
+      face: corridorRow ? (rowX < 0 ? -1 : 1) : (Math.cos(ang) < 0 ? -1 : 1),
       soldierIndex: roster[i], // 名簿(素性)。位置(sector)は baseId 基準で別管理。
       fireAt: 0,
       dwellMs: 0,
@@ -1409,6 +1413,9 @@ export const INVULN_MS = 700;
 // 洋館(ステージ6)開始の走り込み距離(world px): プレイヤー+護衛を到着点のこの距離だけ下(手前)に置き、
 // 自動で上へ走らせて入場する(v0.25.2110・ヘリ登場なし)。
 export const CORRIDOR_RUNIN_DIST = 380;
+// 洋館通路の下限(v0.25.2123・社長指示): スタート地点(y=0)からこの距離まで下がれる(それ以下へは行けない)。
+// 敵のスポーン/追跡は不変(下からも湧く)。
+export const CORRIDOR_BOTTOM_LIMIT = 50;
 export const PLAYER_INTRO_HELI_MS = 2600;    // フェーズA(ヘリ飛来→着陸)長(少しゆっくり目)
 // フェーズB(着陸→ホバー→離陸＋プレイヤー/NPCフェードイン)長。社長指示で飛び降り演出を廃止し、
 // 「ヘリが着陸→飛び立つタイミングで隊員がフェードイン」に変更したため、離陸とフェードを読ませる尺へ延長。
@@ -3210,6 +3217,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (state.corridorMode) {
           const halfW = player.width / 2;
           newX = Math.max(-CORRIDOR_LATERAL_CLAMP - halfW, Math.min(CORRIDOR_LATERAL_CLAMP - halfW, newX));
+          // 下限(v0.25.2123): スタート地点から50px下まで(走り込み入場中=下から来る間は除外)。
+          if (!state.corridorRunInActive) newY = Math.min(newY, CORRIDOR_BOTTOM_LIMIT);
         }
       }
       // 囲い系イベント中はプレイヤーを円(囲い)の内側へ拘束(円コリジョン)。壁解決の後に最終クランプ。
@@ -9879,7 +9888,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 拠点占拠の無いボス直行ステージなので護衛4人は元々そぐわない)。
       const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss) ? []
         : farBackdrop === 'tutorial' ? makeTutorialCompanions(spawnTL.x, spawnTL.y)
-        : makeEscorts(spawnTL.x, spawnTL.y);
+        : makeEscorts(spawnTL.x, spawnTL.y, corridorMode);
       const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
       const sortieSol = sortieEsc ? BASE_SOLDIERS[((sortieEsc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length] : null;
       return {
