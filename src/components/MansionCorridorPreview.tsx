@@ -31,7 +31,7 @@ const FLOOR_W_MULT = 1.0;    // 床の横幅=柱中心間ちょうど(v0.25.2086
 const FLOOR_STRIP = 2;       // スライス高(px)。小さいほど滑らか・重い(プレビューは2で十分)
 // 奥の一枚絵(ステンドグラス窓の壁)の固定奥行き(叩き台)。プレビューでは通路が無限ループなので
 // 「常にこの距離だけ先に見えている突き当たり」として描く(本実装では通路の終端に置く想定)。
-const BACK_DEPTH = 2600; // もっと遠くに(社長指示v0.25.2084・旧1400)
+const BACK_DEPTH = 4200; // もっと奥に(社長指示v0.25.2084→2088・旧2600)
 const BACK_ALPHA = 0.9; // 距離フォグに沈めない(窓は光っている=闇の中の目標物)
 const BACK_WIDTH_MULT = 1.15; // 通路幅(柱中心間)に対する壁の横幅倍率
 
@@ -65,6 +65,23 @@ const MansionCorridorPreview: React.FC = () => {
     };
     resize();
     window.addEventListener('resize', resize);
+
+    // 幻想ライティング(社長指示v0.25.2088・参考=教会の壁灯): 柱と柱の間の壁に暖色の灯り。
+    // 放射グラデは初期化時に1枚だけ事前レンダし、毎フレームは加算合成のdrawImageのみ(=安い)。
+    const glowTex = document.createElement('canvas');
+    glowTex.width = glowTex.height = 256;
+    {
+      const g = glowTex.getContext('2d');
+      if (g) {
+        const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+        grad.addColorStop(0, 'rgba(255,214,150,0.9)');
+        grad.addColorStop(0.25, 'rgba(255,178,96,0.5)');
+        grad.addColorStop(0.6, 'rgba(255,140,60,0.16)');
+        grad.addColorStop(1, 'rgba(255,120,40,0)');
+        g.fillStyle = grad;
+        g.fillRect(0, 0, 256, 256);
+      }
+    }
 
     const draw = (now: number) => {
       const dt = Math.min(0.05, (now - prev) / 1000);
@@ -116,6 +133,25 @@ const MansionCorridorPreview: React.FC = () => {
         }
         ctx.globalAlpha = 1;
       }
+      // 壁灯(柱と柱の中間・左右の壁ライン上): 柱の投影を半間隔ずらして流用=同じ循環に乗る。
+      // 柱より先に描く=灯りは柱の奥(壁側)にあり、手前の柱に部分的に隠れて流れていく。
+      for (const m of projectCorridorPillars(travel + CORRIDOR_CFG.spacing / 2, W, H)) {
+        if (m.depth < 60 || m.depth > BACK_DEPTH - 300) continue; // 通過中と最奥はスキップ
+        const r = m.h * 0.22;                 // 灯りの半径(柱の高さ比例=遠近追従)
+        const ly = m.y - m.h * 0.40;          // 灯りの高さ=柱の中腹(壁灯の位置)
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = m.fade * 0.85;
+        ctx.drawImage(glowTex, m.x - r, ly - r, r * 2, r * 2);
+        // 明るい芯(小さめ同グローを重ねて「光源」らしく)。
+        ctx.globalAlpha = m.fade * 0.9;
+        ctx.drawImage(glowTex, m.x - r * 0.4, ly - r * 0.4, r * 0.8, r * 0.8);
+        // 足元の床への照り返し(横長に潰した同グロー・弱め)。
+        ctx.globalAlpha = m.fade * 0.3;
+        ctx.drawImage(glowTex, m.x - r * 1.1, m.y - r * 0.35, r * 2.2, r * 0.7);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.globalAlpha = 1;
+
       // 奥の壁(ステンドグラス窓)の描画関数: 柱の描画順(奥→手前)の中でBACK_DEPTHの位置に挟む。
       // 被写界深度: シャープ版+ブラー版(パディング分オフセット)をdofWeightでクロスフェード。
       const drawBack = () => {
