@@ -1602,7 +1602,9 @@ export class PixiScene {
   // 参考: Octopath 0。負荷: TilingSprite1枚・tilePositionドリフト=軽い(1〜2/10)。?cloudshadow=0で無効・?cloudshadowalpha=/speed=/scale=で調整。
   private updateCloudShadow(now: number, cameraX: number, cameraY: number, indoor: boolean) {
     const sp = this.cloudShadow;
-    const on = CLOUD_SHADOW_ON && !indoor && this.currentFarKey !== 'lab' && this.currentFarKey !== 'tutorial' && this.currentFarKey !== 'mansion'; // 屋外のみ(洞窟/ラボ/洋館除外)
+    // 洋館はcorridorMode直参照で除外(v0.25.2126): farKey='mansion'は遠景テクスチャ未注入だと森へ
+    // フォールバックして判定をすり抜け、雲影が「地平線(farH)から下」に復活していた(社長報告=四角い切れ目の正体)。
+    const on = CLOUD_SHADOW_ON && !indoor && !useGameStore.getState().corridorMode && this.currentFarKey !== 'lab' && this.currentFarKey !== 'tutorial'; // 屋外のみ(洞窟/ラボ/洋館除外)
     if (sp.visible !== on) sp.visible = on;
     if (!on) return;
     // 昼夜で雰囲気を変える(社長指示v0.25.1975)。夜(月夜)=青寄り・淡く・大きく・ゆっくり(夢想的)。昼=中立・濃く・くっきり。
