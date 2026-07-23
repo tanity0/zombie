@@ -30,12 +30,21 @@ describe('projectCorridorPillars (洋館通路の1/z投影)', () => {
   });
 
   it('前進すると柱の depth が減る(奥から手前へ流れる)', () => {
-    const key = (p: { side: number; depth: number }) => p.side;
-    const a = projectCorridorPillars(0, W, H).filter(p => key(p) === 1);
-    const b = projectCorridorPillars(100, W, H).filter(p => key(p) === 1);
-    // 同じ柱(index対応が回るので集合で比較): 全depthの合計は一定だが、個々は100ずつ手前へ寄る(mod)。
-    const shifted = a.map(p => (p.depth - 100 + CORRIDOR_CFG.spacing * CORRIDOR_CFG.count) % (CORRIDOR_CFG.spacing * CORRIDOR_CFG.count)).sort((x, y) => x - y);
-    const bd = b.map(p => p.depth).sort((x, y) => x - y);
+    const loop = CORRIDOR_CFG.spacing * CORRIDOR_CFG.count;
+    const norm = (x: number) => ((x % loop) + loop) % loop; // depthは[-behind, loop-behind)なので正規化して比較
+    const a = projectCorridorPillars(0, W, H).filter(p => p.side === 1);
+    const b = projectCorridorPillars(100, W, H).filter(p => p.side === 1);
+    const shifted = a.map(p => norm(p.depth - 100)).sort((x, y) => x - y);
+    const bd = b.map(p => norm(p.depth)).sort((x, y) => x - y);
     bd.forEach((d, i) => expect(d).toBeCloseTo(shifted[i], 6));
+  });
+
+  it('カメラ通過中(depth<0)の柱も描画対象=巻き戻しは画面外(behind)まで起きない', () => {
+    // 柱がちょうどカメラ位置を少し過ぎた瞬間(travel=柱位置+100)にその柱が負のdepthで残っていること。
+    const ps = projectCorridorPillars(CORRIDOR_CFG.spacing * 2 + 100, W, H).filter(p => p.side === 1);
+    const passing = ps.find(p => p.depth < 0);
+    expect(passing).toBeDefined();
+    expect(passing!.depth).toBeCloseTo(-100, 6);
+    expect(passing!.h).toBeGreaterThan(H * CORRIDOR_CFG.pillarHr); // 通過中はd=0より大きく描かれる
   });
 });

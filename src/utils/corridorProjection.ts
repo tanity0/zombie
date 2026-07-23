@@ -7,6 +7,7 @@ export interface CorridorConfig {
   spacing: number;    // 柱の間隔(前進量world px)
   count: number;      // 片側の同時本数(プール)
   focal: number;      // 焦点距離(大=遠近が緩い)
+  behind: number;     // カメラ通過後も描き続ける奥行き(パチッと消える対策v0.25.2079。focal未満必須)
   horizonYr: number;  // 消失点のY(画面高比)
   footYr: number;     // d=0の柱の足元Y(画面高比・1超=画面外下)
   aisleHalfXr: number;// d=0の柱の中心の横オフセット(画面幅比・0.5超=画面外)
@@ -17,6 +18,8 @@ export const CORRIDOR_CFG: CorridorConfig = {
   spacing: 520,
   count: 7,
   focal: 420,
+  // d=-210でscale≒2.0=柱の内側の縁が画面端の外へ抜ける(縦430〜横800の画面比で検算済み)。
+  behind: 210,
   horizonYr: 0.30, // 消失点は上寄り(社長指示v0.25.2078「もっと上より」・旧0.38)
   footYr: 1.55,
   aisleHalfXr: 0.62,
@@ -33,7 +36,9 @@ export interface CorridorPillar {
 }
 
 // 前進量→画面上の柱リスト(奥→手前の描画順)。
-// 各柱は d = mod(i*spacing - travel, spacing*count) で循環=無限通路。
+// 各柱は d = mod(i*spacing - travel + behind, loop) - behind で循環=無限通路。
+// dは[-behind, loop-behind)の範囲を動く: カメラ(d=0)を通過しても d=-behind まで描き続けて
+// 完全に画面外へ抜けてから最奥へ戻る(巻き戻しの瞬間が見えて「パチッと消える」のを防ぐ・v0.25.2079)。
 export const projectCorridorPillars = (
   travel: number,
   viewW: number,
@@ -46,8 +51,8 @@ export const projectCorridorPillars = (
   const halfX0 = viewW * cfg.aisleHalfXr;
   const out: CorridorPillar[] = [];
   for (let i = 0; i < cfg.count; i++) {
-    const d = ((i * cfg.spacing - travel) % loop + loop) % loop;
-    const s = cfg.focal / (cfg.focal + d);            // 1/z: d=0で1・遠いほど0へ
+    const d = ((i * cfg.spacing - travel + cfg.behind) % loop + loop) % loop - cfg.behind;
+    const s = cfg.focal / (cfg.focal + d);            // 1/z: d=0で1・通過中(d<0)は1超・遠いほど0へ
     const y = horizonY + (footY0 - horizonY) * s;      // 足元は消失点から手前へ
     const h = viewH * cfg.pillarHr * s;
     const fade = Math.max(0, Math.min(1, (s - 0.12) / 0.5)); // 奥は闇に沈む(叩き台)
