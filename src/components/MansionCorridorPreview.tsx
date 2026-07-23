@@ -48,8 +48,11 @@ const FLOOR_STRIP = 2;       // スライス高(px)。小さいほど滑らか�
 const BACK_DEPTH = 4200; // もっと奥に(社長指示v0.25.2084→2088・旧2600)
 const BACK_ALPHA = 0.9; // 距離フォグに沈めない(窓は光っている=闇の中の目標物)
 // 奥壁のサイズは【柱の高さ基準】(v0.25.2091): 旧・通路幅基準は柱を左右に広げるたび壁が巨大化して
-// 柱の高さと乖離した(社長報告)。高さ=同じ奥行きの柱×0.95・幅はアスペクト従属=通路幅と独立。
-const BACK_H_MULT = 0.95;
+// 柱の高さと乖離した(社長報告)。高さ=同じ奥行きの柱×倍率・幅はアスペクト従属=通路幅と独立。
+// v0.25.2095: 横延長版素材(ガラス=素材高の約42%・旧素材は約60%)へ入れ替え。ガラスの見た目の高さを
+// 旧と同じに保つ換算=0.95×(0.60/0.42)≒1.36。
+const BACK_H_MULT = 1.36;
+const BACK_GLASS_CY = 0.51; // ガラス(窓)中心の高さ(素材高の上からの比率・月明かりのアンカー)
 
 const MansionCorridorPreview: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -276,14 +279,15 @@ const MansionCorridorPreview: React.FC = () => {
           ctx.globalAlpha = BACK_ALPHA * w;
           ctx.drawImage(imgs.bF, bx - FAR_BLUR_PAD * k, by - FAR_BLUR_PAD * k, imgs.bF.naturalWidth * k, imgs.bF.naturalHeight * k);
         }
-        // 月明かり(社長指示v0.25.2092): 窓から淡い冷色光。①窓まわりのグロー ②手前下への淡い光条 ③床の光溜まり。
+        // 月明かり(社長指示v0.25.2092・v0.25.2095で新素材のガラス位置へ再アンカー):
+        // ①窓まわりのグロー ②手前下への淡い光条 ③床の光溜まり。
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.5;
-        ctx.drawImage(moonTex, W / 2 - bh * 0.55, by + bh * 0.45 - bh * 0.55, bh * 1.1, bh * 1.1); // 窓グロー(ガラス中心)
+        ctx.globalAlpha = 0.55;
+        ctx.drawImage(moonTex, W / 2 - bh * 0.30, by + bh * BACK_GLASS_CY - bh * 0.30, bh * 0.6, bh * 0.6); // 窓グロー(ガラス中心)
         ctx.globalAlpha = 0.2;
-        ctx.drawImage(moonTex, W / 2 - bw * 1.1, by + bh * 0.35, bw * 2.2, (footY - by) * 2.4);    // 手前下への淡い光条
-        ctx.globalAlpha = 0.28;
-        ctx.drawImage(moonTex, W / 2 - bw * 1.6, footY - bh * 0.2, bw * 3.2, bh * 0.55);           // 床の光溜まり
+        ctx.drawImage(moonTex, W / 2 - bw * 0.45, by + bh * BACK_GLASS_CY, bw * 0.9, (footY - by) * 1.6);   // 手前下への淡い光条
+        ctx.globalAlpha = 0.26;
+        ctx.drawImage(moonTex, W / 2 - bw * 0.7, footY - bh * 0.12, bw * 1.4, bh * 0.32);                   // 床の光溜まり
         ctx.globalCompositeOperation = 'source-over';
       };
       // 柱(奥→手前)。距離フェードはglobalAlphaで黒背景に沈める(仮)。
