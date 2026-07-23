@@ -70,60 +70,10 @@ export const projectCorridorPillars = (
   return out;
 };
 
-// --- ゲームエンティティ(プレイヤー/敵/弾)の通路投影(社長指示・とりあえず統合v0.25.2105) ----------
-// ゲームは従来どおり平面2Dトップダウンのまま(当たり判定/AI/湧きは不変)。ここは「描画のみ」の投影:
-// 平面座標のエンティティを、柱と同じ1/z式で通路の見た目に写す(renderer専用・レンダラ非依存の純関数)。
-// 数値は全て叩き台=実機調整前提。
+// --- ステージ6(洋館)のゲームロジック用定数 -------------------------------------------------
+// (v0.25.2108) エンティティの疑似3D投影(projectCorridorEntity)は社長裁定で廃止した。
+// ステージ6は完全にm0(通常ステージ)仕様=通常のトップダウン描画・速度1:1で、洋館の見た目は
+// 世界配置の素材(床タイル/柱スプライト/遠景ビスタ)で作る。上の柱投影は ?corridor=1 プレビュー専用。
 
-// プレイヤー自身の見かけの奥行き(d)。社長指示v0.25.2106「プレイヤーは常に真ん中(m0と同じ)」:
-// 足元の投影が画面高≒50%に来る深さ(s=420/2620≒0.160 → y=(0.30+1.25s)H≒0.500H)。
-// 表示サイズは CORRIDOR_ENTITY_SCALE_BOOST が連動して等倍を維持する。
-export const PLAYER_VIEW_DEPTH = 2200; // 叩き台
-// 横移動の拘束幅(world px)。プレイヤー中心xを ±この値に拘束=柱ライン(aisleHalfXr)が移動境界になる。
-// ゲームロジック(gameStore)側のクランプと、renderer側の横写像K(±この値→柱ライン)で同じ値を共有する。
+// 横移動の拘束幅(world px)。プレイヤー中心xを ±この値に拘束=通路の壁(gameStoreが使用)。
 export const CORRIDOR_LATERAL_CLAMP = 260; // 叩き台
-// 前進量オフセット: travel = CORRIDOR_TRAVEL_OFFSET - player.y(上=yが減る方向へ進むと前進)。
-// プレイヤーは原点(y=0)から開始するので 0 で travel≒0 スタート(柱位相を調整したい時にずらす)。
-export const CORRIDOR_TRAVEL_OFFSET = 0; // 叩き台
-// 表示スケール補正: s(=focal/(focal+d))に掛ける倍率。プレイヤー深さ d=2200 で s≒0.160・×6.25≒等倍
-// (PLAYER_VIEW_DEPTHとペアで調整する: boost ≒ (focal+d)/focal)。
-export const CORRIDOR_ENTITY_SCALE_BOOST = 6.25; // 叩き台
-// カリング: カメラ手前(d<この値)や豆粒(s<この値)は描かない。
-export const CORRIDOR_ENTITY_CULL_DEPTH = 60; // 叩き台
-export const CORRIDOR_ENTITY_CULL_SCALE = 0.05; // 叩き台
-
-export interface CorridorEntityView {
-  x: number;      // 画面X(px)
-  y: number;      // 足元の画面Y(px)。柱と同じ床ライン投影
-  scale: number;  // 1/z のスケール s(表示補正 ×2.0 は含まない=呼び出し側で素材寸法と掛ける)
-  depth: number;  // 奥行き d(描画順/デバッグ用)
-  visible: boolean; // カリング結果(false=描かない)
-}
-
-// 平面座標のエンティティ中心(centerX, centerY)を通路の画面座標へ投影する。
-// - 奥行き d = PLAYER_VIEW_DEPTH + (playerCenterY - centerY): 上(奥)にいる敵ほど d 大=遠く=小さい。
-// - 横写像 K = (aisleHalfXr * viewW) / CORRIDOR_LATERAL_CLAMP: 中心x=±260 が柱ラインに一致。
-// - 足元Y = horizonY + (footY0 - horizonY) * s: 柱の足元と同じ床ライン投影(CFG比×現在のビュー寸法)。
-export const projectCorridorEntity = (
-  centerX: number,
-  centerY: number,
-  playerCenterY: number,
-  viewW: number,
-  viewH: number,
-  cfg: CorridorConfig = CORRIDOR_CFG,
-): CorridorEntityView => {
-  const d = PLAYER_VIEW_DEPTH + (playerCenterY - centerY);
-  if (d < CORRIDOR_ENTITY_CULL_DEPTH) {
-    return { x: viewW / 2, y: viewH, scale: 0, depth: d, visible: false };
-  }
-  const s = cfg.focal / (cfg.focal + d);
-  if (s < CORRIDOR_ENTITY_CULL_SCALE) {
-    return { x: viewW / 2, y: viewH, scale: s, depth: d, visible: false };
-  }
-  const horizonY = viewH * cfg.horizonYr;
-  const footY0 = viewH * cfg.footYr;
-  const k = (cfg.aisleHalfXr * viewW) / CORRIDOR_LATERAL_CLAMP;
-  const x = viewW / 2 + centerX * s * k;
-  const y = horizonY + (footY0 - horizonY) * s;
-  return { x, y, scale: s, depth: d, visible: true };
-};

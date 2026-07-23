@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.2108 — ステージ6を完全m0仕様へ(疑似3D投影レンダリングを撤去)【2026-07-23 18:54 JST】
+- 指示(社長): ステージ6完全に壊れてる。ゲームシステムが切り離されちゃってる。m0と同じ仕様=ただ上下に伸びてるステージ。移動スピードもプレイヤーの速度で。独自仕様禁止。裁定=洋館の見た目は「素材を世界に置く」(AskUserQuestion回答)。
+- 対処(撤去): pixiSceneのsyncCorridor一式(worldGroup隠し+エンティティ投影+corridorLayer)を削除、corridorLayer.tsを削除、corridorProjection.tsからprojectCorridorEntity+関連定数を削除(±260クランプ定数と?corridor=1プレビュー用の柱投影は残置)。**ゲームロジック側は維持**: corridorMode(横±260クランプ・木/トーチ/緑卵無効・湧き上7:下3/左右なし)。
+- 結果: ステージ6=通常のトップダウン描画・カメラ追従・速度1:1・全システム(護衛NPC/拾い物/エフェクト)動作。差分は「縦長+壁+湧き方向」のみ。
+- 検証: typecheck・lint 0エラー・corridorProjectionテスト6本pass・実写=stage-6で通常描画+護衛NPC確認。
+- 次(バッチ発注へ): 洋館の見た目を世界配置で(床タイル=floor.png・柱=木と同じ足元スプライト反復・燭台+小glow・左右の暗闇・上端遠景ビスタ)。
+- Files: `src/pixi/pixiScene.ts`, `src/pixi/corridorLayer.ts(削除)`, `src/utils/{corridorProjection.ts,corridorProjection.test.ts}`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2107 — CLAUDE.mdにpush前lint必須ルールを追記【2026-07-23 18:47 JST】
 - 指示(社長): ①MansionCorridorPreviewのlet srcH→const(※v0.25.2106で修正済みだった) ②CLAUDE.mdの検証運用の節にpush前lint必須ルールを追記。
 - 対処: Testing policy節の常時フロア直下に「push直前にnpm run lintも必ず実行・エラー0確認(warning可)。lint専用エラーのCI初発覚事故3回(v0.25.1074/v0.25.1583/v0.25.2104直後)の対策」を追記。
