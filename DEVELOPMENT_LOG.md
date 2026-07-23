@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.2092 — 洋館通路: 天井(Mode-7上下反転)+奥窓の月明かり【2026-07-23 17:14 JST】
+- 支給/指示(社長): ①天井素材(1254×1254) ②奥のガラス窓、淡く月明かりが入ってきてる感じに。
+- 対処①: 天井を床と同じMode-7の**上下反転**で消失点より上の帯に張った(手前側の天井は画面上端の外=CEIL_Y0_R -0.75)。床と同じリピート同期・距離フェード・遠方ブラー版(ceiling-blur.png=make-blur.mjsで生成)。
+- 対処②: 冷色(青白)グローを事前レンダし加算合成で3層: 窓ガラス中心のグロー+手前下への淡い光条+床の光溜まり。奥壁と同じ位置基準=壁の距離を変えても追従。
+- 検証: typecheck OK・実写で天井の奥行きと窓の月明かりを確認。実機 ?corridor=1。
+- 自己点検: 天井スライスは床と同等(+約140draw)・月明かりは加算drawImage3枚。プレビュー2/10・Pixi本実装はメッシュ+pooledスプライトで1〜2/10想定。
+- Files: `art-src/mansion/{ceiling-src.png,make-blur.mjs}`, `public/sprites/mansion/{ceiling.png,ceiling-blur.png}`(新規), `src/components/MansionCorridorPreview.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2091 — 洋館通路: 奥壁のサイズを柱の高さ基準へ(通路幅と独立)【2026-07-23 17:09 JST】
 - 報告(社長): 奥の壁、高さが柱と合わなくなってる。
 - 診断: 奥壁のサイズが**通路幅基準**だったため、柱を左右へ広げる(aisleHalfXr増)たびに壁も巨大化して柱の高さと乖離していた。

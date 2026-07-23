@@ -40,8 +40,11 @@ for (const j of SPRITES) {
   console.log('wrote', j.out);
 }
 
-// 床: 縦3タイル→blur→中央切り出しで上下シームレスを維持(ブラーがリピート境界を跨いでも繋がる)。
-{
+// 床・天井: 縦3タイル→blur→中央切り出しで上下シームレスを維持(ブラーがリピート境界を跨いでも繋がる)。
+for (const t of [
+  { url: `${BASE}/floor.png?v=${bust}`, out: `${DIR}/floor-blur.png` },
+  { url: `${BASE}/ceiling.png?v=${bust}`, out: `${DIR}/ceiling-blur.png` },
+]) {
   const dataUrl = await page.evaluate(async ({ url }) => {
     const img = new Image();
     img.src = url;
@@ -56,8 +59,8 @@ for (const j of SPRITES) {
     c.width = W; c.height = H;
     c.getContext('2d').drawImage(big, 0, H, W, H, 0, 0, W, H);
     return c.toDataURL('image/png');
-  }, { url: `${BASE}/floor.png?v=${bust}` });
-  writeFileSync(`${DIR}/floor-blur.png`, Buffer.from(dataUrl.split(',')[1], 'base64'));
-  console.log('wrote', `${DIR}/floor-blur.png`);
+  }, { url: t.url });
+  writeFileSync(t.out, Buffer.from(dataUrl.split(',')[1], 'base64'));
+  console.log('wrote', t.out);
 }
 await browser.close();

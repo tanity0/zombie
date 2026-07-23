@@ -10,6 +10,10 @@ const PILLAR_L = `${import.meta.env.BASE_URL}sprites/mansion/pillar-left.png`;
 const PILLAR_R = `${import.meta.env.BASE_URL}sprites/mansion/pillar-right.png`;
 const BACK = `${import.meta.env.BASE_URL}sprites/mansion/back.png`;
 const FLOOR = `${import.meta.env.BASE_URL}sprites/mansion/floor.png`;
+// 天井(社長支給v0.25.2092): 床と同じMode-7の上下反転(消失点より上の帯に張る)。
+const CEILING = `${import.meta.env.BASE_URL}sprites/mansion/ceiling.png`;
+const CEILING_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/ceiling-blur.png`;
+const CEIL_Y0_R = -0.75; // d=0の天井ライン(画面高比・負=画面上端のはるか上。天井の見える範囲を決める)
 // 被写界深度(社長指示v0.25.2087・事前ブラー方式=ランタイムぼかしゼロ): ブラー版素材
 // (art-src/mansion/make-blur.mjs生成)とシャープ版を奥行きでクロスフェード。
 // 手前通過(d<300→-100で0→1)と遠方(d>1000→2400で0→1・上限0.9)がボケ、中距離=ピント面。
@@ -55,6 +59,9 @@ const MansionCorridorPreview: React.FC = () => {
       lB: new Image(), rB: new Image(), bB: new Image(), fB: new Image(),
       lF: new Image(), rF: new Image(), bF: new Image(),
     };
+    const ceilImgs = { c: new Image(), cB: new Image() };
+    ceilImgs.c.src = CEILING;
+    ceilImgs.cB.src = CEILING_BLUR;
     imgs.l.src = PILLAR_L;
     imgs.r.src = PILLAR_R;
     imgs.b.src = BACK;
@@ -86,6 +93,21 @@ const MansionCorridorPreview: React.FC = () => {
         grad.addColorStop(0.25, 'rgba(255,178,96,0.5)');
         grad.addColorStop(0.6, 'rgba(255,140,60,0.16)');
         grad.addColorStop(1, 'rgba(255,120,40,0)');
+        g.fillStyle = grad;
+        g.fillRect(0, 0, 256, 256);
+      }
+    }
+    // 月明かり用の冷色グロー(社長指示v0.25.2092): 奥のガラス窓から淡く差し込む光(加算合成)。
+    const moonTex = document.createElement('canvas');
+    moonTex.width = moonTex.height = 256;
+    {
+      const g = moonTex.getContext('2d');
+      if (g) {
+        const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+        grad.addColorStop(0, 'rgba(200,220,255,0.85)');
+        grad.addColorStop(0.3, 'rgba(170,200,255,0.4)');
+        grad.addColorStop(0.65, 'rgba(140,180,255,0.12)');
+        grad.addColorStop(1, 'rgba(120,160,255,0)');
         g.fillStyle = grad;
         g.fillRect(0, 0, 256, 256);
       }
@@ -141,6 +163,42 @@ const MansionCorridorPreview: React.FC = () => {
         }
         ctx.globalAlpha = 1;
       }
+      // 天井(社長支給v0.25.2092): 床のMode-7の上下反転。消失点より上の帯に張る。
+      // y小(画面上端)=手前・yが消失点に近いほど奥。手前側の天井は画面上端の外(CEIL_Y0_R)。
+      const ctex = ceilImgs.c;
+      if (ctex.naturalWidth) {
+        const texW = ctex.naturalWidth, texH = ctex.naturalHeight;
+        const ceilY0 = H * CEIL_Y0_R;
+        const denomC = horizonY - ceilY0;
+        for (let y = 0; y + FLOOR_STRIP < horizonY - 1; y += FLOOR_STRIP) {
+          const s = (horizonY - y) / denomC;
+          const sNext = (horizonY - (y + FLOOR_STRIP)) / denomC;
+          const d0 = CORRIDOR_CFG.focal * (1 / Math.max(0.02, s) - 1);
+          const d1 = CORRIDOR_CFG.focal * (1 / Math.max(0.02, sNext) - 1);
+          const v0 = ((d0 + travel) % FLOOR_REPEAT + FLOOR_REPEAT) % FLOOR_REPEAT / FLOOR_REPEAT * texH;
+          const srcH = Math.max(0.5, (d1 - d0) / FLOOR_REPEAT * texH); // 下の行ほど奥(d1>d0)
+          const fw = 2 * W * CORRIDOR_CFG.aisleHalfXr * s * FLOOR_W_MULT;
+          const fx = W / 2 - fw / 2;
+          const fade = Math.max(0, Math.min(1, (s - 0.12) / 0.5));
+          const w = dofFar(d0);
+          const drawCeilSlice = (tex: HTMLImageElement, alpha: number) => {
+            if (alpha <= 0.02 || !tex.naturalWidth) return;
+            ctx.globalAlpha = alpha;
+            if (v0 + srcH > texH) {
+              // リピート跨ぎ: 2分割で描く。
+              const h1 = texH - v0;
+              if (h1 > 0) ctx.drawImage(tex, 0, v0, texW, h1, fx, y, fw, FLOOR_STRIP * (h1 / srcH));
+              ctx.drawImage(tex, 0, 0, texW, srcH - h1, fx, y + FLOOR_STRIP * (Math.max(0, h1) / srcH), fw, FLOOR_STRIP * ((srcH - Math.max(0, h1)) / srcH));
+            } else {
+              ctx.drawImage(tex, 0, v0, texW, srcH, fx, y, fw, FLOOR_STRIP);
+            }
+          };
+          drawCeilSlice(ctex, fade);
+          drawCeilSlice(ceilImgs.cB, fade * w);
+        }
+        ctx.globalAlpha = 1;
+      }
+
       // 壁灯(柱と柱の中間・左右の壁ライン上): 柱の投影を半間隔ずらして流用=同じ循環に乗る。
       // 柱より先に描く=灯りは柱の奥(壁側)にあり、手前の柱に部分的に隠れて流れていく。
       for (const m of projectCorridorPillars(travel + CORRIDOR_CFG.spacing / 2, W, H)) {
@@ -179,6 +237,15 @@ const MansionCorridorPreview: React.FC = () => {
           ctx.globalAlpha = BACK_ALPHA * w;
           ctx.drawImage(imgs.bF, bx - FAR_BLUR_PAD * k, by - FAR_BLUR_PAD * k, imgs.bF.naturalWidth * k, imgs.bF.naturalHeight * k);
         }
+        // 月明かり(社長指示v0.25.2092): 窓から淡い冷色光。①窓まわりのグロー ②手前下への淡い光条 ③床の光溜まり。
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.5;
+        ctx.drawImage(moonTex, W / 2 - bh * 0.55, by + bh * 0.45 - bh * 0.55, bh * 1.1, bh * 1.1); // 窓グロー(ガラス中心)
+        ctx.globalAlpha = 0.2;
+        ctx.drawImage(moonTex, W / 2 - bw * 1.1, by + bh * 0.35, bw * 2.2, (footY - by) * 2.4);    // 手前下への淡い光条
+        ctx.globalAlpha = 0.28;
+        ctx.drawImage(moonTex, W / 2 - bw * 1.6, footY - bh * 0.2, bw * 3.2, bh * 0.55);           // 床の光溜まり
+        ctx.globalCompositeOperation = 'source-over';
       };
       // 柱(奥→手前)。距離フェードはglobalAlphaで黒背景に沈める(仮)。
       // BACK_DEPTHより奥の柱→壁→手前の柱、の順に描く(壁より奥はほぼ闇に沈んでいる)。
