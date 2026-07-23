@@ -50,6 +50,12 @@ const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ
 const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
 const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
 const WALK_FADEIN_MS = 900;     // シーン全体のフェードイン(v0.25.2121: キャラ個別フェード→シーンフェードへ変更)
+// ── 歩き会話(v0.25.2129・社長指示「歩いてたら左上に会話が流れてほしい」) ──
+// at=歩行可能域の進行率(0=左端〜1=右端)。機種で通路の表示長(px)が変わるため%指定(社長合意)。
+// 台詞は社長支給待ち=空テーブルなら何も出ない。ms=表示時間(省略時WALK_LINE_MS)。\nで改行。
+interface WalkLine { at: number; text: string; ms?: number }
+const WALK_LINES: WalkLine[] = [];
+const WALK_LINE_MS = 3600;
 const WALK_ENTRY_START_X = -80; // 入場開始位置(bg px・画面外左)。フェードイン中に歩いて入ってくる(社長指示)
 const WALK_ENTRY_STOP_X = 150;  // 入場完了位置(ここで操作をプレイヤーに渡す)
 const WALK_STAGE_Y_OFFSET = -40; // ステージ全体の縦オフセット(px)。v0.25.2116/-50→2117/-100→2118/-70→v0.25.2120「30px下へ」で-40
@@ -284,6 +290,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const [walkDone, setWalkDone] = useState<boolean>(!!(startAtShoot || startAtRevival));
   const walkDirRef = useRef<0 | -1 | 1>(0);                   // 歩行方向(0=停止/-1=左/1=右)
   const walkTouchXRef = useRef<number | null>(null);          // ドラッグ起点X(null=非タッチ)。v0.25.2124: ジョイスティック式
+  const [walkLine, setWalkLine] = useState(-1);               // 歩き会話の表示中index(-1=非表示)
+  const walkShownRef = useRef<Set<number>>(new Set());        // 発火済みトリガー
+  const walkLineTimerRef = useRef(0);
   const walkSceneRef = useRef<HTMLDivElement | null>(null);
   const walkWorldRef = useRef<HTMLDivElement | null>(null);
   const walkCharRef = useRef<HTMLImageElement | null>(null);
@@ -502,12 +511,24 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           char.dataset.f = 'idle';
           char.src = HERO;
         }
+        // 歩き会話トリガー(進行率%・v0.25.2129)。発火は1回ずつ・表示は一定時間で消える。
+        if (WALK_LINES.length) {
+          const progress = (worldX - WALK_EDGE_PAD) / Math.max(1, maxX - WALK_EDGE_PAD);
+          for (let li = 0; li < WALK_LINES.length; li++) {
+            if (!walkShownRef.current.has(li) && progress >= WALK_LINES[li].at) {
+              walkShownRef.current.add(li);
+              setWalkLine(li);
+              window.clearTimeout(walkLineTimerRef.current);
+              walkLineTimerRef.current = window.setTimeout(() => setWalkLine(-1), WALK_LINES[li].ms ?? WALK_LINE_MS);
+            }
+          }
+        }
         if (worldX >= maxX - 0.5) { setWalkDone(true); return; } // 右端到達=アリーナへ
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); };
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); window.clearTimeout(walkLineTimerRef.current); };
   }, [ready, walkDone]);
 
 
@@ -584,6 +605,36 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               }}
             />
           </div>
+          {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。立ち絵=色ありの本人(HERO)・名前は？？？。 */}
+          {walkLine >= 0 && WALK_LINES[walkLine] && (
+            <div
+              className="absolute text-left"
+              style={{
+                top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
+                left: 'max(env(safe-area-inset-left), 18px)',
+                maxWidth: 'min(66vw, 300px)', zIndex: 40,
+              }}
+            >
+              <div
+                className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug"
+                style={{ paddingRight: 44, overflow: 'visible', textShadow: '0 1px 0 rgba(0,0,0,0.9)' }}
+              >
+                <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
+                  <img
+                    src={HERO} alt="" draggable={false}
+                    style={{
+                      position: 'absolute', left: '50%', top: 42, transform: 'translate(-50%, -100%)',
+                      height: 64, width: 'auto', maxWidth: 'none', imageRendering: 'pixelated',
+                    }}
+                  />
+                </div>
+                <div className="self-center" style={{ whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
+                  <span className="block font-bold text-amber-300/95">？？？</span>
+                  <span className="text-white/90">{WALK_LINES[walkLine].text}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )) : !mainReady ? null : phase < 3 ? (
         // ── アリーナ3アングル(即表示ハードカット・社長指示v0.25.2072)。key=アングル番号で
