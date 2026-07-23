@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2138 — ステージ6: 消失点をもう少し上へ【2026-07-24 01:05 JST】
+- 指示(社長): ステージ6の消失点、もう少し上にずらせる？
+- 対処: corridorLayerのローカルCFGで horizonYr 0.30→0.26。「プレイヤー行(画面中央)のカーペット幅=移動クランプ±170」の対応(s≒0.45)を保つため footYr も式(horizonYr+(0.5-horizonYr)/0.45)で連動 0.744→0.793。壁灯スパン比(LAMP_SPAN_SCALE)は計算式のため自動追従。プレビュー側CORRIDOR_CFGは不変。
+- 検証: typecheck・lint 0エラー。実写=奥壁/月窓が上がり床の奥行きが伸びる・天井/奥壁の隙間や切れ目なし。
+- Files: `src/pixi/corridorLayer.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2137 — OP廊下: プレイヤーをもう少し遅く【2026-07-24 01:03 JST】
 - 指示(社長): 廊下シーン、プレイヤーもう少し遅く。
 - 対処: WALK_SPEED 120→100(入場の自動歩き・NPC退場の歩きも同速で連動)。

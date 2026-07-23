@@ -19,9 +19,10 @@ import { CORRIDOR_CFG, projectCorridorPillars, type CorridorConfig } from '../ut
 
 // ゲーム内背景用の幾何(v0.25.2113): ?corridor=1プレビューはfootYr=1.55(視点が低い=近景が画面外まで
 // 続く)だが、ゲームはm0カメラ=プレイヤーが画面中央(0.5H)に立つ。中央の行でカーペット半幅が
-// 移動クランプ(±170world px)を覆うs≒0.45になるようfootYrだけ再調整(0.30+0.2/0.45≒0.744)。
-// 他(消失点0.30/柱間隔/focal等)はプレビューの承認値のまま。プレビュー側のCORRIDOR_CFGは不変。
-const CFG: CorridorConfig = { ...CORRIDOR_CFG, footYr: 0.744 };
+// 移動クランプ(±170world px)を覆うs≒0.45になるようfootYrを再調整(footYr=horizonYr+(0.5-horizonYr)/0.45)。
+// 消失点はv0.25.2138(社長指示「もう少し上に」)で0.30→0.26へ。footYrも上式で連動(0.744→0.793)=
+// プレイヤー行のカーペット幅とクランプの一致は不変。プレビュー側のCORRIDOR_CFGは不変。
+const CFG: CorridorConfig = { ...CORRIDOR_CFG, horizonYr: 0.26, footYr: 0.793 };
 // 横移動対応(v0.25.2113): 通路はworld x=0に固定し、pixiSceneがカメラx分だけcontainerを逆シフトする。
 // その際に黒背景が切れないよう左右に持たせる余白(px)。クランプ±170×ズーム+余裕。
 export const CORRIDOR_BG_X_OVERSCAN = 420;
