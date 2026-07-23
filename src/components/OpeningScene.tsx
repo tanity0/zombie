@@ -45,7 +45,8 @@ const WALK_FRAMES = Array.from({ length: 4 }, (_, n) => A(`walk/hero-walk-${n}.p
 const WALK_BG_AR = 1891 / 831;  // 舞台素材のアスペクト(幅/高さ)
 const WALK_SPEED = 120;         // 歩行速度(bg表示px/s)。v0.25.2116「もっとゆっくり」(旧200)
 const WALK_ANIM_MS = 150;       // 歩きコマ間隔(4コマ=1周0.6s・叩き台)
-const WALK_FOOT_YR = 0.775;     // 足元ライン(bg高さ比)。v0.25.2128「廊下からはみ出してる→ギリギリ乗せたい」=舗装床の最下端(旧0.79=溝の上)
+const WALK_FOOT_YR = 0.745;     // 足元ライン(bg高さ比)。v0.25.2134実測: 絵の内容は0.753で終端(以下真っ黒)=
+                                // 旧0.775は黒領域に立っていた(社長報告「まだ絵の上に乗れてない」)。舗装床の帯(~0.71-0.753)に乗せる。
 const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ~0.13より少し大きめ=主役・叩き台)
 const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
 const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
@@ -81,7 +82,10 @@ const WALK_STAGE_Y_OFFSET = -40; // ステージ全体の縦オフセット(px)�
 // blur9px焼き込み)を縦グラデマスクで重ねる=壁(奥)はボケ、彼女と歩いている床だけシャープ。
 // アリーナDOFと同じ「ランタイムぼかしゼロ」方式(モバイルのfilter/backdrop-filterの罠を回避)。
 const WALK_BG_BLUR = A('walk-stage-bg-blur.png');
-const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 60%, transparent 74%)'; // 74%≒足元ライン(0.79)の少し上でシャープへ
+// v0.25.2134(社長指示「ぼかし少し弱めて、黄色ラインくらいまで入れて」): フルぼかしを黄色ライン
+// (実測0.639-0.647)まで届かせ、縁石帯で抜いて舗装床(0.71〜)からシャープ。強度はWALK_DOF_ALPHAで少し弱める。
+const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 64%, transparent 71%)';
+const WALK_DOF_ALPHA = 0.8;     // ぼかし版の重ね不透明度(1=旧・全ぼかし。少し素の絵を透かして弱める)
 const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
 
 interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y=足元(画像%)、h=高さ(%)
@@ -644,17 +648,18 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         >
           <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
             <img src={WALK_BG} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />
-            {/* 被写界深度: 事前ブラー版を縦グラデマスクで重ねる(壁=ボケ/床ラインでシャープへ)。 */}
+            {/* 被写界深度: 事前ブラー版を縦グラデマスクで重ねる(壁=ボケ/黄色ラインで抜けて床はシャープ)。 */}
             <img src={WALK_BG_BLUR} alt="" draggable={false} style={{
               position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
+              opacity: WALK_DOF_ALPHA,
               maskImage: WALK_DOF_MASK, WebkitMaskImage: WALK_DOF_MASK,
             } as React.CSSProperties} />
             {/* 待ち構えるスタッフ(シルエット・90%会話・v0.25.2131)。素材は左向き=待機は素のまま
-                (向き訂正v0.25.2133)。位置/コマ/退場フェードはrAF側が駆動(主役と同じref直更新)。
-                translateZ(0)=iOSマスクz順対策。 */}
+                (向き訂正v0.25.2133)。白シルエット(invert・社長指示v0.25.2134=暗い通路で黒は見えない)。
+                位置/コマ/退場フェードはrAF側が駆動(主役と同じref直更新)。translateZ(0)=iOSマスクz順対策。 */}
             <img
               ref={walkNpcRef} src={NPC_IDLE} alt="" draggable={false}
-              style={{ position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated' }}
+              style={{ position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated', filter: 'invert(1)' }}
             />
             <img
               ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false}
