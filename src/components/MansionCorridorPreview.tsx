@@ -10,6 +10,19 @@ const PILLAR_L = `${import.meta.env.BASE_URL}sprites/mansion/pillar-left.png`;
 const PILLAR_R = `${import.meta.env.BASE_URL}sprites/mansion/pillar-right.png`;
 const BACK = `${import.meta.env.BASE_URL}sprites/mansion/back.png`;
 const FLOOR = `${import.meta.env.BASE_URL}sprites/mansion/floor.png`;
+// 被写界深度(社長指示v0.25.2087・事前ブラー方式=ランタイムぼかしゼロ): ブラー版素材
+// (art-src/mansion/make-blur.mjs生成)とシャープ版を奥行きでクロスフェード。
+// 手前通過(d<300→-100で0→1)と遠方(d>1000→2400で0→1・上限0.9)がボケ、中距離=ピント面。
+const PILLAR_L_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/pillar-left-blur.png`;
+const PILLAR_R_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/pillar-right-blur.png`;
+const BACK_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/back-blur.png`;
+const FLOOR_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/floor-blur.png`;
+const BLUR_PAD = 24; // ブラー版素材の余白(make-blur.mjsのpadと一致させること)
+const dofWeight = (d: number): number => {
+  const near = Math.max(0, Math.min(1, (300 - d) / 400));   // 手前: d=300で0 → d=-100で1
+  const far = Math.max(0, Math.min(1, (d - 1000) / 1400));  // 遠方: d=1000で0 → d=2400で1
+  return Math.min(0.9, Math.max(near, far));                 // 完全ボケにはしない(上限0.9)
+};
 const WALK_SPEED = 220; // 自動前進(world px/s・叩き台)
 // 床(Mode-7方式): 見下ろしテクスチャを横スライスで遠近マッピング。1リピート=柱1間隔(spacing)相当の
 // 前進量=柱と床の流速が同期。幅は柱中心間より広め(石畳が柱の外へ続く)。
@@ -33,11 +46,18 @@ const MansionCorridorPreview: React.FC = () => {
     let raf = 0;
     let travel = 0;
     let prev = performance.now();
-    const imgs: Record<'l' | 'r' | 'b' | 'f', HTMLImageElement> = { l: new Image(), r: new Image(), b: new Image(), f: new Image() };
+    const imgs: Record<'l' | 'r' | 'b' | 'f' | 'lB' | 'rB' | 'bB' | 'fB', HTMLImageElement> = {
+      l: new Image(), r: new Image(), b: new Image(), f: new Image(),
+      lB: new Image(), rB: new Image(), bB: new Image(), fB: new Image(),
+    };
     imgs.l.src = PILLAR_L;
     imgs.r.src = PILLAR_R;
     imgs.b.src = BACK;
     imgs.f.src = FLOOR;
+    imgs.lB.src = PILLAR_L_BLUR;
+    imgs.rB.src = PILLAR_R_BLUR;
+    imgs.bB.src = BACK_BLUR;
+    imgs.fB.src = FLOOR_BLUR;
 
     const resize = () => {
       canvas.width = window.innerWidth;
@@ -76,20 +96,28 @@ const MansionCorridorPreview: React.FC = () => {
           const fw = 2 * W * CORRIDOR_CFG.aisleHalfXr * s * FLOOR_W_MULT;
           const fx = W / 2 - fw / 2;
           const fade = Math.max(0, Math.min(1, (s - 0.12) / 0.5));
-          ctx.globalAlpha = fade;
           const srcY = texH - v0 - srcH; // 前進で紋様が手前へ来るようv軸を反転
-          if (srcY < 0) {
-            // リピート跨ぎ: 2分割で描く。
-            const h1 = srcH + srcY; // 正の部分
-            if (h1 > 0) ctx.drawImage(ftex, 0, 0, texW, h1, fx, y, fw, FLOOR_STRIP * (h1 / srcH));
-            ctx.drawImage(ftex, 0, texH + srcY, texW, -srcY, fx, y + FLOOR_STRIP * (Math.max(0, h1) / srcH), fw, FLOOR_STRIP * (-srcY / srcH));
-          } else {
-            ctx.drawImage(ftex, 0, srcY, texW, srcH, fx, y, fw, FLOOR_STRIP);
-          }
+          // 被写界深度: 遠方の床はブラー版テクスチャへクロスフェード(同寸なのでUVは共通)。
+          const w = dofWeight(d0);
+          const drawFloorSlice = (tex: HTMLImageElement, alpha: number) => {
+            if (alpha <= 0.02) return;
+            ctx.globalAlpha = alpha;
+            if (srcY < 0) {
+              // リピート跨ぎ: 2分割で描く。
+              const h1 = srcH + srcY; // 正の部分
+              if (h1 > 0) ctx.drawImage(tex, 0, 0, texW, h1, fx, y, fw, FLOOR_STRIP * (h1 / srcH));
+              ctx.drawImage(tex, 0, texH + srcY, texW, -srcY, fx, y + FLOOR_STRIP * (Math.max(0, h1) / srcH), fw, FLOOR_STRIP * (-srcY / srcH));
+            } else {
+              ctx.drawImage(tex, 0, srcY, texW, srcH, fx, y, fw, FLOOR_STRIP);
+            }
+          };
+          drawFloorSlice(ftex, fade);
+          if (imgs.fB.naturalWidth) drawFloorSlice(imgs.fB, fade * w);
         }
         ctx.globalAlpha = 1;
       }
       // 奥の壁(ステンドグラス窓)の描画関数: 柱の描画順(奥→手前)の中でBACK_DEPTHの位置に挟む。
+      // 被写界深度: シャープ版+ブラー版(パディング分オフセット)をdofWeightでクロスフェード。
       const drawBack = () => {
         const b = imgs.b;
         if (!b.naturalWidth) return;
@@ -97,19 +125,37 @@ const MansionCorridorPreview: React.FC = () => {
         const footY = H * CORRIDOR_CFG.horizonYr + (H * CORRIDOR_CFG.footYr - H * CORRIDOR_CFG.horizonYr) * s;
         const bw = 2 * W * CORRIDOR_CFG.aisleHalfXr * s * BACK_WIDTH_MULT;
         const bh = (b.naturalHeight / b.naturalWidth) * bw;
-        ctx.globalAlpha = BACK_ALPHA;
-        ctx.drawImage(b, W / 2 - bw / 2, footY - bh, bw, bh);
+        const bx = W / 2 - bw / 2, by = footY - bh;
+        const w = dofWeight(BACK_DEPTH);
+        ctx.globalAlpha = BACK_ALPHA * (1 - w);
+        ctx.drawImage(b, bx, by, bw, bh);
+        if (imgs.bB.naturalWidth) {
+          const k = bw / b.naturalWidth; // 表示スケール(ブラー版はpadぶん大きい)
+          ctx.globalAlpha = BACK_ALPHA * w;
+          ctx.drawImage(imgs.bB, bx - BLUR_PAD * k, by - BLUR_PAD * k, imgs.bB.naturalWidth * k, imgs.bB.naturalHeight * k);
+        }
       };
       // 柱(奥→手前)。距離フェードはglobalAlphaで黒背景に沈める(仮)。
       // BACK_DEPTHより奥の柱→壁→手前の柱、の順に描く(壁より奥はほぼ闇に沈んでいる)。
+      // 被写界深度: 各柱はシャープ版(1-w)+ブラー版(w)のクロスフェード(wはdofWeight(depth))。
       let backDrawn = false;
       for (const p of projectCorridorPillars(travel, W, H)) {
         if (!backDrawn && p.depth < BACK_DEPTH) { drawBack(); backDrawn = true; }
         const img = p.side < 0 ? imgs.l : imgs.r;
         if (!img.naturalWidth) continue;
         const w = (img.naturalWidth / img.naturalHeight) * p.h;
-        ctx.globalAlpha = p.fade;
-        ctx.drawImage(img, p.x - w / 2, p.y - p.h, w, p.h);
+        const dof = dofWeight(p.depth);
+        const dx = p.x - w / 2, dy = p.y - p.h;
+        if (dof < 0.98) {
+          ctx.globalAlpha = p.fade * (1 - dof);
+          ctx.drawImage(img, dx, dy, w, p.h);
+        }
+        const blurImg = p.side < 0 ? imgs.lB : imgs.rB;
+        if (dof > 0.02 && blurImg.naturalWidth) {
+          const k = p.h / img.naturalHeight; // 表示スケール(ブラー版はpadぶん大きい)
+          ctx.globalAlpha = p.fade * dof;
+          ctx.drawImage(blurImg, dx - BLUR_PAD * k, dy - BLUR_PAD * k, blurImg.naturalWidth * k, blurImg.naturalHeight * k);
+        }
       }
       if (!backDrawn) drawBack();
       ctx.globalAlpha = 1;
