@@ -9039,13 +9039,44 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (get().farBackdrop === 'tutorial') return [];
     const state = get();
     // 洋館通路(corridorMode・v0.25.2128): 拠点システムなし。護衛は入場時の横一列の隊形のまま
-    // プレイヤーと並走して上へ歩く(担当拠点/占拠/発砲なしの軽量挙動)。
+    // プレイヤーと並走して上へ歩く。v0.25.2139(社長報告「付いてくるだけで攻撃しない」): 通常拠点護衛と
+    // 同じ射撃を追加=敵が検知半径内なら停止して発砲(同じ実弾/間隔/フェイザー2丁)、いなければ隊形へ追走。
     if (state.corridorMode) {
       const p = state.player;
       const pcx = p.x + p.width / 2;
       const pcy = p.y + p.height / 2;
+      const now = state.gameTime;
+      const detect2 = (huntingMeleeRadius(p) * ESCORT_DETECT_MULT) ** 2;
+      const shots: { x: number; y: number; dx: number; dy: number; soldierIndex: number }[] = [];
       let escChanged = false;
       const nextEsc = state.escorts.map((esc, i) => {
+        // 最寄り敵(通常護衛と同じ検知。空中=ジャンプ中は無敵なので狙わない)。
+        let nearest: Enemy | undefined; let nd2 = detect2;
+        for (const e of state.enemies) {
+          if (e.aiPhase === 'jump') continue;
+          const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+          const d2 = (ex - esc.x) * (ex - esc.x) + (ey - esc.y) * (ey - esc.y);
+          if (d2 < nd2) { nd2 = d2; nearest = e; }
+        }
+        if (nearest) {
+          // 停止して射撃(進まない)=通常護衛と同じ振る舞い。
+          let { fireAt, face } = esc;
+          if (now >= fireAt) {
+            fireAt = now + ESCORT_FIRE_INTERVAL_MS;
+            const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
+            let dx = tx - esc.x, dy = ty - esc.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+            if (esc.soldierIndex === PHASER_INDEX) {
+              const ox = -dy * PHASER_GUN_OFFSET, oy = dx * PHASER_GUN_OFFSET;
+              shots.push({ x: esc.x + ox, y: esc.y + oy, dx, dy, soldierIndex: esc.soldierIndex });
+              shots.push({ x: esc.x - ox, y: esc.y - oy, dx, dy, soldierIndex: esc.soldierIndex });
+            } else {
+              shots.push({ x: esc.x, y: esc.y, dx, dy, soldierIndex: esc.soldierIndex });
+            }
+            face = (dx < 0 ? -1 : 1) as 1 | -1;
+          }
+          if (fireAt !== esc.fireAt || face !== esc.face || esc.moving) escChanged = true;
+          return { ...esc, fireAt, face, moving: false };
+        }
         const targetX = pcx + (CORRIDOR_ESCORT_ROW_X[i % CORRIDOR_ESCORT_ROW_X.length] ?? 0);
         const targetY = pcy + 26; // プレイヤーのやや後ろの列
         const dx = targetX - esc.x, dy = targetY - esc.y;
@@ -9062,7 +9093,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         };
       });
       if (escChanged) set({ escorts: nextEsc });
-      return [];
+      // 発砲=通常護衛と同一の実弾(handgun projectile・friendly)。SE減衰用に発射元を返す。
+      for (const sh of shots) {
+        get().addProjectile({
+          id: `proj-escort-${Math.floor(now)}-${Math.random().toString(36).slice(2, 6)}`,
+          x: sh.x - 4.5, y: sh.y - 30, width: 9, height: 9, // 胸の高さから発射(足元アンカーなので少し上)
+          speed: 680, damage: ESCORT_DMG,
+          direction: { x: sh.dx, y: sh.dy },
+          weaponType: 'handgun', weaponKey: 'escort',
+          duration: 1200, createdAt: Date.now(),
+          passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
+        });
+      }
+      return shots.map(s => ({ x: s.x, y: s.y }));
     }
     // 拠点は屋外(非ラボ・非屋内)なら常に機能する。屋内/ラボ/勝利後は無処理。
     // イベント(suppressionActive)かどうかは「全拠点制圧」した時のゴール有無だけが違う(下部参照)。

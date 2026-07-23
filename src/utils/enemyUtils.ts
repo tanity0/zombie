@@ -1,5 +1,6 @@
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
+import { CONTEXT_ZOOM_MIN } from './cameraZoom';
 
 // 固定ビュー矩形からの「画面外」バンド(px・社長指示Bで具体値決め直し)。全辺一律で「画面端から○px外」を意味する。
 // 固定ビューにしたので画面サイズ比ではなく固定px。SPAWN<RECYCLE のヒステリシスで湧いた敵が即リサイクルされない。実機で微調整可。
@@ -471,11 +472,15 @@ export const generateEnemy = (
   }
   let x = 0;
   let y = 0;
+  // 洋館通路の上(奥)湧きは「文脈ズーム最大引きでも画面外」の距離へ(v0.25.2139・社長指示「敵の現れる
+  // 位置も上(奥)に」)。固定ビュー+140pxのままだと最大引き(可視高=gameBounds/CONTEXT_ZOOM_MIN)で
+  // 湧きが画面内に食い込み、敵がその場に現れるのが見えていた(回収側directorTickは対策済み・湧き側の漏れ)。
+  const corridorTopHalfH = halfH / CONTEXT_ZOOM_MIN;
   // 各辺の「外側」(半幅/半高+margin)へ。直交方向は画面幅/高いっぱいに散らす(歩いて入ってくる)。
   switch (spawnSide) {
     case 0: // 上辺の外
       x = player.x - halfW + Math.random() * viewportWidth;
-      y = vy0 - halfH - margin;
+      y = vy0 - (corridorSpawnEnabled ? corridorTopHalfH : halfH) - margin;
       break;
     case 1: // 右辺の外
       x = player.x + halfW + margin;
