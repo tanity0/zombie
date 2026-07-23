@@ -1033,6 +1033,13 @@ const SMALL_GLOW_ALPHA_SCALE = 0.74;
 const MANSION_DARK_COLOR = 0x050508;      // 床(±MANSION_FLOOR_HALF_W)の外側を沈める暗闇の色
 const MANSION_DARK_ALPHA = 1;             // 暗闇の濃さ(1=完全に沈める)
 const MANSION_FLOOR_EDGE_PAD = 8;         // 床/暗闇の描画マージン(px。丸め/ズームの隙間対策)
+// 床の遠近ストリップ(v0.25.2111・社長指示「床もまったく奥行きない」): m0の地面(updatePerspectiveGround)と
+// 同じ「画面行ごとの縦圧縮」を洋館床にも適用する。定数は m0 と共有(GROUND_TILE_SCALE_Y_FAR/NEAR・CURVE)。
+// 横は world 固定(±MANSION_FLOOR_HALF_W)=柱/暗闇との整列を維持。縦の柄はプレイヤー付近(最下行)を
+// world にアンカーし、奥の行ほど圧縮されて多くの床を映す(=奥へ倒れる遠近)。
+const MANSION_FLOOR_STRIP_COUNT = 26;     // ストリップ本数(m0地面と同等の滑らかさ・TilingSprite26枚=安い)
+const MANSION_FLOOR_FAR_DARK = 0.30;      // 最遠行の明度倍率(奥は闇に沈む→上端ビスタへ繋ぐ)
+const MANSION_FLOOR_DARK_BAND = 0.35;     // 暗化を掛ける上端側の帯(t<この値のみ。中段まで暗くしない)
 const MANSION_CANDLE_GLOW_RADIUS = 36;    // 燭台の炎glow半径(STRONG_GLOW_RADIUS=44未満厳守=安い小glow経路)
 const MANSION_CANDLE_GLOW_TINT = 0xffb45f; // 暖色(松明ライトと同色)
 const MANSION_CANDLE_GLOW_ALPHA = 0.4;    // glowのベースalpha(ゆらぎで脈動)
@@ -1239,7 +1246,7 @@ export class PixiScene {
   // mansionGroup=床タイル+左右の暗闇(worldGroup内・遠景森1の下に敷き、毎フレーム world と同じ
   // カメラオフセットを同期=1:1スクロール)。柱/燭台は木と同じ足元アンカーで actorLayer にy-sort。
   private mansionGroup: Container | null = null;
-  private mansionFloor: TilingSprite | null = null;
+  private mansionFloorStrips: TilingSprite[] = []; // 遠近ストリップ(v0.25.2111。旧: 単一TilingSprite=奥行きなし)
   private mansionDarkL: Sprite | null = null;
   private mansionDarkR: Sprite | null = null;
   private mansionProps = new Map<string, { sprite: Sprite; light: Sprite | null; baseScale: number; footX: number; footY: number }>();
@@ -4892,31 +4899,57 @@ export class PixiScene {
     group.visible = true;
     group.position.copyFrom(this.L.world.position); // world と同じカメラオフセット=1:1スクロール(シェイク込み)
 
-    // 床(mansion/floor.png=中央カーペット+左右石畳)を x∈[-330,+330] にマップし縦に無限リピート。
+    // 床(mansion/floor.png=中央カーペット+左右石畳)を x∈[-HALF_W,+HALF_W]にマップ+
+    // 【m0と同じ遠近ストリップ】(v0.25.2111): 画面を横帯に分割し、上(奥)の行ほど縦圧縮=奥へ倒れる床。
     // テクスチャ注入待ちの遅延生成(他のステージ素材と同じ)。NPOT(1254²)なので wrap=repeat を明示。
-    if (!this.mansionFloor) {
+    if (!this.mansionFloorStrips.length) {
       const tex = getTexture('mansion/floor');
       if (tex) {
         try {
           const st = tex.source.style as { addressMode?: string; update?: () => void };
           if (st.addressMode !== 'repeat') { st.addressMode = 'repeat'; st.update?.(); }
         } catch { /* ignore */ }
-        const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
-        const sc = (MANSION_FLOOR_HALF_W * 2) / tex.width;
-        sp.tileScale.set(sc, sc);
-        group.addChildAt(sp, 0); // 暗闇quadの下
-        this.mansionFloor = sp;
+        for (let i = 0; i < MANSION_FLOOR_STRIP_COUNT; i++) {
+          const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
+          group.addChildAt(sp, 0); // 暗闇quadの下
+          this.mansionFloorStrips.push(sp);
+        }
       }
     }
-    const floor = this.mansionFloor;
-    if (floor) {
-      floor.tint = this.envTintNow(); // 環境として暗く沈める(木/床と同じ)
-      floor.position.set(-MANSION_FLOOR_HALF_W, topY);
-      floor.width = MANSION_FLOOR_HALF_W * 2;
-      floor.height = bandH;
-      // 柄を world に固定: スプライト上端(topY)の移動を tilePosition で打ち消す(mod=桁を溜めない)。
-      const period = floor.texture.height * floor.tileScale.y;
-      if (period > 0) floor.tilePosition.set(0, -(topY % period));
+    if (this.mansionFloorStrips.length) {
+      const tex = this.mansionFloorStrips[0].texture;
+      const sc = (MANSION_FLOOR_HALF_W * 2) / tex.width; // 横: テクスチャ全幅=通路幅(world px/texel)
+      const floorPeriod = tex.height * sc;               // 柄1周のworld距離
+      const farHscr = this.farBackdropHeight();
+      const stripHscr = Math.max(1, (this.screenH - farHscr) / MANSION_FLOOR_STRIP_COUNT);
+      const env = this.envTintNow();
+      const er = (env >> 16) & 0xff, eg = (env >> 8) & 0xff, eb = env & 0xff;
+      // 柄のアンカー: 最下行の下端=world座標そのまま(プレイヤー付近は床とworldが1:1で流れる)。
+      // 上の行ほど 1/scaleY 倍の床を映しながら積み上げる(m0のsourceY累積と同じ考え方・向きが逆なだけ)。
+      let mBottom = botY;
+      for (let i = MANSION_FLOOR_STRIP_COUNT - 1; i >= 0; i--) {
+        const sp = this.mansionFloorStrips[i];
+        const t = MANSION_FLOOR_STRIP_COUNT <= 1 ? 1 : i / (MANSION_FLOOR_STRIP_COUNT - 1); // 0=最遠(上)
+        const persp = Math.pow(t, GROUND_PERSPECTIVE_CURVE);
+        const scaleY = GROUND_TILE_SCALE_Y_FAR + (GROUND_TILE_SCALE_Y_NEAR - GROUND_TILE_SCALE_Y_FAR) * persp;
+        const wTop = worldYAt(farHscr + i * stripHscr);
+        const wH = stripHscr / gz + 1; // +1px重ね=行間の隙間防止
+        sp.position.set(-MANSION_FLOOR_HALF_W, wTop);
+        sp.width = MANSION_FLOOR_HALF_W * 2;
+        sp.height = wH;
+        sp.tileScale.set(sc, sc * scaleY);
+        const mTop = mBottom - (stripHscr / gz) / scaleY; // この行が映す床区間の上端(world床座標)
+        const mMod = ((mTop % floorPeriod) + floorPeriod) % floorPeriod;
+        sp.tilePosition.set(0, -mMod * scaleY);
+        mBottom = mTop;
+        // 奥は闇に沈む(上端ビスタへ繋ぐ): 環境tintに行ごとの明度倍率を掛ける。
+        // perspベース(pow曲線)だと画面中段まで暗くなりすぎたため、上端側の帯(t<0.35)だけを沈める。
+        const f = t < MANSION_FLOOR_DARK_BAND
+          ? MANSION_FLOOR_FAR_DARK + (1 - MANSION_FLOOR_FAR_DARK) * (t / MANSION_FLOOR_DARK_BAND)
+          : 1;
+        sp.tint = (Math.round(er * f) << 16) | (Math.round(eg * f) << 8) | Math.round(eb * f);
+        sp.visible = true;
+      }
     }
     // 左右の暗闇: 床の外(|x|>MANSION_FLOOR_HALF_W)を world 固定の暗帯で沈める(縦の範囲は床と同じ)。
     const dl = this.mansionDarkL, dr = this.mansionDarkR;
