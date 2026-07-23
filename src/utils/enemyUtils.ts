@@ -13,7 +13,7 @@ export const OFFSCREEN_RECYCLE_MARGIN = 240;  // ビュー矩形の外側この�
 let corridorSpawnEnabled = false;
 export const setCorridorSpawn = (enabled: boolean): void => { corridorSpawnEnabled = enabled; };
 // 上(奥)から湧く比率(叩き台=上7:下3)。定数化して調整可能に(社長指示)。
-export const CORRIDOR_SPAWN_TOP_RATIO = 0.7; // 叩き台
+export const CORRIDOR_SPAWN_TOP_RATIO = 1.0; // v0.25.2128(社長指示「一番下からは敵沸かなくていい」)=上(奥)のみ。旧0.7
 
 // Mad-Forest port: a stat sheet per enemy type. Difficulty multiplier scales
 // the base values over time so a 25-minute zombie has more HP than a 1-minute
@@ -233,6 +233,9 @@ export const AREA_ZONE_NAMES = ['軍備配置区域', '研究対象区域', 'デ
 // (areaIndexForPosのif連鎖と同じ値を共有・挙動は不変)。
 export const AREA_THRESHOLDS = [1500, 3000, 5000, 7500];
 export const areaIndexForPos = (x: number, y: number): number => {
+  // 洋館通路(corridorMode・v0.25.2128・社長指示): 拠点/エリア構造なし。裏側のステータスは
+  // 全域「未確認汚染エリア」(index3)扱い=難易度1.75倍・未確認の湧き構成・最大敵数10。
+  if (corridorSpawnEnabled) return 3;
   const d = Math.hypot(x, y);
   if (d >= 7500) return 4;
   if (d >= 5000) return 3;

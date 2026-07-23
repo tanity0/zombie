@@ -45,7 +45,7 @@ const WALK_FRAMES = Array.from({ length: 4 }, (_, n) => A(`walk/hero-walk-${n}.p
 const WALK_BG_AR = 1891 / 831;  // 舞台素材のアスペクト(幅/高さ)
 const WALK_SPEED = 120;         // 歩行速度(bg表示px/s)。v0.25.2116「もっとゆっくり」(旧200)
 const WALK_ANIM_MS = 150;       // 歩きコマ間隔(4コマ=1周0.6s・叩き台)
-const WALK_FOOT_YR = 0.79;      // 足元ライン(bg高さ比)。v0.25.2117「ステージのかなり下+プレイ中と同じ画面位置」=床帯の最前縁(画面中心比≒57%)
+const WALK_FOOT_YR = 0.775;     // 足元ライン(bg高さ比)。v0.25.2128「廊下からはみ出してる→ギリギリ乗せたい」=舗装床の最下端(旧0.79=溝の上)
 const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ~0.13より少し大きめ=主役・叩き台)
 const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
 const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)

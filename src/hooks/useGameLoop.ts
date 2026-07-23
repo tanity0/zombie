@@ -3003,7 +3003,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // --- エリア(区域)遷移バナー: 距離帯を跨いだら区域名を表示(イベント発生と同じUI) ---
           // ゾーン判定は ZONE_CHECK_INTERVAL フレームに1回(間引き)。
-          if (zoneTickRef.current % ZONE_CHECK_INTERVAL === 0) {
+          // 洋館通路(corridorMode)はエリア構造なし(v0.25.2128・社長指示)=バナー/壁踏破/ゲート予約を丸ごとスキップ
+          // (ステータス面はareaIndexForPosが未確認固定を返す)。
+          if (!useGameStore.getState().corridorMode && zoneTickRef.current % ZONE_CHECK_INTERVAL === 0) {
             const zoneIdx = areaZoneIndexFor(Math.hypot(pcx, pcy));
             if (areaZoneRef.current === -1) {
               areaZoneRef.current = zoneIdx; // 初回は黙って採用(開始地点では出さない)

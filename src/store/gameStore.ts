@@ -9032,6 +9032,32 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 追従チェーンが担当・社長指示v0.25.1823)。
     if (get().farBackdrop === 'tutorial') return [];
     const state = get();
+    // 洋館通路(corridorMode・v0.25.2128): 拠点システムなし。護衛は入場時の横一列の隊形のまま
+    // プレイヤーと並走して上へ歩く(担当拠点/占拠/発砲なしの軽量挙動)。
+    if (state.corridorMode) {
+      const p = state.player;
+      const pcx = p.x + p.width / 2;
+      const pcy = p.y + p.height / 2;
+      let escChanged = false;
+      const nextEsc = state.escorts.map((esc, i) => {
+        const targetX = pcx + (CORRIDOR_ESCORT_ROW_X[i % CORRIDOR_ESCORT_ROW_X.length] ?? 0);
+        const targetY = pcy + 26; // プレイヤーのやや後ろの列
+        const dx = targetX - esc.x, dy = targetY - esc.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 3) { if (esc.moving) { escChanged = true; return { ...esc, moving: false }; } return esc; }
+        const k = Math.min(1, (ESCORT_SPEED * deltaTime) / dist);
+        escChanged = true;
+        return {
+          ...esc,
+          x: esc.x + dx * k,
+          y: esc.y + dy * k,
+          face: (Math.abs(dx) > 6 ? (dx < 0 ? -1 : 1) : esc.face) as 1 | -1,
+          moving: true,
+        };
+      });
+      if (escChanged) set({ escorts: nextEsc });
+      return [];
+    }
     // 拠点は屋外(非ラボ・非屋内)なら常に機能する。屋内/ラボ/勝利後は無処理。
     // イベント(suppressionActive)かどうかは「全拠点制圧」した時のゴール有無だけが違う(下部参照)。
     if (!state.baseSites.length || state.indoorMode || state.stageTheme === 'lab' || state.gameWon) return [];
@@ -10074,7 +10100,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         vaccinePurchased: false,
         gameWon: false,
         finaleDefeated: false,
-        baseSites: createBaseSites(),
+        baseSites: corridorMode ? [] : createBaseSites(), // 洋館通路は拠点なし(v0.25.2128・社長指示)
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
         escorts: escortRoster,
         // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、実ロスターの1人をランダムで予約(フェイザー等の差し替えにも追従)。
