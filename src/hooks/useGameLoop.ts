@@ -1896,7 +1896,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 以前は制圧イベント中(ステージ1メイン)は出さない仕様だったが、社長指示で撤回=制圧中でも
         // 時間が来たら出現するように変更(拠点制圧の完了を待たない)。
         const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN && !revisitRun && !castle.bossSpawned && castleBossReady) {
+        // 洋館通路(corridorMode)は城なし(v0.25.2144・社長指示「城も出現しないで。時間で出るのは死神だけ」)
+        // =7分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
@@ -2995,9 +2997,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 原点(スタート/商人付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
         // 横切り=無害な演出(reaperCross をセット→pixiScene が描画)、追跡=本物の reaper 敵。
         // 研究所スキンは「ラボ敵以外は沸かない」(社長指示)=死神も出さない。ストーリーボス専用ランも同様。
-        // 洋館通路(corridorMode)も死神なし(社長裁定v0.25.2130「死神は無しで。ゴール設けるので」=
-        // 奥へ歩き続ける構造上、距離条件を必ず踏むため)。区域バナー系も同ブロック内=併せてスキップ。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN && !useGameStore.getState().corridorMode) {
+        // 洋館通路(corridorMode)の死神は v0.25.2144 で復活(社長指示「時間で出るのは死神だけ」=
+        // v0.25.2130の「死神なし」裁定を撤回。ゴール設置済みなので時間切れの圧として死神を使う)。
+        // 区域バナー/壁踏破/ゲート予約は下の内側ゲート(!corridorMode)が引き続きスキップする。
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN) {
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;

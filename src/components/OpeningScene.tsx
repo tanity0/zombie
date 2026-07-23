@@ -82,6 +82,28 @@ const WALK_STAGE_Y_OFFSET = -40; // ステージ全体の縦オフセット(px)�
 // blur9px焼き込み)を縦グラデマスクで重ねる=壁(奥)はボケ、彼女と歩いている床だけシャープ。
 // アリーナDOFと同じ「ランタイムぼかしゼロ」方式(モバイルのfilter/backdrop-filterの罠を回避)。
 const WALK_BG_BLUR = A('walk-stage-bg-blur.png');
+// ── 夢の演出(v0.25.2144・社長指示「夢の世界なのでパーティクルふわふわ+ライトは全てグロー」) ──
+// 浮遊パーティクル: 画面全体を漂う光の粒(CSSアニメのみ・毎フレームJSなし=負荷1/10)。
+const WALK_MOTES = Array.from({ length: 26 }, (_, i) => ({
+  key: i,
+  x: Math.random() * 100, y: Math.random() * 100,   // 画面%
+  size: 2 + Math.random() * 5,
+  mx: (Math.random() * 2 - 1) * 22,                  // 揺れの横振幅(px)
+  my: -(10 + Math.random() * 34),                    // 揺れの縦振幅(上へ・px)
+  o0: 0.10 + Math.random() * 0.25, o1: 0.5 + Math.random() * 0.45, // 明滅の下限/上限
+  dur: 6 + Math.random() * 8, delay: -Math.random() * 14,          // 負のdelay=最初から空中に満ちる
+}));
+// 背景のライト位置(bg%座標)。高輝度クラスタ検出(v0.25.2144)の実測=壁ランプ6灯(各サイン上)+
+// 関係者出口の緑サイン。walkWorld内に置く=背景のスクロールに連動して光る。
+const WALK_GLOWS = [
+  { x: 10.26, y: 29.5, s: 1.0, green: false },  // 楽屋A 上のランプ
+  { x: 23.69, y: 29.5, s: 1.0, green: false },  // 男女トイレ 上
+  { x: 39.87, y: 29.7, s: 1.0, green: false },  // 楽屋B 上
+  { x: 67.16, y: 29.7, s: 1.0, green: false },  // 楽屋C 上
+  { x: 81.54, y: 29.7, s: 1.0, green: false },  // 上手 上
+  { x: 95.93, y: 29.5, s: 1.0, green: false },  // 関係者出口 上
+  { x: 96.88, y: 33.5, s: 0.8, green: true },   // 関係者出口の緑サイン
+];
 // v0.25.2134(社長指示「ぼかし少し弱めて、黄色ラインくらいまで入れて」): フルぼかしを黄色ライン
 // (実測0.639-0.647)まで届かせ、縁石帯で抜いて舗装床(0.71〜)からシャープ。強度はWALK_DOF_ALPHAで少し弱める。
 const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 64%, transparent 71%)';
@@ -609,7 +631,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     `\n@keyframes oppl{from{transform:rotate(calc(var(--pa)*-1))}to{transform:rotate(var(--pa))}}` +
     `\n@keyframes opvglow{0%{opacity:0.45}50%{opacity:1}100%{opacity:0.45}}` +
     // スポットライトのゆっくり明滅(強すぎない0.8↔1.0)。
-    `\n@keyframes opspot{0%{opacity:0.8}50%{opacity:1}100%{opacity:0.8}}`;
+    `\n@keyframes opspot{0%{opacity:0.8}50%{opacity:1}100%{opacity:0.8}}` +
+    // 夢の浮遊パーティクル(OP廊下): その場でふわっと往復+明滅(振幅/透明度はCSS変数で粒ごとに変える)。
+    `\n@keyframes opmote{0%,100%{transform:translate(0,0);opacity:var(--o0)}50%{transform:translate(var(--mx),var(--my));opacity:var(--o1)}}`;
 
   const cur = SHOOT_STEPS[step];
 
@@ -654,6 +678,23 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               opacity: WALK_DOF_ALPHA,
               maskImage: WALK_DOF_MASK, WebkitMaskImage: WALK_DOF_MASK,
             } as React.CSSProperties} />
+            {/* ライトのグロー(v0.25.2144・社長指示「背景のライト部分は全てグローで」): 実測した
+                ランプ/サイン位置(bg%)にscreen合成の放射光を重ねてゆっくり明滅。bgスクロールに連動。 */}
+            {WALK_GLOWS.map((gl, gi) => (
+              <div
+                key={`wg${gi}`}
+                style={{
+                  position: 'absolute', left: `${gl.x}%`, top: `${gl.y}%`,
+                  height: `${16 * gl.s}%`, aspectRatio: '1.8',
+                  transform: 'translate(-50%, -50%)', borderRadius: '50%',
+                  background: gl.green
+                    ? 'radial-gradient(ellipse at center, rgba(140,255,170,0.55) 0%, rgba(80,220,130,0.22) 45%, rgba(60,200,120,0) 72%)'
+                    : 'radial-gradient(ellipse at center, rgba(255,214,150,0.60) 0%, rgba(255,168,80,0.25) 45%, rgba(255,140,60,0) 72%)',
+                  mixBlendMode: 'screen', pointerEvents: 'none',
+                  animation: `opvglow ${2.2 + gi * 0.4}s ease-in-out infinite`, animationDelay: `${-gi * 0.7}s`,
+                }}
+              />
+            ))}
             {/* 待ち構えるスタッフ(シルエット・90%会話・v0.25.2131)。素材は左向き=待機は素のまま
                 (向き訂正v0.25.2133)。白シルエット(invert・社長指示v0.25.2134=暗い通路で黒は見えない)。
                 位置/コマ/退場フェードはrAF側が駆動(主役と同じref直更新)。translateZ(0)=iOSマスクz順対策。 */}
@@ -669,6 +710,22 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated',
               }}
             />
+          </div>
+          {/* 夢の浮遊パーティクル(v0.25.2144): 画面全体をふわふわ漂う光の粒(画面座標・CSSのみ)。 */}
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+            {WALK_MOTES.map(m => (
+              <div
+                key={m.key}
+                style={{
+                  position: 'absolute', left: `${m.x}%`, top: `${m.y}%`, width: m.size, height: m.size,
+                  borderRadius: '50%',
+                  background: 'radial-gradient(circle, rgba(255,244,214,0.95) 0%, rgba(255,230,170,0.35) 60%, transparent 100%)',
+                  boxShadow: '0 0 6px 2px rgba(255,235,180,0.35)',
+                  '--mx': `${m.mx}px`, '--my': `${m.my}px`, '--o0': String(m.o0), '--o1': String(m.o1),
+                  animation: `opmote ${m.dur}s ease-in-out ${m.delay}s infinite`,
+                } as React.CSSProperties}
+              />
+            ))}
           </div>
           {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。立ち絵=通常行は【顔なし】(名前+台詞のみ)、
               stop行(さ、いこっか)のみシルエット(白反転で暗いピルに浮かせる)・社長指示v0.25.2135。 */}

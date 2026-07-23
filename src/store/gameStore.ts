@@ -10122,7 +10122,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         eventBannerUntil: 0,
         // 屋内は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は不在。
         // 城/死神/クエストの“発生”は useGameLoop 側で既に !indoor ゲート済み。商人は最初の部屋へ配置。
-        castleEvent: createCastleEvent(),
+        // 洋館通路: 城なし(v0.25.2144・社長指示「城も出現しないで」)。遥か遠方に置く=描画カリング/
+        // 衝突/接近系が全て自然に無効。7分の城ボスはuseGameLoop側でcorridorModeゲート
+        // (bossSpawnedはfalseのまま=画面端マーカーも出ない)。
+        castleEvent: corridorMode ? { x: 100000, y: 100000, bossSpawned: false } : createCastleEvent(),
         weaponMerchant: indoor
           ? { x: LAB_MERCHANT.x, y: LAB_MERCHANT.y, radius: MERCHANT_INTERACT_RADIUS }
           // チュートリアル: 商人も出さない(社長指示v0.25.1818)。不在状態が型に無いため到達不能座標へ
