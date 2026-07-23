@@ -8,7 +8,13 @@ import { projectCorridorPillars, CORRIDOR_CFG } from '../utils/corridorProjectio
 // 床は仮のベタ台形(石畳+赤カーペット)。歩行は自動前進(叩き台220px/s)。
 const PILLAR_L = `${import.meta.env.BASE_URL}sprites/mansion/pillar-left.png`;
 const PILLAR_R = `${import.meta.env.BASE_URL}sprites/mansion/pillar-right.png`;
+const BACK = `${import.meta.env.BASE_URL}sprites/mansion/back.png`;
 const WALK_SPEED = 220; // 自動前進(world px/s・叩き台)
+// 奥の一枚絵(ステンドグラス窓の壁)の固定奥行き(叩き台)。プレビューでは通路が無限ループなので
+// 「常にこの距離だけ先に見えている突き当たり」として描く(本実装では通路の終端に置く想定)。
+const BACK_DEPTH = 1400;
+const BACK_ALPHA = 0.9; // 距離フォグに沈めない(窓は光っている=闇の中の目標物)
+const BACK_WIDTH_MULT = 1.15; // 通路幅(柱中心間)に対する壁の横幅倍率
 
 const MansionCorridorPreview: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -21,9 +27,10 @@ const MansionCorridorPreview: React.FC = () => {
     let raf = 0;
     let travel = 0;
     let prev = performance.now();
-    const imgs: Record<'l' | 'r', HTMLImageElement> = { l: new Image(), r: new Image() };
+    const imgs: Record<'l' | 'r' | 'b', HTMLImageElement> = { l: new Image(), r: new Image(), b: new Image() };
     imgs.l.src = PILLAR_L;
     imgs.r.src = PILLAR_R;
+    imgs.b.src = BACK;
 
     const resize = () => {
       canvas.width = window.innerWidth;
@@ -53,14 +60,29 @@ const MansionCorridorPreview: React.FC = () => {
       ctx.lineTo(W / 2 - W * 0.34, H);
       ctx.closePath();
       ctx.fill();
+      // 奥の壁(ステンドグラス窓)の描画関数: 柱の描画順(奥→手前)の中でBACK_DEPTHの位置に挟む。
+      const drawBack = () => {
+        const b = imgs.b;
+        if (!b.naturalWidth) return;
+        const s = CORRIDOR_CFG.focal / (CORRIDOR_CFG.focal + BACK_DEPTH);
+        const footY = H * CORRIDOR_CFG.horizonYr + (H * CORRIDOR_CFG.footYr - H * CORRIDOR_CFG.horizonYr) * s;
+        const bw = 2 * W * CORRIDOR_CFG.aisleHalfXr * s * BACK_WIDTH_MULT;
+        const bh = (b.naturalHeight / b.naturalWidth) * bw;
+        ctx.globalAlpha = BACK_ALPHA;
+        ctx.drawImage(b, W / 2 - bw / 2, footY - bh, bw, bh);
+      };
       // 柱(奥→手前)。距離フェードはglobalAlphaで黒背景に沈める(仮)。
+      // BACK_DEPTHより奥の柱→壁→手前の柱、の順に描く(壁より奥はほぼ闇に沈んでいる)。
+      let backDrawn = false;
       for (const p of projectCorridorPillars(travel, W, H)) {
+        if (!backDrawn && p.depth < BACK_DEPTH) { drawBack(); backDrawn = true; }
         const img = p.side < 0 ? imgs.l : imgs.r;
         if (!img.naturalWidth) continue;
         const w = (img.naturalWidth / img.naturalHeight) * p.h;
         ctx.globalAlpha = p.fade;
         ctx.drawImage(img, p.x - w / 2, p.y - p.h, w, p.h);
       }
+      if (!backDrawn) drawBack();
       ctx.globalAlpha = 1;
       raf = requestAnimationFrame(draw);
     };
