@@ -9810,7 +9810,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 遠景森2(手前の帯)は forest/lab どちらでも有効(ダンステストのみ無効)。lab は機材シルエット帯。
       const nearHorizon = !state.danceTestMode ? state.pendingNearHorizon : '';
       // 裏ボス(深層域)。屋外(非ラボ/非屋内)・非ダンステストのときだけ有効。
-      const hiddenBoss = (!state.danceTestMode && !indoor && stageTheme === 'forest') ? state.pendingHiddenBoss : null;
+      // 洋館通路(corridorMode)では裏ボス深層域を無効化(v0.25.2119): 通路は奥へ歩き続ける構造のため
+      // 距離条件を必ず踏み、森用のデンジャーゾーン暗幕が通路背景を覆って画面が黒地化していた(社長報告)。
+      const hiddenBoss = (!state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode) ? state.pendingHiddenBoss : null;
       const spawnTL = indoor
         ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
         // 洋館: 到着点(y=0)の下から走り込む(護衛もspawnTL基準なので隊ごと下から入場する)。
