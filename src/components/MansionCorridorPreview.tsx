@@ -18,7 +18,7 @@ const FLOOR = M('floor.png');
 const CEILING = M('ceiling.png');
 const CEILING_BLUR = M('ceiling-blur.png');
 const CEIL_Y0_R = -0.75; // d=0の天井ライン(画面高比・負=画面上端のはるか上。天井の見える範囲を決める)
-const CEIL_SCALE = 1.5;  // 天井タイルの拡大率(社長指示v0.25.2096: 1.5倍)。縦=リピート距離×1.5 / 横=中央2/3幅を使用
+const CEIL_SCALE = 2.25; // 天井タイルの拡大率(社長指示v0.25.2098: さらに1.5倍=2.25)。縦=リピート距離×倍率 / 横=中央1/倍率幅を使用
 // 燭台(社長支給v0.25.2093): 壁灯グローの光源として柱間に立てる。炎の位置=グロー中心に一致させる。
 const CANDLE = M('candle.png');
 const CANDLE_BLUR = M('candle-blur.png');
@@ -190,8 +190,8 @@ const MansionCorridorPreview: React.FC = () => {
         const texW = ctex.naturalWidth, texH = ctex.naturalHeight;
         const ceilY0 = H * CEIL_Y0_R;
         const denomC = horizonY - ceilY0;
-        const ceilRepeat = FLOOR_REPEAT * CEIL_SCALE; // タイル1.5倍(奥行き方向)
-        const srcX = texW * (0.5 - 0.5 / CEIL_SCALE); // タイル1.5倍(横方向)=中央2/3幅を使用
+        const ceilRepeat = FLOOR_REPEAT * CEIL_SCALE; // タイル拡大(奥行き方向)
+        const srcX = texW * (0.5 - 0.5 / CEIL_SCALE); // タイル拡大(横方向)=中央1/CEIL_SCALE幅を使用
         const srcW = texW / CEIL_SCALE;
         for (let y = 0; y + FLOOR_STRIP < horizonY - 1; y += FLOOR_STRIP) {
           const s = (horizonY - y) / denomC;
@@ -204,7 +204,9 @@ const MansionCorridorPreview: React.FC = () => {
           const fx = W / 2 - fw / 2;
           // 天井専用フェード(v0.25.2094): 柱用の式(s-0.12)/0.5だと天井のsレンジ(0〜0.29)では
           // ほぼ黒に潰れて「表示されていない」見え方になっていた(社長報告)。天井のレンジで正規化。
-          const fade = Math.max(0, Math.min(0.85, (s - 0.05) / 0.16));
+          // v0.25.2098: 下限0.05→0.02=奥壁の上端(s≒0.10)での明度0.30→0.49。天井が奥まで届き
+          // 奥壁との間の「暗い隙間」を詰める(社長指示「もう少し奥まで・少しでいい」)。
+          const fade = Math.max(0, Math.min(0.85, (s - 0.02) / 0.16));
           const w = dofFar(d0);
           const drawCeilSlice = (tex: HTMLImageElement, alpha: number) => {
             if (alpha <= 0.02 || !tex.naturalWidth) return;
