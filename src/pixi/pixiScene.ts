@@ -1040,6 +1040,19 @@ const MANSION_FLOOR_EDGE_PAD = 8;         // 床/暗闇の描画マージン(px�
 const MANSION_FLOOR_STRIP_COUNT = 26;     // ストリップ本数(m0地面と同等の滑らかさ・TilingSprite26枚=安い)
 const MANSION_FLOOR_FAR_DARK = 0.30;      // 最遠行の明度倍率(奥は闇に沈む→上端ビスタへ繋ぐ)
 const MANSION_FLOOR_DARK_BAND = 0.35;     // 暗化を掛ける上端側の帯(t<この値のみ。中段まで暗くしない)
+// 柱/燭台の遠近投影(v0.25.2112・社長指示「奥から迫る感じを柱は再現できてない」):
+// ?corridor=1 プレビューで実証済みの 1/z 式をそのまま使う: s=focal/(focal+d)(d=プレイヤーより奥の距離)。
+// 表示位置=プレイヤー足元から A·(1−s) 上(A=足元→ビスタ下端の手前=漸近的に消失ラインへ収束)、
+// 表示サイズ=s。プレイヤーの高さで等倍・真位置、進むと奥の柱が 1/z の加速でせり出してくる。
+// (経緯: 行マッピング=画面最下端アンカー→プレイヤー周辺まで縮む誤り。screen位置ベースのground
+//  カーブ→画面上端で飽和し奥の柱が同サイズで固まる誤り。1/z 閉形式が正解=プレビューと同じ動き)
+const MANSION_PROP_FOCAL = 420;           // 焦点距離(プレビューCORRIDOR_CFG.focalと同値)
+const MANSION_PROP_MIN_K = 0.07;          // これ未満は描かない(豆粒カット=個数の上限にもなる)
+const MANSION_PROP_QUERY_UP = 2600;       // 奥側の候補列挙範囲(world px。~5ペアが圧縮されて連なる)
+const MANSION_PROP_VANISH_PAD = 20;       // 消失漸近線をビスタ下端よりこの分だけ手前に置く(world px)
+const MANSION_PROP_CONVERGE = 0.3;        // 横の収束率: 奥の柱ほど中央へ寄せる割合(0=平行のまま=奥の柱が手前の柱の真後ろに隠れて連なりが見えない/
+// 1=プレビューと同じ完全1/z=床が平行なのでカーペットの上に立って見える)。0.3=手前の柱の内側に
+// 奥の列がのぞく折衷(石畳の縁の範囲に収まる)。
 const MANSION_CANDLE_GLOW_RADIUS = 36;    // 燭台の炎glow半径(STRONG_GLOW_RADIUS=44未満厳守=安い小glow経路)
 const MANSION_CANDLE_GLOW_TINT = 0xffb45f; // 暖色(松明ライトと同色)
 const MANSION_CANDLE_GLOW_ALPHA = 0.4;    // glowのベースalpha(ゆらぎで脈動)
@@ -4964,11 +4977,35 @@ export class PixiScene {
       dr.height = bandH;
     }
 
-    // 柱/燭台(区画生成+プール)。足元カリング=絵は足元から上へ立つので、下側は表示高さぶん余白。
-    const props = mansionPropsInRegion(worldYAt(0) - 40, botY + MANSION_PILLAR_DISPLAY_H + 80);
+    // 柱/燭台(区画生成+プール)。表示は【1/z 投影・焦点面=プレイヤー足元】(v0.25.2112)。
+    const farLineW = worldYAt(this.farBackdropHeight());
+    const propView = (m: number): { y: number; k: number; f: number } | null => {
+      const ref = this.depthRefY;
+      const d = ref - m; // プレイヤーより奥(上)の距離。負=手前(下)
+      let y: number, k: number;
+      if (d <= 0) {
+        y = m; k = 1; // 手前(プレイヤーより下)は素のworld・等倍(拡大はさせない)
+      } else {
+        const s01 = MANSION_PROP_FOCAL / (MANSION_PROP_FOCAL + d); // 1/z
+        const A = Math.max(40, ref - farLineW - MANSION_PROP_VANISH_PAD); // 足元→消失漸近線の距離
+        y = ref - A * (1 - s01);
+        k = s01;
+      }
+      if (k < MANSION_PROP_MIN_K) return null; // 豆粒=非表示
+      // 奥は闇に沈む(床の暗化帯と同じ式を表示位置基準で適用=床と一体で沈む)。
+      const t = Math.max(0, Math.min(1, (y - farLineW) / Math.max(1, botY - farLineW)));
+      const f = t < MANSION_FLOOR_DARK_BAND
+        ? MANSION_FLOOR_FAR_DARK + (1 - MANSION_FLOOR_FAR_DARK) * (t / MANSION_FLOOR_DARK_BAND)
+        : 1;
+      return { y, k, f };
+    };
+    const props = mansionPropsInRegion(this.depthRefY - MANSION_PROP_QUERY_UP, botY + MANSION_PILLAR_DISPLAY_H + 80);
     const tint = this.envTintNow();
+    const tr = (tint >> 16) & 0xff, tg = (tint >> 8) & 0xff, tb = tint & 0xff;
     const seen = new Set<string>();
     for (const p of props) {
+      const view = propView(p.footY);
+      if (!view) continue; // 豆粒カット行より奥(seenに入れない=スイープで回収)
       seen.add(p.id);
       let entry = this.mansionProps.get(p.id);
       if (!entry) {
@@ -4977,9 +5014,6 @@ export class PixiScene {
           : getTexture('mansion/candle');
         const sprite = new Sprite(tex ?? undefined);
         sprite.anchor.set(0.5, 1);
-        sprite.x = p.footX;
-        sprite.y = p.footY;
-        sprite.zIndex = p.footY; // 足元Yでプレイヤー/敵とY-sort(木と同じ深度順)
         this.L.actorLayer.addChild(sprite);
         const dispH = p.kind === 'pillar' ? MANSION_PILLAR_DISPLAY_H : MANSION_CANDLE_DISPLAY_H;
         const baseScale = tex ? dispH / tex.height : 1;
@@ -4994,19 +5028,22 @@ export class PixiScene {
         entry = { sprite, light, baseScale, footX: p.footX, footY: p.footY };
         this.mansionProps.set(p.id, entry);
       }
-      entry.sprite.tint = tint;
-      const d = this.depthScale(entry.footY);
-      entry.sprite.scale.set(entry.baseScale * d);
-      const alpha = this.horizonActorAlpha(entry.footY) * this.foregroundActorAlpha(entry.footY); // 地平線+手前でフェード(花と同じ)
+      // 表示は1/z投影(propView)基準: 位置y・サイズk・暗化f(v0.25.2112)。横は奥ほど少し中央へ(収束)。
+      const dispX = entry.footX * (1 - MANSION_PROP_CONVERGE * (1 - view.k));
+      entry.sprite.position.set(dispX, view.y);
+      entry.sprite.zIndex = view.y; // 表示上の足元Yでプレイヤー/敵とY-sort
+      entry.sprite.tint = (Math.round(tr * view.f) << 16) | (Math.round(tg * view.f) << 8) | Math.round(tb * view.f);
+      entry.sprite.scale.set(entry.baseScale * view.k);
+      const alpha = this.foregroundActorAlpha(view.y); // 手前(下端)フェードのみ。奥は暗化fで沈める
       entry.sprite.alpha = alpha;
       if (entry.light) {
         // 炎のゆらぎ: 松明と同じ2周期サイン合成(単調なサインに見えない)。位相は footX/footY で個体差。
         const pulse = 0.8 + 0.13 * Math.sin(now / 125 + entry.footX * 0.03) + 0.07 * Math.sin(now / 53 + entry.footY * 0.05);
-        const flameY = entry.footY - MANSION_CANDLE_DISPLAY_H * d * MANSION_CANDLE_FLAME_FRAC;
-        entry.light.position.set(entry.footX, flameY);
-        entry.light.width = entry.light.height = MANSION_CANDLE_GLOW_RADIUS * 2 * d * pulse;
-        entry.light.alpha = MANSION_CANDLE_GLOW_ALPHA * pulse * alpha;
-        entry.light.visible = alpha > 0.01;
+        const flameY = view.y - MANSION_CANDLE_DISPLAY_H * view.k * MANSION_CANDLE_FLAME_FRAC;
+        entry.light.position.set(dispX, flameY);
+        entry.light.width = entry.light.height = MANSION_CANDLE_GLOW_RADIUS * 2 * view.k * pulse;
+        entry.light.alpha = MANSION_CANDLE_GLOW_ALPHA * pulse * alpha * view.f;
+        entry.light.visible = entry.light.alpha > 0.01;
       }
     }
     for (const [id, e] of this.mansionProps) {
