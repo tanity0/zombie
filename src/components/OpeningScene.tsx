@@ -29,7 +29,9 @@ import { OPENING_REVIVAL_LINES, OPENING_REVIVAL_TIMING } from '../data/openingRe
 
 const BASE = import.meta.env.BASE_URL;
 const A = (f: string) => `${BASE}opening/${f}`;
-const HERO = A('hero-blue.png'), TWIN = A('sil-twin.png'), BOB = A('sil-bob.png');
+// hero-blue: v0.25.2100で色ありドット絵素材に同名差し替え→旧素材のキャッシュ対策で一回きりのバスター付き
+// (再差し替え時はこの値を上げる。全openingアセットに毎版バスターを付けると版ごとに全再取得になるため個別対応)。
+const HERO = A('hero-blue.png?v=2100'), TWIN = A('sil-twin.png'), BOB = A('sil-bob.png');
 const SHOOTER = (n: number) => A(`shoot/shooter-${n}.png`);
 const VICTIM = (n: number) => A(`shoot/victim-${n}.png`);
 const BLOOD = (n: number) => A(`shoot/blood-${n}.png`);
