@@ -17,7 +17,7 @@ export const CORRIDOR_CFG: CorridorConfig = {
   spacing: 520,
   count: 7,
   focal: 420,
-  horizonYr: 0.38,
+  horizonYr: 0.30, // 消失点は上寄り(社長指示v0.25.2078「もっと上より」・旧0.38)
   footYr: 1.55,
   aisleHalfXr: 0.62,
   pillarHr: 1.5,

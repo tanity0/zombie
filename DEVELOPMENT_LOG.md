@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2078 — 洋館通路: 柱をドット絵版へ差し替え+消失点を上寄りに【2026-07-23 15:56 JST】
+- 指示(社長): ①(消失点)もっと上より ②柱をこっちのドット絵風に入れ替え(新素材支給)。
+- 対処: ①消失点 horizonYr 0.38→**0.30** ②支給のドット絵版柱(1086×1448)で `art-src/mansion/pillars-src.png` を差し替え、同パイプライン(紫背景フラッドフィル透過→左右分割)で `pillar-{left,right}.png` を再生成(291×1399×2)。
+- 検証: typecheck変更なし(定数+画像のみ)・ヘッドレス実写でドット絵柱の通路ループを確認。実機は ?corridor=1。
+- Files: `src/utils/corridorProjection.ts`, `art-src/mansion/pillars-src.png`, `public/sprites/mansion/pillar-{left,right}.png`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2077 — ステージ6(洋館)着手: 奥行き通路の柱ループのプロトタイプ(?corridor=1)【2026-07-23 15:52 JST】
 - 相談(社長): 奥行きのある洋館ステージ。柱素材を渡すので「上に進むと奥から手前へズームしながら流れてくる(ループ)」方法はあるか?→**可能**(1/z疑似投影+固定プール循環)と回答し、素材受領(「これでいける?」)→単体プロトタイプを実装。
 - 実装: ①素材加工=紫背景を境界フラッドフィルで透過し左右の柱に分割(`art-src/mansion/split-pillars.mjs`→`public/sprites/mansion/pillar-{left,right}.png`・原本は`art-src/mansion/pillars-src.png`) ②**投影の純関数**`src/utils/corridorProjection.ts`(d=mod(i·spacing−travel, loop)・scale=focal/(focal+d)・足元/横位置は消失点から相似拡大・奥は闇へフェード)+テスト5本 ③プレビュー`MansionCorridorPreview.tsx`(**?corridor=1**・canvas直描き=React再レンダなし・自動前進220px/s・床は仮の石畳+赤カーペット台形)。
