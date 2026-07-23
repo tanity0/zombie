@@ -47,7 +47,7 @@ export const OPENING_REVIVAL_LINES: readonly OpeningRevivalLine[] = [
   },
   {
     speaker: 'graham',
-    text: 'まだ安心するな。抑制剤を追加して経過を見る',
+    text: 'まだ安心するな。\n抑制剤を追加して経過を見る',
     minDurationMs: 2300,
     gapAfterMs: 220,
   },
