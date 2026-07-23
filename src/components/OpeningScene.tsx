@@ -49,7 +49,7 @@ const FRONT_ZOOM_DELAY = 2200;
 // 斜めは1秒表示(社長指示v0.25.2047・旧1.4秒)。
 const CUTS = [0, 2200 + 2000, 2200 + 3000];
 const SHOT_DUR = [2000, 1000, 2400];
-const FADE_MS = 700; // アングル間クロスフェード長(次がフェードインし切るまで前を重ねて表示)
+// アングル切替は【即表示のハードカット】(社長指示v0.25.2072・旧クロスフェードv0.25.2007は廃止)。
 const BLACK_START = 7600;
 const BLACK_MS = 1600;
 const SCENE_START = 9400; // 暗転し切ったら射撃シーンへハードカット
@@ -249,7 +249,6 @@ const SPOTLIGHTS = SHOTS.map(s => s.chars.map((c, ci) => {
 const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, startAtShoot, startAtRevival }) => {
   const [ready, setReady] = useState(false); // 全素材decode完了までタイムラインを始めない(下記コメント)
   const [phase, setPhase] = useState(startAtRevival ? 4 : startAtShoot ? 3 : 0); // 0-2=アリーナ各アングル / 3=射撃シーン / 4=蘇生処置(字幕)
-  const [prevShot, setPrevShot] = useState<number | null>(null); // クロスフェード中の前アングル(下敷き)
   const [step, setStep] = useState(0); // 射撃シーンのコマ番号(SHOOT_STEPS index)
   const [shootLine, setShootLine] = useState(-1); // 射撃シーンの会話行(SHOOT_LINES index / -1=非表示)
   const [subIdx, setSubIdx] = useState(-1); // 蘇生パートの表示中字幕(OPENING_REVIVAL_LINES index / -1=非表示)
@@ -357,10 +356,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       if (!startAtShoot) ids.push(window.setTimeout(() => firePan(0), 1050)); // 紙吹雪パーン(1秒置いて)
       ids.push(window.setTimeout(() => firePan(1), base + 5000));           // 発砲(一閃の瞬間・v0.25.2067で2.0s→5.0s)
       if (!startAtShoot) {
-        // アングル切替=クロスフェード: 切替時刻に次を出しつつ前を下敷きで残し、FADE_MS後に前を外す。
+        // アングル切替=即表示のハードカット(社長指示v0.25.2072・旧クロスフェードは廃止)。
         [1, 2].forEach(i => {
-          ids.push(window.setTimeout(() => { setPhase(i); setPrevShot(i - 1); }, CUTS[i]));
-          ids.push(window.setTimeout(() => setPrevShot(null), CUTS[i] + FADE_MS));
+          ids.push(window.setTimeout(() => setPhase(i), CUTS[i]));
         });
         ids.push(window.setTimeout(() => setPhase(3), SCENE_START));
         // アリーナ2音源(歓声+曲)は【パン!の後】に立ち上げる(社長指示v0.25.2048: パン!→歓声の順)。
@@ -422,17 +420,15 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       <style>{css}</style>
 
       {!ready ? null : phase < 3 ? (
-        // ── アリーナ3アングル(クロスフェード)。前アングル(prevShot)はズームを続けたまま下敷き、
-        //    現アングルがその上にフェードイン(key=アングル番号でReactが同一要素を維持=ズーム継続)。 ──
+        // ── アリーナ3アングル(即表示ハードカット・社長指示v0.25.2072)。key=アングル番号で
+        //    切替時に再マウント=各アングルのズームは表示の瞬間から開始。 ──
         <>
-          {([prevShot, phase].filter(v => v !== null) as number[]).map((si, order) => (
+          {[phase].map(si => (
             <div
               key={si}
               style={{
-                position: 'absolute', inset: 0, zIndex: order,
+                position: 'absolute', inset: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                // 最初のアングル以外はフェードインで登場(前が下敷きにいる間=クロスフェード)。
-                animation: si === 0 ? undefined : `opfade ${FADE_MS}ms linear both`,
               }}
             >
               <div
@@ -640,11 +636,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 style={{ paddingRight: 44, overflow: 'visible', textShadow: '0 1px 0 rgba(0,0,0,0.9)' }}
               >
                 <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
-                  {/* 立ち絵=撃つ子の立ち姿。撃つ前のシーンと同じ白シルエットで正体は見せない。 */}
+                  {/* 立ち絵=撃つ子の立ち姿。撃つ前のシーンと同じ白シルエットで正体は見せない。
+                      足元は「上から2行分」の位置に固定(社長指示v0.25.2072・会話UI共通=NpcDialogueと同じ)。 */}
                   <img
                     src={SHOOTER(1)} alt="" draggable={false}
                     style={{
-                      position: 'absolute', left: '50%', bottom: 0, transform: 'translateX(-50%)',
+                      position: 'absolute', left: '50%', top: 42, transform: 'translate(-50%, -100%)',
                       height: 64, width: 'auto', maxWidth: 'none', imageRendering: 'pixelated',
                       filter: 'brightness(0) invert(1)',
                     }}

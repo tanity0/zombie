@@ -491,6 +491,7 @@ const playBgmRobust = () => {
   const token = ++bgmPlayToken;
   const tryPlay = () => {
     if (!bgm || token !== bgmPlayToken || !bgmActive || muted) return;
+    bgm.muted = false; // 事前解錠(primeMenuBgm)はミュートのまま置くので、実再生の瞬間にここで初めて解除
     const v = bgmVolume * bgmDuck * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
     if (bgmGain) bgmGain.gain.value = v;
     else bgm.volume = v;
@@ -859,11 +860,14 @@ export const primeMenuBgm = () => {
     bgm.src = TITLE_TRACK;
     try { bgm.load(); } catch { /* ignore */ }
   }
+  // 解錠後も【ミュートのまま】置く(v0.25.2072硬化): 解除は実際に鳴らす瞬間(playBgmRobust)が行う。
+  // pause前にミュートを外す実装だと、play/pauseの競合時に一瞬〜継続の音漏れが起き得る(社長報告
+  // 「OK押したらBGM流れちゃう」の再発防止)。ミュートのまま停止しておけば構造的に音は出ない。
   const el = bgm;
   el.muted = true;
   void el.play()
-    .then(() => { el.pause(); try { el.currentTime = 0; } catch { /* ignore */ } el.muted = false; })
-    .catch(() => { el.muted = false; });
+    .then(() => { el.pause(); try { el.currentTime = 0; } catch { /* ignore */ } })
+    .catch(() => { /* 解錠失敗でもゲームは止めない(実再生時にplayBgmRobustが再試行) */ });
 };
 
 export const isAudioMuted = () => muted;

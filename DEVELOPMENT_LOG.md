@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.2072 — BGMのOK直後鳴り対策 / 会話立ち絵の位置固定 / アリーナ切替をハードカットへ【2026-07-23 15:00 JST】
+- 指示(社長): ①OK押したらBGM流れちゃう→蘇生後にして ②会話UIの立ち絵が文字数で上下して目障り→全UIで2行分の下位置に固定 ③アリーナの場面切替(正面→斜め→横)はフェードではなく即表示。
+- 対処①(2つの穴を閉鎖): (a) プレビュー(?opening=…)一周後はonDoneでBGM開始済み→OK→再再生でBGMが鳴りっぱなしだった=**OK時に必ずsetBgmScene('off')**。(b) 事前解錠(primeMenuBgm)を**ミュートのまま置く**方式に硬化し、ミュート解除は実再生の瞬間(playBgmRobustのtryPlay)だけが行う=解錠のplay/pause競合でも構造的に音が漏れない。
+- 対処②: 会話UI(本編NpcDialogue+OP射撃シーン)の立ち絵アンカーを箱の下端(bottom:0)→**上から42px(≒名前+2行)にtranslateY(-100%)で足元固定**。文字数で箱が伸びても立ち絵は動かない。
+- 対処③: クロスフェード機構(prevShot下敷き+opfade 700ms)を**撤去**し、切替時刻にsetPhaseのみ=即表示ハードカット。各アングルのズームは表示の瞬間から開始(従来と同じ)。
+- 検証: typecheck OK。ヘッドレス実写で会話立ち絵の固定位置を確認。BGM/カットの体感は実機で社長確認。
+- 自己点検: ③は社長v0.25.2007のクロスフェード指示の明示的な取り消し。負荷: 改善方向(フェード中の2枚重ね描画が消滅)。
+- Files: `src/App.tsx`, `src/audio/audioManager.ts`, `src/components/NpcDialogue.tsx`, `src/components/OpeningScene.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2071 — 倒れ込みコマ(v3/v4)を各400ms→200msへ【2026-07-23 14:25 JST】
 - 指示(社長): (倒れ込みの)400msのところを200msに変更。
 - 対処: VICTIM_TRACK v3=7100〜7300 / v4=7300〜7500 / v5(倒れ伏す)=7500〜保持。被弾2秒静止・他トラックは不変(自動マージ)。

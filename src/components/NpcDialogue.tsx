@@ -71,8 +71,10 @@ export const NpcDialogue = () => {
               style={{
                 position: 'absolute',
                 left: '50%',
-                bottom: 0,
-                transform: 'translateX(-50%)',
+                // 足元を「上から2行分」の位置に固定(社長指示v0.25.2072・会話UI共通)。
+                // 旧: bottom:0=箱の下端揃えのため、文字数で箱が伸びると立ち絵が上下に動いて目障りだった。
+                top: 42,
+                transform: 'translate(-50%, -100%)',
                 height: portrait?.imgH ?? 64,
                 width: 'auto',
                 maxWidth: 'none',

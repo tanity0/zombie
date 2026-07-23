@@ -269,7 +269,9 @@ function App() {
           onStart={() => { unlockDanceAudio(); setBgmScene('menu'); }} // タップ瞬間にBGM解禁
           // 更新情報OK直後にオープニングを再生(社長指示v0.25.2022)。音声はOKのジェスチャで解禁し、
           // メニューBGMはオープニング終了後(onDone)に開始=OP中のアリーナ音源と被らない。
-          onNoticeOk={() => { unlockDanceAudio(); primeMenuBgm(); setShowOpening(true); }}
+          // OK時にBGMを必ず停止(v0.25.2072): プレビュー(?opening=…)を一周した後はonDoneでBGMが
+          // 開始済みのため、OK→オープニング再再生でBGMが鳴りっぱなしになっていた(社長報告)。
+          onNoticeOk={() => { setBgmScene('off'); unlockDanceAudio(); primeMenuBgm(); setShowOpening(true); }}
           waitForAssets={ensurePreload}                                // 同意後の本物ローディング(完了待ち)
           onDone={() => setGameState('menu')}                          // 暗転し切ったらセレクトへ
         />
