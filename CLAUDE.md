@@ -157,6 +157,9 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
 うちM9ボットスモークが約38秒=テスト時間の88%)をフル実行し、しかもその38秒は今の作業(ゲート/演出/描画)の
 網の外だった。よって自己判断をやめ、社長の明示指示に切り替える。
 - **常時フロア(唯一・毎push)**: `npm run typecheck`(約9秒)。型/未import崩れの爆風検知器。これだけは毎回。
+- **push直前に `npm run lint` も必ず実行し、エラー0を確認してからpushする(warningは可)。lintは数秒で
+  終わる。typecheckのみ運用でlint専用エラーがCIで初発覚する同型事故が3回発生した対策
+  (v0.25.1074 / v0.25.1583 / v0.25.2104直後)。**
 - **テスト・ビルド(`npm test`/ボット/`npm run build`)は回さない——社長が指示した時だけ回す**
   (「テスト回して」「要所だから全部」「実機に乗せる前にビルド確認」等)。自己判断で毎push回さない。
 - **文書のみの変更(md等)**: typecheckも不要=即push。

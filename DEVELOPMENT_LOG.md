@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2107 — CLAUDE.mdにpush前lint必須ルールを追記【2026-07-23 18:47 JST】
+- 指示(社長): ①MansionCorridorPreviewのlet srcH→const(※v0.25.2106で修正済みだった) ②CLAUDE.mdの検証運用の節にpush前lint必須ルールを追記。
+- 対処: Testing policy節の常時フロア直下に「push直前にnpm run lintも必ず実行・エラー0確認(warning可)。lint専用エラーのCI初発覚事故3回(v0.25.1074/v0.25.1583/v0.25.2104直後)の対策」を追記。
+- 検証: lint=0エラー(7 warnings)・typecheck clean。CI緑化はv0.25.2106のrunで確認する。
+- Files: `CLAUDE.md`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2106 — CI恒常赤の根治+ステージ6プレイヤーを画面中央へ【2026-07-23 18:43 JST】
 - 指示(社長): ①GitHubへのコミットで毎回失敗する件をどうにかしたい ②通路のプレイヤーは常に真ん中(m0と同じ)。
 - 診断①: **CI(GitHub Actions)は直近30run全てfailure**=コミット毎に❌。原因は2系統: (a)既存バグ=`gameStore.ts:1926`の`window.setTimeout`(KILL血飛沫の遅延噴射v0.25.2045)がヘッドレステスト(node環境=window未定義)でクラッシュ→playtest 2件fail=**かなり前からの主犯**。(b)今日のlintエラー=`MansionCorridorPreview.tsx`の`prefer-const`(v0.25.2099混入)。
