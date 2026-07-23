@@ -17,6 +17,9 @@ const SPRITES = [
   { url: `${BASE}/pillar-left.png?v=${bust}`, out: `${DIR}/pillar-left-farblur.png`, blur: 26, pad: 40 },
   { url: `${BASE}/pillar-right.png?v=${bust}`, out: `${DIR}/pillar-right-farblur.png`, blur: 26, pad: 40 },
   { url: `${BASE}/back.png?v=${bust}`, out: `${DIR}/back-farblur.png`, blur: 26, pad: 40 },
+  // 燭台(v0.25.2093): 柱と同じく近距離/遠方の2種。
+  { url: `${BASE}/candle.png?v=${bust}`, out: `${DIR}/candle-blur.png`, blur: 7, pad: 24 },
+  { url: `${BASE}/candle.png?v=${bust}`, out: `${DIR}/candle-farblur.png`, blur: 26, pad: 40 },
 ];
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });

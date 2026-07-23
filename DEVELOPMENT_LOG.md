@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2093 — 洋館通路: 燭台を壁灯の光源として配置(炎=グロー中心)【2026-07-23 17:23 JST】
+- 支給/指示(社長): キャンドル(燭台)素材。柱の光の光源にこの火を合わせる形で配置。
+- 対処: 紫キー+切り出し(`key-candle.mjs`→candle.png 442×1198)。壁灯と同じ中間点投影で床に立て、**炎(素材上端2.7%)がグロー中心(柱高×0.40)に一致**する高さ(柱高×約0.41)で配置。柱と同じDOF(近距離7px/遠方26pxブラー版のクロスフェード=make-blur.mjsに追加)+距離フェード。グローは炎の上に加算=火が光って見える。
+- 検証: typecheck OK・実写で燭台+炎上のグローを確認。実機 ?corridor=1。
+- Files: `art-src/mansion/{candle-src.png,key-candle.mjs,make-blur.mjs}`, `public/sprites/mansion/candle{,-blur,-farblur}.png`(新規), `src/components/MansionCorridorPreview.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2092 — 洋館通路: 天井(Mode-7上下反転)+奥窓の月明かり【2026-07-23 17:14 JST】
 - 支給/指示(社長): ①天井素材(1254×1254) ②奥のガラス窓、淡く月明かりが入ってきてる感じに。
 - 対処①: 天井を床と同じMode-7の**上下反転**で消失点より上の帯に張った(手前側の天井は画面上端の外=CEIL_Y0_R -0.75)。床と同じリピート同期・距離フェード・遠方ブラー版(ceiling-blur.png=make-blur.mjsで生成)。

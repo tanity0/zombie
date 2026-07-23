@@ -14,6 +14,14 @@ const FLOOR = `${import.meta.env.BASE_URL}sprites/mansion/floor.png`;
 const CEILING = `${import.meta.env.BASE_URL}sprites/mansion/ceiling.png`;
 const CEILING_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/ceiling-blur.png`;
 const CEIL_Y0_R = -0.75; // d=0の天井ライン(画面高比・負=画面上端のはるか上。天井の見える範囲を決める)
+// 燭台(社長支給v0.25.2093): 壁灯グローの光源として柱間に立てる。炎の位置=グロー中心に一致させる。
+const CANDLE = `${import.meta.env.BASE_URL}sprites/mansion/candle.png`;
+const CANDLE_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/candle-blur.png`;
+const CANDLE_FARBLUR = `${import.meta.env.BASE_URL}sprites/mansion/candle-farblur.png`;
+const CANDLE_FLAME_YR = 0.027; // 炎の中心(素材高の上からの比率。切り出しの最上端=炎の先端)
+const GLOW_Y_R = 0.40;         // グロー中心の高さ(柱の高さ比・足元から)
+// 燭台の表示高: 炎(上から2.7%)がグロー中心(足元からm.h×0.40)に一致する高さ。
+const CANDLE_H_R = GLOW_Y_R / (1 - CANDLE_FLAME_YR); // ≒0.411
 // 被写界深度(社長指示v0.25.2087・事前ブラー方式=ランタイムぼかしゼロ): ブラー版素材
 // (art-src/mansion/make-blur.mjs生成)とシャープ版を奥行きでクロスフェード。
 // 手前通過(d<300→-100で0→1)と遠方(d>1000→2400で0→1・上限0.9)がボケ、中距離=ピント面。
@@ -62,6 +70,10 @@ const MansionCorridorPreview: React.FC = () => {
     const ceilImgs = { c: new Image(), cB: new Image() };
     ceilImgs.c.src = CEILING;
     ceilImgs.cB.src = CEILING_BLUR;
+    const candleImgs = { s: new Image(), n: new Image(), f: new Image() };
+    candleImgs.s.src = CANDLE;
+    candleImgs.n.src = CANDLE_BLUR;
+    candleImgs.f.src = CANDLE_FARBLUR;
     imgs.l.src = PILLAR_L;
     imgs.r.src = PILLAR_R;
     imgs.b.src = BACK;
@@ -203,8 +215,28 @@ const MansionCorridorPreview: React.FC = () => {
       // 柱より先に描く=灯りは柱の奥(壁側)にあり、手前の柱に部分的に隠れて流れていく。
       for (const m of projectCorridorPillars(travel + CORRIDOR_CFG.spacing / 2, W, H)) {
         if (m.depth < 60 || m.depth > BACK_DEPTH - 300) continue; // 通過中と最奥はスキップ
+        // 燭台(v0.25.2093): 光源の実体。炎(素材上端2.7%)がグロー中心に一致する高さで床に立てる。
+        // 柱と同じDOF(近距離/遠方ブラー版のクロスフェード)を適用し、グローより先に描く=炎の上に光が乗る。
+        if (candleImgs.s.naturalWidth) {
+          const hc = m.h * CANDLE_H_R;
+          const cw = (candleImgs.s.naturalWidth / candleImgs.s.naturalHeight) * hc;
+          const cdx = m.x - cw / 2, cdy = m.y - hc;
+          const wN = dofNear(m.depth), wF = dofFar(m.depth);
+          const dofC = Math.max(wN, wF);
+          if (dofC < 0.98) {
+            ctx.globalAlpha = m.fade * (1 - dofC);
+            ctx.drawImage(candleImgs.s, cdx, cdy, cw, hc);
+          }
+          const cBlur = wF > wN ? candleImgs.f : candleImgs.n;
+          const cPad = wF > wN ? FAR_BLUR_PAD : BLUR_PAD;
+          if (dofC > 0.02 && cBlur.naturalWidth) {
+            const k = hc / candleImgs.s.naturalHeight;
+            ctx.globalAlpha = m.fade * dofC;
+            ctx.drawImage(cBlur, cdx - cPad * k, cdy - cPad * k, cBlur.naturalWidth * k, cBlur.naturalHeight * k);
+          }
+        }
         const r = m.h * 0.22;                 // 灯りの半径(柱の高さ比例=遠近追従)
-        const ly = m.y - m.h * 0.40;          // 灯りの高さ=柱の中腹(壁灯の位置)
+        const ly = m.y - m.h * GLOW_Y_R;      // 灯りの高さ=燭台の炎の位置
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = m.fade * 0.85;
         ctx.drawImage(glowTex, m.x - r, ly - r, r * 2, r * 2);
