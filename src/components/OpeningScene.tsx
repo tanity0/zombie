@@ -33,7 +33,8 @@ const A = (f: string) => `${BASE}opening/${f}`;
 // (再差し替え時はこの値を上げる。全openingアセットに毎版バスターを付けると版ごとに全再取得になるため個別対応)。
 const HERO = A('hero-blue.png?v=2101'), TWIN = A('sil-twin.png'), BOB = A('sil-bob.png');
 const SHOOTER = (n: number) => A(`shoot/shooter-${n}.png`);
-const VICTIM = (n: number) => A(`shoot/victim-${n}.png`);
+// victim: v0.25.2102でドット絵5コマ(社長支給シート232×264等分)に同名差し替え→一回きりのバスター付き。
+const VICTIM = (n: number) => A(`shoot/victim-${n}.png?v=2102`);
 const BLOOD = (n: number) => A(`shoot/blood-${n}.png`);
 const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
 
@@ -204,9 +205,9 @@ const SHOOT_LINES = ['どいつもこいつも・・・', 'アンタばっかり
 const SHOOT_FADE_START = 11700; // 最終コマを約1.3秒見せてから暗転(会話3ビート化で+2.5秒シフト・v0.25.2075)
 const SHOOT_FADE_MS = 1200;
 const SHOOT_TOTAL = 13100;
-// 倒れ伏し(v5)は足元重心アンカーの副作用で体がv4より右に出る(実測: 体重心 v4=36.7% vs v5=49.6%)
-// → v5だけ左へ寄せて落下位置を揃える(社長指示v0.25.2014「最後の倒れてる絵、少し左へ」)。単位=bg幅%。
-const VICTIM_DX: Record<number, number> = { 5: -4 };
+// 旧素材はv5だけ体重心が右に出ていたため-4%補正していた(v0.25.2014)。新ドット絵素材(v0.25.2102)は
+// 5コマ全部でポーズ中心が揃っている(実測0.489〜0.498)ため補正の前提が消えた=撤去(機構は残す)。
+const VICTIM_DX: Record<number, number> = {};
 // 配置(backstage画像基準%・足元アンカー)。主人公=左、撃つ子=右(反転済=銃が左向き)。h=コマキャンバス高さ。
 const VICTIM_POS = { x: 38, y: 80, h: 26 };
 const SHOOTER_POS = { x: 66, y: 86, h: 30 };
