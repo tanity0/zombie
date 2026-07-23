@@ -25,6 +25,17 @@ const CFG: CorridorConfig = { ...CORRIDOR_CFG, footYr: 0.744 };
 // 横移動対応(v0.25.2113): 通路はworld x=0に固定し、pixiSceneがカメラx分だけcontainerを逆シフトする。
 // その際に黒背景が切れないよう左右に持たせる余白(px)。クランプ±170×ズーム+余裕。
 export const CORRIDOR_BG_X_OVERSCAN = 420;
+// 壁灯/燭台の縦プロポーション補正(v0.25.2115・社長報告「蝋燭の火が見当たらない」):
+// footYr 1.55→0.744の幾何再調整で「足元→消失点」のスパンが約1/2.8に縮んだのに、灯りの高さ
+// (GLOW_Y_R×柱の描画高)は柱基準のままだったため、炎が消失点より上=天井メッシュの裏に飛んで
+// 見えなくなっていた。灯り・燭台・グロー半径はスパン比で縮めて壁の中腹に戻す。
+const LAMP_SPAN_SCALE = (CFG.footYr - CFG.horizonYr) / (CORRIDOR_CFG.footYr - CORRIDOR_CFG.horizonYr); // ≒0.355
+// 灯り専用の距離フェード(v0.25.2115): 共通のfade=(s-0.12)/0.5は旧幾何(可視帯s=0.3〜1.5)前提。
+// 新幾何では画面に映る壁の帯がs≒0.10〜0.5のため、ほぼ全灯がフェード圏=見えなかった(実測α0〜0.36)。
+// 可視帯で明るくなる曲線に灯りだけ差し替える(柱/床のフェードは承認済みの見た目なので触らない)。
+const LAMP_FADE_S0 = 0.06;    // このsで灯りが出始める
+const LAMP_FADE_RANGE = 0.18; // s0+rangeで全開
+const LAMP_INSET = 0.86;      // 灯りを通路の内側へ寄せる率(1=柱ライン。柱の縁から覗かせる)
 
 // --- 洋館素材のパス(プレビューと同じキャッシュバスター付き) ---------------------------------
 // 同名ファイルを差し替えて更新するため、バージョン付き ?v= を必ず付ける(v0.25.2097 の教訓)。
@@ -218,17 +229,18 @@ export class CorridorLayer {
         this.container.addChild(s);
       }
     };
-    // 重なり順(先=奥): 壁灯(燭台→グロー)→ 奥壁 → 柱。
+    // 重なり順(先=奥): 奥壁 → 柱 → 壁灯(燭台→グロー)。
+    // v0.25.2115: 壁灯を柱より【手前】へ変更。新幾何(footYr 0.744)では奥行きが圧縮され、
+    // 灯りの投影位置が隣の柱とほぼ重なる=柱の裏に完全に隠れて見えなかった(社長報告)。
+    // 燭台は「柱の前に立つ燭台」として柱の上に描く(プレビューの「壁の奥の灯り」とは重なりが変わる)。
+    this.container.addChild(this.backSharp, this.backBlur, this.moonWindow, this.moonShaft, this.moonFloor);
+    mkPool(this.pillarBlur, [0.5, 1], false);
+    mkPool(this.pillarSharp, [0.5, 1], false);
     mkPool(this.candleSharp, [0.5, 1], false);
     mkPool(this.candleBlur, [0.5, 1], false);
     mkPool(this.glowMain, [0.5, 0.5], true);
     mkPool(this.glowCore, [0.5, 0.5], true);
     mkPool(this.glowFloor, [0.5, 0.5], true);
-    // 奥壁(壁灯の上・柱の下)。
-    this.container.addChild(this.backSharp, this.backBlur, this.moonWindow, this.moonShaft, this.moonFloor);
-    // 柱(最前)。
-    mkPool(this.pillarBlur, [0.5, 1], false);
-    mkPool(this.pillarSharp, [0.5, 1], false);
   }
 
   resize(_W: number, _H: number): void {
@@ -325,26 +337,31 @@ export class CorridorLayer {
       const m = lamps[i];
       const active = m && m.depth >= 60 && m.depth <= BACK_DEPTH - 300;
       if (!active) { for (const s of [cs, cb, gm, gc, gf]) s.visible = false; continue; }
+      // 灯り専用フェード(新幾何の可視帯に合わせる。詳細はLAMP_FADE_*のコメント)。
+      const sVal = CFG.focal / (CFG.focal + m.depth);
+      const lampFade = Math.max(0, Math.min(1, (sVal - LAMP_FADE_S0) / LAMP_FADE_RANGE));
+      // わずかに通路の内側へ寄せる(柱の縁から灯りが覗く位置・v0.25.2115)。
+      const lampX = W / 2 + (m.x - W / 2) * LAMP_INSET;
 
       // 燭台(光源の実体・炎がグロー中心に一致する高さで床に立てる)。
-      const hc = m.h * CANDLE_H_R;
+      const hc = m.h * CANDLE_H_R * LAMP_SPAN_SCALE;
       const wN = dofNear(m.depth), wF = dofFar(m.depth);
       const dofC = Math.max(wN, wF);
       if (candleTex && candleTex.width > 0) {
         const k = hc / candleTex.height;
         cs.texture = candleTex;
-        cs.position.set(m.x, m.y);
+        cs.position.set(lampX, m.y);
         cs.scale.set(k);
-        cs.alpha = m.fade * (1 - dofC);
+        cs.alpha = lampFade * (1 - dofC);
         cs.visible = dofC < 0.98 && cs.alpha > 0.01;
         const blurTex = this.tex[wF > wN ? 'candle-farblur' : 'candle-blur'];
         const pad = wF > wN ? FAR_BLUR_PAD : BLUR_PAD;
         if (blurTex && blurTex.width > 0) {
           const kb = hc / candleTex.height; // 表示スケール(ブラー版はpadぶん大きい・contentは同寸)
           cb.texture = blurTex;
-          cb.position.set(m.x, m.y + pad * kb); // padの内側に content があるので足元を下げて一致
+          cb.position.set(lampX, m.y + pad * kb); // padの内側に content があるので足元を下げて一致
           cb.scale.set(kb);
-          cb.alpha = m.fade * dofC;
+          cb.alpha = lampFade * dofC;
           cb.visible = dofC > 0.02 && cb.alpha > 0.01;
         } else cb.visible = false;
       } else { cs.visible = false; cb.visible = false; }
@@ -352,16 +369,16 @@ export class CorridorLayer {
       // 火の揺らぎ(世界位置位相の2重サイン)。世界位置基準=循環しても連続。
       const worldPos = m.depth + travel;
       const flick = 0.78 + 0.14 * Math.sin(tSec * 7.3 + worldPos * 0.013) + 0.08 * Math.sin(tSec * 11.7 + worldPos * 0.021);
-      const r = m.h * 0.22 * (0.96 + 0.06 * flick);
-      const ly = m.y - m.h * GLOW_Y_R;
+      const r = m.h * 0.22 * LAMP_SPAN_SCALE * (0.96 + 0.06 * flick);
+      const ly = m.y - m.h * GLOW_Y_R * LAMP_SPAN_SCALE;
       const gt = this.glowTex!;
       const gd = gt.width || 256;
       // 本体グロー。
-      gm.position.set(m.x, ly); gm.scale.set((r * 2) / gd); gm.alpha = m.fade * 0.85 * flick; gm.visible = true;
+      gm.position.set(lampX, ly); gm.scale.set((r * 2) / gd); gm.alpha = lampFade * 0.85 * flick; gm.visible = true;
       // 明るい芯。
-      gc.position.set(m.x, ly); gc.scale.set((r * 0.8) / gd); gc.alpha = Math.min(1, m.fade * 0.9 * flick); gc.visible = true;
+      gc.position.set(lampX, ly); gc.scale.set((r * 0.8) / gd); gc.alpha = Math.min(1, lampFade * 0.9 * flick); gc.visible = true;
       // 足元の照り返し(横長に潰した同グロー・弱め)。
-      gf.position.set(m.x, m.y); gf.scale.set((r * 2.2) / gd, (r * 0.7) / gd); gf.alpha = m.fade * 0.3 * flick; gf.visible = true;
+      gf.position.set(lampX, m.y); gf.scale.set((r * 2.2) / gd, (r * 0.7) / gd); gf.alpha = lampFade * 0.3 * flick; gf.visible = true;
     }
   }
 

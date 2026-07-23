@@ -41,10 +41,10 @@ const BLOOD = (n: number) => A(`shoot/blood-${n}.png`);
 // 左端からキャラがフェードインし、右へ歩く(プレイヤー操作=画面を押している間だけ歩く)。横スクロールのみ。
 // 右端に到達するとアリーナ(既存のOPタイムライン)が始まる=以降のタイマーは全て「歩き完了」起点。
 const WALK_BG = A('walk-stage-bg.png');
-const WALK_FRAMES = Array.from({ length: 10 }, (_, n) => A(`walk/hero-walk-${n}.png`)); // 10コマ歩きサイクル(社長支給シートを黒キー+帯分割)
+const WALK_FRAMES = Array.from({ length: 4 }, (_, n) => A(`walk/hero-walk-${n}.png`)); // 4コマ歩きサイクル(社長支給・抜き済みシートを帯分割・v0.25.2115で正素材へ差し替え)
 const WALK_BG_AR = 1891 / 831;  // 舞台素材のアスペクト(幅/高さ)
 const WALK_SPEED = 200;         // 歩行速度(bg表示px/s・叩き台)
-const WALK_ANIM_MS = 90;        // 歩きコマ間隔(10コマ=1周0.9s・叩き台)
+const WALK_ANIM_MS = 150;       // 歩きコマ間隔(4コマ=1周0.6s・叩き台)
 const WALK_FOOT_YR = 0.625;     // 足元ライン(bg高さ比=通路の床。スタッフの足元に合わせた叩き台)
 const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ~0.13より少し大きめ=主役・叩き台)
 const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
