@@ -176,15 +176,17 @@ const dofMask = (si: number) =>
 // (v0.25.2016の教訓: 手動マージは片方の時刻を動かすと順序が壊れ、もう片方のコマが巻き戻る実バグになった)
 // 順序(社長指示v0.25.2019): 発砲一閃(f4・通常背景のまま0.1s)→跳ね上げ(f5)の瞬間に【赤反転+被弾(v2)】→
 // そこから2秒静止(社長指示v0.25.2017)→各自のテンポで再開。
-// 撃つ側(v0.25.2010→2018): 立ち1秒→構え1秒→一閃0.1→跳ね上げで静止→次0.2→最後(硝煙)は保持。
+// 撃つ側(v0.25.2010→2018→2067): 立ち2.5秒(会話1行目)→構え2.5秒(会話2行目)→一閃0.1→跳ね上げで静止→
+// 次0.2→最後(硝煙)は保持。旧・立ち1秒/構え1秒は会話が読み切れない(社長指示v0.25.2067「読む時間考慮」)ため
+// 各2.5秒(11文字≒字幕標準4〜5文字/秒)へ延長=発砲2.0s→5.0s。以降の全時刻を+3秒シフト(相対関係は不変)。
 // 撃たれ側(v0.25.2011→2012→2014→2016): 被弾=赤反転と同期→(静止)→次0.4→次0.4→最後(倒れ伏す)は保持。
 // 静止明け: f2(0.2s)→f6硝煙→1秒後にf2へ戻して以降停止(社長指示v0.25.2028)。
-const SHOOTER_TRACK = [{ t: 0, f: 1 }, { t: 1000, f: 3 }, { t: 2000, f: 4 }, { t: 2100, f: 5 }, { t: 4100, f: 2 }, { t: 4300, f: 6 }, { t: 5300, f: 2 }];
-const VICTIM_TRACK = [{ t: 0, f: 1 }, { t: 2100, f: 2 }, { t: 4100, f: 3 }, { t: 4500, f: 4 }, { t: 4900, f: 5 }];
-// 血飛沫(社長支給): 赤背景の瞬間(2.1s)に1コマ目を出し、キャラと同じく【2秒静止】(社長指示v0.25.2027)。
-// 静止明け(4.1s)から残り2コマを100msずつ→消える(f:0=非表示)。
-const BLOOD_TRACK = [{ t: 0, f: 0 }, { t: 2100, f: 1 }, { t: 4100, f: 2 }, { t: 4200, f: 3 }, { t: 4300, f: 0 }];
-const RED_FROM = 2100; // 跳ね上げの瞬間から背景を赤一色に(v0.25.2019で一閃の後ろへ移動。以降ずっと赤のまま暗転へ)
+const SHOOTER_TRACK = [{ t: 0, f: 1 }, { t: 2500, f: 3 }, { t: 5000, f: 4 }, { t: 5100, f: 5 }, { t: 7100, f: 2 }, { t: 7300, f: 6 }, { t: 8300, f: 2 }];
+const VICTIM_TRACK = [{ t: 0, f: 1 }, { t: 5100, f: 2 }, { t: 7100, f: 3 }, { t: 7500, f: 4 }, { t: 7900, f: 5 }];
+// 血飛沫(社長支給): 赤背景の瞬間(5.1s)に1コマ目を出し、キャラと同じく【2秒静止】(社長指示v0.25.2027)。
+// 静止明け(7.1s)から残り2コマを100msずつ→消える(f:0=非表示)。
+const BLOOD_TRACK = [{ t: 0, f: 0 }, { t: 5100, f: 1 }, { t: 7100, f: 2 }, { t: 7200, f: 3 }, { t: 7300, f: 0 }];
+const RED_FROM = 5100; // 跳ね上げの瞬間から背景を赤一色に(v0.25.2019で一閃の後ろへ移動。以降ずっと赤のまま暗転へ)
 const frameAt = (track: { t: number; f: number }[], t: number) => track.reduce((f, e) => (e.t <= t ? e.f : f), track[0].f);
 const SHOOT_STEPS = [...new Set([...SHOOTER_TRACK, ...VICTIM_TRACK, ...BLOOD_TRACK].map(e => e.t))]
   .sort((a, b) => a - b)
@@ -195,9 +197,9 @@ const BLOOD_POS = { x: 36.5, y: 57, h: 18 };
 // 表示は本編の会話UI(NpcDialogue=左上のモデル付き吹き出し)と同じ見た目をOP内で再現(UI統一・新規UIは作らない)。
 // 話者は撃つ子(ツインテのシルエット)。名前は明かさない=「？？？」・立ち絵はシーンと同じ白シルエット(叩き台)。
 const SHOOT_LINES = ['何もかもアンタばかり！', 'アンタさえいなければ…'];
-const SHOOT_FADE_START = 6200; // 最終コマを約1.3秒見せてから暗転(保持長は従来踏襲の叩き台)
+const SHOOT_FADE_START = 9200; // 最終コマを約1.3秒見せてから暗転(会話延長で+3秒シフト・v0.25.2067)
 const SHOOT_FADE_MS = 1200;
-const SHOOT_TOTAL = 7600;
+const SHOOT_TOTAL = 10600;
 // 倒れ伏し(v5)は足元重心アンカーの副作用で体がv4より右に出る(実測: 体重心 v4=36.7% vs v5=49.6%)
 // → v5だけ左へ寄せて落下位置を揃える(社長指示v0.25.2014「最後の倒れてる絵、少し左へ」)。単位=bg幅%。
 const VICTIM_DX: Record<number, number> = { 5: -4 };
@@ -242,7 +244,7 @@ const SPOTLIGHTS = SHOTS.map(s => s.chars.map((c, ci) => {
   };
 }));
 
-const OpeningScene: React.FC<{ onDone: () => void; onTitleReveal?: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, onTitleReveal, startAtShoot, startAtRevival }) => {
+const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, startAtShoot, startAtRevival }) => {
   const [ready, setReady] = useState(false); // 全素材decode完了までタイムラインを始めない(下記コメント)
   const [phase, setPhase] = useState(startAtRevival ? 4 : startAtShoot ? 3 : 0); // 0-2=アリーナ各アングル / 3=射撃シーン / 4=蘇生処置(字幕)
   const [prevShot, setPrevShot] = useState<number | null>(null); // クロスフェード中の前アングル(下敷き)
@@ -313,9 +315,10 @@ const OpeningScene: React.FC<{ onDone: () => void; onTitleReveal?: () => void; s
           heartRef.current.forEach(a => { if (a) a.volume = Math.max(0, a.volume * (1 - k / 6)); });
         }, t + (REVIVAL_FADE_MS / 6) * k));
       }
-      // 沈み切ったら【タイトルフェードイン+メニューBGM開始】(社長指示v0.25.2061)。
-      // onTitleReveal(App側で setBgmScene('menu'))を明けはじめと同時に呼び、黒幕をフェードアウト。
-      ids.push(window.setTimeout(() => { setTitleReveal(true); onTitleReveal?.(); }, t + REVIVAL_FADE_MS));
+      // 沈み切ったら【タイトルフェードイン】(社長指示v0.25.2061)。メニューBGMはここでは鳴らさず、
+      // フェードイン明け=finish(App側onDoneのsetBgmScene('menu'))で開始(社長指示v0.25.2067
+      // 「BGM流れるのは蘇生シーン終わってから」=フェードイン中は無音のまま)。
+      ids.push(window.setTimeout(() => setTitleReveal(true), t + REVIVAL_FADE_MS));
       ids.push(window.setTimeout(finish, t + REVIVAL_FADE_MS + TITLE_REVEAL_MS));
     };
 
@@ -350,7 +353,7 @@ const OpeningScene: React.FC<{ onDone: () => void; onTitleReveal?: () => void; s
       // 「パン!」のSE(社長指示v0.25.2040): 紙吹雪の発射と、射撃シーンの発砲に【同じ音=handgun-fire】。
       // 音声未解禁のURLプレビューでは鳴らない(本番=更新情報OKのジェスチャ後は鳴る)。
       if (!startAtShoot) ids.push(window.setTimeout(() => firePan(0), 1050)); // 紙吹雪パーン(1秒置いて)
-      ids.push(window.setTimeout(() => firePan(1), base + 2000));           // 発砲(一閃の瞬間)
+      ids.push(window.setTimeout(() => firePan(1), base + 5000));           // 発砲(一閃の瞬間・v0.25.2067で2.0s→5.0s)
       if (!startAtShoot) {
         // アングル切替=クロスフェード: 切替時刻に次を出しつつ前を下敷きで残し、FADE_MS後に前を外す。
         [1, 2].forEach(i => {
@@ -369,10 +372,11 @@ const OpeningScene: React.FC<{ onDone: () => void; onTitleReveal?: () => void; s
         ids.push(window.setTimeout(stopArena, SCENE_START)); // 発砲パン(場面転換後)を殺さないようアリーナだけ止める
       }
       SHOOT_STEPS.forEach((st, i) => { if (i > 0) ids.push(window.setTimeout(() => setStep(i), base + st.t)); });
-      // 会話(v0.25.2065): 立ち姿(0s)=1行目 → 構え(1.0s)=2行目 → 撃つ(2.0s)で消す(発砲が句読点)。
+      // 会話(v0.25.2065→2067「読む時間考慮」): 立ち姿(0s)=1行目(2.5秒) → 構え(2.5s)=2行目(2.5秒)
+      // → 撃つ(5.0s)で消す(発砲が句読点)。
       ids.push(window.setTimeout(() => setShootLine(0), base));
-      ids.push(window.setTimeout(() => setShootLine(1), base + 1000));
-      ids.push(window.setTimeout(() => setShootLine(-1), base + 2000));
+      ids.push(window.setTimeout(() => setShootLine(1), base + 2500));
+      ids.push(window.setTimeout(() => setShootLine(-1), base + 5000));
       // 射撃シーンが暗転し切ったら【蘇生処置パート(phase4)】へ切替→そのまま字幕会話を再生し、
       // 最後に finish()(旧: ここで直接 finish していたのを差し替え)。?opening=2 もこの経路で蘇生まで流れる。
       ids.push(window.setTimeout(() => setPhase(4), base + SHOOT_TOTAL));

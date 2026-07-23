@@ -317,7 +317,9 @@ function App() {
       )}
 
       {/* オープニングシーン(?opening=1でプレビュー)。タイトルの上に全画面。暗転し切ったら onDone で外れる。 */}
-      {showOpening && <OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} onTitleReveal={() => setBgmScene('menu')} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} />}
+      {/* BGMはオープニング完全終了(onDone=タイトルフェードイン明け)で開始(社長指示v0.25.2067
+          「BGM流れるのは蘇生シーン終わってから」=フェードイン開始と同時のBGM開始を廃止)。 */}
+      {showOpening && <OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} />}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}
       <OrientationGuard />
