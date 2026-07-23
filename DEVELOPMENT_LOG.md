@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2083 — 洋館通路: 床(石畳+カーペット)をMode-7遠近マッピングで実装【2026-07-23 16:24 JST】
+- 支給(社長): 床テクスチャ(1254×1254・見下ろし・縦シームレス)。
+- 対処: 画面各行の奥行き d(y)=focal(1/s−1) を逆算し、横スライス(2px)でテクスチャをUVマッピング(Mode-7方式)。縦1リピート=柱1間隔(520)に同期=柱と床の流速が一致。前進で紋様が手前へ流れる向き。リピート跨ぎは2分割描画。距離フェードで奥は闇へ。仮のベタ台形カーペットは撤去。
+- 検証: typecheck OK・実写でカーペット紋様の遠近と窓への収束を確認。実機 ?corridor=1。
+- 備考: Pixi本実装ではスライスではなくメッシュ(サブディビジョン+UV)1枚=GPU処理にする(負荷1/10)。プレビューのcanvasスライス(約330draw/frame)はプレビュー限定の許容。
+- Files: `art-src/mansion/floor-src.png`(新規), `public/sprites/mansion/floor.png`(新規), `src/components/MansionCorridorPreview.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2082 — 洋館通路: 奥の一枚絵(ステンドグラス窓の壁)を配置【2026-07-23 16:16 JST】
 - 支給(社長): 奥の一枚絵(941×1672・紫背景)。
 - 対処: グローバルキー透過+bbox切り出し(`art-src/mansion/key-back.mjs`→`public/sprites/mansion/back.png`)。プレビューでは固定奥行きBACK_DEPTH=1400の床上に、通路幅×1.15の横幅で配置(柱の描画順に挟む=奥の柱は壁の裏・手前の柱は壁の前)。距離フォグには沈めない(BACK_ALPHA=0.9=窓は闇の中で光る目標物)。

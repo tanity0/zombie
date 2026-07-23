@@ -9,7 +9,13 @@ import { projectCorridorPillars, CORRIDOR_CFG } from '../utils/corridorProjectio
 const PILLAR_L = `${import.meta.env.BASE_URL}sprites/mansion/pillar-left.png`;
 const PILLAR_R = `${import.meta.env.BASE_URL}sprites/mansion/pillar-right.png`;
 const BACK = `${import.meta.env.BASE_URL}sprites/mansion/back.png`;
+const FLOOR = `${import.meta.env.BASE_URL}sprites/mansion/floor.png`;
 const WALK_SPEED = 220; // 自動前進(world px/s・叩き台)
+// 床(Mode-7方式): 見下ろしテクスチャを横スライスで遠近マッピング。1リピート=柱1間隔(spacing)相当の
+// 前進量=柱と床の流速が同期。幅は柱中心間より広め(石畳が柱の外へ続く)。
+const FLOOR_REPEAT = 520;    // 床テクスチャ縦1枚ぶんの前進量(world px・叩き台=spacingと同値)
+const FLOOR_W_MULT = 1.3;    // 通路幅(柱中心間)に対する床の横幅倍率
+const FLOOR_STRIP = 2;       // スライス高(px)。小さいほど滑らか・重い(プレビューは2で十分)
 // 奥の一枚絵(ステンドグラス窓の壁)の固定奥行き(叩き台)。プレビューでは通路が無限ループなので
 // 「常にこの距離だけ先に見えている突き当たり」として描く(本実装では通路の終端に置く想定)。
 const BACK_DEPTH = 1400;
@@ -27,10 +33,11 @@ const MansionCorridorPreview: React.FC = () => {
     let raf = 0;
     let travel = 0;
     let prev = performance.now();
-    const imgs: Record<'l' | 'r' | 'b', HTMLImageElement> = { l: new Image(), r: new Image(), b: new Image() };
+    const imgs: Record<'l' | 'r' | 'b' | 'f', HTMLImageElement> = { l: new Image(), r: new Image(), b: new Image(), f: new Image() };
     imgs.l.src = PILLAR_L;
     imgs.r.src = PILLAR_R;
     imgs.b.src = BACK;
+    imgs.f.src = FLOOR;
 
     const resize = () => {
       canvas.width = window.innerWidth;
@@ -46,20 +53,42 @@ const MansionCorridorPreview: React.FC = () => {
       const W = canvas.width, H = canvas.height;
       const horizonY = H * CORRIDOR_CFG.horizonYr;
       ctx.clearRect(0, 0, W, H);
-      // 背景: 上=闇 / 下=石床のベタ(仮)。
+      // 背景: 上=闇 / 下=床のベース色(床テクスチャの外側)。
       ctx.fillStyle = '#0a0709';
       ctx.fillRect(0, 0, W, horizonY);
-      ctx.fillStyle = '#17121a';
+      ctx.fillStyle = '#0d0a0e';
       ctx.fillRect(0, horizonY, W, H - horizonY);
-      // 赤カーペット(仮): 消失点から広がる台形。
-      ctx.fillStyle = '#3d0e12';
-      ctx.beginPath();
-      ctx.moveTo(W / 2 - W * 0.015, horizonY);
-      ctx.lineTo(W / 2 + W * 0.015, horizonY);
-      ctx.lineTo(W / 2 + W * 0.34, H);
-      ctx.lineTo(W / 2 - W * 0.34, H);
-      ctx.closePath();
-      ctx.fill();
+      // 床(Mode-7): 画面の各行の奥行き d(y)=focal(1/s-1) を逆算し、見下ろしテクスチャの該当行を
+      // 横スライスで遠近マッピング(縦は前進量でスクロール・リピート跨ぎは2分割で描く)。
+      const ftex = imgs.f;
+      if (ftex.naturalWidth) {
+        const texW = ftex.naturalWidth, texH = ftex.naturalHeight;
+        const footY0 = H * CORRIDOR_CFG.footYr;
+        const denom = footY0 - horizonY;
+        const sAt = (y: number) => (y - horizonY) / denom;
+        const dAt = (y: number) => CORRIDOR_CFG.focal * (1 / Math.max(0.02, sAt(y)) - 1);
+        for (let y = Math.ceil(horizonY) + 2; y < H; y += FLOOR_STRIP) {
+          const s = sAt(y);
+          const d0 = dAt(y), d1 = dAt(y + FLOOR_STRIP);
+          // テクスチャ縦: 手前(d小)ほどv大=カーペット紋様が手前へ流れてくる向き。
+          const v0 = ((d0 + travel) % FLOOR_REPEAT + FLOOR_REPEAT) % FLOOR_REPEAT / FLOOR_REPEAT * texH;
+          let srcH = Math.max(0.5, (d0 - d1) / FLOOR_REPEAT * texH);
+          const fw = 2 * W * CORRIDOR_CFG.aisleHalfXr * s * FLOOR_W_MULT;
+          const fx = W / 2 - fw / 2;
+          const fade = Math.max(0, Math.min(1, (s - 0.12) / 0.5));
+          ctx.globalAlpha = fade;
+          const srcY = texH - v0 - srcH; // 前進で紋様が手前へ来るようv軸を反転
+          if (srcY < 0) {
+            // リピート跨ぎ: 2分割で描く。
+            const h1 = srcH + srcY; // 正の部分
+            if (h1 > 0) ctx.drawImage(ftex, 0, 0, texW, h1, fx, y, fw, FLOOR_STRIP * (h1 / srcH));
+            ctx.drawImage(ftex, 0, texH + srcY, texW, -srcY, fx, y + FLOOR_STRIP * (Math.max(0, h1) / srcH), fw, FLOOR_STRIP * (-srcY / srcH));
+          } else {
+            ctx.drawImage(ftex, 0, srcY, texW, srcH, fx, y, fw, FLOOR_STRIP);
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
       // 奥の壁(ステンドグラス窓)の描画関数: 柱の描画順(奥→手前)の中でBACK_DEPTHの位置に挟む。
       const drawBack = () => {
         const b = imgs.b;
