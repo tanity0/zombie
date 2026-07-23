@@ -263,9 +263,12 @@ export class CorridorLayer {
     mkPool(this.pillarSharp, [0.5, 1], false);
     mkPool(this.candleSharp, [0.5, 1], false);
     mkPool(this.candleBlur, [0.5, 1], false);
-    mkPool(this.glowMain, [0.5, 0.5], true);
-    mkPool(this.glowCore, [0.5, 0.5], true);
-    mkPool(this.glowFloor, [0.5, 0.5], true);
+    // グローは焼き済みの暖色放射テクスチャを渡す(v0.25.2143修正: 未渡し=Texture.EMPTY(1px)のまま
+    // 生成されており、updateWallLampsも位置/α/スケールしか触らないため光が一度も描かれていなかった。
+    // 社長報告「蝋燭の光源がいなくなってるまま」の真因)。
+    mkPool(this.glowMain, [0.5, 0.5], true, this.glowTex ?? undefined);
+    mkPool(this.glowCore, [0.5, 0.5], true, this.glowTex ?? undefined);
+    mkPool(this.glowFloor, [0.5, 0.5], true, this.glowTex ?? undefined);
   }
 
   resize(_W: number, _H: number): void {
