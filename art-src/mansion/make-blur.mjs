@@ -12,6 +12,11 @@ const SPRITES = [
   { url: `${BASE}/pillar-left.png?v=${bust}`, out: `${DIR}/pillar-left-blur.png`, blur: 7, pad: 24 },
   { url: `${BASE}/pillar-right.png?v=${bust}`, out: `${DIR}/pillar-right-blur.png`, blur: 7, pad: 24 },
   { url: `${BASE}/back.png?v=${bust}`, out: `${DIR}/back-blur.png`, blur: 7, pad: 24 },
+  // 遠方用の強ブラー(v0.25.2090): 遠方は1/5〜1/10に縮小描画されるため7pxでは約1px相当=見えない。
+  // 縮小後も効く26pxを別素材で用意し、描画側で近距離用と使い分ける。
+  { url: `${BASE}/pillar-left.png?v=${bust}`, out: `${DIR}/pillar-left-farblur.png`, blur: 26, pad: 40 },
+  { url: `${BASE}/pillar-right.png?v=${bust}`, out: `${DIR}/pillar-right-farblur.png`, blur: 26, pad: 40 },
+  { url: `${BASE}/back.png?v=${bust}`, out: `${DIR}/back-farblur.png`, blur: 26, pad: 40 },
 ];
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });

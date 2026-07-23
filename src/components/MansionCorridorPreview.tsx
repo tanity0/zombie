@@ -17,12 +17,14 @@ const PILLAR_L_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/pillar-left-bl
 const PILLAR_R_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/pillar-right-blur.png`;
 const BACK_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/back-blur.png`;
 const FLOOR_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/floor-blur.png`;
-const BLUR_PAD = 24; // ブラー版素材の余白(make-blur.mjsのpadと一致させること)
-const dofWeight = (d: number): number => {
-  const near = Math.max(0, Math.min(1, (300 - d) / 400));   // 手前: d=300で0 → d=-100で1
-  const far = Math.max(0, Math.min(1, (d - 1000) / 1400));  // 遠方: d=1000で0 → d=2400で1
-  return Math.min(0.9, Math.max(near, far));                 // 完全ボケにはしない(上限0.9)
-};
+// 遠方用の強ブラー版(v0.25.2090): 遠方は縮小描画で7pxブラーが約1px相当に消えるため、26px版を使い分ける。
+const PILLAR_L_FARBLUR = `${import.meta.env.BASE_URL}sprites/mansion/pillar-left-farblur.png`;
+const PILLAR_R_FARBLUR = `${import.meta.env.BASE_URL}sprites/mansion/pillar-right-farblur.png`;
+const BACK_FARBLUR = `${import.meta.env.BASE_URL}sprites/mansion/back-farblur.png`;
+const BLUR_PAD = 24;     // 近距離ブラー版の余白(make-blur.mjsのpadと一致)
+const FAR_BLUR_PAD = 40; // 遠方ブラー版の余白(同)
+const dofNear = (d: number): number => Math.min(0.9, Math.max(0, Math.min(1, (300 - d) / 400)));   // 手前: d=300で0 → d=-100で1
+const dofFar = (d: number): number => Math.min(0.9, Math.max(0, Math.min(1, (d - 1000) / 1400)));  // 遠方: d=1000で0 → d=2400で1
 const WALK_SPEED = 220; // 自動前進(world px/s・叩き台)
 // 床(Mode-7方式): 見下ろしテクスチャを横スライスで遠近マッピング。1リピート=柱1間隔(spacing)相当の
 // 前進量=柱と床の流速が同期。幅は柱中心間より広め(石畳が柱の外へ続く)。
@@ -46,9 +48,10 @@ const MansionCorridorPreview: React.FC = () => {
     let raf = 0;
     let travel = 0;
     let prev = performance.now();
-    const imgs: Record<'l' | 'r' | 'b' | 'f' | 'lB' | 'rB' | 'bB' | 'fB', HTMLImageElement> = {
+    const imgs: Record<'l' | 'r' | 'b' | 'f' | 'lB' | 'rB' | 'bB' | 'fB' | 'lF' | 'rF' | 'bF', HTMLImageElement> = {
       l: new Image(), r: new Image(), b: new Image(), f: new Image(),
       lB: new Image(), rB: new Image(), bB: new Image(), fB: new Image(),
+      lF: new Image(), rF: new Image(), bF: new Image(),
     };
     imgs.l.src = PILLAR_L;
     imgs.r.src = PILLAR_R;
@@ -58,6 +61,9 @@ const MansionCorridorPreview: React.FC = () => {
     imgs.rB.src = PILLAR_R_BLUR;
     imgs.bB.src = BACK_BLUR;
     imgs.fB.src = FLOOR_BLUR;
+    imgs.lF.src = PILLAR_L_FARBLUR;
+    imgs.rF.src = PILLAR_R_FARBLUR;
+    imgs.bF.src = BACK_FARBLUR;
 
     const resize = () => {
       canvas.width = window.innerWidth;
@@ -115,7 +121,7 @@ const MansionCorridorPreview: React.FC = () => {
           const fade = Math.max(0, Math.min(1, (s - 0.12) / 0.5));
           const srcY = texH - v0 - srcH; // 前進で紋様が手前へ来るようv軸を反転
           // 被写界深度: 遠方の床はブラー版テクスチャへクロスフェード(同寸なのでUVは共通)。
-          const w = dofWeight(d0);
+          const w = dofFar(d0);
           const drawFloorSlice = (tex: HTMLImageElement, alpha: number) => {
             if (alpha <= 0.02) return;
             ctx.globalAlpha = alpha;
@@ -162,13 +168,14 @@ const MansionCorridorPreview: React.FC = () => {
         const bw = 2 * W * CORRIDOR_CFG.aisleHalfXr * s * BACK_WIDTH_MULT;
         const bh = (b.naturalHeight / b.naturalWidth) * bw;
         const bx = W / 2 - bw / 2, by = footY - bh;
-        const w = dofWeight(BACK_DEPTH);
+        // 奥壁は常に遠方=強ブラー版(farblur)とクロスフェード(v0.25.2090)。
+        const w = dofFar(BACK_DEPTH);
         ctx.globalAlpha = BACK_ALPHA * (1 - w);
         ctx.drawImage(b, bx, by, bw, bh);
-        if (imgs.bB.naturalWidth) {
+        if (imgs.bF.naturalWidth) {
           const k = bw / b.naturalWidth; // 表示スケール(ブラー版はpadぶん大きい)
           ctx.globalAlpha = BACK_ALPHA * w;
-          ctx.drawImage(imgs.bB, bx - BLUR_PAD * k, by - BLUR_PAD * k, imgs.bB.naturalWidth * k, imgs.bB.naturalHeight * k);
+          ctx.drawImage(imgs.bF, bx - FAR_BLUR_PAD * k, by - FAR_BLUR_PAD * k, imgs.bF.naturalWidth * k, imgs.bF.naturalHeight * k);
         }
       };
       // 柱(奥→手前)。距離フェードはglobalAlphaで黒背景に沈める(仮)。
@@ -180,17 +187,21 @@ const MansionCorridorPreview: React.FC = () => {
         const img = p.side < 0 ? imgs.l : imgs.r;
         if (!img.naturalWidth) continue;
         const w = (img.naturalWidth / img.naturalHeight) * p.h;
-        const dof = dofWeight(p.depth);
+        // 近距離(通過ボケ)=7px版 / 遠方=26px版(縮小しても効く)を使い分け(v0.25.2090)。範囲は排他。
+        const wN = dofNear(p.depth), wF = dofFar(p.depth);
+        const dof = Math.max(wN, wF);
         const dx = p.x - w / 2, dy = p.y - p.h;
         if (dof < 0.98) {
           ctx.globalAlpha = p.fade * (1 - dof);
           ctx.drawImage(img, dx, dy, w, p.h);
         }
-        const blurImg = p.side < 0 ? imgs.lB : imgs.rB;
+        const useFar = wF > wN;
+        const blurImg = p.side < 0 ? (useFar ? imgs.lF : imgs.lB) : (useFar ? imgs.rF : imgs.rB);
+        const pad = useFar ? FAR_BLUR_PAD : BLUR_PAD;
         if (dof > 0.02 && blurImg.naturalWidth) {
           const k = p.h / img.naturalHeight; // 表示スケール(ブラー版はpadぶん大きい)
           ctx.globalAlpha = p.fade * dof;
-          ctx.drawImage(blurImg, dx - BLUR_PAD * k, dy - BLUR_PAD * k, blurImg.naturalWidth * k, blurImg.naturalHeight * k);
+          ctx.drawImage(blurImg, dx - pad * k, dy - pad * k, blurImg.naturalWidth * k, blurImg.naturalHeight * k);
         }
       }
       if (!backDrawn) drawBack();

@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2090 — 洋館通路: 奥の壁・奥の柱のボケを実効化(遠方用26pxブラー版)【2026-07-23 16:50 JST】
+- 報告(社長): 奥の壁と奥の柱もボケないと。
+- 診断: 事前ブラーは素材解像度の7pxのため、**遠方の縮小描画(1/5〜1/10)でブラーが約1px相当に消えていた**(手前の通過ボケは拡大表示なので効いていた)。
+- 対処: **遠方用の強ブラー版(26px・pad40)**を柱左右+奥壁で追加生成(make-blur.mjs)。描画は近距離=7px版/遠方=26px版の使い分け(範囲は排他・dofNear/dofFarに分離)。奥壁は常に遠方版。床の遠方ボケは従来どおり。
+- 検証: typecheck OK・実写で「奥の柱が溶ける+窓がアウトフォーカスの光」を確認。実機 ?corridor=1。
+- Files: `art-src/mansion/make-blur.mjs`, `public/sprites/mansion/{pillar-left,pillar-right,back}-farblur.png`(新規), `src/components/MansionCorridorPreview.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2089 — 洋館通路: 柱の位置をもっと左右へ(1.05)【2026-07-23 16:47 JST】
 - 指示(社長): 柱の位置、少ししか広がってない。もっと。ライティングもその分調整。
 - 対処: 通路半幅 aisleHalfXr 0.80→**1.05**(+31%)。壁灯・床は柱と同じ投影基準なので自動追従(柱の足元=床の縁の整合は維持)。
