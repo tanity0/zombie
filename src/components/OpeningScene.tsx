@@ -50,7 +50,7 @@ const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ
 const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
 const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
 const WALK_FADEIN_MS = 1000;    // 開始時のキャラのフェードイン
-const WALK_STAGE_Y_OFFSET = -70; // ステージ全体の縦オフセット(px)。v0.25.2116/-50→2117/-100→v0.25.2118「30px下へ」で-70
+const WALK_STAGE_Y_OFFSET = -40; // ステージ全体の縦オフセット(px)。v0.25.2116/-50→2117/-100→2118/-70→v0.25.2120「30px下へ」で-40
 // 被写界深度(v0.25.2116「プレイヤーの直ぐ裏からぼかし」): 事前ブラー版bg(walk-stage-bg-blur.png・
 // blur9px焼き込み)を縦グラデマスクで重ねる=壁(奥)はボケ、彼女と歩いている床だけシャープ。
 // アリーナDOFと同じ「ランタイムぼかしゼロ」方式(モバイルのfilter/backdrop-filterの罠を回避)。
