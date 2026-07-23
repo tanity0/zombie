@@ -722,7 +722,11 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                   position: 'relative', width: '100%',
                   transformOrigin: `${SHOTS[si].ox}% ${SHOTS[si].oy}%`,
                   // 正面のみ: 紙吹雪の噴き上げを見せてからズーム開始(FRONT_ZOOM_DELAY)。
-                  animation: `opzoom${si} ${SHOT_DUR[si]}ms linear ${si === 0 ? FRONT_ZOOM_DELAY : 0}ms both`,
+                  // 斜め(si=1)はズームせず静止(社長指示v0.25.2141「フェードインで1秒ストップ」):
+                  // 開始フレーミング(zf=正面の寄り切りと繋がるサイズ)で固定し、フェードインで現れて1秒ホールド。
+                  ...(si === 1
+                    ? { transform: `scale(${SHOTS[1].zf})`, animation: `opfade 300ms ease-out both` }
+                    : { animation: `opzoom${si} ${SHOT_DUR[si]}ms linear ${si === 0 ? FRONT_ZOOM_DELAY : 0}ms both` }),
                 }}
               >
                 <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}` }}>
