@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2085 — 洋館通路: 柱を少し外へ(床幅は不変)【2026-07-23 16:31 JST】
+- 指示(社長): 床は大丈夫。左右の柱、少しだけ外に広げたい。
+- 対処: 通路半幅 aisleHalfXr 0.62→**0.70**。床の実幅は承認済みの見た目を維持するため FLOOR_W_MULT 1.3→1.15 で補正(0.62×1.3≒0.70×1.15)。
+- 検証: 投影テスト6本pass・typecheck OK・実写で確認。
+- Files: `src/utils/corridorProjection.ts`, `src/components/MansionCorridorPreview.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2084 — 洋館通路: 奥の壁をもっと遠くへ(BACK_DEPTH 1400→2600)【2026-07-23 16:29 JST】
 - 指示(社長): 奥のかべ、もっと遠くにないとおかしい。
 - 対処: BACK_DEPTH 1400→**2600**。窓が遠くの小さな光になり通路の奥行きが増した(実写確認)。
