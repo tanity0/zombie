@@ -6,19 +6,23 @@ import { projectCorridorPillars, CORRIDOR_CFG } from '../utils/corridorProjectio
 // プレビュー画面。ゲーム本体には一切配線しない(本実装はこの投影式=corridorProjection.tsを
 // Pixiの遠景レイヤーへ移植する)。描画はrAFでcanvasへ直描き=React再レンダなし(再レンダ規律)。
 // 床は仮のベタ台形(石畳+赤カーペット)。歩行は自動前進(叩き台220px/s)。
-const PILLAR_L = `${import.meta.env.BASE_URL}sprites/mansion/pillar-left.png`;
-const PILLAR_R = `${import.meta.env.BASE_URL}sprites/mansion/pillar-right.png`;
-const BACK = `${import.meta.env.BASE_URL}sprites/mansion/back.png`;
-const FLOOR = `${import.meta.env.BASE_URL}sprites/mansion/floor.png`;
+// 洋館素材は同名ファイルを差し替えて更新するため、バージョン付きキャッシュバスターを必ず付ける
+// (v0.25.2097: 奥壁差し替え時、実機に旧素材がキャッシュで残り「縦に伸びた」見え方になった教訓)。
+const MV = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+const M = (f: string) => `${import.meta.env.BASE_URL}sprites/mansion/${f}?v=${encodeURIComponent(MV)}`;
+const PILLAR_L = M('pillar-left.png');
+const PILLAR_R = M('pillar-right.png');
+const BACK = M('back.png');
+const FLOOR = M('floor.png');
 // 天井(社長支給v0.25.2092): 床と同じMode-7の上下反転(消失点より上の帯に張る)。
-const CEILING = `${import.meta.env.BASE_URL}sprites/mansion/ceiling.png`;
-const CEILING_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/ceiling-blur.png`;
+const CEILING = M('ceiling.png');
+const CEILING_BLUR = M('ceiling-blur.png');
 const CEIL_Y0_R = -0.75; // d=0の天井ライン(画面高比・負=画面上端のはるか上。天井の見える範囲を決める)
 const CEIL_SCALE = 1.5;  // 天井タイルの拡大率(社長指示v0.25.2096: 1.5倍)。縦=リピート距離×1.5 / 横=中央2/3幅を使用
 // 燭台(社長支給v0.25.2093): 壁灯グローの光源として柱間に立てる。炎の位置=グロー中心に一致させる。
-const CANDLE = `${import.meta.env.BASE_URL}sprites/mansion/candle.png`;
-const CANDLE_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/candle-blur.png`;
-const CANDLE_FARBLUR = `${import.meta.env.BASE_URL}sprites/mansion/candle-farblur.png`;
+const CANDLE = M('candle.png');
+const CANDLE_BLUR = M('candle-blur.png');
+const CANDLE_FARBLUR = M('candle-farblur.png');
 const CANDLE_FLAME_YR = 0.027; // 炎の中心(素材高の上からの比率。切り出しの最上端=炎の先端)
 const GLOW_Y_R = 0.40;         // グロー中心の高さ(柱の高さ比・足元から)
 // 燭台の表示高: 炎(上から2.7%)がグロー中心(足元からm.h×0.40)に一致する高さ。
@@ -26,14 +30,14 @@ const CANDLE_H_R = GLOW_Y_R / (1 - CANDLE_FLAME_YR); // ≒0.411
 // 被写界深度(社長指示v0.25.2087・事前ブラー方式=ランタイムぼかしゼロ): ブラー版素材
 // (art-src/mansion/make-blur.mjs生成)とシャープ版を奥行きでクロスフェード。
 // 手前通過(d<300→-100で0→1)と遠方(d>1000→2400で0→1・上限0.9)がボケ、中距離=ピント面。
-const PILLAR_L_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/pillar-left-blur.png`;
-const PILLAR_R_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/pillar-right-blur.png`;
-const BACK_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/back-blur.png`;
-const FLOOR_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/floor-blur.png`;
+const PILLAR_L_BLUR = M('pillar-left-blur.png');
+const PILLAR_R_BLUR = M('pillar-right-blur.png');
+const BACK_BLUR = M('back-blur.png');
+const FLOOR_BLUR = M('floor-blur.png');
 // 遠方用の強ブラー版(v0.25.2090): 遠方は縮小描画で7pxブラーが約1px相当に消えるため、26px版を使い分ける。
-const PILLAR_L_FARBLUR = `${import.meta.env.BASE_URL}sprites/mansion/pillar-left-farblur.png`;
-const PILLAR_R_FARBLUR = `${import.meta.env.BASE_URL}sprites/mansion/pillar-right-farblur.png`;
-const BACK_FARBLUR = `${import.meta.env.BASE_URL}sprites/mansion/back-farblur.png`;
+const PILLAR_L_FARBLUR = M('pillar-left-farblur.png');
+const PILLAR_R_FARBLUR = M('pillar-right-farblur.png');
+const BACK_FARBLUR = M('back-farblur.png');
 const BLUR_PAD = 24;     // 近距離ブラー版の余白(make-blur.mjsのpadと一致)
 const FAR_BLUR_PAD = 40; // 遠方ブラー版の余白(同)
 const dofNear = (d: number): number => Math.min(0.9, Math.max(0, Math.min(1, (300 - d) / 400)));   // 手前: d=300で0 → d=-100で1
