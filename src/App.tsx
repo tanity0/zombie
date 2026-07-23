@@ -71,7 +71,7 @@ function App() {
   const [loadOverlayTimedOut, setLoadOverlayTimedOut] = useState(false);
   useEffect(() => {
     if (gameState !== 'playing' || rendererReady) { setLoadOverlayTimedOut(false); return; }
-    const id = window.setTimeout(() => setLoadOverlayTimedOut(true), 6000);
+    const id = window.setTimeout(() => setLoadOverlayTimedOut(true), useGameStore.getState().corridorMode ? 16000 : 6000); // 洋館通路は通路テクスチャ待ちぶん延長(v0.25.2122)
     return () => window.clearTimeout(id);
   }, [gameState, rendererReady]);
 

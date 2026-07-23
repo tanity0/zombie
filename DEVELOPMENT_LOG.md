@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2122 — 出撃ローディング修理: シミュ停止+通路テクスチャを解除条件に【2026-07-23 21:54 JST】
+- 報告(社長): ステージ開始ローディングが機能してない。ローディング中に裏で敵が湧いて攻撃してる/ローディングが明けても画像が読み込み終わってない。
+- 診断: ①useGameLoopはローディングオーバーレイ表示中も回っていた(オーバーレイは画面を覆うだけ) ②stage-6の通路テクスチャ(計~10MB)はcorridorLayerの遅延ロードで、ローディング解除(rendererReady)の条件外=明けてから通路がポップインしていた。
+- 対処: ①ローディング中(Pixiレンダラ・rendererReady前)は**シミュレーションを停止**(isPaused/backgroundedと同じ早期スキップ。rendererReadyはフェイルセーフで必ず立つ=永久停止なし。canvasレンダラは対象外) ②corridorLayerに`preloadCorridorTextures`をexportし、stage-6出撃ではPixiStageが**awaitしてからrendererReadyを立てる**(進捗%にも計上。同一URLのAssetsキャッシュ=ensureLoadedは即時解決)。フェイルセーフはcorridor時4→15秒・App側6→16秒に延長。
+- 検証: typecheck・lint 0エラー・実写=ローディング明け時点で通路完全表示+gameTimeがローディング中は進まないこと(明け直後1.2秒)を確認。stage-1は挙動不変(heli intro時間停止でgameTime=0=従来どおり)。
+- Files: `src/pixi/{corridorLayer.ts,PixiStage.tsx}`, `src/App.tsx`, `src/hooks/useGameLoop.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2121 — OP廊下: シーンフェードイン+左画面外から歩き入場+停止中は立ち絵【2026-07-23 21:49 JST】
 - 指示(社長): 舞台裏に入るときフェードイン。フェードイン中にプレイヤーが左画面外から歩いて入ってくる。立ち止まってる時は立ち絵。
 - 対処: シーン全体をopfade 900msでフェードイン(キャラ個別フェードは廃止)。キャラはx=-80(画面外左)から自動で右へ歩き、x=150で入場完了=操作をプレイヤーへ解放。停止中はアリーナと同じ立ちスプライト(HERO=hero-blue)を表示(歩行中はピンポン4コマ)。HEROを廊下の先読み対象に追加。

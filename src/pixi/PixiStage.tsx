@@ -7,6 +7,7 @@ import { useGameStore } from '../store/gameStore';
 import { setAudioSuspended } from '../audio/audioManager';
 import { computeViewport } from '../utils/viewport';
 import { loadProgressBegin, loadProgressDone, loadProgressResetWindow } from '../utils/loadProgress';
+import { preloadCorridorTextures, CORRIDOR_TEXTURE_NAMES } from './corridorLayer';
 
 // 出撃時に注入するステージ別テクスチャの一覧。ローディング%の分母を初期化冒頭で全登録するため
 // 配列で一元管理(v0.25.1829: 分母を後から増やすと%が逆行する=「100→99→98…」社長報告の修正)。
@@ -179,9 +180,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       // 解除していたため、キャッシュ未温だと注入前の素の森スキンが見えていた(全スキンステージ共通)。
       // キャンバス自体は挿入済み=解除まではローディングオーバーレイの下で描画が回る(黒画面にはならない)。
       // 注入が遅延/失敗しても残り続けないよう4秒で強制解除(App側の6秒タイムアウトと二重保険)。
+      // 洋館通路(stage-6)は通路テクスチャ(計~10MB)も待つため、フェイルセーフを長めに取る(v0.25.2122)。
       readyFailsafe = window.setTimeout(() => {
         try { if (!cancelled) useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
-      }, 4000);
+      }, useGameStore.getState().corridorMode ? 15000 : 4000);
 
       // 1フレームの例外で描画が固まって真っ暗になるのを防ぐ(ログは初回だけ。再生は継続)。
       const tick = () => {
@@ -251,6 +253,13 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         scene.setHorizonOverride('snow', s4Horizon);     // 地平帯(遠景森1): 氷壁帯(ステージ4・下フェード)
         scene.setHorizonOverride('stage5', s5Horizon);   // 地平帯(遠景森1): 城塞の壁(ステージ5・社長提供)
         scene.setHorizonOverride('tutorial', tutRocks);  // 地平帯(遠景森1): 岩帯(チュートリアル・川に頭が少し被る配置)
+        // ステージ6(洋館通路): 通路テクスチャもローディング解除の条件に含める(v0.25.2122・
+        // 社長報告「ローディング終わっても画像が読み込み終わってない」対策)。corridorModeはresetGame済み。
+        if (useGameStore.getState().corridorMode) {
+          loadProgressBegin(CORRIDOR_TEXTURE_NAMES.length);
+          await preloadCorridorTextures(() => loadProgressDone());
+          if (cancelled || sceneRef.current !== scene) return;
+        }
         // 注入をこのフレームのシーンへ反映してからローディングを外す=素の森スキンを1フレームも見せない。
         try { scene.sync(); app.render(); } catch { /* ignore */ }
         window.clearTimeout(readyFailsafe);

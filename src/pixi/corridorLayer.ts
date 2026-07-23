@@ -25,6 +25,23 @@ const CFG: CorridorConfig = { ...CORRIDOR_CFG, footYr: 0.744 };
 // 横移動対応(v0.25.2113): 通路はworld x=0に固定し、pixiSceneがカメラx分だけcontainerを逆シフトする。
 // その際に黒背景が切れないよう左右に持たせる余白(px)。クランプ±170×ズーム+余裕。
 export const CORRIDOR_BG_X_OVERSCAN = 420;
+// 通路テクスチャ一覧(ensureLoadedと共有)。
+export const CORRIDOR_TEXTURE_NAMES = [
+  'floor', 'ceiling',
+  'pillar-left', 'pillar-right',
+  'pillar-left-blur', 'pillar-right-blur',
+  'pillar-left-farblur', 'pillar-right-farblur',
+  'back', 'back-farblur',
+  'candle', 'candle-blur', 'candle-farblur',
+] as const;
+// 出撃ローディング用の先読み(v0.25.2122・社長報告「ローディング終わっても画像が読み込み終わってない」):
+// PixiStageがstage-6出撃時にawaitし、ローディング解除(rendererReady)の条件に含める。
+// 同一URL(M())のAssetsキャッシュに乗るため、ensureLoaded側は即時解決になる。
+export const preloadCorridorTextures = async (onEach?: () => void): Promise<void> => {
+  await Promise.all(CORRIDOR_TEXTURE_NAMES.map(async (n) => {
+    try { await Assets.load(M(`${n}.png`)); } catch { /* 個別失敗は無視 */ } finally { onEach?.(); }
+  }));
+};
 // 壁灯/燭台の縦プロポーション補正(v0.25.2115・社長報告「蝋燭の火が見当たらない」):
 // footYr 1.55→0.744の幾何再調整で「足元→消失点」のスパンが約1/2.8に縮んだのに、灯りの高さ
 // (GLOW_Y_R×柱の描画高)は柱基準のままだったため、炎が消失点より上=天井メッシュの裏に飛んで
@@ -149,19 +166,12 @@ export class CorridorLayer {
     this.backBlur.anchor.set(0.5, 1);
   }
 
-  // 洋館素材の遅延ロード(初回 update で1度だけ走る)。既存の preload フローには乗せない
-  // (=corridorMode に入った時だけ読む)。読み込み中/失敗中は bg のみ描く。
+  // 洋館素材の遅延ロード(初回 update で1度だけ走る)。stage-6出撃ではPixiStageが
+  // preloadCorridorTextures を await 済み=Assetsキャッシュから即時解決(v0.25.2122)。
   private ensureLoaded(): void {
     if (this.loading || this.ready) return;
     this.loading = true;
-    const names = [
-      'floor', 'ceiling',
-      'pillar-left', 'pillar-right',
-      'pillar-left-blur', 'pillar-right-blur',
-      'pillar-left-farblur', 'pillar-right-farblur',
-      'back', 'back-farblur',
-      'candle', 'candle-blur', 'candle-farblur',
-    ];
+    const names = CORRIDOR_TEXTURE_NAMES;
     void Promise.all(names.map(async (n) => {
       try {
         const t = await Assets.load<Texture>(M(`${n}.png`));

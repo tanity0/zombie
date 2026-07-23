@@ -1539,7 +1539,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // Skip updates if game is paused. Read fresh from the store (not the
       // captured closure) so a level-up / pause takes effect immediately even
       // before React re-runs this effect with the new value.
-      if (!useGameStore.getState().isPaused && !useGameStore.getState().backgrounded) {
+      // 出撃ローディング中(rendererReady前)はシミュレーションも止める(v0.25.2122・社長報告
+      // 「ローディング中に裏で敵が湧いて攻撃してる」)。rendererReadyはPixiStage側のフェイルセーフで
+      // 必ず立つ=永久停止はない。canvasレンダラ(rendererReadyを使わない)は対象外。
+      if (!useGameStore.getState().isPaused && !useGameStore.getState().backgrounded
+          && (!isPixiRenderer() || useGameStore.getState().rendererReady)) {
         const loopState = useGameStore.getState();
         const {
           gameTime,
