@@ -164,7 +164,7 @@ const MansionCorridorPreview: React.FC = () => {
           const d0 = dAt(y), d1 = dAt(y + FLOOR_STRIP);
           // テクスチャ縦: 手前(d小)ほどv大=カーペット紋様が手前へ流れてくる向き。
           const v0 = ((d0 + travel) % FLOOR_REPEAT + FLOOR_REPEAT) % FLOOR_REPEAT / FLOOR_REPEAT * texH;
-          let srcH = Math.max(0.5, (d0 - d1) / FLOOR_REPEAT * texH);
+          const srcH = Math.max(0.5, (d0 - d1) / FLOOR_REPEAT * texH);
           const fw = 2 * W * CORRIDOR_CFG.aisleHalfXr * s * FLOOR_W_MULT;
           const fx = W / 2 - fw / 2;
           const fade = Math.max(0, Math.min(1, (s - 0.12) / 0.5));

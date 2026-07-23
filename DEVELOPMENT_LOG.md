@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.2106 — CI恒常赤の根治+ステージ6プレイヤーを画面中央へ【2026-07-23 18:43 JST】
+- 指示(社長): ①GitHubへのコミットで毎回失敗する件をどうにかしたい ②通路のプレイヤーは常に真ん中(m0と同じ)。
+- 診断①: **CI(GitHub Actions)は直近30run全てfailure**=コミット毎に❌。原因は2系統: (a)既存バグ=`gameStore.ts:1926`の`window.setTimeout`(KILL血飛沫の遅延噴射v0.25.2045)がヘッドレステスト(node環境=window未定義)でクラッシュ→playtest 2件fail=**かなり前からの主犯**。(b)今日のlintエラー=`MansionCorridorPreview.tsx`の`prefer-const`(v0.25.2099混入)。
+- 対処①: (a)素の`setTimeout`へ(ブラウザ/node両対応・挙動不変)。(b)`let srcH`→`const`。ローカルでCIと同じ4ステップ(lint 0 errors/typecheck/フルテスト934中930pass・2skip・fail 0/build)を全部緑で確認。
+- 対処②: `PLAYER_VIEW_DEPTH` 420→**2200**(足元投影が画面高≒50%)+`CORRIDOR_ENTITY_SCALE_BOOST` 2.0→**6.25**(連動して見かけ等倍を維持)。テストの表明も「足元≒50%(±2%)」へ更新。実写でプレイヤー中央を確認。
+- 既知の副作用(②・実機確認待ち): 下(手前)湧きの敵は画面下端からではなく**プレイヤーのすぐ下あたりに現れる**(1/z圧縮でプレイヤーより手前の空間が画面のわずかな帯になるため)。目立つようなら下湧きの距離/比率の調整が次の一手。
+- 検証: 上記のとおりCI4ステップ+corridorProjectionテスト10本pass+stage-6実写。
+- Files: `src/store/gameStore.ts`, `src/components/MansionCorridorPreview.tsx`, `src/utils/{corridorProjection.ts,corridorProjection.test.ts}`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2105 — ステージ6「洋館・奥行き通路」をゲーム本体に統合(とりあえず版)【2026-07-23 18:32 JST】
 - 指示(社長): プレイヤーや敵は真ん中寄りで、とりあえずステージ6に配置してみよう+敵は上(奥)中心・一部下・左右は湧かない(壁)。
 - 実装(Opusサブエージェント・設計=このチャット): stage-6メイン出撃で通路モード(再訪/屋内/ベンチ/フリーは対象外)。

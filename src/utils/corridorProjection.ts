@@ -75,17 +75,19 @@ export const projectCorridorPillars = (
 // 平面座標のエンティティを、柱と同じ1/z式で通路の見た目に写す(renderer専用・レンダラ非依存の純関数)。
 // 数値は全て叩き台=実機調整前提。
 
-// プレイヤー自身の見かけの奥行き(d)。この深さで scale=focal/(focal+d)=0.5 になり、×2.0補正で等倍表示。
-// = プレイヤーが画面の真ん中寄り・下(足元 y≒0.86H 付近)に立って見える基準奥行き。
-export const PLAYER_VIEW_DEPTH = 420; // 叩き台
+// プレイヤー自身の見かけの奥行き(d)。社長指示v0.25.2106「プレイヤーは常に真ん中(m0と同じ)」:
+// 足元の投影が画面高≒50%に来る深さ(s=420/2620≒0.160 → y=(0.30+1.25s)H≒0.500H)。
+// 表示サイズは CORRIDOR_ENTITY_SCALE_BOOST が連動して等倍を維持する。
+export const PLAYER_VIEW_DEPTH = 2200; // 叩き台
 // 横移動の拘束幅(world px)。プレイヤー中心xを ±この値に拘束=柱ライン(aisleHalfXr)が移動境界になる。
 // ゲームロジック(gameStore)側のクランプと、renderer側の横写像K(±この値→柱ライン)で同じ値を共有する。
 export const CORRIDOR_LATERAL_CLAMP = 260; // 叩き台
 // 前進量オフセット: travel = CORRIDOR_TRAVEL_OFFSET - player.y(上=yが減る方向へ進むと前進)。
 // プレイヤーは原点(y=0)から開始するので 0 で travel≒0 スタート(柱位相を調整したい時にずらす)。
 export const CORRIDOR_TRAVEL_OFFSET = 0; // 叩き台
-// 表示スケール補正: s(=focal/(focal+d))に掛ける倍率。プレイヤー深さ d=420 で s=0.5・×2.0=等倍。
-export const CORRIDOR_ENTITY_SCALE_BOOST = 2.0; // 叩き台
+// 表示スケール補正: s(=focal/(focal+d))に掛ける倍率。プレイヤー深さ d=2200 で s≒0.160・×6.25≒等倍
+// (PLAYER_VIEW_DEPTHとペアで調整する: boost ≒ (focal+d)/focal)。
+export const CORRIDOR_ENTITY_SCALE_BOOST = 6.25; // 叩き台
 // カリング: カメラ手前(d<この値)や豆粒(s<この値)は描かない。
 export const CORRIDOR_ENTITY_CULL_DEPTH = 60; // 叩き台
 export const CORRIDOR_ENTITY_CULL_SCALE = 0.05; // 叩き台

@@ -1923,7 +1923,9 @@ const grantMeleeKillRewards = (
       // KILL!は血飛沫も大量に(社長指示v0.25.2032→2041「真上にぶしゃーーっと」→2045「ズーム停止の
       // タイミングで噴射」): KILLズームは寄り切りまで MELEE_FINISH_ZOOM_MS - HOLD_MS(=100ms)なので、
       // その瞬間に真上2連バースト(各43粒=キャップほぼ満杯の間欠泉)を発火=止まった画の中で噴き上がる。
-      window.setTimeout(() => {
+      // window.setTimeout だとヘッドレステスト(node環境=window未定義)でクラッシュし、CIを
+      // 毎push赤にしていた(v0.25.2106修正)。素のsetTimeoutはブラウザ/nodeの両方で同一挙動。
+      setTimeout(() => {
         get().spawnBlood(ex, ey, -Math.PI / 2 - 0.16, 260);
         get().spawnBlood(ex, ey, -Math.PI / 2 + 0.16, 260);
       }, MELEE_FINISH_ZOOM_MS - MELEE_FINISH_ZOOM_HOLD_MS);

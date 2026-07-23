@@ -54,14 +54,14 @@ describe('projectCorridorPillars (洋館通路の1/z投影)', () => {
 });
 
 describe('projectCorridorEntity (エンティティの通路投影)', () => {
-  it('プレイヤー(自分の視深)は画面中央・scale=0.5・足元は画面下寄り', () => {
-    // プレイヤー自身: centerY=playerCenterY → d=PLAYER_VIEW_DEPTH=420 → s=focal/(focal+420)=0.5。
+  it('プレイヤー(自分の視深)は画面中央・足元は画面高≒50%(社長指示v0.25.2106=常に真ん中)', () => {
+    // プレイヤー自身: centerY=playerCenterY → d=PLAYER_VIEW_DEPTH → 足元投影が画面高≒50%。
     const v = projectCorridorEntity(0, 0, 0, W, H);
     expect(v.visible).toBe(true);
     expect(v.depth).toBeCloseTo(PLAYER_VIEW_DEPTH, 6);
     expect(v.scale).toBeCloseTo(CORRIDOR_CFG.focal / (CORRIDOR_CFG.focal + PLAYER_VIEW_DEPTH), 6);
     expect(v.x).toBeCloseTo(W / 2, 6); // 中心x=0 → 画面中央
-    expect(v.y).toBeGreaterThan(H * 0.5); // 足元は画面の下寄り
+    expect(Math.abs(v.y - H * 0.5)).toBeLessThan(H * 0.02); // 足元は画面中央(±2%)
   });
 
   it('横クランプ端(centerX=±260)は柱ライン(aisleHalfXr)に一致する', () => {
