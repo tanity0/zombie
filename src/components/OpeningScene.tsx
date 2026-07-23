@@ -506,8 +506,11 @@ const OpeningScene: React.FC<{ onDone: () => void; onTitleReveal?: () => void; s
             </div>
           ))}
           {/* 紙吹雪レイヤー(カメラ非追従・アングル切替を跨いで存続。zIndex=アングルより上・暗転(50)より下。
-              【画面全体】に描く(レターボックス帯の外も含む上端→下端・社長指示v0.25.2042)。横=vw/縦=vh。 */}
-          <div style={{ position: 'absolute', inset: 0, zIndex: 5, overflow: 'hidden', pointerEvents: 'none' }}>
+              【画面全体】に描く(レターボックス帯の外も含む上端→下端・社長指示v0.25.2042)。横=vw/縦=vh。
+              translateZ(0)=iOS Safari合成バグ対策(社長報告v0.25.2063): マスク付きのブラーbg(被写界深度)が
+              GPUレイヤーに昇格し、z-indexを無視して紙吹雪の上に描かれる=マスクの穴(ステージ中央)以外で
+              噴射が隠れていた。紙吹雪側も明示的にレイヤー化してz順を合成側に尊重させる(定石の回避策)。 */}
+          <div style={{ position: 'absolute', inset: 0, zIndex: 5, overflow: 'hidden', pointerEvents: 'none', transform: 'translateZ(0)', willChange: 'transform' }}>
             <div style={{ position: 'relative', width: '100%', height: '100%' }}>
               {/* ①パーン: 画面下端の両サイドから真上へ噴射→上端の外へ */}
               {CONFETTI_BURST.map(p => (
