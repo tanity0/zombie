@@ -53,6 +53,7 @@ const LAMP_SPAN_SCALE = (CFG.footYr - CFG.horizonYr) / (CORRIDOR_CFG.footYr - CO
 const LAMP_FADE_S0 = 0.06;    // このsで灯りが出始める
 const LAMP_FADE_RANGE = 0.18; // s0+rangeで全開
 const LAMP_INSET = 0.86;      // 灯りを通路の内側へ寄せる率(1=柱ライン。柱の縁から覗かせる)
+const BACK_FARBLUR_WEIGHT = 0.3; // 奥壁の強ブラー版の配合上限(v0.25.2127。1=旧=泥の塊化)
 
 // --- 洋館素材のパス(プレビューと同じキャッシュバスター付き) ---------------------------------
 // 同名ファイルを差し替えて更新するため、バージョン付き ?v= を必ず付ける(v0.25.2097 の教訓)。
@@ -403,7 +404,10 @@ export class CorridorLayer {
     const bh = H * CFG.pillarHr * s * BACK_H_MULT; // 壁コンテンツの表示高(柱の高さ基準)
     const bw = (bt.width / this.backSrcH) * bh;             // 幅=切り出し後アスペクト従属=歪みなし
     const k = bh / this.backSrcH;                          // srcH*k = bh
-    const w = dofFar(BACK_DEPTH);
+    // 奥壁のDOF配合(v0.25.2127・社長報告「この黒い影なに?」): 幾何再調整(footYr 0.744)で奥壁の
+    // 表示が小さくなり、26px焼き込みブラー版をw≒0.9で被せると「黒い泥の塊」になっていた(実測bisectで確定)。
+    // ブラーの寄与を大きく下げ、シャープ主体+うっすら霞む程度に。
+    const w = dofFar(BACK_DEPTH) * BACK_FARBLUR_WEIGHT;
     // シャープ版(足元アンカー)。
     this.backSharp.texture = bt;
     this.backSharp.position.set(W / 2, footY);
