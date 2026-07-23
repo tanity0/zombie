@@ -1925,10 +1925,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 導入完了 = 登場演出(ヘリ=時間停止)が明けた瞬間(社長指示v0.25.1876で会話は非停止化したため、
           // 会話の終了待ちはしない。会話は通常会話キューで並行再生され、ボスは登場後すぐ出現=M7=導入→会話+グレン戦)。
           const introDone = !isGameTimeStopped();
+          // M7: ボスは導入会話の最終行「……終わらせてあげて！」が【表示されてから】出現(社長指示v0.25.2074)。
+          // 会話は通常会話キュー(非停止)で順次流れるため、「会話を積んだ後、最終行がキューを離れた
+          // (=いま表示中 or 表示済み)」をゲートにする。文言が変わって一致しなくなった場合は即出現側に
+          // 倒れる(some=false)=詰みは構造的に起きない。EX(stage-ex1)は会話なし=従来どおり即出現。
+          const GLEN_FINAL_LINE = '……終わらせてあげて！'; // campaign.ts M7 dialogue 最終行と一致させること
+          const glenTalkDone = getSelectedStageId() !== 'stage-7'
+            || (sbs.introDialogueShown && !sbs.npcDialogueQueue.some(l => l.text === GLEN_FINAL_LINE));
           // cine実験台(?cine=1 & stage-7)ではストーリーボス(グレン)を出さない=クリーンな映像確認(社長v0.25.1879)。
           // ?nospawn=1 でもストーリーボスを出さない(=イベント不発火。社長指示v0.25.1995・QAのクリーン撮影用)。
           const cineSuppress = CINE_TESTBED && getSelectedStageId() === 'stage-7';
-          if (!storyBossSpawnedRef.current && introDone && !cineSuppress && !NOSPAWN) {
+          if (!storyBossSpawnedRef.current && introDone && glenTalkDone && !cineSuppress && !NOSPAWN) {
             storyBossSpawnedRef.current = true;
             const scx = player.x + player.width / 2;
             const scy = player.y + player.height / 2 - STORY_BOSS_SPAWN_DIST;
