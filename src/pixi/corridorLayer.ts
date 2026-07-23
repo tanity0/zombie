@@ -27,7 +27,7 @@ const CFG: CorridorConfig = { ...CORRIDOR_CFG, footYr: 0.744 };
 export const CORRIDOR_BG_X_OVERSCAN = 420;
 // 通路テクスチャ一覧(ensureLoadedと共有)。
 export const CORRIDOR_TEXTURE_NAMES = [
-  'floor', 'ceiling',
+  'floor', 'ceiling', 'floor-goal',
   'pillar-left', 'pillar-right',
   'pillar-left-blur', 'pillar-right-blur',
   'pillar-left-farblur', 'pillar-right-farblur',
@@ -70,6 +70,13 @@ const BLUR_PAD = 24;       // 近距離ブラー版の余白(make-blur.mjsのpad
 const FAR_BLUR_PAD = 40;   // 遠方ブラー版の余白(同)
 const FLOOR_REPEAT = 520;  // 床テクスチャ縦1枚ぶんの前進量(world px)
 const FLOOR_W_MULT = 1.0;  // 床の横幅=柱中心間ちょうど
+// ステージ6のゴール床(社長指示v0.25.2132「床の一部をこの床に・4000px付近」): 通常床と同寸1254×1254の
+// ハッチ付きタイル(floor-goal)を、床タイル境界に揃えた1枚ぶんの帯[GOAL_START, GOAL_START+520)にだけ
+// 重ねて描く(専用の小メッシュ・行の縁=world固定位置なので境界が正確、通常床と紋様が連続する)。
+// gameStore.CORRIDOR_GOAL_Y(-3900)=この帯の中心と一致させること(タイル8枚目=3640〜4160)。
+const GOAL_TILE_START = 3640;              // ハッチ床タイルの手前端(world前進量。520の倍数=タイル境界)
+const GOAL_TILE_LEN = FLOOR_REPEAT;        // 1タイルぶん
+const GOAL_ROWS = 24;                      // ゴール床メッシュの分割(帯1枚ぶんなので床本体より少なくて良い)
 const BACK_DEPTH = 4200;   // 奥壁(ステンドグラス窓)の固定奥行き
 const BACK_ALPHA = 0.9;    // 奥壁の不透明度(距離フォグに沈めない=光る目標物)
 // v0.25.2099: back.pngはシーン全体の絵で、壁の実体はキャンバス上18%〜下91.5%の帯だけ(上下は黒虚空)。
@@ -99,6 +106,7 @@ export class CorridorLayer {
   // 背景・メッシュ・遠方フェード
   private bg = new Sprite(Texture.WHITE);
   private floor: MeshStrip | null = null;
+  private goalFloor: MeshStrip | null = null; // ゴール床(ハッチ)のオーバーレイ(v0.25.2132)
   private ceil: MeshStrip | null = null;
   private floorDark = new Sprite(Texture.WHITE); // 床の遠方を闇へ(横グラデ・叩き台=プレビューのper-row fade近似)
   private ceilDark = new Sprite(Texture.WHITE);  // 天井の遠方を闇へ
@@ -216,10 +224,15 @@ export class CorridorLayer {
       this.floor = makeStripMesh(this.tex['floor'], FLOOR_ROWS);
       // 床/天井は遠方フェード(floorDark/ceilDark)の下=先に addChild。
       this.container.addChildAt(this.floor.mesh, 1);
+      // ゴール床(ハッチ)は床本体の直上に重ねる(v0.25.2132)。UVは[0,1]のクランプ=1枚きり(repeatにしない)。
+      if (this.tex['floor-goal']) {
+        this.goalFloor = makeStripMesh(this.tex['floor-goal'], GOAL_ROWS);
+        this.container.addChildAt(this.goalFloor.mesh, this.container.getChildIndex(this.floor.mesh) + 1);
+      }
     }
     if (this.tex['ceiling']) {
       this.ceil = makeStripMesh(this.tex['ceiling'], CEIL_ROWS);
-      this.container.addChildAt(this.ceil.mesh, this.floor ? 2 : 1);
+      this.container.addChildAt(this.ceil.mesh, this.floor ? this.container.getChildIndex(this.floor.mesh) + (this.goalFloor ? 2 : 1) : 1);
     }
     // ④ 遠方フェードはメッシュの上・壁灯/柱の下。
     this.container.addChild(this.floorDark, this.ceilDark);
@@ -269,12 +282,14 @@ export class CorridorLayer {
     if (!this.ready) return;
 
     this.updateFloor(travel, W, H);
+    this.updateGoalFloor(travel, W, H);
     this.updateCeiling(travel, W, H);
-    // ④ 遠方フェード配置。
-    this.floorDark.position.set(0, horizonY);
-    this.floorDark.width = W; this.floorDark.height = H - horizonY;
-    this.ceilDark.position.set(0, 0);
-    this.ceilDark.width = W; this.ceilDark.height = horizonY;
+    // ④ 遠方フェード配置。bgと同じ横オーバースキャン(v0.25.2132: カメラのプレイヤー追従で
+    // containerごと横シフトしても黒グラデの縁(=v0.25.2124の「四角い黒い切れ目」の正体)が画面に入らない)。
+    this.floorDark.position.set(-CORRIDOR_BG_X_OVERSCAN, horizonY);
+    this.floorDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2; this.floorDark.height = H - horizonY;
+    this.ceilDark.position.set(-CORRIDOR_BG_X_OVERSCAN, 0);
+    this.ceilDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2; this.ceilDark.height = horizonY;
 
     this.updateWallLamps(travel, W, H, now);
     this.updateBack(W, H);
@@ -303,6 +318,39 @@ export class CorridorLayer {
       positions[base + 2] = rx; positions[base + 3] = y;
       uvs[base + 0] = 0; uvs[base + 1] = v;
       uvs[base + 2] = 1; uvs[base + 3] = v;
+    }
+    geom.getBuffer('aPosition').update();
+    geom.getBuffer('aUV').update();
+  }
+
+  // ゴール床(ハッチ)のオーバーレイ(v0.25.2132): 床本体と同じ投影式で、world固定の帯
+  // [GOAL_TILE_START, +520) にだけテクスチャ1枚を張る。行の縁をworld座標で切るので
+  // タイル境界が正確=通常床(境界も520の倍数)と紋様が連続し、差し替えたように見える。
+  private updateGoalFloor(travel: number, W: number, H: number): void {
+    if (!this.goalFloor) return;
+    const goalEnd = GOAL_TILE_START + GOAL_TILE_LEN;
+    // カリング: 完全に通過した(タイル奥端がカメラ背後の描画限界より手前)/遠すぎて見えない、は非表示。
+    const dFar = goalEnd - travel;
+    const visible = dFar > -CFG.focal * 0.75 && (GOAL_TILE_START - travel) < BACK_DEPTH;
+    this.goalFloor.mesh.visible = visible;
+    if (!visible) return;
+    const { positions, uvs, geom } = this.goalFloor;
+    const horizonY = H * CFG.horizonYr;
+    const footY0 = H * CFG.footYr;
+    for (let i = 0; i < GOAL_ROWS; i++) {
+      const t = i / (GOAL_ROWS - 1);
+      const w = goalEnd - GOAL_TILE_LEN * t;          // 行のworld位置(i=0が奥端→手前端へ)
+      const d = Math.max(-CFG.focal * 0.75, w - travel); // カメラ背後はs発散前にクランプ(画面外下へ)
+      const s = CFG.focal / (CFG.focal + d);
+      const y = horizonY + (footY0 - horizonY) * s;
+      const fw = 2 * W * CFG.aisleHalfXr * s * FLOOR_W_MULT;
+      const lx = W / 2 - fw / 2;
+      const rx = W / 2 + fw / 2;
+      const base = i * 4;
+      positions[base + 0] = lx; positions[base + 1] = y;
+      positions[base + 2] = rx; positions[base + 3] = y;
+      uvs[base + 0] = 0; uvs[base + 1] = t;           // v: 奥端=0(素材の上端が奥)→手前端=1
+      uvs[base + 2] = 1; uvs[base + 3] = t;
     }
     geom.getBuffer('aPosition').update();
     geom.getBuffer('aUV').update();

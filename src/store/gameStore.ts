@@ -430,6 +430,11 @@ const baseCompassLabel = (x: number, y: number): string =>
 // 帰還フェーズ(フィナーレボス撃破/終了アイテム後): 即勝利せず帰還サークルへ誘導。3秒とどまると帰還完了=gameWon。
 const RETURN_CIRCLE_RADIUS = 95;        // 帰還サークル半径(円コリジョン)
 export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(描画の進捗にも使用)
+// ステージ6(洋館通路)のゴール(社長指示v0.25.2132): 4000px付近のハッチ床の上で5秒滞在=ゴール(例のサークル)。
+// 位置は床タイル境界(FLOOR_REPEAT=520)に揃えて8枚目[3640,4160)をハッチ床に差し替え→中心=3900
+// (=「4000px付近」。境界を520の倍数に置くと通常床と紋様が継ぎ目なく繋がる)。前進=負方向なので y=-3900。
+export const CORRIDOR_GOAL_Y = -3900;        // ハッチ中心のworld y(サークル中心。x=通路中央0)
+export const CORRIDOR_RETURN_HOLD_MS = 5000; // 通路ゴールの滞在時間(社長指示「5秒停止」。他ステージの3秒は不変)
 const RETURN_CIRCLE_AVOID_DIST = 240;   // プレイヤーから最低この距離を空けて出現(避ける)
 // 帰還サークルに入った瞬間に撤去する設置物(置き攻撃の出入りハメ防止)。トラップ/手榴弾/タレット/デコイ。
 const RETURN_CLEAR_WEAPON_TYPES = new Set(['grenade', 'trap', 'turret', 'decoy']);
@@ -9013,7 +9018,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const py = p.y + p.height / 2;
       const inside = Math.hypot(rc.x - px, rc.y - py) <= rc.radius;
       const dwellMs = inside ? rc.dwellMs + deltaTime * 1000 : 0;
-      if (dwellMs >= RETURN_CIRCLE_HOLD_MS) {
+      // 洋館通路のゴールは5秒(社長指示v0.25.2132)。他ステージの3秒は不変。
+      if (dwellMs >= (state.corridorMode ? CORRIDOR_RETURN_HOLD_MS : RETURN_CIRCLE_HOLD_MS)) {
         return { gameWon: true, returnCircle: null, eventBannerText: '帰還完了', eventBannerUntil: state.gameTime + 2000 };
       }
       // 入った瞬間(外→内)に設置中のトラップ/手榴弾/タレット/デコイを撤去(出入りハメ防止)。
@@ -10121,9 +10127,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         medicinePromptVisible: false,
         // チュートリアル: 帰還サークルを最初から右3000px地点に常設(社長指示v0.25.1829)。
         // updateReturnPhaseは returnCircle があれば毎フレーム動く=3秒滞在で任務達成(既存経路)。
+        // 洋館通路(corridorMode)も同方式で常設(社長指示v0.25.2132): 4000px付近のハッチ床上・5秒滞在=ゴール。
         returnCircle: farBackdrop === 'tutorial'
           ? { x: TUTORIAL_RETURN_CIRCLE_X, y: 0, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 }
-          : null,
+          : corridorMode
+            ? { x: 0, y: CORRIDOR_GOAL_Y, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 }
+            : null,
         tutorialPopup: null,
         tutorialPopupShown: false,
         gameReturned: false,
