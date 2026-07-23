@@ -7951,25 +7951,33 @@ export class PixiScene {
 
   // 帰還サークル: フィナーレ撃破/終了アイテム後に出る帰還地点。地面の二重リング+滞在進捗の外周円弧。
   // 単一 Graphics に円を数本引くだけ。負荷 1/10(描画のみ・帰還フェーズ中だけ毎フレーム1図形)。
+  // 洋館通路(corridorMode・v0.25.2142 社長指示「奥行き出て見えるように楕円に」): 疑似3D床に合わせ、
+  // 中心ローカルに描いてyスケールで潰す=進捗弧ごと楕円化。【見た目のみ】滞在判定・敵押し出しの円(r=95)は不変。
   private syncReturnCircle(rc: { x: number; y: number; radius: number; dwellMs: number } | null, now: number) {
+    const CORRIDOR_RETURN_SQUASH = 0.55; // 縦の潰し率(叩き台・実機調整前提)
     const g = this.returnGfx;
     g.clear();
-    if (!rc) return;
+    if (!rc) { g.position.set(0, 0); g.scale.set(1, 1); return; }
+    const corridor = useGameStore.getState().corridorMode;
+    // 通路では中心ローカル(0,0)描画+Graphicsごと縦スケール。他ステージは従来どおりworld座標に直描き。
+    const cx = corridor ? 0 : rc.x, cy = corridor ? 0 : rc.y;
+    if (corridor) { g.position.set(rc.x, rc.y); g.scale.set(1, CORRIDOR_RETURN_SQUASH); }
+    else { g.position.set(0, 0); g.scale.set(1, 1); }
     const pulse = 0.5 + 0.5 * Math.sin(now / 240);
     const a = 0.34 + 0.2 * pulse;
     const color = 0x86efac; // 帰還=緑(安全・脱出)
-    g.circle(rc.x, rc.y, rc.radius - 4).fill({ color, alpha: 0.06 + 0.05 * pulse });
-    g.circle(rc.x, rc.y, rc.radius).stroke({ width: 6, color, alpha: a * 0.6 });
-    g.circle(rc.x, rc.y, rc.radius - 3).stroke({ width: 2, color, alpha: a });
+    g.circle(cx, cy, rc.radius - 4).fill({ color, alpha: 0.06 + 0.05 * pulse });
+    g.circle(cx, cy, rc.radius).stroke({ width: 6, color, alpha: a * 0.6 });
+    g.circle(cx, cy, rc.radius - 3).stroke({ width: 2, color, alpha: a });
     // 滞在進捗を外周の円弧で表示(上端始点・時計回り)。arc 前に moveTo して地面を横切る線を防ぐ。
     // 洋館通路のゴールは5秒ホールド(v0.25.2132)=分母をモードで切替(判定側updateReturnPhaseと同じ)。
-    const holdMs = useGameStore.getState().corridorMode ? CORRIDOR_RETURN_HOLD_MS : RETURN_CIRCLE_HOLD_MS;
+    const holdMs = corridor ? CORRIDOR_RETURN_HOLD_MS : RETURN_CIRCLE_HOLD_MS;
     const frac = Math.max(0, Math.min(1, rc.dwellMs / holdMs));
     if (frac > 0) {
       const start = -Math.PI / 2;
       const rr = rc.radius + 5;
-      g.moveTo(rc.x + Math.cos(start) * rr, rc.y + Math.sin(start) * rr)
-        .arc(rc.x, rc.y, rr, start, start + Math.PI * 2 * frac)
+      g.moveTo(cx + Math.cos(start) * rr, cy + Math.sin(start) * rr)
+        .arc(cx, cy, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
     }
   }
