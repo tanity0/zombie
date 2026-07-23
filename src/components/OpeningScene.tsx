@@ -282,7 +282,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const [titleReveal, setTitleReveal] = useState(false); // 蘇生後のタイトルフェードイン中(社長指示v0.25.2061)
   // 歩きシーン(アリーナ前・v0.25.2114)。?opening=2/3のプレビューはスキップ(=完了扱い)。
   const [walkDone, setWalkDone] = useState<boolean>(!!(startAtShoot || startAtRevival));
-  const walkDirRef = useRef<0 | -1 | 1>(0);                   // 押している間の歩行方向(0=停止/-1=左/1=右)。v0.25.2117で左移動対応
+  const walkDirRef = useRef<0 | -1 | 1>(0);                   // 歩行方向(0=停止/-1=左/1=右)
+  const walkTouchXRef = useRef<number | null>(null);          // ドラッグ起点X(null=非タッチ)。v0.25.2124: ジョイスティック式
   const walkSceneRef = useRef<HTMLDivElement | null>(null);
   const walkWorldRef = useRef<HTMLDivElement | null>(null);
   const walkCharRef = useRef<HTMLImageElement | null>(null);
@@ -554,12 +555,17 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         <div
           ref={walkSceneRef}
           onClick={e => e.stopPropagation()}
-          // タップ位置=画面の右半分なら右へ・左半分なら左へ(押している間だけ歩く・v0.25.2117)
-          onPointerDown={e => { e.stopPropagation(); walkDirRef.current = e.clientX >= window.innerWidth / 2 ? 1 : -1; }}
-          onPointerMove={e => { if (walkDirRef.current !== 0) walkDirRef.current = e.clientX >= window.innerWidth / 2 ? 1 : -1; }}
-          onPointerUp={() => { walkDirRef.current = 0; }}
-          onPointerCancel={() => { walkDirRef.current = 0; }}
-          onPointerLeave={() => { walkDirRef.current = 0; }}
+          // ジョイスティック式(v0.25.2124・社長報告「左にやたら歩きたがる」対策): 押した点を起点に、
+          // 12px以上ドラッグした方向へ歩く(本編の仮想スティックと同じ感覚)。タップ位置(画面半分)では決めない。
+          onPointerDown={e => { e.stopPropagation(); walkTouchXRef.current = e.clientX; walkDirRef.current = 0; }}
+          onPointerMove={e => {
+            if (walkTouchXRef.current === null) return;
+            const dx = e.clientX - walkTouchXRef.current;
+            walkDirRef.current = dx > 12 ? 1 : dx < -12 ? -1 : 0;
+          }}
+          onPointerUp={() => { walkTouchXRef.current = null; walkDirRef.current = 0; }}
+          onPointerCancel={() => { walkTouchXRef.current = null; walkDirRef.current = 0; }}
+          onPointerLeave={() => { walkTouchXRef.current = null; walkDirRef.current = 0; }}
           style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#000', touchAction: 'none', cursor: 'default', animation: `opfade ${WALK_FADEIN_MS}ms ease-out both` }}
         >
           <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
