@@ -670,8 +670,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               }}
             />
           </div>
-          {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。立ち絵=通常行は色ありの本人(HERO)、
-              stop行(さ、いこっか)のみシルエット(白反転で暗いピルに浮かせる)・社長指示v0.25.2133。 */}
+          {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。立ち絵=通常行は【顔なし】(名前+台詞のみ)、
+              stop行(さ、いこっか)のみシルエット(白反転で暗いピルに浮かせる)・社長指示v0.25.2135。 */}
           {walkLine >= 0 && WALK_LINES[walkLine] && (
             <div
               className="absolute text-left"
@@ -685,17 +685,18 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug"
                 style={{ paddingRight: 44, overflow: 'visible', textShadow: '0 1px 0 rgba(0,0,0,0.9)' }}
               >
-                <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
-                  <img
-                    src={WALK_LINES[walkLine].stop ? NPC_IDLE : HERO} alt="" draggable={false}
-                    style={{
-                      position: 'absolute', left: '50%', top: 42, transform: 'translate(-50%, -100%)',
-                      height: 64, width: 'auto', maxWidth: 'none', imageRendering: 'pixelated',
-                      // stop行のみ: 黒シルエット→白(暗いピル背景に沈むため)
-                      ...(WALK_LINES[walkLine].stop ? { filter: 'invert(1) opacity(0.92)' } : {}),
-                    }}
-                  />
-                </div>
+                {WALK_LINES[walkLine].stop && (
+                  <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
+                    <img
+                      src={NPC_IDLE} alt="" draggable={false}
+                      style={{
+                        position: 'absolute', left: '50%', top: 42, transform: 'translate(-50%, -100%)',
+                        height: 64, width: 'auto', maxWidth: 'none', imageRendering: 'pixelated',
+                        filter: 'invert(1) opacity(0.92)', // 黒シルエット→白(暗いピル背景に沈むため)
+                      }}
+                    />
+                  </div>
+                )}
                 <div className="self-center" style={{ whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
                   <span className="block font-bold text-amber-300/95">？？？</span>
                   <span className="text-white/90">{WALK_LINES[walkLine].text}</span>
