@@ -14,6 +14,7 @@ const FLOOR = `${import.meta.env.BASE_URL}sprites/mansion/floor.png`;
 const CEILING = `${import.meta.env.BASE_URL}sprites/mansion/ceiling.png`;
 const CEILING_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/ceiling-blur.png`;
 const CEIL_Y0_R = -0.75; // d=0の天井ライン(画面高比・負=画面上端のはるか上。天井の見える範囲を決める)
+const CEIL_SCALE = 1.5;  // 天井タイルの拡大率(社長指示v0.25.2096: 1.5倍)。縦=リピート距離×1.5 / 横=中央2/3幅を使用
 // 燭台(社長支給v0.25.2093): 壁灯グローの光源として柱間に立てる。炎の位置=グロー中心に一致させる。
 const CANDLE = `${import.meta.env.BASE_URL}sprites/mansion/candle.png`;
 const CANDLE_BLUR = `${import.meta.env.BASE_URL}sprites/mansion/candle-blur.png`;
@@ -185,13 +186,16 @@ const MansionCorridorPreview: React.FC = () => {
         const texW = ctex.naturalWidth, texH = ctex.naturalHeight;
         const ceilY0 = H * CEIL_Y0_R;
         const denomC = horizonY - ceilY0;
+        const ceilRepeat = FLOOR_REPEAT * CEIL_SCALE; // タイル1.5倍(奥行き方向)
+        const srcX = texW * (0.5 - 0.5 / CEIL_SCALE); // タイル1.5倍(横方向)=中央2/3幅を使用
+        const srcW = texW / CEIL_SCALE;
         for (let y = 0; y + FLOOR_STRIP < horizonY - 1; y += FLOOR_STRIP) {
           const s = (horizonY - y) / denomC;
           const sNext = (horizonY - (y + FLOOR_STRIP)) / denomC;
           const d0 = CORRIDOR_CFG.focal * (1 / Math.max(0.02, s) - 1);
           const d1 = CORRIDOR_CFG.focal * (1 / Math.max(0.02, sNext) - 1);
-          const v0 = ((d0 + travel) % FLOOR_REPEAT + FLOOR_REPEAT) % FLOOR_REPEAT / FLOOR_REPEAT * texH;
-          const srcH = Math.max(0.5, (d1 - d0) / FLOOR_REPEAT * texH); // 下の行ほど奥(d1>d0)
+          const v0 = ((d0 + travel) % ceilRepeat + ceilRepeat) % ceilRepeat / ceilRepeat * texH;
+          const srcH = Math.max(0.5, (d1 - d0) / ceilRepeat * texH); // 下の行ほど奥(d1>d0)
           const fw = 2 * W * CORRIDOR_CFG.aisleHalfXr * s * FLOOR_W_MULT;
           const fx = W / 2 - fw / 2;
           // 天井専用フェード(v0.25.2094): 柱用の式(s-0.12)/0.5だと天井のsレンジ(0〜0.29)では
@@ -204,10 +208,10 @@ const MansionCorridorPreview: React.FC = () => {
             if (v0 + srcH > texH) {
               // リピート跨ぎ: 2分割で描く。
               const h1 = texH - v0;
-              if (h1 > 0) ctx.drawImage(tex, 0, v0, texW, h1, fx, y, fw, FLOOR_STRIP * (h1 / srcH));
-              ctx.drawImage(tex, 0, 0, texW, srcH - h1, fx, y + FLOOR_STRIP * (Math.max(0, h1) / srcH), fw, FLOOR_STRIP * ((srcH - Math.max(0, h1)) / srcH));
+              if (h1 > 0) ctx.drawImage(tex, srcX, v0, srcW, h1, fx, y, fw, FLOOR_STRIP * (h1 / srcH));
+              ctx.drawImage(tex, srcX, 0, srcW, srcH - h1, fx, y + FLOOR_STRIP * (Math.max(0, h1) / srcH), fw, FLOOR_STRIP * ((srcH - Math.max(0, h1)) / srcH));
             } else {
-              ctx.drawImage(tex, 0, v0, texW, srcH, fx, y, fw, FLOOR_STRIP);
+              ctx.drawImage(tex, srcX, v0, srcW, srcH, fx, y, fw, FLOOR_STRIP);
             }
           };
           drawCeilSlice(ctex, fade);
