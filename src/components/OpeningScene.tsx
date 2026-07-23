@@ -52,10 +52,27 @@ const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
 const WALK_FADEIN_MS = 900;     // シーン全体のフェードイン(v0.25.2121: キャラ個別フェード→シーンフェードへ変更)
 // ── 歩き会話(v0.25.2129・社長指示「歩いてたら左上に会話が流れてほしい」) ──
 // at=歩行可能域の進行率(0=左端〜1=右端)。機種で通路の表示長(px)が変わるため%指定(社長合意)。
-// 台詞は社長支給待ち=空テーブルなら何も出ない。ms=表示時間(省略時WALK_LINE_MS)。\nで改行。
-interface WalkLine { at: number; text: string; ms?: number }
-const WALK_LINES: WalkLine[] = [];
+// ms=表示時間(省略時WALK_LINE_MS)。\nで改行。stop=表示中プレイヤー移動ロック+待ち構えNPCの会話(90%専用)。
+// 台詞=社長支給v0.25.2131。話者はスタッフ達=立ち絵はシルエット(白反転)・名前は出さない仮で？？？。
+interface WalkLine { at: number; text: string; ms?: number; stop?: boolean }
+const WALK_LINES: WalkLine[] = [
+  { at: 0.10, text: 'お！主役のお出ましだな！' },
+  { at: 0.30, text: '最高のステージ期待してる！' },
+  { at: 0.50, text: 'きょ、今日もかわいいですね！' },
+  { at: 0.70, text: 'お前がいなきゃはじまらん！' },
+  { at: 0.90, text: 'さ、いこっか！', stop: true },
+];
 const WALK_LINE_MS = 3600;
+// ── 待ち構えるスタッフ(シルエット・v0.25.2131 社長支給シート94ebf8fc): 90%会話(stop行)の主 ──
+// 素材=右向き8コマ歩きサイクル(透過済み)を統一クロップ(112×202・下端=足元)で分割。
+// wait=stop行トリガー地点の少し先に左向き(scaleX(-1))で立つ → talk=会話中(プレイヤーは移動ロック)
+// → leave=会話が終わると右へ歩き出しフェードアウトして消える(社長指示)。
+const NPC_FRAMES = Array.from({ length: 8 }, (_, n) => A(`walk/npc-walk-${n}.png`));
+const NPC_IDLE = NPC_FRAMES[2];  // 待機ポーズ=脚が閉じた通過コマ(専用idle素材は無いので流用)
+const WALK_NPC_HR = 0.15;        // 表示高(bg高さ比。主役0.16よりわずかに小さめ)
+const NPC_AHEAD = 70;            // stop行トリガー地点→NPC立ち位置の距離(bg表示px・右端にはクランプ)
+const NPC_LEAVE_FADE_MS = 1400;  // 退場=歩きながらこの時間でフェードアウト
+const NPC_ANIM_MS = 130;         // 退場歩きのコマ間隔(8コマ順送りループ)
 const WALK_ENTRY_START_X = -80; // 入場開始位置(bg px・画面外左)。フェードイン中に歩いて入ってくる(社長指示)
 const WALK_ENTRY_STOP_X = 150;  // 入場完了位置(ここで操作をプレイヤーに渡す)
 const WALK_STAGE_Y_OFFSET = -40; // ステージ全体の縦オフセット(px)。v0.25.2116/-50→2117/-100→2118/-70→v0.25.2120「30px下へ」で-40
@@ -296,6 +313,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const walkSceneRef = useRef<HTMLDivElement | null>(null);
   const walkWorldRef = useRef<HTMLDivElement | null>(null);
   const walkCharRef = useRef<HTMLImageElement | null>(null);
+  const walkNpcRef = useRef<HTMLImageElement | null>(null);    // 待ち構えるスタッフ(90%会話・v0.25.2131)
   const doneRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
   const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
@@ -394,7 +412,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // 見切り発車していた。歩きシーンは自分の素材が揃うまで開始しない(壊れ画像保険の上限12秒)。
     // 本編(アリーナ/射撃)素材は並行ロードし、アリーナ開始条件(mainReady)に組み込む=歩いている間に済む。
     const dec = (srcs: string[]) => srcs.map(src => { const im = new Image(); im.src = src; return im.decode().catch(() => {}); });
-    const walkAssets = startAtShoot ? [] : [WALK_BG, WALK_BG_BLUR, ...WALK_FRAMES, HERO]; // HERO=停止中の立ち絵(v0.25.2121)
+    const walkAssets = startAtShoot ? [] : [WALK_BG, WALK_BG_BLUR, ...WALK_FRAMES, ...NPC_FRAMES, HERO]; // HERO=停止中の立ち絵(v0.25.2121)/NPC=待ち構えるスタッフ(v0.25.2131)
     const mainAssets = [
       ...SHOTS.map(s => s.bg), ...SHOTS.map(s => s.bgBlur), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
@@ -465,6 +483,11 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     let entering = true;             // 入場中=自動で右へ歩く(操作は無視)。STOP_Xで解放
     let animT = 0;              // 歩きアニメ専用時計(歩行中のみ進む・停止でリセット)。v0.25.2118:
                                 // グローバル時刻基準だと歩き始めが周期の途中コマから始まり反応が変に見えた。
+    // 待ち構えるスタッフ(v0.25.2131): stop行が無ければ最初からgone。位置はサイズ確定後の初tickで算出。
+    let npcState: 'wait' | 'talk' | 'leave' | 'gone' = WALK_LINES.some(l => l.stop) ? 'wait' : 'gone';
+    let npcX = -1;              // NPC足元中心のbg座標(-1=未算出)
+    let npcTalkUntil = 0;       // talk終了時刻(performance.now基準)=会話表示タイマーと同じ長さ
+    let npcLeaveT = 0;          // leave経過(歩きコマ+フェード用)
     let last = performance.now();
     const key = (e: KeyboardEvent, down: boolean) => {
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') walkDirRef.current = down ? 1 : (walkDirRef.current === 1 ? 0 : walkDirRef.current);
@@ -483,7 +506,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         const bgH = sh, bgW = sh * WALK_BG_AR; // 舞台は画面の高さいっぱい(横は素材アスペクト)
         const maxX = bgW - WALK_EDGE_PAD;
         // 入場中(v0.25.2121): フェードイン中に画面外左から自動で歩き入ってくる。STOP_Xで操作をプレイヤーへ。
-        const dir: 0 | -1 | 1 = entering ? 1 : walkDirRef.current;
+        // talk中(v0.25.2131): stop行の会話が終わるまでプレイヤー移動ロック(社長指示)。
+        const dir: 0 | -1 | 1 = entering ? 1 : npcState === 'talk' ? 0 : walkDirRef.current;
         if (entering && worldX >= WALK_ENTRY_STOP_X) entering = false;
         if (dir !== 0) {
           worldX = Math.max(entering ? WALK_ENTRY_START_X : WALK_EDGE_PAD, Math.min(maxX, worldX + dir * WALK_SPEED * dt / 1000));
@@ -520,8 +544,36 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               setWalkLine(li);
               window.clearTimeout(walkLineTimerRef.current);
               walkLineTimerRef.current = window.setTimeout(() => setWalkLine(-1), WALK_LINES[li].ms ?? WALK_LINE_MS);
+              // stop行(v0.25.2131): 表示と同じ長さだけプレイヤーを止める(rAF側の時計で同期)。
+              if (WALK_LINES[li].stop && npcState === 'wait') {
+                npcState = 'talk';
+                npcTalkUntil = now + (WALK_LINES[li].ms ?? WALK_LINE_MS);
+              }
             }
           }
+        }
+        // 待ち構えるスタッフの駆動(v0.25.2131): wait=左向きで直立 → talk=会話(上のロック) →
+        // leave=右へ歩き出しフェードアウト(社長指示「この会話の後、右に歩き出しフェードアウトして消える」)。
+        const npc = walkNpcRef.current;
+        if (npc && npcState !== 'gone') {
+          if (npcX < 0) {
+            // 立ち位置=stop行トリガー地点のNPC_AHEAD先(小さい画面で右端を越えないようクランプ)。
+            const stopAt = WALK_LINES.find(l => l.stop)?.at ?? 0.9;
+            npcX = Math.min(WALK_EDGE_PAD + (maxX - WALK_EDGE_PAD) * stopAt + NPC_AHEAD, maxX - 30);
+          }
+          if (npcState === 'talk' && now >= npcTalkUntil) { npcState = 'leave'; npcLeaveT = 0; }
+          if (npcState === 'leave') {
+            npcLeaveT += dt;
+            npcX += WALK_SPEED * dt / 1000;
+            const nfi = Math.floor(npcLeaveT / NPC_ANIM_MS) % NPC_FRAMES.length;
+            if (npc.dataset.f !== String(nfi)) { npc.dataset.f = String(nfi); npc.src = NPC_FRAMES[nfi]; }
+            npc.style.transform = 'translate(-50%, -100%) translateZ(0)'; // 素材は右向き=反転を外して右へ
+            npc.style.opacity = String(Math.max(0, 1 - npcLeaveT / NPC_LEAVE_FADE_MS));
+            if (npcLeaveT >= NPC_LEAVE_FADE_MS) { npcState = 'gone'; npc.style.display = 'none'; }
+          }
+          npc.style.height = `${bgH * WALK_NPC_HR}px`;
+          npc.style.left = `${npcX}px`;
+          npc.style.top = `${bgH * WALK_FOOT_YR}px`;
         }
         if (worldX >= maxX - 0.5) { setWalkDone(true); return; } // 右端到達=アリーナへ
       }
@@ -596,6 +648,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
               maskImage: WALK_DOF_MASK, WebkitMaskImage: WALK_DOF_MASK,
             } as React.CSSProperties} />
+            {/* 待ち構えるスタッフ(シルエット・90%会話・v0.25.2131)。素材は右向き→待機は左右反転で左向き。
+                位置/コマ/退場フェードはrAF側が駆動(主役と同じref直更新)。translateZ(0)=iOSマスクz順対策。 */}
+            <img
+              ref={walkNpcRef} src={NPC_IDLE} alt="" draggable={false}
+              style={{ position: 'absolute', transform: 'translate(-50%, -100%) scaleX(-1) translateZ(0)', imageRendering: 'pixelated' }}
+            />
             <img
               ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false}
               style={{
@@ -605,7 +663,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               }}
             />
           </div>
-          {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。立ち絵=色ありの本人(HERO)・名前は？？？。 */}
+          {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。話者はスタッフ達(社長支給v0.25.2131)
+              =立ち絵はシルエットを白反転(invert)で暗いピルに浮かせる・名前は？？？のまま(叩き台)。 */}
           {walkLine >= 0 && WALK_LINES[walkLine] && (
             <div
               className="absolute text-left"
@@ -621,10 +680,11 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               >
                 <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
                   <img
-                    src={HERO} alt="" draggable={false}
+                    src={NPC_IDLE} alt="" draggable={false}
                     style={{
                       position: 'absolute', left: '50%', top: 42, transform: 'translate(-50%, -100%)',
                       height: 64, width: 'auto', maxWidth: 'none', imageRendering: 'pixelated',
+                      filter: 'invert(1) opacity(0.92)', // 黒シルエット→白(暗いピル背景に沈むため)
                     }}
                   />
                 </div>
