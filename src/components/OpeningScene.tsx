@@ -196,7 +196,8 @@ const BLOOD_POS = { x: 36.5, y: 57, h: 18 };
 // 射撃シーンの会話(社長指示v0.25.2065): 立ち姿=1行目→構え(1.0s)=2行目→撃つ(2.0s)で消す。
 // 表示は本編の会話UI(NpcDialogue=左上のモデル付き吹き出し)と同じ見た目をOP内で再現(UI統一・新規UIは作らない)。
 // 話者は撃つ子(ツインテのシルエット)。名前は明かさない=「？？？」・立ち絵はシーンと同じ白シルエット(叩き台)。
-const SHOOT_LINES = ['何もかもアンタばかり！', 'アンタさえいなければ…'];
+// 文言・改行は社長指定どおり(v0.25.2068)。\n は表示側の white-space: pre-line でそのまま改行になる。
+const SHOOT_LINES = ['どいつもこいつも、\nアンタばっかり！', 'アンタさえいなければ・・・'];
 const SHOOT_FADE_START = 9200; // 最終コマを約1.3秒見せてから暗転(会話延長で+3秒シフト・v0.25.2067)
 const SHOOT_FADE_MS = 1200;
 const SHOOT_TOTAL = 10600;
@@ -646,7 +647,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                     }}
                   />
                 </div>
-                <div className="self-center" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                <div className="self-center" style={{ whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
                   <span className="font-bold text-amber-300/95 mr-1.5">？？？</span>
                   <span className="text-white/90">{SHOOT_LINES[shootLine]}</span>
                 </div>
