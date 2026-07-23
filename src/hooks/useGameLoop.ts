@@ -1076,6 +1076,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // the ONE ストーリーボス(M7/EX)の進行: 出現済みか / 終幕(勝利化)予定時刻(0=未予約)。
   const storyBossSpawnedRef = useRef(false);
   const storyBossWinAtRef = useRef(0);
+  const glenRoarQueuedRef = useRef(false); // M7: 咆哮「グガガガ」を積んだか(ボス出現は咆哮の表示時=v0.25.2076)
   // 洋館再訪: 開始時に洋館(保存槽)へ一度だけカメラアテンションを出したか。
   const revisitAttnShownRef = useRef(false);
   // 拠点制圧カウントの直近値(増加検出で開放SEを鳴らす)。
@@ -1867,6 +1868,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           resetDirectorSamples(); // リザルトのタイムライン記録も新ランでクリア
           storyBossSpawnedRef.current = false; // the ONE ストーリーボス進行も新ランで再アーム
           storyBossWinAtRef.current = 0;
+          glenRoarQueuedRef.current = false;
           revisitAttnShownRef.current = false;
         }
         lastSeenGameTimeRef.current = newGameTime;
@@ -1925,17 +1927,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 導入完了 = 登場演出(ヘリ=時間停止)が明けた瞬間(社長指示v0.25.1876で会話は非停止化したため、
           // 会話の終了待ちはしない。会話は通常会話キューで並行再生され、ボスは登場後すぐ出現=M7=導入→会話+グレン戦)。
           const introDone = !isGameTimeStopped();
-          // M7: ボスは導入会話の最終行「……終わらせてあげて！」が【表示されてから】出現(社長指示v0.25.2074)。
-          // 会話は通常会話キュー(非停止)で順次流れるため、「会話を積んだ後、最終行がキューを離れた
-          // (=いま表示中 or 表示済み)」をゲートにする。文言が変わって一致しなくなった場合は即出現側に
-          // 倒れる(some=false)=詰みは構造的に起きない。EX(stage-ex1)は会話なし=従来どおり即出現。
+          // M7の段取り(社長指示v0.25.2074→2076): 最終行「……終わらせてあげて！」が表示に入ったら
+          // 咆哮「グガガガガガガガガ！」を会話キューへ積み、ボス出現は【咆哮が表示された瞬間】
+          // (=咆哮と同時に巨大化)。文言不一致やキュー消失時は出現側へ倒れる=詰みは構造的に起きない。
+          // EX(stage-ex1)は会話なし=従来どおり即出現。
           const GLEN_FINAL_LINE = '……終わらせてあげて！'; // campaign.ts M7 dialogue 最終行と一致させること
-          const glenTalkDone = getSelectedStageId() !== 'stage-7'
-            || (sbs.introDialogueShown && !sbs.npcDialogueQueue.some(l => l.text === GLEN_FINAL_LINE));
+          const GLEN_ROAR_LINE = 'グガガガガガガガガ！'; // 確定台詞(指示書4.7)
+          const isM7 = getSelectedStageId() === 'stage-7';
+          if (isM7 && introDone && !glenRoarQueuedRef.current && !storyBossSpawnedRef.current
+              && sbs.introDialogueShown && !sbs.npcDialogueQueue.some(l => l.text === GLEN_FINAL_LINE)) {
+            glenRoarQueuedRef.current = true;
+            // グレン巨大化の咆哮(確定台詞・指示書4.7)。立ち絵は変異後の頭部(社長指示v0.25.2073)。
+            useGameStore.getState().enqueueNpcDialogue([{ name: 'グレン', text: GLEN_ROAR_LINE, portrait: 'グレン(変異)' }]);
+          }
+          // 出現ゲート: M7=咆哮がキューを離れた(=いま表示中)瞬間 / EX=即。
+          const glenSpawnOk = !isM7
+            || (glenRoarQueuedRef.current && !sbs.npcDialogueQueue.some(l => l.text === GLEN_ROAR_LINE));
           // cine実験台(?cine=1 & stage-7)ではストーリーボス(グレン)を出さない=クリーンな映像確認(社長v0.25.1879)。
           // ?nospawn=1 でもストーリーボスを出さない(=イベント不発火。社長指示v0.25.1995・QAのクリーン撮影用)。
           const cineSuppress = CINE_TESTBED && getSelectedStageId() === 'stage-7';
-          if (!storyBossSpawnedRef.current && introDone && glenTalkDone && !cineSuppress && !NOSPAWN) {
+          if (!storyBossSpawnedRef.current && introDone && glenSpawnOk && !cineSuppress && !NOSPAWN) {
             storyBossSpawnedRef.current = true;
             const scx = player.x + player.width / 2;
             const scy = player.y + player.height / 2 - STORY_BOSS_SPAWN_DIST;
@@ -1960,12 +1971,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(scx, scy + 20, '#7f1d1d', 28);
             useGameStore.getState().triggerAttention(scx, scy);
             playSfx('boss-appear');
-            if (getSelectedStageId() === 'stage-7') {
-              // グレン巨大化の咆哮(確定台詞・指示書4.7)。立ち絵は変異後の頭部(社長指示v0.25.2073)。
-              useGameStore.getState().enqueueNpcDialogue([{ name: 'グレン', text: 'グガガガガガガガガ！', portrait: 'グレン(変異)' }]);
-            } else {
+            if (getSelectedStageId() !== 'stage-7') {
               // EX: ボス表示は「未確認変異体」のみ(PHILL/フィルの名は出さない=統合正本10.3・
               // 修正差分メモD-07で「異常変異体」から改称)。
+              // (M7の咆哮は出現ゲート側で表示済み=v0.25.2076でここでのenqueueは廃止。)
               useGameStore.setState({ eventBannerText: '未確認変異体', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             }
           } else if (storyBossSpawnedRef.current && storyBossWinAtRef.current === 0) {
