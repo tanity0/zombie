@@ -177,6 +177,9 @@ const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: Ene
     .filter(([type]) => type !== 'lich' || allowLich) // lich はステージ4(雪原)/5(戦場)限定
     .map(([type, w]) => {
       if (blocked.includes(type)) return { type, weight: 0 };
+      // 洋館通路(corridorSpawnEnabled): 抱卵型(ghost)=緑卵の撒き手は出さない(v0.25.2145・社長指示
+      // 「緑卵も出現しないで」。世界生成の卵はsetMinesDisabledで停止済み=残る産卵ソースを湧きから断つ)。
+      if (corridorSpawnEnabled && type === 'ghost') return { type, weight: 0 };
       const areaW = (AREA_WEIGHT[type]?.[area]) ?? 0;
       const effAreaW = (floorAllowed && featured.includes(type)) ? Math.max(areaW, FEATURED_MIN_AREA_WEIGHT) : areaW;
       return { type, weight: w * effAreaW * (DDA_TOUGH_TYPES.has(type) ? toughBoost : 1) * (featured.includes(type) ? SCENE_FEATURED_BOOST : 1) * (suppressed.includes(type) ? SCENE_SUPPRESSED_MULT : 1) };

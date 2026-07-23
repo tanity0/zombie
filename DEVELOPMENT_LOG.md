@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.2145 — 資料室全件統合(共有パッケージ2026-07-23)+ステージ6の緑卵停止【2026-07-24 02:28 JST】
+- 指示(社長): ①ZIP(CODEX_TASK_materials_room_implementation.md+レコード18件)を既存資料室へ最小差分統合 ②ステージ6は緑卵も出現しない。
+- 対処②(緑卵): 世界生成はv2109のsetMinesDisabledで停止済みだったが、**残る2ソースが生きていた**: (a)抱卵型(ghost)の産卵=未確認エリア(通路の固定エリア3)の湧きプールに居た→corridorSpawnEnabled時は重み0+産卵ブロックにもcorridorModeゲート(featured/forced経路の保険) (b)イベント「緑卵の包囲」(spawnEggRing)→corridorModeで0個。
+- 対処①(資料室統合・最小差分):
+  - **既存ID維持で本文/条件更新(2件)**: `mission-remote-lab-comm-log`=investigation_05(通信履歴・本文を確定文面へ)/`mission-glen-medicine`=mission_record_glenn_medicine(グレンの薬・本文3行へ)。ID/タイトル/解放経路は既存のまま。
+  - **新規16件追加**: investigation_01〜04, 06〜17(IDはパッケージのまま)。ArchiveRecordにsortOrder/emphasis(強調語)を追加。カテゴリ'world'(調査記録)を追加。
+  - **解放条件**: 初期=01・02のみ(backfillが常時保証)/M1〜M7クリア=campaignのunlockedRecordIds経由(03=M1, 04=M2, 06=M3, 07=M4, 08=M5, 09=M6, 16=M7。既存M2の4件は不変・M2は5件に)/通常ED後=ENDING_RECORD_IDS(10〜15,17)をfinishEndingでunlockRecords(latestへ追記マージ=薬と合算でポップアップ)/グレンの薬=既存のM7+サブ3本経路のまま。
+  - **既存セーブ遡及**: backfillStoryArchive(純関数・依存注入)をApp起動時に1回=クリア済みステージ(progress.ts CLEARED_KEY)+endingSeen/medicineOwnedから不足分を静かに追加(ポップアップなし・NEWバッジのみ・既読不変・冪等)。
+  - **UI**: 資料室に調査記録/変異体セクション追加・sortOrder整列・本文モーダルにemphasis(太字+琥珀)描画。既存の敵/武器/アイテム図鑑・回収資料フロー・サブクエは不変。
+  - **テスト**: storyArchive.test.ts(M2=5件へ更新+backfill/unlockRecordsの5ケース新設)・storyCanon.test.ts(グレンの薬=パッケージ確定文面へピン更新)。
+- 検証: typecheck 0エラー・lint 0エラー・**build成功**・対象テスト50/50緑・実機幅(390px)で初期2件のみ解放/伏せ字/本文可読/強調語表示をスクショ確認。
+- Files: `src/data/storyArchive.ts`, `src/data/campaign.ts`, `src/App.tsx`, `src/components/MissionSelect.tsx`, `src/data/storyArchive.test.ts`, `src/data/storyCanon.test.ts`, `src/utils/enemyUtils.ts`, `src/store/gameStore.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2144 — OP廊下: 夢の粒+ライト全グロー/ステージ6: 城なし+死神復活【2026-07-24 02:09 JST】
 - 指示(社長): ①廊下は夢の世界=パーティクルを画面中にふわふわ ②背景のライト部分は全てグローで発光 ③ステージ6は城も出現しない。時間で出るのは死神だけ。
 - 対処①: WALK_MOTES=光の粒26個(画面座標・その場でふわっと往復+明滅・振幅/透明度はCSS変数で粒ごと)。CSSアニメのみ=負荷1/10。

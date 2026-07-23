@@ -292,10 +292,11 @@ describe('資料「グレンの薬」(指示書6.1)と洋館再訪/EX(指示書7
   it('グレンの薬=確定文面。ステージ勝利のunlockedRecordIdsには載っていない(条件付き解放)', () => {
     const rec = getArchiveRecord('mission-glen-medicine');
     expect(rec?.title).toBe('グレンの薬');
-    // 修正差分メモD-10の確定文面(句点区切りの2文目)。
+    // 共有パッケージ2026-07-23(mission_record_glenn_medicine)の確定文面(旧: 修正差分メモD-10)。
     expect(rec?.body).toEqual([
       'ミラから託された未登録薬剤。',
-      '変異体を治療するためのものなのか。グレンが最後に調合したと思われるが、現状は効果不明。',
+      'グレンが基礎処方と最終調合を行い、ミラが分析、投与設計、安定化、検証を担当した。',
+      '変異体を治療するためのものなのか。特定の対象に合わせて調整された形跡があるが、現状は効果不明。',
     ]);
     for (const s of STAGES) {
       expect(s.main.unlockedRecordIds ?? [], s.id).not.toContain('mission-glen-medicine');

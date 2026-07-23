@@ -4,6 +4,27 @@ import { createPortal } from 'react-dom';
 // 任務詳細のタイピング表示(社長指示v0.25.1847: クリア前=状況説明/クリア後=任務後の記録のみ)。
 // 行ごとに順に1文字ずつ表示(タイプ中は▌カーソル)。メニュー画面(ゲーム外)専用で、
 // 短周期の再レンダーはこの小コンポーネント内に閉じる(打ち終わったらタイマー停止)。
+// 資料本文の強調語(共有パッケージ2026-07-23): 該当フレーズを太字+琥珀で表示。
+// 「色だけに依存せず、通常文字でも意味が通るように」(パッケージ実装原則)=装飾のみで情報は本文に完結。
+const renderEmphasizedLine = (line: string, emphasis?: string[]): React.ReactNode => {
+  if (!emphasis?.length) return line;
+  let parts: React.ReactNode[] = [line];
+  emphasis.forEach((em, ei) => {
+    if (!em) return;
+    parts = parts.flatMap((p, pi) => {
+      if (typeof p !== 'string' || !p.includes(em)) return [p];
+      const segs = p.split(em);
+      const out: React.ReactNode[] = [];
+      segs.forEach((s, si) => {
+        if (si > 0) out.push(<strong key={`em-${ei}-${pi}-${si}`} className="font-semibold text-amber-200">{em}</strong>);
+        if (s) out.push(s);
+      });
+      return out;
+    });
+  });
+  return parts;
+};
+
 const TYPE_CHAR_MS = 28;      // 1文字あたり(叩き台。IntroDialogueの55msより読み物向けに速め)
 const TYPE_LINE_GAP_MS = 260; // 行間の間
 const TypewriterLines: React.FC<{ lines: string[]; className: string; resetKey: string; onDone?: () => void }> = ({ lines, className, resetKey, onDone }) => {
@@ -939,10 +960,16 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   );
 
   const renderArchive = () => {
-    const missionRecords = ARCHIVE_RECORDS.filter(r => r.category === 'mission');
-    const weaponRecords = ARCHIVE_RECORDS.filter(r => r.category === 'weapon');
-    const itemRecords = ARCHIVE_RECORDS.filter(r => r.category === 'item');
-    const termRecords = ARCHIVE_RECORDS.filter(r => r.category === 'term');
+    // 共有パッケージ2026-07-23: sortOrderで整列(未指定=末尾・既存順維持)。調査記録(world)/変異体の
+    // 資料セクションを追加(既存の変異体図鑑=BESTIARYはそのまま・非干渉)。
+    const bySort = (a: ArchiveRecord, b: ArchiveRecord) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999);
+    const recordsOf = (cat: ArchiveRecord['category']) => ARCHIVE_RECORDS.filter(r => r.category === cat).sort(bySort);
+    const worldRecords = recordsOf('world');
+    const mutantRecords = recordsOf('mutant');
+    const missionRecords = recordsOf('mission');
+    const weaponRecords = recordsOf('weapon');
+    const itemRecords = recordsOf('item');
+    const termRecords = recordsOf('term');
     const openRecord = openArchiveRecordId ? getArchiveRecord(openArchiveRecordId) : null;
     // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-7: 任務記録の本文モーダルへ、日時/場所名の
     // メタ行を unlockStageId → Stageノード参照で表示する(本文へ書き込まない=データの重複管理を避ける)。
@@ -951,8 +978,14 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <>
         <Header title="資料室" subtitle="記録・変異体資料" onBack={goHomeFromArchive} />
         <div className="menu-stagger p-3 space-y-3">
+          {worldRecords.length > 0 && (
+            <Section label="調査記録">{renderArchiveRecordList(worldRecords)}</Section>
+          )}
           {missionRecords.length > 0 && (
             <Section label="任務記録">{renderArchiveRecordList(missionRecords)}</Section>
+          )}
+          {mutantRecords.length > 0 && (
+            <Section label="変異体">{renderArchiveRecordList(mutantRecords)}</Section>
           )}
           {weaponRecords.length > 0 && (
             <Section label="武器・特殊装備">{renderArchiveRecordList(weaponRecords)}</Section>
@@ -993,7 +1026,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   </p>
                 )}
                 <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
-                  {openRecord.body.map((line, i) => <p key={i}>{line}</p>)}
+                  {/* 強調語(emphasis)は太字+琥珀で表示(共有パッケージ実装原則: 色だけに依存しない=太字併用)。 */}
+                  {openRecord.body.map((line, i) => <p key={i}>{renderEmphasizedLine(line, openRecord.emphasis)}</p>)}
                 </div>
                 <button
                   type="button"

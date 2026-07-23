@@ -15,18 +15,20 @@ const backing: Record<string, string> = {};
 import {
   ARCHIVE_RECORDS, getArchiveRecord, loadStoryArchive, saveStoryArchive, emptyStoryArchiveState,
   unlockRecordsForStage, markRecordRead, isRecordUnlocked, isRecordRead, consumeLatestUnlocked,
+  unlockRecords, backfillStoryArchive, INITIAL_RECORD_IDS, ENDING_RECORD_IDS,
 } from './storyArchive';
 
 beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
 
 describe('資料台帳(ARCHIVE_RECORDS)', () => {
-  it('M2の任務記録4件が揃っている', () => {
+  it('M2の資料5件が揃っている(既存4件+共有パッケージ2026-07-23のPHILL再生医療計画)', () => {
     const m2Ids = ARCHIVE_RECORDS.filter(r => r.unlockStageId === 'stage-2').map(r => r.id);
     expect(m2Ids).toEqual([
       'mission-military-regen-plan',
       'mission-phill-plan-record',
       'mission-abnormal-growth-data',
       'mission-remote-lab-comm-log',
+      'investigation_04_phill_public',
     ]);
   });
 
@@ -117,6 +119,51 @@ describe('markRecordRead / isRecordRead', () => {
   it('空IDは無視する', () => {
     markRecordRead('');
     expect(loadStoryArchive().readRecordIds).toEqual([]);
+  });
+});
+
+describe('backfillStoryArchive / unlockRecords(共有パッケージ2026-07-23: 遡及解放とED解放)', () => {
+  const stageRecords = (id: string) =>
+    id === 'stage-1' ? ['investigation_03_morphology'] : id === 'stage-2' ? ['mission-military-regen-plan'] : [];
+
+  it('新規セーブ: 初期資料(調査記録01・02)だけが解放され、遡及はポップアップ通知に積まない', () => {
+    const added = backfillStoryArchive(new Set(), () => [], { endingSeen: false, medicineOwned: false });
+    expect([...added].sort()).toEqual([...INITIAL_RECORD_IDS].sort());
+    const st = loadStoryArchive();
+    expect([...st.unlockedRecordIds].sort()).toEqual([...INITIAL_RECORD_IDS].sort());
+    expect(st.latestUnlockedRecordIds).toEqual([]);
+  });
+
+  it('クリア済み+EDフラグから不足分を遡及し、再実行では増えない(冪等)', () => {
+    backfillStoryArchive(new Set(['stage-1']), stageRecords, { endingSeen: true, medicineOwned: true });
+    const st = loadStoryArchive();
+    expect(st.unlockedRecordIds).toContain('investigation_03_morphology');
+    for (const id of ENDING_RECORD_IDS) expect(st.unlockedRecordIds).toContain(id);
+    expect(st.unlockedRecordIds).toContain('mission-glen-medicine');
+    const again = backfillStoryArchive(new Set(['stage-1']), stageRecords, { endingSeen: true, medicineOwned: true });
+    expect(again).toEqual([]);
+  });
+
+  it('ED未視聴なら真相資料もグレンの薬も遡及しない(未達情報の先行解放なし)', () => {
+    backfillStoryArchive(new Set(['stage-1']), stageRecords, { endingSeen: false, medicineOwned: false });
+    const st = loadStoryArchive();
+    for (const id of ENDING_RECORD_IDS) expect(st.unlockedRecordIds).not.toContain(id);
+    expect(st.unlockedRecordIds).not.toContain('mission-glen-medicine');
+  });
+
+  it('既読状態は保持される(遡及/本文更新で未読へ戻さない)', () => {
+    markRecordRead('investigation_01_outbreak');
+    backfillStoryArchive(new Set(), () => [], { endingSeen: false, medicineOwned: false });
+    expect(loadStoryArchive().readRecordIds).toEqual(['investigation_01_outbreak']);
+  });
+
+  it('unlockRecords: latestUnlockedへ追記マージ(直前のステージ解放通知を上書きしない)・冪等', () => {
+    unlockRecordsForStage('stage-7', ['mission-glen-medicine']);
+    unlockRecords(ENDING_RECORD_IDS);
+    const st = loadStoryArchive();
+    expect(st.latestUnlockedRecordIds).toContain('mission-glen-medicine');
+    for (const id of ENDING_RECORD_IDS) expect(st.latestUnlockedRecordIds).toContain(id);
+    expect(unlockRecords(ENDING_RECORD_IDS)).toEqual([]);
   });
 });
 

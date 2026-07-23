@@ -7235,7 +7235,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 0.5秒おきに1個ずつ、最大 EGGCARRIER_BURST_COUNT 個ばらまく。初回は spawn からすぐ開始。
           let nextLay = enemy.eggLayAt ?? (gameTime + EGGCARRIER_BURST_INTERVAL_MS);
           let burst = enemy.eggBurstCount ?? 0;
-          if (!MINES_DISABLED && gameTime >= nextLay) { // ?mine=0 診断: 抱卵型は卵を撒かない(通常敵として動くだけ)
+          // 洋館通路(corridorMode)は産卵しない(v0.25.2145・社長指示「緑卵も出現しないで」の保険。
+          // 湧きプールからghost自体を外しているが、featured/forced経路で万一出ても卵は撒かせない)。
+          if (!MINES_DISABLED && !state.corridorMode && gameTime >= nextLay) { // ?mine=0 診断: 抱卵型は卵を撒かない(通常敵として動くだけ)
             const ecx2 = gmoved.x + enemy.width / 2, ecy2 = gmoved.y + enemy.height / 2;
             const aa = Math.random() * Math.PI * 2;
             const rr = Math.random() * EGGCARRIER_SCATTER_RADIUS;
@@ -7518,7 +7520,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const b = state.gameBounds;
       const maxDim = Math.max(b.width, b.height);
       const baseR = maxDim * 0.72; // 画面外(可視外)・retention pad 内に収める半径
-      const N = MINES_DISABLED ? 0 : EGG_RING_COUNT; // ?mine=0 診断: 卵リングイベントも0個(何も追加しない)
+      // 洋館通路(corridorMode)は卵リングも出さない(v0.25.2145・社長指示「緑卵も出現しないで」)。
+      const N = (MINES_DISABLED || state.corridorMode) ? 0 : EGG_RING_COUNT; // ?mine=0 診断: 卵リングイベントも0個(何も追加しない)
       const stamp = Math.floor(state.gameTime);
       const eggs: BreakableProp[] = [];
       for (let i = 0; i < N; i++) {

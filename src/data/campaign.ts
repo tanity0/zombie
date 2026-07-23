@@ -180,6 +180,8 @@ export const STAGES: Stage[] = [
     subs: [SUB_RESCUE_MISSION], // 任意サブ1(二人組クエスト)の表示カード(指示書3: 3本共通の文面)
     main: {
       code: 'M1',
+      // 共有パッケージ2026-07-23(資料室全件実装): M1クリアで変異体資料を解放。
+      unlockedRecordIds: ['investigation_03_morphology'],
       title: '殲滅作戦', // 叩き台(正史にタイトルなし)
       summary: '機動部隊とともに大型変異体を殲滅し、研究所への進路を確保する。',
       // 出撃前説明(正史M1・一言一句変更しない)
@@ -239,6 +241,8 @@ export const STAGES: Stage[] = [
         'mission-phill-plan-record',
         'mission-abnormal-growth-data',
         'mission-remote-lab-comm-log',
+        // 共有パッケージ2026-07-23: M2クリアで用語「PHILL再生医療計画」も解放。
+        'investigation_04_phill_public',
       ],
       specialConditions: ['単身潜入', 'PHILLガン固定', '弾薬有限', '敵の殲滅は不要'],
       // PACING_PUZZLE.md §6.19 M42: 特殊支給装備(叩き台・社長指定)。
@@ -262,6 +266,8 @@ export const STAGES: Stage[] = [
     subs: [SUB_RESCUE_MISSION], // 任意サブ2(二人組クエスト)の表示カード
     main: {
       code: 'M3',
+      // 共有パッケージ2026-07-23: M3クリアでアイテム資料(抑制用試薬)を解放。
+      unlockedRecordIds: ['investigation_06_suppressant'],
       title: '研究員救出', // 叩き台(正史にタイトルなし)
       summary: 'PHILL計画の解析に必要な、東部医療科学センターの共同研究員を救出する。',
       // 出撃前説明(正史M3・一言一句変更しない)
@@ -297,6 +303,8 @@ export const STAGES: Stage[] = [
     subs: [SUB_RESCUE_MISSION], // 任意サブ3(二人組クエスト)の表示カード
     main: {
       code: 'M4',
+      // 共有パッケージ2026-07-23: M4クリアで変異体資料(生存状態からの変異)を解放。
+      unlockedRecordIds: ['investigation_07_living_mutation'],
       title: '封鎖地域',
       summary: '封鎖地域へ強行突入し、戻らない医師団と接触する。',
       synopsis: [
@@ -344,6 +352,8 @@ export const STAGES: Stage[] = [
     subs: [],
     main: {
       code: 'M5',
+      // 共有パッケージ2026-07-23: M5クリアで変異体資料(特殊個体の行動変化)を解放。
+      unlockedRecordIds: ['investigation_08_affective_behavior'],
       title: '軍本部防衛',
       summary: '押し寄せる変異体の群れから、軍本部の防衛線を守り抜く。',
       synopsis: [
@@ -384,6 +394,8 @@ export const STAGES: Stage[] = [
     subs: [],
     main: {
       code: 'M6',
+      // 共有パッケージ2026-07-23: M6クリアで任務記録(洋館設備調査)を解放。
+      unlockedRecordIds: ['investigation_09_mansion_facility'],
       title: '古い洋館',
       summary: '変異体の発生源と疑われる古い洋館へ向かい、内部を確認する。',
       synopsis: [
@@ -439,6 +451,9 @@ export const STAGES: Stage[] = [
     subs: [],
     main: {
       code: 'M7',
+      // 共有パッケージ2026-07-23: M7クリアでアイテム資料(未登録試作製剤)を解放。
+      // ※「グレンの薬」はここに載せない(条件付き解放=App の endingFollowup 'medicine' 経路)。
+      unlockedRecordIds: ['investigation_16_trial_formulation'],
       title: '逆探知地点',
       summary: 'ミラからの通信を逆探知。発信地点へ向かい、待つ二人と対峙する。',
       synopsis: [

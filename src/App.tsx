@@ -17,9 +17,9 @@ import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { loadProgressBegin, loadProgressDone } from './utils/loadProgress';
 import {
   getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared, syncQuestStageClear,
-  getSelectedMission, getStoryFlags, updateStoryFlags,
+  getSelectedMission, getStoryFlags, updateStoryFlags, getClearedStages,
 } from './data/progress';
-import { unlockRecordsForStage } from './data/storyArchive';
+import { unlockRecordsForStage, unlockRecords, backfillStoryArchive, ENDING_RECORD_IDS } from './data/storyArchive';
 import { subsAllCompletedFromMeta, endingFollowup } from './utils/storyProgress';
 import { getEventQuestConfig } from './utils/eventQuest';
 import { getStage } from './data/campaign';
@@ -74,6 +74,13 @@ function App() {
     const id = window.setTimeout(() => setLoadOverlayTimedOut(true), useGameStore.getState().corridorMode ? 16000 : 6000); // 洋館通路は通路テクスチャ待ちぶん延長(v0.25.2122)
     return () => window.clearTimeout(id);
   }, [gameState, rendererReady]);
+
+  // 資料室の遡及解放(共有パッケージ2026-07-23): 起動時に1回、クリア済みステージ/EDフラグから
+  // 本来解放されているべき資料を静かに差分追加する(初期資料01・02の保証もここ)。冪等・既読不変・
+  // ポップアップなし(未読NEWバッジだけ付く)。
+  useEffect(() => {
+    backfillStoryArchive(getClearedStages(), id => getStage(id)?.main.unlockedRecordIds ?? [], getStoryFlags());
+  }, []);
 
   // 本物の素材ロード(テクスチャ+音声/BGM/SFX)を起動直後にバックグラウンドで開始。
   // ただし「ゾンビサバイバル」ローディング画面は出さず、タイトルを先に見せる。
@@ -263,6 +270,9 @@ function App() {
     } else {
       updateStoryFlags({ endingSeen: true });
     }
+    // 共有パッケージ2026-07-23: 通常エンディング後に真相資料(endingComplete群)を解放。
+    // latestUnlockedへは追記マージ=直前の「グレンの薬」通知と合算で「資料が追加されました」が拾う。冪等。
+    unlockRecords(ENDING_RECORD_IDS);
     setGameState('menu');
   };
 
