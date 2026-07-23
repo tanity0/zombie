@@ -391,7 +391,9 @@ const OpeningScene: React.FC<{ onDone: () => void; onTitleReveal?: () => void; s
     // 蘇生パート字幕: 行の切替を軽くフェードイン(任意・spec)。key=行indexで再マウントして毎行再生。
     `\n@keyframes opsub{from{opacity:0}to{opacity:1}}` +
     // 紙吹雪: 軌道(パーン=急減速の噴き上げ→等速のヒラヒラ落下)と、紙の羽ばたき(3D回転+横揺れ)を分離。
-    `\n@keyframes opconfT{0%{transform:translate(0,0);animation-timing-function:cubic-bezier(0.16,1,0.3,1)}16%{transform:translate(var(--cx1),var(--cy1));animation-timing-function:linear}100%{transform:translate(var(--cx2),var(--cy2))}}` +
+    // 0%でopacity:0(fill:bothにより発射待ちの間=delay中も0%が適用される)→発射直後に出現。
+    // 待機中の粒が画面下端に「溜まって」見える件の対策(社長報告v0.25.2066)。軌道/タイミングは不変。
+    `\n@keyframes opconfT{0%{transform:translate(0,0);opacity:0;animation-timing-function:cubic-bezier(0.16,1,0.3,1)}2%{opacity:1}16%{transform:translate(var(--cx1),var(--cy1));animation-timing-function:linear}100%{transform:translate(var(--cx2),var(--cy2))}}` +
     `\n@keyframes opconfS{0%{transform:rotateZ(0) rotateX(0) translateX(0)}25%{transform:rotateZ(var(--r1)) rotateX(72deg) translateX(var(--sw))}50%{transform:rotateZ(calc(var(--r1)*1.6)) rotateX(160deg) translateX(0)}75%{transform:rotateZ(var(--r1)) rotateX(250deg) translateX(calc(var(--sw)*-1))}100%{transform:rotateZ(0) rotateX(344deg) translateX(0)}}` +
     // キラキラ層: 画面(スクリーン)上端の外から下端の外まで通過するループ落下+きらめき(不透明度パルス+回転)。
     `\n@keyframes opconfK{from{transform:translateY(-4vh)}to{transform:translateY(106vh)}}` +
