@@ -35,7 +35,9 @@ const FLOOR_STRIP = 2;       // スライス高(px)。小さいほど滑らか�
 // 「常にこの距離だけ先に見えている突き当たり」として描く(本実装では通路の終端に置く想定)。
 const BACK_DEPTH = 4200; // もっと奥に(社長指示v0.25.2084→2088・旧2600)
 const BACK_ALPHA = 0.9; // 距離フォグに沈めない(窓は光っている=闇の中の目標物)
-const BACK_WIDTH_MULT = 1.15; // 通路幅(柱中心間)に対する壁の横幅倍率
+// 奥壁のサイズは【柱の高さ基準】(v0.25.2091): 旧・通路幅基準は柱を左右に広げるたび壁が巨大化して
+// 柱の高さと乖離した(社長報告)。高さ=同じ奥行きの柱×0.95・幅はアスペクト従属=通路幅と独立。
+const BACK_H_MULT = 0.95;
 
 const MansionCorridorPreview: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -165,8 +167,8 @@ const MansionCorridorPreview: React.FC = () => {
         if (!b.naturalWidth) return;
         const s = CORRIDOR_CFG.focal / (CORRIDOR_CFG.focal + BACK_DEPTH);
         const footY = H * CORRIDOR_CFG.horizonYr + (H * CORRIDOR_CFG.footYr - H * CORRIDOR_CFG.horizonYr) * s;
-        const bw = 2 * W * CORRIDOR_CFG.aisleHalfXr * s * BACK_WIDTH_MULT;
-        const bh = (b.naturalHeight / b.naturalWidth) * bw;
+        const bh = H * CORRIDOR_CFG.pillarHr * s * BACK_H_MULT; // 柱の高さ基準(通路幅と独立)
+        const bw = (b.naturalWidth / b.naturalHeight) * bh;
         const bx = W / 2 - bw / 2, by = footY - bh;
         // 奥壁は常に遠方=強ブラー版(farblur)とクロスフェード(v0.25.2090)。
         const w = dofFar(BACK_DEPTH);
