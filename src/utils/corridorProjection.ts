@@ -18,12 +18,14 @@ export const CORRIDOR_CFG: CorridorConfig = {
   spacing: 520,
   count: 7,
   focal: 420,
-  // d=-210でscale≒2.0=柱の内側の縁が画面端の外へ抜ける(縦430〜横800の画面比で検算済み)。
-  behind: 210,
+  // d=-240でscale≒2.3=柱の内側の縁が画面端の外へ抜ける(pillarHr1.75の幅で縦430〜横800比を検算済み)。
+  behind: 240,
   horizonYr: 0.30, // 消失点は上寄り(社長指示v0.25.2078「もっと上より」・旧0.38)
   footYr: 1.55,
   aisleHalfXr: 0.62,
-  pillarHr: 1.5,
+  // 柱の頭が画面上端で消えるくらい上へ(社長指示v0.25.2080・旧1.5)。scale≒0.6以上(手前2ペア相当)で
+  // 頭が画面上端の外へ抜ける。足元は床ライン(footYr)のまま=接地は不変。
+  pillarHr: 1.75,
 };
 
 export interface CorridorPillar {
