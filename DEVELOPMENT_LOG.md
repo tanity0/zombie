@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2104 — OP明けBGMを必ず曲頭から(途中再開バグ修正)【2026-07-23 18:28 JST】
+- 報告(社長): 蘇生シーンのBGM、途中から再生されちゃう。最初から流して。
+- 診断: タイトル曲が過去に再生済み(OP再視聴・タイトル画面経由等)だと、bgm要素のsrcが同一のためsetBgmScene('menu')→setBgmTrackの再ロード(=曲頭リセット)が走らず、停止位置のcurrentTimeから途中再開する構造。
+- 対処: audioManagerに`rewindBgm()`(currentTime=0)を新設し、OpeningSceneのfinish()がonDone前に呼ぶ(App.tsxはサブエージェントWIP中のため触らない配線)。初回起動(primeMenuBgm済=既に頭)でも無害。
+- 検証: typecheck OK(自分の変更ファイル)。実機=OP再視聴→蘇生明けのBGMが曲頭から始まるか。
+- Files: `src/audio/audioManager.ts`, `src/components/OpeningScene.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2103 — OP: ペンライトの動きを激しく+蘇生セリフの改行【2026-07-23 18:25 JST】
 - 指示(社長): ①ステージのペンライトもっと動きを激しく ②蘇生シーン後半「まだ安心するな。」で改行。
 - 対処①: 振り角14〜30°(旧9〜20°=約1.5倍)+振り周期0.45〜1.0s(旧0.7〜1.5s=高速化)。2軸で激しく。負荷1/10(CSS transformアニメのみ・本数不変)。

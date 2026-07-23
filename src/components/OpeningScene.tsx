@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { OPENING_REVIVAL_LINES, OPENING_REVIVAL_TIMING } from '../data/openingRevivalSequence';
+import { rewindBgm } from '../audio/audioManager';
 // パン!SEはWebAudio(playSfx)ではなくHTMLAudioで鳴らす(v0.25.2050):
 // 実機でアリーナ音源(HTMLAudio)は鳴るのにplaySfx経路のパン!だけ無音だったため、
 // 確実に鳴る同じ仕組みに統一(コンテキスト解錠・バッファ非同期の罠を回避)。
@@ -264,7 +265,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const stopArena = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; }); audioRef.current = []; };
   const stopHearts = () => { heartRef.current.forEach(a => { if (a) { a.pause(); a.src = ''; } }); heartRef.current = []; };
   const stopAudio = () => { stopArena(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; stopHearts(); };
-  const finish = () => { if (!doneRef.current) { doneRef.current = true; stopAudio(); onDone(); } };
+  // rewindBgm: OP明けのタイトルBGMは必ず曲頭から(v0.25.2104)。過去にタイトル曲を再生済みだと
+  // onDone側のsetBgmScene('menu')が同srcのため停止位置から途中再開してしまうのを防ぐ。
+  const finish = () => { if (!doneRef.current) { doneRef.current = true; stopAudio(); rewindBgm(); onDone(); } };
 
   useEffect(() => {
     // 【重要】タイムライン(タイマー+CSSアニメ)は「素材が描ける状態」になってから開始する。

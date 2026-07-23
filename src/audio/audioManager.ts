@@ -870,6 +870,14 @@ export const primeMenuBgm = () => {
     .catch(() => { /* 解錠失敗でもゲームは止めない(実再生時にplayBgmRobustが再試行) */ });
 };
 
+// BGMを曲頭へ巻き戻す(v0.25.2104): タイトル曲が過去に再生済みだと、OP明けの setBgmScene('menu') は
+// 同srcのため再ロードが走らず、停止位置(currentTime)から途中再開してしまう(社長報告「蘇生シーンの
+// BGM、途中から再生されちゃう」)。OP終了側がこれを呼んでから'menu'を要求する。
+export const rewindBgm = () => {
+  if (!bgm) return;
+  try { bgm.currentTime = 0; } catch { /* ignore */ }
+};
+
 export const isAudioMuted = () => muted;
 
 export const getBgmVolume = () => bgmVolume;
