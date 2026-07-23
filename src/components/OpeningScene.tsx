@@ -43,13 +43,19 @@ const BLOOD = (n: number) => A(`shoot/blood-${n}.png`);
 const WALK_BG = A('walk-stage-bg.png');
 const WALK_FRAMES = Array.from({ length: 4 }, (_, n) => A(`walk/hero-walk-${n}.png`)); // 4コマ歩きサイクル(社長支給・抜き済みシートを帯分割・v0.25.2115で正素材へ差し替え)
 const WALK_BG_AR = 1891 / 831;  // 舞台素材のアスペクト(幅/高さ)
-const WALK_SPEED = 200;         // 歩行速度(bg表示px/s・叩き台)
+const WALK_SPEED = 120;         // 歩行速度(bg表示px/s)。v0.25.2116「もっとゆっくり」(旧200)
 const WALK_ANIM_MS = 150;       // 歩きコマ間隔(4コマ=1周0.6s・叩き台)
 const WALK_FOOT_YR = 0.625;     // 足元ライン(bg高さ比=通路の床。スタッフの足元に合わせた叩き台)
 const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ~0.13より少し大きめ=主役・叩き台)
 const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
 const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
 const WALK_FADEIN_MS = 1000;    // 開始時のキャラのフェードイン
+const WALK_STAGE_Y_OFFSET = -50; // ステージ全体の縦オフセット(px)。v0.25.2116「50px上へ」
+// 被写界深度(v0.25.2116「プレイヤーの直ぐ裏からぼかし」): 事前ブラー版bg(walk-stage-bg-blur.png・
+// blur9px焼き込み)を縦グラデマスクで重ねる=壁(奥)はボケ、彼女と歩いている床だけシャープ。
+// アリーナDOFと同じ「ランタイムぼかしゼロ」方式(モバイルのfilter/backdrop-filterの罠を回避)。
+const WALK_BG_BLUR = A('walk-stage-bg-blur.png');
+const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 50%, transparent 63%)'; // 63%≒床ライン
 const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
 
 interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y=足元(画像%)、h=高さ(%)
@@ -372,7 +378,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     const all = [
       ...SHOTS.map(s => s.bg), ...SHOTS.map(s => s.bgBlur), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
-      WALK_BG, ...WALK_FRAMES, // 歩きシーン(アリーナ前・v0.25.2114)
+      WALK_BG, WALK_BG_BLUR, ...WALK_FRAMES, // 歩きシーン(アリーナ前・v0.25.2114)
     ];
     const decodes = all.map(src => { const im = new Image(); im.src = src; return im.decode().catch(() => {}); });
     const fallback = new Promise<void>(res => { ids.push(window.setTimeout(res, 3000)); });
@@ -455,7 +461,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         if (moving) worldX = Math.min(maxX, worldX + WALK_SPEED * dt / 1000);
         const cam = Math.max(0, Math.min(bgW - sw, worldX - sw * WALK_CAM_ANCHOR));
         world.style.width = `${bgW}px`;
-        world.style.transform = `translateX(${-cam}px)`;
+        world.style.transform = `translate(${-cam}px, ${WALK_STAGE_Y_OFFSET}px)`;
         char.style.height = `${bgH * WALK_HERO_HR}px`;
         char.style.left = `${worldX}px`;
         char.style.top = `${bgH * WALK_FOOT_YR}px`;
@@ -518,10 +524,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         >
           <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
             <img src={WALK_BG} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />
+            {/* 被写界深度: 事前ブラー版を縦グラデマスクで重ねる(壁=ボケ/床ラインでシャープへ)。 */}
+            <img src={WALK_BG_BLUR} alt="" draggable={false} style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
+              maskImage: WALK_DOF_MASK, WebkitMaskImage: WALK_DOF_MASK,
+            } as React.CSSProperties} />
             <img
               ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false}
               style={{
-                position: 'absolute', transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
+                // translateZ(0)=iOSのmaskedレイヤーz順バグ対策(v0.25.2063の教訓): DOFマスクの下に潜らせない。
+                position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated',
                 animation: `opfade ${WALK_FADEIN_MS}ms ease-out both`, // 開始時フェードイン(社長指示)
               }}
             />
