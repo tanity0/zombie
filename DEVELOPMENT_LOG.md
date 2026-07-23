@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2101 — OP: 色ありアイドル素材を指定版(_2)へ再差し替え【2026-07-23 18:18 JST】
+- 指示(社長): ごめんやはりこっちで(aimegliospritesheet_2.png)。
+- 対処: `public/opening/hero-blue.png`を指定版へ同名差し替え(152×256・透過・規格は前版と同一)。キャッシュバスターを?v=2101へ更新。
+- 検証: 素材の寸法・透過確認。typecheckはサブエージェントWIP(pixiScene.ts)のエラーのみ=本変更のファイルは無関係(pushに含めない)。
+- Files: `public/opening/hero-blue.png`, `src/components/OpeningScene.tsx`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2100 — OP: 色ありアイドル素材をドット絵版に差し替え【2026-07-23 18:11 JST】
 - 支給/指示(社長): 色ありアイドルの新素材(aimegliospritesheet.png・152×256ドット絵)。オープニングの色ありアイドル素材入れ替え。
 - 対処: `public/opening/hero-blue.png`を同名差し替え(旧715×1234のぼやけた拡大版→新152×256のクリスプなドット絵・透過確認済み)。アスペクトほぼ同一(0.579→0.594)+表示はheight指定・アスペクト従属+`imageRendering: pixelated`のため配置調整不要。同名差し替えのためHERO参照に一回きりのキャッシュバスター`?v=2100`(v2097の教訓。全openingアセット毎版バスターは再取得コストが出るため個別対応)。
