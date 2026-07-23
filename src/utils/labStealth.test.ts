@@ -1,39 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { tickLabDeaggro, LAB_DEAGGRO_DIST, LAB_DEAGGRO_MS } from './labStealth';
+import { isLabOffscreenLost, LAB_OFFSCREEN_MARGIN } from './labStealth';
 
-const far = (LAB_DEAGGRO_DIST + 10) ** 2;
-const near = (LAB_DEAGGRO_DIST - 10) ** 2;
+// ステージ2の索敵解除(v0.25.2064変更「画面外にいったら見失う」)。
+// 可視域はスマホ縦想定の半幅215/半高466で代表(値はテスト内の代表値であり実機依存)。
+const HALF_W = 215;
+const HALF_H = 466;
 
-describe('tickLabDeaggro (ステージ2の索敵解除・社長指示v0.25.1757)', () => {
-  it('解除距離450px・猶予3秒(叩き台)', () => {
-    expect(LAB_DEAGGRO_DIST).toBe(450);
-    expect(LAB_DEAGGRO_MS).toBe(3000);
+describe('isLabOffscreenLost (ステージ2・画面外で見失う)', () => {
+  it('マージン(叩き台40px)が定義されている', () => {
+    expect(LAB_OFFSCREEN_MARGIN).toBe(40);
   });
 
-  it('範囲内なら何も起きない(開始時刻もリセット)', () => {
-    const t = tickLabDeaggro(10000, near, 5000);
-    expect(t.outSince).toBeUndefined();
-    expect(t.deaggro).toBe(false);
+  it('画面内(半幅/半高以内)なら見失わない', () => {
+    expect(isLabOffscreenLost(0, 0, HALF_W, HALF_H)).toBe(false);
+    expect(isLabOffscreenLost(HALF_W, HALF_H, HALF_W, HALF_H)).toBe(false);
+    expect(isLabOffscreenLost(-HALF_W, -HALF_H, HALF_W, HALF_H)).toBe(false);
   });
 
-  it('範囲外に出た最初のtickで開始時刻が付き、猶予中は諦めない', () => {
-    const t0 = tickLabDeaggro(10000, far, undefined);
-    expect(t0.outSince).toBe(10000);
-    expect(t0.deaggro).toBe(false);
-    const t1 = tickLabDeaggro(10000 + LAB_DEAGGRO_MS - 1, far, t0.outSince);
-    expect(t1.deaggro).toBe(false);
+  it('画面端の少し外(マージン内)はまだ見失わない=見切れ猶予', () => {
+    expect(isLabOffscreenLost(HALF_W + LAB_OFFSCREEN_MARGIN, 0, HALF_W, HALF_H)).toBe(false);
+    expect(isLabOffscreenLost(0, -(HALF_H + LAB_OFFSCREEN_MARGIN), HALF_W, HALF_H)).toBe(false);
   });
 
-  it('範囲外が猶予時間続いたら諦める(deaggro=true)', () => {
-    const t = tickLabDeaggro(10000 + LAB_DEAGGRO_MS, far, 10000);
-    expect(t.deaggro).toBe(true);
+  it('マージンを超えて画面外へ出たら見失う(横/縦どちらの軸でも)', () => {
+    expect(isLabOffscreenLost(HALF_W + LAB_OFFSCREEN_MARGIN + 1, 0, HALF_W, HALF_H)).toBe(true);
+    expect(isLabOffscreenLost(-(HALF_W + LAB_OFFSCREEN_MARGIN + 1), 0, HALF_W, HALF_H)).toBe(true);
+    expect(isLabOffscreenLost(0, HALF_H + LAB_OFFSCREEN_MARGIN + 1, HALF_W, HALF_H)).toBe(true);
   });
 
-  it('途中で範囲内に戻るとカウントが振り出しに戻る', () => {
-    const back = tickLabDeaggro(12000, near, 10000);
-    expect(back.outSince).toBeUndefined();
-    const again = tickLabDeaggro(13000, far, back.outSince);
-    expect(again.outSince).toBe(13000);
-    expect(again.deaggro).toBe(false);
+  it('片軸が画面内でも、もう片軸が外なら見失う(矩形判定)', () => {
+    expect(isLabOffscreenLost(10, HALF_H + LAB_OFFSCREEN_MARGIN + 1, HALF_W, HALF_H)).toBe(true);
   });
 });
