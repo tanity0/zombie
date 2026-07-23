@@ -2217,8 +2217,9 @@ interface GameState {
   eventBannerText: string;
   eventBannerUntil: number;
   // NPCリアルタイムセリフ(時間停止なし・HUDの軽量表示)。current=表示中、queue=順番待ち、nextAt=次を出せる最短gameTime。
-  npcDialogue: { name: string; text: string; until: number } | null;
-  npcDialogueQueue: { name: string; text: string }[];
+  // portrait=会話の立ち絵を話者名と別に指定するオーバーライド(例: 変異後グレン)。省略時は name で引く。
+  npcDialogue: { name: string; text: string; until: number; portrait?: string } | null;
+  npcDialogueQueue: { name: string; text: string; portrait?: string }[];
   npcDialogueNextAt: number;
   npcSpokeAt: Record<string, number>;   // NPC名→最後に喋ったgameTime(同一NPCのCD用)
   npcCatAt: Record<string, number>;      // カテゴリ→最後に出したgameTime(同一カテゴリのCD用)
@@ -2521,7 +2522,7 @@ interface GameState {
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
   spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string, visual?: 'ice' | 'bone') => void; // visual='bone'=ラフィの骨刃(見た目のみ差し替え・判定/挙動はスカジ刃と同じ)
   // NPCセリフ: キューに追加 / 毎フレームの表示進行(useGameLoopから呼ぶ)。
-  enqueueNpcDialogue: (lines: { name: string; text: string }[]) => void;
+  enqueueNpcDialogue: (lines: { name: string; text: string; portrait?: string }[]) => void;
   updateNpcDialogue: (gameTime: number) => void;
   // 状況反応セリフをCD(同一NPC/同一カテゴリ)を守って投入。通れば true。
   tryNpcLine: (name: string, category: string, text: string, categoryCdMs: number) => boolean;
@@ -6618,7 +6619,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (cur && gameTime >= cur.until) { cur = null; nextAt = gameTime + NPC_DIALOGUE_GAP_MS; changed = true; }
     if (!cur && queue.length > 0 && gameTime >= nextAt) {
       const head = queue[0];
-      cur = { name: head.name, text: head.text, until: gameTime + NPC_DIALOGUE_MS };
+      cur = { ...head, until: gameTime + NPC_DIALOGUE_MS }; // portrait等の追加フィールドも素通しで引き継ぐ
       queue = queue.slice(1);
       changed = true;
     }

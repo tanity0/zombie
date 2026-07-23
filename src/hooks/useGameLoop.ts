@@ -1954,8 +1954,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().triggerAttention(scx, scy);
             playSfx('boss-appear');
             if (getSelectedStageId() === 'stage-7') {
-              // グレン巨大化の咆哮(確定台詞・指示書4.7)。
-              useGameStore.getState().enqueueNpcDialogue([{ name: 'グレン', text: 'グガガガガガガガガ！' }]);
+              // グレン巨大化の咆哮(確定台詞・指示書4.7)。立ち絵は変異後の頭部(社長指示v0.25.2073)。
+              useGameStore.getState().enqueueNpcDialogue([{ name: 'グレン', text: 'グガガガガガガガガ！', portrait: 'グレン(変異)' }]);
             } else {
               // EX: ボス表示は「未確認変異体」のみ(PHILL/フィルの名は出さない=統合正本10.3・
               // 修正差分メモD-07で「異常変異体」から改称)。

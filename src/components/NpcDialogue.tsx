@@ -28,6 +28,10 @@ const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number; 
   // (npc/medic-walk 78x64=横長のためboxW広め)。
   // shooterは0=足閉じ・1=足開き(4倍拡大で確認・v0.25.1856修正。ゲーム内静止コマ0とも一致)。
   'グレッグ': { base: 'rescue/shooter', boxW: 40, frame: 0 },
+  // 変異後グレン(M7咆哮用・社長指示v0.25.2073「会話アイコンは変異後の頭部分だけ」):
+  // glen-boss.png の頭部クロップ+背景透過(art-src/glen-head.mjs生成)。表示名は「グレン」のまま、
+  // npcDialogue.portrait='グレン(変異)' のオーバーライドでこのエントリを引く。
+  'グレン(変異)': { base: 'npc/glen-mutant-head', boxW: 46, frame: 0, imgH: 52 },
   // ジュンのboxWは可視域採寸で46(素材78pxのうち左19/右13pxは透明マージン=枠を素材幅で取ると
   // 左に余白が空く・社長報告v0.25.1855)。
   'ジュン': { base: 'npc/medic-walk', boxW: 46, frame: 2 },
@@ -42,8 +46,8 @@ export const NpcDialogue = () => {
   const bannerActive = useGameStore(s => !!s.eventBannerText && s.eventBannerUntil >= s.gameTime);
   if (!npc) return null;
   const topPx = 132 + (comboActive ? 58 : 0) + (bannerActive ? 58 : 0);
-  // 話者の立ち絵(あれば)。上半身だけ見せるため、立ち絵を高さ基準で拡大し枠で上部だけ切り出す。
-  const portrait = NPC_PORTRAIT[npc.name];
+  // 話者の立ち絵(あれば)。portrait指定があれば名前より優先(例: 変異後グレンの頭部)。
+  const portrait = NPC_PORTRAIT[npc.portrait ?? npc.name];
   const portraitBase = portrait?.base;
   const portraitBoxW = portrait?.boxW ?? 40;
   return (

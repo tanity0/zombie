@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.2073 — M7: グレン台詞変更+咆哮の会話アイコンを変異後の頭部へ【2026-07-23 15:05 JST】
+- 指示(社長): ①グレン「ジカン……ダ」→**「ココマデ・・・カ」**に変更 ②「グガガガガガガガガ！」の会話アイコンは変異後の頭部分だけに変更。
+- 対処①: campaign.ts(M7戦直前dialogue)+正本テスト(storyCanon.test.ts)を同時更新=正本の一言一句テストは新文言で機械化継続。
+- 対処②: `glen-boss.png`から頭部をクロップ+背景グレーを境界フラッドフィルで透過した専用立ち絵 `sprites/npc/glen-mutant-head-0.png` を生成(`art-src/glen-head.mjs`・再生成可)。会話キュー(npcDialogue)に**portraitオーバーライド**フィールドを追加(省略時は従来どおり名前で立ち絵を引く=既存会話は全て不変)。咆哮行だけ `portrait: 'グレン(変異)'` を指定=表示名は「グレン」のまま、立ち絵だけ変異後の頭部。
+- 検証: typecheck OK・storyCanon.test 23本pass。実機の見た目(頭部クロップ範囲・サイズ)は社長確認=叩き台。
+- 自己点検: 正本の変更は社長指示そのもの+テスト同時更新(規律2)。portraitは省略可能フィールド=既存挙動不変。負荷: 0/10。
+- Files: `src/data/campaign.ts`, `src/data/storyCanon.test.ts`, `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/components/NpcDialogue.tsx`, `public/sprites/npc/glen-mutant-head-0.png`(新規), `art-src/glen-head.mjs`(新規), `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2072 — BGMのOK直後鳴り対策 / 会話立ち絵の位置固定 / アリーナ切替をハードカットへ【2026-07-23 15:00 JST】
 - 指示(社長): ①OK押したらBGM流れちゃう→蘇生後にして ②会話UIの立ち絵が文字数で上下して目障り→全UIで2行分の下位置に固定 ③アリーナの場面切替(正面→斜め→横)はフェードではなく即表示。
 - 対処①(2つの穴を閉鎖): (a) プレビュー(?opening=…)一周後はonDoneでBGM開始済み→OK→再再生でBGMが鳴りっぱなしだった=**OK時に必ずsetBgmScene('off')**。(b) 事前解錠(primeMenuBgm)を**ミュートのまま置く**方式に硬化し、ミュート解除は実再生の瞬間(playBgmRobustのtryPlay)だけが行う=解錠のplay/pause競合でも構造的に音が漏れない。
