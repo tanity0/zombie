@@ -4104,7 +4104,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // Move player based on input or swipe direction
         // 移動のみ MOVE_SPEED_MULT 倍速(演出/進行は等速のまま=deltaTimeを据え置き)。
-        movePlayer(inputState, deltaTime * MOVE_SPEED_MULT);
+        // 洋館(ステージ6)開始の走り込み(v0.25.2110・ヘリ登場なし): 下(+y)開始のプレイヤーを
+        // 到着点(y<=0)まで自動で上へ走らせる。実移動=歩行アニメ/護衛追走/カメラ追従は通常システム。
+        // 入力はisInputLocked(corridorRunInActive)で遮断済み。安全弁: gameTime 6秒で強制解除。
+        const corridorRunIn = useGameStore.getState().corridorRunInActive;
+        movePlayer(corridorRunIn ? { up: true, down: false, left: false, right: false } : inputState, deltaTime * MOVE_SPEED_MULT);
+        if (corridorRunIn) {
+          const runSt = useGameStore.getState();
+          if (runSt.player.y <= 0 || runSt.gameTime > 6000) runSt.clearCorridorRunIn();
+        }
         // M26-L(§6.3): ボットの近接(指離しカウンター)/武器切替。ヘッドレス(playtestDriver)と同じ操作を実機で行う。
         if (botMineAdj?.wantsMelee || botWantsCounterReaction) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
         if (botDecision?.wantsWeaponSwitch) {

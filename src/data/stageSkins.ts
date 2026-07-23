@@ -9,7 +9,7 @@
 // 現在 pixiScene が参照しているのは horizon1Visible のみ(遠景森1の有無)。残り(far/ground/front/horizon2)は
 // 既存の apply* 経路が担当中で、本表は将来の移行先として宣言済み(値は現状の挙動に一致)。
 
-export type StageSkinKey = 'forest' | 'lab' | 'city' | 'snow' | 'tutorial';
+export type StageSkinKey = 'forest' | 'lab' | 'city' | 'snow' | 'tutorial' | 'mansion';
 
 export interface StageSkin {
   far: StageSkinKey | 'forest';   // 遠景パノラマの種類
@@ -34,6 +34,8 @@ export const STAGE_SKINS: Record<StageSkinKey, StageSkin> = {
   // チュートリアル: 洞窟。遠景森1=岩帯(tutorial-horizon-rocks・v0.25.1810で社長支給)。
   // 配置は「川に少しだけ頭が被る」位置(pixiSceneのtutorial分岐参照)。
   tutorial: { far: 'tutorial', ground: 'tutorial', horizon1Visible: true, horizon2: null, front: 'forest', daylightNoon: false, topHang: null },
+  // ステージ6: 古い洋館(corridorMode)。屋内の廊下なので森シルエット帯は出さない(v0.25.2110)。
+  mansion: { far: 'mansion', ground: 'forest', horizon1Visible: false, horizon2: null, front: 'forest', daylightNoon: false, topHang: null },
 };
 
 // 現在の出撃状態(stageTheme / farBackdrop)からスキンキーを解決。屋外専用(屋内は別パイプライン)。
@@ -42,5 +44,6 @@ export const resolveStageSkinKey = (stageTheme: string, farBackdrop: string): St
   if (farBackdrop === 'city') return 'city';
   if (farBackdrop === 'snow') return 'snow';
   if (farBackdrop === 'tutorial') return 'tutorial';
+  if (farBackdrop === 'mansion') return 'mansion'; // corridorMode(呼び出し側が'mansion'を渡す)
   return 'forest';
 };

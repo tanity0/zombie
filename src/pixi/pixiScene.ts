@@ -1619,7 +1619,7 @@ export class PixiScene {
   // 参考: Octopath 0。負荷: TilingSprite1枚・tilePositionドリフト=軽い(1〜2/10)。?cloudshadow=0で無効・?cloudshadowalpha=/speed=/scale=で調整。
   private updateCloudShadow(now: number, cameraX: number, cameraY: number, indoor: boolean) {
     const sp = this.cloudShadow;
-    const on = CLOUD_SHADOW_ON && !indoor && this.currentFarKey !== 'lab' && this.currentFarKey !== 'tutorial'; // 屋外のみ(洞窟/ラボ除外)
+    const on = CLOUD_SHADOW_ON && !indoor && this.currentFarKey !== 'lab' && this.currentFarKey !== 'tutorial' && this.currentFarKey !== 'mansion'; // 屋外のみ(洞窟/ラボ/洋館除外)
     if (sp.visible !== on) sp.visible = on;
     if (!on) return;
     // 昼夜で雰囲気を変える(社長指示v0.25.1975)。夜(月夜)=青寄り・淡く・大きく・ゆっくり(夢想的)。昼=中立・濃く・くっきり。
@@ -8791,11 +8791,18 @@ export class PixiScene {
     this.L.farBackdrop.visible = !indoor;
     // 遠景森1(森シルエット帯)の有無はステージスキン表(単一の真実)で決める。lab は false(森帯を出さない)。
     // ※散在分岐(isLabStage 等)を表駆動へ移す第一歩。残りスロットも順次この表へ集約予定。
-    const skin = STAGE_SKINS[resolveStageSkinKey(s.stageTheme, s.farBackdrop)];
+    const skin = STAGE_SKINS[resolveStageSkinKey(s.stageTheme, s.corridorMode ? 'mansion' : s.farBackdrop)];
     this.L.horizonForest.visible = !indoor && skin.horizon1Visible;
     this.L.groundBase.visible = !indoor;
-    this.L.frontForest.visible = !indoor;
+    this.L.frontForest.visible = !indoor && !s.corridorMode; // 洋館(屋内の廊下)は近景森を出さない(v0.25.2110)
     this.L.backgroundLayer.visible = !indoor;
+    // 洋館(corridorMode): 屋外の演出ドレッシング(霧バンク/背景雲霧/月光シャフト)を出さない(v0.25.2110)。
+    // 非corridorでは常時true=従来挙動(屋内は各自のパイプラインが管理・ここでは触らない)。
+    const corridorDressOff = !indoor && s.corridorMode;
+    this.forestUnderLayer.visible = !corridorDressOff;
+    this.frontBankLayer.visible = !corridorDressOff;
+    this.bgCloudLayer.visible = !corridorDressOff;
+    this.stageLightShaftGfx.visible = !corridorDressOff;
     if (!indoor) {
       // 洋館(corridorMode)は遠景パノラマだけ 'mansion'(仮素材=壁back.png)へ差し替える「口」。
       // テクスチャ未注入なら applyFarBackdrop が森へフォールバック。他レイヤー(森1/近景/地面)は m0 のまま。

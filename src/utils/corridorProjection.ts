@@ -76,4 +76,4 @@ export const projectCorridorPillars = (
 // 世界配置の素材(床タイル/柱スプライト/遠景ビスタ)で作る。上の柱投影は ?corridor=1 プレビュー専用。
 
 // 横移動の拘束幅(world px)。プレイヤー中心xを ±この値に拘束=通路の壁(gameStoreが使用)。
-export const CORRIDOR_LATERAL_CLAMP = 260; // 叩き台
+export const CORRIDOR_LATERAL_CLAMP = 170; // v0.25.2110: 通路幅の縮小(柱±200)に連動(旧260)

@@ -6,11 +6,12 @@
 // mansionPropsInRegion を読んで足元アンカーのスプライトを並べるだけ。store も触らない。
 // 数値は全て叩き台=実機調整前提(v0.25.2108「世界配置の素材で作る」方針)。
 
-// 床(mansion/floor.png=中央カーペット+左右石畳)をマップするワールドx半幅。x∈[-330,+330]。
+// 床(mansion/floor.png=中央カーペット+左右石畳)をマップするワールドx半幅。x∈[-230,+230]。
+// v0.25.2110: 縦持ちの可視半幅(~202)に壁が入るよう縮小(社長指示「通路感が無い」対応。旧330)。
 // プレイヤーの横クランプ(CORRIDOR_LATERAL_CLAMP=260)より広い=カーペット+石畳の上を歩く。
-export const MANSION_FLOOR_HALF_W = 330;
+export const MANSION_FLOOR_HALF_W = 230;
 // 柱の中心x(±)。床テクスチャの外縁近く・クランプ260の外=プレイヤーは届かない(当たり判定不要)。
-export const MANSION_PILLAR_X = 300;
+export const MANSION_PILLAR_X = 200; // v0.25.2110: 画面内に壁を(旧300)
 // 柱の縦の反復間隔(world px)。
 export const MANSION_PILLAR_SPACING_Y = 520;
 // 柱の表示高さ(world px)。幅は素材アスペクト(291:1399)で従属。

@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.2110 — ステージ6: 走り込み入場+屋外演出の撤去+通路幅を画面内に【2026-07-23 19:43 JST】
+- 指示(社長): ①ヘリコプター登場いらない、下から走り込んできて ②自分でスクショを撮って何から直すべきか判断せよ。
+- 自己診断(実写4枚): (a)ヘリ演出中の数秒が真っ暗 (b)洋館内に森シルエット帯 (c)屋外の白い霧バンク+背景雲霧+月光シャフト+雲影が洋館内に出る (d)柱±300が縦持ち可視半幅(~202)の外=通路感ゼロ。
+- 対処①(走り込み): corridorModeはヘリ登場なし(introUntil=0)。プレイヤー+護衛をspawnTLごと380px下に置き(CORRIDOR_RUNIN_DIST)、corridorRunInActiveの間useGameLoopが自動で上へ走らせる(実移動=歩行アニメ/護衛追走/カメラ追従は通常システム)。到着(y≦0)か6秒で解除。間はisInputLockedで操作遮断。
+- 対処②(演出撤去): stageSkinsに'mansion'スキン新設(森帯horizon1Visible=false・表駆動)。corridorMode時は近景森/霧バンク2種/背景雲霧/月光シャフト非表示+雲影の除外キーに'mansion'追加。
+- 対処③(通路幅): MANSION_PILLAR_X 300→200・MANSION_FLOOR_HALF_W 330→230・CORRIDOR_LATERAL_CLAMP 260→170(連動)。縦持ちで両側の壁・柱・燭台が常時見える。
+- 検証: typecheck・lint 0エラー・テスト9本pass・実写=走り込み隊列/両壁の暗闇/柱+赤バナー/燭台/カーペット/上端ビスタ・森帯や霧の混入なし。stage-1は非corridor分岐のため影響なし(ゲートは全てcorridorMode条件)。
+- Files: `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`, `src/data/stageSkins.ts`, `src/world/mansionDecor.ts`, `src/utils/corridorProjection.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2109 — ステージ6: 洋館の見た目を世界配置で実装(床/柱/燭台/暗闇/遠景)【2026-07-23 19:26 JST】
 - 裁定(社長): 洋館の見た目は「素材を世界に置く」(システムは完全m0=v0.25.2108)。実装=サブエージェント・検証=設計チャット。
 - 実装: `src/world/mansionDecor.ts`(新規・レンダラ非依存の配置純関数+テスト3件): 柱=x±300・y520間隔の足元アンカー、燭台=柱+260。pixiScene `syncMansionCorridor`: 床=floor.pngのTilingSprite(±330・worldと1:1スクロール)、暗闇=|x|>330の帯2枚(zoomlock対応)、柱/燭台=木と同じy-sort+depthScale+有界カリング、燭台の炎=松明式ゆらぎ+加算小glow(半径36<44厳守)。遠景='mansion'(back.png仮)をstage5/7と同じ仕組みで注入。campaign.ts/gameStore/挙動は未変更。

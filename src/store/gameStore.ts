@@ -1406,6 +1406,9 @@ export const INVULN_MS = 700;
 //  フェーズA(ヘリ飛来): 超遠く・高くから小さく飛来し、降下しながら拡大して着地ダッシュの開始点へ。
 //  フェーズB(ジャンプ着地): 従来のロックマン的ダッシュ着地(左から低く猛スピード→中央着地)。
 // この間はゲーム進行/入力/敵スポーンを止め、カメラが追従/横断し、見た目は飛行する。
+// 洋館(ステージ6)開始の走り込み距離(world px): プレイヤー+護衛を到着点のこの距離だけ下(手前)に置き、
+// 自動で上へ走らせて入場する(v0.25.2110・ヘリ登場なし)。
+export const CORRIDOR_RUNIN_DIST = 380;
 export const PLAYER_INTRO_HELI_MS = 2600;    // フェーズA(ヘリ飛来→着陸)長(少しゆっくり目)
 // フェーズB(着陸→ホバー→離陸＋プレイヤー/NPCフェードイン)長。社長指示で飛び降り演出を廃止し、
 // 「ヘリが着陸→飛び立つタイミングで隊員がフェードイン」に変更したため、離陸とフェードを読ませる尺へ延長。
@@ -1512,7 +1515,7 @@ export const isGameTimeStopped = (): boolean => {
 //   死亡後(health<=0)。移動・向き・攻撃すべてここで弾く(ジョイスティック/操作層の各ハンドラが参照)。
 export const isInputLocked = (): boolean => {
   const s = useGameStore.getState();
-  return s.isPaused || s.player.health <= 0 || isGameTimeStopped();
+  return s.isPaused || s.player.health <= 0 || s.corridorRunInActive || isGameTimeStopped();
 };
 
 // 松明ドロップ率/内訳のしきい値は pityDirector.ts の BASE_DROP_TUNING(0.42/0.5/0.75/0.9)へ移動
@@ -2653,6 +2656,11 @@ interface GameState {
   corridorMode: boolean;
   pendingCorridor: boolean;                             // 出撃が洋館通路(stage-6メイン)か(startGame→resetGame で受け渡し)
   setPendingCorridor: (on: boolean) => void;
+  // 洋館開始の走り込み(v0.25.2110・社長指示「ヘリ登場いらない。下から走り込んできて」):
+  // resetGameがプレイヤー/護衛を下(+y)に置きtrueにする→useGameLoopが上へ自動走行させ、到着(y<=0)で解除。
+  // trueの間はisInputLockedで操作を遮断(実移動なので歩行アニメ/護衛追走/カメラ追従は通常システムのまま)。
+  corridorRunInActive: boolean;
+  clearCorridorRunIn: () => void;
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
   labButtons: LabButton[];                              // ボタン(押下状態)
   labProps: LabProp[];                                  // 障害物プロップ(木の代わり・当たり判定あり)
@@ -2949,6 +2957,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   indoorMode: false,
   corridorMode: false,
   pendingCorridor: false,
+  corridorRunInActive: false,
   labDoors: [],
   labButtons: [],
   labProps: [],
@@ -8867,6 +8876,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingCorridor: (on) => {
     set({ pendingCorridor: on });
   },
+  clearCorridorRunIn: () => {
+    set({ corridorRunInActive: false });
+  },
   setPendingStageTheme: (theme) => {
     set({ pendingStageTheme: theme });
   },
@@ -9801,7 +9813,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const hiddenBoss = (!state.danceTestMode && !indoor && stageTheme === 'forest') ? state.pendingHiddenBoss : null;
       const spawnTL = indoor
         ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
-        : { x: 0, y: 0 };
+        // 洋館: 到着点(y=0)の下から走り込む(護衛もspawnTL基準なので隊ごと下から入場する)。
+        : { x: 0, y: corridorMode ? CORRIDOR_RUNIN_DIST : 0 };
       const runDoors: LabDoor[] = indoor ? LAB_DOORS.map(d => ({ id: d.id, rect: d.rect, open: false })) : [];
       const runButtons: LabButton[] = indoor ? [{ ...LAB_BUTTON, pressed: false }] : [];
       const runProps: LabProp[] = indoor ? generateLabProps() : []; // 障害物をランダム配置(壁/ギミック回避)
@@ -9982,7 +9995,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         },
         // 登場演出をアーム(初フレームで終了時刻確定)。練習モードは演出なし。
         // チュートリアル(地下洞窟)もヘリ降下演出なし(社長指示v0.25.1818「何もかも無し。全てイベントで特別仕様のみ」)。
-        introUntil: (state.danceTestMode || farBackdrop === 'tutorial') ? 0 : -1,
+        // 洋館(corridorMode)はヘリ登場なし=走り込み入場(v0.25.2110・社長指示)。
+        introUntil: (state.danceTestMode || farBackdrop === 'tutorial' || corridorMode) ? 0 : -1,
+        corridorRunInActive: corridorMode,
         introDialogueActive: false,
         introDialogueStartedAt: 0,
         introDialogueShown: false,
