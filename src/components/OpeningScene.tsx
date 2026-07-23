@@ -85,7 +85,7 @@ const WALK_BG_BLUR = A('walk-stage-bg-blur.png');
 // v0.25.2134(社長指示「ぼかし少し弱めて、黄色ラインくらいまで入れて」): フルぼかしを黄色ライン
 // (実測0.639-0.647)まで届かせ、縁石帯で抜いて舗装床(0.71〜)からシャープ。強度はWALK_DOF_ALPHAで少し弱める。
 const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 64%, transparent 71%)';
-const WALK_DOF_ALPHA = 0.8;     // ぼかし版の重ね不透明度(1=旧・全ぼかし。少し素の絵を透かして弱める)
+const WALK_DOF_ALPHA = 0.9;     // ぼかし版の重ね不透明度(1=全ぼかし)。0.8→0.9(社長指示v0.25.2136「少しだけ強く」)
 const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
 
 interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y=足元(画像%)、h=高さ(%)
