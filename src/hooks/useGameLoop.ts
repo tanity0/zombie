@@ -4403,6 +4403,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           camY = baseCamY;
           look.y = 0;
         }
+        // 洋館通路(corridorMode・v0.25.2125): 横はカメラを通路中心(world x=0)に固定する(プレビューの
+        // 承認仕様「カメラは常に真ん中」)。プレイヤー追従で通路が横にずれると、床/天井メッシュの縁と
+        // その先の虚空が画面に入り「四角い黒い切れ目」「被弾時に真っ黒に切れる」になっていた(社長報告
+        // v0.25.2124)。縦は従来どおり追従(通路のスクロール=travelはplayer.y連動で不変)。
+        if (useGameStore.getState().corridorMode) {
+          camX = -gameBounds.width / 2;
+          look.x = 0;
+        }
         // 屋内はカメラを「野外マージン込みの外周」にクランプ。壁の外に野外を設けたので、端でも
         // プレイヤーが画面中心を保てる(壁で進めなくてもカメラは野外側へ寄れる)。
         if (indoor) {
