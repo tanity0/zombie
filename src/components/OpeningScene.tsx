@@ -191,6 +191,10 @@ const SHOOT_STEPS = [...new Set([...SHOOTER_TRACK, ...VICTIM_TRACK, ...BLOOD_TRA
   .map(t => ({ t, s: frameAt(SHOOTER_TRACK, t), v: frameAt(VICTIM_TRACK, t), b: frameAt(BLOOD_TRACK, t), red: t >= RED_FROM }));
 // 血飛沫の位置: 右端センター=傷口(後頭部)。被弾ポーズ(v2)の頭の左脇に置き、血は左へ飛ぶ。h=枠高%。
 const BLOOD_POS = { x: 36.5, y: 57, h: 18 };
+// 射撃シーンの会話(社長指示v0.25.2065): 立ち姿=1行目→構え(1.0s)=2行目→撃つ(2.0s)で消す。
+// 表示は本編の会話UI(NpcDialogue=左上のモデル付き吹き出し)と同じ見た目をOP内で再現(UI統一・新規UIは作らない)。
+// 話者は撃つ子(ツインテのシルエット)。名前は明かさない=「？？？」・立ち絵はシーンと同じ白シルエット(叩き台)。
+const SHOOT_LINES = ['何もかもアンタばかり！', 'アンタさえいなければ…'];
 const SHOOT_FADE_START = 6200; // 最終コマを約1.3秒見せてから暗転(保持長は従来踏襲の叩き台)
 const SHOOT_FADE_MS = 1200;
 const SHOOT_TOTAL = 7600;
@@ -243,6 +247,7 @@ const OpeningScene: React.FC<{ onDone: () => void; onTitleReveal?: () => void; s
   const [phase, setPhase] = useState(startAtRevival ? 4 : startAtShoot ? 3 : 0); // 0-2=アリーナ各アングル / 3=射撃シーン / 4=蘇生処置(字幕)
   const [prevShot, setPrevShot] = useState<number | null>(null); // クロスフェード中の前アングル(下敷き)
   const [step, setStep] = useState(0); // 射撃シーンのコマ番号(SHOOT_STEPS index)
+  const [shootLine, setShootLine] = useState(-1); // 射撃シーンの会話行(SHOOT_LINES index / -1=非表示)
   const [subIdx, setSubIdx] = useState(-1); // 蘇生パートの表示中字幕(OPENING_REVIVAL_LINES index / -1=非表示)
   const [revFading, setRevFading] = useState(false); // 蘇生パート終端の3秒フェードアウト中(社長指示v0.25.2055)
   const [titleReveal, setTitleReveal] = useState(false); // 蘇生後のタイトルフェードイン中(社長指示v0.25.2061)
@@ -364,6 +369,10 @@ const OpeningScene: React.FC<{ onDone: () => void; onTitleReveal?: () => void; s
         ids.push(window.setTimeout(stopArena, SCENE_START)); // 発砲パン(場面転換後)を殺さないようアリーナだけ止める
       }
       SHOOT_STEPS.forEach((st, i) => { if (i > 0) ids.push(window.setTimeout(() => setStep(i), base + st.t)); });
+      // 会話(v0.25.2065): 立ち姿(0s)=1行目 → 構え(1.0s)=2行目 → 撃つ(2.0s)で消す(発砲が句読点)。
+      ids.push(window.setTimeout(() => setShootLine(0), base));
+      ids.push(window.setTimeout(() => setShootLine(1), base + 1000));
+      ids.push(window.setTimeout(() => setShootLine(-1), base + 2000));
       // 射撃シーンが暗転し切ったら【蘇生処置パート(phase4)】へ切替→そのまま字幕会話を再生し、
       // 最後に finish()(旧: ここで直接 finish していたのを差し替え)。?opening=2 もこの経路で蘇生まで流れる。
       ids.push(window.setTimeout(() => setPhase(4), base + SHOOT_TOTAL));
@@ -605,6 +614,39 @@ const OpeningScene: React.FC<{ onDone: () => void; onTitleReveal?: () => void; s
               )}
             </div>
           </div>
+          {/* 会話(社長指示v0.25.2065): 本編の左上・会話UI(NpcDialogue)と同一の見た目をOP内で再現。
+              位置/枠(glass-pill)/話者名の色/文字サイズはNpcDialogue.tsxに合わせる(UI統一)。 */}
+          {shootLine >= 0 && (
+            <div
+              className="absolute text-left"
+              style={{
+                top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
+                left: 'max(env(safe-area-inset-left), 18px)',
+                maxWidth: 'min(66vw, 300px)', zIndex: 40,
+              }}
+            >
+              <div
+                className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug"
+                style={{ paddingRight: 44, overflow: 'visible', textShadow: '0 1px 0 rgba(0,0,0,0.9)' }}
+              >
+                <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
+                  {/* 立ち絵=撃つ子の立ち姿。撃つ前のシーンと同じ白シルエットで正体は見せない。 */}
+                  <img
+                    src={SHOOTER(1)} alt="" draggable={false}
+                    style={{
+                      position: 'absolute', left: '50%', bottom: 0, transform: 'translateX(-50%)',
+                      height: 64, width: 'auto', maxWidth: 'none', imageRendering: 'pixelated',
+                      filter: 'brightness(0) invert(1)',
+                    }}
+                  />
+                </div>
+                <div className="self-center" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                  <span className="font-bold text-amber-300/95 mr-1.5">？？？</span>
+                  <span className="text-white/90">{SHOOT_LINES[shootLine]}</span>
+                </div>
+              </div>
+            </div>
+          )}
           {/* シーン終わりの暗転 */}
           <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, pointerEvents: 'none', animation: `opblack ${SHOOT_FADE_MS}ms linear ${SHOOT_FADE_START}ms both` }} />
         </div>
