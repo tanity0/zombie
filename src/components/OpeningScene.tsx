@@ -53,7 +53,7 @@ const WALK_FADEIN_MS = 900;     // シーン全体のフェードイン(v0.25.21
 // ── 歩き会話(v0.25.2129・社長指示「歩いてたら左上に会話が流れてほしい」) ──
 // at=歩行可能域の進行率(0=左端〜1=右端)。機種で通路の表示長(px)が変わるため%指定(社長合意)。
 // ms=表示時間(省略時WALK_LINE_MS)。\nで改行。stop=表示中プレイヤー移動ロック+待ち構えNPCの会話(90%専用)。
-// 台詞=社長支給v0.25.2131。話者はスタッフ達=立ち絵はシルエット(白反転)・名前は出さない仮で？？？。
+// 台詞=社長支給v0.25.2131。立ち絵=通常行はHERO・stop行(さ、いこっか)のみシルエット(社長指示v0.25.2133)。
 interface WalkLine { at: number; text: string; ms?: number; stop?: boolean }
 const WALK_LINES: WalkLine[] = [
   { at: 0.10, text: 'お！主役のお出ましだな！' },
@@ -64,9 +64,10 @@ const WALK_LINES: WalkLine[] = [
 ];
 const WALK_LINE_MS = 3600;
 // ── 待ち構えるスタッフ(シルエット・v0.25.2131 社長支給シート94ebf8fc): 90%会話(stop行)の主 ──
-// 素材=右向き8コマ歩きサイクル(透過済み)を統一クロップ(112×202・下端=足元)で分割。
-// wait=stop行トリガー地点の少し先に左向き(scaleX(-1))で立つ → talk=会話中(プレイヤーは移動ロック)
-// → leave=会話が終わると右へ歩き出しフェードアウトして消える(社長指示)。
+// 素材=【左向き】8コマ歩きサイクル(透過済み・社長指摘v0.25.2133で向き訂正)を統一クロップ
+// (112×202・下端=足元)で分割。wait=stop行トリガー地点の少し先に素のまま(左向き)で立つ →
+// talk=会話中(プレイヤーは移動ロック) → leave=会話が終わると右へ(scaleX(-1)で反転)歩き出し
+// フェードアウトして消える(社長指示)。
 const NPC_FRAMES = Array.from({ length: 8 }, (_, n) => A(`walk/npc-walk-${n}.png`));
 const NPC_IDLE = NPC_FRAMES[2];  // 待機ポーズ=脚が閉じた通過コマ(専用idle素材は無いので流用)
 const WALK_NPC_HR = 0.15;        // 表示高(bg高さ比。主役0.16よりわずかに小さめ)
@@ -567,7 +568,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
             npcX += WALK_SPEED * dt / 1000;
             const nfi = Math.floor(npcLeaveT / NPC_ANIM_MS) % NPC_FRAMES.length;
             if (npc.dataset.f !== String(nfi)) { npc.dataset.f = String(nfi); npc.src = NPC_FRAMES[nfi]; }
-            npc.style.transform = 'translate(-50%, -100%) translateZ(0)'; // 素材は右向き=反転を外して右へ
+            npc.style.transform = 'translate(-50%, -100%) scaleX(-1) translateZ(0)'; // 素材は左向き=反転して右へ
             npc.style.opacity = String(Math.max(0, 1 - npcLeaveT / NPC_LEAVE_FADE_MS));
             if (npcLeaveT >= NPC_LEAVE_FADE_MS) { npcState = 'gone'; npc.style.display = 'none'; }
           }
@@ -648,11 +649,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
               maskImage: WALK_DOF_MASK, WebkitMaskImage: WALK_DOF_MASK,
             } as React.CSSProperties} />
-            {/* 待ち構えるスタッフ(シルエット・90%会話・v0.25.2131)。素材は右向き→待機は左右反転で左向き。
-                位置/コマ/退場フェードはrAF側が駆動(主役と同じref直更新)。translateZ(0)=iOSマスクz順対策。 */}
+            {/* 待ち構えるスタッフ(シルエット・90%会話・v0.25.2131)。素材は左向き=待機は素のまま
+                (向き訂正v0.25.2133)。位置/コマ/退場フェードはrAF側が駆動(主役と同じref直更新)。
+                translateZ(0)=iOSマスクz順対策。 */}
             <img
               ref={walkNpcRef} src={NPC_IDLE} alt="" draggable={false}
-              style={{ position: 'absolute', transform: 'translate(-50%, -100%) scaleX(-1) translateZ(0)', imageRendering: 'pixelated' }}
+              style={{ position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated' }}
             />
             <img
               ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false}
@@ -663,8 +665,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               }}
             />
           </div>
-          {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。話者はスタッフ達(社長支給v0.25.2131)
-              =立ち絵はシルエットを白反転(invert)で暗いピルに浮かせる・名前は？？？のまま(叩き台)。 */}
+          {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。立ち絵=通常行は色ありの本人(HERO)、
+              stop行(さ、いこっか)のみシルエット(白反転で暗いピルに浮かせる)・社長指示v0.25.2133。 */}
           {walkLine >= 0 && WALK_LINES[walkLine] && (
             <div
               className="absolute text-left"
@@ -680,11 +682,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               >
                 <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
                   <img
-                    src={NPC_IDLE} alt="" draggable={false}
+                    src={WALK_LINES[walkLine].stop ? NPC_IDLE : HERO} alt="" draggable={false}
                     style={{
                       position: 'absolute', left: '50%', top: 42, transform: 'translate(-50%, -100%)',
                       height: 64, width: 'auto', maxWidth: 'none', imageRendering: 'pixelated',
-                      filter: 'invert(1) opacity(0.92)', // 黒シルエット→白(暗いピル背景に沈むため)
+                      // stop行のみ: 黒シルエット→白(暗いピル背景に沈むため)
+                      ...(WALK_LINES[walkLine].stop ? { filter: 'invert(1) opacity(0.92)' } : {}),
                     }}
                   />
                 </div>
