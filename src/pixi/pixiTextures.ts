@@ -266,6 +266,13 @@ export const ensureTextures = (): Promise<void> => {
       // 背景の天井/void プレート(外周マージンに低速パララックスで敷く・縦横シームレス)。
       { name: 'lab/lab-bg-void', scaleMode: 'nearest' },
       { name: 'lab-uv-bar', scaleMode: 'nearest' }, // 研究所のUVライトバー(松明の代わり)
+      // ステージ6(洋館・corridorMode)の世界配置素材。高解像度の詳細イラスト調を縮小表示するので
+      // cityProps 等と同じ linear(nearestだと約1/4縮小でエイリアスが出る)。床はTilingSpriteで
+      // 縦に無限リピート(NPOTのためwrap=repeatは描画側で明示)。
+      { name: 'mansion/floor', scaleMode: 'linear' },
+      { name: 'mansion/pillar-left', scaleMode: 'linear' },
+      { name: 'mansion/pillar-right', scaleMode: 'linear' },
+      { name: 'mansion/candle', scaleMode: 'linear' },
       { name: 'lab-clear-item', scaleMode: 'nearest' }, // 研究所クリア条件アイテム(拾うとクリア)
       { name: 'wire-anchor-tip', scaleMode: 'nearest' }, // ワイヤーアンカー先端(爪=左下基準。穴=右上にワイヤー接続)
       // 研究所オブジェ(木の代わりの障害物。紫透過済み)。
@@ -537,6 +544,7 @@ const BACKGROUND_PATHS = [
   'sprites/tutorial-river-flow-1.png', // 川の流れ筋レイヤー1(速い)
   'sprites/tutorial-river-flow-2.png', // 川の流れ筋レイヤー2(遅い)
   'sprites/lab-floor/lab-floor-stage2.png',
+  'sprites/mansion/back.png', // ステージ6(洋館)の遠景差し替え(farBackdropキー'mansion'・仮=壁の一枚絵)
 ];
 let bgLoading: Promise<void> | null = null;
 export const preloadBackgrounds = (): Promise<void> => {

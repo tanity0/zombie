@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2109 — ステージ6: 洋館の見た目を世界配置で実装(床/柱/燭台/暗闇/遠景)【2026-07-23 19:26 JST】
+- 裁定(社長): 洋館の見た目は「素材を世界に置く」(システムは完全m0=v0.25.2108)。実装=サブエージェント・検証=設計チャット。
+- 実装: `src/world/mansionDecor.ts`(新規・レンダラ非依存の配置純関数+テスト3件): 柱=x±300・y520間隔の足元アンカー、燭台=柱+260。pixiScene `syncMansionCorridor`: 床=floor.pngのTilingSprite(±330・worldと1:1スクロール)、暗闇=|x|>330の帯2枚(zoomlock対応)、柱/燭台=木と同じy-sort+depthScale+有界カリング、燭台の炎=松明式ゆらぎ+加算小glow(半径36<44厳守)。遠景='mansion'(back.png仮)をstage5/7と同じ仕組みで注入。campaign.ts/gameStore/挙動は未変更。
+- 検証: typecheck・lint 0エラー・テスト9本pass(mansionDecor3+corridor6)・実写=床/柱/燭台/暗闇/遠景を確認・?zoomlock=1で隙間なし・stage-1リグレッションなし。負荷2/10(TilingSprite1枚+可視スプライト~10+小glow数個・強glowゼロ)。
+- ★未決(社長裁定待ち): ①柱±300/床±330は縦持ちの可視半幅(~202〜253)の外=中央に居る間は壁が画面外(横に寄った時だけ見える)。常時見せるなら通路幅の縮小(例: 柱±210・床±240・クランプ±170連動)が要る ②柱/燭台に地平・手前フェードを適用中=位相により同時0本の瞬間あり(常時表示にするか) ③燭台の高さ150/glow(0.4・36)は叩き台 ④洋館再訪(revisit)ランは遠景が森のまま ⑤地平の森シルエット帯がm0のまま残る(洋館用素材が要るなら支給)。
+- Files: `src/world/{mansionDecor.ts,mansionDecor.test.ts}(新規)`, `src/pixi/{pixiScene.ts,pixiTextures.ts,PixiStage.tsx}`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2108 — ステージ6を完全m0仕様へ(疑似3D投影レンダリングを撤去)【2026-07-23 18:54 JST】
 - 指示(社長): ステージ6完全に壊れてる。ゲームシステムが切り離されちゃってる。m0と同じ仕様=ただ上下に伸びてるステージ。移動スピードもプレイヤーの速度で。独自仕様禁止。裁定=洋館の見た目は「素材を世界に置く」(AskUserQuestion回答)。
 - 対処(撤去): pixiSceneのsyncCorridor一式(worldGroup隠し+エンティティ投影+corridorLayer)を削除、corridorLayer.tsを削除、corridorProjection.tsからprojectCorridorEntity+関連定数を削除(±260クランプ定数と?corridor=1プレビュー用の柱投影は残置)。**ゲームロジック側は維持**: corridorMode(横±260クランプ・木/トーチ/緑卵無効・湧き上7:下3/左右なし)。
