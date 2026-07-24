@@ -329,6 +329,8 @@ const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 // ずらし、下側が少し画面外へはみ出して見えなくなるようにする。既定0.05=帯高さの5%(実測で概ね35px相当)。
 // ?labf2os= で現地調整可。
 const LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO = tsNum('labf2os', 0.05);
+// 近景森2の表示倍率(社長指示v0.25.2196「2倍の大きさに」)。上端は固定で下へ伸びる。?labf2sc= で現地調整可。
+const LAB_FRONT2_SCALE = tsNum('labf2sc', 2);
 // 北部(stage-4=snow)の遠景森1(氷壁)の拡大/上移動/高さトリム。?northscale= /?northup= /?northtrim= で現地調整可。
 const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
 const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
@@ -4962,12 +4964,15 @@ export class PixiScene {
     const sp = this.labFront2;
     sp.visible = true;
     if (sp.texture !== tex) sp.texture = tex;
-    const h = this.frontForestHeight(); // 既存近景森と同じ高さ既定(専用の高さ指定はしない)
+    const base = this.frontForestHeight(); // 1倍基準(=既存近景森の高さ)
+    // 上端固定+2倍(社長指示v0.25.2196): 上端は1倍時の位置に固定し、そこから下へ2倍の高さに伸ばす
+    // (下側は overshoot ぶん+2倍化ぶんが画面外へはみ出す)。倍率は LAB_FRONT2_SCALE(?labf2sc=)。
+    const topFixed = this.screenH - base * (1 - LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO); // 1倍時の上端=固定点
+    const h = base * LAB_FRONT2_SCALE;
     sp.width = this.screenW;
     sp.height = h;
     sp.tileScale.set(h / Math.max(1, tex.height));
-    const overshoot = h * LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO;
-    sp.position.set(sx * 0.75, this.screenH - h + overshoot); // frontForestと同じX式・Yだけ下へオーバーシュート
+    sp.position.set(sx * 0.75, topFixed); // 上端固定・下へ伸びる(frontForestと同じX式)
     sp.tilePosition.set(-cameraX * FRONT_FOREST_PARALLAX_X, 0); // frontForestと同じパララックス係数
     sp.tint = 0xffffff; // ステージ2の暗化(ENV_TINT)対象から除外=本来の明るさ(frontForestと同様)
     sp.alpha = 1;
@@ -8835,9 +8840,9 @@ export class PixiScene {
     this.L.groundBase.visible = !indoor;
     // 研究所(lab)屋外の近景森は什器シルエット(stage2-front.png・クロマキー透過)を表示する
     // (社長指示v0.25.2184。v0.25.2181で一旦非表示化したのはlab-front-band.pngのままだったため)。
-    // 近景森1(什器シルエット=frontForest)はlabでは非表示(社長指示v0.25.2194「透明度ゼロ」)。
-    // 什器レイヤーは近景森2(廃研究棟・labFront2)に一本化。洋館(屋内の廊下)は元から近景森を出さない(v0.25.2110)。
-    this.L.frontForest.visible = !indoor && !s.corridorMode && s.stageTheme !== 'lab';
+    // 洋館(屋内の廊下)は近景森を出さない(v0.25.2110)。※v0.25.2194でlab非表示にしたが、社長の
+    // 「透明度ゼロ」は不透明化の意=消すのは不本意(v0.25.2196で撤回)。什器の近景森1は復活。
+    this.L.frontForest.visible = !indoor && !s.corridorMode;
     this.L.backgroundLayer.visible = !indoor;
     // 洋館(corridorMode): 屋外の演出ドレッシング(霧バンク/背景雲霧/月光シャフト)を出さない(v0.25.2110)。
     // 非corridorでは常時true=従来挙動(屋内は各自のパイプラインが管理・ここでは触らない)。

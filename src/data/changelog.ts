@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2196',
+    items: [
+      'グラフィック: ステージ2の近景(什器シルエット)を復活させました。近景森2(廃研究棟)は上端を固定したまま2倍の大きさにしました。',
+    ],
+  },
+  {
     version: '0.25.2195',
     items: [
       '演出: エンディングの聴取記録を、画面中央の一定の枠内で流れて上へ消えていく表示にしました(長い台詞で下が切れないように)。',
