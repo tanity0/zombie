@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.2198 — 緊急修正: 全画面まっくら(モジュール読込クラッシュ)【2026-07-25 01:34 JST】
+- 症状(社長): ゲームが壊れて何も出ない・まっくら(全ステージ/タイトル含む)。
+- 真因: v0.25.2197の私のコミットに、並行実行中の遠景森エージェントの**未完成WIP**が混入していた
+  (共有ワークツリーで git add した瞬間にエージェントが追記した`LAB_FARFOREST_*`定数が紛れ込んだ race)。
+  それらが`tsNum`(312行で宣言)より前(206-211行)で`tsNum()`を呼び、モジュール評価時にTDZで
+  ReferenceError→pixiScene.ts読込失敗→PixiStage全滅→まっくら。typecheckは混入前の差分で通過して
+  すり抜けた(=検証の穴)。
+- 対処: pixiScene.tsをv2196(正常)へ戻し、私の正当なv2197変更(近景森2の20px上げ+ぼかし)だけ再適用。
+  エージェントの遠景森WIP(pixiScene/PixiStage/stageSkins)は全て破棄=クリーンなHEADへ。遠景森は改めて
+  クリーンに実装し直す。
+- 教訓(要ENGINEERING_NOTES): **共有ワークツリーで並行エージェントが同一ファイルを編集中は、git addを
+  明示パスにしても“add直前にエージェントが追記した分”を巻き込む。** 対策=並行エージェントに同一ファイルを
+  触らせない/コミット直前に`git diff --cached`で差分を確認してからcommitする。
+- 検証: typecheck・lint 0エラー(社長=実機で復旧確認)。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2197 — M2近景森2を20px上げ+ぼかし/近景森1の不透明を確認【2026-07-25 01:14 JST】
 - 指示(社長): 近景森1の「透明度ゼロ」=不透明の意(v0.25.2196の復活で確定・追加変更なし=frontForest
   はstage-2でfrontForestAlpha()→1の完全不透明)。近景森2は20px上げてぼかす。
