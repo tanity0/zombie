@@ -4,8 +4,10 @@
 export const AMMO_DIR_MAX_PCT = 20;    // 底上げ後の上限%
 export const AMMO_DIR_RATIO_FULL = 0.5;  // 備蓄率がこれ以上なら枯渇度0
 export const AMMO_DIR_RATIO_EMPTY = 0.15; // これ以下で枯渇度1
-export const AMMO_DIR_ENEMY_CALM = 8;   // 敵数これ以下で圧力0
-export const AMMO_DIR_ENEMY_SWARM = 25; // これ以上で圧力1
+// v0.25.2174(社長承認「それで」): 敵は通常~10体前後(社長情報)の実態に合わせ再校正。
+// 旧8/25では乱戦条件がほぼ永遠に来ず、実測で最大14.7%止まり=20%の底上げが発動しなかった。
+export const AMMO_DIR_ENEMY_CALM = 7;   // 敵数これ以下で圧力0(平常)
+export const AMMO_DIR_ENEMY_SWARM = 13; // これ以上で圧力1(乱戦MAX)
 export const AMMO_DIR_PRESSURE_FLOOR = 0.35; // 枯渇していれば敵が少なくても効く最低係数
 export interface AmmoDirectorInput { families: { reserve: number; max: number }[]; enemyCount: number }
 export const ammoDirectorRate = (basePct: number, input: AmmoDirectorInput): number => {
