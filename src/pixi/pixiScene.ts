@@ -341,6 +341,13 @@ const LAB_FRONT2_BLUR = tsNum('labf2bl', 3);
 // 社長指示v0.25.2198「新規定数は必ずtsNum/tsBoolの宣言より下に置く」)。
 const LAB_FAR_WINDOW_SCALE = tsNum('labfwsc', 1); // ?labfwsc= で現地調整可
 const LAB_FAR_GLASS_ALPHA = tsNum('labfga', 0.3); // 遠景窓ガラスの不透明度(社長指示v0.25.2202「透明度70%=alpha0.3」)。?labfga=
+// 遠景窓の横パララックス: この窓は遠景森1(horizonForest・lab時 horizon1Visible=false で非表示)を
+// 置き換えたもの。旧森1と同じ 0.16(HORIZON_FOREST_PARALLAX_X)で流す=横に動いて見える
+// (旧 0.09=遠景壁と同率だと窓1枚≒画面幅のため実質静止して見えた。社長指示v0.25.2203)。?labfwpx=
+const LAB_FAR_WINDOW_PARALLAX = tsNum('labfwpx', HORIZON_FOREST_PARALLAX_X);
+// 遠景窓の下辺の上げ量(px): 遠景backdropの実下辺を基準に、床が窓を被る分だけ上へ持ち上げる微調整。
+// 既定0=遠景下辺そのまま(社長指示v0.25.2203「遠景の下辺に高さを合わせて」)。?labfwup=
+const LAB_FAR_WINDOW_BOTTOM_UP = tsNum('labfwup', 0);
 // 近景森1/2のパララックス速度差(社長指示v0.25.2200「近景森1と2の速度を変えたい、2の方が少しだけ速く」):
 // 近景森1(frontForest・lab限定)=既定0.68でFRONT_FOREST_PARALLAX_Xと同値(現状維持)。
 // 近景森2(labFront2・一番手前)=既定0.80で1より少し速い(手前ほど速く流れる=奥行き感)。
@@ -5043,14 +5050,17 @@ export class PixiScene {
     glass.visible = true; frame.visible = true;
     if (glass.texture !== glassTex) glass.texture = glassTex;
     if (frame.texture !== frameTex) frame.texture = frameTex;
-    const bottom = this.farBackdropHeight(); // 床境界(社長指示「下辺を床境界に揃え」)
+    // 下辺=遠景backdropの実描画下辺に合わせる(社長指示v0.25.2203「遠景の下辺に高さを合わせて」)。
+    // farBackdropは lab では [0, farH] に高さフィット=下辺は position.y + height。床が被る場合は
+    // LAB_FAR_WINDOW_BOTTOM_UP(?labfwup=)ぶん上へ持ち上げる。
+    const bottom = this.L.farBackdrop.position.y + this.L.farBackdrop.height - LAB_FAR_WINDOW_BOTTOM_UP;
     const layoutOne = (sp: TilingSprite, tex: Texture) => {
       const h = this.screenW * (tex.height / tex.width) * LAB_FAR_WINDOW_SCALE; // アスペクト維持
       sp.width = this.screenW;
       sp.height = h;
       sp.tileScale.set(h / Math.max(1, tex.height));
-      sp.position.set(0, bottom - h); // 下辺=bottom(床境界)に揃える
-      sp.tilePosition.set(-cameraX * FAR_BACKDROP_PARALLAX_X, 0); // farBackdropと同じパララックス係数
+      sp.position.set(0, bottom - h); // 下辺=bottom(遠景backdropの下辺)に揃える
+      sp.tilePosition.set(-cameraX * LAB_FAR_WINDOW_PARALLAX, 0); // 旧森1と同じ横スクロール率(横に動く)
     };
     layoutOne(glass, glassTex);
     layoutOne(frame, frameTex);

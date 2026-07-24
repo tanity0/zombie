@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.2203 — M2遠景窓: 横スクロール修正+下辺を遠景下端に【2026-07-25 02:23 JST】
+- 指示(社長): ①窓が横に動かない ②M2の床が遠景に被る=遠景の下辺に高さを合わせて。
+- 診断: lab skin は horizon1Visible=false=窓は遠景森1(horizonForest)を置き換えた層。だが
+  横スクロール率を farBackdrop と同率 0.09 にしていた(森1は 0.16)。かつ窓1枚≒画面幅のため
+  0.09では実質静止して見えた。下辺は farBackdropHeight(床境界)基準だった。
+- 対処: (1)LAB_FAR_WINDOW_PARALLAX(既定=HORIZON_FOREST_PARALLAX_X=0.16・?labfwpx=)を新設し
+  窓の tilePosition を旧森1と同率に=横に流れる。(2)下辺基準を farBackdrop の実描画下辺
+  (position.y+height)に変更(lab では =farH で従来と数値一致・安全)。床が被る分の微調整用に
+  LAB_FAR_WINDOW_BOTTOM_UP(px・既定0・?labfwup=)を追加。
+- 検証: typecheck・lint 0。TDZ(tsNum宣言前呼び)なし。#2は既定 labfwup=0 で従来と数値一致=挙動不変、
+  可視変化は実機で labfwup を詰めて確定予定。実機は社長確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2202 — M2遠景窓ガラス: 透明度70%(alpha0.3)【2026-07-25 01:55 JST】
 - 指示(社長): ガラスの透明度70%に。確認の結果=より透ける方(alpha0.3)を採用。
 - 対処: LAB_FAR_GLASS_ALPHA の既定を 0.5→0.3(?labfga= で現地調整可)。
