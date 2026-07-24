@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2158',
+    items: [
+      '演出: オープニング廊下に夢の演出を追加しました(明かりのソフトなにじみ・舞台全体のゆっくりした呼吸・ランプから落ちる光のカーテン)。',
+    ],
+  },
+  {
     version: '0.25.2157',
     items: [
       'ゲーム内容の変更はありません(弾薬ドロップ率のバランステスト結果の記録のみ)。',

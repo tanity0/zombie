@@ -105,6 +105,17 @@ const WALK_GLOWS = [
   { x: 95.93, y: 29.5, s: 1.0, green: false },  // 関係者出口 上
   { x: 96.88, y: 33.5, s: 0.8, green: true },   // 関係者出口の緑サイン
 ];
+// 光のカーテン(v0.25.2158・社長選定E案): ランプから下へ落ちる淡い光帯(bg%座標・screen合成・
+// CSSゆらぎのみ)。全6灯だと騒がしいので4本に間引き。skewX=わずかに斜めへ流れる夢の光。
+const WALK_RAYS = [
+  { x: 10.26, w: 7.5, dur: 7.5, delay: -1.2 },  // 楽屋A
+  { x: 39.87, w: 8.5, dur: 8.5, delay: -4.0 },  // 楽屋B
+  { x: 67.16, w: 8.0, dur: 9.5, delay: -2.6 },  // 楽屋C
+  { x: 95.93, w: 7.0, dur: 8.0, delay: -5.5 },  // 関係者出口
+];
+// 夢のソフトブルーム(v0.25.2158・社長選定A案)の重ね不透明度: ブラー焼き込み版をscreen合成で
+// 全面に極薄で重ねる=明部(ランプ・サイン)だけがにじむソフトフォーカス。ランタイムぼかしゼロ。
+const WALK_BLOOM_ALPHA = 0.14;
 // v0.25.2134(社長指示「ぼかし少し弱めて、黄色ラインくらいまで入れて」): フルぼかしを黄色ライン
 // (実測0.639-0.647)まで届かせ、縁石帯で抜いて舗装床(0.71〜)からシャープ。強度はWALK_DOF_ALPHAで少し弱める。
 const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 64%, transparent 71%)';
@@ -634,7 +645,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // スポットライトのゆっくり明滅(強すぎない0.8↔1.0)。
     `\n@keyframes opspot{0%{opacity:0.8}50%{opacity:1}100%{opacity:0.8}}` +
     // 夢の浮遊パーティクル(OP廊下): その場でふわっと往復+明滅(振幅/透明度はCSS変数で粒ごとに変える)。
-    `\n@keyframes opmote{0%,100%{transform:translate(0,0);opacity:var(--o0)}50%{transform:translate(var(--mx),var(--my));opacity:var(--o1)}}`;
+    `\n@keyframes opmote{0%,100%{transform:translate(0,0);opacity:var(--o0)}50%{transform:translate(var(--mx),var(--my));opacity:var(--o1)}}` +
+    // 廊下の夢演出(v0.25.2158・社長選定B/E案): 舞台の呼吸ズーム / 光のカーテンの明滅。
+    `\n@keyframes opbreathe{from{transform:scale(1)}to{transform:scale(1.014)}}` +
+    `\n@keyframes oplray{0%,100%{opacity:0.5}50%{opacity:1}}`;
 
   const cur = SHOOT_STEPS[step];
 
@@ -671,6 +685,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           onPointerLeave={() => { walkTouchXRef.current = null; walkDirRef.current = 0; }}
           style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#000', touchAction: 'none', cursor: 'default', animation: `opfade ${WALK_FADEIN_MS}ms ease-out both` }}
         >
+          {/* 呼吸ズーム(v0.25.2158・社長選定B案): 舞台全体がゆっくり1.4%だけ伸縮する「夢の呼吸」。
+              worldのtransformはrAFがカメラ用に毎フレーム書くため、CSSアニメは別ラッパーに載せる。
+              会話UI・motesはこの外=呼吸しない。 */}
+          <div style={{ position: 'absolute', inset: 0, transformOrigin: '50% 60%', animation: 'opbreathe 9s ease-in-out infinite alternate', willChange: 'transform' }}>
           <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
             <img src={WALK_BG} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />
             {/* 被写界深度: 事前ブラー版を縦グラデマスクで重ねる(壁=ボケ/黄色ラインで抜けて床はシャープ)。 */}
@@ -679,6 +697,28 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               opacity: WALK_DOF_ALPHA,
               maskImage: WALK_DOF_MASK, WebkitMaskImage: WALK_DOF_MASK,
             } as React.CSSProperties} />
+            {/* 夢のソフトブルーム(v0.25.2158・社長選定A案): 同じブラー焼き込み版をマスク無し・screen合成・
+                極薄で全面に重ねる=明部だけがふわっと滲むソフトフォーカス(ランタイムぼかしゼロ)。 */}
+            <img src={WALK_BG_BLUR} alt="" draggable={false} style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
+              opacity: WALK_BLOOM_ALPHA, mixBlendMode: 'screen', pointerEvents: 'none',
+            }} />
+            {/* 光のカーテン(v0.25.2158・社長選定E案): ランプ下に落ちる淡い光帯。bg%座標=スクロール連動。
+                マスクで両縁を溶かし、skewXでわずかに斜めへ。キャラより先に描く=キャラは光帯の手前。 */}
+            {WALK_RAYS.map((r, ri) => (
+              <div
+                key={`wr${ri}`}
+                style={{
+                  position: 'absolute', left: `${r.x}%`, top: '29%', width: `${r.w}%`, height: '38%',
+                  transform: 'translateX(-50%) skewX(-12deg)', transformOrigin: 'top center',
+                  background: 'linear-gradient(to bottom, rgba(255,226,170,0.26) 0%, rgba(255,214,150,0.10) 55%, rgba(255,205,140,0) 88%)',
+                  maskImage: 'linear-gradient(to right, transparent 0%, black 30%, black 70%, transparent 100%)',
+                  WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 30%, black 70%, transparent 100%)',
+                  mixBlendMode: 'screen', pointerEvents: 'none',
+                  animation: `oplray ${r.dur}s ease-in-out ${r.delay}s infinite`,
+                } as React.CSSProperties}
+              />
+            ))}
             {/* ライトのグロー(v0.25.2144・社長指示「背景のライト部分は全てグローで」): 実測した
                 ランプ/サイン位置(bg%)にscreen合成の放射光を重ねてゆっくり明滅。bgスクロールに連動。 */}
             {WALK_GLOWS.map((gl, gi) => (
@@ -712,6 +752,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               }}
             />
           </div>
+          </div>{/* 呼吸ズームラッパー閉じ(v0.25.2158) */}
           {/* 夢の浮遊パーティクル(v0.25.2144): 画面全体をふわふわ漂う光の粒(画面座標・CSSのみ)。 */}
           <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
             {WALK_MOTES.map(m => (
