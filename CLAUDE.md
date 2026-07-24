@@ -155,6 +155,9 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   reference for fields others read, and gate the write when nothing changed.
 
 ## Testing policy (test/debug cadence)
+- **検証も社長指示制(社長指示v0.25.2184・全エージェント共通)**: ヘッドレス実走(Playwright)・ボットラン・
+  スクショ確認などの「検証」は、**社長が明示的に求めない限り回さない**。数字いじり・実装とも、
+  push前は typecheck+lint(下記の常時フロア)だけで着地する。実機確認は社長が行う。
 **ローカルでテスト/ビルドを回すかは社長が指示する(社長決定v0.25.1528)。** 自己判断の「要所でフル」
 (旧v0.25.1496)は形骸化した——実測でSonnetが毎push `lint && typecheck && test && build`(約90秒/回、
 うちM9ボットスモークが約38秒=テスト時間の88%)をフル実行し、しかもその38秒は今の作業(ゲート/演出/描画)の

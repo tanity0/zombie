@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.2184 — 運用: 検証も社長指示制へ(CLAUDE.md追記)【2026-07-24 23:36 JST】
+- 指示(社長):「今後、こちらが言わない限り検証回さないで」。ヘッドレス実走・ボットラン・スクショ確認は
+  明示指示があった時だけ。push前は typecheck+lint のみで着地(全エージェント共通)。
+- Files: `CLAUDE.md`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2183 — M2の遠景(支給1枚)を50px上へ【2026-07-24 23:04 JST】
 - 依頼(社長指示): M2(stage-2)の遠景(支給1枚のfarBackdrop・v0.25.2181で単独表示化済み)を50px上へ
   移動。直前に触ったlabの遠景描画経路に、labキー時のみのYオフセット定数を足す最小実装。他ステージの
