@@ -178,6 +178,8 @@ const TUTORIAL_FAR_HEIGHT_RATIO = 0.415;
 // ステージ2(研究所)の遠景も、床との距離感がM0(チュートリアル)と揃うようTUTORIALと同じ比率にする
 // (社長指示v0.25.2176「遠景と床の距離感をM0と同じに」)。値そのものはTUTORIAL_FAR_HEIGHT_RATIOに追従。
 const LAB_FAR_HEIGHT_RATIO = TUTORIAL_FAR_HEIGHT_RATIO;
+// M2(研究所)の遠景(支給1枚のfarBackdrop)だけを50px上へ(社長指示v0.25.2183)。他ステージは不変。
+const LAB_FAR_OFFSET_Y = -50;
 // 川の流れ(オクトラ風・社長相談2026-07-17): 遠景と同ジオメトリのハイライト筋レイヤー2枚を
 // 速度差でスクロール(1枚目=速い/2枚目=遅い)。明部は既存bloomが拾って光る。数値は全て叩き台。
 const RIVER_FLOW_SPEED_PX_S = [18, 10];   // tilePositionの流速(表示px/秒)
@@ -2252,7 +2254,7 @@ export class PixiScene {
     const farScale = isM7far
       ? farDrawH / this.L.farBackdrop.texture.height
       : Math.max(w / this.L.farBackdrop.texture.width, farH / this.L.farBackdrop.texture.height);
-    this.L.farBackdrop.position.set(0, 0);
+    this.L.farBackdrop.position.set(0, this.currentFarKey === 'lab' ? LAB_FAR_OFFSET_Y : 0);
     this.L.farBackdrop.width = w;
     this.L.farBackdrop.height = farDrawH;
     this.L.farBackdrop.tileScale.set(farScale);
@@ -3815,7 +3817,7 @@ export class PixiScene {
     }
 
     const farH = this.farBackdropHeight();
-    this.L.farBackdrop.position.set(sx * 0.25, 0);
+    this.L.farBackdrop.position.set(sx * 0.25, this.currentFarKey === 'lab' ? LAB_FAR_OFFSET_Y : 0);
     this.L.farBackdrop.tilePosition.set(
       -s.camera.x * FAR_BACKDROP_PARALLAX_X,
       0

@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.2183 — M2の遠景(支給1枚)を50px上へ【2026-07-24 23:04 JST】
+- 依頼(社長指示): M2(stage-2)の遠景(支給1枚のfarBackdrop・v0.25.2181で単独表示化済み)を50px上へ
+  移動。直前に触ったlabの遠景描画経路に、labキー時のみのYオフセット定数を足す最小実装。他ステージの
+  遠景位置は不変。
+- 実装(`src/pixi/pixiScene.ts`): 新定数`LAB_FAR_OFFSET_Y = -50`を`LAB_FAR_HEIGHT_RATIO`の直後に追加。
+  `farBackdrop.position.set(...)`の2箇所(初期レイアウト`resize()`のy=0固定箇所、および毎フレーム
+  同期のパララックス箇所)双方のYを`this.currentFarKey === 'lab' ? LAB_FAR_OFFSET_Y : 0`に変更
+  (片方だけだと毎フレーム同期側が上書きして反映されないため両方修正)。他のfarBackdrop設定
+  (width/height/tileScale/alpha/tilePosition)・他ステージ分岐は無改変。
+- 検証: typecheck・lint 0エラー。ヘッドレス(`?smoke&stage=stage-2`)で`window.__pixiScene.L.farBackdrop`
+  の実値が`{x:0, y:-50}`(currentFarKey:'lab')であることを確認。移動前(v0.25.2181時点の
+  `scratchpad/m2-fartint.png`)と移動後(`scratchpad/m2-far-up50-after.png`)を並べた比較画像を
+  `scratchpad/m2-far-up50.png`に保存し、遠景内の「STEM CELL RESEARCH」表示や天井灯の列が
+  固定の赤基準線に対して上へ動いていることを目視確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2182 — M2の敵湧きを左右のみに限定(上下オフスクリーン湧きを廃止)【2026-07-24 22:14 JST】
 - 依頼(社長指示): stage-2(研究所・labTheme)の動的湧き(`useGameLoop.ts` 7869-7898行付近)は
   従来`generateEnemy`の全辺(上下左右)オフスクリーン湧きをそのまま使っていたが、これを画面外の

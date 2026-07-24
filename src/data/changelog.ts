@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2183',
+    items: [
+      '調整: ステージ2の遠景の位置を少し上げました。',
+    ],
+  },
+  {
     version: '0.25.2182',
     items: [
       '調整: ステージ2では敵が通路の左右からのみ現れるようになりました。',
