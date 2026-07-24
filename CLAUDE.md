@@ -130,6 +130,9 @@ work by what kind of effect-draw it adds and how many are alive at once.
   slow-motion target.
 - Periodic weapon explosions, including grenade-launcher-style projectile
   explosions, also must not trigger slow motion unless explicitly requested.
+- **サブウェポンのチャージ(CD明け)通知は全サブウェポン共通でブーメラン型に統一(社長指示v0.25.2155)**:
+  not-ready→ready の瞬間に「カチッSE+頭上マークが一瞬(~650ms)出て消える」だけ。常時表示の
+  チャージマーク等、この型以外の通知を増やさない(前例: drone-boomerang / flare-gun)。
 
 ## React re-render discipline (per-frame cost) — ALWAYS check this
 Confirmed to matter a lot on-device. Whenever you add or touch React UI (HUD,

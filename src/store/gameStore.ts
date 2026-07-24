@@ -2232,6 +2232,9 @@ interface GameState {
   // ジャンプ/ダッシュが設置シールドに防がれた瞬間(その frame の接触点)。useGameLoop が消化(衝突FX+SE)して空に戻す。
   shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
+  // フレアガンのCD明け演出(頭上の小さな炎マーク・一瞬)の発火時刻(Date.now)。
+  // サブウェポンのチャージ通知は全共通で「明けた瞬間だけ一瞬出る」ブーメラン型(社長指示v0.25.2155)。
+  flareReadyFxAt: number;
   // マークスマン(mage)の射程上昇が発動した瞬間の頭上マーク演出。fxAt=発火時刻(Date.now)、
   // fxShownFor=その演出を出した連続移動streak(=marksmanMovingSince)。streakごとに一度だけ出す。
   marksmanRangeFxAt: number;
@@ -2879,6 +2882,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   rescueAllies: [],
   thrownBags: [],
   boomerangReadyFxAt: 0,
+  flareReadyFxAt: 0,
   marksmanRangeFxAt: 0,
   marksmanRangeFxShownFor: 0,
   rescueShooterFxAt: 0,

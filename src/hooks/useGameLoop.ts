@@ -831,6 +831,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const lastFrameTimeRef = useRef(0);
   const lastEnemySpawnRef = useRef(0);
   const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
+  const flareReadyRef = useRef(true); // フレアガンのCD明け検出(同上・ブーメラン型の一瞬通知)
   const playerKillTimesRef = useRef<number[]>([]); // プレイヤーの撃破時刻(無双判定の直近ウィンドウ)
   const fireJetEnemyAtRef = useRef<Map<string, number>>(new Map()); // 敵ID→直近の背中火spawn時刻(ショットガン等の多弾を1本に間引く)
   const benkeiReadyRef = useRef(true); // 弁慶: 再発動CD明け検出(false→true で「閃き」フラッシュ)
@@ -7269,6 +7270,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({ boomerangReadyFxAt: Date.now() });
           }
           boomReadyRef.current = ready;
+        }
+        // フレアガンのCD明け: ブーメランと同型(サブウェポン共通の「明けた瞬間だけ一瞬通知」・社長指示v0.25.2155)。
+        {
+          const hasFlare = player.subWeapons.includes('flare-gun') && !subWeaponBlockedByKatana(player, 'flare-gun');
+          const ready = hasFlare && gameTime >= (player.subWeaponCooldowns['flare-gun'] ?? 0);
+          if (ready && !flareReadyRef.current) {
+            playSfx('reload', 1, 300);
+            useGameStore.setState({ flareReadyFxAt: Date.now() });
+          }
+          flareReadyRef.current = ready;
         }
         // スキル: 弁慶のCD明け(再発動可)を not-ready→ready の瞬間に検出して
         // プレイヤー頭上に短い「閃き」フラッシュ(描画のみ・スロー無し・~0.6s)。

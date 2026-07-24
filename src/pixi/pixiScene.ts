@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, subWeaponBlockedByKatana, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
@@ -3906,9 +3906,9 @@ export class PixiScene {
     this.syncPumpkinTelegraph(s.enemies, now); // ジャンプ攻撃の着地予告(赤い影)
     this.updateBoomerangReadyMark(s.player, now); // ブーメランCD明けの頭上マーク
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
+    this.updateFlareReadyMark(s.player, now);     // フレアガンCD明けの頭上炎マーク(一瞬・ブーメラン型)
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
-    this.syncFlareReady(s, now);
     this.syncSlasherRing(s.player, s.realGameTime);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
@@ -6001,17 +6001,23 @@ export class PixiScene {
   // フレアガンのチャージ完了マーク(社長指示v0.25.2154「チャージされたら小さい炎のマークで知らせて」):
   // 装備中かつCD明けの間、プレイヤー頭上に小さな炎(外炎+内炎のしずく型・ゆらぎ付き)を描く。
   // 毎フレームclear+ベジェ2枚のみ=負荷1/10。刀で封印中(撃てない)は出さない。
-  private syncFlareReady(s: ReturnType<typeof useGameStore.getState>, now: number) {
+  // フレアガンCD明け: ブーメランと同型の「明けた瞬間だけ一瞬出て消える」頭上マーク(小さな炎)。
+  // サブウェポンのチャージ通知は全共通でこの型(社長指示v0.25.2155・常時表示にしない)。
+  private updateFlareReadyMark(player: Player, now: number) {
     const g = this.flareReadyGfx;
     g.clear();
-    const p = s.player;
-    if (!p.subWeapons.includes('flare-gun')) return;
-    if (subWeaponBlockedByKatana(p, 'flare-gun')) return;
-    if (s.gameTime < (p.subWeaponCooldowns['flare-gun'] ?? 0)) return;
-    const cx = p.x + p.width / 2;
+    const at = useGameStore.getState().flareReadyFxAt;
+    const life = 650;
+    const dt = now - at;
+    if (at <= 0 || dt < 0 || dt > life) return;
+    const t = dt / life;                       // 0→1
+    const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82; // 立ち上がり速→ふわっと減衰
+    const rise = -18 * t;                      // 上へ少し浮く(ブーメランマークと同じ)
+    const cx = player.x + player.width / 2;
     // スプライトの見た目はヒットボックス上端(p.y)より上に伸びる(髪)。-22だと髪の中に埋まって
     // 髪飾りに見える(実測)ため、実績ある頭上マーク(ブーメラン=中心p.y-46)と同じ高さ帯へ。
-    const topY = p.y - 42;
+    const topY = player.y - 42 + rise;
+    const a = Math.max(0, alpha);
     const flick = 0.9 + 0.1 * Math.sin(now / 130);   // 炎の背丈ゆらぎ
     const sway = Math.sin(now / 260) * 0.9;          // 先端の左右ゆらぎ
     const h = 9 * flick;
@@ -6026,7 +6032,7 @@ export class PixiScene {
       cx - 1.8, topY,
       cx - 3.7, topY - 1.5,
       cx - 3.2, topY - h * 0.45,
-    ]).fill({ color: 0xf97316, alpha: 0.95 });
+    ]).fill({ color: 0xf97316, alpha: 0.95 * a });
     // 内炎(黄色・小さめ)
     g.poly([
       cx + sway * 0.6, topY - h * 0.55,
@@ -6034,7 +6040,7 @@ export class PixiScene {
       cx + 1.4, topY - 0.6,
       cx - 1.4, topY - 0.6,
       cx - 1.9, topY - h * 0.22,
-    ]).fill({ color: 0xfde047, alpha: 0.95 });
+    ]).fill({ color: 0xfde047, alpha: 0.95 * a });
   }
 
   // ホーミング弾ロックインジケーター: ロック済み敵の頭にPHILL風の照準サークルを描く。

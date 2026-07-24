@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.2155 — フレアガンのチャージ通知をブーメラン型(一瞬)へ+サブウェポン共通ルール化【2026-07-24 14:29 JST】
+- 指示(社長): チャージマークはドローンブーメラン等と同じく「チャージされた時だけわかるやつ」。
+  **これはサブウェポン全共通で覚えておく。この仕様以外は増やさない。**
+- 対処: v0.25.2154の常時表示をやめ、ブーメランと同型に: useGameLoopで not-ready→ready の瞬間を検出
+  (装備中・刀封印なし・CD明け)→ カチッSE(reload 300ms)+`flareReadyFxAt`打刻 → pixiSceneの
+  `updateFlareReadyMark`が650msだけ頭上に炎(同じ雫型・立ち上がり0.18/ふわっと減衰/上へ-18px)を表示。
+  恒久ルールをCLAUDE.md(スローモーション規則の隣)に追記。
+- 検証: typecheck(既知のammoSweep.test.ts TS2307のみ)・lint 0エラー。ヘッドレスは約1フレーム/秒まで
+  劣化し650msの一瞬アニメはスクショ網に掛からない→シーン内命令数サンプリングで「打刻直後instr=2→
+  650ms後instr=0」の点灯・消灯を機械確認+dt固定(220ms)スクショで頭上の炎(橙50画素)を目視確認。
+- Files: `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`, `CLAUDE.md`,
+  `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2154 — フレアガン: チャージ完了の頭上炎マーク【2026-07-24 13:27 JST】
 - 指示(社長): フレアガン、チャージされたら小さい炎のマークで知らせて。
 - 対処: プレイヤー頭上に小さな炎(橙の雫型+黄色の芯・ゆらぎ付き)を常時表示。条件=フレアガン装備中
