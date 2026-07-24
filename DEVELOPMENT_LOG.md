@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.2204 — M2遠景窓: 床より前面へ層移動+枠をガラス手前に【2026-07-25 02:23 JST】
+- 指示(社長): ①遠景森(窓)を床よりレイヤー上に ②窓枠を窓ガラスより上のレイヤーに。
+  (③「下に敷く森ステージを消せないか」は什器バンドの復活経緯があるため別途確認中=未実装)
+- 対処: 窓(glass/frame)を farGroup(最下=床の下)から worldGroup 内・groundBase(床)の直上
+  =旧遠景森1(horizonForest)と同じ枠へ移動(addChildAt)。frame は glass の直上に挿入=手前を保証。
+  farGroupを出るため遠景ブラーは外れる(=森1と同じ非ブラー)。worldGroup所属で文脈ズームでも床境界に貼り付く。
+- 副次: これで以前の「床が窓を被る」問題(v2203のlabfwup暫定つまみ)は層順で根本解決。
+- 検証: typecheck通過。lint後述。実機は社長確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2203 — M2遠景窓: 横スクロール修正+下辺を遠景下端に【2026-07-25 02:23 JST】
 - 指示(社長): ①窓が横に動かない ②M2の床が遠景に被る=遠景の下辺に高さを合わせて。
 - 診断: lab skin は horizon1Visible=false=窓は遠景森1(horizonForest)を置き換えた層。だが

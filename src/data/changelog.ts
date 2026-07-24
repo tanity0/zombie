@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2204',
+    items: [
+      'グラフィック: ステージ2の遠景の窓を床より前面に出し(床に隠れないように)、窓枠をガラスより手前にしました。',
+    ],
+  },
+  {
     version: '0.25.2203',
     items: [
       'グラフィック: ステージ2の遠景の窓が歩くと横に流れるようにし、下辺を遠景の下端に合わせました。',

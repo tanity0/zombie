@@ -1770,8 +1770,8 @@ export class PixiScene {
   private nearHorizonBlur: BlurFilter | null = null;
   private labCeiling: TilingSprite | null = null; // 最前面の天井帯(上寄せ・半透明・横ループ)。lab=固定/チュートリアル=カメラ連動
   private labFront2: TilingSprite | null = null; // 近景森2(一番手前・廃研究棟の壁/残骸)。lab限定・横ループ(社長指示v0.25.2192)
-  private labFarGlass: TilingSprite | null = null; // 遠景の窓・ガラス(奥)。farGroup内。lab限定・横ループ(社長指示v0.25.2199)
-  private labFarFrame: TilingSprite | null = null; // 遠景の窓・フレーム(手前)。ガラスの直後に重ねる。lab限定・横ループ(社長指示v0.25.2199)
+  private labFarGlass: TilingSprite | null = null; // 遠景の窓・ガラス(奥)。worldGroup内・床の直上(森1枠)。lab限定・横ループ(社長指示v0.25.2199/2204)
+  private labFarFrame: TilingSprite | null = null; // 遠景の窓・フレーム(手前)。ガラスの直上に重ねる。worldGroup内。lab限定・横ループ(社長指示v0.25.2199/2204)
   private labFarGlassTex: Texture | null = null;
   private labFarFrameTex: Texture | null = null;
   setLabFarWindowTextures(glass: Texture | null, frame: Texture | null) {
@@ -5025,10 +5025,11 @@ export class PixiScene {
     sp.alpha = 1;
   }
 
-  // 遠景の窓(フレーム+ガラス2層・社長支給素材v0.25.2199): ガラス(奥)の上にフレーム(手前)を重ね、
-  // farBackdrop(遠景)と同じ被写界深度グループ(farGroup)に入れて同じブラーを受ける=遠景と地続きの
-  // 奥行きになる。下辺は床境界(farBackdropHeight)に揃える(社長指示「下辺を床境界に揃え」)。
-  // lab屋外限定・横ループ(farBackdropと同じパララックス)。テクスチャ未注入/非labの間はno-op(非表示)。
+  // 遠景の窓(フレーム+ガラス2層・社長支給素材v0.25.2199): ガラス(奥)の上にフレーム(手前)を重ねる。
+  // 置き場所=worldGroup内・groundBase(床)の直上=旧遠景森1(horizonForest)と同じ枠(床の上・gameplayの下)。
+  // これで床に被られず(社長指示v0.25.2204「遠景森は床よりレイヤー上に」)、床と同じworldGroupなので
+  // 文脈ズームでも境界に貼り付く。farGroupを出るため遠景ブラーは外れる(=森1と同じ非ブラー扱い)。
+  // 下辺は遠景backdropの実下辺に揃える。lab屋外限定・横ループ。テクスチャ未注入/非labの間はno-op(非表示)。
   private updateLabFarWindow(show: boolean, cameraX: number) {
     const glassTex = this.labFarGlassTex, frameTex = this.labFarFrameTex;
     if (!show || !glassTex || !frameTex) {
@@ -5036,14 +5037,15 @@ export class PixiScene {
       if (this.labFarFrame) this.labFarFrame.visible = false;
       return;
     }
+    const wg = this.L.worldGroup;
     if (!this.labFarGlass) {
       const sp = new TilingSprite({ texture: glassTex, width: 1, height: 1 });
-      this.farGroup.addChild(sp); // farBackdropと同じ被写界深度(奥)
+      wg.addChildAt(sp, wg.getChildIndex(this.L.groundBase) + 1); // 床の直上=森1と同じ枠(gameplayの下)
       this.labFarGlass = sp;
     }
     if (!this.labFarFrame) {
       const sp = new TilingSprite({ texture: frameTex, width: 1, height: 1 });
-      this.farGroup.addChild(sp); // ガラスの直後に追加=ガラスの手前(社長指示「フレーム手前」)
+      wg.addChildAt(sp, wg.getChildIndex(this.labFarGlass) + 1); // ガラスの直上=枠が手前(社長指示v0.25.2204)
       this.labFarFrame = sp;
     }
     const glass = this.labFarGlass, frame = this.labFarFrame;
