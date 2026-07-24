@@ -1,5 +1,26 @@
 # Development Log
 
+## v0.25.2182 — M2の敵湧きを左右のみに限定(上下オフスクリーン湧きを廃止)【2026-07-24 22:14 JST】
+- 依頼(社長指示): stage-2(研究所・labTheme)の動的湧き(`useGameLoop.ts` 7869-7898行付近)は
+  従来`generateEnemy`の全辺(上下左右)オフスクリーン湧きをそのまま使っていたが、これを画面外の
+  左右のみに限定し、Yはプレイヤー到達域(廊下帯)±100pxのランダムにする。上下方向の湧きは廃止。
+  固定配置(書類ガード等の`labEnemy`とは別に最初から置かれている個体)は対象外。
+- 実装(`src/hooks/useGameLoop.ts`): labTheme分岐で`generateEnemy`呼び出し後、返ってきた
+  `labEnemy.x/y`を上書き。X=`player.x ± (spawnBounds.width/2 + OFFSCREEN_SPAWN_MARGIN)`
+  (通常敵と同じ足切り距離を流用・左右は50/50抽選)、Y=`player.y+player.height/2-labEnemy.height/2
+  + (rand*2-1)*LAB_SPAWN_Y_BAND_PX`(新定数`LAB_SPAWN_Y_BAND_PX=100`)。開始安全半径
+  (`LAB_START_SAFE_RADIUS`)判定・区画上限(`LAB_ENEMIES_PER_ZONE`)判定は上書き後の座標に対して
+  従来どおり適用(変更なし)。`generateEnemy`本体・他ステージの呼び出しは無改変。
+- 検証: typecheck・lint 0エラー。ヘッドレス(`?smoke&stage=stage-2`・`window.__gameStore`を
+  プレイヤーごとオフスクリーン方向へteleportして開始安全半径の外へ出し、動的湧きを観測)で
+  実際に動的スポーンした7体を記録(固定配置の書類ガード3体は別途確認済みで対象外・除外)。
+  結果は7/7が`side: LEFT`または`RIGHT`のみ(TOP/BOTTOM/INSIDEは0件)、Yオフセットは
+  -96.3〜+73.2pxの範囲に収まり±100px指定と整合。ヘッドレス環境はGPUリードバックの負荷で
+  実時間に対しシミュレーション速度が遅く(実測で1/10〜1/17程度)、20体収集には数分規模の
+  実行時間が必要だったため約5.3分のバックグラウンド実行で7体分を確認(位置式はX側が
+  左右2値のみの決定的な式のため、Yのばらつきを含め7サンプルで十分な確認と判断)。
+- Files: `src/hooks/useGameLoop.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2181 — M2遠景の重なりを整理(支給遠景1枚だけに)【2026-07-24 21:30 JST】
 - 経緯(社長実機報告): M2(stage-2・farBackdrop key 'lab')の遠景が「透けている/透過で抜けている色が
   ある」ように見える。素材`stage2-lab-far.jpg`は正真正銘のJPEG(アルファ無し)=素材側の透過はあり得ず

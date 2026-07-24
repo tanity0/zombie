@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2182',
+    items: [
+      '調整: ステージ2では敵が通路の左右からのみ現れるようになりました。',
+    ],
+  },
+  {
     version: '0.25.2181',
     items: [
       '調整: ステージ2の遠景を支給素材1枚だけの表示に整理しました(重なっていた旧背景レイヤーを撤去。遠景森は後日再設置)。',

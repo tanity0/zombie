@@ -93,7 +93,8 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget,
   AREA_ZONE_NAMES,
-  AREA_THRESHOLDS
+  AREA_THRESHOLDS,
+  OFFSCREEN_SPAWN_MARGIN
 } from '../utils/enemyUtils';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
@@ -812,6 +813,9 @@ const LAB_ENEMIES_PER_ZONE = 2;
 // ラボの湧き間隔倍率(大きいほど間隔が空く=湧きすぎ防止)と、1回の湧き上限。
 const LAB_SPAWN_INTERVAL_MULT = 1.6;
 const LAB_SPAWN_COUNT_MAX = 1;
+// M2は上下からではなく左右のみから湧く(社長指示v0.25.2182「上下から湧かず、左右からのみ」)。
+// Yはプレイヤー到達域(廊下帯)±この範囲(px)のランダム。
+const LAB_SPAWN_Y_BAND_PX = 100;
 const PLAYER_DEATH_SLOW_MS = 820;
 const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
 const COUNTER_REFLECT_SLOW_MS = 560;
@@ -7882,8 +7886,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (起床判定は updateEnemies の dormant ブロック: 距離 + segmentBlocked(wallRects))。
             if (labTheme) {
               const labEnemy = generateEnemy(gameTime, player, spawnBounds, selectLabEnemyType(gameTime), player.lastDirection);
-              // 配置は generateEnemy の「固定ビュー矩形の外側 OFFSCREEN_SPAWN_MARGIN」スポーンをそのまま使う
-              // (通常敵と統一・社長指示B)。旧: 半径(halfDiag+…)リング配置は廃止。
+              // 湧き位置は画面外の左右のみに限定し、上下方向のオフスクリーン湧きは廃止する
+              // (社長指示v0.25.2182「M2では敵が上下から湧かず、左右からのみ」)。
+              // generateEnemy が選んだ上下辺の位置を破棄し、左右いずれかの画面外(OFFSCREEN_SPAWN_MARGIN
+              // は通常敵と同じ値を流用)へ、Yはプレイヤー到達域(廊下帯)±LAB_SPAWN_Y_BAND_PX で置き直す。
+              const halfW = spawnBounds.width / 2;
+              const fromRight = Math.random() < 0.5;
+              labEnemy.x = fromRight
+                ? player.x + halfW + OFFSCREEN_SPAWN_MARGIN
+                : player.x - halfW - OFFSCREEN_SPAWN_MARGIN - labEnemy.width;
+              labEnemy.y = player.y + player.height / 2 - labEnemy.height / 2
+                + (Math.random() * 2 - 1) * LAB_SPAWN_Y_BAND_PX;
               const ecx = labEnemy.x + labEnemy.width / 2, ecy = labEnemy.y + labEnemy.height / 2;
               // スタート地点(原点)付近には湧かせない。
               if (Math.hypot(ecx, ecy) < LAB_START_SAFE_RADIUS) continue;
