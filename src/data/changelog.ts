@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2170',
+    items: [
+      'バランス: 弾薬ドロップをAIディレクター制にしました(基礎10%。全武器の弾が枯渇してきた時+敵が多い時だけ最大20%まで自動で底上げ。装備・フィニッシュの上乗せは従来どおり)。',
+    ],
+  },
+  {
     version: '0.25.2169',
     items: [
       'ゲーム内容の変更はありません(開発文書の整理: ストーリー正本を実装の現状に同期)。',

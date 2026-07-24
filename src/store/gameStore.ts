@@ -43,6 +43,7 @@ import {
 } from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
+import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { isLabOffscreenLost } from '../utils/labStealth';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -114,6 +115,10 @@ export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 24, ri
 // PACING_PUZZLE.md §5.5 M5(RE4式弾ドロップ・既定ON): ?ammosmart=0で従来(構え銃の弾種)へ。
 // useGameLoop側の銃キル経路と同名パラメータ(各自読む=既存camNum等と同じ流儀)。
 const AMMO_SMART_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ammosmart') !== '0';
+// 弾薬AIディレクター(v0.25.2170・社長決定・既定ON): キルドロップ基礎率(10%)を「全所持銃の弾備蓄の
+// 枯渇度×敵の多さ」で最大20%まで底上げする(src/utils/ammoDirector.ts)。?ammodir=0で無効化(常に基礎率のまま)。
+// useGameLoop側の銃キル経路も同名パラメータを各自読む(既存のammosmart等と同じ流儀)。
+const AMMO_DIRECTOR_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ammodir') !== '0';
 // PACING_PUZZLE.md §5.6 M7(チャフの武器弱点クリティカル・既定ON): ?weakcrit=0で無効化。
 // useGameLoop側の銃ヒット経路と同名パラメータ(各自読む=既存ammosmart等と同じ流儀)。
 const WEAKCRIT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('weakcrit') !== '0';
@@ -207,8 +212,11 @@ export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 40, shotgun: 10,
 // Player-tunable melee ammo-drop rate (percent), set on the start screen and
 // persisted across reloads. A melee kill drops ammo at this rate; a melee
 // finisher rolls at 1.5× (capped at 100%). Counter (reflect) kills are separate.
+// v0.25.2170: 弾薬AIディレクター制の基礎率(叩き台10%)。この上に ammoDirectorRate() が
+// 「全所持銃の弾備蓄の枯渇度×敵の多さ」で最大20%まで底上げし、さらに装備/パッシブ加算と
+// フィニッシャー1.5倍(既存)が乗る。
 const AMMO_PICKUP_KEY = 'zombie:ammoPickupAmounts';
-export const DEFAULT_MELEE_DROP_PCT = 30;
+export const DEFAULT_MELEE_DROP_PCT = 10;
 const CASTLE_MIN_DISTANCE = 900;
 const CASTLE_MAX_DISTANCE = 1300;
 // 建物1.5倍に合わせ足元判定も拡大(社長指示): 横×1.5 / 縦は上へ×1.2。
@@ -1906,14 +1914,22 @@ const grantMeleeKillRewards = (
     // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
     // Prefer the active gun's family; if the active pointer is temporarily
     // invalid, fall back to any owned gun so the slider still governs melee.
-    // 弾薬ドロップ率アップ(パッシブ): 既定ドロップ率に ammoDropBonus を加算(0..1)。
-    const baseRate = Math.max(0, Math.min(1, get().meleeAmmoDropPercent / 100 + (player.ammoDropBonus ?? 0) + (player.equipBonus?.ammoDropBonus ?? 0)));
-    const ammoChance = ammoChanceOverride !== undefined
-      ? ammoChanceOverride
-      : (finisher ? Math.min(1, baseRate * 1.5) : baseRate);
     const ownedAmmoTypes = getGuns(player)
       .map(w => w.ammoType)
       .filter((t): t is AmmoType => !!t);
+    // 弾薬AIディレクター(v0.25.2170): 「全所持銃の弾備蓄の枯渇度×敵の多さ」で基礎率を最大20%まで底上げ。
+    // ?ammodir=0で無効化(常にmeleeAmmoDropPercentのまま)。
+    // 弾薬ドロップ率アップ(パッシブ): 既定ドロップ率に ammoDropBonus を加算(0..1)。
+    const dirPct = AMMO_DIRECTOR_ENABLED
+      ? ammoDirectorRate(get().meleeAmmoDropPercent, {
+          families: ownedAmmoTypes.filter(t => t !== 'phill').map(t => ({ reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })),
+          enemyCount: get().enemies.length,
+        })
+      : get().meleeAmmoDropPercent;
+    const baseRate = Math.max(0, Math.min(1, dirPct / 100 + (player.ammoDropBonus ?? 0) + (player.equipBonus?.ammoDropBonus ?? 0)));
+    const ammoChance = ammoChanceOverride !== undefined
+      ? ammoChanceOverride
+      : (finisher ? Math.min(1, baseRate * 1.5) : baseRate);
     // PACING_PUZZLE.md §5.5 M5(RE4式): 残弾割合が最小の弾種を落とす(同率は構え優先・phill対象外)。
     // ?ammosmart=0で従来(構え銃の弾種)へ。ドロップ率・供給量は不変=弾種の配分のみ。
     const smartType = AMMO_SMART_ENABLED

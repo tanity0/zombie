@@ -1,5 +1,33 @@
 # Development Log
 
+## v0.25.2170 — 弾薬ドロップのAIディレクター制【2026-07-24 17:38 JST】
+- 指示(社長): 通常キルドロップの基礎率を10%に下げ、「全所持銃の弾備蓄の枯渇度×敵の多さ」を
+  AIディレクターが見て最大20%まで底上げする。その上に従来どおり装備/パッシブ加算とフィニッシャー
+  1.5倍が乗る。意図: 弾をばらまくとヒリつきが消える/今は倒しまくれば弾切れが起きないバランスを
+  是正し、枯渇+乱戦の時だけ助ける形にする。
+- 対処:
+  - 新規 `src/utils/ammoDirector.ts`(純関数・PixiJS/store import禁止): `ammoDirectorRate(basePct, {families,
+    enemyCount})`。備蓄率(reserve合計/max合計)が0.5以上なら枯渇度0=basePctのまま、0.15以下で枯渇度1。
+    敵8以下で圧力0、25以上で圧力1。枯渇していれば敵が少なくても最低0.35係数で効く(圧力フロア)。
+    上限20%。定数はすべて叩き台(`AMMO_DIR_*`)=実機調整前提。
+  - `gameStore.ts`: `DEFAULT_MELEE_DROP_PCT` 30→10(AIディレクター制の基礎率へ変更)。近接キル経路
+    (`grantMeleeKillRewards`)で `ownedAmmoTypes` を baseRate 計算より前に算出し、
+    `AMMO_DIRECTOR_ENABLED`(既定ON・`?ammodir=0`で無効化。`AMMO_SMART_ENABLED`と同じ流儀の
+    モジュール定数)が立っていれば `ammoDirectorRate()` の結果を dirPct として baseRate に使用。
+    phillは families から除外(研究所専用のため枯渇度計算に含めない)。
+  - `useGameLoop.ts`: 銃キル経路も同様に `owned`/`equippedAmmo` を `gunKillDropRate` 計算より前に
+    算出し、同じ `ammoDirectorRate()` を通した dirPct で `gunKillDropRate` を求める。フラグは
+    `AMMO_DIRECTOR_ENABLED = evParam('ammodir') !== '0'`(既存 `AMMO_SMART_ENABLED` と同じ形)。
+    屋内無効・ナイフマスター0%・フィニッシャー1.5倍・RE4式弾種選択(`pickAmmoDropType`)は無変更。
+  - 新規 `src/utils/ammoDirector.test.ts`(vitest 5件): 満タン(ratio≥0.5)で常にbasePct/枯渇+敵25以上で
+    ちょうど20/枯渇+敵0で `basePct+(20-base)*0.35`/families空でbasePct/ratio単調減少で率が単調増加。
+- 検証: `npm run typecheck` 0エラー、`npm run lint` 0エラー(warning 7件は既存分、本変更と無関係)、
+  `npx vitest run src/utils/ammoDirector.test.ts` 5件全緑。`npm test`/`npm run build`は指示により未実行。
+- 復帰フラグ: `?ammodir=0` でAIディレクター無効化=常に `meleeAmmoDropPercent`(=10%)そのまま。
+- 未決/申し送り: なし。定数(`AMMO_DIR_MAX_PCT`等)は叩き台=実機調整前提と明記済み。
+- Files: `src/utils/ammoDirector.ts`, `src/utils/ammoDirector.test.ts`, `src/store/gameStore.ts`,
+  `src/hooks/useGameLoop.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2169 — ストーリー正本をコード実装の現状に同期【2026-07-24 17:33 JST】
 - 指示(社長): 正本としてストーリーを組む前提のため、正本md側を実装現状に合わせる(実装は一切変更しない)。
   v0.25.2167の「対象外」項目(相違13・17〜23)を解消するバッチ。

@@ -45,6 +45,7 @@ import {
   detectWallBreach, isFirstWallBreach, isApproachingWall, markWallBreached, markSelfDeepest,
 } from '../utils/wallProgress';
 import { pickAmmoDropType } from '../utils/ammoDrop';
+import { ammoDirectorRate } from '../utils/ammoDirector';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
   type CombatEffects, type CombatTunables,
@@ -595,6 +596,10 @@ const PUZZLE_ENABLED = evParam('puzzle') !== '0';
 // 最小の弾種」にする。`?ammosmart=0`で従来(構え銃の弾種)へ復帰。gameStore側の近接キル経路も
 // 同名パラメータを各自読む(既存のcamNum等と同じ流儀)。
 const AMMO_SMART_ENABLED = evParam('ammosmart') !== '0';
+// 弾薬AIディレクター(v0.25.2170・社長決定・既定ON): キルドロップ基礎率(10%)を「全所持銃の弾備蓄の
+// 枯渇度×敵の多さ」で最大20%まで底上げする(src/utils/ammoDirector.ts)。`?ammodir=0`で無効化。
+// gameStore側の近接キル経路も同名パラメータを各自読む(既存のammosmart等と同じ流儀)。
+const AMMO_DIRECTOR_ENABLED = evParam('ammodir') !== '0';
 // PACING_PUZZLE.md §5.6 バッチM7(チャフの武器弱点クリティカル・既定ON): `?weakcrit=0`で無効化。
 // gameStore側の近接キル経路も同名パラメータを各自読む(既存のammosmart等と同じ流儀)。
 const WEAKCRIT_ENABLED = evParam('weakcrit') !== '0';
@@ -6694,17 +6699,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // drop rate, so the slider governs the whole ammo economy. (Before,
               // only melee kills dropped — but the gun lands most killing blows,
               // so the rate felt far lower than set.) Active gun's family.
+              const equippedAmmo = getActiveGun(player)?.ammoType;
+              const owned = getGuns(player)
+                .map(w => w.ammoType)
+                .filter((t): t is AmmoType => !!t);
+              // 弾薬AIディレクター(v0.25.2170): 「全所持銃の弾備蓄の枯渇度×敵の多さ」で基礎率を最大20%まで底上げ。
+              // ?ammodir=0で無効化(常にmeleeAmmoDropPercentのまま)。
               // 弾薬ドロップ率アップ(パッシブ): 既定ドロップ率に ammoDropBonus を加算(0..1)。
+              const dirPct = AMMO_DIRECTOR_ENABLED
+                ? ammoDirectorRate(useGameStore.getState().meleeAmmoDropPercent, {
+                    families: owned.filter(t => t !== 'phill').map(t => ({ reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })),
+                    enemyCount: useGameStore.getState().enemies.length,
+                  })
+                : useGameStore.getState().meleeAmmoDropPercent;
               const gunKillDropRate = Math.max(0, Math.min(1,
-                useGameStore.getState().meleeAmmoDropPercent / 100 + (useGameStore.getState().player.ammoDropBonus ?? 0) + (useGameStore.getState().player.equipBonus?.ammoDropBonus ?? 0)
+                dirPct / 100 + (useGameStore.getState().player.ammoDropBonus ?? 0) + (useGameStore.getState().player.equipBonus?.ammoDropBonus ?? 0)
               ));
               // 研究所(屋内)は通常ドロップ無し: PHILL弾は固定3箇所＋近接フィニッシュのみ。
               // ナイフマスターは弾薬ドロップ0%(社長指示)。
               if (!indoor && !hasSkill(player, 'knife-master') && Math.random() < gunKillDropRate) {
-                const equippedAmmo = getActiveGun(player)?.ammoType;
-                const owned = getGuns(player)
-                  .map(w => w.ammoType)
-                  .filter((t): t is AmmoType => !!t);
                 // M5(§5.5・RE4式): 残弾割合が最小の弾種を落とす(同率は構え優先・phill対象外)。
                 // ?ammosmart=0で従来(構え銃の弾種)へ。ドロップ率・供給量は不変=弾種の配分のみ。
                 const smartType = AMMO_SMART_ENABLED
