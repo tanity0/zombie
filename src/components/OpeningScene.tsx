@@ -166,6 +166,9 @@ const BLACK_START = 7600;
 const BLACK_MS = 1600;
 const SCENE_START = 9400; // 暗転し切ったら射撃シーンへハードカット
 const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
+// ARENA_AUDIOは従来 new Audio() のデフォルト音量(1)のまま明示指定していなかった。iOS保険の
+// unlockAndPlay(下記)で本再生時に明示restoreするための名前付き定数として1を明文化(挙動は不変)。
+const ARENA_AUDIO_VOLUME = 1;
 const PAN_SE_SRC = `${BASE}audio/sfx/handgun-fire.wav`; // パン!(紙吹雪と発砲で同音・社長指示)
 const PAN_SE_VOLUME = 0.64; // ゲーム内SE設定(audioManagerのhandgun-fire volume)に合わせる
 // 蘇生パートの心拍(処置機器音の素材は無いので心拍のみ・spec)。会話中はループ・最終行後に一発だけ。
@@ -384,12 +387,37 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
   const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
   const heartRef = useRef<HTMLAudioElement[]>([]);   // 蘇生パート: [0]=会話中の心拍ループ / [1]=最終行後の一発(ループとは別要素)
+  // 廊下→アリーナの瞬間切替の直後だけ、全画面onClick={finish}(OPスキップ)を無視する猶予(社長指示
+  // v0.25.2177系フォロー)。歩行入力の指離しがちょうどこの瞬間をまたぐと、離した位置に(既に
+  // マウント済みの)アリーナ側の全画面が来ていてclickとして拾われ、無音でOP全体が飛ぶ経路があった。
+  // 0=ガード無効(?opening=2/3直行や通常のスキップ操作はここに触れないため即座にスキップできる)。
+  const skipGuardUntilRef = useRef(0);
   const stopArena = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; }); audioRef.current = []; };
   const stopHearts = () => { heartRef.current.forEach(a => { if (a) { a.pause(); a.src = ''; } }); heartRef.current = []; };
   const stopAudio = () => { stopArena(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; stopHearts(); };
   // rewindBgm: OP明けのタイトルBGMは必ず曲頭から(v0.25.2104)。過去にタイトル曲を再生済みだと
   // onDone側のsetBgmScene('menu')が同srcのため停止位置から途中再開してしまうのを防ぐ。
   const finish = () => { if (!doneRef.current) { doneRef.current = true; stopAudio(); rewindBgm(); onDone(); } };
+  // 全画面タップ=OPスキップ。廊下→アリーナ切替直後の誤爆だけ猶予(skipGuardUntilRef)で無視する
+  // (以降の通常のスキップ操作・?opening=2/3直行には一切影響しない=ガードは既定0で無効のため)。
+  const handleSkipTap = () => {
+    if (performance.now() < skipGuardUntilRef.current) {
+      if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'skipBlocked' });
+      return;
+    }
+    if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'skipAllowed' });
+    finish();
+  };
+  // 【iOS保険・v0.25.2177系フォロー】WebKit実機で「muted指定を無視して一瞬鳴る」前科があるため、
+  // 事前解錠(プライミング、下のpanRef/heartRef/audioRef生成部)は【muted+volume=0の二重ガード】にし、
+  // 解錠後もその無音状態のまま止め置く(unmuteしない)。実際に聞かせる本再生は必ずこの関数を通し、
+  // muted解除+volume復元(意図した音量への戻し)の両方を同一箇所で確実に行う。
+  const unlockAndPlay = (a: HTMLAudioElement | undefined, volume: number) => {
+    if (!a) return;
+    a.muted = false;
+    a.volume = volume;
+    try { a.play().catch(() => {}); } catch { /* ignore */ }
+  };
 
   // ── 蘇生処置パート(phase4)の台本タイムラインを rBase 起点で仕込む(idsにタイマー登録) ──
     // rBase = 射撃シーンが暗転し切った時刻(通常フロー)/ 0(?opening=3の単独プレビュー)。
@@ -399,7 +427,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       const dialogueStart = rBase + OPENING_REVIVAL_TIMING.blackHoldBeforeDialogueMs;
       ids.push(window.setTimeout(() => {
         const a = heartRef.current[0];
-        if (a) { try { a.currentTime = 0; } catch { /* ignore */ } a.play().catch(() => {}); } // 未解禁プレビューでは無音で進む
+        if (a) { try { a.currentTime = 0; } catch { /* ignore */ } unlockAndPlay(a, HEARTBEAT_LOOP_VOLUME); } // 未解禁プレビューでは無音で進む
       }, dialogueStart));
       // 各行: minDurationMs 表示 → gapAfterMs は非表示(-1)で間を空けて次行。話者名(speaker)は絶対に出さない。
       let t = dialogueStart;
@@ -413,7 +441,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       ids.push(window.setTimeout(() => {
         heartRef.current[0]?.pause();
         const one = heartRef.current[1];
-        if (one) { try { one.currentTime = 0; } catch { /* ignore */ } one.play().catch(() => {}); }
+        if (one) { try { one.currentTime = 0; } catch { /* ignore */ } unlockAndPlay(one, HEARTBEAT_ONESHOT_VOLUME); }
       }, t));
       // 終端フェードアウト3秒(社長指示v0.25.2055・旧: fadeToTutorialMs=350msで即終了)。
       // 画面=黒オーバーレイをCSSで3秒かけて被せ(赤ビネットごと沈む)、音=心拍の音量を0.5秒刻みで0へ。
@@ -469,10 +497,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // 【プライミング】タップ(更新情報OK)直後のマウント時に、後から鳴らす要素をミュートで一瞬再生→停止して
     // 「ユーザー操作済み」扱いにしておく(v0.25.2054)。発砲パン・心拍・アリーナ音源は操作の有効期限
     // 切れ後の再生になるため、これが無いとモバイルでブロックされ無音になる。未解禁プレビューではcatchで無視。
+    // 【iOS保険・v0.25.2177系フォロー】社長実機で「OK直後にパン!+歓声が一瞬同時に鳴り、アリーナで
+    // 改めて正規に鳴る(二重再生)」ことを確認=WebKitがこのmuted指定を無視して一瞬可聴になっていたと
+    // 断定。muted単独ではなく【muted+volume=0の二重ガード】にし、解錠後もunmuteせずその無音状態のまま
+    // 即pause+巻き戻しで止め置く(対象は上のpanRef/heartRef/audioRef=OPが事前解錠する音源全て)。
+    // 実際に聞かせる本再生は必ず unlockAndPlay を通し、muted解除+volume復元の両方をそこで行う。
     [...panRef.current, ...heartRef.current, ...audioRef.current].forEach(a => {
       a.muted = true;
-      a.play().then(() => { a.pause(); try { a.currentTime = 0; } catch { /* ignore */ } a.muted = false; })
-        .catch(() => { a.muted = false; });
+      a.volume = 0;
+      a.play().then(() => { a.pause(); try { a.currentTime = 0; } catch { /* ignore */ } })
+        .catch(() => { /* 解錠失敗でも本再生側(unlockAndPlay)がmuted解除+volume復元を行うため無視してよい */ });
     });
     // 素材を2群に分割(v0.25.2118・社長報告「ローディング中に始まる/始まっても読み込み終わってない」):
     // 旧実装は全素材一括+フォールバック3秒=モバイルの初回ロードで大物(廊下bg計2.7MB)が間に合わず
@@ -504,7 +538,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     if (!mainReady || !walkDone || startAtRevival) return;
     if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'timelineEffectStart' });
     const ids: number[] = [];
-    const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; a.play().catch(() => {}); } catch { /* ignore */ } };
+    const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; } catch { /* ignore */ } unlockAndPlay(a, PAN_SE_VOLUME); };
     {
       const base = startAtShoot ? 0 : SCENE_START;
       // 「パン!」のSE(社長指示v0.25.2040): 紙吹雪の発射と、射撃シーンの発砲に【同じ音=handgun-fire】。
@@ -523,7 +557,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         // アリーナ2音源はmount時に生成+解錠済み(v0.25.2114)。ここでは再生開始だけ。
         ids.push(window.setTimeout(() => {
           if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'arenaAudioPlay' });
-          audioRef.current.forEach(a => { a.play().catch(() => {}); });
+          audioRef.current.forEach(a => unlockAndPlay(a, ARENA_AUDIO_VOLUME));
         }, 1400));
         [0.66, 0.33, 0.12].forEach((v, k) => {
           ids.push(window.setTimeout(() => audioRef.current.forEach(a => { a.volume = v; }), SCENE_START - 450 + k * 150));
@@ -668,6 +702,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         }
         if (worldX >= maxX - 0.5) {
           if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'walkDone' });
+          // OPスキップ誤爆ガード(社長指示v0.25.2177系フォロー): 廊下→アリーナの瞬間切替で、歩行入力を
+          // 離す操作がアリーナ側の全画面onClick={finish}にclickとして拾われ無音でOP全体が飛ぶ経路の対策。
+          // 切替直後の300msだけスキップを無視する(以降・?opening=2/3直行はこのrefに触れないため無効のまま)。
+          skipGuardUntilRef.current = performance.now() + 300;
           setWalkDone(true); return;
         } // 右端到達=アリーナへ
       }
@@ -710,7 +748,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
 
   return (
     <div
-      onClick={finish}
+      onClick={handleSkipTap}
       // z-index はタイトルのモーダル(更新情報等)より上・OrientationGuard(9999)より下。
       // タイトルフェードイン中(titleReveal)は背景を透過し、下のタイトル画面を透かして見せる。
       style={{ position: 'fixed', inset: 0, background: titleReveal ? 'transparent' : '#000', overflow: 'hidden', zIndex: 9990, cursor: 'pointer' }}

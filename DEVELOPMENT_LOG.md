@@ -1,5 +1,53 @@
 # Development Log
 
+## v0.25.2179 — OP音の二重再生保険(muted+volume=0)とスキップ誤爆ガードを実装【2026-07-24 21:03 JST】
+- 依頼(社長承認「直して」・v0.25.2177の調査報告を受けての実装指示): 2件。
+  1. iOS保険: アリーナ音源(ARENA_AUDIO)・パンSE等の解錠用プライミングを
+     「muted+volume=0の二重ガード」に固める。
+  2. OPスキップ誤爆ガード: 廊下→アリーナの瞬間切替で、歩行ボタンのrelease/clickがアリーナ側の
+     onClick={finish}(スキップ)として拾われ無音でOP全体が飛ぶ経路を塞ぐ。
+- 追加証言(社長実機): 「OK押下直後に4/5回、パン!と歓声が【同時に】一瞬鳴り、その後アリーナで
+  改めて正規に鳴る(二重再生)」「リロード毎に『パンのみ』『無音』『パン+歓声』とバラつく」。
+  →v0.25.2177調査時点の「walkDoneゲートは正しく機能・再現せず」という結論とも整合する真因:
+  **WebKit実機がプライミングのmuted指定を無視して一瞬可聴になり、各音源のロード/デコード完了
+  タイミングの競合で漏れる音源だけがバラつく**。timing-gate自体は無罪(v0.25.2177の結論のまま)。
+- 実装1(`OpeningScene.tsx`): プライミング対象は panRef(パンSE×2)・heartRef(心拍ループ+単発)・
+  audioRef(ARENA_AUDIO×2)の全6要素(この3refがOPが事前解錠する音源の全て・grepで確認済み)。
+  - 二重ガード: `a.muted = true; a.volume = 0;` を**play()呼び出しの直前**に設定(社長指示どおり
+    play後ではなく前)。解錠後の`.then()`でも従来あった`a.muted = false`を削除=unmuteせず
+    無音のまま止め置く(即pause+currentTime巻き戻しのみ)。
+  - 新関数`unlockAndPlay(a, volume)`を追加し、本再生(firePan/heartbeat開始/ARENA_AUDIO開始の
+    計4箇所)を必ずこれ経由にした。`muted=false`と`volume=<意図した音量>`を同一箇所で確実に行う。
+  - ARENA_AUDIOは従来 `new Audio()` のデフォルト音量(1)を明示していなかったため、
+    `ARENA_AUDIO_VOLUME=1`として明文化(挙動は不変・restore対象を明確にするため)。
+- 実装2(`OpeningScene.tsx`): `skipGuardUntilRef`(`performance.now()`のタイムスタンプ、既定0=
+  無効)を追加。歩行完了(`worldX >= maxX-0.5` で`setWalkDone(true)`する箇所)で
+  `skipGuardUntilRef.current = performance.now() + 300` をセット。全画面の`onClick={finish}`を
+  `onClick={handleSkipTap}`に差し替え、`handleSkipTap`はガード期間中はスキップを無視する。
+  - `?opening=2/3`直行はこの一連の歩きシーン自体を経由しない(`walkDone`初期値true・
+    このrefへ一切書き込まれない)ため無関係・影響なし。
+  - 明示的な「スキップ▶」ボタンは従来どおり`finish()`を直接呼ぶ(ガード対象外・常に即スキップ可能。
+    誤爆経路は全画面onClickのみのため)。
+- 検証(機械検証・Playwright /opt/pw-browsers/chromium、既存`__opAudioDebug`フックを拡張して
+  `skipBlocked`/`skipAllowed`イベントを追加):
+  - 二重ガード: `HTMLMediaElement.prototype.play/muted/volume`をグローバルにモンキーパッチし、
+    プライミング時の6要素×2回(React DEV二重起動ぶん)=12回の`play()`呼び出し全てで
+    `muted===true`かつ`volume===0`が**play()呼び出し前**に設定済みであることを確認(全PASS)。
+    その後6秒間(入力無し=廊下滞在中)、unmute/volume復元イベントが一切発生しないことも確認(0件)。
+  - スキップ誤爆ガード: `walkDone`直後(遅延0ms相当)にクリックした場合→`skipBlocked`発火・
+    `timelineEffectStart`/`arenaAudioPlay`は従来どおり発火(=OP継続、音のタイミングも不変:
+    `walkDone`→約86ms後`timelineEffectStart`→さらに1407ms後`arenaAudioPlay`)。
+    `walkDone`から400ms後にクリックした場合→`skipAllowed`発火・`arenaAudioPlay`は発火せず
+    (=finish()が実行されOPが正しく終了、以降のタイマーはeffectクリーンアップで解除)。
+  - typecheck・lint 0エラー。
+  - (テスト中の副産物メモ: ヘッドレスChromiumでは`page.keyboard.down`が押しっぱなし中のOS
+    キーリピートを送らないため、リスナー未接続のタイミングで押すと入力が失われる=corridorの
+    `ready`後まで少し待ってから入力する必要があった。アプリ側の実挙動には無関係のテスト作法メモ。)
+  - Chromiumでは「mutedを無視して聞こえる」現象自体は再現できないため、二重再生の解消効果の
+    最終判定は社長実機で確認。
+- Files: `src/components/OpeningScene.tsx`, `package.json`, `src/data/changelog.ts`,
+  `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2178 — M2(研究所)武器商人を廊下帯内(y=-60)へ移動【2026-07-24 20:50 JST】
 - 依頼(社長承認・★未決2の推奨案どおり): `M2_LAB_CORRIDOR_SPEC.md` ★未決2で報告した「全ステージ共通の
   武器商人固定配置(`createWeaponMerchant()`、y:-130)が、v0.25.2176で追加した
