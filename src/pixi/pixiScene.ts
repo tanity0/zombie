@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, subWeaponBlockedByKatana, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
@@ -1376,6 +1376,7 @@ export class PixiScene {
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
   private homingLockGfx = new Graphics();   // ホーミング弾ロックインジケーター(ロック済み敵の頭上マーカー)
+  private flareReadyGfx = new Graphics();   // フレアガンのチャージ完了マーク(プレイヤー頭上の小さな炎・v0.25.2154)
   private slasherRingGfx = new Graphics();  // スラッシャー: アクティブリロード型タイミングリング(描画のみ)
   // ロックオンサークルの出現アニメ(敵ID→開始時刻+ロック数)。ズームアウト→イン+フェードインの起点。
   private lockAnim = new Map<string, { startedAt: number; count: number }>();
@@ -2031,6 +2032,7 @@ export class PixiScene {
     this.L.effectLayer.addChild(this.skadiHazardGfx);      // 氷塊の赤テレグラフ円(地面寄り)
     this.L.effectLayer.addChild(this.skadiHazardContainer); // 氷塊/氷刃スプライト
     this.L.effectLayer.addChild(this.homingLockGfx);
+    this.L.effectLayer.addChild(this.flareReadyGfx);
     this.L.effectLayer.addChild(this.slasherRingGfx);
     this.marksmanMarkGfx.blendMode = 'add';
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
@@ -3906,6 +3908,7 @@ export class PixiScene {
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
+    this.syncFlareReady(s, now);
     this.syncSlasherRing(s.player, s.realGameTime);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
@@ -5995,6 +5998,45 @@ export class PixiScene {
   }
 
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プール/y-sort を使い、流用タイプの
+  // フレアガンのチャージ完了マーク(社長指示v0.25.2154「チャージされたら小さい炎のマークで知らせて」):
+  // 装備中かつCD明けの間、プレイヤー頭上に小さな炎(外炎+内炎のしずく型・ゆらぎ付き)を描く。
+  // 毎フレームclear+ベジェ2枚のみ=負荷1/10。刀で封印中(撃てない)は出さない。
+  private syncFlareReady(s: ReturnType<typeof useGameStore.getState>, now: number) {
+    const g = this.flareReadyGfx;
+    g.clear();
+    const p = s.player;
+    if (!p.subWeapons.includes('flare-gun')) return;
+    if (subWeaponBlockedByKatana(p, 'flare-gun')) return;
+    if (s.gameTime < (p.subWeaponCooldowns['flare-gun'] ?? 0)) return;
+    const cx = p.x + p.width / 2;
+    // スプライトの見た目はヒットボックス上端(p.y)より上に伸びる(髪)。-22だと髪の中に埋まって
+    // 髪飾りに見える(実測)ため、実績ある頭上マーク(ブーメラン=中心p.y-46)と同じ高さ帯へ。
+    const topY = p.y - 42;
+    const flick = 0.9 + 0.1 * Math.sin(now / 130);   // 炎の背丈ゆらぎ
+    const sway = Math.sin(now / 260) * 0.9;          // 先端の左右ゆらぎ
+    const h = 9 * flick;
+    // しずく型は直線ポリゴンで描く(ベジェ経路のfillはv8で描画されない罠を実測=poly().fillは実績あり。
+    // ドット絵の画風にもカクついた炎が合う)。
+    // 外炎(オレンジ)
+    g.poly([
+      cx + sway, topY - h,
+      cx + 3.2, topY - h * 0.45,
+      cx + 3.7, topY - 1.5,
+      cx + 1.8, topY,
+      cx - 1.8, topY,
+      cx - 3.7, topY - 1.5,
+      cx - 3.2, topY - h * 0.45,
+    ]).fill({ color: 0xf97316, alpha: 0.95 });
+    // 内炎(黄色・小さめ)
+    g.poly([
+      cx + sway * 0.6, topY - h * 0.55,
+      cx + 1.9, topY - h * 0.22,
+      cx + 1.4, topY - 0.6,
+      cx - 1.4, topY - 0.6,
+      cx - 1.9, topY - h * 0.22,
+    ]).fill({ color: 0xfde047, alpha: 0.95 });
+  }
+
   // ホーミング弾ロックインジケーター: ロック済み敵の頭にPHILL風の照準サークルを描く。
   // 1ロック=白 / 2ロック=赤。毎フレーム全クリア＆再描画(最大Lv3で10ロック=軽量)。
   private syncLockIndicators(enemies: Enemy[], locks: string[], now: number) {

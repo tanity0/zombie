@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2154',
+    items: [
+      '演出: フレアガンのチャージが完了すると、頭上に小さな炎マークが灯って知らせるようになりました。',
+    ],
+  },
+  {
     version: '0.25.2153',
     items: [
       '調整: ステージ6で敵が見え始めるラインを少しだけ下げました。',

@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.2154 — フレアガン: チャージ完了の頭上炎マーク【2026-07-24 13:27 JST】
+- 指示(社長): フレアガン、チャージされたら小さい炎のマークで知らせて。
+- 対処: プレイヤー頭上に小さな炎(橙の雫型+黄色の芯・ゆらぎ付き)を常時表示。条件=フレアガン装備中
+  かつ刀で封印されていない かつ CD明け(`syncFlareReady`・effectLayer=アクター上)。負荷1/10
+  (Graphics 1個・poly2枚/フレーム。強glow/Text/新規テクスチャなし)。
+- ハマり2件(ENGINEERING_NOTES行き):
+  1) **Pixi v8で`bezierCurveTo`経路の`fill()`が描画されない**(getBoundsは返るが画素ゼロ)→直線`poly().fill()`へ。
+  2) **ポーズ中はtickerが完全停止**(PixiStage `applyTickerState`・電池対策)=ポーズしてのスクショ検証は
+     直前フレームの凍結画で無効。検証は非ポーズ+複数ショットで行うこと。
+- 位置: p.y-22は髪の中に埋まり髪飾りに見える(実測)→実績ある頭上マーク(ブーメラン=中心p.y-46)と
+  同じ高さ帯 topY=p.y-42 へ。
+- 検証: typecheck(既知のammoSweep.test.ts TS2307のみ=Sonnet掃引の一時ファイル・コミット対象外)・
+  lint 0エラー。実写=smokeでCD保持スクリプト+5連スクショ全てで頭上に炎の橙画素45〜58個を機械確認+目視OK。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`, `ENGINEERING_NOTES.md`。
+
 ## v0.25.2153 — ステージ6: 敵フェード境界を少しだけ下げ【2026-07-24 12:54 JST】
 - 指示(社長): 敵の上から現れる透明度のとこ、少しだけ下げて。
 - 対処: CORRIDOR_ACTOR_FADE_TOP_FRAC 0.04→0.10(可視高比・画面高の6%ぶん下へ)。フェード幅(80px)は不変。
