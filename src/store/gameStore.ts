@@ -207,7 +207,6 @@ export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 40, shotgun: 10,
 // Player-tunable melee ammo-drop rate (percent), set on the start screen and
 // persisted across reloads. A melee kill drops ammo at this rate; a melee
 // finisher rolls at 1.5× (capped at 100%). Counter (reflect) kills are separate.
-const DROP_PCT_KEY = 'zombie:meleeAmmoDropPercent';
 const AMMO_PICKUP_KEY = 'zombie:ammoPickupAmounts';
 export const DEFAULT_MELEE_DROP_PCT = 30;
 const CASTLE_MIN_DISTANCE = 900;
@@ -509,14 +508,8 @@ export const EVENT_QUEST_DWELL_MS = 3000;
 // 旧仮テキスト(v0.25.1719)は廃止。話者名は据え置き: 女=ミラ / 男=グレン(NpcDialogueのバストアップ対応)。
 // 納品(完了)報酬のゴールド(社長裁定v0.25.1686 #5「報酬は100で」。強制/サブ各)。
 export const EVENT_QUEST_REWARD_GOLD = 100;
-const loadMeleeDropPct = (): number => {
-  try {
-    const v = localStorage.getItem(DROP_PCT_KEY);
-    return v != null ? clampDropPct(parseFloat(v)) : DEFAULT_MELEE_DROP_PCT;
-  } catch {
-    return DEFAULT_MELEE_DROP_PCT;
-  }
-};
+// (v0.25.2152) 弾ドロップ率のlocalStorage読込(loadMeleeDropPct)は廃止=常にDEFAULT_MELEE_DROP_PCT起動。
+// UI撤去(社長指示)に伴い、端末に残った旧設定値が見えないまま効き続けるのを防ぐ。
 export const clampAmmoPickupAmount = (n: number): number =>
   Math.max(0, Math.min(999, Math.round(Number.isFinite(n) ? n : 0)));
 const loadAmmoPickupAmounts = (): Record<AmmoType, number> => {
@@ -2956,7 +2949,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   medicinePromptVisible: false,
   returnCircle: null,
   gameReturned: false,
-  meleeAmmoDropPercent: loadMeleeDropPct(),
+  meleeAmmoDropPercent: DEFAULT_MELEE_DROP_PCT, // v0.25.2152: UI撤去=コード既定で固定(適正値はテスト算出中)
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
   pendingLoadout: loadStringArray(LOADOUT_SUBS_KEY) as SubWeaponKey[],
@@ -8739,10 +8732,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ isPaused: paused });
   },
 
+  // v0.25.2152(社長指示): オプションUIから弾ドロップ率の項目を撤去=値はコード既定
+  // (DEFAULT_MELEE_DROP_PCT)で管理する。localStorageへの保存もやめる(UIが無いのに端末に残った
+  // 旧設定値が見えないまま効き続ける事故を防ぐ)。setterはテスト/開発用に残す(永続なし)。
   setMeleeAmmoDropPercent: (pct) => {
-    const clamped = clampDropPct(pct);
-    try { localStorage.setItem(DROP_PCT_KEY, String(clamped)); } catch { /* ignore */ }
-    set({ meleeAmmoDropPercent: clamped });
+    set({ meleeAmmoDropPercent: clampDropPct(pct) });
   },
 
   setAmmoPickupAmount: (type, amount) => {

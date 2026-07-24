@@ -1163,14 +1163,11 @@ const DevTools: React.FC<{
   const setDanceTestAutoTap = useGameStore(s => s.setDanceTestAutoTap);
   const danceForceJust = useGameStore(s => s.danceForceJust);
   const setDanceForceJust = useGameStore(s => s.setDanceForceJust);
-  const meleeAmmoDropPercent = useGameStore(s => s.meleeAmmoDropPercent);
-  const setMeleeAmmoDropPercent = useGameStore(s => s.setMeleeAmmoDropPercent);
   const ammoPickupAmounts = useGameStore(s => s.ammoPickupAmounts);
   const setAmmoPickupAmount = useGameStore(s => s.setAmmoPickupAmount);
 
   const [danceLevel, setDanceLevel] = useState(1);
   const [danceIntervalInput, setDanceIntervalInput] = useState(String(Math.round(rhythmIntervalForLevel(1))));
-  const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
   // 自動回収量を調整できるのは handgun/shotgun/rifle のみ(phill は手動射撃で対象外)。
   const [ammoInputs, setAmmoInputs] = useState<Record<'handgun' | 'shotgun' | 'rifle', string>>({
     handgun: String(ammoPickupAmounts.handgun), shotgun: String(ammoPickupAmounts.shotgun), rifle: String(ammoPickupAmounts.rifle),
@@ -1240,18 +1237,8 @@ const DevTools: React.FC<{
         BENCH（ベンチマーク開始）
       </button>
 
-      {/* デバッグ入力: 弾ドロップ率 / 弾薬箱取得量 */}
+      {/* デバッグ入力: 弾薬箱取得量(弾ドロップ率の項目はv0.25.2152で撤去=コード既定値・社長指示) */}
       <div className="rounded-none bg-black/15 p-2.5 space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-left"><div className="text-[13px] font-medium text-white">弾ドロップ率</div><div className="text-[11px] text-white/50">撃破時。近接フィニッシュは×1.5</div></div>
-          <div className="flex items-center gap-1">
-            <input type="number" inputMode="numeric" min={0} max={100} value={dropInput}
-              onChange={e => { setDropInput(e.target.value); const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) setMeleeAmmoDropPercent(n); }}
-              onBlur={() => setDropInput(String(useGameStore.getState().meleeAmmoDropPercent))}
-              className="w-16 text-right bg-purple-400/10 rounded-none px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
-            <span className="text-white/60 text-sm">%</span>
-          </div>
-        </div>
         <div className="grid grid-cols-3 gap-2">
           {ammoFields.map(f => (
             <label key={f.type} className="block">

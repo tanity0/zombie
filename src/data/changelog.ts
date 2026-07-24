@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2152',
+    items: [
+      'メニュー: オプションの「弾ドロップ率」項目を撤去しました(ゲーム側で管理する固定値になります。適正値は調整中)。',
+    ],
+  },
+  {
     version: '0.25.2151',
     items: [
       '調整: ステージ6の敵の湧きを最初の形(上7:下3)に戻しました。序盤から接敵します。',
