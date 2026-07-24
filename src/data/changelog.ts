@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2199',
+    items: [
+      'グラフィック: ステージ2の遠景に窓(フレーム+ガラス)を追加しました。',
+    ],
+  },
+  {
     version: '0.25.2198',
     items: [
       '修正: 直前の更新でゲームが起動せず真っ暗になる不具合を修正しました。',

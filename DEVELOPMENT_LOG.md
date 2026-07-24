@@ -1,5 +1,49 @@
 # Development Log
 
+## v0.25.2199 — M2遠景に窓(フレーム+ガラス2層)を追加【2026-07-25 01:40 JST】
+- 経緯: v0.25.2198の緊急修正(全画面まっくら)を受け、設計チャットより「HEAD=v2198へ`git reset --hard`で
+  完全同期してからやり直せ」と指示。`git status`で未コミットの追跡差分が無いことを確認した上で
+  `git reset --hard origin/claude/chat-context-continuity-saxlH`を実行(実質no-op・未追跡の素材PNG2枚
+  `stage2-far-frame.png`/`stage2-far-glass.png`は指示どおり残存を確認)。
+  ※記録: 本チャット(このセッション)の実施タスクは遠景の重なり整理(v2181)→敵湧き左右化(v2182)→
+  遠景50px上げ(v2183)→近景什器のクロマキー統合(v2191)のみで、クラッシュ原因とされた
+  `LAB_FARFOREST_*`定数や`stage2-far-frame/glass.png`は本チャットでは未着手だった
+  (v2194/2196/2197の近景森2作業とも別物)。ただし共有ワークツリーでの並行作業である以上、
+  原因の切り分けより再発防止(下記)を優先し、指示どおり進める。
+  ※★TDZ再発防止の教訓は自分のCLAUDE.md/ENGINEERING_NOTES.md操作範囲外だが、本コミットでは
+  遵守を徹底(下記)。
+- 実装: 社長支給の新素材2枚(既にRGBA/アルファ透過済みのフレーム`stage2-far-frame.png`、
+  RGB/不透明のガラス`stage2-far-glass.png`。どちらも1884px幅・8パネルの窓割り)を配線。
+  - `src/pixi/pixiScene.ts`: 新規メソッド`updateLabFarWindow(show, cameraX)`(既存の
+    `updateLabCeiling`/`updateLabFront2`と同型)。ガラス→フレームの順で`farGroup`(farBackdropと
+    同じ被写界深度コンテナ=同じブラーを受ける)へ追加。両者とも下辺を`farBackdropHeight()`
+    (=lab床境界・v0.25.2190で確立済み)に揃え、アスペクト比維持のTilingSpriteとして画面幅いっぱいに
+    敷き、farBackdropと同じ`FAR_BACKDROP_PARALLAX_X`で横ループさせる。
+    新規セッター`setLabFarWindowTextures(glass, frame)`とフィールド`labFarGlass`/`labFarFrame`/
+    `labFarGlassTex`/`labFarFrameTex`を追加。呼び出しは`syncLab()`から
+    `updateLabFarWindow(s.stageTheme==='lab' && !s.indoorMode, s.camera.x)`。
+  - **TDZ再発防止(社長指示v0.25.2198を厳守)**: 新規定数`LAB_FAR_WINDOW_SCALE`(既定1・?labfwsc=で
+    調整可)は`tsNum`/`tsBool`宣言(301/307行)より十分後段(342行・既存`LAB_FRONT2_BLUR`の直後)に配置。
+    module-scope側で新規シンボルを他の定数評価に使う箇所は無く、全て`updateLabFarWindow`内(実行時
+    呼び出し)でのみ参照。
+  - `src/pixi/PixiStage.tsx`: `SORTIE_STAGE_TEXTURE_PATHS`/`STAGE_TEXTURE_GROUPS.lab`に
+    `backgrounds/stage2-far-glass.png`/`backgrounds/stage2-far-frame.png`を追加(位置結合の分割代入へ
+    `s2FarGlass`/`s2FarFrame`を追加)、`scene.setLabFarWindowTextures(s2FarGlass, s2FarFrame)`を注入。
+  - horizonForest/nearHorizon/labCeilingには一切触れていない(非表示のまま)。
+- コミット前チェック(社長指示): `git add`は明示パス指定のみ。`git status`/`git diff --cached`で
+  ステージ済み内容が意図した6ファイルだけであること、他セッションの差分(ending.ts等)が混入していない
+  ことを目視確認してからcommitした。
+- 検証: 社長指示により今回もヘッドレス実走は省略(v0.25.2184)。push前フロアのtypecheck・lintのみ
+  実施し0エラー(既存warning 7件は無関係)。見た目の最終確認・実機でのクラッシュ有無確認は社長。
+- ★未決/要確認: (1)「フレーム透過ループ手前+ガラス奥」以上の詳細spec(サイズ基準・パララックス係数・
+  farGroup配置が正しいか)は本メッセージのみが情報源で、より詳細な発注書(previous orderの実体)は
+  本チャットには見えていない。今回はfarBackdropと同じ被写界深度(farGroup・同ブラー・同パララックス)
+  という解釈で実装した。(2)フレーム(高さ比307/1884)とガラス(高さ比282/1884)はアスペクト比が異なるため
+  下辺は揃うが上辺はフレームの方が僅かに高い(素材の縁取り分・意図どおりと推測)。実機で意図と違えば
+  `LAB_FAR_WINDOW_SCALE`または個別スケール分離で調整可能。
+- Files: `src/pixi/pixiScene.ts`, `src/pixi/PixiStage.tsx`, `src/data/changelog.ts`, `package.json`,
+  `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2198 — 緊急修正: 全画面まっくら(モジュール読込クラッシュ)【2026-07-25 01:34 JST】
 - 症状(社長): ゲームが壊れて何も出ない・まっくら(全ステージ/タイトル含む)。
 - 真因: v0.25.2197の私のコミットに、並行実行中の遠景森エージェントの**未完成WIP**が混入していた

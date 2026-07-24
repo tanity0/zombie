@@ -334,6 +334,12 @@ const LAB_FRONT2_SCALE = tsNum('labf2sc', 2);
 // 近景森2の上げ量(社長指示v0.25.2197「20px上に」)と ぼかし強度(同「ぼかして」)。?labf2up= /?labf2bl=。
 const LAB_FRONT2_UP_PX = tsNum('labf2up', 20);
 const LAB_FRONT2_BLUR = tsNum('labf2bl', 3);
+// 遠景の窓(フレーム+ガラス2層・社長支給素材): ガラス(奥)にフレーム(手前)を重ね、farBackdrop(遠景)と
+// 同じ被写界深度グループ(farGroup)へ入れて同じブラーを受ける。下辺は床境界(farBackdropHeight)に揃える
+// (社長指示v0.25.2199)。サイズ調整はこの1つのつまみ(既定1=素材アスペクト比のまま画面幅いっぱい)。
+// 注意: この定数はtsNum/tsBoolの宣言(301/307行)より後段のこの位置に置くこと(TDZクラッシュの再発防止・
+// 社長指示v0.25.2198「新規定数は必ずtsNum/tsBoolの宣言より下に置く」)。
+const LAB_FAR_WINDOW_SCALE = tsNum('labfwsc', 1); // ?labfwsc= で現地調整可
 // 北部(stage-4=snow)の遠景森1(氷壁)の拡大/上移動/高さトリム。?northscale= /?northup= /?northtrim= で現地調整可。
 const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
 const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
@@ -1749,6 +1755,14 @@ export class PixiScene {
   private nearHorizonBlur: BlurFilter | null = null;
   private labCeiling: TilingSprite | null = null; // 最前面の天井帯(上寄せ・半透明・横ループ)。lab=固定/チュートリアル=カメラ連動
   private labFront2: TilingSprite | null = null; // 近景森2(一番手前・廃研究棟の壁/残骸)。lab限定・横ループ(社長指示v0.25.2192)
+  private labFarGlass: TilingSprite | null = null; // 遠景の窓・ガラス(奥)。farGroup内。lab限定・横ループ(社長指示v0.25.2199)
+  private labFarFrame: TilingSprite | null = null; // 遠景の窓・フレーム(手前)。ガラスの直後に重ねる。lab限定・横ループ(社長指示v0.25.2199)
+  private labFarGlassTex: Texture | null = null;
+  private labFarFrameTex: Texture | null = null;
+  setLabFarWindowTextures(glass: Texture | null, frame: Texture | null) {
+    if (glass) this.labFarGlassTex = glass;
+    if (frame) this.labFarFrameTex = frame;
+  }
   // 可視可能ゾーン(研究所スキン): RenderTexture に「暗幕 + erase で円形の穴」を描き、その1枚を
   // 画面に重ねる。erase はテクスチャのアルファを削る=円形・なだらかな穴(マスクのステンシル矩形問題を回避)。
   private renderer: Renderer | null = null;
@@ -3932,6 +3946,8 @@ export class PixiScene {
       (s.stageTheme === 'lab' && !s.indoorMode) ? this.front2Overrides['lab'] : null,
       s.camera.x, sx
     );
+    // 遠景の窓(フレーム+ガラス2層)。lab屋外限定・支給なしはno-op(社長指示v0.25.2199)。
+    this.updateLabFarWindow(s.stageTheme === 'lab' && !s.indoorMode, s.camera.x);
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
     this.revisitMarker = s.revisitMode === true;
@@ -4980,6 +4996,44 @@ export class PixiScene {
     sp.tilePosition.set(-cameraX * FRONT_FOREST_PARALLAX_X, 0); // frontForestと同じパララックス係数
     sp.tint = 0xffffff; // ステージ2の暗化(ENV_TINT)対象から除外=本来の明るさ(frontForestと同様)
     sp.alpha = 1;
+  }
+
+  // 遠景の窓(フレーム+ガラス2層・社長支給素材v0.25.2199): ガラス(奥)の上にフレーム(手前)を重ね、
+  // farBackdrop(遠景)と同じ被写界深度グループ(farGroup)に入れて同じブラーを受ける=遠景と地続きの
+  // 奥行きになる。下辺は床境界(farBackdropHeight)に揃える(社長指示「下辺を床境界に揃え」)。
+  // lab屋外限定・横ループ(farBackdropと同じパララックス)。テクスチャ未注入/非labの間はno-op(非表示)。
+  private updateLabFarWindow(show: boolean, cameraX: number) {
+    const glassTex = this.labFarGlassTex, frameTex = this.labFarFrameTex;
+    if (!show || !glassTex || !frameTex) {
+      if (this.labFarGlass) this.labFarGlass.visible = false;
+      if (this.labFarFrame) this.labFarFrame.visible = false;
+      return;
+    }
+    if (!this.labFarGlass) {
+      const sp = new TilingSprite({ texture: glassTex, width: 1, height: 1 });
+      this.farGroup.addChild(sp); // farBackdropと同じ被写界深度(奥)
+      this.labFarGlass = sp;
+    }
+    if (!this.labFarFrame) {
+      const sp = new TilingSprite({ texture: frameTex, width: 1, height: 1 });
+      this.farGroup.addChild(sp); // ガラスの直後に追加=ガラスの手前(社長指示「フレーム手前」)
+      this.labFarFrame = sp;
+    }
+    const glass = this.labFarGlass, frame = this.labFarFrame;
+    glass.visible = true; frame.visible = true;
+    if (glass.texture !== glassTex) glass.texture = glassTex;
+    if (frame.texture !== frameTex) frame.texture = frameTex;
+    const bottom = this.farBackdropHeight(); // 床境界(社長指示「下辺を床境界に揃え」)
+    const layoutOne = (sp: TilingSprite, tex: Texture) => {
+      const h = this.screenW * (tex.height / tex.width) * LAB_FAR_WINDOW_SCALE; // アスペクト維持
+      sp.width = this.screenW;
+      sp.height = h;
+      sp.tileScale.set(h / Math.max(1, tex.height));
+      sp.position.set(0, bottom - h); // 下辺=bottom(床境界)に揃える
+      sp.tilePosition.set(-cameraX * FAR_BACKDROP_PARALLAX_X, 0); // farBackdropと同じパララックス係数
+    };
+    layoutOne(glass, glassTex);
+    layoutOne(frame, frameTex);
   }
 
   // 可視可能ゾーン(研究所スキン): 画面全体を乗算で暗くし、プレイヤー/UVバー(=ハンドガン射程)に明かりの穴。
