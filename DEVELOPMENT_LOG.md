@@ -1,5 +1,38 @@
 # Development Log
 
+## v0.25.2172 — ストーリー正本のリポ内完結化: M4〜EX・資料室を実装からの逆転記で新規作成【2026-07-24 18:42 JST】
+- 指示(社長): リポ外(Google Docs統合正本・共有パッケージ)由来でリポ内正本に節が無い文言を、実装コード
+  の現行文言(=社長承認済み)を正として逆転記し、STORY_M4_EX.md / STORY_ARCHIVE.md の2本を新規作成。
+  実装コードは一切変更しない。判断・改変・要約をしない、正確な転記のみ。
+- 追加の厳守事項(作業中に社長から着弾・既存記述にも遡って適用): (1)実装コードに存在する文言のみ転記、
+  (2)新規作成・要約・言い換え・補完はしない、(3)既存正本(STORY_M0_M3.md/OPENING_REVIVAL_SPEC.md/
+  STORY_UI_SPEC.md)と衝突しても上書き統合せず旧記述を残し相違点は報告、(4)各節直下に転記元(実装ファイル・
+  データID・対応ミッション)の管理情報行を必須化、(5)未実装/仮文言/フォールバック文言は転記しない、
+  (6)stage-ex2残置は転記対象外・別途使用箇所調査に切替。
+- 新規: `STORY_M4_EX.md`(M4/M5/M6/M7/EX1の5ミッション分: title・locationTitle・day/time(M6/EXはtimeLabel
+  由来の意図的曖昧表示と注記)・synopsis・briefing・debrief・特殊条件・unlockedRecordIds・
+  storyBossOnly/radio等のフラグ/clearReport。加えてM7グレン戦直前確定会話(campaign.ts)、M7撃破後会話
+  (useGameLoop.ts、サブ3本完了分岐込み)、通常エンディング聴取記録全文(ending.ts)、二人組(グレン/ミラ)
+  会話全編(eventQuest.ts: 強制初遭遇/任意サブ受注3本/納品3本/M5強制再遭遇)を転記。各節に転記元の実装
+  ファイル・データID・対応ミッションを明記。REVISIT_MISSION(stage-6:revisit)とstage-ex2は依頼スコープ外
+  として転記せず、末尾に注記のみ)。
+- 新規: `STORY_ARCHIVE.md`(`src/data/storyArchive.ts` ARCHIVE_RECORDS全21件: id・category・sortOrder・
+  emphasis・本文全文・解放条件(初期解放/ミッションクリア解放/通常エンディング後解放/条件付き解放
+  [グレンの薬]のいずれか)を1件ずつ転記元付きで記載)。
+- 更新: `STORY_M0_M3.md` 冒頭に「M4以降=STORY_M4_EX.md / 資料室全文=STORY_ARCHIVE.md(v0.25.2172転記)」
+  の1行リンクを追記(既存の正史記述本文には手を触れず)。
+- 調査(削除なし・報告のみ): `stage-ex2` の使用箇所を横断調査。`campaign.ts` の定義(`hidden: true`)以外に
+  `src/pixi/pixiScene.ts`(横位置マップ)・`src/utils/stageAggro.ts`(aggro係数マップ)・
+  `src/utils/stageAggro.test.ts`(aggro値のアサーション)が id 文字列で参照している。通常プレイ導線
+  (`MissionSelect.tsx` の EX一覧フィルタ)は `!s.hidden` で除外済みだが、`App.tsx` の `?smoke&stage=`
+  クエリ(テスト専用クイックスタート)は hidden を経由せず直接 `setSelectedStageId` するため、
+  デバッグ経路からは到達可能。`storyCanon.test.ts` は `!x.hidden` でstage-ex2自身の文面をナラティブ整合
+  テストの対象外にしている。詳細は本コミットの最終報告を参照(削除の要否は判断していない)。
+- 検証: `npm run typecheck` / `npm run lint` エラー0を確認(md新規2本・changelog/package.json/
+  DEVELOPMENT_LOG.md/STORY_M0_M3.mdの変更で、src/配下のコードは無変更)。
+- Files: `STORY_M4_EX.md`(新規), `STORY_ARCHIVE.md`(新規), `STORY_M0_M3.md`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2171 — テストボットに'scavenger'ペルソナを追加(弾薬AIディレクター検証用)【2026-07-24 18:24 JST】
 - 指示(社長): v0.25.2170の弾薬AIディレクターを、現実的なプレイヤー挙動のボット1体の実走で検証する
   ため、既存ボット基盤(M9系・`src/utils/playtestBot.ts`)へ新ペルソナ 'scavenger' を追加。

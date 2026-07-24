@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2172',
+    items: [
+      'ゲーム内容の変更はありません(ストーリー正本の転記整備: M4〜EX・資料室をリポ内正本化)。',
+    ],
+  },
+  {
     version: '0.25.2171',
     items: [
       'ゲーム内容の変更はありません(テスト用ボットにスカベンジャー型を追加)。',

@@ -6,6 +6,7 @@
 実装時はこのファイルの文面が正。既存の『the ONE』統合正本(v0.25.1762実装分=M1〜M7/EX)に対する
 **上書き差分**であり、矛盾する場合は本ファイルが勝つ。M0=チュートリアルステージ(stage-tutorial)。
 チュートリアルの舞台・演出の実装状況は TUTORIAL_STAGE.md、実装履歴は DEVELOPMENT_LOG.md を参照。
+M4以降=STORY_M4_EX.md / 資料室全文=STORY_ARCHIVE.md(v0.25.2172転記)。
 
 ---
 
