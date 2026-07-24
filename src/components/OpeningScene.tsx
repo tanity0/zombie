@@ -94,6 +94,26 @@ const WALK_MOTES = Array.from({ length: 26 }, (_, i) => ({
   o0: 0.10 + Math.random() * 0.25, o1: 0.5 + Math.random() * 0.45, // 明滅の下限/上限
   dur: 6 + Math.random() * 8, delay: -Math.random() * 14,          // 負のdelay=最初から空中に満ちる
 }));
+// 夢の浮遊粒(共通コンポーネント・v0.25.2163): 廊下だけでなくアリーナ/射撃シーンにも同じ粒を敷く
+// (社長指示「夢エフェクトセットをアリーナと銃撃シーンにも」)。画面座標・CSSアニメのみ=負荷1/10。
+const DreamMotes: React.FC<{ zIndex?: number }> = ({ zIndex }) => (
+  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex }}>
+    {WALK_MOTES.map(m => (
+      <div
+        key={m.key}
+        style={{
+          position: 'absolute', left: `${m.x}%`, top: `${m.y}%`, width: m.size, height: m.size,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(255,244,214,0.95) 0%, rgba(255,230,170,0.35) 60%, transparent 100%)',
+          boxShadow: '0 0 6px 2px rgba(255,235,180,0.35)',
+          '--mx': `${m.mx}px`, '--my': `${m.my}px`, '--o0': String(m.o0), '--o1': String(m.o1),
+          animation: `opmote ${m.dur}s ease-in-out ${m.delay}s infinite`,
+        } as React.CSSProperties}
+      />
+    ))}
+  </div>
+);
+
 // 背景のライト位置(bg%座標)。高輝度クラスタ検出(v0.25.2144)の実測=壁ランプ6灯(各サイン上)+
 // 関係者出口の緑サイン。walkWorld内に置く=背景のスクロールに連動して光る。
 const WALK_GLOWS = [
@@ -120,8 +140,12 @@ const WALK_BLOOM_ALPHA = 0.30;
 // v0.25.2134(社長指示「ぼかし少し弱めて、黄色ラインくらいまで入れて」): フルぼかしを黄色ライン
 // (実測0.639-0.647)まで届かせ、縁石帯で抜いて舗装床(0.71〜)からシャープ。強度はWALK_DOF_ALPHAで少し弱める。
 const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 64%, transparent 71%)';
-const WALK_DOF_ALPHA = 0.9;     // ぼかし版の重ね不透明度(1=全ぼかし)。0.8→0.9(社長指示v0.25.2136「少しだけ強く」)
+const WALK_DOF_ALPHA = 1;       // ぼかし版の重ね不透明度(1=全ぼかし)。0.8→0.9(v0.25.2136)→1(v0.25.2163「奥のぼけもう少し強く」=上限。これ以上はブラー焼き込み素材の強化が必要)
 const ARENA_AR = 1.5; // 素材の縦横比(3:2・backstageも同じ)
+
+// 前面ライトの光だまり(v0.25.2163・社長指示「見えてないけど前面にもライトがある前提で、プレイヤーたちにも
+// かかる光を設置」): キャラ絵の【上に】screen合成の暖色radialを重ね、キャラ自身が照らされて見えるようにする。
+const FRONT_LIGHT_BG = 'radial-gradient(ellipse at center, rgba(255,240,200,0.38) 0%, rgba(255,225,170,0.14) 45%, rgba(255,220,160,0) 72%)';
 
 interface CharPos { src: string; x: number; y: number; h: number } // x=中心/y=足元(画像%)、h=高さ(%)
 // flipScene: シーン全体を180度(左右)反転して見せる(社長指示v0.25.2009)。実装は背景imgを左右反転し、
@@ -354,6 +378,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const walkWorldRef = useRef<HTMLDivElement | null>(null);
   const walkCharRef = useRef<HTMLImageElement | null>(null);
   const walkNpcRef = useRef<HTMLImageElement | null>(null);    // 待ち構えるスタッフ(90%会話・v0.25.2131)
+  const walkCharLightRef = useRef<HTMLDivElement | null>(null); // 前面ライトの光だまり(主役・v0.25.2163)
+  const walkNpcLightRef = useRef<HTMLDivElement | null>(null);  // 前面ライトの光だまり(NPC・v0.25.2163)
   const doneRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
   const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
@@ -559,6 +585,14 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         char.style.height = `${bgH * WALK_HERO_HR}px`;
         char.style.left = `${worldX}px`;
         char.style.top = `${bgH * WALK_FOOT_YR}px`;
+        // 前面ライトの光だまり(v0.25.2163): 主役に追従(足元アンカー・キャラ絵の上に重なる)。
+        const charLight = walkCharLightRef.current;
+        if (charLight) {
+          charLight.style.width = `${bgH * 0.30}px`;
+          charLight.style.height = `${bgH * 0.26}px`;
+          charLight.style.left = `${worldX}px`;
+          charLight.style.top = `${bgH * WALK_FOOT_YR}px`;
+        }
         // 左向きは反転(素材は右向き)。停止中は直前の向きを保持。translateZ(0)=iOSマスクz順対策(v2063)。
         if (dir !== 0 && char.dataset.face !== String(dir)) {
           char.dataset.face = String(dir);
@@ -602,6 +636,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
             npcX = Math.min(WALK_EDGE_PAD + (maxX - WALK_EDGE_PAD) * stopAt + NPC_AHEAD, maxX - 30);
           }
           if (npcState === 'talk' && now >= npcTalkUntil) { npcState = 'leave'; npcLeaveT = 0; }
+          const npcLight = walkNpcLightRef.current;
           if (npcState === 'leave') {
             npcLeaveT += dt;
             npcX += WALK_SPEED * dt / 1000;
@@ -609,11 +644,22 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
             if (npc.dataset.f !== String(nfi)) { npc.dataset.f = String(nfi); npc.src = NPC_FRAMES[nfi]; }
             npc.style.transform = 'translate(-50%, -100%) scaleX(-1) translateZ(0)'; // 素材は左向き=反転して右へ
             npc.style.opacity = String(Math.max(0, 1 - npcLeaveT / NPC_LEAVE_FADE_MS));
-            if (npcLeaveT >= NPC_LEAVE_FADE_MS) { npcState = 'gone'; npc.style.display = 'none'; }
+            if (npcLight) npcLight.style.opacity = npc.style.opacity; // 光だまりも一緒にフェード(v0.25.2163)
+            if (npcLeaveT >= NPC_LEAVE_FADE_MS) {
+              npcState = 'gone';
+              npc.style.display = 'none';
+              if (npcLight) npcLight.style.display = 'none';
+            }
           }
           npc.style.height = `${bgH * WALK_NPC_HR}px`;
           npc.style.left = `${npcX}px`;
           npc.style.top = `${bgH * WALK_FOOT_YR}px`;
+          if (npcLight && npcState !== 'gone') {
+            npcLight.style.width = `${bgH * 0.27}px`;
+            npcLight.style.height = `${bgH * 0.24}px`;
+            npcLight.style.left = `${npcX}px`;
+            npcLight.style.top = `${bgH * WALK_FOOT_YR}px`;
+          }
         }
         if (worldX >= maxX - 0.5) { setWalkDone(true); return; } // 右端到達=アリーナへ
       }
@@ -754,24 +800,28 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated',
               }}
             />
+            {/* 前面ライトの光だまり(v0.25.2163): キャラ絵より後=上に描く。位置/寸法はrAFが毎tick追従。
+                「見えない前面ライトに照らされている」体でキャラごと明るく持ち上げる(screen合成)。 */}
+            <div
+              ref={walkNpcLightRef}
+              style={{
+                position: 'absolute', transform: 'translate(-50%, -100%)', borderRadius: '50%',
+                background: FRONT_LIGHT_BG, mixBlendMode: 'screen', pointerEvents: 'none',
+                animation: 'opvglow 3.4s ease-in-out infinite',
+              }}
+            />
+            <div
+              ref={walkCharLightRef}
+              style={{
+                position: 'absolute', transform: 'translate(-50%, -100%)', borderRadius: '50%',
+                background: FRONT_LIGHT_BG, mixBlendMode: 'screen', pointerEvents: 'none',
+                animation: 'opvglow 2.8s ease-in-out infinite',
+              }}
+            />
           </div>
           </div>{/* 呼吸ズームラッパー閉じ(v0.25.2158) */}
-          {/* 夢の浮遊パーティクル(v0.25.2144): 画面全体をふわふわ漂う光の粒(画面座標・CSSのみ)。 */}
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-            {WALK_MOTES.map(m => (
-              <div
-                key={m.key}
-                style={{
-                  position: 'absolute', left: `${m.x}%`, top: `${m.y}%`, width: m.size, height: m.size,
-                  borderRadius: '50%',
-                  background: 'radial-gradient(circle, rgba(255,244,214,0.95) 0%, rgba(255,230,170,0.35) 60%, transparent 100%)',
-                  boxShadow: '0 0 6px 2px rgba(255,235,180,0.35)',
-                  '--mx': `${m.mx}px`, '--my': `${m.my}px`, '--o0': String(m.o0), '--o1': String(m.o1),
-                  animation: `opmote ${m.dur}s ease-in-out ${m.delay}s infinite`,
-                } as React.CSSProperties}
-              />
-            ))}
-          </div>
+          {/* 夢の浮遊パーティクル(v0.25.2144→v0.25.2163共通化): 画面全体をふわふわ漂う光の粒。 */}
+          <DreamMotes />
           {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。立ち絵=通常行は【顔なし】(名前+台詞のみ)、
               stop行(さ、いこっか)のみシルエット(白反転で暗いピルに浮かせる)・社長指示v0.25.2135。 */}
           {walkLine >= 0 && WALK_LINES[walkLine] && (
@@ -817,6 +867,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
+                // 夢の呼吸(v0.25.2163・廊下と同じセット): 各アングルのズームとは別レイヤーでゆっくり伸縮。
+                transformOrigin: '50% 50%', animation: 'opbreathe 7s ease-in-out infinite alternate',
               }}
             >
               <div
@@ -841,6 +893,13 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                     transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined,
                     maskImage: dofMask(si), WebkitMaskImage: dofMask(si),
                   } as React.CSSProperties} />
+                  {/* 夢のソフトブルーム(v0.25.2163・廊下A案と同じ): ブラー版をマスク無し・screen合成で
+                      薄く全面に重ね、会場の明部(照明・ペンライト)をふわっと滲ませる。 */}
+                  <img src={SHOTS[si].bgBlur} alt="" draggable={false} style={{
+                    position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                    transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined,
+                    opacity: WALK_BLOOM_ALPHA, mixBlendMode: 'screen', pointerEvents: 'none',
+                  }} />
                   {/* 会場グローパルス(案B): 客席一帯をゆっくり明滅する柔らかい光で持ち上げる */}
                   {VENUE_GLOWS.map((g, gi) => (
                     <div
@@ -910,6 +969,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               </div>
             </div>
           ))}
+          {/* 夢の浮遊粒(v0.25.2163・廊下と同じセット): アングル切替を跨いで画面全体に漂う。紙吹雪(z5)の下。 */}
+          <DreamMotes zIndex={4} />
           {/* 紙吹雪レイヤー(カメラ非追従・アングル切替を跨いで存続。zIndex=アングルより上・暗転(50)より下。
               【画面全体】に描く(レターボックス帯の外も含む上端→下端・社長指示v0.25.2042)。横=vw/縦=vh。
               translateZ(0)=iOS Safari合成バグ対策(社長報告v0.25.2063): マスク付きのブラーbg(被写界深度)が
@@ -963,7 +1024,11 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         </>
       ) : phase === 3 ? (
         // ── 射撃シーン(backstage)。コマ画像は足元アンカー共通キャンバス=src差し替えで芝居。 ──
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          // 夢の呼吸(v0.25.2163・廊下と同じセット)。ズーム(opshzoom)は内側の別レイヤー=合成される。
+          transformOrigin: '50% 50%', animation: 'opbreathe 7s ease-in-out infinite alternate',
+        }}>
           <div
             style={{
               position: 'relative', width: '100%',
@@ -975,7 +1040,15 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               {/* 撃った瞬間から背景=赤一色(舞台絵と差し替え)。キャラはその上に残る。 */}
               {cur.red
                 ? <div style={{ position: 'absolute', inset: 0, background: '#d40000' }} />
-                : <img src={A('shoot-stage.png')} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
+                : <>
+                    <img src={A('shoot-stage.png')} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                    {/* 夢のソフトブルーム(v0.25.2163): 舞台裏はブラー焼き込み素材が無いため、同じ絵を
+                        screen合成で薄く重ねて明部を持ち上げる(ハレーション風)。赤転換中は出さない。 */}
+                    <img src={A('shoot-stage.png')} alt="" draggable={false} style={{
+                      position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                      opacity: WALK_BLOOM_ALPHA, mixBlendMode: 'screen', pointerEvents: 'none',
+                    }} />
+                  </>}
               <img
                 src={VICTIM(cur.v)} alt="" draggable={false}
                 style={{
@@ -1012,6 +1085,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               )}
             </div>
           </div>
+          {/* 夢の浮遊粒(v0.25.2163・廊下と同じセット)。会話UI(z40)より下。 */}
+          <DreamMotes zIndex={4} />
           {/* 会話(社長指示v0.25.2065): 本編の左上・会話UI(NpcDialogue)と同一の見た目をOP内で再現。
               位置/枠(glass-pill)/話者名の色/文字サイズはNpcDialogue.tsxに合わせる(UI統一)。 */}
           {shootLine >= 0 && (
