@@ -441,6 +441,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // 壊れ画像等で永久に待たないようフォールバック上限3秒。
     let cancelled = false;
     const ids: number[] = [];
+    if (import.meta.env.DEV) { (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug = [{ t: performance.now(), type: 'mount' }]; }
 
     // ── 心拍SE(蘇生パート用)を【マウント時に生成してプライミング】する(v0.25.2054修正) ──
     // 旧実装は鳴らす瞬間に new Audio していたが、OKタップから約27秒後=ユーザー操作の有効期限切れ後の
@@ -501,6 +502,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   // CSSアニメ(アリーナのズーム等)もwalkDoneでツリーがマウントされる=タイマーと起点が揃う(readyゲートと同じ理屈)。
   useEffect(() => {
     if (!mainReady || !walkDone || startAtRevival) return;
+    if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'timelineEffectStart' });
     const ids: number[] = [];
     const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; a.play().catch(() => {}); } catch { /* ignore */ } };
     {
@@ -519,7 +521,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         // 場面転換の直前に短フェードで止める(ブツ切りポップ防止)。
         // 自動再生がブロックされる環境(ジェスチャ無しのプレビュー等)では黙って無音のまま進める。
         // アリーナ2音源はmount時に生成+解錠済み(v0.25.2114)。ここでは再生開始だけ。
-        ids.push(window.setTimeout(() => { audioRef.current.forEach(a => { a.play().catch(() => {}); }); }, 1400));
+        ids.push(window.setTimeout(() => {
+          if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'arenaAudioPlay' });
+          audioRef.current.forEach(a => { a.play().catch(() => {}); });
+        }, 1400));
         [0.66, 0.33, 0.12].forEach((v, k) => {
           ids.push(window.setTimeout(() => audioRef.current.forEach(a => { a.volume = v; }), SCENE_START - 450 + k * 150));
         });
@@ -661,7 +666,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
             npcLight.style.top = `${bgH * WALK_FOOT_YR}px`;
           }
         }
-        if (worldX >= maxX - 0.5) { setWalkDone(true); return; } // 右端到達=アリーナへ
+        if (worldX >= maxX - 0.5) {
+          if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'walkDone' });
+          setWalkDone(true); return;
+        } // 右端到達=アリーナへ
       }
       raf = requestAnimationFrame(tick);
     };

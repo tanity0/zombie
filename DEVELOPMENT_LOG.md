@@ -1,5 +1,45 @@
 # Development Log
 
+## v0.25.2177 — OP先走り音バグ調査: 現コードでは再現せず(walkDoneゲートは既に修正済み)【2026-07-24 20:35 JST】
+- 依頼(社長実機報告): オープニングを最初から再生すると、アリーナで鳴るはずの「パン!(紙吹雪SE)+
+  歓声(ARENA_AUDIO 2音源ループ)」が、その前の楽屋廊下(歩き)シーンで流れてしまう。
+- 有力仮説(調査依頼時点): アリーナのタイマー群(firePan/ARENA_AUDIO.play/CUTS/BLACK_START/
+  SCENE_START等)がマウント起点で走っていて、廊下完了(walkDone)に同期していない=依存配列に
+  walkDoneが入っていない。
+- 調査結果: **仮説は外れ。該当useEffect(`OpeningScene.tsx` L502-542)は既に
+  `if (!mainReady || !walkDone || startAtRevival) return;` でガードされ、依存配列も
+  `[mainReady, walkDone]`。これはv0.25.2114(楽屋通路シーン新規実装)でmount起点→walkDone起点へ
+  移行済みで、v0.25.2118で`ready`→`mainReady`に精緻化されている。以降(v0.25.2156〜2176)の
+  差分にもこの効果への変更は無し(`git log -p`で該当行を全履歴チェック=deps配列の変更は
+  上記2回のみ)。ARENA_AUDIO/パンSEの`.play()`呼び出しもこの1箇所のみ(repo全体grepで確認)。**
+- 検証(機械検証・Playwright /opt/pw-browsers/chromium): DEV限定フック`window.__opAudioDebug`
+  (mount/walkDone/timelineEffectStart/arenaAudioPlayを`performance.now()`付きで記録)を追加し、
+  (a) `?opening=1`直行、(b) 実際のタイトル「更新情報」OK→onNoticeOk経由、の両経路×
+  (dev server / `vite build`+`vite preview`本番相当、後者はCDPで750kbps・150ms相当に回線を絞った
+  状態)で実施。結果は一貫して: 廊下保持中(mount〜walkDone)はイベント無し→walkDone発火→約70ms後に
+  timelineEffectStart→そのさらに1400ms後にarenaAudioPlay(=既存の意図した1400ms遅延どおり)。
+  廊下シーン中にアリーナ音が鳴った形跡は無し。加えて`HTMLMediaElement.prototype.play`を
+  グローバルにモンキーパッチしてアプリ全体の`.play()`呼び出しを横取りするテストも実施し、
+  op-arena-a/b.mp3の`.play()`が全てmuted(事前解錠のプライミング)またはwalkDone後である
+  ことを確認(muted:falseの実発火は無し)。
+- 副産物(未修正・別件として報告のみ): 廊下→アリーナの遷移は瞬時のツリー切替(クロスフェード無し)
+  で、切替後の全画面には`onClick={finish}`(OPスキップ)がある一方、廊下側の
+  `onClick={e=>e.stopPropagation()}`は廊下div専用。プレイヤーが歩行入力を押しっぱなしのまま
+  ちょうどwalkDone瞬間をまたいで指を離すと、その離す操作がアリーナ側でclickとして拾われ
+  OP全体をスキップしてしまう経路をテスト中に発見(呼び出し元は`finish()`→`stopAudio()`なので
+  音は鳴らず無音スキップになる=今回の報告症状とは一致しない)。指示が無いため今回は未修正。
+  再現手順・詳細は必要になれば本エントリを参照。
+- 結論: 現在の`claude/chat-context-continuity-saxlH`のコードでは報告された症状を再現できず。
+  修正はv0.25.2114/2118で既に入っていた可能性が高い(実機が古いキャッシュ/デプロイ遅延を
+  見ていた可能性)。仕様変更ルール(推測でのコード変更禁止)に従い、タイマー/ゲーティングの
+  ロジックには一切手を入れていない。検証用のDEV限定フック(`import.meta.env.DEV`ガードで
+  本番ビルドからは自動的に消える。負荷スコア1/10)のみ追加。
+- Files: `src/components/OpeningScene.tsx`(DEV限定デバッグフック3箇所追加のみ)、
+  `package.json`、`src/data/changelog.ts`、`DEVELOPMENT_LOG.md`。
+- 次handoffへ: もし社長実機で再現が続くようなら、(1) 実機のブラウザキャッシュ/PWAキャッシュを
+  完全クリアしてから再テスト、(2) 可能ならiOS Safari実機で`window.__opAudioDebug`を
+  Web Inspector経由で読む、を先に。Chromiumでは再現しなかったためWebKit固有の可能性が残る。
+
 ## v0.25.2176 — M2(研究所)横長廊下+視線切りステルス改造【2026-07-24 20:18 JST】
 - 依頼(社長承認済み・仕様は`M2_LAB_CORRIDOR_SPEC.md`に記録): stage-2(`stageTheme==='lab'`の屋外
   経路。`indoorMode`はcampaign.tsの明示コメントどおりこのステージ不採用のため対象外)を

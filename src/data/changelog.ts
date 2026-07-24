@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2177',
+    items: [
+      'ゲーム内容の変更はありません(社長実機報告の調査: オープニングの廊下シーン中にアリーナの発砲SE/歓声が先走って鳴る不具合を調査しましたが、現在のコードでは再現しませんでした。詳細はDEVELOPMENT_LOGへ)。',
+    ],
+  },
+  {
     version: '0.25.2176',
     items: [
       '改造: ステージ2(PHILL研究所)を横長レイアウトにしました(上下は固定通路・壁は小さめの遮蔽になり視線を切れる・敵は視線を1秒切ると見失う)。',
