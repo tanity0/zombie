@@ -1,5 +1,31 @@
 # Development Log
 
+## v0.25.2200 — M2近景1/2のパララックス速度を分離(2の方を少し速く)【2026-07-25 01:44 JST】
+- 依頼(設計チャットより。共有ワークツリーでのpixiScene.ts巻き込み事故防止のため、以後この
+  ファイルの編集は本チャットへ一本化=設計チャット側は同ファイルを触らない、との申し送り)。
+  社長指示「近景森1と2の速度(パララックス)を変えたい、2の方が少しだけ速く」。
+- 現状把握: 近景森1(frontForest)・近景森2(labFront2)とも横スクロールに共通定数
+  `FRONT_FOREST_PARALLAX_X`(=0.68)を使っており同速だった。
+- 実装(`src/pixi/pixiScene.ts`):
+  - 新定数`LAB_FRONT_PARALLAX_X = tsNum('labfpx', FRONT_FOREST_PARALLAX_X)`(既定0.68=現状維持・
+    lab限定)と`LAB_FRONT2_PARALLAX_X = tsNum('labf2px', 0.80)`(既定0.80=1より少し速い)を追加。
+    どちらもtsNum/tsBool宣言(301/307行)より十分後段(既存`LAB_FAR_WINDOW_SCALE`の直後)に配置
+    (TDZクラッシュ再発防止・社長指示v0.25.2198を継続遵守)。
+  - frontForestのtilePosition設定箇所(sync本体、旧`-s.camera.x * FRONT_FOREST_PARALLAX_X`)を
+    `-s.camera.x * (this.isLabStage ? LAB_FRONT_PARALLAX_X : FRONT_FOREST_PARALLAX_X)`に変更。
+    `this.isLabStage`は同じsync()内で先行して`s.stageTheme==='lab'`から設定済みのフィールドを流用
+    (他ステージは従来の`FRONT_FOREST_PARALLAX_X`のまま無改変)。
+  - `updateLabFront2`内のtilePosition設定を`FRONT_FOREST_PARALLAX_X`から`LAB_FRONT2_PARALLAX_X`へ
+    差し替え(labFront2はlab専用レイヤーのため無条件)。あわせて古くなったコメント
+    (「frontForestと同じFRONT_FOREST_PARALLAX_Xを流用」の記述)をパララックス分離の説明に更新。
+  - **採用値**: 近景森1(lab)=0.68(現状維持)/近景森2=0.80(0.68比+約18%速い)。
+  - horizonForest/nearHorizon/labCeiling・他ステージのfrontForestには一切触れていない。
+- コミット前チェック: `git add`は明示パスのみ、`git diff --cached`で意図した差分のみであることを
+  目視確認してからcommit。
+- 検証: 社長指示により今回もヘッドレス実走は省略(v0.25.2184)。push前フロアのtypecheck・lintのみ
+  実施し0エラー(既存warning 7件は無関係)。見た目の最終確認は社長。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2199 — M2遠景に窓(フレーム+ガラス2層)を追加【2026-07-25 01:40 JST】
 - 経緯: v0.25.2198の緊急修正(全画面まっくら)を受け、設計チャットより「HEAD=v2198へ`git reset --hard`で
   完全同期してからやり直せ」と指示。`git status`で未コミットの追跡差分が無いことを確認した上で

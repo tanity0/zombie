@@ -340,6 +340,13 @@ const LAB_FRONT2_BLUR = tsNum('labf2bl', 3);
 // 注意: この定数はtsNum/tsBoolの宣言(301/307行)より後段のこの位置に置くこと(TDZクラッシュの再発防止・
 // 社長指示v0.25.2198「新規定数は必ずtsNum/tsBoolの宣言より下に置く」)。
 const LAB_FAR_WINDOW_SCALE = tsNum('labfwsc', 1); // ?labfwsc= で現地調整可
+// 近景森1/2のパララックス速度差(社長指示v0.25.2200「近景森1と2の速度を変えたい、2の方が少しだけ速く」):
+// 近景森1(frontForest・lab限定)=既定0.68でFRONT_FOREST_PARALLAX_Xと同値(現状維持)。
+// 近景森2(labFront2・一番手前)=既定0.80で1より少し速い(手前ほど速く流れる=奥行き感)。
+// 他ステージのfrontForestはFRONT_FOREST_PARALLAX_Xのまま不変(このlab専用定数は使わない)。
+// TDZ再発防止のためtsNum/tsBool宣言(301/307行)より十分後段のこの位置に置く(社長指示v0.25.2198)。
+const LAB_FRONT_PARALLAX_X = tsNum('labfpx', FRONT_FOREST_PARALLAX_X); // ?labfpx= で現地調整可
+const LAB_FRONT2_PARALLAX_X = tsNum('labf2px', 0.80); // ?labf2px= で現地調整可
 // 北部(stage-4=snow)の遠景森1(氷壁)の拡大/上移動/高さトリム。?northscale= /?northup= /?northtrim= で現地調整可。
 const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
 const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
@@ -3921,8 +3928,10 @@ export class PixiScene {
     );
     const frontH = this.frontForestHeight();
     this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH + this.frontForestYOffset(frontH));
+    // lab(近景森1=什器シルエット)だけ専用のパララックス係数を使う(社長指示v0.25.2200)。他ステージは
+    // 従来どおり FRONT_FOREST_PARALLAX_X(既定値は同じ0.68なので lab も見た目は現状維持)。
     this.L.frontForest.tilePosition.set(
-      -s.camera.x * FRONT_FOREST_PARALLAX_X,
+      -s.camera.x * (this.isLabStage ? LAB_FRONT_PARALLAX_X : FRONT_FOREST_PARALLAX_X),
       0
     );
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
@@ -4967,9 +4976,10 @@ export class PixiScene {
 
   // 近景森2(一番手前・廃研究棟の壁/残骸): 既存の近景森(什器シルエット=frontForest)よりさらに手前に
   // 重ねる第2の近景レイヤー。プレイヤー/敵より前に被さる(社長指示v0.25.2192「一番手前」)。
-  // レイアウト/横ループ/パララックスは frontForest と同じ既定(frontForestHeight・
-  // FRONT_FOREST_PARALLAX_X)を流用。Yだけ LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO ぶん下にずらし、
-  // 帯の下端が画面下端より少し下にはみ出す(社長指示「少し下が隠れるくらい」)。
+  // レイアウト/横ループは frontForest と同じ既定(frontForestHeight)を流用。パララックスだけは
+  // 専用係数 LAB_FRONT2_PARALLAX_X(frontForestより少し速い・社長指示v0.25.2200)。Yは
+  // LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO ぶん下にずらし、帯の下端が画面下端より少し下にはみ出す
+  // (社長指示「少し下が隠れるくらい」)。
   // tex=null(lab屋外以外、または front2Overrides['lab'] 未注入)の間は no-op(非表示)。呼び出し側
   // (syncの本体)がstageTheme/indoorModeを見て解決したテクスチャを渡す(updateLabCeilingと同じ流儀)。
   private updateLabFront2(tex: Texture | null, cameraX: number, sx: number) {
@@ -4993,7 +5003,7 @@ export class PixiScene {
     sp.height = h;
     sp.tileScale.set(h / Math.max(1, tex.height));
     sp.position.set(sx * 0.75, topFixed); // 上端固定・下へ伸びる(frontForestと同じX式)
-    sp.tilePosition.set(-cameraX * FRONT_FOREST_PARALLAX_X, 0); // frontForestと同じパララックス係数
+    sp.tilePosition.set(-cameraX * LAB_FRONT2_PARALLAX_X, 0); // 近景森1より少し速い専用係数(社長指示v0.25.2200)
     sp.tint = 0xffffff; // ステージ2の暗化(ENV_TINT)対象から除外=本来の明るさ(frontForestと同様)
     sp.alpha = 1;
   }

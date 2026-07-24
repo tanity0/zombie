@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2200',
+    items: [
+      '調整: ステージ2の近景の流れる速さを調整しました(手前ほど少し速く)。',
+    ],
+  },
+  {
     version: '0.25.2199',
     items: [
       'グラフィック: ステージ2の遠景に窓(フレーム+ガラス)を追加しました。',
