@@ -22,9 +22,11 @@ export const LAB_START_SAFE_RADIUS = 700;
 // 通常帯の縦の広がり。|セル中心Y| がこれを超えると「奥(deep)」=壁だらけ・UV/アイテム無し。
 // 縦移動は控えめ(約1画面ぶんずつ)=横移動重視。
 export const LAB_DEEP_Y = 1 * LAB_ZONE; // 900
-// 連なり壁の間隔(=壁の当たり幅。縁を接して横バリアになる)。
+// 連なり壁の間隔(壁バーの中心間隔)。
 const WALL_RUN_SPACING = 150;
-const H_LEN = 150, H_DEPTH = 22;
+// 壁バー幅(社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175: 150→90に小型化。奥行22は不変)。
+// 役割は通行障害ではなく視線切り遮蔽(横長廊下・上下固定クランプ導入とセット)。
+const H_LEN = 90, H_DEPTH = 22;
 
 export const wallRect = (w: PlacedWall): Rect => footRect(w.footX, w.footY, H_LEN, H_DEPTH);
 export const WALL_DISPLAY_H = { w: 176, h: 108 };
@@ -38,8 +40,16 @@ const hash2 = (x: number, y: number): number => {
 const cellCenterY = (cy: number) => cy * LAB_ZONE + LAB_ZONE / 2;
 const isDeepCell = (cy: number) => Math.abs(cellCenterY(cy)) > LAB_DEEP_Y;
 
-// 区画(セル)ごとに横連なりの壁ランを1本生成。通常帯=1〜5個、奥(deep)=6〜13個(極端に連なる)。
+// 区画(セル)ごとに横連なりの壁ランを1本生成。密度均一化(社長承認 M2_LAB_CORRIDOR_SPEC.md
+// v0.25.2175): 旧・通常帯1〜5/奥(deep)6〜13の勾配を廃止し、全域(生成対象セル)で1〜3本に統一。
+// 生成対象は「廊下帯の視線に関わる範囲」= isDeepCell が false のセルのみ(セル中心|Y|≤LAB_DEEP_Y)。
+// それを超える奥のセルは壁を生成しない(プロップ/UVバーと同じ扱いに統一)。
 // ランは footX から右へ WALL_RUN_SPACING 間隔。長いランが左隣セルから領域へ伸びてくるので左に余分に走査。
+// 廊下(プレイヤー中心|Y|≤LAB_CORRIDOR_Y_LIMIT_PX=100)を横に完全封鎖しない配置になっているか確認:
+// footY は cy*LAB_ZONE を基準に該当セル内の 0.3〜0.7 の範囲(=セル端寄せ)にしか出ないため、
+// 壁矩形(footY-H_DEPTH 〜 footY)は cy=0/-1(Y=0に隣接する2セル)でも常に |Y|>=248 に収まり、
+// ±100 の廊下帯には物理的に重ならない(役割どおり通行障害ではなく視線切りのみ)。よってこの形状変更で
+// 追加のガードは不要と確認済み(この不変条件が崩れる変更をする場合は要再確認)。
 export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedWall[] => {
   const out: PlacedWall[] = [];
   const cx0 = Math.floor(minX / LAB_ZONE) - 3; // 長いランの左方伸長を取りこぼさない
@@ -47,10 +57,10 @@ export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY:
   const cy0 = Math.floor(minY / LAB_ZONE) - 1;
   const cy1 = Math.floor(maxY / LAB_ZONE) + 1;
   for (let cy = cy0; cy <= cy1; cy++) {
-    const deep = isDeepCell(cy);
+    if (isDeepCell(cy)) continue; // 視線に関わる範囲の外=壁も生成しない(プロップ/UVバーと同じ)
     for (let cx = cx0; cx <= cx1; cx++) {
       const hLen = hash2(cx * 2.1 + 1.3, cy * 1.9 - 0.7);
-      const runLen = deep ? 6 + Math.floor(hLen * 8) : 1 + Math.floor(hLen * 5); // deep:6〜13 / 通常:1〜5
+      const runLen = 1 + Math.floor(hLen * 3); // 全域で区画あたり1〜3本(密度均一化)
       const baseX = cx * LAB_ZONE + LAB_ZONE * (0.12 + 0.35 * hash2(cx, cy));
       const footY = cy * LAB_ZONE + LAB_ZONE * (0.3 + 0.4 * hash2(cx * 1.7 + 5.2, cy * 2.3 - 1.1));
       for (let k = 0; k < runLen; k++) {

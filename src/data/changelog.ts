@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2176',
+    items: [
+      '改造: ステージ2(PHILL研究所)を横長レイアウトにしました(上下は固定通路・壁は小さめの遮蔽になり視線を切れる・敵は視線を1秒切ると見失う)。',
+    ],
+  },
+  {
     version: '0.25.2175',
     items: [
       'グラフィック: ステージ2(PHILL研究所)の遠景と床の素材を新しくしました。',

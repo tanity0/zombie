@@ -1,5 +1,62 @@
 # Development Log
 
+## v0.25.2176 — M2(研究所)横長廊下+視線切りステルス改造【2026-07-24 20:18 JST】
+- 依頼(社長承認済み・仕様は`M2_LAB_CORRIDOR_SPEC.md`に記録): stage-2(`stageTheme==='lab'`の屋外
+  経路。`indoorMode`はcampaign.tsの明示コメントどおりこのステージ不採用のため対象外)を
+  「横長廊下+視線切りステルス」へ改造。4点:
+  1. 上下固定: 新定数`LAB_CORRIDOR_Y_LIMIT_PX=100`でプレイヤー中心Yを±100pxにクランプ
+     (`gameStore.ts`、M0チュートリアルクランプの前例をlabTheme分岐で複製)。X無制限・敵は対象外。
+  2. 壁の小型化+密度均一化(`labWalls.ts`): 幅150→90(奥行22不変)、`isDeepCell`による密度勾配
+     (通常1〜5/deep6〜13)を廃止し全域1〜3本均一に。生成範囲もセル中心`|Y|≤LAB_DEEP_Y(900)`で
+     プロップ/UVバーと統一(それ以遠は壁も生成しない)。廊下(±100帯)を横封鎖しないか数式で確認:
+     footYはcy=0/-1セルでも常に|Y|≥248で±100帯と物理的に重ならないため追加ガードは不要と確認済み。
+  3. ヘッドショット帯±100(合計200px): 追加変更なし。
+  4. 見失い刷新(`labStealth.ts`): 旧`isLabOffscreenLost`(画面外で即再休眠)を廃止し、新しい純関数
+     `evaluateLabLoseSight`に置き換え。LOS遮断(`segmentBlocked`)または距離>`LAB_LOSE_SIGHT_RANGE`
+     (450)が`LAB_LOSE_SIGHT_MS`(1000ms)継続でdormant=trueへ。継続時間は`enemy.losLostSince`
+     (新規フィールド・`types/game.ts`)で計測。覚醒条件(300px+LOS)は不変。
+- 固定配置の整合: `labDoc`(書類/クリアアイテム)のYレンジを`-400+rand*800`(±400)→
+  `-30+rand*60`(±30)に縮小。ガード3体(labDoc.y, labDoc.y∓70)の両端がちょうど±100に収まるよう
+  逆算。Xは無変更。詳細は`M2_LAB_CORRIDOR_SPEC.md`の表を参照。
+- ★未決(実装チャットでは判断せず記録のみ・詳細は`M2_LAB_CORRIDOR_SPEC.md`末尾):
+  1. 指示書が言う「PHILL弾3箇所」固定ピックアップ(`LAB_AMMO_PICKUPS`)は`indoorMode`専用データで、
+     stage-2は`indoor=false`で走るため実運用経路には存在しなかった(campaign.tsの明示コメントで
+     確認済み)。PHILL弾は武器商人からの購入のみ。新設すべきかは設計判断のため未実装。
+  2. **重要度高**: 全ステージ共通の武器商人固定配置(`createWeaponMerchant()`、y:-130、
+     `MERCHANT_INTERACT_RADIUS=58`)が、今回の`LAB_CORRIDOR_Y_LIMIT_PX=100`クランプ下では
+     プレイヤーの最大到達y(=100)から58px以内に入れず(必要y∈[-188,-72])、**stage-2では商人に
+     一生近づけない**=PHILLガン/弾の入手経路が絶たれる。この関数は他ステージ共用のため無断変更せず
+     保留(社長裁定待ち)。
+- 検証:
+  - `npm run typecheck`・`npm run lint` 共に0エラー(lint既存warning7件のみ・無関係)。
+  - `npx vitest run src/utils/labStealth.test.ts src/world/labWalls.test.ts`
+    (新規/更新分)13/13緑。`npx vitest related --run src/world/labWalls.ts src/store/gameStore.ts
+    src/utils/labStealth.ts src/types/game.ts`166/168緑(2 skip、既存)。
+  - ヘッドレス実機(Playwright chromium、`?smoke&stage=stage-2`、420×900、実キーイベントで移動):
+    (a) 例外・consoleエラー0件を複数回の実行で確認。(b) `player.y`中心は実移動60秒間ずっと
+    クランプ帯内(観測値は終始center=14で常に±100内、外れ0件)。(c) 覚醒→見失い→dormant回帰の
+    フル結線は、強制トリガー(store直書きでdormant=false化+距離500px配置)による決定的テストで
+    実機確認: `losLostSince`セット時点(gameTime=0)から**gameTime=1050ms**でdormant=trueに復帰
+    =仕様どおり約1000ms(`LAB_LOSE_SIGHT_MS`)後に再休眠を実機で確認。組織的な湧き+接敵で60実秒枠
+    内に同事象を安定して待つのは、headless実行がゲーム内時間を実時間の約1/7〜1/8でしか進めない
+    (この制約は`v0.25.2175`エントリでも既知)ため非現実的と判断し、判定ロジック自体は
+    `labStealth.test.ts`で網羅、実機は「gameStoreの結線が動くか」を強制トリガーで確認する方式に
+    切替えた(このtrade-offは報告済み)。
+  - 観測上の注意点(未確定・code defectではないと判断): 上記ヘッドレス実行中、覚醒した
+    lab-zombieが画面外から追跡を開始する最初のフレーム付近で、5回中2回、コンソールに
+    `GPU stall due to ReadPixels`警告と共にgameTimeの進行が長時間(数十秒〜)止まる事象が発生した
+    (ページ例外は0件・JSスレッドはpage.evaluateに応答し続けており真のハングではない)。
+    labStealth.test.tsおよびvitest関連スイート(M9ボット等の実戦闘含む・WebGL非依存)は全て
+    正常終了しており、ロジック側に無限ループ等の欠陥は見当たらない。ヘッドレスsandboxの
+    ソフトウェアGPU(SwiftShader)特有のシェーダ/テクスチャ初期化stallの可能性が高いと推測するが
+    未確定。実機(スマホ/実GPU)での追加確認を推奨。
+  - 憲法自己点検: 初心者ゾーン不可侵/緩を荒らさない(第4条・第5条)いずれにも抵触しない
+    (本改造はstage-2固有の`labTheme`分岐のみに限定し、他ステージ・チュートリアル・共通の
+    敵AI/湧き/難度カーブには一切触れていない。数値変更もlab固有の新定数・壁形状・書類Yレンジのみ)。
+- Files: `src/store/gameStore.ts`, `src/world/labWalls.ts`, `src/world/labWalls.test.ts`(新規),
+  `src/utils/labStealth.ts`, `src/utils/labStealth.test.ts`, `src/types/game.ts`,
+  `M2_LAB_CORRIDOR_SPEC.md`(新規), `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2175 — M2(研究所)遠景/床タイル 素材差し替え【2026-07-24 20:01 JST】
 - 依頼: 社長支給シート(1983×793 PNG、左=M2遠景「STEM CELL RESEARCH」ホール、右=床タイル
   「1000px×1000px」ラベル付き、双方とも黒余白で区切り)から2素材を切り出して差し替え。

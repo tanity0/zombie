@@ -45,7 +45,7 @@ import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, am
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
-import { isLabOffscreenLost } from '../utils/labStealth';
+import { evaluateLabLoseSight } from '../utils/labStealth';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
@@ -302,6 +302,9 @@ export const TUTORIAL_MOVE_Y_LIMIT_PX = 100; // v0.25.1828: 社長指示「100px
 const TUTORIAL_RETURN_CIRCLE_X = 3000;
 // チュートリアルの左端(プレイヤー中心xの下限=スタートから左100pxで透明な壁・社長指示v0.25.1829)。
 export const TUTORIAL_MOVE_X_MIN_PX = -100;
+// ステージ2(研究所・横長廊下)の上下固定(M0チュートリアルと同じクランプ方式・社長承認
+// M2_LAB_CORRIDOR_SPEC.md v0.25.2175)。プレイヤー中心yを±この値に数値クランプ。X方向は無制限。
+export const LAB_CORRIDOR_Y_LIMIT_PX = 100;
 const PHASER_GUN_OFFSET = 5;           // 2丁拳銃の左右ずらし幅(px。進行方向に直交)
 const PHASER_APPEAR_CHANCE = 0.2;      // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)
@@ -3248,6 +3251,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           const half = player.height / 2;
           newY = Math.max(-TUTORIAL_MOVE_Y_LIMIT_PX - half, Math.min(TUTORIAL_MOVE_Y_LIMIT_PX - half, newY));
           newX = Math.max(TUTORIAL_MOVE_X_MIN_PX - player.width / 2, newX);
+        }
+        // ステージ2(研究所・横長廊下): 上下固定(M0チュートリアルと同じクランプ方式)。プレイヤー中心yを
+        // ±LAB_CORRIDOR_Y_LIMIT_PX に数値クランプ(社長承認M2_LAB_CORRIDOR_SPEC.md)。敵は対象外。Xは無制限。
+        if (labTheme) {
+          const half = player.height / 2;
+          newY = Math.max(-LAB_CORRIDOR_Y_LIMIT_PX - half, Math.min(LAB_CORRIDOR_Y_LIMIT_PX - half, newY));
         }
         // 洋館通路(corridorMode): プレイヤー中心xを ±CORRIDOR_LATERAL_CLAMP(world px)に拘束する
         // (柱ライン=移動境界。renderer側の横写像Kと同じ値を共有)。敵は拘束しない(とりあえず)。
@@ -6962,21 +6971,27 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, dormant: false, vx: 0, vy: 0 };
         }
 
-        // ステージ2(研究所)の索敵解除(社長指示v0.25.1757→v0.25.2064変更・純関数=labStealth.ts):
-        // 起床中の敵が【画面外(プレイヤー中心の可視域+マージン)】へ出た瞬間に見失って再休眠。
-        // 再発見は上のdormantブロック(視界300px+視線)。画面外で寝る↔視界300pxで起きるの間に
-        // マージンぶんの隙間があり点滅しない。ラボのlab-zombie限定=他ステージ・他の敵は不変。
-        // ステージ2はズーム引き無効(recycleZoomOverscan=1)なので可視域=gameBoundsそのまま。
+        // ステージ2(研究所)の索敵解除(社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175「横長廊下+視線切り
+        // ステルス」・純関数=labStealth.ts): 起床中のlab-zombieが「壁/什器で視線が遮られた」または
+        // 「プレイヤーとの距離 > LAB_LOSE_SIGHT_RANGE(450px)」の状態が LAB_LOSE_SIGHT_MS(1000ms)継続
+        // したら見失って再休眠。再発見は上のdormantブロック(視界300px+視線・不変)。ヒステリシス
+        // (覚醒300px/見失い450px)があり点滅しない。ラボのlab-zombie限定=他ステージ・他の敵は不変。
         if (labTheme && enemy.type.startsWith('lab-zombie')) {
           const ecx3 = enemy.x + enemy.width / 2;
           const ecy3 = enemy.y + enemy.height / 2;
-          if (isLabOffscreenLost(ecx3 - pcx, ecy3 - pcy, state.gameBounds.width / 2, state.gameBounds.height / 2)) {
+          const dist3 = Math.hypot(pcx - ecx3, pcy - ecy3);
+          const blocked3 = losWalls.length > 0 && segmentBlocked(pcx, pcy, ecx3, ecy3, losWalls);
+          const lose = evaluateLabLoseSight({ losBlocked: blocked3, distance: dist3, losLostSince: enemy.losLostSince, now: gameTime });
+          if (lose.shouldDormant) {
             return {
               ...enemy, dormant: true, vx: 0, vy: 0,
               aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
               aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-              aiReadyAt: undefined,
+              aiReadyAt: undefined, losLostSince: undefined,
             };
+          }
+          if (lose.losLostSince !== enemy.losLostSince) {
+            enemy = { ...enemy, losLostSince: lose.losLostSince };
           }
         }
 
@@ -9968,7 +9983,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? (() => {
             const side = Math.random() < 0.5 ? -1 : 1;       // 左(-1)か右(+1)
             const x = side * (6000 + Math.random() * 1800);  // 端の方(原点から遠い横方向。約3倍遠めへ)
-            const y = -400 + Math.random() * 800;            // 縦は帯の範囲内
+            // 縦は上下固定クランプ後の廊下帯(±LAB_CORRIDOR_Y_LIMIT_PX=100)の到達圏に収める。
+            // ガード配置(下)が labDoc.y ±70 でずらすため、その両端が±100に収まるよう ±30 に限定
+            // (社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175。旧: -400+rand*800=±400)。
+            const y = -30 + Math.random() * 60;
             return { x, y, side };
           })()
         : null;

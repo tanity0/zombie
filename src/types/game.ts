@@ -353,6 +353,10 @@ export interface Enemy {
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
   homeX?: number;
   homeY?: number;
+  // ステージ2(研究所)専用: 起床中のlab-zombieが「見えていない」(LOS遮断 or 距離>
+  // LAB_LOSE_SIGHT_RANGE)状態になり始めた gameTime(ms)。見えている間は undefined(タイマーなし)。
+  // 1000ms 継続で dormant=true に戻る(src/utils/labStealth.ts の evaluateLabLoseSight が判定)。
+  losLostSince?: number;
   // 裏ボス(mimir/jormungand)専用の状態機械(useGameLoop の専用コントローラが駆動)。
   // 通常の updateEnemies の追跡AIからは除外され、ここで動き/攻撃/帰巣を管理する。
   // トール(ステージ5)専用の追加ステート(社長指示・独自攻撃。弾もダッシュも使わない):
