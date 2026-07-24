@@ -91,7 +91,7 @@ indoorMode 基盤は将来用に残置するがこのステージでは使わな
 `LAB_AMMO_PICKUPS` 自体(indoor専用データ)は変更していない。
 **PHILL弾の固定配置を屋外stage-2に新設すべきかは設計判断のため何もしていない。**
 
-### ★2(重要度: 高): 武器商人が新クランプ後に到達不能になる
+### ★2【解決済み・v0.25.2178】: 武器商人が新クランプ後に到達不能になる
 `createWeaponMerchant()`(`gameStore.ts:500`、`x:0, y:-130`)は **全ステージ共通**(屋内/チュートリアル
 以外の全出撃で使用)の固定配置で、`MERCHANT_INTERACT_RADIUS=58`。今回追加した
 `LAB_CORRIDOR_Y_LIMIT_PX=100` クランプ下では、プレイヤー中心Yは `[-100,100]` までしか届かないため、
@@ -105,3 +105,11 @@ indoorMode 基盤は将来用に残置するがこのステージでは使わな
   (b) `labTheme` のときだけ `MERCHANT_INTERACT_RADIUS` を拡張する。
   (c) その他。
 **この★未決は本バッチの受け入れ条件に含まれていなかったため実装は保留し、最終報告で最優先に共有する。**
+
+**解決(社長承認v0.25.2178・案(a)を採用)**: 新定数 `LAB_MERCHANT_Y = -60`(`gameStore.ts`)を追加し、
+`resetGame` の `weaponMerchant` 初期化で `stageTheme==='lab'` の時だけ
+`{ ...createWeaponMerchant(), y: LAB_MERCHANT_Y }` に上書き。`createWeaponMerchant()` 本体(y:-130)・
+Xは無変更=他ステージの商人配置には一切触れていない。-60は±100クランプの内側([-100,100])に確実に
+収まり、プレイヤーがy=-60に立てば距離0で会話圏(radius 58)へ届く。ヘッドレスで
+`setPendingStageTheme('lab')`→`resetGame('warrior')` を直接実行し、`weaponMerchant`が
+`{x:0, y:-60, radius:58}` で生成されることを確認済み(詳細はDEVELOPMENT_LOG v0.25.2178)。

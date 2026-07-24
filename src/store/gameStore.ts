@@ -502,6 +502,12 @@ const createWeaponMerchant = (): WeaponMerchant => ({
   y: -130,
   radius: MERCHANT_INTERACT_RADIUS,
 });
+// ステージ2(研究所・横長廊下)専用: 商人YはM2_LAB_CORRIDOR_SPEC.md ★未決2への社長承認で追加。
+// 他ステージの createWeaponMerchant()(y:-130)は不変・labTheme時のみこの値で上書きする(Xは0のまま)。
+// -130は±100クランプの外(到達不能)だったため、プレイヤーが実際に立てる範囲内([-100,100])の
+// -60 を既定に採用(プレイヤーがy=-60に立てば距離0で会話圏(radius 58)へ確実に届く。
+// 必要なら-50〜-70の範囲で再調整可)。
+const LAB_MERCHANT_Y = -60;
 const createEventQuestNpc = (): EventQuestNpc => {
   const angle = Math.random() * Math.PI * 2;
   const dist = EVENT_NPC_MIN_DISTANCE + Math.random() * (EVENT_NPC_MAX_DISTANCE - EVENT_NPC_MIN_DISTANCE);
@@ -10194,7 +10200,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (描画は画面外カリング・interactは距離判定=radius 0 で成立しない)。
           : farBackdrop === 'tutorial'
             ? { x: 1e9, y: 1e9, radius: 0 }
-            : createWeaponMerchant(),
+            // 研究所(屋外・横長廊下)は上下固定クランプ(±100)の外(y:-130)に商人がいると一生話しかけ
+            // られない(M2_LAB_CORRIDOR_SPEC.md ★未決2・社長承認で追加)。labThemeだけYを上書きし、
+            // 他ステージの共通配置(y:-130)には触れない。
+            : stageTheme === 'lab'
+              ? { ...createWeaponMerchant(), y: LAB_MERCHANT_Y }
+              : createWeaponMerchant(),
         // 二人組(クエストNPC): クエスト設定のあるステージ(1/3/4/5)のみ出現(社長裁定v0.25.1686 #6)。
         // サブ納品済みステージにも以後出現しない(そのプレイ中に消えないのは completeEventQuest 側)。
         eventQuestNpc: (() => {

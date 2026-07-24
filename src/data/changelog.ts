@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2178',
+    items: [
+      '修正: ステージ2で武器商人に話しかけられなくなっていた位置を通路内へ移動しました。',
+    ],
+  },
+  {
     version: '0.25.2177',
     items: [
       'ゲーム内容の変更はありません(社長実機報告の調査: オープニングの廊下シーン中にアリーナの発砲SE/歓声が先走って鳴る不具合を調査しましたが、現在のコードでは再現しませんでした。詳細はDEVELOPMENT_LOGへ)。',

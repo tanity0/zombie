@@ -1,5 +1,29 @@
 # Development Log
 
+## v0.25.2178 — M2(研究所)武器商人を廊下帯内(y=-60)へ移動【2026-07-24 20:50 JST】
+- 依頼(社長承認・★未決2の推奨案どおり): `M2_LAB_CORRIDOR_SPEC.md` ★未決2で報告した「全ステージ共通の
+  武器商人固定配置(`createWeaponMerchant()`、y:-130)が、v0.25.2176で追加した
+  `LAB_CORRIDOR_Y_LIMIT_PX=100`クランプ下では stage-2 で一生届かない」問題への対応。
+- 実装(`src/store/gameStore.ts`): 新定数`LAB_MERCHANT_Y=-60`を追加し、resetGameの
+  `weaponMerchant`初期化で`stageTheme==='lab'`の時だけ`{ ...createWeaponMerchant(), y: LAB_MERCHANT_Y }`
+  で上書き。`createWeaponMerchant()`本体(y:-130)・Xは無変更=他ステージの商人配置は不変。
+  -60は±100クランプの内側([-100,100])に確実に収まり、プレイヤーがy=-60に立てば距離0で
+  会話圏(`MERCHANT_INTERACT_RADIUS=58`)へ届く値として採用(指示のとおり既定・-50〜-70で
+  再調整可能な形にコメントで明記)。
+- 検証:
+  - `npm run typecheck`・`npm run lint` 共に0エラー。
+  - ヘッドレス(Playwright): `?smoke&stage=stage-2`のApp.tsx起動チェーン(localStorage経由の
+    ステージ選択→startGame)が今回に限り断続的に`stageTheme:'forest'`へ落ちる現象を観測
+    (原因調査で並行稼働中の別セッションがdev serverの同一ファイルへ同時にHMR保存を連発しており、
+    その影響と推測=本修正のロジックとは無関係と判断)。そのため`window.__gameStore`を直接操作する
+    より確実な経路で検証: `setPendingStageTheme('lab')`→`resetGame('warrior')`を実行したところ
+    `weaponMerchant`が`{x:0, y:-60, radius:58}`で生成されることを確認(=プレイヤーが到達できる
+    y=-60に商人が立ち、距離0<=radius58で即interact可能)。他ステージ(stageTheme!=='lab')側は
+    このパスに入らないため`y:-130`のまま=無変更を実装からも確認。
+- 採用Y値: **-60**(既定どおり。-50〜-70の範囲で今後調整可)。
+- Files: `src/store/gameStore.ts`, `M2_LAB_CORRIDOR_SPEC.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2177 — OP先走り音バグ調査: 現コードでは再現せず(walkDoneゲートは既に修正済み)【2026-07-24 20:35 JST】
 - 依頼(社長実機報告): オープニングを最初から再生すると、アリーナで鳴るはずの「パン!(紙吹雪SE)+
   歓声(ARENA_AUDIO 2音源ループ)」が、その前の楽屋廊下(歩き)シーンで流れてしまう。
