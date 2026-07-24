@@ -98,6 +98,40 @@ describe('歴史年表(chronicle)', () => {
 
 // ランク持ち越し(社長決定v0.25.1844): 各ステージごとに「最終ランク−1」を次ランの開始ランクへ。
 // 死亡/クリア/撤退すべて同じ扱い・下限R1・上限R7。
+describe('年表のステージ6フィルタ(社長指示v0.25.2150「クリアしたか否かだけ」)', () => {
+  it('recordChronicle: stage-6の道中記録(zone/rank/boss等)は記録されない', () => {
+    expect(recordChronicle('stage-6', 'zone', '3', '未確認汚染エリアに到達')).toBe(false);
+    expect(recordChronicle('stage-6', 'rank', '2', 'ランク到達')).toBe(false);
+    expect(recordChronicle('stage-6', 'boss', 'hunter', '変異体(狩猟型)を討伐')).toBe(false);
+    expect(loadChronicle()).toEqual([]);
+  });
+
+  it("recordChronicle: stage-6の'clear'は記録される(他ステージは従来どおり)", () => {
+    expect(recordChronicle('stage-6', 'clear', 'clear', 'クリア')).toBe(true);
+    expect(recordChronicle('stage-1', 'zone', '1', '研究対象区域に到達')).toBe(true);
+    const list = loadChronicle();
+    expect(list.map(e => e.key)).toEqual(['stage-6::clear::clear', 'stage-1::zone::1']);
+  });
+
+  it('loadChronicle: 既存セーブに残るstage-6の道中記録は読み出しで非表示(遡及)', () => {
+    backing['zombie.progress.chronicle'] = JSON.stringify([
+      { key: 'stage-6::zone::3', stageId: 'stage-6', kind: 'zone', label: 'ステージ6 未確認汚染エリアに到達', at: 1 },
+      { key: 'stage-6::clear::clear', stageId: 'stage-6', kind: 'clear', label: 'ステージ6 クリア', at: 2 },
+      { key: 'stage-1::zone::1', stageId: 'stage-1', kind: 'zone', label: 'ステージ1 研究対象区域に到達', at: 3 },
+    ]);
+    expect(loadChronicle().map(e => e.key)).toEqual(['stage-6::clear::clear', 'stage-1::zone::1']);
+  });
+
+  it('markStageCleared(stage-6): 年表にクリア1件だけ載る(冪等)', () => {
+    markStageCleared('stage-6');
+    markStageCleared('stage-6');
+    const six = loadChronicle().filter(e => e.stageId === 'stage-6');
+    expect(six).toHaveLength(1);
+    expect(six[0].kind).toBe('clear');
+    expect(six[0].label).toBe('ステージ6 クリア');
+  });
+});
+
 describe('ランク持ち越し(startRank・社長決定v0.25.1844→再調整v0.25.1847=そのまま保持)', () => {
   it('carryOverStartRank: 最終ランクをそのまま保持・クランプ1..7', async () => {
     const { carryOverStartRank } = await import('./progress');

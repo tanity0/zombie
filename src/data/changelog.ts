@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2150',
+    items: [
+      '調整: 年表にステージ6のエリア・討伐などの道中記録を載せないようにしました(クリアの記録のみ。過去に載った分も非表示になります)。',
+    ],
+  },
+  {
     version: '0.25.2149',
     items: [
       '修正: ステージ6で敵がプレイヤーの直前まで見えなかった問題を修正。奥の暗がりから画面上部でフェードインして現れるようになりました。',

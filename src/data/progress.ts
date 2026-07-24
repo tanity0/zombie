@@ -34,6 +34,11 @@ export const getClearedStages = (): Set<string> => readSet();
 
 export const markStageCleared = (stageId: string): void => {
   if (!stageId) return;
+  // ステージ6は年表に「クリア」だけを載せる(社長指示v0.25.2150)。初回クリア時に1回だけ記録
+  // (recordChronicleのdedupと下のreadSetガードで二重に冪等)。再訪(SUB)はmissionが'revisit'のため通らない。
+  if (stageId === 'stage-6' && getSelectedMission() === 'main') {
+    recordChronicle('stage-6', 'clear', 'clear', 'クリア');
+  }
   const set = readSet();
   if (set.has(stageId)) return;
   set.add(stageId);
@@ -596,7 +601,8 @@ export const setSelectedMission = (m: SelectedMission): void => {
 //   ・種別: zone(区域到達) / rank(ランク到達) / boss(各種ボス討伐) / base(拠点解放) /
 //     hunter(ハンター討伐) / reaper(死神討伐) / redNight(紅き夜を越えた) /
 //     cave(洞窟発見=将来ステージに洞窟を置いた時用・型だけ予約し現状は未配線)。
-export type ChronicleKind = 'zone' | 'rank' | 'boss' | 'base' | 'hunter' | 'reaper' | 'redNight' | 'cave';
+// 'clear'=ステージクリア(現状ステージ6のみ・社長指示v0.25.2150「ステージ6はクリアしたか否かだけ」)。
+export type ChronicleKind = 'zone' | 'rank' | 'boss' | 'base' | 'hunter' | 'reaper' | 'redNight' | 'cave' | 'clear';
 
 export interface ChronicleEntry {
   key: string;          // dedup キー = `${stageId}::${kind}::${detail}`
@@ -616,7 +622,10 @@ export const loadChronicle = (): ChronicleEntry[] => {
     return arr.filter((e): e is ChronicleEntry =>
       !!e && typeof e === 'object' &&
       typeof e.key === 'string' && typeof e.stageId === 'string' &&
-      typeof e.kind === 'string' && typeof e.label === 'string' && typeof e.at === 'number');
+      typeof e.kind === 'string' && typeof e.label === 'string' && typeof e.at === 'number')
+      // ステージ6の道中記録(エリア/ランク/討伐等)は年表に載せない(社長指示v0.25.2150
+      // 「クリアしたか否かだけ」)。既存セーブに記録済みの分も読み出しで非表示(データは残す=可逆)。
+      .filter(e => !(e.stageId === 'stage-6' && e.kind !== 'clear'));
   } catch {
     return [];
   }
@@ -659,6 +668,10 @@ export const recordChronicle = (
   stageId: string, kind: ChronicleKind, detail: string, phrase: string
 ): boolean => {
   if (!stageId) return false;
+  // ステージ6(洋館通路)は道中の年表記録をしない(社長指示v0.25.2150「クリアしたか否かだけ。
+  // あとは薬・特殊変異体の件」)。クリア(kind='clear')だけ通す。薬(再訪=SUB)・EX(特殊変異体)は
+  // 別ミッション/別ステージIDなのでこのフィルタには掛からない。
+  if (stageId === 'stage-6' && kind !== 'clear') return false;
   const key = `${stageId}::${kind}::${detail}`;
   const list = loadChronicle();
   if (list.some(e => e.key === key)) return false;
