@@ -175,6 +175,9 @@ const FAR_BACKDROP_PARALLAX_X = 0.09;
 // 社長指示「地面のところは本物の地面レイヤーの下に隠す」)。0.55×710/941=0.415で表示倍率は不変
 // (川の大きさ維持)。遠景帯が縮んだぶん本物の地面上端(=farH連動)が上がって残りを覆う。
 const TUTORIAL_FAR_HEIGHT_RATIO = 0.415;
+// ステージ2(研究所)の遠景も、床との距離感がM0(チュートリアル)と揃うようTUTORIALと同じ比率にする
+// (社長指示v0.25.2176「遠景と床の距離感をM0と同じに」)。値そのものはTUTORIAL_FAR_HEIGHT_RATIOに追従。
+const LAB_FAR_HEIGHT_RATIO = TUTORIAL_FAR_HEIGHT_RATIO;
 // 川の流れ(オクトラ風・社長相談2026-07-17): 遠景と同ジオメトリのハイライト筋レイヤー2枚を
 // 速度差でスクロール(1枚目=速い/2枚目=遅い)。明部は既存bloomが拾って光る。数値は全て叩き台。
 const RIVER_FLOW_SPEED_PX_S = [18, 10];   // tilePositionの流速(表示px/秒)
@@ -238,7 +241,7 @@ const HORIZON_ACTOR_FADE_PX = 120;
 // 通路では遠景森レイヤーが非表示なのにレイアウト値が残り、境界が画面中央(実測0.55H)に居座っていた
 // =敵はプレイヤー直前までalpha0(見えない)→「敵が現れない/いきなり出る」の真因。
 // 通路は「画面上部の固定ライン+狭めのフェード幅」で奥の暗がりからすっと現れる形にする。数値は叩き台。
-const CORRIDOR_ACTOR_FADE_TOP_FRAC = 0.10; // フェード境界(可視高比)。0.04→0.10(社長指示v0.25.2153「少しだけ下げて」)
+const CORRIDOR_ACTOR_FADE_TOP_FRAC = 0.14; // フェード境界(可視高比)。0.04→0.10(v0.25.2153)→0.14(社長指示v0.25.2180「もう少しだけ下げて」)
 const CORRIDOR_ACTOR_FADE_PX = 80;         // フェード幅(world px。既定120より狭め=出現がもたつかない)
 // 非ボス敵の「手前(画面最下端=カメラ近接)で消える」near-plane フェード幅(px)。
 // 画面の一番下のこの帯の中だけで 1→0(近くでは消えない=社長指示「距離は下げて」)。
@@ -2584,6 +2587,8 @@ export class PixiScene {
   private farBackdropHeight() {
     // チュートリアル(洞窟)だけ縦を大きく使う(TUTORIAL_FAR_HEIGHT_RATIO参照)。
     if (this.currentFarKey === 'tutorial') return this.screenH * TUTORIAL_FAR_HEIGHT_RATIO;
+    // 研究所(lab)もM0と同じ距離感になるよう同じ比率を使う(社長指示v0.25.2176)。
+    if (this.currentFarKey === 'lab') return this.screenH * LAB_FAR_HEIGHT_RATIO;
     return Math.min(this.screenH * FAR_BACKDROP_HEIGHT_CAP, Math.max(FAR_BACKDROP_MIN_HEIGHT, this.screenH * FAR_BACKDROP_HEIGHT_RATIO));
   }
 

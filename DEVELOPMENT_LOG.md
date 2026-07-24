@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.2180 — M2遠景の再差し替え+距離感M0同等+M6フェード0.14(死亡エージェント作業の検収着地)【2026-07-24 21:12 JST】
+- 経緯: 素材担当サブエージェントがワーカー再起動で転写消失。残されたWIP(新遠景jpg差し替え+
+  `LAB_FAR_HEIGHT_RATIO = TUTORIAL_FAR_HEIGHT_RATIO` と farBackdropHeight の lab 分岐)を設計チャットが
+  検収し、正常と判断してそのまま着地。ループ継ぎ目のクロスフェード適用有無は転写消失のため不明=
+  実機で継ぎ目が見えたら要対応(申し送り)。床の遠近感調査も未完=別途。
+- 追加: CORRIDOR_ACTOR_FADE_TOP_FRAC 0.10→0.14(社長指示「もう少しだけ下げて」・M6の敵出現ライン)。
+- 検証: typecheck・lint 0エラー。ヘッドレスでstage-2描画正常(新遠景・破綻なし)を確認。
+- Files: `public/backgrounds/stage2-lab-far.jpg`, `src/pixi/pixiScene.ts`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2179 — OP音の二重再生保険(muted+volume=0)とスキップ誤爆ガードを実装【2026-07-24 21:03 JST】
 - 依頼(社長承認「直して」・v0.25.2177の調査報告を受けての実装指示): 2件。
   1. iOS保険: アリーナ音源(ARENA_AUDIO)・パンSE等の解錠用プライミングを
