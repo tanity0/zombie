@@ -512,34 +512,17 @@ export const ensureTextures = (): Promise<void> => {
 export const texturesReady = (): boolean => ready;
 
 // 背景パノラマ/床/地平帯はマニフェスト外で URL 直読みする(PixiStage が Assets.load)。
-// これらを起動時のローディング画面で先読みしておくと、出撃時に Assets キャッシュから即取得でき、
-// 「出撃直後に一瞬ステージ1(森)が映る」フラッシュを防げる(注入を初回ペイント前に間に合わせる)。
+// v0.25.2166(社長指示「ステージ特有のリソースはそのステージのローディング中に」): 起動時の先読みは
+// 【全ステージ共通のコア4枚だけ】に削減。旧: ステージ固有21枚も全部先読み=タイトル画面の時点で
+// デコード後~100MBが常駐し、iOSのメモリ天井(勝手リロード)を押し上げていた。ステージ固有分は
+// PixiStage(出撃ローディング)が出撃ステージの分だけ読む(STAGE_TEXTURE_GROUPS)。
+// 「出撃直後に一瞬森が映る」フラッシュは v0.25.2122以降、注入完了までローディングを外さない方式で
+// 防いでいる(先読みが無くても黒画面にはならない)。
 const BACKGROUND_PATHS = [
   'backgrounds/distant-night-panorama.jpg',
   'backgrounds/ground-moss-dirt.jpg',
   'backgrounds/horizon-forest-band.png',
   'backgrounds/front-forest-foreground.png',
-  'backgrounds/stage3-distant-city-day.jpg',
-  'backgrounds/stage3-ground-cobble2.jpg',
-  'backgrounds/stage3-horizon-city.png',
-  'backgrounds/stage3-near-horizon-city.png',
-  'backgrounds/stage1-near-forest.png',
-  'backgrounds/stage2-lab-far.jpg',
-  'backgrounds/stage2-near-horizon2.png',
-  'backgrounds/stage4-far.jpg',
-  'backgrounds/stage4-front2.png',
-  'backgrounds/stage4-ground.jpg',
-  'backgrounds/stage4-horizon.png',
-  'backgrounds/stage5-ground.jpg',
-  'backgrounds/stage3-front-rooftops.png',
-  'backgrounds/tutorial-far.jpg', // チュートリアル(洞窟)の遠景パノラマ
-  'backgrounds/tutorial-ground.jpg', // チュートリアル(洞窟)の地面タイル
-  'backgrounds/tutorial-horizon-rocks.png', // チュートリアルの地平帯=岩帯(川に頭が少し被る)
-  'backgrounds/tutorial-near-rocks.png', // チュートリアルの遠景森2=岩帯2(岩帯1の手前)
-  'backgrounds/tutorial-front-rocks.png', // チュートリアルの近景森1=画面手前・下寄せの岩(ぼかし)
-  'sprites/tutorial-river-flow-1.png', // 川の流れ筋レイヤー1(速い)
-  'sprites/tutorial-river-flow-2.png', // 川の流れ筋レイヤー2(遅い)
-  'sprites/lab-floor/lab-floor-stage2.png',
 ];
 let bgLoading: Promise<void> | null = null;
 export const preloadBackgrounds = (): Promise<void> => {

@@ -69,6 +69,12 @@
   リロード自体を減らす本筋は起動ピーク削減。第一弾=SFXバストの内容ハッシュ化はv0.25.2161で実施済み
   (vite.config.tsが`public/audio/sfx`をビルド時走査→`__SFX_HASHES__`注入→withVersionが参照。
   差し替えたSEだけURLが変わる=毎更新の全音声再DL/再デコードが消えた)。
+  **第二弾=ステージ別テクスチャの出撃ステージ限定ロード(v0.25.2166・社長承認)**: 従来は起動時
+  `preloadBackgrounds`+出撃時の両方で30枚(デコード後実測~138MB)を全ロード常駐。→ 起動先読みは
+  コア4枚のみ・出撃時は `STAGE_TEXTURE_GROUPS`(PixiStage)でそのステージの分だけ。**地雷**:
+  近景帯(遠景森2)はミッション個別キー`nearHorizon`でグループを跨ぐ(M7=stage7遠景+'forest'森
+  シルエット)ため、farBackdropだけで引かず`NEAR_HORIZON_TEXTURES[s.nearHorizon]`を必ず合算する。
+  未知キーは全ロードにフォールバック(安全側)。グループの綴りはSortieTexturePath型でtypecheck検出。
 - **音声はジェスチャ保険で拾い直す**(v0.25.2160): iOSの`AudioContext.resume()`はユーザージェスチャ中
   しか効かない場面がある+BGMのplay()拒否は再試行窓(ready系イベント2.2s)を逃すと止まりっぱなし。
   → `attachAudioGestureRecovery`(App起動時に1回)が全pointerdown/keydown(capture・1sスロットル)で

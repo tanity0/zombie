@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.2166 — ステージ別テクスチャを出撃ステージ限定ロードへ(メモリ天井対策・第二弾)【2026-07-24 16:55 JST】
+- 指示(社長): ステージ特有のリソースはそのステージのローディング中にダウンロードさせる(そのための
+  ステージ毎のローディング画面)。
+- 対処:
+  - PixiStage: `STAGE_TEXTURE_GROUPS`(theme 'lab' / farBackdrop 'city','snow','stage5','tutorial',
+    'stage7' / ''=M1系森)+`NEAR_HORIZON_TEXTURES`(ミッション個別キーnearHorizonの直引き=
+    M7が'forest'森シルエットを跨いで使う依存に対応)で必要集合を算出し、必要分だけAssets.load。
+    不要分はnull注入(セッターは全てTexture|null許容=元々そのステージでは描かれない)。未知キーは
+    全ロードへフォールバック。ローディング%の分母も必要数に連動。洋館通路は0枚(通路テクスチャ別ロード)。
+  - pixiTextures: 起動時`preloadBackgrounds`を全25枚→コア4枚のみに削減(旧はタイトル画面の時点で
+    デコード後~100MB常駐)。出撃フラッシュはv0.25.2122以降「注入完了までローディングを外さない」
+    方式で防止済み=先読み全量は不要になっていた。
+  - 効果: ステージ別30枚のデコード後~138MB常駐 → 1ステージ分(~10-30MB)+訪れたステージ分のみ。
+- 検証: typecheck・lint 0エラー。ネットワーク傍受(smoke=森ステージ)で背景リクエストが
+  コア4+M1グループ(near-forest/sky-anim/castle/moon)だけになること+実写でシーン完全描画を確認。
+- Files: `src/pixi/PixiStage.tsx`, `src/pixi/pixiTextures.ts`, `ENGINEERING_NOTES.md`,
+  `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2165 — OP蘇生シーン: 台本を11行→9行へ(社長リライト採用)【2026-07-24 16:42 JST】
 - 指示(社長): 案Aをたたきに9行版を決定。ラスト「これが安定すれば…救える / 多くの人を」は
   タイトル『the ONE』と掛けた "This will save / the MANY"(意図をファイルコメントに記録・統合禁止)。
