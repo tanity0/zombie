@@ -46,6 +46,7 @@ import {
 } from '../utils/wallProgress';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
+import { shouldSpawnAirdrop } from '../utils/ammoAirdrop';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
   type CombatEffects, type CombatTunables,
@@ -7956,37 +7957,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // break position to go fetch it — guided there by the VS-style edge
         // arrow the renderer draws for worldDrop pickups. Capped so the field
         // never clutters with crates. gameTime-based so pauses don't cheat it.
-        const MAX_WORLD_AMMO_DROPS = 1;
+        // 判定・配置ロジックは src/utils/ammoAirdrop.ts の純関数へ切り出し済み(v0.25.2172・
+        // ヘッドレス側 playtestDriver.ts と共用。挙動保存=式・間隔・確率は全て従来と同一)。
         const worldAmmoCount = pickups.filter(
           p => p.worldDrop &&
             (p.type === 'ammo-handgun' || p.type === 'ammo-shotgun' || p.type === 'ammo-rifle')
         ).length;
-        if (nextAmmoDropDelayRef.current === 0) {
-          nextAmmoDropDelayRef.current = 50000 + Math.random() * 10000; // first drop ~50-60s in
-        }
-        if (
-          !tutorialStage && // チュートリアルはアイテム(弾薬エアドロップ)も無し(社長指示v0.25.1818)
-          worldAmmoCount < MAX_WORLD_AMMO_DROPS &&
-          !hasSkill(useGameStore.getState().player, 'knife-master') && // ナイフマスターは弾薬ドロップ0%(社長指示)
-          gameTime - lastAmmoDropRef.current > nextAmmoDropDelayRef.current
-        ) {
-          // Place it just beyond the viewport at a random bearing from the
-          // player so it's always off-screen (and within ~1.6 screens away).
-          const angle = Math.random() * Math.PI * 2;
-          const halfMax = Math.max(gameBounds.width, gameBounds.height) / 2;
-          const dist = halfMax * (1.1 + Math.random() * 0.5);
-          const px = player.x + player.width / 2 + Math.cos(angle) * dist;
-          const py = player.y + player.height / 2 + Math.sin(angle) * dist;
-          // Only drop ammo for gun families the player owns, weighted toward
-          // the active gun so the trek usually pays off.
-          const owned = getGuns(player)
-            .map(w => w.ammoType)
-            .filter((t): t is AmmoType => !!t);
-          const equippedAmmo = getActiveGun(player)?.ammoType;
-          const dropType =
-            equippedAmmo && Math.random() < 0.7
-              ? equippedAmmo
-              : owned[Math.floor(Math.random() * owned.length)];
+        const airdropTick = shouldSpawnAirdrop({
+          tutorialStage, // チュートリアルはアイテム(弾薬エアドロップ)も無し(社長指示v0.25.1818)
+          knifeMaster: hasSkill(useGameStore.getState().player, 'knife-master'), // ナイフマスターは弾薬ドロップ0%(社長指示)
+          gameTime,
+          worldAmmoCount,
+          lastAmmoDropAt: lastAmmoDropRef.current,
+          nextAmmoDropDelayMs: nextAmmoDropDelayRef.current,
+          playerX: player.x, playerY: player.y, playerWidth: player.width, playerHeight: player.height,
+          boundsWidth: gameBounds.width, boundsHeight: gameBounds.height,
+          ownedAmmoTypes: getGuns(player).map(w => w.ammoType).filter((t): t is AmmoType => !!t),
+          equippedAmmo: getActiveGun(player)?.ammoType,
+          rng: Math.random,
+        });
+        nextAmmoDropDelayRef.current = airdropTick.nextAmmoDropDelayMs;
+        if (airdropTick.spawn) {
+          const { x: px, y: py, ammoType: dropType } = airdropTick.spawn;
           addPickup({
             id: `pickup-airdrop-${Math.floor(gameTime)}-${Math.floor(Math.random() * 1e6)}`,
             x: px - 8,
@@ -7997,7 +7989,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           });
           spawnRing(px, py, 10, 70, 'rgba(252, 211, 77, 0.7)', 3, 520);
           lastAmmoDropRef.current = gameTime;
-          nextAmmoDropDelayRef.current = 75000 + Math.random() * 30000; // 75-105s between drops
         }
 
         const playerCenterX = player.x + player.width / 2;

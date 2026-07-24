@@ -24,6 +24,8 @@ import {
 } from '../store/gameStore';
 import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY } from './weaponUtils';
 import { pickAmmoDropType } from './ammoDrop';
+import { ammoDirectorRate } from './ammoDirector';
+import { shouldSpawnAirdrop } from './ammoAirdrop';
 import { isPlayerInAttackTelegraph } from './levelUpGate';
 import { shouldTriggerGate1, entersGate1Penalty } from './gate1';
 import { shouldTriggerGate2 } from './gate2';
@@ -102,6 +104,9 @@ export interface PlaytestRefs {
   angel: AngelBossState;
   // M37(§6.14): 人間反応のカウンター検知状態(ラン単位で1つ保持)。
   counterThreat: CounterThreatState;
+  // v0.25.2172: 空輸弾薬(エアドロップ)の周期状態。useGameLoop.tsの lastAmmoDropRef/
+  // nextAmmoDropDelayRef と同じ役割(src/utils/ammoAirdrop.ts の純関数を共用)。
+  airdrop: { lastAmmoDropAt: number; nextAmmoDropDelayMs: number };
 }
 
 // useGameLoop.ts の useRef 初期値と同じ形(M9-A extraction時点のスナップショット)。
@@ -144,6 +149,7 @@ export const createPlaytestRefs = (): PlaytestRefs => {
     },
     angel: createAngelBossState(),
     counterThreat: createCounterThreatState(),
+    airdrop: { lastAmmoDropAt: 0, nextAmmoDropDelayMs: 0 },
   };
 };
 
@@ -179,15 +185,21 @@ const applyBotProjectileHits = (gameTime: number): void => {
       const ex = enemy.x + enemy.width / 2, ey = enemy.y + enemy.height / 2;
       useGameStore.getState().dropEnemyCurrency(enemy, ex, ey);
       useGameStore.getState().dropEnemyXp(enemy, ex, ey, 'pickup-xp');
-      // 弾薬ドロップ(useGameLoop.ts:6576-6607と同じ経済): キルごとに設定ドロップ率でロールし、
+      // 弾薬ドロップ(useGameLoop.ts:6698-6737と同じ経済): キルごとに設定ドロップ率でロールし、
       // RE4式スマート弾種(残弾割合が最小の弾種)で落とす。これが無いと銃専ボットが恒久的に弾切れになる。
       const stKill = useGameStore.getState();
       const kp = stKill.player;
+      const equippedAmmo = getActiveGun(kp)?.ammoType;
+      const owned = kp.weapons.filter(w => !w.isMelee).map(w => w.ammoType).filter((tt): tt is AmmoType => !!tt);
+      // 弾薬AIディレクター(v0.25.2170): 「全所持銃の弾備蓄の枯渇度×敵の多さ」で基礎率を最大20%まで底上げ
+      // (useGameLoop.ts:6709-6714と同じ式=ammoDirectorRate。ヘッドレスは常時有効=?ammodir相当のフラグ無し)。
+      const dirPct = ammoDirectorRate(stKill.meleeAmmoDropPercent, {
+        families: owned.filter(tt => tt !== 'phill').map(tt => ({ reserve: ammoPoolFor(kp, tt), max: AMMO_MAX[tt] })),
+        enemyCount: stKill.enemies.length,
+      });
       const gunKillDropRate = Math.max(0, Math.min(1,
-        stKill.meleeAmmoDropPercent / 100 + (kp.ammoDropBonus ?? 0) + (kp.equipBonus?.ammoDropBonus ?? 0)));
+        dirPct / 100 + (kp.ammoDropBonus ?? 0) + (kp.equipBonus?.ammoDropBonus ?? 0)));
       if (!hasSkill(kp, 'knife-master') && Math.random() < gunKillDropRate) {
-        const equippedAmmo = getActiveGun(kp)?.ammoType;
-        const owned = stKill.player.weapons.filter(w => !w.isMelee).map(w => w.ammoType).filter((tt): tt is AmmoType => !!tt);
         const smartType = pickAmmoDropType(
           owned.map(tt => ({ type: tt, reserve: ammoPoolFor(kp, tt), max: AMMO_MAX[tt] })), equippedAmmo);
         const dropType = smartType ?? equippedAmmo ?? owned[0];
@@ -478,6 +490,37 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   const gameBounds = s.gameBounds;
   const playerCenterX = s.player.x + s.player.width / 2;
   const playerCenterY = s.player.y + s.player.height / 2;
+
+  // v0.25.2172: 空輸弾薬(エアドロップ)。useGameLoop.ts側と同じ純関数(src/utils/ammoAirdrop.ts)を
+  // 使い、初回50-60s/以後75-105s間隔・同時最大1個・距離1.1-1.6画面・弾種70/30の各式を完全に同一にする
+  // (旧: ヘッドレス未移植=テストでは常に0件だった。これが無いとスカベンジャーの枯渇時回収経路が
+  // 一度も試験されない)。演出(spawnRing)は他FXと同様ヘッドレスではNOOP=呼ばない。
+  const airdropTick = shouldSpawnAirdrop({
+    tutorialStage: false, // ヘッドレスにチュートリアル演出は無い(常に本編扱い)
+    knifeMaster: hasSkill(s.player, 'knife-master'),
+    gameTime: t,
+    worldAmmoCount: s.pickups.filter(
+      p => p.worldDrop && (p.type === 'ammo-handgun' || p.type === 'ammo-shotgun' || p.type === 'ammo-rifle')
+    ).length,
+    lastAmmoDropAt: refs.airdrop.lastAmmoDropAt,
+    nextAmmoDropDelayMs: refs.airdrop.nextAmmoDropDelayMs,
+    playerX: s.player.x, playerY: s.player.y, playerWidth: s.player.width, playerHeight: s.player.height,
+    boundsWidth: gameBounds.width, boundsHeight: gameBounds.height,
+    ownedAmmoTypes: getGuns(s.player).map(w => w.ammoType).filter((tt): tt is AmmoType => !!tt),
+    equippedAmmo: getActiveGun(s.player)?.ammoType,
+    rng: Math.random,
+  });
+  refs.airdrop.nextAmmoDropDelayMs = airdropTick.nextAmmoDropDelayMs;
+  if (airdropTick.spawn) {
+    const { x: px, y: py, ammoType: dropType } = airdropTick.spawn;
+    useGameStore.getState().addPickup({
+      id: `pickup-airdrop-${Math.floor(t)}-${Math.floor(Math.random() * 1e6)}`,
+      x: px - 8, y: py - 8,
+      type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+      value: 0, worldDrop: true,
+    });
+    refs.airdrop.lastAmmoDropAt = t;
+  }
 
   // useGameLoop.ts と同じ順序: enemyCap は「このtickの冒頭で1回だけ」計算し(puzzleClockRefは
   // 前tickまでの値=既存の1フレーム遅延パターン)、査定(koma)更新の前後どちらにも同じ値を使う。

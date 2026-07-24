@@ -1,5 +1,49 @@
 # Development Log
 
+## v0.25.2173 — ヘッドレステスト基盤: 弾薬ディレクター配線+エアドロップ純関数切り出し【2026-07-24 18:53 JST】
+- 指示(社長承認済み・B案): 前回実走(v0.25.2171)で見つかったヘッドレステスト基盤の弾薬系ギャップ2つを
+  恒久修正する。**実ゲームの挙動は一切変えない**(挙動保存リファクタ+テスト側配線のみ)。
+- 対処1(`src/utils/playtestDriver.ts` `applyBotProjectileHits`): 銃キル弾薬ドロップ率の計算に
+  `ammoDirectorRate()`(v0.25.2170)が未配線だった欠落を修正。`useGameLoop.ts:6702-6716`と完全に同じ式
+  (`owned`/`equippedAmmo`を先に算出→`families`はphill除外の所持銃`{reserve,max}`→`enemyCount`は
+  `stKill.enemies.length`→結果`dirPct`を`gunKillDropRate`のbaseに使用)で配線。ヘッドレスに
+  `?ammodir=0`相当のフラグは無く常時有効(実プレイの既定=ON状態と同じ)。
+- 対処2(新規 `src/utils/ammoAirdrop.ts`): 周期エアドロップ(空輸弾薬)の判定・配置を
+  `shouldSpawnAirdrop(input)`という純関数(レンダラ/store非依存)に切り出し。乱数は引数`rng`で注入。
+  ロジックは`useGameLoop.ts`の旧直書き(初回50-60s後・以後75-105s間隔・同時最大1個・プレイヤーから
+  1.1-1.6画面の画面外ランダム方位・弾種は構え銃70%/所持ランダム30%・チュートリアル中/ナイフマスター
+  除外)をそのまま式単位で移植(値は1つも変えていない)。
+  - `useGameLoop.ts`: 旧7954-8001行付近の直書きを`shouldSpawnAirdrop()`呼び出しに置換。
+    `nextAmmoDropDelayRef`/`lastAmmoDropRef`の更新タイミング・`addPickup`/`spawnRing`呼び出しは
+    従来のまま(演出・ref更新のみ呼び出し側に残す設計)。
+  - `playtestDriver.ts`: `PlaytestRefs`に`airdrop: {lastAmmoDropAt, nextAmmoDropDelayMs}`を追加し、
+    `runPlaytestTick`内(`s`/`gameBounds`算出直後)で同じ関数を呼び、`worldDrop`ピックアップとして
+    出現させる(spawnRingは他FXと同様ヘッドレスはNOOP=呼ばない)。`tutorialStage`は常にfalse
+    (ヘッドレスにチュートリアル演出は無いため)。
+  - 新規 `src/utils/ammoAirdrop.test.ts`(vitest 11件): 初回遅延レンジ(50-60s)、未経過時は
+    spawnしない(rng追加消費なし=保険付き)、同時1個キャップ、チュートリアル/ナイフマスター除外、
+    配置距離(1.1-1.6画面)と方位、弾種70/30(構え優先/短絡でrng節約/ランダム落選時のindex選択)、
+    次回間隔(75-105s)、境界(ちょうど超過の瞬間にspawn)を網羅。
+- 実ゲーム挙動不変性の確認方法: `useGameLoop.ts`側の差分は「同じ式を関数に切り出しただけ」で、
+  実行される計算式(角度・距離・弾種確率・間隔レンジ)・呼び出し順・ref更新タイミング・
+  `addPickup`/`spawnRing`の副作用は全て従来のコードと1対1で対応させ、diffで目視確認した
+  (Math.random()の呼び出し回数・用途は同一。pickup id生成用のrandom呼び出し1回だけが
+  「次回delayのroll」より後ろに来る=無関係な乱数消費の順序だけがずれるが、id自体はゲーム挙動に
+  影響しないため実質的な挙動差は無い)。
+- テスト結果: `npx vitest run src/utils/ammoAirdrop.test.ts` 11件全緑。
+  `npx vitest run src/utils/ammoDirector.test.ts src/utils/ammoDrop.test.ts` 既存13件も引き続き全緑
+  (無変更ファイルへの副作用なしを確認)。`npx vitest related --run src/utils/playtestDriver.ts
+  src/hooks/useGameLoop.ts` → `src/store/playtest.test.ts`(6件通過・1件skip)全緑
+  (M9スモーク/M19深層ラッシュ/M26ゲート+ハンターの既存シナリオが本変更後も例外なく完走することを確認)。
+  `npm run typecheck`/`npm run lint` エラー0。`npm test`/`npm run build`は社長の明示指示が無いため
+  未実行(テスト方針どおり)。
+- 気づいた異常: なし。旧コードの `owned.length===0` 時のインデックスアクセス(`owned[NaN]`)等、
+  切り出し前から存在していた潜在挙動はそのまま温存(仕様変更禁止の原則により、今回のバグ修正対象外)。
+- 未決/申し送り: なし。
+- Files: `src/utils/ammoAirdrop.ts`(新規), `src/utils/ammoAirdrop.test.ts`(新規),
+  `src/utils/playtestDriver.ts`, `src/hooks/useGameLoop.ts`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2172 — ストーリー正本のリポ内完結化: M4〜EX・資料室を実装からの逆転記で新規作成【2026-07-24 18:42 JST】
 - 指示(社長): リポ外(Google Docs統合正本・共有パッケージ)由来でリポ内正本に節が無い文言を、実装コード
   の現行文言(=社長承認済み)を正として逆転記し、STORY_M4_EX.md / STORY_ARCHIVE.md の2本を新規作成。
