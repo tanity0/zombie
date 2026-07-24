@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2206',
+    items: [
+      '不具合修正: ステージ2の遠景が上で切れていたのを直し、絵の全体像が入るようにしました。',
+    ],
+  },
+  {
     version: '0.25.2205',
     items: [
       '不具合修正: ステージ2の開始/場面切替時に、下地の森が一瞬チラッと見えることがある問題を抑えました。',

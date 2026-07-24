@@ -3444,8 +3444,11 @@ export class PixiScene {
     // M7(星雲)は高さで合わせる(横はタイルでループ)。社長指示v0.25.1947。
     // 引きズームの地平黒帯対策で、遠景(画面固定)の高さをs7farext倍に下延長=夜空を下へ余裕分引っ張る(社長指示v0.25.1957)。
     const isM7far = this.currentFarKey === 'stage7';
+    // lab(M2)もM7と同じ「高さフィット」=絵の縦全体を帯に収める(handleResize と一致・v0.25.2190の意図)。
+    // cover(Math.max)だと幅基準で拡大され縦がはみ出て上が切れる(社長報告v0.25.2206)。横はタイルでループ。
+    const isHeightFit = isM7far || this.currentFarKey === 'lab';
     const farDrawH = isM7far ? farH * Math.max(1, tsNum('s7farext', 1.35)) : farH;
-    const farScale = isM7far
+    const farScale = isHeightFit
       ? farDrawH / tex.height
       : Math.max(this.screenW / tex.width, farH / tex.height);
     this.L.farBackdrop.width = this.screenW;

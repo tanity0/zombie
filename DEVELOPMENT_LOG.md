@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.2206 — M2遠景: 上切れ修正(layoutFarBackdropを高さフィットへ統一)【2026-07-25 02:23 JST】
+- 報告(社長): M2の遠景が全体像が映らず上が切れている。スケールで合わせたのでは?
+- 診断: 遠景スケール計算が2経路で不整合。handleResize は lab を高さフィット(farDrawH/texH・v2190の意図)だが、
+  layoutFarBackdrop(applyFarBackdropから呼ぶ=テクスチャ適用時)は lab を cover(Math.max(screenW/texW,farH/texH))。
+  テクスチャ適用のたびにcoverが上書き→幅基準拡大で縦がはみ出て上が切れていた。lab far=1624x906(横1.79)。
+- 対処: layoutFarBackdrop に isHeightFit=(isM7far||lab) を追加し、lab も高さフィットへ(handleResizeと一致)。
+  縦全体が帯に収まる。横はタイルでループ(縦持ちだと farH≒0.30×画面高でほぼ1枚幅に収まる)。
+- 検証: typecheck・lint 0。実機は社長確認(横持ち広画面では横方向にループ反復が出る可能性=気になれば要相談)。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2205 — M2: 開始/切替時に下地の森がチラッと見える問題を抑制【2026-07-25 02:23 JST】
 - 報告(社長): ステージ2で、レイヤーの下にステージ1(森)の素材がいてたまにチラッと映る。開始/場面切替時。
 - 診断: 各屋外レイヤーの初期テクスチャは森(ground-moss-dirt/front-forest/distant-night-panorama)。
