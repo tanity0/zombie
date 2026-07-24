@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.2190 — M2遠景をスケール追従(境界線つまみ1本化)【2026-07-25 00:07 JST】
+- 指示(社長): 遠景を境界線にスケールで設定できる?=大きさが追従。
+- 対処: LAB_FAR_BOUNDARY_YR=0.30(画面高比・境界線の唯一のつまみ)を新設。labの遠景はM7と同じ
+  「高さフィット」で画面上端〜境界線にスケール描画(絵の縦全体が見える・横ループ)。床上端も同じ値。
+  旧LAB_FAR_OFFSET_Y(px)とLAB_FAR_HEIGHT_RATIOは廃止=px指定による端末別のブレも解消。
+  0.30は旧実装のスマホ縦の見た目を概ね維持する換算値。検証は指示制につきtypecheck+lintのみ。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2189 — M2: 遠景さらに50px上げ+床上端を追従(境界密着)【2026-07-25 00:04 JST】
 - 指示(社長): 遠景、さらに50px上げて、床も上げて。
 - 対処: LAB_FAR_OFFSET_Y -50→-100。updatePerspectiveGroundのfarHにlab時のみ同オフセットを加算=

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2190',
+    items: [
+      '調整: ステージ2の遠景を「境界線までスケールで貼る」方式に変更しました(境界の位置つまみ1つで遠景の大きさと床上端が一緒に動きます)。',
+    ],
+  },
+  {
     version: '0.25.2189',
     items: [
       '調整: ステージ2の遠景をさらに50px上げ、床の上端も遠景に密着するよう追従させました。',

@@ -175,11 +175,11 @@ const FAR_BACKDROP_PARALLAX_X = 0.09;
 // 社長指示「地面のところは本物の地面レイヤーの下に隠す」)。0.55×710/941=0.415で表示倍率は不変
 // (川の大きさ維持)。遠景帯が縮んだぶん本物の地面上端(=farH連動)が上がって残りを覆う。
 const TUTORIAL_FAR_HEIGHT_RATIO = 0.415;
-// ステージ2(研究所)の遠景も、床との距離感がM0(チュートリアル)と揃うようTUTORIALと同じ比率にする
-// (社長指示v0.25.2176「遠景と床の距離感をM0と同じに」)。値そのものはTUTORIAL_FAR_HEIGHT_RATIOに追従。
-const LAB_FAR_HEIGHT_RATIO = TUTORIAL_FAR_HEIGHT_RATIO;
-// M2(研究所)の遠景(支給1枚のfarBackdrop)だけを50px上へ(社長指示v0.25.2183)。他ステージは不変。
-const LAB_FAR_OFFSET_Y = -100; // v0.25.2183(-50)→v0.25.2189さらに50上げ(社長指示)。床上端も同オフセットに追従(updatePerspectiveGround)=境界密着。
+// v0.25.2190(社長指示「遠景を境界線にスケールで設定=大きさが追従」): labの遠景は
+// 「画面上端〜境界線」にスケールで貼る(M7と同じ高さフィット・絵の縦全体が見える・横はループ)。
+// 境界線=このつまみ1つ(画面高比)。床上端も同じ値に追従(updatePerspectiveGround)。
+// 0.30=旧実装(0.415比-100px)のスマホ縦での見た目を概ね維持する値。
+const LAB_FAR_BOUNDARY_YR = 0.30;
 // 川の流れ(オクトラ風・社長相談2026-07-17): 遠景と同ジオメトリのハイライト筋レイヤー2枚を
 // 速度差でスクロール(1枚目=速い/2枚目=遅い)。明部は既存bloomが拾って光る。数値は全て叩き台。
 const RIVER_FLOW_SPEED_PX_S = [18, 10];   // tilePositionの流速(表示px/秒)
@@ -2251,10 +2251,11 @@ export class PixiScene {
     // 引きズーム(worldGroupのみ縮小/下降)時に地平の下へ黒帯が出るため、遠景(画面固定)の高さをs7farext倍に下延長=夜空を下へ余裕分引っ張る(社長指示v0.25.1957)。
     const isM7far = this.currentFarKey === 'stage7';
     const farDrawH = isM7far ? farH * Math.max(1, tsNum('s7farext', 1.35)) : farH;
-    const farScale = isM7far
+    // lab(M2)もM7と同じ「高さフィット」=絵の縦全体を境界までの帯にスケールで収める(v0.25.2190)。
+    const farScale = (isM7far || this.currentFarKey === 'lab')
       ? farDrawH / this.L.farBackdrop.texture.height
       : Math.max(w / this.L.farBackdrop.texture.width, farH / this.L.farBackdrop.texture.height);
-    this.L.farBackdrop.position.set(0, this.currentFarKey === 'lab' ? LAB_FAR_OFFSET_Y : 0);
+    this.L.farBackdrop.position.set(0, 0);
     this.L.farBackdrop.width = w;
     this.L.farBackdrop.height = farDrawH;
     this.L.farBackdrop.tileScale.set(farScale);
@@ -2590,7 +2591,7 @@ export class PixiScene {
     // チュートリアル(洞窟)だけ縦を大きく使う(TUTORIAL_FAR_HEIGHT_RATIO参照)。
     if (this.currentFarKey === 'tutorial') return this.screenH * TUTORIAL_FAR_HEIGHT_RATIO;
     // 研究所(lab)もM0と同じ距離感になるよう同じ比率を使う(社長指示v0.25.2176)。
-    if (this.currentFarKey === 'lab') return this.screenH * LAB_FAR_HEIGHT_RATIO;
+    if (this.currentFarKey === 'lab') return this.screenH * LAB_FAR_BOUNDARY_YR;
     return Math.min(this.screenH * FAR_BACKDROP_HEIGHT_CAP, Math.max(FAR_BACKDROP_MIN_HEIGHT, this.screenH * FAR_BACKDROP_HEIGHT_RATIO));
   }
 
@@ -3459,8 +3460,8 @@ export class PixiScene {
     nearScale: number = GROUND_TILE_SCALE_Y_NEAR,
     curve: number = GROUND_PERSPECTIVE_CURVE,
   ) {
-    // lab(M2)は遠景を上へオフセットしているぶん床上端も追従させ、遠景下端と床上端を密着させる(v0.25.2189)。
-    const farH = this.farBackdropHeight() + (this.currentFarKey === 'lab' ? LAB_FAR_OFFSET_Y : 0);
+    // lab(M2)の床上端=境界線(farBackdropHeight=LAB_FAR_BOUNDARY_YR)に密着(v0.25.2190・スケール追従化)。
+    const farH = this.farBackdropHeight();
     const groundH = Math.max(1, this.screenH - farH);
     const strips = this.L.groundStrips;
     const stripH = groundH / strips.length;
@@ -3818,7 +3819,7 @@ export class PixiScene {
     }
 
     const farH = this.farBackdropHeight();
-    this.L.farBackdrop.position.set(sx * 0.25, this.currentFarKey === 'lab' ? LAB_FAR_OFFSET_Y : 0);
+    this.L.farBackdrop.position.set(sx * 0.25, 0);
     this.L.farBackdrop.tilePosition.set(
       -s.camera.x * FAR_BACKDROP_PARALLAX_X,
       0
