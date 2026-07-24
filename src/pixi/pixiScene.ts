@@ -179,7 +179,7 @@ const TUTORIAL_FAR_HEIGHT_RATIO = 0.415;
 // (社長指示v0.25.2176「遠景と床の距離感をM0と同じに」)。値そのものはTUTORIAL_FAR_HEIGHT_RATIOに追従。
 const LAB_FAR_HEIGHT_RATIO = TUTORIAL_FAR_HEIGHT_RATIO;
 // M2(研究所)の遠景(支給1枚のfarBackdrop)だけを50px上へ(社長指示v0.25.2183)。他ステージは不変。
-const LAB_FAR_OFFSET_Y = -50;
+const LAB_FAR_OFFSET_Y = -100; // v0.25.2183(-50)→v0.25.2189さらに50上げ(社長指示)。床上端も同オフセットに追従(updatePerspectiveGround)=境界密着。
 // 川の流れ(オクトラ風・社長相談2026-07-17): 遠景と同ジオメトリのハイライト筋レイヤー2枚を
 // 速度差でスクロール(1枚目=速い/2枚目=遅い)。明部は既存bloomが拾って光る。数値は全て叩き台。
 const RIVER_FLOW_SPEED_PX_S = [18, 10];   // tilePositionの流速(表示px/秒)
@@ -3459,7 +3459,8 @@ export class PixiScene {
     nearScale: number = GROUND_TILE_SCALE_Y_NEAR,
     curve: number = GROUND_PERSPECTIVE_CURVE,
   ) {
-    const farH = this.farBackdropHeight();
+    // lab(M2)は遠景を上へオフセットしているぶん床上端も追従させ、遠景下端と床上端を密着させる(v0.25.2189)。
+    const farH = this.farBackdropHeight() + (this.currentFarKey === 'lab' ? LAB_FAR_OFFSET_Y : 0);
     const groundH = Math.max(1, this.screenH - farH);
     const strips = this.L.groundStrips;
     const stripH = groundH / strips.length;

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2189',
+    items: [
+      '調整: ステージ2の遠景をさらに50px上げ、床の上端も遠景に密着するよう追従させました。',
+    ],
+  },
+  {
     version: '0.25.2188',
     items: [
       '演出: オープニングのアリーナ斜めカットを2秒表示にしました(従来1秒)。',

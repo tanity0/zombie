@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2189 — M2: 遠景さらに50px上げ+床上端を追従(境界密着)【2026-07-25 00:04 JST】
+- 指示(社長): 遠景、さらに50px上げて、床も上げて。
+- 対処: LAB_FAR_OFFSET_Y -50→-100。updatePerspectiveGroundのfarHにlab時のみ同オフセットを加算=
+  床上端が遠景下端に密着し、v0.25.2183以降の50px隙間も解消。遠景アートの表示サイズは不変。
+  検証は指示制につきtypecheck+lintのみ。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2188 — OPアリーナ: 斜めカットを2秒に【2026-07-24 23:59 JST】
 - 指示(社長): アリーナ斜めカットシーン、2秒に。
 - 対処: CUTS[2] 5200→6200 / SHOT_DUR[1] 1000→2000。後続のBLACK_START 7600→8600・SCENE_START
