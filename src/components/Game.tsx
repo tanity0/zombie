@@ -64,6 +64,9 @@ const Game: React.FC<GameProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  // WebGLコンテキストロスト時の再構築世代(v0.25.2160): PixiStageがロストを通知したらkeyを変えて
+  // 再マウント=レンダラ/シーン/テクスチャを作り直す。シミュ状態はstoreにあるためゲームは続きから。
+  const [pixiEpoch, setPixiEpoch] = useState(0);
   const [isTouch, setIsTouch] = useState(
     typeof window !== 'undefined' &&
       ('ontouchstart' in window || navigator.maxTouchPoints > 0)
@@ -201,7 +204,12 @@ const Game: React.FC<GameProps> = ({
       {/* World view: PixiJS (?renderer=pixi) or the original Canvas2D
           renderer (default). The React HUD below overlays either one. */}
       {isPixiRenderer() ? (
-        <PixiStage width={windowSize.width} height={windowSize.height} />
+        <PixiStage
+          key={pixiEpoch}
+          width={windowSize.width}
+          height={windowSize.height}
+          onContextLost={() => setPixiEpoch(e => e + 1)}
+        />
       ) : (
         <GameCanvas width={windowSize.width} height={windowSize.height} />
       )}

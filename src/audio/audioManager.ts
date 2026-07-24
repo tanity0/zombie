@@ -706,6 +706,29 @@ const attachAudioRouteRecovery = (context: AudioContext) => {
   } catch { /* ignore */ }
 };
 
+// どのタップ/キー入力でも音声を拾い直す保険(v0.25.2160・実機の「音楽が鳴らない/SEだけ鳴らない」対策)。
+// iOSのAudioContext.resume()はユーザージェスチャ中しか効かない場面があり、また自動リロード直後や
+// play()拒否(再試行窓2.2sを逃した後)はBGMが止まりっぱなしになる。ジェスチャ毎(1秒スロットル)に
+// 「コンテキストresume+鳴っているべきBGMが止まっていればapplyBgm」で確実に復帰させる。
+let gestureRecoveryAttached = false;
+let lastGestureKickAt = 0;
+const kickAudioFromGesture = () => {
+  const now = Date.now();
+  if (now - lastGestureKickAt < 1000) return;
+  lastGestureKickAt = now;
+  resumeSfxContext();
+  if (bgmActive && !muted) {
+    const el = deepActive ? deepBgm : bgm;
+    if (el && el.paused) applyBgm();
+  }
+};
+export const attachAudioGestureRecovery = () => {
+  if (gestureRecoveryAttached || typeof document === 'undefined') return;
+  gestureRecoveryAttached = true;
+  document.addEventListener('pointerdown', kickAudioFromGesture, { capture: true, passive: true });
+  document.addEventListener('keydown', kickAudioFromGesture, { capture: true });
+};
+
 // (旧・合成キックplayDanceKickはv0.25.1373で削除: ダンスのタップ音はサンプル再生
 //  playSfx('dance-kick'/'dance-kick-just')に完全移行済みで未参照だった。)
 

@@ -12,7 +12,7 @@ import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow }
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
-import { setBgmScene, preloadAllAudio, unlockDanceAudio, primeMenuBgm, preloadStageBgm, setAudioSuspended, clearSfxThrottle } from './audio/audioManager';
+import { setBgmScene, preloadAllAudio, unlockDanceAudio, primeMenuBgm, preloadStageBgm, setAudioSuspended, clearSfxThrottle, attachAudioGestureRecovery } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { loadProgressBegin, loadProgressDone } from './utils/loadProgress';
 import {
@@ -69,6 +69,8 @@ function App() {
   // フェイルセーフ: 何らかの理由で rendererReady が立たなくてもローディングが永久に残らないよう、
   // 出撃中に一定時間で強制的にオーバーレイを外す保険(PixiStage 側の catch と二重の安全網)。
   const [loadOverlayTimedOut, setLoadOverlayTimedOut] = useState(false);
+  // 音声のジェスチャ復帰保険(v0.25.2160): どのタップ/キーでも「context resume+止まったBGMの拾い直し」。
+  useEffect(() => { attachAudioGestureRecovery(); }, []);
   useEffect(() => {
     if (gameState !== 'playing' || rendererReady) { setLoadOverlayTimedOut(false); return; }
     const id = window.setTimeout(() => setLoadOverlayTimedOut(true), useGameStore.getState().corridorMode ? 16000 : 6000); // 洋館通路は通路テクスチャ待ちぶん延長(v0.25.2122)

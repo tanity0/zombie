@@ -56,6 +56,21 @@
   JS(double)上の計算値は正しいためコード読みでは異常が見えない——**シーングラフの実値を覗いて発覚**
   (tilePosition.x=-321億)。→ 霧(`fogT0`)と同じ「開始基準の相対時刻」+テクスチャ周期modulo を使う。
   診断ハンドル: devビルドは `window.__pixiScene` でシーン実値を覗ける(v0.25.1807で常設・prod非搭載)。
+- **「画面真っ暗・HUDは生きてる・裏でゲームは進む」=WebGLコンテキストロスト**(v0.25.2160・実機頻発)。
+  iOSはメモリ圧でWebGLコンテキストを落とす。DOM(HUD)とrAFシミュは無傷なのでこの症状になる。
+  対処は実装済み: PixiStageがcanvasの`webglcontextlost`を検知→0.7s後に親(Game)がkey変更で
+  再マウント=フルリビルド(restore待ちはしない: iOSはrestoredが来ないことが多く、RenderTexture/
+  ベイク済みプールの復元も信頼できない。boot経路は毎回踏まれていて確実)。シミュ状態は全てstoreに
+  あるため続きから描ける。強制再現: `gl.getExtension('WEBGL_lose_context').loseContext()`。
+- **勝手リロードはアプリ起因ではない**(v0.25.2160調査): SW無し・location.reload無し・単一バンドル
+  (dynamic import無し)を確認済み=チャンク切れ/SW更新の線は消えている。残る説明はiOS Safariの
+  メモリ圧kill+自動リロード。更新直後に集中するのはキャッシュ冷え(HTTP+デコード済み画像+
+  SFXの`?v=版数`バストが毎更新で全音声を再DL/再デコード)で起動ピークが最大化するため。
+  リロード自体を減らす本筋は起動ピーク削減(SFXバストの内容ハッシュ化等・未実施)。
+- **音声はジェスチャ保険で拾い直す**(v0.25.2160): iOSの`AudioContext.resume()`はユーザージェスチャ中
+  しか効かない場面がある+BGMのplay()拒否は再試行窓(ready系イベント2.2s)を逃すと止まりっぱなし。
+  → `attachAudioGestureRecovery`(App起動時に1回)が全pointerdown/keydown(capture・1sスロットル)で
+  resume+「鳴っているべきBGMがpausedならapplyBgm」を実行。音欠落系の症状はまずこれで自己回復する。
 - **`bezierCurveTo`経路の`fill()`が描画されない**(v0.25.2154実測=フレアの炎マーク)。`getBounds()`は
   正しい矩形を返すのに画素が1つも出ない(スクショの画素スキャンで機械確認)ため、コード読み・バウンズ確認
   では異常が見えない。→ 曲線シェイプは直線`poly([...]).fill()`で近似する(実績あり。ドット絵の画風にも合う)。

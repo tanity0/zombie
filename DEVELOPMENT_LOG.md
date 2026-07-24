@@ -1,5 +1,29 @@
 # Development Log
 
+## v0.25.2160 — 安定性: 黒画面の自動復旧+音声のジェスチャ復帰保険(更新直後の不調の診断)【2026-07-24 14:58 JST】
+- 指示(社長): 更新直後〜数回のプレイで (1)勝手にリロード (2)BGM/SEの欠落 (3)画面真っ黒だがUIは
+  見えて裏でゲームが動く、を解決したい。
+- 診断(Fable直轄):
+  - コード全域にSW・location.reload・contextlost処理は**無し**、バンドルは単一(dynamic import無し)
+    =リロードはアプリ起因ではなく**iOS Safariのメモリ圧kill**。更新直後に集中する理由はキャッシュ冷え
+    (HTTP+デコード済み+SFXの`?v=版数`バストが毎更新で全音声を再DL/再デコード)で起動ピークが最大化する
+    ため。数回で安定するのはキャッシュが温まるから。
+  - (3)は**WebGLコンテキストロスト未処理**が確定(同じメモリ圧の別の顔)。DOMのHUDとrAFシミュは無傷。
+  - (2)はiOSの`resume()`ジェスチャ制約+BGM play()拒否後の再試行窓(2.2s)切れ+リロード直後の
+    解錠切れの複合。
+- 対処(挙動の意図変更なし・復旧の追加のみ):
+  1. **コンテキストロスト自動復旧**: PixiStageが`webglcontextlost`検知→rendererReady=false(ローディング
+     被せ)→0.7s後にGameがkey変更で再マウント=フルリビルド。restore待ちはしない(iOSはrestoredが来ない
+     ことが多い+RenderTexture/ベイクの復元は信頼できない。boot経路は毎回踏まれていて確実)。
+  2. **音声ジェスチャ復帰保険**: `attachAudioGestureRecovery`(App起動時1回)が全pointerdown/keydown
+     (capture・1sスロットル)で「context resume+鳴っているべきBGMがpausedならapplyBgm」。
+- 検証: typecheck・lint 0エラー。ヘッドレスで`WEBGL_lose_context.loseContext()`を強制発火→
+  ログ出力→新canvas生成→rendererReady復帰→ゲーム続行+非黒画素81%+目視でシーン完全復元を機械確認。
+- 残提案(未実施・社長裁定): リロード自体の削減=起動ピークの削減が本筋。レバーは (a)SFXキャッシュ
+  バストを版数一律→内容ハッシュ化(更新毎の全音声再DLを止める) (b)テクスチャの逐次ロード化。
+- Files: `src/pixi/PixiStage.tsx`, `src/components/Game.tsx`, `src/audio/audioManager.ts`, `src/App.tsx`,
+  `ENGINEERING_NOTES.md`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2159 — OP廊下: 会話1本の文言変更【2026-07-24 14:45 JST】
 - 指示(社長): 「お前がいなきゃ始まらん」を「みんながアナタを待ってるよ！」に変更。
 - 対処: WALK_LINESの0.90行の文言のみ差し替え(位置・表示時間・他の行は不変)。

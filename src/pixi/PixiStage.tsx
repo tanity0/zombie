@@ -70,6 +70,8 @@ const resolutionCap = (): number => {
 interface PixiStageProps {
   width: number;
   height: number;
+  // WebGLコンテキストロスト時に親(Game)へ通知→keyを変えて本コンポーネントを再マウント=レンダラ再構築。
+  onContextLost?: () => void;
 }
 
 // PixiJS world renderer — the default and only actively-developed renderer.
@@ -79,13 +81,16 @@ interface PixiStageProps {
 // this only draws.
 //
 // The React HUD renders unchanged as DOM on top of this canvas.
-const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
+const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) => {
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const sceneRef = useRef<PixiScene | null>(null);
   const tickerCallbackRef = useRef<(() => void) | null>(null);
   const pauseUnsubRef = useRef<(() => void) | null>(null);   // isPaused購読の解除(電池対策)
   const visHandlerRef = useRef<(() => void) | null>(null);   // visibilitychangeハンドラ(電池対策)
+  const ctxLostCleanupRef = useRef<(() => void) | null>(null); // webglcontextlostリスナ解除
+  const onContextLostRef = useRef(onContextLost);            // リスナから常に最新のコールバックを呼ぶ
+  onContextLostRef.current = onContextLost;
 
   // One-time init. Async (Pixi v8 + texture load); a cancel flag guards the
   // StrictMode double-mount / fast-unmount race.
@@ -173,6 +178,29 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         app.canvas.style.left = '0';
         app.canvas.style.touchAction = 'none';
         host.appendChild(app.canvas);
+      }
+
+      // WebGLコンテキストロストの自動復旧(v0.25.2160・実機の「黒画面だけどUIは生きてる」対策)。
+      // iOSはメモリ圧等でWebGLコンテキストを落とす。放置するとキャンバスだけ真っ黒のまま
+      // HUD(DOM)とシミュ(useGameLoop)は生存=報告の症状そのもの。restoredはiOSでは来ない
+      // ことが多い+RenderTexture/ベイク済みプールの復元は信頼できないため、restore待ちはせず
+      // 少し置いて(メモリ回収の猶予0.7s)レンダラごと作り直す(親がkeyを変えて再マウント)。
+      // シミュ状態は全てstore側にあるので、再構築後はゲームの続きがそのまま描ける。
+      {
+        const canvas = app.canvas as HTMLCanvasElement;
+        let ctxLostHandled = false;
+        const onCtxLost = (e: Event) => {
+          e.preventDefault();
+          if (cancelled || ctxLostHandled) return;
+          ctxLostHandled = true;
+          console.error('[PixiStage] WebGL context lost — rebuilding renderer');
+          try { useGameStore.getState().setRendererReady(false); } catch { /* ignore */ } // 再構築中はローディングを被せる
+          window.setTimeout(() => {
+            if (!cancelled) { try { onContextLostRef.current?.(); } catch { /* ignore */ } }
+          }, 700);
+        };
+        canvas.addEventListener('webglcontextlost', onCtxLost);
+        ctxLostCleanupRef.current = () => canvas.removeEventListener('webglcontextlost', onCtxLost);
       }
 
       // ローディング解除(rendererReady)は「ステージ別テクスチャの注入完了+シーン反映後」に出す
@@ -282,6 +310,8 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const tick = tickerCallbackRef.current;
       try { pauseUnsubRef.current?.(); } catch { /* ignore */ }
       pauseUnsubRef.current = null;
+      try { ctxLostCleanupRef.current?.(); } catch { /* ignore */ }
+      ctxLostCleanupRef.current = null;
       try { if (visHandlerRef.current) document.removeEventListener('visibilitychange', visHandlerRef.current); } catch { /* ignore */ }
       visHandlerRef.current = null;
       try { setAudioSuspended(false); } catch { /* ignore */ } // 復帰側で確実にBGMを戻す
