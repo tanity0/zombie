@@ -1765,9 +1765,10 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       <div className="p-3">
         <SkillGacha />
       </div>
-      <div className="menu-stagger px-3 pb-3 grid grid-cols-1 gap-2">
+      {/* 解放(購入)リスト: 2列表示(社長指示v0.25.2147)。テスト用トグルだけ全幅。 */}
+      <div className="menu-stagger px-3 pb-3 grid grid-cols-2 gap-2">
         <button type="button" onClick={() => setStartWithTestStraps(!startWithTestStraps)}
-          className={`ff7r-fade-right flex items-center justify-between gap-3 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${startWithTestStraps ? 'is-on' : ''}`}>
+          className={`ff7r-fade-right col-span-2 flex items-center justify-between gap-3 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${startWithTestStraps ? 'is-on' : ''}`}>
           <span><span className="block text-[13px] font-semibold">1000スクラップ開始</span><span className="block text-[11px] text-white/50">{startWithTestStraps ? '次の開始時に1000s所持' : 'テスト用。無料'}</span></span>
           <span className="text-[10px] text-white/45">{startWithTestStraps ? 'ON' : 'OFF'}</span>
         </button>
@@ -1776,9 +1777,9 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           const maxed = level >= 3;
           return (
             <button key={skillKey} type="button" disabled={maxed} onClick={() => setUnlockedShopSkillCard(skillKey, Math.min(3, level + 1))}
-              className={`ff7r-fade-right flex items-center justify-between gap-3 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''}`}>
-              <span><span className="block text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">商人陳列 Lv{level} → Lv{Math.min(3, level + 1)}</span></span>
-              <span className="text-[10px] text-white/45">{maxed ? 'MAX' : '解放'}</span>
+              className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''}`}>
+              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">陳列 Lv{level} → Lv{Math.min(3, level + 1)}</span></span>
+              <span className="shrink-0 text-[10px] text-white/45">{maxed ? 'MAX' : '解放'}</span>
             </button>
           );
         })}

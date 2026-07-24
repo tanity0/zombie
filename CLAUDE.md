@@ -200,6 +200,9 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   `__APP_VERSION__` and shown top-right on the title screen and bottom-left
   in-game (with the active renderer), so the build loaded on-device can be
   confirmed at a glance. There is one version number — do not add a second.
+- **毎pushで `src/data/changelog.ts`(タイトル画面の更新情報)にも先頭へ1エントリ追記する
+  (社長指示v0.25.2147・約170版ぶん記載が抜けた事故の再発防止)。** プレイヤー体験に関わる変更を
+  短く書く。体験に変化が無いpush(文書のみ等)は「ゲーム内容の変更はありません」と書く(v0.25.1833の前例)。
 - **ALWAYS state the current `version` in every chat reply** (e.g. end the
   response with `v0.25.xxx`). This is a hard rule — never omit it, even for
   questions, doc-only changes, or replies with no code change. After bumping,
