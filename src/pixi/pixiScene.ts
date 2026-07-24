@@ -340,7 +340,7 @@ const LAB_FRONT2_BLUR = tsNum('labf2bl', 3);
 // 注意: この定数はtsNum/tsBoolの宣言(301/307行)より後段のこの位置に置くこと(TDZクラッシュの再発防止・
 // 社長指示v0.25.2198「新規定数は必ずtsNum/tsBoolの宣言より下に置く」)。
 const LAB_FAR_WINDOW_SCALE = tsNum('labfwsc', 1); // ?labfwsc= で現地調整可
-const LAB_FAR_GLASS_ALPHA = tsNum('labfga', 0.5); // 遠景窓ガラスの不透明度(社長指示v0.25.2201「ガラスだけ透過50%」)。?labfga=
+const LAB_FAR_GLASS_ALPHA = tsNum('labfga', 0.3); // 遠景窓ガラスの不透明度(社長指示v0.25.2202「透明度70%=alpha0.3」)。?labfga=
 // 近景森1/2のパララックス速度差(社長指示v0.25.2200「近景森1と2の速度を変えたい、2の方が少しだけ速く」):
 // 近景森1(frontForest・lab限定)=既定0.68でFRONT_FOREST_PARALLAX_Xと同値(現状維持)。
 // 近景森2(labFront2・一番手前)=既定0.80で1より少し速い(手前ほど速く流れる=奥行き感)。

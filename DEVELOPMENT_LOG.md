@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2202 — M2遠景窓ガラス: 透明度70%(alpha0.3)【2026-07-25 01:55 JST】
+- 指示(社長): ガラスの透明度70%に。確認の結果=より透ける方(alpha0.3)を採用。
+- 対処: LAB_FAR_GLASS_ALPHA の既定を 0.5→0.3(?labfga= で現地調整可)。
+- 検証: typecheck・lint 0(数値既定のみの変更)。実機は社長確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2201 — M2遠景窓: 横ループ修正+ガラス50%透過【2026-07-25 01:52 JST】
 - 指示(社長): 遠景森窓セットをループ素材としてちゃんと動くように。その上でガラスだけ透過50%。
 - 対処: (1)setLabFarWindowTexturesでガラス/フレームのテクスチャ源に addressMode='repeat' を指定

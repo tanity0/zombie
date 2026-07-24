@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2202',
+    items: [
+      'グラフィック: ステージ2の遠景の窓ガラスをより透けるように調整しました(透明度70%)。',
+    ],
+  },
+  {
     version: '0.25.2201',
     items: [
       'グラフィック: ステージ2の遠景の窓が横に正しくループするようにし、ガラス部分を半透明(50%)にしました。',
