@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2188',
+    items: [
+      '演出: オープニングのアリーナ斜めカットを2秒表示にしました(従来1秒)。',
+    ],
+  },
+  {
     version: '0.25.2187',
     items: [
       '演出: オープニング廊下の歩きに1pxの浮き沈みを付けて、足取りらしさを出しました。',

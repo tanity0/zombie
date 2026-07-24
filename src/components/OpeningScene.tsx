@@ -158,13 +158,13 @@ interface Shot { bg: string; bgBlur: string; ox: number; oy: number; zf: number;
 // v0.25.2035(社長指示): 冒頭は引きのまま紙吹雪の噴き上げを見せ(1.2s)、それからズーム開始。
 // v0.25.2049(社長指示「パン!1秒置いて」): 冒頭1秒は静かな引き→パン!(1.0s)→歓声(1.4s)→ズーム(2.2s)。
 const FRONT_ZOOM_DELAY = 2200;
-// 斜めは1秒表示(社長指示v0.25.2047・旧1.4秒)。
-const CUTS = [0, 2200 + 2000, 2200 + 3000];
-const SHOT_DUR = [2000, 1000, 2400];
+// 斜めは2秒表示(社長指示v0.25.2188。v0.25.2047の1秒・旧1.4秒から変更)。後続の暗転/射撃開始も+1秒シフト。
+const CUTS = [0, 2200 + 2000, 2200 + 4000];
+const SHOT_DUR = [2000, 2000, 2400];
 // アングル切替は【即表示のハードカット】(社長指示v0.25.2072・旧クロスフェードv0.25.2007は廃止)。
-const BLACK_START = 7600;
+const BLACK_START = 8600;
 const BLACK_MS = 1600;
-const SCENE_START = 9400; // 暗転し切ったら射撃シーンへハードカット
+const SCENE_START = 10400; // 暗転し切ったら射撃シーンへハードカット
 const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
 // ARENA_AUDIOは従来 new Audio() のデフォルト音量(1)のまま明示指定していなかった。iOS保険の
 // unlockAndPlay(下記)で本再生時に明示restoreするための名前付き定数として1を明文化(挙動は不変)。

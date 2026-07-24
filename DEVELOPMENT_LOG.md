@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2188 — OPアリーナ: 斜めカットを2秒に【2026-07-24 23:59 JST】
+- 指示(社長): アリーナ斜めカットシーン、2秒に。
+- 対処: CUTS[2] 5200→6200 / SHOT_DUR[1] 1000→2000。後続のBLACK_START 7600→8600・SCENE_START
+  9400→10400も+1秒シフト(暗転〜射撃の間隔は不変)。検証は指示制につきtypecheck+lintのみ。
+- Files: `src/components/OpeningScene.tsx`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2187 — OP廊下: 歩行に1pxボブ【2026-07-24 23:58 JST】
 - 指示(社長): 廊下の徒歩アニメに1pxの浮き沈み。
 - 対処: 歩きコマと同じ時計(animT/WALK_ANIM_MS)で1コマおきにtopを-1px。停止中は0。プレイヤーのみ。
