@@ -1,5 +1,28 @@
 # Development Log
 
+## v0.25.2169 — ストーリー正本をコード実装の現状に同期【2026-07-24 17:33 JST】
+- 指示(社長): 正本としてストーリーを組む前提のため、正本md側を実装現状に合わせる(実装は一切変更しない)。
+  v0.25.2167の「対象外」項目(相違13・17〜23)を解消するバッチ。
+- 対処(文書のみ・コード変更なし。各修正箇所に「正本化v0.25.2169: 実装現状に同期」の注記を付与):
+  - STORY_UI_SPEC.md §3 M2表示例: タイトル「壊滅研究所・資料回収」→実装タイトル「研究資料回収」、
+    本文3行→実装synopsis(4行、campaign.ts stage-2)へ差し替え。特殊条件4件は一致のため据え置き。
+  - STORY_UI_SPEC.md §4 M2表示例(プレイ中通信)「資料だけ取って戻れ。深追いするな」: 削除せず
+    「※未実装(現状ゲーム内に該当通信なし)」と注記のみ追加。
+  - STORY_UI_SPEC.md §5 任務報告M2表示例: 実装はclearReport廃止・debrief一本化のため、
+    debrief文面(campaign.ts stage-2)へ差し替え+その旨を注記。
+  - STORY_UI_SPEC.md §6 任務記録M2例: 「リモート共同研究所との通信履歴」→実装タイトル
+    「東部医療科学センターとの通信履歴」(storyArchive.ts)、解放資料4件→実装の5件へ
+    (investigation_04「PHILL再生医療計画」を追加。campaign.ts unlockedRecordIds準拠)。
+  - STORY_UI_SPEC.md 追補1 §2 M6/EX親タイトル: 「DAY 36/23:10」→実装timeLabel「某日／未明」、
+    EX「DAY 42/03:40」→「数日後／未明」へ。意図的な曖昧表示(統合正本5.2の意図)である旨を注記
+    (campaign.ts stage-6/stage-ex1 timeLabel参照)。
+  - STORY_M0_M3.md: 61-63行・156行の半角「?」「!」→全角「？」「！」(実装済みコード
+    storyCanon.test.ts等が全角でピン済み)。本文・意味は変更せず記号のみ統一。冒頭に注記を追加。
+- 検証: typecheck・lint 0エラー(文書のみ変更・build/testは対象外指示につき未実行)。
+- 未決/申し送り: なし。今回の相違はすべて「正本側を実装へ追随」で解消(実装側の変更ゼロ)。
+- Files: `STORY_UI_SPEC.md`, `STORY_M0_M3.md`, `src/data/changelog.ts`, `package.json`,
+  `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2168 — 商人の弾薬販売量を別建て化(handgun25/rifle15)【2026-07-24 17:13 JST】
 - 指示(社長): 商人のライフルは15発に。ハンドガンは25発に。
 - 対処: `SHOP_AMMO_AMOUNTS`(商人専用量)+`shopAmmoAmount()`を新設し、購入処理とShopMenuの

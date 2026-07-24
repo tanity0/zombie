@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2169',
+    items: [
+      'ゲーム内容の変更はありません(開発文書の整理: ストーリー正本を実装の現状に同期)。',
+    ],
+  },
+  {
     version: '0.25.2168',
     items: [
       'バランス: 商人の弾薬販売量を調整しました(ハンドガン40→25発・ライフル20→15発。ドロップ箱の取得量は従来どおり)。',
