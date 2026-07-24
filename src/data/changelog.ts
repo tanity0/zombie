@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2192',
+    items: [
+      'ストーリー: エンディングの聴取記録を新しい台本に差し替えました。結びは「成し得なかった」が残ってフェードアウトし、「the ONE」が浮かび上がる演出になりました。',
+    ],
+  },
+  {
     version: '0.25.2191',
     items: [
       'グラフィック: ステージ2に近景の什器シルエット(手前レイヤー)を追加しました。',

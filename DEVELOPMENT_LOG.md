@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.2192 — エンディング聴取記録を社長編集稿へ全面差し替え【2026-07-25 00:23 JST】
+- 指示(社長): グレン撃破後のエンディング文章変更(編集稿支給)。
+- 対処: ending.ts=15行の新台本(ミラ→ノラの話者遷移・フィル/PHILL研究の全容開示)+
+  ENDING_FINAL_WORD「成し得なかった」。EndingScreen=旧「暗転→PHILL」を廃止し
+  「暗転で『成し得なかった』だけ残留(1.8s)→フェードアウト(1.2s)→the ONEフェードイン」へ。
+  storyCanon.test.tsのピンを新稿へ更新(23/23緑)・STORY_M4_EX.mdの正本も同時更新。
+- 検証: storyCanon.test.ts単体実行23/23緑(ピン変更の正当性確認のみ)・typecheck・lint 0エラー。
+- Files: `src/data/ending.ts`, `src/components/EndingScreen.tsx`, `src/data/storyCanon.test.ts`,
+  `STORY_M4_EX.md`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2191 — M2近景に什器シルエットを追加(社長支給素材のクロマキー統合)【2026-07-25 00:21 JST】
 - 依頼(社長支給): 新素材`b07ea6ef-694C22A12D11404A821960116B232AA4.png`(2172×724・研究所什器シルエット列・
   紫単色クロマキー背景)を統合。v0.25.2181でlab時に非表示にした4レイヤー(horizonForest/nearHorizon/
