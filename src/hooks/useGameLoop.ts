@@ -22,7 +22,7 @@ import {
   SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG,
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
-  CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST, CAMERA_DOWN_OFFSET_FRAC,
+  CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST, CAMERA_DOWN_OFFSET_FRAC, CORRIDOR_CAMERA_DOWN_FRAC,
   WIRE_LAND_KNOCKBACK_SPEED, WIRE_PASS_DAMAGE_MULT, WIRE_BOMB_RADIUS, WIRE_BOMB_DAMAGE_MULT, WIRE_PASS_BOMB_RADIUS,
   BOSS_MELEE_STUN_MULT,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
@@ -4364,7 +4364,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const pcCamY = player.y + player.height / 2;
         const baseCamX = pcCamX - gameBounds.width / 2;  // プレイヤーをちょうど中央に置くカメラ(先読み無し)
         // プレイヤーを中央より下へ(屋内/ラボは中央維持=スポーン補正と一致)。上(進行先)の視界を広げる。
-        const camDownOff = (indoor || labTheme) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
+        // 洋館通路は下げ量を増やす(v0.25.2148・社長指示「敵が出てきて見える位置をもう少し上に」)。
+        const camDownOff = (indoor || labTheme) ? 0
+          : gameBounds.height * (useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC);
         const baseCamY = pcCamY - gameBounds.height / 2 - camDownOff;
         // 危険時(敵が近い): 追従をタイトにし先読みを切ってプレイヤーを中心寄りに(接近戦で安定)。
         const dangerR2 = CAMERA_DANGER_RADIUS * CAMERA_DANGER_RADIUS;
@@ -7726,7 +7728,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           ? pickChaffMix(scene.mix, pressureOutdoor ? gatePressureRef.current.state.pressure : null)
           : undefined;
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
-        const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
+        // 洋館通路はカメラ側の増量(CORRIDOR_CAMERA_DOWN_FRAC)と同値で連動(v0.25.2148・ズレると上端で湧きが見える)。
+        const spawnViewOffsetY = (labTheme || indoor) ? 0
+          : gameBounds.height * (useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC);
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
         // カメラと同じ target を読む(視覚専用のズーム値ではなく target=純関数)。屋内/ラボは対象外。
         const czInvZoom = (labTheme || indoor) ? 1 : 1 / contextZoomTarget(nearEnemies.length, nearEnemies.some(e => isLargeForZoom(e.type)));

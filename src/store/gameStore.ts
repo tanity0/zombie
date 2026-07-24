@@ -1256,6 +1256,10 @@ export const CAMERA_CENTER_CLAMP_FRAC = camNum('camclamp', 0.07); // 強制中�
 // プレイヤーを画面中央より下へずらす量(画面高比)。上方向(進行先)の視界を広げる(社長要望: 上の敵が見えない対策)。
 // 屋内/ラボは0(中央維持)。スポーン側も同じ量だけ縦バンドを上へずらす(上端で湧きが画面内に出ないように)。
 export const CAMERA_DOWN_OFFSET_FRAC = Math.max(0, Math.min(0.32, camNum('camdown', 0.08)));
+// 洋館通路(corridorMode)専用のカメラ下げ量(v0.25.2148・社長指示「敵が上から出てきて見える位置を
+// もう少し上に」): プレイヤーを画面のより下に置き、前方(奥)の視界を広げる=敵の入場ラインが
+// 構図の上へ移る。スポーン帯補正(useGameLoopのspawnViewOffsetY)も同値で連動させること。
+export const CORRIDOR_CAMERA_DOWN_FRAC = 0.16;
 export const CAMERA_DANGER_RADIUS = 150;                          // この距離内に敵が居たら「危険時」とみなす(px)
 export const CAMERA_SNAP_DIST = 600;                             // これ以上離れたら即スナップ(開始/復帰/瞬間移動対策)
 // アテンション・シネマティック(レスキュー/ジャイアント出現): 現地へ高速パン→ホールド→高速で戻る。その間 時間停止。

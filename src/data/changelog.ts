@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2148',
+    items: [
+      '調整: ステージ6で前方(奥)の視界を広げ、敵がより上(奥)から出てくる構図にしました。',
+    ],
+  },
+  {
     version: '0.25.2147',
     items: [
       'メニュー: 開発施設の解放リストを2列表示にしました。',
