@@ -1005,8 +1005,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             ))}
           </Section>
         </div>
-        {/* 資料本文モーダル(既存GameOverScreenの回収資料モーダルと同トーン=glass-panel・金色明朝見出し)。 */}
-        {openRecord && (
+        {/* 資料本文モーダル(既存GameOverScreenの回収資料モーダルと同トーン=glass-panel・金色明朝見出し)。
+            v0.25.2146(社長報告「スクロール中はその場に出ない」): menu-stagger等のtransform祖先の中では
+            fixedが画面基準にならずページ上部に張り付くため、他モーダルと同じくbody直下へポータル。 */}
+        {openRecord && createPortal(
           <div
             className="fixed inset-0 z-50 flex items-center justify-center px-3"
             style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
@@ -1038,7 +1040,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </>
     );
@@ -1294,7 +1297,9 @@ type BurstCfg = { dim: string; flash: string; shard: string; shardCount: number;
 const BURST_FX: Record<SkillRarity, BurstCfg> = {
   normal: { dim: 'bg-black/90', flash: 'bg-white',     shard: 'bg-slate-200/90', shardCount: 12, distBonus: 0,  shake: false, rings: [],                                          glow: false },
   rare:   { dim: 'bg-black/90', flash: 'bg-purple-200',   shard: 'bg-purple-200/90',   shardCount: 16, distBonus: 14, shake: false, rings: ['border-sky-300/70'],                       glow: false },
-  super:  { dim: 'bg-black/92', flash: 'bg-amber-200', shard: 'bg-amber-200/95', shardCount: 22, distBonus: 30, shake: true,  rings: ['border-amber-300/80', 'border-fuchsia-300/55'], glow: true  },
+  // dim: v0.25.2146修正——旧'bg-black/92'は【Tailwind未生成クラス(92はスケール外)=完全透明】で、
+  // superの破裂中は暗幕ゼロ→背後の開発施設メニューが丸見えだった(社長報告の真犯人)。/90へ。
+  super:  { dim: 'bg-black/90', flash: 'bg-amber-200', shard: 'bg-amber-200/95', shardCount: 22, distBonus: 30, shake: true,  rings: ['border-amber-300/80', 'border-fuchsia-300/55'], glow: true  },
 };
 
 // レベル表記: 上限(maxLv)に達していたら「Lv3」等ではなく「MAX」と表示する(死神など maxLv1 は常にMAX)。
@@ -1406,7 +1411,12 @@ const SkillGacha: React.FC = () => {
       const intro = isSuper ? SUPER_INTRO_MS : 0; // superは導入パーティクルぶん連打開始を後ろへ
       const SHARDS_PER = 4;
       return createPortal(
-        <div className={`gacha-dim fixed inset-0 z-50 flex items-center justify-center ${fx.dim}`}>
+        <div className="gacha-dim fixed inset-0 z-50 flex items-center justify-center bg-black">
+          {/* v0.25.2146(社長報告「10連演出中に開発室メニューへ戻ってる」): 従来は半透明の暗幕だけを
+              返していた=この間は射撃場がアンマウントされ、暗幕越しに背後の開発施設メニューが透けていた。
+              不透明の黒を土台に射撃場の絵を敷いたまま破裂させる(場面の連続性も保つ)。 */}
+          <img src={coverSrc} alt="" draggable={false} className="absolute inset-0 h-full w-full object-contain" />
+          <div className={`absolute inset-0 ${fx.dim}`} />
           {/* super導入: 画面全体に広がるパーティクル(最初に1回だけ。その後に通常の撃つ演出) */}
           {isSuper && Array.from({ length: 30 }).map((_, p) => {
             const ang = (Math.PI * 2 * p) / 30 + 0.2;
@@ -1443,7 +1453,10 @@ const SkillGacha: React.FC = () => {
     });
     // body 直下へポータル。施設リストの scroll/transform から切り離した真の専用フルスクリーン演出にする。
     return createPortal(
-      <div className={`gacha-dim fixed inset-0 z-50 flex items-center justify-center ${fx.dim}`}>
+      <div className="gacha-dim fixed inset-0 z-50 flex items-center justify-center bg-black">
+        {/* v0.25.2146: 複数連と同じく、不透明の黒+射撃場の絵を基層に(暗幕だけだと背後のメニューが透ける)。 */}
+        <img src={coverSrc} alt="" draggable={false} className="absolute inset-0 h-full w-full object-contain" />
+        <div className={`absolute inset-0 ${fx.dim}`} />
         <div className={`relative flex items-center justify-center ${fx.shake ? 'gacha-burst-shake' : ''}`} style={{ width: '70%', maxWidth: 340, aspectRatio: '3 / 4' }}>
           {/* super: 背後に広がる金色の光(レア度演出の主役) */}
           {fx.glow && (
@@ -1484,7 +1497,8 @@ const SkillGacha: React.FC = () => {
     const atFirst = cur === 0;
     const atLast = cur === total - 1;
     return createPortal(
-      <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black/92 backdrop-blur-sm">
+      // v0.25.2146: 旧bg-black/92はTailwind未生成=透明(リザルト中も背後メニューがblur越しに透けていた)。/90へ。
+      <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm">
         <p className="px-4 pt-5 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">
           スキル強化訓練 結果{showList ? '（一覧）' : ''}
         </p>

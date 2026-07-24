@@ -129,6 +129,15 @@
   新規import追加時は目視確認し、`npx tsc --noEmit; echo exit:$?`でexitコードを必ず見る
   (`| head`でマスクしない)。
 
+### Tailwind(メニューUI)
+- **色透過`/N`は既定スケール(おおむね5刻み)外だと静かに未生成=完全透明になる**
+  (v0.25.2146実バグ: `bg-black/92`が透明で、ガチャsuperの暗幕が消え背後のメニューが丸見え)。
+  中間値は`/[.92]`のarbitrary記法にするか5刻みへ寄せる。疑ったらライブDOMで
+  `getComputedStyle(el).backgroundColor`を実測(未生成なら rgba(0,0,0,0))。
+- **transform/filterを持つ祖先の中では`position:fixed`が画面基準にならない**(menu-stagger等)。
+  フルスクリーンモーダルは必ず`createPortal(…, document.body)`でbody直下へ
+  (v0.25.2146実バグ: 資料室モーダルがスクロール中ページ上部に張り付く)。
+
 ### 集計・状態(Zustand/シングルトン)
 - **シングルトン集計の「開始時点」保存は必ずディープコピー**(snapshot関数)。
   生参照は差分が常に0になる(killTelemetryStateエイリアシング・v0.25.1343の実バグ)。
