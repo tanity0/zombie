@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2159',
+    items: [
+      '演出: オープニング廊下の会話「お前がいなきゃはじまらん！」を「みんながアナタを待ってるよ！」に変更しました。',
+    ],
+  },
+  {
     version: '0.25.2158',
     items: [
       '演出: オープニング廊下に夢の演出を追加しました(明かりのソフトなにじみ・舞台全体のゆっくりした呼吸・ランプから落ちる光のカーテン)。',

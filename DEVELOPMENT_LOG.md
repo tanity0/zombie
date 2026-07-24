@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2159 — OP廊下: 会話1本の文言変更【2026-07-24 14:45 JST】
+- 指示(社長): 「お前がいなきゃ始まらん」を「みんながアナタを待ってるよ！」に変更。
+- 対処: WALK_LINESの0.90行の文言のみ差し替え(位置・表示時間・他の行は不変)。
+- 検証: typecheck・lint 0エラー(文言のみ)。
+- Files: `src/components/OpeningScene.tsx`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2158 — OP廊下: 夢演出3点(A白にじみ+B呼吸ズーム+E光のカーテン)【2026-07-24 14:44 JST】
 - 指示(社長): 夢演出の提案A〜Hから「abe」=A・B・Eを選定。
 - 対処(全てCSSのみ・毎フレームJSなし・負荷各1/10):
