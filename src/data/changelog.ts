@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2193',
+    items: [
+      '演出: オープニングの蘇生シーンへの入り(暗転フェード)を3秒に伸ばしました。',
+    ],
+  },
+  {
     version: '0.25.2192',
     items: [
       'ストーリー: エンディングの聴取記録を新しい台本に差し替えました。結びは「成し得なかった」が残ってフェードアウトし、「the ONE」が浮かび上がる演出になりました。',

@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2193 — OP: 蘇生シーンの入りフェードを3秒に【2026-07-25 00:33 JST】
+- 指示(社長): 蘇生シーンの入り、フェードイン3秒。
+- 対処: SHOOT_FADE_MS 1200→3000 / SHOOT_TOTAL 13100→14900(+200ms余白維持)。蘇生(phase4)開始と
+  台本タイムラインはSHOOT_TOTAL連動のため自動シフト。検証は指示制につきtypecheck+lintのみ。
+- Files: `src/components/OpeningScene.tsx`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2192 — エンディング聴取記録を社長編集稿へ全面差し替え【2026-07-25 00:23 JST】
 - 指示(社長): グレン撃破後のエンディング文章変更(編集稿支給)。
 - 対処: ending.ts=15行の新台本(ミラ→ノラの話者遷移・フィル/PHILL研究の全容開示)+

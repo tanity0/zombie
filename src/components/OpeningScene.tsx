@@ -315,8 +315,8 @@ const BLOOD_POS = { x: 36.5, y: 57, h: 18 };
 // 立ち姿=ビート1→2(各2.5秒)、構え=ビート3(2.5秒)、発砲=7.5s。\n は white-space: pre-line で改行になる。
 const SHOOT_LINES = ['どいつもこいつも・・・', 'アンタばっかり！', 'アンタさえいなければ・・・'];
 const SHOOT_FADE_START = 11700; // 最終コマを約1.3秒見せてから暗転(会話3ビート化で+2.5秒シフト・v0.25.2075)
-const SHOOT_FADE_MS = 1200;
-const SHOOT_TOTAL = 13100;
+const SHOOT_FADE_MS = 3000; // 蘇生シーンの入り=この暗転フェード。1200→3000(社長指示v0.25.2193「フェードイン3秒」)
+const SHOOT_TOTAL = 14900;  // SHOOT_FADE_START + SHOOT_FADE_MS + 200(余白)。蘇生(phase4)開始もここに連動
 // 旧素材はv5だけ体重心が右に出ていたため-4%補正していた(v0.25.2014)。新ドット絵素材(v0.25.2102)は
 // 5コマ全部でポーズ中心が揃っている(実測0.489〜0.498)ため補正の前提が消えた=撤去(機構は残す)。
 const VICTIM_DX: Record<number, number> = {};
