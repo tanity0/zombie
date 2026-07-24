@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.2205 — M2: 開始/切替時に下地の森がチラッと見える問題を抑制【2026-07-25 02:23 JST】
+- 報告(社長): ステージ2で、レイヤーの下にステージ1(森)の素材がいてたまにチラッと映る。開始/場面切替時。
+- 診断: 各屋外レイヤーの初期テクスチャは森(ground-moss-dirt/front-forest/distant-night-panorama)。
+  初回ロードはローディング画面が適用後まで覆う(森を見せない設計・PixiStage line 346)が、labテクスチャ
+  未適用の隙間(遷移直後/低速ロード)は applyOutdoorGroundTheme が `if(!tex) return`(pixiScene 3485)で
+  森の下地を残す=森がチラッと見える。設計コメント(PixiStage 296)は当時この稀な森チラ見えを許容していた。
+- 対処: syncLab で lab屋外かつlabテクスチャ未適用(currentFarKey!=='lab' / outdoorGroundTheme!=='lab')の間、
+  その屋外背景層(farBackdrop/groundBase/frontForest)をレイヤー個別にホールド(非表示)。適用済みで解除。
+  通常ロードは適用後に画面が出る→黒フレームは出ない。隙間の時だけ森の代わりに一瞬ホールド。
+- トレードオフ: 当時「森>黒」を選んでいた挙動を「ホールド(隙間時のみ)」へ変更。社長の不要報告=修正指示と解釈。
+  もし黒/ホールドが気になる場合はローディングをlabテクスチャ適用まで延ばす方式に切替提案。
+- 検証: typecheck・lint 0。TDZなし。実機は社長確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2204 — M2遠景窓: 床より前面へ層移動+枠をガラス手前に【2026-07-25 02:23 JST】
 - 指示(社長): ①遠景森(窓)を床よりレイヤー上に ②窓枠を窓ガラスより上のレイヤーに。
   (③「下に敷く森ステージを消せないか」は什器バンドの復活経緯があるため別途確認中=未実装)

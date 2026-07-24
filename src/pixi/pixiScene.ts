@@ -8924,17 +8924,24 @@ export class PixiScene {
     // 屋外の screen-space 背景/床/前景と world の木は屋内では隠す。
     // ?labpersp の屋内床は焼き込み遠近プレート(updateLabFloorPlate)で描くので、
     // 屋外用の縦ストリップ groundBase は屋内では隠す。
-    this.L.farBackdrop.visible = !indoor;
+    // lab屋外でlabテクスチャ未適用の隙間(遷移直後/低速ロード)は、森の下地(ステージ1素材)を
+    // 一瞬でも見せないよう、そのレイヤーを適用済みになるまでホールド(非表示)する
+    // (社長報告v0.25.2205「たまに森がチラッと映る」。既存の設計意図=森を1フレームも見せない、に沿う)。
+    // レイヤー個別に判定=1枚のロード失敗が他を巻き込まない。通常ロードは適用後に画面が出るので黒は出ない。
+    const labStageOut = !indoor && s.stageTheme === 'lab' && !s.corridorMode;
+    const farNotReady = labStageOut && this.currentFarKey !== 'lab';
+    const groundNotReady = labStageOut && this.outdoorGroundTheme !== 'lab';
+    this.L.farBackdrop.visible = !indoor && !farNotReady;
     // 遠景森1(森シルエット帯)の有無はステージスキン表(単一の真実)で決める。lab は false(森帯を出さない)。
     // ※散在分岐(isLabStage 等)を表駆動へ移す第一歩。残りスロットも順次この表へ集約予定。
     const skin = STAGE_SKINS[resolveStageSkinKey(s.stageTheme, s.corridorMode ? 'mansion' : s.farBackdrop)];
     this.L.horizonForest.visible = !indoor && skin.horizon1Visible;
-    this.L.groundBase.visible = !indoor;
+    this.L.groundBase.visible = !indoor && !groundNotReady;
     // 研究所(lab)屋外の近景森は什器シルエット(stage2-front.png・クロマキー透過)を表示する
     // (社長指示v0.25.2184。v0.25.2181で一旦非表示化したのはlab-front-band.pngのままだったため)。
     // 洋館(屋内の廊下)は近景森を出さない(v0.25.2110)。※v0.25.2194でlab非表示にしたが、社長の
     // 「透明度ゼロ」は不透明化の意=消すのは不本意(v0.25.2196で撤回)。什器の近景森1は復活。
-    this.L.frontForest.visible = !indoor && !s.corridorMode;
+    this.L.frontForest.visible = !indoor && !s.corridorMode && !groundNotReady;
     this.L.backgroundLayer.visible = !indoor;
     // 洋館(corridorMode): 屋外の演出ドレッシング(霧バンク/背景雲霧/月光シャフト)を出さない(v0.25.2110)。
     // 非corridorでは常時true=従来挙動(屋内は各自のパイプラインが管理・ここでは触らない)。

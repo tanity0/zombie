@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2205',
+    items: [
+      '不具合修正: ステージ2の開始/場面切替時に、下地の森が一瞬チラッと見えることがある問題を抑えました。',
+    ],
+  },
+  {
     version: '0.25.2204',
     items: [
       'グラフィック: ステージ2の遠景の窓を床より前面に出し(床に隠れないように)、窓枠をガラスより手前にしました。',
