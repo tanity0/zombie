@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2195',
+    items: [
+      '演出: エンディングの聴取記録を、画面中央の一定の枠内で流れて上へ消えていく表示にしました(長い台詞で下が切れないように)。',
+    ],
+  },
+  {
     version: '0.25.2194',
     items: [
       'グラフィック: ステージ2の最前面に廃研究棟の近景レイヤーを追加しました。什器シルエットの近景は非表示にしました。',

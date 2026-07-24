@@ -72,28 +72,39 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone }) => {
       onClick={onTap}
       style={{ touchAction: 'manipulation' }}
     >
+      {/* 中央揃え・高さ50vhの帯の中で会話をローリング表示(社長指示v0.25.2194): 新しい行は下から
+          積まれ、古い行は上へ流れて上端でフェードアウト(マスク)。長文で下が切れないよう窓を固定高に。 */}
       {phase === 'script' && (
         <div className="flex h-full w-full items-center justify-center px-6">
-          <div className="w-full max-w-md">
+          <div className="flex w-full max-w-md flex-col" style={{ height: '50vh' }}>
             <p
-              className="mb-6 text-center text-[13px] tracking-[0.2em] text-white/55"
+              className="shrink-0 mb-4 text-center text-[13px] tracking-[0.2em] text-white/55"
               style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
             >
               {ENDING_HEADER}
             </p>
-            <div className="space-y-3">
-              {visibleLines.map((l, i) => (
-                <p
-                  key={i}
-                  className="text-[15px] leading-relaxed text-white/90 screen-in"
-                  style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
-                >
-                  <span className="mr-2 text-white/55">{l.speaker}</span>
-                  「{l.text}」
-                </p>
-              ))}
+            <div
+              className="relative min-h-0 flex-1"
+              style={{
+                overflow: 'hidden',
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 26%, black 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 26%, black 100%)',
+              }}
+            >
+              <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end space-y-3">
+                {visibleLines.map((l, i) => (
+                  <p
+                    key={i}
+                    className="text-[15px] leading-relaxed text-white/90 screen-in"
+                    style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
+                  >
+                    <span className="mr-2 text-white/55">{l.speaker}</span>
+                    「{l.text}」
+                  </p>
+                ))}
+              </div>
             </div>
-            <p className="mt-8 text-center text-[10px] tracking-widest text-white/25">タップで進む</p>
+            <p className="shrink-0 mt-4 text-center text-[10px] tracking-widest text-white/25">タップで進む</p>
           </div>
         </div>
       )}
