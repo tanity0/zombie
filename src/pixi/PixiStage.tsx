@@ -21,6 +21,7 @@ const SORTIE_STAGE_TEXTURE_PATHS = [
   'backgrounds/stage1-near-forest.png',
   'backgrounds/stage2-lab-far.jpg',
   'backgrounds/stage2-near-horizon2.png',
+  'backgrounds/stage2-front.png', // ステージ2(lab)の近景森=什器シルエット(クロマキー透過・社長提供v0.25.2184)
   'backgrounds/stage4-far.jpg',
   'backgrounds/stage4-front2.png',
   'backgrounds/stage4-ground.jpg',
@@ -56,7 +57,7 @@ type SortieTexturePath = (typeof SORTIE_STAGE_TEXTURE_PATHS)[number];
 // ・要素はSortieTexturePath型=綴りミスはtypecheckで検出される。
 const STAGE_TEXTURE_GROUPS: Record<string, readonly SortieTexturePath[]> = {
   forest: ['backgrounds/stage1-near-forest.png', 'backgrounds/stage1-sky-anim.jpg', 'backgrounds/stage1-castle.png', 'backgrounds/stage1-moon.png'],
-  lab: ['sprites/lab-floor/lab-floor-stage2.png', 'backgrounds/stage2-lab-far.jpg', 'backgrounds/stage2-near-horizon2.png'],
+  lab: ['sprites/lab-floor/lab-floor-stage2.png', 'backgrounds/stage2-lab-far.jpg', 'backgrounds/stage2-near-horizon2.png', 'backgrounds/stage2-front.png'],
   city: ['backgrounds/stage3-distant-city-day.jpg', 'backgrounds/stage3-ground-cobble2.jpg', 'backgrounds/stage3-horizon-city.png', 'backgrounds/stage3-near-horizon-city.png', 'backgrounds/stage3-front-rooftops.png'],
   snow: ['backgrounds/stage4-far.jpg', 'backgrounds/stage4-front2.png', 'backgrounds/stage4-ground.jpg', 'backgrounds/stage4-horizon.png'],
   stage5: ['backgrounds/stage5-far.jpg', 'backgrounds/stage5-horizon.png', 'backgrounds/stage5-near-horizon.png', 'backgrounds/stage5-front.png', 'backgrounds/stage5-ground.jpg'],
@@ -297,7 +298,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
         : Promise.resolve(null);
       void (async () => {
         // 注意: 分割代入の並びは SORTIE_STAGE_TEXTURE_PATHS の並びと1:1対応(位置結合)。追加時は両方を同順で。
-        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks, s7Far, s7Clouds, s1Sky, s1Castle, s1Moon] =
+        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s2Front, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks, s7Far, s7Clouds, s1Sky, s1Castle, s1Moon] =
           await Promise.all(SORTIE_STAGE_TEXTURE_PATHS.map(load));
         if (cancelled || sceneRef.current !== scene) return;
         scene.setLabGroundTexture(labGround);            // 研究所スキンの床
@@ -324,6 +325,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
         scene.setFrontOverride('snow', s4Front);         // 近景森: 氷壁(ステージ4・不透明)
         scene.setFrontOverride('stage5', s5Front);       // 近景森: 戦場の残骸(ステージ5・社長提供)
         scene.setFrontOverride('tutorial', tutFrontRocks); // 近景森: 画面手前・下寄せの岩(チュートリアル・ぼかし)
+        scene.setFrontOverride('lab', s2Front);          // 近景森: 什器シルエット(ステージ2・クロマキー透過・社長提供v0.25.2184)
         scene.setGroundOverride('snow', s4Ground);       // 地面: 雪原(ステージ4)
         scene.setGroundOverride('stage5', s5Ground);     // 地面: 戦場跡(ステージ5・社長提供)
         scene.setHorizonOverride('snow', s4Horizon);     // 地平帯(遠景森1): 氷壁帯(ステージ4・下フェード)

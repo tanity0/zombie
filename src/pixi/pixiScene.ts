@@ -3435,15 +3435,24 @@ export class PixiScene {
       // 毎フレーム再適用(何かがテクスチャを戻しても確実に張り替わる)。差分があるときだけ代入。
       // 色味調整(LAB_ENV_TINT)は外し、テクスチャ本来の色で表示(tint 白=無補正)。
       for (const strip of strips) { if (strip.texture !== tex) strip.texture = tex; strip.tint = 0xffffff; }
-      // 手前の近景(lab-front-band)はステージ2の暗化(ENV_TINT)対象から除外=本来の明るさで表示(社長指示)。
+      // 手前の近景(什器シルエット)はステージ2の暗化(ENV_TINT)対象から除外=本来の明るさで表示(社長指示)。
       this.L.frontForest.tint = 0xffffff;
+      // 近景森は社長支給のクロマキー済み新素材(frontOverrides['lab']・setFrontOverride('lab',…)で非同期
+      // 注入)を優先し、未ロードならlab-front-bandへフォールバック。ground stripsと同じく毎フレーム差分
+      // チェックで貼り替える(遅延注入対応・社長指示v0.25.2184)。レイアウト/パララックス/ぼかしは
+      // 他ステージの近景森と同じ既定のまま(専用の高さ指定はしない)。
+      const frontTex = this.frontOverrides['lab'] ?? getTexture('lab/lab-front-band');
+      if (frontTex && this.L.frontForest.texture !== frontTex) {
+        if (!this.frontForestBaseTex) this.frontForestBaseTex = this.L.frontForest.texture;
+        this.L.frontForest.texture = frontTex;
+        const frontH = this.frontForestHeight();
+        this.L.frontForest.tileScale.set(frontH / Math.max(1, frontTex.height));
+      }
       if (this.outdoorGroundTheme !== 'lab') {
-        // 背景2層(地平帯/手前帯)を研究所版へ(森→ラボ)。遠景は applyFarBackdrop が管理。
+        // 地平帯(遠景森1)を研究所版へ(森→ラボ)。遠景は applyFarBackdrop・近景森は上のfrontTexが管理。
         // 元テクスチャは復元用に一度だけ退避。テーマ変化時のみ。
         const horizon = getTexture('lab/lab-horizon-band');
         if (horizon) { if (!this.horizonForestBaseTex) this.horizonForestBaseTex = this.L.horizonForest.texture; this.L.horizonForest.texture = horizon; }
-        const front = getTexture('lab/lab-front-band');
-        if (front) { if (!this.frontForestBaseTex) this.frontForestBaseTex = this.L.frontForest.texture; this.L.frontForest.texture = front; }
         this.outdoorGroundTheme = 'lab';
       }
     } else if (this.outdoorGroundTheme !== 'forest') {
@@ -8776,8 +8785,9 @@ export class PixiScene {
     const skin = STAGE_SKINS[resolveStageSkinKey(s.stageTheme, s.corridorMode ? 'mansion' : s.farBackdrop)];
     this.L.horizonForest.visible = !indoor && skin.horizon1Visible;
     this.L.groundBase.visible = !indoor;
-    // 研究所(lab)屋外は近景森(lab-front-band=機材帯)を非表示(社長指示v0.25.2181「支給遠景1枚だけ」)。
-    this.L.frontForest.visible = !indoor && !s.corridorMode && s.stageTheme !== 'lab'; // 洋館(屋内の廊下)は近景森を出さない(v0.25.2110)
+    // 研究所(lab)屋外の近景森は什器シルエット(stage2-front.png・クロマキー透過)を表示する
+    // (社長指示v0.25.2184。v0.25.2181で一旦非表示化したのはlab-front-band.pngのままだったため)。
+    this.L.frontForest.visible = !indoor && !s.corridorMode; // 洋館(屋内の廊下)は近景森を出さない(v0.25.2110)
     this.L.backgroundLayer.visible = !indoor;
     // 洋館(corridorMode): 屋外の演出ドレッシング(霧バンク/背景雲霧/月光シャフト)を出さない(v0.25.2110)。
     // 非corridorでは常時true=従来挙動(屋内は各自のパイプラインが管理・ここでは触らない)。

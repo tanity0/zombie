@@ -1,5 +1,35 @@
 # Development Log
 
+## v0.25.2191 — M2近景に什器シルエットを追加(社長支給素材のクロマキー統合)【2026-07-25 00:21 JST】
+- 依頼(社長支給): 新素材`b07ea6ef-694C22A12D11404A821960116B232AA4.png`(2172×724・研究所什器シルエット列・
+  紫単色クロマキー背景)を統合。v0.25.2181でlab時に非表示にした4レイヤー(horizonForest/nearHorizon/
+  frontForest/labCeiling)のうち**frontForest(近景森)だけ**をlabで再有効化し、この新素材を表示する。
+  horizonForest/nearHorizon/labCeilingは非表示のまま(変更なし)。
+- クロマキー処理(Python/PIL・numpy。ヒストグラム最頻色でキー色を決定): 背景の支配色は
+  RGB(116,3,237)(全ピクセルの約74%がこの色から距離5以内=単色ベタ塗りと確認)。
+  距離ベースのアルファ化: dist<12は完全透過/dist>100は完全不透明/その間はsmoothstepで滑らかに
+  遷移(該当ピクセルは全体の約1.5%=元絵の縁が既に軽くAA済みなことを実測確認)。半透明の縁ピクセルは
+  「blended=fg*a+key*(1-a)」の逆算でデスピル(紫の色かぶりを除去)し、新しい背景に合成した時の
+  紫フリンジを防止。物体側の紫寄り装飾(蔦などの暗い紫)はキー色と輝度・彩度が大きく離れており
+  誤検出なし(目視確認: チェッカー合成/暗背景合成の2種で縁のにじみ無しを確認)。
+  → `public/backgrounds/stage2-front.png`(RGBA・2172×724)として保存。
+- 配線: `src/pixi/PixiStage.tsx` — `SORTIE_STAGE_TEXTURE_PATHS`と`STAGE_TEXTURE_GROUPS.lab`に
+  `backgrounds/stage2-front.png`を追加(位置結合の分割代入に`s2Front`を追加)、
+  `scene.setFrontOverride('lab', s2Front)`を追加(既存のsnow/stage5/tutorialと同じ流儀)。
+  `src/pixi/pixiScene.ts` — `applyOutdoorGroundTheme`のlab分岐で、近景森テクスチャを
+  `this.frontOverrides['lab'] ?? getTexture('lab/lab-front-band')`(新素材優先・未ロード時は旧素材へ
+  フォールバック)に変更。非同期注入(遅延ロード)に対応するため、ground stripsと同じく**毎フレーム
+  差分チェック**で貼り替え(`outdoorGroundTheme`の一度きりガード内に置くと遅延到着分を取りこぼすため)。
+  `syncLab()`の`frontForest.visible`から`s.stageTheme !== 'lab'`の除外条件を削除(再表示)。
+  レイアウト/パララックス/ぼかしは他ステージの近景森と同じ既定のまま(専用の高さ指定・追加ぼかしはしない・
+  frontForestHeight()・既存のfrontForestBlurをそのまま使用)。horizonForest(skin.horizon1Visible)・
+  nearHorizon(applyNearHorizonのkey==='lab'早期return)・labCeiling(updateLabCeilingのlab分岐削除)は
+  v0.25.2181の非表示のまま無改変。
+- 検証: 社長指示によりヘッドレス実走等は今回省略(v0.25.2184「検証は指示制」)。push前フロアの
+  typecheck・lintのみ実施し0エラー(既存warning 7件は無関係)。見た目の最終確認は社長の実機。
+- Files: `public/backgrounds/stage2-front.png`(新規), `src/pixi/PixiStage.tsx`,
+  `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2190 — M2遠景をスケール追従(境界線つまみ1本化)【2026-07-25 00:07 JST】
 - 指示(社長): 遠景を境界線にスケールで設定できる?=大きさが追従。
 - 対処: LAB_FAR_BOUNDARY_YR=0.30(画面高比・境界線の唯一のつまみ)を新設。labの遠景はM7と同じ

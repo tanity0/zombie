@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2191',
+    items: [
+      'グラフィック: ステージ2に近景の什器シルエット(手前レイヤー)を追加しました。',
+    ],
+  },
+  {
     version: '0.25.2190',
     items: [
       '調整: ステージ2の遠景を「境界線までスケールで貼る」方式に変更しました(境界の位置つまみ1つで遠景の大きさと床上端が一緒に動きます)。',
