@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2197',
+    items: [
+      'グラフィック: ステージ2の近景森2(廃研究棟)を少し上げ、ぼかしを加えて奥行きを出しました。',
+    ],
+  },
+  {
     version: '0.25.2196',
     items: [
       'グラフィック: ステージ2の近景(什器シルエット)を復活させました。近景森2(廃研究棟)は上端を固定したまま2倍の大きさにしました。',

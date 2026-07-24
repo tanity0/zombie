@@ -198,6 +198,17 @@ const FAR_FOREST_SIZE_SCALE = 1.5;
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const LAB_HORIZON_FOREST_EXTRA_DOWN = 20; // ステージ2だけ遠景森1を下げる量(px)。他ステージは0。
+// M2(研究所)遠景森=ガラス窓2層(フレーム+ガラス・社長支給v0.25.2197)専用のレイアウトつまみ。
+// 汎用horizonForestの重なり比率(HORIZON_FOREST_OVERLAP_RATIO等)は旧素材(森シルエット)向けの
+// チューニングのため使わず、この帯だけ専用の「下辺=境界線(LAB_FAR_BOUNDARY_YR)に密着」ロジックを持つ。
+// ?labfarforestratio= で高さ比、?labfarforestminpx=/maxpx= でクランプ、?labfarforestbottompx= で
+// 境界線からの下辺オフセット(既定0=ピッタリ)、?labfarforestgx=/gy= でガラス層のx/y微調整(既定0)を現地調整可。
+const LAB_FARFOREST_HEIGHT_RATIO = tsNum('labfarforestratio', 0.22); // 画面高比(フレーム層の目標高さ)
+const LAB_FARFOREST_MIN_HEIGHT_PX = tsNum('labfarforestminpx', 120);
+const LAB_FARFOREST_MAX_HEIGHT_PX = tsNum('labfarforestmaxpx', 185);
+const LAB_FARFOREST_BOTTOM_OFFSET_PX = tsNum('labfarforestbottompx', 0); // 境界線からの下辺オフセット。0=ピッタリ密着
+const LAB_FARFOREST_GLASS_X_OFFSET_PX = tsNum('labfarforestgx', 0); // ガラス層のxレジストレーション微調整
+const LAB_FARFOREST_GLASS_Y_OFFSET_PX = tsNum('labfarforestgy', 0); // ガラス層のyレジストレーション微調整(既定=フレームに垂直中央揃え)
 // 遠景森1の下端フェード幅は tsNum 定数(?horizonfade=)で下方に定義。10pxだと事実上ハードカット(社長「パッツリ切れてる」)。
 // 遠景手前森(ステージ3): 地平の森の「手前」に重なる近めの帯。closer=大きく/下/速いパララックス/弱ブラー。
 // 遠景森2の高さ(screenH比)。全ステージ共通の既定=0.42(原典)。
@@ -331,6 +342,9 @@ const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 const LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO = tsNum('labf2os', 0.05);
 // 近景森2の表示倍率(社長指示v0.25.2196「2倍の大きさに」)。上端は固定で下へ伸びる。?labf2sc= で現地調整可。
 const LAB_FRONT2_SCALE = tsNum('labf2sc', 2);
+// 近景森2の上げ量(社長指示v0.25.2197「20px上に」)と ぼかし強度(同「ぼかして」)。?labf2up= /?labf2bl=。
+const LAB_FRONT2_UP_PX = tsNum('labf2up', 20);
+const LAB_FRONT2_BLUR = tsNum('labf2bl', 3);
 // 北部(stage-4=snow)の遠景森1(氷壁)の拡大/上移動/高さトリム。?northscale= /?northup= /?northtrim= で現地調整可。
 const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
 const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
@@ -1461,6 +1475,11 @@ export class PixiScene {
   private worldFadeMaskTexture: Texture | null = null;
   private horizonForestFadeMask = new Sprite(Texture.WHITE);
   private horizonForestFadeMaskTexture: Texture | null = null;
+  // M2(研究所)の遠景森=ガラス窓2層構成(社長支給v0.25.2197)。horizonForest自体を「フレーム層」(手前)に
+  // 使い、この専用スプライトを「ガラス層」(奥)としてhorizonForestの直前(同じ親・1つ下)に追加する。
+  // 常に horizonForest と同じ x/y/width/height/tileScale/tilePosition をコピーして完全同期スクロールさせる
+  // (レジストがズレない=個別レイアウト計算を持たない)。
+  private labFarGlass = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
   private frontForestFadeMask = new Sprite(Texture.WHITE);
   private frontForestFadeMaskTexture: Texture | null = null;
   private nearGroundBlurLayers: Container[] = [];
@@ -1857,6 +1876,10 @@ export class PixiScene {
     this.L.horizonForest.parent!.addChild(this.horizonForestFadeMask);
     this.L.frontForest.mask = this.frontForestFadeMask;
     this.L.frontForest.parent!.addChild(this.frontForestFadeMask);
+    // M2ガラス層はhorizonForestの直前(同じ親・1つ下)= horizonForest(フレーム層)の奥に描画される。
+    this.labFarGlass.eventMode = 'none';
+    this.labFarGlass.visible = false;
+    { const hfParent = this.L.horizonForest.parent!; hfParent.addChildAt(this.labFarGlass, hfParent.getChildIndex(this.L.horizonForest)); }
 
     const nearGroundStripCount = Math.max(1, Math.ceil(this.L.groundStrips.length * NEAR_GROUND_BLUR_STRIP_RATIO));
     const nearGroundStart = Math.max(0, this.L.groundStrips.length - nearGroundStripCount);
@@ -4959,6 +4982,7 @@ export class PixiScene {
       const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
       const parent = this.L.frontForest.parent!;
       parent.addChildAt(sp, parent.getChildIndex(this.L.frontForest) + 1); // frontForestの手前=一番手前
+      if (LAB_FRONT2_BLUR > 0) sp.filters = [new BlurFilter({ strength: LAB_FRONT2_BLUR, quality: 2 })]; // ぼかし(社長指示v0.25.2197)
       this.labFront2 = sp;
     }
     const sp = this.labFront2;
@@ -4967,7 +4991,7 @@ export class PixiScene {
     const base = this.frontForestHeight(); // 1倍基準(=既存近景森の高さ)
     // 上端固定+2倍(社長指示v0.25.2196): 上端は1倍時の位置に固定し、そこから下へ2倍の高さに伸ばす
     // (下側は overshoot ぶん+2倍化ぶんが画面外へはみ出す)。倍率は LAB_FRONT2_SCALE(?labf2sc=)。
-    const topFixed = this.screenH - base * (1 - LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO); // 1倍時の上端=固定点
+    const topFixed = this.screenH - base * (1 - LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO) - LAB_FRONT2_UP_PX; // 1倍時の上端-20px(社長指示v0.25.2197)
     const h = base * LAB_FRONT2_SCALE;
     sp.width = this.screenW;
     sp.height = h;

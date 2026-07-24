@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2197 — M2近景森2を20px上げ+ぼかし/近景森1の不透明を確認【2026-07-25 01:14 JST】
+- 指示(社長): 近景森1の「透明度ゼロ」=不透明の意(v0.25.2196の復活で確定・追加変更なし=frontForest
+  はstage-2でfrontForestAlpha()→1の完全不透明)。近景森2は20px上げてぼかす。
+- 対処: labFront2の上端を LAB_FRONT2_UP_PX(既定20)ぶん上へ+BlurFilter(LAB_FRONT2_BLUR既定3・quality2)。
+  ?labf2up= /?labf2bl= で現地調整可。検証は指示制につきtypecheck+lintのみ。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2196 — M2: 近景森1(什器)を復活+近景森2を上端固定で2倍【2026-07-25 00:59 JST】
 - 指示(社長): 近景森1が消えた(=v0.25.2194の非表示は不本意。「透明度ゼロ」は不透明化の意だった)。
   近景森2は上の位置を固定で2倍の大きさに。
