@@ -7,8 +7,10 @@ import type { Enemy, InputState, Player, Projectile } from '../types/game';
 
 // 'rusher' はPACING_PUZZLE.md §5.20(M19・深層ラッシュ試験専用)のペルソナ。既存の通常スモーク
 // (BOT_PERSONAS の巡回)には含めず、専用テストからのみ persona 名で直接呼び出す。
-export type BotPersona = 'standard' | 'kiter' | 'stationary' | 'boar' | 'wanderer' | 'rusher';
+export type BotPersona = 'standard' | 'kiter' | 'stationary' | 'boar' | 'wanderer' | 'rusher' | 'scavenger';
 
+// 'scavenger'(v0.25.2171・弾薬AIディレクター検証専用)も rusher と同じ理由でBOT_PERSONASには
+// 含めない(通常戦闘+弾薬優先回収という特化挙動の検証用。専用テストからのみ直接呼び出す)。
 export const BOT_PERSONAS: BotPersona[] = ['standard', 'kiter', 'stationary', 'boar', 'wanderer'];
 
 export interface BotDecision {
@@ -85,6 +87,46 @@ export const pickupSeekInput = (
   return dirInput((bestX - pcx) / n, (bestY - pcy) / n);
 };
 
+// v0.25.2171(弾薬AIディレクター検証用・社長指定): 'scavenger' ペルソナ専用の弾薬ピックアップ優先回収。
+// pickupSeekInput(全種類・240px・全ペルソナ共通)はそのまま残した上で、scavenger だけ追加で
+// 「ammo-* ピックアップ限定・より広い半径」を手空きtickに探す(既存関数・他ペルソナの挙動は不変)。
+// 半径の目安: デフォルトgameBounds(800x600)基準の「半画面」相当(=幅800の半分=400。有効視認の
+// 目安として横/縦の半分の平均=350を採用・叩き台)。1.7画面側は同じ「半画面=350」を1画面=700とみなし
+// ×1.7=1190(useGameLoop.tsのエアドロップ配置=halfMax×1.1〜1.6=440〜640pxを1190は確実にカバーする)。
+// - 通常時: worldDrop有無を問わず ammo-* ピックアップを SCAVENGER_AMMO_SEEK_DIST 以内で探す
+//   (画面内相当。「画面外の弾は通常は拾いに行かない」を距離カットで表現)。
+// - 枯渇時(呼び出し側が isOutOfAmmo で通知): worldDrop(エアドロップ等)だけ、より広い
+//   SCAVENGER_AMMO_DEPLETED_SEEK_DIST まで探索半径を拡張する。
+export const SCAVENGER_AMMO_SEEK_DIST = 350;          // 「半画面以内」の叩き台
+export const SCAVENGER_AMMO_DEPLETED_SEEK_DIST = 1190; // 「約1.7画面以内」の叩き台(worldDrop限定・枯渇時のみ)
+
+export interface AmmoPickupLike { x: number; y: number; type: string; worldDrop?: boolean }
+
+export const scavengerAmmoSeekInput = (
+  persona: BotPersona,
+  input: InputState,
+  pcx: number,
+  pcy: number,
+  ammoPickups: readonly AmmoPickupLike[],
+  isOutOfAmmo: boolean,
+  seekDist = SCAVENGER_AMMO_SEEK_DIST,
+  depletedWorldDropSeekDist = SCAVENGER_AMMO_DEPLETED_SEEK_DIST,
+): InputState => {
+  if (persona !== 'scavenger') return input;
+  if (input.up || input.down || input.left || input.right) return input; // 本来の判断/拾いが動いている時は触らない
+  let bestX = 0, bestY = 0, bestD = Infinity;
+  for (const p of ammoPickups) {
+    if (!p.type.startsWith('ammo-')) continue;
+    const d = Math.hypot(p.x + 8 - pcx, p.y + 8 - pcy);
+    const eligible = d <= seekDist || (isOutOfAmmo && p.worldDrop === true && d <= depletedWorldDropSeekDist);
+    if (!eligible) continue;
+    if (d < bestD) { bestD = d; bestX = p.x + 8; bestY = p.y + 8; }
+  }
+  if (!isFinite(bestD)) return input;
+  const n = Math.max(0.001, bestD);
+  return dirInput((bestX - pcx) / n, (bestY - pcy) / n);
+};
+
 // M38(§6.15): 松明を壊してスクラップ供給を作る「松明フォレージ」。手空きのtick(ペルソナ判断+
 // 拾い歩き(pickupSeekInput)の後も移動入力が無い時)のみ発火する後段補正で、通常プレイ・松明/
 // ドロップ/スクラップの仕様には一切触れない。呼び出し側(playtestDriver/useGameLoopのbotブロック)
@@ -96,6 +138,13 @@ export const pickupSeekInput = (
 // - stationary(棒立ちが仕様)・rusher(カウンター/寄り道を一切しない低スキル再現=M19の設計意図)は除外。
 export const TORCH_SEEK_DIST = 240;  // 拾い歩きのmaxDistと同じ(§6.15 叩き台)
 export const TORCH_SMASH_DIST = 60;  // M34のMINE_SMASH_DISTと同値(§6.15 叩き台)
+
+// v0.25.2171(社長指定): 'scavenger' ペルソナは松明フォレージの「気づく」距離を約120pxに絞る
+// (他ペルソナのTORCH_SEEK_DIST=240より近距離限定。弾薬回収を優先しつつ、近くにあれば壊しに行く
+// 程度の位置づけ)。叩く距離(TORCH_SMASH_DIST)は他ペルソナと同じ既存値を使う。呼び出し側
+// (playtestDriver.ts)が persona==='scavenger' の時だけ torchForageInput の seekDist にこれを渡す
+// (torchForageInput 自体の実装・他ペルソナ向け既定値は変更しない)。
+export const SCAVENGER_TORCH_SEEK_DIST = 120;
 
 export interface TorchForageResult { input: InputState; wantsMelee: boolean }
 
@@ -288,6 +337,8 @@ export const COUNTER_REACTION_PROFILES: Partial<Record<BotPersona, CounterReacti
   wanderer: { reactionMs: 250, chance: 0.65 },
   boar: { reactionMs: 200, chance: 0.75 },
   kiter: { reactionMs: 300, chance: 0.50 },
+  // v0.25.2171: scavengerは「通常どおり戦闘」する持駒なので standard と同じ反応プロファイルを使う。
+  scavenger: { reactionMs: 250, chance: 0.65 },
 };
 
 // 呼び出し側(ヘッドレスdriver/useGameLoopのbotブロック)がラン単位で1つ作り、毎tick同じ参照を
@@ -410,6 +461,9 @@ export const decideBotInput = (
   wanderSeed: number,
   rusherState?: RusherTrackState,
   gunRangePx?: number,
+  // v0.25.2171: 呼び出し側(playtestDriver.ts)が「全所持銃のmagazine+reserve合計が0」を通知する。
+  // scavengerペルソナのみが参照する(他ペルソナは未使用=挙動不変)。
+  isOutOfAmmo?: boolean,
 ): BotDecision => {
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
@@ -479,6 +533,34 @@ export const decideBotInput = (
       if (!target) return { input: STILL_INPUT, wantsMelee: false, wantsWeaponSwitch: false };
       const d = distTo(pcx, pcy, target);
       return { input: approach(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
+    }
+
+    case 'scavenger': {
+      // v0.25.2171(社長指定・弾薬AIディレクター検証専用): 基本の交戦判断は standard と同じ
+      // (スタン敵処刑優先・囲まれたら退避・近接圏内で殴る)。弾薬の拾い足し(画面内優先・枯渇時
+      // worldDropまで足を伸ばす)は呼び出し側(playtestDriver.ts)が scavengerAmmoSeekInput /
+      // 松明フォレージのseekDist override で後段合成する(このswitchでは行わない)。
+      // ただし「枯渇時にそれも無ければ近接で応戦(逃げ回らない)」だけはここで表現: isOutOfAmmoなら
+      // 囲まれても退避せず、常に最寄り敵へ突進して近接で応戦する(boarと同じ攻めの姿勢)。
+      if (isOutOfAmmo) {
+        const target = nearestEnemy(pcx, pcy, enemies);
+        if (!target) return { input: STILL_INPUT, wantsMelee: false, wantsWeaponSwitch: false };
+        const d = distTo(pcx, pcy, target);
+        return { input: approach(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
+      }
+      const stunned = nearestStunned(pcx, pcy, enemies, gameTime);
+      const target = stunned ?? nearestEnemy(pcx, pcy, enemies);
+      if (!target) return { input: STILL_INPUT, wantsMelee: false, wantsWeaponSwitch: tickIndex % 1200 === 0 };
+      const nearbyCount = enemies.filter(e => distTo(pcx, pcy, e) < SURROUND_RADIUS).length;
+      if (nearbyCount >= SURROUND_COUNT) {
+        const d = distTo(pcx, pcy, target);
+        return { input: retreat(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
+      }
+      const d = distTo(pcx, pcy, target);
+      if (d > MELEE_ENGAGE_DIST) {
+        return { input: approach(pcx, pcy, target), wantsMelee: false, wantsWeaponSwitch: false };
+      }
+      return { input: STILL_INPUT, wantsMelee: true, wantsWeaponSwitch: false };
     }
 
     case 'standard':

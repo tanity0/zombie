@@ -1,5 +1,37 @@
 # Development Log
 
+## v0.25.2171 — テストボットに'scavenger'ペルソナを追加(弾薬AIディレクター検証用)【2026-07-24 18:24 JST】
+- 指示(社長): v0.25.2170の弾薬AIディレクターを、現実的なプレイヤー挙動のボット1体の実走で検証する
+  ため、既存ボット基盤(M9系・`src/utils/playtestBot.ts`)へ新ペルソナ 'scavenger' を追加。
+- 対処(シミュ層のみ・ゲームプレイ本体は変更なし):
+  - `src/utils/playtestBot.ts`: `BotPersona` に `'scavenger'` を追加(rusherと同じ理由で
+    `BOT_PERSONAS`巡回配列には含めない=専用テストから直接呼び出す運用)。新規純関数
+    `scavengerAmmoSeekInput`(ammo-*ピックアップ限定の広め半径追跡。通常時
+    `SCAVENGER_AMMO_SEEK_DIST=350`px=既定gameBounds800x600の「半画面」目安、枯渇時のみworldDrop限定で
+    `SCAVENGER_AMMO_DEPLETED_SEEK_DIST=1190`px=「約1.7画面」目安まで拡張)。松明フォレージは既存の
+    `torchForageInput`をそのまま再利用しつつ、呼び出し側でscavengerだけseekDistを
+    `SCAVENGER_TORCH_SEEK_DIST=120`pxに絞って渡す(他ペルソナの既定240は無変更)。`decideBotInput`に
+    `scavenger`ケースを追加(通常はstandardと同じ交戦判断。呼び出し側が`isOutOfAmmo`
+    (全所持銃のmagazine+reserve合計0)を通知した時だけ、囲まれても退避せず最寄り敵へ突進して近接で
+    応戦=boarと同じ攻めの姿勢)。`COUNTER_REACTION_PROFILES`にもscavenger分を追加(standardと同値)。
+  - `src/utils/playtestDriver.ts`: `runPlaytestTick`で`isOutOfAmmo`を算出して`decideBotInput`に渡し、
+    `scavengerAmmoSeekInput`をpickupSeekInputの直後に合成、`torchForageInput`呼び出しにscavenger専用
+    seekDistを渡すよう配線。他ペルソナの入力合成順・値は無変更。
+- 検証: `npm run typecheck` 0エラー、`npm run lint` 0エラー(warning 7件は既存分・本変更と無関係)、
+  `npx vitest run src/utils/playtestBot.test.ts src/utils/botTelemetry.test.ts` 61件全緑、
+  scavengerペルソナで600tickのヘッドレス走行が例外なく完走することを一時テストで確認(コミット外)。
+- 発見事項(このコミットでは未対処・設計判断が要るため申し送り): ヘッドレスドライバの銃キル弾薬ドロップ経路
+  (`playtestDriver.ts`の`applyBotProjectileHits`)が、v0.25.2170で`useGameLoop.ts`の銃キル経路に追加された
+  `ammoDirectorRate()`配線を欠いたまま(近接キル経路は`gameStore.ts`の共有関数`grantMeleeKillRewards`
+  経由のため既に反映済み)。銃主体クラスのヘッドレス検証では銃キルドロップ率がAIディレクターの影響を
+  受けず常時flatな`meleeAmmoDropPercent`(10%)のままになる。今回の検証実走ではこの箇所だけ一時的に
+  ローカルパッチして測定し(コミットはしていない=このコミットのdiffには含まれない)、測定後は
+  `git checkout`で元に戻した。恒久的に直すかは設計判断のため最終報告に記載。
+- 未決/申し送り: 上記のplaytestDriver.ts側ammoDirectorRate欠落の恒久修正要否(設計チャット判断)。
+  半画面/1.7画面の距離定数(350/1190/120px)は「約」「ある程度」という指示に基づく叩き台。
+- Files: `src/utils/playtestBot.ts`, `src/utils/playtestDriver.ts`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2170 — 弾薬ドロップのAIディレクター制【2026-07-24 17:38 JST】
 - 指示(社長): 通常キルドロップの基礎率を10%に下げ、「全所持銃の弾備蓄の枯渇度×敵の多さ」を
   AIディレクターが見て最大20%まで底上げする。その上に従来どおり装備/パッシブ加算とフィニッシャー

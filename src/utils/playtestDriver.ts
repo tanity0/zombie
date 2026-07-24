@@ -48,7 +48,7 @@ import {
 } from './directorTick';
 import {
   decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
-  adjustBotForMines, decideCounterReaction,
+  adjustBotForMines, decideCounterReaction, scavengerAmmoSeekInput, SCAVENGER_TORCH_SEEK_DIST,
   createCounterThreatState, type BotPersona, type RusherTrackState, type CounterThreatState,
 } from './playtestBot';
 import { pickUpgrade, mulberry32 } from './botUpgradePolicy';
@@ -365,7 +365,13 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   const botGunRange = botGun && botGun.category !== 'phill'
     ? RANGE_BY_CATEGORY[botGun.category as keyof typeof RANGE_BY_CATEGORY]
     : undefined;
-  const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed, rusherState, botGunRange);
+  // v0.25.2171: scavengerペルソナ用の「枯渇」判定=全所持銃のmagazine+reserve合計が0(社長指定)。
+  // 他ペルソナはdecideBotInput側で未使用なので計算しても挙動には影響しない。
+  const botGuns = getGuns(player);
+  const isOutOfAmmo = botGuns.reduce((a, w) => a + (w.magazine ?? 0), 0)
+    + Array.from(new Set(botGuns.map(w => w.ammoType).filter((tt): tt is AmmoType => !!tt)))
+        .reduce((a, tt) => a + ammoPoolFor(player, tt), 0) <= 0;
+  const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed, rusherState, botGunRange, isOutOfAmmo);
   // M39(§6.16): 商人ゾーンに用は作らない=拾い/松明の対象からゾーン内の物を除外し、移動もゾーンを避ける。
   const merchant = useGameStore.getState().weaponMerchant;
   const outsideMerchantZone = (x: number, y: number): boolean =>
@@ -374,11 +380,21 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   const moveInput = pickupSeekInput(persona, decision.input,
     player.x + player.width / 2, player.y + player.height / 2,
     useGameStore.getState().pickups.filter(p => outsideMerchantZone(p.x + 8, p.y + 8)));
-  // M38(§6.15): 松明フォレージ(手空きのみ発火・拾い歩きの直後に合成・松明を割ってスクラップ供給を作る)。
-  const torchForage = torchForageInput(
+  // v0.25.2171: scavengerペルソナのみ、ammo-*ピックアップを更に広い半径で優先追跡する
+  // (通常時は画面内相当・枯渇時はworldDropに限りさらに遠くまで。他ペルソナは即return=影響なし)。
+  const scavengerSeek = scavengerAmmoSeekInput(
     persona, moveInput,
     player.x + player.width / 2, player.y + player.height / 2,
+    useGameStore.getState().pickups.filter(p => outsideMerchantZone(p.x + 8, p.y + 8)),
+    isOutOfAmmo,
+  );
+  // M38(§6.15): 松明フォレージ(手空きのみ発火・拾い歩きの直後に合成・松明を割ってスクラップ供給を作る)。
+  // scavengerだけ「近く(約120px)」に絞ったseekDistを渡す(社長指定・他ペルソナは既定のTORCH_SEEK_DIST=240のまま)。
+  const torchForage = torchForageInput(
+    persona, scavengerSeek,
+    player.x + player.width / 2, player.y + player.height / 2,
     useGameStore.getState().breakableProps.filter(p => p.type === 'torch' && outsideMerchantZone(p.footX, p.footY)),
+    persona === 'scavenger' ? SCAVENGER_TORCH_SEEK_DIST : undefined,
   );
   // M39(§6.16): 商人ゾーン回避ステア(ゾーン内なら出る/掠める進路は45°逸れる)。
   const avoidedInput = avoidMerchantZone(
