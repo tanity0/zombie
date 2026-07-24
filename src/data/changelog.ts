@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2153',
+    items: [
+      '調整: ステージ6で敵が見え始めるラインを少しだけ下げました。',
+    ],
+  },
+  {
     version: '0.25.2152',
     items: [
       'メニュー: オプションの「弾ドロップ率」項目を撤去しました(ゲーム側で管理する固定値になります。適正値は調整中)。',
