@@ -3229,7 +3229,9 @@ export class PixiScene {
   // 遠景森2をキー(s.nearHorizon)で出し分け。差分時にテクスチャ差し替え+再レイアウト、tint は昼夜連動。
   private nearHorizonKeyNow = ''; // layoutNearHorizon(resize経由含む)がステージ別高さ比を引くための現在キー
   private applyNearHorizon(key: string) {
-    const tex = key ? this.nearHorizonOverrides[key] : null;
+    // lab(研究所)は支給遠景1枚だけを表示する方針のため、遠景森2(機材シルエット帯)は非表示
+    // (社長指示v0.25.2181)。森レイヤーは後日改めて設置予定。
+    const tex = (key && key !== 'lab') ? this.nearHorizonOverrides[key] : null;
     this.nearHorizonKeyNow = key;
     if (!tex) { this.L.nearHorizon.visible = false; return; }
     if (this.L.nearHorizon.texture !== tex) this.L.nearHorizon.texture = tex;
@@ -3885,10 +3887,10 @@ export class PixiScene {
     this.syncCityProps(); // ステージ3(廃都)の散布オブジェクト(その他ステージでは no-op)
     this.syncForestFlowers(); // ステージ1(森)の装飾花(その他ステージでは no-op)
     this.syncCorridorBackdrop(now); // ステージ6(洋館・corridorMode)の疑似3D通路背景(その他ステージでは no-op)
-    // 最前面の天井帯: lab=ケーブル帯 / チュートリアル(洞窟)=鍾乳石帯(同仕様・上寄せループ)。
+    // 最前面の天井帯: チュートリアル(洞窟)=鍾乳石帯(上寄せループ)。lab(研究所屋外)のケーブル帯は
+    // 支給遠景1枚だけを表示する方針のため非表示化(社長指示v0.25.2181)。後日改めて設置予定。
     this.updateLabCeiling(
-      s.stageTheme === 'lab' && !s.indoorMode ? 'lab/lab-ceiling-band'
-        : s.farBackdrop === 'tutorial' ? 'tutorial-ceiling-band'
+      s.farBackdrop === 'tutorial' ? 'tutorial-ceiling-band'
         : null,
       s.farBackdrop === 'tutorial' ? s.camera.x : 0, // ツララ帯=近景と同係数でカメラ連動(labは従来どおり固定)
       s.farBackdrop === 'tutorial' ? TUTORIAL_CEILING_SCALE : 1 // ツララ帯=1.5倍(labは等倍)
@@ -8770,7 +8772,8 @@ export class PixiScene {
     const skin = STAGE_SKINS[resolveStageSkinKey(s.stageTheme, s.corridorMode ? 'mansion' : s.farBackdrop)];
     this.L.horizonForest.visible = !indoor && skin.horizon1Visible;
     this.L.groundBase.visible = !indoor;
-    this.L.frontForest.visible = !indoor && !s.corridorMode; // 洋館(屋内の廊下)は近景森を出さない(v0.25.2110)
+    // 研究所(lab)屋外は近景森(lab-front-band=機材帯)を非表示(社長指示v0.25.2181「支給遠景1枚だけ」)。
+    this.L.frontForest.visible = !indoor && !s.corridorMode && s.stageTheme !== 'lab'; // 洋館(屋内の廊下)は近景森を出さない(v0.25.2110)
     this.L.backgroundLayer.visible = !indoor;
     // 洋館(corridorMode): 屋外の演出ドレッシング(霧バンク/背景雲霧/月光シャフト)を出さない(v0.25.2110)。
     // 非corridorでは常時true=従来挙動(屋内は各自のパイプラインが管理・ここでは触らない)。

@@ -24,9 +24,11 @@ export interface StageSkin {
 export const STAGE_SKINS: Record<StageSkinKey, StageSkin> = {
   // ステージ1: 狂い咲きの森(夜の森)
   forest: { far: 'forest', ground: 'forest', horizon1Visible: true, horizon2: 'forest', front: 'forest', daylightNoon: false, topHang: null },
-  // ステージ2: 研究所跡(野外ラボ)。遠景森1(帯)＋遠景森2(機材シルエット)とも表示。
-  // (横向きで「森が上に来る」件は縦持ちガードで横自体を塞いだため、ここで消す必要はない。)
-  lab:    { far: 'lab', ground: 'lab', horizon1Visible: true, horizon2: 'lab', front: 'forest', daylightNoon: false, topHang: null },
+  // ステージ2: 研究所跡(野外ラボ)。社長指示(v0.25.2181)により支給遠景(stage2-lab-far.jpg)
+  // 1枚だけを表示し、遠景森1(帯)は非表示化(旧値true=horizonForest・nearHorizon・frontForestの
+  // 4-5層が同じ画面帯に重なって「遠景が透けて見える」原因だった。実測: pixiScene.ts参照)。
+  // 森レイヤーは後日改めて設置予定(社長)。
+  lab:    { far: 'lab', ground: 'lab', horizon1Visible: false, horizon2: 'lab', front: 'forest', daylightNoon: false, topHang: null },
   // ステージ3: リモート研究施設(正午の廃都)。
   city:   { far: 'city', ground: 'city', horizon1Visible: true, horizon2: 'city', front: 'city', daylightNoon: true, topHang: null },
   // ステージ4: 封鎖地域(雪原の要塞)。遠景森2は無し、地平帯=氷壁。

@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.2181 — M2遠景の重なりを整理(支給遠景1枚だけに)【2026-07-24 21:30 JST】
+- 経緯(社長実機報告): M2(stage-2・farBackdrop key 'lab')の遠景が「透けている/透過で抜けている色が
+  ある」ように見える。素材`stage2-lab-far.jpg`は正真正銘のJPEG(アルファ無し)=素材側の透過はあり得ず
+  描画側の疑いで調査開始。調査中に社長から追加観測「遠景と別にさらに遠景画像が重なって見える。
+  遠景の構造がおかしい」→方針転換「一度、渡した遠景だけにして。遠景森とかは改めて設置しますので」。
+- 実測(ヘッドレス`?smoke&stage=stage-2`・`window.__pixiScene`でレイヤー座標を直接読み取り):
+  同じ画面帯(y=0〜420px、canvas高700px)に **5層が同時可視で重なっていた**:
+  - `farBackdrop`(支給遠景`stage2-lab-far.jpg`、y0-174、tint 9e9e9e=夜の暗転)
+  - `horizonForest`(`lab-horizon-band.png`=機材シルエット帯1、y2-182、tint 9e9e9e)← farBackdropとほぼ同じ帯に重複
+  - `nearHorizon`(`stage2-near-horizon2.png`=機材シルエット帯2、y145-216、tint 666666)
+  - `frontForest`(`lab-front-band.png`=紫グロー機材帯、y150-420、alpha=1不透明・v0.25.1912のstage-2全面opaque化と重なって特に濃い)
+  - `labCeiling`(`lab-ceiling-band.png`=天井チェーン帯、y0-263、alpha0.55)
+  各層とも似た「研究所機材シルエット」で色調/tint違いのまま半透明~不透明混在で積層 →
+  「遠景が透けて見える/多重に重なって見える」の真因はこの5層同時表示と判断(社長観測と一致)。
+- 修正(最小実装・destroyせずvisible/条件分岐のみ。他ステージ不変):
+  - `src/data/stageSkins.ts`: `STAGE_SKINS.lab.horizon1Visible` を `true→false`(既存の表駆動
+    switchが有効=horizonForestが自動的に非表示になる)。
+  - `src/pixi/pixiScene.ts`:
+    - `applyNearHorizon()`: `key==='lab'`の時はテクスチャ未適用のまま`nearHorizon.visible=false`
+      で早期return(他キーは従来どおり)。
+    - `syncLab()`: `frontForest.visible`の条件に`&& s.stageTheme !== 'lab'`を追加(lab屋外のみ非表示。
+      屋内/洋館/他ステージは従来どおり)。
+    - `updateLabCeiling(...)`呼び出し: lab分岐(`'lab/lab-ceiling-band'`)を削除、tutorial分岐のみ残す
+      (labは常にnull=非表示。tutorial-ceiling-bandは不変)。
+  - 結果、屋外labで可視なのは`farBackdrop`(支給遠景1枚)+地面(床タイル)+壁/プロップのみ。
+- 検証: typecheck・lint 0エラー/0警告(既存warning 7件は無関係)。ヘッドレス`__pixiScene`でlab4層の
+  `visible:false`を確認。スクリーンショット比較(`scratchpad/m2-fartint.png`)で層の重なりが解消され
+  支給遠景がクリアに見えることを確認。回帰確認: stage-1(forest)を同様にスクショし、
+  horizonForest/frontForest/月/城など従来どおり表示されることを確認(lab限定の分岐のみ変更)。
+- 申し送り: 撤去した4レイヤー(horizonForest=lab-horizon-band.png/nearHorizon=
+  stage2-near-horizon2.png/frontForest=lab-front-band.png/labCeiling=lab-ceiling-band.png)は
+  「後日改めて設置」の候補。テクスチャ自体・マニフェスト登録・apply*関数は削除していない
+  (visible分岐のみ)ので、再設置は分岐条件を戻すだけで復元可能。
+- Files: `src/data/stageSkins.ts`, `src/pixi/pixiScene.ts`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2180 — M2遠景の再差し替え+距離感M0同等+M6フェード0.14(死亡エージェント作業の検収着地)【2026-07-24 21:12 JST】
 - 経緯: 素材担当サブエージェントがワーカー再起動で転写消失。残されたWIP(新遠景jpg差し替え+
   `LAB_FAR_HEIGHT_RATIO = TUTORIAL_FAR_HEIGHT_RATIO` と farBackdropHeight の lab 分岐)を設計チャットが
