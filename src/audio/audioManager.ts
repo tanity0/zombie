@@ -769,10 +769,19 @@ export const playRadioStatic = () => {
   src.stop(t + dur);
 };
 
-// SFXのURLにバージョン付きクエリを足してキャッシュバスト(同名mp3/wav差し替えでも端末が古い音を掴まないように)。
-// __APP_VERSION__ は毎push必ず上がるので、差し替えのたびに確実に新しい音が読まれる。
+// SFXのURLにクエリを足してキャッシュバスト(同名mp3/wav差し替えでも端末が古い音を掴まないように)。
+// v0.25.2161(社長承認): 旧「?v=版数」一律は毎pushで全SEのURLが変わり、更新直後に全音声の
+// 再DL+再デコードが走って起動ピーク(=iOSメモリ圧kill・勝手リロードの一因)を押し上げていた。
+// ファイル内容ハッシュ(vite.config.tsがビルド時に走査して__SFX_HASHES__を注入)に変更=
+// 「差し替えたSEだけ」URLが変わる。表に無いファイルは従来どおり版数でバスト(安全側フォールバック)。
 const SFX_BUST = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
-const withVersion = (src: string) => src + (src.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(SFX_BUST);
+const SFX_HASHES: Record<string, string> = typeof __SFX_HASHES__ !== 'undefined' ? __SFX_HASHES__ : {};
+const withVersion = (src: string) => {
+  const base = import.meta.env.BASE_URL ?? '/';
+  const rel = src.startsWith(base) ? src.slice(base.length) : src;
+  const bust = SFX_HASHES[rel] ?? SFX_BUST;
+  return src + (src.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(bust);
+};
 
 const loadSfxBuffer = (key: SfxKey) => {
   const context = ensureSfxContext();

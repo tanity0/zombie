@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2161',
+    items: [
+      '安定性: アップデート後の初回起動を軽くしました(効果音は変更があったファイルだけ再ダウンロードする方式に。更新直後の重さ・リロードの一因を削減)。',
+    ],
+  },
+  {
     version: '0.25.2160',
     items: [
       '安定性: 画面が真っ暗のままUIとゲームだけ動き続ける症状を自動復旧するようにしました(描画エンジンを作り直してゲームの続きから再開)。',

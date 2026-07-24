@@ -66,7 +66,9 @@
   (dynamic import無し)を確認済み=チャンク切れ/SW更新の線は消えている。残る説明はiOS Safariの
   メモリ圧kill+自動リロード。更新直後に集中するのはキャッシュ冷え(HTTP+デコード済み画像+
   SFXの`?v=版数`バストが毎更新で全音声を再DL/再デコード)で起動ピークが最大化するため。
-  リロード自体を減らす本筋は起動ピーク削減(SFXバストの内容ハッシュ化等・未実施)。
+  リロード自体を減らす本筋は起動ピーク削減。第一弾=SFXバストの内容ハッシュ化はv0.25.2161で実施済み
+  (vite.config.tsが`public/audio/sfx`をビルド時走査→`__SFX_HASHES__`注入→withVersionが参照。
+  差し替えたSEだけURLが変わる=毎更新の全音声再DL/再デコードが消えた)。
 - **音声はジェスチャ保険で拾い直す**(v0.25.2160): iOSの`AudioContext.resume()`はユーザージェスチャ中
   しか効かない場面がある+BGMのplay()拒否は再試行窓(ready系イベント2.2s)を逃すと止まりっぱなし。
   → `attachAudioGestureRecovery`(App起動時に1回)が全pointerdown/keydown(capture・1sスロットル)で

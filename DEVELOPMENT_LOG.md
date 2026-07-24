@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.2161 — SFXキャッシュバストを内容ハッシュ化(更新直後の起動ピーク削減)【2026-07-24 15:10 JST】
+- 指示(社長): v0.25.2160の残提案(a)を「はい」で承認。
+- 対処: vite.config.tsがconfig読込時に`public/audio/sfx`(51ファイル/3.6MB)をsha1走査し
+  `__SFX_HASHES__`(相対パス→先頭10桁)をdefine注入。audioManagerの`withVersion`が
+  「?v=内容ハッシュ」を付与(表に無いファイルは従来の版数フォールバック=安全側)。
+  これで毎pushの全SE再DL+再デコードが消え、差し替えたSEだけ再取得になる。
+- 検証: typecheck・lint 0エラー。dev server再起動→実ページのSFXリクエスト55/55が
+  `?v=<10桁hex>`になっているのをネットワーク傍受で機械確認。
+- Files: `vite.config.ts`, `src/vite-env.d.ts`, `src/audio/audioManager.ts`, `ENGINEERING_NOTES.md`,
+  `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2160 — 安定性: 黒画面の自動復旧+音声のジェスチャ復帰保険(更新直後の不調の診断)【2026-07-24 14:58 JST】
 - 指示(社長): 更新直後〜数回のプレイで (1)勝手にリロード (2)BGM/SEの欠落 (3)画面真っ黒だがUIは
   見えて裏でゲームが動く、を解決したい。
