@@ -1,5 +1,45 @@
 # Development Log
 
+## v0.25.2175 — M2(研究所)遠景/床タイル 素材差し替え【2026-07-24 20:01 JST】
+- 依頼: 社長支給シート(1983×793 PNG、左=M2遠景「STEM CELL RESEARCH」ホール、右=床タイル
+  「1000px×1000px」ラベル付き、双方とも黒余白で区切り)から2素材を切り出して差し替え。
+- 切り出し実測(黒余白の境界をnumpyでピクセル解析・thresh 5〜50で安定):
+  - 遠景(左パネル): cols 18–1300 / rows 18–774 → **1283×757**。トリムのみ・リサイズなし。
+  - 床タイル(右パネル、ラベル文字は除外): cols 1325–1964 / rows 25–680 → 実寸**640×656**
+    (シート自体が縮小プレビューでラベルの「1000×1000」と非一致・非正方形)。社長指示の
+    「ちょうど1000×1000」に合わせ、LANCZOSで**1000×1000へリサイズ**(縦横倍率差1.5625 vs 1.524=
+    約2.4%の非一様スケールだが目視で歪みは無視できるレベル)。
+  - 差し替え先: `public/backgrounds/stage2-lab-far.jpg`(JPG同名・quality95)/
+    `public/sprites/lab-floor/lab-floor-stage2.png`(PNG同名)。どちらもコード変更ゼロ
+    (`src/pixi/PixiStage.tsx`のSORTIE_STAGE_TEXTURE_PATHS/STAGE_TEXTURE_GROUPS.lab、
+    `pixiTextures.ts`の`lab/lab-far-backdrop`・`lab-floor/lab-floor-stage2`registrationは
+    パス文字列のみで寸法非依存と確認済み)。
+- 追加指示「遠景はループで」対応:
+  1. 確認: `src/pixi/layers.ts`でfarBackdropは元々`TilingSprite`。`pixiScene.ts`が
+     `tilePosition.x = -camera.x * FAR_BACKDROP_PARALLAX_X(0.09)`で毎フレーム更新済み=
+     横方向ループは元々実装済み(コード変更不要)。
+  2. 左右端の継ぎ目を実査: 新しい遠景の右端150px+左端150pxを並べた検証画像を作成・目視したところ
+     手すり高さの段差が見える程度の継ぎ目(絵柄自体がタイル前提で描かれていないため)。社長事前承認の
+     「端~64pxクロスフェード」を実施: 左右端それぞれ64px幅を「自列 × w + (自列と対岸の鏡映列の平均) ×
+     (1-w)」(smoothstep, w:0→1)でブレンドし、境界ちょうど(x=0とx=width-1)が同じ値に収束するよう調整。
+     絵柄本体(中央の「STEM CELL RESEARCH」サイン等)は無改変。ブレンド後の同じ検証画像で段差が
+     目視で解消したことを確認。
+  3. 実機確認(Playwright、`?smoke&stage=stage-2`、420×900、DEV限定の`window.__gameStore`/
+     `window.__pixiScene`デバッグハンドルを利用): 開始直後のスクショに加え、`player.x`を
+     `wrapCameraDelta(=texW/0.09≈14256)×1.5`へ直接テレポート(headlessはゲーム内時間が実時間の
+     約1/8で87px/s歩行では現実的に届かないため)した上で実キー(ArrowRight)を2.5秒押して歩行させ、
+     1周期を超えた地点でも遠景が黒帯/破綻なく描画され続けることを確認。
+  - 床タイルは2×2並べ検証で、ツタ模様が4枚継ぎ目でクロス状に繋がる意図的デザインと判明=
+    無加工のままでも継ぎ目破綻なし(目視確認)。
+- 検証: `npm run typecheck`(0エラー)・`npm run lint`(0エラー・既存warning 7件のみ)。
+  スクショ: `/tmp/claude-0/-home-user-zombie/b61a2a3e-cd54-533c-b672-f375f9a8f35c/scratchpad/
+  m2-newart.png`(開始直後)・`m2-newart-loop.png`(遠方テレポート+実歩行中)。
+- 気づき: 遠景の縦横比が旧(1672×941, 1.777)→新(1283×757, 1.695)でわずかに変化(黒余白トリムの
+  結果でリサイズはしていないため意図通り)。表示は`farH`基準の高さ合わせ+TilingSprite横充填なので
+  破綻はしないが、旧素材と比べ画面に映る奥行き量が若干変わる。
+- Files: `public/backgrounds/stage2-lab-far.jpg`, `public/sprites/lab-floor/lab-floor-stage2.png`,
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2174 — 弾薬ディレクター: 敵数しきい値を実態へ再校正(7/13)【2026-07-24 18:55 JST】
 - 指示(社長承認「それで」): 敵は基本10体前後しか出ない(社長情報)ため、乱戦判定の物差しを
   CALM 8→7 / SWARM 25→13 に変更。旧25では乱戦条件がほぼ来ず、実走で最大14.7%止まり=

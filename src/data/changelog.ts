@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2175',
+    items: [
+      'グラフィック: ステージ2(PHILL研究所)の遠景と床の素材を新しくしました。',
+    ],
+  },
+  {
     version: '0.25.2174',
     items: [
       'バランス: 弾薬ドロップの自動底上げ(最大20%)が実際の乱戦(敵13体以上)で効くよう判定を調整しました。従来は条件が厳しすぎてほぼ発動していませんでした。',
