@@ -114,8 +114,9 @@ const WALK_RAYS = [
   { x: 95.93, w: 7.0, dur: 8.0, delay: -5.5 },  // 関係者出口
 ];
 // 夢のソフトブルーム(v0.25.2158・社長選定A案)の重ね不透明度: ブラー焼き込み版をscreen合成で
-// 全面に極薄で重ねる=明部(ランプ・サイン)だけがにじむソフトフォーカス。ランタイムぼかしゼロ。
-const WALK_BLOOM_ALPHA = 0.14;
+// 全面に薄く重ねる=明部(ランプ・サイン)だけがにじむソフトフォーカス。ランタイムぼかしゼロ。
+// v0.25.2162: 0.14→0.30(社長「違いがよくわからない」→3点とも視認できる強さへ)。
+const WALK_BLOOM_ALPHA = 0.30;
 // v0.25.2134(社長指示「ぼかし少し弱めて、黄色ラインくらいまで入れて」): フルぼかしを黄色ライン
 // (実測0.639-0.647)まで届かせ、縁石帯で抜いて舗装床(0.71〜)からシャープ。強度はWALK_DOF_ALPHAで少し弱める。
 const WALK_DOF_MASK = 'linear-gradient(to bottom, black 0%, black 64%, transparent 71%)';
@@ -647,8 +648,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // 夢の浮遊パーティクル(OP廊下): その場でふわっと往復+明滅(振幅/透明度はCSS変数で粒ごとに変える)。
     `\n@keyframes opmote{0%,100%{transform:translate(0,0);opacity:var(--o0)}50%{transform:translate(var(--mx),var(--my));opacity:var(--o1)}}` +
     // 廊下の夢演出(v0.25.2158・社長選定B/E案): 舞台の呼吸ズーム / 光のカーテンの明滅。
-    `\n@keyframes opbreathe{from{transform:scale(1)}to{transform:scale(1.014)}}` +
-    `\n@keyframes oplray{0%,100%{opacity:0.5}50%{opacity:1}}`;
+    // v0.25.2162: 呼吸1.4%→3%・光帯の明滅を深く(0.5→0.35)=「違いがわかる」強さへ(社長指示)。
+    `\n@keyframes opbreathe{from{transform:scale(1)}to{transform:scale(1.03)}}` +
+    `\n@keyframes oplray{0%,100%{opacity:0.35}50%{opacity:1}}`;
 
   const cur = SHOOT_STEPS[step];
 
@@ -688,7 +690,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           {/* 呼吸ズーム(v0.25.2158・社長選定B案): 舞台全体がゆっくり1.4%だけ伸縮する「夢の呼吸」。
               worldのtransformはrAFがカメラ用に毎フレーム書くため、CSSアニメは別ラッパーに載せる。
               会話UI・motesはこの外=呼吸しない。 */}
-          <div style={{ position: 'absolute', inset: 0, transformOrigin: '50% 60%', animation: 'opbreathe 9s ease-in-out infinite alternate', willChange: 'transform' }}>
+          <div style={{ position: 'absolute', inset: 0, transformOrigin: '50% 60%', animation: 'opbreathe 7s ease-in-out infinite alternate', willChange: 'transform' }}>
           <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
             <img src={WALK_BG} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />
             {/* 被写界深度: 事前ブラー版を縦グラデマスクで重ねる(壁=ボケ/黄色ラインで抜けて床はシャープ)。 */}
@@ -711,7 +713,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 style={{
                   position: 'absolute', left: `${r.x}%`, top: '29%', width: `${r.w}%`, height: '38%',
                   transform: 'translateX(-50%) skewX(-12deg)', transformOrigin: 'top center',
-                  background: 'linear-gradient(to bottom, rgba(255,226,170,0.26) 0%, rgba(255,214,150,0.10) 55%, rgba(255,205,140,0) 88%)',
+                  // v0.25.2162: 0.26/0.10→0.45/0.18(社長「違いがよくわからない」→はっきり見える濃さへ)。
+                  background: 'linear-gradient(to bottom, rgba(255,226,170,0.45) 0%, rgba(255,214,150,0.18) 55%, rgba(255,205,140,0) 88%)',
                   maskImage: 'linear-gradient(to right, transparent 0%, black 30%, black 70%, transparent 100%)',
                   WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 30%, black 70%, transparent 100%)',
                   mixBlendMode: 'screen', pointerEvents: 'none',

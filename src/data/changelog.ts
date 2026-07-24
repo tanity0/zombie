@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2162',
+    items: [
+      '演出: オープニング廊下の夢演出を強めました(明かりのにじみ・光のカーテン・舞台の呼吸をはっきり見える強さに)。',
+    ],
+  },
+  {
     version: '0.25.2161',
     items: [
       '安定性: アップデート後の初回起動を軽くしました(効果音は変更があったファイルだけ再ダウンロードする方式に。更新直後の重さ・リロードの一因を削減)。',

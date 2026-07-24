@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.2162 — OP廊下: 夢演出を「違いがわかる」強さへ【2026-07-24 15:11 JST】
+- 指示(社長): 夢の演出、いまいち違いがよくわからない。
+- 対処: 3点とも増強 — A白にじみ WALK_BLOOM_ALPHA 0.14→0.30 / B呼吸 scale1.014→1.03・9s→7s /
+  E光のカーテン 濃度0.26/0.10→0.45/0.18・明滅の谷0.5→0.35。仕組みは不変(CSSのみ)。
+- 検証: typecheck・lint 0エラー。実写(?opening=1)でランプ下の光帯とにじみが明確に視認できることを
+  目視確認。呼吸は静止画に写らない=実機で動きを確認してもらう。強すぎれば数値だけ戻せる。
+- Files: `src/components/OpeningScene.tsx`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2161 — SFXキャッシュバストを内容ハッシュ化(更新直後の起動ピーク削減)【2026-07-24 15:10 JST】
 - 指示(社長): v0.25.2160の残提案(a)を「はい」で承認。
 - 対処: vite.config.tsがconfig読込時に`public/audio/sfx`(51ファイル/3.6MB)をsha1走査し
