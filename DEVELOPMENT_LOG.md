@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2185 — OPアリーナ: ペンライトの振りを高速化【2026-07-24 23:50 JST】
+- 指示(社長): コンサートのペンライトの動き早くして。
+- 対処: 振り周期 sd 0.45〜1.0s → 0.32〜0.70s(約35%高速化・OpeningScene.tsx)。検証は指示制につき
+  typecheck+lintのみ。
+- Files: `src/components/OpeningScene.tsx`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2184 — 運用: 検証も社長指示制へ(CLAUDE.md追記)【2026-07-24 23:36 JST】
 - 指示(社長):「今後、こちらが言わない限り検証回さないで」。ヘッドレス実走・ボットラン・スクショ確認は
   明示指示があった時だけ。push前は typecheck+lint のみで着地(全エージェント共通)。

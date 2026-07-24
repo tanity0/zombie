@@ -251,7 +251,7 @@ const PENLIGHTS = PENLIGHT_REGIONS.map(regions =>
       h: (5 + Math.random() * 3) * (0.6 + yr * 0.8), // 手前ほど大きく(遠近)
       w: 2 + yr * 1.2,
       pa: `${(14 + Math.random() * 16).toFixed(1)}deg`, // 振り角(v0.25.2057で約2倍→社長指示v0.25.2103「もっと激しく」でさらに1.5倍=14〜30°)
-      sd: 0.45 + Math.random() * 0.55,                 // 振り周期(秒)。v0.25.2103で高速化(旧0.7〜1.5)=激しさの第2軸
+      sd: 0.32 + Math.random() * 0.38,                 // 振り周期(秒)。v0.25.2103(0.7〜1.5→0.45〜1.0)→v0.25.2185さらに高速化(社長指示「動き早くして」)
       delay: -Math.random() * 1.5,                    // 負のdelay=最初からバラバラに揺れている
       color: PENLIGHT_COLORS[(i * 5 + 1) % PENLIGHT_COLORS.length],
       op: 0.7 + Math.random() * 0.3,                  // 発光強化に合わせ下限も持ち上げ(v0.25.2057)

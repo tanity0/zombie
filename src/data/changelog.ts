@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2185',
+    items: [
+      '演出: オープニングのコンサート会場で、ペンライトの振りをさらに速くしました。',
+    ],
+  },
+  {
     version: '0.25.2184',
     items: [
       'ゲーム内容の変更はありません(開発運用ルールの更新)。',
