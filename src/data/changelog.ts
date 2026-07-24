@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2165',
+    items: [
+      '演出: オープニング蘇生シーンの台本を短く磨き直しました(11行→9行)。',
+    ],
+  },
+  {
     version: '0.25.2164',
     items: [
       '調整: オープニング廊下の奥のぼかしを一段階戻して中間の強さにしました。',

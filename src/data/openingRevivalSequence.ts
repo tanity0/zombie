@@ -8,34 +8,37 @@ export type OpeningRevivalLine = {
   gapAfterMs: number;
 };
 
+// v0.25.2165(社長決定・リライト): 11行→9行に短縮。ラスト2行は「これが安定すれば…救える/多くの人を」
+// =タイトル『the ONE』と掛けた "This will save / the MANY"(社長意図)。分割と間はこの掛けのために
+// 意図的なので、統合・言い換えをしないこと。
 export const OPENING_REVIVAL_LINES: readonly OpeningRevivalLine[] = [
   {
     speaker: 'nora',
-    text: '循環、戻った。神経反応も出てる',
+    text: '循環、戻ったよ。神経反応も出てる',
     minDurationMs: 1900,
     gapAfterMs: 220,
   },
   {
     speaker: 'graham',
-    text: '増殖値は',
+    text: '細胞増殖値はどうだ？',
+    minDurationMs: 1400,
+    gapAfterMs: 180,
+  },
+  {
+    speaker: 'nora',
+    text: '基準内。きれいに収束してる',
+    minDurationMs: 1900,
+    gapAfterMs: 220,
+  },
+  {
+    speaker: 'phil',
+    text: '人格反応は？',
     minDurationMs: 1100,
     gapAfterMs: 180,
   },
   {
     speaker: 'nora',
-    text: '基準内。今のところ、きれいに収束してる',
-    minDurationMs: 2200,
-    gapAfterMs: 220,
-  },
-  {
-    speaker: 'phil',
-    text: '記憶は？',
-    minDurationMs: 1000,
-    gapAfterMs: 180,
-  },
-  {
-    speaker: 'nora',
-    text: '反応あるよ。ちゃんと残ってる',
+    text: 'あるよ。自己意識も保たれてる',
     minDurationMs: 1900,
     gapAfterMs: 220,
   },
@@ -47,32 +50,20 @@ export const OPENING_REVIVAL_LINES: readonly OpeningRevivalLine[] = [
   },
   {
     speaker: 'graham',
-    text: 'まだ安心するな。\n抑制剤を追加して経過を見る',
-    minDurationMs: 2300,
-    gapAfterMs: 220,
-  },
-  {
-    speaker: 'nora',
-    text: 'はいはい。今入れます',
-    minDurationMs: 1500,
+    text: 'まだだ。抑制剤を追加して経過を見る',
+    minDurationMs: 2100,
     gapAfterMs: 220,
   },
   {
     speaker: 'phil',
-    text: 'これが安定すれば……',
+    text: 'これが安定すれば…救える',
+    minDurationMs: 1800,
+    gapAfterMs: 450, // 「救える」→「多くの人を」の一拍(the MANYの掛けを立てる間)
+  },
+  {
+    speaker: 'phil',
+    text: '多くの人を',
     minDurationMs: 1600,
-    gapAfterMs: 250,
-  },
-  {
-    speaker: 'graham',
-    text: '実用段階へ進める',
-    minDurationMs: 1500,
-    gapAfterMs: 220,
-  },
-  {
-    speaker: 'phil',
-    text: 'もっと救える',
-    minDurationMs: 1500,
     gapAfterMs: 650,
   },
 ] as const;
