@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2194',
+    items: [
+      'グラフィック: ステージ2の最前面に廃研究棟の近景レイヤーを追加しました。什器シルエットの近景は非表示にしました。',
+    ],
+  },
+  {
     version: '0.25.2193',
     items: [
       '演出: オープニングの蘇生シーンへの入り(暗転フェード)を3秒に伸ばしました。',

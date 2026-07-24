@@ -324,6 +324,11 @@ const LAB_NEAR_HORIZON_TINT = (() => {
 const LAB_PERSP = tsBool('labpersp', false);
 // 研究所スキンの最前面オーバーレイ(天井から吊られたケーブル帯)。上寄せ・半透明。?ceil=0 で無効化可。
 const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
+// 研究所スキンの近景森2(一番手前・廃研究棟の壁/残骸)の下端オーバーシュート調整つまみ。
+// 社長指示v0.25.2192「少し下が隠れるくらい」: 帯の下端を画面下端よりこの比率(帯高さ基準)ぶん下へ
+// ずらし、下側が少し画面外へはみ出して見えなくなるようにする。既定0.05=帯高さの5%(実測で概ね35px相当)。
+// ?labf2os= で現地調整可。
+const LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO = tsNum('labf2os', 0.05);
 // 北部(stage-4=snow)の遠景森1(氷壁)の拡大/上移動/高さトリム。?northscale= /?northup= /?northtrim= で現地調整可。
 const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
 const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
@@ -1738,6 +1743,7 @@ export class PixiScene {
   private horizonForestBlur: BlurFilter | null = null;
   private nearHorizonBlur: BlurFilter | null = null;
   private labCeiling: TilingSprite | null = null; // 最前面の天井帯(上寄せ・半透明・横ループ)。lab=固定/チュートリアル=カメラ連動
+  private labFront2: TilingSprite | null = null; // 近景森2(一番手前・廃研究棟の壁/残骸)。lab限定・横ループ(社長指示v0.25.2192)
   // 可視可能ゾーン(研究所スキン): RenderTexture に「暗幕 + erase で円形の穴」を描き、その1枚を
   // 画面に重ねる。erase はテクスチャのアルファを削る=円形・なだらかな穴(マスクのステンシル矩形問題を回避)。
   private renderer: Renderer | null = null;
@@ -3160,6 +3166,14 @@ export class PixiScene {
     this.frontOverrides[key] = t;
     this.currentFrontKey = '';
   }
+  // 近景森2(labFront2・一番手前レイヤー)のキー別差し替え。現状 lab のみ使用。setFrontOverride と
+  // 同じ流儀(キー別の非同期注入・null は無視)。適用は updateLabFront2 が毎フレーム差分チェックで行う
+  // (社長指示v0.25.2192)。
+  private front2Overrides: Record<string, Texture> = {};
+  setFrontOverride2(key: string, t: Texture | null) {
+    if (!t) return;
+    this.front2Overrides[key] = t;
+  }
   // farKey(=s.farBackdrop)に応じて近景森を差し替え。override があればそれ(不透明・フェードOFF)、無ければ森(半透明)。
   private applyStage3Front(farKey: string) {
     if (this.isLabStage) return; // lab は lab-front-band 管理
@@ -3907,6 +3921,11 @@ export class PixiScene {
         : null,
       s.farBackdrop === 'tutorial' ? s.camera.x : 0, // ツララ帯=近景と同係数でカメラ連動(labは従来どおり固定)
       s.farBackdrop === 'tutorial' ? TUTORIAL_CEILING_SCALE : 1 // ツララ帯=1.5倍(labは等倍)
+    );
+    // 近景森2(一番手前・廃研究棟の壁/残骸)。lab屋外限定(屋内はfrontForest同様に出さない)・支給なしはno-op(社長指示v0.25.2192)。
+    this.updateLabFront2(
+      (s.stageTheme === 'lab' && !s.indoorMode) ? this.front2Overrides['lab'] : null,
+      s.camera.x, sx
     );
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
@@ -4925,6 +4944,35 @@ export class PixiScene {
     sp.alpha = LAB_CEILING_ALPHA;
   }
 
+  // 近景森2(一番手前・廃研究棟の壁/残骸): 既存の近景森(什器シルエット=frontForest)よりさらに手前に
+  // 重ねる第2の近景レイヤー。プレイヤー/敵より前に被さる(社長指示v0.25.2192「一番手前」)。
+  // レイアウト/横ループ/パララックスは frontForest と同じ既定(frontForestHeight・
+  // FRONT_FOREST_PARALLAX_X)を流用。Yだけ LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO ぶん下にずらし、
+  // 帯の下端が画面下端より少し下にはみ出す(社長指示「少し下が隠れるくらい」)。
+  // tex=null(lab屋外以外、または front2Overrides['lab'] 未注入)の間は no-op(非表示)。呼び出し側
+  // (syncの本体)がstageTheme/indoorModeを見て解決したテクスチャを渡す(updateLabCeilingと同じ流儀)。
+  private updateLabFront2(tex: Texture | null, cameraX: number, sx: number) {
+    if (!tex) { if (this.labFront2) this.labFront2.visible = false; return; }
+    if (!this.labFront2) {
+      const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
+      const parent = this.L.frontForest.parent!;
+      parent.addChildAt(sp, parent.getChildIndex(this.L.frontForest) + 1); // frontForestの手前=一番手前
+      this.labFront2 = sp;
+    }
+    const sp = this.labFront2;
+    sp.visible = true;
+    if (sp.texture !== tex) sp.texture = tex;
+    const h = this.frontForestHeight(); // 既存近景森と同じ高さ既定(専用の高さ指定はしない)
+    sp.width = this.screenW;
+    sp.height = h;
+    sp.tileScale.set(h / Math.max(1, tex.height));
+    const overshoot = h * LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO;
+    sp.position.set(sx * 0.75, this.screenH - h + overshoot); // frontForestと同じX式・Yだけ下へオーバーシュート
+    sp.tilePosition.set(-cameraX * FRONT_FOREST_PARALLAX_X, 0); // frontForestと同じパララックス係数
+    sp.tint = 0xffffff; // ステージ2の暗化(ENV_TINT)対象から除外=本来の明るさ(frontForestと同様)
+    sp.alpha = 1;
+  }
+
   // 可視可能ゾーン(研究所スキン): 画面全体を乗算で暗くし、プレイヤー/UVバー(=ハンドガン射程)に明かりの穴。
   // フィルタで一度テクスチャ化→whole を multiply 合成: 穴の中=通常の明るさ、外=急に暗い(LAB_VIS_DARK)。
   // 壁/敵/アイテムは uiLayer(このレイヤー)の下=暗所では見えづらくなる(社長指示)。
@@ -4940,7 +4988,7 @@ export class PixiScene {
       const cont = this.labBrightScenery;
       // 遠景(farBackdrop)・遠景森1(horizonForest)は暗幕の上へ退避しない=プレイヤー/ヘリの後ろのまま
       // (前へ退避するとプレイヤー/ヘリより前に被さるバグになる)。前景の近景森1/天井のみ前面へ。
-      const items = [this.L.frontForest, this.labCeiling].filter(Boolean) as Container[];
+      const items = [this.L.frontForest, this.labCeiling, this.labFront2].filter(Boolean) as Container[];
       for (const obj of items) {
         if (obj.parent === cont) continue;
         if (obj.parent && !this.labSceneryOrig.some(o => o.obj === obj)) {
@@ -8787,7 +8835,9 @@ export class PixiScene {
     this.L.groundBase.visible = !indoor;
     // 研究所(lab)屋外の近景森は什器シルエット(stage2-front.png・クロマキー透過)を表示する
     // (社長指示v0.25.2184。v0.25.2181で一旦非表示化したのはlab-front-band.pngのままだったため)。
-    this.L.frontForest.visible = !indoor && !s.corridorMode; // 洋館(屋内の廊下)は近景森を出さない(v0.25.2110)
+    // 近景森1(什器シルエット=frontForest)はlabでは非表示(社長指示v0.25.2194「透明度ゼロ」)。
+    // 什器レイヤーは近景森2(廃研究棟・labFront2)に一本化。洋館(屋内の廊下)は元から近景森を出さない(v0.25.2110)。
+    this.L.frontForest.visible = !indoor && !s.corridorMode && s.stageTheme !== 'lab';
     this.L.backgroundLayer.visible = !indoor;
     // 洋館(corridorMode): 屋外の演出ドレッシング(霧バンク/背景雲霧/月光シャフト)を出さない(v0.25.2110)。
     // 非corridorでは常時true=従来挙動(屋内は各自のパイプラインが管理・ここでは触らない)。

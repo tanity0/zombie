@@ -1,5 +1,49 @@
 # Development Log
 
+## v0.25.2194 — M2最前面に近景森2(廃研究棟の壁/残骸)を追加+近景森1(什器)を非表示【2026-07-25 00:45 JST】
+- 追記(設計チャット・社長指示v0.25.2194「近景森1の透明度ゼロにして」): frontForest(什器シルエット)は
+  lab override経由で既にalpha=1(不透明)のため「不透明化」は無操作=意味の通る解釈は非表示化と判断し、
+  `frontForest.visible`のlab条件に`s.stageTheme !== 'lab'`を復帰(近景は近景森2=labFront2に一本化)。
+  Sonnetの近景森2作業(updateLabFront2完成版・未コミットWIP)は設計チャットが検収して同commitで着地。
+  ※もし社長の意図が「不透明化」だった場合はこの1行を戻すだけ。
+- 依頼(社長支給): 新素材`525990a5-3A0B374D67CA44C29D598AD10F22F907.png`(2172×724・廃研究棟の壁/残骸帯・
+  紫クロマキー背景)を統合。既存の近景森(stage2-front.png=什器シルエット・frontForestが表示)よりも
+  さらに手前=プレイヤー/敵より前に被さる、専用の新レイヤーとして追加。
+- クロマキー処理(前回同様・Python/PIL+numpy・距離ベースsmoothstepアルファ+デスピル): 実測した
+  キー色は本素材固有でRGB(55,11,97)(前回素材の(116,3,237)より暗い紫。「前回と同じ紫」に見えたが
+  実測値は異なったため、ヒストグラム最頻色から本素材ごとに取り直した)。この素材は錆・影のトーンが
+  キー紫に近く背景とのコントラストが前回素材より低いため、前回と同じ閾値(T_IN=12/T_OUT=100)だと
+  不透明であるべき配管等の暗色部まで半透明化し、デスピルで色かぶり(緑がかる)が出た(実測で確認・
+  比較画像はscratchpadのみ・リポジトリには残さず)。閾値をこの素材の実測ヒストグラムに合わせて
+  T_IN=10/T_OUT=40へ調整(距離<10で背景本体、10〜40が真の縁アンチエイリアス域=全体の約1.7%、
+  という実測分布に整合)。壁面の紫がかった蔦/成長物の装飾はキー色に極めて近い個体があり縁が多少
+  柔らかくなるが、意匠として破綻はしない範囲(目視・チェッカー合成/暗背景合成で確認)。
+  → `public/backgrounds/stage2-front2.png`(RGBA・2172×724)。
+- 配線(前回のstage2-frontと同じ流儀): `src/pixi/PixiStage.tsx` — `SORTIE_STAGE_TEXTURE_PATHS`/
+  `STAGE_TEXTURE_GROUPS.lab`に`backgrounds/stage2-front2.png`を追加(位置結合の分割代入へ`s2Front2`を
+  追加)、`scene.setFrontOverride2('lab', s2Front2)`を新規注入行として追加。
+  `src/pixi/pixiScene.ts` — 新設した`setFrontOverride2(key, t)`/`front2Overrides`(setFrontOverrideと
+  同型だが別スロット)、新規TilingSprite`labFront2`と更新メソッド`updateLabFront2(tex, cameraX, sx)`
+  (`updateLabCeiling`と同じ骨格: stage/indoorの解決は呼び出し側で行いtex=null時はno-op)。
+  **z順序**: `parent.addChildAt(sp, parent.getChildIndex(this.L.frontForest) + 1)`でfrontForestの
+  直後(=より手前)に挿入=既存近景(什器シルエット)よりさらに手前・プレイヤー/敵より前に被さる
+  (社長指示「一番手前」)。呼び出しは`s.stageTheme === 'lab' && !s.indoorMode`の時だけテクスチャを渡し、
+  屋内/他ステージでは非表示(frontForestと同じ屋内除外ルール)。
+  **レイアウト/横ループ/パララックス**は`frontForest`と同じ既定を流用(`frontForestHeight()`・
+  `FRONT_FOREST_PARALLAX_X`)。**Y位置つまみ**: 新定数`LAB_FRONT2_BOTTOM_OVERSHOOT_RATIO`(既定0.05
+  =帯高さの5%・`?labf2os=`で現地調整可)ぶん、通常のフラッシュ位置(画面下端に一致)から下へずらし、
+  帯の下端が画面下端より少し下にはみ出して見えなくなるようにした(社長指示「少し下が隠れるくらい」)。
+  tint=0xffffffでステージ2の暗化(ENV_TINT)対象から除外(frontForestと同様、本来の明るさで表示)。
+  専用の高さ指定・追加ぼかしは付けていない(既存frontForestBlurの対象外=frontForestの一つ手前に
+  挿入した独立スプライトのため無改変)。
+- 検証: 社長指示により今回もヘッドレス実走等は省略(v0.25.2184)。push前フロアのtypecheck・lintのみ
+  実施し0エラー(既存warning 7件は無関係)。見た目の最終確認は社長の実機。
+- 注意: 作業中に別セッションの並行コミット(v0.25.2192エンディング差し替え/v0.25.2193 OPフェード)が
+  同じ共有ブランチに入っていたが、明示パスaddで本タスクの対象ファイルのみをコミットし、他セッションの
+  作業には一切触れていない。
+- Files: `public/backgrounds/stage2-front2.png`(新規), `src/pixi/PixiStage.tsx`,
+  `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2193 — OP: 蘇生シーンの入りフェードを3秒に【2026-07-25 00:33 JST】
 - 指示(社長): 蘇生シーンの入り、フェードイン3秒。
 - 対処: SHOOT_FADE_MS 1200→3000 / SHOOT_TOTAL 13100→14900(+200ms余白維持)。蘇生(phase4)開始と
