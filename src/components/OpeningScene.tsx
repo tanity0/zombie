@@ -634,7 +634,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         world.style.transform = `translate(${-cam}px, ${WALK_STAGE_Y_OFFSET}px)`;
         char.style.height = `${bgH * WALK_HERO_HR}px`;
         char.style.left = `${worldX}px`;
-        char.style.top = `${bgH * WALK_FOOT_YR}px`;
+        // 歩行ボブ(v0.25.2187・社長指示「1pxの浮き沈みつけて歩いてるぽく」): 歩きコマと同じ時計で
+        // 1コマおきに1px浮かせる。停止中は0。
+        const bob = dir !== 0 ? (Math.floor(animT / WALK_ANIM_MS) % 2) : 0;
+        char.style.top = `${bgH * WALK_FOOT_YR - bob}px`;
         // 前面ライトの光だまり(v0.25.2163): 主役に追従(足元アンカー・キャラ絵の上に重なる)。
         const charLight = walkCharLightRef.current;
         if (charLight) {
