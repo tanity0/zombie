@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
@@ -7969,12 +7969,24 @@ export class PixiScene {
   // 単一 Graphics に円を数本引くだけ。負荷 1/10(描画のみ・帰還フェーズ中だけ毎フレーム1図形)。
   // 洋館通路(corridorMode・v0.25.2142 社長指示「奥行き出て見えるように楕円に」): 疑似3D床に合わせ、
   // 中心ローカルに描いてyスケールで潰す=進捗弧ごと楕円化。【見た目のみ】滞在判定・敵押し出しの円(r=95)は不変。
-  private syncReturnCircle(rc: { x: number; y: number; radius: number; dwellMs: number } | null, now: number) {
+  private syncReturnCircle(rc: { x: number; y: number; radius: number; dwellMs: number; revealedAt?: number } | null, now: number) {
     const CORRIDOR_RETURN_SQUASH = 0.55; // 縦の潰し率(叩き台・実機調整前提)
     const g = this.returnGfx;
     g.clear();
-    if (!rc) { g.position.set(0, 0); g.scale.set(1, 1); return; }
-    const corridor = useGameStore.getState().corridorMode;
+    if (!rc) { g.position.set(0, 0); g.scale.set(1, 1); g.alpha = 1; return; }
+    const stateNow = useGameStore.getState();
+    const corridor = stateNow.corridorMode;
+    // 洋館通路: 近づくまで透明→revealedAt(store打刻)からフェードイン(v0.25.2151・社長指示)。
+    // 判定はstore(updateReturnPhase)側=ここは表示だけ(見た目とロジックの分離)。
+    if (corridor) {
+      const fade = rc.revealedAt === undefined
+        ? 0
+        : Math.max(0, Math.min(1, (stateNow.gameTime - rc.revealedAt) / CORRIDOR_GOAL_FADE_MS));
+      g.alpha = fade;
+      if (fade <= 0) { g.position.set(0, 0); g.scale.set(1, 1); return; }
+    } else {
+      g.alpha = 1;
+    }
     // 通路では中心ローカル(0,0)描画+Graphicsごと縦スケール。他ステージは従来どおりworld座標に直描き。
     const cx = corridor ? 0 : rc.x, cy = corridor ? 0 : rc.y;
     if (corridor) { g.position.set(rc.x, rc.y); g.scale.set(1, CORRIDOR_RETURN_SQUASH); }

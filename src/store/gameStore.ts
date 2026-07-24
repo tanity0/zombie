@@ -439,6 +439,11 @@ export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(�
 // (s=(0.5-horizonYr)/(footYr-horizonYr)≒0.45・corridorLayerのCFG連動)なので、円は 3900-513≒3390 に置く。
 export const CORRIDOR_GOAL_Y = -3390;        // ゴールサークル中心のworld y(到達時にハッチと重なる補正済み。x=通路中央0)
 export const CORRIDOR_RETURN_HOLD_MS = 5000; // 通路ゴールの滞在時間(社長指示「5秒停止」。他ステージの3秒は不変)
+// 通路ゴールの「近づくとフェードイン」(社長指示v0.25.2151「透明にしておいて床に近づくとフェードイン
+// 表示からのタイマー」): 存在(判定)は常時・表示は透明で、この距離まで近づくとrevealedAtを打刻。
+// 描画はrevealedAt起点でフェードイン(pixiScene)。滞在タイマーはフェード完了(FADE_MS)後にのみ進む。
+export const CORRIDOR_GOAL_REVEAL_DIST = 240; // フェード開始距離(world px・叩き台)
+export const CORRIDOR_GOAL_FADE_MS = 600;     // フェードイン長(この後にタイマー始動)
 const RETURN_CIRCLE_AVOID_DIST = 240;   // プレイヤーから最低この距離を空けて出現(避ける)
 // 帰還サークルに入った瞬間に撤去する設置物(置き攻撃の出入りハメ防止)。トラップ/手榴弾/タレット/デコイ。
 const RETURN_CLEAR_WEAPON_TYPES = new Set(['grenade', 'trap', 'turret', 'decoy']);
@@ -2317,7 +2322,8 @@ interface GameState {
   medicineUsedAt: number;        // 薬を使った時刻(Date.now)。0=未使用。使用後 useGameLoop が短い間を置いて勝利化
   medicinePromptVisible: boolean; // ［グレンの薬を使う］ボタンの表示(保存槽接近中のみ。HUDが購読)
   // 帰還サークル: フィナーレ撃破/終了アイテム後に出現。中心に dwellMs(ms)とどまると gameWon。null=非表示。
-  returnCircle: { x: number; y: number; radius: number; dwellMs: number } | null;
+  // revealedAt: 洋館通路ゴールの「近づくとフェードイン」打刻(gameTime)。undefined=まだ透明(通路のみ使用)。
+  returnCircle: { x: number; y: number; radius: number; dwellMs: number; revealedAt?: number } | null;
   // 商人「帰還」で任意撤収したフラグ(Game.tsx が監視→onReturn)。スコア計上・クリアボーナス/進行なし・装備は持ち帰り。
   gameReturned: boolean;
   // Start-screen setting: melee-kill ammo drop rate (percent).
@@ -9027,7 +9033,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       const p = state.player;
       const px = p.x + p.width / 2;
       const py = p.y + p.height / 2;
-      const inside = Math.hypot(rc.x - px, rc.y - py) <= rc.radius;
+      const dist = Math.hypot(rc.x - px, rc.y - py);
+      const inside = dist <= rc.radius;
+      // 洋館通路のゴールは「近づくとフェードイン→表示が済んでからタイマー」(社長指示v0.25.2151)。
+      // 表示前(未接近/フェード中)は滞在カウントを進めない。他ステージは従来どおり即カウント。
+      if (state.corridorMode) {
+        if (rc.revealedAt === undefined) {
+          return dist <= CORRIDOR_GOAL_REVEAL_DIST
+            ? { returnCircle: { ...rc, revealedAt: state.gameTime } }
+            : {};
+        }
+        if (state.gameTime < rc.revealedAt + CORRIDOR_GOAL_FADE_MS) return {};
+      }
       const dwellMs = inside ? rc.dwellMs + deltaTime * 1000 : 0;
       // 洋館通路のゴールは5秒(社長指示v0.25.2132)。他ステージの3秒は不変。
       if (dwellMs >= (state.corridorMode ? CORRIDOR_RETURN_HOLD_MS : RETURN_CIRCLE_HOLD_MS)) {

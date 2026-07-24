@@ -1,6 +1,5 @@
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
-import { CONTEXT_ZOOM_MIN } from './cameraZoom';
 
 // 固定ビュー矩形からの「画面外」バンド(px・社長指示Bで具体値決め直し)。全辺一律で「画面端から○px外」を意味する。
 // 固定ビューにしたので画面サイズ比ではなく固定px。SPAWN<RECYCLE のヒステリシスで湧いた敵が即リサイクルされない。実機で微調整可。
@@ -14,7 +13,9 @@ export const OFFSCREEN_RECYCLE_MARGIN = 240;  // ビュー矩形の外側この�
 let corridorSpawnEnabled = false;
 export const setCorridorSpawn = (enabled: boolean): void => { corridorSpawnEnabled = enabled; };
 // 上(奥)から湧く比率(叩き台=上7:下3)。定数化して調整可能に(社長指示)。
-export const CORRIDOR_SPAWN_TOP_RATIO = 1.0; // v0.25.2128(社長指示「一番下からは敵沸かなくていい」)=上(奥)のみ。旧0.7
+// v0.25.2151(社長指示「敵が終盤まで出てこない。最初に戻して」): v2128の上のみ(1.0)を撤回し、
+// 最初(v2105)の上7:下3へ復帰=下(手前)からも湧いて序盤から接敵する。
+export const CORRIDOR_SPAWN_TOP_RATIO = 0.7;
 
 // Mad-Forest port: a stat sheet per enemy type. Difficulty multiplier scales
 // the base values over time so a 25-minute zombie has more HP than a 1-minute
@@ -475,15 +476,14 @@ export const generateEnemy = (
   }
   let x = 0;
   let y = 0;
-  // 洋館通路の上(奥)湧きは「文脈ズーム最大引きでも画面外」の距離へ(v0.25.2139・社長指示「敵の現れる
-  // 位置も上(奥)に」)。固定ビュー+140pxのままだと最大引き(可視高=gameBounds/CONTEXT_ZOOM_MIN)で
-  // 湧きが画面内に食い込み、敵がその場に現れるのが見えていた(回収側directorTickは対策済み・湧き側の漏れ)。
-  const corridorTopHalfH = halfH / CONTEXT_ZOOM_MIN;
+  // (v0.25.2151) v2139の通路湧き距離の深掘り(halfH/CONTEXT_ZOOM_MIN)は撤回=最初の距離へ復帰。
+  // 当時「最大引きで湧きが見える」と診断したが実測の真因は敵フェード境界のバグ(v2149で根治)で、
+  // 素の halfH+margin(292px)は最大引きの可視半径(190px)より元々外=食い込みは無かった。
   // 各辺の「外側」(半幅/半高+margin)へ。直交方向は画面幅/高いっぱいに散らす(歩いて入ってくる)。
   switch (spawnSide) {
     case 0: // 上辺の外
       x = player.x - halfW + Math.random() * viewportWidth;
-      y = vy0 - (corridorSpawnEnabled ? corridorTopHalfH : halfH) - margin;
+      y = vy0 - halfH - margin;
       break;
     case 1: // 右辺の外
       x = player.x + halfW + margin;

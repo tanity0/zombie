@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2151 — ステージ6: 湧きを最初の形へ復帰+ゴールサークルの接近フェードイン【2026-07-24 11:55 JST】
+- 報告(社長): だいぶ軽くなった。ただ敵は相変わらず終盤まで出てこない→最初に戻して。ゴールサークルは透明にしておき、床に近づくとフェードイン→表示からのタイマーにしたい。
+- 対処(湧き): 「最初」=v2105の形へ復帰——①CORRIDOR_SPAWN_TOP_RATIO 1.0→**0.7**(v2128の上のみを撤回・下(手前)からも湧く=序盤から接敵) ②v2139の湧き距離深掘り(halfH/CONTEXT_ZOOM_MIN)を撤回=素のhalfH+140へ。※v2139当時の「最大引きで湧きが見える」診断は誤り(真因は敵フェード境界=v2149で根治済み。素の292pxは最大引き可視半径190pxより元々外)。
+- 対処(ゴール): returnCircleに`revealedAt`を追加。判定はstore(updateReturnPhase)——corridor時、CORRIDOR_GOAL_REVEAL_DIST(240px)接近でgameTime打刻→CORRIDOR_GOAL_FADE_MS(600ms)経過までdwell凍結。描画はpixiScene——revealedAt起点でGraphics.alphaを0→1(未接近=完全透明。見た目とロジック分離)。他ステージの帰還サークルは従来どおり常時表示・即カウント。
+- 検証: typecheck・lint 0エラー。実走=遠距離α0/接近で打刻→α0.25→0.75→1/フェード完了前はdwell0(ゲート実測)/完了後にdwell進行。
+- Files: `src/utils/enemyUtils.ts`, `src/store/gameStore.ts`, `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2150 — 年表: ステージ6はクリアのみ記録(道中記録を全面停止)【2026-07-24 11:47 JST】
 - 指示(社長): 年表にステージ6はエリアは載らない。ステージクリアしたか否かだけ(あとは薬の件・特殊変異体の件)。
 - 対処: recordChronicleに中央フィルタ=stage-6はkind'clear'以外を記録しない(zone/rank/boss/hunter/reaper等の全道中記録が対象。呼び出し箇所を個別ゲートせず将来の追加漏れも防ぐ)。loadChronicleで**既存セーブに記録済みのstage-6道中エントリも読み出しで非表示**(データは残す=可逆)。markStageClearedでstage-6メインの初回クリア時に「ステージ6 クリア」を1件記録(ChronicleKindに'clear'を新設・冪等)。薬(再訪=stage-6:SUB)・特殊変異体(EX=stage-ex)は別ミッション/別ステージIDのためフィルタ対象外=将来のイベント記録はそのまま載る。
