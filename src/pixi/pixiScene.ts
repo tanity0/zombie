@@ -234,6 +234,12 @@ const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに scre
 const NEAR_HORIZON_BLUR = 0.5;              // 近いので地平の森より弱いブラー。0.35→0.5(社長指示v0.25.1988)
 const HORIZON_ACTOR_HIDE_OFFSET_PX = 0;
 const HORIZON_ACTOR_FADE_PX = 120;
+// 洋館通路(corridorMode)専用の敵フェード境界(v0.25.2149・社長指示「透明度の境界を調整したかった」):
+// 通路では遠景森レイヤーが非表示なのにレイアウト値が残り、境界が画面中央(実測0.55H)に居座っていた
+// =敵はプレイヤー直前までalpha0(見えない)→「敵が現れない/いきなり出る」の真因。
+// 通路は「画面上部の固定ライン+狭めのフェード幅」で奥の暗がりからすっと現れる形にする。数値は叩き台。
+const CORRIDOR_ACTOR_FADE_TOP_FRAC = 0.04; // フェード境界(可視高比・上端のすぐ下)
+const CORRIDOR_ACTOR_FADE_PX = 80;         // フェード幅(world px。既定120より狭め=出現がもたつかない)
 // 非ボス敵の「手前(画面最下端=カメラ近接)で消える」near-plane フェード幅(px)。
 // 画面の一番下のこの帯の中だけで 1→0(近くでは消えない=社長指示「距離は下げて」)。
 const ENEMY_FOREGROUND_FADE_PX = 110;
@@ -2627,8 +2633,10 @@ export class PixiScene {
     return 0;
   }
 
+  // フェード幅は通路(corridorMode)で狭める(v0.25.2149)。毎フレームsyncで更新される。
+  private horizonActorFadePx = HORIZON_ACTOR_FADE_PX;
   private horizonActorAlpha(footWorldY: number) {
-    return Math.max(0, Math.min(1, (footWorldY - this.horizonForestFootWorldY) / HORIZON_ACTOR_FADE_PX));
+    return Math.max(0, Math.min(1, (footWorldY - this.horizonForestFootWorldY) / this.horizonActorFadePx));
   }
 
   // 手前(画面の最下端=カメラ近接)で消える near-plane フェード(地平線フェードの対)。非ボス敵用。
@@ -3839,7 +3847,15 @@ export class PixiScene {
     // 遠景森1/2(と森2境界霧)は worldGroup の子として床と一緒に文脈ズームでスケール/移動する。
     // 床と同一グループ=相対関係がズーム不変なので、引き(裏ボス等)でも森1が床の境界から剥がれず
     // 「地面の切れ目」が出ない(v0.25.1880〜1882の画面固定ピンは森1を床から剥がして切れ目を生んだため撤回=v0.25.1883)。
-    this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();
+    // 洋館通路: 森レイヤー由来の境界(非表示でもレイアウト値が残り画面中央に居座る)を使わず、
+    // 画面上部の固定ライン+狭めのフェード幅に差し替え(v0.25.2149・詳細は定数コメント)。
+    if (s.corridorMode && !s.indoorMode) {
+      this.horizonActorFadePx = CORRIDOR_ACTOR_FADE_PX;
+      this.horizonForestFootWorldY = s.camera.y + s.gameBounds.height * CORRIDOR_ACTOR_FADE_TOP_FRAC;
+    } else {
+      this.horizonActorFadePx = HORIZON_ACTOR_FADE_PX;
+      this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();
+    }
     // ?labpersp の研究所では床専用の強い遠近カーブを使う(屋外は従来定数)。
     const labPerspNow = s.indoorMode && LAB_PERSP;
     this.updatePerspectiveGround(

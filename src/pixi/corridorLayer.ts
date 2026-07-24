@@ -54,6 +54,7 @@ const LAMP_SPAN_SCALE = (CFG.footYr - CFG.horizonYr) / (CORRIDOR_CFG.footYr - CO
 const LAMP_FADE_S0 = 0.06;    // このsで灯りが出始める
 const LAMP_FADE_RANGE = 0.18; // s0+rangeで全開
 const LAMP_INSET = 0.86;      // 灯りを通路の内側へ寄せる率(1=柱ライン。柱の縁から覗かせる)
+const GLOW_MAX_R_FRAC = 0.11; // 壁灯グロー半径の上限(画面高比・v0.25.2149負荷対策=近距離の大玉加算を抑える)
 const BACK_FARBLUR_WEIGHT = 0.3; // 奥壁の強ブラー版の配合上限(v0.25.2127。1=旧=泥の塊化)
 
 // --- 洋館素材のパス(プレビューと同じキャッシュバスター付き) ---------------------------------
@@ -432,7 +433,10 @@ export class CorridorLayer {
       // 火の揺らぎ(世界位置位相の2重サイン)。世界位置基準=循環しても連続。
       const worldPos = m.depth + travel;
       const flick = 0.78 + 0.14 * Math.sin(tSec * 7.3 + worldPos * 0.013) + 0.08 * Math.sin(tSec * 11.7 + worldPos * 0.021);
-      const r = m.h * 0.22 * LAMP_SPAN_SCALE * (0.96 + 0.06 * flick);
+      // 負荷対策(v0.25.2149・社長報告「重くなった」): v0.25.2143でグローが実際に描かれるようになり、
+      // 近距離の大玉(半径~74px級)×最大14灯の加算オーバードロー=ベンチのG12 FAIL帯に入っていた。
+      // 半径を画面高比でキャップ(塗り面積を約半減)+足元照り返し(横長の大面積加算)を廃止。
+      const r = Math.min(m.h * 0.22 * LAMP_SPAN_SCALE * (0.96 + 0.06 * flick), H * GLOW_MAX_R_FRAC);
       const ly = m.y - m.h * GLOW_Y_R * LAMP_SPAN_SCALE;
       const gt = this.glowTex!;
       const gd = gt.width || 256;
@@ -440,8 +444,8 @@ export class CorridorLayer {
       gm.position.set(lampX, ly); gm.scale.set((r * 2) / gd); gm.alpha = lampFade * 0.85 * flick; gm.visible = true;
       // 明るい芯。
       gc.position.set(lampX, ly); gc.scale.set((r * 0.8) / gd); gc.alpha = Math.min(1, lampFade * 0.9 * flick); gc.visible = true;
-      // 足元の照り返し(横長に潰した同グロー・弱め)。
-      gf.position.set(lampX, m.y); gf.scale.set((r * 2.2) / gd, (r * 0.7) / gd); gf.alpha = lampFade * 0.3 * flick; gf.visible = true;
+      // 足元の照り返しは廃止(v0.25.2149負荷対策)。プールは残すが常時非表示。
+      gf.visible = false;
     }
   }
 
