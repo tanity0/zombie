@@ -377,6 +377,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const [walkLine, setWalkLine] = useState(-1);               // 歩き会話の表示中index(-1=非表示)
   const walkShownRef = useRef<Set<number>>(new Set());        // 発火済みトリガー
   const walkLineTimerRef = useRef(0);
+  const walkTalkSkipRef = useRef(false); // stop行(さ、いこっか)の会話をタップで飛ばす要求(v0.25.2186・社長指示)
   const walkSceneRef = useRef<HTMLDivElement | null>(null);
   const walkWorldRef = useRef<HTMLDivElement | null>(null);
   const walkCharRef = useRef<HTMLImageElement | null>(null);
@@ -607,6 +608,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       last = now;
       const scene = walkSceneRef.current, world = walkWorldRef.current, char = walkCharRef.current;
       if (scene && world && char) {
+        // stop行(さ、いこっか)のタップスキップ(v0.25.2186・社長指示「タップで飛ばせる様に」):
+        // talk中のタップで会話表示を消し、移動ロックを即解除(talkUntil=now→次のチェックでleaveへ)。
+        if (walkTalkSkipRef.current) {
+          walkTalkSkipRef.current = false;
+          if (npcState === 'talk') {
+            npcTalkUntil = now;
+            window.clearTimeout(walkLineTimerRef.current);
+            setWalkLine(-1);
+          }
+        }
         const sw = scene.clientWidth, sh = scene.clientHeight;
         const bgH = sh, bgW = sh * WALK_BG_AR; // 舞台は画面の高さいっぱい(横は素材アスペクト)
         const maxX = bgW - WALK_EDGE_PAD;
@@ -768,7 +779,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           onClick={e => e.stopPropagation()}
           // ジョイスティック式(v0.25.2124・社長報告「左にやたら歩きたがる」対策): 押した点を起点に、
           // 12px以上ドラッグした方向へ歩く(本編の仮想スティックと同じ感覚)。タップ位置(画面半分)では決めない。
-          onPointerDown={e => { e.stopPropagation(); walkTouchXRef.current = e.clientX; walkDirRef.current = 0; }}
+          onPointerDown={e => { e.stopPropagation(); walkTouchXRef.current = e.clientX; walkDirRef.current = 0; walkTalkSkipRef.current = true; /* talk中ならタップで会話スキップ(rAF側が消費) */ }}
           onPointerMove={e => {
             if (walkTouchXRef.current === null) return;
             const dx = e.clientX - walkTouchXRef.current;

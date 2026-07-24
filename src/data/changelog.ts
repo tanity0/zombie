@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2186',
+    items: [
+      '操作: オープニング廊下の「さ、いこっか！」の会話を、タップで飛ばせるようになりました(移動ロックも即解除)。',
+    ],
+  },
+  {
     version: '0.25.2185',
     items: [
       '演出: オープニングのコンサート会場で、ペンライトの振りをさらに速くしました。',
