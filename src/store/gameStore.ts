@@ -225,6 +225,12 @@ const EVENT_NPC_MAX_DISTANCE = 950;
 const EVENT_NPC_INTERACT_RADIUS = 64;
 const EVENT_NPC_REOPEN_DELAY_MS = 1500;
 export const SHOP_AMMO_COST = 10;
+// 商人の弾薬販売量(v0.25.2168・社長指示「商人のライフルは15発に。ハンドガンは25発に」):
+// ドロップ箱の取得量(ammoPickupAmounts: handgun40/rifle20等)とは別建てで、商人だけ少なめ。
+// 未指定の弾種(shotgun/phill)は従来どおり箱と同量。
+export const SHOP_AMMO_AMOUNTS: Partial<Record<AmmoType, number>> = { handgun: 25, rifle: 15 };
+export const shopAmmoAmount = (type: AmmoType, pickupAmounts: Record<AmmoType, number>): number =>
+  SHOP_AMMO_AMOUNTS[type] ?? pickupAmounts[type];
 export const SHOP_DOG_COST = 100;
 export const SHOP_CLASS_SKILL_COST = 100;
 export const SHOP_MEDKIT_COST = 50;
@@ -6189,25 +6195,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (key === 'ammo-handgun' || ammoType === 'handgun') {
         if (state.player.ammoHandgun >= AMMO_MAX.handgun) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
-          ammoHandgun: Math.min(AMMO_MAX.handgun, state.player.ammoHandgun + state.ammoPickupAmounts.handgun)
+          ammoHandgun: Math.min(AMMO_MAX.handgun, state.player.ammoHandgun + shopAmmoAmount('handgun', state.ammoPickupAmounts))
         });
       }
       if (key === 'ammo-shotgun' || ammoType === 'shotgun') {
         if (state.player.ammoShotgun >= AMMO_MAX.shotgun) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
-          ammoShotgun: Math.min(AMMO_MAX.shotgun, state.player.ammoShotgun + state.ammoPickupAmounts.shotgun)
+          ammoShotgun: Math.min(AMMO_MAX.shotgun, state.player.ammoShotgun + shopAmmoAmount('shotgun', state.ammoPickupAmounts))
         });
       }
       if (key === 'ammo-rifle' || ammoType === 'rifle') {
         if (state.player.ammoRifle >= AMMO_MAX.rifle) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
-          ammoRifle: Math.min(AMMO_MAX.rifle, state.player.ammoRifle + state.ammoPickupAmounts.rifle)
+          ammoRifle: Math.min(AMMO_MAX.rifle, state.player.ammoRifle + shopAmmoAmount('rifle', state.ammoPickupAmounts))
         });
       }
       if (key === 'ammo-phill' || ammoType === 'phill') { // 研究所: 商人はPHILL弾のみ販売
         if (state.player.ammoPhill >= AMMO_MAX.phill) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
-          ammoPhill: Math.min(AMMO_MAX.phill, state.player.ammoPhill + state.ammoPickupAmounts.phill)
+          ammoPhill: Math.min(AMMO_MAX.phill, state.player.ammoPhill + shopAmmoAmount('phill', state.ammoPickupAmounts))
         });
       }
       if (key === 'buy-phill') { // 研究所(lab テーマ): 武器商人がPHILL銃を無料配布(1挺・所持済みなら無効)

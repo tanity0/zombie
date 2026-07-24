@@ -2,6 +2,7 @@ import React from 'react';
 import { shallow } from 'zustand/shallow';
 import {
   SHOP_AMMO_COST,
+  shopAmmoAmount,
   AMMO_MAX,
   SHOP_CLASS_SKILL_COST,
   SHOP_DOG_COST,
@@ -92,7 +93,7 @@ const ShopMenu: React.FC = () => {
     return {
       key: ammoShopKey[type],
       name: ammoLabel[type],
-      description: maxed ? 'MAX' : `+${ammoPickupAmounts[type]}発`,
+      description: maxed ? 'MAX' : `+${shopAmmoAmount(type, ammoPickupAmounts)}発`, // 商人量(handgun25/rifle15・v0.25.2168)
       cost: SHOP_AMMO_COST,
       ammoType: type,
       disabled: maxed

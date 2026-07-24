@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.2168 — 商人の弾薬販売量を別建て化(handgun25/rifle15)【2026-07-24 17:13 JST】
+- 指示(社長): 商人のライフルは15発に。ハンドガンは25発に。
+- 対処: `SHOP_AMMO_AMOUNTS`(商人専用量)+`shopAmmoAmount()`を新設し、購入処理とShopMenuの
+  「+N発」表示の両方が参照。shotgun/phillは従来どおり箱と同量(ドロップ箱の取得量
+  ammoPickupAmounts=handgun40/rifle20等は不変)。
+- 検証: typecheck・lint 0エラー。
+- Files: `src/store/gameStore.ts`, `src/components/ShopMenu.tsx`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2167 — ストーリー正本化: チャット直接決定ぶんを正本へ反映【2026-07-24 17:04 JST】
 - 指示(社長): 相違監査(24件)を受け、「ここで直接相談して修正した部分」を正本化する。
 - 対処(コード変更なし・文書のみ):
