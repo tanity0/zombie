@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2157',
+    items: [
+      'ゲーム内容の変更はありません(弾薬ドロップ率のバランステスト結果の記録のみ)。',
+    ],
+  },
+  {
     version: '0.25.2156',
     items: [
       '演出: オープニング廊下の会話を並べ替えました。「さ、いこっか！」(シルエットのスタッフ)が最初に来て、応援の声はその後に続きます。',
