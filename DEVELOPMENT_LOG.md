@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.2201 — M2遠景窓: 横ループ修正+ガラス50%透過【2026-07-25 01:52 JST】
+- 指示(社長): 遠景森窓セットをループ素材としてちゃんと動くように。その上でガラスだけ透過50%。
+- 対処: (1)setLabFarWindowTexturesでガラス/フレームのテクスチャ源に addressMode='repeat' を指定
+  (未指定=CLAMPだとタイル境界で端画素がにじみループが崩れる)。(2)LAB_FAR_GLASS_ALPHA(既定0.5・
+  ?labfga=)を新設し updateLabFarWindow でガラスのみ alpha=0.5(フレームは不透明)。
+- 検証: typecheck・lint 0。TDZチェック(tsNum宣言前呼びなし)通過。実機は社長確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2200 — M2近景1/2のパララックス速度を分離(2の方を少し速く)【2026-07-25 01:44 JST】
 - 依頼(設計チャットより。共有ワークツリーでのpixiScene.ts巻き込み事故防止のため、以後この
   ファイルの編集は本チャットへ一本化=設計チャット側は同ファイルを触らない、との申し送り)。

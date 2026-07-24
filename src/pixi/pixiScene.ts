@@ -340,6 +340,7 @@ const LAB_FRONT2_BLUR = tsNum('labf2bl', 3);
 // 注意: この定数はtsNum/tsBoolの宣言(301/307行)より後段のこの位置に置くこと(TDZクラッシュの再発防止・
 // 社長指示v0.25.2198「新規定数は必ずtsNum/tsBoolの宣言より下に置く」)。
 const LAB_FAR_WINDOW_SCALE = tsNum('labfwsc', 1); // ?labfwsc= で現地調整可
+const LAB_FAR_GLASS_ALPHA = tsNum('labfga', 0.5); // 遠景窓ガラスの不透明度(社長指示v0.25.2201「ガラスだけ透過50%」)。?labfga=
 // 近景森1/2のパララックス速度差(社長指示v0.25.2200「近景森1と2の速度を変えたい、2の方が少しだけ速く」):
 // 近景森1(frontForest・lab限定)=既定0.68でFRONT_FOREST_PARALLAX_Xと同値(現状維持)。
 // 近景森2(labFront2・一番手前)=既定0.80で1より少し速い(手前ほど速く流れる=奥行き感)。
@@ -1767,8 +1768,17 @@ export class PixiScene {
   private labFarGlassTex: Texture | null = null;
   private labFarFrameTex: Texture | null = null;
   setLabFarWindowTextures(glass: Texture | null, frame: Texture | null) {
-    if (glass) this.labFarGlassTex = glass;
-    if (frame) this.labFarFrameTex = frame;
+    // 横ループの継ぎ目をなくす: TilingSpriteのテクスチャ源に repeat(ラップ)を指定
+    // (未指定=CLAMPだとタイル境界で端画素がにじむ=ループが崩れる。社長指示v0.25.2201「ちゃんとループ」)。
+    const wrap = (t: Texture | null) => {
+      if (!t) return;
+      try {
+        const st = t.source.style as { addressMode?: string; update?: () => void };
+        st.addressMode = 'repeat'; st.update?.();
+      } catch { /* ignore */ }
+    };
+    if (glass) { this.labFarGlassTex = glass; wrap(glass); }
+    if (frame) { this.labFarFrameTex = frame; wrap(frame); }
   }
   // 可視可能ゾーン(研究所スキン): RenderTexture に「暗幕 + erase で円形の穴」を描き、その1枚を
   // 画面に重ねる。erase はテクスチャのアルファを削る=円形・なだらかな穴(マスクのステンシル矩形問題を回避)。
@@ -5044,6 +5054,8 @@ export class PixiScene {
     };
     layoutOne(glass, glassTex);
     layoutOne(frame, frameTex);
+    glass.alpha = LAB_FAR_GLASS_ALPHA; // ガラスだけ半透明(フレームは不透明のまま)
+    frame.alpha = 1;
   }
 
   // 可視可能ゾーン(研究所スキン): 画面全体を乗算で暗くし、プレイヤー/UVバー(=ハンドガン射程)に明かりの穴。
