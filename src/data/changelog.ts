@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2164',
+    items: [
+      '調整: オープニング廊下の奥のぼかしを一段階戻して中間の強さにしました。',
+    ],
+  },
+  {
     version: '0.25.2163',
     items: [
       '演出: オープニング廊下で、見えない前面ライトの光がプレイヤーとスタッフにも当たるようになりました。',
