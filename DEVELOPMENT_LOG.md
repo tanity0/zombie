@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.2210 — M2遠景窓: 窓セットをさらに20px上げ【2026-07-25 10:17 JST】
+- 指示(社長): 窓ガラスセット(枠+ガラス)を20px上に。
+- 対処: LAB_FAR_WINDOW_BOTTOM_UP を -30→-10(v2207:50下 → v2209:30下 → 今回:正味10下)。
+  ガラスのみの2px上(LAB_FAR_GLASS_UP=2)は据え置き。
+- 結果: フレーム下辺=遠景下辺+10px、ガラス下辺=+8px。
+- 検証: typecheck・lint 0。実機は社長確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+- ※本エントリより設計チャットのモデルが Opus 5 へ交代(DESIGN_CHAT_GUIDE.md 読了済み)。
+
 ## v0.25.2209 — M2遠景窓: 窓全体(枠+ガラス)を20px上げ【2026-07-25 02:23 JST】
 - 指示(社長): 「20pxはフレームも」=前の20px上げはガラスだけでなく窓全体(フレーム+ガラス)に効かせる。
 - 対処: 縦位置つまみ LAB_FAR_WINDOW_BOTTOM_UP を -50→-30(v2207の50下 − 20上 = 正味30下)。両方に効く。

@@ -347,8 +347,8 @@ const LAB_FAR_GLASS_UP = tsNum('labfgup', 2); // 遠景窓ガラスだけの上�
 // (旧 0.09=遠景壁と同率だと窓1枚≒画面幅のため実質静止して見えた。社長指示v0.25.2203)。?labfwpx=
 const LAB_FAR_WINDOW_PARALLAX = tsNum('labfwpx', HORIZON_FOREST_PARALLAX_X);
 // 遠景窓の下辺オフセット(px・フレーム/ガラス両方に効く): 遠景backdropの実下辺基準で 正=上へ / 負=下へ。
-// 既定-30=下へ30px(v2207で50下 → v2209で窓全体を20上げ=社長指示「20pxはフレームも」=正味30下)。?labfwup=
-const LAB_FAR_WINDOW_BOTTOM_UP = tsNum('labfwup', -30);
+// 既定-10=下へ10px(v2207で50下 → v2209で20上げ=30下 → v2210でさらに20上げ=正味10下)。?labfwup=
+const LAB_FAR_WINDOW_BOTTOM_UP = tsNum('labfwup', -10);
 // 近景森1/2のパララックス速度差(社長指示v0.25.2200「近景森1と2の速度を変えたい、2の方が少しだけ速く」):
 // 近景森1(frontForest・lab限定)=既定0.68でFRONT_FOREST_PARALLAX_Xと同値(現状維持)。
 // 近景森2(labFront2・一番手前)=既定0.80で1より少し速い(手前ほど速く流れる=奥行き感)。
