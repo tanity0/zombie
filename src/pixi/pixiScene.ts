@@ -340,6 +340,11 @@ const LAB_FRONT2_BLUR = tsNum('labf2bl', 3);
 // 注意: この定数はtsNum/tsBoolの宣言(301/307行)より後段のこの位置に置くこと(TDZクラッシュの再発防止・
 // 社長指示v0.25.2198「新規定数は必ずtsNum/tsBoolの宣言より下に置く」)。
 const LAB_FAR_WINDOW_SCALE = tsNum('labfwsc', 2); // 遠景窓の拡大率(縦横一様tileScale)。既定2=2倍(社長指示v0.25.2207)。?labfwsc=
+// 遠景のソフトブルーム(社長指示v0.25.2214): OP廊下(v0.25.2158のWALK_BG_BLUR)と同じ
+// 「**ぼかし焼き込み版を screen 合成で薄く重ねる**」方式。明部だけがふわっと滲む。
+// ランタイムのぼかし(フィルタ)はゼロ——起動後1度だけベイクして以後は1枚貼るだけ=モバイルでも安い。
+const LAB_FAR_BLOOM_ALPHA = tsNum('labfbloom', 0.18); // 重ねる濃さ。0で無効(復帰フラグ)。?labfbloom=
+const LAB_FAR_BLOOM_BLUR = tsNum('labfblur', 12);     // ベイク時のぼかし強度。?labfblur=
 const LAB_FAR_GLASS_ALPHA = tsNum('labfga', 0.3); // 遠景窓ガラスの不透明度(社長指示v0.25.2202「透明度70%=alpha0.3」)。?labfga=
 const LAB_FAR_GLASS_UP = tsNum('labfgup', 2); // 遠景窓ガラスだけの上オフセット(px・フレームは動かさない。既定2=常にフレームから2px上。社長指示v0.25.2208)。?labfgup=
 // ガラスの向こうを左右にゆっくりうろつくレベル1の研究所ゾンビ(社長指示v0.25.2211)。**描画のみの環境演出**=
@@ -1802,6 +1807,8 @@ export class PixiScene {
   private labFarZombies: Sprite[] = [];
   private labFarZombieFacing: number[] = []; // 個体ごとの向き(静止中も直前の向きを保持)
   private labFarZombieT0 = 0; // 相対時刻の起点(エポックmsをそのまま速度に掛けると桁が溢れる=v0.25.1807の教訓)
+  private labFarBloom: TilingSprite | null = null;      // 遠景のソフトブルーム(ぼかし焼き込みのscreen重ね)
+  private farBloomCache = new Map<Texture, Texture>();  // 遠景テクスチャ→ぼかし焼き込みの1度きりキャッシュ
   setLabFarWindowTextures(glass: Texture | null, frame: Texture | null) {
     // 横ループの継ぎ目をなくす: TilingSpriteのテクスチャ源に repeat(ラップ)を指定
     // (未指定=CLAMPだとタイル境界で端画素がにじむ=ループが崩れる。社長指示v0.25.2201「ちゃんとループ」)。
@@ -3925,6 +3932,8 @@ export class PixiScene {
       -s.camera.x * FAR_BACKDROP_PARALLAX_X,
       0
     );
+    // 遠景のソフトブルーム(lab=M2のみ)。遠景のジオメトリ確定直後に追従させる。
+    this.updateLabFarBloom(this.currentFarKey === 'lab' && this.L.farBackdrop.visible);
     // 川の流れ(チュートリアル): 遠景と同じパララックス+速度差の横流し+アルファの微揺らぎ。
     // 重要: now はエポックms。そのまま速度を掛けると桁が大きすぎて(1e10px級)GPUのfloat32精度で
     // UVが壊れ、筋が描けない/動かない(v0.25.1807の実バグ)。霧(fogT0)と同じ相対時刻に直し、
@@ -5106,6 +5115,62 @@ export class PixiScene {
     glass.alpha = LAB_FAR_GLASS_ALPHA; // ガラスだけ半透明(フレームは不透明のまま)
     frame.alpha = 1;
     this.updateLabFarWindowZombies(glass, bottom, frame.height, cameraX, now);
+  }
+
+  // 遠景のソフトブルーム(社長指示v0.25.2214)。OP廊下と同じ「ぼかし焼き込み+screen重ね」を Pixi に移植。
+  // 遠景と同じジオメトリ(位置/寸法/タイル送り)を毎フレームコピーするだけ=フィルタは走らない。
+  private updateLabFarBloom(show: boolean) {
+    if (!show || LAB_FAR_BLOOM_ALPHA <= 0) { if (this.labFarBloom) this.labFarBloom.visible = false; return; }
+    const far = this.L.farBackdrop;
+    const srcTex = far.texture;
+    const blurred = this.bakeSeamlessBlur(srcTex);
+    if (!blurred) return; // レンダラ未準備なら次フレーム
+    if (!this.labFarBloom) {
+      // 親は「遠景が今いるコンテナ」から取る(farGroup前提の決め打ちにしない)。getChildIndexは対象が
+      // 子でないと例外=全画面まっくらの原型(v0.25.2198)なので、必ず実際の親経由で安全に挿入する。
+      const parent = far.parent;
+      if (!parent) return;
+      const sp = new TilingSprite({ texture: blurred, width: 1, height: 1 });
+      sp.eventMode = 'none';
+      sp.blendMode = 'screen'; // 明部だけが持ち上がる(暗部はほぼ変化しない)=ふわっと発光
+      parent.addChildAt(sp, Math.min(parent.getChildIndex(far) + 1, parent.children.length)); // 遠景の直上
+      this.labFarBloom = sp;
+    }
+    const sp = this.labFarBloom;
+    if (sp.texture !== blurred) sp.texture = blurred;
+    sp.visible = true;
+    sp.alpha = LAB_FAR_BLOOM_ALPHA;
+    sp.tint = far.tint; // 遠景と同じ環境tint(暗転)に追従
+    // ジオメトリを遠景に完全一致させる。ベイクは縮小してあるので tileScale はその比率ぶん戻す
+    // (tileScale × テクスチャ幅 が遠景と一致 → tilePosition をそのままコピーしても継ぎ目がズレない)。
+    sp.position.copyFrom(far.position);
+    sp.width = far.width;
+    sp.height = far.height;
+    const k = srcTex.width / Math.max(1, blurred.width);
+    sp.tileScale.set(far.tileScale.x * k, far.tileScale.y * k);
+    sp.tilePosition.copyFrom(far.tilePosition);
+  }
+
+  // ぼかし焼き込み(1テクスチャにつき1度だけ)。**横に3枚並べてからぼかし、中央だけを切り出す**ので、
+  // 横タイル(ループ)の継ぎ目でにじみが途切れない。縮小してベイク=軽く、かつ元よりさらに滑らかになる。
+  private bakeSeamlessBlur(src: Texture | null): Texture | null {
+    if (!src || src.width <= 1 || !this.renderer) return null;
+    const cached = this.farBloomCache.get(src);
+    if (cached) return cached;
+    const w = Math.max(1, Math.round(src.width * 0.5));
+    const h = Math.max(1, Math.round(src.height * 0.5));
+    const wrap = new Container();
+    for (let i = -1; i <= 1; i++) {
+      const s = new Sprite(src);
+      s.width = w; s.height = h; s.position.set(i * w, 0);
+      wrap.addChild(s);
+    }
+    wrap.filters = [new BlurFilter({ strength: LAB_FAR_BLOOM_BLUR, quality: 3 })];
+    const rt = RenderTexture.create({ width: w, height: h });
+    this.renderer.render({ container: wrap, target: rt, clear: true });
+    wrap.destroy({ children: true });
+    this.farBloomCache.set(src, rt);
+    return rt;
   }
 
   // ガラスの向こうを左右にゆっくりうろつくレベル1研究所ゾンビ(社長指示v0.25.2211)。

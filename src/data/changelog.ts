@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2214',
+    items: [
+      'グラフィック: ステージ2の遠景に、明るい部分がふわっと滲むソフトブルームを追加しました。',
+    ],
+  },
+  {
     version: '0.25.2213',
     items: [
       '演出: ステージ2の窓の向こうのゾンビが、進行方向を向いて前のめりに歩くようになり、立ち止まってからゆっくり歩き出す緩急がつきました。',
