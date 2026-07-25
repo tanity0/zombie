@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
-import {
-  shouldShowPhillTutorial, shouldShowScoutTutorial, hasSeenLabTutorial, markLabTutorialSeen,
-  LAB_TUTORIAL_TEXT,
-} from '../utils/labTutorial';
+import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
+import { loadSeenTutorials, markTutorialSeen } from '../utils/tutorialArchive';
+import { getTutorial, type TutorialId } from '../data/tutorials';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import {
@@ -991,9 +990,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // M2のゴール(書類)が原点から見て左右どちらにあるか(-1/+1)。0=未取得。出撃ごとにピックアップから
   // 1回だけ拾って覚える(社長指示v0.25.2248「ゴールと反対方向に行くと湧きを元の量に戻す」の判定用)。
   const labGoalSideRef = useRef(0);
-  // M2チュートリアル(社長指示v0.25.2251)の表示済みフラグ。localStorageが正だが、同じランで
-  // 連続発火しないようにref側でも1回に絞る(localStorageを毎フレーム読まないための番人でもある)。
-  const labTutorialSeenRef = useRef({ phill: false, scout: false });
+  // チュートリアルの表示済みid(社長指示v0.25.2251/2252)。localStorageが正だが、同じランで連続発火
+  // しないようにrefでも1回に絞る(localStorageを毎フレーム読まないための番人でもある)。
+  // 出撃時に1回だけ tutorialArchive から読み込む。
+  const tutorialSeenRef = useRef<Set<TutorialId>>(new Set());
+  // 表示と同時に「見た」を確定させる共通処理(資料室の一覧はこの記録を引く)。
+  const showTutorialOnce = useCallback((id: TutorialId) => {
+    const entry = getTutorial(id);
+    if (!entry) return;
+    tutorialSeenRef.current.add(id);
+    markTutorialSeen(id);
+    useGameStore.getState().showTutorialPopup({
+      title: entry.title, lines: entry.lines, art: entry.art, img: entry.img,
+    });
+  }, []);
   // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告(この先——{区域名})」を壁ごとにラン1回だけ出すためのフラグ。
   const wallWarnedRef = useRef<boolean[]>([false, false, false, false]);
   // M14: このランの最深距離(px・毎フレーム追跡)+store/localStorageへの同期は1秒間隔(書き込み間引き)。
@@ -1861,9 +1871,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           maxAreaRef.current = 0;
           labVisitedRef.current = null;
           labGoalSideRef.current = 0;
-          // M2チュートリアルの表示済みは端末記憶(localStorage)が正。**出撃時に1回だけ読んで**refへ載せる
-          // (毎フレームlocalStorageを読まないため)。以後この ran 中は ref だけを見る。
-          labTutorialSeenRef.current = { phill: hasSeenLabTutorial('phill'), scout: hasSeenLabTutorial('scout') };
+          // チュートリアルの表示済みは端末記憶(localStorage)が正。**出撃時に1回だけ読んで**refへ載せる
+          // (毎フレームlocalStorageを読まないため)。以後このラン中は ref だけを見る。
+          tutorialSeenRef.current = loadSeenTutorials();
           wallWarnedRef.current = [false, false, false, false]; // M14の予告バンドも新ランで再アーム
           runDeepestDistRef.current = 0;
           wallDepthSyncRef.current = 0;
@@ -2914,13 +2924,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           };
           if (shouldShowPhillTutorial({
             ...gate,
-            seen: labTutorialSeenRef.current.phill,
+            seen: tutorialSeenRef.current.has('phill'),
             hasPhillGun: st.player.weapons.some(w => !w.isMelee && w.category === 'phill'),
           })) {
-            labTutorialSeenRef.current.phill = true;
-            markLabTutorialSeen('phill');
-            st.showTutorialPopup(LAB_TUTORIAL_TEXT.phill);
-          } else if (!labTutorialSeenRef.current.scout) {
+            showTutorialOnce('phill');
+          } else if (!tutorialSeenRef.current.has('scout')) {
             // 休眠中の敵までの最短距離。起床済みの敵は「もう見つかっている」ので数えない。
             let nearestDormantDist: number | null = null;
             const pcx = st.player.x + st.player.width / 2, pcy = st.player.y + st.player.height / 2;
@@ -2929,10 +2937,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const d = Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy);
               if (nearestDormantDist === null || d < nearestDormantDist) nearestDormantDist = d;
             }
-            if (shouldShowScoutTutorial({ ...gate, seen: labTutorialSeenRef.current.scout, nearestDormantDist })) {
-              labTutorialSeenRef.current.scout = true;
-              markLabTutorialSeen('scout');
-              st.showTutorialPopup(LAB_TUTORIAL_TEXT.scout);
+            if (shouldShowScoutTutorial({ ...gate, seen: tutorialSeenRef.current.has('scout'), nearestDormantDist })) {
+              showTutorialOnce('scout');
             }
           }
         }
@@ -2943,15 +2949,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const st = useGameStore.getState();
           // 操作説明ポップアップ(試作v0.25.1830): 開始1.2秒で「移動」の説明を1回だけ表示(ゲーム停止)。
           // 本実装ではイベント台本から任意のタイミング/内容で showTutorialPopup を呼ぶ想定。
+          // v0.25.2252: 本文は `src/data/tutorials.ts` の台帳へ移し、既読も記録する(資料室に載せるため)。
+          // 出す条件自体は従来どおり(このランで未表示 かつ 1.2秒経過)=訓練では毎回出る。
           if (!st.tutorialPopupShown && newGameTime >= 1200) {
-            st.showTutorialPopup({
-              title: '移動',
-              lines: ['指でなぞった方向に移動。', '右へ。緑のマークが帰還地点。'],
-              art: 'move',
-              // 手本GIF(事前収録・洞窟で右歩行+随行NPC)。社長決定v0.25.1839「基本的に全部
-              // 事前に(手本を)見せるカタチ」=挿絵はライブ撮影でなく収録済み素材で統一。
-              img: 'tutorial/move.gif',
-            });
+            showTutorialOnce('move');
           }
           // 左壁(スタートから−100px)に突っ込んでいる間、軍人が窘める(社長指示v0.25.1829
           // 「軍人NPCが『そっちじゃないぞ。』という」)。カテゴリCD6秒=押し続けても連発しない。
@@ -8340,6 +8341,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     };
   }, [
     emitBotReport, // M26-L: botレポート(安定参照のuseCallback)
+    showTutorialOnce, // v0.25.2252: チュートリアル表示(deps[]のuseCallback=安定参照・再実行しない)
     movePlayer,
     fireWeapons,
     updateEnemies,

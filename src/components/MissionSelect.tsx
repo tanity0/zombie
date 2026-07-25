@@ -99,6 +99,8 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
+import { TUTORIALS, type TutorialId } from '../data/tutorials';
+import { loadSeenTutorials } from '../utils/tutorialArchive';
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, BESTIARY,
@@ -347,7 +349,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const [archiveState, setArchiveState] = useState<StoryArchiveState>(() => loadStoryArchive());
   const refreshArchiveState = () => setArchiveState(loadStoryArchive());
   const unreadArchiveCount = archiveState.unlockedRecordIds.filter(id => !archiveState.readRecordIds.includes(id)).length;
-  const goArchive = () => { playSfx('ui-select'); refreshArchiveState(); setScreen({ name: 'archive' }); };
+  const goArchive = () => { playSfx('ui-select'); refreshArchiveState(); setSeenTutorials(loadSeenTutorials()); setScreen({ name: 'archive' }); };
   const goHomeFromArchive = () => { playSfx('ui-select'); refreshArchiveState(); setScreen({ name: 'home' }); };
   const [openArchiveRecordId, setOpenArchiveRecordId] = useState<string | null>(null);
   const handleOpenArchiveRecord = (id: string) => {
@@ -357,6 +359,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     setOpenArchiveRecordId(id);
   };
   const closeArchiveRecord = () => { playSfx('ui-select'); setOpenArchiveRecordId(null); };
+  // 操作記録(社長指示v0.25.2252「一度見たやつ資料室にまとめよう」): 一度見たチュートリアルを読み返す。
+  // archiveState と同じ方針で、資料室に入った時だけ読み直す(store購読なし=毎フレーム再描画しない)。
+  const [seenTutorials, setSeenTutorials] = useState<Set<TutorialId>>(() => loadSeenTutorials());
+  const [openTutorialId, setOpenTutorialId] = useState<TutorialId | null>(null);
+  const openTutorial = TUTORIALS.find(t => t.id === openTutorialId) ?? null;
+  const handleOpenTutorial = (id: TutorialId) => { playSfx('ui-select'); setOpenTutorialId(id); };
+  const closeTutorial = () => { playSfx('ui-select'); setOpenTutorialId(null); };
   // 「資料が追加されました」ポップアップ: ホーム表示(=このコンポーネントのマウント)時に1回だけ
   // latestUnlockedRecordIds を読む。閉じたら consumeLatestUnlocked() で永続側もクリアし、再表示しない。
   const [newRecordsNotice, setNewRecordsNotice] = useState<string[]>(() => loadStoryArchive().latestUnlockedRecordIds);
@@ -978,6 +987,31 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <>
         <Header title="資料室" subtitle="記録・変異体資料" onBack={goHomeFromArchive} />
         <div className="menu-stagger p-3 space-y-3">
+          {/* 操作記録(社長指示v0.25.2252): 一度見たチュートリアルを読み返す。「どう狙うんだっけ」を
+              探しに来る場所なので、物語の記録より先に置く。1件も見ていない間はセクションごと出さない。 */}
+          {seenTutorials.size > 0 && (
+            <Section label="操作記録">
+              <div className="flex flex-col gap-1.5">
+                {TUTORIALS.map(t => seenTutorials.has(t.id) ? (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleOpenTutorial(t.id)}
+                    className="flex items-center gap-2 rounded-none bg-purple-400/5 px-3 py-2 text-left active:bg-purple-400/10"
+                  >
+                    <span className="text-[13px] font-semibold text-white/90">{t.title}</span>
+                    <span className="ml-auto shrink-0 text-[10px] tracking-widest text-purple-200/50">{t.where}</span>
+                  </button>
+                ) : (
+                  // 未取得は他セクションと同じ伏せ表示(まだ習っていない操作があることは伝える)。
+                  <div key={t.id} className="flex items-center gap-2 rounded-none bg-black/20 px-3 py-2 opacity-55">
+                    <Lock size={12} className="shrink-0 text-white/40" />
+                    <span className="text-[13px] text-white/40">？？？（未習得）</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
           {worldRecords.length > 0 && (
             <Section label="調査記録">{renderArchiveRecordList(worldRecords)}</Section>
           )}
@@ -1034,6 +1068,42 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <button
                   type="button"
                   onClick={closeArchiveRecord}
+                  className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+        {/* 操作記録の本文(社長指示v0.25.2252)。ゲーム中のポップアップと同じ台帳(src/data/tutorials.ts)を
+            引くので、文章は常に一致する。挿絵(img)があれば同じものを出す。 */}
+        {openTutorial && createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center px-3"
+            style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+          >
+            <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
+              <div className="px-4 py-5">
+                <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">操作記録・{openTutorial.where}</div>
+                <h3
+                  className="mb-3 text-lg font-semibold text-amber-100"
+                  style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
+                >
+                  {openTutorial.title}
+                </h3>
+                {openTutorial.img && (
+                  <div className="mb-3 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
+                    <img src={`${import.meta.env.BASE_URL}${openTutorial.img}`} alt="" className="h-full w-full object-cover" />
+                  </div>
+                )}
+                <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
+                  {openTutorial.lines.map((line, i) => <p key={i}>{line}</p>)}
+                </div>
+                <button
+                  type="button"
+                  onClick={closeTutorial}
                   className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
                 >
                   閉じる

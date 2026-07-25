@@ -1,5 +1,32 @@
 # Development Log
 
+## v0.25.2252 — 資料室に「操作記録」(見たチュートリアルの読み返し)【2026-07-26 08:17 JST】
+- 指示(社長): チュートリアルは一度見たやつ資料室にまとめよう。
+- 実装:
+  - **本文の台帳を新設** `src/data/tutorials.ts`(`TUTORIALS`)。ゲーム中のポップアップと資料室が
+    **同じ台帳を引く**ので文章が常に一致する(STORY_UI_SPEC 11章「同一内容の別文章を管理しない」に倣う)。
+    M2の2件(PHILL/索敵)に加え、**訓練の「移動」も台帳へ移した**(チュートリアルなので同じ扱い)。
+  - **既読の記憶を一本化** `src/utils/tutorialArchive.ts`(localStorage `zombie:tutorialsSeen`)。
+    v0.25.2251で入れた話題別キー(`zombie:tut:lab-*`)は読み込み時に取り込む=**既に見た人の記録を落とさない**。
+  - **資料室に「操作記録」セクション**(`MissionSelect.tsx`)。既読は題+出典(訓練/研究所)を出してタップで本文
+    (挿絵があればゲーム中と同じものを表示)、未読は他セクションと同じ伏せ表示。
+  - `labTutorial.ts` は**発火条件だけ**を持つ純関数に戻した(本文・既読は上の2ファイルへ)。
+- 決めたこと(社長指示に無かった細部・変更可):
+  - 「操作記録」は**資料室の一番上**に置いた。「どう狙うんだっけ」を探しに来る場所なので物語の記録より前。
+  - **1件も見ていない間はセクションごと出さない**(全部？？？の枠が並ぶのを避ける)。
+  - 既存のストーリー資料の**未読バッジ/「資料が追加されました」には混ぜていない**(既存挙動を変えないため)。
+- React再描画規律: `seenTutorials` は store 購読せず、**資料室に入った時だけ**読み直す
+  (archiveState と同じ方針)。ゲーム側は出撃時に1回だけ localStorage を読んで ref に載せる。
+- テスト: `tutorialArchive.test.ts` 5件(記録/重複なし/**旧キーの取り込み**/壊れた保存値でも落ちない)+
+  `labTutorial.test.ts` を台帳ベースに更新(計14件)。**19件全通過**。
+- 検証: typecheck・lint 0エラー(新規warningなし)。実機は社長確認。
+- 自己点検: 憲法第4条・第5条に抵触しない=表示と記録だけの追加で、ゲーム挙動(湧き/視界/ダメージ)は不変。
+  負荷 **1/10**(メニュー画面の描画のみ。ゲーム中の追加コストはゼロ=既存の判定を流用)。
+- Files: `src/data/tutorials.ts`(新), `src/utils/tutorialArchive.ts`(新), `src/utils/tutorialArchive.test.ts`(新),
+  `src/utils/labTutorial.ts`, `src/utils/labTutorial.test.ts`, `src/hooks/useGameLoop.ts`,
+  `src/components/MissionSelect.tsx`, `M2_LAB_CORRIDOR_SPEC.md`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2251 — M2チュートリアル2件(PHILL銃の狙い方 / 索敵と遮蔽物)【2026-07-26 08:10 JST】
 - 指示(社長): m2にチュートリアル追加。1=PHILLガンを入手した時(ターゲットの合わせ方・ヘッドショットの
   狙い方=通常と吸い付き2種類)、2=索敵について(見つかるとどうなる・遮蔽物について)。

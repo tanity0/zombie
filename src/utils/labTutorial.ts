@@ -1,4 +1,4 @@
-// ステージ2(研究所)のチュートリアル(社長指示v0.25.2251)。
+// ステージ2(研究所)のチュートリアルの**発火条件**(社長指示v0.25.2251)。
 // 2件:
 //   1) PHILL銃を入手した時 = 狙いの合わせ方 + ヘッドショット2種(通常/吸い付き)
 //   2) 初めて敵に近づいた時(**見つかる前**) = 索敵と遮蔽物
@@ -6,38 +6,17 @@
 //
 // 社長決定(v0.25.2251):
 //   - 索敵は「**初めて敵に近づいた時=見つかる前**」に出す(見つかってから教えない)。
-//   - **1度だけ**(端末に記憶=localStorage)。2周目以降のM2では出さない。
+//   - **1度だけ**(端末に記憶)。2周目以降のM2では出さない。
+// v0.25.2252: **本文は `src/data/tutorials.ts` に移動**(資料室と共用=同じ文章を2箇所で持たない)。
+//   既読の記憶も `src/utils/tutorialArchive.ts` に一本化した。ここに残すのは発火条件だけ。
 //
-// このファイルは純関数+localStorageのみ(renderer非依存・storeにもPixiにも依存しない)。
-// 判定を useGameLoop に直書きしないための切り出し(CLAUDE.md 実装精度の規律4)。
-
-export type LabTutorialId = 'phill' | 'scout';
-
-const STORAGE_KEY: Record<LabTutorialId, string> = {
-  phill: 'zombie:tut:lab-phill',
-  scout: 'zombie:tut:lab-scout',
-};
+// このファイルは純関数のみ(renderer非依存・storeにもPixiにも依存しない)。判定を useGameLoop に
+// 直書きしないための切り出し(CLAUDE.md 実装精度の規律4)。
 
 // 「初めて敵に近づいた」と見なす距離(px)。
 // **敵の視界(LAB_VISION_RANGE=200)より必ず大きいこと**=この距離で出せば必ず「見つかる前」になる。
 // 画面の半幅(約400前後)より小さいので、説明が出た時にその敵が画面に写っている。
 export const LAB_TUTORIAL_APPROACH_PX = 360;
-
-export const hasSeenLabTutorial = (id: LabTutorialId): boolean => {
-  try {
-    return localStorage.getItem(STORAGE_KEY[id]) === '1';
-  } catch {
-    return false; // localStorage不可(プライベートモード等)= 毎回出す方に倒す(出ない事故より軽い)
-  }
-};
-
-export const markLabTutorialSeen = (id: LabTutorialId): void => {
-  try {
-    localStorage.setItem(STORAGE_KEY[id], '1');
-  } catch {
-    /* 保存できなくても表示自体は成立する(次のランでまた出るだけ) */
-  }
-};
 
 export interface LabTutorialGate {
   seen: boolean;         // この端末で表示済みか
@@ -60,24 +39,3 @@ export const shouldShowScoutTutorial = (
   gate.nearestDormantDist !== null &&
   gate.nearestDormantDist <= LAB_TUTORIAL_APPROACH_PX &&
   !gate.seen && !gate.popupOpen && !gate.menuOpen;
-
-// 本文。数値(200px/450px/1秒等)は書かない=今後の調整で文面が嘘にならないようにする。
-export const LAB_TUTORIAL_TEXT: Record<LabTutorialId, { title: string; lines: string[] }> = {
-  phill: {
-    title: 'ＰＨＩＬＬ-銃',
-    lines: [
-      '狙いサークルは、スティックを倒した向き(マウスならカーソル位置)に出る。撃つのは指を離した瞬間。',
-      '【通常】立ち止まって撃つ。サークルの向きへ弾が飛び、頭に当たればヘッドショット。',
-      '【吸い付き】サークルが敵の頭に近づくと、自動で頭に吸い付く。この状態なら移動中でも撃てて、ヘッドショットが確定する。',
-      '弾は貴重。頭を狙って一撃で仕留めろ。',
-    ],
-  },
-  scout: {
-    title: '索敵と遮蔽物',
-    lines: [
-      '敵は眠っている。薄い赤が敵の視界。この中に入って視線が通ると、起きて襲ってくる。',
-      '壁や什器で視線を切れば、赤の中でも見つからない。遮蔽物の裏を伝って進め。',
-      '見つかっても、視線を切って離れ続ければ、やがて諦めてまた眠る。',
-    ],
-  },
-};

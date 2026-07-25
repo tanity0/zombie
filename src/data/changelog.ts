@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2252',
+    items: [
+      '資料室に「操作記録」を追加。一度見たチュートリアルをいつでも読み返せるようになりました。',
+    ],
+  },
+  {
     version: '0.25.2251',
     items: [
       'ステージ2にチュートリアルを追加。ＰＨＩＬＬ-銃を入手した時に狙い方とヘッドショット(通常/吸い付き)を、初めて敵に近づいた時に索敵と遮蔽物の使い方を説明します(1度だけ)。',

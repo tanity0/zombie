@@ -80,9 +80,14 @@
 | `LAB_LOSE_SIGHT_RANGE` | 450 | `src/utils/labStealth.ts` |
 | `LAB_LOSE_SIGHT_MS` | 1000 | `src/utils/labStealth.ts` |
 
-## チュートリアル(社長指示v0.25.2251・`src/utils/labTutorial.ts`)
+## チュートリアル(社長指示v0.25.2251・発火条件=`src/utils/labTutorial.ts`)
 M2で2件だけ出す。表示は既存の `showTutorialPopup`(ゲーム停止・OK1つ)を流用。**端末に1度だけ**記憶
-(localStorage `zombie:tut:lab-phill` / `zombie:tut:lab-scout`)=2周目以降のM2では出ない(社長決定)。
+=2周目以降のM2では出ない(社長決定)。
+- **本文は `src/data/tutorials.ts` の台帳**(v0.25.2252で移動)。ゲーム中のポップアップと資料室が
+  同じ台帳を引くので、文章は常に一致する(同じ文章を2箇所で管理しない)。
+- **既読は `src/utils/tutorialArchive.ts`**(localStorage `zombie:tutorialsSeen`・全チュートリアル共通)。
+  v0.25.2251の話題別キー(`zombie:tut:lab-*`)は読み込み時に取り込む。
+- 一度見たものは**資料室の「操作記録」**から読み返せる(社長指示v0.25.2252)。
 
 | # | 題 | 発火条件 | 内容 |
 |---|---|---|---|

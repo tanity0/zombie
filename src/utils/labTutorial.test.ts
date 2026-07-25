@@ -1,10 +1,9 @@
 // M2チュートリアル(社長指示v0.25.2251)の発火条件。
 // 肝は「索敵は**見つかる前**に出す」= 休眠中の敵にしか反応しない + 距離が視界(200)より外であること。
 import { describe, it, expect } from 'vitest';
-import {
-  shouldShowPhillTutorial, shouldShowScoutTutorial, LAB_TUTORIAL_APPROACH_PX, LAB_TUTORIAL_TEXT,
-} from './labTutorial';
+import { shouldShowPhillTutorial, shouldShowScoutTutorial, LAB_TUTORIAL_APPROACH_PX } from './labTutorial';
 import { LAB_VISION_RANGE } from './labStealth';
+import { TUTORIALS, getTutorial } from '../data/tutorials';
 
 const OPEN = { seen: false, popupOpen: false, menuOpen: false };
 
@@ -57,22 +56,28 @@ describe('shouldShowScoutTutorial', () => {
   });
 });
 
-describe('LAB_TUTORIAL_TEXT', () => {
-  it('2件とも本文がある', () => {
-    for (const id of ['phill', 'scout'] as const) {
-      expect(LAB_TUTORIAL_TEXT[id].title.length).toBeGreaterThan(0);
-      expect(LAB_TUTORIAL_TEXT[id].lines.length).toBeGreaterThan(0);
+// 本文の台帳(src/data/tutorials.ts)。資料室(操作記録)と発火側が同じ文章を引くための単一の出どころ。
+describe('TUTORIALS(本文台帳)', () => {
+  it('全件に題・本文・出典がある', () => {
+    for (const t of TUTORIALS) {
+      expect(t.title.length).toBeGreaterThan(0);
+      expect(t.lines.length).toBeGreaterThan(0);
+      expect(t.where.length).toBeGreaterThan(0);
     }
   });
 
+  it('idが重複していない(資料室の一覧キーになるため)', () => {
+    expect(new Set(TUTORIALS.map(t => t.id)).size).toBe(TUTORIALS.length);
+  });
+
   it('PHILLの説明は「通常」と「吸い付き」の2種類に触れている(社長指示の要件)', () => {
-    const body = LAB_TUTORIAL_TEXT.phill.lines.join('');
+    const body = getTutorial('phill')!.lines.join('');
     expect(body).toContain('通常');
     expect(body).toContain('吸い付き');
   });
 
   it('索敵の説明は「見つかると」と「遮蔽物」に触れている(社長指示の要件)', () => {
-    const body = LAB_TUTORIAL_TEXT.scout.lines.join('');
+    const body = getTutorial('scout')!.lines.join('');
     expect(body).toContain('視界');
     expect(body).toMatch(/壁|遮蔽物/);
   });
