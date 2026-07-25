@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2211',
+    items: [
+      '演出: ステージ2の窓ガラスの向こうを、ゾンビがゆっくりうろつくようになりました(見た目だけ・戦闘には関わりません)。',
+    ],
+  },
+  {
     version: '0.25.2210',
     items: [
       'グラフィック: ステージ2の遠景の窓(枠+ガラス)の位置をさらに20px上げました。',

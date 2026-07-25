@@ -342,6 +342,20 @@ const LAB_FRONT2_BLUR = tsNum('labf2bl', 3);
 const LAB_FAR_WINDOW_SCALE = tsNum('labfwsc', 2); // 遠景窓の拡大率(縦横一様tileScale)。既定2=2倍(社長指示v0.25.2207)。?labfwsc=
 const LAB_FAR_GLASS_ALPHA = tsNum('labfga', 0.3); // 遠景窓ガラスの不透明度(社長指示v0.25.2202「透明度70%=alpha0.3」)。?labfga=
 const LAB_FAR_GLASS_UP = tsNum('labfgup', 2); // 遠景窓ガラスだけの上オフセット(px・フレームは動かさない。既定2=常にフレームから2px上。社長指示v0.25.2208)。?labfgup=
+// ガラスの向こうを左右にゆっくりうろつくレベル1の研究所ゾンビ(社長指示v0.25.2211)。**描画のみの環境演出**=
+// 当たり判定・スポーン・集計・ストアへの書き込みは一切なし(ゲームロジックには関与しない)。
+// 窓と同じworldGroup内・ガラスの直下に置く=ガラス越しに透け、フレーム(手前)には隠される。
+const LAB_FAR_WINDOW_ZOMBIES = Math.max(0, Math.round(tsNum('labfwz', 5)));  // 体数。?labfwz=0 で消灯(復帰フラグ)
+const LAB_FAR_WINDOW_ZOMBIE_H = tsNum('labfwzh', 0.42);     // 身長(窓の高さ比)。?labfwzh=
+const LAB_FAR_WINDOW_ZOMBIE_SPEED = tsNum('labfwzs', 7);    // うろつき速度(px/秒・ゆっくり)。?labfwzs=
+const LAB_FAR_WINDOW_ZOMBIE_ALPHA = tsNum('labfwza', 0.85); // 不透明度(奥の空気感)。?labfwza=
+const LAB_FAR_WINDOW_ZOMBIE_FOOT = tsNum('labfwzf', 0.16);  // 足元の高さ(窓下辺からの上げ・窓の高さ比)。?labfwzf=
+// 個体差を決める決定論ハッシュ(Math.randomを使わない=リロードで配置が暴れない)。
+const labFarZombieRnd = (i: number, salt: number): number => {
+  let h = (Math.imul(i + 1, 2654435761) + Math.imul(salt + 1, 40503)) | 0;
+  h ^= h >>> 13; h = Math.imul(h, 1274126177); h ^= h >>> 16;
+  return ((h >>> 0) % 10000) / 10000;
+};
 // 遠景窓の横パララックス: この窓は遠景森1(horizonForest・lab時 horizon1Visible=false で非表示)を
 // 置き換えたもの。旧森1と同じ 0.16(HORIZON_FOREST_PARALLAX_X)で流す=横に動いて見える
 // (旧 0.09=遠景壁と同率だと窓1枚≒画面幅のため実質静止して見えた。社長指示v0.25.2203)。?labfwpx=
@@ -1775,6 +1789,9 @@ export class PixiScene {
   private labFarFrame: TilingSprite | null = null; // 遠景の窓・フレーム(手前)。ガラスの直上に重ねる。worldGroup内。lab限定・横ループ(社長指示v0.25.2199/2204)
   private labFarGlassTex: Texture | null = null;
   private labFarFrameTex: Texture | null = null;
+  private labFarZombieLayer: Container | null = null; // 窓の向こうのうろつきゾンビ(描画のみ)。ガラスの直下=ガラス越しに見える
+  private labFarZombies: Sprite[] = [];
+  private labFarZombieT0 = 0; // 相対時刻の起点(エポックmsをそのまま速度に掛けると桁が溢れる=v0.25.1807の教訓)
   setLabFarWindowTextures(glass: Texture | null, frame: Texture | null) {
     // 横ループの継ぎ目をなくす: TilingSpriteのテクスチャ源に repeat(ラップ)を指定
     // (未指定=CLAMPだとタイル境界で端画素がにじむ=ループが崩れる。社長指示v0.25.2201「ちゃんとループ」)。
@@ -3980,7 +3997,7 @@ export class PixiScene {
       s.camera.x, sx
     );
     // 遠景の窓(フレーム+ガラス2層)。lab屋外限定・支給なしはno-op(社長指示v0.25.2199)。
-    this.updateLabFarWindow(s.stageTheme === 'lab' && !s.indoorMode, s.camera.x);
+    this.updateLabFarWindow(s.stageTheme === 'lab' && !s.indoorMode, s.camera.x, now);
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
     this.revisitMarker = s.revisitMode === true;
@@ -5037,11 +5054,12 @@ export class PixiScene {
   // これで床に被られず(社長指示v0.25.2204「遠景森は床よりレイヤー上に」)、床と同じworldGroupなので
   // 文脈ズームでも境界に貼り付く。farGroupを出るため遠景ブラーは外れる(=森1と同じ非ブラー扱い)。
   // 下辺は遠景backdropの実下辺に揃える。lab屋外限定・横ループ。テクスチャ未注入/非labの間はno-op(非表示)。
-  private updateLabFarWindow(show: boolean, cameraX: number) {
+  private updateLabFarWindow(show: boolean, cameraX: number, now: number) {
     const glassTex = this.labFarGlassTex, frameTex = this.labFarFrameTex;
     if (!show || !glassTex || !frameTex) {
       if (this.labFarGlass) this.labFarGlass.visible = false;
       if (this.labFarFrame) this.labFarFrame.visible = false;
+      if (this.labFarZombieLayer) this.labFarZombieLayer.visible = false;
       return;
     }
     const wg = this.L.worldGroup;
@@ -5076,6 +5094,63 @@ export class PixiScene {
     glass.position.y -= LAB_FAR_GLASS_UP; // ガラスだけ上へ(フレームは動かさない・社長指示v0.25.2208)
     glass.alpha = LAB_FAR_GLASS_ALPHA; // ガラスだけ半透明(フレームは不透明のまま)
     frame.alpha = 1;
+    this.updateLabFarWindowZombies(glass, bottom, frame.height, cameraX, now);
+  }
+
+  // ガラスの向こうを左右にゆっくりうろつくレベル1研究所ゾンビ(社長指示v0.25.2211)。
+  // **描画のみ**: ストアを読まず書かず、当たり判定も持たない純粋な環境演出(窓の外の気配)。
+  // 配置=決定論ハッシュで固定(リロードで暴れない)。横は窓と同じパララックスで流れ、画面外で巻き戻す。
+  private updateLabFarWindowZombies(glass: TilingSprite, bottom: number, winH: number, cameraX: number, now: number) {
+    if (LAB_FAR_WINDOW_ZOMBIES <= 0) { if (this.labFarZombieLayer) this.labFarZombieLayer.visible = false; return; }
+    const texM = getTexture('lab-zombie/lab-zombie-lv1-male');
+    const texF = getTexture('lab-zombie/lab-zombie-lv1-female');
+    if (!texM && !texF) return; // 未ロードなら次フレーム(森の下地は出ない=窓の中は遠景のまま)
+    const wg = this.L.worldGroup;
+    if (!this.labFarZombieLayer) {
+      const layer = new Container();
+      layer.eventMode = 'none';
+      wg.addChildAt(layer, wg.getChildIndex(glass)); // ガラスの直下=ガラス越しに見え、フレームには隠れる
+      this.labFarZombieLayer = layer;
+    }
+    const layer = this.labFarZombieLayer;
+    layer.visible = true;
+    if (this.labFarZombieT0 === 0) this.labFarZombieT0 = now;
+    const t = (now - this.labFarZombieT0) / 1000; // 相対秒(エポックmsを速度に掛けない)
+    const w = this.screenW;
+    for (let i = 0; i < LAB_FAR_WINDOW_ZOMBIES; i++) {
+      let sp = this.labFarZombies[i];
+      if (!sp) {
+        const tex = (labFarZombieRnd(i, 0) < 0.5 ? texM : texF) ?? texM ?? texF!;
+        sp = new Sprite(tex);
+        sp.anchor.set(0.5, 1); // 足元アンカー(プロジェクト規約: 絵は足元から上へ立ち上がる)
+        sp.eventMode = 'none';
+        layer.addChild(sp);
+        this.labFarZombies[i] = sp;
+      }
+      sp.visible = true;
+      sp.alpha = LAB_FAR_WINDOW_ZOMBIE_ALPHA;
+      sp.tint = ENV_TINT; // 遠景と同じ減光=窓の外の明るさに馴染ませる
+      // 個体差(すべて決定論)
+      const depth = 0.85 + labFarZombieRnd(i, 5) * 0.3;
+      const targetH = winH * LAB_FAR_WINDOW_ZOMBIE_H * depth;
+      const s = targetH / Math.max(1, sp.texture.height);
+      // 左右のうろつき=三角波(右へ歩く→折り返して左へ)。向きは進行方向へ反転。
+      const amp = w * (0.06 + labFarZombieRnd(i, 2) * 0.10);
+      const speed = LAB_FAR_WINDOW_ZOMBIE_SPEED * (0.7 + labFarZombieRnd(i, 3) * 0.6);
+      const phase = labFarZombieRnd(i, 4) * 1000;
+      const u = ((t * speed + phase) % (2 * amp) + 2 * amp) % (2 * amp);
+      const goingRight = u < amp;
+      const wander = goingRight ? u : 2 * amp - u;
+      sp.scale.set(goingRight ? s : -s, s);
+      // 横位置: 基準点+うろつき+窓と同じパララックス。画面外(スプライト幅ぶん)で巻き戻して途切れさせない。
+      const halfW = Math.abs(sp.width) / 2;
+      const span = w + halfW * 4;
+      const raw = labFarZombieRnd(i, 1) * w + wander - cameraX * LAB_FAR_WINDOW_PARALLAX;
+      sp.position.x = ((raw + halfW * 2) % span + span) % span - halfW * 2;
+      // 縦位置: 窓の下辺から少し上=ガラスの内側に足元が来る。個体ごとに微差(奥行き感)。
+      sp.position.y = bottom - winH * LAB_FAR_WINDOW_ZOMBIE_FOOT - winH * 0.04 * labFarZombieRnd(i, 6);
+    }
+    for (let i = LAB_FAR_WINDOW_ZOMBIES; i < this.labFarZombies.length; i++) this.labFarZombies[i].visible = false;
   }
 
   // 可視可能ゾーン(研究所スキン): 画面全体を乗算で暗くし、プレイヤー/UVバー(=ハンドガン射程)に明かりの穴。
