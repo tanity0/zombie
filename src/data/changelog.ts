@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2245',
+    items: [
+      'ステージ2: 一度通った場所には敵が湧かなくなりました。掃除した区間は静かなまま、前へ進むほど新しい敵に出会います。',
+    ],
+  },
+  {
     version: '0.25.2244',
     items: [
       'ステージ2: 通路沿いに必ず身を隠せる什器が置かれるようになり、どの敵の近くでも視線を切れるようになりました。',

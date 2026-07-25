@@ -16,7 +16,7 @@ import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import {
   isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES, WALL_RANK_NAMES_EN,
 } from './wallProgress';
-import type { ActiveEvent, EnemyType, GameBounds, Player } from '../types/game';
+import type { ActiveEvent, Enemy, EnemyType, GameBounds, Player } from '../types/game';
 import {
   generateEnemy,
   getEnemyFireProfile,
@@ -476,6 +476,7 @@ export interface RecycleCullCtx {
   enemyCap: number;
   puzzleActiveNow: boolean;
   labSpawnAggroRange: number;
+  labVisited?: { minX: number; maxX: number } | null; // M2: 通った道の範囲(この外側にだけ再配置)
 }
 
 export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
@@ -483,6 +484,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     labTheme, indoor, gameBounds, player, playerCenterX, playerCenterY, gameTime,
     spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc, playerAreaIdx, enemyCap, puzzleActiveNow,
     labSpawnAggroRange,
+    labVisited,
   } = ctx;
 
   // VS-style recycling: when an enemy drifts far beyond the viewport,
@@ -592,7 +594,10 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
       const placed = placeLabSpawn(
         player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
         replacement.width, replacement.height, LAB_CORRIDOR_Y_LIMIT_PX,
+        labVisited ?? null,
       );
+      // 通った道しか置き場が無い場合は再配置せず、その個体をそのまま消す(=画面外で静かに退場)。
+      if (!placed) return null;
       replacement.x = placed.x;
       replacement.y = placed.y;
     }
@@ -619,7 +624,8 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     };
   });
   if (recycledAnyEnemy) {
-    useGameStore.setState({ enemies: recycledEnemies });
+    // null = 「通った道しか置き場が無く再配置しなかった個体」= 除去する(v0.25.2244)。
+    useGameStore.setState({ enemies: recycledEnemies.filter((e): e is Enemy => e !== null) });
   }
 
   // RE-style density: a hard cap of ~10 concurrent enemies. Set-piece

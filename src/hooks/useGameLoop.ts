@@ -978,6 +978,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const gateProgramRef = useRef<{ phaseKey: string; program: GateProgram | null; lastId: GateProgramId | null }>({ phaseKey: '', program: null, lastId: null });
   // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
   const maxAreaRef = useRef(0);
+  // M2「一度通った道にスポーンしない」(社長指示v0.25.2244): プレイヤーが到達したXの範囲。
+  // 湧き/リサイクルはこの外側(=まだ行っていない側)にだけ配置する。出撃ごとにリセット。
+  const labVisitedRef = useRef<{ minX: number; maxX: number } | null>(null);
   // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告(この先——{区域名})」を壁ごとにラン1回だけ出すためのフラグ。
   const wallWarnedRef = useRef<boolean[]>([false, false, false, false]);
   // M14: このランの最深距離(px・毎フレーム追跡)+store/localStorageへの同期は1秒間隔(書き込み間引き)。
@@ -1843,6 +1846,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           resetPhaseKillDebug();
           killPhaseRef.current = { phaseKey: '', startTotals: null, startSpawns: null };
           maxAreaRef.current = 0;
+          labVisitedRef.current = null;
           wallWarnedRef.current = [false, false, false, false]; // M14の予告バンドも新ランで再アーム
           runDeepestDistRef.current = 0;
           wallDepthSyncRef.current = 0;
@@ -7625,6 +7629,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // プレイヤーのエリア(区域)index。区域別の出現可否(isValidForArea)判定に使う。
         const playerDepthDist = Math.hypot(player.x + player.width / 2, player.y + player.height / 2);
         const playerAreaIdx = areaZoneIndexFor(playerDepthDist);
+        // 到達済みXの更新(M2のみ使用)。プレイヤーの現在Xで範囲を広げていく。
+        if (labTheme) {
+          const v = labVisitedRef.current;
+          labVisitedRef.current = v
+            ? { minX: Math.min(v.minX, player.x), maxX: Math.max(v.maxX, player.x) }
+            : { minX: player.x, maxX: player.x };
+        }
         // 最深到達エリア(バッチ2計測)。屋外のみ、単調増加でstoreへ反映(リザルト表示用)。
         // 変化した時だけ set() する(1ランで最大4回・React再描画コストは無視できる)。
         if (!labTheme && !indoor && playerAreaIdx > maxAreaRef.current) {
@@ -7898,7 +7909,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const placed = placeLabSpawn(
                 player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
                 labEnemy.width, labEnemy.height, LAB_CORRIDOR_Y_LIMIT_PX,
+                labVisitedRef.current,
               );
+              if (!placed) continue; // 両側とも通った道=湧かせない(社長指示v0.25.2244)
               labEnemy.x = placed.x;
               labEnemy.y = placed.y;
               const ecx = labEnemy.x + labEnemy.width / 2, ecy = labEnemy.y + labEnemy.height / 2;
@@ -8088,6 +8101,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           labTheme, indoor, gameBounds, player, playerCenterX, playerCenterY, gameTime,
           spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc, playerAreaIdx, enemyCap, puzzleActiveNow,
           labSpawnAggroRange: LAB_SPAWN_AGGRO_RANGE,
+          labVisited: labVisitedRef.current,
         });
 
         // Tick visual effects (particles drift, damage numbers float, etc.)
