@@ -1045,6 +1045,12 @@ const GROUND_SCROLL_Y_FEEL = 3.0;
 // 床の遠近カーブ。?gcurve=3 等でURL生調整可。大きいほど手前まで圧縮が効く=奥行き強。
 // 既定 2.6(旧 2.05→2.35→2.6。社長指示で強化)。
 const GROUND_PERSPECTIVE_CURVE = tsNum('gcurve', 2.6);
+// 床の台形化(社長指示v0.25.2216「台形おねがい」): 従来は**縦だけ**詰めていた(奥ほど平べったい帯)ため、
+// タイルが奥で横に伸びて奥行きが出なかった。ここで**横も縦と同率で詰め、画面中央の消失点へ収束**させる
+// =等方(幾何的に正しい遠近)。床の矩形自体は従来どおり画面外まで広く敷いたまま(社長案「範囲を常に画面外に
+// 大きく持っておいて、その中でループ」)なので、引きズームでも端が欠けない。
+// 0=従来と完全に同一(復帰フラグ) / 1=縦の遠近カーブと同率。?g3d=
+const GROUND_TRAPEZOID = Math.max(0, Math.min(1, tsNum('g3d', 1)));
 const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
 // 遠景(奥)側の地面も被写界深度で少しぼかす。最上(最遠)ほど強く。中央は合焦=鮮明のまま。
@@ -3589,8 +3595,15 @@ export class PixiScene {
       strip.position.set(0, y);
       strip.width = overW;
       strip.height = Math.ceil(stripH) + 2;
-      strip.tileScale.set(GROUND_TILE_SCALE_X, scaleY);
-      strip.tilePosition.set(-cameraX * GROUND_TILE_SCALE_X * GROUND_SCROLL_X_FEEL, -sourceY * scaleY);
+      // 台形化: 横倍率を縦と同率(scaleY/nearScale)まで詰める。GROUND_TRAPEZOID=0 なら conv=1 で従来と完全一致。
+      const conv = 1 + (scaleY / Math.max(0.001, nearScale) - 1) * GROUND_TRAPEZOID;
+      const tsx = GROUND_TILE_SCALE_X * Math.max(0.02, conv);
+      strip.tileScale.set(tsx, scaleY);
+      // 消失点を画面中央に固定: どの行でも「画面中央のワールド列」が同じUになるよう tilePosition を逆算する
+      // (左端基準のままだと横が縮むだけで収束せず、左へ寄って見える)。conv=1 のとき従来式と厳密に一致。
+      const texW = Math.max(1, strip.texture.width);
+      const u0 = overW / (2 * texW * GROUND_TILE_SCALE_X) + cameraX * GROUND_SCROLL_X_FEEL / texW;
+      strip.tilePosition.set(overW / 2 - u0 * texW * tsx, -sourceY * scaleY);
       sourceY += stripH / Math.max(0.001, scaleY);
     }
   }

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2216',
+    items: [
+      'グラフィック: 床のタイルが奥へ向かって収束するようになり、奥行きが出ました(全ステージ)。',
+    ],
+  },
+  {
     version: '0.25.2215',
     items: [
       '不具合修正: ステージ2の窓の向こうのゾンビが進行方向と逆を向いていたのを直しました。',
