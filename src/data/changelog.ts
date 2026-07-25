@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2215',
+    items: [
+      '不具合修正: ステージ2の窓の向こうのゾンビが進行方向と逆を向いていたのを直しました。',
+    ],
+  },
+  {
     version: '0.25.2214',
     items: [
       'グラフィック: ステージ2の遠景に、明るい部分がふわっと滲むソフトブルームを追加しました。',

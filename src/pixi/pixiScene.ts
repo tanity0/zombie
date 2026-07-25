@@ -5237,7 +5237,9 @@ export class PixiScene {
       // 向き: 歩いている間の進行方向を保持(静止中は直前の向きのまま=くるくる回らない)。
       const facing = vel > 0.02 && dir !== 0 ? dir : (this.labFarZombieFacing[i] ?? 1);
       this.labFarZombieFacing[i] = facing;
-      sp.scale.set(facing > 0 ? s : -s, s);         // 規約: 負のscale.x=左向き
+      // lab-zombieの素材は**左向きが基準**(社長報告v0.25.2215「向きが逆」)。他の敵絵(右向き基準)と
+      // 逆なので、この層だけ符号を反転する。傾き(rotation)はscaleの外側に掛かるため符号はこのままで正しい。
+      sp.scale.set(facing > 0 ? -s : s, s);
       sp.rotation = facing * LAB_FAR_WINDOW_ZOMBIE_LEAN * vel; // 歩行中だけ進行方向へ前のめり(足元が軸)
       // 横位置: 基準点+うろつき+窓と同じパララックス。画面外(スプライト幅ぶん)で巻き戻して途切れさせない。
       const halfW = Math.abs(sp.width) / 2;
