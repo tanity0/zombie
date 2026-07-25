@@ -14,7 +14,7 @@ import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio, primeMenuBgm, preloadStageBgm, setAudioSuspended, clearSfxThrottle, attachAudioGestureRecovery } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
-import { preloadClassPortraits } from './data/portraits';
+import { preloadClassPortraits, preloadClassWalkSprites } from './data/portraits';
 import { loadProgressBegin, loadProgressDone } from './utils/loadProgress';
 import {
   getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared, syncQuestStageClear,
@@ -113,6 +113,7 @@ function App() {
         ensureTextures().catch(() => {}),
         preloadBackgrounds().catch(() => {}), // 背景パノラマ/床/地平帯=出撃時フラッシュ防止のため先読み
         preloadClassPortraits().catch(() => {}), // キャラ選択の立ち絵(?v=でバージョン毎に再取得=更新直後の空白対策・v0.25.2224)
+        preloadClassWalkSprites().catch(() => {}), // キャラ選択の下段=歩きドット絵(同・社長報告v0.25.2233)
         preloadAllAudio(),
         // ゲームフォント(?font=)の読込完了を待つ。Pixi のダメージ数字アトラス/テキストが
         // フォールバックで焼かれて差し替わらないのを防ぐ(main.tsx で load を開始済み)。

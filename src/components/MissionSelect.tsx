@@ -98,7 +98,7 @@ import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
-import { portraitSrcFor } from '../data/portraits';
+import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, BESTIARY,
@@ -131,8 +131,7 @@ const MENU_WALK_PINGPONG = [0, 1, 2, 3, 4, 3, 2, 1]; // pixiScene の playerWalk
 const MENU_WALK_CYCLE_MS = 900;                      // 同 PINGPONG_WALK_CYCLE_MS
 const MENU_WALK_DISPLAY_H = 50;                      // 旧 max-h-[50px] と同じ表示高さ
 const MENU_WALK_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('menuwalk') !== '0'; // ?menuwalk=0 で静止画へ復帰
-const menuWalkFrameSrc = (idleSrc: string, frame: number): string =>
-  idleSrc.replace('-idle.png', `-walk-${frame}.png`);
+// menuWalkFrameSrc は src/data/portraits.ts に集約(先読みと同じ規則を使うため・v0.25.2233)。
 // 実機バグ修正(v0.25.1580「ガタガタずれる/つなぎがおかしい」): <img>+pixelated の非整数スケールは
 // コマごとに nearest の間引き/太りが変わって輪郭が這う。→ キャンバスへ「整数倍nearest焼き→最終フィットは
 // 平滑」の2段にして、全コマ同一の量子化=剛体的な動きにする(setStateも廃止=再レンダ0)。
