@@ -350,8 +350,12 @@ const LAB_FAR_GLASS_UP = tsNum('labfgup', 2); // 遠景窓ガラスだけの上�
 // 窓ガラス/ゾンビの被写界深度(社長指示v0.25.2219「位置なりのぼかし」)。v2204で窓をworldGroupへ移した際に
 // 遠景グループのぼかしから外れていたぶんを、奥行き順に付け直す。既存の階段に合わせた値:
 // 遠景1.1 > **ゾンビ0.85** > 遠景森0.8 > 遠方床0.65 ≒ **ガラス0.6** > 合焦(フレーム=0・最も手前の構造物)。
-const LAB_FAR_GLASS_BLUR = Math.max(0, tsNum('labgblur', 0.6));   // 0でぼかし無し(復帰フラグ)。?labgblur=
-const LAB_FAR_ZOMBIE_BLUR = Math.max(0, tsNum('labzblur', 0.85)); // ガラスより奥にいるぶん少し強い。?labzblur=
+// ※px値は被写体によって「見え方」が全く違う(社長報告v0.25.2220「ガラスがぼかしかかってない」)。
+// ぼかしは**高コントラストの輪郭**でしか視認できないため、低コントラスト+不透明度30%のガラスは
+// 0.6pxでは事実上見えなかった。一方ゾンビは小さく高コントラストなので少量でも効く。
+// よって数値の大小=奥行きの順ではなく、**見た目が奥行き順になる**よう別スケールで調整する。
+const LAB_FAR_GLASS_BLUR = Math.max(0, tsNum('labgblur', 2.5));  // ガラス(低コントラスト・広い面)。0で無効。?labgblur=
+const LAB_FAR_ZOMBIE_BLUR = Math.max(0, tsNum('labzblur', 1.2)); // ゾンビ(小さく高コントラスト=少量でよく効く)。?labzblur=
 // ガラスの向こうを左右にゆっくりうろつくレベル1の研究所ゾンビ(社長指示v0.25.2211)。**描画のみの環境演出**=
 // 当たり判定・スポーン・集計・ストアへの書き込みは一切なし(ゲームロジックには関与しない)。
 // 窓と同じworldGroup内・ガラスの直下に置く=ガラス越しに透け、フレーム(手前)には隠される。
@@ -5114,7 +5118,7 @@ export class PixiScene {
     if (!this.labFarGlass) {
       const sp = new TilingSprite({ texture: glassTex, width: 1, height: 1 });
       // 位置なりの被写界深度(生成時に1度だけ。フレームは最も手前の構造物なので合焦=フィルタ無し)。
-      if (LAB_FAR_GLASS_BLUR > 0) sp.filters = [new BlurFilter({ strength: LAB_FAR_GLASS_BLUR, quality: 1 })];
+      if (LAB_FAR_GLASS_BLUR > 0) sp.filters = [new BlurFilter({ strength: LAB_FAR_GLASS_BLUR, quality: 2 })];
       wg.addChildAt(sp, wg.getChildIndex(this.L.groundBase) + 1); // 床の直上=森1と同じ枠(gameplayの下)
       this.labFarGlass = sp;
     }
