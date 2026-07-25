@@ -349,6 +349,11 @@ const LAB_FAR_WINDOW_ZOMBIES = Math.max(0, Math.round(tsNum('labfwz', 5)));  // 
 const LAB_FAR_WINDOW_ZOMBIE_H = tsNum('labfwzh', 0.42);     // 身長(窓の高さ比)。?labfwzh=
 const LAB_FAR_WINDOW_ZOMBIE_SPEED = tsNum('labfwzs', 7);    // うろつき速度(px/秒・ゆっくり)。?labfwzs=
 const LAB_FAR_WINDOW_ZOMBIE_ALPHA = tsNum('labfwza', 0.85); // 不透明度(奥の空気感)。?labfwza=
+// 進行方向の見せ方(社長指示v0.25.2213): 素材が**正面向き**のため左右反転だけでは向きが読めない。
+// 反転(プロジェクト規約: 負のscale.x=左)に加えて、進行方向へ体を傾ける(足元アンカー基準の前のめり)。
+const LAB_FAR_WINDOW_ZOMBIE_LEAN = tsNum('labfwzl', 0.10); // 傾き(ラジアン・歩行中の最大)。?labfwzl=
+// 緩急(社長指示v0.25.2213): 端で止まる→ゆっくり歩き出す→ゆっくり止まる。dwell=1周期のうち静止に使う割合(片端)。
+const LAB_FAR_WINDOW_ZOMBIE_DWELL = Math.max(0, Math.min(0.45, tsNum('labfwzd', 0.18))); // ?labfwzd=
 // 足元の基準線=「遠景の下辺」と「窓ガラスの下辺」のちょうど中間(社長指示v0.25.2212)。窓を上下しても
 // 両者から自動で導かれるので追従する。この定数はその中間線からの微調整(px・正=下へ)。?labfwzf=
 const LAB_FAR_WINDOW_ZOMBIE_FOOT = tsNum('labfwzf', 0);
@@ -1795,6 +1800,7 @@ export class PixiScene {
   private labFarFrameTex: Texture | null = null;
   private labFarZombieLayer: Container | null = null; // 窓の向こうのうろつきゾンビ(描画のみ)。ガラスの直下=ガラス越しに見える
   private labFarZombies: Sprite[] = [];
+  private labFarZombieFacing: number[] = []; // 個体ごとの向き(静止中も直前の向きを保持)
   private labFarZombieT0 = 0; // 相対時刻の起点(エポックmsをそのまま速度に掛けると桁が溢れる=v0.25.1807の教訓)
   setLabFarWindowTextures(glass: Texture | null, frame: Texture | null) {
     // 横ループの継ぎ目をなくす: TilingSpriteのテクスチャ源に repeat(ラップ)を指定
@@ -5144,14 +5150,30 @@ export class PixiScene {
       const depth = 0.85 + labFarZombieRnd(i, 5) * 0.3;
       const targetH = winH * LAB_FAR_WINDOW_ZOMBIE_H * depth;
       const s = targetH / Math.max(1, sp.texture.height);
-      // 左右のうろつき=三角波(右へ歩く→折り返して左へ)。向きは進行方向へ反転。
+      // 左右のうろつき: 端で止まる→ゆっくり歩き出す→ゆっくり止まる(緩急・社長指示v0.25.2213)。
+      // 1周期 = 右へ歩く/右端で静止/左へ歩く/左端で静止。歩行区間は smoothstep で加減速。
       const amp = w * (0.06 + labFarZombieRnd(i, 2) * 0.10);
       const speed = LAB_FAR_WINDOW_ZOMBIE_SPEED * (0.7 + labFarZombieRnd(i, 3) * 0.6);
-      const phase = labFarZombieRnd(i, 4) * 1000;
-      const u = ((t * speed + phase) % (2 * amp) + 2 * amp) % (2 * amp);
-      const goingRight = u < amp;
-      const wander = goingRight ? u : 2 * amp - u;
-      sp.scale.set(goingRight ? s : -s, s);
+      const d = LAB_FAR_WINDOW_ZOMBIE_DWELL;
+      const cycle = Math.max(0.1, (2 * amp) / Math.max(0.1, speed) * (1 + 2 * d)); // 秒/周期
+      const phase = labFarZombieRnd(i, 4) * cycle;
+      const u = (((t + phase) % cycle) + cycle) % cycle / cycle; // 0..1
+      let wander = 0, vel = 0, dir = 0;
+      const walk = Math.max(0.001, 0.5 - d); // 片道の歩行に使う位相幅
+      if (u < d) { wander = 0; }                                   // 左端で静止
+      else if (u < 0.5) {                                          // 右へ
+        const x = (u - d) / walk;
+        wander = x * x * (3 - 2 * x) * amp; vel = 6 * x * (1 - x) / 1.5; dir = 1;
+      } else if (u < 0.5 + d) { wander = amp; }                    // 右端で静止
+      else {                                                       // 左へ
+        const x = (u - 0.5 - d) / walk;
+        wander = (1 - x * x * (3 - 2 * x)) * amp; vel = 6 * x * (1 - x) / 1.5; dir = -1;
+      }
+      // 向き: 歩いている間の進行方向を保持(静止中は直前の向きのまま=くるくる回らない)。
+      const facing = vel > 0.02 && dir !== 0 ? dir : (this.labFarZombieFacing[i] ?? 1);
+      this.labFarZombieFacing[i] = facing;
+      sp.scale.set(facing > 0 ? s : -s, s);         // 規約: 負のscale.x=左向き
+      sp.rotation = facing * LAB_FAR_WINDOW_ZOMBIE_LEAN * vel; // 歩行中だけ進行方向へ前のめり(足元が軸)
       // 横位置: 基準点+うろつき+窓と同じパララックス。画面外(スプライト幅ぶん)で巻き戻して途切れさせない。
       const halfW = Math.abs(sp.width) / 2;
       const span = w + halfW * 4;
