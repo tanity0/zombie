@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2236',
+    items: [
+      'ステージ2: 眠っている敵に見つかる範囲を薄い赤で表示するようにしました。壁や什器の影になっている場所は塗られません(そこに居れば見つかりません)。',
+    ],
+  },
+  {
     version: '0.25.2235',
     items: [
       'ステージ2: 壁の当たり判定を見た目通りの幅にしました(絵の左右が素通りできる問題の解消)。',

@@ -1,5 +1,27 @@
 # Development Log
 
+## v0.25.2236 — M2: 敵の視界を薄い赤で表示(壁の影つき)【2026-07-25 22:20 JST】
+- 指示/質問(社長): m2の敵の視界を薄い赤で範囲表示したい。壁で見えてないところも表現できるもの?
+- **回答: 厳密に表現できる**。覚醒条件は「半径 `aggroRange`(lab=300) 以内 **かつ** `segmentBlocked` でない」
+  (gameStore の dormant ブロック)なので、**判定と同じ矩形リスト**へレイを飛ばして到達点を結べば、
+  塗られた範囲=実際に起こされる範囲になる。「壁の裏は塗らない」も自動的に一致する。
+- 実装(純関数): `src/world/vision.ts` に `rayHitDistance`(レイ×AABB・スラブ法)と
+  `visibilityPolygon(cx,cy,radius,rects,rays)` を新設。renderer非依存・**ユニット7件**
+  (影ができる/半径を超えない/射程外の壁は無視/逆方向は当たらない等)。
+- 実装(描画): `updateLabVisionCones`(pixiScene)。休眠中のlab-zombieの視界を `groundLayer`
+  (床の上・アクターの下)へ薄い赤(#ff3b30・alpha 0.12)で塗る。壁+什器の矩形は判定側と同じ
+  (`labWallsInRegion`/`labPropsInRegion` → `wallRect`/`propRect`)。
+- **負荷スコア 1/10**: **休眠敵は静止**しているため、形は「敵id+位置」をキーに**1度だけ計算してキャッシュ**し、
+  以後は可視フラグを触るだけ=毎フレームのレイ計算・Graphics再構築は無い。画面内+余裕の敵のみ・
+  同時12体まで(`?labvismax=`)。壁リストの構築もキャッシュミス時だけ。`?labvis=0` で完全無効化。
+- 表示対象は**休眠中の敵のみ**(起きた敵は追跡モードで視界の意味が薄く、移動する=毎フレーム再計算になるため)。
+  起きている敵にも出したい場合は別途指示があれば対応(その場合は負荷が上がるので上限を絞る)。
+- つまみ: ?labvis=(濃さ・既定0.12/0で無効) / ?labvisray=(走査本数・既定48=影の輪郭の滑らかさ) /
+  ?labvismax=(同時表示数・既定12)。
+- 検証: typecheck・lint 0エラー / vitest 14件通過(vision 7・labWalls 7)。実機は社長確認。
+- Files: `src/world/vision.ts`(新規), `src/world/vision.test.ts`(新規), `src/pixi/pixiScene.ts`,
+  `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2235 — M2壁: 判定幅を見た目に一致(90→176)+配置を中央寄せ【2026-07-25 22:15 JST】
 - 指示(社長): ①壁の当たり判定幅がおかしい・見た目通りの幅にして ②壁はできるだけ真ん中寄りに出るように。
 - **①診断(実測)**: 描画は `containScale(WALL_DISPLAY_H 176×108, tex 256×153) = 0.6875` → **実描画幅176px**。

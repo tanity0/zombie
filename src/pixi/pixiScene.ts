@@ -61,7 +61,9 @@ import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { getSelectedStageId } from '../data/progress';
-import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H } from '../world/labWalls';
+import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect } from '../world/labWalls';
+import { visibilityPolygon } from '../world/vision';
+import type { Rect } from '../world/obstacles';
 import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 import { CorridorLayer } from './corridorLayer';
@@ -364,6 +366,13 @@ const LAB_FAR_FRAME_BLUR = Math.max(0, tsNum('labwfblur', 1.5));
 const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.5))); // 0.3→0.5(社長指示v0.25.2226「もう少し暗くして分かりやすく」)。0で無効(復帰フラグ)。?labdim=
 const LAB_OUT_DIM_FADE_PX = Math.max(0, tsNum('labdimfade', 70));        // 境目のグラデ幅(画面px)。?labdimfade=
 const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登場演出の着地後に濃くなるまでの時間。?labdimin=
+// 敵の視界表示(社長指示v0.25.2235): 休眠中のlab-zombieが「起きる範囲」を薄い赤で塗る。
+// ゲーム側の覚醒条件(半径 aggroRange 以内 かつ segmentBlocked でない)と**同じ壁リスト**でレイを飛ばすので、
+// 塗られている場所=実際に見つかる場所。休眠敵は静止しているため、形は敵ごとに1度だけ計算してキャッシュする。
+const LAB_VISION_ALPHA = Math.max(0, Math.min(1, tsNum('labvis', 0.12))); // 0で無効(復帰フラグ)。?labvis=
+const LAB_VISION_COLOR = 0xff3b30;                                        // 薄い赤
+const LAB_VISION_RAYS = Math.max(8, Math.round(tsNum('labvisray', 48)));  // 走査本数(多いほど影の輪郭が滑らか)。?labvisray=
+const LAB_VISION_MAX = Math.max(0, Math.round(tsNum('labvismax', 12)));   // 同時に描く上限(近い順)。?labvismax=
 // ガラスの向こうを左右にゆっくりうろつくレベル1の研究所ゾンビ(社長指示v0.25.2211)。**描画のみの環境演出**=
 // 当たり判定・スポーン・集計・ストアへの書き込みは一切なし(ゲームロジックには関与しない)。
 // 窓と同じworldGroup内・ガラスの直下に置く=ガラス越しに透け、フレーム(手前)には隠される。
@@ -1837,6 +1846,8 @@ export class PixiScene {
   private labFarZombies: Sprite[] = [];
   private labFarZombieFacing: number[] = []; // 個体ごとの向き(静止中も直前の向きを保持)
   private labFarZombieT0 = 0; // 相対時刻の起点(エポックmsをそのまま速度に掛けると桁が溢れる=v0.25.1807の教訓)
+  private labVisionLayer: Container | null = null; // 敵の視界表示(薄い赤・休眠敵ぶん)
+  private labVisionObjs = new Map<string, { g: Graphics; key: string }>(); // 敵id→形(位置が変わらない限り再利用)
   private labOutDim: Container | null = null; // 移動可能帯の外を暗くする幕(4枚: 上ベタ/上グラデ/下グラデ/下ベタ)
   private labOutDimParts: Sprite[] = [];
   private labFarBloom: TilingSprite | null = null;      // 遠景のソフトブルーム(ぼかし焼き込みのscreen重ね)
@@ -4062,6 +4073,7 @@ export class PixiScene {
     this.updateLabFarWindow(s.stageTheme === 'lab' && !s.indoorMode, s.camera.x, now);
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
     this.updateLabOutsideDim(s.stageTheme === 'lab' && !s.indoorMode, now); // 移動可能帯の外を少し暗く(境目はグラデ)
+    this.updateLabVisionCones(s.stageTheme === 'lab' && !s.indoorMode, s.enemies, s.camera.x, s.camera.y); // 敵の視界(薄い赤・壁の影つき)
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
     this.revisitMarker = s.revisitMode === true;
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
@@ -5349,6 +5361,62 @@ export class PixiScene {
     ctx.fillRect(0, 0, 4, h);
     this.veilFadeTex = Texture.from(c);
     return this.veilFadeTex;
+  }
+
+  // 敵の視界表示(社長指示v0.25.2235)。休眠中のlab-zombieの「起こされる範囲」を薄い赤で塗る。
+  // 壁/什器の影は `visibilityPolygon`(src/world/vision.ts)で表現=ゲームのLOS判定と同じ矩形を使うので
+  // 「塗られていない所に居れば見つからない」が厳密に成立する。
+  // **休眠敵は静止**しているので、形は (id + 位置) をキーに1度だけ計算してキャッシュ=毎フレームの再計算なし。
+  private updateLabVisionCones(show: boolean, enemies: readonly Enemy[], cameraX: number, cameraY: number) {
+    if (!show || LAB_VISION_ALPHA <= 0 || LAB_VISION_MAX <= 0) {
+      if (this.labVisionLayer) this.labVisionLayer.visible = false;
+      return;
+    }
+    if (!this.labVisionLayer) {
+      const c = new Container();
+      c.eventMode = 'none';
+      this.L.groundLayer.addChild(c); // 床の上・アクターの下(足元の影と同じ層)
+      this.labVisionLayer = c;
+    }
+    const layer = this.labVisionLayer;
+    layer.visible = true;
+    // 画面内(+余裕)の休眠敵だけ。近い順に上限まで。
+    const m = 320;
+    const inView = enemies.filter(e =>
+      e.dormant && e.x > cameraX - m && e.x < cameraX + this.screenW + m
+      && e.y > cameraY - m && e.y < cameraY + this.screenH + m);
+    inView.sort((a, b) => (Math.abs(a.x - cameraX) - Math.abs(b.x - cameraX)));
+    const targets = inView.slice(0, LAB_VISION_MAX);
+    let walls: Rect[] | null = null; // 形を作る時だけ用意(キャッシュヒットなら不要)
+    const seen = new Set<string>();
+    for (const e of targets) {
+      const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
+      const radius = e.aggroRange ?? 200;
+      const key = `${Math.round(cx)}:${Math.round(cy)}:${Math.round(radius)}`;
+      seen.add(e.id);
+      const entry = this.labVisionObjs.get(e.id);
+      if (entry && entry.key === key) { entry.g.visible = true; continue; } // 静止=作り直し不要
+      if (!walls) {
+        const q = Math.max(this.screenW, this.screenH) + 600;
+        walls = [
+          ...labWallsInRegion(cameraX - q, cameraY - q, cameraX + q, cameraY + q).map(wallRect),
+          ...labPropsInRegion(cameraX - q, cameraY - q, cameraX + q, cameraY + q).map(propRect),
+        ];
+      }
+      const pts = visibilityPolygon(cx, cy, radius, walls, LAB_VISION_RAYS);
+      const g = entry?.g ?? new Graphics();
+      g.clear();
+      g.poly(pts).fill({ color: LAB_VISION_COLOR, alpha: LAB_VISION_ALPHA });
+      g.eventMode = 'none';
+      g.visible = true;
+      if (!entry) layer.addChild(g);
+      this.labVisionObjs.set(e.id, { g, key });
+    }
+    for (const [id, o] of this.labVisionObjs) {
+      if (seen.has(id)) continue;
+      o.g.destroy();
+      this.labVisionObjs.delete(id);
+    }
   }
 
   // 移動可能帯(廊下)の外を少し暗くする(社長指示v0.25.2223)。境目はグラデで溶かす。
