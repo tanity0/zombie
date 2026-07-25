@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2251',
+    items: [
+      'ステージ2にチュートリアルを追加。ＰＨＩＬＬ-銃を入手した時に狙い方とヘッドショット(通常/吸い付き)を、初めて敵に近づいた時に索敵と遮蔽物の使い方を説明します(1度だけ)。',
+    ],
+  },
+  {
     version: '0.25.2250',
     items: [
       'ゲーム内容の変更はありません(テスト結果と開発メモの記録のみ)。',

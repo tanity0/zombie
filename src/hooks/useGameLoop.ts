@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
+import {
+  shouldShowPhillTutorial, shouldShowScoutTutorial, hasSeenLabTutorial, markLabTutorialSeen,
+  LAB_TUTORIAL_TEXT,
+} from '../utils/labTutorial';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import {
@@ -987,6 +991,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // M2のゴール(書類)が原点から見て左右どちらにあるか(-1/+1)。0=未取得。出撃ごとにピックアップから
   // 1回だけ拾って覚える(社長指示v0.25.2248「ゴールと反対方向に行くと湧きを元の量に戻す」の判定用)。
   const labGoalSideRef = useRef(0);
+  // M2チュートリアル(社長指示v0.25.2251)の表示済みフラグ。localStorageが正だが、同じランで
+  // 連続発火しないようにref側でも1回に絞る(localStorageを毎フレーム読まないための番人でもある)。
+  const labTutorialSeenRef = useRef({ phill: false, scout: false });
   // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告(この先——{区域名})」を壁ごとにラン1回だけ出すためのフラグ。
   const wallWarnedRef = useRef<boolean[]>([false, false, false, false]);
   // M14: このランの最深距離(px・毎フレーム追跡)+store/localStorageへの同期は1秒間隔(書き込み間引き)。
@@ -1854,6 +1861,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           maxAreaRef.current = 0;
           labVisitedRef.current = null;
           labGoalSideRef.current = 0;
+          // M2チュートリアルの表示済みは端末記憶(localStorage)が正。**出撃時に1回だけ読んで**refへ載せる
+          // (毎フレームlocalStorageを読まないため)。以後この ran 中は ref だけを見る。
+          labTutorialSeenRef.current = { phill: hasSeenLabTutorial('phill'), scout: hasSeenLabTutorial('scout') };
           wallWarnedRef.current = [false, false, false, false]; // M14の予告バンドも新ランで再アーム
           runDeepestDistRef.current = 0;
           wallDepthSyncRef.current = 0;
@@ -2889,6 +2899,41 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             addEnemy(sc);
             useGameStore.setState({ eventBannerText: '叫喚型 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             screamerRef.current.nextEligibleAt = newGameTime + SCREAMER_RESPAWN_CD_MS;
+          }
+        }
+
+        // M2(研究所)のチュートリアル2件(社長指示v0.25.2251)。判定は src/utils/labTutorial.ts の
+        // 純関数、表示は既存の showTutorialPopup(ゲーム停止)を流用。**端末に1度だけ**記憶する。
+        //  1) PHILL銃を入手した時 = 狙いの合わせ方 + ヘッドショット2種(通常/吸い付き)
+        //  2) 初めて敵に近づいた時(**見つかる前**) = 索敵と遮蔽物
+        if (labTheme && !indoor) {
+          const st = useGameStore.getState();
+          const gate = {
+            popupOpen: st.tutorialPopup !== null,
+            menuOpen: st.showShopMenu || st.showUpgradeMenu,
+          };
+          if (shouldShowPhillTutorial({
+            ...gate,
+            seen: labTutorialSeenRef.current.phill,
+            hasPhillGun: st.player.weapons.some(w => !w.isMelee && w.category === 'phill'),
+          })) {
+            labTutorialSeenRef.current.phill = true;
+            markLabTutorialSeen('phill');
+            st.showTutorialPopup(LAB_TUTORIAL_TEXT.phill);
+          } else if (!labTutorialSeenRef.current.scout) {
+            // 休眠中の敵までの最短距離。起床済みの敵は「もう見つかっている」ので数えない。
+            let nearestDormantDist: number | null = null;
+            const pcx = st.player.x + st.player.width / 2, pcy = st.player.y + st.player.height / 2;
+            for (const e of st.enemies) {
+              if (!e.dormant) continue;
+              const d = Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy);
+              if (nearestDormantDist === null || d < nearestDormantDist) nearestDormantDist = d;
+            }
+            if (shouldShowScoutTutorial({ ...gate, seen: labTutorialSeenRef.current.scout, nearestDormantDist })) {
+              labTutorialSeenRef.current.scout = true;
+              markLabTutorialSeen('scout');
+              st.showTutorialPopup(LAB_TUTORIAL_TEXT.scout);
+            }
           }
         }
 
