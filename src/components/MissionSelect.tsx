@@ -98,6 +98,7 @@ import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
+import { portraitSrcFor } from '../data/portraits';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, BESTIARY,
   GACHA_PULL_COST, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
@@ -245,15 +246,7 @@ const MISSION_TYPE_BADGE_CLS: Record<Stage['kind'], string> = {
 // SUBミッション(任意サブ表示カード/洋館再訪)のバッジ。MAIN/EXと同じく文字で識別(色だけに依存しない)。
 const SUB_BADGE_CLS = 'bg-sky-400/15 text-sky-100';
 
-// キャラ選択の全画面立ち絵(社長提供)。クラス→立ち絵ファイルの対応=武器イメージで割当(差し替え容易)。
-const CLASS_PORTRAIT: Record<CharacterClass, string> = {
-  warrior: 'portrait-shotgun',     // ヘビーガンナー(ショットガン)=タイトルの少女
-  mage: 'portrait-sniper',         // マークスマン(マグナム/狙撃)=スコープ付き長銃の金髪
-  rogue: 'portrait-knife',         // ストライカー(ファイティングナイフ)=短剣の赤髪
-  necromancer: 'portrait-handgun', // スカベンジャー(ハンドガン)=拳銃の黒髪
-};
-const portraitSrcFor = (id: CharacterClass): string =>
-  `${import.meta.env.BASE_URL}sprites/portraits/${CLASS_PORTRAIT[id]}.png?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`;
+// キャラ選択の立ち絵URLは src/data/portraits.ts が唯一の出どころ(起動時プリロードと共用・v0.25.2224)。
 
 // キャラ選択 左下の情報行(ラベル＋値＋補足)。立ち絵の上に出すので影を強めに。
 const InfoLine: React.FC<{ label: string; value: string; sub?: string }> = ({ label, value, sub }) => (

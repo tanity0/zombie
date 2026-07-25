@@ -6,7 +6,7 @@ import { PixiScene } from './pixiScene';
 import { useGameStore } from '../store/gameStore';
 import { setAudioSuspended } from '../audio/audioManager';
 import { computeViewport } from '../utils/viewport';
-import { loadProgressBegin, loadProgressDone, loadProgressResetWindow } from '../utils/loadProgress';
+import { loadProgressBegin, loadProgressDone, loadProgressResetWindow, getLoadProgress } from '../utils/loadProgress';
 import { preloadCorridorTextures, CORRIDOR_TEXTURE_NAMES } from './corridorLayer';
 
 // 出撃時に注入するステージ別テクスチャの一覧。ローディング%の分母を初期化冒頭で全登録するため
@@ -258,9 +258,23 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       // キャンバス自体は挿入済み=解除まではローディングオーバーレイの下で描画が回る(黒画面にはならない)。
       // 注入が遅延/失敗しても残り続けないよう4秒で強制解除(App側の6秒タイムアウトと二重保険)。
       // 洋館通路(stage-6)は通路テクスチャ(計~10MB)も待つため、フェイルセーフを長めに取る(v0.25.2122)。
-      readyFailsafe = window.setTimeout(() => {
-        try { if (!cancelled) useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
-      }, useGameStore.getState().corridorMode ? 15000 : 4000);
+      // v0.25.2224の社長報告「ステージ開始してすぐが読み込み終わってない」対策: 旧実装は**進捗に関係なく
+      // 4秒で強制解除**していたため、バージョン更新直後(=?v= でキャッシュが全部冷える)にモバイル回線だと
+      // 4秒では終わらず、素材が届く前に画面が出ていた。**「一定時間まったく進捗が無い」時だけ解除**に変更する
+      // (読み込みが進んでいる限り待つ=正常な低速回線を切らない。本当に停滞した時だけ従来どおり救済)。
+      {
+        const stallMs = useGameStore.getState().corridorMode ? 15000 : 6000;
+        let lastP = getLoadProgress();
+        let lastAt = performance.now();
+        readyFailsafe = window.setInterval(() => {
+          if (cancelled) { window.clearInterval(readyFailsafe); return; }
+          const p = getLoadProgress();
+          if (p !== lastP) { lastP = p; lastAt = performance.now(); return; } // 進捗あり=待つ
+          if (performance.now() - lastAt < stallMs) return;
+          window.clearInterval(readyFailsafe);
+          try { useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
+        }, 500);
+      }
 
       // 1フレームの例外で描画が固まって真っ暗になるのを防ぐ(ログは初回だけ。再生は継続)。
       const tick = () => {

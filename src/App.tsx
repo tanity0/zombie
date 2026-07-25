@@ -8,12 +8,13 @@ import LoadingScreen from './components/LoadingScreen';
 import OrientationGuard from './components/OrientationGuard';
 import OpeningScene from './components/OpeningScene';
 import MansionCorridorPreview from './components/MansionCorridorPreview';
-import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow } from './utils/loadProgress';
+import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow, getLoadProgress } from './utils/loadProgress';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio, primeMenuBgm, preloadStageBgm, setAudioSuspended, clearSfxThrottle, attachAudioGestureRecovery } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
+import { preloadClassPortraits } from './data/portraits';
 import { loadProgressBegin, loadProgressDone } from './utils/loadProgress';
 import {
   getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared, syncQuestStageClear,
@@ -73,8 +74,20 @@ function App() {
   useEffect(() => { attachAudioGestureRecovery(); }, []);
   useEffect(() => {
     if (gameState !== 'playing' || rendererReady) { setLoadOverlayTimedOut(false); return; }
-    const id = window.setTimeout(() => setLoadOverlayTimedOut(true), useGameStore.getState().corridorMode ? 16000 : 6000); // 洋館通路は通路テクスチャ待ちぶん延長(v0.25.2122)
-    return () => window.clearTimeout(id);
+    // PixiStage 側と同じく**進捗が止まっている時だけ**外す(v0.25.2224)。旧実装は絶対時間6秒で外していたため、
+    // バージョン更新直後(キャッシュが冷えて素材の再取得が走る)に読み込み途中の画面が見えていた。
+    // 停滞判定はPixiStage(6秒)より少し長め=通常はPixiStage側の正規解除が先に立つ。
+    const stallMs = useGameStore.getState().corridorMode ? 18000 : 8000;
+    let lastP = getLoadProgress();
+    let lastAt = performance.now();
+    const id = window.setInterval(() => {
+      const p = getLoadProgress();
+      if (p !== lastP) { lastP = p; lastAt = performance.now(); return; } // 進捗あり=待つ
+      if (performance.now() - lastAt < stallMs) return;
+      window.clearInterval(id);
+      setLoadOverlayTimedOut(true);
+    }, 500);
+    return () => window.clearInterval(id);
   }, [gameState, rendererReady]);
 
   // 資料室の遡及解放(共有パッケージ2026-07-23): 起動時に1回、クリア済みステージ/EDフラグから
@@ -94,6 +107,7 @@ function App() {
       preloadPromiseRef.current = Promise.all([
         ensureTextures().catch(() => {}),
         preloadBackgrounds().catch(() => {}), // 背景パノラマ/床/地平帯=出撃時フラッシュ防止のため先読み
+        preloadClassPortraits().catch(() => {}), // キャラ選択の立ち絵(?v=でバージョン毎に再取得=更新直後の空白対策・v0.25.2224)
         preloadAllAudio(),
         // ゲームフォント(?font=)の読込完了を待つ。Pixi のダメージ数字アトラス/テキストが
         // フォールバックで焼かれて差し替わらないのを防ぐ(main.tsx で load を開始済み)。
