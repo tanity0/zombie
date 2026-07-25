@@ -237,9 +237,20 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       // 各ステージ別テクスチャ(SORTIE_STAGE_TEXTURE_PATHS)。ユニットはinit冒頭で必要分だけ登録済み。
       // 出撃ステージに不要なパスはロードせずnull(セッターはnull許容=そのステージでは描かれない)。
       // trackLoad で「実行中の通信」として数える=並列DL中にフェイルセーフが誤発火しない(v0.25.2230)。
-      const load = (p: string) => neededStageTextures.has(p)
-        ? trackLoad(Assets.load(`${BASE}${p}`).catch(() => null).finally(() => loadProgressDone()))
-        : Promise.resolve(null);
+      // 進捗は**ファイル途中でも刻む**(社長報告v0.25.2231「29から進まない」): 1ファイル=1ユニットのまま、
+      // Pixi の onProgress(0..1)の増分を小数で加算する。M2は7枚で計6MBあり、完了時にしか%が動かないと
+      // 長時間フリーズしたように見えていた(実際は落ちている最中)。
+      const load = (p: string) => {
+        if (!neededStageTextures.has(p)) return Promise.resolve(null);
+        let reported = 0;
+        const bump = (frac: number) => {
+          const f = Math.max(0, Math.min(1, frac));
+          if (f > reported) { loadProgressDone(f - reported); reported = f; }
+        };
+        return trackLoad(
+          Assets.load(`${BASE}${p}`, bump).catch(() => null).finally(() => bump(1))
+        );
+      };
       void (async () => {
         // 注意: 分割代入の並びは SORTIE_STAGE_TEXTURE_PATHS の並びと1:1対応(位置結合)。追加時は両方を同順で。
         const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s2Front, s2Front2, s2FarGlass, s2FarFrame, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground, tutFar, tutGround, tutFlow1, tutFlow2, tutRocks, tutNearRocks, tutFrontRocks, s7Far, s7Clouds, s1Sky, s1Castle, s1Moon] =

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2232',
+    items: [
+      '出撃ローディングの%が、大きな画像の読み込み中も少しずつ進むようになりました(止まって見える問題の解消)。',
+    ],
+  },
+  {
     version: '0.25.2231',
     items: [
       '不具合修正: ステージ開始直後に背景が欠けたまま数秒固まることがあるのを直しました(読み込み中は最後まで待つように変更)。',
