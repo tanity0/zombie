@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2220',
+    items: [
+      'グラフィック: ステージ2の窓ガラスと窓の向こうのゾンビに、奥行きに応じたぼかしを付けました。',
+    ],
+  },
+  {
     version: '0.25.2219',
     items: [
       'グラフィック: 床の奥行き感を強めました(奥のタイルをより細く)。',
