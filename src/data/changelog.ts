@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2228',
+    items: [
+      'グラフィック: ステージ2の什器(端末・カプセル・薬品棚・ロボアームなど12種)を新しい絵に差し替えました。',
+    ],
+  },
+  {
     version: '0.25.2227',
     items: [
       'ステージ2: 歩けない範囲をより暗くして、動ける範囲が一目で分かるようにしました。',
