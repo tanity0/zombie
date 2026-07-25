@@ -1051,11 +1051,13 @@ const GROUND_PERSPECTIVE_CURVE = tsNum('gcurve', 2.6);
 // 大きく持っておいて、その中でループ」)なので、引きズームでも端が欠けない。
 // 0=従来と完全に同一(復帰フラグ) / 1=フル適用。?g3d=
 const GROUND_TRAPEZOID = Math.max(0, Math.min(1, tsNum('g3d', 1)));
-// 横の詰め具合の指数(社長報告v0.25.2217「おしい」の修正)。床(水平面)を見下ろす投影では
-// **縦の縮み ∝ 1/z² / 横の縮み ∝ 1/z** なので、正しくは「横 = 縦の平方根」= 指数0.5。
-// v2216は指数1.0(縦と同率=等方)にしたため最奥が過剰に潰れていた(タイル幅56px。0.5なら約217px)。
-// 1.0=旧v2216の潰れ方 / 0.5=幾何的に正しい / 0=横は詰めない。?g3dp=
-const GROUND_TRAPEZOID_POW = Math.max(0, Math.min(1, tsNum('g3dp', 0.5)));
+// 横の詰め方(社長報告v0.25.2217「奥ほど細いのは良いがカーブが不自然」の修正)。
+// 教科書どおりの遠近では、床のタイルの**横**の間隔は「地平線からの距離に**直線**で比例」して詰まる
+// (横 ∝ 1/z、かつ 画面yと1/zが直線関係のため)。v2216/2217は横を**縦のカーブから導いていた**のが誤り——
+// 縦カーブ(t^2.6+下限)は社長が調整した手作りの値であって物理の1/z²ではないので、その平方根を取ると
+// 横が t^1.3 になり中盤で急に詰まる=不自然だった。ここでは**縦カーブには一切触れず**、横だけを直線にする。
+const GROUND_TRAPEZOID_FAR = Math.max(0.05, Math.min(1, tsNum('g3dfar', 0.30))); // 最奥での横倍率(手前=1)。?g3dfar=
+const GROUND_TRAPEZOID_CURVE = Math.max(0.2, Math.min(3, tsNum('g3dc', 1)));     // 1=直線(既定)。?g3dc=
 const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
 // 遠景(奥)側の地面も被写界深度で少しぼかす。最上(最遠)ほど強く。中央は合焦=鮮明のまま。
@@ -3600,10 +3602,11 @@ export class PixiScene {
       strip.position.set(0, y);
       strip.width = overW;
       strip.height = Math.ceil(stripH) + 2;
-      // 台形化: 横倍率は「縦の縮みの平方根」(指数0.5)まで詰める=床を見下ろす投影の正しい比率。
-      // GROUND_TRAPEZOID=0 なら conv=1 で従来と完全一致。
-      const ratio = Math.max(0.0001, scaleY / Math.max(0.001, nearScale));
-      const conv = 1 + (Math.pow(ratio, GROUND_TRAPEZOID_POW) - 1) * GROUND_TRAPEZOID;
+      // 台形化: 横倍率は行位置tに対して**直線**(奥=GROUND_TRAPEZOID_FAR → 手前=1)。tは画面yに比例するので
+      // これが「地平線からの距離に比例」=教科書どおりの遠近になる。縦(scaleY)は従来のまま一切いじらない。
+      // GROUND_TRAPEZOID=0 なら conv=1 で従来と完全一致(復帰)。
+      const convLine = GROUND_TRAPEZOID_FAR + (1 - GROUND_TRAPEZOID_FAR) * Math.pow(t, GROUND_TRAPEZOID_CURVE);
+      const conv = 1 + (convLine - 1) * GROUND_TRAPEZOID;
       const tsx = GROUND_TILE_SCALE_X * Math.max(0.02, conv);
       strip.tileScale.set(tsx, scaleY);
       // 消失点を画面中央に固定: どの行でも「画面中央のワールド列」が同じUになるよう tilePosition を逆算する
