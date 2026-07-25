@@ -10,6 +10,9 @@
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
 import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED } from '../store/gameStore';
+import { placeLabSpawn } from './labSpawn';
+import { OFFSCREEN_SPAWN_MARGIN } from './enemyUtils';
+import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import {
   isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES, WALL_RANK_NAMES_EN,
 } from './wallProgress';
@@ -582,6 +585,17 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
       spawnEsc // 難易度③: リサイクル敵も同じ escalation で強さ/種類を整合
     );
     recycledAnyEnemy = true;
+    // M2: リサイクル(再配置)も**歩ける帯の中・画面外の左右**に限定する(社長指示v0.25.2242)。
+    // 新規湧きだけが帯の制限を持っていて、この経路は素の generateEnemy のまま=上下からも帯の外にも
+    // 湧いていた(=同じ規則を2箇所に書いていたことによる取りこぼし)。共有純関数で一本化する。
+    if (labTheme) {
+      const placed = placeLabSpawn(
+        player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
+        replacement.width, replacement.height, LAB_CORRIDOR_Y_LIMIT_PX,
+      );
+      replacement.x = placed.x;
+      replacement.y = placed.y;
+    }
 
     if (preserveEnemyState) {
       return {

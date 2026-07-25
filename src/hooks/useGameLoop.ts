@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { placeLabSpawn } from '../utils/labSpawn';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
+import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import {
   useGameStore,
   INVULN_MS,
@@ -814,9 +816,8 @@ const LAB_ENEMIES_PER_ZONE = 2;
 // ラボの湧き間隔倍率(大きいほど間隔が空く=湧きすぎ防止)と、1回の湧き上限。
 const LAB_SPAWN_INTERVAL_MULT = 1.6;
 const LAB_SPAWN_COUNT_MAX = 1;
-// M2は上下からではなく左右のみから湧く(社長指示v0.25.2182「上下から湧かず、左右からのみ」)。
-// Yはプレイヤー到達域(廊下帯)±この範囲(px)のランダム。
-const LAB_SPAWN_Y_BAND_PX = 100;
+// M2は上下からではなく左右のみから湧く(社長指示v0.25.2182)。Yは歩ける帯の中に限定
+// (社長指示v0.25.2242)。位置の決定は src/utils/labSpawn.ts の placeLabSpawn に一本化した。
 const PLAYER_DEATH_SLOW_MS = 820;
 const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
 const COUNTER_REFLECT_SLOW_MS = 560;
@@ -7891,13 +7892,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (社長指示v0.25.2182「M2では敵が上下から湧かず、左右からのみ」)。
               // generateEnemy が選んだ上下辺の位置を破棄し、左右いずれかの画面外(OFFSCREEN_SPAWN_MARGIN
               // は通常敵と同じ値を流用)へ、Yはプレイヤー到達域(廊下帯)±LAB_SPAWN_Y_BAND_PX で置き直す。
-              const halfW = spawnBounds.width / 2;
-              const fromRight = Math.random() < 0.5;
-              labEnemy.x = fromRight
-                ? player.x + halfW + OFFSCREEN_SPAWN_MARGIN
-                : player.x - halfW - OFFSCREEN_SPAWN_MARGIN - labEnemy.width;
-              labEnemy.y = player.y + player.height / 2 - labEnemy.height / 2
-                + (Math.random() * 2 - 1) * LAB_SPAWN_Y_BAND_PX;
+              // 置き直しは placeLabSpawn(共有純関数)に一本化。Yは**歩ける帯の中**に限定する
+              // (旧実装は player.y 基準 ±100 だったため、プレイヤーが帯の端にいると帯の外=行けない
+              //  場所に湧いていた。社長指示v0.25.2242「自由移動範囲内でのみスポーン」)。
+              const placed = placeLabSpawn(
+                player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
+                labEnemy.width, labEnemy.height, LAB_CORRIDOR_Y_LIMIT_PX,
+              );
+              labEnemy.x = placed.x;
+              labEnemy.y = placed.y;
               const ecx = labEnemy.x + labEnemy.width / 2, ecy = labEnemy.y + labEnemy.height / 2;
               // スタート地点(原点)付近には湧かせない。
               if (Math.hypot(ecx, ecy) < LAB_START_SAFE_RADIUS) continue;

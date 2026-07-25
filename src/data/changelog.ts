@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2243',
+    items: [
+      'ステージ2: 敵が必ず動ける範囲の中に出現するようになりました(暗い場所に届かない敵が湧かなくなります)。',
+    ],
+  },
+  {
     version: '0.25.2242',
     items: [
       'グラフィック: 遠景の窓の手前の什器をさらに20px下げました。',
