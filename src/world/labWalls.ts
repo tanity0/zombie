@@ -147,6 +147,32 @@ export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY:
       }
     }
   }
+  // 「敵の近くに必ず1つ」を保証する遮蔽物を合流させる(v0.25.2243)。返り値を1本にしておくことで、
+  // 描画(pixiScene)・移動の当たり判定・視線判定(segmentBlocked)すべてに自動で反映される。
+  out.push(...coverPropsInRegion(minX, maxX, LAB_CORRIDOR_Y_LIMIT_PX));
+  return out;
+};
+
+// 「敵の近くには必ず1つ視線を切れる遮蔽物がある」ことを構造で保証する(社長指示v0.25.2243・**壁とは別**)。
+// 敵は歩ける帯の中にしか湧かない(placeLabSpawn)ので、**帯の中に一定間隔で"保証プロップ"を置けば**、
+// どの敵から見ても COVER_SPACING/2 以内に必ず遮蔽がある=プレイヤーは必ず隠れる場所を持てる。
+// 散布プロップ(labPropsInRegion 本体)は帯の外にも出るため、この保証には数えない。
+const COVER_SPACING = LAB_ZONE / 2; // 450pxごとに1個(=どの位置からも225px以内に1つ)
+export const LAB_COVER_SPACING = COVER_SPACING;
+
+const coverPropsInRegion = (minX: number, maxX: number, bandLimit: number): PlacedProp[] => {
+  const out: PlacedProp[] = [];
+  const k0 = Math.floor(minX / COVER_SPACING) - 1, k1 = Math.floor(maxX / COVER_SPACING) + 1;
+  for (let k = k0; k <= k1; k++) {
+    // 等間隔だと機械的に見えるので、区間内で少しだけ散らす(決定論)。
+    const footX = k * COVER_SPACING + COVER_SPACING * (0.25 + 0.5 * hash2(k * 3.7 + 1.1, 7.3));
+    // 足元(矩形の下端)が帯に収まるYを選ぶ。
+    const lo = -bandLimit + PROP_HIT_H, hi = bandLimit;
+    const footY = lo + (hi - lo) * hash2(k * 5.1 - 2.3, 11.9);
+    if (Math.hypot(footX, footY) < LAB_START_SAFE_RADIUS) continue; // スタート地点付近は空ける
+    const variant = Math.floor(hash2(k * 2.9 + 4.4, 3.1) * LAB_PROP_VARIANT_COUNT) % LAB_PROP_VARIANT_COUNT;
+    out.push({ id: `lpc-${k}`, footX, footY, variant });
+  }
   return out;
 };
 

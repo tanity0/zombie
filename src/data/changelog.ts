@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2244',
+    items: [
+      'ステージ2: 通路沿いに必ず身を隠せる什器が置かれるようになり、どの敵の近くでも視線を切れるようになりました。',
+      'ステージ2: 敵の湧く数を2/3に減らしました。',
+    ],
+  },
+  {
     version: '0.25.2243',
     items: [
       'ステージ2: 敵が必ず動ける範囲の中に出現するようになりました(暗い場所に届かない敵が湧かなくなります)。',

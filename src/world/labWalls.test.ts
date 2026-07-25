@@ -4,7 +4,7 @@
 //   帯の外は歩けない=隠れられないため遮蔽として機能していなかった。代わりに「中央に必ず通れる
 //   空きレーンが残る」ことを構造で保証し、それをここで機械化する(詰み防止の要)。
 import { describe, it, expect } from 'vitest';
-import { labWallsInRegion, wallRect, LAB_WALL_Y_LIMIT, LAB_WALL_CLEAR_TOP, LAB_WALL_CLEAR_BOTTOM, LAB_START_SAFE_RADIUS, WALL_HIT_W, WALL_DISPLAY_H } from './labWalls';
+import { labWallsInRegion, wallRect, LAB_WALL_Y_LIMIT, LAB_WALL_CLEAR_TOP, LAB_WALL_CLEAR_BOTTOM, LAB_START_SAFE_RADIUS, WALL_HIT_W, WALL_DISPLAY_H, labPropsInRegion, propRect, LAB_COVER_SPACING } from './labWalls';
 
 const PLAYER_HITBOX = 28; // src/store/gameStore.ts と同値(依存を持ち込まないため定数で持つ)
 
@@ -86,5 +86,33 @@ describe('labWallsInRegion (歩ける帯の中に置く・中央レーンは常�
   it('帯から外れた問い合わせ範囲では壁を返さない(カリング)', () => {
     expect(labWallsInRegion(-3000, 500, 3000, 3000)).toHaveLength(0);
     expect(labWallsInRegion(-3000, -3000, 3000, -500)).toHaveLength(0);
+  });
+});
+
+// 社長指示v0.25.2243「敵の近くに必ず一つは視界を切る遮蔽物を置く(壁とは別)」の機械化。
+// 敵は歩ける帯の中にしか湧かない(placeLabSpawn)ので、「帯上のどの点からも一定距離以内に
+// プロップがある」ことを保証すれば、どの敵の近くにも必ず遮蔽がある状態になる。
+describe('保証プロップ(敵の近くの遮蔽)', () => {
+  it('帯の上のどの位置からも COVER_SPACING 以内に遮蔽プロップがある', () => {
+    const props = labPropsInRegion(-6000, -LAB_WALL_Y_LIMIT, 6000, LAB_WALL_Y_LIMIT);
+    expect(props.length).toBeGreaterThan(0);
+    for (let x = -4000; x <= 4000; x += 137) {
+      for (const y of [-LAB_WALL_Y_LIMIT + 20, 0, LAB_WALL_Y_LIMIT - 20]) {
+        if (Math.hypot(x, y) < LAB_START_SAFE_RADIUS) continue; // スタート地点付近は対象外(意図的に空ける)
+        const near = props.some(p => Math.hypot(p.footX - x, p.footY - y) <= LAB_COVER_SPACING);
+        expect(near).toBe(true);
+      }
+    }
+  });
+
+  it('保証プロップの当たり矩形は歩ける帯の中に収まる', () => {
+    const props = labPropsInRegion(-6000, -LAB_WALL_Y_LIMIT, 6000, LAB_WALL_Y_LIMIT)
+      .filter(p => p.id.startsWith('lpc-'));
+    expect(props.length).toBeGreaterThan(0);
+    for (const p of props) {
+      const r = propRect(p);
+      expect(r.y).toBeGreaterThanOrEqual(-LAB_WALL_Y_LIMIT);
+      expect(r.y + r.height).toBeLessThanOrEqual(LAB_WALL_Y_LIMIT);
+    }
   });
 });

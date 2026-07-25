@@ -814,7 +814,7 @@ const LAB_SPAWN_AGGRO_RANGE = LAB_VISION_RANGE; // 視界距離は labStealth.ts
 // 1画面区画あたりのラボ敵の上限(密度制御)。
 const LAB_ENEMIES_PER_ZONE = 2;
 // ラボの湧き間隔倍率(大きいほど間隔が空く=湧きすぎ防止)と、1回の湧き上限。
-const LAB_SPAWN_INTERVAL_MULT = 1.6;
+const LAB_SPAWN_INTERVAL_MULT = 2.4; // 1.6→2.4(間隔1.5倍=湧く数が2/3・社長指示v0.25.2243)
 const LAB_SPAWN_COUNT_MAX = 1;
 // M2は上下からではなく左右のみから湧く(社長指示v0.25.2182)。Yは歩ける帯の中に限定
 // (社長指示v0.25.2242)。位置の決定は src/utils/labSpawn.ts の placeLabSpawn に一本化した。
