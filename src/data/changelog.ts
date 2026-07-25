@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2207',
+    items: [
+      'グラフィック: ステージ2の遠景の窓を2倍の大きさにし、位置を50px下げました。',
+    ],
+  },
+  {
     version: '0.25.2206',
     items: [
       '不具合修正: ステージ2の遠景が上で切れていたのを直し、絵の全体像が入るようにしました。',

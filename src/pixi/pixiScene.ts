@@ -339,15 +339,15 @@ const LAB_FRONT2_BLUR = tsNum('labf2bl', 3);
 // (社長指示v0.25.2199)。サイズ調整はこの1つのつまみ(既定1=素材アスペクト比のまま画面幅いっぱい)。
 // 注意: この定数はtsNum/tsBoolの宣言(301/307行)より後段のこの位置に置くこと(TDZクラッシュの再発防止・
 // 社長指示v0.25.2198「新規定数は必ずtsNum/tsBoolの宣言より下に置く」)。
-const LAB_FAR_WINDOW_SCALE = tsNum('labfwsc', 1); // ?labfwsc= で現地調整可
+const LAB_FAR_WINDOW_SCALE = tsNum('labfwsc', 2); // 遠景窓の拡大率(縦横一様tileScale)。既定2=2倍(社長指示v0.25.2207)。?labfwsc=
 const LAB_FAR_GLASS_ALPHA = tsNum('labfga', 0.3); // 遠景窓ガラスの不透明度(社長指示v0.25.2202「透明度70%=alpha0.3」)。?labfga=
 // 遠景窓の横パララックス: この窓は遠景森1(horizonForest・lab時 horizon1Visible=false で非表示)を
 // 置き換えたもの。旧森1と同じ 0.16(HORIZON_FOREST_PARALLAX_X)で流す=横に動いて見える
 // (旧 0.09=遠景壁と同率だと窓1枚≒画面幅のため実質静止して見えた。社長指示v0.25.2203)。?labfwpx=
 const LAB_FAR_WINDOW_PARALLAX = tsNum('labfwpx', HORIZON_FOREST_PARALLAX_X);
-// 遠景窓の下辺の上げ量(px): 遠景backdropの実下辺を基準に、床が窓を被る分だけ上へ持ち上げる微調整。
-// 既定0=遠景下辺そのまま(社長指示v0.25.2203「遠景の下辺に高さを合わせて」)。?labfwup=
-const LAB_FAR_WINDOW_BOTTOM_UP = tsNum('labfwup', 0);
+// 遠景窓の下辺オフセット(px): 遠景backdropの実下辺を基準に、正=上へ / 負=下へ ずらす。
+// 既定-50=下へ50px(社長指示v0.25.2207「50px下へ」)。?labfwup=
+const LAB_FAR_WINDOW_BOTTOM_UP = tsNum('labfwup', -50);
 // 近景森1/2のパララックス速度差(社長指示v0.25.2200「近景森1と2の速度を変えたい、2の方が少しだけ速く」):
 // 近景森1(frontForest・lab限定)=既定0.68でFRONT_FOREST_PARALLAX_Xと同値(現状維持)。
 // 近景森2(labFront2・一番手前)=既定0.80で1より少し速い(手前ほど速く流れる=奥行き感)。

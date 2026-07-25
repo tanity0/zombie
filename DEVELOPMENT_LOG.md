@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2207 — M2遠景窓: 2倍+50px下へ【2026-07-25 02:23 JST】
+- 指示(社長): ガラスとフレーム(遠景窓)を2倍にしつつ、50px下へ。
+- 対処: LAB_FAR_WINDOW_SCALE 既定 1→2(縦横一様tileScale=絵が2倍)。
+  LAB_FAR_WINDOW_BOTTOM_UP 既定 0→-50(符号: 正=上へ/負=下へ=下50px)。両方 ?labfwsc= / ?labfwup= で調整可。
+- 検証: typecheck・lint 0。実機は社長確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2206 — M2遠景: 上切れ修正(layoutFarBackdropを高さフィットへ統一)【2026-07-25 02:23 JST】
 - 報告(社長): M2の遠景が全体像が映らず上が切れている。スケールで合わせたのでは?
 - 診断: 遠景スケール計算が2経路で不整合。handleResize は lab を高さフィット(farDrawH/texH・v2190の意図)だが、
