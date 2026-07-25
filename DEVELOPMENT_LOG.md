@@ -1,5 +1,25 @@
 # Development Log
 
+## v0.25.2247 — M2: 道中にPHILLガンの弾を2つ設置(ゴールから30%/60%)【2026-07-26 00:18 JST】
+- 指示(社長): m2のみ、ゴールからみて30%地点と60%地点にPHILLガンの弾をランダム設置。
+- 解釈: 「ゴールからみて30%」= **ゴールを基準に全体距離の30%手前**(=スタートから70%地点)。
+  60%も同様に逆算(=スタートから40%地点)。M2のゴール(書類 `labDoc`)は出撃ごとに左右どちらか・
+  X=±(6000〜7800)のランダムなので、弾の位置も毎回変わる。
+- 実装: `gameStore.ts` の `runPickups`(屋外labDoc分岐)に `ammo-phill` を2つ追加。
+  `x = labDoc.x * (1 - frac) + labDoc.side * rand(±LAB_AMMO_JITTER_X=400)`、
+  `y = rand(±(LAB_CORRIDOR_Y_LIMIT_PX - 40))`(= 歩ける帯の中=必ず拾いに行ける)。
+  割合は `LAB_AMMO_GOAL_FRACS = [0.3, 0.6]`(export・唯一の出どころ)。
+- 位置づけ: これまでM2屋外にPHILL弾の固定配置は**無く**(武器商人からの購入のみ)、
+  `M2_LAB_CORRIDOR_SPEC.md` の **★1未決事項**として保留していた件の社長裁定。同ファイルを解決済みに更新。
+  indoor専用の `LAB_AMMO_PICKUPS`(3箇所)は未使用のまま据え置き=触っていない。
+- テスト: `src/store/labAmmoPlacement.test.ts` 5件追加(割合が[0.3,0.6]/位置がゴール×0.7・×0.4/
+  左側ゴールでも成立/Yが必ず帯の中/散らしでXが毎回変わる)。**5件全通過**。
+- 検証: typecheck・lint 0エラー。実機は社長確認。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない=M2固有の追加で、
+  湧き・カーブ・しきい値は一切触っていない。負荷 **1/10**(出撃時に静的ピックアップが2つ増えるだけ)。
+- Files: `src/store/gameStore.ts`, `src/store/labAmmoPlacement.test.ts`, `M2_LAB_CORRIDOR_SPEC.md`,
+  `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2246 — M2: 敵は他の敵の視界の中に湧かない【2026-07-26 00:02 JST】
 - 指示(社長): 敵同士が、視界の中に別の敵を沸かせない。
 - 狙い(解釈): 視界(半径 LAB_VISION_RANGE=200)が重なった敵が並ぶと、**片方から隠れるともう片方に見つかる**

@@ -307,6 +307,11 @@ export const TUTORIAL_MOVE_X_MIN_PX = -100;
 // 実体は `src/world/labWalls.ts`(世界の形なので world 層が唯一の出どころ)。ここは従来の import 元を
 // 壊さないための再輸出(v0.25.2229で 100→200 に拡張。壁の配置も同じ値から導出される)。
 export const LAB_CORRIDOR_Y_LIMIT_PX = LAB_CORRIDOR_Y_LIMIT_FROM_WORLD;
+// M2(屋外)の道中に置くPHILLガンの弾(社長指示v0.25.2246)。**ゴールから見た**割合で位置を決める
+// (0.3=ゴールの30%手前=スタートから70%地点 / 0.6=同60%手前=スタートから40%地点)。
+// ゴール(書類)は毎回左右どちらかのランダムなXなので、弾の位置も出撃ごとに変わる。
+export const LAB_AMMO_GOAL_FRACS = [0.3, 0.6];
+const LAB_AMMO_JITTER_X = 400; // 位置の散らし幅(px)。毎回同じ場所にならないように
 const PHASER_GUN_OFFSET = 5;           // 2丁拳銃の左右ずらし幅(px。進行方向に直交)
 const PHASER_APPEAR_CHANCE = 0.2;      // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)
@@ -10024,7 +10029,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           ]
         : labDoc
           // 研究所スキン(屋外)のクリア条件=書類(重要データ)を左右端にランダム配置。拾うと勝利。
-          ? [{ id: 'lab-document', x: labDoc.x - 8, y: labDoc.y - 8, type: 'lab-clear-item' as const, value: 0 }]
+          ? [
+              { id: 'lab-document', x: labDoc.x - 8, y: labDoc.y - 8, type: 'lab-clear-item' as const, value: 0 },
+              // PHILLガンの弾を道中に2つ(社長指示v0.25.2246「ゴールからみて30%地点と60%地点にランダム設置」)。
+              // 30%地点=ゴールから全体距離の30%手前(=スタートから70%)、60%地点も同様に逆算。
+              // ランダム要素: X±LAB_AMMO_JITTER_X の散らし + Y は歩ける帯の中(拾いに行ける位置)。
+              ...LAB_AMMO_GOAL_FRACS.map((frac, i) => {
+                const x = labDoc.x * (1 - frac) + labDoc.side * (Math.random() * 2 - 1) * LAB_AMMO_JITTER_X;
+                const y = (Math.random() * 2 - 1) * (LAB_CORRIDOR_Y_LIMIT_PX - 40);
+                return { id: `lab-phill-${i}`, x: x - 8, y: y - 8, type: 'ammo-phill' as const, value: 0 };
+              }),
+            ]
           : [];
 
       // 壁/UVバーは区画ごとに手続き生成(labWallsInRegion/labUvBarsInRegion)するので reset では持たない。

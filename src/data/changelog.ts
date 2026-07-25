@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2247',
+    items: [
+      'ステージ2: 道中にPHILLガンの弾が2つ落ちるようになりました。ゴールから見て30%・60%の地点あたりに、毎回ランダムな場所で置かれます。',
+    ],
+  },
+  {
     version: '0.25.2246',
     items: [
       'ステージ2: 敵が別の敵の視界の中に湧かなくなりました。視界が重なって忍び込めない配置ができにくくなります。',
