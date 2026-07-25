@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
@@ -359,6 +359,10 @@ const LAB_FAR_ZOMBIE_BLUR = Math.max(0, tsNum('labzblur', 1.2)); // ゾンビ(�
 // フレームも窓の一部としてぼかす(社長指示v0.25.2221「あーフレームだよ」= 合焦のままだった枠が犯人)。
 // 枠は高コントラストな構造線なので少量でよく効く。窓の中では一番手前なのでガラスより弱めに。?labwfblur=
 const LAB_FAR_FRAME_BLUR = Math.max(0, tsNum('labwfblur', 1.5));
+// 移動可能帯(廊下 ±LAB_CORRIDOR_Y_LIMIT_PX)の外を少し暗くする(社長指示v0.25.2223)。
+// 境目はパキッと切らず、fade幅ぶんの縦グラデで溶かす。**描画のみ**——移動クランプ本体(gameStore)には触らない。
+const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.3))); // 0で無効(復帰フラグ)。?labdim=
+const LAB_OUT_DIM_FADE_PX = Math.max(0, tsNum('labdimfade', 70));        // 境目のグラデ幅(画面px)。?labdimfade=
 // ガラスの向こうを左右にゆっくりうろつくレベル1の研究所ゾンビ(社長指示v0.25.2211)。**描画のみの環境演出**=
 // 当たり判定・スポーン・集計・ストアへの書き込みは一切なし(ゲームロジックには関与しない)。
 // 窓と同じworldGroup内・ガラスの直下に置く=ガラス越しに透け、フレーム(手前)には隠される。
@@ -1832,6 +1836,8 @@ export class PixiScene {
   private labFarZombies: Sprite[] = [];
   private labFarZombieFacing: number[] = []; // 個体ごとの向き(静止中も直前の向きを保持)
   private labFarZombieT0 = 0; // 相対時刻の起点(エポックmsをそのまま速度に掛けると桁が溢れる=v0.25.1807の教訓)
+  private labOutDim: Container | null = null; // 移動可能帯の外を暗くする幕(4枚: 上ベタ/上グラデ/下グラデ/下ベタ)
+  private labOutDimParts: Sprite[] = [];
   private labFarBloom: TilingSprite | null = null;      // 遠景のソフトブルーム(ぼかし焼き込みのscreen重ね)
   private farBloomCache = new Map<Texture, Texture>();  // 遠景テクスチャ→ぼかし焼き込みの1度きりキャッシュ
   setLabFarWindowTextures(glass: Texture | null, frame: Texture | null) {
@@ -4054,6 +4060,7 @@ export class PixiScene {
     // 遠景の窓(フレーム+ガラス2層)。lab屋外限定・支給なしはno-op(社長指示v0.25.2199)。
     this.updateLabFarWindow(s.stageTheme === 'lab' && !s.indoorMode, s.camera.x, now);
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
+    this.updateLabOutsideDim(s.stageTheme === 'lab' && !s.indoorMode); // 移動可能帯の外を少し暗く(境目はグラデ)
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
     this.revisitMarker = s.revisitMode === true;
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
@@ -5341,6 +5348,57 @@ export class PixiScene {
     ctx.fillRect(0, 0, 4, h);
     this.veilFadeTex = Texture.from(c);
     return this.veilFadeTex;
+  }
+
+  // 移動可能帯(廊下)の外を少し暗くする(社長指示v0.25.2223)。境目はグラデで溶かす。
+  // 4枚構成: 上ベタ / 上グラデ(下端=透明で帯に溶ける) / 下グラデ / 下ベタ。互いに重ならないので
+  // コンテナalphaで一括指定しても濃さが二重にならない。帯の画面Yは toGlobal で実測=ズーム/カメラ/
+  // シェイクを自動で含む(自前の座標計算より事故りにくい)。
+  private updateLabOutsideDim(show: boolean) {
+    if (!show || LAB_OUT_DIM_ALPHA <= 0) { if (this.labOutDim) this.labOutDim.visible = false; return; }
+    if (!this.labOutDim) {
+      const cont = new Container();
+      cont.eventMode = 'none';
+      const fadeTex = this.ensureVeilFadeTexture(); // 上=透明 → 下=不透明(白)。tintで暗色化して使う
+      const mk = (tex: Texture) => {
+        const s = new Sprite(tex);
+        s.eventMode = 'none';
+        s.tint = 0x000000;
+        cont.addChild(s);
+        return s;
+      };
+      this.labOutDimParts = [mk(Texture.WHITE), mk(fadeTex), mk(fadeTex), mk(Texture.WHITE)];
+      this.L.uiLayer.addChildAt(cont, 0); // ワールド(床/敵/近景)の上・HUDの下
+      this.labOutDim = cont;
+    }
+    const cont = this.labOutDim;
+    cont.visible = true;
+    cont.alpha = LAB_OUT_DIM_ALPHA;
+    const w = this.screenW, h = this.screenH;
+    const top = this.L.world.toGlobal({ x: 0, y: -LAB_CORRIDOR_Y_LIMIT_PX }).y;
+    const bot = this.L.world.toGlobal({ x: 0, y: LAB_CORRIDOR_Y_LIMIT_PX }).y;
+    const fade = LAB_OUT_DIM_FADE_PX;
+    const OVER = 300; // 画面外まで延ばす(引きズーム/シェイクで端が割れないように)
+    const [topSolid, topFade, botFade, botSolid] = this.labOutDimParts;
+    // 上グラデ: 帯の上端から上へ fade 分。scale.y を負にして反転=上が不透明・下(帯側)が透明。
+    topFade.width = w;
+    topFade.scale.y = -(fade / Math.max(1, topFade.texture.height));
+    topFade.position.set(0, top);
+    // 上ベタ: 画面外上端 〜 グラデの上端まで
+    const topSolidH = Math.max(0, (top - fade) + OVER);
+    topSolid.position.set(0, -OVER);
+    topSolid.width = w; topSolid.height = topSolidH;
+    topSolid.visible = topSolidH > 0;
+    // 下グラデ: 帯の下端から下へ fade 分(テクスチャそのまま=上が透明)
+    botFade.width = w;
+    botFade.scale.y = fade / Math.max(1, botFade.texture.height);
+    botFade.position.set(0, bot);
+    // 下ベタ: グラデの下端 〜 画面外下端まで
+    const botSolidY = bot + fade;
+    const botSolidH = Math.max(0, h + OVER - botSolidY);
+    botSolid.position.set(0, botSolidY);
+    botSolid.width = w; botSolid.height = botSolidH;
+    botSolid.visible = botSolidH > 0;
   }
 
   private updateLabVisibility(show: boolean, sx: number, sy: number) {

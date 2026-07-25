@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2224',
+    items: [
+      'ステージ2: 動ける範囲の外側を少し暗くしました。境目はくっきり切らず、ゆるやかなグラデーションでつないでいます。',
+    ],
+  },
+  {
     version: '0.25.2223',
     items: [
       'ステージ2: 隠れられる壁を増やしました(区画あたり最大8本・前後2段に配置)。什器などの遮蔽物も増量。',
