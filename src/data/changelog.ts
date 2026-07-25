@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2222',
+    items: [
+      'グラフィック: ステージ2の窓枠にもぼかしを付け、窓まわり全体が奥行きになじむようにしました。',
+    ],
+  },
+  {
     version: '0.25.2221',
     items: [
       '不具合修正: ステージ2の窓ガラスのぼかしが弱すぎて効いて見えなかったのを、はっきり分かる強さにしました。',

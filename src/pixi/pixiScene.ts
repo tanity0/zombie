@@ -356,6 +356,9 @@ const LAB_FAR_GLASS_UP = tsNum('labfgup', 2); // 遠景窓ガラスだけの上�
 // よって数値の大小=奥行きの順ではなく、**見た目が奥行き順になる**よう別スケールで調整する。
 const LAB_FAR_GLASS_BLUR = Math.max(0, tsNum('labgblur', 2.5));  // ガラス(低コントラスト・広い面)。0で無効。?labgblur=
 const LAB_FAR_ZOMBIE_BLUR = Math.max(0, tsNum('labzblur', 1.2)); // ゾンビ(小さく高コントラスト=少量でよく効く)。?labzblur=
+// フレームも窓の一部としてぼかす(社長指示v0.25.2221「あーフレームだよ」= 合焦のままだった枠が犯人)。
+// 枠は高コントラストな構造線なので少量でよく効く。窓の中では一番手前なのでガラスより弱めに。?labwfblur=
+const LAB_FAR_FRAME_BLUR = Math.max(0, tsNum('labwfblur', 1.5));
 // ガラスの向こうを左右にゆっくりうろつくレベル1の研究所ゾンビ(社長指示v0.25.2211)。**描画のみの環境演出**=
 // 当たり判定・スポーン・集計・ストアへの書き込みは一切なし(ゲームロジックには関与しない)。
 // 窓と同じworldGroup内・ガラスの直下に置く=ガラス越しに透け、フレーム(手前)には隠される。
@@ -5124,6 +5127,7 @@ export class PixiScene {
     }
     if (!this.labFarFrame) {
       const sp = new TilingSprite({ texture: frameTex, width: 1, height: 1 });
+      if (LAB_FAR_FRAME_BLUR > 0) sp.filters = [new BlurFilter({ strength: LAB_FAR_FRAME_BLUR, quality: 2 })];
       wg.addChildAt(sp, wg.getChildIndex(this.labFarGlass) + 1); // ガラスの直上=枠が手前(社長指示v0.25.2204)
       this.labFarFrame = sp;
     }
