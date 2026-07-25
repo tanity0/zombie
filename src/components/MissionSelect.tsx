@@ -99,6 +99,7 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor } from '../data/portraits';
+import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, BESTIARY,
   GACHA_PULL_COST, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
@@ -322,6 +323,13 @@ const CharSelectParticles: React.FC = () => {
 
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark }) => {
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
+  // 出撃素材の先読み(社長報告v0.25.2230「ステージ開始時に10秒くらい固まる」)。ミッション詳細/キャラ選択に
+  // 入った時点で、そのステージのテクスチャをバックグラウンドで取り始める。滞在中(ブリーフィングを読む・
+  // キャラを選ぶ)に落とし終えれば出撃時の待ちがほぼ消える。キャッシュ済みなら即解決=無害。
+  useEffect(() => {
+    const stageId = 'stageId' in screen ? screen.stageId : '';
+    if (stageId) prefetchStageTextures(getStage(stageId));
+  }, [screen]);
   const [selectedClass, setSelectedClass] = useState<CharacterClass>('warrior');
   const [freeMode, setFreeMode] = useState(false);               // 出撃がフリー(周回・会話なし)か
   // 装備(サブ/スキル)はトップの独立「装備メニュー」で選び、store に永続。出撃時に resetGame が反映。

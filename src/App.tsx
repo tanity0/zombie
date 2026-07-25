@@ -8,7 +8,7 @@ import LoadingScreen from './components/LoadingScreen';
 import OrientationGuard from './components/OrientationGuard';
 import OpeningScene from './components/OpeningScene';
 import MansionCorridorPreview from './components/MansionCorridorPreview';
-import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow, getLoadProgress } from './utils/loadProgress';
+import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow, getLoadProgress, getLoadInFlight } from './utils/loadProgress';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
@@ -77,13 +77,18 @@ function App() {
     // PixiStage 側と同じく**進捗が止まっている時だけ**外す(v0.25.2224)。旧実装は絶対時間6秒で外していたため、
     // バージョン更新直後(キャッシュが冷えて素材の再取得が走る)に読み込み途中の画面が見えていた。
     // 停滞判定はPixiStage(6秒)より少し長め=通常はPixiStage側の正規解除が先に立つ。
-    const stallMs = useGameStore.getState().corridorMode ? 18000 : 8000;
+    const corridor = useGameStore.getState().corridorMode;
+    const stallMs = corridor ? 18000 : 8000;
+    const hardCapMs = corridor ? 70000 : 40000; // PixiStage側(60/30秒)より後ろに置く=通常はあちらが先に立つ
+    const t0 = performance.now();
     let lastP = getLoadProgress();
-    let lastAt = performance.now();
+    let lastAt = t0;
     const id = window.setInterval(() => {
+      const now = performance.now();
       const p = getLoadProgress();
-      if (p !== lastP) { lastP = p; lastAt = performance.now(); return; } // 進捗あり=待つ
-      if (performance.now() - lastAt < stallMs) return;
+      if (p !== lastP) { lastP = p; lastAt = now; }              // 進捗あり=待つ
+      else if (getLoadInFlight() > 0) lastAt = now;              // 未完了の通信がある=停滞ではない(v0.25.2230)
+      if (now - lastAt < stallMs && now - t0 < hardCapMs) return;
       window.clearInterval(id);
       setLoadOverlayTimedOut(true);
     }, 500);

@@ -6,91 +6,10 @@ import { PixiScene } from './pixiScene';
 import { useGameStore } from '../store/gameStore';
 import { setAudioSuspended } from '../audio/audioManager';
 import { computeViewport } from '../utils/viewport';
-import { loadProgressBegin, loadProgressDone, loadProgressResetWindow, getLoadProgress } from '../utils/loadProgress';
+import { loadProgressBegin, loadProgressDone, loadProgressResetWindow, getLoadProgress, getLoadInFlight, trackLoad } from '../utils/loadProgress';
 import { preloadCorridorTextures, CORRIDOR_TEXTURE_NAMES } from './corridorLayer';
+import { SORTIE_STAGE_TEXTURE_PATHS, sortieTexturesNeeded } from './stageTextures';
 
-// 出撃時に注入するステージ別テクスチャの一覧。ローディング%の分母を初期化冒頭で全登録するため
-// 配列で一元管理(v0.25.1829: 分母を後から増やすと%が逆行する=「100→99→98…」社長報告の修正)。
-// ※読み込み結果の分割代入(下方)と位置結合=並びを変える時は両方を同順で更新すること。
-const SORTIE_STAGE_TEXTURE_PATHS = [
-  'sprites/lab-floor/lab-floor-stage2.png',
-  'backgrounds/stage3-distant-city-day.jpg',
-  'backgrounds/stage3-ground-cobble2.jpg',
-  'backgrounds/stage3-horizon-city.png',
-  'backgrounds/stage3-near-horizon-city.png',
-  'backgrounds/stage1-near-forest.png',
-  'backgrounds/stage2-lab-far.jpg',
-  'backgrounds/stage2-near-horizon2.png',
-  'backgrounds/stage2-front.png', // ステージ2(lab)の近景森=什器シルエット(クロマキー透過・社長提供v0.25.2184)
-  'backgrounds/stage2-front2.png', // ステージ2(lab)の近景森2=廃研究棟の壁/残骸(クロマキー透過・一番手前・社長提供v0.25.2192)
-  'backgrounds/stage2-far-glass.png', // ステージ2(lab)の遠景の窓=ガラス(奥・不透明・社長提供v0.25.2199)
-  'backgrounds/stage2-far-frame.png', // ステージ2(lab)の遠景の窓=フレーム(手前・アルファ透過済み・社長提供v0.25.2199)
-  'backgrounds/stage4-far.jpg',
-  'backgrounds/stage4-front2.png',
-  'backgrounds/stage4-ground.jpg',
-  'backgrounds/stage4-horizon.png',
-  'backgrounds/stage3-front-rooftops.png',
-  'backgrounds/stage5-far.jpg',
-  'backgrounds/stage5-horizon.png',
-  'backgrounds/stage5-near-horizon.png',
-  'backgrounds/stage5-front.png',
-  'backgrounds/stage5-ground.jpg',
-  'backgrounds/tutorial-far.jpg',
-  'backgrounds/tutorial-ground.jpg',
-  'sprites/tutorial-river-flow-1.png',
-  'sprites/tutorial-river-flow-2.png',
-  'backgrounds/tutorial-horizon-rocks.png',
-  'backgrounds/tutorial-near-rocks.png',
-  'backgrounds/tutorial-front-rocks.png',
-  'backgrounds/stage7-far.jpg', // M7の遠景(星雲・社長提供v0.25.1907)
-  'backgrounds/stage7-clouds-anim.png', // M7の遠景に重ねる雲=6コマアニメアトラス(クロマキー60%・社長提供v0.25.1913)
-  'backgrounds/stage1-sky-anim.jpg', // M1の遠景=星空6コマアニメ(縦1列×6行・社長提供v0.25.1931)
-  'backgrounds/stage1-castle.png', // M1の星空に重ねる城/山/霧の森(クロマキー・社長提供v0.25.1934)
-  'backgrounds/stage1-moon.png', // M1の光源=月(クロマキー透過・社長提供v0.25.1951)
-] as const;
-
-type SortieTexturePath = (typeof SORTIE_STAGE_TEXTURE_PATHS)[number];
-// ステージ別テクスチャの所属表(v0.25.2166・社長指示「ステージ特有のリソースはそのステージの
-// ローディング中にだけ読む」): 従来は30枚(デコード後実測~138MB)を毎出撃で全ロードしており、
-// iOSのメモリ天井(=勝手リロード)の最大の押し上げ要因だった。出撃ステージの分だけ読む。
-// ・キー: stageTheme 'lab' / farBackdrop 'city'|'snow'|'stage5'|'tutorial'|'stage7' / ''=既定の森(M1系)
-// ・読まなかった分はnullのまま注入(セッターは全てTexture|null許容)=そのステージでは元々描かれない。
-// ・未知のキーは安全側=全ロードにフォールバック。
-// ・洋館通路(corridorMode)は通路テクスチャ(別ロード・下のpreloadCorridorTextures)のみ=ここは0枚。
-// ・要素はSortieTexturePath型=綴りミスはtypecheckで検出される。
-const STAGE_TEXTURE_GROUPS: Record<string, readonly SortieTexturePath[]> = {
-  forest: ['backgrounds/stage1-near-forest.png', 'backgrounds/stage1-sky-anim.jpg', 'backgrounds/stage1-castle.png', 'backgrounds/stage1-moon.png'],
-  lab: ['sprites/lab-floor/lab-floor-stage2.png', 'backgrounds/stage2-lab-far.jpg', 'backgrounds/stage2-near-horizon2.png', 'backgrounds/stage2-front.png', 'backgrounds/stage2-front2.png', 'backgrounds/stage2-far-glass.png', 'backgrounds/stage2-far-frame.png'],
-  city: ['backgrounds/stage3-distant-city-day.jpg', 'backgrounds/stage3-ground-cobble2.jpg', 'backgrounds/stage3-horizon-city.png', 'backgrounds/stage3-near-horizon-city.png', 'backgrounds/stage3-front-rooftops.png'],
-  snow: ['backgrounds/stage4-far.jpg', 'backgrounds/stage4-front2.png', 'backgrounds/stage4-ground.jpg', 'backgrounds/stage4-horizon.png'],
-  stage5: ['backgrounds/stage5-far.jpg', 'backgrounds/stage5-horizon.png', 'backgrounds/stage5-near-horizon.png', 'backgrounds/stage5-front.png', 'backgrounds/stage5-ground.jpg'],
-  tutorial: ['backgrounds/tutorial-far.jpg', 'backgrounds/tutorial-ground.jpg', 'sprites/tutorial-river-flow-1.png', 'sprites/tutorial-river-flow-2.png', 'backgrounds/tutorial-horizon-rocks.png', 'backgrounds/tutorial-near-rocks.png', 'backgrounds/tutorial-front-rocks.png'],
-  stage7: ['backgrounds/stage7-far.jpg', 'backgrounds/stage7-clouds-anim.png'],
-};
-// 遠景森2(近景帯)はミッション個別キー(campaign の nearHorizon)で、farBackdrop とは独立に
-// グループを跨げる(例: M7=stage7遠景+『forest』の森シルエット・v0.25.1905)。キー→素材で直引き。
-const NEAR_HORIZON_TEXTURES: Record<string, SortieTexturePath> = {
-  forest: 'backgrounds/stage1-near-forest.png',
-  city: 'backgrounds/stage3-near-horizon-city.png',
-  lab: 'backgrounds/stage2-near-horizon2.png',
-  stage5: 'backgrounds/stage5-near-horizon.png',
-  tutorial: 'backgrounds/tutorial-near-rocks.png',
-};
-const sortieTexturesNeeded = (): ReadonlySet<string> => {
-  const s = useGameStore.getState();
-  if (s.corridorMode) return new Set();
-  const out = new Set<string>();
-  if (s.stageTheme === 'lab') {
-    for (const p of STAGE_TEXTURE_GROUPS.lab) out.add(p);
-  } else {
-    const group = STAGE_TEXTURE_GROUPS[s.farBackdrop || 'forest'];
-    if (!group) return new Set<string>(SORTIE_STAGE_TEXTURE_PATHS); // 未知キー=全ロード(安全側)
-    for (const p of group) out.add(p);
-  }
-  const near = NEAR_HORIZON_TEXTURES[s.nearHorizon];
-  if (near) out.add(near);
-  return out;
-};
 import { setAppliedResolution } from '../config/renderer';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
@@ -263,14 +182,21 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       // 4秒では終わらず、素材が届く前に画面が出ていた。**「一定時間まったく進捗が無い」時だけ解除**に変更する
       // (読み込みが進んでいる限り待つ=正常な低速回線を切らない。本当に停滞した時だけ従来どおり救済)。
       {
-        const stallMs = useGameStore.getState().corridorMode ? 15000 : 6000;
+        const corridor = useGameStore.getState().corridorMode;
+        const stallMs = corridor ? 15000 : 6000;
+        const hardCapMs = corridor ? 60000 : 30000; // 応答の来ない通信で永久に待たないための最後の砦
+        const t0 = performance.now();
         let lastP = getLoadProgress();
-        let lastAt = performance.now();
+        let lastAt = t0;
         readyFailsafe = window.setInterval(() => {
           if (cancelled) { window.clearInterval(readyFailsafe); return; }
+          const now = performance.now();
           const p = getLoadProgress();
-          if (p !== lastP) { lastP = p; lastAt = performance.now(); return; } // 進捗あり=待つ
-          if (performance.now() - lastAt < stallMs) return;
+          if (p !== lastP) { lastP = p; lastAt = now; }                 // 進捗あり=待つ
+          // **まだ返ってきていない通信があるなら停滞ではない**(並列DLでは完了まで進捗が動かないため。
+          // v0.25.2225の停滞判定だけだと遅い回線で誤発火し、読み込み途中の画面が出ていた=社長報告v0.25.2230)。
+          else if (getLoadInFlight() > 0) lastAt = now;
+          if (now - lastAt < stallMs && now - t0 < hardCapMs) return;
           window.clearInterval(readyFailsafe);
           try { useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
         }, 500);
@@ -310,8 +236,9 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       // ≒フラッシュ無し。万一キャッシュ未温(稀)でも、表示済みなので黒画面にはならず一瞬森が見えるだけ。
       // 各ステージ別テクスチャ(SORTIE_STAGE_TEXTURE_PATHS)。ユニットはinit冒頭で必要分だけ登録済み。
       // 出撃ステージに不要なパスはロードせずnull(セッターはnull許容=そのステージでは描かれない)。
+      // trackLoad で「実行中の通信」として数える=並列DL中にフェイルセーフが誤発火しない(v0.25.2230)。
       const load = (p: string) => neededStageTextures.has(p)
-        ? Assets.load(`${BASE}${p}`).catch(() => null).finally(() => loadProgressDone())
+        ? trackLoad(Assets.load(`${BASE}${p}`).catch(() => null).finally(() => loadProgressDone()))
         : Promise.resolve(null);
       void (async () => {
         // 注意: 分割代入の並びは SORTIE_STAGE_TEXTURE_PATHS の並びと1:1対応(位置結合)。追加時は両方を同順で。

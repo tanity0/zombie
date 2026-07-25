@@ -35,3 +35,18 @@ export const subscribeLoadProgress = (fn: () => void): (() => void) => {
   listeners.add(fn);
   return () => { listeners.delete(fn); };
 };
+
+// --- 実行中の読み込み本数(v0.25.2230の事故対策) ---------------------------------
+// 「進捗が一定時間動かない=停滞」でローディングを解除する保険(v0.25.2225)は、**並列ダウンロード**では
+// 誤作動する: 7ファイルを同時に落とすと全部が完了するまで done が1つも増えず、遅い回線では
+// 数秒〜十数秒「進捗ゼロ」に見えてしまい、読み込み途中で画面を出していた(社長報告v0.25.2230)。
+// そこで「まだ返ってきていない通信が1本でもあるか」を別に数え、**在れば停滞と見なさない**。
+let inFlight = 0;
+export const loadRequestBegin = (): void => { inFlight++; };
+export const loadRequestEnd = (): void => { inFlight = Math.max(0, inFlight - 1); };
+export const getLoadInFlight = (): number => inFlight;
+// 進行中の通信をひとまとめに追跡するヘルパ(begin/end の呼び忘れを防ぐ)。
+export const trackLoad = <T>(p: Promise<T>): Promise<T> => {
+  loadRequestBegin();
+  return p.finally(loadRequestEnd);
+};
