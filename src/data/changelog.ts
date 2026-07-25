@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2250',
+    items: [
+      'ゲーム内容の変更はありません(テスト結果と開発メモの記録のみ)。',
+    ],
+  },
+  {
     version: '0.25.2249',
     items: [
       'ステージ2: 叫喚型(叫んで周りの敵を強化する変異体)が出現しなくなりました。',
