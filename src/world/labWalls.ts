@@ -26,7 +26,10 @@ export const LAB_DEEP_Y = 1 * LAB_ZONE; // 900
 const WALL_RUN_SPACING = 150;
 // 壁バー幅(社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175: 150→90に小型化。奥行22は不変)。
 // 役割は通行障害ではなく視線切り遮蔽(横長廊下・上下固定クランプ導入とセット)。
-const H_LEN = 90, H_DEPTH = 22;
+// 幅は**実際の描画幅に一致**させる(社長指示v0.25.2234「見た目通りの幅にして」)。
+// 描画は containScale(WALL_DISPLAY_H.w=176, h=108, tex 256×153) = 0.6875 → 実描画幅 256×0.6875 = **176px**。
+// 旧90pxは見た目のちょうど半分で、絵の左右が素通りできていた。奥行22はそのまま(足元の設置面)。
+const H_LEN = 176, H_DEPTH = 22;
 
 export const wallRect = (w: PlacedWall): Rect => footRect(w.footX, w.footY, H_LEN, H_DEPTH);
 export const WALL_DISPLAY_H = { w: 176, h: 108 };
@@ -65,13 +68,17 @@ const isDeepCell = (cy: number) => Math.abs(cellCenterY(cy)) > LAB_DEEP_Y;
 // 100 → 200(社長指示v0.25.2229「上下に100px広げて」= 上下それぞれ100pxずつ拡張)。
 export const LAB_CORRIDOR_Y_LIMIT_PX = 200;
 export const LAB_WALL_Y_LIMIT = LAB_CORRIDOR_Y_LIMIT_PX; // 壁矩形が収まるべき範囲(=歩ける帯)
-// 壁の2段の位置は帯の**比率**で持つ(帯を広げれば壁も一緒に広がる=「歩けるところにだけ」の規則を保つ)。
-// 係数は帯=100だった頃の実値(-70/-35, 55/95)そのもの=従来の見え方をそのまま拡大したもの。
+// 壁は**できるだけ中央寄せ**(社長指示v0.25.2234)。帯の縁ではなく中央付近に2段で置き、
+// 通り道は**上下の縁**に残す(旧v0.25.2228は逆=縁に壁・中央が空きレーンだった)。
+// 中央にあるほうが「歩いていて実際に遮蔽として使う」ので、隠れる目的に合う。位置は帯の比率で保持。
 const L = LAB_CORRIDOR_Y_LIMIT_PX;
-const WALL_BAND_A_MIN = -0.70 * L, WALL_BAND_A_MAX = -0.35 * L;
-const WALL_BAND_B_MIN = 0.55 * L, WALL_BAND_B_MAX = 0.95 * L;
-// 中央に必ず残す空きレーン(この上下端の間には壁を置かない)。
-export const LAB_WALL_CLEAR_LANE: [number, number] = [WALL_BAND_A_MAX, WALL_BAND_B_MIN - H_DEPTH];
+const WALL_CENTER_INNER = 0.12; // 中央からの最小距離(帯比)= この内側には置かない
+const WALL_CENTER_OUTER = 0.28; // 中央からの最大距離(帯比)= これより外へは出さない
+const WALL_BAND_A_MIN = -WALL_CENTER_OUTER * L, WALL_BAND_A_MAX = -WALL_CENTER_INNER * L;
+const WALL_BAND_B_MIN = WALL_CENTER_INNER * L, WALL_BAND_B_MAX = WALL_CENTER_OUTER * L;
+// 上下の縁に必ず残る通り道(ここには壁が出ない)。どちらもプレイヤー(28px)より広いこと=詰み防止の不変条件。
+export const LAB_WALL_CLEAR_TOP: [number, number] = [-L, WALL_BAND_A_MIN - H_DEPTH];
+export const LAB_WALL_CLEAR_BOTTOM: [number, number] = [WALL_BAND_B_MAX, L];
 
 export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedWall[] => {
   const out: PlacedWall[] = [];
