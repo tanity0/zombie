@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2223',
+    items: [
+      'ステージ2: 隠れられる壁を増やしました(区画あたり最大8本・前後2段に配置)。什器などの遮蔽物も増量。',
+    ],
+  },
+  {
     version: '0.25.2222',
     items: [
       'グラフィック: ステージ2の窓枠にもぼかしを付け、窓まわり全体が奥行きになじむようにしました。',

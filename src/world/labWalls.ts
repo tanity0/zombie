@@ -50,6 +50,14 @@ const isDeepCell = (cy: number) => Math.abs(cellCenterY(cy)) > LAB_DEEP_Y;
 // 壁矩形(footY-H_DEPTH 〜 footY)は cy=0/-1(Y=0に隣接する2セル)でも常に |Y|>=248 に収まり、
 // ±100 の廊下帯には物理的に重ならない(役割どおり通行障害ではなく視線切りのみ)。よってこの形状変更で
 // 追加のガードは不要と確認済み(この不変条件が崩れる変更をする場合は要再確認)。
+// 遮蔽を増やす(社長指示v0.25.2222「もっと隠れられる壁とか増やして」): 区画あたり**ラン2本**
+// (縦バンドを奥側/手前側に分ける)× 各**2〜4本** = **4〜8本/区画**(旧: 1ラン1〜3本)。
+// 縦を2段にしたのが要点——同じ本数を1列に足すより、前後にずれた遮蔽の方が「隠れられる」場所として効く。
+// **廊下(±100帯)の不変条件は維持**: 両バンドとも footY オフセットは [0.30,0.70] の内側に収めてあるため、
+// 壁矩形のY範囲は従来と同じく cy=0 で [248,630]・cy=-1 で [-652,-270] となり ±100 には決して重ならない。
+const WALL_RUN_BANDS = [0.30, 0.52]; // 各ランのセル内縦オフセット起点(幅0.18ずつ = [0.30,0.48] / [0.52,0.70])
+const WALL_RUN_BAND_SPREAD = 0.18;
+
 export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedWall[] => {
   const out: PlacedWall[] = [];
   const cx0 = Math.floor(minX / LAB_ZONE) - 3; // 長いランの左方伸長を取りこぼさない
@@ -59,12 +67,16 @@ export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY:
   for (let cy = cy0; cy <= cy1; cy++) {
     if (isDeepCell(cy)) continue; // 視線に関わる範囲の外=壁も生成しない(プロップ/UVバーと同じ)
     for (let cx = cx0; cx <= cx1; cx++) {
-      const hLen = hash2(cx * 2.1 + 1.3, cy * 1.9 - 0.7);
-      const runLen = 1 + Math.floor(hLen * 3); // 全域で区画あたり1〜3本(密度均一化)
-      const baseX = cx * LAB_ZONE + LAB_ZONE * (0.12 + 0.35 * hash2(cx, cy));
-      const footY = cy * LAB_ZONE + LAB_ZONE * (0.3 + 0.4 * hash2(cx * 1.7 + 5.2, cy * 2.3 - 1.1));
-      for (let k = 0; k < runLen; k++) {
-        out.push({ id: `lw-${cx}-${cy}-${k}`, orient: 'h', footX: baseX + k * WALL_RUN_SPACING, footY });
+      let idx = 0; // セル内の通し番号(id は `lw-cx-cy-番号` のまま=セル単位のグルーピングを壊さない)
+      for (let r = 0; r < WALL_RUN_BANDS.length; r++) {
+        const hLen = hash2(cx * 2.1 + 1.3 + r * 13.7, cy * 1.9 - 0.7 - r * 5.3);
+        const runLen = 2 + Math.floor(hLen * 3); // ランあたり2〜4本
+        const baseX = cx * LAB_ZONE + LAB_ZONE * (0.12 + 0.35 * hash2(cx + r * 3.3, cy - r * 1.7));
+        const bandT = WALL_RUN_BANDS[r] + WALL_RUN_BAND_SPREAD * hash2(cx * 1.7 + 5.2 + r * 2.9, cy * 2.3 - 1.1 + r * 4.1);
+        const footY = cy * LAB_ZONE + LAB_ZONE * bandT;
+        for (let k = 0; k < runLen; k++) {
+          out.push({ id: `lw-${cx}-${cy}-${idx++}`, orient: 'h', footX: baseX + k * WALL_RUN_SPACING, footY });
+        }
       }
     }
   }
@@ -89,7 +101,8 @@ const PROP_HIT_W = 46, PROP_HIT_H = 30;
 
 export const propRect = (p: PlacedProp): Rect => footRect(p.footX, p.footY, PROP_HIT_W, PROP_HIT_H);
 
-// 区画(セル)ごとに 2〜4 個のプロップを散布。決定的ハッシュなので描画と当たり判定が必ず一致する。
+// 区画(セル)ごとに 3〜6 個のプロップを散布(社長指示v0.25.2222で 2〜4 から増量=「壁とか」の“とか”側)。
+// 決定的ハッシュなので描画と当たり判定が必ず一致する。
 export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedProp[] => {
   const out: PlacedProp[] = [];
   const cx0 = Math.floor(minX / LAB_ZONE) - 1, cx1 = Math.floor(maxX / LAB_ZONE) + 1;
@@ -97,7 +110,7 @@ export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY:
   for (let cy = cy0; cy <= cy1; cy++) {
     if (isDeepCell(cy)) continue; // 奥は敵以外を置かない(壁/UVバーと同じ方針)
     for (let cx = cx0; cx <= cx1; cx++) {
-      const n = 2 + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * 3); // 2〜4個/区画
+      const n = 3 + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * 4); // 3〜6個/区画
       for (let k = 0; k < n; k++) {
         const footX = cx * LAB_ZONE + LAB_ZONE * (0.1 + 0.8 * hash2(cx * 1.3 + k * 7.1 + 2.2, cy * 1.9 - k * 3.3 + 4.4));
         const footY = cy * LAB_ZONE + LAB_ZONE * (0.1 + 0.8 * hash2(cx * 2.7 - k * 5.5 + 9.9, cy * 1.1 + k * 2.2 - 6.6));

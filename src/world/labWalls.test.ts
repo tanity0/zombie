@@ -25,13 +25,24 @@ describe('labWallsInRegion (壁の小型化+密度均一化)', () => {
     }
   });
 
-  it('区画(セル)あたりの本数は1〜3本(旧: 通常1〜5/deep6〜13は廃止)', () => {
+  it('区画(セル)あたりの本数は4〜8本(社長指示v0.25.2222で増量: ラン2本×2〜4本)', () => {
     const walls = labWallsInRegion(-3000, -3000, 3000, 3000);
     const groups = groupByCell(walls);
     expect(groups.size).toBeGreaterThan(0);
     for (const runWalls of groups.values()) {
-      expect(runWalls.length).toBeGreaterThanOrEqual(1);
-      expect(runWalls.length).toBeLessThanOrEqual(3);
+      expect(runWalls.length).toBeGreaterThanOrEqual(4);
+      expect(runWalls.length).toBeLessThanOrEqual(8);
+    }
+  });
+
+  it('区画あたり2本のランが縦にずれて置かれる(前後に隠れられる=増量の狙い)', () => {
+    const walls = labWallsInRegion(-3000, -3000, 3000, 3000);
+    const groups = groupByCell(walls);
+    expect(groups.size).toBeGreaterThan(0);
+    for (const runWalls of groups.values()) {
+      const ys = [...new Set(runWalls.map(w => w.footY))];
+      expect(ys.length).toBe(2); // ラン2本ぶんの異なるfootY
+      expect(Math.abs(ys[0] - ys[1])).toBeGreaterThan(20); // 同じ高さに重ならない
     }
   });
 
