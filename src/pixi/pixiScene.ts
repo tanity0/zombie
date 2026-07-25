@@ -349,7 +349,9 @@ const LAB_FAR_WINDOW_ZOMBIES = Math.max(0, Math.round(tsNum('labfwz', 5)));  // 
 const LAB_FAR_WINDOW_ZOMBIE_H = tsNum('labfwzh', 0.42);     // 身長(窓の高さ比)。?labfwzh=
 const LAB_FAR_WINDOW_ZOMBIE_SPEED = tsNum('labfwzs', 7);    // うろつき速度(px/秒・ゆっくり)。?labfwzs=
 const LAB_FAR_WINDOW_ZOMBIE_ALPHA = tsNum('labfwza', 0.85); // 不透明度(奥の空気感)。?labfwza=
-const LAB_FAR_WINDOW_ZOMBIE_FOOT = tsNum('labfwzf', 0.16);  // 足元の高さ(窓下辺からの上げ・窓の高さ比)。?labfwzf=
+// 足元の基準線=「遠景の下辺」と「窓ガラスの下辺」のちょうど中間(社長指示v0.25.2212)。窓を上下しても
+// 両者から自動で導かれるので追従する。この定数はその中間線からの微調整(px・正=下へ)。?labfwzf=
+const LAB_FAR_WINDOW_ZOMBIE_FOOT = tsNum('labfwzf', 0);
 // 個体差を決める決定論ハッシュ(Math.randomを使わない=リロードで配置が暴れない)。
 const labFarZombieRnd = (i: number, salt: number): number => {
   let h = (Math.imul(i + 1, 2654435761) + Math.imul(salt + 1, 40503)) | 0;
@@ -361,8 +363,10 @@ const labFarZombieRnd = (i: number, salt: number): number => {
 // (旧 0.09=遠景壁と同率だと窓1枚≒画面幅のため実質静止して見えた。社長指示v0.25.2203)。?labfwpx=
 const LAB_FAR_WINDOW_PARALLAX = tsNum('labfwpx', HORIZON_FOREST_PARALLAX_X);
 // 遠景窓の下辺オフセット(px・フレーム/ガラス両方に効く): 遠景backdropの実下辺基準で 正=上へ / 負=下へ。
-// 既定-10=下へ10px(v2207で50下 → v2209で20上げ=30下 → v2210でさらに20上げ=正味10下)。?labfwup=
-const LAB_FAR_WINDOW_BOTTOM_UP = tsNum('labfwup', -10);
+// 既定-20=下へ20px(v2207:50下 → v2209:30下 → v2210:10下 → v2212でさらに10px下げ=20下)。?labfwup=
+const LAB_FAR_WINDOW_BOTTOM_UP = tsNum('labfwup', -20);
+// M2の近景森1(什器シルエット)の下げ量(px)。既定20=20px下へ(社長指示v0.25.2212)。?labf1down=
+const LAB_FRONT_FOREST_DOWN_PX = tsNum('labf1down', 20);
 // 近景森1/2のパララックス速度差(社長指示v0.25.2200「近景森1と2の速度を変えたい、2の方が少しだけ速く」):
 // 近景森1(frontForest・lab限定)=既定0.68でFRONT_FOREST_PARALLAX_Xと同値(現状維持)。
 // 近景森2(labFront2・一番手前)=既定0.80で1より少し速い(手前ほど速く流れる=奥行き感)。
@@ -2704,6 +2708,7 @@ export class PixiScene {
 
   // ステージ別の近景森Y下げ量。frontH(=frontForestHeight())依存の値はここで受け取る。
   private frontForestYOffset(frontH: number) {
+    if (this.isLabStage) return LAB_FRONT_FOREST_DOWN_PX; // M2の近景森1(什器)を下げる(社長指示v0.25.2212)
     if (this.snowStage) return FRONT_SNOW_Y_OFFSET;
     if (this.stage5Stage) return frontH * FRONT_STAGE5_Y_OFFSET_RATIO;
     if (this.currentFarKey === 'tutorial') return TUTORIAL_FRONT_Y_OFFSET_PX; // 手前岩を100px下へ(下寄せ)
@@ -5100,7 +5105,7 @@ export class PixiScene {
   // ガラスの向こうを左右にゆっくりうろつくレベル1研究所ゾンビ(社長指示v0.25.2211)。
   // **描画のみ**: ストアを読まず書かず、当たり判定も持たない純粋な環境演出(窓の外の気配)。
   // 配置=決定論ハッシュで固定(リロードで暴れない)。横は窓と同じパララックスで流れ、画面外で巻き戻す。
-  private updateLabFarWindowZombies(glass: TilingSprite, bottom: number, winH: number, cameraX: number, now: number) {
+  private updateLabFarWindowZombies(glass: TilingSprite, _bottom: number, winH: number, cameraX: number, now: number) {
     if (LAB_FAR_WINDOW_ZOMBIES <= 0) { if (this.labFarZombieLayer) this.labFarZombieLayer.visible = false; return; }
     const texM = getTexture('lab-zombie/lab-zombie-lv1-male');
     const texF = getTexture('lab-zombie/lab-zombie-lv1-female');
@@ -5117,6 +5122,11 @@ export class PixiScene {
     if (this.labFarZombieT0 === 0) this.labFarZombieT0 = now;
     const t = (now - this.labFarZombieT0) / 1000; // 相対秒(エポックmsを速度に掛けない)
     const w = this.screenW;
+    // 立ち位置=「遠景の下辺」と「窓ガラスの下辺」のちょうど中間(社長指示v0.25.2212)。両辺から毎フレーム
+    // 導くので、窓を上下しても・遠景の帯高が変わっても自動追従する。
+    const farBottom = this.L.farBackdrop.position.y + this.L.farBackdrop.height;
+    const glassBottom = glass.position.y + glass.height;
+    const footLine = (farBottom + glassBottom) / 2 + LAB_FAR_WINDOW_ZOMBIE_FOOT;
     for (let i = 0; i < LAB_FAR_WINDOW_ZOMBIES; i++) {
       let sp = this.labFarZombies[i];
       if (!sp) {
@@ -5147,8 +5157,8 @@ export class PixiScene {
       const span = w + halfW * 4;
       const raw = labFarZombieRnd(i, 1) * w + wander - cameraX * LAB_FAR_WINDOW_PARALLAX;
       sp.position.x = ((raw + halfW * 2) % span + span) % span - halfW * 2;
-      // 縦位置: 窓の下辺から少し上=ガラスの内側に足元が来る。個体ごとに微差(奥行き感)。
-      sp.position.y = bottom - winH * LAB_FAR_WINDOW_ZOMBIE_FOOT - winH * 0.04 * labFarZombieRnd(i, 6);
+      // 縦位置: 遠景下辺とガラス下辺の中間線に足元を置く。個体ごとに微差(奥行き感)。
+      sp.position.y = footLine - winH * 0.02 * labFarZombieRnd(i, 6);
     }
     for (let i = LAB_FAR_WINDOW_ZOMBIES; i < this.labFarZombies.length; i++) this.labFarZombies[i].visible = false;
   }
