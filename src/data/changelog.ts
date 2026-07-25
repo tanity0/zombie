@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2249',
+    items: [
+      'ステージ2: 叫喚型(叫んで周りの敵を強化する変異体)が出現しなくなりました。',
+    ],
+  },
+  {
     version: '0.25.2248',
     items: [
       'ステージ2: ゴールと反対方向へ進むと、敵の湧く量が間引き前(以前の量)に戻るようになりました。逆走は静かな安全ルートではありません。',

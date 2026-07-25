@@ -2862,7 +2862,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 画面外に1体だけ出す。AIが距離を保ちつつ溜め→叫喚で画面内の通常敵を一時強化。溜め完了前に倒せば阻止。
         // PACING_PUZZLE.md(社長裁定v0.25.1378「1は一本化」): パズル方式ON時は本ディレクターを停止し、
         // 供給を特別枠(§4-A: エリア3〜・同時1・CD3秒)へ一本化する。?puzzle=0時のみ従来どおりここが動く。
-        if (!danceTest && !indoor && !puzzleActiveNow && !NOSPAWN) {
+        // 社長指示v0.25.2249「m2は叫び沸かないで」: 研究所スキン(M2)では叫喚型を出さない。
+        // M2は puzzleActiveNow=false(1908行)なのでこのディレクターが動いていた=唯一の湧き経路。
+        // 忍び込むステージで画面外から通常敵を一斉強化されるのは設計と噛み合わないため止める。
+        if (!danceTest && !indoor && !labTheme && !puzzleActiveNow && !NOSPAWN) {
           const sS = useGameStore.getState();
           const aliveScreamer = sS.enemies.some(e => e.type === 'screamer');
           const sCinematic = sS.bossChasing || !!sS.attention || sS.redNight?.phase === 'active'
