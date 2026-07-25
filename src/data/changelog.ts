@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2230',
+    items: [
+      'ステージ2: 動ける範囲を上下に100pxずつ広げました(壁の配置と暗くなる範囲も一緒に広がります)。',
+    ],
+  },
+  {
     version: '0.25.2229',
     items: [
       'ステージ2: 壁が歩ける範囲の中に出るようになり、実際に隠れて使えるようになりました(中央には必ず通り道が残ります)。',

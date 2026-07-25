@@ -59,10 +59,17 @@ const isDeepCell = (cy: number) => Math.abs(cellCenterY(cy)) > LAB_DEEP_Y;
 //   下段(B): footY ∈ [ 55, 95] → 壁矩形 [ 33, 95]
 //   → 中央 [-35, 33] = 68px は常に空く(プレイヤー当たり判定 PLAYER_HITBOX=28 より広い)=詰みが起きない。
 // セルの縦(cy)方向のループは廃止(帯は1本しかないため)。id は `lw-cx-0-番号` でセル単位の集計は従来どおり。
-const WALL_BAND_A_MIN = -70, WALL_BAND_A_MAX = -35;
-const WALL_BAND_B_MIN = 55, WALL_BAND_B_MAX = 95;
-// 壁矩形が収まるべき範囲(=歩ける帯)。テストと共有する不変条件。
-export const LAB_WALL_Y_LIMIT = 100;
+// 歩ける帯の半幅(プレイヤー中心Yのクランプ値)。**この1箇所が唯一の出どころ**——移動クランプ(gameStore)・
+// 帯の外の減光(pixiScene)・壁の配置(下記)がすべてここから導かれる。世界の形なので world 層に置く
+// (gameStore が labWalls を import する向きなので循環しない)。
+// 100 → 200(社長指示v0.25.2229「上下に100px広げて」= 上下それぞれ100pxずつ拡張)。
+export const LAB_CORRIDOR_Y_LIMIT_PX = 200;
+export const LAB_WALL_Y_LIMIT = LAB_CORRIDOR_Y_LIMIT_PX; // 壁矩形が収まるべき範囲(=歩ける帯)
+// 壁の2段の位置は帯の**比率**で持つ(帯を広げれば壁も一緒に広がる=「歩けるところにだけ」の規則を保つ)。
+// 係数は帯=100だった頃の実値(-70/-35, 55/95)そのもの=従来の見え方をそのまま拡大したもの。
+const L = LAB_CORRIDOR_Y_LIMIT_PX;
+const WALL_BAND_A_MIN = -0.70 * L, WALL_BAND_A_MAX = -0.35 * L;
+const WALL_BAND_B_MIN = 0.55 * L, WALL_BAND_B_MAX = 0.95 * L;
 // 中央に必ず残す空きレーン(この上下端の間には壁を置かない)。
 export const LAB_WALL_CLEAR_LANE: [number, number] = [WALL_BAND_A_MAX, WALL_BAND_B_MIN - H_DEPTH];
 

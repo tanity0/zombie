@@ -94,7 +94,7 @@ import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
-import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect } from '../world/labWalls';
+import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -304,7 +304,9 @@ const TUTORIAL_RETURN_CIRCLE_X = 3000;
 export const TUTORIAL_MOVE_X_MIN_PX = -100;
 // ステージ2(研究所・横長廊下)の上下固定(M0チュートリアルと同じクランプ方式・社長承認
 // M2_LAB_CORRIDOR_SPEC.md v0.25.2175)。プレイヤー中心yを±この値に数値クランプ。X方向は無制限。
-export const LAB_CORRIDOR_Y_LIMIT_PX = 100;
+// 実体は `src/world/labWalls.ts`(世界の形なので world 層が唯一の出どころ)。ここは従来の import 元を
+// 壊さないための再輸出(v0.25.2229で 100→200 に拡張。壁の配置も同じ値から導出される)。
+export const LAB_CORRIDOR_Y_LIMIT_PX = LAB_CORRIDOR_Y_LIMIT_FROM_WORLD;
 const PHASER_GUN_OFFSET = 5;           // 2丁拳銃の左右ずらし幅(px。進行方向に直交)
 const PHASER_APPEAR_CHANCE = 0.2;      // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)
