@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { ASSET_VERSION } from '../config/assetVersion';
 import { projectCorridorPillars, CORRIDOR_CFG } from '../utils/corridorProjection';
 
 // ステージ6(洋館)・奥行き通路の【単体プロトタイプ】(?corridor=1・社長相談v0.25.2077)。
@@ -8,7 +9,7 @@ import { projectCorridorPillars, CORRIDOR_CFG } from '../utils/corridorProjectio
 // 床は仮のベタ台形(石畳+赤カーペット)。歩行は自動前進(叩き台220px/s)。
 // 洋館素材は同名ファイルを差し替えて更新するため、バージョン付きキャッシュバスターを必ず付ける
 // (v0.25.2097: 奥壁差し替え時、実機に旧素材がキャッシュで残り「縦に伸びた」見え方になった教訓)。
-const MV = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+const MV = ASSET_VERSION; // 素材用の固定版(アプリ版だと毎pushで再DLになる)
 const M = (f: string) => `${import.meta.env.BASE_URL}sprites/mansion/${f}?v=${encodeURIComponent(MV)}`;
 const PILLAR_L = M('pillar-left.png');
 const PILLAR_R = M('pillar-right.png');

@@ -10,6 +10,7 @@
 // - stage-ex2 は旧構想の残置データ(hidden=導線なし)。正史のEXは stage-ex1 のみ。
 
 import type { CharacterClass, SubWeaponKey, SkillKey, IntroLine, EnemyType } from '../types/game';
+import { ASSET_VERSION } from '../config/assetVersion';
 
 // --- ステージ / ミッションの型 -------------------------------------------
 export interface StageVoiceLine {
@@ -573,7 +574,8 @@ export const getStage = (id: string): Stage | undefined => STAGES.find(s => s.id
 // --- キャラクター(職業) ---------------------------------------------------
 // 性能差は撤廃(全員同一性能)。違いは「初期装備」と「専用スキル」のみ。
 // 立ち絵スプライト(128x108)の足元位置の微差を底ライン(影)へ揃えるための portraitNudgeY を保持。
-const spriteVersion = encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev');
+// 素材用の固定版(毎pushで上がるアプリ版を使うと、コード変更だけで全スプライトが再DLになる)。
+const spriteVersion = encodeURIComponent(ASSET_VERSION);
 
 export interface CharacterClassInfo {
   id: CharacterClass;

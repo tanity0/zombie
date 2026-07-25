@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2241',
+    items: [
+      '通信量の削減: アップデートのたびに立ち絵やタイトル背景など約13MBを再ダウンロードしていたのをやめました。更新後の初回起動が軽くなります。',
+    ],
+  },
+  {
     version: '0.25.2240',
     items: [
       'グラフィック: 遠景の窓の手前の什器を10px下げて、床との重なりを自然にしました。',

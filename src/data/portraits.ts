@@ -4,6 +4,7 @@
 // 2箇所に同じ生成規則を書くと将来ズレるので、ここを唯一の出どころにする)。
 import type { CharacterClass } from '../types/game';
 import { CHARACTER_CLASSES } from './campaign';
+import { ASSET_VERSION } from '../config/assetVersion';
 
 export const CLASS_PORTRAIT: Record<CharacterClass, string> = {
   warrior: 'portrait-shotgun',     // ヘビーガンナー(ショットガン)=タイトルの少女
@@ -12,11 +13,11 @@ export const CLASS_PORTRAIT: Record<CharacterClass, string> = {
   necromancer: 'portrait-handgun', // スカベンジャー(ハンドガン)=拳銃の黒髪
 };
 
-// ?v=<version> はデプロイ更新を確実に反映させるためのキャッシュバスター(=バージョンが上がると
-// 必ず再取得になる)。それ自体は意図どおりなので、下の先読みで「選択画面を開く前に取り終える」ことで
-// 初回の空白を防ぐ。
+// キャッシュバスターは**素材用の固定版**(ASSET_VERSION)を使う。アプリ版(__APP_VERSION__)は毎pushで
+// 上がるため、コードだけの変更でも立ち絵(計9.4MB)が毎回再DLになっていた(社長指摘v0.25.2240)。
+// 立ち絵を同名で差し替えた時だけ config/assetVersion.ts を上げれば、そのときだけ確実に更新される。
 export const portraitSrcFor = (id: CharacterClass): string =>
-  `${import.meta.env.BASE_URL}sprites/portraits/${CLASS_PORTRAIT[id]}.png?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`;
+  `${import.meta.env.BASE_URL}sprites/portraits/${CLASS_PORTRAIT[id]}.png?v=${encodeURIComponent(ASSET_VERSION)}`;
 
 // URLを1本先読みしてブラウザキャッシュに載せる。デコードまで済ませたいので decode() があれば待つ
 // (失敗は無視=表示側が従来どおり onLoad で出す)。
