@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.2208 — M2: 近景森1を不透明化+窓ガラスを枠から2px上【2026-07-25 02:23 JST】
+- 指示(社長): ①近景森1(什器)がまだ透明度がある ②窓のガラスだけ常にフレームから2px上に。
+  (併せて横持ちロック=「画面を縦にしてください」overlay が効いている旨を画像で確認。遠景横反復リスクは取下げ)
+- 診断①: 層alphaは lab で 1.0(既に不透明)だが、frontForestFadeMask(上端フェード)が lab でも有効
+  (applyStage3Front は isLabStage で早期returnし mask を解除しない)=什器バンドの上側が透けていた。
+- 対処①: applyOutdoorGroundTheme の lab ブロックで毎フレーム `frontForest.mask = null`(city/snow差し替えと
+  同じ実績方式)=上端フェード無し=不透明。
+- 対処②: LAB_FAR_GLASS_UP(?labfgup=・既定2)を新設し、glass のみ position.y を2px上へ(frameは不動)。
+  ※前バッチで一旦20pxで入れたが本指示で2pxへ確定。
+- 保留(質問): 「遠景がやたら暗い」→lab far は ENV_TINT(≒62%減光)が掛かる(city/tutorialは0xffffffで無補正)。
+  暗いのは気のせいではない。明るくするかは演出判断のため要指示(提案のみ)。
+- 検証: typecheck・lint 0。実機は社長確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2207 — M2遠景窓: 2倍+50px下へ【2026-07-25 02:23 JST】
 - 指示(社長): ガラスとフレーム(遠景窓)を2倍にしつつ、50px下へ。
 - 対処: LAB_FAR_WINDOW_SCALE 既定 1→2(縦横一様tileScale=絵が2倍)。

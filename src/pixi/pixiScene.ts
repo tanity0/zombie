@@ -341,6 +341,7 @@ const LAB_FRONT2_BLUR = tsNum('labf2bl', 3);
 // 社長指示v0.25.2198「新規定数は必ずtsNum/tsBoolの宣言より下に置く」)。
 const LAB_FAR_WINDOW_SCALE = tsNum('labfwsc', 2); // 遠景窓の拡大率(縦横一様tileScale)。既定2=2倍(社長指示v0.25.2207)。?labfwsc=
 const LAB_FAR_GLASS_ALPHA = tsNum('labfga', 0.3); // 遠景窓ガラスの不透明度(社長指示v0.25.2202「透明度70%=alpha0.3」)。?labfga=
+const LAB_FAR_GLASS_UP = tsNum('labfgup', 2); // 遠景窓ガラスだけの上オフセット(px・フレームは動かさない。既定2=常にフレームから2px上。社長指示v0.25.2208)。?labfgup=
 // 遠景窓の横パララックス: この窓は遠景森1(horizonForest・lab時 horizon1Visible=false で非表示)を
 // 置き換えたもの。旧森1と同じ 0.16(HORIZON_FOREST_PARALLAX_X)で流す=横に動いて見える
 // (旧 0.09=遠景壁と同率だと窓1枚≒画面幅のため実質静止して見えた。社長指示v0.25.2203)。?labfwpx=
@@ -3497,6 +3498,9 @@ export class PixiScene {
       for (const strip of strips) { if (strip.texture !== tex) strip.texture = tex; strip.tint = 0xffffff; }
       // 手前の近景(什器シルエット)はステージ2の暗化(ENV_TINT)対象から除外=本来の明るさで表示(社長指示)。
       this.L.frontForest.tint = 0xffffff;
+      // 上端フェードマスクを掛けない=什器バンドを不透明に(層alphaは既に1.0だが、フェードで上側が
+      // 透けていた。社長報告v0.25.2208「近景森1まだ透明度がある」)。city/snow差し替えと同じmask=null方式。
+      this.L.frontForest.mask = null;
       // 近景森は社長支給のクロマキー済み新素材(frontOverrides['lab']・setFrontOverride('lab',…)で非同期
       // 注入)を優先し、未ロードならlab-front-bandへフォールバック。ground stripsと同じく毎フレーム差分
       // チェックで貼り替える(遅延注入対応・社長指示v0.25.2184)。レイアウト/パララックス/ぼかしは
@@ -5069,6 +5073,7 @@ export class PixiScene {
     };
     layoutOne(glass, glassTex);
     layoutOne(frame, frameTex);
+    glass.position.y -= LAB_FAR_GLASS_UP; // ガラスだけ上へ(フレームは動かさない・社長指示v0.25.2208)
     glass.alpha = LAB_FAR_GLASS_ALPHA; // ガラスだけ半透明(フレームは不透明のまま)
     frame.alpha = 1;
   }
