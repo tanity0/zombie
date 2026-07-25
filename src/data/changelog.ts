@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2238',
+    items: [
+      'ステージ2: 敵に見つかる距離を全員2/3(300→200px)に縮めました。より近づかないと気づかれません。',
+    ],
+  },
+  {
     version: '0.25.2237',
     items: [
       'ステージ2: 壁の見た目を一回り小さく(高さ2/3)しました。当たり判定も自動で同じ幅になります。',

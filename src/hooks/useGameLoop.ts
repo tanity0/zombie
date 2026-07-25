@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { LAB_VISION_RANGE } from '../utils/labStealth';
 import {
   useGameStore,
   INVULN_MS,
@@ -807,7 +808,7 @@ const CASTLE_BOSS_MIN_TIME_MS = 7 * 60 * 1000; // ただし出現は7分経過�
 // 「敵が一切出ない」状態に、逆に 700 では湧いた瞬間に約7割が即起床して「すぐ見つかる」状態だった(社長報告)。
 // 420=画面の半対角線弱(忍び寄れる挙動)を経て、社長指示v0.25.1754で視界300pxへ(より深く忍び寄れる)。
 // リサイクル(~753)より十分小さいので少し近づけば確実に起きる(=敵切れにしない)。
-const LAB_SPAWN_AGGRO_RANGE = 300;
+const LAB_SPAWN_AGGRO_RANGE = LAB_VISION_RANGE; // 視界距離は labStealth.ts が単一の出どころ(v0.25.2237で300→200)
 // 1画面区画あたりのラボ敵の上限(密度制御)。
 const LAB_ENEMIES_PER_ZONE = 2;
 // ラボの湧き間隔倍率(大きいほど間隔が空く=湧きすぎ防止)と、1回の湧き上限。
