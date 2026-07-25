@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2227',
+    items: [
+      'ステージ2: 歩けない範囲をより暗くして、動ける範囲が一目で分かるようにしました。',
+    ],
+  },
+  {
     version: '0.25.2226',
     items: [
       '不具合修正: ステージ2の開始直後(ヘリ降下中)に画面全体が暗いままになっていたのを直しました。着地後にふわっと暗さがつきます。',

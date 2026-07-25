@@ -361,7 +361,7 @@ const LAB_FAR_ZOMBIE_BLUR = Math.max(0, tsNum('labzblur', 1.2)); // ゾンビ(�
 const LAB_FAR_FRAME_BLUR = Math.max(0, tsNum('labwfblur', 1.5));
 // 移動可能帯(廊下 ±LAB_CORRIDOR_Y_LIMIT_PX)の外を少し暗くする(社長指示v0.25.2223)。
 // 境目はパキッと切らず、fade幅ぶんの縦グラデで溶かす。**描画のみ**——移動クランプ本体(gameStore)には触らない。
-const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.3))); // 0で無効(復帰フラグ)。?labdim=
+const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.5))); // 0.3→0.5(社長指示v0.25.2226「もう少し暗くして分かりやすく」)。0で無効(復帰フラグ)。?labdim=
 const LAB_OUT_DIM_FADE_PX = Math.max(0, tsNum('labdimfade', 70));        // 境目のグラデ幅(画面px)。?labdimfade=
 const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登場演出の着地後に濃くなるまでの時間。?labdimin=
 // ガラスの向こうを左右にゆっくりうろつくレベル1の研究所ゾンビ(社長指示v0.25.2211)。**描画のみの環境演出**=
