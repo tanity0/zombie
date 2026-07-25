@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { OPENING_REVIVAL_LINES, OPENING_REVIVAL_TIMING } from '../data/openingRevivalSequence';
 import { rewindBgm } from '../audio/audioManager';
+import { trackLoad } from '../utils/loadProgress';
 // パン!SEはWebAudio(playSfx)ではなくHTMLAudioで鳴らす(v0.25.2050):
 // 実機でアリーナ音源(HTMLAudio)は鳴るのにplaySfx経路のパン!だけ無音だったため、
 // 確実に鳴る同じ仕組みに統一(コンテキスト解錠・バッファ非同期の罠を回避)。
@@ -364,6 +365,8 @@ const SPOTLIGHTS = SHOTS.map(s => s.chars.map((c, ci) => {
 const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, startAtShoot, startAtRevival }) => {
   const [ready, setReady] = useState(false); // 歩きシーンの素材が揃うまで開始しない(v0.25.2118で歩き用/本編用に分割)
   const [mainReady, setMainReady] = useState(false); // 本編(アリーナ/射撃)素材のdecode完了。アリーナ開始の条件
+  const [walkLoaded, setWalkLoaded] = useState(0);   // 歩きシーン素材の読み終えた枚数(ローディング%表示用)
+  const [walkTotal, setWalkTotal] = useState(0);
   const [phase, setPhase] = useState(startAtRevival ? 4 : startAtShoot ? 3 : 0); // 0-2=アリーナ各アングル / 3=射撃シーン / 4=蘇生処置(字幕)
   const [step, setStep] = useState(0); // 射撃シーンのコマ番号(SHOOT_STEPS index)
   const [shootLine, setShootLine] = useState(-1); // 射撃シーンの会話行(SHOOT_LINES index / -1=非表示)
@@ -513,19 +516,32 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // 旧実装は全素材一括+フォールバック3秒=モバイルの初回ロードで大物(廊下bg計2.7MB)が間に合わず
     // 見切り発車していた。歩きシーンは自分の素材が揃うまで開始しない(壊れ画像保険の上限12秒)。
     // 本編(アリーナ/射撃)素材は並行ロードし、アリーナ開始条件(mainReady)に組み込む=歩いている間に済む。
-    const dec = (srcs: string[]) => srcs.map(src => { const im = new Image(); im.src = src; return im.decode().catch(() => {}); });
+    // trackLoad で「実行中の通信」に数える(v0.25.2232)=出撃側と同じ在庫管理。読み終えた枚数は
+    // setWalkLoaded で%表示に出す(待ちが可視化されていないと固まったように見えるため)。
+    const dec = (srcs: string[], onOne?: () => void) => srcs.map(src => {
+      const im = new Image();
+      im.src = src;
+      return trackLoad(im.decode().catch(() => {}).then(() => { onOne?.(); }));
+    });
     const walkAssets = startAtShoot ? [] : [WALK_BG, WALK_BG_BLUR, ...WALK_FRAMES, ...NPC_FRAMES, HERO]; // HERO=停止中の立ち絵(v0.25.2121)/NPC=待ち構えるスタッフ(v0.25.2131)
     const mainAssets = [
       ...SHOTS.map(s => s.bg), ...SHOTS.map(s => s.bgBlur), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
     ];
+    // 見切り発車のしきい値(v0.25.2232・社長報告「アップロード後のリロード直後だと読み込めてない」):
+    // 旧12秒/20秒の**絶対**タイムアウトは、デプロイ直後(キャッシュが全部冷える)のモバイル回線だと
+    // 歩きシーン素材2.7MBが間に合わず、壊れたまま開始していた。ダウンロードが**進んでいる限り待つ**
+    // 方式へ統一し、上限は「通信そのものが死んだ時の保険」として長めに置く。
+    let walkSeen = 0;
+    setWalkTotal(walkAssets.length);
+    const walkP = dec(walkAssets, () => { if (!cancelled) setWalkLoaded(++walkSeen); });
     Promise.race([
-      Promise.all(dec(walkAssets)).then(() => {}),
-      new Promise<void>(res => { ids.push(window.setTimeout(res, 12000)); }),
+      Promise.all(walkP).then(() => {}),
+      new Promise<void>(res => { ids.push(window.setTimeout(res, 45000)); }),
     ]).then(() => { if (!cancelled) setReady(true); });
     Promise.race([
       Promise.all(dec(mainAssets)).then(() => {}),
-      new Promise<void>(res => { ids.push(window.setTimeout(res, 20000)); }),
+      new Promise<void>(res => { ids.push(window.setTimeout(res, 60000)); }),
     ]).then(() => { if (!cancelled) setMainReady(true); });
     return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -772,7 +788,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       {!walkDone ? (!ready ? (
         // 歩きシーン素材のロード待ち(v0.25.2118): 見切り発車しない代わりに待ちを可視化。
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.55)', fontSize: 13, letterSpacing: '0.2em' }}>
-          Loading...
+          Loading... {walkTotal > 0 ? `${Math.round((walkLoaded / walkTotal) * 100)}%` : ''}
         </div>
       ) : (
         // ── 楽屋通路の歩きシーン(アリーナ前・v0.25.2114): 左端からフェードイン→押している間だけ右へ歩く。

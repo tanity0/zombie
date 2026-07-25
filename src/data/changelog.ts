@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2233',
+    items: [
+      '不具合修正: 更新直後にオープニングが読み込み途中のまま始まることがあるのを直しました(読み込み中は待ち、%を表示します)。',
+    ],
+  },
+  {
     version: '0.25.2232',
     items: [
       '出撃ローディングの%が、大きな画像の読み込み中も少しずつ進むようになりました(止まって見える問題の解消)。',
