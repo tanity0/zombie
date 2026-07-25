@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2239',
+    items: [
+      'グラフィック: 遠景の窓の手前に置いた什器が浮いて見えていたのを、窓の足元にぴったり揃えました。',
+    ],
+  },
+  {
     version: '0.25.2238',
     items: [
       'ステージ2: 敵に見つかる距離を全員2/3(300→200px)に縮めました。より近づかないと気づかれません。',

@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.2239 — 遠景の什器の下辺を窓の足元に揃える【2026-07-25 23:06 JST】
+- 指示(社長): 追加してもらった遠景の什器は見た目の下辺を揃えて。
+- 診断: 素材側の余白が原因ではなかった(実測: `stage2-front.png` の下の透明余白=**0px**、
+  `stage2-far-frame.png`=1px、`stage2-far-glass.png`=0px)。**基準がズレていた**のが原因で、
+  什器は遠景backdropの下辺(=境界線)に置いていたのに対し、窓は `LAB_FAR_WINDOW_BOTTOM_UP`(現在-20)
+  ぶん下へずらしてあるため、什器だけが窓の足元より20px浮いて見えていた。
+- 対処: 接地基準を「境界線」から**実際の窓フレームの下辺**(`labFarFrame.position.y + height`)へ変更。
+  窓を上下に動かしても什器が自動で追従する(窓未生成の間だけ従来の境界線を使う)。
+  素材の下余白が0〜1pxなので、矩形の下辺を揃える=見た目の下辺が揃う。
+- 検証: typecheck・lint 0エラー。実機は社長確認。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2238 — M2の敵の視界を全員2/3(300→200px)【2026-07-25 22:47 JST】
 - 指示(社長): m2の敵の視界を全員2/3の距離にして。
 - 調査: 視界(覚醒距離)は**2箇所に分かれて**いた——湧き敵 `LAB_SPAWN_AGGRO_RANGE=300`(useGameLoop)と

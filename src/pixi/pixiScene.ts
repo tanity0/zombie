@@ -5394,8 +5394,14 @@ export class PixiScene {
     sp.visible = true;
     if (sp.texture !== tex) sp.texture = tex;
     const h = this.frontForestHeight() * LAB_FAR_FRONT_SCALE; // 近景森1の何割か=遠さの表現
-    // 接地: 遠景backdropの下辺(=床の始まり)に足元を置く。
-    const bottom = this.L.farBackdrop.position.y + this.L.farBackdrop.height - LAB_FAR_FRONT_UP_PX;
+    // 接地: **窓(フレーム)の下辺に見た目を揃える**(社長指示v0.25.2238)。旧実装は遠景backdropの下辺
+    // (=境界線)に置いていたが、窓は LAB_FAR_WINDOW_BOTTOM_UP ぶん下へずらしてあるため、什器だけが
+    // 窓の足元より浮いて見えていた。素材はどれも下の透明余白が0〜1pxなので、矩形の下辺を合わせれば
+    // 見た目の下辺が揃う。窓がまだ無い場合だけ従来どおり境界線を使う。
+    const frameBottom = this.labFarFrame
+      ? this.labFarFrame.position.y + this.labFarFrame.height
+      : this.L.farBackdrop.position.y + this.L.farBackdrop.height;
+    const bottom = frameBottom - LAB_FAR_FRONT_UP_PX;
     sp.width = this.screenW;
     sp.height = h;
     sp.tileScale.set(h / Math.max(1, tex.height));
