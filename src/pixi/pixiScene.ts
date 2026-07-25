@@ -1056,7 +1056,7 @@ const GROUND_TRAPEZOID = Math.max(0, Math.min(1, tsNum('g3d', 1)));
 // (横 ∝ 1/z、かつ 画面yと1/zが直線関係のため)。v2216/2217は横を**縦のカーブから導いていた**のが誤り——
 // 縦カーブ(t^2.6+下限)は社長が調整した手作りの値であって物理の1/z²ではないので、その平方根を取ると
 // 横が t^1.3 になり中盤で急に詰まる=不自然だった。ここでは**縦カーブには一切触れず**、横だけを直線にする。
-const GROUND_TRAPEZOID_FAR = Math.max(0.05, Math.min(1, tsNum('g3dfar', 0.30))); // 最奥での横倍率(手前=1)。?g3dfar=
+const GROUND_TRAPEZOID_FAR = Math.max(0.05, Math.min(1, tsNum('g3dfar', 0.10))); // 最奥での横倍率(手前=1)。実機確認で0.30→0.10(社長決定v0.25.2219)。?g3dfar=
 const GROUND_TRAPEZOID_CURVE = Math.max(0.2, Math.min(3, tsNum('g3dc', 1)));     // 1=直線(既定)。?g3dc=
 const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
