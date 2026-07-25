@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2217',
+    items: [
+      'グラフィック: 床の奥行き表現を調整し、奥のタイルが潰れすぎていたのを自然な比率に直しました。',
+    ],
+  },
+  {
     version: '0.25.2216',
     items: [
       'グラフィック: 床のタイルが奥へ向かって収束するようになり、奥行きが出ました(全ステージ)。',

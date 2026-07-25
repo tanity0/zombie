@@ -1049,8 +1049,13 @@ const GROUND_PERSPECTIVE_CURVE = tsNum('gcurve', 2.6);
 // タイルが奥で横に伸びて奥行きが出なかった。ここで**横も縦と同率で詰め、画面中央の消失点へ収束**させる
 // =等方(幾何的に正しい遠近)。床の矩形自体は従来どおり画面外まで広く敷いたまま(社長案「範囲を常に画面外に
 // 大きく持っておいて、その中でループ」)なので、引きズームでも端が欠けない。
-// 0=従来と完全に同一(復帰フラグ) / 1=縦の遠近カーブと同率。?g3d=
+// 0=従来と完全に同一(復帰フラグ) / 1=フル適用。?g3d=
 const GROUND_TRAPEZOID = Math.max(0, Math.min(1, tsNum('g3d', 1)));
+// 横の詰め具合の指数(社長報告v0.25.2217「おしい」の修正)。床(水平面)を見下ろす投影では
+// **縦の縮み ∝ 1/z² / 横の縮み ∝ 1/z** なので、正しくは「横 = 縦の平方根」= 指数0.5。
+// v2216は指数1.0(縦と同率=等方)にしたため最奥が過剰に潰れていた(タイル幅56px。0.5なら約217px)。
+// 1.0=旧v2216の潰れ方 / 0.5=幾何的に正しい / 0=横は詰めない。?g3dp=
+const GROUND_TRAPEZOID_POW = Math.max(0, Math.min(1, tsNum('g3dp', 0.5)));
 const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
 // 遠景(奥)側の地面も被写界深度で少しぼかす。最上(最遠)ほど強く。中央は合焦=鮮明のまま。
@@ -3595,8 +3600,10 @@ export class PixiScene {
       strip.position.set(0, y);
       strip.width = overW;
       strip.height = Math.ceil(stripH) + 2;
-      // 台形化: 横倍率を縦と同率(scaleY/nearScale)まで詰める。GROUND_TRAPEZOID=0 なら conv=1 で従来と完全一致。
-      const conv = 1 + (scaleY / Math.max(0.001, nearScale) - 1) * GROUND_TRAPEZOID;
+      // 台形化: 横倍率は「縦の縮みの平方根」(指数0.5)まで詰める=床を見下ろす投影の正しい比率。
+      // GROUND_TRAPEZOID=0 なら conv=1 で従来と完全一致。
+      const ratio = Math.max(0.0001, scaleY / Math.max(0.001, nearScale));
+      const conv = 1 + (Math.pow(ratio, GROUND_TRAPEZOID_POW) - 1) * GROUND_TRAPEZOID;
       const tsx = GROUND_TILE_SCALE_X * Math.max(0.02, conv);
       strip.tileScale.set(tsx, scaleY);
       // 消失点を画面中央に固定: どの行でも「画面中央のワールド列」が同じUになるよう tilePosition を逆算する
