@@ -591,10 +591,14 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // 新規湧きだけが帯の制限を持っていて、この経路は素の generateEnemy のまま=上下からも帯の外にも
     // 湧いていた(=同じ規則を2箇所に書いていたことによる取りこぼし)。共有純関数で一本化する。
     if (labTheme) {
+      // 既に居る敵の視界の中には再配置しない(社長指示v0.25.2245)。自分自身は除く。
+      const visionCircles = useGameStore.getState().enemies
+        .filter(e => e.id !== enemy.id && e.aggroRange !== undefined)
+        .map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2, r: e.aggroRange as number }));
       const placed = placeLabSpawn(
         player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
         replacement.width, replacement.height, LAB_CORRIDOR_Y_LIMIT_PX,
-        labVisited ?? null,
+        labVisited ?? null, visionCircles,
       );
       // 通った道しか置き場が無い場合は再配置せず、その個体をそのまま消す(=画面外で静かに退場)。
       if (!placed) return null;

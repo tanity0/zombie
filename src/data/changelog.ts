@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2246',
+    items: [
+      'ステージ2: 敵が別の敵の視界の中に湧かなくなりました。視界が重なって忍び込めない配置ができにくくなります。',
+    ],
+  },
+  {
     version: '0.25.2245',
     items: [
       'ステージ2: 一度通った場所には敵が湧かなくなりました。掃除した区間は静かなまま、前へ進むほど新しい敵に出会います。',

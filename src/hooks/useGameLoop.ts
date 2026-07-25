@@ -7906,10 +7906,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 置き直しは placeLabSpawn(共有純関数)に一本化。Yは**歩ける帯の中**に限定する
               // (旧実装は player.y 基準 ±100 だったため、プレイヤーが帯の端にいると帯の外=行けない
               //  場所に湧いていた。社長指示v0.25.2242「自由移動範囲内でのみスポーン」)。
+              // 既に居る敵の視界(中心+aggroRange)。この円の中には湧かせない(社長指示v0.25.2245)。
+              const labVisionCircles = useGameStore.getState().enemies
+                .filter(e => e.aggroRange !== undefined)
+                .map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2, r: e.aggroRange as number }));
               const placed = placeLabSpawn(
                 player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
                 labEnemy.width, labEnemy.height, LAB_CORRIDOR_Y_LIMIT_PX,
-                labVisitedRef.current,
+                labVisitedRef.current, labVisionCircles,
               );
               if (!placed) continue; // 両側とも通った道=湧かせない(社長指示v0.25.2244)
               labEnemy.x = placed.x;

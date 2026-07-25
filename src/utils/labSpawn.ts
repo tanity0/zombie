@@ -15,9 +15,25 @@
 export interface LabSpawnPlacement { x: number; y: number }
 // これまでにプレイヤーが到達したXの範囲(=通った道)。この外側=まだ行っていない側にだけ湧かせる。
 export interface LabVisitedRange { minX: number; maxX: number }
+// 既に居る敵の視界(中心+半径)。この円の中には新しい敵を湧かせない(社長指示v0.25.2245)。
+// 狙い: 視界が重なった敵が並ぶと「片方から隠れるともう片方に見つかる」=忍び込む道が消えるため。
+export interface LabVisionCircle { x: number; y: number; r: number }
 
-// 戻り値 null = 「両側とも通った道なので湧かせない」(社長指示v0.25.2244「一度通った道にスポーンしない」)。
-// 呼び出し側はこの場合スキップする(既に居る敵はそのまま=掃除した区間は静かなままになる)。
+const insideAnyVision = (cx: number, cy: number, circles: readonly LabVisionCircle[]): boolean => {
+  for (const c of circles) {
+    const dx = cx - c.x, dy = cy - c.y;
+    if (dx * dx + dy * dy < c.r * c.r) return true;
+  }
+  return false;
+};
+
+// 1つの辺(左右)につきこの回数までYを引き直して、視界の外に収まる場所を探す。
+const VISION_AVOID_TRIES = 8;
+
+// 戻り値 null = 「湧かせる場所が無い」。理由は2つ:
+//  (a) 両側とも通った道(社長指示v0.25.2244「一度通った道にスポーンしない」)
+//  (b) 既に居る敵の視界の中しか空いていない(社長指示v0.25.2245「敵の視界の中に別の敵を沸かせない」)
+// 呼び出し側はこの場合スキップする(既に居る敵はそのまま=静かなままになる)。
 export const placeLabSpawn = (
   playerX: number,
   halfViewW: number,     // 可視域の半幅(spawnBounds.width / 2)
@@ -26,6 +42,7 @@ export const placeLabSpawn = (
   enemyH: number,
   bandLimit: number,     // 廊下帯の半幅(LAB_CORRIDOR_Y_LIMIT_PX)
   visited: LabVisitedRange | null = null, // null=制限なし(従来どおり左右ランダム)
+  others: readonly LabVisionCircle[] = [], // 既に居る敵の視界。この中は避ける
   rand: () => number = Math.random,
 ): LabSpawnPlacement | null => {
   const rightX = playerX + halfViewW + margin;
@@ -34,11 +51,20 @@ export const placeLabSpawn = (
   const rightOk = !visited || rightX > visited.maxX;
   const leftOk = !visited || leftX + enemyW < visited.minX;
   if (!rightOk && !leftOk) return null;
-  const fromRight = rightOk && leftOk ? rand() < 0.5 : rightOk;
-  const x = fromRight ? rightX : leftX;
-  // 体(高さ)がまるごと帯に収まるYを選ぶ。帯より背が高い敵は帯の中央に置く(はみ出しを上下均等に)。
+  // 体(高さ)がまるごと帯に収まるYの範囲。帯より背が高い敵は帯の中央に置く(はみ出しを上下均等に)。
   const yMin = -bandLimit;
   const yMax = bandLimit - enemyH;
-  const y = yMax <= yMin ? -enemyH / 2 : yMin + rand() * (yMax - yMin);
-  return { x, y };
+  const pickY = (): number => (yMax <= yMin ? -enemyH / 2 : yMin + rand() * (yMax - yMin));
+  // 試す辺の順番(両方使えるならランダムに先攻を決める)。
+  const preferRight = rightOk && leftOk ? rand() < 0.5 : rightOk;
+  const xs: number[] = [];
+  if (preferRight) { if (rightOk) xs.push(rightX); if (leftOk) xs.push(leftX); }
+  else { if (leftOk) xs.push(leftX); if (rightOk) xs.push(rightX); }
+  for (const x of xs) {
+    for (let i = 0; i < VISION_AVOID_TRIES; i++) {
+      const y = pickY();
+      if (!insideAnyVision(x + enemyW / 2, y + enemyH / 2, others)) return { x, y };
+    }
+  }
+  return null; // どこも他の敵の視界の中=今回は湧かせない
 };

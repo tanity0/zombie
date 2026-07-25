@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.2246 — M2: 敵は他の敵の視界の中に湧かない【2026-07-26 00:02 JST】
+- 指示(社長): 敵同士が、視界の中に別の敵を沸かせない。
+- 狙い(解釈): 視界(半径 LAB_VISION_RANGE=200)が重なった敵が並ぶと、**片方から隠れるともう片方に見つかる**
+  =忍び込む道が消える。重ならないように湧かせることで「1体ずつ処理できる」状態を保つ。
+- 実装: `placeLabSpawn` に `others: LabVisionCircle[]`(既に居る敵の中心+aggroRange)を追加。
+  候補位置の**中心**がどれかの円の中に入るなら不採用とし、Yを引き直して最大8回試行 → 左右の辺も入れ替えて試行 →
+  それでも空きが無ければ `null`(=今回は湧かせない)。純関数のままなので乱数注入でテストできる。
+- 適用: 新規湧き(useGameLoop)とリサイクル(directorTick)の**両方**。リサイクルは自分自身を除外して判定する。
+- テスト: 4件追加(視界に入らない/左右とも覆われたらnull/帯の一部が空いていればそちらへ逃がす/others空は従来通り)。
+  **vitest 983件全通過**。
+- 検証: typecheck・lint 0エラー。実機は社長確認。
+- 注意: v0.25.2244(湧き2/3)・v0.25.2245(通った道に湧かない)と合わせて湧きの条件が3つ重なった。
+  体感が「静かすぎる」場合は、まず `LAB_SPAWN_INTERVAL_MULT`(2.4)を戻すのが影響が読みやすい。
+- Files: `src/utils/labSpawn.ts`, `src/utils/labSpawn.test.ts`, `src/hooks/useGameLoop.ts`,
+  `src/utils/directorTick.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2245 — M2: 一度通った道には湧かせない(未踏側からのみ)【2026-07-25 23:58 JST】
 - 指示(社長): m2は一度通った道にスポーンしないようにして。
 - 実装: プレイヤーが到達したXの範囲(`labVisitedRef` = {minX, maxX})を毎フレーム更新し、
