@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2240',
+    items: [
+      'グラフィック: 遠景の窓の手前の什器を10px下げて、床との重なりを自然にしました。',
+    ],
+  },
+  {
     version: '0.25.2239',
     items: [
       'グラフィック: 遠景の窓の手前に置いた什器が浮いて見えていたのを、窓の足元にぴったり揃えました。',

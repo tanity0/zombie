@@ -378,7 +378,7 @@ const LAB_VISION_MAX = Math.max(0, Math.round(tsNum('labvismax', 12)));   // 同
 // 窓→遠くの什器→(床)→手前の什器 という奥行きの段を作る。
 const LAB_FAR_FRONT_SCALE = Math.max(0, tsNum('labff', 0.35));    // 近景森1の高さに対する比率。0で無効(復帰フラグ)。?labff=
 const LAB_FAR_FRONT_PARALLAX_X = tsNum('labffpx', 0.28);          // 横スクロール率(窓0.16 < これ < 近景0.68)。?labffpx=
-const LAB_FAR_FRONT_UP_PX = tsNum('labffup', 0);                  // 下辺の微調整(正=上へ)。?labffup=
+const LAB_FAR_FRONT_UP_PX = tsNum('labffup', -10);                // 下辺の微調整(正=上へ/負=下へ)。窓の足元に揃えた位置から10px下(社長指示v0.25.2239)。?labffup=
 const LAB_FAR_FRONT_BLUR = Math.max(0, tsNum('labffblur', 1.2));  // 被写界深度(窓より手前=窓1.5より弱め)。?labffblur=
 // ガラスの向こうを左右にゆっくりうろつくレベル1の研究所ゾンビ(社長指示v0.25.2211)。**描画のみの環境演出**=
 // 当たり判定・スポーン・集計・ストアへの書き込みは一切なし(ゲームロジックには関与しない)。
