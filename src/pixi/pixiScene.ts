@@ -373,6 +373,13 @@ const LAB_VISION_ALPHA = Math.max(0, Math.min(1, tsNum('labvis', 0.12))); // 0�
 const LAB_VISION_COLOR = 0xff3b30;                                        // 薄い赤
 const LAB_VISION_RAYS = Math.max(8, Math.round(tsNum('labvisray', 48)));  // 走査本数(多いほど影の輪郭が滑らか)。?labvisray=
 const LAB_VISION_MAX = Math.max(0, Math.round(tsNum('labvismax', 12)));   // 同時に描く上限(近い順)。?labvismax=
+// 遠景の窓の手前にも近景森1(什器シルエット)を置く(社長指示v0.25.2236「距離感みて大きさ変えたサイズで」)。
+// 同じ素材を「遠くにある分だけ小さく・ゆっくり流れる・少しぼけて・暗い」状態で窓の前に敷き、
+// 窓→遠くの什器→(床)→手前の什器 という奥行きの段を作る。
+const LAB_FAR_FRONT_SCALE = Math.max(0, tsNum('labff', 0.35));    // 近景森1の高さに対する比率。0で無効(復帰フラグ)。?labff=
+const LAB_FAR_FRONT_PARALLAX_X = tsNum('labffpx', 0.28);          // 横スクロール率(窓0.16 < これ < 近景0.68)。?labffpx=
+const LAB_FAR_FRONT_UP_PX = tsNum('labffup', 0);                  // 下辺の微調整(正=上へ)。?labffup=
+const LAB_FAR_FRONT_BLUR = Math.max(0, tsNum('labffblur', 1.2));  // 被写界深度(窓より手前=窓1.5より弱め)。?labffblur=
 // ガラスの向こうを左右にゆっくりうろつくレベル1の研究所ゾンビ(社長指示v0.25.2211)。**描画のみの環境演出**=
 // 当たり判定・スポーン・集計・ストアへの書き込みは一切なし(ゲームロジックには関与しない)。
 // 窓と同じworldGroup内・ガラスの直下に置く=ガラス越しに透け、フレーム(手前)には隠される。
@@ -1846,6 +1853,7 @@ export class PixiScene {
   private labFarZombies: Sprite[] = [];
   private labFarZombieFacing: number[] = []; // 個体ごとの向き(静止中も直前の向きを保持)
   private labFarZombieT0 = 0; // 相対時刻の起点(エポックmsをそのまま速度に掛けると桁が溢れる=v0.25.1807の教訓)
+  private labFarFront: TilingSprite | null = null; // 遠景の窓の手前に置く「遠くの什器」(近景森1の縮小版)
   private labVisionLayer: Container | null = null; // 敵の視界表示(薄い赤・休眠敵ぶん)
   private labVisionObjs = new Map<string, { g: Graphics; key: string }>(); // 敵id→形(位置が変わらない限り再利用)
   private labOutDim: Container | null = null; // 移動可能帯の外を暗くする幕(4枚: 上ベタ/上グラデ/下グラデ/下ベタ)
@@ -4074,6 +4082,10 @@ export class PixiScene {
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
     this.updateLabOutsideDim(s.stageTheme === 'lab' && !s.indoorMode, now); // 移動可能帯の外を少し暗く(境目はグラデ)
     this.updateLabVisionCones(s.stageTheme === 'lab' && !s.indoorMode, s.enemies, s.camera.x, s.camera.y); // 敵の視界(薄い赤・壁の影つき)
+    this.updateLabFarFront(
+      (s.stageTheme === 'lab' && !s.indoorMode) ? (this.frontOverrides['lab'] ?? null) : null,
+      s.camera.x,
+    ); // 窓の手前の「遠くの什器」(距離に合わせて縮小)
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
     this.revisitMarker = s.revisitMode === true;
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
@@ -5361,6 +5373,36 @@ export class PixiScene {
     ctx.fillRect(0, 0, 4, h);
     this.veilFadeTex = Texture.from(c);
     return this.veilFadeTex;
+  }
+
+  // 遠景の窓の手前に置く「遠くの什器シルエット」(社長指示v0.25.2236)。近景森1と同じ素材を、
+  // 距離に合わせて小さく・遅く・ぼかして・暗くして敷く。下辺は遠景の境界線(=床の始まり)に接地させる。
+  private updateLabFarFront(tex: Texture | null, cameraX: number) {
+    if (!tex || LAB_FAR_FRONT_SCALE <= 0) { if (this.labFarFront) this.labFarFront.visible = false; return; }
+    if (!this.labFarFront) {
+      const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
+      sp.eventMode = 'none';
+      if (LAB_FAR_FRONT_BLUR > 0) sp.filters = [new BlurFilter({ strength: LAB_FAR_FRONT_BLUR, quality: 2 })];
+      // 窓フレームの直上=ガラス/枠より手前・床やアクターより奥。フレーム未生成なら次フレームへ。
+      const anchor = this.labFarFrame ?? this.labFarGlass;
+      const parent = anchor?.parent;
+      if (!parent || !anchor) { sp.destroy(); return; }
+      parent.addChildAt(sp, Math.min(parent.getChildIndex(anchor) + 1, parent.children.length));
+      this.labFarFront = sp;
+    }
+    const sp = this.labFarFront;
+    sp.visible = true;
+    if (sp.texture !== tex) sp.texture = tex;
+    const h = this.frontForestHeight() * LAB_FAR_FRONT_SCALE; // 近景森1の何割か=遠さの表現
+    // 接地: 遠景backdropの下辺(=床の始まり)に足元を置く。
+    const bottom = this.L.farBackdrop.position.y + this.L.farBackdrop.height - LAB_FAR_FRONT_UP_PX;
+    sp.width = this.screenW;
+    sp.height = h;
+    sp.tileScale.set(h / Math.max(1, tex.height));
+    sp.position.set(0, bottom - h);
+    sp.tilePosition.set(-cameraX * LAB_FAR_FRONT_PARALLAX_X, 0);
+    sp.tint = ENV_TINT; // 遠景と同じ減光=奥へ引っ込ませる(手前の近景森1は白tintのまま)
+    sp.alpha = 1;
   }
 
   // 敵の視界表示(社長指示v0.25.2235)。休眠中のlab-zombieの「起こされる範囲」を薄い赤で塗る。

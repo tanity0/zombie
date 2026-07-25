@@ -4,7 +4,7 @@
 //   帯の外は歩けない=隠れられないため遮蔽として機能していなかった。代わりに「中央に必ず通れる
 //   空きレーンが残る」ことを構造で保証し、それをここで機械化する(詰み防止の要)。
 import { describe, it, expect } from 'vitest';
-import { labWallsInRegion, wallRect, LAB_WALL_Y_LIMIT, LAB_WALL_CLEAR_TOP, LAB_WALL_CLEAR_BOTTOM, LAB_START_SAFE_RADIUS } from './labWalls';
+import { labWallsInRegion, wallRect, LAB_WALL_Y_LIMIT, LAB_WALL_CLEAR_TOP, LAB_WALL_CLEAR_BOTTOM, LAB_START_SAFE_RADIUS, WALL_HIT_W, WALL_DISPLAY_H } from './labWalls';
 
 const PLAYER_HITBOX = 28; // src/store/gameStore.ts と同値(依存を持ち込まないため定数で持つ)
 
@@ -19,13 +19,16 @@ const groupByCell = (walls: ReturnType<typeof labWallsInRegion>): Map<string, ty
 };
 
 describe('labWallsInRegion (歩ける帯の中に置く・中央レーンは常に空ける)', () => {
-  it('壁バーの幅は見た目通りの176px(奥行22は不変・社長指示v0.25.2234)', () => {
-    // 描画は containScale(176,108, tex 256×153)=0.6875 → 実描画幅 176px。判定をこれに一致させる。
+  it('判定幅は「実描画幅」と一致する(社長指示v0.25.2234。表示サイズを変えてもズレない)', () => {
+    // 描画は containScale(WALL_DISPLAY_H, tex 256×153)。その実描画幅が WALL_HIT_W = 判定幅。
+    const TEX = { w: 256, h: 153 };
+    const scale = Math.min(WALL_DISPLAY_H.w / TEX.w, WALL_DISPLAY_H.h / TEX.h);
+    expect(WALL_HIT_W).toBe(Math.round(TEX.w * scale));
     const walls = labWallsInRegion(-4000, -2000, 4000, 2000);
     expect(walls.length).toBeGreaterThan(0);
     for (const w of walls) {
       const rect = wallRect(w);
-      expect(rect.width).toBe(176);
+      expect(rect.width).toBe(WALL_HIT_W);
       expect(rect.height).toBe(22);
     }
   });

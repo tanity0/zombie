@@ -26,13 +26,17 @@ export const LAB_DEEP_Y = 1 * LAB_ZONE; // 900
 const WALL_RUN_SPACING = 150;
 // 壁バー幅(社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175: 150→90に小型化。奥行22は不変)。
 // 役割は通行障害ではなく視線切り遮蔽(横長廊下・上下固定クランプ導入とセット)。
-// 幅は**実際の描画幅に一致**させる(社長指示v0.25.2234「見た目通りの幅にして」)。
-// 描画は containScale(WALL_DISPLAY_H.w=176, h=108, tex 256×153) = 0.6875 → 実描画幅 256×0.6875 = **176px**。
-// 旧90pxは見た目のちょうど半分で、絵の左右が素通りできていた。奥行22はそのまま(足元の設置面)。
-const H_LEN = 176, H_DEPTH = 22;
+// 壁の見た目と当たり判定(社長指示v0.25.2234「見た目通りの幅にして」/ v0.25.2236「高さを2/3に」)。
+// **判定幅は見た目から導出する**=表示サイズをここで変えても二度とズレない(v2234の再発防止)。
+// 描画側(pixiScene)は containScale(WALL_DISPLAY_H, テクスチャ実寸) で枠に内接させるので、
+// 実描画サイズ = テクスチャ寸法 × min(枠w/texw, 枠h/texh)。その幅をそのまま H_LEN に使う。
+const WALL_TEX = { w: 256, h: 153 };             // sprites/lab/lab-wall-obj-h.png の実寸(固定素材)
+export const WALL_DISPLAY_H = { w: 176, h: 72 }; // 高さ 108→72(=2/3・社長指示v0.25.2236)
+const WALL_DRAW_SCALE = Math.min(WALL_DISPLAY_H.w / WALL_TEX.w, WALL_DISPLAY_H.h / WALL_TEX.h);
+export const WALL_HIT_W = Math.round(WALL_TEX.w * WALL_DRAW_SCALE); // = 実描画幅(判定幅と同じ値)
+const H_LEN = WALL_HIT_W, H_DEPTH = 22;          // 奥行22は不変(足元の設置面)
 
 export const wallRect = (w: PlacedWall): Rect => footRect(w.footX, w.footY, H_LEN, H_DEPTH);
-export const WALL_DISPLAY_H = { w: 176, h: 108 };
 
 // 決定的ハッシュ(0..1)。
 const hash2 = (x: number, y: number): number => {
