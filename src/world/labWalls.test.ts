@@ -1,10 +1,14 @@
-// ステージ2(研究所)の壁小型化+密度均一化(社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175)のユニット。
-// 幅90px化・区画あたり1〜3本への均一化・セル中心|Y|>LAB_DEEP_Yの奥に壁を生成しないこと・
-// 廊下(±100帯)を横に完全封鎖しないことを検証する。
+// ステージ2(研究所)の壁生成の不変条件。
+// v0.25.2175: 幅90px化・区画あたりの均一化。v0.25.2222: 遮蔽増量(ラン2本×2〜4本)。
+// v0.25.2228(社長指示「壁は歩けるところにだけ沸いて」): **帯の外→帯の中**へ方針転換。
+//   帯の外は歩けない=隠れられないため遮蔽として機能していなかった。代わりに「中央に必ず通れる
+//   空きレーンが残る」ことを構造で保証し、それをここで機械化する(詰み防止の要)。
 import { describe, it, expect } from 'vitest';
-import { labWallsInRegion, wallRect, LAB_ZONE, LAB_DEEP_Y } from './labWalls';
+import { labWallsInRegion, wallRect, LAB_WALL_Y_LIMIT, LAB_WALL_CLEAR_LANE, LAB_START_SAFE_RADIUS } from './labWalls';
 
-// 生成された壁を「どのセル(cx,cy)のランか」でグルーピングする(id: `lw-${cx}-${cy}-${k}`)。
+const PLAYER_HITBOX = 28; // src/store/gameStore.ts と同値(依存を持ち込まないため定数で持つ)
+
+// 生成された壁を「どのセル(cx)のランか」でグルーピングする(id: `lw-${cx}-0-${k}`)。
 const groupByCell = (walls: ReturnType<typeof labWallsInRegion>): Map<string, typeof walls> => {
   const map = new Map<string, typeof walls>();
   for (const w of walls) {
@@ -14,9 +18,9 @@ const groupByCell = (walls: ReturnType<typeof labWallsInRegion>): Map<string, ty
   return map;
 };
 
-describe('labWallsInRegion (壁の小型化+密度均一化)', () => {
+describe('labWallsInRegion (歩ける帯の中に置く・中央レーンは常に空ける)', () => {
   it('壁バーの幅は90px(奥行22は不変)', () => {
-    const walls = labWallsInRegion(-2000, -2000, 2000, 2000);
+    const walls = labWallsInRegion(-4000, -2000, 4000, 2000);
     expect(walls.length).toBeGreaterThan(0);
     for (const w of walls) {
       const rect = wallRect(w);
@@ -25,49 +29,54 @@ describe('labWallsInRegion (壁の小型化+密度均一化)', () => {
     }
   });
 
-  it('区画(セル)あたりの本数は4〜8本(社長指示v0.25.2222で増量: ラン2本×2〜4本)', () => {
-    const walls = labWallsInRegion(-3000, -3000, 3000, 3000);
+  it('すべての壁が「歩ける帯」(±100)の内側に収まる(社長指示v0.25.2228)', () => {
+    const walls = labWallsInRegion(-6000, -3000, 6000, 3000);
+    expect(walls.length).toBeGreaterThan(0);
+    for (const w of walls) {
+      const rect = wallRect(w);
+      expect(rect.y).toBeGreaterThanOrEqual(-LAB_WALL_Y_LIMIT);
+      expect(rect.y + rect.height).toBeLessThanOrEqual(LAB_WALL_Y_LIMIT);
+    }
+  });
+
+  it('中央の空きレーンには絶対に壁が無い=どのXでも必ず通り抜けられる', () => {
+    const [laneTop, laneBottom] = LAB_WALL_CLEAR_LANE;
+    expect(laneBottom - laneTop).toBeGreaterThanOrEqual(PLAYER_HITBOX); // レーン幅がプレイヤーより広い
+    const walls = labWallsInRegion(-6000, -3000, 6000, 3000);
+    expect(walls.length).toBeGreaterThan(0);
+    for (const w of walls) {
+      const rect = wallRect(w);
+      const overlapsLane = rect.y + rect.height > laneTop && rect.y < laneBottom;
+      expect(overlapsLane).toBe(false);
+    }
+  });
+
+  it('区画(セル)あたりの本数は最大8本(ラン2本×2〜4本)', () => {
+    const walls = labWallsInRegion(-6000, -3000, 6000, 3000);
     const groups = groupByCell(walls);
     expect(groups.size).toBeGreaterThan(0);
     for (const runWalls of groups.values()) {
-      expect(runWalls.length).toBeGreaterThanOrEqual(4);
+      expect(runWalls.length).toBeGreaterThan(0);
       expect(runWalls.length).toBeLessThanOrEqual(8);
     }
   });
 
-  it('区画あたり2本のランが縦にずれて置かれる(前後に隠れられる=増量の狙い)', () => {
+  it('ランは上下2段に分かれて置かれる(前後に隠れられる)', () => {
+    const walls = labWallsInRegion(-6000, -3000, 6000, 3000);
+    const ys = [...new Set(walls.map(w => w.footY))];
+    expect(ys.some(y => y < LAB_WALL_CLEAR_LANE[0])).toBe(true); // 上段あり
+    expect(ys.some(y => y > LAB_WALL_CLEAR_LANE[1])).toBe(true); // 下段あり
+  });
+
+  it('スタート地点(原点)付近には壁を出さない=開幕で埋もれない', () => {
     const walls = labWallsInRegion(-3000, -3000, 3000, 3000);
-    const groups = groupByCell(walls);
-    expect(groups.size).toBeGreaterThan(0);
-    for (const runWalls of groups.values()) {
-      const ys = [...new Set(runWalls.map(w => w.footY))];
-      expect(ys.length).toBe(2); // ラン2本ぶんの異なるfootY
-      expect(Math.abs(ys[0] - ys[1])).toBeGreaterThan(20); // 同じ高さに重ならない
+    for (const w of walls) {
+      expect(Math.hypot(w.footX, w.footY)).toBeGreaterThanOrEqual(LAB_START_SAFE_RADIUS);
     }
   });
 
-  it('セル中心|Y| > LAB_DEEP_Y(視線に関わる範囲の外)には壁を生成しない', () => {
-    // 広い縦範囲を問い合わせ、生成された壁の footY がすべて deep 境界の内側(セル単位)であることを確認。
-    const walls = labWallsInRegion(-500, -5000, 500, 5000);
-    expect(walls.length).toBeGreaterThan(0);
-    for (const w of walls) {
-      const cy = Math.floor(w.footY / LAB_ZONE); // 概算(footYはセル内オフセット付きだが範囲チェックには十分)
-      const cellCenterY = cy * LAB_ZONE + LAB_ZONE / 2;
-      // 生成されている壁は必ず非-deepセル由来のはず。近似チェックとして、セルの中心が
-      // LAB_DEEP_Y を大きく超えるセル(例: 3セル分先)由来の壁が無いことを見る。
-      expect(Math.abs(cellCenterY)).toBeLessThan(LAB_DEEP_Y + LAB_ZONE);
-    }
-  });
-
-  it('廊下(±100帯)を横に完全封鎖しない: 全壁矩形のY範囲は±100の外側に収まる', () => {
-    const walls = labWallsInRegion(-3000, -3000, 3000, 3000);
-    expect(walls.length).toBeGreaterThan(0);
-    for (const w of walls) {
-      const rect = wallRect(w);
-      const top = rect.y, bottom = rect.y + rect.height;
-      // 矩形が [-100,100] と重ならない = bottom<=-100 または top>=100
-      const overlapsCorridor = bottom > -100 && top < 100;
-      expect(overlapsCorridor).toBe(false);
-    }
+  it('帯から外れた問い合わせ範囲では壁を返さない(カリング)', () => {
+    expect(labWallsInRegion(-3000, 500, 3000, 3000)).toHaveLength(0);
+    expect(labWallsInRegion(-3000, -3000, 3000, -500)).toHaveLength(0);
   });
 });

@@ -50,33 +50,42 @@ const isDeepCell = (cy: number) => Math.abs(cellCenterY(cy)) > LAB_DEEP_Y;
 // 壁矩形(footY-H_DEPTH 〜 footY)は cy=0/-1(Y=0に隣接する2セル)でも常に |Y|>=248 に収まり、
 // ±100 の廊下帯には物理的に重ならない(役割どおり通行障害ではなく視線切りのみ)。よってこの形状変更で
 // 追加のガードは不要と確認済み(この不変条件が崩れる変更をする場合は要再確認)。
-// 遮蔽を増やす(社長指示v0.25.2222「もっと隠れられる壁とか増やして」): 区画あたり**ラン2本**
-// (縦バンドを奥側/手前側に分ける)× 各**2〜4本** = **4〜8本/区画**(旧: 1ラン1〜3本)。
-// 縦を2段にしたのが要点——同じ本数を1列に足すより、前後にずれた遮蔽の方が「隠れられる」場所として効く。
-// **廊下(±100帯)の不変条件は維持**: 両バンドとも footY オフセットは [0.30,0.70] の内側に収めてあるため、
-// 壁矩形のY範囲は従来と同じく cy=0 で [248,630]・cy=-1 で [-652,-270] となり ±100 には決して重ならない。
-const WALL_RUN_BANDS = [0.30, 0.52]; // 各ランのセル内縦オフセット起点(幅0.18ずつ = [0.30,0.48] / [0.52,0.70])
-const WALL_RUN_BAND_SPREAD = 0.18;
+// 壁は「歩けるところ」だけに出す(社長指示v0.25.2228)。**方針転換**: v0.25.2175〜2222は廊下帯(±100)の
+// **外**に置いて「絶対に通行を塞がない」設計だったが、帯の外は歩けない=そこの壁には隠れられないため、
+// 遮蔽として機能していなかった。今後は帯の**中**に置き、代わりに「必ず通り抜けられる隙間」を構造で保証する。
+//
+// 配置: 帯の中を上下2段に分け、その間に**常に空きレーンを残す**。
+//   上段(A): footY ∈ [-70,-35] → 壁矩形 [-92,-35]
+//   下段(B): footY ∈ [ 55, 95] → 壁矩形 [ 33, 95]
+//   → 中央 [-35, 33] = 68px は常に空く(プレイヤー当たり判定 PLAYER_HITBOX=28 より広い)=詰みが起きない。
+// セルの縦(cy)方向のループは廃止(帯は1本しかないため)。id は `lw-cx-0-番号` でセル単位の集計は従来どおり。
+const WALL_BAND_A_MIN = -70, WALL_BAND_A_MAX = -35;
+const WALL_BAND_B_MIN = 55, WALL_BAND_B_MAX = 95;
+// 壁矩形が収まるべき範囲(=歩ける帯)。テストと共有する不変条件。
+export const LAB_WALL_Y_LIMIT = 100;
+// 中央に必ず残す空きレーン(この上下端の間には壁を置かない)。
+export const LAB_WALL_CLEAR_LANE: [number, number] = [WALL_BAND_A_MAX, WALL_BAND_B_MIN - H_DEPTH];
 
 export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedWall[] => {
   const out: PlacedWall[] = [];
+  // 帯(±LAB_WALL_Y_LIMIT)が問い合わせ範囲と交わらなければ壁は無い(カリングを効かせる)。
+  if (maxY < -LAB_WALL_Y_LIMIT || minY > LAB_WALL_Y_LIMIT) return out;
   const cx0 = Math.floor(minX / LAB_ZONE) - 3; // 長いランの左方伸長を取りこぼさない
   const cx1 = Math.floor(maxX / LAB_ZONE) + 1;
-  const cy0 = Math.floor(minY / LAB_ZONE) - 1;
-  const cy1 = Math.floor(maxY / LAB_ZONE) + 1;
-  for (let cy = cy0; cy <= cy1; cy++) {
-    if (isDeepCell(cy)) continue; // 視線に関わる範囲の外=壁も生成しない(プロップ/UVバーと同じ)
-    for (let cx = cx0; cx <= cx1; cx++) {
-      let idx = 0; // セル内の通し番号(id は `lw-cx-cy-番号` のまま=セル単位のグルーピングを壊さない)
-      for (let r = 0; r < WALL_RUN_BANDS.length; r++) {
-        const hLen = hash2(cx * 2.1 + 1.3 + r * 13.7, cy * 1.9 - 0.7 - r * 5.3);
-        const runLen = 2 + Math.floor(hLen * 3); // ランあたり2〜4本
-        const baseX = cx * LAB_ZONE + LAB_ZONE * (0.12 + 0.35 * hash2(cx + r * 3.3, cy - r * 1.7));
-        const bandT = WALL_RUN_BANDS[r] + WALL_RUN_BAND_SPREAD * hash2(cx * 1.7 + 5.2 + r * 2.9, cy * 2.3 - 1.1 + r * 4.1);
-        const footY = cy * LAB_ZONE + LAB_ZONE * bandT;
-        for (let k = 0; k < runLen; k++) {
-          out.push({ id: `lw-${cx}-${cy}-${idx++}`, orient: 'h', footX: baseX + k * WALL_RUN_SPACING, footY });
-        }
+  const bands: [number, number][] = [[WALL_BAND_A_MIN, WALL_BAND_A_MAX], [WALL_BAND_B_MIN, WALL_BAND_B_MAX]];
+  for (let cx = cx0; cx <= cx1; cx++) {
+    let idx = 0;
+    for (let r = 0; r < bands.length; r++) {
+      const hLen = hash2(cx * 2.1 + 1.3 + r * 13.7, -0.7 - r * 5.3);
+      const runLen = 2 + Math.floor(hLen * 3); // ランあたり2〜4本(区画あたり4〜8本=v0.25.2222の密度を維持)
+      const baseX = cx * LAB_ZONE + LAB_ZONE * (0.12 + 0.35 * hash2(cx + r * 3.3, -r * 1.7));
+      const [lo, hi] = bands[r];
+      const footY = lo + (hi - lo) * hash2(cx * 1.7 + 5.2 + r * 2.9, -1.1 + r * 4.1);
+      for (let k = 0; k < runLen; k++) {
+        const footX = baseX + k * WALL_RUN_SPACING;
+        // 帯の中=プレイヤーの通り道なので、スタート地点付近には出さない(開幕で埋もれない)。
+        if (Math.hypot(footX, footY) < LAB_START_SAFE_RADIUS) continue;
+        out.push({ id: `lw-${cx}-0-${idx++}`, orient: 'h', footX, footY });
       }
     }
   }
