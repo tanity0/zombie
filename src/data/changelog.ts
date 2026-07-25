@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2226',
+    items: [
+      '不具合修正: ステージ2の開始直後(ヘリ降下中)に画面全体が暗いままになっていたのを直しました。着地後にふわっと暗さがつきます。',
+    ],
+  },
+  {
     version: '0.25.2225',
     items: [
       '不具合修正: 更新直後にステージ開始すると背景が読み込み途中のまま始まることがあるのを直しました(読み込みが進んでいる間は待つように変更)。',

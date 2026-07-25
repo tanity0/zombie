@@ -363,6 +363,7 @@ const LAB_FAR_FRAME_BLUR = Math.max(0, tsNum('labwfblur', 1.5));
 // 境目はパキッと切らず、fade幅ぶんの縦グラデで溶かす。**描画のみ**——移動クランプ本体(gameStore)には触らない。
 const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.3))); // 0で無効(復帰フラグ)。?labdim=
 const LAB_OUT_DIM_FADE_PX = Math.max(0, tsNum('labdimfade', 70));        // 境目のグラデ幅(画面px)。?labdimfade=
+const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登場演出の着地後に濃くなるまでの時間。?labdimin=
 // ガラスの向こうを左右にゆっくりうろつくレベル1の研究所ゾンビ(社長指示v0.25.2211)。**描画のみの環境演出**=
 // 当たり判定・スポーン・集計・ストアへの書き込みは一切なし(ゲームロジックには関与しない)。
 // 窓と同じworldGroup内・ガラスの直下に置く=ガラス越しに透け、フレーム(手前)には隠される。
@@ -4060,7 +4061,7 @@ export class PixiScene {
     // 遠景の窓(フレーム+ガラス2層)。lab屋外限定・支給なしはno-op(社長指示v0.25.2199)。
     this.updateLabFarWindow(s.stageTheme === 'lab' && !s.indoorMode, s.camera.x, now);
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
-    this.updateLabOutsideDim(s.stageTheme === 'lab' && !s.indoorMode); // 移動可能帯の外を少し暗く(境目はグラデ)
+    this.updateLabOutsideDim(s.stageTheme === 'lab' && !s.indoorMode, now); // 移動可能帯の外を少し暗く(境目はグラデ)
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
     this.revisitMarker = s.revisitMode === true;
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
@@ -5354,8 +5355,11 @@ export class PixiScene {
   // 4枚構成: 上ベタ / 上グラデ(下端=透明で帯に溶ける) / 下グラデ / 下ベタ。互いに重ならないので
   // コンテナalphaで一括指定しても濃さが二重にならない。帯の画面Yは toGlobal で実測=ズーム/カメラ/
   // シェイクを自動で含む(自前の座標計算より事故りにくい)。
-  private updateLabOutsideDim(show: boolean) {
-    if (!show || LAB_OUT_DIM_ALPHA <= 0) { if (this.labOutDim) this.labOutDim.visible = false; return; }
+  private updateLabOutsideDim(show: boolean, now: number) {
+    // 登場演出(ヘリ降下)中はカメラが廊下帯から大きく離れるため、幕が**画面全体**を覆って
+    // 「まだ読み込み中」に見えていた(社長報告v0.25.2225・開始5秒≒PLAYER_INTRO_MS 3700ms)。
+    // 演出中は出さず、着地後に短くフェードインする。
+    if (!show || LAB_OUT_DIM_ALPHA <= 0 || this.introActive) { if (this.labOutDim) this.labOutDim.visible = false; return; }
     if (!this.labOutDim) {
       const cont = new Container();
       cont.eventMode = 'none';
@@ -5372,11 +5376,16 @@ export class PixiScene {
       this.labOutDim = cont;
     }
     const cont = this.labOutDim;
-    cont.visible = true;
-    cont.alpha = LAB_OUT_DIM_ALPHA;
     const w = this.screenW, h = this.screenH;
     const top = this.L.world.toGlobal({ x: 0, y: -LAB_CORRIDOR_Y_LIMIT_PX }).y;
     const bot = this.L.world.toGlobal({ x: 0, y: LAB_CORRIDOR_Y_LIMIT_PX }).y;
+    // 保険: 帯が画面から完全に外れている=いま廊下を映していない(演出カメラ等)。この時に幕を出すと
+    // 画面全体が暗転して事故に見えるので出さない(全画面暗転の再発防止・v0.25.2226)。
+    if (bot < 0 || top > h) { cont.visible = false; return; }
+    cont.visible = true;
+    // 着地(演出終了)直後は薄→濃へフェードイン=ポップさせない。
+    const sinceIntro = this.introUntil > 0 ? now - this.introUntil : Number.POSITIVE_INFINITY;
+    cont.alpha = LAB_OUT_DIM_ALPHA * Math.max(0, Math.min(1, sinceIntro / LAB_OUT_DIM_FADEIN_MS));
     const fade = LAB_OUT_DIM_FADE_PX;
     const OVER = 300; // 画面外まで延ばす(引きズーム/シェイクで端が割れないように)
     const [topSolid, topFade, botFade, botSolid] = this.labOutDimParts;
