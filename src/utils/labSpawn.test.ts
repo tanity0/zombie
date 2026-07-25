@@ -1,6 +1,6 @@
 // M2の湧き位置(placeLabSpawn)の不変条件。社長指示v0.25.2242「敵は自由移動範囲内でのみスポーン」。
 import { describe, it, expect } from 'vitest';
-import { placeLabSpawn } from './labSpawn';
+import { placeLabSpawn, isAwayFromLabGoal } from './labSpawn';
 
 const LIMIT = 200;   // LAB_CORRIDOR_Y_LIMIT_PX と同値
 const HALF_W = 400;
@@ -104,5 +104,28 @@ describe('placeLabSpawn(他の敵の視界を避ける)', () => {
   it('others が空なら従来どおり必ず置ける', () => {
     const p = placeLabSpawn(0, HALF_W, MARGIN, 30, 60, LIMIT, null, [], () => 0.5);
     expect(p).not.toBeNull();
+  });
+});
+
+// 社長指示v0.25.2248「m2のゴールと反対方向に行くと、2/3にする前(3/3)の量の敵配置」。
+describe('isAwayFromLabGoal', () => {
+  it('ゴールが右(+)なら、原点より左に居る間だけ true', () => {
+    expect(isAwayFromLabGoal(-1000, 1)).toBe(true);
+    expect(isAwayFromLabGoal(1000, 1)).toBe(false);
+  });
+
+  it('ゴールが左(-)なら、原点より右に居る間だけ true', () => {
+    expect(isAwayFromLabGoal(1000, -1)).toBe(true);
+    expect(isAwayFromLabGoal(-1000, -1)).toBe(false);
+  });
+
+  it('原点(出撃直後)は逆側ではない=false(いきなり増やさない)', () => {
+    expect(isAwayFromLabGoal(0, 1)).toBe(false);
+    expect(isAwayFromLabGoal(0, -1)).toBe(false);
+  });
+
+  it('ゴール未確定(side=0)は常に false=従来どおり間引いたまま', () => {
+    expect(isAwayFromLabGoal(-5000, 0)).toBe(false);
+    expect(isAwayFromLabGoal(5000, 0)).toBe(false);
   });
 });

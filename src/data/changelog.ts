@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2248',
+    items: [
+      'ステージ2: ゴールと反対方向へ進むと、敵の湧く量が間引き前(以前の量)に戻るようになりました。逆走は静かな安全ルートではありません。',
+    ],
+  },
+  {
     version: '0.25.2247',
     items: [
       'ステージ2: 道中にPHILLガンの弾が2つ落ちるようになりました。ゴールから見て30%・60%の地点あたりに、毎回ランダムな場所で置かれます。',

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { placeLabSpawn } from '../utils/labSpawn';
+import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import {
@@ -815,6 +815,9 @@ const LAB_SPAWN_AGGRO_RANGE = LAB_VISION_RANGE; // 視界距離は labStealth.ts
 const LAB_ENEMIES_PER_ZONE = 2;
 // ラボの湧き間隔倍率(大きいほど間隔が空く=湧きすぎ防止)と、1回の湧き上限。
 const LAB_SPAWN_INTERVAL_MULT = 2.4; // 1.6→2.4(間隔1.5倍=湧く数が2/3・社長指示v0.25.2243)
+// ゴールと反対方向(原点を挟んで逆側)へ進んでいる間だけ、上の間引きを外して**元の量(3/3)**に戻す
+// (社長指示v0.25.2248)。逆走は静かなご褒美ルートにしない=進むべき方向より濃い、という意図。
+const LAB_SPAWN_INTERVAL_MULT_AWAY = 1.6; // v0.25.2243以前の値(=3/3の量)
 const LAB_SPAWN_COUNT_MAX = 1;
 // M2は上下からではなく左右のみから湧く(社長指示v0.25.2182)。Yは歩ける帯の中に限定
 // (社長指示v0.25.2242)。位置の決定は src/utils/labSpawn.ts の placeLabSpawn に一本化した。
@@ -981,6 +984,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // M2「一度通った道にスポーンしない」(社長指示v0.25.2244): プレイヤーが到達したXの範囲。
   // 湧き/リサイクルはこの外側(=まだ行っていない側)にだけ配置する。出撃ごとにリセット。
   const labVisitedRef = useRef<{ minX: number; maxX: number } | null>(null);
+  // M2のゴール(書類)が原点から見て左右どちらにあるか(-1/+1)。0=未取得。出撃ごとにピックアップから
+  // 1回だけ拾って覚える(社長指示v0.25.2248「ゴールと反対方向に行くと湧きを元の量に戻す」の判定用)。
+  const labGoalSideRef = useRef(0);
   // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告(この先——{区域名})」を壁ごとにラン1回だけ出すためのフラグ。
   const wallWarnedRef = useRef<boolean[]>([false, false, false, false]);
   // M14: このランの最深距離(px・毎フレーム追跡)+store/localStorageへの同期は1秒間隔(書き込み間引き)。
@@ -1847,6 +1853,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           killPhaseRef.current = { phaseKey: '', startTotals: null, startSpawns: null };
           maxAreaRef.current = 0;
           labVisitedRef.current = null;
+          labGoalSideRef.current = 0;
           wallWarnedRef.current = [false, false, false, false]; // M14の予告バンドも新ランで再アーム
           runDeepestDistRef.current = 0;
           wallDepthSyncRef.current = 0;
@@ -7635,6 +7642,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           labVisitedRef.current = v
             ? { minX: Math.min(v.minX, player.x), maxX: Math.max(v.maxX, player.x) }
             : { minX: player.x, maxX: player.x };
+          // ゴール(書類)の左右。出撃ごとに1回だけピックアップから拾って覚える(以後は再走査しない)。
+          if (labGoalSideRef.current === 0) {
+            const doc = useGameStore.getState().pickups.find(p => p.type === 'lab-clear-item');
+            if (doc) labGoalSideRef.current = Math.sign(doc.x) || 1;
+          }
         }
         // 最深到達エリア(バッチ2計測)。屋外のみ、単調増加でstoreへ反映(リザルト表示用)。
         // 変化した時だけ set() する(1ランで最大4回・React再描画コストは無視できる)。
@@ -7863,7 +7875,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !bossChasingNow && // 裏ボスが画面内で追跡中だけ通常湧きを止める(非追跡=画面外/帰巣中は湧く・社長指摘)
           !puzzleActiveNow &&
           fieldCount < normalSpawnCap &&
-          timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1) * sceneIntervalMult
+          timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (
+            labTheme
+              // ゴールと逆側に居る間だけ間引きを外す(社長指示v0.25.2248)。
+              ? (isAwayFromLabGoal(player.x, labGoalSideRef.current) ? LAB_SPAWN_INTERVAL_MULT_AWAY : LAB_SPAWN_INTERVAL_MULT)
+              : 1
+          ) * sceneIntervalMult
         ) {
           const spawnCount = Math.min(
             labTheme ? LAB_SPAWN_COUNT_MAX : getEnemySpawnCount(),

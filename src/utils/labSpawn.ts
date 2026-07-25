@@ -13,6 +13,13 @@
 // 湧きは止まる(掃除した区間は静かなまま=ステルスで前進する設計に合わせる)。
 
 export interface LabSpawnPlacement { x: number; y: number }
+
+// 社長指示v0.25.2248「m2のゴールと反対方向に行くと、2/3にする前(3/3)の量の敵配置」。
+// ゴール(書類)は原点から見て左右どちらかにあるので、**原点を挟んでゴールと逆側**に居る間を
+// 「反対方向に行った」とみなす。この間だけ湧きの間引き(間隔×2.4=2/3)を外して元の間隔に戻す。
+// 原点上(playerX===0)は逆側ではない=間引いたまま(出撃直後にいきなり増えない)。
+export const isAwayFromLabGoal = (playerX: number, goalSide: number): boolean =>
+  goalSide !== 0 && Math.sign(playerX) === -Math.sign(goalSide);
 // これまでにプレイヤーが到達したXの範囲(=通った道)。この外側=まだ行っていない側にだけ湧かせる。
 export interface LabVisitedRange { minX: number; maxX: number }
 // 既に居る敵の視界(中心+半径)。この円の中には新しい敵を湧かせない(社長指示v0.25.2245)。
