@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
+import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS } from '../utils/m0Tutorial';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
@@ -2951,11 +2952,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ついてくる。軍人、衛生兵の順番」)。escorts流用・拠点前進/射撃はupdateSuppression側で停止済み。
         if (tutorialStage) {
           const st = useGameStore.getState();
-          // 操作説明ポップアップ(試作v0.25.1830): 開始1.2秒で「移動」の説明を1回だけ表示(ゲーム停止)。
-          // 本実装ではイベント台本から任意のタイミング/内容で showTutorialPopup を呼ぶ想定。
-          // v0.25.2252: 本文は `src/data/tutorials.ts` の台帳へ移し、既読も記録する(資料室に載せるため)。
-          // 出す条件自体は従来どおり(このランで未表示 かつ 1.2秒経過)=訓練では毎回出る。
-          if (!st.tutorialPopupShown && newGameTime >= 1200) {
+          // 操作説明ポップアップ「移動」(v0.25.1830〜)。
+          // v0.25.2264(社長指示「他のチュートリアルもあの形式で直して」): 発火条件をM2の2件と同じ形に
+          // 揃えた。**判定は純関数 `shouldShowMoveTutorial`**、既読は端末記憶(seenTutorials)を見る。
+          // 旧実装は `tutorialPopupShown`(このランで出したか)だけを見ていて端末の既読を無視しており、
+          // M2の2件と挙動が食い違っていた。
+          if (shouldShowMoveTutorial({
+            seen: seenTutorials().has('move'),
+            popupOpen: st.tutorialPopup !== null,
+            menuOpen: st.showShopMenu || st.showUpgradeMenu,
+            gameTimeMs: newGameTime,
+          })) {
             showTutorialOnce('move');
           }
           // 左壁(スタートから−100px)に突っ込んでいる間、軍人が窘める(社長指示v0.25.1829
@@ -2972,7 +2979,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (社長指示v0.25.1838「時間を止めて会話するシーンは存在しません!左上の通信です」。
             // 旧v0.25.1837のVNボックス=startIntroDialogueは廃止)。キュー直積み=tryNpcLineの
             // 詰まり防止キャップ(3)を通さず4行を確実に順次再生。CD類にも触らない。
-            if (!tutorialConvoQueuedRef.current && st.tutorialPopupShown && !st.tutorialPopup && st.introDialogueLines.length > 0) {
+            // v0.25.2264: 旧条件は `st.tutorialPopupShown`(=移動ポップアップを出したか)だった。
+            // 既読で出さない場合にこのフラグが立たず、**序盤会話が永久に流れなくなる**ため、
+            // 「移動を出すタイミングを過ぎた かつ ポップアップが閉じている」に変更した(出ても出なくても成立)。
+            if (!tutorialConvoQueuedRef.current && newGameTime >= M0_MOVE_TUTORIAL_AT_MS && !st.tutorialPopup && st.introDialogueLines.length > 0) {
               tutorialConvoQueuedRef.current = true;
               useGameStore.setState(s2 => ({
                 npcDialogueQueue: [
