@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.2256 — 【一時措置】チュートリアルを毎回表示に(確認用)【2026-07-26 18:00 JST】
+- 指示(社長): 一旦、チュートリアルは毎回見せて。できてるか見る手段がない。後で完成したら言うので、
+  そしたら一度見たら出ないに戻して。
+- 実装: `src/utils/tutorialArchive.ts` に **`TUTORIAL_ALWAYS_SHOW = true`** を1つ置き、
+  **ゲーム中の出す/出さない判定だけ**をこのフラグ経由にした(`loadSeenForGate()`)。
+- **記録は消していない**: `loadSeenTutorials()`(=資料室の「操作記録」が引く方)は従来どおり実際の既読を
+  返す。よって毎回出しつつ、資料室には正しく溜まっていく。ここを分けないと、毎回表示にした瞬間に
+  資料室の操作記録が空になる(社長が今まさに確認したいものが消える)。
+- 出る頻度: **出撃ごとに1回**。同じラン中に何度も出ることはない(refで1回に絞っているため)。
+- **戻し方: `TUTORIAL_ALWAYS_SHOW` を false にするだけ**。他に触る場所は無い。
+  戻し忘れ防止に `tutorialArchive.test.ts` へフラグの効果を固定するテストを追加した
+  (falseに戻すと「既読ならゲーム側判定も既読」を検証する側の分岐が有効になる)。
+- 検証: typecheck・lint 0エラー / tutorialArchive テスト9件通過。
+- Files: `src/utils/tutorialArchive.ts`, `src/utils/tutorialArchive.test.ts`, `src/hooks/useGameLoop.ts`,
+  `M2_LAB_CORRIDOR_SPEC.md`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2255 — PHILL手本GIFに通常射撃を追加(通常+吸い付きの2本立て)【2026-07-26 17:45 JST】
 - 指示(社長): 「5秒から6秒付近が通常」。v0.25.2254で通常射撃の区間を取り違えていた件の訂正。
 - 訂正内容: 3.7秒付近の弾道+爆風はサブウェポン(手榴弾)の自動発動で正しかったが、**本物の通常射撃は

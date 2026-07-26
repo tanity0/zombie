@@ -4,6 +4,14 @@
 
 import type { TutorialId } from '../data/tutorials';
 
+// ===== 一時措置(社長指示v0.25.2256)=====================================
+// 「チュートリアルは毎回見せて。できてるか見る手段がないから。完成したら一度見たら出ないに戻して」
+// **完成したらここを false に戻すだけ**で「1度だけ」に戻る(他は何も変えなくてよい)。
+// 記録(localStorage)自体は今まで通り残すので、**資料室の「操作記録」は正しく埋まっていく**。
+// 毎回出るのは「出撃ごとに1回」。同じランで何度も出ることはない(refで1回に絞っているため)。
+export const TUTORIAL_ALWAYS_SHOW = true;
+// =======================================================================
+
 const KEY = 'zombie:tutorialsSeen';
 
 // v0.25.2251 で先に入れた話題別キー。既に見た人の記録を落とさないため、初回読み込み時に取り込む。
@@ -37,6 +45,11 @@ export const loadSeenTutorials = (): Set<TutorialId> => {
 };
 
 export const hasSeenTutorial = (id: TutorialId): boolean => loadSeenTutorials().has(id);
+
+// **ゲーム中に出す/出さないの判定はこちらを使う**(資料室は loadSeenTutorials の方を使う)。
+// TUTORIAL_ALWAYS_SHOW が true の間は常に空集合を返す=毎回出る。記録は消さないので資料室は埋まる。
+export const loadSeenForGate = (): Set<TutorialId> =>
+  TUTORIAL_ALWAYS_SHOW ? new Set<TutorialId>() : loadSeenTutorials();
 
 export const markTutorialSeen = (id: TutorialId): void => {
   try {

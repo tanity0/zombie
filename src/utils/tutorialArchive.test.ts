@@ -1,6 +1,6 @@
 // 「一度見たチュートリアル」の端末記憶(社長指示v0.25.2252)。資料室の一覧はここを引く。
 import { describe, it, expect, beforeEach } from 'vitest';
-import { loadSeenTutorials, hasSeenTutorial, markTutorialSeen } from './tutorialArchive';
+import { loadSeenTutorials, hasSeenTutorial, markTutorialSeen, loadSeenForGate, TUTORIAL_ALWAYS_SHOW } from './tutorialArchive';
 
 // jsdom を使わずに済むよう、最小の localStorage スタブを噛ませる(このユニットが触るのはこれだけ)。
 const installStorage = () => {
@@ -78,5 +78,27 @@ describe('既読は保存直後から読める(初回ラン再表示バグの再
     expect(seen.has('phill')).toBe(true);
     expect(seen.has('scout')).toBe(true);
     expect(seen.has('move')).toBe(false);
+  });
+});
+
+// 一時措置(社長指示v0.25.2256「一旦、チュートリアルは毎回見せて」)。
+// 完成したら TUTORIAL_ALWAYS_SHOW を false に戻す。その時にこのテストが「戻し忘れ」を教える。
+describe('TUTORIAL_ALWAYS_SHOW(毎回見せる一時措置)', () => {
+  beforeEach(() => { installStorage(); });
+
+  it('ONの間は、既読でもゲーム側の判定は「未読」になる=毎回出る', () => {
+    markTutorialSeen('phill');
+    markTutorialSeen('scout');
+    if (TUTORIAL_ALWAYS_SHOW) {
+      expect(loadSeenForGate().size).toBe(0);
+    } else {
+      expect(loadSeenForGate().has('phill')).toBe(true); // 戻した後はこちらが正
+    }
+  });
+
+  it('ONでも**記録自体は消えない**=資料室の「操作記録」は埋まる', () => {
+    markTutorialSeen('phill');
+    expect(loadSeenTutorials().has('phill')).toBe(true); // 資料室が引くのはこちら
+    expect(hasSeenTutorial('phill')).toBe(true);
   });
 });

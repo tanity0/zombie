@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
-import { loadSeenTutorials, markTutorialSeen } from '../utils/tutorialArchive';
+import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
@@ -997,7 +997,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // =同一ページ読み込みでの2回目以降の出撃)だけに置いていた。そのため**ページを開いて最初の出撃**では
   // localStorage を一度も読まず、既読でもチュートリアルが再表示されていた(=「1度だけ」が効かない)。
   const tutorialSeenRef = useRef<Set<TutorialId> | null>(null);
-  const seenTutorials = useCallback((): Set<TutorialId> => (tutorialSeenRef.current ??= loadSeenTutorials()), []);
+  const seenTutorials = useCallback((): Set<TutorialId> => (tutorialSeenRef.current ??= loadSeenForGate()), []);
   // 表示と同時に「見た」を確定させる共通処理(資料室の一覧はこの記録を引く)。
   const showTutorialOnce = useCallback((id: TutorialId) => {
     const entry = getTutorial(id);
@@ -1877,7 +1877,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           labGoalSideRef.current = 0;
           // チュートリアルの表示済みは端末記憶(localStorage)が正。**出撃時に1回だけ読んで**refへ載せる
           // (毎フレームlocalStorageを読まないため)。以後このラン中は ref だけを見る。
-          tutorialSeenRef.current = loadSeenTutorials();
+          tutorialSeenRef.current = loadSeenForGate();
           wallWarnedRef.current = [false, false, false, false]; // M14の予告バンドも新ランで再アーム
           runDeepestDistRef.current = 0;
           wallDepthSyncRef.current = 0;

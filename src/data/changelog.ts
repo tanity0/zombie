@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2256',
+    items: [
+      '【調整中】チュートリアルを毎回表示するようにしました(内容確認のための一時的な設定です)。',
+    ],
+  },
+  {
     version: '0.25.2255',
     items: [
       'ＰＨＩＬＬ-銃チュートリアルの手本映像に、通常射撃(立ち止まって撃つ)の場面を追加しました。通常と吸い付きの2種類が続けて見られます。',
