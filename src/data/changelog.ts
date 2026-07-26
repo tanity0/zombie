@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2265',
+    items: [
+      'ステージ2の非常灯が赤くなりました。灯りの届かない場所と、歩けない範囲がさらに暗くなっています。',
+    ],
+  },
+  {
     version: '0.25.2264',
     items: [
       '訓練の「移動」チュートリアルも、ステージ2の2件と同じ扱いになりました(一度見たら出ない・資料室から読み返せる)。',

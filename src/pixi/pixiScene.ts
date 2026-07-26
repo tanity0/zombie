@@ -363,7 +363,10 @@ const LAB_FAR_ZOMBIE_BLUR = Math.max(0, tsNum('labzblur', 1.2)); // ゾンビ(�
 const LAB_FAR_FRAME_BLUR = Math.max(0, tsNum('labwfblur', 1.5));
 // 移動可能帯(廊下 ±LAB_CORRIDOR_Y_LIMIT_PX)の外を少し暗くする(社長指示v0.25.2223)。
 // 境目はパキッと切らず、fade幅ぶんの縦グラデで溶かす。**描画のみ**——移動クランプ本体(gameStore)には触らない。
-const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.5))); // 0.3→0.5(社長指示v0.25.2226「もう少し暗くして分かりやすく」)。0で無効(復帰フラグ)。?labdim=
+// 0.3→0.5(社長指示v0.25.2226)→**0.68**(社長指示v0.25.2265「移動できないところもそれに合わせてさらに暗く」)。
+// 全体の暗転幕(LAB_DARK_ALPHA)と**重なる**ので、帯の外の実効的な暗さは 1-(1-0.42)*(1-0.68) ≒ 0.81。
+// 0で無効(復帰フラグ)。?labdim=
+const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.68)));
 const LAB_OUT_DIM_FADE_PX = Math.max(0, tsNum('labdimfade', 70));        // 境目のグラデ幅(画面px)。?labdimfade=
 const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登場演出の着地後に濃くなるまでの時間。?labdimin=
 // M2の暗転+非常灯(社長指示v0.25.2263「全体をもう少し暗くして、等間隔に非常灯みたいなスポットライト」)。
@@ -371,7 +374,10 @@ const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登�
 // 構成: ①画面全体に黒い幕(labdark) ②その上に等間隔の非常灯グロー(screen合成)を重ねて幕を持ち上げる。
 // 幕とライトは**同じコンテナ**(uiLayer)に入れる。ワールド側に置くと幕(画面空間)を持ち上げられないため、
 // ライトの画面位置は毎フレーム world.toGlobal で求める(ズーム/カメラ/シェイクを自動で含む)。
-const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.22)));   // 全体の暗さ。0=無効(復帰フラグ)。?labdark=
+// 全体の暗さ。0=無効(復帰フラグ)。?labdark=
+// 0.22 → **0.42**(社長指示v0.25.2265「非常灯が当たってないとこ、もっと暗くして」)。
+// 非常灯は screen 合成でこの幕を持ち上げるので、濃くするほど「光の中」と「暗がり」の差が開く。
+const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.42)));
 // 間隔440 / 半径140(=光の直径280、暗がり160)。実測で決めた値:
 //  - 900だと画面(≒390ワールドpx幅)に1個も入らない時間が長く、並んでいるリズムが伝わらない。
 //  - 逆に間隔を詰めて2個以上同時に映そうとすると光が繋がって**暗くした意味が消える**。
@@ -379,7 +385,10 @@ const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.22)));   // �
 const LAB_EMLIGHT_SPACING = Math.max(120, tsNum('labemgap', 440));         // 非常灯の間隔(ワールドpx)。?labemgap=
 const LAB_EMLIGHT_RADIUS = Math.max(0, tsNum('labemr', 140));              // 光の半径(ワールドpx)。0=ライト無し。?labemr=
 const LAB_EMLIGHT_ALPHA = Math.max(0, Math.min(1, tsNum('labema', 0.5)));  // 光の強さ。?labema=
-const LAB_EMLIGHT_TINT = 0xffcf9a;                                         // 非常照明らしい淡い琥珀
+// 非常灯の色(社長指示v0.25.2265「赤にして」)。screen合成なので、この色が光の当たった床に乗る。
+// 純赤(0xff0000)だと緑/青が全く持ち上がらず床のディテールが潰れるため、わずかに橙寄りの赤にして
+// 「非常灯の赤」を出しつつ形が見えるようにする。
+const LAB_EMLIGHT_TINT = 0xff3a2a;
 // 同時に出す上限。CLAUDE.mdの実測(light T8 pass / T16 fail)より十分小さく取る=負荷の天井を固定する。
 const LAB_EMLIGHT_MAX = 8;
 
