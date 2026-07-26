@@ -99,9 +99,10 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
-import { TUTORIALS, type TutorialId } from '../data/tutorials';
+import { TUTORIALS, isVideoAsset, type TutorialId } from '../data/tutorials';
 import { loadSeenTutorials } from '../utils/tutorialArchive';
 import { ASSET_VERSION } from '../config/assetVersion';
+
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, BESTIARY,
@@ -1096,7 +1097,16 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 </h3>
                 {openTutorial.img && (
                   <div className="mb-3 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
-                    <img src={`${import.meta.env.BASE_URL}${openTutorial.img}?v=${encodeURIComponent(ASSET_VERSION)}`} alt="" className="h-full w-full object-cover" />
+                    {/* v0.25.2262: 長い手本は mp4。ゲーム中のポップアップと同じ判定を使う(isVideoAsset)。 */}
+                    {isVideoAsset(openTutorial.img) ? (
+                      <video
+                        src={`${import.meta.env.BASE_URL}${openTutorial.img}?v=${encodeURIComponent(ASSET_VERSION)}`}
+                        className="h-full w-full object-cover"
+                        autoPlay loop muted playsInline preload="auto"
+                      />
+                    ) : (
+                      <img src={`${import.meta.env.BASE_URL}${openTutorial.img}?v=${encodeURIComponent(ASSET_VERSION)}`} alt="" className="h-full w-full object-cover" />
+                    )}
                   </div>
                 )}
                 <div className="space-y-2 text-[13px] leading-relaxed text-white/85">

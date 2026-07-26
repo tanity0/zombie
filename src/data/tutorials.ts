@@ -37,9 +37,10 @@ export const TUTORIALS: TutorialEntry[] = [
     // 手本GIF(実機収録・社長撮影)。**2種類を1本に繋いである**(社長指示v0.25.2261):
     //   前半 = 通常射撃(立ち止まって撃つ→弾が飛ぶ→120ダメージ)
     //   後半 = 吸い付き→発砲→**ヘッドショット確定(120)**まで。寄りの画角で緑を判別できるように。
-    // **どちらも撃つ瞬間だけ2.5倍スロー**(社長指示v0.25.2260。等速だと2コマで終わって何が起きたか
-    // 分からないため)。等速部分と混ぜているので全体の尺は短いまま。
-    img: 'tutorial/m2-phill.gif',
+    // v0.25.2262(社長指示「どっちも全部流して」): **2本の収録を丸ごと連結**した。
+    // 20.6秒あるためGIFだと4〜5MBになる(索敵GIFの実測レート約230KB/秒から算出)。
+    // **mp4にすると464KB**=2.5秒しか入っていなかった旧GIF(897KB)の半分で、30fpsのまま出せる。
+    img: 'tutorial/m2-phill.mp4',
     where: '研究所',
   },
   {
@@ -61,3 +62,7 @@ export const TUTORIALS: TutorialEntry[] = [
 
 export const getTutorial = (id: TutorialId): TutorialEntry | undefined =>
   TUTORIALS.find(t => t.id === id);
+
+// 手本アセットが動画か(mp4/webm)。GIF/PNGはそのまま <img> で出す。
+// 長い手本(20秒級)はGIFだと数MBになるのでmp4を置けるようにした(v0.25.2262)。
+export const isVideoAsset = (path: string): boolean => /\.(mp4|webm)$/i.test(path);

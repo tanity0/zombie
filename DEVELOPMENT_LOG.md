@@ -1,5 +1,24 @@
 # Development Log
 
+## v0.25.2262 — PHILL手本を2本まるごと(20.6秒)に。GIF→mp4へ【2026-07-26 19:53 JST】
+- 指示(社長): phillガンの動画、どっちも全部流して。
+- **判断**: 2本合わせて20.6秒。**GIFのままだと4〜5MB**になる(索敵GIFの実測レート約230KB/秒から算出)。
+  チュートリアル1枚としては重すぎるため、**mp4に切り替えた**。結果 **473KB**
+  =2.5秒しか入っていなかった旧GIF(897KB)の**半分**で、しかも30fpsのまま(GIFは7〜10fpsに落としていた)。
+- 実装: 手本アセットが `.mp4`/`.webm` なら `<video autoPlay loop muted playsInline>`、それ以外は従来どおり
+  `<img>`。判定は `isVideoAsset()`(`src/data/tutorials.ts`)に置き、**ゲーム中のポップアップと資料室の
+  両方が同じ関数**を使う。iOSでインライン自動再生させるため muted/playsInline/autoPlay の3点は必須。
+  ※`isVideoAsset` をコンポーネント側に置くとFast Refreshの警告が増えるのでdata側に置いた。
+- 素材: 2本の実機収録を `crop=1290:806:0:760`(iOSのバーを除いたゲーム領域)→480x300・30fps・
+  h264 crf28 で連結。音声は落としてある。
+- 索敵側(`m2-scout.gif`)は5秒/1.1MBのまま据え置き(社長指示は phill のみ)。
+  今後もっと長い手本を足すならmp4に寄せるのが安い。
+- キャッシュ: 同名ではないが挿絵URLは `?v=` 付きなので `ASSET_VERSION` 58→**59**。
+- 検証: typecheck・lint 0エラー(新規warningなし)。実機は社長確認=**特にiOS Safariで自動再生されるか**。
+- Files: `public/tutorial/m2-phill.mp4`(新・旧gif削除), `src/data/tutorials.ts`,
+  `src/components/TutorialPopup.tsx`, `src/components/MissionSelect.tsx`,
+  `src/config/assetVersion.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2261 — 手本GIF2本を差し替え(吸い付き→HS確定 / 索敵5秒)【2026-07-26 18:30 JST】
 - 指示(社長): ①吸い付きからのヘッドショット確定まで(新規収録を支給) ②遮蔽物の動画、最初から5秒は見せて。
 - **PHILL** `m2-phill.gif`(897KB・400x250・9fps・23コマ)。2本の実機収録を5区間で連結:

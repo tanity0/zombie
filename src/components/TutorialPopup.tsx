@@ -5,6 +5,7 @@
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { ASSET_VERSION } from '../config/assetVersion';
+import { isVideoAsset } from '../data/tutorials';
 import { Ff7rButton } from './ff7r';
 
 const PANEL_STYLE: React.CSSProperties = {
@@ -46,10 +47,21 @@ const TutorialPopup: React.FC = () => {
             {popup.title}
           </h2>
           {popup.img ? (
-            // 事前収録の手本アセット(静止画/GIFアニメ・プレイヤー中心に切り出し済み)。
+            // 事前収録の手本アセット(静止画/GIFアニメ/**動画**・プレイヤー中心に切り出し済み)。
             // 社長決定v0.25.1839「やる前に手本を見せる」=挿絵は収録素材で統一(ライブ撮影は廃止)。
+            // v0.25.2262: 長い手本(20秒級)はGIFだと数MBになるため mp4 も置けるようにした。
+            // 同じ尺ならGIFの半分以下で、しかも30fpsのまま出せる。拡張子で自動的に切り替わる。
             <div className="relative mt-4 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
-              <img src={`${import.meta.env.BASE_URL}${popup.img}?v=${encodeURIComponent(ASSET_VERSION)}`} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              {isVideoAsset(popup.img) ? (
+                // iOSで確実にインライン自動再生させるための3点セット: muted / playsInline / autoPlay。
+                <video
+                  src={`${import.meta.env.BASE_URL}${popup.img}?v=${encodeURIComponent(ASSET_VERSION)}`}
+                  className="absolute inset-0 h-full w-full object-cover"
+                  autoPlay loop muted playsInline preload="auto"
+                />
+              ) : (
+                <img src={`${import.meta.env.BASE_URL}${popup.img}?v=${encodeURIComponent(ASSET_VERSION)}`} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              )}
               {popup.art === 'move' && <MoveArt overlay />}
             </div>
           ) : popup.art === 'move' ? (

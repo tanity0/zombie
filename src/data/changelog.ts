@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2262',
+    items: [
+      'ＰＨＩＬＬ-銃チュートリアルの手本が、収録した2本まるごと(約20秒)流れるようになりました。読み込みは以前より軽くなっています。',
+    ],
+  },
+  {
     version: '0.25.2261',
     items: [
       'ＰＨＩＬＬ-銃チュートリアルの手本映像に、吸い付きから撃ってヘッドショットが決まるところまで入りました。',
