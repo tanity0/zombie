@@ -217,8 +217,9 @@
 ### 素材の現況(2026-07-26時点・`public/tutorial/`)
 - **mp4あり(滑らか30fps)**: action-{move,shoot,melee,counter} / demo-{area-wall,levelup,pickup,melee,shoot,
   egg-break,npc-advance,merchant} / m2-{phill,scout} / move
-- **GIFのみ(mp4未収録)**: demo-{hunter-detect,hunter-chase,rescue,base-capture,castle-boss,red-night,reaper}
-  → **ビート#7で使うハンターがここに入っている**。実装前に収録が要る。
+- ~~**GIFのみ(mp4未収録)**~~ → **v0.25.2285で解消**: サブエージェントが**19本すべて**を30fps mp4で
+  撮り直した(コマ数3〜13倍・容量平均1/10)。**ビート#7のハンター(`demo-hunter-detect.mp4`)も揃っている**。
+  GIFは1本も消していない(旧版は残置)。収録の地雷は ENGINEERING_NOTES.md「ヘッドレス『手本動画』収録の地雷」へ。
 - 既存の手本は**ステージ1(森)でヘビーガンナー収録**。M0は洞窟+クラス選択自由なので、
   **洞窟で撮り直すか、森のままで許容するか**は社長裁定(M2は実機収録に差し替えた前例あり)。
 

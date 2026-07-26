@@ -269,6 +269,44 @@ npm run lint && npm run typecheck && npm test && npm run build
   叫喚型ゼロの確認では、`screamerPhaseGateOk`+`phaseAt` を純関数として直接評価し、ラン中に
   ゲートが計50秒開いていたことを示した。これが無いと「元から出ない条件だった」と区別できない。
 
+### ヘッドレス「手本動画」収録の地雷(v0.25.2285採録・19本を30fps mp4で撮り直した実作業から)
+チュートリアルの手本(`public/tutorial/*.mp4`)をヘッドレスで撮る時はここを先に読む。**この環境の実速は
+原速の約0.075倍・実フレーム間隔503ms**なので、素直に撮ると全部失敗する。
+- **30fps収録は素のままでは物理的に不可能**。`useGameLoop.ts` の `Math.min(0.05, rawDelta)` により、
+  実フレーム間隔503msは毎フレーム50msへクランプされる=**ゲーム内時間の粒度が20fpsどまり**。
+  対策=**rAFのtimestampを33.33ms刻みの合成時計に差し替える**(クランプに掛からなくなり「描画1コマ=
+  ゲーム内1/30秒」になる)。`Date.now`/`performance.now` も同じ時計へ載せるとDate.now基準の演出
+  (ヒットストップ/スロー/リング)も歩調が合う。
+  **注意**: rAFは useGameLoop・PixiJS ticker・React・Playwright のポーリングが同時に回っている。
+  「呼ばれた回数」で進めると1実フレームで何度も進んで自滅する。**本物のtimestampが変わった時だけ**
+  1コマ進め、同一実フレーム内の全コールバックには同じ値を配ること。
+- **収録の重さは「描き直し」ではなくPNGエンコード**(430x932実測)。`captureFrame()`(全画面PNG dataURL)
+  =**661ms** / crop→PNG dataURL=**488ms** に対し crop→**JPEG dataURL=2ms**。
+  さらに `scene.sync()+renderer.render()` はCPU2msでもGPU描画を1回増やし実フレーム間隔を0.5→1.1秒へ倍化する。
+  **最速形=ページ側で自走するrAFループ+明示renderなし(tickerが描いた直後のcanvasを読む)+JPEG**
+  =1.17→**0.49秒/コマ**。`page.screenshot()` も既定PNGは1〜4秒、`{type:'jpeg',quality:92}` で0.5秒。
+- **DOM収録(page.screenshot)を「1枚撮って1フレーム待つ」で回すと早送りになる**。撮影中に実フレームが
+  何枚も流れるため。実証: demo-area-wall が「4秒」で3975px(通常の約9倍)進んだ。対策=**合成時計を
+  ゲート化**し、Node側が1コマぶん許可した時だけ進める(許可しない間は dt=0 でゲーム完全停止)。
+- **ViteのHMRが収録を殺す**。別セッションがリポジトリを触ると full-reload が飛び
+  "Execution context was destroyed" で収録が飛ぶ(実際に38コマ目で被弾)。**public/ にmp4を置くだけでも
+  リロードが飛ぶ**。対策=`addInitScript` で `vite-hmr` プロトコルのWebSocketを繋がせない。
+- **収録中にプレイヤーが死ぬと canvas ごと消える**(リザルト画面へ遷移)→ `querySelector('canvas')` が
+  null になりページ側が例外、Node側は無限待ち。長い待ちを挟むなら**ページ側 setInterval でHPを張る**
+  (Node側の毎ポーリング補充では待ち時間中に守れない)+ Node側に「N秒コマが増えなければ打ち切り」の番犬。
+- **Vite dev はTSモジュールをURLで配るので、ゲームの敵ファクトリを直接呼べる**:
+  `await import('/zombie/src/utils/enemyUtils.ts')` → `spawnEnemyAt(type,x,y,t)`。既存敵のクローン注入より
+  正確(型ごとのHP/サイズ/スプライトが本物)。stage-1序盤の敵は bat なのでクローン方式だと絵が寂しくなる。
+- 個別の落とし穴: **`HUNTER_START_MS=180000` はヘッドレスでは実40分=事実上到達不能**(`gameTime` を
+  190000へ進める) / **拠点解放の10秒滞在は `escorts[].dwellMs`**(`baseSites[].dwellMs` ではない) /
+  **`triggerCounter()` はクリティカルで気絶させ2発目がフィニッシャー(即死)**になるので素振りを見せたい時は
+  毎ポーリングで `stunUntil` を消す。至近の斬撃FXは画面を白く覆うので**素振りは1回**まで /
+  **レベルアップ選択メニューが開いている間は商人の滞在判定が止まる**(`updateMerchantDwell` が
+  `showUpgradeMenu` で return)ので**レベルアップは必ず最後に撮る** / `action-*` の切り出しは400px幅=
+  プレイヤー中心±200px。敵を+250pxに置くと枠外。
+- **成果(参考値)**: 19本を 30fps・コマ数3〜13倍・容量**平均1/10**で撮り直せた(例: demo-base-capture
+  3.8fps/1360KB → 30fps/**77KB**)。1本あたり起動73〜85秒+収録0.49秒/コマなので、**1起動で複数本まとめ撮り**が必須。
+
 ## M9実装(v0.25.148x)の実際のスコープ(この網に掛からないもの)
 `src/utils/playtestDriver.ts`/`playtestInvariants.ts`/`src/store/playtest.test.ts`が実装した
 ヘッドレスボットは、M9-A(`src/utils/directorTick.ts`)で切り出したコマ管理/査定/decideNextSpawn
