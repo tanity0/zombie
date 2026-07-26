@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2260',
+    items: [
+      'ＰＨＩＬＬ-銃チュートリアルの手本映像で、撃つ瞬間がスローになりました。着弾のダメージ表示まで見えます。',
+    ],
+  },
+  {
     version: '0.25.2259',
     items: [
       '索敵チュートリアルの手本映像を差し替え。見つかった後に壁の裏へ回り込んで視線を切る一連の流れが見られるようになりました。',
