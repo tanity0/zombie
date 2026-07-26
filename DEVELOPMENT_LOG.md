@@ -1,5 +1,38 @@
 # Development Log
 
+## v0.25.2277 — 素材のキャッシュバストを「グローバル版数1個」→「ファイル内容ハッシュ」へ【2026-07-26 22:19 JST】
+- 指示(社長): 「これ毎回ローディングは、更新されたものだけダウンロードさせれないの? バージョンで整合性をとる事で」→ 承認を受けて実装。
+- **問題**: 素材URLの `?v=` が `ASSET_VERSION`(手で上げるグローバル版数1個)だったため、
+  **1ファイル差し替えのために番号を上げた瞬間、スプライト81MB+音声83MB=約164MBの全URLが変わって全再DL**になっていた。
+  SFXだけは先に内容ハッシュ化済み(v0.25.2161・`__SFX_HASHES__`)だったので、それを public/ 全体へ一般化した。
+- **方式**: vite.config.ts が `git ls-files -sz -- public` の **blob SHA-1(=ファイル内容のハッシュ)** から
+  755件の表を作り、`__ASSET_HASHES__` として注入する。参照は `src/config/assetUrl.ts` の1箇所に集約。
+  - **速い**: 229MBを毎回sha1すると実測14.5秒。git索引からなら**約4ms**(dev起動のたびに全素材を読み直さない)。
+  - **安定**: cloneし直しても同じ値(mtime方式だとCIのcloneごとに変わり、毎デプロイ全再DLになる)。
+  - **正確**: blob SHA-1は内容ハッシュそのもの。中身が変われば必ず変わる。検証: `git rev-parse HEAD:public/sprites/atlas.png`
+    = `05a7de6ac9…` と、実行時URL `?v=05a7de6ac9` が一致。
+  - 未コミットで書き換え済みのファイルだけ実内容をsha1し直す(差し替え直後の保険・通常0件)。
+  - 表に無いファイル(未追跡・git不在ビルド)は `ASSET_VERSION` へフォールバック=安全側。
+- **`define` の落とし穴**: `define` は識別子を34KBのJSONリテラルへ**テキスト置換**するので、`__ASSET_HASHES__` を
+  2回書くとバンドルに2回入る。`typeof` ガードをやめ **try/catch で参照1箇所**にした(未注入環境はReferenceErrorをcatch)。
+- **`ASSET_VERSION` の降格**: 「同名差し替えのたびに手で上げる」運用は**廃止**。今後は
+  ①ハッシュが取れなかった時のフォールバック ②全素材を強制再DLさせたい時の非常ボタン、の2用途だけ。
+  CLAUDE.md(チュートリアルの作り方)・ENGINEERING_NOTES.md・scripts/import-player-sprites.mjs の
+  「取込み後はASSET_VERSION必須」記述を全て書き換えた(古い指示を残すと次のエージェントが無駄に164MB再DLさせる)。
+- 変更ファイル: `vite.config.ts` / `src/vite-env.d.ts` / **`src/config/assetUrl.ts`(新規)** /
+  `src/config/assetUrl.test.ts`(新規・純関数7ケース) / `src/config/assetVersion.ts`(役割の説明) /
+  `src/utils/spriteLoader.ts` / `src/audio/audioManager.ts` / `src/data/portraits.ts` / `src/data/campaign.ts` /
+  `src/components/{TitleScreen,TutorialPopup,MissionSelect,MansionCorridorPreview}.tsx` /
+  `CLAUDE.md` / `ENGINEERING_NOTES.md` / `scripts/import-player-sprites.mjs`
+- 検証: **typecheck green / lint 0 error(warning 7=既存)**。新規テスト7件+実URL確認(probe)で
+  `sprites/atlas.png?v=05a7de6ac9` `audio/title.mp3?v=88387a2295` / 未登録ファイルは `?v=61`(フォールバック)を確認。
+- **この版だけ一度だけ全再DLが走る**(`?v=61`→ハッシュ、SFXも旧content-sha1→blob-sha1で値が変わるため)。次回以降は差分のみ。
+- 負荷: **1/10**。実行時コスト0(表は静的リテラル)。バンドルに34KB(gz約15KB)増える代わりに、
+  更新のたびの164MB再DLが差分だけになる。ビルド時コストは約4ms。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(ゲーム仕様・挙動・バランス・演出は不変。配信経路のみ)。
+- 次の申し送り: `ASSET_VERSION`(現'61')はもう手で上げない。背景類(`BACKGROUND_PATHS`)は従来どおり `?v=` 無しの
+  直読み=ETag更新(管轄外)のまま据え置き。
+
 ## v0.25.2276 — 非常灯の消え方を「潰れる」→「形を保って薄くなる」へ【2026-07-26 22:04 JST】
 - 指摘(社長): m2のスポットライトの消え方変だろ。だんだんつぶれていって消えるんじゃなくて、
   そのままの形で消えていって欲しいけど、難しいの?

@@ -104,14 +104,20 @@
 - **プレイヤー立ち絵の焼き規約**: 128×108、図の**右端(銃口)を x=106・足元を y=107**、フレーム間は
   **共通スケール**(最大figH→105px)。既存player-*はこの規約(全部 xmax=106/footY=107)。破ると
   char-select(object-containで50pxに収め足元基準)で色味/大きさ/潰れがズレて見える。
-- **同名で public 素材の内容を差し替えたら必ず `ASSET_VERSION`(config/assetVersion.ts)を上げる**
-  (chen v0.25.1424・magnum v0.25.1431 の実バグ)。上げないと `?v=旧` のままキャッシュが残り、旧絵/
-  不良版が配信され続ける。char-selectは`?v=__APP_VERSION__`で常に新しいが、**実機の in-game は
-  ASSET_VERSION 依存**なので必須。
-  **ただし適用範囲に注意(v0.25.1807採録)**: `?v=`が付くのは spriteLoader(sprites/* のマニフェスト経由)と
-  audioManager だけ。**背景類(pixiTexturesの`BACKGROUND_PATHS`=遠景/床/地平帯/川筋)はクエリ無しの
-  URL直読み**=ASSET_VERSIONの管轄外(GH PagesのETag+max-age=600で最大10分後に自動更新される)。
-  背景の同名差し替えでのバンプは無駄打ち(全スプライト/音声の再DLを誘発するだけ)なので上げない。
+- **素材の `?v=` は「ファイル内容ハッシュ」(v0.25.2277〜)。同名差し替えでも手動バンプは不要**。
+  vite.config.ts が `git ls-files -s -- public` の blob SHA-1 から表を作って `__ASSET_HASHES__` に注入し、
+  `src/config/assetUrl.ts` の `assetUrl()` / `withAssetVersion()` が引く。**差し替えてコミットすれば
+  そのファイルのURLだけが変わる**(他は端末キャッシュが効いたまま=1枚のために164MB再DLしない)。
+  - 未コミットの差し替えも拾う(vite.config が working tree の変更分だけ実内容をsha1し直す)。
+  - 表に無いファイル(未追跡・git不在ビルド)は `ASSET_VERSION` へフォールバック。
+  - `ASSET_VERSION`(config/assetVersion.ts)は**全素材を強制再DLさせたい時の非常ボタン**に降格。
+    通常は触らない(上げると全端末で164MB再DLになる)。
+  - 旧方式の教訓(残置): 同名差し替えでバンプを忘れると旧絵が配信され続けた(chen v0.25.1424・
+    magnum v0.25.1431)。ハッシュ化でこの地雷そのものが消えた。
+  **適用範囲に注意(v0.25.1807採録・現在も有効)**: `?v=`が付くのは spriteLoader(sprites/*)・audioManager・
+  立ち絵/チュートリアル挿絵など `assetUrl()` を通る経路だけ。**背景類(pixiTexturesの`BACKGROUND_PATHS`=
+  遠景/床/地平帯/川筋)はクエリ無しのURL直読み**=表の管轄外(GH PagesのETag+max-age=600で最大10分後に
+  自動更新される)。
 
 ### 音声(Web/iOS Safari)
 - **`HTMLAudio.currentTime`は同期の基準に使えない**: 精度が粗く「デコード位置」であって
@@ -335,7 +341,8 @@ v0.25.1763〜1768の実機反復で確定した診断ツリー(再発時はこ�
 - **取込み(実装側)**: `node scripts/import-player-sprites.mjs player-<絵名> walk=..png melee=..png run=..png --dot 4`
   → ÷4 nearest→コマ分割→頭中心x合わせ(median・横揺れ0px=v48規約)→足元下端・**幅78キャンバス**で書き出し。
   同クラス全ポーズを1回の実行でまとめて渡す。idle流用は取込み後に walk-N をコピー。
-  **取込み前にグリッド整列を機械検証**(÷N→×N復元の一致率100%を確認)。**取込み後は ASSET_VERSION 必須**。
+  **取込み前にグリッド整列を機械検証**(÷N→×N復元の一致率100%を確認)。※取込み後の ASSET_VERSION バンプは
+  v0.25.2277で不要になった(`?v=`=内容ハッシュ。コミットすれば自動更新)。
   ツールの再現性はv0.25.1769で検証済み(ストライカー13枚ビット一致)。
 
 ### 新規素材の共通規約(ドット密度統一)

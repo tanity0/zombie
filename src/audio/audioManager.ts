@@ -1,7 +1,7 @@
 // Central audio controls. BGM uses HTMLAudioElement so mobile browsers keep
 // their normal media route; short SFX use Web Audio to avoid frame hitches.
 
-import { ASSET_VERSION } from '../config/assetVersion';
+import { assetUrl, withAssetVersion } from '../config/assetUrl';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 
 const MUTED_KEY = 'zombie:audioMuted';
@@ -36,17 +36,17 @@ const REVERSE_BGM: Record<string, string> = {
   stage6: `${import.meta.env.BASE_URL}audio/stage6-reverse.mp3`,
 };
 // タイトル画面のBGM(メニュー中だけ流す)。配置先: public/audio/title.mp3(無い間は無音=クラッシュなし)。
-const TITLE_TRACK = `${import.meta.env.BASE_URL}audio/title.mp3?v=${encodeURIComponent(ASSET_VERSION)}`;
+const TITLE_TRACK = assetUrl('audio/title.mp3');
 // PEAK(AIディレクター/紅き月)中だけ通常BGMに重ねる打楽器レイヤー(社長提供)。差し替え/追加のみで
 // 通常BGMは止めない(社長要望の「PEAK突入の輪郭を体で感じさせる」演出)。
-const PEAK_LAYER_TRACK = `${import.meta.env.BASE_URL}audio/peak-layer.mp3?v=${encodeURIComponent(ASSET_VERSION)}`;
+const PEAK_LAYER_TRACK = assetUrl('audio/peak-layer.mp3');
 // ダンスタイム(四神舞)中だけ流す曲。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
 // v0.25.284: 8小節ループの継ぎ目が要素 loop=true でぶつ切りになるため、軽量(128k/48k)のフル尺曲に戻す。
 // フル尺なら継ぎ目(末尾→先頭)は3〜4分に1回でダンス中はほぼ当たらない。要素再生なので軽い。
 const DANCE_LOOP_TRACKS: Record<number, string> = {
-  1: `${import.meta.env.BASE_URL}audio/dance-100.mp3?v=${encodeURIComponent(ASSET_VERSION)}`,
-  2: `${import.meta.env.BASE_URL}audio/dance-120.mp3?v=${encodeURIComponent(ASSET_VERSION)}`,
-  3: `${import.meta.env.BASE_URL}audio/dance-140.mp3?v=${encodeURIComponent(ASSET_VERSION)}`,
+  1: assetUrl('audio/dance-100.mp3'),
+  2: assetUrl('audio/dance-120.mp3'),
+  3: assetUrl('audio/dance-140.mp3'),
 };
 let currentDanceLevel = 2; // 現在ダンスループに使っているレベル
 
@@ -772,16 +772,9 @@ export const playRadioStatic = () => {
 // SFXのURLにクエリを足してキャッシュバスト(同名mp3/wav差し替えでも端末が古い音を掴まないように)。
 // v0.25.2161(社長承認): 旧「?v=版数」一律は毎pushで全SEのURLが変わり、更新直後に全音声の
 // 再DL+再デコードが走って起動ピーク(=iOSメモリ圧kill・勝手リロードの一因)を押し上げていた。
-// ファイル内容ハッシュ(vite.config.tsがビルド時に走査して__SFX_HASHES__を注入)に変更=
-// 「差し替えたSEだけ」URLが変わる。表に無いファイルは従来どおり版数でバスト(安全側フォールバック)。
-const SFX_BUST = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
-const SFX_HASHES: Record<string, string> = typeof __SFX_HASHES__ !== 'undefined' ? __SFX_HASHES__ : {};
-const withVersion = (src: string) => {
-  const base = import.meta.env.BASE_URL ?? '/';
-  const rel = src.startsWith(base) ? src.slice(base.length) : src;
-  const bust = SFX_HASHES[rel] ?? SFX_BUST;
-  return src + (src.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(bust);
-};
+// →ファイル内容ハッシュに変更=「差し替えたSEだけ」URLが変わる。
+// v0.25.2277: そのハッシュ表を public/ 全素材へ一般化(src/config/assetUrl.ts が唯一の出どころ)。
+const withVersion = (src: string) => withAssetVersion(src);
 
 const loadSfxBuffer = (key: SfxKey) => {
   const context = ensureSfxContext();

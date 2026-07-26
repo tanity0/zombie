@@ -10,7 +10,7 @@
 // - stage-ex2 は旧構想の残置データ(hidden=導線なし)。正史のEXは stage-ex1 のみ。
 
 import type { CharacterClass, SubWeaponKey, SkillKey, IntroLine, EnemyType } from '../types/game';
-import { ASSET_VERSION } from '../config/assetVersion';
+import { assetUrl } from '../config/assetUrl';
 
 // --- ステージ / ミッションの型 -------------------------------------------
 export interface StageVoiceLine {
@@ -574,8 +574,6 @@ export const getStage = (id: string): Stage | undefined => STAGES.find(s => s.id
 // --- キャラクター(職業) ---------------------------------------------------
 // 性能差は撤廃(全員同一性能)。違いは「初期装備」と「専用スキル」のみ。
 // 立ち絵スプライト(128x108)の足元位置の微差を底ライン(影)へ揃えるための portraitNudgeY を保持。
-// 素材用の固定版(毎pushで上がるアプリ版を使うと、コード変更だけで全スプライトが再DLになる)。
-const spriteVersion = encodeURIComponent(ASSET_VERSION);
 
 export interface CharacterClassInfo {
   id: CharacterClass;
@@ -594,7 +592,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
   {
     id: 'warrior',
     name: 'ヘビーガンナー',
-    sprite: `${import.meta.env.BASE_URL}sprites/player-shotgun-idle.png?v=${spriteVersion}`,
+    sprite: assetUrl('sprites/player-shotgun-idle.png'),
     accent: 'rgba(248, 113, 113, 0.55)',
     gear: 'ショットガン ＋ ハチェット',
     skillKey: 'heavy-grenade',
@@ -606,7 +604,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
   {
     id: 'mage',
     name: 'マークスマン',
-    sprite: `${import.meta.env.BASE_URL}sprites/player-magnum-idle.png?v=${spriteVersion}`,
+    sprite: assetUrl('sprites/player-magnum-idle.png'),
     accent: 'rgba(168, 85, 247, 0.52)',
     gear: 'マグナム ＋ ナイフ',
     skillKey: 'marksman-trap',
@@ -618,7 +616,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
   {
     id: 'rogue',
     name: 'ストライカー',
-    sprite: `${import.meta.env.BASE_URL}sprites/player-scavenger-idle.png?v=${spriteVersion}`,
+    sprite: assetUrl('sprites/player-scavenger-idle.png'),
     accent: 'rgba(52, 211, 153, 0.48)',
     gear: 'ハンドガン ＋ ファイティングナイフ',
     skillKey: 'striker-hunting',
@@ -630,7 +628,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
   {
     id: 'necromancer',
     name: 'スカベンジャー',
-    sprite: `${import.meta.env.BASE_URL}sprites/player-striker-idle.png?v=${spriteVersion}`,
+    sprite: assetUrl('sprites/player-striker-idle.png'),
     accent: 'rgba(129, 140, 248, 0.48)',
     gear: 'ハンドガン ＋ ハチェット',
     skillKey: 'striker-quick-mag',

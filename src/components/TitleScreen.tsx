@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { ASSET_VERSION } from '../config/assetVersion';
+import { assetUrl } from '../config/assetUrl';
 import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
@@ -283,7 +283,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       style={{ cursor: phase === 'title' ? 'pointer' : 'default' }}
     >
       <img
-        src={`${import.meta.env.BASE_URL}backgrounds/title-the-one.png?v=${encodeURIComponent(ASSET_VERSION)}`}
+        src={assetUrl('backgrounds/title-the-one.png')}
         alt=""
         draggable={false}
         className="pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover"

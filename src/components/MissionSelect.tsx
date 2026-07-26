@@ -101,7 +101,7 @@ import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
 import { TUTORIALS, isVideoAsset, type TutorialId } from '../data/tutorials';
 import { loadSeenTutorials } from '../utils/tutorialArchive';
-import { ASSET_VERSION } from '../config/assetVersion';
+import { assetUrl } from '../config/assetUrl';
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
@@ -1100,12 +1100,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                     {/* v0.25.2262: 長い手本は mp4。ゲーム中のポップアップと同じ判定を使う(isVideoAsset)。 */}
                     {isVideoAsset(openTutorial.img) ? (
                       <video
-                        src={`${import.meta.env.BASE_URL}${openTutorial.img}?v=${encodeURIComponent(ASSET_VERSION)}`}
+                        src={assetUrl(openTutorial.img)}
                         className="h-full w-full object-cover"
                         autoPlay loop muted playsInline preload="auto"
                       />
                     ) : (
-                      <img src={`${import.meta.env.BASE_URL}${openTutorial.img}?v=${encodeURIComponent(ASSET_VERSION)}`} alt="" className="h-full w-full object-cover" />
+                      <img src={assetUrl(openTutorial.img)} alt="" className="h-full w-full object-cover" />
                     )}
                   </div>
                 )}

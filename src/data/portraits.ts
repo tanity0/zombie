@@ -4,7 +4,7 @@
 // 2箇所に同じ生成規則を書くと将来ズレるので、ここを唯一の出どころにする)。
 import type { CharacterClass } from '../types/game';
 import { CHARACTER_CLASSES } from './campaign';
-import { ASSET_VERSION } from '../config/assetVersion';
+import { assetUrl } from '../config/assetUrl';
 
 export const CLASS_PORTRAIT: Record<CharacterClass, string> = {
   warrior: 'portrait-shotgun',     // ヘビーガンナー(ショットガン)=タイトルの少女
@@ -13,11 +13,11 @@ export const CLASS_PORTRAIT: Record<CharacterClass, string> = {
   necromancer: 'portrait-handgun', // スカベンジャー(ハンドガン)=拳銃の黒髪
 };
 
-// キャッシュバスターは**素材用の固定版**(ASSET_VERSION)を使う。アプリ版(__APP_VERSION__)は毎pushで
+// キャッシュバスターは**ファイル内容ハッシュ**(v0.25.2277)。アプリ版(__APP_VERSION__)は毎pushで
 // 上がるため、コードだけの変更でも立ち絵(計9.4MB)が毎回再DLになっていた(社長指摘v0.25.2240)。
-// 立ち絵を同名で差し替えた時だけ config/assetVersion.ts を上げれば、そのときだけ確実に更新される。
+// 内容ハッシュなら、立ち絵を同名で差し替えてコミットした時だけ、その1枚のURLが変わる。
 export const portraitSrcFor = (id: CharacterClass): string =>
-  `${import.meta.env.BASE_URL}sprites/portraits/${CLASS_PORTRAIT[id]}.png?v=${encodeURIComponent(ASSET_VERSION)}`;
+  assetUrl(`sprites/portraits/${CLASS_PORTRAIT[id]}.png`);
 
 // URLを1本先読みしてブラウザキャッシュに載せる。デコードまで済ませたいので decode() があれば待つ
 // (失敗は無視=表示側が従来どおり onLoad で出す)。

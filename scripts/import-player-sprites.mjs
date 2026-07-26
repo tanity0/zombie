@@ -25,7 +25,8 @@
 //
 // 重要: 同クラスの全ポーズは1回の実行でまとめて渡す(統一キャンバス=表示サイズが揃う)。
 // idle が「歩きの特定コマと同じ」場合は取込み後に walk-N を idle 名へコピー(同一キャンバスなので整合)。
-// 取込み後は必ず ASSET_VERSION(src/config/assetVersion.ts)を上げること(キャッシュバスト・地雷)。
+// 取込み後の ASSET_VERSION バンプは不要(v0.25.2277〜: 素材の ?v= はファイル内容ハッシュなので、
+// 差し替えてコミットすればそのファイルのURLだけが自動で変わる)。
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -327,4 +328,4 @@ for (const { kind, frames } of jobs) {
     console.log(`wrote ${path} (${canvasW}x${canvasH})`);
   });
 }
-console.log('done. 取込み後は ASSET_VERSION(src/config/assetVersion.ts)のバンプを忘れないこと(キャッシュバスト)。');
+console.log('done. キャッシュバストは自動(?v=はファイル内容ハッシュ・v0.25.2277〜)。ASSET_VERSIONのバンプは不要。');

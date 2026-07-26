@@ -223,7 +223,8 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   - **撃つ/決まる瞬間は `setpts` でスローに**する(等速だと2コマで終わって何が起きたか分からない)。
   - 小さく細い表示(緑のレティクル等)は**寄りの画角+色数を落とし過ぎない**。減色で真っ先に消える。
     採用前に**フレームごとの画素数を数えて機械的に確認**する(目視だけだと見落とす)。
-  - 同名で差し替えたら **`ASSET_VERSION` を上げる**(挿絵URLは `?v=` 付き)。上げないと端末に古い版が残る。
+  - 同名で差し替えても **`ASSET_VERSION` の手動バンプは不要**(v0.25.2277〜)。挿絵URLの `?v=` は
+    **ファイル内容ハッシュ**になったので、差し替えてコミットすればその1本だけ自動で更新される。
 
 ## Versioning
 - **Bump `package.json` `version` on every push.** It is injected as

@@ -4,7 +4,7 @@
 // art部を <img> に置き換えるだけの構造にしてある。表示中はゲーム停止(showTutorialPopupがisPaused=true)。
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
-import { ASSET_VERSION } from '../config/assetVersion';
+import { assetUrl } from '../config/assetUrl';
 import { isVideoAsset } from '../data/tutorials';
 import { Ff7rButton } from './ff7r';
 
@@ -55,12 +55,12 @@ const TutorialPopup: React.FC = () => {
               {isVideoAsset(popup.img) ? (
                 // iOSで確実にインライン自動再生させるための3点セット: muted / playsInline / autoPlay。
                 <video
-                  src={`${import.meta.env.BASE_URL}${popup.img}?v=${encodeURIComponent(ASSET_VERSION)}`}
+                  src={assetUrl(popup.img)}
                   className="absolute inset-0 h-full w-full object-cover"
                   autoPlay loop muted playsInline preload="auto"
                 />
               ) : (
-                <img src={`${import.meta.env.BASE_URL}${popup.img}?v=${encodeURIComponent(ASSET_VERSION)}`} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                <img src={assetUrl(popup.img)} alt="" className="absolute inset-0 h-full w-full object-cover" />
               )}
               {popup.art === 'move' && <MoveArt overlay />}
             </div>
