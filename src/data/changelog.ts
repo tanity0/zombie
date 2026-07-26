@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2255',
+    items: [
+      'ＰＨＩＬＬ-銃チュートリアルの手本映像に、通常射撃(立ち止まって撃つ)の場面を追加しました。通常と吸い付きの2種類が続けて見られます。',
+    ],
+  },
+  {
     version: '0.25.2254',
     items: [
       'ステージ2のＰＨＩＬＬ-銃チュートリアルに、実際のプレイ映像(狙いサークルが敵の頭に吸い付く様子)を追加しました。',
