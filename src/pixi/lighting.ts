@@ -430,7 +430,11 @@ export const getSpotConeTexture = (): Texture => {
     return n - Math.floor(n);
   };
   // 床の光だまり(平たい楕円)の中心と大きさ。
-  const poolY = H * 0.9, poolRX = W * 0.5, poolRY = poolRX * 0.34;
+  // v0.25.2272(社長指摘「光の下の部分がパッツン切れてる」): 旧 poolY=H*0.9 は楕円の**下半分が
+  // テクスチャの外**にはみ出しており、下端で水平に切り落とされていた。中心を上げて全体を枠内に収める。
+  const poolY = H * 0.78, poolRX = W * 0.5, poolRY = poolRX * 0.34;
+  // さらに保険として、最下部で全体を 0 へ落とす(円錐本体の下辺もここで消える=硬い切れ目を作らない)。
+  const BOTTOM_FADE_FROM = 0.90;
   for (let y = 0; y < H; y++) {
     const t = y / (H - 1);
     const halfW = TOP_HALF + (BOT_HALF - TOP_HALF) * t;
@@ -446,6 +450,8 @@ export const getSpotConeTexture = (): Texture => {
       const dx = (x - cx) / poolRX, dy = (y - poolY) / poolRY;
       const pd = Math.sqrt(dx * dx + dy * dy);
       if (pd < 1) a += (1 - smooth(0, 1, pd)) * 0.85;
+      // 最下部のフェード(テクスチャ端での切れ目対策)。
+      a *= 1 - smooth(BOTTOM_FADE_FROM, 1, t);
       if (a <= 0) continue;
       // 粒状ノイズ(±8%)。ベタ塗りに見せないためのわずかな揺らぎ。
       a *= 0.92 + 0.16 * grain(x, y);

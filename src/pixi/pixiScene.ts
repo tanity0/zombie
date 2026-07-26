@@ -5527,11 +5527,12 @@ export class PixiScene {
       // 非常灯は上限ぶんだけ先に作って使い回す(毎フレームの生成/破棄をしない)。
       this.labEmLights = Array.from({ length: LAB_EMLIGHT_MAX }, () => {
         // 円錐テクスチャ(上=灯具側で細い / 下=床で広がる + 底に光だまり)を1枚。
-        // アンカーは (0.5, 0.88) = **テクスチャ内の床の着地点**。これで position に灯りの足元を渡せば
-        // ビームがそこから上へ伸びる形になる(丸グローの時と同じ「位置=足元」の使い勝手を保つ)。
+        // アンカーは (0.5, 0.78) = **テクスチャ内の床の着地点**(=光だまりの中心)。これで position に
+        // 灯りの足元を渡せばビームがそこから上へ伸びる(丸グローの時と同じ「位置=足元」の使い勝手)。
+        // 0.88→0.78: 光だまりの楕円を枠内に収めるためテクスチャ側で位置を上げたのに合わせた(v0.25.2272)。
         const sp = new Sprite(getSpotConeTexture());
         sp.eventMode = 'none';
-        sp.anchor.set(0.5, 0.88);
+        sp.anchor.set(0.5, 0.78);
         sp.tint = LAB_EMLIGHT_TINT;
         sp.blendMode = 'screen'; // 加算より塗り面積の暴発が小さい(強glow=加算大面積が実測の主犯)
         sp.visible = false;
@@ -5573,12 +5574,12 @@ export class PixiScene {
       const g = this.L.world.toGlobal({ x: k * LAB_EMLIGHT_SPACING, y: 0 });
       sp.position.set(g.x, g.y);
       sp.width = size;
-      // **画面の高さで頭打ち**: アンカーが (0.5, 0.88) なので、灯りの足元 g.y から上へ伸びるのは
-      // height*0.88。これが画面上端を大きく超えると、テクスチャの「まだ明るい途中」が画面外で
+      // **画面の高さで頭打ち**: アンカーが (0.5, 0.78) なので、灯りの足元 g.y から上へ伸びるのは
+      // height*0.78。これが画面上端を大きく超えると、テクスチャの「まだ明るい途中」が画面外で
       // 切られて水平の切れ目に見える。頂点が画面上端の少し上(APEX_OVER)に収まるよう抑える。
       // こうすると上端のフェード区間がちょうど画面の外に出るので、どの端末でも切れ目が出ない。
       const APEX_OVER = 60;
-      sp.height = Math.min(coneWant, (g.y + APEX_OVER) / 0.88);
+      sp.height = Math.min(coneWant, (g.y + APEX_OVER) / 0.78);
       sp.alpha = LAB_EMLIGHT_ALPHA * ramp;
       sp.visible = true;
     }
