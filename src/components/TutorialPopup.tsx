@@ -4,6 +4,7 @@
 // art部を <img> に置き換えるだけの構造にしてある。表示中はゲーム停止(showTutorialPopupがisPaused=true)。
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
+import { ASSET_VERSION } from '../config/assetVersion';
 import { Ff7rButton } from './ff7r';
 
 const PANEL_STYLE: React.CSSProperties = {
@@ -48,7 +49,7 @@ const TutorialPopup: React.FC = () => {
             // 事前収録の手本アセット(静止画/GIFアニメ・プレイヤー中心に切り出し済み)。
             // 社長決定v0.25.1839「やる前に手本を見せる」=挿絵は収録素材で統一(ライブ撮影は廃止)。
             <div className="relative mt-4 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
-              <img src={`${import.meta.env.BASE_URL}${popup.img}`} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              <img src={`${import.meta.env.BASE_URL}${popup.img}?v=${encodeURIComponent(ASSET_VERSION)}`} alt="" className="absolute inset-0 h-full w-full object-cover" />
               {popup.art === 'move' && <MoveArt overlay />}
             </div>
           ) : popup.art === 'move' ? (
