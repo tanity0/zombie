@@ -383,10 +383,12 @@ const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.42)));
 //  - 逆に間隔を詰めて2個以上同時に映そうとすると光が繋がって**暗くした意味が消える**。
 //  → 「光 → 暗がり → 光」を歩いて通過する形(画面あたり約1個)が、この画面幅では最も非常灯らしい。
 const LAB_EMLIGHT_SPACING = Math.max(120, tsNum('labemgap', 440));         // 非常灯の間隔(ワールドpx)。?labemgap=
-const LAB_EMLIGHT_RADIUS = Math.max(0, tsNum('labemr', 140));              // 床の光だまりの半径(ワールドpx)。0=ライト無し。?labemr=
-// 円錐の縦の伸び(社長指示v0.25.2269「足元だけでなく円錐状に照らして」)。
-// 光だまりの直径に対する倍率=上方向へどれだけビームを伸ばすか。?labemh=
-const LAB_EMLIGHT_HEIGHT_MULT = Math.max(0.2, tsNum('labemh', 1.35));
+const LAB_EMLIGHT_RADIUS = Math.max(0, tsNum('labemr', 185));              // 床の光だまりの半径(ワールドpx)。140→185(社長指示v0.25.2271「もっと広範囲」)。0=ライト無し。?labemr=
+// 円錐の縦の伸び(社長指示v0.25.2269「円錐状に照らして」/ v0.25.2271「もっと上から落として」)。
+// 光だまりの直径に対する倍率=上方向へどれだけビームを伸ばすか。1.35→2.2。?labemh=
+// **ただし実際の高さは画面に合わせて頭打ちにする**(下の updateLabDarkLights)。伸ばしすぎると
+// ビームの上端が画面外に出て、そこでスパッと切れて見えるため(v0.25.2269で一度直した症状の再発)。
+const LAB_EMLIGHT_HEIGHT_MULT = Math.max(0.2, tsNum('labemh', 2.2));
 const LAB_EMLIGHT_ALPHA = Math.max(0, Math.min(1, tsNum('labema', 0.5)));  // 光の強さ。?labema=
 // 非常灯の色。赤(v0.25.2265)→ **緑**(社長指示v0.25.2269)。screen合成なのでこの色が光の当たった床に乗る。
 // 純緑(0x00ff00)だと赤/青が全く持ち上がらず床のディテールが潰れるため、青を少し混ぜた緑にして
@@ -5562,7 +5564,7 @@ export class PixiScene {
     const wr = this.L.world.toLocal({ x: this.screenW + M, y: 0 }).x;
     const scale = this.L.world.scale.x || 1;
     const size = LAB_EMLIGHT_RADIUS * 2 * scale;              // 床の光だまりの直径
-    const coneH = size * LAB_EMLIGHT_HEIGHT_MULT;             // 円錐の高さ(上へ伸びる分)
+    const coneWant = size * LAB_EMLIGHT_HEIGHT_MULT;          // 望みの円錐の高さ
     let n = 0;
     const kFrom = Math.ceil(wl / LAB_EMLIGHT_SPACING);
     const kTo = Math.floor(wr / LAB_EMLIGHT_SPACING);
@@ -5571,7 +5573,12 @@ export class PixiScene {
       const g = this.L.world.toGlobal({ x: k * LAB_EMLIGHT_SPACING, y: 0 });
       sp.position.set(g.x, g.y);
       sp.width = size;
-      sp.height = coneH;
+      // **画面の高さで頭打ち**: アンカーが (0.5, 0.88) なので、灯りの足元 g.y から上へ伸びるのは
+      // height*0.88。これが画面上端を大きく超えると、テクスチャの「まだ明るい途中」が画面外で
+      // 切られて水平の切れ目に見える。頂点が画面上端の少し上(APEX_OVER)に収まるよう抑える。
+      // こうすると上端のフェード区間がちょうど画面の外に出るので、どの端末でも切れ目が出ない。
+      const APEX_OVER = 60;
+      sp.height = Math.min(coneWant, (g.y + APEX_OVER) / 0.88);
       sp.alpha = LAB_EMLIGHT_ALPHA * ramp;
       sp.visible = true;
     }

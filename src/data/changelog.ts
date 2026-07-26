@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2271',
+    items: [
+      'ステージ2の非常灯が、より高い位置から広い範囲を照らすようになりました。',
+    ],
+  },
+  {
     version: '0.25.2270',
     items: [
       'ステージ2の非常灯の見た目を作り直しました。光の筋が空気に散る感じになり、輪郭の硬さが取れています。',
