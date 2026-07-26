@@ -46,7 +46,8 @@ import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
-import { getSpotConeTexture, getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, RING_TEX_BASES } from './lighting';
+import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
+import { getSpotConeTexture, getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -84,6 +85,8 @@ const STRONG_GLOW_DISABLED = DZ_PARAMS?.get('glow') === '0';
 const PUNCH_GRADE = DZ_PARAMS?.get('punchgrade') !== '0'; // 既定ON(社長v0.25.1977「最大値にして」=まず見せる)。?punchgrade=0で切る
 // フィールドに落とす「動く雲の影」(社長指示v0.25.1974)。屋外ステージのみ・地面の上に multiply の雲影タイルをドリフト。既定ON・?cloudshadow=0 で無効。
 const CLOUD_SHADOW_ON = DZ_PARAMS?.get('cloudshadow') !== '0';
+// 注入完了後に毎フレーム Set を作らないための共有の空集合(ホールド判定用)。
+const EMPTY_SKIN_LAYERS: ReadonlySet<StageSkinLayer> = new Set<StageSkinLayer>();
 // フラッシュ色の明度(0..1)。暗転(黒)フラッシュはパンチしない=光だけ拾うための判定。
 const flashLuminance = (color: string): number => {
   const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
@@ -1775,7 +1778,11 @@ export class PixiScene {
     if (!on) return;
     // 昼夜で雰囲気を変える(社長指示v0.25.1975)。夜(月夜)=青寄り・淡く・大きく・ゆっくり(夢想的)。昼=中立・濃く・くっきり。
     const night = !this.daylight;
-    const tex = getCloudShadowTexture(night);
+    // ステージ7だけ「通常合成の黒」で塗る(下記)。multiply用テクスチャは白ベース不透明で雲の形が
+    // RGBにしか無いため、tint=黒にすると全面ベタの黒矩形になり形が消える(社長報告v0.25.2279
+    // 「m7の雲地面の影見当たらない」)。通常合成の時は形をαに持つ専用テクスチャを張る。
+    const shapeAlpha = this.currentFarKey === 'stage7';
+    const tex = shapeAlpha ? getCloudShadowShapeTexture() : getCloudShadowTexture(night);
     if (sp.texture !== tex) sp.texture = tex;
     const farH = this.farBackdropHeight();
     const overW = this.screenW * ZOOM_OVERSCAN;
@@ -1792,7 +1799,7 @@ export class PixiScene {
     // 他ステージは従来の乗算(灰色を地面に掛ける=光を遮る物理的な影)。blendMode/tint/alphaをステージで切替。
     if (this.currentFarKey === 'stage7') {
       if (sp.blendMode !== 'normal') sp.blendMode = 'normal';
-      if (sp.tint !== 0x000000) sp.tint = 0x000000;      // 黒を塗る
+      if (sp.tint !== 0xffffff) sp.tint = 0xffffff;      // テクスチャ自体が黒(形はα)=tintは無補正
       sp.alpha = tsNum('cloudshadow7alpha', 0.5);         // 黒影の濃さ(normal合成=そのまま影の濃さ)。?cloudshadow7alpha=で調整
     } else {
       if (sp.blendMode !== 'multiply') sp.blendMode = 'multiply';
@@ -3278,6 +3285,11 @@ export class PixiScene {
   // マニフェスト(getTexture)が万一読めなくても、こちらを最優先で使う=確実に張り替わる。
   private labGroundTex: Texture | null = null;
   // ステージ別の遠景差し替えテクスチャ(PixiStage が backgrounds/ から読み込み注入)。キー='city' 等。
+  // ステージ別素材(遠景/地面/地平帯/近景)の注入が完了したか。完了までは、そのステージが差し替える
+  // 予定のレイヤーを非表示でホールドする(森=ステージ1の下地を1フレームも見せない)。
+  // v0.25.2205でlabだけ入れた措置の一般化(社長報告v0.25.2279「たまにステージ1がチラッと映る」)。
+  private stageTexturesInjected = false;
+  setStageTexturesInjected() { this.stageTexturesInjected = true; }
   private farBackdropOverrides: Record<string, Texture | null> = {};
   // いま遠景に張っている種別。'forest'(既定)/'lab'/差し替えキー。差分があるときだけ張り替える。
   private currentFarKey = 'forest';
@@ -9487,19 +9499,26 @@ export class PixiScene {
     // (社長報告v0.25.2205「たまに森がチラッと映る」。既存の設計意図=森を1フレームも見せない、に沿う)。
     // レイヤー個別に判定=1枚のロード失敗が他を巻き込まない。通常ロードは適用後に画面が出るので黒は出ない。
     const labStageOut = !indoor && s.stageTheme === 'lab' && !s.corridorMode;
-    const farNotReady = labStageOut && this.currentFarKey !== 'lab';
-    const groundNotReady = labStageOut && this.outdoorGroundTheme !== 'lab';
+    // ステージ別素材の注入待ちレイヤー(v0.25.2279): 未注入の間だけ、そのステージが差し替える予定の
+    // レイヤーを隠す。ロードが停滞するとローディング解除のフェイルセーフが先に外れる経路があり、
+    // そこで**森(ステージ1)の下地が露出**していた(m7に限らず全ステージ)。注入完了で恒久解除
+    // =素材が来なかった場合も注入完了時点で従来どおり森へフォールバックする(黒が残らない)。
+    const pending: ReadonlySet<StageSkinLayer> = this.stageTexturesInjected ? EMPTY_SKIN_LAYERS : sortieSkinLayersExpected();
+    const farNotReady = (labStageOut && this.currentFarKey !== 'lab') || pending.has('far');
+    const groundNotReady = (labStageOut && this.outdoorGroundTheme !== 'lab') || pending.has('ground');
+    const frontNotReady = groundNotReady || pending.has('front');
+    const horizonNotReady = pending.has('horizon');
     this.L.farBackdrop.visible = !indoor && !farNotReady;
     // 遠景森1(森シルエット帯)の有無はステージスキン表(単一の真実)で決める。lab は false(森帯を出さない)。
     // ※散在分岐(isLabStage 等)を表駆動へ移す第一歩。残りスロットも順次この表へ集約予定。
     const skin = STAGE_SKINS[resolveStageSkinKey(s.stageTheme, s.corridorMode ? 'mansion' : s.farBackdrop)];
-    this.L.horizonForest.visible = !indoor && skin.horizon1Visible;
+    this.L.horizonForest.visible = !indoor && skin.horizon1Visible && !horizonNotReady;
     this.L.groundBase.visible = !indoor && !groundNotReady;
     // 研究所(lab)屋外の近景森は什器シルエット(stage2-front.png・クロマキー透過)を表示する
     // (社長指示v0.25.2184。v0.25.2181で一旦非表示化したのはlab-front-band.pngのままだったため)。
     // 洋館(屋内の廊下)は近景森を出さない(v0.25.2110)。※v0.25.2194でlab非表示にしたが、社長の
     // 「透明度ゼロ」は不透明化の意=消すのは不本意(v0.25.2196で撤回)。什器の近景森1は復活。
-    this.L.frontForest.visible = !indoor && !s.corridorMode && !groundNotReady;
+    this.L.frontForest.visible = !indoor && !s.corridorMode && !frontNotReady;
     this.L.backgroundLayer.visible = !indoor;
     // 洋館(corridorMode): 屋外の演出ドレッシング(霧バンク/背景雲霧/月光シャフト)を出さない(v0.25.2110)。
     // 非corridorでは常時true=従来挙動(屋内は各自のパイプラインが管理・ここでは触らない)。

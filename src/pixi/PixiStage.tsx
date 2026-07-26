@@ -295,6 +295,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
           await preloadCorridorTextures(() => loadProgressDone());
           if (cancelled || sceneRef.current !== scene) return;
         }
+        // ここまでで全ステージ別素材の注入が済んだ=以後は各レイヤーのホールドを解除してよい
+        // (未着だった素材はここで森へフォールバック確定。v0.25.2279・社長報告「たまにステージ1が
+        // チラッと映る」対策。ホールド自体は pixiScene の syncLab 側)。
+        scene.setStageTexturesInjected();
         // 注入をこのフレームのシーンへ反映してからローディングを外す=素の森スキンを1フレームも見せない。
         try { scene.sync(); app.render(); } catch { /* ignore */ }
         window.clearTimeout(readyFailsafe);
@@ -304,6 +308,9 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       console.error('[PixiStage] init error:', e);
       // フェイルセーフ: 初期化が例外で止まっても、ロードオーバーレイが永久に残らないよう ready にする
       // (背景/テクスチャ読込失敗・WebGL初期化失敗等)。描画は不完全でもソフトロックは防ぐ。
+      // レイヤーのホールドもここで必ず解除する(注入まで辿り着けなかった時に永久に隠れたままに
+      // しない=黒い空/黒い地面で固まらせない。v0.25.2279)。
+      try { sceneRef.current?.setStageTexturesInjected(); } catch { /* ignore */ }
       window.clearTimeout(readyFailsafe);
       try { if (!cancelled) useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
     });

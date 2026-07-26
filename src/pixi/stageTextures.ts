@@ -87,6 +87,62 @@ const stageTexturesFor = (theme: string | undefined, farBackdrop: string, nearHo
   return out;
 };
 
+// ステージスキンのレイヤー種別(v0.25.2279)。ステージ別素材が注入されるまで、そのレイヤーは
+// **森(=ステージ1)の下地**を表示してしまう(applyFarBackdrop 等が override 不在時に 'forest' へ
+// フォールバックする設計のため)。どのレイヤーを「届くまで隠して待つ」べきかを、ロード対象の
+// パス一覧から機械的に導くための対応表。
+// ※ここに載っていない素材(雲アニメ/川の流れ/lab窓/M1の星空・城・月など)は、未着でも森の下地が
+//   出るわけではない(自前で非表示になる)ので対象外=載せない。
+export type StageSkinLayer = 'far' | 'ground' | 'horizon' | 'front';
+const LAYER_OF_PATH: Partial<Record<SortieTexturePath, StageSkinLayer>> = {
+  'sprites/lab-floor/lab-floor-stage2.png': 'ground',
+  'backgrounds/stage2-lab-far.jpg': 'far',
+  'backgrounds/stage2-front.png': 'front',
+  'backgrounds/stage3-distant-city-day.jpg': 'far',
+  'backgrounds/stage3-ground-cobble2.jpg': 'ground',
+  'backgrounds/stage3-horizon-city.png': 'horizon',
+  'backgrounds/stage3-front-rooftops.png': 'front',
+  'backgrounds/stage4-far.jpg': 'far',
+  'backgrounds/stage4-ground.jpg': 'ground',
+  'backgrounds/stage4-horizon.png': 'horizon',
+  'backgrounds/stage4-front2.png': 'front',
+  'backgrounds/stage5-far.jpg': 'far',
+  'backgrounds/stage5-ground.jpg': 'ground',
+  'backgrounds/stage5-horizon.png': 'horizon',
+  'backgrounds/stage5-front.png': 'front',
+  'backgrounds/tutorial-far.jpg': 'far',
+  'backgrounds/tutorial-ground.jpg': 'ground',
+  'backgrounds/tutorial-horizon-rocks.png': 'horizon',
+  'backgrounds/tutorial-front-rocks.png': 'front',
+  'backgrounds/stage7-far.jpg': 'far',
+};
+
+// 出撃中のステージが「ステージ別素材で差し替える予定のレイヤー」。注入が終わるまで、この集合の
+// レイヤーだけを非表示でホールドすれば、森(ステージ1)の下地を1フレームも見せずに済む。
+// 既定の森スキン(M1など farBackdrop 無し)は空集合=ホールドしない(森が正解の画なので隠す意味がない)。
+// 純関数版(テスト対象)。ストアを見ずにステージ定義の3キーだけで決める。
+export const skinLayersExpectedFor = (
+  theme: string | undefined,
+  farBackdrop: string,
+  nearHorizon: string,
+  corridorMode = false
+): ReadonlySet<StageSkinLayer> => {
+  const out = new Set<StageSkinLayer>();
+  if (corridorMode) return out; // 洋館通路は別パイプライン(corridorLayer)が全面を置き換える
+  const skinned = theme === 'lab' || (!!farBackdrop && farBackdrop !== 'forest');
+  if (!skinned) return out;     // 既定の森スキン(M1等)は森が正解の画=隠さない
+  for (const p of stageTexturesFor(theme, farBackdrop, nearHorizon)) {
+    const layer = LAYER_OF_PATH[p as SortieTexturePath];
+    if (layer) out.add(layer);
+  }
+  return out;
+};
+
+export const sortieSkinLayersExpected = (): ReadonlySet<StageSkinLayer> => {
+  const s = useGameStore.getState();
+  return skinLayersExpectedFor(s.stageTheme, s.farBackdrop, s.nearHorizon, s.corridorMode);
+};
+
 export const sortieTexturesNeeded = (): ReadonlySet<string> => {
   const s = useGameStore.getState();
   if (s.corridorMode) return new Set();

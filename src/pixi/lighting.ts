@@ -235,6 +235,34 @@ export const getCloudShadowTexture = (cool = false): Texture => {
   return cloudShadowTex[idx]!;
 };
 
+// 同じ雲影を「形をアルファに持つ黒」で焼いた版(通常合成=normal で塗る経路・現状ステージ7のみ)。
+// 上の multiply 用テクスチャは **白ベースの不透明**で、雲の形は RGB(斑の暗さ)にしか入っていない。
+// これを tint=黒 で塗ると全テクセルが真っ黒になり、α が一様1なので **雲の形が消えて全面ベタの
+// 黒矩形**になる(=社長報告v0.25.2279「m7の雲地面の影見当たらない」の正体。影が無いのではなく
+// 地面全体が均一に暗くなっていて影に見えなかった)。通常合成では形をα側に持たせる必要がある。
+// 乱数列・斑の個数/位置/半径は multiply 版と同一(同じ雲の形)。α=multiply版の暗さ(1 - v/255)。
+let cloudShadowShapeTex: Texture | null = null;
+export const getCloudShadowShapeTexture = (): Texture => {
+  if (cloudShadowShapeTex) return cloudShadowShapeTex;
+  const s = 256; const c = document.createElement('canvas'); c.width = c.height = s;
+  const ctx = c.getContext('2d')!; // ベースは透明のまま=影の無いところは何も塗らない
+  let seed = 987654321; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  for (let i = 0; i < 9; i++) {
+    const bx = rnd() * s, by = rnd() * s;              // ← multiply版と同じ順・同じ回数だけ引く
+    const r = s * (0.11 + rnd() * 0.15);
+    const v = Math.round((0.24 + rnd() * 0.22) * 255);
+    const a = 1 - v / 255;                             // multiply版の「暗さ」をそのまま不透明度へ
+    for (const ox of [-s, 0, s]) for (const oy of [-s, 0, s]) { // 8方向ラップ=シームレス
+      const g = ctx.createRadialGradient(bx + ox, by + oy, 0, bx + ox, by + oy, r);
+      g.addColorStop(0, `rgba(0,0,0,${a})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(bx + ox, by + oy, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  cloudShadowShapeTex = Texture.from(c);
+  return cloudShadowShapeTex;
+};
+
 // シネマティック(?cine=1)の追加3要素(社長試作v0.25.1863「その他も全部積む」)。全て一度だけベイク=
 // screen合成の全画面/帯スプライト。per-frameの重い描画なし=負荷は各1枚(bloom/grade同経路)。
 // ① 地平の太陽フレア(白熱コア+暖色ハロー+細い十字光条)。
