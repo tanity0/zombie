@@ -2953,12 +2953,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (tutorialStage) {
           const st = useGameStore.getState();
           // 操作説明ポップアップ「移動」(v0.25.1830〜)。
-          // v0.25.2264(社長指示「他のチュートリアルもあの形式で直して」): 発火条件をM2の2件と同じ形に
-          // 揃えた。**判定は純関数 `shouldShowMoveTutorial`**、既読は端末記憶(seenTutorials)を見る。
-          // 旧実装は `tutorialPopupShown`(このランで出したか)だけを見ていて端末の既読を無視しており、
-          // M2の2件と挙動が食い違っていた。
+          // 判定は純関数 `shouldShowMoveTutorial`(テスト可能な形に切り出してある)。
+          // **M0は毎出撃で出す**(社長指示v0.25.2266「m0はずっとチュートリアル出る」)。
+          // v0.25.2264で端末既読ゲートを入れたのは取り違えで撤回した。M2の2件(1度だけ)とは仕様が違う。
           if (shouldShowMoveTutorial({
-            seen: seenTutorials().has('move'),
+            shownThisRun: st.tutorialPopupShown, // **端末既読は見ない**=M0は毎出撃で出す(社長指示v0.25.2266)
             popupOpen: st.tutorialPopup !== null,
             menuOpen: st.showShopMenu || st.showUpgradeMenu,
             gameTimeMs: newGameTime,

@@ -1,10 +1,10 @@
-// 訓練(M0)「移動」チュートリアルの発火条件。M2の2件と同じゲートで動くことを固定する
-// (社長指示v0.25.2264「他のチュートリアルもあの形式で直して」)。
+// 訓練(M0)「移動」チュートリアルの発火条件。**M0は毎出撃で出る**(社長指示v0.25.2266)ことと、
+// 台帳(src/data/tutorials.ts)の体裁を固定する。
 import { describe, it, expect } from 'vitest';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS } from './m0Tutorial';
 import { TUTORIALS, getTutorial } from '../data/tutorials';
 
-const OPEN = { seen: false, popupOpen: false, menuOpen: false };
+const OPEN = { shownThisRun: false, popupOpen: false, menuOpen: false };
 
 describe('shouldShowMoveTutorial', () => {
   it('待ち時間を過ぎたら出す', () => {
@@ -15,9 +15,16 @@ describe('shouldShowMoveTutorial', () => {
     expect(shouldShowMoveTutorial({ ...OPEN, gameTimeMs: M0_MOVE_TUTORIAL_AT_MS - 1 })).toBe(false);
   });
 
-  // ここが今回の修正点。旧実装は端末の既読を見ておらず毎ラン出ていた。
-  it('端末で表示済みなら出さない(M2の2件と同じ扱い)', () => {
-    expect(shouldShowMoveTutorial({ ...OPEN, seen: true, gameTimeMs: 9999 })).toBe(false);
+  // **M0はチュートリアルステージなので毎出撃で出す**(社長指示v0.25.2266)。
+  // 見るのは「この出撃で出したか」だけで、端末の既読(zombie:tutorialsSeen)は見ない。
+  // v0.25.2264で端末既読ゲートを入れたのは取り違えだった。この2件がその撤回を固定する。
+  it('同じ出撃で2回目は出さない(連発防止)', () => {
+    expect(shouldShowMoveTutorial({ ...OPEN, shownThisRun: true, gameTimeMs: 9999 })).toBe(false);
+  });
+
+  it('端末で表示済みでも次の出撃では出る(M0は毎回)', () => {
+    // 端末既読は引数に無い=そもそも参照しない設計。新しい出撃では shownThisRun=false から始まる。
+    expect(shouldShowMoveTutorial({ ...OPEN, gameTimeMs: 9999 })).toBe(true);
   });
 
   it('他ポップアップ/メニューが開いている間は出さない(UIを重ねない)', () => {
