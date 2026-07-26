@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2267',
+    items: [
+      'ステージ4の雲の流れが速くなりました。吹きすさぶ感じが強まっています。',
+    ],
+  },
+  {
     version: '0.25.2266',
     items: [
       '索敵チュートリアルの手本が滑らかな動画になりました(カクつきが解消し、読み込みも軽くなっています)。',

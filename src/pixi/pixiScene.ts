@@ -1863,7 +1863,10 @@ export class PixiScene {
     // 雲(霧)の粒サイズ: 横倍率も2倍(1.5→3.0)=帯高2倍と合わせて雲の大きさ2倍(社長指示v0.25.1995)。
     if (ftex && ftex.width > 1) fw.tileScale.set((fw.width / ftex.width) * tsNum('snowfogpuff', 3.0), fw.height / ftex.height);
     fw.alpha = tsNum('snowfog', 0.7); // 遠景森前の霧の濃さ
-    fw.tilePosition.x = (-now * tsNum('snowfogspeed', 0.06)) % 2048; // 左へ流す(雲と同じ向き)。流れ2倍(0.03→0.06・社長指示v0.25.1995)
+    // 左へ流す(雲と同じ向き)。0.03 →(v0.25.1995 社長指示「流れ2倍」)→ 0.06 →
+    // (v0.25.2267 社長指示「m4の雲の流れの動く速度上げて」)→ **0.12**。前回と同じく2倍で刻んだ。
+    // ?snowfogspeed= で調整可(0で停止)。地面に落ちる雲影は別ノブ(?cloudshadowsnowspeed=)。
+    fw.tilePosition.x = (-now * tsNum('snowfogspeed', 0.12)) % 2048;
   }
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;

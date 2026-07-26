@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.2267 — M4: 雲の流れを2倍に【2026-07-26 20:29 JST】
+- 指示(社長): m4の雲の流れの動く速度上げて。
+- 対象の特定: M4(雪)で「雲」として流れているのは **`snowHorizonFog`**(遠景森の前の雲/霧の帯・
+  `updateSnowAir`)。コード上も「雲(霧)」と書かれており、**v0.25.1995で社長が「流れ2倍」と
+  指示されたのも同じ要素**(0.03→0.06)。前例に合わせて今回も2倍で刻んだ。
+- 変更: `snowfogspeed` 0.06 → **0.12**(1箇所・数値のみ)。
+- **触っていないもの**: 地面に落ちる雲影(`cloudshadowsnowspeed`=1.8)は別要素なので変更していない
+  (「Aと言われたらAだけ」)。そちらも速くしたい場合は `?cloudshadowsnowspeed=` で確認できる。
+  雪粒(`snowDrift`/`SNOW_WIND_FACTOR`)も不変。
+- 負荷: 変化なし(TilingSpriteのtilePositionに掛ける係数を変えただけ)。
+- 検証: typecheck・lint 0エラー。実機は社長確認(`?snowfogspeed=` で好みの速さを探せる。0で停止)。
+- Files: `src/pixi/pixiScene.ts`, `src/data/changelog.ts`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2266 — 【訂正】M0は毎回表示に戻す / 索敵の手本をmp4(30fps)へ【2026-07-26 20:26 JST】
 - 指摘(社長): チュートリアルの仕様それじゃない。m0はずっとチュートリアル出る。/
   全部他のも滑らかな動画にしてって意味。
