@@ -55,3 +55,28 @@ describe('tutorialArchive', () => {
     expect(hasSeenTutorial('scout')).toBe(true);
   });
 });
+
+// v0.25.2253 の実バグ(GIF収録中に発覚)の再発防止。
+// 症状: 「1度だけ」のはずのチュートリアルが、ページを開いて**最初の出撃**では毎回再表示された。
+// 原因: 既読の読み込みを useGameLoop の「新ラン検出」(gameTimeの巻き戻し)ブロックだけに置いていたため、
+//       初回ランではそのブロックが走らず localStorage を一度も読まなかった。
+// 対策: 参照時に遅延で1回読む(seenTutorials())。ここでは「保存済みなら**いつ読んでも**既読が返る」
+//       という、その対策が満たすべき性質を固定する。
+describe('既読は保存直後から読める(初回ラン再表示バグの再発防止)', () => {
+  beforeEach(() => { installStorage(); });
+
+  it('保存した直後に新しく読み込んでも既読になっている', () => {
+    markTutorialSeen('phill');
+    // 「別のタイミングで初めて読む」= loadSeenTutorials を新規に呼ぶ状況を再現
+    expect(loadSeenTutorials().has('phill')).toBe(true);
+    expect(hasSeenTutorial('phill')).toBe(true);
+  });
+
+  it('前回の起動で保存された値(既に localStorage にある状態)を最初の読み込みで拾う', () => {
+    localStorage.setItem('zombie:tutorialsSeen', JSON.stringify(['phill', 'scout']));
+    const seen = loadSeenTutorials();
+    expect(seen.has('phill')).toBe(true);
+    expect(seen.has('scout')).toBe(true);
+    expect(seen.has('move')).toBe(false);
+  });
+});

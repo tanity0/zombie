@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2253',
+    items: [
+      '一度見たチュートリアルが、ゲームを開き直すたびに再表示されてしまう不具合を修正しました。',
+    ],
+  },
+  {
     version: '0.25.2252',
     items: [
       '資料室に「操作記録」を追加。一度見たチュートリアルをいつでも読み返せるようになりました。',

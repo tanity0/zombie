@@ -992,18 +992,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const labGoalSideRef = useRef(0);
   // チュートリアルの表示済みid(社長指示v0.25.2251/2252)。localStorageが正だが、同じランで連続発火
   // しないようにrefでも1回に絞る(localStorageを毎フレーム読まないための番人でもある)。
-  // 出撃時に1回だけ tutorialArchive から読み込む。
-  const tutorialSeenRef = useRef<Set<TutorialId>>(new Set());
+  // **null = 未読込**。初回アクセス時に遅延で読む(下の seenTutorials())。
+  // v0.25.2253修正: 以前は `new Set()` で初期化し、読み込みを「新ラン検出」ブロック(gameTimeの巻き戻し
+  // =同一ページ読み込みでの2回目以降の出撃)だけに置いていた。そのため**ページを開いて最初の出撃**では
+  // localStorage を一度も読まず、既読でもチュートリアルが再表示されていた(=「1度だけ」が効かない)。
+  const tutorialSeenRef = useRef<Set<TutorialId> | null>(null);
+  const seenTutorials = useCallback((): Set<TutorialId> => (tutorialSeenRef.current ??= loadSeenTutorials()), []);
   // 表示と同時に「見た」を確定させる共通処理(資料室の一覧はこの記録を引く)。
   const showTutorialOnce = useCallback((id: TutorialId) => {
     const entry = getTutorial(id);
     if (!entry) return;
-    tutorialSeenRef.current.add(id);
+    seenTutorials().add(id);
     markTutorialSeen(id);
     useGameStore.getState().showTutorialPopup({
       title: entry.title, lines: entry.lines, art: entry.art, img: entry.img,
     });
-  }, []);
+  }, [seenTutorials]);
   // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告(この先——{区域名})」を壁ごとにラン1回だけ出すためのフラグ。
   const wallWarnedRef = useRef<boolean[]>([false, false, false, false]);
   // M14: このランの最深距離(px・毎フレーム追跡)+store/localStorageへの同期は1秒間隔(書き込み間引き)。
@@ -2924,11 +2928,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           };
           if (shouldShowPhillTutorial({
             ...gate,
-            seen: tutorialSeenRef.current.has('phill'),
+            seen: seenTutorials().has('phill'),
             hasPhillGun: st.player.weapons.some(w => !w.isMelee && w.category === 'phill'),
           })) {
             showTutorialOnce('phill');
-          } else if (!tutorialSeenRef.current.has('scout')) {
+          } else if (!seenTutorials().has('scout')) {
             // 休眠中の敵までの最短距離。起床済みの敵は「もう見つかっている」ので数えない。
             let nearestDormantDist: number | null = null;
             const pcx = st.player.x + st.player.width / 2, pcy = st.player.y + st.player.height / 2;
@@ -2937,7 +2941,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const d = Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy);
               if (nearestDormantDist === null || d < nearestDormantDist) nearestDormantDist = d;
             }
-            if (shouldShowScoutTutorial({ ...gate, seen: tutorialSeenRef.current.has('scout'), nearestDormantDist })) {
+            if (shouldShowScoutTutorial({ ...gate, seen: seenTutorials().has('scout'), nearestDormantDist })) {
               showTutorialOnce('scout');
             }
           }
@@ -8341,7 +8345,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     };
   }, [
     emitBotReport, // M26-L: botレポート(安定参照のuseCallback)
-    showTutorialOnce, // v0.25.2252: チュートリアル表示(deps[]のuseCallback=安定参照・再実行しない)
+    showTutorialOnce, // v0.25.2252: チュートリアル表示(安定参照のuseCallback=再実行しない)
+    seenTutorials,    // v0.25.2253: 既読の遅延読み込み(同上)
     movePlayer,
     fireWeapons,
     updateEnemies,

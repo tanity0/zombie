@@ -1,5 +1,25 @@
 # Development Log
 
+## v0.25.2253 — 修正: 一度見たチュートリアルが開き直すたび再表示される【2026-07-26 17:23 JST】
+- 発覚: 手本GIFの収録中(社長指示「チュートリアルはGIFアニメも付ける」)。収録スクリプトで
+  localStorage に既読を書き込んでおいたのに**ポップアップが2回出て収録が停止した**(表示中は
+  `isPaused=true`=gameTimeが止まる)ことから判明。
+- 原因: 既読(`tutorialSeenRef`)の読み込みを useGameLoop の**「新ラン検出」ブロック**
+  (`if (newGameTime < lastSeenGameTimeRef.current)` = gameTimeの巻き戻し)にだけ置いていた。
+  この分岐は**同一ページ読み込みでの2回目以降の出撃**でしか走らないため、**ページを開いて最初の出撃**では
+  localStorage を一度も読まず、refが空(=未読扱い)のままだった。プレイヤーの通常動線
+  (ゲームを開く→M2へ行く)がまさにこれに当たり、「1度だけ」が実質機能していなかった。
+- 修正: 参照時に遅延で1回だけ読む `seenTutorials()`(`tutorialSeenRef.current ??= loadSeenTutorials()`)に
+  変更し、全ての参照をこれ経由にした。新ラン検出側の読み直しは従来どおり残す(出撃ごとの再同期)。
+  毎フレームlocalStorageを読まない性質は維持(初回参照時のみ)。
+- テスト: `tutorialArchive.test.ts` に再発防止2件を追加(保存直後に読んでも既読/前回起動の保存値を
+  最初の読み込みで拾う)。**7件全通過**。
+- 検証: typecheck・lint 0エラー(新規warningなし)。
+- 教訓: **「1度だけ」系の記憶は、初期化を"ラン切り替え検出"に相乗りさせない**(初回は走らない)。
+  参照時の遅延読み込みにするか、マウント時に読む。
+- Files: `src/hooks/useGameLoop.ts`, `src/utils/tutorialArchive.test.ts`, `src/data/changelog.ts`,
+  `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.2252 — 資料室に「操作記録」(見たチュートリアルの読み返し)【2026-07-26 08:17 JST】
 - 指示(社長): チュートリアルは一度見たやつ資料室にまとめよう。
 - 実装:
