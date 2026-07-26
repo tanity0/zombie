@@ -1800,7 +1800,7 @@ export class PixiScene {
     if (this.currentFarKey === 'stage7') {
       if (sp.blendMode !== 'normal') sp.blendMode = 'normal';
       if (sp.tint !== 0xffffff) sp.tint = 0xffffff;      // テクスチャ自体が黒(形はα)=tintは無補正
-      sp.alpha = tsNum('cloudshadow7alpha', 0.8);         // 黒影の濃さ(normal合成=そのまま影の濃さ)。?cloudshadow7alpha=で調整。0.5→0.8(社長指示v0.25.2280「少し見えたけど濃くして」)
+      sp.alpha = tsNum('cloudshadow7alpha', 0.9);         // 黒影の濃さ(normal合成=そのまま影の濃さ)。?cloudshadow7alpha=で調整。0.5→0.8→0.9(社長指示v0.25.2280/2281「濃くして」。併せてテクスチャ側の密度も1.35倍へ)
     } else {
       if (sp.blendMode !== 'multiply') sp.blendMode = 'multiply';
       if (sp.tint !== 0xffffff) sp.tint = 0xffffff;
