@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2276',
+    items: [
+      '非常灯の消え方を直しました。潰れながら消えるのをやめ、形をそのまま保って薄くなって消えます。',
+    ],
+  },
+  {
     version: '0.25.2275',
     items: [
       'ステージ2の明るさを元に戻しました(全体の暗転をやめ、非常灯はそのまま点いています)。',

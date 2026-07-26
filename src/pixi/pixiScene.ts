@@ -396,9 +396,15 @@ const LAB_EMLIGHT_ALPHA = Math.max(0, Math.min(1, tsNum('labema', 0.5)));  // �
 // 「誘導灯の緑」を出しつつ形が見えるようにする(赤の時と同じ考え方)。
 const LAB_EMLIGHT_TINT = 0x3ce089;
 // 同時に出す上限。CLAUDE.mdの実測(light T8 pass / T16 fail)より十分小さく取る=負荷の天井を固定する。
-// 被写界深度で消すための余白(px)。地平(遠景の境界)からこれだけ手前で円錐を終わらせる。
-// 大きくするほど「早めに消える」。?labemdof=
-const LAB_EMLIGHT_DOF_MARGIN = tsNum('labemdof', 40);
+// 被写界深度で消す設定(社長指示v0.25.2276「そのままの形で消えていって欲しい」)。
+// v0.25.2275は**円錐の高さを縮めて**消していたため「だんだんつぶれて消える」見え方になっていた。
+// 形は一切変えず、**アルファだけ**で薄くする方式に変更。
+//  - 高さは画面基準で固定(下の LAB_EMLIGHT_H_SCREEN_FRAC)=灯りの位置やプレイヤーのYで伸縮しない。
+//  - 円錐の頂点が「地平 − DOF_ALLOW」より奥へ食い込んだ分だけ、DOF_FADE_PX の幅で薄くしていく。
+const LAB_EMLIGHT_DOF_ALLOW = tsNum('labemdofallow', 260); // 地平よりこれだけ奥までは減衰させない。?labemdofallow=
+const LAB_EMLIGHT_DOF_FADE_PX = Math.max(1, tsNum('labemdof', 220)); // 消え切るまでの奥行き(px)。?labemdof=
+// 円錐の高さの上限(画面高に対する割合)。**灯りのYに依存させない**ことで伸縮(=つぶれ)を防ぐ。?labemhmax=
+const LAB_EMLIGHT_H_SCREEN_FRAC = Math.max(0.1, tsNum('labemhmax', 0.62));
 const LAB_EMLIGHT_MAX = 8;
 
 // 敵の視界表示(社長指示v0.25.2235): 休眠中のlab-zombieが「起きる範囲」を薄い赤で塗る。
@@ -5588,7 +5594,8 @@ export class PixiScene {
     const wr = this.L.world.toLocal({ x: this.screenW + M, y: 0 }).x;
     const scale = this.L.world.scale.x || 1;
     const size = LAB_EMLIGHT_RADIUS * 2 * scale;              // 床の光だまりの直径
-    const coneWant = size * LAB_EMLIGHT_HEIGHT_MULT;          // 望みの円錐の高さ
+    // 円錐の高さ: 望みの倍率と「画面高の割合」の小さい方。**灯りの位置に依存しない**=どの灯りも同じ形。
+    const coneH = Math.min(size * LAB_EMLIGHT_HEIGHT_MULT, this.screenH * LAB_EMLIGHT_H_SCREEN_FRAC);
     let n = 0;
     const kFrom = Math.ceil(wl / LAB_EMLIGHT_SPACING);
     const kTo = Math.floor(wr / LAB_EMLIGHT_SPACING);
@@ -5597,17 +5604,16 @@ export class PixiScene {
       const g = this.L.world.toGlobal({ x: k * LAB_EMLIGHT_SPACING, y: 0 });
       sp.position.set(g.x, g.y);
       sp.width = size;
-      // **上限を2つで頭打ち**(アンカーが (0.5,0.78) なので、足元 g.y から上へ伸びるのは height*0.78)。
-      //  a) 画面: 画面上端を大きく超えると、テクスチャの「まだ明るい途中」が画面外で切られて
-      //     水平の切れ目に見える。頂点が上端の少し上(APEX_OVER)に収まるよう抑える。
-      //  b) **被写界深度(社長指示v0.25.2275「スポットライトは被写界深度で消える様にして」)**:
-      //     地平(遠景の境界 farBackdropHeight)より奥はDoFで大きくぼけている。そこへ**ピントの合った
-      //     光の筋**を重ねると浮くので、頂点が地平より手前で終わるようにする。テクスチャ上端は
-      //     アルファ0へ落ちているので、結果として**奥へ向かってスッと消える**。
-      const APEX_OVER = 60;
-      const dofTop = this.farBackdropHeight() + LAB_EMLIGHT_DOF_MARGIN; // 地平より少し手前で消し切る
-      sp.height = Math.min(coneWant, (g.y + APEX_OVER) / 0.78, Math.max(0, (g.y - dofTop)) / 0.78);
-      sp.alpha = LAB_EMLIGHT_ALPHA * ramp;
+      // **高さは固定**(画面高基準)。灯りのY・プレイヤーのY・地平との距離で伸縮させない。
+      // v0.25.2275は地平までの距離で高さを縮めていたため、プレイヤーが帯の下側へ動くほど
+      // 円錐が縦に潰れて「つぶれて消える」見え方になっていた(社長指摘v0.25.2276)。
+      sp.height = coneH;
+      // **被写界深度は形ではなくアルファで**。頂点が「地平 − DOF_ALLOW」より奥へ食い込んだ分だけ薄くする。
+      // 形はそのままなので、奥へ行くほど**同じ形が薄くなって消える**。
+      const apexY = g.y - coneH * 0.78;
+      const over = (this.farBackdropHeight() - LAB_EMLIGHT_DOF_ALLOW) - apexY;
+      const dofFade = over <= 0 ? 1 : Math.max(0, 1 - over / LAB_EMLIGHT_DOF_FADE_PX);
+      sp.alpha = LAB_EMLIGHT_ALPHA * ramp * dofFade;
       sp.visible = true;
     }
     for (let i = n; i < this.labEmLights.length; i++) this.labEmLights[i].visible = false;
