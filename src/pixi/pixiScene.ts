@@ -375,10 +375,10 @@ const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登�
 // 幕とライトは**同じコンテナ**(uiLayer)に入れる。ワールド側に置くと幕(画面空間)を持ち上げられないため、
 // ライトの画面位置は毎フレーム world.toGlobal で求める(ズーム/カメラ/シェイクを自動で含む)。
 // 全体の暗さ。0=無効(復帰フラグ)。?labdark=
-// 0.22(v0.25.2263)→ 0.42(v0.25.2265「もっと暗くして」)→ **0.22に戻す**
-// (社長指示v0.25.2273「明るさを元に戻して」= 非常灯を入れた直後の薄い値へ)。
-// 非常灯は screen 合成でこの幕を持ち上げるので、濃くするほど「光の中」と「暗がり」の差が開く。
-const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.22)));
+// 0.22(v0.25.2263)→ 0.42(v2265「もっと暗くして」)→ 0.22(v2273「元に戻して」)→ **0**
+// (社長指示v0.25.2275「さらに戻して」= 暗転そのものを無しにして元の明るさへ)。
+// **0でも非常灯は出る**(v0.25.2275で幕とライトのガードを分離済み)。少し暗くしたい時は ?labdark=0.1 等。
+const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0)));
 // 間隔440 / 半径140(=光の直径280、暗がり160)。実測で決めた値:
 //  - 900だと画面(≒390ワールドpx幅)に1個も入らない時間が長く、並んでいるリズムが伝わらない。
 //  - 逆に間隔を詰めて2個以上同時に映そうとすると光が繋がって**暗くした意味が消える**。
@@ -396,6 +396,9 @@ const LAB_EMLIGHT_ALPHA = Math.max(0, Math.min(1, tsNum('labema', 0.5)));  // �
 // 「誘導灯の緑」を出しつつ形が見えるようにする(赤の時と同じ考え方)。
 const LAB_EMLIGHT_TINT = 0x3ce089;
 // 同時に出す上限。CLAUDE.mdの実測(light T8 pass / T16 fail)より十分小さく取る=負荷の天井を固定する。
+// 被写界深度で消すための余白(px)。地平(遠景の境界)からこれだけ手前で円錐を終わらせる。
+// 大きくするほど「早めに消える」。?labemdof=
+const LAB_EMLIGHT_DOF_MARGIN = tsNum('labemdof', 40);
 const LAB_EMLIGHT_MAX = 8;
 
 // 敵の視界表示(社長指示v0.25.2235): 休眠中のlab-zombieが「起きる範囲」を薄い赤で塗る。
@@ -5524,9 +5527,16 @@ export class PixiScene {
   private updateLabDarkLights(show: boolean, now: number) {
     // 登場演出(ヘリ降下)中は出さない。帯外減光と同じ理由=カメラが廊下から離れている間に幕を出すと
     // 画面全体が暗転して「読み込み中」に見える(v0.25.2225の事故)。
-    if (!show || LAB_DARK_ALPHA <= 0 || this.introActive) {
+    // v0.25.2275: 旧実装は LAB_DARK_ALPHA<=0 でこの関数ごと抜けており、**明るさを戻すと非常灯も消えた**。
+    // 幕とライトは別物なので、ここでは「M2かどうか」と「登場演出中か」だけで判定する。
+    // 幕の濃さ0=幕を出さない / ライトの半径・強さ0=ライトを出さない、と**個別に**効くようにした。
+    if (!show || this.introActive) {
       if (this.labDarkLayer) this.labDarkLayer.visible = false;
       return;
+    }
+    if (LAB_DARK_ALPHA <= 0 && (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0)) {
+      if (this.labDarkLayer) this.labDarkLayer.visible = false;
+      return; // 幕もライトも出さない=完全OFF
     }
     if (!this.labDarkLayer) {
       const cont = new Container();
@@ -5566,6 +5576,7 @@ export class PixiScene {
       veil.width = this.screenW + OVER * 2;
       veil.height = this.screenH + OVER * 2;
       veil.alpha = LAB_DARK_ALPHA * ramp;
+      veil.visible = LAB_DARK_ALPHA > 0; // 明るさを戻した(0)時は幕そのものを描かない
     }
     if (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0) {
       for (const sp of this.labEmLights) sp.visible = false;
@@ -5586,12 +5597,16 @@ export class PixiScene {
       const g = this.L.world.toGlobal({ x: k * LAB_EMLIGHT_SPACING, y: 0 });
       sp.position.set(g.x, g.y);
       sp.width = size;
-      // **画面の高さで頭打ち**: アンカーが (0.5, 0.78) なので、灯りの足元 g.y から上へ伸びるのは
-      // height*0.78。これが画面上端を大きく超えると、テクスチャの「まだ明るい途中」が画面外で
-      // 切られて水平の切れ目に見える。頂点が画面上端の少し上(APEX_OVER)に収まるよう抑える。
-      // こうすると上端のフェード区間がちょうど画面の外に出るので、どの端末でも切れ目が出ない。
+      // **上限を2つで頭打ち**(アンカーが (0.5,0.78) なので、足元 g.y から上へ伸びるのは height*0.78)。
+      //  a) 画面: 画面上端を大きく超えると、テクスチャの「まだ明るい途中」が画面外で切られて
+      //     水平の切れ目に見える。頂点が上端の少し上(APEX_OVER)に収まるよう抑える。
+      //  b) **被写界深度(社長指示v0.25.2275「スポットライトは被写界深度で消える様にして」)**:
+      //     地平(遠景の境界 farBackdropHeight)より奥はDoFで大きくぼけている。そこへ**ピントの合った
+      //     光の筋**を重ねると浮くので、頂点が地平より手前で終わるようにする。テクスチャ上端は
+      //     アルファ0へ落ちているので、結果として**奥へ向かってスッと消える**。
       const APEX_OVER = 60;
-      sp.height = Math.min(coneWant, (g.y + APEX_OVER) / 0.78);
+      const dofTop = this.farBackdropHeight() + LAB_EMLIGHT_DOF_MARGIN; // 地平より少し手前で消し切る
+      sp.height = Math.min(coneWant, (g.y + APEX_OVER) / 0.78, Math.max(0, (g.y - dofTop)) / 0.78);
       sp.alpha = LAB_EMLIGHT_ALPHA * ramp;
       sp.visible = true;
     }
