@@ -241,7 +241,7 @@ export const getCloudShadowTexture = (cool = false): Texture => {
 // 黒矩形**になる(=社長報告v0.25.2279「m7の雲地面の影見当たらない」の正体。影が無いのではなく
 // 地面全体が均一に暗くなっていて影に見えなかった)。通常合成では形をα側に持たせる必要がある。
 // 乱数列・斑の個数/位置/半径は multiply 版と同一(同じ雲の形)。α=multiply版の暗さ(1 - v/255)。
-const CLOUD_SHADOW_SHAPE_GAIN = 1.35; // 焼き込みαの密度ゲイン(v0.25.2281。1.0=multiply版と同じ暗さ)
+const CLOUD_SHADOW_SHAPE_GAIN = 2.0;  // 焼き込みαの密度ゲイン(v0.25.2282で1.35→2.0。1.0=multiply版と同じ暗さ)
 let cloudShadowShapeTex: Texture | null = null;
 export const getCloudShadowShapeTexture = (): Texture => {
   if (cloudShadowShapeTex) return cloudShadowShapeTex;

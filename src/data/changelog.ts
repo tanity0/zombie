@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2282',
+    items: [
+      'ステージ7の地面の雲影をもう一段濃くしました(影の芯が真っ黒になるところまで)。',
+    ],
+  },
+  {
     version: '0.25.2281',
     items: [
       'ステージ7の地面の雲影をさらに濃くしました。',
