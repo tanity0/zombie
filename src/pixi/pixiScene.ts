@@ -363,10 +363,10 @@ const LAB_FAR_ZOMBIE_BLUR = Math.max(0, tsNum('labzblur', 1.2)); // ゾンビ(�
 const LAB_FAR_FRAME_BLUR = Math.max(0, tsNum('labwfblur', 1.5));
 // 移動可能帯(廊下 ±LAB_CORRIDOR_Y_LIMIT_PX)の外を少し暗くする(社長指示v0.25.2223)。
 // 境目はパキッと切らず、fade幅ぶんの縦グラデで溶かす。**描画のみ**——移動クランプ本体(gameStore)には触らない。
-// 0.3→0.5(社長指示v0.25.2226)→**0.68**(社長指示v0.25.2265「移動できないところもそれに合わせてさらに暗く」)。
-// 全体の暗転幕(LAB_DARK_ALPHA)と**重なる**ので、帯の外の実効的な暗さは 1-(1-0.42)*(1-0.68) ≒ 0.81。
+// 0.3→0.5(社長指示v0.25.2226)→0.68(v0.25.2265)→**0.5に戻す**(社長指示v0.25.2273「明るさを元に戻して」)。
+// 全体の暗転幕(LAB_DARK_ALPHA=0.22)と**重なる**ので、帯の外の実効的な暗さは 1-(1-0.22)*(1-0.5) = 0.61。
 // 0で無効(復帰フラグ)。?labdim=
-const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.68)));
+const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.5)));
 const LAB_OUT_DIM_FADE_PX = Math.max(0, tsNum('labdimfade', 70));        // 境目のグラデ幅(画面px)。?labdimfade=
 const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登場演出の着地後に濃くなるまでの時間。?labdimin=
 // M2の暗転+非常灯(社長指示v0.25.2263「全体をもう少し暗くして、等間隔に非常灯みたいなスポットライト」)。
@@ -375,9 +375,10 @@ const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登�
 // 幕とライトは**同じコンテナ**(uiLayer)に入れる。ワールド側に置くと幕(画面空間)を持ち上げられないため、
 // ライトの画面位置は毎フレーム world.toGlobal で求める(ズーム/カメラ/シェイクを自動で含む)。
 // 全体の暗さ。0=無効(復帰フラグ)。?labdark=
-// 0.22 → **0.42**(社長指示v0.25.2265「非常灯が当たってないとこ、もっと暗くして」)。
+// 0.22(v0.25.2263)→ 0.42(v0.25.2265「もっと暗くして」)→ **0.22に戻す**
+// (社長指示v0.25.2273「明るさを元に戻して」= 非常灯を入れた直後の薄い値へ)。
 // 非常灯は screen 合成でこの幕を持ち上げるので、濃くするほど「光の中」と「暗がり」の差が開く。
-const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.42)));
+const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.22)));
 // 間隔440 / 半径140(=光の直径280、暗がり160)。実測で決めた値:
 //  - 900だと画面(≒390ワールドpx幅)に1個も入らない時間が長く、並んでいるリズムが伝わらない。
 //  - 逆に間隔を詰めて2個以上同時に映そうとすると光が繋がって**暗くした意味が消える**。
