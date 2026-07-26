@@ -398,60 +398,63 @@ export const getEggTextureArmed = (): Texture => {
 // core keeps the lit zone at full visibility, then it darkens sharply past ~radius
 // (社長指示「ハンドガン射程くらいから外は急激に暗い」).
 let visLightTex: Texture | null = null;
-// M2の非常灯スポットライト(社長指示v0.25.2269「ちゃんとスポットライトにして。円錐状に照らして」)。
-// 旧実装は getGlowTexture の丸グローを床に置いただけで「足元だけ照らされている」ように見えていた。
-// ここでは**上から降りてくる光の円錐**を1枚に焼く: 上=灯具側で細く明るい → 下=床に向かって広がり減衰、
-// 加えて底に楕円のホットスポット(床に落ちた光だまり)。1スプライトで完結=描画コストは従来と同じ。
+// M2の非常灯スポットライト。**上から降りてくる光の円錐**を1枚に焼く(1灯=1スプライト)。
+//
+// v0.25.2270(社長指摘「かなり雑な見た目」)で描き方を作り直した。
+// 旧: 台形をベタ塗り → 左右を**一律の横グラデ**で抜く、という作り。これだと
+//   ①上の細い部分は縁が硬いまま ②下の広い部分だけ柔らかい、と不揃いになり、
+//   ベクター図形を貼ったように見えていた。
+// 新: **画素ごとに計算**する。各高さでのビーム半幅 halfW(t) を出し、中心からの相対位置 u=|x-cx|/halfW(t)
+//   で減衰させる=**どの高さでも縁の柔らかさが同じ割合**になる。中心には芯(明るい筋)を足し、
+//   わずかな粒状ノイズを掛けて「空気中の埃に光が散っている」質感を出す(ベタ塗り感を消す)。
+// 焼くのは初回1度きり。実行時のコストは従来と同じ(スプライト1枚)。
 let spotConeTex: Texture | null = null;
 export const getSpotConeTexture = (): Texture => {
   if (spotConeTex) return spotConeTex;
-  const W = 256, H = 320;
+  const W = 384, H = 512;
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d')!;
-  // ① 円錐本体: 上辺が狭く下辺が広い台形。縦グラデで上を明るく、下へ減衰。
-  const topHalf = W * 0.09;   // 灯具側の半幅(細い)
-  const botHalf = W * 0.46;   // 床側の半幅(広がる)
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
   const cx = W / 2;
-  const beam = ctx.createLinearGradient(0, 0, 0, H);
-  // 最上部は 0 から立ち上げる。ここを 0.85 で始めると**上端が水平にスパッと切れて見える**
-  // (実測v0.25.2269: 画面上部でビームが切り落とされたように見えた)。
-  beam.addColorStop(0, 'rgba(255,255,255,0)');      // 灯具の上=なにも無い(硬い切れ目を作らない)
-  beam.addColorStop(0.07, 'rgba(255,255,255,0.9)'); // 灯具の直下=いちばん明るい
-  beam.addColorStop(0.45, 'rgba(255,255,255,0.4)');
-  beam.addColorStop(1, 'rgba(255,255,255,0.10)');   // 床の手前まで薄く伸びる
-  ctx.fillStyle = beam;
-  ctx.beginPath();
-  ctx.moveTo(cx - topHalf, 0);
-  ctx.lineTo(cx + topHalf, 0);
-  ctx.lineTo(cx + botHalf, H);
-  ctx.lineTo(cx - botHalf, H);
-  ctx.closePath();
-  ctx.fill();
-  // ② 円錐の左右の縁を溶かす(硬い直線に見せない)。中央は残し、端へ向けて抜く。
-  ctx.globalCompositeOperation = 'destination-in';
-  const edge = ctx.createLinearGradient(0, 0, W, 0);
-  edge.addColorStop(0, 'rgba(0,0,0,0)');
-  edge.addColorStop(0.28, 'rgba(0,0,0,1)');
-  edge.addColorStop(0.72, 'rgba(0,0,0,1)');
-  edge.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = edge;
-  ctx.fillRect(0, 0, W, H);
-  // ③ 床の光だまり: 底に楕円のホットスポットを足す(円錐の着地点)。
-  ctx.globalCompositeOperation = 'lighter';
-  const poolR = W * 0.5;
-  ctx.save();
-  ctx.translate(cx, H * 0.88);
-  ctx.scale(1, 0.42); // 平たい楕円=床に落ちた光
-  const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, poolR);
-  pool.addColorStop(0, 'rgba(255,255,255,0.9)');
-  pool.addColorStop(0.5, 'rgba(255,255,255,0.35)');
-  pool.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = pool;
-  ctx.beginPath();
-  ctx.arc(0, 0, poolR, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  const TOP_HALF = W * 0.055;  // 灯具側の半幅
+  const BOT_HALF = W * 0.46;   // 床側の半幅
+  const smooth = (e0: number, e1: number, x: number) => {
+    const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  };
+  // 決定的な粒(毎回同じ絵になるように Math.random は使わない)。
+  const grain = (x: number, y: number) => {
+    const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+    return n - Math.floor(n);
+  };
+  // 床の光だまり(平たい楕円)の中心と大きさ。
+  const poolY = H * 0.9, poolRX = W * 0.5, poolRY = poolRX * 0.34;
+  for (let y = 0; y < H; y++) {
+    const t = y / (H - 1);
+    const halfW = TOP_HALF + (BOT_HALF - TOP_HALF) * t;
+    // 縦の明るさ: 灯具の手前で 0 から立ち上げ(上端の硬い切れ目を作らない)、下へ向かって減衰。
+    const vert = smooth(0, 0.09, t) * (0.22 + 0.78 * Math.pow(1 - t, 1.25));
+    for (let x = 0; x < W; x++) {
+      const u = Math.abs(x - cx) / halfW;              // 0=中心 / 1=ビームの縁
+      // 縁の減衰。0.42 あたりから落ち始めて 1.0 で 0=どの高さでも同じ割合で柔らかい。
+      const body = 1 - smooth(0.42, 1.0, u);
+      const core = (1 - smooth(0, 0.34, u)) * 0.45;    // 中心の芯(光の筋)
+      let a = vert * (body * 0.8 + core);
+      // 床の光だまりを加算(円錐の着地点)。
+      const dx = (x - cx) / poolRX, dy = (y - poolY) / poolRY;
+      const pd = Math.sqrt(dx * dx + dy * dy);
+      if (pd < 1) a += (1 - smooth(0, 1, pd)) * 0.85;
+      if (a <= 0) continue;
+      // 粒状ノイズ(±8%)。ベタ塗りに見せないためのわずかな揺らぎ。
+      a *= 0.92 + 0.16 * grain(x, y);
+      const i = (y * W + x) * 4;
+      d[i] = 255; d[i + 1] = 255; d[i + 2] = 255;
+      d[i + 3] = Math.round(Math.max(0, Math.min(1, a)) * 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
   spotConeTex = Texture.from(canvas);
   return spotConeTex;
 };
