@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2269',
+    items: [
+      'ステージ2の非常灯を緑に変更し、上から降りてくる円錐状のスポットライトになりました。足元だけでなく光の筋が見えます。',
+    ],
+  },
+  {
     version: '0.25.2268',
     items: [
       '訓練の「移動」チュートリアルの手本も滑らかな動画になりました。これでチュートリアル3件すべてが実機収録の動画です。',

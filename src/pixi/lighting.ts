@@ -398,6 +398,64 @@ export const getEggTextureArmed = (): Texture => {
 // core keeps the lit zone at full visibility, then it darkens sharply past ~radius
 // (社長指示「ハンドガン射程くらいから外は急激に暗い」).
 let visLightTex: Texture | null = null;
+// M2の非常灯スポットライト(社長指示v0.25.2269「ちゃんとスポットライトにして。円錐状に照らして」)。
+// 旧実装は getGlowTexture の丸グローを床に置いただけで「足元だけ照らされている」ように見えていた。
+// ここでは**上から降りてくる光の円錐**を1枚に焼く: 上=灯具側で細く明るい → 下=床に向かって広がり減衰、
+// 加えて底に楕円のホットスポット(床に落ちた光だまり)。1スプライトで完結=描画コストは従来と同じ。
+let spotConeTex: Texture | null = null;
+export const getSpotConeTexture = (): Texture => {
+  if (spotConeTex) return spotConeTex;
+  const W = 256, H = 320;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+  // ① 円錐本体: 上辺が狭く下辺が広い台形。縦グラデで上を明るく、下へ減衰。
+  const topHalf = W * 0.09;   // 灯具側の半幅(細い)
+  const botHalf = W * 0.46;   // 床側の半幅(広がる)
+  const cx = W / 2;
+  const beam = ctx.createLinearGradient(0, 0, 0, H);
+  // 最上部は 0 から立ち上げる。ここを 0.85 で始めると**上端が水平にスパッと切れて見える**
+  // (実測v0.25.2269: 画面上部でビームが切り落とされたように見えた)。
+  beam.addColorStop(0, 'rgba(255,255,255,0)');      // 灯具の上=なにも無い(硬い切れ目を作らない)
+  beam.addColorStop(0.07, 'rgba(255,255,255,0.9)'); // 灯具の直下=いちばん明るい
+  beam.addColorStop(0.45, 'rgba(255,255,255,0.4)');
+  beam.addColorStop(1, 'rgba(255,255,255,0.10)');   // 床の手前まで薄く伸びる
+  ctx.fillStyle = beam;
+  ctx.beginPath();
+  ctx.moveTo(cx - topHalf, 0);
+  ctx.lineTo(cx + topHalf, 0);
+  ctx.lineTo(cx + botHalf, H);
+  ctx.lineTo(cx - botHalf, H);
+  ctx.closePath();
+  ctx.fill();
+  // ② 円錐の左右の縁を溶かす(硬い直線に見せない)。中央は残し、端へ向けて抜く。
+  ctx.globalCompositeOperation = 'destination-in';
+  const edge = ctx.createLinearGradient(0, 0, W, 0);
+  edge.addColorStop(0, 'rgba(0,0,0,0)');
+  edge.addColorStop(0.28, 'rgba(0,0,0,1)');
+  edge.addColorStop(0.72, 'rgba(0,0,0,1)');
+  edge.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, W, H);
+  // ③ 床の光だまり: 底に楕円のホットスポットを足す(円錐の着地点)。
+  ctx.globalCompositeOperation = 'lighter';
+  const poolR = W * 0.5;
+  ctx.save();
+  ctx.translate(cx, H * 0.88);
+  ctx.scale(1, 0.42); // 平たい楕円=床に落ちた光
+  const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, poolR);
+  pool.addColorStop(0, 'rgba(255,255,255,0.9)');
+  pool.addColorStop(0.5, 'rgba(255,255,255,0.35)');
+  pool.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = pool;
+  ctx.beginPath();
+  ctx.arc(0, 0, poolR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  spotConeTex = Texture.from(canvas);
+  return spotConeTex;
+};
+
 export const getVisibilityLightTexture = (): Texture => {
   if (visLightTex) return visLightTex;
   const size = 256;

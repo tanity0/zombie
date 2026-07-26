@@ -46,7 +46,7 @@ import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
-import { getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -383,12 +383,15 @@ const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.42)));
 //  - 逆に間隔を詰めて2個以上同時に映そうとすると光が繋がって**暗くした意味が消える**。
 //  → 「光 → 暗がり → 光」を歩いて通過する形(画面あたり約1個)が、この画面幅では最も非常灯らしい。
 const LAB_EMLIGHT_SPACING = Math.max(120, tsNum('labemgap', 440));         // 非常灯の間隔(ワールドpx)。?labemgap=
-const LAB_EMLIGHT_RADIUS = Math.max(0, tsNum('labemr', 140));              // 光の半径(ワールドpx)。0=ライト無し。?labemr=
+const LAB_EMLIGHT_RADIUS = Math.max(0, tsNum('labemr', 140));              // 床の光だまりの半径(ワールドpx)。0=ライト無し。?labemr=
+// 円錐の縦の伸び(社長指示v0.25.2269「足元だけでなく円錐状に照らして」)。
+// 光だまりの直径に対する倍率=上方向へどれだけビームを伸ばすか。?labemh=
+const LAB_EMLIGHT_HEIGHT_MULT = Math.max(0.2, tsNum('labemh', 1.35));
 const LAB_EMLIGHT_ALPHA = Math.max(0, Math.min(1, tsNum('labema', 0.5)));  // 光の強さ。?labema=
-// 非常灯の色(社長指示v0.25.2265「赤にして」)。screen合成なので、この色が光の当たった床に乗る。
-// 純赤(0xff0000)だと緑/青が全く持ち上がらず床のディテールが潰れるため、わずかに橙寄りの赤にして
-// 「非常灯の赤」を出しつつ形が見えるようにする。
-const LAB_EMLIGHT_TINT = 0xff3a2a;
+// 非常灯の色。赤(v0.25.2265)→ **緑**(社長指示v0.25.2269)。screen合成なのでこの色が光の当たった床に乗る。
+// 純緑(0x00ff00)だと赤/青が全く持ち上がらず床のディテールが潰れるため、青を少し混ぜた緑にして
+// 「誘導灯の緑」を出しつつ形が見えるようにする(赤の時と同じ考え方)。
+const LAB_EMLIGHT_TINT = 0x3ce089;
 // 同時に出す上限。CLAUDE.mdの実測(light T8 pass / T16 fail)より十分小さく取る=負荷の天井を固定する。
 const LAB_EMLIGHT_MAX = 8;
 
@@ -5521,9 +5524,12 @@ export class PixiScene {
       this.labDarkVeil = veil;
       // 非常灯は上限ぶんだけ先に作って使い回す(毎フレームの生成/破棄をしない)。
       this.labEmLights = Array.from({ length: LAB_EMLIGHT_MAX }, () => {
-        const sp = new Sprite(getGlowTexture());
+        // 円錐テクスチャ(上=灯具側で細い / 下=床で広がる + 底に光だまり)を1枚。
+        // アンカーは (0.5, 0.88) = **テクスチャ内の床の着地点**。これで position に灯りの足元を渡せば
+        // ビームがそこから上へ伸びる形になる(丸グローの時と同じ「位置=足元」の使い勝手を保つ)。
+        const sp = new Sprite(getSpotConeTexture());
         sp.eventMode = 'none';
-        sp.anchor.set(0.5);
+        sp.anchor.set(0.5, 0.88);
         sp.tint = LAB_EMLIGHT_TINT;
         sp.blendMode = 'screen'; // 加算より塗り面積の暴発が小さい(強glow=加算大面積が実測の主犯)
         sp.visible = false;
@@ -5555,7 +5561,8 @@ export class PixiScene {
     const wl = this.L.world.toLocal({ x: -M, y: 0 }).x;
     const wr = this.L.world.toLocal({ x: this.screenW + M, y: 0 }).x;
     const scale = this.L.world.scale.x || 1;
-    const size = LAB_EMLIGHT_RADIUS * 2 * scale;
+    const size = LAB_EMLIGHT_RADIUS * 2 * scale;              // 床の光だまりの直径
+    const coneH = size * LAB_EMLIGHT_HEIGHT_MULT;             // 円錐の高さ(上へ伸びる分)
     let n = 0;
     const kFrom = Math.ceil(wl / LAB_EMLIGHT_SPACING);
     const kTo = Math.floor(wr / LAB_EMLIGHT_SPACING);
@@ -5564,7 +5571,7 @@ export class PixiScene {
       const g = this.L.world.toGlobal({ x: k * LAB_EMLIGHT_SPACING, y: 0 });
       sp.position.set(g.x, g.y);
       sp.width = size;
-      sp.height = size;
+      sp.height = coneH;
       sp.alpha = LAB_EMLIGHT_ALPHA * ramp;
       sp.visible = true;
     }
