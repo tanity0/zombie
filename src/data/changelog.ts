@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2268',
+    items: [
+      '訓練の「移動」チュートリアルの手本も滑らかな動画になりました。これでチュートリアル3件すべてが実機収録の動画です。',
+    ],
+  },
+  {
     version: '0.25.2267',
     items: [
       'ステージ4の雲の流れが速くなりました。吹きすさぶ感じが強まっています。',
