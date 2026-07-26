@@ -201,6 +201,26 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   `ls` (does it exist? size?) and `cat` (actual contents) before reporting.
 - Only claim a change is complete once you've seen the expected contents on disk.
 
+## チュートリアルの作り方(社長承認v0.25.2263「今後もこれで」=以後の標準)
+新しくチュートリアルを足す時は、M2で確立したこの型をそのまま使う。
+- **本文の台帳は `src/data/tutorials.ts` の1箇所**。ゲーム中のポップアップと資料室の「操作記録」が
+  **同じ台帳を引く**ので文章が食い違わない(同じ文章を2箇所で管理しない)。
+- **発火条件はステージごとの純関数**に切り出してテストする(例: `src/utils/labTutorial.ts`)。
+  `useGameLoop` に直書きしない。「見つかる前に出す」等の意図は**不変条件としてテストに固定**する
+  (例: 発火距離 > 敵の視界)。
+- **既読は `src/utils/tutorialArchive.ts` の1キー**(localStorage)。表示と同時に記録し、
+  一度見たものは資料室の「操作記録」から読み返せる。ゲーム側の出す/出さない判定は `loadSeenForGate()`、
+  資料室は `loadSeenTutorials()` を使う(**この2つを混ぜない**——毎回表示の一時措置を入れた瞬間に
+  資料室が空になる)。
+- **本文に数値を書かない**(200px/450px/1秒等)。後でバランス調整した時に文面が嘘にならないようにする。
+- **手本は実機収録**(社長撮影)を使う。ヘッドレス収録はGPU無し環境で実速1/10〜1/30しか出ず質も劣る。
+  - 短い手本(〜3秒)は**GIF**。長い手本(20秒級)は**mp4**(`isVideoAsset()` が拡張子で自動判定。
+    同じ尺でGIFの半分以下・30fpsのまま出せる)。
+  - **撃つ/決まる瞬間は `setpts` でスローに**する(等速だと2コマで終わって何が起きたか分からない)。
+  - 小さく細い表示(緑のレティクル等)は**寄りの画角+色数を落とし過ぎない**。減色で真っ先に消える。
+    採用前に**フレームごとの画素数を数えて機械的に確認**する(目視だけだと見落とす)。
+  - 同名で差し替えたら **`ASSET_VERSION` を上げる**(挿絵URLは `?v=` 付き)。上げないと端末に古い版が残る。
+
 ## Versioning
 - **Bump `package.json` `version` on every push.** It is injected as
   `__APP_VERSION__` and shown top-right on the title screen and bottom-left

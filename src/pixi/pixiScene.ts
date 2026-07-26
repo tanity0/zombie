@@ -366,6 +366,23 @@ const LAB_FAR_FRAME_BLUR = Math.max(0, tsNum('labwfblur', 1.5));
 const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.5))); // 0.3→0.5(社長指示v0.25.2226「もう少し暗くして分かりやすく」)。0で無効(復帰フラグ)。?labdim=
 const LAB_OUT_DIM_FADE_PX = Math.max(0, tsNum('labdimfade', 70));        // 境目のグラデ幅(画面px)。?labdimfade=
 const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登場演出の着地後に濃くなるまでの時間。?labdimin=
+// M2の暗転+非常灯(社長指示v0.25.2263「全体をもう少し暗くして、等間隔に非常灯みたいなスポットライト」)。
+// **描画のみ**=ゲーム挙動(視界/湧き/当たり)には一切触らない。
+// 構成: ①画面全体に黒い幕(labdark) ②その上に等間隔の非常灯グロー(screen合成)を重ねて幕を持ち上げる。
+// 幕とライトは**同じコンテナ**(uiLayer)に入れる。ワールド側に置くと幕(画面空間)を持ち上げられないため、
+// ライトの画面位置は毎フレーム world.toGlobal で求める(ズーム/カメラ/シェイクを自動で含む)。
+const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.22)));   // 全体の暗さ。0=無効(復帰フラグ)。?labdark=
+// 間隔440 / 半径140(=光の直径280、暗がり160)。実測で決めた値:
+//  - 900だと画面(≒390ワールドpx幅)に1個も入らない時間が長く、並んでいるリズムが伝わらない。
+//  - 逆に間隔を詰めて2個以上同時に映そうとすると光が繋がって**暗くした意味が消える**。
+//  → 「光 → 暗がり → 光」を歩いて通過する形(画面あたり約1個)が、この画面幅では最も非常灯らしい。
+const LAB_EMLIGHT_SPACING = Math.max(120, tsNum('labemgap', 440));         // 非常灯の間隔(ワールドpx)。?labemgap=
+const LAB_EMLIGHT_RADIUS = Math.max(0, tsNum('labemr', 140));              // 光の半径(ワールドpx)。0=ライト無し。?labemr=
+const LAB_EMLIGHT_ALPHA = Math.max(0, Math.min(1, tsNum('labema', 0.5)));  // 光の強さ。?labema=
+const LAB_EMLIGHT_TINT = 0xffcf9a;                                         // 非常照明らしい淡い琥珀
+// 同時に出す上限。CLAUDE.mdの実測(light T8 pass / T16 fail)より十分小さく取る=負荷の天井を固定する。
+const LAB_EMLIGHT_MAX = 8;
+
 // 敵の視界表示(社長指示v0.25.2235): 休眠中のlab-zombieが「起きる範囲」を薄い赤で塗る。
 // ゲーム側の覚醒条件(半径 aggroRange 以内 かつ segmentBlocked でない)と**同じ壁リスト**でレイを飛ばすので、
 // 塗られている場所=実際に見つかる場所。休眠敵は静止しているため、形は敵ごとに1度だけ計算してキャッシュする。
@@ -1856,6 +1873,9 @@ export class PixiScene {
   private labFarFront: TilingSprite | null = null; // 遠景の窓の手前に置く「遠くの什器」(近景森1の縮小版)
   private labVisionLayer: Container | null = null; // 敵の視界表示(薄い赤・休眠敵ぶん)
   private labVisionObjs = new Map<string, { g: Graphics; key: string }>(); // 敵id→形(位置が変わらない限り再利用)
+  private labDarkLayer: Container | null = null;  // M2の暗転幕+非常灯(幕1枚 + プール済みグロー)
+  private labDarkVeil: Sprite | null = null;
+  private labEmLights: Sprite[] = [];
   private labOutDim: Container | null = null; // 移動可能帯の外を暗くする幕(4枚: 上ベタ/上グラデ/下グラデ/下ベタ)
   private labOutDimParts: Sprite[] = [];
   private labFarBloom: TilingSprite | null = null;      // 遠景のソフトブルーム(ぼかし焼き込みのscreen重ね)
@@ -4080,6 +4100,7 @@ export class PixiScene {
     // 遠景の窓(フレーム+ガラス2層)。lab屋外限定・支給なしはno-op(社長指示v0.25.2199)。
     this.updateLabFarWindow(s.stageTheme === 'lab' && !s.indoorMode, s.camera.x, now);
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
+    this.updateLabDarkLights(s.stageTheme === 'lab' && !s.indoorMode, now); // 全体を少し暗く+等間隔の非常灯(v0.25.2263)
     this.updateLabOutsideDim(s.stageTheme === 'lab' && !s.indoorMode, now); // 移動可能帯の外を少し暗く(境目はグラデ)
     this.updateLabVisionCones(s.stageTheme === 'lab' && !s.indoorMode, s.enemies, s.camera.x, s.camera.y); // 敵の視界(薄い赤・壁の影つき)
     this.updateLabFarFront(
@@ -5465,6 +5486,77 @@ export class PixiScene {
       o.g.destroy();
       this.labVisionObjs.delete(id);
     }
+  }
+
+  // M2: 全体を少し暗くし、等間隔に非常灯のスポットを置く(社長指示v0.25.2263)。
+  // 幕(黒・画面全体)の上に screen 合成のグローを重ねる=光の位置だけ暗さが持ち上がる。
+  // **ズーム対応(CLAUDE.md必須項目)**: 可視範囲は toLocal で画面端をワールド座標へ逆変換して求めるので、
+  // 文脈ズームで引いても取りこぼさない。光の大きさも world.scale を掛けて追従させる。
+  private updateLabDarkLights(show: boolean, now: number) {
+    // 登場演出(ヘリ降下)中は出さない。帯外減光と同じ理由=カメラが廊下から離れている間に幕を出すと
+    // 画面全体が暗転して「読み込み中」に見える(v0.25.2225の事故)。
+    if (!show || LAB_DARK_ALPHA <= 0 || this.introActive) {
+      if (this.labDarkLayer) this.labDarkLayer.visible = false;
+      return;
+    }
+    if (!this.labDarkLayer) {
+      const cont = new Container();
+      cont.eventMode = 'none';
+      const veil = new Sprite(Texture.WHITE);
+      veil.eventMode = 'none';
+      veil.tint = 0x000000;
+      cont.addChild(veil);
+      this.labDarkVeil = veil;
+      // 非常灯は上限ぶんだけ先に作って使い回す(毎フレームの生成/破棄をしない)。
+      this.labEmLights = Array.from({ length: LAB_EMLIGHT_MAX }, () => {
+        const sp = new Sprite(getGlowTexture());
+        sp.eventMode = 'none';
+        sp.anchor.set(0.5);
+        sp.tint = LAB_EMLIGHT_TINT;
+        sp.blendMode = 'screen'; // 加算より塗り面積の暴発が小さい(強glow=加算大面積が実測の主犯)
+        sp.visible = false;
+        cont.addChild(sp);
+        return sp;
+      });
+      this.L.uiLayer.addChildAt(cont, 0); // ワールドの上・HUDの下(帯外減光と同じ層)
+      this.labDarkLayer = cont;
+    }
+    const cont = this.labDarkLayer;
+    cont.visible = true;
+    // 着地直後は薄→濃へ。帯外減光と同じ立ち上がりに揃える=2枚が別々に濃くならない。
+    const sinceIntro = this.introUntil > 0 ? now - this.introUntil : Number.POSITIVE_INFINITY;
+    const ramp = Math.max(0, Math.min(1, sinceIntro / LAB_OUT_DIM_FADEIN_MS));
+    const veil = this.labDarkVeil;
+    if (veil) {
+      const OVER = 300; // シェイク/引きで端が割れないように画面外まで
+      veil.position.set(-OVER, -OVER);
+      veil.width = this.screenW + OVER * 2;
+      veil.height = this.screenH + OVER * 2;
+      veil.alpha = LAB_DARK_ALPHA * ramp;
+    }
+    if (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0) {
+      for (const sp of this.labEmLights) sp.visible = false;
+      return;
+    }
+    // 可視ワールドX範囲(ズーム込み)。画面端を toLocal でワールドへ戻す。
+    const M = LAB_EMLIGHT_RADIUS; // 画面外の光も端に滲むぶんだけ余裕を取る
+    const wl = this.L.world.toLocal({ x: -M, y: 0 }).x;
+    const wr = this.L.world.toLocal({ x: this.screenW + M, y: 0 }).x;
+    const scale = this.L.world.scale.x || 1;
+    const size = LAB_EMLIGHT_RADIUS * 2 * scale;
+    let n = 0;
+    const kFrom = Math.ceil(wl / LAB_EMLIGHT_SPACING);
+    const kTo = Math.floor(wr / LAB_EMLIGHT_SPACING);
+    for (let k = kFrom; k <= kTo && n < LAB_EMLIGHT_MAX; k++) {
+      const sp = this.labEmLights[n++];
+      const g = this.L.world.toGlobal({ x: k * LAB_EMLIGHT_SPACING, y: 0 });
+      sp.position.set(g.x, g.y);
+      sp.width = size;
+      sp.height = size;
+      sp.alpha = LAB_EMLIGHT_ALPHA * ramp;
+      sp.visible = true;
+    }
+    for (let i = n; i < this.labEmLights.length; i++) this.labEmLights[i].visible = false;
   }
 
   // 移動可能帯(廊下)の外を少し暗くする(社長指示v0.25.2223)。境目はグラデで溶かす。

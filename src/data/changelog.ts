@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2263',
+    items: [
+      'ステージ2の全体を少し暗くし、通路に等間隔の非常灯を灯しました。光と暗がりを通り抜けながら進みます。',
+    ],
+  },
+  {
     version: '0.25.2262',
     items: [
       'ＰＨＩＬＬ-銃チュートリアルの手本が、収録した2本まるごと(約20秒)流れるようになりました。読み込みは以前より軽くなっています。',
