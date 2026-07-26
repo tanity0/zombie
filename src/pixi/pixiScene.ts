@@ -567,6 +567,13 @@ const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.9));      // 森下霧(fog-al
 const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.65));  // 奥(遠景+地面・キャラの後ろ)
 const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前の森に被る最下部・薄め)
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
+// M3(遠景city)/M4(遠景snow)だけ雲の流れを速くする(社長指示v0.25.2274「m3とm4の雲の速さ早くして」)。
+// 対象は**霧/雲のシート(fogLayers)と地面の雲影**。実測で
+//   雲シート 約12px/秒 / 雲影 約11〜20px/秒 = 画面(390px)を横切るのに30秒以上=ほぼ静止に見えていた
+// (このレイヤーは元々「ドリフトさせず微妙に sway させるだけ」の設計だったため)。
+// FOG_SPEED / cloudshadowspeed は**全ステージ共通**なので、そこを上げると他ステージも変わってしまう。
+// よって「M3/M4のときだけ掛ける倍率」を別に持つ。?m34cloud=1 で従来の速さへ復帰。
+const M34_CLOUD_SPEED_MULT = Math.max(0, tsNum('m34cloud', 4));
 // チュートリアル(M0)の川の手前の岩間霧を少しぼかす(0=なし。社長指示v0.25.1895)。?tutfogblur= で調整。
 const TUTORIAL_FRONT_FOG_BLUR = Math.max(0, tsNum('tutfogblur', 2));
 // cine光源の放射streak(光の線)の「出没=煌めき」(社長指示v0.25.1906・?cloud*= で調整)。テクスチャに関わる LAYERS/STREAKS は
@@ -1794,7 +1801,9 @@ export class PixiScene {
       sp.tilePosition.set((-cameraX * 0.4) % periodX, (-now * s7spd - cameraY * 0.4) % periodY); // -now*=上へスクロール
     } else {
       const dir = snow ? -1 : 1;
-      const driftSpd = spd * (snow ? tsNum('cloudshadowsnowspeed', 1.8) : 1);
+      // M3(city)/M4(snow)のみ雲影も同じ倍率で速く(空の雲と地面の影が別々の速さになると不自然なため)。
+      const shadowStageMult = (this.currentFarKey === 'city' || snow) ? M34_CLOUD_SPEED_MULT : 1;
+      const driftSpd = spd * (snow ? tsNum('cloudshadowsnowspeed', 1.8) : 1) * shadowStageMult;
       // 斜めドリフト+ゆるいカメラ連動(接地感)。
       sp.tilePosition.set((dir * now * driftSpd - cameraX * 0.4) % periodX, (dir * now * driftSpd * 0.55 - cameraY * 0.4) % periodY);
     }
@@ -3950,7 +3959,9 @@ export class PixiScene {
       f.sp.y = f.yFrac * this.screenH - f.sp.height / 2 + Math.sin(now * f.spdY * FOG_SPEED + f.ph) * f.ampY; // 縦の揺らめき
       // ステージ4(雪)は霧の流れを雪と同じ向き(=通常の逆)にし、少し速く(社長指示v0.25.1984)。
       const fogDir = this.snowStage ? tsNum('snowfogflow', -1.8) : 1;
-      f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED * fogDir + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX; // 流れ+横の揺らめき
+      // M3(city)/M4(snow)のみ流れを速く(社長指示v0.25.2274)。揺らめき(sin)には掛けない=流れだけ速める。
+      const stageMult = (this.currentFarKey === 'city' || this.snowStage) ? M34_CLOUD_SPEED_MULT : 1;
+      f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED * fogDir * stageMult + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX; // 流れ+横の揺らめき
       f.sp.tilePosition.y = 0;
     }
     // cine: 空を生かす(A+B・社長指示v0.25.1865)。既存ベイクSpriteのtransformだけ=軽い。

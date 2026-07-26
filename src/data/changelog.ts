@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2274',
+    items: [
+      'ステージ3・4の雲の流れが実際に速くなりました。これまでほぼ止まって見えていた霧/雲のシートと地面の雲影を4倍にしています。',
+    ],
+  },
+  {
     version: '0.25.2273',
     items: [
       'ステージ2の暗さを元に戻しました(暗くしすぎていたのを戻したもので、非常灯はそのままです)。',
