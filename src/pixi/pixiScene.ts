@@ -1797,7 +1797,7 @@ export class PixiScene {
     } else {
       if (sp.blendMode !== 'multiply') sp.blendMode = 'multiply';
       if (sp.tint !== 0xffffff) sp.tint = 0xffffff;
-      sp.alpha = tsNum('cloudshadowalpha', 1.0);          // 濃さ=1.0(社長指示v0.25.1977)
+      sp.alpha = tsNum('cloudshadowalpha', 0.7);          // 濃さ=0.7(社長指示v0.25.2278。旧1.0=v0.25.1977)
     }
     const spd = tsNum('cloudshadowspeed', night ? 0.008 : 0.011); // もう少し速く(社長指示v0.25.1977)。夜=ゆっくりめ / 昼=標準
     // ステージ4(雪)は雲影のドリフト向きを雪と同じ(=現状の逆)にし、少し速く(社長指示v0.25.1984)。

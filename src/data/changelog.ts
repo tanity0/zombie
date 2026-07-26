@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2278',
+    items: [
+      '地面に落ちる雲の影を少し薄くしました(屋外ステージ共通)。',
+    ],
+  },
+  {
     version: '0.25.2277',
     items: [
       '更新後の読み込みが軽くなりました。これまでは絵や音を1つ差し替えるたびに全部(約164MB)を落とし直していましたが、今後は「変わったファイルだけ」を落とします。',
