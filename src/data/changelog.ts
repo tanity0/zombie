@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2257',
+    items: [
+      '索敵チュートリアルに実際のプレイ映像(敵の視界が赤く見える様子)を追加しました。これでチュートリアル2件とも手本映像つきになります。',
+    ],
+  },
+  {
     version: '0.25.2256',
     items: [
       '【調整中】チュートリアルを毎回表示するようにしました(内容確認のための一時的な設定です)。',
