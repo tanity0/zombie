@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2323',
+    items: [
+      'ゲーム内容の変更はありません（洞窟の岩と地面の境目を実機で詰めるための調整口を追加しただけで、既定の見た目は今までどおりです）。',
+    ],
+  },
+  {
     version: '0.25.2322',
     items: [
       '前回の「洞窟の岩帯を20px上へ」を元に戻しました（黒い横線は直らなかったため）。',

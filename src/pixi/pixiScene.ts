@@ -214,6 +214,18 @@ const LAB_NEAR_HORIZON_HEIGHT_RATIO = (() => {
   const v = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('nh')) : NaN;
   return Number.isFinite(v) && v > 0 ? v : 0.17; // ステージ2既定0.17(社長指定)
 })();
+// URLクエリでの現地調整ヘルパ(?key=値)。依存が無いので、これを使う定数より前に置く。
+const tsNum = (key: string, def: number): number => {
+  if (typeof window === 'undefined') return def;
+  const v = new URLSearchParams(window.location.search).get(key);
+  const n = v == null ? NaN : Number(v);
+  return Number.isFinite(n) ? n : def;
+};
+const tsBool = (key: string, def: boolean): boolean => {
+  if (typeof window === 'undefined') return def;
+  const v = new URLSearchParams(window.location.search).get(key);
+  return v == null ? def : (v === '1' || v === 'true');
+};
 // ステージ5の森1/森2は実寸px指定(社長指示v0.25.1742: 比率+クランプ方式だと端末次第で
 // 倍率が効かず「大きくならない」ため、固定pxに切り替え)。底は遠景境界線(farH)基準の下オフセット。
 const STAGE5_HORIZON_FOREST_HEIGHT_PX = 130; // 森1の高さ(px・社長指示v0.25.1743で150→130)
@@ -230,8 +242,16 @@ const TUTORIAL_HORIZON_HEIGHT_TRIM_PX = 40; // v0.25.1819: 社長指示「高さ
 // チュートリアルの遠景森2=岩帯2(v0.25.1817・社長指示「この岩帯2を1の手前レイヤーに表示」)。
 // ステージ5と同じ実寸px指定(高さ+底=境界線からの下オフセット)。素材2172x368(下端は浮き石の散り)。
 // 数値は叩き台(実機調整前提)。
-const TUTORIAL_NEAR_HORIZON_HEIGHT_PX = 140; // 岩帯2の高さ(px)(v0.25.1821: 社長指示「+10px」で130→140)
-const TUTORIAL_NEAR_HORIZON_DOWN_PX = 25;    // 岩帯2の底=境界線(farH)から下へ(px)(v0.25.1819: 社長指示「20px上へ」で45→25)
+// 【実機ツマミ・v0.25.2323】「岩と地面の境目の黒い横線」の犯人は**この岩帯2の下端**と判明した。
+// 素材(tutorial-near-rocks.png)は下端42行にアルファのランプが焼き込まれており、その抜けていく部分の
+// 絵柄が「暗い岩」(輝度3〜21)なので、**半透明の黒いグラデが地面の上に乗る**。実機の画素解析でも
+// 「一様に約40%暗くなる/上が最も濃く下へ約15pxで回復」=半透明の暗い絵が乗る形と一致した。
+// (岩帯1を ?m0up=200 で飛ばしても消えなかったのは、犯人が岩帯**2**だったため。)
+// 暗いランプが地面に掛からない位置まで下端を引き上げれば消えるはずなので、社長が実機で詰められるよう
+// ?m0near=(底のオフセット) / ?m0nearh=(高さ) を可変にした。**既定値は現状のまま=見た目は不変**。
+// 決まったら既定値へ焼き込む(既存の ?tsblur / ?m0up 等と同じ運用)。
+const TUTORIAL_NEAR_HORIZON_HEIGHT_PX = tsNum('m0nearh', 140); // 岩帯2の高さ(px)(v0.25.1821: 社長指示「+10px」で130→140)
+const TUTORIAL_NEAR_HORIZON_DOWN_PX = tsNum('m0near', 25);     // 岩帯2の底=境界線(farH)から下へ(px)(v0.25.1819: 社長指示「20px上へ」で45→25)
 // チュートリアルの手前霧(v0.25.1820・社長指示「手前を漂ってる霧を、岩1と岩2の間に、50%の大きさで」):
 // frontBank霧(通常=最前面・画面下部)を、z=岩帯1と岩帯2の間へ移し、50%サイズで岩帯の重なり帯に漂わせる。
 const TUTORIAL_FRONT_FOG_SCALE = 0.5;        // 霧の大きさ(帯の高さ・柄とも50%)
@@ -304,17 +324,8 @@ const WHIP_SPRITE_TIP_X = 0.99;     // テクスチャ内の鞭先端位置
 //   ?tsgrad=280  くっきり→ボケへ移る距離(px。小=焦点帯が狭くなり上下が強くボケる)
 //   ?tsband=0.5  くっきり帯の中心(画面高さに対する割合 0..1。0.5=中央)
 // 参考画像(HD-2D)に合わせて値を探し、合ったら下の既定値に焼き込む。
-const tsNum = (key: string, def: number): number => {
-  if (typeof window === 'undefined') return def;
-  const v = new URLSearchParams(window.location.search).get(key);
-  const n = v == null ? NaN : Number(v);
-  return Number.isFinite(n) ? n : def;
-};
-const tsBool = (key: string, def: boolean): boolean => {
-  if (typeof window === 'undefined') return def;
-  const v = new URLSearchParams(window.location.search).get(key);
-  return v == null ? def : (v === '1' || v === 'true');
-};
+// tsNum / tsBool の定義はこのファイル冒頭付近へ移動済み(v0.25.2323: 洞窟の岩帯2の
+// 実機ツマミ ?m0near= / ?m0nearh= を定数側で使うため。純ヘルパで依存が無いので前倒しは安全)。
 // ステージ2(ラボ)の暗闇=可視ゾーン(フラッシュライト)演出。社長指示で廃止(既定OFF)。?labveil=1 で参照用に復活可。
 // (いきなり暗転する/画面固定の暗幕が登場ヘリのズーム等でズレる、という課題のため通常照明へ)。
 const LAB_VISIBILITY_VEIL = tsBool('labveil', false);
