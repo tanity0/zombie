@@ -78,8 +78,12 @@ export interface M0BeatDef {
   critDrill?: boolean;
   /** ポップアップの前に流す掛け声(左上の通信)。**説明より先に、状況の理由を言う**。 */
   callouts?: readonly { speaker: string; text: string }[];
-  /** このビートで解禁する要素(社長指示v0.25.2293「解禁されるまで封印」)。 */
-  unlock?: 'melee';
+  /**
+   * このビートで解禁する要素(社長指示v0.25.2293「解禁されるまで封印」)。
+   * 'ammo' は**ランダムな弾薬ドロップの解禁**(社長指示v0.25.2319)。弾を拾う教習(id:'ammo')より前に
+   * 偶然の拾得で弾が増えてしまうと、「弾が尽きたから近接に切り替える」という台本の筋が崩れるため。
+   */
+  unlock?: 'melee' | 'ammo';
   /**
    * このビートを行う場所(px)。ここに**歩いて到達するまで発火しない**うえ、
    * **未発火の間はここより先へ進めない**(透明壁)。社長指示v0.25.2297
@@ -175,7 +179,9 @@ export const M0_BEATS: readonly M0BeatDef[] = [
   // デンジャー入場=ハンター出現(社長指示v0.25.2287)。湧かせるのは useGameLoop 側(専用の配置)。
   { id: 'hunter', tutorial: 'm0-hunter', atX: 3000, requires: 'area' },
   // 追われながら弾を拾う。ハンターの直後に置く(社長指示v0.25.2286「5で弾補充」)。
-  { id: 'ammo', tutorial: 'm0-ammo', atX: 3160, requires: 'hunter' },
+  // ここで初めてランダムな弾薬ドロップが解禁される(社長指示v0.25.2319)。これより前は
+  // 近接キル/銃キルの抽選ドロップもエアドロップも出さない=「弾が尽きる」台本を偶然が壊さない。
+  { id: 'ammo', tutorial: 'm0-ammo', atX: 3160, requires: 'hunter', unlock: 'ammo' },
 ];
 
 export interface M0BeatGate {

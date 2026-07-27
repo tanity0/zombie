@@ -1,5 +1,35 @@
 # Development Log
 
+## v0.25.2319 — M0: 弾を拾う教習まで抽選の弾薬ドロップを封印(社長指示)【2026-07-27 21:40 JST】
+- 指示(社長): 「チュートリアルで弾解禁されるまでは、ランダムによる弾落ちない様にして」。
+- **実装**: 既存のM0封印機構 `m0Unlocked`(社長指示v0.25.2293)に **`ammo` を追加**して乗せた。
+  新しい概念を足さず、`melee`/`crit` と同じ扱いにする。
+  - `m0Unlocked: { melee, crit, ammo }`。既定は全解禁、`resetGame` が `farBackdrop === 'tutorial'`
+    の時だけ全部 false にする(他ステージは従来どおり常に解禁=挙動不変)。
+  - M0ビート表(`src/utils/m0Tutorial.ts`)の弾補充教習 `{ id: 'ammo', atX: 3160 }` に
+    `unlock: 'ammo'` を付け、`useGameLoop` のビート発火時に解禁する(`unlock` 型を
+    `'melee' | 'ammo'` へ拡張)。
+  - 封印したのは**抽選(ランダム)経路2つだけ**: 近接キルのドロップ抽選(`gameStore.ts`
+    `grantMeleeKillRewards`)と銃/爆発キルのドロップ抽選(`useGameLoop.ts`)。
+  - **台本が明示的に置く弾は無関係**(同ビートが `M0_AMMO_AHEAD_PX` に1個置く処理・射撃教習の
+    装填詰め直し)。解禁は同じブロックの先頭で行うので、教習用の1個は従来どおり必ず出る。
+  - エアドロップは**既に**チュートリアル全体で停止済み(社長指示v0.25.1818・`shouldSpawnAirdrop`
+    の `tutorialStage`)なので変更不要。
+- 意図: 弾が偶然増えると「弾が尽きたから近接に切り替える」という台本の筋(v0.25.2293)が壊れる。
+- ユニットテスト(`m0Tutorial.test.ts` +2件): 解禁ビートは 'ammo' ただ1つ / 射撃・近接・フィニッシュ・
+  カウンターの教習は必ず 'ammo' より前にある(**台本の順序を不変条件として固定**)。
+- 調査(報告のみ・コード変更なし): 社長報告「一体を攻撃してるのに何回も2hitと出る」は**仕様どおり**。
+  録画をフレーム解析したところ、**敵が2体ほぼ完全に重なっていた**(赤い角の個体+ヘルメット装甲の
+  個体)。`registerMultiHit` に渡るのは `slashAt.length`=射程内の**敵の数**で、1体につき1回しか
+  push されない(緑卵はbreakableProp=カウント対象外)。数え方に誤りは無く、**重なりで1体に見えていた**のが実体。
+- 変更ファイル: `src/utils/m0Tutorial.ts`、`src/utils/m0Tutorial.test.ts`、`src/store/gameStore.ts`、
+  `src/hooks/useGameLoop.ts`、`src/data/changelog.ts`、`package.json`。
+- 検証: `npm run typecheck` 0エラー / `npm run lint` 0エラー(既存warning7件) /
+  `npx vitest run src/utils/m0Tutorial.test.ts` 49件全通過(新規2件込み)。実機確認は社長。
+- 負荷: **0/10**(既存の抽選条件に真偽値を1つ足すだけ)。
+- 憲法第4条(初心者ゾーン不可侵): 抵触しない——変更はM0(訓練)限定で、他ステージは `m0Unlocked.ammo`
+  が常に true=挙動完全不変。第5条: 該当なし。
+
 ## v0.25.2318 — クイックマガジンがランの途中で永久に発動しなくなるバグ修正【2026-07-27 19:02 JST】
 - 報告(社長): 「スカベンジャーのクイックマガジン、途中から出なくなった気がする」。
 - **原因(確定)**: 発動条件に「場に quick-magazine ピックアップが落ちていないこと」

@@ -1957,7 +1957,8 @@ const grantMeleeKillRewards = (
       : null;
     const dropType = smartType ?? gun?.ammoType ?? ownedAmmoTypes[0];
     // ナイフマスターは弾薬ドロップ0%(何をしても。社長指示)。
-    if (dropType && !hasSkill(player, 'knife-master') && Math.random() < ammoChance) {
+    // M0(訓練)は弾を拾う教習まで抽選ドロップを封印(社長指示v0.25.2319・m0Unlocked.ammo)。
+    if (dropType && !hasSkill(player, 'knife-master') && get().m0Unlocked.ammo && Math.random() < ammoChance) {
       get().addPickup({
         id: `pickup-ammo-melee-${enemy.id}`,
         x: ex - 8 + 14, y: ey - 8,
@@ -2382,7 +2383,10 @@ interface GameState {
   // 訓練(M0)の**封印**(社長指示v0.25.2293「チュートリアルで解禁されるまで近接等は封印。
   // クリティカル等も出ない」)。教わっていない要素が先に暴発すると、説明と体験の順序が崩れる。
   // M0以外のステージでは常に全解禁(resetGame が farBackdrop を見て決める)。
-  m0Unlocked: { melee: boolean; crit: boolean };
+  // ammo=**ランダムな弾薬ドロップ**の解禁(社長指示v0.25.2319)。弾を拾う教習(M0ビート'ammo')より前に
+  // 偶然で弾が増えると「弾が尽きたから近接へ」という台本の筋が壊れるため、それまでは抽選ドロップを止める。
+  // 台本が明示的に配置する弾(教習用の補充)はこのフラグを見ない=意図した供給だけが通る。
+  m0Unlocked: { melee: boolean; crit: boolean; ammo: boolean };
   // 訓練(M0)で近接が当たった回数(このランのみ)。**3発目で強制クリティカル**→そのまま
   // 近接フィニッシュの教習へ繋げるための台本カウンタ(社長台本v0.25.2293)。
   m0MeleeHits: number;
@@ -3065,7 +3069,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   rendererReady: false,
   tutorialPopup: null,
   tutorialPopupShown: false,
-  m0Unlocked: { melee: true, crit: true }, // 既定=全解禁。M0出撃時だけ resetGame が封印する
+  m0Unlocked: { melee: true, crit: true, ammo: true }, // 既定=全解禁。M0出撃時だけ resetGame が封印する
   m0MeleeHits: 0,
   m0CritDrill: false,
   m0AdvanceLimitX: null,
@@ -10403,7 +10407,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         tutorialPopupShown: false,
         // 訓練(M0)は**教わるまで封印**(社長指示v0.25.2293)。近接もクリティカルも、その教習で解禁するまで出ない。
         // 他ステージは常に全解禁。
-        m0Unlocked: farBackdrop === 'tutorial' ? { melee: false, crit: false } : { melee: true, crit: true },
+        m0Unlocked: farBackdrop === 'tutorial'
+          ? { melee: false, crit: false, ammo: false }
+          : { melee: true, crit: true, ammo: true },
         m0MeleeHits: 0,
         m0CritDrill: false,
         m0AdvanceLimitX: farBackdrop === 'tutorial' ? M0_CONVO_ADVANCE_LIMIT_X : null,

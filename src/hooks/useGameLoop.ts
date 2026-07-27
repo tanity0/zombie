@@ -3149,6 +3149,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (beat.unlock === 'melee') {
                 useGameStore.setState(s2 => ({ m0Unlocked: { ...s2.m0Unlocked, melee: true } }));
               }
+              // 弾を拾う教習に来て初めて、ランダムな弾薬ドロップを解禁する(社長指示v0.25.2319)。
+              if (beat.unlock === 'ammo') {
+                useGameStore.setState(s2 => ({ m0Unlocked: { ...s2.m0Unlocked, ammo: true } }));
+              }
               // クリティカル演習の入切。教習が変わるたびに**ヒット数を0へ戻す**=「3発ごと」が
               // 前の教習から持ち越されない(持ち越すと次の教習の1発目でいきなりクリが出る)。
               useGameStore.setState({ m0CritDrill: beat.critDrill === true, m0MeleeHits: 0 });
@@ -7078,7 +7082,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               ));
               // 研究所(屋内)は通常ドロップ無し: PHILL弾は固定3箇所＋近接フィニッシュのみ。
               // ナイフマスターは弾薬ドロップ0%(社長指示)。
-              if (!indoor && !hasSkill(player, 'knife-master') && Math.random() < gunKillDropRate) {
+              // M0(訓練)は弾を拾う教習まで抽選ドロップを封印(社長指示v0.25.2319・m0Unlocked.ammo)。
+              if (
+                !indoor && !hasSkill(player, 'knife-master')
+                && useGameStore.getState().m0Unlocked.ammo
+                && Math.random() < gunKillDropRate
+              ) {
                 // M5(§5.5・RE4式): 残弾割合が最小の弾種を落とす(同率は構え優先・phill対象外)。
                 // ?ammosmart=0で従来(構え銃の弾種)へ。ドロップ率・供給量は不変=弾種の配分のみ。
                 const smartType = AMMO_SMART_ENABLED

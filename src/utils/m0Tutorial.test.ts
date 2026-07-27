@@ -355,3 +355,24 @@ describe('m0AdvanceLimit(関門=ここより先へ進めない前線)', () => {
     expect(m0AdvanceLimit(fired, false)).toBeNull();
   });
 });
+
+// 社長指示v0.25.2319: 弾を拾う教習(id:'ammo')に来るまで、ランダムな弾薬ドロップは出さない。
+// 偶然の拾得で弾が増えると「弾が尽きたから近接へ切り替える」という台本の筋が壊れるため、
+// 解禁は必ずこのビートに紐づける(=台本の順序そのものを不変条件として固定する)。
+describe('M0 弾薬ドロップの解禁(社長指示v0.25.2319)', () => {
+  it("解禁ビートは 'ammo' ただ1つ", () => {
+    const unlockers = M0_BEATS.filter(b => b.unlock === 'ammo');
+    expect(unlockers.map(b => b.id)).toEqual(['ammo']);
+  });
+
+  it('射撃・近接の教習は弾薬解禁より前にある(弾が尽きる筋を偶然に壊されない)', () => {
+    const idx = (id: M0Beat) => M0_BEATS.findIndex(b => b.id === id);
+    const ammoIdx = idx('ammo');
+    expect(ammoIdx).toBeGreaterThan(-1);
+    for (const before of ['shoot', 'melee', 'finish', 'counter'] as M0Beat[]) {
+      const i = idx(before);
+      if (i === -1) continue; // 台本から消えた要素は不問(存在する時だけ順序を縛る)
+      expect(i, `${before} は ammo より前`).toBeLessThan(ammoIdx);
+    }
+  });
+});
