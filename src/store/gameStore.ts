@@ -300,6 +300,10 @@ export const TUTORIAL_SOLDIER_INDEX = 101;
 export const TUTORIAL_MOVE_Y_LIMIT_PX = 100; // v0.25.1828: 社長指示「100pxに増やします」で50→100
 // 訓練(M0)の近接教習: 何発目のヒットを強制クリティカルにするか(社長台本v0.25.2293「近接3発で強制クリティカル」)。
 export const M0_FORCED_CRIT_AT_HIT = 3;
+// 開幕の会話が流れ終わるまで、ここより先へは進めない(区域境界1500の手前)。
+export const M0_CONVO_ADVANCE_LIMIT_X = 1350;
+// 訓練(M0)で敵が出ている間、随行NPCがプレイヤーより何px前へ出るか(社長指示v0.25.2294「2人が前に出て積極的に撃つ」)。
+const M0_ESCORT_ADVANCE_PX = 110;
 // チュートリアルのゴールサークル位置。
 // 旧: 3000(社長指示v0.25.1829「最初から帰還サークルを右3000px地点に設置」)。
 // 新: **4000**(v0.25.2292)。x=3000 は `AREA_THRESHOLDS[1]` = **デンジャー入場**と同じ地点で、
@@ -2390,6 +2394,10 @@ interface GameState {
   // 訓練(M0)で近接が当たった回数(このランのみ)。**3発目で強制クリティカル**→そのまま
   // 近接フィニッシュの教習へ繋げるための台本カウンタ(社長台本v0.25.2293)。
   m0MeleeHits: number;
+  // 訓練(M0)で「ここより先へ進ませない」x(px)。null=制限なし。
+  // 開幕の会話中に区域境界(1500)へ着いてしまうと、会話とエリア移動の演出が重なる
+  // (社長指示v0.25.2294「まず会話中にエリア移動に到達しない様に、手前で制限」)。
+  m0AdvanceLimitX: number | null;
   // ゲーム画面のキャプチャ提供者(PixiStageが登録)。ゲーム内では未使用(v0.25.1839でポップアップの
   // ライブ撮影を廃止)。手本GIF収録・デバッグ用ツールとして温存(ヘッドレス収録が st.captureFrame() を叩く)。
   captureFrame: (() => string | null) | null;
@@ -3062,6 +3070,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   tutorialPopupShown: false,
   m0Unlocked: { melee: true, crit: true }, // 既定=全解禁。M0出撃時だけ resetGame が封印する
   m0MeleeHits: 0,
+  m0AdvanceLimitX: null,
   captureFrame: null,
   introDialogueActive: false,
   introDialogueStartedAt: 0,
@@ -3281,6 +3290,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           const half = player.height / 2;
           newY = Math.max(-TUTORIAL_MOVE_Y_LIMIT_PX - half, Math.min(TUTORIAL_MOVE_Y_LIMIT_PX - half, newY));
           newX = Math.max(TUTORIAL_MOVE_X_MIN_PX - player.width / 2, newX);
+          // 台本の都合で「ここまで」を作る透明壁(会話中に区域境界へ着かせない等)。
+          const limitX = get().m0AdvanceLimitX;
+          if (limitX !== null) newX = Math.min(limitX - player.width / 2, newX);
         }
         // ステージ2(研究所・横長廊下): 上下固定(M0チュートリアルと同じクランプ方式)。プレイヤー中心yを
         // ±LAB_CORRIDOR_Y_LIMIT_PX に数値クランプ(社長承認M2_LAB_CORRIDOR_SPEC.md)。敵は対象外。Xは無制限。
@@ -9151,9 +9163,62 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // 拠点候補地(仕様10): サークル内滞在を計測。10秒で制圧→武器商人がその地点へ移動し、元の商人地点は候補に戻る。
   updateSuppression: (deltaTime) => {
-    // チュートリアル: 随行NPC(escorts流用)は拠点前進/射撃/制圧を一切しない(移動はuseGameLoopの
+    // チュートリアル: 随行NPC(escorts流用)は拠点前進/制圧をしない(移動は通常 useGameLoop の
     // 追従チェーンが担当・社長指示v0.25.1823)。
-    if (get().farBackdrop === 'tutorial') return [];
+    // **ただし敵が居る間だけは前に出て積極的に撃つ**(社長指示v0.25.2294)。
+    // **ダメージは0=完全に演出**(社長指示v0.25.2293「味方は演出」)。プレイヤーが倒した実感を奪わない。
+    if (get().farBackdrop === 'tutorial') {
+      const st = get();
+      if (!st.escorts.length || !st.enemies.length) return [];
+      const p = st.player;
+      const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+      const now = st.gameTime;
+      // 狙うのはプレイヤーに一番近い敵(台本で出す敵は基本1体)。
+      let target: Enemy | undefined; let best = Infinity;
+      for (const e of st.enemies) {
+        const d2 = (e.x + e.width / 2 - pcx) ** 2 + (e.y + e.height / 2 - pcy) ** 2;
+        if (d2 < best) { best = d2; target = e; }
+      }
+      if (!target) return [];
+      const tx = target.x + target.width / 2, ty = target.y + target.height / 2;
+      const fx = tx - pcx, fy = ty - pcy;
+      const fl = Math.hypot(fx, fy) || 1;
+      const shots: { x: number; y: number; dx: number; dy: number }[] = [];
+      let changed = false;
+      const nextEsc = st.escorts.map((esc, i) => {
+        // **前に出る**: プレイヤーと敵の間、敵寄りに並ぶ(2人が横に開く)。
+        const ax = pcx + (fx / fl) * (M0_ESCORT_ADVANCE_PX + i * 40);
+        const ay = pcy + (fy / fl) * (M0_ESCORT_ADVANCE_PX + i * 40) + (i === 0 ? -24 : 24);
+        const dx = ax - esc.x, dy = ay - esc.y;
+        const dist = Math.hypot(dx, dy);
+        let { x, y, fireAt, face } = esc;
+        if (dist > 4) {
+          const k = Math.min(1, (ESCORT_SPEED * deltaTime) / dist);
+          x = esc.x + dx * k; y = esc.y + dy * k; changed = true;
+        }
+        if (now >= fireAt) {
+          fireAt = now + ESCORT_FIRE_INTERVAL_MS;
+          let sdx = tx - x, sdy = ty - y; const sl = Math.hypot(sdx, sdy) || 1; sdx /= sl; sdy /= sl;
+          shots.push({ x, y, dx: sdx, dy: sdy });
+          face = (sdx < 0 ? -1 : 1) as 1 | -1;
+          changed = true;
+        }
+        return { ...esc, x, y, fireAt, face, moving: dist > 4 };
+      });
+      if (changed) set({ escorts: nextEsc });
+      for (const sh of shots) {
+        get().addProjectile({
+          id: `proj-m0-escort-${Math.floor(now)}-${Math.random().toString(36).slice(2, 6)}`,
+          x: sh.x - 4.5, y: sh.y - 30, width: 9, height: 9,
+          speed: 680, damage: 0, // **0=演出のみ**。当たっても減らない(社長指示v0.25.2293)
+          direction: { x: sh.dx, y: sh.dy },
+          weaponType: 'handgun', weaponKey: 'escort',
+          duration: 1200, createdAt: Date.now(),
+          passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
+        });
+      }
+      return shots.map(sh => ({ x: sh.x, y: sh.y }));
+    }
     const state = get();
     // 洋館通路(corridorMode・v0.25.2128): 拠点システムなし。護衛は入場時の横一列の隊形のまま
     // プレイヤーと並走して上へ歩く。v0.25.2139(社長報告「付いてくるだけで攻撃しない」): 通常拠点護衛と
@@ -10320,6 +10385,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 他ステージは常に全解禁。
         m0Unlocked: farBackdrop === 'tutorial' ? { melee: false, crit: false } : { melee: true, crit: true },
         m0MeleeHits: 0,
+        m0AdvanceLimitX: farBackdrop === 'tutorial' ? M0_CONVO_ADVANCE_LIMIT_X : null,
         gameReturned: false,
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,

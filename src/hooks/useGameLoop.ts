@@ -46,7 +46,8 @@ import {
   FIRST_AID_KIT_THROW_DAMAGE, MINE_DAMAGE,
   PHASER_INDEX, BASE_SOLDIER_COUNT,
   TUTORIAL_MOVE_X_MIN_PX,
-  TUTORIAL_MOVE_Y_LIMIT_PX
+  TUTORIAL_MOVE_Y_LIMIT_PX,
+  M0_FORCED_CRIT_AT_HIT
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -2988,6 +2989,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             m0PrevHpRef.current = useGameStore.getState().player.health;
           }
 
+          // 開幕会話が「積まれ、流れ終わった」か。M0の台本はここを起点に動く。
+          const m0ConvoDone = tutorialConvoQueuedRef.current && st.npcDialogueQueue.length === 0 && st.npcDialogue === null;
+          // 会話が終わるまでは区域境界(1500)の手前で止める(社長指示v0.25.2294)。終わったら解放。
+          if (m0ConvoDone && st.m0AdvanceLimitX !== null) useGameStore.setState({ m0AdvanceLimitX: null });
+
           // 教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291)。
           // 一本道で戻れないので「xを通過したら発火」で順序が保証される。判定は純関数 `nextM0Beat`。
           // 付随イベント=敵を1体だけ湧かせる(M0は自動湧きを全停止済み=v0.25.1814なので、
@@ -2999,9 +3005,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playerLevel: st.player.level,
               popupOpen: st.tutorialPopup !== null,
               menuOpen: st.showShopMenu || st.showUpgradeMenu,
-              // 開幕会話が「積まれ、流れ終わった」か。M0は自動湧きが無いので、生きている敵=台本で出した敵。
-              convoDone: tutorialConvoQueuedRef.current && st.npcDialogueQueue.length === 0 && st.npcDialogue === null,
+              // M0は自動湧きが無いので、生きている敵=台本で出した敵。
+              convoDone: m0ConvoDone,
               scriptedEnemyAlive: st.enemies.length > 0,
+              critUnlocked: st.m0Unlocked.crit,
               fired: m0BeatsFiredRef.current,
             });
             if (beat) {
@@ -3023,6 +3030,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 addEnemy(e);
                 // 射撃ビートだけ、弾を「**ちょうど倒せて、ちょうど切れる**」量に詰め直す(社長台本v0.25.2293)。
                 // 偶然に頼らず、次が近接になる理由を台本側で作る。装填のみ・予備弾は0。
+                // 近接教習の相手は「**3発当てるまで落ちない**」体力にする(社長台本v0.25.2293/2294)。
+                // 3発目が強制クリティカル=そのままフィニッシュ教習へ繋がるので、その前に倒れてしまうと
+                // 台本が途切れる。近接1発ぶんのダメージ×(強制クリまでの発数+1)を持たせる。
+                if (beat.id === 'melee') {
+                  const mw = st.player.weapons.find(w => w.isMelee);
+                  e.health = e.maxHealth = Math.max(1, mw?.damage ?? 20) * (M0_FORCED_CRIT_AT_HIT + 1);
+                }
                 if (beat.id === 'shoot') {
                   const gun = st.player.weapons.find(w => !w.isMelee && w.ammoType);
                   if (gun) {
@@ -3106,7 +3120,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }));
             }
           }
-          if (st.escorts.length) {
+          // 敵が居る間は追従しない=**2人が前に出て撃つ**(updateSuppression のM0分岐が動かす)。
+          // ここで追従チェーンも動かすと、前へ出た2人を毎フレーム引き戻して押し合いになる。
+          if (st.escorts.length && st.enemies.length === 0) {
             const pcx0 = st.player.x + st.player.width / 2;
             const pcy0 = st.player.y + st.player.height / 2;
             const next = stepFollowChain({ x: pcx0, y: pcy0 }, st.escorts, deltaTime, st.player.speed * FOLLOW_SPEED_MULT);

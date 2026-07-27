@@ -67,7 +67,7 @@ describe('台帳の体裁(全チュートリアル共通)', () => {
 const beatGate = (over: Partial<Parameters<typeof nextM0Beat>[0]> = {}): Parameters<typeof nextM0Beat>[0] => ({
   playerX: 0, playerLevel: 1, popupOpen: false, menuOpen: false,
   // 既定=「会話が終わり、台本の敵は片付いている」状態。位置ビートの検査をこれで邪魔しない。
-  convoDone: true, scriptedEnemyAlive: false,
+  convoDone: true, scriptedEnemyAlive: false, critUnlocked: false,
   fired: new Set<M0Beat>(), ...over,
 });
 
@@ -89,11 +89,11 @@ describe('nextM0Beat(教習ビートの発火)', () => {
   it('順に進めば定義順に出る', () => {
     const fired = new Set<M0Beat>();
     const order: M0Beat[] = [];
-    for (const playerX of [0, 0, 1200, 1500, 3000, 3160]) {
-      const beat = nextM0Beat(beatGate({ playerX, fired }));
+    for (const playerX of [0, 0, 0, 1200, 1500, 3000, 3160]) {
+      const beat = nextM0Beat(beatGate({ playerX, fired, critUnlocked: fired.has('melee') }));
       if (beat) { order.push(beat.id); fired.add(beat.id); }
     }
-    expect(order).toEqual(['shoot', 'melee', 'counter', 'area', 'hunter', 'ammo']);
+    expect(order).toEqual(['shoot', 'melee', 'finish', 'counter', 'area', 'hunter', 'ammo']);
   });
 
   it('ポップアップ/メニューが開いている間は出さない(重ねない)', () => {
@@ -108,12 +108,28 @@ describe('nextM0Beat(教習ビートの発火)', () => {
   it('走り抜けて複数が同時に条件を満たしても、定義順に1つずつ出る', () => {
     const fired = new Set<M0Beat>();
     const order: M0Beat[] = [];
-    for (let i = 0; i < 8; i++) {
-      const beat = nextM0Beat(beatGate({ playerX: 3200, fired })); // いきなり最奥
+    for (let i = 0; i < 10; i++) {
+      const beat = nextM0Beat(beatGate({ playerX: 3200, fired })); // いきなり最奥(クリ未解禁)
       if (!beat) break;
       order.push(beat.id); fired.add(beat.id);
     }
+    // finish は「崩した瞬間」に出るものなので、最奥へ飛んだ場合は見送られる(後続は塞がない)。
     expect(order).toEqual(['shoot', 'melee', 'counter', 'area', 'hunter', 'ammo']);
+  });
+
+  it('近接3発目の強制クリティカルの直後にフィニッシュを出す(近接とは別枠・2回に分ける)', () => {
+    const fired = new Set<M0Beat>(['shoot', 'melee']);
+    expect(nextM0Beat(beatGate({ fired, critUnlocked: false }))).toBeNull();      // まだ崩していない
+    expect(nextM0Beat(beatGate({ fired, critUnlocked: true }))?.id).toBe('finish'); // 崩した瞬間
+  });
+
+  it('フィニッシュは近接を前提にする(近接を教える前に追撃だけ教えない)', () => {
+    expect(M0_BEATS.find(b => b.id === 'finish')!.requires).toBe('melee');
+  });
+
+  it('クリティカルが出ないまま先へ進んでもフィニッシュが後続を塞がない', () => {
+    const fired = new Set<M0Beat>(['shoot', 'melee', 'counter']);
+    expect(nextM0Beat(beatGate({ playerX: 1500, critUnlocked: false, fired }))?.id).toBe('area');
   });
 
   it('レベルが上がったら成長を出す(位置ではなく成長で決まる)', () => {

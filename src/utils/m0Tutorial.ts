@@ -36,7 +36,7 @@ export const shouldShowMoveTutorial = (gate: M0TutorialGate): boolean =>
 //   3000     = デンジャー入場 … ハンター出現(既存の凶悪ハンターと同じ境界)
 // ---------------------------------------------------------------------------
 
-export type M0Beat = 'shoot' | 'melee' | 'counter' | 'levelup' | 'area' | 'hunter' | 'ammo';
+export type M0Beat = 'shoot' | 'melee' | 'finish' | 'counter' | 'levelup' | 'area' | 'hunter' | 'ammo';
 
 /** ビートの定義。順序=この配列の順(必ず前のビートから先に出る)。 */
 export interface M0BeatDef {
@@ -50,6 +50,8 @@ export interface M0BeatDef {
   afterConvo?: boolean;
   /** 台本で出した敵を全部倒した直後に発火する(前のビートの終わり方が入口になる)。 */
   afterEnemyCleared?: boolean;
+  /** 強制クリティカルが出た(=クリティカルが解禁された)直後に発火する。 */
+  afterCritUnlocked?: boolean;
   /** 付随イベント: 敵を1体だけ湧かせる(プレイヤーからの相対位置)。 */
   spawn?: { type: 'zombie' | 'skeleton'; dx: number; dy: number };
   /** ポップアップの前に流す掛け声(左上の通信)。**説明より先に、状況の理由を言う**。 */
@@ -94,6 +96,11 @@ export const M0_BEATS: readonly M0BeatDef[] = [
     ],
     unlock: 'melee',
   },
+  // 近接3発目の**強制クリティカルで敵が崩れた瞬間**に、フィニッシュを別枠で教える
+  // (社長指示v0.25.2294「近接とフィニッシュのチュートリアルは切り分けて。2回に分けて」)。
+  // 敵を出し直さない=目の前で崩れている相手にそのまま追撃させる。
+  // 見送りx: 万一クリティカルが出ないまま先へ進んだ時に、後ろで浮いたまま残らないようにする。
+  { id: 'finish', tutorial: 'm0-finish', afterCritUnlocked: true, requires: 'melee', expireAfterX: 1500 },
   // カウンターは「敵の攻撃を見てから合わせる」ので、melee で攻撃モーションを1度見た後に置く。
   // 近接が解禁されていないとカウンター(=近接を合わせる)は成立しないので、melee を前提にする。
   { id: 'counter', tutorial: 'm0-counter', atX: 1200, requires: 'melee', spawn: { type: 'skeleton', dx: 260, dy: 0 } },
@@ -116,6 +123,8 @@ export interface M0BeatGate {
   convoDone: boolean;
   /** 台本で出した敵が1体でも生きているか(生きている間は次のビートへ進めない)。 */
   scriptedEnemyAlive: boolean;
+  /** クリティカルが解禁済みか(=近接3発目の強制クリティカルが出たか)。 */
+  critUnlocked: boolean;
   /** この出撃で既に出したビート。 */
   fired: ReadonlySet<M0Beat>;
 }
@@ -137,7 +146,8 @@ export const nextM0Beat = (gate: M0BeatGate): M0BeatDef | null => {
     const byConvo = beat.afterConvo === true && gate.convoDone;
     // 「前の台本の敵を片付けたら次」。倒しきるまでは次の説明を被せない。
     const byCleared = beat.afterEnemyCleared === true && !gate.scriptedEnemyAlive;
-    if (byX || byLevel || byConvo || byCleared) return beat;
+    const byCrit = beat.afterCritUnlocked === true && gate.critUnlocked;
+    if (byX || byLevel || byConvo || byCleared || byCrit) return beat;
   }
   return null;
 };

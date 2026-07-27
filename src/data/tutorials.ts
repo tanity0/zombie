@@ -6,7 +6,7 @@
 export type TutorialId =
   | 'move'
   // 訓練(M0)の教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291)。
-  | 'm0-shoot' | 'm0-melee' | 'm0-counter' | 'm0-levelup' | 'm0-area' | 'm0-hunter' | 'm0-ammo'
+  | 'm0-shoot' | 'm0-melee' | 'm0-finish' | 'm0-counter' | 'm0-levelup' | 'm0-area' | 'm0-hunter' | 'm0-ammo'
   | 'phill' | 'scout';
 
 export interface TutorialEntry {
@@ -49,9 +49,20 @@ export const TUTORIALS: TutorialEntry[] = [
     title: '近接',
     lines: [
       '指を離した瞬間(PCはスペース)に、近接で薙ぐ。',
-      '弾を使わない。貼り付かれたらこれで剥がせ。'
+      '弾を使わない。貼り付かれたらこれで剥がせ。',
+      '当て続けろ。手応えが変わる瞬間が来る。'
     ],
     img: 'tutorial/action-melee.mp4',
+    where: '訓練',
+  },
+  {
+    id: 'm0-finish',
+    title: 'フィニッシュ',
+    lines: [
+      'クリティカルが入ると、相手は体勢を崩して動けなくなる。',
+      'その隙にもう一度近接。動けない相手は一撃で仕留まる。'
+    ],
+    img: 'tutorial/action-counter.mp4',
     where: '訓練',
   },
   {
