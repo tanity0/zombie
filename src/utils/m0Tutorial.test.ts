@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_BEATS, M0_PRACTICE_COUNT, type M0Beat } from './m0Tutorial';
 import { AREA_THRESHOLDS } from './enemyUtils';
-import { TUTORIAL_MOVE_X_MIN_PX } from '../store/gameStore';
+import { TUTORIAL_MOVE_X_MIN_PX, COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore';
 import { TUTORIALS, getTutorial } from '../data/tutorials';
 
 const OPEN = { shownThisRun: false, popupOpen: false, menuOpen: false };
@@ -290,6 +290,15 @@ describe('m0AdvanceLimit(関門=ここより先へ進めない前線)', () => {
     }
     // 最奥(3200)に居ても、練習中(敵が生きている)なら何も出ない。
     expect(nextM0Beat(beatGate({ playerX: 3200, fired, scriptedEnemyAlive: true }))).toBeNull();
+  });
+
+  // 社長指摘v0.25.2307「クリティカル演出出る前にチュートリアルポップアップでちゃってる」。
+  // 待ちは「演出が出切る」と「次の一振りが出る前」の間に挟まっている必要がある。
+  // 上限を割ると、崩した相手をフィニッシュで倒してから「崩れた相手にもう一度近接」と説明する羽目になる。
+  it('クリティカルの説明は、演出の後・次の近接が出せるより前に出す', () => {
+    const d = M0_BEATS.find(b => b.id === 'crit')!.delayMs!;
+    expect(d).toBeGreaterThanOrEqual(520);                          // クリの演出(数字/リング)が出切る
+    expect(d).toBeLessThan(COUNTER_WINDOW + COUNTER_COOLDOWN);      // 次の近接(820ms)より前
   });
 
   it('関門は単調増加(戻る前線を作らない)', () => {

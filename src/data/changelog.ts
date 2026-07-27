@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2307',
+    items: [
+      'クリティカルの説明が、クリティカル演出より先に出てしまっていたのを直しました。演出を見てから説明が出ます。',
+      '訓練の冒頭会話からジュンの一行を削りました。',
+    ],
+  },
+  {
     version: '0.25.2306',
     items: [
       '射撃チュートリアルの手本を実機収録に差し替えました。弾が減って0になるところまで映っています。',
