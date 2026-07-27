@@ -4934,11 +4934,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           setSubWeaponCooldown('marksman-trap', gameTime + MARKSMAN_TRAP_COOLDOWN_MS);
         }
 
+        // バグ修正(社長報告v0.25.2318「途中から出なくなる」・案B採用): 旧実装は発動条件に
+        // 「場にマガジンが落ちていないこと」を課していたが、ピックアップには寿命が無く、
+        // PICKUP_HARD_CAPの間引きも experience/strap しか消さない(quick-magazineは重要枠で
+        // 無期限保持)ため、一度拾い損ねて置き去りにすると**そのランで二度と発動しない**状態に
+        // なっていた(拾得は接触判定のみ・マグネットスキルは弾薬専用で効かない)。
+        // → ガードを外し、投げ直す時に古いマガジンを消す方式へ。場には常に最新の1個だけ。
         if (
           subWeaponPlayer.subWeapons.includes('striker-quick-mag') &&
           !subWeaponBlockedByKatana(subWeaponPlayer, 'striker-quick-mag') &&
-          gameTime >= (subWeaponPlayer.subWeaponCooldowns['striker-quick-mag'] ?? 0) &&
-          !useGameStore.getState().pickups.some(p => p.type === 'quick-magazine')
+          gameTime >= (subWeaponPlayer.subWeaponCooldowns['striker-quick-mag'] ?? 0)
         ) {
           const active = getActiveGun(subWeaponPlayer);
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['striker-quick-mag'] ?? 1));
@@ -4966,6 +4971,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               + (dir.y / dirMag) * STRIKER_QUICK_MAG_THROW_DISTANCE;
             const fromX = subWeaponPlayer.x + subWeaponPlayer.width / 2 - 8;
             const fromY = subWeaponPlayer.y + subWeaponPlayer.height / 2 - 8;
+            // 案B: 投げる直前に前回の置き去りマガジンを消す(場に残るのは常に最新の1個)。
+            useGameStore.setState(s => (
+              s.pickups.some(p => p.type === 'quick-magazine')
+                ? { pickups: s.pickups.filter(p => p.type !== 'quick-magazine') }
+                : {}
+            ));
             addPickup({
               id: `pickup-quick-mag-${Date.now()}`,
               x: px - 8,
