@@ -55,6 +55,8 @@ import {
   detectWallBreach, isFirstWallBreach, isApproachingWall, markWallBreached, markSelfDeepest,
 } from '../utils/wallProgress';
 import { pickAmmoDropType } from '../utils/ammoDrop';
+// マークスマンのトラップの捕獲判定(体が円に触れたら掛かる・社長裁定v0.25.2326「a」)。
+import { selectTrapTargets } from '../utils/marksmanTrap';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { shouldSpawnAirdrop } from '../utils/ammoAirdrop';
 import {
@@ -6433,16 +6435,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             removeProjectile(trap.id);
             continue;
           }
-          const targets = useGameStore.getState().enemies
-            .filter(enemy => enemy.type !== 'reaper' || enemy.reaperChaser)
-            .filter(enemy => !alreadyHit.has(enemy.id))
-            .map(enemy => ({
-              enemy,
-              dist: Math.hypot(enemy.x + enemy.width / 2 - tx, enemy.y + enemy.height / 2 - ty)
-            }))
-            .filter(hit => hit.dist <= radius)
-            .sort((a, b) => a.dist - b.dist)
-            .slice(0, remainingTargets);
+          // 社長報告v0.25.2326(案A): 旧実装は**敵の中心**が半径内に入るまで反応せず、体が円に食い込んでも
+          // 掛からなかった(見た目の円と食い違い・大型ほど目減り)。判定は marksmanTrap.ts の純関数へ
+          // 切り出し、**体が円に触れたら捕獲**へ変更した。
+          const targets = selectTrapTargets(
+            useGameStore.getState().enemies, tx, ty, radius, remainingTargets, alreadyHit,
+          ).map(enemy => ({ enemy }));
           if (targets.length === 0) continue;
           spawnRing(tx, ty, 8, radius + 12, 'rgba(56,189,248,0.9)', 3, 360);
           spawnBurst(tx, ty, '#38bdf8', 14);
