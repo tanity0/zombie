@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2316',
+    items: [
+      '武将セット装備で歩くと、一瞬だけ既定の見た目に戻ってしまう不具合を修正しました(銃・刀どちらも)。'
+    ]
+  },
+  {
     version: '0.25.2315',
     items: [
       'クリア(任務達成)時のリザルトを「OK」の一択にしました(死亡・撤退時は従来どおり二択)。'

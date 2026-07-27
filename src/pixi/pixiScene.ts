@@ -47,6 +47,7 @@ import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
+import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
 import { getSpotConeTexture, getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
@@ -824,11 +825,9 @@ const DOG_SPRITE_SCALE = 1 / 3;
 const usesFiveFramePingPong = (p: Player): boolean =>
   p.characterClass === 'necromancer' || p.characterClass === 'warrior' ||
   p.characterClass === 'rogue' || p.characterClass === 'mage';
-const playerWalkSequence = (p: Player): number[] =>
+const playerWalkSequence = (p: Player): readonly number[] =>
   // 5コマ勢は端(0,4)を重複させず往復してループ=滑らかな折り返し。
-  usesFiveFramePingPong(p)
-    ? [0, 1, 2, 3, 4, 3, 2, 1]
-    : [0, 1];
+  usesFiveFramePingPong(p) ? WALK_SEQ_5 : WALK_SEQ_2;
 // 歩行アニメの1周期(ms)。5コマ×ピンポン勢はコマ数が多いぶん、他クラスと同じ460msだと
 // コマ送りが速すぎるため専用に長め(社長指示「周期を変えて」)。
 const PINGPONG_WALK_CYCLE_MS = 900;
@@ -847,13 +846,17 @@ const usesRunAnimation = (p: Player): boolean =>
 // スカベンジャー(necromancer=striker接頭辞)=5コマ前方ループ(いずれも折り返さない=社長指示)。
 // マークスマン(mage)=5コマ前方ループ(社長指示v0.25.1639「走りピンポンやめる」。旧=歩きと同じ8段ping-pong)。
 // ※歩きのコマ並び(playerWalkSequence)は不変=ピンポンのまま。走りだけ前方ループにする。
-const playerRunSequence = (p: Player): number[] =>
-  p.characterClass === 'warrior' ? [0, 1, 2, 3, 4, 5]
-  : [0, 1, 2, 3, 4];
+const playerRunSequence = (p: Player): readonly number[] =>
+  p.characterClass === 'warrior' ? RUN_SEQ_6 : RUN_SEQ_5;
 const playerWalkFrame = (p: Player, now: number, walking: boolean, running = false): number => {
   if (!walking) return 0;
   const runAnim = running && usesRunAnimation(p);
-  const sequence = runAnim ? playerRunSequence(p) : playerWalkSequence(p);
+  // 武将セットフル装備中は playerTextureName が**武将立ち絵(3コマ)を優先**する(走り絵も無い)。
+  // クラス絵用の並び(5コマ/走り)をそのまま渡すと存在しないコマ番号を要求してしまい、
+  // drawPlayer のフォールバックで既定スキン(player.png)が混入する(v0.25.2316修正)。
+  // 並びだけ3コマ用に差し替え、周期(=歩行bobと共有するクロック)は据え置く。
+  const sequence = hasFullWarlordSet(p.equipment) ? WALK_SEQ_WARLORD
+    : runAnim ? playerRunSequence(p) : playerWalkSequence(p);
   const cycle = runAnim ? PLAYER_RUN_CYCLE_MS : playerWalkCycleMs(p);
   const index = Math.floor((now % cycle) / (cycle / sequence.length));
   return sequence[index] ?? 0;

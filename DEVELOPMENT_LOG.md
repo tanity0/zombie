@@ -1,5 +1,35 @@
 # Development Log
 
+## v0.25.2316 — 武将スキンの歩行に既定スキンが混入するバグ修正【2026-07-27 16:01 JST】
+- 報告(社長): 「プレイヤーの歩行アニメで、武将スキン装備時に1フレームだけ既定スキンのテクスチャが
+  混入している。静止時は正常、歩行中のみ周期的に発生。」
+- **原因**: 立ち絵テクスチャ名は `playerTextureName()` が `${prefix}-${frame}` で組み立て、
+  `frame` は `playerWalkFrame()` が**キャラクタークラスの**コマ並びから引く。全4クラスは5コマ
+  ピンポン `[0,1,2,3,4,3,2,1]`(周期900ms)だが、**武将立ち絵は3コマしか無い**
+  (`player-warlord-{gun,katana}-walk-0..2`)。よって index 3/4/5(=frame 3,4,3)で
+  `player-warlord-*-walk-3/-4` を要求 → `getTexture()` が null → `drawPlayer` の
+  `?? getTexture('player')` が効いて**既定スキン `player.png` が描かれていた**。
+  1周期8スロット中3スロット連続=900ms中338msが既定スキン(連続なので「1フレームの混入」に見える)。
+  走り中(レバー全開)はさらに悪く、`playerRunSequence` の frame 3/4 が欠落=560ms中224ms。
+  ※`playerTextureName` は武将フル装備時に待機絵/走り絵をスキップするため、**静止時は frame 0 固定で正常**
+  (報告どおりの症状と一致)。
+- **テクスチャID全件ダンプ(検証)**: gun/katana とも index 0,1,2,6,7 → OK / index 3,4,5 → MISSING。
+  参考にクラス絵(magnum)は 0/8 欠落=正常。
+- **小烏丸(赤武将)も同経路**: `warlordKatana = warlordFull && hasMurasame(p)` で
+  `player-warlord-katana-walk-*` という**別シート**(赤)を引く。**tintではない**
+  (プレイヤースプライトに tint を当てている箇所は無い)。コマ数も3で同一のため**同じ壊れ方**をしていた。
+- **修正**: 武将立ち絵使用中は3コマ用の並び `WALK_SEQ_WARLORD=[0,1,2,1]` を使う
+  (接地A→中割り→接地B→中割り=5コマ勢と同じ「端を重複させない往復」。素材を実際に確認して
+  0/2=接地・1=中割りであることを確認済み)。走り中も武将は歩き立ち絵なので同じ並びを使う。
+  **周期(900ms / 走り560ms)は据え置き**=歩行bob・スカッシュと同じクロックのまま。1ストライド/1周期も不変。
+- **教訓の機械化**(CLAUDE.md 実装精度の規律6): コマ並びを純データ `src/pixi/playerWalkSheets.ts` に集約し、
+  `playerWalkSheets.test.ts` が **`public/sprites` の実在コマと突き合わせ**て「並びが実在しないコマ番号を
+  指さない」ことを全シート(歩き4+走り4+武将2)で固定。武将の並びをわざと5コマ用に戻すと落ちることを確認済み。
+- 変更ファイル: `src/pixi/playerWalkSheets.ts`(新規) / `src/pixi/playerWalkSheets.test.ts`(新規) /
+  `src/pixi/pixiScene.ts`(並びの参照先を差し替え+武将分岐)。
+- 検証: `npm run typecheck` 通過 / `npm run lint` エラー0 / `npx vitest run src/pixi` 18 passed。
+- 負荷: 1/10(配列の参照先が変わるだけ。描画呼び出し数は不変)。
+
 ## v0.25.2315 — クリア時リザルトを「OK」の一択に【2026-07-27 15:33 JST】
 - 指示(社長): 「クリアしたときのリザルトで、もう一度プレイする/メニューに戻る の二択になっているが、
   これをやめて一択で OK にして」。
