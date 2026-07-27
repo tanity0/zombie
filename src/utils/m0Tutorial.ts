@@ -38,6 +38,9 @@ export const shouldShowMoveTutorial = (gate: M0TutorialGate): boolean =>
 
 export type M0Beat = 'shoot' | 'melee' | 'crit' | 'finish' | 'counter' | 'levelup' | 'area' | 'hunter' | 'ammo';
 
+/** 教習1本あたりに倒させる数(社長指示v0.25.2300「3体ずつくらい」)。1体ずつ順番に出す。 */
+export const M0_PRACTICE_COUNT = 3;
+
 /** ビートの定義。順序=この配列の順(必ず前のビートから先に出る)。 */
 export interface M0BeatDef {
   id: M0Beat;
@@ -52,8 +55,12 @@ export interface M0BeatDef {
   afterEnemyCleared?: boolean;
   /** 強制クリティカルが出た(=クリティカルが解禁された)直後に発火する。 */
   afterCritUnlocked?: boolean;
-  /** 付随イベント: 敵を1体だけ湧かせる(プレイヤーからの相対位置)。 */
-  spawn?: { type: 'zombie' | 'skeleton' | 'plant'; dx: number; dy: number };
+  /**
+   * 付随イベント: 敵を出す。**`count` 体を一気にではなく1体ずつ**出す(社長指示v0.25.2300
+   * 「それぞれのチュートリアルで3体ずつくらい倒させて練習させてあげる。一気に出さずに順番に」)。
+   * 倒すたびに次が出る。全部倒し切るまで次のビートへは進まない。
+   */
+  spawn?: { type: 'zombie' | 'skeleton' | 'plant'; dx: number; dy: number; count?: number };
   /** ポップアップの前に流す掛け声(左上の通信)。**説明より先に、状況の理由を言う**。 */
   callouts?: readonly { speaker: string; text: string }[];
   /** このビートで解禁する要素(社長指示v0.25.2293「解禁されるまで封印」)。 */
@@ -117,15 +124,12 @@ export const M0_BEATS: readonly M0BeatDef[] = [
   // 見送りx: 万一クリティカルが出ないまま先へ進んだ時に、後ろで浮いたまま残らないようにする。
   { id: 'crit', tutorial: 'm0-crit', afterCritUnlocked: true, requires: 'melee', expireAfterX: 1500 },
   { id: 'finish', tutorial: 'm0-finish', afterCritUnlocked: true, requires: 'crit', expireAfterX: 1500 },
-  // カウンターは「敵の攻撃を見てから合わせる」ので、melee で攻撃モーションを1度見た後に置く。
-  // 近接が解禁されていないとカウンター(=近接を合わせる)は成立しないので、melee を前提にする。
-  // requires は **'melee'**('finish' ではない)。関門(gateX)を持つビートの前提に「出ないことがありうる
-  // ビート」を置くと、そのビートが出ないまま**壁が永久に残ってソフトロック**する。crit/finish は
-  // 「3発当てる」が前提=理屈上は必ず起きるが、保険としてここは melee に留める。
   // **カウンター=飛んでくる弾を近接で弾き返す**技(反射弾は10倍)。社長指摘v0.25.2299
   // 「近接フィニッシュとカウンターがごっちゃ/カウンターの時は遠距離弾の敵が必要」。
   // 近接で殴りに行く相手(skeleton)だと**弾が飛んでこない**ので教習が成立しない。
   // → 相手は**遠距離から撃つ型(plant)**にし、距離も離す(plantはほぼ据え置きの砲台)。
+  // requires は **'melee'**('finish' ではない): 関門(gateX)を持つビートの前提に「出ないことがありうる
+  // ビート」を置くと、そのビートが出ないまま**壁が永久に残ってソフトロック**する。
   { id: 'counter', tutorial: 'm0-counter', gateX: 1100, afterEnemyCleared: true, requires: 'melee', spawn: { type: 'plant', dx: 300, dy: 0 } },
   // 上の3体を倒していれば結晶が溜まってレベルが上がる。位置ではなく成長で発火。
   { id: 'levelup', tutorial: 'm0-levelup', atLevel: 2, expireAfterX: 3000 },
@@ -146,18 +150,17 @@ export interface M0BeatGate {
   convoDone: boolean;
   /** 台本で出した敵が1体でも生きているか(生きている間は次のビートへ進めない)。 */
   scriptedEnemyAlive: boolean;
+  /**
+   * 今の教習で**まだ出していない残り**の数。1体ずつ出すので、倒した直後は一瞬「敵0体」になる。
+   * これを見ないと、その隙に次のビートが始まってしまう(=練習が1体で終わる)。
+   */
+  scriptedWaveRemaining: number;
   /** クリティカルが解禁済みか(=近接3発目の強制クリティカルが出たか)。 */
   critUnlocked: boolean;
   /** この出撃で既に出したビート。 */
   fired: ReadonlySet<M0Beat>;
 }
 
-/**
- * 今出すべきビートを1つ返す(無ければ null)。
- * **未発火のうち定義順で最も早い、条件を満たしたもの**を返す。ポップアップは表示中に
- * `popupOpen` で塞がるので、仮に複数が同時に条件を満たしても**定義順に1つずつ**出る。
- * `expireAfterX` を越えた未発火ビートは見送る(後続を塞がない)。
- */
 /**
  * 今、プレイヤーが越えられない前線(px)。未発火ビートのうち**最初の関門**。
  * これが無いと、教習中の敵を置き去りにして先へ走れてしまう(台本が崩れる)。
@@ -171,6 +174,12 @@ export const m0AdvanceLimit = (fired: ReadonlySet<M0Beat>): number | null => {
   return null;
 };
 
+/**
+ * 今出すべきビートを1つ返す(無ければ null)。
+ * **未発火のうち定義順で最も早い、条件を満たしたもの**を返す。ポップアップは表示中に
+ * `popupOpen` で塞がるので、仮に複数が同時に条件を満たしても**定義順に1つずつ**出る。
+ * `expireAfterX` を越えた未発火ビートは見送る(後続を塞がない)。
+ */
 export const nextM0Beat = (gate: M0BeatGate): M0BeatDef | null => {
   if (gate.popupOpen || gate.menuOpen) return null; // 重ねない・裏で出さない
   for (const beat of M0_BEATS) {
@@ -183,7 +192,8 @@ export const nextM0Beat = (gate: M0BeatGate): M0BeatDef | null => {
     const byLevel = beat.atLevel !== undefined && gate.playerLevel >= beat.atLevel;
     const byConvo = beat.afterConvo === true && gate.convoDone;
     // 「前の台本の敵を片付けたら次」。倒しきるまでは次の説明を被せない。
-    const byCleared = beat.afterEnemyCleared === true && !gate.scriptedEnemyAlive;
+    // 「前の台本の敵を**全部**片付けたら次」。1体ずつ出す途中の空白では進めない。
+    const byCleared = beat.afterEnemyCleared === true && !gate.scriptedEnemyAlive && gate.scriptedWaveRemaining <= 0;
     const byCrit = beat.afterCritUnlocked === true && gate.critUnlocked;
     if (byX || byLevel || byConvo || byCleared || byCrit) return beat;
   }

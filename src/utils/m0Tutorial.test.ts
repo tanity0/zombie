@@ -1,7 +1,7 @@
 // 訓練(M0)「移動」チュートリアルの発火条件。**M0は毎出撃で出る**(社長指示v0.25.2266)ことと、
 // 台帳(src/data/tutorials.ts)の体裁を固定する。
 import { describe, it, expect } from 'vitest';
-import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_BEATS, type M0Beat } from './m0Tutorial';
+import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_BEATS, M0_PRACTICE_COUNT, type M0Beat } from './m0Tutorial';
 import { AREA_THRESHOLDS } from './enemyUtils';
 import { TUTORIALS, getTutorial } from '../data/tutorials';
 
@@ -67,7 +67,7 @@ describe('台帳の体裁(全チュートリアル共通)', () => {
 const beatGate = (over: Partial<Parameters<typeof nextM0Beat>[0]> = {}): Parameters<typeof nextM0Beat>[0] => ({
   playerX: 0, playerLevel: 1, popupOpen: false, menuOpen: false,
   // 既定=「会話が終わり、台本の敵は片付いている」状態。位置ビートの検査をこれで邪魔しない。
-  convoDone: true, scriptedEnemyAlive: false, critUnlocked: false,
+  convoDone: true, scriptedEnemyAlive: false, scriptedWaveRemaining: 0, critUnlocked: false,
   fired: new Set<M0Beat>(), ...over,
 });
 
@@ -79,6 +79,14 @@ describe('nextM0Beat(教習ビートの発火)', () => {
   it('会話が終わっても、関門まで歩かないと射撃は始まらない(倒した直後に次が来ない=一拍)', () => {
     expect(nextM0Beat(beatGate({ playerX: 0, convoDone: true }))).toBeNull();
     expect(nextM0Beat(beatGate({ playerX: 300, convoDone: true }))?.id).toBe('shoot');
+  });
+
+  // 1体ずつ出すので、倒した直後は一瞬「敵0体」になる。そこで次のビートを出してしまうと
+  // 練習が1体で打ち切られる(社長指示v0.25.2300「3体ずつ・一気に出さずに順番に」)。
+  it('練習の残りがある間は、敵0体の一瞬でも次へ進まない', () => {
+    const fired = new Set<M0Beat>(['shoot']);
+    expect(nextM0Beat(beatGate({ playerX: 700, fired, scriptedEnemyAlive: false, scriptedWaveRemaining: 2 }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 700, fired, scriptedEnemyAlive: false, scriptedWaveRemaining: 0 }))?.id).toBe('melee');
   });
 
   it('台本の敵が生きている間は次(近接)へ進まない', () => {
@@ -204,6 +212,18 @@ describe('M0_BEATS の不変条件', () => {
 
   it('封印を解くビートより先に、それを使う教習が出ない(カウンターは近接を前提にする)', () => {
     expect(M0_BEATS.find(b => b.id === 'counter')!.requires).toBe('melee');
+  });
+
+  it('練習を伴う教習は複数体(既定3体)を順に出す', () => {
+    for (const id of ['shoot', 'melee', 'counter'] as const) {
+      const b = M0_BEATS.find(x => x.id === id)!;
+      expect(b.spawn, id).toBeDefined();
+      expect(b.spawn!.count ?? M0_PRACTICE_COUNT, id).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('カウンターの相手は遠距離型(弾が飛んでこないと弾き返す教習にならない)', () => {
+    expect(M0_BEATS.find(b => b.id === 'counter')!.spawn!.type).toBe('plant');
   });
 
   it('カウンターは近接より後(敵の攻撃モーションを一度見せてから教える)', () => {

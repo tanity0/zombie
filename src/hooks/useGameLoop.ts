@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
-import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, type M0Beat } from '../utils/m0Tutorial';
+import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
@@ -874,6 +874,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const m0PrevHpRef = useRef(-1);
   // delayMs 付きビートの「いつ出すか」(演出を見せ切ってから説明を出すための待ち)。
   const m0PendingRef = useRef<{ id: M0Beat; at: number } | null>(null);
+  // 教習の「まだ出していない残り」(社長指示v0.25.2300「3体ずつ・一気に出さずに順番に」)。
+  // 倒すたびに次を1体出す。全部倒し切るまで次のビートへ進ませない。
+  const m0WaveRef = useRef<{ spawn: NonNullable<M0BeatDef['spawn']>; remaining: number } | null>(null);
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -1845,6 +1848,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           m0BeatsFiredRef.current = new Set(); // M0の教習ビートも新ランで最初から(毎出撃で出す=社長指示v0.25.2266)
           m0PrevHpRef.current = -1;            // 強制回復の被弾検出も新ランでリセット
           m0PendingRef.current = null;         // 演出待ちも新ランでリセット
+          m0WaveRef.current = null;            // 練習の残りも新ランでリセット
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
           hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0 };
           hunterKillsRef.current = [];
@@ -2969,6 +2973,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ついてくる。軍人、衛生兵の順番」)。escorts流用・拠点前進/射撃はupdateSuppression側で停止済み。
         if (tutorialStage) {
           const st = useGameStore.getState();
+          // 練習用の敵を1体出す(台本のHP設定つき)。ウェーブの初回も補充も同じ規則で出す
+          // ——ここを分けると「2体目以降だけHPが素のまま」という食い違いが生まれる。
+          const spawnM0Practice = (spawn: NonNullable<M0BeatDef['spawn']>, cx: number, cy: number) => {
+            const p = useGameStore.getState().player;
+            const e = spawnEnemyAt(spawn.type, cx + spawn.dx, cy + spawn.dy, newGameTime);
+            if (spawn.type === 'skeleton') {
+              // 近接教習: 「**3発当てるまで落ちない**」体力。3発目が強制クリティカル=そのまま
+              // フィニッシュ教習へ繋がるので、その前に倒れると台本が途切れる。
+              const mw = p.weapons.find(w => w.isMelee);
+              e.health = e.maxHealth = Math.max(1, mw?.damage ?? 20) * (M0_FORCED_CRIT_AT_HIT + 1);
+            } else if (spawn.type === 'zombie') {
+              // 射撃教習: 「持っている弾でちょうど落ちる」体力。
+              const gun = p.weapons.find(w => !w.isMelee && w.ammoType);
+              if (gun) e.health = e.maxHealth = Math.max(1, gun.damage) * M0_SHOOT_ROUNDS;
+            }
+            addEnemy(e);
+          };
           // 操作説明ポップアップ「移動」(v0.25.1830〜)。
           // 判定は純関数 `shouldShowMoveTutorial`(テスト可能な形に切り出してある)。
           // **M0は毎出撃で出す**(社長指示v0.25.2266「m0はずっとチュートリアル出る」)。
@@ -3006,6 +3027,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (st.m0AdvanceLimitX !== limit) useGameStore.setState({ m0AdvanceLimitX: limit });
           }
 
+          // 練習の補充: 台本で出した敵を倒したら、残りがある限り**次を1体だけ**出す
+          // (社長指示v0.25.2300「一気に出さずに順番に」)。ポップアップ表示中は出さない
+          // (説明を読んでいる裏で湧かせない)。
+          if (m0WaveRef.current && m0WaveRef.current.remaining > 0 && st.enemies.length === 0 && !st.tutorialPopup) {
+            const w = m0WaveRef.current;
+            w.remaining -= 1;
+            spawnM0Practice(w.spawn, st.player.x + st.player.width / 2, st.player.y + st.player.height / 2);
+          }
+
           // 教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291)。
           // 一本道で戻れないので「xを通過したら発火」で順序が保証される。判定は純関数 `nextM0Beat`。
           // 付随イベント=敵を1体だけ湧かせる(M0は自動湧きを全停止済み=v0.25.1814なので、
@@ -3020,6 +3050,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // M0は自動湧きが無いので、生きている敵=台本で出した敵。
               convoDone: m0ConvoDone,
               scriptedEnemyAlive: st.enemies.length > 0,
+              scriptedWaveRemaining: m0WaveRef.current?.remaining ?? 0,
               critUnlocked: st.m0Unlocked.crit,
               fired: m0BeatsFiredRef.current,
             });
@@ -3045,27 +3076,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }));
               }
               if (beat.spawn) {
-                const e = spawnEnemyAt(beat.spawn.type, pcx + beat.spawn.dx, pcy + beat.spawn.dy, newGameTime);
-                addEnemy(e);
-                // 射撃ビートだけ、弾を「**ちょうど倒せて、ちょうど切れる**」量に詰め直す(社長台本v0.25.2293)。
-                // 偶然に頼らず、次が近接になる理由を台本側で作る。装填のみ・予備弾は0。
-                // 近接教習の相手は「**3発当てるまで落ちない**」体力にする(社長台本v0.25.2293/2294)。
-                // 3発目が強制クリティカル=そのままフィニッシュ教習へ繋がるので、その前に倒れてしまうと
-                // 台本が途切れる。近接1発ぶんのダメージ×(強制クリまでの発数+1)を持たせる。
-                if (beat.id === 'melee') {
-                  const mw = st.player.weapons.find(w => w.isMelee);
-                  e.health = e.maxHealth = Math.max(1, mw?.damage ?? 20) * (M0_FORCED_CRIT_AT_HIT + 1);
-                }
+                // **一気に出さず1体ずつ**(社長指示v0.25.2300「3体ずつくらい倒させて練習させてあげる」)。
+                // 残りは m0WaveRef に積み、倒されるたびに下の補充ブロックが次を1体出す。
+                const total = beat.spawn.count ?? M0_PRACTICE_COUNT;
+                m0WaveRef.current = { spawn: beat.spawn, remaining: total - 1 };
+                spawnM0Practice(beat.spawn, pcx, pcy);
+                // 射撃ビートは弾を「**練習ぶんをちょうど撃ち切る**」量に詰め直す(社長台本v0.25.2293)。
+                // 偶然に頼らず、次が近接になる理由を台本側で作る。装填のみ・予備弾は0。1体あたり
+                // `M0_SHOOT_ROUNDS` 発で落ちるHPにしてあるので、合計は「発数×体数」でちょうど尽きる。
                 if (beat.id === 'shoot') {
                   const gun = st.player.weapons.find(w => !w.isMelee && w.ammoType);
                   if (gun) {
-                    // 敵のHPを「持っている弾でちょうど落ちる」量にし、予備弾は0にする。
-                    e.health = e.maxHealth = Math.max(1, gun.damage) * M0_SHOOT_ROUNDS;
                     useGameStore.setState(s2 => ({
                       player: {
                         ...s2.player,
                         ammoHandgun: 0, ammoShotgun: 0, ammoRifle: 0,
-                        weapons: s2.player.weapons.map(w => (w.id === gun.id ? { ...w, magazine: M0_SHOOT_ROUNDS } : w)),
+                        weapons: s2.player.weapons.map(w => (w.id === gun.id ? { ...w, magazine: M0_SHOOT_ROUNDS * total } : w)),
                       },
                     }));
                   }
