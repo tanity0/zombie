@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2322',
+    items: [
+      '前回の「洞窟の岩帯を20px上へ」を元に戻しました（黒い横線は直らなかったため）。',
+    ],
+  },
+  {
     version: '0.25.2321',
     items: [
       '洞窟(訓練)で、岩と地面の境目に黒い横線が出ていたのを直しました（奥の岩帯の下端が手前の岩帯から食み出していたので、20px上へ移動)。',
