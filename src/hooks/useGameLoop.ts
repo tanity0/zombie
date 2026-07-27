@@ -3065,10 +3065,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               hold.ev = live.wallEventQueue[0];
               useGameStore.setState({ wallEventQueue: [] });   // いったん画面から下ろす
             }
-            if (hold.ev && live.tutorialPopup === null) {
+            if (live.tutorialPopup === null) {
               if (hold.at === 0) hold.at = newGameTime + M0_AREA_CEREMONY_DELAY_MS; // OKを押した=一拍の起点
               else if (newGameTime >= hold.at) {
-                useGameStore.setState(s2 => ({ wallEventQueue: [...s2.wallEventQueue, hold.ev!] }));
+                // **自前で出す**(社長報告v0.25.2310「エリア移動の演出出ない」)。
+                // 本編の踏破儀式は `isFirstWallBreach`=**端末で初回1回きり**(`wallMeta`は永続)なので、
+                // 2回目以降の出撃では**そもそも銘打ちが発火しない**。預かった物を出し直す実装だと、
+                // 預かる物が無い=何も出ないままだった。M0は毎出撃で教習が出るステージなので、
+                // ここは記録に関係なく**毎回出す**。`hold.ev` があればそれを、無ければ同じ体裁で作る。
+                if (hold.ev) useGameStore.setState(s2 => ({ wallEventQueue: [...s2.wallEventQueue, hold.ev!] }));
+                else useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[1]} —— 踏破`, 'TRESPASS', '#bfe3ff');
                 m0WallHoldRef.current = { ev: null, at: 0, done: true };
               }
             }

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2310',
+    items: [
+      '訓練(M0)で区域の銘打ち演出が出なくなっていたのを直しました。2回目以降の出撃でも毎回出ます。',
+    ],
+  },
+  {
     version: '0.25.2309',
     items: [
       '訓練(M0): 弾切れのあと、グレッグとジュンがその場で足踏みし続けていたのを直しました。足を止めて立ちます。',
