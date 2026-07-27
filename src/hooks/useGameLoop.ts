@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
-import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS } from '../utils/m0Tutorial';
+import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, type M0Beat } from '../utils/m0Tutorial';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
@@ -45,7 +45,8 @@ import {
   RN_ENEMY_FORCE,
   FIRST_AID_KIT_THROW_DAMAGE, MINE_DAMAGE,
   PHASER_INDEX, BASE_SOLDIER_COUNT,
-  TUTORIAL_MOVE_X_MIN_PX
+  TUTORIAL_MOVE_X_MIN_PX,
+  TUTORIAL_MOVE_Y_LIMIT_PX
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -427,6 +428,9 @@ const EVENT_BANNER_MS = 3500;          // イベント発生告知バナーの�
 // 「見られている」警告→5秒残ると発見→拠点(制圧済み)へ逃げ込むまで追跡。20s/40sで増援(最大3体)。
 // 出現回数は無制限(CD長めで何度でも・社長指示)・再出現CD150〜240s・ボス/リーパー/演出中は出現禁止(追跡中なら逃げる)。
 const HUNTER_START_MS = 180000;            // 出現開始(3分)
+// 訓練(M0)の教習ビート用の配置(TUTORIAL_STAGE.md「M0 チュートリアル進行案」)。
+const M0_HUNTER_AHEAD_PX = 360;            // ハンターをプレイヤーの何px先に出すか(画面内に入る距離)
+const M0_AMMO_AHEAD_PX = 140;              // 弾薬を何px先に置くか(追われながら通りがかりに拾える距離)
 const HUNTER_MAX_PER_RUN = Infinity;       // 1出撃あたりの上限なし(CD長めで何度でも)
 const HUNTER_RESPAWN_CD_MIN_MS = 150000;   // 再出現CD最短(150秒=2.5分。長め)
 const HUNTER_RESPAWN_CD_SPAN_MS = 90000;   // +0〜90秒(=150〜240秒)
@@ -860,6 +864,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rescueFiredRef = useRef(false); // 救助イベントは1出撃で最大1回(社長指示)。発生済みなら以降の抽選から除外。
   // チュートリアルのM0序盤会話(グレッグ/ジュン)を左上の通信キューへ積んだか(1出撃1回)。
   const tutorialConvoQueuedRef = useRef(false);
+  // 訓練(M0)の教習ビート: この出撃で既に出したもの(TUTORIAL_STAGE.md「M0 チュートリアル進行案」)。
+  // 判定は純関数 `nextM0Beat`(src/utils/m0Tutorial.ts)。ここは「呼んで、出して、記録する」だけ。
+  const m0BeatsFiredRef = useRef<Set<M0Beat>>(new Set());
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -1828,6 +1835,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
           tutorialConvoQueuedRef.current = false; // チュートリアルM0序盤会話も新ランで再有効化
+          m0BeatsFiredRef.current = new Set(); // M0の教習ビートも新ランで最初から(毎出撃で出す=社長指示v0.25.2266)
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
           hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0 };
           hunterKillsRef.current = [];
@@ -2963,6 +2971,55 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             gameTimeMs: newGameTime,
           })) {
             showTutorialOnce('move');
+          }
+          // 教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291)。
+          // 一本道で戻れないので「xを通過したら発火」で順序が保証される。判定は純関数 `nextM0Beat`。
+          // 付随イベント=敵を1体だけ湧かせる(M0は自動湧きを全停止済み=v0.25.1814なので、
+          // ここで出したものだけが出る)。ポップアップ表示中はゲームが止まるので、
+          // **先に敵を置いてから説明を出す**=閉じた瞬間に実物が目の前に居る。
+          {
+            const beat = nextM0Beat({
+              playerX: st.player.x + st.player.width / 2,
+              playerLevel: st.player.level,
+              popupOpen: st.tutorialPopup !== null,
+              menuOpen: st.showShopMenu || st.showUpgradeMenu,
+              fired: m0BeatsFiredRef.current,
+            });
+            if (beat) {
+              m0BeatsFiredRef.current.add(beat.id);
+              const pcx = st.player.x + st.player.width / 2;
+              const pcy = st.player.y + st.player.height / 2;
+              if (beat.spawn) {
+                const e = spawnEnemyAt(beat.spawn.type, pcx + beat.spawn.dx, pcy + beat.spawn.dy, newGameTime);
+                addEnemy(e);
+              }
+              if (beat.id === 'hunter') {
+                // デンジャー入場(r>=3000)でハンターを**右上=通行できる最上**(縦の透明壁の上端)に出す
+                // (社長指示v0.25.2287)。**そこを通らないと先へ行けない**配置で、縦の可動域(±100px)より
+                // ジャンプ射程(500)の方がはるかに広いので、避けようがない=ほぼ確実に被弾する。
+                // 索敵は飛ばして「見つかっている」状態から始める(既存の凶悪ハンターと同じ扱い)。
+                const h = spawnEnemyAt('hunter', pcx + M0_HUNTER_AHEAD_PX - 28, -TUTORIAL_MOVE_Y_LIMIT_PX - 32, newGameTime);
+                h.fixed = true;   // 屋外リサイクル/カリングの対象外=イベント側で寿命を持つ
+                h.vx = 0; h.vy = 0;
+                h.hunterAlerted = true;
+                addEnemy(h);
+              }
+              if (beat.id === 'ammo') {
+                // 追われながら拾わせる弾薬を1つだけ置く(社長指示v0.25.2286「5で弾補充」)。
+                // 弾種は構えている銃に合わせる(クラスによって違うため決め打ちにしない)。
+                const gun = st.player.weapons.find(w => !w.isMelee && w.ammoType);
+                const at = gun?.ammoType;
+                if (at === 'handgun' || at === 'shotgun' || at === 'rifle') {
+                  st.addPickup({
+                    id: `m0-ammo-${newGameTime}`,
+                    x: pcx + M0_AMMO_AHEAD_PX, y: pcy - 8,
+                    type: `ammo-${at}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+                    value: 0,
+                  });
+                }
+              }
+              showTutorialOnce(beat.tutorial);
+            }
           }
           // 左壁(スタートから−100px)に突っ込んでいる間、軍人が窘める(社長指示v0.25.1829
           // 「軍人NPCが『そっちじゃないぞ。』という」)。カテゴリCD6秒=押し続けても連発しない。
