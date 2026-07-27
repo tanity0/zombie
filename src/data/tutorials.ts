@@ -56,7 +56,9 @@ export const TUTORIALS: TutorialEntry[] = [
       '弾を使わない。貼り付かれたらこれで剥がせ。',
       '当て続けろ。手応えが変わる瞬間が来る。'
     ],
-    img: 'tutorial/action-melee.mp4',
+    // 手本=**実機収録**(社長撮影v0.25.2308)。弾数0の状態で至近の相手を薙ぐところ。尺は切らずそのまま。
+    // 旧 `action-melee.mp4`(ヘッドレス収録・森)は素材として残置(`m0-crit` が引き続き使用)。
+    img: 'tutorial/m0-melee.mp4',
     where: '訓練',
   },
   {
