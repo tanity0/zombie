@@ -10364,7 +10364,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         vaccinePurchased: false,
         gameWon: false,
         finaleDefeated: false,
-        baseSites: corridorMode ? [] : createBaseSites(), // 洋館通路は拠点なし(v0.25.2128・社長指示)
+        // 洋館通路は拠点なし(v0.25.2128)。**訓練(M0)も拠点なし**(社長報告v0.25.2313
+        // 「チュートリアルステージに拠点サークルぽいのがある、削除」)。制圧イベント自体は
+        // v0.25.1818で止めていたが、**サークルの実体(baseSites)は作られたままで描画されていた**。
+        baseSites: (corridorMode || farBackdrop === 'tutorial') ? [] : createBaseSites(),
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
         escorts: escortRoster,
         // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、実ロスターの1人をランダムで予約(フェイザー等の差し替えにも追従)。

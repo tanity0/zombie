@@ -103,6 +103,7 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget,
   AREA_ZONE_NAMES,
+  areaIndexForPos,
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN
 } from '../utils/enemyUtils';
@@ -170,7 +171,6 @@ import {
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
 import { calculateResultScore } from '../utils/resultScoring';
 import type { KillBucket } from '../utils/killTelemetry';
-import type { WallInscriptionEvent } from '../store/gameStore';
 import { isInRefractory } from '../utils/killTelemetry';
 import { selectReliefProgram, type ReliefProgram } from '../utils/reliefProgram';
 import { setReliefProgramDebug } from '../utils/reliefProgramState';
@@ -883,7 +883,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 倒すたびに次を1体出す。全部倒し切るまで次のビートへ進ませない。
   const m0WaveRef = useRef<{ spawn: NonNullable<M0BeatDef['spawn']>; remaining: number } | null>(null);
   // 区域の銘打ち(踏破の演出)を**説明を読み終わるまで預かる**ための保管(社長指示v0.25.2305)。
-  const m0WallHoldRef = useRef<{ ev: WallInscriptionEvent | null; at: number; done: boolean }>({ ev: null, at: 0, done: false });
+  const m0WallHoldRef = useRef<{ zone: number; at: number } | null>(null);
+  // 直前フレームの区域index(-1=未初期化)。増えた=区域を越えた、で銘打ちを予約する。
+  const m0ZoneRef = useRef(-1);
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -1857,7 +1859,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           m0HealAtRef.current = 0;             // 衛生兵の回復待ちも新ランでリセット
           m0PendingRef.current = null;         // 演出待ちも新ランでリセット
           m0WaveRef.current = null;            // 練習の残りも新ランでリセット
-          m0WallHoldRef.current = { ev: null, at: 0, done: false }; // 銘打ちの預かりも新ランでリセット
+          m0WallHoldRef.current = null; // 銘打ちの予約も新ランでリセット
+          m0ZoneRef.current = -1;       // 区域の追跡も新ランで初期化
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
           hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0 };
           hunterKillsRef.current = [];
@@ -3053,29 +3056,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnM0Practice(w.spawn, st.player.x + st.player.width / 2, st.player.y + st.player.height / 2);
           }
 
-          // 区域の演出(銘打ち=「研究対象区域 —— 踏破」)は**説明を読んでから**出す
-          // (社長指示v0.25.2305「エリアチュートリアルok押すと一拍置いて実際にデンジャーゾーンの演出」)。
-          // 境界を越えると銘打ちが即座に始まるが、直後にポップアップが出てゲームが止まる一方、
-          // 銘打ちは**実時間の setTimeout(4秒)**で進むため読んでいる間に終わってしまう。
-          // → 説明が出ている間は銘打ちを**預かって画面から外し**、閉じて一拍おいてから出し直す。
-          if (m0BeatsFiredRef.current.has('area') && !m0WallHoldRef.current.done) {
-            const live = useGameStore.getState();
-            const hold = m0WallHoldRef.current;
-            if (live.wallEventQueue.length > 0) {
-              hold.ev = live.wallEventQueue[0];
-              useGameStore.setState({ wallEventQueue: [] });   // いったん画面から下ろす
+          // 区域の銘打ち(「◯◯区域 —— 踏破」)を**M0では区域を越えるたびに毎回**出す。
+          //  - 本編の踏破儀式は `isFirstWallBreach`=**端末で初回1回きり**(`wallMeta`は永続)なので、
+          //    2回目以降の出撃では**そもそも発火しない**(社長報告v0.25.2310「エリア移動の演出出ない」/
+          //    v0.25.2313「デンジャーゾーンの演出がない」)。M0は毎出撃で教習が出るステージなので、
+          //    記録に関係なく**自前で出す**。`wallMeta`(記録側)は触らない=本編の「初回だけ」は不変。
+          //  - **説明を読んでから**出す(社長指示v0.25.2305)。境界を越えた直後はポップアップで
+          //    ゲームが止まる一方、銘打ちは**実時間の setTimeout(4秒)**で進むため、読んでいる間に
+          //    終わってしまう。→ ポップアップが閉じるまで待ち、一拍おいてから出す。
+          {
+            const zoneNow = areaIndexForPos(st.player.x + st.player.width / 2, st.player.y + st.player.height / 2);
+            if (m0ZoneRef.current < 0) m0ZoneRef.current = zoneNow; // 初期化(出撃直後の区域)
+            else if (zoneNow > m0ZoneRef.current) {
+              m0ZoneRef.current = zoneNow;
+              m0WallHoldRef.current = { zone: zoneNow, at: 0 };
+              useGameStore.setState({ wallEventQueue: [] }); // 初回出撃で自然発火した分は下ろす(二重に出さない)
             }
-            if (live.tutorialPopup === null) {
-              if (hold.at === 0) hold.at = newGameTime + M0_AREA_CEREMONY_DELAY_MS; // OKを押した=一拍の起点
+            const hold = m0WallHoldRef.current;
+            if (hold && useGameStore.getState().tutorialPopup === null) {
+              if (hold.at === 0) hold.at = newGameTime + M0_AREA_CEREMONY_DELAY_MS; // 説明を閉じた=一拍の起点
               else if (newGameTime >= hold.at) {
-                // **自前で出す**(社長報告v0.25.2310「エリア移動の演出出ない」)。
-                // 本編の踏破儀式は `isFirstWallBreach`=**端末で初回1回きり**(`wallMeta`は永続)なので、
-                // 2回目以降の出撃では**そもそも銘打ちが発火しない**。預かった物を出し直す実装だと、
-                // 預かる物が無い=何も出ないままだった。M0は毎出撃で教習が出るステージなので、
-                // ここは記録に関係なく**毎回出す**。`hold.ev` があればそれを、無ければ同じ体裁で作る。
-                if (hold.ev) useGameStore.setState(s2 => ({ wallEventQueue: [...s2.wallEventQueue, hold.ev!] }));
-                else useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[1]} —— 踏破`, 'TRESPASS', '#bfe3ff');
-                m0WallHoldRef.current = { ev: null, at: 0, done: true };
+                const name = AREA_ZONE_NAMES[hold.zone] ?? AREA_ZONE_NAMES[AREA_ZONE_NAMES.length - 1];
+                useGameStore.getState().enqueueWallEvent('depth', `${name} —— 踏破`, 'TRESPASS', '#bfe3ff');
+                m0WallHoldRef.current = null;
               }
             }
           }

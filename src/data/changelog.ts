@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2313',
+    items: [
+      '訓練(M0)に残っていた拠点サークルを消しました。',
+      '訓練(M0)で、デンジャーゾーンに入った時の銘打ち演出も出るようになりました(区域を越えるたびに毎回出ます)。',
+    ],
+  },
+  {
     version: '0.25.2312',
     items: [
       '訓練(M0)で、地平のあたりに一本線が入って岩の根元が切れて見えていたのを直しました。暗さがなだらかに始まります。',
