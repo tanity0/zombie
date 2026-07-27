@@ -59,6 +59,8 @@ import {
 } from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn } from '../utils/enemyUtils';
+// 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
+import { computeEnemySeparation } from '../utils/enemySeparation';
 import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -147,6 +149,9 @@ const DIRFX_ENABLED = typeof window === 'undefined' || new URLSearchParams(windo
 // プレイヤー頭上に「N HITS」bitmap-text+小フラッシュ(既存spawnRing/spawnGlow流用)。
 // `?multifx=0`で無効化。既存registerMultiHit(全6箇所の多段ヒット経路)に相乗り=呼び出し側の追加配線なし。
 const MULTIFX_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('multifx') !== '0';
+// 敵同士の軽い押し合い(社長指示v0.25.2320・既定ON)。`?enemysep=0`で従来(重なり放置)へ復帰。
+// 判定は純関数(src/utils/enemySeparation.ts)。ここは有効/無効の入口だけ持つ(他フラグと同じ流儀)。
+const ENEMY_SEPARATION_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('enemysep') !== '0';
 // B1の色分け(pixiScene.tsのENEMY_COLOR_TIER_BODY_TINT/NAMED_TINTと同じ配色を、レンダラ非依存の
 // gameStore側でも別途保持=XP_ORB_COUNT_BY_COLOR_TIERと同じ「層ごとに独立テーブルを持つ」流儀)。
 const ENEMY_COLOR_TIER_FX: Record<EnemyColorTier, string> = {
@@ -7467,6 +7472,21 @@ export const useGameStore = create<GameState>((set, get) => ({
           const k = rescueEv.radius / dist; // 中心を外周ちょうどへ押し出す
           return { ...e, x: rescueEv.x + dx * k - e.width / 2, y: rescueEv.y + dy * k - e.height / 2 };
         });
+      }
+
+      // 敵同士の軽い押し合い(社長指示v0.25.2320)。移動AIの結果が出揃った**後**に座標だけ微調整する
+      // (速度/ターゲットは書き換えない=追跡・突進・ジャンプの意図は不変)。深く重なった時だけ、
+      // 重なりの一部を毎フレーム緩やかに解いて「2体が完全に重なって1体に見える」状態を減らす。
+      // 対象外(enemySeparation.ts): 裏ボス/ボス系(死神・ハンター含む)/fixed/dormant/ノックバック中。
+      // 救助サークルの押し出しより後に置く=あちらの「円内に入れない」ハード制約を上書きしない。
+      if (ENEMY_SEPARATION_ENABLED) {
+        const sep = computeEnemySeparation(finalEnemies, deltaTime, now);
+        if (sep.size > 0) {
+          finalEnemies = finalEnemies.map(e => {
+            const d = sep.get(e.id);
+            return d ? { ...e, x: e.x + d.dx, y: e.y + d.dy } : e;
+          });
+        }
       }
 
       // --- スカジ氷ハザード(判定はここ・描画はpixiScene) ---
