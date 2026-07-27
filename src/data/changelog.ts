@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2290',
+    items: [
+      'ゲーム内容の変更はありません(訓練ステージ終盤で「ピークを確実に見せる」30秒の組み立てを設計メモに書きました)。',
+    ],
+  },
+  {
     version: '0.25.2289',
     items: [
       'ゲーム内容の変更はありません(訓練ステージ終盤の一巡を30秒にする決定を設計メモに反映しました)。',
