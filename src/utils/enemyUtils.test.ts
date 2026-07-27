@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile } from './enemyUtils';
 import type { Enemy, Player, Summon, GameBounds } from '../types/game';
 
 const mkEnemy = (x: number, y: number): Enemy =>
@@ -28,6 +28,38 @@ describe('AREA_MAX_ENEMIES', () => {
   it('matches the per-area cap spec (5/7/10/10/10) and covers every area', () => {
     expect(AREA_MAX_ENEMIES).toEqual([5, 7, 10, 10, 10]);
     expect(AREA_MAX_ENEMIES).toHaveLength(AREA_COUNT);
+  });
+});
+
+describe('AREA_SPEED_MULT (エリア別の速さ・社長指定v0.25.2317)', () => {
+  it('研究対象までは等速、デンジャー以降で 1.2 / 1.5 / 2.0 に上がる', () => {
+    expect(AREA_SPEED_MULT).toEqual([1.0, 1.0, 1.2, 1.5, 2.0]);
+    expect(AREA_SPEED_MULT).toHaveLength(AREA_COUNT);
+  });
+  it('単調非減少(深いほうが遅くなることは無い)', () => {
+    for (let i = 1; i < AREA_SPEED_MULT.length; i++) {
+      expect(AREA_SPEED_MULT[i]).toBeGreaterThanOrEqual(AREA_SPEED_MULT[i - 1]);
+    }
+  });
+  it('移動速度に乗る: 深層域(area4)の個体は軍備配置(area0)の同型より速い', () => {
+    // 原点=area0 / r>=7500=area4。同じ型(zombie)で比較する。
+    const shallow = spawnEnemyAt('zombie', 0, 0, 0);
+    const deep = spawnEnemyAt('zombie', 8000, 0, 0);
+    expect(deep.speed).toBeCloseTo(shallow.speed * 2.0, 5);
+  });
+  it('弾速に乗る: 深層域のプラント弾は軍備配置のプラント弾より速い', () => {
+    const player = mkPlayer(400, 300);
+    const shallow = createEnemyProjectile(spawnEnemyAt('plant', 0, 0, 0), player);
+    const deep = createEnemyProjectile(spawnEnemyAt('plant', 8000, 0, 0), player);
+    expect(deep.speed).toBeCloseTo(shallow.speed * 2.0, 5);
+  });
+  it('固定強度タイプ(ジャイアントバット)はエリアで速くならない', () => {
+    const shallow = spawnEnemyAt('giantbat', 0, 0, 0);
+    const deep = spawnEnemyAt('giantbat', 8000, 0, 0);
+    expect(deep.speed).toBeCloseTo(shallow.speed, 5);
+    const player = mkPlayer(400, 300);
+    expect(createEnemyProjectile(deep, player).speed)
+      .toBeCloseTo(createEnemyProjectile(shallow, player).speed, 5);
   });
 });
 

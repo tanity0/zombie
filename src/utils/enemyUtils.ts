@@ -251,6 +251,11 @@ export const areaIndexForPos = (x: number, y: number): number => {
 
 // エリア基礎難易度倍率(社長指定)。最終倍率 = エリア基礎 × 色付き倍率(時間スケールは廃止)。
 const AREA_BASE_DIFFICULTY = [1.0, 1.2, 1.45, 1.75, 2.1];
+// エリア別の「速さ」倍率(社長指定v0.25.2317)。敵の移動速度と敵弾の弾速に掛ける。
+// 研究対象区域までは等速(1.0)、デンジャー以降で 1.2 → 1.5 → 2.0 と上がる。
+// HP/攻撃力(AREA_BASE_DIFFICULTY)とは別軸=「硬さ」ではなく「捌く難しさ」で深さを表現する。
+// 固定強度タイプ(ジャイアント/死神/裏ボス/ラボ専用敵)は従来どおり対象外(強さ一定の設計を守る)。
+export const AREA_SPEED_MULT = [1.0, 1.0, 1.2, 1.5, 2.0];
 // エリアごとの敵最大数(社長指定)。useGameLoop の通常湧き上限に使用。
 export const AREA_MAX_ENEMIES = [5, 7, 10, 10, 10];
 
@@ -394,6 +399,8 @@ const buildEnemy = (
   const colorHpMult = colorTier ? COLOR_TIER_HP_MULT[colorTier] : 1;
   // 最終倍率 = エリア基礎難易度 × 色付き倍率(社長指定・時間スケールは廃止)。固定難易度タイプ = 1。
   const areaBase = fixed ? 1 : AREA_BASE_DIFFICULTY[area];
+  // 社長指定v0.25.2317: エリアが深いほど動きが速くなる(固定強度タイプは対象外)。
+  const areaSpeed = fixed ? 1 : (AREA_SPEED_MULT[area] ?? 1);
   const diffDmg = areaBase * colorDmgMult;
   const diffHp = areaBase * colorHpMult;
   // Reaper は終端個体で別管理。giant/ラボ等の固定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
@@ -408,7 +415,7 @@ const buildEnemy = (
     y,
     width: Math.round(stats.width * sizeMult),
     height: Math.round(stats.height * sizeMult),
-    speed: stats.speed * ENEMY_SPEED_MULT,
+    speed: stats.speed * ENEMY_SPEED_MULT * areaSpeed,
     health: stats.health * hpMult,
     maxHealth: stats.health * hpMult,
     damage: Math.round(stats.damage * dmgMult),
@@ -573,6 +580,10 @@ export const createEnemyProjectile = (
   const dy = py - ey;
   const dist = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
   const dir = { x: dx / dist, y: dy / dist };
+  // 社長指定v0.25.2317: 弾速もエリアで上がる(移動速度と同じ倍率)。撃った個体の湧きエリア
+  // (distanceZone)で決まる=生成時に固定。固定強度タイプ(ジャイアント/裏ボス等)は対象外。
+  const shooterFixed = CONSTANT_STRENGTH_TYPES.has(enemy.type) || LAB_FIXED_TYPES.has(enemy.type);
+  const areaSpeed = shooterFixed ? 1 : (AREA_SPEED_MULT[enemy.distanceZone ?? 0] ?? 1);
 
   return {
     id: `proj-enemy-${enemy.id}-${Date.now()}-${Math.random()}`,
@@ -580,7 +591,7 @@ export const createEnemyProjectile = (
     y: ey - profile.size / 2,
     width: profile.size,
     height: profile.size,
-    speed: profile.speed,
+    speed: profile.speed * areaSpeed,
     damage: Math.round(profile.damage * (enemy.difficultyMultiplier ?? 1)),
     direction: dir,
     weaponType: 'enemy_bolt',

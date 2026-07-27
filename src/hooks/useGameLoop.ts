@@ -177,7 +177,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, recordChronicle, effectiveStartRank, stageInRunFloorRank, setStartRankFromFinal, type GateMeta } from '../data/progress';
+import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, effectiveStartRank, stageInRunFloorRank, setStartRankFromFinal } from '../data/progress';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
 import {
   getEventQuestConfig, EVENT_QUEST_LINES_FORCED, EVENT_QUEST_ENCOUNTER_LINES,
@@ -510,13 +510,14 @@ const seededPuzzleClockState = (): PuzzleClockState => {
   return s;
 };
 
-const commitRunEndProgress = (kind: 'death' | 'clear', gateMeta: GateMeta): void => {
+const commitRunEndProgress = (kind: 'death' | 'clear'): void => {
   const stageId = getSelectedStageId();
   if (!stageId) return;
   const wm = useGameStore.getState().wallMeta;
   if (kind === 'clear') {
     setWallMeta(stageId, wm);
-    setGateMeta(stageId, gateMeta);
+    // 社長決定v0.25.2317: ゲートの恒久解除は廃止=毎ラン必ず復活させるため、ここでは何も永続しない
+    // (旧: setGateMeta(stageId, gateMeta) でクリア済みを保存していた・§5.21「ゲートの恒久解除」)。
     return;
   }
   const persisted = getWallMeta(stageId);
@@ -930,6 +931,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // M20追補(社長設計v0.25.1533/1534): 索敵フェーズ廃止=デンジャー入場から約3秒後に発見済み(chase)で
     // 直接発動する。この「入場を検知してから発動までの3秒」の起点時刻(0=未検知/待機中でない)。
     viciousPendingAt: 0,
+    // 社長指示v0.25.2317: 「去っていった」アナウンスを索敵タイムアウトの立ち去りにも出す。ただし
+    // プレイヤーが一度も気づいていない索敵個体の退場まで報せるとネタバレになるので、気づかせた
+    // (「何かに見られている…」or「発見された！」を出した)出撃だけを対象にするためのフラグ。
+    noticed: false,
   });
   // 叫喚型(screamer)ディレクター: 次に出せる gameTime(消滅後CD)。同時1体・5分以降・CDで何度でも。
   const screamerRef = useRef({ nextEligibleAt: SCREAMER_START_MS });
@@ -1273,8 +1278,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     emitBotReport('death'); // M26-L: botモードなら死因つきレポートを先に確定(以降の後始末と独立)
     // PACING_PUZZLE.md §5.17 M14: 死亡確定時に最終同期(1秒間隔の間引きだと直近の数百msが漏れるため)。
     if (WALL_ENABLED) syncWallDepth(runDeepestDistRef.current);
-    // §5.21 M20追補(v0.25.1534): 死亡は「記録」のみコミット(踏破/ゲート恒久解除はコミットしない)。
-    if (WALL_ENABLED) commitRunEndProgress('death', gateMetaRef.current);
+    // §5.21 M20追補(v0.25.1534): 死亡は「記録」のみコミット(踏破フラグはコミットしない)。
+    if (WALL_ENABLED) commitRunEndProgress('death');
     // ランク持ち越し(社長決定v0.25.1844): 死亡でも最終ランク−1を保存(下限R1)。
     { const sid = getSelectedStageId(); if (sid) setStartRankFromFinal(sid, puzzleClockRef.current.rank); }
     setHurricaneRumble(false); // 死亡で鳴動を止める(ループが回り続けても残響しない)
@@ -1868,7 +1873,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           m0CritLandedRef.current = false;
           m0LatePopupRef.current = null;
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
-          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0 };
+          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0, noticed: false };
           hunterKillsRef.current = [];
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
@@ -1939,7 +1944,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
           zoneSfxPlayedRef.current = new Set(); // 到達SEの「今回のラン」判定も新ランでリセット
           areaSectorRef.current = -1; // 担当エリア進入セリフも再アーム
-          gateMetaRef.current = getGateMeta(getSelectedStageId()); // M20ゲート恒久解除メタを選択ステージ分で読み直す
+          // 社長決定v0.25.2317: ゲートは毎ラン必ず復活する(恒久解除の廃止)。よって永続メタは読まず、
+          // 常に「未クリア」から開始する。ラン中のクリア済みフラグ(gateMetaRef)は同ラン内の再発火防止・
+          // 到達判定・深層解禁のためにそのまま生きる(ラン終了で捨てられる)。
+          gateMetaRef.current = emptyGateMeta();
           runEndCommittedRef.current = false; // 進捗コミット済みガードも新ランで再アーム
           gate1PenaltyActiveRef.current = false; // 未達ペナルティも新ランで再アーム
           activeGateRef.current = null;
@@ -2701,7 +2709,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const rs = useGameStore.getState();
           if (rs.gameWon || rs.gameReturned) {
             runEndCommittedRef.current = true;
-            commitRunEndProgress('clear', gateMetaRef.current);
+            commitRunEndProgress('clear');
             // ランク持ち越し(社長決定v0.25.1844): クリア/撤退(帰還)でも最終ランク−1を保存(死亡と同じ)。
             { const sid = getSelectedStageId(); if (sid) setStartRankFromFinal(sid, puzzleClockRef.current.rank); }
           }
@@ -2763,6 +2771,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             H.viciousRearmAt = H.vicious ? newGameTime + VICIOUS_REARM_MS : H.viciousRearmAt;
             H.vicious = false;
             H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0; H.primaryId = '';
+            H.noticed = false; // 次の出撃のために「気づかれた」フラグを畳む(v0.25.2317)
           };
           const clearAllHunters = () => useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'hunter') }));
 
@@ -2847,6 +2856,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // M20追補(v0.25.1533/1534): 凶悪ハンターはこの索敵フェーズ自体に入らなくなった
               // (デンジャー入場から即chaseへ)ため、ここに来るのは通常ハンターのみ。
               useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterLeavingAt: newGameTime } : e) }));
+              // 社長指示v0.25.2317: 立ち去りもアナウンスする(従来は無言でフェードアウトしていた)。
+              // ただし一度も気づかせていない索敵個体は報せない(存在自体のネタバレになるため)。
+              if (H.noticed) {
+                useGameStore.setState({ eventBannerText: 'ハンターが去っていった', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              }
             } else {
               const d = Math.hypot(hpx - (prim.x + prim.width / 2), hpy - (prim.y + prim.height / 2));
               if (d <= HUNTER_DETECT_RANGE) {
@@ -2856,6 +2870,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   playSfx('hunter-alert'); // 視界に入った=見られている警告SE(社長提供)
                   // 検知=矢印を出す(被監視中の索敵個体に方角マーカー)。
                   useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.id === H.primaryId ? { ...e, hunterAlerted: true } : e) }));
+                  H.noticed = true; // 気づかせた=立ち去りもアナウンスしてよい出撃(v0.25.2317)
                   useGameStore.setState({ eventBannerText: '何かに見られている…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                 } else if (newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS) {
                   // 発見: 追跡開始。索敵個体を起こす。
