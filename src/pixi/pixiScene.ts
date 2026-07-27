@@ -2938,8 +2938,15 @@ export class PixiScene {
       sp.eventMode = 'none';
       sp.tint = 0x000000;
       this.horizonDarken = sp;
+      // 置き場所(社長指摘v0.25.2325「なぜ上にいる岩まで染まるのか」→実測で決着):
+      //   z=1(既定) … worldGroup の**手前**=遠景も岩帯もまとめて沈める。**これでないと効かない**。
+      //   z=0        … worldGroup の**奥**=遠景だけ。実測: 0.70まで濃くしても落差11.66のまま無反応。
+      // 理由: 境界より上の明るさ(輝度27.9)を作っているのは遠景ではなく**岩帯そのもの**だった
+      // (画面上の岩は輝度24.9で地面15.9より明るい。素材の生の値14.6とは別物=照明/ブルームで持ち上がる)。
+      // 岩が明るい側なので、岩を沈めないと地面と揃わない。
+      const front = tsNum('m0darkz', 1) > 0;
       const idx = this.L.stage.getChildIndex(this.L.worldGroup);
-      this.L.stage.addChildAt(sp, idx + 1); // worldGroup の手前=背景も岩帯もまとめて沈める
+      this.L.stage.addChildAt(sp, front ? idx + 1 : idx);
     }
     const sp = this.horizonDarken;
     sp.alpha = a;
