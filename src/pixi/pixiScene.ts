@@ -1147,6 +1147,11 @@ const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 // 既定 0.055(旧 0.12→0.09→0.055。社長指示でさらに強化)。
 const GROUND_TILE_SCALE_Y_FAR = tsNum('gfar', 0.055);
 const GROUND_SCROLL_X_FEEL = 1.2;
+// 【v0.25.2324】洞窟(M0)の「岩と地面の境目の黒い横線」対策。境界線(farH)より上を一律の黒で沈めて、
+// 下(地面)と明るさを揃える。0.48 は実測で決めた値: ヘッドレスで境界の上下の輝度を測り、
+// 落差 11.85 → 0.25(98%減)/1行あたりの段差 6.02 → 0.17 になる点(0.53だと上が暗くなりすぎて反転する)。
+// ?m0dark= で調整・0で従来へ復帰。
+const HORIZON_DARKEN_ALPHA = 0.48;
 const GROUND_SCROLL_Y_FEEL = 3.0;
 // 床の遠近カーブ。?gcurve=3 等でURL生調整可。大きいほど手前まで圧縮が効く=奥行き強。
 // 既定 2.6(旧 2.05→2.35→2.6。社長指示で強化)。
@@ -2913,6 +2918,37 @@ export class PixiScene {
     return this.L.horizonForest.y + this.L.horizonForest.height - HORIZON_ACTOR_HIDE_OFFSET_PX;
   }
 
+  // 【v0.25.2324・社長指示「境界から上を全部同じ黒で伸ばす」】
+  // 実測で、境界線(farH)の上=輝度27.9 / 下=15.8 と**別々の絵の明るさが違う**のが黒い横線の正体と確定した
+  // (被写界深度/地面のブラー帯/岩帯の位置/地面の位置/地面の明るさ持ち上げ を、いずれも描画が変わったことを
+  //  確認した上で試して線は不動=全てシロ)。そこで原因側を探すのをやめ、**境界より上を一律の黒で沈めて
+  //  下と明るさを揃える**。グラデにはせず「同じ黒」で伸ばす=自分の上端に新しい境目を作らない
+  //  (上端は画面外)。地面と境界線そのものには一切触れない。
+  // 画面固定(stage直下・worldGroupの手前)なので、引きズームでもfarHから上だけを覆う。
+  // alpha 0=無効(既定)。?m0dark= で調整。
+  private horizonDarken: Sprite | null = null;
+  private updateHorizonDarken(w: number, farH: number) {
+    const a = Math.max(0, Math.min(1, tsNum('m0dark', HORIZON_DARKEN_ALPHA)));
+    if (a <= 0 || this.currentFarKey !== 'tutorial') {
+      if (this.horizonDarken) this.horizonDarken.visible = false;
+      return;
+    }
+    if (!this.horizonDarken) {
+      const sp = new Sprite(Texture.WHITE);
+      sp.eventMode = 'none';
+      sp.tint = 0x000000;
+      this.horizonDarken = sp;
+      const idx = this.L.stage.getChildIndex(this.L.worldGroup);
+      this.L.stage.addChildAt(sp, idx + 1); // worldGroup の手前=背景も岩帯もまとめて沈める
+    }
+    const sp = this.horizonDarken;
+    sp.alpha = a;
+    sp.position.set(0, 0);
+    sp.width = w;
+    sp.height = farH; // 下端=境界線ちょうど。ここから上を一律に沈める
+    sp.visible = true;
+  }
+
   private updateHorizonForestFadeMask(w: number, horizonH: number) {
     const canvas = document.createElement('canvas');
     canvas.width = 4;
@@ -3711,6 +3747,9 @@ export class PixiScene {
   ) {
     // lab(M2)の床上端=境界線(farBackdropHeight=LAB_FAR_BOUNDARY_YR)に密着(v0.25.2190・スケール追従化)。
     const farH = this.farBackdropHeight();
+    // 境界より上を一律の黒で沈める(v0.25.2324)。**毎フレーム走るここで**呼ぶ: レイアウト(リサイズ)時だと
+    // まだ currentFarKey が確定しておらず早期returnで一度も生成されなかった(実測で判明)。
+    this.updateHorizonDarken(this.screenW, farH);
     const groundH = Math.max(1, this.screenH - farH);
     const strips = this.L.groundStrips;
     const stripH = groundH / strips.length;
