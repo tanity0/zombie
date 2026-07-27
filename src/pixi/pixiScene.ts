@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
@@ -4151,7 +4151,16 @@ export class PixiScene {
     this.updateLabFarWindow(s.stageTheme === 'lab' && !s.indoorMode, s.camera.x, now);
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
     this.updateLabDarkLights(s.stageTheme === 'lab' && !s.indoorMode, now); // 全体を少し暗く+等間隔の非常灯(v0.25.2263)
-    this.updateLabOutsideDim(s.stageTheme === 'lab' && !s.indoorMode, now); // 移動可能帯の外を少し暗く(境目はグラデ)
+    // 移動可能帯の外を少し暗く(境目はグラデ)。M2(ラボ)は従来どおり画面上端まで。
+    // M0(訓練)は**地面だけ**=地平(遠景の下端)で打ち止め、帯は縦±TUTORIAL_MOVE_Y_LIMIT_PX
+    // (社長指示v0.25.2311「m0もm2みたいに『地面だけ』歩けない部分から暗くして」)。
+    const m0Dim = this.currentFarKey === 'tutorial' && !s.indoorMode;
+    this.updateLabOutsideDim(
+      m0Dim || (s.stageTheme === 'lab' && !s.indoorMode),
+      now,
+      m0Dim ? TUTORIAL_MOVE_Y_LIMIT_PX : LAB_CORRIDOR_Y_LIMIT_PX,
+      m0Dim ? this.farBackdropHeight() : -Infinity,
+    );
     this.updateLabVisionCones(s.stageTheme === 'lab' && !s.indoorMode, s.enemies, s.camera.x, s.camera.y); // 敵の視界(薄い赤・壁の影つき)
     this.updateLabFarFront(
       (s.stageTheme === 'lab' && !s.indoorMode) ? (this.frontOverrides['lab'] ?? null) : null,
@@ -5635,7 +5644,10 @@ export class PixiScene {
   // 4枚構成: 上ベタ / 上グラデ(下端=透明で帯に溶ける) / 下グラデ / 下ベタ。互いに重ならないので
   // コンテナalphaで一括指定しても濃さが二重にならない。帯の画面Yは toGlobal で実測=ズーム/カメラ/
   // シェイクを自動で含む(自前の座標計算より事故りにくい)。
-  private updateLabOutsideDim(show: boolean, now: number) {
+  // limitPx = 歩ける帯の半幅(world px) / topClampY = これより上は暗くしない(画面px)。
+  // M2(ラボ)は画面上端まで暗くする(topClampY=-OVER相当)。M0(訓練)は**地面だけ**を暗くしたいので
+  // 地平(遠景の下端)を打ち止めにする(社長指示v0.25.2311「地面だけ歩けない部分から暗くして」)。
+  private updateLabOutsideDim(show: boolean, now: number, limitPx = LAB_CORRIDOR_Y_LIMIT_PX, topClampY = -Infinity) {
     // 登場演出(ヘリ降下)中はカメラが廊下帯から大きく離れるため、幕が**画面全体**を覆って
     // 「まだ読み込み中」に見えていた(社長報告v0.25.2225・開始5秒≒PLAYER_INTRO_MS 3700ms)。
     // 演出中は出さず、着地後に短くフェードインする。
@@ -5657,8 +5669,8 @@ export class PixiScene {
     }
     const cont = this.labOutDim;
     const w = this.screenW, h = this.screenH;
-    const top = this.L.world.toGlobal({ x: 0, y: -LAB_CORRIDOR_Y_LIMIT_PX }).y;
-    const bot = this.L.world.toGlobal({ x: 0, y: LAB_CORRIDOR_Y_LIMIT_PX }).y;
+    const top = this.L.world.toGlobal({ x: 0, y: -limitPx }).y;
+    const bot = this.L.world.toGlobal({ x: 0, y: limitPx }).y;
     // 保険: 帯が画面から完全に外れている=いま廊下を映していない(演出カメラ等)。この時に幕を出すと
     // 画面全体が暗転して事故に見えるので出さない(全画面暗転の再発防止・v0.25.2226)。
     if (bot < 0 || top > h) { cont.visible = false; return; }
@@ -5670,12 +5682,16 @@ export class PixiScene {
     const OVER = 300; // 画面外まで延ばす(引きズーム/シェイクで端が割れないように)
     const [topSolid, topFade, botFade, botSolid] = this.labOutDimParts;
     // 上グラデ: 帯の上端から上へ fade 分。scale.y を負にして反転=上が不透明・下(帯側)が透明。
+    // ただし打ち止め(topClampY)より上には出さない=**空/遠景は暗くしない**(M0はここが地平)。
+    const ceilY = Math.max(-OVER, topClampY);
+    const fadeTopY = Math.max(ceilY, top - fade);          // グラデが打ち止めを越えないように縮める
     topFade.width = w;
-    topFade.scale.y = -(fade / Math.max(1, topFade.texture.height));
+    topFade.scale.y = -((top - fadeTopY) / Math.max(1, topFade.texture.height));
     topFade.position.set(0, top);
-    // 上ベタ: 画面外上端 〜 グラデの上端まで
-    const topSolidH = Math.max(0, (top - fade) + OVER);
-    topSolid.position.set(0, -OVER);
+    topFade.visible = top > fadeTopY;
+    // 上ベタ: 打ち止め 〜 グラデの上端まで
+    const topSolidH = Math.max(0, fadeTopY - ceilY);
+    topSolid.position.set(0, ceilY);
     topSolid.width = w; topSolid.height = topSolidH;
     topSolid.visible = topSolidH > 0;
     // 下グラデ: 帯の下端から下へ fade 分(テクスチャそのまま=上が透明)

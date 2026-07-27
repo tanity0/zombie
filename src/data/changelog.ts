@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2311',
+    items: [
+      '訓練(M0)でも、歩けない範囲の地面が暗くなるようになりました(研究所と同じ演出)。空や遠景は暗くなりません。',
+    ],
+  },
+  {
     version: '0.25.2310',
     items: [
       '訓練(M0)で区域の銘打ち演出が出なくなっていたのを直しました。2回目以降の出撃でも毎回出ます。',
