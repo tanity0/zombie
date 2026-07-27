@@ -886,6 +886,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const m0WallHoldRef = useRef<{ zone: number; at: number } | null>(null);
   // 直前フレームの区域index(-1=未初期化)。増えた=区域を越えた、で銘打ちを予約する。
   const m0ZoneRef = useRef(-1);
+  // 今の教習中にクリティカルが出たか(演習の1回目を見せてから説明するための合図)。ビート開始でリセット。
+  const m0CritLandedRef = useRef(false);
+  // 説明を後回しにしているビート(クリ教習)。最初のクリが出てから delayMs 後に出す。
+  const m0LatePopupRef = useRef<{ id: TutorialId; delayMs: number; at: number } | null>(null);
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -1861,6 +1865,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           m0WaveRef.current = null;            // 練習の残りも新ランでリセット
           m0WallHoldRef.current = null; // 銘打ちの予約も新ランでリセット
           m0ZoneRef.current = -1;       // 区域の追跡も新ランで初期化
+          m0CritLandedRef.current = false;
+          m0LatePopupRef.current = null;
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
           hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0 };
           hunterKillsRef.current = [];
@@ -2990,11 +2996,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const spawnM0Practice = (spawn: NonNullable<M0BeatDef['spawn']>, cx: number, cy: number) => {
             const p = useGameStore.getState().player;
             const e = spawnEnemyAt(spawn.type, cx + spawn.dx, cy + spawn.dy, newGameTime);
-            if (spawn.type === 'skeleton') {
-              // 近接教習: 「**3発当てるまで落ちない**」体力。3発目が強制クリティカル=そのまま
-              // フィニッシュ教習へ繋がるので、その前に倒れると台本が途切れる。
+            if (spawn.meleeHits) {
+              // 「**近接◯発で落ちる**」体力を台本側で作る。近接教習は2発(=3発目のクリに届かせない)、
+              // クリ/キル教習は4発(=3発目でクリが出て、その後に仕留められる)。
               const mw = p.weapons.find(w => w.isMelee);
-              e.health = e.maxHealth = Math.max(1, mw?.damage ?? 20) * (M0_FORCED_CRIT_AT_HIT + 1);
+              e.health = e.maxHealth = Math.max(1, mw?.damage ?? 20) * spawn.meleeHits;
             } else if (spawn.type === 'zombie') {
               // 射撃教習: 「持っている弾でちょうど落ちる」体力。
               const gun = p.weapons.find(w => !w.isMelee && w.ammoType);
@@ -3083,6 +3089,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           }
 
+          // 演習中に強制クリが出たか(近接ヒット数が3の倍数へ到達=その一撃がクリだった)。
+          if (st.m0CritDrill && st.m0MeleeHits > 0 && st.m0MeleeHits % M0_FORCED_CRIT_AT_HIT === 0) {
+            m0CritLandedRef.current = true;
+          }
+          // 後回しにしていた説明(クリ教習)を、最初のクリの**演出が出てから**出す。
+          {
+            const late = m0LatePopupRef.current;
+            if (late && m0CritLandedRef.current && st.tutorialPopup === null) {
+              if (late.at === 0) late.at = newGameTime + late.delayMs;
+              else if (newGameTime >= late.at) { showTutorialOnce(late.id); m0LatePopupRef.current = null; }
+            }
+          }
+
           // 教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291)。
           // 一本道で戻れないので「xを通過したら発火」で順序が保証される。判定は純関数 `nextM0Beat`。
           // 付随イベント=敵を1体だけ湧かせる(M0は自動湧きを全停止済み=v0.25.1814なので、
@@ -3098,7 +3117,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               convoDone: m0ConvoDone,
               scriptedEnemyAlive: st.enemies.length > 0,
               scriptedWaveRemaining: m0WaveRef.current?.remaining ?? 0,
-              critUnlocked: st.m0Unlocked.crit,
               fired: m0BeatsFiredRef.current,
             });
             // 先に見せたい演出があるビート(区域の銘打ち等)は、条件成立から delayMs だけ待つ。
@@ -3116,6 +3134,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (beat.unlock === 'melee') {
                 useGameStore.setState(s2 => ({ m0Unlocked: { ...s2.m0Unlocked, melee: true } }));
               }
+              // クリティカル演習の入切。教習が変わるたびに**ヒット数を0へ戻す**=「3発ごと」が
+              // 前の教習から持ち越されない(持ち越すと次の教習の1発目でいきなりクリが出る)。
+              useGameStore.setState({ m0CritDrill: beat.critDrill === true, m0MeleeHits: 0 });
+              m0CritLandedRef.current = false;
               // 掛け声(左上の通信)。**説明より先に、なぜ今それが要るのかを言う**。キュー直積みで順番を保証。
               if (beat.callouts?.length) {
                 useGameStore.setState(s2 => ({
@@ -3180,7 +3202,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   });
                 }
               }
-              showTutorialOnce(beat.tutorial);
+              // 説明を後回しにするビート(クリ教習)は、ここでは出さない=**先に演出を見せる**。
+              if (beat.popupAfterCrit) m0LatePopupRef.current = { id: beat.tutorial, delayMs: beat.delayMs ?? 700, at: 0 };
+              else showTutorialOnce(beat.tutorial);
             }
           }
           // 左壁(スタートから−100px)に突っ込んでいる間、軍人が窘める(社長指示v0.25.1829

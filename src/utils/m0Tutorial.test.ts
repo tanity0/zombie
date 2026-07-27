@@ -68,7 +68,7 @@ describe('台帳の体裁(全チュートリアル共通)', () => {
 const beatGate = (over: Partial<Parameters<typeof nextM0Beat>[0]> = {}): Parameters<typeof nextM0Beat>[0] => ({
   playerX: 0, playerLevel: 1, popupOpen: false, menuOpen: false,
   // 既定=「会話が終わり、台本の敵は片付いている」状態。位置ビートの検査をこれで邪魔しない。
-  convoDone: true, scriptedEnemyAlive: false, scriptedWaveRemaining: 0, critUnlocked: false,
+  convoDone: true, scriptedEnemyAlive: false, scriptedWaveRemaining: 0,
   fired: new Set<M0Beat>(), ...over,
 });
 
@@ -86,21 +86,21 @@ describe('nextM0Beat(教習ビートの発火)', () => {
   // 練習が1体で打ち切られる(社長指示v0.25.2300「3体ずつ・一気に出さずに順番に」)。
   it('練習の残りがある間は、敵0体の一瞬でも次へ進まない', () => {
     const fired = new Set<M0Beat>(['shoot']);
-    expect(nextM0Beat(beatGate({ playerX: 1050, fired, scriptedEnemyAlive: false, scriptedWaveRemaining: 2 }))).toBeNull();
-    expect(nextM0Beat(beatGate({ playerX: 1050, fired, scriptedEnemyAlive: false, scriptedWaveRemaining: 0 }))?.id).toBe('melee');
+    expect(nextM0Beat(beatGate({ playerX: 1000, fired, scriptedEnemyAlive: false, scriptedWaveRemaining: 2 }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 1000, fired, scriptedEnemyAlive: false, scriptedWaveRemaining: 0 }))?.id).toBe('melee');
   });
 
   it('台本の敵が生きている間は次(近接)へ進まない', () => {
     const fired = new Set<M0Beat>(['shoot']);
-    expect(nextM0Beat(beatGate({ playerX: 1050, fired, scriptedEnemyAlive: true }))).toBeNull();
-    expect(nextM0Beat(beatGate({ playerX: 1050, fired, scriptedEnemyAlive: false }))?.id).toBe('melee');
+    expect(nextM0Beat(beatGate({ playerX: 1000, fired, scriptedEnemyAlive: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 1000, fired, scriptedEnemyAlive: false }))?.id).toBe('melee');
   });
 
   it('順に進めば定義順に出る', () => {
     const fired = new Set<M0Beat>();
     const order: M0Beat[] = [];
-    for (const playerX of [800, 1050, 1050, 1050, 1300, 1500, 3000, 3160]) {
-      const beat = nextM0Beat(beatGate({ playerX, fired, critUnlocked: fired.has('melee') }));
+    for (const playerX of [800, 1000, 1150, 1300, 1450, 1500, 3000, 3160]) {
+      const beat = nextM0Beat(beatGate({ playerX, fired }));
       if (beat) { order.push(beat.id); fired.add(beat.id); }
     }
     expect(order).toEqual(['shoot', 'melee', 'crit', 'finish', 'counter', 'area', 'hunter', 'ammo']);
@@ -112,7 +112,7 @@ describe('nextM0Beat(教習ビートの発火)', () => {
   });
 
   it('一度出したビートは二度と出さない', () => {
-    expect(nextM0Beat(beatGate({ playerX: 1050, fired: new Set<M0Beat>(['shoot']) }))?.id).not.toBe('shoot');
+    expect(nextM0Beat(beatGate({ playerX: 1000, fired: new Set<M0Beat>(['shoot']) }))?.id).not.toBe('shoot');
   });
 
   it('走り抜けて複数が同時に条件を満たしても、定義順に1つずつ出る', () => {
@@ -123,37 +123,61 @@ describe('nextM0Beat(教習ビートの発火)', () => {
       if (!beat) break;
       order.push(beat.id); fired.add(beat.id);
     }
-    // finish は「崩した瞬間」に出るものなので、最奥へ飛んだ場合は見送られる(後続は塞がない)。
-    expect(order).toEqual(['shoot', 'melee', 'counter', 'area', 'hunter', 'ammo']);
+    expect(order).toEqual(['shoot', 'melee', 'crit', 'finish', 'counter', 'area', 'hunter', 'ammo']);
   });
 
-  it('強制クリティカルの直後に「クリティカル」→「フィニッシュ」の順で2本出す', () => {
-    const fired = new Set<M0Beat>(['shoot', 'melee']);
-    expect(nextM0Beat(beatGate({ playerX: 1100, fired, critUnlocked: false }))).toBeNull(); // まだ崩していない
-    expect(nextM0Beat(beatGate({ playerX: 1100, fired, critUnlocked: true }))?.id).toBe('crit');
-    fired.add('crit');
-    expect(nextM0Beat(beatGate({ playerX: 1100, fired, critUnlocked: true }))?.id).toBe('finish');
+  // 社長指摘v0.25.2314「攻撃、近接、クリティカル、キル、カウンターが畳み掛けすぎ。
+  // 一個ずつ丁寧に終わらせてから次に行って」。5本とも自分の関門と自分の練習を持つ。
+  it('5つの教習はそれぞれ別の場所・別の練習(畳み掛けない)', () => {
+    for (const id of ['shoot', 'melee', 'crit', 'finish', 'counter'] as const) {
+      const b = M0_BEATS.find(x => x.id === id)!;
+      expect(b.gateX, `${id} に関門が無い`).toBeDefined();
+      expect(b.spawn, `${id} に練習の敵が無い`).toBeDefined();
+    }
+    const gates = M0_BEATS.filter(b => b.gateX !== undefined).map(b => b.gateX!);
+    expect(new Set(gates).size, '関門が同じ場所に重なっている').toBe(gates.length);
   });
 
-  it('フィニッシュはクリティカルの説明を前提にする(順番が入れ替わらない)', () => {
+  it('教習は前の教習を片付けてから始まる(鎖でつないである)', () => {
+    expect(M0_BEATS.find(b => b.id === 'melee')!.requires).toBe('shoot');
     expect(M0_BEATS.find(b => b.id === 'crit')!.requires).toBe('melee');
     expect(M0_BEATS.find(b => b.id === 'finish')!.requires).toBe('crit');
+    expect(M0_BEATS.find(b => b.id === 'counter')!.requires).toBe('finish');
+    for (const id of ['crit', 'finish', 'counter'] as const) {
+      expect(M0_BEATS.find(b => b.id === id)!.afterEnemyCleared, id).toBe(true);
+    }
   });
 
-  it('クリティカルが出ないまま先へ進んでも後続を塞がない', () => {
-    const fired = new Set<M0Beat>(['shoot', 'melee', 'counter']);
-    expect(nextM0Beat(beatGate({ playerX: 1500, critUnlocked: false, fired }))?.id).toBe('area');
+  it('近接教習ではクリが出ない/クリ・キル教習では出る(体力と演習で作り分ける)', () => {
+    const melee = M0_BEATS.find(b => b.id === 'melee')!;
+    expect(melee.critDrill).toBeUndefined();
+    expect(melee.spawn!.meleeHits!).toBeLessThan(3); // 3発目(クリ)へ届く前に落ちる
+    for (const id of ['crit', 'finish'] as const) {
+      const b = M0_BEATS.find(x => x.id === id)!;
+      expect(b.critDrill, id).toBe(true);
+      expect(b.spawn!.meleeHits!, id).toBeGreaterThan(3); // クリの後も生きていて仕留められる
+    }
+  });
+
+  // 卵が先か鶏が先か: 説明の発火条件を「クリが出たら」にすると**敵が湧く前にクリ待ち**になり、
+  // その教習が永久に始まらない(関門も残るのでソフトロック)。ビートは関門で始めて敵を出し、
+  // **説明だけ**を後ろへずらす。
+  it('クリ教習は関門で始まり、説明だけを後回しにする(クリ待ちで止まらない)', () => {
+    const crit = M0_BEATS.find(b => b.id === 'crit')!;
+    expect(crit.popupAfterCrit).toBe(true);
+    const fired = new Set<M0Beat>(['shoot', 'melee']);
+    expect(nextM0Beat(beatGate({ playerX: crit.gateX!, fired }))?.id).toBe('crit');
   });
 
   it('レベルが上がったら成長を出す(位置ではなく成長で決まる)', () => {
-    const fired = new Set<M0Beat>(['shoot', 'melee', 'counter']);
+    const fired = new Set<M0Beat>(['shoot', 'melee', 'crit', 'finish', 'counter']);
     expect(nextM0Beat(beatGate({ playerX: 1300, playerLevel: 2, fired }))?.id).toBe('levelup');
   });
 
   // ここが本命の網。敵を倒さずに走り抜けるとレベルが上がらないので、levelup が未発火のまま
   // 後続を塞ぐと area/hunter/ammo が二度と出ない(=チュートリアルが進行不能になる)。
   it('レベルが上がらないまま奥へ行っても、後続(区域/ハンター/弾薬)が塞がれない', () => {
-    const fired = new Set<M0Beat>(['shoot', 'melee', 'counter']);
+    const fired = new Set<M0Beat>(['shoot', 'melee', 'crit', 'finish', 'counter']);
     expect(nextM0Beat(beatGate({ playerX: 1500, playerLevel: 1, fired }))?.id).toBe('area');
     fired.add('area');
     expect(nextM0Beat(beatGate({ playerX: 3000, playerLevel: 1, fired }))?.id).toBe('hunter');
@@ -162,7 +186,7 @@ describe('nextM0Beat(教習ビートの発火)', () => {
   });
 
   it('デンジャーまで来たら成長は見送る(今さら落ち着いた説明を割り込ませない)', () => {
-    const fired = new Set<M0Beat>(['shoot', 'melee', 'counter', 'area']);
+    const fired = new Set<M0Beat>(['shoot', 'melee', 'crit', 'finish', 'counter', 'area']);
     expect(nextM0Beat(beatGate({ playerX: 3000, playerLevel: 2, fired }))?.id).toBe('hunter');
   });
 });
@@ -211,8 +235,11 @@ describe('M0_BEATS の不変条件', () => {
     }
   });
 
-  it('封印を解くビートより先に、それを使う教習が出ない(カウンターは近接を前提にする)', () => {
-    expect(M0_BEATS.find(b => b.id === 'counter')!.requires).toBe('melee');
+  it('封印を解くビートより先に、それを使う教習が出ない(近接を使う教習は近接の後)', () => {
+    const idx = (id: M0Beat) => M0_BEATS.findIndex(b => b.id === id);
+    for (const id of ['crit', 'finish', 'counter'] as const) {
+      expect(idx(id), id).toBeGreaterThan(idx('melee'));
+    }
   });
 
   it('練習を伴う教習は複数体(既定3体)を順に出す', () => {
@@ -256,9 +283,11 @@ describe('M0_BEATS の不変条件', () => {
 describe('m0AdvanceLimit(関門=ここより先へ進めない前線)', () => {
   it('未発火のうち最初の関門を返す。全部済めば制限なし', () => {
     expect(m0AdvanceLimit(new Set(), false)).toBe(800);
-    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot']), false)).toBe(1050);
-    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee']), false)).toBe(1300);
-    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee', 'counter']), false)).toBeNull();
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot']), false)).toBe(1000);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee']), false)).toBe(1150);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee', 'crit']), false)).toBe(1300);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee', 'crit', 'finish']), false)).toBe(1450);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee', 'crit', 'finish', 'counter']), false)).toBeNull();
   });
 
   // 社長報告v0.25.2301「最初の移動チュートリアルの移動できる範囲が狭すぎる」。
@@ -319,7 +348,7 @@ describe('m0AdvanceLimit(関門=ここより先へ進めない前線)', () => {
     for (let i = 0; i < 12; i++) {
       const limit = m0AdvanceLimit(fired, false);
       if (limit === null) break;
-      const beat = nextM0Beat(beatGate({ playerX: limit, fired, critUnlocked: false, scriptedEnemyAlive: false }));
+      const beat = nextM0Beat(beatGate({ playerX: limit, fired, scriptedEnemyAlive: false }));
       if (!beat) throw new Error(`関門 ${limit} で進めなくなった(発火できるビートが無い)`);
       fired.add(beat.id);
     }

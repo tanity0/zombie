@@ -53,14 +53,29 @@ export interface M0BeatDef {
   afterConvo?: boolean;
   /** 台本で出した敵を全部倒した直後に発火する(前のビートの終わり方が入口になる)。 */
   afterEnemyCleared?: boolean;
-  /** 強制クリティカルが出た(=クリティカルが解禁された)直後に発火する。 */
-  afterCritUnlocked?: boolean;
+  /**
+   * **説明だけを後回しにする**(敵の配置・演習の開始は関門に着いた時点で行う)。
+   * クリティカルの教習は「まず演出を見せてから説明」(社長指摘v0.25.2307)だが、説明の発火条件を
+   * 「クリが出たら」にすると**敵が湧く前にクリ待ちになって永久に始まらない**(卵が先か鶏が先か)。
+   * → ビート自体は関門で始めて敵を出し、**説明だけ**を最初のクリの後(+`delayMs`)へずらす。
+   */
+  popupAfterCrit?: boolean;
   /**
    * 付随イベント: 敵を出す。**`count` 体を一気にではなく1体ずつ**出す(社長指示v0.25.2300
    * 「それぞれのチュートリアルで3体ずつくらい倒させて練習させてあげる。一気に出さずに順番に」)。
    * 倒すたびに次が出る。全部倒し切るまで次のビートへは進まない。
    */
-  spawn?: { type: 'zombie' | 'skeleton' | 'plant'; dx: number; dy: number; count?: number };
+  spawn?: {
+    type: 'zombie' | 'skeleton' | 'plant'; dx: number; dy: number; count?: number;
+    /** 近接何発で落ちる体力にするか(未指定=素の体力)。教習ごとに「何発目で何が起きるか」を作る。 */
+    meleeHits?: number;
+  };
+  /**
+   * クリティカル演習(社長指示v0.25.2314「一個ずつ丁寧に終わらせてから次に行って」)。
+   * true の間は**近接3発ごとに必ずクリティカル**が出る。これが無いと、クリティカルは
+   * 「最初の1回だけ」になり、クリ/キルの教習を**それぞれ練習させられない**。
+   */
+  critDrill?: boolean;
   /** ポップアップの前に流す掛け声(左上の通信)。**説明より先に、状況の理由を言う**。 */
   callouts?: readonly { speaker: string; text: string }[];
   /** このビートで解禁する要素(社長指示v0.25.2293「解禁されるまで封印」)。 */
@@ -102,8 +117,10 @@ export interface M0BeatDef {
 // 関門(gateX)の間隔について(社長報告v0.25.2301「最初の移動チュートリアルの移動できる範囲が狭すぎる」):
 // **最初の関門は「開幕の会話が流れ切るまで歩ける距離」**が要る。近すぎると、会話を聞いている途中で
 // 壁に当たって足踏みすることになり、動ける箱が狭く感じる。→ 300→**800**(左端-100からの実移動900px)。
-// 以降の関門は「少し歩いたら次」で足りるので250px刻み。ただし**区域境界(1500)より手前**に3本とも
-// 収める必要がある(区域の説明より先に戦闘教習を終わらせる)。
+// 以降の関門は「少し歩いたら次」で足りる。**5つの教習(射撃/近接/クリ/キル/カウンター)を
+// それぞれ別の場所に分ける**(社長指示v0.25.2314「畳み掛けすぎ。一個ずつ丁寧に終わらせてから次に」)
+// ため 800/1000/1150/1300/1450 に配置。**全て区域境界(1500)より手前**=区域の説明より先に
+// 戦闘教習を終わらせる。※戦闘中は壁が外れる(v0.25.2305)ので、間隔の狭さは可動域に影響しない。
 export const M0_BEATS: readonly M0BeatDef[] = [
   // 開幕の会話が終わった**直後**に、グレッグの号令で始める(社長台本v0.25.2293)。
   // 位置では出さない=会話→戦闘が途切れない。弾は「ちょうど倒せてちょうど切れる」量に台本側で詰める
@@ -116,35 +133,38 @@ export const M0_BEATS: readonly M0BeatDef[] = [
   // **弾切れの状態から始まる**。前のビートの終わり方(弾がちょうど切れる)がそのまま入口になる。
   // ここで初めて近接を解禁する(それまでは振れない=社長指示v0.25.2293の封印)。
   {
-    id: 'melee', tutorial: 'm0-melee', afterEnemyCleared: true, requires: 'shoot', gateX: 1050,
-    spawn: { type: 'skeleton', dx: 150, dy: 0 },
+    // **近接だけ**の練習。クリティカルはまだ出さない(2発で落ちる体力にして3発目に届かせない)。
+    id: 'melee', tutorial: 'm0-melee', afterEnemyCleared: true, requires: 'shoot', gateX: 1000,
+    spawn: { type: 'skeleton', dx: 150, dy: 0, meleeHits: 2 },
     callouts: [
       { speaker: 'ジュン', text: '弾切れです！' },
       { speaker: 'グレッグ', text: 'お前しか近距離で戦えない！頼んだぞ！' },
     ],
     unlock: 'melee',
   },
-  // 近接3発目の**強制クリティカルで敵が崩れた瞬間**に、**クリティカル → 近接フィニッシュ**の順で
-  // 2本続けて出す(社長指示v0.25.2297「クリティカルのチュートリアルと近接フィニッシュのチュートリアル」)。
-  // 敵を出し直さない=目の前で崩れている相手にそのまま追撃させる。ポップアップは1枚ずつ塞がるので順に出る。
-  // 見送りx: 万一クリティカルが出ないまま先へ進んだ時に、後ろで浮いたまま残らないようにする。
-  // delayMs=700: **クリティカルの演出(金色の数字・黄リング・相手が崩れる)を見せてから**説明を出す
-  // (社長指摘v0.25.2307「クリティカル演出出る前にチュートリアルポップアップでちゃってる」)。
-  // 説明が先に出るとゲームが止まり、「今の一撃がクリティカル」と言われても**何も見ていない**。
-  // **700msの根拠(上下から挟んである)**:
-  //   下限=クリの演出(ダメージ数字・黄リング 260〜520ms)が出切る。
-  //   上限=**次の近接が出せるのは 820ms 後**(`COUNTER_WINDOW 400` + `COUNTER_COOLDOWN 420`)。
-  //        それより前に説明を出さないと、崩した相手を**フィニッシュで倒してから**「崩れた相手に
-  //        もう一度近接」と説明することになり、順序が壊れる。
-  { id: 'crit', tutorial: 'm0-crit', afterCritUnlocked: true, requires: 'melee', delayMs: 700, expireAfterX: 1500 },
-  { id: 'finish', tutorial: 'm0-finish', afterCritUnlocked: true, requires: 'crit', expireAfterX: 1500 },
+  // **クリティカルの練習**(社長指示v0.25.2314「一個ずつ丁寧に終わらせてから次に行って」)。
+  // 以前は近接の1体目を殴っている最中にクリとキルの説明が連続で挟まり、畳み掛けになっていた。
+  // → **専用の場所・専用の3体**に分けた。ここから `critDrill` で**3発ごとに必ずクリ**が出る。
+  // 相手は4発耐える体力=3発目にクリ、その後に仕留められる。
+  // **delayMs=700 の根拠(上下から挟んである)**:
+  //   下限=クリの演出(金色の数字・黄リング 260〜520ms)が出切ってから説明する
+  //        (社長指摘v0.25.2307「クリティカル演出出る前にポップアップが出ちゃってる」)。
+  //   上限=**次の近接が出せるのは820ms後**(`COUNTER_WINDOW 400` + `COUNTER_COOLDOWN 420`)。
+  //        越えると崩した相手を倒してから説明することになり、順序が壊れる。
+  {
+    id: 'crit', tutorial: 'm0-crit', gateX: 1150, requires: 'melee', afterEnemyCleared: true,
+    popupAfterCrit: true, delayMs: 700,
+    spawn: { type: 'skeleton', dx: 170, dy: 0, meleeHits: 4 }, critDrill: true,
+  },
+  // **キル(近接フィニッシュ)の練習**。崩れた相手を一撃で仕留める。ここも3発ごとにクリが出る。
+  {
+    id: 'finish', tutorial: 'm0-finish', gateX: 1300, requires: 'crit', afterEnemyCleared: true,
+    spawn: { type: 'skeleton', dx: 170, dy: 0, meleeHits: 4 }, critDrill: true,
+  },
   // **カウンター=飛んでくる弾を近接で弾き返す**技(反射弾は10倍)。社長指摘v0.25.2299
   // 「近接フィニッシュとカウンターがごっちゃ/カウンターの時は遠距離弾の敵が必要」。
-  // 近接で殴りに行く相手(skeleton)だと**弾が飛んでこない**ので教習が成立しない。
-  // → 相手は**遠距離から撃つ型(plant)**にし、距離も離す(plantはほぼ据え置きの砲台)。
-  // requires は **'melee'**('finish' ではない): 関門(gateX)を持つビートの前提に「出ないことがありうる
-  // ビート」を置くと、そのビートが出ないまま**壁が永久に残ってソフトロック**する。
-  { id: 'counter', tutorial: 'm0-counter', gateX: 1300, afterEnemyCleared: true, requires: 'melee', spawn: { type: 'plant', dx: 300, dy: 0 } },
+  // 近接で殴りに行く相手だと**弾が飛んでこない**ので、相手は**遠距離から撃つ型(plant)**。
+  { id: 'counter', tutorial: 'm0-counter', gateX: 1450, afterEnemyCleared: true, requires: 'finish', spawn: { type: 'plant', dx: 300, dy: 0 } },
   // 上の3体を倒していれば結晶が溜まってレベルが上がる。位置ではなく成長で発火。
   { id: 'levelup', tutorial: 'm0-levelup', atLevel: 2, expireAfterX: 3000 },
   // 研究区域へ入った瞬間(社長指示v0.25.2288)。※踏破儀式は端末で初回1回きりなので**位置で判定する**。
@@ -172,8 +192,6 @@ export interface M0BeatGate {
    * これを見ないと、その隙に次のビートが始まってしまう(=練習が1体で終わる)。
    */
   scriptedWaveRemaining: number;
-  /** クリティカルが解禁済みか(=近接3発目の強制クリティカルが出たか)。 */
-  critUnlocked: boolean;
   /** この出撃で既に出したビート。 */
   fired: ReadonlySet<M0Beat>;
 }
@@ -216,8 +234,7 @@ export const nextM0Beat = (gate: M0BeatGate): M0BeatDef | null => {
     // 「前の台本の敵を片付けたら次」。倒しきるまでは次の説明を被せない。
     // 「前の台本の敵を**全部**片付けたら次」。1体ずつ出す途中の空白では進めない。
     const byCleared = beat.afterEnemyCleared === true && !gate.scriptedEnemyAlive && gate.scriptedWaveRemaining <= 0;
-    const byCrit = beat.afterCritUnlocked === true && gate.critUnlocked;
-    if (byX || byLevel || byConvo || byCleared || byCrit) return beat;
+    if (byX || byLevel || byConvo || byCleared) return beat;
   }
   return null;
 };

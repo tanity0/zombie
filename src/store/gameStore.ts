@@ -2386,6 +2386,11 @@ interface GameState {
   // 訓練(M0)で近接が当たった回数(このランのみ)。**3発目で強制クリティカル**→そのまま
   // 近接フィニッシュの教習へ繋げるための台本カウンタ(社長台本v0.25.2293)。
   m0MeleeHits: number;
+  /**
+   * クリティカル演習中か(社長指示v0.25.2314)。true の間は**近接3発ごとに必ずクリティカル**が出る。
+   * クリ/キルの教習を**それぞれ3体ぶん練習させる**ために必要(1回だけの強制クリだと練習にならない)。
+   */
+  m0CritDrill: boolean;
   // 訓練(M0)で「ここより先へ進ませない」x(px)。null=制限なし。
   // 開幕の会話中に区域境界(1500)へ着いてしまうと、会話とエリア移動の演出が重なる
   // (社長指示v0.25.2294「まず会話中にエリア移動に到達しない様に、手前で制限」)。
@@ -3062,6 +3067,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   tutorialPopupShown: false,
   m0Unlocked: { melee: true, crit: true }, // 既定=全解禁。M0出撃時だけ resetGame が封印する
   m0MeleeHits: 0,
+  m0CritDrill: false,
   m0AdvanceLimitX: null,
   captureFrame: null,
   introDialogueActive: false,
@@ -4015,7 +4021,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     //  - `m0CritLocked` = クリティカルはまだ教わっていない → 確率クリを一切出さない。
     //  - `m0ForceCritNow` = **この一撃が近接3発目** → 強制クリティカル(そのままフィニッシュ教習へ繋ぐ)。
     const m0CritLocked = !get().m0Unlocked.crit;
-    const m0ForceCritNow = m0CritLocked && get().m0MeleeHits + 1 >= M0_FORCED_CRIT_AT_HIT;
+    // 演習中は**3発ごとに必ず**クリ(1回きりではなく練習できる)。演習外の封印中は一切出さない。
+    const m0ForceCritNow = m0CritLocked && get().m0CritDrill &&
+      (get().m0MeleeHits + 1) % M0_FORCED_CRIT_AT_HIT === 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。このスイング開始時点の状態で固定。
     const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
     const grenadesToDetonate = projectiles
@@ -4454,12 +4462,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 訓練(M0)の近接教習カウンタ(社長台本v0.25.2293)。**敵に当たったスイングだけ**数える
     // (空振り・小物破壊は数えない=「3発当てた」で強制クリティカルが来る体験にする)。
     // 強制クリティカルが出たスイングでクリティカルを解禁する=以後は通常どおり確率で出る。
-    if (m0CritLocked && slashAt.length > 0) {
-      set(st => ({
-        m0MeleeHits: st.m0MeleeHits + 1,
-        m0Unlocked: m0ForceCritNow ? { ...st.m0Unlocked, crit: true } : st.m0Unlocked,
-      }));
-    }
+    // 演習が続くよう、当たった回数だけ数える(クリを解禁して確率クリへ戻す、はしない)。
+    if (m0CritLocked && slashAt.length > 0) set(st => ({ m0MeleeHits: st.m0MeleeHits + 1 }));
 
     return {
       swung: true,
@@ -10401,6 +10405,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 他ステージは常に全解禁。
         m0Unlocked: farBackdrop === 'tutorial' ? { melee: false, crit: false } : { melee: true, crit: true },
         m0MeleeHits: 0,
+        m0CritDrill: false,
         m0AdvanceLimitX: farBackdrop === 'tutorial' ? M0_CONVO_ADVANCE_LIMIT_X : null,
         gameReturned: false,
         meleeFinishComboCount: 0,
