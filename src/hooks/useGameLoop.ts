@@ -433,6 +433,7 @@ const HUNTER_START_MS = 180000;            // 出現開始(3分)
 // 訓練(M0)の教習ビート用の配置(TUTORIAL_STAGE.md「M0 チュートリアル進行案」)。
 const M0_HUNTER_AHEAD_PX = 360;            // ハンターをプレイヤーの何px先に出すか(画面内に入る距離)
 const M0_SHOOT_ROUNDS = 5;                 // 射撃教習で持たせる弾数(敵HPをこの弾数ちょうどに合わせる)
+const M0_MEDIC_HEAL_DELAY_MS = 1000;       // 被弾から衛生兵の回復までの間(社長指示v0.25.2302「1秒後には回復」)
 const M0_AMMO_AHEAD_PX = 140;              // 弾薬を何px先に置くか(追われながら通りがかりに拾える距離)
 const HUNTER_MAX_PER_RUN = Infinity;       // 1出撃あたりの上限なし(CD長めで何度でも)
 const HUNTER_RESPAWN_CD_MIN_MS = 150000;   // 再出現CD最短(150秒=2.5分。長め)
@@ -872,6 +873,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const m0BeatsFiredRef = useRef<Set<M0Beat>>(new Set());
   // M0の強制回復(社長台本v0.25.2293「ダメージ受けたらジュンが治療します！と言って強制回復」)用の前フレームHP。
   const m0PrevHpRef = useRef(-1);
+  // 衛生兵の回復が入る gameTime(0=待機なし)。被弾を見せてから救うための遅延。
+  const m0HealAtRef = useRef(0);
   // delayMs 付きビートの「いつ出すか」(演出を見せ切ってから説明を出すための待ち)。
   const m0PendingRef = useRef<{ id: M0Beat; at: number } | null>(null);
   // 教習の「まだ出していない残り」(社長指示v0.25.2300「3体ずつ・一気に出さずに順番に」)。
@@ -1847,6 +1850,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           tutorialConvoQueuedRef.current = false; // チュートリアルM0序盤会話も新ランで再有効化
           m0BeatsFiredRef.current = new Set(); // M0の教習ビートも新ランで最初から(毎出撃で出す=社長指示v0.25.2266)
           m0PrevHpRef.current = -1;            // 強制回復の被弾検出も新ランでリセット
+          m0HealAtRef.current = 0;             // 衛生兵の回復待ちも新ランでリセット
           m0PendingRef.current = null;         // 演出待ちも新ランでリセット
           m0WaveRef.current = null;            // 練習の残りも新ランでリセット
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
@@ -3002,14 +3006,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           })) {
             showTutorialOnce('move');
           }
-          // 教習中の強制回復(社長台本v0.25.2293)。**失敗しても詰まらせない**——被弾したらジュンが
-          // 「治療します！」と言って全快させる。**ハンターが出るまで**(=教習パートの間だけ)。
-          // ハンター以降は被弾がグレッグ死亡イベントの引き金なので、ここで救ってはいけない。
-          if (!m0BeatsFiredRef.current.has('hunter')) {
+          // 訓練中は**死なない**(社長指示v0.25.2302)。ダメージ側は store が HP1 で踏みとどまらせる
+          // (`damagePlayer`)。ここは**その1秒後に衛生兵が全快させる**台本。
+          //  - **ハンター以降も止めない**。ハンターのジャンプ攻撃は一撃が重く、そこで死ぬと台本が
+          //    最初からやり直しになる(社長報告「ハンターのジャンプ攻撃でゲームオーバーになっちゃう」)。
+          //  - 「1秒後」は**被弾を見せてから**救うため。即全快だと何が起きたか分からない。
+          {
             if (m0PrevHpRef.current < 0) m0PrevHpRef.current = st.player.health;
-            else if (st.player.health < m0PrevHpRef.current) {
-              useGameStore.setState(s2 => ({ player: { ...s2.player, health: s2.player.maxHealth } }));
+            else if (st.player.health < m0PrevHpRef.current && m0HealAtRef.current === 0) {
+              m0HealAtRef.current = newGameTime + M0_MEDIC_HEAL_DELAY_MS;
               st.tryNpcLine('ジュン', 'm0-heal', '治療します！', 4000);
+            }
+            if (m0HealAtRef.current > 0 && newGameTime >= m0HealAtRef.current) {
+              m0HealAtRef.current = 0;
+              useGameStore.setState(s2 => ({ player: { ...s2.player, health: s2.player.maxHealth } }));
             }
             m0PrevHpRef.current = useGameStore.getState().player.health;
           }

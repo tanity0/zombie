@@ -304,14 +304,6 @@ export const M0_FORCED_CRIT_AT_HIT = 3;
 export const M0_CONVO_ADVANCE_LIMIT_X = 1350;
 // 訓練(M0)で敵が出ている間、随行NPCがプレイヤーより何px前へ出るか(社長指示v0.25.2294「2人が前に出て積極的に撃つ」)。
 const M0_ESCORT_ADVANCE_PX = 110;
-// チュートリアルのゴールサークル位置。
-// 旧: 3000(社長指示v0.25.1829「最初から帰還サークルを右3000px地点に設置」)。
-// 新: **4000**(v0.25.2292)。x=3000 は `AREA_THRESHOLDS[1]` = **デンジャー入場**と同じ地点で、
-// ここは社長裁定v0.25.2287で**ハンターが出る場所**になった。ゴールと重なると「ハンター出現と同時に
-// 即クリア」になってしまうため、ゴールを終盤ダンジョンの終端(≒4000)へ送る。
-// ※終盤シーケンス(グレッグ死亡カットシーン→フレアガン受領→ランク1一巡のダンジョン)実装後は、
-//   このサークルを「ダンジョンを抜けた先のゴール」として使う(TUTORIAL_STAGE.md の台本15)。
-const TUTORIAL_RETURN_CIRCLE_X = 4000;
 // チュートリアルの左端(プレイヤー中心xの下限=スタートから左100pxで透明な壁・社長指示v0.25.1829)。
 export const TUTORIAL_MOVE_X_MIN_PX = -100;
 // ステージ2(研究所・横長廊下)の上下固定(M0チュートリアルと同じクランプ方式・社長承認
@@ -5695,7 +5687,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (player.invulnerable) return false;
 
     // スキル: ナイト(×0.8)/バーサーカー(×1.2) の被ダメ補正。amount>0 のみ補正。
-    const amount = rawAmount > 0 ? rawAmount * skillIncomingDamageMult(player) : rawAmount;
+    const skilled = rawAmount > 0 ? rawAmount * skillIncomingDamageMult(player) : rawAmount;
+    // 訓練(M0)は**死なない**(社長指示v0.25.2302「チュートリアルではHPは1になるけど死なない。
+    // 衛生兵が1秒後には回復しちゃう」)。ハンターのジャンプ攻撃のような大ダメージでもHP1で踏みとどまる。
+    // 教習の途中でゲームオーバーになると台本が最初からやり直しになり、教える順序が成立しない。
+    // ※回復(衛生兵)は useGameLoop 側の台本が1秒後に行う。ここは「死なせない」だけ。
+    const amount = get().farBackdrop === 'tutorial' && skilled > 0
+      ? Math.min(skilled, Math.max(0, player.health - 1))
+      : skilled;
 
     const wouldDie = player.health - amount <= 0;
     if (wouldDie && player.vaccineRevives > 0) {
@@ -10379,9 +10378,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // チュートリアル: 帰還サークルを最初から右3000px地点に常設(社長指示v0.25.1829)。
         // updateReturnPhaseは returnCircle があれば毎フレーム動く=3秒滞在で任務達成(既存経路)。
         // 洋館通路(corridorMode)も同方式で常設(社長指示v0.25.2132): 4000px付近のハッチ床上・5秒滞在=ゴール。
-        returnCircle: farBackdrop === 'tutorial'
-          ? { x: TUTORIAL_RETURN_CIRCLE_X, y: 0, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 }
-          : corridorMode
+        // 訓練(M0)のゴールサークルは**廃止**(社長指示v0.25.2302「チュートリアルのゴールが目的が
+        // 変わって意味をなさないので削除」)。M0の終わりは終盤シーケンス(グレッグ死亡カットシーン →
+        // フレアガン受領 → ランク1一巡のダンジョン → その先のゴール)で決まる。実装までM0は未完了のまま。
+        returnCircle: corridorMode
             ? { x: 0, y: CORRIDOR_GOAL_Y, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 }
             : null,
         tutorialPopup: null,
