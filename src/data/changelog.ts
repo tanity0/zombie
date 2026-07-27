@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2301',
+    items: [
+      '訓練(M0): 最初の移動チュートリアルで動ける範囲を広げました(会話の途中で壁に当たって足踏みになっていました)。',
+    ],
+  },
+  {
     version: '0.25.2300',
     items: [
       '訓練(M0): 各教習で3体ずつ相手をして練習できるようになりました。まとめて出てくるのではなく、倒すたびに次が1体ずつ出ます。',

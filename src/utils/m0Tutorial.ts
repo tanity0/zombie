@@ -98,19 +98,25 @@ export interface M0BeatDef {
 
 // x位置は叩き台(TUTORIAL_STAGE.md)。区域境界(1500=研究 / 3000=デンジャー)だけは
 // `AREA_THRESHOLDS` と一致していることに意味があるので勝手に動かさないこと。
+//
+// 関門(gateX)の間隔について(社長報告v0.25.2301「最初の移動チュートリアルの移動できる範囲が狭すぎる」):
+// **最初の関門は「開幕の会話が流れ切るまで歩ける距離」**が要る。近すぎると、会話を聞いている途中で
+// 壁に当たって足踏みすることになり、動ける箱が狭く感じる。→ 300→**800**(左端-100からの実移動900px)。
+// 以降の関門は「少し歩いたら次」で足りるので250px刻み。ただし**区域境界(1500)より手前**に3本とも
+// 収める必要がある(区域の説明より先に戦闘教習を終わらせる)。
 export const M0_BEATS: readonly M0BeatDef[] = [
   // 開幕の会話が終わった**直後**に、グレッグの号令で始める(社長台本v0.25.2293)。
   // 位置では出さない=会話→戦闘が途切れない。弾は「ちょうど倒せてちょうど切れる」量に台本側で詰める
   // (useGameLoop 側で設定)。味方も撃つがダメージは0=演出。
   {
-    id: 'shoot', tutorial: 'm0-shoot', afterConvo: true, gateX: 300,
+    id: 'shoot', tutorial: 'm0-shoot', afterConvo: true, gateX: 800,
     spawn: { type: 'zombie', dx: 420, dy: 0 },
     callouts: [{ speaker: 'グレッグ', text: '変異体だ！構えろ！' }],
   },
   // **弾切れの状態から始まる**。前のビートの終わり方(弾がちょうど切れる)がそのまま入口になる。
   // ここで初めて近接を解禁する(それまでは振れない=社長指示v0.25.2293の封印)。
   {
-    id: 'melee', tutorial: 'm0-melee', afterEnemyCleared: true, requires: 'shoot', gateX: 700,
+    id: 'melee', tutorial: 'm0-melee', afterEnemyCleared: true, requires: 'shoot', gateX: 1050,
     spawn: { type: 'skeleton', dx: 150, dy: 0 },
     callouts: [
       { speaker: 'ジュン', text: '弾切れです！' },
@@ -130,7 +136,7 @@ export const M0_BEATS: readonly M0BeatDef[] = [
   // → 相手は**遠距離から撃つ型(plant)**にし、距離も離す(plantはほぼ据え置きの砲台)。
   // requires は **'melee'**('finish' ではない): 関門(gateX)を持つビートの前提に「出ないことがありうる
   // ビート」を置くと、そのビートが出ないまま**壁が永久に残ってソフトロック**する。
-  { id: 'counter', tutorial: 'm0-counter', gateX: 1100, afterEnemyCleared: true, requires: 'melee', spawn: { type: 'plant', dx: 300, dy: 0 } },
+  { id: 'counter', tutorial: 'm0-counter', gateX: 1300, afterEnemyCleared: true, requires: 'melee', spawn: { type: 'plant', dx: 300, dy: 0 } },
   // 上の3体を倒していれば結晶が溜まってレベルが上がる。位置ではなく成長で発火。
   { id: 'levelup', tutorial: 'm0-levelup', atLevel: 2, expireAfterX: 3000 },
   // 研究区域へ入った瞬間(社長指示v0.25.2288)。※踏破儀式は端末で初回1回きりなので**位置で判定する**。

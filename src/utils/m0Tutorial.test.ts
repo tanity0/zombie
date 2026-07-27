@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_BEATS, M0_PRACTICE_COUNT, type M0Beat } from './m0Tutorial';
 import { AREA_THRESHOLDS } from './enemyUtils';
+import { TUTORIAL_MOVE_X_MIN_PX } from '../store/gameStore';
 import { TUTORIALS, getTutorial } from '../data/tutorials';
 
 const OPEN = { shownThisRun: false, popupOpen: false, menuOpen: false };
@@ -78,27 +79,27 @@ describe('nextM0Beat(教習ビートの発火)', () => {
 
   it('会話が終わっても、関門まで歩かないと射撃は始まらない(倒した直後に次が来ない=一拍)', () => {
     expect(nextM0Beat(beatGate({ playerX: 0, convoDone: true }))).toBeNull();
-    expect(nextM0Beat(beatGate({ playerX: 300, convoDone: true }))?.id).toBe('shoot');
+    expect(nextM0Beat(beatGate({ playerX: 800, convoDone: true }))?.id).toBe('shoot');
   });
 
   // 1体ずつ出すので、倒した直後は一瞬「敵0体」になる。そこで次のビートを出してしまうと
   // 練習が1体で打ち切られる(社長指示v0.25.2300「3体ずつ・一気に出さずに順番に」)。
   it('練習の残りがある間は、敵0体の一瞬でも次へ進まない', () => {
     const fired = new Set<M0Beat>(['shoot']);
-    expect(nextM0Beat(beatGate({ playerX: 700, fired, scriptedEnemyAlive: false, scriptedWaveRemaining: 2 }))).toBeNull();
-    expect(nextM0Beat(beatGate({ playerX: 700, fired, scriptedEnemyAlive: false, scriptedWaveRemaining: 0 }))?.id).toBe('melee');
+    expect(nextM0Beat(beatGate({ playerX: 1050, fired, scriptedEnemyAlive: false, scriptedWaveRemaining: 2 }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 1050, fired, scriptedEnemyAlive: false, scriptedWaveRemaining: 0 }))?.id).toBe('melee');
   });
 
   it('台本の敵が生きている間は次(近接)へ進まない', () => {
     const fired = new Set<M0Beat>(['shoot']);
-    expect(nextM0Beat(beatGate({ playerX: 700, fired, scriptedEnemyAlive: true }))).toBeNull();
-    expect(nextM0Beat(beatGate({ playerX: 700, fired, scriptedEnemyAlive: false }))?.id).toBe('melee');
+    expect(nextM0Beat(beatGate({ playerX: 1050, fired, scriptedEnemyAlive: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 1050, fired, scriptedEnemyAlive: false }))?.id).toBe('melee');
   });
 
   it('順に進めば定義順に出る', () => {
     const fired = new Set<M0Beat>();
     const order: M0Beat[] = [];
-    for (const playerX of [300, 700, 700, 700, 1100, 1500, 3000, 3160]) {
+    for (const playerX of [800, 1050, 1050, 1050, 1300, 1500, 3000, 3160]) {
       const beat = nextM0Beat(beatGate({ playerX, fired, critUnlocked: fired.has('melee') }));
       if (beat) { order.push(beat.id); fired.add(beat.id); }
     }
@@ -106,12 +107,12 @@ describe('nextM0Beat(教習ビートの発火)', () => {
   });
 
   it('ポップアップ/メニューが開いている間は出さない(重ねない)', () => {
-    expect(nextM0Beat(beatGate({ playerX: 300, popupOpen: true }))).toBeNull();
-    expect(nextM0Beat(beatGate({ playerX: 300, menuOpen: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 800, popupOpen: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 800, menuOpen: true }))).toBeNull();
   });
 
   it('一度出したビートは二度と出さない', () => {
-    expect(nextM0Beat(beatGate({ playerX: 700, fired: new Set<M0Beat>(['shoot']) }))?.id).not.toBe('shoot');
+    expect(nextM0Beat(beatGate({ playerX: 1050, fired: new Set<M0Beat>(['shoot']) }))?.id).not.toBe('shoot');
   });
 
   it('走り抜けて複数が同時に条件を満たしても、定義順に1つずつ出る', () => {
@@ -128,10 +129,10 @@ describe('nextM0Beat(教習ビートの発火)', () => {
 
   it('強制クリティカルの直後に「クリティカル」→「フィニッシュ」の順で2本出す', () => {
     const fired = new Set<M0Beat>(['shoot', 'melee']);
-    expect(nextM0Beat(beatGate({ playerX: 900, fired, critUnlocked: false }))).toBeNull(); // まだ崩していない
-    expect(nextM0Beat(beatGate({ playerX: 900, fired, critUnlocked: true }))?.id).toBe('crit');
+    expect(nextM0Beat(beatGate({ playerX: 1100, fired, critUnlocked: false }))).toBeNull(); // まだ崩していない
+    expect(nextM0Beat(beatGate({ playerX: 1100, fired, critUnlocked: true }))?.id).toBe('crit');
     fired.add('crit');
-    expect(nextM0Beat(beatGate({ playerX: 900, fired, critUnlocked: true }))?.id).toBe('finish');
+    expect(nextM0Beat(beatGate({ playerX: 1100, fired, critUnlocked: true }))?.id).toBe('finish');
   });
 
   it('フィニッシュはクリティカルの説明を前提にする(順番が入れ替わらない)', () => {
@@ -235,10 +236,23 @@ describe('M0_BEATS の不変条件', () => {
 
 describe('m0AdvanceLimit(関門=ここより先へ進めない前線)', () => {
   it('未発火のうち最初の関門を返す。全部済めば制限なし', () => {
-    expect(m0AdvanceLimit(new Set())).toBe(300);
-    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot']))).toBe(700);
-    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee']))).toBe(1100);
+    expect(m0AdvanceLimit(new Set())).toBe(800);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot']))).toBe(1050);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee']))).toBe(1300);
     expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee', 'counter']))).toBeNull();
+  });
+
+  // 社長報告v0.25.2301「最初の移動チュートリアルの移動できる範囲が狭すぎる」。
+  // 最初の関門は「開幕の会話が流れ切るまで歩ける距離」が要る。近すぎると会話中に壁で足踏みになる。
+  it('最初の関門は左端から十分離れている(会話中に壁へ当たらない)', () => {
+    expect(m0AdvanceLimit(new Set())! - TUTORIAL_MOVE_X_MIN_PX).toBeGreaterThanOrEqual(800);
+  });
+
+  // 区域の説明より先に戦闘教習を終わらせる(順序が逆になると「奥は危険」の回収が壊れる)。
+  it('関門は全て区域境界(1500)より手前にある', () => {
+    for (const b of M0_BEATS) {
+      if (b.gateX !== undefined) expect(b.gateX, b.id).toBeLessThan(AREA_THRESHOLDS[0]);
+    }
   });
 
   it('関門は単調増加(戻る前線を作らない)', () => {
