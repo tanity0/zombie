@@ -53,7 +53,7 @@ export interface M0BeatDef {
   /** 強制クリティカルが出た(=クリティカルが解禁された)直後に発火する。 */
   afterCritUnlocked?: boolean;
   /** 付随イベント: 敵を1体だけ湧かせる(プレイヤーからの相対位置)。 */
-  spawn?: { type: 'zombie' | 'skeleton'; dx: number; dy: number };
+  spawn?: { type: 'zombie' | 'skeleton' | 'plant'; dx: number; dy: number };
   /** ポップアップの前に流す掛け声(左上の通信)。**説明より先に、状況の理由を言う**。 */
   callouts?: readonly { speaker: string; text: string }[];
   /** このビートで解禁する要素(社長指示v0.25.2293「解禁されるまで封印」)。 */
@@ -122,7 +122,11 @@ export const M0_BEATS: readonly M0BeatDef[] = [
   // requires は **'melee'**('finish' ではない)。関門(gateX)を持つビートの前提に「出ないことがありうる
   // ビート」を置くと、そのビートが出ないまま**壁が永久に残ってソフトロック**する。crit/finish は
   // 「3発当てる」が前提=理屈上は必ず起きるが、保険としてここは melee に留める。
-  { id: 'counter', tutorial: 'm0-counter', gateX: 1100, afterEnemyCleared: true, requires: 'melee', spawn: { type: 'skeleton', dx: 260, dy: 0 } },
+  // **カウンター=飛んでくる弾を近接で弾き返す**技(反射弾は10倍)。社長指摘v0.25.2299
+  // 「近接フィニッシュとカウンターがごっちゃ/カウンターの時は遠距離弾の敵が必要」。
+  // 近接で殴りに行く相手(skeleton)だと**弾が飛んでこない**ので教習が成立しない。
+  // → 相手は**遠距離から撃つ型(plant)**にし、距離も離す(plantはほぼ据え置きの砲台)。
+  { id: 'counter', tutorial: 'm0-counter', gateX: 1100, afterEnemyCleared: true, requires: 'melee', spawn: { type: 'plant', dx: 300, dy: 0 } },
   // 上の3体を倒していれば結晶が溜まってレベルが上がる。位置ではなく成長で発火。
   { id: 'levelup', tutorial: 'm0-levelup', atLevel: 2, expireAfterX: 3000 },
   // 研究区域へ入った瞬間(社長指示v0.25.2288)。※踏破儀式は端末で初回1回きりなので**位置で判定する**。
