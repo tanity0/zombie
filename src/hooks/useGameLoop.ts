@@ -430,6 +430,7 @@ const EVENT_BANNER_MS = 3500;          // イベント発生告知バナーの�
 const HUNTER_START_MS = 180000;            // 出現開始(3分)
 // 訓練(M0)の教習ビート用の配置(TUTORIAL_STAGE.md「M0 チュートリアル進行案」)。
 const M0_HUNTER_AHEAD_PX = 360;            // ハンターをプレイヤーの何px先に出すか(画面内に入る距離)
+const M0_SHOOT_ROUNDS = 5;                 // 射撃教習で持たせる弾数(敵HPをこの弾数ちょうどに合わせる)
 const M0_AMMO_AHEAD_PX = 140;              // 弾薬を何px先に置くか(追われながら通りがかりに拾える距離)
 const HUNTER_MAX_PER_RUN = Infinity;       // 1出撃あたりの上限なし(CD長めで何度でも)
 const HUNTER_RESPAWN_CD_MIN_MS = 150000;   // 再出現CD最短(150秒=2.5分。長め)
@@ -867,6 +868,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 訓練(M0)の教習ビート: この出撃で既に出したもの(TUTORIAL_STAGE.md「M0 チュートリアル進行案」)。
   // 判定は純関数 `nextM0Beat`(src/utils/m0Tutorial.ts)。ここは「呼んで、出して、記録する」だけ。
   const m0BeatsFiredRef = useRef<Set<M0Beat>>(new Set());
+  // M0の強制回復(社長台本v0.25.2293「ダメージ受けたらジュンが治療します！と言って強制回復」)用の前フレームHP。
+  const m0PrevHpRef = useRef(-1);
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -1836,6 +1839,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
           tutorialConvoQueuedRef.current = false; // チュートリアルM0序盤会話も新ランで再有効化
           m0BeatsFiredRef.current = new Set(); // M0の教習ビートも新ランで最初から(毎出撃で出す=社長指示v0.25.2266)
+          m0PrevHpRef.current = -1;            // 強制回復の被弾検出も新ランでリセット
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
           hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0 };
           hunterKillsRef.current = [];
@@ -2972,6 +2976,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           })) {
             showTutorialOnce('move');
           }
+          // 教習中の強制回復(社長台本v0.25.2293)。**失敗しても詰まらせない**——被弾したらジュンが
+          // 「治療します！」と言って全快させる。**ハンターが出るまで**(=教習パートの間だけ)。
+          // ハンター以降は被弾がグレッグ死亡イベントの引き金なので、ここで救ってはいけない。
+          if (!m0BeatsFiredRef.current.has('hunter')) {
+            if (m0PrevHpRef.current < 0) m0PrevHpRef.current = st.player.health;
+            else if (st.player.health < m0PrevHpRef.current) {
+              useGameStore.setState(s2 => ({ player: { ...s2.player, health: s2.player.maxHealth } }));
+              st.tryNpcLine('ジュン', 'm0-heal', '治療します！', 4000);
+            }
+            m0PrevHpRef.current = useGameStore.getState().player.health;
+          }
+
           // 教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291)。
           // 一本道で戻れないので「xを通過したら発火」で順序が保証される。判定は純関数 `nextM0Beat`。
           // 付随イベント=敵を1体だけ湧かせる(M0は自動湧きを全停止済み=v0.25.1814なので、
@@ -2983,15 +2999,55 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playerLevel: st.player.level,
               popupOpen: st.tutorialPopup !== null,
               menuOpen: st.showShopMenu || st.showUpgradeMenu,
+              // 開幕会話が「積まれ、流れ終わった」か。M0は自動湧きが無いので、生きている敵=台本で出した敵。
+              convoDone: tutorialConvoQueuedRef.current && st.npcDialogueQueue.length === 0 && st.npcDialogue === null,
+              scriptedEnemyAlive: st.enemies.length > 0,
               fired: m0BeatsFiredRef.current,
             });
             if (beat) {
               m0BeatsFiredRef.current.add(beat.id);
               const pcx = st.player.x + st.player.width / 2;
               const pcy = st.player.y + st.player.height / 2;
+              // 解禁(社長指示v0.25.2293「解禁されるまで封印」)。近接はこのビートで初めて振れるようになる。
+              if (beat.unlock === 'melee') {
+                useGameStore.setState(s2 => ({ m0Unlocked: { ...s2.m0Unlocked, melee: true } }));
+              }
+              // 掛け声(左上の通信)。**説明より先に、なぜ今それが要るのかを言う**。キュー直積みで順番を保証。
+              if (beat.callouts?.length) {
+                useGameStore.setState(s2 => ({
+                  npcDialogueQueue: [...s2.npcDialogueQueue, ...beat.callouts!.map(c => ({ name: c.speaker, text: c.text }))],
+                }));
+              }
               if (beat.spawn) {
                 const e = spawnEnemyAt(beat.spawn.type, pcx + beat.spawn.dx, pcy + beat.spawn.dy, newGameTime);
                 addEnemy(e);
+                // 射撃ビートだけ、弾を「**ちょうど倒せて、ちょうど切れる**」量に詰め直す(社長台本v0.25.2293)。
+                // 偶然に頼らず、次が近接になる理由を台本側で作る。装填のみ・予備弾は0。
+                if (beat.id === 'shoot') {
+                  const gun = st.player.weapons.find(w => !w.isMelee && w.ammoType);
+                  if (gun) {
+                    // 敵のHPを「持っている弾でちょうど落ちる」量にし、予備弾は0にする。
+                    e.health = e.maxHealth = Math.max(1, gun.damage) * M0_SHOOT_ROUNDS;
+                    useGameStore.setState(s2 => ({
+                      player: {
+                        ...s2.player,
+                        ammoHandgun: 0, ammoShotgun: 0, ammoRifle: 0,
+                        weapons: s2.player.weapons.map(w => (w.id === gun.id ? { ...w, magazine: M0_SHOOT_ROUNDS } : w)),
+                      },
+                    }));
+                  }
+                }
+              }
+              if (beat.id === 'melee') {
+                // 「弾切れ」を**確実に**作る(社長台本v0.25.2293「都合よく倒せて弾も切れる」)。
+                // 散弾のように想定より早く倒せてしまう銃でも、ここで空にすることで台本が崩れない。
+                useGameStore.setState(s2 => ({
+                  player: {
+                    ...s2.player,
+                    ammoHandgun: 0, ammoShotgun: 0, ammoRifle: 0,
+                    weapons: s2.player.weapons.map(w => (w.isMelee ? w : { ...w, magazine: 0 })),
+                  },
+                }));
               }
               if (beat.id === 'hunter') {
                 // デンジャー入場(r>=3000)でハンターを**右上=通行できる最上**(縦の透明壁の上端)に出す

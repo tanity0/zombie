@@ -64,20 +64,32 @@ describe('台帳の体裁(全チュートリアル共通)', () => {
 });
 
 // --- 教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291) ---
-const beatGate = (over: Partial<Parameters<typeof nextM0Beat>[0]> = {}) => ({
+const beatGate = (over: Partial<Parameters<typeof nextM0Beat>[0]> = {}): Parameters<typeof nextM0Beat>[0] => ({
   playerX: 0, playerLevel: 1, popupOpen: false, menuOpen: false,
+  // 既定=「会話が終わり、台本の敵は片付いている」状態。位置ビートの検査をこれで邪魔しない。
+  convoDone: true, scriptedEnemyAlive: false,
   fired: new Set<M0Beat>(), ...over,
 });
 
 describe('nextM0Beat(教習ビートの発火)', () => {
-  it('歩き出すまでは何も出さない', () => {
-    expect(nextM0Beat(beatGate())).toBeNull();
+  it('開幕の会話が終わるまでは何も出さない(会話→戦闘を途切れさせない)', () => {
+    expect(nextM0Beat(beatGate({ convoDone: false }))).toBeNull();
   });
 
-  it('順に歩けば定義順に出る', () => {
+  it('会話が終わった直後に射撃が出る(位置では出さない)', () => {
+    expect(nextM0Beat(beatGate({ playerX: 0, convoDone: true }))?.id).toBe('shoot');
+  });
+
+  it('台本の敵が生きている間は次(近接)へ進まない', () => {
+    const fired = new Set<M0Beat>(['shoot']);
+    expect(nextM0Beat(beatGate({ fired, scriptedEnemyAlive: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ fired, scriptedEnemyAlive: false }))?.id).toBe('melee');
+  });
+
+  it('順に進めば定義順に出る', () => {
     const fired = new Set<M0Beat>();
     const order: M0Beat[] = [];
-    for (const playerX of [400, 800, 1200, 1500, 3000, 3160]) {
+    for (const playerX of [0, 0, 1200, 1500, 3000, 3160]) {
       const beat = nextM0Beat(beatGate({ playerX, fired }));
       if (beat) { order.push(beat.id); fired.add(beat.id); }
     }
@@ -85,12 +97,12 @@ describe('nextM0Beat(教習ビートの発火)', () => {
   });
 
   it('ポップアップ/メニューが開いている間は出さない(重ねない)', () => {
-    expect(nextM0Beat(beatGate({ playerX: 400, popupOpen: true }))).toBeNull();
-    expect(nextM0Beat(beatGate({ playerX: 400, menuOpen: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ popupOpen: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ menuOpen: true }))).toBeNull();
   });
 
   it('一度出したビートは二度と出さない', () => {
-    expect(nextM0Beat(beatGate({ playerX: 400, fired: new Set<M0Beat>(['shoot']) }))?.id).not.toBe('shoot');
+    expect(nextM0Beat(beatGate({ fired: new Set<M0Beat>(['shoot']) }))?.id).not.toBe('shoot');
   });
 
   it('走り抜けて複数が同時に条件を満たしても、定義順に1つずつ出る', () => {
@@ -131,6 +143,19 @@ describe('M0_BEATS の不変条件', () => {
     for (const b of M0_BEATS) expect(getTutorial(b.tutorial), b.id).toBeTruthy();
   });
 
+  it('近接は必ず近接ビートで解禁される(それまで振れない=社長指示v0.25.2293の封印)', () => {
+    expect(M0_BEATS.find(b => b.id === 'melee')!.unlock).toBe('melee');
+    // 近接より前のビートで解禁してしまうと、教わる前に振れてしまう。
+    const meleeIdx = M0_BEATS.findIndex(b => b.id === 'melee');
+    for (let i = 0; i < meleeIdx; i++) expect(M0_BEATS[i].unlock, M0_BEATS[i].id).toBeUndefined();
+  });
+
+  it('射撃と近接には掛け声が付いている(説明より先に、状況の理由を言う)', () => {
+    for (const id of ['shoot', 'melee'] as const) {
+      expect(M0_BEATS.find(b => b.id === id)!.callouts?.length, id).toBeGreaterThan(0);
+    }
+  });
+
   it('位置ビートのxは単調増加(一本道で順に踏める)', () => {
     const xs = M0_BEATS.filter(b => b.atX !== undefined).map(b => b.atX!);
     for (let i = 1; i < xs.length; i++) expect(xs[i]).toBeGreaterThan(xs[i - 1]);
@@ -142,10 +167,23 @@ describe('M0_BEATS の不変条件', () => {
     expect(M0_BEATS.find(b => b.id === 'hunter')!.atX).toBe(AREA_THRESHOLDS[1]);
   });
 
-  it('位置で決まらないビートには必ず見送りxがある(後続を永久に塞がない)', () => {
+  // レベルは「敵を倒さなければ永久に上がらない」=条件が満たされないまま残りうる唯一の型。
+  // 会話の終了・敵の掃討は必ず起きるので見送りxは要らない。
+  it('レベルだけで決まるビートには必ず見送りxがある(後続を永久に塞がない)', () => {
     for (const b of M0_BEATS) {
-      if (b.atX === undefined) expect(b.expireAfterX, b.id).toBeDefined();
+      if (b.atLevel !== undefined && b.atX === undefined) expect(b.expireAfterX, b.id).toBeDefined();
     }
+  });
+
+  // 前提が無いと afterEnemyCleared が開幕(敵0体)で即成立し、近接が射撃を追い越す。
+  it('「前の結果で始まる」ビートには前提ビートがある', () => {
+    for (const b of M0_BEATS) {
+      if (b.afterEnemyCleared) expect(b.requires, b.id).toBeDefined();
+    }
+  });
+
+  it('封印を解くビートより先に、それを使う教習が出ない(カウンターは近接を前提にする)', () => {
+    expect(M0_BEATS.find(b => b.id === 'counter')!.requires).toBe('melee');
   });
 
   it('カウンターは近接より後(敵の攻撃モーションを一度見せてから教える)', () => {

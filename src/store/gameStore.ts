@@ -298,6 +298,8 @@ export const TUTORIAL_SOLDIER_INDEX = 101;
 // チュートリアルの上下移動制限(プレイヤー中心yがスポーン(0)から±この値まで・透明な壁)。
 // 縦カメラ=プレイヤー1:1追従とセットで、被写界深度の構図を守る(社長指示v0.25.1826)。
 export const TUTORIAL_MOVE_Y_LIMIT_PX = 100; // v0.25.1828: 社長指示「100pxに増やします」で50→100
+// 訓練(M0)の近接教習: 何発目のヒットを強制クリティカルにするか(社長台本v0.25.2293「近接3発で強制クリティカル」)。
+export const M0_FORCED_CRIT_AT_HIT = 3;
 // チュートリアルのゴールサークル位置。
 // 旧: 3000(社長指示v0.25.1829「最初から帰還サークルを右3000px地点に設置」)。
 // 新: **4000**(v0.25.2292)。x=3000 は `AREA_THRESHOLDS[1]` = **デンジャー入場**と同じ地点で、
@@ -2381,6 +2383,13 @@ interface GameState {
   // 挿絵は収録済み素材で統一(旧・表示直前ライブキャプチャ(shot)はv0.25.1839で廃止)。
   tutorialPopup: { title: string; lines: string[]; art?: 'move'; img?: string } | null;
   tutorialPopupShown: boolean; // このランで表示済みか(resetGameでリセット)
+  // 訓練(M0)の**封印**(社長指示v0.25.2293「チュートリアルで解禁されるまで近接等は封印。
+  // クリティカル等も出ない」)。教わっていない要素が先に暴発すると、説明と体験の順序が崩れる。
+  // M0以外のステージでは常に全解禁(resetGame が farBackdrop を見て決める)。
+  m0Unlocked: { melee: boolean; crit: boolean };
+  // 訓練(M0)で近接が当たった回数(このランのみ)。**3発目で強制クリティカル**→そのまま
+  // 近接フィニッシュの教習へ繋げるための台本カウンタ(社長台本v0.25.2293)。
+  m0MeleeHits: number;
   // ゲーム画面のキャプチャ提供者(PixiStageが登録)。ゲーム内では未使用(v0.25.1839でポップアップの
   // ライブ撮影を廃止)。手本GIF収録・デバッグ用ツールとして温存(ヘッドレス収録が st.captureFrame() を叩く)。
   captureFrame: (() => string | null) | null;
@@ -3051,6 +3060,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   rendererReady: false,
   tutorialPopup: null,
   tutorialPopupShown: false,
+  m0Unlocked: { melee: true, crit: true }, // 既定=全解禁。M0出撃時だけ resetGame が封印する
+  m0MeleeHits: 0,
   captureFrame: null,
   introDialogueActive: false,
   introDialogueStartedAt: 0,
@@ -3641,6 +3652,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     } = get();
     // 帰還サークル内では攻撃停止(置き攻撃の出入りハメ防止)。
     if (isInReturnCircle(player, get().returnCircle)) return { swung: false, hit: false, finish: false, killed: 0 };
+    // 訓練(M0)の封印(社長指示v0.25.2293): **近接チュートリアルで解禁されるまで振れない**。
+    // 教わっていない技が先に暴発すると、説明と体験の順序が崩れる(=台本が成立しない)。
+    if (!get().m0Unlocked.melee) return { swung: false, hit: false, finish: false, killed: 0 };
     // スキル スラッシャー: タイミングリングが生きている間は、タップを追撃判定へ回す(CD有無に関わらず優先)。
     // ジャストで追撃→次のリング、外す/3連終了でコンボ終了。寿命を過ぎたリングは無視して通常スイングへ。
     if (
@@ -3992,6 +4006,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slashAt: { x: number; y: number }[] = [];
     const meleeHitEnemyIds: string[] = []; // スキル 救難信号: このスイングでヒットした敵ID(発動判定/対象選定用)
     const meleeCritChance = melee?.critChance ?? 0;
+    // 訓練(M0)の封印と台本(社長指示v0.25.2293)。**このスイング開始時点で固定**する
+    // (敵ごとのループの中で判定すると、1スイングで複数体に当たった時に「3発目」が壊れる)。
+    //  - `m0CritLocked` = クリティカルはまだ教わっていない → 確率クリを一切出さない。
+    //  - `m0ForceCritNow` = **この一撃が近接3発目** → 強制クリティカル(そのままフィニッシュ教習へ繋ぐ)。
+    const m0CritLocked = !get().m0Unlocked.crit;
+    const m0ForceCritNow = m0CritLocked && get().m0MeleeHits + 1 >= M0_FORCED_CRIT_AT_HIT;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。このスイング開始時点の状態で固定。
     const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
     const grenadesToDetonate = projectiles
@@ -4164,7 +4184,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         : 0;
       // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
       const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+      // 訓練(M0)の封印+台本(社長指示v0.25.2293): クリティカルは**教わるまで出ない**。
+      // その代わり**近接3発目は必ずクリティカル**にして、そのまま近接フィニッシュの教習へ繋げる。
+      // (m0CritLocked が false=通常ステージ/解禁後 なら、従来どおり確率で決まる。)
+      const crit = m0CritLocked
+        ? m0ForceCritNow
+        : Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       // §5.21-追補4: 非スタン(=非フィニッシュ)の通常近接チップダメージ。finishKillOnly個体はHP1で踏みとどまる。
@@ -4420,6 +4445,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         },
       });
       get().spawnRing(pcx, pcy, 6, 44, 'rgba(203,213,225,0.6)', 3, 240); // 生成の控えめな白リング
+    }
+
+    // 訓練(M0)の近接教習カウンタ(社長台本v0.25.2293)。**敵に当たったスイングだけ**数える
+    // (空振り・小物破壊は数えない=「3発当てた」で強制クリティカルが来る体験にする)。
+    // 強制クリティカルが出たスイングでクリティカルを解禁する=以後は通常どおり確率で出る。
+    if (m0CritLocked && slashAt.length > 0) {
+      set(st => ({
+        m0MeleeHits: st.m0MeleeHits + 1,
+        m0Unlocked: m0ForceCritNow ? { ...st.m0Unlocked, crit: true } : st.m0Unlocked,
+      }));
     }
 
     return {
@@ -10281,6 +10316,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             : null,
         tutorialPopup: null,
         tutorialPopupShown: false,
+        // 訓練(M0)は**教わるまで封印**(社長指示v0.25.2293)。近接もクリティカルも、その教習で解禁するまで出ない。
+        // 他ステージは常に全解禁。
+        m0Unlocked: farBackdrop === 'tutorial' ? { melee: false, crit: false } : { melee: true, crit: true },
+        m0MeleeHits: 0,
         gameReturned: false,
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
