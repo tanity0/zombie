@@ -9173,7 +9173,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // プレイヤーの弾が尽きた=台本上「隊として弾切れ」なので、援護も止まって近接一本になる。
       const anyAmmo = st.player.weapons.some(w => !w.isMelee && w.ammoType &&
         ((w.magazine ?? 0) > 0 || ammoPoolFor(st.player, w.ammoType) > 0));
-      if (!anyAmmo) return [];
+      if (!anyAmmo) {
+        // **その場で足を止める**(社長指摘v0.25.2309「弾切れの時、軍人だけバタバタしてるのが気になる。
+        // 足閉じてる絵で止めて」)。弾切れで援護をやめた後、敵が居る間は useGameLoop の追従チェーンも
+        // 動かない(前に出た2人を引き戻さないため)ので、**誰も escorts を更新しない**。その結果
+        // 最後に立っていた `moving: true` が残り続け、描画側(`esc.moving !== false`)が歩きアニメを
+        // 回し続けていた=その場で足踏みして見えていた。
+        if (st.escorts.some(e => e.moving)) set({ escorts: st.escorts.map(e => ({ ...e, moving: false })) });
+        return [];
+      }
       const p = st.player;
       const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
       const now = st.gameTime;

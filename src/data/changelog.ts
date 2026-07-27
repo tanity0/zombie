@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2309',
+    items: [
+      '訓練(M0): 弾切れのあと、グレッグとジュンがその場で足踏みし続けていたのを直しました。足を止めて立ちます。',
+    ],
+  },
+  {
     version: '0.25.2308',
     items: [
       '近接チュートリアルの手本を実機収録に差し替えました。',
