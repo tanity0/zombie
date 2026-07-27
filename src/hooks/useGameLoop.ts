@@ -170,6 +170,7 @@ import {
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
 import { calculateResultScore } from '../utils/resultScoring';
 import type { KillBucket } from '../utils/killTelemetry';
+import type { WallInscriptionEvent } from '../store/gameStore';
 import { isInRefractory } from '../utils/killTelemetry';
 import { selectReliefProgram, type ReliefProgram } from '../utils/reliefProgram';
 import { setReliefProgramDebug } from '../utils/reliefProgramState';
@@ -434,6 +435,7 @@ const HUNTER_START_MS = 180000;            // 出現開始(3分)
 const M0_HUNTER_AHEAD_PX = 360;            // ハンターをプレイヤーの何px先に出すか(画面内に入る距離)
 const M0_SHOOT_ROUNDS = 5;                 // 射撃教習で持たせる弾数(敵HPをこの弾数ちょうどに合わせる)
 const M0_MEDIC_HEAL_DELAY_MS = 1000;       // 被弾から衛生兵の回復までの間(社長指示v0.25.2302「1秒後には回復」)
+const M0_AREA_CEREMONY_DELAY_MS = 800;     // 区域の説明を閉じてから銘打ちを出すまでの一拍(社長指示v0.25.2305)
 const M0_AMMO_AHEAD_PX = 140;              // 弾薬を何px先に置くか(追われながら通りがかりに拾える距離)
 const HUNTER_MAX_PER_RUN = Infinity;       // 1出撃あたりの上限なし(CD長めで何度でも)
 const HUNTER_RESPAWN_CD_MIN_MS = 150000;   // 再出現CD最短(150秒=2.5分。長め)
@@ -880,6 +882,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 教習の「まだ出していない残り」(社長指示v0.25.2300「3体ずつ・一気に出さずに順番に」)。
   // 倒すたびに次を1体出す。全部倒し切るまで次のビートへ進ませない。
   const m0WaveRef = useRef<{ spawn: NonNullable<M0BeatDef['spawn']>; remaining: number } | null>(null);
+  // 区域の銘打ち(踏破の演出)を**説明を読み終わるまで預かる**ための保管(社長指示v0.25.2305)。
+  const m0WallHoldRef = useRef<{ ev: WallInscriptionEvent | null; at: number; done: boolean }>({ ev: null, at: 0, done: false });
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -1853,6 +1857,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           m0HealAtRef.current = 0;             // 衛生兵の回復待ちも新ランでリセット
           m0PendingRef.current = null;         // 演出待ちも新ランでリセット
           m0WaveRef.current = null;            // 練習の残りも新ランでリセット
+          m0WallHoldRef.current = { ev: null, at: 0, done: false }; // 銘打ちの預かりも新ランでリセット
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
           hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0 };
           hunterKillsRef.current = [];
@@ -3031,7 +3036,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           //  ②未発火ビートの関門(社長指示v0.25.2297「その前までしか移動できないダンジョン」)。
           //    これで「敵を倒した直後に次が始まる」のではなく、**次の場所まで歩く一拍**が必ず挟まる。
           {
-            const gateX = m0AdvanceLimit(m0BeatsFiredRef.current);
+            // 戦闘中(練習の敵が生きている/残っている)は壁を外す=練習中は自由に動ける。
+            const waveActive = st.enemies.length > 0 || (m0WaveRef.current?.remaining ?? 0) > 0;
+            const gateX = m0AdvanceLimit(m0BeatsFiredRef.current, waveActive);
             const convoCap = m0ConvoDone ? null : M0_CONVO_ADVANCE_LIMIT_X;
             const limit = gateX === null ? convoCap : (convoCap === null ? gateX : Math.min(gateX, convoCap));
             if (st.m0AdvanceLimitX !== limit) useGameStore.setState({ m0AdvanceLimitX: limit });
@@ -3044,6 +3051,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const w = m0WaveRef.current;
             w.remaining -= 1;
             spawnM0Practice(w.spawn, st.player.x + st.player.width / 2, st.player.y + st.player.height / 2);
+          }
+
+          // 区域の演出(銘打ち=「研究対象区域 —— 踏破」)は**説明を読んでから**出す
+          // (社長指示v0.25.2305「エリアチュートリアルok押すと一拍置いて実際にデンジャーゾーンの演出」)。
+          // 境界を越えると銘打ちが即座に始まるが、直後にポップアップが出てゲームが止まる一方、
+          // 銘打ちは**実時間の setTimeout(4秒)**で進むため読んでいる間に終わってしまう。
+          // → 説明が出ている間は銘打ちを**預かって画面から外し**、閉じて一拍おいてから出し直す。
+          if (m0BeatsFiredRef.current.has('area') && !m0WallHoldRef.current.done) {
+            const live = useGameStore.getState();
+            const hold = m0WallHoldRef.current;
+            if (live.wallEventQueue.length > 0) {
+              hold.ev = live.wallEventQueue[0];
+              useGameStore.setState({ wallEventQueue: [] });   // いったん画面から下ろす
+            }
+            if (hold.ev && live.tutorialPopup === null) {
+              if (hold.at === 0) hold.at = newGameTime + M0_AREA_CEREMONY_DELAY_MS; // OKを押した=一拍の起点
+              else if (newGameTime >= hold.at) {
+                useGameStore.setState(s2 => ({ wallEventQueue: [...s2.wallEventQueue, hold.ev!] }));
+                m0WallHoldRef.current = { ev: null, at: 0, done: true };
+              }
+            }
           }
 
           // 教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291)。

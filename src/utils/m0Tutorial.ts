@@ -140,11 +140,14 @@ export const M0_BEATS: readonly M0BeatDef[] = [
   // 上の3体を倒していれば結晶が溜まってレベルが上がる。位置ではなく成長で発火。
   { id: 'levelup', tutorial: 'm0-levelup', atLevel: 2, expireAfterX: 3000 },
   // 研究区域へ入った瞬間(社長指示v0.25.2288)。※踏破儀式は端末で初回1回きりなので**位置で判定する**。
-  { id: 'area', tutorial: 'm0-area', atX: 1500, delayMs: 4200 }, // 銘打ち(4秒)を見せ切ってから説明を出す
+  // 区域の説明。**演出(銘打ち)は説明を読んでから**出す(社長指示v0.25.2305)ので、ここでは待たない
+  // (v0.25.2297 の delayMs=4200 は撤回。useGameLoop 側が銘打ちを預かって後で出し直す)。
+  // requires: 戦闘中は壁が外れるため、練習の途中で先へ走って区域の説明だけ先に見てしまわないよう鎖でつなぐ。
+  { id: 'area', tutorial: 'm0-area', atX: 1500, requires: 'counter' },
   // デンジャー入場=ハンター出現(社長指示v0.25.2287)。湧かせるのは useGameLoop 側(専用の配置)。
-  { id: 'hunter', tutorial: 'm0-hunter', atX: 3000 },
+  { id: 'hunter', tutorial: 'm0-hunter', atX: 3000, requires: 'area' },
   // 追われながら弾を拾う。ハンターの直後に置く(社長指示v0.25.2286「5で弾補充」)。
-  { id: 'ammo', tutorial: 'm0-ammo', atX: 3160 },
+  { id: 'ammo', tutorial: 'm0-ammo', atX: 3160, requires: 'hunter' },
 ];
 
 export interface M0BeatGate {
@@ -172,7 +175,12 @@ export interface M0BeatGate {
  * これが無いと、教習中の敵を置き去りにして先へ走れてしまう(台本が崩れる)。
  * 関門を持つ未発火ビートが無ければ null=制限なし。
  */
-export const m0AdvanceLimit = (fired: ReadonlySet<M0Beat>): number | null => {
+export const m0AdvanceLimit = (fired: ReadonlySet<M0Beat>, waveActive: boolean): number | null => {
+  // **戦闘中は壁を外す**(社長指摘v0.25.2305「近接チュートリアル、移動可能距離が短すぎる」)。
+  // 関門の役目は「戦う前に先へ行かせない」ことと「倒した直後に次を始めない一拍」であって、
+  // **戦っている最中に狭い箱へ閉じ込めること**ではない。練習中は自由に動き回れた方がいい。
+  // 先へ走られても、次のビートは `requires`(前のビートが済んでいること)で塞いであるので順序は壊れない。
+  if (waveActive) return null;
   for (const beat of M0_BEATS) {
     if (fired.has(beat.id)) continue;
     if (beat.gateX !== undefined) return beat.gateX;

@@ -255,16 +255,16 @@ describe('M0_BEATS の不変条件', () => {
 
 describe('m0AdvanceLimit(関門=ここより先へ進めない前線)', () => {
   it('未発火のうち最初の関門を返す。全部済めば制限なし', () => {
-    expect(m0AdvanceLimit(new Set())).toBe(800);
-    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot']))).toBe(1050);
-    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee']))).toBe(1300);
-    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee', 'counter']))).toBeNull();
+    expect(m0AdvanceLimit(new Set(), false)).toBe(800);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot']), false)).toBe(1050);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee']), false)).toBe(1300);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee', 'counter']), false)).toBeNull();
   });
 
   // 社長報告v0.25.2301「最初の移動チュートリアルの移動できる範囲が狭すぎる」。
   // 最初の関門は「開幕の会話が流れ切るまで歩ける距離」が要る。近すぎると会話中に壁で足踏みになる。
   it('最初の関門は左端から十分離れている(会話中に壁へ当たらない)', () => {
-    expect(m0AdvanceLimit(new Set())! - TUTORIAL_MOVE_X_MIN_PX).toBeGreaterThanOrEqual(800);
+    expect(m0AdvanceLimit(new Set(), false)! - TUTORIAL_MOVE_X_MIN_PX).toBeGreaterThanOrEqual(800);
   });
 
   // 区域の説明より先に戦闘教習を終わらせる(順序が逆になると「奥は危険」の回収が壊れる)。
@@ -272,6 +272,24 @@ describe('m0AdvanceLimit(関門=ここより先へ進めない前線)', () => {
     for (const b of M0_BEATS) {
       if (b.gateX !== undefined) expect(b.gateX, b.id).toBeLessThan(AREA_THRESHOLDS[0]);
     }
+  });
+
+  // 社長指摘v0.25.2305「近接チュートリアル、移動可能距離が短すぎる」。
+  // 関門の役目は「戦う前に先へ行かせない」ことであって、戦闘中に狭い箱へ閉じ込めることではない。
+  it('戦闘中(練習の敵が居る間)は壁を外す=自由に動ける', () => {
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot']), true)).toBeNull();
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot']), false)).not.toBeNull();
+  });
+
+  // 壁が外れている間に先へ走られても、順序が壊れないこと(鎖=requires で塞いである)。
+  it('壁が無い状態で最奥へ走っても、前のビートが済むまで先のビートは出ない', () => {
+    const fired = new Set<M0Beat>(['shoot']);           // 近接がまだ
+    for (const id of ['area', 'hunter', 'ammo'] as const) {
+      const b = M0_BEATS.find(x => x.id === id)!;
+      expect(b.requires, id).toBeDefined();
+    }
+    // 最奥(3200)に居ても、練習中(敵が生きている)なら何も出ない。
+    expect(nextM0Beat(beatGate({ playerX: 3200, fired, scriptedEnemyAlive: true }))).toBeNull();
   });
 
   it('関門は単調増加(戻る前線を作らない)', () => {
@@ -290,12 +308,12 @@ describe('m0AdvanceLimit(関門=ここより先へ進めない前線)', () => {
   it('クリティカルが一度も出なくても全ての関門を通過できる(ソフトロックしない)', () => {
     const fired = new Set<M0Beat>();
     for (let i = 0; i < 12; i++) {
-      const limit = m0AdvanceLimit(fired);
+      const limit = m0AdvanceLimit(fired, false);
       if (limit === null) break;
       const beat = nextM0Beat(beatGate({ playerX: limit, fired, critUnlocked: false, scriptedEnemyAlive: false }));
       if (!beat) throw new Error(`関門 ${limit} で進めなくなった(発火できるビートが無い)`);
       fired.add(beat.id);
     }
-    expect(m0AdvanceLimit(fired)).toBeNull();
+    expect(m0AdvanceLimit(fired, false)).toBeNull();
   });
 });
