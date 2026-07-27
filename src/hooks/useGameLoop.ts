@@ -6522,7 +6522,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             ? Math.random() < applyEnemyCritPenalty(weaknessCritBonus(enemyForFx.type, 'gun'), enemyForFx)
             : false;
           // PHILL銃の頭部命中は確定ヘッドショット=クリティカル扱い(×1.5＋気絶＋headshot SE＋金VFX)。
-          const hitCrit = !!projectile?.crit || trapCritBonus || weakCrit || headshot === true;
+          // 訓練(M0)の封印(社長指示v0.25.2293/2295): **教わるまでクリティカルは一切出さない**。
+          // 実バグだった: 銃には「チャフ(バット/ゾンビ)の武器弱点=銃+10%」(§5.6 M7)があり、
+          // 射撃教習の相手はゾンビなので**プレイヤーの銃が10%でクリしていた**。クリは×1.5なので
+          // 「弾はちょうど倒せる分だけ」の台本も崩れる。味方(escort)の弾も同じ判定を通っていた。
+          // また**ダメージ0の弾でクリ判定が走る意味は無い**(味方の演出射撃)ので、そこも落とす。
+          const m0CritLocked = !collisionState.m0Unlocked.crit;
+          const hitCrit = (m0CritLocked || damage <= 0)
+            ? false
+            : (!!projectile?.crit || trapCritBonus || weakCrit || headshot === true);
           // スキル: クリティカルD上昇(+0.5) / バーサーカー(失HP%で全攻撃増) / スナイパー(停止敵・遠距離増)。
           const skillPlayer = collisionState.player;
           // §6.10 M33⑩(★8裁定): 護衛NPC弾(weaponKey='escort')はプレイヤーの攻撃ではないため、
@@ -6795,7 +6803,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // Floating damage number at the enemy's body. Reflected bolts and
           // crits both render in the gold "big hit" color.
-          if (enemyForFx) {
+          // ダメージ0の弾(=味方の演出射撃)では数字を出さない。出すと敵の頭上に「0」が並んで
+          // 援護が壊れて見える(社長指示v0.25.2293「味方は演出」の体裁を守る)。
+          if (enemyForFx && dmg > 0) {
             spawnDamageNumber(
               enemyForFx.x + enemyForFx.width / 2,
               enemyForFx.y,
@@ -6808,7 +6818,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // enemies along the shot line. Heavies/bosses are immovable so they
           // don't get shoved around by chip damage.
           if (
-            !enemyKilled && enemyForFx && projectile &&
+            !enemyKilled && enemyForFx && projectile && dmg > 0 && // dmg 0(味方の演出射撃)は押さない=挙動に影響させない
             enemyForFx.type !== 'reaper' && enemyForFx.type !== 'giantbat' &&
             enemyForFx.type !== 'pumpkin'
           ) {
