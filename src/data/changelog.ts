@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2303',
+    items: [
+      '区域チュートリアルの手本を実機収録に差し替えました。区域名の銘打ちがちゃんと出ます。',
+    ],
+  },
+  {
     version: '0.25.2302',
     items: [
       '訓練(M0)では死ななくなりました。どれだけ強い一撃を受けても体力1で踏みとどまり、1秒後にジュンが治療して立て直します。',
