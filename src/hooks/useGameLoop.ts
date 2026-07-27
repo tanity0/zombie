@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
-import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, type M0Beat } from '../utils/m0Tutorial';
+import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, type M0Beat } from '../utils/m0Tutorial';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
@@ -47,7 +47,8 @@ import {
   PHASER_INDEX, BASE_SOLDIER_COUNT,
   TUTORIAL_MOVE_X_MIN_PX,
   TUTORIAL_MOVE_Y_LIMIT_PX,
-  M0_FORCED_CRIT_AT_HIT
+  M0_FORCED_CRIT_AT_HIT,
+  M0_CONVO_ADVANCE_LIMIT_X
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -871,6 +872,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const m0BeatsFiredRef = useRef<Set<M0Beat>>(new Set());
   // M0の強制回復(社長台本v0.25.2293「ダメージ受けたらジュンが治療します！と言って強制回復」)用の前フレームHP。
   const m0PrevHpRef = useRef(-1);
+  // delayMs 付きビートの「いつ出すか」(演出を見せ切ってから説明を出すための待ち)。
+  const m0PendingRef = useRef<{ id: M0Beat; at: number } | null>(null);
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -1841,6 +1844,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           tutorialConvoQueuedRef.current = false; // チュートリアルM0序盤会話も新ランで再有効化
           m0BeatsFiredRef.current = new Set(); // M0の教習ビートも新ランで最初から(毎出撃で出す=社長指示v0.25.2266)
           m0PrevHpRef.current = -1;            // 強制回復の被弾検出も新ランでリセット
+          m0PendingRef.current = null;         // 演出待ちも新ランでリセット
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
           hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0 };
           hunterKillsRef.current = [];
@@ -2991,8 +2995,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // 開幕会話が「積まれ、流れ終わった」か。M0の台本はここを起点に動く。
           const m0ConvoDone = tutorialConvoQueuedRef.current && st.npcDialogueQueue.length === 0 && st.npcDialogue === null;
-          // 会話が終わるまでは区域境界(1500)の手前で止める(社長指示v0.25.2294)。終わったら解放。
-          if (m0ConvoDone && st.m0AdvanceLimitX !== null) useGameStore.setState({ m0AdvanceLimitX: null });
+          // 前線(=ここより先へ進めない透明壁)。2つの制限のうち手前を採る:
+          //  ①会話中は区域境界(1500)の手前で止める(社長指示v0.25.2294)
+          //  ②未発火ビートの関門(社長指示v0.25.2297「その前までしか移動できないダンジョン」)。
+          //    これで「敵を倒した直後に次が始まる」のではなく、**次の場所まで歩く一拍**が必ず挟まる。
+          {
+            const gateX = m0AdvanceLimit(m0BeatsFiredRef.current);
+            const convoCap = m0ConvoDone ? null : M0_CONVO_ADVANCE_LIMIT_X;
+            const limit = gateX === null ? convoCap : (convoCap === null ? gateX : Math.min(gateX, convoCap));
+            if (st.m0AdvanceLimitX !== limit) useGameStore.setState({ m0AdvanceLimitX: limit });
+          }
 
           // 教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291)。
           // 一本道で戻れないので「xを通過したら発火」で順序が保証される。判定は純関数 `nextM0Beat`。
@@ -3011,7 +3023,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               critUnlocked: st.m0Unlocked.crit,
               fired: m0BeatsFiredRef.current,
             });
-            if (beat) {
+            // 先に見せたい演出があるビート(区域の銘打ち等)は、条件成立から delayMs だけ待つ。
+            // 待たずに出すと、ポップアップがゲームを止めている間に**実時間で進む演出**が
+            // 終わってしまう(社長報告v0.25.2297「エリアタイトル表示が一瞬すぎて見えない」)。
+            if (beat?.delayMs && m0PendingRef.current?.id !== beat.id) {
+              m0PendingRef.current = { id: beat.id, at: newGameTime + beat.delayMs };
+            }
+            const pending = beat?.delayMs ? m0PendingRef.current : null;
+            if (beat && (!pending || newGameTime >= pending.at)) {
               m0BeatsFiredRef.current.add(beat.id);
               const pcx = st.player.x + st.player.width / 2;
               const pcy = st.player.y + st.player.height / 2;

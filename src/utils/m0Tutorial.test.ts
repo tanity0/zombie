@@ -1,7 +1,7 @@
 // 訓練(M0)「移動」チュートリアルの発火条件。**M0は毎出撃で出る**(社長指示v0.25.2266)ことと、
 // 台帳(src/data/tutorials.ts)の体裁を固定する。
 import { describe, it, expect } from 'vitest';
-import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, M0_BEATS, type M0Beat } from './m0Tutorial';
+import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_BEATS, type M0Beat } from './m0Tutorial';
 import { AREA_THRESHOLDS } from './enemyUtils';
 import { TUTORIALS, getTutorial } from '../data/tutorials';
 
@@ -76,33 +76,34 @@ describe('nextM0Beat(教習ビートの発火)', () => {
     expect(nextM0Beat(beatGate({ convoDone: false }))).toBeNull();
   });
 
-  it('会話が終わった直後に射撃が出る(位置では出さない)', () => {
-    expect(nextM0Beat(beatGate({ playerX: 0, convoDone: true }))?.id).toBe('shoot');
+  it('会話が終わっても、関門まで歩かないと射撃は始まらない(倒した直後に次が来ない=一拍)', () => {
+    expect(nextM0Beat(beatGate({ playerX: 0, convoDone: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 300, convoDone: true }))?.id).toBe('shoot');
   });
 
   it('台本の敵が生きている間は次(近接)へ進まない', () => {
     const fired = new Set<M0Beat>(['shoot']);
-    expect(nextM0Beat(beatGate({ fired, scriptedEnemyAlive: true }))).toBeNull();
-    expect(nextM0Beat(beatGate({ fired, scriptedEnemyAlive: false }))?.id).toBe('melee');
+    expect(nextM0Beat(beatGate({ playerX: 700, fired, scriptedEnemyAlive: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 700, fired, scriptedEnemyAlive: false }))?.id).toBe('melee');
   });
 
   it('順に進めば定義順に出る', () => {
     const fired = new Set<M0Beat>();
     const order: M0Beat[] = [];
-    for (const playerX of [0, 0, 0, 1200, 1500, 3000, 3160]) {
+    for (const playerX of [300, 700, 700, 700, 1100, 1500, 3000, 3160]) {
       const beat = nextM0Beat(beatGate({ playerX, fired, critUnlocked: fired.has('melee') }));
       if (beat) { order.push(beat.id); fired.add(beat.id); }
     }
-    expect(order).toEqual(['shoot', 'melee', 'finish', 'counter', 'area', 'hunter', 'ammo']);
+    expect(order).toEqual(['shoot', 'melee', 'crit', 'finish', 'counter', 'area', 'hunter', 'ammo']);
   });
 
   it('ポップアップ/メニューが開いている間は出さない(重ねない)', () => {
-    expect(nextM0Beat(beatGate({ popupOpen: true }))).toBeNull();
-    expect(nextM0Beat(beatGate({ menuOpen: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 300, popupOpen: true }))).toBeNull();
+    expect(nextM0Beat(beatGate({ playerX: 300, menuOpen: true }))).toBeNull();
   });
 
   it('一度出したビートは二度と出さない', () => {
-    expect(nextM0Beat(beatGate({ fired: new Set<M0Beat>(['shoot']) }))?.id).not.toBe('shoot');
+    expect(nextM0Beat(beatGate({ playerX: 700, fired: new Set<M0Beat>(['shoot']) }))?.id).not.toBe('shoot');
   });
 
   it('走り抜けて複数が同時に条件を満たしても、定義順に1つずつ出る', () => {
@@ -117,17 +118,20 @@ describe('nextM0Beat(教習ビートの発火)', () => {
     expect(order).toEqual(['shoot', 'melee', 'counter', 'area', 'hunter', 'ammo']);
   });
 
-  it('近接3発目の強制クリティカルの直後にフィニッシュを出す(近接とは別枠・2回に分ける)', () => {
+  it('強制クリティカルの直後に「クリティカル」→「フィニッシュ」の順で2本出す', () => {
     const fired = new Set<M0Beat>(['shoot', 'melee']);
-    expect(nextM0Beat(beatGate({ fired, critUnlocked: false }))).toBeNull();      // まだ崩していない
-    expect(nextM0Beat(beatGate({ fired, critUnlocked: true }))?.id).toBe('finish'); // 崩した瞬間
+    expect(nextM0Beat(beatGate({ playerX: 900, fired, critUnlocked: false }))).toBeNull(); // まだ崩していない
+    expect(nextM0Beat(beatGate({ playerX: 900, fired, critUnlocked: true }))?.id).toBe('crit');
+    fired.add('crit');
+    expect(nextM0Beat(beatGate({ playerX: 900, fired, critUnlocked: true }))?.id).toBe('finish');
   });
 
-  it('フィニッシュは近接を前提にする(近接を教える前に追撃だけ教えない)', () => {
-    expect(M0_BEATS.find(b => b.id === 'finish')!.requires).toBe('melee');
+  it('フィニッシュはクリティカルの説明を前提にする(順番が入れ替わらない)', () => {
+    expect(M0_BEATS.find(b => b.id === 'crit')!.requires).toBe('melee');
+    expect(M0_BEATS.find(b => b.id === 'finish')!.requires).toBe('crit');
   });
 
-  it('クリティカルが出ないまま先へ進んでもフィニッシュが後続を塞がない', () => {
+  it('クリティカルが出ないまま先へ進んでも後続を塞がない', () => {
     const fired = new Set<M0Beat>(['shoot', 'melee', 'counter']);
     expect(nextM0Beat(beatGate({ playerX: 1500, critUnlocked: false, fired }))?.id).toBe('area');
   });
@@ -206,5 +210,39 @@ describe('M0_BEATS の不変条件', () => {
     const idx = (id: M0Beat) => M0_BEATS.findIndex(b => b.id === id);
     expect(idx('shoot')).toBeLessThan(idx('melee'));
     expect(idx('melee')).toBeLessThan(idx('counter'));
+  });
+});
+
+describe('m0AdvanceLimit(関門=ここより先へ進めない前線)', () => {
+  it('未発火のうち最初の関門を返す。全部済めば制限なし', () => {
+    expect(m0AdvanceLimit(new Set())).toBe(300);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot']))).toBe(700);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee']))).toBe(1100);
+    expect(m0AdvanceLimit(new Set<M0Beat>(['shoot', 'melee', 'counter']))).toBeNull();
+  });
+
+  it('関門は単調増加(戻る前線を作らない)', () => {
+    const gates = M0_BEATS.filter(b => b.gateX !== undefined).map(b => b.gateX!);
+    for (let i = 1; i < gates.length; i++) expect(gates[i]).toBeGreaterThan(gates[i - 1]);
+  });
+
+  // 関門つきビートの前提が「出ないことがありうるビート」だと、壁が永久に残ってソフトロックする。
+  it('関門つきビートの前提は、関門つきビート(=必ず順に消化される)だけ', () => {
+    const gated = new Set(M0_BEATS.filter(b => b.gateX !== undefined).map(b => b.id));
+    for (const b of M0_BEATS) {
+      if (b.gateX !== undefined && b.requires) expect(gated.has(b.requires), b.id).toBe(true);
+    }
+  });
+
+  it('クリティカルが一度も出なくても全ての関門を通過できる(ソフトロックしない)', () => {
+    const fired = new Set<M0Beat>();
+    for (let i = 0; i < 12; i++) {
+      const limit = m0AdvanceLimit(fired);
+      if (limit === null) break;
+      const beat = nextM0Beat(beatGate({ playerX: limit, fired, critUnlocked: false, scriptedEnemyAlive: false }));
+      if (!beat) throw new Error(`関門 ${limit} で進めなくなった(発火できるビートが無い)`);
+      fired.add(beat.id);
+    }
+    expect(m0AdvanceLimit(fired)).toBeNull();
   });
 });

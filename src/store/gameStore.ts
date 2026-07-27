@@ -9170,6 +9170,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (get().farBackdrop === 'tutorial') {
       const st = get();
       if (!st.escorts.length || !st.enemies.length) return [];
+      // **全員弾切れになったら味方も撃たない**(社長指示v0.25.2297「ここで全員弾切れ。撃たない」)。
+      // プレイヤーの弾が尽きた=台本上「隊として弾切れ」なので、援護も止まって近接一本になる。
+      const anyAmmo = st.player.weapons.some(w => !w.isMelee && w.ammoType &&
+        ((w.magazine ?? 0) > 0 || ammoPoolFor(st.player, w.ammoType) > 0));
+      if (!anyAmmo) return [];
       const p = st.player;
       const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
       const now = st.gameTime;

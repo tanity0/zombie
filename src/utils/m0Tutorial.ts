@@ -36,7 +36,7 @@ export const shouldShowMoveTutorial = (gate: M0TutorialGate): boolean =>
 //   3000     = デンジャー入場 … ハンター出現(既存の凶悪ハンターと同じ境界)
 // ---------------------------------------------------------------------------
 
-export type M0Beat = 'shoot' | 'melee' | 'finish' | 'counter' | 'levelup' | 'area' | 'hunter' | 'ammo';
+export type M0Beat = 'shoot' | 'melee' | 'crit' | 'finish' | 'counter' | 'levelup' | 'area' | 'hunter' | 'ammo';
 
 /** ビートの定義。順序=この配列の順(必ず前のビートから先に出る)。 */
 export interface M0BeatDef {
@@ -58,6 +58,21 @@ export interface M0BeatDef {
   callouts?: readonly { speaker: string; text: string }[];
   /** このビートで解禁する要素(社長指示v0.25.2293「解禁されるまで封印」)。 */
   unlock?: 'melee';
+  /**
+   * このビートを行う場所(px)。ここに**歩いて到達するまで発火しない**うえ、
+   * **未発火の間はここより先へ進めない**(透明壁)。社長指示v0.25.2297
+   * 「一体倒した後、間髪入れずに次に行くのを一拍置きたい/その前までしか移動できないダンジョン」。
+   * 条件(敵を倒した等)を満たしても、**次の場所まで歩く**という一拍が必ず挟まる。
+   */
+  gateX?: number;
+  /**
+   * 条件を満たしてから**この時間だけ待って**から出す(ms)。
+   * 区域の銘打ち(`WallInscription`・約4秒)のような**先に見せたい演出**があるビート用。
+   * 待たずにポップアップを出すと、ポップアップがゲームを止める一方で銘打ちは**実時間の
+   * `setTimeout` で進む**ため、読んでいる間に演出が終わって消えてしまう(社長報告v0.25.2297
+   * 「エリアタイトル表示が一瞬すぎて見えない」)。
+   */
+  delayMs?: number;
   /**
    * 前提ビート。これが出ていないと発火しない。
    * 「前のビートの終わり方が次の入口になる」台本(社長指示v0.25.2293)を成立させるための鍵で、
@@ -81,14 +96,14 @@ export const M0_BEATS: readonly M0BeatDef[] = [
   // 位置では出さない=会話→戦闘が途切れない。弾は「ちょうど倒せてちょうど切れる」量に台本側で詰める
   // (useGameLoop 側で設定)。味方も撃つがダメージは0=演出。
   {
-    id: 'shoot', tutorial: 'm0-shoot', afterConvo: true,
+    id: 'shoot', tutorial: 'm0-shoot', afterConvo: true, gateX: 300,
     spawn: { type: 'zombie', dx: 420, dy: 0 },
     callouts: [{ speaker: 'グレッグ', text: '変異体だ！構えろ！' }],
   },
   // **弾切れの状態から始まる**。前のビートの終わり方(弾がちょうど切れる)がそのまま入口になる。
   // ここで初めて近接を解禁する(それまでは振れない=社長指示v0.25.2293の封印)。
   {
-    id: 'melee', tutorial: 'm0-melee', afterEnemyCleared: true, requires: 'shoot',
+    id: 'melee', tutorial: 'm0-melee', afterEnemyCleared: true, requires: 'shoot', gateX: 700,
     spawn: { type: 'skeleton', dx: 150, dy: 0 },
     callouts: [
       { speaker: 'ジュン', text: '弾切れです！' },
@@ -96,18 +111,22 @@ export const M0_BEATS: readonly M0BeatDef[] = [
     ],
     unlock: 'melee',
   },
-  // 近接3発目の**強制クリティカルで敵が崩れた瞬間**に、フィニッシュを別枠で教える
-  // (社長指示v0.25.2294「近接とフィニッシュのチュートリアルは切り分けて。2回に分けて」)。
-  // 敵を出し直さない=目の前で崩れている相手にそのまま追撃させる。
+  // 近接3発目の**強制クリティカルで敵が崩れた瞬間**に、**クリティカル → 近接フィニッシュ**の順で
+  // 2本続けて出す(社長指示v0.25.2297「クリティカルのチュートリアルと近接フィニッシュのチュートリアル」)。
+  // 敵を出し直さない=目の前で崩れている相手にそのまま追撃させる。ポップアップは1枚ずつ塞がるので順に出る。
   // 見送りx: 万一クリティカルが出ないまま先へ進んだ時に、後ろで浮いたまま残らないようにする。
-  { id: 'finish', tutorial: 'm0-finish', afterCritUnlocked: true, requires: 'melee', expireAfterX: 1500 },
+  { id: 'crit', tutorial: 'm0-crit', afterCritUnlocked: true, requires: 'melee', expireAfterX: 1500 },
+  { id: 'finish', tutorial: 'm0-finish', afterCritUnlocked: true, requires: 'crit', expireAfterX: 1500 },
   // カウンターは「敵の攻撃を見てから合わせる」ので、melee で攻撃モーションを1度見た後に置く。
   // 近接が解禁されていないとカウンター(=近接を合わせる)は成立しないので、melee を前提にする。
-  { id: 'counter', tutorial: 'm0-counter', atX: 1200, requires: 'melee', spawn: { type: 'skeleton', dx: 260, dy: 0 } },
+  // requires は **'melee'**('finish' ではない)。関門(gateX)を持つビートの前提に「出ないことがありうる
+  // ビート」を置くと、そのビートが出ないまま**壁が永久に残ってソフトロック**する。crit/finish は
+  // 「3発当てる」が前提=理屈上は必ず起きるが、保険としてここは melee に留める。
+  { id: 'counter', tutorial: 'm0-counter', gateX: 1100, afterEnemyCleared: true, requires: 'melee', spawn: { type: 'skeleton', dx: 260, dy: 0 } },
   // 上の3体を倒していれば結晶が溜まってレベルが上がる。位置ではなく成長で発火。
   { id: 'levelup', tutorial: 'm0-levelup', atLevel: 2, expireAfterX: 3000 },
   // 研究区域へ入った瞬間(社長指示v0.25.2288)。※踏破儀式は端末で初回1回きりなので**位置で判定する**。
-  { id: 'area', tutorial: 'm0-area', atX: 1500 },
+  { id: 'area', tutorial: 'm0-area', atX: 1500, delayMs: 4200 }, // 銘打ち(4秒)を見せ切ってから説明を出す
   // デンジャー入場=ハンター出現(社長指示v0.25.2287)。湧かせるのは useGameLoop 側(専用の配置)。
   { id: 'hunter', tutorial: 'm0-hunter', atX: 3000 },
   // 追われながら弾を拾う。ハンターの直後に置く(社長指示v0.25.2286「5で弾補充」)。
@@ -135,12 +154,27 @@ export interface M0BeatGate {
  * `popupOpen` で塞がるので、仮に複数が同時に条件を満たしても**定義順に1つずつ**出る。
  * `expireAfterX` を越えた未発火ビートは見送る(後続を塞がない)。
  */
+/**
+ * 今、プレイヤーが越えられない前線(px)。未発火ビートのうち**最初の関門**。
+ * これが無いと、教習中の敵を置き去りにして先へ走れてしまう(台本が崩れる)。
+ * 関門を持つ未発火ビートが無ければ null=制限なし。
+ */
+export const m0AdvanceLimit = (fired: ReadonlySet<M0Beat>): number | null => {
+  for (const beat of M0_BEATS) {
+    if (fired.has(beat.id)) continue;
+    if (beat.gateX !== undefined) return beat.gateX;
+  }
+  return null;
+};
+
 export const nextM0Beat = (gate: M0BeatGate): M0BeatDef | null => {
   if (gate.popupOpen || gate.menuOpen) return null; // 重ねない・裏で出さない
   for (const beat of M0_BEATS) {
     if (gate.fired.has(beat.id)) continue;
     if (beat.expireAfterX !== undefined && gate.playerX >= beat.expireAfterX) continue; // 見送り
     if (beat.requires !== undefined && !gate.fired.has(beat.requires)) continue;         // 前提待ち
+    // 関門: そこまで歩いて来るまでは発火しない(=倒した直後に次が始まらない・一拍が入る)。
+    if (beat.gateX !== undefined && gate.playerX < beat.gateX) return null;
     const byX = beat.atX !== undefined && gate.playerX >= beat.atX;
     const byLevel = beat.atLevel !== undefined && gate.playerLevel >= beat.atLevel;
     const byConvo = beat.afterConvo === true && gate.convoDone;
