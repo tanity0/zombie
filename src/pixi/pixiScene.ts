@@ -372,6 +372,9 @@ const LAB_FAR_FRAME_BLUR = Math.max(0, tsNum('labwfblur', 1.5));
 const LAB_OUT_DIM_ALPHA = Math.max(0, Math.min(1, tsNum('labdim', 0.5)));
 const LAB_OUT_DIM_FADE_PX = Math.max(0, tsNum('labdimfade', 70));        // 境目のグラデ幅(画面px)。?labdimfade=
 const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登場演出の着地後に濃くなるまでの時間。?labdimin=
+// 打ち止め(M0の地平)側の縁をぼかす幅(画面px)。0にすると地平で暗さが急に始まり、岩の根元が
+// 切り落とされたように見える(社長報告v0.25.2311)。?labdimtop= で調整。
+const LAB_OUT_DIM_TOP_FADE_PX = Math.max(0, tsNum('labdimtop', 130));
 // M2の暗転+非常灯(社長指示v0.25.2263「全体をもう少し暗くして、等間隔に非常灯みたいなスポットライト」)。
 // **描画のみ**=ゲーム挙動(視界/湧き/当たり)には一切触らない。
 // 構成: ①画面全体に黒い幕(labdark) ②その上に等間隔の非常灯グロー(screen合成)を重ねて幕を持ち上げる。
@@ -5663,7 +5666,8 @@ export class PixiScene {
         cont.addChild(s);
         return s;
       };
-      this.labOutDimParts = [mk(Texture.WHITE), mk(fadeTex), mk(fadeTex), mk(Texture.WHITE)];
+      // [上端ぼかし(打ち止め側) / 上ベタ / 上グラデ(帯側) / 下グラデ(帯側) / 下ベタ]
+      this.labOutDimParts = [mk(fadeTex), mk(Texture.WHITE), mk(fadeTex), mk(fadeTex), mk(Texture.WHITE)];
       this.L.uiLayer.addChildAt(cont, 0); // ワールド(床/敵/近景)の上・HUDの下
       this.labOutDim = cont;
     }
@@ -5680,7 +5684,7 @@ export class PixiScene {
     cont.alpha = LAB_OUT_DIM_ALPHA * Math.max(0, Math.min(1, sinceIntro / LAB_OUT_DIM_FADEIN_MS));
     const fade = LAB_OUT_DIM_FADE_PX;
     const OVER = 300; // 画面外まで延ばす(引きズーム/シェイクで端が割れないように)
-    const [topSolid, topFade, botFade, botSolid] = this.labOutDimParts;
+    const [topEdge, topSolid, topFade, botFade, botSolid] = this.labOutDimParts;
     // 上グラデ: 帯の上端から上へ fade 分。scale.y を負にして反転=上が不透明・下(帯側)が透明。
     // ただし打ち止め(topClampY)より上には出さない=**空/遠景は暗くしない**(M0はここが地平)。
     const ceilY = Math.max(-OVER, topClampY);
@@ -5689,9 +5693,22 @@ export class PixiScene {
     topFade.scale.y = -((top - fadeTopY) / Math.max(1, topFade.texture.height));
     topFade.position.set(0, top);
     topFade.visible = top > fadeTopY;
-    // 上ベタ: 打ち止め 〜 グラデの上端まで
-    const topSolidH = Math.max(0, fadeTopY - ceilY);
-    topSolid.position.set(0, ceilY);
+    // 打ち止め側の上端。**画面外まで伸ばす時(M2)はベタのまま**だが、打ち止めが画面内にある時(M0の地平)は
+    // そこが幕の縁として見えてしまう=地平で急に暗くなり、**岩の根元が切り落とされたように見える**
+    // (社長報告v0.25.2311「岩の素材はパッツン切れてないはずなのに切れてる感じに描画されてる」)。
+    // → 打ち止めが有限のときだけ、上端に「透明→不透明」のぼかしを噛ませて溶かす。
+    const clamped = Number.isFinite(topClampY);
+    const edgeH = clamped ? Math.min(LAB_OUT_DIM_TOP_FADE_PX, Math.max(0, fadeTopY - ceilY)) : 0;
+    topEdge.visible = edgeH > 0;
+    if (edgeH > 0) {
+      topEdge.width = w;
+      topEdge.scale.y = edgeH / Math.max(1, topEdge.texture.height);
+      topEdge.position.set(0, ceilY);
+    }
+    // 上ベタ: (ぼかしの下端) 〜 グラデの上端まで
+    const solidTopY = ceilY + edgeH;
+    const topSolidH = Math.max(0, fadeTopY - solidTopY);
+    topSolid.position.set(0, solidTopY);
     topSolid.width = w; topSolid.height = topSolidH;
     topSolid.visible = topSolidH > 0;
     // 下グラデ: 帯の下端から下へ fade 分(テクスチャそのまま=上が透明)

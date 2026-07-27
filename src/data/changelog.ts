@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2312',
+    items: [
+      '訓練(M0)で、地平のあたりに一本線が入って岩の根元が切れて見えていたのを直しました。暗さがなだらかに始まります。',
+    ],
+  },
+  {
     version: '0.25.2311',
     items: [
       '訓練(M0)でも、歩けない範囲の地面が暗くなるようになりました(研究所と同じ演出)。空や遠景は暗くなりません。',
