@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2315',
+    items: [
+      'クリア(任務達成)時のリザルトを「OK」の一択にしました(死亡・撤退時は従来どおり二択)。'
+    ]
+  },
+  {
     version: '0.25.2314',
     items: [
       '訓練(M0)の教習を一つずつに分けました。射撃・近接・クリティカル・キル・カウンターがそれぞれ別の場所で、3体ずつ練習してから次へ進みます。',

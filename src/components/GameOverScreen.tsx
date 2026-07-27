@@ -784,31 +784,40 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </div>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={onPlayAgain}
-              className="w-full py-3 rounded-none text-sm font-semibold text-white"
-              style={
-                won
-                  ? {
-                      background: 'linear-gradient(180deg, rgba(251, 191, 36, 0.95), rgba(245, 158, 11, 0.95))',
-                      boxShadow: '0 8px 24px rgba(245, 158, 11, 0.35)'
-                    }
-                  : {
-                      background: 'linear-gradient(180deg, rgba(96, 165, 250, 0.95), rgba(59, 130, 246, 0.95))',
-                      boxShadow: '0 8px 24px rgba(59, 130, 246, 0.35)'
-                    }
-              }
-            >
-              もう一度プレイ
-            </button>
+          {/* 社長指示v0.25.2315: **クリア(任務達成)時だけ**は二択(もう一度プレイ/メニューに戻る)を
+              やめて「OK」の一択にする。押した時の遷移は従来の「メニューに戻る」と同じ(=M7クリア後の
+              通常エンディング予約もこの経路に乗っているので変えない)。死亡/撤退/ベンチは従来どおり二択。 */}
+          {won ? (
             <button
               onClick={onReturnToMenu}
-              className="w-full py-3 rounded-none text-sm font-semibold text-white/90 bg-purple-400/10"
+              className="w-full py-3 rounded-none text-sm font-semibold text-white"
+              style={{
+                background: 'linear-gradient(180deg, rgba(251, 191, 36, 0.95), rgba(245, 158, 11, 0.95))',
+                boxShadow: '0 8px 24px rgba(245, 158, 11, 0.35)'
+              }}
             >
-              メニューに戻る
+              OK
             </button>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={onPlayAgain}
+                className="w-full py-3 rounded-none text-sm font-semibold text-white"
+                style={{
+                  background: 'linear-gradient(180deg, rgba(96, 165, 250, 0.95), rgba(59, 130, 246, 0.95))',
+                  boxShadow: '0 8px 24px rgba(59, 130, 246, 0.35)'
+                }}
+              >
+                もう一度プレイ
+              </button>
+              <button
+                onClick={onReturnToMenu}
+                className="w-full py-3 rounded-none text-sm font-semibold text-white/90 bg-purple-400/10"
+              >
+                メニューに戻る
+              </button>
+            </div>
+          )}
         </div>
       </div>
       {/* PACING_PUZZLE.md §6.17 M40 / STORY_UI_SPEC.md 5章: 「回収資料を見る」の一覧→本文モーダル。
