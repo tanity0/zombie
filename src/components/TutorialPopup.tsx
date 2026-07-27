@@ -4,8 +4,7 @@
 // art部を <img> に置き換えるだけの構造にしてある。表示中はゲーム停止(showTutorialPopupがisPaused=true)。
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
-import { assetUrl } from '../config/assetUrl';
-import { isVideoAsset } from '../data/tutorials';
+import TutorialMedia from './TutorialMedia';
 import { Ff7rButton } from './ff7r';
 
 const PANEL_STYLE: React.CSSProperties = {
@@ -52,16 +51,8 @@ const TutorialPopup: React.FC = () => {
             // v0.25.2262: 長い手本(20秒級)はGIFだと数MBになるため mp4 も置けるようにした。
             // 同じ尺ならGIFの半分以下で、しかも30fpsのまま出せる。拡張子で自動的に切り替わる。
             <div className="relative mt-4 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
-              {isVideoAsset(popup.img) ? (
-                // iOSで確実にインライン自動再生させるための3点セット: muted / playsInline / autoPlay。
-                <video
-                  src={assetUrl(popup.img)}
-                  className="absolute inset-0 h-full w-full object-cover"
-                  autoPlay loop muted playsInline preload="auto"
-                />
-              ) : (
-                <img src={assetUrl(popup.img)} alt="" className="absolute inset-0 h-full w-full object-cover" />
-              )}
+              {/* 読み込み中はスピナーを重ねる(v0.25.2298)。表示規則は資料室と共用。 */}
+              <TutorialMedia src={popup.img} className="absolute inset-0 h-full w-full object-cover" />
               {popup.art === 'move' && <MoveArt overlay />}
             </div>
           ) : popup.art === 'move' ? (

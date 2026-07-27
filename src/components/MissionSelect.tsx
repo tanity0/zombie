@@ -99,9 +99,9 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
-import { TUTORIALS, isVideoAsset, type TutorialId } from '../data/tutorials';
+import { TUTORIALS, type TutorialId } from '../data/tutorials';
+import TutorialMedia from './TutorialMedia';
 import { loadSeenTutorials } from '../utils/tutorialArchive';
-import { assetUrl } from '../config/assetUrl';
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
@@ -1096,17 +1096,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   {openTutorial.title}
                 </h3>
                 {openTutorial.img && (
-                  <div className="mb-3 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
-                    {/* v0.25.2262: 長い手本は mp4。ゲーム中のポップアップと同じ判定を使う(isVideoAsset)。 */}
-                    {isVideoAsset(openTutorial.img) ? (
-                      <video
-                        src={assetUrl(openTutorial.img)}
-                        className="h-full w-full object-cover"
-                        autoPlay loop muted playsInline preload="auto"
-                      />
-                    ) : (
-                      <img src={assetUrl(openTutorial.img)} alt="" className="h-full w-full object-cover" />
-                    )}
+                  <div className="relative mb-3 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
+                    {/* 手本の表示はゲーム中のポップアップと共用(mp4/GIF判定・読み込み中のスピナー込み)。 */}
+                    <TutorialMedia src={openTutorial.img} />
                   </div>
                 )}
                 <div className="space-y-2 text-[13px] leading-relaxed text-white/85">

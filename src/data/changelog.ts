@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2298',
+    items: [
+      'チュートリアルの手本映像がまだ流れていない間、読み込み中のくるくるが出るようになりました(ゲーム中のポップアップと資料室の両方)。',
+    ],
+  },
+  {
     version: '0.25.2297',
     items: [
       '訓練(M0): 区域の銘打ちを最後まで見せてから、区域の説明が出るようにしました(説明で止まっている間に演出が終わって読めなかったのを直しました)。',
