@@ -387,6 +387,9 @@ const LAB_OUT_DIM_FADEIN_MS = Math.max(1, tsNum('labdimin', 500));       // 登�
 // 打ち止め(M0の地平)側の縁をぼかす幅(画面px)。0にすると地平で暗さが急に始まり、岩の根元が
 // 切り落とされたように見える(社長報告v0.25.2311)。?labdimtop= で調整。
 const LAB_OUT_DIM_TOP_FADE_PX = Math.max(0, tsNum('labdimtop', 130));
+// 【v0.25.2328】打ち止め(M0の地平)が画面内の時、地平〜可動域上端の隙間のうち何割を「上端のぼかし」に
+// 回すか。旧実装は帯側グラデ(70px)が先に取り、上端には実測25pxしか残らず黒い横線になっていた。
+const LAB_OUT_DIM_TOP_SHARE = Math.max(0, Math.min(1, tsNum('labdimshare', 0.8)));
 // M2の暗転+非常灯(社長指示v0.25.2263「全体をもう少し暗くして、等間隔に非常灯みたいなスポットライト」)。
 // **描画のみ**=ゲーム挙動(視界/湧き/当たり)には一切触らない。
 // 構成: ①画面全体に黒い幕(labdark) ②その上に等間隔の非常灯グロー(screen合成)を重ねて幕を持ち上げる。
@@ -5707,7 +5710,16 @@ export class PixiScene {
     // 上グラデ: 帯の上端から上へ fade 分。scale.y を負にして反転=上が不透明・下(帯側)が透明。
     // ただし打ち止め(topClampY)より上には出さない=**空/遠景は暗くしない**(M0はここが地平)。
     const ceilY = Math.max(-OVER, topClampY);
-    const fadeTopY = Math.max(ceilY, top - fade);          // グラデが打ち止めを越えないように縮める
+    // 【v0.25.2328】打ち止めが画面内(M0の地平)の時は、**上端のぼかしに space を優先配分**する。
+    // 旧実装は帯側グラデ(fade=70px)が先に取るため、地平と可動域上端の間(実測95px)から
+    // 上端ぼかしに25pxしか残らず、**地平にくっきりした黒い横線が残っていた**
+    // (社長報告v0.25.2311→再発v0.25.2326。原因は実行中のシーングラフ列挙で labOutDim と確定。
+    //  幕を親から切り離すと段差 +12.28 → -0.16・1行段差 6.26 → 0.03 で完全に消えることを実測)。
+    // → 上端ぼかしへ LAB_OUT_DIM_TOP_SHARE を回し、帯側グラデは残りで足りる範囲に縮める。
+    const clampedTop = Number.isFinite(topClampY);
+    const availTop = Math.max(0, top - ceilY);
+    const bandFade = clampedTop ? Math.min(fade, availTop * (1 - LAB_OUT_DIM_TOP_SHARE)) : fade;
+    const fadeTopY = Math.max(ceilY, top - bandFade);      // グラデが打ち止めを越えないように縮める
     topFade.width = w;
     topFade.scale.y = -((top - fadeTopY) / Math.max(1, topFade.texture.height));
     topFade.position.set(0, top);
@@ -5716,8 +5728,7 @@ export class PixiScene {
     // そこが幕の縁として見えてしまう=地平で急に暗くなり、**岩の根元が切り落とされたように見える**
     // (社長報告v0.25.2311「岩の素材はパッツン切れてないはずなのに切れてる感じに描画されてる」)。
     // → 打ち止めが有限のときだけ、上端に「透明→不透明」のぼかしを噛ませて溶かす。
-    const clamped = Number.isFinite(topClampY);
-    const edgeH = clamped ? Math.min(LAB_OUT_DIM_TOP_FADE_PX, Math.max(0, fadeTopY - ceilY)) : 0;
+    const edgeH = clampedTop ? Math.min(LAB_OUT_DIM_TOP_FADE_PX, Math.max(0, fadeTopY - ceilY)) : 0;
     topEdge.visible = edgeH > 0;
     if (edgeH > 0) {
       topEdge.width = w;

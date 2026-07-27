@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2328',
+    items: [
+      '訓練（洞窟）で、岩と地面の境目に出ていた黒い横線を解消しました。歩けない範囲を暗くする幕の上端が、地平でくっきり切れていたのが原因です。',
+    ],
+  },
+  {
     version: '0.25.2327',
     items: [
       '訓練（洞窟）の見た目を前の状態に戻しました（境目対策で奥を暗くしていたのを撤去。線の対策は引き続き検討します）。',
