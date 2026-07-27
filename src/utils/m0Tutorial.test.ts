@@ -223,6 +223,25 @@ describe('M0_BEATS の不変条件', () => {
     }
   });
 
+  // 社長指摘v0.25.2299「近接フィニッシュとカウンターがごっちゃになってる」。
+  // ここを機械化しておかないと、文章の直しが失われたことに気づけない(実際 v0.25.2299 の
+  // 本文修正はファイルに入っておらず、混ざったままの文が残っていた)。
+  it('カウンターの本文にフィニッシュの内容(気絶・一撃)を混ぜない', () => {
+    const body = getTutorial('m0-counter')!.lines.join('');
+    expect(body).not.toMatch(/気絶|一撃|仕留/);
+    expect(body).toMatch(/弾/); // 弾き返しの話であること
+  });
+
+  it('フィニッシュ/クリティカルの本文に弾き返しの内容を混ぜない', () => {
+    for (const id of ['m0-finish', 'm0-crit'] as const) {
+      expect(getTutorial(id)!.lines.join(''), id).not.toMatch(/弾き返|撃ち抜/);
+    }
+  });
+
+  it('カウンターとフィニッシュは別の手本を使う(同じ動画を指さない)', () => {
+    expect(getTutorial('m0-counter')!.img).not.toBe(getTutorial('m0-finish')!.img);
+  });
+
   it('カウンターの相手は遠距離型(弾が飛んでこないと弾き返す教習にならない)', () => {
     expect(M0_BEATS.find(b => b.id === 'counter')!.spawn!.type).toBe('plant');
   });
