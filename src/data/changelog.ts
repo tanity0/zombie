@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2296',
+    items: [
+      '近接チュートリアルの手本を撮り直しました。こちらが一方的に殴る画になり、周りの隊員も画角から外しました。',
+    ],
+  },
+  {
     version: '0.25.2295',
     items: [
       '訓練(M0)で、教わる前にクリティカルが出てしまう不具合を直しました(銃にはゾンビ相手の弱点クリがあり、封印をすり抜けていました)。',
