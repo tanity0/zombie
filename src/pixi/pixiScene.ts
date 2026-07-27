@@ -5690,7 +5690,14 @@ export class PixiScene {
       };
       // [上端ぼかし(打ち止め側) / 上ベタ / 上グラデ(帯側) / 下グラデ(帯側) / 下ベタ]
       this.labOutDimParts = [mk(fadeTex), mk(Texture.WHITE), mk(fadeTex), mk(fadeTex), mk(Texture.WHITE)];
-      this.L.uiLayer.addChildAt(cont, 0); // ワールド(床/敵/近景)の上・HUDの下
+      // 【v0.25.2329】社長報告「このフィルター明らかにプレイヤー達より上にいるよ」。
+      // 旧: uiLayer(最前面) に置いていたため、**幕の帯に立っているキャラ(味方/敵/プレイヤー)まで
+      // 暗く沈んで**いた。幕は「歩けない床」を示すものなので、**アクターより下**が正しい。
+      // → worldGroup 内の filteredWorld(gameplay=アクター/エフェクト) の**直前**へ入れる。
+      //   これで 床・岩帯は沈み、キャラは沈まない。
+      // 幕の各パーツは screen 座標で置いているので、worldGroup のズーム変換を打ち消す
+      // (tutorialMist と同じ方式・下の cont.scale/position で毎フレーム補正)。
+      this.L.worldGroup.addChildAt(cont, this.L.worldGroup.getChildIndex(this.L.filteredWorld));
       this.labOutDim = cont;
     }
     const cont = this.labOutDim;
@@ -5701,6 +5708,13 @@ export class PixiScene {
     // 画面全体が暗転して事故に見えるので出さない(全画面暗転の再発防止・v0.25.2226)。
     if (bot < 0 || top > h) { cont.visible = false; return; }
     cont.visible = true;
+    // 【v0.25.2329】worldGroup 内へ移したので、ズーム変換を打ち消して screen 座標のまま置けるようにする
+    // (S = wg.pos + wg.scale*(cont.pos + cont.scale*local) が local と一致するよう逆算)。
+    {
+      const wz = this.L.worldGroup.scale.x || 1;
+      cont.scale.set(1 / wz);
+      cont.position.set(-this.L.worldGroup.position.x / wz, -this.L.worldGroup.position.y / wz);
+    }
     // 着地(演出終了)直後は薄→濃へフェードイン=ポップさせない。
     const sinceIntro = this.introUntil > 0 ? now - this.introUntil : Number.POSITIVE_INFINITY;
     cont.alpha = LAB_OUT_DIM_ALPHA * Math.max(0, Math.min(1, sinceIntro / LAB_OUT_DIM_FADEIN_MS));
