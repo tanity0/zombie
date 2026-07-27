@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2287',
+    items: [
+      'ゲーム内容の変更はありません(訓練ステージの設計メモに、ハンターの出し方と終盤の難度の決定を反映しました)。',
+    ],
+  },
+  {
     version: '0.25.2286',
     items: [
       'ゲーム内容の変更はありません(訓練ステージの設計メモに、教える順番と登場人物の訂正を反映しました)。',
