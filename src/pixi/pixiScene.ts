@@ -472,7 +472,11 @@ const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻
 // 遠景森1(地平の森)の縦「上移動」px を全ステージ個別に持たせる(上=Y減算)。ミッションコード名の ?mXup= で現地調整
 // (m0up=tutorial 〜 m7up, ex1up/ex2up)。既定は現行維持(m1up=40, m2up=100, 他=0)。社長指示v0.25.1901。
 // 加算関係: snow は別途 northup も効く(加算)/ lab は別途 LAB_HORIZON_FOREST_EXTRA_DOWN(+20下)も効く。
-const M0_HORIZON_FOREST_UP_PX = tsNum('m0up', 0);
+// 0→20(社長指示v0.25.2321「20px上に移動して」)。洞窟の岩帯1は**下端が不透明でほぼ真っ黒**
+// (tutorial-horizon-rocks.png・素材にアルファの抜きが無い)なため、手前の岩帯2から食み出した下端が
+// 「岩と地面の境目の黒い横線」として見えていた。帯ごと20px上へ移動して岩帯2の裏へ隠す。
+// ※高さは変えない(Y座標を引くだけ=上端と下端が揃って動く純粋な移動)。現地調整は ?m0up= で可能。
+const M0_HORIZON_FOREST_UP_PX = tsNum('m0up', 20);
 const M1_HORIZON_FOREST_UP_PX = tsNum('m1up', 60); // 40→60(社長v0.25.1942「森1を20px上へ」)
 const M2_HORIZON_FOREST_UP_PX = tsNum('m2up', 60);
 const M3_HORIZON_FOREST_UP_PX = tsNum('m3up', 50);
