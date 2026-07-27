@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2306',
+    items: [
+      '射撃チュートリアルの手本を実機収録に差し替えました。弾が減って0になるところまで映っています。',
+    ],
+  },
+  {
     version: '0.25.2305',
     items: [
       '区域チュートリアルの手本を新しい実機収録に差し替えました。',
