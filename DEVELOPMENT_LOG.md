@@ -1,5 +1,53 @@
 # Development Log
 
+## v0.25.2379 — M60【ロットL4・最終】グレン/未確認変異体のPhase3+3連携+硬直500ms床【2026-07-29 04:12 JST】
+- **担当範囲(§6.28-21のロット表): L4=物語ボス(グレン=stage-7/未確認変異体=stage-ex1)のみ**。
+  通常ステージ(1〜6)の城ボス・ゲート2ボス6体・裏ボス4体・idol の挙動は1バイトも変えていない。
+- **判別方法(最重要の検収項目)**: `useGameLoop.ts`のstoryBossスポーン経路
+  (`spawnEnemyAt('giantbat',...)`直後)でだけ `enemy.isStoryBoss=true` を明示的に立てる新設フィールド
+  (`types/game.ts`)。通常ステージの城ボス(`useGameLoop.ts:2225`付近の`castleBossReady`経路)や
+  イベント産giantbat(`fromEvent`)はこの経路を通らないため`isStoryBoss`が付かず、
+  `gameStore.ts`の新スクリプトブロックは`isStoryBoss===true`の個体だけをPhase3/3連携/500ms床の対象に
+  する(`const isStoryBoss = enemy.isStoryBoss === true && STORY_BOSS_SCRIPT_ENABLED;`)。
+  `isStoryBoss=false`の個体は既存の`giantPhaseForHealth`(M51実装のまま無改変)しか呼ばないため、
+  Phase3の値へ到達する経路自体が存在しない=通常城ボスは構造的に無関係。
+- **実装方針(CLAUDE.md仕様変更のルール優先)**: `giantScript.ts`のPhase1/2向け5関数
+  (`giantPhaseForHealth`/`GIANT_COMBO_FOLLOWUP`/`GIANT_COMBO_CHANCE`/`pickGiantCombo`)は無改変のまま
+  据え置き、`giantPhaseJustChanged`/`giantMoveEligible`/`pickGiantMove`は型をGiantPhase(1|2|3)へ
+  広げた(phase∈{1,2}の出力は不変・sweepの`phase===2`を`phase===2||3`に緩和した1点のみが新規挙動で、
+  これは3という値が今まで絶対に来なかったので実質無害)。Phase3専用ロジックは新規関数として
+  ファイル末尾に追加(`giantPhaseForHealthStory`=`bossScript.ts`の`phaseForHealth`をそのまま使う・
+  `pickGiantStoryCombo`=Phase3限定の3発目「stomp→dash」を足した専用実装)。
+- **§6.28-11の差分をそのまま反映**: ① HP30%以下でPhase3(`GIANT_STORY_PHASE_THRESHOLDS=[0.6,0.3]`・
+  30%は`drawHealthBar`の既存赤しきい値と一致) ② 3連携=薙ぎ払い→踏み鳴らし→突進(`stomp→dash`を
+  新設のfollowupとして追加。既存のsweep→stomp/dash→stompはPhase3でも生きたまま) ③ 連携確率
+  Phase3=60%・EX(stage-ex1)のみ70% ④ 咆哮弾CD Phase3=2.0s(`GIANT_BOLT_CD_PHASE3_MS`) ⑤ 硬直
+  500ms床(`Math.max`ではなく個別定数で表現: stomp/dash 900→500・sweep 700→500(本来300だが床に
+  張り付く)・jump 1100→700。**咆哮弾(小技)は床の対象外で無改変**) ⑥⑦ リード・図形・色・SE・判定範囲・
+  ダメージ・速度・stage-7の判定込み2倍化は一切変更していない(既存コードそのまま)。
+- **設計上のメモ(★未決ではなく実装ノート)**: `pickGiantStoryCombo`はThor(`thorScript.ts`の
+  harai→harai自己ループ)と同じ「履歴を持たず、直前技+距離+確率だけで判断する」作法を踏襲した。
+  結果として理論上は3発を超えて連携が続くこともありうる(例: dash→stomp→dash→…、各段0.6/0.7倍で
+  減衰)。§6.28-11本文が名指しした「3発」は確率的な典型ケースであり、Thorの既存実装が同型の設計を
+  既に社長評価済みのため、この場で止めずに実装した。気になる場合は`GIANT_STORY_PHASE3_FOLLOWUP`から
+  `dash: 'stomp'`を分離すれば厳密な3発止まりにできる(1行の変更で対応可能)。
+- **フォールバック**: `?storybossscript=0`を新設(`STORY_BOSS_SCRIPT_ENABLED`)。既定ON。OFFにすると
+  storyBoss個体もPhase1/2のみ(=通常城ボスと同じ挙動)に戻る。既存`?giantscript=0`は従来どおり
+  ジャイアント新スクリプト全体(Phase1/2含む)をバイパスする上位フラグとして生きている。
+- 検証: `npm run typecheck`(0)・`npm run lint`(0 error)。`npx vitest related`で
+  `giantScript.ts`/`giantScript.test.ts`/`bossScript.ts`/`gameStore.ts`/`types/game.ts`/
+  `useGameLoop.ts`を指定し、依存する22ファイル388件(headlessシミュ`sim.test.ts`・`playtest.test.ts`
+  含む)全green。`constitution.test.ts`(13件)green。`giantScript.test.ts`は既存24件を1つも書き換えず
+  33件に拡張(Phase3系9件を追加)。`npm test`/`npm run build`は社長指示が無いため未実行。
+- 変更ファイル: `src/utils/giantScript.ts`(Phase3専用ロジックを末尾に追加+既存5関数は型のみ拡張)、
+  `src/utils/giantScript.test.ts`(新規9件)、`src/store/gameStore.ts`(M60定数+isStoryBoss分岐+
+  recover/CD/combo選択)、`src/types/game.ts`(`Enemy.isStoryBoss`/`storyBossVariant`新設・
+  `giantPhase`型を1|2|3へ拡張)、`src/hooks/useGameLoop.ts`(storyBossスポーン直後に
+  `isStoryBoss`/`storyBossVariant`をセット)。ゲート2ボス6体・裏ボス4体・idol・通常城ボスの
+  実装ファイルは触っていない。
+- 次の担当への申し送り: §6.28-21のロットL1〜L4がこれで全て実装済み(実機確認は社長へ持ち越し)。
+  実機で見てほしい点はPACING_PUZZLE.mdの実装順ステータス表とこのエントリを参照。
+
 ## v0.25.2378 — L3裁定反映: うねりPhase1解禁・idolカウンター配線・設計書2箇所訂正【2026-07-29 03:47 JST】
 - **v0.25.2377の★未決6件のうち4件が設計チャットで裁定され、うち2件はコード修正・2件は設計書のみの
   記述修正だった。反映内容は以下のとおり(裁定内容自体は変更せず、そのまま実装)。**

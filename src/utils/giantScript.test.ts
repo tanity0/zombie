@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   giantPhaseForHealth, giantPhaseJustChanged, giantMoveEligible, pickGiantMove, pickGiantCombo,
+  giantPhaseForHealthStory, pickGiantStoryCombo,
   GIANT_RANGE, type GiantMove,
 } from './giantScript';
 
@@ -123,5 +124,98 @@ describe('pickGiantCombo — 受け入れ条件(6.26-9 #8): 40%・許可2組の�
     expect(pickGiantCombo('sweep', 2, 70, () => 0.39)).toBe('stomp');
     expect(pickGiantCombo('sweep', 2, 70, () => 0.41)).toBeNull();
     expect(pickGiantCombo('dash', 2, 70, () => 0.39)).toBe('stomp');
+  });
+});
+
+// ====================================================================================
+// M60(PACING_PUZZLE.md §6.28-11): グレン/未確認変異体(storyBoss)専用のPhase3。
+// これらのテストが守るのは「storyBoss専用の新規関数が正しいこと」であって、上のPhase1/2の
+// テスト(通常城ボスが今も使う関数)は1つも書き換えていない=不変性の担保はそのまま生きている。
+// ====================================================================================
+
+describe('giantPhaseForHealthStory — 受け入れ条件: Phase1/2の境界は通常版と完全一致・Phase3はHP30%以下', () => {
+  it('is phase 1 above the 60% threshold (通常版giantPhaseForHealthと同じ境界)', () => {
+    expect(giantPhaseForHealthStory(1)).toBe(1);
+    expect(giantPhaseForHealthStory(0.61)).toBe(1);
+  });
+  it('is phase 2 between 30%(exclusive) and 60%(inclusive)', () => {
+    expect(giantPhaseForHealthStory(0.6)).toBe(2);
+    expect(giantPhaseForHealthStory(0.31)).toBe(2);
+  });
+  it('is phase 3 at or below the 30% threshold', () => {
+    expect(giantPhaseForHealthStory(0.3)).toBe(3);
+    expect(giantPhaseForHealthStory(0.1)).toBe(3);
+    expect(giantPhaseForHealthStory(0)).toBe(3);
+  });
+  it('never disagrees with giantPhaseForHealth above the phase-3 threshold(=通常城ボスと同じ挙動)', () => {
+    for (let f = 0.31; f <= 1; f += 0.01) {
+      expect(giantPhaseForHealthStory(f)).toBe(giantPhaseForHealth(f));
+    }
+  });
+});
+
+describe('giantMoveEligible(phase=3) — sweepはPhase2で解禁されたままPhase3でも消えない', () => {
+  it('sweep stays eligible in phase 3 with the same band as phase 2', () => {
+    expect(giantMoveEligible('sweep', 230, 3)).toBe(true);
+    expect(giantMoveEligible('sweep', 70, 3)).toBe(false);  // 密着帯の外
+    expect(giantMoveEligible('sweep', 400, 3)).toBe(false); // 近帯の外
+  });
+  it('phase does not change stomp/jump/dash/bolt eligibility (1と2と3で同じ)', () => {
+    const samples = [70, 230, 470, 800];
+    for (const d of samples) {
+      for (const m of ['stomp', 'jump', 'dash', 'bolt'] as GiantMove[]) {
+        expect(giantMoveEligible(m, d, 3)).toBe(giantMoveEligible(m, d, 2));
+        expect(giantMoveEligible(m, d, 3)).toBe(giantMoveEligible(m, d, 1));
+      }
+    }
+  });
+});
+
+describe('pickGiantStoryCombo — 受け入れ条件(§6.28-11 #2/#3): 薙ぎ払い→踏み鳴らし→突進の3発', () => {
+  it('has no follow-up for jump/bolt (第4の連携は作らない)', () => {
+    expect(pickGiantStoryCombo('jump', 70, false, () => 0)).toBeNull();
+    expect(pickGiantStoryCombo('bolt', 70, false, () => 0)).toBeNull();
+  });
+
+  it('keeps the existing 2 pairs alive at phase3 (sweep→stomp / dash→stomp)', () => {
+    expect(pickGiantStoryCombo('sweep', 70, false, () => 0)).toBe('stomp');
+    expect(pickGiantStoryCombo('dash', 70, false, () => 0)).toBe('stomp');
+  });
+
+  it('adds the phase3-only 3rd link: stomp→dash', () => {
+    // stomp→dashの帯はdash自体の帯(320<d<=1000)を要求する。
+    expect(pickGiantStoryCombo('stomp', 500, false, () => 0)).toBe('dash');
+    expect(pickGiantStoryCombo('stomp', 70, false, () => 0)).toBeNull(); // dashの帯の外
+  });
+
+  it('requires the target to still be in the follow-up move\'s band', () => {
+    expect(pickGiantStoryCombo('sweep', 800, false, () => 0)).toBeNull();
+    expect(pickGiantStoryCombo('dash', 800, false, () => 0)).toBeNull();
+  });
+
+  it('fires under 60% for グレン(stage-7), not above it', () => {
+    expect(pickGiantStoryCombo('sweep', 70, false, () => 0.59)).toBe('stomp');
+    expect(pickGiantStoryCombo('sweep', 70, false, () => 0.61)).toBeNull();
+  });
+
+  it('fires under 70% for 未確認変異体(stage-ex1・isEx=true), not above it', () => {
+    expect(pickGiantStoryCombo('sweep', 70, true, () => 0.69)).toBe('stomp');
+    expect(pickGiantStoryCombo('sweep', 70, true, () => 0.71)).toBeNull();
+  });
+
+  it('can chain the full 3発(薙ぎ払い→踏み鳴らし→突進)when each roll clears and the target stays in range', () => {
+    const first = pickGiantStoryCombo('sweep', 70, false, () => 0);
+    expect(first).toBe('stomp');
+    const second = pickGiantStoryCombo(first as GiantMove, 500, false, () => 0);
+    expect(second).toBe('dash');
+  });
+
+  it('does not force a 4th hit(標的が次技の帯の外なら連携は自然に終わる)', () => {
+    // dashの直後、標的が密着帯(stompの帯)の外にいれば連携はここで止まる。
+    expect(pickGiantStoryCombo('dash', 500, false, () => 0)).toBeNull();
+  });
+
+  it('a 4th+ hit can still occur if the target re-enters the next move\'s band(履歴を持たず間合いと確率だけで判断=トールのharai自己ループと同じ作法。既存dash→stompの2組は維持=原則⑥)', () => {
+    expect(pickGiantStoryCombo('dash', 70, false, () => 0)).toBe('stomp');
   });
 });

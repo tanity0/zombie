@@ -2281,10 +2281,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const scx = player.x + player.width / 2;
             const scy = player.y + player.height / 2 - STORY_BOSS_SPAWN_DIST;
             const boss = spawnEnemyAt('giantbat', scx, scy, newGameTime);
+            // M60(PACING_PUZZLE.md §6.28-11): この個体だけがPhase3/3連携/500ms硬直床の対象になる
+            // 印(gameStore.ts側のゲート)。通常ステージ(1〜6)の城ボスはこの経路を通らないので
+            // isStoryBossが付かない=無改変(受け入れ条件13「storyBossMode/getSelectedStageId()で分岐」)。
+            const storyStageId = getSelectedStageId();
+            boss.isStoryBoss = true;
+            boss.storyBossVariant = storyStageId === 'stage-7' ? 'stage-7' : 'stage-ex1';
             // M7(stage-7=グレン)のボスだけ当たり判定込みで2倍(社長指示v0.25.2000)。width/height=当たり判定なので
             // 2倍で見た目(=箱にcontainスケール)も当たり判定も同時に2倍。増分の半分だけ左上へ寄せて中心を維持。
             // EXボスは対象外(グレンのみ)。
-            if (getSelectedStageId() === 'stage-7') {
+            if (storyStageId === 'stage-7') {
               const owB = boss.width, ohB = boss.height;
               boss.width = owB * 2;
               boss.height = ohB * 2;

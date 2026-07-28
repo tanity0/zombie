@@ -62,7 +62,10 @@ import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnem
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
 import { computeEnemySeparation } from '../utils/enemySeparation';
 // M51: 城ボス「ジャイアント」新スクリプトの純関数(間合い/CD/HP段階から次の技を選ぶ・PACING_PUZZLE.md §6.26)。
-import { giantPhaseForHealth, giantPhaseJustChanged, pickGiantMove, pickGiantCombo, type GiantMove } from '../utils/giantScript';
+import {
+  giantPhaseForHealth, giantPhaseJustChanged, pickGiantMove, pickGiantCombo, type GiantMove,
+  giantPhaseForHealthStory, pickGiantStoryCombo, type GiantPhase,
+} from '../utils/giantScript';
 import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -1465,6 +1468,21 @@ export const GIANT_BOLT_CD_PHASE2_MS = 3000; // 実効2.5s
 // フェーズ移行(HP60%)の合図: HPバー色 Phase1=緑/Phase2=橙(0.3未満の赤は据え置き)+移行の瞬間だけ点滅
 // (社長裁定6.26-9 #4)。点滅の継続時間(pixiScene.ts が now と比較する側の値)。
 export const GIANT_PHASE_FLASH_MS = 1200;
+
+// ==== M60: グレン(stage-7)/未確認変異体(stage-ex1)専用のPhase3拡張(PACING_PUZZLE.md §6.28-11) ====
+// enemy.isStoryBoss===true の個体(=useGameLoop.tsのstoryBossスポーン経路でのみ立つ)だけに効く。
+// 通常ステージ(1〜6)の城ボスはisStoryBossが付かないため、以下の値・分岐へは一切到達しない
+// (受け入れ条件13「通常ステージのgiantbatは無改変」)。`?storybossscript=0` で本節だけ無効化でき、
+// その場合storyBoss個体もPhase1/2のまま(=通常城ボスと同じ挙動)に戻る。
+export const STORY_BOSS_SCRIPT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('storybossscript') !== '0';
+// 硬直=500ms床(社長裁定6.28-21★2・§6.28-11 #5「500msを下限として全技を-400ms」)。
+// 実効900→500(生600) / 実効700→500下限フロア(700-400=300<500なので床の500に張り付く・生600) /
+// 実効1100→700(生840)。咆哮弾(小技)は床の対象外で無改変(GIANT_BOLT_RECOVER_MSのまま)。
+export const GIANT_STOMP_RECOVER_PHASE3_MS = 600; // 実効500ms(900→500)
+export const GIANT_SWEEP_RECOVER_PHASE3_MS = 600; // 実効500ms(700→300のはずが床500へ張り付く)
+export const GIANT_DASH_RECOVER_PHASE3_MS = 600;  // 実効500ms(900→500)
+export const GIANT_JUMP_RECOVER_PHASE3_MS = 840;  // 実効700ms(1100→700)
+export const GIANT_BOLT_CD_PHASE3_MS = 2400;      // 実効2.0s(§6.28-11 #4「咆哮弾のCD Phase3=2.0s」)
 // 裏ボス スカジ専用の氷ハザード(社長指示)。判定はupdateEnemiesで、見た目はpixiScene。
 // 氷塊の起爆・氷刃の命中はどちらも既存の爆発処理(pumpkinBlasts)へ ice:true で積み、青FXで消化する。
 export const SKADI_ICE_RADIUS = 90;    // 氷塊破裂のAoE半径(2秒テレグラフなので少し大きめ)
@@ -7267,11 +7285,22 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
           const healthFrac = enemy.maxHealth > 0 ? enemy.health / enemy.maxHealth : 1;
-          const phase = giantPhaseForHealth(healthFrac);
+          // M60(§6.28-11): isStoryBossはグレン(stage-7)/未確認変異体(stage-ex1)としてスポーンされた
+          // 個体だけに立つ(useGameLoop.ts)。通常城ボスはfalseのまま=giantPhaseForHealth(無改変)しか
+          // 呼ばないので、Phase3・500ms床・3連携のどれにも一切到達しない(受け入れ条件13)。
+          const isStoryBoss = enemy.isStoryBoss === true && STORY_BOSS_SCRIPT_ENABLED;
+          const phase: GiantPhase = isStoryBoss ? giantPhaseForHealthStory(healthFrac) : giantPhaseForHealth(healthFrac);
           const phaseFields = {
             giantPhase: phase,
             giantPhaseFlashUntil: giantPhaseJustChanged(enemy.giantPhase, phase) ? gameTime + GIANT_PHASE_FLASH_MS : enemy.giantPhaseFlashUntil,
           };
+          // Phase3(storyBossのみ到達)は硬直500ms床(社長裁定6.28-21★2・§6.28-11 #5)。咆哮弾(小技)は
+          // 床の対象外=常にGIANT_BOLT_RECOVER_MSのまま(受け入れ条件11 ④の「小技は床の対象外」)。
+          const stompRecoverMs = phase === 3 ? GIANT_STOMP_RECOVER_PHASE3_MS : GIANT_STOMP_RECOVER_MS;
+          const sweepRecoverMs = phase === 3 ? GIANT_SWEEP_RECOVER_PHASE3_MS : GIANT_SWEEP_RECOVER_MS;
+          const dashRecoverMs = phase === 3 ? GIANT_DASH_RECOVER_PHASE3_MS : GIANT_DASH_RECOVER_MS;
+          const jumpRecoverMs = phase === 3 ? GIANT_JUMP_RECOVER_PHASE3_MS : GIANT_JUMP_RECOVER_MS;
+          const boltCdMs = phase === 3 ? GIANT_BOLT_CD_PHASE3_MS : phase === 2 ? GIANT_BOLT_CD_PHASE2_MS : GIANT_BOLT_CD_PHASE1_MS;
 
           // 技ごとの溜め開始パッチ(通常抽選/Phase2連携の両方から呼べる共通ヘルパ)。
           const beginGiantMove = (move: GiantMove): Partial<Enemy> => {
@@ -7319,7 +7348,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             case 'g-stomp-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 pumpkinBlasts.push({ x: ecx, y: ecy, radius: GIANT_STOMP_RADIUS, damage: enemy.damage, enemyId: enemy.id });
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-stomp-recover', aiPhaseUntil: atkUntil(GIANT_STOMP_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-stomp-recover', aiPhaseUntil: atkUntil(stompRecoverMs) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -7340,7 +7369,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-sweep-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-sweep-recover', aiPhaseUntil: atkUntil(GIANT_SWEEP_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-sweep-recover', aiPhaseUntil: atkUntil(sweepRecoverMs) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -7363,7 +7392,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const cdx = tx - ecx, cdy = ty - ecy;
               const cdist = Math.hypot(cdx, cdy);
               if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-dash-recover', aiPhaseUntil: atkUntil(GIANT_DASH_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-dash-recover', aiPhaseUntil: atkUntil(dashRecoverMs) };
               }
               const hpx = pcx - ecx, hpy = pcy - ecy;
               const hl = Math.hypot(hpx, hpy) || 1;
@@ -7380,7 +7409,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const blocked = Math.abs(cmoved.x - rawX) > 0.5 || Math.abs(cmoved.y - rawY) > 0.5;
               if (hitShield || blocked) {
                 if (hitShield) shieldBlocks.push({ x: cmoved.x + enemy.width / 2, y: cmoved.y + enemy.height / 2, kind: 'dash' });
-                return { ...enemy, ...phaseFields, x: cmoved.x, y: cmoved.y, vx: 0, vy: 0, aiPhase: 'g-dash-recover', aiPhaseUntil: atkUntil(GIANT_DASH_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, x: cmoved.x, y: cmoved.y, vx: 0, vy: 0, aiPhase: 'g-dash-recover', aiPhaseUntil: atkUntil(dashRecoverMs) };
               }
               return { ...enemy, ...phaseFields, vx: cvx, vy: cvy, x: cmoved.x, y: cmoved.y };
             }
@@ -7397,12 +7426,12 @@ export const useGameStore = create<GameState>((set, get) => ({
               const jnx = jfx + (jtx - jfx) * jt, jny = jfy + (jty - jfy) * jt;
               if (shieldRects.length > 0 && shieldRects.some(s => rectsOverlap({ x: jnx, y: jny, width: enemy.width, height: enemy.height }, s))) {
                 shieldBlocks.push({ x: jnx + enemy.width / 2, y: jny + enemy.height / 2, kind: 'jump' });
-                return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(GIANT_JUMP_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(jumpRecoverMs) };
               }
               if (jt >= 1) {
                 pumpkinLanded = true;
                 pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage, enemyId: enemy.id });
-                return { ...enemy, ...phaseFields, x: jtx, y: jty, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiPhaseUntil: atkUntil(GIANT_JUMP_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, x: jtx, y: jty, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiPhaseUntil: atkUntil(jumpRecoverMs) };
               }
               return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0 };
             }
@@ -7429,9 +7458,17 @@ export const useGameStore = create<GameState>((set, get) => ({
                   justFinished === 'sweep' ? { gSweepReadyAt: atkUntil(GIANT_SWEEP_CD_MS) } :
                   justFinished === 'dash' ? { gDashReadyAt: atkUntil(GIANTBAT_DASH_CD_MS + werewolfExtraCd('giantbat')) } :
                   justFinished === 'jump' ? { gJumpReadyAt: atkUntil(GIANT_JUMP_CD_MS) } :
-                  { gBoltReadyAt: atkUntil(phase === 2 ? GIANT_BOLT_CD_PHASE2_MS : GIANT_BOLT_CD_PHASE1_MS) };
-                // Phase2限定の2連携(社長裁定6.26-9 #8): 確率40%・許す組み合わせは2つのみ(giantScript.ts)。
-                const combo = pickGiantCombo(justFinished, phase, dist);
+                  { gBoltReadyAt: atkUntil(boltCdMs) };
+                // Phase2: 確率40%・許す組み合わせは2つのみ(giantScript.ts・社長裁定6.26-9 #8・無改変)。
+                // Phase3(storyBossのみ到達): 確率60%(EXのみ70%)・3発目(踏み鳴らし→突進)も解禁
+                // (社長裁定6.28-11 #2/#3)。既存pickGiantComboはphase!==2を弾く専用実装のため、
+                // Phase3はgiantScript.ts側の別関数(pickGiantStoryCombo)を使う=Phase1/2の経路は無改変。
+                let combo: GiantMove | null;
+                if (phase === 3) {
+                  combo = pickGiantStoryCombo(justFinished, dist, enemy.storyBossVariant === 'stage-ex1');
+                } else {
+                  combo = pickGiantCombo(justFinished, phase, dist);
+                }
                 if (combo) {
                   return { ...enemy, ...phaseFields, ...readyPatch, vx: 0, vy: 0, ...beginGiantMove(combo) };
                 }

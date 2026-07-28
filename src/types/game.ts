@@ -347,8 +347,18 @@ export interface Enemy {
   gBoltReadyAt?: number;
   // ジャイアント新スクリプト(M51)専用: 現在のフェーズ(HP60%以下=2)。フェーズ移行の瞬間だけ
   // giantPhaseFlashUntil までHPバーを点滅させる(合図の本体・社長裁定6.26-9 #4)。
-  giantPhase?: 1 | 2;
+  // M60(§6.28-11): storyBoss個体(isStoryBoss)だけHP30%以下でPhase3に到達しうる。通常城ボスは
+  // isStoryBossがundefinedのままなので、gameStore.ts側の分岐によりこれまでどおり1|2までしか出ない。
+  giantPhase?: 1 | 2 | 3;
   giantPhaseFlashUntil?: number;
+  // M60(PACING_PUZZLE.md §6.28-11): この個体がstoryBossとしてスポーンされたか(グレン=stage-7 /
+  // 未確認変異体=stage-ex1。spawnEnemyAt('giantbat',...)直後にuseGameLoop.tsがセットする)。
+  // 通常ステージ(1〜6)の城ボスにはこのフィールド自体が付与されない(undefinedのまま)ので、
+  // gameStore.ts側のジャイアント新スクリプトはisStoryBoss===trueの個体だけをPhase3対象にできる。
+  isStoryBoss?: boolean;
+  // isStoryBoss===trueの時だけ意味を持つ: Phase3の連携確率だけがグレンとEXで異なる(60%/70%)ため、
+  // どちらの個体かをここで区別する(社長裁定6.28-11「EXはクリア後コンテンツなので60%→70%」)。
+  storyBossVariant?: 'stage-7' | 'stage-ex1';
   // ハンター変異体: 撤退中フラグ。true の間は updateEnemies の通常追跡から除外し、専用イベント
   // コントローラ(useGameLoop)がプレイヤーから離れる方向へ移動させ、画面外で消滅させる。
   hunterFleeing?: boolean;
