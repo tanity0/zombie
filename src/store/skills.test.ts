@@ -12,6 +12,7 @@ import { vi } from 'vitest';
 import { checkPlayerPickupCollisions } from '../utils/collisionUtils';
 import type { Pickup } from '../types/game';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
+  GACHA_PULL_COST, GACHA_REFUND_BY_RARITY,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel,
   rollGachaSkill, GACHA_EXCLUDED_SKILLS } from '../data/campaign';
 import type { Player, SkillKey } from '../types/game';
@@ -73,6 +74,24 @@ describe('rarity soft-pity weights', () => {
     expect(gachaSuperPercent(14)).toBe(19);
     expect(gachaPityRemaining(0)).toBe(14);
     expect(gachaPityRemaining(14)).toBe(0);
+  });
+});
+
+// ゴールドのシンク接続(社長裁定v0.25.2337)。CORE_LOOP.md の最優先課題「③ランの輪が閉じていない」が
+// これで閉じる。価格0(無料)へ戻すとシンクが消えてループが開くので、テストで固定する。
+describe('ガチャ価格とゴールドのシンク', () => {
+  it('価格は0ではない(=ゴールドの行き先がある)', () => {
+    expect(GACHA_PULL_COST).toBeGreaterThan(0);
+  });
+
+  it('返金は価格に対して 10% / 30% / 50%(この比が100gを選んだ理由。価格を変えるなら返金も見直す)', () => {
+    expect(GACHA_REFUND_BY_RARITY.normal / GACHA_PULL_COST).toBeCloseTo(0.1, 6);
+    expect(GACHA_REFUND_BY_RARITY.rare / GACHA_PULL_COST).toBeCloseTo(0.3, 6);
+    expect(GACHA_REFUND_BY_RARITY.super / GACHA_PULL_COST).toBeCloseTo(0.5, 6);
+  });
+
+  it('超レアの被り返金が価格を超えない(被りが実質タダにならない)', () => {
+    expect(GACHA_REFUND_BY_RARITY.super).toBeLessThan(GACHA_PULL_COST);
   });
 });
 

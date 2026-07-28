@@ -784,8 +784,16 @@ export const rarityWeightsForPity = (pity: number): Record<SkillRarity, number> 
   return { normal: 70 - 5 * c, rare: 25 + 4 * c, super: 5 + c };
 };
 export const skillsByRarity = (r: SkillRarity): SkillKey[] => SKILL_KEYS.filter(k => SKILLS[k].rarity === r);
-// ガチャ1回の価格 / 重複時のレア度別返金額。// ※テスト用に一旦0円(無料)。本番は150想定。
-export const GACHA_PULL_COST = 0;
+// ガチャ1回の価格 / 重複時のレア度別返金額。
+//
+// **100g**(社長裁定v0.25.2337)。この値を選んだ理由は2つあり、変更するなら両方を再検討すること:
+//  ① **返金表がそのまま割合になる**: 10/30/50 が 100 に対して 10%/30%/50%。50gにすると超レアの
+//     被りが全額返金(実質タダ)になって被りの痛みが消え、150gにすると返金が薄すぎて機能しない。
+//  ② **「良いラン1回 = ガチャ1回」**: 換金は上限つき項目(与ダメ/KILL/コンボ/スクラップ)だけでは
+//     合計36gが天井で、それ以上はトレジャー(2.5g/個)・エリート1.5g/ボス4g・クリア+15g・
+//     被弾の少なさ最大+10g でしか伸びない。深く潜って生きて帰ったラン ≒ 100g になる。
+// 参考(4,000回シミュレート): 全31種**所持**まで119 pull / 全種**MAX**まで423 pull(累計返金 約9,500g)。
+export const GACHA_PULL_COST = 100;
 export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 10, rare: 30, super: 50 };
 // レア度ごとの表示ラベルと色(装備UI/ガチャ結果で共用)。
 export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル', rare: 'レア', super: '超レア' };
