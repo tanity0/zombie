@@ -4,9 +4,7 @@
   "headless": true,
   "viewport": { "width": 1280, "height": 800 },
   "configs": [
-    { "name": "berserker-off-a2", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["exploder"] },
-    { "name": "berserker-off-b2", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["exploder"] },
-    { "name": "goldrush-on-a2", "persona": "standard", "subs": ["flare-gun"], "skills": ["gold-rush", "warm-up"] },
-    { "name": "goldrush-on-b2", "persona": "standard", "subs": ["flare-gun"], "skills": ["gold-rush", "warm-up"] }
+    { "name": "hospital-regression-a", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["exploder"] },
+    { "name": "hospital-regression-b", "persona": "standard", "subs": ["flare-gun"], "skills": ["warm-up"] }
   ]
 }
