@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2367',
+    items: [
+      'ゲーム内容の変更はありません（新しい天使3体の絵を追加した準備のみ。実際に登場するのは後の更新からです）。',
+    ],
+  },
+  {
     version: '0.25.2366',
     items: [
       '寄り道スポット（廃病院・警察署・武器庫）の絵を差し替えました。',
