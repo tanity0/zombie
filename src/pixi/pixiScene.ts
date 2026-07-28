@@ -1583,6 +1583,10 @@ export class PixiScene {
   // §6.28-16: ジブリルのランタン(jibril-lantern)を常に手元に構えたまま表示する専用スプライト
   // (振り演出ではなく「掲げたまま」なのでKatanaSlash系とは別の単純な1枚Sprite)。
   private jibrilLanternSprites = new Map<string, Sprite>();
+  // §6.28-16 ②(差し戻し対応): ランタン火(bossFires)の各火の中心にもjibril-lanternを1枚重ねる
+  // (「投げて地面に置く」=火床の中心にランタン絵を残す)。fire.id keyed。新しい描画方式は追加せず、
+  // 既存のsyncBossFires(共有Graphics)へスプライトを添えるだけ。
+  private jibrilLanternFirePool = new Map<string, Sprite>();
   // §6.28-16: アクラシエルの結晶の槍(spear-windup中の構えプレビュー用・単純な1枚Sprite)。
   private acrasielSpearReadySprites = new Map<string, Sprite>();
   // §6.28-18(バッチM62): スリィエルの環(suriel-ring)。待機中も頭上に浮遊描画するため、boss.idごとに
@@ -7323,9 +7327,10 @@ export class PixiScene {
     const g = this.bossFireGfx;
     if (!g.parent) { g.blendMode = 'add'; this.L.groundLayer.addChild(g); }
     g.clear();
-    if (fires.length === 0) return;
     const HITR = 22;   // 当たり半径(=useGameLoop JIBRIL_FIRE_RADIUS)。予告円をこれに合わせる。
     const FLAMER = 14; // 火の基準サイズ(火炎瓶相当)。
+    const lanternTex = getTexture('jibril-lantern');
+    const seenLanterns = new Set<string>();
     for (const f of fires) {
       if (gameTime >= f.expireAt) continue;
       if (gameTime < f.activateAt) {
@@ -7345,7 +7350,19 @@ export class PixiScene {
         g.ellipse(f.x + sway * 0.4, f.y - r * 1.4, r * 1.0, r * 2.4).fill({ color: 0xa855f7, alpha: 0.40 * a });
         g.ellipse(f.x + sway * 0.5, f.y - r * 2.0, r * 0.5, r * 1.5).fill({ color: 0xe9d5ff, alpha: 0.50 * a });
       }
+      // §6.28-16 ②(社長指示「ゲートボスは武器絵も使ってね」の差し戻し対応): 「投げて地面に置く」=
+      // 予告中/有効中を問わず、火の中心にjibril-lanternを1枚重ねる(火床そのものがランタン)。
+      if (lanternTex) {
+        seenLanterns.add(f.id);
+        let sp = this.jibrilLanternFirePool.get(f.id);
+        if (!sp) { sp = new Sprite(lanternTex); sp.anchor.set(0.5, 0.85); this.L.groundLayer.addChild(sp); this.jibrilLanternFirePool.set(f.id, sp); }
+        sp.scale.set(JIBRIL_LANTERN_VIS_H / Math.max(1, lanternTex.height));
+        sp.position.set(f.x, f.y);
+        sp.alpha = gameTime < f.activateAt ? 0.5 : 1;
+        sp.visible = true;
+      }
     }
+    for (const [id, sp] of this.jibrilLanternFirePool) { if (!seenLanterns.has(id)) { sp.destroy(); this.jibrilLanternFirePool.delete(id); } }
   }
 
   // センサー地雷(sensor-mine): 待機=暗色の小型ディスク+琥珀ランプの明滅 / 感知後2秒=赤点滅テレグラフ
@@ -8675,15 +8692,16 @@ export class PixiScene {
         o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
         o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
       }
-      // ---- ウリ(§6.28-17・M61新規): 大薙ぎ(横・内径あり)=T3ドーナツ帯+大剣 ----
+      // ---- ウリ(§6.28-17・M61新規): 大薙ぎ(横・内径あり)=T3帯。差し戻し(社長裁定): ドーナツの
+      // くり抜きではなく、始点(aiFromX/Y)そのものを溜め開始時に内径ぶん前へ出してある
+      // (angelBossTick.tsのrunUriTick参照)。ここは他の帯と全く同じ「始点→終点の通常カプセル」を
+      // 描くだけ=図形と判定が同一形状になる(内径の縁取り線は廃止=新しい意味の色を作らない)。 ----
       else if (scriptActive && e.type === 'uri' && (bs === 'sweep-windup' || bs === 'sweep' || bs === 'sweep-recover')) {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const phase2 = (e.bossPhase ?? 1) >= 2;
-        const innerR = phase2 ? 90 : 140; // uriScript.uriSweepInnerRadiusと同値(140→Phase2で90)
         if (bs === 'sweep-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_WINDUP_MS_VIS));
-          this.drawAngelZoneCapsule(o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now, innerR, fx, fy);
+          this.drawAngelZoneCapsule(o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
           this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog);
         } else if (bs === 'sweep') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_ACTIVE_MS));
@@ -8932,12 +8950,12 @@ export class PixiScene {
 
   // §6.28共通(T3): 角ばった四角ゾーン(fx,fy)→(tx,ty)・半幅halfWidth。既存のトール/ミゲル/ジャイアント
   // 薙ぎ払いと全く同じ意匠(poly fill+stroke+中心線)を6ボス分の新技へ再利用する汎用版。
-  // innerRadius>0の時は originX/Y を中心に内径の縁取り(安全圏の目安線)を追加で描く
-  // (§6.28-17ウリ「図形と判定は必ず一致させる」。塗りそのものの穴あきではなく縁取りで表現=実機確認項目)。
+  // ウリの内径(§6.28-17)は「くり抜き」ではなく、呼び出し側(angelBossTick.ts)が始点(fx,fy)そのものを
+  // 溜め開始時に内径ぶん前へ出す方式に統一した(社長裁定・差し戻し対応)ため、ここは常に単純な
+  // 「始点→終点の通常カプセル」を描くだけでよい=図形と判定が完全に同一形状になる。
   private drawAngelZoneCapsule(
     o: Graphics, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
     prog: number, now: number,
-    innerRadius = 0, originX = fx, originY = fy,
   ) {
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
     const ddx = tx - fx, ddy = ty - fy;
@@ -8954,10 +8972,6 @@ export class PixiScene {
     o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill });
     o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
     o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' });
-    if (innerRadius > 0) {
-      // 安全圏の縁取り(青白=BOSS_RECOVER_TINTと同系色=「ここは殴れる/安全」の言語を流用)。
-      o.circle(originX, originY, innerRadius).stroke({ width: 2, color: BOSS_RECOVER_TINT, alpha: 0.55 + 0.3 * pulse });
-    }
   }
 
   // §6.28共通(T1): 赤ライン+終点リング(ジャイアント突進と同じ意匠)。ミゲル踏み込み/ウリ踏み込み突きで再利用。
@@ -12482,6 +12496,7 @@ export class PixiScene {
     for (const o of this.uriSlashFx.values()) o.destroy({ children: true });
     for (const o of this.rafiSlashFx.values()) o.destroy({ children: true });
     for (const o of this.jibrilLanternSprites.values()) o.destroy();
+    for (const o of this.jibrilLanternFirePool.values()) o.destroy();
     for (const o of this.acrasielSpearReadySprites.values()) o.destroy();
     for (const o of this.surielRingSprites.values()) { o.ring1.destroy(); o.ring2.destroy(); }
     for (const o of this.acrasielSpearPool.values()) o.destroy();

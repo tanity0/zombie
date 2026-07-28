@@ -279,19 +279,6 @@ const applyPatch = (id: string, patch: Partial<Enemy>): void => {
   }
 };
 
-// §6.28-17(ウリの内径付き帯)の当たり判定ヘルパ。全ボス共通で使えるようここへ置く。
-// innerRadius>0の時、origin(通常は帯の起点=本体中心)からの距離が「innerRadius - pr」以内なら
-// 安全(判定なし)とする。既存の外側判定(半径+pr=危険域をpr分広げる)と同じ向きの緩さで統一する
-// (§6.28-17「図形と判定は必ず一致させる」。描画は生のinnerRadiusで描き、判定だけこの式を使う)。
-const capsuleOrDonutHit = (
-  px: number, py: number, pr: number,
-  fx: number, fy: number, tx: number, ty: number, halfWidth: number,
-  originX: number, originY: number, innerRadius: number,
-): boolean => {
-  if (innerRadius > 0 && Math.hypot(px - originX, py - originY) <= innerRadius - pr) return false;
-  return distToSegment({ x: px, y: py }, { x: fx, y: fy }, { x: tx, y: ty }) <= halfWidth + pr;
-};
-
 // ============================================================================================
 // --- ミゲル(§6.28-4 バッチM53) --------------------------------------------------------------
 // ============================================================================================
@@ -1358,7 +1345,11 @@ export const runUriTick = (
         if (move === 'sweep') {
           patch.bossState = 'sweep-windup'; patch.bossStateUntil = newGameTime + URI_SWEEP_WINDUP_MS;
           const ddl = Math.hypot(pcx - ucx, pcy - ucy) || 1; const dirx = (pcx - ucx) / ddl, diry = (pcy - ucy) / ddl;
-          patch.aiFromX = ucx; patch.aiFromY = ucy;
+          // §6.28-17「図形と判定は必ず一致させる」: ドーナツ(内径くり抜き)ではなく、カプセルの
+          // 始点そのものを内径ぶん前へ出す(=原点から innerRadius だけ進んだ点を始点とする通常の
+          // カプセル)。半幅40≪内径140/90なので描画は既存T3帯の内側を塗らないだけで済む(社長裁定)。
+          const innerR = uriSweepInnerRadius(phase);
+          patch.aiFromX = ucx + dirx * innerR; patch.aiFromY = ucy + diry * innerR;
           patch.aiTargetX = ucx + dirx * URI_SWEEP_RANGE_PX; patch.aiTargetY = ucy + diry * URI_SWEEP_RANGE_PX;
         } else if (move === 'downslash') {
           patch.bossState = 'downslash-windup'; patch.bossStateUntil = newGameTime + URI_DOWNSLASH_WINDUP_MS;
@@ -1381,11 +1372,11 @@ export const runUriTick = (
       patch.bossState = 'sweep'; patch.bossStateUntil = newGameTime + URI_SWEEP_ACTIVE_MS;
     }
   } else if (st === 'sweep') {
+    // 始点(aiFromX/Y)は溜め開始時に既に内径ぶん前へ出してある(通常のカプセル判定=distToSegment)。
     const fx0 = uri.aiFromX ?? ucx, fy0 = uri.aiFromY ?? ucy, tx0 = uri.aiTargetX ?? ucx, ty0 = uri.aiTargetY ?? ucy;
     const pr = Math.max(player.width, player.height) / 2;
-    const innerR = uriSweepInnerRadius(phase);
     let countered = false;
-    if (capsuleOrDonutHit(pcx, pcy, pr, fx0, fy0, tx0, ty0, URI_SWEEP_HALF_WIDTH_PX, fx0, fy0, innerR)) {
+    if (distToSegment({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= URI_SWEEP_HALF_WIDTH_PX + pr) {
       const cp = useGameStore.getState().player;
       if (Date.now() <= cp.counterWindowEnd) { uriCounterHit(pcx, pcy); countered = true; }
       else {

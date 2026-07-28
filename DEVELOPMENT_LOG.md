@@ -1,5 +1,33 @@
 # Development Log
 
+## v0.25.2376 — M53/M55/M57/M61/M62/M63 差し戻し対応: ウリの図形=判定の不一致とジブリルのランタン②を修正【2026-07-29 02:37 JST】
+- **設計チャットの検証で2点差し戻し(v0.25.2375のL2実装に対する指摘)。他は一切触っていない。**
+- **修正1(必須): ウリの大薙ぎの図形が判定と食い違っていた。**
+  旧実装は「赤いカプセルを内側まで塗り切った上に、内径の位置へ青白(`BOSS_RECOVER_TINT`)の縁取り線を足す」
+  (`capsuleOrDonutHit`+`drawAngelZoneCapsule`のinnerRadius引数)方式で、①赤く塗ってあるのに当たらない
+  領域ができる ②青白を「硬直=好機」以外の新しい意味で使ってしまう、の2点で§6.28-17
+  (「図形と判定は必ず一致させる」)と§6.28-3(「新しいテレグラフ表現は1つも作らない」)に反していた。
+  **ドーナツのくり抜きをやめ、カプセルの始点(`aiFromX/Y`)そのものを溜め開始時に「原点から内径ぶん
+  進んだ点」へ出す方式に統一**(`src/utils/angelBossTick.ts`の`runUriTick`)。判定は`distToSegment`の
+  通常カプセルに戻し、`capsuleOrDonutHit`ヘルパは削除。描画側(`pixiScene.ts`の`drawAngelZoneCapsule`)も
+  innerRadius引数と青白の縁取り線を削除し、他の帯と全く同じ「始点→終点の通常カプセル」を描くだけにした。
+  `uriSweepInnerRadius(phase)`の値(140/90)自体は無改変。**これで図形と判定が完全に同一形状になった。**
+- **修正2(必須): ジブリルのランタンが①(掲げる)しか実装されていなかった。**
+  §6.28-16のジブリルの行(①構えで掲げる/②投げて地面に置く=火床の中心にランタン絵を残す/③鎖の振り子薙ぎ)
+  のうち②を追加。既存の`bossFires`配列・`syncBossFires`(共有Graphics)はそのまま流用し、**各火の中心へ
+  `jibril-lantern`のスプライトを1枚重ねるだけ**(新しい技・新しい描画方式は追加していない)。予告中は薄く
+  (alpha 0.5)・有効化後は不透明(alpha 1)。新規プール`jibrilLanternFirePool`(fire.id keyed)+シーン破棄時の
+  destroy処理を追加。
+  **③(鎖の振り子薙ぎ)は実装していない**——ジブリルには既存の近接薙ぎ技が無い(volley/lantern/consecrateは
+  いずれも近接スイングを伴わない)ため、指示どおり新規技は作らずスキップした。
+- 検証: `npm run typecheck`(0)・`npm run lint`(0 error)・`npx vitest related`
+  (uriScript.test.ts 7件+playtest.test.ts含む既存関連スイート全green。純関数`uriSweepInnerRadius`自体は
+  無改変のためテスト差分なし)。
+- 変更ファイル: `src/utils/angelBossTick.ts`(`capsuleOrDonutHit`削除+`runUriTick`のsweep windup/active)、
+  `src/pixi/pixiScene.ts`(`drawAngelZoneCapsule`簡素化+ウリsweep描画+`syncBossFires`へランタン追加+
+  プール新設/破棄)。他5体の実装・数値・テスト、ラフィの着地円修正、HPバーのフェーズ色一般化、
+  `acrasielSpears`配管は無改変。
+
 ## v0.25.2375 — M53/M55/M57/M61/M62/M63【ロットL2】ゲート2ボス6体のソウル式台本+武器絵【2026-07-29 02:24 JST】
 - **担当範囲(§6.28-21のロット表): L2=ゲート2ボス6体(ミゲル/ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)
   の台本+武器絵の使用**。L1(共通基盤=`bossScript.ts`)を土台に、L3(裏ボス4体+idol)/L4(物語ボス)は対象外
