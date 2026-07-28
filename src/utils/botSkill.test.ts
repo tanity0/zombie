@@ -42,7 +42,9 @@ describe('段階の定義', () => {
       const prev = BOT_SKILL_PROFILES[order[i - 1]], cur = BOT_SKILL_PROFILES[order[i]];
       expect(cur.reactionMs).toBeLessThan(prev.reactionMs);
       expect(cur.counterChance).toBeGreaterThan(prev.counterChance);
-      expect(cur.surroundCount).toBeLessThanOrEqual(prev.surroundCount); // 危険察知は早くなる一方
+      // v0.25.2364で向きを反転: **上手いほど囲まれても粘る**(退避する敵数が増える)。
+      // 旧向き(小さいほど上手い)は `retreatHpFrac` と同じ誤りで、実測で master の撃破数が最下位になっていた。
+      expect(cur.surroundCount).toBeGreaterThanOrEqual(prev.surroundCount);
     }
   });
 
@@ -238,7 +240,7 @@ describe('HP退避(disengageHp・§6.25改訂で反転)', () => {
 describe('novice/casualの既存ダイヤルは本バッチで変わらない(不変条件1)', () => {
   it('reactionMs/counterChance/dodge/targeting/surroundCountは従来値のまま', () => {
     expect(BOT_SKILL_PROFILES.novice).toMatchObject({
-      reactionMs: 500, counterChance: 0.25, dodge: 'none', targeting: 'nearest', surroundCount: 5,
+      reactionMs: 500, counterChance: 0.25, dodge: 'none', targeting: 'nearest',
     });
     expect(BOT_SKILL_PROFILES.casual).toMatchObject({
       reactionMs: 250, counterChance: 0.65, dodge: 'none', targeting: 'nearest', surroundCount: 3,

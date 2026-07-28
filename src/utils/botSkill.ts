@@ -30,7 +30,17 @@ export interface BotSkillProfile {
   dodge: DodgeLevel;
   /** 誰を狙うか。 */
   targeting: TargetingMode;
-  /** 「囲まれた」と判断する周囲の敵数。**小さいほど早く危険を察知する**。 */
+  /**
+   * 「囲まれた」と判断して退避する周囲の敵数。**大きいほど囲まれても粘る**。
+   *
+   * **v0.25.2364で向きを反転**(社長指示v0.25.2358「上手い=捌く速さを含む」の未消化ぶん)。
+   * 旧値は novice 5 → master 2 で、「小さいほど早く危険を察知する=上手い」と書いていたが、
+   * 挙動としては **`retreatHpFrac` と全く同じ「上手いほど早く逃げる」**だった。盤面には常時5〜10体
+   * いるので、**master は敵2体で退避=ほぼ常に逃げている**状態になり、実測で撃破数が最下位だった
+   * (M49実装後の計測: novice 77 / casual 28 / skilled 38 / **master 27**)。
+   * `retreatHpFrac`→`disengageHp` は反転させたのに、**同じ誤りがここに残っていた**。
+   * **casual=3 は据え置き**(既存の実測値と比較できなくなるため=段階表の基準)。
+   */
   surroundCount: number;
   /**
    * この割合を下回ったら交戦を切り上げる(旧 retreatHpFrac・PACING_PUZZLE.md §6.25改訂で置換)。
@@ -63,13 +73,13 @@ export interface BotSkillProfile {
 // 旧 retreatHpFrac(novice/casual=0=退避しない)の反転を含め、novice/casualにも実測値が入る
 // (novice>casualの逆転を正すための意図的な変更・PACING_PUZZLE.md ★未決参照)。
 export const BOT_SKILL_PROFILES: Record<BotSkill, BotSkillProfile> = {
-  novice:  { reactionMs: 500, counterChance: 0.25, dodge: 'none',       targeting: 'nearest', surroundCount: 5, disengageHp: 0.5, dodgeStrength: 0,
+  novice:  { reactionMs: 500, counterChance: 0.25, dodge: 'none',       targeting: 'nearest', surroundCount: 2, disengageHp: 0.5, dodgeStrength: 0,
              engageDist: 200, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random' },
   casual:  { reactionMs: 250, counterChance: 0.65, dodge: 'none',       targeting: 'nearest', surroundCount: 3, disengageHp: 0.4, dodgeStrength: 0,
              engageDist: 260, dodgeVsAttack: 0.5,  avoidContactDist: 0,   meleeVsDanger: true,  warpReact: false, upgradePolicy: 'random' },
-  skilled: { reactionMs: 150, counterChance: 0.85, dodge: 'projectile', targeting: 'threat',  surroundCount: 3, disengageHp: 0.3, dodgeStrength: 0.7,
+  skilled: { reactionMs: 150, counterChance: 0.85, dodge: 'projectile', targeting: 'threat',  surroundCount: 5, disengageHp: 0.3, dodgeStrength: 0.7,
              engageDist: 340, dodgeVsAttack: 0.4,  avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy' },
-  master:  { reactionMs: 80,  counterChance: 1.0,  dodge: 'all',        targeting: 'optimal', surroundCount: 2, disengageHp: 0.2, dodgeStrength: 1,
+  master:  { reactionMs: 80,  counterChance: 1.0,  dodge: 'all',        targeting: 'optimal', surroundCount: 8, disengageHp: 0.2, dodgeStrength: 1,
              engageDist: 420, dodgeVsAttack: 0.25, avoidContactDist: 160, meleeVsDanger: false, warpReact: true,  upgradePolicy: 'greedy' },
 };
 
