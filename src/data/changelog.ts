@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2366',
+    items: [
+      '寄り道スポット（廃病院・警察署・武器庫）の絵を差し替えました。',
+    ],
+  },
+  {
     version: '0.25.2365',
     items: [
       '難易度ランクの上下判定を作り直しました。今までは1分ごとの区切りでまとめて判定していましたが、'
