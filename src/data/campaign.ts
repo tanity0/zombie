@@ -823,16 +823,18 @@ export const levelWeightsFor = (rarity: SkillRarity, dupeCount: number): number[
     if (d === 1) return [20, 60, 20];
     return [10, 30, 60];
   }
-  if (rarity === 'rare') {
-    if (d === 0) return [80, 15, 5];
-    if (d === 1) return [70, 20, 10];
-    if (d === 2) return [50, 40, 10];
-    return [20, 40, 40];
-  }
-  // normal
+  // rare / normal は**同じ刻み**(社長裁定v0.25.2336「ノーマルは潰して」)。
+  //
+  // 旧: normal だけ d<=2 / d<=5 と刻みが倍で、[20,40,40] へ届くのに**被り6回**必要だった
+  // (rare は3回・super は2回)。1スキルあたりの排出率は 超3.57% / レア3.18% / ノーマル3.20% と
+  // ほぼ同じなので、**引ける速さではなく昇格の刻みだけ**がノーマルを遅らせていた。
+  // 実測(4,000回シミュレート): 全31種MAXの「最後にLv3へ到達するスキル」が **ノーマル68%** に偏り、
+  // 地味なノーマルほど最後まで残るという逆転が起きていた。
+  // 刻みを rare と揃えると **レア56%/ノーマル44%**(=種類数15:13にほぼ比例)へ均衡し、
+  // 全MAXまでの中央値も 474→424 pull に縮む。
   if (d === 0) return [80, 15, 5];
-  if (d <= 2) return [70, 20, 10];
-  if (d <= 5) return [50, 40, 10];
+  if (d === 1) return [70, 20, 10];
+  if (d === 2) return [50, 40, 10];
   return [20, 40, 40];
 };
 export const rollSkillLevel = (rarity: SkillRarity, dupeCount: number, maxLv: number, rng: () => number = Math.random): number => {

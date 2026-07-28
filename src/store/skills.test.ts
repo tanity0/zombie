@@ -85,29 +85,60 @@ describe('skill level table (per-skill dupe count)', () => {
 
   it('level weights follow the confirmed table', () => {
     expect(levelWeightsFor('normal', 0)).toEqual([80, 15, 5]);
-    expect(levelWeightsFor('normal', 2)).toEqual([70, 20, 10]);
-    expect(levelWeightsFor('normal', 5)).toEqual([50, 40, 10]);
-    expect(levelWeightsFor('normal', 6)).toEqual([20, 40, 40]);
+    expect(levelWeightsFor('normal', 1)).toEqual([70, 20, 10]);
+    expect(levelWeightsFor('normal', 2)).toEqual([50, 40, 10]);
+    expect(levelWeightsFor('normal', 3)).toEqual([20, 40, 40]);
     expect(levelWeightsFor('rare', 1)).toEqual([70, 20, 10]);
     expect(levelWeightsFor('rare', 3)).toEqual([20, 40, 40]);
     expect(levelWeightsFor('super', 0)).toEqual([70, 20, 10]);
     expect(levelWeightsFor('super', 2)).toEqual([10, 30, 60]);
   });
 
+  // 不変条件(社長裁定v0.25.2336「ノーマルは潰して」): **ノーマルの昇格をレアより遅くしない**。
+  // 1スキルあたりの排出率はレア度をまたいでほぼ同じ(超3.57%/レア3.18%/ノーマル3.20%)なので、
+  // 昇格の刻みに差をつけると「地味なノーマルほど最後まで揃わない」逆転が起きる(旧実装の実バグ)。
+  describe('ノーマルはレアより遅く昇格しない(v0.25.2336の逆転を再発させない)', () => {
+    it('同じ被り回数ならノーマルとレアの重みは完全に一致する', () => {
+      for (let d = 0; d <= 10; d++) {
+        expect(levelWeightsFor('normal', d)).toEqual(levelWeightsFor('rare', d));
+      }
+    });
+
+    it('ノーマルの昇格確率がレアを下回る被り回数は存在しない', () => {
+      for (let d = 0; d <= 10; d++) {
+        for (const lv of [1, 2]) {
+          expect(gachaPromotePercent('normal', lv, d, 3))
+            .toBeGreaterThanOrEqual(gachaPromotePercent('rare', lv, d, 3));
+        }
+      }
+    });
+
+    it('最上位表[20,40,40]へは被り3回で届く(旧実装は6回=倍かかっていた)', () => {
+      expect(levelWeightsFor('normal', 2)).not.toEqual([20, 40, 40]);
+      expect(levelWeightsFor('normal', 3)).toEqual([20, 40, 40]);
+    });
+
+    it('超レアは依然として最速で届く(レア度の序列は保つ)', () => {
+      expect(levelWeightsFor('super', 2)).toEqual([10, 30, 60]);
+      expect(gachaPromotePercent('super', 1, 2, 3))
+        .toBeGreaterThan(gachaPromotePercent('normal', 1, 2, 3));
+    });
+  });
+
   it('rolls within 1..maxLv; Lv1-only always returns Lv1', () => {
     expect(rollSkillLevel('normal', 0, 1, () => 0)).toBe(1);
     expect(rollSkillLevel('normal', 0, 1, () => 0.999)).toBe(1);
     expect(rollSkillLevel('normal', 0, 3, () => 0)).toBe(1);   // first bucket
-    expect(rollSkillLevel('normal', 6, 3, () => 0.999)).toBe(3); // top bucket
+    expect(rollSkillLevel('normal', 3, 3, () => 0.999)).toBe(3); // top bucket
   });
 
   it('gachaPromotePercent = chance the next roll exceeds current Lv', () => {
-    // normal dupe6 = [20,40,40]; from Lv1 → chance of Lv2 or Lv3 = 80%.
-    expect(gachaPromotePercent('normal', 1, 6, 3)).toBe(80);
+    // normal dupe3 = [20,40,40]; from Lv1 → chance of Lv2 or Lv3 = 80%.
+    expect(gachaPromotePercent('normal', 1, 3, 3)).toBe(80);
     // from Lv2 → only Lv3 = 40%.
-    expect(gachaPromotePercent('normal', 2, 6, 3)).toBe(40);
+    expect(gachaPromotePercent('normal', 2, 3, 3)).toBe(40);
     // at max Lv → 0.
-    expect(gachaPromotePercent('normal', 3, 6, 3)).toBe(0);
+    expect(gachaPromotePercent('normal', 3, 3, 3)).toBe(0);
   });
 });
 
