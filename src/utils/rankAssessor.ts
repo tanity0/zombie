@@ -98,6 +98,12 @@ export interface KomaAssessmentInput {
   intensAvg: number;
   dmgRatio: number;    // このコマの被ダメ合計 ÷ maxHealth
   starveRatio: number; // このコマ中「盤面数<目標」だった時間の割合(0..1)
+  /**
+   * このコマの被弾**回数**(計測専用)。**任意扱いにしてあるのは意図的**で、
+   * 「査定(assessKomaDelta / combineCycleDelta)はこの値を読まない=無くても判定が成立する」
+   * ことを型で表明している。スコア制への作り替えを検討するための実測データ用(社長指示v0.25.2356)。
+   */
+  hits?: number;
 }
 
 export type RankDelta = 1 | 0 | -1;
@@ -223,13 +229,20 @@ export interface KomaAccumulatorState {
   intensMsSum: number;
   weightMs: number;
   dmgTaken: number;
+  /**
+   * 被弾「回数」(社長指示v0.25.2356・**計測専用**)。ダメージが入ったフレームを1回と数える。
+   * `INVULN_MS=700` の無敵時間があるので、これは**別々の被弾**とほぼ一致する(最大1.4回/秒)。
+   * ※現時点では査定(assessKomaDelta)は**この値を一切見ない**=挙動は完全に不変。
+   *   ランク査定をスコア制へ作り替えるための実測データを取るためだけに集計している。
+   */
+  hits: number;
   capReached: boolean;
   belowTargetMsThisKoma: number;
   komaDurationMs: number;
 }
 
 export const createKomaAccumulator = (): KomaAccumulatorState => ({
-  perfMsSum: 0, intensMsSum: 0, weightMs: 0, dmgTaken: 0, capReached: false, belowTargetMsThisKoma: 0, komaDurationMs: 0,
+  perfMsSum: 0, intensMsSum: 0, weightMs: 0, dmgTaken: 0, hits: 0, capReached: false, belowTargetMsThisKoma: 0, komaDurationMs: 0,
 });
 
 export interface KomaAccumulatorTickInput {
@@ -251,6 +264,7 @@ export const stepKomaAccumulator = (acc: KomaAccumulatorState, input: KomaAccumu
   intensMsSum: acc.intensMsSum + input.intensity * input.dtMs,
   weightMs: acc.weightMs + input.dtMs,
   dmgTaken: acc.dmgTaken + Math.max(0, input.dmgTakenThisFrame),
+  hits: acc.hits + (input.dmgTakenThisFrame > 0 ? 1 : 0), // 無敵700msがあるので「ダメージが入ったフレーム」=1被弾
   capReached: acc.capReached || input.boardCount >= input.cap,
   belowTargetMsThisKoma: acc.belowTargetMsThisKoma + (input.boardCount < input.boardTarget ? input.dtMs : 0),
   komaDurationMs: acc.komaDurationMs + input.dtMs,
@@ -264,6 +278,7 @@ export const finalizeKomaAssessmentInput = (acc: KomaAccumulatorState, maxHealth
     intensAvg: acc.weightMs > 0 ? acc.intensMsSum / acc.weightMs : 0,
     dmgRatio: maxHealth > 0 ? acc.dmgTaken / maxHealth : 0,
     starveRatio: acc.belowTargetMsThisKoma / dur,
+    hits: acc.hits,
   };
 };
 

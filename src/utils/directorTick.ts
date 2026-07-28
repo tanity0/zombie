@@ -35,6 +35,7 @@ import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { CONTEXT_ZOOM_MIN } from './cameraZoom';
 import { getSelectedStageId, recordChronicle } from '../data/progress';
+import { recordKoma, isKomaLogEnabled, komaLogRunRef } from './komaLog';
 import {
   capForState,
   assessKomaDelta, applyRankDelta, combineCycleDelta,
@@ -42,6 +43,7 @@ import {
   stepSoften, SOFTEN_TARGET_MULT, SOFTEN_TARGET_MIN,
   TIGHTEN_NO_HIT_MS, TIGHTEN_PERF_MIN, TIGHTEN_STARVE_MS,
   type PuzzleClockState, type KomaAccumulatorState, type SoftenState, type RankDelta,
+  type KomaAssessmentInput,
 } from './rankAssessor';
 import {
   nuisanceTarget, decideNextSpawn, noNewSupplyNuisanceTarget,
@@ -211,6 +213,21 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   puzzleHitRef.current.prevHp = player.health;
   const msSinceLastHit = gameTime - puzzleHitRef.current.lastHitAt;
 
+  // コマ査定の生データ収集(社長指示v0.25.2356)。**記録するだけで誰も読んで分岐しない**
+  // (査定の正本は assessKomaDelta / combineCycleDelta のまま=挙動は完全に不変)。
+  // 既定は無効で、ヘッドレスの計測ランが enableKomaLog() を呼んだ時だけ溜まる。
+  const recordKomaSample = (
+    kind: 'normal' | 'peak', input: KomaAssessmentInput, delta: -1 | 0 | 1,
+  ): void => {
+    if (!isKomaLogEnabled()) return;
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    recordKoma({
+      run: komaLogRunRef.current, atMs: gameTime, kind,
+      rank: puzzleClockRef.current.rank, dist: Math.hypot(pcx, pcy),
+      maxHealth: player.maxHealth, input, delta,
+    });
+  };
+
   // 盤面の現況(パズル管理下の型のみ。ボス/裏ボス/ハンター/リーパー等は対象外)。
   const puzzleEnemiesNow = useGameStore.getState().enemies;
   const boardCount = puzzleEnemiesNow.filter(e => PUZZLE_MANAGED_TYPES.has(e.type)).length;
@@ -264,12 +281,14 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     if (koma.kind === 'normal') {
       const normalInput = finalizeKomaAssessmentInput(koma.acc, player.maxHealth);
       koma.provisionalDelta = assessKomaDelta(normalInput);
+      recordKomaSample(koma.kind, normalInput, koma.provisionalDelta);
       // PACING_PUZZLE.md §5.17-追補/§5.19 M18: 昇格度(惜しさ)表示用の最新スナップショット。
       // 死亡リザルトが1回だけ読む(promotionScore)。判定挙動には影響しない(読むだけ)。
       useGameStore.setState({ lastKomaAssessmentInput: normalInput });
     } else if (koma.kind === 'peak') {
       const peakInput = finalizeKomaAssessmentInput(koma.acc, player.maxHealth);
       koma.pendingFinalDelta = combineCycleDelta(koma.provisionalDelta ?? 0, peakInput);
+      recordKomaSample(koma.kind, peakInput, koma.pendingFinalDelta);
       koma.provisionalDelta = null;
     }
     const prevKind = koma.kind;
