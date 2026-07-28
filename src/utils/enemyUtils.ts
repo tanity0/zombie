@@ -41,7 +41,14 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   pumpkin:   { width: 40, height: 40, speed: 55,  health: 150,  damage: 16,  experienceValue: 8 },
   // 新型(lich・ステージ4): 速度はゴースト(90)の1.2倍=108。旋回しながら詰めてくる(AIは store)。
   lich:      { width: 30, height: 30, speed: 108, health: 36,   damage: 12,  experienceValue: 4 },
-  giantbat:  { width: 60, height: 60, speed: 70,  health: 200,  damage: 19,  experienceValue: 30 },
+  // 城ボス(ジャイアント)。health は `CONSTANT_STRENGTH_TYPES` 経由で ×ENEMY_HP_MULT(5) = **実効2500**。
+  // 200→500 へ引き上げ(社長指示v0.25.2362「HP低いのでそこだけ調整」)。理由:
+  //  - 実測のプレイヤーDPSは60〜200なので、旧・実効1000では**5〜16秒で溶ける**。
+  //  - M51で入れたソウル式の予告(0.7〜1.0秒)+硬直(0.9秒)は、**何度も回って初めて機能する**。
+  //  - フェーズ2はHP60%から。旧値だと**薙ぎ払い(Phase2限定)を一度も見ずに終わるラン**が普通に起きた。
+  //  - 実効2500 なら 25〜40秒。裏ボス(600×5=3000)より下=**城ボス<裏ボスの序列は維持**。
+  // 調整はこの1数字だけでよい(ダメージ19・速度70は据え置き)。
+  giantbat:  { width: 60, height: 60, speed: 70,  health: 500,  damage: 19,  experienceValue: 30 },
   reaper:    { width: 80, height: 80, speed: 130, health: 4000, damage: 999, experienceValue: 0 },
   // 研究所専用ゾンビ(通常敵データ参考)。Lv1=雑魚〜 / Lv2=変異(中) / Lv3=巨体(パンプキン相当)。動きは通常チェイス。
   // 社長指示: 耐久値(health)はデフォルトに戻す(2倍化を撤回)。damage は据え置き(2倍のまま)。

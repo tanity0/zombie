@@ -266,7 +266,15 @@ describe('headless simulation invariants', () => {
   });
 
   it('pullGacha updates pity/dupe state sequentially and keeps invariants', () => {
-    useGameStore.setState({ ownedSkills: [], ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0, goldBalance: 0 });
+    // このテストが見たいのは **pity/被り/Lvの不変条件**であって経済ではない。
+    // v0.25.2337 でガチャを有料化(0g→100g)、v0.25.2344 で階段式(10→20→35→50)にした際、
+    // `goldBalance: 0` のままだったので `pullGacha` が残高不足で null を返し続けて落ちていた
+    // (60回ぶんの実費は 5×10+10×20+15×35+30×50 = 2,275g)。**残高を潤沢に積んで経済を判定から外す**。
+    // `gachaPullsTotal: 0` も明示リセットする(階段の段は累計回数で決まるため、他テストの影響を受けない)。
+    useGameStore.setState({
+      ownedSkills: [], ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
+      gachaPullsTotal: 0, goldBalance: 1_000_000,
+    });
     for (let i = 0; i < 60; i++) {
       const r = useGameStore.getState().pullGacha();
       expect(r).not.toBeNull();
