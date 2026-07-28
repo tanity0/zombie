@@ -1,5 +1,33 @@
 # Development Log
 
+## v0.25.2355 — 実バグ修正: 貫通(シャープシューター)が「単体数倍+無限貫通」になっていた【2026-07-28 20:28 JST】
+- 社長からの確認依頼(「ショットガンの当たり方」「貫通がついた時の一体への通り方」)を調べる過程で発見。
+  社長裁定「**これ付けるとめっちゃ強くなっちゃうので通常の仕様に直して**」。
+- **原因**: `collisionUtils.ts` が命中済みの敵(`hitEnemies`)を **`passthrough` の弾にしか記録していなかった**。
+  シャープシューター(貫通+1/+2/+3)は `pierce` だけを立てる(`weaponUtils.ts:358`)ので、
+  **非passthrough銃(ハンドガン/ショットガン/ライフルt2・t3)では記録が空のまま**になり:
+  1. 同一敵への再ヒット防止(`hitEnemies.includes`)が効かず、**重なっている間は毎フレーム命中**
+     (弾速500px/s・敵の当たり幅40pxで**実効4〜5倍**)
+  2. `useGameLoop` の除去条件 `hitEnemies.length > pierce` が**永久に false** =
+     **命中しても弾が消えない**(`duration` 1400ms まで飛び続け、道中の敵を全部同じ調子で削る)
+  → 「貫通+1」が実質「**単体ダメージ数倍 + 無限貫通**」として動いていた。レア枠として明らかに壊れた強さ。
+  **マグナム(rifle-t1)は `passthrough:true` なので元から正常**(=壊れていたのは非passthrough銃だけ)。
+- **修正**: 記録条件を `passthrough || pierce !== undefined` へ(純関数 `tracksHits` に切り出し、
+  理由をその場にコメントで残した)。これで**再ヒット防止と除去判定の両方が同時に正しくなる**
+  (どちらも同じ `hitEnemies` を基準にしているため)。`pierce:1` はちょうど2体を貫く
+  (`types/game.ts` の "pierce:1 hits two enemies" と一致)。
+- **挙動を変えていないもの**: マグナム等の passthrough 弾 / 貫通なしの素の弾(記録不要=1発で消える) /
+  ドローンブーメラン(別経路で自前に記録) / ショットガンのペレット処理。
+- **ショットガンは正常だったことも確認**(社長の質問①への回答): `count:5/6/7` で**ペレットごとに独立した
+  Projectile**を生成し、各々が自分の `hitEnemies` を持つので、同じ敵に複数命中すれば**全弾ぶん入る**
+  (クリ抽選もペレットごと)。同一フレームの重複は数えているが、**間引いているのは背中の火の演出だけ**でダメージは間引かない。
+- テスト: `src/utils/projectilePierce.test.ts` を新設(6件)。不変条件=**1発は同じ敵を二度殴らない**。
+  passthrough弾と素の弾の挙動不変も固定した。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(warning7=既存) /
+  新規6件 + `vitest related collisionUtils.ts`(61件)すべて green。
+- 変更ファイル: `src/utils/collisionUtils.ts` / `src/utils/projectilePierce.test.ts`(新規) /
+  `src/data/changelog.ts`。
+
 ## v0.25.2354 — 寄り道POI(M48)実装=病院の一般化+武器庫+警察署【2026-07-28 20:14 JST】
 - PACING_PUZZLE.md §6.24 が仕様の正本(全項目確定済み・★未決なし)。実装チャット(Sonnet)による発注バッチ。
 - **配置ロジックを純関数化(新規 `src/world/detourPoi.ts`)**: `assignDetourSectors(bossSector, rand?)`

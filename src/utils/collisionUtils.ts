@@ -65,6 +65,22 @@ export const pickupDisplayPosition = (pickup: Pickup, now = Date.now()) => {
   };
 };
 
+/**
+ * 命中済みの敵を記録する弾か。記録は2つの役割を同時に担う:
+ *   ① 同一敵への再ヒット防止(下の `hitEnemies.includes` ガード)
+ *   ② 弾を消すかの判定基準(`useGameLoop` の `hitEnemies.length > pierce`)
+ *
+ * **`pierce` も記録対象**(社長裁定v0.25.2355・実バグ修正)。旧実装は `passthrough` だけを記録して
+ * いたため、シャープシューター(貫通+1/+2/+3)を**非passthrough銃**(ハンドガン/ショットガン/
+ * ライフルt2・t3)へ付けると `hitEnemies` が空のままになり:
+ *   ① 再ヒット防止が効かず**同じ敵に毎フレーム当たり続ける**(弾速500px/s・敵幅40pxで実効4〜5倍)
+ *   ② 除去条件が永久に false = **命中しても弾が消えない**(duration 1400ms まで飛び続け、
+ *      道中の敵を全部同じ調子で削る)
+ * となり、「貫通+1」が実質「単体ダメージ数倍+無限貫通」として動いていた。
+ * マグナム(rifle-t1)は `passthrough:true` なので元から正常(=壊れていたのは非passthrough銃だけ)。
+ */
+const tracksHits = (p: Projectile): boolean => p.passthrough || p.pierce !== undefined;
+
 // Check collisions between projectiles and enemies
 export const checkProjectileEnemyCollisions = (
   projectiles: Projectile[],
@@ -99,7 +115,7 @@ export const checkProjectileEnemyCollisions = (
     // whip chain) shouldn't deal damage until their start time arrives.
     if (projectile.createdAt > now) return;
     enemies.forEach(enemy => {
-      // Skip if already hit by this projectile (for passthrough weapons)
+      // Skip if already hit by this projectile (passthrough / pierce weapons)
       if (projectile.hitEnemies.includes(enemy.id)) {
         return;
       }
@@ -117,7 +133,7 @@ export const checkProjectileEnemyCollisions = (
         const hitBody = checkCollision(projectile, enemyContactBox(enemy));
         if (hitHead || hitBody) {
           collisions.push({ projectileId: projectile.id, enemyId: enemy.id, damage: projectile.damage, headshot: hitHead });
-          if (projectile.passthrough) projectile.hitEnemies.push(enemy.id);
+          if (tracksHits(projectile)) projectile.hitEnemies.push(enemy.id);
         }
         return;
       }
@@ -129,8 +145,8 @@ export const checkProjectileEnemyCollisions = (
           damage: projectile.damage
         });
 
-        // Add to hit enemies list for passthrough weapons
-        if (projectile.passthrough) {
+        // Add to hit enemies list for passthrough / pierce weapons
+        if (tracksHits(projectile)) {
           projectile.hitEnemies.push(enemy.id);
         }
       }
