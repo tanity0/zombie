@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2368',
+    items: [
+      'ゲーム内容の変更はありません（新しい天使3体の武器の絵を追加した準備のみ）。',
+    ],
+  },
+  {
     version: '0.25.2367',
     items: [
       'ゲーム内容の変更はありません（新しい天使3体の絵を追加した準備のみ。実際に登場するのは後の更新からです）。',
