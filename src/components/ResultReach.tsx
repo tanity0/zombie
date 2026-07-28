@@ -69,10 +69,14 @@ const ResultReach: React.FC<ResultReachProps> = ({
   }, []);
 
   // 開いた瞬間は右端(=今回)を見せる。左へスクロールすると過去へ遡る。
+  // 実際に横へはみ出している時だけ「◀ 過去へ」を出す(出せない操作を案内しない)。
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canScroll, setCanScroll] = useState(false);
   useLayoutEffect(() => {
     const el = scrollerRef.current;
-    if (el) el.scrollLeft = el.scrollWidth;
+    if (!el) return;
+    el.scrollLeft = el.scrollWidth;
+    setCanScroll(el.scrollWidth > el.clientWidth + 4);
   }, [history.length]);
 
   const cur = clampRank(rank);
@@ -83,6 +87,8 @@ const ResultReach: React.FC<ResultReachProps> = ({
   const glow = digProgress(dist, rank);
   const headline = wallAchievementHeadline(zoneIdx, cur);
   const deepest = cores.find(c => c.isDeepest);
+  // 壁の幅。竪坑が少ないうちは**画面いっぱい(minWidth:100%)まで地層を伸ばし**、坑は右端から並べる。
+  // 「初回は右寄りに立ち、増えるたび左へ押されていく」(社長指示v0.25.2335)= 左側は手つかずの岩のまま。
   const wallW = Math.max(cores.length * CORE_W, 1);
   // 目盛は2000mごと。断面が10000mなので6本(0/2k/4k/6k/8k/10k)。
   const ticks = Array.from({ length: Math.floor(CUTAWAY_MAX / 2000) + 1 }, (_, i) => i * 2000);
@@ -131,7 +137,7 @@ const ResultReach: React.FC<ResultReachProps> = ({
           className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x"
           style={{ scrollbarWidth: 'none' }}
         >
-          <div className="relative h-full" style={{ width: wallW }}>
+          <div className="relative h-full" style={{ width: wallW, minWidth: '100%' }}>
             {/* 地層(実距離スケール・壁の全幅に連続して敷く) */}
             {bands.map(b => {
               const st = STRATUM_STYLE[b.idx] ?? STRATUM_STYLE[STRATUM_STYLE.length - 1];
@@ -170,10 +176,12 @@ const ResultReach: React.FC<ResultReachProps> = ({
             {/* 竪坑: 1ラン=1本。左ほど古い、右端が今回。 */}
             {cores.map((c, i) => {
               const color = END_COLOR[c.end];
-              const left = i * CORE_W + (CORE_W - HOLE_W) / 2;
+              // **右端から並べる**: 最新(今回)が右、古いほど左。坑が1本しか無い初回は右寄りに立ち、
+              // ランを重ねるたびに左へ押し出されていく(社長指示v0.25.2335)。
+              const right = (cores.length - 1 - i) * CORE_W + (CORE_W - HOLE_W) / 2;
               const h = (dug || !c.isCurrent ? c.frac : 0) * CUT_H;
               return (
-                <div key={c.key} className="absolute top-0 z-20" style={{ left, width: HOLE_W, height: CUT_H }}>
+                <div key={c.key} className="absolute top-0 z-20" style={{ right, width: HOLE_W, height: CUT_H }}>
                   {/* 掘った穴(地層から抜かれた空洞) */}
                   <div
                     className={`absolute inset-x-0 top-0 ${c.isCurrent ? 'transition-[height] duration-[900ms] ease-out' : ''}`}
@@ -226,7 +234,7 @@ const ResultReach: React.FC<ResultReachProps> = ({
       </div>
       {cores.length > 1 && (
         <div className="mt-1 flex items-center justify-between font-mono text-[7.5px] tracking-widest text-white/30">
-          <span>◀ 過去へ</span>
+          <span>{canScroll ? '◀ 過去へ' : ''}</span>
           <span>掘削記録 {cores.length}本</span>
         </div>
       )}
