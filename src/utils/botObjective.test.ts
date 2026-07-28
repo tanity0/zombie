@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   planObjective, parseBotObjective, steerTo, outwardPoint, nearestOfType, nearestUncapturedBase,
-  ARRIVE_DIST, HIDDEN_BOSS_MIN_LEVEL, FARM_RADIUS,
+  ARRIVE_DIST, HIDDEN_BOSS_MIN_LEVEL, FARM_RADIUS, arenaPlan, nearestEventEnemy,
   type ObjectiveWorld,
 } from './botObjective';
 import type { Enemy, EnemyType, BaseSite, Pickup } from '../types/game';
@@ -19,7 +19,7 @@ const world = (over: Partial<ObjectiveWorld> = {}): ObjectiveWorld => ({
   px: 0, py: 0, level: 1, enemies: [], pickups: [],
   returnCircle: null, castleEvent: null, finaleDefeated: false,
   hiddenBoss: null, hiddenBossLair: null, hiddenBossDefeated: false,
-  baseSites: [], enemiesKilled: 0, gameWon: false,
+  baseSites: [], enemiesKilled: 0, gameWon: false, activeEvent: null,
   ...over,
 });
 
@@ -204,5 +204,70 @@ describe('探索ヘルパ', () => {
   it('nearestUncapturedBase は制圧済みを飛ばす', () => {
     const w = world({ baseSites: [base('a', 50, 0, 'captured'), base('b', 400, 0)] });
     expect(nearestUncapturedBase(w)?.id).toBe('b');
+  });
+});
+
+describe('囲いイベント突破(関所ゲート1/2)— v0.25.2340', () => {
+  const arena = { kind: 'horde' as const, x: 5000, y: 0, radius: 400 };
+  const script = (x: number, y: number) => enemy('zombie', x, y, { fromEvent: true });
+
+  it('倒すべきは台本敵(fromEvent)だけ。通常の雑魚を選ばない', () => {
+    // 雑魚の方が近くても、囲いを終わらせるのは台本敵だけ。
+    const w = world({ px: 5000, py: 0, activeEvent: arena, enemies: [enemy('zombie', 20, 0), script(300, 0)] });
+    expect(nearestEventEnemy(w)?.fromEvent).toBe(true);
+    expect(arenaPlan(w)!.focus?.fromEvent).toBe(true);
+  });
+
+  it('**どの目的よりも優先される**(囲いを倒さないと前へ進めないため)', () => {
+    const w = world({ px: 5000, py: 0, activeEvent: arena, enemies: [script(5200, 0)] });
+    for (const obj of [
+      { kind: 'clear' } as const,
+      { kind: 'score' } as const,
+      { kind: 'depth', dist: 9000 } as const,
+      { kind: 'hiddenBoss' } as const,
+    ]) {
+      const p = planObjective(obj, w);
+      expect(p.note).toContain('囲い突破');
+      expect(p.focus?.fromEvent).toBe(true);
+    }
+  });
+
+  it('帰還サークルが出ていても囲いが先(閉じ込められているので行けない)', () => {
+    const w = world({ px: 5000, py: 0, activeEvent: arena, enemies: [script(5200, 0)],
+                      returnCircle: { x: 0, y: 0, radius: 95 } });
+    expect(planObjective({ kind: 'clear' }, w).note).toContain('囲い突破');
+  });
+
+  it('台本敵がまだ湧いていなければ円の中心で待つ(離れない)', () => {
+    const p = arenaPlan(world({ px: 5600, py: 0, activeEvent: arena, enemies: [enemy('zombie', 5610, 0)] }))!;
+    expect(p.destination).toEqual({ x: 5000, y: 0 });
+    expect(p.travel).toBe(true);
+  });
+
+  it('救助(rescue)は倒すのではなく円内に留まるのが条件', () => {
+    const p = arenaPlan(world({ px: 5600, py: 0, activeEvent: { ...arena, kind: 'rescue' } }))!;
+    expect(p.destination).toEqual({ x: 5000, y: 0 });
+    expect(p.focus).toBeNull();
+    expect(p.note).toContain('救助');
+  });
+
+  it('囲い中は退避せず攻めきる(pressAttack)。逃げても囲いは終わらないため', () => {
+    const w = world({ px: 5000, py: 0, activeEvent: arena, enemies: [script(5200, 0)] });
+    expect(planObjective({ kind: 'depth', dist: 9000 }, w).pressAttack).toBe(true);
+    // 囲いの外では従来どおり退避してよい。
+    expect(planObjective({ kind: 'depth', dist: 9000 }, world({ px: 100, py: 0 })).pressAttack).toBe(false);
+  });
+
+  it('囲いが終われば通常の目的へ戻る', () => {
+    const w = world({ px: 5000, py: 0, activeEvent: null });
+    expect(planObjective({ kind: 'depth', dist: 9000 }, w).note).toContain('深部へ');
+  });
+
+  it('**目的なし(none)には割り込まない**(既存ボットランの挙動を1バイトも変えない)', () => {
+    const w = world({ px: 5000, py: 0, activeEvent: arena, enemies: [script(5200, 0)] });
+    const p = planObjective({ kind: 'none' }, w);
+    expect(p.destination).toBeNull();
+    expect(p.focus).toBeNull();
+    expect(p.travel).toBe(false);
   });
 });

@@ -478,6 +478,9 @@ export const decideBotInput = (
   // v0.25.2338: 腕前の段階。**未指定 or 'casual' なら従来と完全に同じ挙動**
   // (casual = 最寄り狙い・囲まれ判定3体 = 既存の定数と同値)。
   skill?: BotSkill,
+  // v0.25.2340: 退避を止めて攻めきる(囲いイベント中)。**未指定=false=従来どおり退避する**。
+  // 強制的な囲いは逃げても終わらない(台本敵を倒すまで解除されない)ので、中では攻めるのが正解。
+  noRetreat?: boolean,
 ): BotDecision => {
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
@@ -572,7 +575,7 @@ export const decideBotInput = (
       // v0.25.2338: 段階つきの臆病さ。HPが退避ラインを割ったら、囲まれていなくても距離を取る
       // (casual以下は retreatHpFrac=0 なので常に false = 従来の挙動)。
       const nearbyCount = enemies.filter(e => distTo(pcx, pcy, e) < SURROUND_RADIUS).length;
-      if (nearbyCount >= surroundNeed || shouldRetreatForHp(sk, player.health, player.maxHealth)) {
+      if (!noRetreat && (nearbyCount >= surroundNeed || shouldRetreatForHp(sk, player.health, player.maxHealth))) {
         const d = distTo(pcx, pcy, target);
         return { input: retreat(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
       }
@@ -592,7 +595,7 @@ export const decideBotInput = (
       // v0.25.2338: 段階つきの臆病さ。HPが退避ラインを割ったら、囲まれていなくても距離を取る
       // (casual以下は retreatHpFrac=0 なので常に false = 従来の挙動)。
       const nearbyCount = enemies.filter(e => distTo(pcx, pcy, e) < SURROUND_RADIUS).length;
-      if (nearbyCount >= surroundNeed || shouldRetreatForHp(sk, player.health, player.maxHealth)) {
+      if (!noRetreat && (nearbyCount >= surroundNeed || shouldRetreatForHp(sk, player.health, player.maxHealth))) {
         const d = distTo(pcx, pcy, target);
         return { input: retreat(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
       }

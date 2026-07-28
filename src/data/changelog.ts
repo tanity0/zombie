@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2340',
+    items: [
+      '開発: 自動プレイAIが関所（囲いゲート1・2）を突破できるようになりました。囲いの中では台本の敵だけを狙い、退避せずに攻めきります。これで深層域や裏ボスの巣まで到達できます。通常プレイへの影響はありません。',
+    ],
+  },
+  {
     version: '0.25.2339',
     items: [
       '開発: 自動プレイAIに「目的」を与えられるようにしました（?botgoal=clear/score/hiddenBoss/hunt:敵名/depth:距離/kills:数/bases:数）。任務クリアを目指す、ハイスコアを狙う、裏ボスを倒しに行く、といった行動を取ります。通常プレイへの影響はありません。',

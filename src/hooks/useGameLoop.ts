@@ -1645,6 +1645,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         } = loopState;
         // M26-L(§6.3): botモードはヘッドレスボットの判断(decideBotInput)で入力をローカル差し替え
         // (storeへは書かない=タッチUI非干渉)。以降このtick内の inputState 参照は全てボット入力になる。
+        // v0.25.2339/2340: 目的(ゴール)のプランは入力合成より先に立てる(囲い中は退避を止めるため)。
+        const botGoalPlan = (BOT_PERSONA && BOT_GOAL.kind !== 'none')
+          ? planObjective(BOT_GOAL, {
+              px: player.x + player.width / 2, py: player.y + player.height / 2,
+              level: player.level, enemies, pickups,
+              returnCircle: loopState.returnCircle
+                ? { x: loopState.returnCircle.x, y: loopState.returnCircle.y, radius: loopState.returnCircle.radius }
+                : null,
+              castleEvent: loopState.castleEvent ?? null,
+              finaleDefeated: loopState.finaleDefeated,
+              hiddenBoss: loopState.hiddenBoss,
+              hiddenBossLair: bossLairPos(loopState.hiddenBoss),
+              hiddenBossDefeated: loopState.hiddenBossDefeated,
+              baseSites: loopState.baseSites,
+              enemiesKilled: loopState.gameStats.enemiesKilled,
+              gameWon: loopState.gameWon,
+              activeEvent: loopState.activeEvent
+                ? { kind: loopState.activeEvent.kind, x: loopState.activeEvent.x, y: loopState.activeEvent.y, radius: loopState.activeEvent.radius }
+                : null,
+            })
+          : null;
         const botGunForRange = BOT_PERSONA ? getActiveGun(player) : undefined;
         const botDecision = BOT_PERSONA
           ? decideBotInput(BOT_PERSONA, player, enemies, gameTime, botTickRef.current++, 0,
@@ -1652,7 +1673,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               botGunForRange && botGunForRange.category !== 'phill'
                 ? RANGE_BY_CATEGORY[botGunForRange.category as keyof typeof RANGE_BY_CATEGORY]
                 : undefined,
-              undefined, BOT_SKILL)
+              undefined, BOT_SKILL, botGoalPlan?.pressAttack)
           : null;
         // M34(§6.11): 緑卵(地雷)を避ける/叩く(ボット入力のみの後段補正。?bot無しの通常プレイは不変)。
         // M38(§6.15): その手前に松明フォレージ(手空きのみ発火・拾い歩きの直後に合成・松明を割って
@@ -1698,27 +1719,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : null;
         // v0.25.2339: 目的(ゴール)への移動。優先順位は 回避 > 目的地 > 従来の合成入力。
         // BOT_GOAL='none'(既定)では planObjective が目的地を返さないので完全な no-op。
-        const botObjSteer = (botMineAdj && BOT_GOAL.kind !== 'none')
-          ? (() => {
-              const plan = planObjective(BOT_GOAL, {
-                px: player.x + player.width / 2, py: player.y + player.height / 2,
-                level: player.level, enemies, pickups,
-                returnCircle: loopState.returnCircle
-                  ? { x: loopState.returnCircle.x, y: loopState.returnCircle.y, radius: loopState.returnCircle.radius }
-                  : null,
-                castleEvent: loopState.castleEvent ?? null,
-                finaleDefeated: loopState.finaleDefeated,
-                hiddenBoss: loopState.hiddenBoss,
-                hiddenBossLair: bossLairPos(loopState.hiddenBoss),
-                hiddenBossDefeated: loopState.hiddenBossDefeated,
-                baseSites: loopState.baseSites,
-                enemiesKilled: loopState.gameStats.enemiesKilled,
-                gameWon: loopState.gameWon,
-              });
-              return plan.travel
-                ? steerTo(player.x + player.width / 2, player.y + player.height / 2, plan.destination)
-                : null;
-            })()
+        const botObjSteer = (botMineAdj && botGoalPlan && botGoalPlan.travel)
+          ? steerTo(player.x + player.width / 2, player.y + player.height / 2, botGoalPlan.destination)
           : null;
         const inputState = botDodge ? dodgeToInput(botDodge)
           : botObjSteer ? dodgeToInput(botObjSteer, 0.3)

@@ -391,6 +391,9 @@ const buildObjectiveWorld = (_obj: BotObjective): ObjectiveWorld => {
     baseSites: s.baseSites,
     enemiesKilled: s.gameStats.enemiesKilled,
     gameWon: s.gameWon,
+    activeEvent: s.activeEvent
+      ? { kind: s.activeEvent.kind, x: s.activeEvent.x, y: s.activeEvent.y, radius: s.activeEvent.radius }
+      : null,
   };
 };
 
@@ -417,7 +420,12 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   const isOutOfAmmo = botGuns.reduce((a, w) => a + (w.magazine ?? 0), 0)
     + Array.from(new Set(botGuns.map(w => w.ammoType).filter((tt): tt is AmmoType => !!tt)))
         .reduce((a, tt) => a + ammoPoolFor(player, tt), 0) <= 0;
-  const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed, rusherState, botGunRange, isOutOfAmmo, skill);
+  // v0.25.2339/2340: 目的(ゴール)は入力の合成より先に立てる。囲い中は退避を止める(noRetreat)ため。
+  const objPlan = objective && objective.kind !== 'none'
+    ? planObjective(objective, buildObjectiveWorld(objective))
+    : null;
+  if (objPlan) onObjective?.(objPlan);
+  const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed, rusherState, botGunRange, isOutOfAmmo, skill, objPlan?.pressAttack);
   // M39(§6.16): 商人ゾーンに用は作らない=拾い/松明の対象からゾーン内の物を除外し、移動もゾーンを避ける。
   const merchant = useGameStore.getState().weaponMerchant;
   const outsideMerchantZone = (x: number, y: number): boolean =>
@@ -461,12 +469,7 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     enemies, useGameStore.getState().projectiles, t, player.counterCooldownEnd,
     Math.random, skill,
   );
-  // v0.25.2339: 目的(ゴール)。**目的地があればそちらへ進む**。目的なし(既定)は null を返すので no-op。
-  // 優先順位は 回避 > 目的地 > 従来の合成入力(生存 > 目的 > 反射)。
-  const objPlan = objective && objective.kind !== 'none'
-    ? planObjective(objective, buildObjectiveWorld(objective))
-    : null;
-  if (objPlan) onObjective?.(objPlan);
+  // v0.25.2339: 目的地があればそちらへ進む。優先順位は 回避 > 目的地 > 従来の合成入力。
   const objSteer = objPlan && objPlan.travel
     ? steerTo(player.x + player.width / 2, player.y + player.height / 2, objPlan.destination)
     : null;

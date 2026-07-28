@@ -54,6 +54,11 @@ export interface ObjectiveWorld {
   baseSites: readonly BaseSite[];
   enemiesKilled: number;
   gameWon: boolean;
+  /**
+   * 進行中の囲いイベント(関所ゲート1/2・囲い・救助)。**これが出ている間は前へ進めない**ので、
+   * 目的より先にこれを片付ける(v0.25.2340)。null = 進行中のイベント無し。
+   */
+  activeEvent: { kind: 'horde' | 'boss' | 'rescue'; x: number; y: number; radius: number } | null;
 }
 
 /** 目的が出す指示。 */
@@ -67,13 +72,58 @@ export interface ObjectivePlan {
    * false = 目的地へ寄りつつも普段どおり戦う。
    */
   travel: boolean;
+  /**
+   * 退避を止めて攻めきるか。**囲いイベント中は true**。
+   * 理由(v0.25.2340の実走で判明): 囲いの中は敵が密集するので「囲まれたら退避」が常時発火し、
+   * 上手い段階ほど近接距離まで詰められず**台本敵を倒しきれない**(seed3が484秒交戦して未突破)。
+   * 強制的な囲いは逃げても終わらないので、**攻めきるのが唯一の正解**。
+   */
+  pressAttack: boolean;
   /** 目的を達成したか(レポート/テスト用)。 */
   done: boolean;
   /** 今何をしているか(1行・ログとレポート用)。 */
   note: string;
 }
 
-const NO_PLAN: ObjectivePlan = { destination: null, focus: null, travel: false, done: false, note: '目的なし' };
+const NO_PLAN: ObjectivePlan = { destination: null, focus: null, travel: false, pressAttack: false, done: false, note: '目的なし' };
+
+/** 囲いイベント中に「倒すべき敵」= 台本敵(fromEvent)。通常の雑魚を倒しても囲いは終わらない。 */
+export const nearestEventEnemy = (w: ObjectiveWorld): Enemy | null => {
+  let best: Enemy | null = null, bestD = Infinity;
+  for (const e of w.enemies) {
+    if (!e.fromEvent) continue;
+    const c = { x: e.x + e.width / 2, y: e.y + e.height / 2 };
+    const d = (w.px - c.x) ** 2 + (w.py - c.y) ** 2;
+    if (d < bestD) { bestD = d; best = e; }
+  }
+  return best;
+};
+
+/**
+ * 囲いイベント(関所ゲート1/2・囲い・救助)の突破プラン。**どの目的よりも優先される**。
+ *
+ * 理由(v0.25.2339の実走で判明): 未確認汚染の境界(5000px)で関所ゲート1が発火すると、
+ * **倒すまで壁を踏破できない**。ボットにこの行動が無かったため、全ての目的が深度5,270px で
+ * 停止していた(depth:7500 すら7分間1歩も進めなかった)。
+ *
+ * クリア条件は実装(useGameLoop)と同じ: **台本敵(fromEvent)が0体になること**。
+ * 通常の雑魚をいくら倒しても終わらないので、**fromEvent だけを狙う**のが唯一の正解。
+ * 救助(rescue)だけは例外で、**円内に居続ける**ことが条件なので中心へ入って留まる。
+ */
+export const arenaPlan = (w: ObjectiveWorld): ObjectivePlan | null => {
+  const ae = w.activeEvent;
+  if (!ae) return null;
+  if (ae.kind === 'rescue') {
+    return { destination: { x: ae.x, y: ae.y }, focus: null, travel: true, pressAttack: true, done: false, note: '救助ホールド(円内で待つ)' };
+  }
+  const target = nearestEventEnemy(w);
+  if (target) {
+    // 近づけば通常の交戦behaviorへ引き継がれる(steerTo が到着圏内で null を返す)。
+    return { destination: centerOf(target), focus: target, travel: true, pressAttack: true, done: false, note: `囲い突破: 台本敵と交戦(${w.enemies.filter(e => e.fromEvent).length}体)` };
+  }
+  // 台本敵がまだ湧いていない(段階スポーン中)= 円の中心付近で待つ。離れると戻る手間が増える。
+  return { destination: { x: ae.x, y: ae.y }, focus: null, travel: true, pressAttack: true, done: false, note: '囲い突破: 台本敵の出現待ち' };
+};
 
 const dist2 = (ax: number, ay: number, bx: number, by: number): number => (ax - bx) ** 2 + (ay - by) ** 2;
 const centerOf = (e: Enemy): { x: number; y: number } => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 });
@@ -132,41 +182,44 @@ export const HIDDEN_BOSS_MIN_LEVEL = 12;
  * 目的 → 今tickの指示。**世界の状態だけを見る純関数**(内部状態を持たない)。
  */
 export const planObjective = (obj: BotObjective, w: ObjectiveWorld): ObjectivePlan => {
-  switch (obj.kind) {
-    case 'none':
-      return NO_PLAN;
+  // 目的なし(既定)は従来どおり何も指示しない。囲いの割り込みも入れない(挙動不変の保証)。
+  if (obj.kind === 'none') return NO_PLAN;
+  // **囲いイベントは全ての目的に優先する**。倒さない限り前へ進めないため(v0.25.2340)。
+  const arena = arenaPlan(w);
+  if (arena) return arena;
 
+  switch (obj.kind) {
     case 'clear': {
       if (w.gameWon) return { ...NO_PLAN, done: true, note: '任務達成' };
       // ① 帰還サークルが出ている = あとはそこに立つだけ。最優先で向かう。
       if (w.returnCircle) {
-        return { destination: { x: w.returnCircle.x, y: w.returnCircle.y }, focus: null, travel: true, done: false, note: '帰還サークルへ' };
+        return { destination: { x: w.returnCircle.x, y: w.returnCircle.y }, focus: null, travel: true, pressAttack: false, done: false, note: '帰還サークルへ' };
       }
       // ② 城ボスが出ている = それを倒すのが任務。
       const castleBoss = w.enemies.find(e => e.type === 'giantbat' && !e.fromEvent) ?? null;
       if (castleBoss) {
-        return { destination: centerOf(castleBoss), focus: castleBoss, travel: false, done: false, note: '城ボスと交戦' };
+        return { destination: centerOf(castleBoss), focus: castleBoss, travel: false, pressAttack: true, done: false, note: '城ボスと交戦' };
       }
       // ③ 城がまだ健在 = 城へ向かってボスを出させる。
       if (w.castleEvent && !w.finaleDefeated) {
-        return { destination: { x: w.castleEvent.x, y: w.castleEvent.y }, focus: null, travel: true, done: false, note: '城へ向かう' };
+        return { destination: { x: w.castleEvent.x, y: w.castleEvent.y }, focus: null, travel: true, pressAttack: false, done: false, note: '城へ向かう' };
       }
       // ④ 城が無いステージ/撃破済みで帰還サークル未出現 = 進行待ち。外へ探索して事象を起こす。
-      return { destination: outwardPoint(w, Math.max(1500, radiusOf(w) + 800)), focus: null, travel: true, done: false, note: '進行待ち(探索)' };
+      return { destination: outwardPoint(w, Math.max(1500, radiusOf(w) + 800)), focus: null, travel: true, pressAttack: false, done: false, note: '進行待ち(探索)' };
     }
 
     case 'score': {
       // スコアはトレジャー(1個5000)が最大の梃子。次に強敵(エリート3000/ボス8000)。
       const treasure = nearestPickup(w, ['treasure', 'chest']);
       if (treasure) {
-        return { destination: { x: treasure.x, y: treasure.y }, focus: null, travel: true, done: false, note: 'トレジャーへ' };
+        return { destination: { x: treasure.x, y: treasure.y }, focus: null, travel: true, pressAttack: false, done: false, note: 'トレジャーへ' };
       }
       const elite = w.enemies.find(e => e.type === 'pumpkin') ?? w.enemies.find(e => e.type === 'giantbat') ?? null;
       if (elite) {
-        return { destination: centerOf(elite), focus: elite, travel: false, done: false, note: '強敵と交戦' };
+        return { destination: centerOf(elite), focus: elite, travel: false, pressAttack: false, done: false, note: '強敵と交戦' };
       }
       // 見えるものが無ければ深部へ(深いほどトレジャー/強敵が増える)。
-      return { destination: outwardPoint(w, radiusOf(w) + 900), focus: null, travel: true, done: false, note: '深部を探索' };
+      return { destination: outwardPoint(w, radiusOf(w) + 900), focus: null, travel: true, pressAttack: false, done: false, note: '深部を探索' };
     }
 
     case 'hiddenBoss': {
@@ -177,30 +230,30 @@ export const planObjective = (obj: BotObjective, w: ObjectiveWorld): ObjectivePl
       // ① 既に出会っている = 倒す。
       const boss = nearestOfType(w, w.hiddenBoss);
       if (boss) {
-        return { destination: centerOf(boss), focus: boss, travel: false, done: false, note: '裏ボスと交戦' };
+        return { destination: centerOf(boss), focus: boss, travel: false, pressAttack: true, done: false, note: '裏ボスと交戦' };
       }
       // ② レベルが足りない = 中距離の狩り場でレベル上げ(社長指示「必要であればレベル上げも含めて」)。
       const need = obj.minLevel ?? HIDDEN_BOSS_MIN_LEVEL;
       if (w.level < need) {
-        return { destination: outwardPoint(w, FARM_RADIUS), focus: null, travel: false, done: false, note: `Lv上げ中(${w.level}/${need})` };
+        return { destination: outwardPoint(w, FARM_RADIUS), focus: null, travel: false, pressAttack: false, done: false, note: `Lv上げ中(${w.level}/${need})` };
       }
       // ③ 巣へ向かう。
-      return { destination: w.hiddenBossLair, focus: null, travel: true, done: false, note: '裏ボスの巣へ' };
+      return { destination: w.hiddenBossLair, focus: null, travel: true, pressAttack: false, done: false, note: '裏ボスの巣へ' };
     }
 
     case 'hunt': {
       const target = nearestOfType(w, obj.enemyType);
       if (target) {
-        return { destination: centerOf(target), focus: target, travel: false, done: false, note: `${obj.enemyType}と交戦` };
+        return { destination: centerOf(target), focus: target, travel: false, pressAttack: false, done: false, note: `${obj.enemyType}と交戦` };
       }
       // 見つからない = 出現条件を満たしに行く(多くは時間経過+深部)。外へ潜って待つ。
-      return { destination: outwardPoint(w, radiusOf(w) + 700), focus: null, travel: true, done: false, note: `${obj.enemyType}を探索中` };
+      return { destination: outwardPoint(w, radiusOf(w) + 700), focus: null, travel: true, pressAttack: false, done: false, note: `${obj.enemyType}を探索中` };
     }
 
     case 'depth': {
       const r = radiusOf(w);
       if (r >= obj.dist) return { ...NO_PLAN, done: true, note: `${Math.round(obj.dist)}mへ到達` };
-      return { destination: outwardPoint(w, obj.dist), focus: null, travel: true, done: false, note: `深部へ(${Math.round(r)}/${Math.round(obj.dist)}m)` };
+      return { destination: outwardPoint(w, obj.dist), focus: null, travel: true, pressAttack: false, done: false, note: `深部へ(${Math.round(r)}/${Math.round(obj.dist)}m)` };
     }
 
     case 'kills': {
@@ -209,7 +262,7 @@ export const planObjective = (obj: BotObjective, w: ObjectiveWorld): ObjectivePl
       const any = w.enemies.length > 0;
       return {
         destination: any ? null : outwardPoint(w, radiusOf(w) + 600),
-        focus: null, travel: !any, done: false,
+        focus: null, travel: !any, pressAttack: false, done: false,
         note: `撃破 ${w.enemiesKilled}/${obj.count}`,
       };
     }
@@ -219,7 +272,7 @@ export const planObjective = (obj: BotObjective, w: ObjectiveWorld): ObjectivePl
       if (captured >= obj.count) return { ...NO_PLAN, done: true, note: `拠点${obj.count}個解放` };
       const base = nearestUncapturedBase(w);
       if (!base) return { ...NO_PLAN, note: '解放できる拠点が無い' };
-      return { destination: { x: base.x, y: base.y }, focus: null, travel: true, done: false, note: `拠点へ(${captured}/${obj.count})` };
+      return { destination: { x: base.x, y: base.y }, focus: null, travel: true, pressAttack: false, done: false, note: `拠点へ(${captured}/${obj.count})` };
     }
 
     default:
