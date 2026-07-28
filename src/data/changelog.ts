@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2345',
+    items: [
+      'ゲーム内容の変更はありません（重複時の返金額を据え置くと決めた記録のみ）。',
+    ],
+  },
+  {
     version: '0.25.2344',
     items: [
       'スキル強化訓練（ガチャ）の値段を「引くほど高くなる階段式」に変えました。1〜5回目は10G、6〜15回目は20G、16〜30回目は35G、31回目からは50Gで頭打ちです。',
