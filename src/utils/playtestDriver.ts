@@ -49,6 +49,8 @@ import {
   type KomaState, type PityUpkeepRefs, type KomaMaintenanceRefs, type DirectorSignalRefs,
 } from './directorTick';
 import { botSkillProfile, dodgeVector, dodgeToInput, type BotSkill } from './botSkill';
+import { planObjective, steerTo, type BotObjective, type ObjectiveWorld, type ObjectivePlan } from './botObjective';
+import { bossLairPos } from '../world/pois';
 import {
   decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, decideCounterReaction, scavengerAmmoSeekInput, SCAVENGER_TORCH_SEEK_DIST,
@@ -362,11 +364,39 @@ export interface PlaytestTickOptions {
   // v0.25.2338: 腕前の段階(novice/casual/skilled/master)。**未指定=casual=従来と同じ挙動**。
   // 段階を上げると 反応が速く / カウンター成功率が高く / 回避をし / 標的選択が賢くなる。
   skill?: BotSkill;
+  // v0.25.2339: 目的(ゴール)。**未指定=none=従来と同じ挙動**。
+  // clear=任務クリア / score=ハイスコア / hiddenBoss=裏ボス討伐 / hunt:<敵> / depth / kills / bases。
+  objective?: BotObjective;
+  // 目的の進捗をこのtickの分だけ受け取るコールバック(レポート/テスト用・任意)。
+  onObjective?: (plan: ObjectivePlan) => void;
 }
+
+// v0.25.2339: store の状態を目的層(botObjective=純関数)が読める形へ詰め替える。
+// 目的層は store を知らないので、この関数だけが橋渡しをする。
+const buildObjectiveWorld = (_obj: BotObjective): ObjectiveWorld => {
+  const s = useGameStore.getState();
+  const p = s.player;
+  return {
+    px: p.x + p.width / 2,
+    py: p.y + p.height / 2,
+    level: p.level,
+    enemies: s.enemies,
+    pickups: s.pickups,
+    returnCircle: s.returnCircle ? { x: s.returnCircle.x, y: s.returnCircle.y, radius: s.returnCircle.radius } : null,
+    castleEvent: s.castleEvent ?? null,
+    finaleDefeated: s.finaleDefeated,
+    hiddenBoss: s.hiddenBoss,
+    hiddenBossLair: bossLairPos(s.hiddenBoss),
+    hiddenBossDefeated: s.hiddenBossDefeated,
+    baseSites: s.baseSites,
+    enemiesKilled: s.gameStats.enemiesKilled,
+    gameWon: s.gameWon,
+  };
+};
 
 // 1tick分: ボット入力の合成→適用(移動/自動射撃/近接/武器切替)→物理更新→ディレクター配線。
 export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): void => {
-  const { persona, tickIndex, wanderSeed, dt, rusherState, skill } = opts;
+  const { persona, tickIndex, wanderSeed, dt, rusherState, skill, objective, onObjective } = opts;
   const store = useGameStore.getState();
   // 武器商人ショップの自動クローズ(実機botと同じ保険・v0.25.1732): 近接スイングが商人の
   // 圏内(58px)に入るとショップが開いて isPaused=true になる。ヘッドレスも正規 closeShop()
@@ -431,6 +461,15 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     enemies, useGameStore.getState().projectiles, t, player.counterCooldownEnd,
     Math.random, skill,
   );
+  // v0.25.2339: 目的(ゴール)。**目的地があればそちらへ進む**。目的なし(既定)は null を返すので no-op。
+  // 優先順位は 回避 > 目的地 > 従来の合成入力(生存 > 目的 > 反射)。
+  const objPlan = objective && objective.kind !== 'none'
+    ? planObjective(objective, buildObjectiveWorld(objective))
+    : null;
+  if (objPlan) onObjective?.(objPlan);
+  const objSteer = objPlan && objPlan.travel
+    ? steerTo(player.x + player.width / 2, player.y + player.height / 2, objPlan.destination)
+    : null;
   // v0.25.2338: 回避(避けられる攻撃は避ける)。**移動系の合成の最後**に置く=生存が最優先。
   // casual以下は dodgeVector が常に null を返すので、この行は従来ランでは完全な no-op。
   const dodge = dodgeVector(
@@ -438,7 +477,9 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     player.x + player.width / 2, player.y + player.height / 2,
     enemies, useGameStore.getState().projectiles,
   );
-  const finalInput = dodge ? dodgeToInput(dodge) : mineAdj.input;
+  const finalInput = dodge ? dodgeToInput(dodge)
+    : objSteer ? dodgeToInput(objSteer, 0.3)
+    : mineAdj.input;
   useGameStore.getState().movePlayer(finalInput, dt);
   autoFireGun();
   if (mineAdj.wantsMelee || wantsCounterReaction) useGameStore.getState().triggerCounter();

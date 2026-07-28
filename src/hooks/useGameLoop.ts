@@ -153,6 +153,7 @@ import {
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
 import { parseBotSkill, botSkillProfile, dodgeVector, dodgeToInput, type BotSkill } from '../utils/botSkill';
+import { parseBotObjective, planObjective, steerTo, type BotObjective } from '../utils/botObjective';
 import {
   decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, createRusherTrackState,
@@ -553,6 +554,9 @@ const BOT_PERSONA: BotPersona | null = BOT_PARAM === null ? null
 // v0.25.2338: 腕前の段階 ?botskill=novice|casual|skilled|master(既定 casual=従来の挙動と同値)。
 // 反応速度・カウンター成功率・回避・標的選択・危険察知を段階でまとめて動かす。?bot 無しでは未使用。
 const BOT_SKILL: BotSkill = parseBotSkill(evParam('botskill'));
+// v0.25.2339: 目的(ゴール) ?botgoal=clear|score|hiddenBoss[:Lv]|hunt:<敵>|depth:<px>|kills:<n>|bases:<n>
+// (既定 none=従来の挙動)。目的が無いと「上手さ」は最適化する対象を持たない、が社長の診断。
+const BOT_GOAL: BotObjective = parseBotObjective(evParam('botgoal'));
 
 // 天使(ゲート2ボス)コントローラの音注入(本体はangelBossTick.ts=M26 Step3で抽出。ヘッドレスはNOOP、実プレイはここ)。
 const ANGEL_SFX: AngelSfx = {
@@ -1692,7 +1696,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               player.x + player.width / 2, player.y + player.height / 2,
               enemies, loopState.projectiles)
           : null;
-        const inputState = botDodge ? dodgeToInput(botDodge) : (botMineAdj ? botMineAdj.input : touchInputState);
+        // v0.25.2339: 目的(ゴール)への移動。優先順位は 回避 > 目的地 > 従来の合成入力。
+        // BOT_GOAL='none'(既定)では planObjective が目的地を返さないので完全な no-op。
+        const botObjSteer = (botMineAdj && BOT_GOAL.kind !== 'none')
+          ? (() => {
+              const plan = planObjective(BOT_GOAL, {
+                px: player.x + player.width / 2, py: player.y + player.height / 2,
+                level: player.level, enemies, pickups,
+                returnCircle: loopState.returnCircle
+                  ? { x: loopState.returnCircle.x, y: loopState.returnCircle.y, radius: loopState.returnCircle.radius }
+                  : null,
+                castleEvent: loopState.castleEvent ?? null,
+                finaleDefeated: loopState.finaleDefeated,
+                hiddenBoss: loopState.hiddenBoss,
+                hiddenBossLair: bossLairPos(loopState.hiddenBoss),
+                hiddenBossDefeated: loopState.hiddenBossDefeated,
+                baseSites: loopState.baseSites,
+                enemiesKilled: loopState.gameStats.enemiesKilled,
+                gameWon: loopState.gameWon,
+              });
+              return plan.travel
+                ? steerTo(player.x + player.width / 2, player.y + player.height / 2, plan.destination)
+                : null;
+            })()
+          : null;
+        const inputState = botDodge ? dodgeToInput(botDodge)
+          : botObjSteer ? dodgeToInput(botObjSteer, 0.3)
+          : (botMineAdj ? botMineAdj.input : touchInputState);
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
         const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする
