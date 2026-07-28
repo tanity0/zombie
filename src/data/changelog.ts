@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2351',
+    items: [
+      'ゲーム内容の変更はありません（寄り道スポットを「4方角に1つずつ」に組み直した設計の記録のみ）。',
+    ],
+  },
+  {
     version: '0.25.2350',
     items: [
       'ゲーム内容の変更はありません（寄り道スポットの仕様が全項目そろった記録のみ）。',
