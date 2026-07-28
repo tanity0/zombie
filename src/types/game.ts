@@ -393,12 +393,59 @@ export interface Enemy {
   // ミゲル(ゲート2ボス)専用の追加ステート(2発コンボ=横払い→縦払い。各々が独立した溜め+実行):
   //  tate-windup = 縦払いの溜め(横払いharai-windupと同仕様=静止・赤ライン予告・カウンター可)。
   //  tate = 縦払いの実行(プレイヤー位置に画面縦のラインをロック。当たり判定はharaiと共通=向きのみ縦)。
+  // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63・ロットL2): ゲート2ボス6体のソウル式化で
+  // 追加した状態(4チャンネル分解=windup/active/recoverの共通語彙。同名でも解釈はボス種別ごとに
+  // runXTickが行うため、複数のボスで同じ名前を再利用してよい=union膨張を避ける既存の作法どおり)。
+  //  volley-windup/volley-recover = 弾3連の溜め/硬直(ミゲル/ジブリル共通)。
+  //  tate-recover = ミゲル縦払いの硬直【新設】。mdash-windup/mdash-move/mdash-recover = ミゲル踏み込み【新規】。
+  //  lantern-windup/lantern-recover = ジブリル ランタン火の溜め/硬直。
+  //  consecrate/consecrate-windup/consecrate-recover = ジブリル 聖別【新規・Phase2】。warp-windup = ジブリル転移の溜め【新設】。
+  //  bone-windup/bone-recover = ラフィ骨刃の溜め/硬直【新設】。
+  //  sweep/sweep-windup/sweep-recover = 近接の薙ぎ払い(ラフィ【新規・Phase2】/ウリ大薙ぎ/スリィエル本体薙ぎ 共通)。
+  //  downslash/downslash-windup/downslash-recover = ウリ振り下ろし(縦・内径なし)。
+  //  thrust/thrust-windup/thrust-recover = ウリ踏み込み突き(遠帯)。
+  //  bolt-windup/bolt-recover = ウリ炎の光輪(小技・弾3発)。
+  //  ring-move-windup(環の移動)/ring-beam-windup(T6線)/ring-active(発射)/ring-recover = スリィエル環の射出。
+  //  ring-spin-windup/ring-spin/ring-spin-recover = スリィエル環の回転斬。
+  //  gaze-windup/gaze-recover = 単眼の小技(スリィエル単眼の凝視/アクラシエル単眼レーザー 共通)。
+  //  spike-windup/spike/spike-recover = アクラシエル放射棘。spear-windup/spear-recover = 結晶の槍(設置)。
+  //  warp-out/warp-in/warp-recover = アクラシエル転移。burst-windup/burst/burst-recover = 収縮→爆発。
   bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'radial' | 'skadi-ice' | 'skadi-blade' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire'
-    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'tate-windup' | 'tate' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step' | 'volley' | 'lantern' | 'bone';
+    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'tate-windup' | 'tate' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step' | 'volley' | 'lantern' | 'bone'
+    | 'volley-windup' | 'volley-recover' | 'tate-recover' | 'mdash-windup' | 'mdash-move' | 'mdash-recover'
+    | 'lantern-windup' | 'lantern-recover' | 'consecrate' | 'consecrate-windup' | 'consecrate-recover' | 'warp-windup'
+    | 'bone-windup' | 'bone-recover'
+    | 'sweep' | 'sweep-windup' | 'sweep-recover' | 'downslash' | 'downslash-windup' | 'downslash-recover'
+    | 'thrust' | 'thrust-windup' | 'thrust-recover' | 'bolt' | 'bolt-windup' | 'bolt-recover'
+    | 'ring-move-windup' | 'ring-beam-windup' | 'ring-active' | 'ring-recover'
+    | 'ring-spin-windup' | 'ring-spin' | 'ring-spin-recover' | 'gaze-windup' | 'gaze-recover'
+    | 'spike-windup' | 'spike' | 'spike-recover' | 'spear-windup' | 'spear-recover'
+    | 'warp-out' | 'warp-in' | 'warp-recover' | 'burst-windup' | 'burst' | 'burst-recover';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   bossBurstLeft?: number;    // 3連発の残弾
   bossBurstNextAt?: number;  // 次の1発の gameTime(ms)
+  // PACING_PUZZLE.md §6.28-21(バッチM53/M55/M57・ロットL2): ミゲル/ジブリル/ラフィへ追加した新技1つずつの
+  // 専用クールダウン(gameTime ms)。既存の一般行動ゲート(bossNextActionAt)とは別枠(設計書の表がこの3技
+  // だけ明記のCD値を持つため)。ウリ/スリィエル/アクラシエル(§6.28-17/18/19)はCD列が設計書に無く、
+  // 既存の一般行動ゲートのみで足りる(帯の出し分けだけで駆動=新規CDフィールド不要)。
+  mDashReadyAt?: number;        // ミゲル 踏み込み(dash)専用CD(6000ms)
+  jConsecrateReadyAt?: number;  // ジブリル 聖別専用CD(8000ms・Phase2)
+  rSweepReadyAt?: number;       // ラフィ 薙ぎ専用CD(7000ms・Phase2)
+  // §6.28(バッチM55/M58/M61-63): フェーズを持つ新規ボス(ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)
+  // 共通のHP段階トラッカー(ジャイアント専用のgiantPhaseとは別・無改変)。値の意味・閾値は各ボスのtick関数側。
+  bossPhase?: 1 | 2 | 3;
+  bossPhaseFlashUntil?: number;
+  // §6.28-18(バッチM62): スリィエルの環(suriel-ring)の現在位置(world座標・中心)。待機中は頭上へ
+  // 追従、攻撃中は本体から離れて移動する。Phase2(HP50%以下)で2本目=ring2。undefinedの間は
+  // pixiScene側が本体直上のデフォルト位置を補う。
+  ringX?: number;
+  ringY?: number;
+  ring2X?: number;
+  ring2Y?: number;
+  // §6.28-19(バッチM63): アクラシエル放射棘の「空きセクター」を溜め開始時にロックするビットマスク
+  // (8方向=bit0..7、1=空き)。掟W4(テルを出したら必ず撃つ)のため実行まで固定する。
+  spikeGapMask?: number;
   // トール専用: 旋回方向(1=時計回り/既定 -1=逆回転)。払いの予告中だけ一時的に反転する。
   bossCircleDir?: number;
   // ミゲル(ゲート2ボス)専用: 直近に「近接」ダメージを受けた gameTime(ms)。gameStore.ts の近接
@@ -591,6 +638,22 @@ export interface BossFire {
   spawnAt: number;    // 生成 gameTime(ms)。ここから activateAt までが赤い予告。
   activateAt: number; // spawnAt + 予告(0.7s)。これ以降ダメージ有効(紫の火)。
   expireAt: number;   // activateAt + 火寿命(2s)。これで消滅。
+}
+
+// PACING_PUZZLE.md §6.28-19(バッチM63): アクラシエルの結晶の槍(設置)。射出直後に地面へ刺さって
+// 残り(非ダメージ)、fireAt(=生成+2秒)で一度だけ円形AoEに起爆して消える(スカジ氷/ジブリル火とは別の
+// 「一撃だけの遅延起爆」形=ジャイアント踏み鳴らしと同型)。判定/寿命は angelBossTick.ts(tickAcrasielSpears)、
+// 描画は pixiScene が直読み。skadiIceMarkers等の既存配管は流用せず専用配列にする(§6.28-13#12「共有定数を
+// 書き換えない・専用定数を新設」の精神を配列にも適用=スカジの挙動に一切触れないため)。
+export interface AcrasielSpear {
+  id: string;
+  x: number;
+  y: number;
+  angle: number;    // 射出方向(見た目=槍の向き)
+  bornAt: number;   // 設置 gameTime(ms)
+  fireAt: number;   // 起爆 gameTime(ms)
+  damage: number;   // 起爆ダメージ(=生成時のenemy.damageを保持。ボス撃破後もハザードは独立して起爆する)
+  enemyId: string;
 }
 
 // 制圧イベントの拠点。4か所固定(東西南北)。captured時はHPを持ち、敵の攻撃/時間で減り、プレイヤー在内/安全地帯で回復。

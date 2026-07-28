@@ -110,7 +110,7 @@ import {
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN
 } from '../utils/enemyUtils';
-import { isCounterablePhase } from '../utils/bossScript';
+import { isCounterablePhase, BOSS_ALERT_SFX_KEY } from '../utils/bossScript';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
@@ -171,7 +171,7 @@ import {
   decideCounterReaction, createCounterThreatState, BOT_PERSONAS, type BotPersona,
 } from '../utils/playtestBot';
 import { pickUpgradeByPolicy, mulberry32 } from '../utils/botUpgradePolicy';
-import { runAngelBossTick, tickAngelBossFires, createAngelBossState, type AngelSfx } from '../utils/angelBossTick';
+import { runAngelBossTick, tickAngelBossFires, tickAcrasielSpears, createAngelBossState, type AngelSfx } from '../utils/angelBossTick';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
   computeDirCountCap, computeEnemyCap, computeNormalSpawnCap,
@@ -585,6 +585,8 @@ const ANGEL_SFX: AngelSfx = {
   counter: () => playSfx('counter'),
   reward: () => playSfx('headshot'),
   sweep: () => playSfx('thor-sweep'),
+  // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): 予告SE(全技共通=hunter-alert流用・§6.26-9 #5)。
+  alert: () => playSfx(BOSS_ALERT_SFX_KEY),
 };
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
@@ -6143,6 +6145,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // ジブリルのランタン火(紫の単発火): M26 Step3で angelBossTick.ts へ移設(挙動不変・ヘッドレス共用)。
         tickAngelBossFires(newGameTime, triggerPlayerDeath);
+        // §6.28-19(バッチM63): アクラシエルの結晶の槍(設置→2秒後に一度だけ起爆)。
+        tickAcrasielSpears(newGameTime, triggerPlayerDeath);
 
         // 二人組(クエストNPC)の滞在受領/納品(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686)。
         // サークル内3秒(EVENT_QUEST_DWELL_MS)=拠点解放と同じ進捗メーター(pixiSceneがdwellMsを描く)。

@@ -6,7 +6,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
@@ -1478,6 +1478,7 @@ let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(�
 let sensorMineSeq = 0;  // センサー地雷(sensor-mine)の一意id採番(プール/差分の安定キー)
 let flareGunSeq = 0;    // フレアガン(flare-gun)のフレアの一意id採番(プール/差分の安定キー)
 let bossFireSeq = 0;    // ジブリルのランタン火の一意id採番(プール/差分の安定キー)
+let acrasielSpearSeq = 0; // §6.28-19: アクラシエルの結晶の槍の一意id採番(プール/差分の安定キー)
 let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
 let thrownBagSeq = 0;   // 救急鞄の空鞄投擲の一意id採番(プール/差分の安定キー)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
@@ -2326,6 +2327,9 @@ interface GameState {
   groundFires: GroundFire[];
   // ジブリルのランタン攻撃の紫の単発火(プレイヤー被弾)。判定/寿命は useGameLoop、描画は pixiScene が直読み。
   bossFires: BossFire[];
+  // §6.28-19(バッチM63): アクラシエルの結晶の槍(設置→2秒後に円形AoEへ一度だけ起爆)。
+  // 判定/寿命は angelBossTick.ts(tickAcrasielSpears)、描画は pixiScene が直読み。
+  acrasielSpears: AcrasielSpear[];
   // 深さの壁ゲート(1/2)の戦闘中か(useGameLoop の activeGateRef を反映)。描画側(深層セピア)がゲート中は
   // エリア切替を凍結するために読む(社長指示v0.25.1667「ゲートを超えるまでエリア切替を発動しない」)。
   gateActive: boolean;
@@ -2594,6 +2598,8 @@ interface GameState {
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
   spawnBossFire: (x: number, y: number, spawnAt: number, activateAt: number, expireAt: number) => void; // ジブリルの紫の単発火を1つ設置(useGameLoopから呼ぶ)
   setBossFires: (fires: BossFire[]) => void;                   // ジブリル火の配列を差し替え(useGameLoopのtickが枝刈り/被弾処理後に反映)
+  spawnAcrasielSpear: (x: number, y: number, angle: number, bornAt: number, fireAt: number, damage: number, enemyId: string) => void; // §6.28-19: 結晶の槍を1本設置(angelBossTick.tsから呼ぶ)
+  setAcrasielSpears: (spears: AcrasielSpear[]) => void;         // §6.28-19: 槍配列を差し替え(tickAcrasielSpearsが起爆消化後に反映)
 
   // 救急鞄(first-aid-kit)サブウェポン。中身(弾薬/回復/爆弾)の払い出し済みフラグ+鞄投擲済みフラグ
   // (1ラン限り)。判定自体は src/utils/firstAidKit.ts(純関数)、ここは状態の保持のみ。
@@ -3029,6 +3035,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   skadiIceBlades: [],
   groundFires: [],
   bossFires: [],
+  acrasielSpears: [],
   gateActive: false,
   deepZoneLocked: false,
   rescueAllies: [],
@@ -4784,6 +4791,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   setBossFires: (fires) => set({ bossFires: fires }),
+
+  // §6.28-19: 結晶の槍を1本設置(見た目のみ・非ダメージ)。2秒後に tickAcrasielSpears が円形AoEへ起爆する。
+  spawnAcrasielSpear: (x, y, angle, bornAt, fireAt, damage, enemyId) => {
+    set(state => ({
+      acrasielSpears: [...state.acrasielSpears, { id: `aspear-${acrasielSpearSeq++}`, x, y, angle, bornAt, fireAt, damage, enemyId }],
+    }));
+  },
+  setAcrasielSpears: (spears) => set({ acrasielSpears: spears }),
 
   // 毎フレーム: 寿命切れ(3秒)の火を回収し、生存中の火に重なっている敵へ0.5秒スロットルでDoT(5dmg)を与える。
   // プレイヤーは対象外(自分の火なので無敵=そもそも判定しない)。既存の damageEnemy を再利用するので
@@ -10809,6 +10824,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         shadowClone: null,
         groundFires: [],
   bossFires: [],
+  acrasielSpears: [],
   gateActive: false,
   deepZoneLocked: false,
         rescueAllies: [],

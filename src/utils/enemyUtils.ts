@@ -586,13 +586,17 @@ export const createEnemyProjectile = (
   enemy: Enemy,
   player: Player,
   targetX?: number,
-  targetY?: number
+  targetY?: number,
+  // PACING_PUZZLE.md §6.28-18(バッチM62): スリィエルの環(本体から離れた発射起点)用の任意オーバーライド。
+  // 省略時は従来どおり敵本体中心(既存の全呼び出し側は無改変=挙動不変)。
+  originX?: number,
+  originY?: number,
 ): Projectile => {
   const profile = getEnemyFireProfile(enemy) ?? {
     speed: 200, damage: 6, size: 12, interval: 0, range: 0
   };
-  const ex = enemy.x + enemy.width / 2;
-  const ey = enemy.y + enemy.height / 2;
+  const ex = originX ?? (enemy.x + enemy.width / 2);
+  const ey = originY ?? (enemy.y + enemy.height / 2);
   // 既定はプレイヤー中心(従来挙動と等価)。錬金術で召喚が標的なら呼出側が座標を渡す。
   const px = targetX ?? (player.x + player.width / 2);
   const py = targetY ?? (player.y + player.height / 2);

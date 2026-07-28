@@ -32,7 +32,7 @@ import { shouldTriggerGate1, entersGate1Penalty } from './gate1';
 import { shouldTriggerGate2 } from './gate2';
 import { detectWallBreach } from './wallProgress';
 import { shouldTriggerViciousHunter, pickViciousSpawnPoint, VICIOUS_REARM_MS } from './viciousHunter';
-import { runAngelBossTick, tickAngelBossFires, createAngelBossState, NOOP_ANGEL_SFX, type AngelBossState } from './angelBossTick';
+import { runAngelBossTick, tickAngelBossFires, tickAcrasielSpears, createAngelBossState, NOOP_ANGEL_SFX, type AngelBossState } from './angelBossTick';
 import { GAME_SPEED } from '../config/gameSpeed';
 import type { AmmoType } from '../types/game';
 import { areaIndexForPos, isBossType, spawnEnemyAt, spawnEnemyAtWithTier, AREA_THRESHOLDS } from './enemyUtils';
@@ -582,6 +582,7 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     runGateAndHunterTick(refs, t);
     runAngelBossTick(refs.angel, t, dt, GAME_SPEED, NOOP_ANGEL_SFX, () => {});
     tickAngelBossFires(t, () => {});
+    tickAcrasielSpears(t, () => {});
   }
 
   const s = useGameStore.getState();

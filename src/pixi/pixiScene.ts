@@ -19,10 +19,16 @@ import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
 import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_JUMP_WINDUP_MS } from '../store/gameStore';
+import { BOSS_RECOVER_TINT } from '../utils/bossScript';
+import {
+  MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
+  URI_SCRIPT_ENABLED, SURIEL_SCRIPT_ENABLED, ACRASIEL_SCRIPT_ENABLED,
+  ACRASIEL_SPEAR_RADIUS,
+} from '../utils/angelBossTick';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
@@ -1094,6 +1100,54 @@ const MIGUEL_SWORD_BLADE_LEN_FRAC = Math.hypot(
   MIGUEL_SWORD_TIP_FRAC.y - MIGUEL_SWORD_GRIP_FRAC.y,
 ); // 柄→切っ先の距離(画像サイズに対する比率)
 const MIGUEL_SWORD_LENGTH = 40; // 表示上の柄→切っ先の長さ(px・見た目のみ=当たり判定はMIGUEL_HARAI_RANGE。社長指示: v1597「大きすぎる」で260→160、v1600「まだ大きい・半分の半分くらい」で160→40。叩き台=実機調整前提)
+
+// PACING_PUZZLE.md §6.28-16(バッチM61: 掟W9=武器絵は構え+実行の両方に出す)。
+// ウリの大剣(uri-sword.png=184×512・縦長で柄が上・刃先が下)。miguel-swordと同じ「柄フラクション
+// 座標を回転軸にする」方式を流用。実測未受領のため叩き台(実機調整前提・報告に明記)。
+const URI_SWORD_GRIP_FRAC = { x: 0.50, y: 0.12 };
+const URI_SWORD_TIP_FRAC = { x: 0.50, y: 0.97 };
+const URI_SWORD_INTRINSIC_ANGLE = Math.atan2(URI_SWORD_TIP_FRAC.y - URI_SWORD_GRIP_FRAC.y, URI_SWORD_TIP_FRAC.x - URI_SWORD_GRIP_FRAC.x);
+const URI_SWORD_BLADE_LEN_FRAC = Math.hypot(URI_SWORD_TIP_FRAC.x - URI_SWORD_GRIP_FRAC.x, URI_SWORD_TIP_FRAC.y - URI_SWORD_GRIP_FRAC.y);
+const URI_SWORD_LENGTH = 130; // 表示上の柄→切っ先の長さ(px・叩き台)。大薙ぎ/振り下ろしの判定線に沿わせる。
+
+// ラフィの薙ぎ(Phase2新規)は既存の骨刃素材(rafi-blade.png)を「振る」用途でも流用する
+// (§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。katanaSlash系のグリップ扱いは新規(叩き台)。
+const RAFI_BLADE_GRIP_FRAC = { x: 0.50, y: 0.85 };
+const RAFI_BLADE_TIP_FRAC = { x: 0.50, y: 0.05 };
+const RAFI_BLADE_INTRINSIC_ANGLE = Math.atan2(RAFI_BLADE_TIP_FRAC.y - RAFI_BLADE_GRIP_FRAC.y, RAFI_BLADE_TIP_FRAC.x - RAFI_BLADE_GRIP_FRAC.x);
+const RAFI_BLADE_SLASH_LEN_FRAC = Math.hypot(RAFI_BLADE_TIP_FRAC.x - RAFI_BLADE_GRIP_FRAC.x, RAFI_BLADE_TIP_FRAC.y - RAFI_BLADE_GRIP_FRAC.y);
+const RAFI_BLADE_SLASH_LENGTH = 90; // 叩き台
+
+// アクラシエルの結晶の槍(acrasiel-spear.png=152×512)。設置武器(ラフィ骨刃/スカジ氷刃と同じ語彙)なので
+// 振り演出は持たない。溜め(spear-windup)中だけ本体前方に1本「構え」表示する(掟W9の窓口・叩き台)。
+const ACRASIEL_SPEAR_VIS_LEN = 70; // 実行中(地面に刺さった状態)の表示全長(px)
+
+// ジブリルのランタン(jibril-lantern.png)。振らずに常に手元へ「掲げたまま」表示する(§6.28-16 ①)。
+const JIBRIL_LANTERN_VIS_H = 46; // 画面上の高さ(px)
+
+// スリィエルの環(suriel-ring.png=304×512)。待機中も頭上に浮遊し、攻撃時は本体から離れて飛ぶ
+// (§6.28-18「武器絵が読みの主役になる唯一のボス」)。katanaSlash系ではなく単純な回転スプライト。
+const SURIEL_RING_VIS_D = 54; // 画面上の直径(px・叩き台)
+
+// PACING_PUZZLE.md §6.28-8/17/18/19(バッチM57/M61/M62/M63): 新規T3/T6ゾーンの「溜め進行」描画に
+// 使う予備動作の長さ(半幅はTHOR_HARAI_VIS_HALFWIDTH=40/THOR_TSUKI_VIS_HALFWIDTH=15/
+// MIGUEL_HARAI_VIS_HALFWIDTH=40を再利用=新しい太さを発明しない)。値はangelBossTick.tsの同名定数と一致
+// (「一致」コメント義務=既存のMIGUEL_HARAI_WINDUP_MS等と同じ流儀)。
+const RAFI_SWEEP_WINDUP_MS_VIS = 700;
+const URI_SWEEP_WINDUP_MS_VIS = 1100;
+const URI_SWEEP_ACTIVE_MS = 260;
+const URI_DOWNSLASH_WINDUP_MS_VIS = 1000;
+const URI_DOWNSLASH_ACTIVE_MS = 200;
+const SURIEL_SWEEP_WINDUP_MS_VIS = 800;
+const SURIEL_RINGSHOT_BEAM_WINDUP_MS_VIS = 700;
+const ACRASIEL_SPIKE_WINDUP_MS_VIS = 1100;
+const ACRASIEL_SPIKE_RANGE_VIS = 310; // =THOR_HARAI_RANGE相当(流用)。放射棘8方向の描画長。
+const ACRASIEL_SPEAR_WINDUP_MS_VIS = 700;
+const ACRASIEL_GAZE_WINDUP_MS_VIS = 450;
+const ACRASIEL_WARP_TELEGRAPH_MS_VIS = 800;
+const ACRASIEL_BURST_RADIUS_VIS = 140; // ★未決事項(angelBossTick.tsと同じ叩き台値)。
+const THIN_BEAM_VIS_HALFWIDTH = 20; // スリィエル環の射出/アクラシエル単眼レーザー(T6細ビーム)の描画半太さ
+
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
   // 色はそのまま、濃さ(alphaMult)を上げて色が地面に乗りやすく=見分けやすく(社長指示)。1.7/1.7/1.9→2.1/2.1/2.3。
@@ -1302,6 +1356,19 @@ const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: nu
   idol:       { w: 0.42, h: 0.13, cx: 0.42, cy: 0.98 },
 };
 const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
+// PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): ゲート2ボスごとのフォールバック
+// (`?<boss>script=0`)。無効時は新規stateが一切発火しないため(angelBossTick.tsのLegacy実装が
+// 旧state名しか使わない)、新規の予告描画/tint(下記ANGEL_T4_*判定)も自動的に出ない=安全。
+const ANGEL_NEW_SCRIPT_ACTIVE: Partial<Record<string, boolean>> = {
+  miguel: MIGUEL_SCRIPT_ENABLED, jibril: JIBRIL_SCRIPT_ENABLED, rafi: RAFI_SCRIPT_ENABLED,
+  uri: URI_SCRIPT_ENABLED, suriel: SURIEL_SCRIPT_ENABLED, acrasiel: ACRASIEL_SCRIPT_ENABLED,
+};
+// T4赤フラッシュ/青白硬直の対象になる状態の判定(§6.28-3 W6/共通言語)。全ボス共通で「-windup」
+// 「-recover」接尾辞に統一してある(ミゲル踏み込み/ウリ突きだけ移動を挟むため例外3つを追加)。
+const ANGEL_FLASH_TAIL_STATES = new Set(['mdash-move', 'thrust', 'warp-out']);
+const isAngelRecoverState = (bs: string | undefined): boolean => bs !== undefined && bs.endsWith('-recover');
+const isAngelFlashTailState = (bs: string | undefined): boolean =>
+  bs !== undefined && (bs.endsWith('-windup') || ANGEL_FLASH_TAIL_STATES.has(bs));
 // 設置物(盾)/召喚が攻撃された時の被弾シェイク。減衰する短い横揺れ(描画のみ)。
 const HIT_SHAKE_MS = 220;
 const HIT_SHAKE_PX = 4;
@@ -1508,6 +1575,23 @@ export class PixiScene {
   // PACING_PUZZLE.md §5.21-追補8: ミゲル(ゲート2ボス)専用のharai演出コンテナ。thorSlashFxと同じ
   // 仕組み(enemy.id keyed)だが別マップ=別ボス種の同時存在(理論上)でも取り違えない。
   private miguelSlashFx = new Map<string, Container>();
+  // PACING_PUZZLE.md §6.28-16(バッチM61/M57): ウリ(uri-sword)/ラフィの薙ぎ(rafi-blade)専用の
+  // 振り演出コンテナ。thorSlashFx/miguelSlashFxと全く同じ仕組み(drawKatanaSlash/drawKatanaReadyの
+  // 汎用ヘルパを別武器テクスチャで流用)。
+  private uriSlashFx = new Map<string, Container>();
+  private rafiSlashFx = new Map<string, Container>();
+  // §6.28-16: ジブリルのランタン(jibril-lantern)を常に手元に構えたまま表示する専用スプライト
+  // (振り演出ではなく「掲げたまま」なのでKatanaSlash系とは別の単純な1枚Sprite)。
+  private jibrilLanternSprites = new Map<string, Sprite>();
+  // §6.28-16: アクラシエルの結晶の槍(spear-windup中の構えプレビュー用・単純な1枚Sprite)。
+  private acrasielSpearReadySprites = new Map<string, Sprite>();
+  // §6.28-18(バッチM62): スリィエルの環(suriel-ring)。待機中も頭上に浮遊描画するため、boss.idごとに
+  // 環1本目/2本目(Phase2)の2枚のSpriteを持つ(常時表示=Container不要・単純な位置更新のみ)。
+  private surielRingSprites = new Map<string, { ring1: Sprite; ring2: Sprite }>();
+  // §6.28-19(バッチM63): アクラシエルの結晶の槍(acrasielSpears)。設置中の槍スプライト+T5円テレグラフ
+  // (ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
+  private acrasielSpearGfx = new Graphics();
+  private acrasielSpearPool = new Map<string, Sprite>();
   // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の頭上名前ラベル。同時1体・生成は湧き時1回だけ
   // なのでPixi Text可(CLAUDE.mdの「まれなcallout枠」)。毎フレーム再生成はしない=位置追従のみ。
   private namedFoeLabels = new Map<string, Text>();
@@ -4260,6 +4344,8 @@ export class PixiScene {
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncSlasherRing(s.player, s.realGameTime);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
+    this.syncSurielRing(s.enemies, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
+    this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
     this.syncSensorMines(s.sensorMines, s.gameTime, now); // センサー地雷(待機ディスク/感知後2秒の赤点滅テレグラフ)
@@ -6876,6 +6962,16 @@ export class PixiScene {
         if (slashFx) { slashFx.destroy({ children: true }); this.thorSlashFx.delete(id); }
         const miguelFx = this.miguelSlashFx.get(id);
         if (miguelFx) { miguelFx.destroy({ children: true }); this.miguelSlashFx.delete(id); }
+        const uriFx = this.uriSlashFx.get(id);
+        if (uriFx) { uriFx.destroy({ children: true }); this.uriSlashFx.delete(id); }
+        const rafiFx = this.rafiSlashFx.get(id);
+        if (rafiFx) { rafiFx.destroy({ children: true }); this.rafiSlashFx.delete(id); }
+        const lanternSp = this.jibrilLanternSprites.get(id);
+        if (lanternSp) { lanternSp.destroy(); this.jibrilLanternSprites.delete(id); }
+        const spearReadySp = this.acrasielSpearReadySprites.get(id);
+        if (spearReadySp) { spearReadySp.destroy(); this.acrasielSpearReadySprites.delete(id); }
+        const ringSp = this.surielRingSprites.get(id);
+        if (ringSp) { ringSp.ring1.destroy(); ringSp.ring2.destroy(); this.surielRingSprites.delete(id); }
         const nameLabel = this.namedFoeLabels.get(id);
         if (nameLabel) { nameLabel.destroy(); this.namedFoeLabels.delete(id); }
       }
@@ -7048,6 +7144,75 @@ export class PixiScene {
     }
     for (const [id, sp] of this.skadiBlockPool) { if (!seen.has(id)) { sp.destroy(); this.skadiBlockPool.delete(id); } }
     for (const [id, sp] of this.skadiBladePool) { if (!seen.has(id)) { sp.destroy(); this.skadiBladePool.delete(id); } }
+  }
+
+  // PACING_PUZZLE.md §6.28-18(バッチM62): スリィエルの環(suriel-ring)。ringX/Y(+Phase2のring2X/Y)は
+  // angelBossTick.tsが計算済み(store)なので、ここは読んで位置を反映するだけ(CLAUDE.md「Pixiは描画専門」)。
+  // 待機中も頭上に浮遊描画=常時表示(社長指示「武器絵が読みの主役になる唯一のボス」)。
+  private syncSurielRing(enemies: Enemy[], now: number) {
+    const seen = new Set<string>();
+    const tex = getTexture('suriel-ring');
+    if (tex) {
+      for (const e of enemies) {
+        if (e.type !== 'suriel' || e.ringX === undefined || e.ringY === undefined) continue;
+        seen.add(e.id);
+        let views = this.surielRingSprites.get(e.id);
+        if (!views) {
+          const ring1 = new Sprite(tex); ring1.anchor.set(0.5, 0.5);
+          const ring2 = new Sprite(tex); ring2.anchor.set(0.5, 0.5);
+          this.L.effectLayer.addChild(ring1, ring2);
+          views = { ring1, ring2 };
+          this.surielRingSprites.set(e.id, views);
+        }
+        const spin = now / 260;
+        const sc = SURIEL_RING_VIS_D / Math.max(1, tex.width);
+        views.ring1.position.set(e.ringX, e.ringY);
+        views.ring1.scale.set(sc);
+        views.ring1.rotation = spin;
+        views.ring1.visible = true;
+        if (e.ring2X !== undefined && e.ring2Y !== undefined) {
+          views.ring2.position.set(e.ring2X, e.ring2Y);
+          views.ring2.scale.set(sc);
+          views.ring2.rotation = -spin;
+          views.ring2.visible = true;
+        } else {
+          views.ring2.visible = false;
+        }
+      }
+    }
+    for (const [id, views] of this.surielRingSprites) {
+      if (!seen.has(id)) { views.ring1.destroy(); views.ring2.destroy(); this.surielRingSprites.delete(id); }
+    }
+  }
+
+  // PACING_PUZZLE.md §6.28-19(バッチM63): アクラシエルの結晶の槍。設置中はスプライト(向き=射出方向)+
+  // T5円テレグラフ(ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
+  // 半径はACRASIEL_SPEAR_RADIUS(判定と同寸=掟)。判定/起爆はangelBossTick.ts(tickAcrasielSpears)が担う。
+  private syncAcrasielSpears(spears: AcrasielSpear[], gameTime: number, now: number) {
+    const g = this.acrasielSpearGfx;
+    if (!g.parent) this.L.groundLayer.addChild(g);
+    g.clear();
+    const seen = new Set<string>();
+    const tex = getTexture('acrasiel-spear');
+    const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+    for (const sp of spears) {
+      const total = Math.max(1, sp.fireAt - sp.bornAt);
+      const t = Math.max(0, Math.min(1, (gameTime - sp.bornAt) / total));
+      const R = ACRASIEL_SPEAR_RADIUS;
+      g.ellipse(sp.x, sp.y, R, R).fill({ color: 0xff2a2a, alpha: 0.05 + 0.18 * t + 0.06 * pulse });
+      g.ellipse(sp.x, sp.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
+      if (tex) {
+        seen.add(sp.id);
+        let vsp = this.acrasielSpearPool.get(sp.id);
+        if (!vsp) { vsp = new Sprite(tex); vsp.anchor.set(0.5, 0.85); this.L.groundLayer.addChild(vsp); this.acrasielSpearPool.set(sp.id, vsp); }
+        vsp.rotation = sp.angle + Math.PI / 2; // 実測未受領のため叩き台(実機調整前提)
+        vsp.scale.set(ACRASIEL_SPEAR_VIS_LEN / Math.max(1, tex.height));
+        vsp.position.set(sp.x, sp.y);
+        vsp.alpha = 0.5 + 0.5 * t;
+        vsp.visible = true;
+      }
+    }
+    for (const [id, vsp] of this.acrasielSpearPool) { if (!seen.has(id)) { vsp.destroy(); this.acrasielSpearPool.delete(id); } }
   }
 
   // 火炎瓶(molotov)の地面の火。lifetime/DoTは gameStore(groundFires/tickGroundFires)側の仕事、
@@ -8413,46 +8578,45 @@ export class PixiScene {
         view.sprite.tint = 0xffffff;
       }
     }
-    // ミゲル(ゲート2ボス・§5.21-追補8)の払い攻撃。トールのharai描画を流用し、範囲/太さ/剣素材だけ
-    // 差し替える。横払い(harai)→縦払い(tate)の2発コンボ=各々が独立した溜め+実行(攻撃3以降は追って追加)。
+    // ゲート2ボス6体(ミゲル/ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)共通の予告描画+tint。
+    // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): §6.26で確立した4チャンネル分解を継承。
+    // harai/tate(ミゲル・既存)はそのまま流用し、新規ステートを下の else-if 群へ追加する形にする。
     if (isGate2AngelBoss(e.type)) {
-      // 天使(ゲート2ボス=ミゲル/ジブリル/ラフィ…)はミゲルの攻撃描画を流用(社長指示v0.25.1661「一旦ミゲルをそのままコピー」)。
-      // 赤ゾーン予告(武器非依存=理不尽回避のため必ず出す)は共通。武器スプライト(ready/slash)は現状ミゲル専用
-      // (miguel-sword)なので、ジブリルの武器=ランタンの振り演出は社長から武器の使い方を受け取ってから追加する
-      // (それまでジブリルは予告+ダメージのみ=武器の絵は本体絵に描かれたランタン/剣で代替)。
-      const slashFx = this.miguelSlashFx.get(e.id);
-      if (slashFx) slashFx.visible = false; // 既定で非表示。実行ステートのみ下で表示する
-      // 2発コンボ(横払いharai→縦払いtate)。各々が独立した溜め(*-windup)+実行を持つ(社長指示
-      // v0.25.1598「縦切りも溜め=横と仕様を揃える。同時発動をやめる」)。溜めの赤ライン予告は
-      // aiFrom→aiTargetの向きで横/縦が自動的に切り替わる(orientation非依存)。
-      if (e.bossState === 'harai-windup' || e.bossState === 'harai' || e.bossState === 'tate-windup' || e.bossState === 'tate') {
+      const scriptActive = ANGEL_NEW_SCRIPT_ACTIVE[e.type] ?? false;
+      const bs = e.bossState;
+      // T4赤フラッシュ(末尾400ms)/硬直の青白tint(W6)。無効時(?<boss>script=0)は新state名が
+      // そもそも発火しない=常に白のまま(旧挙動を完全維持)。
+      if (scriptActive && isAngelRecoverState(bs)) {
+        view.sprite.tint = BOSS_RECOVER_TINT;
+      } else if (scriptActive && isAngelFlashTailState(bs)) {
+        const remain = (e.bossStateUntil ?? gameTime) - gameTime;
+        const flash = thorFlashTint(remain, now);
+        view.sprite.tint = flash !== null ? flash : 0xffffff;
+      } else {
         view.sprite.tint = 0xffffff;
+      }
+      // 武器スプライトの既定非表示(専用Mapとも、該当ステートのみ下で表示する)。
+      const slashFx = this.miguelSlashFx.get(e.id);
+      if (slashFx) slashFx.visible = false;
+      const uriFx = this.uriSlashFx.get(e.id);
+      if (uriFx) uriFx.visible = false;
+      const rafiFx = this.rafiSlashFx.get(e.id);
+      if (rafiFx) rafiFx.visible = false;
+      const lanternSp = this.jibrilLanternSprites.get(e.id);
+      if (lanternSp) lanternSp.visible = false;
+      const spearReadySp = this.acrasielSpearReadySprites.get(e.id);
+      if (spearReadySp) spearReadySp.visible = false;
+
+      // ---- ミゲル/ジブリル/ラフィ共通: 横払い→縦払い(harai/tate・既存=無改変) ----
+      if (bs === 'harai-windup' || bs === 'harai' || bs === 'tate-windup' || bs === 'tate') {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        if (e.bossState === 'harai-windup' || e.bossState === 'tate-windup') {
+        if (bs === 'harai-windup' || bs === 'tate-windup') {
           // 放つ前=赤いダメージゾーンの予告。社長指示v0.25.1611「レッドライン=攻撃範囲にする」:
           // 当たり判定は中心線の両側±MIGUEL_HARAI_HALF_WIDTH のカプセルなので、予告も細い線1本ではなく
           // 判定幅ぶん膨らませた矩形ゾーンで描く(トールの一閃ゾーンと同じ意匠。判定は不変=見た目だけ実寸)。
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_WINDUP_MS));
-          const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-          const ddx = tx - fx, ddy = ty - fy;
-          const ddl = Math.hypot(ddx, ddy) || 1;
-          const nx = -ddy / ddl, ny = ddx / ddl; // 進行方向に直交する単位ベクトル
-          const ux = ddx / ddl, uy = ddy / ddl;  // 軸方向の単位ベクトル(両端の延長に使う)
-          const hw = MIGUEL_HARAI_VIS_HALFWIDTH; // =当たり判定 MIGUEL_HARAI_HALF_WIDTH と一致
-          const zoneFill = (0.12 + 0.22 * prog) + 0.08 * pulse;
-          // 社長指示v0.25.1617「範囲攻撃の赤表示は全部四角に統一(丸を置くのをやめる)」: 両端を半幅ぶん
-          // 軸方向へ延ばした角ばった四角で、判定の丸い張り出しを角で覆う(赤の外=安全は維持・判定は不変)。
-          const pts = [
-            fx - ux * hw + nx * hw, fy - uy * hw + ny * hw,
-            tx + ux * hw + nx * hw, ty + uy * hw + ny * hw,
-            tx + ux * hw - nx * hw, ty + uy * hw - ny * hw,
-            fx - ux * hw - nx * hw, fy - uy * hw - ny * hw,
-          ];
-          o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill });
-          o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
-          // 中心線も薄く残して「薙ぎの軸」を示す(白い芯)。
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' });
+          this.drawAngelZoneCapsule(o, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, prog, now);
           // 剣を振るモーションの「最初の位置」に最初から構えておく。柄=ミゲルの手元、刃先=薙ぎ始めの点。
           // 武器スプライトはミゲル専用(miguel-sword)。ジブリルは武器の使い方を受領後に別途追加(予告のみ)。
           if (e.type === 'miguel') this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
@@ -8461,9 +8625,171 @@ export class PixiScene {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_ACTIVE_MS));
           if (e.type === 'miguel') this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
         }
-      } else {
-        view.sprite.tint = 0xffffff;
       }
+      // ---- ミゲル(§6.28-4・M53新規): 踏み込み(dash)=T1赤ライン+終点リング ----
+      else if (scriptActive && e.type === 'miguel' && (bs === 'mdash-windup' || bs === 'mdash-move')) {
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        this.drawAngelDashLine(o, cx, cy, tx, ty, now);
+        if (bs === 'mdash-windup') this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.7);
+        else this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1);
+      }
+      // ---- ミゲル: 硬直中も武器を消さない(掟W9)。振り切った姿勢のまま静止させる。 ----
+      else if (scriptActive && e.type === 'miguel' && (bs === 'tate-recover' || bs === 'mdash-recover')) {
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1);
+      }
+      // ---- ジブリル(§6.28-16 ①): ランタンを常に手元に掲げる(windup/実行/硬直=消さない・掟W9) ----
+      else if (e.type === 'jibril' && bs !== undefined && (
+        bs === 'lantern-windup' || bs === 'lantern' || bs === 'lantern-recover' ||
+        bs === 'consecrate-windup' || bs === 'consecrate-recover' ||
+        bs === 'volley-windup' || bs === 'volley' || bs === 'volley-recover' ||
+        bs === 'warp-windup' || bs === 'warp-recover'
+      )) {
+        const pl = useGameStore.getState().player;
+        this.drawJibrilLantern(e.id, fb.footX, fb.footY - fb.boxH * 0.55, pl.x + pl.width / 2, pl.y + pl.height / 2);
+      }
+      // ---- ラフィ(§6.28-8・M57新規): 薙ぎ(Phase2)=T3帯+骨刃を振る絵 ----
+      else if (scriptActive && e.type === 'rafi' && (bs === 'sweep-windup' || bs === 'sweep' || bs === 'sweep-recover')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (bs === 'sweep-windup') {
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / RAFI_SWEEP_WINDUP_MS_VIS));
+          this.drawAngelZoneCapsule(o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
+          this.drawRafiKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog);
+        } else if (bs === 'sweep') {
+          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
+          this.drawRafiSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+        } else {
+          // 硬直中も武器を消さない(掟W9): 振り切った姿勢のまま静止。
+          this.drawRafiKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1);
+        }
+      }
+      // ---- ラフィ(§6.28-8 #2・理不尽修正・CLAUDE.md「明確なバグ修正」の例外=?rafiscript=0でも
+      // 直ったまま): 飛び掛かりの着地予告(T2)。トール専用ブロックに閉じていたため天使には出ていなかった
+      // 欠陥の修正(§6.28-1-3欠陥4)。着地点はjump-windup/jump-attack共通でaiTargetX/Yに既にロックされて
+      // いる(新旧どちらの実装も同じ式=gameStore側の値は変えていない)。半径はTHOR_JUMP_RADIUSと同値(=70)。
+      else if (e.type === 'rafi' && (bs === 'jump-windup' || bs === 'jump-attack')) {
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        const R = THOR_JUMP_RADIUS; // = RAFI_JUMP_RADIUS(同値・§6.28-8「=THOR_JUMP_RADIUS(同値)」)
+        o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
+        o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+      }
+      // ---- ウリ(§6.28-17・M61新規): 大薙ぎ(横・内径あり)=T3ドーナツ帯+大剣 ----
+      else if (scriptActive && e.type === 'uri' && (bs === 'sweep-windup' || bs === 'sweep' || bs === 'sweep-recover')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const phase2 = (e.bossPhase ?? 1) >= 2;
+        const innerR = phase2 ? 90 : 140; // uriScript.uriSweepInnerRadiusと同値(140→Phase2で90)
+        if (bs === 'sweep-windup') {
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_WINDUP_MS_VIS));
+          this.drawAngelZoneCapsule(o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now, innerR, fx, fy);
+          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog);
+        } else if (bs === 'sweep') {
+          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_ACTIVE_MS));
+          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+        } else {
+          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1); // 硬直中も武器を消さない(掟W9)
+        }
+      }
+      // ---- ウリ: 振り下ろし(縦・内径なし)=T3細帯+大剣。①との対比が読みの本体(§6.28-17) ----
+      else if (scriptActive && e.type === 'uri' && (bs === 'downslash-windup' || bs === 'downslash' || bs === 'downslash-recover')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (bs === 'downslash-windup') {
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_DOWNSLASH_WINDUP_MS_VIS));
+          this.drawAngelZoneCapsule(o, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, prog, now);
+          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog);
+        } else if (bs === 'downslash') {
+          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_DOWNSLASH_ACTIVE_MS));
+          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+        } else {
+          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1); // 硬直中も武器を消さない(掟W9)
+        }
+      }
+      // ---- ウリ: 踏み込み突き(遠帯)=T1赤ライン+大剣。ミゲル踏み込みと同じ意匠(§6.28-17) ----
+      else if (scriptActive && e.type === 'uri' && (bs === 'thrust-windup' || bs === 'thrust' || bs === 'thrust-recover')) {
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (bs !== 'thrust-recover') this.drawAngelDashLine(o, cx, cy, tx, ty, now);
+        this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, bs === 'thrust-windup' ? 0.7 : 1);
+      }
+      // ---- スリィエル(§6.28-18・M62新規): 環の射出(移動→T6線→発射)。環そのものはsyncSurielRingが
+      // 常時描画するため、ここではビームのテレグラフ(T6)だけを足す。 ----
+      else if (scriptActive && e.type === 'suriel' && (bs === 'ring-beam-windup' || bs === 'ring-active')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy; // 環の到達点=ビーム起点
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        let dirx = tx - fx, diry = ty - fy; const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
+        const ex = fx + dirx * MIMIR_LASER_VIS_RANGE, ey = fy + diry * MIMIR_LASER_VIS_RANGE;
+        if (bs === 'ring-beam-windup') {
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SURIEL_RINGSHOT_BEAM_WINDUP_MS_VIS));
+          this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, prog, now);
+        } else {
+          this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, 1, now);
+        }
+      }
+      // ---- スリィエル: 環の回転斬(近接拒否)=T2円(即時)。環自体はsyncSurielRingが本体周りへ描く ----
+      else if (scriptActive && e.type === 'suriel' && (bs === 'ring-spin-windup' || bs === 'ring-spin')) {
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        o.ellipse(cx, cy, GIANT_STOMP_RADIUS, GIANT_STOMP_RADIUS).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
+        o.ellipse(cx, cy, GIANT_STOMP_RADIUS, GIANT_STOMP_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+      }
+      // ---- スリィエル: 本体の薙ぎ(環が離れている間だけ・§6.28-18)=T3帯(マントを広げる・武器絵なし) ----
+      else if (scriptActive && e.type === 'suriel' && (bs === 'sweep-windup' || bs === 'sweep' || bs === 'sweep-recover')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (bs === 'sweep-windup') {
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SURIEL_SWEEP_WINDUP_MS_VIS));
+          this.drawAngelZoneCapsule(o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
+        } else if (bs === 'sweep') {
+          this.drawAngelZoneCapsule(o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, 1, now);
+        }
+      }
+      // ---- アクラシエル(§6.28-19・M63新規): 放射棘=T3帯を8方向(空きセクターは塗らない)。
+      // spikeGapMaskは溜め開始でロック済み(掟W4)なので毎フレーム同じマスクを読むだけ。 ----
+      else if (scriptActive && e.type === 'acrasiel' && (bs === 'spike-windup' || bs === 'spike')) {
+        const mask = e.spikeGapMask ?? 0;
+        const prog = bs === 'spike-windup'
+          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_SPIKE_WINDUP_MS_VIS))
+          : 1;
+        for (let sector = 0; sector < 8; sector++) {
+          if ((mask & (1 << sector)) !== 0) continue; // 空きセクター=描かない(判定と一致)
+          const ang = sector * (Math.PI / 4);
+          const ex = cx + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS, ey = cy + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS;
+          this.drawAngelZoneCapsule(o, cx, cy, ex, ey, THOR_HARAI_VIS_HALFWIDTH, prog, now);
+        }
+      }
+      // ---- アクラシエル: 結晶の槍(設置・§6.28-19)。溜め中だけ本体前方に1本「構え」表示(掟W9)。
+      // 実行後の槍そのものはsyncAcrasielSpears(常設)が描く。 ----
+      else if (scriptActive && e.type === 'acrasiel' && bs === 'spear-windup') {
+        const pl = useGameStore.getState().player;
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_SPEAR_WINDUP_MS_VIS));
+        this.drawAcrasielSpearReady(e.id, cx, cy - e.height * 0.3, pl.x + pl.width / 2, pl.y + pl.height / 2, 0.5 + 0.4 * prog);
+      }
+      // ---- アクラシエル: 転移(出現先)=T5円フェードイン(0.8秒)。転移元(消失)はtintのT4フラッシュのみ。 ----
+      else if (scriptActive && e.type === 'acrasiel' && bs === 'warp-in') {
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const total = ACRASIEL_WARP_TELEGRAPH_MS_VIS;
+        const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / total));
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        o.ellipse(tx, ty, ACRASIEL_SPEAR_RADIUS, ACRASIEL_SPEAR_RADIUS).fill({ color: 0xff2a2a, alpha: 0.05 + 0.18 * t + 0.06 * pulse });
+        o.ellipse(tx, ty, ACRASIEL_SPEAR_RADIUS, ACRASIEL_SPEAR_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
+      }
+      // ---- アクラシエル: 収縮→爆発=T2大円(即時)。「最大の反撃窓」(§6.28-19) ----
+      else if (scriptActive && e.type === 'acrasiel' && bs === 'burst') {
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        o.ellipse(cx, cy, ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).fill({ color: 0xff2a2a, alpha: 0.18 + 0.12 * pulse });
+        o.ellipse(cx, cy, ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
+      }
+      // ---- アクラシエル: 単眼レーザー(小技)=T6線。唯一「図形を出す」小技(§6.28-19「向きが無い」の例外) ----
+      else if (scriptActive && e.type === 'acrasiel' && bs === 'gaze-windup') {
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        let dirx = tx - cx, diry = ty - cy; const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
+        const ex = cx + dirx * MIMIR_LASER_VIS_RANGE, ey = cy + diry * MIMIR_LASER_VIS_RANGE;
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_GAZE_WINDUP_MS_VIS));
+        this.drawAngelBeamLine(o, cx, cy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, prog, now);
+      }
+      // ---- スリィエル: 単眼の凝視(小技)=T4のみ(図形なし・tintは上で設定済み) ----
+      // ---- 上記いずれにも該当しない状態(chase/volley/bolt-windup/counter-leap等)は図形なし ----
     }
     // M51: 城ボス「ジャイアント」新スクリプトの予告描画(PACING_PUZZLE.md §6.26)。既存部品のみ流用
     // (T1赤ライン+終点リング=突進 / T2赤円=踏み鳴らし・飛び掛かり / T3赤い角ばった四角=薙ぎ払い /
@@ -8592,8 +8918,63 @@ export class PixiScene {
       if (e.giantPhaseFlashUntil !== undefined && now < e.giantPhaseFlashUntil) {
         barColor = Math.sin(now / 60) > 0 ? 0xffffff : barColor;
       }
+    } else if ((ANGEL_NEW_SCRIPT_ACTIVE[e.type] ?? false) && e.bossPhase !== undefined) {
+      // §6.28(バッチM55/M58/M61-63): ジブリル/ラフィ/ウリ/スリィエル/アクラシエルも同じ合図(社長裁定
+      // 6.26-9 #4を継承)。Phase2以上=橙、0.3未満は常に赤(アクラシエルのPhase3閾値30%と一致するため
+      // 専用の第3色は不要=段階が上がるほど赤に近づく自然な見た目になる)。
+      barColor = pct < 0.3 ? STATUS_RED : (e.bossPhase >= 2 ? GIANT_PHASE2_BAR_COLOR : STATUS_GREEN);
+      if (e.bossPhaseFlashUntil !== undefined && now < e.bossPhaseFlashUntil) {
+        barColor = Math.sin(now / 60) > 0 ? 0xffffff : barColor;
+      }
     }
     g.rect(x, y, w * pct, h).fill({ color: barColor });
+  }
+
+  // §6.28共通(T3): 角ばった四角ゾーン(fx,fy)→(tx,ty)・半幅halfWidth。既存のトール/ミゲル/ジャイアント
+  // 薙ぎ払いと全く同じ意匠(poly fill+stroke+中心線)を6ボス分の新技へ再利用する汎用版。
+  // innerRadius>0の時は originX/Y を中心に内径の縁取り(安全圏の目安線)を追加で描く
+  // (§6.28-17ウリ「図形と判定は必ず一致させる」。塗りそのものの穴あきではなく縁取りで表現=実機確認項目)。
+  private drawAngelZoneCapsule(
+    o: Graphics, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
+    prog: number, now: number,
+    innerRadius = 0, originX = fx, originY = fy,
+  ) {
+    const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+    const ddx = tx - fx, ddy = ty - fy;
+    const ddl = Math.hypot(ddx, ddy) || 1;
+    const nx = -ddy / ddl, ny = ddx / ddl;
+    const ux = ddx / ddl, uy = ddy / ddl;
+    const zoneFill = (0.12 + 0.22 * prog) + 0.08 * pulse;
+    const pts = [
+      fx - ux * halfWidth + nx * halfWidth, fy - uy * halfWidth + ny * halfWidth,
+      tx + ux * halfWidth + nx * halfWidth, ty + uy * halfWidth + ny * halfWidth,
+      tx + ux * halfWidth - nx * halfWidth, ty + uy * halfWidth - ny * halfWidth,
+      fx - ux * halfWidth - nx * halfWidth, fy - uy * halfWidth - ny * halfWidth,
+    ];
+    o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill });
+    o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
+    o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' });
+    if (innerRadius > 0) {
+      // 安全圏の縁取り(青白=BOSS_RECOVER_TINTと同系色=「ここは殴れる/安全」の言語を流用)。
+      o.circle(originX, originY, innerRadius).stroke({ width: 2, color: BOSS_RECOVER_TINT, alpha: 0.55 + 0.3 * pulse });
+    }
+  }
+
+  // §6.28共通(T1): 赤ライン+終点リング(ジャイアント突進と同じ意匠)。ミゲル踏み込み/ウリ踏み込み突きで再利用。
+  private drawAngelDashLine(o: Graphics, fx: number, fy: number, tx: number, ty: number, now: number) {
+    const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+    const a = 0.45 + 0.4 * pulse;
+    o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 6, color: 0xff2a2a, alpha: a * 0.4, cap: 'round' });
+    o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2, color: 0xff5a5a, alpha: a, cap: 'round' });
+    o.circle(tx, ty, 9 + 3 * pulse).stroke({ width: 2, color: 0xff5a5a, alpha: a });
+  }
+
+  // §6.28共通(T6): 溜めで太くなる赤ライン(ミーミルのレーザーと同じ意匠)。スリィエル環の射出/
+  // アクラシエル単眼レーザーで再利用。prog=0→1で太さ/明るさが増す。
+  private drawAngelBeamLine(o: Graphics, fx: number, fy: number, ex: number, ey: number, halfWidth: number, prog: number, now: number) {
+    const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+    o.moveTo(fx, fy).lineTo(ex, ey).stroke({ width: 2 + (halfWidth - 2) * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse) });
+    o.moveTo(fx, fy).lineTo(ex, ey).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
   }
 
   private drawStunReticle(g: Graphics, cx: number, cy: number, size: number, now: number, color = 0xfacc15) {
@@ -11101,6 +11482,65 @@ export class PixiScene {
     );
   }
 
+  // PACING_PUZZLE.md §6.28-16(バッチM61): ウリの大薙ぎ/振り下ろし/踏み込み突き、実行時の描画。
+  // drawMiguelSlashと全く同じ仕組みをuri-swordで流用(掟W9=構え+実行の両方に武器絵を出す)。
+  private drawUriSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+    this.drawKatanaSlash(
+      this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE, URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+    );
+  }
+  private drawUriKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+    this.drawKatanaReady(
+      this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE, URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+      id, pivotX, pivotY, aimX, aimY, alpha
+    );
+  }
+
+  // §6.28-16(バッチM57): ラフィの薙ぎ(Phase2新規)実行時の描画。骨刃(rafi-blade)を「振る」用途で
+  // 流用(§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。
+  private drawRafiSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+    this.drawKatanaSlash(
+      this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE, RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+    );
+  }
+  private drawRafiKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+    this.drawKatanaReady(
+      this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE, RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
+      id, pivotX, pivotY, aimX, aimY, alpha
+    );
+  }
+
+  // §6.28-16 ①: ジブリルのランタン(jibril-lantern)を常に手元に「掲げたまま」表示する(振らない)。
+  // 構え(windup)/実行/硬直のすべてで消さない(掟W9)。単純な1枚Spriteなのでkatana系ヘルパは使わない。
+  private drawJibrilLantern(id: string, handX: number, handY: number, aimX: number, aimY: number) {
+    const tex = getTexture('jibril-lantern');
+    if (!tex) return;
+    let sp = this.jibrilLanternSprites.get(id);
+    if (!sp) { sp = new Sprite(tex); sp.anchor.set(0.5, 0.15); this.L.effectLayer.addChild(sp); this.jibrilLanternSprites.set(id, sp); }
+    sp.scale.set(JIBRIL_LANTERN_VIS_H / Math.max(1, tex.height));
+    sp.rotation = Math.atan2(aimY - handY, aimX - handX) * 0.15; // わずかに狙い方向へ傾ける程度(掲げたまま)
+    sp.position.set(handX, handY);
+    sp.tint = 0xffffff;
+    sp.alpha = 1;
+    sp.visible = true;
+  }
+
+  // §6.28-16: アクラシエルの結晶の槍(spear-windup中の構えプレビュー)。設置武器のため振らず、
+  // 本体前方に1本だけ「構え」として見せる(掟W9の窓口・最小実装=叩き台)。
+  private drawAcrasielSpearReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+    const tex = getTexture('acrasiel-spear');
+    if (!tex) return;
+    let sp = this.acrasielSpearReadySprites.get(id);
+    if (!sp) { sp = new Sprite(tex); sp.anchor.set(0.5, 0.9); this.L.effectLayer.addChild(sp); this.acrasielSpearReadySprites.set(id, sp); }
+    sp.scale.set(ACRASIEL_SPEAR_VIS_LEN / Math.max(1, tex.height));
+    sp.rotation = Math.atan2(aimY - pivotY, aimX - pivotX) + Math.PI / 2;
+    sp.position.set(pivotX, pivotY);
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
   private dogFetchPose(e: Extract<VisualEffect, { kind: 'dogFetch' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     const outRatio = (e.pickupAt - e.createdAt) / e.duration;
@@ -12039,6 +12479,13 @@ export class PixiScene {
     for (const o of this.effects.values()) o.destroy();
     for (const o of this.thorSlashFx.values()) o.destroy({ children: true });
     for (const o of this.miguelSlashFx.values()) o.destroy({ children: true });
+    for (const o of this.uriSlashFx.values()) o.destroy({ children: true });
+    for (const o of this.rafiSlashFx.values()) o.destroy({ children: true });
+    for (const o of this.jibrilLanternSprites.values()) o.destroy();
+    for (const o of this.acrasielSpearReadySprites.values()) o.destroy();
+    for (const o of this.surielRingSprites.values()) { o.ring1.destroy(); o.ring2.destroy(); }
+    for (const o of this.acrasielSpearPool.values()) o.destroy();
+    this.acrasielSpearGfx.destroy();
     // 影は shadowContainer + プール済みスプライトで管理(旧 shadowGfx は存在しない孤児参照だった)。
     // 以前はここで存在しない shadowGfx.destroy() を呼んで例外→以降の解放(playerFx等)が握り潰されていた。
     this.shadowContainer.destroy({ children: true });
