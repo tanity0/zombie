@@ -1330,6 +1330,11 @@ const DevTools: React.FC<{
         <button type="button" onClick={() => { unlockAllStages(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">全ステージ解放</button>
         <button type="button" onClick={() => { resetProgress(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">進行リセット</button>
       </div>
+      {/* ガチャだけ初手へ戻す(進行リセットはガチャ状態を消さないので別ボタン)。
+          「初戦の稼ぎで2回引ける」等の初回体験を実機で試すため(社長指示v0.25.2347)。 */}
+      <div className="mt-2 flex gap-2">
+        <button type="button" onClick={() => { useGameStore.getState().resetGachaProgress(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-fuchsia-400/10 text-fuchsia-50/85 active:bg-fuchsia-400/20">ガチャリセット(所持スキル・G・階段)</button>
+      </div>
     </div>
   );
 };

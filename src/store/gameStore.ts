@@ -2716,6 +2716,7 @@ interface GameState {
   gachaPitySinceSuper: number;                          // 直近superからのpull数(レア度ソフト天井・永続)
   gachaPullsTotal: number;                              // これまでに引いた累計回数(階段式価格の段・永続)
   grantSkill: (key: SkillKey) => void;                  // ガチャ当選で所持解禁(重複は無視)
+  resetGachaProgress: () => void;                       // 開発用: ガチャ状態(所持/Lv/被り/pity/累計/金)を初手へ
   grantSkillLevel: (key: SkillKey, level: number) => boolean; // 解禁＋Lv上書き(既存より高ければ)。上がれば true
   pullGacha: () => GachaPullResult | null;              // 強化訓練を1回引く(レア度pity→Lv抽選→付与/返金。逐次状態更新)
   goldBalance: number;                                  // 永続ゴールド残高(ガチャ通貨。in-run strap とは別)
@@ -8972,6 +8973,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     const next = [...owned, key];
     saveStringArray(OWNED_SKILLS_KEY, next);
     set({ ownedSkills: next });
+  },
+  // 開発用: ガチャ関連の永続状態だけを初手へ戻す(社長指示v0.25.2347)。
+  // **`resetProgress()`(進行リセット)はガチャ状態を消さない**ので、「初戦の稼ぎ20gで2回引ける」等の
+  // **初回体験を実機で試す手段が無かった**。ステージ進行とは独立した別ボタンにしてある
+  // (ガチャだけ見たい時にステージ解放まで巻き戻さない)。
+  // 消すもの = 所持スキル / そのLv / 被り回数 / pity / **階段の累計pull数** / ゴールド残高 /
+  //            装備中スキル(所持が消えるので一緒に外す)。
+  resetGachaProgress: () => {
+    for (const k of [OWNED_SKILLS_KEY, OWNED_SKILL_LEVELS_KEY, GACHA_DUPES_KEY, GACHA_PITY_KEY,
+      GACHA_PULLS_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY]) {
+      try { localStorage.removeItem(k); } catch { /* ignore */ }
+    }
+    set({
+      ownedSkills: [], ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
+      gachaPullsTotal: 0, goldBalance: 0, pendingSkills: [],
+    });
   },
   // ガチャ: 解禁＋Lv反映。所持していなければ追加、Lv は max(既存, rolled) を最大Lvでクランプ。
   // 既存Lv以上に上がった(=新規 or レベルアップ)場合のみ true(=返金しない)。

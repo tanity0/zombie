@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2347',
+    items: [
+      '開発メニューに「ガチャリセット」を追加しました（所持スキル・ゴールド・値段の段を初手に戻します）。10回訓練に割引は付けません（単発10回とまったく同額です）。',
+    ],
+  },
+  {
     version: '0.25.2346',
     items: [
       '縦持ちの地平線のかすみ方を、端末の大きさによらず従来どおりに揃えました。画面の小さい端末（iPhone SEなど）だけ地平線が濃く見えていたのを直しています。',
