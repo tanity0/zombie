@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2380',
+    items: [
+      'ゲーム内容の変更はありません（実機テストの手順書を追加しただけです）。',
+    ],
+  },
+  {
     version: '0.25.2379',
     items: [
       '物語の最終決戦（グレン／未確認変異体）は、体力が大きく減ると新しい形態になり、'
