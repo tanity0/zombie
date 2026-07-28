@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2364',
+    items: [
+      'ゲーム内容の変更はありません（残りのボスを城ボスと同じ「予告と反撃の隙がある戦い方」へ作り直すための設計文書のみ）。',
+    ],
+  },
+  {
     version: '0.25.2363',
     items: [
       'ゲーム内容の変更はありません（開発用プレイヤーAI「ボット」の強化。実際のプレイには影響しません）。',
