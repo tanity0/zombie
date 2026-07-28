@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2352',
+    items: [
+      'ゲーム内容の変更はありません（寄り道スポット「警察署」「武器庫」の絵を追加した準備のみ。実際に出現するのは次の更新からです）。',
+    ],
+  },
+  {
     version: '0.25.2351',
     items: [
       'ゲーム内容の変更はありません（寄り道スポットを「4方角に1つずつ」に組み直した設計の記録のみ）。',
