@@ -27,12 +27,17 @@ describe('jormungandMoveEligible — 受け入れ条件①(Phase2到達後): 各
     }
   });
 
-  it('★既知のギャップ(§6.28-14に記録): phase1は近帯(0〜320)に技が無い。'
-    + 'coilはPhase2限定のため、密着した相手には接触ダメージしか出せない期間がある(設計書§6.28-7の明記どおり)。',
+  it('【設計裁定で解消】phase1でも近帯(0〜320)にcoilがある=ハメ間合いが無い。'
+    + 'うねりは密着帯のハメを塞ぐために足された技なのでPhase1から使える(§6.28-7 #4の自己矛盾を解消)。',
   () => {
-    expect(jormungandMoveEligible('coil', 100, 1)).toBe(false);
-    const ALL_MOVES: JormungandMove[] = ['radial', 'burst', 'dash', 'coil'];
-    expect(ALL_MOVES.some(m => jormungandMoveEligible(m, 100, 1))).toBe(false);
+    expect(jormungandMoveEligible('coil', 100, 1)).toBe(true);
+    expect(ALL_MOVES.some(m => jormungandMoveEligible(m, 100, 1))).toBe(true);
+  });
+
+  it('phase1でも全帯に技がある(密着/近/中/遠)', () => {
+    for (const d of bandSamples) {
+      expect(ALL_MOVES.some(m => jormungandMoveEligible(m, d, 1))).toBe(true);
+    }
   });
 
   it('中帯(320〜620)はphase1から扇/螺旋が届く', () => {
@@ -40,10 +45,11 @@ describe('jormungandMoveEligible — 受け入れ条件①(Phase2到達後): 各
     expect(jormungandMoveEligible('radial', 470, 1)).toBe(true);
   });
 
-  it('coilはphase2かつ近帯のみ', () => {
+  it('coilはフェーズを問わず近帯のみ(Phase2限定ではない)', () => {
     expect(jormungandMoveEligible('coil', 320, 2)).toBe(true);
     expect(jormungandMoveEligible('coil', 321, 2)).toBe(false);
-    expect(jormungandMoveEligible('coil', 100, 1)).toBe(false);
+    expect(jormungandMoveEligible('coil', 100, 1)).toBe(true);
+    expect(jormungandMoveEligible('coil', 321, 1)).toBe(false);
   });
 
   it('FAR_MAXの外は誰も適格でない', () => {
@@ -53,8 +59,8 @@ describe('jormungandMoveEligible — 受け入れ条件①(Phase2到達後): 各
 });
 
 describe('pickJormungandMove', () => {
-  it('近帯・phase1では何も選ばれない(既知のギャップ)', () => {
-    expect(pickJormungandMove(100, 1, allReady())).toBeNull();
+  it('近帯・phase1ではcoilが選ばれる(readyな限り)', () => {
+    expect(pickJormungandMove(100, 1, allReady())).toBe('coil');
   });
 
   it('遠帯ではdash/radialから等確率で選ばれる(readyな限り)', () => {

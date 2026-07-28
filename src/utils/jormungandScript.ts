@@ -9,7 +9,7 @@ export type JormungandMove = 'radial' | 'burst' | 'dash' | 'coil';
 
 // 間合いの帯(px・中心間距離)。§6.28-7の表から確定。
 export const JORM_RANGE = {
-  NEAR_MAX: 320,  // 近(うねり専用・Phase2のみ)
+  NEAR_MAX: 320,  // 近(うねり専用)
   MID_MAX: 620,   // 中(3-way扇まで届く)
   FAR_MAX: 1000,  // 遠(突進/螺旋の上限。giant系と同じ慣例)
 } as const;
@@ -18,9 +18,12 @@ export const JORM_PHASE_HP_THRESHOLD = 0.6;
 export const jormungandPhaseForHealth = (healthFrac: number): 1 | 2 => phaseForHealth(healthFrac, [JORM_PHASE_HP_THRESHOLD]) as 1 | 2;
 export const JORM_COMBO_CHANCE = 0.5;
 
-export const jormungandMoveEligible = (move: JormungandMove, distance: number, phase: 1 | 2): boolean => {
+// 【設計裁定・§6.28-7 #4の自己矛盾の解消】うねりは「近接帯のハメを塞ぐ」ために足された技なので、
+// Phase1から使える(密着すると弾幕は当たらず接触ダメージだけになる欠陥はPhase1にも存在するため)。
+// Phase2で増えるのは技の種類ではなく連携(pickJormungandCombo)だけ=帯そのものはフェーズ非依存。
+export const jormungandMoveEligible = (move: JormungandMove, distance: number, _phase: 1 | 2): boolean => {
   switch (move) {
-    case 'coil':   return phase === 2 && distance <= JORM_RANGE.NEAR_MAX;                          // 近(Phase2限定)
+    case 'coil':   return distance <= JORM_RANGE.NEAR_MAX;                                          // 近(全フェーズ)
     case 'burst':  return distance > JORM_RANGE.NEAR_MAX && distance <= JORM_RANGE.MID_MAX;         // 中
     case 'radial': return distance > JORM_RANGE.NEAR_MAX && distance <= JORM_RANGE.FAR_MAX;         // 中〜遠
     case 'dash':   return distance > 420 && distance <= JORM_RANGE.FAR_MAX;                          // 遠(>420px)

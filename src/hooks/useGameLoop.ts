@@ -5201,7 +5201,54 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               else if (move === 'roll') { iPatch.bossState = 'idol-roll-windup'; iPatch.bossStateUntil = newGameTime + IDOL_ROLL_WINDUP_MS; }
               else { iPatch.bossState = 'idol-punch-windup'; iPatch.bossStateUntil = newGameTime + IDOL_PUNCH_WINDUP_MS; }
             };
-            if (st === 'chase') {
+            // 【設計裁定】W7(§6.28-3)は全ボス共通の掟=idolも他ボスと同じ作法でカウンターを開放する
+            // (出現経路が未決なのはidolの"場所"の話であって、"作法"は揃える)。windup中/硬直(recover)中の
+            // 接触=カウンター可・active中(idol-roll等)はその技自身の判定に委ねる(=対象外)。
+            // 既存の `?bosscounter=0`(BOSS_COUNTER_ENABLED)フォールバックの傘に入れ、idol専用フラグは作らない。
+            const idolCounterHit = (hitX: number, hitY: number) => {
+              const cp = useGameStore.getState().player;
+              const pnow = Date.now();
+              addMeleeFinishCombo(1);
+              playSfx('counter');
+              useGameStore.getState().spawnGlow(hitX, hitY, 95, 'rgba(56,189,248,', 360);
+              useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+              useGameStore.getState().markMeleeSwingFx();
+              spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+              spawnBurst(hitX, hitY, '#38bdf8', 14);
+              useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+              useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
+              const counterBase = getActiveGun(cp)?.damage ?? 12;
+              const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
+              const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
+              damageEnemy(idol.id, dmg, false, true);
+              spawnDamageNumber(icx, idol.y, dmg, true);
+              playSfx('headshot');
+              spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
+              spawnBurst(hitX, hitY, '#fde047', 10);
+              useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
+              iPatch.bossState = 'chase';
+              iPatch.bossNextActionAt = newGameTime + IDOL_ACTION_MIN_MS + Math.random() * (IDOL_ACTION_MAX_MS - IDOL_ACTION_MIN_MS);
+            };
+            const IDOL_COUNTER_WINDUPS = ['idol-aim-windup', 'idol-fan-windup', 'idol-roll-windup', 'idol-punch-windup'];
+            const IDOL_COUNTER_RECOVERS = ['idol-aim-recover', 'idol-fan-recover', 'idol-roll-recover', 'idol-punch-recover'];
+            const idolCounterableNow = BOSS_COUNTER_ENABLED && isCounterablePhase(st, IDOL_COUNTER_WINDUPS, IDOL_COUNTER_RECOVERS);
+            let idolCountered = false;
+            if (idolCounterableNow) {
+              const cp = useGameStore.getState().player;
+              const overlap = rectsOverlap(
+                { x: idol.x, y: idol.y, width: idol.width, height: idol.height },
+                { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
+              );
+              const counterActive = Date.now() <= cp.counterWindowEnd;
+              if (overlap && counterActive) {
+                idolCounterHit(icx, icy);
+                idolCountered = true;
+              }
+            }
+            if (idolCountered) {
+              // カウンター成立: idolCounterHitが既にiPatch.bossState='chase'まで設定済みなので、
+              // 通常の状態遷移(下のif/elseチェーン)はこのフレームだけ丸ごとスキップする。
+            } else if (st === 'chase') {
               // §6.28-20の主題: 常にプレイヤーから離れようとする(kiting・全ボスの逆)。
               // 移動テンポは他の裏ボスと同じ bossMoveDt(= deltaTime × MOVE_SPEED_MULT・社長指示の踏襲)。
               const idolMoveDt = deltaTime * MOVE_SPEED_MULT;
