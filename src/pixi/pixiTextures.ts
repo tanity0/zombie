@@ -219,6 +219,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/slash-streak-4', scaleMode: 'nearest' },
       { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)
       { name: 'castle', scaleMode: 'nearest' },
+      { name: 'hospital', scaleMode: 'nearest' }, // 通常ステージの廃病院(ワクチン入手・社長指示v0.25.2331)
       { name: 'magic-circle' },        // 既定(linear)のまま
       { name: 'whip-hurricane' },      // 既定のまま
       { name: 'whip' },                // 既定のまま

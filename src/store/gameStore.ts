@@ -87,6 +87,7 @@ import {
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
+import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
 import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled } from '../world/torches';
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
@@ -2778,6 +2779,13 @@ interface GameState {
   bossChasing: boolean;                                 // 裏ボスが「追いかけてきている」状態(=他敵が逃げる/イベント抑制。コントローラが毎フレ更新)
   bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number } | null; // 討伐後のフェードアウト演出(描画のみが参照)
   hiddenBossDefeated: boolean;                          // 裏ボスを討伐済みか(方角矢印の表示打ち切り等に使用)
+  // 病院(社長指示v0.25.2331): 通常ステージに1つ。未確認汚染の中間・裏ボスの反対方角。
+  // 拠点を解放するとその方角の矢印が出る(裏ボスと同じ POI 仕組み)。3秒とどまるとワクチンを入手。
+  hospital: { x: number; y: number } | null;            // この出撃の病院の位置(null=この出撃には無い)
+  hospitalDwellMs: number;                              // サークル内の連続滞在時間(ms)。外れると0へ戻る
+  hospitalTaken: boolean;                               // ワクチン入手済み(以後サークルも矢印も出さない)
+  hospitalTakenAt: number;                              // 入手した gameTime(描画のフェードアウト用)
+  updateHospital: (deltaTime: number) => void;          // 毎フレーム: サークル内滞在を計測し3秒でワクチン付与
   kogarasuUnlockedThisRun: boolean;                     // このランでトール初回討伐=小烏丸を永続解禁したか(リザルトの解禁ポップアップ用)
   debugLoopError: string;                               // 診断: ゲームループ本体で投げられた例外の要約(?debug=1 表示)
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
@@ -3066,6 +3074,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   bossChasing: false,
   bossCorpse: null,
   hiddenBossDefeated: false,
+  hospital: null,
+  hospitalDwellMs: 0,
+  hospitalTaken: false,
+  hospitalTakenAt: 0,
   kogarasuUnlockedThisRun: false,
   debugLoopError: '',
   startWithTestStraps: false,
@@ -3275,9 +3287,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         }, castleEvent);
         // 散布オブジェクト(廃都の瓦礫/雪原の塔・バス・テント等)を遮蔽物として解決(プレイヤーのみ)。
         // カタログの無いステージ(forest等)は resolveCityPropCollision が即 return(no-op)。
-        const cityResolved = !labTheme
+        const cityPropResolved = !labTheme
           ? resolveCityPropCollision(state.farBackdrop, { x: castleResolved.x, y: castleResolved.y, width: player.width, height: player.height })
           : castleResolved;
+        // 病院(通常ステージに1つ)の土台も遮蔽物。入手後(消滅後)は素通り。
+        const cityResolved = resolveHospitalCollision(
+          { x: cityPropResolved.x, y: cityPropResolved.y, width: player.width, height: player.height },
+          state.hospital, state.hospitalTaken,
+        );
         // 壁オブジェクト(研究所スキン・区画生成)を遮蔽物として解決。近傍区画のみ問い合わせ。
         let wallResolved = cityResolved;
         if (labTheme) {
@@ -6929,7 +6946,12 @@ export const useGameStore = create<GameState>((set, get) => ({
               ? resolveAabb({ x: castleR.x, y: castleR.y, width: enemy.width, height: enemy.height }, labRects)
               : castleR;
             // 街/雪原プロップ(バス/塔/トラック等)は敵にも当たり判定(プレイヤーと同じ)。森等カタログ無しは即return=no-op。
-            pos = resolveCityPropCollision(state.farBackdrop, { x: wallR.x, y: wallR.y, width: enemy.width, height: enemy.height });
+            const propR = resolveCityPropCollision(state.farBackdrop, { x: wallR.x, y: wallR.y, width: enemy.width, height: enemy.height });
+            // 病院の土台は敵にも当たり判定(プレイヤーと同じ=すり抜け防止)。
+            pos = resolveHospitalCollision(
+              { x: propR.x, y: propR.y, width: enemy.width, height: enemy.height },
+              state.hospital, state.hospitalTaken,
+            );
           }
           // 帰還サークルには敵を入れない: 中心から radius+敵サイズ分の外へ押し出す(セーフゾーン)。
           const rc = state.returnCircle;
@@ -9188,6 +9210,29 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  // 病院(社長指示v0.25.2331): サークル内滞在を計測。3秒でワクチン(死亡時に一度だけ復活)を1つ入手し、
+  // 建物はフェードアウトして消える(そのランでは再取得できない)。判定の中身は world/hospital.ts の純関数。
+  updateHospital: (deltaTime) => {
+    set(state => {
+      const pos = state.hospital;
+      if (!pos || state.hospitalTaken || state.gameWon) return {};
+      const inside = isInHospitalCircle(state.player, pos);
+      const { dwellMs, done } = tickHospitalDwell(state.hospitalDwellMs, inside, deltaTime * 1000);
+      if (done) {
+        return {
+          hospitalDwellMs: dwellMs,
+          hospitalTaken: true,
+          hospitalTakenAt: state.gameTime,
+          player: { ...state.player, vaccineRevives: state.player.vaccineRevives + 1 },
+          eventBannerText: 'ワクチンを入手',
+          eventBannerUntil: state.gameTime + 2000,
+        };
+      }
+      if (dwellMs === state.hospitalDwellMs) return {}; // 円外で0のまま=書き込み省略(毎フレのsetを避ける)
+      return { hospitalDwellMs: dwellMs };
+    });
+  },
+
   // 拠点候補地(仕様10): サークル内滞在を計測。10秒で制圧→武器商人がその地点へ移動し、元の商人地点は候補に戻る。
   updateSuppression: (deltaTime) => {
     // チュートリアル: 随行NPC(escorts流用)は拠点前進/制圧をしない(移動は通常 useGameLoop の
@@ -10212,6 +10257,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossChasing: false,
         bossCorpse: null,
         hiddenBossDefeated: false,
+        // 病院は通常ステージ(屋外・森スキン・通路/ダンステストでない)にだけ立つ。裏ボスと同じ条件系。
+        hospital: (!state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode)
+          ? hospitalSpot(hiddenBoss)
+          : null,
+        hospitalDwellMs: 0,
+        hospitalTaken: false,
+        hospitalTakenAt: 0,
         kogarasuUnlockedThisRun: false,
         labDoors: runDoors,
         labButtons: runButtons,

@@ -14,7 +14,7 @@ export interface Poi {
   id: string;
   x: number;
   y: number;
-  kind: 'boss' | 'cave';
+  kind: 'boss' | 'cave' | 'hospital';
 }
 
 // 拠点の数=方角の数(createBaseSites の BASE_SITE_COUNT と一致)。8→4(東西南北・社長指示)。
@@ -56,12 +56,28 @@ const STAGE_CAVES: Poi[] = [
   // 例) { id: 'cave-1', x: Math.cos(Math.PI/4)*6000, y: Math.sin(Math.PI/4)*6000, kind: 'cave' },
 ];
 
-// この出撃のPOI一覧(裏ボスの巣 + 洞窟)。原点付近(無効座標)は除外。
-export const getRunPois = (hiddenBoss: EnemyType | null): Poi[] => {
+// この出撃のPOI一覧(裏ボスの巣 + 洞窟 + 病院)。原点付近(無効座標)は除外。
+// 病院(社長指示v0.25.2331)は未確認汚染の中間・裏ボスの反対方角。座標の定義は world/hospital.ts 側。
+// `hospitalVisible` は「この出撃に病院が立っていて、まだ入手していない」時だけ true にする
+// (既定 false=呼び出し側が明示しない限り出さない。裏ボスを討伐後に出さないのと同じ扱い)。
+export const getRunPois = (hiddenBoss: EnemyType | null, hospitalVisible = false): Poi[] => {
   const out: Poi[] = [...STAGE_CAVES];
   const lair = bossLairPos(hiddenBoss);
   if (lair) out.push({ id: `lair-${hiddenBoss}`, x: lair.x, y: lair.y, kind: 'boss' });
+  if (hospitalVisible) {
+    const h = hospitalPosForPois(hiddenBoss);
+    out.push({ id: 'hospital', x: h.x, y: h.y, kind: 'hospital' });
+  }
   return out;
+};
+
+// 病院の座標(hospital.ts と同じ式)。循環importを避けるためここに小さく持つ
+// (hospital.ts は bossLairPos を使うので、あちらから import すると循環する)。
+const HOSPITAL_POI_DIST = 6250; // = (5000 + 7500) / 2。hospital.ts の HOSPITAL_DIST と一致させること。
+const hospitalPosForPois = (hiddenBoss: EnemyType | null): { x: number; y: number } => {
+  const lair = bossLairPos(hiddenBoss);
+  const angle = lair ? Math.atan2(lair.y, lair.x) + Math.PI : 0;
+  return { x: Math.cos(angle) * HOSPITAL_POI_DIST, y: Math.sin(angle) * HOSPITAL_POI_DIST };
 };
 
 // POI が「解放済み」か = その方角を担当する拠点が captured か。

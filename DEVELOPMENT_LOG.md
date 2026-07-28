@@ -1,5 +1,51 @@
 # Development Log
 
+## v0.25.2331 — 廃病院オブジェクト(近づく→3秒滞在でワクチン入手)【2026-07-28 09:42 JST】
+- 指示(社長): 「通常ステージに出現する病院オブジェクト。近づくとサークル。3秒待機で既存アイテムの
+  ワクチン を入手可能(入手するとフェードアウトで消える) 出現位置は、どこかの方角の未確認地帯。
+  方角マークでわかる あ、拠点開放でマーク出現(裏ボスと同じ)に変更。未確認のほぼ中間らへんに。」
+- **仕様(実装したもの)**
+  - 位置: 未確認汚染エリア(`AREA_THRESHOLDS[2]=5000`〜`[3]=7500`)の中間 **6250**。方角は
+    **裏ボスの巣の真反対**(社長指示は「どこかの方角」=矢印が裏ボスと重ならない向きを選んだ)。
+    裏ボスの居ないステージは東(0rad)。
+  - 出るステージ: **通常ステージのみ**(屋外・森スキン・通路/ダンステスト以外)。裏ボスと同じ出現条件系。
+  - 方角マーク: **既存のPOI仕組みに相乗り**(`pois.ts`)。その方角の拠点を解放すると画面端に
+    **緑の十字**アイコンで出る。入手すると消える(裏ボス討伐後に消えるのと同じ扱い)。
+  - サークル: 半径95(帰還サークルと同値)。中心=建物の足元。**340px以内に近づくとフェードイン**。
+    **3秒とどまるとワクチン+1**(`player.vaccineRevives`=死亡時に一度だけ復活する既存アイテム)。
+    途中で出たら0へ戻る(帰還/制圧と同じ流儀)。入手時に「ワクチンを入手」バナー+SE(`weapon-pickup`)。
+  - 入手後: 建物ごと **900msでフェードアウト**して消え、当たり判定も消える(そのランでは再取得不可)。
+  - 当たり判定: 足元基準 260×80(`footRect`・AABB)。**プレイヤーと敵の両方**に効く(すり抜け防止)。
+- **層の分け方(CLAUDE.md順守)**: 座標/矩形/サークル判定/滞在の進行は全部 `src/world/hospital.ts` の
+  **純関数**(PixiJS非依存)。store は滞在の進行と付与だけ、pixiScene は**描くだけ**。
+- **変更ファイル**
+  - `public/sprites/hospital.png`(新規・440×356・等角の廃病院)
+  - `src/world/hospital.ts`(新規): 定数 + `hospitalPos` / `hospitalRect` / `resolveHospitalCollision` /
+    `isInHospitalCircle` / `tickHospitalDwell`
+  - `src/world/hospital.test.ts`(新規・17ケース)
+  - `src/world/pois.ts`: `kind` に `'hospital'` を追加。`getRunPois(hiddenBoss, hospitalVisible=false)`
+    (**既定 false** = 呼び出し側が明示しない限り出さない → 既存テストと挙動は不変)。
+    循環import回避のため病院座標の式だけローカルに複製(定数一致はテストで固定)。
+  - `src/store/gameStore.ts`: state `hospital` / `hospitalDwellMs` / `hospitalTaken` / `hospitalTakenAt`、
+    action `updateHospital`、resetGame での配置、プレイヤー/敵の移動チェーンへ当たり判定を追加。
+  - `src/hooks/useGameLoop.ts`: 毎フレーム `updateHospital` を呼び、`hospitalTaken` の立ち上がりでSE
+    (store は `playSfx` を import できないため。bossCorpse と同じ流儀)。
+  - `src/pixi/pixiScene.ts`: `syncHospital`(スプライト+サークル+滞在アーク)、足影、POI矢印の十字アイコン、
+    `syncArrows` の `kind` 型を拡張。
+  - `src/pixi/pixiTextures.ts`: `hospital` テクスチャ登録。
+- **負荷スコア: 1/10**(描画)。同時に生きるのは**スプライト1枚 + Graphics 1つ**だけで、画面外・
+  未出現ステージは即 return。**強glowは足していない**(CLAUDE.mdの実測ランクで唯一の主犯は強glow)。
+  サークルは近接時(340px以内)しか描かない。当たり判定も1個ぶんの距離チェックで枝刈り。
+- **検証**: `npm run typecheck` PASS / `npm run lint` エラー0(warning 7=既存) /
+  `npx vitest run src/world/hospital.test.ts src/world/pois.test.ts` 22 passed。
+  実機確認(サークルの出る距離・建物の大きさ・矢印の見え方)は社長。
+- **自己点検**: 既存の仕様値(ワクチンの効果・帰還サークル・裏ボスPOI・エリア閾値)は一切変更していない。
+  追加のみ。憲法第4条(初心者ゾーン)は距離6250=未確認汚染のため非抵触、第5条(緩を荒らさない)も
+  敵の湧き/密度に触れていないため非抵触。
+- **次への申し送り**: (a) 建物の見た目サイズ(`HOSPITAL_DISPLAY_H=300`)とサークルの出る距離
+  (`HOSPITAL_CIRCLE_REVEAL_DIST=340`)は叩き台=実機で要調整。(b) 病院の土台に敵が湧いた場合の
+  押し出しは未対応(湧き位置の抽選には土台を渡していない)。実機で詰まりが出たら対応する。
+
 ## v0.25.2330 — クリティカルの手本動画を実機収録へ差し替え(社長提供)【2026-07-28 09:27 JST】
 - 指示(社長): 「クリティカルの説明動画差し替え」+ 実機収録(1290×2796 / 60fps / 5.26秒)。
 - **背景**: `m0-crit` だけ手本が旧 `action-melee.mp4`(ヘッドレス収録・森)の**流用**で、

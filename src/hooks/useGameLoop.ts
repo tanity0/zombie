@@ -2704,6 +2704,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // 病院(社長指示v0.25.2331): サークル内に3秒とどまるとワクチンを入手。入手した瞬間だけSEを鳴らす
+        // (gameStore は playSfx を import できないので、taken の立ち上がりをここで監視する=bossCorpse と同じ流儀)。
+        {
+          const hosBefore = useGameStore.getState().hospitalTaken;
+          useGameStore.getState().updateHospital(deltaTime);
+          if (!hosBefore && useGameStore.getState().hospitalTaken) playSfx('weapon-pickup');
+        }
+
         // §5.21 M20追補(v0.25.1534): クリア(gameWon=帰還完了/ゴール)or 撤退(gameReturned=商人「帰還」の
         // 任意撤収)のいずれかが確定したら、進捗(自己最深/ランク到達/踏破フラグ/ゲート恒久解除)を
         // 一括でlocalStorageへコミットする(1回のみ・runEndCommittedRefでガード)。

@@ -39,6 +39,10 @@ const ZOOM_OVERSCAN = 1 / CONTEXT_ZOOM_MIN;
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss } from '../utils/enemyUtils';
 import { getRunPois, isPoiRevealed, poiSectorIndex } from '../world/pois';
+import {
+  HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
+  HOSPITAL_FADE_MS, HOSPITAL_DISPLAY_H,
+} from '../world/hospital';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
@@ -1543,6 +1547,9 @@ export class PixiScene {
   private returnGfx = new Graphics(); // 帰還サークル(地面・world座標。滞在で外周が満ちる)
   private static enemyDrawErrLogged = false; // drawEnemy 例外ログは初回だけ(1体の描画失敗で全体が固まらないよう保護)
   private baseSitesGfx = new Graphics(); // 拠点候補地サークル(地面・world座標。滞在で外周が満ちる)
+  private hospitalSprite = new Sprite(); // 廃病院の本体(足元アンカー・actorLayer で y-sort)
+  private hospitalGfx = new Graphics(); // 病院サークル(地面・world座標。滞在で外周が満ちる)
+  private hospitalShadow: { x: number; y: number; w: number; alpha: number } | null = null;
   private hunterVisionGfx = new Graphics(); // ハンターの視界(索敵)範囲=薄い紫サークル(地面・world座標)
   private bossCorpseSprite = new Sprite(); // 裏ボス討伐時のフェードアウト演出(頭基準・world座標。store.bossCorpse を参照)
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
@@ -2241,6 +2248,7 @@ export class PixiScene {
       this.arenaGfx, // 囲い系イベントの柵リング(地面・アクターの下・world座標)
       this.returnGfx, // 帰還サークル(地面・world座標)
       this.baseSitesGfx, // 拠点候補地サークル(地面・world座標)
+      this.hospitalGfx, // 病院サークル(地面・world座標)
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
       this.pumpkinTelegraph,
       this.playerGroundPool,
@@ -2254,6 +2262,10 @@ export class PixiScene {
     this.arenaGfx.blendMode = 'add'; // 半透明の光る柵(加算で発光感)
     this.returnGfx.blendMode = 'add'; // 帰還サークルも加算で発光
     this.baseSitesGfx.blendMode = 'add'; // 拠点候補地サークルも加算で発光
+    this.hospitalGfx.blendMode = 'add'; // 病院サークルも加算で発光
+    this.hospitalSprite.anchor.set(0.5, 1); // 足元アンカー(obstacles.ts の規約=絵の下端が当たり判定の下端)
+    this.hospitalSprite.visible = false;
+    this.L.actorLayer.addChild(this.hospitalSprite);
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     this.L.effectLayer.addChild(this.marksmanMarkGfx);
@@ -4225,6 +4237,7 @@ export class PixiScene {
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
     this.syncReturnCircle(s.returnCircle, now);
+    this.syncHospital(now); // 廃病院(通常ステージのみ。無いステージでは即 return=no-op)
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
@@ -4267,7 +4280,7 @@ export class PixiScene {
     // 出現/解放判定は固定の巣(セクター)で行い、矢印の指す先は「実際に出ている裏ボスの現在地」にする
     // (近接スポーンや追跡で巣からずれても本体を指す)。
     const liveHiddenBoss = s.enemies.find(e => isHiddenBoss(e.type));
-    const revealedPois = getRunPois(s.hiddenBoss)
+    const revealedPois = getRunPois(s.hiddenBoss, !!s.hospital && !s.hospitalTaken)
       .filter(p => !(p.kind === 'boss' && s.hiddenBossDefeated))
       .filter(p => isPoiRevealed(p, s.baseSites))
       .map(p => (p.kind === 'boss' && liveHiddenBoss)
@@ -6643,6 +6656,11 @@ export class PixiScene {
       const c = this.castleShadow;
       this.placeShadowSprite('castle', c.x, c.y, c.w, c.alpha, seen);
     }
+    // 廃病院(可視時のみ syncHospital がリクエスト)。
+    if (this.hospitalShadow) {
+      const h = this.hospitalShadow;
+      this.placeShadowSprite('hospital', h.x, h.y, h.w, h.alpha, seen);
+    }
     // 護衛軍人NPC(屋外のみ・他アクターと同じ足影)。スプライトは anchor(0.5,1) で esc.x/esc.y が足元。
     // 影幅=スプライト実幅×0.55(他アクターと同基準)。地平線で透明化(空に浮かない描画と整合)。
     // 登場演出中は兵士本体と同じフェードを影にも掛ける(ヘリ飛来中に影だけ先に出るのを防ぐ)。
@@ -8866,6 +8884,79 @@ export class PixiScene {
       const rr = rc.radius + 5;
       g.moveTo(cx + Math.cos(start) * rr, cy + Math.sin(start) * rr)
         .arc(cx, cy, rr, start, start + Math.PI * 2 * frac)
+        .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
+    }
+  }
+
+  // 廃病院(社長指示v0.25.2331): 通常ステージに1つ立つ建物。近づくとサークルが出て、3秒とどまると
+  // ワクチンを入手し、建物ごとフェードアウトして消える。**描くだけ**(滞在判定/付与は store 側)。
+  // 負荷 1/10: スプライト1枚 + サークル用 Graphics 1つ(近接時のみ描画)。強glowは足さない。
+  private syncHospital(now: number) {
+    const s = useGameStore.getState();
+    const pos = s.hospital;
+    const g = this.hospitalGfx;
+    g.clear();
+    if (!pos || s.indoorMode) {
+      this.hospitalSprite.visible = false;
+      this.hospitalShadow = null;
+      return;
+    }
+    // 入手後はフェードアウト→消滅(そのランでは再取得できない)。
+    const fade = s.hospitalTaken
+      ? 1 - Math.max(0, Math.min(1, (s.gameTime - s.hospitalTakenAt) / HOSPITAL_FADE_MS))
+      : 1;
+    if (fade <= 0) {
+      this.hospitalSprite.visible = false;
+      this.hospitalShadow = null;
+      return;
+    }
+    const footY = pos.y;
+    const tex = getTexture('hospital');
+    const horizonAlpha = this.horizonActorAlpha(footY);
+    const onScreen = this.distanceOutsideViewport(pos.x, footY, HOSPITAL_DISPLAY_H) <= 0;
+    if (!tex || horizonAlpha <= 0 || !onScreen) {
+      this.hospitalSprite.visible = false;
+      this.hospitalShadow = null;
+      return;
+    }
+
+    const d = this.depthScale(footY);
+    const targetH = HOSPITAL_DISPLAY_H * d;
+    const sc = targetH / tex.height;
+    this.hospitalSprite.texture = tex;
+    this.hospitalSprite.scale.set(sc);
+    this.hospitalSprite.position.set(Math.round(pos.x), Math.round(footY));
+    this.hospitalSprite.zIndex = footY; // 足元Yでアクター/敵と y-sort(裏に回ると隠れる)
+    this.hospitalSprite.tint = this.envTintNow();
+    this.hospitalSprite.visible = true;
+    // 裏に回り込んだら透ける(木/城/プロップと同じ規格)。入手後のフェードを最後に掛ける。
+    this.applyObstacleAlpha(this.hospitalSprite, footY);
+    this.hospitalSprite.alpha *= fade;
+    this.hospitalShadow = {
+      x: pos.x, y: footY,
+      w: Math.min(180 * d, tex.width * sc * 0.42),
+      alpha: horizonAlpha * 0.8 * fade,
+    };
+
+    // サークルは「近づいたら」出す(社長指示)。距離でフェードイン=遠くから見えて煩くならない。
+    if (s.hospitalTaken) return;
+    const p = s.player;
+    const dist = Math.hypot(p.x + p.width / 2 - pos.x, p.y + p.height / 2 - footY);
+    const near = Math.max(0, Math.min(1, (HOSPITAL_CIRCLE_REVEAL_DIST - dist) / 120));
+    if (near <= 0) return;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 240);
+    const a = (0.34 + 0.2 * pulse) * near;
+    const color = 0x86efac; // 医療=緑(帰還サークルと同じ「安全」の色)
+    g.circle(pos.x, footY, HOSPITAL_CIRCLE_RADIUS - 4).fill({ color, alpha: (0.06 + 0.05 * pulse) * near });
+    g.circle(pos.x, footY, HOSPITAL_CIRCLE_RADIUS).stroke({ width: 6, color, alpha: a * 0.6 });
+    g.circle(pos.x, footY, HOSPITAL_CIRCLE_RADIUS - 3).stroke({ width: 2, color, alpha: a });
+    // 滞在進捗の外周円弧(帰還サークルと同じ読み方)。arc 前に moveTo して地面を横切る線を防ぐ。
+    const frac = Math.max(0, Math.min(1, s.hospitalDwellMs / HOSPITAL_DWELL_MS));
+    if (frac > 0) {
+      const start = -Math.PI / 2;
+      const rr = HOSPITAL_CIRCLE_RADIUS + 5;
+      g.moveTo(pos.x + Math.cos(start) * rr, footY + Math.sin(start) * rr)
+        .arc(pos.x, footY, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
     }
   }
@@ -11217,7 +11308,7 @@ export class PixiScene {
     camera: { x: number; y: number },
     castleVisible: boolean,
     event: ActiveEvent | null,
-    pois: { x: number; y: number; kind: 'boss' | 'cave' }[] = [],
+    pois: { x: number; y: number; kind: 'boss' | 'cave' | 'hospital' }[] = [],
     baseSites: { x: number; y: number; status: string }[] = [],
     escorts: EscortSoldier[] = [],
     playerCenter?: { x: number; y: number },
@@ -11551,7 +11642,8 @@ export class PixiScene {
       const ex = cxC + dx * tdist;
       const ey = cyC + dy * tdist;
       const boss = poi.kind === 'boss';
-      const color = boss ? 0xef4444 : 0xf59e0b; // 裏ボス=赤 / 洞窟=琥珀
+      const hospital = poi.kind === 'hospital';
+      const color = boss ? 0xef4444 : hospital ? 0x4ade80 : 0xf59e0b; // 裏ボス=赤 / 病院=緑 / 洞窟=琥珀
       g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
       g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
       if (boss) {
@@ -11560,6 +11652,10 @@ export class PixiScene {
         g.rect(ex - 3, ey + 2, 6, 3).fill({ color: 0xe2e8f0, alpha: 0.96 });
         g.circle(ex - 1.8, ey - 1, 1.2).fill({ color: 0x020617, alpha: 0.98 });
         g.circle(ex + 1.8, ey - 1, 1.2).fill({ color: 0x020617, alpha: 0.98 });
+      } else if (hospital) {
+        // 十字(医療)。
+        g.rect(ex - 1.8, ey - 6, 3.6, 12).fill({ color: 0xecfdf5, alpha: 0.96 });
+        g.rect(ex - 6, ey - 1.8, 12, 3.6).fill({ color: 0xecfdf5, alpha: 0.96 });
       } else {
         // 洞窟アーチ(半円の口)。
         g.rect(ex - 5, ey - 1, 10, 6).fill({ color: 0x451a03, alpha: 0.96 });
