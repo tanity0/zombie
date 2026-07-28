@@ -36,10 +36,28 @@ export interface KomaLogRecord {
 }
 
 const MAX_RECORDS = 20000;
-let enabled = false;
+
+/**
+ * 実機からの有効化(社長指示v0.25.2370「実機テストの改良」)。**`?komalog=1` の時だけ収集する**。
+ *
+ * なぜ要るのか: ランク査定の較正に必要な「人間が1分に何体捌くか」は、**ヘッドレスのボットでは測れない**
+ * (実測: master が4分で10体しか倒せず、被弾もほぼ0で降格側は一度も発火しなかった)。
+ * 実機で社長が普通に遊んだ1ランのログが、いちばん確かな較正データになる。
+ *
+ * 既定は無効なので、通常プレイでは1バイトも溜まらない(記録も判定も一切行わない)。
+ * SSR/ヘッドレスでは `window` が無いので false から始まり、テストハーネスが `enableKomaLog()` を呼ぶ。
+ */
+const komaLogParamOn = (): boolean => {
+  try {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('komalog') === '1';
+  } catch { return false; }
+};
+
+let enabled = komaLogParamOn();
 let records: KomaLogRecord[] = [];
 
-/** 収集を有効化(ヘッドレスの計測ランだけで呼ぶ)。 */
+/** 収集を有効化(ヘッドレスの計測ラン。実機は `?komalog=1` で自動的に有効)。 */
 export const enableKomaLog = (): void => { enabled = true; };
 export const isKomaLogEnabled = (): boolean => enabled;
 export const resetKomaLog = (): void => { records = []; };
@@ -53,6 +71,50 @@ export const recordKoma = (r: KomaLogRecord): void => {
 
 /** JSONL(1行1レコード)へ。ヘッドレスの出力用。 */
 export const komaLogToJsonl = (): string => records.map(r => JSON.stringify(r)).join('\n');
+
+/**
+ * 実機でログを取り出すための窓口(社長指示v0.25.2370)。`?komalog=1` の時だけ生える。
+ * 既存の `window.__BOT_REPORT__`(M26-L)と同じ作法で、**開発者ツールのコンソールから読める**ようにする。
+ *   `__KOMA_LOG__.jsonl()` … 全レコードをJSONL文字列で
+ *   `__KOMA_LOG__.summary()` … 1ランの要約(較正に必要な数字だけ)
+ * ラン終了時に呼び出し側が `logKomaSummary()` を1回叩く(コンソールにも出す=コピペで送れる)。
+ */
+export const exposeKomaLog = (): void => {
+  if (!enabled || typeof window === 'undefined') return;
+  (window as unknown as Record<string, unknown>).__KOMA_LOG__ = {
+    jsonl: () => komaLogToJsonl(),
+    records: () => records,
+    summary: () => komaLogSummary(),
+  };
+};
+
+/** 較正に必要な数字だけの要約。実機の社長がコンソールからコピーして渡せる粒度にする。 */
+export const komaLogSummary = (): Record<string, number> => {
+  const n = records.length;
+  if (n === 0) return { koma: 0 };
+  const last = records[n - 1];
+  const sum = (f: (r: KomaLogRecord) => number): number => records.reduce((a, r) => a + f(r), 0);
+  return {
+    koma: n,
+    finalRank: last.rank,
+    maxRank: records.reduce((a, r) => Math.max(a, r.rank), 1),
+    maxDist: Math.round(records.reduce((a, r) => Math.max(a, r.dist), 0)),
+    runMinutes: Math.round((last.atMs / 60000) * 10) / 10,
+    hitsTotal: sum(r => r.input.hits ?? 0),
+    // M50の較正で見たい2つ。窓の達成率が「昇格に必要な50%」に対してどこにいるか。
+    windowsAtRank: last.pace?.windowsAtRank ?? 0,
+    windowsClearing: last.pace?.windowsClearing ?? 0,
+    clearRatePct: last.pace && last.pace.windowsAtRank > 0
+      ? Math.round((last.pace.windowsClearing / last.pace.windowsAtRank) * 1000) / 10
+      : 0,
+  };
+};
+
+/** ラン終了時に1回だけ呼ぶ。コンソールへ要約を出す(社長がそのままコピーして渡せる)。 */
+export const logKomaSummary = (): void => {
+  if (!enabled) return;
+  console.log('[KOMA_LOG]', JSON.stringify(komaLogSummary()));
+};
 
 /**
  * 何ラン目かの採番。ヘッドレスのハーネスがラン開始ごとに `.current` を進める。

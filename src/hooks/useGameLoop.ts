@@ -192,6 +192,7 @@ import { selectGateProgram, type GateProgram, type GateProgramId } from '../util
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
 import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, effectiveStartRank, stageInRunFloorRank, setStartRankFromFinal } from '../data/progress';
+import { exposeKomaLog, logKomaSummary } from '../utils/komaLog';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
 import {
   getEventQuestConfig, EVENT_QUEST_LINES_FORCED, EVENT_QUEST_ENCOUNTER_LINES,
@@ -1264,6 +1265,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const spawnEffect = useGameStore(state => state.spawnEffect);
   const updateEffects = useGameStore(state => state.updateEffects);
 
+  // v0.25.2370: ?komalog=1 のとき、コンソールから読める窓口(window.__KOMA_LOG__)を1回だけ生やす。
+  // 既定(パラメータ無し)では exposeKomaLog が即returnするので通常プレイに影響しない。
+  useEffect(() => { exposeKomaLog(); }, []);
+
   useEffect(() => {
     benchmarkModeRef.current = Boolean(options.benchmarkMode);
   }, [options.benchmarkMode]);
@@ -1315,6 +1320,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     if (gameOverTriggeredRef.current) return;
     gameOverTriggeredRef.current = true;
     emitBotReport('death'); // M26-L: botモードなら死因つきレポートを先に確定(以降の後始末と独立)
+    logKomaSummary();       // v0.25.2370: ?komalog=1 の時だけ、ランク較正用の要約をコンソールへ1回出す
     // PACING_PUZZLE.md §5.17 M14: 死亡確定時に最終同期(1秒間隔の間引きだと直近の数百msが漏れるため)。
     if (WALL_ENABLED) syncWallDepth(runDeepestDistRef.current);
     // §5.21 M20追補(v0.25.1534): 死亡は「記録」のみコミット(踏破フラグはコミットしない)。
@@ -1643,7 +1649,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             bs.upgradeOptions, botRandRef.current, botSkillProfile(BOT_SKILL).upgradePolicy, bs.player));
         }
         // 終了レポート: 勝利/帰還(死亡は triggerPlayerDeath 側で発火)。
-        if (bs.gameWon) emitBotReport('clear');
+        if (bs.gameWon) { emitBotReport('clear'); logKomaSummary(); }
         else if (bs.gameReturned) emitBotReport('return');
         // 詰み検知の保険: isPaused が60秒続いたら警告して強制解除(ショップ等の想定外UI)。
         if (bs.isPaused) {
