@@ -38,11 +38,16 @@ import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/ca
 const ZOOM_OVERSCAN = 1 / CONTEXT_ZOOM_MIN;
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss } from '../utils/enemyUtils';
-import { getRunPois, isPoiRevealed, poiSectorIndex } from '../world/pois';
+import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
 import {
   HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
   HOSPITAL_FADE_MS, HOSPITAL_DISPLAY_H,
 } from '../world/hospital';
+import {
+  ARMORY_CIRCLE_RADIUS, ARMORY_CIRCLE_REVEAL_DIST, ARMORY_DWELL_MS,
+  ARMORY_FADE_MS, ARMORY_DISPLAY_W,
+} from '../world/armory';
+import { POLICE_FADE_MS, POLICE_DISPLAY_W } from '../world/police';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
@@ -1552,6 +1557,12 @@ export class PixiScene {
   private hospitalSprite = new Sprite(); // 廃病院の本体(足元アンカー・actorLayer で y-sort)
   private hospitalGfx = new Graphics(); // 病院サークル(地面・world座標。滞在で外周が満ちる)
   private hospitalShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  // §6.24 M48: 武器庫(病院と同じサークル+滞在の枠組み)/警察署(建物のみ・アリーナ方式でサークルなし)。
+  private armorySprite = new Sprite();
+  private armoryGfx = new Graphics();
+  private armoryShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  private policeSprite = new Sprite();
+  private policeShadow: { x: number; y: number; w: number; alpha: number } | null = null;
   private hunterVisionGfx = new Graphics(); // ハンターの視界(索敵)範囲=薄い紫サークル(地面・world座標)
   private bossCorpseSprite = new Sprite(); // 裏ボス討伐時のフェードアウト演出(頭基準・world座標。store.bossCorpse を参照)
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
@@ -2251,6 +2262,7 @@ export class PixiScene {
       this.returnGfx, // 帰還サークル(地面・world座標)
       this.baseSitesGfx, // 拠点候補地サークル(地面・world座標)
       this.hospitalGfx, // 病院サークル(地面・world座標)
+      this.armoryGfx, // §6.24 M48: 武器庫サークル(地面・world座標。病院と同じ)
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
       this.pumpkinTelegraph,
       this.playerGroundPool,
@@ -2268,6 +2280,14 @@ export class PixiScene {
     this.hospitalSprite.anchor.set(0.5, 1); // 足元アンカー(obstacles.ts の規約=絵の下端が当たり判定の下端)
     this.hospitalSprite.visible = false;
     this.L.actorLayer.addChild(this.hospitalSprite);
+    // §6.24 M48: 武器庫(病院と同じ規約)/警察署(建物のみ・アリーナ方式でサークルなし)。
+    this.armoryGfx.blendMode = 'add';
+    this.armorySprite.anchor.set(0.5, 1);
+    this.armorySprite.visible = false;
+    this.L.actorLayer.addChild(this.armorySprite);
+    this.policeSprite.anchor.set(0.5, 1);
+    this.policeSprite.visible = false;
+    this.L.actorLayer.addChild(this.policeSprite);
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     this.L.effectLayer.addChild(this.marksmanMarkGfx);
@@ -4243,6 +4263,8 @@ export class PixiScene {
     this.syncArena(s.activeEvent, now);
     this.syncReturnCircle(s.returnCircle, now);
     this.syncHospital(now); // 廃病院(通常ステージのみ。無いステージでは即 return=no-op)
+    this.syncArmory(now); // §6.24 M48: 武器庫(同上)
+    this.syncPolice(now); // §6.24 M48: 警察署(同上)
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
@@ -4285,7 +4307,16 @@ export class PixiScene {
     // 出現/解放判定は固定の巣(セクター)で行い、矢印の指す先は「実際に出ている裏ボスの現在地」にする
     // (近接スポーンや追跡で巣からずれても本体を指す)。
     const liveHiddenBoss = s.enemies.find(e => isHiddenBoss(e.type));
-    const revealedPois = getRunPois(s.hiddenBoss, !!s.hospital && !s.hospitalTaken)
+    // §6.24 M48: 寄り道POI3種(病院/武器庫/警察署)は実際の位置(state)をそのまま渡す。以前は
+    // hospitalの座標だけ内部で再計算していたが、位置が毎ランランダムになったため「同じ式を2箇所に
+    // 持つ」やり方はもう安全ではない(乱数を2回引くと矢印と実体がズレる)。実体の位置を渡すだけにして
+    // このズレを構造的に無くした。
+    const detourPois: DetourPoiInput[] = [
+      { kind: 'hospital', pos: !s.hospitalTaken ? s.hospital : null },
+      { kind: 'armory', pos: !s.armoryTaken ? s.armory : null },
+      { kind: 'police', pos: !s.policeTaken ? s.police : null },
+    ];
+    const revealedPois = getRunPois(s.hiddenBoss, detourPois)
       .filter(p => !(p.kind === 'boss' && s.hiddenBossDefeated))
       .filter(p => isPoiRevealed(p, s.baseSites))
       .map(p => (p.kind === 'boss' && liveHiddenBoss)
@@ -6666,6 +6697,15 @@ export class PixiScene {
       const h = this.hospitalShadow;
       this.placeShadowSprite('hospital', h.x, h.y, h.w, h.alpha, seen);
     }
+    // §6.24 M48: 武器庫/警察署(可視時のみ syncArmory/syncPolice がリクエスト)。
+    if (this.armoryShadow) {
+      const a = this.armoryShadow;
+      this.placeShadowSprite('armory', a.x, a.y, a.w, a.alpha, seen);
+    }
+    if (this.policeShadow) {
+      const pl = this.policeShadow;
+      this.placeShadowSprite('police', pl.x, pl.y, pl.w, pl.alpha, seen);
+    }
     // 護衛軍人NPC(屋外のみ・他アクターと同じ足影)。スプライトは anchor(0.5,1) で esc.x/esc.y が足元。
     // 影幅=スプライト実幅×0.55(他アクターと同基準)。地平線で透明化(空に浮かない描画と整合)。
     // 登場演出中は兵士本体と同じフェードを影にも掛ける(ヘリ飛来中に影だけ先に出るのを防ぐ)。
@@ -8812,6 +8852,9 @@ export class PixiScene {
       v.sprite.scale.set(sc);
       // 常時回転(停止中も回り続ける=旧procedural描画と同じ演出)。
       v.sprite.rotation = (now / 90) % (Math.PI * 2);
+      // §6.24 M48「防衛」(C: 警察署アリーナ報酬)は常時周回する専用個体。ドローンブーメランの色違い
+      // (社長仕様どおり)にするため、tint だけ変える(スプライト自体は共用=新規アセット不要)。
+      v.sprite.tint = p.weaponKey === 'poi-guard' ? 0x38bdf8 : 0xffffff;
     } else {
       // テクスチャ未読込時は何も表示しない(手描きフォールバックは追加しない)。
       v.sprite.visible = false;
@@ -8964,6 +9007,122 @@ export class PixiScene {
         .arc(pos.x, footY, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
     }
+  }
+
+  // 武器庫(PACING_PUZZLE.md §6.24 M48): 病院と同じ枠組み(サークル+3秒滞在)。**描くだけ**
+  // (滞在判定/スクラップ支払い/装備付与は store 側)。素材は横に広い等角絵なので**幅基準**で
+  // スケールする(病院は高さ基準=HOSPITAL_DISPLAY_H)。負荷1/10: スプライト1枚+Graphics1つ。
+  private syncArmory(now: number) {
+    const s = useGameStore.getState();
+    const pos = s.armory;
+    const g = this.armoryGfx;
+    g.clear();
+    if (!pos || s.indoorMode) {
+      this.armorySprite.visible = false;
+      this.armoryShadow = null;
+      return;
+    }
+    const fade = s.armoryTaken
+      ? 1 - Math.max(0, Math.min(1, (s.gameTime - s.armoryTakenAt) / ARMORY_FADE_MS))
+      : 1;
+    if (fade <= 0) {
+      this.armorySprite.visible = false;
+      this.armoryShadow = null;
+      return;
+    }
+    const footY = pos.y;
+    const tex = getTexture('armory');
+    const horizonAlpha = this.horizonActorAlpha(footY);
+    const onScreen = this.distanceOutsideViewport(pos.x, footY, ARMORY_DISPLAY_W) <= 0;
+    if (!tex || horizonAlpha <= 0 || !onScreen) {
+      this.armorySprite.visible = false;
+      this.armoryShadow = null;
+      return;
+    }
+
+    const d = this.depthScale(footY);
+    const targetW = ARMORY_DISPLAY_W * d; // 幅基準(横に広い等角絵。病院は高さ基準)
+    const sc = targetW / tex.width;
+    this.armorySprite.texture = tex;
+    this.armorySprite.scale.set(sc);
+    this.armorySprite.position.set(Math.round(pos.x), Math.round(footY));
+    this.armorySprite.zIndex = footY;
+    this.armorySprite.tint = this.envTintNow();
+    this.armorySprite.visible = true;
+    this.applyObstacleAlpha(this.armorySprite, footY);
+    this.armorySprite.alpha *= fade;
+    this.armoryShadow = {
+      x: pos.x, y: footY,
+      w: Math.min(180 * d, tex.width * sc * 0.42),
+      alpha: horizonAlpha * 0.8 * fade,
+    };
+
+    if (s.armoryTaken) return;
+    const p = s.player;
+    const dist = Math.hypot(p.x + p.width / 2 - pos.x, p.y + p.height / 2 - footY);
+    const near = Math.max(0, Math.min(1, (ARMORY_CIRCLE_REVEAL_DIST - dist) / 120));
+    if (near <= 0) return;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 240);
+    const a = (0.34 + 0.2 * pulse) * near;
+    const color = 0xfbbf24; // スクラップ=琥珀(ShopMenuのSCRAP表示と同系色。病院の緑と見分けが付く)
+    g.circle(pos.x, footY, ARMORY_CIRCLE_RADIUS - 4).fill({ color, alpha: (0.06 + 0.05 * pulse) * near });
+    g.circle(pos.x, footY, ARMORY_CIRCLE_RADIUS).stroke({ width: 6, color, alpha: a * 0.6 });
+    g.circle(pos.x, footY, ARMORY_CIRCLE_RADIUS - 3).stroke({ width: 2, color, alpha: a });
+    const frac = Math.max(0, Math.min(1, s.armoryDwellMs / ARMORY_DWELL_MS));
+    if (frac > 0) {
+      const start = -Math.PI / 2;
+      const rr = ARMORY_CIRCLE_RADIUS + 5;
+      g.moveTo(pos.x + Math.cos(start) * rr, footY + Math.sin(start) * rr)
+        .arc(pos.x, footY, rr, start, start + Math.PI * 2 * frac)
+        .stroke({ width: 4, color: 0xfef3c7, alpha: 0.95 });
+    }
+  }
+
+  // 警察署(PACING_PUZZLE.md §6.24 M48。旧称「研究施設跡」)。サークル+滞在ではなくアリーナ方式
+  // (近づくと囲いイベントが発生=useGameLoop側)なので、ここは建物の見た目だけを描く。
+  // 素材は横に広い等角絵なので**幅基準**でスケールする(病院は高さ基準)。負荷1/10: スプライト1枚。
+  private syncPolice(_now: number) {
+    const s = useGameStore.getState();
+    const pos = s.police;
+    if (!pos || s.indoorMode) {
+      this.policeSprite.visible = false;
+      this.policeShadow = null;
+      return;
+    }
+    const fade = s.policeTaken
+      ? 1 - Math.max(0, Math.min(1, (s.gameTime - s.policeTakenAt) / POLICE_FADE_MS))
+      : 1;
+    if (fade <= 0) {
+      this.policeSprite.visible = false;
+      this.policeShadow = null;
+      return;
+    }
+    const footY = pos.y;
+    const tex = getTexture('police');
+    const horizonAlpha = this.horizonActorAlpha(footY);
+    const onScreen = this.distanceOutsideViewport(pos.x, footY, POLICE_DISPLAY_W) <= 0;
+    if (!tex || horizonAlpha <= 0 || !onScreen) {
+      this.policeSprite.visible = false;
+      this.policeShadow = null;
+      return;
+    }
+
+    const d = this.depthScale(footY);
+    const targetW = POLICE_DISPLAY_W * d;
+    const sc = targetW / tex.width;
+    this.policeSprite.texture = tex;
+    this.policeSprite.scale.set(sc);
+    this.policeSprite.position.set(Math.round(pos.x), Math.round(footY));
+    this.policeSprite.zIndex = footY;
+    this.policeSprite.tint = this.envTintNow();
+    this.policeSprite.visible = true;
+    this.applyObstacleAlpha(this.policeSprite, footY);
+    this.policeSprite.alpha *= fade;
+    this.policeShadow = {
+      x: pos.x, y: footY,
+      w: Math.min(180 * d, tex.width * sc * 0.42),
+      alpha: horizonAlpha * 0.8 * fade,
+    };
   }
 
   // 制圧イベントの拠点。状態で色分け(未制圧=琥珀/制圧=緑/安全地帯=青)。制圧済みはHPバー＋軍人2体マーカー。
@@ -11313,7 +11472,7 @@ export class PixiScene {
     camera: { x: number; y: number },
     castleVisible: boolean,
     event: ActiveEvent | null,
-    pois: { x: number; y: number; kind: 'boss' | 'cave' | 'hospital' }[] = [],
+    pois: { x: number; y: number; kind: 'boss' | 'cave' | 'hospital' | 'armory' | 'police' }[] = [],
     baseSites: { x: number; y: number; status: string }[] = [],
     escorts: EscortSoldier[] = [],
     playerCenter?: { x: number; y: number },
@@ -11648,7 +11807,10 @@ export class PixiScene {
       const ey = cyC + dy * tdist;
       const boss = poi.kind === 'boss';
       const hospital = poi.kind === 'hospital';
-      const color = boss ? 0xef4444 : hospital ? 0x4ade80 : 0xf59e0b; // 裏ボス=赤 / 病院=緑 / 洞窟=琥珀
+      const armory = poi.kind === 'armory'; // §6.24 M48
+      const police = poi.kind === 'police'; // §6.24 M48(旧称「研究施設跡」)
+      // 裏ボス=赤 / 病院=緑 / 武器庫=琥珀(スクラップ色・ShopMenuと同系) / 警察署=青 / 洞窟=琥珀
+      const color = boss ? 0xef4444 : hospital ? 0x4ade80 : armory ? 0xfbbf24 : police ? 0x38bdf8 : 0xf59e0b;
       g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
       g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
       if (boss) {
@@ -11661,6 +11823,20 @@ export class PixiScene {
         // 十字(医療)。
         g.rect(ex - 1.8, ey - 6, 3.6, 12).fill({ color: 0xecfdf5, alpha: 0.96 });
         g.rect(ex - 6, ey - 1.8, 12, 3.6).fill({ color: 0xecfdf5, alpha: 0.96 });
+      } else if (armory) {
+        // 木箱(装備クレート)風: 縁取りされた矩形+中央の留め線。
+        g.rect(ex - 5, ey - 4, 10, 8).fill({ color: 0x78350f, alpha: 0.95 });
+        g.rect(ex - 5, ey - 4, 10, 8).stroke({ width: 1, color: 0xfde68a, alpha: 0.9 });
+        g.moveTo(ex - 5, ey).lineTo(ex + 5, ey).stroke({ width: 1, color: 0xfde68a, alpha: 0.9 });
+      } else if (police) {
+        // 星バッジ風(簡易5角星)。
+        const starPts: number[] = [];
+        for (let k = 0; k < 10; k++) {
+          const rr2 = k % 2 === 0 ? 6 : 2.6;
+          const a2 = -Math.PI / 2 + (k * Math.PI) / 5;
+          starPts.push(ex + Math.cos(a2) * rr2, ey + Math.sin(a2) * rr2);
+        }
+        g.poly(starPts).fill({ color: 0xdbeafe, alpha: 0.96 });
       } else {
         // 洞窟アーチ(半円の口)。
         g.rect(ex - 5, ey - 1, 10, 6).fill({ color: 0x451a03, alpha: 0.96 });

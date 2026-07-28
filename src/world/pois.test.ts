@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { sectorIndexForAngle, poiSectorIndex, bossLairPos, getRunPois, isPoiRevealed, POI_SECTORS } from './pois';
+import {
+  sectorIndexForAngle, poiSectorIndex, bossLairPos, bossSectorIndex, getRunPois, isPoiRevealed, POI_SECTORS,
+} from './pois';
 import type { BaseSite } from '../types/game';
 
 const mkSites = (capturedIdx: number[]): BaseSite[] =>
@@ -48,5 +50,36 @@ describe('boss lair + reveal', () => {
   });
   it('getRunPois returns nothing for a stage with no hidden boss and no caves', () => {
     expect(getRunPois(null)).toEqual([]);
+  });
+});
+
+describe('bossSectorIndex(§6.24 M48: 寄り道POIの配置が避けるセクター)', () => {
+  it('裏ボスが居るステージはそのセクターを返す', () => {
+    expect(bossSectorIndex('jormungand')).toBe(0);
+    expect(bossSectorIndex('mimir')).toBe(2);
+    expect(bossSectorIndex('thor')).toBe(1);
+    expect(bossSectorIndex('skadi')).toBe(3);
+  });
+  it('裏ボスの居ないステージは null', () => {
+    expect(bossSectorIndex(null)).toBeNull();
+  });
+});
+
+describe('getRunPois(detours引数・§6.24 M48: 寄り道POI3種)', () => {
+  it('armory/police/hospitalのdetoursを渡すと、それぞれkind別のPOIが増える(座標はそのまま反映)', () => {
+    const pois = getRunPois('mimir', [
+      { kind: 'armory', pos: { x: 111, y: 222 } },
+      { kind: 'police', pos: { x: 333, y: 444 } },
+      { kind: 'hospital', pos: { x: 555, y: 666 } },
+    ]);
+    expect(pois.find(p => p.kind === 'armory')).toEqual({ id: 'armory', x: 111, y: 222, kind: 'armory' });
+    expect(pois.find(p => p.kind === 'police')).toEqual({ id: 'police', x: 333, y: 444, kind: 'police' });
+    expect(pois.find(p => p.kind === 'hospital')).toEqual({ id: 'hospital', x: 555, y: 666, kind: 'hospital' });
+    expect(pois.filter(p => p.kind === 'boss')).toHaveLength(1); // 裏ボスの巣は据え置き
+  });
+
+  it('pos=nullのdetourは出ない(入手/攻略済みを表す)', () => {
+    const pois = getRunPois('mimir', [{ kind: 'armory', pos: null }]);
+    expect(pois.some(p => p.kind === 'armory')).toBe(false);
   });
 });

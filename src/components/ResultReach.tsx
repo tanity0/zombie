@@ -20,7 +20,7 @@ interface PoiPin {
   /** 原点からの距離(px=m扱い)。 */
   dist: number;
   label: string;
-  kind: 'boss' | 'cave' | 'hospital';
+  kind: 'boss' | 'cave' | 'hospital' | 'armory' | 'police'; // armory/police = PACING_PUZZLE.md §6.24 M48
 }
 
 interface ResultReachProps {
@@ -56,6 +56,8 @@ const POI_MARK: Record<PoiPin['kind'], { icon: string; color: string }> = {
   hospital: { icon: '✚', color: '#7BE8A8' },
   boss: { icon: '☠', color: '#FF6A55' },
   cave: { icon: '◗', color: '#F59E0B' },
+  armory: { icon: '▣', color: '#FBBF24' }, // §6.24 M48: 武器庫(スクラップ色)
+  police: { icon: '★', color: '#60A5FA' }, // §6.24 M48: 警察署
 };
 
 const ResultReach: React.FC<ResultReachProps> = ({

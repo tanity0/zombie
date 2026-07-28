@@ -10,11 +10,13 @@
 
 import type { EnemyType, BaseSite } from '../types/game';
 
+// PACING_PUZZLE.md §6.24 M48: 寄り道POIの種類を armory(武器庫)/police(警察署)へ拡張。
+export type DetourPoiKind = 'armory' | 'police' | 'hospital';
 export interface Poi {
   id: string;
   x: number;
   y: number;
-  kind: 'boss' | 'cave' | 'hospital';
+  kind: 'boss' | 'cave' | DetourPoiKind;
 }
 
 // 拠点の数=方角の数(createBaseSites の BASE_SITE_COUNT と一致)。8→4(東西南北・社長指示)。
@@ -50,34 +52,35 @@ export const bossLairPos = (boss: EnemyType | null): { x: number; y: number } | 
   return { x: Math.cos(l.angle) * l.dist, y: Math.sin(l.angle) * l.dist };
 };
 
+// 裏ボスが占有するセクター(無ければ null)。§6.24 M48: 寄り道POI(病院/武器庫/警察署)の
+// ランダム配置は、このセクターを避けて残り3つへ割り当てる(world/detourPoi.ts が使う)。
+export const bossSectorIndex = (boss: EnemyType | null): number | null => {
+  const l = bossLairPos(boss);
+  return l ? poiSectorIndex(l) : null;
+};
+
 // 洞窟など固定POI(ステージ別)。※未実装: 配置が決まったらここに {id,x,y,kind:'cave'} を足すだけで
 // 自動的にセクター判定・矢印表示の対象になる(該当方角の拠点を解放すると出る)。
 const STAGE_CAVES: Poi[] = [
   // 例) { id: 'cave-1', x: Math.cos(Math.PI/4)*6000, y: Math.sin(Math.PI/4)*6000, kind: 'cave' },
 ];
 
-// この出撃のPOI一覧(裏ボスの巣 + 洞窟 + 病院)。原点付近(無効座標)は除外。
-// 病院(社長指示v0.25.2331)は未確認汚染の中間・裏ボスの反対方角。座標の定義は world/hospital.ts 側。
-// `hospitalVisible` は「この出撃に病院が立っていて、まだ入手していない」時だけ true にする
-// (既定 false=呼び出し側が明示しない限り出さない。裏ボスを討伐後に出さないのと同じ扱い)。
-export const getRunPois = (hiddenBoss: EnemyType | null, hospitalVisible = false): Poi[] => {
+// この出撃のPOI一覧(裏ボスの巣 + 洞窟 + 寄り道POI)。原点付近(無効座標)は除外。
+//
+// §6.24 M48: 寄り道POI(病院/武器庫/警察署)の位置は「毎ランランダムな割り当て」に依存するため、
+// ここで式を再計算しない(以前は hospitalPosForPois が hospital.ts と同じ式を重複して持っていたが、
+// ランダム化に伴い2箇所が食い違う土台になるため廃止した)。呼び出し側(store の実際の位置=
+// resetGame で1度だけ確定させた値)をそのまま渡してもらう=矢印は常に実体と一致する。
+// `detours` は「この出撃に立っていて、まだ入手/攻略されていない」ものだけを渡す(既定=空配列)。
+export interface DetourPoiInput { kind: DetourPoiKind; pos: { x: number; y: number } | null }
+export const getRunPois = (hiddenBoss: EnemyType | null, detours: DetourPoiInput[] = []): Poi[] => {
   const out: Poi[] = [...STAGE_CAVES];
   const lair = bossLairPos(hiddenBoss);
   if (lair) out.push({ id: `lair-${hiddenBoss}`, x: lair.x, y: lair.y, kind: 'boss' });
-  if (hospitalVisible) {
-    const h = hospitalPosForPois(hiddenBoss);
-    out.push({ id: 'hospital', x: h.x, y: h.y, kind: 'hospital' });
+  for (const d of detours) {
+    if (d.pos) out.push({ id: d.kind, x: d.pos.x, y: d.pos.y, kind: d.kind });
   }
   return out;
-};
-
-// 病院の座標(hospital.ts と同じ式)。循環importを避けるためここに小さく持つ
-// (hospital.ts は bossLairPos を使うので、あちらから import すると循環する)。
-const HOSPITAL_POI_DIST = 6250; // = (5000 + 7500) / 2。hospital.ts の HOSPITAL_DIST と一致させること。
-const hospitalPosForPois = (hiddenBoss: EnemyType | null): { x: number; y: number } => {
-  const lair = bossLairPos(hiddenBoss);
-  const angle = lair ? Math.atan2(lair.y, lair.x) + Math.PI : 0;
-  return { x: Math.cos(angle) * HOSPITAL_POI_DIST, y: Math.sin(angle) * HOSPITAL_POI_DIST };
 };
 
 // POI が「解放済み」か = その方角を担当する拠点が captured か。

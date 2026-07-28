@@ -226,6 +226,23 @@ export const equipmentDescription = (def: EquipmentDef): string =>
 export const hasFullWarlordSet = (loadout: EquipLoadout): boolean =>
   EQUIP_SLOTS.every(slot => equipmentById(loadout[slot])?.special === true);
 
+// PACING_PUZZLE.md §6.24 M48(武器庫)E2: Tier3を入れる部位を決める純関数。
+// 「空きスロット優先→全部埋まっていればいちばんTierが低い部位を置換」。
+// 空きが複数ある時の優先順位は仕様に明記が無いため、既存の空き埋め(generateEquipmentChoices の
+// randPick(emptySlots))と同じくランダムに1つ選ぶ(rngは既定Math.random・テストで注入可能)。
+export const armoryTargetSlot = (loadout: EquipLoadout, rng: () => number = Math.random): EquipSlot => {
+  const empty = EQUIP_SLOTS.filter(slot => !loadout[slot]);
+  if (empty.length > 0) return empty[Math.floor(rng() * empty.length)];
+  let worst: EquipSlot = EQUIP_SLOTS[0];
+  let worstTier = Infinity;
+  for (const slot of EQUIP_SLOTS) {
+    const def = equipmentById(loadout[slot]);
+    const tier = def ? (def.special ? 0 : def.tier) : -1; // 特殊(tier0)は最も低い扱い=真っ先に置換対象
+    if (tier < worstTier) { worstTier = tier; worst = slot; }
+  }
+  return worst;
+};
+
 // 専用アイコン画像(public/sprites/equip/<defId>.png)が用意済みの装備ID。
 // 社長から素材を受領するたびにここへ追加していく。未登録IDはUI側で絵文字フォールバック。
 export const EQUIP_ICON_IDS: ReadonlySet<string> = new Set<string>([

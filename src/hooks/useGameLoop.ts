@@ -27,7 +27,7 @@ import {
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
   SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG,
-  DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV,
+  DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV, DRONE_BOOM_SPEED,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST, CAMERA_DOWN_OFFSET_FRAC, CORRIDOR_CAMERA_DOWN_FRAC,
   WIRE_LAND_KNOCKBACK_SPEED, WIRE_PASS_DAMAGE_MULT, WIRE_BOMB_RADIUS, WIRE_BOMB_DAMAGE_MULT, WIRE_PASS_BOMB_RADIUS,
@@ -112,6 +112,8 @@ import {
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
+import { POLICE_ARENA_RADIUS, isNearPolice } from '../world/police';
+import { POLICE_REWARD_SKILLS, SKILLS } from '../data/campaign';
 import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
@@ -416,6 +418,16 @@ const RED_NIGHT_RUN_CHANCE = 0.3;        // 出撃ごとの発生確率(社長�
 // ゲート1中もchaffは通常のディレクター駆動のまま(gate1.ts参照)。
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
 const ARENA_HORDE_DURATION_MS = 40000; // ゾンビ版の制限時間保険(段階スポーン約18秒化に合わせ30→40へ)。基本は全滅で終了
+
+// --- 寄り道POI(PACING_PUZZLE.md §6.24 M48)の専用スキル3種 ------------------------------
+// 爆撃(B): タレット/朱雀と同じ GRENADE_WEAPON_KEY 経路を発射元プレイヤーで再利用する(§6.24発注メモ2)。
+const POI_BOMBING_INTERVAL_MS = 3000;  // §6.24 B: 3秒に1度
+const POI_BOMBING_RANGE = 380;         // §6.24 B2: ALCHEMY_AGGRO_RANGE(ハンドガン距離)と同じ「近く」の基準
+const POI_BOMBING_DAMAGE = 95;         // §6.24 B1: rifle-t3 の damage(weaponUtils.ts)をそのまま
+// 防衛(C): 既存の orbit フィールド(gameStore.updateProjectiles・bibles用の汎用周回)へ乗せる。
+const POI_GUARD_ORBIT_RADIUS = 100;    // §6.24 C1: DRONE_BOOM_DIST_BY_LEVEL[1]
+const POI_GUARD_ORBIT_SPEED = DRONE_BOOM_SPEED / POI_GUARD_ORBIT_RADIUS; // §6.24 C2: 480px/s ÷ 半径 = 角速度(rad/s)
+const POI_GUARD_DURATION_MS = 24 * 60 * 60 * 1000; // 実質無期限(このランが終わるまで消えない。durationカリングを回避するための大きい値)
 
 // the ONE ストーリーボス(M7/EX): 導入(会話)明けにプレイヤーの前方(上)へ出現させる距離(px)。
 // 画面内で「目の前に現れて即戦闘」になる近さ(統合正本10.2「いきなり出現。即戦闘開始」)。
@@ -922,6 +934,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 変異者大量発生(horde): 段階スポーン進捗。1秒に1体ずつ計total体(1/3体目=パンプキン/2/3・最終体目=ウルフ)。
   // totalは既定ARENA_HORDE_COUNT(18)だが、バッチ5追補のイベント関所発火時はeventSizeMultで可変。
   const hordeSpawnRef = useRef({ spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT });
+  // §6.24 M48「爆撃」: 次回発射が可能な gameTime(ms)。射程内に敵が居ない間はCDを進めない(§6.24 B3)。
+  const poiBombingRef = useRef(0);
   // バッチ5追補: 関所頭で発火予約されたイベント関所(gate-assault/gate-boss-spike)の発火待ち状態。
   // gateProgramRef選定側(下方)がセットし、囲い系イベントの毎フレームチェック(上方)が消化する。
   const gateEventPendingRef = useRef<{ eventKind: 'horde' | 'boss'; phaseKey: string; sizeMult: number } | null>(null);
@@ -2580,12 +2594,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const timedOut = newGameTime >= ae.endsAt;
             if (cleared || timedOut) {
               if (cleared) {
-                // クリア告知(発生バナーと同じ機構)。horde=駆除成功 / boss=討伐成功。
+                // クリア告知(発生バナーと同じ機構)。horde=駆除成功 / boss=討伐成功 /
+                // 警察署アリーナ(§6.24 M48)=専用の制圧完了文言。
                 useGameStore.setState({
-                  eventBannerText: ae.kind === 'boss' ? '討伐成功！' : '駆除成功！',
+                  eventBannerText: ae.kind === 'boss' ? '討伐成功！' : ae.policeArena ? '警察署 制圧完了！' : '駆除成功！',
                   eventBannerUntil: newGameTime + EVENT_BANNER_MS,
                 });
                 playSfx('event-clear'); // 小イベント完了音(成功時のみ)
+                // §6.24 M48 F1: 全滅クリアで専用スキルを1つランダム入手(reaper習得と同じgrantSkill経路。
+                // ownedSkillsへ永続追加=装備は次以降の出撃ロードアウト選択から。ガチャには絶対出ない)。
+                if (ae.policeArena) {
+                  const granted = POLICE_REWARD_SKILLS[Math.floor(Math.random() * POLICE_REWARD_SKILLS.length)];
+                  useGameStore.getState().grantSkill(granted);
+                  useGameStore.setState({ policeTaken: true, policeTakenAt: newGameTime });
+                  useGameStore.getState().spawnCallout(ae.x, ae.y - 40, `スキル「${SKILLS[granted].name}」習得！`, '#7dd3fc');
+                }
                 // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1クリア時の後処理。恒久解除+未達
                 // ペナルティ解除+ハンター消滅+M14到達判定を遅延実行(未達で止めていた分をここで出す)。
                 // §5.21 M20追補(社長報告v0.25.1534): 恒久解除/踏破フラグのlocalStorageコミットは
@@ -2755,6 +2778,93 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hosBefore = useGameStore.getState().hospitalTaken;
           useGameStore.getState().updateHospital(deltaTime);
           if (!hosBefore && useGameStore.getState().hospitalTaken) playSfx('weapon-pickup');
+        }
+
+        // 武器庫(PACING_PUZZLE.md §6.24 M48): サークル内に3秒とどまり、スクラップが足りていれば
+        // Tier3装備を確定入手。入手した瞬間だけSEを鳴らす(病院と同じ流儀)。
+        {
+          const arBefore = useGameStore.getState().armoryTaken;
+          useGameStore.getState().updateArmory(deltaTime);
+          if (!arBefore && useGameStore.getState().armoryTaken) playSfx('weapon-pickup');
+        }
+
+        // 警察署アリーナ(§6.24 M48 F1): 近づくと既存の囲いイベント(horde)をそのまま発生させる。
+        // 発生源が「プレイヤーがこの固定地点に近づいたか」だけの点が退屈アリーナ(boredomArena)と違う
+        // (中心はプレイヤーの現在地ではなく警察署の位置に固定)。全滅クリアの報酬付与は下の
+        // 「終了判定」ブロック(ae.policeArena)側で行う。
+        if (!danceTest && !indoor && !labTheme && !storyBoss) {
+          const pgs = useGameStore.getState();
+          const ppos = pgs.police;
+          if (ppos && !pgs.policeTaken && !pgs.activeEvent) {
+            const hiddenBossAlivePolice = pgs.enemies.some(e => isHiddenBoss(e.type));
+            if (
+              isNearPolice(player, ppos) &&
+              !pgs.bossChasing && !hiddenBossAlivePolice && hunterRef.current.phase === 'idle'
+            ) {
+              const peEvent = {
+                kind: 'horde' as const, x: ppos.x, y: ppos.y, radius: POLICE_ARENA_RADIUS,
+                startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS, policeArena: true,
+              };
+              useGameStore.getState().beginArenaEvent(peEvent);
+              hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime, total: ARENA_HORDE_COUNT };
+              useGameStore.setState({ eventBannerText: '警察署 制圧開始', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              playSfx('event-start');
+              const peRingColor = 'rgba(96,165,250,0.9)'; // 警察=青
+              spawnRing(ppos.x, ppos.y, POLICE_ARENA_RADIUS * 0.2, POLICE_ARENA_RADIUS, peRingColor, 6, 700);
+              spawnRing(ppos.x, ppos.y, POLICE_ARENA_RADIUS, POLICE_ARENA_RADIUS + 30, peRingColor, 3, 760);
+              spawnFlash('rgba(30,58,138,0.24)', 360);
+              useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+              useGameStore.getState().triggerTimeSlow(0.4, 520);
+            }
+          }
+        }
+
+        // スキル「爆撃」(§6.24 M48・警察署アリーナ報酬): 3秒に1度、射程380px内の最も近い敵へ
+        // グレネードランチャー弾(rifle-t3と同じ直進・着弾爆発)をプレイヤー自身から発射する。
+        // 新規実装はほぼ不要: タレット/朱雀が既に使っている GRENADE_WEAPON_KEY 経路(useGameLoop
+        // 内の着弾爆発ハンドラ)に発射元をプレイヤーへ差し替えて乗せるだけ(§6.24発注メモ2)。
+        if (hasSkill(player, 'poi-bombing') && newGameTime >= poiBombingRef.current) {
+          const bpcx = player.x + player.width / 2, bpcy = player.y + player.height / 2;
+          const target = useGameStore.getState().enemies
+            .filter(e => e.type !== 'reaper' || e.reaperChaser)
+            .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - bpcx, e.y + e.height / 2 - bpcy) }))
+            .filter(h => h.d <= POI_BOMBING_RANGE)
+            .sort((a, b) => a.d - b.d)[0]?.e;
+          // §6.24 B3: 射程内に敵がいなければ撃たない(CDは進めない=次に敵が入った瞬間に撃つ)。
+          if (target) {
+            poiBombingRef.current = newGameTime + POI_BOMBING_INTERVAL_MS;
+            const tdx = target.x + target.width / 2 - bpcx, tdy = target.y + target.height / 2 - bpcy;
+            const tm = Math.max(0.001, Math.hypot(tdx, tdy));
+            const nowMsB = Date.now();
+            addProjectile({
+              id: `proj-poi-bomb-${nowMsB}`,
+              x: bpcx - 7, y: bpcy - 7, width: 14, height: 14,
+              speed: TURRET_FWD_BULLET_SPEED, damage: POI_BOMBING_DAMAGE,
+              direction: { x: tdx / tm, y: tdy / tm },
+              weaponType: 'rifle', weaponKey: GRENADE_WEAPON_KEY,
+              duration: 1400, createdAt: nowMsB,
+              passthrough: true, hitEnemies: [], hostile: false, reflected: false,
+            });
+            playSfx('grenade-launcher-fire');
+          }
+        }
+
+        // スキル「防衛」(§6.24 M48・警察署アリーナ報酬): 装備中なら常時1本、プレイヤーの周りを
+        // 周回するブーメラン(ドローンブーメランの色違い)を維持する。動き自体は既存の orbit
+        // フィールド(gameStore.updateProjectiles・「bibles」用の汎用周回モーション)をそのまま流用
+        // するので新規の移動コードは不要。ダメージパルス/弾消しは下のドローンブーメランのブロックで処理する。
+        if (hasSkill(player, 'poi-guard') && !useGameStore.getState().projectiles.some(p => p.weaponKey === 'poi-guard')) {
+          const gpcx = player.x + player.width / 2, gpcy = player.y + player.height / 2;
+          addProjectile({
+            id: `proj-poi-guard-${Date.now()}`,
+            x: gpcx + POI_GUARD_ORBIT_RADIUS - 9, y: gpcy - 9, width: 18, height: 18,
+            speed: 0, damage: 0, direction: { x: 1, y: 0 },
+            weaponType: 'drone-boomerang-projectile', weaponKey: 'poi-guard',
+            duration: POI_GUARD_DURATION_MS, createdAt: Date.now(),
+            passthrough: true, hitEnemies: [], hostile: false, reflected: false,
+            area: DRONE_BOOM_RADIUS, boomPhase: 'stop', // 'stop'=既存の周囲パルスダメージ経路に乗せる
+            orbitRadius: POI_GUARD_ORBIT_RADIUS, orbitAngle: 0, orbitSpeed: POI_GUARD_ORBIT_SPEED,
+          });
         }
 
         // §5.21 M20追補(v0.25.1534): クリア(gameWon=帰還完了/ゴール)or 撤退(gameReturned=商人「帰還」の
@@ -6449,15 +6559,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               }
             } else if (phase === 'stop') {
+              // §6.24 M48「防衛」: weaponKey='poi-guard' は常時周回する警察署アリーナ報酬のブーメラン。
+              // 動き(orbitフィールド)は既存の bibles 用汎用周回モーションに乗せてあるので、ここでは
+              // 「'stop'扱いの周囲パルスダメージ」+「弾もかき消す(投擲版には無い挙動)」だけを足す。
+              const isGuardOrbit = boom.weaponKey === 'poi-guard';
               // 0.25秒ごとのパルス。範囲内の敵へ 1/4 ダメージ(同一敵は0.25秒間隔=パルス間隔)。
               const nextPulse = boomPulseRef.current.get(boom.id) ?? 0;
               if (gameTime >= nextPulse) {
                 boomPulseRef.current.set(boom.id, gameTime + DRONE_BOOM_PULSE_MS);
+                const pulsePlayer = useGameStore.getState().player;
                 // §6.10 M33④: エクスプローダーをドローンパルスAoE(半径+ダメージ)にも適用。
                 // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)をパルスダメージにも乗算。
-                const pulseExMult = skillExplosionMult(useGameStore.getState().player);
+                const pulseExMult = skillExplosionMult(pulsePlayer);
                 const r = (boom.area ?? DRONE_BOOM_RADIUS) * pulseExMult;
-                const dmg = Math.max(1, Math.round((boom.damage / DRONE_BOOM_STOP_DMG_DIV) * pulseExMult * skillOutgoingDamageMult(useGameStore.getState().player)));
+                // §6.24 C3: 防衛は「近接の1/4」を都度参照する(投擲版は着弾時に固定したboom.damageを使う。
+                // 防衛は出撃中ずっと生き続けるパッシブなので、近接強化に追従させるのが自然な解釈)。
+                const baseDamage = isGuardOrbit
+                  ? (pulsePlayer.weapons.find(w => w.isMelee)?.damage ?? 6) * strikerMeleeMult(pulsePlayer) * (pulsePlayer.equipBonus?.damageMult ?? 1)
+                  : boom.damage;
+                const dmg = Math.max(1, Math.round((baseDamage / DRONE_BOOM_STOP_DMG_DIV) * pulseExMult * skillOutgoingDamageMult(pulsePlayer)));
                 const boomWalls = aoeWalls(bx, by);
                 for (const e of bs.enemies) {
                   if (e.type === 'reaper' && !e.reaperChaser) continue;
@@ -6470,6 +6590,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     playEnemyDeath();
                     dropEnemyXp(e, ex, ey, `pickup-xp-boom-${Math.floor(Date.now())}`);
                   }
+                }
+              }
+              // §6.24 C5「防衛」: 弾もかき消す(ブーメラン本体の当たり半径=boom.area・投擲版には無い挙動)。
+              if (isGuardOrbit) {
+                const guardR2 = ((boom.area ?? DRONE_BOOM_RADIUS)) ** 2;
+                for (const b of useGameStore.getState().projectiles) {
+                  if (!b.hostile) continue;
+                  const bpx = b.x + b.width / 2, bpy = b.y + b.height / 2;
+                  if ((bpx - bx) ** 2 + (bpy - by) ** 2 > guardR2) continue;
+                  removeProjectile(b.id);
+                  spawnBurst(bpx, bpy, '#a5f3fc', 4);
                 }
               }
             }

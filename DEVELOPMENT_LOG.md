@@ -1,5 +1,53 @@
 # Development Log
 
+## v0.25.2354 — 寄り道POI(M48)実装=病院の一般化+武器庫+警察署【2026-07-28 20:14 JST】
+- PACING_PUZZLE.md §6.24 が仕様の正本(全項目確定済み・★未決なし)。実装チャット(Sonnet)による発注バッチ。
+- **配置ロジックを純関数化(新規 `src/world/detourPoi.ts`)**: `assignDetourSectors(bossSector, rand?)`
+  が裏ボスのセクターを除いた残り3セクターへ 病院(6250)/武器庫(4000)/警察署(2250) をランダムに
+  1つずつ割り当てる(Fisher-Yates+乱数源を注入可能=テストで決定的に検証)。`detourPosForSector(kind,
+  sector)` がセクター中心の角度×距離を計算。`pois.ts` に `bossSectorIndex(boss)` を追加。
+- **病院を一般化**: `hospital.ts` の `hospitalPos` を `(hiddenBoss)` → `(sector: number)` へ変更
+  (「裏ボスの真反対で固定」から「割り当てられたセクター」を受け取るだけの純関数に)。サークル/滞在/
+  当たり判定は無変更。同じ枠組みで新規 `armory.ts`(武器庫)/`police.ts`(警察署)を実装。
+- **矢印と実体のズレを構造的に解消**: 旧 `pois.ts` は「hospital.tsと同じ式をもう1箇所に複製」して
+  循環importを回避していたが、位置が毎ランランダムになった以上この方式は安全でない(2箇所が別々に
+  乱数を引くとズレる)。`getRunPois` のシグネチャを `(hiddenBoss, detours: {kind, pos}[])` に変更し、
+  store が確定させた実際の位置をそのまま渡す方式にした(式の複製ではなく値の受け渡し)。
+- **武器庫**: サークル+3秒滞在(病院と同じ)。200スクラップ以上あれば `armoryTargetSlot`(空きスロット
+  優先→全部埋まっていれば最もTierが低い部位。新規・`data/equipment.ts`)+ 既存 `rollEquipment(slot,3)`
+  でTier3装備を確定入手。不足時は既存dwellの挙動をそのまま流用(円の出入りで再挑戦)。
+- **警察署**: 近づくと既存の囲いイベント(`beginArenaEvent`・kind:'horde'・18体・保険40秒)をそのまま
+  流用して発生。`ActiveEvent.policeArena` フラグで全滅クリア時に報酬分岐。報酬は爆撃/防衛/使役から
+  ランダムで1つを `grantSkill`(死神と同じ「その場でしか手に入らない」経路。ガチャには絶対出ない)。
+- **専用スキル3種は既存経路への薄い接続のみ**(新規実装ほぼ無し):
+  爆撃=タレット/朱雀と同じ`GRENADE_WEAPON_KEY`着弾爆発弾を発射元プレイヤーで3秒毎/射程380pxへ。
+  防衛=既存の汎用orbitモーション+ドローンブーメランの「停止中パルス」経路へ相乗り、「弾もかき消す」
+  だけ新規追加(投擲版の挙動は不変)。使役=既存の錬金術`buildSummon`をそのまま呼び、`Summon.persistent`
+  フラグ(新規)で距離消滅/FIFO入れ替え対象から除外するだけ(錬金術自体の数値・挙動は無変更)。
+- **建物素材(社長支給v0.25.2352)**: `police.png`/`armory.png` を `pixiTextures.ts` に
+  `scaleMode:'nearest'`で登録。病院は高さ基準・武器庫/警察署は横に広いので**幅基準**でスケール
+  (`ARMORY_DISPLAY_W`/`POLICE_DISPLAY_W`=380px)。当たり判定は病院と同寸を仮置き。**★実機調整前提**
+  (表示サイズ/当たり判定は値を置いただけ・実機確認は未実施)。
+- 負荷: 想定1/10(発注メモどおり。防衛の常時周回ブーメラン1本だけがper-frame新規描画だが、既存
+  スプライト+Graphicsパルスの流用でGraphics新規生成・強glowは無し)。
+- **★未決事項なし**(§6.24が全項目確定済みだったため)。武器庫の空きスロット複数時の乱数選択/
+  スクラップ不足時の再挑戦フロー等の細部は、既存コードの確立された慣例(`generateEquipmentChoices`の
+  randPick・病院のdwell再挑戦)をそのまま踏襲した実装詳細であり、設計判断としては扱っていない。
+- 検証: `npm run typecheck`(0 error)/ `npm run lint`(0 error、既存warning7件のみ)/
+  自バッチ新規テスト61件(`detourPoi.test.ts`/`armory.test.ts`/`police.test.ts`/`equipment.test.ts`/
+  更新済み`hospital.test.ts`/`pois.test.ts`)+既存の関連vitestスイート345件、全green。
+  `sim.test.ts`の`pullGacha updates pity/dupe...`1件のみ失敗だが、`git stash`で本バッチ着手前の
+  HEAD(df68003)でも同様に失敗することを確認済み=M48と無関係の既存不具合(対応不要と判断・放置)。
+  社長指示によりビルド/フル`npm test`は未実行(Testing policyのとおり)。実機確認は社長へ持ち越し。
+- 変更ファイル(新規): `src/world/detourPoi.ts` / `src/world/detourPoi.test.ts` / `src/world/armory.ts`
+  / `src/world/armory.test.ts` / `src/world/police.ts` / `src/world/police.test.ts` /
+  `src/data/equipment.test.ts`。
+  変更ファイル(既存): `src/world/hospital.ts` / `src/world/hospital.test.ts` / `src/world/pois.ts` /
+  `src/world/pois.test.ts` / `src/data/equipment.ts` / `src/data/campaign.ts` / `src/types/game.ts` /
+  `src/store/gameStore.ts` / `src/hooks/useGameLoop.ts` / `src/pixi/pixiScene.ts` /
+  `src/pixi/pixiTextures.ts` / `src/components/GameOverScreen.tsx` / `src/components/ResultReach.tsx` /
+  `PACING_PUZZLE.md` / `package.json` / `src/data/changelog.ts`。
+
 ## v0.25.2353 — プレイヤーAI強化(M49)の仕様を確定=発注可能に(文書のみ)【2026-07-28 19:46 JST】
 - 社長指示: 「AI強化のタスクはsonnetに投げれる?」「**後で夜中に一気に実装したいのでやれるところまで
   やってしまいたい**」→ **M49 の仕様を完成させた**(★未決なし)。**コードは1行も触っていない**。

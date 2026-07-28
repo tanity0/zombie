@@ -1,19 +1,21 @@
-// 廃病院(社長指示v0.25.2331)の純関数。位置・サークル判定・滞在の不変条件を機械化する。
+// 廃病院(社長指示v0.25.2331・PACING_PUZZLE.md §6.24 M48で角度のランダム化に改修)の純関数。
+// 位置・サークル判定・滞在の不変条件を機械化する。
 import { describe, it, expect } from 'vitest';
 import {
   HOSPITAL_DIST, HOSPITAL_CIRCLE_RADIUS, HOSPITAL_DWELL_MS, HOSPITAL_HITBOX_W, HOSPITAL_HITBOX_H,
   hospitalPos, hospitalRect, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell,
 } from './hospital';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
-import { bossLairPos, getRunPois, poiSectorIndex } from './pois';
+import { detourPosForSector } from './detourPoi';
+import { getRunPois, poiSectorIndex } from './pois';
 
 const player = (cx: number, cy: number) => ({ x: cx - 14, y: cy - 14, width: 28, height: 28 });
 
-describe('hospitalPos(未確認汚染のほぼ中間・裏ボスの反対方角)', () => {
+describe('hospitalPos(未確認汚染のほぼ中間・§6.24でセクター引数へ変更)', () => {
   it('距離は未確認汚染エリアの中間(社長指示「未確認のほぼ中間らへんに」)', () => {
     expect(HOSPITAL_DIST).toBe((AREA_THRESHOLDS[2] + AREA_THRESHOLDS[3]) / 2);
-    for (const boss of [null, 'mimir', 'thor'] as const) {
-      const p = hospitalPos(boss);
+    for (const sector of [0, 1, 2, 3]) {
+      const p = hospitalPos(sector);
       expect(Math.hypot(p.x, p.y)).toBeCloseTo(HOSPITAL_DIST, 6);
     }
   });
@@ -23,33 +25,39 @@ describe('hospitalPos(未確認汚染のほぼ中間・裏ボスの反対方角)
     expect(HOSPITAL_DIST).toBeLessThan(AREA_THRESHOLDS[3]);
   });
 
-  it('裏ボスの巣とは反対の方角=矢印が重ならない', () => {
-    for (const boss of ['mimir', 'jormungand', 'skadi', 'thor'] as const) {
-      const lair = bossLairPos(boss)!;
-      const h = hospitalPos(boss);
-      const dot = (lair.x * h.x + lair.y * h.y) / (Math.hypot(lair.x, lair.y) * Math.hypot(h.x, h.y));
-      expect(dot).toBeCloseTo(-1, 6); // 180°反対
-      expect(poiSectorIndex(h)).not.toBe(poiSectorIndex(lair)); // 解放を担当する拠点も別
+  it('detourPoi.ts の detourPosForSector(hospital, sector) と一致する(=単一の位置計算式)', () => {
+    for (const sector of [0, 1, 2, 3]) {
+      const p = hospitalPos(sector);
+      const expected = detourPosForSector('hospital', sector);
+      expect(p.x).toBeCloseTo(expected.x, 6);
+      expect(p.y).toBeCloseTo(expected.y, 6);
+    }
+  });
+
+  it('割り当てられたセクターに属する(=矢印の解放判定と実体が一致する)', () => {
+    for (const sector of [0, 1, 2, 3]) {
+      expect(poiSectorIndex(hospitalPos(sector))).toBe(sector);
     }
   });
 });
 
-describe('getRunPois(病院の方角マーク)', () => {
-  it('既定(未指定)では出さない=病院の無いステージを汚さない', () => {
+describe('getRunPois(病院の方角マーク・§6.24でdetours引数へ変更)', () => {
+  it('detours未指定(既定=空配列)では出さない=病院の無いステージを汚さない', () => {
     expect(getRunPois(null)).toEqual([]);
   });
 
-  it('表示ONなら病院POIが1つ増え、座標は hospitalPos と一致する', () => {
-    const pois = getRunPois('mimir', true);
-    const h = pois.find(p => p.kind === 'hospital');
-    expect(h).toBeTruthy();
-    expect(h!.x).toBeCloseTo(hospitalPos('mimir').x, 6);
-    expect(h!.y).toBeCloseTo(hospitalPos('mimir').y, 6);
+  it('detoursに渡すと病院POIが1つ増え、座標はそのまま反映される', () => {
+    const h = hospitalPos(1);
+    const pois = getRunPois('mimir', [{ kind: 'hospital', pos: h }]);
+    const found = pois.find(p => p.kind === 'hospital');
+    expect(found).toBeTruthy();
+    expect(found!.x).toBeCloseTo(h.x, 6);
+    expect(found!.y).toBeCloseTo(h.y, 6);
     expect(pois.filter(p => p.kind === 'boss')).toHaveLength(1); // 裏ボスの巣は据え置き
   });
 
-  it('入手後(表示OFF)は病院POIが消える', () => {
-    expect(getRunPois('mimir', false).some(p => p.kind === 'hospital')).toBe(false);
+  it('pos=nullを渡すと病院POIは出ない(入手後に呼び出し側がnullを渡す想定)', () => {
+    expect(getRunPois('mimir', [{ kind: 'hospital', pos: null }]).some(p => p.kind === 'hospital')).toBe(false);
   });
 });
 

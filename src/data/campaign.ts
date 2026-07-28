@@ -686,6 +686,9 @@ export const SKILL_KEYS: SkillKey[] = [
   'gold-rush', 'time-keeper', 'ghost-shooter', 'dog-run', 'counter-master', 'slasher',
   'attack-shooter', 'runner', 'seeker', 'scrap-builder',
   'magnet', 'last-magazine', 'warm-up',
+  // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ専用(reaperと同じくガチャからは絶対に出ない=
+  // GACHA_EXCLUDED_SKILLSで除外。この場所でしか手に入らないことが存在理由)。
+  'poi-bombing', 'poi-guard', 'poi-thrall',
 ];
 export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: SkillRarity }> = {
   // 超レア
@@ -723,6 +726,10 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'magnet':       { name: 'マグネット',     desc: '弾薬ピックアップの拾得範囲+10%(Lvで+20%/+30%)', rarity: 'normal' },
   'last-magazine':{ name: 'ラストマガジン', desc: '弾倉最後の1発のダメージ×2.0(Lvで×2.5/×3.0)。ショットガンは最終シェルの全ペレット', rarity: 'normal' },
   'warm-up':      { name: 'ウォームアップ', desc: '出撃から60秒間、移動速度+10%・リロード時間-20%・クリティカル率+20%', rarity: 'normal' },
+  // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ討伐報酬(3種から毎回ランダムで1つ)。
+  'poi-bombing':  { name: '爆撃',   desc: '3秒に1度、近くの敵にグレネードランチャーを自動発射', rarity: 'super' },
+  'poi-guard':    { name: '防衛',   desc: 'プレイヤーの周りをブーメランが常に周回し、触れた敵弾もかき消す', rarity: 'super' },
+  'poi-thrall':   { name: '使役',   desc: '倒した敵の20%を仲間(ゾンビ)として復活させる。最大1体・死ぬまで追従', rarity: 'super' },
 };
 
 // レベル別の説明。共通説明(base)は必ず残し、現在のLvの具体値(lv[])を併記する
@@ -763,6 +770,10 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'magnet':       { base: '弾薬ピックアップの拾得範囲が拡大（弾薬以外は従来どおり）', lv: ['+10%', '+20%', '+30%'] },
   'last-magazine':{ base: '弾倉最後の1発のダメージが増加（ショットガンは最終シェルの全ペレット）', lv: ['×2.0', '×2.5', '×3.0'] },
   'warm-up':      { base: '出撃から60秒間、移動速度+10%・リロード時間-20%・クリティカル率+20%' },
+  // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ報酬(いずれもLv変化なし=Lv1固定)。
+  'poi-bombing':  { base: '3秒に1度、近くの敵にグレネードランチャーを自動発射' },
+  'poi-guard':    { base: 'プレイヤーの周りをブーメランが常に周回し、触れた敵弾もかき消す' },
+  'poi-thrall':   { base: '倒した敵の20%を仲間(ゾンビ)として復活させる。最大1体・死ぬまで追従' },
 };
 // 現在Lvに即した説明。共通説明＋「Lv○：具体値」を併記。Lv変化なしは共通説明のみ。
 export const skillDescForLevel = (key: SkillKey, level: number): string => {
@@ -842,8 +853,13 @@ export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 10,
 // レア度ごとの表示ラベルと色(装備UI/ガチャ結果で共用)。
 export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル', rare: 'レア', super: '超レア' };
 
+// PACING_PUZZLE.md §6.24 M48: 警察署アリーナの討伐報酬3種(社長裁定v0.25.2348「一旦この中から
+// ランダムで1つ。増えてきたら選択式も検討」)。順序に意味はない(表示/抽選用の単なる列挙)。
+export const POLICE_REWARD_SKILLS: SkillKey[] = ['poi-bombing', 'poi-guard', 'poi-thrall'];
+
 // ガチャ(強化訓練)からは出さないスキル。死神(reaper)は「死神を倒すと習得」専用(社長指示)。
-export const GACHA_EXCLUDED_SKILLS: SkillKey[] = ['reaper'];
+// 警察署アリーナ3種も同じ理由で除外(そこでしか手に入らないことが寄り道の存在理由・§6.24)。
+export const GACHA_EXCLUDED_SKILLS: SkillKey[] = ['reaper', ...POLICE_REWARD_SKILLS];
 // pity からレア度を抽選し SkillKey を返す(枠内均等。純粋関数)。pity は呼び出し側が管理。
 export const rollGachaSkill = (pity = 0, rng: () => number = Math.random): SkillKey => {
   const weights = rarityWeightsForPity(pity);

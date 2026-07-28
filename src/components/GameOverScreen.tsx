@@ -181,13 +181,22 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // (画面端の方向矢印と出す条件を揃える)。到達していない深さにも刺さる=次に潜る理由になる。
   const baseSites = useGameStore(s => s.baseSites);
   const hiddenBoss = useGameStore(s => s.hiddenBoss);
-  const hospitalActive = useGameStore(s => !!s.hospital);
+  // §6.24 M48: hospital/armory/police は resetGame で1度だけ確定する位置(毎フレーム参照は変わらない
+  // ので購読して良い=CLAUDE.mdの「毎フレーム変わるオブジェクトは購読しない」規律には抵触しない)。
+  // 断面図は「このランに世界として存在したか」を示す(取得済みでも消さない=live矢印とは別の目的)。
+  const hospitalPos = useGameStore(s => s.hospital);
+  const armoryPos = useGameStore(s => s.armory);
+  const policePos = useGameStore(s => s.police);
   const reachPois = useMemo(() => {
-    const label: Record<string, string> = { boss: '裏ボスの巣', hospital: '廃病院', cave: '洞窟' };
-    return getRunPois(hiddenBoss, hospitalActive)
+    const label: Record<string, string> = { boss: '裏ボスの巣', hospital: '廃病院', armory: '武器庫', police: '警察署', cave: '洞窟' };
+    return getRunPois(hiddenBoss, [
+      { kind: 'hospital', pos: hospitalPos },
+      { kind: 'armory', pos: armoryPos },
+      { kind: 'police', pos: policePos },
+    ])
       .filter(p => isPoiRevealed(p, baseSites))
       .map(p => ({ dist: Math.hypot(p.x, p.y), label: label[p.kind] ?? p.kind, kind: p.kind }));
-  }, [hiddenBoss, hospitalActive, baseSites]);
+  }, [hiddenBoss, hospitalPos, armoryPos, policePos, baseSites]);
 
   // ハイスコア更新(ベンチ以外。死亡/クリア問わずスコアを記録)。更新できたら HIGH SCORE 表示。
   const [isHighScore, setIsHighScore] = useState(false);

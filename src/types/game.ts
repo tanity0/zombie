@@ -410,6 +410,9 @@ export interface Summon {
   expiresAt?: number;     // rare のみ
   lastHit: number;
   lastContactAt?: number; // 召喚→敵 接触ダメージの throttle
+  // PACING_PUZZLE.md §6.24 M48「使役」: 警察署アリーナ報酬で倒した敵の20%が復活したもの。
+  // 錬金術の距離消滅(ALCHEMY_DESPAWN_DIST)を適用しない/最大1体(先着維持)の識別に使う。
+  persistent?: boolean;
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';
@@ -605,7 +608,9 @@ export type SkillKey =
   // 通常
   | 'gold-rush' | 'time-keeper' | 'ghost-shooter' | 'dog-run' | 'counter-master' | 'slasher'
   | 'attack-shooter' | 'runner' | 'seeker' | 'scrap-builder'
-  | 'magnet' | 'last-magazine' | 'warm-up';
+  | 'magnet' | 'last-magazine' | 'warm-up'
+  // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ専用(ガチャからは絶対に出ない・GACHA_EXCLUDED_SKILLS)。
+  | 'poi-bombing' | 'poi-guard' | 'poi-thrall';
 
 // 四神舞(リズム)サブウェポン。リズム入力(タップ/フリック)で戦い、フリック4本パターンで
 // 四神技(朱雀/玄武/青龍/白虎)を発動。状態は store に持ち、攻撃実行は useGameLoop が担う。
@@ -843,6 +848,10 @@ export interface ActiveEvent {
   // 従来どおり「円外の非fromEvent敵は逃走モード」)。ゲート1だけ true を明示し、通常沸きのchaffが
   // 境界を越えて円内へ流れ込めるようにする(gameStore.ts の arenaConfiningFlee 参照)。
   permeable?: boolean;
+  // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ(寄り道POI)由来の horde イベントか。全滅クリア時に
+  // 専用スキルを1つランダム付与する(useGameLoop の cleared 分岐が見る)。通常の退屈アリーナと
+  // 挙動は同じ(kind:'horde'を共用)なので、この1フラグだけで報酬経路を分岐する。
+  policeArena?: boolean;
 }
 
 // 紅き夜: 全敵ステータス2倍・経験値2倍・画面赤染め。警告10秒→本番20秒。拠点/商人で逃げられる。

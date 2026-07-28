@@ -88,13 +88,17 @@ import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
+import { armoryPos as armorySpot, resolveArmoryCollision, isInArmoryCircle, tickArmoryDwell, ARMORY_SCRAP_COST } from '../world/armory';
+import { policePos as policeSpot, resolvePoliceCollision } from '../world/police';
+import { assignDetourSectors } from '../world/detourPoi';
+import { bossSectorIndex } from '../world/pois';
 import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled } from '../world/torches';
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
-import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
+import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, rollEquipment, armoryTargetSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
@@ -250,6 +254,8 @@ export const SHOP_CLASS_SKILL_COST = 100;
 export const SHOP_MEDKIT_COST = 50;
 export const SHOP_VACCINE_COST = 500;
 export const SHOP_SUBWEAPON_SELL_VALUE = 100; // 商人: サブウェポン換金額(1個=100s)
+// PACING_PUZZLE.md §6.24 M48「使役」(D1): 通常敵を倒した時に仲間として復活させる確率。
+export const POI_THRALL_CHANCE = 0.20;
 const HEAL_FRACTION = 0.3; // 救急セット: 最大HPの30%回復(社長指示・固定20から変更)
 const SHOP_INTERACT_RING_MS = 360;
 const STRONG_GLOW_RADIUS = 44;
@@ -2790,6 +2796,20 @@ interface GameState {
   hospitalTaken: boolean;                               // ワクチン入手済み(以後サークルも矢印も出さない)
   hospitalTakenAt: number;                              // 入手した gameTime(描画のフェードアウト用)
   updateHospital: (deltaTime: number) => void;          // 毎フレーム: サークル内滞在を計測し3秒でワクチン付与
+  // PACING_PUZZLE.md §6.24 M48: 寄り道POI(病院の一般化)。武器庫=デンジャーゾーンの中間。
+  // 拠点を解放するとその方角の矢印が出る(病院と同じ POI 仕組み)。3秒とどまり200スクラップを
+  // 払うとTier3装備を確定入手。位置は毎ラン、裏ボス/病院/警察署と被らないセクターへランダムに割り当て。
+  armory: { x: number; y: number } | null;              // この出撃の武器庫の位置(null=この出撃には無い)
+  armoryDwellMs: number;                                // サークル内の連続滞在時間(ms)。外れると0へ戻る
+  armoryTaken: boolean;                                 // Tier3装備入手済み(以後サークルも矢印も出さない)
+  armoryTakenAt: number;                                // 入手した gameTime(描画のフェードアウト用)
+  updateArmory: (deltaTime: number) => void;            // 毎フレーム: サークル内滞在を計測し3秒でスクラップ支払い判定
+  // PACING_PUZZLE.md §6.24 M48: 寄り道POI(病院の一般化)。警察署=研究対象区域の中間。旧称「研究施設跡」
+  // (社長指示v0.25.2352で改名・中身は不変)。近づくと囲いイベント(アリーナ)が発生し、全滅させると
+  // 専用スキルを1つランダム入手する(POLICE_REWARD_SKILLSから抽選・useGameLoopが付与する)。
+  police: { x: number; y: number } | null;              // この出撃の警察署の位置(null=この出撃には無い)
+  policeTaken: boolean;                                 // 専用スキル入手済み(以後アリーナも矢印も出さない)
+  policeTakenAt: number;                                // 入手した gameTime(描画のフェードアウト用)
   kogarasuUnlockedThisRun: boolean;                     // このランでトール初回討伐=小烏丸を永続解禁したか(リザルトの解禁ポップアップ用)
   debugLoopError: string;                               // 診断: ゲームループ本体で投げられた例外の要約(?debug=1 表示)
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
@@ -3083,6 +3103,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   hospitalDwellMs: 0,
   hospitalTaken: false,
   hospitalTakenAt: 0,
+  armory: null,
+  armoryDwellMs: 0,
+  armoryTaken: false,
+  armoryTakenAt: 0,
+  police: null,
+  policeTaken: false,
+  policeTakenAt: 0,
   kogarasuUnlockedThisRun: false,
   debugLoopError: '',
   startWithTestStraps: false,
@@ -3296,9 +3323,18 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? resolveCityPropCollision(state.farBackdrop, { x: castleResolved.x, y: castleResolved.y, width: player.width, height: player.height })
           : castleResolved;
         // 病院(通常ステージに1つ)の土台も遮蔽物。入手後(消滅後)は素通り。
-        const cityResolved = resolveHospitalCollision(
+        const hospitalResolved = resolveHospitalCollision(
           { x: cityPropResolved.x, y: cityPropResolved.y, width: player.width, height: player.height },
           state.hospital, state.hospitalTaken,
+        );
+        // §6.24 M48: 武器庫/警察署も病院と同じ「1個しか無い建物」の遮蔽物(入手/攻略後は素通り)。
+        const armoryResolved = resolveArmoryCollision(
+          { x: hospitalResolved.x, y: hospitalResolved.y, width: player.width, height: player.height },
+          state.armory, state.armoryTaken,
+        );
+        const cityResolved = resolvePoliceCollision(
+          { x: armoryResolved.x, y: armoryResolved.y, width: player.width, height: player.height },
+          state.police, state.policeTaken,
         );
         // 壁オブジェクト(研究所スキン・区画生成)を遮蔽物として解決。近傍区画のみ問い合わせ。
         let wallResolved = cityResolved;
@@ -5320,10 +5356,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const sy = pcy + (ld.y / lmag) * 40;
     const lvl = alchemyLevel(player);
     set({ summonFxAt: Date.now() }); // 召喚音SEのトリガ(通常/レアとも)
+    // §6.24 M48「使役」: 警察署アリーナ報酬のペット(persistent:true)は錬金術の入れ替え枠に数えない
+    // =錬金術を唱えても消えない(「死ぬまでついてくる」)。alchemy自身の3体上限/レア切替の挙動は不変。
+    const persistentPets = summons.filter(s => s.persistent);
     if (Math.random() < ALCHEMY_RARE_CHANCE) {
       // レア: 既存の通常個体を全消去し、レア1体を召喚(枠を専有)。
       const rare = buildSummon(lvl, 'rare', sx, sy);
-      set({ summons: [rare] });
+      set({ summons: [...persistentPets, rare] });
       get().spawnRing(sx, sy, 16, 120, 'rgba(125,211,252,0.85)', 3, 360);
       get().spawnGlow(sx, sy, 72, 'rgba(125,211,252,', 420);
       // 召喚完了演出(レアは強め): 暗転 + スロー + パーティクル(死神=黒も混ぜる)。
@@ -5334,12 +5373,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
     // 通常: 最大3体、超えたら最古をFIFOで入れ替え。
-    const normals = summons.filter(s => s.kind === 'normal').sort((a, b) => a.createdAt - b.createdAt);
+    const normals = summons.filter(s => s.kind === 'normal' && !s.persistent).sort((a, b) => a.createdAt - b.createdAt);
     const kept = normals.length >= ALCHEMY_MAX_NORMAL
       ? normals.slice(normals.length - (ALCHEMY_MAX_NORMAL - 1))
       : normals;
     const unit = buildSummon(lvl, 'normal', sx, sy, skillSummonHpMult(player)); // スキル: ナイト=召喚HP×1.5
-    set({ summons: [...kept, unit] });
+    set({ summons: [...persistentPets, ...kept, unit] });
     get().spawnGlow(sx, sy, 54, 'rgba(125,211,252,', 360);
     // 召喚完了演出: 暗転 + スロー + シアンのパーティクル。
     get().triggerTimeSlow(0.4, 320);
@@ -5433,7 +5472,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 通常個体
       const scx = s0.x + s0.width / 2;
       const scy = s0.y + s0.height / 2;
-      if (Math.hypot(scx - pcx, scy - pcy) > ALCHEMY_DESPAWN_DIST) continue; // 距離消滅
+      // §6.24 M48「使役」(D2): persistent(警察署アリーナ報酬のペット)は距離で消えない
+      // (社長「死ぬまでついてくる」)。錬金術本来の召喚だけ距離消滅を適用する。
+      if (!s0.persistent && Math.hypot(scx - pcx, scy - pcy) > ALCHEMY_DESPAWN_DIST) continue;
       let s = s0;
       // 攻撃: 近接間合いの最寄り敵に接触ダメージ(throttle)。
       // 賢者の石装備時は単体接触ではなく半径 SAGE_NORMAL_AOE_RADIUS の AoE。
@@ -6659,6 +6700,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let deathPopAt: { ex: number; ey: number; fromX: number; fromY: number } | null = null; // §5.23 M22 A3(set後に発火)
     let dramaticDeathAt: { enemy: Enemy; x: number; y: number } | null = null; // juice: FF風クランブル(set後に発火)
     let appliedDamage = 0; // §6.21 M46計測用: 実際に加算された生ダメージ(HP床クランプ前・紅き夜補正後=既存damageDealtと同値)
+    let thrallCandidate: Enemy | null = null; // §6.24 M48「使役」: 倒した通常敵(20%抽選はset後に行う)
 
     set(state => {
       const { enemies, gameStats } = state;
@@ -6690,6 +6732,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed = true;
         if (enemy.type === 'reaper') reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
         if (enemy.isNamed) namedFoeKilled = enemy; // §5.14 M13: 宿敵討伐
+        // §6.24 M48「使役」: 通常敵(ボス/裏ボス/ネームド/エリートは対象外=D1)を倒した時だけ候補にする。
+        // 実際の20%抽選/先着1体維持(D3)は set() の外側(post section)でownedの現在値を見て行う。
+        if (hasSkill(state.player, 'poi-thrall') && !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget) {
+          thrallCandidate = enemy;
+        }
         // juice: FF風クランブル統一演出(ネームド/裏ボス/giantbat/hunter討伐)。銃/接触/爆発キル経路。
         if (getsDramaticDeath(enemy)) dramaticDeathAt = { enemy, x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
         deathPopAt = {
@@ -6756,6 +6803,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!already) {
         const p = reaperDefeated as { x: number; y: number };
         get().spawnCallout(p.x, p.y - 20, 'スキル「死神」習得！', '#c084fc', { scale: 1.2 });
+      }
+    }
+
+    // §6.24 M48「使役」: 20%抽選(D1対象は set() 内で既に絞り込み済み)。既に1体いる時は抽選しない
+    // =先着1体を維持(D3)。錬金術の召喚と同じ枠(state.summons)へ persistent:true で1体追加する
+    // (updateSummons/summonAlchemyがALCHEMY_DESPAWN_DIST無視/FIFO対象外にpersistentを見る)。
+    if (thrallCandidate) {
+      const tc = thrallCandidate as Enemy;
+      const alreadyHasThrall = get().summons.some(s => s.persistent);
+      if (!alreadyHasThrall && Math.random() < POI_THRALL_CHANCE) {
+        const tx = tc.x + tc.width / 2, ty = tc.y + tc.height / 2;
+        const unit: Summon = { ...buildSummon(1, 'normal', tx, ty), persistent: true };
+        set(state => ({ summons: [...state.summons, unit] }));
+        get().spawnGlow(tx, ty, 54, 'rgba(56,189,248,', 360);
+        get().spawnBurst(tx, ty, '#38bdf8', 18);
+        get().spawnCallout(tx, ty - 20, '使役！', '#38bdf8');
       }
     }
 
@@ -6953,9 +7016,18 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 街/雪原プロップ(バス/塔/トラック等)は敵にも当たり判定(プレイヤーと同じ)。森等カタログ無しは即return=no-op。
             const propR = resolveCityPropCollision(state.farBackdrop, { x: wallR.x, y: wallR.y, width: enemy.width, height: enemy.height });
             // 病院の土台は敵にも当たり判定(プレイヤーと同じ=すり抜け防止)。
-            pos = resolveHospitalCollision(
+            const hospitalR = resolveHospitalCollision(
               { x: propR.x, y: propR.y, width: enemy.width, height: enemy.height },
               state.hospital, state.hospitalTaken,
+            );
+            // §6.24 M48: 武器庫/警察署も同様に敵の当たり判定へ加える(プレイヤーと同じ規約)。
+            const armoryR = resolveArmoryCollision(
+              { x: hospitalR.x, y: hospitalR.y, width: enemy.width, height: enemy.height },
+              state.armory, state.armoryTaken,
+            );
+            pos = resolvePoliceCollision(
+              { x: armoryR.x, y: armoryR.y, width: enemy.width, height: enemy.height },
+              state.police, state.policeTaken,
             );
           }
           // 帰還サークルには敵を入れない: 中心から radius+敵サイズ分の外へ押し出す(セーフゾーン)。
@@ -9260,6 +9332,39 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  // 武器庫(PACING_PUZZLE.md §6.24 M48): サークル内滞在を計測。3秒到達時にスクラップが足りていれば
+  // 200スクラップを払ってTier3装備(空きスロット優先/満杯なら最低Tierを置換)を確定入手し、建物は
+  // フェードアウトして消える。**足りない場合は何も起きない**(既存のdwell挙動をそのまま流用=
+  // サークルを出入りすれば再挑戦できる。新しい「不足時専用」の分岐は作らない)。
+  // 判定の中身は world/armory.ts の純関数 + data/equipment.ts の rollEquipment/armoryTargetSlot。
+  updateArmory: (deltaTime) => {
+    set(state => {
+      const pos = state.armory;
+      if (!pos || state.armoryTaken || state.gameWon) return {};
+      const inside = isInArmoryCircle(state.player, pos);
+      const { dwellMs, done } = tickArmoryDwell(state.armoryDwellMs, inside, deltaTime * 1000);
+      if (done && state.player.straps >= ARMORY_SCRAP_COST) {
+        const slot = armoryTargetSlot(state.player.equipment);
+        const def = rollEquipment(slot, 3);
+        const paidPlayer = equipDefOnPlayer(
+          { ...state.player, straps: state.player.straps - ARMORY_SCRAP_COST },
+          def.id,
+        );
+        return {
+          armoryDwellMs: dwellMs,
+          armoryTaken: true,
+          armoryTakenAt: state.gameTime,
+          player: paidPlayer,
+          gameStats: { ...state.gameStats, strapsSpent: state.gameStats.strapsSpent + ARMORY_SCRAP_COST },
+          eventBannerText: `武器庫: ${def.name}を入手`,
+          eventBannerUntil: state.gameTime + 2000,
+        };
+      }
+      if (dwellMs === state.armoryDwellMs) return {}; // 円外で0のまま=書き込み省略(毎フレのsetを避ける)
+      return { armoryDwellMs: dwellMs };
+    });
+  },
+
   // 拠点候補地(仕様10): サークル内滞在を計測。10秒で制圧→武器商人がその地点へ移動し、元の商人地点は候補に戻る。
   updateSuppression: (deltaTime) => {
     // チュートリアル: 随行NPC(escorts流用)は拠点前進/制圧をしない(移動は通常 useGameLoop の
@@ -10191,6 +10296,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 洋館通路(corridorMode)では裏ボス深層域を無効化(v0.25.2119): 通路は奥へ歩き続ける構造のため
       // 距離条件を必ず踏み、森用のデンジャーゾーン暗幕が通路背景を覆って画面が黒地化していた(社長報告)。
       const hiddenBoss = (!state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode) ? state.pendingHiddenBoss : null;
+      // PACING_PUZZLE.md §6.24 M48: 寄り道POI(病院/武器庫/警察署)は病院と同じ条件系(通常ステージ=
+      // 屋外・森スキン・通路/ダンステストでない)にだけ立つ。3種の位置は、裏ボスのセクターを除いた
+      // 残り3セクターへ毎ランランダムに割り当てる(assignDetourSectors。乱数はここで1度だけ引く=
+      // hospital.ts/armory.ts/police.ts の各 *Pos はその結果を受け取るだけの純関数)。
+      const detourVisible = !state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode;
+      const detourSectors = detourVisible ? assignDetourSectors(bossSectorIndex(hiddenBoss)) : null;
       const spawnTL = indoor
         ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
         // 洋館: 到着点(y=0)の下から走り込む(護衛もspawnTL基準なので隊ごと下から入場する)。
@@ -10284,13 +10395,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossChasing: false,
         bossCorpse: null,
         hiddenBossDefeated: false,
-        // 病院は通常ステージ(屋外・森スキン・通路/ダンステストでない)にだけ立つ。裏ボスと同じ条件系。
-        hospital: (!state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode)
-          ? hospitalSpot(hiddenBoss)
-          : null,
+        // 病院/武器庫/警察署は通常ステージ(屋外・森スキン・通路/ダンステストでない)にだけ立つ。
+        // §6.24 M48: 位置はこのランで確定した detourSectors(裏ボスのセクターを避けた3割り当て)を使う。
+        hospital: detourSectors ? hospitalSpot(detourSectors.hospital) : null,
         hospitalDwellMs: 0,
         hospitalTaken: false,
         hospitalTakenAt: 0,
+        armory: detourSectors ? armorySpot(detourSectors.armory) : null,
+        armoryDwellMs: 0,
+        armoryTaken: false,
+        armoryTakenAt: 0,
+        police: detourSectors ? policeSpot(detourSectors.police) : null,
+        policeTaken: false,
+        policeTakenAt: 0,
         kogarasuUnlockedThisRun: false,
         labDoors: runDoors,
         labButtons: runButtons,

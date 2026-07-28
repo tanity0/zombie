@@ -2816,6 +2816,67 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 ランクの裁定が出た時に、**4種目の枠へそのまま嵌める**のが自然(軸が「ランク」で他3種と被らず、
 囲いイベント=入場コストが最初から仕様に入っている)。
 
+### 実装結果(v0.25.2354・M48・Sonnet実装)
+- **配置ロジックを純関数化**: `src/world/detourPoi.ts`(新規)に `assignDetourSectors(bossSector, rand?)`
+  (裏ボスのセクターを除いた残り3セクターへ police/armory/hospital をランダムに1つずつ割り当てる。
+  Fisher-Yates+注入可能な乱数源=テストで決定的に固定できる)と `detourPosForSector(kind, sector)`
+  (セクター中心の角度×kind別の固定距離)を実装。`pois.ts` に `bossSectorIndex(boss)` を追加。
+  不変条件(発注メモ4の4点)は `detourPoi.test.ts` で機械化(裏ボス有り/無し・乱数を変えると結果が
+  変わる・既定Math.randomでも呼べる、の4系統)。
+- **病院を一般化**: `hospital.ts` の `hospitalPos` を `(hiddenBoss)` → `(sector: number)` へ変更
+  (角度=裏ボスの真反対固定 → セクター引数を受け取るだけの純関数に)。サークル/滞在/当たり判定は
+  無変更(既存のHOSPITAL_CIRCLE_RADIUS/HOSPITAL_DWELL_MSはdetourPoi.tsの共有定数を参照するよう変更
+  したのみで値は不変)。同じ枠組みで `armory.ts`(武器庫)/`police.ts`(警察署)を新規実装。
+- **矢印とのズレを構造的に解消(発注メモ3の対応・当初想定より踏み込んだ対応)**: 従来の
+  `pois.ts` は `hospitalPosForPois` という「hospital.tsと同じ式をもう1箇所に複製」で循環import
+  を回避していたが、位置が毎ランランダムになった以上この複製方式は安全ではない(2箇所が別々に
+  乱数を引くと矢印と実体がズレる)。そこで `getRunPois` のシグネチャを `(hiddenBoss, detours:
+  {kind, pos}[])` に変更し、**実際に store が確定させた位置をそのまま渡す**方式にした(式の複製
+  ではなく値の受け渡しに変更=ズレが原理的に起きなくなる)。呼び出し側(pixiScene.ts/
+  GameOverScreen.tsx)を追従。
+- **武器庫**: `gameStore.ts` に `armory`/`armoryDwellMs`/`armoryTaken`/`armoryTakenAt`/
+  `updateArmory` を追加。3秒滞在時、200スクラップ以上あれば `data/equipment.ts` の新規純関数
+  `armoryTargetSlot(loadout)`(空きスロット優先→全部埋まっていれば最もTierが低い部位)+
+  既存 `rollEquipment(slot, 3)` でTier3装備を確定入手・スクラップ消費。**不足時は既存のdwell
+  挙動をそのまま流用**(新しい「不足時専用」の分岐は作らない=サークルの出入りで再挑戦できる)。
+- **警察署**: 近づく(`isNearPolice`・半径=既存`ARENA_EVENT_RADIUS`と同じ240)と既存の囲いイベント
+  (`beginArenaEvent`・kind:'horde'・total=18・保険40秒)をそのまま流用して発生。`ActiveEvent`に
+  `policeArena?: boolean` を追加し、全滅クリア時にこのフラグで報酬分岐(既存の駆除成功バナー処理に
+  1行追加しただけ)。報酬は `POLICE_REWARD_SKILLS`(3種)からランダムで1つを`grantSkill`(死神の
+  「撃破で習得」と同じ経路=ownedSkillsへ永続追加。ガチャには`GACHA_EXCLUDED_SKILLS`で絶対出ない)。
+- **専用スキル3種の実装は既存経路への薄い接続で完了**(発注メモ2どおり新規実装はほぼ無し):
+  - **爆撃**: タレット/朱雀と同じ `GRENADE_WEAPON_KEY`(rifle-t3)着弾爆発弾を、発射元プレイヤー・
+    3秒間隔・射程380pxの最近接敵へ発射するだけ(既存の爆発判定ロジックは無変更)。
+  - **防衛**: `Projectile`に既存であった汎用「orbitRadius/orbitAngle/orbitSpeed」周回モーション
+    (bibles用と思われる未使用インフラ)へ乗せ、`boomPhase:'stop'`を明示することで既存ドローン
+    ブーメランの「停止中パルスダメージ」経路(0.25秒ごとに近接の1/4)をそのまま流用。「弾もかき消す」
+    (敵弾を半径50で除去)だけが新規ロジック(`weaponKey==='poi-guard'`でのみ発火=投擲版の挙動は不変)。
+    描画はドローンブーメランのスプライトをtint違い(青)にしただけ(新規アセット無し)。
+  - **使役**: `damageEnemy`のキル確定時、通常敵(`isBossType`/`isNamed`/`questTarget`を除外=
+    ボス/裏ボス/ネームド/エリート対象外)を対象に20%抽選→既存の錬金術`buildSummon(1,'normal',x,y)`
+    をそのまま呼び、`Summon`に追加した`persistent:true`フラグで区別。`persistent`は
+    (a)錬金術のALCHEMY_DESPAWN_DIST(距離消滅)を適用しない、(b)錬金術の3体FIFO入れ替え/レア
+    切替時にも消えない、の2点だけ既存コードへ分岐追加(錬金術自体の挙動・数値は無変更)。
+- **負荷**: 想定どおり1/10(発注メモ5)。常時周回する「防衛」ブーメラン1本だけがper-frameの新規
+  描画だが、既存スプライト+Graphicsパルスの流用でGraphics新規生成・強glowは無し。
+- **建物素材(社長支給v0.25.2352)**: `police.png`(520×472)/`armory.png`(520×394)を
+  `pixiTextures.ts`に`scaleMode:'nearest'`で登録。病院が高さ基準(`HOSPITAL_DISPLAY_H`)なのに対し、
+  横に広い等角絵なので**幅基準**(`ARMORY_DISPLAY_W`/`POLICE_DISPLAY_W`=380px)でスケール。
+  当たり判定(`*_HITBOX_W/H`)は病院と同寸を仮置き。**★実機調整前提**(表示サイズ/当たり判定とも
+  実機で見た目を確認した上での微調整余地あり。ここは値を置いただけで実機は未確認)。
+- **テスト**: 新規 `detourPoi.test.ts`(7) / `armory.test.ts`(12) / `police.test.ts`(10) /
+  `equipment.test.ts`(5・armoryTargetSlot) / `hospital.test.ts`更新(18・sector引数化) /
+  `pois.test.ts`更新(9・detours引数化+bossSectorIndex)。typecheck/lint(0 error)/related vitest
+  (自バッチ61件+既存関連スイート345件)全green。**社長指示によりビルド/フル`npm test`は未実行**
+  (Testing policy §のとおり明示指示があれば回す)。
+- **既知の無関係な既存失敗**: `sim.test.ts`の`pullGacha updates pity/dupe state sequentially`が
+  本バッチ着手前のHEAD(df68003)でも同様に失敗することを`git stash`で確認済み(M48の変更とは無関係の
+  既存不具合)。対応不要と判断し放置(気になれば別途調査を推奨)。
+- **★未決事項: なし**(仕様書§6.24が全項目確定済みだったため設計判断は発生しなかった。武器庫/
+  警察署の空きスロット選択における微細な実装詳細=空きが複数ある時の乱数選択/スクラップ不足時の
+  再挑戦フロー等は、既存コードの確立された慣例(generateEquipmentChoicesのrandPick・病院のdwell
+  再挑戦)をそのまま踏襲したので設計判断としては扱っていない。詳細はSonnet最終報告を参照)。
+
 ## 6.25 バッチM49: プレイヤーAI(ボット)強化=「最強AI」の生存機能(社長指示v0.25.2353・Sonnet実装用)
 
 ### 背景(実測。`TEST_HANDOFF/results/20260728-0822-reaper-kill-feasibility.md`)
@@ -2929,7 +2990,7 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
 |---|---|---|
-| M48 | 寄り道POI(§6.24: 病院の一般化+警察署+武器庫) | **Sonnet実装中**(v0.25.2352で素材支給・改名) |
+| M48 | 寄り道POI(§6.24: 病院の一般化+警察署+武器庫) | **実装済み v0.25.2354**(★未決なし。詳細は実装結果セクション参照) |
 | M49 | プレイヤーAI強化(§6.25: 接触脅威/距離維持/ワープ/強化選択/タイミング入力) | **仕様確定・発注待ち**(★未決なし) |
 | M2 | ランク査定+ランプ+リアルタイム緩急(rankAssessor+診断) | **実装済み v0.25.1372** |
 | M3 | 盤面構成パズル(scriptPuzzle: 表+選択+CD/枠の純関数) | **実装済み v0.25.1372** |
