@@ -3037,6 +3037,44 @@ master は `retreatHpFrac 0.5`(HP半分で退避)・`dodge 'all'`(回避に入�
 **1/10**。すべてボット(開発/テスト用)の判断ロジックで、**通常プレイの描画・シミュレーションには一切入らない**。
 新規の per-frame 描画なし。前tick位置の保持は敵数ぶんの数値配列1本のみ。
 
+### 実装結果(v0.25.2363・M49・Sonnet実装)
+- **行動階層①②③(最優先)**: `src/utils/botEngagement.ts`(新規)に `tickEngagementPhase`
+  (直近60秒の撃破/被弾のヒステリシス。K=20/H=1/H2=3/K2=8/Lv5floorは表の値そのまま)+
+  `advanceOptionDetour`(③=②前進中に限り経路上240px以内のピックアップへだけ寄り道。独立目的にはしない)。
+  `useGameLoop.ts`/`playtestDriver.ts`の両方で「②(objective.travel)を許すか」を
+  `activeEvent(ゲート/囲い) || phase==='advance'` でゲートする形で配線(objective='none'の通常
+  デバッグボットは botGoalPlan が無いため完全なno-op)。
+- **攻撃側ダイヤル追加**: `BotSkillProfile` に `engageDist`/`disengageHp`(旧`retreatHpFrac`を反転して
+  置換)/`dodgeVsAttack` を追加。`dodgeOverridesAttack()` で回避×攻撃の競合を確率判定
+  (`dodge==='none'`のnovice/casualは常にno-op)。
+- **M49-1(接触脅威)**: `contactDodge`/`isContactDangerous`/`CONTACT_DANGER_HP_FRAC`(0.2)/
+  `DODGE_CONTACT_DIST`(260)を追加。`dodgeHandles(level,'contact')`は'all'のみtrue。`dodgeVector`に
+  `maxHealth`引数を追加(既定0=既存呼び出し元は完全no-op)。**findCounterThreatには足していない**
+  (設計の要点どおり)。
+- **M49-2(距離維持)**: `avoidContactDist`(160)/`meleeVsDanger`を追加。kiterの帯は危険な的の時だけ
+  `max(銃レンジ帯,avoidContactDist)`に拡張。`playtestBot.ts`に共通ヘルパー`engageDecision`を新設し、
+  standard/scavengerの近接判断にも「危険敵かつmeleeVsDanger=falseなら近寄らず退避する」ロジックを
+  追加(spec本文はkiterのみ名指しだが、skilled(dodgeが'projectile'=contact非対応)が無防備にならない
+  ための拡張。★未決事項6-3参照)。
+- **M49-3(ワープ追従)**: `WARP_DETECT_PX=300`/`WarpTrackState`/`warpDodge`を追加。検知後
+  `WARP_ALERT_MS=1000`の間は反応遅延(reactionMs)を跨いで検知状態を保持する(1tick限りの検知だと
+  reactionMs経過前に「動いていない」判定で消えてしまうため=実装中に見つけて対策)。
+- **M49-4(強化選択ポリシー)**: `src/utils/botUpgradePolicy.ts` に `pickUpgradeByPolicy` を追加。
+  `'random'`は既存`pickUpgrade`と完全に同一結果。`'greedy'`は装備Tier上げ>ナイフ>heal(HP<50%のみ)>
+  scrap>その他の優先度(同順位はrandで決定的に解決)。
+- **M49-5(タイミング入力)は未着手**(優先度最低のため見送り。次バッチで対応)。
+- **不変条件の扱い**: novice/casualの「旧ダイヤル」(reactionMs/counterChance/dodge/targeting/
+  surroundCount)と「明示的no-op値」(avoidContactDist=0/meleeVsDanger=true/warpReact=false/
+  upgradePolicy='random')は完全に従来のまま。**disengageHp/engageDistは§6.25改訂の表どおり
+  novice/casualにも実値を入れた**(★未決事項6-1参照・novice>casualの逆転是正が主目的のため)。
+  撃破数の単調性(novice≤casual≤skilled≤master)は設計チャットの`rankProbe.test.ts`(`RANK_PROBE=1`)
+  実測待ち(本実装では未実施)。
+- **テスト**: `botSkill.test.ts`(50件)/`botEngagement.test.ts`(13件・新規)/`playtestBot.test.ts`
+  (52件)/`botUpgradePolicy.test.ts`(12件)を追加/更新、全通過。`npx vitest related`で
+  useGameLoop/playtestDriver経由の既存プレイテスト(playtest.test.ts等)も回帰確認済み(168 pass)。
+- **検証**: typecheck / lint(0 error)通過。テスト/ビルドのフル実行は社長指示が無いため未実施
+  (Testing policyどおり)。
+
 ## 6.26 城ボス(ジャイアント)の行動・攻撃パターン改訂(社長指示v0.25.2357・台本)
 **状態: 台本のみ。実装は社長指示待ち(コードは1行も変更していない)。**
 社長指示: 「ソウルシリーズからリサーチと徹底解析をして**台本**にする。実装指示は後で出す」。
@@ -3517,7 +3555,7 @@ HP1000 / 接触19 / 弾ダメージ10 / 着地AoE半径54 / 巡航56px/s / 突�
 | M50 | ランク査定の作り直し(§6.27: 昇格=撃破の窓の半分/降格=被弾の連続時間) | **仕様確定・発注待ち**(★仮値=V(r)の係数のみ) |
 | M51 | 城ボス(ジャイアント)の行動・攻撃パターン改訂(§6.26: ソウル式テレグラフ+硬直=反撃窓+間合い出し分け+2フェーズ) | **実装済み v0.25.2361**(★未決なし=§6.26-9で全件裁定。`src/utils/giantScript.ts`+`gameStore.ts`の専用ブロックに実装、`?giantscript=0`で旧挙動へ戻せる。実機確認は社長へ持ち越し) |
 | M48 | 寄り道POI(§6.24: 病院の一般化+警察署+武器庫) | **実装済み v0.25.2354**(★未決なし。詳細は実装結果セクション参照) |
-| M49 | プレイヤーAI強化(§6.25: 接触脅威/距離維持/ワープ/強化選択/タイミング入力) | **仕様確定・発注待ち**(★未決なし) |
+| M49 | プレイヤーAI強化(§6.25: 接触脅威/距離維持/ワープ/強化選択/タイミング入力) | **実装済み v0.25.2363**(行動階層①②③+攻撃側ダイヤル+M49-1〜4実装。M49-5未着手=優先度最低のため見送り。★未決4点=上記★未決事項6参照。撃破数の単調性は設計チャットのrankProbe実測待ち) |
 | M2 | ランク査定+ランプ+リアルタイム緩急(rankAssessor+診断) | **実装済み v0.25.1372** |
 | M3 | 盤面構成パズル(scriptPuzzle: 表+選択+CD/枠の純関数) | **実装済み v0.25.1372** |
 | M4 | 配線(コマループ・緩サイクル・?puzzle=0・ボス停止) | **実装済み v0.25.1372・統合テスト待ち** |
@@ -3699,6 +3737,33 @@ HP1000 / 接触19 / 弾ダメージ10 / 着地AoE半径54 / 巡航56px/s / 突�
   **実機未確認(§6のとおり途中の実機確認は行っていない)。M4完了=統合テスト待ち。**
 
 ## ★未決事項(Sonnetはここに書いて止まる)
+6. **M49実装時の解釈(§6.25・実装は完了・下記4点は判断が分かれうるので裁定を仰ぐ)**:
+   1. **不変条件1「novice/casualは本バッチで挙動が1ミリも変わらない」と、§6.25改訂の
+      `disengageHp`/`engageDist`表(novice/casualにも非0の実測値がある)は文面上両立しない**
+      (旧`retreatHpFrac`はnovice/casual=0=退避しない、だったのに対し、改訂表はnovice=0.5/casual=0.4
+      という実値を明記している)。**採った解釈**: 「旧ダイヤル(reactionMs/counterChance/dodge/
+      targeting/surroundCount)は完全に従来値のまま」「avoidContactDist=0/meleeVsDanger=true/
+      warpReact=false/upgradePolicy='random'という明示的no-op値もnovice/casualで従来どおり」
+      を不変条件の実体とみなし、**disengageHp/engageDist/dodgeVsAttackは改訂表の数値をnovice/casualにも
+      適用**(novice>casual逆転を正す本バッチの主目的と両立させるため)。誤りなら値を差し戻す。
+   2. **`engageDist`の具体的な消費箇所が仕様に明記されていない**(「どこまで敵を追って倒しに行くか」
+      とだけ記載)。**採った実装**: `standard`/`scavenger`ペルソナの標的選択(`skillTarget`/
+      `nearestStunned`)で、engageDistより遠い敵を候補から除外する(novice/casualにも実値200/260pxの
+      距離上限が新設される=解釈1と同じ理由で許容)。`kiter`/`boar`/`stationary`等の他ペルソナには
+      適用していない(spec中で名指しされているのはkiterの帯のみのため)。
+   3. **`avoidContactDist`/`meleeVsDanger`の相互作用で「近接を諦めるがdodgeも持たない段(skilled)」が
+      無防備になる懸念**があったため、spec本文にない拡張として、`standard`/`scavenger`の近接判断
+      (`engageDecision`)にも「危険敵かつmeleeVsDanger=falseならavoidContactDist未満へ近寄らず、
+      その距離を割ったら退避する」ロジックを追加した(kiterの帯だけでなく標準ペルソナの間合いにも
+      avoidContactDistを効かせた)。spec文言は「kiterの帯を…」としかkiterを名指ししていない。
+   4. **`dodgeVsAttack`の競合判定の具体的な発火条件・確率式が仕様に無い**。**採った実装**:
+      `dodgeVector`が非nullを返した(=回避対象がある)tickにのみ`rand() < dodgeVsAttack`で攻撃
+      (`wantsMelee`/カウンター)を確率的に抑制する新関数`dodgeOverridesAttack`を追加し、
+      `dodge==='none'`のnovice/casualは`hasDodge`が常にfalseになるため無条件no-op、という設計で
+      不変条件1を担保した。確率分布・発火の粒度(tickごとの独立試行)自体は叩き台。
+   - 上記いずれも**typecheck/lint通過・ユニットテスト(botSkill/botEngagement/playtestBot/
+     botUpgradePolicy)は解釈どおりの値でグリーン**。撃破数の単調性(novice≤casual≤skilled≤master)の
+     実測検証は設計チャットが`rankProbe.test.ts`(`RANK_PROBE=1`)で行う想定(本実装では未実施)。
 5. **【裁定済み 2026-07-16 設計チャット】M47仕様①: pumpkin/lab-zombie-3 は isBossType() が先に効く件
    → 実装のまま採用(順序・isBossTypeとも変更しない)。** 理由: ①pumpkin/lab-zombie-3 は**元から
    即死不可(5×)**=退行ゼロで、理論レポートの「エリート消し」が実在したのは isNamed/questTarget 個体

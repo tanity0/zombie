@@ -155,14 +155,20 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
-import { parseBotSkill, botSkillProfile, dodgeVector, dodgeToInput, type BotSkill } from '../utils/botSkill';
+import {
+  parseBotSkill, botSkillProfile, dodgeVector, dodgeToInput, dodgeOverridesAttack,
+  createWarpTrackState, warpDodge, type BotSkill,
+} from '../utils/botSkill';
 import { parseBotObjective, planObjective, steerTo, type BotObjective } from '../utils/botObjective';
+import {
+  tickEngagementPhase, createEngagementTrackState, advanceOptionDetour,
+} from '../utils/botEngagement';
 import {
   decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, createRusherTrackState,
   decideCounterReaction, createCounterThreatState, BOT_PERSONAS, type BotPersona,
 } from '../utils/playtestBot';
-import { pickUpgrade, mulberry32 } from '../utils/botUpgradePolicy';
+import { pickUpgradeByPolicy, mulberry32 } from '../utils/botUpgradePolicy';
 import { runAngelBossTick, tickAngelBossFires, createAngelBossState, type AngelSfx } from '../utils/angelBossTick';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
@@ -1170,6 +1176,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const botTickRef = useRef(0);                            // decideBotInput用のtick連番
   const botRusherRef = useRef(createRusherTrackState());   // rusherペルソナの詰まり検知状態
   const botCounterThreatRef = useRef(createCounterThreatState()); // M37(§6.14): 人間反応カウンターの検知状態
+  const botWarpRef = useRef(createWarpTrackState());       // M49-3(§6.25): ワープ(瞬間移動)追従の前tick位置
+  const botEngagementRef = useRef(createEngagementTrackState()); // M49(§6.25改訂): 行動階層①⇄②の直近実績
   const botRandRef = useRef(mulberry32(1));                // レベルアップ自動選択の決定的乱数(シード固定=再現性)
   const botPausedSinceRef = useRef(0);                     // isPaused継続の詰み検知(Date.now基準)
   const botReportedRef = useRef(false);                    // [BOT_REPORT]を出したか(1ラン1回)
@@ -1626,7 +1634,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (bs.showShopMenu) bs.closeShop();
         // レベルアップの自動選択(ポリシーはヘッドレスStep1と共用の純関数・決定的乱数)。
         if (bs.showUpgradeMenu && bs.upgradeOptions.length > 0) {
-          bs.selectUpgrade(pickUpgrade(bs.upgradeOptions, botRandRef.current));
+          // M49-4(§6.25): 段階(skilled/master)は一様ランダムでなく greedy ポリシーで選ぶ
+          // (novice/casualはupgradePolicy='random'=pickUpgradeと完全に同一結果=挙動不変)。
+          bs.selectUpgrade(pickUpgradeByPolicy(
+            bs.upgradeOptions, botRandRef.current, botSkillProfile(BOT_SKILL).upgradePolicy, bs.player));
         }
         // 終了レポート: 勝利/帰還(死亡は triggerPlayerDeath 側で発火)。
         if (bs.gameWon) emitBotReport('clear');
@@ -1728,19 +1739,43 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               enemies, loopState.projectiles, gameTime, player.counterCooldownEnd,
               Math.random, BOT_SKILL)
           : false;
+        // M49-3(§6.25): ワープ(瞬間移動)追従。反応遅延はprofile.reactionMs(warpReact=falseの段=
+        // novice/casualは検知のみで反応は常にnull=完全なno-op)。通常回避より優先(離れるのが最優先)。
+        const botWarpVec = botMineAdj
+          ? warpDodge(botSkillProfile(BOT_SKILL), botWarpRef.current, gameTime,
+              player.x + player.width / 2, player.y + player.height / 2, enemies)
+          : null;
         // v0.25.2338: 回避(避けられる攻撃は避ける)。移動系の合成の**最後**に置く=生存が最優先。
         // casual以下は dodgeVector が常に null を返すので、従来ランでは完全な no-op。
+        // M49-1(§6.25): 接触脅威の判定に player.maxHealth を渡す(既定0=接触脅威は無視=不変)。
         const botDodge = botMineAdj
           ? dodgeVector(botSkillProfile(BOT_SKILL),
               player.x + player.width / 2, player.y + player.height / 2,
-              enemies, loopState.projectiles)
+              enemies, loopState.projectiles, player.maxHealth)
           : null;
-        // v0.25.2339: 目的(ゴール)への移動。優先順位は 回避 > 目的地 > 従来の合成入力。
+        // §6.25改訂 dodgeVsAttack: 回避と攻撃(近接/カウンター)が同tickで競合した時の優先度。
+        // dodge==='none'のnovice/casualは常にfalse=既存の攻撃判断を一切変えない(no-op)。
+        const botAttackSuppressedByDodge = dodgeOverridesAttack(botSkillProfile(BOT_SKILL), !!botDodge, Math.random);
+        // M49(§6.25改訂): 行動階層①交戦⇄②前進。直近60秒の撃破/被弾のヒステリシスで切り替える
+        // (BOT_GOAL='none'=目的なしの通常プレイ/デバッグボットでは botGoalPlan が無いため完全な
+        // no-op)。ゲート/囲いイベント中(activeEvent)は②の一部として常に前進を許す(迂回しない)。
+        const botEngagementPhase = botGoalPlan
+          ? tickEngagementPhase(botEngagementRef.current, gameTime, player.level,
+              loopState.gameStats.enemiesKilled, player.health)
+          : 'engage';
+        const botAllowAdvance = !!loopState.activeEvent || botEngagementPhase === 'advance';
+        // v0.25.2339: 目的(ゴール)への移動。優先順位は ワープ回避 > 通常回避 > 目的地 > 従来の合成入力。
         // BOT_GOAL='none'(既定)では planObjective が目的地を返さないので完全な no-op。
-        const botObjSteer = (botMineAdj && botGoalPlan && botGoalPlan.travel)
-          ? steerTo(player.x + player.width / 2, player.y + player.height / 2, botGoalPlan.destination)
+        // ③オプション: ②前進中(ゲート/囲い以外)に限り、経路上の至近ピックアップへだけ寄り道する
+        // (独立した目的地にはしない=①②の従属物のまま)。
+        const botObjSteer = (botMineAdj && botGoalPlan && botGoalPlan.travel && botAllowAdvance)
+          ? ((!loopState.activeEvent
+                ? advanceOptionDetour(player.x + player.width / 2, player.y + player.height / 2, pickups)
+                : null)
+              ?? steerTo(player.x + player.width / 2, player.y + player.height / 2, botGoalPlan.destination))
           : null;
-        const inputState = botDodge ? dodgeToInput(botDodge)
+        const inputState = botWarpVec ? dodgeToInput(botWarpVec)
+          : botDodge ? dodgeToInput(botDodge)
           : botObjSteer ? dodgeToInput(botObjSteer, 0.3)
           : (botMineAdj ? botMineAdj.input : touchInputState);
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
@@ -2001,6 +2036,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           botTickRef.current = 0;
           botRusherRef.current = createRusherTrackState();
           botCounterThreatRef.current = createCounterThreatState(); // M37: 人間反応カウンターの検知状態も新ランでリセット
+          botWarpRef.current = createWarpTrackState(); // M49-3: ワープ追従の前tick位置も新ランでリセット
+          botEngagementRef.current = createEngagementTrackState(); // M49: 行動階層①⇄②の直近実績も新ランでリセット
           botRandRef.current = mulberry32(1);
           botReportedRef.current = false;
           botPausedSinceRef.current = 0;
@@ -4644,7 +4681,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (runSt.player.y <= 0 || runSt.gameTime > 6000) runSt.clearCorridorRunIn();
         }
         // M26-L(§6.3): ボットの近接(指離しカウンター)/武器切替。ヘッドレス(playtestDriver)と同じ操作を実機で行う。
-        if (botMineAdj?.wantsMelee || botWantsCounterReaction) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
+        // §6.25改訂: dodgeVsAttackが回避優先と判定した時は攻撃を抑制する(dodge='none'のnovice/casualは
+        // botAttackSuppressedByDodgeが常にfalse=不変)。
+        if ((botMineAdj?.wantsMelee || botWantsCounterReaction) && !botAttackSuppressedByDodge) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
         if (botDecision?.wantsWeaponSwitch) {
           const botPlayer = useGameStore.getState().player;
           const botGuns = getGuns(botPlayer);

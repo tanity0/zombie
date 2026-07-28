@@ -6,7 +6,7 @@ import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS,
   decideCounterReaction, createCounterThreatState } from './playtestBot';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
-import type { Projectile } from '../types/game';
+import type { Enemy, Projectile } from '../types/game';
 
 const freshPlayer = () => {
   useGameStore.getState().resetGame('warrior');
@@ -111,6 +111,70 @@ describe('decideBotInput', () => {
     expect(decideBotInput('kiter', player, [far], 0, 0, 0, undefined, 200).input.right).toBe(true);
     const near = spawnEnemyAt('zombie', pcx + 50 - 15, pcy - 15, 0);
     expect(decideBotInput('kiter', player, [near], 0, 0, 0, undefined, 200).input.left).toBe(true);
+  });
+
+  // M49-2(§6.25): 危険度ベースの距離維持。
+  // 注: decideBotInput内の距離計算(distTo)は敵のraw座標(e.x/e.y)基準なので、以下は敵をプレイヤーと
+  // 同じy(e.y=pcy)に置き、e.x=pcx+距離、として距離を正確に固定する(centerではない・既存慣例と同じ)。
+  it('kiter: 危険な敵(reaper=接触ダメージ999)にはavoidContactDist(160・master/skilled)未満まで詰めない', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    // range=200指定: 従来のバンド下限=110。危険敵なのでmax(110,160)=160が新しい下限になる。
+    const between = spawnEnemyAt('reaper', pcx + 130, pcy, 0); // 距離130(110<130<160)
+    expect(decideBotInput('kiter', player, [between], 0, 0, 0, undefined, 200, undefined, 'master').input.left).toBe(true);
+    // casual(avoidContactDist=0)は従来どおり=130は下限110より外なので静止。
+    expect(decideBotInput('kiter', player, [between], 0, 0, 0, undefined, 200, undefined, 'casual').input)
+      .toEqual({ up: false, down: false, left: false, right: false });
+  });
+
+  it('kiter: 危険でない敵がいない時は従来と完全に同値(不変条件)', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const mid = spawnEnemyAt('zombie', pcx + 150, pcy, 0);
+    const master = decideBotInput('kiter', player, [mid], 0, 0, 0, undefined, 200, undefined, 'master');
+    const noSkill = decideBotInput('kiter', player, [mid], 0, 0, 0, undefined, 200);
+    expect(master.input).toEqual(noSkill.input);
+  });
+
+  it('standard/scavenger: meleeVsDanger=falseの段(skilled/master)は危険敵(reaper)にwantsMeleeを出さず、距離を保つ', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const dangerNear = spawnEnemyAt('reaper', pcx + 30, pcy, 0); // 距離30(近接圏内)
+    const masterD = decideBotInput('standard', player, [dangerNear], 0, 0, 0, undefined, undefined, undefined, 'master');
+    expect(masterD.wantsMelee).toBe(false);
+    expect(masterD.input.left || masterD.input.up || masterD.input.down).toBe(true); // 近寄らず離れる
+    // casual(meleeVsDanger=true)は危険でも従来どおり近接する。
+    const casualD = decideBotInput('standard', player, [dangerNear], 0, 0, 0, undefined, undefined, undefined, 'casual');
+    expect(casualD.wantsMelee).toBe(true);
+  });
+
+  it('standard: meleeVsDanger=falseの段でも危険でない敵(zombie)には従来どおりwantsMeleeを出す', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const safeNear = spawnEnemyAt('zombie', pcx + 30, pcy, 0);
+    const masterD = decideBotInput('standard', player, [safeNear], 0, 0, 0, undefined, undefined, undefined, 'master');
+    expect(masterD.wantsMelee).toBe(true);
+  });
+
+  it('standard: engageDistより遠い敵は追わない(段ごとに射程が違う)', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const far = spawnEnemyAt('zombie', pcx + 300, pcy, 0); // 距離300: novice(200)は圏外・master(420)は圏内
+    const noviceD = decideBotInput('standard', player, [far], 0, 0, 0, undefined, undefined, undefined, 'novice');
+    expect(noviceD.input).toEqual({ up: false, down: false, left: false, right: false }); // 対象なし=待機
+    const masterD = decideBotInput('standard', player, [far], 0, 0, 0, undefined, undefined, undefined, 'master');
+    expect(masterD.input.right).toBe(true); // 圏内=追う
+  });
+});
+
+// M49-1/M49-2(§6.25): decideBotInputはcontactDodge/isContactDangerousを直接呼ばないが、
+// dodgeVector側でmaxHealthを渡した時だけ危険敵から離れることをbotSkill.test.tsで検証済み。
+// ここではplaytestBot側(engageDecision/kiterの距離維持)の危険敵ヘルパーの整合性のみ確認する。
+describe('危険敵ヘルパーの整合性(M49-1/M49-2)', () => {
+  it('reaper(damage=999)はプレイヤー既定maxHealth(120)に対して危険と判定される', () => {
+    const player = freshPlayer();
+    const e: Enemy = spawnEnemyAt('reaper', 0, 0, 0);
+    expect(e.damage).toBeGreaterThanOrEqual(player.maxHealth * 0.2);
   });
 });
 

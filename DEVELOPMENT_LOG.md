@@ -1,5 +1,65 @@
 # Development Log
 
+## v0.25.2363 — バッチM49: プレイヤーAI(ボット)強化 ―― 行動階層①②③+攻撃側ダイヤル【2026-07-28 22:45 JST】
+- **仕様の正本**: `PACING_PUZZLE.md` §6.25(冒頭の【改訂v0.25.2358】2つが最優先。旧M49-1〜5本文は補足)。
+- **背景**: 死神討伐検証(`TEST_HANDOFF/results/20260728-0822-reaper-kill-feasibility.md`)+段階式ボット
+  4分ラン計測(`20260728-2100-rank-koma-measure.md`)で **novice 51 / casual 8 / skilled 15 / master 10**
+  という「上手いほど倒せない」逆転が発覚。原因は既存ダイヤルが全て生存側(retreatHpFrac/dodge/
+  surroundCount)に偏り、「速く捌く」ダイヤルが1つも無かったこと。
+- **【最優先】行動階層①交戦→②前進→③オプション**: 新規 `src/utils/botEngagement.ts`。
+  `tickEngagementPhase`が直近60秒の撃破/被弾(gameStats.enemiesKilled/player.healthの前tick差分)を
+  持って①⇄②をヒステリシス判定(①→②: 撃破≥20かつ被弾≤1。②→①: 被弾≥3または撃破<8。
+  Lv5未満は絶対の床で必ず①)。`useGameLoop.ts`/`playtestDriver.ts`の両方で、
+  `objective.travel`(②前進)を「ゲート/囲いイベント中 または phase==='advance'」でゲートし、
+  ①の間は既存の交戦入力(接近/退避/近接)がそのまま使われるよう配線。**③(拾う/松明)は独立目的にせず**、
+  `advanceOptionDetour`で②前進中(ゲート/囲い以外)に限り経路上240px以内のピックアップへだけ寄り道する
+  従属実装にした。
+- **【改訂】攻撃側ダイヤル追加**: `BotSkillProfile`に`engageDist`(200/260/340/420px=追う距離)・
+  `disengageHp`(0.5/0.4/0.3/0.2=交戦を切り上げるHP割合。**旧`retreatHpFrac`は逆向きだったので置換+反転**
+  =master=0.5「早く逃げる」→0.2「粘る」)・`dodgeVsAttack`(0.5/0.5/0.4/0.25=回避と攻撃の競合優先度)を
+  追加。`dodgeOverridesAttack()`で回避中の攻撃を確率抑制(`dodge==='none'`のnovice/casualは常にno-op)。
+- **M49-1(接触脅威)**: `contactDodge`/`isContactDangerous`(`CONTACT_DANGER_HP_FRAC=0.2`=プレイヤー
+  最大HP比で判定・固定ダメージ閾値にしない)を追加し、**カウンターではなく回避(dodgeVector)側にのみ**
+  足した(接触で死ぬ敵にカウンターへ向かうのは自殺のため)。`dodgeHandles(level,'contact')`は'all'
+  (master)のみtrue。
+- **M49-2(距離維持)**: `avoidContactDist=160`(既存`ALCHEMY_FOLLOW_GAP_PX`流用)/`meleeVsDanger`を追加。
+  kiterの帯は危険な的の時だけ`max(銃レンジ帯,avoidContactDist)`に拡張(危険でない敵には従来と同値)。
+  standard/scavengerの近接判断も共通ヘルパー`engageDecision`に切り出し、meleeVsDanger=falseの段
+  (skilled/master)は危険敵にwantsMeleeを出さず、avoidContactDist未満へ近寄らない(危険でない敵には
+  従来どおり近接)。
+- **M49-3(ワープ追従)**: `WARP_DETECT_PX=300`(通常移動の最大速度×1tickを大きく上回る値=不変条件④)。
+  検知後`WARP_ALERT_MS=1000`の間は反応遅延(reactionMs)を跨いで検知状態を保持(実装中に発見: 1tick
+  限りの検知だとreactionMs経過前に消えてしまうバグがあり対策した)。novice/casualはwarpReact=falseで
+  検知のみ・反応は常にnull。
+- **M49-4(強化選択ポリシー)**: `src/utils/botUpgradePolicy.ts`に`pickUpgradeByPolicy`を追加。
+  `'random'`は既存`pickUpgrade`と完全同一結果。`'greedy'`(skilled/master)は装備Tier上げ>ナイフ>
+  heal(HP<50%のみ)>scrap>その他の優先順(同順位はrandで決定的)。
+- **M49-5(タイミング入力)は未着手**(優先度最低のため見送り。次バッチで対応)。
+- **★未決4点**(`PACING_PUZZLE.md`★未決事項に記載): ①不変条件1(novice/casual不変)と改訂表の
+  disengageHp/engageDist実値付与が文面上両立しないため「旧ダイヤル+明示的no-op値は不変、
+  disengageHp/engageDist/dodgeVsAttackは改訂表どおりnovice/casualにも実値」と解釈した点、
+  ②engageDistの消費箇所(standard/scavengerの標的距離フィルタとして実装)、③avoidContactDist/
+  meleeVsDangerをkiterだけでなくstandard/scavengerの間合いにも適用した拡張、④dodgeVsAttackの
+  具体的な競合判定式(dodgeVector非null時にrand()で確率抑制)。
+- **不変条件の自己チェック**: ①novice/casualの旧ダイヤル(reactionMs/counterChance/dodge/targeting/
+  surroundCount)+明示的no-op値(avoidContactDist=0/meleeVsDanger=true/warpReact=false/
+  upgradePolicy=random)は完全に従来値のまま(テストで固定)。②撃破数の単調性は**ユニットでは断定
+  できない**ため未検証——設計チャットが`rankProbe.test.ts`(`RANK_PROBE=1`)で実測する想定
+  (本実装ではロジックの土台のみ用意)。③§6.25検証6項目・④`WARP_DETECT_PX`が通常移動で発火しない
+  こと、はいずれもテストで機械化した。
+- **変更ファイル**: `src/utils/botSkill.ts`(接触脅威/ワープ/dodgeVsAttack/ダイヤル追加+disengageHp
+  へ置換)、`src/utils/botEngagement.ts`(新規・行動階層)、`src/utils/botUpgradePolicy.ts`
+  (pickUpgradeByPolicy追加)、`src/utils/playtestBot.ts`(engageDecision共通化+kiter帯+engageDist
+  フィルタ)、`src/hooks/useGameLoop.ts`・`src/utils/playtestDriver.ts`(両方に同じ配線: warpDodge→
+  dodgeVector→行動階層ゲート→objSteer/③detourの優先順位、triggerCounterのdodgeVsAttack抑制、
+  pickUpgradeByPolicy呼び出し)。テスト: `botSkill.test.ts`(50件)/`botEngagement.test.ts`(13件・新規)/
+  `playtestBot.test.ts`(52件)/`botUpgradePolicy.test.ts`(12件)。
+- **検証**: `npm run typecheck`・`npm run lint`ともにエラー0。`npx vitest related`(変更ファイル一式)
+  で168 pass(既存の`playtest.test.ts`のM9/M16/M17/M19/M26シナリオも回帰確認・全通過)。
+  テスト/ビルドのフル実行・ヘッドレスボットランは社長指示が無いため未実施(Testing policy)。
+- **次への引き継ぎ**: M49-5(slasherジャスト追撃/刀ダッシュのmaster限定タイミング入力)が未着手。
+  ★未決4点の裁定(特に②③=engageDist/avoidContactDistの適用範囲)が済んだら、必要なら実装をやり直す。
+
 ## v0.25.2362 — 城ボスのHPを2.5倍 + ガチャ有料化で壊していたテストを修復【2026-07-28 22:33 JST】
 - **社長の実機確認**: 「ジャイアント試したけど、いい感じ! **HP低いのでそこだけ調整**してほしい」
 - **`giantbat.health` 200 → 500**(`CONSTANT_STRENGTH_TYPES` 経由で ×`ENEMY_HP_MULT`5 = **実効1000→2500**)。

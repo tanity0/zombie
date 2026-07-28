@@ -7,7 +7,10 @@ import type { Enemy, InputState, Player, Projectile } from '../types/game';
 
 // 'rusher' はPACING_PUZZLE.md §5.20(M19・深層ラッシュ試験専用)のペルソナ。既存の通常スモーク
 // (BOT_PERSONAS の巡回)には含めず、専用テストからのみ persona 名で直接呼び出す。
-import { botSkillProfile, pickTarget, shouldRetreatForHp, type BotSkill } from './botSkill';
+import {
+  botSkillProfile, pickTarget, shouldRetreatForHp, isContactDangerous,
+  type BotSkill, type BotSkillProfile,
+} from './botSkill';
 
 export type BotPersona = 'standard' | 'kiter' | 'stationary' | 'boar' | 'wanderer' | 'rusher' | 'scavenger';
 
@@ -66,6 +69,37 @@ const retreat = (pcx: number, pcy: number, e: Enemy): InputState => {
   const dx = pcx - e.x, dy = pcy - e.y;
   const n = Math.max(0.001, Math.hypot(dx, dy));
   return dirInput(dx / n, dy / n);
+};
+
+// M49-2(§6.25): 危険度ベースの距離維持。standard/scavengerの「狙った的へ寄って殴る」判断を共通化し、
+// meleeVsDanger===false の段では危険な敵(isContactDangerous)に対して
+// (a) MELEE_ENGAGE_DISTではなくavoidContactDistまでしか近寄らず、(b) wantsMeleeを出さず、
+// (c) avoidContactDist圏内に入ったら距離を取る、という「近接を諦めて距離を保つ」挙動にする。
+// **危険でない敵には従来どおり**(meleeAllowed=true→keepDist=MELEE_ENGAGE_DIST・通常通り殴る)。
+const engageDecision = (
+  sk: BotSkillProfile,
+  player: Player,
+  pcx: number, pcy: number,
+  target: Enemy,
+  noRetreat: boolean | undefined,
+  nearbyCount: number,
+  surroundNeed: number,
+): BotDecision => {
+  const meleeAllowed = sk.meleeVsDanger || !isContactDangerous(target, player.maxHealth);
+  const keepDist = (!meleeAllowed && sk.avoidContactDist > 0) ? sk.avoidContactDist : MELEE_ENGAGE_DIST;
+  if (!noRetreat && (nearbyCount >= surroundNeed || shouldRetreatForHp(sk, player.health, player.maxHealth))) {
+    const d = distTo(pcx, pcy, target);
+    return { input: retreat(pcx, pcy, target), wantsMelee: meleeAllowed && d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
+  }
+  const d = distTo(pcx, pcy, target);
+  if (d > keepDist) {
+    return { input: approach(pcx, pcy, target), wantsMelee: false, wantsWeaponSwitch: false };
+  }
+  if (!meleeAllowed) {
+    // 危険敵には近接を諦め、これ以上近寄らず距離を取る(近接自殺の直接の対策)。
+    return { input: retreat(pcx, pcy, target), wantsMelee: false, wantsWeaponSwitch: false };
+  }
+  return { input: STILL_INPUT, wantsMelee: true, wantsWeaponSwitch: false };
 };
 
 // M26 Step1(§6.2): 手が空いている(入力が無い)tickに、近くのピックアップ(XP/弾薬/回復)へ歩み寄る
@@ -542,7 +576,13 @@ export const decideBotInput = (
       if (!target) return { input: STILL_INPUT, wantsMelee: false, wantsWeaponSwitch: false };
       const range = gunRangePx ?? KITER_DEFAULT_RANGE;
       const d = distTo(pcx, pcy, target);
-      const input = d < range * 0.55 ? retreat(pcx, pcy, target)
+      // M49-2(§6.25): 危険な的からは avoidContactDist(160・casual以下は0=従来と同値)未満まで
+      // 詰めない。危険でない的は従来どおり(range*0.55のまま=不変条件「危険敵がいない時は
+      // 従来と完全に同値」)。
+      const nearThreshold = isContactDangerous(target, player.maxHealth)
+        ? Math.max(range * 0.55, sk.avoidContactDist)
+        : range * 0.55;
+      const input = d < nearThreshold ? retreat(pcx, pcy, target)
         : d > range * 0.9 ? approach(pcx, pcy, target)
         : STILL_INPUT;
       return { input, wantsMelee: false, wantsWeaponSwitch: tickIndex % 900 === 0 };
@@ -569,41 +609,31 @@ export const decideBotInput = (
         const d = distTo(pcx, pcy, target);
         return { input: approach(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
       }
-      const stunned = nearestStunned(pcx, pcy, enemies, gameTime);
-      const target = stunned ?? skillTarget(enemies);
+      // M49-2(§6.25改訂 攻撃側ダイヤル): engageDist より遠い敵は追わない対象から外す
+      // (casual以下は260px=既存の実測レンジで通常はほぼ無制限=挙動不変。novice/casualの明示的な
+      // 数値化についてはPACING_PUZZLE.md ★未決参照)。
+      const engageable = enemies.filter(e => distTo(pcx, pcy, e) <= sk.engageDist);
+      const stunned = nearestStunned(pcx, pcy, engageable, gameTime);
+      const target = stunned ?? skillTarget(engageable);
       if (!target) return { input: STILL_INPUT, wantsMelee: false, wantsWeaponSwitch: tickIndex % 1200 === 0 };
-      // v0.25.2338: 段階つきの臆病さ。HPが退避ラインを割ったら、囲まれていなくても距離を取る
-      // (casual以下は retreatHpFrac=0 なので常に false = 従来の挙動)。
+      // v0.25.2338: 段階つきの臆病さ。HPが交戦切り上げライン(disengageHp)を割ったら、囲まれて
+      // いなくても距離を取る。M49-2: 危険な的には近接を諦めて距離を保つ(engageDecision参照)。
       const nearbyCount = enemies.filter(e => distTo(pcx, pcy, e) < SURROUND_RADIUS).length;
-      if (!noRetreat && (nearbyCount >= surroundNeed || shouldRetreatForHp(sk, player.health, player.maxHealth))) {
-        const d = distTo(pcx, pcy, target);
-        return { input: retreat(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
-      }
-      const d = distTo(pcx, pcy, target);
-      if (d > MELEE_ENGAGE_DIST) {
-        return { input: approach(pcx, pcy, target), wantsMelee: false, wantsWeaponSwitch: false };
-      }
-      return { input: STILL_INPUT, wantsMelee: true, wantsWeaponSwitch: false };
+      return engageDecision(sk, player, pcx, pcy, target, noRetreat, nearbyCount, surroundNeed);
     }
 
     case 'standard':
     default: {
       // 近い敵を撃ち(自動射撃に任せる)・囲まれたら離れ・スタン敵は処刑優先。
-      const stunned = nearestStunned(pcx, pcy, enemies, gameTime);
-      const target = stunned ?? skillTarget(enemies);
+      // M49-2(§6.25改訂 攻撃側ダイヤル): engageDist より遠い敵は追わない対象から外す。
+      const engageable = enemies.filter(e => distTo(pcx, pcy, e) <= sk.engageDist);
+      const stunned = nearestStunned(pcx, pcy, engageable, gameTime);
+      const target = stunned ?? skillTarget(engageable);
       if (!target) return { input: STILL_INPUT, wantsMelee: false, wantsWeaponSwitch: tickIndex % 1200 === 0 };
-      // v0.25.2338: 段階つきの臆病さ。HPが退避ラインを割ったら、囲まれていなくても距離を取る
-      // (casual以下は retreatHpFrac=0 なので常に false = 従来の挙動)。
+      // v0.25.2338: 段階つきの臆病さ。HPが交戦切り上げライン(disengageHp)を割ったら、囲まれて
+      // いなくても距離を取る。M49-2: 危険な的には近接を諦めて距離を保つ(engageDecision参照)。
       const nearbyCount = enemies.filter(e => distTo(pcx, pcy, e) < SURROUND_RADIUS).length;
-      if (!noRetreat && (nearbyCount >= surroundNeed || shouldRetreatForHp(sk, player.health, player.maxHealth))) {
-        const d = distTo(pcx, pcy, target);
-        return { input: retreat(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
-      }
-      const d = distTo(pcx, pcy, target);
-      if (d > MELEE_ENGAGE_DIST) {
-        return { input: approach(pcx, pcy, target), wantsMelee: false, wantsWeaponSwitch: false };
-      }
-      return { input: STILL_INPUT, wantsMelee: true, wantsWeaponSwitch: false };
+      return engageDecision(sk, player, pcx, pcy, target, noRetreat, nearbyCount, surroundNeed);
     }
   }
 };

@@ -4,12 +4,15 @@
 import { describe, it, expect } from 'vitest';
 import {
   BOT_SKILLS, DEFAULT_BOT_SKILL, BOT_SKILL_PROFILES, botSkillProfile, parseBotSkill,
-  projectileDodge, jumpDodge, chargeDodge, dodgeVector, dodgeToInput, dodgeHandles,
+  projectileDodge, jumpDodge, chargeDodge, contactDodge, isContactDangerous, dodgeVector, dodgeToInput, dodgeHandles,
   pickTarget, targetScore, shouldRetreatForHp,
-  DODGE_PROJECTILE_DIST, DODGE_AOE_DIST,
+  DODGE_PROJECTILE_DIST, DODGE_AOE_DIST, DODGE_CONTACT_DIST, CONTACT_DANGER_HP_FRAC,
+  WARP_DETECT_PX, createWarpTrackState, warpDodge, dodgeOverridesAttack,
 } from './botSkill';
 import { COUNTER_REACTION_PROFILES } from './playtestBot';
-import type { Enemy, Projectile } from '../types/game';
+import { getEnemyBaseSpeed, AREA_SPEED_MULT } from './enemyUtils';
+import { GAME_SPEED } from '../config/gameSpeed';
+import type { Enemy, EnemyType, Projectile } from '../types/game';
 
 const enemy = (over: Partial<Enemy> = {}): Enemy =>
   ({ id: 'e', x: 0, y: 0, width: 30, height: 30, health: 100, type: 'zombie', ...over } as unknown as Enemy);
@@ -199,19 +202,203 @@ describe('標的選択', () => {
   });
 });
 
-describe('HP退避', () => {
-  it('novice / casual は退避しない(現状の挙動)', () => {
-    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.novice, 1, 100)).toBe(false);
-    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.casual, 1, 100)).toBe(false);
+// §6.25改訂: disengageHp(旧 retreatHpFrac)。旧フィールドは向きが逆だった(master=0.5=上手いほど
+// 早く逃げる)ので、上手いほど粘る(master=0.2)へ反転させた。novice=0.5/casual=0.4/skilled=0.3/master=0.2。
+describe('HP退避(disengageHp・§6.25改訂で反転)', () => {
+  it('novice は50%、casual は40%で交戦を切り上げる', () => {
+    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.novice, 50, 100)).toBe(true);
+    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.novice, 51, 100)).toBe(false);
+    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.casual, 40, 100)).toBe(true);
+    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.casual, 41, 100)).toBe(false);
   });
 
-  it('skilled は35%、master は50%で退避に切り替わる', () => {
-    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.skilled, 34, 100)).toBe(true);
-    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.skilled, 36, 100)).toBe(false);
-    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.master, 49, 100)).toBe(true);
+  it('skilled は30%、master は20%で交戦を切り上げる(反転後=上手いほど遅く/低いHPまで粘る)', () => {
+    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.skilled, 30, 100)).toBe(true);
+    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.skilled, 31, 100)).toBe(false);
+    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.master, 20, 100)).toBe(true);
+    expect(shouldRetreatForHp(BOT_SKILL_PROFILES.master, 21, 100)).toBe(false);
+  });
+
+  it('disengageHp は段が上がるほど単調減少(粘り強くなる)', () => {
+    const order = ['novice', 'casual', 'skilled', 'master'] as const;
+    for (let i = 1; i < order.length; i++) {
+      expect(BOT_SKILL_PROFILES[order[i]].disengageHp).toBeLessThan(BOT_SKILL_PROFILES[order[i - 1]].disengageHp);
+    }
   });
 
   it('maxHealth が0でも壊れない', () => {
     expect(shouldRetreatForHp(BOT_SKILL_PROFILES.master, 0, 0)).toBe(false);
+  });
+});
+
+// §6.25【改訂】不変条件1: novice/casualは「既存の(§6.25より前からある)ダイヤル」が従来値のまま。
+// disengageHp/engageDist/dodgeVsAttack(§6.25改訂で新設)と、avoidContactDist=0/meleeVsDanger=true/
+// warpReact=false/upgradePolicy='random'(明示的なno-op値)は本テストの対象に含めない
+// (PACING_PUZZLE.md ★未決事項参照: disengageHp反転は novice/casual にも実測値が入る意図的な変更)。
+describe('novice/casualの既存ダイヤルは本バッチで変わらない(不変条件1)', () => {
+  it('reactionMs/counterChance/dodge/targeting/surroundCountは従来値のまま', () => {
+    expect(BOT_SKILL_PROFILES.novice).toMatchObject({
+      reactionMs: 500, counterChance: 0.25, dodge: 'none', targeting: 'nearest', surroundCount: 5,
+    });
+    expect(BOT_SKILL_PROFILES.casual).toMatchObject({
+      reactionMs: 250, counterChance: 0.65, dodge: 'none', targeting: 'nearest', surroundCount: 3,
+    });
+  });
+
+  it('avoidContactDist=0・meleeVsDanger=true・warpReact=false・upgradePolicy=randomは明示的no-op(novice/casual共通)', () => {
+    for (const skill of ['novice', 'casual'] as const) {
+      const p = BOT_SKILL_PROFILES[skill];
+      expect(p.avoidContactDist).toBe(0);
+      expect(p.meleeVsDanger).toBe(true);
+      expect(p.warpReact).toBe(false);
+      expect(p.upgradePolicy).toBe('random');
+    }
+  });
+});
+
+// M49-1(§6.25): 接触脅威の認識。カウンターではなく回避(dodgeVector)側にのみ足す。
+describe('接触脅威(contactDodge・§6.25 M49-1)', () => {
+  it('危険判定はプレイヤー最大HPに対する割合(固定ダメージ閾値ではない)', () => {
+    const e = enemy({ x: 100, y: 0, damage: 24 } as Partial<Enemy>);
+    // maxHealth=100: 24 >= 100*0.2 → 危険。maxHealth=1000: 24 < 1000*0.2 → 危険ではない(装備/レベルに自動追従)。
+    expect(isContactDangerous(e, 100)).toBe(true);
+    expect(isContactDangerous(e, 1000)).toBe(false);
+    expect(CONTACT_DANGER_HP_FRAC).toBe(0.2);
+  });
+
+  it('危険でも DODGE_CONTACT_DIST より遠ければ避けない', () => {
+    const e = enemy({ x: DODGE_CONTACT_DIST + 10, y: 0, damage: 999 } as Partial<Enemy>);
+    expect(contactDodge(0, 0, e, 100)).toBeNull();
+  });
+
+  it('危険かつ近ければ敵から離れる向きを返す', () => {
+    const e = enemy({ x: 100, y: 0, damage: 999 } as Partial<Enemy>);
+    const t = contactDodge(0, 0, e, 100)!;
+    expect(t).toBeTruthy();
+    expect(t.kind).toBe('contact');
+    expect(t.ux).toBeCloseTo(-1, 2); // 敵は+x側 → -x(離れる)へ
+  });
+
+  it('危険でない敵(ダメージが低い)は避けない', () => {
+    const e = enemy({ x: 100, y: 0, damage: 1 } as Partial<Enemy>);
+    expect(contactDodge(0, 0, e, 100)).toBeNull();
+  });
+
+  it("dodgeHandles(level,'contact') は 'all'(master)のみtrue", () => {
+    expect(dodgeHandles('none', 'contact')).toBe(false);
+    expect(dodgeHandles('projectile', 'contact')).toBe(false);
+    expect(dodgeHandles('aoe', 'contact')).toBe(false);
+    expect(dodgeHandles('all', 'contact')).toBe(true);
+  });
+
+  it('dodgeVector: maxHealth省略(既定0)は接触脅威を無視する(既存呼び出し元の完全なno-op)', () => {
+    const dangerous = [enemy({ x: 50, y: 0, damage: 999 } as Partial<Enemy>)];
+    expect(dodgeVector(BOT_SKILL_PROFILES.master, 0, 0, dangerous, [])).toBeNull();
+  });
+
+  it('dodgeVector: master(all)はmaxHealthを渡すと危険な接触脅威を避ける。skilled(projectile)は避けない', () => {
+    const dangerous = [enemy({ x: 50, y: 0, damage: 999 } as Partial<Enemy>)];
+    expect(dodgeVector(BOT_SKILL_PROFILES.master, 0, 0, dangerous, [], 100)).toBeTruthy();
+    expect(dodgeVector(BOT_SKILL_PROFILES.skilled, 0, 0, dangerous, [], 100)).toBeNull();
+  });
+});
+
+// M49-3(§6.25): ワープ(瞬間移動)追従。
+describe('ワープ追従(warpDodge・§6.25 M49-3)', () => {
+  it('WARP_DETECT_PXは通常移動では絶対に発火しない(不変条件4)', () => {
+    // ゲーム中の全EnemyType + AREA_SPEED_MULT(最大2.0)+ GAME_SPEED を掛けた「実効最大速度」の
+    // 1tick(1/60s)分の移動量が WARP_DETECT_PX を大きく下回ることを確認する。
+    const types: EnemyType[] = [
+      'bat', 'skeleton', 'zombie', 'plant', 'ghost', 'werewolf', 'pumpkin', 'lich', 'giantbat', 'reaper',
+      'hunter', 'screamer', 'lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3',
+    ];
+    const maxAreaMult = Math.max(...AREA_SPEED_MULT);
+    let maxPerTick = 0;
+    for (const t of types) {
+      const perTick = getEnemyBaseSpeed(t) * maxAreaMult * GAME_SPEED * (1 / 60);
+      maxPerTick = Math.max(maxPerTick, perTick);
+    }
+    expect(maxPerTick).toBeLessThan(WARP_DETECT_PX);
+    expect(WARP_DETECT_PX).toBe(300);
+  });
+
+  it('初出(前tickの記録が無い)敵は判定しない(誤検知防止)', () => {
+    const state = createWarpTrackState();
+    const e = enemy({ id: 'e1', x: 1000, y: 0 } as Partial<Enemy>);
+    expect(warpDodge(BOT_SKILL_PROFILES.master, state, 0, 0, 0, [e])).toBeNull();
+  });
+
+  it('通常移動量(小さい移動)では検知しない', () => {
+    const state = createWarpTrackState();
+    const e1 = enemy({ id: 'e1', x: 0, y: 0 } as Partial<Enemy>);
+    warpDodge(BOT_SKILL_PROFILES.master, state, 0, 0, 0, [e1]);
+    const e2 = enemy({ id: 'e1', x: 5, y: 0 } as Partial<Enemy>); // 5px移動=通常
+    expect(warpDodge(BOT_SKILL_PROFILES.master, state, 16, 0, 0, [e2])).toBeNull();
+  });
+
+  it('WARP_DETECT_PX以上の移動を検知し、reactionMs経過後に離れる向きを返す(master=80ms)', () => {
+    const state = createWarpTrackState();
+    const e1 = enemy({ id: 'e1', x: 0, y: 0 } as Partial<Enemy>);
+    warpDodge(BOT_SKILL_PROFILES.master, state, 0, 0, 0, [e1]);
+    const e2 = enemy({ id: 'e1', x: WARP_DETECT_PX + 20, y: 0 } as Partial<Enemy>); // ワープ
+    // 検知直後(反応遅延80ms未満)はまだ反応しない。
+    expect(warpDodge(BOT_SKILL_PROFILES.master, state, 10, 0, 0, [e2])).toBeNull();
+    // 反応遅延(80ms)経過後は敵から離れる向きを返す。
+    const t = warpDodge(BOT_SKILL_PROFILES.master, state, 90, 0, 0, [e2])!;
+    expect(t).toBeTruthy();
+    expect(t.x).toBeLessThan(0); // 敵は+x側 → -x(離れる)へ
+  });
+
+  it('warpReact=falseの段(novice/casual)は検知しても反応しない(常にnull)', () => {
+    const state = createWarpTrackState();
+    const e1 = enemy({ id: 'e1', x: 0, y: 0 } as Partial<Enemy>);
+    warpDodge(BOT_SKILL_PROFILES.novice, state, 0, 0, 0, [e1]);
+    const e2 = enemy({ id: 'e1', x: WARP_DETECT_PX + 20, y: 0 } as Partial<Enemy>);
+    expect(warpDodge(BOT_SKILL_PROFILES.novice, state, 0, 0, 0, [e2])).toBeNull();
+    expect(warpDodge(BOT_SKILL_PROFILES.novice, state, 100000, 0, 0, [e2])).toBeNull();
+  });
+
+  it('画面外/討伐で消えた敵の記録は掃除される(再出現時に誤検知しない)', () => {
+    const state = createWarpTrackState();
+    const e1 = enemy({ id: 'e1', x: 0, y: 0 } as Partial<Enemy>);
+    warpDodge(BOT_SKILL_PROFILES.master, state, 0, 0, 0, [e1]); // 記録
+    warpDodge(BOT_SKILL_PROFILES.master, state, 16, 0, 0, []);  // 消滅(掃除)
+    // 同じidで別位置に再出現しても「初出」扱いになる(いきなり離れた場所でも誤検知しない)。
+    const e2 = enemy({ id: 'e1', x: 5000, y: 0 } as Partial<Enemy>);
+    expect(warpDodge(BOT_SKILL_PROFILES.master, state, 32, 0, 0, [e2])).toBeNull();
+  });
+});
+
+// §6.25改訂: dodgeVsAttack(回避と攻撃が競合した時の優先度)。
+describe('dodgeOverridesAttack(§6.25改訂 dodgeVsAttack)', () => {
+  it('hasDodge=falseなら常にfalse(novice/casualはdodge=noneなのでhasDodgeが常にfalse=no-op)', () => {
+    expect(dodgeOverridesAttack(BOT_SKILL_PROFILES.novice, false, () => 0)).toBe(false);
+    expect(dodgeOverridesAttack(BOT_SKILL_PROFILES.master, false, () => 0)).toBe(false);
+  });
+
+  it('hasDodge=trueならdodgeVsAttackの確率で回避が攻撃に勝つ(決定的randで検証)', () => {
+    expect(dodgeOverridesAttack(BOT_SKILL_PROFILES.master, true, () => 0)).toBe(true); // 0 < 0.25
+    expect(dodgeOverridesAttack(BOT_SKILL_PROFILES.master, true, () => 0.99)).toBe(false); // 0.99 >= 0.25
+  });
+
+  it('masterはskilledよりdodgeVsAttackが低い(回避より攻撃を選ぶ頻度が高い)', () => {
+    expect(BOT_SKILL_PROFILES.master.dodgeVsAttack).toBeLessThan(BOT_SKILL_PROFILES.skilled.dodgeVsAttack);
+  });
+});
+
+// §6.25改訂: 攻撃側ダイヤルの単調性(不変条件6: 段の単調性)。
+describe('攻撃側ダイヤルの単調性(engageDist/dodgeVsAttack・不変条件6)', () => {
+  it('engageDistは段が上がるほど単調増加(遠くまで追う)', () => {
+    const order = ['novice', 'casual', 'skilled', 'master'] as const;
+    for (let i = 1; i < order.length; i++) {
+      expect(BOT_SKILL_PROFILES[order[i]].engageDist).toBeGreaterThan(BOT_SKILL_PROFILES[order[i - 1]].engageDist);
+    }
+  });
+
+  it('dodgeVsAttackは段が上がるほど単調非増加(攻撃優先になる)', () => {
+    const order = ['novice', 'casual', 'skilled', 'master'] as const;
+    for (let i = 1; i < order.length; i++) {
+      expect(BOT_SKILL_PROFILES[order[i]].dodgeVsAttack).toBeLessThanOrEqual(BOT_SKILL_PROFILES[order[i - 1]].dodgeVsAttack);
+    }
   });
 });

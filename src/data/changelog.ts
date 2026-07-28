@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2363',
+    items: [
+      'ゲーム内容の変更はありません（開発用プレイヤーAI「ボット」の強化。実際のプレイには影響しません）。',
+    ],
+  },
+  {
     version: '0.25.2362',
     items: [
       '城ボス（ジャイアント）の体力を2.5倍に引き上げました。すぐ倒せてしまい、新しい攻撃の予告や第2段階を見る前に決着してしまっていたためです。',

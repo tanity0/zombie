@@ -49,15 +49,21 @@ import {
   computeDirCountCap, computeEnemyCap,
   type KomaState, type PityUpkeepRefs, type KomaMaintenanceRefs, type DirectorSignalRefs,
 } from './directorTick';
-import { botSkillProfile, dodgeVector, dodgeToInput, type BotSkill } from './botSkill';
+import {
+  botSkillProfile, dodgeVector, dodgeToInput, dodgeOverridesAttack,
+  createWarpTrackState, warpDodge, type BotSkill, type WarpTrackState,
+} from './botSkill';
 import { planObjective, steerTo, type BotObjective, type ObjectiveWorld, type ObjectivePlan } from './botObjective';
+import {
+  tickEngagementPhase, createEngagementTrackState, advanceOptionDetour, type EngagementTrackState,
+} from './botEngagement';
 import { bossLairPos } from '../world/pois';
 import {
   decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, decideCounterReaction, scavengerAmmoSeekInput, SCAVENGER_TORCH_SEEK_DIST,
   createCounterThreatState, type BotPersona, type RusherTrackState, type CounterThreatState,
 } from './playtestBot';
-import { pickUpgrade, mulberry32 } from './botUpgradePolicy';
+import { pickUpgradeByPolicy, mulberry32 } from './botUpgradePolicy';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
   NOOP_COMBAT_EFFECTS, type CombatTunables,
@@ -108,6 +114,10 @@ export interface PlaytestRefs {
   angel: AngelBossState;
   // M37(§6.14): 人間反応のカウンター検知状態(ラン単位で1つ保持)。
   counterThreat: CounterThreatState;
+  // M49-3(§6.25): ワープ(瞬間移動)追従の前tick位置状態。
+  warpTrack: WarpTrackState;
+  // M49(§6.25改訂): 行動階層①⇄②の直近実績(撃破/被弾)状態。
+  engagement: EngagementTrackState;
   // v0.25.2172: 空輸弾薬(エアドロップ)の周期状態。useGameLoop.tsの lastAmmoDropRef/
   // nextAmmoDropDelayRef と同じ役割(src/utils/ammoAirdrop.ts の純関数を共用)。
   airdrop: { lastAmmoDropAt: number; nextAmmoDropDelayMs: number };
@@ -153,6 +163,8 @@ export const createPlaytestRefs = (): PlaytestRefs => {
     },
     angel: createAngelBossState(),
     counterThreat: createCounterThreatState(),
+    warpTrack: createWarpTrackState(),
+    engagement: createEngagementTrackState(),
     airdrop: { lastAmmoDropAt: 0, nextAmmoDropDelayMs: 0 },
   };
 };
@@ -470,23 +482,47 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     enemies, useGameStore.getState().projectiles, t, player.counterCooldownEnd,
     Math.random, skill,
   );
-  // v0.25.2339: 目的地があればそちらへ進む。優先順位は 回避 > 目的地 > 従来の合成入力。
-  const objSteer = objPlan && objPlan.travel
-    ? steerTo(player.x + player.width / 2, player.y + player.height / 2, objPlan.destination)
-    : null;
+  // M49-3(§6.25): ワープ(瞬間移動)追従。反応遅延はprofile.reactionMs(warpReact=falseの段=
+  // novice/casualは検知のみで反応は常にnull=完全なno-op)。通常回避より優先(離れるのが最優先)。
+  const warpVec = warpDodge(
+    botSkillProfile(skill), refs.warpTrack, t,
+    player.x + player.width / 2, player.y + player.height / 2, enemies,
+  );
   // v0.25.2338: 回避(避けられる攻撃は避ける)。**移動系の合成の最後**に置く=生存が最優先。
   // casual以下は dodgeVector が常に null を返すので、この行は従来ランでは完全な no-op。
+  // M49-1(§6.25): 接触脅威の判定に player.maxHealth を渡す(既定0=接触脅威は無視=不変)。
   const dodge = dodgeVector(
     botSkillProfile(skill),
     player.x + player.width / 2, player.y + player.height / 2,
-    enemies, useGameStore.getState().projectiles,
+    enemies, useGameStore.getState().projectiles, player.maxHealth,
   );
-  const finalInput = dodge ? dodgeToInput(dodge)
+  // §6.25改訂 dodgeVsAttack: 回避と攻撃(近接/カウンター)が同tickで競合した時の優先度。
+  // dodge==='none'のnovice/casualは常にfalse=既存の攻撃判断を一切変えない(no-op)。
+  const attackSuppressedByDodge = dodgeOverridesAttack(botSkillProfile(skill), !!dodge, Math.random);
+  // M49(§6.25改訂): 行動階層①交戦⇄②前進。直近60秒の撃破/被弾のヒステリシスで切り替える
+  // (objective==='none'/未指定では objPlan が無いため完全な no-op)。ゲート/囲いイベント中
+  // (activeEvent)は②の一部として常に前進を許す(迂回しない)。
+  const activeEvent = useGameStore.getState().activeEvent;
+  const engagementPhase = objPlan
+    ? tickEngagementPhase(refs.engagement, t, player.level, useGameStore.getState().gameStats.enemiesKilled, player.health)
+    : 'engage';
+  const allowAdvance = !!activeEvent || engagementPhase === 'advance';
+  // v0.25.2339: 目的地があればそちらへ進む。優先順位は ワープ回避 > 通常回避 > 目的地 > 従来の合成入力。
+  // ③オプション: ②前進中(ゲート/囲い以外)に限り、経路上の至近ピックアップへだけ寄り道する
+  // (独立した目的地にはしない=①②の従属物のまま)。
+  const objSteer = (objPlan && objPlan.travel && allowAdvance)
+    ? ((!activeEvent
+          ? advanceOptionDetour(player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().pickups)
+          : null)
+        ?? steerTo(player.x + player.width / 2, player.y + player.height / 2, objPlan.destination))
+    : null;
+  const finalInput = warpVec ? dodgeToInput(warpVec)
+    : dodge ? dodgeToInput(dodge)
     : objSteer ? dodgeToInput(objSteer, 0.3)
     : mineAdj.input;
   useGameStore.getState().movePlayer(finalInput, dt);
   autoFireGun();
-  if (mineAdj.wantsMelee || wantsCounterReaction) useGameStore.getState().triggerCounter();
+  if ((mineAdj.wantsMelee || wantsCounterReaction) && !attackSuppressedByDodge) useGameStore.getState().triggerCounter();
   if (decision.wantsWeaponSwitch) cycleActiveGun();
 
   useGameStore.getState().updateEnemies(dt);
@@ -520,7 +556,10 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     }
     const menu = useGameStore.getState();
     if (menu.showUpgradeMenu && menu.upgradeOptions.length > 0) {
-      menu.selectUpgrade(pickUpgrade(menu.upgradeOptions, refs.growth.rand));
+      // M49-4(§6.25): 段階(skilled/master)は greedy ポリシーで選ぶ(novice/casualは'random'=
+      // 既存のpickUpgradeと完全に同一結果=挙動不変)。
+      menu.selectUpgrade(pickUpgradeByPolicy(
+        menu.upgradeOptions, refs.growth.rand, botSkillProfile(skill).upgradePolicy, menu.player));
     }
     // 保留レベルアップの再チェック(useGameLoop.ts:7894-7901の写し): 赤ライン当たり判定内でXPが
     // 閾値を跨いだ場合、イベント駆動のチェックだけでは取りこぼす=毎tick再チェックして発動させる。
