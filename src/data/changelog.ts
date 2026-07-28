@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2343',
+    items: [
+      'ゲーム内容の変更はありません（設計書の記録のみ）。',
+    ],
+  },
+  {
     version: '0.25.2342',
     items: [
       'リザルトから「次の罪◯◯まであと1昇格」の表示を外しました。傲慢以外なら必ず「あと1」になる当たり前の表示だったためです。次の深さまでの距離はそのまま残ります。',
