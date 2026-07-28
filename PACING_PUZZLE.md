@@ -2816,10 +2816,121 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 ランクの裁定が出た時に、**4種目の枠へそのまま嵌める**のが自然(軸が「ランク」で他3種と被らず、
 囲いイベント=入場コストが最初から仕様に入っている)。
 
+## 6.25 バッチM49: プレイヤーAI(ボット)強化=「最強AI」の生存機能(社長指示v0.25.2353・Sonnet実装用)
+
+### 背景(実測。`TEST_HANDOFF/results/20260728-0822-reaper-kill-feasibility.md`)
+死神(reaper)討伐の検証で、ボットの限界が数字で出た。
+- **火力は足りている**: 無敵プローブで6000HPを削り切り討伐を実証(近接型29〜42秒 / 銃型50〜70秒)。
+- **生存が足りない**: 61DPSなら**約98秒の生存**が必要だが実測13〜35秒 = **あと約3倍**。
+- 死神の実体: HP6000 / **接触ダメージ77** / 移動速度**プレイヤー×0.9(自分より遅い)** /
+  **4秒ごとに520px圏へワープ**。→ **理論上、ワープ直後だけ捌けば接触0にできる**=伸びしろが最大。
+- **※テスト報告は v0.25.2333 のもの**で、段階式ボット(v0.25.2339/2340)より前。下表で再判定した。
+
+### 現状の棚卸し(v0.25.2351 のコードで再判定・報告§8の8項目)
+| # | 報告の指摘 | v0.25.2351 での実態 |
+|---|---|---|
+| ③ | カウンターが確率+遅延 | **解消済み**(master = `reactionMs:80` / `counterChance:1.0`) |
+| ⑥ | ターゲットが最寄り固定 | **解消済み**(skilled=`threat` / master=`optimal`) |
+| ② | 攻撃回避が無い | **半分**。skilled=飛び道具 / master=飛び道具+AoE。**接触型は未対応** |
+| ① | 接触型の敵を脅威と認識しない | **未対応**(本バッチ M49-1) |
+| ④ | 距離取りが銃の射程基準 | **未対応**(本バッチ M49-2) |
+| ⑤ | ワープの概念が無い | **未対応**(本バッチ M49-3) |
+| ⑧ | 強化選択が一様ランダム | **未対応**(本バッチ M49-4) |
+| ⑦ | タイミング入力が不可 | **未対応**(本バッチ M49-5・優先度最低) |
+
+> **報告§8⑦の読み違いを訂正(設計チャット)**: 「ボットに敵を近接で攻撃する経路が無い」は**誤り**。
+> `standard`(`playtestBot.ts:600,606`)も `boar`(:556)も **`MELEE_ENGAGE_DIST=80` 以内で `wantsMelee=true`**
+> を出しており、近接交戦は**する**。実測の近接5〜7DPSの原因は経路の欠落ではなく、報告§7-3が正しく
+> 指摘しているとおり**「殴るために80pxまで寄ると接触77で死ぬ」**という構造。よって本バッチは
+> 「近接経路の新設」ではなく**「危険な敵には近接を諦める判断」(M49-2)**を入れる。
+
+### 設計の要点(ここだけは実装前に理解すること)
+**接触脅威は「カウンター(近接)」ではなく「回避(位置取り)」に足す。** 報告①を素朴に読むと
+`findCounterThreat` に接触型を足したくなるが、**カウンター=近接スイング=接触圏に入る行為**なので、
+接触で死ぬ敵に対しては**逆効果**(自殺が加速する)。**回避側(`dodgeVector`)にだけ足す**こと。
+
+### M49-1: 接触脅威の認識(`src/utils/botSkill.ts`)
+- `DodgeThreat['kind']` に **`'contact'`** を追加。
+- 新しい純関数 `contactDodge(pcx, pcy, e, maxHealth)`:
+  - **危険判定は「プレイヤー最大HPに対する割合」**で行う(固定ダメージ閾値にしない=装備/レベルで自動追従)。
+    `e.damage >= maxHealth * CONTACT_DANGER_HP_FRAC`、**`CONTACT_DANGER_HP_FRAC = 0.2`**
+    (=5発以内で死ぬ敵は危険。死神77 vs HP160 なら48%で危険と判定)。
+  - かつ距離 `d <= DODGE_CONTACT_DIST`、**`DODGE_CONTACT_DIST = 260`**(既存 `DODGE_AOE_DIST=240` より少し外)。
+  - 回避方向は**敵から離れる向き**(既存 `dodgeVector` の流儀に合わせる)。
+- `dodgeHandles(level,'contact')` は **`'all'` のみ true**(=master だけ)。
+- **`findCounterThreat` には足さない**(上記「設計の要点」)。
+
+### M49-2: 危険度ベースの距離維持(`src/utils/botSkill.ts` + `playtestBot.ts`)
+- profile に **`avoidContactDist`**(危険敵に対して保つ最低距離)と **`meleeVsDanger`**(危険敵に近接するか)を追加。
+- **`avoidContactDist = 160`**(既存 `ALCHEMY_FOLLOW_GAP_PX=160`=「密着しない間合い」として実績のある値を流用)。
+- kiter の帯(`playtestBot.ts:543`)を **`max(銃の射程バンド, avoidContactDist)`** にする。
+  危険敵がいない時は**従来と完全に同値**であること。
+- **`meleeVsDanger=false` の段では、危険敵(M49-1の判定)に対して `wantsMelee` を出さない。**
+  これが近接自殺の直接の対策。危険でない敵への近接は**従来どおり**。
+
+### M49-3: ワープ追従(`src/utils/botSkill.ts`)
+- 「敵が瞬間移動した」= **前tickからの移動量 > `WARP_DETECT_PX`**、**`WARP_DETECT_PX = 300`**
+  (死神の520pxワープは確実に拾い、通常移動(最速の敵でも speed×dt)では**絶対に届かない**値)。
+- 検知したらその敵から離れる入力を出す。反応遅延は profile の `reactionMs` を適用(master=80ms)。
+- 前tickの敵位置は**呼び出し側が持つ外部状態**にする(既存 `CounterThreatState` / `RusherTrackState` と
+  同じ流儀。純関数側は読み書きするだけで store/React に触らない)。
+- profile に **`warpReact: boolean`** を追加(skilled/master=true)。
+
+### M49-4: 強化選択のポリシー化(`src/utils/botUpgradePolicy.ts`)
+**これは「AIの強さ」ではなく計測の信頼性の問題。** 現状 `pickUpgrade` は一様ランダムで、
+実測で **Lv20なのに最大HP110**(Lv10の240より弱い)という事故が起きた。**これを直さないと
+段階式AIの比較そのものが成立しない**(強い段が弱い装備を引いて負ける)。
+- `pickUpgradeByPolicy(options, rand, policy, player)` を追加。`policy: 'random' | 'greedy'`。
+- **`'random'` は現行 `pickUpgrade` と完全に同一の結果**を返すこと(既存の実測と比較できなくなるため)。
+- `'greedy'` の優先順位(`UpgradeOption.type` と `level` で判定):
+  1. `equipment` のうち **今装備しているものより `level`(Tier)が高いもの**(最も高いものを選ぶ)
+  2. `knife`(ナイフを次Tierへ)
+  3. `heal`(**現在HPが最大の50%未満のときだけ**)
+  4. `scrap`
+  5. 上記以外(`equipment` の格下・特殊など)
+  - 同順位が複数あれば `rand` で決める(決定性は保つ=同シード同結果)。
+- profile に **`upgradePolicy: 'random' | 'greedy'`** を追加(skilled/master=greedy)。
+
+### M49-5: タイミング入力(優先度最低・時間が無ければ次バッチへ)
+- **slasher のジャスト追撃**: `player.slasherRingStartAt > 0` かつ `realGameTime` がジャスト窓
+  (`SLASHER_RING_MS` + `SLASHER_JUST_MS`)の内側なら `wantsMelee=true` を出す
+  (`triggerCounter` 側が `applySlasherTimedStrike` へ流してくれるので、**新しいアクションは不要**)。
+- **刀のダッシュ**: `triggerKatanaDash(dirX,dirY)`。**危険敵(M49-1)に対しては使わない**(接触圏へ飛び込むため)。
+- 段階は **master のみ**。
+- ★M49-1〜4 が終わってから着手すること。**未着手で残しても本バッチは成立する**(その場合は
+  DEVELOPMENT_LOG に「M49-5 は未着手」と明記して報告する)。
+
+### 段階表(`BOT_SKILL_PROFILES` に足すダイヤル)
+| 追加/変更 | novice | casual | skilled | master |
+|---|---|---|---|---|
+| `dodge`(既存) | none | none | projectile | **all(=contactを含む)** |
+| **`avoidContactDist`** | 0 | 0 | 160 | 160 |
+| **`meleeVsDanger`** | true | true | **false** | **false** |
+| **`warpReact`** | false | false | true | true |
+| **`upgradePolicy`** | random | random | greedy | greedy |
+
+- **`casual` は現行ボットと完全に同値のまま**(既存の実測値と比較できなくなるため。
+  `botSkill.ts` の既存コメントにも同じ掟が書いてある)。**novice/casual は本バッチで挙動が1ミリも変わらないこと。**
+
+### 検証(同コミットでユニットテスト)
+- `botSkill.test.ts` / `botUpgradePolicy.test.ts` に追加。不変条件:
+  1. **`novice`/`casual` は全ダイヤルが従来値**(=本バッチが no-op であること)
+  2. `contactDodge` は **HP割合基準**で判定する(同じ敵でも maxHealth が大きければ危険でなくなる)
+  3. `meleeVsDanger=false` の段は**危険敵に `wantsMelee` を出さない**が、**危険でない敵には出す**
+  4. `WARP_DETECT_PX` は**通常移動では絶対に発火しない**(最速の敵 speed × 1tick < 300)
+  5. `upgradePolicy:'random'` は**現行 `pickUpgrade` と同一結果**(同じ rand 列で同じ選択)
+  6. 段の単調性(novice ≤ casual ≤ skilled ≤ master で反応・回避・方針が悪化しない)
+- **ヘッドレス実走/ボットランは回さない**(CLAUDE.md「検証も社長指示制」)。push前は typecheck+lint のみ。
+
+### 負荷
+**1/10**。すべてボット(開発/テスト用)の判断ロジックで、**通常プレイの描画・シミュレーションには一切入らない**。
+新規の per-frame 描画なし。前tick位置の保持は敵数ぶんの数値配列1本のみ。
+
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
 |---|---|---|
-| M48 | 寄り道POI(§6.24: 病院の一般化+研究施設跡+武器庫) | **仕様確定・発注待ち**(★未決なし) |
+| M48 | 寄り道POI(§6.24: 病院の一般化+警察署+武器庫) | **Sonnet実装中**(v0.25.2352で素材支給・改名) |
+| M49 | プレイヤーAI強化(§6.25: 接触脅威/距離維持/ワープ/強化選択/タイミング入力) | **仕様確定・発注待ち**(★未決なし) |
 | M2 | ランク査定+ランプ+リアルタイム緩急(rankAssessor+診断) | **実装済み v0.25.1372** |
 | M3 | 盤面構成パズル(scriptPuzzle: 表+選択+CD/枠の純関数) | **実装済み v0.25.1372** |
 | M4 | 配線(コマループ・緩サイクル・?puzzle=0・ボス停止) | **実装済み v0.25.1372・統合テスト待ち** |
