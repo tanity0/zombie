@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2346',
+    items: [
+      '縦持ちの地平線のかすみ方を、端末の大きさによらず従来どおりに揃えました。画面の小さい端末（iPhone SEなど）だけ地平線が濃く見えていたのを直しています。',
+    ],
+  },
+  {
     version: '0.25.2345',
     items: [
       'ゲーム内容の変更はありません（重複時の返金額を据え置くと決めた記録のみ）。',

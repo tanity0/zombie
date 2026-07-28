@@ -4146,10 +4146,10 @@ export class PixiScene {
       this.horizonActorFadePx = CORRIDOR_ACTOR_FADE_PX;
       this.horizonForestFootWorldY = s.camera.y + s.gameBounds.height * CORRIDOR_ACTOR_FADE_TOP_FRAC;
     } else {
-      // 帯幅は論理画面高に比例(上限=従来の120px)。横持ちPCでは論理画面高が338まで潰れ、
-      // 固定120pxだと帯が画面をほぼ覆って**全アクター(プレイヤー含む)が薄くなる**欠陥があった
-      // (v0.25.2331のテストで実測・社長裁定v0.25.2334=案A)。縦持ちは上限に張り付くので不変。
-      this.horizonActorFadePx = HORIZON_FADE_OVERRIDE > 0 ? HORIZON_FADE_OVERRIDE : horizonActorFadePx(this.screenH);
+      // 帯幅は**縦持ちなら常に120px固定**、横持ちの時だけ論理画面高に比例して縮む(社長裁定
+      // v0.25.2346=案A-2)。横持ちPCでは論理画面高が338まで潰れ、固定120pxだと帯が画面をほぼ覆って
+      // **全アクター(プレイヤー含む)が薄くなる**欠陥があった(v0.25.2331のテストで実測)。
+      this.horizonActorFadePx = HORIZON_FADE_OVERRIDE > 0 ? HORIZON_FADE_OVERRIDE : horizonActorFadePx(this.screenH, this.screenW);
       this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();
     }
     // ?labpersp の研究所では床専用の強い遠近カーブを使う(屋外は従来定数)。
