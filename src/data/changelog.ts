@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2349',
+    items: [
+      'ゲーム内容の変更はありません（寄り道スポットで手に入る専用スキルの仕様を書き起こした記録のみ）。',
+    ],
+  },
+  {
     version: '0.25.2348',
     items: [
       'ゲーム内容の変更はありません（寄り道スポットの設計を書き起こした記録のみ）。',
