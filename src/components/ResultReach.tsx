@@ -1,65 +1,94 @@
-import React, { useEffect, useState } from 'react';
-import { depthRungs, rankRungs, nextGoal, digProgress } from '../utils/resultReach';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { strata, depthFrac, buildCores, rankRungs, nextGoal, digProgress, CUTAWAY_MAX } from '../utils/resultReach';
 import { wallAchievementHeadline } from '../utils/wallProgress';
 import { clampRank } from '../utils/rankAssessor';
+import type { RunCore } from '../data/progress';
 
-// リザルトの主役「到達譜」= 上から下へ掘り下げる縦坑(社長指示v0.25.2332)。
+// リザルトの主役「到達譜」= 地表から掘り下げる**1枚の地質断面図**(社長指示v0.25.2332/2333)。
 //
-// 見せ方の意図:
-// - **距離もランクも上から下へ掘る**。浅い/軽い罪が上、深い/重い罪が下。左が「どこまで潜ったか」、
-//   右が「七つの大罪のどこまで登りつめたか」。7段は常に全部並べる(社長指示)。
-// - 掘れたところは光り、掘れていないところは岩のまま。**境目に掘削ヘッド(▶)が止まる**。
-// - 自己最高は金の破線で残す=「前回の自分」を必ず画面に出す(成長が見える)。
-// - 最後に「次の一手」を1行だけ。**次にやりたくなる理由**をここに集約する。
+// 構成:
+// - 左に**固定の深度計**。目盛と、世界の目印(廃病院/裏ボスの巣)のピンが刺さる。到達していない
+//   深さにも刺さるので「巣はここ。まだ足りない」が一目で分かる。
+// - 右が**横スクロールする壁**。地層は全ランで共通なので断面は1枚のまま横に伸び、そこに
+//   **1ラン=1本の竪坑**が刺さる。時間は左→右で、いちばん右が今回。左へスクロールすると過去へ遡れる。
+// - 七つの大罪は深さと独立した軸なので**断面の外**に7マスの帯として置く(全段を常に表示)。
 //
-// 静的画面のReact規律: このコンポーネントは props で受けた値だけを見る(store購読なし)。
-// 演出は CSS transition 1本(高さ)だけ=毎フレーム再描画しない。負荷 1/10。
+// 静的画面のReact規律: props で受けた値だけを見る(store購読なし)。演出は初回1回のCSS transitionのみ。
+// 負荷 1/10(静止DOM・毎フレーム再描画なし)。
+
+interface PoiPin {
+  /** 原点からの距離(px=m扱い)。 */
+  dist: number;
+  label: string;
+  kind: 'boss' | 'cave' | 'hospital';
+}
 
 interface ResultReachProps {
-  /** このランの最深到達距離(px=m扱い)。 */
-  dist: number;
-  /** このランの最高到達ランク(1-7)。 */
-  rank: number;
-  /** 自己最深(px)。0=記録なし。 */
-  bestDist: number;
-  /** 自己最高ランク(1-7)。 */
-  bestRank: number;
-  /** このランの最深到達区域index(見出し用。stats.maxAreaReached)。 */
-  zoneIdx: number;
-  /** 自己最深を更新したランか。 */
-  selfBestUpdated: boolean;
-  /** 宿敵(ネームド)の結果。出なかったランは null。 */
+  dist: number;               // このランの最深到達距離
+  rank: number;               // このランの最高到達ランク(1-7)
+  bestRank: number;           // 自己最高ランク(1-7)
+  zoneIdx: number;            // このランの最深到達区域index(見出し用)
+  end: RunCore['end'];        // 終わり方(坑の色)
+  at: number;                 // このランの終了時刻(epoch ms)
+  history: RunCore[];         // 過去の掘削記録(古い順・今回を含まない)
+  pois?: PoiPin[];            // 解放済みの世界の目印(深度計に刺す)
   namedFoe?: { name: string; defeated: boolean } | null;
 }
 
-const COL_H = 182; // 縦坑の高さ(px)。縦持ち360pxで両列が収まり、7段でも文字が潰れない下限。
+const CUT_H = 244;      // 断面図の高さ(px)。縦持ち360pxで地層名が潰れない下限。
+const GAUGE_W = 38;     // 左の深度計の幅(px)
+const CORE_W = 62;      // 竪坑1本ぶんの列幅(px)
+const HOLE_W = 22;      // 穴そのものの幅(px)
+
+/** 地層の見た目(上から: 土＋瓦礫 / コンクリ / 赤錆 / 汚染 / 深層)。素材ではなくCSSの重ね塗り=軽い。 */
+const STRATUM_STYLE: { bg: string; tex: string; fg: string }[] = [
+  { bg: '#332A20', fg: 'rgba(255,255,255,.80)', tex: 'repeating-linear-gradient(94deg,rgba(0,0,0,.40) 0 2px,transparent 2px 6px),repeating-radial-gradient(circle at 18% 40%,rgba(255,255,255,.07) 0 1px,transparent 1px 9px)' },
+  { bg: '#2A2A2C', fg: 'rgba(255,255,255,.78)', tex: 'repeating-linear-gradient(88deg,rgba(0,0,0,.34) 0 3px,transparent 3px 8px),repeating-linear-gradient(0deg,rgba(127,196,232,.06) 0 1px,transparent 1px 12px)' },
+  { bg: '#2E1E1C', fg: 'rgba(255,255,255,.78)', tex: 'repeating-linear-gradient(99deg,rgba(0,0,0,.42) 0 2px,transparent 2px 5px),repeating-radial-gradient(circle at 72% 60%,rgba(255,90,71,.10) 0 2px,transparent 2px 14px)' },
+  { bg: '#231928', fg: 'rgba(255,255,255,.92)', tex: 'repeating-linear-gradient(104deg,rgba(0,0,0,.40) 0 2px,transparent 2px 6px),repeating-linear-gradient(-58deg,rgba(160,107,216,.16) 0 1px,transparent 1px 11px)' },
+  { bg: '#0A060E', fg: 'rgba(255,255,255,.26)', tex: 'repeating-linear-gradient(110deg,rgba(0,0,0,.60) 0 3px,transparent 3px 10px)' },
+];
+
+/** 終わり方ごとの坑の色(達成=金 / 撤退=白 / 死亡=赤)。 */
+const END_COLOR: Record<RunCore['end'], string> = { won: '#FFD54A', withdraw: '#CBD5E1', death: '#FF6A55' };
+
+const POI_MARK: Record<PoiPin['kind'], { icon: string; color: string }> = {
+  hospital: { icon: '✚', color: '#7BE8A8' },
+  boss: { icon: '☠', color: '#FF6A55' },
+  cave: { icon: '◗', color: '#F59E0B' },
+};
 
 const ResultReach: React.FC<ResultReachProps> = ({
-  dist, rank, bestDist, bestRank, zoneIdx, selfBestUpdated, namedFoe,
+  dist, rank, bestRank, zoneIdx, end, at, history, pois = [], namedFoe,
 }) => {
-  // マウント後に一度だけ「掘り下がる」。0→実値へCSS transitionで落とす(1回きり・派手にしない)。
+  // マウント後に一度だけ「掘り下がる」(0→実値へCSS transition・1回きり)。
   const [dug, setDug] = useState(false);
   useEffect(() => {
     const id = window.setTimeout(() => setDug(true), 60);
     return () => window.clearTimeout(id);
   }, []);
 
+  // 開いた瞬間は右端(=今回)を見せる。左へスクロールすると過去へ遡る。
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = scrollerRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [history.length]);
+
   const cur = clampRank(rank);
-  const depth = depthRungs(dist, bestDist);
+  const bands = strata();
+  const cores = buildCores(history, { dist, rank, end, at });
   const ranks = rankRungs(rank, bestRank);
   const goal = nextGoal(dist, rank);
   const glow = digProgress(dist, rank);
   const headline = wallAchievementHeadline(zoneIdx, cur);
-  // 見出しの数字は**このランで掘った深さ**(自己最深は坑の中の金の⚑で別に見せる=混ぜない)。
-  const shownDist = Math.round(Math.max(0, dist));
-
-  // 段の高さ: 左(5段)と右(7段)で総高さを揃える=2本の坑が同じ深さに見える。
-  const depthRowH = COL_H / depth.length;
-  const rankRowH = COL_H / ranks.length;
+  const deepest = cores.find(c => c.isDeepest);
+  const wallW = Math.max(cores.length * CORE_W, 1);
+  // 目盛は2000mごと。断面が10000mなので6本(0/2k/4k/6k/8k/10k)。
+  const ticks = Array.from({ length: Math.floor(CUTAWAY_MAX / 2000) + 1 }, (_, i) => i * 2000);
 
   return (
     <div className="mt-2.5">
-      {/* 見出し: 「◯◯の△△ に到達」。明朝+金の下線は既存リザルトのトーンを踏襲。 */}
       <p className="text-[15px] font-semibold tracking-tight" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
         <span className="text-white/95">{headline}</span>
       </p>
@@ -68,100 +97,166 @@ const ResultReach: React.FC<ResultReachProps> = ({
         style={{ background: `linear-gradient(90deg, transparent, rgba(255,215,0,${0.35 + glow * 0.65}), transparent)` }}
       />
 
-      <div className="mt-3 flex items-stretch gap-2 text-left">
-        {/* ================= 左: 深さの縦坑 ================= */}
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-baseline justify-between">
-            <span className="text-[9px] uppercase tracking-[0.2em] text-white/40">DEPTH</span>
-            <span className="text-[10px] tabular-nums text-white/55">
-              <span className="font-semibold" style={{ color: '#ffd700' }}>{shownDist}</span>m
-              {selfBestUpdated && <span className="ml-1 text-amber-300" style={{ animation: 'wall-tantalize-flicker 1.6s ease-out 1' }}>⚑最深更新</span>}
-            </span>
-          </div>
-          <div className="relative overflow-hidden bg-black/40" style={{ height: COL_H }}>
-            {depth.map(r => (
+      {/* ================= 地質断面図 ================= */}
+      <div className="mt-3 flex text-left" style={{ height: CUT_H, background: '#050409' }}>
+        {/* ---- 左: 固定の深度計(目盛 + 世界の目印) ---- */}
+        <div className="relative shrink-0" style={{ width: GAUGE_W, background: '#08070D', borderRight: '1px solid rgba(255,255,255,.09)' }}>
+          {ticks.map(t => (
+            <div key={t}>
+              <div className="absolute right-0 h-px w-3 bg-white/40" style={{ top: depthFrac(t) * CUT_H }} />
               <div
-                key={r.idx}
-                className="relative border-b border-white/[0.07] last:border-b-0"
-                style={{ height: depthRowH }}
+                className="absolute right-4 -translate-y-1/2 font-mono text-[8px] tabular-nums text-white/40"
+                style={{ top: Math.min(CUT_H - 5, depthFrac(t) * CUT_H + (t === 0 ? 6 : 0)) }}
               >
-                {/* 掘れたぶん(左から右へは伸ばさず、段の上から下へ満ちる=掘り下げる向き) */}
-                <div
-                  className="absolute inset-x-0 top-0 transition-[height] duration-[900ms] ease-out"
-                  style={{
-                    height: `${(dug ? r.fill : 0) * 100}%`,
-                    background: `linear-gradient(180deg, rgba(125,211,252,0.22), rgba(251,191,36,${0.10 + (r.idx / depth.length) * 0.22}))`,
-                  }}
-                />
-                {/* 区域名 */}
-                <div className="relative flex h-full items-center justify-between px-1.5">
-                  <span className={`truncate text-[10px] leading-none ${r.reached ? 'text-white/85' : 'text-white/28'}`}>
-                    {r.name}
-                  </span>
-                  {r.isBest && (
-                    <span className="shrink-0 text-[9px] leading-none text-amber-300/80" title="自己最深">⚑</span>
-                  )}
-                </div>
-                {/* 掘削ヘッド: 到達段の掘れた深さの位置に止まる */}
-                {r.isCurrent && r.fill > 0 && (
-                  <div
-                    className="pointer-events-none absolute inset-x-0 transition-[top] duration-[900ms] ease-out"
-                    style={{ top: `calc(${(dug ? r.fill : 0) * 100}% - 1px)` }}
-                  >
-                    <div className="h-[2px] w-full" style={{ background: '#fbbf24', boxShadow: '0 0 6px rgba(251,191,36,0.85)' }} />
-                  </div>
-                )}
+                {t === 0 ? '0' : `${t / 1000}k`}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
+          {/* 世界の目印: **到達していない深さにも刺さる**=次に潜る理由になる。 */}
+          {pois.map(p => (
+            <div
+              key={p.label}
+              className="absolute -right-px z-20 -translate-y-1/2 whitespace-nowrap px-1 text-[8px] leading-none"
+              style={{ top: depthFrac(p.dist) * CUT_H, background: 'rgba(5,4,9,.85)', color: POI_MARK[p.kind].color }}
+              title={`${p.label} ${Math.round(p.dist)}m`}
+            >
+              {POI_MARK[p.kind].icon}
+            </div>
+          ))}
         </div>
 
-        {/* ================= 右: 七つの大罪の縦坑 ================= */}
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-baseline justify-between">
-            <span className="text-[9px] uppercase tracking-[0.2em] text-white/40">RANK</span>
-            <span className="text-[10px] tabular-nums text-white/55">
-              R<span className="font-semibold" style={{ color: '#ff8a75' }}>{cur}</span>
-              <span className="text-white/30"> / 7</span>
-            </span>
-          </div>
-          <div className="relative overflow-hidden bg-black/40" style={{ height: COL_H }}>
-            {ranks.map(r => (
+        {/* ---- 右: 横スクロールする壁(地層 + 竪坑) ---- */}
+        <div
+          ref={scrollerRef}
+          className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x"
+          style={{ scrollbarWidth: 'none' }}
+        >
+          <div className="relative h-full" style={{ width: wallW }}>
+            {/* 地層(実距離スケール・壁の全幅に連続して敷く) */}
+            {bands.map(b => {
+              const st = STRATUM_STYLE[b.idx] ?? STRATUM_STYLE[STRATUM_STYLE.length - 1];
+              return (
+                <div
+                  key={b.idx}
+                  className="absolute inset-x-0"
+                  style={{ top: b.topFrac * CUT_H, height: b.heightFrac * CUT_H, background: st.bg, borderTop: b.idx ? '1px solid rgba(0,0,0,.55)' : 'none' }}
+                >
+                  <div className="absolute inset-0 opacity-50" style={{ backgroundImage: st.tex }} />
+                  {/* 区域名は**横スクロールしても左端に貼り付く**(sticky)。壁の左端に置くと過去へ
+                      遡った時に名前が流れて消えてしまうため。 */}
+                  <div className="pointer-events-none absolute inset-0 flex items-center">
+                    <span
+                      className="inline-block whitespace-nowrap px-1.5 text-[9.5px] tracking-wide"
+                      style={{
+                        position: 'sticky', left: 0, color: st.fg,
+                        // 竪坑のラベルと重なっても区域名が勝つように、薄い暗幕を敷く。
+                        background: 'linear-gradient(90deg, rgba(5,4,9,.86) 70%, rgba(5,4,9,0))',
+                        textShadow: '0 1px 4px rgba(0,0,0,.95)',
+                      }}
+                    >
+                      {b.name}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* 地表(0m) */}
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 z-10"
+              style={{ height: 5, background: 'linear-gradient(180deg, rgba(127,196,232,.30), rgba(127,196,232,0))', borderTop: '1px solid rgba(180,220,240,.55)' }}
+            />
+
+            {/* 竪坑: 1ラン=1本。左ほど古い、右端が今回。 */}
+            {cores.map((c, i) => {
+              const color = END_COLOR[c.end];
+              const left = i * CORE_W + (CORE_W - HOLE_W) / 2;
+              const h = (dug || !c.isCurrent ? c.frac : 0) * CUT_H;
+              return (
+                <div key={c.key} className="absolute top-0 z-20" style={{ left, width: HOLE_W, height: CUT_H }}>
+                  {/* 掘った穴(地層から抜かれた空洞) */}
+                  <div
+                    className={`absolute inset-x-0 top-0 ${c.isCurrent ? 'transition-[height] duration-[900ms] ease-out' : ''}`}
+                    style={{
+                      height: h,
+                      background: 'linear-gradient(180deg, rgba(0,0,0,.94), rgba(0,0,0,.99))',
+                      boxShadow: `inset 2px 0 4px rgba(0,0,0,.9), inset -2px 0 4px rgba(0,0,0,.9), 0 0 0 1px ${color}${c.isCurrent ? '3d' : '1f'}`,
+                      opacity: c.isCurrent ? 1 : 0.78,
+                    }}
+                  >
+                    <div className="absolute inset-0 opacity-40" style={{ backgroundImage: `repeating-linear-gradient(180deg, ${color}22 0 1px, transparent 1px 9px)` }} />
+                  </div>
+                  {/* 掘削ヘッド(止まった深さ) */}
+                  {c.frac > 0 && (
+                    <div
+                      className={`absolute z-30 ${c.isCurrent ? 'transition-[top] duration-[900ms] ease-out' : ''}`}
+                      style={{
+                        top: h - 1, left: c.isCurrent ? -5 : -2, right: c.isCurrent ? -5 : -2,
+                        height: c.isCurrent ? 3 : 2, background: color,
+                        boxShadow: c.isCurrent ? `0 0 10px 1px ${color}` : 'none',
+                        opacity: c.isCurrent ? 1 : 0.7,
+                      }}
+                    />
+                  )}
+                  {/* ラベル: ヘッドの真下に「今回 / −1」と深さ */}
+                  <div
+                    className={`absolute z-30 whitespace-nowrap text-center font-mono text-[7.5px] leading-tight tabular-nums ${c.isCurrent ? 'transition-[top] duration-[900ms] ease-out' : ''}`}
+                    style={{ top: Math.min(CUT_H - 20, h + 3), left: -((CORE_W - HOLE_W) / 2), width: CORE_W }}
+                  >
+                    <span style={{ color: c.isCurrent ? color : 'rgba(255,255,255,.42)', fontWeight: c.isCurrent ? 700 : 400 }}>
+                      {c.isDeepest && <span style={{ color: '#FFD54A' }}>⚑</span>}{c.label}
+                    </span>
+                    <span className="block" style={{ color: c.isCurrent ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.3)' }}>
+                      {Math.round(c.dist)}m
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* 自己最深の水準線: 壁の全幅に引く=「超えた/届かなかった」が一目 */}
+            {deepest && deepest.frac > 0 && (
               <div
-                key={r.rank}
-                className="relative flex items-center justify-between border-b border-white/[0.07] px-1.5 last:border-b-0"
-                style={{
-                  height: rankRowH,
-                  background: r.reached
-                    ? `linear-gradient(90deg, rgba(248,113,113,${0.06 + (r.rank / 7) * 0.20}), rgba(248,113,113,0.02))`
-                    : 'transparent',
-                  opacity: dug || !r.reached ? 1 : 0,
-                  transition: `opacity 520ms ease-out ${r.rank * 70}ms`,
-                }}
-              >
-                <span className={`truncate text-[10px] leading-none ${r.reached ? 'text-white/90' : 'text-white/25'}`}>
-                  {r.name}
-                </span>
-                <span className="flex shrink-0 items-center gap-1">
-                  {r.isBest && <span className="text-[9px] leading-none text-amber-300/80" title="自己最高">⚑</span>}
-                  <span className={`text-[8px] leading-none tracking-wider ${r.reached ? 'text-white/40' : 'text-white/15'}`}>
-                    {r.en}
-                  </span>
-                </span>
-                {/* 今回の到達段だけ、右端に赤いマーカー */}
-                {r.isCurrent && (
-                  <span
-                    className="absolute inset-y-0 right-0 w-[3px]"
-                    style={{ background: '#ff6a55', boxShadow: '0 0 6px rgba(255,106,85,0.9)' }}
-                  />
-                )}
-              </div>
-            ))}
+                className="pointer-events-none absolute inset-x-0 z-10"
+                style={{ top: deepest.frac * CUT_H, borderTop: '1px dashed rgba(255,213,74,.5)' }}
+              />
+            )}
           </div>
         </div>
       </div>
+      {cores.length > 1 && (
+        <div className="mt-1 flex items-center justify-between font-mono text-[7.5px] tracking-widest text-white/30">
+          <span>◀ 過去へ</span>
+          <span>掘削記録 {cores.length}本</span>
+        </div>
+      )}
 
-      {/* ================= 次の一手(わくわくの正体はここ) ================= */}
+      {/* ================= 七つの大罪(断面の外=深さとは別の軸) ================= */}
+      <div className="mt-2 flex gap-[2px]">
+        {ranks.map(r => (
+          <div
+            key={r.rank}
+            className="flex-1 py-1.5 text-center text-[11px] leading-none"
+            style={{
+              color: r.isCurrent ? '#fff' : r.reached ? 'rgba(255,255,255,.74)' : 'rgba(255,255,255,.19)',
+              fontWeight: r.isCurrent ? 700 : 400,
+              background: r.isCurrent ? 'rgba(255,90,71,.36)' : r.reached ? 'rgba(255,90,71,.09)' : 'rgba(0,0,0,.5)',
+              boxShadow: r.isCurrent ? 'inset 0 0 12px rgba(255,90,71,.55)' : 'inset 0 1px 2px rgba(0,0,0,.8)',
+            }}
+          >
+            {r.name.charAt(0)}
+            <span className="mt-0.5 block font-mono text-[6.5px] opacity-50">
+              {r.isBest ? '⚑' : ''}R{r.rank}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between font-mono text-[7.5px] tracking-widest text-white/30">
+        <span>七つの大罪</span>
+        <span>R{cur} {ranks[cur - 1]?.name}</span>
+      </div>
+
+      {/* ================= 次の一手 ================= */}
       <div className="mt-2.5 border-l-2 border-amber-300/60 bg-amber-400/[0.06] px-2.5 py-2 text-left">
         {goal.maxedOut ? (
           <p className="text-[12px] font-semibold text-amber-100">掘りきった —— この先はもう無い</p>

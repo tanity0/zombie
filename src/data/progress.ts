@@ -696,7 +696,65 @@ export const resetProgress = (): void => {
   try { localStorage.removeItem(KOGARASU_KEY); } catch { /* ignore */ } // 小烏丸解禁も進行リセットで消す(開発用)
   try { localStorage.removeItem(LEGACY_EVENT_QUEST_DONE_KEY); } catch { /* ignore */ } // 旧v1684キーの掃除
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
+  writeRunCores({}); // 掘削記録(リザルト断面の過去ラン)も進行リセットで消す(開発用)
   try { localStorage.removeItem(CHRONICLE_START_KEY); } catch { /* ignore */ } // 初ミッション日付も消す(開発用)
   setStoryFlags(emptyStoryFlags()); // the ONE ストーリー分岐フラグも進行リセットで消す(開発用)
   setSelectedMission('main');
+};
+
+// ---------------------------------------------------------------------------
+// 掘削記録(社長指示v0.25.2333「前回までの記録の地層が横にずらーっと並んで、横スクロールで
+// 過去を遡れると吉」)。リザルトの断面図に過去ランの竪坑を並べるための、**表示専用**の履歴。
+//
+// 掟:
+// - **ゲームの判定には一切使わない**(自己最深/最高ランクの正本は wallMeta のまま)。ここは絵のため。
+// - ステージ別に**新しい順ではなく古い順**で持ち、上限 RUN_CORE_LIMIT 件を超えたら**古い方から捨てる**
+//   (断面図は左=過去 → 右=最新 の時間軸で描くので、この順のまま流し込める)。
+// - 1件が極小(数値4つ)なので localStorage を圧迫しない。
+const RUN_CORE_KEY = 'zombie.progress.runCores';
+/** 1ステージあたり保持する掘削記録の件数(表示に使う本数の上限)。 */
+export const RUN_CORE_LIMIT = 12;
+
+export interface RunCore {
+  /** そのランの最深到達距離(px=m扱い)。 */
+  dist: number;
+  /** そのランの最高到達ランク(1-7)。 */
+  rank: number;
+  /** 終了時刻(epoch ms)。「3日前」等の相対表記に使う。 */
+  at: number;
+  /** 終わり方。断面図で坑の色を変える(達成=金/撤退=白/死亡=赤)。 */
+  end: 'won' | 'withdraw' | 'death';
+}
+type RunCoreMap = Record<string, RunCore[]>;
+
+const readRunCores = (): RunCoreMap => {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(RUN_CORE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed as RunCoreMap : {};
+  } catch {
+    return {};
+  }
+};
+const writeRunCores = (m: RunCoreMap): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(RUN_CORE_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+};
+
+/** そのステージの掘削記録(**古い順**)。最新が配列の末尾。 */
+export const getRunCores = (stageId: string): RunCore[] => {
+  if (!stageId) return [];
+  const list = readRunCores()[stageId];
+  return Array.isArray(list) ? list : [];
+};
+
+/** 1ラン追記して保存し、保存後の一覧(古い順・上限適用済み)を返す。 */
+export const pushRunCore = (stageId: string, core: RunCore): RunCore[] => {
+  if (!stageId) return [];
+  const map = readRunCores();
+  const next = [...(Array.isArray(map[stageId]) ? map[stageId] : []), core].slice(-RUN_CORE_LIMIT);
+  map[stageId] = next;
+  writeRunCores(map);
+  return next;
 };

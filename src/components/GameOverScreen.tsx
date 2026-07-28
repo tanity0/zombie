@@ -8,7 +8,8 @@ import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon, equip
 import { spritePath } from '../utils/spriteLoader';
 import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
-import { getSelectedStageId, getSelectedMission, submitStageHighScore } from '../data/progress';
+import { getSelectedStageId, getSelectedMission, submitStageHighScore, getRunCores, pushRunCore, type RunCore } from '../data/progress';
+import { getRunPois, isPoiRevealed } from '../world/pois';
 import { getStage, stageDateLabel, REVISIT_MISSION } from '../data/campaign';
 import { getArchiveRecord, unlockRecordsForStage, markRecordRead, type ArchiveRecord } from '../data/storyArchive';
 import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
@@ -158,6 +159,35 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     creditedRef.current = true;
     addGold(total);
   }, [isBenchmarkRun, goldEarned, equipmentGold, addGold]);
+
+  // 掘削記録(社長指示v0.25.2333): このランの到達を履歴へ1回だけ追記し、断面図に過去ランの竪坑を並べる。
+  // **追記の前の履歴**を state に持つ(そうしないと「今回」が過去側にも重複して立つ)。
+  // 表示専用の記録なので、ベンチは記録しない(自己最深/最高ランクの正本は wallMeta のまま=不変)。
+  const runEnd: RunCore['end'] = won ? 'won' : withdraw ? 'withdraw' : 'death';
+  const [runHistory, setRunHistory] = useState<RunCore[]>([]);
+  const [runEndedAt, setRunEndedAt] = useState(0);
+  const coreRef = useRef(false);
+  useEffect(() => {
+    if (coreRef.current || isBenchmarkRun) return;
+    coreRef.current = true;
+    const sid = getSelectedStageId();
+    setRunHistory(getRunCores(sid));            // 追記前=過去だけ
+    const now = Date.now();
+    setRunEndedAt(now);
+    pushRunCore(sid, { dist: Math.max(0, stats.maxDepthDist), rank: clampRank(stats.maxRankReached), at: now, end: runEnd });
+  }, [isBenchmarkRun, stats.maxDepthDist, stats.maxRankReached, runEnd]);
+
+  // 断面図の深度計に刺す「世界の目印」。**既存のPOIルールと同じ**=その方角の拠点を解放したものだけ
+  // (画面端の方向矢印と出す条件を揃える)。到達していない深さにも刺さる=次に潜る理由になる。
+  const baseSites = useGameStore(s => s.baseSites);
+  const hiddenBoss = useGameStore(s => s.hiddenBoss);
+  const hospitalActive = useGameStore(s => !!s.hospital);
+  const reachPois = useMemo(() => {
+    const label: Record<string, string> = { boss: '裏ボスの巣', hospital: '廃病院', cave: '洞窟' };
+    return getRunPois(hiddenBoss, hospitalActive)
+      .filter(p => isPoiRevealed(p, baseSites))
+      .map(p => ({ dist: Math.hypot(p.x, p.y), label: label[p.kind] ?? p.kind, kind: p.kind }));
+  }, [hiddenBoss, hospitalActive, baseSites]);
 
   // ハイスコア更新(ベンチ以外。死亡/クリア問わずスコアを記録)。更新できたら HIGH SCORE 表示。
   const [isHighScore, setIsHighScore] = useState(false);
@@ -368,10 +398,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 <ResultReach
                   dist={stats.maxDepthDist}
                   rank={wallHighestRank}
-                  bestDist={wallMeta.selfDeepestDist}
                   bestRank={wallMeta.selfHighestRank}
                   zoneIdx={stats.maxAreaReached}
-                  selfBestUpdated={wallSelfBestUpdated}
+                  end={runEnd}
+                  at={runEndedAt}
+                  history={runHistory}
+                  pois={reachPois}
                   namedFoe={namedFoeResult}
                 />
               )}
