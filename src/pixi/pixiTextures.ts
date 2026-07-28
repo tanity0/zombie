@@ -369,9 +369,21 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'rafi', scaleMode: 'linear' as const },
       // ラフィの武器=骨刃(別武器スプライト・透過済み・linear)。振り演出は武器の使い方受領後に追加。
       { name: 'rafi-blade', scaleMode: 'linear' as const },
+      // PACING_PUZZLE.md §6.28-0★/§6.28-16/§6.28-17〜19(バッチM52・ロットL1): 天使ボス4〜6体目
+      // (ウリ/スリィエル/アクラシエル)+専用武器絵。ミゲル/ジブリル/ラフィと同じ扱い(詳細イラスト調=
+      // linear・名前=EnemyType一致=drawEnemyのgetTexture(e.type)で解決)。振り演出はL2の担当。
+      { name: 'uri', scaleMode: 'linear' as const },
+      { name: 'uri-sword', scaleMode: 'linear' as const },
+      { name: 'suriel', scaleMode: 'linear' as const },
+      { name: 'suriel-ring', scaleMode: 'linear' as const },
+      { name: 'acrasiel', scaleMode: 'linear' as const },
+      { name: 'acrasiel-spear', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },
+      // stage-2隠しボス「idol」(§6.28-20)。ドット絵タッチの素材なのでhunter/thorと同じnearest
+      // (武器=ハンドガンは本体絵に描き込み済みなので別武器スプライトは無い)。
+      { name: 'idol', scaleMode: 'nearest' as const },
     ];
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)のドット絵上書き名。後段で使うが、

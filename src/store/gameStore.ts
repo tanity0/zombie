@@ -902,6 +902,12 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   miguel: 'CODE:MIGUEL',
   jibril: 'CODE:JIBRIL',
   rafi: 'CODE:RAFI',
+  // PACING_PUZZLE.md §6.28-0★(バッチM52・ロットL1): ゲート2の天使ボス4〜6体目(M45§6.20のCODE表記を継承)。
+  uri: 'CODE:URI',
+  suriel: 'CODE:SURIEL',
+  acrasiel: 'CODE:ACRASIEL',
+  // idol(stage-2隠しボス)は台詞・命名が物語(脚本)側の判断待ちのため、ここでは追加しない
+  // (§6.28-20「台詞・演出は本節では足さない=社長裁定待ち」)。デフォルトの'変異体'表示にフォールバックする。
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
 };

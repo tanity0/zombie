@@ -68,6 +68,8 @@ const PANEL_STYLE: React.CSSProperties = {
 // ハンター/死神など対象外の行はアイコン無し(社長指名の3グループのみ)。
 const CHRONICLE_BOSS_ICON: Record<string, string> = {
   miguel: 'miguel', jibril: 'jibril', rafi: 'rafi',
+  // PACING_PUZZLE.md §6.28-0★(バッチM52): 天使名ボス4〜6体目(ウリ/スリィエル/アクラシエル)。
+  uri: 'uri', suriel: 'suriel', acrasiel: 'acrasiel',
   giantbat: 'atlas-px2/giantbat',
   mimir: 'mimir', jormungand: 'jormungand', skadi: 'skadi', thor: 'thor',
 };

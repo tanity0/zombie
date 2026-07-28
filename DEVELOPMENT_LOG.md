@@ -1,5 +1,67 @@
 # Development Log
 
+## v0.25.2373 — M52【ロットL1・全ボス共通基盤】4チャンネル分解の共通ヘルパ+裏ボス3体カウンター統一+新4体配線【2026-07-29 01:16 JST】
+- **担当範囲(§6.28-21のロット表): L1=土台のみ**。L2(ゲート2ボス6体)/L3(裏ボス4体+idol)/L4(物語ボス)は
+  後続のサブエージェントが直列で実装する前提。**既存ボス(ジャイアント/トール/ミゲル/ジブリル/ラフィ/裏ボス3体)の
+  挙動・数値・演出は1つも変えていない**——唯一の例外はW7カウンター統一(裁定済み・下記)。
+- **(A) 全ボス共通基盤**:
+  - **新規 `src/utils/bossScript.ts`(純関数・レンダラ/store非依存=giantScript.tsと同じ流儀)**:
+    `BossPhaseKind`型、`BOSS_RECOVER_TINT`(=0xbfe8ff・既存値と同一)、`BOSS_ALERT_SFX_KEY`(='hunter-alert')、
+    `isWindupPhase`/`isRecoverPhase`/`isCounterablePhase`(W6/W7の統一判定)、`bossWindupJustEntered`
+    (予告SEのエッジ検知=1発目のみの一般形)、`bandForDistance`/`RangeBand`(間合い帯の一般形)、
+    `phaseForHealth`/`phaseJustChanged`(N段階フェーズの一般形。giantPhaseForHealthは2段専用だったのに対し
+    スカジ/トール等の3段にも使える)、`pickEligibleMove`/`pickComboFollowup`(等確率抽選/確率つき追撃の一般形)。
+    **giantScript.tsはこのファイルへ依存を追加していない**=ジャイアントの挙動は1ミリも変えていない
+    (社長実機評価「いい感じ」を維持)。新規9体の台本(L2/L3/L4)がこれを土台にする想定。
+  - 同コミットで `src/utils/bossScript.test.ts`(21件)を追加。既存 `giantScript.test.ts`(18件)も無改変で通過確認。
+  - **W7 カウンター(パリィ)統一(§6.28-13/§6.28-21★3の裁定を実施)**: 現状トール/ミゲル/ラフィのみ
+    カウンター可能で、裏ボス3体(mimir/jormungand/skadi)は不可だった(§6.28-1-3 欠陥7)。
+    `useGameLoop.ts` に `hiddenBossCounterHit`(thorCounterHitと同じ演出/反撃ダメージだが、この3体は
+    旋回運動を持たないため後退ジャンプ=counter-leapは行わず即座に'chase'へ戻す)を新設し、
+    弾3連/全方位16発/ミーミルのレーザーの各windup(aim-burst/aim-radial/laser-windup。`isCounterablePhase`
+    経由)と、突進の実行中(dash・active=技自身の判定に委ねる=ここで直接判定)をカウンター対象にした。
+    **これは裏ボス3体の明確な弱体化**(カウンターは5倍クリ+完全気絶カウント`bumpBossCrit`相当に乗る)
+    なので、**`?bosscounter=0` で統一前(裏ボス3体はカウンター不可)へ完全フォールバックできる**
+    (既定は有効=`BOSS_COUNTER_ENABLED`)。トール自身の挙動・値は無改変(`boss.type !== 'thor'`で明示除外)。
+- **(B) 新規ボス4体(`uri`/`suriel`/`acrasiel`/`idol`)の配線のみ(台本=行動はL2/L3の担当)**:
+  - `src/types/game.ts`: `EnemyType` に4種追加。
+  - `src/utils/enemyUtils.ts`: `ENEMY_STATS`(§6.28-17〜20の確定値。acrasielはspeed:0=脚が無い)/
+    `isHiddenBoss`/`isGate2AngelBoss`(idolは対象外=ゲート2ではないため)/`isBossType`/
+    `CONSTANT_STRENGTH_TYPES`/`getEnemyFireProfile`(既存の裏ボス/天使と同じ置き場)/`getEnemyColor` に追加。
+  - `src/store/gameStore.ts`: `ENEMY_DEATH_LABELS` に `CODE:URI`/`CODE:SURIEL`/`CODE:ACRASIEL` を追加
+    (idolは物語・台詞が社長裁定待ちのため見送り=デフォルト'変異体'表示のまま)。
+  - `src/pixi/pixiTextures.ts`: 本体4体(uri/suriel/acrasielはlinear・idolはnearest=ドット絵タッチ)+
+    武器3点(uri-sword/suriel-ring/acrasiel-spearはlinear)を`standalone`配列へ登録(ロード進捗カウントは
+    `standalone.length`を動的参照するため追加コード不要)。素材は全て`public/sprites/`に存在確認済み。
+  - `src/pixi/pixiScene.ts`: `BOSS_SPRITE_FIT` に4体分(社長裁定済みの確定値)を追加。
+  - `src/hooks/useGameLoop.ts`: `GATE2_BOSS_TYPE_BY_STAGE` に `stage-5:'uri' / stage-6:'suriel' /
+    stage-ex1:'acrasiel'` を追加(`?? 'miguel'`フォールバックは保持)。
+  - `src/components/TitleScreen.tsx`: 年表アイコン`CHRONICLE_BOSS_ICON`にウリ/スリィエル/アクラシエルを追加
+    (miguel/jibril/rafiと同じ天使グループの慣例に揃えた・任意の追加実装)。
+  - **配線の結果として今すぐ確認できること**: `?gateboss=1`(既存の統一起動フラグ。stage-5/6/ex1を選んで
+    起動すればそのままウリ/スリィエル/アクラシエルの本体絵・当たり判定・HPバーを確認できる=新規デバッグ
+    導線は不要だった)。idolはL3(M64)がスポーン経路を作るまで確認手段なし(指示どおり作っていない)。
+  - **未実装であることの影響(既知・意図どおり)**: `runAngelBossTick`のディスパッチャは`miguel`/`jibril`/
+    `rafi`のみ分岐するため、ウリ/スリィエルが実際にゲート2で出現しても**現状は無行動(chaseのまま静止)**。
+    L2(M61/M62)が専用tick関数を足すまでのプレースホルダ状態(タスク仕様どおり)。
+- **★未決事項(PACING_PUZZLE.md §6.28-14へ追記・裁定済みの③以外は既に社長裁定済みのため新規なし)**:
+  - **stage-ex1のゲート2が発火しない**: `campaign.ts`で`stage-ex1`は`storyBossOnly:true`。
+    `gateFireOk`が`!storyBoss`を要求するため、通常のゲート2フロー(壁4到達)では**アクラシエルへ到達できない**
+    (`?gateboss=1`のforce-spawn経路でのみ確認可)。`GATE2_BOSS_TYPE_BY_STAGE`への追加自体は§6.28-21の
+    確定表どおりで正しいが、`storyBossOnly`を変えるかどうかは仕様判断のため**campaign.tsは変更していない**。
+    PACING_PUZZLE.mdの★未決事項に追記済み。
+- **負荷スコア: 1/10**。今回の追加は①純関数(bossScript.ts・store/レンダラ非依存)②カウンター判定の
+  分岐が数個増えるだけ(1体・毎フレーム定数時間・新規配列生成なし)③新規テクスチャ7枚のロード(既存の
+  ミゲル等と同じ standalone 経路・強glow/新規描画方式は1つも増やしていない)④現状spawnされない4新型の
+  stats/textureエントリ追加のみ。simulationへの影響は「裏ボス3体の判定分岐+4」程度、renderingは
+  「新規テクスチャロード」のみ。安全弁=`?bosscounter=0`で W7 を完全に戻せる。
+- **自己点検**: この変更は憲法第4条(初心者ゾーン不可侵)・第5条(緩シーンを荒らさない)に抵触しない
+  (スポーン分布テーブル`BASE_WEIGHT`/`AREA_WEIGHT`には新4体を追加していない=通常湧きの構成比は不変。
+  W7はカウンター成立条件を緩めるだけで新規の脅威を増やしていない)。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(warning7=既存・無関係)。
+  `npx vitest related`(bossScript/giantScript/constitution/enemySeparation ほか関連24ファイル・469件)全green。
+  `npm test`/`npm run build`は社長の明示指示が無いため未実行(CLAUDE.mdのテスト運用方針どおり)。
+
 ## v0.25.2372 — 残り全ボスの行動設計を確定(見た目→動き/武器絵/新4体/13段ラダー・文書のみ)【2026-07-29 00:45 JST】
 - **実機テストB(城ボス=ジャイアント `?castlenow=1`)は社長が実施し合格**。「よいので次へ」=M51は完了扱い。
   実機テストA(ランク較正 `?komalog=1`)は未実施のまま(★仮値 `RANK_KILLS_PER_WINDOW_BASE` は較正待ち)。

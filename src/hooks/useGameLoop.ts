@@ -110,6 +110,7 @@ import {
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN
 } from '../utils/enemyUtils';
+import { isCounterablePhase } from '../utils/bossScript';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
@@ -696,12 +697,28 @@ const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 const VICIOUS_DISCOVER_DELAY_MS = evNum('viciousdelay', 3000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボスをプレイヤーの近く(画面外)へ即出現
+// PACING_PUZZLE.md §6.28-13 W7 / §6.28-21★3(バッチM52): カウンター(パリィ)作法の統一。
+// 既定で有効=裏ボス3体(mimir/jormungand/skadi)も、トール/ミゲル/ラフィと同じく溜め(windup)中の
+// 接触でカウンター可能になる(現状は不可=§6.28-1-3 欠陥7)。これは裏ボス3体の明確な弱体化
+// (カウンターは5倍クリ+完全気絶カウントに乗る=bumpBossCrit相当)なので、
+// `?bosscounter=0` で統一前(裏ボス3体はカウンター不可)へ完全フォールバックできる。
+const BOSS_COUNTER_ENABLED = evParam('bosscounter') !== '0';
 // PACING_PUZZLE.md §5.21-追補8: テスト用の統一起動フラグ。ラン開始直後、そのステージのゲート2ボス型を
 // プレイヤー近くへ即force-spawnし、ゲート2と同じ初期化(bossState=chase/home=生成中心/×5/fromEvent)で
 // すぐ戦えるようにする(拘束サークルは省略=テスト用途)。既定OFF=通常挙動不変。将来ステージが増えたら
 // このlookupに追加するだけで対応する(現状はstage-1=ミゲルのみ)。
 const FORCE_GATEBOSS = evParam('gateboss') === '1';
-const GATE2_BOSS_TYPE_BY_STAGE: Partial<Record<string, EnemyType>> = { 'stage-1': 'miguel', 'stage-3': 'jibril', 'stage-4': 'rafi' };
+// PACING_PUZZLE.md §6.28-0★/§6.28-21(バッチM52): stage-5/6/ex1にウリ/スリィエル/アクラシエルを
+// 追加(旧: 定義漏れで`?? 'miguel'`へフォールバックしていた=段階設計上の逆行=★未決①、素材受領で解消)。
+// `?? 'miguel'`のフォールバックは未定義ステージの保険として残す。
+// 注意(★未決事項に記録済み): stage-ex1は`campaign.ts`で`storyBossOnly:true`のため、現状ゲート2自体が
+// 発火しない(`gateFireOk`が`!storyBoss`を要求)。よってこのマッピング自体は正しいが、通常のゲート2
+// 経路からは当面到達できない(`?gateboss=1`のforce-spawn経路でのみ確認できる)。仕様判断(storyBossOnly
+// を変えるか等)はPACING_PUZZLE.mdの★未決事項へ記録し、ここでは配線のみ行う。
+const GATE2_BOSS_TYPE_BY_STAGE: Partial<Record<string, EnemyType>> = {
+  'stage-1': 'miguel', 'stage-3': 'jibril', 'stage-4': 'rafi',
+  'stage-5': 'uri', 'stage-6': 'suriel', 'stage-ex1': 'acrasiel',
+};
 // (WAVE_GRACE_MS は src/utils/directorTick.ts へ移設)
 // ダンスビートB方式(社長決定 v0.25.1339・仕様はHANDOFF_DANCE_AUDIO.md末尾)。?beat=0で従来の
 // (メトロノーム無し+曲への自動アンカー同期)挙動へ完全復帰(切り分け用)。
@@ -4182,7 +4199,56 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   counterActive: Date.now() <= cp.counterWindowEnd,
                 };
               };
-              if (st === 'chase') {
+              // W7統一(PACING_PUZZLE.md §6.28-13/§6.28-21★3・バッチM52): 裏ボス3体(mimir/jormungand/
+              // skadi)のカウンター成立処理。演出/反撃ダメージはthorCounterHitと同一だが、この3体は
+              // 旋回運動を持たないため THOR_ORBIT_DIST 依存の後退ジャンプ(counter-leap)は行わず、
+              // 即座に'chase'へ戻す(次アクションは少し間を空ける=通常のnextActionDelayと同じ式)。
+              // `BOSS_COUNTER_ENABLED`(既定true・`?bosscounter=0`で無効)の時だけ各windup状態から呼ばれる
+              // (呼び出し側でゲート済み=このヘルパ自体は常に定義するだけで無条件には呼ばない)。
+              const hiddenBossCounterHit = (hitX: number, hitY: number) => {
+                const cp = useGameStore.getState().player;
+                const pnow = Date.now();
+                addMeleeFinishCombo(1);
+                playSfx('counter');
+                useGameStore.getState().spawnGlow(hitX, hitY, 95, 'rgba(56,189,248,', 360);
+                useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+                useGameStore.getState().markMeleeSwingFx();
+                spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+                spawnBurst(hitX, hitY, '#38bdf8', 14);
+                useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+                useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
+                const counterBase = getActiveGun(cp)?.damage ?? 12;
+                const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
+                const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
+                damageEnemy(boss.id, dmg, false, true);
+                spawnDamageNumber(bcx, boss.y, dmg, true);
+                playSfx('headshot');
+                spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
+                spawnBurst(hitX, hitY, '#fde047', 10);
+                useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
+                patch.bossState = 'chase';
+                patch.bossNextActionAt = nextActionDelay();
+                patch.bossBurstLeft = 0;
+              };
+              // W7の対象状態一覧(§6.28-13 #8): 弾3連/全方位16発/ミーミルのレーザーの各windup(静止/後退り)、
+              // および突進の実行中(active=その技の判定に委ねる=ここで直接カウンターを判定する)。
+              // どのボスも硬直(recover)状態をまだ持たない(硬直の新設はL3の各台本の仕事)ため、対象は
+              // windup+dash活性のみ(isCounterablePhaseのrecover側は空配列=現時点では常にfalse)。
+              const HIDDEN_BOSS_COUNTER_WINDUPS = ['aim-burst', 'aim-radial', 'dash-windup', 'laser-windup'];
+              const hiddenBossCounterableNow = BOSS_COUNTER_ENABLED && boss.type !== 'thor'
+                && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, []) || st === 'dash');
+              let hiddenBossCountered = false;
+              if (hiddenBossCounterableNow) {
+                const { overlap, counterActive } = thorBodyOverlapNow();
+                if (overlap && counterActive) {
+                  hiddenBossCounterHit(bcx, bcy);
+                  hiddenBossCountered = true;
+                }
+              }
+              if (hiddenBossCountered) {
+                // カウンター成立: hiddenBossCounterHitが既にpatch.bossState='chase'まで設定済みなので、
+                // 通常の状態遷移(下のif/elseチェーン)はこのフレームだけ丸ごとスキップする。
+              } else if (st === 'chase') {
                 if (boss.type === 'thor') {
                   // 社長指示:「たまに2秒さらに1/2の速度で歩く」。クールダウンが明けたら新しい減速ウィンドウへ
                   // 突入(既に減速中は再抽選しない=毎フレーム延長し続けない)。
