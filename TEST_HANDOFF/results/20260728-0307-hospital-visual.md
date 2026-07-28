@@ -114,4 +114,23 @@
 ---
 
 # パート3: ボットラン(回帰・consoleエラー/クラッシュの有無)
-（この下は別途 `node scripts/botrun-local.mjs` の結果を追記する。パート1・2の dev サーバは停止して実施。）
+- 実行: 正規 `node scripts/botrun-local.mjs`(build+preview・headless・**2ラン**)。dev サーバは停止済で実施。生データ `20260728-0310-raw.json`。
+- ビルド成功(✓ built in 21.95s)、preview起動OK、`exit 0`。
+
+**⚠ バージョン注記(透明性のため)**: パート1・2のスクショは **v0.25.2331 / HEAD 8fd4d571** で撮影。その後 push時のrebaseで
+リモートの `63589277 v0.25.2332 リザルト全面刷新(到達譜)` を取り込んだため、**パート3のビルドは v0.25.2332**。
+差分は**リザルト画面の刷新のみで病院とは無関係**なので、パート1・2の描画判断には影響しない。
+
+| 構成 | 結果 | 生存 | キル | Lv | 最深px | console errors | smokeFallback |
+|---|---|---:|---:|---:|---:|:--:|:--:|
+| hospital-regression-a (heavy-grenade/exploder) | death(変異体・徘徊型) | 1:59 | 68 | 3 | 1312 | **0** | false |
+| hospital-regression-b (flare-gun/warm-up) | death(吸血コウモリ) | 1:49 | 49 | 3 | 2075 | **0** | false |
+
+- **両ランともクラッシュ無し・consoleエラー0件・自然死まで完走**(途中で固まったランなし)。
+  病院追加(毎フレームの `syncHospital`)による**通常プレイの回帰は検出されず**。
+- (参考)BOT_REPORT に `damageDealt`(gun/melee/other/total)・`finisherKills`・`meleeSwings`/`meleeHits` が
+  新規に入っている(=以前ナイフDPSで「実測には与ダメ計測の追加が前提」と書いた項目が、その後実装された模様)。今回の判定には未使用。
+
+## 総括
+- **病院の追加は、縦持ちの通常プレイ・回帰の範囲では健全**(描画・consoleとも問題なし)。
+- **唯一の要対応候補は「横1280×800で病院が非描画」**(パート1・2の②)。原因分析・対応は設計チャットへ。
