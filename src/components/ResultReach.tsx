@@ -281,13 +281,6 @@ const ResultReach: React.FC<ResultReachProps> = ({
                 <span className="text-white/45">m</span>
               </p>
             )}
-            {goal.rankName && (
-              <p>
-                <span className="text-white/45">次の罪</span>{' '}
-                <span className="font-semibold text-rose-200">{goal.rankName}</span>{' '}
-                <span className="text-white/45">まで あと1昇格</span>
-              </p>
-            )}
           </div>
         )}
         {namedFoe && (

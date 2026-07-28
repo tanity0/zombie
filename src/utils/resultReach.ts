@@ -137,16 +137,21 @@ export const rankRungs = (rank: number, bestRank: number): RankRung[] => {
 export interface NextGoal {
   meters: number | null;
   zoneName: string | null;
-  rankName: string | null;
   maxedOut: boolean;
 }
 
+/**
+ * 「次の一手」の材料。**距離だけを扱う**(社長指示v0.25.2342)。
+ *
+ * ランクの「次の罪まであと1昇格」は**出さない**。`rank < 7` なら常に真=同語反復で情報量が0のため
+ * (社長が過去に一度潰した表示を、v0.25.2332で私が復活させてしまったものの再撤去)。
+ * 昇格の実際の難しさは残り昇格数ではなく被ダメ条件で決まるので、「あと1」は嘘にすらなり得る。
+ */
 export const nextGoal = (dist: number, rank: number): NextGoal => {
+  void rank; // ランクは「次の一手」に出さない(上記)。引数は呼び出し側の互換のため残す。
   const meters = metersToNextWall(Math.max(0, dist));
-  const cur = clampRank(rank);
   const zoneName = meters === null ? null : (AREA_ZONE_NAMES[zoneIdxOf(Math.max(0, dist)) + 1] ?? null);
-  const rankName = cur < RANK_COUNT ? WALL_RANK_NAMES[(cur + 1) as PuzzleRank] : null;
-  return { meters, zoneName, rankName, maxedOut: meters === null && rankName === null };
+  return { meters, zoneName, maxedOut: meters === null };
 };
 
 /**

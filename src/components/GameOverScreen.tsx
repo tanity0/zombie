@@ -15,7 +15,7 @@ import { getArchiveRecord, unlockRecordsForStage, markRecordRead, type ArchiveRe
 import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
 import {
-  wallAchievementHeadline, metersToNextWall, isOneRankAwayFromNext, nextRankName, WALL_RANK_NAMES,
+  wallAchievementHeadline, metersToNextWall, WALL_RANK_NAMES,
 } from '../utils/wallProgress';
 import DirectorResult from './DirectorResult';
 import ResultReach from './ResultReach';
@@ -245,7 +245,6 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const wallHeadline = wallAchievementHeadline(stats.maxAreaReached, wallHighestRank);
   const wallSelfBestUpdated = stats.maxDepthDist > 0 && stats.maxDepthDist >= wallMeta.selfDeepestDist;
   const wallMetersToNext = metersToNextWall(stats.maxDepthDist);
-  const wallNextRank = isOneRankAwayFromNext(wallHighestRank) ? nextRankName(wallHighestRank) : null;
   const wallMeterPct = (d: number) => Math.max(0, Math.min(100, (d / WALL_METER_SCALE_MAX) * 100));
   // PACING_PUZZLE.md §5.17-追補/§5.19 M18: 昇格度(惜しさ)。死亡時のみ・スナップショットがある時だけ。
   // ★未決事項(PACING_PUZZLE.md参照): 「総合が低い時はランク行を出さない」の閾値が未定義のため、
@@ -371,15 +370,10 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 </p>
               )}
               {/* PACING_PUZZLE.md §5.17 M14: 惜しさ(死亡時のみ・燃料)。数字だけ1回明滅・派手にしない。 */}
-              {!isBenchmark && !won && !withdraw && (wallMetersToNext !== null || wallNextRank) && (
+              {/* 「◯◯まであと1昇格」は同語反復(R7以外なら常に真)なので撤去(社長指示v0.25.2342)。距離だけ残す。 */}
+              {!isBenchmark && !won && !withdraw && wallMetersToNext !== null && (
                 <p className="mt-1 text-[11px] text-white/60">
-                  {wallMetersToNext !== null && (
-                    <>次の壁 {AREA_ZONE_NAMES[stats.maxAreaReached + 1]} まで あと約<span className="font-semibold text-white/90" style={{ animation: 'wall-tantalize-flicker 1.6s ease-out 1' }}>{wallMetersToNext}</span>m</>
-                  )}
-                  {wallMetersToNext !== null && wallNextRank && ' / '}
-                  {wallNextRank && (
-                    <><span className="font-semibold text-rose-300">{wallNextRank}</span> まで あと1昇格だった</>
-                  )}
+                  次の壁 {AREA_ZONE_NAMES[stats.maxAreaReached + 1]} まで あと約<span className="font-semibold text-white/90" style={{ animation: 'wall-tantalize-flicker 1.6s ease-out 1' }}>{wallMetersToNext}</span>m
                 </p>
               )}
               {!isBenchmark && namedFoeResult && (

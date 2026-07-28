@@ -75,6 +75,9 @@ export const metersToNextWall = (dist: number): number | null => {
   return d === null ? null : Math.round(d);
 };
 
+// 【リザルト表示では使わない(社長指示v0.25.2342)】: R7未満なら常に真=同語反復で情報量が0のため、
+// 「◯◯まであと1昇格」の表示は撤去した。関数は他用途/テストのために残置しているが、
+// **リザルトに再び出さないこと**(過去に一度潰した表示をv0.25.2332で復活させた前例あり)。
 // 「次のランクまであと1昇格だった」: R7未満なら常に該当(1つ上げれば次のランクに届く)。
 export const isOneRankAwayFromNext = (rank: PuzzleRank): boolean => rank < 7;
 export const nextRankName = (rank: PuzzleRank): string | null =>

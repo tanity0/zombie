@@ -136,7 +136,14 @@ describe('nextGoal(次がやりたくなる1行)', () => {
     const g = nextGoal(AREA_THRESHOLDS[0] + 100, 3);
     expect(g.meters).toBe(AREA_THRESHOLDS[1] - AREA_THRESHOLDS[0] - 100);
     expect(g.zoneName).toBe(AREA_ZONE_NAMES[2]);
-    expect(g.rankName).toBe(WALL_RANK_NAMES[4]);
+  });
+
+  // 社長指示v0.25.2342: 「次の罪◯◯まであと1昇格」は R7 以外なら常に真=同語反復なので出さない
+  // (過去に一度潰した表示を v0.25.2332 で復活させてしまったものの再撤去)。
+  it('ランクの「あと1昇格」は返さない(同語反復なので表示しない)', () => {
+    for (const r of [1, 3, 6, 7]) {
+      expect(Object.keys(nextGoal(1000, r))).toEqual(['meters', 'zoneName', 'maxedOut']);
+    }
   });
 
   it('最深段では距離の“次”を出さない(嘘の目標を出さない)', () => {
@@ -145,9 +152,9 @@ describe('nextGoal(次がやりたくなる1行)', () => {
     expect(g.zoneName).toBeNull();
   });
 
-  it('R7では昇格の“次”を出さない / 両方尽きたら maxedOut', () => {
-    expect(nextGoal(0, 7).rankName).toBeNull();
+  it('最深段まで行けば maxedOut(距離の目標が尽きた)', () => {
     expect(nextGoal(AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1] + 1, 7).maxedOut).toBe(true);
+    expect(nextGoal(0, 7).maxedOut).toBe(false);
   });
 });
 
