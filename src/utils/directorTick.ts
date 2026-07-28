@@ -42,8 +42,9 @@ import {
   createKomaAccumulator, stepKomaAccumulator, finalizeKomaAssessmentInput,
   stepSoften, SOFTEN_TARGET_MULT, SOFTEN_TARGET_MIN,
   TIGHTEN_NO_HIT_MS, TIGHTEN_PERF_MIN, TIGHTEN_STARVE_MS,
+  tickRankPace,
   type PuzzleClockState, type KomaAccumulatorState, type SoftenState, type RankDelta,
-  type KomaAssessmentInput,
+  type KomaAssessmentInput, type RankPaceState, type PuzzleRank,
 } from './rankAssessor';
 import {
   nuisanceTarget, decideNextSpawn, noNewSupplyNuisanceTarget,
@@ -117,6 +118,38 @@ export function computeNormalSpawnCap(
 // 社長指示v0.25.1845: 「変異体が興奮し始めた」通信の判定開始(コマ経過ms)。序盤の誤発火防止(叩き台)。
 const EXCITED_COMM_MIN_KOMA_MS = 15000;
 
+// PACING_PUZZLE.md §6.27 バッチM50: 連続査定(「捌けているか」一本化)。既定ON。
+// 復帰フラグ ?rank2=0 で旧来のコマ境界(離散)査定へ戻す(cameraZoom.tsのZOOM_LOCK等と同じ作法)。
+const RANK2_ENABLED = typeof window === 'undefined'
+  ? true
+  : new URLSearchParams(window.location.search).get('rank2') !== '0';
+
+// PACING_PUZZLE.md §5.17 M14: ランクの壁演出(銘打ちバナー+SE+年表記録/降格は静かに)。
+// 旧経路(コマ境界の確定査定)・新経路(M50連続査定)の両方から呼ぶ共通処理として抽出したもの
+// (中身は元のコマ切替ブロックのまま=挙動不変・移設のみ)。
+function announceRankChange(prevRank: PuzzleRank, newRank: PuzzleRank): void {
+  if (!WALL_ENABLED) return;
+  if (newRank > prevRank) {
+    useGameStore.setState(state => ({
+      gameStats: { ...state.gameStats, maxRankReached: Math.max(state.gameStats.maxRankReached, newRank) },
+    }));
+    const st = useGameStore.getState();
+    if (isFirstRankReach(st.wallMeta, newRank)) {
+      const nextMeta = markSelfHighestRank(markRankReached(st.wallMeta, newRank), newRank);
+      useGameStore.setState({ wallMeta: nextMeta });
+    }
+    useGameStore.getState().enqueueWallEvent(
+      'rank', `${WALL_RANK_NAMES[newRank]} —— 到達`, WALL_RANK_NAMES_EN[newRank], '#ff6a55'
+    );
+    playSfx('level-up'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
+    recordChronicle(getSelectedStageId(), 'rank', String(newRank), `ランク「${WALL_RANK_NAMES[newRank]}」に到達`);
+  } else if (newRank < prevRank) {
+    useGameStore.getState().enqueueWallEvent(
+      'rank', `${WALL_RANK_NAMES[newRank]} —— 降格`, WALL_RANK_NAMES_EN[newRank], '#9ca3af'
+    );
+  }
+}
+
 // ============================================================================
 // 難易度⑥(ピンチ救済) upkeep
 // ============================================================================
@@ -179,6 +212,8 @@ export interface KomaMaintenanceRefs {
   directorRef: Ref<{ state: DirectorState }>;
   // §5.14 M13: 宿敵(ネームド)投入の独立CD(他の枠と競合しないよう専用)。
   namedFoeRef: Ref<{ lastAttemptAt: number }>;
+  // PACING_PUZZLE.md §6.27 バッチM50: 連続査定(窓/被弾ストリーク)+撃破数フレーム差分用の前回値。
+  rankPaceRef: Ref<{ state: RankPaceState; prevKills: number }>;
 }
 
 export interface KomaMaintenanceCtx {
@@ -203,7 +238,10 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     return;
   }
   const { gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc } = ctx;
-  const { puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef } = refs;
+  const {
+    puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef,
+    rankPaceRef,
+  } = refs;
 
   const koma = puzzleKomaRef.current;
   // 被弾検知(pressureHitRef/M1と同じ責務分離の専用ref)。
@@ -213,8 +251,32 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   puzzleHitRef.current.prevHp = player.health;
   const msSinceLastHit = gameTime - puzzleHitRef.current.lastHitAt;
 
+  // PACING_PUZZLE.md §6.27 バッチM50: 連続査定「捌けているか」一本化。コマ境界(relax/harvest/
+  // normal/peak)に関係なく毎tick進める(旧仕様の欠陥③=relax/harvestの80秒が昇格に一切寄与しない、
+  // をここで解消する)。撃破数はgameStats.enemiesKilledのフレーム差分、被弾は上のdmgTakenThisFrame
+  // 由来のmsSinceLastHitをそのまま使う(指示どおり=専用の被弾検知を新設しない)。
+  const killsNow = useGameStore.getState().gameStats.enemiesKilled;
+  const killsThisFrame = Math.max(0, killsNow - rankPaceRef.current.prevKills);
+  rankPaceRef.current.prevKills = killsNow;
+  const rankPaceResult = tickRankPace(rankPaceRef.current.state, {
+    dtMs: deltaTime * 1000,
+    killsThisFrame,
+    msSinceLastHit,
+    rank: puzzleClockRef.current.rank,
+    r7Cap: puzzleClockRef.current.r7Cap,
+  });
+  rankPaceRef.current.state = rankPaceResult.state;
+  // ?rank2=0時は旧経路(下のコマ境界査定)がランクを動かす。ここでは連続査定を進めるだけに留め、
+  // 実際のapplyRankDeltaは呼ばない(=旧挙動へ完全復帰できる)。
+  if (RANK2_ENABLED && rankPaceResult.delta !== 0) {
+    const prevRank = puzzleClockRef.current.rank;
+    puzzleClockRef.current = applyRankDelta(puzzleClockRef.current, rankPaceResult.delta);
+    announceRankChange(prevRank, puzzleClockRef.current.rank);
+  }
+
   // コマ査定の生データ収集(社長指示v0.25.2356)。**記録するだけで誰も読んで分岐しない**
-  // (査定の正本は assessKomaDelta / combineCycleDelta のまま=挙動は完全に不変)。
+  // (旧査定の正本は assessKomaDelta / combineCycleDelta のまま=挙動は完全に不変。M50では
+  // これらの結果は実ランクを動かさず、komaLog/昇格度表示 promotionScore 用に生き続けるだけ)。
   // 既定は無効で、ヘッドレスの計測ランが enableKomaLog() を呼んだ時だけ溜まる。
   const recordKomaSample = (
     kind: 'normal' | 'peak', input: KomaAssessmentInput, delta: -1 | 0 | 1,
@@ -225,6 +287,12 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
       run: komaLogRunRef.current, atMs: gameTime, kind,
       rank: puzzleClockRef.current.rank, dist: Math.hypot(pcx, pcy),
       maxHealth: player.maxHealth, input, delta,
+      // M50(§6.27): 較正用のスナップショット(この記録時点での連続査定の内部状態)。
+      pace: {
+        windowsAtRank: rankPaceRef.current.state.window.windowsAtRank,
+        windowsClearing: rankPaceRef.current.state.window.windowsClearing,
+        hitStreakMs: rankPaceRef.current.state.hitStreak.streakMs,
+      },
     });
   };
 
@@ -298,37 +366,19 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     koma.excitedThisKoma = false; // 興奮通信(v0.25.1845)はコマごとに再アーム
     if (koma.kind === 'normal') {
       // 確定査定の反映は「次の通常」から(§4-C。直後のリラックス/ハーベストはR1相当なので影響なし)。
+      // M50(§6.27・?rank2=0時のみ): 実ランクはここで動かす旧経路。rank2既定ON時はこの確定査定は
+      // komaLog/promotionScore用に生き続けるだけで、実ランクは連続査定(上のrankPaceResult)側が動かす。
       if (koma.pendingFinalDelta != null) {
-        const prevRank = puzzleClockRef.current.rank;
-        puzzleClockRef.current = applyRankDelta(puzzleClockRef.current, koma.pendingFinalDelta);
-        koma.pendingFinalDelta = null;
-        // PACING_PUZZLE.md §5.17 M14: ランクの壁(査定確定=このタイミングのみ・予告なし)。
-        // 社長指示v0.25.1845「ランク演出について変更」: ①演出(銘打ち)は毎回何度でも出す
-        // (旧・isFirstRankReachの初回限定を撤廃。記録系=wallMeta/年表は従来どおり初回のみ)。
-        // ②降格もグレーバージョンで出す(SE指定なし=静かに)。
-        const newRank = puzzleClockRef.current.rank;
-        if (WALL_ENABLED && newRank > prevRank) {
-          useGameStore.setState(state => ({
-            gameStats: { ...state.gameStats, maxRankReached: Math.max(state.gameStats.maxRankReached, newRank) },
-          }));
-          const st = useGameStore.getState();
-          if (isFirstRankReach(st.wallMeta, newRank)) {
-            // PACING_PUZZLE.md §5.21 M20追補(社長報告v0.25.1534): localStorageコミットはラン終了時
-            // のみ(useGameLoop.tsのcommitRunEndProgress)。ここではメモリ上のstoreだけ更新する。
-            const nextMeta = markSelfHighestRank(markRankReached(st.wallMeta, newRank), newRank);
-            useGameStore.setState({ wallMeta: nextMeta });
-          }
-          useGameStore.getState().enqueueWallEvent(
-            'rank', `${WALL_RANK_NAMES[newRank]} —— 到達`, WALL_RANK_NAMES_EN[newRank], '#ff6a55'
-          );
-          playSfx('level-up'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
-          // 歴史年表: 初回のみ載る(recordChronicle内部のdedup=ランク値で担保)。
-          recordChronicle(getSelectedStageId(), 'rank', String(newRank), `ランク「${WALL_RANK_NAMES[newRank]}」に到達`);
-        } else if (WALL_ENABLED && newRank < prevRank) {
-          useGameStore.getState().enqueueWallEvent(
-            'rank', `${WALL_RANK_NAMES[newRank]} —— 降格`, WALL_RANK_NAMES_EN[newRank], '#9ca3af'
-          );
+        if (!RANK2_ENABLED) {
+          const prevRank = puzzleClockRef.current.rank;
+          puzzleClockRef.current = applyRankDelta(puzzleClockRef.current, koma.pendingFinalDelta);
+          // PACING_PUZZLE.md §5.17 M14: ランクの壁(査定確定=このタイミングのみ・予告なし)。
+          // 社長指示v0.25.1845「ランク演出について変更」: ①演出(銘打ち)は毎回何度でも出す
+          // (旧・isFirstRankReachの初回限定を撤廃。記録系=wallMeta/年表は従来どおり初回のみ)。
+          // ②降格もグレーバージョンで出す(SE指定なし=静かに)。
+          announceRankChange(prevRank, puzzleClockRef.current.rank);
         }
+        koma.pendingFinalDelta = null;
       }
       koma.script = null; // 緩明けは新しい台本から(§4-D。次フレームのローテーションが引く)
       koma.scriptSpawned = { ...ZERO_NUISANCE };

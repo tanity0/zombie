@@ -1,5 +1,44 @@
 # Development Log
 
+## v0.25.2365 — バッチM50: ランク査定の作り直し=「捌けているか」一本化【2026-07-28 23:15 JST】
+- **仕様: `PACING_PUZZLE.md` §6.27(社長設計v0.25.2360)。** コマ境界での離散査定(通常/ピークの
+  2コマだけで判定・relax/harvestの80秒は昇格に寄与しない)をやめ、常時2つの量だけで連続判定する。
+  - **昇格**: 10秒窓(`RANK_WINDOW_MS`)ごとに撃破数を見て、`V(rank)`以上だった窓が総窓数の半分以上
+    (`ceil(windowsAtRank/2)`)なら昇格。最低`RANK_MIN_WINDOWS`(6窓=60秒)からしか判定しない。
+  - **降格**: 直近`HIT_RECENCY_MS`(3秒)以内に被弾がある「被弾中」状態が、途切れず`DEMOTE_STREAK_MS`
+    (8秒)続いたら降格。「何発食らったか」ではなく「何秒抜け出せなかったか」。
+  - **ステイ**: どちらでもない。**ランク変更(昇格・降格どちらでも)で窓カウンタ・被弾ストリークを
+    全てリセット**(新しいランクは新しい証拠で評価する)。
+  - `V(r) = RANK_KILLS_PER_WINDOW_BASE(★仮値=2) × (1000 / cdBasisForRank(r))`。係数は実測較正待ちの
+    1箇所の名前つき定数。
+- **実装**:
+  - `src/utils/rankAssessor.ts`: `stepRankWindow`/`stepHitStreak`/`tickRankPace`(合成本体・ランク
+    変更時に自動で `createRankPaceState()` へリセット)+`rankKillTarget`(V(r))を追加。純関数のみ
+    (store/Reactに触らない)。**既存の `assessKomaDelta`/`combineCycleDelta`/`isDemoteGrade` は削除
+    せず、査定の経路から外しただけ**——`komaLog`記録と死亡リザルトの「昇格度」(`promotionScore`)は
+    引き続きこれらを読む。
+  - `src/utils/directorTick.ts`: `runKomaBoardMaintenance` にコマ境界と無関係な連続tickを追加
+    (毎フレーム、`puzzleActiveNow`中は常に進む=relax/harvestも寄与する)。撃破数は
+    `gameStats.enemiesKilled` のフレーム差分、被弾は既存の `dmgTakenThisFrame` 由来の
+    `msSinceLastHit` をそのまま使用。ランク変更の壁演出(バナー/SE/年表)は `announceRankChange`
+    へ抽出し、旧経路(コマ境界)・新経路(連続査定)の両方から呼ぶ共通処理にした。
+  - **復帰フラグ `?rank2=0`**: 既定はON(連続査定)。`0`指定で旧来のコマ境界査定へ完全復帰
+    (連続査定のtick自体は裏で回り続けるが `applyRankDelta` は呼ばない=komaLog較正データは両モードで
+    取れる)。
+  - `src/utils/komaLog.ts`: `KomaLogRecord` に較正用の任意フィールド `pace`
+    (`windowsAtRank`/`windowsClearing`/`hitStreakMs`)を追加(記録のみ・判定には使わない)。
+  - `src/hooks/useGameLoop.ts` / `src/utils/playtestDriver.ts`: 新設 `rankPaceRef` の生成・新ラン時
+    リセット・`runKomaBoardMaintenance` への配線を追加。
+- **負荷**: 1/10(§6.27に明記のとおり)。整数カウンタ数個+時刻比較のみ。新規描画・per-frame配列生成なし。
+- **検証**: `npm run typecheck` / `npm run lint` エラー0。`src/utils/rankAssessor.test.ts` に §6.27
+  「検証」の不変条件6つ(移動のみ0キル→絶対不昇格/一瞬の集中被弾→不降格・8秒継続→降格/V(r)単調増加/
+  ランク変更でリセット/半分以上なら飛び飛びでも昇格)を含む新規テストを追加。`vitest related`(変更ファイル
+  一式)で155件超green(`playtest.test.ts`のM9ボットスモーク等、`directorTick.ts`経由の配線を実際に通す
+  テストも含めて全通過)。テスト/ビルドのフル実行は社長指示が無いため未実施(方針どおり)。
+- **★未決なし**(仕様に明記の範囲で完結。V(r)の係数=2は仕様書記載どおり★仮値のまま実装)。
+- 次回への申し送り: `RANK_KILLS_PER_WINDOW_BASE` の較正は社長の実プレイ(`komaLog`の`pace`
+  フィールドが新規追加済み)を実機で有効化してから。
+
 ## v0.25.2364 — AIの腕前段階の逆転を是正(surroundCountの向きが逆だった)【2026-07-28 22:57 JST】
 - M49(v0.25.2363)実装後に計測プローブを回したところ、**腕前と撃破数の逆転が直っていなかった**
   (novice 77 / casual 28 / skilled 38 / **master 27**)。原因を特定して是正した。

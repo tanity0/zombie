@@ -7,7 +7,12 @@ import {
   BASE_CAP, R7_CAP_MIN, R7_CAP_MAX, R7_CAP_STEP, RAMP_INTERVAL_NORMAL_MS, RAMP_INTERVAL_TIGHT_MS,
   RAMP_NO_HIT_HOLD_MS, TIGHTEN_NO_HIT_MS, TIGHTEN_STARVE_MS, clampRank,
   promotionScore,
-  type KomaAssessmentInput,
+  // M50(§6.27): 連続査定「捌けているか」一本化。
+  RANK_WINDOW_MS, RANK_MIN_WINDOWS, HIT_RECENCY_MS, DEMOTE_STREAK_MS, RANK_KILLS_PER_WINDOW_BASE,
+  rankKillTarget, createRankWindowState, stepRankWindow,
+  createHitStreakState, stepHitStreak,
+  createRankPaceState, tickRankPace,
+  type KomaAssessmentInput, type RankWindowState, type PuzzleRank,
 } from './rankAssessor';
 
 describe('cdBasisForRank / cdBasisTightened', () => {
@@ -363,5 +368,203 @@ describe('promotionScore', () => {
     expect(zero.total).toBe(0);
     const capped = promotionScore({ capReached: true, perfAvg: 1, intensAvg: 0, dmgRatio: 0, starveRatio: 1 });
     expect(capped.total).toBeLessThanOrEqual(120);
+  });
+});
+
+// PACING_PUZZLE.md §6.27 バッチM50: 連続査定「捌けているか」一本化。
+// 検証(§6.27「検証」)の不変条件6つをここで機械化する。
+describe('M50 §6.27: rankKillTarget V(r) — ★仮値の係数=2', () => {
+  it('the base coefficient lives as a single named constant', () => {
+    expect(RANK_KILLS_PER_WINDOW_BASE).toBe(2);
+  });
+
+  it('implements the documented formula V(r) = 2 × (1000 / cdBasisForRank(r)) exactly', () => {
+    ([1, 2, 3, 4, 5, 6] as PuzzleRank[]).forEach(r => {
+      expect(rankKillTarget(r, R7_CAP_MIN)).toBeCloseTo(2 * (1000 / cdBasisForRank(r, R7_CAP_MIN)), 5);
+    });
+  });
+
+  it('anchors the exact-integer rows of the §6.27 table (R1=2 / R5=5 / R6=8)', () => {
+    // R2=2.4/R3=3/R4=4 in the doc's table are the *rounded* display values; the formula's raw
+    // output (2.352941.../2.857142.../3.636363...) is what the previous test locks in exactly.
+    expect(rankKillTarget(1, R7_CAP_MIN)).toBeCloseTo(2, 5);
+    expect(rankKillTarget(5, R7_CAP_MIN)).toBeCloseTo(5, 5);
+    expect(rankKillTarget(6, R7_CAP_MIN)).toBeCloseTo(8, 5);
+  });
+
+  it('【不変条件3】is monotonically increasing across R1..R6 (higher rank needs more)', () => {
+    const targets = ([1, 2, 3, 4, 5, 6] as PuzzleRank[]).map(r => rankKillTarget(r, R7_CAP_MIN));
+    for (let i = 1; i < targets.length; i++) expect(targets[i]).toBeGreaterThan(targets[i - 1]);
+  });
+
+  it('is Infinity once the R7 cap has grown to the max (CD=0=unreachable target, safe no-op)', () => {
+    expect(rankKillTarget(7, R7_CAP_MAX)).toBe(Infinity);
+  });
+});
+
+describe('M50 §6.27: stepRankWindow (promotion windows)', () => {
+  const RANK1 = 1 as PuzzleRank;
+  const target = rankKillTarget(RANK1, R7_CAP_MIN); // 2
+
+  // 1つの10秒窓ぶんを進める(窓の最初のtickで撃破を一括投入・残りは移動のみ=撃破0)。
+  const runOneWindow = (state: RankWindowState, kills: number) => {
+    let r = stepRankWindow(state, { dtMs: 1000, killsThisFrame: kills, rank: RANK1, r7Cap: R7_CAP_MIN });
+    for (let i = 1; i < RANK_WINDOW_MS / 1000; i++) {
+      r = stepRankWindow(r.state, { dtMs: 1000, killsThisFrame: 0, rank: RANK1, r7Cap: R7_CAP_MIN });
+    }
+    return r;
+  };
+
+  it('【不変条件1】movement only(撃破0)では、窓がいくつ経過しても絶対に昇格しない', () => {
+    let state = createRankWindowState();
+    let promotedEver = false;
+    for (let w = 0; w < 20; w++) {
+      const r = runOneWindow(state, 0);
+      state = r.state;
+      promotedEver = promotedEver || r.promote;
+    }
+    expect(promotedEver).toBe(false);
+    expect(state.windowsClearing).toBe(0);
+    expect(state.windowsAtRank).toBe(20);
+  });
+
+  it('【不変条件5】RANK_MIN_WINDOWS未満では、全窓が達成でも昇格しない', () => {
+    let state = createRankWindowState();
+    let r;
+    for (let w = 0; w < RANK_MIN_WINDOWS - 1; w++) {
+      r = runOneWindow(state, Math.ceil(target));
+      expect(r.promote).toBe(false);
+      state = r.state;
+    }
+    expect(state.windowsAtRank).toBe(RANK_MIN_WINDOWS - 1);
+  });
+
+  it('RANK_MIN_WINDOWSに達し、全窓が達成していれば昇格する', () => {
+    let state = createRankWindowState();
+    let r;
+    for (let w = 0; w < RANK_MIN_WINDOWS; w++) {
+      r = runOneWindow(state, Math.ceil(target));
+      state = r.state;
+    }
+    expect(r!.promote).toBe(true);
+  });
+
+  it('【不変条件6】昇格は「半分以上」であって「連続」ではない(飛び飛びでも半分あれば昇格)', () => {
+    let state = createRankWindowState();
+    // 6窓: 達成/未達/達成/未達/達成/未達 -> 3/6達成(連続ではない)。
+    const pattern = [true, false, true, false, true, false];
+    let r;
+    for (const clear of pattern) {
+      r = runOneWindow(state, clear ? Math.ceil(target) : 0);
+      state = r.state;
+    }
+    expect(state.windowsClearing).toBe(3);
+    expect(state.windowsAtRank).toBe(6);
+    expect(r!.promote).toBe(true); // 3 >= ceil(6/2)=3
+  });
+
+  it('半分未満の達成では昇格しない(閾値のすぐ下を確認)', () => {
+    let state = createRankWindowState();
+    const pattern = [true, false, false, true, false, false]; // 2/6
+    let r;
+    for (const clear of pattern) {
+      r = runOneWindow(state, clear ? Math.ceil(target) : 0);
+      state = r.state;
+    }
+    expect(r!.promote).toBe(false);
+  });
+});
+
+describe('M50 §6.27: stepHitStreak (「抜け出せなかった時間」で降格)', () => {
+  it('【不変条件2】一瞬の集中被弾(HIT_RECENCY_MS=3秒以内に解ける)では降格しない', () => {
+    let state = createHitStreakState();
+    let r = stepHitStreak(state, { dtMs: 100, msSinceLastHit: 0 });
+    state = r.state;
+    for (let ms = 100; ms < HIT_RECENCY_MS + 500; ms += 100) {
+      r = stepHitStreak(state, { dtMs: 100, msSinceLastHit: ms });
+      state = r.state;
+      expect(r.demote).toBe(false);
+    }
+    expect(state.streakMs).toBe(0); // 3秒を超えて途切れた時点でストリークは0へ戻る
+  });
+
+  it('【不変条件2】「被弾中」が途切れず続けばDEMOTE_STREAK_MS(8秒)で降格する', () => {
+    let state = createHitStreakState();
+    let r;
+    const dtMs = 100;
+    const ticks = DEMOTE_STREAK_MS / dtMs;
+    for (let i = 0; i < ticks; i++) {
+      // 常に直近500ms以内に被弾がある想定(HIT_RECENCY_MS=3秒の内側)=途切れず「被弾中」。
+      r = stepHitStreak(state, { dtMs, msSinceLastHit: 500 });
+      state = r.state;
+    }
+    expect(r!.demote).toBe(true);
+  });
+
+  it('8秒に届く前に一度でも途切れれば、その後また被弾が続いても(通算では8秒超でも)降格しない', () => {
+    let state = createHitStreakState();
+    let r;
+    const dtMs = 100;
+    for (let i = 0; i < 40; i++) { // 4秒ぶん「被弾中」
+      r = stepHitStreak(state, { dtMs, msSinceLastHit: 500 });
+      state = r.state;
+    }
+    // 3秒以上被弾なし=途切れる。
+    r = stepHitStreak(state, { dtMs, msSinceLastHit: HIT_RECENCY_MS });
+    state = r.state;
+    expect(state.streakMs).toBe(0);
+    for (let i = 0; i < 40; i++) { // もう4秒ぶん「被弾中」(通算は8秒を超えるが、連続ではない)
+      r = stepHitStreak(state, { dtMs, msSinceLastHit: 500 });
+      state = r.state;
+    }
+    expect(r!.demote).toBe(false);
+  });
+});
+
+describe('M50 §6.27: tickRankPace(合成本体・ランク変更時の自動リセット)', () => {
+  it('【不変条件4】昇格が成立すると窓カウンタ・被弾ストリークが全てリセットされる', () => {
+    let state = createRankPaceState();
+    const rank = 1 as PuzzleRank;
+    const target = Math.ceil(rankKillTarget(rank, R7_CAP_MIN));
+    let result;
+    for (let w = 0; w < RANK_MIN_WINDOWS; w++) {
+      for (let i = 0; i < RANK_WINDOW_MS / 1000; i++) {
+        result = tickRankPace(state, {
+          dtMs: 1000, killsThisFrame: i === 0 ? target : 0, msSinceLastHit: 999999, rank, r7Cap: R7_CAP_MIN,
+        });
+        state = result.state;
+      }
+    }
+    expect(result!.delta).toBe(1);
+    expect(state).toEqual(createRankPaceState());
+  });
+
+  it('【不変条件4】降格が成立すると窓カウンタ・被弾ストリークが全てリセットされる', () => {
+    let state = createRankPaceState();
+    let result;
+    const dtMs = 100;
+    for (let i = 0; i < DEMOTE_STREAK_MS / dtMs; i++) {
+      result = tickRankPace(state, {
+        dtMs, killsThisFrame: 0, msSinceLastHit: 500, rank: 3 as PuzzleRank, r7Cap: R7_CAP_MIN,
+      });
+      state = result.state;
+    }
+    expect(result!.delta).toBe(-1);
+    expect(state).toEqual(createRankPaceState());
+  });
+
+  it('【不変条件1】合成本体でも、movement only(撃破0・無被弾)では絶対に昇格しない', () => {
+    let state = createRankPaceState();
+    let promotedEver = false;
+    for (let w = 0; w < 20; w++) {
+      for (let i = 0; i < RANK_WINDOW_MS / 1000; i++) {
+        const r = tickRankPace(state, {
+          dtMs: 1000, killsThisFrame: 0, msSinceLastHit: 999999, rank: 1 as PuzzleRank, r7Cap: R7_CAP_MIN,
+        });
+        state = r.state;
+        promotedEver = promotedEver || r.delta === 1;
+      }
+    }
+    expect(promotedEver).toBe(false);
   });
 });

@@ -40,7 +40,7 @@ import { checkProjectileEnemyCollisions, checkPlayerPickupCollisions } from './c
 import { weaknessCritBonus } from './weaknessCrit';
 import { applyEnemyCritPenalty } from './critPenalty';
 import { phaseAt } from './difficultyDirector';
-import { createPuzzleClockState, createKomaAccumulator, createSoftenState, clampRank } from './rankAssessor';
+import { createPuzzleClockState, createKomaAccumulator, createSoftenState, createRankPaceState, clampRank } from './rankAssessor';
 import { ZERO_NUISANCE, selectPattern, nuisanceTarget, type NuisanceType } from './scriptPuzzle';
 import { createPinchState } from './pityDirector';
 import { createDirectorState } from './aiDirector';
@@ -144,6 +144,8 @@ export const createPlaytestRefs = (): PlaytestRefs => {
       puzzleSoftenRef: { current: createSoftenState() },
       directorRef: directorShared,
       namedFoeRef: { current: { lastAttemptAt: 0 } },
+      // PACING_PUZZLE.md §6.27 バッチM50: 連続査定(窓/被弾ストリーク)+enemiesKilledフレーム差分用の前回値。
+      rankPaceRef: { current: { state: createRankPaceState(), prevKills: 0 } },
     },
     director: {
       directorRef: directorShared,

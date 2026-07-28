@@ -326,3 +326,142 @@ export const promotionScore = (input: KomaAssessmentInput): PromotionScoreResult
     damage, throughput, starve, bottleneck,
   };
 };
+
+// ---- M50(PACING_PUZZLE.md §6.27): 連続査定=「捌けているか」一本化 -----------------------
+// コマ境界での離散査定(上のassessKomaDelta/combineCycleDelta)をやめ、常時2つの量だけで判定する。
+// 社長設計v0.25.2360。既存の assessKomaDelta / combineCycleDelta / isDemoteGrade は削除しない
+// (査定の経路から外すだけ。既存テストとリザルトの「昇格度」表示 promotionScore が読み続ける)。
+//
+//   昇格: 10秒窓(RANK_WINDOW_MS)ごとに撃破数を見て、V(rank)以上だった窓が総窓数の半分以上
+//         (最低RANK_MIN_WINDOWS=6窓=60秒からしか判定しない)。
+//   降格: 直近HIT_RECENCY_MS(3秒)以内に被弾がある「被弾中」状態が、途切れずDEMOTE_STREAK_MS
+//         (8秒)続いた。「何発食らったか」ではなく「何秒抜け出せなかったか」。
+//   ステイ: どちらでもない。
+//   ランク変更(昇格・降格どちらでも)で窓カウンタ・被弾ストリークを全てリセットする
+//   (新しいランクは新しい証拠で評価する)。
+//
+// 配線は src/utils/directorTick.ts(store/Reactに触らないのはこのファイルの責務のまま)。
+
+export const RANK_WINDOW_MS = 10000;   // 昇格判定の窓の長さ
+export const RANK_MIN_WINDOWS = 6;     // これ未満の窓数(60秒未満)ではサンプル不足として判定しない
+export const HIT_RECENCY_MS = 3000;    // これ以内に被弾があれば「被弾中」とみなす
+export const DEMOTE_STREAK_MS = 8000;  // 「被弾中」が途切れず続いたら降格するまでの時間
+
+// V(r) = RANK_KILLS_PER_WINDOW_BASE × (1000 / cdBasisForRank(r))。
+// ★仮値(係数=2)。人間の実測で較正するまでの叩き台(PACING_PUZZLE.md §6.27「★仮値」参照)。
+// 1箇所の名前つき定数として持つ=後で係数を差し替える時はここだけ変える。
+export const RANK_KILLS_PER_WINDOW_BASE = 2;
+
+// R7でr7CapがR7_CAP_MAXへ到達しCD=0になった場合、「これ以上速くは湧かない」=到達不能な目標として
+// 扱う(Infinity=windowsClearingが増えず昇格しないだけ。r7Capは既にR7_CAP_MAXまで成長済みで実害なし)。
+export const rankKillTarget = (rank: PuzzleRank, r7Cap: number): number => {
+  const cdBasis = cdBasisForRank(rank, r7Cap);
+  return cdBasis > 0 ? RANK_KILLS_PER_WINDOW_BASE * (1000 / cdBasis) : Infinity;
+};
+
+// ---- 昇格: 撃破の「窓」を数える(整数2つを持つだけ・中央値も履歴も不要) -----------------
+
+export interface RankWindowState {
+  windowElapsedMs: number; // 現在進行中の窓の経過ms
+  killsInWindow: number;   // 現在進行中の窓の撃破数
+  windowsAtRank: number;   // このランクに来てから閉じた窓の総数
+  windowsClearing: number; // そのうち「窓内の撃破数 >= V(rank)」だった窓の数
+}
+
+export const createRankWindowState = (): RankWindowState => ({
+  windowElapsedMs: 0, killsInWindow: 0, windowsAtRank: 0, windowsClearing: 0,
+});
+
+export interface RankWindowTickInput {
+  dtMs: number;
+  killsThisFrame: number; // このtickで倒した数(enemiesKilledのフレーム差分・呼び出し側で計算)
+  rank: PuzzleRank;
+  r7Cap: number;
+}
+
+export interface RankWindowTickResult {
+  state: RankWindowState;
+  // このtickで窓が閉じ、かつ「windowsAtRank>=RANK_MIN_WINDOWS ∧ windowsClearing>=半分(切り上げ)」
+  // を満たした(=昇格条件成立)。
+  promote: boolean;
+}
+
+export const stepRankWindow = (state: RankWindowState, input: RankWindowTickInput): RankWindowTickResult => {
+  let windowElapsedMs = state.windowElapsedMs + input.dtMs;
+  let killsInWindow = state.killsInWindow + Math.max(0, input.killsThisFrame);
+  let windowsAtRank = state.windowsAtRank;
+  let windowsClearing = state.windowsClearing;
+  let promote = false;
+  // dtMsが窓長を超える希な大フレームでも複数窓ぶん進める(既存stepSoftenのバケツ回転と同じ作法)。
+  while (windowElapsedMs >= RANK_WINDOW_MS) {
+    windowElapsedMs -= RANK_WINDOW_MS;
+    windowsAtRank += 1;
+    if (killsInWindow >= rankKillTarget(input.rank, input.r7Cap)) windowsClearing += 1;
+    killsInWindow = 0;
+    promote = windowsAtRank >= RANK_MIN_WINDOWS && windowsClearing >= Math.ceil(windowsAtRank / 2);
+  }
+  return { state: { windowElapsedMs, killsInWindow, windowsAtRank, windowsClearing }, promote };
+};
+
+// ---- 降格: 「抜け出せなかった時間」を測る(発数ではなく秒数) -----------------------------
+
+export interface HitStreakState {
+  // 「被弾中」(直近HIT_RECENCY_MS以内に被弾がある)が途切れず継続している時間。
+  streakMs: number;
+}
+
+export const createHitStreakState = (): HitStreakState => ({ streakMs: 0 });
+
+export interface HitStreakTickInput {
+  dtMs: number;
+  msSinceLastHit: number; // 直近被弾からの経過ms(既存のdmgTakenThisFrame由来・呼び出し側で計算済み)
+}
+
+export interface HitStreakTickResult {
+  state: HitStreakState;
+  demote: boolean; // このtickで「被弾中」の連続継続がDEMOTE_STREAK_MSへ達した
+}
+
+export const stepHitStreak = (state: HitStreakState, input: HitStreakTickInput): HitStreakTickResult => {
+  const beingHit = input.msSinceLastHit < HIT_RECENCY_MS;
+  const streakMs = beingHit ? state.streakMs + input.dtMs : 0; // 3秒以内に次の被弾が無ければ即リセット
+  return { state: { streakMs }, demote: streakMs >= DEMOTE_STREAK_MS };
+};
+
+// ---- 合成: 毎tick呼ぶ本体(昇格・降格を1つにまとめ、ランク変更時は自動リセット) --------------
+
+export interface RankPaceState {
+  window: RankWindowState;
+  hitStreak: HitStreakState;
+}
+
+export const createRankPaceState = (): RankPaceState => ({
+  window: createRankWindowState(),
+  hitStreak: createHitStreakState(),
+});
+
+export interface RankPaceTickInput {
+  dtMs: number;
+  killsThisFrame: number;
+  msSinceLastHit: number;
+  rank: PuzzleRank;
+  r7Cap: number;
+}
+
+export interface RankPaceTickResult {
+  state: RankPaceState;
+  delta: RankDelta; // 1=昇格 / -1=降格 / 0=ステイ(このtickの結果。適用はapplyRankDeltaを呼ぶ側の責務)
+}
+
+// 降格を優先する判定順(既存assessKomaDeltaと同じ安全側の作法。同一tickで両方成立する状況は
+// 実運用上ほぼ起こらない=窓は10秒境界でしか閉じずストリームは毎tick評価のため、境界が正確に重なる
+// 一瞬だけの理論上の話。危険シグナルが出ている時は昇格させない、を踏襲する)。
+export const tickRankPace = (state: RankPaceState, input: RankPaceTickInput): RankPaceTickResult => {
+  const streak = stepHitStreak(state.hitStreak, { dtMs: input.dtMs, msSinceLastHit: input.msSinceLastHit });
+  if (streak.demote) return { state: createRankPaceState(), delta: -1 };
+  const win = stepRankWindow(state.window, {
+    dtMs: input.dtMs, killsThisFrame: input.killsThisFrame, rank: input.rank, r7Cap: input.r7Cap,
+  });
+  if (win.promote) return { state: createRankPaceState(), delta: 1 };
+  return { state: { window: win.state, hitStreak: streak.state }, delta: 0 };
+};

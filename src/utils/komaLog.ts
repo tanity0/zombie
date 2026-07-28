@@ -27,6 +27,12 @@ export interface KomaLogRecord {
   input: KomaAssessmentInput;
   /** 現行式が出した判定(-1/0/+1)。新旧の比較用。 */
   delta: -1 | 0 | 1;
+  /**
+   * M50(§6.27): 連続査定(RankPaceState)のこの記録時点のスナップショット(較正用・任意)。
+   * コマ境界とは無関係に常時進む量なので、コマ側の記録に「その瞬間どうだったか」を添えるだけ
+   * (このログ自体はここでも判定に使わない=記録専用)。
+   */
+  pace?: { windowsAtRank: number; windowsClearing: number; hitStreakMs: number };
 }
 
 const MAX_RECORDS = 20000;

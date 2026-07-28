@@ -144,8 +144,9 @@ import {
   createPuzzleClockState,
   createKomaAccumulator,
   createSoftenState,
+  createRankPaceState,
   clampRank,
-  type PuzzleClockState, type KomaAccumulatorState, type SoftenState, type RankDelta,
+  type PuzzleClockState, type KomaAccumulatorState, type SoftenState, type RankDelta, type RankPaceState,
 } from '../utils/rankAssessor';
 import {
   ZERO_NUISANCE,
@@ -1039,6 +1040,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const namedFoeRef = useRef<{ lastAttemptAt: number }>({ lastAttemptAt: 0 });
   // バッチM2: 被弾検知専用(pressureHitRef/M1と同じ責務分離パターン。AIディレクター本体とは別管理)。
   const puzzleHitRef = useRef<{ prevHp: number; lastHitAt: number }>({ prevHp: -1, lastHitAt: -1e9 });
+  // PACING_PUZZLE.md §6.27 バッチM50: 連続査定(窓/被弾ストリーク)+enemiesKilledのフレーム差分用の前回値。
+  const rankPaceRef = useRef<{ state: RankPaceState; prevKills: number }>({ state: createRankPaceState(), prevKills: 0 });
   // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
   // v0.25.1343: startTotalsは必ずディープコピー(snapshotKillTotals)で持つ。生参照だと差分が常に0になる。
   const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof snapshotKillTotals> | null; startSpawns: ReturnType<typeof snapshotSpawns> | null }>({ phaseKey: '', startTotals: null, startSpawns: null });
@@ -2012,6 +2015,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           puzzleSoftenRef.current = createSoftenState();
           puzzleCdRef.current = { lastBaseSpawnAt: 0, lastNuisanceSpawnAt: 0, lastSpecialSpawnAt: 0 };
           puzzleHitRef.current = { prevHp: -1, lastHitAt: -1e9 };
+          rankPaceRef.current = { state: createRankPaceState(), prevKills: 0 }; // M50: 連続査定も新ランでリセット
           setPuzzleDebug(null);
           // バッチ2(計測)の種別キル集計も新ランでリセット(前ランの数字を引きずらない)。
           resetKillTelemetry();
@@ -8589,7 +8593,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // PACING_PUZZLE.md §5.21-追補4: 追補3の「ゲート1中はchaff目標=ピーク・CD0を強制」は撤回済み
         // (gate1.ts参照)。ゲート1中もkomaは通常どおりディレクター駆動のまま=ここに特別分岐は無い。
         if (!NOSPAWN) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
-          { puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef },
+          {
+            puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef,
+            rankPaceRef,
+          },
           {
             puzzleActiveNow, gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc,
           }
