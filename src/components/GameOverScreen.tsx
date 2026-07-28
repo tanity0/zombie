@@ -14,6 +14,7 @@ import { getStage, stageDateLabel, REVISIT_MISSION } from '../data/campaign';
 import { getArchiveRecord, unlockRecordsForStage, markRecordRead, type ArchiveRecord } from '../data/storyArchive';
 import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
+import { isKomaLogEnabled, komaLogSummary, logKomaSummary } from '../utils/komaLog';
 import {
   wallAchievementHeadline, metersToNextWall, WALL_RANK_NAMES,
 } from '../utils/wallProgress';
@@ -91,6 +92,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   benchmarkResult = null
 }) => {
   const [benchmarkCopyState, setBenchmarkCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [komaCopyState, setKomaCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   // PACING_PUZZLE.md §5.19 M18④: スコア内訳とAIディレクターは別々の開閉(独立トグル2つ・ローカルuseState)。
   const [scoreDetailOpen, setScoreDetailOpen] = useState(false);
   const [directorOpen, setDirectorOpen] = useState(false);
@@ -307,6 +309,30 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     [benchmarkResult]
   );
 
+  // v0.25.2374(実機テストチャットの指摘③): `?komalog=1` の時だけ、ランク較正の要約を**画面に出す**。
+  // この機能の狙いは「実機で社長が普通に遊んだ1ラン」を測ることなのに、取り出し口が
+  // `console.log` と `window.__KOMA_LOG__` の2つしか無く、**スマホには開発者コンソールが無い**ため
+  // 実機で読めなかった(=存在しないのと同じだった)。リザルトは死亡/クリア/帰還の3経路すべてが通る唯一の画面。
+  const komaText = useMemo(
+    () => isKomaLogEnabled() ? JSON.stringify(komaLogSummary()) : '',
+    []
+  );
+  // 指摘②: コンソール出力が「死亡」と「ボットのクリア」の2箇所しか無く、
+  // **人間のクリア/帰還では1行も出ていなかった**。ここで3経路すべてを拾う(二重出力は once ガードで防ぐ)。
+  useEffect(() => { logKomaSummary(); }, []);
+
+  const handleCopyKoma = async () => {
+    if (!komaText) return;
+    try {
+      await copyText(komaText);
+      setKomaCopyState('copied');
+      window.setTimeout(() => setKomaCopyState('idle'), 1600);
+    } catch {
+      setKomaCopyState('failed');
+      window.setTimeout(() => setKomaCopyState('idle'), 2200);
+    }
+  };
+
   const handleCopyBenchmark = async () => {
     if (!benchmarkShareText) return;
     try {
@@ -508,6 +534,23 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   : benchmarkCopyState === 'failed'
                     ? 'コピー失敗'
                     : 'ベンチ結果をコピー'}
+              </button>
+            </div>
+          )}
+          {komaText && (
+            <div className="mb-3 rounded-none border border-sky-400/30 bg-sky-400/5 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-widest text-sky-200/70">RANK CALIBRATION</div>
+              <div className="mt-1 break-all text-[10px] leading-relaxed text-white/75 tabular-nums">{komaText}</div>
+              <button
+                type="button"
+                onClick={handleCopyKoma}
+                className="mt-2 w-full rounded-none bg-sky-400/10 px-3 py-2 text-[11px] font-semibold text-white/85"
+              >
+                {komaCopyState === 'copied'
+                  ? 'コピーしました'
+                  : komaCopyState === 'failed'
+                    ? 'コピー失敗'
+                    : '較正データをコピー'}
               </button>
             </div>
           )}

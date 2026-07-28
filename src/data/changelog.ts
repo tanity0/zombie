@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2374',
+    items: [
+      'ゲーム内容の変更はありません（開発用の計測機能の不具合を直しただけです）。',
+    ],
+  },
+  {
     version: '0.25.2373',
     items: [
       '裏ボス（ミーミル・ヨルムンガルド・スカジ）の溜め攻撃・突進中に、近接カウンター（弾き返し）が'

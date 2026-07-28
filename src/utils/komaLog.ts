@@ -54,14 +54,55 @@ const komaLogParamOn = (): boolean => {
   } catch { return false; }
 };
 
+/**
+ * 「いま現在」の較正値(v0.25.2374)。**コマ境界とは無関係に毎tick上書きする**。
+ *
+ * なぜ要るのか(実機テストチャットの指摘①): コマは `relax→harvest→normal→peak` の順で巡回し、
+ * 記録されるのは normal/peak の**終了時だけ**。コマ長は base 40秒なので**最初の1件が出るまで最短2分**で、
+ * 実測では **99.5秒で死んだランが `{koma:0}`**(=成果ゼロ)になった。
+ * しかし較正に本当に要る量(窓の達成率・撃破数・被弾)は**コマ境界と無関係に常時進んでいる**。
+ * ここに毎tick焼いておけば、**コマが1つも閉じていないランからでも数字が取れる**。
+ */
+export interface KomaLiveSnapshot {
+  atMs: number;
+  rank: number;
+  dist: number;
+  windowsAtRank: number;
+  windowsClearing: number;
+  hitStreakMs: number;
+  /** ラン累計の撃破数(較正の主役)。 */
+  kills: number;
+  /** ラン累計の被弾数(無敵700msがあるので「ダメージが入ったフレーム」=1被弾)。 */
+  hitsTotal: number;
+}
+
 let enabled = komaLogParamOn();
 let records: KomaLogRecord[] = [];
+let live: KomaLiveSnapshot | null = null;
+let liveHits = 0;
+let loggedThisRun = false;
 
 /** 収集を有効化(ヘッドレスの計測ラン。実機は `?komalog=1` で自動的に有効)。 */
 export const enableKomaLog = (): void => { enabled = true; };
 export const isKomaLogEnabled = (): boolean => enabled;
-export const resetKomaLog = (): void => { records = []; };
+export const resetKomaLog = (): void => { records = []; live = null; liveHits = 0; loggedThisRun = false; };
 export const getKomaLog = (): readonly KomaLogRecord[] => records;
+
+/**
+ * 毎tickの現況を焼く(無効時は**何もしない**)。呼ぶのは `directorTick` の1箇所だけ。
+ * `atMs` が**巻き戻ったら新しいランが始まった**と見なして自動でリセットする
+ * (1回のページ読み込みで死亡→リトライを繰り返しても、要約が前のランと混ざらない)。
+ */
+export const tickKomaLive = (s: Omit<KomaLiveSnapshot, 'hitsTotal'> & { hitThisFrame: boolean }): void => {
+  if (!enabled) return;
+  if (live && s.atMs < live.atMs) { records = []; liveHits = 0; loggedThisRun = false; }
+  if (s.hitThisFrame) liveHits += 1;
+  live = {
+    atMs: s.atMs, rank: s.rank, dist: s.dist,
+    windowsAtRank: s.windowsAtRank, windowsClearing: s.windowsClearing, hitStreakMs: s.hitStreakMs,
+    kills: s.kills, hitsTotal: liveHits,
+  };
+};
 
 /** 1コマぶん記録する。無効時は**何もしない**(通常プレイのコストをゼロにする)。 */
 export const recordKoma = (r: KomaLogRecord): void => {
@@ -88,31 +129,45 @@ export const exposeKomaLog = (): void => {
   };
 };
 
-/** 較正に必要な数字だけの要約。実機の社長がコンソールからコピーして渡せる粒度にする。 */
+/**
+ * 較正に必要な数字だけの要約。実機の社長がそのままコピーして渡せる粒度にする。
+ *
+ * **正本は `live`(毎tickの現況)で、コマ記録は `koma` 件数と最大値の補強にしか使わない**(v0.25.2374)。
+ * 旧版は「records が空なら `{koma:0}` を返して終わり」だったため、**2分未満のランが丸ごと無駄**になっていた。
+ */
 export const komaLogSummary = (): Record<string, number> => {
   const n = records.length;
-  if (n === 0) return { koma: 0 };
-  const last = records[n - 1];
-  const sum = (f: (r: KomaLogRecord) => number): number => records.reduce((a, r) => a + f(r), 0);
+  if (n === 0 && !live) return { koma: 0 };
+  const last = n > 0 ? records[n - 1] : null;
+  const atMs = live?.atMs ?? last?.atMs ?? 0;
+  const windowsAtRank = live?.windowsAtRank ?? last?.pace?.windowsAtRank ?? 0;
+  const windowsClearing = live?.windowsClearing ?? last?.pace?.windowsClearing ?? 0;
   return {
     koma: n,
-    finalRank: last.rank,
-    maxRank: records.reduce((a, r) => Math.max(a, r.rank), 1),
-    maxDist: Math.round(records.reduce((a, r) => Math.max(a, r.dist), 0)),
-    runMinutes: Math.round((last.atMs / 60000) * 10) / 10,
-    hitsTotal: sum(r => r.input.hits ?? 0),
+    finalRank: live?.rank ?? last?.rank ?? 0,
+    maxRank: records.reduce((a, r) => Math.max(a, r.rank), live?.rank ?? 0),
+    maxDist: Math.round(records.reduce((a, r) => Math.max(a, r.dist), live?.dist ?? 0)),
+    runMinutes: Math.round((atMs / 60000) * 10) / 10,
+    // 較正の主役。「1つの窓(30秒)で何体捌けたら昇格に値するか」を決めるための実測値。
+    kills: live?.kills ?? 0,
+    hitsTotal: live?.hitsTotal ?? records.reduce((a, r) => a + (r.input.hits ?? 0), 0),
+    hitStreakMs: Math.round(live?.hitStreakMs ?? 0),
     // M50の較正で見たい2つ。窓の達成率が「昇格に必要な50%」に対してどこにいるか。
-    windowsAtRank: last.pace?.windowsAtRank ?? 0,
-    windowsClearing: last.pace?.windowsClearing ?? 0,
-    clearRatePct: last.pace && last.pace.windowsAtRank > 0
-      ? Math.round((last.pace.windowsClearing / last.pace.windowsAtRank) * 1000) / 10
+    windowsAtRank,
+    windowsClearing,
+    clearRatePct: windowsAtRank > 0
+      ? Math.round((windowsClearing / windowsAtRank) * 1000) / 10
       : 0,
   };
 };
 
-/** ラン終了時に1回だけ呼ぶ。コンソールへ要約を出す(社長がそのままコピーして渡せる)。 */
+/**
+ * ラン終了時に呼ぶ。コンソールへ要約を出す(社長がそのままコピーして渡せる)。
+ * **同じランで何度呼ばれても1回しか出さない**(死亡の瞬間とリザルト画面の両方から呼ばれるため)。
+ */
 export const logKomaSummary = (): void => {
-  if (!enabled) return;
+  if (!enabled || loggedThisRun) return;
+  loggedThisRun = true;
   console.log('[KOMA_LOG]', JSON.stringify(komaLogSummary()));
 };
 

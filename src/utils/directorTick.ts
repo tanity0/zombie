@@ -35,7 +35,7 @@ import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { CONTEXT_ZOOM_MIN } from './cameraZoom';
 import { getSelectedStageId, recordChronicle } from '../data/progress';
-import { recordKoma, isKomaLogEnabled, komaLogRunRef } from './komaLog';
+import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
 import {
   capForState,
   assessKomaDelta, applyRankDelta, combineCycleDelta,
@@ -266,6 +266,22 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     r7Cap: puzzleClockRef.current.r7Cap,
   });
   rankPaceRef.current.state = rankPaceResult.state;
+  // v0.25.2374(実機テストチャットの指摘①): 較正値を毎tick焼く。**コマ境界を待たない**ので、
+  // 2分未満で終わったランからも数字が取れる(旧版は koma 0件=要約が空だった)。
+  // 無効時(`?komalog=1` 無し)は tickKomaLive が即returnするので通常プレイのコストはゼロ。
+  if (isKomaLogEnabled()) {
+    const lpx = player.x + player.width / 2, lpy = player.y + player.height / 2;
+    tickKomaLive({
+      atMs: gameTime,
+      rank: puzzleClockRef.current.rank,
+      dist: Math.hypot(lpx, lpy),
+      windowsAtRank: rankPaceRef.current.state.window.windowsAtRank,
+      windowsClearing: rankPaceRef.current.state.window.windowsClearing,
+      hitStreakMs: rankPaceRef.current.state.hitStreak.streakMs,
+      kills: killsNow,
+      hitThisFrame: dmgTakenThisFrame > 0,
+    });
+  }
   // ?rank2=0時は旧経路(下のコマ境界査定)がランクを動かす。ここでは連続査定を進めるだけに留め、
   // 実際のapplyRankDeltaは呼ばない(=旧挙動へ完全復帰できる)。
   if (RANK2_ENABLED && rankPaceResult.delta !== 0) {
