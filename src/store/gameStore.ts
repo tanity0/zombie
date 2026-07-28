@@ -92,7 +92,7 @@ import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled }
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, GACHA_PULL_COST, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID } from '../data/campaign';
+import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
@@ -594,6 +594,8 @@ const saveSkillLevels = (m: Partial<Record<SkillKey, number>>): void => {
 // ガチャの永続状態: スキル別「被り回数(dupeCount)」と「直近superからのpull数(pity)」。
 const GACHA_DUPES_KEY = 'zombie:gachaDupeCounts';
 const GACHA_PITY_KEY = 'zombie:gachaPitySinceSuper';
+// 階段式価格(v0.25.2344)の段を決める**累計pull数**。セーブを跨いで階段が巻き戻らないよう永続。
+const GACHA_PULLS_KEY = 'zombie:gachaPullsTotal';
 const loadDupeCounts = (): Partial<Record<SkillKey, number>> => {
   try { const r = localStorage.getItem(GACHA_DUPES_KEY); const o = r ? JSON.parse(r) : {}; return (o && typeof o === 'object') ? o : {}; }
   catch { return {}; }
@@ -2712,6 +2714,7 @@ interface GameState {
   ownedSkillLevels: Partial<Record<SkillKey, number>>;  // 所持スキルのLv(ガチャ重複で上昇・永続)
   gachaDupeCounts: Partial<Record<SkillKey, number>>;   // ガチャのスキル別「被り回数」(Lv抽選表の参照・永続)
   gachaPitySinceSuper: number;                          // 直近superからのpull数(レア度ソフト天井・永続)
+  gachaPullsTotal: number;                              // これまでに引いた累計回数(階段式価格の段・永続)
   grantSkill: (key: SkillKey) => void;                  // ガチャ当選で所持解禁(重複は無視)
   grantSkillLevel: (key: SkillKey, level: number) => boolean; // 解禁＋Lv上書き(既存より高ければ)。上がれば true
   pullGacha: () => GachaPullResult | null;              // 強化訓練を1回引く(レア度pity→Lv抽選→付与/返金。逐次状態更新)
@@ -3037,6 +3040,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   ownedSkillLevels: loadSkillLevels(),
   gachaDupeCounts: loadDupeCounts(),
   gachaPitySinceSuper: loadNumber(GACHA_PITY_KEY, 0),
+  gachaPullsTotal: Math.max(0, Math.floor(loadNumber(GACHA_PULLS_KEY, 0))),
   goldBalance: loadNumber(GOLD_BALANCE_KEY, 0),
   namedFoe: loadNamedFoe(),
   namedFoeRunEligible: false, // 実際の抽選はresetGame開始時(初回マウント時点ではまだラン開始前)
@@ -8988,8 +8992,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   // スキル別の被り回数でLv抽選→初取得は付与・既存超えで昇格・それ以外は返金→被り回数を更新。
   // 10連は本アクションを順番にN回呼ぶ(各回がget/setで最新stateを参照=スナップショット一括禁止)。
   pullGacha: () => {
-    // コスト0(無料)のときは課金スキップ。有料なら残高を消費(不足で null)。
-    if (GACHA_PULL_COST > 0 && !get().spendGold(GACHA_PULL_COST)) return null;
+    // 階段式価格(v0.25.2344): 単価は**累計pull数**で決まる。コスト0(無料)なら課金スキップ、
+    // 有料なら残高を消費(不足で null=引かない)。
+    const pullsTotal = get().gachaPullsTotal;
+    const price = gachaPullCost(pullsTotal);
+    if (price > 0 && !get().spendGold(price)) return null;
+    // 支払いが通った時点で累計を進める(=次の1回から段が上がる)。昇格/返金の別とは無関係。
+    const nextPullsTotal = pullsTotal + 1;
+    saveNumber(GACHA_PULLS_KEY, nextPullsTotal);
     const pity = get().gachaPitySinceSuper;
     const key = rollGachaSkill(pity);
     const rarity: SkillRarity = SKILLS[key].rarity;
@@ -9006,7 +9016,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (maxLv === 1 && !firstAcquire) {
       const refund = GACHA_REFUND_BY_RARITY[rarity];
       saveNumber(GACHA_PITY_KEY, nextPity);
-      set({ gachaPitySinceSuper: nextPity });
+      set({ gachaPitySinceSuper: nextPity, gachaPullsTotal: nextPullsTotal });
       get().addGold(refund);
       return { key, rarity, rolledLevel: 1, newLevel: prevLevel, prevLevel, dupeCount, firstAcquire: false, promoted: false, refund };
     }
@@ -9032,7 +9042,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (promoted) saveSkillLevels(nextLevels);
     saveDupeCounts(nextDupes);
     saveNumber(GACHA_PITY_KEY, nextPity);
-    set({ ownedSkills: nextOwned, ownedSkillLevels: nextLevels, gachaDupeCounts: nextDupes, gachaPitySinceSuper: nextPity });
+    set({ ownedSkills: nextOwned, ownedSkillLevels: nextLevels, gachaDupeCounts: nextDupes, gachaPitySinceSuper: nextPity, gachaPullsTotal: nextPullsTotal });
     if (refund > 0) get().addGold(refund);
     return { key, rarity, rolledLevel, newLevel, prevLevel, dupeCount, firstAcquire, promoted, refund };
   },

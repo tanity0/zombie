@@ -12,7 +12,7 @@ import { vi } from 'vitest';
 import { checkPlayerPickupCollisions } from '../utils/collisionUtils';
 import type { Pickup } from '../types/game';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
-  GACHA_PULL_COST, GACHA_REFUND_BY_RARITY,
+  gachaPullCost, gachaPullCostFor, GACHA_PRICE_STEPS, GACHA_PULL_COST_CAP, GACHA_REFUND_BY_RARITY,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel,
   rollGachaSkill, GACHA_EXCLUDED_SKILLS } from '../data/campaign';
 import type { Player, SkillKey } from '../types/game';
@@ -81,17 +81,59 @@ describe('rarity soft-pity weights', () => {
 // これで閉じる。価格0(無料)へ戻すとシンクが消えてループが開くので、テストで固定する。
 describe('ガチャ価格とゴールドのシンク', () => {
   it('価格は0ではない(=ゴールドの行き先がある)', () => {
-    expect(GACHA_PULL_COST).toBeGreaterThan(0);
+    for (const n of [0, 1, 5, 14, 15, 30, 100, 1000]) expect(gachaPullCost(n)).toBeGreaterThan(0);
   });
 
-  it('返金は価格に対して 10% / 30% / 50%(この比が100gを選んだ理由。価格を変えるなら返金も見直す)', () => {
-    expect(GACHA_REFUND_BY_RARITY.normal / GACHA_PULL_COST).toBeCloseTo(0.1, 6);
-    expect(GACHA_REFUND_BY_RARITY.rare / GACHA_PULL_COST).toBeCloseTo(0.3, 6);
-    expect(GACHA_REFUND_BY_RARITY.super / GACHA_PULL_COST).toBeCloseTo(0.5, 6);
+  // 階段式(社長裁定v0.25.2344)。ヴァンサバ式に「引くほど高く、いずれ頭打ち」。
+  it('段は単調増加で、最後は天井に張り付く(安くなって戻ることはない)', () => {
+    for (let n = 1; n <= 200; n++) expect(gachaPullCost(n)).toBeGreaterThanOrEqual(gachaPullCost(n - 1));
+    const last = GACHA_PRICE_STEPS[GACHA_PRICE_STEPS.length - 1];
+    expect(gachaPullCost(last.until)).toBe(GACHA_PULL_COST_CAP);
+    expect(gachaPullCost(9999)).toBe(GACHA_PULL_COST_CAP);
+    for (const s of GACHA_PRICE_STEPS) expect(s.price).toBeLessThanOrEqual(GACHA_PULL_COST_CAP);
   });
 
-  it('超レアの被り返金が価格を超えない(被りが実質タダにならない)', () => {
-    expect(GACHA_REFUND_BY_RARITY.super).toBeLessThan(GACHA_PULL_COST);
+  it('段の境目は until の直前まで据え置き、until ちょうどで次の段(オフバイワン防止)', () => {
+    for (const s of GACHA_PRICE_STEPS) expect(gachaPullCost(s.until - 1)).toBe(s.price);
+    expect(gachaPullCost(0)).toBe(GACHA_PRICE_STEPS[0].price); // 1回目=いちばん安い段
+  });
+
+  // 社長要件①「初回を飽きさせない」: 初戦の稼ぎ(実測 約20g)でその場で2回引けること。
+  it('初戦の稼ぎ(20g)で2回引ける', () => {
+    expect(gachaPullCostFor(0, 2)).toBeLessThanOrEqual(20);
+  });
+
+  // 社長要件②「1プレイで上手ければ複数回引ける」: 良いラン(実測 獲得123g+換金14g ≒ 137g)で
+  // 天井に達した後でも2回引けること。ここが崩れると後半が「1ラン1回」に戻って飽きる。
+  it('天井到達後でも、良いラン(137g)で2回引ける', () => {
+    expect(gachaPullCostFor(999, 2)).toBeLessThanOrEqual(137);
+    expect(GACHA_PULL_COST_CAP * 2).toBeLessThanOrEqual(137);
+  });
+
+  it('10連の合計は段をまたいでも「その10回の実額」(単価×10ではない)', () => {
+    // 3回目から10連 = 3,4,5回目が10g / 6〜12回目が20g
+    expect(gachaPullCostFor(2, 10)).toBe(10 * 3 + 20 * 7);
+    // 天井後は単価×10と一致する
+    expect(gachaPullCostFor(999, 10)).toBe(GACHA_PULL_COST_CAP * 10);
+    // 1回ずつ足したものと必ず一致する(表示と課金がズレない)
+    let sum = 0;
+    for (let i = 0; i < 10; i++) sum += gachaPullCost(7 + i);
+    expect(gachaPullCostFor(7, 10)).toBe(sum);
+  });
+
+  it('壊れた累計回数(負/NaN/小数)でも最初の段へ落ちる', () => {
+    expect(gachaPullCost(-5)).toBe(GACHA_PRICE_STEPS[0].price);
+    expect(gachaPullCost(Number.NaN)).toBe(GACHA_PRICE_STEPS[0].price);
+    expect(gachaPullCost(2.7)).toBe(gachaPullCost(2));
+    expect(gachaPullCostFor(0, -1)).toBe(0);
+  });
+
+  // 返金は**固定額**(価格に対する割合ではない)。天井50では超レアの被り返金50gが
+  // ちょうど1回ぶんになる=被りの救済が強い、という前提でコンプ距離を見積もってある。
+  it('返金は固定額で、天井1回ぶんを超えない', () => {
+    expect(GACHA_REFUND_BY_RARITY.normal).toBeLessThan(GACHA_REFUND_BY_RARITY.rare);
+    expect(GACHA_REFUND_BY_RARITY.rare).toBeLessThan(GACHA_REFUND_BY_RARITY.super);
+    expect(GACHA_REFUND_BY_RARITY.super).toBeLessThanOrEqual(GACHA_PULL_COST_CAP);
   });
 });
 

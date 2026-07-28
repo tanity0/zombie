@@ -106,7 +106,7 @@ import { loadSeenTutorials } from '../utils/tutorialArchive';
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, BESTIARY,
-  GACHA_PULL_COST, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
+  gachaPullCostFor, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, type SkillRarity, type Stage
 } from '../data/campaign';
 import {
@@ -1370,6 +1370,7 @@ const SkillGacha: React.FC = () => {
   const goldBalance = useGameStore(s => s.goldBalance);
   const ownedCount = useGameStore(s => s.ownedSkills.length);
   const pity = useGameStore(s => s.gachaPitySinceSuper);
+  const pullsTotal = useGameStore(s => s.gachaPullsTotal); // 階段式価格の段(プリミティブ購読)
   const pullGacha = useGameStore(s => s.pullGacha);
   const [pendingCount, setPendingCount] = useState<1 | 10 | null>(null); // 選択した訓練回数(=射撃練習場へ遷移中)
   const [results, setResults] = useState<GachaPullResult[] | null>(null); // null=暗転演出オフ(射撃場表示)
@@ -1693,8 +1694,9 @@ const SkillGacha: React.FC = () => {
     );
   }
 
-  const cost1 = GACHA_PULL_COST;
-  const cost10 = GACHA_PULL_COST * 10;
+  // 階段式(v0.25.2344): 10連は段をまたぐので「単価×10」では嘘になる。必ず合計額を出す。
+  const cost1 = gachaPullCostFor(pullsTotal, 1);
+  const cost10 = gachaPullCostFor(pullsTotal, 10);
   const cant1 = goldBalance < cost1;
   const cant10 = goldBalance < cost10;
   const costLabel = (c: number) => (c > 0 ? `${c.toLocaleString()}G` : '無料');
@@ -1704,7 +1706,7 @@ const SkillGacha: React.FC = () => {
   // その的の下に「撃つ」を画像内テキストとして置く(ボタン見た目にしない)。値段は前画面で確認済みのため非表示。
   // 画面のどこを押しても発射(戻る除く)→破裂→暗転リザルト(上の分岐)へ。
   if (pendingCount !== null) {
-    const cantPull = goldBalance < GACHA_PULL_COST * pendingCount;
+    const cantPull = goldBalance < gachaPullCostFor(pullsTotal, pendingCount);
     // 撃つ画面も body 直下へポータル(施設の scroll/transform から独立した専用フルスクリーン)。
     return createPortal(
       <div

@@ -784,16 +784,53 @@ export const rarityWeightsForPity = (pity: number): Record<SkillRarity, number> 
   return { normal: 70 - 5 * c, rare: 25 + 4 * c, super: 5 + c };
 };
 export const skillsByRarity = (r: SkillRarity): SkillKey[] => SKILL_KEYS.filter(k => SKILLS[k].rarity === r);
-// ガチャ1回の価格 / 重複時のレア度別返金額。
+// ガチャ1回の価格(**階段式**)/ 重複時のレア度別返金額。
 //
-// **100g**(社長裁定v0.25.2337)。この値を選んだ理由は2つあり、変更するなら両方を再検討すること:
-//  ① **返金表がそのまま割合になる**: 10/30/50 が 100 に対して 10%/30%/50%。50gにすると超レアの
-//     被りが全額返金(実質タダ)になって被りの痛みが消え、150gにすると返金が薄すぎて機能しない。
-//  ② **「良いラン1回 = ガチャ1回」**: 換金は上限つき項目(与ダメ/KILL/コンボ/スクラップ)だけでは
-//     合計36gが天井で、それ以上はトレジャー(2.5g/個)・エリート1.5g/ボス4g・クリア+15g・
-//     被弾の少なさ最大+10g でしか伸びない。深く潜って生きて帰ったラン ≒ 100g になる。
-// 参考(4,000回シミュレート): 全31種**所持**まで119 pull / 全種**MAX**まで423 pull(累計返金 約9,500g)。
-export const GACHA_PULL_COST = 100;
+// **階段式・天井50g**(社長裁定v0.25.2344「ヴァンサバみたいに階段」→「天井50にしよう」)。
+// 「最初は安く、引くほど高くなり、ある所で頭打ち」。旧・定額100g の狙いを階段で作り直したもの:
+//  ① **初回を飽きさせない**: 初戦の稼ぎ(実測 約20g)でいきなり2回引ける。定額100gだと
+//     5ラン目でやっと1回=序盤に手応えが無かった。
+//  ② **上手いランは複数回引ける**: 天井50なら「良いラン(実測 獲得123g+換金14g ≒ 137g)= 2回」
+//     「普通のラン(60g)= 1回」。本気の1ランが重いので、上手さがそのまま引ける回数になる。
+//     (天井150では本気の1ランで1回も引けず、天井70では上手くても1回のまま=どちらも却下)
+// 参考(N=1200シミュレート・返金込みの中央値): 全31種**所持**まで 3,675g / 全種**MAX**まで 12,205g。
+// 同じ収入モデルで 全種所持42ラン / 全種MAX107ラン。
+//
+// 返金(10/30/50)は**固定額のまま据え置き**(社長承認済み)。天井50では超レアの被り返金50gが
+// ちょうど1回ぶんに相当するので、被りの救済は定額100gの頃より強い。上のシミュレート値は
+// この返金込みなので、返金額を動かすとコンプ距離も動く=両方セットで再検討すること。
+export interface GachaPriceStep {
+  /** 累計pull数がこの値**未満**の間はこの段の価格。 */
+  until: number;
+  price: number;
+}
+/** 価格の段(浅い順)。最後の段を超えたら天井 GACHA_PULL_COST_CAP でずっと固定。 */
+export const GACHA_PRICE_STEPS: readonly GachaPriceStep[] = [
+  { until: 5, price: 10 },   // 1〜5回目
+  { until: 15, price: 20 },  // 6〜15回目
+  { until: 30, price: 35 },  // 16〜30回目
+];
+/** 天井(31回目以降はずっとこの価格)。 */
+export const GACHA_PULL_COST_CAP = 50;
+
+/** 累計 totalPulls 回引いた人が「次の1回」に払う額。 */
+export const gachaPullCost = (totalPulls: number): number => {
+  const n = Number.isFinite(totalPulls) ? Math.max(0, Math.floor(totalPulls)) : 0;
+  for (const s of GACHA_PRICE_STEPS) if (n < s.until) return s.price;
+  return GACHA_PULL_COST_CAP;
+};
+
+/**
+ * 累計 totalPulls 回引いた人が「次の count 回」に払う**合計額**。
+ * 10連は段をまたぐので `単価×10` では嘘になる。表示も判定も必ずこの関数を通すこと。
+ */
+export const gachaPullCostFor = (totalPulls: number, count: number): number => {
+  const c = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  let sum = 0;
+  for (let i = 0; i < c; i++) sum += gachaPullCost(totalPulls + i);
+  return sum;
+};
+
 export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 10, rare: 30, super: 50 };
 // レア度ごとの表示ラベルと色(装備UI/ガチャ結果で共用)。
 export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル', rare: 'レア', super: '超レア' };
