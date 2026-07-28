@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2348',
+    items: [
+      'ゲーム内容の変更はありません（寄り道スポットの設計を書き起こした記録のみ）。',
+    ],
+  },
+  {
     version: '0.25.2347',
     items: [
       '開発メニューに「ガチャリセット」を追加しました（所持スキル・ゴールド・値段の段を初手に戻します）。10回訓練に割引は付けません（単発10回とまったく同額です）。',
