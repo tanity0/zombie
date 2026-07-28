@@ -79,3 +79,39 @@
 RANK_MEASURE=1 npx vitest run src/store/rankMeasure.test.ts   # 約7.5分
 RANK_PROBE=1   npx vitest run src/store/rankProbe.test.ts     # 約13秒(配線の切り分け)
 ```
+
+---
+
+# 追記【2026-07-28 21:15 JST】: 発見②(intensAvgの逆進性)は**撤回**
+
+社長の指摘: **「それって上手いのではなく、さばけてないのでは?」**
+
+## 検証(`src/store/rankProbe.test.ts`・腕前別に4分ランで kills を計測)
+```
+skill     kills  hpLost  被弾  到達px
+novice       51      12    1    7240   ← いちばん倒している
+casual        8       7    1    8931
+skilled      15      58    1    7300
+master       10      58    1    7284   ← ほぼ倒せていない
+```
+**novice が master の5倍倒している。** 「master」は上手いのではなく、**回避と退避に入力を使って
+攻撃していないだけ**だった。
+
+## 原因: ボットの腕前モデルの欠陥(設計チャットの実装ミス)
+`BOT_SKILL_PROFILES`(v0.25.2338)のダイヤルは `reactionMs`/`counterChance`/`dodge`/`targeting`/
+`surroundCount`/`retreatHpFrac`/`dodgeStrength` で、**全て生存側**。**「速く捌く」ダイヤルが1つも無い**。
+- master: `retreatHpFrac 0.5`(HP半分で退避=攻撃時間が減る)/ `dodge 'all'`(回避に入力を使う)/
+  `surroundCount 2`(早く逃げる) → **被弾0を達成する代わりに攻撃していない**。
+
+## 結論の訂正
+- **「発見② intensAvg の逆進性(上手いほど不利)」は誤り。撤回する。**
+  master の高 intensAvg は**盤面を捌けていないため**であり、**降格は設計意図どおりの正しい判定**。
+- ただし**社長の本気ラン(9,146m で R1)で何が発火していたかは依然として未確認**。
+  人間は捌けていたはずなので、そこで `intensAvg` が主因なら別の問題がある。**実プレイのログが要る。**
+- **発見①(降格の87%が intensAvg・被弾による降格0件)と発見③(12分=3.0サイクル=R4止まり)は無傷。**
+  ①は「何が発火しているか」の事実、③は周期の話で、どちらも今回の訂正の影響を受けない。
+
+## 波及: M49(AI強化)の仕様に穴
+段階表が「腕前=被弾しないこと」としか定義していない。**このゲームの「上手い」は捌く速さも含む**。
+M49 に**攻撃側のダイヤル**(交戦を続ける判断/退避の閾値/攻撃と回避の優先順位)を追加する必要がある。
+→ `PACING_PUZZLE.md` §6.25 を要改訂。
