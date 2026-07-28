@@ -152,6 +152,7 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
+import { parseBotSkill, botSkillProfile, dodgeVector, dodgeToInput, type BotSkill } from '../utils/botSkill';
 import {
   decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, createRusherTrackState,
@@ -549,6 +550,9 @@ const CINE_TESTBED = evParam('cine') === '1'; // cine映像の実験台。stage-
 const BOT_PARAM = evParam('bot');
 const BOT_PERSONA: BotPersona | null = BOT_PARAM === null ? null
   : ((BOT_PERSONAS as string[]).includes(BOT_PARAM) || BOT_PARAM === 'rusher') ? BOT_PARAM as BotPersona : 'standard';
+// v0.25.2338: 腕前の段階 ?botskill=novice|casual|skilled|master(既定 casual=従来の挙動と同値)。
+// 反応速度・カウンター成功率・回避・標的選択・危険察知を段階でまとめて動かす。?bot 無しでは未使用。
+const BOT_SKILL: BotSkill = parseBotSkill(evParam('botskill'));
 
 // 天使(ゲート2ボス)コントローラの音注入(本体はangelBossTick.ts=M26 Step3で抽出。ヘッドレスはNOOP、実プレイはここ)。
 const ANGEL_SFX: AngelSfx = {
@@ -1643,7 +1647,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               BOT_PERSONA === 'rusher' ? botRusherRef.current : undefined,
               botGunForRange && botGunForRange.category !== 'phill'
                 ? RANGE_BY_CATEGORY[botGunForRange.category as keyof typeof RANGE_BY_CATEGORY]
-                : undefined)
+                : undefined,
+              undefined, BOT_SKILL)
           : null;
         // M34(§6.11): 緑卵(地雷)を避ける/叩く(ボット入力のみの後段補正。?bot無しの通常プレイは不変)。
         // M38(§6.15): その手前に松明フォレージ(手空きのみ発火・拾い歩きの直後に合成・松明を割って
@@ -1677,9 +1682,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           ? decideCounterReaction(
               BOT_PERSONA as BotPersona, botCounterThreatRef.current,
               player.x + player.width / 2, player.y + player.height / 2,
-              enemies, loopState.projectiles, gameTime, player.counterCooldownEnd)
+              enemies, loopState.projectiles, gameTime, player.counterCooldownEnd,
+              Math.random, BOT_SKILL)
           : false;
-        const inputState = botMineAdj ? botMineAdj.input : touchInputState;
+        // v0.25.2338: 回避(避けられる攻撃は避ける)。移動系の合成の**最後**に置く=生存が最優先。
+        // casual以下は dodgeVector が常に null を返すので、従来ランでは完全な no-op。
+        const botDodge = botMineAdj
+          ? dodgeVector(botSkillProfile(BOT_SKILL),
+              player.x + player.width / 2, player.y + player.height / 2,
+              enemies, loopState.projectiles)
+          : null;
+        const inputState = botDodge ? dodgeToInput(botDodge) : (botMineAdj ? botMineAdj.input : touchInputState);
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
         const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする

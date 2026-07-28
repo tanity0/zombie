@@ -48,6 +48,7 @@ import {
   computeDirCountCap, computeEnemyCap,
   type KomaState, type PityUpkeepRefs, type KomaMaintenanceRefs, type DirectorSignalRefs,
 } from './directorTick';
+import { botSkillProfile, dodgeVector, dodgeToInput, type BotSkill } from './botSkill';
 import {
   decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, decideCounterReaction, scavengerAmmoSeekInput, SCAVENGER_TORCH_SEEK_DIST,
@@ -358,11 +359,14 @@ export interface PlaytestTickOptions {
   // M26 Step2: ゲート1/2+凶悪ハンターの接続。既定ON(通常のスモーク/フル計測)。特定シナリオ試験
   // (M17被ダメカナリア/M19深層ラッシュ=イベント無しのペーシング計測が目的)は false で切る。
   events?: boolean;
+  // v0.25.2338: 腕前の段階(novice/casual/skilled/master)。**未指定=casual=従来と同じ挙動**。
+  // 段階を上げると 反応が速く / カウンター成功率が高く / 回避をし / 標的選択が賢くなる。
+  skill?: BotSkill;
 }
 
 // 1tick分: ボット入力の合成→適用(移動/自動射撃/近接/武器切替)→物理更新→ディレクター配線。
 export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): void => {
-  const { persona, tickIndex, wanderSeed, dt, rusherState } = opts;
+  const { persona, tickIndex, wanderSeed, dt, rusherState, skill } = opts;
   const store = useGameStore.getState();
   // 武器商人ショップの自動クローズ(実機botと同じ保険・v0.25.1732): 近接スイングが商人の
   // 圏内(58px)に入るとショップが開いて isPaused=true になる。ヘッドレスも正規 closeShop()
@@ -383,7 +387,7 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   const isOutOfAmmo = botGuns.reduce((a, w) => a + (w.magazine ?? 0), 0)
     + Array.from(new Set(botGuns.map(w => w.ammoType).filter((tt): tt is AmmoType => !!tt)))
         .reduce((a, tt) => a + ammoPoolFor(player, tt), 0) <= 0;
-  const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed, rusherState, botGunRange, isOutOfAmmo);
+  const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed, rusherState, botGunRange, isOutOfAmmo, skill);
   // M39(§6.16): 商人ゾーンに用は作らない=拾い/松明の対象からゾーン内の物を除外し、移動もゾーンを避ける。
   const merchant = useGameStore.getState().weaponMerchant;
   const outsideMerchantZone = (x: number, y: number): boolean =>
@@ -425,8 +429,17 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     persona, refs.counterThreat,
     player.x + player.width / 2, player.y + player.height / 2,
     enemies, useGameStore.getState().projectiles, t, player.counterCooldownEnd,
+    Math.random, skill,
   );
-  useGameStore.getState().movePlayer(mineAdj.input, dt);
+  // v0.25.2338: 回避(避けられる攻撃は避ける)。**移動系の合成の最後**に置く=生存が最優先。
+  // casual以下は dodgeVector が常に null を返すので、この行は従来ランでは完全な no-op。
+  const dodge = dodgeVector(
+    botSkillProfile(skill),
+    player.x + player.width / 2, player.y + player.height / 2,
+    enemies, useGameStore.getState().projectiles,
+  );
+  const finalInput = dodge ? dodgeToInput(dodge) : mineAdj.input;
+  useGameStore.getState().movePlayer(finalInput, dt);
   autoFireGun();
   if (mineAdj.wantsMelee || wantsCounterReaction) useGameStore.getState().triggerCounter();
   if (decision.wantsWeaponSwitch) cycleActiveGun();

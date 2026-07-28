@@ -7,6 +7,8 @@ import type { Enemy, InputState, Player, Projectile } from '../types/game';
 
 // 'rusher' はPACING_PUZZLE.md §5.20(M19・深層ラッシュ試験専用)のペルソナ。既存の通常スモーク
 // (BOT_PERSONAS の巡回)には含めず、専用テストからのみ persona 名で直接呼び出す。
+import { botSkillProfile, pickTarget, shouldRetreatForHp, type BotSkill } from './botSkill';
+
 export type BotPersona = 'standard' | 'kiter' | 'stationary' | 'boar' | 'wanderer' | 'rusher' | 'scavenger';
 
 // 'scavenger'(v0.25.2171・弾薬AIディレクター検証専用)も rusher と同じ理由でBOT_PERSONASには
@@ -22,7 +24,9 @@ export interface BotDecision {
 const STILL_INPUT: InputState = { up: false, down: false, left: false, right: false };
 const MELEE_ENGAGE_DIST = 80;   // この距離以内なら近接(カウンター)を試みる
 const SURROUND_RADIUS = 140;    // この距離以内の敵数で「囲まれた」を判定
-const SURROUND_COUNT = 3;
+// 「囲まれた」と判断する敵数。**腕前段階(botSkill)の casual と同値**であること
+// (botSkill.test.ts が両者の一致を不変条件として検査している)。段階指定時は sk.surroundCount が使われる。
+export const SURROUND_COUNT = 3;
 
 const distTo = (px: number, py: number, e: Enemy): number => Math.hypot(e.x - px, e.y - py);
 
@@ -425,9 +429,16 @@ export const decideCounterReaction = (
   gameTime: number,
   counterCooldownEnd: number,
   rand: () => number = Math.random,
+  // v0.25.2338: 腕前の段階(botSkill)。**未指定なら従来どおりペルソナ固有のプロファイル**を使う
+  // (既存の実測値を動かさない)。指定時は反応遅延と試行確率だけを段階の値で上書きする。
+  // **ペルソナがカウンターを持たない場合(stationary/rusher)は段階を上げても撃たない**
+  // = 段階は「能力の質」を変えるだけで、能力そのものを増やさない(設計の掟)。
+  skill?: BotSkill,
 ): boolean => {
-  const profile = COUNTER_REACTION_PROFILES[persona];
-  if (!profile) return false;
+  const base = COUNTER_REACTION_PROFILES[persona];
+  if (!base) return false;
+  const sp = skill ? botSkillProfile(skill) : null;
+  const profile = sp ? { reactionMs: sp.reactionMs, chance: sp.counterChance } : base;
 
   // 追跡中の脅威が消えた/条件を外れたら解除(遅延中に消えたら撃たない=ここで打ち切られる)。
   if (state.threatId !== null && !threatStillValid(state.threatId, state.kind as CounterThreatKind, pcx, pcy, enemies, projectiles)) {
@@ -464,9 +475,16 @@ export const decideBotInput = (
   // v0.25.2171: 呼び出し側(playtestDriver.ts)が「全所持銃のmagazine+reserve合計が0」を通知する。
   // scavengerペルソナのみが参照する(他ペルソナは未使用=挙動不変)。
   isOutOfAmmo?: boolean,
+  // v0.25.2338: 腕前の段階。**未指定 or 'casual' なら従来と完全に同じ挙動**
+  // (casual = 最寄り狙い・囲まれ判定3体 = 既存の定数と同値)。
+  skill?: BotSkill,
 ): BotDecision => {
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
+  const sk = botSkillProfile(skill);
+  // 段階つきの標的選択と囲まれ判定。casual では pickTarget('nearest') = nearestEnemy と同義。
+  const skillTarget = (list: Enemy[]): Enemy | undefined => pickTarget(sk.targeting, pcx, pcy, list, gameTime);
+  const surroundNeed = sk.surroundCount;
 
   switch (persona) {
     case 'rusher': {
@@ -549,10 +567,12 @@ export const decideBotInput = (
         return { input: approach(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
       }
       const stunned = nearestStunned(pcx, pcy, enemies, gameTime);
-      const target = stunned ?? nearestEnemy(pcx, pcy, enemies);
+      const target = stunned ?? skillTarget(enemies);
       if (!target) return { input: STILL_INPUT, wantsMelee: false, wantsWeaponSwitch: tickIndex % 1200 === 0 };
+      // v0.25.2338: 段階つきの臆病さ。HPが退避ラインを割ったら、囲まれていなくても距離を取る
+      // (casual以下は retreatHpFrac=0 なので常に false = 従来の挙動)。
       const nearbyCount = enemies.filter(e => distTo(pcx, pcy, e) < SURROUND_RADIUS).length;
-      if (nearbyCount >= SURROUND_COUNT) {
+      if (nearbyCount >= surroundNeed || shouldRetreatForHp(sk, player.health, player.maxHealth)) {
         const d = distTo(pcx, pcy, target);
         return { input: retreat(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
       }
@@ -567,10 +587,12 @@ export const decideBotInput = (
     default: {
       // 近い敵を撃ち(自動射撃に任せる)・囲まれたら離れ・スタン敵は処刑優先。
       const stunned = nearestStunned(pcx, pcy, enemies, gameTime);
-      const target = stunned ?? nearestEnemy(pcx, pcy, enemies);
+      const target = stunned ?? skillTarget(enemies);
       if (!target) return { input: STILL_INPUT, wantsMelee: false, wantsWeaponSwitch: tickIndex % 1200 === 0 };
+      // v0.25.2338: 段階つきの臆病さ。HPが退避ラインを割ったら、囲まれていなくても距離を取る
+      // (casual以下は retreatHpFrac=0 なので常に false = 従来の挙動)。
       const nearbyCount = enemies.filter(e => distTo(pcx, pcy, e) < SURROUND_RADIUS).length;
-      if (nearbyCount >= SURROUND_COUNT) {
+      if (nearbyCount >= surroundNeed || shouldRetreatForHp(sk, player.health, player.maxHealth)) {
         const d = distTo(pcx, pcy, target);
         return { input: retreat(pcx, pcy, target), wantsMelee: d < MELEE_ENGAGE_DIST, wantsWeaponSwitch: false };
       }

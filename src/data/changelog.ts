@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2338',
+    items: [
+      '開発: 自動プレイAIに「腕前の段階」を追加しました（?botskill=novice/casual/skilled/master）。反応速度・カウンター成功率・回避・狙う相手の選び方・危険察知の早さが段階でまとめて変わります。通常プレイへの影響はありません。',
+    ],
+  },
+  {
     version: '0.25.2337',
     items: [
       '強化訓練（ガチャ）が1回100ゴールドになりました（今までは無料でした）。ゴールドの使い道ができたので、深く潜って生きて帰るほど強化が進みます。被ったときの返金（10/30/50ゴールド）は今までどおりです。',
