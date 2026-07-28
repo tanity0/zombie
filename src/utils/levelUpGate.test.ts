@@ -53,3 +53,44 @@ describe('isPlayerInAttackTelegraph', () => {
     expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(true);
   });
 });
+
+// M51: ジャイアント新スクリプト(?giantscript=0で旧'jump'/'windup'に戻るので、上の既存分岐はここでは
+// 一切変更していない=このdescribeで新規追加した分岐のみを検証する)。
+describe('isPlayerInAttackTelegraph — M51ジャイアント新テレグラフ', () => {
+  const STOMP_R = 92, SWEEP_HW = 40;
+
+  it('踏み鳴らし(g-stomp-windup)は自身の位置中心の円=giantStompRadius省略時は無視', () => {
+    const enemies = [mk({ type: 'giantbat', x: 0, y: 0, aiPhase: 'g-stomp-windup' })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(false); // 省略時は判定しない
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS, STOMP_R, SWEEP_HW)).toBe(true); // 自身center=(10,10)=プレイヤーと同座標
+  });
+
+  it('踏み鳴らしの円外なら false', () => {
+    const enemies = [mk({ type: 'giantbat', x: 900, y: 900, aiPhase: 'g-stomp-windup' })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS, STOMP_R, SWEEP_HW)).toBe(false);
+  });
+
+  it('薙ぎ払い(g-sweep-windup/active)はaiFrom→aiTargetのカプセル', () => {
+    const enemies = [mk({ type: 'giantbat', x: 900, y: 900, aiPhase: 'g-sweep-windup', aiFromX: 100, aiFromY: 10, aiTargetX: -100, aiTargetY: 10 })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS, STOMP_R, SWEEP_HW)).toBe(true);
+    const enemiesActive = [mk({ type: 'giantbat', x: 900, y: 900, aiPhase: 'g-sweep-active', aiFromX: 100, aiFromY: 10, aiTargetX: -100, aiTargetY: 10 })];
+    expect(isPlayerInAttackTelegraph(player, enemiesActive, RADIUS, STOMP_R, SWEEP_HW)).toBe(true);
+  });
+
+  it('飛び掛かり(g-jump-windup/g-jump-air)はジャンプ着地円と同じ判定', () => {
+    const windup = [mk({ type: 'giantbat', aiPhase: 'g-jump-windup', aiTargetX: 0, aiTargetY: 0 })];
+    expect(isPlayerInAttackTelegraph(player, windup, RADIUS)).toBe(true);
+    const air = [mk({ type: 'giantbat', aiPhase: 'g-jump-air', aiTargetX: 0, aiTargetY: 0 })];
+    expect(isPlayerInAttackTelegraph(player, air, RADIUS)).toBe(true);
+  });
+
+  it('突進(g-dash-windup)は経路上の線分判定', () => {
+    const enemies = [mk({ type: 'giantbat', x: 90, y: 0, aiPhase: 'g-dash-windup', aiTargetX: -100, aiTargetY: 10 })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(true);
+  });
+
+  it('咆哮弾(g-bolt-windup)は図形が無いのでどのパラメータでもfalse', () => {
+    const enemies = [mk({ type: 'giantbat', x: 0, y: 0, aiPhase: 'g-bolt-windup' })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS, STOMP_R, SWEEP_HW)).toBe(false);
+  });
+});

@@ -14,12 +14,18 @@ export interface TelegraphEnemy {
   x: number; y: number; width: number; height: number;
   aiPhase?: string;
   aiTargetX?: number; aiTargetY?: number;
+  aiFromX?: number; aiFromY?: number; // M51: ジャイアント薙ぎ払いの始点(中心座標)に使用
 }
 
 const JUMP_TELEGRAPH_TYPES = new Set(['pumpkin', 'lab-zombie-3', 'giantbat', 'hunter']);
 const DASH_TELEGRAPH_TYPES = new Set(['werewolf', 'lab-zombie-2', 'giantbat', 'hunter']);
+// M51: ジャイアント新スクリプト(?giantscript=0で旧文字列'jump'/'windup'に戻るため上の2集合は無改変)。
+// 新スクリプトは 'g-' 接頭辞の専用値を使うため、ここに別枠で追加する(他タイプの判定には影響しない)。
+const GIANT_JUMP_TELEGRAPH_PHASES = new Set(['g-jump-windup', 'g-jump-air']);
+const GIANT_SWEEP_TELEGRAPH_PHASES = new Set(['g-sweep-windup', 'g-sweep-active']);
 
-const distToSegment = (p: Point, a: Point, b: Point): number => {
+// combatTick.ts(M51: 薙ぎ払いのカプセル判定)からも使うため export。
+export const distToSegment = (p: Point, a: Point, b: Point): number => {
   const abx = b.x - a.x, aby = b.y - a.y;
   const abLenSq = abx * abx + aby * aby;
   if (abLenSq < 1e-6) return Math.hypot(p.x - a.x, p.y - a.y);
@@ -30,7 +36,11 @@ const distToSegment = (p: Point, a: Point, b: Point): number => {
 export const isPlayerInAttackTelegraph = (
   player: { x: number; y: number; width: number; height: number },
   enemies: TelegraphEnemy[],
-  pumpkinExplosionRadius: number
+  pumpkinExplosionRadius: number,
+  // M51: ジャイアント新スクリプトの新規テレグラフ(密着の踏み鳴らし/近の薙ぎ払い)。省略時はこの2つの
+  // 判定を単に足さない(呼び出し側=旧テスト/ヘッドレスは既存動作のまま)。
+  giantStompRadius?: number,
+  giantSweepHalfWidth?: number,
 ): boolean => {
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const pr = Math.max(player.width, player.height) / 2;
@@ -46,6 +56,24 @@ export const isPlayerInAttackTelegraph = (
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       const half = e.width / 2 + pr;
       if (distToSegment({ x: pcx, y: pcy }, { x: ex, y: ey }, { x: e.aiTargetX, y: e.aiTargetY }) <= half) return true;
+    } else if (e.type === 'giantbat' && e.aiPhase !== undefined && GIANT_JUMP_TELEGRAPH_PHASES.has(e.aiPhase)) {
+      const tx = (e.aiTargetX ?? e.x) + e.width / 2;
+      const ty = (e.aiTargetY ?? e.y) + e.height / 2;
+      if (Math.hypot(pcx - tx, pcy - ty) <= pumpkinExplosionRadius + pr) return true;
+    } else if (e.type === 'giantbat' && e.aiPhase === 'g-dash-windup' && e.aiTargetX !== undefined && e.aiTargetY !== undefined) {
+      const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+      const half = e.width / 2 + pr;
+      if (distToSegment({ x: pcx, y: pcy }, { x: ex, y: ey }, { x: e.aiTargetX, y: e.aiTargetY }) <= half) return true;
+    } else if (e.type === 'giantbat' && e.aiPhase === 'g-stomp-windup' && giantStompRadius !== undefined) {
+      const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+      if (Math.hypot(pcx - ex, pcy - ey) <= giantStompRadius + pr) return true;
+    } else if (
+      e.type === 'giantbat' && e.aiPhase !== undefined && GIANT_SWEEP_TELEGRAPH_PHASES.has(e.aiPhase) &&
+      giantSweepHalfWidth !== undefined && e.aiTargetX !== undefined && e.aiTargetY !== undefined
+    ) {
+      // 薙ぎ払いは aiFromX/Y・aiTargetX/Y の両方が中心座標(gameStore.ts の beginGiantMove('sweep'))。
+      const fx = e.aiFromX ?? (e.x + e.width / 2), fy = e.aiFromY ?? (e.y + e.height / 2);
+      if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: e.aiTargetX, y: e.aiTargetY }) <= giantSweepHalfWidth + pr) return true;
     }
   }
   return false;

@@ -58,9 +58,11 @@ import {
   QUEST_NAMED_AGGRO_RANGE,
 } from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile } from '../utils/enemyUtils';
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
 import { computeEnemySeparation } from '../utils/enemySeparation';
+// M51: 城ボス「ジャイアント」新スクリプトの純関数(間合い/CD/HP段階から次の技を選ぶ・PACING_PUZZLE.md §6.26)。
+import { giantPhaseForHealth, giantPhaseJustChanged, pickGiantMove, pickGiantCombo, type GiantMove } from '../utils/giantScript';
 import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -1419,6 +1421,44 @@ export const SHIELD_BLOCK_SHAKE_MS = 140;
 export const SHIELD_BLOCK_SHAKE_MAG = 5;
 // パンプキン(/lab-zombie-3)のジャンプ攻撃は着地時に爆発攻撃。範囲は狭め(半径px)。ダメージは各敵の damage。
 export const PUMPKIN_EXPLOSION_RADIUS = 54; // 爆撃範囲を少し狭く(66→54。社長指示)
+
+// ==== M51: 城ボス「ジャイアント」新行動スクリプト(PACING_PUZZLE.md §6.26・裁定済み6.26-9) ====
+// `?giantscript=0` で旧挙動(このセクションを使わず、上の GIANTBAT_*/WEREWOLF_*/PUMPKIN_* 経由の
+// 従来スケジューラ)へ完全フォールバック(受け入れ条件11)。werewolf/pumpkin/lab-zombie-2/
+// lab-zombie-3/hunter は元々このセクションを一切参照しない=無改変(受け入れ条件10)。
+export const GIANT_SCRIPT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('giantscript') !== '0';
+// 6.26-5「実装単位の注意」: 本セクションの *_MS は生値(コード上の定数)。実効(実時間) = 生値 / 1.2。
+// 実効700ms→生840、実効900ms→生1080、のように 実効ms×ENEMY_ATTACK_SPEED_MULT(1.2) で書く。
+// 踏み鳴らし(stomp・密着0〜140・全フェーズ)。
+export const GIANT_STOMP_WINDUP_MS = 840;    // 実効700ms・完全静止(T7+T2+T4)
+export const GIANT_STOMP_RECOVER_MS = 1080;  // 実効900ms・硬直=反撃窓
+export const GIANT_STOMP_CD_MS = 6000;       // 実効5.0s
+export const GIANT_STOMP_RADIUS = 92;        // = GRENADE_BLAST_RADIUS(社長裁定6.26-9 #3。54では密着帯のハメを潰せない)
+// 薙ぎ払い(sweep・近140〜320・Phase2限定=新規解禁)。
+export const GIANT_SWEEP_WINDUP_MS = 840;    // 実効700ms(T3+T4)
+export const GIANT_SWEEP_ACTIVE_MS = 264;    // 実効220ms(THOR_HARAI_ACTIVE_MS相当)
+export const GIANT_SWEEP_RECOVER_MS = 840;   // 実効700ms・硬直=反撃窓
+export const GIANT_SWEEP_CD_MS = 7200;       // 実効6.0s
+export const GIANT_SWEEP_RANGE = 310;        // = THOR_HARAI_RANGE(社長裁定6.26-9 #3をそのまま流用)
+export const GIANT_SWEEP_HALF_WIDTH = 40;    // = THOR_HARAI_HALF_WIDTH
+// 突進(dash・中〜遠320〜1000・既存を改訂)。最大突進時間/速度/CD/狙い点式は WEREWOLF_CHARGE_MAX_MS /
+// GIANTBAT_DASH_CD_MS / werewolfExtraCd をそのまま流用=変更しない(6.26-6「現行不変」)。
+export const GIANT_DASH_WINDUP_MS = 840;     // 実効700ms(旧500msから延長。WEREWOLF_WINDUP_MSとは別=giant専用・他型は無改変)
+export const GIANT_DASH_RECOVER_MS = 1080;   // 実効900ms・硬直=反撃窓【新設・現状ゼロ】(社長裁定6.26-9 #2)
+// 飛び掛かり(jump・近〜中140〜700・既存を改訂)。滞空時間(PUMPKIN_JUMP_MS)と着地AoE半径
+// (PUMPKIN_EXPLOSION_RADIUS)はそのまま流用=変更しない(6.26-6「現行不変」)。
+export const GIANT_JUMP_WINDUP_MS = 1200;    // 実効1000ms(旧crouch2500msから短縮)。溜め開始で着地点をロック(社長裁定6.26-9 #1)
+export const GIANT_JUMP_RECOVER_MS = 1320;   // 実効1100ms(旧833ms)
+export const GIANT_JUMP_CD_MS = 4800;        // 実効4.0s。起点=硬直明け(旧GIANTBAT_JUMP_CD_MSは起点がcrouch開始=専用定数化)
+// 咆哮弾(bolt・中320〜620・既存を改訂)。弾自体の性能(速度/サイズ/ダメージ)は
+// getEnemyFireProfile('giantbat')をそのまま使う=変更しない(6.26-6「現行不変」)。
+export const GIANT_BOLT_WINDUP_MS = 540;     // 実効450ms・完全静止【新設・現状ゼロ】(図形は出さずT4のみ)
+export const GIANT_BOLT_RECOVER_MS = 360;    // 実効300ms
+export const GIANT_BOLT_CD_PHASE1_MS = 4200; // 実効3.5s
+export const GIANT_BOLT_CD_PHASE2_MS = 3000; // 実効2.5s
+// フェーズ移行(HP60%)の合図: HPバー色 Phase1=緑/Phase2=橙(0.3未満の赤は据え置き)+移行の瞬間だけ点滅
+// (社長裁定6.26-9 #4)。点滅の継続時間(pixiScene.ts が now と比較する側の値)。
+export const GIANT_PHASE_FLASH_MS = 1200;
 // 裏ボス スカジ専用の氷ハザード(社長指示)。判定はupdateEnemiesで、見た目はpixiScene。
 // 氷塊の起爆・氷刃の命中はどちらも既存の爆発処理(pumpkinBlasts)へ ice:true で積み、青FXで消化する。
 export const SKADI_ICE_RADIUS = 90;    // 氷塊破裂のAoE半径(2秒テレグラフなので少し大きめ)
@@ -2261,11 +2301,18 @@ export interface WallInscriptionEvent {
   gold?: number;
 }
 
+// パンプキン着地爆発などの円形AoEイベント。M51で薙ぎ払い(ジャイアント新スクリプト)用に、円ではなく
+// 直線+半幅のカプセル判定を積めるよう capsule を追加(既存呼び出し側は capsule 未指定=円のまま不変)。
+export interface PumpkinBlast {
+  x: number; y: number; radius: number; damage: number; enemyId: string; ice?: boolean;
+  capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number };
+}
+
 interface GameState {
   player: Player;
   enemies: Enemy[];
   // パンプキン着地爆発の発生イベント(その frame の着地点)。useGameLoop が消化(被弾判定+FX)して空に戻す。
-  pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string; ice?: boolean }[];
+  pumpkinBlasts: PumpkinBlast[];
   // 裏ボス スカジの氷ハザード。markers=足元の氷塊テレグラフ(赤サークル2秒→起爆)、blades=設置後に発射される氷刃。
   skadiIceMarkers: { id: string; x: number; y: number; bornAt: number; fireAt: number; enemyId: string }[];
   skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string; visual?: 'ice' | 'bone' }[];
@@ -5935,7 +5982,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (player.experience >= player.experienceToNextLevel) {
       // 社長相談(v0.25.1499): ジャンプ着地/ダッシュの赤ライン当たり判定内にいる間は保留
       // (useGameLoopが毎フレーム再チェックして、抜けたタイミングで発動させる)。
-      if (isPlayerInAttackTelegraph(player, enemies, PUMPKIN_EXPLOSION_RADIUS)) return;
+      if (isPlayerInAttackTelegraph(player, enemies, PUMPKIN_EXPLOSION_RADIUS, GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH)) return;
       get().levelUp();
     }
   },
@@ -6225,7 +6272,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!get().rhythm.active) {
       const { player: p, enemies } = get();
       // 社長相談(v0.25.1499): 赤ライン当たり判定内なら保留(useGameLoopが再チェック)。
-      if (p.experience >= p.experienceToNextLevel && !isPlayerInAttackTelegraph(p, enemies, PUMPKIN_EXPLOSION_RADIUS)) {
+      if (p.experience >= p.experienceToNextLevel && !isPlayerInAttackTelegraph(p, enemies, PUMPKIN_EXPLOSION_RADIUS, GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH)) {
         get().levelUp();
       }
     }
@@ -6943,7 +6990,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
-    const pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string; ice?: boolean }[] = []; // 着地爆発イベント(ice=スカジ氷=青FX)
+    const pumpkinBlasts: PumpkinBlast[] = []; // 着地爆発イベント(ice=スカジ氷=青FX・capsule=M51薙ぎ払い)
+    const giantBoltFires: Enemy[] = []; // M51: ジャイアント新スクリプトの咆哮弾。set() 後に post-set で addProjectile する。
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
@@ -7188,6 +7236,215 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, vx: fvx, vy: fvy, x: fmoved.x, y: fmoved.y, aiPhase: undefined, aiPhaseUntil: 0 };
         }
 
+        // ==== M51: 城ボス「ジャイアント」新行動スクリプト(PACING_PUZZLE.md §6.26) ====
+        // 有効時(既定)は giantbat の全フレームをここで処理して return する。よって下の isDashType /
+        // パンプキン型ブロック / 旧専用スケジューラは giantbat に対しては(型は一致するがどの
+        // aiPhase 文字列も一致しないため)完全に素通りするだけで実行されない=他タイプ
+        // (werewolf/lab-zombie-2/pumpkin/lab-zombie-3/hunter)は無改変(受け入れ条件10)。
+        // `?giantscript=0` で本ブロックごとスキップ=旧経路(isDashType等+専用スケジューラ)へ完全フォールバック。
+        if (enemy.type === 'giantbat' && GIANT_SCRIPT_ENABLED) {
+          const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+          const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          const healthFrac = enemy.maxHealth > 0 ? enemy.health / enemy.maxHealth : 1;
+          const phase = giantPhaseForHealth(healthFrac);
+          const phaseFields = {
+            giantPhase: phase,
+            giantPhaseFlashUntil: giantPhaseJustChanged(enemy.giantPhase, phase) ? gameTime + GIANT_PHASE_FLASH_MS : enemy.giantPhaseFlashUntil,
+          };
+
+          // 技ごとの溜め開始パッチ(通常抽選/Phase2連携の両方から呼べる共通ヘルパ)。
+          const beginGiantMove = (move: GiantMove): Partial<Enemy> => {
+            switch (move) {
+              case 'stomp':
+                return {
+                  aiPhase: 'g-stomp-windup', aiPhaseUntil: atkUntil(GIANT_STOMP_WINDUP_MS),
+                  aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: ecx, aiTargetY: ecy, aiStartedAt: gameTime,
+                };
+              case 'sweep': {
+                // 向きは溜め開始時にロック(掟W4=テルを出したら必ず撃つ。トール払いと同じ作法)。
+                const ddl = Math.hypot(pcx - ecx, pcy - ecy) || 1;
+                const dirx = (pcx - ecx) / ddl, diry = (pcy - ecy) / ddl;
+                return {
+                  aiPhase: 'g-sweep-windup', aiPhaseUntil: atkUntil(GIANT_SWEEP_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + dirx * GIANT_SWEEP_RANGE, aiTargetY: ecy + diry * GIANT_SWEEP_RANGE,
+                  aiStartedAt: gameTime,
+                };
+              }
+              case 'jump':
+                // 狙い点は溜め開始時にロック(社長裁定6.26-9 #1)。着地アークは着地円と同じ左上座標系。
+                return {
+                  aiPhase: 'g-jump-windup', aiPhaseUntil: atkUntil(GIANT_JUMP_WINDUP_MS),
+                  aiFromX: enemy.x, aiFromY: enemy.y,
+                  aiTargetX: pcx - enemy.width / 2, aiTargetY: pcy - enemy.height / 2, aiStartedAt: gameTime,
+                };
+              case 'dash':
+                // 狙い点=プレイヤーを挟んだ反対側(距離×2)。現行不変(6.26-6)。
+                return {
+                  aiPhase: 'g-dash-windup', aiPhaseUntil: atkUntil(GIANT_DASH_WINDUP_MS),
+                  aiFromX: enemy.x, aiFromY: enemy.y,
+                  aiTargetX: 2 * pcx - ecx, aiTargetY: 2 * pcy - ecy, aiStartedAt: gameTime,
+                };
+              case 'bolt':
+              default:
+                return {
+                  aiPhase: 'g-bolt-windup', aiPhaseUntil: atkUntil(GIANT_BOLT_WINDUP_MS),
+                  aiFromX: enemy.x, aiFromY: enemy.y, aiStartedAt: gameTime,
+                };
+            }
+          };
+
+          switch (enemy.aiPhase) {
+            case 'g-stomp-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                pumpkinBlasts.push({ x: ecx, y: ecy, radius: GIANT_STOMP_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-stomp-recover', aiPhaseUntil: atkUntil(GIANT_STOMP_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-sweep-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                // 実際の当たり判定はカプセル(THOR_HARAI_RANGE/HALF_WIDTH流用)。既存のpumpkinBlasts配管を
+                // capsule付きで1件だけ積む(=1回だけ判定。220msの表示自体はg-sweep-active中の見た目のみ)。
+                const sfx = enemy.aiFromX ?? ecx, sfy = enemy.aiFromY ?? ecy;
+                const stx = enemy.aiTargetX ?? ecx, sty = enemy.aiTargetY ?? ecy;
+                pumpkinBlasts.push({
+                  x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: GIANT_SWEEP_HALF_WIDTH,
+                  damage: enemy.damage, enemyId: enemy.id,
+                  capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SWEEP_HALF_WIDTH },
+                });
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-sweep-active', aiPhaseUntil: atkUntil(GIANT_SWEEP_ACTIVE_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-sweep-active': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-sweep-recover', aiPhaseUntil: atkUntil(GIANT_SWEEP_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-dash-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-dash-charge', aiPhaseUntil: atkUntil(WEREWOLF_CHARGE_MAX_MS) };
+              }
+              // 後退り(T8・既存と同じ式)。
+              const bdx = ecx - pcx, bdy = ecy - pcy;
+              const bl = Math.hypot(bdx, bdy) || 1;
+              const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
+              const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
+              return {
+                ...enemy, ...phaseFields, x: bmoved.x, y: bmoved.y,
+                vx: (bdx / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT, vy: (bdy / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT,
+              };
+            }
+            case 'g-dash-charge': {
+              const tx = enemy.aiTargetX ?? pcx, ty = enemy.aiTargetY ?? pcy;
+              const cdx = tx - ecx, cdy = ty - ecy;
+              const cdist = Math.hypot(cdx, cdy);
+              if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-dash-recover', aiPhaseUntil: atkUntil(GIANT_DASH_RECOVER_MS) };
+              }
+              const hpx = pcx - ecx, hpy = pcy - ecy;
+              const hl = Math.hypot(hpx, hpy) || 1;
+              let cdirx = cdx / cdist + (hpx / hl) * DASH_ATTACK_HOMING;
+              let cdiry = cdy / cdist + (hpy / hl) * DASH_ATTACK_HOMING;
+              const cdl = Math.hypot(cdirx, cdiry) || 1;
+              cdirx /= cdl; cdiry /= cdl;
+              const dashBase = getEnemyBaseSpeed('werewolf'); // 現行不変(6.26-6): giantbatの突進速度は犬と同じ基準
+              const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT;
+              const cvx = cdirx * cs, cvy = cdiry * cs;
+              const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
+              const cmoved = resolveMove(rawX, rawY);
+              const hitShield = shieldRects.length > 0 && shieldRects.some(s => rectsOverlap({ x: cmoved.x, y: cmoved.y, width: enemy.width, height: enemy.height }, s));
+              const blocked = Math.abs(cmoved.x - rawX) > 0.5 || Math.abs(cmoved.y - rawY) > 0.5;
+              if (hitShield || blocked) {
+                if (hitShield) shieldBlocks.push({ x: cmoved.x + enemy.width / 2, y: cmoved.y + enemy.height / 2, kind: 'dash' });
+                return { ...enemy, ...phaseFields, x: cmoved.x, y: cmoved.y, vx: 0, vy: 0, aiPhase: 'g-dash-recover', aiPhaseUntil: atkUntil(GIANT_DASH_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: cvx, vy: cvy, x: cmoved.x, y: cmoved.y };
+            }
+            case 'g-jump-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-jump-air', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_JUMP_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-jump-air': {
+              const jt = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT)));
+              const jfx = enemy.aiFromX ?? enemy.x, jfy = enemy.aiFromY ?? enemy.y;
+              const jtx = enemy.aiTargetX ?? enemy.x, jty = enemy.aiTargetY ?? enemy.y;
+              const jnx = jfx + (jtx - jfx) * jt, jny = jfy + (jty - jfy) * jt;
+              if (shieldRects.length > 0 && shieldRects.some(s => rectsOverlap({ x: jnx, y: jny, width: enemy.width, height: enemy.height }, s))) {
+                shieldBlocks.push({ x: jnx + enemy.width / 2, y: jny + enemy.height / 2, kind: 'jump' });
+                return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(GIANT_JUMP_RECOVER_MS) };
+              }
+              if (jt >= 1) {
+                pumpkinLanded = true;
+                pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                return { ...enemy, ...phaseFields, x: jtx, y: jty, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiPhaseUntil: atkUntil(GIANT_JUMP_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0 };
+            }
+            case 'g-bolt-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                giantBoltFires.push(enemy); // 発射自体はset後(post-set)に既存addProjectile経路で行う
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-recover', aiPhaseUntil: atkUntil(GIANT_BOLT_RECOVER_MS), lastShot: now };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-stomp-recover':
+            case 'g-sweep-recover':
+            case 'g-dash-recover':
+            case 'g-jump-recover':
+            case 'g-bolt-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                const justFinished: GiantMove =
+                  enemy.aiPhase === 'g-stomp-recover' ? 'stomp' :
+                  enemy.aiPhase === 'g-sweep-recover' ? 'sweep' :
+                  enemy.aiPhase === 'g-dash-recover' ? 'dash' :
+                  enemy.aiPhase === 'g-jump-recover' ? 'jump' : 'bolt';
+                const readyPatch: Partial<Enemy> =
+                  justFinished === 'stomp' ? { gStompReadyAt: atkUntil(GIANT_STOMP_CD_MS) } :
+                  justFinished === 'sweep' ? { gSweepReadyAt: atkUntil(GIANT_SWEEP_CD_MS) } :
+                  justFinished === 'dash' ? { gDashReadyAt: atkUntil(GIANTBAT_DASH_CD_MS + werewolfExtraCd('giantbat')) } :
+                  justFinished === 'jump' ? { gJumpReadyAt: atkUntil(GIANT_JUMP_CD_MS) } :
+                  { gBoltReadyAt: atkUntil(phase === 2 ? GIANT_BOLT_CD_PHASE2_MS : GIANT_BOLT_CD_PHASE1_MS) };
+                // Phase2限定の2連携(社長裁定6.26-9 #8): 確率40%・許す組み合わせは2つのみ(giantScript.ts)。
+                const combo = pickGiantCombo(justFinished, phase, dist);
+                if (combo) {
+                  return { ...enemy, ...phaseFields, ...readyPatch, vx: 0, vy: 0, ...beginGiantMove(combo) };
+                }
+                return {
+                  ...enemy, ...phaseFields, ...readyPatch, vx: 0, vy: 0,
+                  aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
+                  aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            default: {
+              // 待機中(chase): 技を抽選する。全体クールダウン(aiReadyAt=パリィ直後の一時停止に流用)明け
+              // かつ、各技の個別CD明けのものだけを候補にする(giantScript.tsのpickGiantMoveが等確率選択)。
+              if (gameTime >= (enemy.aiReadyAt ?? 0)) {
+                const ready: Record<GiantMove, boolean> = {
+                  stomp: gameTime >= (enemy.gStompReadyAt ?? 0),
+                  sweep: gameTime >= (enemy.gSweepReadyAt ?? 0),
+                  jump: gameTime >= (enemy.gJumpReadyAt ?? 0),
+                  dash: gameTime >= (enemy.gDashReadyAt ?? 0),
+                  bolt: gameTime >= (enemy.gBoltReadyAt ?? 0),
+                };
+                const move = pickGiantMove(dist, phase, ready);
+                if (move) {
+                  return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...beginGiantMove(move) };
+                }
+              }
+              // 何も抽選されなければ、フェーズ情報だけ更新してフォールスルー(通常チェイスへ・下の
+              // isDashType/パンプキン型/旧スケジューラは phase文字列が一致せず無視されるので実質無害)。
+              enemy = { ...enemy, ...phaseFields };
+            }
+          }
+        }
+
         // ダッシュ(突進)AI: 溜め中に「赤ライン」で移動先(直線距離)を予告→確定した狙い点へ3倍速で直進(曲がらない)。
         // 犬型(werewolf)・研究所Lv2(lab-zombie-2)・ジャイアントバット共通。狙い点は溜め開始時に確定(=赤ラインの終点)。
         // 発動トリガーは werewolf/lab-zombie-2 は射程ベース、giantbat は専用スケジューラ(下)が起動する。
@@ -7323,7 +7580,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         // ジャイアントバットの行動スケジューラ: 待機中(aiPhase無し)に、ジャンプ(約5秒CD)/ダッシュ(約7秒CD)を
         // それぞれのCDが明けたらランダムに発動。弾(約3秒CD)は fire profile 側が別系統で処理。
-        if ((enemy.type === 'giantbat' || enemy.type === 'hunter') && !enemy.aiPhase) {
+        // M51: GIANT_SCRIPT_ENABLED(既定)の間、giantbat は上の新スクリプトブロックが毎フレーム必ず
+        // return するのでここへは到達しない。`?giantscript=0` の時だけ giantbat もこの旧経路に戻る
+        // (hunter は常にこの旧経路のまま=無改変)。
+        if ((enemy.type === 'hunter' || (enemy.type === 'giantbat' && !GIANT_SCRIPT_ENABLED)) && !enemy.aiPhase) {
           // 出現直後は少し待ってから行動(即突進しない)。初回だけ初期CDをセット。
           if (enemy.gbDashReadyAt === undefined) {
             return { ...enemy, vx: 0, vy: 0, gbDashReadyAt: atkUntil(2000), gbJumpReadyAt: atkUntil(3500) };
@@ -7651,6 +7911,21 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
+    // M51: ジャイアント新スクリプトの咆哮弾(set() 内は再入set禁止のため post-set で発射)。
+    // 弾自体の性能(速度/サイズ/ダメージ)は getEnemyFireProfile('giantbat') のプロファイルを
+    // createEnemyProjectile が使う=現行不変(6.26-6)。錬金術の召喚ターゲットも既存どおり考慮する。
+    if (giantBoltFires.length > 0) {
+      const bp = get().player;
+      const bGameTime = get().gameTime;
+      const bFlareTargets = activeFlareTargets(get().flareGunFlares, bGameTime);
+      const bTargetSummons = bFlareTargets.length > 0 ? [...get().summons, ...bFlareTargets] : get().summons;
+      for (const ge of giantBoltFires) {
+        const liveGe = get().enemies.find(e => e.id === ge.id) ?? ge;
+        const hidden = isSeekerActive(bp, bGameTime) && !isBossType(liveGe.type); // giantbatはisBossType=true=常にfalse
+        const tgt = resolveEnemyTarget(liveGe, bp, bTargetSummons, ALCHEMY_AGGRO_RANGE, hidden);
+        get().addProjectile(createEnemyProjectile(liveGe, bp, tgt.x, tgt.y));
+      }
+    }
     // 叫喚型の予兆(溜め開始): 2秒かけて広がるリング＋発光(優先処理を促すテレグラフ)。
     if (screamerWindupAt.length > 0) {
       const { x, y } = screamerWindupAt[0];
@@ -9985,7 +10260,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ダンス中に溜めたEXPで一気にレベルアップ(以降は selectUpgrade が連鎖)。
       const { player: p, enemies } = get();
       // 社長相談(v0.25.1499): 赤ライン当たり判定内なら保留(useGameLoopが再チェック)。
-      if (p.experience >= p.experienceToNextLevel && !isPlayerInAttackTelegraph(p, enemies, PUMPKIN_EXPLOSION_RADIUS)) {
+      if (p.experience >= p.experienceToNextLevel && !isPlayerInAttackTelegraph(p, enemies, PUMPKIN_EXPLOSION_RADIUS, GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH)) {
         get().levelUp();
       }
     }

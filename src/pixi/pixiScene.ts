@@ -21,7 +21,8 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
+  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_JUMP_WINDUP_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
@@ -1022,6 +1023,9 @@ const STATUS_GREEN = 0x34d399;  // emerald-400: HP高(健全)
 const STATUS_RED = 0xf87171;    // red-400: HP低/危険
 const STATUS_YELLOW = 0xfbbf24; // amber-400: リロード/注意
 const STATUS_ALLY = 0x38bdf8;   // sky-400: 味方(救助対象)
+// M51(社長裁定6.26-9 #4): フェーズを持つボス(ジャイアント)のHPバー・Phase2色(橙)。
+// 既存のSTATUS_YELLOW(amber-400=リロード/注意の意味で使用中)とは別に用意し、意味の混同を避ける。
+const GIANT_PHASE2_BAR_COLOR = 0xf97316; // orange-500
 // 裏ボスの影: 当たり判定より一回り大きく見せる倍率＋鮮やかめの赤(社長指示)。
 const BOSS_SHADOW_SCALE = 1.35;  // 当たり判定(w×h)に対する影の拡大率
 const BOSS_SHADOW_TINT = 0x9a0000; // 暗赤(0x5a0000)→より赤く
@@ -8019,6 +8023,23 @@ export class PixiScene {
         this.enemyBlockFall.delete(e.id);
       }
     }
+    // M51: ジャイアント新スクリプト(T7縦縮み+着地アーク)。上のブロックは 'crouch'/'jump'/'recover' の
+    // 旧文字列しか見ないため giantbat の新フェーズ('g-'接頭辞)には反応しない=このブロックで別途
+    // 補う(他タイプは一切対象外・?giantscript=0時は上のブロックがそのまま効く=無改変)。
+    if (e.type === 'giantbat' && GIANT_SCRIPT_ENABLED) {
+      if (e.aiPhase === 'g-stomp-windup') {
+        const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_STOMP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+        aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり(T7・パンプキンcrouchと同じ式)
+      } else if (e.aiPhase === 'g-jump-windup') {
+        const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_JUMP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+        aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p;
+      } else if (e.aiPhase === 'g-jump-air') {
+        const jumpDur = PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT;
+        const t = Math.max(0, Math.min(1, (gameTime - (e.aiStartedAt ?? gameTime)) / jumpDur));
+        aiHop = Math.sin(t * Math.PI) * PUMPKIN_JUMP_HEIGHT;
+        aiSqY = 1.08; aiSqX = 0.94;
+      }
+    }
 
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
@@ -8438,7 +8459,69 @@ export class PixiScene {
         view.sprite.tint = 0xffffff;
       }
     }
-    this.drawHealthBar(o, e);
+    // M51: 城ボス「ジャイアント」新スクリプトの予告描画(PACING_PUZZLE.md §6.26)。既存部品のみ流用
+    // (T1赤ライン+終点リング=突進 / T2赤円=踏み鳴らし・飛び掛かり / T3赤い角ばった四角=薙ぎ払い /
+    // T4体tintの赤フラッシュ=トール式thorFlashTintをそのまま流用)。`?giantscript=0`で無効化=
+    // syncPumpkinTelegraph(共有Graphics)側の旧描画が代わりに効く(このブロックは一切触れていない)。
+    if (e.type === 'giantbat' && GIANT_SCRIPT_ENABLED) {
+      const gph = e.aiPhase;
+      const gPulse = 0.5 + 0.5 * Math.sin(now / 110);
+      // T4: 「実行の瞬間」に紐づける。stomp/sweep/dash/boltは溜め(windup)終わりが実行の瞬間、
+      // jumpだけ滞空(air)終わり=着地(トールのjump-attackと同じ作法)。
+      const gFlashRemain =
+        (gph === 'g-stomp-windup' || gph === 'g-sweep-windup' || gph === 'g-dash-windup' || gph === 'g-bolt-windup' || gph === 'g-jump-air')
+          ? (e.aiPhaseUntil ?? gameTime) - gameTime : null;
+      const gFlash = gFlashRemain !== null ? thorFlashTint(gFlashRemain, now) : null;
+      if (gFlash !== null) {
+        view.sprite.tint = gFlash;
+      } else if (gph === 'g-stomp-recover' || gph === 'g-sweep-recover' || gph === 'g-dash-recover' || gph === 'g-jump-recover' || gph === 'g-bolt-recover') {
+        // 硬直=反撃窓(翻訳規則(d)): 赤ではない色(青白)=「今なら殴れる」の合図。
+        view.sprite.tint = 0xbfe8ff;
+      } else {
+        view.sprite.tint = 0xffffff;
+      }
+      if (gph === 'g-stomp-windup') {
+        // T2(赤円・自身の足元)。半径=GIANT_STOMP_RADIUS(社長裁定6.26-9 #3)。
+        o.ellipse(cx, cy, GIANT_STOMP_RADIUS, GIANT_STOMP_RADIUS).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * gPulse });
+        o.ellipse(cx, cy, GIANT_STOMP_RADIUS, GIANT_STOMP_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
+      } else if (gph === 'g-sweep-windup' || gph === 'g-sweep-active') {
+        // T3(赤い角ばった四角ゾーン)。トール払い/ミゲル払いと同じ意匠(poly fill+stroke)。
+        const gfx = e.aiFromX ?? cx, gfy = e.aiFromY ?? cy;
+        const gtx = e.aiTargetX ?? cx, gty = e.aiTargetY ?? cy;
+        const gddx = gtx - gfx, gddy = gty - gfy;
+        const gddl = Math.hypot(gddx, gddy) || 1;
+        const gnx = -gddy / gddl, gny = gddx / gddl;
+        const gux = gddx / gddl, guy = gddy / gddl;
+        const ghw = GIANT_SWEEP_HALF_WIDTH;
+        const gprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+        const gZoneFill = gph === 'g-sweep-active' ? 0.3 : (0.12 + 0.22 * gprog) + 0.08 * gPulse;
+        const gpts = [
+          gfx - gux * ghw + gnx * ghw, gfy - guy * ghw + gny * ghw,
+          gtx + gux * ghw + gnx * ghw, gty + guy * ghw + gny * ghw,
+          gtx + gux * ghw - gnx * ghw, gty + guy * ghw - gny * ghw,
+          gfx - gux * ghw - gnx * ghw, gfy - guy * ghw - gny * ghw,
+        ];
+        o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill });
+        o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
+        o.moveTo(gfx, gfy).lineTo(gtx, gty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
+      } else if (gph === 'g-dash-windup') {
+        // T1(赤ライン+終点リング)。既存の犬/パンプキン用と同じ意匠。
+        const gtx = e.aiTargetX ?? cx, gty = e.aiTargetY ?? cy;
+        const ga = 0.45 + 0.4 * gPulse;
+        o.moveTo(cx, cy).lineTo(gtx, gty).stroke({ width: 6, color: 0xff2a2a, alpha: ga * 0.4, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(gtx, gty).stroke({ width: 2, color: 0xff5a5a, alpha: ga, cap: 'round' });
+        o.circle(gtx, gty, 9 + 3 * gPulse).stroke({ width: 2, color: 0xff5a5a, alpha: ga });
+      } else if (gph === 'g-jump-windup' || gph === 'g-jump-air') {
+        // T2(赤円・着地点)。溜め開始からロック済みの着地点(社長裁定6.26-9 #1)。着地AoE半径は
+        // PUMPKIN_EXPLOSION_RADIUSをそのまま流用=変更しない(6.26-6「現行不変」)。
+        const gtx = (e.aiTargetX ?? e.x) + e.width / 2, gty = (e.aiTargetY ?? e.y) + e.height / 2;
+        const gR = PUMPKIN_EXPLOSION_RADIUS;
+        o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * gPulse });
+        o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
+      }
+      // 咆哮弾(g-bolt-*)は図形を出さない(社長裁定=小技はT4の一拍のみ。画面が赤で埋まると大技の赤が効かなくなる)。
+    }
+    this.drawHealthBar(o, e, now);
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(o, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
     }
@@ -8486,7 +8569,7 @@ export class PixiScene {
     view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
   }
 
-  private drawHealthBar(g: Graphics, e: Enemy) {
+  private drawHealthBar(g: Graphics, e: Enemy, now: number) {
     if (e.health >= e.maxHealth) return;
     const w = e.width;
     const h = 3;
@@ -8494,7 +8577,17 @@ export class PixiScene {
     const y = e.y - h - 2;
     g.rect(x, y, w, h).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
     const pct = e.health / e.maxHealth;
-    g.rect(x, y, w * pct, h).fill({ color: pct < 0.3 ? STATUS_RED : STATUS_GREEN });
+    let barColor = pct < 0.3 ? STATUS_RED : STATUS_GREEN;
+    // M51(社長裁定6.26-9 #4): フェーズを持つボス(ジャイアント)はバー色をフェーズで決める
+    // (Phase1=緑/Phase2=橙・0.3未満の赤は据え置き)。他タイプは giantPhase が付かないので無改変。
+    if (e.type === 'giantbat' && GIANT_SCRIPT_ENABLED && e.giantPhase !== undefined) {
+      barColor = pct < 0.3 ? STATUS_RED : (e.giantPhase === 2 ? GIANT_PHASE2_BAR_COLOR : STATUS_GREEN);
+      // 移行の瞬間だけ点滅させる(バーは被弾後にしか出ず、色の変化だけでは見落とすため=合図の本体)。
+      if (e.giantPhaseFlashUntil !== undefined && now < e.giantPhaseFlashUntil) {
+        barColor = Math.sin(now / 60) > 0 ? 0xffffff : barColor;
+      }
+    }
+    g.rect(x, y, w * pct, h).fill({ color: barColor });
   }
 
   private drawStunReticle(g: Graphics, cx: number, cy: number, size: number, now: number, color = 0xfacc15) {

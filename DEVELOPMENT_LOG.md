@@ -1,5 +1,46 @@
 # Development Log
 
+## v0.25.2361 — バッチM51: 城ボス「ジャイアント」の行動・攻撃パターン改訂を実装【2026-07-28 22:06 JST】
+- **仕様の正本**: `PACING_PUZZLE.md` §6.26(台本)+§6.26-9(裁定済み確定仕様9件・最優先)。★未決なし=Sonnet実装。
+- **概要**: 城ボス「ジャイアント」に、既存テレグラフ部品(T1赤ライン/T2赤円/T3赤四角/T4体tintフラッシュ/
+  T7縦縮み/T8後退り)だけを使い、5攻撃すべてに「予告→実行→硬直(反撃窓)」を持たせた。新技=踏み鳴らし
+  (密着・半径92=GRENADE_BLAST_RADIUS流用)/薙ぎ払い(近・Phase2限定・THOR_HARAI_RANGE/HALF_WIDTH流用)。
+  既存改訂=突進(硬直900ms新設)/飛び掛かり(狙い点を溜め開始でロック・CD起点を硬直明けへ)/
+  咆哮弾(450ms溜め新設・図形なしでT4フラッシュのみ)。HP60%でPhase2(緑→橙のHPバー色+移行の瞬間だけ点滅)。
+  Phase2は薙ぎ払い解禁+咆哮弾CD短縮+40%2連携(薙ぎ払い→踏み鳴らし/突進→踏み鳴らし)。
+- **純関数化(実装精度の規律4)**: `src/utils/giantScript.ts`に「間合い/CD/HP段階から次の技を選ぶ」判断を
+  切り出し、同コミットで`giantScript.test.ts`(18件)を追加。不変条件(各帯に技がある/密着帯にハメ間合い
+  なし/Phase2は種類追加のみでリード不変/連携は許可2組・40%閾値)をテストで固定。
+- **実装方式**: `gameStore.ts`の`updateEnemies`内、既存の犬型/パンプキン型ブロックより前に giantbat 専用
+  ブロックを新設し、GIANT_SCRIPT_ENABLED(既定true)の間は毎フレームここで完結してreturnする。
+  aiPhaseは他タイプと衝突しない`g-`接頭辞の専用値(g-stomp-windup等)を使うため、既存の
+  isDashType/パンプキン型ブロック/旧専用スケジューラは giantbat に対しては型は一致するが
+  aiPhase文字列が一致せず素通りする=**pumpkin/lab-zombie-3/werewolf/lab-zombie-2/hunterは無改変**。
+  唯一の例外は旧専用スケジューラの外側ifガードに`!GIANT_SCRIPT_ENABLED`を1行追加(giantbatのみに影響・
+  hunter側の条件式は変えていない)。
+- **`?giantscript=0`で旧挙動へ完全フォールバック**(受け入れ条件11)。新スクリプト有効時は
+  `combatTick.ts`の汎用発砲ゲート/木・プロップ破壊/カウンターパリィ/`isPlayerInAttackTelegraph`
+  (レベルアップ保留)の4箇所に、giantbat新フェーズだけを対象にした追加分岐を入れて整合を取った
+  (いずれも他タイプの既存分岐には触れていない)。
+- **カウンターパリィの扱い(W4=テルを出したら必ず撃つ、との整合)**: 溜め(windup)ステートは中断対象に
+  入れず(既存3経路=気絶/盾ブロック/障害物のみ)、実行中(g-dash-charge/g-sweep-active)と
+  硬直(g-*-recover=既にHIT済み)だけをカウンター窓でパリィ可能にした。
+- **負荷**: 2/10(自己申告どおり)。新規描画は共有Graphicsへの図形塗り+tint上書きのみ=強glow増加なし。
+  同時に生きる予告は常に1つ(giantbatは場に1体・aiPhaseは排他)。
+- **変更ファイル**: `src/utils/giantScript.ts`(新規)+`giantScript.test.ts`(新規)、
+  `src/store/gameStore.ts`(新定数+giantbat専用ブロック+pumpkinBlasts型へcapsule追加+
+  post-set咆哮弾発射)、`src/types/game.ts`(Enemyのaiphase型/新規フィールド)、
+  `src/utils/combatTick.ts`(発砲ゲート/パリィ/pumpkinBlastDamageのcapsule対応)、
+  `src/utils/levelUpGate.ts`(isPlayerInAttackTelegraphの新テレグラフ対応+テスト追加)、
+  `src/utils/playtestDriver.ts`(同呼び出し更新)、`src/hooks/useGameLoop.ts`(予告SE=hunter-alert流用の
+  エッジ検知+木/プロップ破壊の対象拡張)、`src/pixi/pixiScene.ts`(T1/T2/T3/T4/T7描画+HPバー色/点滅)。
+- **検証**: `npm run typecheck`・`npm run lint`ともにエラー0(lint警告は既存分のみ・無関係)。
+  `npx vitest related`で変更ファイル関連の既存テストを実行=全て pass(`src/store/sim.test.ts`の
+  `pullGacha`1件のみ失敗だが、変更前のクリーンな baseline でも同一失敗を確認=本バッチと無関係の
+  既存不具合)。テスト/ボット/ビルドのフル実行は社長指示が無いため実施せず(Testing policy)。
+  **実機(`?giantscript=1`既定/`?giantscript=0`比較)は社長へ持ち越し**。
+- **★未決**: なし。§6.26-9で全件裁定済みのため、実装中に新たな設計判断が必要になった箇所はゼロ。
+
 ## v0.25.2360 — ランク査定の作り直し(M50)を仕様化=「捌けているか」一本化(文書のみ)【2026-07-28 21:47 JST】
 - **社長設計**: 昇格=「**最低限半分の時間の中で、どれくらいの速度で捌けた実績があるか**」/
   降格=「**連続で被弾した。しかも何秒間か**(一瞬なら敵に囲まれただけの可能性がある)」/

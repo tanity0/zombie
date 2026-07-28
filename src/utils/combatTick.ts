@@ -42,7 +42,9 @@ import {
   KNOCKBACK_DURATION, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT,
+  GIANT_SCRIPT_ENABLED,
 } from '../store/gameStore';
+import { distToSegment } from './levelUpGate';
 
 // 演出・音・死亡演出のコールバック注入(ヘッドレスではno-op)。判定条件自体はこのファイル内に残る。
 export interface CombatEffects {
@@ -115,7 +117,12 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       fx.spawnBurst(b.x, b.y, '#fb923c', 16);
     }
     const pr = Math.max(bp.width, bp.height) / 2;
-    if (Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr) {
+    // M51: 薙ぎ払い(capsule付き)は円ではなく直線+半幅のカプセル判定(distToSegment流用)。
+    // それ以外(パンプキン着地/スカジ氷等)は既存どおり円形(爆心からの距離<=半径+双方の当たり半径)。
+    const inBlast = b.capsule
+      ? distToSegment({ x: bpcx, y: bpcy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }) <= b.capsule.halfWidth + pr
+      : Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr;
+    if (inBlast) {
       if (counterActive) {
         // カウンター成立は無敵中でも弾く(=確実にノックバック+クリ反撃)。
         // ※以前は !invulnerable を前提にしていたため、被弾i-frame中だとパリィが
@@ -250,6 +257,10 @@ export const applyEnemyFire = (now: number): void => {
   liveEnemies.forEach(enemy => {
     // 裏ボスの発砲(3連発/全方位16発)は専用コントローラが直接撃つので汎用ループからは除外。
     if (isHiddenBoss(enemy.type)) return;
+    // M51: 新スクリプト有効時の giantbat は咆哮弾(g-bolt-*)を自前で発射する(gameStore.ts の
+    // giantBoltFires 経路)。この汎用ゲート(旧: 無予告で3秒おきに自動発砲)は完全に無効化する
+    // (`?giantscript=0` の時だけ旧経路のこのチェックへ戻る=フォールバック)。
+    if (enemy.type === 'giantbat' && GIANT_SCRIPT_ENABLED) return;
     // Stunned enemies are frozen — they can't spit projectiles either.
     if (enemy.stunUntil !== undefined && liveGameTime < enemy.stunUntil) return;
     // 特殊行動中(ジャンプ/ダッシュの溜め・動作中)は発砲しない(giantbat の弾/ジャンプ/ダッシュを排他に)。
@@ -420,14 +431,24 @@ export const applyContactDamage = (
     if (enemy.type === 'thor' && enemy.bossState && enemy.bossState !== 'chase' && enemy.bossState !== 'return') return;
     // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間はプレイヤーは被弾しない。
     // カウンター窓中ならカウンター成立=クリティカル反撃(ヘッドショット)を返す。
-    if (enemy.aiPhase === 'jump') {
+    // M51: ジャイアント新スクリプトの飛び掛かり滞空(g-jump-air)も同じ扱い(既存'jump'と同義)。
+    if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air') {
       if (counterActiveNow) dashParried.push(enemy.id);
       return;
     }
     // 突進(charge)/ジャンプの着地硬直(recover)/溜め(crouch)も、カウンター窓中は弾く。
     // パンプキンは空中で重なる窓が一瞬→着地直後は recover で「その場硬直(痺れ)」になり拾えなかったため、
     // recover/crouch も対象にして広い猶予で確実にノックバック+クリ反撃する。
-    if ((enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch') && counterActiveNow) {
+    // M51(受け入れ条件5=W4「中断は気絶/盾ブロック/障害物の既存3経路のみ」): ジャイアント新スクリプトの
+    // 溜め(windup)ステートはここに含めない=予告を出したら必ず実行させる。実行中(g-dash-charge/
+    // g-sweep-active)と硬直(g-*-recover=既にHITは終わっている)だけを対象にする(g-jump-airは
+    // 直上のifで既に処理済み=ここへは到達しない)。
+    const giantParryablePhase = enemy.type === 'giantbat' && (
+      enemy.aiPhase === 'g-dash-charge' || enemy.aiPhase === 'g-sweep-active' ||
+      enemy.aiPhase === 'g-stomp-recover' || enemy.aiPhase === 'g-sweep-recover' ||
+      enemy.aiPhase === 'g-dash-recover' || enemy.aiPhase === 'g-jump-recover' || enemy.aiPhase === 'g-bolt-recover'
+    );
+    if ((enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch' || giantParryablePhase) && counterActiveNow) {
       dashParried.push(enemy.id);
       return;
     }

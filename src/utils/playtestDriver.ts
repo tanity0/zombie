@@ -21,6 +21,7 @@ import {
   useGameStore, isKatanaMode, hasSkill, AMMO_MAX,
   skillCritMult, skillOutgoingDamageMult, skillComboMasterMult, sniperGunMult,
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, PUMPKIN_EXPLOSION_RADIUS, HUNTER_VISION_RANGE,
+  GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH,
 } from '../store/gameStore';
 import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY } from './weaponUtils';
 import { pickAmmoDropType } from './ammoDrop';
@@ -528,7 +529,7 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     if (
       !pend.rhythm.active && !pend.showUpgradeMenu && pend.levelUpIntroUntil === 0 &&
       pend.player.experience >= pend.player.experienceToNextLevel &&
-      !isPlayerInAttackTelegraph(pend.player, pend.enemies, PUMPKIN_EXPLOSION_RADIUS)
+      !isPlayerInAttackTelegraph(pend.player, pend.enemies, PUMPKIN_EXPLOSION_RADIUS, GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH)
     ) {
       pend.levelUp();
     }

@@ -48,7 +48,8 @@ import {
   TUTORIAL_MOVE_X_MIN_PX,
   TUTORIAL_MOVE_Y_LIMIT_PX,
   M0_FORCED_CRIT_AT_HIT,
-  M0_CONVO_ADVANCE_LIMIT_X
+  M0_CONVO_ADVANCE_LIMIT_X,
+  GIANT_SCRIPT_ENABLED
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -1122,6 +1123,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const turretAimRef = useRef<Map<string, number>>(new Map());
   // 敵のジャンプ/ダッシュ攻撃でのオブジェクト破壊FXのスロットル時刻(gameTime)。破壊自体は毎回・FXのみ間引き。
   const enemyCrushFxRef = useRef<number>(0);
+  // M51: ジャイアント新スクリプトの予告SE(全技共通=hunter-alert流用・社長裁定6.26-9 #5)。
+  // 直前フレームのaiPhaseを覚えておき、5つの溜め(windup)ステートへ切り替わった瞬間だけ1回鳴らす。
+  const giantWindupSfxRef = useRef<string | undefined>(undefined);
   // 四神舞(リズム): 停止が続いた gameTime の起点(0=未停止)。RHYTHM_ENTER_IDLE_MS でモード開始。
   const rhythmIdleStartRef = useRef<number>(0);
   // 四神舞: 動き出した gameTime の起点(0=停止中)。RHYTHM_EXIT_MOVE_MS 動き続けた時だけ終了
@@ -5930,7 +5934,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const crushFar = useGameStore.getState().farBackdrop;
           let crushedX = 0, crushedY = 0, crushedAny = false;
           for (const e of useGameStore.getState().enemies) {
-            if (e.aiPhase !== 'jump' && e.aiPhase !== 'charge') continue;
+            // M51: ジャイアント新スクリプトの飛び掛かり滞空(g-jump-air)/突進(g-dash-charge)も対象
+            // (?giantscript=0時は'jump'/'charge'のまま=旧経路で既にヒットする)。
+            if (e.aiPhase !== 'jump' && e.aiPhase !== 'charge' && e.aiPhase !== 'g-jump-air' && e.aiPhase !== 'g-dash-charge') continue;
             const PAD = 24;
             const eAABB = { x: e.x, y: e.y, width: e.width, height: e.height };
             for (const t of treesInRegion(e.x - PAD, e.y - PAD, e.x + e.width + PAD, e.y + e.height + PAD)) {
@@ -5953,6 +5959,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // PACING_PUZZLE.md §5.18 M17: ⑤ジャンプ落下攻撃の爆風(pumpkinBlasts消化)。
         // src/utils/combatTick.ts へ切り出し(挙動不変・コード移動のみ)。
         applyPumpkinBlastDamage(combatEffects, combatTunables);
+
+        // M51: ジャイアント新スクリプトの予告SE(全技共通=hunter-alert流用・社長裁定6.26-9 #5)。
+        // 5つの溜め(windup)ステートへ切り替わった瞬間だけ1回鳴らす(前フレームとの比較=エッジ検知)。
+        if (GIANT_SCRIPT_ENABLED) {
+          const giant = useGameStore.getState().enemies.find(e => e.type === 'giantbat');
+          const gPhase = giant?.aiPhase;
+          const isGiantWindupNow = gPhase === 'g-stomp-windup' || gPhase === 'g-sweep-windup'
+            || gPhase === 'g-jump-windup' || gPhase === 'g-dash-windup' || gPhase === 'g-bolt-windup';
+          if (isGiantWindupNow && giantWindupSfxRef.current !== gPhase) {
+            playSfx('hunter-alert');
+          }
+          giantWindupSfxRef.current = isGiantWindupNow ? gPhase : undefined;
+        }
 
         // 設置シールドでジャンプ/ダッシュを防いだ瞬間の「ぶつかった感」: 接触点に火花バースト＋
         // 衝撃リング＋衝突音＋ごく短い画面揺れ。ジャンプ/ダッシュ共通(store が kind を付けて積む)。

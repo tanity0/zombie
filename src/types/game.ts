@@ -310,7 +310,19 @@ export interface Enemy {
   //  werewolf: undefined→'windup'(減速)→'charge'(2倍速で aiTarget へ突進)→cooldown。
   //  pumpkin : undefined→'crouch'(縮みながら3秒溜め)→'jump'(1秒でaiTargetへ着地)→'recover'(1秒停止)。
   //  zombie  : 近接範囲に入ると 'zpause'(1秒停止)→'zrush'(2秒間2倍速)→範囲内なら 'zpause' を繰り返す。
-  aiPhase?: 'windup' | 'charge' | 'crouch' | 'jump' | 'recover' | 'zpause' | 'zrush' | 'scream';
+  //  giantbat(M51新スクリプト・PACING_PUZZLE.md §6.26): 'g-' 接頭辞の専用値を使い、他タイプの
+  //  windup/charge/crouch/jump/recover とは別名にして混線を避ける(?giantscript=0で旧値へ戻す)。
+  //   g-stomp-windup/g-stomp-recover = 踏み鳴らし(密着)
+  //   g-sweep-windup/g-sweep-active/g-sweep-recover = 薙ぎ払い(Phase2限定・近)
+  //   g-jump-windup/g-jump-air/g-jump-recover = 飛び掛かり(改訂)
+  //   g-dash-windup/g-dash-charge/g-dash-recover = 突進(改訂)
+  //   g-bolt-windup/g-bolt-recover = 咆哮弾(改訂)
+  aiPhase?: 'windup' | 'charge' | 'crouch' | 'jump' | 'recover' | 'zpause' | 'zrush' | 'scream'
+    | 'g-stomp-windup' | 'g-stomp-recover'
+    | 'g-sweep-windup' | 'g-sweep-active' | 'g-sweep-recover'
+    | 'g-jump-windup' | 'g-jump-air' | 'g-jump-recover'
+    | 'g-dash-windup' | 'g-dash-charge' | 'g-dash-recover'
+    | 'g-bolt-windup' | 'g-bolt-recover';
   aiPhaseUntil?: number; // 現フェーズの終了 gameTime
   aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
   aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)
@@ -324,8 +336,19 @@ export interface Enemy {
   aggroRange?: number;
   fixed?: boolean;
   // ジャイアントバットの行動パターン別クールダウン(gameTime ms)。弾(fire profile)とは別系統。
+  // (?giantscript=0の旧スクリプト専用。新スクリプトは下の gStomp/gSweep/gJump/gDash/gBoltReadyAt を使う)。
   gbJumpReadyAt?: number;
   gbDashReadyAt?: number;
+  // ジャイアント新スクリプト(M51)専用: 技ごとの個別クールダウン(gameTime ms)。
+  gStompReadyAt?: number;
+  gSweepReadyAt?: number;
+  gJumpReadyAt?: number;
+  gDashReadyAt?: number;
+  gBoltReadyAt?: number;
+  // ジャイアント新スクリプト(M51)専用: 現在のフェーズ(HP60%以下=2)。フェーズ移行の瞬間だけ
+  // giantPhaseFlashUntil までHPバーを点滅させる(合図の本体・社長裁定6.26-9 #4)。
+  giantPhase?: 1 | 2;
+  giantPhaseFlashUntil?: number;
   // ハンター変異体: 撤退中フラグ。true の間は updateEnemies の通常追跡から除外し、専用イベント
   // コントローラ(useGameLoop)がプレイヤーから離れる方向へ移動させ、画面外で消滅させる。
   hunterFleeing?: boolean;
