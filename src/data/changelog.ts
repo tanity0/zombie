@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2358',
+    items: [
+      'ゲーム内容の変更はありません（開発用プレイヤーAIの行動方針を設計した記録のみ）。',
+    ],
+  },
+  {
     version: '0.25.2357',
     items: [
       'ゲーム内容の変更はありません（城のボスの行動パターンを作り直すための設計メモのみ。実際の動きはまだ変わっていません）。',
