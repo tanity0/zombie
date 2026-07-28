@@ -9,17 +9,26 @@ import { BORED_BONUS_MAX } from '../utils/boredomDirector';
 const MACRO_BG: Record<DirectorMacro, string> = { buildup: '#38bdf8', peak: '#f87171', relax: '#4ade80' };
 // バッチ2.5(診断計測): 関所帯の色。buildupは帯を出さない(背景のまま)。
 const GATE_BAND_COLOR: Partial<Record<DirectorPhaseKind, string>> = { gate: '#fbbf24', boss: '#ef4444' };
-// イベント発火帯の色(凡例と共通)。社長向け実機フィードバックの「固定タイマー起因の詰まり」を
-// リザルト単体で追えるようにする(実機確認①の再分析に使った突き合わせを画面に出す)。
-const EVENT_META: { bit: number; label: string; color: string }[] = [
-  { bit: DIRECTOR_EVENT_BIT.arena, label: '囲い', color: '#fbbf24' },
+// イベント発火帯の色(凡例と共通)。
+// v0.25.2332(社長指示「叫びとかあの辺細かすぎていらない」): 既定では**記憶に残る大物4つだけ**に絞る。
+// 囲い/叫喚/リーパーは細かすぎるので既定から外した。診断で全部見たい時は **?directorfull=1**
+// (この復帰フラグで旧・全項目+全ラインに戻る)。記録側(aiDirectorDebug)は従来どおり全ビット記録している
+// ので、フラグを付ければ過去と同じ情報が読める=計測は一切減らしていない。
+const EVENT_META_CORE: { bit: number; label: string; color: string }[] = [
   { bit: DIRECTOR_EVENT_BIT.hunter, label: 'ハンター', color: '#f472b6' },
   { bit: DIRECTOR_EVENT_BIT.redNight, label: '紅き月', color: '#ef4444' },
-  { bit: DIRECTOR_EVENT_BIT.screamer, label: '叫喚', color: '#facc15' },
-  { bit: DIRECTOR_EVENT_BIT.reaper, label: 'リーパー', color: '#c084fc' },
   { bit: DIRECTOR_EVENT_BIT.castleBoss, label: '城ボス', color: '#22d3ee' },
   { bit: DIRECTOR_EVENT_BIT.named, label: '宿敵', color: '#ffd700' }, // PACING_PUZZLE.md §5.14 M13
 ];
+const EVENT_META_EXTRA: { bit: number; label: string; color: string }[] = [
+  { bit: DIRECTOR_EVENT_BIT.arena, label: '囲い', color: '#fbbf24' },
+  { bit: DIRECTOR_EVENT_BIT.screamer, label: '叫喚', color: '#facc15' },
+  { bit: DIRECTOR_EVENT_BIT.reaper, label: 'リーパー', color: '#c084fc' },
+];
+// 診断用フル表示(旧レイアウト相当)。?directorfull=1 で全イベント帯+補助ライン4本が戻る。
+const directorFull = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('directorfull') === '1';
+const EVENT_META = directorFull ? [...EVENT_META_CORE, ...EVENT_META_EXTRA] : EVENT_META_CORE;
 
 // バッチ3.5-B(盤面在庫): debtは0-1に収まらないスカラーなので、表示用にこの値で正規化する
 // (目安=10体前後の在庫。CAST_DEBT_MAX=10/RISE_DEBT_MAX=10/EVENT_DEBT_MAX=12のしきい値帯が
@@ -146,16 +155,22 @@ const DirectorResult: React.FC = () => {
           {/* Intensity 面＋線(オレンジ) */}
           <path d={chart.areaPath} fill="#fb923c" opacity={0.22} />
           <polyline points={chart.intensityPts} fill="none" stroke="#fb923c" strokeWidth={1.5} strokeOpacity={0.95} />
-          {/* Performance 線(紫) */}
-          <polyline points={chart.perfPts} fill="none" stroke="#a78bfa" strokeWidth={1.2} strokeOpacity={0.85} strokeDasharray="3 2" />
-          {/* バッチ2.5: gatePressure線(黄緑・関所区間だけ途切れながら描画) */}
-          {chart.pressureSegs.map((pts, i) => (
-            <polyline key={i} points={pts} fill="none" stroke="#a3e635" strokeWidth={1.2} strokeOpacity={0.9} />
-          ))}
-          {/* バッチ3.5-B: 盤面在庫(debt)線(第4の線・他の線/イベント色と被らないスレート色) */}
-          <polyline points={chart.debtPts} fill="none" stroke="#94a3b8" strokeWidth={1} strokeOpacity={0.85} strokeDasharray="1 2" />
-          {/* バッチ6小物: up+N(退屈シグナルの上振れボーナス)線(第5の線・城ボス凡例の水色と被らないティール) */}
-          <polyline points={chart.upswingPts} fill="none" stroke="#2dd4bf" strokeWidth={1} strokeOpacity={0.85} strokeDasharray="1 3" />
+          {/* v0.25.2332: 補助ライン4本(Performance/gatePressure/盤面在庫/up+N)は既定で非表示。
+              プレイヤーが読み取れず線が混み合うだけなので、診断時(?directorfull=1)にだけ出す。 */}
+          {directorFull && (
+            <>
+              {/* Performance 線(紫) */}
+              <polyline points={chart.perfPts} fill="none" stroke="#a78bfa" strokeWidth={1.2} strokeOpacity={0.85} strokeDasharray="3 2" />
+              {/* バッチ2.5: gatePressure線(黄緑・関所区間だけ途切れながら描画) */}
+              {chart.pressureSegs.map((pts, i) => (
+                <polyline key={i} points={pts} fill="none" stroke="#a3e635" strokeWidth={1.2} strokeOpacity={0.9} />
+              ))}
+              {/* バッチ3.5-B: 盤面在庫(debt)線(第4の線・他の線/イベント色と被らないスレート色) */}
+              <polyline points={chart.debtPts} fill="none" stroke="#94a3b8" strokeWidth={1} strokeOpacity={0.85} strokeDasharray="1 2" />
+              {/* バッチ6小物: up+N(退屈シグナルの上振れボーナス)線(第5の線・城ボス凡例の水色と被らないティール) */}
+              <polyline points={chart.upswingPts} fill="none" stroke="#2dd4bf" strokeWidth={1} strokeOpacity={0.85} strokeDasharray="1 3" />
+            </>
+          )}
           {/* PACING_PUZZLE.md バッチM2: ランク階段線(白・本方式ONのランだけ途切れず表示される) */}
           {chart.rankSegs.map((pts, i) => (
             <polyline key={i} points={pts} fill="none" stroke="#f1f5f9" strokeWidth={1.3} strokeOpacity={0.9} />
@@ -179,18 +194,22 @@ const DirectorResult: React.FC = () => {
               {m.label}
             </span>
           ))}
-          <span className="inline-flex items-center gap-0.5">
-            <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#a3e635' }} />
-            gatePressure
-          </span>
-          <span className="inline-flex items-center gap-0.5">
-            <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#94a3b8' }} />
-            盤面在庫
-          </span>
-          <span className="inline-flex items-center gap-0.5">
-            <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#2dd4bf' }} />
-            up+N
-          </span>
+          {directorFull && (
+            <>
+              <span className="inline-flex items-center gap-0.5">
+                <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#a3e635' }} />
+                gatePressure
+              </span>
+              <span className="inline-flex items-center gap-0.5">
+                <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#94a3b8' }} />
+                盤面在庫
+              </span>
+              <span className="inline-flex items-center gap-0.5">
+                <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#2dd4bf' }} />
+                up+N
+              </span>
+            </>
+          )}
           <span className="inline-flex items-center gap-0.5">
             <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#f1f5f9' }} />
             ランク(R1-R7)
@@ -198,10 +217,14 @@ const DirectorResult: React.FC = () => {
         </div>
       )}
 
-      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/60 tabular-nums">
-        <span><span className="text-orange-300/80">Intns</span> 平均{summary.avgIntensity.toFixed(2)} 最大{summary.maxIntensity.toFixed(2)}</span>
-        <span><span className="text-violet-300/80">Perf</span> 平均{summary.avgPerformance.toFixed(2)}</span>
-      </div>
+      {/* v0.25.2332: Intns/Perf の生の平均値は診断用なので ?directorfull=1 の時だけ。
+          プレイヤーが読むのは下の BUILD/PEAK/RELAX の内訳(「どんなランだったか」)。 */}
+      {directorFull && (
+        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/60 tabular-nums">
+          <span><span className="text-orange-300/80">Intns</span> 平均{summary.avgIntensity.toFixed(2)} 最大{summary.maxIntensity.toFixed(2)}</span>
+          <span><span className="text-violet-300/80">Perf</span> 平均{summary.avgPerformance.toFixed(2)}</span>
+        </div>
+      )}
       {/* BUILD_UP/PEAK/RELAX の内訳(社長指示: 「RELAXが少ない」を体感でなく数字で見られるように)。 */}
       <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/60 tabular-nums">
         <span><span className="text-sky-300/80">BUILD</span> {summary.buildupSeconds.toFixed(0)}s ({pct(summary.buildupSeconds)}%)</span>

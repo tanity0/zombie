@@ -17,6 +17,7 @@ import {
   wallAchievementHeadline, metersToNextWall, isOneRankAwayFromNext, nextRankName, WALL_RANK_NAMES,
 } from '../utils/wallProgress';
 import DirectorResult from './DirectorResult';
+import ResultReach from './ResultReach';
 
 // PACING_PUZZLE.md §5.17 M14: 縦の深度メーターの表示スケール(深層域の余白込み)。表示専用の定数。
 const WALL_METER_SCALE_MAX = AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1] + 1000;
@@ -359,60 +360,20 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </>
           ) : (
             <>
-              {/* PACING_PUZZLE.md §5.19 M18①: 到達譜を1ヒーロー枠に統合(見出し+深度メーター+
-                  自己最深+宿敵行+昇格度)。旧・小字/RESULT最深到達/メーター内到達ランク・最深区域行は削除。 */}
+              {/* 到達譜(v0.25.2332 社長指示で全面刷新): 上から下へ掘り下げる2本の縦坑。
+                  左=深さ(5区域)・右=七つの大罪(7段を常に全部並べる)。自己最高を金の⚑で残し、
+                  最後に「次の一手」を1行だけ出す=次がやりたくなる理由をここに集約する。
+                  昇格度(診断寄りの数字)は前面から外して「詳細▾」へ移した。 */}
               {!isBenchmark && (
-                <div className="mt-2">
-                  <p className="text-[15px] font-semibold tracking-wide" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
-                    <span className="text-white/95">{wallHeadline}</span>
-                  </p>
-                  <div className="mx-auto mt-0.5 h-[2px] w-24 rounded-full" style={{ background: 'linear-gradient(90deg, transparent, #ffd700, transparent)' }} />
-                  <div className="mt-2.5 flex items-center gap-3 text-left">
-                    <div className="relative shrink-0" style={{ width: 14, height: 96 }}>
-                      <div className="absolute inset-x-0 bottom-0 top-0 rounded-full bg-white/10" />
-                      <div
-                        className="absolute inset-x-0 bottom-0 rounded-full bg-gradient-to-t from-sky-300/70 to-amber-200/80"
-                        style={{ height: `${wallMeterPct(stats.maxDepthDist)}%` }}
-                      />
-                      {AREA_THRESHOLDS.map(t => (
-                        <div key={t} className="absolute inset-x-[-3px] h-px bg-white/40" style={{ bottom: `${wallMeterPct(t)}%` }} />
-                      ))}
-                      {wallMeta.selfDeepestDist > 0 && (
-                        <div
-                          className="absolute inset-x-[-5px] h-[2px] bg-amber-300"
-                          style={{ bottom: `${wallMeterPct(wallMeta.selfDeepestDist)}%` }}
-                          title="自己最深"
-                        />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1 text-[11px] text-white/70 space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-white/50">自己最深</span>
-                        <span className="font-semibold tabular-nums" style={{ color: '#ffd700' }}>
-                          {Math.round(Math.max(stats.maxDepthDist, wallMeta.selfDeepestDist))}m
-                          {wallSelfBestUpdated && <span className="ml-1">⚑更新</span>}
-                        </span>
-                      </div>
-                      {namedFoeResult && (
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-white/50">宿敵 {namedFoeResult.name}</span>
-                          <span className="font-semibold text-amber-300">{namedFoeResult.defeated ? '討伐' : '取り逃がし'}</span>
-                        </div>
-                      )}
-                      {/* PACING_PUZZLE.md §5.17-追補: 昇格度(惜しさ)。死亡時のみ・スナップショットがある時だけ。 */}
-                      {promotion && (
-                        <div className="pt-0.5">
-                          <span className="text-white/50">昇格度</span>{' '}
-                          <span className="font-semibold tabular-nums" style={{ color: '#ffd700' }}>{Math.round(promotion.total)}</span>
-                          <span className="text-white/40"> —— 阻んだのは</span>{' '}
-                          <span className="font-semibold text-rose-200">
-                            {PROMOTION_BOTTLENECK_LABEL[promotion.bottleneck]}({Math.round(promotion[promotion.bottleneck])})
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <ResultReach
+                  dist={stats.maxDepthDist}
+                  rank={wallHighestRank}
+                  bestDist={wallMeta.selfDeepestDist}
+                  bestRank={wallMeta.selfHighestRank}
+                  zoneIdx={stats.maxAreaReached}
+                  selfBestUpdated={wallSelfBestUpdated}
+                  namedFoe={namedFoeResult}
+                />
               )}
               {!isBenchmark && !won && !withdraw && deathCause && (
                 <p className="mt-2 text-[12px] text-white/70">
@@ -651,6 +612,18 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                       </div>
                     ))}
                   </div>
+                  {/* 昇格度(惜しさ)は診断寄りの数字なので前面から降ろした(v0.25.2332)。
+                      死亡時のみ・スナップショットがある時だけ。 */}
+                  {promotion && (
+                    <div className="border-t border-white/10 pt-2 text-[11px] text-white/65">
+                      <span className="text-white/45">昇格度</span>{' '}
+                      <span className="font-semibold tabular-nums" style={{ color: '#ffd700' }}>{Math.round(promotion.total)}</span>
+                      <span className="text-white/40"> —— 阻んだのは</span>{' '}
+                      <span className="font-semibold text-rose-200">
+                        {PROMOTION_BOTTLENECK_LABEL[promotion.bottleneck]}({Math.round(promotion[promotion.bottleneck])})
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
               {/* PACING_PUZZLE.md §5.19 M18④: AIディレクターは既定で畳む(社長指示v0.25.1374を今回の承認で上書き)。 */}
