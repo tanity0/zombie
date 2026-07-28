@@ -126,3 +126,34 @@ export const enemyShadow = (e: Enemy): { width: number; alpha: number } => {
   const heavy = e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || e.type === 'hunter';
   return { width: e.width * (heavy ? 1.15 : 1), alpha: heavy ? 0.56 : 0.46 };
 };
+
+// ---------------------------------------------------------------------------
+// 地平線フェード帯の幅(社長裁定v0.25.2334・案A)。
+//
+// 背景: 「地平線に近いアクターは薄れて消える」フェードは、**敵・木・城・商人・NPC・護衛・プロップ・
+// 建物のすべて**が共有している(`pixiScene.horizonActorAlpha`)。その帯幅は 120px 固定だったが、
+// これは**縦持ちの論理画面高(≒876)に対して調整された値**だった。
+//
+// 実測(v0.25.2331のテスト): 横持ちPC(1280×800)では論理画面高が **338** まで潰れる(ズーム1.48倍)。
+// すると地平線がアクターのすぐ上に来て、120pxの帯が画面のほぼ全体を覆う。結果、足元にある廃病院が
+// **alpha 0.216**、**プレイヤー自身ですら 0.783** まで薄くなっていた(=病院固有ではなく横持ち全体の欠陥)。
+// なお OrientationGuard は「PC(非タッチ)は横向きで遊ぶため対象外」なので、横持ちは正式なサポート対象。
+//
+// 直し方: 帯幅を**論理画面高に対する割合の上限**として定義する。120/876 ≒ 0.137 なので、
+// 0.14 を係数に取ると **縦持ちでは 876×0.14=122.6 → 上限120でクランプ=従来と完全に同値**のまま、
+// 横持ちだけ 338×0.14 ≒ 47px に縮む。**社長が実機で見ている縦持ちの見え方を1pxも変えずに横だけ直す**。
+/** 縦持ちの基準帯幅(px)。上限でもある=これを超えて広がることはない。 */
+export const HORIZON_ACTOR_FADE_PX = 120;
+/** 帯幅が食ってよい論理画面高の割合。120/876≒0.137 より少し上に取り、縦持ちは必ず上限側に張り付かせる。 */
+export const HORIZON_FADE_SCREEN_FRAC = 0.14;
+/** 帯幅の下限(px)。極端に低い画面でも帯が消えて「アクターが地平線でパツンと切れる」のを防ぐ。 */
+export const HORIZON_FADE_MIN_PX = 32;
+
+/**
+ * 論理画面高 → 地平線フェード帯の幅(px)。
+ * 縦持ち(≒876)では 120 に張り付き、横持ち(≒338)では約47pxまで縮む。
+ */
+export const horizonActorFadePx = (screenH: number): number => {
+  if (!Number.isFinite(screenH) || screenH <= 0) return HORIZON_ACTOR_FADE_PX;
+  return Math.max(HORIZON_FADE_MIN_PX, Math.min(HORIZON_ACTOR_FADE_PX, screenH * HORIZON_FADE_SCREEN_FRAC));
+};

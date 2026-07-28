@@ -55,7 +55,7 @@ import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from '
 import { getSpotConeTexture, getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
-import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
+import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
   RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
@@ -268,7 +268,9 @@ const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
 const NEAR_HORIZON_BLUR = 0.5;              // 近いので地平の森より弱いブラー。0.35→0.5(社長指示v0.25.1988)
 const HORIZON_ACTOR_HIDE_OFFSET_PX = 0;
-const HORIZON_ACTOR_FADE_PX = 120;
+// 地平線フェード帯の幅は renderSpec の純関数(論理画面高に応じて縮む・案A v0.25.2334)へ移した。
+// 縦持ちでは従来と同値の120pxに張り付く。?horizonfade=<px> で固定値へ戻せる(診断用)。
+const HORIZON_FADE_OVERRIDE = tsNum('horizonfade', 0);
 // 洋館通路(corridorMode)専用の敵フェード境界(v0.25.2149・社長指示「透明度の境界を調整したかった」):
 // 通路では遠景森レイヤーが非表示なのにレイアウト値が残り、境界が画面中央(実測0.55H)に居座っていた
 // =敵はプレイヤー直前までalpha0(見えない)→「敵が現れない/いきなり出る」の真因。
@@ -4144,7 +4146,10 @@ export class PixiScene {
       this.horizonActorFadePx = CORRIDOR_ACTOR_FADE_PX;
       this.horizonForestFootWorldY = s.camera.y + s.gameBounds.height * CORRIDOR_ACTOR_FADE_TOP_FRAC;
     } else {
-      this.horizonActorFadePx = HORIZON_ACTOR_FADE_PX;
+      // 帯幅は論理画面高に比例(上限=従来の120px)。横持ちPCでは論理画面高が338まで潰れ、
+      // 固定120pxだと帯が画面をほぼ覆って**全アクター(プレイヤー含む)が薄くなる**欠陥があった
+      // (v0.25.2331のテストで実測・社長裁定v0.25.2334=案A)。縦持ちは上限に張り付くので不変。
+      this.horizonActorFadePx = HORIZON_FADE_OVERRIDE > 0 ? HORIZON_FADE_OVERRIDE : horizonActorFadePx(this.screenH);
       this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();
     }
     // ?labpersp の研究所では床専用の強い遠近カーブを使う(屋外は従来定数)。
