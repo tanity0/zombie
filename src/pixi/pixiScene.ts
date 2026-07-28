@@ -23,7 +23,11 @@ import type {
 } from '../types/game';
 import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_JUMP_WINDUP_MS } from '../store/gameStore';
-import { BOSS_RECOVER_TINT } from '../utils/bossScript';
+import {
+  BOSS_RECOVER_TINT,
+  MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
+} from '../utils/bossScript';
+import { idolFanCount } from '../utils/idolScript';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
   URI_SCRIPT_ENABLED, SURIEL_SCRIPT_ENABLED, ACRASIEL_SCRIPT_ENABLED,
@@ -1056,6 +1060,19 @@ const TSUKI_DRAW_BACK_PX = 20;          // 突き溜め: 手元を狙い線の�
 const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
 const THOR_TSUKI_VIS_HALFWIDTH = 15;    // 突きの描画半太さ(当たり判定THOR_TSUKI_HALF_WIDTH=15と一致・社長指示v0.25.1622)
 const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半径(useGameLoop と一致)
+// PACING_PUZZLE.md §6.28-5/7(バッチM54/M56): ミーミル「群体の噛みつき」/ヨルムンガルド「うねり」の
+// 描画用(視覚・useGameLoop のゲームプレイ値と一致させること)。
+const MIMIR_BITE_WINDUP_MS_VIS = 700;   // 噛みつきのwindup時間(useGameLoop MIMIR_BITE_WINDUP_MSと一致)
+const MIMIR_BITE_RADIUS_VIS = 92;       // = GRENADE_BLAST_RADIUS(useGameLoop MIMIR_BITE_RADIUSと一致)
+const JORM_COIL_WINDUP_MS_VIS = 700;    // うねりのwindup時間(useGameLoop JORM_COIL_WINDUP_MSと一致)
+// PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)の描画用(useGameLoop のゲームプレイ値と一致させること)。
+const IDOL_AIM_WINDUP_MS_VIS = 700;     // 狙い撃ちのwindup時間(useGameLoop IDOL_AIM_WINDUP_MSと一致)
+const IDOL_FAN_WINDUP_MS_VIS = 900;     // 連射のwindup時間(useGameLoop IDOL_FAN_WINDUP_MSと一致)
+const IDOL_PUNCH_WINDUP_MS_VIS = 600;   // 至近の殴りのwindup時間(useGameLoop IDOL_PUNCH_WINDUP_MSと一致)
+const IDOL_BULLET_VIS_HALFWIDTH = 8;    // T6線の描画半太さ(叩き台。弾サイズ16=半径8と一致させる)
+const IDOL_FAN_VIS_RANGE = 700;         // T6線の描画上の長さ(px・叩き台)
+const IDOL_PUNCH_RANGE_VIS = 90;        // 至近の殴りの描画長さ(useGameLoop IDOL_PUNCH_RANGEと一致)
+const IDOL_PUNCH_HALF_WIDTH_VIS = 30;   // 至近の殴りの描画半太さ(useGameLoop IDOL_PUNCH_HALF_WIDTHと一致)
 // トールの刀(社長提供・横払い/突きの視認性を上げる追加ビジュアル)。素材(thor-katana、紫背景色キー
 // 透過済み・1254x1254正方形)は切っ先が左上・柄/房が右下の対角線上に描かれている。柄(握り)を
 // フラクション座標で近似し、そこを回転軸として当たり判定ライン方向へ向ける。実機調整前提。
@@ -8577,23 +8594,125 @@ export class PixiScene {
         }
       } else if (e.bossState === 'jump-windup' || e.bossState === 'jump-attack') {
         // ジャンプ攻撃の着地予告(pumpkin系と同じ意匠の赤い楕円)。
+        // §6.28-10「ジャンプ着地円を溜め開始から出す」【変更】: 現行(?thorscript=0)は滞空中のみ表示。
+        // 有効時はwindup開始時に既にaiTargetX/Yがロック済み(useGameLoop.ts側)なので、windup中も表示できる。
         view.sprite.tint = 0xffffff;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        if (e.bossState === 'jump-attack') {
+        const showLandingCircle = e.bossState === 'jump-attack' || (THOR_SCRIPT_ENABLED && e.bossState === 'jump-windup');
+        if (showLandingCircle) {
           const pulse = 0.5 + 0.5 * Math.sin(now / 110);
           const R = THOR_JUMP_RADIUS;
           // 社長指示v0.25.1612「赤の外=安全」: 当たり判定は世界座標の真円(半径R+自機半径)。地面に寝かせた
           // 縦潰し楕円(旧ry=R*0.55)だと上下に立つと赤の外でも食らうので、真円(ry=R)で判定を覆う(判定は不変)。
           o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
           o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+        }
+        if (e.bossState === 'jump-attack') {
           // §5.25 M24: jumpだけ「ダメージ瞬間」=着地(jump-attack終わり)。windupではなく空中フェーズの
           // 残り400msでフラッシュ(仕様どおりjump-windupは対象外)。
           const jumpFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
           if (jumpFlash !== null) view.sprite.tint = jumpFlash;
         }
+      } else if (
+        e.bossState === 'issen-recover' || e.bossState === 'tsuki-recover'
+        || e.bossState === 'harai-recover' || e.bossState === 'jump-recover'
+      ) {
+        // §6.28-10「全技に硬直(recover)を新設」+ 受け入れ条件7(W6・硬直=青白tint)。jump-recoverは
+        // 既存(900ms・無改変)だが、青白tintの配線が未実装だったのでここで一緒に揃える(硬直の存在自体・
+        // 長さ・カウンター可否は何も変えない=表示だけの追補)。
+        view.sprite.tint = BOSS_RECOVER_TINT;
       } else {
         view.sprite.tint = 0xffffff;
       }
+    }
+    // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58): 裏ボス3体(mimir/jormungand/skadi)共通の
+    // 硬直tint(青白・W6)+T4赤フラッシュ(末尾400ms)+新規テレグラフ(T1突進線/T2噛みつき円/T3うねり帯)。
+    // ?<boss>script=0の間は新state名がそもそも発火しない=このブロックは何もせず常に白のまま(旧挙動を完全維持)。
+    if (e.type === 'mimir' || e.type === 'jormungand' || e.type === 'skadi') {
+      const bs = e.bossState;
+      const HIDDEN_BOSS_RECOVER_STATES: string[] = [
+        'burst-recover', 'radial-recover', 'dash-recover', 'laser-recover',
+        'skadi-ice-recover', 'skadi-blade-recover', 'bite-recover', 'coil-recover', 'cage-recover',
+      ];
+      const HIDDEN_BOSS_FLASH_TAIL_STATES: string[] = [
+        'aim-burst', 'aim-radial', 'dash-windup', 'laser-windup', 'bite-windup', 'coil-windup', 'cage-windup',
+        'skadi-ice-windup', 'skadi-blade-windup',
+      ];
+      if (bs && HIDDEN_BOSS_RECOVER_STATES.includes(bs)) {
+        view.sprite.tint = BOSS_RECOVER_TINT;
+      } else if (bs && HIDDEN_BOSS_FLASH_TAIL_STATES.includes(bs)) {
+        const remain = (e.bossStateUntil ?? gameTime) - gameTime;
+        const flash = thorFlashTint(remain, now);
+        view.sprite.tint = flash !== null ? flash : 0xffffff;
+      } else {
+        view.sprite.tint = 0xffffff;
+      }
+      // T1(§6.28-3語彙表): 突進=赤ライン+終点リング(既存の欠陥7=旧はテル無。ジャイアント/ミゲルと同じ意匠)。
+      if (bs === 'dash-windup') {
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        this.drawAngelDashLine(o, cx, cy, tx, ty, now);
+      }
+      // T2: ミーミル「群体の噛みつき」(§6.28-5/§6.28-15) = 足元の即時赤円(giant踏み鳴らしと同じ意匠)。
+      if (e.type === 'mimir' && bs === 'bite-windup') {
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIMIR_BITE_WINDUP_MS_VIS));
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        const R = MIMIR_BITE_RADIUS_VIS;
+        o.ellipse(cx, cy, R, R).fill({ color: 0xff2a2a, alpha: (0.14 + 0.14 * prog) + 0.08 * pulse });
+        o.ellipse(cx, cy, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: (0.35 + 0.35 * prog) + 0.15 * pulse });
+      }
+      // T3: ヨルムンガルド「うねり」(§6.28-7) = 赤い帯(トール払いと同じ意匠・角ばった四角ゾーン)。
+      if (e.type === 'jormungand' && bs === 'coil-windup') {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JORM_COIL_WINDUP_MS_VIS));
+        this.drawAngelZoneCapsule(o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
+      }
+    }
+    // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)。★実機到達経路は未決(?idolnow=1の
+    // デバッグ召喚のみ)だが、台本自体は実装済みなので描画も揃える。武器絵は無し(本体絵にハンドガンを
+    // 描き込み済み)。銃口フラッシュはT6線の描画自体が担う(強glowは使わない・小glow相当の軽い描画)。
+    if (e.type === 'idol') {
+      const bs = e.bossState;
+      const IDOL_RECOVER_STATES: string[] = ['idol-aim-recover', 'idol-fan-recover', 'idol-roll-recover', 'idol-punch-recover'];
+      const IDOL_FLASH_TAIL_STATES: string[] = ['idol-aim-windup', 'idol-fan-windup', 'idol-roll-windup', 'idol-punch-windup'];
+      if (bs && IDOL_RECOVER_STATES.includes(bs)) {
+        view.sprite.tint = BOSS_RECOVER_TINT;
+      } else if (bs && IDOL_FLASH_TAIL_STATES.includes(bs)) {
+        const remain = (e.bossStateUntil ?? gameTime) - gameTime;
+        const flash = thorFlashTint(remain, now);
+        view.sprite.tint = flash !== null ? flash : 0xffffff;
+      } else {
+        view.sprite.tint = 0xffffff;
+      }
+      // T6: 狙い撃ち(終点リング無し=遠隔が通る・本体は来ない)。
+      if (bs === 'idol-aim-windup') {
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_AIM_WINDUP_MS_VIS));
+        const pl = useGameStore.getState().player;
+        const px = pl.x + pl.width / 2, py = pl.y + pl.height / 2;
+        this.drawAngelBeamLine(o, cx, cy, px, py, IDOL_BULLET_VIS_HALFWIDTH, prog, now);
+      }
+      // T6が扇状に3本(Phase2で5本): 連射。
+      if (bs === 'idol-fan-windup') {
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_FAN_WINDUP_MS_VIS));
+        const pl = useGameStore.getState().player;
+        const ang = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
+        const count = idolFanCount(e.bossPhase === 2 ? 2 : 1);
+        const spreadStep = 0.14;
+        const half = (count - 1) / 2;
+        for (let k = 0; k < count; k++) {
+          const a = ang + (k - half) * spreadStep;
+          this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, IDOL_BULLET_VIS_HALFWIDTH, prog, now);
+        }
+      }
+      // T3(短): 至近の殴り。
+      if (bs === 'idol-punch-windup') {
+        const pl = useGameStore.getState().player;
+        const ang = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
+        const tx = cx + Math.cos(ang) * IDOL_PUNCH_RANGE_VIS, ty = cy + Math.sin(ang) * IDOL_PUNCH_RANGE_VIS;
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_PUNCH_WINDUP_MS_VIS));
+        this.drawAngelZoneCapsule(o, cx, cy, tx, ty, IDOL_PUNCH_HALF_WIDTH_VIS, prog, now);
+      }
+      // 離脱ローリング: T4のみ(図形なし・無敵も無し=詰めた側の報酬・§6.28-20)。
     }
     // ゲート2ボス6体(ミゲル/ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)共通の予告描画+tint。
     // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): §6.26で確立した4チャンネル分解を継承。
@@ -8940,6 +9059,18 @@ export class PixiScene {
       // §6.28(バッチM55/M58/M61-63): ジブリル/ラフィ/ウリ/スリィエル/アクラシエルも同じ合図(社長裁定
       // 6.26-9 #4を継承)。Phase2以上=橙、0.3未満は常に赤(アクラシエルのPhase3閾値30%と一致するため
       // 専用の第3色は不要=段階が上がるほど赤に近づく自然な見た目になる)。
+      barColor = pct < 0.3 ? STATUS_RED : (e.bossPhase >= 2 ? GIANT_PHASE2_BAR_COLOR : STATUS_GREEN);
+      if (e.bossPhaseFlashUntil !== undefined && now < e.bossPhaseFlashUntil) {
+        barColor = Math.sin(now / 60) > 0 ? 0xffffff : barColor;
+      }
+    } else if (
+      ((e.type === 'mimir' && MIMIR_SCRIPT_ENABLED) || (e.type === 'jormungand' && JORMUNGAND_SCRIPT_ENABLED)
+        || (e.type === 'skadi' && SKADI_SCRIPT_ENABLED) || (e.type === 'thor' && THOR_SCRIPT_ENABLED)
+        || e.type === 'idol')
+      && e.bossPhase !== undefined
+    ) {
+      // §6.28-5/7/9/10(バッチM54/M56/M58/M59): 裏ボス4体も同じ合図(社長裁定6.26-9 #4を継承)。
+      // スカジの3相もPhase2以上=橙のまま(0.3未満で赤へ・アクラシエルの3相と同型の扱い)。
       barColor = pct < 0.3 ? STATUS_RED : (e.bossPhase >= 2 ? GIANT_PHASE2_BAR_COLOR : STATUS_GREEN);
       if (e.bossPhaseFlashUntil !== undefined && now < e.bossPhaseFlashUntil) {
         barColor = Math.sin(now / 60) > 0 ? 0xffffff : barColor;

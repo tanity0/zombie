@@ -1,5 +1,83 @@
 # Development Log
 
+## v0.25.2377 — M54/M56/M58/M59/M64【ロットL3】裏ボス4体+idolのソウル式台本【2026-07-29 03:35 JST】
+- **担当範囲(§6.28-21のロット表): L3=裏ボス4体(ミーミル/ヨルムンガルド/スカジ/トール)+idol**。
+  L1(共通基盤=`bossScript.ts`)/L2(ゲート2ボス6体)は対象外。ジャイアント/ゲート2ボス6体/グレン・
+  未確認変異体の挙動は1バイトも変えていない。
+- **純関数化(実装精度の規律4)**: `src/utils/{mimir,jormungand,skadi,thor,idol}Script.ts` を新設
+  (帯/フェーズ/技選択/連携の純関数。giantScript.ts/L2の各`*Script.ts`と同じ流儀)+同コミットで
+  `*.test.ts`(mimir18/jormungand18/skadi17/thor20/idol14件=計87件)。配線(状態機械・当たり判定・演出)は
+  `src/hooks/useGameLoop.ts`の既存「裏ボス専用ブロック」(mimir/jormungand/skadi/thorが共有する壁時計系
+  ステート機械)を拡張。**新規に別tick関数へ切り出す(angelBossTick.ts方式)のではなく、既存のif/elseチェーンへ
+  `*-recover`/新技の分岐を追加する形にした**(giant式=gameStore.tsの専用ブロックと同じ据え置き方針。
+  この4体は元々1つの巨大な共有ステート機械で書かれており、L2のような「ボスごとに独立したtick関数」への
+  分離は今回のスコープ外の大規模リファクタになるため)。
+- **フォールバック**: `MIMIR_SCRIPT_ENABLED`/`JORMUNGAND_SCRIPT_ENABLED`/`SKADI_SCRIPT_ENABLED`/
+  `THOR_SCRIPT_ENABLED`を`src/utils/bossScript.ts`に集約(`?<boss>script=0`)し、`useGameLoop.ts`と
+  `pixiScene.ts`の両方が同じ値を参照(ロジックと描画のゲートが食い違わないように単一の出所にした)。
+  無効時は硬直・帯ゲート・新技が一切発火せず、旧来の3択(dash/burst/radial固定確率)がそのまま動く。
+- **W6(硬直=反撃窓)を裏ボス4体へ新設**: 弾3連/全方位/突進/レーザー/氷塊/氷刃の各アクティブ終了後に
+  `*-recover`(ボスごとに300〜900ms)を追加。完全静止+青白tint(`BOSS_RECOVER_TINT`)+次技抽選なし。
+  **W7(カウンター)は既にM52(L1)で裏ボス3体のwindup/dashへ開放済み**だったので、新設した各recoverも
+  `HIDDEN_BOSS_COUNTER_RECOVERS`へ追加して同じ作法で開放した(トールはrecover毎に個別の
+  `thorBodyOverlapNow`+`thorCounterHit`チェックを追加=元々thorだけ専用のカウンター経路のため)。
+- **T1(突進の赤ライン+終点リング)を新設**: mimir/jormungand/skadi共通の突進は現状「テル無し」だった
+  (§6.28-1-3欠陥7)。狙い方向を**windup開始の瞬間にロック**する(`beginHiddenDash`)よう変更——旧実装は
+  windup終了時に再照準していたため、テレグラフをリード全域(3秒)で表示すると判定とズレる(掟W4違反)。
+  ロック位置を前倒ししただけで、突進の速度・最大距離・弱いホーミングは無改変。`?<boss>script=0`時は
+  旧来どおりwindup終了時の再照準に戻る(完全フォールバック)。
+- **ミーミル(§6.28-5)**: 「群体の噛みつき」(§6.28-15裁定で「踏み潰し」から改名=役割/図形/リード/硬直は
+  不変・意味だけ「本体直下の群体が一斉に噛む」へ)を密着帯(≤200px)専用の新技として追加
+  (`bite-windup`→`bite-recover`。半径92=`GRENADE_BLAST_RADIUS`・ジャイアントの踏み鳴らしと同値)。
+  レーザーの抽選確率をPhase2で0.34→0.50。Phase2限定2連携(突進→噛みつき/全方位→レーザー・確率40%)。
+  PACING_PUZZLE.md §6.28-5本文の「踏み潰し」表記も「群体の噛みつき」へ書き換えた。
+- **ヨルムンガルド(§6.28-7)**: 「うねり」(近接帯・Phase2限定。THOR_HARAI_RANGE/HALF_WIDTH流用=
+  ジャイアント薙ぎ払いと同値)を追加。**螺旋の回転方向を常に時計回りで固定**する不変条件を
+  `jormRadialSpinAngle(volleyIndex, spinMagnitude)`として実装——生の定数`JORM_RADIAL_SPIN`の符号を
+  `Math.abs`で正に丸めてから回数を掛けるため、定数側の符号ミスがあっても実際の回転方向が構造的に
+  反転できない(単体テストでも固定)。Phase2限定2連携(突進→うねり/扇→螺旋・確率50%)。
+  ★未決記録: Phase1の近帯(0〜320px)はうねりがPhase2限定のため技が無い(§6.28-7本文どおりだが
+  §6.28-13受け入れ条件①を字義どおり読むと矛盾=`jormungandScript.test.ts`に既知のギャップとして明記)。
+- **スカジ(§6.28-9)**: 氷塊/氷刃に450ms静止windupを新設(`skadi-ice-windup`/`skadi-blade-windup`。
+  現状は設置ループへ即突入していた)。3相化(70%/35%)。Phase3限定「氷結の檻」(プレイヤー中心・半径180の
+  リング上に氷塊8個・1箇所空ける=ジブリル聖別と同じ「N+1分割の1つを空ける」作法)を追加。
+  Phase2以降の2連携(氷塊→氷刃/突進→氷塊・Phase2=50%/Phase3=60%)。
+- **トール(§6.28-10)**: 一閃/突き/払いに硬直900/600/700msを新設(`issen-recover`/`tsuki-recover`/
+  `harai-recover`)。硬直明けに`pickThorCombo`で**立ち位置(≤250px)から次技を分岐**
+  (払い→払い(近)/突き(遠)、一閃→払い(近)/連携なし(遠)。突き起点・ジャンプ起点は連携しない=
+  覚えられる上限2組のみ)。確率はPhase2=50%/Phase3=70%(閾値40%は既存`THOR_LOWHP_FRAC`を流用)。
+  ジャンプ着地円を**溜め開始時にロック**して表示するよう変更(旧は滞空中のみ可視=現行700msのjump-windup中は
+  地面に何も出ない欠陥)。**トールの既存社長指定値(THOR_ISSEN_WINDUP_MS=3000/射程/半幅/追従率/旋回/
+  バックステップ/スロー歩き/ジャンプwindup700ms含む)は1つも変更していない。**
+  ★未決記録: 設計書§6.28-10の表は「ジャンプ1000ms【変更:現行700ms】」とも書いているが、実装依頼の
+  明記「windup長は不変」を優先し700msを維持した(食い違いをPACING_PUZZLE.mdに記録)。
+- **idol(§6.28-20)**: `src/utils/idolScript.ts`+`useGameLoop.ts`に完全新規の独立ステート機械を追加
+  (mimir系の`bossRef`は共有しない。常にプレイヤーから離れるキティング+距離帯で技が入れ替わる=
+  遠(>340)狙い撃ち/中(140-340)連射(Phase2で3→5本)/近(<140)離脱ローリング(無敵なし)・至近の殴り)。
+  ★未決記録(配線): campaign.tsの`hiddenBoss`機構に乗せる設計だが、stage-2は`theme:'lab'`のため
+  裏ボス共通ブロックの発火条件自体が`!labTheme`を要求し、通常プレイでは到達しない
+  (stage-ex1のゲート2=★未決6と同型)。加えてlabMap.tsの12室は既存用途で埋まっており「反対方面の
+  最奥」に充てる空きが無い。`campaign.ts`のテーマ判定・`labMap.ts`の地形はどちらも作り替えず、
+  実機/自動検証用に`?idolnow=1`の強制召喚のみ用意した。idolのカウンター(W7)は未配線
+  (デバッグ専用スコープのため見送り=★未決に記録)。
+- **PixiJS描画**: `pixiScene.ts`に硬直の青白tint+T4赤フラッシュ+T1突進線+T2噛みつき円+T3うねり帯+
+  idol専用テレグラフを追加。HPバーのフェーズ色分岐(緑→橙・0.3未満は赤)を裏ボス4体+idolへ拡張
+  (`GIANT_PHASE2_BAR_COLOR`を再利用・新しい色は増やしていない)。**強glowは1つも増やしていない**
+  (すべて共有Graphicsへの塗り+`sprite.tint`代入のみ)。
+- 検証: `npm run typecheck`(0)・`npm run lint`(0 error)・新規5ファイルのテスト87件全green・
+  `src/utils/constitution.test.ts`(13件)green・`vitest related`(useGameLoop.ts/pixiScene.ts絡みで
+  `playtest.test.ts`含む既存関連スイート全green)。`npm test`/`npm run build`は社長指示が無いため未実行
+  (CLAUDE.md方針どおり)。
+- 負荷スコア: **2/10**(§6.28-12の見積りどおり。新規描画は共有Graphicsへの図形塗りと`sprite.tint`代入のみ・
+  強glow/新規描画方式ゼロ。シミュ側は1体・毎フレーム定数時間の状態機械分岐が増えるだけ)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触なし(深層裏ボス/隠しボスの技構成・
+  硬直・フェーズの変更のみで、通常湧き・コマ構造・CD値・ランク査定は無変更)。
+- 変更ファイル: `src/utils/{mimir,jormungand,skadi,thor,idol}Script.ts`(新規+テスト)、
+  `src/utils/bossScript.ts`(4フラグ追加)、`src/hooks/useGameLoop.ts`(裏ボス共通ブロック拡張+idol新規ブロック)、
+  `src/pixi/pixiScene.ts`(テレグラフ+HPバー色)、`src/types/game.ts`(bossState新規値+CD用フィールド)、
+  `PACING_PUZZLE.md`(§6.28-5訂正+実装順ステータス+★未決)。他ボス(ジャイアント/ゲート2ボス6体/
+  グレン・未確認変異体)の実装・数値・テストは無改変。
+
 ## v0.25.2376 — M53/M55/M57/M61/M62/M63 差し戻し対応: ウリの図形=判定の不一致とジブリルのランタン②を修正【2026-07-29 02:37 JST】
 - **設計チャットの検証で2点差し戻し(v0.25.2375のL2実装に対する指摘)。他は一切触っていない。**
 - **修正1(必須): ウリの大薙ぎの図形が判定と食い違っていた。**

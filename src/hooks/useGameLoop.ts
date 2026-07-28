@@ -110,7 +110,21 @@ import {
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN
 } from '../utils/enemyUtils';
-import { isCounterablePhase, BOSS_ALERT_SFX_KEY } from '../utils/bossScript';
+import {
+  isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
+  MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
+} from '../utils/bossScript';
+import {
+  mimirPhaseForHealth, pickMimirMove, pickMimirCombo, type MimirMove,
+} from '../utils/mimirScript';
+import {
+  jormungandPhaseForHealth, pickJormungandMove, pickJormungandCombo, jormRadialSpinAngle, type JormungandMove,
+} from '../utils/jormungandScript';
+import {
+  skadiPhaseForHealth, pickSkadiMove, pickSkadiCombo, type SkadiMove,
+} from '../utils/skadiScript';
+import { pickThorCombo, thorPhaseForHealth, pickThorPool } from '../utils/thorScript';
+import { pickIdolMove, idolPhaseForHealth, idolFanCount, type IdolMove } from '../utils/idolScript';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
@@ -862,7 +876,87 @@ const THOR_JUMP_RADIUS = 70;                 // 着地爆風半径(pumpkinの54�
 const THOR_JUMP_RECOVER_MS = 900;            // 着地後の硬直
 
 const THOR_COUNTER_LEAP_MS = 260;            // カウンターを受けた時の後退ジャンプ所要時間(社長指示)
+
+// PACING_PUZZLE.md §6.28-5/7/9/10(バッチM54/M56/M58/M59・ロットL3): 裏ボス4体(mimir/jormungand/
+// skadi/thor)のソウル式化=硬直(recover)新設+新技+HP段階+分岐連携。giant(§6.26)/L2(§6.28-4〜19)と
+// 同じ4チャンネル分解(windup/active/recover)を、既存の壁時計系ステート機械へ「追加」する形で乗せる。
+// フォールバック: ?<boss>script=0 で個別に旧挙動(硬直なし・新技なし・帯ゲートなし)へ戻せる
+// (L2/giantと同じ作法)。既定は有効。フラグ本体は src/utils/bossScript.ts からimport(pixiScene.ts
+// 側の描画ゲート=HPバー色/テレグラフと単一の出所を共有するため。上のimport文を参照)。
+// フェーズ移行の点滅(社長裁定6.26-9 #4の踏襲。HPバー色の変化に気づかせる一瞬の点滅。値=GIANT_PHASE_FLASH_MSと同一)。
+const HIDDEN_BOSS_PHASE_FLASH_MS = 1200;
+
+// 硬直(recover)の実効ms(§6.28-5/7/9・裏ボスは壁時計系=このmsがそのまま実効)。硬直中は完全静止+
+// 青白tint(BOSS_RECOVER_TINT)+次技抽選なし(W6)。ボスごとに値が違う技はボス別定数を分ける。
+const MIMIR_LASER_RECOVER_MS = 900;   // ミーミル レーザーの硬直
+const BOSS_DASH_RECOVER_MS = 800;     // 突進の硬直(mimir/jormungand/skadi共通・§6.28-5/7/9で同値)
+const MIMIR_RADIAL_RECOVER_MS = 500;  // ミーミル 全方位の硬直
+const MIMIR_BURST_RECOVER_MS = 300;   // ミーミル 弾3連の硬直
+const JORM_RADIAL_RECOVER_MS = 900;   // ヨルムンガルド 螺旋全方位の硬直
+const JORM_BURST_RECOVER_MS = 500;    // ヨルムンガルド 3-way扇の硬直
+const SKADI_PRE_WINDUP_MS = 450;      // スカジ 氷塊/氷刃 共通の設置前windup(壁時計系=このmsがそのまま実効・§6.28-9【新設】)
+const SKADI_ICE_RECOVER_MS = 600;     // スカジ 氷塊の硬直
+const SKADI_BLADE_RECOVER_MS = 600;   // スカジ 氷刃の硬直
+const SKADI_RADIAL_RECOVER_MS = 500;  // スカジ 全方位の硬直
+const SKADI_BURST_RECOVER_MS = 300;   // スカジ 弾3連の硬直
+
+// ミーミル「群体の噛みつき」(§6.28-5・密着専用の新技)。§6.28-15裁定で「踏み潰し」から改名=役割
+// (密着帯を塞ぐ)・図形(T2即時円)・リード・硬直は不変、意味だけ「本体直下の群体が一斉に噛む」へ差し替え。
+const MIMIR_BITE_WINDUP_MS = 700;
+const MIMIR_BITE_RECOVER_MS = 800;
+const MIMIR_BITE_CD_MS = 6000;
+const MIMIR_BITE_RADIUS = GRENADE_BLAST_RADIUS; // = 92(社長裁定6.26-9 #3と同じ値・同じ意味を流用)
+
+// ヨルムンガルド「うねり」(§6.28-7・近接専用の新技・Phase2限定)。長さ/半幅はTHOR_HARAI_RANGE/
+// HALF_WIDTHをそのまま流用(=ジャイアントの薙ぎ払いと同値・同じ意味・§6.28-7で明記)。
+const JORM_COIL_WINDUP_MS = 700;
+const JORM_COIL_ACTIVE_MS = THOR_HARAI_ACTIVE_MS; // 220ms(既存の帯判定と同じ実行秒数を流用)
+const JORM_COIL_RECOVER_MS = 700;
+const JORM_COIL_CD_MS = 7000;
+const JORM_COIL_RANGE = THOR_HARAI_RANGE;
+const JORM_COIL_HALF_WIDTH = THOR_HARAI_HALF_WIDTH;
+
+// スカジ「氷結の檻」(§6.28-9・全帯の大技・Phase3限定)。プレイヤーを中心とした半径180pxのリング上に
+// 氷塊8個・1箇所だけ空ける(設置の瞬間に確定=掟W4。ジブリル聖別=JIBRIL_CONSECRATE_*と同じ作法)。
+const SKADI_CAGE_WINDUP_MS = 1000;
+const SKADI_CAGE_RECOVER_MS = 900;
+const SKADI_CAGE_CD_MS = 12000;
+const SKADI_CAGE_RING_RADIUS = 180;
+const SKADI_CAGE_COUNT = 8;
+
+// トール(§6.28-10): 全技に硬直を新設。既存の社長指定値(リード/射程/半幅/追従率/旋回/バックステップ/
+// スロー歩き)は1つも変えない。足すのは硬直・SE・連携・フェーズだけ。
+const THOR_ISSEN_RECOVER_MS = 900;
+const THOR_TSUKI_RECOVER_MS = 600;
+const THOR_HARAI_RECOVER_MS = 700;
+
+// PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)。★未決(下記コメント参照)により
+// campaign.tsのhiddenBoss機構は通常プレイでは`!labTheme`ゲートに阻まれて到達しない(useGameLoop.ts
+// 側の既存テーマ判定=campaign.tsの再設計はしない)。実機/自動検証用に?idolnow=1で強制召喚できるように
+// するだけに留める(fromEvent的な単発デバッグ召喚。giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
+const FORCE_IDOL = evParam('idolnow') === '1';
+// idolのステータス(width/height/speed/health/damage)はenemyUtils.tsのENEMY_STATS.idolを唯一の出所とする
+// (ここでは複製しない)。以下は台本(帯/技)のms・半径のみ。
+const IDOL_AIM_WINDUP_MS = 700;
+const IDOL_AIM_RECOVER_MS = 500;
+const IDOL_FAN_WINDUP_MS = 900;
+const IDOL_FAN_RECOVER_MS = 600;
+// ★叩き台(設計書に実行秒数の列が無い・§6.28-14と同型の未決): ローリングの実行(移動)所要時間と距離。
+const IDOL_ROLL_WINDUP_MS = 400;
+const IDOL_ROLL_ACTIVE_MS = 300;
+const IDOL_ROLL_DIST = 140;
+const IDOL_ROLL_RECOVER_MS = 800;
+const IDOL_PUNCH_WINDUP_MS = 600;
+const IDOL_PUNCH_RECOVER_MS = 900;
+const IDOL_PUNCH_RANGE = 90;    // T3帯(短)の長さ=近帯(<140)の内側で完結させる叩き台
+const IDOL_PUNCH_HALF_WIDTH = 30;
+const IDOL_ACTION_MIN_MS = BOSS_ACTION_MIN_MS; // 既存の一般行動ゲートを流用(新しい数字を発明しない)
+const IDOL_ACTION_MAX_MS = BOSS_ACTION_MAX_MS;
+// 弾の速度/ダメージは createEnemyProjectile が enemyUtils.ts の getEnemyFireProfile('idol') から
+// 引く(既に裏ボス/天使共通の320/20が登録済み・§6.28-20★配線)。ここでは複製しない。
+
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
+let idolCtrlErrLogged = false;                       // idol制御例外のログも初回だけ
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // (屋内の固定敵の「画面外」復帰余白 LAB_RETURN_HOME_MARGIN は src/utils/directorTick.ts へ移設)
@@ -1188,6 +1282,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   );
   // ?gateboss=1 診断: ラン開始後に1回だけそのステージのゲート2ボスをforce-spawnしたかどうか。
   const gatebossForceRef = useRef(false);
+  // ?idolnow=1 診断(§6.28-20・バッチM64): ラン開始後に1回だけidolをforce-spawnしたかどうか。
+  const idolForceRef = useRef(false);
   // ミゲル専用「たまにゆっくり歩く」タイマー(社長指示・トールのthorNextSlowWalkAt/thorSlowWalkUntil相当)。
   // ミゲルは bossRef を使わない独立ブロックのため専用の小さな ref を持つ。
   const angelStateRef = useRef(createAngelBossState()); // 天使(ゲート2ボス)3体のラン内状態(M26 Step3でangelBossTick.tsへ抽出)
@@ -2060,6 +2156,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
+          idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           angelStateRef.current = createAngelBossState(); // 天使(ゲート2ボス)状態も新ランでリセット(M26 Step3)
           // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
           botTickRef.current = 0;
@@ -4022,6 +4119,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             let chasing = false;
             let despawn = false;
 
+            // PACING_PUZZLE.md §6.28-5/7/9/10(バッチM54/M56/M58/M59): 裏ボス4体共通のHP段階トラッカー。
+            // giantPhase(giant専用)とは別に既存の bossPhase(L2で新設・汎用)を流用する。フェーズ移行の
+            // 瞬間だけ HIDDEN_BOSS_PHASE_FLASH_MS だけHPバーを点滅させる(社長裁定6.26-9 #4の踏襲)。
+            // 該当ボスのスクリプトが無効(?<boss>script=0)の間は phase=1 固定=旧挙動(フェーズなし)。
+            {
+              const hpFrac0 = boss.maxHealth > 0 ? boss.health / boss.maxHealth : 1;
+              let hiddenPhase: 1 | 2 | 3 = 1;
+              if (boss.type === 'mimir' && MIMIR_SCRIPT_ENABLED) hiddenPhase = mimirPhaseForHealth(hpFrac0);
+              else if (boss.type === 'jormungand' && JORMUNGAND_SCRIPT_ENABLED) hiddenPhase = jormungandPhaseForHealth(hpFrac0);
+              else if (boss.type === 'skadi' && SKADI_SCRIPT_ENABLED) hiddenPhase = skadiPhaseForHealth(hpFrac0);
+              else if (boss.type === 'thor' && THOR_SCRIPT_ENABLED) hiddenPhase = thorPhaseForHealth(hpFrac0);
+              if (phaseJustChanged(boss.bossPhase, hiddenPhase)) {
+                patch.bossPhaseFlashUntil = newGameTime + HIDDEN_BOSS_PHASE_FLASH_MS;
+              }
+              patch.bossPhase = hiddenPhase;
+            }
+
             // トール専用: 弾を持たないため、画面外からの攻撃(この時点のonScreen=false)を連続で
             // 被弾したらジャンプ攻撃で間合いを詰める(社長修正指示)。他の裏ボスでは無害(参照されない)。
             if (boss.type === 'thor') {
@@ -4232,13 +4346,144 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.bossNextActionAt = nextActionDelay();
                 patch.bossBurstLeft = 0;
               };
-              // W7の対象状態一覧(§6.28-13 #8): 弾3連/全方位16発/ミーミルのレーザーの各windup(静止/後退り)、
-              // および突進の実行中(active=その技の判定に委ねる=ここで直接カウンターを判定する)。
-              // どのボスも硬直(recover)状態をまだ持たない(硬直の新設はL3の各台本の仕事)ため、対象は
-              // windup+dash活性のみ(isCounterablePhaseのrecover側は空配列=現時点では常にfalse)。
-              const HIDDEN_BOSS_COUNTER_WINDUPS = ['aim-burst', 'aim-radial', 'dash-windup', 'laser-windup'];
+              // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58): このボスのスクリプトが有効か
+              // (?<boss>script=0で個別に旧挙動へ戻す・§6.28-12のフォールバック)。
+              const hiddenScriptOn = (boss.type === 'mimir' && MIMIR_SCRIPT_ENABLED)
+                || (boss.type === 'jormungand' && JORMUNGAND_SCRIPT_ENABLED)
+                || (boss.type === 'skadi' && SKADI_SCRIPT_ENABLED);
+              // 突進の狙い方向をwindup"開始"の瞬間にロックする共通ヘルパ(mimir/jormungand/skadi共通)。
+              // §6.28-13受け入れ条件10(判定と同寸)のため: T1テレグラフをリード全域(3秒)で表示するには、
+              // 表示開始時点で終点が確定していなければならない(掟W4=テルを出したら狙いをズラさない)。
+              // 旧実装はwindup"終了"時に再照準していた(=このヘルパを呼ばない。dash-windup側で従来どおり
+              // 再照準する)。ロック位置を前倒しするだけで、突進そのものの速度/最大時間/弱いホーミングは無改変。
+              const beginHiddenDash = () => {
+                const ddx0 = chaseTgt.x - bcx, ddy0 = chaseTgt.y - bcy;
+                const ddl0 = Math.hypot(ddx0, ddy0) || 1;
+                bs.dashDirX = ddx0 / ddl0; bs.dashDirY = ddy0 / ddl0;
+                const travel = speed * BOSS_DASH_SPEED_MULT * (BOSS_DASH_MS / 1000);
+                patch.bossState = 'dash-windup';
+                patch.bossStateUntil = newGameTime + BOSS_DASH_WINDUP_MS;
+                patch.aiFromX = bcx; patch.aiFromY = bcy;
+                patch.aiTargetX = bcx + bs.dashDirX * travel; patch.aiTargetY = bcy + bs.dashDirY * travel;
+              };
+              const beginMimirMove = (move: MimirMove) => {
+                playSfx(BOSS_ALERT_SFX_KEY);
+                if (move === 'bite') {
+                  patch.bossState = 'bite-windup';
+                  patch.bossStateUntil = newGameTime + MIMIR_BITE_WINDUP_MS;
+                } else if (move === 'laser') {
+                  patch.bossState = 'laser-windup';
+                  patch.bossStateUntil = newGameTime + MIMIR_LASER_WINDUP_MS;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+                } else if (move === 'dash') {
+                  beginHiddenDash();
+                } else if (move === 'burst') {
+                  patch.bossState = 'aim-burst';
+                  patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS;
+                } else {
+                  patch.bossState = 'aim-radial';
+                  patch.bossStateUntil = newGameTime + BOSS_AIM_RADIAL_MS;
+                }
+              };
+              const beginJormungandMove = (move: JormungandMove) => {
+                playSfx(BOSS_ALERT_SFX_KEY);
+                if (move === 'coil') {
+                  patch.bossState = 'coil-windup';
+                  patch.bossStateUntil = newGameTime + JORM_COIL_WINDUP_MS;
+                  const rx = bcx - pcx, ry = bcy - pcy;
+                  const rl = Math.hypot(rx, ry) || 1;
+                  const tx0 = -ry / rl, ty0 = rx / rl; // 接線(90度回転)の単位ベクトル=薙ぐ帯の向き(トール払いと同式)
+                  patch.aiFromX = pcx - tx0 * (JORM_COIL_RANGE / 2);
+                  patch.aiFromY = pcy - ty0 * (JORM_COIL_RANGE / 2);
+                  patch.aiTargetX = pcx + tx0 * (JORM_COIL_RANGE / 2);
+                  patch.aiTargetY = pcy + ty0 * (JORM_COIL_RANGE / 2);
+                } else if (move === 'dash') {
+                  beginHiddenDash();
+                } else if (move === 'burst') {
+                  patch.bossState = 'aim-burst';
+                  patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS;
+                } else {
+                  patch.bossState = 'aim-radial';
+                  patch.bossStateUntil = newGameTime + BOSS_AIM_RADIAL_MS;
+                }
+              };
+              const beginSkadiMove = (move: SkadiMove) => {
+                playSfx(BOSS_ALERT_SFX_KEY);
+                if (move === 'ice') {
+                  patch.bossState = 'skadi-ice-windup';
+                  patch.bossStateUntil = newGameTime + SKADI_PRE_WINDUP_MS;
+                } else if (move === 'blade') {
+                  patch.bossState = 'skadi-blade-windup';
+                  patch.bossStateUntil = newGameTime + SKADI_PRE_WINDUP_MS;
+                } else if (move === 'cage') {
+                  patch.bossState = 'cage-windup';
+                  patch.bossStateUntil = newGameTime + SKADI_CAGE_WINDUP_MS;
+                } else if (move === 'dash') {
+                  beginHiddenDash();
+                } else if (move === 'burst') {
+                  patch.bossState = 'aim-burst';
+                  patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS;
+                } else {
+                  patch.bossState = 'aim-radial';
+                  patch.bossStateUntil = newGameTime + BOSS_AIM_RADIAL_MS;
+                }
+              };
+              // 弾3連/全方位/突進(burst/radial/dash)は3ボス共通の技名なので、硬直明けの連携判定も
+              // 共通ヘルパへまとめる(justFinishedだけが違う)。呼び出し側は硬直の時間切れを確認済みで呼ぶこと。
+              const hiddenRecoverAdvance = (justFinished: 'burst' | 'radial' | 'dash') => {
+                const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                let combo: MimirMove | JormungandMove | SkadiMove | null = null;
+                if (boss.type === 'mimir' && MIMIR_SCRIPT_ENABLED) combo = pickMimirCombo(justFinished, (boss.bossPhase ?? 1) as 1 | 2, dist);
+                else if (boss.type === 'jormungand' && JORMUNGAND_SCRIPT_ENABLED) combo = pickJormungandCombo(justFinished, (boss.bossPhase ?? 1) as 1 | 2, dist);
+                else if (boss.type === 'skadi' && SKADI_SCRIPT_ENABLED) combo = pickSkadiCombo(justFinished, (boss.bossPhase ?? 1) as 1 | 2 | 3, dist);
+                if (combo && boss.type === 'mimir') beginMimirMove(combo as MimirMove);
+                else if (combo && boss.type === 'jormungand') beginJormungandMove(combo as JormungandMove);
+                else if (combo && boss.type === 'skadi') beginSkadiMove(combo as SkadiMove);
+                else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+              };
+              // トール(§6.28-10): 一閃/突き/払いのwindup開始(方向ロック等)を1箇所へ集約。通常のchase抽選と
+              // 硬直明けの分岐連携(pickThorCombo)の両方から呼ぶ(値は既存のまま・SEのみ新設・THOR_SCRIPT_ENABLED時)。
+              const beginThorMove = (move: 'issen' | 'tsuki' | 'harai') => {
+                if (THOR_SCRIPT_ENABLED) playSfx(BOSS_ALERT_SFX_KEY);
+                if (move === 'issen') {
+                  patch.bossState = 'issen-windup';
+                  patch.bossStateUntil = newGameTime + THOR_ISSEN_WINDUP_MS;
+                  const ddx0 = pcx - bcx, ddy0 = pcy - bcy;
+                  const ddl0 = Math.hypot(ddx0, ddy0) || 1;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = bcx + (ddx0 / ddl0) * THOR_ISSEN_RANGE;
+                  patch.aiTargetY = bcy + (ddy0 / ddl0) * THOR_ISSEN_RANGE;
+                } else if (move === 'tsuki') {
+                  patch.bossState = 'tsuki-windup';
+                  patch.bossStateUntil = newGameTime + THOR_TSUKI_WINDUP_MS;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+                } else {
+                  patch.bossState = 'harai-windup';
+                  patch.bossStateUntil = newGameTime + THOR_HARAI_WINDUP_MS;
+                  const rx = bcx - pcx, ry = bcy - pcy;
+                  const rl = Math.hypot(rx, ry) || 1;
+                  const tx0 = -ry / rl, ty0 = rx / rl;
+                  patch.aiFromX = pcx - tx0 * (THOR_HARAI_RANGE / 2);
+                  patch.aiFromY = pcy - ty0 * (THOR_HARAI_RANGE / 2);
+                  patch.aiTargetX = pcx + tx0 * (THOR_HARAI_RANGE / 2);
+                  patch.aiTargetY = pcy + ty0 * (THOR_HARAI_RANGE / 2);
+                }
+              };
+              // W7の対象状態一覧(§6.28-13 #8/§6.28-21★3): 弾3連/全方位16発/ミーミルのレーザーの各windup
+              // (静止/後退り)、および突進の実行中(active=その技の判定に委ねる=ここで直接カウンターを判定する)。
+              // ロットL3(バッチM54/M56/M58)で硬直(recover)を新設したので、W7「硬直中の接触もカウンター可」に
+              // 従い、新設した各recoverもここへ加える(§6.28-3 W7)。新規windup(噛みつき/うねり/氷結の檻)も同様。
+              const HIDDEN_BOSS_COUNTER_WINDUPS = [
+                'aim-burst', 'aim-radial', 'dash-windup', 'laser-windup', 'bite-windup', 'coil-windup', 'cage-windup',
+              ];
+              const HIDDEN_BOSS_COUNTER_RECOVERS = [
+                'burst-recover', 'radial-recover', 'dash-recover', 'laser-recover',
+                'skadi-ice-recover', 'skadi-blade-recover', 'bite-recover', 'coil-recover', 'cage-recover',
+              ];
               const hiddenBossCounterableNow = BOSS_COUNTER_ENABLED && boss.type !== 'thor'
-                && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, []) || st === 'dash');
+                && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, HIDDEN_BOSS_COUNTER_RECOVERS) || st === 'dash');
               let hiddenBossCountered = false;
               if (hiddenBossCounterableNow) {
                 const { overlap, counterActive } = thorBodyOverlapNow();
@@ -4268,6 +4513,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   bs.thorRangedHits = [];
                   patch.bossState = 'jump-windup';
                   patch.bossStateUntil = newGameTime + THOR_JUMP_WINDUP_MS;
+                  // §6.28-10「ジャンプ着地円を溜め開始から出す」【変更: 現行は滞空中のみ】。着地点は
+                  // 溜め"開始"の瞬間にロックする(現行は溜め終了時=jump-attack移行時にロックしていた
+                  // ものを前倒し。W1「予告図形はリード全域で出す」+受け入れ条件10「判定と同寸」のため。
+                  // 既存の攻撃判定・ダメージ・windup長(700ms)・CD・着地半径は一切変えない)。
+                  if (THOR_SCRIPT_ENABLED) { patch.aiTargetX = pcx; patch.aiTargetY = pcy; }
                 } else if (
                   boss.type === 'thor' &&
                   thorDistToTgt < THOR_ORBIT_DIST &&
@@ -4304,53 +4554,55 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
                     // トール専用: 弾もダッシュも使わない独自3種(一閃/突き/払い)からランダムに選ぶ(社長指示)。
                     // 払いはプレイヤーが HARAI_TRIGGER_DIST(250px)以内に居る時だけ候補に入れる(社長指示v0.25.1626)。
+                    // §6.28-10: プール構築そのものは純関数化しただけ(pickThorPool・値は不変)。
                     const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
                     const canHarai = Math.hypot(dpx, dpy) <= HARAI_TRIGGER_DIST;
-                    const pool: Array<'issen' | 'tsuki' | 'harai'> = ['issen', 'tsuki'];
-                    if (canHarai) pool.push('harai');
+                    const pool = pickThorPool(canHarai);
                     const pick = pool[Math.floor(Math.random() * pool.length)];
-                    if (pick === 'issen') {
-                      patch.bossState = 'issen-windup';
-                      patch.bossStateUntil = newGameTime + THOR_ISSEN_WINDUP_MS;
-                      // 社長修正指示: 溜め中はプレイヤーを追わない=方向は溜め開始の瞬間にロックする。
-                      const ddx0 = pcx - bcx, ddy0 = pcy - bcy;
-                      const ddl0 = Math.hypot(ddx0, ddy0) || 1;
-                      patch.aiFromX = bcx; patch.aiFromY = bcy;
-                      patch.aiTargetX = bcx + (ddx0 / ddl0) * THOR_ISSEN_RANGE;
-                      patch.aiTargetY = bcy + (ddy0 / ddl0) * THOR_ISSEN_RANGE;
-                    } else if (pick === 'tsuki') {
-                      patch.bossState = 'tsuki-windup';
-                      patch.bossStateUntil = newGameTime + THOR_TSUKI_WINDUP_MS;
-                      // 突き溜め: 狙い点(aiTarget)をプレイヤー現在地で初期化。溜め中にプレイヤー速度の半分で
-                      // 追従させ、実行時はこの遅延した狙い点へ突く(社長指示v0.25.1621「溜め中の追跡速度を半分」)。
-                      patch.aiFromX = bcx; patch.aiFromY = bcy;
-                      patch.aiTargetX = pcx; patch.aiTargetY = pcy;
-                    } else {
-                      // 払い: 溜め中は本体静止(社長指示・立ち止まる)。プレイヤー中心・現在の接線と
-                      // 並行な赤ラインをロック。
-                      patch.bossState = 'harai-windup';
-                      patch.bossStateUntil = newGameTime + THOR_HARAI_WINDUP_MS;
-                      const rx = bcx - pcx, ry = bcy - pcy;
-                      const rl = Math.hypot(rx, ry) || 1;
-                      const tx0 = -ry / rl, ty0 = rx / rl; // 接線(90度回転)の単位ベクトル
-                      patch.aiFromX = pcx - tx0 * (THOR_HARAI_RANGE / 2);
-                      patch.aiFromY = pcy - ty0 * (THOR_HARAI_RANGE / 2);
-                      patch.aiTargetX = pcx + tx0 * (THOR_HARAI_RANGE / 2);
-                      patch.aiTargetY = pcy + ty0 * (THOR_HARAI_RANGE / 2);
-                    }
+                    // §6.28-10行1〜3「+SE【新設】」: 予告SEを新設(図形/リード/硬直=既存値は無改変)。
+                    // windup開始のセットアップ(方向ロック等)はbeginThorMoveへ集約(値は不変・純関数化のみ)。
+                    beginThorMove(pick);
                   }
                 } else if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
-                  // ミーミル専用: まずレーザー抽選。当たれば射撃方向(=今のプレイヤー位置)をロックして2秒溜め開始。
-                  if (boss.type === 'mimir' && Math.random() < MIMIR_LASER_CHANCE) {
+                  // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58): 間合い+フェーズ+CD明けから技を選ぶ
+                  // 判断はmimirScript.ts/jormungandScript.ts/skadiScript.tsの純関数へ委譲(実装精度の規律4)。
+                  // ?<boss>script=0の間は旧挙動(帯ゲート無し・レーザー/氷は専用確率、残りはdash/burst/radial固定
+                  // 3択)をそのまま実行する(§6.28-12のフォールバック契約)。
+                  const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                  if (boss.type === 'mimir' && MIMIR_SCRIPT_ENABLED) {
+                    const phase = (boss.bossPhase ?? 1) as 1 | 2;
+                    const ready: Record<MimirMove, boolean> = {
+                      bite: newGameTime >= (boss.mimirBiteReadyAt ?? 0), laser: true, dash: true, burst: true, radial: true,
+                    };
+                    const move = pickMimirMove(dist, phase, ready);
+                    if (move) beginMimirMove(move);
+                  } else if (boss.type === 'jormungand' && JORMUNGAND_SCRIPT_ENABLED) {
+                    const phase = (boss.bossPhase ?? 1) as 1 | 2;
+                    const ready: Record<JormungandMove, boolean> = {
+                      radial: true, burst: true, dash: true, coil: newGameTime >= (boss.jormCoilReadyAt ?? 0),
+                    };
+                    const move = pickJormungandMove(dist, phase, ready);
+                    if (move) beginJormungandMove(move);
+                  } else if (boss.type === 'skadi' && SKADI_SCRIPT_ENABLED) {
+                    const phase = (boss.bossPhase ?? 1) as 1 | 2 | 3;
+                    const ready: Record<SkadiMove, boolean> = {
+                      ice: true, blade: true, dash: true, burst: true, radial: true,
+                      cage: newGameTime >= (boss.skadiCageReadyAt ?? 0),
+                    };
+                    const move = pickSkadiMove(dist, phase, ready);
+                    if (move) beginSkadiMove(move);
+                  } else if (boss.type === 'mimir' && Math.random() < MIMIR_LASER_CHANCE) {
+                    // 旧挙動(?mimirscript=0)。
                     patch.bossState = 'laser-windup';
                     patch.bossStateUntil = newGameTime + MIMIR_LASER_WINDUP_MS;
                     patch.aiFromX = bcx; patch.aiFromY = bcy;       // ビーム原点(ロック)
                     patch.aiTargetX = pcx; patch.aiTargetY = pcy;   // 射撃方向(ロック=溜め開始時のプレイヤー)
                   } else if (boss.type === 'skadi' && Math.random() < SKADI_ATTACK_CHANCE) {
-                    // スカジ専用の氷攻撃を「追加」抽選(氷塊バースト or 氷の刃)。
+                    // 旧挙動(?skadiscript=0)。スカジ専用の氷攻撃を「追加」抽選(氷塊バースト or 氷の刃)。
                     if (Math.random() < 0.5) { patch.bossState = 'skadi-ice'; patch.bossBurstLeft = SKADI_ICE_COUNT; patch.bossBurstNextAt = newGameTime; }
                     else { patch.bossState = 'skadi-blade'; patch.bossBurstLeft = SKADI_BLADE_COUNT; patch.bossBurstNextAt = newGameTime; }
                   } else {
+                    // 旧挙動(共通): dash/aim-burst/aim-radialの固定3択(いずれかのボスがscript=0の時のフォールバック)。
                     const r = Math.random();
                     if (r < BOSS_DASH_CHANCE) { patch.bossState = 'dash-windup'; patch.bossStateUntil = newGameTime + BOSS_DASH_WINDUP_MS; }
                     else if (r < BOSS_DASH_CHANCE + (1 - BOSS_DASH_CHANCE) / 2) { patch.bossState = 'aim-burst'; patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS; }
@@ -4379,7 +4631,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                   patch.bossBurstLeft = left - 1;
                   patch.bossBurstNextAt = newGameTime + (boss.type === 'jormungand' ? JORM_BURST_GAP_MS : BOSS_BURST_GAP_MS);
-                  if (left - 1 <= 0) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                  if (left - 1 <= 0) {
+                    // §6.28-5/7/9: 硬直(反撃窓)を新設。旧挙動時は現行どおり即chase復帰。
+                    if (hiddenScriptOn) {
+                      const recMs = boss.type === 'jormungand' ? JORM_BURST_RECOVER_MS : boss.type === 'skadi' ? SKADI_BURST_RECOVER_MS : MIMIR_BURST_RECOVER_MS;
+                      patch.bossState = 'burst-recover'; patch.bossStateUntil = newGameTime + recMs;
+                    } else {
+                      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
+                    }
+                  }
                 }
               } else if (st === 'aim-radial') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
@@ -4393,22 +4653,44 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       const a = (Math.PI * 2 * i) / BOSS_RADIAL_COUNT;
                       fireBullet(bcx + Math.cos(a) * 100, bcy + Math.sin(a) * 100);
                     }
-                    patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
+                    if (hiddenScriptOn) {
+                      patch.bossState = 'radial-recover';
+                      patch.bossStateUntil = newGameTime + (boss.type === 'skadi' ? SKADI_RADIAL_RECOVER_MS : MIMIR_RADIAL_RECOVER_MS);
+                    } else {
+                      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
+                    }
                   }
                 }
               } else if (st === 'radial') {
                 // ヨルムンガルド専用: 16発の全方位を JORM_RADIAL_GAP_MS おきに JORM_RADIAL_VOLLEYS 回。
                 // 各回ごとに時計回りへ JORM_RADIAL_SPIN だけずらして螺旋状に撃つ(社長指示)。
+                // §6.28-7「規則を読む」不変条件: 回転方向は常に時計回りで固定(jormRadialSpinAngleが構造的に保証)。
                 const left = boss.bossBurstLeft ?? 0;
                 if (left > 0 && newGameTime >= (boss.bossBurstNextAt ?? 0)) {
                   const vi = JORM_RADIAL_VOLLEYS - left; // 0始まりの回数インデックス
                   for (let i = 0; i < BOSS_RADIAL_COUNT; i++) {
-                    const a = (Math.PI * 2 * i) / BOSS_RADIAL_COUNT + vi * JORM_RADIAL_SPIN; // 時計回り(画面y下)へ加算
+                    const a = (Math.PI * 2 * i) / BOSS_RADIAL_COUNT + jormRadialSpinAngle(vi, JORM_RADIAL_SPIN); // 時計回り(画面y下)へ加算
                     fireBullet(bcx + Math.cos(a) * 100, bcy + Math.sin(a) * 100);
                   }
                   patch.bossBurstLeft = left - 1;
                   patch.bossBurstNextAt = newGameTime + JORM_RADIAL_GAP_MS;
-                  if (left - 1 <= 0) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                  if (left - 1 <= 0) {
+                    if (hiddenScriptOn) { patch.bossState = 'radial-recover'; patch.bossStateUntil = newGameTime + JORM_RADIAL_RECOVER_MS; }
+                    else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                  }
+                }
+              } else if (st === 'skadi-ice-windup') {
+                // §6.28-9【新設】: 氷塊設置ループの直前に静止windupを挟む(T4フラッシュ+SEはここが担う)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'skadi-ice';
+                  patch.bossBurstLeft = SKADI_ICE_COUNT;
+                  patch.bossBurstNextAt = newGameTime;
+                }
+              } else if (st === 'skadi-blade-windup') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'skadi-blade';
+                  patch.bossBurstLeft = SKADI_BLADE_COUNT;
+                  patch.bossBurstNextAt = newGameTime;
                 }
               } else if (st === 'skadi-ice') {
                 // スカジ: プレイヤー足元へ氷塊マーカーを SKADI_ICE_GAP_MS おきに SKADI_ICE_COUNT 個設置。
@@ -4418,7 +4700,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().spawnSkadiIce(pcx, pcy, newGameTime, newGameTime + SKADI_ICE_TELEGRAPH_MS, boss.id);
                   patch.bossBurstLeft = left - 1;
                   patch.bossBurstNextAt = newGameTime + SKADI_ICE_GAP_MS;
-                  if (left - 1 <= 0) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                  if (left - 1 <= 0) {
+                    if (SKADI_SCRIPT_ENABLED) { patch.bossState = 'skadi-ice-recover'; patch.bossStateUntil = newGameTime + SKADI_ICE_RECOVER_MS; }
+                    else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                  }
                 }
               } else if (st === 'skadi-blade') {
                 // スカジ: プレイヤー周辺ランダム位置に、設置時のプレイヤー方向を向いた氷刃を
@@ -4432,7 +4717,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().spawnSkadiBlade(sx, sy, aim, newGameTime + SKADI_BLADE_DELAY_MS, boss.id);
                   patch.bossBurstLeft = left - 1;
                   patch.bossBurstNextAt = newGameTime + SKADI_BLADE_GAP_MS;
-                  if (left - 1 <= 0) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                  if (left - 1 <= 0) {
+                    if (SKADI_SCRIPT_ENABLED) { patch.bossState = 'skadi-blade-recover'; patch.bossStateUntil = newGameTime + SKADI_BLADE_RECOVER_MS; }
+                    else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                  }
                 }
               } else if (st === 'laser-windup') {
                 // ミーミル: 3秒溜め(静止)。方向はロック(追尾しない)。赤ライン予告は描画側が bossState で出す。
@@ -4459,7 +4747,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const died = damagePlayer(MIMIR_LASER_DAMAGE, 'CODE:MIMIR のレーザー', cxp, cyp);
                   if (died) triggerPlayerDeath(ppx, ppy);
                 }
-                if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  if (MIMIR_SCRIPT_ENABLED) { patch.bossState = 'laser-recover'; patch.bossStateUntil = newGameTime + MIMIR_LASER_RECOVER_MS; }
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                }
               } else if (st === 'dash-windup') {
                 // 溜め中はゆっくり後退り(ターゲットから離れる)してから突進(社長指示)。
                 {
@@ -4470,10 +4761,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'dash'; patch.bossStateUntil = newGameTime + BOSS_DASH_MS;
-                  // 突進開始時に方向をロック(その時のターゲットへ)。以後は基本直進+弱いホーミング。
-                  const ddx = chaseTgt.x - bcx, ddy = chaseTgt.y - bcy;
-                  const ddl = Math.hypot(ddx, ddy) || 1;
-                  bs.dashDirX = ddx / ddl; bs.dashDirY = ddy / ddl;
+                  if (!hiddenScriptOn) {
+                    // 旧挙動: windup終了時に再照準(新スクリプト無効時のみ)。有効時はbeginHiddenDashが
+                    // windup開始の瞬間に既にbs.dashDirXをロック済みなので、ここでは再照準しない(掟W4)。
+                    const ddx = chaseTgt.x - bcx, ddy = chaseTgt.y - bcy;
+                    const ddl = Math.hypot(ddx, ddy) || 1;
+                    bs.dashDirX = ddx / ddl; bs.dashDirY = ddy / ddl;
+                  }
                 }
               } else if (st === 'dash') {
                 // ダッシュ攻撃: 基本は真っ直ぐ直進。毎フレームほんの少しだけプレイヤー方向へ寄せる(弱いホーミング)。
@@ -4487,7 +4781,101 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.x = boss.x + bs.dashDirX * mv; patch.y = boss.y + bs.dashDirY * mv;
                 bs.vx = bs.dashDirX * speed * BOSS_DASH_SPEED_MULT; // 突進後のチェイスへ慣性を引き継ぐ
                 bs.vy = bs.dashDirY * speed * BOSS_DASH_SPEED_MULT;
-                if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  if (hiddenScriptOn) { patch.bossState = 'dash-recover'; patch.bossStateUntil = newGameTime + BOSS_DASH_RECOVER_MS; }
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                }
+              } else if (st === 'burst-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) hiddenRecoverAdvance('burst');
+              } else if (st === 'radial-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) hiddenRecoverAdvance('radial');
+              } else if (st === 'dash-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) hiddenRecoverAdvance('dash');
+              } else if (st === 'laser-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                  const combo = MIMIR_SCRIPT_ENABLED ? pickMimirCombo('laser', (boss.bossPhase ?? 1) as 1 | 2, dist) : null;
+                  if (combo) beginMimirMove(combo);
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                }
+              } else if (st === 'skadi-ice-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                  const combo = SKADI_SCRIPT_ENABLED ? pickSkadiCombo('ice', (boss.bossPhase ?? 1) as 1 | 2 | 3, dist) : null;
+                  if (combo) beginSkadiMove(combo);
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                }
+              } else if (st === 'skadi-blade-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                  const combo = SKADI_SCRIPT_ENABLED ? pickSkadiCombo('blade', (boss.bossPhase ?? 1) as 1 | 2 | 3, dist) : null;
+                  if (combo) beginSkadiMove(combo);
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                }
+              } else if (st === 'bite-windup') {
+                // ミーミル「群体の噛みつき」(§6.28-5/§6.28-15): 本体直下の群体が一斉に噛む=1フレームで
+                // 円AoE(giantの踏み鳴らしと同じ作法。既存pumpkinBlasts配管への相乗り)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  useGameStore.setState(state => ({
+                    pumpkinBlasts: [...state.pumpkinBlasts, { x: bcx, y: bcy, radius: MIMIR_BITE_RADIUS, damage: boss.damage, enemyId: boss.id }],
+                  }));
+                  patch.bossState = 'bite-recover';
+                  patch.bossStateUntil = newGameTime + MIMIR_BITE_RECOVER_MS;
+                }
+              } else if (st === 'bite-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.mimirBiteReadyAt = newGameTime + MIMIR_BITE_CD_MS;
+                  const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                  const combo = MIMIR_SCRIPT_ENABLED ? pickMimirCombo('bite', (boss.bossPhase ?? 1) as 1 | 2, dist) : null;
+                  if (combo) beginMimirMove(combo);
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                }
+              } else if (st === 'coil-windup') {
+                // ヨルムンガルド「うねり」(§6.28-7・近接専用・Phase2限定): giantの薙ぎ払いと同じ作法
+                // (windup終了でカプセル判定を1件だけ積み、220msの'active'表示を経てrecoverへ)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  const sfx = boss.aiFromX ?? bcx, sfy = boss.aiFromY ?? bcy;
+                  const stx = boss.aiTargetX ?? bcx, sty = boss.aiTargetY ?? bcy;
+                  useGameStore.setState(state => ({
+                    pumpkinBlasts: [...state.pumpkinBlasts, {
+                      x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: JORM_COIL_HALF_WIDTH,
+                      damage: boss.damage, enemyId: boss.id,
+                      capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: JORM_COIL_HALF_WIDTH },
+                    }],
+                  }));
+                  patch.bossState = 'coil'; patch.bossStateUntil = newGameTime + JORM_COIL_ACTIVE_MS;
+                }
+              } else if (st === 'coil') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'coil-recover'; patch.bossStateUntil = newGameTime + JORM_COIL_RECOVER_MS;
+                }
+              } else if (st === 'coil-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.jormCoilReadyAt = newGameTime + JORM_COIL_CD_MS;
+                  const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                  const combo = JORMUNGAND_SCRIPT_ENABLED ? pickJormungandCombo('coil', (boss.bossPhase ?? 1) as 1 | 2, dist) : null;
+                  if (combo) beginJormungandMove(combo);
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                }
+              } else if (st === 'cage-windup') {
+                // スカジ「氷結の檻」(§6.28-9・全帯・Phase3限定): ジブリル聖別(JIBRIL_CONSECRATE_*)と同じ
+                // 「N+1分割の1つを空ける」作法(プレイヤー中心のリング・空ける向きは設置の瞬間に確定=掟W4)。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  const gapAngle = Math.random() * Math.PI * 2;
+                  for (let i = 1; i <= SKADI_CAGE_COUNT; i++) {
+                    const ang = gapAngle + (Math.PI * 2 / (SKADI_CAGE_COUNT + 1)) * i;
+                    const ix = pcx + Math.cos(ang) * SKADI_CAGE_RING_RADIUS, iy = pcy + Math.sin(ang) * SKADI_CAGE_RING_RADIUS;
+                    useGameStore.getState().spawnSkadiIce(ix, iy, newGameTime, newGameTime + SKADI_ICE_TELEGRAPH_MS, boss.id);
+                  }
+                  patch.bossState = 'cage-recover';
+                  patch.bossStateUntil = newGameTime + SKADI_CAGE_RECOVER_MS;
+                }
+              } else if (st === 'cage-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.skadiCageReadyAt = newGameTime + SKADI_CAGE_CD_MS;
+                  patch.bossState = 'chase';
+                  patch.bossNextActionAt = nextActionDelay();
+                }
               } else if (st === 'issen-windup') {
                 // 一閃: 3秒溜め・静止(赤い明滅は描画側=pixiSceneがbossStateを見て演出・社長指示)。
                 // 方向は選択時(action-roll)に既にロック済み=溜め中はプレイヤーを追わない(社長修正指示)。
@@ -4523,7 +4911,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
-                if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
+                if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  // §6.28-10「全技に硬直(recover)を新設」: 硬直900ms・青白tint(描画側)。既存のリード/
+                  // 射程/半幅/カウンター等は無改変。?thorscript=0の間は現行どおり即chase復帰。
+                  if (THOR_SCRIPT_ENABLED) { patch.bossState = 'issen-recover'; patch.bossStateUntil = newGameTime + THOR_ISSEN_RECOVER_MS; }
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
+                }
               } else if (st === 'tsuki-windup') {
                 // 突き: 1秒停止(社長指示)。線の予告は無し=素早い踏み込みそのものが合図。
                 // 社長指示v0.25.1621: 溜め中は狙い点(aiTarget)をプレイヤー速度の半分でプレイヤーへ追従。
@@ -4571,7 +4964,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
-                if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
+                if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  if (THOR_SCRIPT_ENABLED) { patch.bossState = 'tsuki-recover'; patch.bossStateUntil = newGameTime + THOR_TSUKI_RECOVER_MS; }
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
+                }
               } else if (st === 'harai-windup') {
                 // 払い: 溜め中は本体静止(社長指示・立ち止まる)。ロック済みの並行ラインを予告表示(描画側)。
                 const { overlap, counterActive } = thorBodyOverlapNow();
@@ -4604,9 +5000,43 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
-                  patch.bossState = 'chase';
-                  patch.bossNextActionAt = thorNextActionDelay();
-                  patch.bossCircleDir = 1; // 払い後は既定の時計回りへ復帰(社長指示)
+                  patch.bossCircleDir = 1; // 払い後は既定の時計回りへ復帰(社長指示・据え置き)
+                  if (THOR_SCRIPT_ENABLED) { patch.bossState = 'harai-recover'; patch.bossStateUntil = newGameTime + THOR_HARAI_RECOVER_MS; }
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
+                }
+              } else if (st === 'issen-recover') {
+                // §6.28-10「分岐する連携」: 硬直明けに確率(Phase2=50%/Phase3=70%)で2発目。
+                // 2発目の技は"その瞬間の距離"だけで決まる(プレイヤーが選ぶ・§6.28-10表)。硬直中も
+                // カウンター可(W7)。
+                const { overlap, counterActive } = thorBodyOverlapNow();
+                if (overlap && counterActive) {
+                  thorCounterHit(bcx, bcy);
+                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                  const combo = pickThorCombo('issen', (boss.bossPhase ?? 1) as 1 | 2 | 3, dist);
+                  if (combo) beginThorMove(combo);
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
+                }
+              } else if (st === 'tsuki-recover') {
+                const { overlap, counterActive } = thorBodyOverlapNow();
+                if (overlap && counterActive) {
+                  thorCounterHit(bcx, bcy);
+                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  // §6.28-10「突き起点・ジャンプ起点の連携は作らない」: pickThorComboはtsuki起点で常にnullを返す。
+                  const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                  const combo = pickThorCombo('tsuki', (boss.bossPhase ?? 1) as 1 | 2 | 3, dist);
+                  if (combo) beginThorMove(combo);
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
+                }
+              } else if (st === 'harai-recover') {
+                const { overlap, counterActive } = thorBodyOverlapNow();
+                if (overlap && counterActive) {
+                  thorCounterHit(bcx, bcy);
+                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                  const combo = pickThorCombo('harai', (boss.bossPhase ?? 1) as 1 | 2 | 3, dist);
+                  if (combo) beginThorMove(combo);
+                  else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
                 }
               } else if (st === 'jump-windup') {
                 // ジャンプ攻撃の溜め(短め)。静止・カウンター可能(社長指示)。
@@ -4617,7 +5047,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossState = 'jump-attack';
                   patch.bossStateUntil = newGameTime + THOR_JUMP_MS;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
-                  patch.aiTargetX = pcx; patch.aiTargetY = pcy; // 着地点=溜め終了時のプレイヤー位置(ロック)
+                  // THOR_SCRIPT_ENABLED時は溜め開始時に既にaiTargetX/Yをロック済み(上のjump-windup突入時)
+                  // なのでここでは再照準しない(掟W4)。無効時は現行どおり溜め終了時にロックする。
+                  if (!THOR_SCRIPT_ENABLED) { patch.aiTargetX = pcx; patch.aiTargetY = pcy; }
                 }
               } else if (st === 'jump-attack') {
                 // ジャンプ攻撃(実行): ハンターの速いジャンプ感でロック済みの着地点まで移動(社長指示)。
@@ -4723,6 +5155,135 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
          } catch (err) {
           if (!bossCtrlErrLogged) { bossCtrlErrLogged = true; console.error('[hiddenBoss] controller error (suppressed after first):', err); }
+         }
+        }
+
+        // --- idol(stage-2隠しボス)専用ブロック(PACING_PUZZLE.md §6.28-20・バッチM64) ---
+        // ★未決(実装結果として報告): campaign.tsのhiddenBoss機構(stage.hiddenBoss)に乗せる設計だが、
+        // stage-2は theme:'lab' のため、上の裏ボス共通ブロックの発火条件自体が `!labTheme` を要求する
+        // (このブロックの数行上・「裏ボス専用ブロック」と同じ条件式)。よって通常プレイでは
+        // `campaign.ts` に `hiddenBoss: 'idol'` を足しても到達しない。campaign.tsのテーマ判定は
+        // 作り替えず(CLAUDE.md「仕様変更のルール」)、実機/自動検証用に ?idolnow=1 で強制召喚できる
+        // 専用の独立した状態機械だけを用意する。mimir/jormungand/skadi/thorとはbossRef(単一スロット)を
+        // 共有しない(idolは「追跡ではなく常にプレイヤーから離れる」という別物の移動則を持つため)。
+        if (!danceTest && !indoor && !useGameStore.getState().gameWon) {
+         try {
+          if (FORCE_IDOL && !idolForceRef.current) {
+            idolForceRef.current = true;
+            const pcx0 = player.x + player.width / 2, pcy0 = player.y + player.height / 2;
+            const spawnAng = Math.random() * Math.PI * 2;
+            const spawnDist = 320; // 遠帯(>340)のすぐ内側=aim/fanから体験できる初期距離
+            const ix = pcx0 + Math.cos(spawnAng) * spawnDist, iy = pcy0 + Math.sin(spawnAng) * spawnDist;
+            const idolE = spawnEnemyAt('idol', ix - 20, iy - 10, newGameTime);
+            idolE.fromEvent = true; // ×5は掛けない(ゲート2ボスと同じ作法・社長指示v0.25.1595の踏襲)
+            idolE.bossState = 'chase';
+            idolE.bossPhase = 1;
+            idolE.bossNextActionAt = newGameTime + IDOL_ACTION_MIN_MS;
+            addEnemy(idolE);
+            useGameStore.getState().triggerAttention(ix, iy);
+          }
+          const idol = useGameStore.getState().enemies.find(e => e.type === 'idol');
+          if (idol) {
+            const icx = idol.x + idol.width / 2, icy = idol.y + idol.height / 2;
+            const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+            const dist = Math.hypot(pcx - icx, pcy - icy);
+            const hpFrac = idol.maxHealth > 0 ? idol.health / idol.maxHealth : 1;
+            const phase = idolPhaseForHealth(hpFrac);
+            const iPatch: Partial<typeof idol> = {};
+            if (phaseJustChanged(idol.bossPhase, phase)) iPatch.bossPhaseFlashUntil = newGameTime + HIDDEN_BOSS_PHASE_FLASH_MS;
+            iPatch.bossPhase = phase;
+            const st = idol.bossState ?? 'chase';
+            const idolFireBullet = (tx: number, ty: number) => addProjectile(createEnemyProjectile(idol, player, tx, ty));
+            const beginIdolMove = (move: IdolMove) => {
+              playSfx(BOSS_ALERT_SFX_KEY);
+              if (move === 'aim') { iPatch.bossState = 'idol-aim-windup'; iPatch.bossStateUntil = newGameTime + IDOL_AIM_WINDUP_MS; }
+              else if (move === 'fan') { iPatch.bossState = 'idol-fan-windup'; iPatch.bossStateUntil = newGameTime + IDOL_FAN_WINDUP_MS; }
+              else if (move === 'roll') { iPatch.bossState = 'idol-roll-windup'; iPatch.bossStateUntil = newGameTime + IDOL_ROLL_WINDUP_MS; }
+              else { iPatch.bossState = 'idol-punch-windup'; iPatch.bossStateUntil = newGameTime + IDOL_PUNCH_WINDUP_MS; }
+            };
+            if (st === 'chase') {
+              // §6.28-20の主題: 常にプレイヤーから離れようとする(kiting・全ボスの逆)。
+              // 移動テンポは他の裏ボスと同じ bossMoveDt(= deltaTime × MOVE_SPEED_MULT・社長指示の踏襲)。
+              const idolMoveDt = deltaTime * MOVE_SPEED_MULT;
+              const dx = icx - pcx, dy = icy - pcy;
+              const dl = Math.hypot(dx, dy) || 1;
+              const mv = idol.speed * idolMoveDt;
+              iPatch.x = idol.x + (dx / dl) * mv;
+              iPatch.y = idol.y + (dy / dl) * mv;
+              if (newGameTime >= (idol.bossNextActionAt ?? 0)) {
+                const ready: Record<IdolMove, boolean> = { aim: true, fan: true, roll: true, punch: true };
+                const move = pickIdolMove(dist, ready);
+                if (move) beginIdolMove(move);
+              }
+            } else if (st === 'idol-aim-windup') {
+              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
+                idolFireBullet(pcx, pcy);
+                iPatch.bossState = 'idol-aim-recover';
+                iPatch.bossStateUntil = newGameTime + IDOL_AIM_RECOVER_MS;
+              }
+            } else if (st === 'idol-fan-windup') {
+              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
+                // §6.28-20 Phase2: 扇3→5本(idolFanCount)。近距離技(roll/punch)は一切変えない。
+                const count = idolFanCount(phase);
+                const ang = Math.atan2(pcy - icy, pcx - icx);
+                const spreadStep = 0.14; // 1本あたりの開き角(rad・叩き台=JORM_BURST_FAN_SPREADと同オーダー)
+                const half = (count - 1) / 2;
+                for (let k = 0; k < count; k++) {
+                  const a = ang + (k - half) * spreadStep;
+                  idolFireBullet(icx + Math.cos(a) * 100, icy + Math.sin(a) * 100);
+                }
+                iPatch.bossState = 'idol-fan-recover';
+                iPatch.bossStateUntil = newGameTime + IDOL_FAN_RECOVER_MS;
+              }
+            } else if (st === 'idol-roll-windup') {
+              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
+                const dx = icx - pcx, dy = icy - pcy;
+                const dl = Math.hypot(dx, dy) || 1;
+                iPatch.bossState = 'idol-roll';
+                iPatch.bossStateUntil = newGameTime + IDOL_ROLL_ACTIVE_MS;
+                iPatch.aiFromX = icx; iPatch.aiFromY = icy;
+                iPatch.aiTargetX = icx + (dx / dl) * IDOL_ROLL_DIST;
+                iPatch.aiTargetY = icy + (dy / dl) * IDOL_ROLL_DIST;
+              }
+            } else if (st === 'idol-roll') {
+              // §6.28-20「無敵は付けない」=詰めた側の報酬。i-frame等は一切付与しない。
+              const fx = idol.aiFromX ?? icx, fy = idol.aiFromY ?? icy;
+              const tx = idol.aiTargetX ?? icx, ty = idol.aiTargetY ?? icy;
+              const t = Math.max(0, Math.min(1, 1 - ((idol.bossStateUntil ?? newGameTime) - newGameTime) / IDOL_ROLL_ACTIVE_MS));
+              iPatch.x = (fx + (tx - fx) * t) - idol.width / 2;
+              iPatch.y = (fy + (ty - fy) * t) - idol.height / 2;
+              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
+                iPatch.bossState = 'idol-roll-recover';
+                iPatch.bossStateUntil = newGameTime + IDOL_ROLL_RECOVER_MS;
+              }
+            } else if (st === 'idol-punch-windup') {
+              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
+                const ang = Math.atan2(pcy - icy, pcx - icx);
+                const tx2 = icx + Math.cos(ang) * IDOL_PUNCH_RANGE, ty2 = icy + Math.sin(ang) * IDOL_PUNCH_RANGE;
+                useGameStore.setState(state => ({
+                  pumpkinBlasts: [...state.pumpkinBlasts, {
+                    x: (icx + tx2) / 2, y: (icy + ty2) / 2, radius: IDOL_PUNCH_HALF_WIDTH,
+                    damage: idol.damage, enemyId: idol.id,
+                    capsule: { fx: icx, fy: icy, tx: tx2, ty: ty2, halfWidth: IDOL_PUNCH_HALF_WIDTH },
+                  }],
+                }));
+                iPatch.bossState = 'idol-punch-recover';
+                iPatch.bossStateUntil = newGameTime + IDOL_PUNCH_RECOVER_MS;
+              }
+            } else if (st === 'idol-aim-recover' || st === 'idol-fan-recover' || st === 'idol-roll-recover' || st === 'idol-punch-recover') {
+              // §6.28-3 W6: 硬直中は完全静止+青白tint(描画側)+次技抽選なし。近距離技(roll/punch)の
+              // 硬直が長いこと自体が「近距離の彼女は弱い」の表現(§6.28-20・技数を増やさず精度で語る)。
+              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
+                iPatch.bossState = 'chase';
+                iPatch.bossNextActionAt = newGameTime + IDOL_ACTION_MIN_MS + Math.random() * (IDOL_ACTION_MAX_MS - IDOL_ACTION_MIN_MS);
+              }
+            }
+            if (Object.keys(iPatch).length) {
+              useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === idol.id ? { ...e, ...iPatch } : e) }));
+            }
+          }
+         } catch (err) {
+          if (!idolCtrlErrLogged) { idolCtrlErrLogged = true; console.error('[idol] controller error (suppressed after first):', err); }
          }
         }
 

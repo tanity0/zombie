@@ -26,6 +26,17 @@ export const BOSS_RECOVER_TINT = 0xbfe8ff;
 // 綴りを繰り返さないようにする(差し替え時はここ1箇所を直せば全ボスに効く)。
 export const BOSS_ALERT_SFX_KEY = 'hunter-alert' as const;
 
+// PACING_PUZZLE.md §6.28-12(バッチM54/M56/M58/M59・ロットL3): 裏ボス4体(mimir/jormungand/skadi/
+// thor)のフォールバックフラグ(`?<boss>script=0`・angelBossTick.tsのscriptFlagと同じ作法)。
+// useGameLoop.ts(ロジック)とpixiScene.ts(描画=HPバー色/テレグラフのゲート)の両方が同じ値を
+// 参照する単一の出所(ここが分岐すると「ロジックは旧挙動なのに赤テレグラフだけ出る」等の食い違いが起きる)。
+const hiddenBossScriptFlag = (name: string): boolean =>
+  typeof window === 'undefined' || new URLSearchParams(window.location.search).get(name) !== '0';
+export const MIMIR_SCRIPT_ENABLED = hiddenBossScriptFlag('mimirscript');
+export const JORMUNGAND_SCRIPT_ENABLED = hiddenBossScriptFlag('jormungandscript');
+export const SKADI_SCRIPT_ENABLED = hiddenBossScriptFlag('skadiscript');
+export const THOR_SCRIPT_ENABLED = hiddenBossScriptFlag('thorscript');
+
 // 任意のフェーズ文字列が「windup(予告)一覧」に含まれるか。呼び出し側は自分のwindup状態名の
 // リストを渡すだけでよい(ボス非依存)。
 export const isWindupPhase = (phase: string | undefined, windupPhases: readonly string[]): boolean =>

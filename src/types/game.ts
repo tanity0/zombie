@@ -410,6 +410,22 @@ export interface Enemy {
   //  gaze-windup/gaze-recover = 単眼の小技(スリィエル単眼の凝視/アクラシエル単眼レーザー 共通)。
   //  spike-windup/spike/spike-recover = アクラシエル放射棘。spear-windup/spear-recover = 結晶の槍(設置)。
   //  warp-out/warp-in/warp-recover = アクラシエル転移。burst-windup/burst/burst-recover = 収縮→爆発。
+  // PACING_PUZZLE.md §6.28-5/7/9/10(バッチM54/M56/M58/M59・ロットL3): 裏ボス4体(mimir/jormungand/
+  // skadi/thor)へ追加した硬直(recover)+新技の状態(同名でも解釈はボス種別ごとに分岐する既存の作法)。
+  //  burst-recover/radial-recover/dash-recover/laser-recover = 弾3連/全方位/突進/レーザーの硬直
+  //  (mimir/jormungand/skadi/mimirのlaser共通。既存の'burst'/'radial'/'dash'/'laser-fire'アクティブの後に挿入。
+  //  burst-recoverはアクラシエルの収縮→爆発でも使われる名前だが、解釈はboss.type側で分岐するため衝突しない)。
+  //  skadi-ice-recover/skadi-blade-recover = スカジ 氷塊/氷刃の硬直。
+  //  bite-windup/bite/bite-recover = ミーミル「群体の噛みつき」(§6.28-15裁定で「踏み潰し」から改名。密着帯)。
+  //  coil-windup/coil/coil-recover = ヨルムンガルド「うねり」(近帯・Phase2限定)。
+  //  cage-windup/cage/cage-recover = スカジ「氷結の檻」(全帯・Phase3限定)。
+  //  issen-recover/tsuki-recover/harai-recover = トール 一閃/突き/払いの硬直【新設】(jump-recoverは既存のまま)。
+  // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)専用の状態(他ボスと名前が衝突しないよう
+  // idol-接頭辞を付ける。近づくほど安全=全ボスの逆で、他ボスの語彙を流用しない独立の状態機械)。
+  //  idol-aim-windup/idol-aim/idol-aim-recover = 狙い撃ち(遠)。
+  //  idol-fan-windup/idol-fan/idol-fan-recover = 連射(中・Phase2で扇3→5本)。
+  //  idol-roll-windup/idol-roll/idol-roll-recover = 離脱ローリング(近・無敵なし)。
+  //  idol-punch-windup/idol-punch/idol-punch-recover = 至近の殴り(近)。
   bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'radial' | 'skadi-ice' | 'skadi-blade' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire'
     | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'tate-windup' | 'tate' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step' | 'volley' | 'lantern' | 'bone'
     | 'volley-windup' | 'volley-recover' | 'tate-recover' | 'mdash-windup' | 'mdash-move' | 'mdash-recover'
@@ -420,7 +436,17 @@ export interface Enemy {
     | 'ring-move-windup' | 'ring-beam-windup' | 'ring-active' | 'ring-recover'
     | 'ring-spin-windup' | 'ring-spin' | 'ring-spin-recover' | 'gaze-windup' | 'gaze-recover'
     | 'spike-windup' | 'spike' | 'spike-recover' | 'spear-windup' | 'spear-recover'
-    | 'warp-out' | 'warp-in' | 'warp-recover' | 'burst-windup' | 'burst' | 'burst-recover';
+    | 'warp-out' | 'warp-in' | 'warp-recover' | 'burst-windup' | 'burst' | 'burst-recover'
+    | 'radial-recover' | 'dash-recover' | 'laser-recover'
+    | 'skadi-ice-windup' | 'skadi-blade-windup' | 'skadi-ice-recover' | 'skadi-blade-recover'
+    | 'bite-windup' | 'bite' | 'bite-recover'
+    | 'coil-windup' | 'coil' | 'coil-recover'
+    | 'cage-windup' | 'cage' | 'cage-recover'
+    | 'issen-recover' | 'tsuki-recover' | 'harai-recover'
+    | 'idol-aim-windup' | 'idol-aim' | 'idol-aim-recover'
+    | 'idol-fan-windup' | 'idol-fan' | 'idol-fan-recover'
+    | 'idol-roll-windup' | 'idol-roll' | 'idol-roll-recover'
+    | 'idol-punch-windup' | 'idol-punch' | 'idol-punch-recover';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   bossBurstLeft?: number;    // 3連発の残弾
@@ -432,6 +458,11 @@ export interface Enemy {
   mDashReadyAt?: number;        // ミゲル 踏み込み(dash)専用CD(6000ms)
   jConsecrateReadyAt?: number;  // ジブリル 聖別専用CD(8000ms・Phase2)
   rSweepReadyAt?: number;       // ラフィ 薙ぎ専用CD(7000ms・Phase2)
+  // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58・ロットL3): 裏ボス3体の新技1つずつの専用CD
+  // (ジャイアントのgStompReadyAt等と同じ作法。既存のBOSS_ACTION系一般ゲートとは別枠)。
+  mimirBiteReadyAt?: number;    // ミーミル 群体の噛みつき専用CD(6000ms)
+  jormCoilReadyAt?: number;     // ヨルムンガルド うねり専用CD(7000ms・Phase2)
+  skadiCageReadyAt?: number;    // スカジ 氷結の檻専用CD(12000ms・Phase3)
   // §6.28(バッチM55/M58/M61-63): フェーズを持つ新規ボス(ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)
   // 共通のHP段階トラッカー(ジャイアント専用のgiantPhaseとは別・無改変)。値の意味・閾値は各ボスのtick関数側。
   bossPhase?: 1 | 2 | 3;
