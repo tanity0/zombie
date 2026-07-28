@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2360',
+    items: [
+      'ゲーム内容の変更はありません（ランク（七つの大罪）の上がり方・下がり方を作り直す設計の記録のみ）。',
+    ],
+  },
+  {
     version: '0.25.2359',
     items: [
       'ゲーム内容の変更はありません（城ボスの行動仕様を確定させた記録のみ。実装は次の更新から）。',
