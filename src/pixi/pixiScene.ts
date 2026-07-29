@@ -1009,13 +1009,15 @@ const PLAYER_FIRE_RECOIL_MS = 130;    // 発砲の反動が収まるまで(エ�
 //  ② 70ms(60fpsで約4フレーム)・長さ34pxと、仮に前面でも一瞬すぎ・小さすぎた。
 // ①を直した上で、②も社長方針「とにかく派手に」に沿って引き上げる。
 const MUZZLE_FLASH_MS = 150;       // 70→150(反動130msより少し長く=発砲の余韻として残る)
-const MUZZLE_LEN_PX = 70;          // 34→70(素材の可視長215pxをここへ縮める)
+const MUZZLE_LEN_PX = 44;          // 70→44(社長報告v0.25.2447「デカい」。70はz順バグで見えなかった時期に
+                                   // 疑い半分で倍化した値=過剰だった。34と70の中間へ)
 const MUZZLE_OFFSET_PX = 16;       // プレイヤー中心から銃口までの前進量
 const MUZZLE_HEIGHT_FRAC = 0.55;   // 足元から胸(銃を構える高さ)までの割合
-// 素材の実測: 可視部 bbox=(0,46)-(215,206)。**閃光は左へ噴いていて、根元は右端**。
-// よってアンカーは根元=(215/256, 126/256)=(0.84, 0.492)、回転は「狙い角+π」で噴出方向を合わせる。
-const MUZZLE_ANCHOR_X = 0.84;
-const MUZZLE_ANCHOR_Y = 0.492;
+// 素材の実測(画素解析v0.25.2447): 可視部 x=0..214。**根元(密で明るい塊)は左端・炎は右へ噴く**。
+// 旧コメント「左へ噴いていて根元は右端」は誤読で、実機で閃光が撃った方向と逆に付いていた
+// (社長報告「逆についてる」)。アンカーは根元=(0, 128/256)=(0.0, 0.5)、回転は狙い角そのまま。
+const MUZZLE_ANCHOR_X = 0.0;
+const MUZZLE_ANCHOR_Y = 0.5;
 
 const PLAYER_FIRE_RECOIL_PX = 3.2;    // 銃口と逆向き(=後方)へ体が下がる最大px
 const PLAYER_FIRE_RECOIL_SQUASH = 0.04; // 反動で軽く縦に縮む量
@@ -10835,8 +10837,8 @@ export class PixiScene {
 
   /**
    * 銃口フラッシュ(社長支給素材 C-1・v0.25.2401)。プレイヤーは1人なのでシーンに1枚だけ持つ。
-   * **アンカーを根元(素材の右端中央)に置く**ので、渡すのは銃口の座標そのもの。
-   * 素材が左へ噴いているため回転は `angle + π`(素材の -x を狙い方向へ向ける)。
+   * **アンカーを根元(素材の左端中央)に置く**ので、渡すのは銃口の座標そのもの。
+   * 素材は +x(右)へ噴いているため回転は `angle` そのまま(v0.25.2447 向き反転修正)。
    */
   private muzzleSprite?: Sprite;
   private drawMuzzleFlash(x: number, y: number, angle: number, len: number, alpha: number, sortY: number): void {
@@ -10853,7 +10855,7 @@ export class PixiScene {
     if (sp.texture !== tex) sp.texture = tex;
     const s = len / 215; // 素材の可視長(215px)を狙いの長さへ合わせる
     sp.scale.set(s, s);
-    sp.rotation = angle + Math.PI;
+    sp.rotation = angle;
     sp.position.set(x, y);
     // ★Yソートは**撃った本人の足元Y**を使う(v0.25.2427の修正)。閃光自身のY(胸の高さ)を使うと
     // 必ず足元Yより小さくなり、actorLayer の Yソートで**プレイヤーの背後**へ回って見えなくなる。

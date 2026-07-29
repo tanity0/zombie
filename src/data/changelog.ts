@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2447',
+    items: [
+      '銃口の白煙エフェクトが撃った方向と逆に付いていたのを修正し、大きさも適正化しました。',
+    ],
+  },
+  {
     version: '0.25.2446',
     items: [
       'ゲーム内容の変更はありません(クールダウン再設計: オーバークロックの扱いを確定)。',
