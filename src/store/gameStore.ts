@@ -74,7 +74,7 @@ import {
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用の新技4つの純関数。
   pickGiantMoveWithGlen, glenScriptApplies, type GlenMoveId, GLEN_NIHIL_CHANT_COUNT,
 } from '../utils/giantScript';
-import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
+import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle,
@@ -7327,7 +7327,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // runOffscreenRecycleAndCull (directorTick.ts) と同じ境界計算をここで複製し、境界を
           // 越えた瞬間に次フレームでリサイクルされて「カウンターした敵が消える」不具合を防ぐ。
           // 通常の追跡AI(このifブロックの外)には影響しない。
-          const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / CONTEXT_ZOOM_MIN;
+          const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / ZOOM_MIN_ABS; // ★一番引いた時を基準に(v0.25.2412)
           const recycleHalfW = (state.gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
           const recycleHalfH = (state.gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
           const bufferX = enemy.width;  // 境界ぎりぎりではなく内側へ余裕を持って着地させる

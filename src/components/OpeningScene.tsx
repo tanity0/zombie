@@ -52,6 +52,9 @@ const WALK_HERO_HR = 0.16;      // キャラ表示高(bg高さ比。スタッフ
 const WALK_CAM_ANCHOR = 0.40;   // スクロール開始後、キャラを画面幅のこの位置に保つ
 const WALK_EDGE_PAD = 50;       // 左右端の余白(bg表示px)
 const WALK_FADEIN_MS = 900;     // シーン全体のフェードイン(v0.25.2121: キャラ個別フェード→シーンフェードへ変更)
+// 廊下の出口=右端に着いたら、**廊下側で2秒フェードアウト**してからアリーナへ切り替える
+// (社長指示v0.25.2413。旧: 即ハードカット→アリーナ側で3秒フェードイン)。
+const WALK_FADEOUT_MS = 2000;
 // ── 歩き会話(v0.25.2129・社長指示「歩いてたら左上に会話が流れてほしい」) ──
 // at=歩行可能域の進行率(0=左端〜1=右端)。機種で通路の表示長(px)が変わるため%指定(社長合意)。
 // ms=表示時間(省略時WALK_LINE_MS)。\nで改行。stop=表示中プレイヤー移動ロック+待ち構えNPCの会話(先頭10%)。
@@ -166,7 +169,7 @@ const SHOT_DUR = [2000, 2000, 2400];
 // 廊下→アリーナの入りだけは暗転からのフェードイン(社長指示v0.25.2407「フェードイン3秒」)。
 // アングル切替のハードカットとは別物: これは「会場が現れる」1回きりの入り。最初のアングル切替は
 // CUTS[1]=4200ms なのでフェード(3000ms)は完全に明けてから起きる=ハードカットは濁らない。
-const ARENA_FADEIN_MS = 3000;
+const ARENA_FADEIN_MS = 1000; // 廊下側で2秒暗転し切った後の明け(社長指示v0.25.2413で3000→1000)
 const BLACK_START = 8600;
 const BLACK_MS = 1600;
 const SCENE_START = 10400; // 暗転し切ったら射撃シーンへハードカット
@@ -384,11 +387,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const [titleReveal, setTitleReveal] = useState(false); // 蘇生後のタイトルフェードイン中(社長指示v0.25.2061)
   // 歩きシーン(アリーナ前・v0.25.2114)。?opening=2/3のプレビューはスキップ(=完了扱い)。
   const [walkDone, setWalkDone] = useState<boolean>(!!(startAtShoot || startAtRevival));
+  // 廊下の出口に着いた=暗転(フェードアウト)開始。WALK_FADEOUT_MS 後に walkDone へ移る。
+  const [walkOutro, setWalkOutro] = useState(false);
   const walkDirRef = useRef<0 | -1 | 1>(0);                   // 歩行方向(0=停止/-1=左/1=右)
   const walkTouchXRef = useRef<number | null>(null);          // ドラッグ起点X(null=非タッチ)。v0.25.2124: ジョイスティック式
   const [walkLine, setWalkLine] = useState(-1);               // 歩き会話の表示中index(-1=非表示)
   const walkShownRef = useRef<Set<number>>(new Set());        // 発火済みトリガー
   const walkLineTimerRef = useRef(0);
+  // 廊下の出口に着いてからアリーナへ切り替わるまでの暗転(社長指示v0.25.2413)。歩行の rAF は
+  // 到達した時点で止めるので、主人公は右端に立ったまま静かに暗転する。
+  const walkOutroTimerRef = useRef(0);
   const walkTalkSkipRef = useRef(false); // stop行(さ、いこっか)の会話をタップで飛ばす要求(v0.25.2186・社長指示)
   const walkSceneRef = useRef<HTMLDivElement | null>(null);
   const walkWorldRef = useRef<HTMLDivElement | null>(null);
@@ -800,14 +808,20 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           // OPスキップ誤爆ガード(社長指示v0.25.2177系フォロー): 廊下→アリーナの瞬間切替で、歩行入力を
           // 離す操作がアリーナ側の全画面onClick={finish}にclickとして拾われ無音でOP全体が飛ぶ経路の対策。
           // 切替直後の300msだけスキップを無視する(以降・?opening=2/3直行はこのrefに触れないため無効のまま)。
-          skipGuardUntilRef.current = performance.now() + 300;
-          setWalkDone(true); return;
-        } // 右端到達=アリーナへ
+          skipGuardUntilRef.current = performance.now() + 300 + WALK_FADEOUT_MS;
+          // 社長指示v0.25.2413: 即切り替えず、**廊下側で2秒フェードアウト**してからアリーナへ。
+          // rAF は return して止める=主人公は右端に立ったまま静かに暗転する(歩行入力も効かない)。
+          // BGMも同じ2秒で引く(絵と音の暗転を揃える。以後は walkFadingRef が二重フェードを防ぐ)。
+          setWalkOutro(true);
+          fadeOutWalkBgm(WALK_FADEOUT_MS);
+          walkOutroTimerRef.current = window.setTimeout(() => setWalkDone(true), WALK_FADEOUT_MS);
+          return;
+        } // 右端到達=暗転してからアリーナへ
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); window.clearTimeout(walkLineTimerRef.current); };
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); window.clearTimeout(walkLineTimerRef.current); window.clearTimeout(walkOutroTimerRef.current); };
   }, [ready, walkDone]);
 
 
@@ -872,7 +886,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           onPointerUp={() => { walkTouchXRef.current = null; walkDirRef.current = 0; }}
           onPointerCancel={() => { walkTouchXRef.current = null; walkDirRef.current = 0; }}
           onPointerLeave={() => { walkTouchXRef.current = null; walkDirRef.current = 0; }}
-          style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#000', touchAction: 'none', cursor: 'default', animation: `opfade ${WALK_FADEIN_MS}ms ease-out both` }}
+          style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#000', touchAction: 'none', cursor: 'default',
+            // 入りは従来のフェードイン。出口に着いたら2秒かけて暗転(社長指示v0.25.2413)。
+            animation: walkOutro ? `opfadeout ${WALK_FADEOUT_MS}ms linear both` : `opfade ${WALK_FADEIN_MS}ms ease-out both` }}
         >
           {/* 呼吸ズーム(v0.25.2158・社長選定B案): 舞台全体がゆっくり1.4%だけ伸縮する「夢の呼吸」。
               worldのtransformはrAFがカメラ用に毎フレーム書くため、CSSアニメは別ラッパーに載せる。

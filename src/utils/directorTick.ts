@@ -34,7 +34,8 @@ import { setDirectorDebug, recordDirectorSample, DIRECTOR_EVENT_BIT } from './ai
 import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDirector';
 import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
-import { CONTEXT_ZOOM_MIN } from './cameraZoom';
+import { ZOOM_MIN_ABS } from './cameraZoom';
+import { bossEngagedNow } from './bossEngagement';
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
 import {
@@ -124,6 +125,12 @@ const EXCITED_COMM_MIN_KOMA_MS = 15000;
 const RANK2_ENABLED = typeof window === 'undefined'
   ? true
   : new URLSearchParams(window.location.search).get('rank2') !== '0';
+
+// ボス交戦中の強制リラックス(社長裁定v0.25.2412)。既定ON。?bossrelax=0 で従来挙動(コマどおりに湧く)。
+// 判定は src/utils/bossEngagement.ts の純関数(対象ボスの表と dormant の扱いはそちらが正本)。
+const BOSS_RELAX_ENABLED = typeof window === 'undefined'
+  ? true
+  : new URLSearchParams(window.location.search).get('bossrelax') !== '0';
 
 // PACING_PUZZLE.md §5.17 M14: ランクの壁演出(銘打ちバナー+SE+年表記録/降格は静かに)。
 // 旧経路(コマ境界の確定査定)・新経路(M50連続査定)の両方から呼ぶ共通処理として抽出したもの
@@ -259,12 +266,19 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   const killsNow = useGameStore.getState().gameStats.enemiesKilled;
   const killsThisFrame = Math.max(0, killsNow - rankPaceRef.current.prevKills);
   rankPaceRef.current.prevKills = killsNow;
+  // ★ボス交戦中は湧きを強制リラックスへ落とす(社長裁定v0.25.2412)。
+  // 方針: 「敵が多くて難易度を上げるのは不評」(ソウル系の多対一批判)。ボス戦の難しさは**ボスの技を
+  // 読むこと**から来るべきで、雑魚の数から来るべきではない。判定は純関数 bossEngagedNow(dormant を見る)。
+  // 裁定の内訳: ①コマ時計=凍結 / ②昇格=凍結(降格は据え置き) / ③対象=全ボス。
+  // `?bossrelax=0` で従来挙動(コマどおりに湧く)へ戻る。
+  const bossRelax = BOSS_RELAX_ENABLED && bossEngagedNow(useGameStore.getState().enemies);
   const rankPaceResult = tickRankPace(rankPaceRef.current.state, {
     dtMs: deltaTime * 1000,
     killsThisFrame,
     msSinceLastHit,
     rank: puzzleClockRef.current.rank,
     r7Cap: puzzleClockRef.current.r7Cap,
+    freezePromotion: bossRelax, // ②昇格凍結(降格=hitStreak は止めない)
   });
   rankPaceRef.current.state = rankPaceResult.state;
   // v0.25.2374(実機テストチャットの指摘①): 較正値を毎tick焼く。**コマ境界を待たない**ので、
@@ -356,7 +370,10 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
 
   // M6(§4-C): コマ切替判定。リラックス/ハーベスト=きっかり40秒。通常/ピーク=40秒+台本の
   // 片付き待ち(処理待ちは邪魔者のみ・チャフ/特別枠は含めない=社長v0.25.1385)。延長上限+30秒。
-  koma.elapsedMs += deltaTime * 1000;
+  // ①コマ時計の凍結(社長裁定v0.25.2412): ボス戦は4コマ周期の「幕間」として扱い、倒したら続きから
+  // 再開する。上書き方式(kindだけ差し替え)だと戦闘中に周期が空回りして、ボス撃破直後にいきなり
+  // ピークが来る等の事故になる。
+  if (!bossRelax) koma.elapsedMs += deltaTime * 1000;
   const baseDone = koma.elapsedMs >= KOMA_BASE_MS;
   const switchNow = inScriptKoma
     ? ((baseDone && scriptCleared) || koma.elapsedMs >= KOMA_BASE_MS + KOMA_EXTENSION_MAX_MS)
@@ -434,16 +451,20 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   const tightenedNow = inScriptKoma && !softenedNow
     && msSinceLastHit >= TIGHTEN_NO_HIT_MS
     && (directorRef.current.state.performance >= TIGHTEN_PERF_MIN || koma.belowTargetMs >= TIGHTEN_STARVE_MS);
-  let komaChaffTarget = chaffTargetForKoma(koma.kind, cap);
+  // ③湧きのパラメータだけ 'relax' として読む(コマ自体の kind は書き換えない=①の凍結と両立)。
+  // リラックス = チャフ目標が上限の40% / 湧きCDがランク基準の2倍。**ゼロではない**ので、
+  // 弾薬・回復のドロップ経路は細るだけで止まらない(長期戦で枯れない)。
+  const spawnKoma = bossRelax ? 'relax' : koma.kind;
+  let komaChaffTarget = chaffTargetForKoma(spawnKoma, cap);
   if (softenedNow) komaChaffTarget = Math.max(SOFTEN_TARGET_MIN, Math.round(komaChaffTarget * SOFTEN_TARGET_MULT));
   // PACING_PUZZLE.md §5.21-追補4(社長決定v0.25.1553): 追補3が足した「ゲート1中はchaff目標=
   // ピーク・CD0を強制」は撤回。ゲート1中もchaffは常にコマ駆動の値をそのまま使う=既存カーブ不変
   // (雑魚の湧き数はディレクター任せ)。
-  const cdMs = cdForKoma(koma.kind, rank, puzzleClockRef.current.r7Cap, tightenedNow, softenedNow);
+  const cdMs = cdForKoma(spawnKoma, rank, puzzleClockRef.current.r7Cap, tightenedNow, softenedNow);
   koma.chaffRamp = stepChaffRamp(koma.chaffRamp, {
     dtMs: deltaTime * 1000,
     komaTarget: komaChaffTarget,
-    rampIntervalMs: rampIntervalForKoma(koma.kind, tightenedNow),
+    rampIntervalMs: rampIntervalForKoma(spawnKoma, tightenedNow),
     holdIncrease: koma.kind !== 'harvest' && msSinceLastHit < 10000, // §3-A被弾ホールド(盛り演出のハーベストは対象外)
   });
   // 邪魔者/特別枠は通常・ピークのみ供給(緩コマは新規補充停止=在席は自然消化)。
@@ -483,7 +504,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     area: areaForSpecial,
     aliveSpecial,
     msSinceLastHit,
-    chaffWeights: chaffWeightsForKoma(koma.kind),
+    chaffWeights: chaffWeightsForKoma(spawnKoma),
     tieBreakRandom: Math.random(),
   });
   if (decision) {
@@ -585,7 +606,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
   // 画面内に見えている敵を回収してしまう(社長報告: ズーム引きで敵が端で消える。トールが
   // 大型=常時最大引き対象になって露見)。レンダラ側カリング(v0.25.1253 zoomViewportOverscan)
   // と同思想で、最大引き(CONTEXT_ZOOM_MIN)でも覆える倍率だけ常に外へ広げる(安全側=消えなくなるだけ)。
-  const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / CONTEXT_ZOOM_MIN;
+  const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / ZOOM_MIN_ABS; // ★一番引いた時を基準に(v0.25.2412)
   const recycleHalfW = (gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
   const recycleHalfH = (gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
   let recycledAnyEnemy = false;

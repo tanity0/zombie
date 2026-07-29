@@ -446,6 +446,15 @@ export interface RankPaceTickInput {
   msSinceLastHit: number;
   rank: PuzzleRank;
   r7Cap: number;
+  /**
+   * ボス交戦中の**昇格凍結**(社長裁定v0.25.2412 質問②「凍結で」)。
+   *
+   * 昇格は「10秒窓に何体捌けたか」で決まるが、ボス戦中は強制リラックス(=雑魚の密度4割・湧きCD2倍)に
+   * するので、**窓の撃破数はどう頑張っても足りない**。そのまま数えると「ボスと戦っただけで昇格が
+   * 遠のく」という理不尽が生まれるので、窓そのものを止める(進行中の窓も据え置き=消さない)。
+   * **降格側(hitStreak)は止めない**: ボスに削られ続けているなら落ちるのが正しい(社長裁定)。
+   */
+  freezePromotion?: boolean;
 }
 
 export interface RankPaceTickResult {
@@ -459,6 +468,9 @@ export interface RankPaceTickResult {
 export const tickRankPace = (state: RankPaceState, input: RankPaceTickInput): RankPaceTickResult => {
   const streak = stepHitStreak(state.hitStreak, { dtMs: input.dtMs, msSinceLastHit: input.msSinceLastHit });
   if (streak.demote) return { state: createRankPaceState(), delta: -1 };
+  // 昇格凍結中は窓を1msも進めない(=windowElapsedMs/killsInWindow/windowsAtRank が据え置き)。
+  // 解除後は止めた続きから再開する。
+  if (input.freezePromotion) return { state: { window: state.window, hitStreak: streak.state }, delta: 0 };
   const win = stepRankWindow(state.window, {
     dtMs: input.dtMs, killsThisFrame: input.killsThisFrame, rank: input.rank, r7Cap: input.r7Cap,
   });

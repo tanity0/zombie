@@ -56,10 +56,10 @@ import type { FlareGunFlare } from '../utils/flareGun';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
-import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
+import { contextZoomTarget, isLargeForZoom, ZOOM_MIN_ABS } from '../utils/cameraZoom';
 // 文脈ズームで最大まで引いた時(worldGroup.scale=CONTEXT_ZOOM_MIN)でも画面を覆えるよう、worldGroup内の
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
-const ZOOM_OVERSCAN = 1 / CONTEXT_ZOOM_MIN;
+const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(ボス戦=BOSS_ZOOM_MIN)を基準にする
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss } from '../utils/enemyUtils';
 import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
@@ -1384,7 +1384,15 @@ const stage3EnemyTextureName = (type: string): string | null =>
 const BLOOD_DRY_MS = 900;
 // 砂埃(B-0)。**短く出して即消す**——硬直(=反撃してよい時間)と重なるので、長く残ると
 // 「まだ危ない」と誤読されて反撃窓が使われなくなる。全て実機調整前提の叩き台。
-const DUST_MS = 420;      // 4コマを出し切るまで
+// 4コマを出し切るまで。420→700(社長指示v0.25.2412「エフェクト系が一瞬すぎるので、もう少しだけ
+// 余韻/見せの時間を作ってほしい」)。**当たり判定の窓とは無関係**(砂埃は着弾後の余韻=判定ゼロ)なので
+// 伸ばしてもゲームには何の影響もない。
+const DUST_MS = 700;
+// 「振った瞬間」の絵(斬撃の弧/刀のストリーク)を、**判定の窓より少しだけ長く見せる**倍率
+// (社長指示v0.25.2412)。判定(active窓)そのものは1msも変えない=絵だけがゆっくり振り切る。
+// 攻撃ヴィジュアルの2分類では①(判定に揃える)側だが、社長方針「完璧でなくてよい・赤ラインが
+// 別に出ているなら良し」の範囲。赤い帯/線は従来どおり判定と厳密一致のまま出ている。
+const FX_SWING_LINGER = 1.35;
 // 砂埃は CLAUDE.md「攻撃ヴィジュアルの2分類」の**②派手さの絵**(判定ゼロ・当たっても痛くないと
 // 見て分かる)。社長方針v0.25.2410「オーバーに見せた方がいい」に従い、判定より大きく外へ出す。
 // v0.25.2408では踏み鳴らしだけ 2.2 にしたが、着地/のしかかりが 1.25 のまま取り残されていた
@@ -8781,7 +8789,8 @@ export class PixiScene {
       {
         const bs = e.bossState;
         const swinging = bs === 'issen-dash' || bs === 'tsuki' || bs === 'harai';
-        const swingDur = bs === 'issen-dash' ? THOR_ISSEN_DASH_MS : bs === 'tsuki' ? THOR_TSUKI_MS : THOR_HARAI_ACTIVE_MS;
+        // 絵だけ FX_SWING_LINGER 倍ゆっくり振り切る(社長指示v0.25.2412)。判定の窓(bossStateUntil)は不変。
+        const swingDur = (bs === 'issen-dash' ? THOR_ISSEN_DASH_MS : bs === 'tsuki' ? THOR_TSUKI_MS : THOR_HARAI_ACTIVE_MS) * FX_SWING_LINGER;
         const swL = this.latchFx(`${e.id}:thorswing`, swinging, swingDur, now, () => [
           e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy,
           bs === 'issen-dash' ? THOR_ISSEN_VIS_HALFWIDTH : bs === 'tsuki' ? THOR_TSUKI_VIS_HALFWIDTH : THOR_HARAI_VIS_HALFWIDTH,
@@ -9174,37 +9183,62 @@ export class PixiScene {
       } else {
         view.sprite.tint = 0xffffff;
       }
-      // 砂埃(B-0・v0.25.2404): 踏み鳴らし/着地/のしかかりの**当たった直後**だけ短く出す。
-      // v0.25.2408: tintのif連鎖から外へ出し、latchFx で自前時計にした。硬直はカウンター窓そのものなので、
-      // 状態を見て描いていると**殴り込んだ瞬間に砂埃が消える**(社長報告)。立ち上がりで座標を焼き付け、
-      // 以後は DUST_MS を最後まで再生する。ヒットストップ中は now が止まる=砂埃も一緒に止まる(意図どおり)。
+      // 砂埃(B-0)は**着弾イベント**に紐づける(社長報告v0.25.2412「まだカウンターすると砂埃が出ない」)。
+      //
+      // v0.25.2408 の直し(硬直 g-*-recover を見て latch)では**足りなかった**。理由:
+      // useGameLoop は 1tick の中で `updateEnemies`(=溜め終わり→硬直へ遷移) → `combatTick`
+      // (=カウンター成立で `aiPhase: undefined`)を**続けて**走らせる。プレイヤーがボスに重なった
+      // 状態でカウンターを構えている=いつもの倒し方だと、**硬直に入ったその tick でパリィが成立する**ので、
+      // 描画側は硬直を**1フレームも観測できない**。状態を見ている限り何をしても出ない。
+      //
+      // そこで**溜め(windup/滞空)の立ち上がり**で「いつ・どこに・どれだけの大きさで着弾するか」を
+      // 焼き付け、**着弾時刻から** DUST_MS ぶんを自前時計で再生する。溜めは数百msあるので観測漏れは無く、
+      // 着弾後にボスがどうなろう(パリィ/気絶/死亡)と砂埃は出る。
       {
-        const dustPhase = gph === 'g-stomp-recover' || gph === 'g-jump-recover' || gph === 'g-slam-recover';
-        const dustL = this.latchFx(`${e.id}:dust`, dustPhase, DUST_MS, now, () => {
-          // 中心と大きさは技ごとに変える。着地は着地点、それ以外は足元。
-          const jump = gph === 'g-jump-recover';
+        const dustMove = gph === 'g-stomp-windup' ? 'stomp'
+          : gph === 'g-jump-air' ? 'jump'          // 着地=滞空の終わりが着弾(トールのjump-attackと同じ作法)
+          : gph === 'g-slam-windup' ? 'slam' : null;
+        // 溜めの残り(=着弾までの時間)。latchFx は arming の瞬間しか durMs を読まないので、
+        // ここで毎フレーム計算しても実際に使われるのは立ち上がりの1回だけ。
+        const toImpact = dustMove !== null ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
+        const dustL = this.latchFx(`${e.id}:dust`, dustMove !== null, toImpact + DUST_MS, now, () => {
+          // 中心と大きさは技ごとに変える。着地は着地点(溜め開始でロック済み)、それ以外は足元。
+          const jump = dustMove === 'jump';
           const dx = jump ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
           const dy = jump ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
           // 踏み鳴らしだけ大きく外へ出す(社長指示v0.25.2408・絵に隠れて見えないため)。
-          const scale = gph === 'g-stomp-recover' ? DUST_STOMP_SCALE : DUST_SCALE;
+          const scale = dustMove === 'stomp' ? DUST_STOMP_SCALE : DUST_SCALE;
           const dr = (jump ? (e.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS)
-            : gph === 'g-slam-recover' ? GIANT_SLAM_HALF_WIDTH : (e.gStompRadius ?? GIANT_STOMP_RADIUS)) * scale;
-          return [dx, dy, dr];
+            : dustMove === 'slam' ? GIANT_SLAM_HALF_WIDTH : (e.gStompRadius ?? GIANT_STOMP_RADIUS)) * scale;
+          // 4つ目=「この latch 全体のうち、どこが着弾の瞬間か」。溜め中は砂埃を出さないための境目。
+          const impactFrac = (toImpact + DUST_MS) > 0 ? toImpact / (toImpact + DUST_MS) : 0;
+          return [dx, dy, dr, impactFrac];
         });
-        if (dustL) this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dustL.t, this.dustTintForStage(), 0.75 * (1 - dustL.t * 0.6));
+        if (dustL && dustL.t >= dustL.d[3]) {
+          const dp = dustL.d[3] < 1 ? (dustL.t - dustL.d[3]) / (1 - dustL.d[3]) : 0;
+          this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), 0.75 * (1 - dp * 0.6));
+        }
       }
       // 「振った瞬間」の弧(素材D-1・v0.25.2400)。**予告ではなく実行の絵**なので当たり判定と一致させる
       // 義務は無いが、**判定の外へはみ出すと危険地帯に見える**ので間合い(長さ)の内側に収める。
-      // v0.25.2408: g-sweep-active 中もカウンターは成立する(combatTick の giantParryablePhase)ので、
-      // 状態を見て描いていると**振り切る前に弧が消える**。latchFx で最後まで出し切る。
+      // v0.25.2412: 砂埃と**同じ理由**で、latch の起点を実行(g-sweep-active)から溜め(g-sweep-windup)へ
+      // 移す。g-sweep-active も giantParryablePhase に含まれる=硬直と同様、**遷移したその tick で
+      // パリィが成立して aiPhase が消える**ため、実行状態を1フレームも観測できないことがある。
+      // 溜めは数百msあるので観測漏れが無い。斬撃ラインは溜め開始でロック済み(aiFrom/aiTarget)。
       {
-        const swL = this.latchFx(`${e.id}:sweepslash`, gph === 'g-sweep-active',
-          GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT, now, () => {
-            const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
-            const stx = e.aiTargetX ?? cx, sty = e.aiTargetY ?? cy;
-            return [sfx, sfy, Math.atan2(sty - sfy, stx - sfx), Math.hypot(stx - sfx, sty - sfy) || 1];
-          });
-        if (swL) this.drawSlashArc(view, swL.d[0], swL.d[1], swL.d[2], swL.d[3], 0xffd8d8, 0.9 * (1 - swL.t));
+        const swWind = gph === 'g-sweep-windup';
+        const swToImpact = swWind ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
+        const swActive = (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT) * FX_SWING_LINGER; // 絵だけ長く(判定は不変)
+        const swL = this.latchFx(`${e.id}:sweepslash`, swWind, swToImpact + swActive, now, () => {
+          const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
+          const stx = e.aiTargetX ?? cx, sty = e.aiTargetY ?? cy;
+          const frac = (swToImpact + swActive) > 0 ? swToImpact / (swToImpact + swActive) : 0;
+          return [sfx, sfy, Math.atan2(sty - sfy, stx - sfx), Math.hypot(stx - sfx, sty - sfy) || 1, frac];
+        });
+        if (swL && swL.t >= swL.d[4]) {
+          const sp = swL.d[4] < 1 ? (swL.t - swL.d[4]) / (1 - swL.d[4]) : 0;
+          this.drawSlashArc(view, swL.d[0], swL.d[1], swL.d[2], swL.d[3], 0xffd8d8, 0.9 * (1 - sp));
+        }
       }
       if (gph === 'g-stomp-windup') {
         // T2(赤円・自身の足元)。半径=GIANT_STOMP_RADIUS(社長裁定6.26-9 #3)。
