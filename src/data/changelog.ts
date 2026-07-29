@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2439',
+    items: [
+      'ゲーム内容の変更はありません(スキル・装備・サブウェポンの効果値台帳を追加)。',
+    ],
+  },
+  {
     version: '0.25.2438',
     items: [
       'ゲーム内容の変更はありません(ボス設計の参考資料を追加)。',
