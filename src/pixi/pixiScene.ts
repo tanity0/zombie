@@ -1362,6 +1362,11 @@ const STAGE3_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost
 const stage3EnemyTextureName = (type: string): string | null =>
   STAGE3_ENEMY_TYPES.has(type) ? `stage3-enemies/${type}` : null;
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
+// 予告円の「輪」を社長支給の焼き済み素材(A-1・`fx/telegraph-ring`)で描くか。
+// `?fxring=0` で従来の Graphics stroke(細い赤線)へ戻して見比べられる(v0.25.2395)。
+const FX_RING_ENABLED = typeof window === 'undefined'
+  || new URLSearchParams(window.location.search).get('fxring') !== '0';
+
 const STAGE3_BOSS_VISUAL_SCALE = 1.2;
 
 // ★確認用: 全敵の当たり判定「帯」をうっすら色付きで描くデバッグ表示。社長確認OK=通常時OFF(裏ボスの帯は別途常時表示)。
@@ -1492,6 +1497,12 @@ interface ActorView {
   sprite: Sprite;
   hitFlash: Sprite;  // 被弾時、本体スプライトと同形を白で加算オーバーレイして「絵」を一瞬光らせる(丸光は廃止)
   overlay: Graphics; // above the sprite (health bar, hit flash, boss marker)
+  // 予告円の「輪」だけを担う焼き済みスプライト(社長支給素材 A-1・v0.25.2395)。
+  // 面(内側の赤い塗り)は従来どおり overlay の Graphics が描き、輪だけをこの1枚に置き換える。
+  // 素材は**外周がキャンバス端に一致する真円**に正規化済みなので、幅=高さ=直径 に合わせるだけで
+  // **輪の外周＝当たり判定の半径**になる(図形と判定の一致を素材側で担保している)。
+  // 生成は遅延(使うボスだけ)。使わないフレームは visible=false にするだけ=draw call は増えない。
+  ring?: Sprite;
 }
 
 interface PropView {
@@ -8469,6 +8480,9 @@ export class PixiScene {
     // Above-sprite layer: health bar, boss marker, hit flash.
     const o = view.overlay;
     o.clear();
+    // 予告の輪スプライト(A-1)は既定で消しておき、必要な分岐だけが drawTelegraphRing で点ける
+    // (o.clear() と同じ役割。消し忘れて前フレームの輪が残るのを構造的に防ぐ)。
+    if (view.ring) view.ring.visible = false;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       const ax = (e.aiTargetX ?? cx) - (e.aiFromX ?? cx);
@@ -9015,8 +9029,10 @@ export class PixiScene {
         // M65: windup開始時にgameStore.tsが確定させたe.gStompRadius(ステージ別倍率込み)を読む。
         // 判定側(gameStore.tsのpumpkinBlasts)も同じフィールドを読むため、図形と判定は必ず一致する。
         const gStompR = e.gStompRadius ?? GIANT_STOMP_RADIUS;
+        // 面(内側の赤い塗り)=「どこが危ないか」は据え置き。輪だけを素材A-1へ差し替える(v0.25.2395)。
         o.ellipse(cx, cy, gStompR, gStompR).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * gPulse });
-        o.ellipse(cx, cy, gStompR, gStompR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, gStompR, 0xff3b3b, 0.55 + 0.35 * gPulse);
+        else o.ellipse(cx, cy, gStompR, gStompR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
       } else if (gph === 'g-sweep-windup' || gph === 'g-sweep-active') {
         // T3(赤い角ばった四角ゾーン)。トール払い/ミゲル払いと同じ意匠(poly fill+stroke)。
         const gfx = e.aiFromX ?? cx, gfy = e.aiFromY ?? cy;
@@ -9050,8 +9066,10 @@ export class PixiScene {
         // gameStore.tsが確定させたe.gJumpRadius(ステージ別倍率込み)を読む。判定側と同じフィールド。
         const gtx = (e.aiTargetX ?? e.x) + e.width / 2, gty = (e.aiTargetY ?? e.y) + e.height / 2;
         const gR = e.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS;
+        // 着地予告も同じ素材(A-1)。円の予告はゲーム中で意匠を揃える(踏み鳴らしと同じ輪に見える)。
         o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * gPulse });
-        o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, gtx, gty, gR, 0xff3b3b, 0.55 + 0.35 * gPulse);
+        else o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
       } else if (gph === 'g-bite-windup' || gph === 'g-bite-hold' || gph === 'g-bite-active') {
         // M66 stage-1「噛みつき」: T3前方の短い帯(足元の円=stompと図形で区別)。holdは"間"=図形は
         // そのまま静止して見せ続ける(学習点=保持350ms固定)。
@@ -10229,6 +10247,36 @@ export class PixiScene {
     const stage3BossMul = (this.daylight && type === 'giantbat') ? STAGE3_BOSS_VISUAL_SCALE : 1;
     const stage4VisMul = (this.snowStage && STAGE4_ENEMY_TYPES.has(type)) ? STAGE4_ENEMY_VISUAL_SCALE : 1;
     return stage3BossMul * stage4VisMul;
+  }
+
+  /**
+   * 予告円の「輪」を焼き済みスプライト1枚で描く(社長支給素材 A-1・v0.25.2395)。
+   *
+   * なぜ Graphics の stroke ではなくスプライトか: 毎フレームの図形描画をやめられるうえ、
+   * 粒立ちのある意匠を入れられる(CLAUDE.mdの実測でプール済みスプライトは安い/per-frame Graphics は重い)。
+   * **加算合成は使わない**(強glow=唯一の律速を増やさないため。通常合成 + tint のみ)。
+   *
+   * `radius` は**当たり判定の半径をそのまま渡す**こと。素材は外周がキャンバス端に一致する真円に
+   * 正規化してあるので、直径に合わせれば輪の外周が判定と一致する。
+   */
+  private drawTelegraphRing(view: ActorView, cx: number, cy: number, radius: number, tint: number, alpha: number): void {
+    if (!FX_RING_ENABLED) return;
+    const tex = getTexture('fx/telegraph-ring');
+    if (!tex) return;
+    let sp = view.ring;
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(0.5, 0.5);
+      view.container.addChildAt(sp, 0); // 本体スプライトより下=地面に置いた絵に見せる
+      view.ring = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    sp.position.set(cx, cy);
+    sp.width = radius * 2;
+    sp.height = radius * 2;
+    sp.tint = tint;
+    sp.alpha = alpha;
+    sp.visible = true;
   }
 
   private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number } | null, now: number) {

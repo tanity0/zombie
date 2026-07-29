@@ -378,6 +378,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'suriel-ring', scaleMode: 'linear' as const },
       { name: 'acrasiel', scaleMode: 'linear' as const },
       { name: 'acrasiel-spear', scaleMode: 'linear' as const },
+      // 予告円の「輪」(社長支給素材 A-1・v0.25.2395)。グレースケール+透過で、ゲーム側が tint で
+      // 赤(危険)/青白(硬直)に染める。全ボスの円テレグラフで使い回す共通部品なので `fx/` 配下に置く。
+      // 縮小して使う(512→直径108〜260)ので linear。
+      { name: 'fx/telegraph-ring', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },
