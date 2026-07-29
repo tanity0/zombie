@@ -9238,12 +9238,12 @@ export class PixiScene {
       // 蹴り出し: 突進の立ち上がりで、その場(足元)に一発。
       const kickL = this.latchFx(`${e.id}:dashkick`, dashing, DUST_MS, now,
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
-      if (kickL) this.drawDust(kickL.d[0], kickL.d[1], kickL.d[2], kickL.t, this.dustTintForStage(), 0.7 * (1 - kickL.t * 0.6));
+      if (kickL) this.drawDust(kickL.d[0], kickL.d[1], kickL.d[2], kickL.t, this.dustTintForStage(), this.dustAlpha(kickL.t));
       // 止まった瞬間: 突進が明けた立ち上がり(=!dashing への遷移)で、止まった位置に一発。
       // `dashEndArmed` は「直前に突進していた」ことを覚えるための1フレーム遅延。
       const stopL = this.latchFx(`${e.id}:dashstop`, !dashing && this.dashWasOn.has(e.id), DUST_MS, now,
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
-      if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), 0.7 * (1 - stopL.t * 0.6));
+      if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), this.dustAlpha(stopL.t));
       if (dashing) this.dashWasOn.add(e.id); else this.dashWasOn.delete(e.id);
     }
     // 汎用ジャンプ着地の砂埃(社長指摘v0.25.2426「パンプキンなどのジャンプにも砂埃ちゃんと出てる?」)。
@@ -9277,7 +9277,7 @@ export class PixiScene {
       });
       if (jL && jL.t >= jL.d[3]) {
         const dp = jL.d[3] < 1 ? (jL.t - jL.d[3]) / (1 - jL.d[3]) : 0;
-        this.drawDust(jL.d[0], jL.d[1], jL.d[2], dp, this.dustTintForStage(), 0.75 * (1 - dp * 0.6));
+        this.drawDust(jL.d[0], jL.d[1], jL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp));
       }
     }
     // M51: 城ボス「ジャイアント」新スクリプトの予告描画(PACING_PUZZLE.md §6.26)。既存部品のみ流用
@@ -9395,7 +9395,7 @@ export class PixiScene {
         });
         if (dustL && dustL.t >= dustL.d[3]) {
           const dp = dustL.d[3] < 1 ? (dustL.t - dustL.d[3]) / (1 - dustL.d[3]) : 0;
-          this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), 0.75 * (1 - dp * 0.6));
+          this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp));
         }
       }
       // 「振った瞬間」の弧(素材D-1・v0.25.2400)。**予告ではなく実行の絵**なので当たり判定と一致させる
@@ -10991,6 +10991,16 @@ export class PixiScene {
   private dustFrames?: Texture[];
   private dustPool: Sprite[] = [];
   private dustUsed = 0;
+  // v0.25.2456(社長指示「最後(消える直前)以外はハッキリ表示」): 砂埃のアルファ包絡線。
+  // 旧式 0.7〜0.75×(1-t×0.6) は出た瞬間から薄くなり続けていた。新式=寿命の前70%は
+  // ほぼ不透明で維持し、最後の30%だけ線形フェードで消える。
+  private dustAlpha(t: number): number {
+    const DUST_ALPHA_MAX = 0.95;
+    const DUST_FADE_START = 0.7;
+    return t < DUST_FADE_START
+      ? DUST_ALPHA_MAX
+      : DUST_ALPHA_MAX * Math.max(0, 1 - (t - DUST_FADE_START) / (1 - DUST_FADE_START));
+  }
   private drawDust(x: number, y: number, radius: number, prog: number, tint: number, alpha: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;
     const tex = getTexture('fx/dust');

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2456',
+    items: [
+      '踏み鳴らし・着地・突進などの砂埃がハッキリ表示されるようになりました(消える直前だけフェード)。',
+    ],
+  },
+  {
     version: '0.25.2455',
     items: [
       '銃口の白煙が実際に弾の飛んだ方向を向くようになり、撃った場所に残るようになりました(移動に付いてこない)。',
