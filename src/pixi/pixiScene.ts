@@ -7962,14 +7962,36 @@ export class PixiScene {
       }
       // 銃口フラッシュ(社長支給素材 C-1・v0.25.2401)。反動と同じ `gun.lastFired` に乗せるので、
       // 発砲の瞬間とズレようがない。反動より短い窓で消す(閃光は反動より速く終わる)。
+      // v0.25.2455(社長報告「弾が飛ぶ方向に合わせて」「動くと付いてきちゃう」): 発砲の瞬間に
+      // **実際に生まれた弾の方向**と銃口の世界座標を焼き付け(latch)、消えるまで場所固定で描く。
+      // 向きをaim(プレイヤーの向き)から取ると自動照準の射線とズレるため、この発砲で生まれた弾
+      // (weaponKey=銃のキー・createdAt≒lastFired)を店から探して射線を使う(見つからなければaim)。
       if (sinceFire >= 0 && sinceFire < MUZZLE_FLASH_MS) {
-        const k = 1 - sinceFire / MUZZLE_FLASH_MS;
-        this.drawMuzzleFlash(
-          fb.footX + aimx * MUZZLE_OFFSET_PX * dsc,
-          fb.footY - fb.boxH * MUZZLE_HEIGHT_FRAC * dsc + aimy * MUZZLE_OFFSET_PX * dsc,
-          Math.atan2(aimy, aimx), MUZZLE_LEN_PX * dsc, 0.9 * k,
-          fb.footY, // ★Yソートは**プレイヤーの足元**で行う(閃光自身のYだと必ず背後に回る)
-        );
+        if ((gun.lastFired || 0) !== this.muzzlePrevFired) {
+          this.muzzlePrevFired = gun.lastFired || 0;
+          let dx = aimx, dy = aimy;
+          const projs = useGameStore.getState().projectiles;
+          for (let i = projs.length - 1; i >= 0; i--) {
+            const pr = projs[i];
+            if (pr.weaponKey === gun.key && !pr.hostile && Math.abs(pr.createdAt - this.muzzlePrevFired) <= 40) {
+              const m = Math.hypot(pr.direction.x, pr.direction.y) || 1;
+              dx = pr.direction.x / m; dy = pr.direction.y / m;
+              break;
+            }
+          }
+          this.muzzleLatch = {
+            x: fb.footX + dx * MUZZLE_OFFSET_PX * dsc,
+            y: fb.footY - fb.boxH * MUZZLE_HEIGHT_FRAC * dsc + dy * MUZZLE_OFFSET_PX * dsc,
+            rot: Math.atan2(dy, dx),
+            len: MUZZLE_LEN_PX * dsc,
+            sortY: fb.footY, // ★Yソートは**焼き付けた瞬間の足元**(閃光自身のYだと必ず背後に回る)
+          };
+        }
+        const L = this.muzzleLatch;
+        if (L) {
+          const k = 1 - sinceFire / MUZZLE_FLASH_MS;
+          this.drawMuzzleFlash(L.x, L.y, L.rot, L.len, 0.9 * k, L.sortY);
+        } else this.hideMuzzleFlash();
       } else this.hideMuzzleFlash();
     } else this.hideMuzzleFlash();
     // 近接スイング: 狙い方向へ踏み込み(踏込→振抜→復帰のアーク)＋振り抜きの傾き＋横ストレッチ。
@@ -10841,6 +10863,9 @@ export class PixiScene {
    * 素材は +x(右)へ噴いているため回転は `angle` そのまま(v0.25.2447 向き反転修正)。
    */
   private muzzleSprite?: Sprite;
+  // v0.25.2455: 発砲の瞬間に焼き付ける閃光の世界座標と射線(消えるまで場所固定=latchFxと同じ考え方)。
+  private muzzleLatch: { x: number; y: number; rot: number; len: number; sortY: number } | null = null;
+  private muzzlePrevFired = 0;
   private drawMuzzleFlash(x: number, y: number, angle: number, len: number, alpha: number, sortY: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) { this.hideMuzzleFlash(); return; }
     const tex = getTexture('fx/muzzle-flash');

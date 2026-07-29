@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2455',
+    items: [
+      '銃口の白煙が実際に弾の飛んだ方向を向くようになり、撃った場所に残るようになりました(移動に付いてこない)。',
+    ],
+  },
+  {
     version: '0.25.2454',
     items: [
       'ゲーム内容の変更はありません(守護霊の学習データの高解像度化=ボス技への反応・立ち回り・サブウェポンの使い方の記録のみ。挙動・判定・数値は不変)。',
