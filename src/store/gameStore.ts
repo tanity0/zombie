@@ -107,7 +107,7 @@ import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutra
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
-import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
+import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps, LAB_IDOL_SPAWN, LAB_IDOL_FACING_LEFT, LAB_IDOL_AGGRO_RANGE } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { clampFinishKillOnlyHealth } from '../utils/finishKillOnly';
@@ -10669,9 +10669,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 視界=LAB_VISION_RANGE(湧き敵と同じ単一の出どころ。v0.25.1754で300へ統一→v0.25.2237で2/3の200)。
       const mkGuard = (type: EnemyType, gx: number, gy: number): Enemy =>
         ({ ...spawnEnemyAt(type, gx, gy, 0), fixed: true, dormant: true, aggroRange: LAB_VISION_RANGE, vx: 0, vy: 0, homeX: gx, homeY: gy });
+      // PACING_PUZZLE.md §6.28-20(社長指示): idol(stage-2隠しボス)=ゴール資料(X)の点対称セルに、
+      // 他のLAB_ENEMIESと同じ作法(fixed/dormant/homeX・Y/aggroRange)で固定・休眠配置する。
+      // fromEvent=true でゲート2ボスと同じ作法にし強さ×5倍率を掛けない(社長指示v0.25.1595の踏襲・
+      // ?idolnow=1の強制召喚と同じ初期化)。起床/移動/攻撃はuseGameLoop.tsのidol専用ブロックが担当
+      // (updateEnemiesの通常AIはisHiddenBoss型を素通りするため、この配列に載せるだけでは動かない)。
+      const mkIdol = (): Enemy => ({
+        ...spawnEnemyAt('idol', LAB_IDOL_SPAWN.x, LAB_IDOL_SPAWN.y, 0),
+        fixed: true, dormant: true, aggroRange: LAB_IDOL_AGGRO_RANGE, vx: 0, vy: 0,
+        homeX: LAB_IDOL_SPAWN.x, homeY: LAB_IDOL_SPAWN.y,
+        fromEvent: true,
+        bossState: 'chase', bossPhase: 1,
+        idolFacingLeft: LAB_IDOL_FACING_LEFT, // 社長指示: 設置時はプレイヤーの方(スポーン地点基準)を向く
+      });
       // 固定・休眠の敵を配置(距離カリング対象外=fixed)。aggroRange 内でプレイヤーが入ると起床。
       const runEnemies: Enemy[] = indoor
-        ? LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0, homeX: e.x, homeY: e.y }))
+        ? [...LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0, homeX: e.x, homeY: e.y })), mkIdol()]
         : labDoc
           ? [
               mkGuard('lab-zombie-3', labDoc.x - labDoc.side * 170, labDoc.y),

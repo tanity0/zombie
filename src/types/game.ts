@@ -335,6 +335,11 @@ export interface Enemy {
   dormant?: boolean;
   aggroRange?: number;
   fixed?: boolean;
+  // idol専用(§6.28-20・社長指示)の設置時の向き。true=水平ミラーして左向きで描画。既存の汎用
+  // facingLeft機構は無い(ShadowCloneStateの同名フィールドとは別物=プレイヤー分身の描画専用)ため、
+  // 「無ければidol専用に最小限を足す」方針でここへ足す。設置時に決定論的に算出して固定し、以後は
+  // 更新しない(戦闘中に反転はしない=CLAUDE.md「Visual vs. hitbox」= 描画のみ・当たり判定は不変)。
+  idolFacingLeft?: boolean;
   // ジャイアントバットの行動パターン別クールダウン(gameTime ms)。弾(fire profile)とは別系統。
   // (?giantscript=0の旧スクリプト専用。新スクリプトは下の gStomp/gSweep/gJump/gDash/gBoltReadyAt を使う)。
   gbJumpReadyAt?: number;

@@ -69,7 +69,7 @@ import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
-import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
+import { LAB_OUTER_BOUNDS, labBlockingWalls, LAB_IDOL_AGGRO_RANGE, idolFacesLeft } from '../world/labMap';
 import { segmentBlocked, type Rect } from '../world/obstacles';
 import { treesInRegion, trunkRect } from '../world/trees';
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
@@ -5164,15 +5164,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          }
         }
 
-        // --- idol(stage-2隠しボス)専用ブロック(PACING_PUZZLE.md §6.28-20・バッチM64) ---
-        // ★未決(実装結果として報告): campaign.tsのhiddenBoss機構(stage.hiddenBoss)に乗せる設計だが、
-        // stage-2は theme:'lab' のため、上の裏ボス共通ブロックの発火条件自体が `!labTheme` を要求する
-        // (このブロックの数行上・「裏ボス専用ブロック」と同じ条件式)。よって通常プレイでは
-        // `campaign.ts` に `hiddenBoss: 'idol'` を足しても到達しない。campaign.tsのテーマ判定は
-        // 作り替えず(CLAUDE.md「仕様変更のルール」)、実機/自動検証用に ?idolnow=1 で強制召喚できる
-        // 専用の独立した状態機械だけを用意する。mimir/jormungand/skadi/thorとはbossRef(単一スロット)を
-        // 共有しない(idolは「追跡ではなく常にプレイヤーから離れる」という別物の移動則を持つため)。
-        if (!danceTest && !indoor && !useGameStore.getState().gameWon) {
+        // --- idol(stage-2隠しボス)専用ブロック(PACING_PUZZLE.md §6.28-20・社長指示で配置確定) ---
+        // campaign.tsのhiddenBoss機構(stage.hiddenBoss)には乗らない専用の独立した状態機械。
+        // mimir/jormungand/skadi/thorとはbossRef(単一スロット)を共有しない(idolは「追跡ではなく
+        // 常にプレイヤーから離れる」という別物の移動則を持つため)。
+        // 実体は2経路: (1) gameStore.tsのresetGameがLAB_IDOL_SPAWN(=ゴール資料Xの点対称セル)へ
+        // fixed:true/dormant:true の固定敵として1体置く(他のLAB_ENEMIESと同じ作法)。isHiddenBoss型は
+        // updateEnemiesの通常AI(起床処理含む)を素通りする(gameStore.ts:7082)ため、dormant中の待機と
+        // aggroRange+視線での起床は下のブロック内で自前に行う(「探しに行った人だけが会う」=近づくまで
+        // 何もしない、を担保する箇所)。(2) ?idolnow=1 は実機/自動検証用の強制召喚(dormantを経由せず
+        // 即chase開始。プレイヤー付近へ出す・giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
+        if (!danceTest && !useGameStore.getState().gameWon) {
          try {
           if (FORCE_IDOL && !idolForceRef.current) {
             idolForceRef.current = true;
@@ -5185,6 +5187,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             idolE.bossState = 'chase';
             idolE.bossPhase = 1;
             idolE.bossNextActionAt = newGameTime + IDOL_ACTION_MIN_MS;
+            // 設置時の向き(社長指示)をデバッグ召喚にも揃える: 出現位置とプレイヤーの左右関係だけで決める
+            // (labMap.tsのidolFacesLeftをそのまま再利用=固定配置と同じ式・値の決め打ちをしない)。
+            idolE.idolFacingLeft = idolFacesLeft({ x: pcx0 }, { x: ix });
             addEnemy(idolE);
             useGameStore.getState().triggerAttention(ix, iy);
           }
@@ -5192,6 +5197,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (idol) {
             const icx = idol.x + idol.width / 2, icy = idol.y + idol.height / 2;
             const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+            if (idol.dormant) {
+              // 索敵(近づくまで眠っている・§6.28-20の配置意図「探しに行った人だけが会う」の担保):
+              // aggroRange 内 かつ 壁越しでない(視界)ならプレイヤーが近づいた=起床。gameStore.tsの
+              // updateEnemies dormantブロック(LAB_ENEMIESの起床=距離+segmentBlocked)と同じ作法だが、
+              // idolはisHiddenBoss型のため updateEnemies の起床処理を素通りする(gameStore.ts:7082)ので、
+              // ここで自前に行う(これが無いと「マップの反対側にいるのに撃ってくる」になる)。
+              const ddx = pcx - icx, ddy = pcy - icy;
+              const ar = idol.aggroRange ?? LAB_IDOL_AGGRO_RANGE;
+              const inRange = ddx * ddx + ddy * ddy <= ar * ar;
+              const idolWalls = indoor
+                ? [...labBlockingWalls(loopState.labDoors.filter(d => d.open).map(d => d.id)), ...loopState.labProps.map(p => p.rect)]
+                : [];
+              const seen = inRange && !(idolWalls.length > 0 && segmentBlocked(pcx, pcy, icx, icy, idolWalls));
+              if (seen) {
+                useGameStore.setState(stt => ({
+                  enemies: stt.enemies.map(e => e.id === idol.id
+                    ? { ...e, dormant: false, bossNextActionAt: newGameTime + IDOL_ACTION_MIN_MS }
+                    : e),
+                }));
+              }
+            } else {
             const dist = Math.hypot(pcx - icx, pcy - icy);
             const hpFrac = idol.maxHealth > 0 ? idol.health / idol.maxHealth : 1;
             const phase = idolPhaseForHealth(hpFrac);
@@ -5333,6 +5359,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             if (Object.keys(iPatch).length) {
               useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === idol.id ? { ...e, ...iPatch } : e) }));
+            }
             }
           }
          } catch (err) {

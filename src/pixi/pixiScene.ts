@@ -8299,7 +8299,12 @@ export class PixiScene {
         view.sprite.skew.x = 0;
       }
       view.sprite.position.set(Math.round(spx + liftShake), Math.round(spy - liftHop - kbHop));
-      view.sprite.scale.set(scale * breath.x, scale * breath.y * flinchSqY);
+      // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
+      // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
+      // スケールXの符号だけを反転する見た目専用の変更で、hitbox(e.x/y/width/height)・座標・攻撃方向・
+      // 弾の発射方向には一切触れない(CLAUDE.md「Visual vs. hitbox」)。
+      const idolMirror = (e.type === 'idol' && e.idolFacingLeft) ? -1 : 1;
+      view.sprite.scale.set(idolMirror * scale * breath.x, scale * breath.y * flinchSqY);
       // プレイヤーが帯(当たり判定)より奥=裏に回り込んだら、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
       // 二値判定ではなく「遠ざかるほど急激」な二乗カーブで透明度を距離に応じて連続変化させる。
       const ply = useGameStore.getState().player;

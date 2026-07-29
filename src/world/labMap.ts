@@ -101,6 +101,25 @@ export const LAB_MERCHANT = center(mC.col, mC.row);
 export const LAB_CARD_KEY = center(kC.col, kC.row);
 export const LAB_WEAPON_CRATE = center(wC.col, wC.row);
 export const LAB_CLEAR_ITEM = center(xC.col, xC.row);
+
+// 社長指示(§6.28-20の隠しボスidol・配置確定): idolは「ゴール資料(X)の真逆位置」に置く。
+// 文字グリッド上で X のセルをマップ中心に対して点対称にしたセル。COLS/ROWSは手書きMAPの実寸なので、
+// MAPを編集してもこの式は追従する(値を決め打ちしない)。
+export const LAB_IDOL_SPAWN = center(COLS - 1 - xC.col, ROWS - 1 - xC.row);
+
+// 追加社長指示: idol設置時の向きはプレイヤーのスポーン地点(LAB_PLAYER_SPAWN)の方を向かせる。
+// ラン中の実際のプレイヤー位置ではなく、スポーン地点との左右関係だけで決める決定論的な純関数
+// (毎回同じ向きになる=テストで固定できる)。idolがスポーンより右にいれば左向き、逆なら右向き。
+// 真上/真下(x が等しい)は右向き(既定の未反転)扱い。
+export const idolFacesLeft = (playerSpawn: { x: number }, idolSpawn: { x: number }): boolean => idolSpawn.x > playerSpawn.x;
+export const LAB_IDOL_FACING_LEFT = idolFacesLeft(LAB_PLAYER_SPAWN, LAB_IDOL_SPAWN);
+
+// idolの索敵範囲(px)。既存の研究所固定敵(下のLAB_ENEMIES、グリフ1/2=110・3=130)を基準に、
+// 最大値(Lv3=130)をそのまま採用する。idolの部屋(ROOM_CELLS下段6番目)はメイン通路(row8)に
+// 直結しており、通路を通過するだけで中心間距離が約110pxまで縮むため、130pxで十分マージンを
+// 持って起床する(新しい系列の値=outdoor guardのLAB_VISION_RANGE=200は使わない。あちらは
+// 屋外ラボスキン専用の別系統のため)。
+export const LAB_IDOL_AGGRO_RANGE = 130;
 export const LAB_BUTTON = {
   id: 'btn-weapon',
   x: center(bC.col, bC.row).x,

@@ -1,5 +1,72 @@
 # Development Log
 
+## v0.25.2381 — idol(stage-2隠しボス)の設置場所を確定+設置時の向き【2026-07-29 09:35 JST】
+- **社長指示「idolの設置場所をゴール資料の真逆位置に」+追加指示「設置時はプレイヤーの方を向かせる」への対応。**
+- `src/world/labMap.ts`: `LAB_IDOL_SPAWN = center(COLS-1-xC.col, ROWS-1-xC.row)`(ゴール資料`X`の
+  マップ中心に対する点対称セル・列22行9)を追加。置かれる部屋([21,7,23,9])は既存ランドマーク
+  (P/M/K/W/X/B)と重ならない空き部屋。追加社長指示に対応し `idolFacesLeft(playerSpawn, idolSpawn)`
+  純関数(左右関係だけで決定論的に向きを算出)+`LAB_IDOL_FACING_LEFT`を新設(現在のマップでは左向き=
+  プレイヤーのスポーン地点が同じ行で左側にあるため)。`LAB_IDOL_AGGRO_RANGE=130`も新設(既存
+  `LAB_ENEMIES`の最大値=Lv3と同値。idolの部屋は主通路(row8)に直結しており通路通過だけで中心間距離
+  ≈110pxまで縮むため、130pxで通過時に確実に起床する)。**新規`src/world/labMap.test.ts`(8件)**:
+  点対称の厳密一致・床上判定(壁/扉と非重複)・部屋内の他ランドマーク非重複・`idolFacesLeft`の左右/
+  同値ケース・現マップでの実値(左向き)を固定。
+- `src/types/game.ts`: `Enemy.idolFacingLeft?: boolean` を新設(idol専用・最小限の水平ミラー用。
+  既存の`facingLeft`はShadowCloneState専用=プレイヤー分身描画にしか使われておらず、裏ボス系の描画には
+  一切流用されていないことをpixiScene.tsのdrawEnemyで確認した上での追加)。
+- `src/store/gameStore.ts`: resetGameの`runEnemies`(indoor分岐)へ`mkIdol()`を追加。既存の
+  `LAB_ENEMIES.map(...)`と同じ作法(`fixed:true`/`dormant:true`/`homeX・Y`/`aggroRange`)+
+  `fromEvent:true`(ゲート2ボスと同じ作法で強さ×5倍率を掛けない・社長指示v0.25.1595の踏襲)+
+  `bossState:'chase'`/`bossPhase:1`(`?idolnow=1`のforce-spawnと同じ初期化)+
+  `idolFacingLeft: LAB_IDOL_FACING_LEFT`。
+- `src/hooks/useGameLoop.ts`: idol専用ブロックの条件から`!indoor`を削除(屋内でも動くように)。
+  **「近づくまで眠っている」の担保**: `isHiddenBoss`型(idol含む)は`updateEnemies`の通常AI(起床処理
+  含む)を素通りする(`gameStore.ts:7082`)ため、`LAB_ENEMIES`の固定敵と違い`dormant:true`のままでは
+  誰も起こしてくれない。よってidolブロック内に`idol.dormant`分岐を追加し、dormant中は
+  「aggroRange内 かつ 壁越しでない(視線)」の時だけ`dormant:false`にする自前の起床判定を実装
+  (`gameStore.ts`のdormantブロックと同じ距離+`segmentBlocked`の作法。屋内壁+閉ドア+labPropsを
+  `labBlockingWalls`+`loopState.labProps`から都度算出)。dormant中はこの起床判定以外一切の行動
+  (移動/技/カウンター)を行わない=既存のstate machine全体を`else`節へ包んだ(indent差分を抑えるため
+  中身は据え置き、ブレースのみ追加)。`?idolnow=1`のforce-spawnはdormantを経由せず従来どおり即chase。
+  併せてforce-spawnにも設置時の向き(`idolFacesLeft`を出現位置とプレイヤー位置から算出)を追加。
+  ブロック上部の古い★未決コメント(「campaign.tsのhiddenBoss機構に乗せる設計だが…」)を、実際の実装
+  (LAB_IDOL_SPAWN固定配置+自前の起床判定+?idolnow=1の2経路)に合わせて書き直した。
+- `src/pixi/pixiScene.ts`: `drawEnemy`の`bossFixed`(裏ボス共通)描画に`idolMirror`(idol かつ
+  `idolFacingLeft`の時だけ-1)を追加し、スケールXの符号だけを反転。**hitbox(`e.x/y/width/height`)・
+  座標(`spx/spy`)・弾の発射方向には一切触れていない**(CLAUDE.md「Visual vs. hitbox」)。他の裏ボス
+  (mimir/jormungand/skadi/thor/miguel/jibril/rafi/uri/suriel/acrasiel)は`idolMirror`が常に`1`なので
+  無影響。既存の反転機構(`facingLeft`)は他用途(プレイヤー分身)専用で流用できなかったため、指示どおり
+  idol専用の最小限ミラーを新設した(既存機構への相乗りではない)。死体(corpse)描画は今回のスコープ外
+  (「設置時」の指示のため)として未対応のまま=意図的な範囲限定。
+- **★重大な発見(実装中に判明・設計判断が必要)**: `labMap.ts`のグリッド一式(`LAB_ENEMIES`/
+  `LAB_CLEAR_ITEM`/`ROOM_CELLS`含む)は`gameStore.ts`の`resetGame`で**`indoorMode`(`pendingIndoor`/
+  `stage.indoor`由来)が`true`の時だけ**使われる。`campaign.ts`を全ステージ`grep`した結果、
+  **現在どのステージも`indoor:true`を持たない**(`stage-2`は`theme:'lab'`だが`indoor`は未設定=
+  `indoorMode:false`)。DEVELOPMENT_LOG過去エントリ(行33352「stage-2は`indoor:true`をコメントアウトし
+  `theme:'lab'`を付与」・行33373「旧procedural迷路壁(LAB_WALLS)はもともとindoorMode限定で、stage-2は
+  屋外化済み=不使用」)のとおり、**stage-2は過去に意図的に「屋内迷路」から「屋外スクロール+ラボ見た目」
+  へ設計変更済み**で、実プレイのstage-2は`labWalls.ts`(`labWallsInRegion`/`labPropsInRegion`)+
+  `labDoc`(ランダム配置のクリア書類)という別系統を使っている。**つまり今回`labMap.ts`に実装した
+  idolの配置は、依頼された仕様どおり正確に実装したが、そのlabMap.ts自体が現在のstage-2では到達しない
+  コードパスに属する**ため、**実プレイでの到達可否は未解決のまま**(以前と変わらず`?idolnow=1`の
+  デバッグ召喚のみが有効)。§6.28-20本文が前提にしていた「labMap.tsがステージ2の実体」という認識自体が
+  古い可能性が高い。`campaign.ts`のテーマ判定を変える判断はSonnetの裁量外(CLAUDE.md仕様変更のルール)
+  のため実装せず、`PACING_PUZZLE.md`★未決事項7-1と`REALDEVICE_TEST.md`★社長判断1へ詳細を記録して
+  社長裁定を仰ぐ形にした(「idolの出現経路」を解決済みとして削除する、という当初の指示どおりの後始末は
+  **行わなかった**=事実と異なる記載を残さないため。設置座標そのものの決定・向きの決定・起床判定という
+  依頼された実装は全て完了している)。
+- **負荷スコア: 1/10**。idolは元々`LAB_ENEMIES`と同数(+1体)の固定敵で常時ループコストは変わらず、
+  描画側の追加コストはスケールXの符号分岐1つ(`idolMirror`は数値比較+三項演算)のみ。dormant中の起床
+  判定も距離二乗比較+視線判定1回/フレームで、既存の`LAB_ENEMIES`起床処理と同オーダー。新しい描画方式・
+  強glowは追加していない。安全弁: 全て`indoorMode`専用パスの中に留まり(★上記のとおり現状到達しない)、
+  仮に到達しても既存のdormant/aggroRange機構と同じ負荷特性。
+- **自己点検(実装精度の規律5)**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)には抵触しない
+  (idolはstage-2固定敵の追加でrank/puzzle系のいずれとも無関係)。
+- 検証: `npm run typecheck`(0エラー)/ `npm run lint`(対象ファイル0エラー0警告)/
+  `npx vitest related`(labMap.ts/gameStore.ts/useGameLoop.ts/pixiScene.ts/types/game.ts/idolScript.ts
+  を対象。新規`labMap.test.ts`8件は`npx vitest run`で個別に先行確認=全pass)。`npm test`/`npm run build`
+  は社長指示が無いため実行していない(CLAUDE.md方針どおり)。
+
 ## v0.25.2380 — 実機テスト指示書を作成(REALDEVICE_TEST.md・文書のみ)【2026-07-29 04:18 JST】
 - 社長指示「改良終わったら指示作って」への回答。**チャットは流れて消えるのでファイルに置いた**
   (CLAUDE.md「チャットにしか書かれていない情報は存在しないのと同じ」)。

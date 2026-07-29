@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2381',
+    items: [
+      'ゲーム内容の変更はありません（隠しボス「idol」の設置場所を内部的に確定しただけで、'
+        + '通常プレイでは今回もまだ会えません）。',
+    ],
+  },
+  {
     version: '0.25.2380',
     items: [
       'ゲーム内容の変更はありません（実機テストの手順書を追加しただけです）。',
