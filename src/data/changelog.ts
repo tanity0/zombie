@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2410',
+    items: [
+      '飛び掛かりの着地とのしかかりの砂埃も大きく広がるようになりました(当たり判定は変わりません)。',
+    ],
+  },
+  {
     version: '0.25.2409',
     items: [
       'ドッグがクイックマガジンを拾わなくなりました(取りに行くこともしません)。使うタイミングは自分で選べます。',
