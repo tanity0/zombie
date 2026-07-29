@@ -22,7 +22,7 @@ import type {
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
 import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
-  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_JUMP_WINDUP_MS,
+  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
   GIANT_SLAM_WINDUP_MS, GIANT_SLAM_HALF_WIDTH,
@@ -1506,6 +1506,9 @@ interface ActorView {
   // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。円(ring)と同じ考え方で、面は Graphics、
   // 帯の"見た目"だけをこの1枚が担う。1体につき同時に出る帯は1つなので1枚で足りる。
   band?: Sprite;
+  // 「振った瞬間」の斬撃の弧(社長支給素材 D-1・v0.25.2400)。予告(ring/band)とは役割が別で、
+  // **実行の一瞬だけ**出る。同時に2つ振るボス(翼撃)が出てきたら2枚目を足す。
+  slash?: Sprite;
 }
 
 interface PropView {
@@ -8487,6 +8490,7 @@ export class PixiScene {
     // (o.clear() と同じ役割。消し忘れて前フレームの輪が残るのを構造的に防ぐ)。
     if (view.ring) view.ring.visible = false;
     if (view.band) view.band.visible = false;
+    if (view.slash) view.slash.visible = false;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       const ax = (e.aiTargetX ?? cx) - (e.aiFromX ?? cx);
@@ -9058,8 +9062,16 @@ export class PixiScene {
           gfx - gux * ghw - gnx * ghw, gfy - guy * ghw - gny * ghw,
         ];
         o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill });
-        o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, Math.min(1, (0.32 + 0.4 * gprog) + 0.15 * gPulse + 0.2));
+        else o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
         o.moveTo(gfx, gfy).lineTo(gtx, gty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
+        // 「振った瞬間」の弧(素材D-1・v0.25.2400)。**予告ではなく実行の絵**なので当たり判定と
+        // 一致させる義務は無いが、**判定の外へはみ出すと危険地帯に見える**ので間合い(gddl)の内側に収める。
+        // active の間だけ出して消える(実行の瞬間を伝えるだけ=残すと予告と紛らわしい)。
+        if (gph === 'g-sweep-active') {
+          const sweepProg = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT)));
+          this.drawSlashArc(view, gfx, gfy, Math.atan2(gddy, gddx), gddl, 0xffd8d8, 0.9 * (1 - sweepProg));
+        }
       } else if (gph === 'g-dash-windup') {
         // T1(赤ライン+終点リング)。既存の犬/パンプキン用と同じ意匠。
         const gtx = e.aiTargetX ?? cx, gty = e.aiTargetY ?? cy;
@@ -10315,6 +10327,37 @@ export class PixiScene {
     sp.width = len + halfWidth * 2;   // 既存の poly と同じく前後へ halfWidth ぶん伸ばす
     sp.height = halfWidth * 2;
     sp.position.set((fx + tx) / 2, (fy + ty) / 2);
+    sp.tint = tint;
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
+  /**
+   * 斬撃の弧(社長支給素材 D-1・v0.25.2400)。**予告ではなく「振った瞬間」の絵**。
+   *
+   * 素材の向き(実測): α重心が中心より左(x=198.7 / 中心256)で、**左半分に総αの82%**。
+   * つまり**弧は左へ膨らみ、右へ開いている**。よって「振る方向 `angle`」へ膨らみを向けるには
+   * スプライトを `angle + π` 回転させる(素材の -x 方向が振る方向を向く)。
+   *
+   * `reach` は当たり判定の間合いをそのまま渡す。**弧が判定より外へ出ないよう**、
+   * スプライトの一辺を `reach * 2` に収める(はみ出すと「そこも危ない」と読まれてしまう)。
+   */
+  private drawSlashArc(view: ActorView, cx: number, cy: number, angle: number, reach: number, tint: number, alpha: number): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) return;
+    const tex = getTexture('fx/slash-arc');
+    if (!tex) return;
+    let sp = view.slash;
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(0.5, 0.5);
+      view.container.addChild(sp); // 本体スプライトより上=刃が体の手前を通る
+      view.slash = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    sp.rotation = angle + Math.PI; // 素材の膨らみ(-x側)を振る方向へ向ける
+    sp.width = reach * 2;
+    sp.height = reach * 2;
+    sp.position.set(cx, cy);
     sp.tint = tint;
     sp.alpha = alpha;
     sp.visible = true;

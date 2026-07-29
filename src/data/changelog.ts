@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2400',
+    items: [
+      '城ボスの薙ぎ払いに、振った瞬間の斬撃の弧が出るようになりました。',
+      '薙ぎ払いの予告の帯も、他の技と同じ絵に揃えました。',
+    ],
+  },
+  {
     version: '0.25.2399',
     items: [
       '攻撃予告の帯の絵を、より鮮明なものに差し替えました。',

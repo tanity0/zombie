@@ -385,6 +385,8 @@ export const ensureTextures = (): Promise<void> => {
       // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
       // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
+      // 斬撃の弧(社長支給素材 D-1・v0.25.2400)。「振った瞬間」の絵。tintで着色・伸縮して使う=linear。
+      { name: 'fx/slash-arc', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },
