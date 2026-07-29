@@ -5,7 +5,8 @@ import {
   ghostSubUseIntervalMs, shouldGhostClaimSub, DEFAULT_SUB_USES_PER_MIN,
   ghostRunEnabled, GUARDIAN_SPIRIT_SKILL,
   GHOST_LEASH_PX, GHOST_MELEE_RANGE, GHOST_BOSS_HP_MULT, GHOST_HP_FRAC,
-  type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput,
+  rollGhostMoveReaction, GHOST_MOVE_ROLL_MIN_N, GHOST_MOVE_ROLL_TIMEOUT_MS,
+  type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
 } from './ghostDriver';
 import { jumpDodge, botSkillProfile } from './botSkill';
 import type { Enemy } from '../types/game';
@@ -244,6 +245,145 @@ describe('G2.6: サブウェポン使用の予約(subUsesPerMinノブ)', () => {
 
   it('shouldGhostClaimSub: subUsesPerMin<=0(サブを使わない人)は一生予約しない', () => {
     expect(shouldGhostClaimSub(0, 10_000_000, 0)).toBe(false);
+  });
+});
+
+// ==== G4b(BOT_AND_GHOST.md §2.9(4)): 技への反応の再現 ==========================================
+const randNever = (): number => { throw new Error('rand must not be consumed'); };
+
+describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () => {
+  const TABLE = { 'thor-issen': { n: 5, counterRate: 0.3, hitRate: 0.4 } }; // dodgeRate=0.3
+
+  it('技なし(chase等)・標的なしは undefined(ロールしない・randも消費しない)', () => {
+    expect(rollGhostMoveReaction(undefined, null, TABLE, 0, randNever)).toBeUndefined();
+    const chase = mkBoss({ bossState: 'chase' });
+    expect(rollGhostMoveReaction(undefined, chase, TABLE, 0, randNever)).toBeUndefined();
+  });
+
+  it('キー未定義のボス(天使等G4b計測未対応)は undefined=従来挙動', () => {
+    const miguel = mkBoss({ type: 'miguel' as Enemy['type'], bossState: 'harai' });
+    expect(rollGhostMoveReaction(undefined, miguel, TABLE, 0, randNever)).toBeUndefined();
+  });
+
+  it('n<3の技・表に無い技は fallback(randを消費しない=従来挙動の乱数列を汚さない)', () => {
+    const boss = mkBoss({ bossState: 'issen-windup' });
+    const few = { 'thor-issen': { n: GHOST_MOVE_ROLL_MIN_N - 1, counterRate: 1, hitRate: 0 } };
+    expect(rollGhostMoveReaction(undefined, boss, few, 0, randNever)?.decision).toBe('fallback');
+    expect(rollGhostMoveReaction(undefined, boss, {}, 0, randNever)?.decision).toBe('fallback');
+    expect(rollGhostMoveReaction(undefined, boss, undefined, 0, randNever)?.decision).toBe('fallback');
+  });
+
+  it('n>=3: r<counterRate→counter / r<counterRate+dodgeRate→dodge / 残り(=hitRate)→tank', () => {
+    const boss = mkBoss({ bossState: 'issen-windup' });
+    expect(rollGhostMoveReaction(undefined, boss, TABLE, 0, () => 0.29)?.decision).toBe('counter');
+    expect(rollGhostMoveReaction(undefined, boss, TABLE, 0, () => 0.31)?.decision).toBe('dodge');
+    expect(rollGhostMoveReaction(undefined, boss, TABLE, 0, () => 0.59)?.decision).toBe('dodge');
+    expect(rollGhostMoveReaction(undefined, boss, TABLE, 0, () => 0.61)?.decision).toBe('tank');
+  });
+
+  it('同じ技が続く間は振り直さない(技1回の発動=1ロール。randも消費しない)', () => {
+    const boss = mkBoss({ bossState: 'issen-dash' }); // issen-windup→issen-dashは同じ技ファミリー
+    const prev: GhostMoveRoll = { moveKey: 'thor-issen', decision: 'counter', rolledAtMs: 100 };
+    expect(rollGhostMoveReaction(prev, boss, TABLE, 500, randNever)).toBe(prev);
+  });
+
+  it('技が切り替わったら(連携含む)新しくロールし直す', () => {
+    const prev: GhostMoveRoll = { moveKey: 'thor-issen', decision: 'counter', rolledAtMs: 0 };
+    const tsuki = mkBoss({ bossState: 'tsuki-windup' });
+    const table = { ...TABLE, 'thor-tsuki': { n: 9, counterRate: 0, hitRate: 1 } };
+    const next = rollGhostMoveReaction(prev, tsuki, table, 1000, () => 0.5);
+    expect(next?.moveKey).toBe('thor-tsuki');
+    expect(next?.decision).toBe('tank'); // counterRate=0/dodgeRate=0
+  });
+
+  it('技の解決(キーがnullへ)でリセット=undefined', () => {
+    const prev: GhostMoveRoll = { moveKey: 'thor-issen', decision: 'tank', rolledAtMs: 0 };
+    expect(rollGhostMoveReaction(prev, mkBoss({ bossState: 'chase' }), TABLE, 500, randNever)).toBeUndefined();
+    expect(rollGhostMoveReaction(prev, null, TABLE, 500, randNever)).toBeUndefined();
+  });
+
+  it('タイムアウト(同一技が異常に長い)は fallback=従来挙動へ落とす(振り直しはしない)', () => {
+    const prev: GhostMoveRoll = { moveKey: 'thor-issen', decision: 'tank', rolledAtMs: 0 };
+    const boss = mkBoss({ bossState: 'issen-windup' });
+    const after = rollGhostMoveReaction(prev, boss, TABLE, GHOST_MOVE_ROLL_TIMEOUT_MS + 1, randNever);
+    expect(after?.decision).toBe('fallback');
+    expect(after?.moveKey).toBe('thor-issen');
+  });
+
+  it('giantbatはaiPhaseから技ファミリーを導出する(g-quad-breath-windup→g-quad)', () => {
+    const giant = mkBoss({ type: 'giantbat' as Enemy['type'], bossState: undefined, aiPhase: 'g-quad-breath-windup' as Enemy['aiPhase'] });
+    const table = { 'g-quad': { n: 3, counterRate: 0, hitRate: 0 } }; // dodgeRate=1
+    expect(rollGhostMoveReaction(undefined, giant, table, 0, () => 0.5)?.decision).toBe('dodge');
+  });
+});
+
+describe('G4b decideGhost: 技への反応の再現(ロールが挙動を切り替える)', () => {
+  it("'tank'(苦手の再現): この技に限り回避を抑制=逃げずに間合い管理を続ける", () => {
+    // 既存テスト「回避が間合い管理より優先される」と同じ脅威配置(着地点はゴーストのすぐ+x側=
+    // 回避なら-x)だが、bossStateが技(issen-windup)でロールがtank→回避せず素の接近(+x)に戻る。
+    const boss = mkBoss({
+      x: 1000, y: 0, bossState: 'issen-windup',
+      aiPhase: 'jump' as Enemy['aiPhase'], aiTargetX: 15, aiTargetY: 10,
+    });
+    const ghost = mkGhost({ x: 0, y: 0 });
+    const profile: GhostProfile = { ...PROFILE, hitsPerMin: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 0, hitRate: 1 } } };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0 }));
+    expect(d.moveRoll?.decision).toBe('tank');
+    expect(d.moveX).toBeGreaterThan(0); // 回避(-x)ではなく接近(+x)=逃げていない
+  });
+
+  it("'counter': 窓が開いたら counterChance に関係なく必ず構える(既存カウンター試行を優先発動)", () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
+    const profile: GhostProfile = { ...PROFILE, counterChance: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } } };
+    const first = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 0, rand: () => 0.5 }));
+    expect(first.moveRoll?.decision).toBe('counter');
+    expect(first.counterWillAttempt).toBe(true); // counterChance=0でも構える(ロールが優先)
+    const second = decideGhost(baseDriverInput({
+      ghost: { ...ghost, counterPendingAt: first.counterPendingAt, counterWillAttempt: first.counterWillAttempt, moveRoll: first.moveRoll },
+      enemies: [boss], profile, nowMs: 250, rand: () => 0.5,
+    }));
+    expect(second.action).toBe('melee'); // reactionMs経過後に成立(既存ロジックのまま)
+  });
+
+  it("'counter': 射程外なら回避もmobilityゲートも通さず間合いへ詰める(カウンターしにいく)", () => {
+    const boss = mkBoss({ x: 300, y: 0, bossState: 'issen-windup' });
+    const ghost = mkGhost({ x: 0, y: 0 });
+    const profile: GhostProfile = { ...PROFILE, mobility: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } } };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0.5 }));
+    expect(d.moveRoll?.decision).toBe('counter');
+    expect(d.moveX).toBeGreaterThan(0); // mobility=0(従来なら静止)でも詰めに行く
+  });
+
+  it("'dodge'相当のロール: この技では構えない(counterChance=1でもcounterWillAttempt=false)", () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
+    const profile: GhostProfile = { ...PROFILE, counterChance: 1, moveReactions: { 'thor-issen': { n: 5, counterRate: 0, hitRate: 0 } } };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0.5 }));
+    expect(d.moveRoll?.decision).toBe('dodge');
+    expect(d.counterWillAttempt).toBe(false);
+  });
+
+  it('n<3はfallback=従来挙動(counterChanceの抽選がそのまま生きる)', () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
+    const profile: GhostProfile = { ...PROFILE, counterChance: 1, moveReactions: { 'thor-issen': { n: 2, counterRate: 0, hitRate: 1 } } };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0.5 }));
+    expect(d.moveRoll?.decision).toBe('fallback');
+    expect(d.counterWillAttempt).toBe(true); // rand(0.5) < counterChance(1)=従来の抽選
+  });
+
+  it('ロールは技1回につき1回=2tick目も同じ決定を持ち越す(振り直さない)', () => {
+    const boss = mkBoss({ x: 300, y: 0, bossState: 'issen-windup' });
+    const ghost = mkGhost({ x: 0, y: 0 });
+    const profile: GhostProfile = { ...PROFILE, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } } };
+    const first = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 0, rand: () => 0.5 }));
+    expect(first.moveRoll?.decision).toBe('counter');
+    // 2tick目のrandは0.99(もし振り直すならtank側)だが、持ち越したロールがそのまま返る。
+    const second = decideGhost(baseDriverInput({
+      ghost: { ...ghost, moveRoll: first.moveRoll }, enemies: [boss], profile, nowMs: 16, rand: () => 0.99,
+    }));
+    expect(second.moveRoll).toBe(first.moveRoll);
   });
 });
 

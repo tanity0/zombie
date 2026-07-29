@@ -32,7 +32,8 @@ import {
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { activeFlareTargets } from './flareGun';
 import { getActiveGun } from './weaponUtils';
-import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions } from './collisionUtils';
+import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkCollision } from './collisionUtils';
+import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { EGG_BLAST_RADIUS } from '../world/mines';
 import {
   useGameStore, isSeekerActive, skillLevel, skillCritMult, skillOutgoingDamageMult, enemyDeathLabel,
@@ -81,6 +82,53 @@ export const NOOP_COMBAT_EFFECTS: CombatEffects = {
   markMeleeSwingFx: () => {},
 };
 
+// ==== G4b(BOT_AND_GHOST.md §2.9・社長裁定「1:は当然当たらないと意味がない」v0.25.2454返信) ====
+// ボスの特殊技をゴースト(summons kind='ghost-ally')にも当てる。掟:
+//  - 判定式はプレイヤーと同じ幾何(円=中心距離<=半径+当たり半径 / カプセル=distToSegment)。
+//    ゴーストの位置・当たり半径はsummonの既存値(中心+max(w,h)/2。矩形判定の弾はsummonの矩形そのまま)。
+//  - ダメージはプレイヤーが受けるのと同じ量。HP減算/死亡→解散は既存のdamageSummon(i-frame=INVULN_MS・
+//    health<=0でsummonsから除去=解散)に乗せる。新しい死亡処理は作らない。
+//  - ノックバック・画面シェイク・被弾音などプレイヤー専用の副作用は付けない。被弾表現は既存の
+//    summon被弾と同じ(青バースト#bae6fd×3+描画側がlastHitでシェイク)。
+//  - プレイヤーへの判定・ダメージは1bitも変えない(全て独立した追加分岐)。
+//  - ゴースト不在時のコストゼロ: 各フックはsummonsのfind(通常0〜2件)だけで即抜ける。
+
+/** 場に居るゴースト(守護霊)。不在ならundefined(全G4bフックの共通ゲート)。 */
+const findGhostAlly = () => useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
+
+/**
+ * ゴーストへのボス技ダメージ適用(既存経路に乗せるだけ)。実際にHPが減った時(i-frame外)だけ
+ * 既存のsummon被弾表現(青バースト)を出す。死亡時はdamageSummonのfilterが除去=既存の解散経路。
+ */
+const damageGhostAllyByBossMove = (ghostId: string, amount: number, burst?: (x: number, y: number) => void): void => {
+  const before = useGameStore.getState().summons.find(s => s.id === ghostId);
+  if (!before) return;
+  useGameStore.getState().damageSummon(ghostId, amount);
+  const after = useGameStore.getState().summons.find(s => s.id === ghostId);
+  if (burst && after && after.health < before.health) {
+    burst(after.x + after.width / 2, after.y + after.height / 2);
+  }
+};
+
+/**
+ * 線分カプセル技(トール一閃/突き/払い・ミーミルレーザー)のゴースト被弾。プレイヤー側の判定
+ * (線分への射影距離<=halfWidth+当たり半径)と同じ幾何をゴースト中心で評価する。useGameLoopの
+ * ボス技ブロック(技のactive中・毎フレーム)から呼ぶ=タイミングも同じ。連続ヒットはdamageSummonの
+ * i-frame(INVULN_MS)が間引く(プレイヤーのdamagePlayer i-frameと同型)。
+ */
+export const applyGhostAllyCapsuleHit = (
+  fx0: number, fy0: number, tx0: number, ty0: number, halfWidth: number, damage: number,
+  burst?: (x: number, y: number) => void,
+): void => {
+  const ghost = findGhostAlly();
+  if (!ghost) return;
+  const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
+  const gr = Math.max(ghost.width, ghost.height) / 2;
+  if (distToSegment({ x: gcx, y: gcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= halfWidth + gr) {
+    damageGhostAllyByBossMove(ghost.id, damage, burst);
+  }
+};
+
 // useGameLoop.ts側のローカル定数(値そのものは元のまま・二重管理を避けるため引数化)。
 // - thorOrbitDist/thorCounterLeapMs: トール(裏ボス)のジャンプ攻撃パリィ後の後退旋回に使う値。
 // - grenadeBlastRadius/grenadeBlastDamageMult: ボムカウンターで反射弾がランチャー化した時の爆発。
@@ -107,6 +155,15 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   const bpcy = bp.y + bp.height / 2;
   const counterActive = Date.now() <= bp.counterWindowEnd;
   const parriedEnemyIds: { id: string; bx: number; by: number }[] = [];
+  // G4b: 爆発/カプセルの合流点=ここでゴーストも受ける(タグ付き21箇所超を一括カバー)。対象は
+  // **ボス(isEngageableBoss)の爆発のみ**(パンプキン/lab-zombie-3の着地爆発=非ボスは従来どおり
+  // プレイヤーのみ)。ゴースト不在ならfind1回で抜ける=コストゼロ。位置/半径はループ前のスナップ
+  // ショットでよい(この解決ループ中にゴーストは動かない。多重ヒットはdamageSummonのi-frameが間引く)。
+  const ghostAlly = findGhostAlly();
+  const enemiesForGhost = ghostAlly ? useGameStore.getState().enemies : [];
+  const gacx = ghostAlly ? ghostAlly.x + ghostAlly.width / 2 : 0;
+  const gacy = ghostAlly ? ghostAlly.y + ghostAlly.height / 2 : 0;
+  const gar = ghostAlly ? Math.max(ghostAlly.width, ghostAlly.height) / 2 : 0;
   for (const b of blasts) {
     if (b.ice) {
       // スカジ氷=青版の爆発エフェクト(社長指示。爆発処理自体は流用)。
@@ -146,6 +203,19 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           knockbackUntil: Date.now() + PLAYER_KNOCKBACK_MS,
         } }));
         if (died) fx.triggerPlayerDeath(bpcx, bpcy);
+      }
+    }
+    // G4b: 同じ爆発をゴーストにも(プレイヤーと同じ幾何・同じ量・同じ解決ループ内)。プレイヤーの
+    // カウンター/無敵とは独立(ゴーストは弾けない=居れば食らう。i-frameはdamageSummon側)。
+    if (ghostAlly) {
+      const owner = enemiesForGhost.find(e => e.id === b.enemyId);
+      if (owner && isEngageableBoss(owner.type)) {
+        const inBlastGhost = b.capsule
+          ? distToSegment({ x: gacx, y: gacy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }) <= b.capsule.halfWidth + gar
+          : Math.hypot(gacx - b.x, gacy - b.y) <= b.radius + gar;
+        if (inBlastGhost) {
+          damageGhostAllyByBossMove(ghostAlly.id, b.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3));
+        }
       }
     }
   }
@@ -261,6 +331,28 @@ export const applyGlenFloorDamage = (fx: CombatEffects): void => {
   const { enemies, gameTime, player } = useGameStore.getState();
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const pr = Math.max(player.width, player.height) / 2;
+  // G4b: 血溜まり床(g-boon・判定を持つ床)はゴーストも踏むと食らう。プレイヤーと同じ幾何
+  // (円: 中心距離<=radius+当たり半径)・同じ量(e.damage)・同じ1フレーム1ヒット節度。連続ヒットは
+  // damageSummonのi-frame(INVULN_MS)が間引く=プレイヤーのINVULN_MSと同型。プレイヤー側のループは
+  // 下で従来のまま(early return含め1bit不変)なので、ゴーストは独立の先行ループで受ける。
+  {
+    const ghostAlly = findGhostAlly();
+    if (ghostAlly) {
+      const gcx = ghostAlly.x + ghostAlly.width / 2, gcy = ghostAlly.y + ghostAlly.height / 2;
+      const gr = Math.max(ghostAlly.width, ghostAlly.height) / 2;
+      outer: for (const e of enemies) {
+        const hits = e.giantDelayedHits;
+        if (!hits || hits.length === 0) continue;
+        for (const h of hits) {
+          if (h.floorUntil === undefined) continue;
+          if (gameTime < h.fireAt || gameTime >= h.floorUntil) continue;
+          if (Math.hypot(gcx - h.x, gcy - h.y) > h.radius + gr) continue;
+          damageGhostAllyByBossMove(ghostAlly.id, e.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3));
+          break outer; // 1フレーム1ヒット(プレイヤー側と同じ節度)
+        }
+      }
+    }
+  }
   for (const e of enemies) {
     const hits = e.giantDelayedHits;
     if (!hits || hits.length === 0) continue;
@@ -408,6 +500,24 @@ export const applyEnemyProjectileHits = (
           player.x + player.width / 2,
           player.y + player.height / 2
         );
+      }
+    }
+  }
+  // G4b: ボス(isEngageableBoss)の弾はゴーストにも当たる(g-bolt=咆哮弾、裏ボスのバースト/全方位、
+  // 天使/idolの射撃など、ownerTypeがボスの敵弾全部)。**プレイヤー解決の後**に残っている弾だけを
+  // 見る(反射された弾はhostile:false化済み/プレイヤーに当たった弾はremoveProjectile済み)=
+  // プレイヤーへの判定・ダメージは1bitも変えない。命中判定はsummonの既存矩形(checkCollision)。
+  // ダメージ量はプレイヤーと同式(紅き月×2。scMultはボス弾では常に1のため省略と同値)。
+  // 命中した弾はプレイヤー被弾と同じく消える(ゴーストが技を引き受ける=ヘイトの意味を成立させる)。
+  {
+    const ghostAlly = findGhostAlly();
+    if (ghostAlly) {
+      const rnMult = redNightActive ? 2 : 1;
+      const ghostHits = useGameStore.getState().projectiles.filter(p =>
+        p.hostile && p.ownerType !== undefined && isEngageableBoss(p.ownerType) && checkCollision(p, ghostAlly));
+      for (const proj of ghostHits) {
+        damageGhostAllyByBossMove(ghostAlly.id, proj.damage * rnMult, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3));
+        useGameStore.getState().removeProjectile(proj.id);
       }
     }
   }

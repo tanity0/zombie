@@ -16,6 +16,7 @@
 import type { Enemy, Projectile, SkillKey } from '../types/game';
 import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from './botSkill';
 import { isBossCounterableNowApprox } from './bossScript';
+import { moveKeyForEnemy, type MoveReactionTable } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
 
 // ---- プロファイル(playerTraits.PlayerProfileと同じノブ形。循環import回避のため型は独立定義) ----
 export interface GhostProfile {
@@ -27,6 +28,12 @@ export interface GhostProfile {
   hitsPerMin: number;
   /** G2.6: 実プレイヤーのサブウェポン使用回数/分(EMA)。ゴーストのサブ使用頻度の上限になる。 */
   subUsesPerMin: number;
+  /**
+   * G4b(BOT_AND_GHOST.md §2.9(4)): 技への反応表(G4aがplayerTraitsで実測)。技の立ち上がりで
+   * counterRate/dodgeRate/hitRateからロールし、その技への反応(カウンター/離脱/苦手=被弾)を再現する。
+   * 未定義・空表(旧プロファイル/既定プロファイル)は全技フォールバック=従来挙動(グローバルノブ)。
+   */
+  moveReactions?: MoveReactionTable;
 }
 
 /**
@@ -44,7 +51,54 @@ export const defaultGhostProfile = (): GhostProfile => {
     mobility: 0.6,
     hitsPerMin: 3,
     subUsesPerMin: DEFAULT_SUB_USES_PER_MIN,
+    moveReactions: {}, // G4b: 実測なし=全技フォールバック(従来挙動)
   };
+};
+
+// ---- G4b(BOT_AND_GHOST.md §2.9(4)): 技への反応の再現(ロールの状態機械・純関数) -----------------
+// ボスの溜め(aiPhase/bossState)の立ち上がりで技キーを導出(moveReaction.moveKeyForEnemyをそのまま
+// 流用)し、プロファイルの moveReactions[moveKey] で**技1回の発動につき1回だけ**ロールする:
+//   r < counterRate                → 'counter' = その技をカウンターしにいく(既存カウンター試行を優先発動)
+//   r < counterRate + dodgeRate    → 'dodge'   = 離脱(既存のtelegraphDodge/dodgeVectorに従う=従来挙動)
+//   残り(= hitRate)               → 'tank'    = 「苦手」の再現: この技に限り回避を抑制(①により実際に食らう)
+// n < GHOST_MOVE_ROLL_MIN_N の技・キー未定義(天使等G4b計測未対応)は 'fallback' = 従来挙動
+// (グローバルノブ)。ロールは技の解決(キーがnull/別キーへ変化)かタイムアウトでリセットする。
+export type GhostMoveDecision = 'counter' | 'dodge' | 'tank' | 'fallback';
+export interface GhostMoveRoll {
+  moveKey: string;
+  decision: GhostMoveDecision;
+  rolledAtMs: number;
+}
+/** §2.9(1)の約束: 暴露n<3の技は既存グローバルノブへフォールバック(初見の技で変な確信を持たせない)。 */
+export const GHOST_MOVE_ROLL_MIN_N = 3;
+/** 同一技キーが異常に続いた時の安全弁(通常の技はaiPhase/bossStateが数秒で抜ける)。超えたら従来挙動へ。 */
+export const GHOST_MOVE_ROLL_TIMEOUT_MS = 10_000;
+
+export const rollGhostMoveReaction = (
+  prev: GhostMoveRoll | undefined,
+  target: Pick<Enemy, 'type' | 'aiPhase' | 'bossState'> | null,
+  moveReactions: MoveReactionTable | undefined,
+  nowMs: number,
+  rand: () => number,
+): GhostMoveRoll | undefined => {
+  const moveKey = target ? moveKeyForEnemy(target) : null;
+  if (!moveKey) return undefined; // 技が解決した(または技なし)=リセット
+  if (prev && prev.moveKey === moveKey) {
+    // 同じ技が続く間は振り直さない(技1回の発動=1ロール)。タイムアウトだけは従来挙動へ落とす。
+    if (nowMs - prev.rolledAtMs <= GHOST_MOVE_ROLL_TIMEOUT_MS) return prev;
+    return prev.decision === 'fallback' ? prev : { moveKey, decision: 'fallback', rolledAtMs: prev.rolledAtMs };
+  }
+  const stat = moveReactions?.[moveKey];
+  if (!stat || stat.n < GHOST_MOVE_ROLL_MIN_N) return { moveKey, decision: 'fallback', rolledAtMs: nowMs };
+  const counterRate = Math.max(0, Math.min(1, stat.counterRate));
+  const hitRate = Math.max(0, Math.min(1, stat.hitRate));
+  const dodgeRate = Math.max(0, 1 - counterRate - hitRate); // dodgeRate=1-両者(moveReaction.tsの保存形)
+  const r = rand();
+  const decision: GhostMoveDecision =
+    r < counterRate ? 'counter'
+      : r < counterRate + dodgeRate ? 'dodge'
+        : 'tank';
+  return { moveKey, decision, rolledAtMs: nowMs };
 };
 
 // ---- G3: 装備スキル「守護霊」(BOT_AND_GHOST.md §2.5 実装順3・社長指示「最初から解禁」) ----------
@@ -132,6 +186,7 @@ export interface GhostSelf {
   lastMeleeAt: number;  // ms
   counterPendingAt?: number;    // カウンター相当の機会が開いた時刻(undefined=機会なし)
   counterWillAttempt?: boolean; // その機会で抽選済みの「試みるか」
+  moveRoll?: GhostMoveRoll;     // G4b: 進行中の技への反応ロール(undefined=技なし/フォールバック運転)
 }
 
 export interface GhostDriverInput {
@@ -157,6 +212,7 @@ export interface GhostDecision {
   lastMeleeAt: number;
   counterPendingAt?: number;
   counterWillAttempt?: boolean;
+  moveRoll?: GhostMoveRoll; // G4b: 次tickへ持ち越す(技の解決でundefinedに戻る)
 }
 
 /** 毎tick1回呼ぶ純関数。次tickへ持ち越す自己状態(lastShotAt等)も戻り値に含めて返す。 */
@@ -180,12 +236,19 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       facing: ux !== 0 ? (ux > 0 ? 1 : -1) : ghost.facing,
       lastShotAt: ghost.lastShotAt, lastMeleeAt: ghost.lastMeleeAt,
       counterPendingAt: undefined, counterWillAttempt: false,
+      moveRoll: undefined,
     };
   }
 
   const tcx = target.x + target.width / 2, tcy = target.y + target.height / 2;
   const dist = Math.hypot(tcx - gcx, tcy - gcy);
   const facing: 1 | -1 = (tcx - gcx) >= 0 ? 1 : -1;
+
+  // G4b(§2.9(4)): 技への反応の再現。ボスの技(aiPhase/bossState)の立ち上がりで1回だけロールし、
+  // 同じ技が続く間は保持する(毎tick振り直さない)。'fallback'(n<3・キー未定義=天使等G4b計測未対応)
+  // の間は以降の全分岐が従来挙動(グローバルノブ)のまま=乱数の消費順も従来と同一。
+  const moveRoll = rollGhostMoveReaction(ghost.moveRoll, target, profile.moveReactions, nowMs, rand);
+  const reaction = moveRoll?.decision;
 
   // 回避(流用: dodgeVector+telegraphDodge。常に最優先=間合い管理より生存)。
   const dodgeStrength = hitsPerMinToDodgeStrength(profile.hitsPerMin);
@@ -195,7 +258,12 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // 間合い管理: preferredDistへ寄せる。mobility=このtickで実際に動くかの確率ゲート
   // (低いゴーストは足が止まる=下手さも再現される。BOT_AND_GHOST.md §2.6)。
   let moveX = 0, moveY = 0;
-  if (dodge) {
+  if (reaction === 'counter') {
+    // G4b 'counter': その技をカウンターしにいく=この技の間は回避せず近接間合いへ詰め、
+    // 射程内では静止して窓(counterable)を待つ。mobilityゲートも通さない(「行く」と決めた行動は確実に出す)。
+    if (dist > GHOST_MELEE_RANGE) [moveX, moveY] = norm(tcx - gcx, tcy - gcy);
+  } else if (dodge && reaction !== 'tank') {
+    // G4b 'tank'(苦手の再現): この技に限り回避を抑制=逃げずに戦い続ける(①によりダメージは実際に入る)。
     moveX = dodge.x; moveY = dodge.y;
   } else if (rand() < profile.mobility) {
     if (dist > profile.preferredDist + GHOST_MOVE_BAND_PX) {
@@ -220,9 +288,15 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   if (counterable) {
     // カウンター相当: reactionMs(反応遅延)+counterChance(試行確率)で抽選
     // (playtestBotのCounterThreatStateの流儀を軽く再実装。1機会=1回だけ試みる)。
+    // G4b: 技ロールがある時はロールの3分類が排他に決める: 'counter'=必ず試みる /
+    // 'dodge'・'tank'=この技では構えない(離脱/被弾の再現を汚さない) / 'fallback'=従来の抽選。
     if (counterPendingAt === undefined) {
       counterPendingAt = nowMs;
-      counterWillAttempt = rand() < profile.counterChance;
+      counterWillAttempt = reaction === 'counter'
+        ? true
+        : reaction === 'dodge' || reaction === 'tank'
+          ? false
+          : rand() < profile.counterChance;
     }
     if (counterWillAttempt && meleeReady && nowMs - counterPendingAt >= profile.reactionMs) {
       action = 'melee'; lastMeleeAt = nowMs;
@@ -245,6 +319,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   return {
     moveX, moveY, action, targetId: target.id, facing,
     lastShotAt, lastMeleeAt, counterPendingAt, counterWillAttempt,
+    moveRoll,
   };
 };
 

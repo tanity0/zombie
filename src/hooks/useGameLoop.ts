@@ -66,7 +66,7 @@ import { ammoDirectorRate } from '../utils/ammoDirector';
 import { shouldSpawnAirdrop } from '../utils/ammoAirdrop';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
-  applyGlenFloorDamage,
+  applyGlenFloorDamage, applyGhostAllyCapsuleHit,
   type CombatEffects, type CombatTunables,
 } from '../utils/combatTick';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
@@ -206,7 +206,7 @@ import {
 } from '../utils/killTelemetryState';
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
 import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
-import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, type GhostProfile } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6
+import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
@@ -4834,6 +4834,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const died = damagePlayer(MIMIR_LASER_DAMAGE, 'CODE:MIMIR のレーザー', cxp, cyp);
                   if (died) triggerPlayerDeath(ppx, ppy);
                 }
+                // G4b(§2.9): ビーム帯はゴースト(守護霊)にも当たる(同じ線分±半太さ・同じダメージ。
+                // 継続ダメージの間引きはdamageSummonのi-frame=プレイヤーのdamagePlayer i-frameと同型)。
+                applyGhostAllyCapsuleHit(bcx, bcy, bcx + ux * MIMIR_LASER_RANGE, bcy + uy * MIMIR_LASER_RANGE,
+                  MIMIR_LASER_HALF_WIDTH, MIMIR_LASER_DAMAGE, (x, y) => spawnBurst(x, y, '#bae6fd', 3));
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   if (MIMIR_SCRIPT_ENABLED) { patch.bossState = 'laser-recover'; patch.bossStateUntil = newGameTime + MIMIR_LASER_RECOVER_MS; }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
@@ -4998,6 +5002,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
+                // G4b(§2.9): 一閃はゴースト(守護霊)にも当たる(同じ線分カプセル・同じboss.damage・同じフレーム。
+                // 連続ヒットはdamageSummonのi-frameが間引く。プレイヤー側の判定は上のブロックのまま1bit不変)。
+                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_ISSEN_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3));
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   // §6.28-10「全技に硬直(recover)を新設」: 硬直900ms・青白tint(描画側)。既存のリード/
                   // 射程/半幅/カウンター等は無改変。?thorscript=0の間は現行どおり即chase復帰。
@@ -5051,6 +5058,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
+                // G4b(§2.9): 突きもゴーストに当たる(一閃と同じ作法)。
+                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_TSUKI_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3));
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   if (THOR_SCRIPT_ENABLED) { patch.bossState = 'tsuki-recover'; patch.bossStateUntil = newGameTime + THOR_TSUKI_RECOVER_MS; }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
@@ -5086,6 +5095,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
+                // G4b(§2.9): 払いもゴーストに当たる(一閃と同じ作法)。
+                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_HARAI_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3));
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossCircleDir = 1; // 払い後は既定の時計回りへ復帰(社長指示・据え置き)
                   if (THOR_SCRIPT_ENABLED) { patch.bossState = 'harai-recover'; patch.bossStateUntil = newGameTime + THOR_HARAI_RECOVER_MS; }
@@ -6993,6 +7004,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const meleeWeapon = gsPlayer.weapons.find(w => w.isMelee);
               const profile: GhostProfile = ghostProfileRef.current ?? defaultGhostProfile();
               const nowMs = Date.now();
+              // G4b(§2.9(4)): 技への反応ロールの持ち越し(Summonのフラット3フィールド⇔GhostMoveRoll)。
+              const prevMoveRoll: GhostMoveRoll | undefined =
+                ghostNow.ghostMoveRollKey !== undefined && ghostNow.ghostMoveRollDecision !== undefined
+                  ? { moveKey: ghostNow.ghostMoveRollKey, decision: ghostNow.ghostMoveRollDecision, rolledAtMs: ghostNow.ghostMoveRollAt ?? 0 }
+                  : undefined;
               const decision = decideGhost({
                 ghost: {
                   x: ghostNow.x, y: ghostNow.y, width: ghostNow.width, height: ghostNow.height,
@@ -7001,6 +7017,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   lastMeleeAt: ghostNow.ghostLastMeleeAt ?? 0,
                   counterPendingAt: ghostNow.ghostCounterPendingAt,
                   counterWillAttempt: ghostNow.ghostCounterWillAttempt,
+                  moveRoll: prevMoveRoll,
                 },
                 player: { x: gsPlayer.x, y: gsPlayer.y, width: gsPlayer.width, height: gsPlayer.height },
                 // 「ゴーストは戦闘だけする」= 紐付いたボス1体だけを対象にする(雑魚に脇道しない)。
@@ -7033,6 +7050,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ...s, x: resolved.x, y: resolved.y, ghostFacing: decision.facing,
                   ghostLastShotAt: decision.lastShotAt, ghostLastMeleeAt: decision.lastMeleeAt,
                   ghostCounterPendingAt: decision.counterPendingAt, ghostCounterWillAttempt: decision.counterWillAttempt,
+                  // G4b: 技への反応ロールを持ち越す(技の解決=decideGhostがundefinedを返したらクリア)。
+                  ghostMoveRollKey: decision.moveRoll?.moveKey,
+                  ghostMoveRollDecision: decision.moveRoll?.decision,
+                  ghostMoveRollAt: decision.moveRoll?.rolledAtMs,
                   ...(wantSubClaim ? { ghostSubClaim: true } : {}),
                 } : s),
               }));

@@ -655,6 +655,11 @@ export interface Summon {
   // ---- G2.6(サブウェポンのオーナー抽象化)。CDは既存の1本を共有=個別CD/在庫は持たない ----
   ghostSubClaim?: boolean;     // 「次のサブ発動1回」をゴーストがオーナーとして使う予約。
   ghostLastSubUseAt?: number;  // ゴーストが最後にサブを実際に使った時刻(ms・Date.now基準)。
+  // ---- G4b(BOT_AND_GHOST.md §2.9(4)): 技への反応ロール(ghostDriver.GhostMoveRollの持ち越し) ----
+  // 型はghostDriver.tsのGhostMoveRollと同形(このファイルはutilsをimportしない=循環回避でフラットに持つ)。
+  ghostMoveRollKey?: string;                                      // 進行中の技キー(undefined=技なし)
+  ghostMoveRollDecision?: 'counter' | 'dodge' | 'tank' | 'fallback'; // その技へのロール結果
+  ghostMoveRollAt?: number;                                       // ロールした時刻(ms・Date.now基準)
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';

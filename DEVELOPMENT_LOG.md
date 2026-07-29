@@ -1,5 +1,88 @@
 # Development Log
 
+## v0.25.2459 — G4b: ①ボスの特殊技をゴーストにも当てる(G2★未決2の解消)+②技への反応の再現(BOT_AND_GHOST.md §2.9(4)実装)【2026-07-30 08:38 JST】
+
+- **社長裁定(verbatim・§2.9の★裁定待ちを解消として記録済み)**: 「1:は当然当たらないと意味がない」
+  (=ボスの技はゴーストに当てる。2026-07-30・v0.25.2454返信への回答)。
+- **①ボスの特殊技がゴースト(summons kind='ghost-ally')にも当たる**。設計は発注どおり
+  「まず合流点で受ける」: 爆発/カプセルの合流点(combatTick.applyPumpkinBlastDamage)にゴースト判定を
+  1箇所追加し、G4aタグ付き経路の大半を一括カバー。合流点を通らない直接ダメージだけ個別に追加した。
+  - **判定式はプレイヤーと同じ幾何**(円=中心距離<=半径+当たり半径 / カプセル=distToSegment /
+    弾=矩形overlap)。ゴーストの位置・当たり半径はsummonの既存値(中心+max(w,h)/2、弾はsummon矩形)。
+    タイミングも同じ(同じ解決ループ/同じフレームのボス技ブロック内)。
+  - **ダメージはプレイヤーが受けるのと同じ量**(blast=b.damage / 弾=proj.damage×紅き月2倍(ボス弾は
+    scMult常に1) / トール線技=boss.damage / レーザー=MIMIR_LASER_DAMAGE / 血溜まり=e.damage)。
+    HP減算/死亡→解散は**既存のdamageSummon**(i-frame=INVULN_MS・health<=0でsummonsから除去=既存の
+    解散経路)へ乗せるだけ。新しい死亡処理なし。ノックバック/シェイク/被弾音などプレイヤー専用の
+    副作用は付けず、既存のsummon被弾表現(青バースト#bae6fd×3+描画側のlastHitシェイク)のみ。
+  - **プレイヤーへの判定・ダメージは1bit不変**: 全フックは独立した追加分岐(プレイヤー側の
+    if/else・early return・数値はどこも触っていない)。弾はプレイヤー解決**後**の残弾だけを見る
+    (反射済み=hostile:false・プレイヤー被弾済み=remove済みは自然に対象外)。
+  - **対象は「ボス」のみ**: isEngageableBoss(bossEngagement.ts=BOT_AND_GHOST対象ボスの正本テーブル:
+    giantbat/裏ボス4/天使6/idol)でフィルタ。パンプキン/lab-zombie-3の着地爆発・通常敵の弾(非ボス)は
+    従来どおりゴーストに当たらない(①の掟「ボスの特殊技」の保守側読み)。
+- **①の適用箇所の全数表**(G4a表=DEVELOPMENT_LOG v0.25.2454との対応。◎=今回追加で当たる/
+  ○=既存経路で既に当たっていた(変更なし)/△=発見したが未適用):
+
+  | 技/経路 | 被弾の出どころ | ゴースト判定 |
+  |---|---|---|
+  | g-stomp / g-jump / g-trijump / g-dive / g-nova / g-quad(吐息)/ g-sweepbeam | pumpkinBlasts(円) | ◎ 合流点 |
+  | g-sweep / g-bite / g-slam / g-glide / g-wing×2 / g-reach | pumpkinBlasts(カプセル) | ◎ 合流点 |
+  | g-glide二撃目 / g-quad遅延氷×3 / g-wing三拍目 / g-talon×3 / g-boon×5 / g-nihil | giantDelayedHits→pumpkinBlasts | ◎ 合流点 |
+  | g-boon 血溜まり床 | applyGlenFloorDamage(円・毎フレーム) | ◎ 専用ループ追加(1フレーム1ヒット・プレイヤー側ループ不変) |
+  | g-bolt(咆哮弾) | applyEnemyProjectileHits | ◎ ボス弾ブロック追加(命中弾は消える) |
+  | g-dash / g-quad / g-glide の体当たり | checkEnemySummonCollisions(汎用接触) | ○ G2から既に当たる(追加なし・二重定義しない) |
+  | thor-issen / thor-tsuki / thor-harai | useGameLoop 線分カプセル直判定 | ◎ applyGhostAllyCapsuleHit(共通ヘルパ)×3 |
+  | thor-jump | pumpkinBlasts | ◎ 合流点 |
+  | 【発見・タグ表外】mimir bite / jorm coil / skadi 氷塊・氷刃 / idol punch | pumpkinBlasts | ◎ 合流点(自動カバー) |
+  | 【発見・タグ表外】mimir レーザー | useGameLoop 線分直判定 | ◎ applyGhostAllyCapsuleHit |
+  | 【発見・タグ表外】裏ボスburst/全方位・天使/idolの射撃(volley/bone/bolt/ringshot/lantern弾等) | applyEnemyProjectileHits(ownerType=ボス) | ◎ ボス弾ブロック(一括) |
+  | 【発見・タグ表外・未適用】天使の直撃系(ミゲル払い/縦払い/踏み込み・ウリ大薙ぎ/振り下ろし/突き・スリィエル環射出/回転斬/薙ぎ・アクラシエル棘/転移/爆発/結晶槍・ジブリルのランタン火) | angelBossTick.ts等のdamagePlayer直呼び15箇所 | △ 掟の「含めてよい」=任意側。技キー計測拡張(G4c)と同時にまとめるのが安い(個別幾何15箇所・別ファイル)ため見送り |
+
+- **②技への反応の再現**(ghostDriver.ts): 技キー導出は**moveReaction.moveKeyForEnemyをそのまま流用**
+  (判定の二重実装なし)。中核はロールの状態機械=純関数 `rollGhostMoveReaction`(乱数は引数注入):
+  - ボスの技(aiPhase/bossState)の立ち上がりで `moveReactions[moveKey]` から**技1回の発動につき
+    1回だけ**ロール: r<counterRate→**'counter'**(既存カウンター試行を優先発動=counterChanceに
+    関係なく必ず構える+回避せず近接間合いへ詰める・mobilityゲートも通さない)/
+    r<counterRate+dodgeRate→**'dodge'**(従来のtelegraphDodge/dodgeVectorに従う)/
+    残り(=hitRate)→**'tank'**(苦手の再現: この技に限り回避を抑制=逃げずに戦い続け、①により実際に食らう)。
+  - **n<3の技・キー未定義**(天使/idol/裏ボス=G4b計測未対応)は**'fallback'=従来挙動**(グローバル
+    ノブ)。fallback時は乱数の消費順も従来と完全同一(既存テスト24件が無変更で通ることで確認)。
+  - リセットは**技の解決**(moveKeyがnull/別キーへ変化。連携=キー変化で振り直し)か**タイムアウト**
+    (10s安全弁=GHOST_MOVE_ROLL_TIMEOUT_MS。超えたらfallbackへ落とし振り直さない)。
+  - ロール中は3分類を排他に再現: 'dodge'/'tank'の技では構えない(counterWillAttempt=false)。
+    'counter'の技では必ず構える(reactionMs遅延・meleeReadyは既存ロジックのまま)。
+  - 持ち越しはSummonのフラット3フィールド(ghostMoveRollKey/ghostMoveRollDecision/ghostMoveRollAt)⇔
+    GhostMoveRoll(useGameLoopのゴーストブロックで変換)。
+- **実装メモ(仕様に明記の無い点の解釈・いずれも保守側)**:
+  1. ①の「ボス」の正本は isEngageableBoss(bossEngagementの表)とした(isBossTypeはパンプキン/
+     ハンター等を含み広すぎる)。
+  2. ボス弾はゴースト命中で消える(プレイヤー被弾と同じ)。消さないと「ゴーストが技を引き受けても
+     弾が素通りしてプレイヤーに当たる」=ヘイトで引き受ける意味が消えるため。プレイヤー判定が先
+     なのでプレイヤー側は不変。
+  3. 爆発のゴースト判定はプレイヤーのカウンター成立/無敵と独立(ゴーストは弾けない=居れば食らう)。
+     パリィされた爆発でもゴーストには当たる(爆発は起きている)。
+  4. 'counter'ロールの「しにいく」=射程外なら間合いへ詰める(mobilityゲートを通さない)。詰めない
+     解釈だと遠距離でロールした時に一生カウンターできず再現にならないため。
+- ★未決: **なし**(上記実装メモ4点は解釈の記録。天使の直撃系△はG4cの候補として表に明記)。
+- 変更ファイル: `src/utils/ghostDriver.ts`(②中核+プロファイル拡張)/`src/utils/ghostDriver.test.ts`
+  (+15件=39件)/`src/utils/combatTick.ts`(①合流点/ボス弾/血溜まり床/共通ヘルパ)/
+  `src/hooks/useGameLoop.ts`(トール3技+ミーミルレーザーの個別判定・②ロールの持ち越し配線)/
+  `src/types/game.ts`(SummonへghostMoveRoll*3フィールド)/`BOT_AND_GHOST.md`(★裁定待ち解消+
+  §2.9実装結果G4b)/`package.json`/`src/data/changelog.ts`/本ログ。
+- **Load score: 1/10**(①=各フック先頭のsummons.find(通常0〜2件)だけで即抜ける=ゴースト不在時
+  実質コストゼロ。ゴースト居る時も有界: 爆発数×find1回+ボス弾filter+線分距離数回/フレーム。
+  ②=ゴースト意思決定tick内の純関数1回(表引き+乱数1回、技の立ち上がりのみ)。描画/React購読/
+  新規per-frame Graphicsの追加ゼロ)。負担系統=simulation(微小)。セーフガード=ゴースト不在時は
+  全フックが即return。
+- **検証**: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ) /
+  `npx vitest related`(変更ファイル一式)=18ファイル340件(336通過・4 skip既存)。
+  ghostDriver.test.ts 39件(既存24件無変更+新規15件)全通過=フォールバック時の従来挙動不変を
+  既存テストが担保。
+- 自己点検: この変更は憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(シーン・湧き・
+  敵挙動・プレイヤー判定は不変。変わるのは守護霊(ゴースト)の被弾と反応のみで、ゴーストは
+  守護霊装備/`?ghost=1`のランにしか存在しない)。
+
 ## v0.25.2458 — エフェクトの「中途半端な不透明」を総点検して基本100%へ(社長指示)【2026-07-30 08:34 JST】
 
 - 社長指示「ほかにも中途半端に不透明にしてるものあれば、基本は100%表示にして。明らかに100%は
