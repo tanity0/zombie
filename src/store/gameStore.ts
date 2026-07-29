@@ -112,6 +112,7 @@ import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, G
 import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, rollEquipment, armoryTargetSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
+import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
@@ -7245,10 +7246,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.type === 'hunter' && enemy.hunterFleeing) return enemy;
         // 叫喚型の強化対象判定: 通常敵(ボス/screamer以外)だけ移動速度を×SCREAMER_BUFF_MULT。
         const screamSpeedMult = (screamActive && enemy.type !== 'screamer' && !isBossType(enemy.type)) ? SCREAMER_BUFF_MULT : 1;
+        // ★ダッシュ/滞空中はオブジェクトを貫通(社長指示v0.25.2415)。突進や飛び掛かりは
+        // 「赤い線/円の予告どおりに来る」のが読みの前提(§6.28-3)なので、途中の木やバスに
+        // 引っかかって止まると**予告と実際が食い違う**=予告の意味が壊れる。
+        // 貫通させるのは**敵自身の壁当たりだけ**で、プレイヤーへの当たり判定・ダメージは何も変えていない。
+        // 帰還サークル/イベント囲いの拘束は「オブジェクト」ではなくゲームの境界なので下でそのまま効かせる。
+        const passThrough = isPassThroughPhase(enemy.aiPhase) || isPassThroughBossState(enemy.bossState);
         // 衝突解決して移動先を返す(各AIで共用)。屋内は labMap の壁、屋外は木/松明+壁(研究所スキンは壁のみ)。
         const resolveMove = (nx: number, ny: number) => {
           let pos: { x: number; y: number };
-          if (indoor) {
+          if (passThrough) {
+            pos = { x: nx, y: ny };
+          } else if (indoor) {
             pos = resolveAabb({ x: nx, y: ny, width: enemy.width, height: enemy.height }, indoorWalls);
           } else {
             const tr = labTheme ? { x: nx, y: ny } : resolveTreeCollision({ x: nx, y: ny, width: enemy.width, height: enemy.height });
@@ -7516,15 +7525,23 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiStartedAt: gameTime,
                 };
               }
-              case 'jump':
+              case 'jump': {
                 // 狙い点は溜め開始時にロック(社長裁定6.26-9 #1)。着地アークは着地円と同じ左上座標系。
                 // 着地AoE半径もステージ別倍率込みでここに確定して敵へ持たせる(M65・stomp同様)。
+                // ★着地点が当たり判定のあるオブジェクトの中なら横へ押し出す(社長指示v0.25.2415)。
+                // プレイヤーが木/バス/建物に張り付いていると着地円が丸ごとオブジェクトの中に入り、
+                // **赤い円の中に立てない=避けようがない/当たりようがない**という意味不明な絵になる。
+                // 押し出しは resolveMove(敵の当たり判定を解決する唯一の関数)をそのまま使う=
+                // 「同じ判定を2箇所に書かない」(この型の事故は v0.25.2383/2387/2389 で3回起きている)。
+                // この時点の aiPhase はまだ溜め前=貫通しない経路なのできちんと解決される。
+                const land = resolveMove(pcx - enemy.width / 2, pcy - enemy.height / 2);
                 return {
                   aiPhase: 'g-jump-windup', aiPhaseUntil: atkUntil(GIANT_JUMP_WINDUP_MS),
                   aiFromX: enemy.x, aiFromY: enemy.y,
-                  aiTargetX: pcx - enemy.width / 2, aiTargetY: pcy - enemy.height / 2, aiStartedAt: gameTime,
+                  aiTargetX: land.x, aiTargetY: land.y, aiStartedAt: gameTime,
                   gJumpRadius: PUMPKIN_EXPLOSION_RADIUS * stageMult,
                 };
+              }
               case 'dash':
                 // 狙い点=プレイヤーを挟んだ反対側(距離×2)。現行不変(6.26-6)。
                 return {
@@ -8720,9 +8737,26 @@ export const useGameStore = create<GameState>((set, get) => ({
         const vx = (enemy.vx ?? tvx) + (tvx - (enemy.vx ?? tvx)) * alpha;
         const vy = (enemy.vy ?? tvy) + (tvy - (enemy.vy ?? tvy)) * alpha;
 
-        const moved = resolveMove(enemy.x + vx * deltaTime, enemy.y + vy * deltaTime);
+        // ★障害物にぶつかったら適当に避けて通る(社長指示v0.25.2415・「綿密に組まなくていい」)。
+        // 進めない → 横へ避ける → そっちも駄目なら反対側 → それでも駄目なら諦めて突っ込み続ける。
+        // 判定は純関数 stepAvoid(src/utils/enemyMotion.ts・テスト済み)。ここは配線だけ。
+        // 追加コストは「詰まっている敵だけ resolveMove をもう1回」=通常時は完全に無料。
+        const wantX = enemy.x + vx * deltaTime, wantY = enemy.y + vy * deltaTime;
+        const moved0 = resolveMove(wantX, wantY);
+        const sp0 = Math.hypot(vx, vy);
+        const av = stepAvoid(enemy.avoid ?? createAvoidState(), {
+          dtMs: deltaTime * 1000,
+          wantDist: Math.hypot(wantX - enemy.x, wantY - enemy.y),
+          movedDist: Math.hypot(moved0.x - enemy.x, moved0.y - enemy.y),
+          dirX: sp0 > 0.001 ? vx / sp0 : 0,
+          dirY: sp0 > 0.001 ? vy / sp0 : 0,
+          rand: Math.random(),
+        });
+        const moved = av.state.dir !== 0
+          ? resolveMove(enemy.x + av.moveX * sp0 * deltaTime, enemy.y + av.moveY * sp0 * deltaTime)
+          : moved0;
 
-        return { ...enemy, vx, vy, x: moved.x, y: moved.y };
+        return { ...enemy, vx, vy, x: moved.x, y: moved.y, avoid: av.state };
       });
 
       // スキル: パニッシャー = ノックバック中の敵が他の敵に当たると巻き込む(同方向へ2倍ノックバック＋近接ダメージの半分)。

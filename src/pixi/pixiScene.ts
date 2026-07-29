@@ -9257,29 +9257,6 @@ export class PixiScene {
           this.drawSlashArc(view, swL.d[0], swL.d[1], swL.d[2], swL.d[3], 0xffd8d8, 0.9 * (1 - sp));
         }
       }
-      // 衝撃波(社長支給素材・v0.25.2414)。社長指摘「斬撃エフェクトなのに直線距離に当たり判定がある
-      // やつは、別途衝撃波の絵とか飛ばした方がいい」。**帯を描いたのと同じ数値**(bandsThisFrame=
-      // drawGiantCapsuleZone/薙ぎ払いが押した実寸)をそのまま使うので、判定と絵の出どころが1つに揃う。
-      // 起点は砂埃/弧と同じく**溜め**(同tickでカウンターされると実行状態を観測できないため・v0.25.2412)。
-      {
-        const bandWindup = gph !== undefined && gph.endsWith('-windup') && bandsThisFrame.length > 0;
-        const toImpact = bandWindup ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
-        const shL = this.latchFx(`${e.id}:shock`, bandWindup, toImpact + SHOCKWAVE_MS, now, () => {
-          const frac = (toImpact + SHOCKWAVE_MS) > 0 ? toImpact / (toImpact + SHOCKWAVE_MS) : 0;
-          // [frac, 本数, 帯1(5値), 帯2(5値)...] の平たい配列(latchFx の payload は number[])。
-          return [frac, bandsThisFrame.length, ...bandsThisFrame.flat()];
-        });
-        if (shL && shL.t >= shL.d[0]) {
-          const prog = shL.d[0] < 1 ? (shL.t - shL.d[0]) / (1 - shL.d[0]) : 1;
-          const count = shL.d[1];
-          for (let i = 0; i < count; i++) {
-            const b = 2 + i * 5;
-            // 走り終わりの2割で薄れて消える(唐突に消さない)。
-            this.drawShockwave(view, i, shL.d[b], shL.d[b + 1], shL.d[b + 2], shL.d[b + 3], shL.d[b + 4],
-              prog, 0.9 * Math.min(1, (1 - prog) / 0.2));
-          }
-        }
-      }
       if (gph === 'g-stomp-windup') {
         // T2(赤円・自身の足元)。半径=GIANT_STOMP_RADIUS(社長裁定6.26-9 #3)。
         // M65: windup開始時にgameStore.tsが確定させたe.gStompRadius(ステージ別倍率込み)を読む。
@@ -9452,6 +9429,32 @@ export class PixiScene {
         drawGiantCapsuleZone(rfx, rfy, rtx, rty, GLEN_REACH_HALF_WIDTH, rFill, (0.32 + 0.4 * rprog) + 0.15 * gPulse);
       }
       // 咆哮弾(g-bolt-*)は図形を出さない(社長裁定=小技はT4の一拍のみ。画面が赤で埋まると大技の赤が効かなくなる)。
+      // ★この位置(帯を描く if 連鎖の**後**)でなければならない(v0.25.2417のバグ修正)。
+      // bandsThisFrame は下の drawGiantCapsuleZone / 薙ぎ払いの poly が**描いた時に**積むので、
+      // if 連鎖より前で読むと毎フレーム空=衝撃波が一度も出ない(社長報告「衝撃波が見えない」)。
+      // 衝撃波(社長支給素材・v0.25.2414)。社長指摘「斬撃エフェクトなのに直線距離に当たり判定がある
+      // やつは、別途衝撃波の絵とか飛ばした方がいい」。**帯を描いたのと同じ数値**(bandsThisFrame=
+      // drawGiantCapsuleZone/薙ぎ払いが押した実寸)をそのまま使うので、判定と絵の出どころが1つに揃う。
+      // 起点は砂埃/弧と同じく**溜め**(同tickでカウンターされると実行状態を観測できないため・v0.25.2412)。
+      {
+        const bandWindup = gph !== undefined && gph.endsWith('-windup') && bandsThisFrame.length > 0;
+        const toImpact = bandWindup ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
+        const shL = this.latchFx(`${e.id}:shock`, bandWindup, toImpact + SHOCKWAVE_MS, now, () => {
+          const frac = (toImpact + SHOCKWAVE_MS) > 0 ? toImpact / (toImpact + SHOCKWAVE_MS) : 0;
+          // [frac, 本数, 帯1(5値), 帯2(5値)...] の平たい配列(latchFx の payload は number[])。
+          return [frac, bandsThisFrame.length, ...bandsThisFrame.flat()];
+        });
+        if (shL && shL.t >= shL.d[0]) {
+          const prog = shL.d[0] < 1 ? (shL.t - shL.d[0]) / (1 - shL.d[0]) : 1;
+          const count = shL.d[1];
+          for (let i = 0; i < count; i++) {
+            const b = 2 + i * 5;
+            // 走り終わりの2割で薄れて消える(唐突に消さない)。
+            this.drawShockwave(view, i, shL.d[b], shL.d[b + 1], shL.d[b + 2], shL.d[b + 3], shL.d[b + 4],
+              prog, 0.9 * Math.min(1, (1 - prog) / 0.2));
+          }
+        }
+      }
       // M66: 遅延起爆キュー(滑空の二撃目/翼撃の三拍目/三連突進の氷)。aiPhaseに関係なく常に描く
       // (recoverや次のwindup中でも予告が生きているため)。ice=trueは青系(スカジ氷と同じ色)。
       // capsuleがあれば帯、無ければ円のT5フェードインとして描く(いずれも既存の意匠の流用)。

@@ -30,15 +30,32 @@ const ENGAGEABLE_BOSS_TYPES = new Set<EnemyType>([
 
 export const isEngageableBoss = (type: EnemyType): boolean => ENGAGEABLE_BOSS_TYPES.has(type);
 
+// 交戦とみなす距離(社長質問v0.25.2416「ボスの画面外判定はハンターくらい広めならOK?」→ ハンター基準)。
+// ハンターの参考値: `HUNTER_DESPAWN_DIST = 1500`(撤退で消える距離)。それより内側に収める。
+// **ヒステリシス必須**: 単一しきい値だと境界上で毎フレーム反転し、湧きの設定が振動する。
+export const BOSS_ENGAGE_ENTER_PX = 900;  // これより近ければ「交戦中」(最大引きの画面より十分外)
+export const BOSS_ENGAGE_EXIT_PX = 1400;  // これより離れたら交戦解除=**湧きが通常へ戻る**
+
 /**
  * いま「ボスと交戦中」か。
  *
- * **`dormant` を見るのが肝**。城ボスは出現直後は城で待機(`dormant: true`)し、プレイヤーが
+ * **① `dormant` を見るのが肝**。城ボスは出現直後は城で待機(`dormant: true`)し、プレイヤーが
  * `GIANT_AGGRO_RANGE` に入ると `dormant: false` になる。**これが「交戦をはじめた」そのもの**なので、
- * 距離やヒステリシスを自前で書く必要がない。giantbat は一度起きたら再休眠しない
- * (再休眠はラボの lab-zombie 専用) = **単調でチラつかない**。
+ * 自前の起動判定を書く必要がない。giantbat は再休眠しない(再休眠はラボの lab-zombie 専用)。
  *
- * 他のボス(裏ボス/ゲート2/idol)は出現=即戦闘なので `dormant` が付いていない=生存だけで交戦中。
+ * **② 距離も見る**(社長指摘v0.25.2416「ボスが画面外で待機に入ったら、沸きが戻るとか?」)。
+ * 起きているボスが遠くに取り残されると、距離を見ないと**湧きが永久にリラックスのまま**になる。
+ * 画面外の遠くに居るボスは「交戦中」ではない=雑魚の湧きは通常へ戻す。
+ *
+ * `prev` は前フレームの判定(ヒステリシス用)。呼び出し側が持ち回る。
  */
-export const bossEngagedNow = (enemies: readonly Enemy[]): boolean =>
-  enemies.some(e => isEngageableBoss(e.type) && e.dormant !== true);
+export const bossEngagedNow = (
+  enemies: readonly Enemy[], playerCx: number, playerCy: number, prev: boolean,
+): boolean => {
+  const limit = prev ? BOSS_ENGAGE_EXIT_PX : BOSS_ENGAGE_ENTER_PX;
+  return enemies.some(e => {
+    if (!isEngageableBoss(e.type) || e.dormant === true) return false;
+    const d = Math.hypot((e.x + e.width / 2) - playerCx, (e.y + e.height / 2) - playerCy);
+    return d <= limit;
+  });
+};

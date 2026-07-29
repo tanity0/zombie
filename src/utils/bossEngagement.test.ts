@@ -1,7 +1,10 @@
 // ボス交戦判定の不変条件(社長裁定v0.25.2412)。ここが崩れると「ボス戦なのに雑魚が湧く」
 // または「ボスが居ないのに常時リラックス=ペーシング設計が丸ごと死ぬ」のどちらかになる。
 import { describe, it, expect } from 'vitest';
-import { bossEngagedNow, isEngageableBoss } from './bossEngagement';
+import { bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_ENTER_PX, BOSS_ENGAGE_EXIT_PX } from './bossEngagement';
+
+// 近く(プレイヤーは原点)に居るボスとして呼ぶ短縮形。距離のテストは最後の describe で別に行う。
+const engaged = (es: Parameters<typeof bossEngagedNow>[0], prev = false) => bossEngagedNow(es, 0, 0, prev);
 import type { Enemy, EnemyType } from '../types/game';
 
 const foe = (type: EnemyType, over: Partial<Enemy> = {}): Enemy => ({
@@ -13,18 +16,18 @@ const foe = (type: EnemyType, over: Partial<Enemy> = {}): Enemy => ({
 describe('bossEngagement', () => {
   it('待機中(dormant)の城ボスは交戦中ではない', () => {
     // 城ボスは出現直後は城で待機する。近づく前から湧きを落としたら、到達前の道中が丸ごと緩くなる。
-    expect(bossEngagedNow([foe('giantbat', { dormant: true })])).toBe(false);
+    expect(engaged([foe('giantbat', { dormant: true })])).toBe(false);
   });
 
   it('起きた城ボスは交戦中(=これが「交戦をはじめた」の信号)', () => {
-    expect(bossEngagedNow([foe('giantbat', { dormant: false })])).toBe(true);
-    expect(bossEngagedNow([foe('giantbat')])).toBe(true); // dormant 未設定=起きている
+    expect(engaged([foe('giantbat', { dormant: false })])).toBe(true);
+    expect(engaged([foe('giantbat')])).toBe(true); // dormant 未設定=起きている
   });
 
   it('裏ボス・ゲート2ボス・idol も交戦中として扱う(社長裁定③「全ボスで」)', () => {
     for (const t of ['mimir', 'jormungand', 'skadi', 'thor',
       'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol'] as EnemyType[]) {
-      expect(bossEngagedNow([foe(t)])).toBe(true);
+      expect(engaged([foe(t)])).toBe(true);
     }
   });
 
@@ -33,15 +36,29 @@ describe('bossEngagement', () => {
   it('死神とハンターは対象外(isBossType を流用してはいけない)', () => {
     expect(isEngageableBoss('reaper')).toBe(false);
     expect(isEngageableBoss('hunter')).toBe(false);
-    expect(bossEngagedNow([foe('reaper'), foe('hunter')])).toBe(false);
+    expect(engaged([foe('reaper'), foe('hunter')])).toBe(false);
+  });
+
+  // ★社長指摘v0.25.2416: 距離を見ないと「起きたボスが遠くに取り残されて湧きが永久にリラックス」になる。
+  it('遠くへ取り残されたボスは交戦中ではない(=雑魚の湧きが通常へ戻る)', () => {
+    const far = foe('giantbat', { x: BOSS_ENGAGE_ENTER_PX + 200, y: 0 });
+    expect(bossEngagedNow([far], 0, 0, false)).toBe(false);
+  });
+
+  it('ヒステリシスがある(境界で毎フレーム反転しない)', () => {
+    const mid = foe('giantbat', { x: (BOSS_ENGAGE_ENTER_PX + BOSS_ENGAGE_EXIT_PX) / 2, y: 0 });
+    expect(bossEngagedNow([mid], 0, 0, false)).toBe(false); // 交戦していない状態からは入らない
+    expect(bossEngagedNow([mid], 0, 0, true)).toBe(true);   // 交戦中なら少し離れても続く
+    const veryFar = foe('giantbat', { x: BOSS_ENGAGE_EXIT_PX + 100, y: 0 });
+    expect(bossEngagedNow([veryFar], 0, 0, true)).toBe(false); // 離れ切れば解除
   });
 
   it('雑魚だけの盤面は交戦中ではない', () => {
-    expect(bossEngagedNow([foe('zombie'), foe('bat'), foe('skeleton'), foe('plant')])).toBe(false);
-    expect(bossEngagedNow([])).toBe(false);
+    expect(engaged([foe('zombie'), foe('bat'), foe('skeleton'), foe('plant')])).toBe(false);
+    expect(engaged([])).toBe(false);
   });
 
   it('雑魚に混ざっていてもボスが1体起きていれば交戦中', () => {
-    expect(bossEngagedNow([foe('zombie'), foe('thor'), foe('bat')])).toBe(true);
+    expect(engaged([foe('zombie'), foe('thor'), foe('bat')])).toBe(true);
   });
 });

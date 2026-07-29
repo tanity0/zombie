@@ -412,6 +412,9 @@ export interface Enemy {
   // シミュ側の命中判定(pumpkinBlasts)・描画側の赤円(pixiScene.ts)・レベルアップ保留判定
   // (isPlayerInAttackTelegraph)の3箇所が全てこのフィールドを読むことで、計算式を1つに保ち
   // 「赤い円より広い範囲で当たる」ドリフトを構造的に防ぐ(未設定時は無倍率の生半径にフォールバック)。
+  // 障害物回避の進行状態(社長指示v0.25.2415)。判定は src/utils/enemyMotion.ts の純関数 stepAvoid が持つ。
+  // 「進めない→横へ避ける→反対側→諦める」の3段階をこの1フィールドで持ち回る。
+  avoid?: import('../utils/enemyMotion').AvoidState;
   gStompRadius?: number;
   gJumpRadius?: number;
   // M66(PACING_PUZZLE.md §6.26-11・stage-1/3/4/5限定)。

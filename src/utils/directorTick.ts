@@ -131,6 +131,9 @@ const RANK2_ENABLED = typeof window === 'undefined'
 const BOSS_RELAX_ENABLED = typeof window === 'undefined'
   ? true
   : new URLSearchParams(window.location.search).get('bossrelax') !== '0';
+// 交戦判定のヒステリシス用に前フレームの結果を保持する。距離だけから毎フレーム再計算するので、
+// ラン跨ぎで残っても最悪1フレーム余分に交戦中と見なすだけ(実害なし)。
+let bossRelaxPrev = false;
 
 // PACING_PUZZLE.md §5.17 M14: ランクの壁演出(銘打ちバナー+SE+年表記録/降格は静かに)。
 // 旧経路(コマ境界の確定査定)・新経路(M50連続査定)の両方から呼ぶ共通処理として抽出したもの
@@ -271,7 +274,14 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // 読むこと**から来るべきで、雑魚の数から来るべきではない。判定は純関数 bossEngagedNow(dormant を見る)。
   // 裁定の内訳: ①コマ時計=凍結 / ②昇格=凍結(降格は据え置き) / ③対象=全ボス。
   // `?bossrelax=0` で従来挙動(コマどおりに湧く)へ戻る。
-  const bossRelax = BOSS_RELAX_ENABLED && bossEngagedNow(useGameStore.getState().enemies);
+  // 距離も見る(社長指摘v0.25.2416): 起きたボスが遠くへ取り残されると、距離を見ないと**湧きが永久に
+  // リラックスのまま**になる。ヒステリシス用に前フレームの判定を持ち回る(境界での振動防止)。
+  const bossRelax = BOSS_RELAX_ENABLED && bossEngagedNow(
+    useGameStore.getState().enemies,
+    player.x + player.width / 2, player.y + player.height / 2,
+    bossRelaxPrev,
+  );
+  bossRelaxPrev = bossRelax;
   const rankPaceResult = tickRankPace(rankPaceRef.current.state, {
     dtMs: deltaTime * 1000,
     killsThisFrame,
