@@ -398,6 +398,10 @@ export const ensureTextures = (): Promise<void> => {
       // 砂埃(社長支給素材 B-0・v0.25.2404)。512角×4コマの横並び。血溜まりと同じくコマ切りはpixiScene側。
       // 色を焼き込んでいないので、ステージごとにtintで土/雪/灰へ振れる(1枚で全ステージ)。
       { name: 'fx/dust', scaleMode: 'linear' as const },
+      // 衝撃波(社長支給素材・v0.25.2414)。**判定が直線の帯なのに絵が「振っただけ」で終わる技**に、
+      // 帯の上を走らせて「どこまで届くか」を絵で伝えるために使う(社長指示)。1024×256・進行方向=右。
+      // 帯の長さに合わせて横だけ伸縮するので linear。
+      { name: 'fx/shockwave', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

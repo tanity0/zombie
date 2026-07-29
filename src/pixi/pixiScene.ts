@@ -1393,6 +1393,14 @@ const DUST_MS = 700;
 // 攻撃ヴィジュアルの2分類では①(判定に揃える)側だが、社長方針「完璧でなくてよい・赤ラインが
 // 別に出ているなら良し」の範囲。赤い帯/線は従来どおり判定と厳密一致のまま出ている。
 const FX_SWING_LINGER = 1.35;
+// 衝撃波(社長支給素材・v0.25.2414)。**判定が直線の帯なのに絵が「振っただけ」で終わる技**へ、
+// 帯の上を始点→終点へ走らせて「どこまで届くか」を絵で伝える(社長指示「別途衝撃波の絵とか飛ばした方がいい」)。
+// 判定は1msも変えない=絵だけを足す。素材の進行方向は右(先端の散りが右端)。
+const SHOCKWAVE_MS = 260;          // 走り切るまで。判定のactive窓とは独立(絵だけの尺)
+const SHOCKWAVE_LEN_MAX = 260;     // 波1つの見た目の長さ(px)。帯が短ければ帯長に合わせる
+const SHOCKWAVE_TINT = 0xffe4e4;   // ほんのり赤み(赤い帯と同じ攻撃の絵だと分かる程度。純白だと浮く)
+// 素材の中身は x[39..992]/1024 に収まっている。先端(散り)が右端なので、走る位置に**先端**を合わせる。
+const SHOCKWAVE_ANCHOR_X = 992 / 1024;
 // 砂埃は CLAUDE.md「攻撃ヴィジュアルの2分類」の**②派手さの絵**(判定ゼロ・当たっても痛くないと
 // 見て分かる)。社長方針v0.25.2410「オーバーに見せた方がいい」に従い、判定より大きく外へ出す。
 // v0.25.2408では踏み鳴らしだけ 2.2 にしたが、着地/のしかかりが 1.25 のまま取り残されていた
@@ -1552,6 +1560,8 @@ interface ActorView {
   slash?: Sprite;
   // 爪痕(社長支給素材 D-2・v0.25.2402)。**判定1つにつき1枚**貼るので配列(グレンの血の爪痕は同時3本)。
   clawMarks?: Sprite[];
+  // 衝撃波(社長支給素材・v0.25.2414)。**判定の帯1本につき1枚**(翼撃は左右2本同時)。
+  shockwaves?: Sprite[];
 }
 
 interface PropView {
@@ -3160,6 +3170,7 @@ export class PixiScene {
     };
     span(view.ring); span(view.band); span(view.slash);
     if (view.clawMarks) for (const s of view.clawMarks) span(s);
+    if (view.shockwaves) for (const s of view.shockwaves) span(s);
     if (minY > maxY) return 1; // このフレームは何も描いていない
     const y = Math.max(minY, Math.min(this.seeThroughPlayer.footY, maxY));
     return this.horizonActorAlpha(y) * this.foregroundActorAlpha(y);
@@ -8625,6 +8636,7 @@ export class PixiScene {
     if (view.band) view.band.visible = false;
     if (view.slash) view.slash.visible = false;
     if (view.clawMarks) for (const s of view.clawMarks) s.visible = false;
+    if (view.shockwaves) for (const s of view.shockwaves) s.visible = false;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       const ax = (e.aiTargetX ?? cx) - (e.aiFromX ?? cx);
@@ -9114,8 +9126,13 @@ export class PixiScene {
     if (e.type === 'giantbat' && GIANT_SCRIPT_ENABLED) {
       const gph = e.aiPhase;
       const gPulse = 0.5 + 0.5 * Math.sin(now / 110);
+      // 衝撃波(社長支給素材・v0.25.2414)用に、**このフレームに描いた帯の実寸をそのまま記録**する。
+      // 技ごとに書き写すと必ずどこかでズレる(同じ判定を2箇所に書いた事故は v0.25.2383/2387/2389 で
+      // 3回起きている)ので、**帯を描く関数そのものを唯一の出どころにする**。翼撃だけ左右2本なので配列。
+      const bandsThisFrame: number[][] = [];
       // 共通ヘルパ(M66): 角ばった帯(既存sweepと同じ意匠=poly fill+stroke)。bite/slam/glide/wingで共用。
       const drawGiantCapsuleZone = (fx: number, fy: number, tx: number, ty: number, halfWidth: number, fillA: number, strokeA: number) => {
+        bandsThisFrame.push([fx, fy, tx, ty, halfWidth]);
         const ddx = tx - fx, ddy = ty - fy;
         const ddl = Math.hypot(ddx, ddy) || 1;
         const nx = -ddy / ddl, ny = ddx / ddl;
@@ -9240,6 +9257,29 @@ export class PixiScene {
           this.drawSlashArc(view, swL.d[0], swL.d[1], swL.d[2], swL.d[3], 0xffd8d8, 0.9 * (1 - sp));
         }
       }
+      // 衝撃波(社長支給素材・v0.25.2414)。社長指摘「斬撃エフェクトなのに直線距離に当たり判定がある
+      // やつは、別途衝撃波の絵とか飛ばした方がいい」。**帯を描いたのと同じ数値**(bandsThisFrame=
+      // drawGiantCapsuleZone/薙ぎ払いが押した実寸)をそのまま使うので、判定と絵の出どころが1つに揃う。
+      // 起点は砂埃/弧と同じく**溜め**(同tickでカウンターされると実行状態を観測できないため・v0.25.2412)。
+      {
+        const bandWindup = gph !== undefined && gph.endsWith('-windup') && bandsThisFrame.length > 0;
+        const toImpact = bandWindup ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
+        const shL = this.latchFx(`${e.id}:shock`, bandWindup, toImpact + SHOCKWAVE_MS, now, () => {
+          const frac = (toImpact + SHOCKWAVE_MS) > 0 ? toImpact / (toImpact + SHOCKWAVE_MS) : 0;
+          // [frac, 本数, 帯1(5値), 帯2(5値)...] の平たい配列(latchFx の payload は number[])。
+          return [frac, bandsThisFrame.length, ...bandsThisFrame.flat()];
+        });
+        if (shL && shL.t >= shL.d[0]) {
+          const prog = shL.d[0] < 1 ? (shL.t - shL.d[0]) / (1 - shL.d[0]) : 1;
+          const count = shL.d[1];
+          for (let i = 0; i < count; i++) {
+            const b = 2 + i * 5;
+            // 走り終わりの2割で薄れて消える(唐突に消さない)。
+            this.drawShockwave(view, i, shL.d[b], shL.d[b + 1], shL.d[b + 2], shL.d[b + 3], shL.d[b + 4],
+              prog, 0.9 * Math.min(1, (1 - prog) / 0.2));
+          }
+        }
+      }
       if (gph === 'g-stomp-windup') {
         // T2(赤円・自身の足元)。半径=GIANT_STOMP_RADIUS(社長裁定6.26-9 #3)。
         // M65: windup開始時にgameStore.tsが確定させたe.gStompRadius(ステージ別倍率込み)を読む。
@@ -9266,6 +9306,7 @@ export class PixiScene {
           gtx + gux * ghw - gnx * ghw, gty + guy * ghw - gny * ghw,
           gfx - gux * ghw - gnx * ghw, gfy - guy * ghw - gny * ghw,
         ];
+        bandsThisFrame.push([gfx, gfy, gtx, gty, ghw]); // 薙ぎ払いも「判定=直線の帯・絵=弧」=衝撃波の対象
         o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill });
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, Math.min(1, (0.32 + 0.4 * gprog) + 0.15 * gPulse + 0.2));
         else o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
@@ -9460,6 +9501,7 @@ export class PixiScene {
       if (view.band?.visible) view.band.alpha *= teleFade;
       if (view.slash?.visible) view.slash.alpha *= teleFade;
       if (view.clawMarks) for (const s of view.clawMarks) if (s.visible) s.alpha *= teleFade;
+      if (view.shockwaves) for (const s of view.shockwaves) if (s.visible) s.alpha *= teleFade;
     }
 
     // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
@@ -10574,6 +10616,39 @@ export class PixiScene {
    * `reach` は当たり判定の間合いをそのまま渡す。**弧が判定より外へ出ないよう**、
    * スプライトの一辺を `reach * 2` に収める(はみ出すと「そこも危ない」と読まれてしまう)。
    */
+  // 衝撃波1本(社長支給素材・v0.25.2414)。帯の始点→終点を `prog`(0→1)で走り、**先端**が現在位置に来る。
+  // 判定は帯そのもの(不変)で、これは「どこまで届くか」を目で追わせるための絵。
+  // 通常合成(加算にしない): CLAUDE.md の実測で**唯一の律速は加算の大面積オーバードロー**であり、
+  // この絵は帯の長さぶん横に伸びる=面積が大きい。素材が既に白基調なので通常合成でも十分に映える。
+  private drawShockwave(
+    view: ActorView, idx: number, fx: number, fy: number, tx: number, ty: number,
+    halfWidth: number, prog: number, alpha: number,
+  ): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) return;
+    const tex = getTexture('fx/shockwave');
+    if (!tex) return;
+    if (!view.shockwaves) view.shockwaves = [];
+    let sp = view.shockwaves[idx];
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(SHOCKWAVE_ANCHOR_X, 0.5); // 先端(散り)を進行位置に合わせる
+      // 予告レイヤー(tele)の直上=赤い塗りの上(v0.25.2411の重ね順と同じ考え方)。
+      view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
+      view.shockwaves[idx] = sp;
+    }
+    const dx = tx - fx, dy = ty - fy;
+    const len = Math.hypot(dx, dy) || 1;
+    const headX = fx + dx * prog, headY = fy + dy * prog; // 先端の現在位置
+    sp.texture = tex;
+    sp.width = Math.min(SHOCKWAVE_LEN_MAX, len);
+    sp.height = halfWidth * 2; // 帯の太さに揃える(はみ出させない=判定の外を危険に見せない)
+    sp.rotation = Math.atan2(dy, dx);
+    sp.position.set(headX, headY);
+    sp.tint = SHOCKWAVE_TINT;
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
   private drawSlashArc(view: ActorView, cx: number, cy: number, angle: number, reach: number, tint: number, alpha: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;
     const tex = getTexture('fx/slash-arc');

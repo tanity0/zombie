@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2414',
+    items: [
+      '城ボスの「まっすぐ遠くまで届く技」に衝撃波が走るようになりました。どこまで届くかが絵で分かります(当たり判定は変わりません)。',
+    ],
+  },
+  {
     version: '0.25.2413',
     items: [
       'ボスと交戦している間は雑魚の湧きが落ち着くようになりました。ボスの技に集中できます。',
