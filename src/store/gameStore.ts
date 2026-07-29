@@ -73,7 +73,7 @@ import {
   giantQuadDashComplete,
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用の新技4つの純関数。
   pickGiantMoveWithGlen, glenScriptApplies, type GlenMoveId, GLEN_NIHIL_CHANT_COUNT,
-  GIANT_PHASE_HP_THRESHOLD,
+  GIANT_PHASE_HP_THRESHOLD, glenTriJumpPoints, GLEN_TRIJUMP_COUNT,
 } from '../utils/giantScript';
 import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -1698,6 +1698,16 @@ export const GLEN_NIHIL_CHANT_MS = 960;             // 実効800ms/唱×3(学習
 export const GLEN_NIHIL_RECOVER_MS = 1680;          // 実効1400ms(全技中最大)
 export const GLEN_NIHIL_CD_MS = 19200;              // 実効16.0s
 export const GLEN_NIHIL_RADIUS = 260;               // 設計書どおり(半径260)
+
+// --- 連続ジャンプ(trijump・社長指示v0.25.2430「着地後すぐに次のジャンプを3回連続」) ---
+// 設計(社長裁定「おすすめで」): **3点まとめて溜め開始でロック**して3つの赤い円を最初から全部見せる。
+// = 追ってくるのではなく「見て全部避けるパズル」(§6.28-3「何が・どこには嘘をつかない」の遵守)。
+// 回数は**3固定**(乱数にしない)=学習装置③「回数で読ませる」。三連突進/虚無の三唱と同じ一族。
+export const GLEN_TRIJUMP_WINDUP_MS = 1200;   // 実効1000ms(大技のリード床)。ここで3円を出し切る
+export const GLEN_TRIJUMP_AIR_MS = 540;       // 実効450ms/1跳び。着地したら「すぐ」次へ(間を空けない)
+export const GLEN_TRIJUMP_RECOVER_MS = 1800;  // 実効1500ms=全技中で最大の反撃窓(虚無の三唱1400msより長い)
+export const GLEN_TRIJUMP_CD_MS = 18000;      // 実効15.0s
+export const GLEN_TRIJUMP_RADIUS = 110;       // 1跳びの着地AoE半径(城ボスの飛び掛かり100より少し大きい)
 
 // 裏ボス スカジ専用の氷ハザード(社長指示)。判定はupdateEnemiesで、見た目はpixiScene。
 // 氷塊の起爆・氷刃の命中はどちらも既存の爆発処理(pumpkinBlasts)へ ice:true で積み、青FXで消化する。
@@ -7848,6 +7858,18 @@ export const useGameStore = create<GameState>((set, get) => ({
                     fireAt: atkUntil(GLEN_NIHIL_CHANT_MS * GLEN_NIHIL_CHANT_COUNT),
                   }],
                 };
+              case 'trijump': {
+                // 連続ジャンプ: **3つの着地点を今この瞬間にまとめて確定**して持ち回る(以後不変)。
+                // 座標の計算は純関数 glenTriJumpPoints に置いてある=**描画側も同じ関数を読む**ので、
+                // 「赤い円の位置」と「爆ぜる位置」がズレようがない。
+                const tri = glenTriJumpPoints(ecx, ecy, pcx, pcy, GLEN_TRIJUMP_RADIUS);
+                return {
+                  aiPhase: 'g-trijump-windup', aiPhaseUntil: atkUntil(GLEN_TRIJUMP_WINDUP_MS),
+                  aiFromX: enemy.x, aiFromY: enemy.y, aiStartedAt: gameTime,
+                  gTriJumpPts: tri.flatMap(p => [p.x, p.y]),
+                  gTriJumpIdx: 0,
+                };
+              }
             }
           };
 
@@ -7984,6 +8006,50 @@ export const useGameStore = create<GameState>((set, get) => ({
                   };
                 }
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, gBoltShot: shot, aiPhaseUntil: atkUntil(GIANT_BOLT_BURST_GAP_MS), lastShot: now };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            // --- 連続ジャンプ(グレン専用・v0.25.2430) ---
+            case 'g-trijump-windup': {
+              // 溜め中は完全静止(掟W6)。3つの赤い円は描画側が gTriJumpPts から出している。
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-trijump-air', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(GLEN_TRIJUMP_AIR_MS), gTriJumpIdx: 0 };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-trijump-air': {
+              const pts = enemy.gTriJumpPts ?? [];
+              const idx = enemy.gTriJumpIdx ?? 0;
+              const tx = pts[idx * 2] ?? (enemy.x + enemy.width / 2);
+              const ty = pts[idx * 2 + 1] ?? (enemy.y + enemy.height / 2);
+              const fx0 = enemy.aiFromX ?? enemy.x, fy0 = enemy.aiFromY ?? enemy.y;
+              const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (GLEN_TRIJUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT)));
+              const curX = fx0 + ((tx - enemy.width / 2) - fx0) * t;
+              const curY = fy0 + ((ty - enemy.height / 2) - fy0) * t;
+              if (t >= 1) {
+                pumpkinLanded = true;
+                pumpkinBlasts.push({ x: tx, y: ty, radius: GLEN_TRIJUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                const next = idx + 1;
+                if (next >= GLEN_TRIJUMP_COUNT) {
+                  // 3発目の着地=最大の反撃窓へ。着地点の情報はここで捨てる(次の抽選に持ち越さない)。
+                  return {
+                    ...enemy, ...phaseFields, x: tx - enemy.width / 2, y: ty - enemy.height / 2, vx: 0, vy: 0,
+                    aiPhase: 'g-trijump-recover', aiPhaseUntil: atkUntil(GLEN_TRIJUMP_RECOVER_MS),
+                    gTriJumpPts: undefined, gTriJumpIdx: undefined,
+                  };
+                }
+                // **着地したら「すぐ」次の跳び**(社長指示)=間を空けない。起点だけ着地点へ更新する。
+                return {
+                  ...enemy, ...phaseFields, x: tx - enemy.width / 2, y: ty - enemy.height / 2, vx: 0, vy: 0,
+                  aiFromX: tx - enemy.width / 2, aiFromY: ty - enemy.height / 2,
+                  aiStartedAt: gameTime, aiPhaseUntil: atkUntil(GLEN_TRIJUMP_AIR_MS), gTriJumpIdx: next,
+                };
+              }
+              return { ...enemy, ...phaseFields, x: curX, y: curY, vx: 0, vy: 0 };
+            }
+            case 'g-trijump-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGlenMove('trijump', GLEN_TRIJUMP_CD_MS) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -8523,10 +8589,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                     boon: gameTime >= (enemy.gGlenReadyAt?.boon ?? 0),
                     reach: gameTime >= (enemy.gGlenReadyAt?.reach ?? 0),
                     nihil: gameTime >= (enemy.gGlenReadyAt?.nihil ?? 0),
+                    trijump: gameTime >= (enemy.gGlenReadyAt?.trijump ?? 0),
                   };
                   const move = pickGiantMoveWithGlen(dist, phase, ready, glenReady);
                   if (move) {
-                    const isGlenMove = move === 'talon' || move === 'boon' || move === 'reach' || move === 'nihil';
+                    const isGlenMove = move === 'talon' || move === 'boon' || move === 'reach' || move === 'nihil' || move === 'trijump';
                     return {
                       ...enemy, ...phaseFields, vx: 0, vy: 0,
                       ...(isGlenMove ? beginGlenMove(move as GlenMoveId) : beginGiantMove(move as GiantMove)),

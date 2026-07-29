@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
@@ -1559,7 +1559,8 @@ interface ActorView {
   // 素材は**外周がキャンバス端に一致する真円**に正規化済みなので、幅=高さ=直径 に合わせるだけで
   // **輪の外周＝当たり判定の半径**になる(図形と判定の一致を素材側で担保している)。
   // 生成は遅延(使うボスだけ)。使わないフレームは visible=false にするだけ=draw call は増えない。
-  ring?: Sprite;
+  // v0.25.2430: 連続ジャンプ(グレン)は**同時に3つの円**を出すので配列にした。既存の技は idx=0 だけを使う。
+  rings?: Sprite[];
   // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。円(ring)と同じ考え方で、面は Graphics、
   // 帯の"見た目"だけをこの1枚が担う。1体につき同時に出る帯は1つなので1枚で足りる。
   band?: Sprite;
@@ -3178,7 +3179,8 @@ export class PixiScene {
       if (sp.y - half < minY) minY = sp.y - half;
       if (sp.y + half > maxY) maxY = sp.y + half;
     };
-    span(view.ring); span(view.band); span(view.slash);
+    if (view.rings) for (const s of view.rings) span(s);
+    span(view.band); span(view.slash);
     if (view.clawMarks) for (const s of view.clawMarks) span(s);
     if (view.shockwaves) for (const s of view.shockwaves) span(s);
     if (minY > maxY) return 1; // このフレームは何も描いていない
@@ -8644,7 +8646,7 @@ export class PixiScene {
     view.overlay.clear();
     // 予告の輪スプライト(A-1)は既定で消しておき、必要な分岐だけが drawTelegraphRing で点ける
     // (o.clear() と同じ役割。消し忘れて前フレームの輪が残るのを構造的に防ぐ)。
-    if (view.ring) view.ring.visible = false;
+    if (view.rings) for (const s of view.rings) s.visible = false;
     if (view.band) view.band.visible = false;
     if (view.slash) view.slash.visible = false;
     if (view.clawMarks) for (const s of view.clawMarks) s.visible = false;
@@ -9160,16 +9162,22 @@ export class PixiScene {
     {
       const genericAir = e.aiPhase === 'jump';
       const bossAir = e.bossState === 'jump-attack';
-      const airNow = genericAir || bossAir;
+      // 連続ジャンプ(グレン)は**1跳びごと**に土煙を出す。latchのキーに何発目かを混ぜることで、
+      // 3回それぞれが独立して出し切る(同じキーだと2発目以降が「まだ再生中」で撮り直せない)。
+      const triAir = e.aiPhase === 'g-trijump-air';
+      const airNow = genericAir || bossAir || triAir;
       // 滞空の残り=着弾までの時間。生成側と同じフィールドを読む(判定と絵の出どころを分けない)。
       const jToImpact = airNow
         ? Math.max(0, ((genericAir ? e.aiPhaseUntil : e.bossStateUntil) ?? gameTime) - gameTime)
         : 0;
-      const jL = this.latchFx(`${e.id}:jdust`, airNow, jToImpact + DUST_MS, now, () => {
-        // 着地点は溜め開始でロック済み(左上座標なので中心へ寄せる)。
-        const jx = (e.aiTargetX ?? e.x) + e.width / 2;
-        const jy = (e.aiTargetY ?? e.y) + e.height / 2;
-        const r = (genericAir ? PUMPKIN_EXPLOSION_RADIUS : THOR_JUMP_RADIUS) * DUST_SCALE;
+      const triIdx = e.gTriJumpIdx ?? 0;
+      const jL = this.latchFx(`${e.id}:jdust${triAir ? triIdx : ''}`, airNow, jToImpact + DUST_MS, now, () => {
+        // 着地点は溜め開始でロック済み(汎用/ボスは aiTarget=左上座標なので中心へ寄せる。
+        // 連続ジャンプは gTriJumpPts が最初から中心座標)。
+        const tp = e.gTriJumpPts ?? [];
+        const jx = triAir ? (tp[triIdx * 2] ?? e.x) : (e.aiTargetX ?? e.x) + e.width / 2;
+        const jy = triAir ? (tp[triIdx * 2 + 1] ?? e.y) : (e.aiTargetY ?? e.y) + e.height / 2;
+        const r = (triAir ? GLEN_TRIJUMP_RADIUS : genericAir ? PUMPKIN_EXPLOSION_RADIUS : THOR_JUMP_RADIUS) * DUST_SCALE;
         const frac = (jToImpact + DUST_MS) > 0 ? jToImpact / (jToImpact + DUST_MS) : 0;
         return [jx, jy, r, frac];
       });
@@ -9244,7 +9252,7 @@ export class PixiScene {
         (gph === 'g-stomp-windup' || gph === 'g-sweep-windup' || gph === 'g-dash-windup' || gph === 'g-bolt-windup' || gph === 'g-jump-air'
           || gph === 'g-bite-windup' || gph === 'g-bite-hold' || gph === 'g-slam-windup' || gph === 'g-glide-windup'
           || gph === 'g-quad-windup' || gph === 'g-quad-breath-windup' || gph === 'g-nova-windup' || gph === 'g-wing-windup' || gph === 'g-sweepbeam-windup'
-          || gph === 'g-talon-windup' || gph === 'g-boon-windup' || gph === 'g-reach-windup'
+          || gph === 'g-talon-windup' || gph === 'g-boon-windup' || gph === 'g-reach-windup' || gph === 'g-trijump-air'
           || gph === 'g-nihil-chant1' || gph === 'g-nihil-chant2' || gph === 'g-nihil-chant3')
           ? (e.aiPhaseUntil ?? gameTime) - gameTime : null;
       const gFlash = gFlashRemain !== null ? thorFlashTint(gFlashRemain, now) : null;
@@ -9253,7 +9261,8 @@ export class PixiScene {
       } else if (gph === 'g-stomp-recover' || gph === 'g-sweep-recover' || gph === 'g-dash-recover' || gph === 'g-jump-recover' || gph === 'g-bolt-recover'
         || gph === 'g-bite-recover' || gph === 'g-slam-recover' || gph === 'g-glide-recover' || gph === 'g-dive-recover'
         || gph === 'g-quad-recover' || gph === 'g-nova-recover' || gph === 'g-wing-recover' || gph === 'g-sweepbeam-recover'
-        || gph === 'g-talon-recover' || gph === 'g-boon-recover' || gph === 'g-reach-recover' || gph === 'g-nihil-recover') {
+        || gph === 'g-talon-recover' || gph === 'g-boon-recover' || gph === 'g-reach-recover' || gph === 'g-nihil-recover'
+        || gph === 'g-trijump-recover') {
         // 硬直=反撃窓(翻訳規則(d)): 赤ではない色(青白)=「今なら殴れる」の合図。
         view.sprite.tint = 0xbfe8ff;
       } else {
@@ -9364,6 +9373,22 @@ export class PixiScene {
         o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * gPulse });
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, gtx, gty, gR, 0xff3b3b, 0.55 + 0.35 * gPulse);
         else o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
+      } else if (gph === 'g-trijump-windup' || gph === 'g-trijump-air') {
+        // 連続ジャンプ(グレン専用・v0.25.2430): **3つの着地円を溜め開始から全部見せる**。
+        // 座標は gameStore が glenTriJumpPoints で確定して持たせた `gTriJumpPts` をそのまま読む
+        // =**判定と同じ配列**(同じ計算を2箇所に書かない)。既に着地済みの円は消して残りだけ出す
+        // (=「あと何回」が絵で分かる。学習装置③「回数で読ませる」の視覚側)。
+        const tp = e.gTriJumpPts ?? [];
+        const done = gph === 'g-trijump-air' ? (e.gTriJumpIdx ?? 0) : 0;
+        for (let i = done; i * 2 + 1 < tp.length; i++) {
+          const tjx = tp[i * 2], tjy = tp[i * 2 + 1];
+          // 次に落ちてくる1つ(i===done)は濃く、その先は薄く=順番が読める。
+          const lead = i === done ? 1 : 0.55;
+          o.ellipse(tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS)
+            .fill({ color: 0xff2a2a, alpha: (0.16 + 0.12 * gPulse) * lead });
+          if (FX_RING_ENABLED) this.drawTelegraphRing(view, tjx, tjy, GLEN_TRIJUMP_RADIUS, 0xff3b3b, (0.55 + 0.35 * gPulse) * lead, i - done);
+          else o.ellipse(tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: (0.45 + 0.3 * gPulse) * lead });
+        }
       } else if (gph === 'g-bite-windup' || gph === 'g-bite-hold' || gph === 'g-bite-active') {
         // M66 stage-1「噛みつき」: T3前方の短い帯(足元の円=stompと図形で区別)。holdは"間"=図形は
         // そのまま静止して見せ続ける(学習点=保持350ms固定)。
@@ -9559,7 +9584,7 @@ export class PixiScene {
     const teleFade = TELEGRAPH_OWN_FADE ? this.telegraphFade(view) : 1;
     view.tele.alpha = teleFade;
     if (teleFade < 1) {
-      if (view.ring?.visible) view.ring.alpha *= teleFade;
+      if (view.rings) for (const s of view.rings) if (s.visible) s.alpha *= teleFade;
       if (view.band?.visible) view.band.alpha *= teleFade;
       if (view.slash?.visible) view.slash.alpha *= teleFade;
       if (view.clawMarks) for (const s of view.clawMarks) if (s.visible) s.alpha *= teleFade;
@@ -10606,11 +10631,12 @@ export class PixiScene {
    * `radius` は**当たり判定の半径をそのまま渡す**こと。素材は外周がキャンバス端に一致する真円に
    * 正規化してあるので、直径に合わせれば輪の外周が判定と一致する。
    */
-  private drawTelegraphRing(view: ActorView, cx: number, cy: number, radius: number, tint: number, alpha: number): void {
+  private drawTelegraphRing(view: ActorView, cx: number, cy: number, radius: number, tint: number, alpha: number, idx = 0): void {
     if (!FX_RING_ENABLED) return;
     const tex = getTexture('fx/telegraph-ring');
     if (!tex) return;
-    let sp = view.ring;
+    if (!view.rings) view.rings = [];
+    let sp = view.rings[idx];
     if (!sp) {
       sp = new Sprite(tex);
       sp.anchor.set(0.5, 0.5);
@@ -10619,7 +10645,7 @@ export class PixiScene {
       // 赤い塗り(tele・本体スプライトより上)に負けて支給素材の意匠がほぼ見えていなかった。
       // 赤い塗りが「どこが危ないか」の下地、素材が意匠の主役、という重ね順にする。
       view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
-      view.ring = sp;
+      view.rings[idx] = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
     sp.position.set(cx, cy);

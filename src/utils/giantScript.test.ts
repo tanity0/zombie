@@ -3,7 +3,7 @@ import {
   giantPhaseForHealth, giantPhaseJustChanged, giantMoveEligible, pickGiantMove, pickGiantCombo,
   giantPhaseForHealthStory, pickGiantStoryCombo,
   giantStageRangeMult,
-  GIANT_RANGE, type GiantMove,
+  GIANT_RANGE, type GiantMove, glenTriJumpPoints, GLEN_TRIJUMP_COUNT,
   GIANT_STAGE_UNIQUE_MOVE, GIANT_STAGE_ULT_MOVE, GIANT_STAGE_MOVE_RANGE,
   giantStageMoveEligible, pickGiantMoveWithStage,
   GIANT_QUAD_DASH_COUNT, giantQuadDashComplete, GIANT_QUAD_ICE_COUNT,
@@ -435,8 +435,8 @@ describe('GIANT_STAGE_MOVE_RANGE — 表の実値を固定するリグレッシ�
 // ============================================================================================
 
 const noGiantReady: Record<GiantMove, boolean> = { stomp: false, sweep: false, jump: false, dash: false, bolt: false };
-const allGlenReady: Record<GlenMoveId, boolean> = { talon: true, boon: true, reach: true, nihil: true };
-const noGlenReady: Record<GlenMoveId, boolean> = { talon: false, boon: false, reach: false, nihil: false };
+const allGlenReady: Record<GlenMoveId, boolean> = { talon: true, boon: true, reach: true, nihil: true, trijump: true };
+const noGlenReady: Record<GlenMoveId, boolean> = { talon: false, boon: false, reach: false, nihil: false, trijump: false };
 
 describe('glenScriptApplies — 受け入れ条件: stage-7のグレンだけが新技を選ぶ(通常城ボス/ex1では絶対に選ばれない)', () => {
   it('true only for isStoryBoss=true & storyBossVariant="stage-7" & enabled', () => {
@@ -489,9 +489,13 @@ describe('pickGiantMoveWithGlen — 受け入れ条件: Phase1で大技(nihil)�
   // 距離2000は既存5技(最大帯=dashの1000)にもtalon/boon/reach(最大帯=reachの1000)にも一切
   // 該当しない=nihil(全帯)だけが候補になりうる距離。Phase1で常にnullなら「大技だけが閉じている」
   // ことを直接証明できる。
+  // v0.25.2430: 連続ジャンプ(trijump・全帯に近い間合い)が増えたので、この距離では trijump も候補に
+  // なりうる。**このテストの意図は「Phase1で nihil だけが閉じている」ことの証明**なので、
+  // trijump は未CD扱いにして nihil の門だけを見る(意図を変えずに新技ぶんだけ除外する)。
+  const onlyNihilReady: Record<GlenMoveId, boolean> = { ...allGlenReady, trijump: false };
   it('phase1: nihil is never offered even when everything else is unavailable', () => {
     for (let i = 0; i < 20; i++) {
-      expect(pickGiantMoveWithGlen(2000, 1, noGiantReady, allGlenReady, () => i / 20)).toBeNull();
+      expect(pickGiantMoveWithGlen(2000, 1, noGiantReady, onlyNihilReady, () => i / 20)).toBeNull();
     }
   });
   it('phase2 (HP60%): nihil becomes available at the same distance/readiness', () => {
@@ -535,10 +539,11 @@ describe('pickGiantMoveWithGlen — 受け入れ条件: 既存5技の選択が�
     const far = GIANT_RANGE.JUMP_MAX + 600; // dash(上限FAR_MAX=1000)の圏外
     expect(pickGiantStoryCombo('stomp', far, false, () => 0)).toBeNull();
   });
-  it('only offers talon/boon at distance 350 when the existing 5 techs are all unready', () => {
+  // v0.25.2430: 距離350では連続ジャンプ(min=200)も間合いに入る=候補に加わるのが正しい。
+  it('only offers talon/boon/trijump at distance 350 when the existing 5 techs are all unready', () => {
     for (let i = 0; i < 20; i++) {
       const move = pickGiantMoveWithGlen(350, 1, noGiantReady, allGlenReady, () => i / 20);
-      expect(['talon', 'boon']).toContain(move);
+      expect(['talon', 'boon', 'trijump']).toContain(move);
     }
   });
   it('returns null when nothing is ready/eligible at all', () => {
@@ -549,5 +554,40 @@ describe('pickGiantMoveWithGlen — 受け入れ条件: 既存5技の選択が�
 describe('GLEN_NIHIL_CHANT_COUNT — 学習点④「数える」: 詠唱回数は常に3固定(乱数にしない)', () => {
   it('is exactly 3', () => {
     expect(GLEN_NIHIL_CHANT_COUNT).toBe(3);
+  });
+});
+
+// 連続ジャンプ(社長指示v0.25.2430)。3固定と「同じ状況なら同じ形」を不変条件として固定する。
+describe('glenTriJumpPoints — 連続ジャンプの着地点', () => {
+  it('回数は3固定(乱数にしない=学習装置③「回数で読ませる」)', () => {
+    expect(GLEN_TRIJUMP_COUNT).toBe(3);
+    expect(glenTriJumpPoints(0, 0, 300, 0, 110)).toHaveLength(3);
+  });
+
+  it('1発目は必ずプレイヤーの現在地(嘘をつかない)', () => {
+    const pts = glenTriJumpPoints(0, 0, 300, 40, 110);
+    expect(pts[0].x).toBeCloseTo(300, 5);
+    expect(pts[0].y).toBeCloseTo(40, 5);
+  });
+
+  // ★ここが肝。乱数を使っていたら「同じ状況で同じ形」が壊れ、予告の意味が薄れる。
+  it('同じ状況なら必ず同じ形(乱数を使っていない)', () => {
+    const a = glenTriJumpPoints(0, 0, 300, 40, 110);
+    const b = glenTriJumpPoints(0, 0, 300, 40, 110);
+    expect(a).toEqual(b);
+  });
+
+  it('2・3発目はプレイヤー地点から半径ぶん離れる(円が丸ごと重ならない=逃げ場がある)', () => {
+    const r = 110;
+    const pts = glenTriJumpPoints(0, 0, 300, 0, r);
+    for (let i = 1; i < pts.length; i++) {
+      const d = Math.hypot(pts[i].x - pts[0].x, pts[i].y - pts[0].y);
+      expect(d).toBeGreaterThan(r); // 中心が半径より離れている=完全な重なりにならない
+    }
+  });
+
+  it('間合い: 密着では出さない(近接技の領分)', () => {
+    expect(glenMoveEligible('trijump', 100)).toBe(false);
+    expect(glenMoveEligible('trijump', 600)).toBe(true);
   });
 });

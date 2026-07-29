@@ -269,8 +269,20 @@ export const GIANT_QUAD_ICE_COUNT = 3;
 // (既存5技のみ)に戻る。
 // ============================================================================================
 
-export type GlenMoveId = 'talon' | 'boon' | 'reach' | 'nihil';
-const GLEN_MOVES: GlenMoveId[] = ['talon', 'boon', 'reach', 'nihil'];
+export type GlenMoveId = 'talon' | 'boon' | 'reach' | 'nihil' | 'trijump';
+const GLEN_MOVES: GlenMoveId[] = ['talon', 'boon', 'reach', 'nihil', 'trijump'];
+
+// 連続ジャンプ(社長指示v0.25.2430「ジャンプ着地後すぐに次のジャンプ、3回連続」)。
+// **回数は3固定**(乱数にしない)。これは §6.28 の学習装置③「回数で読ませる」の実装で、
+// 三連突進(GIANT_QUAD_DASH_COUNT=3)・虚無の三唱(GLEN_NIHIL_CHANT_COUNT=3)と同じ一族。
+// 「3回目で終わる」と学習できることが技の価値になる。
+export const GLEN_TRIJUMP_COUNT = 3;
+// 3つの着地点は**溜め開始でまとめてロック**する(社長裁定)。着地ごとに取り直すと「追ってくる」に
+// なってしまい、§6.28-3の「何が・どこには嘘をつかない、変えるのは"いつ"だけ」に反する。
+// まとめてロックなら3つの赤い円が最初から全部見えている=**見て全部避けるパズル**になる。
+// 配置: 1発目=プレイヤーの現在地 / 2・3発目=そこを中心に半径×TRIJUMP_SPREAD の距離で 120° ずつ
+// 回した位置(=三つ葉)。基準角はボス→プレイヤーの向き(乱数を使わない=同じ状況なら同じ形が出る)。
+export const GLEN_TRIJUMP_SPREAD = 1.45; // 着地円の半径に対する散らばり(1.0=円が接する / 1.45=隙間ができる)
 
 // 間合い(px・中心間距離)。PACING_PUZZLE.md §6.26-12の表の明記どおり。nihilのみ「全帯」
 // (大技=距離では絞らない。解禁自体は下のpickGiantMoveWithGlenでPhase2ゲートする)。
@@ -279,6 +291,26 @@ export const GLEN_MOVE_RANGE: Record<GlenMoveId, { min: number; max: number }> =
   boon: { min: 320, max: 900 },
   reach: { min: 420, max: 1000 },
   nihil: { min: 0, max: Infinity },
+  // 連続ジャンプは「離れたら飛んで詰める」技。密着では出さない(踏み鳴らし等の近接技の領分)。
+  trijump: { min: 200, max: Infinity },
+};
+
+/**
+ * 連続ジャンプの着地点3つ(溜め開始で確定・以後不変)。
+ * 純関数にしてあるのは、**判定側(gameStore)と描画側(pixiScene)が同じ値を読む**ため
+ * ——同じ計算を2箇所に書くと必ず片方だけズレる(v0.25.2383/2387/2389 で3回起きた型)。
+ */
+export const glenTriJumpPoints = (
+  bossCx: number, bossCy: number, playerCx: number, playerCy: number, radius: number,
+): { x: number; y: number }[] => {
+  const base = Math.atan2(playerCy - bossCy, playerCx - bossCx);
+  const d = radius * GLEN_TRIJUMP_SPREAD;
+  const pts = [{ x: playerCx, y: playerCy }];
+  for (let i = 1; i < GLEN_TRIJUMP_COUNT; i++) {
+    const a = base + (i * 2 * Math.PI) / GLEN_TRIJUMP_COUNT;
+    pts.push({ x: playerCx + Math.cos(a) * d, y: playerCy + Math.sin(a) * d });
+  }
+  return pts;
 };
 
 export const glenMoveEligible = (move: GlenMoveId, distance: number): boolean => {

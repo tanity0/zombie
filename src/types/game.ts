@@ -354,6 +354,7 @@ export interface Enemy {
     | 'g-jump-windup' | 'g-jump-air' | 'g-jump-recover'
     | 'g-dash-windup' | 'g-dash-charge' | 'g-dash-recover'
     | 'g-bolt-windup' | 'g-bolt-burst' | 'g-bolt-recover'
+    | 'g-trijump-windup' | 'g-trijump-air' | 'g-trijump-recover'
     | 'g-bite-windup' | 'g-bite-hold' | 'g-bite-active' | 'g-bite-recover'
     | 'g-slam-windup' | 'g-slam-active' | 'g-slam-recover'
     | 'g-glide-windup' | 'g-glide-active' | 'g-glide-recover'
@@ -417,6 +418,10 @@ export interface Enemy {
   // ボスがクリティカルで「痺れる」代わりに**動きが半減**する窓の終了時刻(gameTime基準・v0.25.2422)。
   // 通常敵の stunUntil(完全停止)とは別概念。ボス以外には設定されない。
   bossSlowUntil?: number;
+  // 連続ジャンプ(グレン専用・v0.25.2430)。3つの着地点を**溜め開始でまとめてロック**して持ち回る。
+  // 平たい配列 [x1,y1,x2,y2,x3,y3](中心座標)。判定側と描画側が同じ配列を読む=図形と判定が必ず一致する。
+  gTriJumpPts?: number[];
+  gTriJumpIdx?: number; // いま何発目へ飛んでいるか(0始まり)
   // 咆哮弾のパターン(社長裁定v0.25.2423「AとBを2パターンとして入れよう」)。溜め開始で抽選して固定する。
   //  'fan'   = 扇状に同時発射(Phase2で本数増)。真っ直ぐ逃げても外側の弾に当たる=横取りの位置取りを強制。
   //  'burst' = 同じ方向へ短間隔の3連射。横移動なら全部避けられる=「止まると死ぬ」圧に特化。
@@ -434,7 +439,7 @@ export interface Enemy {
   // M67(PACING_PUZZLE.md §6.26-12・stage-7のグレン限定)専用: 血の爪痕/血の弧/伸びる触手/虚無の三唱の
   // 個別クールダウン(gStageReadyAtと同じ作法で別フィールドに分離=通常城ボスのgStageReadyAtには
   // 一切書き込まない=互いに独立)。
-  gGlenReadyAt?: Partial<Record<'talon' | 'boon' | 'reach' | 'nihil', number>>;
+  gGlenReadyAt?: Partial<Record<'talon' | 'boon' | 'reach' | 'nihil' | 'trijump', number>>;
   // 遅延起爆の待ち行列(固定遅延=学習装置①。乱数にしない)。滑空の二撃目(1件)/三連突進が残す氷
   // (3件)/翼撃の三拍目(1件)で共用する汎用キュー。ice=trueなら着弾FXが青版(既存pumpkinBlastsの
   // ice:trueをそのまま流用)。capsuleがあれば帯(翼撃三拍目)、無ければ円(それ以外)として起爆する。
