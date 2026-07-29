@@ -9238,12 +9238,12 @@ export class PixiScene {
       // 蹴り出し: 突進の立ち上がりで、その場(足元)に一発。
       const kickL = this.latchFx(`${e.id}:dashkick`, dashing, DUST_MS, now,
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
-      if (kickL) this.drawDust(kickL.d[0], kickL.d[1], kickL.d[2], kickL.t, this.dustTintForStage(), this.fxHoldFade(kickL.t));
+      if (kickL) this.drawDust(kickL.d[0], kickL.d[1], kickL.d[2], kickL.t, this.dustTintForStage(), this.dustAlpha(kickL.t));
       // 止まった瞬間: 突進が明けた立ち上がり(=!dashing への遷移)で、止まった位置に一発。
       // `dashEndArmed` は「直前に突進していた」ことを覚えるための1フレーム遅延。
       const stopL = this.latchFx(`${e.id}:dashstop`, !dashing && this.dashWasOn.has(e.id), DUST_MS, now,
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
-      if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), this.fxHoldFade(stopL.t));
+      if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), this.dustAlpha(stopL.t));
       if (dashing) this.dashWasOn.add(e.id); else this.dashWasOn.delete(e.id);
     }
     // 汎用ジャンプ着地の砂埃(社長指摘v0.25.2426「パンプキンなどのジャンプにも砂埃ちゃんと出てる?」)。
@@ -9277,7 +9277,7 @@ export class PixiScene {
       });
       if (jL && jL.t >= jL.d[3]) {
         const dp = jL.d[3] < 1 ? (jL.t - jL.d[3]) / (1 - jL.d[3]) : 0;
-        this.drawDust(jL.d[0], jL.d[1], jL.d[2], dp, this.dustTintForStage(), this.fxHoldFade(dp));
+        this.drawDust(jL.d[0], jL.d[1], jL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp));
       }
     }
     // M51: 城ボス「ジャイアント」新スクリプトの予告描画(PACING_PUZZLE.md §6.26)。既存部品のみ流用
@@ -9395,7 +9395,7 @@ export class PixiScene {
         });
         if (dustL && dustL.t >= dustL.d[3]) {
           const dp = dustL.d[3] < 1 ? (dustL.t - dustL.d[3]) / (1 - dustL.d[3]) : 0;
-          this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), this.fxHoldFade(dp));
+          this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp));
         }
       }
       // 「振った瞬間」の弧(素材D-1・v0.25.2400)。**予告ではなく実行の絵**なので当たり判定と一致させる
@@ -10994,11 +10994,19 @@ export class PixiScene {
   // v0.25.2456(社長指示「最後(消える直前)以外はハッキリ表示」)→v0.25.2458で汎用化(社長指示
   // 「ほかにも中途半端に不透明にしてるものは基本100%に」): エフェクト共通のアルファ包絡線。
   // 寿命の前70%は完全不透明(1.0)で維持し、最後の30%だけ線形フェードで消える。
-  // 適用: 砂埃/斬撃の弧/銃口フラッシュ。※赤い予告(塗り・縁・パルス)は例外=地面オーバーレイで
+  // 適用: 斬撃の弧/銃口フラッシュ。※赤い予告(塗り・縁・パルス)は例外=地面オーバーレイで
   // 100%だと下の敵と自機が隠れる+点滅とランプは「あと何秒で来るか」の語彙なので触らない。
   private fxHoldFade(t: number): number {
     const FADE_START = 0.7;
     return t < FADE_START ? 1 : Math.max(0, 1 - (t - FADE_START) / (1 - FADE_START));
+  }
+  // v0.25.2460(社長指示「70 100 70 30--- にしてみて」): 砂埃専用の包絡線。寿命を4等分した
+  // キーフレーム 70%→100%→70%→30%→0% を線形補間(ふわっと立ち上がって最盛→余韻→消滅)。
+  private dustAlpha(t: number): number {
+    const KEYS = [0.7, 1.0, 0.7, 0.3, 0];
+    const x = Math.max(0, Math.min(1, t)) * (KEYS.length - 1);
+    const i = Math.min(KEYS.length - 2, Math.floor(x));
+    return KEYS[i] + (KEYS[i + 1] - KEYS[i]) * (x - i);
   }
   private drawDust(x: number, y: number, radius: number, prog: number, tint: number, alpha: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;

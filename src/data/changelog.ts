@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2460',
+    items: [
+      '砂埃の見え方を調整: 70%で出現→すぐ100%まで濃くなり→余韻を残しながら消えるカーブになりました。',
+    ],
+  },
+  {
     version: '0.25.2459',
     items: [
       '守護霊(ゴースト助っ人)がボスの技を受けるようになりました(爆発・薙ぎ払い・弾・ビーム・血溜まりなど。HPが尽きると解散)。',
