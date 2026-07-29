@@ -176,8 +176,11 @@ export const checkPlayerEnemyCollisions = (
   return enemies.filter(enemy => checkCollision(hit, enemyContactBox(enemy)));
 };
 
-// 敵 ↔ 召喚ユニット(通常個体のみ)の接触。各重なりにつき敵の damage を返す。
+// 敵 ↔ 召喚ユニット(通常個体+ghost-ally)の接触。各重なりにつき敵の damage を返す。
 // レア個体はHP制ではない(10秒で消滅)ので接触ダメージの対象外。
+// ghost-ally(BOT_AND_GHOST.md G2)もHP制なので対象に含める(この汎用接触ダメージが、ボス本体に
+// 触れた時の被弾経路になる。ボス固有の特殊技(windup/active毎の専用当たり判定)は対象外=
+// ★未決として最終報告に記載)。
 export const checkEnemySummonCollisions = (
   enemies: Enemy[],
   summons: Summon[]
@@ -186,7 +189,7 @@ export const checkEnemySummonCollisions = (
   const out: { enemyId: string; summonId: string; damage: number }[] = [];
   for (const enemy of enemies) {
     for (const s of summons) {
-      if (s.kind !== 'normal') continue;
+      if (s.kind !== 'normal' && s.kind !== 'ghost-ally') continue;
       if (checkCollision(enemyContactBox(enemy), s)) out.push({ enemyId: enemy.id, summonId: s.id, damage: enemy.damage });
     }
   }

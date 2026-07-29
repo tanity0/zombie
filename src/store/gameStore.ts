@@ -22,6 +22,7 @@ import {
   recordSubUse, recordOverclockProc, resetBotTelemetry,
   recordDamageDealt, recordFinisherKill, recordMeleeSwing,
 } from '../utils/botTelemetry';
+import { resetPlayerTraits } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -5742,6 +5743,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const nextSummons: Summon[] = [];
     for (const s0 of state.summons) {
+      // BOT_AND_GHOST.md G2: ghost-ally(kind='ghost-ally')はここでは駆動しない(専用の
+      // ghostDriver.ts + useGameLoop の専用ブロックが移動/攻撃を決める)。ここは素通し(このtickは
+      // 何もしない)にして、錬金術召喚(normal/rare)の追従/接触ダメージAIに巻き込まれないようにする。
+      if (s0.kind === 'ghost-ally') { nextSummons.push(s0); continue; }
       if (s0.kind === 'rare') {
         if (now >= (s0.expiresAt ?? 0)) continue; // 10秒で消滅
         // 吸引: レア中心へ PULL_RANGE 内の敵を最大N体寄せる(ダメージなし)。
@@ -5835,17 +5840,20 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   damageSummon: (id, amount) => {
     const now = Date.now();
+    // BOT_AND_GHOST.md G2: ghost-ally(kind='ghost-ally')もHP制なので normal と同じ被弾/消滅の枠へ
+    // 含める(i-frame・health<=0で消滅=「ゴーストHP0で解散」の土台)。rareは対象外のまま(既存挙動不変)。
+    const isHittable = (s: Summon): boolean => s.kind === 'normal' || s.kind === 'ghost-ally';
     set(state => ({
       summons: state.summons
         .map(s => {
-          if (s.id !== id || s.kind !== 'normal') return s;
+          if (s.id !== id || !isHittable(s)) return s;
           // プレイヤーと同じ被弾構造: 直近被弾から INVULN_MS は無敵(i-frame)。
           // これで敵が何体群がっても 1 無敵窓につき被弾は 1 回に制限される
           // (旧: 敵×召喚ペアごとの throttle で敵数ぶん多重被弾していた)。
           if (now - s.lastHit < INVULN_MS) return s;
           return { ...s, health: s.health - amount, lastHit: now };
         })
-        .filter(s => s.kind !== 'normal' || s.health > 0),
+        .filter(s => !isHittable(s) || s.health > 0),
     }));
   },
 
@@ -11723,6 +11731,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     // M35(§6.12): ボット計測カウンタをラン開始でリセット(実機/ヘッドレス両ハーネス共通の合流点)。
     resetBotTelemetry();
+    // BOT_AND_GHOST.md G1: 前ランの未確定セッション(交戦中に終了した場合等)を持ち越さない。
+    resetPlayerTraits();
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
     // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。

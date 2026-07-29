@@ -94,7 +94,11 @@ export const classifyProjectileDamageChannel = (
   weaponType: string | undefined,
   weaponKey: string | undefined,
 ): 'gun' | 'other' | null => {
-  if (weaponKey === 'escort') return null;
+  // BOT_AND_GHOST.md G2: ゴーストの銃弾(weaponKey='ghost-gun')はescortと同じ「プレイヤー起因ではない」
+  // 扱い=計測除外(null)。ゴーストはプレイヤーの装備を借りるだけで、プレイヤー自身の攻撃ではない
+  // (§2.6の計測はプレイヤー本人の傾向を測るためのものなので、ここで混ぜると次世代のゴーストが
+  // 「ゴーストと一緒に戦った自分」の劣化コピーになる=§2.7 制約1と同根の理由)。
+  if (weaponKey === 'escort' || weaponKey === 'ghost-gun') return null;
   if (weaponKey?.startsWith('sub-')) return 'other';
   return weaponType !== undefined && GUN_PROJECTILE_WEAPON_TYPES.has(weaponType) ? 'gun' : 'other';
 };

@@ -1068,6 +1068,10 @@ const STATUS_GREEN = 0x34d399;  // emerald-400: HP高(健全)
 const STATUS_RED = 0xf87171;    // red-400: HP低/危険
 const STATUS_YELLOW = 0xfbbf24; // amber-400: リロード/注意
 const STATUS_ALLY = 0x38bdf8;   // sky-400: 味方(救助対象)
+// BOT_AND_GHOST.md G2(未決4の裁定=霊体): ゴースト助っ人はプレイヤーの基本テクスチャ+青白tint+半透明。
+// 装備の見た目は再現しない(霊体だから見えなくても世界観として自然)。
+const GHOST_ALLY_TINT = 0x9fd8ff;
+const GHOST_ALLY_ALPHA = 0.7;
 // M51(社長裁定6.26-9 #4): フェーズを持つボス(ジャイアント)のHPバー・Phase2色(橙)。
 // 既存のSTATUS_YELLOW(amber-400=リロード/注意の意味で使用中)とは別に用意し、意味の混同を避ける。
 const GIANT_PHASE2_BAR_COLOR = 0xf97316; // orange-500
@@ -7820,6 +7824,11 @@ export class PixiScene {
   }
 
   private drawSummon(view: ActorView, s: Summon, now: number) {
+    // BOT_AND_GHOST.md G2: ghost-allyは既存2種(normal/rare=敵アセット流用)と見た目の作り方が違う
+    // (プレイヤーの基本テクスチャ+青白tint+半透明・装備は出さない=未決4の裁定)ので専用分岐で描く。
+    // 新規描画経路・新規フィルタ・強glowは追加しない(CLAUDE.md負荷規律)= 既存のactorプール
+    // (view.sprite/light/reticle/overlay)にそのまま乗せるだけ。
+    if (s.kind === 'ghost-ally') { this.drawGhostAlly(view, s); return; }
     // 敵と同じ視覚スケールの足元ボックスで描く(大きさを揃える)。
     const fb = summonFootBox(s);
     const tex = getTexture(s.reusedType);
@@ -7860,6 +7869,38 @@ export class PixiScene {
       const by = s.y - 6;
       o.rect(bx, by, s.width, 3).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
       o.rect(bx, by, s.width * frac, 3).fill({ color: STATUS_ALLY });
+    }
+  }
+
+  // BOT_AND_GHOST.md G2(未決4の裁定=霊体): プレイヤーの基本テクスチャ+青白tint+半透明。
+  // s.width/height は既にプレイヤーの実寸(directorTick.tsが召喚時にplayer.width/heightをコピー)
+  // なので、他summonのようなreusedType別スケール(summonFootBox)は使わない=1:1でそのまま置く。
+  // 動きの絵は最小限(ghostFacingによる左右反転のみ)。武器・装備の絵は出さない。
+  private drawGhostAlly(view: ActorView, s: Summon) {
+    const footX = s.x + s.width / 2;
+    const footY = s.y + s.height;
+    view.light.visible = false;
+    view.sprite.position.set(Math.round(footX), Math.round(footY));
+    view.container.zIndex = footY;
+    view.container.alpha = GHOST_ALLY_ALPHA;
+    const tex = getTexture('player');
+    if (tex) {
+      const sc = containScale(s.width, s.height, tex.width, tex.height) * this.depthScaleEnemy(footY);
+      const faceSign = s.ghostFacing === -1 ? -1 : 1;
+      view.sprite.scale.set(faceSign * sc, sc);
+      view.sprite.tint = GHOST_ALLY_TINT;
+      view.sprite.visible = true;
+    } else {
+      view.sprite.visible = false;
+    }
+    view.reticle.clear();
+    const o = view.overlay;
+    o.clear();
+    if (s.health < s.maxHealth) {
+      const frac = Math.max(0, Math.min(1, s.health / s.maxHealth));
+      const bx = s.x, by = s.y - 6;
+      o.rect(bx, by, s.width, 3).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
+      o.rect(bx, by, s.width * frac, 3).fill({ color: GHOST_ALLY_TINT });
     }
   }
 

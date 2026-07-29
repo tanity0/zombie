@@ -115,6 +115,10 @@ describe('botTelemetry (M46: 与ダメ/即死/近接ペース計測・§6.21)', 
       expect(classifyProjectileDamageChannel('handgun', 'escort')).toBeNull();
       expect(classifyProjectileDamageChannel('rifle', 'escort')).toBeNull();
     });
+    it('ゴースト銃弾(weaponKey=ghost-gun)もプレイヤー起因ではないためnull(BOT_AND_GHOST.md G2)', () => {
+      expect(classifyProjectileDamageChannel('handgun', 'ghost-gun')).toBeNull();
+      expect(classifyProjectileDamageChannel('shotgun', 'ghost-gun')).toBeNull();
+    });
     it('gun以外のweaponType(グレネード/ホーミング等)はother', () => {
       expect(classifyProjectileDamageChannel('grenade', 'sub-heavy-grenade')).toBe('other');
       expect(classifyProjectileDamageChannel('homing-missile', 'sub-homing')).toBe('other');

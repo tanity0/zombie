@@ -377,6 +377,9 @@ export interface Enemy {
   // 屋内ステージ用: 固定配置の休眠敵。dormant 中は静止し、aggroRange 内にプレイヤーが
   // 入ると起床(dormant=false)して以後通常追跡。fixed=距離カリングの対象外(常駐)。
   dormant?: boolean;
+  // BOT_AND_GHOST.md G2/§3裁定: ゴースト召喚成立の瞬間に health/maxHealth へ GHOST_BOSS_HP_MULT(1.6)を
+  // 1回だけ適用したか(二重適用防止フラグ)。ゴーストが死んでも戻さない=trueのまま据え置く。
+  ghostHpBoosted?: boolean;
   aggroRange?: number;
   fixed?: boolean;
   // idol専用(§6.28-20・社長指示)の設置時の向き。true=水平ミラーして左向きで描画。既存の汎用
@@ -591,7 +594,13 @@ export interface Enemy {
   lastFireHitAt?: number;
 }
 
-export type SummonKind = 'normal' | 'rare';
+// 'ghost-ally' = BOT_AND_GHOST.md G2(ゴースト助っ人・デバッグ召喚 `?ghost=1`)。**'ghost-ally'という
+// 値名は意図的**: EnemyType側に既に 'ghost'(抱卵型変異体の内部id・旧称)が存在するため、同じ文字列
+// 'ghost' をSummonKindにも使うと `e.type==='ghost'` と `s.kind==='ghost'` が字面上そっくりになり、
+// このファイル内でも実際に混在している(取り違えのリスクが実在するため名前を分けた)。
+// 他の2種と違い、移動/攻撃は gameStore.updateSummons ではなく専用の ghostDriver.ts + useGameLoop の
+// 専用ブロックが駆動する(updateSummons側はkind==='ghost-ally'を素通しするだけ=既存2種は無改変)。
+export type SummonKind = 'normal' | 'rare' | 'ghost-ally';
 // 錬金術で召喚する味方ユニット。敵とは別配列(enemies のカウント/スポーン/勝利条件
 // 等に混ざらないよう完全分離)。移動/攻撃/見た目は敵キャラの仕様を流用し、reusedType が
 // その参照元(normal: zombie/werewolf/pumpkin、rare: reaper=死神ヴィジュアル)。
@@ -608,6 +617,9 @@ export interface Summon {
   maxHealth: number;
   damage: number;
   kind: SummonKind;
+  // kind='ghost-ally' ではこのフィールドは不使用(見た目はプレイヤーの基本テクスチャ+青白tint=
+  // pixiSceneがkind==='ghost-ally'を専用分岐で描くため、敵アセットの参照元は要らない)。型の都合上、
+  // 値そのものは何か入れておく(spawn側が任意のEnemyTypeを1つ置くだけ)。
   reusedType: EnemyType; // 見た目/速度の参照元
   level: number;
   createdAt: number;      // Date.now — FIFO順 + レアの10秒寿命
@@ -617,6 +629,13 @@ export interface Summon {
   // PACING_PUZZLE.md §6.24 M48「使役」: 警察署アリーナ報酬で倒した敵の20%が復活したもの。
   // 錬金術の距離消滅(ALCHEMY_DESPAWN_DIST)を適用しない/最大1体(先着維持)の識別に使う。
   persistent?: boolean;
+  // ---- kind='ghost-ally'専用(BOT_AND_GHOST.md G2)。他kindでは常にundefined ----
+  ghostBossId?: string;        // 紐付いているボスのenemy.id(そのボスが居なくなったら解散)。
+  ghostFacing?: 1 | -1;        // 向き(描画の左右反転のみ・当たり判定は不変)。
+  ghostLastShotAt?: number;    // 銃のクールダウンゲート(ms・Date.now基準)。
+  ghostLastMeleeAt?: number;   // 近接のクールダウンゲート(ms・Date.now基準)。
+  ghostCounterPendingAt?: number;    // カウンター相当の機会が開いた時刻(undefined=機会なし)。
+  ghostCounterWillAttempt?: boolean; // その機会で抽選済みの「試みるか」。
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';

@@ -76,7 +76,7 @@ import { GAME_SPEED } from '../config/gameSpeed';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
-import { treesInRegion, trunkRect } from '../world/trees';
+import { treesInRegion, trunkRect, resolveTreeCollision } from '../world/trees';
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
 import { rollWeaponKey } from '../utils/weaponDrop';
@@ -195,6 +195,7 @@ import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
   computeDirCountCap, computeEnemyCap, computeNormalSpawnCap,
   runPityUpkeep, runKomaBoardMaintenance, runOffscreenRecycleAndCull, runDirectorSignalStep,
+  runGhostAndTraitsStep,
 } from '../utils/directorTick';
 import { debtFor, debtTempoEaseMult, CAST_DEBT_MAX } from '../utils/boardDebt';
 import { resetPityDrop } from '../utils/pityState';
@@ -203,6 +204,8 @@ import {
   getPhaseKillDebug, snapshotKillTotals, snapshotSpawns
 } from '../utils/killTelemetryState';
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
+import { notifyCounterHit } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1(計測専用・挙動不変)
+import { decideGhost, defaultGhostProfile, ghostLeashWarp, type GhostProfile } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2
 import { calculateResultScore } from '../utils/resultScoring';
 import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
@@ -599,6 +602,9 @@ const BOT_SKILL: BotSkill = parseBotSkill(evParam('botskill'));
 // v0.25.2339: 目的(ゴール) ?botgoal=clear|score|hiddenBoss[:Lv]|hunt:<敵>|depth:<px>|kills:<n>|bases:<n>
 // (既定 none=従来の挙動)。目的が無いと「上手さ」は最適化する対象を持たない、が社長の診断。
 const BOT_GOAL: BotObjective = parseBotObjective(evParam('botgoal'));
+// BOT_AND_GHOST.md G2(デバッグ召喚): ?ghost=1 でボス交戦の立ち上がりにゴースト助っ人を自動召喚する。
+// 既定offなので通常プレイは1バイトも挙動を変えない。
+const GHOST_DEBUG_ENABLED = evParam('ghost') === '1';
 
 // 天使(ゲート2ボス)コントローラの音注入(本体はangelBossTick.ts=M26 Step3で抽出。ヘッドレスはNOOP、実プレイはここ)。
 const ANGEL_SFX: AngelSfx = {
@@ -1162,6 +1168,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const puzzleHitRef = useRef<{ prevHp: number; lastHitAt: number }>({ prevHp: -1, lastHitAt: -1e9 });
   // PACING_PUZZLE.md §6.27 バッチM50: 連続査定(窓/被弾ストリーク)+enemiesKilledのフレーム差分用の前回値。
   const rankPaceRef = useRef<{ state: RankPaceState; prevKills: number }>({ state: createRankPaceState(), prevKills: 0 });
+  // BOT_AND_GHOST.md G2: 召喚中ゴーストのプロファイル(6ノブ)。召喚時にdirectorTick側が1回だけ書き込む。
+  const ghostProfileRef = useRef<GhostProfile | null>(null);
   // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
   // v0.25.1343: startTotalsは必ずディープコピー(snapshotKillTotals)で持つ。生参照だと差分が常に0になる。
   const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof snapshotKillTotals> | null; startSpawns: ReturnType<typeof snapshotSpawns> | null }>({ phaseKey: '', startTotals: null, startSpawns: null });
@@ -4318,6 +4326,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // カウンター成立時の共通処理(社長指示: すべての攻撃がカウンター可能)。通常カウンターと同じ
               // 演出(Counter!/ヒットインパクト/クリ反撃)を行い、近接距離ギリギリ外まで高速後退させる。
               const thorCounterHit = (hitX: number, hitY: number) => {
+                // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
+                notifyCounterHit();
                 const cp = useGameStore.getState().player;
                 const pnow = Date.now();
                 addMeleeFinishCombo(1);
@@ -4368,6 +4378,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // `BOSS_COUNTER_ENABLED`(既定true・`?bosscounter=0`で無効)の時だけ各windup状態から呼ばれる
               // (呼び出し側でゲート済み=このヘルパ自体は常に定義するだけで無条件には呼ばない)。
               const hiddenBossCounterHit = (hitX: number, hitY: number) => {
+                // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
+                notifyCounterHit();
                 const cp = useGameStore.getState().player;
                 const pnow = Date.now();
                 addMeleeFinishCombo(1);
@@ -5297,6 +5309,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 接触=カウンター可・active中(idol-roll等)はその技自身の判定に委ねる(=対象外)。
             // 既存の `?bosscounter=0`(BOSS_COUNTER_ENABLED)フォールバックの傘に入れ、idol専用フラグは作らない。
             const idolCounterHit = (hitX: number, hitY: number) => {
+              // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
+              notifyCounterHit();
               const cp = useGameStore.getState().player;
               const pnow = Date.now();
               addMeleeFinishCombo(1);
@@ -6859,6 +6873,93 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 錬金術: 召喚ユニットの追従/攻撃/レア吸引/消滅を毎フレーム更新。
         useGameStore.getState().updateSummons(deltaTime);
 
+        // BOT_AND_GHOST.md G2: ゴースト助っ人の移動/攻撃(`?ghost=1`の召喚中のみ・毎フレーム)。
+        // 召喚/解散/ボスHP倍率はdirectorTick.tsのrunGhostAndTraitsStepが担当し、ここは
+        // 「もう場に居るゴースト1体」の意思決定(ghostDriver.ts)を実行に移すだけ。
+        {
+          const ghostNow = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
+          if (ghostNow) {
+            const gsPlayer = useGameStore.getState().player;
+            const leash = ghostLeashWarp(ghostNow, gsPlayer);
+            if (leash) {
+              // 追従リーシュ: プレイヤーから離れすぎたら瞬時にワープ(霊体なので許される・演出は後回し)。
+              useGameStore.setState(st => ({
+                summons: st.summons.map(s => s.id === ghostNow.id ? { ...s, x: leash.x, y: leash.y } : s),
+              }));
+            } else {
+              const boundBoss = useGameStore.getState().enemies.find(e => e.id === ghostNow.ghostBossId);
+              const gun = getActiveGun(gsPlayer);
+              const meleeWeapon = gsPlayer.weapons.find(w => w.isMelee);
+              const profile: GhostProfile = ghostProfileRef.current ?? defaultGhostProfile();
+              const nowMs = Date.now();
+              const decision = decideGhost({
+                ghost: {
+                  x: ghostNow.x, y: ghostNow.y, width: ghostNow.width, height: ghostNow.height,
+                  facing: ghostNow.ghostFacing ?? 1,
+                  lastShotAt: ghostNow.ghostLastShotAt ?? 0,
+                  lastMeleeAt: ghostNow.ghostLastMeleeAt ?? 0,
+                  counterPendingAt: ghostNow.ghostCounterPendingAt,
+                  counterWillAttempt: ghostNow.ghostCounterWillAttempt,
+                },
+                player: { x: gsPlayer.x, y: gsPlayer.y, width: gsPlayer.width, height: gsPlayer.height },
+                // 「ゴーストは戦闘だけする」= 紐付いたボス1体だけを対象にする(雑魚に脇道しない)。
+                enemies: boundBoss ? [boundBoss] : [],
+                projectiles: useGameStore.getState().projectiles,
+                profile,
+                weapon: {
+                  gunDamage: gun?.damage ?? 0,
+                  gunIntervalMs: Math.max(80, gun?.cooldown ?? 500),
+                  gunRangePx: gun ? RANGE_BY_CATEGORY[gun.category ?? 'handgun'] : 0,
+                  meleeDamage: meleeWeapon?.damage ?? 6,
+                },
+                gameTime, nowMs,
+              });
+
+              const step = ghostNow.speed * deltaTime;
+              const nx = ghostNow.x + decision.moveX * step;
+              const ny = ghostNow.y + decision.moveY * step;
+              const resolved = resolveTreeCollision({ x: nx, y: ny, width: ghostNow.width, height: ghostNow.height });
+
+              useGameStore.setState(st => ({
+                summons: st.summons.map(s => s.id === ghostNow.id ? {
+                  ...s, x: resolved.x, y: resolved.y, ghostFacing: decision.facing,
+                  ghostLastShotAt: decision.lastShotAt, ghostLastMeleeAt: decision.lastMeleeAt,
+                  ghostCounterPendingAt: decision.counterPendingAt, ghostCounterWillAttempt: decision.counterWillAttempt,
+                } : s),
+              }));
+
+              if (decision.action === 'shoot' && boundBoss && gun) {
+                // 銃 = 装備中の銃のdamage/intervalで撃つ。弾薬はプレイヤーの残弾と完全分離(消費しない)。
+                const gcx = resolved.x + ghostNow.width / 2, gcy = resolved.y + ghostNow.height / 2;
+                const tcx = boundBoss.x + boundBoss.width / 2, tcy = boundBoss.y + boundBoss.height / 2;
+                const gdx = tcx - gcx, gdy = tcy - gcy;
+                const gdl = Math.hypot(gdx, gdy) || 1;
+                addProjectile({
+                  id: `proj-ghost-${ghostNow.id}-${nowMs}`,
+                  x: gcx - 4.5, y: gcy - 4.5, width: 9, height: 9,
+                  speed: gun.projectileSpeed ?? 640,
+                  damage: gun.damage,
+                  direction: { x: gdx / gdl, y: gdy / gdl },
+                  weaponType: gun.category ?? 'handgun',
+                  weaponKey: 'ghost-gun', // BOT_AND_GHOST.md: プレイヤー起因ではないため計測除外(null)
+                  duration: 1400, createdAt: nowMs,
+                  passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
+                });
+                playSfx('handgun-fire');
+              } else if (decision.action === 'melee' && boundBoss) {
+                // 近接 = 装備近接のdamageでスイング。channel=null(escortと同じ「プレイヤー起因ではない」
+                // 扱い=botTelemetryの近接/銃比率を汚さない)。
+                const dmg = Math.max(1, Math.round(meleeWeapon?.damage ?? 6));
+                const btcx = boundBoss.x + boundBoss.width / 2, btcy = boundBoss.y;
+                damageEnemy(boundBoss.id, dmg, false, false, false, null);
+                spawnDamageNumber(btcx, btcy, dmg, false);
+                spawnBurst(btcx, boundBoss.y + boundBoss.height / 2, '#9fd8ff', 6);
+                playSfx('melee');
+              }
+            }
+          }
+        }
+
         // 火炎瓶(molotov): 設置済みの地面の火の寿命切れ回収 + 敵への接触DoTを毎フレーム更新
         // (設置自体は上の molotov ブロックが行う。ここは置いた後の面倒を見るだけ)。
         useGameStore.getState().tickGroundFires();
@@ -7724,8 +7825,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 乗せない(クリ時は素のクリ倍率のみ)。タレット/ホーミング/ジャンク/援護射撃/跳弾/反射弾は
           // プレイヤー由来なので従来どおり(★9と整合)。
           const isEscortShot = projectile?.weaponKey === 'escort';
+          // BOT_AND_GHOST.md G2: ゴースト銃弾(weaponKey='ghost-gun')もescortと同じ「プレイヤーの
+          // スキル倍率を乗せない」扱いにする。ゴーストが借りるのは装備の damage/interval だけ
+          // (仕様書に「銃=装備中の銃のdamage/intervalで撃つ」とあり、スキル倍率は明記が無いため、
+          // ビルド強化がゴーストにまで二重に乗らないよう安全側=乗せない側を選んだ)。
+          const isAllyOwnedShot = isEscortShot || projectile?.weaponKey === 'ghost-gun';
           const critMult = hitCrit
-            ? (isEscortShot
+            ? (isAllyOwnedShot
                 ? (isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT)
                 : skillCritMult(skillPlayer, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT))
             : 1;
@@ -7736,7 +7842,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const plantCounterKill = !!projectile?.reflected && enemyForFx?.type === 'plant';
           const dmg = plantCounterKill
             ? (enemyForFx?.maxHealth ?? 1) + 1
-            : isEscortShot
+            : isAllyOwnedShot
               ? damage * critMult
               : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
           // §6.21 M46: gun/otherチャネル分類(護衛NPC弾はnull=計測除外)。純関数=classifyProjectileDamageChannel。
@@ -9411,6 +9517,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           {
             puzzleActiveNow, gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc,
           }
+        );
+
+        // BOT_AND_GHOST.md G1(計測)+G2(デバッグ召喚)。**puzzleActiveNow/NOSPAWNに関係なく毎tick呼ぶ**
+        // (runKomaBoardMaintenanceはスケジュール上のボスフェーズ時間帯だと即returnするため、そちらへ
+        // 相乗りさせると城ボス戦で1度も発火しない=directorTick.ts側のコメント参照)。
+        runGhostAndTraitsStep(
+          { ghostProfileRef },
+          { gameTime, player, ghostDebugEnabled: GHOST_DEBUG_ENABLED },
         );
 
         // Air-dropped ammo supplies (#3). At an irregular cadence a resupply

@@ -17,7 +17,7 @@ import { clampRectToPlayableArea } from '../world/playableArea';
 import {
   isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES, WALL_RANK_NAMES_EN,
 } from './wallProgress';
-import type { ActiveEvent, Enemy, EnemyType, GameBounds, Player } from '../types/game';
+import type { ActiveEvent, Enemy, EnemyType, GameBounds, Player, Summon } from '../types/game';
 import {
   generateEnemy,
   getEnemyFireProfile,
@@ -35,7 +35,9 @@ import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDir
 import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
-import { bossEngagedNow } from './bossEngagement';
+import { bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
+import { tickPlayerTraits, loadPlayerProfile } from './playerTraits'; // BOT_AND_GHOST.md G1
+import { defaultGhostProfile, GHOST_HP_FRAC, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
 import {
@@ -571,6 +573,112 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     rank, boardTarget: totalTarget, cap, tightened: tightenedNow, softened: softenedNow,
     komaKind: koma.kind,
   });
+}
+
+// ============================================================================
+// BOT_AND_GHOST.md G1(プレイヤー実測)+ G2(ゴースト助っ人・デバッグ召喚)
+// ============================================================================
+// **意図的に runKomaBoardMaintenance とは別関数にしてある(重要な実装判断)**: そちらは
+// `ctx.puzzleActiveNow===false` だと最初の行で即returnする。puzzleActiveNow は
+// `phaseAt(gameTime).kind !== 'boss'` を含む式(useGameLoop.ts)で、これは「スケジュール上の
+// ボスフェーズ時間帯」であって bossEngagedNow(実座標での交戦判定)とは別物。城ボス(giantbat)戦は
+// まさにそのスケジュール上のボスフェーズ時間帯に起きることが多いため、bossRelax の計算に相乗りさせると
+// **G1の計測とG2の召喚が城ボス戦で1度も発火しない**という実害のある穴になる(実装中に発見)。
+// そのため bossEngagedNow をここでもう一度、puzzleActiveNowに関係なく毎tick呼ぶ(判定ロジックは
+// 完全に同じ純関数を再利用=新しい交戦判定は発明していない。ヒステリシスの前回値だけ
+// runKomaBoardMaintenance側のbossRelaxPrevとは別の変数で持つ=互いに干渉しない)。
+let ghostBossEngagePrev = false;
+
+export interface GhostAndTraitsRefs {
+  /** 召喚中ゴーストのプロファイル(6ノブ)。召喚時に1回だけ書き込み、解散まで固定して使う。 */
+  ghostProfileRef: Ref<GhostProfile | null>;
+}
+
+export interface GhostAndTraitsCtx {
+  gameTime: number;
+  player: Player;
+  /** `?ghost=1`(evParam('ghost')==='1')。既定false=G2は完全に無効(通常プレイは無改変)。 */
+  ghostDebugEnabled: boolean;
+}
+
+export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTraitsCtx): void {
+  const { gameTime, player, ghostDebugEnabled } = ctx;
+  const state = useGameStore.getState();
+  const pcx = player.x + player.width / 2;
+  const pcy = player.y + player.height / 2;
+  const engagedNow = BOSS_RELAX_ENABLED && bossEngagedNow(state.enemies, pcx, pcy, ghostBossEngagePrev);
+  const rising = engagedNow && !ghostBossEngagePrev;
+  ghostBossEngagePrev = engagedNow;
+
+  const ghostActive = state.summons.some(s => s.kind === 'ghost-ally');
+
+  // G1: 計測(純関数へ委譲。この関数自体はplayerTraitsが必要とする値をstoreから集めて渡すだけ)。
+  tickPlayerTraits({
+    inCombat: engagedNow,
+    ghostActive,
+    gameTime,
+    player: {
+      x: player.x, y: player.y, width: player.width, height: player.height,
+      health: player.health, maxHealth: player.maxHealth,
+    },
+    enemies: state.enemies,
+    movementInput: state.inputState.up || state.inputState.down || state.inputState.left || state.inputState.right,
+  });
+
+  // G2: デバッグ召喚(`?ghost=1`の時のみ)。
+  if (!ghostDebugEnabled) return;
+
+  const existingGhost = state.summons.find(s => s.kind === 'ghost-ally');
+  if (existingGhost) {
+    // 解散条件①: 紐付いたボスが居なくなった(撃破/画面外リサイクル等で enemies から消えた)。
+    // 解散条件②(HP0)は damageSummon が既に summons から取り除いている=ここでは見なくてよい。
+    const boundBossAlive = state.enemies.some(e => e.id === existingGhost.ghostBossId);
+    if (!boundBossAlive) {
+      useGameStore.setState(s => ({ summons: s.summons.filter(su => su.id !== existingGhost.id) }));
+      refs.ghostProfileRef.current = null;
+    }
+    return; // 同時1体(既に居るなら新規召喚はしない)
+  }
+
+  if (!rising) return; // 召喚は交戦の立ち上がりの瞬間だけ
+
+  const boss = state.enemies.find(e =>
+    isEngageableBoss(e.type) && e.dormant !== true
+    && Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy) <= BOSS_ENGAGE_ENTER_PX);
+  if (!boss) return;
+
+  // BOT_AND_GHOST.md §3裁定: ボスHPを召喚成立の瞬間に1回だけ×1.6(割合保存・二重適用防止フラグ)。
+  // ゴーストが死んでも戻さない(戻り値の判定はしない=このif自体が「まだ適用していない時だけ」)。
+  if (!boss.ghostHpBoosted) {
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(e => e.id === boss.id
+        ? { ...e, health: e.health * GHOST_BOSS_HP_MULT, maxHealth: e.maxHealth * GHOST_BOSS_HP_MULT, ghostHpBoosted: true }
+        : e),
+    }));
+  }
+
+  // プロファイル未保存(初回)の場合は既定プロファイル(botSkillのcasual相当から変換)を使う。
+  const profile = loadPlayerProfile() ?? defaultGhostProfile();
+  refs.ghostProfileRef.current = profile;
+
+  const ghost: Summon = {
+    id: `ghost-ally-${Date.now()}`,
+    x: player.x - player.width - 16, y: player.y, width: player.width, height: player.height,
+    speed: player.speed,
+    health: player.maxHealth * GHOST_HP_FRAC,
+    maxHealth: player.maxHealth * GHOST_HP_FRAC,
+    damage: 0, // kind='ghost-ally'では不使用(実ダメージは都度プレイヤーの現在装備から計算する)
+    kind: 'ghost-ally',
+    reusedType: 'zombie', // 見た目未使用(pixiSceneがkind==='ghost-ally'を専用分岐で描く)
+    level: player.level,
+    createdAt: Date.now(),
+    lastHit: 0,
+    ghostBossId: boss.id,
+    ghostFacing: 1,
+    ghostLastShotAt: 0,
+    ghostLastMeleeAt: 0,
+  };
+  useGameStore.setState(s => ({ summons: [...s.summons, ghost] }));
 }
 
 // ============================================================================

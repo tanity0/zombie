@@ -45,6 +45,7 @@ import {
   GIANT_SCRIPT_ENABLED,
 } from '../store/gameStore';
 import { distToSegment } from './levelUpGate';
+import { notifyCounterHit } from './playerTraits'; // BOT_AND_GHOST.md G1(計測専用・挙動不変)
 
 // 演出・音・死亡演出のコールバック注入(ヘッドレスではno-op)。判定条件自体はこのファイル内に残る。
 export interface CombatEffects {
@@ -514,6 +515,8 @@ export const applyContactDamage = (
     }
   });
   if (dashParried.length > 0) {
+    // BOT_AND_GHOST.md G1(計測専用・挙動不変): カウンター成立をplayerTraitsへ通知する。
+    notifyCounterHit();
     const pnow = Date.now();
     const ppx = collPlayer.x + collPlayer.width / 2, ppy = collPlayer.y + collPlayer.height / 2;
     // 通常カウンターと同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。

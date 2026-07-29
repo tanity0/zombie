@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2441',
+    items: [
+      '開発用に、自分の過去の戦い方を再現する霊体の助っ人を試作しました(?ghost=1)。',
+    ],
+  },
+  {
     version: '0.25.2440',
     items: [
       'ゲーム内容の変更はありません(ゴースト助っ人のスコア制約を確定)。',

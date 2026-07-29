@@ -128,3 +128,24 @@ export const pickComboFollowup = <T extends string>(
   if (!eligibleForFollowup(followup)) return null; // 「まだその技の間合いに居るなら」等の呼び出し側判定
   return rand() < chance ? followup : null;
 };
+
+// ---- BOT_AND_GHOST.md G1/G2: ボス非依存の「カウンター可能っぽい」概算判定 -----------------------
+// isCounterablePhase(上)が正本の判定(呼び出し側=各<boss>Script.ts/useGameLoopが自分のwindup/recover
+// 状態名リストを渡す)なのに対し、こちらは**プレイヤー実測(playerTraits.ts)とゴーストの疑似反応
+// (ghostDriver.ts)専用**の概算。両者は「多少ズレても実害がない」用途(計測値/AIの参考挙動)なので、
+// 11ボスぶんのwindup/recover名リストをここへ複製せず、命名規約(新API=語尾'-windup'/'-recover')+
+// 旧API(giantbat以前からある汎用aiPhase: charge/recover/crouch/jump)で概算する。
+// ★未決(BOT_AND_GHOST.md参照): 正確な判定にしたいなら各<boss>Script.tsのCOUNTER_WINDUPS/RECOVERS
+// をここへ集約する再設計が要る(本バッチのスコープ外)。特に giantbat は combatTick.ts の
+// dashParried 判定が 'windup' 語尾ではなく個別の active/recover 名リストを見ているため、
+// この概算は giantbat の windup 中を「機会あり」と数える点で実際の当たり判定より広め(=過大評価)。
+export const isBossCounterableNowApprox = (
+  aiPhase: string | undefined,
+  bossState: string | undefined,
+): boolean => {
+  const suffixHit = (s: string): boolean => s.endsWith('-windup') || s.endsWith('-recover');
+  const ph = aiPhase ?? '';
+  const bs = bossState ?? '';
+  const legacyHit = ph === 'charge' || ph === 'recover' || ph === 'crouch' || ph === 'jump' || ph === 'g-jump-air';
+  return suffixHit(ph) || suffixHit(bs) || legacyHit;
+};

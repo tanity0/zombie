@@ -383,7 +383,12 @@ export const resolveEnemyTarget = (
   let isSummon = false;
   const aggro2 = aggroRange * aggroRange;
   for (const s of summons) {
-    if (s.kind !== 'normal') continue;
+    // BOT_AND_GHOST.md G2: ghost-ally(kind='ghost-ally')もヘイトの対象に含める(召喚ユニットと
+    // 同じ受け口を流用=新規実装ゼロという設計意図)。ただし実際にヘイトが効くのは、この
+    // resolveEnemyTarget を経由する敵AI(通常敵/thor等)だけ。giantbat・idol・angelBossTick系6体は
+    // 自分の攻撃対象をプレイヤーへ直接ハードコードしておりここを経由しないため、ゴーストへは
+    // 自動で乗らない(★未決として最終報告に記載・本バッチのスコープ外)。
+    if (s.kind !== 'normal' && s.kind !== 'ghost-ally') continue;
     const sx = s.x + s.width / 2;
     const sy = s.y + s.height / 2;
     const d2 = (sx - ex) * (sx - ex) + (sy - ey) * (sy - ey);

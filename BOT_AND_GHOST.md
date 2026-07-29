@@ -251,3 +251,27 @@
   `botEngagement.test.ts` / `botTelemetry.test.ts` / `botUpgradePolicy.test.ts` / `store/playtest.test.ts`
 - 実プレイヤー計測の前例: `src/utils/komaLog.ts`（記録専用・既定無効・`?komalog=1`）
 - ヘイトの前例: `resolveEnemyTarget`（`summons` を敵のターゲット候補に入れる）
+
+## 5. 実装結果(G1+G2完了・v0.25.2441・実装サブエージェント)
+
+詳細は DEVELOPMENT_LOG.md の該当エントリ(v0.25.2441)を正本とする。ここは設計チャットが次に
+読む時のための要約。
+
+- G1(`src/utils/playerTraits.ts`)/G2(`src/utils/ghostDriver.ts`)とも実装・ユニットテスト済み
+  (typecheck/lint エラー0)。`SummonKind` の新値は **`'ghost-ally'`**(`EnemyType` に既存の
+  `'ghost'` があったため衝突回避で改名。URLパラメータ `?ghost=1` はユーザー向け名称のまま維持)。
+- **実装中に設計前提が崩れていた箇所が2つ見つかった(社長裁定が必要)**:
+  1. **ヘイトが「新規実装ゼロ」で全ボスに乗る、は成立しない**。`resolveEnemyTarget` を実際に
+     経由するのは thor と通常敵だけ。giantbat・idol・angelBossTick系6体(miguel/jibril/rafi/uri/
+     suriel/acrasiel)は攻撃対象をプレイヤーへ直接ハードコードしており、ゴーストへは自動で
+     ヘイトが乗らない。→ 主戦場である城ボス(giantbat)戦で「ボスがゴーストを狙わない」ことになる。
+  2. **ゴーストの被弾経路は汎用接触ダメージ(`checkEnemySummonCollisions`)のみ**。ボス固有の
+     特殊技(突進/薙ぎ払い/ビーム等)の専用当たり判定はプレイヤーだけを見ており、ゴーストには
+     当たらない。
+  - この2つを本バッチのスコープで直すには11ボスの個別コードを触る必要があり、CLAUDE.md
+    「Aを直してと言われたらAだけ直す」に反するため見送った(★未決として実装のみ完了)。
+    次の一手は設計チャットの判断が要る: (a) 許容して実機確認へ進む(ヘイトが乗らなくても
+    「実測プロファイルでボスを殴る」体験自体は成立する) / (b) 主要ボス(最低でもgiantbat)だけ
+    ヘイト対応を追加するバッチを別途発注する、のどちらか。
+- その他の★未決(reactionMs判定の概算/ゴースト近接の簡易化/スキル倍率を乗せない設計/
+  defaultGhostProfileの叩き台数値)は DEVELOPMENT_LOG.md 参照。

@@ -1,5 +1,93 @@
 # Development Log
 
+## v0.25.2441 — ゴースト助っ人 G1(実測)+G2(本体・デバッグ召喚)実装【2026-07-30 01:00 JST】
+- BOT_AND_GHOST.md の設計どおり、**G1(プレイヤー実測層)+G2(ゴースト本体・`?ghost=1`デバッグ召喚)**を
+  実装(G3=スキル化/スコア半減は次バッチ)。
+- **G1: `src/utils/playerTraits.ts`(新規)**。純関数+モジュールシングルトン(komaLog/botTelemetryと
+  同流儀)。ボス交戦区間(directorTickのbossRelax)のみ計測、スナップショット差分+EMA(α=0.3)+
+  30秒未満は混ぜない+ゴースト同伴中は計測しない(§2.7制約1)。`zombie-ghost-profile-v1`へ保存。
+  - フック点: `combatTick.ts`のdashParried成立箇所/`angelBossTick.ts`のangelCounterHit(miguel/
+    jibril/rafi/uri/suriel/acrasielの共通処理・1箇所で6体カバー)/`useGameLoop.ts`のthorCounterHit・
+    hiddenBossCounterHit・idolCounterHitへ`notifyCounterHit()`を1行ずつ追加(挙動不変・計測のみ)。
+  - **カウンター可能状態の判定は概算ヒューリスティック**(`bossScript.ts`に
+    `isBossCounterableNowApprox`を新設・語尾`-windup`/`-recover`+旧来aiPhaseの限定集合)。★未決3参照。
+- **G2: `src/utils/ghostDriver.ts`(新規)**。純関数。pickTarget/dodgeVector+telegraphDodge(botSkill)
+  を流用、カウンター相当はplaytestBotのCounterThreatStateを参考に軽く再実装。追従リーシュ600px。
+  - **重要な実装判断(設計書に無い発見)**: bossRelaxの計算は`runKomaBoardMaintenance`内にあり、
+    `ctx.puzzleActiveNow===false`(=スケジュール上の「ボスフェーズ」時間帯=城ボス戦の主戦場)だと
+    その関数は即returnして bossRelax を1度も計算しない。そのまま乗せると**城ボス戦でG1/G2が
+    1度も発火しない**という実害が出るため、`directorTick.ts`に独立関数
+    `runGhostAndTraitsStep`を新設し、puzzleActiveNowに関係なく毎tick`bossEngagedNow`を
+    (専用のヒステリシス変数で)呼び直す形にした。**判定ロジック自体はbossEngagedNowを再利用=
+    新しい交戦判定は発明していない**。
+  - ライフサイクル: `runGhostAndTraitsStep`が交戦立ち上がり(rising edge)で召喚(`?ghost=1`のみ)+
+    紐付けたボスが消えたら解散。`useGameLoop.ts`の専用ブロック(updateSummons直後)が毎フレーム
+    `decideGhost`を実行して移動/攻撃(shoot/melee)を反映。
+  - **ボスHP×1.6の適用箇所**: `runGhostAndTraitsStep`内、召喚成立と同フレームで1回だけ
+    `enemies`をmapしてhealth/maxHealthへ`GHOST_BOSS_HP_MULT`を乗算。**二重適用防止**は
+    `Enemy.ghostHpBoosted`フラグ(新設)で行う(`if (!boss.ghostHpBoosted)`のみ適用・ゴーストが
+    死んでも戻さない=trueのまま据え置き)。
+  - **銃**: 装備中の銃のdamage/cooldownで`addProjectile`(weaponKey='ghost-gun'・弾薬は消費しない・
+    hostile:false)。**近接**: 装備近接のdamageで`damageEnemy(..., channel:null)`を直接呼ぶ。
+    どちらも**channel=null**(escortと同じ「プレイヤー起因ではない」計測除外)を選択——
+    「装備のdamage/intervalを借りるだけ」であり、プレイヤーのスキル倍率(skillCritMult等)は
+    乗せない設計にした(★未決5)。`classifyProjectileDamageChannel`にghost-gun分岐を追加(+テスト)。
+    `useGameLoop.ts`の`isEscortShot`判定も`isAllyOwnedShot`へ拡張(ghost-gunもスキル倍率スキップ)。
+  - **見た目**(未決4裁定=霊体): `pixiScene.ts`にghost-ally専用の`drawGhostAlly`を新設。
+    プレイヤーの基本テクスチャ+青白tint(`0x9fd8ff`)+alpha0.7。新規描画経路/フィルタ/強glowは
+    追加せず、既存summonのactorプールにそのまま乗せた(CLAUDE.md負荷規律)。
+  - **ヘイト**: `resolveEnemyTarget`(enemyUtils.ts)と`checkEnemySummonCollisions`
+    (collisionUtils.ts)の`kind==='normal'`限定を`'ghost-ally'`も含むよう拡張(2行ずつ)。
+    ★未決1参照(実効範囲は限定的)。
+  - **命名の注意**: `EnemyType`に既存の`'ghost'`(抱卵型変異体の内部id)があったため、新設の
+    `SummonKind`は**`'ghost-ally'`**にした(URLパラメータ`?ghost=1`はユーザー向け名称で維持=別物)。
+    同一ファイル内で`e.type==='ghost'`と混在するため、取り違え事故を防ぐ目的の意図的な命名。
+- **plumbing**: `Summon`型に`ghost-ally`専用フィールド(ghostBossId/ghostFacing/ghostLastShotAt/
+  ghostLastMeleeAt/ghostCounterPendingAt/ghostCounterWillAttempt)を追加。`gameStore.updateSummons`は
+  `kind==='ghost-ally'`を素通し(既存2種のAIに巻き込まない)、`damageSummon`は`ghost-ally`もHP制の
+  対象に拡張(i-frame+health<=0で消滅=「HP0で解散」の土台)。`resetGame`に`resetPlayerTraits()`追加。
+- **Load score: 2/10**(低)。G1は毎フレームのスカラー演算+敵配列の線形走査(数体〜数十体規模)のみ、
+  G2は`?ghost=1`未指定なら完全no-op、指定時も同時1体のみが対象。新規の重い描画(強glow等)は
+  追加していない(既存summon actorプールを流用)。セーフガード: 同時1体固定、計測はボス交戦中のみ。
+- **typecheck: エラー0 / lint: エラー0**(手元で確認)。`npx vitest run`でG1/G2の新規テスト
+  (playerTraits.test.ts 13件・ghostDriver.test.ts 17件)+関連する既存テスト(botTelemetry/
+  enemyUtils/flareGun/bossScript/botSkill/bossEngagement)が全て緑であることも確認
+  (社長指示によるフル`npm test`は未実行=Testing policyどおり)。
+  - **実装中に見つけたテスト自体のバグ2件を先に修正**: ①`notifyCounterHit`が成立のたびに
+    `wasOpportunity`をfalseへ戻していたため、同じwindupが継続している間に偽の立ち上がりで
+    「機会」が二重計上されるバグ(playerTraits.ts修正)。②ghostDriverの銃フォールバックが
+    カウンター可能局面中も発火し「窓を見ながら同時に撃つ」矛盾挙動になっていたバグ
+    (`counterable`の間はフォールバックしない、に統一)。
+- **自己点検**: この変更はボス交戦中(`bossEngagedNow`)にのみ動作し、憲法第4条(初心者ゾーン)・
+  コマ/緩(harvest/relax)ロジックには一切触れていない。`?ghost=1`無しの通常プレイはG2が完全no-op、
+  G1(計測)は記録専用でゲーム判定を一切変えない(komaLogと同じ掟)。抵触なし。
+- ★未決(BOT_AND_GHOST.mdへの転記は設計チャット側で判断を仰ぐ):
+  1. **ヘイトの実効範囲が限定的**: `resolveEnemyTarget`を経由するボス(thor・通常敵)にしか
+     自動で乗らない。giantbat・idol・angelBossTick系6体(miguel/jibril/rafi/uri/suriel/acrasiel)は
+     攻撃対象をプレイヤーへ直接ハードコードしておりresolveEnemyTargetを経由しないため、
+     ゴーストへのヘイトは自動では乗らない(設計書の前提「新規実装ゼロ」が実際には11ボス中
+     大半で成立しない・実装時に発覚)。全ボスへ広げるなら各ボスの攻撃対象決定コードを個別に
+     触る必要があり本バッチのスコープ外。
+  2. **ゴーストの被弾経路が限定的**: `checkEnemySummonCollisions`(汎用接触ダメージ)経由のみ。
+     ボス固有の特殊技(突進/薙ぎ払い/ビーム等の専用当たり判定)はプレイヤーとの当たり判定にのみ
+     実装されており、ゴーストには当たらない。ボスHP1.6倍との釣り合いも含め要確認。
+  3. `isBossCounterableNowApprox`は概算ヒューリスティックであり正式なカウンター判定ではない
+     (bossScript.tsのコメント参照)。特にgiantbatは実際のcombatTick.tsのdashParried判定より
+     広め(過大評価)。playerTraitsの計測精度・ghostDriverの反応精度の両方に影響する。
+  4. ゴーストの近接ダメージは「射程内なら毎回damageEnemyを通す簡易スイング」で、ボス固有の
+     カウンター専用ボーナス(青FX/確定クリ/怯ませ/後退ジャンプ等)は再現していない。
+  5. ゴーストの攻撃力はプレイヤーのスキル倍率(skillCritMult/skillOutgoingDamageMult等)を
+     乗せない設計にした(escortと同じ扱い)。「装備のdamage/intervalを借りる」としか仕様書に
+     無く、スキル倍率の扱いが未記載だったため安全側(乗せない)を選んだ——ビルドの強さを
+     どこまで反映すべきかは要確認。
+  6. `defaultGhostProfile`のpreferredDist/meleeBias/mobility/hitsPerMin(180px/0.4/0.6/3回)は
+     叩き台(botSkillにこれらに対応する軸が無いため)。実測が集まったら調整余地あり。
+  7. (軽微)ghost-allyの接地影(syncShadows経由のsummonFootBox)がreusedType='zombie'の
+     ENEMY_VISUAL_SCALEを流用しており、プレイヤーの実寸とは一致しない可能性がある
+     (機能には影響しない見た目の微差)。
+- 次: 社長の実機確認 → G3(スキル化・スコア半減)発注。★未決1・2は設計チャットで方針確定が必要
+  (特に1は「ヘイトが乗らないボス相手にはゴーストが撃たれない」ため、体験として弱い可能性がある)。
+
 ## v0.25.2440 — ゴースト: スコア半減は「発動したランだけ」で社長確定 → G1+G2発注へ【2026-07-30 00:02 JST】
 - **社長確定**「発動したランだけでいいよ」= 装備しただけでは罰しない。BOT_AND_GHOST.md §2.7 に確定印。
 - これでゴーストの設計は**完全に確定**(未決ゼロ)。G1(計測)+G2(ゴースト本体)の実装を

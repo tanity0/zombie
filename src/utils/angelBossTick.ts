@@ -26,6 +26,7 @@ import { createEnemyProjectile, isGate2AngelBoss } from './enemyUtils';
 import { rectsOverlap } from '../world/obstacles';
 import { distToSegment } from './levelUpGate';
 import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY } from './bossScript';
+import { notifyCounterHit } from './playerTraits'; // BOT_AND_GHOST.md G1(計測専用・挙動不変)
 import { pickMiguelMove, miguelDashFollowupEligible } from './miguelScript';
 import { pickJibrilMove, pickJibrilCombo, jibrilVolleyMode, JIBRIL_PHASE_HP_THRESHOLD, JIBRIL_EDGE_STICK_MS } from './jibrilScript';
 import { pickRafiMove, pickRafiCombo, RAFI_PHASE_HP_THRESHOLD } from './rafiScript';
@@ -240,6 +241,9 @@ export const createAngelBossState = (): AngelBossState => ({
 // カウンター成立の共通処理(旧miguelCounterHit/rafiCounterHit)。演出+プレイヤー無敵+反撃ダメージ。
 // 後退(counter-leap)は呼び出し側がpatchで行う(ミゲルのみ)。
 const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, sfx: AngelSfx): void => {
+  // BOT_AND_GHOST.md G1(計測専用・挙動不変): miguel/jibril/rafi/uri/suriel/acrasielの6体が
+  // 共通で通るこの1箇所で、カウンター成立をplayerTraitsへ通知する。
+  notifyCounterHit();
   const st = useGameStore.getState();
   const cp = st.player;
   const pnow = Date.now();
