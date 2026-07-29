@@ -10993,9 +10993,9 @@ export class PixiScene {
   private dustUsed = 0;
   // v0.25.2456(社長指示「最後(消える直前)以外はハッキリ表示」): 砂埃のアルファ包絡線。
   // 旧式 0.7〜0.75×(1-t×0.6) は出た瞬間から薄くなり続けていた。新式=寿命の前70%は
-  // ほぼ不透明で維持し、最後の30%だけ線形フェードで消える。
+  // 完全不透明で維持し、最後の30%だけ線形フェードで消える(1.0は社長指示v0.25.2457「100%にして」)。
   private dustAlpha(t: number): number {
-    const DUST_ALPHA_MAX = 0.95;
+    const DUST_ALPHA_MAX = 1.0;
     const DUST_FADE_START = 0.7;
     return t < DUST_FADE_START
       ? DUST_ALPHA_MAX

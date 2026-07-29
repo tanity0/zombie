@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2457',
+    items: [
+      '砂埃を完全不透明(100%)にしました(消える直前のフェードのみ維持)。',
+    ],
+  },
+  {
     version: '0.25.2456',
     items: [
       '踏み鳴らし・着地・突進などの砂埃がハッキリ表示されるようになりました(消える直前だけフェード)。',
