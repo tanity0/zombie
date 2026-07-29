@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2402',
+    items: [
+      '遅れて爆ぜる攻撃（グレンの血の爪痕など）の予告に、爪で抉った跡の絵が出るようになりました。',
+    ],
+  },
+  {
     version: '0.25.2401',
     items: [
       '銃を撃った瞬間、銃口に発砲炎が出るようになりました。',

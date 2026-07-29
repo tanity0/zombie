@@ -1519,6 +1519,8 @@ interface ActorView {
   // 「振った瞬間」の斬撃の弧(社長支給素材 D-1・v0.25.2400)。予告(ring/band)とは役割が別で、
   // **実行の一瞬だけ**出る。同時に2つ振るボス(翼撃)が出てきたら2枚目を足す。
   slash?: Sprite;
+  // 爪痕(社長支給素材 D-2・v0.25.2402)。**判定1つにつき1枚**貼るので配列(グレンの血の爪痕は同時3本)。
+  clawMarks?: Sprite[];
 }
 
 interface PropView {
@@ -8511,6 +8513,7 @@ export class PixiScene {
     if (view.ring) view.ring.visible = false;
     if (view.band) view.band.visible = false;
     if (view.slash) view.slash.visible = false;
+    if (view.clawMarks) for (const s of view.clawMarks) s.visible = false;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       const ax = (e.aiTargetX ?? cx) - (e.aiFromX ?? cx);
@@ -9236,6 +9239,7 @@ export class PixiScene {
       // M66: 遅延起爆キュー(滑空の二撃目/翼撃の三拍目/三連突進の氷)。aiPhaseに関係なく常に描く
       // (recoverや次のwindup中でも予告が生きているため)。ice=trueは青系(スカジ氷と同じ色)。
       // capsuleがあれば帯、無ければ円のT5フェードインとして描く(いずれも既存の意匠の流用)。
+      let clawIdx = 0;
       for (const h of e.giantDelayedHits ?? []) {
         const total = Math.max(1, h.fireAt - h.bornAt);
         const t = Math.max(0, Math.min(1, (gameTime - h.bornAt) / total));
@@ -9255,6 +9259,9 @@ export class PixiScene {
           ];
           o.poly(pts).fill({ color: col, alpha: 0.05 + 0.22 * t + 0.06 * gPulse });
           o.poly(pts).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.5 * t + 0.12 * gPulse });
+          // 爪痕(D-2)を判定の矩形へ重ねる。氷(スカジ/城ボスstage-4)は爪ではないので付けない。
+          // 濃さは既存のフェードイン(t)に合わせる=「n秒後に爆ぜる」という既存の語彙(§6.28-3)のまま。
+          if (!h.ice) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.55 * t);
         } else {
           o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: 0.05 + 0.18 * t + 0.06 * gPulse });
           o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.45 * t + 0.12 * gPulse });
@@ -10410,6 +10417,39 @@ export class PixiScene {
     sp.visible = true;
   }
   private hideMuzzleFlash(): void { if (this.muzzleSprite) this.muzzleSprite.visible = false; }
+
+  /**
+   * 爪痕(社長支給素材 D-2・v0.25.2402)。**遅延ダメージの判定1つにつき1枚**を、
+   * その判定の矩形にぴったり重ねて置く(グレンの血の爪痕は同時に3本出るので配列で持つ)。
+   *
+   * ★この素材だけ**暗い**(輝度中央値65。他は234〜238)。tint は掛け算なので明るくできないが、
+   * **爪痕は「地面の傷」なので暗いのが正しい**。危険の表示は下に敷いてある赤い面が担い、
+   * この絵は傷の意匠だけを足す(= tint は白=素材そのままの濃さで出す)。
+   */
+  private drawClawMark(
+    view: ActorView, idx: number, fx: number, fy: number, tx: number, ty: number, halfWidth: number, alpha: number,
+  ): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) return;
+    const tex = getTexture('fx/claw-mark');
+    if (!tex) return;
+    if (!view.clawMarks) view.clawMarks = [];
+    let sp = view.clawMarks[idx];
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(0.5, 0.5);
+      view.container.addChildAt(sp, 0); // 地面側
+      view.clawMarks[idx] = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    const ddx = tx - fx, ddy = ty - fy;
+    const len = Math.hypot(ddx, ddy) || 1;
+    sp.rotation = Math.atan2(ddy, ddx);
+    sp.width = len + halfWidth * 2; // 判定の矩形(前後へhalfWidthぶん伸ばした形)と同一
+    sp.height = halfWidth * 2;
+    sp.position.set((fx + tx) / 2, (fy + ty) / 2);
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
 
   private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number } | null, now: number) {
     const sp = this.bossCorpseSprite;

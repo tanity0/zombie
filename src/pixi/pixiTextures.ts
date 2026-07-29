@@ -389,6 +389,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/slash-arc', scaleMode: 'linear' as const },
       // 銃口フラッシュ(社長支給素材 C-1・v0.25.2401)。発砲の一瞬だけ出す。tint着色・縮小=linear。
       { name: 'fx/muzzle-flash', scaleMode: 'linear' as const },
+      // 爪痕(社長支給素材 D-2・v0.25.2402)。claw-mark=中央の1本を切り出したもの(判定1つに1枚貼る用)。
+      // claw-marks=3本まとめ(1振りぶんの爪跡。今は未使用だが将来の「爪の弧」用に登録だけしておく)。
+      { name: 'fx/claw-mark', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },
