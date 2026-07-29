@@ -113,7 +113,7 @@ import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, rollEquipment, armoryTargetSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
-import { isLeashableBoss, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC } from '../utils/bossEngagement';
+import { isLeashableBoss, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT } from '../utils/bossEngagement';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
@@ -7407,9 +7407,23 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 事故で全部消えることもない。
             // 速度は**裏ボスと同じ既存定数を流用**(BOSS_REGEN_PER_SEC=10/秒。社長が40→10へ調整済み)。
             // 新しい数字を発明しない=バランスの出どころを1つに保つ。
-            if (isLeashableBoss(enemy.type) && enemy.health < enemy.maxHealth) {
+            if (isLeashableBoss(enemy.type)) {
+              // ★城へゆっくり歩いて帰る(社長指示v0.25.2419)。巣=出現地点(useGameLoopがhomeX/homeYを設定)。
+              // 追跡時の速度のままだと「猛然と帰っていく」絵になるので半分にする。歩きなので障害物は
+              // 通常どおり resolveMove で解決する(ダッシュではない=貫通しない)。
+              const hx = enemy.homeX, hy = enemy.homeY;
+              let hp = { x: enemy.x, y: enemy.y };
+              if (hx !== undefined && hy !== undefined) {
+                const dhx = hx - enemy.x, dhy = hy - enemy.y;
+                const dl = Math.hypot(dhx, dhy);
+                if (dl > 2) {
+                  const mv = Math.min(enemy.speed * BOSS_LEASH_RETURN_SPEED_MULT * deltaTime, dl);
+                  hp = resolveMove(enemy.x + (dhx / dl) * mv, enemy.y + (dhy / dl) * mv);
+                }
+              }
+              // 帰巣中も回復する(裏ボスの帰巣と同じ扱い)。
               return {
-                ...enemy, vx: 0, vy: 0,
+                ...enemy, x: hp.x, y: hp.y, vx: 0, vy: 0,
                 health: Math.min(enemy.maxHealth, enemy.health + BOSS_LEASH_REGEN_PER_SEC * deltaTime),
               };
             }

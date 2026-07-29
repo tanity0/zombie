@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2419',
+    items: [
+      '待機に戻った城ボスは、城へゆっくり歩いて帰るようになりました。帰りながら体力も回復します。',
+    ],
+  },
+  {
     version: '0.25.2418',
     items: [
       '城ボスがワープして追ってこなくなりました。離れ切るとその場で待機に戻り、近づくとまた襲ってきます。',

@@ -2259,6 +2259,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 出現直後は城で待機=プレイヤーが近づくまで向かってこない(社長指示)。aggroRange 内へ入ると起動。
           boss.dormant = true;
           boss.aggroRange = GIANT_AGGRO_RANGE;
+          // リーシュで待機へ戻った時の帰り先(社長指示v0.25.2419「城にゆっくり戻ってほしい」)。
+          // 出現地点=城なので、そのまま巣にする(裏ボスの homeX/homeY と同じ役割・同じフィールド)。
+          boss.homeX = castle.x;
+          boss.homeY = castle.y;
           boss.vx = 0;
           boss.vy = 0;
           addEnemy(boss);
