@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2431',
+    items: [
+      'ゲーム内容の変更はありません(テスト用AIとゴースト助っ人の設計メモを追加)。',
+    ],
+  },
+  {
     version: '0.25.2430',
     items: [
       'ステージ7のグレンに「連続ジャンプ」を追加しました。3つの着地点が最初から全部見えるので、見て避けるパズルになっています。3発目の後は大きな反撃のチャンスです。',
