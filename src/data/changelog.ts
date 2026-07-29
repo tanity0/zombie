@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2442',
+    items: [
+      'ゲーム内容の変更はありません(移動速度の再設計仕様を確定)。',
+    ],
+  },
+  {
     version: '0.25.2441',
     items: [
       '開発用に、自分の過去の戦い方を再現する霊体の助っ人を試作しました(?ghost=1)。',
