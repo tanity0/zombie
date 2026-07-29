@@ -37,7 +37,7 @@ import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
 import { bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
 import { tickPlayerTraits, loadPlayerProfile } from './playerTraits'; // BOT_AND_GHOST.md G1
-import { defaultGhostProfile, GHOST_HP_FRAC, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2
+import { defaultGhostProfile, ghostRunEnabled, GHOST_HP_FRAC, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
 import {
@@ -597,7 +597,7 @@ export interface GhostAndTraitsRefs {
 export interface GhostAndTraitsCtx {
   gameTime: number;
   player: Player;
-  /** `?ghost=1`(evParam('ghost')==='1')。既定false=G2は完全に無効(通常プレイは無改変)。 */
+  /** `?ghost=1`(evParam('ghost')==='1')。開発用フラグ(G3以降、装備スキル「守護霊」でも召喚が有効になる)。 */
   ghostDebugEnabled: boolean;
 }
 
@@ -611,11 +611,15 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   ghostBossEngagePrev = engagedNow;
 
   const ghostActive = state.summons.some(s => s.kind === 'ghost-ally');
+  // G3: このランでゴースト系を有効にするか = `?ghost=1`(開発用) OR 守護霊(guardian-spirit)装備。
+  // 同じ判定が計測停止(§2.7 制約1)にもそのまま使われる(ゴーストが出うるランは丸ごと測らない)。
+  const ghostRunActive = ghostRunEnabled(ghostDebugEnabled, player.skills);
 
   // G1: 計測(純関数へ委譲。この関数自体はplayerTraitsが必要とする値をstoreから集めて渡すだけ)。
   tickPlayerTraits({
     inCombat: engagedNow,
     ghostActive,
+    ghostRunActive,
     gameTime,
     player: {
       x: player.x, y: player.y, width: player.width, height: player.height,
@@ -625,8 +629,8 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     movementInput: state.inputState.up || state.inputState.down || state.inputState.left || state.inputState.right,
   });
 
-  // G2: デバッグ召喚(`?ghost=1`の時のみ)。
-  if (!ghostDebugEnabled) return;
+  // G2/G3: 召喚ゲート。`?ghost=1`(開発用・従来どおり) OR 守護霊装備(G3)のランだけ先へ進む。
+  if (!ghostRunActive) return;
 
   const existingGhost = state.summons.find(s => s.kind === 'ghost-ally');
   if (existingGhost) {
@@ -678,7 +682,9 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     ghostLastShotAt: 0,
     ghostLastMeleeAt: 0,
   };
-  useGameStore.setState(s => ({ summons: [...s.summons, ghost] }));
+  // G3(§2.7 制約2): 「このランで一度でもゴーストが実際に召喚された」を打刻(resetGameでリセット)。
+  // リザルトのスコア×0.5(resultScoring.ts GHOST_SCORE_MULT)がこのフラグを見る。
+  useGameStore.setState(s => ({ summons: [...s.summons, ghost], ghostSummonedThisRun: true }));
 }
 
 // ============================================================================

@@ -28,6 +28,10 @@ export const SPEED_BONUS_PER_SEC = 100;       // 短縮1秒あたりの加点(�
 export const SURVIVAL_RAMP_SEC = 60;
 export const TREASURE_SCORE_PER_VALUE = 5000; // トレジャー価値1あたり
 export const CLEAR_BONUS = 30000;             // クリア時のフラット加点
+// BOT_AND_GHOST.md §2.7 制約2(G3): 守護霊(ゴースト)が一度でも実際に召喚されたランはスコア1/2
+// (倍率は叩き台・社長調整)。対象は **totalScore(ハイスコア表示/順位)のみ**——狙いが
+// 「誇りを差し出す/スコアランキングを汚染しない」なので、換金(goldScore/goldEarned)には掛けない。
+export const GHOST_SCORE_MULT = 0.5;
 
 // 換金MAX(ゴールド化のときだけ効く上限。スコアは青天井)。treasure/eliteBoss は cap 無し。
 const GOLD_CAP_DAMAGE = 25000;
@@ -38,7 +42,10 @@ const GOLD_CAP_SCRAP = 8000;
 export const calculateResultScore = (
   stats: GameStats,
   won: boolean,
-  isLab = false
+  isLab = false,
+  // G3: このランで守護霊(ゴースト)が一度でも召喚されたか(store.ghostSummonedThisRun)。
+  // スコアの合流点はこの関数1箇所なので、×0.5もここでだけ掛ける(散在させない)。
+  ghostSummoned = false
 ): ResultScore => {
   const netScrap = Math.max(0, stats.strapsCollected - stats.strapsSpent);
 
@@ -59,9 +66,11 @@ export const calculateResultScore = (
     : 0;
 
   // 青天井(ハイスコア/表示)。全項目が整数なので整数になるが、念のため丸める(小数表示の再発防止)。
+  // G3(§2.7 制約2): 守護霊が発動したランは×0.5(発動していなければ完全不変)。
   const totalScore = Math.round(
-    clearBonus + treasureScore + damageScore + finisherScore +
-    comboScore + eliteBossScore + scrapScore + survivalScore + speedBonus);
+    (clearBonus + treasureScore + damageScore + finisherScore +
+    comboScore + eliteBossScore + scrapScore + survivalScore + speedBonus)
+    * (ghostSummoned ? GHOST_SCORE_MULT : 1));
 
   // 換金(各項目をMAXでクランプ。treasure/eliteBoss は cap 無し)
   const goldScore = Math.round(

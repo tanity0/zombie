@@ -13,7 +13,7 @@
 // 通す簡易スイング」で、各ボス固有のカウンター専用ボーナス(青FX/確定クリ/怯ませ/後退ジャンプ等)は
 // 再現していない。isBossCounterableNowApprox は語尾ヒューリスティックの概算であり、特に giantbat は
 // 実際の当たり判定(combatTick.tsのdashParried)より「機会あり」を広めに数える(bossScript.ts参照)。
-import type { Enemy, Projectile } from '../types/game';
+import type { Enemy, Projectile, SkillKey } from '../types/game';
 import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from './botSkill';
 import { isBossCounterableNowApprox } from './bossScript';
 
@@ -46,6 +46,18 @@ export const defaultGhostProfile = (): GhostProfile => {
     subUsesPerMin: DEFAULT_SUB_USES_PER_MIN,
   };
 };
+
+// ---- G3: 装備スキル「守護霊」(BOT_AND_GHOST.md §2.5 実装順3・社長指示「最初から解禁」) ----------
+/** 装備スキルキー(campaign.SKILLS の 'guardian-spirit')。 */
+export const GUARDIAN_SPIRIT_SKILL: SkillKey = 'guardian-spirit';
+
+/**
+ * このランでゴースト系を有効にするか(召喚ゲート)。`?ghost=1`(開発用・従来どおり装備なしでも動く)
+ * OR 守護霊(guardian-spirit)を装備している。**計測停止(§2.7 制約1)も同じ判定を使う**
+ * =「ゴーストが出うるランは丸ごと測らない」(装備中のボス戦は必ず召喚が起きるので同値・§2.7)。
+ */
+export const ghostRunEnabled = (ghostDebugEnabled: boolean, equippedSkills: readonly SkillKey[]): boolean =>
+  ghostDebugEnabled || equippedSkills.includes(GUARDIAN_SPIRIT_SKILL);
 
 // ---- G2.6: サブウェポン使用の予約(BOT_AND_GHOST.md §2.8) --------------------------------------
 // ゴーストはプレイヤーの装備サブウェポンを「自分をオーナーとして」使える。CDは既存の1本を共有

@@ -1,5 +1,46 @@
 # Development Log
 
+## v0.25.2452 — G3: ゴースト助っ人を装備スキル「守護霊」に(最初から所持・BOT_AND_GHOST.md §2.5実装順3)【2026-07-30 03:28 JST】
+
+- **新スキル `guardian-spirit`(守護霊・super)**: SKILLS/SKILL_KEYS/SkillKey へ追加。desc は仕様の
+  叩き台どおり(具体的なms/px数値なし)。**Lv1固定**(`SKILL_MAX_LEVEL`。ガチャ重複によるLvアップ経路が
+  無いため)。**ガチャからは出ない**(GACHA_EXCLUDED_SKILLS。既存の除外ループテストが自動で守る)。
+- **最初から所持**: `ensureDefaultOwnedSkills`(campaign.ts・純関数)を新設し、gameStore の ownedSkills
+  初期化(v0.25.2451のpoi除去フィルタの直後)で読み込み時マイグレーション=新規/既存セーブとも必ず所持。
+  `resetGachaProgress`(開発用の初手戻し)後も欠けない。
+- **召喚条件の切り替え**: `ghostRunEnabled(ghostDebugEnabled, skills)`(ghostDriver.ts・純関数)=
+  `?ghost=1`(開発用・従来どおり装備なしでも動く) **OR** 守護霊装備。directorTick の召喚ゲート
+  (旧: `if(!ghostDebugEnabled) return`)をこれに差し替え。**ゴーストの挙動は1msも不変**
+  (1体/対象ボスHP×1.6=ghostHpBoosted/撃破・死亡で解散/ヘイトG2.5/サブ予約G2.6ともそのまま)。
+- **スコア1/2(発動したランだけ)**: 召喚成立の setState で store の `ghostSummonedThisRun` を打刻
+  (resetGameでリセット)。**スコアの合流点の調査結果**: スコア計算は `calculateResultScore`
+  (resultScoring.ts)の1関数に一本化されており、消費系統は (a) GameOverScreen(リザルト表示+
+  `submitStageHighScore` のランキング保存+ゴールド換金) (b) useGameLoop の emitBotReport(?bot専用・
+  goldEarnedのみ) の2つだけ。×0.5(`GHOST_SCORE_MULT`)は **calculateResultScore 内の totalScore
+  1箇所**にだけ掛け、両系統とも同じ引数(ghostSummonedThisRun)で通るため表示とランキングは常に一致。
+  **換金(goldScore/goldEarned)には掛けていない**(§2.7の狙い=誇り/ランキング。★未決4として社長裁定待ち)。
+  リザルト両レイアウト(classic/M18③)のSCORE欄直下に「守護霊が共闘: スコア半分」を表示(黙って半分にしない)。
+- **装備中は計測しない(§2.7 制約1の本則)**: playerTraits の tick 入力に `ghostRunActive` を追加し、
+  守護霊装備ラン/`?ghost=1`ランは EMA更新(subUsesPerMin含む)を丸ごと停止(セッションも保存せず破棄)。
+  判定は召喚ゲートと同じ `ghostRunEnabled` を共用。**ラン途中の装備変化の調査**: player.skills を
+  ラン中に書き換える経路は poi 専用スキル付与(v0.25.2451)のみ=守護霊が途中で増減する経路は無く、
+  「ラン開始時に装備していたか」と毎tick判定は同値(★未決不要)。
+- ★未決: **★未決4**(スコア×0.5をゴールド換金にも掛けるか=現状は totalScore のみ・保守側)/
+  **★未決5**(軽微: `?ghost=1` 開発ランも文言どおり一律で半減対象)。BOT_AND_GHOST.md §7 参照。
+- 変更ファイル: `src/types/game.ts`/`src/data/campaign.ts`/`src/store/gameStore.ts`/
+  `src/utils/ghostDriver.ts`/`src/utils/directorTick.ts`/`src/utils/playerTraits.ts`/
+  `src/utils/resultScoring.ts`/`src/components/GameOverScreen.tsx`/`src/hooks/useGameLoop.ts`/
+  テスト4本(`ghostDriver.test.ts`/`playerTraits.test.ts`/`resultScoring.test.ts`/`skills.test.ts`)/
+  `BOT_AND_GHOST.md`(§7追記)/`package.json`/`src/data/changelog.ts`/本ログ。
+- **Load score: 1/10**(毎tick追加は includes 1回(装備2枠の線形走査)のみ。描画・エフェクト追加ゼロ。
+  リザルトの追加購読はbooleanプリミティブ=静的画面)。
+- **検証**: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ) /
+  `npx vitest related`(変更ファイル一式)=20ファイル361テスト全通過(新規: ghostRunEnabled 3件/
+  playerTraits計測停止 2件/スコア半減 3件/守護霊台帳 4件+既存断定に3行追加)。
+- 自己点検: この変更は憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(通常プレイ=
+  守護霊未装備・?ghost無しでは召喚ゲートfalse/計測従来どおり/スコア倍率1=完全不変。ゴーストの
+  挙動・強さ・ボスHP倍率にも一切触れていない)。
+
 ## v0.25.2451 — poi専用スキルをラン内付与へ+シールド上下配置の判定を絵に一致(社長報告2件)【2026-07-30 03:12 JST】
 
 - **poi専用スキル(爆撃/防衛/使役)**: 社長報告「プレイ中のみ付与されるスキルが装備メニューで選べちゃってる」。

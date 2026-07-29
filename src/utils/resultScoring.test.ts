@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { topScoreItem, calculateResultScore } from './resultScoring';
+import { topScoreItem, calculateResultScore, GHOST_SCORE_MULT } from './resultScoring';
 import type { GameStats } from '../types/game';
 
 // 全項目0の GameStats(必要なものだけ上書きして使う)。
@@ -56,5 +56,34 @@ describe('topScoreItem', () => {
 
   it('handles a single item', () => {
     expect(topScoreItem([{ label: 'only', value: 5 }])?.label).toBe('only');
+  });
+});
+
+// BOT_AND_GHOST.md §2.7 制約2(G3): 守護霊(ゴースト)が一度でも召喚されたランは totalScore×0.5。
+// 対象はハイスコア/順位(totalScore)のみで、換金(goldScore/goldEarned)には掛けない(誇りだけを差し出す)。
+describe('守護霊(ゴースト)発動ランのスコア半減(G3)', () => {
+  const stats = mkStats({
+    timeAlive: 300, damageDealt: 4000, meleeFinishers: 5, maxCombo: 10,
+    treasuresCollected: 2, strapsCollected: 100, damageTaken: 100,
+  });
+
+  it('totalScoreだけが×0.5される(換金goldScore/goldEarnedは完全不変)', () => {
+    const base = calculateResultScore(stats, true);
+    const halved = calculateResultScore(stats, true, false, true);
+    expect(halved.totalScore).toBe(Math.round(base.totalScore * GHOST_SCORE_MULT));
+    expect(halved.totalScore).toBeLessThan(base.totalScore);
+    expect(halved.goldScore).toBe(base.goldScore);
+    expect(halved.goldEarned).toBe(base.goldEarned);
+    // 内訳項目も不変(半減は最終集計の1箇所でのみ掛ける=散在させない)
+    expect(halved.damageScore).toBe(base.damageScore);
+    expect(halved.clearBonus).toBe(base.clearBonus);
+  });
+
+  it('未発動(引数省略/false)は完全不変', () => {
+    expect(calculateResultScore(stats, true, false, false)).toEqual(calculateResultScore(stats, true));
+  });
+
+  it('倍率は1/2(叩き台・社長調整)', () => {
+    expect(GHOST_SCORE_MULT).toBe(0.5);
   });
 });

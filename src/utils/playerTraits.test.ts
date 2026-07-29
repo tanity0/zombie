@@ -34,6 +34,7 @@ const mkPlayer = (health = 100, maxHealth = 100) => ({
 const baseInput = (over: Partial<Parameters<typeof tickPlayerTraits>[0]> = {}) => ({
   inCombat: true,
   ghostActive: false,
+  ghostRunActive: false,
   gameTime: 0,
   player: mkPlayer(),
   enemies: [mkBoss()],
@@ -71,6 +72,21 @@ describe('playerTraits: セッション成立/破棄', () => {
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
     tickPlayerTraits(baseInput({ gameTime: 30_500, ghostActive: true })); // ここでセッション破棄
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_000, ghostActive: true }));
+    expect(loadPlayerProfile()).toBeNull();
+  });
+
+  it('ゴーストが出うるラン(ghostRunActive=守護霊装備 or ?ghost=1)は計測を丸ごと止める(G3・§2.7制約1)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, ghostRunActive: true }));
+    tickPlayerTraits(baseInput({ gameTime: 60_000, ghostRunActive: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100, ghostRunActive: true }));
+    expect(loadPlayerProfile()).toBeNull(); // 30秒以上交戦していても一切保存されない
+  });
+
+  it('ghostRunActiveは開いていたセッションも保存せず破棄する(ゴースト未召喚でも装備した瞬間から止まる)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ gameTime: 30_500, ghostRunActive: true })); // ここでセッション破棄
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_000, ghostRunActive: true }));
     expect(loadPlayerProfile()).toBeNull();
   });
 

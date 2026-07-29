@@ -115,7 +115,7 @@ import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled }
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS } from '../data/campaign';
+import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, rollEquipment, armoryTargetSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
@@ -3061,6 +3061,9 @@ interface GameState {
                                                           // 既についたか。falseのまま次ランへ行くと持ち越し(因縁+1)
   lastDamagerType: EnemyType | null;                     // 直近の被弾元の型(宿敵昇格判定用)
   lastDamagerWasNamed: boolean;                          // 直近の被弾元が現在の宿敵インスタンスそのものだったか
+  // BOT_AND_GHOST.md §2.7 制約2(G3): このランで守護霊(ゴースト)が一度でも実際に召喚されたか。
+  // ラン内限定(resetGameでリセット)。directorTickの召喚成立箇所が打刻し、リザルトのスコア×0.5が見る。
+  ghostSummonedThisRun: boolean;
   // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁(深さ×ランク)。wallMetaは現在ステージの永続メタ
   // (resetGameで現在の選択ステージ分を読み直す)。バンド/銘打ちはラン内限定の演出状態。
   wallMeta: WallMeta;                                    // ステージ毎の踏破/到達フラグ+自己最深+自己最高ランク
@@ -3426,7 +3429,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 警察署のpoi専用スキルは「プレイ中のみ付与」(社長指示v0.25.2451)。旧実装が恒久所持
   // (grantSkill)で書いていたため、汚染済みセーブから読み込み時に自動除去する(装備枠も同様)。
   pendingSkills: (loadStringArray(LOADOUT_SKILLS_KEY) as SkillKey[]).filter(k => !POLICE_REWARD_SKILLS.includes(k)).slice(0, 2),
-  ownedSkills: (loadStringArray(OWNED_SKILLS_KEY) as SkillKey[]).filter(k => !POLICE_REWARD_SKILLS.includes(k)),
+  // BOT_AND_GHOST.md G3: 守護霊(guardian-spirit)は最初から所持(社長指示)。新規セーブ・既存セーブとも
+  // 読み込み時に無ければ追加するマイグレーション(ensureDefaultOwnedSkills)。
+  ownedSkills: ensureDefaultOwnedSkills((loadStringArray(OWNED_SKILLS_KEY) as SkillKey[]).filter(k => !POLICE_REWARD_SKILLS.includes(k))),
   ownedSkillLevels: loadSkillLevels(),
   gachaDupeCounts: loadDupeCounts(),
   gachaPitySinceSuper: loadNumber(GACHA_PITY_KEY, 0),
@@ -3439,6 +3444,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   namedFoeRunResolved: false,
   lastDamagerType: null,
   lastDamagerWasNamed: false,
+  ghostSummonedThisRun: false,
   wallMeta: getWallMeta(getSelectedStageId()), // 実際の再読込はresetGame開始時(ステージ切替に追従)
   wallBandText: '',
   wallBandUntil: 0,
@@ -10722,7 +10728,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       try { localStorage.removeItem(k); } catch { /* ignore */ }
     }
     set({
-      ownedSkills: [], ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
+      // 「初手」にも守護霊は入っている(G3: 最初から所持)ので、リセット後も欠けさせない。
+      ownedSkills: ensureDefaultOwnedSkills([]), ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
       gachaPullsTotal: 0, goldBalance: 0, pendingSkills: [],
     });
   },
@@ -11885,6 +11892,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       namedFoeRunResolved: false,
       lastDamagerType: null,
       lastDamagerWasNamed: false,
+      // BOT_AND_GHOST.md G3: 守護霊の発動フラグ(スコア×0.5の根拠)はラン単位でリセット。
+      ghostSummonedThisRun: false,
       // PACING_PUZZLE.md §5.17 M14: ステージが変わっている可能性があるので、選択中ステージの壁メタを
       // 読み直す。演出キュー/帯はラン内限定なので新ランで必ずクリア。
       wallMeta: getWallMeta(getSelectedStageId()),

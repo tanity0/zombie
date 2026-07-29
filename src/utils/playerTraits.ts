@@ -12,6 +12,9 @@
 // - **集計はEMA(α=0.3)**。保存は1組(直近ランの移動平均・直近1回の事故で人格が変わらない)。
 // - **ゴーストが場に居る間は計測しない**(§2.7 制約1の土台)。呼び出し側が ghostActive を渡す。
 //   ゴースト同伴中に開いていたセッションは保存せず破棄する(「2人での戦い方」を録音しない)。
+// - **G3(§2.7 制約1の本則)**: 守護霊(guardian-spirit)を装備しているラン/`?ghost=1`のランは
+//   計測を丸ごと停止する(呼び出し側が ghostRunActive=ghostRunEnabled(ghostDriver.ts) を渡す。
+//   「召喚が起きた区間だけ除外」の細かい分岐にはしない——装備中のボス戦は必ず召喚が起きるので同値)。
 import type { Enemy } from '../types/game';
 import { getBotTelemetry, snapshotBotTelemetry, type BotTelemetry } from './botTelemetry';
 import { isEngageableBoss } from './bossEngagement';
@@ -218,6 +221,8 @@ export interface PlayerTraitsTickInput {
   inCombat: boolean;
   /** ゴースト(summons中のkind='ghost')が場に居るか。true の間は計測を丸ごと止める(§2.7 制約1)。 */
   ghostActive: boolean;
+  /** G3(§2.7 制約1): ゴーストが出うるラン(守護霊装備 or `?ghost=1`)。true の間はラン全体で計測しない。 */
+  ghostRunActive: boolean;
   gameTime: number;
   player: { x: number; y: number; width: number; height: number; health: number; maxHealth: number };
   enemies: readonly Enemy[];
@@ -227,8 +232,9 @@ export interface PlayerTraitsTickInput {
 
 /** 毎tick1回、directorTickから呼ぶ。無効条件(非交戦/ゴースト同伴)ではスカラー比較のみで即return。 */
 export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
-  if (input.ghostActive) {
-    // §2.7 制約1: ゴースト同伴中は計測しない。開いていたセッションがあれば保存せず破棄する
+  if (input.ghostActive || input.ghostRunActive) {
+    // §2.7 制約1: ゴースト同伴中/ゴーストが出うるラン(守護霊装備・?ghost=1)は計測しない。
+    // 開いていたセッションがあれば保存せず破棄する
     // (「2人での戦い方」が次世代のゴーストへ紛れ込むのを防ぐ=劣化コピー防止)。
     session = null;
     return;

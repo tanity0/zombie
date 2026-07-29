@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   decideGhost, defaultGhostProfile, ghostLeashWarp, hitsPerMinToDodgeStrength,
   ghostSubUseIntervalMs, shouldGhostClaimSub, DEFAULT_SUB_USES_PER_MIN,
+  ghostRunEnabled, GUARDIAN_SPIRIT_SKILL,
   GHOST_LEASH_PX, GHOST_MELEE_RANGE, GHOST_BOSS_HP_MULT, GHOST_HP_FRAC,
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput,
 } from './ghostDriver';
@@ -243,5 +244,23 @@ describe('G2.6: サブウェポン使用の予約(subUsesPerMinノブ)', () => {
 
   it('shouldGhostClaimSub: subUsesPerMin<=0(サブを使わない人)は一生予約しない', () => {
     expect(shouldGhostClaimSub(0, 10_000_000, 0)).toBe(false);
+  });
+});
+
+describe('G3: ghostRunEnabled(召喚ゲート=計測停止ゲートの共通判定)', () => {
+  it('?ghost=1(開発用)は装備なしでも有効(従来どおり動く)', () => {
+    expect(ghostRunEnabled(true, [])).toBe(true);
+    expect(ghostRunEnabled(true, ['runner'])).toBe(true);
+  });
+
+  it('守護霊(guardian-spirit)を装備していれば有効(G3の本則)', () => {
+    expect(GUARDIAN_SPIRIT_SKILL).toBe('guardian-spirit');
+    expect(ghostRunEnabled(false, [GUARDIAN_SPIRIT_SKILL])).toBe(true);
+    expect(ghostRunEnabled(false, ['runner', GUARDIAN_SPIRIT_SKILL])).toBe(true);
+  });
+
+  it('どちらも無ければ無効(通常プレイは無改変)', () => {
+    expect(ghostRunEnabled(false, [])).toBe(false);
+    expect(ghostRunEnabled(false, ['runner', 'seeker'])).toBe(false);
   });
 });

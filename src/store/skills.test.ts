@@ -14,7 +14,8 @@ import type { Pickup } from '../types/game';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
   gachaPullCost, gachaPullCostFor, GACHA_PRICE_STEPS, GACHA_PULL_COST_CAP, GACHA_REFUND_BY_RARITY,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel,
-  rollGachaSkill, GACHA_EXCLUDED_SKILLS } from '../data/campaign';
+  rollGachaSkill, GACHA_EXCLUDED_SKILLS,
+  DEFAULT_OWNED_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
 import type { Player, SkillKey } from '../types/game';
 
 // Minimal player carrying one leveled skill (for the simple multiplier skills).
@@ -142,6 +143,10 @@ describe('skill level table (per-skill dupe count)', () => {
     expect(skillMaxLevel('reaper')).toBe(1);
     expect(skillMaxLevel('bomber')).toBe(1);
     expect(skillMaxLevel('knife-master')).toBe(3);
+  });
+
+  it('guardian-spirit(守護霊)はLv1固定(ガチャ重複によるLvアップ経路が無い=G3)', () => {
+    expect(skillMaxLevel('guardian-spirit')).toBe(1);
   });
 
   it('level weights follow the confirmed table', () => {
@@ -396,6 +401,7 @@ describe('skillDescForLevel (keeps common text + level-specific value)', () => {
   it('Lv1-fixed skills show only the common description (no level suffix)', () => {
     expect(skillDescForLevel('reaper', 1)).not.toContain('Lv');
     expect(skillDescForLevel('bomber', 1)).not.toContain('Lv');
+    expect(skillDescForLevel('guardian-spirit', 1)).not.toContain('Lv'); // G3: Lvの概念なし
   });
   it('clamps out-of-range / missing level to a valid bucket', () => {
     expect(skillDescForLevel('runner', 0)).toContain('+10%'); // 0 → Lv1
@@ -415,6 +421,7 @@ describe('slasher follow-up multipliers', () => {
 describe('gacha excludes the reaper skill (死神は撃破でのみ習得)', () => {
   it('never rolls an excluded skill across pity levels', () => {
     expect(GACHA_EXCLUDED_SKILLS).toContain('reaper');
+    expect(GACHA_EXCLUDED_SKILLS).toContain('guardian-spirit'); // G3: 最初から所持なのでガチャに出さない
     let seq = 0;
     const rng = () => { seq = (seq * 9301 + 49297) % 233280; return seq / 233280; };
     for (let pity = 0; pity <= 60; pity++) {
@@ -422,5 +429,29 @@ describe('gacha excludes the reaper skill (死神は撃破でのみ習得)', () 
         expect(GACHA_EXCLUDED_SKILLS).not.toContain(rollGachaSkill(pity, rng));
       }
     }
+  });
+});
+
+// BOT_AND_GHOST.md G3(社長指示「守護霊スキルは最初から解禁しとこうか」): 守護霊は最初から所持。
+// 新規セーブ(空)・既存セーブ(欠けあり)の両方を読み込み時マイグレーションで補う。
+describe('ensureDefaultOwnedSkills(守護霊の初期所持マイグレーション)', () => {
+  it('DEFAULT_OWNED_SKILLS に guardian-spirit が入っている', () => {
+    expect(DEFAULT_OWNED_SKILLS).toContain('guardian-spirit');
+  });
+
+  it('新規セーブ(空配列)にも既定所持が入る', () => {
+    expect(ensureDefaultOwnedSkills([])).toContain('guardian-spirit');
+  });
+
+  it('既存セーブ(欠けあり)には末尾へ補い、既存の並びは変えない', () => {
+    const owned: SkillKey[] = ['runner', 'seeker'];
+    const next = ensureDefaultOwnedSkills(owned);
+    expect(next).toEqual(['runner', 'seeker', 'guardian-spirit']);
+    expect(owned).toEqual(['runner', 'seeker']); // 引数は破壊しない(純関数)
+  });
+
+  it('既に持っていれば何も変えない(同一参照のまま)', () => {
+    const owned: SkillKey[] = ['guardian-spirit', 'runner'];
+    expect(ensureDefaultOwnedSkills(owned)).toBe(owned);
   });
 });

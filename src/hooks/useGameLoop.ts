@@ -611,7 +611,8 @@ const BOT_SKILL: BotSkill = parseBotSkill(evParam('botskill'));
 // (既定 none=従来の挙動)。目的が無いと「上手さ」は最適化する対象を持たない、が社長の診断。
 const BOT_GOAL: BotObjective = parseBotObjective(evParam('botgoal'));
 // BOT_AND_GHOST.md G2(デバッグ召喚): ?ghost=1 でボス交戦の立ち上がりにゴースト助っ人を自動召喚する。
-// 既定offなので通常プレイは1バイトも挙動を変えない。
+// G3以降は装備スキル「守護霊」(guardian-spirit)でも同じ召喚が有効(ghostRunEnabled=directorTick側でOR)。
+// このフラグは開発用として残す(装備なしでも従来どおり動く)。
 const GHOST_DEBUG_ENABLED = evParam('ghost') === '1';
 
 // 天使(ゲート2ボス)コントローラの音注入(本体はangelBossTick.ts=M26 Step3で抽出。ヘッドレスはNOOP、実プレイはここ)。
@@ -1442,7 +1443,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       scrapSpent: Math.round(s.gameStats.strapsSpent),
       damageTaken: Math.round(s.gameStats.damageTaken),
       goldEarned: Math.round(
-        calculateResultScore(s.gameStats, outcome === 'clear', s.stageTheme === 'lab').goldEarned
+        // G3: ghostSummonedThisRun も合流点へ渡す(スコア×0.5の対象はtotalScoreのみ=goldEarnedは不変だが、
+        // 全系統が同じ引数で合流点を通る形を保つ)。
+        calculateResultScore(s.gameStats, outcome === 'clear', s.stageTheme === 'lab', s.ghostSummonedThisRun).goldEarned
         * skillGoldRushMult(s.player)
       ),
       // M46(§6.21): 与ダメ/即死/近接ペース計測(gun/melee/otherチャネル・total=出力時に合算)。
@@ -6966,7 +6969,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 錬金術: 召喚ユニットの追従/攻撃/レア吸引/消滅を毎フレーム更新。
         useGameStore.getState().updateSummons(deltaTime);
 
-        // BOT_AND_GHOST.md G2: ゴースト助っ人の移動/攻撃(`?ghost=1`の召喚中のみ・毎フレーム)。
+        // BOT_AND_GHOST.md G2: ゴースト助っ人の移動/攻撃(召喚中のみ・毎フレーム。召喚は?ghost=1
+        // またはスキル「守護霊」=G3)。
         // 召喚/解散/ボスHP倍率はdirectorTick.tsのrunGhostAndTraitsStepが担当し、ここは
         // 「もう場に居るゴースト1体」の意思決定(ghostDriver.ts)を実行に移すだけ。
         {
