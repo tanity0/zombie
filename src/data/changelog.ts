@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2440',
+    items: [
+      'ゲーム内容の変更はありません(ゴースト助っ人のスコア制約を確定)。',
+    ],
+  },
+  {
     version: '0.25.2439',
     items: [
       'ゲーム内容の変更はありません(スキル・装備・サブウェポンの効果値台帳を追加)。',
