@@ -257,6 +257,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const wallSelfBestUpdated = stats.maxDepthDist > 0 && stats.maxDepthDist >= wallMeta.selfDeepestDist;
   const wallMetersToNext = metersToNextWall(stats.maxDepthDist);
   const wallMeterPct = (d: number) => Math.max(0, Math.min(100, (d / WALL_METER_SCALE_MAX) * 100));
+  // 社長指示(v0.25.2385): **ステージ7のリザルトでは「深さのレビュー」と「罪の達成」を出さない。**
+  // stage-7 は物語の最終戦(グレン)で、深さを掘る回でも大罪の段を上げる回でもない。
+  // 「到達譜(深さ5区域×七つの大罪)」も「深度メーター(到達ランク/最深区域/自己最深)」も、
+  // その回にやっていないことの成績表になってしまうため、まとめて隠す。
+  // ※対象は stage-7 のみ(社長指示どおり)。EXステージ(stage-ex1)は指示が無いので現状維持。
+  const hideDepthReview = getSelectedStageId() === 'stage-7';
   // PACING_PUZZLE.md §5.17-追補/§5.19 M18: 昇格度(惜しさ)。死亡時のみ・スナップショットがある時だけ。
   // ★未決事項(PACING_PUZZLE.md参照): 「総合が低い時はランク行を出さない」の閾値が未定義のため、
   // 現状は閾値を設けず常に表示する(暫定)。
@@ -388,7 +394,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           )}
           {resultClassicMode ? (
             <>
-              {!isBenchmark && (
+              {!isBenchmark && !hideDepthReview && (
                 <div className="mt-2">
                   <p className="text-[15px] font-semibold tracking-wide" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
                     <span className="text-white/95">{wallHeadline}</span>
@@ -406,7 +412,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               )}
               {/* PACING_PUZZLE.md §5.17 M14: 惜しさ(死亡時のみ・燃料)。数字だけ1回明滅・派手にしない。 */}
               {/* 「◯◯まであと1昇格」は同語反復(R7以外なら常に真)なので撤去(社長指示v0.25.2342)。距離だけ残す。 */}
-              {!isBenchmark && !won && !withdraw && wallMetersToNext !== null && (
+              {!isBenchmark && !hideDepthReview && !won && !withdraw && wallMetersToNext !== null && (
                 <p className="mt-1 text-[11px] text-white/60">
                   次の壁 {AREA_ZONE_NAMES[stats.maxAreaReached + 1]} まで あと約<span className="font-semibold text-white/90" style={{ animation: 'wall-tantalize-flicker 1.6s ease-out 1' }}>{wallMetersToNext}</span>m
                 </p>
@@ -423,7 +429,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   左=深さ(5区域)・右=七つの大罪(7段を常に全部並べる)。自己最高を金の⚑で残し、
                   最後に「次の一手」を1行だけ出す=次がやりたくなる理由をここに集約する。
                   昇格度(診断寄りの数字)は前面から外して「詳細▾」へ移した。 */}
-              {!isBenchmark && (
+              {!isBenchmark && !hideDepthReview && (
                 <ResultReach
                   dist={stats.maxDepthDist}
                   rank={wallHighestRank}
@@ -591,7 +597,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 </div>
               </div>
               {/* PACING_PUZZLE.md §5.17 M14: 到達譜=縦の深度メーター(壁4本の目盛り+今回バー+自己最深旗)。 */}
-              {!isBenchmark && (
+              {/* stage-7 は深さも大罪も動かない回なので丸ごと隠す(社長指示v0.25.2385・上の hideDepthReview 参照)。 */}
+              {!isBenchmark && !hideDepthReview && (
                 <div className="mb-3 rounded-none bg-black/25 px-3 py-2.5 flex items-center gap-3">
                   <div className="relative shrink-0" style={{ width: 14, height: 96 }}>
                     <div className="absolute inset-x-0 bottom-0 top-0 rounded-full bg-white/10" />
