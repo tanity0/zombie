@@ -1001,8 +1001,14 @@ const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するス
 // すべて scale倍率/回転加算/足元基準の画面pxオフセット。当たり判定・射程・速度には一切不干渉。
 const PLAYER_FIRE_RECOIL_MS = 130;    // 発砲の反動が収まるまで(エンベロープ長)
 // 銃口フラッシュ(社長支給素材 C-1・v0.25.2401)。全て**実機調整前提の叩き台**。
-const MUZZLE_FLASH_MS = 70;        // 閃光の表示窓。反動(130ms)より短い=閃光が先に消える
-const MUZZLE_LEN_PX = 34;          // 銃口から先の閃光の長さ(素材の可視長215pxをここへ縮める)
+// 社長報告v0.25.2427「銃の発射エフェクト、どんなに目を凝らしても見えない」。
+// 見えなかった原因は**2つ重なっていた**:
+//  ①【本命】z順。閃光の zIndex に**閃光自身のY(胸の高さ)**を使っていたため、常に
+//    プレイヤーの足元Yより小さくなり=**毎回プレイヤーの背後に描かれていた**(v0.25.2411と同じ型)。
+//  ② 70ms(60fpsで約4フレーム)・長さ34pxと、仮に前面でも一瞬すぎ・小さすぎた。
+// ①を直した上で、②も社長方針「とにかく派手に」に沿って引き上げる。
+const MUZZLE_FLASH_MS = 150;       // 70→150(反動130msより少し長く=発砲の余韻として残る)
+const MUZZLE_LEN_PX = 70;          // 34→70(素材の可視長215pxをここへ縮める)
 const MUZZLE_OFFSET_PX = 16;       // プレイヤー中心から銃口までの前進量
 const MUZZLE_HEIGHT_FRAC = 0.55;   // 足元から胸(銃を構える高さ)までの割合
 // 素材の実測: 可視部 bbox=(0,46)-(215,206)。**閃光は左へ噴いていて、根元は右端**。
@@ -1408,6 +1414,8 @@ const SHOCKWAVE_ANCHOR_X = 992 / 1024;
 const DUST_SCALE = 1.9;   // 着地(飛び掛かり)/のしかかり
 // 踏み鳴らしは「絵に隠れてほぼ見えない」と社長報告があった技=いちばん大きく出す(v0.25.2408)。
 const DUST_STOMP_SCALE = 2.2;
+// 突進の土煙(v0.25.2427)。敵の大きさに対する広がり。蹴り出し/停止の一瞬なので大きめでよい。
+const DASH_DUST_SCALE = 1.6;
 const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
 
@@ -3122,6 +3130,8 @@ export class PixiScene {
   // **予告(ring/band/赤ゾーン)には使わない**: 攻撃がキャンセルされたら予告は消えるのが正しい。
   // 焼き付けるのは「もう当たった/もう振った」絵だけ(砂埃・斬撃の弧)。
   private fxLatches = new Map<string, { t0: number; dur: number; armed: boolean; d: number[] }>();
+  // 「直前フレームに突進していた」敵のid(突進が明けた瞬間の土煙を出すための1フレーム記憶)。
+  private dashWasOn = new Set<string>();
   private latchFx(key: string, active: boolean, durMs: number, now: number, data: () => number[]):
     { t: number; d: number[] } | null {
     let L = this.fxLatches.get(key);
@@ -7124,6 +7134,7 @@ export class PixiScene {
         view.light.destroy();
         view.container.destroy({ children: true });
         this.clearFxLatches(`${id}:`); // 出し切り待ちのエフェクト記録も片付ける(v0.25.2408)
+        this.dashWasOn.delete(id);
         this.enemies.delete(id);
         this.enemyJumpHop.delete(id);
         this.enemyBlockFall.delete(id);
@@ -7903,6 +7914,7 @@ export class PixiScene {
           fb.footX + aimx * MUZZLE_OFFSET_PX * dsc,
           fb.footY - fb.boxH * MUZZLE_HEIGHT_FRAC * dsc + aimy * MUZZLE_OFFSET_PX * dsc,
           Math.atan2(aimy, aimx), MUZZLE_LEN_PX * dsc, 0.9 * k,
+          fb.footY, // ★Yソートは**プレイヤーの足元**で行う(閃光自身のYだと必ず背後に回る)
         );
       } else this.hideMuzzleFlash();
     } else this.hideMuzzleFlash();
@@ -9118,6 +9130,25 @@ export class PixiScene {
       }
       // ---- スリィエル: 単眼の凝視(小技)=T4のみ(図形なし・tintは上で設定済み) ----
       // ---- 上記いずれにも該当しない状態(chase/volley/bolt-windup/counter-leap等)は図形なし ----
+    }
+    // 突進の土煙(社長裁定v0.25.2427「全部入れたい」)。**蹴り出し**と**止まった瞬間**の2発。
+    // 対象は「突進という動作を持つ全員」で洗う(v0.25.2426の教訓): 汎用 `charge`(犬/lab-zombie-2/
+    // ハンター/旧経路の城ボス)/ 城ボス `g-dash-charge`・`g-quad-charge` / トール `issen-dash`・`tsuki`。
+    // 判定はゼロの②「派手さの絵」なので、判定より大きく出してよい(社長方針v0.25.2410)。
+    {
+      const dashPhase = e.aiPhase === 'charge' || e.aiPhase === 'g-dash-charge' || e.aiPhase === 'g-quad-charge';
+      const dashBoss = e.bossState === 'issen-dash' || e.bossState === 'tsuki';
+      const dashing = dashPhase || dashBoss;
+      // 蹴り出し: 突進の立ち上がりで、その場(足元)に一発。
+      const kickL = this.latchFx(`${e.id}:dashkick`, dashing, DUST_MS, now,
+        () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
+      if (kickL) this.drawDust(kickL.d[0], kickL.d[1], kickL.d[2], kickL.t, this.dustTintForStage(), 0.7 * (1 - kickL.t * 0.6));
+      // 止まった瞬間: 突進が明けた立ち上がり(=!dashing への遷移)で、止まった位置に一発。
+      // `dashEndArmed` は「直前に突進していた」ことを覚えるための1フレーム遅延。
+      const stopL = this.latchFx(`${e.id}:dashstop`, !dashing && this.dashWasOn.has(e.id), DUST_MS, now,
+        () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
+      if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), 0.7 * (1 - stopL.t * 0.6));
+      if (dashing) this.dashWasOn.add(e.id); else this.dashWasOn.delete(e.id);
     }
     // 汎用ジャンプ着地の砂埃(社長指摘v0.25.2426「パンプキンなどのジャンプにも砂埃ちゃんと出てる?」)。
     // → **出ていなかった**。v0.25.2404で砂埃を入れた時、城ボスの新スクリプト(g-*)のブロックの中にだけ
@@ -10707,7 +10738,7 @@ export class PixiScene {
    * 素材が左へ噴いているため回転は `angle + π`(素材の -x を狙い方向へ向ける)。
    */
   private muzzleSprite?: Sprite;
-  private drawMuzzleFlash(x: number, y: number, angle: number, len: number, alpha: number): void {
+  private drawMuzzleFlash(x: number, y: number, angle: number, len: number, alpha: number, sortY: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) { this.hideMuzzleFlash(); return; }
     const tex = getTexture('fx/muzzle-flash');
     if (!tex) return;
@@ -10723,7 +10754,9 @@ export class PixiScene {
     sp.scale.set(s, s);
     sp.rotation = angle + Math.PI;
     sp.position.set(x, y);
-    sp.zIndex = y + 1; // プレイヤーのすぐ手前(足元Yソートに乗せる)
+    // ★Yソートは**撃った本人の足元Y**を使う(v0.25.2427の修正)。閃光自身のY(胸の高さ)を使うと
+    // 必ず足元Yより小さくなり、actorLayer の Yソートで**プレイヤーの背後**へ回って見えなくなる。
+    sp.zIndex = sortY + 1; // 撃った本人のすぐ手前
     sp.alpha = alpha;
     sp.visible = true;
   }
