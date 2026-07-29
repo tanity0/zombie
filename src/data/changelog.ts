@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2436',
+    items: [
+      '全ボスの攻撃予告(赤い円・帯)に、城ボスと同じ意匠の縁取りが付きました。当たり判定や見た目の大きさは変わりません。',
+    ],
+  },
+  {
     version: '0.25.2435',
     items: [
       'タイトル画面の更新情報で内部エラーが出ていた不具合を修正しました(過去の版番号が重複していました)。',

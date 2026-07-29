@@ -1,5 +1,69 @@
 # Development Log
 
+## v0.25.2436 — 予告素材(A-1輪/A-2帯)を残り11ボスへ横展開【2026-07-29 23:31 JST】
+- **発注元**: 実機テストチャット走査(20260729-1344 §②)で確定した「新エフェクト素材は giantbat 型
+  (城ボス/グレン/EX)にしか付いていない」を、CLAUDE.md「同じ動作を持つ全員に付ける」(v0.25.2426)
+  に従って残り11体(裏ボス4/ゲート2ボス6/idol)へ横展開(設計チャット発注・v0.25.2435参照)。
+- **やったこと**: 各ボスの予告描画ブロックで、**円/帯の縁取り(stroke)だけ**を焼き済み素材スプライト
+  (`drawTelegraphRing`/`drawTelegraphBand`)へ差し替え。**fill(赤い塗り)・判定・タイミング・
+  alpha計算式は1つも変えていない**(stroke分岐の値をそのままdrawTelegraphRing/Bandへ渡すだけ・
+  giantbat向けにあった+0.2のような追加ブーストは新規に付けない=alpha計算式を変えない原則を優先)。
+  `FX_RING_ENABLED` の else フォールバック(従来のGraphics stroke)は全箇所で維持。
+- **適用した技(円 → drawTelegraphRing)**:
+
+  | ボス | 技 | 種別 |
+  |---|---|---|
+  | thor | ジャンプ着地円(jump-windup/jump-attack) | T2 |
+  | rafi | 飛び掛かり着地円(jump-windup/jump-attack) | T2 |
+  | mimir | 噛みつき円(bite-windup) | T2 |
+  | suriel | 環の回転斬円(ring-spin-windup/ring-spin) | T2 |
+  | acrasiel | 収縮爆発円(burst) | T2 |
+  | acrasiel | 転移フェードイン円(warp-in) | T5 |
+
+- **適用した技(帯 → drawTelegraphBand)**:
+
+  | ボス | 技 | 種別 |
+  |---|---|---|
+  | thor | 一閃の矩形ゾーン(issen-windup) | T3 |
+  | thor | 払いの矩形ゾーン(harai-windup) | T3 |
+  | jormungand | うねり帯(coil-windup) | T3 |
+  | miguel/jibril/rafi | 横払い→縦払い共通(harai/tate-windup) | T3 |
+  | rafi | 薙ぎ(Phase2・sweep-windup) | T3 |
+  | uri | 大薙ぎ(sweep-windup) | T3 |
+  | uri | 振り下ろし(downslash-windup) | T3 |
+  | suriel | 本体の薙ぎ(sweep-windup/sweep) | T3 |
+  | acrasiel | 放射棘(spike-windup/spike・8方向) | T3 |
+  | idol | 至近殴り(idol-punch-windup) | T3(短) |
+
+  (`drawAngelZoneCapsule` 1関数の呼び出し元8種+thor2箇所の直書き=計10箇所。
+  トールの「突き」は元々矩形ゾーンの描画が無かった=テレグラフ無し(コード内コメント
+  「tsukiは従来無テレグラフだった」で確認済み)ため対象自体が存在せず、変更なし。)
+
+- **対象外にした技とその理由**:
+
+  | ボス | 技 | 理由 |
+  |---|---|---|
+  | 各ボス共通 | T1赤ライン+終点リング(dash/mdash/thrust等) | ポリゴンが矩形でない(線+小円)。設計チャット指示で明示的に対象外。 |
+  | mimir/suriel/acrasiel | T6線(laser/ring-beam/gaze) | 線であり矩形カプセルでない。対象外。 |
+  | 城ボス系 | 扇形(drawGiantFanZone) | 扇形は矩形でない。対象外(そもそも今回の11体では未使用)。 |
+  | skadi | 氷塊テレグラフ円(syncSkadiHazards) | ActorViewではなく共有Graphics+マーカーIDプールで描画する別アーキテクチャ
+    (1体につき複数マーカー同時生存があり得る)。設計チャットの適用対象リストにも記載が無く、指示範囲外として見送り。 |
+  | acrasiel | 結晶の槍・構え(spear-windup) | 円/帯のfill+strokeゾーンではなく武器スプライト描画(drawAcrasielSpearReady)。対象外。 |
+
+- **view.bands の配列化**: **実施した**。アクラシエルの放射棘(spike-windup/spike)は8方向を
+  同一フレームで複数本描く(`for (let sector = 0; sector < 8; sector++)`)ため、`view.band?: Sprite`
+  (単数)のままだと最後のセクターの位置しか素材が出ない。`rings`と同じ配列方式へ拡張し
+  (`bands?: Sprite[]`)、`drawTelegraphBand`/`drawAngelZoneCapsule`双方に`idx`引数を追加
+  (デフォルト0=既存呼び出しは無変更)。外側の3箇所(`telegraphFade`のspan集計・毎フレームの
+  visible=false リセット・teleFadeのalpha適用)も`rings`と同じループ形へ揃えた。
+  giantbatの既存呼び出し(`drawGiantCapsuleZone`)はidxを渡さない=デフォルト0のままで見た目無変更。
+- **変更ファイル**: `src/pixi/pixiScene.ts` のみ(ActorViewインターフェース含む)。
+- **検証**: `npm run typecheck` エラー0 / `npm run lint` エラー0(warning8件は既存・本変更と無関係)。
+  テスト/ボットラン/ビルドは社長指示が無いため未実施(テストチャット運用どおり)。
+- **次への申し送り**: `?zoomlock=1`実機での見え方確認、`?<boss>script=0`時の旧stroke fallback確認は
+  社長判断で実機確認時に。skadiの氷塊円をring化したい場合は別途マーカーIDキー付きスプライトプールの
+  新設が要る(構造が異なるため今回のバッチには含めていない)。
+
 ## v0.25.2435 — テストチャット報告の処理: changelog重複キー修正ほか【2026-07-29 23:22 JST】
 - **実機テストチャットの報告(20260729-1344)を精査**。3項目:
   1. **ズーム引き0.8の描画崩れ=なし**(5サイズ×通常/最大引きの10条件・HUDあふれも機械判定で0)。
