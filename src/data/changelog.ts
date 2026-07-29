@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2388',
+    items: [
+      'オープニングの廊下BGMのファイルを軽くしました（4.6MB→1.1MB）。聞こえ方は変わりません。',
+    ],
+  },
+  {
     version: '0.25.2387',
     items: [
       '年表の城ボス討伐の行が、どのステージでも同じ絵になっていたのを直しました。倒したステージの見た目（廃都／雪原／城塞／グレン）で表示されます。',
