@@ -208,6 +208,7 @@ import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileD
 import { notifyCounterHit } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1(計測専用・挙動不変)
 import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, type GhostProfile } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
+import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
 import { resolveBossHateAim, type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
 import { calculateResultScore } from '../utils/resultScoring';
@@ -4342,7 +4343,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
                 spawnBurst(hitX, hitY, '#38bdf8', 14);
                 useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-                useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
+                // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
+                useGameStore.setState(stt => ({ player: {
+                  ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+                  counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
+                } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
                 const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
@@ -4394,7 +4399,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
                 spawnBurst(hitX, hitY, '#38bdf8', 14);
                 useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-                useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
+                // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
+                useGameStore.setState(stt => ({ player: {
+                  ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+                  counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
+                } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
                 const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
@@ -5328,7 +5337,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
               spawnBurst(hitX, hitY, '#38bdf8', 14);
               useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-              useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
+              // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
+              useGameStore.setState(stt => ({ player: {
+                ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+                counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
+              } }));
               const counterBase = getActiveGun(cp)?.damage ?? 12;
               const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
               const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));

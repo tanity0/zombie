@@ -4112,9 +4112,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { swung: false, hit: false, finish: false, killed: 0 };
     }
 
-    // スキル: カウンターマスター = カウンター窓延長(Lv1 +120ms / Lv2 +180ms / Lv3 +250ms)。
-    const cmLv = skillLevel(player, 'counter-master');
-    const counterWindowMs = COUNTER_WINDOW + (cmLv ? [0, 120, 180, 250][cmLv] : 0);
+    // counter-master v2(CD_REWORK.md 確定2・v0.25.2450): 旧効果「カウンター窓延長(+120/180/250ms)」は
+    // 廃止=窓は全員 COUNTER_WINDOW 固定。新効果は「カウンター成立時のみCDリファンド」で、成立箇所
+    // (lastCounterSuccessTime打刻の7箇所)が refundCounterCooldown(src/utils/counterMaster.ts)を呼ぶ。
+    // 素振り(不成立スイング)のCDはスキル有無に関わらず同一=素振りDPS不変。
+    const counterWindowMs = COUNTER_WINDOW;
 
     // 近接スイングの揺れは「通常ヒット時のみ」(空振りは揺らさない/フィニッシュ・カウンターは
     // それぞれのインパクト演出に任せる)。判定が出揃う関数末尾で発火する(社長指示)。

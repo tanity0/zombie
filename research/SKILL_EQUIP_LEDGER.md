@@ -258,7 +258,7 @@ Lv別具体値)。効果の実装箇所は個別に列挙(ファイル:行)。Lv
 | `time-keeper` | タイムキーパー | サブCD×[0.9/0.8/0.7] | `gameStore.ts:1111-1114` (§A参照) |
 | `ghost-shooter` | ゴーストシューター | [10/20/30]%で弾を消費しない | `weaponUtils.ts:374-376` |
 | `dog-run` | ドッグラン | dogのCD×[0.5/0/0]・Lv3で射程制限解除(無限) | `useGameLoop.ts:6091-6099` (§A参照) |
-| `counter-master` | カウンターマスター | カウンター窓+[0.12/0.18/0.25]s・成立時ノックバック×[2/2.5/3] | `gameStore.ts:2410-2432` |
+| `counter-master` | カウンターマスター | **v2(v0.25.2450・CD_REWORK.md確定2)**: カウンター成立時のみ近接/カウンター共用CD(counterCooldownEnd)の残りを[40/70/100]%リファンド・成立時ノックバック×[2/2.5/3]は従来どおり(旧: 窓+[0.12/0.18/0.25]s=廃止・窓は全員COUNTER_WINDOW固定) | `utils/counterMaster.ts`, `gameStore.ts`(KB) |
 | `slasher` | スラッシャー | 近接命中後リングのジャストタップで追撃、最大[1/2/3]連(各2/3減衰) | `gameStore.ts:2435-2480`(概要) |
 | `attack-shooter` | アタックシューター | 銃ダメージ+[10/20/30]% | `gameStore.ts:1202-1206` |
 | `runner` | ランナー | 移動速度+[10/15/20]%。リロード中さらに×1.10(Lv不問) | `gameStore.ts:1207-1213` (§B参照) |

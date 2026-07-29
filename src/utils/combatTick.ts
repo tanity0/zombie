@@ -46,6 +46,7 @@ import {
 } from '../store/gameStore';
 import { distToSegment } from './levelUpGate';
 import { notifyCounterHit } from './playerTraits'; // BOT_AND_GHOST.md G1(計測専用・挙動不変)
+import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 
 // 演出・音・死亡演出のコールバック注入(ヘッドレスではno-op)。判定条件自体はこのファイル内に残る。
 export interface CombatEffects {
@@ -160,7 +161,11 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     useGameStore.setState(st => ({
       // 弾いた直後は敵がプレイヤーに重なっている(着地)ので、通常接触ダメージで被弾しないよう
       // 短い無敵(i-frame)を付与。これで「カウンターしたのに被弾」を防ぐ。
-      player: { ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow },
+      // counter-master v2: カウンター成立(ジャンプパリィ)時のみCDリファンド(未所持は無変換)。
+      player: {
+        ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+        counterCooldownEnd: refundCounterCooldown(st.player.counterCooldownEnd, pnow, skillLevel(st.player, 'counter-master')),
+      },
       enemies: st.enemies.map(e => {
         const hit = parriedEnemyIds.find(p => p.id === e.id);
         if (!hit) return e;
@@ -365,7 +370,10 @@ export const applyEnemyProjectileHits = (
             state.player.counterWindowEnd,
             now + COUNTER_EXTEND_PER_HIT
           ),
-          lastCounterSuccessTime: now
+          lastCounterSuccessTime: now,
+          // counter-master v2: カウンター成立(弾反射)時のみCDリファンド(未所持は無変換)。
+          counterCooldownEnd: refundCounterCooldown(
+            state.player.counterCooldownEnd, now, skillLevel(state.player, 'counter-master')),
         }
       }));
     } else {
@@ -530,7 +538,11 @@ export const applyContactDamage = (
     fx.spawnCallout(ppx, ppy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
     useGameStore.setState(st => ({
       // 弾いた直後は突進してきた敵が重なっているので、短い無敵で次フレームの接触被弾を防ぐ。
-      player: { ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow },
+      // counter-master v2: カウンター成立(突進パリィ)時のみCDリファンド(未所持は無変換)。
+      player: {
+        ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+        counterCooldownEnd: refundCounterCooldown(st.player.counterCooldownEnd, pnow, skillLevel(st.player, 'counter-master')),
+      },
       enemies: st.enemies.map(e => {
         if (!dashParried.includes(e.id)) return e;
         const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;

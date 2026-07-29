@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.2450 — counter-master v2: 窓延長廃止→「成立時のみCDリファンド」(CD_REWORK.md 確定2実装)【2026-07-30 03:05 JST】
+
+- **旧効果廃止**: カウンター窓延長(Lv1+120/Lv2+180/Lv3+250ms)を撤去。窓は全員
+  `COUNTER_WINDOW=400ms` 固定へ復帰(gameStore.triggerCounter の `counterWindowMs` 計算)。
+  ※旧効果は窓延長ぶん `counterCooldownEnd` も後ろへ伸ばしていた(820→最大1070ms)ため、廃止で
+  スキル所持者のスイングサイクルは**無スキル者と同一の820ms**に揃う(=v2の狙いどおり基準線へ戻る)。
+- **新効果**: **カウンター成立時のみ**、近接/カウンター共用CD(`counterCooldownEnd`)の残りを
+  リファンド **Lv1 40% / Lv2 70% / Lv3 100%**(叩き台)。定数と純関数は
+  `src/utils/counterMaster.ts` に1箇所定数化(`COUNTER_MASTER_REFUND_FRAC_BY_LEVEL`/
+  `refundCounterCooldown`)。Lv3=成立した瞬間にCDゼロ=即座に次の構え可。
+- **成立7箇所(lastCounterSuccessTime打刻箇所の全数)から呼ぶ**: ①弾反射(combatTick)
+  ②ジャンプ着地パリィ(combatTick) ③突進パリィ(combatTick) ④thorCounterHit(useGameLoop)
+  ⑤hiddenBossCounterHit=mimir/jormungand/skadi(useGameLoop) ⑥idolCounterHit(useGameLoop)
+  ⑦angelCounterHit=天使6体共通(angelBossTick)。**呼ぶのはこの7箇所だけ**=不成立の素振り経路
+  (triggerCounterのスイング確定set)には一切触れていない。
+- **素振りDPS不変の確認方法**: (a) `refundCounterCooldown` の呼び出し箇所をgrep全数で7箇所
+  (全てカウンター成立時)と確認 (b) スイング時の `counterCooldownEnd = now + counterWindowMs +
+  COUNTER_COOLDOWN` は counterWindowMs=COUNTER_WINDOW 固定になったので、スキル有無で式が同一
+  (c) 純関数テストで Lv0=完全無変換を固定。→ 雑魚への素振り(カウンター不成立)のサイクルは
+  スキル所持で1msも変わらない。
+- **説明文更新**(campaign.ts): desc/base=「カウンター成立で構えのクールダウンを払い戻し＋成功時に
+  周囲を強ノックバック」、lv=「払い戻し40%／KB×2」等。**msの具体数値は書かない**(%は可=指示どおり)。
+  強ノックバック(KB×2/2.5/3)は今回のスコープ外=従来のまま不変。
+- **旧効果参照のgrep全数**: 窓延長の計算(gameStore 1箇所)・説明文(campaign.ts 2箇所)・台帳
+  (research/SKILL_EQUIP_LEDGER.md §B行)を置換。旧効果を参照するテストは存在しなかった。
+  CD_REWORK.md 確定2へ実装済みスタンプを追記。
+- 変更ファイル: `src/utils/counterMaster.ts`(新)/`src/utils/counterMaster.test.ts`(新)/
+  `src/store/gameStore.ts`/`src/utils/combatTick.ts`/`src/hooks/useGameLoop.ts`/
+  `src/utils/angelBossTick.ts`/`src/data/campaign.ts`/`research/SKILL_EQUIP_LEDGER.md`/
+  `CD_REWORK.md`/`package.json`/`src/data/changelog.ts`/本ログ。
+- **Load score: 1/10**(成立時のみのスカラー演算1回。描画・毎フレーム処理への追加ゼロ)。
+- **検証**: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ・worktree二重報告
+  含め新規なし) / `npx vitest related`(変更ファイル一式)全通過(新規: counterMaster 5件)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触なし(スキル1個の効果差し替えのみ。
+  無スキル者・雑魚戦の素振りは完全不変。窓400ms固定は「反応の芯を売らない」の社長裁定どおり)。
+
 ## v0.25.2449 — G2.6: サブウェポンのオーナー抽象化+CD正規化+「1つの財布・1つの薬棚」(BOT_AND_GHOST.md §2.8実装)【2026-07-30 03:01 JST】
 
 - **オーナー抽象化(1)**: サブウェポン発動の入口を `SubWeaponOwner`(座標・向き・バフ/回復の受け手。

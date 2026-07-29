@@ -17,7 +17,7 @@
 // (giantbatのようにENEMY_ATTACK_SPEED_MULTを掛けも割りもしない)。
 import type { Enemy } from '../types/game';
 import {
-  useGameStore, skillCritMult, skillOutgoingDamageMult, enemyDeathLabel,
+  useGameStore, skillCritMult, skillOutgoingDamageMult, skillLevel, enemyDeathLabel,
   BOSS_CRIT_DAMAGE_MULT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult,
 } from '../store/gameStore';
@@ -27,6 +27,7 @@ import { rectsOverlap } from '../world/obstacles';
 import { distToSegment } from './levelUpGate';
 import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY } from './bossScript';
 import { notifyCounterHit } from './playerTraits'; // BOT_AND_GHOST.md G1(計測専用・挙動不変)
+import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { pickMiguelMove, miguelDashFollowupEligible } from './miguelScript';
 import { pickJibrilMove, pickJibrilCombo, jibrilVolleyMode, JIBRIL_PHASE_HP_THRESHOLD, JIBRIL_EDGE_STICK_MS } from './jibrilScript';
 import { pickRafiMove, pickRafiCombo, RAFI_PHASE_HP_THRESHOLD } from './rafiScript';
@@ -256,7 +257,11 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   st.spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
   st.spawnBurst(hitX, hitY, '#38bdf8', 14);
   st.spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-  useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
+  // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
+  useGameStore.setState(stt => ({ player: {
+    ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+    counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
+  } }));
   const counterBase = getActiveGun(cp)?.damage ?? 12;
   const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
   const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
