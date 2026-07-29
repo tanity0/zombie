@@ -1438,12 +1438,24 @@ export const HUNTER_LEAVE_FADE_MS = 900;
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
 export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
 export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン予告→直線突進。社長指示で2→3)
-// ハンター変異体のジャンプ/ダッシュ攻撃だけ速度2倍(社長指示)。ダッシュ突進速度に乗算、
-// ジャンプ滞空時間を 1/この値 に短縮(=同距離を倍速で跳ぶ)。他の犬/パンプキン/バットには非適用。
-export const HUNTER_JUMP_DASH_SPEED_MULT = 2;
-// ジャンプ速度のみ 2/3 に(社長指示)。ダッシュ突進は HUNTER_JUMP_DASH_SPEED_MULT のまま据え置き。
-// 実効倍率 2 → 4/3(=2×2/3)。滞空時間を 1/この値 に短縮するので、跳ぶ速さがそのぶん遅くなる。
-export const HUNTER_JUMP_SPEED_MULT = (HUNTER_JUMP_DASH_SPEED_MULT * 2) / 3;
+// ★ハンターの再設計(社長裁定v0.25.2429)「歩く距離を半分にして、ダッシュとジャンプの速度を上げる。
+// つまり**技が出ると脅威だが、その前に逃げ切れる**」。
+//
+// 旧の問題(社長報告「ハンター逃げ切れないんだよね」): 歩き実効98.4px/s に対しプレイヤー104.4px/s=
+// **ほぼ同速**なので、離れる前に必ずダッシュ間合いへ入られていた。歩きで詰められる限り、
+// 「逃げる」という選択肢自体が存在しない。
+//
+// ★実装上の罠(重要): **ダッシュ速度は `enemy.speed` から計算されている**ので、歩きを半分にすると
+// ダッシュも自動的に半分になる(社長の意図と正反対)。倍率で相殺した上に上乗せする必要がある。
+// また旧実装は**ジャンプ倍率をダッシュ倍率から導出**していたため片方だけ動かせなかった。**2つに分離する。**
+export const HUNTER_DASH_SPEED_MULT = 5;  // 旧2。歩きが半分になった分を相殺(×2.5)した上で更に上乗せ
+// ジャンプ滞空時間を 1/この値 に短縮(=同距離を速く跳ぶ)。旧 4/3(滞空実効625ms) → 2(実効417ms)。
+// 着地点は溜め開始でロック(不変)なので、速くなるほど「予告を読んで避ける」がシビアになる。
+export const HUNTER_JUMP_SPEED_MULT = 2;
+// ハンターのダッシュ発動距離(社長裁定(a)「発動間合いを広げる」)。歩きが遅くなったぶん、
+// 遠くからでも突っ込めないと**技を出す機会すら無い「遅いだけの的」**になる。旧1000→1300。
+// 逃げ切りの条件が「この距離の外へ出る」に一本化されて分かりやすくもなる。
+export const HUNTER_DASH_RANGE = 1300;
 // ダッシュ攻撃全般(通常より速い突進)の弱いホーミング量/frame。基本は直進、少しだけプレイヤーへ寄せる(社長指示)。
 export const DASH_ATTACK_HOMING = 0.05;
 // ダッシュ溜め中、ゆっくり後退り(プレイヤーから離れる)してから突進(社長指示)。通常速度に対する倍率。
@@ -8560,7 +8572,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ジャイアント(giantbat)のダッシュは犬(werewolf)と同じ速度(社長指示v0.25.2062)。
             // 巡航速度70のままでは突進も遅い(70×3=210 vs 犬105×3=315)ため、突進の基準速度だけ犬の値を使う。
             const dashBase = enemy.type === 'giantbat' ? getEnemyBaseSpeed('werewolf') : enemy.speed;
-            const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT * (enemy.type === 'hunter' ? HUNTER_JUMP_DASH_SPEED_MULT : 1); // 3倍速(ハンターは更に×2)・ほぼ直進+弱ホーミング
+            const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT * (enemy.type === 'hunter' ? HUNTER_DASH_SPEED_MULT : 1); // 3倍速(ハンターは更に×5・v0.25.2429)・ほぼ直進+弱ホーミング
             const cvx = cdirx * cs, cvy = cdiry * cs;
             const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
             const moved = resolveMove(rawX, rawY);
@@ -8680,7 +8692,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
           const opts: ('dash' | 'jump')[] = [];
-          if (gameTime >= (enemy.gbDashReadyAt ?? 0) && dist > 80 && dist < 1000) opts.push('dash');
+          // ダッシュ発動距離: ハンターは HUNTER_DASH_RANGE(=1300・社長裁定v0.25.2429(a))、他は従来1000。
+          const dashRange = enemy.type === 'hunter' ? HUNTER_DASH_RANGE : 1000;
+          if (gameTime >= (enemy.gbDashReadyAt ?? 0) && dist > 80 && dist < dashRange) opts.push('dash');
           // ジャンプ発動距離: ハンターは HUNTER_JUMP_RANGE(=500・社長指示)、他(giantbat)は従来700。
           const jumpRange = enemy.type === 'hunter' ? HUNTER_JUMP_RANGE : 700;
           if (gameTime >= (enemy.gbJumpReadyAt ?? 0) && dist > 40 && dist < jumpRange) opts.push('jump');

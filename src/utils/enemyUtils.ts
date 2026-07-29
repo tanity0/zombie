@@ -98,7 +98,7 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   //  実効「耐久6000・攻撃40」スタート → 通常式 health×(ENEMY_HP_MULT=5)×areaDiff を踏まえ
   //  base health=1200(=6000/5)、base damage=40(非fixed: damage×areaDiff)。深いエリアほど上昇。
   //  近接フィニッシュは即死しない(isBossType=true=ボス級のクリットダメージ扱い)。
-  hunter:     { width: 56, height: 64, speed: 82, health: 1200, damage: 40, experienceValue: 120 },
+  hunter:     { width: 56, height: 64, speed: 41, health: 1200, damage: 40, experienceValue: 120 }, // 歩き82→41(社長裁定v0.25.2429「歩く距離を半分に」=走れば逃げ切れる)
   // 変異体(叫喚型・イベント専用=通常プールに入れない。useGameLoop のディレクターが同時1体だけ出す)。
   // 役割は周囲の通常敵の一時強化。直接火力は弱め(接触6)、HPも低め(社長指示で60→20)=叫ぶ前に
   // 素早く倒して阻止できる優先処理対象。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2429',
+    items: [
+      'ハンターを作り直しました。歩きは半分の速さになり、走れば振り切れます。ただしダッシュと飛び掛かりは今までより速く、遠くからでも突っ込んできます。',
+    ],
+  },
+  {
     version: '0.25.2428',
     items: [
       '訓練(チュートリアル)ではトレジャーが落ちなくなりました。',
