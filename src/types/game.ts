@@ -649,6 +649,9 @@ export interface Summon {
   ghostLastMeleeAt?: number;   // 近接のクールダウンゲート(ms・Date.now基準)。
   ghostCounterPendingAt?: number;    // カウンター相当の機会が開いた時刻(undefined=機会なし)。
   ghostCounterWillAttempt?: boolean; // その機会で抽選済みの「試みるか」。
+  // ---- G2.6(サブウェポンのオーナー抽象化)。CDは既存の1本を共有=個別CD/在庫は持たない ----
+  ghostSubClaim?: boolean;     // 「次のサブ発動1回」をゴーストがオーナーとして使う予約。
+  ghostLastSubUseAt?: number;  // ゴーストが最後にサブを実際に使った時刻(ms・Date.now基準)。
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';

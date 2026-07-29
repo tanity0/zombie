@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   decideGhost, defaultGhostProfile, ghostLeashWarp, hitsPerMinToDodgeStrength,
+  ghostSubUseIntervalMs, shouldGhostClaimSub, DEFAULT_SUB_USES_PER_MIN,
   GHOST_LEASH_PX, GHOST_MELEE_RANGE, GHOST_BOSS_HP_MULT, GHOST_HP_FRAC,
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput,
 } from './ghostDriver';
@@ -24,6 +25,7 @@ const mkGhost = (overrides: Partial<GhostSelf> = {}): GhostSelf => ({
 
 const PROFILE: GhostProfile = {
   reactionMs: 200, counterChance: 1, preferredDist: 180, meleeBias: 1, mobility: 1, hitsPerMin: 0,
+  subUsesPerMin: 2,
 };
 const WEAPON: GhostWeapon = { gunDamage: 10, gunIntervalMs: 300, gunRangePx: 400, meleeDamage: 20 };
 
@@ -217,5 +219,29 @@ describe('定数(BOT_AND_GHOST.md §3裁定)', () => {
     expect(GHOST_BOSS_HP_MULT).toBe(1.6);
     expect(GHOST_HP_FRAC).toBe(0.6);
     expect(GHOST_MELEE_RANGE).toBe(74);
+  });
+});
+
+describe('G2.6: サブウェポン使用の予約(subUsesPerMinノブ)', () => {
+  it('defaultGhostProfile は subUsesPerMin=DEFAULT_SUB_USES_PER_MIN(控えめな既定値)を持つ', () => {
+    expect(defaultGhostProfile().subUsesPerMin).toBe(DEFAULT_SUB_USES_PER_MIN);
+  });
+
+  it('ghostSubUseIntervalMs: 使用回数/分→間隔ms(2回/分=30秒間隔)。0以下は null(使わない人)', () => {
+    expect(ghostSubUseIntervalMs(2)).toBe(30000);
+    expect(ghostSubUseIntervalMs(6)).toBe(10000);
+    expect(ghostSubUseIntervalMs(0)).toBeNull();
+    expect(ghostSubUseIntervalMs(-1)).toBeNull();
+  });
+
+  it('shouldGhostClaimSub: 前回使用から間隔が空いたら予約する', () => {
+    expect(shouldGhostClaimSub(0, 30000, 2)).toBe(true);   // ちょうど間隔=予約可
+    expect(shouldGhostClaimSub(0, 29999, 2)).toBe(false);  // まだ間隔前
+    expect(shouldGhostClaimSub(10000, 39999, 2)).toBe(false);
+    expect(shouldGhostClaimSub(10000, 40000, 2)).toBe(true);
+  });
+
+  it('shouldGhostClaimSub: subUsesPerMin<=0(サブを使わない人)は一生予約しない', () => {
+    expect(shouldGhostClaimSub(0, 10_000_000, 0)).toBe(false);
   });
 });

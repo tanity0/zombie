@@ -206,7 +206,9 @@ import {
 } from '../utils/killTelemetryState';
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
 import { notifyCounterHit } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1(計測専用・挙動不変)
-import { decideGhost, defaultGhostProfile, ghostLeashWarp, type GhostProfile } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2
+import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, type GhostProfile } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6
+import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
+import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
 import { resolveBossHateAim, type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
 import { calculateResultScore } from '../utils/resultScoring';
 import type { KillBucket } from '../utils/killTelemetry';
@@ -5879,6 +5881,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 共通でこの1変数のnot判定を通る=「サブ発動入口」を1箇所で塞ぐ)。`?skaterlock=0`で復帰。
         const inReturnCircle = isInReturnCircle(subWeaponPlayer, useGameStore.getState().returnCircle) ||
           (SKATER_LOCK_ENABLED && subWeaponPlayer.skaterRiding);
+
+        // G2.6(BOT_AND_GHOST.md §2.8): サブウェポン発動の入口はオーナー(座標・向き・受け手)に対して
+        // 解決する。既定オーナー=プレイヤー(この場合、従来の挙動と1bitも変わらない)。ゴースト
+        // (ghost-ally)が「次のサブ発動1回」を予約(ghostSubClaim)している間は、予約を消費できる種
+        // (=入口を通すだけで自然に動く種: heavy-grenade/marksman-trap/decoy/shield/turret/fire-knife)が
+        // ゴーストをオーナーとして発動する。CD・発動条件(装備/CD明け/帰還サークル/刀封印)は従来のまま
+        // 共有の1本=「1つの財布」(ゴースト個別のCD/在庫は無い)。弾薬・スクラップ等の資源も消費しない
+        // (上記6種は元々資源を使わない)。
+        const playerOwner = playerAsOwner(subWeaponPlayer);
+        const ghostAllyForSub = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
+        let subOwner: SubWeaponOwner = ghostAllyForSub?.ghostSubClaim ? ghostAsOwner(ghostAllyForSub) : playerOwner;
+        // 予約の消費: ゴーストがオーナーとして実際に1発撃った瞬間に予約を下ろし、使用時刻を打刻する。
+        // 同一フレームで複数のサブが明けていても、ゴーストとして出るのは1発だけ(以降はプレイヤー)。
+        const consumeGhostSubClaim = () => {
+          if (subOwner.kind !== 'ghost-ally') return;
+          const claimedId = subOwner.summonId;
+          subOwner = playerOwner;
+          useGameStore.setState(st => ({
+            summons: st.summons.map(s => s.id === claimedId
+              ? { ...s, ghostSubClaim: false, ghostLastSubUseAt: Date.now() }
+              : s),
+          }));
+        };
         if (
           !inReturnCircle &&
           subWeaponPlayer.subWeapons.includes('heavy-grenade') &&
@@ -5886,8 +5911,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['heavy-grenade'] ?? 0)
         ) {
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['heavy-grenade'] ?? 1));
-          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
-          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          // G2.6: 投擲位置/照準の起点はオーナー(既定=プレイヤー=従来と同値)。
+          const pcx = ownerCenterX(subOwner);
+          const pcy = ownerCenterY(subOwner);
           const target = useGameStore.getState().enemies
             .filter(e => e.type !== 'reaper' || e.reaperChaser)
             .map(e => ({
@@ -5895,8 +5921,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy)
             }))
             .sort((a, b) => a.dist - b.dist)[0]?.enemy;
-          const aimX = target ? target.x + target.width / 2 - pcx : subWeaponPlayer.lastDirection?.x ?? 1;
-          const aimY = target ? target.y + target.height / 2 - pcy : subWeaponPlayer.lastDirection?.y ?? 0;
+          const aimX = target ? target.x + target.width / 2 - pcx : subOwner.facing?.x ?? 1;
+          const aimY = target ? target.y + target.height / 2 - pcy : subOwner.facing?.y ?? 0;
           const mag = Math.max(0.001, Math.hypot(aimX, aimY));
           const baseDir = { x: aimX / mag, y: aimY / mag };
           const angles = GRENADE_SPREAD_BY_LEVEL[level] ?? GRENADE_SPREAD_BY_LEVEL[1];
@@ -5923,6 +5949,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             });
           });
           setSubWeaponCooldown('heavy-grenade', gameTime + HEAVY_GRENADE_COOLDOWN_MS);
+          consumeGhostSubClaim(); // G2.6: ゴースト予約で撃った場合のみ予約を下ろす(プレイヤー時はno-op)
         }
 
         if (
@@ -5932,8 +5959,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['marksman-trap'] ?? 0)
         ) {
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['marksman-trap'] ?? 1));
-          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
-          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          // G2.6: 設置位置はオーナー(既定=プレイヤー=従来と同値)。
+          const pcx = ownerCenterX(subOwner);
+          const pcy = ownerCenterY(subOwner);
           addProjectile({
             id: `proj-marksman-trap-${Date.now()}`,
             x: pcx - 8,
@@ -5956,6 +5984,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           });
           spawnRing(pcx, pcy, 4, MARKSMAN_TRAP_RADIUS_BY_LEVEL[level], 'rgba(56,189,248,0.46)', 2, 280);
           setSubWeaponCooldown('marksman-trap', gameTime + MARKSMAN_TRAP_COOLDOWN_MS);
+          consumeGhostSubClaim(); // G2.6
         }
 
         // バグ修正(社長報告v0.25.2318「途中から出なくなる」・案B採用): 旧実装は発動条件に
@@ -5982,19 +6011,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (active?.ammoType && (active.magazine ?? 0) < maxMag && reserve > 0) {
             // 投げ先=敵が少ない方面へ(社長指示v0.25.1606)。マガジンは拾って回収するので、
             // 進行方向ではなく「敵の薄い側」へ投げて安全に取りに行けるようにする。
+            // G2.6: 入口はオーナー形だが、この種はプレイヤー固定(マガジンは「プレイヤーが拾いに行く」
+            // 前提の設計=ドッグにも拾わせない(v0.25.2409)ため、ゴースト位置から投げると取りに行けない
+            // 置き去りが起きる)。ゴースト対応は★未決の未対応リスト。
             const dir = safeThrowDirection(
-              subWeaponPlayer.x + subWeaponPlayer.width / 2,
-              subWeaponPlayer.y + subWeaponPlayer.height / 2,
+              ownerCenterX(playerOwner),
+              ownerCenterY(playerOwner),
               useGameStore.getState().enemies,
-              subWeaponPlayer.lastDirection ?? { x: 1, y: 0 },
+              playerOwner.facing ?? { x: 1, y: 0 },
             );
             const dirMag = Math.max(0.001, Math.hypot(dir.x, dir.y));
-            const px = subWeaponPlayer.x + subWeaponPlayer.width / 2
+            const px = ownerCenterX(playerOwner)
               + (dir.x / dirMag) * STRIKER_QUICK_MAG_THROW_DISTANCE;
-            const py = subWeaponPlayer.y + subWeaponPlayer.height / 2
+            const py = ownerCenterY(playerOwner)
               + (dir.y / dirMag) * STRIKER_QUICK_MAG_THROW_DISTANCE;
-            const fromX = subWeaponPlayer.x + subWeaponPlayer.width / 2 - 8;
-            const fromY = subWeaponPlayer.y + subWeaponPlayer.height / 2 - 8;
+            const fromX = ownerCenterX(playerOwner) - 8;
+            const fromY = ownerCenterY(playerOwner) - 8;
             // 案B: 投げる直前に前回の置き去りマガジンを消す(場に残るのは常に最新の1個)。
             useGameStore.setState(s => (
               s.pickups.some(p => p.type === 'quick-magazine')
@@ -6206,7 +6238,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['decoy'] ?? 0)
         ) {
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['decoy'] ?? 1));
-          const dir = subWeaponPlayer.lastDirection ?? { x: 1, y: 0 };
+          // G2.6: 投擲位置/向きはオーナー(既定=プレイヤー=従来と同値)。
+          const dir = subOwner.facing ?? { x: 1, y: 0 };
           const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
           const ux = dir.x / dmag;
           const uy = dir.y / dmag;
@@ -6217,8 +6250,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             decoyPulseRef.current.delete(d.id);
           }
           const size = 16;
-          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
-          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          const pcx = ownerCenterX(subOwner);
+          const pcy = ownerCenterY(subOwner);
           const decoyId = `proj-decoy-${nowMs}`;
           addProjectile({
             id: decoyId,
@@ -6245,6 +6278,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           decoyPulseRef.current.set(decoyId, gameTime + DECOY_THROW_MS + DECOY_PULSE_MS);
           spawnRing(pcx, pcy, 4, 18, 'rgba(56,189,248,0.6)', 2, 220);
           setSubWeaponCooldown('decoy', gameTime + DECOY_COOLDOWN_MS);
+          consumeGhostSubClaim(); // G2.6
         }
 
         // 設置型シールド: 5秒ごとに進行方向の反対側へ遮蔽壁を建てる。敵の通行を
@@ -6257,15 +6291,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         ) {
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['shield'] ?? 1));
           // 進行方向と反対(=外向き法線)。取れなければ最後の向き、それも無ければ下。
-          const move = subWeaponPlayer.lastDirection ?? { x: 0, y: 1 };
+          // G2.6: 設置位置/向きはオーナー(既定=プレイヤー=従来と同値。フォールバック{x:0,y:1}もそのまま)。
+          const move = subOwner.facing ?? { x: 0, y: 1 };
           const mmag = Math.max(0.001, Math.hypot(move.x, move.y));
           let nx = -move.x / mmag;
           let ny = -move.y / mmag;
           // 法線を主軸へスナップ(4方向)。表裏と当たり判定を素直にするため。
           if (Math.abs(nx) >= Math.abs(ny)) { nx = Math.sign(nx) || 1; ny = 0; }
           else { nx = 0; ny = Math.sign(ny) || 1; }
-          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
-          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          const pcx = ownerCenterX(subOwner);
+          const pcy = ownerCenterY(subOwner);
           // 足元(下辺中央)。スプライトはここから上へ伸び、当たり判定は下部のみ。
           const footX = pcx + nx * SHIELD_PLACE_DISTANCE;
           const sideways = nx !== 0;
@@ -6308,6 +6343,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnRing(footX, footY, 6, 64, 'rgba(203,213,225,0.7)', 3, 260);
           playSfx('shield-deploy');
           setSubWeaponCooldown('shield', gameTime + SHIELD_COOLDOWN_MS);
+          consumeGhostSubClaim(); // G2.6
         }
 
         // 自動タレット: 10秒ごとにプレイヤー少し前方へ設置。設置地点に留まりオート射撃。
@@ -6319,7 +6355,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['turret'] ?? 0)
         ) {
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['turret'] ?? 1));
-          const dir = subWeaponPlayer.lastDirection ?? { x: 1, y: 0 };
+          // G2.6: 設置位置/向きはオーナー(既定=プレイヤー=従来と同値)。
+          const dir = subOwner.facing ?? { x: 1, y: 0 };
           const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
           const ux = dir.x / dmag;
           const uy = dir.y / dmag;
@@ -6329,8 +6366,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             removeProjectile(t.id);
             turretFireRef.current.delete(t.id);
           }
-          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
-          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          const pcx = ownerCenterX(subOwner);
+          const pcy = ownerCenterY(subOwner);
           // 足元(下辺中央)= プレイヤー中心から進行方向へ少し前方。設置物ルール(footRect)に合わせ
           // x,y は足元から当たり判定矩形を作る(下辺=足元)。
           const footX = pcx + ux * TURRET_PLACE_FORWARD;
@@ -6359,6 +6396,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnBurst(footX, footY, '#94a3b8', 6);
           playSfx('shield-deploy');
           setSubWeaponCooldown('turret', gameTime + TURRET_COOLDOWN_MS);
+          consumeGhostSubClaim(); // G2.6
         }
 
         // 火炎瓶(molotov): 10秒サイクルで、移動中のみ1秒に1個ずつ足元に火を設置(Lv別本数=3/5/7)。
@@ -6385,8 +6423,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             setSubWeaponCooldown('molotov', molotovResult.cooldownAt);
           }
           if (molotovResult.drop) {
-            const footX = subWeaponPlayer.x + subWeaponPlayer.width / 2;
-            const footY = subWeaponPlayer.y + subWeaponPlayer.height;
+            // G2.6: 入口はオーナー形だが、この種はプレイヤー固定(「本人が移動中のみ足元へ置く」設計で
+            // 発動条件と設置位置が本人の移動に結合している)。ゴースト対応は★未決の未対応リスト。
+            const footX = ownerCenterX(playerOwner);
+            const footY = ownerFootY(playerOwner);
             useGameStore.getState().spawnGroundFire(footX, footY);
           }
         }
@@ -6403,8 +6443,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         ) {
           const ssLevel = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['support-sniper'] ?? 1));
           const ssState = useGameStore.getState();
-          const ssPcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
-          const ssPcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          // G2.6: 入口はオーナー形だが、この種はプレイヤー固定(専用タイマーが「プレイヤーの移動中のみ」
+          // 進む+出現点の画面縁計算がプレイヤー画面基準)。ゴースト対応は★未決の未対応リスト。
+          const ssPcx = ownerCenterX(playerOwner);
+          const ssPcy = ownerCenterY(playerOwner);
           // 狙い=プレイヤーから一番近い敵(死神の非追跡個体=無敵の徘徊体は狙わない。手榴弾の照準と同じ除外)。
           let ssTarget: (typeof ssState.enemies)[number] | null = null;
           let ssBest = Infinity;
@@ -6428,12 +6470,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           let ssCdNext = ssTick.cdRemainingMs;
           if (ssTick.fire) {
             recordSubUse('support-sniper'); // M35: 専用タイマー式=手動合流点(CD開始=発動)。計測のみ
-            if (Math.random() < skillOverclockChance(subWeaponPlayer)) {
-              recordOverclockProc(); // M35: 援護射撃タイマー側の成立計測
-              ssCdNext = 0;
-            } else {
-              ssCdNext = ssTick.cdRemainingMs * skillCooldownMult(subWeaponPlayer);
-            }
+            // G2.6 CD正規化: 2スキルの適用は合流点と同じ共有純関数(挙動不変。発射時のcdRemainingMsは
+            // 常に正なので抽選条件も従来の無条件抽選と等価)。
+            const ssCd = applySubCooldownSkills(
+              skillOverclockChance(subWeaponPlayer), skillCooldownMult(subWeaponPlayer), ssTick.cdRemainingMs);
+            if (ssCd.overclockProc) recordOverclockProc(); // M35: 援護射撃タイマー側の成立計測
+            ssCdNext = ssCd.deltaMs;
           }
           if (ssCdNext !== ssState.supportSniperCdMs) {
             useGameStore.getState().setSupportSniperCd(ssCdNext);
@@ -6530,8 +6572,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               .map(w => w.ammoType as FirstAidKitAmmoType)
           ));
           const kitStateNow = useGameStore.getState().firstAidKitState;
-          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
-          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          // G2.6: 入口はオーナー形だが、この種はプレイヤー固定(1ラン1回の使い切り+中身の払い出し条件が
+          // プレイヤーの弾薬/HPに結合)。ゴースト対応は★未決の未対応リスト。なお払い出された回復(health)の
+          // 拾得は collectPickup の「1つの薬棚」でゴーストにも効く。
+          const pcx = ownerCenterX(playerOwner);
+          const pcy = ownerCenterY(playerOwner);
 
           // Lv3の爆弾条件でしか使わない値なので、該当しない時は画面内敵数の走査自体をしない。
           let onScreenEnemyCount = 0;
@@ -6567,7 +6612,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const dir = safeThrowDirection(
               pcx, pcy,
               useGameStore.getState().enemies,
-              subWeaponPlayer.lastDirection ?? { x: 1, y: 0 },
+              playerOwner.facing ?? { x: 1, y: 0 },
             );
             const dirMag = Math.max(0.001, Math.hypot(dir.x, dir.y));
             const px = pcx + (dir.x / dirMag) * FIRST_AID_KIT_THROW_DISTANCE;
@@ -6619,9 +6664,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['fire-knife'] ?? 0)
         ) {
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['fire-knife'] ?? 1));
-          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
-          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
-          // ターゲット = プレイヤーに最も近い非リーパー敵(既存の自動射撃に準拠)。
+          // G2.6: 投擲位置/照準の起点はオーナー(既定=プレイヤー=従来と同値)。
+          const pcx = ownerCenterX(subOwner);
+          const pcy = ownerCenterY(subOwner);
+          // ターゲット = オーナーに最も近い非リーパー敵(既存の自動射撃に準拠)。
           const target = useGameStore.getState().enemies
             .filter(e => e.type !== 'reaper' || e.reaperChaser)
             .map(e => ({ enemy: e, dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) }))
@@ -6651,6 +6697,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             });
             playSfx('shot-damage');
             setSubWeaponCooldown('fire-knife', gameTime + FIRE_KNIFE_COOLDOWN_BY_LEVEL[level]);
+            consumeGhostSubClaim(); // G2.6
           }
         }
 
@@ -6676,8 +6723,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const aliveIds = new Set(enemiesNow.map(e => e.id));
               const locks = homingLocksRef.current.filter(id => aliveIds.has(id)); // 死亡した敵のロックは破棄
               if (locks.length < maxLocks) {
-                const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
-                const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+                // G2.6: 入口はオーナー形だが、この種はプレイヤー固定(ロック蓄積=指を付けている間/
+                // 発射=指離し、というタッチ入力そのもの)。ゴースト対応は★未決の未対応リスト。
+                const pcx = ownerCenterX(playerOwner);
+                const pcy = ownerCenterY(playerOwner);
                 const range2 = HOMING_RANGE * HOMING_RANGE;
                 const inRange = enemiesNow
                   .filter(e => e.type !== 'reaper' || e.reaperChaser)
@@ -6940,11 +6989,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const ny = ghostNow.y + decision.moveY * step;
               const resolved = resolveTreeCollision({ x: nx, y: ny, width: ghostNow.width, height: ghostNow.height });
 
+              // G2.6(BOT_AND_GHOST.md §2.8): サブウェポン使用の予約。「CDが明けていて交戦中なら使う」の
+              // 単純判断=交戦中(紐付いたボスが生きている)かつ頻度ノブ(subUsesPerMin)の間隔が空いたら
+              // 「次のサブ発動1回」を予約する。実際の発動はサブ入口(自動発動ブロック)が次フレーム以降、
+              // CDが明けた瞬間にオーナー=ゴーストで解決して予約を下ろす(CD・資源は共有=「1つの財布」)。
+              const wantSubClaim = !!boundBoss && !ghostNow.ghostSubClaim &&
+                shouldGhostClaimSub(ghostNow.ghostLastSubUseAt ?? 0, nowMs, profile.subUsesPerMin);
+
               useGameStore.setState(st => ({
                 summons: st.summons.map(s => s.id === ghostNow.id ? {
                   ...s, x: resolved.x, y: resolved.y, ghostFacing: decision.facing,
                   ghostLastShotAt: decision.lastShotAt, ghostLastMeleeAt: decision.lastMeleeAt,
                   ghostCounterPendingAt: decision.counterPendingAt, ghostCounterWillAttempt: decision.counterWillAttempt,
+                  ...(wantSubClaim ? { ghostSubClaim: true } : {}),
                 } : s),
               }));
 

@@ -29,6 +29,8 @@ export interface PlayerProfile {
   meleeBias: number;
   mobility: number;
   hitsPerMin: number;
+  /** G2.6(BOT_AND_GHOST.md §2.8): サブウェポン使用回数/分(botTelemetry.subUsesの区間差分)。 */
+  subUsesPerMin: number;
 }
 
 const STORAGE_KEY = 'zombie-ghost-profile-v1';
@@ -38,6 +40,9 @@ const STORAGE_KEY = 'zombie-ghost-profile-v1';
 // 関与しない=循環import回避。数値がここと重複するのは意図的=どちらも「casual相当」の同じ目安のため)。
 const SEED_PROFILE: Omit<PlayerProfile, 'v' | 'runs'> = {
   reactionMs: 250, counterChance: 0.5, preferredDist: 180, meleeBias: 0.4, mobility: 0.6, hitsPerMin: 3,
+  // G2.6: 控えめな既定値(ghostDriver.DEFAULT_SUB_USES_PER_MINと同値=どちらも「casual相当」の目安。
+  // 重複は意図的=循環import回避、上のコメント参照)。旧フォーマット(このノブが無い保存)の欠損埋めにも使う。
+  subUsesPerMin: 2,
 };
 
 const EMA_ALPHA = 0.3;
@@ -58,7 +63,9 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
   return o.v === 1 && typeof o.runs === 'number'
     && typeof o.reactionMs === 'number' && typeof o.counterChance === 'number'
     && typeof o.preferredDist === 'number' && typeof o.meleeBias === 'number'
-    && typeof o.mobility === 'number' && typeof o.hitsPerMin === 'number';
+    && typeof o.mobility === 'number' && typeof o.hitsPerMin === 'number'
+    // G2.6で追加したノブ。旧フォーマット(6ノブ時代の保存)は欠損を許し、load側で既定値を埋める(後方互換)。
+    && (o.subUsesPerMin === undefined || typeof o.subUsesPerMin === 'number');
 };
 
 /** 保存済みプロファイル。無ければ null(G2側が既定プロファイルへフォールバックする)。 */
@@ -66,8 +73,10 @@ export const loadPlayerProfile = (): PlayerProfile | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return isValidProfile(parsed) ? parsed : null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isValidProfile(parsed)) return null;
+    // 後方互換: 旧フォーマット(subUsesPerMin無し)は控えめな既定値(SEED)で埋めて返す。
+    return { ...parsed, subUsesPerMin: parsed.subUsesPerMin ?? SEED_PROFILE.subUsesPerMin };
   } catch {
     return null;
   }
@@ -173,6 +182,10 @@ const endSession = (): void => {
   const meleeDelta = Math.max(0, telemetryEnd.damageDealt.melee - s.telemetryStart.damageDealt.melee);
   const gunDelta = Math.max(0, telemetryEnd.damageDealt.gun - s.telemetryStart.damageDealt.gun);
   const meleeBiasSample = (meleeDelta + gunDelta) > 0 ? meleeDelta / (meleeDelta + gunDelta) : null;
+  // G2.6: サブウェポン使用回数(全キー合算)の区間差分(スナップショット差分方式=他ノブと同じ掟)。
+  const subUsesTotal = (t: BotTelemetry): number =>
+    Object.values(t.subUses).reduce<number>((a, b) => a + (b ?? 0), 0);
+  const subUsesDelta = Math.max(0, subUsesTotal(telemetryEnd) - subUsesTotal(s.telemetryStart));
 
   const reactionRaw = median(s.reactionSamplesMs);
   const reactionSample = reactionRaw === null ? null
@@ -181,6 +194,7 @@ const endSession = (): void => {
   const preferredDistSample = medianBucketDist(s.distBuckets);
   const mobilitySample = s.totalTicks > 0 ? s.movedTicks / s.totalTicks : null;
   const hitsPerMinSample = durationMs > 0 ? s.hits / (durationMs / 60000) : null;
+  const subUsesPerMinSample = durationMs > 0 ? subUsesDelta / (durationMs / 60000) : null;
 
   const prev = loadPlayerProfile();
   const base = prev ?? { v: 1 as const, runs: 0, ...SEED_PROFILE };
@@ -194,6 +208,7 @@ const endSession = (): void => {
     meleeBias: blend(meleeBiasSample, base.meleeBias, isFirstEverSave),
     mobility: blend(mobilitySample, base.mobility, isFirstEverSave),
     hitsPerMin: blend(hitsPerMinSample, base.hitsPerMin, isFirstEverSave),
+    subUsesPerMin: blend(subUsesPerMinSample, base.subUsesPerMin, isFirstEverSave),
   };
   saveProfile(next);
 };

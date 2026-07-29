@@ -1,5 +1,57 @@
 # Development Log
 
+## v0.25.2449 — G2.6: サブウェポンのオーナー抽象化+CD正規化+「1つの財布・1つの薬棚」(BOT_AND_GHOST.md §2.8実装)【2026-07-30 03:01 JST】
+
+- **オーナー抽象化(1)**: サブウェポン発動の入口を `SubWeaponOwner`(座標・向き・バフ/回復の受け手。
+  `src/utils/subWeaponOwner.ts` 新設)に対して解決する形へリファクタ。既定オーナー=プレイヤーで、
+  プレイヤーが使う限り**全種の挙動が完全不変**(facing は「生のlastDirection(無ければnull)」のまま持ち、
+  各サブ固有のフォールバック({x:1,y:0}/{x:0,y:1})は従来どおり呼び出し側に残す=値がbit単位で同一)。
+  入口のオーナー形化は「発動時に座標・向きを解決する」全系統に適用: useGameLoop自動発動ブロック
+  (heavy-grenade/marksman-trap/striker-quick-mag/decoy/shield/turret/molotov/support-sniper/
+  first-aid-kit/fire-knife/homingロック)+gameStore側(triggerCounterの近接スイング入口=
+  drone-boomerang/sensor-mine/flare-gun/junk-weapon/shadow-clone、fireHoming、triggerWireAnchor)。
+  dog はフェッチ状態機械がプレイヤーを毎フレーム直読みするため入口置換を見送り(★未決1)。
+- **ゴーストのサブ使用(予約制)**: ゴースト(ghost-ally)は交戦中(紐付いたボス生存)、subUsesPerMin の
+  間隔で「次のサブ発動1回」を予約(`Summon.ghostSubClaim`)。共有CDが明けた瞬間の自動発動が
+  オーナー=ゴーストで出て予約を消費(`ghostLastSubUseAt`打刻)。**個別インベントリ・個別CDは新設して
+  いない**=CDは既存の1本を共有(ゴーストが使えばプレイヤーのCDも回る=「1つの財布」の帳簿1つ)。
+  資源も消費しない(対応6種は元々資源を使わない種)。
+  **ゴーストが実際に使える種=6種**: heavy-grenade / marksman-trap / decoy / shield / turret / fire-knife。
+  残りは★未決1「未対応リスト」(BOT_AND_GHOST.md §6)に理由付きで明記(黙って除外しない)。
+- **CD正規化(2)**: オーバークロック(発動時20/25/30%で即0)→タイムキーパー(残りΔ×0.9/0.8/0.7)の適用を
+  共有純関数 `applySubCooldownSkills`(`src/utils/subCooldown.ts` 新設)へ寄せ、合流点
+  (setSubWeaponCooldown)/sensor-mine/support-sniper の3箇所が同じ関数を通るようにした。
+  **CD値・挙動・スキルの効き方は1msも不変**(抽選条件Δ>0・乗算順・mult===1やΔ<=0の素通し分岐・
+  rand消費条件とも従来と同一。readyAt無変換時は再合成せずreadyAtをそのまま返す=浮動小数の揺れも無し)。
+  `subWeaponCooldowns`への完全一本化は sensor-mine(チャージ制)/support-sniper(移動中のみ進む
+  残りms型)/dog(dog-run先乗りがフェッチ完了経路限定)の構造的理由で見送り=★未決2に理由を明記。
+- **subUsesPerMin ノブ(3)**: `playerTraits.ts` のプロファイル(`zombie-ghost-profile-v1`)へ7個目のノブを
+  追加。計測=botTelemetry.subUses(全キー合算)の**スナップショット区間差分**/分(既存6ノブと同じ
+  EMA(α=0.3)・ボス交戦区間のみ・30秒未満は混ぜない・ゴースト同伴中は計測しない、も既存のまま)。
+  **後方互換**: 旧保存(6ノブ)は isValidProfile が欠損を許し、load時に控えめな既定値(2/分)で埋める。
+  ghostDriver 側は `GhostProfile.subUsesPerMin`+`shouldGhostClaimSub`/`ghostSubUseIntervalMs`(純関数)。
+- **「1つの財布・1つの薬棚」(4)**: 資源系はコード確認のみ=collectPickup で弾薬/ゴールド/スクラップ/
+  経験値/武器の全てがプレイヤーの帳簿1つへ入る(誰が拾っても同じ。取り合いは構造的に無い。変更なし)。
+  即時効果系=回復(health)は collectPickup の1箇所(プレイヤー接触/ドッグ回収とも合流)で、ゴースト
+  召喚中は**ゴーストにも同割合(自身の最大HPの30%)を回復**。ゴースト不在時は分岐ごと素通り=完全不変。
+  クイックマガジンはゴーストに効かせる中身が無い(銃はマガジン/リロード概念なし)ため配線なし。
+  ショップのメドキット購入は「拾うアイテム」でないため保守側で対象外=★未決3として社長裁定待ち。
+- 変更ファイル: `src/utils/subWeaponOwner.ts`(新)/`src/utils/subWeaponOwner.test.ts`(新)/
+  `src/utils/subCooldown.ts`(新)/`src/utils/subCooldown.test.ts`(新)/`src/utils/ghostDriver.ts`/
+  `src/utils/ghostDriver.test.ts`/`src/utils/playerTraits.ts`/`src/utils/playerTraits.test.ts`/
+  `src/types/game.ts`(SummonへghostSubClaim/ghostLastSubUseAt)/`src/store/gameStore.ts`/
+  `src/hooks/useGameLoop.ts`/`BOT_AND_GHOST.md`(§6実装結果+★未決)/`package.json`/
+  `src/data/changelog.ts`/本ログ。
+- **Load score: 1/10**(毎フレーム追加はスカラー比較+summons線形走査(常時0〜1体)のみ。予約の
+  setStateは間隔制(既定30秒に1回)。新規描画パス/強glowなし)。
+- **検証**: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ。※lintが
+  `.claude/worktrees/`内のharness残置worktreeも走査して同じ8件を二重報告するが、実体は同一箇所) /
+  `npx vitest related`(変更ファイル一式)=17ファイル289テスト全通過(新規: subWeaponOwner 4件/
+  subCooldown 5件/ghostDriver+4件/playerTraits+4件)。
+- 自己点検: この変更は憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(サブウェポンの
+  発動条件・CD値・判定・演出は全て従来のまま。ゴースト経路は`?ghost=1`召喚中のみ動く追加分岐で、
+  通常プレイでは owner=プレイヤー固定=従来と同値の読み替えのみ)。
+
 ## v0.25.2448 — G2.5(ヘイト): ボスがゴーストも狙うようになった(BOT_AND_GHOST.md §2.8実装)【2026-07-30 02:30 JST】
 
 - **やったこと**: giantbat(城ボス/グレン/EX)・idol・天使6体(miguel/jibril/rafi/uri/suriel/acrasiel)の

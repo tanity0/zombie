@@ -1,7 +1,7 @@
 // BOT_AND_GHOST.md G1(プレイヤー実測層)。純関数+モジュールシングルトンの計測ロジックを検証する。
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { tickPlayerTraits, notifyCounterHit, loadPlayerProfile, resetPlayerTraits } from './playerTraits';
-import { resetBotTelemetry, recordDamageDealt } from './botTelemetry';
+import { resetBotTelemetry, recordDamageDealt, recordSubUse } from './botTelemetry';
 import type { Enemy } from '../types/game';
 
 // jsdom を使わずに済む最小 localStorage スタブ(tutorialArchive.test.tsと同じ作法)。
@@ -194,5 +194,58 @@ describe('playerTraits: hitsPerMin', () => {
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
     const p = loadPlayerProfile()!;
     expect(p.hitsPerMin).toBeCloseTo(2, 5); // 60秒で2回被弾=1分あたり2
+  });
+});
+
+describe('playerTraits: subUsesPerMin(G2.6・botTelemetry.subUses差分)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  it('交戦中のサブウェポン使用回数(全キー合算)を分あたりへ正規化する', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    recordSubUse('heavy-grenade');
+    recordSubUse('decoy');
+    tickPlayerTraits(baseInput({ gameTime: 60_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
+    const p = loadPlayerProfile()!;
+    expect(p.subUsesPerMin).toBeCloseTo(2, 5); // 60秒で2回=1分あたり2
+  });
+
+  it('セッション区間の差分だけを使う(スナップショット差分方式・開始前の分は無視)', () => {
+    recordSubUse('heavy-grenade');
+    recordSubUse('heavy-grenade');
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    recordSubUse('turret');
+    tickPlayerTraits(baseInput({ gameTime: 60_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
+    const p = loadPlayerProfile()!;
+    expect(p.subUsesPerMin).toBeCloseTo(1, 5); // セッション内は1回だけ
+  });
+
+  it('旧フォーマット(subUsesPerMin無し)の保存は既定値(2)で埋めて読める=後方互換', () => {
+    const old = {
+      v: 1, runs: 3, reactionMs: 300, counterChance: 0.6, preferredDist: 200,
+      meleeBias: 0.5, mobility: 0.7, hitsPerMin: 4,
+    };
+    localStorage.setItem('zombie-ghost-profile-v1', JSON.stringify(old));
+    const p = loadPlayerProfile();
+    expect(p).not.toBeNull();
+    expect(p!.subUsesPerMin).toBe(2); // 欠損は控えめな既定値(SEED)で埋まる
+    expect(p!.reactionMs).toBe(300);  // 既存6ノブは保存値のまま
+  });
+
+  it('旧フォーマットからの次回保存はEMAで混ざり、新フォーマットになる', () => {
+    const old = {
+      v: 1, runs: 1, reactionMs: 250, counterChance: 0.5, preferredDist: 180,
+      meleeBias: 0.4, mobility: 0.6, hitsPerMin: 3,
+    };
+    localStorage.setItem('zombie-ghost-profile-v1', JSON.stringify(old));
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    recordSubUse('shield'); // 60秒で1回=サンプル1
+    tickPlayerTraits(baseInput({ gameTime: 60_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
+    const p = loadPlayerProfile()!;
+    // 既存保存あり=EMA混合: 前回値(欠損→既定2)*0.7 + 新サンプル(1)*0.3 = 1.7
+    expect(p.subUsesPerMin).toBeCloseTo(1.7, 5);
+    expect(p.runs).toBe(2);
   });
 });

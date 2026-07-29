@@ -17,7 +17,7 @@ import type { Enemy, Projectile } from '../types/game';
 import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from './botSkill';
 import { isBossCounterableNowApprox } from './bossScript';
 
-// ---- プロファイル(playerTraits.PlayerProfileと同じ6ノブ形。循環import回避のため型は独立定義) ----
+// ---- プロファイル(playerTraits.PlayerProfileと同じノブ形。循環import回避のため型は独立定義) ----
 export interface GhostProfile {
   reactionMs: number;
   counterChance: number;
@@ -25,6 +25,8 @@ export interface GhostProfile {
   meleeBias: number;
   mobility: number;
   hitsPerMin: number;
+  /** G2.6: 実プレイヤーのサブウェポン使用回数/分(EMA)。ゴーストのサブ使用頻度の上限になる。 */
+  subUsesPerMin: number;
 }
 
 /**
@@ -41,7 +43,33 @@ export const defaultGhostProfile = (): GhostProfile => {
     meleeBias: 0.4,
     mobility: 0.6,
     hitsPerMin: 3,
+    subUsesPerMin: DEFAULT_SUB_USES_PER_MIN,
   };
+};
+
+// ---- G2.6: サブウェポン使用の予約(BOT_AND_GHOST.md §2.8) --------------------------------------
+// ゴーストはプレイヤーの装備サブウェポンを「自分をオーナーとして」使える。CDは既存の1本を共有
+// (「1つの財布」=帳簿1つ)なので、ゴースト側の意思決定は「次のサブ発動1回を予約するか」だけ。
+// 予約された1発は、サブ発動入口(useGameLoopの自動発動ブロック)がオーナー=ゴーストで解決する。
+// 頻度は subUsesPerMin ノブに従う(=実測の上限。実際の使用間隔は共有CDの明き次第でこれより疎になる)。
+/** playerTraits.SEED_PROFILE と同じ「控えめな既定値」(叩き台)。欠損時のフォールバックにも使う。 */
+export const DEFAULT_SUB_USES_PER_MIN = 2;
+
+/** subUsesPerMin→予約間隔(ms)。0以下は「サブを使わない人」= null(予約しない)。 */
+export const ghostSubUseIntervalMs = (subUsesPerMin: number): number | null =>
+  subUsesPerMin > 0 ? 60000 / subUsesPerMin : null;
+
+/**
+ * このtickで「次のサブ発動1回」を予約するか。交戦中かの判定は呼び出し側(紐付いたボスの生存)。
+ * lastSubUseAtMs は「最後にゴーストがサブを実際に使った時刻」(未使用なら0=召喚直後から予約可)。
+ */
+export const shouldGhostClaimSub = (
+  lastSubUseAtMs: number,
+  nowMs: number,
+  subUsesPerMin: number,
+): boolean => {
+  const interval = ghostSubUseIntervalMs(subUsesPerMin);
+  return interval !== null && nowMs - lastSubUseAtMs >= interval;
 };
 
 // ---- 定数(BOT_AND_GHOST.md §3裁定 + 実装の叩き台) ---------------------------------------------

@@ -23,6 +23,8 @@ import {
   recordDamageDealt, recordFinisherKill, recordMeleeSwing,
 } from '../utils/botTelemetry';
 import { resetPlayerTraits } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1
+import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
+import { playerAsOwner, ownerCenterX, ownerCenterY, ownerFootY } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { stepSpeedRamp, effectiveRampFrac, rampedBonusMult } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
@@ -4126,6 +4128,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 近接の壁越し不可(視線判定)。屋内=lab壁(閉ドア含む) / 屋外=近傍の木。分身の攻撃と共用。
     const meleeWalls: Rect[] = meleeWallsAround(get, pcx, pcy, meleeRange);
 
+    // G2.6(BOT_AND_GHOST.md §2.8): サブウェポン発動の入口はオーナー(座標・向き・受け手)に対して
+    // 解決する。近接スイング入口のサブ(ドローンブーメラン/センサー地雷/フレアガン/ジャンクウェポン/
+    // 分身)のオーナーは「振った本人」=常にプレイヤー(値はpcx/pcy・lastDirectionと完全に同一=挙動不変)。
+    // ゴーストの近接はこの関数を通らないため、現状ここがゴーストをオーナーにする経路は無い(★未決の
+    // 未対応リスト参照)。
+    const swingOwner = playerAsOwner(player);
+
     // ドローンブーメラン: 近接攻撃(このスイング)と同じ入力で発動(自動ではない)。5秒クールダウン中は不可。
     // ※発火経路を近接攻撃と統一(以前の「立ち止まり中」専用ゲートは廃止=近接と同ロジック)。
     if (
@@ -4134,11 +4143,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       gameTime >= (player.subWeaponCooldowns['drone-boomerang'] ?? 0)
     ) {
       const lvl = Math.max(1, Math.min(3, player.subWeaponLevels['drone-boomerang'] ?? 1));
-      const dir = player.lastDirection ?? { x: 1, y: 0 };
+      // G2.6: 発射位置/向きはオーナー(既定=プレイヤー=従来と同値)。
+      const boomCx = ownerCenterX(swingOwner);
+      const boomCy = ownerCenterY(swingOwner);
+      const dir = swingOwner.facing ?? { x: 1, y: 0 };
       const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
       get().addProjectile({
         id: `proj-drone-boom-${Date.now()}`,
-        x: pcx - 9, y: pcy - 9, width: 18, height: 18,
+        x: boomCx - 9, y: boomCy - 9, width: 18, height: 18,
         speed: DRONE_BOOM_SPEED,
         damage: meleeDamage, // 行き/戻りの接触=通常近接ダメージ同等
         direction: { x: dir.x / dmag, y: dir.y / dmag },
@@ -4152,8 +4164,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         reflected: false,
         area: DRONE_BOOM_RADIUS,
         boomPhase: 'out',
-        boomOriginX: pcx,
-        boomOriginY: pcy,
+        boomOriginX: boomCx,
+        boomOriginY: boomCy,
         boomMaxDist: DRONE_BOOM_DIST_BY_LEVEL[lvl],
         boomStopMs: DRONE_BOOM_STOP_MS_BY_LEVEL[lvl],
       });
@@ -4174,10 +4186,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       const smLevel = Math.max(1, Math.min(3, player.subWeaponLevels['sensor-mine'] ?? 1));
       const smCap = SENSOR_MINE_CAP_BY_LEVEL[smLevel];
       if (sensorMineChargesReady(get().sensorMineCharges, gameTime, smCap) > 0) {
-        const smFootX = player.x + player.width / 2;
-        const smFootY = player.y + player.height;
-        const smOverclock = Math.random() < skillOverclockChance(player); // §6.8 M31と同じ抽選=発動(設置)時
-        const smDuration = smOverclock ? 0 : SENSOR_MINE_CHARGE_COOLDOWN_MS * skillCooldownMult(player); // タイムキーパー
+        // G2.6: 設置位置はオーナーの足元(既定=プレイヤー=従来と同値)。
+        const smFootX = ownerCenterX(swingOwner);
+        const smFootY = ownerFootY(swingOwner);
+        // §6.8 M31と同じ抽選=発動(設置)時。オーバークロック→タイムキーパーの適用は合流点と同じ
+        // 共有純関数(G2.6 CD正規化・挙動不変。チャージ再充填CDは常に正なので抽選条件も従来と等価)。
+        const smCd = applySubCooldownSkills(skillOverclockChance(player), skillCooldownMult(player), SENSOR_MINE_CHARGE_COOLDOWN_MS);
+        const smOverclock = smCd.overclockProc;
+        const smDuration = smCd.deltaMs;
         set(state => ({
           sensorMines: placeSensorMine(
             state.sensorMines,
@@ -4202,15 +4218,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       gameTime >= (player.subWeaponCooldowns['flare-gun'] ?? 0)
     ) {
       const fgLevel = Math.max(1, Math.min(3, player.subWeaponLevels['flare-gun'] ?? 1));
-      const fgDir = player.lastDirection ?? { x: 1, y: 0 };
+      // G2.6: 発射位置/向きはオーナー(既定=プレイヤー=従来と同値)。
+      const fgCx = ownerCenterX(swingOwner);
+      const fgCy = ownerCenterY(swingOwner);
+      const fgDir = swingOwner.facing ?? { x: 1, y: 0 };
       const fgMag = Math.max(0.001, Math.hypot(fgDir.x, fgDir.y));
       const fgDist = RANGE_BY_CATEGORY.handgun; // 「ハンドガン距離」=既存のハンドガン射程定数(§6.6 実装指定)
-      const fgX = pcx + (fgDir.x / fgMag) * fgDist;
-      const fgY = pcy + (fgDir.y / fgMag) * fgDist;
+      const fgX = fgCx + (fgDir.x / fgMag) * fgDist;
+      const fgY = fgCy + (fgDir.y / fgMag) * fgDist;
       set(state => ({
         flareGunFlares: [...state.flareGunFlares, {
           id: `flare-${flareGunSeq++}`,
-          fromX: pcx, fromY: pcy,
+          fromX: fgCx, fromY: fgCy,
           x: fgX, y: fgY,
           firedAt: gameTime,
           landAt: gameTime + FLARE_GUN_FLIGHT_MS,
@@ -4232,10 +4251,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       const jwShot = computeJunkShot(jwLevel, player.straps);
       if (jwShot.fire) {
         recordSubUse('junk-weapon'); // M35: CD無しサブの発動計測(手動合流点・挙動不変)
-        const jwDir = player.lastDirection ?? { x: 1, y: 0 };
+        // G2.6: 発射位置/向きはオーナー(既定=プレイヤー=従来と同値)。
+        const jwDir = swingOwner.facing ?? { x: 1, y: 0 };
         const jwMag = Math.max(0.001, Math.hypot(jwDir.x, jwDir.y));
         const pellets = buildJunkWeaponPellets(
-          pcx, pcy,
+          ownerCenterX(swingOwner), ownerCenterY(swingOwner),
           { x: jwDir.x / jwMag, y: jwDir.y / jwMag },
           jwShot.pelletDamage,
           JUNK_WEAPON_PELLETS
@@ -4882,10 +4902,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       !get().shadowClone &&
       gameTime >= (get().player.subWeaponCooldowns['shadow-clone'] ?? 0)
     ) {
-      const facingLeft = player.direction === 'left' || (player.lastDirection != null && player.lastDirection.x < 0);
+      // G2.6: 生成位置/向きはオーナー(既定=プレイヤー=従来と同値)。絵(characterClass)はプレイヤーの分身のまま。
+      const facingLeft = player.direction === 'left' || (swingOwner.facing != null && swingOwner.facing.x < 0);
       set({
         shadowClone: {
-          x: player.x, y: player.y, width: player.width, height: player.height,
+          x: swingOwner.x, y: swingOwner.y, width: swingOwner.width, height: swingOwner.height,
           facingLeft, characterClass: player.characterClass,
           spawnedAt: gameTime, attacksDone: 0, nextAttackAt: gameTime, // 生成直後の tick で1発目
         },
@@ -6057,8 +6078,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const ux = dirX / len, uy = dirY / len;
     const lvl = Math.max(1, Math.min(3, player.subWeaponLevels['wire-anchor'] ?? 1));
     const dist = WIRE_DIST_BY_LEVEL[lvl];
-    const pcx = player.x + player.width / 2;
-    const pcy = player.y + player.height / 2;
+    // G2.6: 発動の入口はオーナー(座標)に対して解決する。ワイヤーの効果=オーナーの体の移動なので、
+    // 現状オーナーは常にプレイヤー(ゴースト対応は★未決の未対応リスト=移動系の特殊配線が必要)。
+    const wireOwner = playerAsOwner(player);
+    const pcx = ownerCenterX(wireOwner);
+    const pcy = ownerCenterY(wireOwner);
 
     // フリック方向の直線上・射程内にいる最初の敵を探す = ワイヤーが刺さる敵。
     // 居れば「大技」(即・引き上げ→垂直斬り下ろし→着地ノックバック)。居なければ従来の地点プラント。
@@ -6636,17 +6660,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 「発動」として数える=proc判定より前に記録。計測のみ=挙動不変。
     recordSubUse(key);
     set(state => {
-      // スキル: タイムキーパー = サブCDのΔ(残り時間)を ×0.7。CDは gameTime 基準。
-      const mult = skillCooldownMult(state.player);
+      // スキル: オーバークロック(発動時20/25/30%でCD即リセット・§6.8 M31)→タイムキーパー
+      // (残りΔ×0.9/0.8/0.7)の適用は共有純関数へ(G2.6 CD正規化・挙動不変。抽選はΔ>0の時だけ、
+      // 成功=CDを設定しない(既存値は発動時点で既に明けている=即再使用可)。CD無しサブはここを
+      // 通らない=自然に対象外)。sensor-mine/support-sniperの手動実装も同じ関数を通る。
       const delta = readyAt - state.gameTime;
-      // スキル: オーバークロック = サブウェポン発動(CD開始)時、20/25/30%でCDを即リセット(§6.8 M31)。
-      // Δ>0(実CDの開始)の時だけ抽選。成功=CDを設定しない(既存値は発動時点で既に明けている=即再使用可)。
-      // タイムキーパー等の既存CD系とは別軸で重複可。CD無しサブはここを通らない=自然に対象外。
-      if (delta > 0 && Math.random() < skillOverclockChance(state.player)) {
+      const cd = applySubCooldownSkills(skillOverclockChance(state.player), skillCooldownMult(state.player), delta);
+      if (cd.overclockProc) {
         recordOverclockProc(); // M35: 成立回数の計測のみ
         return {};
       }
-      const effReadyAt = mult !== 1 && delta > 0 ? state.gameTime + delta * mult : readyAt;
+      // Δが無変換ならreadyAtをそのまま使う(gameTime+Δの再合成による浮動小数の揺れも入れない=従来と同一)。
+      const effReadyAt = cd.deltaMs === delta ? readyAt : state.gameTime + cd.deltaMs;
       return {
         player: {
           ...state.player,
@@ -6666,8 +6691,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!player.subWeapons.includes('homing')) return;
     if (gameTime < (player.subWeaponCooldowns['homing'] ?? 0)) return;
     if (homingLocks.length === 0) return;
-    const pcx = player.x + player.width / 2;
-    const pcy = player.y + player.height / 2;
+    // G2.6: 発射位置はオーナー。ロック蓄積〜指離し発射がプレイヤーのタッチ入力そのものなので、
+    // 現状オーナーは常にプレイヤー(ゴースト対応は★未決の未対応リスト)。
+    const homingOwner = playerAsOwner(player);
+    const pcx = ownerCenterX(homingOwner);
+    const pcy = ownerCenterY(homingOwner);
     const now = Date.now();
     const newProjectiles = homingLocks
       .map((enemyId, i) => {
@@ -9948,11 +9976,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         break;
       case 'health':
         // 肉(health)も最大HPの30%回復(社長指示・固定値→割合)。
+        // G2.6「1つの薬棚」(BOT_AND_GHOST.md §2.8): ゴースト召喚中は場に居る両方の体に効く。
+        // どちらが拾っても(プレイヤー接触/ドッグ回収とも)収集はこの1箇所へ合流するので、ここで
+        // ゴースト(ghost-ally)にも同割合(自身の最大HPの30%)を回復する。ゴースト不在時は従来と完全に同一。
         set(state => ({
           player: {
             ...state.player,
             health: Math.min(state.player.health + Math.round(state.player.maxHealth * HEAL_FRACTION), state.player.maxHealth)
-          }
+          },
+          ...(state.summons.some(s => s.kind === 'ghost-ally') ? {
+            summons: state.summons.map(s => s.kind === 'ghost-ally'
+              ? { ...s, health: Math.min(s.health + Math.round(s.maxHealth * HEAL_FRACTION), s.maxHealth) }
+              : s),
+          } : {}),
         }));
         break;
       case 'strap':
