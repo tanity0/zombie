@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2401',
+    items: [
+      '銃を撃った瞬間、銃口に発砲炎が出るようになりました。',
+    ],
+  },
+  {
     version: '0.25.2400',
     items: [
       '城ボスの薙ぎ払いに、振った瞬間の斬撃の弧が出るようになりました。',

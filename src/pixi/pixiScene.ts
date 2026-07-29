@@ -994,6 +994,16 @@ const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するス
 // 行動の二次モーション(歩きと同じく静止スプライトに重ねる連続変形・視覚のみ・判定不変)。
 // すべて scale倍率/回転加算/足元基準の画面pxオフセット。当たり判定・射程・速度には一切不干渉。
 const PLAYER_FIRE_RECOIL_MS = 130;    // 発砲の反動が収まるまで(エンベロープ長)
+// 銃口フラッシュ(社長支給素材 C-1・v0.25.2401)。全て**実機調整前提の叩き台**。
+const MUZZLE_FLASH_MS = 70;        // 閃光の表示窓。反動(130ms)より短い=閃光が先に消える
+const MUZZLE_LEN_PX = 34;          // 銃口から先の閃光の長さ(素材の可視長215pxをここへ縮める)
+const MUZZLE_OFFSET_PX = 16;       // プレイヤー中心から銃口までの前進量
+const MUZZLE_HEIGHT_FRAC = 0.55;   // 足元から胸(銃を構える高さ)までの割合
+// 素材の実測: 可視部 bbox=(0,46)-(215,206)。**閃光は左へ噴いていて、根元は右端**。
+// よってアンカーは根元=(215/256, 126/256)=(0.84, 0.492)、回転は「狙い角+π」で噴出方向を合わせる。
+const MUZZLE_ANCHOR_X = 0.84;
+const MUZZLE_ANCHOR_Y = 0.492;
+
 const PLAYER_FIRE_RECOIL_PX = 3.2;    // 銃口と逆向き(=後方)へ体が下がる最大px
 const PLAYER_FIRE_RECOIL_SQUASH = 0.04; // 反動で軽く縦に縮む量
 const PLAYER_MELEE_SWING_MS = 280;    // 近接スイングの踏み込み→振り抜き→復帰の長さ(社長指示でもう少しスローに: 200→220→250→280。視覚のみ=攻撃レート/判定は別ゲート・不変)
@@ -7777,7 +7787,17 @@ export class PixiScene {
         actOffY -= aimy * PLAYER_FIRE_RECOIL_PX * e * dsc;
         actSqY *= 1 - PLAYER_FIRE_RECOIL_SQUASH * e;
       }
-    }
+      // 銃口フラッシュ(社長支給素材 C-1・v0.25.2401)。反動と同じ `gun.lastFired` に乗せるので、
+      // 発砲の瞬間とズレようがない。反動より短い窓で消す(閃光は反動より速く終わる)。
+      if (sinceFire >= 0 && sinceFire < MUZZLE_FLASH_MS) {
+        const k = 1 - sinceFire / MUZZLE_FLASH_MS;
+        this.drawMuzzleFlash(
+          fb.footX + aimx * MUZZLE_OFFSET_PX * dsc,
+          fb.footY - fb.boxH * MUZZLE_HEIGHT_FRAC * dsc + aimy * MUZZLE_OFFSET_PX * dsc,
+          Math.atan2(aimy, aimx), MUZZLE_LEN_PX * dsc, 0.9 * k,
+        );
+      } else this.hideMuzzleFlash();
+    } else this.hideMuzzleFlash();
     // 近接スイング: 狙い方向へ踏み込み(踏込→振抜→復帰のアーク)＋振り抜きの傾き＋横ストレッチ。
     // §5.22-追補(社長決定v0.25.1536): KILL/カウンターのFREEZE→RELEASEスロー演出が有効な間は、
     // スイングの表示窓を既定280msからスロー終了時刻まで伸ばす(=スロー中に振りが消えて棒立ちに
@@ -10362,6 +10382,34 @@ export class PixiScene {
     sp.alpha = alpha;
     sp.visible = true;
   }
+
+  /**
+   * 銃口フラッシュ(社長支給素材 C-1・v0.25.2401)。プレイヤーは1人なのでシーンに1枚だけ持つ。
+   * **アンカーを根元(素材の右端中央)に置く**ので、渡すのは銃口の座標そのもの。
+   * 素材が左へ噴いているため回転は `angle + π`(素材の -x を狙い方向へ向ける)。
+   */
+  private muzzleSprite?: Sprite;
+  private drawMuzzleFlash(x: number, y: number, angle: number, len: number, alpha: number): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) { this.hideMuzzleFlash(); return; }
+    const tex = getTexture('fx/muzzle-flash');
+    if (!tex) return;
+    let sp = this.muzzleSprite;
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(MUZZLE_ANCHOR_X, MUZZLE_ANCHOR_Y);
+      this.L.actorLayer.addChild(sp);
+      this.muzzleSprite = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    const s = len / 215; // 素材の可視長(215px)を狙いの長さへ合わせる
+    sp.scale.set(s, s);
+    sp.rotation = angle + Math.PI;
+    sp.position.set(x, y);
+    sp.zIndex = y + 1; // プレイヤーのすぐ手前(足元Yソートに乗せる)
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+  private hideMuzzleFlash(): void { if (this.muzzleSprite) this.muzzleSprite.visible = false; }
 
   private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number } | null, now: number) {
     const sp = this.bossCorpseSprite;

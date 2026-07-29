@@ -387,6 +387,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
       // 斬撃の弧(社長支給素材 D-1・v0.25.2400)。「振った瞬間」の絵。tintで着色・伸縮して使う=linear。
       { name: 'fx/slash-arc', scaleMode: 'linear' as const },
+      // 銃口フラッシュ(社長支給素材 C-1・v0.25.2401)。発砲の一瞬だけ出す。tint着色・縮小=linear。
+      { name: 'fx/muzzle-flash', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },
