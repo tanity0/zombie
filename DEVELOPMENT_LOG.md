@@ -1,5 +1,53 @@
 # Development Log
 
+## v0.25.2384 — 城ボス(ジャイアント)にステージ別の範囲/速度倍率を追加(社長指示・M65)【2026-07-29 10:11 JST】
+- 社長指示:「ステージ2から、少しずつ城ボスのジャンプ、踏み潰し の範囲広げて難易度上げていって。今は
+  避けやすい。ダッシュも鈍いので、ステージ毎に少しずつ難易度上げ。」
+- **「ステージ2から」の解釈**: ステージ2(研究所)は潜入ステージで城ボス自体が出ない
+  (`useGameLoop.ts` の `!labTheme` ゲート)。**ステージ1を実機合格済みの基準として据え置き、城ボスが
+  実際に出る次のステージ(3)から段階的に上げる**と解釈した(実際に最初に変わるのはステージ3)。
+  この解釈は `giantScript.ts` のコメントにも残した。
+- **対象は社長指示で明示された3つだけ**(それ以外=リード・硬直・CD・ダメージ・HP・巡航速度・図形の
+  意味は1msも1pxも変えていない):
+  1. 踏み鳴らし(stomp)のAoE半径 `GIANT_STOMP_RADIUS`(=92)
+  2. 飛び掛かり(jump)の着地AoE半径 `PUMPKIN_EXPLOSION_RADIUS`(=54・ジャイアント専用の使用箇所のみ)
+  3. 突進(dash)の速度(`dashBase × WEREWOLF_CHARGE_SPEED_MULT`)
+- **倍率**: stage-1=1.00(不変)/ stage-3=1.10 / stage-4=1.20 / stage-5=1.30 / stage-6=1.40 /
+  stage-7・stage-ex1(物語ボス)=1.50 / 未定義ステージ=1.00(安全側)。純関数
+  `giantStageRangeMult(stageId, enabled=true)` を `src/utils/giantScript.ts` に新設(ユニットテスト6件)。
+  `WEREWOLF_CHARGE_SPEED_MULT`/`PUMPKIN_EXPLOSION_RADIUS` の定数そのものは書き換えていない
+  (pumpkin/werewolf/hunter/lab-zombie-2/lab-zombie-3/suriel(§6.28-18のring-spin)と共有しているため。
+  ジャイアント専用ブロック内で倍率を掛けた値だけを使う)。
+- **図形(赤円)と判定を一致させた方法**: windup開始時(`beginGiantMove('stomp'|'jump')`)にステージ別
+  倍率込みの実際の半径を `Enemy.gStompRadius`/`gJumpRadius`(`src/types/game.ts` に新設)へ確定して
+  敵へ持たせ、①シミュ側の命中判定(`pumpkinBlasts`)②描画側の赤円(`pixiScene.ts`)③レベルアップ
+  保留判定(`isPlayerInAttackTelegraph`・`levelUpGate.ts`)の3箇所が全て同じフィールドを読む構成にした。
+  計算式が1つなので将来ズレようがない(推奨案どおり採用。理由: 純関数の重複計算より「1回計算して
+  敵に持たせる」方がドリフト耐性が構造的に高い)。
+- `?giantstage=0` で `GIANT_STAGE_RANGE_ENABLED=false` になり全ステージ1.00(=このバッチより前の挙動)
+  に戻る(`src/store/gameStore.ts`)。
+- **実効値の表**(stomp半径 / jump着地半径 / dash速度倍率):
+  stage-1: 92 / 54 / ×3.00(基準・不変) / stage-3: 101.2 / 59.4 / ×3.30 / stage-4: 110.4 / 64.8 / ×3.60 /
+  stage-5: 119.6 / 70.2 / ×3.90 / stage-6: 128.8 / 75.6 / ×4.20 / **stage-7・ex1: 138.0 / 81.0 / ×4.50**。
+  dash実効px/s(`getEnemyBaseSpeed('werewolf')=70` 基準・`MOVE_SPEED_MULT=1.2`込み): stage-1=252 →
+  stage-3=277.2 → stage-4=302.4 → stage-5=327.6 → stage-6=352.8 → **stage-7/ex1=378**。
+- **stage-7(グレン)の注記**: `useGameLoop.ts` 側で当たり判定込み2倍化されている個体だが、その
+  倍化は「本体の当たり判定/見た目サイズ」の話で、stomp/jumpのAoE半径は敵の**中心**からの絶対px
+  なので本体サイズとは独立=**単純に1.50倍が乗るだけ**(掛け算で重ならない・上表の138.0/81.0が実効値)。
+- 負荷スコア **1/10**(rendering: 半径の値が変わるだけで描画方式・強glow・draw call数は無改変。
+  simulation: 敵1体あたり定数個のフィールド代入が増えるだけ。audio/memory/network: 影響なし)。
+  安全弁: `?giantstage=0` で即座に旧挙動へ全戻し。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(城ボスは全ステージ中盤〜
+  終盤の存在で初心者ゾーンの敵ではなく、stage-1という「緩」側は据え置きのまま。厳しくなるのは
+  stage-3以降の既に難度が上がっている側のみ)。
+- 検証: typecheck 0 / `npx vitest related`(giantScript.ts/test.ts/gameStore.ts/levelUpGate.ts/
+  pixiScene.ts/types/game.ts)全パス(283 passed)。`constitution.test.ts`(13件)・既存
+  `giantScript.test.ts`(旧32件+新6件=38件)ともに0件失敗。lint 0 errors(既存warning 7件のみ、無関係)。
+  `npm test`/`npm run build` は社長指示が無いため未実行(CLAUDE.mdテストポリシーどおり)。
+- 次のハンドオフ: 実機確認は社長へ。`REALDEVICE_TEST.md` に確認項目(ステージ3以降で段階的に厳しく
+  なるか・赤い円と当たる範囲が一致しているか)を追加済み。stage-7で過剰と感じた場合は
+  `GIANT_STAGE_RANGE_MULT`(`giantScript.ts`)の該当ステージの値だけを社長指示で調整する想定。
+
 ## v0.25.2383 — ボス討伐後の死体が「ステージ1の見た目・小さい」バグを修正(社長報告)【2026-07-29 09:55 JST】
 - 社長報告:「ステージ4のボス倒した時に、ステージ1の見た目になっちゃってる。しかも小さい」。
 - **原因(1箇所の抜けで2症状)**: 生体の敵絵は6段のフォールバックでステージごとに差し替えられる

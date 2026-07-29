@@ -15,6 +15,11 @@ export interface TelegraphEnemy {
   aiPhase?: string;
   aiTargetX?: number; aiTargetY?: number;
   aiFromX?: number; aiFromY?: number; // M51: ジャイアント薙ぎ払いの始点(中心座標)に使用
+  // M65: ジャイアントの踏み鳴らし/飛び掛かりの「実際に使う半径」(ステージ別倍率込み・windup開始時に
+  // 敵へ確定済み)。付いていれば汎用の pumpkinExplosionRadius/giantStompRadius より優先して使う
+  // (=シミュ側の命中判定・描画側の赤円と同じ値を読むことでドリフトを防ぐ。他タイプには影響しない)。
+  gStompRadius?: number;
+  gJumpRadius?: number;
 }
 
 const JUMP_TELEGRAPH_TYPES = new Set(['pumpkin', 'lab-zombie-3', 'giantbat', 'hunter']);
@@ -59,14 +64,21 @@ export const isPlayerInAttackTelegraph = (
     } else if (e.type === 'giantbat' && e.aiPhase !== undefined && GIANT_JUMP_TELEGRAPH_PHASES.has(e.aiPhase)) {
       const tx = (e.aiTargetX ?? e.x) + e.width / 2;
       const ty = (e.aiTargetY ?? e.y) + e.height / 2;
-      if (Math.hypot(pcx - tx, pcy - ty) <= pumpkinExplosionRadius + pr) return true;
+      // M65: ステージ別倍率込みで敵に確定済みのgJumpRadiusがあればそれを優先(無ければ従来どおり
+      // pumpkinExplosionRadius=無倍率。パンプキン/lab-zombie-3/ハンターのjump分岐は上のJUMP_TELEGRAPH_TYPES
+      // 側で処理済みでgJumpRadiusを持たないため、常に無倍率のまま=他タイプへの影響ゼロ)。
+      const jumpR = e.gJumpRadius ?? pumpkinExplosionRadius;
+      if (Math.hypot(pcx - tx, pcy - ty) <= jumpR + pr) return true;
     } else if (e.type === 'giantbat' && e.aiPhase === 'g-dash-windup' && e.aiTargetX !== undefined && e.aiTargetY !== undefined) {
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       const half = e.width / 2 + pr;
       if (distToSegment({ x: pcx, y: pcy }, { x: ex, y: ey }, { x: e.aiTargetX, y: e.aiTargetY }) <= half) return true;
-    } else if (e.type === 'giantbat' && e.aiPhase === 'g-stomp-windup' && giantStompRadius !== undefined) {
+    } else if (e.type === 'giantbat' && e.aiPhase === 'g-stomp-windup' && (e.gStompRadius ?? giantStompRadius) !== undefined) {
+      // M65: ステージ別倍率込みで敵に確定済みのgStompRadiusがあればそれを優先(無ければ従来どおり
+      // giantStompRadius=無倍率。両方省略時はこの分岐自体に入らず判定しない=既存動作を保つ)。
+      const stompR = (e.gStompRadius ?? giantStompRadius)!;
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-      if (Math.hypot(pcx - ex, pcy - ey) <= giantStompRadius + pr) return true;
+      if (Math.hypot(pcx - ex, pcy - ey) <= stompR + pr) return true;
     } else if (
       e.type === 'giantbat' && e.aiPhase !== undefined && GIANT_SWEEP_TELEGRAPH_PHASES.has(e.aiPhase) &&
       giantSweepHalfWidth !== undefined && e.aiTargetX !== undefined && e.aiTargetY !== undefined

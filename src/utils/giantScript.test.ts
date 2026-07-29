@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   giantPhaseForHealth, giantPhaseJustChanged, giantMoveEligible, pickGiantMove, pickGiantCombo,
   giantPhaseForHealthStory, pickGiantStoryCombo,
+  giantStageRangeMult,
   GIANT_RANGE, type GiantMove,
 } from './giantScript';
 
@@ -217,5 +218,44 @@ describe('pickGiantStoryCombo — 受け入れ条件(§6.28-11 #2/#3): 薙ぎ払
 
   it('a 4th+ hit can still occur if the target re-enters the next move\'s band(履歴を持たず間合いと確率だけで判断=トールのharai自己ループと同じ作法。既存dash→stompの2組は維持=原則⑥)', () => {
     expect(pickGiantStoryCombo('dash', 70, false, () => 0)).toBe('stomp');
+  });
+});
+
+describe('giantStageRangeMult(M65・社長指示: ステージ別の踏み鳴らし/着地AoE/突進速度の倍率)', () => {
+  it('stage-1 is exactly 1.00 (実機合格済みの基準・回帰ガード=最重要)', () => {
+    expect(giantStageRangeMult('stage-1')).toBe(1);
+  });
+
+  it('is monotonically non-decreasing in stage order (1→3→4→5→6→7→ex1)', () => {
+    const order = ['stage-1', 'stage-3', 'stage-4', 'stage-5', 'stage-6', 'stage-7', 'stage-ex1'];
+    const values = order.map(id => giantStageRangeMult(id));
+    for (let i = 1; i < values.length; i++) {
+      expect(values[i]).toBeGreaterThanOrEqual(values[i - 1]);
+    }
+  });
+
+  it('matches the confirmed table values exactly', () => {
+    expect(giantStageRangeMult('stage-1')).toBeCloseTo(1.00);
+    expect(giantStageRangeMult('stage-3')).toBeCloseTo(1.10);
+    expect(giantStageRangeMult('stage-4')).toBeCloseTo(1.20);
+    expect(giantStageRangeMult('stage-5')).toBeCloseTo(1.30);
+    expect(giantStageRangeMult('stage-6')).toBeCloseTo(1.40);
+    expect(giantStageRangeMult('stage-7')).toBeCloseTo(1.50);
+    expect(giantStageRangeMult('stage-ex1')).toBeCloseTo(1.50);
+  });
+
+  it('falls back to 1.00 for unknown/未定義 stage IDs (安全側)', () => {
+    expect(giantStageRangeMult('nonexistent')).toBe(1);
+    expect(giantStageRangeMult('')).toBe(1);
+    expect(giantStageRangeMult('stage-2')).toBe(1); // 研究所=城ボスが出ないステージ。表に無い=安全側
+    expect(giantStageRangeMult('stage-tutorial')).toBe(1);
+  });
+
+  it('enabled=false (相当 `?giantstage=0`) forces every stage back to 1.00', () => {
+    expect(giantStageRangeMult('stage-1', false)).toBe(1);
+    expect(giantStageRangeMult('stage-3', false)).toBe(1);
+    expect(giantStageRangeMult('stage-7', false)).toBe(1);
+    expect(giantStageRangeMult('stage-ex1', false)).toBe(1);
+    expect(giantStageRangeMult('nonexistent', false)).toBe(1);
   });
 });

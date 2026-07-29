@@ -65,6 +65,7 @@ import { computeEnemySeparation } from '../utils/enemySeparation';
 import {
   giantPhaseForHealth, giantPhaseJustChanged, pickGiantMove, pickGiantCombo, type GiantMove,
   giantPhaseForHealthStory, pickGiantStoryCombo, type GiantPhase,
+  giantStageRangeMult,
 } from '../utils/giantScript';
 import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
@@ -1469,6 +1470,13 @@ export const GIANT_BOLT_CD_PHASE2_MS = 3000; // 実効2.5s
 // フェーズ移行(HP60%)の合図: HPバー色 Phase1=緑/Phase2=橙(0.3未満の赤は据え置き)+移行の瞬間だけ点滅
 // (社長裁定6.26-9 #4)。点滅の継続時間(pixiScene.ts が now と比較する側の値)。
 export const GIANT_PHASE_FLASH_MS = 1200;
+
+// ==== M65: ステージ別の範囲/速度倍率(社長指示・PACING_PUZZLE.md §6.26に節追記予定) ====
+// 「ステージ2から少しずつ踏み鳴らし/飛び掛かりの範囲を広げ、ダッシュも速くして難易度を上げる」
+// 指示。対象は giantStageRangeMult() が掛ける3つ(stomp半径/jump着地半径/dash速度)だけで、
+// 予告のリード(*_WINDUP_MS/*_RECOVER_MS/*_CD_MS)は1msも変えない。stage-1=1.00(実機合格済みの
+// 基準・不変)。`?giantstage=0` で全ステージ1.00(=今日までの挙動)に戻す。
+export const GIANT_STAGE_RANGE_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('giantstage') !== '0';
 
 // ==== M60: グレン(stage-7)/未確認変異体(stage-ex1)専用のPhase3拡張(PACING_PUZZLE.md §6.28-11) ====
 // enemy.isStoryBoss===true の個体(=useGameLoop.tsのstoryBossスポーン経路でのみ立つ)だけに効く。
@@ -7302,14 +7310,22 @@ export const useGameStore = create<GameState>((set, get) => ({
           const dashRecoverMs = phase === 3 ? GIANT_DASH_RECOVER_PHASE3_MS : GIANT_DASH_RECOVER_MS;
           const jumpRecoverMs = phase === 3 ? GIANT_JUMP_RECOVER_PHASE3_MS : GIANT_JUMP_RECOVER_MS;
           const boltCdMs = phase === 3 ? GIANT_BOLT_CD_PHASE3_MS : phase === 2 ? GIANT_BOLT_CD_PHASE2_MS : GIANT_BOLT_CD_PHASE1_MS;
+          // M65(社長指示): ステージ別の範囲/速度倍率。stage-1=1.00(実機合格済みの基準・不変)。
+          // stage-7/stage-ex1はstoryBossだけが到達するため、ステージIDだけで既にstoryBoss込みの値になる
+          // (giantScript.ts参照)。`?giantstage=0`でGIANT_STAGE_RANGE_ENABLED=falseになり常に1.00。
+          const stageMult = giantStageRangeMult(getSelectedStageId(), GIANT_STAGE_RANGE_ENABLED);
 
           // 技ごとの溜め開始パッチ(通常抽選/Phase2連携の両方から呼べる共通ヘルパ)。
           const beginGiantMove = (move: GiantMove): Partial<Enemy> => {
             switch (move) {
               case 'stomp':
+                // 実際に使う半径をステージ別倍率込みでここに確定して敵へ持たせる(M65)。判定
+                // (下のg-stomp-windup完了時)・描画(pixiScene.ts)・レベルアップ保留判定
+                // (isPlayerInAttackTelegraph)の3箇所が同じ値を読むので図形と判定がドリフトしない。
                 return {
                   aiPhase: 'g-stomp-windup', aiPhaseUntil: atkUntil(GIANT_STOMP_WINDUP_MS),
                   aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: ecx, aiTargetY: ecy, aiStartedAt: gameTime,
+                  gStompRadius: GIANT_STOMP_RADIUS * stageMult,
                 };
               case 'sweep': {
                 // 向きは溜め開始時にロック(掟W4=テルを出したら必ず撃つ。トール払いと同じ作法)。
@@ -7324,10 +7340,12 @@ export const useGameStore = create<GameState>((set, get) => ({
               }
               case 'jump':
                 // 狙い点は溜め開始時にロック(社長裁定6.26-9 #1)。着地アークは着地円と同じ左上座標系。
+                // 着地AoE半径もステージ別倍率込みでここに確定して敵へ持たせる(M65・stomp同様)。
                 return {
                   aiPhase: 'g-jump-windup', aiPhaseUntil: atkUntil(GIANT_JUMP_WINDUP_MS),
                   aiFromX: enemy.x, aiFromY: enemy.y,
                   aiTargetX: pcx - enemy.width / 2, aiTargetY: pcy - enemy.height / 2, aiStartedAt: gameTime,
+                  gJumpRadius: PUMPKIN_EXPLOSION_RADIUS * stageMult,
                 };
               case 'dash':
                 // 狙い点=プレイヤーを挟んだ反対側(距離×2)。現行不変(6.26-6)。
@@ -7348,7 +7366,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           switch (enemy.aiPhase) {
             case 'g-stomp-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                pumpkinBlasts.push({ x: ecx, y: ecy, radius: GIANT_STOMP_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                // 半径はwindup開始時にbeginGiantMove('stomp')が確定した値を読む(M65)。未設定
+                // (=旧セーブ/フォールバック経路)なら無倍率の生半径。描画側(pixiScene.ts)も同じ値を読む。
+                pumpkinBlasts.push({ x: ecx, y: ecy, radius: enemy.gStompRadius ?? GIANT_STOMP_RADIUS, damage: enemy.damage, enemyId: enemy.id });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-stomp-recover', aiPhaseUntil: atkUntil(stompRecoverMs) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
@@ -7402,7 +7422,9 @@ export const useGameStore = create<GameState>((set, get) => ({
               const cdl = Math.hypot(cdirx, cdiry) || 1;
               cdirx /= cdl; cdiry /= cdl;
               const dashBase = getEnemyBaseSpeed('werewolf'); // 現行不変(6.26-6): giantbatの突進速度は犬と同じ基準
-              const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT;
+              // M65: ステージ別倍率は速度にだけ掛ける(WEREWOLF_CHARGE_SPEED_MULT自体は書き換えない=
+              // werewolf/hunter/lab-zombie-2と共有している定数のため。狙い点・最大時間・CDは無改変)。
+              const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT * stageMult;
               const cvx = cdirx * cs, cvy = cdiry * cs;
               const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
               const cmoved = resolveMove(rawX, rawY);
@@ -7431,7 +7453,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               }
               if (jt >= 1) {
                 pumpkinLanded = true;
-                pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                // 半径はwindup開始時にbeginGiantMove('jump')が確定した値を読む(M65・stomp同様)。
+                pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: enemy.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage, enemyId: enemy.id });
                 return { ...enemy, ...phaseFields, x: jtx, y: jty, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiPhaseUntil: atkUntil(jumpRecoverMs) };
               }
               return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0 };
@@ -7477,6 +7500,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   ...enemy, ...phaseFields, ...readyPatch, vx: 0, vy: 0,
                   aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
                   aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
+                  gStompRadius: undefined, gJumpRadius: undefined, // M65: 溜め開始で毎回上書きされるが後片付けとして明示的にクリア
                 };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };

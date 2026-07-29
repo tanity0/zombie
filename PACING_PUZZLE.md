@@ -3445,6 +3445,50 @@ HP1000 / 接触19 / 弾ダメージ10 / 着地AoE半径54 / 巡航56px/s / 突�
    欠番のままでよいか、M50 へ詰めるか。
 </details>
 
+### 6.26-10.【M65実装済み】ステージ別の範囲/速度倍率(社長指示)
+
+社長指示:「ステージ2から、少しずつ城ボスのジャンプ、踏み潰し の範囲広げて難易度上げていって。今は避けやすい。
+ダッシュも鈍いので、ステージ毎に少しずつ難易度上げ。」
+
+**「ステージ2から」の解釈**: ステージ2(研究所)は潜入ステージで城ボス自体が出ない
+(`useGameLoop.ts` の `!labTheme` ゲートで城ボスのスポーンを止めている)。よって
+**「ステージ1を実機合格済みの基準として据え置き、城ボスが実際に出る次のステージ(3)から段階的に
+上げる」と解釈した**(=実際に最初に変わるのはステージ3)。
+
+**対象は3つだけ**(社長指示で明示。それ以外=リード・硬直・CD・ダメージ・HP・巡航速度・図形の意味は
+1つも変えない):
+1. 踏み鳴らし(stomp)のAoE半径 `GIANT_STOMP_RADIUS`(=92)
+2. 飛び掛かり(jump)の着地AoE半径 `PUMPKIN_EXPLOSION_RADIUS`(=54・ジャイアント専用の使用箇所にのみ倍率適用)
+3. 突進(dash)の速度(`dashBase × WEREWOLF_CHARGE_SPEED_MULT`)
+
+**倍率表**(`src/utils/giantScript.ts` の `giantStageRangeMult(stageId, enabled=true)`。純関数・
+`giantScript.test.ts` に回帰テストあり):
+| ステージ | 倍率 | stomp半径 | jump着地半径 | dash速度(倍率のみ) |
+|---|---|---|---|---|
+| stage-1 | **1.00**(実機合格済みの基準・不変) | 92 | 54 | ×3.00 |
+| stage-3 | 1.10 | 101.2 | 59.4 | ×3.30 |
+| stage-4 | 1.20 | 110.4 | 64.8 | ×3.60 |
+| stage-5 | 1.30 | 119.6 | 70.2 | ×3.90 |
+| stage-6 | 1.40 | 128.8 | 75.6 | ×4.20 |
+| stage-7 / stage-ex1(物語ボス) | 1.50 | 138.0 | 81.0 | ×4.50 |
+| 上記以外(未定義ステージ) | 1.00 | 92 | 54 | ×3.00 |
+
+- stage-7(グレン)は`useGameLoop.ts`側で当たり判定込み2倍化されている個体だが、それは
+  「本体の当たり判定/見た目のサイズ」の話で、stomp/jump のAoE半径(敵の**中心**からの絶対px)は
+  本体サイズと独立=**倍率は掛け算で重ならず、単純に1.50倍のみ**(実効値は上表のとおり)。
+- **図形と判定の一致**: `GIANT_STOMP_RADIUS`/`PUMPKIN_EXPLOSION_RADIUS` の定数そのものは書き換えず
+  (`pumpkin`/`werewolf`/`hunter`/`lab-zombie-2`/`lab-zombie-3`/`suriel`(§6.28-18のring-spinがGIANT_STOMP_RADIUSを流用)
+  と共有しているため)、**windup開始時にステージ別倍率込みの実際の半径を `Enemy.gStompRadius`/`gJumpRadius`
+  に確定して敵へ持たせ、シミュ側の命中判定(`pumpkinBlasts`)・描画側の赤円(`pixiScene.ts`)・
+  レベルアップ保留判定(`isPlayerInAttackTelegraph`)の3箇所が全て同じフィールドを読む**構成にした
+  (計算式が1つなのでドリフトしようがない)。
+- **フォールバック**: `?giantstage=0` で `GIANT_STAGE_RANGE_ENABLED=false` になり、全ステージ1.00
+  (=今日までの挙動)に戻る。
+- 実装: `src/utils/giantScript.ts`(`giantStageRangeMult`)+ `src/store/gameStore.ts`(ジャイアント
+  専用ブロック内で `stageMult` を計算し `beginGiantMove('stomp'|'jump')` で確定・`g-dash-charge` で速度に乗算)
+  + `src/types/game.ts`(`Enemy.gStompRadius`/`gJumpRadius`)+ `src/pixi/pixiScene.ts`(赤円の描画)
+  + `src/utils/levelUpGate.ts`(`TelegraphEnemy.gStompRadius`/`gJumpRadius` を優先して読む)。
+
 ## 6.27 バッチM50: ランク査定の作り直し=「捌けているか」一本化(社長設計v0.25.2360・Sonnet実装用)
 
 ### なぜ作り直すのか(実測の裏付き)

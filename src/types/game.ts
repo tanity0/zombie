@@ -364,6 +364,13 @@ export interface Enemy {
   // isStoryBoss===trueの時だけ意味を持つ: Phase3の連携確率だけがグレンとEXで異なる(60%/70%)ため、
   // どちらの個体かをここで区別する(社長裁定6.28-11「EXはクリア後コンテンツなので60%→70%」)。
   storyBossVariant?: 'stage-7' | 'stage-ex1';
+  // M65(社長指示): ジャイアント新スクリプトの踏み鳴らし/飛び掛かりの「実際に使うAoE半径」を、
+  // 各技の溜め開始(windup)時にステージ別倍率(giantStageRangeMult)込みで確定してここへ持たせる。
+  // シミュ側の命中判定(pumpkinBlasts)・描画側の赤円(pixiScene.ts)・レベルアップ保留判定
+  // (isPlayerInAttackTelegraph)の3箇所が全てこのフィールドを読むことで、計算式を1つに保ち
+  // 「赤い円より広い範囲で当たる」ドリフトを構造的に防ぐ(未設定時は無倍率の生半径にフォールバック)。
+  gStompRadius?: number;
+  gJumpRadius?: number;
   // ハンター変異体: 撤退中フラグ。true の間は updateEnemies の通常追跡から除外し、専用イベント
   // コントローラ(useGameLoop)がプレイヤーから離れる方向へ移動させ、画面外で消滅させる。
   hunterFleeing?: boolean;

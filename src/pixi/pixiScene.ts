@@ -8947,8 +8947,11 @@ export class PixiScene {
       }
       if (gph === 'g-stomp-windup') {
         // T2(赤円・自身の足元)。半径=GIANT_STOMP_RADIUS(社長裁定6.26-9 #3)。
-        o.ellipse(cx, cy, GIANT_STOMP_RADIUS, GIANT_STOMP_RADIUS).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * gPulse });
-        o.ellipse(cx, cy, GIANT_STOMP_RADIUS, GIANT_STOMP_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
+        // M65: windup開始時にgameStore.tsが確定させたe.gStompRadius(ステージ別倍率込み)を読む。
+        // 判定側(gameStore.tsのpumpkinBlasts)も同じフィールドを読むため、図形と判定は必ず一致する。
+        const gStompR = e.gStompRadius ?? GIANT_STOMP_RADIUS;
+        o.ellipse(cx, cy, gStompR, gStompR).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * gPulse });
+        o.ellipse(cx, cy, gStompR, gStompR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
       } else if (gph === 'g-sweep-windup' || gph === 'g-sweep-active') {
         // T3(赤い角ばった四角ゾーン)。トール払い/ミゲル払いと同じ意匠(poly fill+stroke)。
         const gfx = e.aiFromX ?? cx, gfy = e.aiFromY ?? cy;
@@ -8977,10 +8980,11 @@ export class PixiScene {
         o.moveTo(cx, cy).lineTo(gtx, gty).stroke({ width: 2, color: 0xff5a5a, alpha: ga, cap: 'round' });
         o.circle(gtx, gty, 9 + 3 * gPulse).stroke({ width: 2, color: 0xff5a5a, alpha: ga });
       } else if (gph === 'g-jump-windup' || gph === 'g-jump-air') {
-        // T2(赤円・着地点)。溜め開始からロック済みの着地点(社長裁定6.26-9 #1)。着地AoE半径は
-        // PUMPKIN_EXPLOSION_RADIUSをそのまま流用=変更しない(6.26-6「現行不変」)。
+        // T2(赤円・着地点)。溜め開始からロック済みの着地点(社長裁定6.26-9 #1)。着地AoE半径の生値は
+        // PUMPKIN_EXPLOSION_RADIUS(6.26-6「現行不変」=定数そのものは変えない)。M65: windup開始時に
+        // gameStore.tsが確定させたe.gJumpRadius(ステージ別倍率込み)を読む。判定側と同じフィールド。
         const gtx = (e.aiTargetX ?? e.x) + e.width / 2, gty = (e.aiTargetY ?? e.y) + e.height / 2;
-        const gR = PUMPKIN_EXPLOSION_RADIUS;
+        const gR = e.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS;
         o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * gPulse });
         o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
       }

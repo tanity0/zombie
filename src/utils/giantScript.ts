@@ -140,3 +140,36 @@ export const pickGiantStoryCombo = (
   const chance = isEx ? GIANT_STORY_COMBO_CHANCE_PHASE3_EX : GIANT_STORY_COMBO_CHANCE_PHASE3;
   return rand() < chance ? followup : null;
 };
+
+// ============================================================================================
+// M65(社長指示): ステージが進むほど城ボスの「範囲と速度」を少しずつ厳しくするステージ別倍率。
+// 対象は社長指示で明示された3つだけ(踏み鳴らしAoE半径/飛び掛かり着地AoE半径/突進速度)。
+// リード(windup/recover/CDの各ms)・ダメージ・HP・巡航速度・図形の意味は一切変えない。
+// 既存 src/utils/stageAggro.ts(PACING_REDESIGN.mdバッチ6)と同じ「明示表+未定義は安全側フォール
+// バック」の作法に揃えた。ステージIDの出どころは既存の getSelectedStageId()(src/data/progress)。
+//
+// 「ステージ2から」という社長指示だが、ステージ2(研究所)は潜入ステージで城ボス自体が出ない
+// (useGameLoop.ts の `!labTheme` ゲートで城ボスのスポーンを止めている)。よってこの表は
+// 「ステージ1を実機合格済みの基準として据え置き、城ボスが実際に出る次のステージ(3)から段階的に
+// 上げる」と解釈する(=実際に最初に変わるのはステージ3)。
+// ============================================================================================
+const GIANT_STAGE_RANGE_MULT: Record<string, number> = {
+  'stage-1': 1.00, // 社長が実機で「いい感じ」と合格させた基準。絶対に変えない(CLAUDE.md「仕様変更のルール」)
+  'stage-3': 1.10,
+  'stage-4': 1.20,
+  'stage-5': 1.30,
+  'stage-6': 1.40,
+  // グレン(storyBoss)は当たり判定込み2倍化(useGameLoop.ts)されている個体だが、それは本体サイズの
+  // 話でstomp/jumpのAoE半径は敵の中心からの絶対pxなので独立=単純にこの1.50倍だけが乗る(重複しない)。
+  'stage-7': 1.50,
+  'stage-ex1': 1.50, // 未確認変異体(storyBoss)。段10=最終
+};
+
+// storyBossはstage-7/stage-ex1でしか出現しない(useGameLoop.tsのstoryBossスポーン経路)ため、
+// 上の表がステージIDだけで既にstoryBoss判定を包含している=isStoryBossを別引数にする必要が無い。
+// enabled=false(`?giantstage=0`相当)で全ステージ1.00に固定=フォールバック。呼び出し側(gameStore.ts)が
+// URLパラメータを読んでここへ渡す(このファイル自体はwindow/URLを知らない=純粋性を保つ)。
+export const giantStageRangeMult = (stageId: string, enabled: boolean = true): number => {
+  if (!enabled) return 1;
+  return GIANT_STAGE_RANGE_MULT[stageId] ?? 1; // 未知/未定義のステージIDは安全側の1.00
+};
