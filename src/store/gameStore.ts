@@ -67,7 +67,6 @@ import {
   giantPhaseForHealthStory, pickGiantStoryCombo, type GiantPhase,
   giantStageRangeMult,
 } from '../utils/giantScript';
-import { CORRIDOR_LATERAL_CLAMP } from '../utils/corridorProjection';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
@@ -108,6 +107,13 @@ import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutra
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
+import {
+  clampRectToPlayableArea,
+  type PlayableAreaCtx,
+  TUTORIAL_MOVE_Y_LIMIT_PX as TUTORIAL_MOVE_Y_LIMIT_PX_FROM_WORLD,
+  TUTORIAL_MOVE_X_MIN_PX as TUTORIAL_MOVE_X_MIN_PX_FROM_WORLD,
+  CORRIDOR_BOTTOM_LIMIT as CORRIDOR_BOTTOM_LIMIT_FROM_WORLD,
+} from '../world/playableArea';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { labIdolSpotForDoc, type LabIdolSpot } from '../world/labIdolSpot';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
@@ -146,6 +152,10 @@ export const NAMED_ENEMY_ENABLED = typeof window === 'undefined' || new URLSearc
 // PACING_PUZZLE.md §5.17 M14(到達譜=二軸の壁・既定ON): ?walls=0で無効化(予告/儀式演出・
 // ステージ毎メタの読み書きとも停止。ゾーン侵入バナー等の既存演出=eventBannerText系は不変)。
 export const WALL_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('walls') !== '0';
+// 社長指示(v0.25.2391)「ステージ2に限らず、移動不可エリアにアイテムも敵も沸かないで」・既定ON。
+// `?spawnclamp=0`で従来の挙動(帯の外にも沸ける)へ戻せる。プレイヤー移動側のクランプ自体は対象外
+// (常に有効=変わらない)。addPickup(アイテム着地)と洋館通路(corridorMode)の通常敵湧きが読む。
+export const SPAWN_CLAMP_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('spawnclamp') !== '0';
 // PACING_PUZZLE.md §5.23 M22 Group A(A3・既定ON): 全キル(近接/銃/接触/爆発共通)の死亡ポップ
 // (小リング+方向性スプレー・spawnSpray流用)。`?deathpop=0`で無効化。近接(grantMeleeKillRewards)・
 // 銃/接触/爆発(damageEnemy)の両キル経路が同名パラメータを各自読む(既存ammosmart等と同じ流儀)。
@@ -316,7 +326,9 @@ export const TUTORIAL_MEDIC_INDEX = 100;
 export const TUTORIAL_SOLDIER_INDEX = 101;
 // チュートリアルの上下移動制限(プレイヤー中心yがスポーン(0)から±この値まで・透明な壁)。
 // 縦カメラ=プレイヤー1:1追従とセットで、被写界深度の構図を守る(社長指示v0.25.1826)。
-export const TUTORIAL_MOVE_Y_LIMIT_PX = 100; // v0.25.1828: 社長指示「100pxに増やします」で50→100
+// 実体は `src/world/playableArea.ts`(世界の形=「行ける場所」なので world 層が唯一の出どころ、
+// LAB_CORRIDOR_Y_LIMIT_PX と同じ作法・v0.25.2391)。ここは従来の import 元を壊さないための再輸出。
+export const TUTORIAL_MOVE_Y_LIMIT_PX = TUTORIAL_MOVE_Y_LIMIT_PX_FROM_WORLD; // v0.25.1828: 社長指示「100pxに増やします」で50→100
 // 訓練(M0)の近接教習: 何発目のヒットを強制クリティカルにするか(社長台本v0.25.2293「近接3発で強制クリティカル」)。
 export const M0_FORCED_CRIT_AT_HIT = 3;
 // 開幕の会話が流れ終わるまで、ここより先へは進めない(区域境界1500の手前)。
@@ -324,7 +336,8 @@ export const M0_CONVO_ADVANCE_LIMIT_X = 1350;
 // 訓練(M0)で敵が出ている間、随行NPCがプレイヤーより何px前へ出るか(社長指示v0.25.2294「2人が前に出て積極的に撃つ」)。
 const M0_ESCORT_ADVANCE_PX = 110;
 // チュートリアルの左端(プレイヤー中心xの下限=スタートから左100pxで透明な壁・社長指示v0.25.1829)。
-export const TUTORIAL_MOVE_X_MIN_PX = -100;
+// 実体は `src/world/playableArea.ts`(再輸出・v0.25.2391)。
+export const TUTORIAL_MOVE_X_MIN_PX = TUTORIAL_MOVE_X_MIN_PX_FROM_WORLD;
 // ステージ2(研究所・横長廊下)の上下固定(M0チュートリアルと同じクランプ方式・社長承認
 // M2_LAB_CORRIDOR_SPEC.md v0.25.2175)。プレイヤー中心yを±この値に数値クランプ。X方向は無制限。
 // 実体は `src/world/labWalls.ts`(世界の形なので world 層が唯一の出どころ)。ここは従来の import 元を
@@ -1547,8 +1560,10 @@ export const INVULN_MS = 700;
 // 自動で上へ走らせて入場する(v0.25.2110・ヘリ登場なし)。
 export const CORRIDOR_RUNIN_DIST = 380;
 // 洋館通路の下限(v0.25.2123・社長指示): スタート地点(y=0)からこの距離まで下がれる(それ以下へは行けない)。
-// 敵のスポーン/追跡は不変(下からも湧く)。
-export const CORRIDOR_BOTTOM_LIMIT = 50;
+// v0.25.2391: 「移動不可エリアにアイテムも敵も沸かないで」の社長指示により、通常湧きの敵にも
+// clampRectToPlayableArea 経由でこの下限を適用するようにした(下記参照。固定/イベント/裏ボス等は対象外)。
+// 実体は `src/world/playableArea.ts`(再輸出)。
+export const CORRIDOR_BOTTOM_LIMIT = CORRIDOR_BOTTOM_LIMIT_FROM_WORLD;
 export const PLAYER_INTRO_HELI_MS = 2600;    // フェーズA(ヘリ飛来→着陸)長(少しゆっくり目)
 // フェーズB(着陸→ホバー→離陸＋プレイヤー/NPCフェードイン)長。社長指示で飛び降り演出を廃止し、
 // 「ヘリが着陸→飛び立つタイミングで隊員がフェードイン」に変更したため、離陸とフェードを読ませる尺へ延長。
@@ -1755,6 +1770,9 @@ const treasureNameForVariant = (variant?: number): string => {
 const XP_ORB_COUNT_BY_COLOR_TIER: Record<EnemyColorTier, number> = { blue: 2, purple: 3, red: 4 };
 const xpOrbCountForEnemy = (enemy: Enemy): number =>
   enemy.colorTier ? XP_ORB_COUNT_BY_COLOR_TIER[enemy.colorTier] : 1;
+// Pickup には width/height が無い(点+当たり判定は描画側で決め打ち)。pixiScene.ts の
+// drawPickup が使う hitSize=16 と同じ既定値を採用する(=見た目の当たり判定と一致させる)。
+const PICKUP_HIT_SIZE = 16;
 const pickupWithDropScatter = (pickup: Pickup): Pickup => {
   if (
     pickup.worldDrop ||
@@ -3442,30 +3460,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         newX = wallResolved.x;
         newY = wallResolved.y;
-        // チュートリアル: 上下移動は中心(スポーンy=0)から±100pxまで=透明な壁(社長指示v0.25.1826/1828)。
-        // 左はスタートから−100pxまで(社長指示v0.25.1829)。右は自由(帰還サークルへ進む)。
-        if (get().farBackdrop === 'tutorial') {
-          const half = player.height / 2;
-          newY = Math.max(-TUTORIAL_MOVE_Y_LIMIT_PX - half, Math.min(TUTORIAL_MOVE_Y_LIMIT_PX - half, newY));
-          newX = Math.max(TUTORIAL_MOVE_X_MIN_PX - player.width / 2, newX);
-          // 台本の都合で「ここまで」を作る透明壁(会話中に区域境界へ着かせない等)。
-          const limitX = get().m0AdvanceLimitX;
-          if (limitX !== null) newX = Math.min(limitX - player.width / 2, newX);
-        }
-        // ステージ2(研究所・横長廊下): 上下固定(M0チュートリアルと同じクランプ方式)。プレイヤー中心yを
-        // ±LAB_CORRIDOR_Y_LIMIT_PX に数値クランプ(社長承認M2_LAB_CORRIDOR_SPEC.md)。敵は対象外。Xは無制限。
-        if (labTheme) {
-          const half = player.height / 2;
-          newY = Math.max(-LAB_CORRIDOR_Y_LIMIT_PX - half, Math.min(LAB_CORRIDOR_Y_LIMIT_PX - half, newY));
-        }
-        // 洋館通路(corridorMode): プレイヤー中心xを ±CORRIDOR_LATERAL_CLAMP(world px)に拘束する
-        // (柱ライン=移動境界。renderer側の横写像Kと同じ値を共有)。敵は拘束しない(とりあえず)。
-        // 横のみ・壁解決の後・囲いクランプの前(社長指示・とりあえず統合v0.25.2105)。
-        if (state.corridorMode) {
-          const halfW = player.width / 2;
-          newX = Math.max(-CORRIDOR_LATERAL_CLAMP - halfW, Math.min(CORRIDOR_LATERAL_CLAMP - halfW, newX));
-          // 下限(v0.25.2123): スタート地点から50px下まで(走り込み入場中=下から来る間は除外)。
-          if (!state.corridorRunInActive) newY = Math.min(newY, CORRIDOR_BOTTOM_LIMIT);
+        // 「プレイヤーが行ける帯」のクランプ(チュートリアル上下左右/ステージ2上下固定/洋館通路
+        // 左右+下限)は src/world/playableArea.ts の clampRectToPlayableArea に一本化してある
+        // (v0.25.2391・アイテム/敵の湧きクランプと同じ関数を見る=ズレ防止)。計算・適用順(tutorial→
+        // lab→corridor)は元のインライン実装から1px も変えずに移設した。詳細な意図コメントは同ファイル参照。
+        {
+          const playableCtx: PlayableAreaCtx = {
+            farBackdrop: get().farBackdrop,
+            labTheme,
+            corridorMode: state.corridorMode,
+            m0AdvanceLimitX: get().m0AdvanceLimitX,
+            corridorRunInActive: state.corridorRunInActive,
+          };
+          const clamped = clampRectToPlayableArea(newX, newY, player.width, player.height, playableCtx);
+          newX = clamped.x;
+          newY = clamped.y;
         }
       }
       // 囲い系イベント中はプレイヤーを円(囲い)の内側へ拘束(円コリジョン)。壁解決の後に最終クランプ。
@@ -8638,9 +8647,24 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   // Pickup actions
   addPickup: (pickup) => {
-    set(state => ({
-      pickups: [...state.pickups, pickupWithDropScatter(pickup)]
-    }));
+    set(state => {
+      const scattered = pickupWithDropScatter(pickup);
+      // 社長指示(v0.25.2391)「ステージ2に限らず、移動不可エリアにアイテムも敵も沸かないで」。
+      // ドロップ散らばり(pickupWithDropScatter)の**後**に着地点だけを帯の内側へ寄せる(順序が
+      // 逆だと意味が無い)。投擲アニメの始点(throwFromX/Y)は見た目の飛び元なので書き換えない。
+      // 当たり判定サイズは不明なため既定16×16(pixiScene.tsのdrawPickup hitSizeと同じ既定値)。
+      // `?spawnclamp=0`で従来の挙動(帯の外にも着地しうる)へ戻せる。
+      const placed = SPAWN_CLAMP_ENABLED
+        ? clampRectToPlayableArea(scattered.x, scattered.y, PICKUP_HIT_SIZE, PICKUP_HIT_SIZE, {
+            farBackdrop: state.farBackdrop,
+            labTheme: state.stageTheme === 'lab',
+            corridorMode: state.corridorMode,
+            m0AdvanceLimitX: state.m0AdvanceLimitX,
+            corridorRunInActive: state.corridorRunInActive,
+          })
+        : { x: scattered.x, y: scattered.y };
+      return { pickups: [...state.pickups, { ...scattered, x: placed.x, y: placed.y }] };
+    });
   },
   
   removePickup: (id) => {

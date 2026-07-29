@@ -9,10 +9,11 @@
 // レンダラーに依存しない(PixiJSをimportしない)。store(useGameStore)・audioManager(playSfx)への
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
-import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED } from '../store/gameStore';
+import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED } from '../store/gameStore';
 import { placeLabSpawn } from './labSpawn';
 import { OFFSCREEN_SPAWN_MARGIN } from './enemyUtils';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
+import { clampRectToPlayableArea } from '../world/playableArea';
 import {
   isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES, WALL_RANK_NAMES_EN,
 } from './wallProgress';
@@ -687,6 +688,20 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
       );
       // 通った道しか置き場が無い場合は再配置せず、その個体をそのまま消す(=画面外で静かに退場)。
       if (!placed) return null;
+      replacement.x = placed.x;
+      replacement.y = placed.y;
+    } else if (SPAWN_CLAMP_ENABLED && useGameStore.getState().corridorMode) {
+      // 洋館通路(corridorMode): リサイクル(再配置)も移動不可エリアへ出さない(社長指示v0.25.2391
+      // 「ステージ2に限らず」)。新規湧き(useGameLoop.ts側)と同じ clampRectToPlayableArea を使う。
+      // `?spawnclamp=0`で従来の挙動へ戻せる。
+      const cs = useGameStore.getState();
+      const placed = clampRectToPlayableArea(replacement.x, replacement.y, replacement.width, replacement.height, {
+        farBackdrop: cs.farBackdrop,
+        labTheme: false,
+        corridorMode: true,
+        m0AdvanceLimitX: null,
+        corridorRunInActive: cs.corridorRunInActive,
+      });
       replacement.x = placed.x;
       replacement.y = placed.y;
     }

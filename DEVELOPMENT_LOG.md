@@ -1,5 +1,71 @@
 # Development Log
 
+## v0.25.2391 — 移動不可エリアにアイテム/敵が沸かないように(ステージ2に限らず・社長指示)【2026-07-29 11:20 JST】
+- 社長指示: 「ステージ2に限らず、移動不可エリアにアイテムも敵も沸かないで」。実装担当サブエージェントとして着手。
+
+### 「行ける場所」を1つの純関数に切り出した(最重要)
+- 新規 `src/world/playableArea.ts`: `clampRectToPlayableArea(x,y,w,h,ctx)` / `isRectInPlayableArea(...)`。
+  `PlayableAreaCtx = { farBackdrop, labTheme, corridorMode, m0AdvanceLimitX, corridorRunInActive }`。
+  扱うのは3つの帯クランプ(M0/ステージ2/ステージ6)だけで、壁・木・建物の個別衝突は対象外(今回の範囲外)。
+- **プレイヤー移動のクランプ(`gameStore.ts`)をこの関数の呼び出しに置き換えた。** 計算式・適用順
+  (tutorial→lab→corridor)・境界の含み方は元のインライン実装から**1pxも変えていない**(コピペ移設)。
+  `TUTORIAL_MOVE_Y_LIMIT_PX` / `TUTORIAL_MOVE_X_MIN_PX` / `CORRIDOR_BOTTOM_LIMIT` の実体もここへ移動し、
+  `gameStore.ts`側は`LAB_CORRIDOR_Y_LIMIT_PX`と同じ作法で再輸出(既存のimport元を壊さない)。
+- 同コミットでユニットテスト: `src/world/playableArea.test.ts`(15件)。各ステージ種別で
+  「帯の外→内側へ寄る」「帯の中→そのまま」「制限の無いステージ→無変化」
+  「corridorRunInActive中はステージ6下限を適用しない」を固定。
+
+### アイテム: `addPickup`で必ず内側へ寄せる
+- `pickupWithDropScatter`で散らばらせた**後**の着地点だけを`clampRectToPlayableArea`へ通す
+  (投擲アニメの始点`throwFromX/Y`は書き換えない=見た目の飛び元は不変)。
+- 当たり判定サイズはPickup型に無いため既定16×16を採用(`pixiScene.ts`の`drawPickup`が使う
+  `hitSize=16`と同じ値=見た目の当たり判定と一致)。
+- テスト: `src/store/pickupPlayableArea.test.ts`(6件)。制限なしステージ/corridorMode(x/y)/M0/lab/
+  throwFromX,Y不変、を確認。
+
+### 敵: 洋館通路(corridorMode)の通常湧きに同じクランプを適用
+- **ステージ2は`placeLabSpawn`が既に担保済みなので触っていない。**
+- 洋館通路(corridorMode)は新規湧きと画面外リサイクルの**両方**に`generateEnemy`直後で挿入:
+  - `src/hooks/useGameLoop.ts`の通常スポナー(`generateEnemy`呼び出し・overCap再抽選の後)。
+  - `src/utils/directorTick.ts`の`runOffscreenRecycleAndCull`(画面外個体の再配置。lab分岐と
+    並びの`else if`)。
+  - テスト: `src/utils/directorTickCorridorClamp.test.ts`(2件)。リサイクル経路がcorridorMode時に
+    xを±CORRIDOR_LATERAL_CLAMPへ寄せることを確認(通常ステージでは寄せないことも回帰確認)。
+- **M0(訓練)は調査の結果、変更不要と判断した**: `!tutorialStage`ガードにより通常スポナー
+  (`generateEnemy`系)自体がM0では一切動かない(コード上の既存コメント「チュートリアルは自動湧きなし」)。
+  M0の敵は全てM0_BEATS(台本)経由で、`dy=0`(プレイヤーと同yなので自動的に帯の中)か、明示的に
+  `fixed=true`のスクリプト配置(ハンター=「通行できる最上」を意図的に狙う演出)のいずれか。後者は
+  タスクの除外対象(固定/スクリプト敵)そのものなので、触ると演出を壊す。
+- フォールバック: `?spawnclamp=0`(`gameStore.ts`の`SPAWN_CLAMP_ENABLED`)でアイテム/敵側の
+  クランプだけ無効化できる。プレイヤー移動側は対象外(常に有効・トグルなし)。
+- 対象外(今回やっていない): ボス/イベント敵/固定敵(研究所ガード/idol等)は対象のまま
+  `spawnEnemyAt`直呼び=別経路なので影響なし。壁/木/建物の"中"への湧きは範囲外(社長へ別途確認予定)。
+
+### 負荷スコア: 1/10
+- 追加コストは「配列走査(数十件規模)の後に呼ばれる、四則演算数回のクランプ関数」1回のみ。
+  ループ・per-pixel・新規重量依存は無し。敵側は新規湧き/リサイクル時(数秒に1回程度)だけ、
+  アイテム側はpickup生成時(キル時)だけに発火するイベント駆動で、常時(毎フレーム)コストではない。
+  安全弁: `?spawnclamp=0`で即座に旧経路へ戻せる。
+
+### 検証
+- `npm run typecheck` / `npm run lint` ともにエラー0(lint warningは既存7件のみ・今回の変更起因なし)。
+- `npx vitest related`(変更ファイル+新規テスト) 254 passed / 4 skipped。**`playtest.test.ts`
+  (ボットスモーク)含めて実行**——プレイヤー移動クランプのリファクタが挙動を変えていないことの
+  実測担保(全シナリオgreen。M26-S2のゲート1閉じ込め`maxExcess=0.0px`など既存の期待値も不変)。
+- `src/utils/constitution.test.ts` 13 passed。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)への抵触なし
+  (湧きの量・種類・タイミング・難易度は一切変更していない。変えたのは既に湧くと決まった後の
+  「座標を帯の内側へ寄せるか」だけ)。
+
+### プレイヤー移動が変わっていない根拠
+- クランプの計算式・適用順・境界の扱いをコピペ移設(新規ロジックを書いていない)。
+- `playableArea.test.ts`が新しい共有関数の入出力を固定。
+- `playtest.test.ts`のボットスモーク/M16/M17/M19/M26-S2が全green(移動絡みの既存アサーション
+  ―ゲート1閉じ込め誤差0.0px等―が変化なし)。
+
+**次の担当への申し送り**: 壁/木/建物オブジェクトの"中"に湧く問題(今回の対象外)は別途、設計チャットが
+社長へ確認予定。実装は不要(指示があるまで着手しない)。
+
 ## v0.25.2390 — ステージ2: 資料と逆方向(idol方向)へ進むとBGMを廊下BGMへクロスフェード(社長指示)【2026-07-29 10:57 JST】
 - 社長指示: 「オープニングのBGM、m2の反対方面に向かってる途中、中盤くらいに差し掛かったらBGMをこれに
   変更。可能なら通常BGMとクロスフェードで距離に比例して切り替えたい(奥に行くほど切り替わる)」。

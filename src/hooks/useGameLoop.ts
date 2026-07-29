@@ -49,8 +49,10 @@ import {
   TUTORIAL_MOVE_Y_LIMIT_PX,
   M0_FORCED_CRIT_AT_HIT,
   M0_CONVO_ADVANCE_LIMIT_X,
-  GIANT_SCRIPT_ENABLED
+  GIANT_SCRIPT_ENABLED,
+  SPAWN_CLAMP_ENABLED
 } from '../store/gameStore';
+import { clampRectToPlayableArea } from '../world/playableArea';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
   detectWallBreach, isFirstWallBreach, isApproachingWall, markWallBreached, markSelfDeepest,
@@ -9327,6 +9329,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 再抽選し切れなかった → skeletonへ強制(全キャップを素通りさせない安全網)。
                 enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, [], [], sceneRareMult);
               }
+            }
+            // 洋館通路(corridorMode): 移動不可エリアに敵を沸かせない(社長指示v0.25.2391「ステージ2に
+            // 限らず」)。プレイヤー移動と同じ帯定義(clampRectToPlayableArea)へ寄せる。ここは通常湧き
+            // だけが通る経路(ボス/固定/イベント敵はspawnEnemyAt直呼びで別経路=対象外)。
+            // `?spawnclamp=0`で従来の挙動(帯の外にも湧きうる)へ戻せる。
+            if (SPAWN_CLAMP_ENABLED && useGameStore.getState().corridorMode) {
+              const placed = clampRectToPlayableArea(enemy.x, enemy.y, enemy.width, enemy.height, {
+                farBackdrop: loopState.farBackdrop,
+                labTheme,
+                corridorMode: true,
+                m0AdvanceLimitX: null,
+                corridorRunInActive: useGameStore.getState().corridorRunInActive,
+              });
+              enemy.x = placed.x;
+              enemy.y = placed.y;
             }
             if (enemy.type === 'plant') plantCount += 1;
             if (enemy.type === 'werewolf') wolfCount += 1;
