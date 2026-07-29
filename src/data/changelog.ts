@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2428',
+    items: [
+      '訓練(チュートリアル)ではトレジャーが落ちなくなりました。',
+    ],
+  },
+  {
     version: '0.25.2427',
     items: [
       '銃の発射エフェクトが見えなかったのを修正しました(自分の背後に描かれていました)。大きく・長くもしています。',

@@ -9733,7 +9733,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   dropEnemyCurrency: (enemy, x, y) => {
     const treasureChance = treasureDropChance(enemy.difficultyRank);
-    if (treasureChance > 0 && Math.random() < treasureChance) {
+    // チュートリアル(M0訓練)ではトレジャーを落とさない(社長指示v0.25.2428)。
+    // 訓練は「操作を覚える場」で、持ち帰りの報酬を配る場ではない(スコア/ゴールドの導線が別物になる)。
+    // 判定は既存の `farBackdrop === 'tutorial'`(城の当たり判定スキップ等と同じ signal)を流用する。
+    const tutorialRun = get().farBackdrop === 'tutorial';
+    if (!tutorialRun && treasureChance > 0 && Math.random() < treasureChance) {
       const value = treasureValueForRank(enemy.difficultyRank);
       get().addPickup({
         id: `pickup-treasure-${enemy.id}`,
