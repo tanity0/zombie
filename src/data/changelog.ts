@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2445',
+    items: [
+      'ゲーム内容の変更はありません(クールダウン再設計の決定記録を追加)。',
+    ],
+  },
+  {
     version: '0.25.2444',
     items: [
       'ゲーム内容の変更はありません(ゴースト強化第2弾の仕様を確定)。',
