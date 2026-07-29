@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2432',
+    items: [
+      'ゲーム内容の変更はありません(テスト用AIがボスの赤い予告を避けられるようになりました)。',
+    ],
+  },
+  {
     version: '0.25.2431',
     items: [
       'ゲーム内容の変更はありません(テスト用AIとゴースト助っ人の設計メモを追加)。',

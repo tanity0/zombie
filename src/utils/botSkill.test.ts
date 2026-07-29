@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import {
   BOT_SKILLS, DEFAULT_BOT_SKILL, BOT_SKILL_PROFILES, botSkillProfile, parseBotSkill,
   projectileDodge, jumpDodge, chargeDodge, contactDodge, isContactDangerous, dodgeVector, dodgeToInput, dodgeHandles,
+  telegraphDodge,
   pickTarget, targetScore, shouldRetreatForHp,
   DODGE_PROJECTILE_DIST, DODGE_AOE_DIST, DODGE_CONTACT_DIST, CONTACT_DANGER_HP_FRAC,
   WARP_DETECT_PX, createWarpTrackState, warpDodge, dodgeOverridesAttack,
@@ -402,5 +403,63 @@ describe('攻撃側ダイヤルの単調性(engageDist/dodgeVsAttack・不変条
     for (let i = 1; i < order.length; i++) {
       expect(BOT_SKILL_PROFILES[order[i]].dodgeVsAttack).toBeLessThanOrEqual(BOT_SKILL_PROFILES[order[i - 1]].dodgeVsAttack);
     }
+  });
+});
+
+// ★v0.25.2432: ボットがボスの技を1つも避けなかった穴の回帰テスト。
+// ここが死ぬと「ボス戦のテスト結果=赤を一切避けない人の数字」に逆戻りし、
+// ボス関連のバランス判断の土台が無くなる。
+describe('telegraphDodge — ボスの予告(赤い円/帯)を避ける', () => {
+  const boss = (over: Partial<Enemy> = {}): Enemy => ({
+    id: 'b1', type: 'giantbat', x: 0, y: 0, width: 60, height: 60,
+    health: 500, maxHealth: 500, speed: 70, damage: 19, lastShot: 0, lastHit: 0,
+    ...over,
+  } as Enemy);
+
+  it('踏み鳴らしの円の中に居たら、外へ向かう向きが出る', () => {
+    // ボス中心(30,30)・半径120。プレイヤーは中心のすぐ右=右へ逃げるのが正解。
+    const t = telegraphDodge(40, 30, boss({ aiPhase: 'g-stomp-windup', gStompRadius: 120 }));
+    expect(t).toHaveLength(1);
+    expect(t[0].kind).toBe('aoe');
+    expect(t[0].ux).toBeGreaterThan(0.9); // +x方向へ退く
+  });
+
+  it('円の外に居るなら何も出ない(常に逃げ続けない)', () => {
+    expect(telegraphDodge(2000, 2000, boss({ aiPhase: 'g-stomp-windup', gStompRadius: 120 }))).toHaveLength(0);
+  });
+
+  it('連続ジャンプは「残りの着地点」だけが危険(着地済みは避けない)', () => {
+    const pts = [0, 0, 500, 0, 1000, 0];
+    // 1発目が済んでいる(idx=1)なら、原点の円はもう危険ではない。
+    const done = telegraphDodge(0, 0, boss({ aiPhase: 'g-trijump-air', gTriJumpPts: pts, gTriJumpIdx: 1 }));
+    expect(done).toHaveLength(0);
+    // まだ溜め中(全部残っている)なら原点は危険。
+    const pending = telegraphDodge(0, 0, boss({ aiPhase: 'g-trijump-windup', gTriJumpPts: pts, gTriJumpIdx: 0 }));
+    expect(pending.length).toBeGreaterThan(0);
+  });
+
+  it('帯技(薙ぎ払い等)は線の上から直交方向へ逃げる', () => {
+    const t = telegraphDodge(300, 10, boss({
+      aiPhase: 'g-sweep-windup', aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0,
+    }));
+    expect(t).toHaveLength(1);
+    expect(Math.abs(t[0].uy)).toBeGreaterThan(0.9); // 線(x軸)に直交=±y へ退く
+  });
+
+  it('グレンの遅延ダメージ(円/カプセル)も危険として見える', () => {
+    const circle = telegraphDodge(10, 10, boss({
+      giantDelayedHits: [{ x: 0, y: 0, radius: 200, bornAt: 0, fireAt: 1000 }],
+    } as Partial<Enemy>));
+    expect(circle.length).toBeGreaterThan(0);
+  });
+
+  it('何も出していないボスからは何も出ない', () => {
+    expect(telegraphDodge(10, 10, boss())).toHaveLength(0);
+  });
+
+  // ★段階の扱い: 'aoe' は「何かしら避ける段階なら全部が対象」。既定(casual='none')は不変。
+  it("赤い予告は 'none' 以外の全段階が扱う(既定 casual は避けないまま=既存ランを動かさない)", () => {
+    expect(dodgeHandles('none', 'aoe')).toBe(false);
+    for (const lv of ['projectile', 'aoe', 'all'] as const) expect(dodgeHandles(lv, 'aoe')).toBe(true);
   });
 });

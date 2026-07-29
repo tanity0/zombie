@@ -95,7 +95,10 @@ export const parseBotSkill = (v: string | null | undefined): BotSkill =>
 
 /** 回避の対象になる脅威と、そこから逃げる向き。 */
 export interface DodgeThreat {
-  kind: 'projectile' | 'jump' | 'charge' | 'contact';
+  // 'aoe' = **ボスの予告(赤い円/帯)**(v0.25.2432)。既存の 'jump'(汎用ジャンプ着地)/'charge'(汎用突進)は
+  // `aiPhase==='jump'|'charge'` しか見ておらず、城ボスの `g-*` 系・連続ジャンプ・グレンの遅延ダメージ・
+  // トール/天使の `bossState` 系を**1つも見ていなかった**(=ボットは赤を一切避けない人だった)。
+  kind: 'projectile' | 'jump' | 'charge' | 'contact' | 'aoe';
   /** 逃げるべき単位ベクトル。 */
   ux: number;
   uy: number;
@@ -174,6 +177,10 @@ export const chargeDodge = (pcx: number, pcy: number, e: Enemy): DodgeThreat | n
  */
 export const dodgeHandles = (level: DodgeLevel, kind: DodgeThreat['kind']): boolean => {
   if (level === 'none') return false;
+  // 'aoe'(ボスの赤い予告)は**何かしら避ける段階なら全部が対象**(v0.25.2432)。
+  // 「赤い円の外へ出る」は回避の中で最も基本的な行為で、段階で刻む意味が薄いため
+  // (既存の 'projectile'/'aoe' の切り分けはそのまま=既存段階の挙動は1つも変えていない)。
+  if (kind === 'aoe') return true;
   if (kind === 'contact') return level === 'all';
   if (level === 'all') return true;
   if (level === 'projectile') return kind === 'projectile';
@@ -204,6 +211,92 @@ export const contactDodge = (pcx: number, pcy: number, e: Enemy, maxHealth: numb
   return { kind: 'contact', ux, uy, weight: Math.max(0, 1 - d / DODGE_CONTACT_DIST) };
 };
 
+// --- ボスの予告(赤い円/帯)からの回避(v0.25.2432) -------------------------------------------
+// 掟: **新しい判定を発明しない。** 描画(pixiScene)と当たり判定(gameStore)が読んでいるのと
+// **同じ Enemy のフィールド**だけを見る(`gStompRadius`/`gJumpRadius`/`gTriJumpPts`/
+// `giantDelayedHits`/`aiFromX,aiTargetX`)。ここで独自に半径や角度を計算し直すと、
+// 「ボットだけが違う場所を危険だと思っている」という第3の真実が生まれる。
+//
+// 半幅だけは例外で、技ごとの正確な値(GIANT_SWEEP_HALF_WIDTH 等)は gameStore にあり、
+// この純関数層から参照すると依存が重くなる。**回避は安全側に広めで構わない**(判定と厳密に
+// 一致する必要があるのは「赤い絵」の方であって、避ける側は余裕を持って外へ出ればよい)ので、
+// 代表値を1つ置く。
+export const DODGE_BAND_HALF_WIDTH = 64;   // 帯技の危険幅(安全側の代表値)
+export const DODGE_CIRCLE_DEFAULT_R = 100; // 半径がEnemyに載っていない円技の代表値
+export const DODGE_AOE_MARGIN = 40;        // 円/帯の縁からこれだけ余分に外へ出たい
+
+/** 円の危険域から放射状に逃げる。中に居る/縁に近いほど weight が大きい。 */
+const circleThreat = (pcx: number, pcy: number, cx: number, cy: number, r: number): DodgeThreat | null => {
+  const dx = pcx - cx, dy = pcy - cy;
+  const d = Math.hypot(dx, dy);
+  const danger = r + DODGE_AOE_MARGIN;
+  if (d >= danger) return null;
+  const [ux, uy] = d < 0.0001 ? [1, 0] : norm(dx, dy);
+  return { kind: 'aoe', ux, uy, weight: Math.max(0, 1 - d / Math.max(1, danger)) };
+};
+
+/** 帯(線分)の危険域から直交方向へ逃げる。 */
+const bandThreat = (
+  pcx: number, pcy: number, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
+): DodgeThreat | null => {
+  const vx = tx - fx, vy = ty - fy;
+  const len2 = vx * vx + vy * vy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((pcx - fx) * vx + (pcy - fy) * vy) / len2)) : 0;
+  const nx = fx + vx * t, ny = fy + vy * t;   // 線分上の最近点
+  const dx = pcx - nx, dy = pcy - ny;
+  const d = Math.hypot(dx, dy);
+  const danger = halfWidth + DODGE_AOE_MARGIN;
+  if (d >= danger) return null;
+  // 帯の外へは**直交方向**が最短。線の上に乗っている時は進行方向の直交へ適当に退く。
+  const [ux, uy] = d < 0.0001
+    ? (len2 > 0 ? norm(-vy, vx) : [1, 0] as [number, number])
+    : norm(dx, dy);
+  return { kind: 'aoe', ux, uy, weight: Math.max(0, 1 - d / Math.max(1, danger)) };
+};
+
+/**
+ * その敵が今出している**全ての予告**から逃げる向きを集める(0個〜複数個)。
+ * 円: 踏み鳴らし / 飛び掛かりの着地 / 連続ジャンプの残り着地点 / 遅延ダメージの円 /
+ *     裏ボス・天使の飛び掛かり着地。
+ * 帯: 溜め中/実行中に `aiFrom→aiTarget` を持つ技すべて(薙ぎ払い/突進/噛みつき/のしかかり/
+ *     滑空/翼撃/掃射ビーム/届く手…) と 遅延ダメージのカプセル。
+ */
+export const telegraphDodge = (pcx: number, pcy: number, e: Enemy): DodgeThreat[] => {
+  const out: DodgeThreat[] = [];
+  const push = (t: DodgeThreat | null) => { if (t) out.push(t); };
+  const ph = e.aiPhase ?? '';
+  const bs = e.bossState ?? '';
+  const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+
+  // --- 円 ---
+  if (ph === 'g-stomp-windup') push(circleThreat(pcx, pcy, ecx, ecy, e.gStompRadius ?? DODGE_CIRCLE_DEFAULT_R));
+  if (ph === 'g-jump-windup' || ph === 'g-jump-air') {
+    push(circleThreat(pcx, pcy, (e.aiTargetX ?? e.x) + e.width / 2, (e.aiTargetY ?? e.y) + e.height / 2,
+      e.gJumpRadius ?? DODGE_CIRCLE_DEFAULT_R));
+  }
+  if (ph === 'g-trijump-windup' || ph === 'g-trijump-air') {
+    // 着地済みの点は危険ではない(描画と同じ「残りだけ」の考え方)。
+    const pts = e.gTriJumpPts ?? [];
+    const from = ph === 'g-trijump-air' ? (e.gTriJumpIdx ?? 0) : 0;
+    for (let i = from; i * 2 + 1 < pts.length; i++) push(circleThreat(pcx, pcy, pts[i * 2], pts[i * 2 + 1], DODGE_CIRCLE_DEFAULT_R));
+  }
+  if (bs === 'jump-windup' || bs === 'jump-attack') {
+    push(circleThreat(pcx, pcy, (e.aiTargetX ?? e.x) + e.width / 2, (e.aiTargetY ?? e.y) + e.height / 2, DODGE_CIRCLE_DEFAULT_R));
+  }
+  for (const h of e.giantDelayedHits ?? []) {
+    if (h.capsule) push(bandThreat(pcx, pcy, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, h.capsule.halfWidth));
+    else push(circleThreat(pcx, pcy, h.x, h.y, h.radius));
+  }
+
+  // --- 帯(溜め中/実行中で始点・終点を持つ技すべて) ---
+  const banded = (ph.startsWith('g-') && (ph.endsWith('-windup') || ph.endsWith('-active') || ph.endsWith('-charge')))
+    || bs.endsWith('-windup') || bs === 'harai' || bs === 'issen-dash' || bs === 'tsuki';
+  if (banded && e.aiFromX !== undefined && e.aiTargetX !== undefined) {
+    push(bandThreat(pcx, pcy, e.aiFromX, e.aiFromY ?? e.y, e.aiTargetX, e.aiTargetY ?? e.y, DODGE_BAND_HALF_WIDTH));
+  }
+  return out;
+};
+
 /**
  * すべての脅威を集めて1本の回避ベクトルへ合成する。
  * 戻り値 null = 避けるものが無い(呼び出し側は通常の行動へ進む)。
@@ -227,6 +320,10 @@ export const dodgeVector = (
   for (const e of enemies) {
     for (const t of [jumpDodge(pcx, pcy, e), chargeDodge(pcx, pcy, e), contactDodge(pcx, pcy, e, maxHealth)]) {
       if (t && dodgeHandles(profile.dodge, t.kind)) { sx += t.ux * t.weight; sy += t.uy * t.weight; total += t.weight; }
+    }
+    // ボスの予告(赤い円/帯)。1体が同時に複数の危険域を出しうる(連続ジャンプの3円/遅延ダメージ)。
+    for (const t of telegraphDodge(pcx, pcy, e)) {
+      if (dodgeHandles(profile.dodge, t.kind)) { sx += t.ux * t.weight; sy += t.uy * t.weight; total += t.weight; }
     }
   }
   if (total <= 0) return null;
