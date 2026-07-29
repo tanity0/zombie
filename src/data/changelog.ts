@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2434',
+    items: [
+      'ゲーム内容の変更はありません(ゴースト助っ人の抽出設計を確定)。',
+    ],
+  },
+  {
     version: '0.25.2433',
     items: [
       'ゲーム内容の変更はありません(ゴースト助っ人の設計を確定)。',
