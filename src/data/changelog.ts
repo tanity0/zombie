@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2387',
+    items: [
+      '年表の城ボス討伐の行が、どのステージでも同じ絵になっていたのを直しました。倒したステージの見た目（廃都／雪原／城塞／グレン）で表示されます。',
+    ],
+  },
+  {
     version: '0.25.2386',
     items: [
       'オープニングの廊下にBGMを追加しました（壁越しに漏れてくる遠いラジオの音）。アリーナへ切り替わる時に静かに消えます。',

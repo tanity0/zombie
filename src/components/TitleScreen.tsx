@@ -6,6 +6,7 @@ import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { CHANGELOG } from '../data/changelog';
 import { getSelectedStageId, getWallMeta, loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data/progress';
 import { spritePath } from '../utils/spriteLoader';
+import { getStage } from '../data/campaign';
 import { getLoadProgress, subscribeLoadProgress } from '../utils/loadProgress';
 import { deepestReachedBadge } from '../utils/wallProgress';
 import { clampRank } from '../utils/rankAssessor';
@@ -73,9 +74,25 @@ const CHRONICLE_BOSS_ICON: Record<string, string> = {
   giantbat: 'atlas-px2/giantbat',
   mimir: 'mimir', jormungand: 'jormungand', skadi: 'skadi', thor: 'thor',
 };
+// 城ボス(giantbat)だけは**全ステージに出る同じ敵**で、絵はステージごとに差し替わる
+// (pixiScene.ts の敵テクスチャ解決チェーン: 廃都/雪原/戦場のセット+stage-7のグレン)。
+// 上の表は型名1つ=1枚なので、年表では**どのステージで倒しても同じ絵**になっていた(社長報告v0.25.2387)。
+// ステージ→遠景(farBackdrop)は campaign.ts が唯一の出どころなので getStage() から引き、
+// 遠景→絵の対応だけをここに持つ(pixiScene の chain と同じ内容)。定義の無いステージ(1/6/ex1)は素の絵。
+const GIANTBAT_ICON_BY_BACKDROP: Record<string, string> = {
+  city: 'stage3-enemies/giantbat',   // stage-3(廃都)
+  snow: 'stage4-enemies/giantbat',   // stage-4(雪原)
+  stage5: 'stage5-enemies/giantbat', // stage-5(紅き月の城塞)
+  stage7: 'glen-boss',               // stage-7(グレン=物語ボスの専用アート)
+};
 const chronicleIconSrc = (e: ChronicleEntry): string | null => {
   if (e.kind !== 'boss') return null;
-  const base = CHRONICLE_BOSS_ICON[e.key.split('::')[2] ?? ''];
+  const [stageId, , detail] = e.key.split('::');
+  if (detail === 'giantbat') {
+    const backdrop = getStage(stageId ?? '')?.farBackdrop ?? '';
+    return spritePath(GIANTBAT_ICON_BY_BACKDROP[backdrop] ?? CHRONICLE_BOSS_ICON.giantbat);
+  }
+  const base = CHRONICLE_BOSS_ICON[detail ?? ''];
   return base ? spritePath(base) : null;
 };
 
