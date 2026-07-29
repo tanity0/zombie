@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2386',
+    items: [
+      'オープニングの廊下にBGMを追加しました（壁越しに漏れてくる遠いラジオの音）。アリーナへ切り替わる時に静かに消えます。',
+    ],
+  },
+  {
     version: '0.25.2385',
     items: [
       'ステージ7のリザルトから「到達譜（深さ）」と「七つの大罪」の表示を外しました。最終決戦は深さも罪も動かない回なので、成績表に出さないようにしています。',

@@ -170,6 +170,11 @@ const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3
 // ARENA_AUDIOは従来 new Audio() のデフォルト音量(1)のまま明示指定していなかった。iOS保険の
 // unlockAndPlay(下記)で本再生時に明示restoreするための名前付き定数として1を明文化(挙動は不変)。
 const ARENA_AUDIO_VOLUME = 1;
+// 廊下(歩きシーン)のBGM(社長支給v0.25.2386「オープニングの廊下で流して」)。遠くのラジオが
+// 壁越しに漏れてくる音。歩きシーンはプレイヤー操作で長さが不定なのでループにし、廊下→アリーナの
+// 切替でアリーナ2音源へ譲る(重ならないよう、切替時にこちらを止める)。
+const WALK_AUDIO = `${BASE}audio/op-corridor.mp3`;
+const WALK_AUDIO_VOLUME = 1;
 const PAN_SE_SRC = `${BASE}audio/sfx/handgun-fire.wav`; // パン!(紙吹雪と発砲で同音・社長指示)
 const PAN_SE_VOLUME = 0.64; // ゲーム内SE設定(audioManagerのhandgun-fire volume)に合わせる
 // 蘇生パートの心拍(処置機器音の素材は無いので心拍のみ・spec)。会話中はループ・最終行後に一発だけ。
@@ -389,6 +394,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const walkNpcLightRef = useRef<HTMLDivElement | null>(null);  // 前面ライトの光だまり(NPC・v0.25.2163)
   const doneRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
+  const walkAudioRef = useRef<HTMLAudioElement | null>(null); // 廊下BGM(遠くのラジオ・歩き中だけループ)
   const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
   const heartRef = useRef<HTMLAudioElement[]>([]);   // 蘇生パート: [0]=会話中の心拍ループ / [1]=最終行後の一発(ループとは別要素)
   // 廊下→アリーナの瞬間切替の直後だけ、全画面onClick={finish}(OPスキップ)を無視する猶予(社長指示
@@ -397,8 +403,26 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   // 0=ガード無効(?opening=2/3直行や通常のスキップ操作はここに触れないため即座にスキップできる)。
   const skipGuardUntilRef = useRef(0);
   const stopArena = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; }); audioRef.current = []; };
+  // 廊下BGMを止める(OPスキップ / アンマウント)。アリーナ2音源と重ねない。
+  const stopWalkBgm = () => { const a = walkAudioRef.current; if (a) { a.pause(); a.src = ''; } walkAudioRef.current = null; };
+  // 廊下→アリーナの切替はハードカット(社長指示v0.25.2072)だが、音まで即切るとブツ切りのポップが出る
+  // (アリーナ2音源が場面転換前に volume を段階的に落としているのと同じ理由)。ごく短いフェードで消す。
+  const walkFadingRef = useRef(false);
+  const fadeOutWalkBgm = (ms = 320) => {
+    const a = walkAudioRef.current;
+    if (!a || walkFadingRef.current) return;
+    walkFadingRef.current = true;
+    const v0 = a.volume, t0 = performance.now();
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      try { a.volume = Math.max(0, v0 * (1 - k)); } catch { /* ignore */ }
+      if (k < 1) window.setTimeout(step, 40);
+      else stopWalkBgm();
+    };
+    step();
+  };
   const stopHearts = () => { heartRef.current.forEach(a => { if (a) { a.pause(); a.src = ''; } }); heartRef.current = []; };
-  const stopAudio = () => { stopArena(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; stopHearts(); };
+  const stopAudio = () => { stopArena(); stopWalkBgm(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; stopHearts(); };
   // rewindBgm: OP明けのタイトルBGMは必ず曲頭から(v0.25.2104)。過去にタイトル曲を再生済みだと
   // onDone側のsetBgmScene('menu')が同srcのため停止位置から途中再開してしまうのを防ぐ。
   const finish = () => { if (!doneRef.current) { doneRef.current = true; stopAudio(); rewindBgm(); onDone(); } };
@@ -498,6 +522,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // アリーナ2音源もここ(タップ直後)で生成+プライミング(v0.25.2114): 歩きシーンがプレイヤー操作で
     // 長さ不定のため、アリーナ開始はジェスチャ有効期限切れ後になる。要素を今作って解錠しておく。
     if (!startAtShoot) audioRef.current = ARENA_AUDIO.map(src => { const a = new Audio(src); a.loop = true; a.preload = 'auto'; return a; });
+    // 廊下BGMも同じ場所で生成する(v0.25.2386)。歩きシーンの開始はフェードイン後=タップから少し間が
+    // 空くので、アリーナ2音源と同様に「今作って下のプライミングで解錠しておく」必要がある。
+    // ?opening=2/3(アリーナ/射撃から直行)では廊下を通らないので作らない。
+    if (!startAtShoot && !startAtRevival) {
+      const wa = new Audio(WALK_AUDIO); wa.loop = true; wa.preload = 'auto'; walkAudioRef.current = wa;
+    }
     // 【プライミング】タップ(更新情報OK)直後のマウント時に、後から鳴らす要素をミュートで一瞬再生→停止して
     // 「ユーザー操作済み」扱いにしておく(v0.25.2054)。発砲パン・心拍・アリーナ音源は操作の有効期限
     // 切れ後の再生になるため、これが無いとモバイルでブロックされ無音になる。未解禁プレビューではcatchで無視。
@@ -506,7 +536,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // 断定。muted単独ではなく【muted+volume=0の二重ガード】にし、解錠後もunmuteせずその無音状態のまま
     // 即pause+巻き戻しで止め置く(対象は上のpanRef/heartRef/audioRef=OPが事前解錠する音源全て)。
     // 実際に聞かせる本再生は必ず unlockAndPlay を通し、muted解除+volume復元の両方をそこで行う。
-    [...panRef.current, ...heartRef.current, ...audioRef.current].forEach(a => {
+    [...panRef.current, ...heartRef.current, ...audioRef.current, ...(walkAudioRef.current ? [walkAudioRef.current] : [])].forEach(a => {
       a.muted = true;
       a.volume = 0;
       a.play().then(() => { a.pause(); try { a.currentTime = 0; } catch { /* ignore */ } })
@@ -596,6 +626,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     return () => { ids.forEach(id => window.clearTimeout(id)); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainReady, walkDone]);
+
+  // ── 廊下BGM(社長支給v0.25.2386「オープニングの廊下で流して」) ──
+  // 歩きシーンが見えている間だけ鳴らし、アリーナへ移る瞬間に短フェードで譲る。
+  // 歩きは長さが不定(プレイヤー操作)なのでループ。素材は mount 時に生成+解錠済み(iOS対策)。
+  useEffect(() => {
+    if (!ready) return;
+    if (walkDone) { fadeOutWalkBgm(); return; }
+    unlockAndPlay(walkAudioRef.current ?? undefined, WALK_AUDIO_VOLUME);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, walkDone]);
 
   // ── 歩きシーンの駆動(v0.25.2114): 押している間だけ右へ。rAFでrefのDOMを直接更新(60fpsのsetStateを避ける) ──
   useEffect(() => {
