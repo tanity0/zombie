@@ -8177,15 +8177,8 @@ export class PixiScene {
     const fb = enemyFootBox(e);
     // ステージ3(daylight=farBackdrop'city')は廃都セット、ステージ4(snowStage='snow')は雪原セットに敵絵を
     // 差し替え。次にlab、無ければ既定アトラス。
-    const tex = getTexture(
-      // M7ボス=stage-7のgiantbatだけグレンの新アートに差し替え(社長支給v0.25.1999)。挙動/攻撃/当たり判定はgiantbat流用=見た目だけ。
-      ((this.currentFarKey === 'stage7' && e.type === 'giantbat') ? 'glen-boss' : null)
-      ?? (this.daylight ? stage3EnemyTextureName(e.type) : null)
-      ?? (this.snowStage ? stage4EnemyTextureName(e.type) : null)
-      ?? (this.battlefieldStage ? stage5EnemyTextureName(e.type) : null)
-      ?? labEnemyTextureName(e.type, e.id)
-      ?? e.type
-    );
+    // 解決チェーンの本体は enemyTexKey(生体と死体の唯一の出どころ。v0.25.2383で共有化)。
+    const tex = getTexture(this.enemyTexKey(e.type, e.id));
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
 
@@ -8347,11 +8340,9 @@ export class PixiScene {
 
     if (tex) {
       view.sprite.texture = tex;
-      // ステージ3のボス(giantbat)だけ見た目を1.2倍(元絵が小さめ)。視覚のみ=hitbox不変。
-      const stage3BossMul = (this.daylight && e.type === 'giantbat') ? STAGE3_BOSS_VISUAL_SCALE : 1;
-      // ステージ4(雪原)の全敵絵を1.5倍。足元アンカー(0.5,1)なので上方向に拡大。視覚のみ=hitbox不変。
-      const stage4VisMul = (this.snowStage && STAGE4_ENEMY_TYPES.has(e.type)) ? STAGE4_ENEMY_VISUAL_SCALE : 1;
-      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * stage3BossMul * stage4VisMul;
+      // ステージ3のボス(giantbat)だけ1.2倍/ステージ4(雪原)の全敵絵を1.5倍。足元アンカー(0.5,1)なので
+      // 上方向に拡大。視覚のみ=hitbox不変。倍率の本体は stageEnemyVisualMul(死体と共有・v0.25.2383)。
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * this.stageEnemyVisualMul(e.type);
       const breath = this.enemyBreath(e, now);
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
@@ -9991,25 +9982,73 @@ export class PixiScene {
   // 裏ボス討伐演出: store.bossCorpse がある間だけ、死亡位置に頭基準で本体絵を描き、
   // ドット絵時代のFFボス風に「ゆっくり消えつつ終盤ほど速く明滅(ゴゴゴ…)」でフェードアウトする。
   // 描画のみ(シミュレーション非干渉)。生体は既に enemies から除かれているので別スプライトで出す。
+  /**
+   * 敵の絵のテクスチャ名を解決する(ステージごとの差し替えチェーン)。**生体と死体の唯一の出どころ。**
+   *
+   * なぜ関数に切り出したか(社長報告のバグ v0.25.2383): このチェーンが `drawEnemy` の中だけに
+   * 直書きされていて、討伐後の死体(`syncBossCorpse`)は「stage7のグレン」と「素の型名」の2段しか
+   * 見ていなかった。結果、**ステージ4で城ボスを倒すと死体だけステージ1の絵**になっていた
+   * (ステージ2/3/5も同様)。2箇所で同じ判断を書いている限り、次にステージスキンを足した時に
+   * また同じ穴が空くので、出どころを1つにする。
+   */
+  private enemyTexKey(type: string, id: string): string {
+    return (
+      // M7ボス=stage-7のgiantbatだけグレンの新アートに差し替え(社長支給v0.25.1999)。
+      ((this.currentFarKey === 'stage7' && type === 'giantbat') ? 'glen-boss' : null)
+      ?? (this.daylight ? stage3EnemyTextureName(type) : null)
+      ?? (this.snowStage ? stage4EnemyTextureName(type) : null)
+      ?? (this.battlefieldStage ? stage5EnemyTextureName(type) : null)
+      ?? labEnemyTextureName(type, id)
+      ?? type
+    );
+  }
+
+  /**
+   * ステージ固有の「絵だけ」の倍率。**視覚のみ=hitbox不変**(CLAUDE.md「Visual vs. hitbox」)。
+   * これも生体/死体で共有する(死体に掛かっていなかったのが「しかも小さい」の正体)。
+   */
+  private stageEnemyVisualMul(type: string): number {
+    const stage3BossMul = (this.daylight && type === 'giantbat') ? STAGE3_BOSS_VISUAL_SCALE : 1;
+    const stage4VisMul = (this.snowStage && STAGE4_ENEMY_TYPES.has(type)) ? STAGE4_ENEMY_VISUAL_SCALE : 1;
+    return stage3BossMul * stage4VisMul;
+  }
+
   private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number } | null, now: number) {
     const sp = this.bossCorpseSprite;
     if (!corpse) { if (sp.visible) sp.visible = false; return; }
-    // M7ボス=stage-7のgiantbatは生体と同じくグレン絵で倒れる(v0.25.2024: 死亡パスの上書き漏れ修正)。
-    const tex = getTexture((this.currentFarKey === 'stage7' && corpse.type === 'giantbat') ? 'glen-boss' : corpse.type);
+    // 絵の選択は生体と同じチェーン(enemyTexKey)。ここを2段しか見ていなかったのが
+    // 「ステージ4で倒すとステージ1の見た目になる」の原因(社長報告・v0.25.2383で修正)。
+    const tex = getTexture(this.enemyTexKey(corpse.type, ''));
     if (!tex) { sp.visible = false; return; }
     const FADE_MS = 2600; // useGameLoop の BOSS_FADE_MS と一致(超過後は store 側が corpse を消す)
     const t = Math.max(0, Math.min(1, (Date.now() - corpse.diedAt) / FADE_MS));
     const flicker = 1 - t * (0.5 + 0.5 * Math.sin(now / 45)); // 終盤ほど深く明滅
     sp.visible = true;
     sp.texture = tex;
-    // 生体と同じ「分離描画」で配置(帯=corpse.w×h の上に絵を伸ばす)。これで討伐時に縮まない(社長指摘)。
-    const fit = BOSS_SPRITE_FIT[corpse.type] ?? BOSS_FIT_DEFAULT;
     sp.anchor.set(0.5, 0.5);
-    const scale = (corpse.w / fit.w) / tex.width;
-    const spriteW = scale * tex.width, spriteH = scale * tex.height;
     const stripCx = corpse.x + corpse.w / 2, stripCy = corpse.y + corpse.h / 2;
+    // **生体が使ったのと同じ寸法の出し方を、型ごとに選ぶ**(v0.25.2383)。
+    // ここを1本にまとめてしまうと必ずどちらかが生体とズレる: 裏ボス/天使は BOSS_SPRITE_FIT の
+    // 「分離描画」(帯の上に絵を伸ばす)で描かれ、giantbat 等の通常経路の敵は enemyFootBox+containScale で
+    // 描かれる。死体だけ別式にすると討伐の瞬間に大きさが飛ぶ(過去に一度「討伐時に縮む」と社長指摘あり)。
+    const fit = BOSS_SPRITE_FIT[corpse.type];
+    let scale: number;
+    if (fit) {
+      scale = (corpse.w / fit.w) / tex.width;
+    } else {
+      const fb = enemyFootBox({ x: corpse.x, y: corpse.y, width: corpse.w, height: corpse.h, type: corpse.type } as Enemy);
+      // 生体と同じ: containScale で枠に収め、足元の深度スケールとステージ固有倍率を掛ける。
+      scale = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
+    }
+    scale *= this.stageEnemyVisualMul(corpse.type); // ステージ4の1.5倍/ステージ3の1.2倍(視覚のみ)
+    const spriteW = scale * tex.width, spriteH = scale * tex.height;
     sp.scale.set(scale, scale);
-    sp.position.set(Math.round(stripCx + (0.5 - fit.cx) * spriteW), Math.round(stripCy + (0.5 - fit.cy) * spriteH));
+    if (fit) {
+      sp.position.set(Math.round(stripCx + (0.5 - fit.cx) * spriteW), Math.round(stripCy + (0.5 - fit.cy) * spriteH));
+    } else {
+      // 通常経路の敵は足元アンカー(0.5,1)で描かれているので、中心アンカーに合わせて半分持ち上げる。
+      sp.position.set(Math.round(stripCx), Math.round(corpse.y + corpse.h - spriteH / 2));
+    }
     sp.zIndex = corpse.y + corpse.h + 1; // アクターと同じ y-sort 帯
     sp.alpha = Math.max(0, (1 - t) * flicker);
   }

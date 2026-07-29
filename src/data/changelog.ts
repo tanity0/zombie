@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2383',
+    items: [
+      'ボスを倒した時、死体がそのステージ用の見た目ではなく初期ステージの見た目になり、さらに小さく表示されていたのを直しました（ステージ2〜5）。',
+    ],
+  },
+  {
     version: '0.25.2382',
     items: [
       '隠しボス「idol」に、通常プレイでも出会えるようになりました。ステージ2で、'
