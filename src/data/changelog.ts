@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2426',
+    items: [
+      'パンプキン・ハンター・トール・ラフィの飛び掛かりにも、着地の砂埃が出るようになりました(城ボスだけだったのを揃えました)。',
+    ],
+  },
+  {
     version: '0.25.2425',
     items: [
       '城ボスの咆哮弾が2パターンになりました。扇状の同時発射(体力half以下で本数増)と、同じ方向への3連射のどちらかが来ます。',

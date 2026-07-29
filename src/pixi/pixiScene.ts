@@ -9119,6 +9119,34 @@ export class PixiScene {
       // ---- スリィエル: 単眼の凝視(小技)=T4のみ(図形なし・tintは上で設定済み) ----
       // ---- 上記いずれにも該当しない状態(chase/volley/bolt-windup/counter-leap等)は図形なし ----
     }
+    // 汎用ジャンプ着地の砂埃(社長指摘v0.25.2426「パンプキンなどのジャンプにも砂埃ちゃんと出てる?」)。
+    // → **出ていなかった**。v0.25.2404で砂埃を入れた時、城ボスの新スクリプト(g-*)のブロックの中にだけ
+    // 書いていたため、**同じ「飛び上がって着地する」技なのにパンプキン系だけ土煙が立たない**状態だった。
+    // 対象: 汎用ジャンプ(`aiPhase==='jump'` = パンプキン/lab-zombie-3/ハンター/?giantscript=0の城ボス)と、
+    // 裏ボス・天使の飛び掛かり(`bossState==='jump-attack'` = トール/ラフィ)。
+    // 仕組みは城ボスと同一: **溜め(滞空)の立ち上がりで着地点と時刻を焼き付け、着弾から DUST_MS 再生**
+    // (v0.25.2412の同tick問題対策。カウンターで着地が潰されても土煙は出し切る)。
+    {
+      const genericAir = e.aiPhase === 'jump';
+      const bossAir = e.bossState === 'jump-attack';
+      const airNow = genericAir || bossAir;
+      // 滞空の残り=着弾までの時間。生成側と同じフィールドを読む(判定と絵の出どころを分けない)。
+      const jToImpact = airNow
+        ? Math.max(0, ((genericAir ? e.aiPhaseUntil : e.bossStateUntil) ?? gameTime) - gameTime)
+        : 0;
+      const jL = this.latchFx(`${e.id}:jdust`, airNow, jToImpact + DUST_MS, now, () => {
+        // 着地点は溜め開始でロック済み(左上座標なので中心へ寄せる)。
+        const jx = (e.aiTargetX ?? e.x) + e.width / 2;
+        const jy = (e.aiTargetY ?? e.y) + e.height / 2;
+        const r = (genericAir ? PUMPKIN_EXPLOSION_RADIUS : THOR_JUMP_RADIUS) * DUST_SCALE;
+        const frac = (jToImpact + DUST_MS) > 0 ? jToImpact / (jToImpact + DUST_MS) : 0;
+        return [jx, jy, r, frac];
+      });
+      if (jL && jL.t >= jL.d[3]) {
+        const dp = jL.d[3] < 1 ? (jL.t - jL.d[3]) / (1 - jL.d[3]) : 0;
+        this.drawDust(jL.d[0], jL.d[1], jL.d[2], dp, this.dustTintForStage(), 0.75 * (1 - dp * 0.6));
+      }
+    }
     // M51: 城ボス「ジャイアント」新スクリプトの予告描画(PACING_PUZZLE.md §6.26)。既存部品のみ流用
     // (T1赤ライン+終点リング=突進 / T2赤円=踏み鳴らし・飛び掛かり / T3赤い角ばった四角=薙ぎ払い /
     // T4体tintの赤フラッシュ=トール式thorFlashTintをそのまま流用)。`?giantscript=0`で無効化=
