@@ -392,6 +392,9 @@ export const ensureTextures = (): Promise<void> => {
       // 爪痕(社長支給素材 D-2・v0.25.2402)。claw-mark=中央の1本を切り出したもの(判定1つに1枚貼る用)。
       // claw-marks=3本まとめ(1振りぶんの爪跡。今は未使用だが将来の「爪の弧」用に登録だけしておく)。
       { name: 'fx/claw-mark', scaleMode: 'linear' as const },
+      // 血溜まり(社長支給素材 E-5・v0.25.2403)。512角×4コマの横並び(2048×512)を1枚で登録し、
+      // コマの切り出しは pixiScene 側で行う(着弾→最大→波打つ→乾いて縮む)。
+      { name: 'fx/blood-pool', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

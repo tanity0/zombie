@@ -1374,6 +1374,8 @@ const stage3EnemyTextureName = (type: string): string | null =>
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
 // 予告円の「輪」を社長支給の焼き済み素材(A-1・`fx/telegraph-ring`)で描くか。
 // `?fxring=0` で従来の Graphics stroke(細い赤線)へ戻して見比べられる(v0.25.2395)。
+// 血溜まり(E-5)の「乾いて縮む」コマへ切り替える残り時間。床の寿命(4秒)の終わり際だけ4コマ目にする。
+const BLOOD_DRY_MS = 900;
 const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
 
@@ -4425,6 +4427,7 @@ export class PixiScene {
     this.syncArmory(now); // §6.24 M48: 武器庫(同上)
     this.syncPolice(now); // §6.24 M48: 警察署(同上)
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
+    this.resetBloodPools(); // 血溜まり(E-5): 前フレームで使った枚数を超えたぶんを消す(消し忘れ防止)
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
     this.drawSupportSniper(s.supportSniperNpc, s.gameTime); // 援護射撃NPC(非出撃の軍人立ち絵・画面縁のスライドイン→発射→後退)
@@ -9265,6 +9268,14 @@ export class PixiScene {
         } else {
           o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: 0.05 + 0.18 * t + 0.06 * gPulse });
           o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.45 * t + 0.12 * gPulse });
+          // 血溜まり(E-5)。`floorUntil` が付いているのはグレンの「血の弧」だけなので、これで一意に選べる
+          // (氷=スカジ/城ボスstage-4 や 虚無の三唱の大円には付けない)。コマは技の寿命に合わせる。
+          if (h.floorUntil !== undefined) {
+            const burst = h.burst === true;
+            const dry = burst && h.floorUntil - gameTime < BLOOD_DRY_MS; // 床の終わり際
+            const frame = !burst ? (t < 0.5 ? 0 : 1) : (dry ? 3 : 2);
+            this.drawBloodPool(h.x, h.y, h.radius, frame, burst ? 0.85 : 0.35 + 0.5 * t);
+          }
         }
       }
     }
@@ -10449,6 +10460,46 @@ export class PixiScene {
     sp.position.set((fx + tx) / 2, (fy + ty) / 2);
     sp.alpha = alpha;
     sp.visible = true;
+  }
+
+  /**
+   * 血溜まり(社長支給素材 E-5・v0.25.2403)。512角×4コマの横並びを、この場で4枚のサブテクスチャへ切る。
+   * コマの割り当ては**技の実際の寿命に合わせる**(§6.26-12 グレンの「血の弧」):
+   *   出現→爆発まで(t<1) = 1(飛沫)→2(最大) / 爆発後の床 = 3(波打つ) / 床の終わり際 = 4(乾いて縮む)。
+   * ★**判定は円**なのに絵はギザギザなので、**外周の棘が判定の半径に届く大きさ**に収める
+   * (絵が判定より外へ出ると「血があるのに当たらない」に見える)。危険の境界は下の赤い円が担う。
+   */
+  private bloodFrames?: Texture[];
+  private bloodPool: Sprite[] = [];
+  private bloodUsed = 0;
+  private drawBloodPool(x: number, y: number, radius: number, frame: number, alpha: number): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) return;
+    const tex = getTexture('fx/blood-pool');
+    if (!tex) return;
+    if (!this.bloodFrames) {
+      const fw = tex.width / 4, fh = tex.height;
+      this.bloodFrames = [0, 1, 2, 3].map(i =>
+        new Texture({ source: tex.source, frame: new Rectangle(i * fw, 0, fw, fh) }));
+    }
+    let sp = this.bloodPool[this.bloodUsed];
+    if (!sp) {
+      sp = new Sprite();
+      sp.anchor.set(0.5, 0.5);
+      this.L.groundLayer.addChild(sp);
+      this.bloodPool[this.bloodUsed] = sp;
+    }
+    this.bloodUsed++;
+    sp.texture = this.bloodFrames[Math.max(0, Math.min(3, frame))];
+    sp.width = radius * 2;
+    sp.height = radius * 2;
+    sp.position.set(x, y);
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+  /** 毎フレーム先頭で呼ぶ(使わなかった分を消す)。ring/band と同じ「消し忘れが起きない」作法。 */
+  private resetBloodPools(): void {
+    for (let i = this.bloodUsed; i < this.bloodPool.length; i++) this.bloodPool[i].visible = false;
+    this.bloodUsed = 0;
   }
 
   private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number } | null, now: number) {
