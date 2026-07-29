@@ -379,7 +379,8 @@ export const applyEnemyProjectileHits = (
 };
 
 // ④ 地雷(緑卵)。社長仕様v0.25.1846→v0.25.1848改: **起爆範囲(EGG_BLAST_RADIUS)に入ったらアーム**
-// (旧: 卵の当たり判定を踏んだら)。赤くプクプク→EGG_FUSE_MS(2秒)後に爆発(爆発処理は
+// (旧: 卵の当たり判定を踏んだら)。赤くプクプク→EGG_FUSE_MS 後に爆発(値は mines.ts が唯一の出どころ。
+// 導火時間はこれまで 2秒→1秒→1.5秒 と社長が調整しているので、ここに数値を書き写さない)(爆発処理は
 // useGameLoopの起爆ブロック=敵巻き込み/連鎖)。範囲内の未アーム卵は同フレームで全てアームされる。
 // 近接で割る従来経路(breakPropsAlong→damageBreakableProp)は不変=アーム中でも無害に解除できる。
 export const applyMineDamage = (fx: CombatEffects): void => {
