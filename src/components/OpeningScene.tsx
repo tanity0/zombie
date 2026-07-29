@@ -163,6 +163,10 @@ const FRONT_ZOOM_DELAY = 2200;
 const CUTS = [0, 2200 + 2000, 2200 + 4000];
 const SHOT_DUR = [2000, 2000, 2400];
 // アングル切替は【即表示のハードカット】(社長指示v0.25.2072・旧クロスフェードv0.25.2007は廃止)。
+// 廊下→アリーナの入りだけは暗転からのフェードイン(社長指示v0.25.2407「フェードイン3秒」)。
+// アングル切替のハードカットとは別物: これは「会場が現れる」1回きりの入り。最初のアングル切替は
+// CUTS[1]=4200ms なのでフェード(3000ms)は完全に明けてから起きる=ハードカットは濁らない。
+const ARENA_FADEIN_MS = 3000;
 const BLACK_START = 8600;
 const BLACK_MS = 1600;
 const SCENE_START = 10400; // 暗転し切ったら射撃シーンへハードカット
@@ -1158,6 +1162,14 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               </div>
             </div>
           </div>
+          {/* 廊下→アリーナのフェードイン(社長指示v0.25.2407「フェードイン3秒」)。黒幕を3秒かけて
+              抜く=暗転から会場が現れる。アングル切替(phase 0→1→2)の即表示ハードカット
+              (社長指示v0.25.2072)は不変: この黒幕は [phase].map の**外**に置いてあるので、
+              アングルが変わっても再マウントされずアニメも再生し直さない(1回きり)。
+              ?opening=2(射撃直行)には出さない=廊下から来た時だけの演出。 */}
+          {!startAtShoot && (
+            <div style={{ position: 'absolute', inset: 0, background: '#000', pointerEvents: 'none', zIndex: 60, animation: `opfadeout ${ARENA_FADEIN_MS}ms linear both` }} />
+          )}
         </>
       ) : phase === 3 ? (
         // ── 射撃シーン(backstage)。コマ画像は足元アンカー共通キャンバス=src差し替えで芝居。 ──

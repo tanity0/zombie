@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2407',
+    items: [
+      'オープニングで廊下を抜けてアリーナが映るところを、暗転から3秒かけて明けるフェードインにしました。',
+    ],
+  },
+  {
     version: '0.25.2406',
     items: [
       'オープニングの廊下でBGMが鳴らなくなることがあった不具合を修正しました。万一止まっても歩いているうちに鳴り直します。',
