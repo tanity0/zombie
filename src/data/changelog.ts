@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2437',
+    items: [
+      'ゲーム内容の変更はありません(ゴースト助っ人の制約設計を追記)。',
+    ],
+  },
+  {
     version: '0.25.2436',
     items: [
       '全ボスの攻撃予告(赤い円・帯)に、城ボスと同じ意匠の縁取りが付きました。当たり判定や見た目の大きさは変わりません。',
