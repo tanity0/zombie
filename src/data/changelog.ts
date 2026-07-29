@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2444',
+    items: [
+      'ゲーム内容の変更はありません(ゴースト強化第2弾の仕様を確定)。',
+    ],
+  },
+  {
     version: '0.25.2443',
     items: [
       '走り続けると速度装備の効果が乗り、急な方向転換で一旦切れるようになりました。',
