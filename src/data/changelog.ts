@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2458',
+    items: [
+      '斬撃の弧・衝撃波・銃口の白煙・爪痕・血溜まりも完全不透明(100%)表示になりました(消える直前のフェードのみ)。赤い攻撃予告は従来どおり(下の敵が見えなくなるため)。',
+    ],
+  },
+  {
     version: '0.25.2457',
     items: [
       '砂埃を完全不透明(100%)にしました(消える直前のフェードのみ維持)。',

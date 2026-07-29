@@ -7989,8 +7989,8 @@ export class PixiScene {
         }
         const L = this.muzzleLatch;
         if (L) {
-          const k = 1 - sinceFire / MUZZLE_FLASH_MS;
-          this.drawMuzzleFlash(L.x, L.y, L.rot, L.len, 0.9 * k, L.sortY);
+          // v0.25.2458: 出だしから薄くなる線形フェード(0.9×k)をやめ、前70%は完全不透明で維持。
+          this.drawMuzzleFlash(L.x, L.y, L.rot, L.len, this.fxHoldFade(sinceFire / MUZZLE_FLASH_MS), L.sortY);
         } else this.hideMuzzleFlash();
       } else this.hideMuzzleFlash();
     } else this.hideMuzzleFlash();
@@ -9238,12 +9238,12 @@ export class PixiScene {
       // 蹴り出し: 突進の立ち上がりで、その場(足元)に一発。
       const kickL = this.latchFx(`${e.id}:dashkick`, dashing, DUST_MS, now,
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
-      if (kickL) this.drawDust(kickL.d[0], kickL.d[1], kickL.d[2], kickL.t, this.dustTintForStage(), this.dustAlpha(kickL.t));
+      if (kickL) this.drawDust(kickL.d[0], kickL.d[1], kickL.d[2], kickL.t, this.dustTintForStage(), this.fxHoldFade(kickL.t));
       // 止まった瞬間: 突進が明けた立ち上がり(=!dashing への遷移)で、止まった位置に一発。
       // `dashEndArmed` は「直前に突進していた」ことを覚えるための1フレーム遅延。
       const stopL = this.latchFx(`${e.id}:dashstop`, !dashing && this.dashWasOn.has(e.id), DUST_MS, now,
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
-      if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), this.dustAlpha(stopL.t));
+      if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), this.fxHoldFade(stopL.t));
       if (dashing) this.dashWasOn.add(e.id); else this.dashWasOn.delete(e.id);
     }
     // 汎用ジャンプ着地の砂埃(社長指摘v0.25.2426「パンプキンなどのジャンプにも砂埃ちゃんと出てる?」)。
@@ -9277,7 +9277,7 @@ export class PixiScene {
       });
       if (jL && jL.t >= jL.d[3]) {
         const dp = jL.d[3] < 1 ? (jL.t - jL.d[3]) / (1 - jL.d[3]) : 0;
-        this.drawDust(jL.d[0], jL.d[1], jL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp));
+        this.drawDust(jL.d[0], jL.d[1], jL.d[2], dp, this.dustTintForStage(), this.fxHoldFade(dp));
       }
     }
     // M51: 城ボス「ジャイアント」新スクリプトの予告描画(PACING_PUZZLE.md §6.26)。既存部品のみ流用
@@ -9395,7 +9395,7 @@ export class PixiScene {
         });
         if (dustL && dustL.t >= dustL.d[3]) {
           const dp = dustL.d[3] < 1 ? (dustL.t - dustL.d[3]) / (1 - dustL.d[3]) : 0;
-          this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp));
+          this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), this.fxHoldFade(dp));
         }
       }
       // 「振った瞬間」の弧(素材D-1・v0.25.2400)。**予告ではなく実行の絵**なので当たり判定と一致させる
@@ -9416,7 +9416,7 @@ export class PixiScene {
         });
         if (swL && swL.t >= swL.d[4]) {
           const sp = swL.d[4] < 1 ? (swL.t - swL.d[4]) / (1 - swL.d[4]) : 0;
-          this.drawSlashArc(view, swL.d[0], swL.d[1], swL.d[2], swL.d[3], 0xffd8d8, 0.9 * (1 - sp));
+          this.drawSlashArc(view, swL.d[0], swL.d[1], swL.d[2], swL.d[3], 0xffd8d8, this.fxHoldFade(sp));
         }
       }
       if (gph === 'g-stomp-windup') {
@@ -9627,9 +9627,9 @@ export class PixiScene {
           const count = shL.d[1];
           for (let i = 0; i < count; i++) {
             const b = 2 + i * 5;
-            // 走り終わりの2割で薄れて消える(唐突に消さない)。
+            // 走り終わりの2割で薄れて消える(唐突に消さない)。それまでは完全不透明(v0.25.2458)。
             this.drawShockwave(view, i, shL.d[b], shL.d[b + 1], shL.d[b + 2], shL.d[b + 3], shL.d[b + 4],
-              prog, 0.9 * Math.min(1, (1 - prog) / 0.2));
+              prog, Math.min(1, (1 - prog) / 0.2));
           }
         }
       }
@@ -9658,7 +9658,7 @@ export class PixiScene {
           o.poly(pts).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.5 * t + 0.12 * gPulse });
           // 爪痕(D-2)を判定の矩形へ重ねる。氷(スカジ/城ボスstage-4)は爪ではないので付けない。
           // 濃さは既存のフェードイン(t)に合わせる=「n秒後に爆ぜる」という既存の語彙(§6.28-3)のまま。
-          if (!h.ice) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.55 * t);
+          if (!h.ice) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t);
         } else {
           o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: 0.05 + 0.18 * t + 0.06 * gPulse });
           o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.45 * t + 0.12 * gPulse });
@@ -9668,7 +9668,7 @@ export class PixiScene {
             const burst = h.burst === true;
             const dry = burst && h.floorUntil - gameTime < BLOOD_DRY_MS; // 床の終わり際
             const frame = !burst ? (t < 0.5 ? 0 : 1) : (dry ? 3 : 2);
-            this.drawBloodPool(h.x, h.y, h.radius, frame, burst ? 0.85 : 0.35 + 0.5 * t);
+            this.drawBloodPool(h.x, h.y, h.radius, frame, burst ? 1 : 0.35 + 0.65 * t);
           }
         }
       }
@@ -10991,15 +10991,14 @@ export class PixiScene {
   private dustFrames?: Texture[];
   private dustPool: Sprite[] = [];
   private dustUsed = 0;
-  // v0.25.2456(社長指示「最後(消える直前)以外はハッキリ表示」): 砂埃のアルファ包絡線。
-  // 旧式 0.7〜0.75×(1-t×0.6) は出た瞬間から薄くなり続けていた。新式=寿命の前70%は
-  // 完全不透明で維持し、最後の30%だけ線形フェードで消える(1.0は社長指示v0.25.2457「100%にして」)。
-  private dustAlpha(t: number): number {
-    const DUST_ALPHA_MAX = 1.0;
-    const DUST_FADE_START = 0.7;
-    return t < DUST_FADE_START
-      ? DUST_ALPHA_MAX
-      : DUST_ALPHA_MAX * Math.max(0, 1 - (t - DUST_FADE_START) / (1 - DUST_FADE_START));
+  // v0.25.2456(社長指示「最後(消える直前)以外はハッキリ表示」)→v0.25.2458で汎用化(社長指示
+  // 「ほかにも中途半端に不透明にしてるものは基本100%に」): エフェクト共通のアルファ包絡線。
+  // 寿命の前70%は完全不透明(1.0)で維持し、最後の30%だけ線形フェードで消える。
+  // 適用: 砂埃/斬撃の弧/銃口フラッシュ。※赤い予告(塗り・縁・パルス)は例外=地面オーバーレイで
+  // 100%だと下の敵と自機が隠れる+点滅とランプは「あと何秒で来るか」の語彙なので触らない。
+  private fxHoldFade(t: number): number {
+    const FADE_START = 0.7;
+    return t < FADE_START ? 1 : Math.max(0, 1 - (t - FADE_START) / (1 - FADE_START));
   }
   private drawDust(x: number, y: number, radius: number, prog: number, tint: number, alpha: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;
