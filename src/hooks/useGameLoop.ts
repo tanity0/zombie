@@ -129,7 +129,7 @@ import { pickIdolMove, idolPhaseForHealth, idolFanCount, type IdolMove } from '.
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
-import { POLICE_ARENA_RADIUS, isNearPolice } from '../world/police';
+import { POLICE_ARENA_RADIUS, isNearPolice, isPoliceRearmed } from '../world/police';
 import { POLICE_REWARD_SKILLS, SKILLS } from '../data/campaign';
 import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
@@ -1285,6 +1285,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const gatebossForceRef = useRef(false);
   // ?idolnow=1 診断(§6.28-20・バッチM64): ラン開始後に1回だけidolをforce-spawnしたかどうか。
   const idolForceRef = useRef(false);
+  // 警察署アリーナ(§6.24 M48)の再発動ガード(社長報告v0.25.2389)。発動でfalse、警察署から
+  // POLICE_REARM_RADIUS(360)より離れたらtrueへ戻る。失敗(時間切れ)直後はプレイヤーが必ず
+  // 発動半径(240)の内側に居るため、これが無いと即再発動+円内クランプで抜け出せなくなる。
+  const policeArmedRef = useRef(true);
   // ミゲル専用「たまにゆっくり歩く」タイマー(社長指示・トールのthorNextSlowWalkAt/thorSlowWalkUntil相当)。
   // ミゲルは bossRef を使わない独立ブロックのため専用の小さな ref を持つ。
   const angelStateRef = useRef(createAngelBossState()); // 天使(ゲート2ボス)3体のラン内状態(M26 Step3でangelBossTick.tsへ抽出)
@@ -2158,6 +2162,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
+          policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
           angelStateRef.current = createAngelBossState(); // 天使(ゲート2ボス)状態も新ランでリセット(M26 Step3)
           // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
           botTickRef.current = 0;
@@ -2970,8 +2975,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const pgs = useGameStore.getState();
           const ppos = pgs.police;
           if (ppos && !pgs.policeTaken && !pgs.activeEvent) {
+            // 失敗後の再武装(v0.25.2389): 警察署から十分離れたら、また挑めるように戻す。
+            // 「報酬を取り上げる」のではなく「一度出るまで掴まない」形にして無限ループだけを断つ。
+            if (!policeArmedRef.current && isPoliceRearmed(player, ppos)) policeArmedRef.current = true;
             const hiddenBossAlivePolice = pgs.enemies.some(e => isHiddenBoss(e.type));
             if (
+              policeArmedRef.current &&
               isNearPolice(player, ppos) &&
               !pgs.bossChasing && !hiddenBossAlivePolice && hunterRef.current.phase === 'idle'
             ) {
@@ -2980,6 +2989,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS, policeArena: true,
               };
               useGameStore.getState().beginArenaEvent(peEvent);
+              policeArmedRef.current = false; // 一度離れるまで再発動させない(v0.25.2389)
               hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime, total: ARENA_HORDE_COUNT };
               useGameStore.setState({ eventBannerText: '警察署 制圧開始', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               playSfx('event-start');

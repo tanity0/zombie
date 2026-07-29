@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2389',
+    items: [
+      '警察署の制圧に失敗すると、その場で何度も再発動して抜け出せなくなる不具合を直しました。一度離れれば再挑戦できます。',
+      '警察署の建物を小さくしました。囲まれた時に回り込む余地ができます。',
+    ],
+  },
+  {
     version: '0.25.2388',
     items: [
       'オープニングの廊下BGMのファイルを軽くしました（4.6MB→1.1MB）。聞こえ方は変わりません。',

@@ -27,11 +27,25 @@ export const POLICE_FADE_MS = 900;
 // 横に広い絵なので**幅基準**で表示サイズを揃える(病院は高さ基準=HOSPITAL_DISPLAY_H)。armory.tsと
 // 同じ考え方で幅を合わせる(素材の縦横比が違うので高さは自動的に病院よりわずかに大きくなる)。
 // ★実機調整前提の仮値(社長指示v0.25.2352「妥当な値を置いたうえで実機調整前提と明記」)。
-export const POLICE_DISPLAY_W = 380;
-// 当たり判定=建物の土台だけ(絵より小さい・足元の敷地に合わせた低い箱)。病院の当たり判定と同寸を仮置き。
-// ★実機調整前提の仮値。
-export const POLICE_HITBOX_W = 260;
-export const POLICE_HITBOX_H = 80;
+// 社長報告v0.25.2389「建物が大半を占めてて邪魔」を受けて縮小(380→300)。
+// 警察署だけは**アリーナ(直径480)の中で戦う**ため、病院/武器庫(通り過ぎるだけ)と違い建物の大きさが
+// そのまま戦闘スペースを削る。380では絵がアリーナ直径の79%を占めていた → 300で63%。
+export const POLICE_DISPLAY_W = 300;
+// 当たり判定=建物の土台だけ(絵より小さい・足元の敷地に合わせた低い箱)。
+// 社長報告v0.25.2389を受けて縮小(260×80→150×56)。**移動を塞ぐのはこの箱**で、260ではアリーナの
+// 幅の54%が通れない壁だった(囲まれた状態で回り込む余地が無い) → 150で31%。
+// CLAUDE.mdの障害物規約どおり「絵は箱より大きく、箱の上に絵が立つ」ので、絵を保ったまま足元だけ細くできる。
+export const POLICE_HITBOX_W = 150;
+export const POLICE_HITBOX_H = 56;
+
+// 一度アリーナが始まったら、**プレイヤーがこの距離まで離れるまで再発動しない**(社長報告v0.25.2389
+// 「失敗すると位置がずれて再発動して抜け出せない」の修正)。
+// 何が起きていたか: 発動しきい値(isNearPolice)がアリーナ半径と同じ240で、アリーナ中はプレイヤーが
+// 円の内側へクランプされる(gameStore の clampRectInsideCircle)。よって**時間切れで失敗した瞬間、
+// プレイヤーは必ず半径240の内側に居る**ため、次のフレームで即再発動し、クランプで内側へ弾かれる
+// (=「位置がずれる」)。これが無限に続いて抜け出せなくなっていた。
+// 直し方はヒステリシス: 発動と再武装のしきい値を別にして、**一度出るまで再発動させない**。
+export const POLICE_REARM_RADIUS = POLICE_ARENA_RADIUS + 120; // = 360
 
 /** 警察署の立ち位置。割り当てられたセクター番号から位置だけを計算する純関数(乱数はここで引かない)。 */
 export const policePos = (sector: number): { x: number; y: number } => detourPosForSector('police', sector);
@@ -67,4 +81,19 @@ export const isNearPolice = (
   if (!pos) return false;
   const px = player.x + player.width / 2, py = player.y + player.height / 2;
   return Math.hypot(px - pos.x, py - pos.y) <= radius;
+};
+
+/**
+ * 失敗(時間切れ)後、警察署アリーナを**もう一度発動してよい距離まで離れたか**。
+ * `isNearPolice` と対になるヒステリシスの外側のしきい値(POLICE_REARM_RADIUS=360 > 発動240)。
+ * これが true になるまで再発動させないことで、「失敗→即再発動→円の内側へ弾かれる」の無限ループを断つ。
+ * 離れれば再武装するので、**立て直してもう一度挑むことはできる**(報酬を取り上げない)。
+ */
+export const isPoliceRearmed = (
+  player: { x: number; y: number; width: number; height: number },
+  pos: { x: number; y: number } | null,
+): boolean => {
+  if (!pos) return true;
+  const px = player.x + player.width / 2, py = player.y + player.height / 2;
+  return Math.hypot(px - pos.x, py - pos.y) > POLICE_REARM_RADIUS;
 };

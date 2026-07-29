@@ -2,8 +2,8 @@
 // なので、位置/距離の不変条件と「近づいた判定(isNearPolice)」を重点的に見る。
 import { describe, it, expect } from 'vitest';
 import {
-  POLICE_DIST, POLICE_ARENA_RADIUS, POLICE_HITBOX_W, POLICE_HITBOX_H,
-  policePos, policeRect, resolvePoliceCollision, isNearPolice,
+  POLICE_DIST, POLICE_ARENA_RADIUS, POLICE_HITBOX_W, POLICE_HITBOX_H, POLICE_REARM_RADIUS,
+  policePos, policeRect, resolvePoliceCollision, isNearPolice, isPoliceRearmed,
 } from './police';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { detourPosForSector } from './detourPoi';
@@ -78,5 +78,43 @@ describe('isNearPolice(近づいたらアリーナ発生・サークル/滞在�
   it('半径を明示指定できる(既定=POLICE_ARENA_RADIUS)', () => {
     expect(isNearPolice(player(pos.x + 50, pos.y), pos, 50)).toBe(true);
     expect(isNearPolice(player(pos.x + 51, pos.y), pos, 50)).toBe(false);
+  });
+});
+
+// 社長報告v0.25.2389「失敗すると位置がずれて再発動して抜け出せない」の回帰テスト。
+// 原因は発動しきい値=アリーナ半径(240)で、アリーナ中はプレイヤーが円の内側へクランプされるため、
+// 時間切れの瞬間プレイヤーは必ず発動半径の内側に居る=即再発動→クランプ、の無限ループだった。
+describe('isPoliceRearmed(失敗後の再武装=ヒステリシス・v0.25.2389)', () => {
+  const pos = policePos(0);
+  const player = (x: number, y: number) => ({ x: x - 12, y: y - 12, width: 24, height: 24 });
+
+  // ★これが壊れると「抜け出せない」バグが再発する。しきい値の大小関係そのものが不変条件。
+  it('再武装の距離は発動の距離より必ず外側にある(ヒステリシス)', () => {
+    expect(POLICE_REARM_RADIUS).toBeGreaterThan(POLICE_ARENA_RADIUS);
+  });
+
+  it('アリーナ内(=失敗直後に必ず居る位置)では再武装しない', () => {
+    expect(isPoliceRearmed(player(pos.x, pos.y), pos)).toBe(false);
+    expect(isPoliceRearmed(player(pos.x + POLICE_ARENA_RADIUS, pos.y), pos)).toBe(false);
+  });
+
+  it('発動半径の外へ出ただけでは再武装しない(すぐ掴み直さない)', () => {
+    expect(isPoliceRearmed(player(pos.x + POLICE_ARENA_RADIUS + 1, pos.y), pos)).toBe(false);
+  });
+
+  it('再武装の距離まで離れたら、また挑める(報酬を取り上げない)', () => {
+    expect(isPoliceRearmed(player(pos.x + POLICE_REARM_RADIUS + 1, pos.y), pos)).toBe(true);
+  });
+
+  it('警察署が無い出撃(null)は常に再武装済み扱い(発動側の判定で弾かれる)', () => {
+    expect(isPoliceRearmed(player(0, 0), null)).toBe(true);
+  });
+});
+
+// 社長報告v0.25.2389「建物が大半を占めてて邪魔」の回帰テスト。
+// 警察署だけは**アリーナの中で戦う**ため、建物の当たり判定がそのまま戦闘スペースを削る。
+describe('建物の大きさ(アリーナとの比率・v0.25.2389)', () => {
+  it('当たり判定の幅がアリーナの直径の1/3を超えない(囲まれても回り込める)', () => {
+    expect(POLICE_HITBOX_W / (POLICE_ARENA_RADIUS * 2)).toBeLessThanOrEqual(1 / 3);
   });
 });
