@@ -10476,7 +10476,11 @@ export class PixiScene {
     if (!sp) {
       sp = new Sprite(tex);
       sp.anchor.set(0.5, 0.5);
-      view.container.addChildAt(sp, 0); // 本体スプライトより下=地面に置いた絵に見せる
+      // 予告レイヤー(tele=赤い塗り)の**直上**へ入れる(社長報告v0.25.2411「全部当たり判定に隠れて
+      // 赤い影っぽくしか見えない」)。旧: index 0=コンテナ最下層に入れていたため、上に重なる
+      // 赤い塗り(tele・本体スプライトより上)に負けて支給素材の意匠がほぼ見えていなかった。
+      // 赤い塗りが「どこが危ないか」の下地、素材が意匠の主役、という重ね順にする。
+      view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
       view.ring = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
@@ -10507,7 +10511,11 @@ export class PixiScene {
     if (!sp) {
       sp = new Sprite(tex);
       sp.anchor.set(0.5, 0.5);
-      view.container.addChildAt(sp, 0); // 地面側(本体スプライトより下)
+      // 予告レイヤー(tele=赤い塗り)の**直上**へ入れる(社長報告v0.25.2411「全部当たり判定に隠れて
+      // 赤い影っぽくしか見えない」)。旧: index 0=コンテナ最下層に入れていたため、上に重なる
+      // 赤い塗り(tele・本体スプライトより上)に負けて支給素材の意匠がほぼ見えていなかった。
+      // 赤い塗りが「どこが危ないか」の下地、素材が意匠の主役、という重ね順にする。
+      view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
       view.band = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
@@ -10600,7 +10608,11 @@ export class PixiScene {
     if (!sp) {
       sp = new Sprite(tex);
       sp.anchor.set(0.5, 0.5);
-      view.container.addChildAt(sp, 0); // 地面側
+      // 予告レイヤー(tele=赤い塗り)の**直上**へ入れる(社長報告v0.25.2411「全部当たり判定に隠れて
+      // 赤い影っぽくしか見えない」)。旧: index 0=コンテナ最下層に入れていたため、上に重なる
+      // 赤い塗り(tele・本体スプライトより上)に負けて支給素材の意匠がほぼ見えていなかった。
+      // 赤い塗りが「どこが危ないか」の下地、素材が意匠の主役、という重ね順にする。
+      view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
       view.clawMarks[idx] = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2411',
+    items: [
+      '攻撃予告の輪・帯・爪痕の絵が、赤い塗りの下に潜って見えなくなっていたのを修正しました。絵が上に出ます(範囲は変わりません)。',
+    ],
+  },
+  {
     version: '0.25.2410',
     items: [
       '飛び掛かりの着地とのしかかりの砂埃も大きく広がるようになりました(当たり判定は変わりません)。',
