@@ -115,7 +115,7 @@ import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled }
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID } from '../data/campaign';
+import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, rollEquipment, armoryTargetSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
@@ -3423,8 +3423,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
   pendingLoadout: loadStringArray(LOADOUT_SUBS_KEY) as SubWeaponKey[],
-  pendingSkills: (loadStringArray(LOADOUT_SKILLS_KEY) as SkillKey[]).slice(0, 2),
-  ownedSkills: loadStringArray(OWNED_SKILLS_KEY) as SkillKey[],
+  // 警察署のpoi専用スキルは「プレイ中のみ付与」(社長指示v0.25.2451)。旧実装が恒久所持
+  // (grantSkill)で書いていたため、汚染済みセーブから読み込み時に自動除去する(装備枠も同様)。
+  pendingSkills: (loadStringArray(LOADOUT_SKILLS_KEY) as SkillKey[]).filter(k => !POLICE_REWARD_SKILLS.includes(k)).slice(0, 2),
+  ownedSkills: (loadStringArray(OWNED_SKILLS_KEY) as SkillKey[]).filter(k => !POLICE_REWARD_SKILLS.includes(k)),
   ownedSkillLevels: loadSkillLevels(),
   gachaDupeCounts: loadDupeCounts(),
   gachaPitySinceSuper: loadNumber(GACHA_PITY_KEY, 0),

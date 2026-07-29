@@ -366,7 +366,10 @@ const shieldBulletDamage = (ownerType?: EnemyType): number =>
 const SHIELD_PLACE_DISTANCE = 34;            // プレイヤー中心から設置足元までの距離
 // 当たり判定は木と同じく「下部のみ」の小さなフットプリント(敵もプレイヤーも貫通不可)。
 // スプライトはこの足元から上へ伸びる。絵に合わせた範囲。実機で微調整(TODO)。
-const SHIELD_FOOT_W = 108;                    // 面の幅(=遮断/効果範囲の横幅)。見た目より広い(中心から両サイド均等)
+const SHIELD_FOOT_W = 108;                    // 左右配置の縦面の長さ(遮断/効果範囲)。左右は据え置き(社長指示は上下のみ)
+// 上下配置の遮断面の横幅。素材shield-up/downの可視幅の画素実測=58px(表示高92px時)に一致させる
+// (社長指示v0.25.2451「見た目以上に横幅に当たり判定があるのを見た目に揃えて」。旧: SHIELD_FOOT_W=108で約2倍だった)。
+const SHIELD_FACE_W_UPDOWN = 58;
 const SHIELD_FOOT_H = 16;                     // フットプリント奥行(下辺=足元、縦の厚み)
 const SHIELD_SIDE_DROP = 18;                  // 左右向き時、当たり/効果範囲(と絵)を下へずらす量
 const SHIELD_HIT_INTERVAL_MS = 400;          // 同一敵が連続で耐久を削る最短間隔
@@ -2822,13 +2825,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   eventBannerUntil: newGameTime + EVENT_BANNER_MS,
                 });
                 playSfx('event-clear'); // 小イベント完了音(成功時のみ)
-                // §6.24 M48 F1: 全滅クリアで専用スキルを1つランダム入手(reaper習得と同じgrantSkill経路。
-                // ownedSkillsへ永続追加=装備は次以降の出撃ロードアウト選択から。ガチャには絶対出ない)。
+                // §6.24 M48 F1: 全滅クリアで専用スキルを1つランダム付与。**プレイ中のみ**
+                // (社長指示v0.25.2451「プレイ中のみ付与」)。旧実装のgrantSkill(恒久所持=装備メニューに
+                // 並ぶ+そのランでは発動しない)は真逆の挙動だったため、ラン内のplayer.skillsへ直接
+                // 追加する形へ変更。resetGameで自然に消え、所持リスト/ガチャ/装備UIには一切出ない。
                 if (ae.policeArena) {
                   const granted = POLICE_REWARD_SKILLS[Math.floor(Math.random() * POLICE_REWARD_SKILLS.length)];
-                  useGameStore.getState().grantSkill(granted);
-                  useGameStore.setState({ policeTaken: true, policeTakenAt: newGameTime });
-                  useGameStore.getState().spawnCallout(ae.x, ae.y - 40, `スキル「${SKILLS[granted].name}」習得！`, '#7dd3fc');
+                  useGameStore.setState(s => ({
+                    player: s.player.skills.includes(granted) ? s.player : {
+                      ...s.player,
+                      skills: [...s.player.skills, granted],
+                      skillLevels: { ...s.player.skillLevels, [granted]: 1 },
+                    },
+                    policeTaken: true, policeTakenAt: newGameTime,
+                  }));
+                  useGameStore.getState().spawnCallout(ae.x, ae.y - 40, `スキル「${SKILLS[granted].name}」発動！(この出撃のみ)`, '#7dd3fc');
                 }
                 // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1クリア時の後処理。恒久解除+未達
                 // ペナルティ解除+ハンター消滅+M14到達判定を遅延実行(未達で止めていた分をここで出す)。
@@ -6321,7 +6332,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const footY = pcy + ny * SHIELD_PLACE_DISTANCE + (sideways ? SHIELD_SIDE_DROP : 0);
           // 面(=遮断の広い面)は法線に直交させる。左右向き(法線が水平)なら面は縦(Y)、
           // 上下向きなら面は横(X)。奥行(SHIELD_FOOT_H)は常に法線方向の薄い側。
-          const shieldW = sideways ? SHIELD_FOOT_H : SHIELD_FOOT_W;
+          const shieldW = sideways ? SHIELD_FOOT_H : SHIELD_FACE_W_UPDOWN; // 上下配置は絵の可視幅に一致(v0.25.2451)
           const shieldH = sideways ? SHIELD_FOOT_W : SHIELD_FOOT_H;
           const nowMs = Date.now();
           // 同時設置は1個: 既存のシールドがあれば消す(デコイと同じ流儀)。
