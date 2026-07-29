@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2448',
+    items: [
+      'ボスが、直近でよく攻撃している方(あなたかゴースト)を狙うようになりました。',
+    ],
+  },
+  {
     version: '0.25.2447',
     items: [
       '銃口の白煙エフェクトが撃った方向と逆に付いていたのを修正し、大きさも適正化しました。',

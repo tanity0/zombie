@@ -598,6 +598,13 @@ export interface Enemy {
   // 火炎瓶(molotov)サブウェポン: 直近に地面の火(groundFires)からDoTを受けた gameTime(ms)。
   // MOLOTOV_DOT_INTERVAL_MS(0.5秒)のスロットルに使用(複数の火に重なっても二重取りしない)。
   lastFireHitAt?: number;
+  // BOT_AND_GHOST.md §2.8 G2.5(ヘイト): giantbat/idol/天使6体だけが持つ(src/utils/bossHate.ts
+  // isHateTrackedBossType)。プレイヤー/ゴーストそれぞれの直近6秒ダメージ(1秒バケツ×6)と、
+  // 直前の技の狙いロックで選ばれていた側(粘着×1.3の基準)。damageEnemyが被弾のたびに更新し、
+  // 各ボスのwindup開始点(beginGiantMove等)がresolveBossHateAim経由で読む。
+  hatePlayerBuckets?: { idx: number; dmg: number }[];
+  hateGhostBuckets?: { idx: number; dmg: number }[];
+  hateTarget?: 'player' | 'ghost';
 }
 
 // 'ghost-ally' = BOT_AND_GHOST.md G2(ゴースト助っ人・デバッグ召喚 `?ghost=1`)。**'ghost-ally'という

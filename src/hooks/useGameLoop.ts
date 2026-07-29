@@ -207,6 +207,7 @@ import {
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
 import { notifyCounterHit } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1(計測専用・挙動不変)
 import { decideGhost, defaultGhostProfile, ghostLeashWarp, type GhostProfile } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2
+import { resolveBossHateAim, type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
 import { calculateResultScore } from '../utils/resultScoring';
 import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
@@ -5298,6 +5299,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             iPatch.bossPhase = phase;
             const st = idol.bossState ?? 'chase';
             const idolFireBullet = (tx: number, ty: number) => addProjectile(createEnemyProjectile(idol, player, tx, ty));
+            // BOT_AND_GHOST.md §2.8 G2.5: 各技のwindup終わり(=狙いロックの瞬間)で1回だけ呼ぶ。
+            // 毎フレーム呼ばない(chaseのkiting/pickIdolMoveの距離計算はプレイヤー基準のまま不変)。
+            const idolHateAim = () => resolveBossHateAim(idol, { x: pcx, y: pcy }, useGameStore.getState().summons, newGameTime);
             const beginIdolMove = (move: IdolMove) => {
               playSfx(BOSS_ALERT_SFX_KEY);
               if (move === 'aim') { iPatch.bossState = 'idol-aim-windup'; iPatch.bossStateUntil = newGameTime + IDOL_AIM_WINDUP_MS; }
@@ -5370,15 +5374,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             } else if (st === 'idol-aim-windup') {
               if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-                idolFireBullet(pcx, pcy);
+                const aim = idolHateAim(); // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(単発の実弾は撃つ瞬間に確定)
+                idolFireBullet(aim.x, aim.y);
+                iPatch.hateTarget = aim.side;
                 iPatch.bossState = 'idol-aim-recover';
                 iPatch.bossStateUntil = newGameTime + IDOL_AIM_RECOVER_MS;
               }
             } else if (st === 'idol-fan-windup') {
               if (newGameTime >= (idol.bossStateUntil ?? 0)) {
                 // §6.28-20 Phase2: 扇3→5本(idolFanCount)。近距離技(roll/punch)は一切変えない。
+                const aim = idolHateAim(); // BOT_AND_GHOST.md §2.8 G2.5
+                iPatch.hateTarget = aim.side;
                 const count = idolFanCount(phase);
-                const ang = Math.atan2(pcy - icy, pcx - icx);
+                const ang = Math.atan2(aim.y - icy, aim.x - icx);
                 const spreadStep = 0.14; // 1本あたりの開き角(rad・叩き台=JORM_BURST_FAN_SPREADと同オーダー)
                 const half = (count - 1) / 2;
                 for (let k = 0; k < count; k++) {
@@ -5390,7 +5398,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             } else if (st === 'idol-roll-windup') {
               if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-                const dx = icx - pcx, dy = icy - pcy;
+                const aim = idolHateAim(); // BOT_AND_GHOST.md §2.8 G2.5: 離脱ローリングも「狙う対象から離れる」向き
+                iPatch.hateTarget = aim.side;
+                const dx = icx - aim.x, dy = icy - aim.y;
                 const dl = Math.hypot(dx, dy) || 1;
                 iPatch.bossState = 'idol-roll';
                 iPatch.bossStateUntil = newGameTime + IDOL_ROLL_ACTIVE_MS;
@@ -5411,7 +5421,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             } else if (st === 'idol-punch-windup') {
               if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-                const ang = Math.atan2(pcy - icy, pcx - icx);
+                const aim = idolHateAim(); // BOT_AND_GHOST.md §2.8 G2.5
+                iPatch.hateTarget = aim.side;
+                const ang = Math.atan2(aim.y - icy, aim.x - icx);
                 const tx2 = icx + Math.cos(ang) * IDOL_PUNCH_RANGE, ty2 = icy + Math.sin(ang) * IDOL_PUNCH_RANGE;
                 useGameStore.setState(state => ({
                   pumpkinBlasts: [...state.pumpkinBlasts, {
@@ -6959,7 +6971,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 扱い=botTelemetryの近接/銃比率を汚さない)。
                 const dmg = Math.max(1, Math.round(meleeWeapon?.damage ?? 6));
                 const btcx = boundBoss.x + boundBoss.width / 2, btcy = boundBoss.y;
-                damageEnemy(boundBoss.id, dmg, false, false, false, null);
+                // BOT_AND_GHOST.md §2.8 G2.5: ヘイト計測用にゴースト起因と明示する(damageChannelは
+                // 従来どおりnull=botTelemetryのプレイヤー計測は汚さない・独立したパラメータ)。
+                damageEnemy(boundBoss.id, dmg, false, false, false, null, 'ghost');
                 spawnDamageNumber(btcx, btcy, dmg, false);
                 spawnBurst(btcx, boundBoss.y + boundBoss.height / 2, '#9fd8ff', 6);
                 playSfx('melee');
@@ -7855,7 +7869,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
           // §6.21 M46: gun/otherチャネル分類(護衛NPC弾はnull=計測除外)。純関数=classifyProjectileDamageChannel。
           const dmgChannel = classifyProjectileDamageChannel(projectile?.weaponType, projectile?.weaponKey);
-          const enemyKilled = damageEnemy(enemyId, dmg, false, hitCrit, false, dmgChannel);
+          // BOT_AND_GHOST.md §2.8 G2.5: ゴースト銃弾(weaponKey='ghost-gun')だけヘイトの起因を
+          // 'ghost'にする(escort等それ以外は既定'player'=「1つの財布」の側という扱い・本バッチのスコープ外)。
+          const hateShotSource: HateSide = projectile?.weaponKey === 'ghost-gun' ? 'ghost' : 'player';
+          const enemyKilled = damageEnemy(enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource);
           // 護衛NPCの弾の被弾音も、発砲音と同じ距離減衰をかける(遠いNPCの攻撃は被弾音も小さく/画面外は無音)。
           // プレイヤー自身の弾は等倍(gain=1)。
           let hitSfxGain = 1;

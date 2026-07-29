@@ -1,5 +1,90 @@
 # Development Log
 
+## v0.25.2448 — G2.5(ヘイト): ボスがゴーストも狙うようになった(BOT_AND_GHOST.md §2.8実装)【2026-07-30 02:30 JST】
+
+- **やったこと**: giantbat(城ボス/グレン/EX)・idol・天使6体(miguel/jibril/rafi/uri/suriel/acrasiel)の
+  「技の狙いロック箇所」を洗い出し、pcx/pcy(プレイヤー中心)直読みを `resolveBossHateAim()` の
+  戻り値(プレイヤー or ゴーストの中心)に差し替えた。毎フレームの追尾・技の途中の対象変更・
+  技の構造/タイミング/判定は一切変えていない(受け入れ条件どおり)。
+- **`src/utils/bossHate.ts`**: 前任エージェントの骨格(バケツ回転/pickHateSide/resolveHateAimTarget)を
+  ほぼそのまま採用(設計・命名とも妥当と判断・書き直し無し)。追加したのは呼び出し側の定型作業を
+  1箇所へ集約する `resolveBossHateAim(enemy, playerPoint, summons, gameTime)` のみ(ghost-ally検索+
+  中心座標化+pickHateSideの合成)。ユニットテスト17件を新設(`bossHate.test.ts`)。
+- **ダメージ起因の識別**: 既存の `damageChannel` は escort/ghost-gun をどちらも `null`(プレイヤー起因で
+  ないため計測除外)に丸めており player/ghost の識別には使えなかったため、`damageEnemy` に7番目の
+  引数 `hateSource?: 'player' | 'ghost'`(既定 `'player'`)を1行追加(挙動不変・計測のみ)。
+  ゴースト起因と明示する呼び出しは2箇所だけ: ①ゴースト近接(`useGameLoop.ts`固定`'ghost'`)
+  ②ゴースト銃弾(`weaponKey==='ghost-gun'`の弾がdamageEnemyへ到達する箇所で判定)。それ以外の
+  全既存呼び出しは引数を足していないので自動的に既定`'player'`のまま=挙動100%不変。
+  `damageEnemy`内で`isHateTrackedBossType(enemy.type)`かつ実ダメージ>0の時だけ
+  `hatePlayerBuckets`/`hateGhostBuckets`(Enemy型に追加)へ積む。
+- **ロック箇所の差し替え一覧**(◯=差し替え済み/×=対象だが変更なし・理由付き):
+
+  | ボス | 技 | ファイル | 状態 |
+  |---|---|---|---|
+  | giantbat | stomp | gameStore.ts beginGiantMove | × 自己中心(足元)・狙い不要 |
+  | giantbat | sweep | gameStore.ts beginGiantMove | ◯ |
+  | giantbat | jump | gameStore.ts beginGiantMove | ◯ 着地点ロック |
+  | giantbat | dash | gameStore.ts beginGiantMove | ◯(windupの一撃目ロックのみ。g-dash-charge中の
+      後退り/ホーミングは毎フレーム追尾のため不変=指示どおり) |
+  | giantbat | bolt | gameStore.ts beginGiantMove | × 既存`resolveEnemyTarget`経由(fire時にsummons
+      中のghost-allyを既に見られる=別経路で無改造ゴースト対応済み・触ると二重管理になるため不変) |
+  | giantbat | bite/slam/glide/wing/sweepbeam | gameStore.ts beginGiantStageMove(共通lockDir) | ◯ |
+  | giantbat | dive | gameStore.ts beginGiantStageMove | ◯ 着地点ロック |
+  | giantbat | nova | gameStore.ts beginGiantStageMove | × 全方位・自己中心・狙い不要 |
+  | giantbat | quaddash(各leg) | gameStore.ts beginQuadDash(初弾+2/3弾目の計2呼び出し元) | ◯ |
+  | giantbat(グレン) | talon/boon/reach | gameStore.ts beginGlenMove(共通lockDir) | ◯ |
+  | giantbat(グレン) | nihil | gameStore.ts beginGlenMove | ◯ |
+  | giantbat(グレン) | trijump | gameStore.ts beginGlenMove | ◯ |
+  | giantbat(stage-4) | 氷結の横薙ぎ(quaddash後続) | gameStore.ts g-quad-charge内onDashFinished | ◯ |
+  | idol | aim/fan/roll/punch | useGameLoop.ts beginIdolMove系(windup終わりの実行点で評価) | ◯ 4技全部 |
+  | idol | chase(kiting) | useGameLoop.ts | × 毎フレーム移動・狙いロックでない |
+  | miguel | dash/harai/tate | angelBossTick.ts runMiguelTick | ◯ 3技(hараiは初回+dash後追撃の
+      lockHaraiLine 2箇所とも) |
+  | miguel | volley/counter-leap退避 | angelBossTick.ts runMiguelTick | × volley=反復発射(毎射再サンプル
+      につき"ロック"でない)/counter-leap=反撃を受けた反応の退避先(狙いではない) |
+  | jibril | (対象技なし) | angelBossTick.ts runJibrilTick | × volley/lantern=反復発射・consecrate=自己
+      中心リング・warp=アリーナ端張り付き回避の退避(狙いではない)。技構造上ロック点が存在しない |
+  | rafi | sweep/jump | angelBossTick.ts runRafiTick | ◯ 2技 |
+  | rafi | bone | angelBossTick.ts runRafiTick | × 反復発射(毎射再サンプル) |
+  | uri | sweep/downslash/thrust | angelBossTick.ts runUriTick | ◯ 4箇所(downslashはchase発火+
+      sweep-recoverコンボ発火の2箇所とも) |
+  | uri | bolt | angelBossTick.ts runUriTick | × 反復発射 |
+  | suriel | ringshot/sweep/gaze | angelBossTick.ts runSurielTick | ◯ 5箇所(ringshotは環の初弾+ビーム
+      角ロックの2段階とも、sweepはchase発火+ring-recoverコンボ発火の2箇所とも) |
+  | suriel | ringspin | angelBossTick.ts runSurielTick | × 自己中心回転・狙い不要 |
+  | acrasiel | gaze | angelBossTick.ts runAcrasielTick | ◯ |
+  | acrasiel | spike/spear/warp/burst | angelBossTick.ts runAcrasielTick | × 全方位/自己中心/完全ランダム
+      再配置=プレイヤー方向を一切使わない技 |
+  | thor/mimir/jormungand/skadi(裏ボス)・通常敵 | — | gameStore.ts / useGameLoop.ts | × スコープ外
+      (トールは既存resolveEnemyTarget経由で無改造ゴースト対応済み・裏ボスはBOT_AND_GHOST.md対象外) |
+  | miguel/jibril/rafi(`?<boss>script=0`のレガシー関数) | — | angelBossTick.ts run\*TickLegacy | ×
+      デバッグ専用フォールバック経路(仕様変更ルール=触ってと言われた所だけ触る、に従い不変) |
+
+- **pcx/pcy残存確認(grep全数)**: `giantbat`(gameStore.ts GIANT_SCRIPT_ENABLEDブロック)/`idol`
+  (useGameLoop.ts)/6天使(angelBossTick.ts)の対象範囲で `pcx`/`pcy` を全数grepし、残った参照は
+  全て (a) 毎フレームの後退り/ホーミング(dash・quaddash・glide各windupの背走、dash/quaddash-charge中の
+  ホーミング) (b) プレイヤーへの当たり判定(distToSegment/damagePlayer/pumpkinBlasts、ゴーストは
+  被弾しない=G2の既知の未決事項でスコープ外) (c) 反撃反応の退避先(miguel counter-leap) (d) 反復発射
+  (bolt/bone/volley/lantern) (e) 裏ボス/通常敵/レガシー関数、のいずれかであることを1件ずつ確認。
+  **見落とし0件**。
+- **復帰フラグ**: `?bosshate=0` で全ボス即座に旧挙動(常にプレイヤー)。前任骨格のまま流用。
+- 変更ファイル: `src/utils/bossHate.ts`(実装完了・コミット) / `src/utils/bossHate.test.ts`(新設) /
+  `src/types/game.ts`(Enemyへ`hatePlayerBuckets`/`hateGhostBuckets`/`hateTarget`追加) /
+  `src/store/gameStore.ts`(damageEnemyへhateSource引数+giantbat/グレン各ロック箇所) /
+  `src/hooks/useGameLoop.ts`(idol各ロック箇所+ゴースト起因ダメージ2箇所の明示) /
+  `src/utils/angelBossTick.ts`(miguel/rafi/uri/suriel/acrasielの各ロック箇所) /
+  `package.json` / `src/data/changelog.ts` / 本ログ。
+- **検証**: `npm run typecheck` エラー0 / `npm run lint` エラー0(新規warningなし) /
+  `npx vitest run src/utils/bossHate.test.ts` 17件全通過 / `npx vitest related`(変更ファイル一式)で
+  258件通過・1件失敗(playtest.test.ts M19深層ラッシュ)だが**単独再実行で通過を確認済み=既存の
+  テスト順依存フレーク(本バッチの回帰ではない)**。
+- ★申し送り(G2の★未決2の再掲・本バッチのスコープ外): ボスがゴーストを狙う技を選んでも、
+  その技の**ダメージ判定は依然プレイヤーにしか当たらない**(狙い座標が変わるだけ)。ゴーストへの
+  被弾経路(ボス固有技の専用当たり判定)を追加する場合は別バッチが必要。
+- 自己点検: 判定/タイミング/技の構造は不変(狙い座標の入力元のみ差し替え)。CLAUDE.mdの
+  「仕様変更のルール」= 指示された箇所(狙いロック)だけを直し、周辺(判定/CD/確率/演出)は無改造。
+
 ## v0.25.2447 — 銃口フラッシュの向き反転修正+縮小(社長報告「逆についてる。あとデカい」)【2026-07-30 02:28 JST】
 
 - **向きが逆**: `fx/muzzle-flash` 素材の画素解析で**根元=左端(0, 0.5)・炎は+x(右)へ噴く**と確定。

@@ -36,6 +36,7 @@ import {
   pickAcrasielMove, pickAcrasielCombo, acrasielPhaseForHealth, acrasielSpikeGapCount,
   pickSpikeGapMask, isSpikeGapSector,
 } from './acrasielScript';
+import { resolveBossHateAim, type ResolvedHateAim } from './bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
 
 // --- 音の注入(ヘッドレスはNOOP) -------------------------------------------
 export interface AngelSfx {
@@ -336,14 +337,19 @@ export const runMiguelTick = (
     patch.aiTargetY = pcy + (ly / ll) * orbitRadius;
   };
 
+  // BOT_AND_GHOST.md §2.8 G2.5: windup開始点でだけ呼ぶ(毎フレーム評価しない)。
+  const miguelHateAim = (): ResolvedHateAim => resolveBossHateAim(miguel, { x: pcx, y: pcy }, store.summons, newGameTime);
+
   const lockHaraiLine = (): void => {
-    const rx = mcx - pcx, ry = mcy - pcy;
+    const aim = miguelHateAim();
+    patch.hateTarget = aim.side;
+    const rx = mcx - aim.x, ry = mcy - aim.y;
     const rl = Math.hypot(rx, ry) || 1;
     const tx0 = -ry / rl, ty0 = rx / rl;
-    patch.aiFromX = pcx - tx0 * (MIGUEL_HARAI_RANGE / 2);
-    patch.aiFromY = pcy - ty0 * (MIGUEL_HARAI_RANGE / 2);
-    patch.aiTargetX = pcx + tx0 * (MIGUEL_HARAI_RANGE / 2);
-    patch.aiTargetY = pcy + ty0 * (MIGUEL_HARAI_RANGE / 2);
+    patch.aiFromX = aim.x - tx0 * (MIGUEL_HARAI_RANGE / 2);
+    patch.aiFromY = aim.y - ty0 * (MIGUEL_HARAI_RANGE / 2);
+    patch.aiTargetX = aim.x + tx0 * (MIGUEL_HARAI_RANGE / 2);
+    patch.aiTargetY = aim.y + ty0 * (MIGUEL_HARAI_RANGE / 2);
   };
 
   const miguelFullStun = miguel.bossFullStunUntil !== undefined && newGameTime < miguel.bossFullStunUntil;
@@ -361,7 +367,9 @@ export const runMiguelTick = (
         patch.bossState = 'mdash-windup';
         patch.bossStateUntil = newGameTime + MIGUEL_DASH_WINDUP_MS;
         patch.aiFromX = mcx; patch.aiFromY = mcy;
-        patch.aiTargetX = pcx; patch.aiTargetY = pcy; // 終点=プレイヤー位置。溜め開始でロック(掟W4)。
+        // 終点=狙い対象の位置。溜め開始でロック(掟W4)。BOT_AND_GHOST.md §2.8 G2.5。
+        const dashAim = miguelHateAim();
+        patch.aiTargetX = dashAim.x; patch.aiTargetY = dashAim.y; patch.hateTarget = dashAim.side;
       } else if (move === 'harai') {
         patch.bossState = 'harai-windup';
         patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
@@ -411,10 +419,13 @@ export const runMiguelTick = (
         sfx.alert();
         patch.bossState = 'tate-windup';
         patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
-        patch.aiFromX = pcx;
-        patch.aiFromY = pcy - MIGUEL_HARAI_RANGE / 2;
-        patch.aiTargetX = pcx;
-        patch.aiTargetY = pcy + MIGUEL_HARAI_RANGE / 2;
+        // 縦払いも同じ狙いロック(掟W4)。BOT_AND_GHOST.md §2.8 G2.5。
+        const tateAim = miguelHateAim();
+        patch.aiFromX = tateAim.x;
+        patch.aiFromY = tateAim.y - MIGUEL_HARAI_RANGE / 2;
+        patch.aiTargetX = tateAim.x;
+        patch.aiTargetY = tateAim.y + MIGUEL_HARAI_RANGE / 2;
+        patch.hateTarget = tateAim.side;
       } else {
         patch.bossState = 'tate-recover';
         patch.bossStateUntil = newGameTime + MIGUEL_TATE_RECOVER_MS;
@@ -1060,8 +1071,11 @@ export const runRafiTick = (
         if (move === 'sweep') {
           patch.bossState = 'sweep-windup';
           patch.bossStateUntil = newGameTime + RAFI_SWEEP_WINDUP_MS;
-          const ddl = Math.hypot(pcx - rcx, pcy - rcy) || 1;
-          const dirx = (pcx - rcx) / ddl, diry = (pcy - rcy) / ddl;
+          // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(pcx/pcyの代わりにヘイト対象の中心)。
+          const sweepAim = resolveBossHateAim(rafi, { x: pcx, y: pcy }, store.summons, newGameTime);
+          patch.hateTarget = sweepAim.side;
+          const ddl = Math.hypot(sweepAim.x - rcx, sweepAim.y - rcy) || 1;
+          const dirx = (sweepAim.x - rcx) / ddl, diry = (sweepAim.y - rcy) / ddl;
           patch.aiFromX = rcx; patch.aiFromY = rcy;
           patch.aiTargetX = rcx + dirx * RAFI_SWEEP_RANGE_PX; patch.aiTargetY = rcy + diry * RAFI_SWEEP_RANGE_PX;
         } else if (move === 'bone') {
@@ -1124,7 +1138,9 @@ export const runRafiTick = (
       patch.bossState = 'jump-attack';
       patch.bossStateUntil = newGameTime + RAFI_JUMP_MS;
       patch.aiFromX = rcx; patch.aiFromY = rcy;
-      patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+      // BOT_AND_GHOST.md §2.8 G2.5: 着地点=pcx/pcyの代わりにヘイト対象の中心。
+      const jumpAim = resolveBossHateAim(rafi, { x: pcx, y: pcy }, store.summons, newGameTime);
+      patch.aiTargetX = jumpAim.x; patch.aiTargetY = jumpAim.y; patch.hateTarget = jumpAim.side;
     }
   } else if (st === 'jump-attack') {
     const fx0 = rafi.aiFromX ?? rcx, fy0 = rafi.aiFromY ?? rcy;
@@ -1357,7 +1373,10 @@ export const runUriTick = (
         sfx.alert();
         if (move === 'sweep') {
           patch.bossState = 'sweep-windup'; patch.bossStateUntil = newGameTime + URI_SWEEP_WINDUP_MS;
-          const ddl = Math.hypot(pcx - ucx, pcy - ucy) || 1; const dirx = (pcx - ucx) / ddl, diry = (pcy - ucy) / ddl;
+          // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(pcx/pcyの代わりにヘイト対象の中心)。
+          const sweepAim = resolveBossHateAim(uri, { x: pcx, y: pcy }, store.summons, newGameTime);
+          patch.hateTarget = sweepAim.side;
+          const ddl = Math.hypot(sweepAim.x - ucx, sweepAim.y - ucy) || 1; const dirx = (sweepAim.x - ucx) / ddl, diry = (sweepAim.y - ucy) / ddl;
           // §6.28-17「図形と判定は必ず一致させる」: ドーナツ(内径くり抜き)ではなく、カプセルの
           // 始点そのものを内径ぶん前へ出す(=原点から innerRadius だけ進んだ点を始点とする通常の
           // カプセル)。半幅40≪内径140/90なので描画は既存T3帯の内側を塗らないだけで済む(社長裁定)。
@@ -1366,12 +1385,18 @@ export const runUriTick = (
           patch.aiTargetX = ucx + dirx * URI_SWEEP_RANGE_PX; patch.aiTargetY = ucy + diry * URI_SWEEP_RANGE_PX;
         } else if (move === 'downslash') {
           patch.bossState = 'downslash-windup'; patch.bossStateUntil = newGameTime + URI_DOWNSLASH_WINDUP_MS;
-          const ddl = Math.hypot(pcx - ucx, pcy - ucy) || 1; const dirx = (pcx - ucx) / ddl, diry = (pcy - ucy) / ddl;
+          // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(pcx/pcyの代わりにヘイト対象の中心)。
+          const dsAim = resolveBossHateAim(uri, { x: pcx, y: pcy }, store.summons, newGameTime);
+          patch.hateTarget = dsAim.side;
+          const ddl = Math.hypot(dsAim.x - ucx, dsAim.y - ucy) || 1; const dirx = (dsAim.x - ucx) / ddl, diry = (dsAim.y - ucy) / ddl;
           patch.aiFromX = ucx; patch.aiFromY = ucy;
           patch.aiTargetX = ucx + dirx * URI_DOWNSLASH_RANGE_PX; patch.aiTargetY = ucy + diry * URI_DOWNSLASH_RANGE_PX;
         } else if (move === 'thrust') {
           patch.bossState = 'thrust-windup'; patch.bossStateUntil = newGameTime + URI_THRUST_WINDUP_MS;
-          patch.aiFromX = ucx; patch.aiFromY = ucy; patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+          // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(pcx/pcyの代わりにヘイト対象の中心)。
+          const thrustAim = resolveBossHateAim(uri, { x: pcx, y: pcy }, store.summons, newGameTime);
+          patch.aiFromX = ucx; patch.aiFromY = ucy; patch.aiTargetX = thrustAim.x; patch.aiTargetY = thrustAim.y;
+          patch.hateTarget = thrustAim.side;
         } else {
           patch.bossState = 'bolt-windup'; patch.bossStateUntil = newGameTime + URI_BOLT_WINDUP_MS;
         }
@@ -1409,7 +1434,10 @@ export const runUriTick = (
       if (combo === 'downslash') {
         sfx.alert();
         patch.bossState = 'downslash-windup'; patch.bossStateUntil = newGameTime + URI_DOWNSLASH_WINDUP_MS;
-        const ddl = Math.hypot(pcx - ucx, pcy - ucy) || 1; const dirx = (pcx - ucx) / ddl, diry = (pcy - ucy) / ddl;
+        // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(pcx/pcyの代わりにヘイト対象の中心)。
+        const dsAim = resolveBossHateAim(uri, { x: pcx, y: pcy }, store.summons, newGameTime);
+        patch.hateTarget = dsAim.side;
+        const ddl = Math.hypot(dsAim.x - ucx, dsAim.y - ucy) || 1; const dirx = (dsAim.x - ucx) / ddl, diry = (dsAim.y - ucy) / ddl;
         patch.aiFromX = ucx; patch.aiFromY = ucy;
         patch.aiTargetX = ucx + dirx * URI_DOWNSLASH_RANGE_PX; patch.aiTargetY = ucy + diry * URI_DOWNSLASH_RANGE_PX;
       } else {
@@ -1587,18 +1615,24 @@ export const runSurielTick = (
         if (move === 'ringshot') {
           patch.bossState = 'ring-move-windup'; patch.bossStateUntil = newGameTime + SURIEL_RINGSHOT_MOVE_MS;
           patch.aiFromX = suriel.ringX ?? hp.x; patch.aiFromY = suriel.ringY ?? hp.y;
-          patch.aiTargetX = 2 * pcx - scx; patch.aiTargetY = 2 * pcy - scy; // プレイヤーの反対側=挟む
-          patch.aiStartedAt = newGameTime;
+          // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(pcx/pcyの代わりにヘイト対象の中心)。
+          const ringshotAim = resolveBossHateAim(suriel, { x: pcx, y: pcy }, store.summons, newGameTime);
+          patch.aiTargetX = 2 * ringshotAim.x - scx; patch.aiTargetY = 2 * ringshotAim.y - scy; // 対象の反対側=挟む
+          patch.aiStartedAt = newGameTime; patch.hateTarget = ringshotAim.side;
         } else if (move === 'ringspin') {
           patch.bossState = 'ring-spin-windup'; patch.bossStateUntil = newGameTime + SURIEL_RINGSPIN_WINDUP_MS;
         } else if (move === 'sweep') {
           patch.bossState = 'sweep-windup'; patch.bossStateUntil = newGameTime + SURIEL_SWEEP_WINDUP_MS;
-          const ddl = Math.hypot(pcx - scx, pcy - scy) || 1; const dirx = (pcx - scx) / ddl, diry = (pcy - scy) / ddl;
+          // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(pcx/pcyの代わりにヘイト対象の中心)。
+          const sweepAim = resolveBossHateAim(suriel, { x: pcx, y: pcy }, store.summons, newGameTime);
+          patch.hateTarget = sweepAim.side;
+          const ddl = Math.hypot(sweepAim.x - scx, sweepAim.y - scy) || 1; const dirx = (sweepAim.x - scx) / ddl, diry = (sweepAim.y - scy) / ddl;
           patch.aiFromX = scx; patch.aiFromY = scy;
           patch.aiTargetX = scx + dirx * SURIEL_SWEEP_RANGE_PX; patch.aiTargetY = scy + diry * SURIEL_SWEEP_RANGE_PX;
         } else {
           patch.bossState = 'gaze-windup'; patch.bossStateUntil = newGameTime + SURIEL_GAZE_WINDUP_MS;
-          patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+          const gazeAim = resolveBossHateAim(suriel, { x: pcx, y: pcy }, store.summons, newGameTime);
+          patch.aiTargetX = gazeAim.x; patch.aiTargetY = gazeAim.y; patch.hateTarget = gazeAim.side;
         }
       }
     }
@@ -1615,7 +1649,9 @@ export const runSurielTick = (
         patch.bossState = 'ring-beam-windup';
         patch.bossStateUntil = newGameTime + SURIEL_RINGSHOT_BEAM_WINDUP_MS;
         patch.aiFromX = tx0; patch.aiFromY = ty0; // 環の到達点=ビームの起点
-        patch.aiTargetX = pcx; patch.aiTargetY = pcy; // ロック(掟W4)
+        // ロック(掟W4)。BOT_AND_GHOST.md §2.8 G2.5: pcx/pcyの代わりにヘイト対象の中心。
+        const beamAim = resolveBossHateAim(suriel, { x: pcx, y: pcy }, store.summons, newGameTime);
+        patch.aiTargetX = beamAim.x; patch.aiTargetY = beamAim.y; patch.hateTarget = beamAim.side;
       }
     }
   } else if (st === 'ring-beam-windup') {
@@ -1651,7 +1687,10 @@ export const runSurielTick = (
       if (combo === 'sweep') {
         sfx.alert();
         patch.bossState = 'sweep-windup'; patch.bossStateUntil = newGameTime + SURIEL_SWEEP_WINDUP_MS;
-        const ddl = Math.hypot(pcx - scx, pcy - scy) || 1; const dirx = (pcx - scx) / ddl, diry = (pcy - scy) / ddl;
+        // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(pcx/pcyの代わりにヘイト対象の中心)。
+        const sweepAim = resolveBossHateAim(suriel, { x: pcx, y: pcy }, store.summons, newGameTime);
+        patch.hateTarget = sweepAim.side;
+        const ddl = Math.hypot(sweepAim.x - scx, sweepAim.y - scy) || 1; const dirx = (sweepAim.x - scx) / ddl, diry = (sweepAim.y - scy) / ddl;
         patch.aiFromX = scx; patch.aiFromY = scy;
         patch.aiTargetX = scx + dirx * SURIEL_SWEEP_RANGE_PX; patch.aiTargetY = scy + diry * SURIEL_SWEEP_RANGE_PX;
       } else {
@@ -1797,7 +1836,9 @@ export const runAcrasielTick = (
           patch.bossState = 'burst-windup'; patch.bossStateUntil = newGameTime + ACRASIEL_BURST_WINDUP_MS;
         } else {
           patch.bossState = 'gaze-windup'; patch.bossStateUntil = newGameTime + ACRASIEL_GAZE_WINDUP_MS;
-          patch.aiTargetX = pcx; patch.aiTargetY = pcy; // ロック(掟W4)
+          // ロック(掟W4)。BOT_AND_GHOST.md §2.8 G2.5: pcx/pcyの代わりにヘイト対象の中心。
+          const gazeAim = resolveBossHateAim(acrasiel, { x: pcx, y: pcy }, store.summons, newGameTime);
+          patch.aiTargetX = gazeAim.x; patch.aiTargetY = gazeAim.y; patch.hateTarget = gazeAim.side;
         }
       }
     }
