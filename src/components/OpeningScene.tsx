@@ -440,8 +440,15 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   // 事前解錠(プライミング、下のpanRef/heartRef/audioRef生成部)は【muted+volume=0の二重ガード】にし、
   // 解錠後もその無音状態のまま止め置く(unmuteしない)。実際に聞かせる本再生は必ずこの関数を通し、
   // muted解除+volume復元(意図した音量への戻し)の両方を同一箇所で確実に行う。
+  // 【プライミングとの競合ガード・v0.25.2406】プライミングは `play().then(pause)` という**非同期**の
+  // 止め置きなので、その then が「本再生を始めた後」に着地すると、鳴らし始めた音をそのまま止めてしまう。
+  // 廊下BGMだけがこの罠に落ちる: 他の音(パン/心拍/アリーナ)は本再生がずっと後のタイマー発火なのに対し、
+  // 廊下BGMの本再生は素材ロード完了(ready)=OP中で最も早い瞬間だから。ここで印を付け、プライミング側は
+  // 印のある要素を pause しない。
+  const realPlayStarted = useRef<WeakSet<HTMLAudioElement>>(new WeakSet());
   const unlockAndPlay = (a: HTMLAudioElement | undefined, volume: number) => {
     if (!a) return;
+    realPlayStarted.current.add(a);
     a.muted = false;
     a.volume = volume;
     try { a.play().catch(() => {}); } catch { /* ignore */ }
@@ -539,7 +546,13 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     [...panRef.current, ...heartRef.current, ...audioRef.current, ...(walkAudioRef.current ? [walkAudioRef.current] : [])].forEach(a => {
       a.muted = true;
       a.volume = 0;
-      a.play().then(() => { a.pause(); try { a.currentTime = 0; } catch { /* ignore */ } })
+      a.play().then(() => {
+        // 既に本再生が始まっている要素は止めない(v0.25.2406)。この then は非同期に遅れて着地するため、
+        // 無条件に pause すると鳴らし始めた廊下BGMを自分で殺してしまう(社長報告「op廊下の音楽鳴らなくなった」)。
+        if (realPlayStarted.current.has(a)) return;
+        a.pause();
+        try { a.currentTime = 0; } catch { /* ignore */ }
+      })
         .catch(() => { /* 解錠失敗でも本再生側(unlockAndPlay)がmuted解除+volume復元を行うため無視してよい */ });
     });
     // 素材を2群に分割(v0.25.2118・社長報告「ローディング中に始まる/始まっても読み込み終わってない」):
@@ -634,6 +647,14 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     if (!ready) return;
     if (walkDone) { fadeOutWalkBgm(); return; }
     unlockAndPlay(walkAudioRef.current ?? undefined, WALK_AUDIO_VOLUME);
+    // 【自己修復・v0.25.2406】止まっていたら鳴らし直す(1秒ごと)。廊下は「押している間だけ歩く」=
+    // 常にタップ/ホールドが入るシーンなので、初回の再生がモバイルの自動再生ポリシーで弾かれても
+    // 次の操作の直後の再試行で必ず鳴り出す。フェードアウト中(=アリーナへ譲る瞬間)は触らない。
+    const heal = window.setInterval(() => {
+      const a = walkAudioRef.current;
+      if (a && a.paused && !walkFadingRef.current) unlockAndPlay(a, WALK_AUDIO_VOLUME);
+    }, 1000);
+    return () => window.clearInterval(heal);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, walkDone]);
 
