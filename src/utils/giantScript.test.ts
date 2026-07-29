@@ -8,6 +8,9 @@ import {
   giantStageMoveEligible, pickGiantMoveWithStage,
   GIANT_QUAD_DASH_COUNT, giantQuadDashComplete, GIANT_QUAD_ICE_COUNT,
   type GiantStageMoveId,
+  // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用の新技4つ。
+  glenScriptApplies, glenMoveEligible, pickGiantMoveWithGlen, GLEN_MOVE_RANGE, GLEN_NIHIL_CHANT_COUNT,
+  type GlenMoveId,
 } from './giantScript';
 
 const ALL_MOVES: GiantMove[] = ['stomp', 'sweep', 'jump', 'dash', 'bolt'];
@@ -423,5 +426,106 @@ describe('GIANT_STAGE_MOVE_RANGE — 表の実値を固定するリグレッシ�
     expect(GIANT_STAGE_MOVE_RANGE.bite).toEqual({ min: 0, max: 180 });
     expect(GIANT_STAGE_MOVE_RANGE.slam).toEqual({ min: 140, max: 420 });
     expect(GIANT_STAGE_MOVE_RANGE.glide).toEqual({ min: 320, max: 900 });
+  });
+});
+
+// ============================================================================================
+// M67(PACING_PUZZLE.md §6.26-12・社長指示「ステージ7は別格として技のバリエーションを組んで」):
+// グレン(stage-7)専用の新技4つ(血の爪痕/血の弧/伸びる触手/虚無の三唱)。
+// ============================================================================================
+
+const noGiantReady: Record<GiantMove, boolean> = { stomp: false, sweep: false, jump: false, dash: false, bolt: false };
+const allGlenReady: Record<GlenMoveId, boolean> = { talon: true, boon: true, reach: true, nihil: true };
+const noGlenReady: Record<GlenMoveId, boolean> = { talon: false, boon: false, reach: false, nihil: false };
+
+describe('glenScriptApplies — 受け入れ条件: stage-7のグレンだけが新技を選ぶ(通常城ボス/ex1では絶対に選ばれない)', () => {
+  it('true only for isStoryBoss=true & storyBossVariant="stage-7" & enabled', () => {
+    expect(glenScriptApplies(true, 'stage-7', true)).toBe(true);
+  });
+  it('false for stage-ex1(未確認変異体) — EXはM60のPhase3のみのまま', () => {
+    expect(glenScriptApplies(true, 'stage-ex1', true)).toBe(false);
+  });
+  it('false for normal city bosses (isStoryBoss undefined/false)', () => {
+    expect(glenScriptApplies(undefined, undefined, true)).toBe(false);
+    expect(glenScriptApplies(false, undefined, true)).toBe(false);
+  });
+  it('false when disabled (?glenscript=0 のフォールバック経路)', () => {
+    expect(glenScriptApplies(true, 'stage-7', false)).toBe(false);
+  });
+});
+
+describe('glenMoveEligible / GLEN_MOVE_RANGE — 表(§6.26-12)どおりの間合い(境界含む)', () => {
+  it('talon: 140〜420', () => {
+    expect(glenMoveEligible('talon', 139)).toBe(false);
+    expect(glenMoveEligible('talon', 140)).toBe(true);
+    expect(glenMoveEligible('talon', 420)).toBe(true);
+    expect(glenMoveEligible('talon', 421)).toBe(false);
+  });
+  it('boon: 320〜900', () => {
+    expect(glenMoveEligible('boon', 319)).toBe(false);
+    expect(glenMoveEligible('boon', 320)).toBe(true);
+    expect(glenMoveEligible('boon', 900)).toBe(true);
+    expect(glenMoveEligible('boon', 901)).toBe(false);
+  });
+  it('reach: 420〜1000', () => {
+    expect(glenMoveEligible('reach', 419)).toBe(false);
+    expect(glenMoveEligible('reach', 420)).toBe(true);
+    expect(glenMoveEligible('reach', 1000)).toBe(true);
+    expect(glenMoveEligible('reach', 1001)).toBe(false);
+  });
+  it('nihil: 全帯(距離を問わない)', () => {
+    expect(glenMoveEligible('nihil', 0)).toBe(true);
+    expect(glenMoveEligible('nihil', 5000)).toBe(true);
+  });
+  it('GLEN_MOVE_RANGE matches the confirmed design-doc numbers exactly (リグレッションガード)', () => {
+    expect(GLEN_MOVE_RANGE.talon).toEqual({ min: 140, max: 420 });
+    expect(GLEN_MOVE_RANGE.boon).toEqual({ min: 320, max: 900 });
+    expect(GLEN_MOVE_RANGE.reach).toEqual({ min: 420, max: 1000 });
+    expect(GLEN_MOVE_RANGE.nihil).toEqual({ min: 0, max: Infinity });
+  });
+});
+
+describe('pickGiantMoveWithGlen — 受け入れ条件: Phase1で大技(nihil)が出ない', () => {
+  // 距離2000は既存5技(最大帯=dashの1000)にもtalon/boon/reach(最大帯=reachの1000)にも一切
+  // 該当しない=nihil(全帯)だけが候補になりうる距離。Phase1で常にnullなら「大技だけが閉じている」
+  // ことを直接証明できる。
+  it('phase1: nihil is never offered even when everything else is unavailable', () => {
+    for (let i = 0; i < 20; i++) {
+      expect(pickGiantMoveWithGlen(2000, 1, noGiantReady, allGlenReady, () => i / 20)).toBeNull();
+    }
+  });
+  it('phase2 (HP60%): nihil becomes available at the same distance/readiness', () => {
+    expect(pickGiantMoveWithGlen(2000, 2, noGiantReady, allGlenReady, () => 0)).toBe('nihil');
+  });
+  it('phase3 (HP30%): nihil remains available (原則⑥=Phase2で解禁された技はPhase3でも消えない)', () => {
+    expect(pickGiantMoveWithGlen(2000, 3, noGiantReady, allGlenReady, () => 0)).toBe('nihil');
+  });
+});
+
+describe('pickGiantMoveWithGlen — 受け入れ条件: 既存5技の選択が壊れていない', () => {
+  const bandSamples = [70, 230, 470, 800]; // 密着/近/中/遠の代表距離(既存ファイルのbandSamplesと同じ)
+  it('matches pickGiantMove exactly when no Glen move is ready (既存5技は無改変)', () => {
+    const ready: Record<GiantMove, boolean> = { stomp: true, sweep: true, jump: true, dash: true, bolt: true };
+    for (const distance of bandSamples) {
+      for (let i = 0; i < 10; i++) {
+        const rand = () => i / 10;
+        expect(pickGiantMoveWithGlen(distance, 2, ready, noGlenReady, rand)).toBe(pickGiantMove(distance, 2, ready, rand));
+      }
+    }
+  });
+  it('only offers talon/boon at distance 350 when the existing 5 techs are all unready', () => {
+    for (let i = 0; i < 20; i++) {
+      const move = pickGiantMoveWithGlen(350, 1, noGiantReady, allGlenReady, () => i / 20);
+      expect(['talon', 'boon']).toContain(move);
+    }
+  });
+  it('returns null when nothing is ready/eligible at all', () => {
+    expect(pickGiantMoveWithGlen(70, 1, noGiantReady, noGlenReady, () => 0)).toBeNull();
+  });
+});
+
+describe('GLEN_NIHIL_CHANT_COUNT — 学習点④「数える」: 詠唱回数は常に3固定(乱数にしない)', () => {
+  it('is exactly 3', () => {
+    expect(GLEN_NIHIL_CHANT_COUNT).toBe(3);
   });
 });

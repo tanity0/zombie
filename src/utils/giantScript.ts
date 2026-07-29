@@ -244,3 +244,70 @@ export const giantQuadDashComplete = (indexJustFinished: number): boolean => ind
 
 // stage-4「三連突進→氷の横薙ぎ」が薙いだ跡に残す遅延起爆の氷の個数(固定3・学習装置①の氷版)。
 export const GIANT_QUAD_ICE_COUNT = 3;
+
+// ============================================================================================
+// M67(社長指示・PACING_PUZZLE.md §6.26-12「ステージ7は別格として技のバリエーションを組んで。
+// ラスボスなので。しかもここは雑魚いないので。」): グレン(stage-7)専用の新技4つ。
+// 対象は isStoryBoss===true && storyBossVariant==='stage-7' の個体だけ(glenScriptApplies=門番)。
+// stage-ex1(未確認変異体)には一切効かせない(§6.28-11の裁定どおりEXはM60のPhase3のみ据え置き)。
+// 通常ステージ(1〜6)の城ボスにも一切効かない(isStoryBossが立たないため、この節のどの関数も
+// 呼ばれる経路自体が無い)。既存5技(stomp/sweep/jump/dash/bolt)・M60のPhase3(3連携)は無改変。
+// トレース元(Mohg, Lord of Blood)・学習点・叩き台の根拠は PACING_PUZZLE.md §6.26-12 を参照。
+// `?glenscript=0`(GLEN_SCRIPT_ENABLED・gameStore.ts側)で本節を丸ごと無効化=今日までのグレン
+// (既存5技のみ)に戻る。
+// ============================================================================================
+
+export type GlenMoveId = 'talon' | 'boon' | 'reach' | 'nihil';
+const GLEN_MOVES: GlenMoveId[] = ['talon', 'boon', 'reach', 'nihil'];
+
+// 間合い(px・中心間距離)。PACING_PUZZLE.md §6.26-12の表の明記どおり。nihilのみ「全帯」
+// (大技=距離では絞らない。解禁自体は下のpickGiantMoveWithGlenでPhase2ゲートする)。
+export const GLEN_MOVE_RANGE: Record<GlenMoveId, { min: number; max: number }> = {
+  talon: { min: 140, max: 420 },
+  boon: { min: 320, max: 900 },
+  reach: { min: 420, max: 1000 },
+  nihil: { min: 0, max: Infinity },
+};
+
+export const glenMoveEligible = (move: GlenMoveId, distance: number): boolean => {
+  const r = GLEN_MOVE_RANGE[move];
+  return distance >= r.min && distance <= r.max;
+};
+
+// この個体が「グレン専用スクリプト」の対象かどうかの門番(社長指示「対象はstage-7のグレンだけ」)。
+// isStoryBoss/storyBossVariantはuseGameLoop.tsのstoryBossスポーン経路でのみ立つため、通常城ボス
+// (stage-1〜6)は常にisStoryBoss===undefinedでfalseを返す。stage-ex1(未確認変異体)も
+// storyBossVariant==='stage-ex1'なのでfalseを返す(=M60のPhase3のみのまま。§6.28-11の裁定を継承)。
+export const glenScriptApplies = (
+  isStoryBoss: boolean | undefined,
+  storyBossVariant: 'stage-7' | 'stage-ex1' | undefined,
+  enabled: boolean,
+): boolean => enabled && isStoryBoss === true && storyBossVariant === 'stage-7';
+
+// 既存5技(stomp/sweep/jump/dash/bolt・pickGiantMove無改変=このプールもALL_MOVESを独立に再絞り込み
+// するだけで既存関数は呼ばない・触らない)+グレン専用4技の統合抽選。複数該当したら等確率で1つ
+// (既存pickGiantMove/pickGiantMoveWithStageと同じ作法)。
+// nihilだけPhase2(HP60%)以上でのみ候補に入る(表の「解禁」列)。talon/boon/reachはPhase1から常時
+// 候補(原則⑥=Phase2/3でも消えない。M60が既にsweepで確立した扱いをここでも踏襲)。
+export const pickGiantMoveWithGlen = (
+  distance: number,
+  phase: GiantPhase,
+  ready: Record<GiantMove, boolean>,
+  glenReady: Record<GlenMoveId, boolean>,
+  rand: () => number = Math.random,
+): GiantMove | GlenMoveId | null => {
+  const pool: (GiantMove | GlenMoveId)[] = ALL_MOVES.filter(m => ready[m] && giantMoveEligible(m, distance, phase));
+  for (const move of GLEN_MOVES) {
+    if (move === 'nihil' && phase < 2) continue;
+    if (glenReady[move] && glenMoveEligible(move, distance)) pool.push(move);
+  }
+  if (pool.length === 0) return null;
+  return pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))];
+};
+
+// 虚無の三唱(nihil)の学習点④「数える」: 詠唱回数は常に3固定(乱数にしない・quaddashの
+// GIANT_QUAD_DASH_COUNTと同じ精神)。gameStore.ts側はg-nihil-chant1→chant2→chant3という3つの
+// 明示ステートを固定シーケンスで遷移する実装にした(SFXのエッジ検知=aiPhase文字列の変化が
+// そのまま3回のパルスになるようにするため。quaddashのようなindexカウンタは使わない)。
+// この定数は回数が3であることをテストで固定するためのもの(状態機械のケース数と一致させること)。
+export const GLEN_NIHIL_CHANT_COUNT = 3;

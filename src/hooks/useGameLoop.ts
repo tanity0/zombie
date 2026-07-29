@@ -64,6 +64,7 @@ import { ammoDirectorRate } from '../utils/ammoDirector';
 import { shouldSpawnAirdrop } from '../utils/ammoAirdrop';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
+  applyGlenFloorDamage,
   type CombatEffects, type CombatTunables,
 } from '../utils/combatTick';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
@@ -6771,10 +6772,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // src/utils/combatTick.ts へ切り出し(挙動不変・コード移動のみ)。
         applyPumpkinBlastDamage(combatEffects, combatTunables);
 
+        // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「血の弧」が置く血溜まりの床の接触判定。
+        // giantDelayedHitsにfloorUntil付きエントリが無ければ即return(通常城ボス/ex1/他ボスは常に
+        // 空配列なので毎フレームの実コストはほぼゼロ)。
+        applyGlenFloorDamage(combatEffects);
+
         // M51: ジャイアント新スクリプトの予告SE(全技共通=hunter-alert流用・社長裁定6.26-9 #5)。
         // 5つの溜め(windup)ステートへ切り替わった瞬間だけ1回鳴らす(前フレームとの比較=エッジ検知)。
         // M66(§6.26-11): stage-1/3/4/5の独自技/大技の「先頭の溜め」も同じ作法で追加(1技=1発。
         // bite/glide/quaddashの"hold"や"breath-windup"以外の中間フェーズは鳴らさない=連射しない)。
+        // M67(§6.26-12): グレン(stage-7)専用4技も同じ作法。虚無の三唱(nihil)は3つの明示aiPhase
+        // (chant1/2/3)を持つため、この文字列比較エッジ検知だけで学習点④「数える」の3回パルスが
+        // 自動的に鳴る(追加のカウンタ実装が不要=既存の仕組みへただ乗り)。
         if (GIANT_SCRIPT_ENABLED) {
           const giant = useGameStore.getState().enemies.find(e => e.type === 'giantbat');
           const gPhase = giant?.aiPhase;
@@ -6782,7 +6791,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             || gPhase === 'g-jump-windup' || gPhase === 'g-dash-windup' || gPhase === 'g-bolt-windup'
             || gPhase === 'g-bite-windup' || gPhase === 'g-slam-windup' || gPhase === 'g-glide-windup'
             || gPhase === 'g-dive-windup' || gPhase === 'g-quad-windup' || gPhase === 'g-quad-breath-windup'
-            || gPhase === 'g-nova-windup' || gPhase === 'g-wing-windup' || gPhase === 'g-sweepbeam-windup';
+            || gPhase === 'g-nova-windup' || gPhase === 'g-wing-windup' || gPhase === 'g-sweepbeam-windup'
+            || gPhase === 'g-talon-windup' || gPhase === 'g-boon-windup' || gPhase === 'g-reach-windup'
+            || gPhase === 'g-nihil-chant1' || gPhase === 'g-nihil-chant2' || gPhase === 'g-nihil-chant3';
           if (isGiantWindupNow && giantWindupSfxRef.current !== gPhase) {
             playSfx('hunter-alert');
           }

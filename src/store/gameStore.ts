@@ -71,6 +71,8 @@ import {
   pickGiantMoveWithStage, type GiantStageMoveId,
   GIANT_STAGE_UNIQUE_MOVE, GIANT_STAGE_ULT_MOVE,
   giantQuadDashComplete,
+  // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用の新技4つの純関数。
+  pickGiantMoveWithGlen, glenScriptApplies, type GlenMoveId, GLEN_NIHIL_CHANT_COUNT,
 } from '../utils/giantScript';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -1596,6 +1598,48 @@ export const GIANT_SWEEPBEAM_HALF_WIDTH = 30;
 // 踏襲: ドーナツのくり抜きではなく、始点そのものを外へ出す通常カプセル。図形と判定が完全一致する)。
 export const GIANT_SWEEPBEAM_INNER_RADIUS = 100; // 叩き台=設計書に寸法の明記なし(ウリのuriSweepInnerRadius140/90の中間帯)
 export const GIANT_SWEEPBEAM_SWEEP_RAD = (2 * Math.PI) / 3; // 120°
+
+// ==== M67: グレン(stage-7)専用の技セット(PACING_PUZZLE.md §6.26-12・社長指示「ステージ7は別格
+// として技のバリエーションを組んで。ラスボスなので。しかもここは雑魚いないので。」) ====
+// 対象はisStoryBoss===true && storyBossVariant==='stage-7'の個体だけ(giantScript.tsのglenScriptApplies
+// が門番)。stage-ex1(未確認変異体)・通常ステージ(1〜6)の城ボスには一切効かない。既存5技
+// (stomp/sweep/jump/dash/bolt)とM60のPhase3(3連携)は無改変のまま。`?glenscript=0`で本節を丸ごと
+// 無効化=今日までのグレン(既存5技のみ)に戻る。実効ms→生値の変換は6.26-5と同じ×1.2。
+export const GLEN_SCRIPT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('glenscript') !== '0';
+
+// --- 血の爪痕(talon・Phase1〜・トレース元=Mohgの Bloodflame Talons) ---
+export const GLEN_TALON_WINDUP_MS = 1080;           // 実効900ms・静止(3本の爪痕の狙いをロック)
+export const GLEN_TALON_DETONATE_DELAY_MS = 1080;   // 実効900ms(固定)・置いた痕が爆ぜるまでの遅延(学習点①)
+export const GLEN_TALON_RECOVER_MS = 960;           // 実効800ms
+export const GLEN_TALON_CD_MS = 10800;              // 実効9.0s
+export const GLEN_TALON_LENGTH = 280;               // 叩き台(設計書に寸法明記なし)。近〜中帯の帯として妥当な長さ
+export const GLEN_TALON_HALF_WIDTH = 42;            // 叩き台(既存T3帯の標準的な半幅レンジ内)
+export const GLEN_TALON_SPREAD_RAD = Math.PI / 8;   // 叩き台(22.5°)。3本を扇状に開く左右オフセット角
+
+// --- 血の弧(boon・Phase1〜・トレース元=Mohgの Bloodboon) ---
+export const GLEN_BOON_WINDUP_MS = 1200;            // 実効1000ms・静止
+export const GLEN_BOON_DETONATE_DELAY_MS = 840;     // 実効700ms(固定)・置かれてから爆ぜるまでの遅延(学習点②)
+export const GLEN_BOON_FLOOR_MS = 4800;             // 実効4000ms(固定)・爆ぜた後、床として残り続ける時間(学習点②)
+export const GLEN_BOON_RECOVER_MS = 840;            // 実効700ms
+export const GLEN_BOON_CD_MS = 13200;               // 実効11.0s
+export const GLEN_BOON_COUNT = 5;                   // 設計書どおり固定5個
+export const GLEN_BOON_RADIUS = 70;                 // 叩き台(設計書に寸法明記なし)
+export const GLEN_BOON_ARC_RADIUS = 500;            // 叩き台。中〜遠帯(320〜900)の中間あたり
+export const GLEN_BOON_ARC_SPREAD_RAD = Math.PI / 3; // 叩き台(60°)。5個を並べる弧の開き角
+
+// --- 伸びる触手(reach・Phase1〜・社長裁定「見た目の間合いより遥かに遠くまで届く」) ---
+export const GLEN_REACH_WINDUP_MS = 960;            // 実効800ms・静止
+export const GLEN_REACH_ACTIVE_MS = GIANT_SWEEP_ACTIVE_MS; // 叩き台=既存sweepの実行時間を流用(設計書に明記なし)
+export const GLEN_REACH_RECOVER_MS = 840;           // 実効700ms
+export const GLEN_REACH_CD_MS = 9600;               // 実効8.0s
+export const GLEN_REACH_LENGTH = 900;               // 設計書どおり(長さ900)
+export const GLEN_REACH_HALF_WIDTH = 28;            // 設計書どおり(半幅28)
+
+// --- 虚無の三唱(nihil・大技・Phase2=HP60%〜・トレース元=Mohgの「ニヒル」の儀式) ---
+export const GLEN_NIHIL_CHANT_MS = 960;             // 実効800ms/唱×3(学習点④=固定3回・乱数にしない)
+export const GLEN_NIHIL_RECOVER_MS = 1680;          // 実効1400ms(全技中最大)
+export const GLEN_NIHIL_CD_MS = 19200;              // 実効16.0s
+export const GLEN_NIHIL_RADIUS = 260;               // 設計書どおり(半径260)
 
 // 裏ボス スカジ専用の氷ハザード(社長指示)。判定はupdateEnemiesで、見た目はpixiScene。
 // 氷塊の起爆・氷刃の命中はどちらも既存の爆発処理(pumpkinBlasts)へ ice:true で積み、青FXで消化する。
@@ -7411,14 +7455,23 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 乱数を挟まない=fireAtは積んだ時点で確定済み)。isStoryBoss個体はGIANT_STAGE_UNIQUE_MOVE等に
           // 定義が無く新技を一切選ばないため、このキューは常に空のまま=無害。
           let giantDelayedHits = enemy.giantDelayedHits;
-          if (GIANT_UNIQUE_ENABLED && giantDelayedHits && giantDelayedHits.length > 0) {
-            const dueHits = giantDelayedHits.filter(h => gameTime >= h.fireAt);
+          // M67: isStoryBoss個体(Glen専用の血の弧=boon)はfloorUntil付きエントリをこのキューへ積みうる。
+          // `?giantunique=0`(GIANT_UNIQUE_ENABLED=false)でもGlenの床が消化され続けるよう、isStoryBoss
+          // 個体はGIANT_UNIQUE_ENABLEDの値に関係なく処理する(Glenは別の`?glenscript=0`で独立に制御される。
+          // 通常城ボスの挙動=GIANT_UNIQUE_ENABLED経由のゲートは無改変)。
+          if ((GIANT_UNIQUE_ENABLED || isStoryBoss) && giantDelayedHits && giantDelayedHits.length > 0) {
+            // M67: burstは「既にこの一撃(pumpkinBlasts)を消化済みか」。floorUntil付き(boon)は爆発後も
+            // 削除せず「床」として保持し続けるため、二重発火を防ぐ目印が要る(既存3用途はburst未設定の
+            // ままなので、この判定を足しても挙動は完全に不変=即座にfireAt後フィルタで消える)。
+            const dueHits = giantDelayedHits.filter(h => gameTime >= h.fireAt && !h.burst);
             if (dueHits.length > 0) {
               for (const h of dueHits) {
                 pumpkinBlasts.push({ x: h.x, y: h.y, radius: h.radius, damage: enemy.damage, enemyId: enemy.id, ice: h.ice, capsule: h.capsule });
               }
-              giantDelayedHits = giantDelayedHits.filter(h => gameTime < h.fireAt);
             }
+            giantDelayedHits = giantDelayedHits
+              .map(h => (dueHits.includes(h) ? { ...h, burst: true } : h))
+              .filter(h => gameTime < (h.floorUntil ?? h.fireAt));
           }
           const phaseFields = {
             giantPhase: phase,
@@ -7579,6 +7632,99 @@ export const useGameStore = create<GameState>((set, get) => ({
             aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
             aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
             gQuadIndex: undefined, giantActiveHit: undefined,
+          });
+
+          // ==== M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用の新技4つ ====
+          // 呼び出し元(下のdefault分岐)がglenScriptAppliesで既にstage-7のisStoryBoss個体だけに
+          // 絞り込み済み(=stage-ex1/通常城ボスからは絶対に呼ばれない)。
+          const beginGlenMove = (move: GlenMoveId): Partial<Enemy> => {
+            const lockDl = Math.hypot(pcx - ecx, pcy - ecy) || 1;
+            const lockDirX = (pcx - ecx) / lockDl, lockDirY = (pcy - ecy) / lockDl;
+            switch (move) {
+              case 'talon': {
+                // 血の爪痕: 3本の爪痕(T3帯)を扇状に置く。学習点①=置いた瞬間は0ダメージ、固定900ms後に
+                // 爆ぜる。giantDelayedHitsをwindup開始と同時に積む(bornAt=windup開始・fireAt=windup+
+                // 固定遅延の合算)ことで、W1(予告はリード全域で可視)を1本の連続フェードインとして満たす。
+                const cosS = Math.cos(GLEN_TALON_SPREAD_RAD), sinS = Math.sin(GLEN_TALON_SPREAD_RAD);
+                const dirs: [number, number][] = [
+                  [lockDirX * cosS - lockDirY * sinS, lockDirX * sinS + lockDirY * cosS], // 左
+                  [lockDirX, lockDirY],                                                    // 中央
+                  [lockDirX * cosS + lockDirY * sinS, -lockDirX * sinS + lockDirY * cosS], // 右
+                ];
+                const talonFireAt = atkUntil(GLEN_TALON_WINDUP_MS + GLEN_TALON_DETONATE_DELAY_MS);
+                const marks = dirs.map(([dx, dy]) => {
+                  const tx = ecx + dx * GLEN_TALON_LENGTH, ty = ecy + dy * GLEN_TALON_LENGTH;
+                  return {
+                    x: (ecx + tx) / 2, y: (ecy + ty) / 2, radius: GLEN_TALON_HALF_WIDTH,
+                    bornAt: gameTime, fireAt: talonFireAt,
+                    capsule: { fx: ecx, fy: ecy, tx, ty, halfWidth: GLEN_TALON_HALF_WIDTH },
+                  };
+                });
+                return {
+                  aiPhase: 'g-talon-windup', aiPhaseUntil: atkUntil(GLEN_TALON_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + lockDirX * GLEN_TALON_LENGTH, aiTargetY: ecy + lockDirY * GLEN_TALON_LENGTH,
+                  aiStartedAt: gameTime,
+                  giantDelayedHits: [...(giantDelayedHits ?? []), ...marks],
+                };
+              }
+              case 'boon': {
+                // 血の弧: 水平の弧に沿ってT5遅延円を5つ置く。学習点②=固定700ms後に爆ぜ、その後
+                // 固定4000msは床として残り続ける(floorUntil付き=combatTick.tsのapplyGlenFloorDamageが
+                // 毎フレーム接触判定する。爆発自体=1回だけのpumpkinBlastsは既存の遅延キュー処理が担う)。
+                const baseAngle = Math.atan2(lockDirY, lockDirX);
+                const boonFireAt = atkUntil(GLEN_BOON_WINDUP_MS + GLEN_BOON_DETONATE_DELAY_MS);
+                const boonFloorUntil = gameTime + (GLEN_BOON_WINDUP_MS + GLEN_BOON_DETONATE_DELAY_MS + GLEN_BOON_FLOOR_MS) / ENEMY_ATTACK_SPEED_MULT;
+                const pools = Array.from({ length: GLEN_BOON_COUNT }, (_, i) => {
+                  const f = GLEN_BOON_COUNT > 1 ? i / (GLEN_BOON_COUNT - 1) : 0.5;
+                  const a = baseAngle - GLEN_BOON_ARC_SPREAD_RAD / 2 + GLEN_BOON_ARC_SPREAD_RAD * f;
+                  return {
+                    x: ecx + Math.cos(a) * GLEN_BOON_ARC_RADIUS, y: ecy + Math.sin(a) * GLEN_BOON_ARC_RADIUS,
+                    radius: GLEN_BOON_RADIUS, bornAt: gameTime, fireAt: boonFireAt, floorUntil: boonFloorUntil,
+                  };
+                });
+                return {
+                  aiPhase: 'g-boon-windup', aiPhaseUntil: atkUntil(GLEN_BOON_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + lockDirX * GLEN_BOON_ARC_RADIUS, aiTargetY: ecy + lockDirY * GLEN_BOON_ARC_RADIUS,
+                  aiStartedAt: gameTime,
+                  giantDelayedHits: [...(giantDelayedHits ?? []), ...pools],
+                };
+              }
+              case 'reach':
+                // 伸びる触手: 細く長いT3帯(長さ900/半幅28)が一直線に伸びる。即時単発カプセルヒット
+                // (bite/slamと同型=windup終わりにpumpkinBlastsへ1回だけ積む。giantDelayedHitsは使わない)。
+                return {
+                  aiPhase: 'g-reach-windup', aiPhaseUntil: atkUntil(GLEN_REACH_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + lockDirX * GLEN_REACH_LENGTH, aiTargetY: ecy + lockDirY * GLEN_REACH_LENGTH,
+                  aiStartedAt: gameTime,
+                };
+              case 'nihil':
+              default:
+                // 虚無の三唱: 3唱固定(学習点④=数える)。狙い点(プレイヤーの足元)は1唱目の開始時に
+                // ロックし、以後は動かさない(Mohgの「ニヒル」と同じ=3つの円は同じ場所に重なる)。
+                // T5大円(半径260)は1件だけ積み、fireAt=3唱ぶんの合計時間(chant3終了と同時)に自動的に
+                // 爆ぜる(床は残さない=nihilはfloorUntilを設定しない)。
+                return {
+                  aiPhase: 'g-nihil-chant1', aiPhaseUntil: atkUntil(GLEN_NIHIL_CHANT_MS),
+                  aiFromX: ecx, aiFromY: ecy, aiTargetX: pcx, aiTargetY: pcy, aiStartedAt: gameTime,
+                  giantDelayedHits: [...(giantDelayedHits ?? []), {
+                    x: pcx, y: pcy, radius: GLEN_NIHIL_RADIUS, bornAt: gameTime,
+                    fireAt: atkUntil(GLEN_NIHIL_CHANT_MS * GLEN_NIHIL_CHANT_COUNT),
+                  }],
+                };
+            }
+          };
+
+          // グレン専用技の共通後片付け(finishGiantStageMoveと同じ作法。ステージ固有技のgStageReadyAtは
+          // 一切書かず、別フィールドgGlenReadyAtへ分離=互いに独立)。連携表(GIANT_COMBO_*系)は適用しない
+          // (覚えられる上限を超やさない=社長裁定6.26-9 #8の精神を継承)。
+          const finishGlenMove = (moveId: GlenMoveId, cdMs: number): Partial<Enemy> => ({
+            gGlenReadyAt: { ...enemy.gGlenReadyAt, [moveId]: atkUntil(cdMs) },
+            aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
+            aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
+            giantActiveHit: undefined,
           });
 
           switch (enemy.aiPhase) {
@@ -8090,6 +8236,93 @@ export const useGameStore = create<GameState>((set, get) => ({
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
 
+            // ==== M67(§6.26-12): stage-7限定「血の爪痕」(talon) ====
+            case 'g-talon-windup': {
+              // ダメージは既にbeginGlenMoveがgiantDelayedHitsへ積み済み(置いた瞬間0ダメージ・固定900ms後
+              // に自動で爆ぜる)。ここではwindup自体の終わりでrecoverへ直結するだけ(activeは無い)。
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-talon-recover', aiPhaseUntil: atkUntil(GLEN_TALON_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-talon-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGlenMove('talon', GLEN_TALON_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
+            // ==== M67: stage-7限定「血の弧」(boon) ====
+            case 'g-boon-windup': {
+              // 5個のT5円は既にbeginGlenMoveがgiantDelayedHitsへ積み済み(固定700ms後に爆ぜ、その後
+              // floorUntilまで床として残る)。ここもactiveは無くrecoverへ直結する。
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-boon-recover', aiPhaseUntil: atkUntil(GLEN_BOON_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-boon-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGlenMove('boon', GLEN_BOON_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
+            // ==== M67: stage-7限定「伸びる触手」(reach) ====
+            case 'g-reach-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                const rfx = enemy.aiFromX ?? ecx, rfy = enemy.aiFromY ?? ecy;
+                const rtx = enemy.aiTargetX ?? ecx, rty = enemy.aiTargetY ?? ecy;
+                pumpkinBlasts.push({
+                  x: (rfx + rtx) / 2, y: (rfy + rty) / 2, radius: GLEN_REACH_HALF_WIDTH,
+                  damage: enemy.damage, enemyId: enemy.id,
+                  capsule: { fx: rfx, fy: rfy, tx: rtx, ty: rty, halfWidth: GLEN_REACH_HALF_WIDTH },
+                });
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-active', aiPhaseUntil: atkUntil(GLEN_REACH_ACTIVE_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-reach-active': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-recover', aiPhaseUntil: atkUntil(GLEN_REACH_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-reach-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGlenMove('reach', GLEN_REACH_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
+            // ==== M67: stage-7限定「虚無の三唱」(nihil・大技) ====
+            case 'g-nihil-chant1': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-chant2', aiPhaseUntil: atkUntil(GLEN_NIHIL_CHANT_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-nihil-chant2': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-chant3', aiPhaseUntil: atkUntil(GLEN_NIHIL_CHANT_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-nihil-chant3': {
+              // 3唱目終了=学習点④の本体。円自体はgiantDelayedHits側のfireAtが同じタイミングで独立に
+              // 爆ぜる(このcaseはGlen自身のaiPhase遷移=recoverへ進むだけ)。
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-recover', aiPhaseUntil: atkUntil(GLEN_NIHIL_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-nihil-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGlenMove('nihil', GLEN_NIHIL_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
             default: {
               // 待機中(chase): 技を抽選する。全体クールダウン(aiReadyAt=パリィ直後の一時停止に流用)明け
               // かつ、各技の個別CD明けのものだけを候補にする(giantScript.tsのpickGiantMoveが等確率選択)。
@@ -8123,6 +8356,23 @@ export const useGameStore = create<GameState>((set, get) => ({
                     return {
                       ...enemy, ...phaseFields, vx: 0, vy: 0,
                       ...(isStageMove ? beginGiantStageMove(move as GiantStageMoveId) : beginGiantMove(move as GiantMove)),
+                    };
+                  }
+                } else if (glenScriptApplies(enemy.isStoryBoss, enemy.storyBossVariant, GLEN_SCRIPT_ENABLED)) {
+                  // M67(§6.26-12): stage-7のグレンだけ(glenScriptAppliesが門番=通常城ボス/ex1は
+                  // 絶対にここへ来ない)。既存5技(pickGiantMove/beginGiantMove)+専用4技の統合抽選。
+                  const glenReady: Record<GlenMoveId, boolean> = {
+                    talon: gameTime >= (enemy.gGlenReadyAt?.talon ?? 0),
+                    boon: gameTime >= (enemy.gGlenReadyAt?.boon ?? 0),
+                    reach: gameTime >= (enemy.gGlenReadyAt?.reach ?? 0),
+                    nihil: gameTime >= (enemy.gGlenReadyAt?.nihil ?? 0),
+                  };
+                  const move = pickGiantMoveWithGlen(dist, phase, ready, glenReady);
+                  if (move) {
+                    const isGlenMove = move === 'talon' || move === 'boon' || move === 'reach' || move === 'nihil';
+                    return {
+                      ...enemy, ...phaseFields, vx: 0, vy: 0,
+                      ...(isGlenMove ? beginGlenMove(move as GlenMoveId) : beginGiantMove(move as GiantMove)),
                     };
                   }
                 } else {

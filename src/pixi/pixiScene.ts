@@ -32,6 +32,9 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   GIANT_NOVA_WINDUP_MS, GIANT_NOVA_ACTIVE_MS, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_END, GIANT_NOVA_BAND_THICKNESS,
   GIANT_WING_WINDUP_MS, GIANT_WING_HALF_WIDTH, GIANT_WING_LENGTH, GIANT_WING_SPREAD_RAD,
   GIANT_SWEEPBEAM_WINDUP_MS, GIANT_SWEEPBEAM_ACTIVE_MS, GIANT_SWEEPBEAM_LENGTH, GIANT_SWEEPBEAM_HALF_WIDTH, GIANT_SWEEPBEAM_INNER_RADIUS, GIANT_SWEEPBEAM_SWEEP_RAD,
+  // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
+  // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
+  GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH,
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -8985,17 +8988,23 @@ export class PixiScene {
       // M66(§6.26-11): 新規8技も同じ作法で追加。継続判定技(quad-breath-active/nova-active/
       // sweepbeam-active)は単発の"瞬間"を持たない=windupのみ対象(sweep-active同様、対象外のまま)。
       // diveのwindup中は本体が場外(退避済み)で不可視なのでtint自体は無害(見えないだけ)。
+      // M67(§6.26-12): グレン専用4技も同じ作法。talon/boonはダメージ自体が遅延キューへ移っているが、
+      // 「爪を振る/腕を掲げる」動作の瞬間としてwindup終わりにT4を出す(slam/biteと同じ動機)。
+      // nihilは3唱それぞれの終わりにT4=学習点④「数える」の視覚パルスを兼ねる。
       const gFlashRemain =
         (gph === 'g-stomp-windup' || gph === 'g-sweep-windup' || gph === 'g-dash-windup' || gph === 'g-bolt-windup' || gph === 'g-jump-air'
           || gph === 'g-bite-windup' || gph === 'g-bite-hold' || gph === 'g-slam-windup' || gph === 'g-glide-windup'
-          || gph === 'g-quad-windup' || gph === 'g-quad-breath-windup' || gph === 'g-nova-windup' || gph === 'g-wing-windup' || gph === 'g-sweepbeam-windup')
+          || gph === 'g-quad-windup' || gph === 'g-quad-breath-windup' || gph === 'g-nova-windup' || gph === 'g-wing-windup' || gph === 'g-sweepbeam-windup'
+          || gph === 'g-talon-windup' || gph === 'g-boon-windup' || gph === 'g-reach-windup'
+          || gph === 'g-nihil-chant1' || gph === 'g-nihil-chant2' || gph === 'g-nihil-chant3')
           ? (e.aiPhaseUntil ?? gameTime) - gameTime : null;
       const gFlash = gFlashRemain !== null ? thorFlashTint(gFlashRemain, now) : null;
       if (gFlash !== null) {
         view.sprite.tint = gFlash;
       } else if (gph === 'g-stomp-recover' || gph === 'g-sweep-recover' || gph === 'g-dash-recover' || gph === 'g-jump-recover' || gph === 'g-bolt-recover'
         || gph === 'g-bite-recover' || gph === 'g-slam-recover' || gph === 'g-glide-recover' || gph === 'g-dive-recover'
-        || gph === 'g-quad-recover' || gph === 'g-nova-recover' || gph === 'g-wing-recover' || gph === 'g-sweepbeam-recover') {
+        || gph === 'g-quad-recover' || gph === 'g-nova-recover' || gph === 'g-wing-recover' || gph === 'g-sweepbeam-recover'
+        || gph === 'g-talon-recover' || gph === 'g-boon-recover' || gph === 'g-reach-recover' || gph === 'g-nihil-recover') {
         // 硬直=反撃窓(翻訳規則(d)): 赤ではない色(青白)=「今なら殴れる」の合図。
         view.sprite.tint = 0xbfe8ff;
       } else {
@@ -9155,6 +9164,16 @@ export class PixiScene {
             sbFarY = sbfy + Math.sin(sbCurAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH);
           drawGiantCapsuleZone(sbNearX, sbNearY, sbFarX, sbFarY, GIANT_SWEEPBEAM_HALF_WIDTH, 0.34, 0.6);
         }
+      } else if (gph === 'g-reach-windup' || gph === 'g-reach-active') {
+        // M67 stage-7「伸びる触手」(reach): bite/slamと同じ意匠の細長い帯(長さ900/半幅28)。
+        // 見た目の間合いより遥かに遠くまで届く=社長裁定の学習点③そのもの(帯の長さ自体で表現)。
+        const rfx = e.aiFromX ?? cx, rfy = e.aiFromY ?? cy;
+        const rtx = e.aiTargetX ?? cx, rty = e.aiTargetY ?? cy;
+        const rprog = gph === 'g-reach-windup'
+          ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GLEN_REACH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
+          : 1;
+        const rFill = gph === 'g-reach-active' ? 0.3 : (0.12 + 0.22 * rprog) + 0.08 * gPulse;
+        drawGiantCapsuleZone(rfx, rfy, rtx, rty, GLEN_REACH_HALF_WIDTH, rFill, (0.32 + 0.4 * rprog) + 0.15 * gPulse);
       }
       // 咆哮弾(g-bolt-*)は図形を出さない(社長裁定=小技はT4の一拍のみ。画面が赤で埋まると大技の赤が効かなくなる)。
       // M66: 遅延起爆キュー(滑空の二撃目/翼撃の三拍目/三連突進の氷)。aiPhaseに関係なく常に描く

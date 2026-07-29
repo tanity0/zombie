@@ -240,6 +240,36 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   useGameStore.setState({ pumpkinBlasts: [] });
 };
 
+// M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「血の弧」(boon)が置く血溜まりの床。
+// giantDelayedHitsのエントリのうちfloorUntil付き(=既に一度burstで爆発済み)を毎フレーム走査し、
+// プレイヤーが接触していればdamagePlayerを呼ぶ(applyContactDamageと全く同じ作法=毎フレーム
+// 呼ぶだけで、既存の被弾i-frame=INVULN_MS=700msが自然にスロットルする。専用のDoTタイマーは作らない)。
+// 1フレーム1ヒットまで(複数の床が重なっていても多重ヒットしない=既存のブラスト系と同じ節度)。
+// 重い演出(ring/heavy-impact SFX)は使わず、通常接触被弾と同じ軽いFXに留める(CLAUDE.md負荷方針)。
+export const applyGlenFloorDamage = (fx: CombatEffects): void => {
+  const { enemies, gameTime, player } = useGameStore.getState();
+  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+  const pr = Math.max(player.width, player.height) / 2;
+  for (const e of enemies) {
+    const hits = e.giantDelayedHits;
+    if (!hits || hits.length === 0) continue;
+    for (const h of hits) {
+      if (h.floorUntil === undefined) continue;
+      if (gameTime < h.fireAt || gameTime >= h.floorUntil) continue;
+      if (Math.hypot(pcx - h.x, pcy - h.y) > h.radius + pr) continue;
+      const damageWasApplied = !player.invulnerable;
+      const died = useGameStore.getState().damagePlayer(e.damage, 'CODE:グレン の血溜まり', h.x, h.y);
+      if (damageWasApplied) {
+        fx.playSfx('player-damage');
+        fx.spawnFlash('rgba(239,68,68,0.18)', 180);
+        fx.spawnBurst(pcx, pcy, '#dc2626', 5);
+      }
+      if (died) fx.triggerPlayerDeath(pcx, pcy);
+      return; // 1フレーム1ヒット(既存applyContactDamageと同じ節度=多重ヒット防止)
+    }
+  }
+};
+
 // ② 発火プロファイルを持つ敵の発砲(投射物追加)。ボス(裏ボス)/シーカー中の非表示等は
 // 従来どおり除外。ストアから毎回フレッシュに読み直す(updateEnemiesが直前で書き換えているため)。
 // now は呼び出し元が捕捉した Date.now() をそのまま渡す(この後の別コード=プロップ衝突判定でも

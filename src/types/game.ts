@@ -334,6 +334,20 @@ export interface Enemy {
   //     giantDelayedHitsの遅延キューで管理=学習装置①)
   //   g-sweepbeam-windup/g-sweepbeam-active/g-sweepbeam-recover     = 掃射(stage-5・大技。回転帯の
   //     継続判定=giantActiveHitで1回だけ命中させる)
+  //  M67(PACING_PUZZLE.md §6.26-12・stage-7のグレン限定): グレン専用の新技4つ。
+  //   g-talon-windup/g-talon-recover                               = 血の爪痕(talon・Phase1〜。
+  //     3本の爪痕はgiantDelayedHitsの遅延キューへwindup開始と同時に積む=置いた瞬間0ダメージ、
+  //     固定900ms後に爆ぜる。windupにはactiveが無い=recoverへ直結)
+  //   g-boon-windup/g-boon-recover                                 = 血の弧(boon・Phase1〜。5個の
+  //     T5遅延円もwindup開始と同時に積む。爆ぜた後はfloorUntilまで床として残り、接触ダメージが続く
+  //     =combatTick.tsのapplyGlenFloorDamageが毎フレーム判定)
+  //   g-reach-windup/g-reach-active/g-reach-recover                 = 伸びる触手(reach・Phase1〜。
+  //     immediate単発カプセルヒット=bite/slamと同型。activeはactive時間の見た目のみ)
+  //   g-nihil-chant1/g-nihil-chant2/g-nihil-chant3/g-nihil-recover  = 虚無の三唱(nihil・大技・
+  //     Phase2=HP60%〜。3つの明示ステートを固定シーケンスで遷移=学習点④「数える」。予告SEの
+  //     エッジ検知(aiPhase文字列の変化)がそのまま3回のパルスになる。T5大円(半径260)は
+  //     chant1開始時にgiantDelayedHitsへ1件だけ積み、fireAt=3唱ぶんの合計時間で自動的に
+  //     chant3終了と同時に爆ぜる)
   aiPhase?: 'windup' | 'charge' | 'crouch' | 'jump' | 'recover' | 'zpause' | 'zrush' | 'scream'
     | 'g-stomp-windup' | 'g-stomp-recover'
     | 'g-sweep-windup' | 'g-sweep-active' | 'g-sweep-recover'
@@ -347,7 +361,11 @@ export interface Enemy {
     | 'g-quad-windup' | 'g-quad-charge' | 'g-quad-breath-windup' | 'g-quad-breath-active' | 'g-quad-recover'
     | 'g-nova-windup' | 'g-nova-active' | 'g-nova-recover'
     | 'g-wing-windup' | 'g-wing-active' | 'g-wing-recover'
-    | 'g-sweepbeam-windup' | 'g-sweepbeam-active' | 'g-sweepbeam-recover';
+    | 'g-sweepbeam-windup' | 'g-sweepbeam-active' | 'g-sweepbeam-recover'
+    | 'g-talon-windup' | 'g-talon-recover'
+    | 'g-boon-windup' | 'g-boon-recover'
+    | 'g-reach-windup' | 'g-reach-active' | 'g-reach-recover'
+    | 'g-nihil-chant1' | 'g-nihil-chant2' | 'g-nihil-chant3' | 'g-nihil-recover';
   aiPhaseUntil?: number; // 現フェーズの終了 gameTime
   aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
   aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)
@@ -402,11 +420,19 @@ export interface Enemy {
   // ステージ固有技(独自技/大技)ごとの個別クールダウン(gStomp/gSweepReadyAt等と同じ作法。
   // 1フィールドへ集約=8個別フィールドを増やさない)。
   gStageReadyAt?: Partial<Record<'bite' | 'slam' | 'glide' | 'dive' | 'quaddash' | 'nova' | 'wing' | 'sweepbeam', number>>;
+  // M67(PACING_PUZZLE.md §6.26-12・stage-7のグレン限定)専用: 血の爪痕/血の弧/伸びる触手/虚無の三唱の
+  // 個別クールダウン(gStageReadyAtと同じ作法で別フィールドに分離=通常城ボスのgStageReadyAtには
+  // 一切書き込まない=互いに独立)。
+  gGlenReadyAt?: Partial<Record<'talon' | 'boon' | 'reach' | 'nihil', number>>;
   // 遅延起爆の待ち行列(固定遅延=学習装置①。乱数にしない)。滑空の二撃目(1件)/三連突進が残す氷
   // (3件)/翼撃の三拍目(1件)で共用する汎用キュー。ice=trueなら着弾FXが青版(既存pumpkinBlastsの
   // ice:trueをそのまま流用)。capsuleがあれば帯(翼撃三拍目)、無ければ円(それ以外)として起爆する。
+  // M67追加: burst=一度この一撃(pumpkinBlasts)を消化済みか(floorUntil付きエントリを即削除せず
+  // 保持するための多重発火防止フラグ)。floorUntil=このgameTimeまでは爆発後も「床」として保持し
+  // 続ける(血の弧=boon専用。未設定なら従来どおりfireAt直後に削除=既存3用途は無改変)。
   giantDelayedHits?: { x: number; y: number; radius: number; bornAt: number; fireAt: number; ice?: boolean;
-    capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number } }[];
+    capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number };
+    burst?: boolean; floorUntil?: number }[];
   // 継続判定技(氷結波の輪/三連突進の吐息/掃射)が「このactiveフェーズで既に1回命中させたか」。
   // 回転/拡大する図形は毎フレーム自己検出するため、多重ヒットを防ぐ1回きりフラグ(windup開始でfalseへ)。
   giantActiveHit?: boolean;
