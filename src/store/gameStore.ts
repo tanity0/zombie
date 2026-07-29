@@ -73,6 +73,7 @@ import {
   giantQuadDashComplete,
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用の新技4つの純関数。
   pickGiantMoveWithGlen, glenScriptApplies, type GlenMoveId, GLEN_NIHIL_CHANT_COUNT,
+  GIANT_PHASE_HP_THRESHOLD,
 } from '../utils/giantScript';
 import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -1500,12 +1501,36 @@ export const GIANT_DASH_RECOVER_MS = 1080;   // 実効900ms・硬直=反撃窓�
 // 飛び掛かり(jump・近〜中140〜700・既存を改訂)。滞空時間(PUMPKIN_JUMP_MS)と着地AoE半径
 // (PUMPKIN_EXPLOSION_RADIUS)はそのまま流用=変更しない(6.26-6「現行不変」)。
 export const GIANT_JUMP_WINDUP_MS = 1200;    // 実効1000ms(旧crouch2500msから短縮)。溜め開始で着地点をロック(社長裁定6.26-9 #1)
+// ★飛び掛かりの強化(社長裁定v0.25.2423「おすすめで調整して」)。実測の根拠:
+//   リード(溜め1000ms+滞空833ms=1833ms)の間にプレイヤーは 104.4px/s × 1.833s = **191px** 動ける。
+//   必要な回避距離は「半径+自機の半分」= 54+13 = 67px しかなく、**必要量の2.9倍**動けていた
+//   (ステージ倍率を最大1.50にしても2.0倍)。だから「目視で余裕で避けれる」(社長報告)。
+//   半径100・滞空500msにすると リード1500ms→156px / 必要113px = **余裕1.38倍**。stage-5(×1.30)で1.09倍。
+// **溜め(1000ms)は据え置き**=予告を読む時間は1msも減らさず、逃げ切れる距離だけ削る。
+// 定数を城ボス専用に新設しているのは、`PUMPKIN_EXPLOSION_RADIUS`/`PUMPKIN_JUMP_MS` が
+// **雑魚のパンプキンと共用**だから(そのまま触ると雑魚まで強化されてしまう)。
+export const GIANT_JUMP_RADIUS = 100;        // 着地AoE半径(旧: PUMPKIN_EXPLOSION_RADIUS=54 の流用)
+export const GIANT_JUMP_AIR_MS = 600;        // 実効500ms(旧: PUMPKIN_JUMP_MS=1000=実効833msの流用)
+// 飛び掛かりだけステージ倍率に上限を掛ける(社長裁定「(b) 1.30で頭打ち」)。
+// stage-7/ex1 の 1.50 だと 必要163px vs 使える156px = **歩きでは逃げ切れない**ため。
+export const GIANT_JUMP_STAGE_MULT_CAP = 1.30;
 export const GIANT_JUMP_RECOVER_MS = 1320;   // 実効1100ms(旧833ms)
 export const GIANT_JUMP_CD_MS = 4800;        // 実効4.0s。起点=硬直明け(旧GIANTBAT_JUMP_CD_MSは起点がcrouch開始=専用定数化)
 // 咆哮弾(bolt・中320〜620・既存を改訂)。弾自体の性能(速度/サイズ/ダメージ)は
 // getEnemyFireProfile('giantbat')をそのまま使う=変更しない(6.26-6「現行不変」)。
 export const GIANT_BOLT_WINDUP_MS = 540;     // 実効450ms・完全静止【新設・現状ゼロ】(図形は出さずT4のみ)
 export const GIANT_BOLT_RECOVER_MS = 360;    // 実効300ms
+// ★咆哮弾を2パターンにする(社長裁定v0.25.2423「パターンがあった方がいいので、AとBを2パターンとして」)。
+// 実測の根拠: 弾速300・距離400pxなら飛翔1.33秒=その間にプレイヤーは横へ116px動ける。必要な回避量は
+// 弾14px+自機で約19px。**必要量の6倍**動けるので、狙い撃ち1発は原理的に当たらない(プラントの弾は
+// 速230/ダメージ7なので、城ボスの弾は雑魚とほぼ同格だった)。
+// 溜め(450ms)・硬直(300ms)・CDは**据え置き**=読みのリズムは変えず、当たり方だけを作る。
+export const GIANT_BOLT_FAN_SHOTS = 3;            // A案: 扇の本数(Phase1)
+export const GIANT_BOLT_FAN_SHOTS_PHASE2 = 5;     // Phase2で増やす(既存のフェーズの意味付けと揃える)
+export const GIANT_BOLT_FAN_STEP_RAD = 12 * Math.PI / 180; // 隣の弾との角度差
+export const GIANT_BOLT_FAN_SPEED = 380;          // A案だけ弾速も上げる(素の300→380)
+export const GIANT_BOLT_BURST_SHOTS = 3;          // B案: 同方向への連射数
+export const GIANT_BOLT_BURST_GAP_MS = 216;       // 実効180ms(生値=実効×ENEMY_ATTACK_SPEED_MULT)
 export const GIANT_BOLT_CD_PHASE1_MS = 4200; // 実効3.5s
 export const GIANT_BOLT_CD_PHASE2_MS = 3000; // 実効2.5s
 // フェーズ移行(HP60%)の合図: HPバー色 Phase1=緑/Phase2=橙(0.3未満の赤は据え置き)+移行の瞬間だけ点滅
@@ -3153,6 +3178,42 @@ interface GameState {
   dequeueWallEvent: () => void;
 }
 
+// 「そこに立てるか」を解決する唯一の関数(社長指示v0.25.2424・D-4「壁/木/建物の中にアイテムが落ちる」)。
+// プレイヤーの移動が使っている遮蔽物の連鎖を**そのまま**関数化したもので、アイテムの着地点も同じ関数を通す。
+// **プレイヤーが立てない場所にはアイテムも落ちない**、という一文で説明できる状態にするのが目的。
+// (同じ判定を2箇所に書くと必ず片方だけ古くなる——v0.25.2383/2387/2389 で3回起きた型。)
+const resolveOutOfSolids = (
+  rect: { x: number; y: number; width: number; height: number },
+  ctx: {
+    labTheme: boolean; farBackdrop: string; solidProps: BreakableProp[];
+    castleEvent: GameState['castleEvent'];
+    hospital: GameState['hospital']; hospitalTaken: boolean;
+    armory: GameState['armory']; armoryTaken: boolean;
+    police: GameState['police']; policeTaken: boolean;
+  },
+): { x: number; y: number } => {
+  const { labTheme } = ctx;
+  const w = rect.width, h = rect.height;
+  const treeResolved = labTheme ? { x: rect.x, y: rect.y } : resolveTreeCollision(rect);
+  const torchResolved = resolveTorchCollision({ x: treeResolved.x, y: treeResolved.y, width: w, height: h }, ctx.solidProps);
+  const castleResolved = (labTheme || ctx.farBackdrop === 'tutorial') ? torchResolved
+    : resolveCastleCollision({ x: torchResolved.x, y: torchResolved.y, width: w, height: h }, ctx.castleEvent);
+  const cityPropResolved = !labTheme
+    ? resolveCityPropCollision(ctx.farBackdrop, { x: castleResolved.x, y: castleResolved.y, width: w, height: h })
+    : castleResolved;
+  const hospitalResolved = resolveHospitalCollision(
+    { x: cityPropResolved.x, y: cityPropResolved.y, width: w, height: h }, ctx.hospital, ctx.hospitalTaken);
+  const armoryResolved = resolveArmoryCollision(
+    { x: hospitalResolved.x, y: hospitalResolved.y, width: w, height: h }, ctx.armory, ctx.armoryTaken);
+  const cityResolved = resolvePoliceCollision(
+    { x: armoryResolved.x, y: armoryResolved.y, width: w, height: h }, ctx.police, ctx.policeTaken);
+  if (!labTheme) return cityResolved;
+  // 研究所スキン: 壁オブジェクト+遮蔽プロップ。近傍区画のみ問い合わせる(全区画走査を避ける)。
+  const rgn = [cityResolved.x - 120, cityResolved.y - 120, cityResolved.x + w + 120, cityResolved.y + h + 120] as const;
+  const walls = [...labWallsInRegion(...rgn).map(wallRect), ...labPropsInRegion(...rgn).map(propRect)];
+  return resolveAabb({ x: cityResolved.x, y: cityResolved.y, width: w, height: h }, walls);
+};
+
 export const useGameStore = create<GameState>((set, get) => ({
   player: {
     x: 0,
@@ -3570,53 +3631,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       } else {
         // 研究所スキンは木/城を出さない(社長指示)=その当たり判定もスキップ。
         const labTheme = state.stageTheme === 'lab';
-        // Block the player's hitbox out of tree trunks (rectangle AABB only).
-        const treeResolved = labTheme ? { x: candidate.x, y: candidate.y } : resolveTreeCollision(candidate);
-        const resolved = resolveTorchCollision({
-          x: treeResolved.x,
-          y: treeResolved.y,
-          width: player.width,
-          height: player.height,
-        }, solidProps);
-        // チュートリアルは城なし(v0.25.1822)=当たり判定もスキップ(描画はpixiScene側で非表示)。
-        const castleResolved = (labTheme || get().farBackdrop === 'tutorial') ? resolved : resolveCastleCollision({
-          x: resolved.x,
-          y: resolved.y,
-          width: player.width,
-          height: player.height,
-        }, castleEvent);
-        // 散布オブジェクト(廃都の瓦礫/雪原の塔・バス・テント等)を遮蔽物として解決(プレイヤーのみ)。
-        // カタログの無いステージ(forest等)は resolveCityPropCollision が即 return(no-op)。
-        const cityPropResolved = !labTheme
-          ? resolveCityPropCollision(state.farBackdrop, { x: castleResolved.x, y: castleResolved.y, width: player.width, height: player.height })
-          : castleResolved;
-        // 病院(通常ステージに1つ)の土台も遮蔽物。入手後(消滅後)は素通り。
-        const hospitalResolved = resolveHospitalCollision(
-          { x: cityPropResolved.x, y: cityPropResolved.y, width: player.width, height: player.height },
-          state.hospital, state.hospitalTaken,
-        );
-        // §6.24 M48: 武器庫/警察署も病院と同じ「1個しか無い建物」の遮蔽物(入手/攻略後は素通り)。
-        const armoryResolved = resolveArmoryCollision(
-          { x: hospitalResolved.x, y: hospitalResolved.y, width: player.width, height: player.height },
-          state.armory, state.armoryTaken,
-        );
-        const cityResolved = resolvePoliceCollision(
-          { x: armoryResolved.x, y: armoryResolved.y, width: player.width, height: player.height },
-          state.police, state.policeTaken,
-        );
-        // 壁オブジェクト(研究所スキン・区画生成)を遮蔽物として解決。近傍区画のみ問い合わせ。
-        let wallResolved = cityResolved;
-        if (labTheme) {
-          const cx = castleResolved.x, cy = castleResolved.y;
-          const rgn = [cx - 120, cy - 120, cx + player.width + 120, cy + player.height + 120] as const;
-          const walls = [
-            ...labWallsInRegion(...rgn).map(wallRect),
-            ...labPropsInRegion(...rgn).map(propRect), // パソコン/割れたカプセル等の遮蔽物
-          ];
-          wallResolved = resolveAabb({ x: cx, y: cy, width: player.width, height: player.height }, walls);
-        }
-        newX = wallResolved.x;
-        newY = wallResolved.y;
+        // 遮蔽物の連鎖(木/松明/城/街プロップ/病院/武器庫/警察署/ラボ壁)は resolveOutOfSolids に
+        // 一本化した(v0.25.2424)。**アイテムの着地点も同じ関数を通す**ので、「プレイヤーが立てない
+        // 場所にはアイテムも落ちない」が構造的に保証される。連鎖の順序・中身は移設前と1つも変えていない。
+        const solidResolved = resolveOutOfSolids(candidate, {
+          labTheme, farBackdrop: get().farBackdrop, solidProps, castleEvent,
+          hospital: state.hospital, hospitalTaken: state.hospitalTaken,
+          armory: state.armory, armoryTaken: state.armoryTaken,
+          police: state.police, policeTaken: state.policeTaken,
+        });
+        newX = solidResolved.x;
+        newY = solidResolved.y;
         // 「プレイヤーが行ける帯」のクランプ(チュートリアル上下左右/ステージ2上下固定/洋館通路
         // 左右+下限)は src/world/playableArea.ts の clampRectToPlayableArea に一本化してある
         // (v0.25.2391・アイテム/敵の湧きクランプと同じ関数を見る=ズレ防止)。計算・適用順(tutorial→
@@ -7616,7 +7641,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiPhase: 'g-jump-windup', aiPhaseUntil: atkUntil(GIANT_JUMP_WINDUP_MS),
                   aiFromX: enemy.x, aiFromY: enemy.y,
                   aiTargetX: land.x, aiTargetY: land.y, aiStartedAt: gameTime,
-                  gJumpRadius: PUMPKIN_EXPLOSION_RADIUS * stageMult,
+                  gJumpRadius: GIANT_JUMP_RADIUS * Math.min(stageMult, GIANT_JUMP_STAGE_MULT_CAP),
                 };
               }
               case 'dash':
@@ -7631,6 +7656,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                 return {
                   aiPhase: 'g-bolt-windup', aiPhaseUntil: atkUntil(GIANT_BOLT_WINDUP_MS),
                   aiFromX: enemy.x, aiFromY: enemy.y, aiStartedAt: gameTime,
+                  // パターンは**溜め開始で抽選して固定**(掟W4=溜め中に中身が変わらない)。
+                  gBoltPattern: Math.random() < 0.5 ? 'fan' : 'burst',
+                  gBoltShot: undefined,
                 };
             }
           };
@@ -7896,7 +7924,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-jump-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-jump-air', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_JUMP_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-jump-air', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(GIANT_JUMP_AIR_MS) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -7912,7 +7940,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (jt >= 1) {
                 pumpkinLanded = true;
                 // 半径はwindup開始時にbeginGiantMove('jump')が確定した値を読む(M65・stomp同様)。
-                pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: enemy.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: enemy.gJumpRadius ?? GIANT_JUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id });
                 return { ...enemy, ...phaseFields, x: jtx, y: jty, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiPhaseUntil: atkUntil(jumpRecoverMs) };
               }
               return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0 };
@@ -7920,7 +7948,30 @@ export const useGameStore = create<GameState>((set, get) => ({
             case 'g-bolt-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 giantBoltFires.push(enemy); // 発射自体はset後(post-set)に既存addProjectile経路で行う
+                // 扇(fan)は1回で撃ち切るのでそのまま硬直へ。連射(burst)は専用ステートで残りを撃つ。
+                if ((enemy.gBoltPattern ?? 'fan') === 'burst') {
+                  return {
+                    ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-burst',
+                    gBoltShot: 1, aiPhaseUntil: atkUntil(GIANT_BOLT_BURST_GAP_MS), lastShot: now,
+                  };
+                }
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-recover', aiPhaseUntil: atkUntil(GIANT_BOLT_RECOVER_MS), lastShot: now };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-bolt-burst': {
+              // B案の連射: GIANT_BOLT_BURST_GAP_MS ごとに1発ずつ、合計 GIANT_BOLT_BURST_SHOTS 発。
+              // 撃っている間も完全静止(掟W6)=横へ動けば全部避けられる「止まると死ぬ」圧の技。
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                const shot = (enemy.gBoltShot ?? 1) + 1;
+                giantBoltFires.push(enemy);
+                if (shot >= GIANT_BOLT_BURST_SHOTS) {
+                  return {
+                    ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-recover',
+                    aiPhaseUntil: atkUntil(GIANT_BOLT_RECOVER_MS), gBoltShot: undefined, lastShot: now,
+                  };
+                }
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, gBoltShot: shot, aiPhaseUntil: atkUntil(GIANT_BOLT_BURST_GAP_MS), lastShot: now };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -8980,7 +9031,24 @@ export const useGameStore = create<GameState>((set, get) => ({
         const liveGe = get().enemies.find(e => e.id === ge.id) ?? ge;
         const hidden = isSeekerActive(bp, bGameTime) && !isBossType(liveGe.type); // giantbatはisBossType=true=常にfalse
         const tgt = resolveEnemyTarget(liveGe, bp, bTargetSummons, ALCHEMY_AGGRO_RANGE, hidden);
-        get().addProjectile(createEnemyProjectile(liveGe, bp, tgt.x, tgt.y));
+        if ((liveGe.gBoltPattern ?? 'fan') === 'burst') {
+          // B案: 同じ方向へ1発ずつ(この関数は連射の1発ごとに呼ばれる)。弾速は素のまま=数で圧をかける。
+          get().addProjectile(createEnemyProjectile(liveGe, bp, tgt.x, tgt.y));
+        } else {
+          // A案: 扇状に同時発射。**真っ直ぐ逃げても外側の弾に当たる**ので、横取りの位置取りが要る。
+          // 本数はPhase2で増える(HPしきい値は既存の giantPhaseForHealth と同じ値を読む=二重定義しない)。
+          const bex = liveGe.x + liveGe.width / 2, bey = liveGe.y + liveGe.height / 2;
+          const baseA = Math.atan2(tgt.y - bey, tgt.x - bex);
+          const reach = Math.max(1, Math.hypot(tgt.x - bex, tgt.y - bey));
+          const phase2 = liveGe.maxHealth > 0 && (liveGe.health / liveGe.maxHealth) <= GIANT_PHASE_HP_THRESHOLD;
+          const shots = phase2 ? GIANT_BOLT_FAN_SHOTS_PHASE2 : GIANT_BOLT_FAN_SHOTS;
+          for (let i = 0; i < shots; i++) {
+            const a = baseA + (i - (shots - 1) / 2) * GIANT_BOLT_FAN_STEP_RAD;
+            const proj = createEnemyProjectile(liveGe, bp, bex + Math.cos(a) * reach, bey + Math.sin(a) * reach);
+            proj.speed = GIANT_BOLT_FAN_SPEED;
+            get().addProjectile(proj);
+          }
+        }
       }
     }
     // 叫喚型の予兆(溜め開始): 2秒かけて広がるリング＋発光(優先処理を促すテレグラフ)。
@@ -9613,15 +9681,35 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 逆だと意味が無い)。投擲アニメの始点(throwFromX/Y)は見た目の飛び元なので書き換えない。
       // 当たり判定サイズは不明なため既定16×16(pixiScene.tsのdrawPickup hitSizeと同じ既定値)。
       // `?spawnclamp=0`で従来の挙動(帯の外にも着地しうる)へ戻せる。
-      const placed = SPAWN_CLAMP_ENABLED
+      const labTheme = state.stageTheme === 'lab';
+      let placed = SPAWN_CLAMP_ENABLED
         ? clampRectToPlayableArea(scattered.x, scattered.y, PICKUP_HIT_SIZE, PICKUP_HIT_SIZE, {
             farBackdrop: state.farBackdrop,
-            labTheme: state.stageTheme === 'lab',
+            labTheme,
             corridorMode: state.corridorMode,
             m0AdvanceLimitX: state.m0AdvanceLimitX,
             corridorRunInActive: state.corridorRunInActive,
           })
         : { x: scattered.x, y: scattered.y };
+      // ★D-4(社長指示v0.25.2424)「壁・木・建物の"中"にアイテムが落ちる」の修正。
+      // 上の clampRectToPlayableArea は「行ける帯」(左右/下限)のクランプであって、
+      // **木や建物の中には落ちる**ままだった。プレイヤーの移動が使うのと**同じ関数**
+      // (resolveOutOfSolids)を通して遮蔽物の外へ押し出す=「プレイヤーが立てない場所には
+      // アイテムも落ちない」。押し出しは一番浅い向きなので、木の根元に落ちた弾薬は幹のすぐ横に出る。
+      // `?spawnclamp=0` で従来どおり(帯も遮蔽物も無視)に戻る。
+      if (SPAWN_CLAMP_ENABLED) {
+        placed = resolveOutOfSolids(
+          { x: placed.x, y: placed.y, width: PICKUP_HIT_SIZE, height: PICKUP_HIT_SIZE },
+          {
+            labTheme, farBackdrop: state.farBackdrop,
+            solidProps: state.breakableProps.filter(pr => pr.type !== 'mine' && pr.type !== 'uv-bar'),
+            castleEvent: state.castleEvent,
+            hospital: state.hospital, hospitalTaken: state.hospitalTaken,
+            armory: state.armory, armoryTaken: state.armoryTaken,
+            police: state.police, policeTaken: state.policeTaken,
+          },
+        );
+      }
       return { pickups: [...state.pickups, { ...scattered, x: placed.x, y: placed.y }] };
     });
   },
@@ -10690,6 +10778,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!pos || state.armoryTaken || state.gameWon) return {};
       const inside = isInArmoryCircle(state.player, pos);
       const { dwellMs, done } = tickArmoryDwell(state.armoryDwellMs, inside, deltaTime * 1000);
+      // ★社長報告v0.25.2425「サークル溜まっても何も起きない。おそらく金が足りないから?
+      // これ足りないならサークル入ったときに『スクラップ100必要』とか言ってほしい」。
+      // 旧実装は**足りない時に本当に何も起きない**(無言)ので、POIが壊れているようにしか見えなかった。
+      // ①円に入った瞬間 ②溜め切った瞬間 の2回、不足していることと必要量/所持量を出す。
+      const shortOnScrap = state.player.straps < ARMORY_SCRAP_COST;
+      const justEntered = dwellMs > 0 && state.armoryDwellMs <= 0;
+      if (shortOnScrap && (justEntered || done)) {
+        return {
+          armoryDwellMs: dwellMs,
+          eventBannerText: `武器庫: スクラップ${ARMORY_SCRAP_COST}が必要 (所持 ${Math.floor(state.player.straps)})`,
+          eventBannerUntil: state.gameTime + 2200,
+        };
+      }
       if (done && state.player.straps >= ARMORY_SCRAP_COST) {
         const slot = armoryTargetSlot(state.player.equipment);
         const def = rollEquipment(slot, 3);

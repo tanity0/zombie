@@ -353,7 +353,7 @@ export interface Enemy {
     | 'g-sweep-windup' | 'g-sweep-active' | 'g-sweep-recover'
     | 'g-jump-windup' | 'g-jump-air' | 'g-jump-recover'
     | 'g-dash-windup' | 'g-dash-charge' | 'g-dash-recover'
-    | 'g-bolt-windup' | 'g-bolt-recover'
+    | 'g-bolt-windup' | 'g-bolt-burst' | 'g-bolt-recover'
     | 'g-bite-windup' | 'g-bite-hold' | 'g-bite-active' | 'g-bite-recover'
     | 'g-slam-windup' | 'g-slam-active' | 'g-slam-recover'
     | 'g-glide-windup' | 'g-glide-active' | 'g-glide-recover'
@@ -417,6 +417,11 @@ export interface Enemy {
   // ボスがクリティカルで「痺れる」代わりに**動きが半減**する窓の終了時刻(gameTime基準・v0.25.2422)。
   // 通常敵の stunUntil(完全停止)とは別概念。ボス以外には設定されない。
   bossSlowUntil?: number;
+  // 咆哮弾のパターン(社長裁定v0.25.2423「AとBを2パターンとして入れよう」)。溜め開始で抽選して固定する。
+  //  'fan'   = 扇状に同時発射(Phase2で本数増)。真っ直ぐ逃げても外側の弾に当たる=横取りの位置取りを強制。
+  //  'burst' = 同じ方向へ短間隔の3連射。横移動なら全部避けられる=「止まると死ぬ」圧に特化。
+  gBoltPattern?: 'fan' | 'burst';
+  gBoltShot?: number; // burstの何発目まで撃ったか(1始まり)
   avoid?: import('../utils/enemyMotion').AvoidState;
   gStompRadius?: number;
   gJumpRadius?: number;

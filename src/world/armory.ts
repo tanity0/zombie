@@ -24,7 +24,8 @@ export const ARMORY_DWELL_MS = DETOUR_DWELL_MS; // = 3000
 export const ARMORY_FADE_MS = 900;
 
 /** スクラップ支払い額(§6.24 E1・社長裁定v0.25.2350)。 */
-export const ARMORY_SCRAP_COST = 200;
+// 社長指示v0.25.2425「条件を100に下げる。200貯めるの大変なので」。
+export const ARMORY_SCRAP_COST = 100;
 
 // 素材(社長支給v0.25.2352・public/sprites/armory.png・520×394の等角ピクセルアート)。
 // 横に広い絵なので**幅基準**で表示サイズを揃える(病院は高さ基準=HOSPITAL_DISPLAY_H)。

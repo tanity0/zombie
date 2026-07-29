@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
@@ -9225,7 +9225,7 @@ export class PixiScene {
           const dy = jump ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
           // 踏み鳴らしだけ大きく外へ出す(社長指示v0.25.2408・絵に隠れて見えないため)。
           const scale = dustMove === 'stomp' ? DUST_STOMP_SCALE : DUST_SCALE;
-          const dr = (jump ? (e.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS)
+          const dr = (jump ? (e.gJumpRadius ?? GIANT_JUMP_RADIUS)
             : dustMove === 'slam' ? GIANT_SLAM_HALF_WIDTH : (e.gStompRadius ?? GIANT_STOMP_RADIUS)) * scale;
           // 4つ目=「この latch 全体のうち、どこが着弾の瞬間か」。溜め中は砂埃を出さないための境目。
           const impactFrac = (toImpact + DUST_MS) > 0 ? toImpact / (toImpact + DUST_MS) : 0;
@@ -9300,7 +9300,7 @@ export class PixiScene {
         // PUMPKIN_EXPLOSION_RADIUS(6.26-6「現行不変」=定数そのものは変えない)。M65: windup開始時に
         // gameStore.tsが確定させたe.gJumpRadius(ステージ別倍率込み)を読む。判定側と同じフィールド。
         const gtx = (e.aiTargetX ?? e.x) + e.width / 2, gty = (e.aiTargetY ?? e.y) + e.height / 2;
-        const gR = e.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS;
+        const gR = e.gJumpRadius ?? GIANT_JUMP_RADIUS;
         // 着地予告も同じ素材(A-1)。円の予告はゲーム中で意匠を揃える(踏み鳴らしと同じ輪に見える)。
         o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * gPulse });
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, gtx, gty, gR, 0xff3b3b, 0.55 + 0.35 * gPulse);
