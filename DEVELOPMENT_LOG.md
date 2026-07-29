@@ -1,5 +1,67 @@
 # Development Log
 
+## v0.25.2390 — ステージ2: 資料と逆方向(idol方向)へ進むとBGMを廊下BGMへクロスフェード(社長指示)【2026-07-29 10:57 JST】
+- 社長指示: 「オープニングのBGM、m2の反対方面に向かってる途中、中盤くらいに差し掛かったらBGMをこれに
+  変更。可能なら通常BGMとクロスフェードで距離に比例して切り替えたい(奥に行くほど切り替わる)」。
+  **新規音源なし**(オープニングの廊下BGM `public/audio/op-corridor.mp3` を再利用)。
+
+### 混ざり具合(純関数・テスト済み)
+- `src/world/labRadioMix.ts` の `labRadioMixT(idolX, playerCenterX)`。式は設計チャットが確定済みのものを
+  そのまま実装(値・floor は変更していない):
+  `L = |idol.x|` / `d = max(0, sign(idol.x) * playerCenterX)` / `t = clamp01((d/L - 0.5) / 0.4)`
+  = **進捗50%(中盤)で切り替わり始め、90%で完全に切り替わる**。資料の側へ歩くとdが負→0クランプで
+  常にt=0(通常BGMのまま)。
+- 境界(d=0 / ちょうど50% / 70%→0.5 / 90%以上→1・追い越しても1でクランプ / 反対方向 / L=0の0除算保護)を
+  `src/world/labRadioMix.test.ts` に固定(8件green)。
+
+### idolの座標をstoreへ(敵オブジェクトは倒されると消えるため)
+- `gameStore.ts` に `labRadioX: number | null` を追加。`resetGame` が `labIdolSpotForDoc(labDoc).x` を
+  **1度だけ**書く(他ステージ/未配置は null)。ラン中に毎フレーム書き換えることはしない
+  (CLAUDE.md「React re-render discipline」= storeの新フィールドはラン開始時1回のみ)。
+
+### 音の混ぜ方(audioManager.ts)
+- 通常BGM(+深層逆再生版)の音量計算は**元々4箇所に散っていた**(`bgmVolume * bgmDuck` を
+  playBgmRobust/ensureBgmRouting/playDeepRobust/prepareDeepReverseBgm がそれぞれ個別に計算)。これを
+  **`effectiveBgmVolume()`(`= bgmVolume * bgmDuck * (1 - radioMix)`)という1つのヘルパへ集約**し、
+  上記4箇所 + `applyDuckedBgmVolume`(PEAKフェードが毎ステップ呼ぶ既存関数)の**計5箇所**を
+  このヘルパ経由に置き換えた。新しい計算式を増やしていない(掛け算の出どころは1つだけ)。
+- `bgmDuck`(PEAK専用・`peakLayerEl`のフェードが唯一の書き手)は**流用せず**、独立した`radioMix`
+  変数を新設(指示どおり)。
+- `setCorridorRadioMix(t)` を新設。t=0でラジオ層(`op-corridor.mp3`の`HTMLAudioElement`)をpause、
+  0<t<=1でラジオ層を`t*bgmVolume`でloop再生しつつ、通常BGMは`effectiveBgmVolume()`の`(1-radioMix)`項で
+  自動的に`(1-t)`倍になる。**tの変化が0.02未満ならvolume書き込みをスキップ**(0への遷移は即時反映)。
+- ラジオ層はmute設定/BGM音量スライダーに追従(`setAudioMuted`/`setBgmVolume`/`setBgmActive`から
+  `applyRadioLayerAudio()`を呼ぶ)。タブ非表示(`setAudioSuspended`)でも他レイヤーと同様に一時停止/復帰。
+- `stopCorridorRadioMix()` を新設し、`setBgmScene`の**`releaseDeepReverseBgm()`と同じ3箇所**
+  (scene='off' / ステージvariant変更 / menu遷移)で呼ぶ=ラン終了/シーン切替/ステージ2以外で確実に止める。
+- フォールバック: `?labradio=0` で今日までの挙動(通常BGMのみ)に固定できる。
+
+### 呼び出し側(useGameLoop.ts)
+- PEAK/心音ループと同じブロックの直後に新設。`stageTheme==='lab' && !indoorMode`の時だけ
+  `labRadioMixT(labRadioX, player中心x)`を計算して`setCorridorRadioMix(t)`を呼ぶ。それ以外のステージへ
+  移った最初のフレームだけ`setCorridorRadioMix(0)`を1回呼んで止める(`labRadioActiveRef`で遷移検出。
+  毎フレーム0を呼び続けない)。
+
+### 影響範囲の確認
+- 他ステージ: `radioMix`は`stageTheme==='lab'`時にしかnonzeroにならない→`effectiveBgmVolume()`は
+  `bgmVolume*bgmDuck*(1-0)`=**従来と完全一致**。
+- PEAKレイヤー: `bgmDuck`自体は未変更(フェード処理も無改変)。`radioMix`は独立乗数として掛かるだけ。
+- 深層逆再生BGM(`deepBgm`): labステージに深層域は無い(`REVERSE_BGM`にlabエントリなし)ため
+  `deepActive`は常にfalseのまま=無影響。
+- オープニング(`OpeningScene.tsx`の`WALK_AUDIO`): 別コンポーネント・別`HTMLAudioElement`で、
+  audioManager側の`radioLayerEl`とは完全に別インスタンス。ファイル(`op-corridor.mp3`)を共有再生
+  しているだけで、状態も呼び出し経路も交わらない。
+- 負荷スコア **1/10**(simulation: 毎フレームの計算は純関数1回+比較のみ。audio: `HTMLMediaElement`の
+  play/pause/volumeは0.02未満の変化ならスキップするガード付き。新規描画・新規Textureなし)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(BGM演出1つの追加で
+  スポーン/難易度/報酬には触れていない)。
+- 検証: typecheck 0 / lint 0(既存warning 7件のみ、新規0) / `vitest related`(labRadioMix.test.ts含む
+  244 tests green・labRadioMix.test.ts単体8件green)。`npm test`/`npm run build`は指示が無いため未実施
+  (テストチャット運用方針どおり)。
+- 変更: `src/world/labRadioMix.ts`(新)+`labRadioMix.test.ts`(新)、`src/audio/audioManager.ts`、
+  `src/store/gameStore.ts`、`src/hooks/useGameLoop.ts`、`REALDEVICE_TEST.md`、`package.json`、
+  `src/data/changelog.ts`。
+
 ## v0.25.2389 — 警察署: 失敗後の無限再発動を修正+建物を縮小(社長報告)【2026-07-29 10:42 JST】
 - 社長報告:「警察署の開放が、失敗すると位置がずれて再発動して抜け出せない。あと建物が大半を占めてて邪魔」。
 

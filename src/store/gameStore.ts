@@ -2857,6 +2857,11 @@ interface GameState {
   pendingStageTheme: StageTheme;                        // 出撃ステージの見た目テーマ(resetGame で stageTheme へ)
   setPendingStageTheme: (theme: StageTheme) => void;
   stageTheme: StageTheme;                               // この出撃の見た目テーマ('lab'=研究所スキン。描画/商人が参照)
+  // ステージ2(屋外ラボ廊下)専用: idol(隠しボス=「ゴール資料の真逆位置」)のx座標。resetGame で
+  // labIdolSpotForDoc(labDoc).x を1度だけ書く(他ステージ/未配置は null)。idolの敵オブジェクトは
+  // 倒されると配列から消えるため参照できず、BGMクロスフェード(setCorridorRadioMix)の距離計算だけの
+  // ためにこのフィールドで座標を持つ(PACING_PUZZLE.md §6.28-21)。
+  labRadioX: number | null;
   pendingFarBackdrop: string;                           // 出撃ステージの遠景差し替えキー(resetGame で farBackdrop へ)
   setPendingFarBackdrop: (key: string) => void;
   setPendingSuppression: (on: boolean) => void;   // 出撃が制圧イベント(ステージ1メイン)か
@@ -3177,6 +3182,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   pendingIndoor: false,
   pendingStageTheme: 'forest',
   stageTheme: 'forest',
+  labRadioX: null,
   pendingFarBackdrop: '',
   farBackdrop: '',
   pendingNearHorizon: '',
@@ -10767,6 +10773,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         indoorMode: indoor,
         corridorMode,
         stageTheme,
+        labRadioX: labIdol?.x ?? null,
         farBackdrop,
         nearHorizon,
         hiddenBoss,

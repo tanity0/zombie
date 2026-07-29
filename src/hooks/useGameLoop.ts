@@ -218,8 +218,9 @@ import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, buildSupportSniperShot, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
+import { labRadioMixT } from '../world/labRadioMix';
 import { stepFollowChain, FOLLOW_SPEED_MULT } from '../utils/companionFollow';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
@@ -1268,6 +1269,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const camLookAheadRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
+  // ステージ2(屋外ラボ廊下)BGMクロスフェード: 直前フレームがlab対象コマだったか。falseへ落ちた
+  // 最初のフレームだけ setCorridorRadioMix(0) を1回呼んで止める(毎フレーム0を呼び続けない)。
+  const labRadioActiveRef = useRef<boolean>(false);
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
   const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number; lastTimeRollAt: number; timeSpawned: boolean; warpAnimStartAt: number; warpToX: number; warpToY: number; warpTeleported: boolean; defeatCount: number }>(
     { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 }
@@ -1742,6 +1746,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           ? puzzlePeakSnap.komaKind === 'peak'
           : (gs.stageTheme !== 'lab' && !gs.indoorMode && phaseAt(gs.gameTime).kind === 'gate');
         setPeakLayer(!gs.isPaused && gs.player.health > 0 && (scriptedPeak || gs.redNight?.phase === 'active'));
+      }
+
+      // ステージ2(屋外ラボ廊下)BGMクロスフェード(社長指示): ゴール資料と反対方面(=idolの居る方向)へ
+      // 進むほど、中盤くらいに差し掛かったら通常BGMからオープニングの廊下BGMへ距離に比例して切り替わる。
+      // 混ぜ具合はlabRadioMixT(純関数・src/world/labRadioMix.ts)。idolの座標はresetGameが1度だけ書いた
+      // labRadioX(idolの敵オブジェクトは倒されると消えるため参照不可)。ステージ2以外では1度だけ0を渡して
+      // 止める(毎フレーム0を呼び続けない=labRadioActiveRefで遷移だけ検出)。
+      {
+        const gs = useGameStore.getState();
+        if (gs.stageTheme === 'lab' && !gs.indoorMode) {
+          const t = labRadioMixT(gs.labRadioX, gs.player.x + gs.player.width / 2);
+          setCorridorRadioMix(t);
+          labRadioActiveRef.current = true;
+        } else if (labRadioActiveRef.current) {
+          setCorridorRadioMix(0);
+          labRadioActiveRef.current = false;
+        }
       }
 
       // Update FPS counter

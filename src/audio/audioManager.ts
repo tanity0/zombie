@@ -382,6 +382,14 @@ let bgmVolume = DEFAULT_BGM_VOLUME;
 // PEAK重ねレイヤー中だけ通常BGMを少し落とすダッキング倍率(社長指示)。1=等倍。
 // BGM音量を適用する全経路で bgmVolume × bgmDuck を使う(ユーザー設定のスライダー値は汚さない)。
 let bgmDuck = 1;
+// ステージ2(屋外ラボ廊下)専用のBGMクロスフェード係数(setCorridorRadioMix が書く)。0=通常BGMのみ、
+// 1=ラジオ層(op-corridor.mp3)へ完全に切り替わる。bgmDuck(PEAK専用・peakLayerElのフェードが唯一の
+// 書き手)とは独立させる(共用すると紅き月の演出と踏み合うため)。
+let radioMix = 0;
+// 通常BGM(+深層逆再生版)の実効音量はここ1箇所だけで計算する(bgmVolume×bgmDuck×(1-radioMix))。
+// この計算を書く場所を増やすと必ずどれかが更新漏れになる(このプロジェクトで繰り返し起きた事故の
+// 再発防止)。normal-BGM系のvolume書き込みは全てこのヘルパ経由にすること。
+const effectiveBgmVolume = () => bgmVolume * bgmDuck * (1 - radioMix);
 // ダンスビートB方式(v0.25.1339): メトロノームのキックが埋もれないよう、ダンス曲を軽くダックする。
 // 実機調整前提の叩き台値。setDanceBeatDuck(true/false) はダンス開始/終了エッジでのみ呼ぶ(useGameLoop)。
 const DANCE_BGM_BEAT_DUCK = 0.8;
@@ -492,7 +500,7 @@ const playBgmRobust = () => {
   const tryPlay = () => {
     if (!bgm || token !== bgmPlayToken || !bgmActive || muted) return;
     bgm.muted = false; // 事前解錠(primeMenuBgm)はミュートのまま置くので、実再生の瞬間にここで初めて解除
-    const v = bgmVolume * bgmDuck * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
+    const v = effectiveBgmVolume() * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
     if (bgmGain) bgmGain.gain.value = v;
     else bgm.volume = v;
     void bgm.play().catch(() => {});
@@ -604,7 +612,7 @@ const ensureBgmRouting = () => {
   try {
     const source = ctx.createMediaElementSource(bgm);
     bgmGain = ctx.createGain();
-    bgmGain.gain.value = bgmVolume * bgmDuck;
+    bgmGain.gain.value = effectiveBgmVolume();
     source.connect(bgmGain);
     bgmGain.connect(ctx.destination);
     bgmRouted = true;
@@ -623,7 +631,7 @@ const playDeepRobust = () => {
   const token = ++deepPlayToken;
   const tryPlay = () => {
     if (deepBgm !== el || token !== deepPlayToken || !deepActive || !bgmActive || muted) return;
-    el.volume = bgmVolume * bgmDuck;
+    el.volume = effectiveBgmVolume();
     void el.play().catch(() => {});
   };
   tryPlay();
@@ -915,6 +923,7 @@ export const setAudioMuted = (nextMuted: boolean) => {
   if (!muted) warmSfxBuffers();
   applyBgm();
   applyDanceAudio();
+  applyRadioLayerAudio(); // ラジオ層(ステージ2クロスフェード)もmute設定に即追従
 };
 
 export const setBgmVolume = (volume: number) => {
@@ -922,6 +931,7 @@ export const setBgmVolume = (volume: number) => {
   try { localStorage.setItem(BGM_VOLUME_KEY, String(bgmVolume)); } catch { /* ignore */ }
   applyBgm();
   applyDanceAudio();
+  applyRadioLayerAudio(); // ラジオ層もBGM音量スライダーに即追従
 };
 
 export const setSfxVolume = (volume: number) => {
@@ -934,17 +944,19 @@ export const setBgmActive = async (nextActive: boolean) => {
   if (bgmActive && !muted) warmSfxBuffers();
   applyBgm();
   applyDanceAudio();
+  applyRadioLayerAudio(); // ラジオ層もBGM有効/無効に追従(無効化時は確実に止まる)
 };
 
 // 画面に応じてBGMを切替: menu=タイトル曲(public/audio/title.mp3) / game=ステージ曲 / off=停止。
 // menu→game でステージ曲へ、game→menu でタイトル曲へ自動で差し替わる(applyDanceAudio が bgmBaseTrack を流す)。
 // ブラウザの自動再生制限で menu の初回はユーザー操作まで鳴らないことがあるため、初回タップで再度呼ぶ。
 export const setBgmScene = (scene: 'menu' | 'game' | 'off', variant: string = 'default') => {
-  if (scene === 'off') { releaseDeepReverseBgm(); void setBgmActive(false); return; }
+  if (scene === 'off') { releaseDeepReverseBgm(); stopCorridorRadioMix(); void setBgmActive(false); return; }
   if (scene === 'game') {
-    if (variant !== currentGameVariant) { releaseDeepReverseBgm(); currentGameVariant = variant; }
+    if (variant !== currentGameVariant) { releaseDeepReverseBgm(); stopCorridorRadioMix(); currentGameVariant = variant; }
   } else {
     releaseDeepReverseBgm(); // メニューへ戻る=ステージ離脱: 逆再生版を解放
+    stopCorridorRadioMix();  // ラジオ層(ステージ2クロスフェード)も解放
   }
   bgmBaseTrack = scene === 'menu'
     ? TITLE_TRACK
@@ -989,7 +1001,7 @@ export const prepareDeepReverseBgm = () => {
   deepBgm.loop = true;          // 深層滞在が長い前提=ループ
   deepBgm.preload = 'auto';
   (deepBgm as HTMLVideoElement).playsInline = true;
-  deepBgm.volume = bgmVolume * bgmDuck;
+  deepBgm.volume = effectiveBgmVolume();
   try { deepBgm.load(); } catch { /* ignore */ } // pause のまま待機(明示playしない)
 };
 
@@ -1047,9 +1059,10 @@ const ensurePeakLayer = (): HTMLAudioElement | null => {
   return el;
 };
 
-// 現在の bgmDuck を通常/深層BGMへ即時適用(フェード中に毎ステップ呼ぶ)。
+// 現在の bgmDuck/radioMix を通常/深層BGMへ即時適用(PEAKフェード中に毎ステップ呼ぶ。
+// setCorridorRadioMix からも呼ぶ)。実効音量の計算は effectiveBgmVolume() の1箇所に集約。
 const applyDuckedBgmVolume = () => {
-  const v = bgmVolume * bgmDuck;
+  const v = effectiveBgmVolume();
   if (bgmGain) bgmGain.gain.value = v;
   else if (bgm) bgm.volume = v;
   if (deepBgm) deepBgm.volume = v;
@@ -1100,6 +1113,66 @@ export const setPeakLayer = (active: boolean) => {
   }
 };
 
+// --- ステージ2(屋外ラボ廊下)専用: 通常BGM→廊下BGMのクロスフェード -----------------------------
+// 社長指示: ゴール資料と反対方面(=idolの居る方向)へ進むほど、中盤くらいに差し掛かったら通常BGMから
+// オープニングの廊下BGM(op-corridor.mp3。OpeningScene.tsx の WALK_AUDIO と同じ素材を再利用=新規素材なし)
+// へ距離に比例してクロスフェードする。混合比 t は useGameLoop 側が labRadioMixT(純関数)で計算して渡す。
+// `?labradio=0` で今日までの挙動(通常BGMのみ)に固定できる(フォールバック)。
+const CORRIDOR_RADIO_TRACK = assetUrl('audio/op-corridor.mp3');
+const LAB_RADIO_DISABLED = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('labradio') === '0';
+let radioLayerEl: HTMLAudioElement | null = null;
+let lastAppliedRadioMix = 0; // setCorridorRadioMix の書き込みスキップ判定用(直近に適用した値)
+
+const ensureRadioLayer = (): HTMLAudioElement | null => {
+  if (radioLayerEl) return radioLayerEl;
+  if (typeof Audio === 'undefined') return null;
+  const el = new Audio(CORRIDOR_RADIO_TRACK);
+  el.loop = true;
+  el.preload = 'auto';
+  (el as HTMLVideoElement).playsInline = true;
+  el.volume = 0;
+  radioLayerEl = el;
+  return el;
+};
+
+// ラジオ層の再生/停止と音量を現在の radioMix/bgmVolume/mute/bgmActive から再計算する。
+// setCorridorRadioMix だけでなく、mute切替・音量スライダー・BGM有効化の各経路からも呼び、
+// 「スライダーを動かしたら即反映」を保証する(社長指示)。
+const applyRadioLayerAudio = () => {
+  if (radioMix > 0 && bgmActive && !muted) {
+    const el = ensureRadioLayer();
+    if (!el) return;
+    el.volume = radioMix * bgmVolume;
+    if (el.paused) void el.play().catch(() => { /* ignore: unlocks on next user gesture like other tracks */ });
+  } else if (radioLayerEl) {
+    try { radioLayerEl.pause(); } catch { /* ignore */ }
+  }
+};
+
+// ラン終了/シーン切替/ステージ2以外で確実に止める(取り残して鳴り続けない)。setBgmScene の
+// releaseDeepReverseBgm と同じ呼び出し箇所で面倒を見る。
+export const stopCorridorRadioMix = (): void => {
+  radioMix = 0;
+  lastAppliedRadioMix = 0;
+  applyDuckedBgmVolume();
+  if (radioLayerEl) { try { radioLayerEl.pause(); } catch { /* ignore */ } }
+};
+
+// t=0: ラジオ層pause、通常BGMはそのまま。0<t<=1: ラジオ層をt*bgmVolumeでloop再生しつつ、通常BGM側は
+// effectiveBgmVolume() の (1-radioMix) 項で自動的に (1-t) 倍になる(通常BGM音量計算の出どころは
+// effectiveBgmVolume() の1箇所のみ)。t の変化が0.02未満ならvolume書き込みをスキップする(呼び出し側
+// のuseGameLoopは毎フレーム呼ぶため、端末によっては毎フレームの HTMLMediaElement.volume 書き込みが
+// 重い対策)。ただし0への遷移(資料側へ歩いた/ステージ離脱)は閾値を待たず即時反映する。
+export const setCorridorRadioMix = (t: number): void => {
+  const next = LAB_RADIO_DISABLED ? 0 : Math.max(0, Math.min(1, t));
+  if (next === lastAppliedRadioMix) return;
+  if (next !== 0 && Math.abs(next - lastAppliedRadioMix) < 0.02) return;
+  lastAppliedRadioMix = next;
+  radioMix = next;
+  applyDuckedBgmVolume(); // 通常BGM(+深層逆再生版)の実効音量を1箇所の計算で更新
+  applyRadioLayerAudio();
+};
+
 // 電池対策: 裏(タブ/アプリ非表示)に回ったら BGM を一時停止し、復帰で再開(scene状態は保持)。
 // HTMLAudioElement は hidden でも鳴り続け電池を食うため明示停止。SFXのAudioContextは
 // ブラウザが hidden で自動 suspend するので復帰時に resume するだけ。
@@ -1108,12 +1181,14 @@ export const setAudioSuspended = (suspended: boolean) => {
     try { bgm?.pause(); } catch { /* ignore */ }
     try { deepBgm?.pause(); } catch { /* ignore */ } // 深層域の逆再生版も止める(電池対策)
     try { peakLayerEl?.pause(); } catch { /* ignore */ }
+    try { radioLayerEl?.pause(); } catch { /* ignore */ }
   } else {
     resumeSfxContext();
     if (deepActive) applyBgm();   // 深層中は逆再生版を再開(通常BGMは pause のまま)
     else playBgmRobust();         // bgmActive/muted を尊重して通常BGM復帰
     // 1回転仕様: 1周鳴り終えた後(ended)にタブ復帰しても再演奏しない(途中中断だけ再開する)。
     if (peakLayerActive && peakLayerEl && !peakLayerEl.ended) { try { void peakLayerEl.play().catch(() => {}); } catch { /* ignore */ } }
+    applyRadioLayerAudio(); // radioMix>0のまま復帰していれば再開
   }
 };
 
