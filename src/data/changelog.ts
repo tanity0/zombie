@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2418',
+    items: [
+      '城ボスがワープして追ってこなくなりました。離れ切るとその場で待機に戻り、近づくとまた襲ってきます。',
+      '待機に戻った城ボスは、待っている間ゆっくり体力を回復します(削って逃げるだけでは倒せません)。',
+    ],
+  },
+  {
     version: '0.25.2417',
     items: [
       '衝撃波がまったく出ていなかった不具合を修正しました。',

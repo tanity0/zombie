@@ -113,6 +113,7 @@ import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, rollEquipment, armoryTargetSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
+import { isLeashableBoss, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC } from '../utils/bossEngagement';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
@@ -7399,9 +7400,38 @@ export const useGameStore = create<GameState>((set, get) => ({
                 hunterWanderTargetX: wander.wanderTargetX, hunterWanderTargetY: wander.wanderTargetY, hunterWanderNextAt: wander.wanderNextAt,
               };
             }
+            // ★リーシュで待機に戻った城ボスは、待っている間じわじわ回復する(社長裁定v0.25.2418)。
+            // ソウル系の標準は「離脱=全快リセット」だが、開けたフィールドの本作でそれをやると
+            // うっかり離れただけで進捗が全部消えて理不尽。**じわじわ**なら、離脱の代償が
+            // 「離れていた時間」に比例するので、削って逃げて回復して戻る消耗戦は成立しないまま、
+            // 事故で全部消えることもない。
+            // 速度は**裏ボスと同じ既存定数を流用**(BOSS_REGEN_PER_SEC=10/秒。社長が40→10へ調整済み)。
+            // 新しい数字を発明しない=バランスの出どころを1つに保つ。
+            if (isLeashableBoss(enemy.type) && enemy.health < enemy.maxHealth) {
+              return {
+                ...enemy, vx: 0, vy: 0,
+                health: Math.min(enemy.maxHealth, enemy.health + BOSS_LEASH_REGEN_PER_SEC * deltaTime),
+              };
+            }
             return { ...enemy, vx: 0, vy: 0 };
           }
           return { ...enemy, dormant: false, vx: 0, vy: 0 };
+        }
+
+        // ★リーシュ(社長裁定v0.25.2418): 起きている城ボスがプレイヤーから離れ切ったら、
+        // **その場で待機(dormant)へ戻す**。旧挙動は汎用オフスクリーンリサイクルによる
+        // 「HPを保ったまま画面外の別位置へ再配置」=社長が「ワープしてくる」と感じていたもの。
+        //  ・テレポートが無くなる(見た目の不自然さが消える)
+        //  ・追ってこない代わりに**待っているだけ**=離れて一方的に削るハメも成立しない
+        //  ・`bossEngagedNow` が dormant を見ているので、**雑魚の湧きも自動で通常へ戻る**
+        // 技の実行中(aiPhase あり)は待機に戻さない=攻撃を中断してその場で固まる事故を防ぐ。
+        if (isLeashableBoss(enemy.type) && !enemy.aiPhase
+          && Math.hypot(pcx - (enemy.x + enemy.width / 2), pcy - (enemy.y + enemy.height / 2)) > BOSS_LEASH_PX) {
+          return {
+            ...enemy, dormant: true, vx: 0, vy: 0,
+            aiPhaseUntil: undefined, aiStartedAt: undefined,
+            aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+          };
         }
 
         // ステージ2(研究所)の索敵解除(社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175「横長廊下+視線切り
