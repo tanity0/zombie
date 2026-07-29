@@ -618,6 +618,11 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // =「急に画面から消える」原因になっていた(社長報告: パンプキンのジャンプ/カウンター時)。攻撃を完遂させ、
     // 終わって(aiPhase解除)から遠ければ通常どおりリサイクルする。
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge') return enemy;
+    // M66(PACING_PUZZLE.md §6.26-11・stage-3 急降下): 城ボスが「本体が不在(無敵ではなく居ない)」を
+    // 表現するため、windup中は実座標を意図的に場外(GIANT_DIVE_AWAY_OFFSET)へ退避させている。この
+    // 汎用オフスクリーンリサイクルに捕まると「急に元の場所へワープして戻ってくる」= dive の演出が
+    // 壊れるので、jump/chargeと同じ理由で対象外にする(windup終わりでstore側が着地座標へ戻す)。
+    if (enemy.aiPhase === 'g-dive-windup') return enemy;
     const enemyCenterX = enemy.x + enemy.width / 2;
     const enemyCenterY = enemy.y + enemy.height / 2;
     // 矩形(プレイヤー中心)で「画面外送り」判定。半径ではなく辺基準で一律。

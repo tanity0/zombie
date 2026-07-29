@@ -4,6 +4,10 @@ import {
   giantPhaseForHealthStory, pickGiantStoryCombo,
   giantStageRangeMult,
   GIANT_RANGE, type GiantMove,
+  GIANT_STAGE_UNIQUE_MOVE, GIANT_STAGE_ULT_MOVE, GIANT_STAGE_MOVE_RANGE,
+  giantStageMoveEligible, pickGiantMoveWithStage,
+  GIANT_QUAD_DASH_COUNT, giantQuadDashComplete, GIANT_QUAD_ICE_COUNT,
+  type GiantStageMoveId,
 } from './giantScript';
 
 const ALL_MOVES: GiantMove[] = ['stomp', 'sweep', 'jump', 'dash', 'bolt'];
@@ -257,5 +261,167 @@ describe('giantStageRangeMult(M65・社長指示: ステージ別の踏み鳴ら
     expect(giantStageRangeMult('stage-7', false)).toBe(1);
     expect(giantStageRangeMult('stage-ex1', false)).toBe(1);
     expect(giantStageRangeMult('nonexistent', false)).toBe(1);
+  });
+});
+
+// ====================================================================================
+// M66(PACING_PUZZLE.md §6.26-11): 城ボスのステージ別 独自技(Phase1〜)+大技(Phase2〜)。
+// これらのテストが守るのは「新設した統合抽選(pickGiantMoveWithStage)が正しいこと」であって、
+// 上のPhase1/2/3のテスト(既存pickGiantMove/giantMoveEligible)は1つも書き換えていない
+// =既存5技の不変性の担保はそのまま生きている(受け入れ条件「stage-1の既存挙動が変わらない」)。
+// ====================================================================================
+
+const ALL_STAGE_MOVES: GiantStageMoveId[] = ['bite', 'slam', 'glide', 'dive', 'quaddash', 'nova', 'wing', 'sweepbeam'];
+const stageAllReady = (): Record<GiantStageMoveId, boolean> => ({
+  bite: true, slam: true, glide: true, dive: true, quaddash: true, nova: true, wing: true, sweepbeam: true,
+});
+
+describe('GIANT_STAGE_UNIQUE_MOVE / GIANT_STAGE_ULT_MOVE — 対象は城ボスが実際に出る4ステージのみ', () => {
+  it('defines exactly one unique move and one ult move for stage-1/3/4/5', () => {
+    expect(GIANT_STAGE_UNIQUE_MOVE['stage-1']).toBe('bite');
+    expect(GIANT_STAGE_UNIQUE_MOVE['stage-3']).toBe('glide');
+    expect(GIANT_STAGE_UNIQUE_MOVE['stage-4']).toBe('quaddash');
+    expect(GIANT_STAGE_UNIQUE_MOVE['stage-5']).toBe('wing');
+    expect(GIANT_STAGE_ULT_MOVE['stage-1']).toBe('slam');
+    expect(GIANT_STAGE_ULT_MOVE['stage-3']).toBe('dive');
+    expect(GIANT_STAGE_ULT_MOVE['stage-4']).toBe('nova');
+    expect(GIANT_STAGE_ULT_MOVE['stage-5']).toBe('sweepbeam');
+  });
+
+  it('does NOT define anything for stage-6/7/ex1(社長指示: この3ステージには足さない)', () => {
+    for (const id of ['stage-6', 'stage-7', 'stage-ex1']) {
+      expect(GIANT_STAGE_UNIQUE_MOVE[id]).toBeUndefined();
+      expect(GIANT_STAGE_ULT_MOVE[id]).toBeUndefined();
+    }
+  });
+});
+
+describe('giantStageMoveEligible — 表どおりの間合い', () => {
+  it('bite: 密着〜近(≤180)', () => {
+    expect(giantStageMoveEligible('bite', 0)).toBe(true);
+    expect(giantStageMoveEligible('bite', 180)).toBe(true);
+    expect(giantStageMoveEligible('bite', 181)).toBe(false);
+  });
+  it('slam: 近〜中(140〜420)', () => {
+    expect(giantStageMoveEligible('slam', 139)).toBe(false);
+    expect(giantStageMoveEligible('slam', 140)).toBe(true);
+    expect(giantStageMoveEligible('slam', 420)).toBe(true);
+    expect(giantStageMoveEligible('slam', 421)).toBe(false);
+  });
+  it('glide: 中〜遠(320〜900)', () => {
+    expect(giantStageMoveEligible('glide', 319)).toBe(false);
+    expect(giantStageMoveEligible('glide', 320)).toBe(true);
+    expect(giantStageMoveEligible('glide', 900)).toBe(true);
+    expect(giantStageMoveEligible('glide', 901)).toBe(false);
+  });
+  it('大技3種+quaddash/wingは全帯(設計書に間合いの明記が無いための叩き台)', () => {
+    for (const m of ['dive', 'quaddash', 'nova', 'wing', 'sweepbeam'] as GiantStageMoveId[]) {
+      expect(giantStageMoveEligible(m, 0)).toBe(true);
+      expect(giantStageMoveEligible(m, 5000)).toBe(true);
+    }
+  });
+});
+
+describe('pickGiantMoveWithStage — 受け入れ条件: ステージごとに正しい技が選ばれる', () => {
+  it('stage-6/7/ex1・未知ステージは既存5技のみ(pickGiantMoveと同じ結果になる)', () => {
+    for (const stageId of ['stage-6', 'stage-7', 'stage-ex1', 'nonexistent-stage']) {
+      const withStage = pickGiantMoveWithStage(stageId, 70, 2, allReady(), stageAllReady(), () => 0);
+      const legacy = pickGiantMove(70, 2, allReady(), () => 0);
+      expect(withStage).toBe(legacy);
+    }
+  });
+
+  it('stage-1・密着帯(70px)・Phase1: stomp/biteの2択(等確率選択の境界を確認)', () => {
+    const ready = allReady();
+    const stageReady = stageAllReady();
+    // rand=0 → プールの先頭(stomp)。既存ALL_MOVESの並び順=stomp,sweep,jump,dash,bolt+biteが末尾に追加される。
+    expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => 0)).toBe('stomp');
+    expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => 0.99)).toBe('bite');
+  });
+
+  it('Phase1では大技(slam)が選ばれない(受け入れ条件: Phase1では大技が選ばれない)', () => {
+    const ready = allReady();
+    const stageReady = stageAllReady();
+    // 距離230(slamの帯140〜420内)・Phase1: stomp/sweep/dash/boltは不適格(sweepはphase2限定・
+    // dash/boltは近帯の外)、jumpとbite(密着外なので不適格=180超)は? d=230はbiteの帯(≤180)外なので
+    // jumpのみが既存側の候補、slamはphase<2なので候補に入らない。
+    for (let i = 0; i < 50; i++) {
+      const pick = pickGiantMoveWithStage('stage-1', 230, 1, ready, stageReady, () => i / 50);
+      expect(pick).not.toBe('slam');
+    }
+  });
+
+  it('Phase2になるとslamが候補に入る(距離230・stage-1)', () => {
+    const ready = allReady();
+    const stageReady = stageAllReady();
+    // rand=0.99 → プール末尾(slamが最後に push される)を引く。
+    expect(pickGiantMoveWithStage('stage-1', 230, 2, ready, stageReady, () => 0.999)).toBe('slam');
+  });
+
+  it('stage-4・全帯対応のquaddash/novaはPhase/距離を問わず候補に入る(CD明けなら)', () => {
+    const ready = allReady();
+    const stageReady = stageAllReady();
+    expect(pickGiantMoveWithStage('stage-4', 5000, 1, ready, stageReady, () => 0.999)).toBe('quaddash');
+    expect(pickGiantMoveWithStage('stage-4', 5000, 2, ready, stageReady, () => 0.999)).toBe('nova');
+  });
+
+  it('ready(CD未消化)を落とすと候補から外れる', () => {
+    const ready = allReady();
+    const stageReady = stageAllReady();
+    stageReady.bite = false;
+    for (let i = 0; i < 20; i++) {
+      expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => i / 20)).toBe('stomp');
+    }
+  });
+
+  it('5技側のready/eligibleを落としても、ステージ技はそのまま候補に残る(独立)', () => {
+    const ready = allReady();
+    ready.stomp = false;
+    const stageReady = stageAllReady();
+    // d=70は密着帯: 5技側はstompのみ適格だがreadyを落としたので候補ゼロ、biteだけが残る。
+    expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => 0)).toBe('bite');
+  });
+
+  it('stageReadyのキーが渡されていない(undefined)場合は「未ready」として除外される(安全側)', () => {
+    const ready = allReady();
+    // ready.stomp=trueなので密着帯ではstompが候補に残る。biteはstageReadyに何も無いのでfalse扱い。
+    expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, {}, () => 0.99)).toBe('stomp');
+  });
+
+  it('全ステージ技(8種)が定義どおりの間合い/フェーズで一意に取り出せる(網羅チェック)', () => {
+    expect(ALL_STAGE_MOVES.length).toBe(8);
+    for (const stageId of ['stage-1', 'stage-3', 'stage-4', 'stage-5']) {
+      const unique = GIANT_STAGE_UNIQUE_MOVE[stageId] as GiantStageMoveId;
+      const ult = GIANT_STAGE_ULT_MOVE[stageId] as GiantStageMoveId;
+      expect(ALL_STAGE_MOVES).toContain(unique);
+      expect(ALL_STAGE_MOVES).toContain(ult);
+      expect(unique).not.toBe(ult);
+    }
+  });
+});
+
+describe('GIANT_QUAD_DASH_COUNT / giantQuadDashComplete — 学習装置③: 回数は常に3固定(乱数にしない)', () => {
+  it('is exactly 3 (社長裁定の核心=固定値)', () => {
+    expect(GIANT_QUAD_DASH_COUNT).toBe(3);
+    expect(GIANT_QUAD_ICE_COUNT).toBe(3);
+  });
+  it('is not complete after 1st or 2nd dash (index 0, 1)', () => {
+    expect(giantQuadDashComplete(0)).toBe(false);
+    expect(giantQuadDashComplete(1)).toBe(false);
+  });
+  it('is complete exactly after the 3rd dash (index 2)', () => {
+    expect(giantQuadDashComplete(2)).toBe(true);
+  });
+  it('stays complete for any index beyond 2 (defensive)', () => {
+    expect(giantQuadDashComplete(3)).toBe(true);
+    expect(giantQuadDashComplete(10)).toBe(true);
+  });
+});
+
+describe('GIANT_STAGE_MOVE_RANGE — 表の実値を固定するリグレッションガード', () => {
+  it('matches the confirmed design-doc numbers exactly', () => {
+    expect(GIANT_STAGE_MOVE_RANGE.bite).toEqual({ min: 0, max: 180 });
+    expect(GIANT_STAGE_MOVE_RANGE.slam).toEqual({ min: 140, max: 420 });
+    expect(GIANT_STAGE_MOVE_RANGE.glide).toEqual({ min: 320, max: 900 });
   });
 });

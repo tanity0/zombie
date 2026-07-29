@@ -317,12 +317,37 @@ export interface Enemy {
   //   g-jump-windup/g-jump-air/g-jump-recover = 飛び掛かり(改訂)
   //   g-dash-windup/g-dash-charge/g-dash-recover = 突進(改訂)
   //   g-bolt-windup/g-bolt-recover = 咆哮弾(改訂)
+  //  M66(PACING_PUZZLE.md §6.26-11・stage-1/3/4/5限定): ステージ固有の独自技(Phase1〜)+大技(Phase2〜)。
+  //   g-bite-windup/g-bite-hold/g-bite-active/g-bite-recover     = 噛みつき(stage-1・独自技。holdは
+  //     固定350msの"間"=学習装置①。帯を出したまま静止し続ける専用フェーズ)
+  //   g-slam-windup/g-slam-active/g-slam-recover                 = のしかかり(stage-1・大技)
+  //   g-glide-windup/g-glide-active/g-glide-recover               = 滑空薙ぎ(stage-3・独自技。二撃目は
+  //     状態を持たずgiantDelayedHitsの遅延キューで管理=学習装置①)
+  //   g-dive-windup/g-dive-recover                                 = 急降下(stage-3・大技。windup中は
+  //     本体を場外へ退避=「無敵ではなく居ない」。着弾は瞬時)
+  //   g-quad-windup/g-quad-charge/g-quad-breath-windup/
+  //   g-quad-breath-active/g-quad-recover                          = 三連突進→氷の横薙ぎ(stage-4・独自技。
+  //     windup/chargeを3回反復=学習装置③。gQuadIndexで周回)
+  //   g-nova-windup/g-nova-active/g-nova-recover                   = 氷結波(stage-4・大技。輪が広がる
+  //     継続判定=giantActiveHitで1回だけ命中させる)
+  //   g-wing-windup/g-wing-active/g-wing-recover                   = 翼撃(stage-5・独自技。三拍目は
+  //     giantDelayedHitsの遅延キューで管理=学習装置①)
+  //   g-sweepbeam-windup/g-sweepbeam-active/g-sweepbeam-recover     = 掃射(stage-5・大技。回転帯の
+  //     継続判定=giantActiveHitで1回だけ命中させる)
   aiPhase?: 'windup' | 'charge' | 'crouch' | 'jump' | 'recover' | 'zpause' | 'zrush' | 'scream'
     | 'g-stomp-windup' | 'g-stomp-recover'
     | 'g-sweep-windup' | 'g-sweep-active' | 'g-sweep-recover'
     | 'g-jump-windup' | 'g-jump-air' | 'g-jump-recover'
     | 'g-dash-windup' | 'g-dash-charge' | 'g-dash-recover'
-    | 'g-bolt-windup' | 'g-bolt-recover';
+    | 'g-bolt-windup' | 'g-bolt-recover'
+    | 'g-bite-windup' | 'g-bite-hold' | 'g-bite-active' | 'g-bite-recover'
+    | 'g-slam-windup' | 'g-slam-active' | 'g-slam-recover'
+    | 'g-glide-windup' | 'g-glide-active' | 'g-glide-recover'
+    | 'g-dive-windup' | 'g-dive-recover'
+    | 'g-quad-windup' | 'g-quad-charge' | 'g-quad-breath-windup' | 'g-quad-breath-active' | 'g-quad-recover'
+    | 'g-nova-windup' | 'g-nova-active' | 'g-nova-recover'
+    | 'g-wing-windup' | 'g-wing-active' | 'g-wing-recover'
+    | 'g-sweepbeam-windup' | 'g-sweepbeam-active' | 'g-sweepbeam-recover';
   aiPhaseUntil?: number; // 現フェーズの終了 gameTime
   aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
   aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)
@@ -371,6 +396,20 @@ export interface Enemy {
   // 「赤い円より広い範囲で当たる」ドリフトを構造的に防ぐ(未設定時は無倍率の生半径にフォールバック)。
   gStompRadius?: number;
   gJumpRadius?: number;
+  // M66(PACING_PUZZLE.md §6.26-11・stage-1/3/4/5限定)。
+  // 三連突進(quaddash)の何回目か(0始まり・固定3回で終了=giantQuadDashComplete)。
+  gQuadIndex?: number;
+  // ステージ固有技(独自技/大技)ごとの個別クールダウン(gStomp/gSweepReadyAt等と同じ作法。
+  // 1フィールドへ集約=8個別フィールドを増やさない)。
+  gStageReadyAt?: Partial<Record<'bite' | 'slam' | 'glide' | 'dive' | 'quaddash' | 'nova' | 'wing' | 'sweepbeam', number>>;
+  // 遅延起爆の待ち行列(固定遅延=学習装置①。乱数にしない)。滑空の二撃目(1件)/三連突進が残す氷
+  // (3件)/翼撃の三拍目(1件)で共用する汎用キュー。ice=trueなら着弾FXが青版(既存pumpkinBlastsの
+  // ice:trueをそのまま流用)。capsuleがあれば帯(翼撃三拍目)、無ければ円(それ以外)として起爆する。
+  giantDelayedHits?: { x: number; y: number; radius: number; bornAt: number; fireAt: number; ice?: boolean;
+    capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number } }[];
+  // 継続判定技(氷結波の輪/三連突進の吐息/掃射)が「このactiveフェーズで既に1回命中させたか」。
+  // 回転/拡大する図形は毎フレーム自己検出するため、多重ヒットを防ぐ1回きりフラグ(windup開始でfalseへ)。
+  giantActiveHit?: boolean;
   // ハンター変異体: 撤退中フラグ。true の間は updateEnemies の通常追跡から除外し、専用イベント
   // コントローラ(useGameLoop)がプレイヤーから離れる方向へ移動させ、画面外で消滅させる。
   hunterFleeing?: boolean;

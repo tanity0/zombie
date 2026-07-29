@@ -22,7 +22,17 @@ import type {
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
 import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
-  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_JUMP_WINDUP_MS } from '../store/gameStore';
+  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_JUMP_WINDUP_MS,
+  // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
+  GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
+  GIANT_SLAM_WINDUP_MS, GIANT_SLAM_HALF_WIDTH,
+  GIANT_GLIDE_WINDUP_MS, GIANT_GLIDE_HALF_WIDTH,
+  GIANT_DIVE_WINDUP_MS, GIANT_DIVE_RADIUS,
+  GIANT_QUAD_BREATH_WINDUP_MS, GIANT_QUAD_BREATH_ACTIVE_MS, GIANT_QUAD_BREATH_LENGTH, GIANT_QUAD_BREATH_HALF_WIDTH, GIANT_QUAD_BREATH_SWEEP_RAD,
+  GIANT_NOVA_WINDUP_MS, GIANT_NOVA_ACTIVE_MS, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_END, GIANT_NOVA_BAND_THICKNESS,
+  GIANT_WING_WINDUP_MS, GIANT_WING_HALF_WIDTH, GIANT_WING_LENGTH, GIANT_WING_SPREAD_RAD,
+  GIANT_SWEEPBEAM_WINDUP_MS, GIANT_SWEEPBEAM_ACTIVE_MS, GIANT_SWEEPBEAM_LENGTH, GIANT_SWEEPBEAM_HALF_WIDTH, GIANT_SWEEPBEAM_INNER_RADIUS, GIANT_SWEEPBEAM_SWEEP_RAD,
+} from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
@@ -8931,15 +8941,61 @@ export class PixiScene {
     if (e.type === 'giantbat' && GIANT_SCRIPT_ENABLED) {
       const gph = e.aiPhase;
       const gPulse = 0.5 + 0.5 * Math.sin(now / 110);
+      // 共通ヘルパ(M66): 角ばった帯(既存sweepと同じ意匠=poly fill+stroke)。bite/slam/glide/wingで共用。
+      const drawGiantCapsuleZone = (fx: number, fy: number, tx: number, ty: number, halfWidth: number, fillA: number, strokeA: number) => {
+        const ddx = tx - fx, ddy = ty - fy;
+        const ddl = Math.hypot(ddx, ddy) || 1;
+        const nx = -ddy / ddl, ny = ddx / ddl;
+        const ux = ddx / ddl, uy = ddy / ddl;
+        const pts = [
+          fx - ux * halfWidth + nx * halfWidth, fy - uy * halfWidth + ny * halfWidth,
+          tx + ux * halfWidth + nx * halfWidth, ty + uy * halfWidth + ny * halfWidth,
+          tx + ux * halfWidth - nx * halfWidth, ty + uy * halfWidth - ny * halfWidth,
+          fx - ux * halfWidth - nx * halfWidth, fy - uy * halfWidth - ny * halfWidth,
+        ];
+        o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA });
+        o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
+      };
+      // 共通ヘルパ(M66): 扇形(帯が回転する技のwindup予告=最終的に薙ぐ全域を先出しする)。innerR>0で
+      // 内径付き(懐が安全=ウリの内径修正と同じ考え方。図形は「くり抜き」ではなく環状の扇そのもの)。
+      const drawGiantFanZone = (originX: number, originY: number, baseAngle: number, sweepRad: number, length: number, fillA: number, strokeA: number, innerR: number = 0) => {
+        const segs = 10;
+        const pts: number[] = [];
+        if (innerR > 0) {
+          for (let i = 0; i <= segs; i++) {
+            const a = baseAngle - sweepRad / 2 + sweepRad * (i / segs);
+            pts.push(originX + Math.cos(a) * innerR, originY + Math.sin(a) * innerR);
+          }
+          for (let i = segs; i >= 0; i--) {
+            const a = baseAngle - sweepRad / 2 + sweepRad * (i / segs);
+            pts.push(originX + Math.cos(a) * (innerR + length), originY + Math.sin(a) * (innerR + length));
+          }
+        } else {
+          pts.push(originX, originY);
+          for (let i = 0; i <= segs; i++) {
+            const a = baseAngle - sweepRad / 2 + sweepRad * (i / segs);
+            pts.push(originX + Math.cos(a) * length, originY + Math.sin(a) * length);
+          }
+        }
+        o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA });
+        o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
+      };
       // T4: 「実行の瞬間」に紐づける。stomp/sweep/dash/boltは溜め(windup)終わりが実行の瞬間、
       // jumpだけ滞空(air)終わり=着地(トールのjump-attackと同じ作法)。
+      // M66(§6.26-11): 新規8技も同じ作法で追加。継続判定技(quad-breath-active/nova-active/
+      // sweepbeam-active)は単発の"瞬間"を持たない=windupのみ対象(sweep-active同様、対象外のまま)。
+      // diveのwindup中は本体が場外(退避済み)で不可視なのでtint自体は無害(見えないだけ)。
       const gFlashRemain =
-        (gph === 'g-stomp-windup' || gph === 'g-sweep-windup' || gph === 'g-dash-windup' || gph === 'g-bolt-windup' || gph === 'g-jump-air')
+        (gph === 'g-stomp-windup' || gph === 'g-sweep-windup' || gph === 'g-dash-windup' || gph === 'g-bolt-windup' || gph === 'g-jump-air'
+          || gph === 'g-bite-windup' || gph === 'g-bite-hold' || gph === 'g-slam-windup' || gph === 'g-glide-windup'
+          || gph === 'g-quad-windup' || gph === 'g-quad-breath-windup' || gph === 'g-nova-windup' || gph === 'g-wing-windup' || gph === 'g-sweepbeam-windup')
           ? (e.aiPhaseUntil ?? gameTime) - gameTime : null;
       const gFlash = gFlashRemain !== null ? thorFlashTint(gFlashRemain, now) : null;
       if (gFlash !== null) {
         view.sprite.tint = gFlash;
-      } else if (gph === 'g-stomp-recover' || gph === 'g-sweep-recover' || gph === 'g-dash-recover' || gph === 'g-jump-recover' || gph === 'g-bolt-recover') {
+      } else if (gph === 'g-stomp-recover' || gph === 'g-sweep-recover' || gph === 'g-dash-recover' || gph === 'g-jump-recover' || gph === 'g-bolt-recover'
+        || gph === 'g-bite-recover' || gph === 'g-slam-recover' || gph === 'g-glide-recover' || gph === 'g-dive-recover'
+        || gph === 'g-quad-recover' || gph === 'g-nova-recover' || gph === 'g-wing-recover' || gph === 'g-sweepbeam-recover') {
         // 硬直=反撃窓(翻訳規則(d)): 赤ではない色(青白)=「今なら殴れる」の合図。
         view.sprite.tint = 0xbfe8ff;
       } else {
@@ -8987,8 +9043,147 @@ export class PixiScene {
         const gR = e.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS;
         o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * gPulse });
         o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * gPulse });
+      } else if (gph === 'g-bite-windup' || gph === 'g-bite-hold' || gph === 'g-bite-active') {
+        // M66 stage-1「噛みつき」: T3前方の短い帯(足元の円=stompと図形で区別)。holdは"間"=図形は
+        // そのまま静止して見せ続ける(学習点=保持350ms固定)。
+        const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
+        const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
+        const bprog = gph === 'g-bite-windup'
+          ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_BITE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
+          : 1;
+        const bFill = gph === 'g-bite-active' ? 0.3 : (0.12 + 0.22 * bprog) + 0.08 * gPulse;
+        drawGiantCapsuleZone(bfx, bfy, btx, bty, GIANT_BITE_HALF_WIDTH, bFill, (0.32 + 0.4 * bprog) + 0.15 * gPulse);
+      } else if (gph === 'g-slam-windup' || gph === 'g-slam-active') {
+        // M66 stage-1「のしかかり」(大技): 大きな帯がbiteと同じ意匠で前方へ伸びる(寸法違いのみ)。
+        const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
+        const stx = e.aiTargetX ?? cx, sty = e.aiTargetY ?? cy;
+        const sprog = gph === 'g-slam-windup'
+          ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SLAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
+          : 1;
+        const sFill = gph === 'g-slam-active' ? 0.3 : (0.12 + 0.22 * sprog) + 0.08 * gPulse;
+        drawGiantCapsuleZone(sfx, sfy, stx, sty, GIANT_SLAM_HALF_WIDTH, sFill, (0.32 + 0.4 * sprog) + 0.15 * gPulse);
+      } else if (gph === 'g-glide-windup' || gph === 'g-glide-active') {
+        // M66 stage-3「滑空薙ぎ」: 長い帯(本体が通過して薙ぐ)。aiFromX/Yは左上座標系(jump-airと
+        // 同じ流儀)なので中心へ変換してから描く。
+        const gfx2 = (e.aiFromX ?? e.x) + e.width / 2, gfy2 = (e.aiFromY ?? e.y) + e.height / 2;
+        const gtx2 = (e.aiTargetX ?? e.x) + e.width / 2, gty2 = (e.aiTargetY ?? e.y) + e.height / 2;
+        const gprog2 = gph === 'g-glide-windup'
+          ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_GLIDE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
+          : 1;
+        const gFill2 = gph === 'g-glide-active' ? 0.3 : (0.12 + 0.22 * gprog2) + 0.08 * gPulse;
+        drawGiantCapsuleZone(gfx2, gfy2, gtx2, gty2, GIANT_GLIDE_HALF_WIDTH, gFill2, (0.32 + 0.4 * gprog2) + 0.15 * gPulse);
+      } else if (gph === 'g-dive-windup') {
+        // M66 stage-3「急降下」(大技): T5フェードイン円。本体は既にstore側で場外へ退避済み=世界座標
+        // (aiTargetX/Y)で地面の予告だけを描く(スカジ氷/ジブリル火と同じT5の意匠)。
+        const dtx = (e.aiTargetX ?? e.x) + e.width / 2, dty = (e.aiTargetY ?? e.y) + e.height / 2;
+        const dtotal = GIANT_DIVE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+        const dt = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / dtotal));
+        o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).fill({ color: 0xff2a2a, alpha: 0.05 + 0.18 * dt + 0.06 * gPulse });
+        o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * dt + 0.12 * gPulse });
+      } else if (gph === 'g-quad-windup') {
+        // M66 stage-4「三連突進」の各回: T1赤ライン+終点リング(既存dashと同じ意匠)。
+        const qtx = e.aiTargetX ?? cx, qty = e.aiTargetY ?? cy;
+        const qa = 0.45 + 0.4 * gPulse;
+        o.moveTo(cx, cy).lineTo(qtx, qty).stroke({ width: 6, color: 0xff2a2a, alpha: qa * 0.4, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(qtx, qty).stroke({ width: 2, color: 0xff5a5a, alpha: qa, cap: 'round' });
+        o.circle(qtx, qty, 9 + 3 * gPulse).stroke({ width: 2, color: 0xff5a5a, alpha: qa });
+      } else if (gph === 'g-quad-breath-windup' || gph === 'g-quad-breath-active') {
+        // M66 stage-4「氷の横薙ぎ」: T3扇(帯が回転)。windupは最終的に薙ぐ全域(120°)を薄く先出し
+        // (掟W1)、activeは「その瞬間」の細い帯だけを判定と同寸で描く(図形=判定の一致)。
+        const qbfx = e.aiFromX ?? cx, qbfy = e.aiFromY ?? cy;
+        const qbtx = e.aiTargetX ?? cx, qbty = e.aiTargetY ?? cy;
+        const qBaseAngle = Math.atan2(qbty - qbfy, qbtx - qbfx);
+        if (gph === 'g-quad-breath-windup') {
+          const qprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_QUAD_BREATH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+          drawGiantFanZone(qbfx, qbfy, qBaseAngle, GIANT_QUAD_BREATH_SWEEP_RAD, GIANT_QUAD_BREATH_LENGTH, (0.10 + 0.16 * qprog) + 0.06 * gPulse, (0.28 + 0.3 * qprog) + 0.12 * gPulse);
+        } else {
+          const qDurEff = GIANT_QUAD_BREATH_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+          const qbt = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / qDurEff));
+          const qCurAngle = qBaseAngle - GIANT_QUAD_BREATH_SWEEP_RAD / 2 + GIANT_QUAD_BREATH_SWEEP_RAD * qbt;
+          const qFarX = qbfx + Math.cos(qCurAngle) * GIANT_QUAD_BREATH_LENGTH, qFarY = qbfy + Math.sin(qCurAngle) * GIANT_QUAD_BREATH_LENGTH;
+          drawGiantCapsuleZone(qbfx, qbfy, qFarX, qFarY, GIANT_QUAD_BREATH_HALF_WIDTH, 0.34, 0.6);
+        }
+      } else if (gph === 'g-nova-windup') {
+        // M66 stage-4「氷結波」(大技): windupは最終到達半径(400)/開始半径(60)の輪郭だけを薄く先出し
+        // (塗り潰さない=「今爆ぜる」ではない)。
+        const nprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_NOVA_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+        o.ellipse(cx, cy, GIANT_NOVA_RADIUS_END, GIANT_NOVA_RADIUS_END).stroke({ width: 2, color: 0xff3b3b, alpha: (0.16 + 0.22 * nprog) + 0.08 * gPulse });
+        o.ellipse(cx, cy, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_START).stroke({ width: 2, color: 0xff5a5a, alpha: (0.16 + 0.22 * nprog) + 0.08 * gPulse });
+      } else if (gph === 'g-nova-active') {
+        // 判定はその瞬間の輪のみ(内側=既に通過した場所は当たらない・全ボス共通「離れれば安全」の
+        // 逆張り)。輪の帯(半幅GIANT_NOVA_BAND_THICKNESS)だけをstrokeで塗る=内側を赤く塗らない。
+        const nDurEff = GIANT_NOVA_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+        const nt = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / nDurEff));
+        const curR = GIANT_NOVA_RADIUS_START + (GIANT_NOVA_RADIUS_END - GIANT_NOVA_RADIUS_START) * nt;
+        o.ellipse(cx, cy, curR, curR).stroke({ width: GIANT_NOVA_BAND_THICKNESS * 2, color: 0xff2a2a, alpha: 0.5 });
+        o.ellipse(cx, cy, curR, curR).stroke({ width: 2, color: 0xffe0e0, alpha: 0.8 });
+      } else if (gph === 'g-wing-windup' || gph === 'g-wing-active') {
+        // M66 stage-5「翼撃」: 左右2枚のT3帯(同時)。三拍目(中央)はgiantDelayedHits経由で下の
+        // 汎用ループが描く(この技のwindupで正面方向を溜め開始からロック済み)。
+        const wfx = e.aiFromX ?? cx, wfy = e.aiFromY ?? cy;
+        const wtx = e.aiTargetX ?? cx, wty = e.aiTargetY ?? cy;
+        const wdl = Math.hypot(wtx - wfx, wty - wfy) || 1;
+        const wux = (wtx - wfx) / wdl, wuy = (wty - wfy) / wdl;
+        const cosS = Math.cos(GIANT_WING_SPREAD_RAD), sinS = Math.sin(GIANT_WING_SPREAD_RAD);
+        const leftX = wux * cosS - wuy * sinS, leftY = wux * sinS + wuy * cosS;
+        const rightX = wux * cosS + wuy * sinS, rightY = -wux * sinS + wuy * cosS;
+        const leftTx = wfx + leftX * GIANT_WING_LENGTH, leftTy = wfy + leftY * GIANT_WING_LENGTH;
+        const rightTx = wfx + rightX * GIANT_WING_LENGTH, rightTy = wfy + rightY * GIANT_WING_LENGTH;
+        const wprog = gph === 'g-wing-windup'
+          ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_WING_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
+          : 1;
+        const wFill = gph === 'g-wing-active' ? 0.3 : (0.12 + 0.22 * wprog) + 0.08 * gPulse;
+        const wStroke = (0.32 + 0.4 * wprog) + 0.15 * gPulse;
+        drawGiantCapsuleZone(wfx, wfy, leftTx, leftTy, GIANT_WING_HALF_WIDTH, wFill, wStroke);
+        drawGiantCapsuleZone(wfx, wfy, rightTx, rightTy, GIANT_WING_HALF_WIDTH, wFill, wStroke);
+      } else if (gph === 'g-sweepbeam-windup' || gph === 'g-sweepbeam-active') {
+        // M66 stage-5「掃射」(大技): 細いT3帯(半幅30)が120°を回転する。懐(回転の中心付近)が
+        // 安全=帯の始点を中心からGIANT_SWEEPBEAM_INNER_RADIUSぶん前へ出した扇/カプセル(ドーナツの
+        // くり抜きではない=ウリの内径修正・v0.25.2376の方式を踏襲。図形と判定が完全一致する)。
+        const sbfx = e.aiFromX ?? cx, sbfy = e.aiFromY ?? cy;
+        const sbtx = e.aiTargetX ?? cx, sbty = e.aiTargetY ?? cy;
+        const sbBaseAngle = Math.atan2(sbty - sbfy, sbtx - sbfx);
+        if (gph === 'g-sweepbeam-windup') {
+          const sbprog = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SWEEPBEAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+          drawGiantFanZone(sbfx, sbfy, sbBaseAngle, GIANT_SWEEPBEAM_SWEEP_RAD, GIANT_SWEEPBEAM_LENGTH, (0.10 + 0.16 * sbprog) + 0.06 * gPulse, (0.28 + 0.3 * sbprog) + 0.12 * gPulse, GIANT_SWEEPBEAM_INNER_RADIUS);
+        } else {
+          const sbDurEff = GIANT_SWEEPBEAM_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+          const sbt = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / sbDurEff));
+          const sbCurAngle = sbBaseAngle - GIANT_SWEEPBEAM_SWEEP_RAD / 2 + GIANT_SWEEPBEAM_SWEEP_RAD * sbt;
+          const sbNearX = sbfx + Math.cos(sbCurAngle) * GIANT_SWEEPBEAM_INNER_RADIUS, sbNearY = sbfy + Math.sin(sbCurAngle) * GIANT_SWEEPBEAM_INNER_RADIUS;
+          const sbFarX = sbfx + Math.cos(sbCurAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH),
+            sbFarY = sbfy + Math.sin(sbCurAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH);
+          drawGiantCapsuleZone(sbNearX, sbNearY, sbFarX, sbFarY, GIANT_SWEEPBEAM_HALF_WIDTH, 0.34, 0.6);
+        }
       }
       // 咆哮弾(g-bolt-*)は図形を出さない(社長裁定=小技はT4の一拍のみ。画面が赤で埋まると大技の赤が効かなくなる)。
+      // M66: 遅延起爆キュー(滑空の二撃目/翼撃の三拍目/三連突進の氷)。aiPhaseに関係なく常に描く
+      // (recoverや次のwindup中でも予告が生きているため)。ice=trueは青系(スカジ氷と同じ色)。
+      // capsuleがあれば帯、無ければ円のT5フェードインとして描く(いずれも既存の意匠の流用)。
+      for (const h of e.giantDelayedHits ?? []) {
+        const total = Math.max(1, h.fireAt - h.bornAt);
+        const t = Math.max(0, Math.min(1, (gameTime - h.bornAt) / total));
+        const col = h.ice ? 0x4fb4ff : 0xff2a2a;
+        const strokeCol = h.ice ? 0x7cd0ff : 0xff3b3b;
+        if (h.capsule) {
+          const ddx = h.capsule.tx - h.capsule.fx, ddy = h.capsule.ty - h.capsule.fy;
+          const ddl = Math.hypot(ddx, ddy) || 1;
+          const nx = -ddy / ddl, ny = ddx / ddl;
+          const ux = ddx / ddl, uy = ddy / ddl;
+          const hw = h.capsule.halfWidth;
+          const pts = [
+            h.capsule.fx - ux * hw + nx * hw, h.capsule.fy - uy * hw + ny * hw,
+            h.capsule.tx + ux * hw + nx * hw, h.capsule.ty + uy * hw + ny * hw,
+            h.capsule.tx + ux * hw - nx * hw, h.capsule.ty + uy * hw - ny * hw,
+            h.capsule.fx - ux * hw - nx * hw, h.capsule.fy - uy * hw - ny * hw,
+          ];
+          o.poly(pts).fill({ color: col, alpha: 0.05 + 0.22 * t + 0.06 * gPulse });
+          o.poly(pts).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.5 * t + 0.12 * gPulse });
+        } else {
+          o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: 0.05 + 0.18 * t + 0.06 * gPulse });
+          o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.45 * t + 0.12 * gPulse });
+        }
+      }
     }
     this.drawHealthBar(o, e, now);
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {

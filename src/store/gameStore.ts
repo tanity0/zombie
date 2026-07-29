@@ -46,7 +46,8 @@ import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { evaluateLabLoseSight, LAB_VISION_RANGE } from '../utils/labStealth';
-import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
+// distToSegment: M66(§6.26-11)の掃射/三連突進の吐息(回転帯)が毎フレーム自己検出するために使う純関数。
+import { isPlayerInAttackTelegraph, distToSegment } from '../utils/levelUpGate';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import {
@@ -66,6 +67,10 @@ import {
   giantPhaseForHealth, giantPhaseJustChanged, pickGiantMove, pickGiantCombo, type GiantMove,
   giantPhaseForHealthStory, pickGiantStoryCombo, type GiantPhase,
   giantStageRangeMult,
+  // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の純関数。
+  pickGiantMoveWithStage, type GiantStageMoveId,
+  GIANT_STAGE_UNIQUE_MOVE, GIANT_STAGE_ULT_MOVE,
+  giantQuadDashComplete,
 } from '../utils/giantScript';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -1505,6 +1510,93 @@ export const GIANT_SWEEP_RECOVER_PHASE3_MS = 600; // 実効500ms(700→300のは
 export const GIANT_DASH_RECOVER_PHASE3_MS = 600;  // 実効500ms(900→500)
 export const GIANT_JUMP_RECOVER_PHASE3_MS = 840;  // 実効700ms(1100→700)
 export const GIANT_BOLT_CD_PHASE3_MS = 2400;      // 実効2.0s(§6.28-11 #4「咆哮弾のCD Phase3=2.0s」)
+
+// ==== M66: 城ボスのステージ別「独自技」(Phase1〜)+「大技」(Phase2=HP60%〜)(PACING_PUZZLE.md §6.26-11) ====
+// 対象は城ボスが実際に出る4ステージだけ(stage-1/3/4/5)。stage-6/7/ex1には足さない
+// (giantScript.tsのGIANT_STAGE_UNIQUE_MOVE/GIANT_STAGE_ULT_MOVEに定義が無いので自然にゲートされる)。
+// `?giantunique=0` で本節を丸ごと無効化=today's 5技(M51〜M65)のみに戻る。既存5技の定数は1つも
+// 変えていない(このブロックは全て新設の専用定数)。6.26-5「実装単位の注意」を継承: *_MSは生値
+// (実効ms×1.2)、atkUntil()経由で使うこと。M65のステージ別倍率(giantStageRangeMult)はこの節の
+// どの値にも掛けない(社長指示: 技自体がステージ固有・二重に効かせない)。
+export const GIANT_UNIQUE_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('giantunique') !== '0';
+
+// --- stage-1: 噛みつき(bite・独自技・トレース元=カラミートの前脚踏み/腹潰し+固定遅延) ---
+export const GIANT_BITE_WINDUP_MS = 840;   // 実効700ms・静止して帯(T3)を出す
+export const GIANT_BITE_HOLD_MS = 420;     // 実効350ms(固定)・帯を出したまま静止して"溜める"=学習点
+export const GIANT_BITE_ACTIVE_MS = 216;   // 実効180ms
+export const GIANT_BITE_RECOVER_MS = 960;  // 実効800ms・硬直=反撃窓
+export const GIANT_BITE_CD_MS = 7200;      // 実効6.0s
+export const GIANT_BITE_LENGTH = 120;      // 前方の短い帯(足元の円=stompと区別)
+export const GIANT_BITE_HALF_WIDTH = 50;
+
+// --- stage-1: のしかかり(slam・大技・トレース元=Gaping Dragonの腹ばい) ---
+export const GIANT_SLAM_WINDUP_MS = 1440;  // 実効1200ms・立ち上がって静止
+export const GIANT_SLAM_ACTIVE_MS = 312;   // 実効260ms
+export const GIANT_SLAM_RECOVER_MS = 1560; // 実効1300ms・全技中で最大の反撃窓=大技の報酬
+export const GIANT_SLAM_CD_MS = 13200;     // 実効11.0s
+export const GIANT_SLAM_LENGTH = 380;      // 大きな帯が前方へ伸びる
+export const GIANT_SLAM_HALF_WIDTH = 90;
+
+// --- stage-3: 滑空薙ぎ(glide・独自技・トレース元=カラミートの飛び上がり→地面を放射状のブレス) ---
+export const GIANT_GLIDE_WINDUP_MS = 1200;        // 実効1000ms・後ろへ跳び退がって溜める(T8backstep相当)
+export const GIANT_GLIDE_ACTIVE_MS = 360;         // 実効300ms・本体が通過して薙ぐ(T3長い帯)
+export const GIANT_GLIDE_SECOND_HIT_DELAY_MS = 300; // 実効250ms(固定)・滑空終了から二撃目まで=回避狩り
+export const GIANT_GLIDE_RECOVER_MS = 840;        // 実効700ms
+export const GIANT_GLIDE_CD_MS = 10800;           // 実効9.0s
+export const GIANT_GLIDE_LENGTH = 600;            // 長い帯(本体が通過する距離)
+export const GIANT_GLIDE_HALF_WIDTH = 40;
+export const GIANT_GLIDE_SECOND_HIT_RADIUS = 150; // 滑空の終点に開くT2即時円
+
+// --- stage-3: 急降下(dive・大技・トレース元=カラミートの飛翔→急降下) ---
+export const GIANT_DIVE_WINDUP_MS = 1680;  // 実効1400ms・本体は画面外へ(無敵ではなく居ない)
+export const GIANT_DIVE_RECOVER_MS = 1440; // 実効1200ms
+export const GIANT_DIVE_CD_MS = 14400;     // 実効12.0s
+export const GIANT_DIVE_RADIUS = 220;      // 地面のT5フェードイン円(実行=着弾は瞬時)
+export const GIANT_DIVE_AWAY_OFFSET = 20000; // 画面外へ退避させる距離(描画/リサイクル判定の外)
+
+// --- stage-4: 三連突進→氷の横薙ぎ(quaddash・独自技・トレース元=ヴォルドの3連突進→静止→氷の横薙ぎ) ---
+export const GIANT_QUAD_DASH_WINDUP_MS = 840;    // 実効700ms/回(T1線+終点リング)。既存g-dashと同じ後退り(T8)
+export const GIANT_QUAD_BREATH_WINDUP_MS = 1080; // 実効900ms・3回目の直後に必ず静止して溜める
+export const GIANT_QUAD_BREATH_ACTIVE_MS = 840;  // 実効700ms・120°を回転して薙ぐ(T3帯)
+export const GIANT_QUAD_RECOVER_MS = 1080;       // 実効900ms
+export const GIANT_QUAD_CD_MS = 14400;           // 実効12.0s
+export const GIANT_QUAD_BREATH_LENGTH = GIANT_SWEEP_RANGE;     // 帯の寸法はsweepの流用(叩き台=設計書に寸法の明記なし)
+export const GIANT_QUAD_BREATH_HALF_WIDTH = GIANT_SWEEP_HALF_WIDTH;
+export const GIANT_QUAD_ICE_RADIUS = 90;                       // = SKADI_ICE_RADIUS(専用定数として新設・共有定数は書き換えない。SKADI_ICE_RADIUSは本ファイル後方で定義のため値のみ複製)
+export const GIANT_QUAD_ICE_DELAY_MS = 2400;                   // 実効2.0s(スカジの氷テレグラフ=SKADI_ICE_TELEGRAPH_MSと同じ長さの叩き台)
+export const GIANT_QUAD_BREATH_SWEEP_RAD = (2 * Math.PI) / 3;  // 120°(sweepbeamと同値・独立定数として新設)
+
+// --- stage-4: 氷結波(nova・大技・トレース元=フリーデ/ヴォルドの氷の波。内側が安全=逆張り) ---
+export const GIANT_NOVA_WINDUP_MS = 1440;  // 実効1200ms・身を屈めて静止
+export const GIANT_NOVA_ACTIVE_MS = 840;   // 実効700ms・半径60→400が広がる
+export const GIANT_NOVA_RECOVER_MS = 1320; // 実効1100ms
+export const GIANT_NOVA_CD_MS = 13200;     // 実効11.0s
+export const GIANT_NOVA_RADIUS_START = 60;
+export const GIANT_NOVA_RADIUS_END = 400;
+export const GIANT_NOVA_BAND_THICKNESS = GIANT_SWEEP_HALF_WIDTH; // 輪の判定幅(叩き台=sweepの半幅を流用)
+
+// --- stage-5: 翼撃(wing・独自技・左右同時+固定遅延の三拍目=回避狩り) ---
+export const GIANT_WING_WINDUP_MS = 1200;       // 実効1000ms
+export const GIANT_WING_ACTIVE_MS = GIANT_SWEEP_ACTIVE_MS; // 実効220ms(叩き台=sweepの活性時間を流用)
+export const GIANT_WING_THIRD_DELAY_MS = 480;   // 実効400ms(固定)・実行から三拍目まで=回避狩り
+export const GIANT_WING_RECOVER_MS = 960;       // 実効800ms
+export const GIANT_WING_CD_MS = 10800;          // 実効9.0s
+export const GIANT_WING_LENGTH = 320;
+export const GIANT_WING_HALF_WIDTH = 50;
+export const GIANT_WING_SPREAD_RAD = Math.PI / 5; // 左右の帯の開き角(36°・叩き台=設計書に角度の明記なし)
+
+// --- stage-5: 掃射(sweepbeam・大技・トレース元=ダークイーター・ミディールのビーム薙ぎ) ---
+export const GIANT_SWEEPBEAM_WINDUP_MS = 1560;  // 実効1300ms・頭を上げて溜める
+export const GIANT_SWEEPBEAM_ACTIVE_MS = 1080;  // 実効900ms・120°を回転して薙ぐ
+export const GIANT_SWEEPBEAM_RECOVER_MS = 1440; // 実効1200ms
+export const GIANT_SWEEPBEAM_CD_MS = 15600;     // 実効13.0s
+export const GIANT_SWEEPBEAM_LENGTH = 700;
+export const GIANT_SWEEPBEAM_HALF_WIDTH = 30;
+// 懐(回転の中心付近)が安全=帯の始点を中心からこの分だけ前へ出す(ウリの内径修正=v0.25.2376の方式を
+// 踏襲: ドーナツのくり抜きではなく、始点そのものを外へ出す通常カプセル。図形と判定が完全一致する)。
+export const GIANT_SWEEPBEAM_INNER_RADIUS = 100; // 叩き台=設計書に寸法の明記なし(ウリのuriSweepInnerRadius140/90の中間帯)
+export const GIANT_SWEEPBEAM_SWEEP_RAD = (2 * Math.PI) / 3; // 120°
+
 // 裏ボス スカジ専用の氷ハザード(社長指示)。判定はupdateEnemiesで、見た目はpixiScene。
 // 氷塊の起爆・氷刃の命中はどちらも既存の爆発処理(pumpkinBlasts)へ ice:true で積み、青FXで消化する。
 export const SKADI_ICE_RADIUS = 90;    // 氷塊破裂のAoE半径(2秒テレグラフなので少し大きめ)
@@ -7314,9 +7406,24 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 呼ばないので、Phase3・500ms床・3連携のどれにも一切到達しない(受け入れ条件13)。
           const isStoryBoss = enemy.isStoryBoss === true && STORY_BOSS_SCRIPT_ENABLED;
           const phase: GiantPhase = isStoryBoss ? giantPhaseForHealthStory(healthFrac) : giantPhaseForHealth(healthFrac);
+          // M66(§6.26-11): 遅延起爆キューの処理(滑空の二撃目/翼撃の三拍目/三連突進の氷)。aiPhaseに
+          // 関係なく毎フレーム判定する(recoverや次のwindup中でも起爆する=学習装置①「固定遅延」の本体。
+          // 乱数を挟まない=fireAtは積んだ時点で確定済み)。isStoryBoss個体はGIANT_STAGE_UNIQUE_MOVE等に
+          // 定義が無く新技を一切選ばないため、このキューは常に空のまま=無害。
+          let giantDelayedHits = enemy.giantDelayedHits;
+          if (GIANT_UNIQUE_ENABLED && giantDelayedHits && giantDelayedHits.length > 0) {
+            const dueHits = giantDelayedHits.filter(h => gameTime >= h.fireAt);
+            if (dueHits.length > 0) {
+              for (const h of dueHits) {
+                pumpkinBlasts.push({ x: h.x, y: h.y, radius: h.radius, damage: enemy.damage, enemyId: enemy.id, ice: h.ice, capsule: h.capsule });
+              }
+              giantDelayedHits = giantDelayedHits.filter(h => gameTime < h.fireAt);
+            }
+          }
           const phaseFields = {
             giantPhase: phase,
             giantPhaseFlashUntil: giantPhaseJustChanged(enemy.giantPhase, phase) ? gameTime + GIANT_PHASE_FLASH_MS : enemy.giantPhaseFlashUntil,
+            giantDelayedHits,
           };
           // Phase3(storyBossのみ到達)は硬直500ms床(社長裁定6.28-21★2・§6.28-11 #5)。咆哮弾(小技)は
           // 床の対象外=常にGIANT_BOLT_RECOVER_MSのまま(受け入れ条件11 ④の「小技は床の対象外」)。
@@ -7328,7 +7435,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           // M65(社長指示): ステージ別の範囲/速度倍率。stage-1=1.00(実機合格済みの基準・不変)。
           // stage-7/stage-ex1はstoryBossだけが到達するため、ステージIDだけで既にstoryBoss込みの値になる
           // (giantScript.ts参照)。`?giantstage=0`でGIANT_STAGE_RANGE_ENABLED=falseになり常に1.00。
-          const stageMult = giantStageRangeMult(getSelectedStageId(), GIANT_STAGE_RANGE_ENABLED);
+          // M66: stageIdは新技の選択(pickGiantMoveWithStage)にもそのまま使い回す(M65の倍率とM66の
+          // 新技には二重に効かせない=stageMultはM65の3値にしか掛けない・M66の新技へは掛けない)。
+          const stageId = getSelectedStageId();
+          const stageMult = giantStageRangeMult(stageId, GIANT_STAGE_RANGE_ENABLED);
 
           // 技ごとの溜め開始パッチ(通常抽選/Phase2連携の両方から呼べる共通ヘルパ)。
           const beginGiantMove = (move: GiantMove): Partial<Enemy> => {
@@ -7377,6 +7487,99 @@ export const useGameStore = create<GameState>((set, get) => ({
                 };
             }
           };
+
+          // ==== M66(PACING_PUZZLE.md §6.26-11): ステージ別「独自技」(Phase1〜)+「大技」(Phase2〜) ====
+          // stage-1/3/4/5だけが呼ぶ(pickGiantMoveWithStageがGIANT_STAGE_UNIQUE_MOVE/ULT_MOVEの表で
+          // 既にゲート済みなので、default分岐からしか到達しない=beginGiantMoveと排他)。
+
+          // 三連突進(quaddash)の1回ぶんの溜め開始。狙い点=プレイヤーを挟んだ反対側(既存dashと同じ式・
+          // M65の速度倍率は掛けない=新技への非適用指示)。往復するたびプレイヤーの現在地を再サンプルする
+          // だけで「左右へ往復」を作る(固定の左右オフセットを発明しない=既存語彙の再利用)。
+          const beginQuadDash = (index: number): Partial<Enemy> => ({
+            aiPhase: 'g-quad-windup', aiPhaseUntil: atkUntil(GIANT_QUAD_DASH_WINDUP_MS),
+            aiFromX: enemy.x, aiFromY: enemy.y,
+            aiTargetX: 2 * pcx - ecx, aiTargetY: 2 * pcy - ecy, aiStartedAt: gameTime,
+            gQuadIndex: index,
+          });
+
+          const beginGiantStageMove = (move: GiantStageMoveId): Partial<Enemy> => {
+            const lockDl = Math.hypot(pcx - ecx, pcy - ecy) || 1;
+            const lockDirX = (pcx - ecx) / lockDl, lockDirY = (pcy - ecy) / lockDl;
+            switch (move) {
+              case 'bite':
+                // 密着〜近(≤180)。前方の短い帯(足元の円=stompと図形で区別)。向きは溜め開始でロック。
+                return {
+                  aiPhase: 'g-bite-windup', aiPhaseUntil: atkUntil(GIANT_BITE_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + lockDirX * GIANT_BITE_LENGTH, aiTargetY: ecy + lockDirY * GIANT_BITE_LENGTH,
+                  aiStartedAt: gameTime,
+                };
+              case 'slam':
+                // 近〜中(140〜420)。大きな帯が前方へ伸びる(bite同型・寸法違い)。
+                return {
+                  aiPhase: 'g-slam-windup', aiPhaseUntil: atkUntil(GIANT_SLAM_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + lockDirX * GIANT_SLAM_LENGTH, aiTargetY: ecy + lockDirY * GIANT_SLAM_LENGTH,
+                  aiStartedAt: gameTime,
+                };
+              case 'glide':
+                // 中〜遠(320〜900)。後ろへ跳び退がって溜める(T8backstep)→本体が通過して薙ぐ。
+                // aiFromX/Yは左上座標系(本体移動の補間元。jump-airと同じ流儀)。
+                return {
+                  aiPhase: 'g-glide-windup', aiPhaseUntil: atkUntil(GIANT_GLIDE_WINDUP_MS),
+                  aiFromX: enemy.x, aiFromY: enemy.y,
+                  aiTargetX: enemy.x + lockDirX * GIANT_GLIDE_LENGTH, aiTargetY: enemy.y + lockDirY * GIANT_GLIDE_LENGTH,
+                  aiStartedAt: gameTime,
+                };
+              case 'dive': {
+                // 着地点は溜め開始でロック(既存jumpと同じ裁定・社長裁定6.26-9 #1の踏襲)。本体は
+                // 「無敵ではなく居ない」=場外へ実座標を退避する(directorTick.tsのオフスクリーン
+                // リサイクルはg-dive-windupを対象外として別途ガード済み)。
+                const landX = pcx - enemy.width / 2, landY = pcy - enemy.height / 2;
+                return {
+                  aiPhase: 'g-dive-windup', aiPhaseUntil: atkUntil(GIANT_DIVE_WINDUP_MS),
+                  aiFromX: enemy.x, aiFromY: enemy.y,
+                  aiTargetX: landX, aiTargetY: landY, aiStartedAt: gameTime,
+                  x: -GIANT_DIVE_AWAY_OFFSET, y: -GIANT_DIVE_AWAY_OFFSET,
+                };
+              }
+              case 'quaddash':
+                return beginQuadDash(0);
+              case 'nova':
+                // 全帯。身を屈めて静止→輪が広がる(輪の中心=溜め開始時の自分の位置に固定)。
+                return {
+                  aiPhase: 'g-nova-windup', aiPhaseUntil: atkUntil(GIANT_NOVA_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy, aiStartedAt: gameTime,
+                };
+              case 'wing':
+                // 全帯。正面方向を溜め開始でロック(左右2枚+三拍目の中央、全て溜め開始時の向きを共有)。
+                return {
+                  aiPhase: 'g-wing-windup', aiPhaseUntil: atkUntil(GIANT_WING_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + lockDirX * GIANT_WING_LENGTH, aiTargetY: ecy + lockDirY * GIANT_WING_LENGTH,
+                  aiStartedAt: gameTime,
+                };
+              case 'sweepbeam':
+              default:
+                // 全帯。正面方向を溜め開始でロック(回転帯の中心角として使う)。
+                return {
+                  aiPhase: 'g-sweepbeam-windup', aiPhaseUntil: atkUntil(GIANT_SWEEPBEAM_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + lockDirX * GIANT_SWEEPBEAM_LENGTH, aiTargetY: ecy + lockDirY * GIANT_SWEEPBEAM_LENGTH,
+                  aiStartedAt: gameTime,
+                };
+            }
+          };
+
+          // ステージ固有技の共通後片付け(CD確定+aiPhase系フィールドの解除)。既存5技のGIANT_COMBO_*系
+          // (=許可2組のみ・確率40%)はステージ固有技には適用しない(新規の連携表を作らない=覚えられる
+          // 上限を超やさない・社長裁定6.26-9 #8の精神を継承)。recoverの後は必ずchase(抽選)へ戻る。
+          const finishGiantStageMove = (moveId: GiantStageMoveId, cdMs: number): Partial<Enemy> => ({
+            gStageReadyAt: { ...enemy.gStageReadyAt, [moveId]: atkUntil(cdMs) },
+            aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
+            aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
+            gQuadIndex: undefined, giantActiveHit: undefined,
+          });
 
           switch (enemy.aiPhase) {
             case 'g-stomp-windup': {
@@ -7520,6 +7723,373 @@ export const useGameStore = create<GameState>((set, get) => ({
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
+
+            // ==== M66(§6.26-11): stage-1 噛みつき(bite・独自技) ====
+            case 'g-bite-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                // 予告終わりで避けると早すぎて噛まれる=固定350msの"間"(学習点①)。図形(T3帯)は
+                // 引き続き表示したまま静止する(掟W1)。
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-hold', aiPhaseUntil: atkUntil(GIANT_BITE_HOLD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-bite-hold': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                const bfx = enemy.aiFromX ?? ecx, bfy = enemy.aiFromY ?? ecy;
+                const btx = enemy.aiTargetX ?? ecx, bty = enemy.aiTargetY ?? ecy;
+                pumpkinBlasts.push({
+                  x: (bfx + btx) / 2, y: (bfy + bty) / 2, radius: GIANT_BITE_HALF_WIDTH,
+                  damage: enemy.damage, enemyId: enemy.id,
+                  capsule: { fx: bfx, fy: bfy, tx: btx, ty: bty, halfWidth: GIANT_BITE_HALF_WIDTH },
+                });
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-active', aiPhaseUntil: atkUntil(GIANT_BITE_ACTIVE_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-bite-active': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-recover', aiPhaseUntil: atkUntil(GIANT_BITE_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-bite-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGiantStageMove('bite', GIANT_BITE_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
+            // ==== M66: stage-1 のしかかり(slam・大技) ====
+            case 'g-slam-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                const sfx = enemy.aiFromX ?? ecx, sfy = enemy.aiFromY ?? ecy;
+                const stx = enemy.aiTargetX ?? ecx, sty = enemy.aiTargetY ?? ecy;
+                pumpkinBlasts.push({
+                  x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: GIANT_SLAM_HALF_WIDTH,
+                  damage: enemy.damage, enemyId: enemy.id,
+                  capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SLAM_HALF_WIDTH },
+                });
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-active', aiPhaseUntil: atkUntil(GIANT_SLAM_ACTIVE_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-slam-active': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                // 全技中で最大の反撃窓(1300ms)=大技の報酬(社長裁定を継承した設計原則)。
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-recover', aiPhaseUntil: atkUntil(GIANT_SLAM_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-slam-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGiantStageMove('slam', GIANT_SLAM_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
+            // ==== M66: stage-3 滑空薙ぎ(glide・独自技) ====
+            case 'g-glide-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                const gfx = enemy.aiFromX ?? enemy.x, gfy = enemy.aiFromY ?? enemy.y;
+                const gtx = enemy.aiTargetX ?? enemy.x, gty = enemy.aiTargetY ?? enemy.y;
+                pumpkinBlasts.push({
+                  x: (gfx + gtx) / 2 + enemy.width / 2, y: (gfy + gty) / 2 + enemy.height / 2, radius: GIANT_GLIDE_HALF_WIDTH,
+                  damage: enemy.damage, enemyId: enemy.id,
+                  capsule: {
+                    fx: gfx + enemy.width / 2, fy: gfy + enemy.height / 2,
+                    tx: gtx + enemy.width / 2, ty: gty + enemy.height / 2, halfWidth: GIANT_GLIDE_HALF_WIDTH,
+                  },
+                });
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-glide-active', aiPhaseUntil: atkUntil(GIANT_GLIDE_ACTIVE_MS), aiStartedAt: gameTime };
+              }
+              // 後ろへ跳び退がって溜める(T8backstep・既存ダッシュ/三連突進と同じ式)。
+              const bdx = ecx - pcx, bdy = ecy - pcy;
+              const bl = Math.hypot(bdx, bdy) || 1;
+              const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
+              const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
+              return {
+                ...enemy, ...phaseFields, x: bmoved.x, y: bmoved.y,
+                vx: (bdx / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT, vy: (bdy / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT,
+              };
+            }
+            case 'g-glide-active': {
+              // 本体が通過して薙ぐ(判定は既にwindup終わりで確定済みのカプセル1件・ここは移動のみ)。
+              const durEff = GIANT_GLIDE_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+              const gt = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / durEff));
+              const gfx = enemy.aiFromX ?? enemy.x, gfy = enemy.aiFromY ?? enemy.y;
+              const gtx = enemy.aiTargetX ?? enemy.x, gty = enemy.aiTargetY ?? enemy.y;
+              if (gt >= 1) {
+                // 滑空の終点=二撃目の中心(回避狩り)。終了から250ms(固定)後に開くT2即時円。
+                const hitX = gtx + enemy.width / 2, hitY = gty + enemy.height / 2;
+                return {
+                  ...enemy, ...phaseFields, x: gtx, y: gty, vx: 0, vy: 0,
+                  aiPhase: 'g-glide-recover', aiPhaseUntil: atkUntil(GIANT_GLIDE_RECOVER_MS),
+                  giantDelayedHits: [...(giantDelayedHits ?? []), { x: hitX, y: hitY, radius: GIANT_GLIDE_SECOND_HIT_RADIUS, bornAt: gameTime, fireAt: atkUntil(GIANT_GLIDE_SECOND_HIT_DELAY_MS) }],
+                };
+              }
+              const gnx = gfx + (gtx - gfx) * gt, gny = gfy + (gty - gfy) * gt;
+              return { ...enemy, ...phaseFields, x: gnx, y: gny, vx: 0, vy: 0 };
+            }
+            case 'g-glide-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGiantStageMove('glide', GIANT_GLIDE_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
+            // ==== M66: stage-3 急降下(dive・大技) ====
+            case 'g-dive-windup': {
+              // 本体は既にbeginGiantStageMoveで場外へ退避済み(「無敵ではなく居ない」)。地面のT5円は
+              // 描画側がaiTargetX/Yを直接参照する(本体の現在地とは無関係=世界座標で描ける)。
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                const dtx = enemy.aiTargetX ?? enemy.x, dty = enemy.aiTargetY ?? enemy.y;
+                pumpkinBlasts.push({ x: dtx + enemy.width / 2, y: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                return { ...enemy, ...phaseFields, x: dtx, y: dty, vx: 0, vy: 0, aiPhase: 'g-dive-recover', aiPhaseUntil: atkUntil(GIANT_DIVE_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-dive-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGiantStageMove('dive', GIANT_DIVE_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
+            // ==== M66: stage-4 三連突進→氷の横薙ぎ(quaddash・独自技) ====
+            case 'g-quad-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-quad-charge', aiPhaseUntil: atkUntil(WEREWOLF_CHARGE_MAX_MS) };
+              }
+              // 後退り(T8・既存ダッシュと同じ式)。
+              const bdx = ecx - pcx, bdy = ecy - pcy;
+              const bl = Math.hypot(bdx, bdy) || 1;
+              const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
+              const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
+              return {
+                ...enemy, ...phaseFields, x: bmoved.x, y: bmoved.y,
+                vx: (bdx / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT, vy: (bdy / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT,
+              };
+            }
+            case 'g-quad-charge': {
+              const tx = enemy.aiTargetX ?? pcx, ty = enemy.aiTargetY ?? pcy;
+              const cdx = tx - ecx, cdy = ty - ecy;
+              const cdist = Math.hypot(cdx, cdy);
+              const quadIndex = enemy.gQuadIndex ?? 0;
+              // 3回目(index=2)を終えたら必ず静止して氷結の吐息へ(学習装置③=回数は常に3固定)。
+              // 3回目未満なら次の突進へ即つなぐ(狙い点はその時点のプレイヤー位置を再サンプル=
+              // 既存dashと同じ式の反復。固定の左右オフセットは発明しない)。
+              const onDashFinished = (): Partial<Enemy> => {
+                if (!giantQuadDashComplete(quadIndex)) return beginQuadDash(quadIndex + 1);
+                const ddl = Math.hypot(pcx - ecx, pcy - ecy) || 1;
+                const dirx = (pcx - ecx) / ddl, diry = (pcy - ecy) / ddl;
+                return {
+                  aiPhase: 'g-quad-breath-windup', aiPhaseUntil: atkUntil(GIANT_QUAD_BREATH_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + dirx * GIANT_QUAD_BREATH_LENGTH, aiTargetY: ecy + diry * GIANT_QUAD_BREATH_LENGTH,
+                  aiStartedAt: gameTime,
+                };
+              };
+              if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...onDashFinished() };
+              }
+              const hpx = pcx - ecx, hpy = pcy - ecy;
+              const hl = Math.hypot(hpx, hpy) || 1;
+              let cdirx = cdx / cdist + (hpx / hl) * DASH_ATTACK_HOMING;
+              let cdiry = cdy / cdist + (hpy / hl) * DASH_ATTACK_HOMING;
+              const cdl = Math.hypot(cdirx, cdiry) || 1;
+              cdirx /= cdl; cdiry /= cdl;
+              const dashBase = getEnemyBaseSpeed('werewolf'); // 現行不変(基準は犬と同じ)。M65の倍率は新技には掛けない。
+              const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT;
+              const cvx = cdirx * cs, cvy = cdiry * cs;
+              const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
+              const cmoved = resolveMove(rawX, rawY);
+              const hitShield = shieldRects.length > 0 && shieldRects.some(s => rectsOverlap({ x: cmoved.x, y: cmoved.y, width: enemy.width, height: enemy.height }, s));
+              const blocked = Math.abs(cmoved.x - rawX) > 0.5 || Math.abs(cmoved.y - rawY) > 0.5;
+              if (hitShield || blocked) {
+                if (hitShield) shieldBlocks.push({ x: cmoved.x + enemy.width / 2, y: cmoved.y + enemy.height / 2, kind: 'dash' });
+                return { ...enemy, ...phaseFields, x: cmoved.x, y: cmoved.y, vx: 0, vy: 0, ...onDashFinished() };
+              }
+              return { ...enemy, ...phaseFields, vx: cvx, vy: cvy, x: cmoved.x, y: cmoved.y };
+            }
+            case 'g-quad-breath-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-quad-breath-active', aiPhaseUntil: atkUntil(GIANT_QUAD_BREATH_ACTIVE_MS),
+                  aiStartedAt: gameTime, giantActiveHit: false,
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-quad-breath-active': {
+              // 120°を700msかけて回転する帯(継続判定=毎フレーム自己検出し、命中したら1回だけ積む)。
+              const bfx = enemy.aiFromX ?? ecx, bfy = enemy.aiFromY ?? ecy;
+              const btx = enemy.aiTargetX ?? ecx, bty = enemy.aiTargetY ?? ecy;
+              const baseAngle = Math.atan2(bty - bfy, btx - bfx);
+              const durEff = GIANT_QUAD_BREATH_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+              const bt = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / durEff));
+              const curAngle = baseAngle - GIANT_QUAD_BREATH_SWEEP_RAD / 2 + GIANT_QUAD_BREATH_SWEEP_RAD * bt;
+              const farX = bfx + Math.cos(curAngle) * GIANT_QUAD_BREATH_LENGTH, farY = bfy + Math.sin(curAngle) * GIANT_QUAD_BREATH_LENGTH;
+              const playerR = Math.max(player.width, player.height) / 2;
+              const hitNow = !enemy.giantActiveHit &&
+                distToSegment({ x: pcx, y: pcy }, { x: bfx, y: bfy }, { x: farX, y: farY }) <= GIANT_QUAD_BREATH_HALF_WIDTH + playerR;
+              if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id });
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                // 薙いだ跡に遅延起爆の氷を3つ(固定・学習装置①)。スカジの氷ハザード配管(pumpkinBlastsの
+                // ice:true)を流用するが、専用のgiantDelayedHitsキュー(専用配列)で管理する
+                // (skadiIceMarkersは流用しない=既存ボスの挙動に一切触れない・DEVELOPMENT_LOGの先例踏襲)。
+                const iceFractions = [0.2, 0.5, 0.8];
+                const newHits = iceFractions.map(f => {
+                  const a = baseAngle - GIANT_QUAD_BREATH_SWEEP_RAD / 2 + GIANT_QUAD_BREATH_SWEEP_RAD * f;
+                  return {
+                    x: bfx + Math.cos(a) * GIANT_QUAD_BREATH_LENGTH * 0.7,
+                    y: bfy + Math.sin(a) * GIANT_QUAD_BREATH_LENGTH * 0.7,
+                    radius: GIANT_QUAD_ICE_RADIUS, bornAt: gameTime, fireAt: atkUntil(GIANT_QUAD_ICE_DELAY_MS), ice: true,
+                  };
+                });
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-quad-recover', aiPhaseUntil: atkUntil(GIANT_QUAD_RECOVER_MS),
+                  giantDelayedHits: [...(giantDelayedHits ?? []), ...newHits],
+                  giantActiveHit: hitNow ? true : enemy.giantActiveHit,
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0, giantActiveHit: hitNow ? true : enemy.giantActiveHit };
+            }
+            case 'g-quad-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGiantStageMove('quaddash', GIANT_QUAD_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
+            // ==== M66: stage-4 氷結波(nova・大技) ====
+            case 'g-nova-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-nova-active', aiPhaseUntil: atkUntil(GIANT_NOVA_ACTIVE_MS),
+                  aiStartedAt: gameTime, giantActiveHit: false,
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-nova-active': {
+              // 半径60→400が広がる輪(継続判定)。判定はその瞬間の輪のみ=内側(既に通過した場所)は
+              // 当たらない(全ボス共通の「離れれば安全」の逆張り=図形どおり)。
+              const durEff = GIANT_NOVA_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+              const nt = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / durEff));
+              const curR = GIANT_NOVA_RADIUS_START + (GIANT_NOVA_RADIUS_END - GIANT_NOVA_RADIUS_START) * nt;
+              const playerR = Math.max(player.width, player.height) / 2;
+              const pdist = Math.hypot(pcx - ecx, pcy - ecy);
+              const hitNow = !enemy.giantActiveHit && Math.abs(pdist - curR) <= GIANT_NOVA_BAND_THICKNESS + playerR;
+              if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id });
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-nova-recover', aiPhaseUntil: atkUntil(GIANT_NOVA_RECOVER_MS),
+                  giantActiveHit: hitNow ? true : enemy.giantActiveHit,
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0, giantActiveHit: hitNow ? true : enemy.giantActiveHit };
+            }
+            case 'g-nova-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGiantStageMove('nova', GIANT_NOVA_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
+            // ==== M66: stage-5 翼撃(wing・独自技) ====
+            case 'g-wing-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                const wfx = enemy.aiFromX ?? ecx, wfy = enemy.aiFromY ?? ecy;
+                const wtx = enemy.aiTargetX ?? ecx, wty = enemy.aiTargetY ?? ecy;
+                const wdl = Math.hypot(wtx - wfx, wty - wfy) || 1;
+                const wux = (wtx - wfx) / wdl, wuy = (wty - wfy) / wdl;
+                const cosS = Math.cos(GIANT_WING_SPREAD_RAD), sinS = Math.sin(GIANT_WING_SPREAD_RAD);
+                // 正面(wux,wuy)を左右対称に±開いた2方向(=「横」の2枚)。三拍目(中央)は正面のまま。
+                const leftX = wux * cosS - wuy * sinS, leftY = wux * sinS + wuy * cosS;
+                const rightX = wux * cosS + wuy * sinS, rightY = -wux * sinS + wuy * cosS;
+                const leftTx = wfx + leftX * GIANT_WING_LENGTH, leftTy = wfy + leftY * GIANT_WING_LENGTH;
+                const rightTx = wfx + rightX * GIANT_WING_LENGTH, rightTy = wfy + rightY * GIANT_WING_LENGTH;
+                pumpkinBlasts.push({
+                  x: (wfx + leftTx) / 2, y: (wfy + leftTy) / 2, radius: GIANT_WING_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id,
+                  capsule: { fx: wfx, fy: wfy, tx: leftTx, ty: leftTy, halfWidth: GIANT_WING_HALF_WIDTH },
+                });
+                pumpkinBlasts.push({
+                  x: (wfx + rightTx) / 2, y: (wfy + rightTy) / 2, radius: GIANT_WING_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id,
+                  capsule: { fx: wfx, fy: wfy, tx: rightTx, ty: rightTy, halfWidth: GIANT_WING_HALF_WIDTH },
+                });
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-wing-active', aiPhaseUntil: atkUntil(GIANT_WING_ACTIVE_MS),
+                  // 三拍目(中央=正面)は実行から400ms(固定)後=回避狩り。横がだめなら中央で逃げた先を取る。
+                  giantDelayedHits: [...(giantDelayedHits ?? []), {
+                    x: (wfx + wtx) / 2, y: (wfy + wty) / 2, radius: GIANT_WING_HALF_WIDTH, bornAt: gameTime, fireAt: atkUntil(GIANT_WING_THIRD_DELAY_MS),
+                    capsule: { fx: wfx, fy: wfy, tx: wtx, ty: wty, halfWidth: GIANT_WING_HALF_WIDTH },
+                  }],
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-wing-active': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-wing-recover', aiPhaseUntil: atkUntil(GIANT_WING_RECOVER_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-wing-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGiantStageMove('wing', GIANT_WING_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
+            // ==== M66: stage-5 掃射(sweepbeam・大技) ====
+            case 'g-sweepbeam-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-sweepbeam-active', aiPhaseUntil: atkUntil(GIANT_SWEEPBEAM_ACTIVE_MS),
+                  aiStartedAt: gameTime, giantActiveHit: false,
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-sweepbeam-active': {
+              // 細い帯(半幅30)が120°を900msかけて回転する(継続判定)。懐(回転の中心付近)が安全=
+              // 帯の始点を中心からGIANT_SWEEPBEAM_INNER_RADIUSぶん前へ出した通常カプセル(ドーナツの
+              // くり抜きではない=ウリの内径修正・v0.25.2376の方式を踏襲。図形と判定が完全一致する)。
+              const sbfx = enemy.aiFromX ?? ecx, sbfy = enemy.aiFromY ?? ecy;
+              const sbtx = enemy.aiTargetX ?? ecx, sbty = enemy.aiTargetY ?? ecy;
+              const baseAngle = Math.atan2(sbty - sbfy, sbtx - sbfx);
+              const durEff = GIANT_SWEEPBEAM_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+              const st = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / durEff));
+              const curAngle = baseAngle - GIANT_SWEEPBEAM_SWEEP_RAD / 2 + GIANT_SWEEPBEAM_SWEEP_RAD * st;
+              const nearX = sbfx + Math.cos(curAngle) * GIANT_SWEEPBEAM_INNER_RADIUS, nearY = sbfy + Math.sin(curAngle) * GIANT_SWEEPBEAM_INNER_RADIUS;
+              const farX = sbfx + Math.cos(curAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH),
+                farY = sbfy + Math.sin(curAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH);
+              const playerR = Math.max(player.width, player.height) / 2;
+              const hitNow = !enemy.giantActiveHit &&
+                distToSegment({ x: pcx, y: pcy }, { x: nearX, y: nearY }, { x: farX, y: farY }) <= GIANT_SWEEPBEAM_HALF_WIDTH + playerR;
+              if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id });
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-sweepbeam-recover', aiPhaseUntil: atkUntil(GIANT_SWEEPBEAM_RECOVER_MS),
+                  giantActiveHit: hitNow ? true : enemy.giantActiveHit,
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0, giantActiveHit: hitNow ? true : enemy.giantActiveHit };
+            }
+            case 'g-sweepbeam-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGiantStageMove('sweepbeam', GIANT_SWEEPBEAM_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
             default: {
               // 待機中(chase): 技を抽選する。全体クールダウン(aiReadyAt=パリィ直後の一時停止に流用)明け
               // かつ、各技の個別CD明けのものだけを候補にする(giantScript.tsのpickGiantMoveが等確率選択)。
@@ -7531,9 +8101,35 @@ export const useGameStore = create<GameState>((set, get) => ({
                   dash: gameTime >= (enemy.gDashReadyAt ?? 0),
                   bolt: gameTime >= (enemy.gBoltReadyAt ?? 0),
                 };
-                const move = pickGiantMove(dist, phase, ready);
-                if (move) {
-                  return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...beginGiantMove(move) };
+                // M66(§6.26-11): stage-1/3/4/5だけ独自技(Phase1〜)/大技(Phase2〜)を候補へ足す
+                // (pickGiantMoveWithStageがGIANT_STAGE_UNIQUE_MOVE/ULT_MOVEの表で既にゲート済み=
+                // 他ステージ・storyBossでは実質pickGiantMoveと同じ結果になる)。`?giantunique=0`または
+                // isStoryBoss個体は、既存のpickGiantMoveをそのまま呼ぶ経路にして今日までの挙動を
+                // 1バイトも変えない(受け入れ条件=フォールバック)。
+                if (GIANT_UNIQUE_ENABLED && !isStoryBoss) {
+                  const stageReady: Partial<Record<GiantStageMoveId, boolean>> = {
+                    bite: gameTime >= (enemy.gStageReadyAt?.bite ?? 0),
+                    slam: gameTime >= (enemy.gStageReadyAt?.slam ?? 0),
+                    glide: gameTime >= (enemy.gStageReadyAt?.glide ?? 0),
+                    dive: gameTime >= (enemy.gStageReadyAt?.dive ?? 0),
+                    quaddash: gameTime >= (enemy.gStageReadyAt?.quaddash ?? 0),
+                    nova: gameTime >= (enemy.gStageReadyAt?.nova ?? 0),
+                    wing: gameTime >= (enemy.gStageReadyAt?.wing ?? 0),
+                    sweepbeam: gameTime >= (enemy.gStageReadyAt?.sweepbeam ?? 0),
+                  };
+                  const move = pickGiantMoveWithStage(stageId, dist, phase, ready, stageReady);
+                  if (move) {
+                    const isStageMove = GIANT_STAGE_UNIQUE_MOVE[stageId] === move || GIANT_STAGE_ULT_MOVE[stageId] === move;
+                    return {
+                      ...enemy, ...phaseFields, vx: 0, vy: 0,
+                      ...(isStageMove ? beginGiantStageMove(move as GiantStageMoveId) : beginGiantMove(move as GiantMove)),
+                    };
+                  }
+                } else {
+                  const move = pickGiantMove(dist, phase, ready);
+                  if (move) {
+                    return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...beginGiantMove(move) };
+                  }
                 }
               }
               // 何も抽選されなければ、フェーズ情報だけ更新してフォールスルー(通常チェイスへ・下の

@@ -6773,11 +6773,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // M51: ジャイアント新スクリプトの予告SE(全技共通=hunter-alert流用・社長裁定6.26-9 #5)。
         // 5つの溜め(windup)ステートへ切り替わった瞬間だけ1回鳴らす(前フレームとの比較=エッジ検知)。
+        // M66(§6.26-11): stage-1/3/4/5の独自技/大技の「先頭の溜め」も同じ作法で追加(1技=1発。
+        // bite/glide/quaddashの"hold"や"breath-windup"以外の中間フェーズは鳴らさない=連射しない)。
         if (GIANT_SCRIPT_ENABLED) {
           const giant = useGameStore.getState().enemies.find(e => e.type === 'giantbat');
           const gPhase = giant?.aiPhase;
           const isGiantWindupNow = gPhase === 'g-stomp-windup' || gPhase === 'g-sweep-windup'
-            || gPhase === 'g-jump-windup' || gPhase === 'g-dash-windup' || gPhase === 'g-bolt-windup';
+            || gPhase === 'g-jump-windup' || gPhase === 'g-dash-windup' || gPhase === 'g-bolt-windup'
+            || gPhase === 'g-bite-windup' || gPhase === 'g-slam-windup' || gPhase === 'g-glide-windup'
+            || gPhase === 'g-dive-windup' || gPhase === 'g-quad-windup' || gPhase === 'g-quad-breath-windup'
+            || gPhase === 'g-nova-windup' || gPhase === 'g-wing-windup' || gPhase === 'g-sweepbeam-windup';
           if (isGiantWindupNow && giantWindupSfxRef.current !== gPhase) {
             playSfx('hunter-alert');
           }

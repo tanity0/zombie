@@ -173,3 +173,74 @@ export const giantStageRangeMult = (stageId: string, enabled: boolean = true): n
   if (!enabled) return 1;
   return GIANT_STAGE_RANGE_MULT[stageId] ?? 1; // 未知/未定義のステージIDは安全側の1.00
 };
+
+// ============================================================================================
+// M66(社長指示・PACING_PUZZLE.md §6.26-11): 城ボスのステージ別「独自技」(Phase1から)+
+// 「大技」(Phase2=HP60%から)。stage-1/3/4/5にだけ1組ずつ足す(社長指示で明示された対象=城ボスが
+// 実際に出る4ステージのみ。stage-6/7/ex1には足さない=表に定義しないことで自然にゲートする)。
+// 既存5技(stomp/sweep/jump/dash/bolt)の値・pickGiantMove/giantMoveEligible自体は無改変のまま
+// (このファイルの既存exportに一切手を入れていない)。実際の*_MSタイマー/px定数はgameStore.ts側
+// (atkUntil経由でENEMY_ATTACK_SPEED_MULTを掛ける・既存GIANT_STOMP_WINDUP_MS等と同じ流儀)に置く。
+// `?giantunique=0`(GIANT_UNIQUE_ENABLED・gameStore.ts側)で本節を丸ごと無効化=today's 5技のみに戻る。
+// トレース元(ソウルシリーズ)・学習装置①②③の割当・裁定はPACING_PUZZLE.md §6.26-11参照。
+// ============================================================================================
+
+export type GiantStageMoveId = 'bite' | 'slam' | 'glide' | 'dive' | 'quaddash' | 'nova' | 'wing' | 'sweepbeam';
+
+// ステージ→独自技(Phase1から)。表に無いステージ(stage-6/7/ex1・未知ID)はundefined=追加なし。
+export const GIANT_STAGE_UNIQUE_MOVE: Partial<Record<string, GiantStageMoveId>> = {
+  'stage-1': 'bite', 'stage-3': 'glide', 'stage-4': 'quaddash', 'stage-5': 'wing',
+};
+// ステージ→大技(Phase2=HP60%からのみ解禁)。
+export const GIANT_STAGE_ULT_MOVE: Partial<Record<string, GiantStageMoveId>> = {
+  'stage-1': 'slam', 'stage-3': 'dive', 'stage-4': 'nova', 'stage-5': 'sweepbeam',
+};
+
+// 間合い(px・中心間距離)。bite/slam/glideは設計書の明記どおり。dive/quaddash/nova/wing/sweepbeamは
+// 設計書に間合いの明記が無いため「全帯」を採用した(スカジのice/blade=全帯と同じ扱い方・§6.28-9。
+// 実装精度の規律7条に基づく叩き台=最終報告に明記)。
+export const GIANT_STAGE_MOVE_RANGE: Record<GiantStageMoveId, { min: number; max: number }> = {
+  bite: { min: 0, max: 180 },
+  slam: { min: 140, max: 420 },
+  glide: { min: 320, max: 900 },
+  dive: { min: 0, max: Infinity },
+  quaddash: { min: 0, max: Infinity },
+  nova: { min: 0, max: Infinity },
+  wing: { min: 0, max: Infinity },
+  sweepbeam: { min: 0, max: Infinity },
+};
+
+export const giantStageMoveEligible = (move: GiantStageMoveId, distance: number): boolean => {
+  const r = GIANT_STAGE_MOVE_RANGE[move];
+  return distance >= r.min && distance <= r.max;
+};
+
+// 5技(既存・無改変)+ステージ固有の独自技(Phase1から)/大技(Phase2以上のみ)を対象にした統合抽選。
+// 複数該当したら等確率で1つ(既存pickGiantMoveと同じ作法)。stageIdに技が定義されていなければ
+// 実質pickGiantMoveと同じ結果になる(=stage-6/7/ex1・未知ステージは無改変)。
+// 既存pickGiantMove自体はこの関数から呼ばず、ALL_MOVESの絞り込みをここでも独立に行う
+// (=pickGiantMoveの挙動・テストに一切触れない。別名の新関数として追加)。
+export const pickGiantMoveWithStage = (
+  stageId: string,
+  distance: number,
+  phase: GiantPhase,
+  ready: Record<GiantMove, boolean>,
+  stageReady: Partial<Record<GiantStageMoveId, boolean>>,
+  rand: () => number = Math.random,
+): GiantMove | GiantStageMoveId | null => {
+  const pool: (GiantMove | GiantStageMoveId)[] = ALL_MOVES.filter(m => ready[m] && giantMoveEligible(m, distance, phase));
+  const uniqueMove = GIANT_STAGE_UNIQUE_MOVE[stageId];
+  if (uniqueMove && (stageReady[uniqueMove] ?? false) && giantStageMoveEligible(uniqueMove, distance)) pool.push(uniqueMove);
+  const ultMove = GIANT_STAGE_ULT_MOVE[stageId];
+  if (ultMove && phase >= 2 && (stageReady[ultMove] ?? false) && giantStageMoveEligible(ultMove, distance)) pool.push(ultMove);
+  if (pool.length === 0) return null;
+  return pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))];
+};
+
+// stage-4「三連突進→氷の横薙ぎ」の学習装置③(回数で読ませる)。回数は常に3固定=乱数にしない
+// (社長裁定の核心)。indexJustFinished(0始まり)が2(=3回目)を終えたら次へ進む。
+export const GIANT_QUAD_DASH_COUNT = 3;
+export const giantQuadDashComplete = (indexJustFinished: number): boolean => indexJustFinished + 1 >= GIANT_QUAD_DASH_COUNT;
+
+// stage-4「三連突進→氷の横薙ぎ」が薙いだ跡に残す遅延起爆の氷の個数(固定3・学習装置①の氷版)。
+export const GIANT_QUAD_ICE_COUNT = 3;
