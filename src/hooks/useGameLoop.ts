@@ -32,6 +32,7 @@ import {
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST, CAMERA_DOWN_OFFSET_FRAC, CORRIDOR_CAMERA_DOWN_FRAC,
   WIRE_LAND_KNOCKBACK_SPEED, WIRE_PASS_DAMAGE_MULT, WIRE_BOMB_RADIUS, WIRE_BOMB_DAMAGE_MULT, WIRE_PASS_BOMB_RADIUS,
   BOSS_MELEE_STUN_MULT,
+  bossSlowMult,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   skillMagnetAmmoRangeMult, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
@@ -4153,7 +4154,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const M = BOSS_SCREEN_MARGIN;
             const onScreen = bcx >= cam.x - M && bcx <= cam.x + gb.width + M && bcy >= cam.y - M && bcy <= cam.y + gb.height + M;
             const inDeep = FORCE_HIDDEN_BOSS || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
-            const speed = boss.speed;
+            const speed = boss.speed * bossSlowMult(boss, newGameTime); // クリ半減(v0.25.2422)
             // 裏ボスは updateEnemies を素通りするため、移動テンポ(ゲームスピード1.2倍)がここには自動で乗らない。
             // 通常敵と揃えるため、移動の位置更新/慣性は bossMoveDt(= deltaTime × MOVE_SPEED_MULT)を使う(社長指示)。
             // 回復(BOSS_REGEN)やタイマー等は素の deltaTime のまま(テンポの対象外)。

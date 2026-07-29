@@ -718,7 +718,9 @@ export const bumpBossCrit = (
   enemy: Enemy,
   gameTime: number
 ): { patch: Partial<Enemy>; triggered: boolean } | null => {
-  if (!isHiddenBoss(enemy.type)) return null;
+  // 社長指示v0.25.2422「5回痺れで紫痺れも共通で」: 裏ボス限定だった完全気絶を**全ボス共通**へ。
+  // これで「1クリ=半減 / 5クリ=紫の完全気絶(フィニッシュ受付)」がボス種別を問わず同じ作法になる。
+  if (!isBossType(enemy.type)) return null;
   // すでに完全気絶中はカウントしない(気絶を延長/短縮しない)。
   if (enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil) return null;
   const c = (enemy.bossCritCount ?? 0) + 1;
@@ -728,6 +730,23 @@ export const bumpBossCrit = (
   }
   return { patch: { bossCritCount: c }, triggered: false };
 };
+// ★ボスはクリティカルで「痺れない」(社長指示v0.25.2422)。代わりに一定時間**動きが半減**する。
+// なぜ: 5秒の完全停止は、ソウル式の「技を読んで避ける」ボス戦を成立させなくする(止まっている相手に
+// 読みは要らない)。半減なら、ボスは技を出し続ける=読みの練習台であり続けたまま、クリの手応えは残る。
+// 既存の「5クリで完全気絶(紫)」(bumpBossCrit・裏ボス専用)は**別経路として据え置き**=フィニッシュ受付の
+// 入口はそのまま。ここで消すのは「1クリごとの5秒スタン」だけ。
+export const BOSS_CRIT_SLOW_MS = STUN_DURATION_MS; // 窓は従来のスタンと同じ長さ(止める→半減へ置換)
+export const BOSS_CRIT_SLOW_MULT = 0.5;            // 「動きが半減」(社長指示の文言そのまま)
+/**
+ * クリがボスに入った時の差分。**ボス以外には何もしない**(通常敵のスタンは完全に不変)。
+ * 呼び出し側は「スタンを設定する代わりに」これを使う。
+ */
+export const bossCritSlowPatch = (enemy: Enemy, gameTime: number): Partial<Enemy> | null =>
+  isBossType(enemy.type) ? { bossSlowUntil: gameTime + BOSS_CRIT_SLOW_MS } : null;
+/** ボスの移動速度に掛ける倍率(半減中なら0.5)。ボス以外・非半減中は1。 */
+export const bossSlowMult = (enemy: Enemy, gameTime: number): number =>
+  (enemy.bossSlowUntil !== undefined && gameTime < enemy.bossSlowUntil) ? BOSS_CRIT_SLOW_MULT : 1;
+
 // 分身(サブウェポン): その場で 1秒ごとに5秒間(=計5回)近接攻撃を繰り返し、消滅後にクールダウン。
 // クールダウンはレベルで短縮(Lv1=3s / Lv2=2s / Lv3=1s)。index は subWeaponLevels(1..3)。
 export const SHADOW_CLONE_COOLDOWN_MS_BY_LEVEL = [3000, 3000, 2000, 1000];
@@ -4524,7 +4543,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 社長指示: 近接クリでも銃・刀と同じくスタンさせる(倒せなかった時のみ=フィニッシュ受付の入口)。
       // 気絶時間アップ(パッシブ)も銃と同じくstunDurationMultを掛ける。
       if (crit) critStunAt.push({ x: ecx, y: ecy });
-      const stunUntil = crit
+      // ボスはスタンさせず半減(v0.25.2422)。通常敵は従来どおり。
+      const bossSlow = crit ? bossCritSlowPatch(enemy, gameTime) : null;
+      const stunUntil = (crit && !bossSlow)
         ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1)
         : enemy.stunUntil;
       // Knockback, unless this enemy was shoved recently (debounce to avoid
@@ -4851,7 +4872,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const nh = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
       if (nh <= 0) { killed.push({ enemy, finisher: false }); continue; }
       if (crit) critStunAt.push({ x: ecx, y: ecy });
-      const stunUntil = crit ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
+      const bossSlow = crit ? bossCritSlowPatch(enemy, gameTime) : null; // ボスは半減(v0.25.2422)
+      const stunUntil = (crit && !bossSlow) ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
         const falloff = 1 - dist / meleeRange;
@@ -5244,7 +5266,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // GAME_AUDIT #17(社長承認): 刀のクリも銃と同じく裏ボスの完全気絶カウントに乗せる。
       const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
       if (bossBump?.triggered) katanaBossFullStunHits.push({ x: ecx, y: ecy });
-      const newStunUntil = critStun ? gameTime + STUN_DURATION_MS : enemy.stunUntil;
+      const bossSlow = critStun ? bossCritSlowPatch(enemy, gameTime) : null; // ボスは半減(v0.25.2422)
+      const newStunUntil = (critStun && !bossSlow) ? gameTime + STUN_DURATION_MS : enemy.stunUntil;
       const dx = ecx - pcx;
       const dy = ecy - pcy;
       const dist = Math.max(0.001, Math.hypot(dx, dy));
@@ -5456,7 +5479,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...enemy,
         health: newHealth,
         lastHit: now,
-        stunUntil: crit ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil,
+        // ボスはスタンさせず半減(v0.25.2422)。
+        ...(crit ? (bossCritSlowPatch(enemy, gameTime) ?? { stunUntil: gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) }) : { stunUntil: enemy.stunUntil }),
         knockbackVx: side * nx * WHIP_KNOCKBACK_SPEED,
         knockbackVy: side * ny * WHIP_KNOCKBACK_SPEED,
         knockbackUntil: now + KNOCKBACK_DURATION,
@@ -7373,7 +7397,13 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         // Trap root freezes movement only. It deliberately does not share the
         // crit stun state, so rooted enemies are not melee-finisher targets.
-        if (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil) {
+        // ★技の発動中はトラップの拘束をすり抜ける(社長報告v0.25.2421「トラップで敵の動きを止めると、
+        // ジャンプとか技発動中におかしくなる」)。
+        // 原因: この早期 return は**AI本体より手前**にあるので、拘束が乗ると座標だけでなく
+        // **攻撃の状態機械ごと止まる**(aiPhase が進まない=溜めたまま固まる/飛んだまま着地しない)。
+        // 技を出している最中(aiPhase あり)は拘束を無視し、状態機械を最後まで走らせて終わらせる。
+        // トラップ自体の効果・時間は不変で、**攻撃を出し切ってから効く**ようになるだけ。
+        if (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil && !enemy.aiPhase) {
           return { ...enemy, vx: 0, vy: 0 };
         }
 
@@ -7407,7 +7437,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 事故で全部消えることもない。
             // 速度は**裏ボスと同じ既存定数を流用**(BOSS_REGEN_PER_SEC=10/秒。社長が40→10へ調整済み)。
             // 新しい数字を発明しない=バランスの出どころを1つに保つ。
-            if (isLeashableBoss(enemy.type)) {
+            if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss) {
               // ★城へゆっくり歩いて帰る(社長指示v0.25.2419)。巣=出現地点(useGameLoopがhomeX/homeYを設定)。
               // 追跡時の速度のままだと「猛然と帰っていく」絵になるので半分にする。歩きなので障害物は
               // 通常どおり resolveMove で解決する(ダッシュではない=貫通しない)。
@@ -7439,7 +7469,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         //  ・追ってこない代わりに**待っているだけ**=離れて一方的に削るハメも成立しない
         //  ・`bossEngagedNow` が dormant を見ているので、**雑魚の湧きも自動で通常へ戻る**
         // 技の実行中(aiPhase あり)は待機に戻さない=攻撃を中断してその場で固まる事故を防ぐ。
-        if (isLeashableBoss(enemy.type) && !enemy.aiPhase
+        // ストーリーボス(stage-7グレン/ex1)は**リーシュしない**(社長指示v0.25.2420「実質逃げれない
+        // ようにする」)。雑魚が出ないステージなので、待機に戻したら逃げ切りが成立してしまう。
+        // 代わりに無限ジャンプ(giantScript.ts)で、どこまで逃げても飛んで追ってくる。
+        if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss && !enemy.aiPhase
           && Math.hypot(pcx - (enemy.x + enemy.width / 2), pcy - (enemy.y + enemy.height / 2)) > BOSS_LEASH_PX) {
           return {
             ...enemy, dormant: true, vx: 0, vy: 0,
@@ -8679,7 +8712,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, vx: zvx, vy: zvy, x: zmoved.x, y: zmoved.y, aiPhase: phase, aiPhaseUntil: phaseUntil };
         }
 
-        const speed = (enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed) * rnSpeedMult * screamSpeedMult;
+        // ボスのクリ半減(v0.25.2422)。ボス以外・非半減中は1なので通常敵の速度は完全に不変。
+        const speed = (enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed) * rnSpeedMult * screamSpeedMult
+          * bossSlowMult(enemy, gameTime);
         let tvx = (dx / distance) * speed;
         let tvy = (dy / distance) * speed;
         // 新型(lich): プレイヤーの周囲を旋回しながら徐々に詰める。放射(内向き)+接線(旋回)を合成し、

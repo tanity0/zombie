@@ -50,11 +50,19 @@ export const giantPhaseJustChanged = (prevPhase: GiantPhase | undefined, nextPha
 // (M60: phaseの型をGiantPhaseへ広げ、sweepをphase>=2へ緩和。phase∈{1,2}での出力は無改変
 //  =通常城ボスは今までどおりphase===2の時だけsweepが解禁される。phase===3はstoryBoss専用で、
 //  「Phase2で解禁された技はPhase3でも消えない」という原則⑥(6.28-2-2)どおりsweepを維持する。)
-export const giantMoveEligible = (move: GiantMove, distance: number, phase: GiantPhase): boolean => {
+export const giantMoveEligible = (
+  move: GiantMove, distance: number, phase: GiantPhase,
+  // ★ステージ7(ラスボス)だけ飛び掛かりの上限を撤廃する(社長指示v0.25.2420「無限ジャンプで
+  // 実質逃げれないようにする」)。理由: **ステージ7は雑魚が出ない**ので、走って逃げれば完全に
+  // 安全な時間が作れてしまい、回復して戻る=消耗戦が成立する。上限を外すと、どこまで逃げても
+  // 飛んで追ってくる=逃げ切れない。**予告(赤い着地円)は従来どおり出る**ので理不尽にはならない
+  // (「見えない攻撃で殺される」ではなく「逃げても着地円が足元に出る」)。既定はfalse=他ステージ不変。
+  unlimitedJump = false,
+): boolean => {
   switch (move) {
     case 'stomp': return distance <= GIANT_RANGE.MELEE_MAX;
     case 'sweep': return (phase === 2 || phase === 3) && distance > GIANT_RANGE.MELEE_MAX && distance <= GIANT_RANGE.NEAR_MAX;
-    case 'jump':  return distance > GIANT_RANGE.MELEE_MAX && distance <= GIANT_RANGE.JUMP_MAX;
+    case 'jump':  return distance > GIANT_RANGE.MELEE_MAX && (unlimitedJump || distance <= GIANT_RANGE.JUMP_MAX);
     case 'dash':  return distance > GIANT_RANGE.NEAR_MAX && distance <= GIANT_RANGE.FAR_MAX;
     case 'bolt':  return distance > GIANT_RANGE.NEAR_MAX && distance <= GIANT_RANGE.MID_MAX;
     default: return false;
@@ -133,10 +141,14 @@ export const pickGiantStoryCombo = (
   distance: number,
   isEx: boolean,
   rand: () => number = Math.random,
+  // 無限ジャンプ(社長指示v0.25.2420)。ここは storyBoss 専用の追撃なので抽選側(pickGiantMoveWithGlen)
+  // と**同じ既定**にする。片方だけ上限が残っていると「初撃は飛んでくるのに追撃だけ届かない」という
+  // 不一致になる(同じ判定を2箇所に書いて片方だけ直す事故の典型)。
+  unlimitedJump = true,
 ): GiantMove | null => {
   const followup = GIANT_STORY_PHASE3_FOLLOWUP[justFinished];
   if (!followup) return null;
-  if (!giantMoveEligible(followup, distance, 3)) return null; // 「まだその技の間合いに居るなら」
+  if (!giantMoveEligible(followup, distance, 3, unlimitedJump)) return null; // 「まだその技の間合いに居るなら」
   const chance = isEx ? GIANT_STORY_COMBO_CHANCE_PHASE3_EX : GIANT_STORY_COMBO_CHANCE_PHASE3;
   return rand() < chance ? followup : null;
 };
@@ -295,8 +307,11 @@ export const pickGiantMoveWithGlen = (
   ready: Record<GiantMove, boolean>,
   glenReady: Record<GlenMoveId, boolean>,
   rand: () => number = Math.random,
+  // 無限ジャンプ(社長指示v0.25.2420)。グレン=ステージ7専用の抽選関数なので既定でON。
+  // ?glenjump=0 相当のフォールバックが要る時は呼び出し側から false を渡す。
+  unlimitedJump = true,
 ): GiantMove | GlenMoveId | null => {
-  const pool: (GiantMove | GlenMoveId)[] = ALL_MOVES.filter(m => ready[m] && giantMoveEligible(m, distance, phase));
+  const pool: (GiantMove | GlenMoveId)[] = ALL_MOVES.filter(m => ready[m] && giantMoveEligible(m, distance, phase, unlimitedJump));
   for (const move of GLEN_MOVES) {
     if (move === 'nihil' && phase < 2) continue;
     if (glenReady[move] && glenMoveEligible(move, distance)) pool.push(move);

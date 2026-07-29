@@ -504,14 +504,36 @@ describe('pickGiantMoveWithGlen — 受け入れ条件: Phase1で大技(nihil)�
 
 describe('pickGiantMoveWithGlen — 受け入れ条件: 既存5技の選択が壊れていない', () => {
   const bandSamples = [70, 230, 470, 800]; // 密着/近/中/遠の代表距離(既存ファイルのbandSamplesと同じ)
-  it('matches pickGiantMove exactly when no Glen move is ready (既存5技は無改変)', () => {
+  // 無限ジャンプ(社長指示v0.25.2420)をOFFにすれば、既存5技の選択は完全に元どおり。
+  // 「グレンの追加分が既存の抽選を汚していない」という元の不変条件はこの形で維持する。
+  it('matches pickGiantMove exactly when no Glen move is ready (無限ジャンプOFF時=既存5技は無改変)', () => {
     const ready: Record<GiantMove, boolean> = { stomp: true, sweep: true, jump: true, dash: true, bolt: true };
     for (const distance of bandSamples) {
       for (let i = 0; i < 10; i++) {
         const rand = () => i / 10;
-        expect(pickGiantMoveWithGlen(distance, 2, ready, noGlenReady, rand)).toBe(pickGiantMove(distance, 2, ready, rand));
+        expect(pickGiantMoveWithGlen(distance, 2, ready, noGlenReady, rand, false))
+          .toBe(pickGiantMove(distance, 2, ready, rand));
       }
     }
+  });
+
+  // ★社長指示v0.25.2420「ステージ7は無限ジャンプで実質逃げれないようにする」。
+  // ステージ7は雑魚が出ないので、走って逃げれば完全に安全な時間が作れてしまい、
+  // 回復して戻る消耗戦が成立する。飛び掛かりの上限を外して逃げ切れないようにする。
+  it('グレンは飛び掛かりの上限が無い(JUMP_MAXの外でもjumpが候補に入る)', () => {
+    const far = GIANT_RANGE.JUMP_MAX + 600; // 従来なら圏外
+    const onlyJump: Record<GiantMove, boolean> = { stomp: false, sweep: false, jump: true, dash: false, bolt: false };
+    expect(pickGiantMoveWithGlen(far, 2, onlyJump, noGlenReady, () => 0)).toBe('jump');
+    // OFF(既定外)なら従来どおり圏外=選ばれない。
+    expect(pickGiantMoveWithGlen(far, 2, onlyJump, noGlenReady, () => 0, false)).toBeNull();
+  });
+
+  // 初撃だけ届いて追撃だけ届かない、という不一致を作らないため、pickGiantStoryCombo にも同じ
+  // unlimitedJump を通してある(既定true)。**現在の追撃表に jump は無い**ので実挙動には出ないが、
+  // 将来 jump を追撃に足した時に片方だけ上限が残る事故(同じ判定を2箇所に書く型)を防ぐ配線。
+  it('追撃の間合い判定は従来どおり(jumpは追撃表に無いので現状は無影響)', () => {
+    const far = GIANT_RANGE.JUMP_MAX + 600; // dash(上限FAR_MAX=1000)の圏外
+    expect(pickGiantStoryCombo('stomp', far, false, () => 0)).toBeNull();
   });
   it('only offers talon/boon at distance 350 when the existing 5 techs are all unready', () => {
     for (let i = 0; i < 20; i++) {

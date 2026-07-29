@@ -414,6 +414,9 @@ export interface Enemy {
   // 「赤い円より広い範囲で当たる」ドリフトを構造的に防ぐ(未設定時は無倍率の生半径にフォールバック)。
   // 障害物回避の進行状態(社長指示v0.25.2415)。判定は src/utils/enemyMotion.ts の純関数 stepAvoid が持つ。
   // 「進めない→横へ避ける→反対側→諦める」の3段階をこの1フィールドで持ち回る。
+  // ボスがクリティカルで「痺れる」代わりに**動きが半減**する窓の終了時刻(gameTime基準・v0.25.2422)。
+  // 通常敵の stunUntil(完全停止)とは別概念。ボス以外には設定されない。
+  bossSlowUntil?: number;
   avoid?: import('../utils/enemyMotion').AvoidState;
   gStompRadius?: number;
   gJumpRadius?: number;

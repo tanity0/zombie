@@ -19,7 +19,7 @@ import type { Enemy } from '../types/game';
 import {
   useGameStore, skillCritMult, skillOutgoingDamageMult, enemyDeathLabel,
   BOSS_CRIT_DAMAGE_MULT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
-  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
+  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult,
 } from '../store/gameStore';
 import { getActiveGun } from './weaponUtils';
 import { createEnemyProjectile, isGate2AngelBoss } from './enemyUtils';
@@ -1016,7 +1016,10 @@ export const runRafiTick = (
     if (dl > maxR) return { x: rHomeX + (dx / dl) * maxR, y: rHomeY + (dy / dl) * maxR };
     return { x: nx, y: ny };
   };
-  const chaseMove = (spd: number): void => {
+  const chaseMove = (rawSpd: number): void => {
+    // ボスのクリ半減(社長指示v0.25.2422)。呼び出し側(<boss>.speed)を書き換えず、
+    // **移動の入口1箇所**で掛ける=全ての chaseMove 呼び出しに漏れなく効く。
+    const spd = rawSpd * bossSlowMult(rafi, newGameTime);
     const dx = pcx - rcx, dy = pcy - rcy;
     const dl = Math.hypot(dx, dy) || 1;
     const c = clampArena(rcx + (dx / dl) * spd * bossMoveDt, rcy + (dy / dl) * spd * bossMoveDt);
@@ -1201,7 +1204,10 @@ export const runRafiTickLegacy = (
     if (dl > maxR) return { x: rHomeX + (dx / dl) * maxR, y: rHomeY + (dy / dl) * maxR };
     return { x: nx, y: ny };
   };
-  const chaseMove = (spd: number): void => {
+  const chaseMove = (rawSpd: number): void => {
+    // ボスのクリ半減(社長指示v0.25.2422)。呼び出し側(<boss>.speed)を書き換えず、
+    // **移動の入口1箇所**で掛ける=全ての chaseMove 呼び出しに漏れなく効く。
+    const spd = rawSpd * bossSlowMult(rafi, newGameTime);
     const dx = pcx - rcx, dy = pcy - rcy;
     const dl = Math.hypot(dx, dy) || 1;
     const c = clampArena(rcx + (dx / dl) * spd * bossMoveDt, rcy + (dy / dl) * spd * bossMoveDt);
@@ -1324,7 +1330,10 @@ export const runUriTick = (
     if (dl > maxR) return { x: uHomeX + (dx / dl) * maxR, y: uHomeY + (dy / dl) * maxR };
     return { x: nx, y: ny };
   };
-  const chaseMove = (spd: number): void => {
+  const chaseMove = (rawSpd: number): void => {
+    // ボスのクリ半減(社長指示v0.25.2422)。呼び出し側(<boss>.speed)を書き換えず、
+    // **移動の入口1箇所**で掛ける=全ての chaseMove 呼び出しに漏れなく効く。
+    const spd = rawSpd * bossSlowMult(uri, newGameTime);
     const dx = pcx - ucx, dy = pcy - ucy;
     const dl = Math.hypot(dx, dy) || 1;
     const c = clampArena(ucx + (dx / dl) * spd * bossMoveDt, ucy + (dy / dl) * spd * bossMoveDt);
@@ -1538,7 +1547,10 @@ export const runSurielTick = (
     if (dl > maxR) return { x: sHomeX + (dx / dl) * maxR, y: sHomeY + (dy / dl) * maxR };
     return { x: nx, y: ny };
   };
-  const chaseMove = (spd: number): void => {
+  const chaseMove = (rawSpd: number): void => {
+    // ボスのクリ半減(社長指示v0.25.2422)。呼び出し側(<boss>.speed)を書き換えず、
+    // **移動の入口1箇所**で掛ける=全ての chaseMove 呼び出しに漏れなく効く。
+    const spd = rawSpd * bossSlowMult(suriel, newGameTime);
     const dx = pcx - scx, dy = pcy - scy;
     const dl = Math.hypot(dx, dy) || 1;
     const c = clampArena(scx + (dx / dl) * spd * bossMoveDt, scy + (dy / dl) * spd * bossMoveDt);
