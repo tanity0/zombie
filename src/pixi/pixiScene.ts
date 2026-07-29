@@ -309,6 +309,12 @@ const CORRIDOR_ACTOR_FADE_PX = 80;         // フェード幅(world px。既定1
 // 非ボス敵の「手前(画面最下端=カメラ近接)で消える」near-plane フェード幅(px)。
 // 画面の一番下のこの帯の中だけで 1→0(近くでは消えない=社長指示「距離は下げて」)。
 const ENEMY_FOREGROUND_FADE_PX = 110;
+// 攻撃予告(赤い線/帯/円)を「アクターの alpha」ではなく「予告図形自身の位置」でフェードさせる
+// (社長指示v0.25.2405「見えてる部分は見えてる部分として残り、画面外の部分は然るべくして消える」)。
+// 旧: 予告はボスの絵と同じ container に入っていたため、ボスが地平線/画面手前で薄くなると
+// 予告まで一緒に薄くなり、**足元まで伸びている当たり判定が見えないのに当たる**事故が起きていた。
+// ?telefade=0 で旧挙動(アクターの alpha に相乗り)へ戻せる。
+const TELEGRAPH_OWN_FADE = tsNum('telefade', 1) !== 0;
 const HORIZON_REVEAL_OFFSET_PX = 200;
 const HORIZON_REVEAL_FADE_PX = 90;
 const FRONT_FOREST_PARALLAX_X = 0.68;
@@ -1512,7 +1518,12 @@ interface ActorView {
   reticle: Graphics; // below the sprite (stun reticle / tint)
   sprite: Sprite;
   hitFlash: Sprite;  // 被弾時、本体スプライトと同形を白で加算オーバーレイして「絵」を一瞬光らせる(丸光は廃止)
-  overlay: Graphics; // above the sprite (health bar, hit flash, boss marker)
+  // 攻撃予告(赤い線/帯/円/扇)専用のレイヤー。**overlay とは別の Graphics に分けてある**理由は alpha:
+  // 予告は「アクターの位置」ではなく「予告図形自身の位置」で地平線/手前フェードを引く(TELEGRAPH_OWN_FADE)。
+  // 同じ Graphics に体力バーを混ぜると分けられないので、描画順(スプライトの上・体力バーの下)はそのままに
+  // オブジェクトだけ二枚に割っている。z順は container の子順 [.., sprite, hitFlash, tele, overlay] で担保。
+  tele: Graphics;
+  overlay: Graphics; // above the sprite (health bar, boss marker, event marker)
   // 予告円の「輪」だけを担う焼き済みスプライト(社長支給素材 A-1・v0.25.2395)。
   // 面(内側の赤い塗り)は従来どおり overlay の Graphics が描き、輪だけをこの1枚に置き換える。
   // 素材は**外周がキャンバス端に一致する真円**に正規化済みなので、幅=高さ=直径 に合わせるだけで
@@ -3079,6 +3090,40 @@ export class PixiScene {
     return Math.max(0, 1 - (screenY - start) / ENEMY_FOREGROUND_FADE_PX);
   }
 
+  // 攻撃予告レイヤー(tele)の alpha を、**アクターの位置ではなく予告図形自身の位置**から引く
+  // (社長指示v0.25.2405「見えてる部分は見えてる部分として残り、画面外の部分は然るべくして消える」)。
+  //
+  // 仕組み: 位置フェードは Y だけの単峰な関数(奥=0 → 中央=1 → 手前=0)なので、
+  // 「図形の Y 範囲にプレイヤーの Y を clamp した点」= その図形の中で**最も見える点**になる。
+  // それを図形全体の alpha に使う。
+  // 帰結(この直しの肝): プレイヤーの足元 Y が予告の Y 範囲に入っている間は必ず alpha=1。
+  //   つまり **「判定に入っているのに予告が薄い」という状態が原理的に作れない**。
+  //   逆に完全に奥/手前へ外れた予告(=プレイヤーが絶対に当たらない位置)だけが従来どおり消える
+  //   ので、世界の見え方の法則(被写体深度)からも外れない。
+  // Y 範囲は tele Graphics の bounds(=このフレームに実際に描いた全図形の外接)から取るので、
+  // 個々の描画呼び出しに手を入れなくても新しい技が自動で対象になる。bounds は Pixi 側で
+  // ジオメトリ変更時のみ再計算されるキャッシュ付き=毎フレームの実コストは無視できる(負荷1/10)。
+  private telegraphFade(view: ActorView): number {
+    let minY = Infinity, maxY = -Infinity;
+    // 何も描いていないフレーム(=雑魚の大半)は bounds 計算にすら入らない。
+    if (view.tele.context.instructions.length > 0) {
+      const b = view.tele.getLocalBounds();
+      if (b.maxY > b.minY) { minY = b.minY; maxY = b.maxY; }
+    }
+    // 予告スプライト(輪/帯/斬撃/爪痕)も範囲に混ぜる。回転していても外れないよう長辺の半分を使う(安全側)。
+    const span = (sp: Sprite | undefined) => {
+      if (!sp || !sp.visible) return;
+      const half = Math.max(Math.abs(sp.width), Math.abs(sp.height)) / 2;
+      if (sp.y - half < minY) minY = sp.y - half;
+      if (sp.y + half > maxY) maxY = sp.y + half;
+    };
+    span(view.ring); span(view.band); span(view.slash);
+    if (view.clawMarks) for (const s of view.clawMarks) span(s);
+    if (minY > maxY) return 1; // このフレームは何も描いていない
+    const y = Math.max(minY, Math.min(this.seeThroughPlayer.footY, maxY));
+    return this.horizonActorAlpha(y) * this.foregroundActorAlpha(y);
+  }
+
   // 障害物(木/壁/建物/プロップ)の alpha をフレーム更新。プレイヤーを「覆う」(手前=footY大で、見た目矩形が
   // プレイヤー足元矩形と重なる)ものだけ OBSTACLE_SEE_THROUGH_ALPHA へ滑らかに透かす。それ以外は通常(地平フェード)へ。
   // 既存スプライトの alpha を lerp するだけ=新規描画/フィルタなし(負荷 1/10)。
@@ -3229,10 +3274,11 @@ export class PixiScene {
     hitFlash.tint = 0xffffff;     // 白で加算=被弾時に絵を光らせる
     hitFlash.blendMode = 'add';
     hitFlash.visible = false;
+    const tele = new Graphics();
     const overlay = new Graphics();
-    container.addChild(reticle, sprite, hitFlash, overlay);
+    container.addChild(reticle, sprite, hitFlash, tele, overlay);
     this.L.actorLayer.addChild(container);
-    return { container, light, reticle, sprite, hitFlash, overlay };
+    return { container, light, reticle, sprite, hitFlash, tele, overlay };
   }
 
   private makeProp(): PropView {
@@ -8324,7 +8370,20 @@ export class PixiScene {
     const hunterLeaveFade = e.hunterLeavingAt !== undefined
       ? Math.max(0, 1 - (gameTime - e.hunterLeavingAt) / HUNTER_LEAVE_FADE_MS)
       : 1;
-    view.container.alpha = horizonAlpha * reaperWarpFade * foreFade * hunterLeaveFade;
+    // フェードを2種類に分ける(社長指示v0.25.2405)。
+    //  ・**位置の法則** (horizonAlpha / foreFade) = 「奥すぎる/手前すぎるから見えない」。
+    //    アクターの絵・体力バーには掛けるが、予告レイヤー(tele)には掛けない
+    //    (予告は下の telegraphFade で**自分の位置**から引き直す)。
+    //  ・**存在の法則** (reaperWarpFade / hunterLeaveFade) = 「そこに居ない」。
+    //    居ない相手の判定は無いので、予告も含めて container ごと消して正しい。
+    const posFade = horizonAlpha * foreFade;
+    view.container.alpha = TELEGRAPH_OWN_FADE
+      ? reaperWarpFade * hunterLeaveFade
+      : posFade * reaperWarpFade * hunterLeaveFade;
+    // ?telefade=0 のときは従来どおり container 側で位置フェード済み=子には掛けない(旧挙動を完全維持)。
+    const artFade = TELEGRAPH_OWN_FADE ? posFade : 1;
+    view.reticle.alpha = artFade;
+    view.overlay.alpha = artFade;
 
     if (bossFixed && tex) {
       // 裏ボス: 当たり判定=帯(AABB=e.width×e.height)。絵はそれより大きく、帯の上に伸ばす(見た目と判定を分離)。
@@ -8390,12 +8449,12 @@ export class PixiScene {
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
       const fastLerp = 1 - (1 - this.seeThroughLerp) ** 2;
       this.bossBehindAlpha += (behindTarget - this.bossBehindAlpha) * fastLerp;
-      view.sprite.alpha = this.bossBehindAlpha;
+      view.sprite.alpha = this.bossBehindAlpha * artFade;
       view.sprite.visible = true;
     } else {
     view.sprite.anchor.set(0.5, 1);
     view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop - kbHop));
-    view.sprite.alpha = 1; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
+    view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
 
     if (tex) {
       view.sprite.texture = tex;
@@ -8475,7 +8534,7 @@ export class PixiScene {
         hf.scale.set(view.sprite.scale.x, view.sprite.scale.y);
         hf.skew.set(view.sprite.skew.x, view.sprite.skew.y);
         hf.rotation = view.sprite.rotation;
-        hf.alpha = flashT * ENEMY_HIT_FLASH_STRENGTH;
+        hf.alpha = flashT * ENEMY_HIT_FLASH_STRENGTH * artFade;
         hf.visible = true;
       } else if (hf.visible) {
         hf.visible = false;
@@ -8512,9 +8571,12 @@ export class PixiScene {
       r.rect(hb.x, hb.y, hb.width, hb.height).stroke({ width: 2, color: 0xfb923c, alpha: 0.3 + 0.1 * pulse });
     }
 
-    // Above-sprite layer: health bar, boss marker, hit flash.
-    const o = view.overlay;
+    // Above-sprite layer(前半): 攻撃予告(赤い線/帯/円/扇)。**tele レイヤー**へ描く。
+    // 体力バー/ボスマーカーは同じ描画順のまま overlay(後半・下の drawHealthBar 以降)へ分けた。
+    // 分けている理由は alpha だけ(予告は自分の位置でフェードする=TELEGRAPH_OWN_FADE)。
+    const o = view.tele;
     o.clear();
+    view.overlay.clear();
     // 予告の輪スプライト(A-1)は既定で消しておき、必要な分岐だけが drawTelegraphRing で点ける
     // (o.clear() と同じ役割。消し忘れて前フレームの輪が残るのを構造的に防ぐ)。
     if (view.ring) view.ring.visible = false;
@@ -9299,16 +9361,30 @@ export class PixiScene {
         }
       }
     }
-    this.drawHealthBar(o, e, now);
+    // ★予告レイヤーの alpha を「予告図形自身の位置」で決める(社長指示v0.25.2405)。
+    // 予告スプライト(A-1輪/A-2帯/D-1斬撃/D-2爪痕)も同じ値を掛けて、線と意匠がズレないようにする。
+    const teleFade = TELEGRAPH_OWN_FADE ? this.telegraphFade(view) : 1;
+    view.tele.alpha = teleFade;
+    if (teleFade < 1) {
+      if (view.ring?.visible) view.ring.alpha *= teleFade;
+      if (view.band?.visible) view.band.alpha *= teleFade;
+      if (view.slash?.visible) view.slash.alpha *= teleFade;
+      if (view.clawMarks) for (const s of view.clawMarks) if (s.visible) s.alpha *= teleFade;
+    }
+
+    // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
+    // なので従来どおりアクターの位置フェード(artFade)に従う。
+    const ov = view.overlay;
+    this.drawHealthBar(ov, e, now);
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
-      this.drawBossMarker(o, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
+      this.drawBossMarker(ov, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
     }
     // 拠点/レスキューの「専用敵」(fromEvent)は通常湧きと区別(社長指示・軽量マーク): 頭上に橙の下向き三角(脈動)。
     if (e.fromEvent) {
       const my = e.y - 10;
       const pulse = 0.6 + 0.4 * Math.sin(now / 200);
-      o.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).fill({ color: 0xf59e0b, alpha: 0.92 * pulse });
-      o.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).stroke({ width: 1.5, color: 0x7c2d12, alpha: 0.9 });
+      ov.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).fill({ color: 0xf59e0b, alpha: 0.92 * pulse });
+      ov.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).stroke({ width: 1.5, color: 0x7c2d12, alpha: 0.9 });
     }
     // 被弾フラッシュは hitFlash スプライト(絵を加算で光らせる)へ移行。丸い白フィルは廃止(裏ボスを隠さない・社長指示)。
   }
