@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2382',
+    items: [
+      '隠しボス「idol」に、通常プレイでも出会えるようになりました。ステージ2で、'
+        + 'ゴール資料が出た方角と反対側へ思い切って進んでみてください。',
+    ],
+  },
+  {
     version: '0.25.2381',
     items: [
       'ゲーム内容の変更はありません（隠しボス「idol」の設置場所を内部的に確定しただけで、'

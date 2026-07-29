@@ -69,7 +69,8 @@ import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
-import { LAB_OUTER_BOUNDS, labBlockingWalls, LAB_IDOL_AGGRO_RANGE, idolFacesLeft } from '../world/labMap';
+import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
+import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
 import { treesInRegion, trunkRect } from '../world/trees';
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
@@ -5164,16 +5165,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          }
         }
 
-        // --- idol(stage-2隠しボス)専用ブロック(PACING_PUZZLE.md §6.28-20・社長指示で配置確定) ---
+        // --- idol(stage-2隠しボス)専用ブロック(PACING_PUZZLE.md §6.28-20・社長指示で配置確定 v0.25.2382) ---
         // campaign.tsのhiddenBoss機構(stage.hiddenBoss)には乗らない専用の独立した状態機械。
         // mimir/jormungand/skadi/thorとはbossRef(単一スロット)を共有しない(idolは「追跡ではなく
         // 常にプレイヤーから離れる」という別物の移動則を持つため)。
-        // 実体は2経路: (1) gameStore.tsのresetGameがLAB_IDOL_SPAWN(=ゴール資料Xの点対称セル)へ
-        // fixed:true/dormant:true の固定敵として1体置く(他のLAB_ENEMIESと同じ作法)。isHiddenBoss型は
-        // updateEnemiesの通常AI(起床処理含む)を素通りする(gameStore.ts:7082)ため、dormant中の待機と
-        // aggroRange+視線での起床は下のブロック内で自前に行う(「探しに行った人だけが会う」=近づくまで
-        // 何もしない、を担保する箇所)。(2) ?idolnow=1 は実機/自動検証用の強制召喚(dormantを経由せず
-        // 即chase開始。プレイヤー付近へ出す・giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
+        // 実体は2経路: (1) gameStore.tsのresetGameが屋外ラボ廊下(labDoc=ゴール資料の位置)から
+        // 原点対称に算出した座標(src/world/labIdolSpot.tsのlabIdolSpotForDoc)へ、他のガード
+        // (mkGuard)と同じ作法(fixed:true/dormant:true/homeX・Y/aggroRange=LAB_VISION_RANGE)で
+        // 固定敵として1体置く。isHiddenBoss型はupdateEnemiesの通常AI(起床処理含む)を素通りする
+        // (gameStore.ts:7082)ため、dormant中の待機とaggroRange+視線での起床は下のブロック内で
+        // 自前に行う(「探しに行った人だけが会う」=近づくまで何もしない、を担保する箇所)。
+        // (2) ?idolnow=1 は実機/自動検証用の強制召喚(dormantを経由せず即chase開始。プレイヤー付近へ
+        // 出す・giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
+        // 【教訓・旧v0.25.2381の反省】以前はこのifに`!indoor`を付けていたが、`indoor`(indoorMode)は
+        // 現行キャンペーンのどのステージでもtrueにならない(campaign.ts:219「屋内迷路モードindoorは
+        // 本作では不採用」)ため、`!indoor`は元から常にtrueで何も塞いでいなかった。よって今回この条件を
+        // 外したこと自体は無害だが、それだけでは到達可能にはならない——本当に足りなかったのは、
+        // idolを実際に使われる屋外ラボ経路(labDoc)側に湧かせる配線(上記(1))の方だった
+        // (次に読む人が同じ回り道をしないための記録)。
         if (!danceTest && !useGameStore.getState().gameWon) {
          try {
           if (FORCE_IDOL && !idolForceRef.current) {
@@ -5188,8 +5197,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             idolE.bossPhase = 1;
             idolE.bossNextActionAt = newGameTime + IDOL_ACTION_MIN_MS;
             // 設置時の向き(社長指示)をデバッグ召喚にも揃える: 出現位置とプレイヤーの左右関係だけで決める
-            // (labMap.tsのidolFacesLeftをそのまま再利用=固定配置と同じ式・値の決め打ちをしない)。
-            idolE.idolFacingLeft = idolFacesLeft({ x: pcx0 }, { x: ix });
+            // (固定配置=src/world/labIdolSpot.tsのlabIdolSpotForDocと同じ「原点/プレイヤー側を向く」式)。
+            idolE.idolFacingLeft = ix > pcx0;
             addEnemy(idolE);
             useGameStore.getState().triggerAttention(ix, iy);
           }
@@ -5199,17 +5208,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
             if (idol.dormant) {
               // 索敵(近づくまで眠っている・§6.28-20の配置意図「探しに行った人だけが会う」の担保):
-              // aggroRange 内 かつ 壁越しでない(視界)ならプレイヤーが近づいた=起床。gameStore.tsの
-              // updateEnemies dormantブロック(LAB_ENEMIESの起床=距離+segmentBlocked)と同じ作法だが、
-              // idolはisHiddenBoss型のため updateEnemies の起床処理を素通りする(gameStore.ts:7082)ので、
-              // ここで自前に行う(これが無いと「マップの反対側にいるのに撃ってくる」になる)。
+              // aggroRange(=ガードと同じLAB_VISION_RANGE)内 かつ 壁越しでない(視界)ならプレイヤーが
+              // 近づいた=起床。gameStore.tsの updateEnemies dormantブロック(LAB_ENEMIESの起床=
+              // 距離+segmentBlocked)と同じ作法だが、idolはisHiddenBoss型のため updateEnemies の
+              // 起床処理を素通りする(gameStore.ts:7082)ので、ここで自前に行う(これが無いと
+              // 「マップの反対側にいるのに撃ってくる」になる)。距離判定を先に済ませ、範囲内の時だけ
+              // 壁クエリ(狭い範囲のみ)を行うので毎フレームの常時コストは二乗比較1回だけ。
               const ddx = pcx - icx, ddy = pcy - icy;
-              const ar = idol.aggroRange ?? LAB_IDOL_AGGRO_RANGE;
+              const ar = idol.aggroRange ?? LAB_VISION_RANGE;
               const inRange = ddx * ddx + ddy * ddy <= ar * ar;
-              const idolWalls = indoor
-                ? [...labBlockingWalls(loopState.labDoors.filter(d => d.open).map(d => d.id)), ...loopState.labProps.map(p => p.rect)]
-                : [];
-              const seen = inRange && !(idolWalls.length > 0 && segmentBlocked(pcx, pcy, icx, icy, idolWalls));
+              let seen = false;
+              if (inRange) {
+                // idolの実体は屋外ラボ廊下(labTheme && !indoor)。labMap.ts屋内グリッド(indoor)は
+                // 現行キャンペーンでは到達しないが、将来のため両方の壁ソースに対応しておく。
+                const qMinX = Math.min(pcx, icx) - 50, qMaxX = Math.max(pcx, icx) + 50;
+                const qMinY = Math.min(pcy, icy) - 50, qMaxY = Math.max(pcy, icy) + 50;
+                const idolWalls = indoor
+                  ? [...labBlockingWalls(loopState.labDoors.filter(d => d.open).map(d => d.id)), ...loopState.labProps.map(p => p.rect)]
+                  : labTheme
+                    ? [...labWallsInRegion(qMinX, qMinY, qMaxX, qMaxY).map(wallRect), ...labPropsInRegion(qMinX, qMinY, qMaxX, qMaxY).map(propRect)]
+                    : [];
+                seen = idolWalls.length === 0 || !segmentBlocked(pcx, pcy, icx, icy, idolWalls);
+              }
               if (seen) {
                 useGameStore.setState(stt => ({
                   enemies: stt.enemies.map(e => e.id === idol.id

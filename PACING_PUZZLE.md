@@ -4384,10 +4384,15 @@ windupを1000msへ伸ばす必要は無く、伸ばすと社長が実機で慣�
 - **フェーズ2(HP50%)**: ②の扇が**5本**に。**③④(近距離の弱さ)は一切変えない**=読みを裏切らない(W4の精神)。
 - **武器絵は無し**。銃口フラッシュは**小glow**のみ(強glow禁止=CLAUDE.md 実測 `G12` FAIL)。
 - ★**物語**: オープニングでアイドルを撃ち殺した人物本人。**台詞・演出は本節では足さない**(素材と脚本が要る=社長裁定待ち)。
-- **配置確定(社長指示)**: 「反対方面の最奥」=`labMap.ts`の文字グリッド上でゴール資料`X`(`LAB_CLEAR_ITEM`)を
-  マップ中心に対して点対称にしたセル(`LAB_IDOL_SPAWN`・列22行9)。設置時はプレイヤーのスポーン地点基準で
-  決定論的に算出した向き(プレイヤー方向)を向く。**ただしこの経路自体が実プレイで到達するかは別問題として
-  ★未決事項に残っている**(下記参照=`labMap.ts`のグリッドは`indoorMode`専用で、stage-2は現状`indoorMode:false`)。
+- **配置確定(社長指示・v0.25.2382で再確定)**: ステージ2の実体は屋外ラボ廊下(`gameStore.ts`の
+  `labDoc`。原点=プレイヤーのスタート地点から左右どちらかへ6000〜7800px離れた位置にゴール資料が
+  ランダム配置される)。「反対方面の最奥」= その資料の座標を**原点に対して点対称**にした位置
+  (`src/world/labIdolSpot.ts`の`labIdolSpotForDoc`・純関数・テスト済み)。向きは常に原点(プレイヤー
+  のスタート地点)側を向く。到達可能性(壁帯・境界・カメラクランプ)は実装時に確認済み——`X`は
+  「Xは無制限」(`gameStore.ts:3441`)で境界なし、`Y`は資料と同じく廊下帯(±`LAB_CORRIDOR_Y_LIMIT_PX`
+  =200px)の中に収まる。**旧版(v0.25.2381)は`labMap.ts`の屋内グリッド(`indoorMode`専用=現行
+  キャンペーンのどのステージからも到達しない)に置く誤りだったため、置き場所ごと差し替えた**(旧
+  `LAB_IDOL_SPAWN`/`idolFacesLeft`/`LAB_IDOL_FACING_LEFT`/`LAB_IDOL_AGGRO_RANGE`は削除)。
 
 ---
 
@@ -4454,7 +4459,7 @@ windupを1000msへ伸ばす必要は無く、伸ばすと社長が実機で慣�
 | M61 | 【段7】**ウリ**(stage-5 ゲート2)= 逃げるのではなく懐へ入る(§6.28-17: 内径のある薙ぎ+内径なしの振り下ろし+`uri-sword` の構え/振り)【ロットL2】 | **実装済み v0.25.2375**(`src/utils/uriScript.ts`+`angelBossTick.ts`の`runUriTick`新設。新規ボスのため`?uriscript=0`は「tickを呼ばない=棒立ち」に戻すだけ。内径の描画は縁取り線での近似=実機確認項目) |
 | M62 | 【段9】**スリィエル**(stage-6 ゲート2)= 攻撃の起点が本体から離れる(§6.28-18: `suriel-ring` の常時浮遊+分離射出+挟み連携+2フェーズ)【ロットL2】 | **実装済み v0.25.2375**(`src/utils/surielScript.ts`+`angelBossTick.ts`の`runSurielTick`新設。`?surielscript=0`で棒立ちに戻る。Phase2の2本目の環は視覚専用=独立した攻撃判定は持たせていない=★未決事項に記録。本体絵との二重表示は実機確認項目) |
 | M63 | 【段11】**アクラシエル**(stage-ex1 ゲート2)= 逃げ場が方向ではなく隙間(§6.28-19: 放射棘の空きセクター+`acrasiel-spear` の設置+転移+3フェーズ)【ロットL2】 | **実装済み v0.25.2375**(`src/utils/acrasielScript.ts`+`angelBossTick.ts`の`runAcrasielTick`新設+専用store配列`acrasielSpears`。`?acrasielscript=0`で棒立ちに戻る。★未決6(stage-ex1のゲート2自体が発火しない)は未解消のため`?gateboss=1`のforce-spawn経路でのみ実機確認可) |
-| M64 | 【特】**idol**(stage-2 隠しボス)= 近づくほど安全＝全ボスの逆(§6.28-20: 距離帯で技が入れ替わる+近距離の長い硬直)【ロットL3】 | **実装済み v0.25.2377**(`src/utils/idolScript.ts`新規=純関数+テスト14件。`useGameLoop.ts`にidol専用の独立ステート機械を新設(mimir系のbossRefは共有しない・常にプレイヤーから離れるキティング)。**社長裁定v0.25.2377によりW7(カウンター)を他ボスと同じ作法で配線済み**(windup/硬直中の接触=カウンター可・`?bosscounter=0`の傘の下・idol専用フラグなし)。★未決(配線・社長裁定待ち): campaign.tsのhiddenBoss機構に乗せる設計だが、stage-2は`theme:'lab'`のため裏ボス共通ブロックの発火条件自体が`!labTheme`を要求し(既存判定・作り替えず)、通常プレイでは到達しない。加えてstage-2のlabMap.tsは12室すべてに既存用途が割り当て済みの固定グリッドで、「反対方面の最奥」に充てられる空き室が無い。実機/自動検証用に`?idolnow=1`でプレイヤー付近へ強制召喚できる経路のみ用意した。**追補(社長指示・配置確定)**: `LAB_IDOL_SPAWN`(ゴール資料Xの点対称セル・空き部屋)を`labMap.ts`に追加し`gameStore.ts`のresetGameへ他のLAB_ENEMIESと同じ作法(fixed/dormant/aggroRange130px+視線起床/fromEvent)で配線、設置時はプレイヤースポーン基準で決定論的に向きも決める(`idolFacesLeft`)。`labMap.test.ts`新規(8件)。**ただしlabMap.tsのグリッド自体が`indoorMode`専用でstage-2は`indoorMode:false`(屋外ラボスキンへ設計変更済み=DEVELOPMENT_LOG既出)のため、到達可否は未解決のまま★未決事項7-1へ持ち越し**(=`?idolnow=1`以外での到達は依然不可)) |
+| M64 | 【特】**idol**(stage-2 隠しボス)= 近づくほど安全＝全ボスの逆(§6.28-20: 距離帯で技が入れ替わる+近距離の長い硬直)【ロットL3】 | **実装済み v0.25.2377**(`src/utils/idolScript.ts`新規=純関数+テスト14件。`useGameLoop.ts`にidol専用の独立ステート機械を新設(mimir系のbossRefは共有しない・常にプレイヤーから離れるキティング)。**社長裁定v0.25.2377によりW7(カウンター)を他ボスと同じ作法で配線済み**(windup/硬直中の接触=カウンター可・`?bosscounter=0`の傘の下・idol専用フラグなし)。★未決(配線・社長裁定待ち): campaign.tsのhiddenBoss機構に乗せる設計だが、stage-2は`theme:'lab'`のため裏ボス共通ブロックの発火条件自体が`!labTheme`を要求し(既存判定・作り替えず)、通常プレイでは到達しない。加えてstage-2のlabMap.tsは12室すべてに既存用途が割り当て済みの固定グリッドで、「反対方面の最奥」に充てられる空き室が無い。実機/自動検証用に`?idolnow=1`でプレイヤー付近へ強制召喚できる経路のみ用意した。**追補1(v0.25.2381・誤り→v0.25.2382で差し替え済み)**: 当初`labMap.ts`(屋内グリッド)に置いたが、これは`indoorMode`専用の到達しないコードパスだった(★未決へ記録)。**追補2(社長裁定・v0.25.2382で解決)**: ステージ2の実体である屋外ラボ廊下(`gameStore.ts`の`labDoc`)側へ置き直した。`src/world/labIdolSpot.ts`新規=`labIdolSpotForDoc`純関数(資料の座標→原点対称のidol座標+原点を向く向き)+テスト5件。`gameStore.ts`のresetGameへ他のガード(`mkGuard`)と全く同じ作法(fixed/dormant/aggroRange=`LAB_VISION_RANGE`/fromEvent)で配線。到達可能性を確認済み(X無制限・Yは廊下帯±200pxに収まる)。**これで到達可否も解決=★未決事項7-1は削除**) |
 | M50 | ランク査定の作り直し(§6.27: 昇格=撃破の窓の半分/降格=被弾の連続時間) | **実装済み**(★未決なし。`src/utils/rankAssessor.ts`に連続査定=`tickRankPace`を追加、配線は`src/utils/directorTick.ts`。旧経路(`assessKomaDelta`/`combineCycleDelta`/`isDemoteGrade`)は削除せず査定の経路から外しただけ=komaLog/`promotionScore`用に生存。`?rank2=0`で旧経路へ復帰可。★仮値=`RANK_KILLS_PER_WINDOW_BASE`(係数2)は実測較正待ちのまま) |
 | M51 | 城ボス(ジャイアント)の行動・攻撃パターン改訂(§6.26: ソウル式テレグラフ+硬直=反撃窓+間合い出し分け+2フェーズ) | **実装済み v0.25.2361**(★未決なし=§6.26-9で全件裁定。`src/utils/giantScript.ts`+`gameStore.ts`の専用ブロックに実装、`?giantscript=0`で旧挙動へ戻せる。実機確認は社長へ持ち越し) |
 | M48 | 寄り道POI(§6.24: 病院の一般化+警察署+武器庫) | **実装済み v0.25.2354**(★未決なし。詳細は実装結果セクション参照) |
@@ -4640,37 +4645,22 @@ windupを1000msへ伸ばす必要は無く、伸ばすと社長が実機で慣�
   **実機未確認(§6のとおり途中の実機確認は行っていない)。M4完了=統合テスト待ち。**
 
 ## ★未決事項(Sonnetはここに書いて止まる)
-7. **【M54/M56/M58/M59/M64実装時に発見・以下2点のみ未解決(裁定済み4件は反映済みのため削除)】**:
-   1. **【設置セル自体は解決・ただし到達可否は未解決のまま残る=新事実】idolの設置座標(§6.28-20)を
-      「ゴール資料(X)の点対称セル」に確定した(社長指示)。** `labMap.ts`に`LAB_IDOL_SPAWN`
-      (=`center(COLS-1-xC.col, ROWS-1-xC.row)`。列22・行9)を追加し、`gameStore.ts`のresetGameが
-      `LAB_ENEMIES`と同じ作法(fixed/dormant/homeX・Y/aggroRange/fromEvent)で1体固定配置するようにした。
-      置かれる部屋([21,7,23,9])は既存ランドマーク(P/M/K/W/X/B)と重ならない空き部屋で、旧版が
-      懸念していた「12室が既存用途で埋まっていて空きが無い」問題は室を新設せず解消した(不変条件は
-      `labMap.test.ts`で機械化=点対称・床上・ランドマーク非重複)。起床(dormant解除)は
-      `useGameLoop.ts`のidol専用ブロックが`aggroRange`(=130px。既存`LAB_ENEMIES`のLv3と同値)+
-      視線判定で自前に行う(`updateEnemies`はisHiddenBoss型の起床処理を素通りするため)。
-      追加で、設置時の向きをプレイヤーのスポーン地点基準で決定論的に算出し(`idolFacesLeft`純関数)、
-      プレイヤーの方を向いて設置されるようにした(現在のマップでは左向き)。
-      **しかし到達可否そのものは未解決のまま**: `labMap.ts`のグリッド一式(`LAB_ENEMIES`/
-      `LAB_CLEAR_ITEM`/`ROOM_CELLS`含む)は`gameStore.ts`の`resetGame`で**`indoorMode`(=`indoor`
-      ローカル変数、`pendingIndoor`/`stage.indoor`由来)が`true`の時だけ**使われる経路に属する。
-      DEVELOPMENT_LOG(旧v0.25.463台/v0.25.1xxx台の履歴、直近では行33352「stage-2は`indoor:true`を
-      コメントアウトしtheme:'lab'を付与」・行33373「旧procedural迷路壁(LAB_WALLS)はもともと
-      indoorMode限定で、stage-2は屋外化済み=不使用」)のとおり、**stage-2は過去に意図的に
-      「屋内迷路(indoor)」から「屋外スクロール+ラボ見た目(theme:'lab'、indoorMode:false)」へ
-      設計変更済み**で、現在`campaign.ts`のどのステージも`indoor:true`を持たない
-      (`grep`で確認済み=`indoorMode`は「将来用」のvestigialコード)。実プレイのstage-2は
-      `labWalls.ts`(`labWallsInRegion`/`labPropsInRegion`)+`labDoc`(ランダム配置のクリア書類)を
-      使う別系統で、**`labMap.ts`のこのidol配置は今回の実装でも到達しない**(以前と同じく
-      `?idolnow=1`のデバッグ召喚のみが有効)。§6.28-20本文が前提にしていた「labMap.tsがステージ2の
-      実体」という認識自体がこの時点で古い可能性が高い。**設計判断が必要**: (a) stage-2に
-      `indoor:true`を与えてindoorモード(labMap.tsのグリッド迷路)へ戻す大きな設計変更をするか、
-      (b) idolを実際に使われている屋外ラボ系(`labWalls.ts`/`labDoc`ベースの座標系。今回のような
-      「点対称セル」という概念はグリッドが無いと成立しないため設計をやり直す必要がある)へ置き直すか、
-      (c) 別ステージへ移すか。**Sonnetは手を付けず社長裁定を仰ぐ**(campaign.tsのテーマ判定を
-      変えない指示のため)。
-   2. **idolの「実行(active)」秒数・ローリング距離・連射の扇角度は設計書の表に列が無い(叩き台)。**
+7. **【M54/M56/M58/M59/M64実装時に発見・以下1点のみ未解決(裁定済み・解決済みの計5件は反映済みのため削除)】**:
+   - **【解決済み・v0.25.2382】idolの出現経路(§6.28-20)。** v0.25.2381は`labMap.ts`の屋内グリッド
+     (`indoorMode`専用=現行キャンペーンのどのステージも`indoor:true`を持たず到達しないコードパス)
+     へ置く誤りだった(社長確認・`campaign.ts:219`「屋内迷路モードindoorは本作では不採用」)。
+     **正しい実体は屋外ラボ廊下(`gameStore.ts`の`labDoc`)**: プレイヤーのスタート地点(原点)から
+     左右どちらかへ6000〜7800px離れた位置にゴール資料が置かれる1本道。「反対方面の最奥」= その
+     資料の座標を**原点に対して点対称**にした位置(`src/world/labIdolSpot.ts`の`labIdolSpotForDoc`
+     純関数。テスト5件で点対称・向きを機械化)。`gameStore.ts`のresetGameが既存ガード(`mkGuard`)と
+     全く同じ作法(fixed/dormant/homeX・Y/aggroRange=`LAB_VISION_RANGE`=単一の出どころ/fromEvent)で
+     1体固定配置する。到達可能性を確認済み: X方向は境界なし(`gameStore.ts:3441`「Xは無制限」)、
+     Y方向は廊下帯(±`LAB_CORRIDOR_Y_LIMIT_PX`=200px)に収まり(idolのYは資料と同じ±30の範囲)、
+     壁(`labWallsInRegion`)は帯の中央に常に空きレーンを残す設計(`labWalls.ts`)のため塞がれない。
+     `useGameLoop.ts`のidol専用ブロックが`aggroRange`+視線判定で自前に起床させる(`updateEnemies`は
+     isHiddenBoss型の起床処理を素通りするため)。旧`labMap.ts`の`LAB_IDOL_SPAWN`/`idolFacesLeft`/
+     `LAB_IDOL_FACING_LEFT`/`LAB_IDOL_AGGRO_RANGE`と対応する`labMap.test.ts`は削除した。
+   1. **idolの「実行(active)」秒数・ローリング距離・連射の扇角度は設計書の表に列が無い(叩き台)。**
       §6.28-14★7で既に記録済みの他ボス(スリィエル環の実行秒数等)と同型のギャップ。
       採用した叩き台: 離脱ローリングの実行=300ms・移動距離=140px、連射の1本あたりの開き角=0.14rad、
       T6線の描画上の長さ=700px、殴りの描画長=90px(=`IDOL_PUNCH_RANGE`)。いずれも値の意味を発明したのではなく、

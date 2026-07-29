@@ -1,5 +1,64 @@
 # Development Log
 
+## v0.25.2382 — idol(stage-2隠しボス)の設置場所を差し替え(屋外ラボ廊下=原点対称)+到達可否を解決【2026-07-29 09:49 JST】
+- **社長指摘への対応。v0.25.2381は場所の選定を誤っていた**: `labMap.ts`の屋内グリッド(`indoorMode`
+  専用)へ置いたが、`indoorMode`は現行キャンペーンのどのステージも`true`にしない
+  (`campaign.ts:219`「屋内迷路モードindoorは本作では不採用」)ため、到達しないコードパスのままだった。
+  社長が実際の系(`gameStore.ts`)を読んで正しい置き場所(`labDoc`=屋外ラボ廊下)を特定し、
+  再配置の指示を受けて実装し直した。
+- **削除**: `src/world/labMap.ts`の`LAB_IDOL_SPAWN`/`idolFacesLeft`/`LAB_IDOL_FACING_LEFT`/
+  `LAB_IDOL_AGGRO_RANGE`と、対応する`src/world/labMap.test.ts`(全8件)を削除。到達しないコードパスに
+  置いたテストは「配置できている」という誤った安心を与えるだけ、という社長指摘を反映。
+- **新規 `src/world/labIdolSpot.ts`**: `labIdolSpotForDoc(doc: {x,y})` 純関数(乱数を含む`labDoc`
+  そのものではなく、資料の座標を受けて idol の座標/向きを返す形。`world/hospital.ts`の`hospitalPos`
+  と同じ流儀)。`x=-doc.x, y=-doc.y`(原点に対する点対称=「ゴール資料の真逆位置」=§6.28-0★の原文
+  「反対方面の最奥」そのもの)、`facingLeft = x > 0`(常に原点=プレイヤーのスタート地点側を向く)。
+  **新規`labIdolSpot.test.ts`(5件)**: side=+1/-1の両方で点対称の厳密一致(中点=原点)+向きの2ケースを
+  純関数レベルで固定。
+- `src/store/gameStore.ts`: `labDoc`算出の直後に`const labIdol = labDoc ? labIdolSpotForDoc(labDoc) : null;`
+  を追加。`mkIdol(spot)`を新設し、既存ガード(`mkGuard`)と**全く同じ作法**(`fixed:true`/`dormant:true`/
+  `homeX・Y`/`aggroRange`)+`fromEvent:true`+`bossState:'chase'`/`bossPhase:1`で1体固定配置。
+  **`aggroRange`は`LAB_IDOL_AGGRO_RANGE`(旧・グリッド前提の130px)を破棄し`LAB_VISION_RANGE`
+  (ガードと同じ単一の出どころ)に統一**(社長指示「単一の出どころに揃える」)。`runEnemies`の
+  `labDoc`分岐(3体のガードの後)へ`...(labIdol ? [mkIdol(labIdol)] : [])`で追加。
+- `src/hooks/useGameLoop.ts`: idolブロック上部のコメントを実装(屋外ラボ廊下+`labIdolSpotForDoc`)に
+  合わせて書き直し、**「`!indoor`は元々何も塞いでいなかった(indoorは常に false)。足りなかったのは
+  湧きの配線だった」という教訓を明記**(社長指示どおり)。`FORCE_IDOL`(`?idolnow=1`)の向き計算を
+  `labMap.ts`の(削除した)`idolFacesLeft`参照から`ix > pcx0`のインライン式に変更。
+  **dormant中の起床判定を修正**: 旧実装は`indoor`分岐だけを見ており、実際にidolが湧く屋外ラボ
+  (`labTheme && !indoor`)側の壁ソースが抜けていた(壁クエリが常に空配列になるバグ)。
+  `labWallsInRegion`/`labPropsInRegion`(`labWalls.ts`)を新規importし、`labTheme`時はプレイヤー↔idol
+  間の狭い矩形領域(±50pxパディング)だけをクエリして`segmentBlocked`へ渡すよう修正。**距離判定
+  (`inRange`)を先に評価し、範囲内の時だけ壁クエリを行う**ようにして無駄な常時コストを避けた。
+  `aggroRange`のフォールバック値も`LAB_IDOL_AGGRO_RANGE`→`LAB_VISION_RANGE`に統一。
+- **(a) 到達可能性の確認方法**: コードを読んで機械的に確認した(実機/ヘッドレス実走はCLAUDE.mdの
+  検証ポリシーどおり社長指示が無いため未実施)。①X方向: `gameStore.ts:3441`のコメント「Xは無制限」
+  (Y座標だけを`±LAB_CORRIDOR_Y_LIMIT_PX`にクランプし、Xは一切クランプしていないコードを確認)+
+  カメラのouter-boundsクランプ(`LAB_OUTER_BOUNDS`)は`if (indoor)`限定で屋外ラボには掛からないこと
+  (`useGameLoop.ts`)を確認=境界なしで任意のXへ到達可能。②Y方向: idolのYは`-labDoc.y`で、
+  `labDoc.y`の生成レンジが`-30〜+30`(`gameStore.ts`)なので idol のYも同レンジに収まり、
+  廊下の可視帯`±LAB_CORRIDOR_Y_LIMIT_PX`(=200px)に余裕を持って収まることを確認。③壁:
+  `labWalls.ts`の`labWallsInRegion`が「中央に常に68px以上の空きレーン(プレイヤー当たり判定28pxより
+  広い)を残す」設計であること(コード内コメントで明記済み・詰みなし)を確認。以上より実機を動かさず
+  コードレベルで到達可能性を確認した。
+- **(b) 純関数名とテスト内容**: `labIdolSpotForDoc`(`src/world/labIdolSpot.ts`)。テストは
+  `src/world/labIdolSpot.test.ts`(5件): ①②側(side=+1/-1)それぞれで`spot.x === -doc.x`かつ
+  `spot.y === -doc.y`の厳密一致 ③実際のlabDocレンジ(6000〜7800px・両側)を走査して中点が厳密に
+  原点(0,0)になること ④⑤向きが常に原点側を向くこと(idolが右側なら左向き・左側なら右向き)。
+- **(c) 通常プレイでの会い方**: ステージ2(研究所跡)へ出撃し、廊下を**ゴール資料が出た方角と逆方向**
+  へひたすら歩く(スタートから約6000〜7800px)。資料の位置は毎ラン左右ランダムなので、まず画面に
+  出る方角マーカー等で資料側を確認し、逆方向へ進む。idolの手前約200px(`LAB_VISION_RANGE`)まで
+  近づくと起床する。`?idolnow=1`はデバッグ用として従来どおり有効(プレイヤー付近へ即時強制召喚)。
+- **負荷スコア: 1/10**。既存ガード(`mkGuard`)と同数オーダーの固定敵+1体、dormant中の壁クエリは
+  距離判定でゲートしてから狭い範囲(±50px)のみクエリするため常時コストは実質ゼロ(圏内に入った
+  瞬間だけ小さな区画1〜2個ぶんの`labWallsInRegion`/`labPropsInRegion`呼び出し)。新しい描画方式・
+  強glowは追加していない。安全弁: 既存の`labDoc`/`mkGuard`と同じ枠組みの中に留まる。
+- **自己点検(実装精度の規律5)**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)には抵触しない。
+- 検証: `npm run typecheck`(0エラー)/ `npm run lint`(0エラー・既存の無関係warning 7件のみ)/
+  `npx vitest run`(labIdolSpot.test.ts / constitution.test.ts / labWalls.test.ts / enemyUtils.test.ts /
+  idolScript.test.ts / labAmmoPlacement.test.ts / murasameUnlock.test.ts / skills.test.ts=計134件)。
+  `npm test`/`npm run build`は社長指示が無いため未実行。
+
 ## v0.25.2381 — idol(stage-2隠しボス)の設置場所を確定+設置時の向き【2026-07-29 09:35 JST】
 - **社長指示「idolの設置場所をゴール資料の真逆位置に」+追加指示「設置時はプレイヤーの方を向かせる」への対応。**
 - `src/world/labMap.ts`: `LAB_IDOL_SPAWN = center(COLS-1-xC.col, ROWS-1-xC.row)`(ゴール資料`X`の
