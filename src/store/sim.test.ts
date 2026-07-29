@@ -99,6 +99,39 @@ describe('headless simulation invariants', () => {
     expect(s.player.health).toBeLessThanOrEqual(s.player.maxHealth);
   });
 
+  it('MOVEMENT_REWORK.md 仕様1: 速度ボーナスはランプで立ち上がり、急な切り返し/停止でゼロへ戻る(movePlayer結線の裏取り)', () => {
+    useGameStore.getState().resetGame('warrior');
+    // ランナーLv3のみ装備(P=1.20固定。マークスマンはmage専用・ウォームアップ/装備は未所持=中立の1)。
+    useGameStore.setState(s => ({ player: { ...s.player, skills: ['runner'], skillLevels: { runner: 3 } } }));
+    const baseSpeed = useGameStore.getState().player.speed; // PLAYER_BASE_SPEED(基礎速度・即応でランプ対象外)
+    const noInput: InputState = { up: false, down: false, left: false, right: false };
+    const rightInput: InputState = { up: false, down: false, left: false, right: true };
+    const leftInput: InputState = { up: false, down: false, left: true, right: false };
+    const dt = 1 / 60;
+
+    // 1フレーム目: ランプはほぼ0なので+20%はまだほとんど乗っていない(基礎速度に近い)。
+    useGameStore.getState().movePlayer(rightInput, dt);
+    const vxFrame1 = useGameStore.getState().player.vx;
+    expect(vxFrame1).toBeGreaterThan(baseSpeed * 0.99);
+    expect(vxFrame1).toBeLessThan(baseSpeed * 1.02);
+
+    // 90フレーム(≈1500ms=RAMP_FULL_MS)同方向へ走り続けるとフルランプ(+20%満額)に達する。
+    for (let i = 0; i < 89; i++) useGameStore.getState().movePlayer(rightInput, dt);
+    const vxFull = useGameStore.getState().player.vx;
+    expect(vxFull).toBeCloseTo(baseSpeed * 1.20, 0);
+
+    // 75°以上の急な切り返し(右→左=180°)で即ゼロへ戻る=基礎速度のみに戻る。
+    useGameStore.getState().movePlayer(leftInput, dt);
+    const vxAfterTurn = useGameStore.getState().player.vx;
+    expect(Math.abs(vxAfterTurn)).toBeCloseTo(baseSpeed, 0);
+
+    // 停止でもゼロへ戻る: 直後に同方向へ走ってもフレーム1からやり直しになる。
+    useGameStore.getState().movePlayer(noInput, dt);
+    useGameStore.getState().movePlayer(rightInput, dt);
+    const vxAfterStopResume = useGameStore.getState().player.vx;
+    expect(vxAfterStopResume).toBeLessThan(baseSpeed * 1.02);
+  });
+
   it('eggcarrier (ghost) scatters a 3-egg burst then holds for the CD', () => {
     useGameStore.getState().resetGame('warrior');
     const { x, y } = useGameStore.getState().player;
@@ -387,6 +420,30 @@ describe('headless simulation invariants', () => {
     expect(after.stunUntil!).toBeGreaterThan(gt); // クリでスタン=以後gameTime基準でフィニッシュ受付になる
 
     randomSpy.mockRestore();
+  });
+
+  it('MOVEMENT_REWORK.md 仕様2: skaterRiding中はtriggerCounter(近接/カウンター+同入力の各種サブ)が封印される', () => {
+    useGameStore.getState().resetGame('warrior');
+    const player = useGameStore.getState().player;
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const spawnCloseZombie = () => {
+      const z = spawnEnemyAt('zombie', pcx + 4, pcy, useGameStore.getState().gameTime);
+      z.health = 9999; // 倒れて即消滅しないように(空振り/命中どちらも観測できる状態を維持)
+      useGameStore.setState({ enemies: [z], effects: [] });
+    };
+
+    // 乗車中: スイングも当たり判定も一切出ない(swung/hit/finishすべてfalse・effectsも0件)。
+    spawnCloseZombie();
+    useGameStore.setState(s => ({ player: { ...s.player, skaterRiding: true, counterCooldownEnd: 0 } }));
+    const whileRiding = useGameStore.getState().triggerCounter();
+    expect(whileRiding).toEqual({ swung: false, hit: false, finish: false, killed: 0 });
+    expect(useGameStore.getState().effects.length).toBe(0);
+    expect(useGameStore.getState().enemies[0].health).toBe(9999); // ダメージも一切乗らない
+
+    // 降車すれば同じ状況で即座に通常どおり振れる(「降りて即反撃」が成立することの裏取り)。
+    useGameStore.setState(s => ({ player: { ...s.player, skaterRiding: false, counterCooldownEnd: 0 } }));
+    const afterDismount = useGameStore.getState().triggerCounter();
+    expect(afterDismount.swung).toBe(true);
   });
 
   it('pumpkin jump lands clamped to PUMPKIN_JUMP_MAX_DIST from the takeoff point (社長採用M16: ボット実測350px)', () => {

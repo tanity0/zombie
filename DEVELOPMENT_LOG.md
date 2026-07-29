@@ -1,5 +1,103 @@
 # Development Log
 
+## v0.25.2443 — MOVEMENT_REWORK.md 実装(M-SPD1): 速度ランプ+切り返しリセット / スケーター乗車中の攻撃封印【2026-07-30 01:40 JST】
+仕様書どおり実装(サブエージェント=Sonnet)。仕様・数値の変更判断はせず、MOVEMENT_REWORK.mdの数値
+(RAMP_RESET_ANGLE_DEG=75° / RAMP_FULL_MS=1500ms)をそのまま実装した。
+
+### 仕様1: 速度ランプ+切り返しリセット
+- 新設 `src/utils/speedRamp.ts`(純関数+state・副作用なし)。`SpeedRampState{sustainMs,lastDirX,lastDirY}`、
+  `stepSpeedRamp`(!moving→0 / 75°以上の方向転換→0 / それ以外はsustainMs+=dtMs)、
+  `rampFracOf`/`effectiveRampFrac`(`?speedramp=0`で常時1=旧挙動)、`rampedBonusMult(P,rampFrac)=1+(P-1)×rampFrac`。
+  ユニットテスト `src/utils/speedRamp.test.ts`(10件・全PASS): 立ち上がり(1500msでrampFrac=1)/
+  75°境界リセット(ちょうど75°でも0へ)/緩いカーブ維持(10°刻みの旋回はリセットしない)/停止リセット/
+  動き出し1フレーム目は前回方向が無いためリセット判定されない/フラグ素通し(enabled=falseは常に1)。
+- **P(ランプ対象=倍率の積)に入れたもの**: `skillRunnerSpeedMult`(ランナー、リロード中は+10%込みの
+  reloading版を使用)/ `marksmanSpeedMult`(マークスマン、後述の統合により時間条件を落として mage なら
+  常に1.2)/ `skillWarmUpSpeedMult`(ウォームアップ)/ `player.equipBonus?.moveSpeedMult`(装備・体/機動系)。
+- **入れなかったもの**: `player.speed`(PLAYER_BASE_SPEED=基礎速度・即応)/ `RELOAD_MOVE_SPEED_MULT`
+  (現在1のno-op定数だが「ペナルティ」枠なのでボーナスのランプ対象外のまま外側に残置)/
+  スケーターの×3(指示どおり=乗車という自前条件+慣性が個性。移動速度式では基礎速度×スケーター倍率×
+  `rampedBonusMult(P,rampFrac)`という並びで、スケーター倍率は常にそのまま乗る)。
+  敵側の速度は一切触っていない。
+- 実装箇所: `src/store/gameStore.ts` の `movePlayer`(gameStore.ts:3580〜)。入力方向(`swipeDirection`
+  またはup/down/left/right)だけからrampの方向/moving判定を作り(gameStore.ts:3583-3593)、ダッシュ/
+  ワイヤー/被弾ノックバック等の強制移動(実座標の変化)は一切見ない。`stepSpeedRamp`の結果は
+  `player.speedRampSustainMs/speedRampDirX/speedRampDirY`(新設フィールド・`types/game.ts`)へ焼き込み、
+  次tickへ持ち越す(resetGame/初期stateとも0で初期化)。
+- **状態の置き場所はPlayerオブジェクト**(モジュール状態ではなく)。理由: 既存の`marksmanMovingSince`
+  (同じ「入力方向への連続移動」を追跡する既存フィールド)がPlayer側にあり、resetGameの一括初期化
+  ロジックにそのまま相乗りできる。モジュール変数だとresetGame漏れや複数インスタンス(将来の分身/
+  ゴースト等)との混線リスクがある。
+- **Load score: 1/10(無視できる)**。movePlayerは毎tick1回呼ばれる関数で、追加分は
+  ベクトルのなす角(Math.acos1回)+スカラー演算数個のみ。新規ループ・新規配列・GCを増やす確保は無い。
+
+### マークスマン統合の差分(旧個別条件→共通ランプへ)
+- 旧: `marksmanSpeedMult(player, gameTime)` が `player.isMoving && marksmanMovingSince>0 &&
+  gameTime-marksmanMovingSince>=MARKSMAN_MOVE_BUFF_MS(2000ms)` を満たす時だけ即座に1.2倍(それ以外1)。
+  `MARKSMAN_MOVE_BUFF_MS`定数は削除(他に参照箇所なし・grep確認済み)。
+- 新: `marksmanSpeedMult(player)` は時間を見ず、mageクラスなら常に1.2を返す(引数からgameTime削除)。
+  「立ち上がりに時間がかかる」という体験は、この値がPに入って共通ランプ(1500ms・75°リセット)に
+  乗ることで再現される——**旧2000ms/即時発動・即時解除から、新1500ms/緩やかなランプへ変わった**
+  (意図どおりの一本化。数値としては2000ms→1500msへ短縮=仕様1のRAMP_FULL_MSに完全に合流)。
+- 頭上マーク通知(`marksmanRangeFxAt`・pixiSceneの`updateMarksmanRangeMark`)は据え置いたまま、
+  発火条件だけ「mage && isMoving && rampFrac>=1」に差し替えた(gameStore.ts:3800-3804)。
+  debounceキー(`marksmanRangeFxShownFor`)は引き続き`marksmanMovingSince`(streak開始時刻)を使う
+  ——この値自体は仕様1と無関係にそのまま残置(スケーターバッシュの発動条件=1秒連続移動判定でも
+  引き続き使われているため)。
+
+### 仕様2: スケーター乗車中の攻撃封印(封印3箇所)
+`SKATER_LOCK_ENABLED`(`?skaterlock=0`で無効化・gameStore.tsでexport)を3箇所で参照。
+1. **triggerCounter(近接/カウンターの入口)**: `src/store/gameStore.ts:4094`。`isInReturnCircle`の
+   早期returnの直後に`if (SKATER_LOCK_ENABLED && player.skaterRiding) return {swung:false,...}`を追加。
+   この関数内で発火する drone-boomerang/センサー地雷/フレアガン/ジャンクウェポン/タレット反転/
+   刀・鞭カウンターも同じ早期returnの後段にあるため、まとめて封印される。
+2. **銃の自動発砲入口**: `src/hooks/useGameLoop.ts:5798`(`skaterLocked`変数)→ 5800行目の
+   `if (activeGun && !katanaActive && !skaterLocked && activeGun.category !== 'phill')` へ合流。
+   `fireWeapon()`呼び出し自体をスキップする(既存の刀モード封印と同じ形)。
+3. **サブウェポン発動入口**: `src/hooks/useGameLoop.ts:5868`。既存の`inReturnCircle`変数の代入式に
+   `|| (SKATER_LOCK_ENABLED && subWeaponPlayer.skaterRiding)`を合流させ、これを参照する全11箇所
+   (heavy-grenade/marksman-trap/striker-quick-mag/dog/decoy/shield/turret/molotov/support-sniper/
+   first-aid-kit/fire-knife/homingロック取得)をまとめて封印。
+- 乗車トグル自体・慣性・×3倍率は不変(triggerSkaterRide/triggerSkaterDismountは未変更)。
+- 見た目: `src/pixi/pixiScene.ts:8169`。近接スイング重ね絵(playerKnife/playerKnifeSlash/
+  playerKnifeTrail/playerMeleeWpn)の表示条件に`!p.skaterRiding`を追加(triggerCounterが封印済みで
+  meleeSwingAtは通常更新されないが、乗車直前の残りスイングも含めて出さない保険)。
+
+### 封印3箇所のテスト
+- **triggerCounter**: `src/store/sim.test.ts`に自動テストを追加(store統合テスト・PASS)。
+  `player.skaterRiding=true`で近くの敵に`triggerCounter()`→`{swung:false,hit:false,finish:false,
+  killed:0}`・`effects.length===0`・敵HP不変を確認。直後に`skaterRiding=false`へ戻すと通常どおり
+  `swung:true`になることも確認(「降りて即反撃」の裏取り)。
+- **銃の自動発砲入口 / サブウェポン発動入口**: どちらも`useGameLoop`(Reactフック・タイマー/
+  Date.now/オーディオ依存)のtick内にあり、このプロジェクトに`useGameLoop`をrenderHookで直接
+  駆動する既存テスト基盤が無い(grep確認: `renderHook`/`fireWeapon(`の直接テストは0件)。
+  純関数化もできない(`skaterLocked`/`inReturnCircle`はどちらも1行のAND/OR合成で、事実上その場の
+  配線そのもの)ため、**手動確認手順を残す**:
+  1. 実機/ブラウザでスケーターを装備してラン開始。
+  2. ダブルタップで乗車 → 敵の近くで自動発砲・近接タップ(カウンター)・サブウェポン入力(近接ボタン/
+     長押し系)をそれぞれ試し、いずれも発動しない(弾/近接エフェクト/サブのCDが動かない)ことを確認。
+  3. 降車 → 同じ入力で即座に発動することを確認(封印がリング解除されている=誤って恒久ロックしていないか)。
+  4. `?skaterlock=0`を付けて再訪 → 乗車中でも発砲/カウンター/サブが通常どおり発動することを確認
+     (復帰フラグが機能しているか)。
+  この手順はテストチャット(TEST_HANDOFF/)向けの依頼にもそのまま使える。
+
+### 可視化(実機で分かる目印)
+- **フルランプ時だけ既存の速度線エフェクトを追加**(`src/pixi/pixiScene.ts`の`syncSpeedLines`)。
+  `player.isMoving && player.speedRampSustainMs>=RAMP_FULL_MS`の間、既存の固定プール(8本・
+  pooled sprite・新規テクスチャなし)を突進/カウンターパルスと共用し、控えめなα
+  (`RAMP_SPEED_LINE_ALPHA=SPEED_LINE_MAX_ALPHA×0.45`)で常時表示する。パルスと同時に生きていれば
+  大きい方のαを採用。**Load score 1/10**(既存プールの再利用・新規描画コールもテクスチャ確保も無い
+  =CLAUDE.mdの「image/ring等の安全な区分」と同じ形)。
+
+### 検証結果
+- `npm run typecheck`: エラー0。
+- `npm run lint`: エラー0(既存の警告8件のみ・本変更と無関係)。
+- `npx vitest related`(変更ファイル起点): 14ファイル/252件PASS(4 skip)。うち新規: `speedRamp.test.ts`
+  10件、`sim.test.ts`に2件追加(ランプ結線+skaterRiding封印)。既存の playtest bot(M9)スモーク・
+  M16/M17/M19/M26回帰も関連グラフに含まれ全PASS(NaN/クラッシュなし)。
+  **社長指示によりビルド/フルテストスイートは実行していない**(Testing policyどおり)。
+- ★未決事項: なし(仕様書の数値・条件をそのまま実装。改善案があればここではなく提案のみ別途)。
+
 ## v0.25.2442 — 移動速度の再設計を仕様化(MOVEMENT_REWORK.md)+社長裁定2件【2026-07-30 01:15 JST】
 - **社長裁定①「1はおけ」**: 速度ボーナスの**ランプ+切り返しリセット**方式で確定
   (数値は下げない/廃止しない。ボーナスは同方向へ1.5秒走ってフル、75°以上の転換か停止でゼロ)。

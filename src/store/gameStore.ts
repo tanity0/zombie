@@ -23,6 +23,7 @@ import {
   recordDamageDealt, recordFinisherKill, recordMeleeSwing,
 } from '../utils/botTelemetry';
 import { resetPlayerTraits } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1
+import { stepSpeedRamp, effectiveRampFrac, rampedBonusMult } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -167,6 +168,13 @@ export const WALL_ENABLED = typeof window === 'undefined' || new URLSearchParams
 // `?spawnclamp=0`で従来の挙動(帯の外にも沸ける)へ戻せる。プレイヤー移動側のクランプ自体は対象外
 // (常に有効=変わらない)。addPickup(アイテム着地)と洋館通路(corridorMode)の通常敵湧きが読む。
 export const SPAWN_CLAMP_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('spawnclamp') !== '0';
+// MOVEMENT_REWORK.md 仕様1(速度ボーナスのランプ+切り返しリセット・既定ON): `?speedramp=0`で
+// 旧挙動(ボーナス即時全開)へ復帰。movePlayer側が effectiveRampFrac() 経由で参照する。
+const SPEED_RAMP_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('speedramp') !== '0';
+// MOVEMENT_REWORK.md 仕様2(スケーター乗車中の攻撃封印・既定ON): `?skaterlock=0`で旧挙動(乗車中も
+// 発砲/カウンター/サブウェポン発動が可能)へ復帰。triggerCounter(gameStore)とサブ発動/自動発砲の
+// 入口(useGameLoop)が共通で読む。
+export const SKATER_LOCK_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('skaterlock') !== '0';
 // PACING_PUZZLE.md §5.23 M22 Group A(A3・既定ON): 全キル(近接/銃/接触/爆発共通)の死亡ポップ
 // (小リング+方向性スプレー・spawnSpray流用)。`?deathpop=0`で無効化。近接(grantMeleeKillRewards)・
 // 銃/接触/爆発(damageEnemy)の両キル経路が同名パラメータを各自読む(既存ammosmart等と同じ流儀)。
@@ -1077,11 +1085,14 @@ export const strikerMeleeMult = (player: Player): number => {
 // スカベンジャー: 弾薬取得後3秒、銃ダメージ ×1.1。
 export const scavengerGunMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'necromancer' && gameTime < player.scavengerBuffUntil ? 1.1 : 1;
-// マークスマン: 2秒以上連続移動すると移動速度 ×1.2(停止で即解除。社長指示で発動 3秒→2秒)。
-export const MARKSMAN_MOVE_BUFF_MS = 2000;
-export const marksmanSpeedMult = (player: Player, gameTime: number): number =>
-  player.characterClass === 'mage' && player.isMoving && player.marksmanMovingSince > 0 &&
-  gameTime - player.marksmanMovingSince >= MARKSMAN_MOVE_BUFF_MS ? 1.2 : 1;
+// マークスマン: 移動速度 ×1.2(mageクラス固定)。
+// MOVEMENT_REWORK.md 仕様1(社長裁定v0.25.2442)で、旧来の個別条件(2秒以上連続移動で即発動・
+// 停止で即解除)は廃止し、共通の速度ランプ(src/utils/speedRamp.ts)へ統合した。この関数自体は
+// もう時間を見ない(常時 mage なら 1.2)——「効くまでの立ち上がり」は呼び出し側(movePlayer)が
+// 対象倍率の積 P に含めてランプへ渡すことで表現する。marksmanMovingSince(連続移動の開始時刻)は
+// スケーターバッシュの発動条件と頭上マーク通知の debounce キーとして引き続き使われるため残置。
+export const marksmanSpeedMult = (player: Player): number =>
+  player.characterClass === 'mage' ? 1.2 : 1;
 // ヘビーガンナー: 同一攻撃で2体以上に当てた後3秒、すべての爆発範囲 ×1.1。
 export const heavyGunnerExplosionMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'warrior' && gameTime < player.heavyGunnerExpBuffUntil ? 1.1 : 1;
@@ -3287,6 +3298,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     skillLevels: {},
     fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0, slasherReach: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
+    speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
     knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
     seekerUntil: 0, seekerCdUntil: 0,
@@ -3565,19 +3577,54 @@ export const useGameStore = create<GameState>((set, get) => ({
       const recovering = !wireDashing && !dashing && nowMs < player.katanaRecoveryUntil;
       // 四神舞フリックの盾バッシュ風スライド(入力を無視して固定方向へ短く滑る)。
       const sliding = !wireDashing && !dashing && !recovering && nowMs < player.shijinSlideUntil;
+      // 速度ランプ(MOVEMENT_REWORK.md 仕様1・社長裁定v0.25.2442): 「プレイヤーの入力方向」だけを
+      // 見て、同じ方向へ走り続けた時間で速度ボーナスを立ち上げる。ダッシュ/ワイヤー/被弾ノックバック等の
+      // 強制移動による実座標の変化では判定しない(下のtx/tyとは別に、素の入力だけをここで取り出す)。
+      let rampInX = 0;
+      let rampInY = 0;
+      if (swipeDirection) {
+        rampInX = swipeDirection.x;
+        rampInY = swipeDirection.y;
+      } else {
+        if (input.up) rampInY -= 1;
+        if (input.down) rampInY += 1;
+        if (input.left) rampInX -= 1;
+        if (input.right) rampInX += 1;
+      }
+      const rampMoving = Math.hypot(rampInX, rampInY) > 0;
+      const nextSpeedRamp = stepSpeedRamp(
+        { sustainMs: player.speedRampSustainMs, lastDirX: player.speedRampDirX, lastDirY: player.speedRampDirY },
+        { dtMs: deltaTime * 1000, moving: rampMoving, dirX: rampInX, dirY: rampInY },
+      );
+      const rampFrac = effectiveRampFrac(nextSpeedRamp, SPEED_RAMP_ENABLED);
+
       const moveSpeed = wireDashing
         ? player.wireDashSpeed
         : dashing
         ? KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000)
         : recovering ? 0
         : sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000)
-        // スキル: スケーター = 通常歩行の移動速度 ×3(特殊ロコモーションは対象外。
-        // 社長指示で段階的に強化: 2→3=1.5倍)。マークスマン = 3秒連続移動で ×1.2(通常歩行/リロード移動に乗る)。
-        // 装備(体・機動系)の移動速度倍率は通常歩行/リロード移動に乗る(特殊ロコモーションは対象外)。中立=1。
-        // スキル: ランナー = 通常歩行/リロード移動の移動速度 +10/15/20%(Lv)。リロード中はさらに+10%(§6.8 M31)。
-        // スキル: ウォームアップ = 出撃から60秒間、移動速度+10%(§6.8 M31)。
-        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) * skillRunnerSpeedMult(player, true) * marksmanSpeedMult(player, state.gameTime) * skillWarmUpSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1)
-        : player.speed * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) * skillRunnerSpeedMult(player) * marksmanSpeedMult(player, state.gameTime) * skillWarmUpSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
+        // スキル: スケーター = 通常歩行の移動速度 ×3(特殊ロコモーションは対象外。社長指示で段階的に
+        // 強化: 2→3=1.5倍)。乗車という自前の条件+慣性が個性=ランプ対象外(即時のまま)。
+        // マークスマン(mage)=×1.2 / ランナー=通常+10/15/20%(Lv・リロード中さらに+10%・§6.8 M31)/
+        // ウォームアップ=出撃60秒間+10%(§6.8 M31)/ 装備(体・機動系)の移動速度倍率 → これらは
+        // 「対象倍率の積 P」として MOVEMENT_REWORK.md 仕様1のランプに乗る(同方向へ RAMP_FULL_MS
+        // 走り続けてボーナス満額。75°以上の切り返し/停止でゼロへ)。基礎速度(player.speed)・
+        // RELOAD_MOVE_SPEED_MULT・スケーター×3はランプ対象外=即応のまま。
+        // マークスマンの旧個別条件(2秒連続移動で即発動)はこの共通ランプへ統合して廃止した
+        // (marksmanSpeedMultはもう時間を見ない・立ち上がりはランプが担う)。`?speedramp=0`で
+        // 旧挙動(ボーナス即時全開)へ復帰。
+        : reloading
+        ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) *
+          rampedBonusMult(
+            skillRunnerSpeedMult(player, true) * marksmanSpeedMult(player) * skillWarmUpSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1),
+            rampFrac,
+          )
+        : player.speed * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) *
+          rampedBonusMult(
+            skillRunnerSpeedMult(player) * marksmanSpeedMult(player) * skillWarmUpSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1),
+            rampFrac,
+          );
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
@@ -3746,10 +3793,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
 
       // キャラ固有 マークスマン: 連続移動の開始時刻を追跡(停止で0=解除)。動き出した瞬間にだけ更新。
+      // (スケーターバッシュの発動条件=SKATER_BASH_RUN_MS判定でも使う。速度倍率自体からは分離済み。)
       const marksmanMovingSince = isMoving ? (player.isMoving ? player.marksmanMovingSince : state.gameTime) : 0;
-      // 速度上昇(移動2s+)が発動した瞬間=この streak で初めて 2秒を超えたフレームで頭上マークを出す。
-      const marksmanRangeActive = player.characterClass === 'mage' && isMoving &&
-        marksmanMovingSince > 0 && state.gameTime - marksmanMovingSince >= MARKSMAN_MOVE_BUFF_MS;
+      // 速度上昇が発動した瞬間=共通ランプが満額(rampFrac>=1)に達したフレームで頭上マークを出す。
+      // 旧・個別条件(2秒連続移動)は仕様1で共通ランプへ統合したため、フル判定もランプ側に合わせた。
+      const marksmanRangeActive = player.characterClass === 'mage' && isMoving && rampFrac >= 1;
       const marksmanProc = marksmanRangeActive && state.marksmanRangeFxShownFor !== marksmanMovingSince;
 
       // PHILL銃: 狙いサークルの「吸い付き」。基準=プレイヤー中心+aim×190。近い敵の頭(SNAP半径内)が
@@ -3800,6 +3848,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           direction,
           isMoving,
           marksmanMovingSince,
+          speedRampSustainMs: nextSpeedRamp.sustainMs,
+          speedRampDirX: nextSpeedRamp.lastDirX,
+          speedRampDirY: nextSpeedRamp.lastDirY,
           phillReticleDX,
           phillReticleDY,
           phillSnapEnemyId,
@@ -4036,6 +4087,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     } = get();
     // 帰還サークル内では攻撃停止(置き攻撃の出入りハメ防止)。
     if (isInReturnCircle(player, get().returnCircle)) return { swung: false, hit: false, finish: false, killed: 0 };
+    // MOVEMENT_REWORK.md 仕様2(社長確定v0.25.2442): スケーター乗車中は攻撃封印(例外なし)。
+    // この早期returnで近接/カウンター/ここから発動する各種サブ(ドローンブーメラン/センサー地雷/
+    // フレアガン/ジャンクウェポン)もまとめて止まる。降車は既存トグルのまま即時=「降りて即反撃」は成立。
+    // 復帰フラグ `?skaterlock=0`。
+    if (SKATER_LOCK_ENABLED && player.skaterRiding) return { swung: false, hit: false, finish: false, killed: 0 };
     // 訓練(M0)の封印(社長指示v0.25.2293): **近接チュートリアルで解禁されるまで振れない**。
     // 教わっていない技が先に暴発すると、説明と体験の順序が崩れる(=台本が成立しない)。
     if (!get().m0Unlocked.melee) return { swung: false, hit: false, finish: false, killed: 0 };
@@ -12040,6 +12096,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           skillLevels: runSkillLevels,
           fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0, slasherReach: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
+    speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
           knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
           seekerUntil: 0, seekerCdUntil: 0,

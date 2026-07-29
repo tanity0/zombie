@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2443',
+    items: [
+      '走り続けると速度装備の効果が乗り、急な方向転換で一旦切れるようになりました。',
+      'スケボーに乗っている間は攻撃できなくなりました。',
+    ],
+  },
+  {
     version: '0.25.2442',
     items: [
       'ゲーム内容の変更はありません(移動速度の再設計仕様を確定)。',

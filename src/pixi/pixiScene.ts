@@ -54,6 +54,7 @@ import {
 } from '../utils/supportSniper';
 import type { FlareGunFlare } from '../utils/flareGun';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
+import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1の可視化(フルランプ速度線)
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
 import { contextZoomTarget, isLargeForZoom, ZOOM_MIN_ABS } from '../utils/cameraZoom';
@@ -1233,6 +1234,11 @@ const SPEED_LINE_THICKNESS = 5;      // screen px(細い帯)
 const SPEED_LINE_DIST_FRAC = 0.62;   // 画面対角の半分に対する配置距離(画面端寄り)
 const SPEED_LINE_FADE_MS = 90;       // 終了間際にこのmsで線形フェード(ポップインは省略=短命なので不要)
 const SPEED_LINE_MAX_ALPHA = 0.55;
+// MOVEMENT_REWORK.md 仕様1の可視化: フルランプ中(同方向へ走り続けて速度ボーナス満額)だけ、
+// 突進/カウンターと同じ固定プールを流用して常時薄く速度線を出す(新規描画経路・新規テクスチャなし
+// =CLAUDE.md負荷規律のimage/ring等と同じ「pooled sprite使い回し」区分。Load score 1/10)。
+// 突進の一瞬のパルスと見分けが付くよう最大α を下げる。ランプが切れた瞬間に他条件が無ければ即消灯。
+const RAMP_SPEED_LINE_ALPHA = SPEED_LINE_MAX_ALPHA * 0.45;
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
 // (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
@@ -8158,7 +8164,9 @@ export class PixiScene {
     const meleeKey = p.weapons.find(w => w.isMelee)?.key;
     const wtex = meleeKey ? getTexture(`weapons/${meleeKey}`) : null;
     if (this.playerKnifeSetup) {
-      if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+      // MOVEMENT_REWORK.md 仕様2: スケーター乗車中は近接封印(triggerCounter側)なので
+      // meleeSwingAtは基本更新されないが、乗車直前の残りスイングも含めて構え武器を出さない。
+      if (!p.skaterRiding && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
         const kt = meleeSwingEase(sinceSwing / swingWindowMs); // ゆっくり→速く→ゆっくり(§5.22-追補でスロー中は伸長)
         // 右/左だけ(上下に撃っても水平成分で決定)。pure縦は直近の向き(face)。
         let kax = aimx, kay = aimy;
@@ -13131,6 +13139,9 @@ export class PixiScene {
   // 突進(刀の一閃ダッシュ/ワイヤーアンカーの高速移動)またはカウンター成立直後だけ、画面端寄りに
   // 速度線を出す(常時ONではない)。screen-space(uiLayer)固定なのでズーム引き(CONTEXT_ZOOM_MIN)でも
   // 常に画面内=カリング判定は不要。`?speedline=0`で無効化。
+  // MOVEMENT_REWORK.md 仕様1の可視化(追記): 上記のパルスに加えて、フルランプ中(同方向へ
+  // RAMP_FULL_MS走り続けて速度ボーナス満額)は薄いαで常時出す。パルスとフルランプが同時に
+  // 生きていれば大きい方のαを採用(triggerShakeと同じ「重なったら強い方」の考え方)。
   private syncSpeedLines(player: Player, now: number) {
     if (!SPEEDLINE_ENABLED) {
       for (const sp of this.speedLineSprites) sp.visible = false;
@@ -13140,11 +13151,15 @@ export class PixiScene {
     const remain = speedLineRemainingMs(
       now, player.katanaDashUntil, player.wireDashUntil, player.lastCounterSuccessTime, PLAYER_COUNTER_MS,
     );
-    if (remain <= 0) {
+    const rampFull = player.isMoving && player.speedRampSustainMs >= RAMP_FULL_MS;
+    if (remain <= 0 && !rampFull) {
       for (const sp of this.speedLineSprites) sp.visible = false;
       return;
     }
-    const alpha = speedLineAlpha(remain, SPEED_LINE_FADE_MS, SPEED_LINE_MAX_ALPHA);
+    const alpha = Math.max(
+      speedLineAlpha(remain, SPEED_LINE_FADE_MS, SPEED_LINE_MAX_ALPHA),
+      rampFull ? RAMP_SPEED_LINE_ALPHA : 0,
+    );
     const cx = this.screenW / 2, cy = this.screenH / 2;
     const dist = Math.hypot(cx, cy) * SPEED_LINE_DIST_FRAC;
     for (let i = 0; i < this.speedLineSprites.length; i++) {

@@ -51,7 +51,8 @@ import {
   M0_FORCED_CRIT_AT_HIT,
   M0_CONVO_ADVANCE_LIMIT_X,
   GIANT_SCRIPT_ENABLED,
-  SPAWN_CLAMP_ENABLED
+  SPAWN_CLAMP_ENABLED,
+  SKATER_LOCK_ENABLED
 } from '../store/gameStore';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -5793,8 +5794,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 進むので、刀を外す実装が将来入っても副作用が残らない)。
         const katanaActive = isKatanaMode(postReloadPlayer);
         const activeGun = getActiveGun(postReloadPlayer);
+        // MOVEMENT_REWORK.md 仕様2: スケーター乗車中は銃の自動発砲も封印(?skaterlock=0で復帰)。
+        const skaterLocked = SKATER_LOCK_ENABLED && postReloadPlayer.skaterRiding;
         // PHILL銃は自動射撃しない(指離しの手動発砲のみ=firePhillShot)。
-        if (activeGun && !katanaActive && activeGun.category !== 'phill') {
+        if (activeGun && !katanaActive && !skaterLocked && activeGun.category !== 'phill') {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             // handgun系のうちマシンピストル(=サブマシンガン, handgun-t3)だけ専用音、それ以外(ハンドガン/二丁)はhandgun-fire。
@@ -5858,7 +5861,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 刀装備中は他のサブウェポンを発動させない(許可制、現状すべて停止)。
         const subWeaponPlayer = useGameStore.getState().player;
         // 帰還サークル内では攻撃停止=設置/投擲系サブも発動しない(置き攻撃の出入りハメ防止)。
-        const inReturnCircle = isInReturnCircle(subWeaponPlayer, useGameStore.getState().returnCircle);
+        // MOVEMENT_REWORK.md 仕様2(社長確定v0.25.2442)でスケーター乗車中のサブウェポン発動封印も
+        // ここへ合流させた(以下このブロック内の全サブ=heavy-grenade/marksman-trap/striker-quick-mag/
+        // dog/decoy/shield/turret/molotov/support-sniper/first-aid-kit/fire-knife/homingロック取得が
+        // 共通でこの1変数のnot判定を通る=「サブ発動入口」を1箇所で塞ぐ)。`?skaterlock=0`で復帰。
+        const inReturnCircle = isInReturnCircle(subWeaponPlayer, useGameStore.getState().returnCircle) ||
+          (SKATER_LOCK_ENABLED && subWeaponPlayer.skaterRiding);
         if (
           !inReturnCircle &&
           subWeaponPlayer.subWeapons.includes('heavy-grenade') &&

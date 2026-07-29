@@ -110,6 +110,12 @@ export interface Player {
   scavengerBuffUntil: number;   // スカベンジャー(necromancer): 弾薬取得で銃ダメ+10%(gameTime)
   marksmanMovingSince: number;  // マークスマン(mage): 連続移動の開始gameTime。0=停止中
   heavyGunnerExpBuffUntil: number; // ヘビーガンナー(warrior): 同一攻撃2体以上で爆発範囲+10%(gameTime)
+  // MOVEMENT_REWORK.md 仕様1: 速度ボーナスのランプ(src/utils/speedRamp.ts の SpeedRampState を
+  // ここへ焼き込む)。movePlayer が毎tick更新。プレイヤーの「入力方向への連続移動」を追跡する
+  // marksmanMovingSince と同じ理由でPlayerオブジェクト側に置く(resetGameで一括初期化される)。
+  speedRampSustainMs: number;
+  speedRampDirX: number;
+  speedRampDirY: number;
   // PHILL銃の狙いサークル(レティクル)の吸い付き。プレイヤー中心からのオフセット(px)＋スナップ中の敵ID。
   // movePlayer が毎フレーム算出 → 描画(pixiScene)と発砲(firePhillShot)で共有。
   phillReticleDX: number;
