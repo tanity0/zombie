@@ -6037,6 +6037,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const state = useGameStore.getState();
               const eligiblePickups = state.pickups
                 .filter(p => p.type !== 'health' || state.player.health < state.player.maxHealth)
+                // クイックマガジンはドッグに拾わせない(社長指示v0.25.2409)。使うタイミングを
+                // プレイヤーが選ぶ拾い物なので、ドッグが勝手に回収すると効果が空撃ちになる。
+                .filter(p => p.type !== 'quick-magazine')
                 .filter(p => {
                   if (
                     p.throwStartAt !== undefined &&
@@ -6094,7 +6097,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const playerY = state.player.y + state.player.height / 2;
             const eligiblePickups = state.pickups
               // 目標アイテム(カードキー/武器箱/クリアアイテム)はドッグで遠隔回収させない(壁越し誤発火防止)。
-              .filter(p => p.type !== 'card-key' && p.type !== 'weapon-crate' && p.type !== 'lab-clear-item')
+              // クイックマガジンも対象外(社長指示v0.25.2409)。**回収側(collectAt)だけでなくここでも外す**=
+              // 外し忘れると「クイックマガジンへ走って行って何も拾わずCDだけ消費する」空振りになる。
+              .filter(p => p.type !== 'card-key' && p.type !== 'weapon-crate' && p.type !== 'lab-clear-item' && p.type !== 'quick-magazine')
               .filter(p => p.type !== 'health' || state.player.health < state.player.maxHealth)
               .filter(p => {
                 if (

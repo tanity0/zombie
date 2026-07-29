@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2409',
+    items: [
+      'ドッグがクイックマガジンを拾わなくなりました(取りに行くこともしません)。使うタイミングは自分で選べます。',
+    ],
+  },
+  {
     version: '0.25.2408',
     items: [
       'カウンターを決めた瞬間にボスの砂埃や斬撃の演出が途中で消えていたのを、最後まで出し切るようにしました。',

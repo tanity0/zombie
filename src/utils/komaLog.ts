@@ -81,11 +81,25 @@ let records: KomaLogRecord[] = [];
 let live: KomaLiveSnapshot | null = null;
 let liveHits = 0;
 let loggedThisRun = false;
+/**
+ * **ランク別の滞在時間と撃破数**(v0.25.2409・実機1本目で判明した穴の対策)。
+ *
+ * なぜ要るのか: `windowsAtRank`/`windowsClearing` は名前どおり**「このランクに来てから」の
+ * カウンタで、ランクが動くたびに0へリセットされる**(rankAssessor の RankWindowState)。
+ * そのため実機1本目(v0.25.2409受領)は R7 まで上がって R6 へ落ちた直後に死に、
+ * `windowsAtRank:0 / clearRatePct:0` = **較正の主役が丸ごと空**という結果になった。
+ * ラン全体の平均(kills/runMinutes)は取れるが、それでは
+ * **「ランクrに居る間に10秒あたり何体倒せたか」**が分からない。目標値
+ * `V(r) = RANK_KILLS_PER_WINDOW_BASE × (1000 / CD_BASIS_MS[r])` はランクごとに違うので、
+ * 較正にはランク別の実測が要る。ここでランクごとに積むことで、1ランで全ランクぶんの
+ * 実測が同時に取れる(ランクが動いても消えない)。
+ */
+const perRank = new Map<number, { ms: number; kills: number }>();
 
 /** 収集を有効化(ヘッドレスの計測ラン。実機は `?komalog=1` で自動的に有効)。 */
 export const enableKomaLog = (): void => { enabled = true; };
 export const isKomaLogEnabled = (): boolean => enabled;
-export const resetKomaLog = (): void => { records = []; live = null; liveHits = 0; loggedThisRun = false; };
+export const resetKomaLog = (): void => { records = []; live = null; liveHits = 0; loggedThisRun = false; perRank.clear(); };
 export const getKomaLog = (): readonly KomaLogRecord[] => records;
 
 /**
@@ -95,7 +109,19 @@ export const getKomaLog = (): readonly KomaLogRecord[] => records;
  */
 export const tickKomaLive = (s: Omit<KomaLiveSnapshot, 'hitsTotal'> & { hitThisFrame: boolean }): void => {
   if (!enabled) return;
-  if (live && s.atMs < live.atMs) { records = []; liveHits = 0; loggedThisRun = false; }
+  if (live && s.atMs < live.atMs) { records = []; liveHits = 0; loggedThisRun = false; perRank.clear(); live = null; }
+  // ランク別の滞在時間/撃破数を積む。**前フレームのランク**に対して区間を付けるのが正しい
+  // (この tick で観測した経過時間と撃破は、その間に居たランクの成果だから)。
+  if (live) {
+    const dt = s.atMs - live.atMs;
+    const dk = s.kills - live.kills;
+    if (dt > 0 && dt < 1000) { // 復帰直後などの巨大フレームは捨てる(平均を汚さない)
+      const cur = perRank.get(live.rank) ?? { ms: 0, kills: 0 };
+      cur.ms += dt;
+      cur.kills += Math.max(0, dk);
+      perRank.set(live.rank, cur);
+    }
+  }
   if (s.hitThisFrame) liveHits += 1;
   live = {
     atMs: s.atMs, rank: s.rank, dist: s.dist,
@@ -153,12 +179,30 @@ export const komaLogSummary = (): Record<string, number> => {
     hitsTotal: live?.hitsTotal ?? records.reduce((a, r) => a + (r.input.hits ?? 0), 0),
     hitStreakMs: Math.round(live?.hitStreakMs ?? 0),
     // M50の較正で見たい2つ。窓の達成率が「昇格に必要な50%」に対してどこにいるか。
+    // ★注意: この2つは**現在のランクに来てから**のカウンタで、ランクが動くたび0へ戻る
+    //   (rankAssessor の RankWindowState)。ランク変更直後に死ぬと 0 になるので、
+    //   較正の主役は下の `kpw*`(ランク別の実測)の方。
     windowsAtRank,
     windowsClearing,
     clearRatePct: windowsAtRank > 0
       ? Math.round((windowsClearing / windowsAtRank) * 1000) / 10
       : 0,
+    // ★較正の主役(v0.25.2409): ランク別の「10秒窓あたり実測撃破数」と滞在分数。
+    //   目標値 V(r) = RANK_KILLS_PER_WINDOW_BASE × (1000 / CD_BASIS_MS[r]) と直接比べられる。
+    //   居なかったランクは出ない(キーごと省く=コピペが短くなる)。
+    ...perRankSummary(),
   };
+};
+
+/** ランク別の実測を要約へ平たく展開する。`min<r>`=滞在分 / `kpw<r>`=10秒窓あたり撃破数。 */
+const perRankSummary = (): Record<string, number> => {
+  const out: Record<string, number> = {};
+  for (const [rank, v] of [...perRank.entries()].sort((a, b) => a[0] - b[0])) {
+    if (v.ms < 5000) continue; // 5秒未満の通過は平均が暴れるので出さない
+    out[`min${rank}`] = Math.round((v.ms / 60000) * 10) / 10;
+    out[`kpw${rank}`] = Math.round((v.kills / (v.ms / 10000)) * 10) / 10; // 窓=10秒(RANK_WINDOW_MS)
+  }
+  return out;
 };
 
 /**
