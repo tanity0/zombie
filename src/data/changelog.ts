@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2398',
+    items: [
+      'ゲーム内容の変更はありません（ボスの技エフェクト素材の発注書を追記しただけです）。',
+    ],
+  },
+  {
     version: '0.25.2397',
     items: [
       'ゲーム内容の変更はありません（エフェクト素材の発注書を追記しただけです）。',
