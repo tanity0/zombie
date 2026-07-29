@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2396',
+    items: [
+      '城ボスの攻撃予告の帯（薙ぎ払い・噛みつき・のしかかり）にも専用の絵を使うようにしました。',
+    ],
+  },
+  {
     version: '0.25.2395',
     items: [
       '城ボスの攻撃予告の円に、専用の絵を使うようにしました（踏み鳴らし・飛び掛かりの着地）。',

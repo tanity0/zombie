@@ -1503,6 +1503,9 @@ interface ActorView {
   // **輪の外周＝当たり判定の半径**になる(図形と判定の一致を素材側で担保している)。
   // 生成は遅延(使うボスだけ)。使わないフレームは visible=false にするだけ=draw call は増えない。
   ring?: Sprite;
+  // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。円(ring)と同じ考え方で、面は Graphics、
+  // 帯の"見た目"だけをこの1枚が担う。1体につき同時に出る帯は1つなので1枚で足りる。
+  band?: Sprite;
 }
 
 interface PropView {
@@ -8483,6 +8486,7 @@ export class PixiScene {
     // 予告の輪スプライト(A-1)は既定で消しておき、必要な分岐だけが drawTelegraphRing で点ける
     // (o.clear() と同じ役割。消し忘れて前フレームの輪が残るのを構造的に防ぐ)。
     if (view.ring) view.ring.visible = false;
+    if (view.band) view.band.visible = false;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       const ax = (e.aiTargetX ?? cx) - (e.aiFromX ?? cx);
@@ -8970,8 +8974,11 @@ export class PixiScene {
           tx + ux * halfWidth - nx * halfWidth, ty + uy * halfWidth - ny * halfWidth,
           fx - ux * halfWidth - nx * halfWidth, fy - uy * halfWidth - ny * halfWidth,
         ];
+        // 面(どこが危ないか)は据え置き。縁取りだけを素材A-2へ差し替える(円=A-1と同じ考え方)。
+        // 素材は上の pts と同じ矩形にぴったり重なる(drawTelegraphBand が同じ式で寸法を出す)。
         o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA });
-        o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
+        if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, Math.min(1, strokeA + 0.2));
+        else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
       };
       // 共通ヘルパ(M66): 扇形(帯が回転する技のwindup予告=最終的に薙ぐ全域を先出しする)。innerR>0で
       // 内径付き(懐が安全=ウリの内径修正と同じ考え方。図形は「くり抜き」ではなく環状の扇そのもの)。
@@ -10274,6 +10281,40 @@ export class PixiScene {
     sp.position.set(cx, cy);
     sp.width = radius * 2;
     sp.height = radius * 2;
+    sp.tint = tint;
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
+  /**
+   * 予告帯の意匠を焼き済みスプライト1枚で描く(社長支給素材 A-2・v0.25.2396)。
+   *
+   * **既存の `drawGiantCapsuleZone` が描いていた矩形と完全に同じ four corners** に合わせる:
+   * 始点/終点を halfWidth ぶん外へ伸ばした長さ × 幅(2*halfWidth) の矩形を、進行方向へ回転して置く。
+   * (この矩形はカプセル判定=`distToSegment <= halfWidth` の外接矩形で、**元の描画と1pxも変えていない**。)
+   * 素材は端をフェードさせず硬く切り落とし、可視部がキャンバス一杯になるよう正規化済みなので、
+   * 引き伸ばしても**帯の端＝図形の端**が保たれる。
+   */
+  private drawTelegraphBand(
+    view: ActorView, fx: number, fy: number, tx: number, ty: number, halfWidth: number, tint: number, alpha: number,
+  ): void {
+    if (!FX_RING_ENABLED) return;
+    const tex = getTexture('fx/telegraph-band');
+    if (!tex) return;
+    let sp = view.band;
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(0.5, 0.5);
+      view.container.addChildAt(sp, 0); // 地面側(本体スプライトより下)
+      view.band = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    const ddx = tx - fx, ddy = ty - fy;
+    const len = Math.hypot(ddx, ddy) || 1;
+    sp.rotation = Math.atan2(ddy, ddx);
+    sp.width = len + halfWidth * 2;   // 既存の poly と同じく前後へ halfWidth ぶん伸ばす
+    sp.height = halfWidth * 2;
+    sp.position.set((fx + tx) / 2, (fy + ty) / 2);
     sp.tint = tint;
     sp.alpha = alpha;
     sp.visible = true;
