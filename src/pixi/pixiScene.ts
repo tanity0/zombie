@@ -22,7 +22,7 @@ import type {
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
 import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
-  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_STOMP_RECOVER_MS, GIANT_JUMP_RECOVER_MS, GIANT_SLAM_RECOVER_MS, GIANT_JUMP_WINDUP_MS,
+  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
   GIANT_SLAM_WINDUP_MS, GIANT_SLAM_HALF_WIDTH,
@@ -1386,6 +1386,11 @@ const BLOOD_DRY_MS = 900;
 // 「まだ危ない」と誤読されて反撃窓が使われなくなる。全て実機調整前提の叩き台。
 const DUST_MS = 420;      // 4コマを出し切るまで
 const DUST_SCALE = 1.25;  // 判定半径に対する砂埃の広がり(当たった後の絵なので少し外へ出てよい)
+// 踏み鳴らしだけは大きく外へ出す(社長指示v0.25.2408「絵に隠れてほぼ見えないので当たり判定より
+// もっとはみ出てもいい」)。砂埃は**当たった後の絵(余韻)**であって予告ではないので、判定より
+// 大きくても「赤くないのに当たる/赤いのに当たらない」の類の嘘にはならない。巨体の足元が中心=
+// 内側は本体に隠れるため、外へはみ出した縁だけが見える部分になる。
+const DUST_STOMP_SCALE = 2.2;
 const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
 
@@ -3088,6 +3093,33 @@ export class PixiScene {
     const start = this.screenH - ENEMY_FOREGROUND_FADE_PX;
     if (screenY <= start) return 1;
     return Math.max(0, 1 - (screenY - start) / ENEMY_FOREGROUND_FADE_PX);
+  }
+
+  // ── 実行/着弾のエフェクトを「台本の状態」から切り離して出し切らせる装置(社長指示v0.25.2408) ──
+  // カウンターが決まるとボスの状態は即座に chase / undefined へ戻る(combatTick の dashParried、
+  // 各ボスの counterHit)。**状態を見て描いているエフェクトはその瞬間に消える**=社長報告
+  // 「カウンターするとエフェクトが消える」。ここで active の**立ち上がり**を捉えて、その時の座標を
+  // 焼き付け(latch)、以後は自前の時計だけで残りを再生する。以降ボスが何をしていようと出し切る。
+  // **予告(ring/band/赤ゾーン)には使わない**: 攻撃がキャンセルされたら予告は消えるのが正しい。
+  // 焼き付けるのは「もう当たった/もう振った」絵だけ(砂埃・斬撃の弧)。
+  private fxLatches = new Map<string, { t0: number; dur: number; armed: boolean; d: number[] }>();
+  private latchFx(key: string, active: boolean, durMs: number, now: number, data: () => number[]):
+    { t: number; d: number[] } | null {
+    let L = this.fxLatches.get(key);
+    if (active) {
+      // 立ち上がり(前フレームまで非active)でだけ撮り直す。active が続く間は撮り直さない。
+      if (!L || !L.armed) { L = { t0: now, dur: Math.max(1, durMs), armed: true, d: data() }; this.fxLatches.set(key, L); }
+    } else if (L) {
+      L.armed = false; // active が明けた=次の立ち上がりで撮り直してよい
+    }
+    if (!L) return null;
+    const t = (now - L.t0) / L.dur;
+    if (t >= 1) { if (!L.armed) this.fxLatches.delete(key); return null; }
+    return { t: Math.max(0, t), d: L.d };
+  }
+  // 敵が消えた時の後始末(残っていると Map が育つ)。enemyビューの破棄と同じ場所から呼ぶ。
+  private clearFxLatches(idPrefix: string) {
+    for (const k of this.fxLatches.keys()) if (k.startsWith(idPrefix)) this.fxLatches.delete(k);
   }
 
   // 攻撃予告レイヤー(tele)の alpha を、**アクターの位置ではなく予告図形自身の位置**から引く
@@ -7071,6 +7103,7 @@ export class PixiScene {
       if (!seen.has(id)) {
         view.light.destroy();
         view.container.destroy({ children: true });
+        this.clearFxLatches(`${id}:`); // 出し切り待ちのエフェクト記録も片付ける(v0.25.2408)
         this.enemies.delete(id);
         this.enemyJumpHop.delete(id);
         this.enemyBlockFall.delete(id);
@@ -8647,13 +8680,10 @@ export class PixiScene {
         this.drawThorIaiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.32, tx - fx, ty - fy, prog, now);
       } else if (e.bossState === 'issen-dash') {
         // 一閃(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
+        // 社長指示: 移動しながら、構えてた刀も振る。柄を居合の抜き位置(dash始点)に置き、刃先が
+        // 斬る先へ抜けていく=居合斬りの振り。
+        // 描画自体はこのブロックの末尾で latchFx 経由(カウンターで振りが途中で消えない・v0.25.2408)。
         view.sprite.tint = 0xffffff;
-        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
-        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const dashProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_DASH_MS));
-        // 社長指示: 移動しながら、構えてた刀も振る。柄を居合の抜き位置(dash始点 fx,fy)に置き、刃先が
-        // 斬る先(tx,ty)へ抜けていく=居合斬りの振り。showKatana=true + pivot=始点。
-        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, dashProg, true, true, fx, fy);
       } else if (e.bossState === 'tsuki-windup') {
         // 突きの溜め(社長指示): 弓で矢を引いて放つ感覚。刀の先端を突く方向(プレイヤー)へ向け、
         // 溜めが進むほど手元を後方へ引く(=弓を引く)。実行(tsuki)で前方へ突き出す(=放つ)。
@@ -8671,12 +8701,9 @@ export class PixiScene {
         // 突き(実行): 溜め中(tsuki-windup)は方向が未確定(社長指示=予告ラインなし)なので、
         // 実行の瞬間だけプレイヤーの斬撃と同じピクセル演出を表示。180msをそのまま1本の
         // 伸縮モーション(0→1)として使う。
-        view.sprite.tint = 0xffffff;
-        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
-        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const tsukiProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_TSUKI_MS));
         // 社長指示: 突きは刀を追加表示して攻撃をわかりやすくする。
-        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, tsukiProg, true, true);
+        // 描画自体はこのブロックの末尾で latchFx 経由(カウンターで突きが途中で消えない・v0.25.2408)。
+        view.sprite.tint = 0xffffff;
       } else if (e.bossState === 'harai-windup' || e.bossState === 'harai') {
         view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
@@ -8708,13 +8735,10 @@ export class PixiScene {
           // §5.25 M24: ダメージ瞬間(windup終わり=sweep開始)の400ms前は鋭いフラッシュへ切替。
           const haraiFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
           if (haraiFlash !== null) view.sprite.tint = haraiFlash;
-        } else {
-          // 払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
-          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
-          // 社長指示: 横払いは「トールを軸に刀を振る」動きにして斬撃アニメと合わせる。柄の軸=トールの
-          // 手元(足元から胸の高さ)。刃先が判定ライン上を薙いでいく。
-          this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
         }
+        // 払い(実行)の描画はこのブロックの末尾で latchFx 経由。社長指示: 横払いは「トールを軸に刀を振る」
+        // 動きにして斬撃アニメと合わせる(柄の軸=手元、刃先が判定ライン上を薙ぐ)。
+        // カウンターで薙ぎが途中で消えないよう自前時計にした(v0.25.2408)。
       } else if (e.bossState === 'jump-windup' || e.bossState === 'jump-attack') {
         // ジャンプ攻撃の着地予告(pumpkin系と同じ意匠の赤い楕円)。
         // §6.28-10「ジャンプ着地円を溜め開始から出す」【変更】: 現行(?thorscript=0)は滞空中のみ表示。
@@ -8746,6 +8770,28 @@ export class PixiScene {
         view.sprite.tint = BOSS_RECOVER_TINT;
       } else {
         view.sprite.tint = 0xffffff;
+      }
+      // トールの斬撃演出(刀+ストリーク)を出し切らせる(社長指示v0.25.2408)。トールは**実行中
+      // (issen-dash/tsuki/harai)にもカウンターが成立する**(useGameLoop のライン判定が
+      // counterWindowEnd を見て thorCounterHit する)ため、状態を見て描いていると**振り切る前に
+      // 刀ごと消える**。立ち上がりで判定ラインを焼き付け、自前時計で最後まで再生する。
+      // 柄の軸(pivot)だけは毎フレームの実位置を使う=通常時の見た目は完全に据え置き。
+      // 一閃は元から「抜き位置=ライン始点」が軸なので焼き付け値がそのまま軸になる。
+      {
+        const bs = e.bossState;
+        const swinging = bs === 'issen-dash' || bs === 'tsuki' || bs === 'harai';
+        const swingDur = bs === 'issen-dash' ? THOR_ISSEN_DASH_MS : bs === 'tsuki' ? THOR_TSUKI_MS : THOR_HARAI_ACTIVE_MS;
+        const swL = this.latchFx(`${e.id}:thorswing`, swinging, swingDur, now, () => [
+          e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy,
+          bs === 'issen-dash' ? THOR_ISSEN_VIS_HALFWIDTH : bs === 'tsuki' ? THOR_TSUKI_VIS_HALFWIDTH : THOR_HARAI_VIS_HALFWIDTH,
+          bs === 'issen-dash' ? 0 : bs === 'tsuki' ? 1 : 2, // 技の種別(柄の軸の付け方が違う)
+        ]);
+        if (swL) {
+          const [sfx, sfy, stx, sty, hw, kind] = swL.d;
+          if (kind === 0) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, sfx, sfy);
+          else if (kind === 1) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true);
+          else this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+        }
       }
     }
     // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58): 裏ボス3体(mimir/jormungand/skadi)共通の
@@ -9124,24 +9170,40 @@ export class PixiScene {
         || gph === 'g-talon-recover' || gph === 'g-boon-recover' || gph === 'g-reach-recover' || gph === 'g-nihil-recover') {
         // 硬直=反撃窓(翻訳規則(d)): 赤ではない色(青白)=「今なら殴れる」の合図。
         view.sprite.tint = 0xbfe8ff;
-        // 砂埃(B-0・v0.25.2404): 踏み鳴らし/着地/のしかかりの**当たった直後**だけ短く出す。
-        // 硬直に入った瞬間から DUST_MS の間だけなので、青白tint(=殴ってよい合図)を邪魔しない。
-        if (gph === 'g-stomp-recover' || gph === 'g-jump-recover' || gph === 'g-slam-recover') {
-          const recMs = (gph === 'g-stomp-recover' ? GIANT_STOMP_RECOVER_MS
-            : gph === 'g-jump-recover' ? GIANT_JUMP_RECOVER_MS : GIANT_SLAM_RECOVER_MS) / ENEMY_ATTACK_SPEED_MULT;
-          const since = recMs - Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
-          if (since >= 0 && since < DUST_MS) {
-            const dp = since / DUST_MS;
-            // 中心と大きさは技ごとに変える。着地は着地点、それ以外は足元。
-            const dx = gph === 'g-jump-recover' ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
-            const dy = gph === 'g-jump-recover' ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
-            const dr = (gph === 'g-jump-recover' ? (e.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS)
-              : gph === 'g-slam-recover' ? GIANT_SLAM_HALF_WIDTH : (e.gStompRadius ?? GIANT_STOMP_RADIUS)) * DUST_SCALE;
-            this.drawDust(dx, dy, dr, dp, this.dustTintForStage(), 0.75 * (1 - dp * 0.6));
-          }
-        }
       } else {
         view.sprite.tint = 0xffffff;
+      }
+      // 砂埃(B-0・v0.25.2404): 踏み鳴らし/着地/のしかかりの**当たった直後**だけ短く出す。
+      // v0.25.2408: tintのif連鎖から外へ出し、latchFx で自前時計にした。硬直はカウンター窓そのものなので、
+      // 状態を見て描いていると**殴り込んだ瞬間に砂埃が消える**(社長報告)。立ち上がりで座標を焼き付け、
+      // 以後は DUST_MS を最後まで再生する。ヒットストップ中は now が止まる=砂埃も一緒に止まる(意図どおり)。
+      {
+        const dustPhase = gph === 'g-stomp-recover' || gph === 'g-jump-recover' || gph === 'g-slam-recover';
+        const dustL = this.latchFx(`${e.id}:dust`, dustPhase, DUST_MS, now, () => {
+          // 中心と大きさは技ごとに変える。着地は着地点、それ以外は足元。
+          const jump = gph === 'g-jump-recover';
+          const dx = jump ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
+          const dy = jump ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
+          // 踏み鳴らしだけ大きく外へ出す(社長指示v0.25.2408・絵に隠れて見えないため)。
+          const scale = gph === 'g-stomp-recover' ? DUST_STOMP_SCALE : DUST_SCALE;
+          const dr = (jump ? (e.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS)
+            : gph === 'g-slam-recover' ? GIANT_SLAM_HALF_WIDTH : (e.gStompRadius ?? GIANT_STOMP_RADIUS)) * scale;
+          return [dx, dy, dr];
+        });
+        if (dustL) this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dustL.t, this.dustTintForStage(), 0.75 * (1 - dustL.t * 0.6));
+      }
+      // 「振った瞬間」の弧(素材D-1・v0.25.2400)。**予告ではなく実行の絵**なので当たり判定と一致させる
+      // 義務は無いが、**判定の外へはみ出すと危険地帯に見える**ので間合い(長さ)の内側に収める。
+      // v0.25.2408: g-sweep-active 中もカウンターは成立する(combatTick の giantParryablePhase)ので、
+      // 状態を見て描いていると**振り切る前に弧が消える**。latchFx で最後まで出し切る。
+      {
+        const swL = this.latchFx(`${e.id}:sweepslash`, gph === 'g-sweep-active',
+          GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT, now, () => {
+            const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
+            const stx = e.aiTargetX ?? cx, sty = e.aiTargetY ?? cy;
+            return [sfx, sfy, Math.atan2(sty - sfy, stx - sfx), Math.hypot(stx - sfx, sty - sfy) || 1];
+          });
+        if (swL) this.drawSlashArc(view, swL.d[0], swL.d[1], swL.d[2], swL.d[3], 0xffd8d8, 0.9 * (1 - swL.t));
       }
       if (gph === 'g-stomp-windup') {
         // T2(赤円・自身の足元)。半径=GIANT_STOMP_RADIUS(社長裁定6.26-9 #3)。
@@ -9173,13 +9235,6 @@ export class PixiScene {
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, Math.min(1, (0.32 + 0.4 * gprog) + 0.15 * gPulse + 0.2));
         else o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
         o.moveTo(gfx, gfy).lineTo(gtx, gty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
-        // 「振った瞬間」の弧(素材D-1・v0.25.2400)。**予告ではなく実行の絵**なので当たり判定と
-        // 一致させる義務は無いが、**判定の外へはみ出すと危険地帯に見える**ので間合い(gddl)の内側に収める。
-        // active の間だけ出して消える(実行の瞬間を伝えるだけ=残すと予告と紛らわしい)。
-        if (gph === 'g-sweep-active') {
-          const sweepProg = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT)));
-          this.drawSlashArc(view, gfx, gfy, Math.atan2(gddy, gddx), gddl, 0xffd8d8, 0.9 * (1 - sweepProg));
-        }
       } else if (gph === 'g-dash-windup') {
         // T1(赤ライン+終点リング)。既存の犬/パンプキン用と同じ意匠。
         const gtx = e.aiTargetX ?? cx, gty = e.aiTargetY ?? cy;
