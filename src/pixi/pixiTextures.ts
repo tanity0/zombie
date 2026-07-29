@@ -395,6 +395,9 @@ export const ensureTextures = (): Promise<void> => {
       // 血溜まり(社長支給素材 E-5・v0.25.2403)。512角×4コマの横並び(2048×512)を1枚で登録し、
       // コマの切り出しは pixiScene 側で行う(着弾→最大→波打つ→乾いて縮む)。
       { name: 'fx/blood-pool', scaleMode: 'linear' as const },
+      // 砂埃(社長支給素材 B-0・v0.25.2404)。512角×4コマの横並び。血溜まりと同じくコマ切りはpixiScene側。
+      // 色を焼き込んでいないので、ステージごとにtintで土/雪/灰へ振れる(1枚で全ステージ)。
+      { name: 'fx/dust', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

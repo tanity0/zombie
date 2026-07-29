@@ -22,7 +22,7 @@ import type {
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
 import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
-  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
+  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_STOMP_RECOVER_MS, GIANT_JUMP_RECOVER_MS, GIANT_SLAM_RECOVER_MS, GIANT_JUMP_WINDUP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
   GIANT_SLAM_WINDUP_MS, GIANT_SLAM_HALF_WIDTH,
@@ -1376,6 +1376,10 @@ const stage3EnemyTextureName = (type: string): string | null =>
 // `?fxring=0` で従来の Graphics stroke(細い赤線)へ戻して見比べられる(v0.25.2395)。
 // 血溜まり(E-5)の「乾いて縮む」コマへ切り替える残り時間。床の寿命(4秒)の終わり際だけ4コマ目にする。
 const BLOOD_DRY_MS = 900;
+// 砂埃(B-0)。**短く出して即消す**——硬直(=反撃してよい時間)と重なるので、長く残ると
+// 「まだ危ない」と誤読されて反撃窓が使われなくなる。全て実機調整前提の叩き台。
+const DUST_MS = 420;      // 4コマを出し切るまで
+const DUST_SCALE = 1.25;  // 判定半径に対する砂埃の広がり(当たった後の絵なので少し外へ出てよい)
 const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
 
@@ -9058,6 +9062,22 @@ export class PixiScene {
         || gph === 'g-talon-recover' || gph === 'g-boon-recover' || gph === 'g-reach-recover' || gph === 'g-nihil-recover') {
         // 硬直=反撃窓(翻訳規則(d)): 赤ではない色(青白)=「今なら殴れる」の合図。
         view.sprite.tint = 0xbfe8ff;
+        // 砂埃(B-0・v0.25.2404): 踏み鳴らし/着地/のしかかりの**当たった直後**だけ短く出す。
+        // 硬直に入った瞬間から DUST_MS の間だけなので、青白tint(=殴ってよい合図)を邪魔しない。
+        if (gph === 'g-stomp-recover' || gph === 'g-jump-recover' || gph === 'g-slam-recover') {
+          const recMs = (gph === 'g-stomp-recover' ? GIANT_STOMP_RECOVER_MS
+            : gph === 'g-jump-recover' ? GIANT_JUMP_RECOVER_MS : GIANT_SLAM_RECOVER_MS) / ENEMY_ATTACK_SPEED_MULT;
+          const since = recMs - Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+          if (since >= 0 && since < DUST_MS) {
+            const dp = since / DUST_MS;
+            // 中心と大きさは技ごとに変える。着地は着地点、それ以外は足元。
+            const dx = gph === 'g-jump-recover' ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
+            const dy = gph === 'g-jump-recover' ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
+            const dr = (gph === 'g-jump-recover' ? (e.gJumpRadius ?? PUMPKIN_EXPLOSION_RADIUS)
+              : gph === 'g-slam-recover' ? GIANT_SLAM_HALF_WIDTH : (e.gStompRadius ?? GIANT_STOMP_RADIUS)) * DUST_SCALE;
+            this.drawDust(dx, dy, dr, dp, this.dustTintForStage(), 0.75 * (1 - dp * 0.6));
+          }
+        }
       } else {
         view.sprite.tint = 0xffffff;
       }
@@ -10500,6 +10520,56 @@ export class PixiScene {
   private resetBloodPools(): void {
     for (let i = this.bloodUsed; i < this.bloodPool.length; i++) this.bloodPool[i].visible = false;
     this.bloodUsed = 0;
+    for (let i = this.dustUsed; i < this.dustPool.length; i++) this.dustPool[i].visible = false;
+    this.dustUsed = 0;
+  }
+
+  /**
+   * 砂埃(社長支給素材 B-0・v0.25.2404)。血溜まりと同じ4コマ帯テクスチャの作法。
+   *
+   * **予告ではなく「当たった後」の絵**なので判定と一致させる義務は無い。ただし出るのは
+   * **硬直(=反撃してよい安全な時間)**と重なるので、**短く出して即消す**
+   * (長く残ると「まだ危ない」と誤読され、せっかくの反撃窓を使ってもらえなくなる)。
+   *
+   * `tint` はステージで変える想定(森=土 / 雪原=白 / 廃都=灰)。素材に色を焼いていないので1枚で足りる。
+   */
+  /**
+   * 砂埃の色をステージで振り分ける。**素材に色を焼いていないので1枚で全ステージ賄える**
+   * (B-0を「色を付けずに作る」よう発注したのはこのため)。
+   */
+  private dustTintForStage(): number {
+    if (this.snowStage) return 0xe8f2ff;        // 雪原=舞い上がる雪
+    if (this.daylight) return 0xbfb8ae;         // 廃都=コンクリートの灰
+    if (this.battlefieldStage) return 0xc9b9a6; // 城塞=乾いた土
+    return 0xb9a68c;                            // 森/既定=土色
+  }
+  private dustFrames?: Texture[];
+  private dustPool: Sprite[] = [];
+  private dustUsed = 0;
+  private drawDust(x: number, y: number, radius: number, prog: number, tint: number, alpha: number): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) return;
+    const tex = getTexture('fx/dust');
+    if (!tex) return;
+    if (!this.dustFrames) {
+      const fw = tex.width / 4, fh = tex.height;
+      this.dustFrames = [0, 1, 2, 3].map(i =>
+        new Texture({ source: tex.source, frame: new Rectangle(i * fw, 0, fw, fh) }));
+    }
+    let sp = this.dustPool[this.dustUsed];
+    if (!sp) {
+      sp = new Sprite();
+      sp.anchor.set(0.5, 0.5);
+      this.L.groundLayer.addChild(sp);
+      this.dustPool[this.dustUsed] = sp;
+    }
+    this.dustUsed++;
+    sp.texture = this.dustFrames[Math.max(0, Math.min(3, Math.floor(prog * 4)))];
+    sp.width = radius * 2;
+    sp.height = radius * 2;
+    sp.position.set(x, y);
+    sp.tint = tint;
+    sp.alpha = alpha;
+    sp.visible = true;
   }
 
   private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number } | null, now: number) {

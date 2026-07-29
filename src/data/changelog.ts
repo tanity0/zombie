@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2404',
+    items: [
+      '城ボスの踏み鳴らし・飛び掛かりの着地・のしかかりに、砂埃が舞うようになりました。ステージごとに土・雪・灰と色が変わります。',
+    ],
+  },
+  {
     version: '0.25.2403',
     items: [
       'グレンの「血の弧」に血溜まりの絵が出るようになりました。爆ぜた後、床が乾いて消えるまでが見て分かります。',
