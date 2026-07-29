@@ -205,7 +205,7 @@ import {
   getPhaseKillDebug, snapshotKillTotals, snapshotSpawns
 } from '../utils/killTelemetryState';
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
-import { notifyCounterHit } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1(計測専用・挙動不変)
+import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, type GhostProfile } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
@@ -4347,6 +4347,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const thorCounterHit = (hitX: number, hitY: number) => {
                 // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
                 notifyCounterHit();
+                notifyMoveCounter(); // G4a(§2.9・記録専用): 成立④=技への反応表へも通知
                 const cp = useGameStore.getState().player;
                 const pnow = Date.now();
                 addMeleeFinishCombo(1);
@@ -4403,6 +4404,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hiddenBossCounterHit = (hitX: number, hitY: number) => {
                 // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
                 notifyCounterHit();
+                notifyMoveCounter(); // G4a(§2.9・記録専用): 成立⑤=技への反応表へも通知(G4b対象ボスは表キー未定義=現状no-op)
                 const cp = useGameStore.getState().player;
                 const pnow = Date.now();
                 addMeleeFinishCombo(1);
@@ -4991,7 +4993,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'CODE:THOR の一閃', cxp, cyp);
+                    const died = damagePlayer(boss.damage, 'CODE:THOR の一閃', cxp, cyp, undefined, undefined, 'thor-issen'); // G4a計測タグ(記録専用)
                     useGameStore.getState().spawnImageMark(cxp, cyp, 'zan', { scale: 1.0, duration: 1000 }); // 社長指示: 食らうと「斬」
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
@@ -5045,7 +5047,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'CODE:THOR の突き', cxp, cyp);
+                    const died = damagePlayer(boss.damage, 'CODE:THOR の突き', cxp, cyp, undefined, undefined, 'thor-tsuki'); // G4a計測タグ(記録専用)
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
@@ -5080,7 +5082,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'CODE:THOR の払い', cxp, cyp);
+                    const died = damagePlayer(boss.damage, 'CODE:THOR の払い', cxp, cyp, undefined, undefined, 'thor-harai'); // G4a計測タグ(記録専用)
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
@@ -5146,7 +5148,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   // 着地: 既存のpumpkinBlasts(着地爆発)パイプラインへ積む=カウンター/被弾処理を丸ごと再利用。
                   useGameStore.setState(state => ({
-                    pumpkinBlasts: [...state.pumpkinBlasts, { x: tx, y: ty, radius: THOR_JUMP_RADIUS, damage: boss.damage, enemyId: boss.id }],
+                    pumpkinBlasts: [...state.pumpkinBlasts, { x: tx, y: ty, radius: THOR_JUMP_RADIUS, damage: boss.damage, enemyId: boss.id, moveKey: 'thor-jump' }], // moveKey=G4a計測タグ(記録専用)
                   }));
                   patch.bossState = 'jump-recover';
                   patch.bossStateUntil = newGameTime + THOR_JUMP_RECOVER_MS;
@@ -5341,6 +5343,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const idolCounterHit = (hitX: number, hitY: number) => {
               // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
               notifyCounterHit();
+              notifyMoveCounter(); // G4a(§2.9・記録専用): 成立⑥=技への反応表へも通知(idolはG4b対象=表キー未定義・現状no-op)
               const cp = useGameStore.getState().player;
               const pnow = Date.now();
               addMeleeFinishCombo(1);
@@ -6369,6 +6372,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ガチャンッ!: 着地ダスト + 金属音(構えた感)。スプライト側で着地スラム。
           spawnRing(footX, footY, 6, 64, 'rgba(203,213,225,0.7)', 3, 260);
           playSfx('shield-deploy');
+          recordShieldPlacement(); // G4a(§2.9(3)・記録専用): shield設置1回の様式カウンタ
           setSubWeaponCooldown('shield', gameTime + SHIELD_COOLDOWN_MS);
           consumeGhostSubClaim(); // G2.6
         }

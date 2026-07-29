@@ -1,5 +1,85 @@
 # Development Log
 
+## v0.25.2454 — G4a: プレイヤー傾向計測の高解像度化(技への反応表/移動2ノブ/サブ様式カウンタ)=計測のみ・挙動完全不変(BOT_AND_GHOST.md §2.9実装)【2026-07-30 04:06 JST】
+
+- **(1)技への反応表**: 対象=城ボス系(giantbat=城ボス/グレン/EX)+トール。判定の中核(暴露判定・
+  3分類の優先順位counter>hit>dodge・EMA更新・技キー導出)は純関数 **`src/utils/moveReaction.ts`**(新設・
+  テスト18件)。playerTraitsのセッション(=既存6ノブと同じ計測条件: ボス交戦区間のみ/ghostRunActiveで
+  停止/30秒未満は破棄)に `MoveReactionState` を持たせ、毎tick `stepMoveReactions` でaiPhase/bossStateの
+  技ファミリーをエピソード単位に開閉する。エピソード終了後 **残響(linger)2000ms** は遅延起爆・飛翔中の
+  弾の着弾/反射の帰属先として保持し、切れてから確定する。
+- **技キー×フック箇所の全数表**(タグの出どころ。全てdamagePlayer第7引数 `damageSourceMove` へ合流。
+  暴露=aimed: 狙いロック技は解決1回で暴露(計測はゴースト不在ラン限定=ロック対象は常にプレイヤー)/
+  self: 自己中心技は溜め中の距離で判定):
+
+  | 技キー | 暴露 | 被弾タグの出どころ(ファイル) |
+  |---|---|---|
+  | g-stomp | self(gStompRadius??92) | blast push(gameStore g-stomp-windup末)→applyPumpkinBlastDamage |
+  | g-sweep | aimed | blastカプセルpush(gameStore) |
+  | g-jump | aimed | 着地blast push(gameStore) |
+  | g-dash | aimed | **接触**=contactDamageMoveKey(g-dash-charge)→applyContactDamage(combatTick) |
+  | g-bolt | aimed | 弾: ownerType==='giantbat'かつGIANT_SCRIPT_ENABLED→applyEnemyProjectileHits(combatTick。新スクリプト時giantbatの弾は咆哮弾のみ=汎用発砲は無効化済みのため発射元タイプで確定) |
+  | g-trijump | aimed | 着地blast push×3着地(gameStore) |
+  | g-bite | aimed | blastカプセルpush(hold末・gameStore) |
+  | g-slam | aimed | blastカプセルpush(gameStore) |
+  | g-glide | aimed | blastカプセルpush+遅延二撃目(giantDelayedHits queue)+接触(g-glide-active) |
+  | g-dive | aimed | 着地blast push(gameStore) |
+  | g-quad | aimed | 吐息active命中push+遅延氷×3(queue)+接触(g-quad-charge) |
+  | g-nova | self(400) | 輪active命中push(gameStore) |
+  | g-wing | aimed | blastカプセル×2+遅延三拍目(queue) |
+  | g-sweepbeam | aimed | 回転帯active命中push(gameStore) |
+  | g-talon | aimed | 遅延爪痕×3(queue・beginGlenMove) |
+  | g-boon | aimed | 遅延円×5(queue)+血溜まり床=applyGlenFloorDamage(combatTick・h.moveKey。残響切れ後の踏み直しは反応表側で自然に無視) |
+  | g-nihil | aimed | 遅延大円(queue) |
+  | thor-issen | aimed | damagePlayer直呼び(useGameLoop 'CODE:THOR の一閃') |
+  | thor-tsuki | aimed | damagePlayer直呼び(useGameLoop) |
+  | thor-harai | aimed | damagePlayer直呼び(useGameLoop) |
+  | thor-jump | aimed | 着地blast push(useGameLoop・pumpkinBlasts相乗り) |
+
+  **counter成立の通知(`notifyMoveCounter()`・リファンド7箇所全部に1行併設)**: ①弾反射(combatTick
+  reflectedAny) ②ジャンプ着地パリィ(combatTick applyPumpkinBlastDamage) ③突進パリィ(combatTick
+  applyContactDamage・既存notifyCounterHitの隣) ④thorCounterHit ⑤hiddenBossCounterHit
+  ⑥idolCounterHit(以上useGameLoop) ⑦angelCounterHit(angelBossTick)。⑤〜⑦はG4b対象ボス=表キー
+  未定義で現状no-op(「同じ動作を持つ全員に」の先回り配線)。**①②にはG1のnotifyCounterHitを足して
+  いない**(足すと既存counterChanceノブの計測が変わるため。G4a表とG1ノブは独立)。
+- **(2)移動2ノブ**: `stationaryFrac`(実座標の変位<12px/sのtick割合。入力ベースだと既存mobilityの
+  補数になるだけのため実移動で定義=実装メモ)/`approachPerMin`(**プレイヤー自身の移動による**接近量
+  150pxで1エピソード・40px/s超の後退でリセット。ボスの現在位置を固定して前後のプレイヤー位置の距離差を
+  取る=ボスの突進/場外退避g-diveで距離が暴れても汚れない)。既存6ノブと同じEMA(α=0.3)・同じ計測条件。
+- **(3)サブ様式カウンタ**: wire-anchorのスラム(敵ヒット)/プラント(空振り)=triggerWireAnchorの既存分岐に
+  1行ずつ。shieldの設置(useGameLoop設置ブロック)/バッシュ(盾を押し出した瞬間・敵に当たらなくても1回)/
+  バッシュ与ダメ(既存バッシュ分岐のdmg)。**ボス交戦区間に限定しない**(§2.9に明記が無い点の実装メモ:
+  サブの使い方は平時に出るため=発注書の解釈どおり)。ラン単位で集計し、`foldSubStyleTallies()`
+  (**resetGameのresetBotTelemetry()直前**に1行追加=バッシュ与ダメ割合の分母「ラン総与ダメージ」を
+  botTelemetryから読むため順序が本質)でEMA混合。ゴーストが出うるランはtickPlayerTraitsが立てる
+  フラグで丸ごと破棄。**プロファイル未保存の端末では保存しない**(新規作成すると
+  loadPlayerProfile()!==nullになり守護霊ランのゴーストがdefaultGhostProfile(casual: counterChance0.65)
+  ではなくSEED(0.5)で動く=挙動が変わるため。挙動不変を記録より優先=実装メモ)。
+- **(4)スキーマ拡張**(`zombie-ghost-profile-v1`・v:1のまま): `stationaryFrac`/`approachPerMin`/
+  `moveReactions: {[moveKey]: {n, counterRate, hitRate}}`(dodgeRate=1-両者・nはn<3フォールバック用の
+  暴露累計)/`subStyles: {wire:{n,slamRatio}, shield:{n,bashPerPlacement,bashDamageFrac}}`。
+  旧保存(〜v0.25.2453)は欠損を既定値(SEED/空表/n=0)で埋める後方互換をテストで固定。
+- **挙動不変の確認方法(自己点検)**: 追加コードは (a) damagePlayer第7引数(既定undefined・読むのは
+  notifyMoveDamage 1箇所=記録のみ) (b) PumpkinBlast/giantDelayedHitsのオプションフィールドmoveKey
+  (判定・ダメージ式は一切読まない) (c) notifyMoveCounter/record系(カウンタ加算のみ・戻り値なし)
+  (d) resetGame先頭のfold(localStorage書き込みのみ)——の4種のみで、**既存の分岐条件・数値・setState
+  内容はどこも変えていない**(全hookはgrep全数で上表+7箇所と一致することを確認済み)。
+- ★未決: **なし**(仕様に明記の無い計測詳細は上記の実装メモ7点=BOT_AND_GHOST.md §2.9実装結果に
+  列挙。いずれも記録専用の解釈でゲーム挙動に影響せず、後から定義/数値だけ差し替え可能)。
+- 変更ファイル: `src/utils/moveReaction.ts`(新)/`src/utils/moveReaction.test.ts`(新)/
+  `src/utils/playerTraits.ts`/`src/utils/playerTraits.test.ts`/`src/utils/combatTick.ts`/
+  `src/utils/angelBossTick.ts`/`src/hooks/useGameLoop.ts`/`src/store/gameStore.ts`/
+  `src/types/game.ts`/`BOT_AND_GHOST.md`(§2.9実装結果)/`package.json`/`src/data/changelog.ts`/本ログ。
+- **Load score: 1/10**(毎tick追加=giantbat/thorだけを見る有界走査+スカラー演算。イベント系は
+  カウンタ加算のみ。localStorage書き込みはセッション終了/ラン境界のみ。描画・エフェクト・React購読の
+  追加ゼロ)。負担系統=simulation(微小)。セーフガード=セッション外・ゴーストランでは全フックが
+  即no-op。
+- **検証**: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ) /
+  `npx vitest related`(変更ファイル一式)=15ファイル297テスト全通過(新規: moveReaction 18件/
+  playerTraits +14件=32件)。
+- 自己点検: この変更は憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(計測タグの
+  受け渡しのみで、シーン・湧き・敵挙動・判定・演出のいずれにも1bitも触れていない)。
+
 ## v0.25.2453 — G4設計: 計測の高解像度化(技への反応表/移動2ノブ/サブ様式カウンタ)を§2.9に確定【2026-07-30 03:32 JST】
 
 - G3検収合格(v0.25.2452・スコア×0.5がresultScoring 1箇所・召喚ゲートと計測停止が同一純関数を共用

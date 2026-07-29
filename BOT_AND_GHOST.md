@@ -434,3 +434,32 @@ counterRate→構え / dodgeRate→離脱 / 残り→逃げずに食らいに行
   ダメージゼロの演技になり、ヘイトで技を引き受ける意味も半減する。当てるならゴースト即死→解散で
   召喚の重みも出る(挙動変更=社長裁定必要)。
 - G4a(計測のみ・記録専用・挙動完全不変)は裁定と独立に進められる。
+
+### G4a 実装結果(v0.25.2454・実装サブエージェント)— 計測のみ・挙動完全不変
+詳細(技キー×フック箇所の全数表・検証)は DEVELOPMENT_LOG.md v0.25.2454 が正本。要約:
+- **(1)技への反応表**: 判定中核(暴露/3分類counter>hit>dodge/EMA)は純関数 `src/utils/moveReaction.ts`
+  (テスト18件)。エピソード=aiPhase/bossStateの技ファミリー単位。counter成立の通知はリファンド7箇所
+  全部に `notifyMoveCounter()` を1行併設(⑤〜⑦はG4b対象ボス=表キー未定義で現状no-op)。被弾は
+  `damagePlayer` の第7引数 `damageSourceMove?`(既定undefined=完全に従来どおり・hateSourceと同じ流儀)。
+- **(2)移動2ノブ**: `stationaryFrac` / `approachPerMin` を playerTraits セッション(ボス交戦のみ・
+  ghostRunActiveゲート・30秒未満破棄・EMA α=0.3)へ追加。
+- **(3)サブ様式**: wire(スラム/プラント)+shield(設置/バッシュ/バッシュ与ダメ)をラン単位で集計し、
+  `foldSubStyleTallies()`(resetGameの`resetBotTelemetry()`直前)でEMA混合。ゴーストランは丸ごと破棄。
+- **(4)スキーマ**: `zombie-ghost-profile-v1` へ `stationaryFrac`/`approachPerMin`/`moveReactions`/
+  `subStyles` を追加。旧保存は欠損を既定値で埋める後方互換(テストで固定)。
+- **★未決: なし。** 仕様に明記の無い計測詳細は以下の実装メモで確定した(いずれも記録専用の解釈で、
+  ゲーム挙動には影響しない。気に入らなければ数値/定義だけ差し替え可能):
+  1. **サブ様式はボス交戦区間に限定しない**(発注書どおりの解釈。平時の使い方が様式のため)。
+  2. **stationaryFrac は実座標の変位ベース**(移動速度<12px/sのtick割合)。入力ベースにすると
+     既存 mobility の単なる補数(1-mobility)になり情報が増えないため。
+  3. **approachPerMin はプレイヤー自身の移動による接近量だけを積む**(ボスの突進/ジャンプ/場外退避
+     g-dive で距離が暴れても汚れない)。150px詰めて1エピソード/40px/s超の後退でリセット。
+  4. **残響(linger)2000ms**: 技のフェーズ終了後も遅延起爆・飛翔中の咆哮弾の着弾/反射を技へ帰属させる
+     窓。残響切れ後(例: グレン血溜まり床の数秒後の踏み直し)は数えない。
+  5. **接触ダメージの技帰属は3フェーズのみ**(g-dash-charge/g-quad-charge/g-glide-active=体当たりが
+     技のダメージであるもの)。溜め中や技なしの接触は従来どおりタグ無し。
+  6. **counterの帰属は時間窓**(§2.9の文言「その技の間にカウンター成立」どおり。開いているエピソード
+     全部、無ければ残響中のものへマーク)。
+  7. **プロファイル未保存の端末ではサブ様式foldは保存しない**: ここで新規作成すると
+     `loadPlayerProfile()!==null` になり、守護霊ランのゴーストが defaultGhostProfile(casual:
+     counterChance0.65)ではなく SEED(0.5)で動く=挙動が変わるため(挙動不変を記録より優先)。

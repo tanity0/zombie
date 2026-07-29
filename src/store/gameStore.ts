@@ -22,7 +22,11 @@ import {
   recordSubUse, recordOverclockProc, resetBotTelemetry,
   recordDamageDealt, recordFinisherKill, recordMeleeSwing,
 } from '../utils/botTelemetry';
-import { resetPlayerTraits } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1
+import {
+  resetPlayerTraits,
+  // G4a(BOT_AND_GHOST.md §2.9・記録専用): 技への反応表の被弾タグ+サブ様式カウンタ。挙動は一切変えない。
+  notifyMoveDamage, recordWireAnchorUse, recordShieldBash, recordShieldBashDamage, foldSubStyleTallies,
+} from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
 import { playerAsOwner, ownerCenterX, ownerCenterY, ownerFootY } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { stepSpeedRamp, effectiveRampFrac, rampedBonusMult } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
@@ -2575,9 +2579,13 @@ export interface WallInscriptionEvent {
 
 // パンプキン着地爆発などの円形AoEイベント。M51で薙ぎ払い(ジャイアント新スクリプト)用に、円ではなく
 // 直線+半幅のカプセル判定を積めるよう capsule を追加(既存呼び出し側は capsule 未指定=円のまま不変)。
+// G4a追加: moveKey=この爆発がどの技のものか(BOT_AND_GHOST.md §2.9 技への反応表の計測タグ。**記録専用**=
+// 判定・ダメージには一切使わず、combatTick.applyPumpkinBlastDamageがdamagePlayerのdamageSourceMoveへ
+// 渡すだけ。未設定=従来どおりタグ無し)。
 export interface PumpkinBlast {
   x: number; y: number; radius: number; damage: number; enemyId: string; ice?: boolean;
   capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number };
+  moveKey?: string;
 }
 
 interface GameState {
@@ -2894,7 +2902,7 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean) => boolean; // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string) => boolean; // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -4563,6 +4571,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         return [{ id: p.id, fromX: p.x, fromY: p.y, x: ex, y: ey, dux, duy, swept, cx: scx, cy: scy }];
       });
     const hasShieldShove = shieldShoves.length > 0;
+    // G4a(§2.9(3)・記録専用): 盾を押し出した瞬間=バッシュ1回(敵に当たらなくても「バッシュした」様式)。
+    if (hasShieldShove) recordShieldBash(shieldShoves.length);
     let bashHitEnemy = false; // バッシュが敵に当たったか(ストップ用)
 
     for (const enemy of enemies) {
@@ -4588,6 +4598,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         slashAt.push({ x: ecx, y: ecy });
         meleeHitEnemyIds.push(enemy.id);
         const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
+        recordShieldBashDamage(dmg); // G4a(§2.9(3)・記録専用): バッシュ与ダメの様式カウンタ
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         // §5.21-追補4: シールドバッシュはフィニッシュではない。finishKillOnly個体はHP1で踏みとどまる。
         const newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
@@ -6111,6 +6122,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
     if (target) {
+      recordWireAnchorUse('slam'); // G4a(§2.9(3)・記録専用): スラム型(敵ヒット)の様式カウンタ
       const tcx = target.x + target.width / 2, tcy = target.y + target.height / 2;
       const ddist = Math.max(0.001, Math.hypot(tcx - pcx, tcy - pcy));
       set(s => ({
@@ -6132,6 +6144,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return true;
     }
 
+    recordWireAnchorUse('plant'); // G4a(§2.9(3)・記録専用): プラント型(空振り=地点打ち込み)の様式カウンタ
     const ax = pcx + ux * dist;
     const ay = pcy + uy * dist;
     set(s => ({
@@ -6176,7 +6189,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().spawnRing(player.wireAnchorX, player.wireAnchorY, 8, 30, 'rgba(96,165,250,0.8)', 2, 260);
   },
 
-  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed) => {
+  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove) => {
     const { player } = get();
 
     if (player.invulnerable) return false;
@@ -6190,6 +6203,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const amount = get().farBackdrop === 'tutorial' && skilled > 0
       ? Math.min(skilled, Math.max(0, player.health - 1))
       : skilled;
+
+    // G4a(BOT_AND_GHOST.md §2.9・記録専用): 技キー付きの実被弾を反応表へ通知する(ワクチン発動でも
+    // 「その技を食らった」事実は同じなので、分岐より前のここで1回だけ)。挙動には一切影響しない。
+    if (amount > 0 && damageSourceMove !== undefined) notifyMoveDamage(damageSourceMove);
 
     const wouldDie = player.health - amount <= 0;
     if (wouldDie && player.vaccineRevives > 0) {
@@ -7711,7 +7728,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             const dueHits = giantDelayedHits.filter(h => gameTime >= h.fireAt && !h.burst);
             if (dueHits.length > 0) {
               for (const h of dueHits) {
-                pumpkinBlasts.push({ x: h.x, y: h.y, radius: h.radius, damage: enemy.damage, enemyId: enemy.id, ice: h.ice, capsule: h.capsule });
+                pumpkinBlasts.push({ x: h.x, y: h.y, radius: h.radius, damage: enemy.damage, enemyId: enemy.id, ice: h.ice, capsule: h.capsule, moveKey: h.moveKey });
               }
             }
             giantDelayedHits = giantDelayedHits
@@ -7938,6 +7955,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     x: (ecx + tx) / 2, y: (ecy + ty) / 2, radius: GLEN_TALON_HALF_WIDTH,
                     bornAt: gameTime, fireAt: talonFireAt,
                     capsule: { fx: ecx, fy: ecy, tx, ty, halfWidth: GLEN_TALON_HALF_WIDTH },
+                    moveKey: 'g-talon', // G4a計測タグ(記録専用)
                   };
                 });
                 return {
@@ -7961,6 +7979,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   return {
                     x: ecx + Math.cos(a) * GLEN_BOON_ARC_RADIUS, y: ecy + Math.sin(a) * GLEN_BOON_ARC_RADIUS,
                     radius: GLEN_BOON_RADIUS, bornAt: gameTime, fireAt: boonFireAt, floorUntil: boonFloorUntil,
+                    moveKey: 'g-boon', // G4a計測タグ(記録専用)
                   };
                 });
                 return {
@@ -7994,6 +8013,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   giantDelayedHits: [...(giantDelayedHits ?? []), {
                     x: aim.x, y: aim.y, radius: GLEN_NIHIL_RADIUS, bornAt: gameTime,
                     fireAt: atkUntil(GLEN_NIHIL_CHANT_MS * GLEN_NIHIL_CHANT_COUNT),
+                    moveKey: 'g-nihil', // G4a計測タグ(記録専用)
                   }],
                 };
               case 'trijump': {
@@ -8027,7 +8047,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 // 半径はwindup開始時にbeginGiantMove('stomp')が確定した値を読む(M65)。未設定
                 // (=旧セーブ/フォールバック経路)なら無倍率の生半径。描画側(pixiScene.ts)も同じ値を読む。
-                pumpkinBlasts.push({ x: ecx, y: ecy, radius: enemy.gStompRadius ?? GIANT_STOMP_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                pumpkinBlasts.push({ x: ecx, y: ecy, radius: enemy.gStompRadius ?? GIANT_STOMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-stomp' });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-stomp-recover', aiPhaseUntil: atkUntil(stompRecoverMs) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
@@ -8040,7 +8060,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const stx = enemy.aiTargetX ?? ecx, sty = enemy.aiTargetY ?? ecy;
                 pumpkinBlasts.push({
                   x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: GIANT_SWEEP_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id,
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-sweep',
                   capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SWEEP_HALF_WIDTH },
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-sweep-active', aiPhaseUntil: atkUntil(GIANT_SWEEP_ACTIVE_MS) };
@@ -8113,7 +8133,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (jt >= 1) {
                 pumpkinLanded = true;
                 // 半径はwindup開始時にbeginGiantMove('jump')が確定した値を読む(M65・stomp同様)。
-                pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: enemy.gJumpRadius ?? GIANT_JUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: enemy.gJumpRadius ?? GIANT_JUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-jump' });
                 return { ...enemy, ...phaseFields, x: jtx, y: jty, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiPhaseUntil: atkUntil(jumpRecoverMs) };
               }
               return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0 };
@@ -8167,7 +8187,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const curY = fy0 + ((ty - enemy.height / 2) - fy0) * t;
               if (t >= 1) {
                 pumpkinLanded = true;
-                pumpkinBlasts.push({ x: tx, y: ty, radius: GLEN_TRIJUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                pumpkinBlasts.push({ x: tx, y: ty, radius: GLEN_TRIJUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-trijump' });
                 const next = idx + 1;
                 if (next >= GLEN_TRIJUMP_COUNT) {
                   // 3発目の着地=最大の反撃窓へ。着地点の情報はここで捨てる(次の抽選に持ち越さない)。
@@ -8247,7 +8267,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const btx = enemy.aiTargetX ?? ecx, bty = enemy.aiTargetY ?? ecy;
                 pumpkinBlasts.push({
                   x: (bfx + btx) / 2, y: (bfy + bty) / 2, radius: GIANT_BITE_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id,
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-bite',
                   capsule: { fx: bfx, fy: bfy, tx: btx, ty: bty, halfWidth: GIANT_BITE_HALF_WIDTH },
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-active', aiPhaseUntil: atkUntil(GIANT_BITE_ACTIVE_MS) };
@@ -8274,7 +8294,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const stx = enemy.aiTargetX ?? ecx, sty = enemy.aiTargetY ?? ecy;
                 pumpkinBlasts.push({
                   x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: GIANT_SLAM_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id,
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-slam',
                   capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SLAM_HALF_WIDTH },
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-active', aiPhaseUntil: atkUntil(GIANT_SLAM_ACTIVE_MS) };
@@ -8302,7 +8322,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const gtx = enemy.aiTargetX ?? enemy.x, gty = enemy.aiTargetY ?? enemy.y;
                 pumpkinBlasts.push({
                   x: (gfx + gtx) / 2 + enemy.width / 2, y: (gfy + gty) / 2 + enemy.height / 2, radius: GIANT_GLIDE_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id,
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-glide',
                   capsule: {
                     fx: gfx + enemy.width / 2, fy: gfy + enemy.height / 2,
                     tx: gtx + enemy.width / 2, ty: gty + enemy.height / 2, halfWidth: GIANT_GLIDE_HALF_WIDTH,
@@ -8332,7 +8352,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 return {
                   ...enemy, ...phaseFields, x: gtx, y: gty, vx: 0, vy: 0,
                   aiPhase: 'g-glide-recover', aiPhaseUntil: atkUntil(GIANT_GLIDE_RECOVER_MS),
-                  giantDelayedHits: [...(giantDelayedHits ?? []), { x: hitX, y: hitY, radius: GIANT_GLIDE_SECOND_HIT_RADIUS, bornAt: gameTime, fireAt: atkUntil(GIANT_GLIDE_SECOND_HIT_DELAY_MS) }],
+                  giantDelayedHits: [...(giantDelayedHits ?? []), { x: hitX, y: hitY, radius: GIANT_GLIDE_SECOND_HIT_RADIUS, bornAt: gameTime, fireAt: atkUntil(GIANT_GLIDE_SECOND_HIT_DELAY_MS), moveKey: 'g-glide' }],
                 };
               }
               const gnx = gfx + (gtx - gfx) * gt, gny = gfy + (gty - gfy) * gt;
@@ -8351,7 +8371,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 描画側がaiTargetX/Yを直接参照する(本体の現在地とは無関係=世界座標で描ける)。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 const dtx = enemy.aiTargetX ?? enemy.x, dty = enemy.aiTargetY ?? enemy.y;
-                pumpkinBlasts.push({ x: dtx + enemy.width / 2, y: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS, damage: enemy.damage, enemyId: enemy.id });
+                pumpkinBlasts.push({ x: dtx + enemy.width / 2, y: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-dive' });
                 return { ...enemy, ...phaseFields, x: dtx, y: dty, vx: 0, vy: 0, aiPhase: 'g-dive-recover', aiPhaseUntil: atkUntil(GIANT_DIVE_RECOVER_MS) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
@@ -8444,7 +8464,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const playerR = Math.max(player.width, player.height) / 2;
               const hitNow = !enemy.giantActiveHit &&
                 distToSegment({ x: pcx, y: pcy }, { x: bfx, y: bfy }, { x: farX, y: farY }) <= GIANT_QUAD_BREATH_HALF_WIDTH + playerR;
-              if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id });
+              if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-quad' });
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 // 薙いだ跡に遅延起爆の氷を3つ(固定・学習装置①)。スカジの氷ハザード配管(pumpkinBlastsの
                 // ice:true)を流用するが、専用のgiantDelayedHitsキュー(専用配列)で管理する
@@ -8456,6 +8476,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     x: bfx + Math.cos(a) * GIANT_QUAD_BREATH_LENGTH * 0.7,
                     y: bfy + Math.sin(a) * GIANT_QUAD_BREATH_LENGTH * 0.7,
                     radius: GIANT_QUAD_ICE_RADIUS, bornAt: gameTime, fireAt: atkUntil(GIANT_QUAD_ICE_DELAY_MS), ice: true,
+                    moveKey: 'g-quad', // G4a計測タグ(記録専用)
                   };
                 });
                 return {
@@ -8494,7 +8515,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const playerR = Math.max(player.width, player.height) / 2;
               const pdist = Math.hypot(pcx - ecx, pcy - ecy);
               const hitNow = !enemy.giantActiveHit && Math.abs(pdist - curR) <= GIANT_NOVA_BAND_THICKNESS + playerR;
-              if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id });
+              if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-nova' });
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
@@ -8525,11 +8546,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const leftTx = wfx + leftX * GIANT_WING_LENGTH, leftTy = wfy + leftY * GIANT_WING_LENGTH;
                 const rightTx = wfx + rightX * GIANT_WING_LENGTH, rightTy = wfy + rightY * GIANT_WING_LENGTH;
                 pumpkinBlasts.push({
-                  x: (wfx + leftTx) / 2, y: (wfy + leftTy) / 2, radius: GIANT_WING_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id,
+                  x: (wfx + leftTx) / 2, y: (wfy + leftTy) / 2, radius: GIANT_WING_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-wing',
                   capsule: { fx: wfx, fy: wfy, tx: leftTx, ty: leftTy, halfWidth: GIANT_WING_HALF_WIDTH },
                 });
                 pumpkinBlasts.push({
-                  x: (wfx + rightTx) / 2, y: (wfy + rightTy) / 2, radius: GIANT_WING_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id,
+                  x: (wfx + rightTx) / 2, y: (wfy + rightTy) / 2, radius: GIANT_WING_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-wing',
                   capsule: { fx: wfx, fy: wfy, tx: rightTx, ty: rightTy, halfWidth: GIANT_WING_HALF_WIDTH },
                 });
                 return {
@@ -8539,6 +8560,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   giantDelayedHits: [...(giantDelayedHits ?? []), {
                     x: (wfx + wtx) / 2, y: (wfy + wty) / 2, radius: GIANT_WING_HALF_WIDTH, bornAt: gameTime, fireAt: atkUntil(GIANT_WING_THIRD_DELAY_MS),
                     capsule: { fx: wfx, fy: wfy, tx: wtx, ty: wty, halfWidth: GIANT_WING_HALF_WIDTH },
+                    moveKey: 'g-wing', // G4a計測タグ(記録専用)
                   }],
                 };
               }
@@ -8584,7 +8606,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const playerR = Math.max(player.width, player.height) / 2;
               const hitNow = !enemy.giantActiveHit &&
                 distToSegment({ x: pcx, y: pcy }, { x: nearX, y: nearY }, { x: farX, y: farY }) <= GIANT_SWEEPBEAM_HALF_WIDTH + playerR;
-              if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id });
+              if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-sweepbeam' });
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
@@ -8640,7 +8662,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const rtx = enemy.aiTargetX ?? ecx, rty = enemy.aiTargetY ?? ecy;
                 pumpkinBlasts.push({
                   x: (rfx + rtx) / 2, y: (rfy + rty) / 2, radius: GLEN_REACH_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id,
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-reach',
                   capsule: { fx: rfx, fy: rfy, tx: rtx, ty: rty, halfWidth: GLEN_REACH_HALF_WIDTH },
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-active', aiPhaseUntil: atkUntil(GLEN_REACH_ACTIVE_MS) };
@@ -11872,6 +11894,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   resetGame: (characterClass) => {
     const state = get();
+    // G4a(BOT_AND_GHOST.md §2.9(3)・記録専用): 前ランのサブ様式集計をプロファイルへ確定する。
+    // **必ずresetBotTelemetry()より前に呼ぶ**(バッシュ与ダメ割合の分母=前ランの総与ダメージを
+    // botTelemetryから読むため。後だと分母が常に0になる)。
+    foldSubStyleTallies();
     // M35(§6.12): ボット計測カウンタをラン開始でリセット(実機/ヘッドレス両ハーネス共通の合流点)。
     resetBotTelemetry();
     // BOT_AND_GHOST.md G1: 前ランの未確定セッション(交戦中に終了した場合等)を持ち越さない。

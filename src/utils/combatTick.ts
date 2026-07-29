@@ -45,7 +45,8 @@ import {
   GIANT_SCRIPT_ENABLED,
 } from '../store/gameStore';
 import { distToSegment } from './levelUpGate';
-import { notifyCounterHit } from './playerTraits'; // BOT_AND_GHOST.md G1(計測専用・挙動不変)
+import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
+import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 
 // 演出・音・死亡演出のコールバック注入(ヘッドレスではno-op)。判定条件自体はこのファイル内に残る。
@@ -132,7 +133,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y });
       } else if (!bp.invulnerable) {
         const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
-        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の落下攻撃`);
+        // G4a: b.moveKey=どの技の爆発か(記録専用タグ・未設定なら従来どおりundefined)。
+        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の落下攻撃`, undefined, undefined, undefined, undefined, b.moveKey);
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
         const ddx = bpcx - b.x, ddy = bpcy - b.y;
@@ -148,6 +150,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     }
   }
   if (parriedEnemyIds.length > 0) {
+    // G4a(§2.9・記録専用): カウンター成立(②ジャンプ着地パリィ)を技への反応表へ通知。
+    // ※G1のnotifyCounterHitはここには足さない(既存counterChanceノブの計測を変えないため)。
+    notifyMoveCounter();
     const pnow = Date.now();
     // 通常カウンター(弾反射)と同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
     fx.addMeleeFinishCombo(1);
@@ -264,7 +269,9 @@ export const applyGlenFloorDamage = (fx: CombatEffects): void => {
       if (gameTime < h.fireAt || gameTime >= h.floorUntil) continue;
       if (Math.hypot(pcx - h.x, pcy - h.y) > h.radius + pr) continue;
       const damageWasApplied = !player.invulnerable;
-      const died = useGameStore.getState().damagePlayer(e.damage, 'CODE:グレン の血溜まり', h.x, h.y);
+      // G4a: h.moveKey('g-boon')=記録専用タグ。技のエピソード終了から残響(linger)を過ぎた踏み直しは
+      // 反応表側で自然に無視される(moveReaction.ts参照)。
+      const died = useGameStore.getState().damagePlayer(e.damage, 'CODE:グレン の血溜まり', h.x, h.y, undefined, undefined, h.moveKey);
       if (damageWasApplied) {
         fx.playSfx('player-damage');
         fx.spawnFlash('rgba(239,68,68,0.18)', 180);
@@ -381,7 +388,10 @@ export const applyEnemyProjectileHits = (
       const rnMult = redNightActive ? 2 : 1;
       // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の飛び道具ダメージも×SCREAMER_BUFF_MULT。
       const scMult = (screamerBuffUntil > gameTime && proj.ownerType && proj.ownerType !== 'screamer' && !isBossType(proj.ownerType)) ? SCREAMER_BUFF_MULT : 1;
-      const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2);
+      // G4a(§2.9・記録専用): 新スクリプトのgiantbatが撃つ弾は咆哮弾(g-bolt)だけ(汎用発砲は
+      // GIANT_SCRIPT_ENABLED時に完全無効=上のapplyEnemyFire参照)なので、発射元タイプから技キーが確定する。
+      const boltMoveKey = proj.ownerType === 'giantbat' && GIANT_SCRIPT_ENABLED ? 'g-bolt' : undefined;
+      const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2, undefined, undefined, boltMoveKey);
       if (wasVulnerable) {
         fx.playSfx('player-damage');
         fx.spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -403,6 +413,9 @@ export const applyEnemyProjectileHits = (
   }
   // "Counter!" only when a bullet was actually reflected (once per frame).
   if (reflectedAny) {
+    // G4a(§2.9・記録専用): カウンター成立(①弾反射)を技への反応表へ通知(1フレーム1回)。
+    // ※G1のnotifyCounterHitはここには足さない(既存counterChanceノブの計測を変えないため)。
+    notifyMoveCounter();
     fx.addMeleeFinishCombo(1);
     fx.playSfx('counter');
     const pcx = player.x + player.width / 2;
@@ -504,7 +517,9 @@ export const applyContactDamage = (
     const rnMelee = redNightActive ? 2 : 1;
     // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の接触ダメージも×SCREAMER_BUFF_MULT。
     const scMelee = (screamerBuffUntil > gameTime && enemy.type !== 'screamer' && !isBossType(enemy.type)) ? SCREAMER_BUFF_MULT : 1;
-    const playerDied = useGameStore.getState().damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+    // G4a(§2.9・記録専用): 体当たりそのものが技のダメージであるフェーズ(g-dash-charge/g-quad-charge/
+    // g-glide-active)だけ技キーを付ける(純関数contactDamageMoveKey)。それ以外の接触は従来どおりタグ無し。
+    const playerDied = useGameStore.getState().damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, undefined, undefined, contactDamageMoveKey(enemy));
     if (damageWasApplied) {
       fx.playSfx('player-damage');
       fx.spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -525,6 +540,8 @@ export const applyContactDamage = (
   if (dashParried.length > 0) {
     // BOT_AND_GHOST.md G1(計測専用・挙動不変): カウンター成立をplayerTraitsへ通知する。
     notifyCounterHit();
+    notifyMoveCounter(); // G4a(§2.9・記録専用): カウンター成立(③突進パリィ)を技への反応表へも通知
+
     const pnow = Date.now();
     const ppx = collPlayer.x + collPlayer.width / 2, ppy = collPlayer.y + collPlayer.height / 2;
     // 通常カウンターと同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2454',
+    items: [
+      'ゲーム内容の変更はありません(守護霊の学習データの高解像度化=ボス技への反応・立ち回り・サブウェポンの使い方の記録のみ。挙動・判定・数値は不変)。',
+    ],
+  },
+  {
     version: '0.25.2453',
     items: [
       'ゲーム内容の変更はありません(守護霊の学習を高解像度化する設計文書の追加のみ)。',

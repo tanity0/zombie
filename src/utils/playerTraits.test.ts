@@ -1,6 +1,11 @@
 // BOT_AND_GHOST.md G1(プレイヤー実測層)。純関数+モジュールシングルトンの計測ロジックを検証する。
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { tickPlayerTraits, notifyCounterHit, loadPlayerProfile, resetPlayerTraits } from './playerTraits';
+import {
+  tickPlayerTraits, notifyCounterHit, loadPlayerProfile, resetPlayerTraits,
+  // G4a(BOT_AND_GHOST.md §2.9)
+  notifyMoveCounter, notifyMoveDamage,
+  recordWireAnchorUse, recordShieldPlacement, recordShieldBash, recordShieldBashDamage, foldSubStyleTallies,
+} from './playerTraits';
 import { resetBotTelemetry, recordDamageDealt, recordSubUse } from './botTelemetry';
 import type { Enemy } from '../types/game';
 
@@ -263,5 +268,181 @@ describe('playerTraits: subUsesPerMin(G2.6・botTelemetry.subUses差分)', () =>
     // 既存保存あり=EMA混合: 前回値(欠損→既定2)*0.7 + 新サンプル(1)*0.3 = 1.7
     expect(p.subUsesPerMin).toBeCloseTo(1.7, 5);
     expect(p.runs).toBe(2);
+  });
+});
+
+// ==== G4a(BOT_AND_GHOST.md §2.9): 後方互換・移動2ノブ・技への反応表・サブ様式 ====================
+
+describe('playerTraits G4a: 後方互換(旧フォーマットの欠損はG4a既定値で埋まる)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  it('G4a項目が無い保存(〜v0.25.2453)も読め、欠損は既定値で埋まる', () => {
+    const old = {
+      v: 1, runs: 3, reactionMs: 300, counterChance: 0.6, preferredDist: 200,
+      meleeBias: 0.5, mobility: 0.7, hitsPerMin: 4, subUsesPerMin: 2.5,
+    };
+    localStorage.setItem('zombie-ghost-profile-v1', JSON.stringify(old));
+    const p = loadPlayerProfile();
+    expect(p).not.toBeNull();
+    expect(p!.stationaryFrac).toBe(0.35);            // SEED
+    expect(p!.approachPerMin).toBe(3);               // SEED
+    expect(p!.moveReactions).toEqual({});            // 空表
+    expect(p!.subStyles).toEqual({ wire: { n: 0, slamRatio: 0 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 } });
+    expect(p!.reactionMs).toBe(300);                 // 既存ノブは保存値のまま
+    expect(p!.subUsesPerMin).toBe(2.5);
+  });
+});
+
+describe('playerTraits G4a: 移動2ノブ(stationaryFrac/approachPerMin)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  const playerAt = (x: number) => ({ x, y: 100, width: 20, height: 20, health: 100, maxHealth: 100 });
+
+  it('stationaryFrac: 実座標が動かないtickは静止として数える(全tick静止=1)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 15_000 }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    expect(loadPlayerProfile()!.stationaryFrac).toBe(1);
+  });
+
+  it('stationaryFrac: 実移動していれば静止に数えない(移動入力ベースのmobilityとは独立)', () => {
+    // 1秒ごとに200px動く=200px/s(閾値12px/sを大きく超える)。movementInputはfalseのまま
+    // =mobilityは0でもstationaryFracも0(入力ではなく実座標で判定していることの確認)。
+    tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(10_000) }));
+    tickPlayerTraits(baseInput({ gameTime: 1000, player: playerAt(10_200) }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, player: playerAt(16_000) }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    const p = loadPlayerProfile()!;
+    expect(p.stationaryFrac).toBe(0);
+    expect(p.mobility).toBe(0);
+  });
+
+  it('approachPerMin: プレイヤー自身の移動でボスへ150px以上詰めるたびに1エピソード', () => {
+    // ボス(mkBoss)は(100,100)40x40=中心(120,120)。x=600→420→260と2回詰める(各180px>150px)。
+    tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(600) }));
+    tickPlayerTraits(baseInput({ gameTime: 20_000, player: playerAt(420) }));  // エピソード1
+    tickPlayerTraits(baseInput({ gameTime: 40_000, player: playerAt(260) }));  // エピソード2
+    tickPlayerTraits(baseInput({ gameTime: 60_000, player: playerAt(260) }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
+    expect(loadPlayerProfile()!.approachPerMin).toBeCloseTo(2, 5); // 60秒で2回=2/分
+  });
+
+  it('approachPerMin: ボス側が近づいて縮んだ距離は数えない(プレイヤー静止なら0)', () => {
+    const bossAt = (x: number) => mkBoss({ x });
+    tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(600), enemies: [bossAt(100)] }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, player: playerAt(600), enemies: [bossAt(500)] })); // ボスが400px接近
+    tickPlayerTraits(baseInput({ gameTime: 60_000, player: playerAt(600), enemies: [bossAt(500)] }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
+    expect(loadPlayerProfile()!.approachPerMin).toBe(0);
+  });
+});
+
+describe('playerTraits G4a: 技への反応表(セッション経由のe2e)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  const thorAt = (bossState: Enemy['bossState']) => mkBoss({ bossState });
+
+  it('技の解決1回=n1・無反応=dodge(counterRate/hitRateとも0)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [thorAt('chase')] }));
+    tickPlayerTraits(baseInput({ gameTime: 1000, enemies: [thorAt('harai-windup')] }));
+    tickPlayerTraits(baseInput({ gameTime: 2000, enemies: [thorAt('harai')] }));
+    tickPlayerTraits(baseInput({ gameTime: 3000, enemies: [thorAt('chase')] }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [thorAt('chase')] })); // 残響も確定済み
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    const p = loadPlayerProfile()!;
+    expect(p.moveReactions['thor-harai']).toEqual({ n: 1, counterRate: 0, hitRate: 0 });
+  });
+
+  it('notifyMoveDamage(被弾タグ)はhit・notifyMoveCounter(成立7箇所)はcounterで、counterが優先', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [thorAt('tsuki-windup')] }));
+    notifyMoveDamage('thor-tsuki');
+    tickPlayerTraits(baseInput({ gameTime: 1000, enemies: [thorAt('tsuki')] }));
+    notifyMoveCounter();
+    tickPlayerTraits(baseInput({ gameTime: 2000, enemies: [thorAt('chase')] }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [thorAt('chase')] }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    const p = loadPlayerProfile()!;
+    expect(p.moveReactions['thor-tsuki']).toEqual({ n: 1, counterRate: 1, hitRate: 0 });
+  });
+
+  it('セッション外(非交戦)のnotifyは無視される(記録専用フックの安全弁)', () => {
+    notifyMoveCounter();
+    notifyMoveDamage('thor-harai');
+    expect(loadPlayerProfile()).toBeNull();
+  });
+});
+
+describe('playerTraits G4a: サブ様式カウンタ(ラン単位・ボス交戦区間に限定しない)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  // fold はプロファイル未保存時に保存しない(挙動不変の掟=新規作成するとゴースト既定が変わるため)
+  // ので、先にボス交戦セッション1回でプロファイルを作る。
+  const createProfileViaSession = () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    expect(loadPlayerProfile()).not.toBeNull();
+  };
+
+  it('wire: スラム/プラント比率をラン境界(fold)でEMA記録する', () => {
+    createProfileViaSession();
+    recordWireAnchorUse('slam');
+    recordWireAnchorUse('slam');
+    recordWireAnchorUse('slam');
+    recordWireAnchorUse('plant');
+    foldSubStyleTallies();
+    const p = loadPlayerProfile()!;
+    expect(p.subStyles.wire).toEqual({ n: 4, slamRatio: 0.75 }); // 初記録はサンプルそのまま
+    // 2ラン目: 全プラント(比率0)→EMA: 0.75*0.7+0*0.3=0.525
+    recordWireAnchorUse('plant');
+    recordWireAnchorUse('plant');
+    foldSubStyleTallies();
+    const p2 = loadPlayerProfile()!;
+    expect(p2.subStyles.wire.n).toBe(6);
+    expect(p2.subStyles.wire.slamRatio).toBeCloseTo(0.525, 5);
+  });
+
+  it('shield: 設置あたりバッシュ回数+バッシュ与ダメ割合(分母=ラン総与ダメージ)を記録する', () => {
+    createProfileViaSession();
+    recordShieldPlacement();
+    recordShieldPlacement();
+    recordShieldBash();
+    recordShieldBash();
+    recordShieldBash();
+    recordShieldBashDamage(60);
+    recordDamageDealt('melee', 60);  // バッシュ分(実装ではmeleeチャネルに含まれる)
+    recordDamageDealt('gun', 140);   // 総与ダメ=200
+    foldSubStyleTallies();
+    const p = loadPlayerProfile()!;
+    expect(p.subStyles.shield.n).toBe(2);
+    expect(p.subStyles.shield.bashPerPlacement).toBeCloseTo(1.5, 5);
+    expect(p.subStyles.shield.bashDamageFrac).toBeCloseTo(0.3, 5); // 60/200
+  });
+
+  it('ゴーストが出うるランのサブ様式は丸ごと破棄する(§2.7制約1と同じゲート)', () => {
+    createProfileViaSession();
+    const before = loadPlayerProfile()!;
+    recordWireAnchorUse('slam');
+    tickPlayerTraits(baseInput({ gameTime: 40_000, ghostRunActive: true })); // このランはゴースト有効
+    foldSubStyleTallies();
+    expect(loadPlayerProfile()!.subStyles).toEqual(before.subStyles);
+    // 破棄はそのラン限り: 次のラン(フラグリセット後)は普通に記録される
+    recordWireAnchorUse('slam');
+    foldSubStyleTallies();
+    expect(loadPlayerProfile()!.subStyles.wire.n).toBe(1);
+  });
+
+  it('プロファイル未保存ならfoldは保存しない(ゴースト既定プロファイルへの影響=挙動変化を作らない)', () => {
+    recordWireAnchorUse('slam');
+    foldSubStyleTallies();
+    expect(loadPlayerProfile()).toBeNull();
+  });
+
+  it('何も使っていないランのfoldはプロファイルに触らない', () => {
+    createProfileViaSession();
+    const before = localStorage.getItem('zombie-ghost-profile-v1');
+    foldSubStyleTallies();
+    expect(localStorage.getItem('zombie-ghost-profile-v1')).toBe(before);
   });
 });

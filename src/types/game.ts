@@ -455,9 +455,12 @@ export interface Enemy {
   // M67追加: burst=一度この一撃(pumpkinBlasts)を消化済みか(floorUntil付きエントリを即削除せず
   // 保持するための多重発火防止フラグ)。floorUntil=このgameTimeまでは爆発後も「床」として保持し
   // 続ける(血の弧=boon専用。未設定なら従来どおりfireAt直後に削除=既存3用途は無改変)。
+  // G4a追加: moveKey=この遅延起爆がどの技のものか(BOT_AND_GHOST.md §2.9 技への反応表の計測タグ。
+  // **記録専用**=起爆処理はこの値を判定に使わず、pumpkinBlasts経由でdamagePlayerのdamageSourceMoveへ
+  // 渡すだけ。未設定=従来どおり)。
   giantDelayedHits?: { x: number; y: number; radius: number; bornAt: number; fireAt: number; ice?: boolean;
     capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number };
-    burst?: boolean; floorUntil?: number }[];
+    burst?: boolean; floorUntil?: number; moveKey?: string }[];
   // 継続判定技(氷結波の輪/三連突進の吐息/掃射)が「このactiveフェーズで既に1回命中させたか」。
   // 回転/拡大する図形は毎フレーム自己検出するため、多重ヒットを防ぐ1回きりフラグ(windup開始でfalseへ)。
   giantActiveHit?: boolean;
