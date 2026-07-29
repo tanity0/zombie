@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2399',
+    items: [
+      '攻撃予告の帯の絵を、より鮮明なものに差し替えました。',
+    ],
+  },
+  {
     version: '0.25.2398',
     items: [
       'ゲーム内容の変更はありません（ボスの技エフェクト素材の発注書を追記しただけです）。',
