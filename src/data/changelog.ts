@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2446',
+    items: [
+      'ゲーム内容の変更はありません(クールダウン再設計: オーバークロックの扱いを確定)。',
+    ],
+  },
+  {
     version: '0.25.2445',
     items: [
       'ゲーム内容の変更はありません(クールダウン再設計の決定記録を追加)。',
