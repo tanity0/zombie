@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2499',
+    items: [
+      'ゲーム内容の変更はありません(守護霊パリティ検証の分析記録。判明した銃弾の仕様差=散弾数・弾速・貫通などは次の修正バッチで直します)。',
+    ],
+  },
+  {
     version: '0.25.2498',
     items: [
       'ゲーム内容の変更はありません(偶像の拳の素材を搭載。エフェクト実装は次のバッチで入ります)。',
