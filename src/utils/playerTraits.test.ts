@@ -336,7 +336,8 @@ describe('playerTraits G4a: 後方互換(旧フォーマットの欠損はG4a既
     expect(p!.stationaryFrac).toBe(0.35);            // SEED
     expect(p!.approachPerMin).toBe(3);               // SEED
     expect(p!.moveReactions).toEqual({});            // 空表
-    expect(p!.subStyles).toEqual({ wire: { n: 0, slamRatio: 0 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 } });
+    // v0.25.2563: homing(ホーミングの押し時間の平均)も欠損=既定値で埋まる。
+    expect(p!.subStyles).toEqual({ wire: { n: 0, slamRatio: 0 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 }, homing: { n: 0, holdMsAvg: 0 } });
     expect(p!.reactionMs).toBe(300);                 // 既存ノブは保存値のまま
     expect(p!.subUsesPerMin).toBe(2.5);
     expect(p!.srcName).toBeUndefined();              // v0.25.2477: srcNameも欠損可(srcClass/snapshotと同じ流儀)
@@ -718,7 +719,7 @@ describe('playerTraits G5: 新規純関数(bossStyleSlotKey/ベスト保持判�
     meleeBias: 0.5, mobility: 0.7, hitsPerMin: 4, subUsesPerMin: 2,
     stationaryFrac: 0.3, approachPerMin: 2,
     moveReactions: { 'thor-harai': { n: 5, counterRate: 0.5, hitRate: 0.1 } },
-    subStyles: { wire: { n: 2, slamRatio: 0.5 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 } },
+    subStyles: { wire: { n: 2, slamRatio: 0.5 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 }, homing: { n: 0, holdMsAvg: 0 } },
     srcClass: 'warrior', srcName: 'Axis1Name', snapshot: { maxHealth: 100, speed: 5, level: 3 },
   });
 
@@ -742,7 +743,7 @@ describe('playerTraits G5: 新規純関数(bossStyleSlotKey/ベスト保持判�
         thor: {
           reactionMs: 150, counterChance: null, preferredDist: 120, meleeBias: null, mobility: 0.9,
           hitsPerMin: 1, subUsesPerMin: null, stationaryFrac: 0.1, approachPerMin: null,
-          subStyles: { wire: { n: 9, slamRatio: 1 }, shield: { n: 9, bashPerPlacement: 9, bashDamageFrac: 1 } },
+          subStyles: { wire: { n: 9, slamRatio: 1 }, shield: { n: 9, bashPerPlacement: 9, bashDamageFrac: 1 }, homing: { n: 3, holdMsAvg: 2100 } },
           srcClass: 'mage', snapshot: { maxHealth: 50, speed: 9, level: 1 }, srcName: 'BossKiller', at: 12345,
         },
       },
@@ -758,7 +759,7 @@ describe('playerTraits G5: 新規純関数(bossStyleSlotKey/ベスト保持判�
     expect(out.stationaryFrac).toBe(0.1);
     expect(out.approachPerMin).toBe(2);     // フォールバック
     // subStylesはslotで丸ごと置換(ノブ単位フォールバックはしない)。
-    expect(out.subStyles).toEqual({ wire: { n: 9, slamRatio: 1 }, shield: { n: 9, bashPerPlacement: 9, bashDamageFrac: 1 } });
+    expect(out.subStyles).toEqual({ wire: { n: 9, slamRatio: 1 }, shield: { n: 9, bashPerPlacement: 9, bashDamageFrac: 1 }, homing: { n: 3, holdMsAvg: 2100 } });
     expect(out.srcClass).toBe('mage');
     expect(out.srcName).toBe('BossKiller');
     expect(out.snapshot).toEqual({ maxHealth: 50, speed: 9, level: 1 });

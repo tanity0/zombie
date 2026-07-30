@@ -48,7 +48,22 @@ export interface SubStyleProfile {
    * bashDamageFrac=ラン中の総与ダメージに占めるバッシュ与ダメの割合。
    */
   shield: { n: number; bashPerPlacement: number; bashDamageFrac: number };
+  /**
+   * GHOST-SUBS-FINAL(社長裁定2026-07-31「ロックは秒数平均だけ持っておけば? 大体3秒くらいで
+   * 撃ってるなー、とか」): ホーミングの「押す→離す(発射)」までの保持時間の平均(ms)。
+   * n=計測した発射回数の累計。**旧プロファイルには無い**=読み側は欠損に耐えること
+   * (loadPlayerProfile が normalizeSubStyles で既定を埋める)。
+   */
+  homing: { n: number; holdMsAvg: number };
 }
+
+/**
+ * 純関数: 守護霊が使う「押し続ける時間」の計測値(ms)。まだ1度も計測していなければ null=
+ * 消費側(homing.ghostHomingHoldMs)が満タン発射へフォールバックする。
+ * 旧プロファイル/旧スロット(homingキーが無い保存)にも耐える。
+ */
+export const subStyleHomingHoldMs = (s: SubStyleProfile | undefined): number | null =>
+  s?.homing !== undefined && s.homing.n >= 1 ? s.homing.holdMsAvg : null;
 
 /**
  * G5(BOT_AND_GHOST.md §2.10 仕様1): ボス別攻略スタイル1スロット=撃破セッション1回ぶんのサンプル写し
@@ -154,7 +169,15 @@ const SEED_PROFILE: Omit<PlayerProfile, 'v' | 'runs' | 'moveReactions' | 'subSty
 const defaultSubStyles = (): SubStyleProfile => ({
   wire: { n: 0, slamRatio: 0 },
   shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 },
+  homing: { n: 0, holdMsAvg: 0 },
 });
+
+/** 後方互換: 旧フォーマット(homingキーが無い保存)を既定で埋める(欠損したキーだけ)。 */
+const normalizeSubStyles = (v: SubStyleProfile | undefined): SubStyleProfile => {
+  const d = defaultSubStyles();
+  if (!v) return d;
+  return { wire: v.wire ?? d.wire, shield: v.shield ?? d.shield, homing: v.homing ?? d.homing };
+};
 
 const EMA_ALPHA = 0.3;
 const MIN_SESSION_MS = 30_000;
@@ -200,7 +223,7 @@ export const loadPlayerProfile = (): PlayerProfile | null => {
       stationaryFrac: parsed.stationaryFrac ?? SEED_PROFILE.stationaryFrac,
       approachPerMin: parsed.approachPerMin ?? SEED_PROFILE.approachPerMin,
       moveReactions: parsed.moveReactions ?? {},
-      subStyles: parsed.subStyles ?? defaultSubStyles(),
+      subStyles: normalizeSubStyles(parsed.subStyles),
     };
   } catch {
     return null;
@@ -699,9 +722,13 @@ interface SubStyleTally {
   shieldPlacements: number;
   shieldBashes: number;
   shieldBashDamage: number;
+  /** GHOST-SUBS-FINAL: ホーミングの「押す→離す」保持時間(ms)の合計と回数(平均はfold時に取る)。 */
+  homingHoldCount: number;
+  homingHoldSumMs: number;
 }
 const createSubStyleTally = (): SubStyleTally => ({
   wireSlams: 0, wirePlants: 0, shieldPlacements: 0, shieldBashes: 0, shieldBashDamage: 0,
+  homingHoldCount: 0, homingHoldSumMs: 0,
 });
 let subStyleTally: SubStyleTally = createSubStyleTally();
 // このランでゴースト系が有効だったか(§2.7 制約1)。tickPlayerTraitsが立て、foldが見て丸ごと破棄する。
@@ -729,6 +756,17 @@ export const recordShieldBashDamage = (amount: number): void => {
 };
 
 /**
+ * GHOST-SUBS-FINAL(社長裁定2026-07-31): ホーミングを「押してから離して撃つまで」の保持時間(ms)。
+ * 呼び出し点=useGameLoopのホーミングブロック(指が離れて実際に発射が成立したフレーム)1箇所。
+ * 記録専用=挙動不変。ゴーストランは既存ゲート(foldSubStyleTalliesがsubStyleGhostRunで丸ごと破棄)に従う。
+ */
+export const recordHomingHold = (holdMs: number): void => {
+  if (!Number.isFinite(holdMs) || holdMs < 0) return;
+  subStyleTally.homingHoldCount += 1;
+  subStyleTally.homingHoldSumMs += holdMs;
+};
+
+/**
  * ラン境界でサブ様式集計を**保留バッファへ積む**(v0.25.2476: 即保存からの保留化。実際のEMA混合は
  * commitPendingTraits)。settlePendingTraits(リザルトを閉じる操作)から、**resetBotTelemetry()より
  * 前に**呼ばれること(バッシュ与ダメ割合の分母=ラン総与ダメージをbotTelemetry.damageDealtから
@@ -745,7 +783,8 @@ export const foldSubStyleTallies = (): void => {
   subStyleGhostRun = false;
   if (wasGhostRun) return;
   const wireUses = t.wireSlams + t.wirePlants;
-  if (wireUses === 0 && t.shieldPlacements === 0) return; // 何も使っていないランはプロファイルに触らない
+  // 何も使っていないランはプロファイルに触らない(ホーミングだけ使ったランも拾う=v0.25.2563)。
+  if (wireUses === 0 && t.shieldPlacements === 0 && t.homingHoldCount === 0) return;
   const tel = getBotTelemetry();
   pendingRecords.push({
     kind: 'subStyle',
@@ -792,7 +831,19 @@ export const applyPendingSubStyle = (prev: PlayerProfile, r: PendingSubStyleReco
           : fracSample,
     };
   }
-  return { ...prev, subStyles: { wire: nextWire, shield: nextShield } };
+
+  // GHOST-SUBS-FINAL: ホーミングの保持時間もwire/shieldと**同じ流儀**でEMA(初回はサンプルそのまま)。
+  const homing = prev.subStyles.homing ?? defaultSubStyles().homing;
+  const holdSample = t.homingHoldCount > 0 ? t.homingHoldSumMs / t.homingHoldCount : null;
+  const nextHoming = holdSample === null
+    ? homing
+    : {
+      n: homing.n + t.homingHoldCount,
+      holdMsAvg: homing.n > 0
+        ? homing.holdMsAvg * (1 - EMA_ALPHA) + holdSample * EMA_ALPHA
+        : holdSample,
+    };
+  return { ...prev, subStyles: { wire: nextWire, shield: nextShield, homing: nextHoming } };
 };
 
 // ==== G5(BOT_AND_GHOST.md §2.10): ボス別攻略スタイル(軸2)の commit 側 ==========================
@@ -827,7 +878,10 @@ export const sampleSubStylesFromRecord = (r: PendingSubStyleRecord): SubStylePro
       bashDamageFrac: r.totalDamage > 0 ? t.shieldBashDamage / r.totalDamage : 0,
     }
     : defaultSubStyles().shield;
-  return { wire, shield };
+  const homing = t.homingHoldCount > 0
+    ? { n: t.homingHoldCount, holdMsAvg: t.homingHoldSumMs / t.homingHoldCount }
+    : defaultSubStyles().homing;
+  return { wire, shield, homing };
 };
 
 /**

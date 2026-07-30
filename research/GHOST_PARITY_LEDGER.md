@@ -121,25 +121,29 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 | shield | ✅ | ✅ | 設置+バッシュ含め動作(SubStyle計測対象)。 |
 | turret | ✅ | ✅ | 同上。青白tint済み。 |
 | fire-knife | ✅ | ✅ | 狙いを持つ2種の一つ(`pickSubAimTarget`)。 |
-| striker-quick-mag | 未対応 | **無し** | 「プレイヤーが拾いに行く」前提の設計。ゴースト位置から投げると回収不能。 |
-| dog | 未対応 | **無し** | フェッチ状態機械がプレイヤー座標を毎フレーム直読み。 |
+| striker-quick-mag | ✅ | ✅**(v0.25.2563)** | GHOST-SUBS-FINAL: 投擲+**自分で回収**(回収の移動目標=`decideGhost.retrieveTarget`。間合い管理より優先・回避には譲る)。マガジンは`Pickup.ownerGhostId`付き=本人だけが拾う。弾薬の残量条件は除外4のため掛けない。 |
+| dog | 未対応 | **無し(★未決6で停止)** | フェッチの成果物=**世界のドロップ**。§2.11追補3「霊体は世界の物に触れない/財布なし」と衝突するため GHOST-SUBS-FINAL では**この種だけ止めた**(★未決6の裁定待ち)。 |
 | katana / murasame | 未対応 | **無し** | §5参照(カウンター窓経済)。 |
 | whip | 未対応 | **無し** | §6参照(同上)。 |
 | alchemy / sage-stone | 未対応 | **無し** | CD概念なし(常駐召喚)。 |
 | shijin | 未対応 | **無し** | CD概念なし(リズム)。 |
 | drone-boomerang | ✅ | ✅**(v0.25.2525)** | 発注C: ゴーストの近接スイングに相乗り(共通ヘルパ `fireDroneBoomerangOnSwing`)。CDは1つの財布。 |
 | wire-anchor | 未対応 | **無し(移動系・特記対象)** | 効果=オーナーの体の高速移動(スラム/プラント/ホップ)。ghostDriverの移動系への特殊配線が必要=**現在オーナー常にプレイヤー固定**。§2.11では「除外1/4に該当しない=写す対象」。優先度が高い個別項目。 |
-| homing | 未対応 | **無し** | ロック蓄積=タッチ入力の押しっぱなし/離しで発射という入力方式そのもの。 |
+| homing | ✅ | ✅**(v0.25.2563)** | GHOST-SUBS-FINAL: 「押す」を模擬。ロック蓄積は共有純関数`stepHomingLocks`、押す時間は**計測平均**(G4a `subStyles.homing.holdMsAvg`)を満タン到達時間でclamp。計測なし=満タン発射。 |
 | shadow-clone | 未対応 | **無し(★未決5で停止)** | 発動入口が近接スイング。v0.25.2525で着手したが「分身の帰属/見た目/計測」が未決のため**この種だけ停止**(★未決5)。 |
-| molotov | 未対応 | **無し** | 「本人が移動中のみ足元へ設置」=本人の移動と結合。 |
-| first-aid-kit | 未対応 | **無し** | CD概念なし(1ラン使い切り)。 |
+| molotov | ✅ | ✅**(v0.25.2563)** | GHOST-SUBS-FINAL: 判定は同じ`computeMolotovTick`、移動判定=ゴーストの実移動(`ghostIsMoving`)。火は`GroundFire.ownerGhostId`付きで、DoTの倍率評価は置いた本人の疑似Player。 |
+| first-aid-kit | ✅ | ✅**(v0.25.2563)** | GHOST-SUBS-FINAL: 自前在庫1(`Summon.ghostFirstAidKit`)。**自分のHPへ**使う(HP50%未満=プレイヤーの回復払い出しと同じ定数/回復量は`HEAL_FRACTION`)。弾薬・爆弾は鞄に入っていない(除外4/追補3)。空になったら同じ`spawnThrownBag`。 |
 | sensor-mine | 未対応 | **無し** | チャージ制(個別チャージが別々に回復)でCD正規化を見送り済み(★未決2)。 |
-| support-sniper | 未対応 | **無し** | 専用タイマーが「プレイヤー移動中のみ」進行。 |
+| support-sniper | ✅ | ✅**(v0.25.2563)** | GHOST-SUBS-FINAL: 自前タイマー(`ghostSupportSniperCdMs`)+同じ`computeSupportSniperTick/Entry`。NPC枠は世界の1枠のまま(`ownerGhostId`で主語を持ち、弾の倍率評価はその守護霊)。 |
 | flare-gun | ✅ | ✅**(v0.25.2525)** | 発注C: 同上(`fireFlareGunOnSwing`)。 |
 | junk-weapon | ✅ | ✅**(v0.25.2525)** | 発注C: 同上(`fireJunkWeaponOnSwing`)。スクラップ非消費=除外4。 |
 | striker-hunting | 未対応 | **無し** | CD概念なし(静止チャージ)。 |
 
-**未対応14種+対応6種+murasame/sage-stone(katana/alchemyの上位で同枠)=合計24種中6種のみ実働。**
+**(2026-07-31 v0.25.2563 GHOST-SUBS-FINAL 時点)** 対応=heavy-grenade / marksman-trap / decoy / shield / turret /
+fire-knife / drone-boomerang / flare-gun / junk-weapon / shadow-clone / sensor-mine / wire-anchor / katana(murasame含む) /
+molotov / first-aid-kit / support-sniper / homing / striker-quick-mag。
+**残る未対応は dog(★未決6=追補3と衝突・停止中)と、CD概念を持たない常駐/リズム/静止チャージ系
+(whip / alchemy・sage-stone / shijin / striker-hunting)のみ。**
 
 ---
 
@@ -843,3 +847,81 @@ jibrilの炎=**別エンティティ**(Projectileではない)/ idolのroll・pu
 - 名前の決定は「守護霊」メニューが本籍(§2.16 C-1)だが、既存のオプション内 `PlayerNameSettings` は
   **同じ部品のまま残した**(勝手に削らない/文言・挙動は1箇所で共有=食い違わない)。
   オプション側を畳むかは社長裁定。
+
+---
+
+## 実装ログ: バッチGHOST-SUBS-FINAL(構造ズレ組サブ・v0.25.2563・ステータス=実装済み(犬のみ停止))
+
+正本= 上の「構造ズレ組サブ6種の裁定案」+「裁定(社長2026-07-31)」。ドクトリンは BOT_AND_GHOST.md
+§2.11追補(独立した2人目のプレイヤー=状態は主語ごと)と §2.11追補3(霊体は世界の物に触れない)。
+**プレイヤー側の式・定数・分岐は1文字も変えていない**(主語引数化と純関数の共有だけ)。差分は
+除外1(演出=停止/スロー/ズームを出さない)と除外4(計測・弾薬・SE距離減衰)のみ。
+
+### 実装した5種(入口タイプ / 追加した主語ごとの状態 / 共有した関数)
+
+| サブ | 入口タイプ | Summonへ足した状態 | 共有(主語引数化)した関数・定数 |
+|---|---|---|---|
+| **火炎瓶 molotov** | 自走(プレイヤーと同じ「移動中のみ」の常時処理を主語ごとに1本ずつ) | `ghostMolotovCycle`(store.molotovCycleと同型)/ `ghostIsMoving` | `computeMolotovTick`(判定)/ `spawnGroundFire(x,y,ghostId)` / `tickGroundFires` は **主語ごとに1パス**(倍率=置いた本人の疑似Player・`GroundFire.ownerGhostId`) |
+| **援護射撃 support-sniper** | 自走(同上・専用タイマー) | `ghostSupportSniperCdMs` | `computeSupportSniperTick` / `computeSupportSniperEntry` / `applySubCooldownSkills`(CD補正の主語=ゴースト) / `buildSupportSniperShot(主語, …)`。NPCは世界の1枠のまま`SupportSniperNpcState.ownerGhostId`で主語を持つ |
+| **救急鞄 first-aid-kit** | 自走(1ラン使い切り) | `ghostFirstAidKit`(FirstAidKitStateと同型) | `computeFirstAidKitTick`(しきい値=`FIRST_AID_KIT_HEAL_THRESHOLD_FRAC`=HP50%未満) / `isFirstAidKitEmpty` / `spawnThrownBag`+`FIRST_AID_KIT_THROW_DAMAGE` / 回復量=`HEAL_FRACTION`(回復ピックアップと同じ) |
+| **ホーミング homing** | ghostSubClaim + `subSubject('homing')`(CD型) | `ghostHomingLocks` / `ghostHomingHoldStartAt` / `ghostHomingNextLockAt` | 新設の共有純関数 `stepHomingLocks`(プレイヤーの旧インライン実装をそのまま抽出)/ `fireHoming(ghostId?)`(弾・威力・CDは同じ1本)/ `ghostHomingHoldMs`(clamp) |
+| **クイックマガジン striker-quick-mag** | ghostSubClaim + `subSubject('striker-quick-mag')`(CD型) | `ghostQuickMagCritUntil`(player.quickMagCritUntilと同型) | `safeThrowDirection` / `checkPlayerPickupCollisions`(回収判定) / `QUICK_MAG_CRIT_WINDOW_MS`(プレイヤーの拾得と同じ窓)。回収の移動目標は `decideGhost.retrieveTarget` |
+
+- **ホーミングの計測(社長の改良指示)**: `SubStyleProfile.homing = { n, holdMsAvg }` をG4aへ追加。
+  記録点は**useGameLoopのホーミングブロック1箇所**(指を離した瞬間、ロックが1個以上=発射が成立した時だけ
+  `recordHomingHold(押していたms)`)。集計はwire/shieldと同じ流儀(ラン単位tally→`foldSubStyleTallies`→
+  EMA α=0.3・初回はサンプルそのまま)。消費は `subStyleHomingHoldMs` → `GhostProfile.homingHoldMsAvg`
+  (directorTickが召喚時に載せる)→ `ghostHomingHoldMs` で **[0, 満タン到達時間] にclamp**。
+  **計測なし(旧プロファイル/未使用)=満タンで発射**(フォールバック)。**スキーマ版 `v` は据え置き**
+  (キー追加のみ+`normalizeSubStyles` で欠損を既定値で埋める後方互換)。
+- **回収の割り込み**: `decideGhost` の移動決定に `retrieveTarget` 分岐を1つ足した。優先順は
+  **カウンター > 回避 > 回収 > 間合い管理/移動リズム**。`retrieveTarget` が無い時は乱数消費も含めて従来と同一
+  (テストで固定)。
+- **世界の物に触れない(§2.11追補3)の守り方**:
+  - 守護霊のマガジンは `Pickup.ownerGhostId` 付き=**プレイヤーの拾得判定から外す**(守護霊が居ないランは
+    1件も該当せず1bit不変)。守護霊は**自分の物だけ**を拾う(世界のドロップには一切触らない)。
+  - 救急鞄は世界へアイテムを撒かず**自分のHPへ**使う。弾薬(除外4)と爆弾(追補3)は鞄に入っていない
+    =初期在庫を「払い出し済み」で作る(残り1つ=回復)。
+  - 犬(dog)は成果物が世界のドロップそのもの=**停止**(★未決6)。
+
+### 犬(dog)を止めた理由 → ★未決6(社長裁定待ち)
+裁定案(v0.25.2551)の時点では「各自の犬が各自に持ってくる」だったが、その後に出た**§2.11追補3
+(v0.25.2554「霊体は世界の物に触れない/財布なし/ラン中のビルド成長なし」)が上位ドクトリン**であり、
+犬のフェッチは `collectPickup`(弾薬・回復・武器・スクラップ等の**世界資源の拾得**)そのものなので衝突する。
+取り得る形は次の3つで、いずれも設計判断が要る:
+1. **守護霊の犬は出さない**(現状・追補3に忠実。「同じ仕様にする」ドクトリンには反する)。
+2. 守護霊の犬も拾い、**成果はプレイヤーへ**(=霊が世界の物に触れて本人へ渡す。オンラインで
+   「他人の霊の犬が自分のドロップを持って行く/くれる」形になる)。
+3. 守護霊の犬は**噛みつき(移動軌道上のDOG_BITE_DAMAGE)だけ**行い、拾得はしない
+   (=拾い物の主語問題を回避しつつ絵と手数は再現。ただし「犬の仕様の一部だけ写す」ことになる)。
+→ **裁定が出れば実装は小さい**(フェッチ状態機械の `dogFetchRef` を主語ごとに持ち、プレイヤー座標の
+直読み4箇所をオーナー引数に替えるだけ)。
+
+### テスト
+- 新規 `src/utils/ghostSubsFinal.test.ts`(23件): ①ロック蓄積の共有純関数(近い順/2ロック目/上限/
+  射程外/死亡ロック破棄/リーパー除外) ②押す時間のclampとフォールバック ③保持時間の計測(初回=サンプル・
+  2回目=EMA・optOut破棄・旧プロファイル欠損耐性) ④主語ごとの帳簿(`fireHoming(ghostId)`がゴーストの
+  ロック/CDだけを動かす・プレイヤー経路は不変・疑似Playerが自前のクイマガ窓を読む・火の主語) ⑤救急鞄の
+  在庫(HP50%まで使わない/1回だけ/弾薬・爆弾は入っていない) ⑥回収の割り込み(間合いより優先・危険中は不変)。
+- 既存更新: `playerTraits.test.ts` / `ghostAlbum.test.ts` の `subStyles` リテラルへ `homing` を追加
+  (**それ以外の既存期待値は無修正で通過**=軸1のビット一致要件を維持)。
+- `npx vitest related`(変更ファイル)= **30ファイル 603件パス**(4 skipped)。
+  ゲート: `npm run typecheck` 0 / `npm run lint` エラー0(既存warning 8)。
+- 負荷 **1/10**: 追加は「守護霊が居る時だけ」動く分岐のみ。per-frameの新規Graphics/Text生成なし・
+  強glowを増やさない(火/リング/バーストは既存のプール済み経路)。store書き込みも変化時のみ
+  (ロック追加=最短500msに1回・CDタイマーは既存のプレイヤー側と同頻度)。
+
+### 自己点検(実装精度の規律5)
+- **プレイヤー不変**: 触れたプレイヤー経路は「ロック蓄積のインライン→同一手順の純関数呼び出し」
+  「`5000`→`QUICK_MAG_CRIT_WINDOW_MS`(同値)」「`setSubWeaponCooldown`→`setActorSubWeaponCooldown(undefined,…)`
+  (同じ関数へ委譲)」「拾得候補から`ownerGhostId`付きを除外(守護霊不在なら0件)」の4点で、いずれも値・順序・
+  乱数消費が変わらない。`tickGroundFires` も守護霊の火が無ければ従来と同じ1パス。
+- **ドクトリン**: 共有帳簿・ゴースト専用モデルを新設していない(状態はすべて「プレイヤーと同じ型を主語ごと」)。
+  例外は裁定済みの除外1/4のみ。判断に迷った1点(犬)は実装せず★未決へ。
+- **§2.11追補3**: 守護霊は世界のドロップ・スクラップ・弾・武器に一切触れない(拾うのは自分が投げた
+  マガジンだけ/救急鞄は世界へ撒かず自分に使う/プレイヤーのドロップは守護霊の判定に入らない)。
+- 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)への抵触なし(ボス交戦中の守護霊の挙動のみ・
+  スポーン/ランク/配分には触れていない)。
+
+### ★未決6(新規・社長裁定待ち): 守護霊の犬(dog)の扱い
+→ 上の「犬(dog)を止めた理由」節の3案から裁定を求める(実装は裁定後・小さい)。

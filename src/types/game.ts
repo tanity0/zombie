@@ -1,3 +1,10 @@
+// **型のみ**のimport(実行時importは発生しない=このファイルの「値を持ち込まない」方針は維持)。
+// GHOST-SUBS-FINAL(v0.25.2563): 守護霊が主語ごとに持つサブの状態は「プレイヤーと同じ型」でなければ
+// ならない(§2.11追補ドクトリン)。形を書き写すと必ずズレるので、定義元(依存ゼロの純関数モジュール)を
+// そのまま指す。utils/molotov.ts・utils/firstAidKit.ts はどちらも import を1つも持たない=循環しない。
+import type { MolotovCycleState } from '../utils/molotov';
+import type { FirstAidKitState } from '../utils/firstAidKit';
+
 // Game state types
 export type GameState = 'title' | 'menu' | 'loading' | 'playing' | 'paused' | 'gameOver' | 'victory' | 'returned' | 'ending';
 
@@ -774,6 +781,18 @@ export interface Summon {
   // GHOST-BULLET-TECH B(v0.25.2543): 計測で「苦手」(tank)と出た弾技の技キーと、その弾を避けない期限。
   ghostTankedBulletKey?: string;
   ghostTankedBulletUntil?: number;
+  // ---- GHOST-SUBS-FINAL(v0.25.2563・§2.11追補「状態は主語ごと」): 構造ズレ組サブの自前状態 ----
+  // どれも**プレイヤーが持っているのと同じ型**(store側のフィールドと1対1)。ゴースト専用の別モデルは作らない。
+  ghostMolotovCycle?: MolotovCycleState | null; // 火炎瓶の投下サイクル(store.molotovCycle と同型)
+  ghostFirstAidKit?: FirstAidKitState;          // 救急鞄の在庫(store.firstAidKitState と同型・1ラン使い切り)
+  ghostSupportSniperCdMs?: number;              // 援護射撃の専用タイマー(store.supportSniperCdMs と同型・移動中のみ進む)
+  ghostHomingLocks?: string[];                  // ホーミングのロック(store.homingLocks と同型)
+  ghostHomingHoldStartAt?: number;              // ホーミングを「押し始めた」時刻(ms・Date.now基準)。undefined=押していない
+  ghostHomingNextLockAt?: number;               // 次のロック付与時刻(gameTime基準・プレイヤーの nextHomingLockRef と同型)
+  ghostQuickMagCritUntil?: number;              // 自分のマガジンを回収して得たクリ窓(gameTime基準・player.quickMagCritUntil と同型)
+  // 直近tickで実際に動いていたか(player.isMoving と同じ意味=速度が最大速の15%超)。
+  // 「移動中のみ」で動く火炎瓶/援護射撃の主語判定に使う。
+  ghostIsMoving?: boolean;
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';
@@ -917,6 +936,9 @@ export interface GroundFire {
   x: number;
   y: number;
   createdAt: number; // gameTime(ms)。この時刻からの経過で寿命判定する。
+  // GHOST-SUBS-FINAL(v0.25.2563): 置いた主語(守護霊のsummon.id)。undefined=プレイヤー。
+  // 世界に置かれる物の配列は1本のまま(センサー地雷と同じ流儀)で、ダメージ倍率の評価だけ主語ごとに行う。
+  ownerGhostId?: string;
 }
 
 // ジブリルのランタン攻撃が足元に落とす紫の単発火(社長指示v0.25.1664)。groundFire(molotov)と違い
@@ -1206,6 +1228,10 @@ export interface Pickup {
   throwStartAt?: number;
   throwDuration?: number;
   scatterRadius?: number;
+  // GHOST-SUBS-FINAL(v0.25.2563): 守護霊が**自分で投げた自分の物**(クイックマガジン)の主語。
+  // §2.11追補3「霊体は世界の物に触れない」の裏返しで、これは世界のドロップではなく本人の設置物
+  // なので本人だけが拾える(プレイヤーの拾得判定からは除外し、守護霊は自分のだけを拾う)。
+  ownerGhostId?: string;
 }
 
 export interface BreakableProp {

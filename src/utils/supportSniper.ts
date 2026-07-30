@@ -24,6 +24,11 @@ export interface SupportSniperNpcState {
   spawnedAt: number;    // gameTime(ms)。spawnedAt+SLIDE_IN_MS で発射
   firedAt: number;      // 0=未発射。>0=発射時刻(+SLIDE_OUT_MS で消滅)
   targetEnemyId: string;
+  // GHOST-SUBS-FINAL(v0.25.2563): 呼んだ主語(守護霊のsummon.id)。undefined=プレイヤー(従来と同じ)。
+  // 弾の倍率評価(buildSupportSniperShot の主語)と、狙いを失った時の持ち替え基準点に使う。
+  // NPC枠自体は「同時1人」の世界の枠のまま(センサー地雷の盤面と同じ流儀)=呼び出しは早い者勝ちで、
+  // 埋まっている間はもう一方のタイマーが満タン保持で待つ(既存の待ち規則をそのまま使う)。
+  ownerGhostId?: string;
 }
 
 // 登場NPCの選定: 軍人名簿(0..soldierCount-1)から「この出撃で護衛に出ている軍人(deployedIndices)」を

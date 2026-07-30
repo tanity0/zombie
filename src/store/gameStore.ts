@@ -316,7 +316,12 @@ export const SHOP_VACCINE_COST = 500;
 export const SHOP_SUBWEAPON_SELL_VALUE = 100; // 商人: サブウェポン換金額(1個=100s)
 // PACING_PUZZLE.md §6.24 M48「使役」(D1): 通常敵を倒した時に仲間として復活させる確率。
 export const POI_THRALL_CHANCE = 0.20;
-const HEAL_FRACTION = 0.3; // 救急セット: 最大HPの30%回復(社長指示・固定20から変更)
+// 救急セット: 最大HPの30%回復(社長指示・固定20から変更)。
+// export(v0.25.2563): 守護霊の救急鞄も**同じ回復規則**を使う(§2.8「1つの薬棚」/ 値を複製しない)。
+export const HEAL_FRACTION = 0.3;
+// クイックマガジン回収で付くクリ率アップ窓(gameTime基準・ms)。プレイヤーの拾得(collectPickup)と
+// 守護霊の自分のマガジン回収(useGameLoop)が**同じ値**を使う(v0.25.2563・値を複製しない)。
+export const QUICK_MAG_CRIT_WINDOW_MS = 5000;
 const SHOP_INTERACT_RING_MS = 360;
 const STRONG_GLOW_RADIUS = 44;
 const SMALL_GLOW_RADIUS_SCALE = 0.9;
@@ -2357,6 +2362,10 @@ export const combatActorPlayer = (ghostId?: string): Player | null => {
     ...ghostActorPlayer(build, g),
     ...dashStateOf(g.ghostDash),
     subWeaponCooldowns: g.ghostSubWeaponCooldowns ?? EMPTY_SUB_COOLDOWNS,
+    // GHOST-SUBS-FINAL(v0.25.2563): 守護霊が**自分で**投げたクイックマガジンを回収して得たクリ窓。
+    // GHOST-BUILD-1では「本人のバフ窓を二重取りしない」ため0へ中立化していた枠で、いま守護霊自身が
+    // 同じ窓を持てるようになった(=同じ式(gunShotCritChance)がそのまま効く。中立化の意図は不変)。
+    quickMagCritUntil: g.ghostQuickMagCritUntil ?? 0,
   };
 };
 
@@ -3284,7 +3293,7 @@ interface GameState {
   // Reactコンポーネントはこれをsubscribeしない(毎フレーム変化するため)。レンダラが直読み。
   homingLocks: string[];
   setHomingLocks: (locks: string[]) => void;
-  fireHoming: () => void;
+  fireHoming: (ghostId?: string) => void; // ghostId=守護霊の主語(未指定=プレイヤー=従来と1bit同じ)
 
   // 分身(サブウェポン)。生成中=ACTIVE、null=READY/COOLDOWN。レンダラが直読みして白黒で描く。
   // ※これは**プレイヤーの枠**。守護霊の枠は Summon.ghostShadowClone(§2.11追補=主語ごとに1枠)。
@@ -3321,7 +3330,7 @@ interface GameState {
   // 寿命の回収は useGameLoop(pruneFlares)、描画は pixiScene が直読み。ダメージ無し。
   flareGunFlares: FlareGunFlare[];
   setFlareGunFlares: (flares: readonly FlareGunFlare[]) => void; // useGameLoop が pruneFlares の結果を反映するだけ
-  spawnGroundFire: (x: number, y: number) => void;             // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ)
+  spawnGroundFire: (x: number, y: number, ghostId?: string) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
   spawnBossFire: (x: number, y: number, spawnAt: number, activateAt: number, expireAt: number) => void; // ジブリルの紫の単発火を1つ設置(useGameLoopから呼ぶ)
   setBossFires: (fires: BossFire[]) => void;                   // ジブリル火の配列を差し替え(useGameLoopのtickが枝刈り/被弾処理後に反映)
@@ -5519,9 +5528,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
   setFirstAidKitState: (state) => set({ firstAidKitState: state }),
 
-  spawnGroundFire: (x, y) => {
+  spawnGroundFire: (x, y, ghostId) => {
     set(state => ({
-      groundFires: [...state.groundFires, { id: `gfire-${groundFireSeq++}`, x, y, createdAt: state.gameTime }],
+      groundFires: [...state.groundFires, {
+        id: `gfire-${groundFireSeq++}`, x, y, createdAt: state.gameTime,
+        // v0.25.2563: 置いた主語(未指定=プレイヤー=従来と1bit同じ)。
+        ...(ghostId !== undefined ? { ownerGhostId: ghostId } : {}),
+      }],
     }));
   },
 
@@ -5548,17 +5561,29 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { groundFires, gameTime, enemies } = get();
     if (groundFires.length === 0) return;
     const aliveFires = groundFires.filter(f => gameTime < f.createdAt + MOLOTOV_FIRE_LIFETIME_MS);
-    const hits: { id: string; x: number; y: number }[] = [];
-    // スキル: エクスプローダー(§6.10 M33④) = molotovの火も「全ての爆発」扱いで半径・ダメージ ×倍率。
-    // スキル: バーサーカー等(§6.10 M33②) = skillOutgoingDamageMult をDoTダメージに乗算(四捨五入)。
-    const gfExMult = skillExplosionMult(get().player);
-    const gfDotDmg = Math.max(1, Math.round(MOLOTOV_DOT_DAMAGE * gfExMult * skillOutgoingDamageMult(get().player)));
-    if (aliveFires.length > 0) {
+    const hits: { id: string; x: number; y: number; dmg: number }[] = [];
+    // v0.25.2563(§2.11追補): 倍率の主語は**置いた本人**(プレイヤー / 守護霊=計測時ビルドの疑似Player)。
+    // 世界に置かれた火の配列は1本のまま(センサー地雷と同じ流儀)で、主語ごとに1パスずつ判定する。
+    // 守護霊の火が1つも無い通常時は ownerIds=[undefined] の1パス=従来と完全に同じ計算。
+    const ownerIds = [...new Set(aliveFires.map(f => f.ownerGhostId))];
+    const alreadyHit = new Set<string>(); // 主語をまたいでも二重取りしない(既存の「重なっても1回」と同じ)
+    for (const ownerId of ownerIds) {
+      const subject = (ownerId === undefined ? get().player : combatActorPlayer(ownerId)) ?? get().player;
+      const ownerFires = ownerIds.length === 1 ? aliveFires : aliveFires.filter(f => f.ownerGhostId === ownerId);
+      if (ownerFires.length === 0) continue;
+      // スキル: エクスプローダー(§6.10 M33④) = molotovの火も「全ての爆発」扱いで半径・ダメージ ×倍率。
+      // スキル: バーサーカー等(§6.10 M33②) = skillOutgoingDamageMult をDoTダメージに乗算(四捨五入)。
+      const gfExMult = skillExplosionMult(subject);
+      const gfDotDmg = Math.max(1, Math.round(MOLOTOV_DOT_DAMAGE * gfExMult * skillOutgoingDamageMult(subject)));
       for (const e of enemies) {
+        if (alreadyHit.has(e.id)) continue;
         if (gameTime - (e.lastFireHitAt ?? -Infinity) < MOLOTOV_DOT_INTERVAL_MS) continue;
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
-        if (isEnemyInGroundFire(ecx, ecy, aliveFires, MOLOTOV_FIRE_RADIUS * gfExMult)) hits.push({ id: e.id, x: ecx, y: ecy });
+        if (isEnemyInGroundFire(ecx, ecy, ownerFires, MOLOTOV_FIRE_RADIUS * gfExMult)) {
+          alreadyHit.add(e.id);
+          hits.push({ id: e.id, x: ecx, y: ecy, dmg: gfDotDmg });
+        }
       }
     }
     if (aliveFires.length !== groundFires.length || hits.length > 0) {
@@ -5570,8 +5595,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }));
     }
     for (const h of hits) {
-      get().damageEnemy(h.id, gfDotDmg);
-      get().spawnDamageNumber(h.x, h.y, gfDotDmg);
+      get().damageEnemy(h.id, h.dmg);
+      get().spawnDamageNumber(h.x, h.y, h.dmg);
     }
   },
 
@@ -7337,18 +7362,27 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setHomingLocks: (locks) => set({ homingLocks: locks }),
 
-  fireHoming: () => {
-    const { player, homingLocks, enemies, gameTime } = get();
+  // v0.25.2563(GHOST-SUBS-FINAL): 主語引数化。ghostId 未指定=プレイヤー(従来と1bit同じ)。
+  // 指定時は守護霊が「押していた指を離した」= 自分のロック(Summon.ghostHomingLocks)へ一斉発射する。
+  // 弾・威力・CDの規則は**同じこの1本**(守護霊用の別実装は書かない)。
+  fireHoming: (ghostId) => {
+    const { homingLocks, enemies, gameTime } = get();
+    const ghost = ghostId === undefined
+      ? undefined
+      : get().summons.find(s => s.id === ghostId && s.kind === 'ghost-ally');
+    if (ghostId !== undefined && !ghost) return;
+    const player = combatActorPlayer(ghostId);
+    if (!player) return;
+    const locks = ghost ? (ghost.ghostHomingLocks ?? []) : homingLocks;
     if (!player.subWeapons.includes('homing')) return;
     if (gameTime < (player.subWeaponCooldowns['homing'] ?? 0)) return;
-    if (homingLocks.length === 0) return;
-    // G2.6: 発射位置はオーナー。ロック蓄積〜指離し発射がプレイヤーのタッチ入力そのものなので、
-    // 現状オーナーは常にプレイヤー(ゴースト対応は★未決の未対応リスト)。
-    const homingOwner = playerAsOwner(player);
+    if (locks.length === 0) return;
+    // G2.6: 発射位置はオーナー(プレイヤー=本人 / 守護霊=ゴースト実体)。
+    const homingOwner = ghost ? ghostAsOwner(ghost) : playerAsOwner(player);
     const pcx = ownerCenterX(homingOwner);
     const pcy = ownerCenterY(homingOwner);
     const now = Date.now();
-    const newProjectiles = homingLocks
+    const newProjectiles = locks
       .map((enemyId, i) => {
         const target = enemies.find(e => e.id === enemyId);
         if (!target) return null;
@@ -7356,7 +7390,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const ty = target.y + target.height / 2;
         const dist = Math.max(0.001, Math.hypot(tx - pcx, ty - pcy));
         return {
-          id: `proj-homing-${now}-${i}`,
+          id: ghost ? `proj-homing-${ghost.id}-${now}-${i}` : `proj-homing-${now}-${i}`,
           x: pcx - HOMING_MISSILE_SIZE / 2,
           y: pcy - HOMING_MISSILE_SIZE / 2,
           width: HOMING_MISSILE_SIZE,
@@ -7377,12 +7411,24 @@ export const useGameStore = create<GameState>((set, get) => ({
           explodeOnHit: true,
           explodeRadius: HOMING_EXPLOSION_RADIUS,
           explodeDamageMult: 1,
+          // 既存のゴースト発動サブと同じ視覚専用マーカー(青白tint)。判定/ダメージは不変。
+          ...(ghost ? { ownerGhost: true } : {}),
         };
       })
       .filter((p): p is NonNullable<typeof p> => p !== null);
     if (newProjectiles.length === 0) return;
-    set(state => ({ projectiles: [...state.projectiles, ...newProjectiles], homingLocks: [] }));
-    get().setSubWeaponCooldown('homing', gameTime + HOMING_COOLDOWN_MS);
+    if (ghost) {
+      // 守護霊: 自分のロックだけを消す(プレイヤーのロック配列には触らない=2人分が独立)。
+      set(state => ({
+        projectiles: [...state.projectiles, ...newProjectiles],
+        summons: state.summons.map(s => s.id === ghost.id
+          ? { ...s, ghostHomingLocks: [], ghostHomingHoldStartAt: undefined, ghostHomingNextLockAt: undefined }
+          : s),
+      }));
+    } else {
+      set(state => ({ projectiles: [...state.projectiles, ...newProjectiles], homingLocks: [] }));
+    }
+    setActorSubWeaponCooldown(ghostId, 'homing', gameTime + HOMING_COOLDOWN_MS);
   },
 
   updateHuntingCharge: (startedAt, charged) => {
@@ -10840,7 +10886,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               weapons: p.weapons.map(w =>
                 w.id === active.id ? { ...w, magazine: (w.magazine ?? 0) + moved } : w
               ),
-              quickMagCritUntil: state.gameTime + 5000,
+              quickMagCritUntil: state.gameTime + QUICK_MAG_CRIT_WINDOW_MS,
               reloadingWeaponId: '',
               reloadEndsAt: 0
             }

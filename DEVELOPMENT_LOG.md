@@ -1,5 +1,52 @@
 # Development Log
 
+## v0.25.2563 — バッチGHOST-SUBS-FINAL: 構造ズレ組サブ5種の守護霊対応(犬のみ★未決で停止)【2026-07-31 08:43 JST】
+
+- **発注**: research/GHOST_PARITY_LEDGER.md「構造ズレ組サブ6種の裁定案」+「裁定(社長2026-07-31)」。
+  正本ドクトリン= BOT_AND_GHOST.md §2.11追補(独立した2人目のプレイヤー=状態は主語ごと)+
+  §2.11追補3(霊体は世界の物に触れない)。**プレイヤー側の式・定数・分岐は1文字も変えていない**
+  (主語引数化と純関数の共有のみ。差分は除外1=演出/除外4=計測・弾薬・SE距離減衰だけ)。
+- **実装した5種**(入口タイプ / Summonへ足した状態 / 共有関数):
+  - **火炎瓶 molotov**: 自走(移動中のみ) / `ghostMolotovCycle`+`ghostIsMoving` / `computeMolotovTick`・
+    `spawnGroundFire(x,y,ghostId)`。`tickGroundFires` を**主語ごとの1パス**にし、DoTの倍率は置いた本人の
+    疑似Playerで評価(`GroundFire.ownerGhostId`。守護霊の火が無ければ従来と同じ1パス=1bit不変)。
+  - **援護射撃 support-sniper**: 自走(専用タイマー) / `ghostSupportSniperCdMs` /
+    `computeSupportSniperTick`・`computeSupportSniperEntry`・`applySubCooldownSkills`(主語=ゴースト)・
+    `buildSupportSniperShot(主語,…)`。NPCは世界の1枠のまま `SupportSniperNpcState.ownerGhostId` で主語を持つ。
+  - **救急鞄 first-aid-kit**: 自走(1ラン使い切り) / `ghostFirstAidKit` / `computeFirstAidKitTick`
+    (しきい値=プレイヤーと同じ `FIRST_AID_KIT_HEAL_THRESHOLD_FRAC`=HP50%未満)・`isFirstAidKitEmpty`・
+    `spawnThrownBag`。**世界へアイテムを撒かず自分のHPへ**使う(回復量=`HEAL_FRACTION`=回復ピックアップと同じ)。
+    弾薬(除外4)と爆弾(追補3)は鞄に入っていない=初期在庫は「払い出し済み」で作る(残り1つ)。
+  - **ホーミング homing**: ghostSubClaim+`subSubject('homing')` / `ghostHomingLocks`・`ghostHomingHoldStartAt`・
+    `ghostHomingNextLockAt` / 新設の共有純関数 `stepHomingLocks`(プレイヤーの旧インライン実装を手順ごと抽出)+
+    `fireHoming(ghostId?)`(弾・威力・CDは同じ1本)。
+  - **クイックマガジン striker-quick-mag**: ghostSubClaim+`subSubject` / `ghostQuickMagCritUntil` /
+    `safeThrowDirection`・`checkPlayerPickupCollisions`・`QUICK_MAG_CRIT_WINDOW_MS`。回収の移動目標を
+    `decideGhost.retrieveTarget` として追加(優先順=カウンター>回避>回収>間合い管理。目標が無ければ
+    乱数消費も含め従来と同一)。
+- **ホーミングの計測(社長の改良指示)**: `SubStyleProfile.homing={n,holdMsAvg}` をG4aへ追加。記録点は
+  useGameLoopのホーミングブロック1箇所(指を離して発射が成立した瞬間に `recordHomingHold(押していたms)`)。
+  集計はwire/shieldと同じ流儀(ラン単位tally→fold→EMA α=0.3・初回はサンプルそのまま)。消費は
+  `subStyleHomingHoldMs`→`GhostProfile.homingHoldMsAvg`(directorTickが召喚時に載せる)→`ghostHomingHoldMs`
+  で**[0, 満タン到達時間]にclamp**。**計測なし=満タン発射のフォールバック**。スキーマ版`v`は据え置き
+  (キー追加+`normalizeSubStyles`で欠損補完=後方互換)。
+- **犬(dog)だけ停止=★未決6**: フェッチの成果物が `collectPickup`(世界資源の拾得)そのもので、後から出た
+  §2.11追補3「霊体は世界の物に触れない/財布なし」と衝突するため**実装せず止めた**(勝手に設計しない)。
+  3案(①出さない ②拾ってプレイヤーへ ③噛みつきだけ)を台帳★未決6に記載=裁定後の実装は小さい。
+- **自己点検**: プレイヤー経路で触れたのは①ロック蓄積の関数化(同一手順)②`5000`→`QUICK_MAG_CRIT_WINDOW_MS`
+  (同値)③`setSubWeaponCooldown`→`setActorSubWeaponCooldown(undefined,…)`(同関数へ委譲)④拾得候補から
+  `ownerGhostId`付きを除外(守護霊不在なら0件)——いずれも値・順序・乱数消費が不変。ドクトリン準拠
+  (共有帳簿・ゴースト専用モデルの新設なし)。憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)への抵触なし。
+  負荷 **1/10**(守護霊が居る時だけの分岐・per-frameのGraphics/Text生成なし・強glowを増やさない)。
+- **テスト**: 新規 `src/utils/ghostSubsFinal.test.ts` 23件(ロック蓄積の共有純関数/押す時間のclamp・
+  フォールバック/保持時間のEMA計測と旧プロファイル耐性/主語ごとの帳簿/救急鞄の在庫/回収の割り込み)。
+  既存は `playerTraits.test.ts`・`ghostAlbum.test.ts` の `subStyles` リテラルに `homing` を足しただけで
+  **他の期待値は無修正で通過**。`npx vitest related`(変更ファイル)= **30ファイル 603件パス**(4 skipped)。
+  ゲート: `npm run typecheck` 0 / `npm run lint` エラー0(既存warning 8)。
+- 変更ファイル: types/game.ts / utils/homing.ts(新) / utils/playerTraits.ts / utils/ghostDriver.ts /
+  utils/directorTick.ts / utils/supportSniper.ts / store/gameStore.ts / hooks/useGameLoop.ts +
+  テスト3本 + research/GHOST_PARITY_LEDGER.md + 版管理3ファイル。
+
 ## v0.25.2562 — テスト#8分析: 雑魚は無罪・真因=接触回避のHP閾値と体格未考慮(文書のみ・Go待ち)【2026-07-31 08:40 JST】
 
 - **確定事実(依頼#8・2条件4ラン)**: ①雑魚由来の被弾0件(直接は削っていない) ②killerは常に

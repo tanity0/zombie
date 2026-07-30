@@ -56,7 +56,7 @@ import {
   EVENT_QUEST_DWELL_MS, EVENT_QUEST_REWARD_GOLD,
   NPC_DIALOGUE_MS, NPC_DIALOGUE_GAP_MS,
   RN_ENEMY_FORCE,
-  FIRST_AID_KIT_THROW_DAMAGE, MINE_DAMAGE,
+  FIRST_AID_KIT_THROW_DAMAGE, MINE_DAMAGE, HEAL_FRACTION, QUICK_MAG_CRIT_WINDOW_MS,
   PHASER_INDEX, BASE_SOLDIER_COUNT,
   TUTORIAL_MOVE_X_MIN_PX,
   TUTORIAL_MOVE_Y_LIMIT_PX,
@@ -108,7 +108,7 @@ import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisi
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
 import { rollWeaponKey } from '../utils/weaponDrop';
-import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey } from '../types/game';
+import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey, Summon } from '../types/game';
 import {
   checkCollision,
   checkProjectileEnemyCollisions,
@@ -116,6 +116,10 @@ import {
   checkEnemySummonCollisions
 } from '../utils/collisionUtils';
 import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL } from '../utils/molotov';
+// ホーミング弾: ロック蓄積の1ステップ(プレイヤー/守護霊で共有)+守護霊の「押す時間」の解決。
+import {
+  stepHomingLocks, ghostHomingHoldMs, HOMING_MAX_LOCKS_BY_LEVEL, HOMING_LOCK_INTERVAL_MS,
+} from '../utils/homing';
 import { tickSensorMines, SENSOR_MINE_DAMAGE, SENSOR_MINE_RADIUS } from '../utils/sensorMine';
 import { dueArmedEggs, eggsToChainArm, EGG_BLAST_RADIUS } from '../world/mines';
 import {
@@ -124,7 +128,18 @@ import {
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
 import { buildBomberMinis } from '../utils/bomberScatter';
-import { computeFirstAidKitTick, isFirstAidKitEmpty, type FirstAidKitAmmoType } from '../utils/firstAidKit';
+import { computeFirstAidKitTick, isFirstAidKitEmpty, createFirstAidKitState, type FirstAidKitAmmoType, type FirstAidKitState } from '../utils/firstAidKit';
+
+// GHOST-SUBS-FINAL(v0.25.2563): 守護霊の救急鞄の初期在庫。**型はプレイヤーと同じ**FirstAidKitStateで、
+// 弾薬(除外4=守護霊は弾薬を消費しない)と爆弾(§2.11追補3=世界へアイテムを撒かない)は
+// 「最初から払い出し済み」にしてある=残る中身は自分への回復1つ(裁定「自前在庫1」)。
+const GHOST_FIRST_AID_KIT_INITIAL: FirstAidKitState = {
+  ...createFirstAidKitState(),
+  ammoHandgunDispensed: true,
+  ammoShotgunDispensed: true,
+  ammoRifleDispensed: true,
+  bombDispensed: true,
+};
 import { safeThrowDirection } from '../utils/throwDir';
 import {
   createEnemyProjectile,
@@ -233,8 +248,8 @@ import {
   getPhaseKillDebug, snapshotKillTotals, snapshotSpawns
 } from '../utils/killTelemetryState';
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
-import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement, recordPhillHeadshot } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
-import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
+import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement, recordPhillHeadshot, recordHomingHold } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
+import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, ghostIsMovingNow, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
@@ -352,10 +367,8 @@ const DECOY_RANGE_BY_LEVEL = [0, 120, 160, 200];
 const DECOY_FOOT_W = 48;   // デコイの当たり判定幅(敵のみ通行不可。プレイヤーは通す)
 const DECOY_FOOT_H = 20;   // デコイの当たり判定奥行
 // Lv3 限定: 寿命切れ(自然消滅)時の小爆発。
-// ホーミング弾: ロック射程とLv別最大ロック数。ダメージ/速度/CD/サイズは gameStore 側定数。
-const HOMING_RANGE = 120;                      // ショットガンと同じ近接射程
-const HOMING_MAX_LOCKS_BY_LEVEL = [0, 3, 6, 10]; // Lv別最大ロック数
-const HOMING_LOCK_INTERVAL_MS = 500;           // ロック付与間隔(0.5秒に1体ずつ)範囲ダメージ+ノックバック+演出。投げ直し/
+// ホーミング弾の定数(HOMING_RANGE/HOMING_MAX_LOCKS_BY_LEVEL/HOMING_LOCK_INTERVAL_MS)は
+// v0.25.2563 で src/utils/homing.ts へ移設(値は不変・守護霊と共有するため)。範囲ダメージ+ノックバック+演出。投げ直し/
 // 帰還サークル撤去では爆発しない(連投悪用防止=直接 removeProjectile はこの寿命判定を通らない)。
 const DECOY_LV3_EXPLOSION_RADIUS = 96;  // TODO(デコイLv3): 仮値。迎撃射程200より控えめ
 const DECOY_LV3_EXPLOSION_DAMAGE = 40;  // TODO(デコイLv3): 仮値。タレット36より少し上
@@ -1282,6 +1295,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const homingLocksRef = useRef<string[]>([]);
   // 次にロックを1体付与できる gameTime(ms)。指を付けている間 0.5秒ごとに1体ずつロック。
   const nextHomingLockRef = useRef(0);
+  // G4a計測(v0.25.2563): ホーミングを押し始めた実時刻(ms・Date.now)。0=押していない。
+  // 指を離した瞬間に「押していた時間」を playerTraits へ1回記録する(記録専用=挙動不変)。
+  const homingHoldStartRef = useRef(0);
   // Decoy next-pulse time per decoy id (gameTime ms, so it pauses with the game).
   const decoyPulseRef = useRef<Map<string, number>>(new Map());
   // Shield contact debounce: next-allowed durability-hit time (gameTime ms) per
@@ -6739,12 +6755,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const fireY = ssNpc.y + ssNpc.dirY * SUPPORT_SNIPER_INSET;
               const muzzleY = fireY - 20;
               const stNow = useGameStore.getState();
+              // v0.25.2563(GHOST-SUBS-FINAL): 呼んだ主語。守護霊が呼んだNPCなら弾の倍率評価も
+              // 持ち替え基準点もその守護霊(疑似Player)。プレイヤーが呼んだ場合は従来と1bit同じ。
+              const ssSubject = (ssNpc.ownerGhostId !== undefined
+                ? combatActorPlayer(ssNpc.ownerGhostId)
+                : null) ?? stNow.player;
               // 狙った敵の現在位置へ(発射までの250msで倒されていたら、その時点の最寄り敵へ持ち替え)。
               let tgt = stNow.enemies.find(e => e.id === ssNpc.targetEnemyId) ?? null;
               if (!tgt) {
                 let best = Infinity;
-                const pcx2 = stNow.player.x + stNow.player.width / 2;
-                const pcy2 = stNow.player.y + stNow.player.height / 2;
+                const pcx2 = ssSubject.x + ssSubject.width / 2;
+                const pcy2 = ssSubject.y + ssSubject.height / 2;
                 for (const e of stNow.enemies) {
                   if (e.type === 'reaper' && !e.reaperChaser) continue;
                   const d = Math.hypot(e.x + e.width / 2 - pcx2, e.y + e.height / 2 - pcy2);
@@ -6758,7 +6779,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const tm = Math.max(0.001, Math.hypot(tx, ty));
                 aimX = tx / tm; aimY = ty / tm;
               }
-              addProjectile(buildSupportSniperShot(stNow.player, fireX, muzzleY, { x: aimX, y: aimY }, gameTime));
+              addProjectile(buildSupportSniperShot(ssSubject, fireX, muzzleY, { x: aimX, y: aimY }, gameTime));
               // SE: プレイヤーのスナイパー発砲音(rifle-fire)を護衛NPCと同じ npcSfxDistGain で距離減衰。
               const ssPl = stNow.player;
               const g = npcSfxDistGain(
@@ -6940,38 +6961,32 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const touching = useGameStore.getState().touchActive;
           let newLocks = homingLocksRef.current;
           if (homingReady && touching) {
+            // G4a計測(v0.25.2563・社長裁定「ロックは秒数平均だけ持っておけば?」): 押し始めの打刻。
+            // 記録専用=挙動には一切影響しない。
+            if (homingHoldStartRef.current === 0) homingHoldStartRef.current = Date.now();
             // 0.5秒ごとに1体ロックを追加。
             if (gameTime >= nextHomingLockRef.current) {
               nextHomingLockRef.current = gameTime + HOMING_LOCK_INTERVAL_MS;
               const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['homing'] ?? 1));
-              const maxLocks = HOMING_MAX_LOCKS_BY_LEVEL[level];
-              const enemiesNow = useGameStore.getState().enemies;
-              const aliveIds = new Set(enemiesNow.map(e => e.id));
-              const locks = homingLocksRef.current.filter(id => aliveIds.has(id)); // 死亡した敵のロックは破棄
-              if (locks.length < maxLocks) {
-                // G2.6: 入口はオーナー形だが、この種はプレイヤー固定(ロック蓄積=指を付けている間/
-                // 発射=指離し、というタッチ入力そのもの)。ゴースト対応は★未決の未対応リスト。
-                const pcx = ownerCenterX(playerOwner);
-                const pcy = ownerCenterY(playerOwner);
-                const range2 = HOMING_RANGE * HOMING_RANGE;
-                const inRange = enemiesNow
-                  .filter(e => e.type !== 'reaper' || e.reaperChaser)
-                  .map(e => ({ id: e.id, d2: (e.x + e.width / 2 - pcx) ** 2 + (e.y + e.height / 2 - pcy) ** 2 }))
-                  .filter(o => o.d2 <= range2)
-                  .sort((a, b) => a.d2 - b.d2);
-                const count = (id: string) => locks.filter(l => l === id).length;
-                // 未ロック敵を最優先、次に1ロック済み敵(2ロック目)。
-                const firstLock = inRange.find(o => count(o.id) === 0);
-                const next = firstLock ?? inRange.find(o => count(o.id) === 1);
-                if (next) {
-                  locks.push(next.id);
-                  // 1段階目(白)/2段階目(赤)でSEを鳴らし分ける。
-                  playSfx(firstLock ? 'homing-lock' : 'homing-lock2');
-                }
-              }
-              newLocks = locks;
+              // v0.25.2563: ロック蓄積は**守護霊と共有の純関数**(手順・優先順は旧インライン実装と同一)。
+              const step = stepHomingLocks({
+                locks: homingLocksRef.current,
+                maxLocks: HOMING_MAX_LOCKS_BY_LEVEL[level],
+                ownerCx: ownerCenterX(playerOwner),
+                ownerCy: ownerCenterY(playerOwner),
+                enemies: useGameStore.getState().enemies,
+              });
+              // 1段階目(白)/2段階目(赤)でSEを鳴らし分ける。
+              if (step.added) playSfx(step.added === 'first' ? 'homing-lock' : 'homing-lock2');
+              newLocks = step.locks;
             }
           } else {
+            // G4a計測: 指を離した瞬間に「押していた時間」を1回だけ記録する(ロックが有る=発射が成立した時のみ。
+            // 発射自体は VirtualJoystick の fireHoming が既に済ませており、この ref はまだ離す前のロックを持つ)。
+            if (homingHoldStartRef.current !== 0) {
+              if (homingLocksRef.current.length > 0) recordHomingHold(Date.now() - homingHoldStartRef.current);
+              homingHoldStartRef.current = 0;
+            }
             // 指を離している/未準備: ロッククリアし、次回タッチで即1体目が付くようリセット。
             newLocks = [];
             nextHomingLockRef.current = 0;
@@ -6980,6 +6995,229 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (newLocks.length !== prev.length || newLocks.some((id, i) => id !== prev[i])) {
             homingLocksRef.current = newLocks;
             useGameStore.getState().setHomingLocks(newLocks);
+          }
+        }
+
+        // ============================================================================================
+        // GHOST-SUBS-FINAL(v0.25.2563 / research/GHOST_PARITY_LEDGER.md「構造ズレ組サブ6種の裁定」):
+        // 「プレイヤー主語に直結していて写せていなかった」サブを、**主語(オーナー)引数化**で守護霊にも
+        // 通す。プレイヤー側の式・定数・分岐は1文字も変えていない(上のブロック群は不変)。
+        // 差分は除外1(演出=停止/スロー/ズームを出さない)/除外4(計測・弾薬・SE距離減衰)だけ。
+        // ※犬(dog)は§2.11追補3「霊体は世界の物に触れない」と衝突するため**本バッチでは止めた**
+        //   (台帳★未決に記載。裁定が出るまでプレイヤー専用のまま)。
+        // ============================================================================================
+        if (ghostAllyForSub) {
+          const gSub = ghostAllyForSub;
+          const nowMsFrame = Date.now();
+          const gActor = combatActorPlayer(gSub.id); // 疑似Player(計測時ビルド+実体の座標/HP/自前CD帳簿)
+          const gOwner = ghostAsOwner(gSub);
+          const gcx = ownerCenterX(gOwner);
+          const gcy = ownerCenterY(gOwner);
+          const ghostOwnsSub = (key: SubWeaponKey): boolean =>
+            !inReturnCircle && gActor !== null
+            && gActor.subWeapons.includes(key) && !subWeaponBlockedByKatana(gActor, key);
+          const ghostSubLevel = (key: SubWeaponKey): number =>
+            Math.max(1, Math.min(3, gActor?.subWeaponLevels[key] ?? 1));
+          const patchGhost = (patch: Partial<Summon>): void => {
+            useGameStore.setState(st => ({
+              summons: st.summons.map(s => s.id === gSub.id ? { ...s, ...patch } : s),
+            }));
+          };
+
+          // ---- 火炎瓶(molotov): 「本人が移動中のみ足元へ1秒に1個」を主語ごとに ----
+          // 判定は**プレイヤーと同じ純関数**(computeMolotovTick)。移動判定はゴーストの実移動
+          // (オービット含む=ghostIsMoving)。サイクル状態とCDは自前の帳簿へ。
+          if (ghostOwnsSub('molotov') && gActor) {
+            const cycleNow = gSub.ghostMolotovCycle ?? null;
+            const r = computeMolotovTick({
+              gameTime,
+              isMoving: gSub.ghostIsMoving ?? false,
+              cycle: cycleNow,
+              cooldownAt: gActor.subWeaponCooldowns['molotov'] ?? 0,
+              maxFires: MOLOTOV_FIRES_BY_LEVEL[ghostSubLevel('molotov')],
+            });
+            if (r.cycle !== cycleNow) patchGhost({ ghostMolotovCycle: r.cycle });
+            if (r.cooldownAt !== null) setActorSubWeaponCooldown(gSub.id, 'molotov', r.cooldownAt);
+            if (r.drop) useGameStore.getState().spawnGroundFire(gcx, ownerFootY(gOwner), gSub.id);
+          }
+
+          // ---- 援護射撃(support-sniper): 「移動中のみ進むタイマー」を主語ごとに ----
+          // CD進行/発射可否は**プレイヤーと同じ純関数**(computeSupportSniperTick)、出現点も同じ
+          // (computeSupportSniperEntry)。狙いは他のゴーストサブと同じく紐付きボス優先。
+          // NPC枠は世界の1枠のまま=埋まっている間は満タン保持で待つ(既存の待ち規則)。
+          if (ghostOwnsSub('support-sniper') && gActor) {
+            const lvl = ghostSubLevel('support-sniper');
+            const cdMs = SUPPORT_SNIPER_CD_MS_BY_LEVEL[lvl];
+            const ssState = useGameStore.getState();
+            const target = pickSubAimTarget(gOwner, ghostSubBossId, ssState.enemies);
+            const tick = computeSupportSniperTick({
+              deltaMs: deltaTime * 1000,
+              isMoving: gSub.ghostIsMoving ?? false,
+              hasEnemy: target !== undefined && !ssState.supportSniperNpc,
+              cdRemainingMs: gSub.ghostSupportSniperCdMs ?? cdMs,
+              cooldownMs: cdMs,
+            });
+            let next = tick.cdRemainingMs;
+            if (tick.fire) {
+              // スキル(オーバークロック/タイムキーパー)はプレイヤーと同じ共有純関数を、**ゴースト自身の
+              // ビルド**を主語に通す。計測(recordSubUse/recordOverclockProc)は除外4=積まない。
+              next = applySubCooldownSkills(
+                skillOverclockChance(gActor), skillCooldownMult(gActor), tick.cdRemainingMs).deltaMs;
+            }
+            if (next !== (gSub.ghostSupportSniperCdMs ?? cdMs)) patchGhost({ ghostSupportSniperCdMs: next });
+            if (tick.fire && target && !ssState.supportSniperNpc) {
+              const cam = ssState.camera;
+              const entry = computeSupportSniperEntry(
+                target.x + target.width / 2, target.y + target.height / 2,
+                gcx, gcy,
+                { left: cam.x, top: cam.y, right: cam.x + gameBounds.width, bottom: cam.y + gameBounds.height },
+                (Math.random() - 0.5) * 0.24,
+              );
+              if (entry) {
+                useGameStore.getState().setSupportSniperNpc({
+                  id: Date.now(),
+                  x: entry.x, y: entry.y, dirX: entry.dirX, dirY: entry.dirY,
+                  soldierIndex: pickSupportSniperSoldier(
+                    ssState.escorts.map(e => e.soldierIndex), BASE_SOLDIER_COUNT, PHASER_INDEX),
+                  spawnedAt: gameTime, firedAt: 0, targetEnemyId: target.id,
+                  ownerGhostId: gSub.id, // 弾の倍率評価の主語=この守護霊
+                });
+              }
+            }
+          }
+
+          // ---- 救急鞄(first-aid-kit): 自前在庫1・**自分のHPへ使う** ----
+          // 裁定(2026-07-31)「各自が自分の鞄を1回使う。自前在庫1(Summonへ)・自分のHPへ使用。
+          // 使用判断=HP閾値(叩き台50%)」。判断は**プレイヤーと同じ純関数**(computeFirstAidKitTick)で、
+          // しきい値も同じ定数(FIRST_AID_KIT_HEAL_THRESHOLD_FRAC=最大HPの50%未満)。回復量は回復
+          // ピックアップと同じ HEAL_FRACTION(最大HPの30%)=「1つの薬棚」の規則を共有する。
+          // 弾薬(除外4=守護霊は弾薬を消費しない)と爆弾(§2.11追補3=世界へアイテムを撒かない)は
+          // 守護霊の鞄には入っていない=**最初から払い出し済み**として初期化する(在庫1=回復のみ)。
+          // 使い切ったら空鞄を最寄りの敵へ投げる=プレイヤーと同じ spawnThrownBag/同じダメージ定数。
+          if (ghostOwnsSub('first-aid-kit') && gActor) {
+            const lvl = ghostSubLevel('first-aid-kit');
+            const kit = gSub.ghostFirstAidKit ?? GHOST_FIRST_AID_KIT_INITIAL;
+            const r = computeFirstAidKitTick({
+              level: lvl,
+              ammoTypesUsed: [],           // 守護霊は弾薬を使わない(除外4)
+              ammoHandgun: 0, ammoShotgun: 0, ammoRifle: 0,
+              health: gSub.health, maxHealth: gSub.maxHealth,
+              onScreenEnemyCount: 0,       // 爆弾は鞄に入っていない(上のコメント)
+              state: kit,
+            });
+            if (r.dispense === 'health') {
+              // 自分のHPへ(世界へ回復アイテムを撒かない=§2.11追補3)。式は既存のゴースト回復と同一。
+              useGameStore.setState(st => ({
+                summons: st.summons.map(s => s.id === gSub.id
+                  ? {
+                    ...s,
+                    health: Math.min(s.health + Math.round(s.maxHealth * HEAL_FRACTION), s.maxHealth),
+                    ghostFirstAidKit: r.nextState,
+                  }
+                  : s),
+              }));
+              // 演出: 除外1(ズーム/スロー)は出さない。リング+バーストとSE(距離減衰)だけ。
+              spawnRing(gcx, gcy, 4, 30, 'rgba(226,232,240,0.75)', 2, 280);
+              spawnBurst(gcx, gcy, '#e2e8f0', 8);
+              const kitGain = subSfxGainAt(gcx, gcy);
+              if (kitGain > 0) playSfx('eat', kitGain);
+            } else if (r.dispense !== null) {
+              patchGhost({ ghostFirstAidKit: r.nextState }); // 到達しない想定(在庫は回復1つ)だが状態は進める
+            } else {
+              const after = kit;
+              if (!after.thrown && isFirstAidKitEmpty(after, lvl)) {
+                const bagTarget = useGameStore.getState().enemies
+                  .filter(e => e.type !== 'reaper' || e.reaperChaser)
+                  .map(e => ({ enemy: e, dist: Math.hypot(e.x + e.width / 2 - gcx, e.y + e.height / 2 - gcy) }))
+                  .sort((a, b) => a.dist - b.dist)[0]?.enemy;
+                if (bagTarget) {
+                  useGameStore.getState().spawnThrownBag(
+                    gcx, gcy,
+                    { id: bagTarget.id, x: bagTarget.x + bagTarget.width / 2, y: bagTarget.y + bagTarget.height / 2 },
+                    FIRST_AID_KIT_THROW_DAMAGE,
+                  );
+                  patchGhost({ ghostFirstAidKit: { ...after, thrown: true } });
+                }
+              } else if (gSub.ghostFirstAidKit === undefined) {
+                patchGhost({ ghostFirstAidKit: kit }); // 初期在庫を1回だけ書き込む
+              }
+            }
+          }
+
+          // ---- クイックマガジン(striker-quick-mag): 投げて**自分で**拾いに行く ----
+          // 裁定「各自が投げて自分で拾いに行く/回収が行動に割り込むのは許容」。回収の移動目標は
+          // ghostDriver(retrieveTarget)へ渡す。拾得は下のゴーストtickで自分の物だけを拾う。
+          // 弾薬の残量条件(マガジンに空きがある/リザーブが残っている)は**除外4(弾薬)**の系なので
+          // 守護霊には掛からない(守護霊は弾を消費しないため、掛けると永久に発動しない)。
+          {
+            const { owner: qmOwner } = subSubject('striker-quick-mag');
+            if (qmOwner.kind === 'ghost-ally' && qmOwner.summonId === gSub.id && ghostOwnsSub('striker-quick-mag') && gActor) {
+              const lvl = ghostSubLevel('striker-quick-mag');
+              // 投げ先=敵が少ない方面(プレイヤーと同じ safeThrowDirection・同じ距離)。
+              const dir = safeThrowDirection(gcx, gcy, useGameStore.getState().enemies, gOwner.facing ?? { x: 1, y: 0 });
+              const dirMag = Math.max(0.001, Math.hypot(dir.x, dir.y));
+              const px = gcx + (dir.x / dirMag) * STRIKER_QUICK_MAG_THROW_DISTANCE;
+              const py = gcy + (dir.y / dirMag) * STRIKER_QUICK_MAG_THROW_DISTANCE;
+              // 投げ直す時は**自分の**古いマガジンだけ消す(プレイヤーの物には触れない=2人分が独立)。
+              useGameStore.setState(s => (
+                s.pickups.some(p => p.type === 'quick-magazine' && p.ownerGhostId === gSub.id)
+                  ? { pickups: s.pickups.filter(p => !(p.type === 'quick-magazine' && p.ownerGhostId === gSub.id)) }
+                  : {}
+              ));
+              addPickup({
+                id: `pickup-quick-mag-${gSub.id}-${Date.now()}`,
+                x: px - 8, y: py - 8,
+                type: 'quick-magazine',
+                value: 1,
+                throwFromX: gcx - 8, throwFromY: gcy - 8,
+                throwStartAt: Date.now(),
+                throwDuration: STRIKER_QUICK_MAG_THROW_MS,
+                ownerGhostId: gSub.id,
+              });
+              spawnRing(gcx, gcy, 4, 18, 'rgba(159,216,255,0.72)', 2, 220);
+              spawnRing(px, py, 4, 22, 'rgba(159,216,255,0.7)', 2, 260);
+              spawnBurst(px, py, '#9fd8ff', 6);
+              setActorSubWeaponCooldown(gSub.id, 'striker-quick-mag', gameTime + STRIKER_QUICK_MAG_COOLDOWN_BY_LEVEL[lvl]);
+              consumeGhostSubClaim(qmOwner);
+            }
+          }
+
+          // ---- ホーミング(homing): 「押しっぱなし→離す」を模擬する ----
+          // 押している間のロック蓄積は**プレイヤーと同じ純関数**(stepHomingLocks)。押し続ける時間は
+          // 計測平均(G4a: homingHoldMsAvg)で、上限=ロック満タン到達時間・下限=最初のロック成立に
+          // clamp(utils/homing.ghostHomingHoldMs)。計測が無ければ満タンで発射(フォールバック)。
+          {
+            const holding = gSub.ghostHomingHoldStartAt !== undefined;
+            const { owner: hmOwner } = subSubject('homing');
+            const canStart = hmOwner.kind === 'ghost-ally' && hmOwner.summonId === gSub.id;
+            if (!holding) {
+              if (canStart) patchGhost({ ghostHomingHoldStartAt: nowMsFrame, ghostHomingNextLockAt: 0, ghostHomingLocks: [] });
+            } else if (!ghostOwnsSub('homing') || !gActor) {
+              // 押している最中に条件が崩れた(装備喪失/刀モード/帰還サークル)=指を離すだけ(発射しない)。
+              patchGhost({ ghostHomingHoldStartAt: undefined, ghostHomingNextLockAt: undefined, ghostHomingLocks: [] });
+            } else {
+              const lvl = ghostSubLevel('homing');
+              const maxLocks = HOMING_MAX_LOCKS_BY_LEVEL[lvl];
+              let locks = gSub.ghostHomingLocks ?? [];
+              if (gameTime >= (gSub.ghostHomingNextLockAt ?? 0)) {
+                const step = stepHomingLocks({
+                  locks, maxLocks, ownerCx: gcx, ownerCy: gcy, enemies: useGameStore.getState().enemies,
+                });
+                locks = step.locks;
+                patchGhost({ ghostHomingLocks: locks, ghostHomingNextLockAt: gameTime + HOMING_LOCK_INTERVAL_MS });
+                if (step.added) {
+                  const lockGain = subSfxGainAt(gcx, gcy); // 除外4: ゴースト起因SEは距離減衰
+                  if (lockGain > 0) playSfx(step.added === 'first' ? 'homing-lock' : 'homing-lock2', lockGain);
+                }
+              }
+              const holdMs = ghostHomingHoldMs(ghostProfileRef.current?.homingHoldMsAvg, maxLocks);
+              if (locks.length > 0 && nowMsFrame - (gSub.ghostHomingHoldStartAt ?? nowMsFrame) >= holdMs) {
+                useGameStore.getState().fireHoming(gSub.id); // ロック/押し状態のクリアとCDは共有の1本が行う
+                const fireGain = subSfxGainAt(gcx, gcy);
+                if (fireGain > 0) playSfx('shot-damage', fireGain);
+                consumeGhostSubClaim(ghostAsOwner(gSub));
+              }
+            }
           }
         }
 
@@ -7228,6 +7466,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const ghostKatana = isKatanaMode(ghostOwner);
               const profile: GhostProfile = ghostProfileRef.current ?? defaultGhostProfile();
               const nowMs = Date.now();
+              // GHOST-SUBS-FINAL(v0.25.2563): 自分が投げたクイックマガジン(=自分の設置物。世界の
+              // ドロップではないので§2.11追補3に抵触しない)。着地済みの物だけを回収目標にする。
+              const ownMag = useGameStore.getState().pickups.find(p =>
+                p.type === 'quick-magazine' && p.ownerGhostId === ghostNow.id
+                && !(p.throwStartAt !== undefined && p.throwDuration !== undefined
+                  && nowMs - p.throwStartAt < p.throwDuration));
+              const ghostRetrieveTarget = ownMag ? { x: ownMag.x + 8, y: ownMag.y + 8 } : undefined;
               // G4b(§2.9(4)): 技への反応ロールの持ち越し(Summonのフラット3フィールド⇔GhostMoveRoll)。
               const prevMoveRoll: GhostMoveRoll | undefined =
                 ghostNow.ghostMoveRollKey !== undefined && ghostNow.ghostMoveRollDecision !== undefined
@@ -7259,6 +7504,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 boundBossId: ghostNow.ghostBossId, // v0.25.2469: ボス束縛を純関数側でも明示
 
                 projectiles: useGameStore.getState().projectiles,
+                // GHOST-SUBS-FINAL(v0.25.2563・裁定「クイマガ回収の割り込み=許容」): 自分が投げた
+                // マガジンが場に残っていれば、それを拾いに行く(間合い管理より優先・危険回避には譲る)。
+                // 飛翔中(着地前)は目標にしない=着地点で待たずに落ちる場所へ歩き出す形にする。
+                retrieveTarget: ghostRetrieveTarget,
                 profile,
                 weapon: {
                   gunDamage: gun?.damage ?? 0,
@@ -7322,9 +7571,38 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostOrbitSign: decision.orbitSign,       // §2.12追補: オービット旋回方向の持ち越し
                   ghostTankedBulletKey: decision.tankedBulletKey,     // GHOST-BULLET-TECH B: 避けない弾技
                   ghostTankedBulletUntil: decision.tankedBulletUntil,
+                  // GHOST-SUBS-FINAL(v0.25.2563): 「移動中のみ」で動くサブ(火炎瓶/援護射撃)の主語判定。
+                  // プレイヤーの isMoving と同じしきい値(最大速の15%超)。一閃/ワイヤーの高速移動中も移動扱い。
+                  ghostIsMoving: gDashMode !== null
+                    ? true
+                    : !kbLocked && ghostIsMovingNow(decision.moveX, decision.moveY),
                   ...(wantSubClaim ? { ghostSubClaim: true } : {}),
                 } : s),
               }));
+
+              // GHOST-SUBS-FINAL: 自分が投げたクイックマガジンの回収(**自分の設置物だけ**。世界の
+              // ドロップには触れない=§2.11追補3)。拾得判定はプレイヤーと同じ純関数
+              // (checkPlayerPickupCollisions)へ、対象を自分のマガジン1個に絞って通す。
+              // 効果=プレイヤーの回収と同じ「クリ窓5秒」(即時リロードは弾薬=除外4で概念が無い)。
+              if (ownMag) {
+                const magBody = { ...ghostOwner, x: resolved.x, y: resolved.y, width: ghostNow.width, height: ghostNow.height };
+                if (checkPlayerPickupCollisions(magBody, [ownMag]).length > 0) {
+                  useGameStore.setState(st => ({
+                    pickups: st.pickups.filter(p => p.id !== ownMag.id),
+                    summons: st.summons.map(s => s.id === ghostNow.id
+                      ? { ...s, ghostQuickMagCritUntil: st.gameTime + QUICK_MAG_CRIT_WINDOW_MS }
+                      : s),
+                  }));
+                  const magCx = resolved.x + ghostNow.width / 2, magCy = resolved.y + ghostNow.height / 2;
+                  spawnBurst(ownMag.x + 8, ownMag.y + 8, '#9fd8ff', 10);
+                  spawnRing(ownMag.x + 8, ownMag.y + 8, 3, 22, 'rgba(159,216,255,0.76)', 2, 260);
+                  const magGain = npcSfxDistGain(
+                    magCx, magCy, gsPlayer.x + gsPlayer.width / 2, gsPlayer.y + gsPlayer.height / 2,
+                    useGameStore.getState().camera, useGameStore.getState().gameBounds,
+                  );
+                  if (magGain > 0) playSfx('reload', magGain, 800); // プレイヤーの回収と同じ音(800msで切る)
+                }
+              }
 
               // ゴースト起因SEの距離減衰(社長指示: escortの前例=npcSfxDistGainを流用。遠いゴーストの
               // 音は小さく・画面外は無音。プレイヤー自身の攻撃音は従来どおり等倍で、この係数は使わない)。
@@ -9359,7 +9637,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Check for collisions between player and pickups.
         // 同上: ピックアップは本フレーム中に敵ドロップで増えるため、最新状態(getState)で判定する。
         // スキル マグネット(§6.8 M31): 弾薬ピックアップのみ拾得範囲 ×1.1/1.2/1.3(Lv)。
-        const collPickups = useGameStore.getState().pickups;
+        // v0.25.2563(§2.11追補3の裏返し): **守護霊が自分で投げた物**(ownerGhostId付き=クイック
+        // マガジン)はプレイヤーの拾得対象から外す。世界のドロップではなく本人の設置物で、拾うのも本人
+        // (守護霊は世界の物に触れない/プレイヤーは守護霊の物を取らない=2人分が独立)。
+        // 守護霊が居ないランでは1件も該当しない=従来と1bit同じ。
+        const collPickups = useGameStore.getState().pickups.filter(p => p.ownerGhostId === undefined);
         const pickupCollisions = checkPlayerPickupCollisions(collPlayer, collPickups, skillMagnetAmmoRangeMult(collPlayer));
 
         if (pickupCollisions.length > 0) {

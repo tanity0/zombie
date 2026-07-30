@@ -10,7 +10,7 @@ import { bossStyleSlotKey, type BossStyleSlot, type PendingBossClearView, type P
 const slot = (over: Partial<BossStyleSlot> = {}): BossStyleSlot => ({
   reactionMs: 250, counterChance: 0.5, preferredDist: 180, meleeBias: 0.4, mobility: 0.6,
   hitsPerMin: 3, subUsesPerMin: 2, stationaryFrac: 0.35, approachPerMin: 3,
-  subStyles: { wire: { n: 0, slamRatio: 0 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 } },
+  subStyles: { wire: { n: 0, slamRatio: 0 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 }, homing: { n: 0, holdMsAvg: 0 } },
   srcClass: 'warrior', snapshot: null, srcName: 'me', at: 1000, clearTimeMs: 60_000,
   ...over,
 });
@@ -19,7 +19,7 @@ const profileWith = (bossStyles: Record<string, BossStyleSlot>): PlayerProfile =
   v: 1, runs: 3, reactionMs: 250, counterChance: 0.5, preferredDist: 180, meleeBias: 0.4,
   mobility: 0.6, hitsPerMin: 3, subUsesPerMin: 2, stationaryFrac: 0.35, approachPerMin: 3,
   moveReactions: {},
-  subStyles: { wire: { n: 0, slamRatio: 0 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 } },
+  subStyles: { wire: { n: 0, slamRatio: 0 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 }, homing: { n: 0, holdMsAvg: 0 } },
   bossStyles,
 });
 

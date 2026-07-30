@@ -36,7 +36,10 @@ import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
 import { bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
-import { tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey } from './playerTraits'; // BOT_AND_GHOST.md G1/G5
+import {
+  tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey,
+  subStyleHomingHoldMs, type SubStyleProfile,
+} from './playerTraits'; // BOT_AND_GHOST.md G1/G5
 import { loadPlayerName } from './playerName'; // v0.25.2477: 守護霊の頭上名(srcName未記録時のフォールバック)
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
@@ -675,7 +678,12 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   const profile = loadedProfile
     ? effectiveGhostProfile(loadedProfile, bossStyleSlotKey(boss.type, getSelectedStageId()))
     : defaultGhostProfile();
-  refs.ghostProfileRef.current = profile;
+  // GHOST-SUBS-FINAL(v0.25.2563): ホーミングの「押す時間」= G4a計測(subStyles.homing)の平均。
+  // 計測なし(旧プロファイル/未使用)は undefined のまま=消費側が満タン発射へフォールバックする。
+  const homingHoldMsAvg = subStyleHomingHoldMs((profile as { subStyles?: SubStyleProfile }).subStyles);
+  refs.ghostProfileRef.current = homingHoldMsAvg === null
+    ? profile
+    : { ...profile, homingHoldMsAvg };
 
   // v0.25.2468(社長裁定「HPは計測時のHPを100%再現。HPというか全ステータスをそのまま再現」):
   // プロファイルの計測時スナップショット(maxHealth/speed/level)を100%使う。旧プロファイル等で

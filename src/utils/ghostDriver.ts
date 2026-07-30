@@ -50,6 +50,12 @@ export interface GhostProfile {
    * 未定義・空表(旧プロファイル/既定プロファイル)は全技フォールバック=従来挙動(グローバルノブ)。
    */
   moveReactions?: MoveReactionTable;
+  /**
+   * GHOST-SUBS-FINAL(社長裁定2026-07-31): ホーミングの「押す→離す」保持時間の計測平均(ms)。
+   * 欠損(旧プロファイル/未使用)= 計測なし ⇒ 消費側(utils/homing.ghostHomingHoldMs)が
+   * 「満タンで発射」へフォールバックする。directorTick が召喚時に subStyles から解決して載せる。
+   */
+  homingHoldMsAvg?: number;
 }
 
 /**
@@ -298,6 +304,15 @@ export const stepGhostDanger = (
   return { memory: { seenAt, lastDangerAt: nowMs }, reacted: nowMs - seenAt >= reactionMs };
 };
 
+/**
+ * GHOST-SUBS-FINAL: 「今このtickで実際に動いているか」(火炎瓶/援護射撃の“移動中のみ”の主語判定)。
+ * プレイヤーの `isMoving`(gameStore: 速度 > 最大速×0.15)と**同じしきい値**で、ゴーストの移動ベクトル
+ * (最大速に対する割合そのもの)を見る。オービット(0.3〜0.55)は「動いている」側になる。
+ */
+export const GHOST_MOVING_SPEED_FRAC = 0.15;
+export const ghostIsMovingNow = (moveX: number, moveY: number): boolean =>
+  Math.hypot(moveX, moveY) > GHOST_MOVING_SPEED_FRAC;
+
 /** §2.12: カウンター待ちを見切ったか(窓が開いてから GHOST_COUNTER_WAIT_MS 経過)。 */
 export const ghostCounterWaitExpired = (pendingAt: number | undefined, nowMs: number): boolean =>
   pendingAt !== undefined && nowMs - pendingAt >= GHOST_COUNTER_WAIT_MS;
@@ -391,6 +406,13 @@ export interface GhostDriverInput {
    * 雑魚へ流れない(不在の瞬間だけ従来のpickTargetへフォールバック)。 */
   boundBossId?: string;
   projectiles: readonly Projectile[];
+  /**
+   * GHOST-SUBS-FINAL(裁定「クイマガ回収の割り込み=許容」): 拾いに行く自分の落し物の位置
+   * (現状はクイックマガジンのみ)。**間合い管理より優先**して歩いて取りに行く
+   * (戦闘中に拾い歩きするのは人間も同じ)。回避/カウンターの方が優先(危険は避ける)。
+   * undefined = 拾う物なし=従来と1bit同じ意思決定。
+   */
+  retrieveTarget?: { x: number; y: number };
   profile: GhostProfile;
   weapon: GhostWeapon;
   gameTime: number; // pickTargetのスタン判定に使う(sim時計)
@@ -510,6 +532,10 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   } else if (activeDodge && reaction !== 'tank') {
     // G4b 'tank'(苦手の再現): この技に限り回避を抑制=逃げずに戦い続ける(①によりダメージは実際に入る)。
     moveX = activeDodge.x; moveY = activeDodge.y;
+  } else if (input.retrieveTarget) {
+    // GHOST-SUBS-FINAL: 自分の落し物(クイックマガジン)を拾いに行く。間合い管理より優先だが、
+    // 危険(上の回避)とカウンターには譲る。乱数は消費しない=拾い物が無い時は従来と同一。
+    [moveX, moveY] = norm(input.retrieveTarget.x - gcx, input.retrieveTarget.y - gcy);
   } else {
     // §2.12(2)(3) 平時の間合い+移動リズム。
     // 安全マージンは「予告が出ているのに dodge/tank ロールを引いていない時」だけ足す(§2.12(2)の文言どおり)。
