@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2463',
+    items: [
+      '裏ボスの足元に常時表示されていた当たり判定の枠(確認用)を非表示にしました。',
+    ],
+  },
+  {
     version: '0.25.2462',
     items: [
       'ゲームオーバーから「もう一度プレイ」した時は開始時の会話をスキップするようになりました。M7はヘリ演出も省略して咆哮→即ボス戦です。',

@@ -8706,9 +8706,10 @@ export class PixiScene {
     }
     // 当たり判定=足元の「帯」(通常敵=幅は影と同規格=実描画幅×0.55 / 高さ=e.height、裏ボス=生の帯)。確認しやすい
     // よう帯=四角をうっすら色付きで表示。絵の「下」=この reticle 層(スプライトより背面)へ。当たり判定と必ず一致させる
-    // ため collision と同じ enemyHitStrip を使う。★確認用オーバーレイ(社長: 後で確定したら消す)。
-    // SHOW_HITBOX_STRIP=false で通常敵ぶんは一括OFF。裏ボスは元々この帯を常時表示(社長指示)なので OFF でも残す。
-    if (SHOW_HITBOX_STRIP || isHiddenBoss(e.type)) {
+    // ため collision と同じ enemyHitStrip を使う。★確認用オーバーレイ。
+    // 裏ボスの常時表示は社長指示v0.25.2463「まだ出てたら非表示で」で終了(確定=確認の役目を終えた)。
+    // 以後は SHOW_HITBOX_STRIP=true にした時だけ全敵ぶんが出る(開発用)。
+    if (SHOW_HITBOX_STRIP) {
       const pulse = 0.5 + 0.5 * Math.sin(now / 280);
       const hb = isHiddenBoss(e.type) ? { x: e.x, y: e.y, width: e.width, height: e.height } : enemyHitStrip(e);
       r.rect(hb.x, hb.y, hb.width, hb.height).fill({ color: 0xf97316, alpha: 0.07 + 0.04 * pulse });
