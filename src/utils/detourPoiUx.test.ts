@@ -22,7 +22,7 @@ describe('poiIntelLine(進入時の通信)', () => {
     const a = poiIntelLine('armory');
     expect(a).toContain('武器庫');
     expect(a).toContain('サークル');
-    expect(a).toContain('装備');
+    expect(a).toContain('銃'); // §6.24-W: 報酬=銃(Tier3)へ変更(v0.25.2533)
 
     const p = poiIntelLine('police');
     expect(p).toContain('警察署');

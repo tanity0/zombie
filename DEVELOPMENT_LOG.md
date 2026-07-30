@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.2533 — §6.24-W実装: 武器庫の報酬を装備→Tier3銃へ変更(設計チャット直接実装)+POI-UX検収合格【2026-07-30 23:45 JST】
+
+- **POI-UX検収(611d685)**: 通信=NpcDialogueキュー直積み(担当護衛が喋る・護衛ゼロはバナー
+  フォールバック)/トースト=lastWeaponGet拡張(desc/note)/解放帯=WallBand白/チュートリアル=
+  detour-poi(stage-1初出撃・端末1度・手本待ちはAWAITING_SAMPLE明示列挙)。ゲームプレイ値の変更なしを
+  diffで確認。ゲート緑・新テスト21件。合格。
+- **§6.24-W実装(直接・天秤=updateArmory差し替え1箇所+純関数のためサブエージェントより安い)**:
+  - `weaponUtils.armoryUpgradableGunCategories`(純関数・テスト3件): Tier3未満のカテゴリ(未所持含む)を列挙。
+  - `updateArmory`: rollEquipment/armoryTargetSlot/equipDefOnPlayer経路を廃止し、ランダムに1カテゴリ選定→
+    **set後に`grantWeapon('<cat>-t3')`**(既存規則=カテゴリごと1挺・高Tier優先+武器取得トーストが
+    そのまま出る)。全カテゴリT3=スクラップ非消費で取引完了(バナー「既に全ての銃が最高位——返金」+
+    解放帯・武器庫消滅=叩き台)。
+  - 通信文言「軍用装備」→「軍用銃」(detourPoiUx+テスト更新)。gameStoreの装備系import3つを除去。
+  - GameHUDの'poi-equip'分岐は無害な残置(装備報酬POIが将来戻る可能性に備え型は維持)。
+- 検証: `npm run typecheck` 0・lintエラー0・armoryGun.test.ts 3件+detourPoiUx.test.ts 11件パス。
+- 実機確認事項: 武器庫→銃の入手感(トースト・返金ケース)・守護霊窓リング(v0.25.2532)・POI通信一式。
+
 ## v0.25.2532 — 守護霊のカウンター窓リング(社長裁定・設計チャット直接実装)+武器庫→銃の仕様確定【2026-07-30 23:38 JST】
 
 - **社長裁定2件**: ①「カウンター待ち 出しましょう」=守護霊の窓リング可視化を承認 ②「武器庫は武器にして。

@@ -59,7 +59,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryUpgradableGunCategories } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -136,7 +136,7 @@ import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
-import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, rollEquipment, armoryTargetSlot, equipmentDescription } from '../data/equipment';
+import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import { isLeashableBoss, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT } from '../utils/bossEngagement';
@@ -11509,6 +11509,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   // サークルを出入りすれば再挑戦できる。新しい「不足時専用」の分岐は作らない)。
   // 判定の中身は world/armory.ts の純関数 + data/equipment.ts の rollEquipment/armoryTargetSlot。
   updateArmory: (deltaTime) => {
+    // §6.24-W: 付与はset外のgrantWeapon(自前のsetを持つ)で行うため、選定結果をここへ持ち出す。
+    let grantGunKey: string | null = null;
     set(state => {
       const pos = state.armory;
       if (!pos || state.armoryTaken || state.gameWon) return {};
@@ -11532,25 +11534,34 @@ export const useGameStore = create<GameState>((set, get) => ({
         };
       }
       if (done && state.player.straps >= ARMORY_SCRAP_COST) {
-        const slot = armoryTargetSlot(state.player.equipment);
-        const def = rollEquipment(slot, 3);
-        const paidPlayer = equipDefOnPlayer(
-          { ...state.player, straps: state.player.straps - ARMORY_SCRAP_COST },
-          def.id,
-        );
+        // §6.24-W(社長裁定v0.25.2533「武器庫は武器にして。全部tier3だった場合は返金されて終わり」):
+        // 報酬=Tier3の銃1挺確定。Tier3未満のカテゴリ(未所持含む)からランダムに1つ選び、
+        // そのカテゴリのTier3を付与する。付与はset後の grantWeapon=既存規則(カテゴリごと1挺・
+        // 高Tier優先)+武器取得トーストをそのまま通す(§6.24-UX要件2は武器取得UIそのもので満たす)。
+        const upgradable = armoryUpgradableGunCategories(state.player.weapons);
+        if (upgradable.length === 0) {
+          // 全カテゴリ最高位=「返金されて終わり」: スクラップを消費せず取引完了として武器庫は消える
+          // (叩き台。残す運用にするなら armoryTaken を立てない形へ変更)。
+          return {
+            ...intel,
+            armoryDwellMs: dwellMs,
+            armoryTaken: true,
+            armoryTakenAt: state.gameTime,
+            eventBannerText: '武器庫: 既に全ての銃が最高位——スクラップは返金された',
+            eventBannerUntil: state.gameTime + 2600,
+            wallBandText: poiUnlockBandText('armory'),
+            wallBandUntil: Date.now() + POI_BAND_MS,
+            wallBandColor: 'white' as const,
+          };
+        }
+        grantGunKey = `${upgradable[Math.floor(Math.random() * upgradable.length)]}-t3`;
         return {
           ...intel,
           armoryDwellMs: dwellMs,
           armoryTaken: true,
           armoryTakenAt: state.gameTime,
-          player: paidPlayer,
+          player: { ...state.player, straps: state.player.straps - ARMORY_SCRAP_COST },
           gameStats: { ...state.gameStats, strapsSpent: state.gameStats.strapsSpent + ARMORY_SCRAP_COST },
-          // §6.24-UX 確定要件2: 旧バナー「武器庫: ◯◯を入手」→ 武器取得と同じトースト(効果1行つき)へ置換。
-          // 効果説明は既存の equipmentDescription を流用(装備の文章を二重管理しない)。
-          lastWeaponGet: {
-            name: def.name, at: Date.now(), color: '#fbbf24',
-            kind: 'poi-equip', desc: equipmentDescription(def),
-          },
           // §6.24-UX 確定要件3: 解放をゾーン到達と同型の帯(WallBand)で出す。
           wallBandText: poiUnlockBandText('armory'),
           wallBandUntil: Date.now() + POI_BAND_MS,
@@ -11560,6 +11571,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (dwellMs === state.armoryDwellMs) return intel; // 円外で0のまま=書き込み省略(毎フレのsetを避ける)
       return { ...intel, armoryDwellMs: dwellMs };
     });
+    // §6.24-W: Tier3銃の付与(grantWeaponが弾薬重複/アクティブ切替/武器トーストまで面倒を見る)。
+    if (grantGunKey) get().grantWeapon(grantGunKey);
   },
 
   // §6.24-UX 確定要件1: 寄り道POIの進入/発動時の通信(1ラン1回/種)。病院/武器庫は各 update*

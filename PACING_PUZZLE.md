@@ -5169,3 +5169,5 @@ windupを1000msへ伸ばす必要は無く、伸ばすと社長が実機で慣�
   3. 進入時の通信文言を「軍用銃と交換」に更新。入手トーストは銃名+効果(武器取得UIそのもの)。
 - 実装: updateArmory の付与部を rollEquipment/armoryTargetSlot → 銃選定+grantWeapon へ差し替え。
   POI-UX(v0.25.2531)の通信/トースト文言も同時更新。
+- **ステータス: 実装済み v0.25.2533**(armoryUpgradableGunCategories純関数+テスト3件・
+  トーストは武器取得UIそのもの=grantWeapon任せ・返金ケースはバナー+解放帯で取引完了)。

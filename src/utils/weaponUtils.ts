@@ -182,6 +182,19 @@ export const getActiveGun = (player: Player): Weapon | undefined => {
   return guns.find(w => w.id === player.activeWeaponId) ?? guns[0];
 };
 
+// §6.24-W(社長裁定v0.25.2533「武器庫は武器にして。全部tier3だった場合は返金されて終わり」):
+// 武器庫で「Tier3へ昇格できる」銃カテゴリの列挙。銃はカテゴリごと1挺・高Tier優先(grantWeapon)
+// なので、Tier3未満の所持カテゴリと未所持カテゴリが昇格対象。空配列=全カテゴリ最高位=返金ケース。
+export const ARMORY_GUN_CATEGORIES = ['handgun', 'shotgun', 'rifle'] as const;
+export type ArmoryGunCategory = typeof ARMORY_GUN_CATEGORIES[number];
+export const armoryUpgradableGunCategories = (
+  weapons: Pick<Weapon, 'isMelee' | 'category' | 'tier'>[],
+): ArmoryGunCategory[] =>
+  ARMORY_GUN_CATEGORIES.filter(cat => {
+    const own = weapons.find(w => !w.isMelee && w.category === cat);
+    return !own || (own.tier ?? 1) < 3;
+  });
+
 // Player-state RESERVE pool value for an ammo type.
 export const ammoPoolFor = (player: Player, type: AmmoType): number =>
   player[AMMO_FIELD[type]];

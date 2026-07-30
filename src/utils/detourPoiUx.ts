@@ -35,7 +35,8 @@ export const poiIntelLine = (kind: PoiKind): string => {
     case 'hospital':
       return `廃病院だ。サークルで${POI_DWELL_SEC}秒待てばワクチンが手に入る——死んでも一度だけ立ち上がれる`;
     case 'armory':
-      return `武器庫だ。スクラップ${ARMORY_SCRAP_COST}で軍用装備と交換できる。サークルで${POI_DWELL_SEC}秒待て`;
+      // §6.24-W(社長裁定v0.25.2533): 報酬は装備→**銃(Tier3)**へ変更。文言も銃に合わせる。
+      return `武器庫だ。スクラップ${ARMORY_SCRAP_COST}で軍用銃と交換できる。サークルで${POI_DWELL_SEC}秒待て`;
     case 'police':
       return '警察署だ。囲まれるぞ——全滅させれば警察の特殊装備をこの出撃の間使える';
   }
