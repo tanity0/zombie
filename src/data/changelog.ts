@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2557',
+    items: [
+      'ゲーム内容の変更はありません(歴史年表の規則を確定: 拠点は「初めて開放した」1件のみ・警察署/武器庫/病院も初回のみ記録。実装は次push)。',
+    ],
+  },
+  {
     version: '0.25.2556',
     items: [
       'ゲーム内容の変更はありません(討伐年表への記載は同行撃破でも初回のみ、と確定。守護霊の被弾内訳テストを依頼)。',
