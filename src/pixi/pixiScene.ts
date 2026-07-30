@@ -35,6 +35,9 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
   GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH,
+  // v0.25.2483(社長指示): フルランプ速度線のゲート=「移動速度+10%以上のステータス」判定に、
+  // movePlayerがランプへ渡す「対象倍率の積P」と同じ純関数を使う(判定の二重実装をしない)。
+  skillRunnerSpeedMult, marksmanSpeedMult, skillWarmUpSpeedMult,
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -1251,6 +1254,12 @@ const SPEED_LINE_MAX_ALPHA = 0.55;
 // =CLAUDE.md負荷規律のimage/ring等と同じ「pooled sprite使い回し」区分。Load score 1/10)。
 // 突進の一瞬のパルスと見分けが付くよう最大α を下げる。ランプが切れた瞬間に他条件が無ければ即消灯。
 const RAMP_SPEED_LINE_ALPHA = SPEED_LINE_MAX_ALPHA * 0.45;
+// v0.25.2483(社長指示「移動速度がプラス10%以上のステータス付いてる時のみにして」): フルランプ速度線は
+// ランプ対象の倍率積P(ランナー×マークスマン×ウォームアップ×装備moveSpeedMult=movePlayerと同じ組)が
+// この値以上の時だけ出す。基礎速度のみ(P=1)のフルランプでは出さない(実際は速くなっていないのに
+// 疾走感だけ出るのをやめる)。スケーター×3はランプ対象外(乗車という別の見た目を持つ)=Pに含めない。
+// 突進/カウンターのパルス速度線は従来どおり(このゲートの対象外)。
+const RAMP_SPEED_LINE_MIN_BONUS_MULT = 1.1;
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
 // (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
@@ -4655,7 +4664,7 @@ export class PixiScene {
       s.escorts
     );
     this.syncPlayerFx(s.player, now);
-    this.syncSpeedLines(s.player, now); // §5.23 M22 C4: 突進/カウンターの速度線(screen-space・軽量)
+    this.syncSpeedLines(s.player, now, s.gameTime); // §5.23 M22 C4: 突進/カウンターの速度線(screen-space・軽量)
     // 解放済み(=その方角の拠点が制圧済み)のPOIだけ方角矢印を出す。裏ボスは討伐後は出さない。
     // 出現/解放判定は固定の巣(セクター)で行い、矢印の指す先は「実際に出ている裏ボスの現在地」にする
     // (近接スポーンや追跡で巣からずれても本体を指す)。
@@ -13695,7 +13704,7 @@ export class PixiScene {
   // MOVEMENT_REWORK.md 仕様1の可視化(追記): 上記のパルスに加えて、フルランプ中(同方向へ
   // RAMP_FULL_MS走り続けて速度ボーナス満額)は薄いαで常時出す。パルスとフルランプが同時に
   // 生きていれば大きい方のαを採用(triggerShakeと同じ「重なったら強い方」の考え方)。
-  private syncSpeedLines(player: Player, now: number) {
+  private syncSpeedLines(player: Player, now: number, gameTime: number) {
     if (!SPEEDLINE_ENABLED) {
       for (const sp of this.speedLineSprites) sp.visible = false;
       return;
@@ -13704,7 +13713,12 @@ export class PixiScene {
     const remain = speedLineRemainingMs(
       now, player.katanaDashUntil, player.wireDashUntil, player.lastCounterSuccessTime, PLAYER_COUNTER_MS,
     );
-    const rampFull = player.isMoving && player.speedRampSustainMs >= RAMP_FULL_MS;
+    // v0.25.2483: フルランプ線は「移動速度+10%以上のステータス」がある時のみ(定数コメント参照)。
+    // Pの組はmovePlayerの非リロード分岐と同一(リロード中ランナーの追加+10%は"ステータス"に数えない)。
+    const speedBonusP = skillRunnerSpeedMult(player) * marksmanSpeedMult(player)
+      * skillWarmUpSpeedMult(player, gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
+    const rampFull = player.isMoving && player.speedRampSustainMs >= RAMP_FULL_MS
+      && speedBonusP >= RAMP_SPEED_LINE_MIN_BONUS_MULT;
     if (remain <= 0 && !rampFull) {
       for (const sp of this.speedLineSprites) sp.visible = false;
       return;
