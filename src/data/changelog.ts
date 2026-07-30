@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2504',
+    items: [
+      'ゲーム内容の変更はありません(次の修正2件=ゴールサークル内の攻撃全停止・守護霊の生存性改善の仕様を記録)。',
+    ],
+  },
+  {
     version: '0.25.2503',
     items: [
       'ゲーム内容の変更はありません(追加素材リストV4=地面ひび割れ・ボス別の弾絵・魔法陣などのプロンプト8本を設計書へ追加)。',
