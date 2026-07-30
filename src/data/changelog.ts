@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2538',
+    items: [
+      'ゲーム内容の変更はありません(咆哮の円錐素材を受領・搭載。発射演出として適用予定)。',
+    ],
+  },
+  {
     version: '0.25.2537',
     items: [
       'ゲーム内容の変更はありません(方針確定:「守護霊は独立した2人目のプレイヤー」=分身・センサーマイン対応とサブCD独立化の発注仕様を確定)。',
