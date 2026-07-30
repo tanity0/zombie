@@ -619,6 +619,11 @@ const GHOST_DEBUG_ENABLED = evParam('ghost') === '1';
 // 被弾音のスパム保険(v0.25.2480・★未決2解消): 実ダメージ自体は damageSummon の i-frame(INVULN_MS)で
 // 間引かれるので通常はこの保険に当たらない。二重保険の最短間隔のみ定数化。
 const GHOST_HURT_SFX_MIN_GAP_MS = 200;
+// v0.25.2481: `?autotut=1`(自動テスト用・社長承認v0.25.2479「ではそれで」)= チュートリアル
+// ポップアップ抑止(gameStore側v0.25.2474)に加え、レベルアップ/宝箱の選択画面もボットと同じ
+// 純関数(pickUpgradeByPolicy・決定的乱数)で即自動選択する。テストランがgameTime凍結で止まる
+// 事故の恒久策(ENGINEERING_NOTES「自動テストの地雷」)。無指定の通常プレイは1バイトも変えない。
+const AUTOTUT = evParam('autotut') === '1';
 
 // 天使(ゲート2ボス)コントローラの音注入(本体はangelBossTick.ts=M26 Step3で抽出。ヘッドレスはNOOP、実プレイはここ)。
 const ANGEL_SFX: AngelSfx = {
@@ -1833,6 +1838,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         } else {
           botPausedSinceRef.current = 0;
+        }
+      }
+      // v0.25.2481: ?autotut=1 の自動選択(BOT_PERSONA無しのテストラン用。BOT有りは上のブロックが
+      // 同じ処理をするので二重に走らせない)。isPausedスキップより前=選択画面で永久停止しない。
+      // ポリシーは greedy 固定(テストランのビルドが崩壊しないよう装備Tier優先で選ぶ)。
+      if (AUTOTUT && !BOT_PERSONA) {
+        const bs = useGameStore.getState();
+        if (bs.showUpgradeMenu && bs.upgradeOptions.length > 0) {
+          bs.selectUpgrade(pickUpgradeByPolicy(
+            bs.upgradeOptions, botRandRef.current, 'greedy', bs.player));
         }
       }
       // Skip updates if game is paused. Read fresh from the store (not the
