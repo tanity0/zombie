@@ -130,6 +130,9 @@
   (2149×690・585KB)。g-reachのカプセル判定に沿って回転・伸長して張る(分類①=判定に揃える)。
 - 2026-07-30(4便): **拳**(透過済み・白石+金装飾・正面ナックル)→ `idol-fist.png`(946×1223・940KB)。
   idol punchの突き出しに合わせ拡大しながら迫る使い方(正面構図が活きる)。
-- 実装バッチ(g-bite/mimir bite/g-talon/g-wing/g-reach/idol punch)はCRIT-UNIFY着地後に発注
+- 2026-07-30(5便): **植物・種吐き**(透過済み)→ 本体(吐く瞬間の口)= `plant-spit.png`(791×1012)と
+  **種そのもの**= `plant-seed.png`(83×66・弾の専用絵に使える)へ分割搭載。絵に焼き込まれていた
+  軌跡の点々は除去(実弾が飛ぶため)。
+- 実装バッチ(g-bite/mimir bite/g-talon/g-wing/g-reach/idol punch/plant種弾)はCRIT-UNIFY着地後に発注
   (useGameLoop競合回避の直列運用)。
-- 残りの支給待ち: 種吐き(plant)/砂埃A・B(任意)。
+- 残りの支給待ち: 砂埃A・B(任意)のみ=**V3必須素材はコンプリート**。
