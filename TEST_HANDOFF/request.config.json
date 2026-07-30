@@ -1,10 +1,31 @@
 {
   "baseUrl": "local",
-  "runMs": 900000,
+  "runMs": 600000,
   "headless": true,
-  "viewport": { "width": 1280, "height": 800 },
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
   "configs": [
-    { "name": "hospital-regression-a", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["exploder"] },
-    { "name": "hospital-regression-b", "persona": "standard", "subs": ["flare-gun"], "skills": ["warm-up"] }
+    {
+      "name": "ghost-regression-a",
+      "persona": "standard",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ]
+    },
+    {
+      "name": "ghost-regression-b",
+      "persona": "standard",
+      "subs": [
+        "katana"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ]
+    }
   ]
 }
