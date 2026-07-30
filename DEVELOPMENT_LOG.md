@@ -1,5 +1,55 @@
 # Development Log
 
+## v0.25.2522 — GHOST-KATANA-WIRE: 守護霊が刀(一閃/オート斬撃/村雨)とワイヤーを共有方式で使う【2026-07-30 21:53 JST】
+
+- **発注**: research/GHOST_PARITY_LEDGER.md 末尾の発注仕様(項目5=刀モード / 項目6=ワイヤーアンカー)。
+  正本=同台帳「★未決の裁定」裁定2「**共有方式**(Summon型に状態を持たせ既存状態機械の主語を差し替える。
+  簡易モデル禁止)」+BOT_AND_GHOST.md §2.11補足「写すな、共通化しろ」。
+- **土台(共通化)**: `types/game.ts` に **`DashLocomotionState`**(刀の一閃+ワイヤーの21フィールド)を切り出し、
+  `Player extends DashLocomotionState` / `Summon.ghostDash?: DashLocomotionState`(**Summonへの追加はこの1つだけ**)。
+  ロコモーション上書き(優先順 wireDash>wireHop>katanaDash>katanaRecovery・速度・目標ベクトル)を
+  新規 `utils/dashLocomotion.ts` の純関数へ抽出し、`movePlayer` のインライン判定を置換(値・順序は不変)。
+  オート斬撃の標的選択は新規 `utils/katanaAuto.ts` の `pickKatanaSlashTarget` へ抽出(プレイヤーと共有)。
+  主語の解決は `gameStore.combatActorPlayer(ghostId?)`=**1枚の疑似Player**(計測時ビルド+ゴースト実体の
+  座標/HP+ghostDash)。これで `player.subWeapons` / `katanaDashUntil` / `wireDashUntil` 等の既存の読みが
+  全部そのまま通り、書き込みだけ `setActorDashState` が宛先を振り分ける。
+- **A. 刀モード(項目5)**: `performKatanaStrike(..., ghostId?)` / `triggerKatanaDash(..., ghostId?)` の主語引数化のみで、
+  オート斬撃(600ms・Lv別リーチ76/92/110)・一閃(154px/180ms/×3/半幅26/硬直200ms)・村雨(CD無し連発)・
+  **気絶敵へのフィニッシュ一閃**(ボス5×/強個体3×/通常即死の既存条件そのまま)・クリ率と全倍率・紫蓄積・
+  斬撃弧/血/ダメージ数字/「斬」+暗転・XP/通貨/弾薬拾得・リーパー波及・救難信号が**プレイヤーと同じ1本**で走る。
+  実行入口(useGameLoop)は `isKatanaMode(疑似Player)` が真なら**プレイヤーと同じ封印**(銃の自動射撃を止め、
+  `decideGhost` へ渡す gunRangePx も0)+近接アクション=一閃+独立に回るオート斬撃。一閃でもカウンター請求を積む。
+- **B. ワイヤー(項目6)**: `triggerWireAnchor`/`startWireDash`/`startWireHop` を主語引数化し、useGameLoopの
+  毎フレーム処理を **`runWireAnchorTick(wp, ghostId?)`** にしてプレイヤー→守護霊の順で1回ずつ回す
+  (すり抜けダメージ/Lv3すり抜け爆発/着地爆撃/強制ノックバック/斬り下ろし/ホップ開始が同じ1本)。
+  発動の意思決定は既存のサブ予約(ghostSubClaim)を流用・狙いは紐付きボス・CDは「1つの財布」を共有。
+  **防御規格を同一化**: プレイヤーの逆算打刻(invulnerableTime)は実効「now+技の長さまで無敵」なので、
+  ゴーストは同じ終了時刻を `ghostInvulnUntil` へ入れる=スラム/ダッシュ/ホップの全区間で無敵
+  (**守護霊がワイヤー中に一方的に殴られて即死する事故の根治**)。霊体のオブジェクトすり抜けは維持。
+- **除外1/4のみ非適用**: `triggerFinishImpact`(停止+スロー+寄りズーム)はゴースト起因では呼ばない(シェイクのみ)。
+  `recordDamageDealt`/`recordMeleeSwing`/`recordWireAnchorUse` は積まない・ダメージは damageChannel=null +
+  hateSource='ghost'・SEは距離減衰。**プレイヤーのコンボ台帳(meleeFinishCombo*/knifeCombo*/maxCombo)は
+  ゴーストのスイングでは動かさない**(★未決1と同じ扱い=二重取り防止)。キル数/与ダメは damageEnemy 経路と
+  同じ扱いで積む。
+- 負荷: **1/10**(simulation)。増えるのは「場のゴースト1体ぶんの状態機械1本」だけ(ワイヤーtickをもう1回・
+  オート斬撃は600ms間隔・一閃は既存CD/硬直で律速)。新しい描画レイヤー・強glow・フィルタは追加していない
+  (エフェクトは既存のプール済み斬撃/血/リングを使い回すだけ)。
+- 検証: `npx tsc --noEmit` エラー0 / `npm run lint` エラー0(既存8警告)。新規テスト
+  `dashLocomotion.test.ts`(7件=優先順位/速度/目標/一閃154px)・`katanaAuto.test.ts`(5件=標的選択の不変条件)・
+  `ghostKatanaWire.test.ts`(17件=主語解決/一閃の状態機械・無敵窓・硬直・村雨/ワイヤーのプラント・スラム・
+  ダッシュ・ホップ・共有CD・刀の排他/除外1・4の効き+**プレイヤー対照でヒットストップが出ることも固定**)、
+  `ghostBuild.test.ts` に4件追加。関連テスト(`npx vitest related`)= 22ファイル 326件パス(M9ボットスモーク込み)。
+- 自己点検(規律5): 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に**抵触しない**——変更は守護霊の
+  攻撃/移動の実行系と、その状態を持つ型・純関数の抽出のみ。スポーン/countCap/台本/しきい値・
+  ディレクタには一切触れていない。**プレイヤー側は式・定数・分岐を1文字も変えていない**(抽出+主語引数化。
+  ghostId未指定時は疑似Player=本物のプレイヤー、damageEnemyの追加引数も既定値と同値を明示しただけ)。
+  なお**刀/ワイヤービルドの守護霊の実火力は上がる**(これまで一切使えなかった技が出る)=ボスHP×1.6との
+  釣り合いは実機確認事項として社長へ申し送り。
+- **★未決の追記**: ★未決1(ゴースト側のコンボ計数)へ「刀の共有でも同じ扱いを踏襲した」旨を追記。
+  新規の未決は発生していない(発注仕様に無い値・挙動は作っていない)。
+- 次: 項目8(弾反射)、項目10(気絶フィニッシュ=刀経路は本バッチで自然に入った)、項目11(未対応サブ13種)、
+  §2.12(行動品質=刀ビルドの間合い/一閃を撃つ判断の質)。
+
 ## v0.25.2521 — 将来構想メモ: 1:1リアルタイム協力プレイの考察をGHOST_ONLINE.md §6へ記録(文書のみ)【2026-07-30 21:45 JST】
 
 - **社長指示「考察を無駄にしないために、今は読まなくていい話題として履歴に残しておいて」**。

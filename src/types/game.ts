@@ -9,8 +9,59 @@ export type CharacterClass = 'warrior' | 'mage' | 'rogue' | 'necromancer';
 export interface IntroLine { speaker: string | null; text: string; holdMs?: number }
 
 
+/**
+ * 刀(一閃)/ワイヤーアンカーの「ロコモーション上書き」状態機械の入れ物。
+ * BOT_AND_GHOST.md §2.11補足のドクトリン「写すな、共通化しろ」+ research/GHOST_PARITY_LEDGER.md
+ * 裁定2(刀/ワイヤー=共有方式)に従い、**プレイヤーと守護霊が同じ状態を持つ**ための共通型として
+ * 切り出した(値・意味・フィールド名は Player に直書きされていた時から一切変えていない)。
+ * プレイヤーは Player の一部として直接持ち、守護霊は Summon.ghostDash に持つ。
+ * 読み書きの共通部品は src/utils/dashLocomotion.ts。
+ */
+export interface DashLocomotionState {
+  // Katana (刀) sub-weapon dash state. While katanaDashUntil is in the future
+  // the player ignores input and travels along the dash direction while
+  // invulnerable. The cooldown gates only the next dash — normal movement and
+  // the katana auto-slash continue during it.
+  katanaDashUntil: number;
+  katanaDashDirX: number;
+  katanaDashDirY: number;
+  katanaDashCooldownEnd: number;
+  // 一閃の着地後に動けない硬直(後隙)が切れる時刻。刀・村雨共通。
+  // 着地(katanaDashUntil)から KATANA_DASH_RECOVERY_MS の間は移動も次の一閃も不可。
+  katanaRecoveryUntil: number;
+  // ワイヤーアンカー(移動系サブ)。装備中は前方に青サークルを常時表示。指離しで「即座に」アンカーを
+  // 打ち込み(ワイヤーが表示される)、溜(wirePlantUntil まで)の後に追加タップでアンカー地点へ高速移動。
+  // アンカーは一度打ち込むと、プレイヤーが一定距離(WIRE_CLEAR_DIST)離れるか、移動に使うまでそこに留まる。
+  // wireAnchorX/Y=打ち込み地点。wireAnchored=打ち込み済みか。wirePlantUntil=溜の完了時刻(Date.now)。
+  // wireDashUntil=高速移動の終了時刻。wireDashSpeed=高速移動速度(px/s)。高速移動中は敵接触ダメージ無効。
+  wireAnchorX: number;
+  wireAnchorY: number;
+  wireAnchored: boolean;
+  wirePlantUntil: number;
+  wireDashUntil: number;
+  wireDashSpeed: number;
+  // アンカーが敵に刺さった(吸着)場合: その敵ID と、引き寄せ→近接→ノックバックを解決する時刻。
+  wireStuckEnemyId: string;
+  wireStuckUntil: number;
+  // アンカーが敵に刺さった時の大技(引き上げ→垂直斬り下ろし→着地ノックバック)。
+  wireSlamEnemyId: string; // 斬り下ろす対象の敵ID('' = 大技なし)。着地でフィニッシュ。
+  wireSlamStart: number;   // 引き上げ開始時刻(Date.now)。描画のジャンプ弧の起点。終点は wireDashUntil。
+  // スラム発動時(triggerWireAnchorの刺し確定時点)のプレイヤー中心座標。ホップ(下記)の
+  // 「スラム起点へ戻る向き」の計算に使う(DEVELOPMENT_LOG v0.25.2487)。
+  wireSlamFromX: number;
+  wireSlamFromY: number;
+  // スラム後ジャンプ離脱(ホップ): 斬り下ろし対象が生き残った(=実質ボス)時だけ、既存の着地処理
+  // (斬り下ろし/Lv3爆撃/強制ノックバック)を終えた後に安全圏へ短くホップする(裁定=
+  // research/COUNTER_CRIT_LEDGER.md §8)。wireDashUntilとは別枠の専用ミニ移動
+  // (movePlayerのwireHopping分岐)。wireHopUntil=0はホップ中でない。
+  wireHopUntil: number;
+  wireHopTargetX: number;
+  wireHopTargetY: number;
+  wireHopSpeed: number; // ホップ移動速度(px/s。startWireHopで距離/WIRE_HOP_MSから算出)
+}
+
 // Player types
-export interface Player {
+export interface Player extends DashLocomotionState {
   x: number;
   y: number;
   // Velocity (px/s). Movement is smoothed toward the input target so the player
@@ -129,17 +180,7 @@ export interface Player {
   whipCharged?: boolean;
   // 錬金術: 立ち止まりチャネルの開始 gameTime(ms)。0 = 非チャネル。5秒で召喚。
   alchemyChannelStartedAt?: number;
-  // Katana (刀) sub-weapon dash state. While katanaDashUntil is in the future
-  // the player ignores input and travels along the dash direction while
-  // invulnerable. The cooldown gates only the next dash — normal movement and
-  // the katana auto-slash continue during it.
-  katanaDashUntil: number;
-  katanaDashDirX: number;
-  katanaDashDirY: number;
-  katanaDashCooldownEnd: number;
-  // 一閃の着地後に動けない硬直(後隙)が切れる時刻。刀・村雨共通。
-  // 着地(katanaDashUntil)から KATANA_DASH_RECOVERY_MS の間は移動も次の一閃も不可。
-  katanaRecoveryUntil: number;
+  // ※刀(一閃)の katanaDash*/katanaRecoveryUntil は DashLocomotionState へ移設(守護霊と共有)。
   // 四神舞フリック=盾バッシュ風スライド。shijinSlideUntil が未来の間、入力を無視して
   // shijinSlideDir 方向へ一定速で滑る(movePlayer がダッシュと同様に上書き)。
   shijinSlideUntil: number;
@@ -154,35 +195,7 @@ export interface Player {
   // 1秒以上乗っていれば進行方向へスケボーを投擲(当たると前方バッシュ=衝撃波+強制ノックバック)。1秒未満は消えるだけ。
   skaterRiding: boolean;     // 乗車中か(=3倍/強慣性を適用)。
   skaterRideStartAt: number; // 乗車開始 gameTime(ms)。降車時に1秒以上か判定。
-  // ワイヤーアンカー(移動系サブ)。装備中は前方に青サークルを常時表示。指離しで「即座に」アンカーを
-  // 打ち込み(ワイヤーが表示される)、溜(wirePlantUntil まで)の後に追加タップでアンカー地点へ高速移動。
-  // アンカーは一度打ち込むと、プレイヤーが一定距離(WIRE_CLEAR_DIST)離れるか、移動に使うまでそこに留まる。
-  // wireAnchorX/Y=打ち込み地点。wireAnchored=打ち込み済みか。wirePlantUntil=溜の完了時刻(Date.now)。
-  // wireDashUntil=高速移動の終了時刻。wireDashSpeed=高速移動速度(px/s)。高速移動中は敵接触ダメージ無効。
-  wireAnchorX: number;
-  wireAnchorY: number;
-  wireAnchored: boolean;
-  wirePlantUntil: number;
-  wireDashUntil: number;
-  wireDashSpeed: number;
-  // アンカーが敵に刺さった(吸着)場合: その敵ID と、引き寄せ→近接→ノックバックを解決する時刻。
-  wireStuckEnemyId: string;
-  wireStuckUntil: number;
-  // アンカーが敵に刺さった時の大技(引き上げ→垂直斬り下ろし→着地ノックバック)。
-  wireSlamEnemyId: string; // 斬り下ろす対象の敵ID('' = 大技なし)。着地でフィニッシュ。
-  wireSlamStart: number;   // 引き上げ開始時刻(Date.now)。描画のジャンプ弧の起点。終点は wireDashUntil。
-  // スラム発動時(triggerWireAnchorの刺し確定時点)のプレイヤー中心座標。ホップ(下記)の
-  // 「スラム起点へ戻る向き」の計算に使う(DEVELOPMENT_LOG v0.25.2487)。
-  wireSlamFromX: number;
-  wireSlamFromY: number;
-  // スラム後ジャンプ離脱(ホップ): 斬り下ろし対象が生き残った(=実質ボス)時だけ、既存の着地処理
-  // (斬り下ろし/Lv3爆撃/強制ノックバック)を終えた後に安全圏へ短くホップする(裁定=
-  // research/COUNTER_CRIT_LEDGER.md §8)。wireDashUntilとは別枠の専用ミニ移動
-  // (movePlayerのwireHopping分岐)。wireHopUntil=0はホップ中でない。
-  wireHopUntil: number;
-  wireHopTargetX: number;
-  wireHopTargetY: number;
-  wireHopSpeed: number; // ホップ移動速度(px/s。startWireHopで距離/WIRE_HOP_MSから算出)
+  // ※ワイヤーアンカーの wire* 状態は DashLocomotionState へ移設(守護霊と共有)。
   // In-run currency. Spent during the current play only.
   straps: number;
   // One-shot revive stock from the in-run vaccine shop item.
@@ -720,6 +733,11 @@ export interface Summon {
   // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 召喚時に載せる「計測時ビルドの写し」。ゴーストの武器・
   // スキル・装備・クリ率はこれから復元する(欠損=旧プロファイル→召喚時のプレイヤー装備へフォールバック)。
   ghostBuild?: PlayerBuildSnapshot;
+  // v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀の一閃/ワイヤーアンカーの状態機械を
+  // **プレイヤーと同じ1つの型**(DashLocomotionState)で持つ。プレイヤーはPlayer直付け、守護霊はここ。
+  // これで既存の状態機械(katanaDashUntil/wireDashUntil系)の主語をゴーストへ差し替えられる
+  // (ゴースト用の簡易モデルは作らない)。undefined=まだ一度も使っていない(=全ゼロ相当)。
+  ghostDash?: DashLocomotionState;
   // 被弾ノックバック(監査項目7・プレイヤーのdamagePlayerと同式: PLAYER_KNOCKBACK_SPEED/MSで
   // ダメージ源から弾かれ、updateSummonsが減衰しながら消化する)。他kindでは常にundefined。
   knockbackVx?: number;

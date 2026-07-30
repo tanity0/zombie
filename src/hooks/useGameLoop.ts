@@ -17,6 +17,8 @@ import {
   subWeaponBlockedByKatana,
   katanaRange,
   KATANA_SLASH_INTERVAL_MS,
+  KATANA_DASH_SPEED,
+  combatActorPlayer,
   huntingMeleeRadius,
   PLAYER_INTRO_MS,
   PLAYER_INTRO_HELI_FRAC,
@@ -84,6 +86,10 @@ import {
 // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 守護霊は「計測時ビルド」で戦う。ビルドの復元+倍率評価用の
 // 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
 import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
+// v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀のオート斬撃の標的選択と、
+// 刀の一閃/ワイヤーのロコモーション上書き。どちらもプレイヤーと守護霊が同じ純関数を通る。
+import { pickKatanaSlashTarget } from '../utils/katanaAuto';
+import { dashModeAt, dashOverride, dashStateOf, dashStep } from '../utils/dashLocomotion';
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPenalty';
@@ -97,7 +103,7 @@ import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisi
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
 import { rollWeaponKey } from '../utils/weaponDrop';
-import type { AmmoType, Pickup, Projectile, EnemyType } from '../types/game';
+import type { AmmoType, Pickup, Projectile, EnemyType, Player } from '../types/game';
 import {
   checkCollision,
   checkProjectileEnemyCollisions,
@@ -1284,9 +1290,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const boomPulseRef = useRef<Map<string, number>>(new Map());
   // ワイヤーダッシュ着地の近接攻撃を1ダッシュにつき1回だけ発火させるためのマーカー
   // (処理済みの wireDashUntil を覚える。常に増加するタイムスタンプなので衝突しない)。
-  const wireLandedDashRef = useRef(0);
+  // v0.25.2518(裁定2): 主語ごとに別レジスタ('player' / 守護霊のsummon.id)。
+  const wireLandedDashRef = useRef<Record<string, number>>({});
   // ワイヤーダッシュ中に「通過した敵」へ自動近接する際、1ダッシュにつき敵1回だけ当てるための記録。
-  const wirePassHitRef = useRef<{ dash: number; ids: Set<string> }>({ dash: 0, ids: new Set() });
+  const wirePassHitRef = useRef<Record<string, { dash: number; ids: Set<string> }>>({});
+  // 守護霊のオート斬撃(刀)の最終発動 gameTime(プレイヤーの lastKatanaSlashRef と同型・主語別)。
+  const ghostKatanaSlashRef = useRef<{ id: string; at: number }>({ id: '', at: 0 });
   // 前方集中(連射)タレットの索敵スキャン角(rad)。射程に敵がいない間ゆっくり回転する。
   const turretAimRef = useRef<Map<string, number>>(new Map());
   // 敵のジャンプ/ダッシュ攻撃でのオブジェクト破壊FXのスロットル時刻(gameTime)。破壊自体は毎回・FXのみ間引き。
@@ -5979,31 +5988,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (gameTime < lastKatanaSlashRef.current) lastKatanaSlashRef.current = 0; // new run
           if (gameTime - lastKatanaSlashRef.current >= KATANA_SLASH_INTERVAL_MS) {
             const kp = useGameStore.getState().player;
-            const kcx = kp.x + kp.width / 2;
-            const kcy = kp.y + kp.height / 2;
-            const kRange = katanaRange(kp);
-            let best: { id: string; d2: number } | null = null;
-            let bestStunned: { id: string; d2: number } | null = null;
-            for (const e of useGameStore.getState().enemies) {
-              if (e.type === 'reaper' && !e.reaperChaser) continue;
-              // 距離は enemyMeleeDist(裏ボスは帯AABBの最近点)。巨体ボスを中心基準にすると帯の端で
-              // 「近づいても発動しない」狭い当たりになる(社長報告)。最近点なら表示枠=攻撃判定が一致する。
-              const d = enemyMeleeDist(kcx, kcy, e);
-              if (d > kRange) continue;
-              const d2 = d * d;
-              // 自動射撃と同じ優先順位: スタン中の敵は後回し(最後の手段)。
-              const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
-              if (stunned) {
-                if (!bestStunned || d2 < bestStunned.d2) bestStunned = { id: e.id, d2 };
-              } else if (!best || d2 < best.d2) {
-                best = { id: e.id, d2 };
-              }
-            }
-            const target = best ?? bestStunned;
-            if (target) {
+            // 標的選択は src/utils/katanaAuto.ts の純関数へ抽出した(v0.25.2518・優先順位/射程の扱いは不変)。
+            // 距離は enemyMeleeDist(裏ボスは帯AABBの最近点)。巨体ボスを中心基準にすると帯の端で
+            // 「近づいても発動しない」狭い当たりになる(社長報告)。最近点なら表示枠=攻撃判定が一致する。
+            // 守護霊のオート斬撃も**同じ関数**を通る(裁定2=共有方式)。
+            const targetId = pickKatanaSlashTarget(
+              kp.x + kp.width / 2, kp.y + kp.height / 2, katanaRange(kp),
+              useGameStore.getState().enemies, gameTime, enemyMeleeDist,
+            );
+            if (targetId) {
               lastKatanaSlashRef.current = gameTime;
               // 近接フィニッシュは一閃のみ: オート斬撃はallowFinisher=false。
-              const result = performKatanaStrike([target.id], 1, false);
+              const result = performKatanaStrike([targetId], 1, false);
               if (result.finish) playSfx('melee-finish');
               else if (result.hit) playSfx('slash-damage');
               if (result.killed > 0) playEnemyDeath();
@@ -7152,6 +7148,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const meleeWeapon = ghostBuild?.melee;
               // 倍率評価の主語(疑似Player)。位置/HPはゴースト実体の値=距離依存/失HP依存の倍率がゴースト基準。
               const ghostOwner = ghostBuild ? ghostActorPlayer(ghostBuild, ghostNow) : gsPlayer;
+              // v0.25.2518(GHOST-KATANA-WIRE・裁定2 / 台帳§5): ビルド(計測時のsubWeapons)に katana または
+              // murasame があれば、守護霊は**プレイヤーと同じ刀モード**で戦う。プレイヤーの刀モードは
+              // 「銃の自動射撃とナイフ振りを封印し、オート斬撃(600ms)+一閃(フリック)で戦う」形なので、
+              // その形をそのまま写す(判定・定数・式は共有関数側=ここに刀の数値は1つも書かない)。
+              const ghostKatana = isKatanaMode(ghostOwner);
               const profile: GhostProfile = ghostProfileRef.current ?? defaultGhostProfile();
               const nowMs = Date.now();
               // G4b(§2.9(4)): 技への反応ロールの持ち越し(Summonのフラット3フィールド⇔GhostMoveRoll)。
@@ -7180,7 +7181,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 weapon: {
                   gunDamage: gun?.damage ?? 0,
                   gunIntervalMs: Math.max(80, gun?.cooldown ?? 500),
-                  gunRangePx: gun ? RANGE_BY_CATEGORY[gun.category ?? 'handgun'] : 0,
+                  // 刀モードは銃を撃たない(プレイヤーと同じ封印)ので射程0=意思決定側でも銃を選ばせない。
+                  gunRangePx: gun && !ghostKatana ? RANGE_BY_CATEGORY[gun.category ?? 'handgun'] : 0,
                   meleeDamage: meleeWeapon?.damage ?? 6,
                 },
                 gameTime, nowMs,
@@ -7188,9 +7190,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
               // v0.25.2514(監査項目7): 被弾ノックバック中は自分の移動を止める(プレイヤーがKB中に入力を
               // 無視されるのと同じ。実際の弾かれ移動は updateSummons が減衰しながら消化する)。
-              const step = nowMs < (ghostNow.knockbackUntil ?? 0) ? 0 : ghostNow.speed * deltaTime;
-              const nx = ghostNow.x + decision.moveX * step;
-              const ny = ghostNow.y + decision.moveY * step;
+              const kbLocked = nowMs < (ghostNow.knockbackUntil ?? 0);
+              const step = kbLocked ? 0 : ghostNow.speed * deltaTime;
+              // v0.25.2518(裁定2): 刀の一閃/ワイヤーのロコモーション上書きを**プレイヤーと同じ純関数**で
+              // ゴースト実体のx/yへ乗せる。優先順(ワイヤー高速移動>ホップ>一閃>着地硬直)も
+              // movePlayer と同一。被弾ノックバック中はプレイヤー同様KBが勝つ(kbLocked)。
+              const gDashState = dashStateOf(ghostNow.ghostDash);
+              const gDashMode = kbLocked ? null : dashModeAt(gDashState, nowMs);
+              let nx: number;
+              let ny: number;
+              if (gDashMode !== null) {
+                const gStep = dashStep(
+                  dashOverride(
+                    gDashState, gDashMode,
+                    ghostNow.x + ghostNow.width / 2, ghostNow.y + ghostNow.height / 2,
+                    KATANA_DASH_SPEED,
+                  ),
+                  deltaTime,
+                );
+                nx = ghostNow.x + gStep.dx;
+                ny = ghostNow.y + gStep.dy;
+              } else {
+                nx = ghostNow.x + decision.moveX * step;
+                ny = ghostNow.y + decision.moveY * step;
+              }
               // v0.25.2469(社長指示): 霊体はオブジェクト(木・岩等)をすり抜ける。詰まって置き去りに
               // なる事故を根絶(リーシュワープ=瞬間追いつきの世界観とも整合)。判定はゴースト移動のみ=
               // 敵・プレイヤー・弾の衝突は不変。
@@ -7220,7 +7243,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 音は小さく・画面外は無音。プレイヤー自身の攻撃音は従来どおり等倍で、この係数は使わない)。
               const gfxPcx = gsPlayer.x + gsPlayer.width / 2, gfxPcy = gsPlayer.y + gsPlayer.height / 2;
               const gfxCam = useGameStore.getState().camera, gfxGb = useGameStore.getState().gameBounds;
-              if (decision.action === 'shoot' && boundBoss && gun) {
+              if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana) {
                 // 銃 = **計測時ビルドのアクティブ銃**のdamage/intervalで撃つ。弾薬はプレイヤーの残弾と
                 // 完全分離(消費しない=除外4)。
                 // GHOST-GUN-PARITY: 飛翔特性(count発/拡散/PROJECTILE_SPEED_MULT/projectileSize/
@@ -7253,6 +7276,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                         : (gun.key === SMG_WEAPON_KEY ? 'smg-fire' : 'handgun-fire'),
                     gGain,
                   );
+                }
+              } else if (decision.action === 'melee' && boundBoss && ghostKatana) {
+                // 刀モードの近接=**一閃(triggerKatanaDash)**。距離154px/180ms/×3/着地硬直200ms/
+                // 経路判定/斬撃弧/血/ダメージ数字/気絶敵へのフィニッシュ一閃は、すべてプレイヤーと同じ
+                // triggerKatanaDash → performKatanaStrike が出す(守護霊用の実装は書かない=裁定2)。
+                // 村雨(CD無し連発)も hasMurasame の同じ分岐がそのまま効く。
+                const btcx = boundBoss.x + boundBoss.width / 2;
+                const bccy = boundBoss.y + boundBoss.height / 2;
+                const gmcx = resolved.x + ghostNow.width / 2, gmcy = resolved.y + ghostNow.height / 2;
+                const wasCounterMelee = isBossCounterableNowApprox(boundBoss.aiPhase, boundBoss.bossState);
+                const dashed = useGameStore.getState().triggerKatanaDash(btcx - gmcx, bccy - gmcy, ghostNow.id);
+                if (dashed) {
+                  // 発動SEはプレイヤーのフリック(performFlickAction)と同じ 'katana-dash'。距離減衰のみ差分。
+                  const kdGain = npcSfxDistGain(gmcx, gmcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
+                  if (kdGain > 0) playSfx('katana-dash', kdGain);
+                  if (wasCounterMelee) {
+                    // カウンター成立の請求は通常近接と同じ扱い(一閃も「近接スイング」なので窓を拾う)。
+                    setGhostCounterClaim({
+                      bossId: boundBoss.id, ghostX: gmcx, ghostY: gmcy,
+                      dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs,
+                    });
+                  } else if (GHOST_FX_SHAKE_ENABLED) {
+                    useGameStore.getState().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG, btcx - gmcx, bccy - gmcy);
+                  }
                 }
               } else if (decision.action === 'melee' && boundBoss) {
                 // 近接 = **計測時ビルドの近接武器**でスイング。channel=null(escortと同じ「プレイヤー起因
@@ -7323,6 +7370,53 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // キラー側のキル音(プレイヤーの近接/弾キルと同じ流儀=inputActions/弾ヒット共通ブロックと同型)。
                 // 敵側の死亡演出(血バースト/ボス死亡シーケンス/ドロップ)は既存経路が出す=ここでは重ねない。
                 if (ghostMeleeKilled) playEnemyDeath();
+              }
+
+              // v0.25.2518(裁定2・台帳§5-2): 刀のオート斬撃。プレイヤーの自動斬撃と**同じ間隔
+              // (KATANA_SLASH_INTERVAL_MS)・同じ標的選択(pickKatanaSlashTarget)・同じ判定/ダメージ
+              // (performKatanaStrike)** を通す。ghostDriverの意思決定とは独立に回る(プレイヤー側も
+              // 入力とは独立に回っているのと同型)。
+              if (ghostKatana) {
+                const gks = ghostKatanaSlashRef.current;
+                // 別のゴーストに変わった/新しいラン(gameTime巻き戻り)ならレジスタを初期化。
+                if (gks.id !== ghostNow.id || gameTime < gks.at) { gks.id = ghostNow.id; gks.at = 0; }
+                if (gameTime - gks.at >= KATANA_SLASH_INTERVAL_MS) {
+                  const kcx = resolved.x + ghostNow.width / 2, kcy = resolved.y + ghostNow.height / 2;
+                  const kTargetId = pickKatanaSlashTarget(
+                    kcx, kcy, katanaRange(ghostOwner),
+                    useGameStore.getState().enemies, gameTime, enemyMeleeDist,
+                  );
+                  if (kTargetId) {
+                    gks.at = gameTime;
+                    // 近接フィニッシュは一閃のみ: オート斬撃はallowFinisher=false(プレイヤーと同じ)。
+                    const kResult = useGameStore.getState().performKatanaStrike([kTargetId], 1, false, ghostNow.id);
+                    const kGain = npcSfxDistGain(kcx, kcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
+                    if (kGain > 0) {
+                      if (kResult.finish) playSfx('melee-finish', kGain);
+                      else if (kResult.hit) playSfx('slash-damage', kGain);
+                    }
+                    if (kResult.killed > 0) playEnemyDeath();
+                  }
+                }
+              }
+
+              // v0.25.2518(裁定2・台帳§9-3): ワイヤーアンカー。発動の意思決定は既存のサブ予約
+              // (ghostSubClaim=「CDが明けたら使う」)をそのまま使い、狙いは紐付きボス。
+              // 刺し→スラム/プラント→高速移動→着地→ホップの一連は、プレイヤーと同じ状態機械
+              // (triggerWireAnchor / startWireDash / runWireAnchorTick / startWireHop)が担う。
+              // 上位のサブ発動入口(6種)が先に予約を消費するので、二重発動にはならない。
+              if (ghostNow.ghostSubClaim && boundBoss && ghostOwner.subWeapons.includes('wire-anchor')) {
+                const wcx = resolved.x + ghostNow.width / 2, wcy = resolved.y + ghostNow.height / 2;
+                const wtx = boundBoss.x + boundBoss.width / 2 - wcx;
+                const wty = boundBoss.y + boundBoss.height / 2 - wcy;
+                if (useGameStore.getState().triggerWireAnchor(wtx, wty, ghostNow.id)) {
+                  // 予約を下ろす(サブ入口の consumeGhostSubClaim と同じ形)。
+                  useGameStore.setState(st => ({
+                    summons: st.summons.map(s => s.id === ghostNow.id
+                      ? { ...s, ghostSubClaim: false, ghostLastSubUseAt: nowMs }
+                      : s),
+                  }));
+                }
               }
             }
           }
@@ -8844,26 +8938,56 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ワイヤーアンカーの毎フレーム処理。
         // フリックで刺す(triggerWireAnchor)→ 1秒後(wirePlantUntil)に startWireDash で高速移動開始 →
         // 移動中は無敵+敵すり抜け(すり抜けた敵へ近接小ダメージ)→ 着地点爆撃は Lv3 のみ(ダメージ付き)。
-        {
-          const wp = useGameStore.getState().player;
+        //
+        // v0.25.2518(research/GHOST_PARITY_LEDGER.md 裁定2「共有方式」): この状態機械の**主語を引数化**した
+        // (wp=プレイヤー本体 or 守護霊の疑似Player / ghostId=守護霊のsummon.id)。守護霊用の簡易実装は
+        // 作らず、無敵・硬直・離脱(ホップ)の防御規格まで同じ1本を通す。プレイヤー起因の挙動は不変
+        // (ghostId未指定時は damageEnemy の既定引数も同値を明示で渡すだけ=1bitも変わらない)。
+        const runWireAnchorTick = (wp: Player, ghostId?: string) => {
           const nowW = Date.now();
           const pcx = wp.x + wp.width / 2;
           const pcy = wp.y + wp.height / 2;
+          const wireKey = ghostId ?? 'player'; // 着地/すり抜けの重複防止レジスタの引き当てキー
+          // 除外4: ゴースト起因のSEは距離減衰(escortの前例=npcSfxDistGain)。プレイヤーは従来どおり等倍。
+          const wireSfx = (key: 'bomb' | 'melee' | 'slash-damage', sx: number, sy: number) => {
+            if (ghostId === undefined) { playSfx(key); return; }
+            const ws = useGameStore.getState();
+            const g = npcSfxDistGain(
+              sx, sy, ws.player.x + ws.player.width / 2, ws.player.y + ws.player.height / 2, ws.camera, ws.gameBounds,
+            );
+            if (g > 0) playSfx(key, g);
+          };
+          // ゴースト起因は計測を汚さない(damageChannel=null)+ヘイトの起因を'ghost'にする
+          // (既存のゴースト銃/近接と同じ分離方針)。プレイヤーは既定値と同値。
+          const wireChannel: 'other' | null = ghostId === undefined ? 'other' : null;
+          const wireHate = ghostId === undefined ? 'player' : 'ghost';
+          // 斬り下ろし対象の後片付け(主語ごとに宛先が違うだけ)。
+          const clearWireSlam = () => {
+            if (ghostId === undefined) {
+              useGameStore.setState({ player: { ...useGameStore.getState().player, wireSlamEnemyId: '', wireSlamStart: 0 } });
+              return;
+            }
+            useGameStore.setState(s => ({
+              summons: s.summons.map(x => x.id === ghostId
+                ? { ...x, ghostDash: { ...dashStateOf(x.ghostDash), wireSlamEnemyId: '', wireSlamStart: 0 } }
+                : x),
+            }));
+          };
           // §6.10 M33⑨: ダメージ基準を素のmelee.damageから meleeDamage(strikerMeleeMult×装備damageMult込み)へ
           // (他の近接派生=刀/鞭/分身/ドローンと同じ基準)。
           // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)もワイヤー(すり抜け/Lv3爆撃/大技)に乗算。
           const meleeDmg = (wp.weapons.find(w => w.isMelee)?.damage ?? 6) * strikerMeleeMult(wp) * (wp.equipBonus?.damageMult ?? 1) * skillOutgoingDamageMult(wp);
           // 刺し待ち(1秒)が明けたら、その地点へ自動で高速移動を開始する。
           if (wp.wireAnchored && nowW >= wp.wirePlantUntil) {
-            useGameStore.getState().startWireDash();
+            useGameStore.getState().startWireDash(ghostId);
           }
           // ワイヤーダッシュ中: すり抜けた敵に攻撃(1ダッシュにつき敵1回)。
           // Lv1/2 = 近接小ダメージ。Lv3 = すり抜け攻撃が「爆発」化(通過した敵を中心に小範囲AoE・社長指示)。
           if (wp.wireDashUntil > 0 && nowW < wp.wireDashUntil) {
-            if (wirePassHitRef.current.dash !== wp.wireDashUntil) {
-              wirePassHitRef.current = { dash: wp.wireDashUntil, ids: new Set() };
+            if (wirePassHitRef.current[wireKey]?.dash !== wp.wireDashUntil) {
+              wirePassHitRef.current[wireKey] = { dash: wp.wireDashUntil, ids: new Set() };
             }
-            const seen = wirePassHitRef.current.ids;
+            const seen = wirePassHitRef.current[wireKey].ids;
             const wireLvl = Math.max(1, Math.min(3, wp.subWeaponLevels['wire-anchor'] ?? 1));
             const passExplode = wireLvl >= 3;
             const dmg = passExplode ? meleeDmg * WIRE_BOMB_DAMAGE_MULT : meleeDmg * WIRE_PASS_DAMAGE_MULT;
@@ -8883,7 +9007,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 });
                 aoe.forEach(o => {
                   const oxc = o.x + o.width / 2, oyc = o.y + o.height / 2;
-                  const killed = useGameStore.getState().damageEnemy(o.id, dmg, true); // 爆発=ボス非致死
+                  const killed = useGameStore.getState().damageEnemy(o.id, dmg, true, false, false, wireChannel, wireHate); // 爆発=ボス非致死
                   spawnDamageNumber(oxc, o.y, dmg, true);
                   if (!killed && nowW >= (o.knockbackImmuneUntil ?? 0)) {
                     const kdx = oxc - ecx, kdy = oyc - ecy;
@@ -8901,10 +9025,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 });
                 spawnRing(ecx, ecy, 8, WIRE_PASS_BOMB_RADIUS, 'rgba(147,197,253,0.9)', 4, 280);
                 spawnBurst(ecx, ecy, '#93c5fd', 12);
-                playSfx('bomb');
+                wireSfx('bomb', ecx, ecy);
                 continue;
               }
-              const killed = useGameStore.getState().damageEnemy(e.id, dmg);
+              const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, wireChannel, wireHate);
               spawnDamageNumber(ecx, e.y, dmg, false);
               useGameStore.getState().spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
               useGameStore.getState().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫(v0.25.2026)
@@ -8925,8 +9049,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           // ワイヤーダッシュ着地: 到着フレームで1回だけ。爆撃(範囲ダメージ)は Lv3 のみ。
           // wireDashUntil は常に増加するタイムスタンプなので、処理済みの値を覚えて重複発火を防ぐ。
-          if (wp.wireDashUntil > 0 && nowW >= wp.wireDashUntil && wireLandedDashRef.current !== wp.wireDashUntil) {
-            wireLandedDashRef.current = wp.wireDashUntil;
+          if (wp.wireDashUntil > 0 && nowW >= wp.wireDashUntil && wireLandedDashRef.current[wireKey] !== wp.wireDashUntil) {
+            wireLandedDashRef.current[wireKey] = wp.wireDashUntil;
             // 大技(敵に刺さって引き上げた)の着地: 斬り下ろし対象を「ぶった切る」。通常敵=即死フィニッシュ、
             // ボスは即死せず近接フィニッシュ相当(×5)ダメージ。垂直スラッシュ演出付き。続けて下の着地ノックバックも走る。
             // ホップ(DEVELOPMENT_LOG v0.25.2487): 斬り下ろし後もこの対象が生きていた(=実質ボス)場合の
@@ -8941,21 +9065,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const bdmg = Math.max(1, Math.round(meleeDmg * BOSS_MELEE_STUN_MULT));
                   // §5.21-追補4: フィニッシュ相当ダメージなのでviaMeleeFinish=true(finishKillOnlyボスの
                   // 通常許容と同じ。nonLethalBoss=trueで即死自体は元々しない)。
-                  useGameStore.getState().damageEnemy(tgt.id, bdmg, true, false, true); // ボス非致死
+                  useGameStore.getState().damageEnemy(tgt.id, bdmg, true, false, true, wireChannel, wireHate); // ボス非致死
                   spawnDamageNumber(tcx, tgt.y, bdmg, true);
                 } else {
-                  useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1, false, false, true); // 即死フィニッシュ
+                  useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1, false, false, true, wireChannel, wireHate); // 即死フィニッシュ
                 }
                 useGameStore.getState().spawnSlash(tcx, tcy - 12, 'rgba(186,230,253,0.98)'); // 縦の斬り下ろし
                 useGameStore.getState().spawnSlash(tcx, tcy + 12, 'rgba(147,197,253,0.9)');
                 useGameStore.getState().spawnMeleeBlood(tcx, tcy, tgt.width); // 近接の血飛沫(v0.25.2026)
                 spawnBurst(tcx, tcy, '#bae6fd', 14);
-                playSfx('slash-damage');
+                wireSfx('slash-damage', tcx, tcy);
               }
               // ダメージ適用後の生存を再確認(通常敵はここで既にhealth<=0=対象外のまま)。
               const survivor = useGameStore.getState().enemies.find(e => e.id === wp.wireSlamEnemyId);
               if (WIRE_HOP_ENABLED && survivor && survivor.health > 0) wireHopTargetId = survivor.id;
-              useGameStore.setState({ player: { ...useGameStore.getState().player, wireSlamEnemyId: '', wireSlamStart: 0 } });
+              clearWireSlam();
             }
             const lvl = Math.max(1, Math.min(3, wp.subWeaponLevels['wire-anchor'] ?? 1));
             const explode = lvl >= 3;
@@ -8976,7 +9100,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
               const dx = ecx - pcx, dy = ecy - pcy;
               const dist = Math.hypot(dx, dy) || 1;
-              const killed = explode ? useGameStore.getState().damageEnemy(e.id, dmg, true) : false;
+              const killed = explode ? useGameStore.getState().damageEnemy(e.id, dmg, true, false, false, wireChannel, wireHate) : false;
               if (explode) spawnDamageNumber(ecx, e.y, dmg, true);
               if (!killed) {
                 useGameStore.setState({
@@ -8995,12 +9119,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(pcx, pcy, 10, wireBombR, 'rgba(147,197,253,0.95)', 5, 360);
               spawnBurst(pcx, pcy, '#93c5fd', 24);
               spawnBurst(pcx, pcy, '#dbeafe', 14);
-              playSfx('bomb');
+              wireSfx('bomb', pcx, pcy);
             } else {
               // Lv1/2: 範囲ダメージは無いが、着地の強制ノックバックは効く。リングは弾き範囲に合わせる。
               spawnRing(pcx, pcy, 10, WIRE_BOMB_RADIUS, 'rgba(147,197,253,0.7)', 3, 280);
               spawnBurst(pcx, pcy, '#93c5fd', 10);
-              playSfx('melee');
+              wireSfx('melee', pcx, pcy);
             }
             // スラム後ジャンプ離脱(ホップ): 上の着地処理(斬り下ろし/爆撃/強制ノックバック)を全部
             // 従来位置で終えた後、対象が生き残っていた時だけ開始する。wireDashUntil/wireAnchorXは
@@ -9017,9 +9141,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   fromX: wp.wireSlamFromX,
                   fromY: wp.wireSlamFromY,
                 });
-                useGameStore.getState().startWireHop(landing.x, landing.y);
+                useGameStore.getState().startWireHop(landing.x, landing.y, ghostId);
               }
             }
+          }
+        };
+        // 主語ごとに1回ずつ回す。プレイヤーは従来と同じ位置・同じ順序。
+        runWireAnchorTick(useGameStore.getState().player);
+        // 守護霊(ビルドにwire-anchorを持つ時だけ実質動く。持たない/未使用なら全分岐が素通り)。
+        {
+          const wireGhost = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
+          if (wireGhost) {
+            const wireGhostActor = combatActorPlayer(wireGhost.id);
+            if (wireGhostActor) runWireAnchorTick(wireGhostActor, wireGhost.id);
           }
         }
 

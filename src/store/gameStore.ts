@@ -6,7 +6,8 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
+  DashLocomotionState
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
@@ -33,7 +34,9 @@ import {
 } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a/G5
 // v0.25.2514(§2.11 裁定1): 計測時ビルドの疑似Player(被ダメ補正の主語)。純関数・store非依存。
 import { buildPseudoPlayer } from '../utils/playerBuild';
-import { clearGhostBuildCache } from '../utils/ghostBuild'; // ラン境界でビルドのメモ化を捨てる
+import { clearGhostBuildCache, ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild'; // ラン境界でビルドのメモ化を捨てる / 守護霊の疑似Player(裁定1)
+// 刀の一閃 / ワイヤーのロコモーション上書き(プレイヤーと守護霊で共有する状態機械・裁定2)。
+import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/dashLocomotion';
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
 import { playerAsOwner, ownerCenterX, ownerCenterY, ownerFootY } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { stepSpeedRamp, effectiveRampFrac, rampedBonusMult } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
@@ -922,6 +925,9 @@ export const KATANA_DASH_MS = 180;
 // 一閃の距離・当たり幅も現状より少し狭く(128/26)。
 export const KATANA_DASH_DISTANCE = 154; // 128 ×1.2(社長指示)。刀/小烏丸 共通。
 export const KATANA_DASH_HIT_HALF_WIDTH = 26;
+// 一閃の移動速度(px/s)。距離/所要時間から導出した派生定数(値の意味は不変)。
+// v0.25.2518: 守護霊にも同じロコモーションを効かせるため、インライン計算を1箇所へ寄せた。
+export const KATANA_DASH_SPEED = KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000);
 // 一閃後のクールダウンは既存近接(カウンター)と同じ長さ。
 export const KATANA_DASH_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
 // 着地後の硬直(後隙)。刀・村雨共通。着地から この時間 は移動も次の一閃も不可。
@@ -2287,6 +2293,48 @@ const finishZoomTargetOf = (
   return e ? [e.x + e.width / 2, e.y + e.height / 2] : [undefined, undefined];
 };
 
+// ---------------------------------------------------------------------------
+// 主語(オーナー)の解決 — research/GHOST_PARITY_LEDGER.md 裁定2「共有方式」/
+// BOT_AND_GHOST.md §2.11補足「写すな、共通化しろ」(v0.25.2518・GHOST-KATANA-WIRE)。
+//
+// 刀(一閃/オート斬撃)とワイヤーアンカーの状態機械は「プレイヤー=唯一の主語」で書かれていた。
+// これを **1枚の疑似Player** で差し替える:
+//   ghostId 未指定 → 本物のプレイヤー(=従来と1bitも変わらない既定)。
+//   ghostId 指定   → 守護霊の疑似Player。中身は
+//                    ①計測時ビルドのスキル/装備/クリ率/サブウェポン(GHOST-BUILD-1のghostBuild)
+//                    ②ゴースト実体の座標・寸法・HP(ghostActorPlayer)
+//                    ③ゴーストの刀/ワイヤー状態(Summon.ghostDash → DashLocomotionState)
+//                   を1つのPlayerに着せたもの。これで既存コードの
+//                   player.x / subWeapons / katanaDashUntil / wireDashUntil … の読みが全部そのまま通る。
+// 書き込みだけは主語ごとに宛先が違うので setActorDashState で振り分ける。
+// ---------------------------------------------------------------------------
+export const combatActorPlayer = (ghostId?: string): Player | null => {
+  const st = useGameStore.getState();
+  if (ghostId === undefined) return st.player;
+  const g = st.summons.find(s => s.id === ghostId && s.kind === 'ghost-ally');
+  if (!g) return null;
+  const build = ghostBuildFor(g, st.player);
+  if (!build) return null;
+  return { ...ghostActorPlayer(build, g), ...dashStateOf(g.ghostDash) };
+};
+
+/** 刀/ワイヤー状態の書き込み(主語で宛先を振り分ける)。ghostExtra=ゴースト固有フィールドの同時更新。 */
+const setActorDashState = (
+  ghostId: string | undefined,
+  patch: Partial<DashLocomotionState>,
+  ghostExtra?: Partial<Summon>,
+): void => {
+  if (ghostId === undefined) {
+    useGameStore.setState(s => ({ player: { ...s.player, ...patch } }));
+    return;
+  }
+  useGameStore.setState(s => ({
+    summons: s.summons.map(x => x.id === ghostId
+      ? { ...x, ghostDash: { ...dashStateOf(x.ghostDash), ...patch }, ...(ghostExtra ?? {}) }
+      : x),
+  }));
+};
+
 // Shared per-kill rewards for melee-grade kills (the release counter swing and
 // the katana strikes). Mirrors what the counter has always granted: XP pickup,
 // enemy currency, ammo scavenge for the active gun family, boss weapon crates,
@@ -2980,14 +3028,16 @@ interface GameState {
   // melee rules (crit, knockback, shared kill rewards). 近接フィニッシュは
   // 一閃のみ: allowFinisher は dash 経由でだけ true になる。
   // triggerKatanaDash starts the invulnerable dash and cuts along its path.
-  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean) => { hit: boolean; finish: boolean; killed: number };
-  triggerKatanaDash: (dirX: number, dirY: number) => boolean;
+  // v0.25.2518(裁定2): 末尾の ghostId は**主語(オーナー)**。未指定=プレイヤー(従来と完全同一)。
+  // 指定すると守護霊(kind='ghost-ally')が同じ状態機械・同じ定数・同じ式で刀/ワイヤーを使う。
+  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string) => { hit: boolean; finish: boolean; killed: number };
+  triggerKatanaDash: (dirX: number, dirY: number, ghostId?: string) => boolean;
   // ワイヤーアンカー: フリックでフリック方向に刺す(true=発動)。1秒後に startWireDash で高速移動。
-  triggerWireAnchor: (dirX: number, dirY: number) => boolean;
-  startWireDash: () => void;
+  triggerWireAnchor: (dirX: number, dirY: number, ghostId?: string) => boolean;
+  startWireDash: (ghostId?: string) => void;
   // スラム後ジャンプ離脱(ホップ)開始。着地点(targetX/Y)は呼び出し側(useGameLoop)が
   // computeWireHopLanding(src/utils/wireHop.ts)で計算して渡す。
-  startWireHop: (targetX: number, targetY: number) => void;
+  startWireHop: (targetX: number, targetY: number, ghostId?: string) => void;
   // Whip (鞭) actions. performWhipStrike sweeps the given enemies with whip rules
   // (low damage, big knockback, crit, finisher, 20% ammo) and returns the hit
   // count for charge. performHurricane spawns the suction vortex at the tip;
@@ -3397,11 +3447,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     seekerUntil: 0, seekerCdUntil: 0,
     huntingChargeStartedAt: 0,
     huntingCharged: false,
-    katanaDashUntil: 0,
-    katanaDashDirX: 0,
-    katanaDashDirY: 0,
-    katanaDashCooldownEnd: 0,
-    katanaRecoveryUntil: 0,
+    // 刀の一閃/ワイヤーの状態は共通型(DashLocomotionState)の初期値=全ゼロ。値は従来と同一。
+    ...emptyDashState(),
     shijinSlideUntil: 0,
     shijinSlideDirX: 0,
     shijinSlideDirY: 0,
@@ -3409,22 +3456,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     skaterBashCdUntil: 0,
     skaterRiding: false,
     skaterRideStartAt: 0,
-    wireAnchorX: 0,
-    wireAnchorY: 0,
-    wireAnchored: false,
-    wirePlantUntil: 0,
-    wireDashUntil: 0,
-    wireDashSpeed: 0,
-    wireStuckEnemyId: '',
-    wireStuckUntil: 0,
-    wireSlamEnemyId: '',
-    wireSlamStart: 0,
-    wireSlamFromX: 0,
-    wireSlamFromY: 0,
-    wireHopUntil: 0,
-    wireHopTargetX: 0,
-    wireHopTargetY: 0,
-    wireHopSpeed: 0,
     straps: 0,
     vaccineRevives: 0,
     equipment: emptyEquipLoadout(),
@@ -3675,16 +3706,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         player.reloadingWeaponId !== '' && Date.now() < player.reloadEndsAt;
       // 一閃ダッシュ中は入力を無視して固定方向へ高速移動する。
       const nowMs = Date.now();
-      // ワイヤーアンカーの高速移動中は入力を無視してアンカー地点へ高速で向かう(最優先)。
-      const wireDashing = nowMs < player.wireDashUntil;
-      // スラム後ジャンプ離脱(ホップ・DEVELOPMENT_LOG v0.25.2487): wireDashUntilとは別枠の専用ミニ移動。
-      // wireDashingの直後の優先度(こちらも入力無視の強制移動)。
-      const wireHopping = !wireDashing && nowMs < player.wireHopUntil;
-      const dashing = !wireDashing && !wireHopping && nowMs < player.katanaDashUntil;
-      // 着地後の硬直中(刀・村雨共通)は移動入力を受け付けない(その場で停止)。
-      const recovering = !wireDashing && !wireHopping && !dashing && nowMs < player.katanaRecoveryUntil;
+      // 強制移動(ロコモーション上書き)の優先順位・速度・目標ベクトルは
+      // src/utils/dashLocomotion.ts の純関数へ抽出した(v0.25.2518・値/順序は不変)。
+      // 優先順: ワイヤー高速移動 > スラム後ホップ > 一閃ダッシュ > 一閃着地硬直(停止)。
+      // 守護霊(Summon.ghostDash)も**同じ関数**を通る=裁定2「共有方式」。
+      const dashMode = dashModeAt(player, nowMs);
+      const wireDashing = dashMode === 'wire-dash';
+      const wireHopping = dashMode === 'wire-hop';
+      const dashing = dashMode === 'katana-dash';
+      const recovering = dashMode === 'katana-recovery';
+      const dashOv = dashMode !== null
+        ? dashOverride(player, dashMode, player.x + player.width / 2, player.y + player.height / 2, KATANA_DASH_SPEED)
+        : null;
       // 四神舞フリックの盾バッシュ風スライド(入力を無視して固定方向へ短く滑る)。
-      const sliding = !wireDashing && !wireHopping && !dashing && !recovering && nowMs < player.shijinSlideUntil;
+      const sliding = dashMode === null && nowMs < player.shijinSlideUntil;
       // 速度ランプ(MOVEMENT_REWORK.md 仕様1・社長裁定v0.25.2442): 「プレイヤーの入力方向」だけを
       // 見て、同じ方向へ走り続けた時間で速度ボーナスを立ち上げる。ダッシュ/ワイヤー/被弾ノックバック等の
       // 強制移動による実座標の変化では判定しない(下のtx/tyとは別に、素の入力だけをここで取り出す)。
@@ -3706,13 +3741,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       );
       const rampFrac = effectiveRampFrac(nextSpeedRamp, SPEED_RAMP_ENABLED);
 
-      const moveSpeed = wireDashing
-        ? player.wireDashSpeed
-        : wireHopping
-        ? player.wireHopSpeed
-        : dashing
-        ? KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000)
-        : recovering ? 0
+      const moveSpeed = dashOv
+        ? dashOv.speed
         : sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000)
         // スキル: スケーター = 通常歩行の移動速度 ×3(特殊ロコモーションは対象外。社長指示で段階的に
         // 強化: 2→3=1.5倍)。乗車という自前の条件+慣性が個性=ランプ対象外(即時のまま)。
@@ -3739,25 +3769,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Target direction from swipe (touch) or keys.
       let tx = 0;
       let ty = 0;
-      if (wireDashing) {
-        // アンカー地点へ向かう単位ベクトル(プレイヤー中心基準)。
-        const wcx = player.x + player.width / 2;
-        const wcy = player.y + player.height / 2;
-        tx = player.wireAnchorX - wcx;
-        ty = player.wireAnchorY - wcy;
-      } else if (wireHopping) {
-        // ホップ着地点へ向かう単位ベクトル(プレイヤー中心基準)。wireDashingと同じ「毎フレーム
-        // 目標へ向け直す」ホーミング方式。
-        const wcx = player.x + player.width / 2;
-        const wcy = player.y + player.height / 2;
-        tx = player.wireHopTargetX - wcx;
-        ty = player.wireHopTargetY - wcy;
-      } else if (dashing) {
-        tx = player.katanaDashDirX;
-        ty = player.katanaDashDirY;
-      } else if (recovering) {
-        tx = 0;
-        ty = 0;
+      if (dashOv) {
+        // ワイヤー高速移動/ホップは「毎フレーム目標へ向け直す」ホーミング(アンカー地点/着地点)、
+        // 一閃は固定方向、着地硬直は(0,0)=停止。中身は dashLocomotion.dashOverride が持つ。
+        tx = dashOv.tx;
+        ty = dashOv.ty;
       } else if (sliding) {
         tx = player.shijinSlideDirX;
         ty = player.shijinSlideDirY;
@@ -5416,9 +5432,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  performKatanaStrike: (targetIds, damageMult, allowFinisher) => {
+  performKatanaStrike: (targetIds, damageMult, allowFinisher, ghostId) => {
     const now = Date.now();
-    const { player, gameTime, enemies } = get();
+    const { gameTime, enemies } = get();
+    // v0.25.2518(裁定2): 主語(オーナー)。ghostId 未指定=プレイヤー本体(従来と完全同一)。
+    // 指定時は守護霊の疑似Player=計測時ビルド(スキル/装備/クリ率/刀Lv)+ゴースト実体の座標/HP。
+    const player = combatActorPlayer(ghostId);
+    if (!player) return { hit: false, finish: false, killed: 0 };
+    const isGhost = ghostId !== undefined;
     if (!isKatanaMode(player) || targetIds.length === 0) {
       return { hit: false, finish: false, killed: 0 };
     }
@@ -5428,7 +5449,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
-    const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
+    // 守護霊はコンボ計数を持たないため中立(×1)にする=GHOST-BUILD-1の★未決1と同じ扱い
+    // (本人のコンボをゴーストへ流すと二重取りになる)。プレイヤーは従来どおり店の計数を読む。
+    const meleeComboMult = skillMeleeComboMult(
+      player, gameTime,
+      isGhost ? 0 : get().meleeFinishComboCount,
+      isGhost ? 0 : get().meleeFinishComboUntil,
+    );
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     let bossFinishHit = false;
     const survivors: Enemy[] = [];
@@ -5562,8 +5589,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
     // §6.21 M46: 近接カウンター振り(刀のオート斬撃/一閃)の計測。channel='melee'。1呼び出し=1回(hitCount=命中数)。
     const katanaSwingDamage = damageNumbers.reduce((sum, n) => sum + n.value, 0);
-    recordDamageDealt('melee', katanaSwingDamage);
-    recordMeleeSwing(slashAt.length);
+    // 除外4(運用系): 守護霊起因はプレイヤーの計測(botTelemetry)に混ぜない
+    // (既存の damageChannel=null / weaponKey='ghost-gun' と同じ分離方針)。
+    if (!isGhost) {
+      recordDamageDealt('melee', katanaSwingDamage);
+      recordMeleeSwing(slashAt.length);
+    }
     set(state => ({
       // このスイングで近接ダメージを受けた敵(lastHit===now)に meleeAggro を付与(救助で以後プレイヤー狙い)。
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
@@ -5577,7 +5608,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt + katanaSwingDamage,
-        maxCombo: comboFinishCount > 0
+        maxCombo: (comboFinishCount > 0 && !isGhost)
           ? Math.max(
               state.gameStats.maxCombo,
               state.meleeFinishComboUntil >= gameTime
@@ -5587,14 +5618,20 @@ export const useGameStore = create<GameState>((set, get) => ({
           : state.gameStats.maxCombo
       },
       finaleDefeated: state.finaleDefeated || bossKilled,
-      meleeFinishComboCount: comboFinishCount > 0
-        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
-        : state.meleeFinishComboCount,
-      meleeFinishComboUntil: comboFinishCount > 0
-        ? gameTime + finishWindowMs
-        : state.meleeFinishComboUntil,
-      // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
-      player: { ...state.player, knifeComboCount: knifeCombo.count, knifeComboUntil: knifeCombo.until },
+      // コンボ台帳(プレイヤーのフィニッシュコンボ/ナイフコンボ)は**プレイヤーのスイングだけ**が書く。
+      // 守護霊のスイングで本人のコンボが伸びると「本人のコンボがゴーストにも乗る」二重取りになるため
+      // (GHOST-BUILD-1 ★未決1と同じ扱い)。キル数/与ダメの集計は damageEnemy(ゴースト弾/近接も計上)と
+      // 同じ扱いで積む=経路による食い違いを作らない。
+      ...(isGhost ? {} : {
+        meleeFinishComboCount: comboFinishCount > 0
+          ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
+          : state.meleeFinishComboCount,
+        meleeFinishComboUntil: comboFinishCount > 0
+          ? gameTime + finishWindowMs
+          : state.meleeFinishComboUntil,
+        // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
+        player: { ...state.player, knifeComboCount: knifeCombo.count, knifeComboUntil: knifeCombo.until },
+      }),
     }));
 
     // 軽量な短命斬撃のみ(常時glowなし)。刀はやや青白い斬閃で識別。
@@ -5621,7 +5658,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
     grantMeleeKillRewards(get, killed, player, gun, true);
-    if (finisherHit || bossFinishHit) {
+    // 除外1(演出): ヒットストップ/スロー/寄りズームは守護霊起因では出さない
+    // (ghostCounter.ts の掟と同じ。triggerFinishImpactは停止+スロー+ズームの同梱なので丸ごと不使用)。
+    if ((finisherHit || bossFinishHit) && !isGhost) {
       const [ztx, zty] = finishZoomTargetOf(killed);
       get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
     }
@@ -6115,9 +6154,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  triggerKatanaDash: (dirX, dirY) => {
+  triggerKatanaDash: (dirX, dirY, ghostId) => {
     const now = Date.now();
-    const { player, enemies, breakableProps, isPaused } = get();
+    const { enemies, breakableProps, isPaused } = get();
+    // v0.25.2518(裁定2): 主語(オーナー)。未指定=プレイヤー本体(従来と完全同一)。
+    const player = combatActorPlayer(ghostId);
+    if (!player) return false;
     if (!isKatanaMode(player) || isPaused) return false;
     if (isInReturnCircle(player, get().returnCircle)) return false; // 帰還サークル内は攻撃停止
     // 発動中(移動中)〜着地後の硬直中は新しい一閃を出せない = モーション
@@ -6158,27 +6200,43 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // 村雨はクールダウン無し: ダッシュ終了時刻をそのままCD終了にして実質0に。
     const cooldownEnd = mura ? now + KATANA_DASH_MS : now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS;
-    set(state => ({
-      player: {
-        ...state.player,
-        katanaDashUntil: now + KATANA_DASH_MS,
-        // 着地(KATANA_DASH_MS後)からさらに KATANA_DASH_RECOVERY_MS は硬直。
-        katanaRecoveryUntil: now + KATANA_DASH_MS + KATANA_DASH_RECOVERY_MS,
-        katanaDashDirX: ux,
-        katanaDashDirY: uy,
-        katanaDashCooldownEnd: cooldownEnd,
-        // 刀はカウンターも一閃クールダウンに依存する。村雨はカウンターも無CD
-        // なので延長しない(連発可)。
-        counterCooldownEnd: mura
-          ? state.player.counterCooldownEnd
-          : Math.max(state.player.counterCooldownEnd, cooldownEnd),
-        // ダッシュ中の無敵は既存の被弾無敵(ループ側のINVULN_MS自動解除)を再利用。
-        // 解除タイミングがダッシュ終了とほぼ一致するよう開始時刻を過去にずらす。
-        invulnerable: true,
-        invulnerableTime: now - Math.max(0, INVULN_MS - KATANA_DASH_MS),
-        lastDirection: { x: ux, y: uy }
-      }
-    }));
+    // 状態機械そのもの(距離/所要時間/硬直/CD)は主語によらず同じ1組を書く。
+    const dashPatch: Partial<DashLocomotionState> = {
+      katanaDashUntil: now + KATANA_DASH_MS,
+      // 着地(KATANA_DASH_MS後)からさらに KATANA_DASH_RECOVERY_MS は硬直。
+      katanaRecoveryUntil: now + KATANA_DASH_MS + KATANA_DASH_RECOVERY_MS,
+      katanaDashDirX: ux,
+      katanaDashDirY: uy,
+      katanaDashCooldownEnd: cooldownEnd,
+    };
+    if (ghostId === undefined) {
+      set(state => ({
+        player: {
+          ...state.player,
+          ...dashPatch,
+          // 刀はカウンターも一閃クールダウンに依存する。村雨はカウンターも無CD
+          // なので延長しない(連発可)。
+          counterCooldownEnd: mura
+            ? state.player.counterCooldownEnd
+            : Math.max(state.player.counterCooldownEnd, cooldownEnd),
+          // ダッシュ中の無敵は既存の被弾無敵(ループ側のINVULN_MS自動解除)を再利用。
+          // 解除タイミングがダッシュ終了とほぼ一致するよう開始時刻を過去にずらす。
+          invulnerable: true,
+          invulnerableTime: now - Math.max(0, INVULN_MS - KATANA_DASH_MS),
+          lastDirection: { x: ux, y: uy }
+        }
+      }));
+    } else {
+      // 守護霊: 防御規格を同一にする。プレイヤーの「invulnerableTime を過去へずらす」逆算打刻は
+      // 実効的に「now + KATANA_DASH_MS まで無敵」と同値なので、ゴースト専用の無敵窓
+      // (ghostInvulnUntil = damageSummon が見る)へ同じ終了時刻を入れる。向きは ghostFacing。
+      // (プレイヤーの counterCooldownEnd 延長に対応するフィールドはゴーストに無い=近接の間隔は
+      //  ghostDriver の lastMeleeAt が持つ。一閃自体のCDは katanaDashCooldownEnd で共有済み。)
+      setActorDashState(ghostId, dashPatch, {
+        ghostInvulnUntil: Math.max(0, now + KATANA_DASH_MS),
+        ghostFacing: ux >= 0 ? 1 : -1,
+      });
+    }
 
     // 軌跡は既存trail 1本のみの軽量表現(常時発光・大量パーティクルなし)。
     get().spawnEffect({
@@ -6202,12 +6260,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const zanY = pcy + uy * KATANA_DASH_DISTANCE / 2;
     if (targetIds.length > 0 || propTargetIds.length > 0) {
       setTimeout(() => {
-        if (!isKatanaMode(get().player)) return; // run reset / 刀を外した等
+        // 主語を着地時点で再解決する(run reset / 刀を外した / **守護霊が解散した** をここで弾く)。
+        const striker = combatActorPlayer(ghostId);
+        if (!striker || !isKatanaMode(striker)) return;
         const result = targetIds.length > 0
-          ? get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true)
+          ? get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true, ghostId)
           : { finish: false };
         // 経路上の松明などを破壊(近接フィニッシュと同等の高ダメージ)。
-        const propDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(get().player)] * KATANA_DASH_DAMAGE_MULT * 2.5;
+        const propDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(striker)] * KATANA_DASH_DAMAGE_MULT * 2.5;
         for (const id of propTargetIds) {
           const prop = get().breakableProps.find(p => p.id === id);
           if (!prop) continue;
@@ -6242,9 +6302,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // ワイヤーアンカー: フリックでフリック方向(dir)に固定距離ワイヤーを刺す。1秒後(wirePlantUntil)に
   // ループ側が startWireDash を呼んで高速移動を開始する。発動できたら true。
-  triggerWireAnchor: (dirX, dirY) => {
+  triggerWireAnchor: (dirX, dirY, ghostId) => {
     const now = Date.now();
-    const { player, gameTime, isPaused } = get();
+    const { gameTime, isPaused } = get();
+    // v0.25.2518(裁定2): 主語(オーナー)。未指定=プレイヤー本体(従来と完全同一)。
+    const player = combatActorPlayer(ghostId);
+    if (!player) return false;
     if (isPaused) return false;
     if (isInReturnCircle(player, get().returnCircle)) return false; // 帰還サークル内は攻撃停止
     if (!player.subWeapons.includes('wire-anchor')) return false;
@@ -6257,8 +6320,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const ux = dirX / len, uy = dirY / len;
     const lvl = Math.max(1, Math.min(3, player.subWeaponLevels['wire-anchor'] ?? 1));
     const dist = WIRE_DIST_BY_LEVEL[lvl];
-    // G2.6: 発動の入口はオーナー(座標)に対して解決する。ワイヤーの効果=オーナーの体の移動なので、
-    // 現状オーナーは常にプレイヤー(ゴースト対応は★未決の未対応リスト=移動系の特殊配線が必要)。
+    // G2.6: 発動の入口はオーナー(座標)に対して解決する。ワイヤーの効果=オーナーの体の移動。
+    // v0.25.2518(裁定2): オーナーは主語(プレイヤー or 守護霊)。疑似Playerが実体の座標を着ているので
+    // 同じ playerAsOwner をそのまま通せる(=ゴースト用の座標解決を別に書かない)。
     const wireOwner = playerAsOwner(player);
     const pcx = ownerCenterX(wireOwner);
     const pcy = ownerCenterY(wireOwner);
@@ -6280,46 +6344,54 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
     if (target) {
-      recordWireAnchorUse('slam'); // G4a(§2.9(3)・記録専用): スラム型(敵ヒット)の様式カウンタ
+      // 除外4(運用系): 守護霊起因はプレイヤーの様式計測(G4a)へ混ぜない。
+      if (ghostId === undefined) recordWireAnchorUse('slam'); // G4a(§2.9(3)・記録専用): スラム型(敵ヒット)の様式カウンタ
       const tcx = target.x + target.width / 2, tcy = target.y + target.height / 2;
       const ddist = Math.max(0.001, Math.hypot(tcx - pcx, tcy - pcy));
-      set(s => ({
-        player: {
-          ...s.player,
-          wireAnchorX: tcx, wireAnchorY: tcy,        // 敵の真上(=敵中心)へ引き上げる
-          wireAnchored: false, wirePlantUntil: 0,
-          wireDashUntil: now + WIRE_SLAM_MS,         // 待ち無しで即発動
-          wireDashSpeed: ddist / (WIRE_SLAM_MS / 1000),
-          wireStuckEnemyId: '', wireStuckUntil: 0,
-          wireSlamEnemyId: target!.id, wireSlamStart: now,
-          // スラム後ジャンプ離脱(ホップ)用: 発動時のプレイヤー中心を保存(戻り方向の計算に使う)。
-          wireSlamFromX: pcx, wireSlamFromY: pcy,
-          invulnerable: true,                        // 空中は無敵(既存被弾無敵を流用)
-          invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_SLAM_MS),
-        },
-        anchorEnemyHitFxAt: now,                     // 命中SEのトリガ
-      }));
+      const slamPatch: Partial<DashLocomotionState> = {
+        wireAnchorX: tcx, wireAnchorY: tcy,        // 敵の真上(=敵中心)へ引き上げる
+        wireAnchored: false, wirePlantUntil: 0,
+        wireDashUntil: now + WIRE_SLAM_MS,         // 待ち無しで即発動
+        wireDashSpeed: ddist / (WIRE_SLAM_MS / 1000),
+        wireStuckEnemyId: '', wireStuckUntil: 0,
+        wireSlamEnemyId: target!.id, wireSlamStart: now,
+        // スラム後ジャンプ離脱(ホップ)用: 発動時のオーナー中心を保存(戻り方向の計算に使う)。
+        wireSlamFromX: pcx, wireSlamFromY: pcy,
+      };
+      if (ghostId === undefined) {
+        set(s => ({
+          player: {
+            ...s.player,
+            ...slamPatch,
+            invulnerable: true,                        // 空中は無敵(既存被弾無敵を流用)
+            invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_SLAM_MS),
+          },
+          anchorEnemyHitFxAt: now,                     // 命中SEのトリガ
+        }));
+      } else {
+        // 守護霊も**同じ防御規格**: 空中は無敵(プレイヤーの逆算打刻と同じ「now+WIRE_SLAM_MSまで」)。
+        // 守護霊速死の根治=ワイヤー中に殴られない規格がゴーストにも入る。
+        setActorDashState(ghostId, slamPatch, { ghostInvulnUntil: now + WIRE_SLAM_MS });
+        set({ anchorEnemyHitFxAt: now });              // 命中SEのトリガ(SE自体は共通経路)
+      }
       get().spawnRing(tcx, tcy, 6, 26, 'rgba(186,230,253,0.9)', 2, 200);
       get().setSubWeaponCooldown('wire-anchor', gameTime + WIRE_SLAM_MS + WIRE_COOLDOWN_BY_LEVEL[lvl]);
       return true;
     }
 
-    recordWireAnchorUse('plant'); // G4a(§2.9(3)・記録専用): プラント型(空振り=地点打ち込み)の様式カウンタ
+    if (ghostId === undefined) recordWireAnchorUse('plant'); // G4a(§2.9(3)・記録専用): プラント型(空振り=地点打ち込み)の様式カウンタ
     const ax = pcx + ux * dist;
     const ay = pcy + uy * dist;
-    set(s => ({
-      player: {
-        ...s.player,
-        wireAnchorX: ax,
-        wireAnchorY: ay,
-        wireAnchored: true,
-        wirePlantUntil: now + WIRE_PLANT_DELAY_MS, // この時刻に自動で高速移動開始
-        wireDashUntil: 0,
-        wireStuckEnemyId: '',
-        wireStuckUntil: 0,
-      },
-      anchorPlantFxAt: now, // 打ち込み音SEのトリガ
-    }));
+    setActorDashState(ghostId, {
+      wireAnchorX: ax,
+      wireAnchorY: ay,
+      wireAnchored: true,
+      wirePlantUntil: now + WIRE_PLANT_DELAY_MS, // この時刻に自動で高速移動開始
+      wireDashUntil: 0,
+      wireStuckEnemyId: '',
+      wireStuckUntil: 0,
+    });
+    set({ anchorPlantFxAt: now }); // 打ち込み音SEのトリガ
     get().spawnRing(ax, ay, 6, 22, 'rgba(96,165,250,0.85)', 2, 220); // 刺さった地点の小ポップ
     // CD は刺した直後から「待ち1秒 + 移動 + 規定CD」分かけておく(待ち中の連射防止)。
     get().setSubWeaponCooldown('wire-anchor', gameTime + WIRE_PLANT_DELAY_MS + WIRE_DASH_MS + WIRE_COOLDOWN_BY_LEVEL[lvl]);
@@ -6327,25 +6399,34 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // 刺してから1秒後に呼ばれ、アンカー地点へ高速移動を開始する。
-  startWireDash: () => {
+  startWireDash: (ghostId) => {
     const now = Date.now();
-    const { player } = get();
+    const player = combatActorPlayer(ghostId); // v0.25.2518(裁定2): 主語(未指定=プレイヤー)
+    if (!player) return;
     if (!player.wireAnchored) return;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const dist = Math.max(0.001, Math.hypot(player.wireAnchorX - pcx, player.wireAnchorY - pcy));
-    set(s => ({
-      player: {
-        ...s.player,
-        wireDashUntil: now + WIRE_DASH_MS,
-        wireDashSpeed: dist / (WIRE_DASH_MS / 1000),
-        wireAnchored: false,
-        wirePlantUntil: 0,
-        // 移動中は無敵(既存の被弾無敵を流用。INVULN_MS の自動解除が移動終了とほぼ一致するよう開始時刻をずらす)。
-        invulnerable: true,
-        invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_DASH_MS),
-      }
-    }));
+    const dashPatch: Partial<DashLocomotionState> = {
+      wireDashUntil: now + WIRE_DASH_MS,
+      wireDashSpeed: dist / (WIRE_DASH_MS / 1000),
+      wireAnchored: false,
+      wirePlantUntil: 0,
+    };
+    if (ghostId === undefined) {
+      set(s => ({
+        player: {
+          ...s.player,
+          ...dashPatch,
+          // 移動中は無敵(既存の被弾無敵を流用。INVULN_MS の自動解除が移動終了とほぼ一致するよう開始時刻をずらす)。
+          invulnerable: true,
+          invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_DASH_MS),
+        }
+      }));
+    } else {
+      // 守護霊も同じ防御規格(移動中は無敵・終了時刻はプレイヤーの逆算打刻と同値)。
+      setActorDashState(ghostId, dashPatch, { ghostInvulnUntil: now + WIRE_DASH_MS });
+    }
     get().spawnRing(player.wireAnchorX, player.wireAnchorY, 8, 30, 'rgba(96,165,250,0.8)', 2, 260);
   },
 
@@ -6353,23 +6434,32 @@ export const useGameStore = create<GameState>((set, get) => ({
   // computeWireHopLanding(src/utils/wireHop.ts)で計算して渡す。startWireDashと同じ
   // 「移動中は無敵(逆算打刻)」パターンを流用。wireDashUntil/wireAnchorXは一切触らない
   // (既存のスラム/プラント着地処理を再発火させないための専用フィールド)。
-  startWireHop: (targetX, targetY) => {
+  startWireHop: (targetX, targetY, ghostId) => {
     const now = Date.now();
-    const { player } = get();
+    const player = combatActorPlayer(ghostId); // v0.25.2518(裁定2): 主語(未指定=プレイヤー)
+    if (!player) return;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const dist = Math.max(0.001, Math.hypot(targetX - pcx, targetY - pcy));
-    set(s => ({
-      player: {
-        ...s.player,
-        wireHopTargetX: targetX,
-        wireHopTargetY: targetY,
-        wireHopUntil: now + WIRE_HOP_MS,
-        wireHopSpeed: dist / (WIRE_HOP_MS / 1000),
-        invulnerable: true,
-        invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_HOP_MS),
-      }
-    }));
+    const hopPatch: Partial<DashLocomotionState> = {
+      wireHopTargetX: targetX,
+      wireHopTargetY: targetY,
+      wireHopUntil: now + WIRE_HOP_MS,
+      wireHopSpeed: dist / (WIRE_HOP_MS / 1000),
+    };
+    if (ghostId === undefined) {
+      set(s => ({
+        player: {
+          ...s.player,
+          ...hopPatch,
+          invulnerable: true,
+          invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_HOP_MS),
+        }
+      }));
+    } else {
+      // 離脱(ホップ)の無敵もプレイヤーと同一規格。守護霊がボス密着着地で確定被弾する事故も同時に消える。
+      setActorDashState(ghostId, hopPatch, { ghostInvulnUntil: now + WIRE_HOP_MS });
+    }
   },
 
   damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove) => {
@@ -12439,11 +12529,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,
-          katanaDashUntil: 0,
-          katanaDashDirX: 0,
-          katanaDashDirY: 0,
-          katanaDashCooldownEnd: 0,
-          katanaRecoveryUntil: 0,
+          // 刀の一閃/ワイヤーの状態(共通型)を全ゼロへ。値は従来と同一。
+          ...emptyDashState(),
           shijinSlideUntil: 0,
           shijinSlideDirX: 0,
           shijinSlideDirY: 0,
@@ -12451,22 +12538,6 @@ export const useGameStore = create<GameState>((set, get) => ({
           skaterBashCdUntil: 0,
           skaterRiding: false,
           skaterRideStartAt: 0,
-          wireAnchorX: 0,
-          wireAnchorY: 0,
-          wireAnchored: false,
-          wirePlantUntil: 0,
-          wireDashUntil: 0,
-          wireDashSpeed: 0,
-          wireStuckEnemyId: '',
-          wireStuckUntil: 0,
-          wireSlamEnemyId: '',
-          wireSlamStart: 0,
-          wireSlamFromX: 0,
-          wireSlamFromY: 0,
-          wireHopUntil: 0,
-          wireHopTargetX: 0,
-          wireHopTargetY: 0,
-          wireHopSpeed: 0,
           straps: (state.startWithTestStraps ? 1000 : 0) + scrapBuilderBonus,
           vaccineRevives: 0,
           equipment: runLoadout,

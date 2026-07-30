@@ -201,8 +201,8 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 | 2 | ✅**済(v0.25.2514)** **銃クリの復元**(critChance算出+着弾時ロール対象化) | weaponUtils.ts 555の`critChance:0`固定を撤去+useGameLoop.ts 8178の`isDirectGunWeaponKey`にghost-gunを含める判断+8219の`isAllyOwnedShot`からghost-gun除外 | **M** | 社長「射撃クリティカルも再現しないと」に直接該当。ボス×0.5+下限5%(CRIT-UNIFY式)もそのまま使える。 |
 | 3 | ✅**済(v0.25.2514)** **近接ダメージ倍率層の全復元**(skillOutgoingDamageMult/meleeComboMult/critChance判定) | useGameLoop.ts 7237-7292(ghost近接ブロック)を`gameStore.ts`の`triggerCounter`系と同じ式に寄せる | **M** | 通常スイングとカウンター反撃の両方に影響。カウンター反撃ダメージ式(`ghostCounter.ts:72-75`)も同時見直しが必要。 |
 | 4 | ✅**済(v0.25.2514)** **装備(equipBonus)の全面適用** | weaponUtils.ts/gameStore.tsの各damage式にequipBonus参照を追加(ghost用) | **M** | 上記1・3と同時実装が効率的(同じ計算式に差し込むだけ)。 |
-| 5 | **刀モード(一閃ダッシュ/オート斬撃/村雨/フィニッシュ一閃)の再現** | 新規: ghostDriver.tsに刀専用の意思決定分岐+useGameLoop.tsに`triggerKatanaDash`相当のゴースト実行ブロック | **L** | 社長が名指しで「刀とか一閃とかも全部再現して」と明言した最重要項目の一つ。専用ロコモーション(katanaDashUntil系)をghost用に複製する必要があり、既存のカウンター窓経済(CD不使用)ともghostDriverの意思決定モデル(reactionMs/counterChance抽選)が根本的に噛み合わない=設計から要検討。 |
-| 6 | **ワイヤーアンカー(スラム/プラント/ホップ)のゴースト対応** | ghostDriver.ts(移動系への特殊配線)+useGameLoop.tsのwire実行ブロックにownerパラメータ拡張 | **L** | 社長が名指し。§2.8で「移動系=現在オーナー常にプレイヤー=未対応→写す対象」と特記済み。オーナー抽象化(subWeaponOwner.ts)は入口があるが、実際の高速移動処理(katanaDashUntil型のロコモーション上書き)をghost実体に適用する仕組みが無い。 |
+| 5 | ✅**済(v0.25.2522)** **刀モード(一閃ダッシュ/オート斬撃/村雨/フィニッシュ一閃)の再現** | 主語引数化: `performKatanaStrike`/`triggerKatanaDash` に `ghostId` / 抽出: `utils/dashLocomotion.ts`(ロコモーション)・`utils/katanaAuto.ts`(オート斬撃の標的選択) | **L** | 社長が名指しで「刀とか一閃とかも全部再現して」と明言した最重要項目の一つ。専用ロコモーション(katanaDashUntil系)をghost用に複製する必要があり、既存のカウンター窓経済(CD不使用)ともghostDriverの意思決定モデル(reactionMs/counterChance抽選)が根本的に噛み合わない=設計から要検討。 |
+| 6 | ✅**済(v0.25.2522)** **ワイヤーアンカー(スラム/プラント/ホップ)のゴースト対応** | 主語引数化: `triggerWireAnchor`/`startWireDash`/`startWireHop` に `ghostId`+useGameLoopのwire毎フレーム処理を `runWireAnchorTick(wp, ghostId)` へ | **L** | 社長が名指し。§2.8で「移動系=現在オーナー常にプレイヤー=未対応→写す対象」と特記済み。オーナー抽象化(subWeaponOwner.ts)は入口があるが、実際の高速移動処理(katanaDashUntil型のロコモーション上書き)をghost実体に適用する仕組みが無い。 |
 | 7 | ✅**済(v0.25.2514)** **被弾ノックバックの復元** | gameStore.ts `damageSummon`(6022-6042)にknockbackVx/Vy/knockbackUntil相当を追加 | **S** | 社長が名指し。damagePlayerの式をSummon型に横展開するだけ(Summon型にknockback系フィールドの追加が必要な場合はSで収まらずM)。 |
 | 8 | **弾反射(カウンター家系#1)のゴースト対応** | combatTick.ts `applyEnemyProjectileHits`(447)にghost分岐を追加 | **M** | 社長が名指し(「弾反射も全部再現」)。現状ghostは反射する経路自体が無い=新規実装。反射弾の生成(弾の`reflected`フラグ書き換え等)をゴースト起点で行う設計が必要。 |
 | 9 | ✅**済(v0.25.2514)** **被弾点滅(白フラッシュ)の追加** | pixiScene.ts `drawGhostAlly`(7971-8194)にhitFlash相当を追加 | **S** | 描画のみ。既存`view.hitFlash`パターン(9036-9055)を流用可能。 |
@@ -249,6 +249,9 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
    ナイフコンボ数を要求するが、ゴーストはこの計数を持たないため常に中立(×1)。プレイヤーのコンボを借りると
    「本人のコンボがゴーストにも乗る」二重取りになるため中立にした。ゴースト自身のコンボ計数
    (Summonに knifeCombo/finishCombo 相当を持たせる)を作るかは要裁定。
+   **(v0.25.2522 追記)** 刀の共有(GHOST-KATANA-WIRE)でも同じ扱いを踏襲した=守護霊の刀スイング/一閃/
+   フィニッシュは**プレイヤーのコンボ台帳を書かない**(`meleeFinishComboCount`/`knifeCombo*`/`maxCombo`)。
+   ゴースト自身のコンボを持たせる裁定が出れば、同じ共有関数へ計数を渡すだけで効く形にしてある。
 2. **バーサーカーの失HP基準**: 疑似Playerの health/maxHealth は**ゴースト実体**の値にした(ゴーストが傷つくほど
    強くなる=「その時のあなた」の写しとして自然な解釈)。「計測時のHP割合で固定」にするなら要裁定。
 
@@ -304,3 +307,73 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 - BOT_AND_GHOST.md は設計チャットが編集中の可能性があるため**触らない**。git add は変更ファイルの
   明示列挙(検証: typecheck+lint→rebase後origin+1でbump→changelog/DEVELOPMENT_LOG→push打刻)。
 - 抽出した純関数にはユニットテストを同コミットで(配線直書き禁止=実装精度の規律4)。
+
+---
+
+## 実装ログ: バッチGHOST-KATANA-WIRE(v0.25.2522・項目5=刀モード / 項目6=ワイヤーアンカー)
+
+**方式(裁定2「共有方式」の実装形)**: ゴースト用の実装は1本も書いていない。既存のプレイヤー状態機械の
+**主語(オーナー)を引数化**し、状態を `Summon.ghostDash` へ持たせて共有した。
+
+### 共通の土台
+| 何を | どこに |
+|---|---|
+| 刀/ワイヤーの状態(21フィールド) | `types/game.ts` の **`DashLocomotionState`** に切り出し、**`Player extends DashLocomotionState`**(プレイヤーは従来どおり直付け)。`Summon.ghostDash?: DashLocomotionState` を追加(Summonへの追加はこの**1フィールドのみ**)。 |
+| ロコモーション上書き(優先順・速度・目標ベクトル) | 新規 `utils/dashLocomotion.ts`(純関数)。`dashModeAt`(wireDash>wireHop>katanaDash>katanaRecovery)/`dashOverride`/`dashStep`/`dashStateOf`/`emptyDashState`。`movePlayer` のインライン判定をこれへ置換(値・順序は不変)。 |
+| オート斬撃の標的選択 | 新規 `utils/katanaAuto.ts` の `pickKatanaSlashTarget`(useGameLoopのインラインから抽出。スタン敵は後回し/リーパー除外/射程は注入した距離関数=`enemyMeleeDist`)。 |
+| 主語の解決 | `gameStore.combatActorPlayer(ghostId?)` = **1枚の疑似Player**。①GHOST-BUILD-1のビルド(スキル/装備/クリ率/サブ+Lv) ②ゴースト実体の座標/寸法/HP(`ghostActorPlayer`) ③`ghostDash` を着せる。これで `player.x` / `subWeapons` / `katanaDashUntil` / `wireDashUntil` … の**既存の読みが全部そのまま通る**。書き込みだけ `setActorDashState` で宛先を振り分ける。 |
+
+### A. 刀モード(項目5)
+- `performKatanaStrike(targetIds, damageMult, allowFinisher, **ghostId?**)`: 主語を差し替えただけ。刀Lv別
+  ダメージ/リーチ・クリ率(`meleeHitCritChance`)・`skillCritMult`/`skillOutgoingDamageMult`・気絶敵の
+  フィニッシュ分岐(ボス5×/強個体3×/通常即死)・ノックバック・紫蓄積(`bumpBossCrit`)・斬撃弧/血/
+  ダメージ数字/黄リング/STUN!・`grantMeleeKillRewards`(XP/通貨/弾薬拾得)・リーパー波及・救難信号——
+  **全部プレイヤーと同じ1本**が走る。
+- `triggerKatanaDash(dirX, dirY, **ghostId?**)`: 154px/180ms/×3/経路判定(半幅26)/村雨のCD無し/
+  着地硬直200ms/軌跡trail/「斬」+暗転+血 も共有。着地(`setTimeout`)で主語を**再解決**するので、
+  途中でゴーストが解散したら何も起きない。
+- 実行の入口(`useGameLoop`のゴーストブロック): ビルドに katana/murasame があれば `isKatanaMode(疑似Player)`
+  が真 → **プレイヤーと同じ封印**(銃の自動射撃を止める・`decideGhost` へ渡す `gunRangePx` も0)、
+  近接アクション=**一閃**、それとは独立に**オート斬撃(600ms・`gameTime`基準)**が回る。
+  一閃のSEはプレイヤーのフリックと同じ `katana-dash`(距離減衰のみ差分)。
+- カウンター請求(`setGhostCounterClaim`)は一閃でも積む(一閃も「近接スイング」=窓を拾う)。発動しなかった
+  フレーム(硬直/CD)では積まない。
+
+### B. ワイヤーアンカー(項目6)
+- `triggerWireAnchor(dirX, dirY, **ghostId?**)` / `startWireDash(ghostId?)` / `startWireHop(x, y, ghostId?)`:
+  刺し判定(線上・射程・空中無敵は刺さらない)・スラム/プラント分岐・待ち1秒・速度算出は共有。
+- `useGameLoop` の毎フレーム処理を **`runWireAnchorTick(wp: Player, ghostId?)`** へ主語引数化し、
+  プレイヤー→守護霊の順で1回ずつ回す(すり抜けダメージ/Lv3すり抜け爆発/着地爆撃/強制ノックバック/
+  斬り下ろしフィニッシュ/ホップ開始が同じ1本)。重複防止レジスタ(`wireLandedDashRef`/`wirePassHitRef`)は
+  主語別キーにした。
+- **防御規格の同一化(速死の根治)**: プレイヤーの「`invulnerableTime` を過去へずらす逆算打刻」は
+  実効「now+技の長さ まで無敵」なので、ゴーストは同じ終了時刻を `ghostInvulnUntil`(damageSummonが見る)へ
+  入れる=スラム/ダッシュ/ホップの全区間で無敵。硬直・離脱の長さも共有定数のまま。
+- 発動の意思決定は既存のサブ予約(`ghostSubClaim`=「CDが明けたら使う」)を流用し、狙いは紐付きボス。
+  CDは「1つの財布」= `player.subWeaponCooldowns` を共有。上位のサブ発動入口(6種)が先に予約を消費するので
+  二重発動しない。
+
+### 除外1/4の非適用(ここだけ差分)
+- 除外1(演出): `triggerFinishImpact`(停止+スロー+寄りズーム)はゴースト起因では呼ばない。シェイクのみ
+  `GHOST_FX_SHAKE_ENABLED` 経由で出す(既存の掟どおり)。
+- 除外4(運用系): `recordDamageDealt`/`recordMeleeSwing`/`recordWireAnchorUse`(G4a様式計測)はゴースト起因では
+  積まない。ワイヤーのダメージは `damageChannel=null` + `hateSource='ghost'`(既存のゴースト銃/近接と同じ)。
+  ゴースト起因のSEは距離減衰(`npcSfxDistGain`)。
+- **プレイヤーのコンボ台帳(`meleeFinishComboCount`/`meleeFinishComboUntil`/`player.knifeCombo*`/`maxCombo`)は
+  ゴーストのスイングでは動かさない**(本人のコンボが伸びる=二重取りになるため。★未決1と同じ扱い)。
+  キル数/与ダメの集計(`enemiesKilled`/`damageDealt`/`eliteKills`/`bossKills`)は `damageEnemy` がゴースト弾/
+  近接でも積んでいるのと同じ扱いで積む(経路による食い違いを作らない)。
+
+### 実装メモ(次バッチが踏む前提)
+- プレイヤー側は**式・定数・分岐を1文字も変えていない**(抽出と主語引数化のみ)。`ghostId` 未指定時は
+  疑似Player=本物のプレイヤー・`damageEnemy` の追加引数も既定値と同値を明示しただけ。
+- プレイヤーの `counterCooldownEnd` 延長(刀の一閃がカウンターCDを食う)に**対応するフィールドはゴーストに無い**
+  =ゴーストの近接間隔は `ghostDriver` の `lastMeleeAt`(GHOST_MELEE_COOLDOWN_MS)が持ち、一閃自体のCDは
+  共有の `katanaDashCooldownEnd` が持つ。新規フィールドを作らずこの2本で閉じている。
+- 刀ビルドのゴーストの**間合い**は `profile.preferredDist`(計測値)のまま。スロットはビルドと動きが一体
+  (§2.10)なので刀ランのゴーストは近い間合いを持つが、行動品質の詰めは §2.12 のバッチで扱う。
+- 描画(pixiScene)は無改変=ゴーストが刀/ワイヤーを持っている絵(刀身・ワイヤー線・アンカー)は出ない。
+  攻撃エフェクト(斬撃弧・血・リング・「斬」)はストアのエフェクト経由なのでプレイヤーと同じものが出る。
+- テスト: `utils/dashLocomotion.test.ts`(7件)・`utils/katanaAuto.test.ts`(5件)・
+  `utils/ghostKatanaWire.test.ts`(17件=主語解決/一閃の状態機械・無敵窓・硬直・村雨/ワイヤーのプラント・
+  スラム・ダッシュ・ホップ・共有CD・刀の排他/除外1・4の効き+**プレイヤー対照**)・`ghostBuild.test.ts` に4件追加。

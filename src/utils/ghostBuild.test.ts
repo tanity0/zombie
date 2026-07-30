@@ -3,12 +3,15 @@
 // 掟の機械化: **ゴーストの倍率はプレイヤーと同じ純関数を通る**(式の複製禁止)ことを、同じビルドを着せた
 // プレイヤーとゴーストで結果が一致することで確認する。
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useGameStore, BOSS_CRIT_DAMAGE_MULT, counterReplyDamage } from '../store/gameStore';
+import {
+  useGameStore, BOSS_CRIT_DAMAGE_MULT, counterReplyDamage,
+  isKatanaMode, hasMurasame, katanaLevel, katanaRange, KATANA_RANGE_BY_LEVEL, subWeaponBlockedByKatana,
+} from '../store/gameStore';
 import { snapshotPlayerBuild, buildPseudoPlayer, buildHasLoadout } from './playerBuild';
 import { resolveGhostBuild, ghostActorPlayer, clearGhostBuildCache, ghostBuildFor } from './ghostBuild';
 import { createWeapon, gunShotBaseDamage, gunShotCritChance } from './weaponUtils';
 import { ghostCounterDamage } from './ghostCounter';
-import type { Player, Summon } from '../types/game';
+import type { Player, Summon, SubWeaponKey } from '../types/game';
 
 const freshPlayer = (): Player => {
   useGameStore.getState().resetGame('warrior');
@@ -162,5 +165,48 @@ describe('パリティ(式の複製禁止の機械化): 同じビルドならプ
     expect(ghostCounterDamage(40)).toBe(Math.round(40 * BOSS_CRIT_DAMAGE_MULT));
     // クリティカルD上昇Lv3(+1.0)とバーサーカー(失HP50%×1.25=+62.5%)が乗る=素の×5より大きい
     expect(ghostCounterDamage(gunDamage, owner)).toBeGreaterThan(Math.round((gunDamage ?? 12) * BOSS_CRIT_DAMAGE_MULT));
+  });
+});
+
+// GHOST-KATANA-WIRE(v0.25.2518・裁定2「共有方式」): 刀/ワイヤーの**発動条件は計測時ビルドのサブ**で、
+// 主語を差し替えたプレイヤー用純関数(isKatanaMode/katanaLevel/katanaRange)がそのまま通ることを固定する。
+describe('刀/ワイヤー(裁定2): ビルドのサブウェポンが守護霊の主語判定へ通る', () => {
+  const withSubs = (subs: SubWeaponKey[], levels: Partial<Record<SubWeaponKey, number>> = {}): Player => ({
+    ...buildRun(), subWeapons: subs, subWeaponLevels: levels,
+  });
+
+  it('katana/murasame を持つビルドだけ刀モードになる(無いビルドは従来のナイフ役)', () => {
+    const noKatana = resolveGhostBuild(snapshotPlayerBuild(withSubs([])), freshPlayer());
+    expect(isKatanaMode(noKatana.player)).toBe(false);
+    const katana = resolveGhostBuild(snapshotPlayerBuild(withSubs(['katana'], { katana: 2 })), freshPlayer());
+    expect(isKatanaMode(katana.player)).toBe(true);
+    const mura = resolveGhostBuild(snapshotPlayerBuild(withSubs(['murasame'])), freshPlayer());
+    expect(isKatanaMode(mura.player)).toBe(true);
+    expect(hasMurasame(mura.player)).toBe(true); // 村雨=CD無し連発の分岐がそのまま効く
+  });
+
+  it('刀レベル別リーチが「そのビルドを着たプレイヤー」と一致する(値の複製をしていない)', () => {
+    for (const lvl of [1, 2, 3]) {
+      const runPlayer = withSubs(['katana'], { katana: lvl });
+      const ghost = resolveGhostBuild(snapshotPlayerBuild(runPlayer), freshPlayer());
+      expect(katanaLevel(ghost.player)).toBe(lvl);
+      expect(katanaRange(ghost.player)).toBe(katanaRange(runPlayer));
+      expect(katanaRange(ghost.player)).toBe(KATANA_RANGE_BY_LEVEL[lvl]);
+    }
+  });
+
+  it('ワイヤーは wire-anchor を持つビルドだけ・刀装備中は刀の排他がゴーストにも効く', () => {
+    const wire = resolveGhostBuild(snapshotPlayerBuild(withSubs(['wire-anchor'], { 'wire-anchor': 3 })), freshPlayer());
+    expect(wire.player.subWeapons).toContain('wire-anchor');
+    expect(subWeaponBlockedByKatana(wire.player, 'wire-anchor')).toBe(false);
+    const both = resolveGhostBuild(snapshotPlayerBuild(withSubs(['katana', 'wire-anchor'])), freshPlayer());
+    expect(subWeaponBlockedByKatana(both.player, 'wire-anchor')).toBe(true); // プレイヤーと同じ排他
+  });
+
+  it('ゴースト実体を着せても(位置/HP差し替え)刀モードの判定は保たれる', () => {
+    const build = resolveGhostBuild(snapshotPlayerBuild(withSubs(['katana'], { katana: 3 })), freshPlayer());
+    const actor = ghostActorPlayer(build, { x: 500, y: 500, width: 32, height: 32, health: 30, maxHealth: 100 });
+    expect(isKatanaMode(actor)).toBe(true);
+    expect(katanaRange(actor)).toBe(KATANA_RANGE_BY_LEVEL[3]);
   });
 });
