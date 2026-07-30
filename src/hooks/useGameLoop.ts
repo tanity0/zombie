@@ -7020,8 +7020,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   moveRoll: prevMoveRoll,
                 },
                 player: { x: gsPlayer.x, y: gsPlayer.y, width: gsPlayer.width, height: gsPlayer.height },
-                // 「ゴーストは戦闘だけする」= 紐付いたボス1体だけを対象にする(雑魚に脇道しない)。
-                enemies: boundBoss ? [boundBoss] : [],
+                // v0.25.2470(社長裁定「雑魚は基本的に避けつつボスと戦う」): 全敵を渡す(雑魚回避の
+                // 反発ベクトル用)。狙いは boundBossId でボスに束縛されたまま=雑魚には流れない。
+                enemies: useGameStore.getState().enemies,
                 boundBossId: ghostNow.ghostBossId, // v0.25.2469: ボス束縛を純関数側でも明示
 
                 projectiles: useGameStore.getState().projectiles,

@@ -94,6 +94,31 @@ describe('decideGhost: 標的が居ない', () => {
   });
 });
 
+describe('decideGhost: 雑魚回避(v0.25.2470・社長裁定「雑魚は基本的に避けつつボスと戦う」)', () => {
+  it('至近の雑魚から離れる向きが移動に混ざる(狙いはボスのまま)', () => {
+    const boss = mkBoss({ x: 1000, y: 0 });
+    const mob = mkBoss({ id: 'mob-1', type: 'zombie', x: 10, y: 60, width: 20, height: 20 }); // すぐ下に雑魚
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [boss, mob],
+      boundBossId: 'boss-1',
+    }));
+    expect(d.targetId).toBe('boss-1');      // 雑魚に流れない
+    expect(d.moveX).toBeGreaterThan(0);     // ボス(右)へは向かい続ける
+    expect(d.moveY).toBeLessThan(0);        // 下の雑魚から上へ逃げる成分が混ざる
+  });
+  it('boundBossIdがあれば雑魚が近くてもボスを狙う', () => {
+    const boss = mkBoss({ x: 500, y: 0 });
+    const mob = mkBoss({ id: 'mob-1', type: 'zombie', x: 30, y: 0, width: 20, height: 20 }); // ボスより近い雑魚
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [mob, boss],
+      boundBossId: 'boss-1',
+    }));
+    expect(d.targetId).toBe('boss-1');
+  });
+});
+
 describe('decideGhost: 間合い管理(preferredDistへ寄せる)', () => {
   it('preferredDistより遠い時は接近する', () => {
     const boss = mkBoss({ x: 1000, y: 0 });

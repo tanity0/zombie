@@ -1431,7 +1431,7 @@ const DASH_DUST_SCALE = 1.6;
 // V1(3)(FX_GAP_LEDGER.md・社長指示): 敵が接触ダメージを「与えた」瞬間の前のめり変形。
 // 被弾しなり(ENEMY_HIT_FLINCH_*)の**逆位相**=同じ線形減衰の包絡線で、向きだけプレイヤー側。
 // 「強めに」の指示なのでskewは被弾(0.42)より強く、前方オフセット+軽いスカッシュも重ねる。視覚のみ。
-const CONTACT_LUNGE_MS = 180;
+const CONTACT_LUNGE_MS = 360; // 180→360(社長報告v0.25.2470「全く視認できないから少し長めがいい」)
 const CONTACT_LUNGE_SKEW = 0.6;
 const CONTACT_LUNGE_SQUASH = 0.16;  // 縦を最大16%潰す(踏み込みの重み)
 const CONTACT_LUNGE_OFFSET_PX = 12; // プレイヤー方向へ最大12pxの見た目オフセット(hitbox不変)

@@ -15,6 +15,7 @@
 // 実際の当たり判定(combatTick.tsのdashParried)より「機会あり」を広めに数える(bossScript.ts参照)。
 import type { Enemy, Projectile, SkillKey } from '../types/game';
 import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from './botSkill';
+import { isBossType } from './enemyUtils'; // v0.25.2470: 雑魚回避(非ボス判定)用
 import { isBossCounterableNowApprox } from './bossScript';
 import { moveKeyForEnemy, type MoveReactionTable } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
 
@@ -149,6 +150,9 @@ export const GHOST_LEASH_PX = 600;      // これを超えたらプレイヤー�
 export const GHOST_MELEE_RANGE = 74;
 const GHOST_MELEE_COOLDOWN_MS = 600;   // 叩き台(実機調整前提)
 const GHOST_MOVE_BAND_PX = 40;         // preferredDistの許容帯(叩き台)
+// v0.25.2470(社長裁定「雑魚は基本的に避けつつボスと戦う」): 雑魚回避の反発半径と混合の強さ(叩き台)。
+export const GHOST_MOB_AVOID_PX = 90;
+export const GHOST_MOB_AVOID_WEIGHT = 1.2;
 const HITS_PER_MIN_DODGE_REF = 8;      // hitsPerMin→dodgeStrength逆写像の基準(叩き台)
 
 const norm = (x: number, y: number): [number, number] => {
@@ -276,6 +280,27 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       [moveX, moveY] = norm(tcx - gcx, tcy - gcy);
     } else if (dist < profile.preferredDist - GHOST_MOVE_BAND_PX) {
       [moveX, moveY] = norm(gcx - tcx, gcy - tcy);
+    }
+  }
+
+  // v0.25.2470(社長裁定「雑魚は基本的に避けつつボスと戦う。が正解」): 非ボスの雑魚からの反発
+  // ベクトルを移動へ混ぜる(近いほど強い)。ボス狙い・回避・カウンター詰めの意思決定は変えず、
+  // 進路だけ雑魚を捌くように曲げる。'tank'ロール(苦手の再現)中も雑魚回避は生きる(ボスの技を
+  // 食らいに行くのであって雑魚に揉まれるのは別)。
+  {
+    let avX = 0, avY = 0;
+    for (const e of enemies) {
+      if (e.id === target.id || isBossType(e.type)) continue;
+      const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+      const ddx = gcx - ecx, ddy = gcy - ecy;
+      const dd = Math.hypot(ddx, ddy);
+      if (dd > 0 && dd < GHOST_MOB_AVOID_PX) {
+        const w = 1 - dd / GHOST_MOB_AVOID_PX;
+        avX += (ddx / dd) * w; avY += (ddy / dd) * w;
+      }
+    }
+    if (avX !== 0 || avY !== 0) {
+      [moveX, moveY] = norm(moveX + avX * GHOST_MOB_AVOID_WEIGHT, moveY + avY * GHOST_MOB_AVOID_WEIGHT);
     }
   }
 
