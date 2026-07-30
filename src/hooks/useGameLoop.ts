@@ -38,6 +38,8 @@ import {
   bossCritCdMult,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
+  // v0.25.2514(GHOST-BUILD-1): 近接/カウンター反撃の唯一の式(プレイヤーと守護霊で共有)。
+  meleeSwingBaseDamage, meleeHitCritChance, counterReplyDamage,
   skillMagnetAmmoRangeMult, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
@@ -79,6 +81,9 @@ import {
   GHOST_FX_SHAKE_ENABLED, setGhostCounterClaim, consumeGhostCounterClaim, ghostCounterDamage,
   applyGhostCounterEffect, type GhostCounterFire,
 } from '../utils/ghostCounter';
+// v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 守護霊は「計測時ビルド」で戦う。ビルドの復元+倍率評価用の
+// 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
+import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPenalty';
@@ -217,7 +222,7 @@ import {
   getPhaseKillDebug, snapshotKillTotals, snapshotSpawns
 } from '../utils/killTelemetryState';
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
-import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
+import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement, recordPhillHeadshot } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
@@ -292,6 +297,7 @@ const FIRE_JET_DEDUP_MS = 180;
 
 const GRENADE_WEAPON_KEY = 'rifle-t3';
 const SMG_WEAPON_KEY = 'handgun-t3'; // マシンピストル(=サブマシンガン)。発射音を通常ハンドガンと分けるのに使用。
+const PHILL_WEAPON_KEY = 'phill-revolver'; // 研究所リボルバー。守護霊のヘッドショット率再現(§2.11 裁定4)で参照。
 const GRENADE_BLAST_RADIUS = 92;
 const GRENADE_BLAST_DAMAGE_MULT = 0.62;
 // スキル: ボムカウンター = カウンター成立の瞬間にもプレイヤー中心で爆発(反射弾の爆発に加えて)。
@@ -4404,8 +4410,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
                 } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
-                const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
-                const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
+                const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
                 // 社長指示: トールのカウンターは必ずクリティカル扱いにする(裏ボス完全気絶=bumpBossCritの
                 // カウントに乗せる。他の裏ボス共通のパリィ演出は非crit踏襲のままここだけ変更)。
                 damageEnemy(boss.id, dmg, false, true);
@@ -4466,8 +4471,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
                 } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
-                const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
-                const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
+                const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
                 damageEnemy(boss.id, dmg, false, true);
                 spawnDamageNumber(bcx, boss.y, dmg, true);
                 playSfx('headshot');
@@ -5451,8 +5455,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
               } }));
               const counterBase = getActiveGun(cp)?.damage ?? 12;
-              const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
-              const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
+              const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
               damageEnemy(idol.id, dmg, false, true);
               spawnDamageNumber(icx, idol.y, dmg, true);
               playSfx('headshot');
@@ -7141,8 +7144,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }));
             } else {
               const boundBoss = useGameStore.getState().enemies.find(e => e.id === ghostNow.ghostBossId);
-              const gun = getActiveGun(gsPlayer);
-              const meleeWeapon = gsPlayer.weapons.find(w => w.isMelee);
+              // v0.25.2514(§2.11 裁定1「計測時のステータス・ビルドをそのまま」): 武器は**スナップショットの
+              // ロードアウト**(旧: 召喚時のプレイヤーの現在装備を借用=廃止)。ビルドが無い旧プロファイルの
+              // 時だけ従来のフォールバック(今の装備)になる=resolveGhostBuild側で解決。
+              const ghostBuild = ghostBuildFor(ghostNow, gsPlayer);
+              const gun = ghostBuild?.gun;
+              const meleeWeapon = ghostBuild?.melee;
+              // 倍率評価の主語(疑似Player)。位置/HPはゴースト実体の値=距離依存/失HP依存の倍率がゴースト基準。
+              const ghostOwner = ghostBuild ? ghostActorPlayer(ghostBuild, ghostNow) : gsPlayer;
               const profile: GhostProfile = ghostProfileRef.current ?? defaultGhostProfile();
               const nowMs = Date.now();
               // G4b(§2.9(4)): 技への反応ロールの持ち越し(Summonのフラット3フィールド⇔GhostMoveRoll)。
@@ -7177,7 +7186,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 gameTime, nowMs,
               });
 
-              const step = ghostNow.speed * deltaTime;
+              // v0.25.2514(監査項目7): 被弾ノックバック中は自分の移動を止める(プレイヤーがKB中に入力を
+              // 無視されるのと同じ。実際の弾かれ移動は updateSummons が減衰しながら消化する)。
+              const step = nowMs < (ghostNow.knockbackUntil ?? 0) ? 0 : ghostNow.speed * deltaTime;
               const nx = ghostNow.x + decision.moveX * step;
               const ny = ghostNow.y + decision.moveY * step;
               // v0.25.2469(社長指示): 霊体はオブジェクト(木・岩等)をすり抜ける。詰まって置き去りに
@@ -7210,17 +7221,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const gfxPcx = gsPlayer.x + gsPlayer.width / 2, gfxPcy = gsPlayer.y + gsPlayer.height / 2;
               const gfxCam = useGameStore.getState().camera, gfxGb = useGameStore.getState().gameBounds;
               if (decision.action === 'shoot' && boundBoss && gun) {
-                // 銃 = 装備中の銃のdamage/intervalで撃つ。弾薬はプレイヤーの残弾と完全分離(消費しない)。
+                // 銃 = **計測時ビルドのアクティブ銃**のdamage/intervalで撃つ。弾薬はプレイヤーの残弾と
+                // 完全分離(消費しない=除外4)。
                 // GHOST-GUN-PARITY: 飛翔特性(count発/拡散/PROJECTILE_SPEED_MULT/projectileSize/
-                // passthrough・pierce)はプレイヤーのfireWeaponと同じ規則(buildGhostGunShots=共通
-                // ヘルパ経由)。ダメージ/クリ/weaponKeyの扱いは従来どおり(素damage・crit無し・
-                // weaponKey='ghost-gun'固定=計測除外/ヘイト分離は不変)。
+                // passthrough・pierce)はプレイヤーのfireWeaponと同じ規則(buildGhostGunShots=共通ヘルパ)。
+                // v0.25.2514(§2.11訂正): ダメージ倍率(スカベンジャー/アタックシューター/装備火力/
+                // ラストマガジン)とクリ率(武器基礎+本体+装備+弁慶+ウォームアップ)も同じ共通ヘルパで
+                // **計測時ビルドの疑似Player**から算出する。weaponKey='ghost-gun'固定(計測除外/
+                // ヘイト分離)は不変。
                 const gcx = resolved.x + ghostNow.width / 2, gcy = resolved.y + ghostNow.height / 2;
                 const tcx = boundBoss.x + boundBoss.width / 2, tcy = boundBoss.y + boundBoss.height / 2;
                 const gdx = tcx - gcx, gdy = tcy - gcy;
                 const gdl = Math.hypot(gdx, gdy) || 1;
+                // 裁定4(PHILL): PHILL銃を持っていたら、計測したヘッドショット率でこの1発を確定
+                // ヘッドショット(=確定クリ)にする。ゴーストは部位狙いをしないので「率の再現」で写す。
+                const ghostHeadshot = gun.key === PHILL_WEAPON_KEY
+                  && (ghostBuild?.phillHeadshotRate ?? 0) > 0
+                  && Math.random() < (ghostBuild?.phillHeadshotRate ?? 0);
                 const ghostShots = buildGhostGunShots(
-                  gun, gcx, gcy, { x: gdx / gdl, y: gdy / gdl }, nowMs, `proj-ghost-${ghostNow.id}`
+                  gun, gcx, gcy, { x: gdx / gdl, y: gdy / gdl }, nowMs, `proj-ghost-${ghostNow.id}`,
+                  { player: ghostOwner, gameTime, headshot: ghostHeadshot },
                 );
                 for (const shot of ghostShots) addProjectile(shot);
                 // 発砲SE: プレイヤーと同じ銃種別の音(v0.25.2479パリティ。旧: 常にhandgun-fire)を
@@ -7235,9 +7255,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   );
                 }
               } else if (decision.action === 'melee' && boundBoss) {
-                // 近接 = 装備近接のdamageでスイング。channel=null(escortと同じ「プレイヤー起因ではない」
-                // 扱い=botTelemetryの近接/銃比率を汚さない)。
-                const dmg = Math.max(1, Math.round(meleeWeapon?.damage ?? 6));
+                // 近接 = **計測時ビルドの近接武器**でスイング。channel=null(escortと同じ「プレイヤー起因
+                // ではない」扱い=botTelemetryの近接/銃比率を汚さない)。
+                // v0.25.2514(§2.11訂正): ダメージ/クリはプレイヤーの近接スイングと**同じ純関数**を通す
+                // (meleeSwingBaseDamage/meleeHitCritChance/skillCritMult/skillOutgoingDamageMult=
+                // ストライカー・装備火力・トラップ+10%・弱点+10%・弁慶・ウォームアップ・ナイフマスター・
+                // クリティカルD上昇・バーサーカーが計測時ビルドで評価される)。主語は疑似Player(ghostOwner)。
+                // クリ成立時のボス側効果(移動半減+CD2倍+紫蓄積=bumpBossCrit)は damageEnemy が中央適用する。
+                // 近接コンボ倍率はゴーストが計数を持たないため中立(★未決: ゴースト側のコンボ計数)。
+                const ghostMeleeCrit = Math.random() < meleeHitCritChance(meleeWeapon?.critChance ?? 0, ghostOwner, gameTime, boundBoss);
+                const dmg = Math.max(1, Math.round(
+                  meleeSwingBaseDamage(meleeWeapon, ghostOwner)
+                  * (ghostMeleeCrit ? skillCritMult(ghostOwner, CRIT_DAMAGE_MULT) : 1)
+                  * skillOutgoingDamageMult(ghostOwner),
+                ));
                 const btcx = boundBoss.x + boundBoss.width / 2, btcy = boundBoss.y;
                 const bccy = boundBoss.y + boundBoss.height / 2;
                 const gmcx = resolved.x + ghostNow.width / 2, gmcy = resolved.y + ghostNow.height / 2;
@@ -7248,9 +7279,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const wasCounterMelee = isBossCounterableNowApprox(boundBoss.aiPhase, boundBoss.bossState);
                 // BOT_AND_GHOST.md §2.8 G2.5: ヘイト計測用にゴースト起因と明示する(damageChannelは
                 // 従来どおりnull=botTelemetryのプレイヤー計測は汚さない・独立したパラメータ)。
-                const ghostMeleeKilled = damageEnemy(boundBoss.id, dmg, false, false, false, null, 'ghost');
-                spawnDamageNumber(btcx, btcy, dmg, false);
-                spawnBurst(btcx, bccy, '#9fd8ff', 6);
+                const ghostMeleeKilled = damageEnemy(boundBoss.id, dmg, false, ghostMeleeCrit, false, null, 'ghost');
+                spawnDamageNumber(btcx, btcy, dmg, ghostMeleeCrit);
+                spawnBurst(btcx, bccy, ghostMeleeCrit ? '#fde047' : '#9fd8ff', 6);
                 // v0.25.2479(プレイヤー近接ヒットとのパリティ=triggerCounterのslashAt処理と同型):
                 // スラッシュ+近接の血飛沫。血はspawnMeleeBloodと同じ幾何を「ゴーストへ向かって」計算する
                 // (spawnMeleeBloodは向き先がプレイヤー固定のため、同じ規則でspawnBloodを直接呼ぶ)。
@@ -7276,12 +7307,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 距離減衰)もハンドラ側=成立が確定した時だけ出す(不成立の空振りに嘘のCounter!を
                   // 出さない=CLAUDE.md「判定を持つ絵は判定に揃える」)。通常近接ぶんのダメージ/斬撃/血/SEは
                   // 上の共通部で既に出ている=プレイヤーの「スイング(近接ダメージ)+成立(クリ反撃)」の
-                  // 二段構造と同じ。ダメージ式はプレイヤーのカウンター反撃と同式の借用装備版
-                  // (スキル倍率なし=v0.25.2459方針)。消費側: thor/裏3=hidden-bossブロック、idol=idolブロック、
-                  // 天使6=angelBossTick、城ボス系(giantbat)=combatTick.applyGhostBossParry。
+                  // 二段構造と同じ。ダメージ式はプレイヤーのカウンター反撃と**同じ純関数**
+                  // (counterReplyDamage)で、基準銃=計測時ビルドのアクティブ銃・倍率=疑似Playerで評価
+                  // (v0.25.2514で「スキル倍率なし=v0.25.2459方針」を撤去=§2.11訂正)。消費側: thor/裏3=
+                  // hidden-bossブロック、idol=idolブロック、天使6=angelBossTick、城ボス系(giantbat)=
+                  // combatTick.applyGhostBossParry。
                   setGhostCounterClaim({
                     bossId: boundBoss.id, ghostX: gmcx, ghostY: gmcy,
-                    dmg: ghostCounterDamage(gun?.damage), atMs: nowMs,
+                    dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs,
                   });
                 } else if (GHOST_FX_SHAKE_ENABLED) {
                   // 通常ヒットのスイング揺れ(プレイヤーのtriggerCounter末尾と同型・方向=ゴースト→ボス)。
@@ -8202,9 +8235,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 「弾はちょうど倒せる分だけ」の台本も崩れる。味方(escort)の弾も同じ判定を通っていた。
           // また**ダメージ0の弾でクリ判定が走る意味は無い**(味方の演出射撃)ので、そこも落とす。
           const m0CritLocked = !collisionState.m0Unlocked.crit;
+          // v0.25.2514(裁定4): 発射時に確定ヘッドショットと決まった弾(守護霊のPHILL再現)も
+          // 「頭部命中」と同じ扱い=着弾ロールを通さずクリ確定にする。
+          const headshotHit = headshot === true || projectile?.headshot === true;
+          // 裁定4(PHILL・記録専用): プレイヤーのPHILL弾が頭部に当たった回数を計測(率は撃破セッション
+          // 確定時にビルド写しへ焼かれ、守護霊がその確率でヘッドショットを再現する)。headshotは
+          // weaponType==='phill-bullet'(=プレイヤーのPHILL)でしか立たない=守護霊の弾は数えない。
+          if (headshot === true) recordPhillHeadshot();
           const hitCrit = (m0CritLocked || damage <= 0)
             ? false
-            : (baseCrit || trapCritBonus || weakCrit || headshot === true);
+            : (baseCrit || trapCritBonus || weakCrit || headshotHit);
           // スキル: クリティカルD上昇(+0.5) / バーサーカー(失HP%で全攻撃増) / スナイパー(停止敵・遠距離増)。
           const skillPlayer = collisionState.player;
           // §6.10 M33⑩(★8裁定): 護衛NPC弾(weaponKey='escort')はプレイヤーの攻撃ではないため、
@@ -8212,18 +8252,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 乗せない(クリ時は素のクリ倍率のみ)。タレット/ホーミング/ジャンク/援護射撃/跳弾/反射弾は
           // プレイヤー由来なので従来どおり(★9と整合)。
           const isEscortShot = projectile?.weaponKey === 'escort';
-          // BOT_AND_GHOST.md G2: ゴースト銃弾(weaponKey='ghost-gun')もescortと同じ「プレイヤーの
-          // スキル倍率を乗せない」扱いにする。ゴーストが借りるのは装備の damage/interval だけ
-          // (仕様書に「銃=装備中の銃のdamage/intervalで撃つ」とあり、スキル倍率は明記が無いため、
-          // ビルド強化がゴーストにまで二重に乗らないよう安全側=乗せない側を選んだ)。
-          const isAllyOwnedShot = isEscortShot || projectile?.weaponKey === 'ghost-gun';
+          // v0.25.2514(GHOST-BUILD-1・§2.11訂正): 守護霊の弾を isAllyOwnedShot から**撤去**した。
+          // 旧実装(v0.25.2459方針)はescortと同枠で「プレイヤースキル倍率を乗せない」にしていたが、
+          // 社長裁定「ステータス保存する意味ないやん」で廃止=守護霊は**計測時ビルドの倍率を全て乗せる**。
+          // 倍率の主語(疑似Player)は ghostBuild(スナップショット)から作る=本人の現在ビルドではない。
+          // escortは従来どおり倍率なしのまま(裁定は守護霊についてのみ)。
+          const isGhostShot = projectile?.weaponKey === 'ghost-gun';
+          const isAllyOwnedShot = isEscortShot;
+          const ghostAllyForShot = isGhostShot ? collisionState.summons.find(s => s.kind === 'ghost-ally') : undefined;
+          const ghostShotBuild = isGhostShot ? ghostBuildFor(ghostAllyForShot, skillPlayer) : null;
+          // 倍率評価の主語: 守護霊弾=計測時ビルドの疑似Player(位置/HPは実体=距離依存のスナイパー倍率と
+          // 失HP依存のバーサーカー倍率がゴースト基準になる。ゴースト解散後の在弾は最後のビルドで解決)。
+          const shotOwner = ghostShotBuild
+            ? (ghostAllyForShot ? ghostActorPlayer(ghostShotBuild, ghostAllyForShot) : ghostShotBuild.player)
+            : skillPlayer;
           const critMult = hitCrit
             ? (isAllyOwnedShot
                 ? (isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT)
-                : skillCritMult(skillPlayer, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT))
+                : skillCritMult(shotOwner, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT))
             : 1;
           // スキル: コンボマスターは「全攻撃」増加(ユーザー指定)。銃にもフィニッシュコンボ倍率を適用。
-          const comboMasterMult = skillComboMasterMult(skillPlayer, gameTime, collisionState.meleeFinishComboCount, collisionState.meleeFinishComboUntil);
+          // 守護霊はフィニッシュコンボの計数を持たない(0/0=中立1。★未決: ゴースト側のコンボ計数)。
+          const comboMasterMult = isGhostShot
+            ? skillComboMasterMult(shotOwner, gameTime, 0, 0)
+            : skillComboMasterMult(skillPlayer, gameTime, collisionState.meleeFinishComboCount, collisionState.meleeFinishComboUntil);
           // カウンター弾(反射弾)で一撃死するのはプラントだけ(社長指示)。それ以外は通常の反射ダメージで、
           // ボス含め普通に死にうる(社長指示で「プラント以外は死なない」protectionは廃止)。
           const plantCounterKill = !!projectile?.reflected && enemyForFx?.type === 'plant';
@@ -8231,7 +8283,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             ? (enemyForFx?.maxHealth ?? 1) + 1
             : isAllyOwnedShot
               ? damage * critMult
-              : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
+              : damage * critMult * skillOutgoingDamageMult(shotOwner) * sniperGunMult(shotOwner, enemyForFx) * comboMasterMult;
           // §6.21 M46: gun/otherチャネル分類(護衛NPC弾はnull=計測除外)。純関数=classifyProjectileDamageChannel。
           const dmgChannel = classifyProjectileDamageChannel(projectile?.weaponType, projectile?.weaponKey);
           // BOT_AND_GHOST.md §2.8 G2.5: ゴースト銃弾(weaponKey='ghost-gun')だけヘイトの起因を
@@ -9009,7 +9061,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             for (const [summonId, dmg] of perSummon) {
               const before = useGameStore.getState().summons.find(su => su.id === summonId);
-              useGameStore.getState().damageSummon(summonId, dmg);
+              // v0.25.2514(監査項目7): 被弾ノックバックの向き=ダメージ源(接触した敵)の中心。
+              // 同フレームに複数体が触れている場合は最大ダメージを出した敵を源とする(perSummonの畳み込みと同じ基準)。
+              const hitFrom = summonHits
+                .filter(h => h.summonId === summonId)
+                .reduce<{ enemyId: string; damage: number } | null>((best, h) => (best === null || h.damage > best.damage ? h : best), null);
+              const fromEnemy = hitFrom ? enemies.find(e => e.id === hitFrom.enemyId) : undefined;
+              useGameStore.getState().damageSummon(summonId, dmg,
+                fromEnemy ? fromEnemy.x + fromEnemy.width / 2 : undefined,
+                fromEnemy ? fromEnemy.y + fromEnemy.height / 2 : undefined);
               // 実際にダメージが入った時(無敵中でない)だけ被弾バースト。シェイクは描画側が lastHit で出す。
               const after = useGameStore.getState().summons.find(su => su.id === summonId);
               if (before && after && after.health < before.health) {

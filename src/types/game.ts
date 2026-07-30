@@ -196,6 +196,42 @@ export interface Player {
   equipBonus: EquipBonus;
 }
 
+/**
+ * 計測時ビルドの写し(BOT_AND_GHOST.md §2.11 裁定1「攻撃力の基準=計測時のステータス・ビルドを
+ * そのまま再現」)。PlayerProfile.snapshot / BossStyleSlot.snapshot / Summon.ghostBuild が持つ。
+ * **旧snapshot(maxHealth/speed/levelの3項目)の上位互換**=先頭3つは必須、以降は全て任意
+ * (旧プロファイルには無い=欠損可。欠損時の挙動は src/utils/playerBuild.ts のフォールバック規則)。
+ * 純データ(localStorageへJSONで載る)なので関数・クラスは入れない。
+ */
+export interface PlayerBuildSnapshot {
+  maxHealth: number;
+  speed: number;
+  level: number;
+  // ---- v0.25.2514(GHOST-BUILD-1)で追加。全て任意=後方互換 ----
+  /** 所持銃の武器key(weapons順・近接は含めない)。createWeaponで復元できる安定キー。 */
+  gunKeys?: string[];
+  /** アクティブ銃(自動射撃していた銃)のkey。 */
+  activeGunKey?: string;
+  /** 近接武器のkey。 */
+  meleeKey?: string;
+  skills?: SkillKey[];
+  skillLevels?: Partial<Record<SkillKey, number>>;
+  equipment?: EquipLoadout;
+  /** 集計済みの装備効果(再計算不要でそのまま使えるようにビルドごと保存する)。 */
+  equipBonus?: EquipBonus;
+  /** レベルアップで積んだクリ率(武器・装備とは別枠の本体値)。 */
+  critChance?: number;
+  subWeapons?: SubWeaponKey[];
+  subWeaponLevels?: Partial<Record<SubWeaponKey, number>>;
+  /** 計測時のクラス(キャラ固有スキルの評価に使う。絵の選択は従来どおりPlayerProfile.srcClass)。 */
+  characterClass?: CharacterClass;
+  // ---- 裁定4(PHILL): 撃破ラン中の発射数とヘッドショット数(率はrateへ丸めて保存) ----
+  phillShots?: number;
+  phillHeadshots?: number;
+  /** phillHeadshots / phillShots(0..1)。母数0なら未記録=undefined。 */
+  phillHeadshotRate?: number;
+}
+
 // 装備部位 / 系統 / ステータスキー。
 export type EquipSlot = 'body' | 'arms' | 'accessory';
 export type EquipLine =
@@ -681,6 +717,14 @@ export interface Summon {
   // 無敵の終了時刻(Date.now基準)。lastHitの被弾i-frameとは別枠(lastHitを流用すると被弾音/被弾
   // フラッシュのエッジ検知が無傷なのに誤発火するため専用フィールド)。他kindでは常にundefined。
   ghostInvulnUntil?: number;
+  // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 召喚時に載せる「計測時ビルドの写し」。ゴーストの武器・
+  // スキル・装備・クリ率はこれから復元する(欠損=旧プロファイル→召喚時のプレイヤー装備へフォールバック)。
+  ghostBuild?: PlayerBuildSnapshot;
+  // 被弾ノックバック(監査項目7・プレイヤーのdamagePlayerと同式: PLAYER_KNOCKBACK_SPEED/MSで
+  // ダメージ源から弾かれ、updateSummonsが減衰しながら消化する)。他kindでは常にundefined。
+  knockbackVx?: number;
+  knockbackVy?: number;
+  knockbackUntil?: number;
   // ---- G2.6(サブウェポンのオーナー抽象化)。CDは既存の1本を共有=個別CD/在庫は持たない ----
   ghostSubClaim?: boolean;     // 「次のサブ発動1回」をゴーストがオーナーとして使う予約。
   ghostLastSubUseAt?: number;  // ゴーストが最後にサブを実際に使った時刻(ms・Date.now基準)。
@@ -1023,6 +1067,10 @@ export interface Projectile {
   // `projectileHitCritChance` (src/utils/critPenalty.ts) — NOT a fixed roll — so the same shot
   // can crit against one enemy and not another (relevant for piercing/passthrough rounds).
   critChance?: number;
+  // 発射時に「確定ヘッドショット」と決まった弾(BOT_AND_GHOST.md §2.11 裁定4=守護霊のPHILL再現)。
+  // 着弾時ロールを通さずクリ確定にする(プレイヤーのPHILLは着弾位置=頭部リージョンで判定するので
+  // このフラグは使わない=常にundefined)。
+  headshot?: boolean;
   area?: number;
   count?: number;
   // Optional motion modifiers. Axes set `gravity` so they arc upward then

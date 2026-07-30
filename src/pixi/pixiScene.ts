@@ -8081,7 +8081,9 @@ export class PixiScene {
     }
     const knife = this.ghostKnife, slash = this.ghostKnifeSlash, trail = this.ghostKnifeTrail;
     const wpn = this.ghostMeleeWpn;
-    const meleeKey = player.weapons.find(w => w.isMelee)?.key;
+    // v0.25.2514(§2.11 裁定1): 振る絵も**計測時ビルドの近接武器**に揃える(実際に振っている武器と
+    // 見た目を一致させる。ビルド未記録=旧プロファイルの時だけ従来どおり本人の近接武器)。
+    const meleeKey = s.ghostBuild?.meleeKey ?? player.weapons.find(w => w.isMelee)?.key;
     const wtex = meleeKey ? getTexture(`weapons/${meleeKey}`) : null;
     const meleeAt = s.ghostLastMeleeAt ?? 0;
     const mSince = now - meleeAt;
@@ -8138,6 +8140,28 @@ export class PixiScene {
       }
     } else {
       knife.visible = false; slash.visible = false; trail.visible = false; wpn.visible = false;
+    }
+
+    // ⑥ 被弾点滅(監査項目9・v0.25.2514): 敵と同じ hitFlash パターン(本体スプライトと同じ形/変形を
+    //    白で加算オーバーレイ)をそのまま流用する。描画のみ=判定/ダメージ/挙動は1bitも不変。
+    //    霊体の半透明(container.alpha)を継承するので「白く光るが透けたまま」になる。新規テクスチャは
+    //    whiteSilhouette のキャッシュ経由=毎フレーム生成しない(負荷1/10)。
+    {
+      const hf = view.hitFlash;
+      const flashT = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1
+        ? Math.max(0, 1 - (now - s.lastHit) / ENEMY_HIT_FLASH_MS) : 0;
+      if (flashT > 0.01) {
+        hf.texture = this.whiteSilhouette(view.sprite.texture) ?? view.sprite.texture;
+        hf.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
+        hf.position.set(view.sprite.position.x, view.sprite.position.y);
+        hf.scale.set(view.sprite.scale.x, view.sprite.scale.y);
+        hf.skew.set(view.sprite.skew.x, view.sprite.skew.y);
+        hf.rotation = view.sprite.rotation;
+        hf.alpha = flashT * ENEMY_HIT_FLASH_STRENGTH;
+        hf.visible = true;
+      } else if (hf.visible) {
+        hf.visible = false;
+      }
     }
 
     view.reticle.clear();

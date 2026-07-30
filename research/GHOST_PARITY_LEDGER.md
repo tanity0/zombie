@@ -197,27 +197,60 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 
 | 優先 | 項目 | 該当箇所 | 工数感 | 備考 |
 |---|---|---|---|---|
-| 1 | **銃ダメージ倍率層の全復元**(scavMult/skillAttackShooterGunMult/equipBonus.damageMult/skillLastMagazineMult) | weaponUtils.ts `buildGhostGunShots`(528-557)+useGameLoop.ts 8208-8234の`isAllyOwnedShot`分岐撤去 | **M** | §2.11/§10訂正の中心。`useGameStore.getState().player`から都度計算すれば大きな新規実装は不要(既存fireWeaponの式を横展開)。**現在未コミットのGHOST-GUN-PARITY WIPと同一コミットにまとめるのが自然**(既にダメージ計算箇所を触っている)。 |
-| 2 | **銃クリの復元**(critChance算出+着弾時ロール対象化) | weaponUtils.ts 555の`critChance:0`固定を撤去+useGameLoop.ts 8178の`isDirectGunWeaponKey`にghost-gunを含める判断+8219の`isAllyOwnedShot`からghost-gun除外 | **M** | 社長「射撃クリティカルも再現しないと」に直接該当。ボス×0.5+下限5%(CRIT-UNIFY式)もそのまま使える。 |
-| 3 | **近接ダメージ倍率層の全復元**(skillOutgoingDamageMult/meleeComboMult/critChance判定) | useGameLoop.ts 7237-7292(ghost近接ブロック)を`gameStore.ts`の`triggerCounter`系と同じ式に寄せる | **M** | 通常スイングとカウンター反撃の両方に影響。カウンター反撃ダメージ式(`ghostCounter.ts:72-75`)も同時見直しが必要。 |
-| 4 | **装備(equipBonus)の全面適用** | weaponUtils.ts/gameStore.tsの各damage式にequipBonus参照を追加(ghost用) | **M** | 上記1・3と同時実装が効率的(同じ計算式に差し込むだけ)。 |
+| 1 | ✅**済(v0.25.2514)** **銃ダメージ倍率層の全復元**(scavMult/skillAttackShooterGunMult/equipBonus.damageMult/skillLastMagazineMult) | weaponUtils.ts `buildGhostGunShots`(528-557)+useGameLoop.ts 8208-8234の`isAllyOwnedShot`分岐撤去 | **M** | §2.11/§10訂正の中心。`useGameStore.getState().player`から都度計算すれば大きな新規実装は不要(既存fireWeaponの式を横展開)。**現在未コミットのGHOST-GUN-PARITY WIPと同一コミットにまとめるのが自然**(既にダメージ計算箇所を触っている)。 |
+| 2 | ✅**済(v0.25.2514)** **銃クリの復元**(critChance算出+着弾時ロール対象化) | weaponUtils.ts 555の`critChance:0`固定を撤去+useGameLoop.ts 8178の`isDirectGunWeaponKey`にghost-gunを含める判断+8219の`isAllyOwnedShot`からghost-gun除外 | **M** | 社長「射撃クリティカルも再現しないと」に直接該当。ボス×0.5+下限5%(CRIT-UNIFY式)もそのまま使える。 |
+| 3 | ✅**済(v0.25.2514)** **近接ダメージ倍率層の全復元**(skillOutgoingDamageMult/meleeComboMult/critChance判定) | useGameLoop.ts 7237-7292(ghost近接ブロック)を`gameStore.ts`の`triggerCounter`系と同じ式に寄せる | **M** | 通常スイングとカウンター反撃の両方に影響。カウンター反撃ダメージ式(`ghostCounter.ts:72-75`)も同時見直しが必要。 |
+| 4 | ✅**済(v0.25.2514)** **装備(equipBonus)の全面適用** | weaponUtils.ts/gameStore.tsの各damage式にequipBonus参照を追加(ghost用) | **M** | 上記1・3と同時実装が効率的(同じ計算式に差し込むだけ)。 |
 | 5 | **刀モード(一閃ダッシュ/オート斬撃/村雨/フィニッシュ一閃)の再現** | 新規: ghostDriver.tsに刀専用の意思決定分岐+useGameLoop.tsに`triggerKatanaDash`相当のゴースト実行ブロック | **L** | 社長が名指しで「刀とか一閃とかも全部再現して」と明言した最重要項目の一つ。専用ロコモーション(katanaDashUntil系)をghost用に複製する必要があり、既存のカウンター窓経済(CD不使用)ともghostDriverの意思決定モデル(reactionMs/counterChance抽選)が根本的に噛み合わない=設計から要検討。 |
 | 6 | **ワイヤーアンカー(スラム/プラント/ホップ)のゴースト対応** | ghostDriver.ts(移動系への特殊配線)+useGameLoop.tsのwire実行ブロックにownerパラメータ拡張 | **L** | 社長が名指し。§2.8で「移動系=現在オーナー常にプレイヤー=未対応→写す対象」と特記済み。オーナー抽象化(subWeaponOwner.ts)は入口があるが、実際の高速移動処理(katanaDashUntil型のロコモーション上書き)をghost実体に適用する仕組みが無い。 |
-| 7 | **被弾ノックバックの復元** | gameStore.ts `damageSummon`(6022-6042)にknockbackVx/Vy/knockbackUntil相当を追加 | **S** | 社長が名指し。damagePlayerの式をSummon型に横展開するだけ(Summon型にknockback系フィールドの追加が必要な場合はSで収まらずM)。 |
+| 7 | ✅**済(v0.25.2514)** **被弾ノックバックの復元** | gameStore.ts `damageSummon`(6022-6042)にknockbackVx/Vy/knockbackUntil相当を追加 | **S** | 社長が名指し。damagePlayerの式をSummon型に横展開するだけ(Summon型にknockback系フィールドの追加が必要な場合はSで収まらずM)。 |
 | 8 | **弾反射(カウンター家系#1)のゴースト対応** | combatTick.ts `applyEnemyProjectileHits`(447)にghost分岐を追加 | **M** | 社長が名指し(「弾反射も全部再現」)。現状ghostは反射する経路自体が無い=新規実装。反射弾の生成(弾の`reflected`フラグ書き換え等)をゴースト起点で行う設計が必要。 |
-| 9 | **被弾点滅(白フラッシュ)の追加** | pixiScene.ts `drawGhostAlly`(7971-8194)にhitFlash相当を追加 | **S** | 描画のみ。既存`view.hitFlash`パターン(9036-9055)を流用可能。 |
+| 9 | ✅**済(v0.25.2514)** **被弾点滅(白フラッシュ)の追加** | pixiScene.ts `drawGhostAlly`(7971-8194)にhitFlash相当を追加 | **S** | 描画のみ。既存`view.hitFlash`パターン(9036-9055)を流用可能。 |
 | 10 | **気絶敵への近接フィニッシュ(処刑)のゴースト対応** | useGameLoop.ts 7237-7292のghost近接ブロックにfinisher分岐追加 | **S** | 実害は小さい(ghostは基本ボス専属でボスは即死しない設計=CRIT-UNIFY §9.5)が、正本上は欠落。 |
 | 11 | **サブウェポン未対応14種の個別配線**(wire-anchor除く: striker-quick-mag/dog/katana系/whip/alchemy系/shijin/drone-boomerang/homing/shadow-clone/molotov/first-aid-kit/sensor-mine/support-sniper/flare-gun/junk-weapon) | 各サブの発動入口(BOT_AND_GHOST.md §6の表参照) | **L(種によりS〜L)** | 「近接スイング相乗り型」(drone-boomerang/sensor-mine/flare-gun/junk-weapon/shadow-clone)は5-6と共通の近接実行ブロック整備で束ねられる可能性がある=先に近接まわりを整備すると割安。dog/molotov/support-sniper/homingは個別のプレイヤー直読み箇所の置き換えが必要でLサイズ。 |
-| 12 | **スナップショットのビルド拡張**(skills/skillLevels/equipment/equipBonus/critChance/subWeapons/subWeaponLevels) | playerTraits.ts `PlayerProfile.snapshot`型拡張+計測箇所(directorTick.ts等) | **S〜M** | §10で論じたとおり、「召喚時点の"今の"player stateを都度参照する」方式で1〜4を実装するなら**スナップショット拡張自体は不要**になる可能性がある。「その撃破ランのビルドを再現したい」という要求が明確になった場合のみ本項目が必要=先に設計判断を仰ぐのが安い(実装前に★未決として提起すべき)。 |
-| 13 | **被弾時のskillIncomingDamageMult(ナイト/バーサーカー)** | gameStore.ts `damageSummon` | **S** | 12(装備/スキル復元)と合わせて実装すると安い。 |
-| 14 | **画面シェイク(被弾時)の扱い明確化** | ghostCounter.ts / useGameLoop.ts | **S(判断が主)** | 実装というより「除外1(演出)に含めるか」の裁定が先。 |
-| 15 | **PHILL特殊(頭部確定クリ)のゴースト適用可否** | useGameLoop.ts PHILLブロック | **S(判断が主)** | ghostのオート照準は部位判定を持たないため、そもそも概念が成立するか要裁定。 |
+| 12 | ✅**済(v0.25.2514)** **スナップショットのビルド拡張**(skills/skillLevels/equipment/equipBonus/critChance/subWeapons/subWeaponLevels) | playerTraits.ts `PlayerProfile.snapshot`型拡張+計測箇所(directorTick.ts等) | **S〜M** | §10で論じたとおり、「召喚時点の"今の"player stateを都度参照する」方式で1〜4を実装するなら**スナップショット拡張自体は不要**になる可能性がある。「その撃破ランのビルドを再現したい」という要求が明確になった場合のみ本項目が必要=先に設計判断を仰ぐのが安い(実装前に★未決として提起すべき)。 |
+| 13 | ✅**済(v0.25.2514)** **被弾時のskillIncomingDamageMult(ナイト/バーサーカー)** | gameStore.ts `damageSummon` | **S** | 12(装備/スキル復元)と合わせて実装すると安い。 |
+| 14 | ✅**裁定3で決着(出さない)** **画面シェイク(被弾時)の扱い明確化** | ghostCounter.ts / useGameLoop.ts | **S(判断が主)** | 実装というより「除外1(演出)に含めるか」の裁定が先。 |
+| 15 | ✅**済(v0.25.2514・裁定4=率の再現)** **PHILL特殊(頭部確定クリ)のゴースト適用可否** | useGameLoop.ts PHILLブロック | **S(判断が主)** | ghostのオート照準は部位判定を持たないため、そもそも概念が成立するか要裁定。 |
 
 ### 実装前に裁定が必要な★未決(本走査で発見)
 1. **攻撃力の基準**: 「召喚時点の今の装備を借りる」(既存裁定・§3)のままでよいか、「計測時(その撃破ラン)のビルドを再現する」へ変えるか。後者ならスナップショット拡張(項目12)が必須になり、工数が跳ね上がる。
 2. **刀/ワイヤーの実装方式**: ghostDriverの意思決定モデル(reactionMs/counterChance/mobility抽選)とカウンター窓経済/ロコモーション上書き系サブウェポンは設計の前提が異なる。個別に「ゴースト版の簡易モデル」を作るか、既存の状態機械(katanaDashUntil等)をSummon型にも持たせて完全共有するかの方針決定が要る。
 3. **被弾時の画面シェイク/カメラ演出**の要否(除外1の範囲かどうか)。
 4. **PHILL(部位判定武器)をゴーストが装備している時の挙動**(ヘッドショット概念の代替案が必要)。
+
+## 実装ログ: バッチGHOST-BUILD-1(v0.25.2514・優先1-4+項目12-13+項目9+項目7)
+
+**消し込み(✅=このバッチで解消)**
+
+| 項目 | 状態 | 実装 |
+|---|---|---|
+| 12 スナップショットのビルド拡張 | ✅ | `types/game.ts` に `PlayerBuildSnapshot`(旧3項目の上位互換=先頭3つ必須・以降は全て任意で後方互換)。記録は `playerTraits.tickPlayerTraits`(ボス交戦中の毎tickに `snapshotPlayerBuild` の純粋コピー)→ `endSession` で保留レコードへ。消費は `Summon.ghostBuild`(召喚時に `directorTick` が載せる)。 |
+| 1 銃ダメージ倍率層 | ✅ | `weaponUtils.gunShotBaseDamage`(fireWeaponから抽出した**唯一の式**)を `buildGhostGunShots` が疑似Playerで通す=scavenger/attack-shooter/equip.damageMult/last-magazine が乗る。 |
+| 2 銃クリの復元 | ✅ | `weaponUtils.gunShotCritChance`(同じく抽出)で `critChance` を運ぶ。着弾時は既存 `projectileHitCritChance`(ボス×0.5+下限5%)でロール=プレイヤーと同式。`isDirectGunWeaponKey` に `ghost-gun` を追加=トラップ+10%/弱点+10%のロール対象化。`isAllyOwnedShot` から ghost-gun を**撤去**(escortのみ残置)。crit時は `skillCritMult`+`skillOutgoingDamageMult`+`sniperGunMult`(距離はゴースト基準)が乗り、`damageEnemy(crit=true)` 経由で bumpBossCrit(紫蓄積)+ボス移動半減も中央適用される。 |
+| 3 近接ダメージ倍率層 | ✅ | `gameStore.meleeSwingBaseDamage`(5箇所から抽出)+`gameStore.meleeHitCritChance`(4箇所から抽出)を守護霊の近接が共有。クリ抽選が走るようになり(旧: crit=false固定)、金の数字/バーストも出る。 |
+| 4 装備(equipBonus)の全面適用 | ✅ | 上記1・3・カウンター反撃の全式が疑似Playerの `equipBonus` を読む(疑似Playerの equipBonus は**計測時の集計済み値**)。 |
+| 4-6 カウンター反撃ダメージ式 | ✅ | `gameStore.counterReplyDamage`(プレイヤーの6箇所から抽出した唯一の式)へ `ghostCounterDamage` が委譲。基準銃=計測時ビルドのアクティブ銃。 |
+| 13 被弾時 skillIncomingDamageMult | ✅ | `damageSummon` が ghost-ally のみ `skillIncomingDamageMult(buildPseudoPlayer(s.ghostBuild, live))` を適用(錬金術召喚は従来どおり素通し)。 |
+| 7 被弾ノックバック | ✅ | `Summon` に knockbackVx/Vy/Until。`damageSummon(id, amount, fromX, fromY)` が `PLAYER_KNOCKBACK_SPEED/MS` でプレイヤーと同式に付与、`updateSummons` の ghost-ally 分岐が線形減衰で消化(壁解決なし=霊体のすり抜け仕様を維持)。KB中はゴースト自身の移動を止める(プレイヤーが入力を無視されるのと同型)。源の位置は接触/爆発/カプセル/床/敵弾の各経路から渡す。**被弾シェイクは出さない(裁定3)**。 |
+| 9 被弾点滅 | ✅ | `pixiScene.drawGhostAlly` に敵と同じ `hitFlash`(白シルエット加算・`ENEMY_HIT_FLASH_MS`)を流用。描画のみ。 |
+| 1-9 PHILL | ✅(裁定4の範囲) | 計測=`recordPhillShot`(gameStore.firePhillShot 1行)+`recordPhillHeadshot`(useGameLoop 着弾で headshot===true の1行)→ ラン累計を撃破セッションのビルド写しへ `phillHeadshotRate` として焼く。再現=ゴーストがPHILLを持つ時、その確率で `Projectile.headshot=true` を立てて撃つ(着弾ロールを飛ばして確定クリ)。 |
+| 10-1/10-6 武器・サブの保存 | ✅(保存のみ) | ロードアウト(gunKeys/activeGunKey/meleeKey)とサブ(subWeapons/subWeaponLevels)を保存。**銃・近接は召喚時にスナップショットから復元**(「今の装備借用」は欠損時のみのフォールバックへ降格)。サブの選択は「1つの財布」設計のまま(項目11=別バッチ)。 |
+
+**実装メモ(次バッチが踏む前提)**
+- 共通化の要は `src/utils/playerBuild.ts`(純粋・store非依存=記録側と共有)と `src/utils/ghostBuild.ts`(createWeaponで武器を復元・summon.id で1件メモ化)。**倍率は疑似Playerを既存関数へ渡すだけ**で、ゴースト用の式は1本も書いていない(§2.11補足のドクトリン)。
+- 疑似Playerの一時バフ窓(quickMagCritUntil/benkeiBuffUntil/scavengerBuffUntil/knifeCombo*)は**中立化**した(ゴーストが自分で得られない本人の瞬間バフを二重取りしないため)。よって scavenger(弾薬拾得後3秒)は実質×1、弁慶/クイックマガジンは0。将来ゴースト側にこれらの窓を持たせれば同じ式でそのまま効く。
+- 位置/HP依存の倍率(sniperGunMult の距離・berserker の失HP)は `ghostActorPlayer` で**ゴースト実体の値**で評価する。ゴースト解散後に残った在弾は「最後に解決したビルド」で着弾する(メモ化を残す設計)。
+- パッシブ累積(項目10-5: stunDurationMult/ammoDropBonus/scrapMult)は発注のスコープ外=スナップショットに入れていない(疑似Playerでは本人の現在値が使われる)。
+- 守護霊がPHILLを持つ場合、弾の `weaponType` は `gun.category`='phill' のため pixiScene の弾描画は default 分岐(白い丸)になる(PHILL弾の専用絵は 'phill-bullet' 分岐)。**元からの状態**でこのバッチでは変えていない=絵を揃えるなら別途裁定。
+
+## ★未決(GHOST-BUILD-1で発生・社長裁定待ち)
+1. **ゴースト側のコンボ計数**: `skillComboMasterMult`(全攻撃)/`skillMeleeComboMult`(近接)はフィニッシュコンボ数・
+   ナイフコンボ数を要求するが、ゴーストはこの計数を持たないため常に中立(×1)。プレイヤーのコンボを借りると
+   「本人のコンボがゴーストにも乗る」二重取りになるため中立にした。ゴースト自身のコンボ計数
+   (Summonに knifeCombo/finishCombo 相当を持たせる)を作るかは要裁定。
+2. **バーサーカーの失HP基準**: 疑似Playerの health/maxHealth は**ゴースト実体**の値にした(ゴーストが傷つくほど
+   強くなる=「その時のあなた」の写しとして自然な解釈)。「計測時のHP割合で固定」にするなら要裁定。
 
 ## ★未決の裁定(2026-07-30・社長)
 1. **攻撃力の基準=計測時のステータス・ビルドをそのまま再現**(確定)。→ 項目12(スナップショットの

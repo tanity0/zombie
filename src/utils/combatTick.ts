@@ -36,7 +36,7 @@ import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkColli
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { EGG_BLAST_RADIUS } from '../world/mines';
 import {
-  useGameStore, isSeekerActive, skillLevel, skillCritMult, skillOutgoingDamageMult, enemyDeathLabel,
+  useGameStore, isSeekerActive, skillLevel, counterReplyDamage, enemyDeathLabel,
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
   COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
@@ -103,10 +103,15 @@ const findGhostAlly = () => useGameStore.getState().summons.find(s => s.kind ===
  * ゴーストへのボス技ダメージ適用(既存経路に乗せるだけ)。実際にHPが減った時(i-frame外)だけ
  * 既存のsummon被弾表現(青バースト)を出す。死亡時はdamageSummonのfilterが除去=既存の解散経路。
  */
-const damageGhostAllyByBossMove = (ghostId: string, amount: number, burst?: (x: number, y: number) => void): void => {
+// v0.25.2514(監査項目7): fromX/fromY=ダメージ源(爆心/技の起点/弾の位置)。被弾ノックバックの向きに使う
+// (プレイヤーのdamagePlayerと同じ引数の意味)。省略時はノックバックなし=従来挙動。
+const damageGhostAllyByBossMove = (
+  ghostId: string, amount: number, burst?: (x: number, y: number) => void,
+  fromX?: number, fromY?: number,
+): void => {
   const before = useGameStore.getState().summons.find(s => s.id === ghostId);
   if (!before) return;
-  useGameStore.getState().damageSummon(ghostId, amount);
+  useGameStore.getState().damageSummon(ghostId, amount, fromX, fromY);
   const after = useGameStore.getState().summons.find(s => s.id === ghostId);
   if (burst && after && after.health < before.health) {
     burst(after.x + after.width / 2, after.y + after.height / 2);
@@ -128,7 +133,8 @@ export const applyGhostAllyCapsuleHit = (
   const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
   const gr = Math.max(ghost.width, ghost.height) / 2;
   if (distToSegment({ x: gcx, y: gcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= halfWidth + gr) {
-    damageGhostAllyByBossMove(ghost.id, damage, burst);
+    // 被弾KBの源=技の起点(ボス側)=プレイヤー側のカプセル技被弾と同じ「飛んできた方から弾かれる」向き。
+    damageGhostAllyByBossMove(ghost.id, damage, burst, fx0, fy0);
   }
 };
 
@@ -225,7 +231,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           if (gClaim) {
             applyGhostCounterEffect(owner, gacx, gacy, { claim: gClaim, sfxGain: npcSfxDistGain(gacx, gacy, bpcx, bpcy, useGameStore.getState().camera, useGameStore.getState().gameBounds) }, (key, gain) => fx.playSfx(key, gain));
           } else {
-            damageGhostAllyByBossMove(ghostAlly.id, b.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3));
+            damageGhostAllyByBossMove(ghostAlly.id, b.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3), b.x, b.y);
           }
         }
       }
@@ -300,8 +306,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       const e = useGameStore.getState().enemies.find(en => en.id === hit.id);
       if (!e) continue;
       const boss = isBossType(e.type);
-      const critMult = skillCritMult(bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
-      const dmg = Math.max(1, Math.round(cBase * critMult * skillOutgoingDamageMult(bp) * (bp.equipBonus?.damageMult ?? 1)));
+      const dmg = counterReplyDamage(cBase, bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       // CRIT-UNIFY §9.3(社長裁定F): パリィ反撃は確定クリ。ボスは①の効果(半減+CD2倍+紫蓄積)が
       // damageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
@@ -365,7 +370,7 @@ export const applyGlenFloorDamage = (fx: CombatEffects): void => {
           if (h.floorUntil === undefined) continue;
           if (gameTime < h.fireAt || gameTime >= h.floorUntil) continue;
           if (Math.hypot(gcx - h.x, gcy - h.y) > h.radius + gr) continue;
-          damageGhostAllyByBossMove(ghostAlly.id, e.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3));
+          damageGhostAllyByBossMove(ghostAlly.id, e.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3), h.x, h.y);
           break outer; // 1フレーム1ヒット(プレイヤー側と同じ節度)
         }
       }
@@ -536,7 +541,8 @@ export const applyEnemyProjectileHits = (
       const ghostHits = useGameStore.getState().projectiles.filter(p =>
         p.hostile && p.ownerType !== undefined && isEngageableBoss(p.ownerType) && checkCollision(p, ghostAlly));
       for (const proj of ghostHits) {
-        damageGhostAllyByBossMove(ghostAlly.id, proj.damage * rnMult, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3));
+        damageGhostAllyByBossMove(ghostAlly.id, proj.damage * rnMult, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3),
+          proj.x + proj.width / 2, proj.y + proj.height / 2);
         useGameStore.getState().removeProjectile(proj.id);
       }
     }
@@ -813,8 +819,7 @@ export const applyContactDamage = (
       const e = useGameStore.getState().enemies.find(en => en.id === eid);
       if (!e) continue;
       const boss = isBossType(e.type);
-      const critMult = skillCritMult(collPlayer, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
-      const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(collPlayer) * (collPlayer.equipBonus?.damageMult ?? 1)));
+      const dmg = counterReplyDamage(counterBase, collPlayer, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       // CRIT-UNIFY §9.3(社長裁定F): 突進/気絶パリィの反撃も確定クリ。ボスは①の効果(半減+CD2倍+
       // 紫蓄積)がdamageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。

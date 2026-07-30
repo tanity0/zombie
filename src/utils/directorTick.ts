@@ -17,7 +17,7 @@ import { clampRectToPlayableArea } from '../world/playableArea';
 import {
   isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES, WALL_RANK_NAMES_EN,
 } from './wallProgress';
-import type { ActiveEvent, Enemy, EnemyType, GameBounds, Player, Summon } from '../types/game';
+import type { ActiveEvent, Enemy, EnemyType, GameBounds, Player, PlayerBuildSnapshot, Summon } from '../types/game';
 import {
   generateEnemy,
   getEnemyFireProfile,
@@ -628,6 +628,9 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       characterClass: player.characterClass, // v0.25.2467: プロファイルsrcClass(ゴーストの絵)用
       speed: player.speed, level: player.level, // v0.25.2468: 計測時ステータスの写し用
     },
+    // v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元。写し取りはplayerTraits側の
+    // 純関数(snapshotPlayerBuild)がボス交戦中のtickだけ行う=ここは本人オブジェクトを渡すだけ。
+    buildSource: player,
     enemies: state.enemies,
     movementInput: state.inputState.up || state.inputState.down || state.inputState.left || state.inputState.right,
   });
@@ -676,15 +679,21 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // v0.25.2468(社長裁定「HPは計測時のHPを100%再現。HPというか全ステータスをそのまま再現」):
   // プロファイルの計測時スナップショット(maxHealth/speed/level)を100%使う。旧プロファイル等で
   // 無ければ召喚時の本人値へフォールバック(×0.6の減額=GHOST_HP_FRACは廃止)。
-  const snap = (profile as { snapshot?: { maxHealth: number; speed: number; level: number } }).snapshot;
+  // v0.25.2514(§2.11 裁定1): snapshotは「計測時ビルドの写し」(PlayerBuildSnapshot)へ拡張済み。
+  // ステータス3項目の使い方は従来どおり。ビルド本体(武器/スキル/装備/クリ率/PHILL率)は
+  // ghostBuild としてSummonへ載せ、攻撃計算側(useGameLoop/gameStore)が ghostBuild.ts で復元する。
+  // (profileはGhostProfile(既定値)かPlayerProfile(保存済み)の合成=前者にsnapshotは無いので絞る)
+  const snap = (profile as { snapshot?: PlayerBuildSnapshot }).snapshot;
   const ghost: Summon = {
     id: `ghost-ally-${Date.now()}`,
     x: player.x - player.width - 16, y: player.y, width: player.width, height: player.height,
     speed: snap?.speed ?? player.speed,
     health: snap?.maxHealth ?? player.maxHealth,
     maxHealth: snap?.maxHealth ?? player.maxHealth,
-    damage: 0, // kind='ghost-ally'では不使用(実ダメージは都度プレイヤーの現在装備から計算する)
+    damage: 0, // kind='ghost-ally'では不使用(実ダメージは都度ghostBuild=計測時ビルドから計算する)
     kind: 'ghost-ally',
+    // v0.25.2514: 計測時ビルドの写しをそのまま搭載(欠損=旧プロファイルなら消費側が今の装備を借用)。
+    ghostBuild: snap ?? undefined,
     reusedType: 'zombie', // 見た目未使用(pixiSceneがkind==='ghost-ally'を専用分岐で描く)
     level: snap?.level ?? player.level,
     createdAt: Date.now(),

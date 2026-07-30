@@ -1,5 +1,51 @@
 # Development Log
 
+## v0.25.2514 — GHOST-BUILD-1: 守護霊が「計測時ビルド丸ごと」で戦う+ダメージ全補正【2026-07-30 21:06 JST】
+
+- **発注**: research/GHOST_PARITY_LEDGER.md 優先1-4+項目12-13+項目9+項目7(裁定1/3/4の実装)。
+  正本=BOT_AND_GHOST.md §2.11(完全パリティ・訂正版)+§2.11補足ドクトリン「写すな、共通化しろ」。
+- **スナップショットのビルド化(項目12・裁定1)**: `types/game.ts` に **`PlayerBuildSnapshot`**(旧
+  {maxHealth,speed,level}の**上位互換**=先頭3項目必須・以降は全て任意で旧プロファイル互換)。中身=
+  武器ロードアウト(gunKeys/activeGunKey/meleeKey)・skills+skillLevels・equipment+equipBonus・
+  critChance・subWeapons+subWeaponLevels・characterClass・PHILL計測(shots/headshots/rate)。
+  記録=`playerTraits`(ボス交戦中の毎tickに純粋コピー→endSessionで確定・PHILL率を焼く)、
+  搭載=`directorTick`が召喚時に `Summon.ghostBuild` へ載せる、復元=`ghostBuild.ts`。
+- **「今の装備借用」廃止**: 銃・近接は**スナップショットのロードアウト**(`createWeapon`で復元)。
+  ロードアウト未記録(旧プロファイル)の時だけ従来の借用へフォールバック。
+- **ダメージ全補正(優先1-4)**: ゴースト用の式は**1本も書いていない**。プレイヤーの式を共通化して
+  疑似Player(計測時ビルド)を渡す形に統一した——新規抽出=`weaponUtils.gunShotBaseDamage` /
+  `gunShotCritChance`(fireWeaponから)・`gameStore.meleeSwingBaseDamage`(5箇所から)/
+  `meleeHitCritChance`(4箇所から)/`counterReplyDamage`(6箇所から)。**プレイヤー側は式・順序不変**
+  (浮動小数の加算順も保ったのでビット一致)。`useGameLoop` の `isAllyOwnedShot` から ghost-gun を撤去
+  (escortは倍率なしのまま)。`isDirectGunWeaponKey` に ghost-gun を追加=トラップ+10%/弱点+10%の
+  着弾ロール対象化。着弾クリは既存 `projectileHitCritChance`(ボス×0.5+下限5%)でロールし、
+  `damageEnemy(crit=true)` 経由で bumpBossCrit(紫蓄積)+ボス移動半減も中央適用される。
+  位置/HP依存(sniper距離・berserker失HP)は `ghostActorPlayer` でゴースト実体基準に評価。
+- **PHILL(裁定4)**: `recordPhillShot`(firePhillShot 1行)+`recordPhillHeadshot`(着弾 headshot===true
+  1行)でラン累計を計測→撃破セッションのビルド写しへ率を焼く。ゴーストがPHILLを持つ時、その確率で
+  `Projectile.headshot=true` を立てて撃つ(着弾ロールを飛ばして確定クリ)。
+- **被弾側(項目13/7/9)**: `damageSummon` に skillIncomingDamageMult(計測時スキルで評価・ghost-allyのみ)+
+  被弾ノックバック(`PLAYER_KNOCKBACK_SPEED/MS`・源の位置は接触/爆発/カプセル/床/敵弾の各経路から渡す)。
+  消化は `updateSummons` の ghost-ally 分岐(線形減衰・壁解決なし=霊体すり抜けを維持)、KB中は自分の
+  移動を止める。**被弾シェイクは出さない(裁定3)**。被弾点滅は `pixiScene.drawGhostAlly` に敵と同じ
+  hitFlash を流用(描画のみ)。振る近接武器の絵もビルドの武器に揃えた。
+- 負荷: **1/10**(simulation)。ビルド復元は召喚1体につき1回メモ化(`ghostBuild.ts`)、疑似Playerは
+  1スプレッド/評価。計測の写しはボス交戦中のtickのみ(ゴーストランでは作らない)。描画は既存プールの
+  hitFlashスプライト1枚を使い回すだけ=新規レイヤー/強glowなし。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(既存8警告)。新規テスト
+  `ghostBuild.test.ts`(13件=写し/疑似Player/ロードアウト復元/メモ化/**同じビルドならプレイヤーと
+  ゴーストの倍率が一致**)・`ghostDamageTaken.test.ts`(6件=被ダメ補正/ノックバック/i-frame)、
+  `ghostGunShots.test.ts` に4件追加。関連16ファイル 271件パス(playerTraits/ghostDriver/ghostCounter/
+  ghostBossParry/combatCritParity/critPenalty/bossHate/botTelemetry/constitution/sim等)。
+- 自己点検(規律5): 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に**抵触しない**——変更は守護霊の
+  戦闘計算と被弾表現のみで、スポーン/countCap/台本/しきい値には一切触れていない。ただし**守護霊の実火力は
+  上がる**(スキル倍率・装備・クリが乗るようになったため)=ボスHP×1.6(GHOST_BOSS_HP_MULT)との釣り合いは
+  実機確認事項として社長へ申し送り。
+- **★未決(GHOST_PARITY_LEDGER.md末尾に記載)**: (1)ゴースト側のコンボ計数(comboMasterMult/
+  meleeComboMultが計数を持たないため常に中立×1) (2)バーサーカーの失HP基準(ゴースト実体のHPで評価した)。
+- 次: 優先5(刀モード)・6(ワイヤー)=Summon型への状態共有(裁定2)、8(弾反射)、10(気絶フィニッシュ)、
+  11(未対応サブ14種)。
+
 ## v0.25.2513 — §2.14 討伐記録の独立メニュー化+オンライン構想をメモ(文書のみ・未確定)【2026-07-30 21:00 JST】
 
 - **社長構想(2026-07-30・「薄ら考えている」段階=未裁定)**: オンライン化を見据え、討伐記録を

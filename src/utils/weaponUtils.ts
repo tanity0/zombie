@@ -112,7 +112,12 @@ export const GUN_KEYS_BY_CATEGORY: Record<AmmoType, string[]> = {
 // weaponKeyだけでは実銃と区別できない(既存のスキル倍率適用等でも同様に区別していない=本バッチ由来の
 // 新しい曖昧さではない)。この2つは着弾時ロール対象に紛れ込むが、critChanceを持たない(0扱い)ため
 // このバッチが問題にしていた生成時crit boolean側には影響しない。
-const DIRECT_GUN_WEAPON_KEYS = new Set<string>(Object.values(GUN_KEYS_BY_CATEGORY).flat());
+// v0.25.2514(GHOST-BUILD-1・§2.11訂正): 守護霊の銃弾('ghost-gun')も**この集合に含める**。
+// 守護霊はプレイヤーの戦闘仕様の完全な写し(除外は演出/運用系の2群のみ)で、撃っている銃自体は
+// この10種のいずれか=weaponKeyを'ghost-gun'にしているのは計測除外/ヘイト分離のための別名にすぎない。
+// これでトラップ拘束+10%・弱点+10%の着弾ロールがプレイヤーと同じ条件で走る。
+export const GHOST_GUN_WEAPON_KEY = 'ghost-gun';
+const DIRECT_GUN_WEAPON_KEYS = new Set<string>([...Object.values(GUN_KEYS_BY_CATEGORY).flat(), GHOST_GUN_WEAPON_KEY]);
 export const isDirectGunWeaponKey = (weaponKey: string | undefined): boolean =>
   weaponKey !== undefined && DIRECT_GUN_WEAPON_KEYS.has(weaponKey);
 // Tier 昇順。MELEE_KEYS[tier] が「1段階上」のキー(tier は 1 始まり=0-indexed の次要素)。
@@ -318,6 +323,30 @@ export const projectileFlightStats = (
   speed: (weapon.projectileSpeed || 520) * PROJECTILE_SPEED_MULT,
 });
 
+// GHOST-BUILD-1(共通ヘルパ・BOT_AND_GHOST.md §2.11補足「写すな、共通化しろ」): 発射時の素ダメージ。
+// fireWeaponの `shotDamage` の式を値を変えずに抽出しただけ。プレイヤーの発射と守護霊の射撃
+// (buildGhostGunShots=計測時ビルドの疑似Playerを渡す)が**同じ1本の式**を通る。
+//  = 武器damage × スカベンジャー(キャラ固有) × アタックシューター × 装備(火力)ダメージ倍率 × ラストマガジン
+export const gunShotBaseDamage = (
+  weapon: Pick<Weapon, 'damage' | 'magazine'>,
+  player: Player,
+  gameTime: number,
+): number =>
+  weapon.damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player)
+  * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
+
+// GHOST-BUILD-1(共通ヘルパ): 発射時のクリ率(0..1)。fireWeaponの `critChance` の式を値を変えずに抽出。
+//  = 武器基礎 + 本体(レベルアップ)+ 装備(クリ系)+ クイックマガジン + 弁慶 + ウォームアップ
+// 命中時は projectileHitCritChance(ボスは×0.5+下限5%)でロールされる=呼び出し側は数値を運ぶだけ。
+export const gunShotCritChance = (
+  weapon: Pick<Weapon, 'critChance'>,
+  player: Player,
+  gameTime: number,
+): number => Math.min(1,
+  (weapon.critChance ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0)
+  + (player.quickMagCritUntil > gameTime ? 0.10 : 0)
+  + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime));
+
 // Fire a single weapon this tick (cooldown- and ammo-aware). Melee weapons
 // never fire here — they're handled by the counter. Guns auto-target the
 // nearest enemy, roll crits per pellet, and burn one round of their ammo
@@ -358,22 +387,22 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     useGameStore.setState(state => ({ player: { ...state.player, fireShooterCdUntil: gtFire + 3000 } }));
   }
   const FIRE_SHOOTER_RADIUS = 66; // = HEAVY_GRENADE_RADIUS
-  // キャラ固有 スカベンジャー(necromancer): 弾薬取得後3秒は銃ダメージ ×1.1。発射時の素ダメージへ反映。
-  const scavMult = scavengerGunMult(player, gtFire);
-  // スキル アタックシューター: 銃ダメージ +10/20/30%(Lv)。
-  // 装備(腕・火力系)のダメージ倍率を素ダメージへ反映。中立=1。
-  // スキル ラストマガジン: 弾倉最後の1発(この発射で空になるトリガー1回分=発射前の残弾1)×2.0/2.5/3.0。
-  // ショットガンは最終シェルの全ペレットに乗る(shotDamage共通)。命中時の他倍率とは乗算(§6.8 M31)。
-  const shotDamage = weapon.damage * scavMult * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
+  // 発射時の素ダメージ(GHOST-BUILD-1で共通ヘルパへ抽出=式・値は不変):
+  //   キャラ固有 スカベンジャー(necromancer): 弾薬取得後3秒は銃ダメージ ×1.1。
+  //   スキル アタックシューター: 銃ダメージ +10/20/30%(Lv)。
+  //   装備(腕・火力系)のダメージ倍率。中立=1。
+  //   スキル ラストマガジン: 弾倉最後の1発(この発射で空になるトリガー1回分=発射前の残弾1)×2.0/2.5/3.0。
+  //   ショットガンは最終シェルの全ペレットに乗る(shotDamage共通)。命中時の他倍率とは乗算(§6.8 M31)。
+  const shotDamage = gunShotBaseDamage(weapon, player, gtFire);
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
     const pd = shotDirections[i];
     const gt = useGameStore.getState().gameTime;
-    const quickMagCritBonus = player.quickMagCritUntil > gt ? 0.10 : 0;
-    // 装備(アクセ・クリ系)のクリ率は player.critChance とは別枠で加算(装備内上限とスキル枠は独立)。
-    // スキル ウォームアップ: 出撃から60秒間クリ率+20%(§6.8 M31)。
-    const critChance = Math.min(1, (weapon.critChance ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0) + quickMagCritBonus + skillBenkeiCritBonus(player, gt) + skillWarmUpCritBonus(player, gt));
+    // 発射時のクリ率(GHOST-BUILD-1で共通ヘルパへ抽出=式・値は不変):
+    //   武器基礎 + 本体(レベルアップ)+ 装備(アクセ・クリ系。player.critChanceとは別枠で加算)
+    //   + クイックマガジン + 弁慶 + ウォームアップ(出撃から60秒間+20%・§6.8 M31)。
+    const critChance = gunShotCritChance(weapon, player, gt);
     projectiles.push({
       id: `proj-${weapon.id}-${now}-${i}`,
       x: player.x + player.width / 2 - size / 2,
@@ -520,10 +549,12 @@ export const buildJunkWeaponPellets = (
 // projectileSize/passthrough・pierce)を無視していた5差のうち4つをここで揃える(社長裁定)。
 // 借用銃(装備中のgun)そのものの飛翔特性なので computeShotDirections/projectileFlightStats を
 // プレイヤーと共有する。
-// 【注記v0.25.2511】ダメージ=素damage・critChance=0 は本コミット時点の暫定。完全パリティ裁定
-// (BOT_AND_GHOST.md §2.11訂正=スキル倍率・装備・射撃クリも再現/攻撃力は計測時ビルド基準)により、
-// 次バッチGHOST-BUILD-1でスナップショットビルドの倍率・クリ率へ差し替える(飛翔特性の共通化=本関数の
-// 骨格はそのまま使う)。貫通はweapon自体のpassthrough/pierce(ここは確定仕様)。
+// 【v0.25.2514 GHOST-BUILD-1】残り1差(ダメージ倍率・クリ率)を解消: `build`(計測時ビルドの疑似Player+
+// gameTime)を渡すと、素ダメージ/クリ率をプレイヤーの発射と**同じ共通ヘルパ**
+// (gunShotBaseDamage/gunShotCritChance)で算出する=スキル倍率・装備ボーナス・射撃クリが再現される
+// (§2.11訂正)。buildを省略した場合のみ旧挙動(素damage・crit無し)。
+// headshot=裁定4(PHILL): 発射時に確定ヘッドショットと決まった弾に印を付ける(着弾側がロールを飛ばす)。
+// 貫通はweapon自体のpassthrough/pierce(確定仕様)。
 // weaponKeyは'ghost-gun'固定(計測除外/ヘイト分離は呼び出し元=useGameLoopが別途行う=不変)。
 // 副作用なし(弾薬/クールダウンは呼び出し元がghostLastShotAt等で別管理・ここでは触らない)。
 export const buildGhostGunShots = (
@@ -532,9 +563,12 @@ export const buildGhostGunShots = (
   baseDir: { x: number; y: number },         // 照準方向(正規化済み)
   now: number,
   idPrefix: string,                          // 弾idの一意化(呼び出し元がゴーストid等を渡す)
+  build?: { player: Player; gameTime: number; headshot?: boolean },
 ): Projectile[] => {
   const { size, speed } = projectileFlightStats(gun);
   const dirs = computeShotDirections(gun, baseDir);
+  const damage = build ? gunShotBaseDamage(gun, build.player, build.gameTime) : gun.damage;
+  const critChance = build ? gunShotCritChance(gun, build.player, build.gameTime) : 0;
   return dirs.map((direction, i) => ({
     id: `${idPrefix}-${now}-${i}`,
     x: originX - size / 2,
@@ -542,7 +576,7 @@ export const buildGhostGunShots = (
     width: size,
     height: size,
     speed,
-    damage: gun.damage,
+    damage,
     direction,
     weaponType: gun.category as WeaponType,
     weaponKey: 'ghost-gun',
@@ -553,7 +587,8 @@ export const buildGhostGunShots = (
     pierce: gun.pierce,
     hostile: false,
     reflected: false,
-    critChance: 0,
+    critChance,
+    ...(build?.headshot ? { headshot: true } : {}),
   }));
 };
 

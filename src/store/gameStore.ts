@@ -28,7 +28,12 @@ import {
   notifyMoveDamage, recordWireAnchorUse, recordShieldBash, recordShieldBashDamage,
   // G5(BOT_AND_GHOST.md §2.10・記録専用): ボス撃破の通知。挙動は一切変えない(session=null時はno-op)。
   notifyBossClear,
+  // 裁定4(§2.11・記録専用): PHILLの発射数(ヘッドショット数はuseGameLoopの着弾側でフックする)。
+  recordPhillShot,
 } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a/G5
+// v0.25.2514(§2.11 裁定1): 計測時ビルドの疑似Player(被ダメ補正の主語)。純関数・store非依存。
+import { buildPseudoPlayer } from '../utils/playerBuild';
+import { clearGhostBuildCache } from '../utils/ghostBuild'; // ラン境界でビルドのメモ化を捨てる
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
 import { playerAsOwner, ownerCenterX, ownerCenterY, ownerFootY } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { stepSpeedRamp, effectiveRampFrac, rampedBonusMult } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
@@ -1965,6 +1970,47 @@ const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
 const GRENADE_BOUNCE_DAMPING = 0.86;
 const GRENADE_ROLL_DRAG = 1.45;
 const TRAP_ROOT_CRIT_BONUS = 0.10;
+
+/**
+ * 近接ヒットの実効クリ率(唯一の式・v0.25.2514で4箇所の同型コードから抽出=値は不変)。
+ *  = min(1, 武器基礎 + 本体(レベルアップ)+ トラップ拘束(+10%)+ 弱点(近接+10%)
+ *           + 弁慶 + ウォームアップ + ナイフマスター) に敵側クリペナルティを適用。
+ * ナイフ/分身/刀/鞭のスイングと**守護霊の近接スイング**が同じ1本を通る
+ * (BOT_AND_GHOST.md §2.11補足「写すな、共通化しろ」=ゴースト用に式を複製しない)。
+ */
+export const meleeHitCritChance = (
+  meleeCritChance: number,
+  player: Player,
+  gameTime: number,
+  enemy: Enemy,
+): number => {
+  const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
+  const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
+  return applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+};
+
+/**
+ * 近接スイングの素ダメージ(唯一の式・v0.25.2514で5箇所の同型コードから抽出=値は不変)。
+ *  = 武器damage(既定6) × ストライカー(キャラ固有・弾切れ時×1.5) × 装備(腕・火力系)ダメージ倍率
+ * プレイヤーの近接と**守護霊の近接**が同じ1本を通る(§2.11補足「写すな、共通化しろ」)。
+ */
+export const meleeSwingBaseDamage = (melee: Weapon | undefined, player: Player): number =>
+  (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1);
+
+/**
+ * カウンター反撃(パリィ成立)のダメージ(唯一の式・v0.25.2514で6箇所の同型コードから抽出=値は不変)。
+ *  = max(1, round(基準銃damage(既定12) × クリ倍率(スキル込み) × バーサーカー等 × 装備ダメージ倍率))
+ * プレイヤーの全パリィ経路(弾反射/着地/突進/thor/裏3/idol/天使6)と**守護霊のカウンター反撃**
+ * (ghostCounter.ghostCounterDamage)が同じ1本を通る(§2.11補足「写すな、共通化しろ」)。
+ */
+export const counterReplyDamage = (
+  baseGunDamage: number | undefined,
+  player: Player,
+  critBase: number,
+): number => Math.max(1, Math.round(
+  (baseGunDamage ?? 12) * skillCritMult(player, critBase) * skillOutgoingDamageMult(player) * (player.equipBonus?.damageMult ?? 1),
+));
+
 const weaponTierLabel = (tier?: number): string => `T${tier ?? 1}`;
 const weaponTierColor = (tier?: number): string => {
   switch (tier ?? 1) {
@@ -2509,7 +2555,7 @@ const applySlasherTimedStrike = (
   // 追撃は伸びたまま=社長指示)。未記録(0)なら従来どおり現在の射程にフォールバック。
   const meleeRange = player.slasherReach > 0 ? player.slasherReach : huntingMeleeRadius(player);
   const melee = player.weapons.find(w => w.isMelee);
-  const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1);
+  const meleeDamage = meleeSwingBaseDamage(melee, player);
   const comboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
   const dmg = meleeDamage * SLASHER_MULTS[step] * skillOutgoingDamageMult(player) * comboMult;
   const kbMult = KNOCKBACK_SPEED / BULLET_KNOCKBACK_SPEED; // 通常近接相当のノックバック
@@ -2955,7 +3001,9 @@ interface GameState {
   updateAlchemyChannel: (startedAt: number) => void;
   summonAlchemy: () => void;
   updateSummons: (deltaTime: number) => void;
-  damageSummon: (id: string, amount: number) => void;
+  // fromX/fromY=ダメージ源の位置(省略可)。守護霊(ghost-ally)の被弾ノックバックの向きに使う
+  // (プレイヤーのdamagePlayerと同じ引数の意味・v0.25.2514 監査項目7)。
+  damageSummon: (id: string, amount: number, fromX?: number, fromY?: number) => void;
 
   // Weapon actions
   fireWeapons: (currentTime: number) => void;
@@ -3970,7 +4018,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const melee = player.weapons.find(w => w.isMelee);
-    const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1);
+    const meleeDamage = meleeSwingBaseDamage(melee, player);
     const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
     const now = Date.now();
     const r2 = SKATER_BASH_RANGE * SKATER_BASH_RANGE;
@@ -4077,7 +4125,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   skaterBoardHit: (x, y, dirX, dirY) => {
     const player = get().player;
     const melee = player.weapons.find(w => w.isMelee);
-    const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1);
+    const meleeDamage = meleeSwingBaseDamage(melee, player);
     const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
     const now = Date.now();
     const r2 = SKATEBOARD_BASH_RANGE * SKATEBOARD_BASH_RANGE;
@@ -4188,7 +4236,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
-    const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1); // キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率
+    const meleeDamage = meleeSwingBaseDamage(melee, player); // キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const meleeRange = huntingMeleeRadius(player);
@@ -4713,17 +4761,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // Melee weapons carry a fixed crit chance (varies by weapon). A crit
       // multiplies the swing's damage and pops a gold number.
-      const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil
-        ? TRAP_ROOT_CRIT_BONUS
-        : 0;
-      // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
-      const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
+      // クリ率の合成(武器基礎+本体+トラップ拘束+10%+弱点+10%+弁慶+ウォームアップ+ナイフマスター)は
+      // meleeHitCritChance が唯一の出どころ(v0.25.2514で抽出=守護霊の近接と共有・値は不変)。
       // 訓練(M0)の封印+台本(社長指示v0.25.2293): クリティカルは**教わるまで出ない**。
       // その代わり**近接3発目は必ずクリティカル**にして、そのまま近接フィニッシュの教習へ繋げる。
       // (m0CritLocked が false=通常ステージ/解禁後 なら、従来どおり確率で決まる。)
       const crit = m0CritLocked
         ? m0ForceCritNow
-        : Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+        : Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       // §5.21-追補4: 非スタン(=非フィニッシュ)の通常近接チップダメージ。finishKillOnly個体はHP1で踏みとどまる。
@@ -5007,7 +5052,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { player, gameTime, enemies } = get();
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player);
-    const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1);
+    const meleeDamage = meleeSwingBaseDamage(melee, player);
     const meleeCritChance = melee?.critChance ?? 0;
     const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
     const meleeRange = huntingMeleeRadius(player);
@@ -5062,10 +5107,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed.push({ enemy, finisher: true });
         continue;
       }
-      const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
-      // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
-      const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+      const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       // §5.21-追補4: 非スタンの通常近接チップ(分身の自動攻撃)。finishKillOnly個体はHP1で踏みとどまる。
@@ -5451,15 +5493,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死(刀)
         continue;
       }
-      const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil
-        ? TRAP_ROOT_CRIT_BONUS
-        : 0;
-      // 刀のクリ率 = レベル別基礎(10/20/30%) + プレイヤーのレベルアップ
-      // クリティカル率アップ(player.critChance) + トラップ拘束ボーナス。
-      // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
-      const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
+      // 刀のクリ率 = レベル別基礎(10/20/30%) + プレイヤーのレベルアップ クリティカル率アップ
+      // + トラップ拘束 + 弱点(近接+10%) + 弁慶 + ウォームアップ + ナイフマスター
+      // (合成はmeleeHitCritChanceが唯一の出どころ=v0.25.2514で抽出・値は不変)。
       const crit = Math.random() <
-        applyEnemyCritPenalty(Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+        meleeHitCritChance(KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)], player, gameTime, enemy);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
@@ -5679,10 +5717,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死(鞭)
         continue;
       }
-      const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
-      // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
-      const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+      const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       // §5.21-追補4: 非スタンの通常鞭打ち。finishKillOnly個体はHP1で踏みとどまる。
@@ -5927,7 +5962,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       // BOT_AND_GHOST.md G2: ghost-ally(kind='ghost-ally')はここでは駆動しない(専用の
       // ghostDriver.ts + useGameLoop の専用ブロックが移動/攻撃を決める)。ここは素通し(このtickは
       // 何もしない)にして、錬金術召喚(normal/rare)の追従/接触ダメージAIに巻き込まれないようにする。
-      if (s0.kind === 'ghost-ally') { nextSummons.push(s0); continue; }
+      // v0.25.2514(監査項目7): 例外として**被弾ノックバックの消化だけ**はここで行う(プレイヤーの
+      // movePlayerと同式=残り時間で線形減衰する速度で滑る)。霊体はオブジェクトをすり抜ける仕様
+      // (v0.25.2469)なので壁解決はしない。KB中はゴースト自身の移動を止める(=プレイヤーが被弾KB中に
+      // 入力を無視されるのと同じ)——その判定はuseGameLoopのゴーストブロック側。
+      if (s0.kind === 'ghost-ally') {
+        const kbUntil = s0.knockbackUntil ?? 0;
+        if (now < kbUntil) {
+          const decay = Math.max(0, (kbUntil - now) / PLAYER_KNOCKBACK_MS); // 1→0
+          nextSummons.push({
+            ...s0,
+            x: s0.x + (s0.knockbackVx ?? 0) * decay * deltaTime,
+            y: s0.y + (s0.knockbackVy ?? 0) * decay * deltaTime,
+          });
+        } else {
+          nextSummons.push(s0);
+        }
+        continue;
+      }
       if (s0.kind === 'rare') {
         if (now >= (s0.expiresAt ?? 0)) continue; // 10秒で消滅
         // 吸引: レア中心へ PULL_RANGE 内の敵を最大N体寄せる(ダメージなし)。
@@ -6019,11 +6071,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  damageSummon: (id, amount) => {
+  damageSummon: (id, amount, fromX, fromY) => {
     const now = Date.now();
     // BOT_AND_GHOST.md G2: ghost-ally(kind='ghost-ally')もHP制なので normal と同じ被弾/消滅の枠へ
     // 含める(i-frame・health<=0で消滅=「ゴーストHP0で解散」の土台)。rareは対象外のまま(既存挙動不変)。
     const isHittable = (s: Summon): boolean => s.kind === 'normal' || s.kind === 'ghost-ally';
+    const livePlayer = get().player;
     set(state => ({
       summons: state.summons
         .map(s => {
@@ -6035,7 +6088,28 @@ export const useGameStore = create<GameState>((set, get) => ({
           // v0.25.2489(社長裁定「同じ仕様になってないのは漏れ」): カウンター成立の付与無敵
           // (プレイヤーのinvulnerable相当)。lastHitを打刻しない=被弾音/被弾フラッシュも出ない(無傷)。
           if (now < (s.ghostInvulnUntil ?? 0)) return s;
-          return { ...s, health: s.health - amount, lastHit: now };
+          // v0.25.2514(監査項目13・§2.11): 守護霊は被ダメ補正(ナイト×0.8/バーサーカー×1.2)も
+          // プレイヤーと同じ純関数で受ける。主語は**計測時ビルド**の疑似Player(スキルはその撃破ランのもの)。
+          // 錬金術召喚(kind='normal')は対象外=従来どおり素通し(パリティの対象は守護霊のみ)。
+          const dealt = (s.kind === 'ghost-ally' && amount > 0)
+            ? amount * skillIncomingDamageMult(buildPseudoPlayer(s.ghostBuild, livePlayer))
+            : amount;
+          // v0.25.2514(監査項目7・§2.11): 被弾ノックバック。プレイヤーのdamagePlayerと同式
+          // (ダメージ源から離れる向き × PLAYER_KNOCKBACK_SPEED を PLAYER_KNOCKBACK_MS かけて減衰)。
+          // 消化は updateSummons(ghost-ally分岐)。被弾シェイクは出さない(裁定3=除外1の演出枠)。
+          let kb: Partial<Summon> = {};
+          if (s.kind === 'ghost-ally' && dealt > 0 && fromX !== undefined && fromY !== undefined) {
+            const scx = s.x + s.width / 2, scy = s.y + s.height / 2;
+            let dx = scx - fromX, dy = scy - fromY;
+            const d = Math.hypot(dx, dy);
+            if (d < 0.001) { dx = 0; dy = -1; } else { dx /= d; dy /= d; }
+            kb = {
+              knockbackVx: dx * PLAYER_KNOCKBACK_SPEED,
+              knockbackVy: dy * PLAYER_KNOCKBACK_SPEED,
+              knockbackUntil: now + PLAYER_KNOCKBACK_MS,
+            };
+          }
+          return { ...s, health: s.health - dealt, lastHit: now, ...kb };
         })
         .filter(s => !isHittable(s) || s.health > 0),
     }));
@@ -6637,6 +6711,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
       });
     }
+    // 裁定4(§2.11・記録専用): PHILLの発射数を1つ数える(ヘッドショット数は着弾側=useGameLoopでフック)。
+    // 率は撃破セッション確定時にビルド写しへ焼かれ、守護霊がその確率でヘッドショットを再現する。
+    recordPhillShot();
     const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
     set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, lastFired: now, magazine: nextMag } : w) } }));
     if (nextMag <= 0) get().autoSwitchIfDry(); // 空なら既存経路でリロード
@@ -12043,6 +12120,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // BOT_AND_GHOST.md G1: 前ランの未確定セッション(交戦中に終了した場合等)+未決算の保留バッファを
     // 持ち越さない。
     resetPlayerTraits();
+    // v0.25.2514(GHOST-BUILD-1): 前ランのゴーストビルド(メモ化1件)も持ち越さない。
+    clearGhostBuildCache();
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
     // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。

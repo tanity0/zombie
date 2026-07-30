@@ -17,7 +17,7 @@
 // (giantbatのようにENEMY_ATTACK_SPEED_MULTを掛けも割りもしない)。
 import type { Enemy } from '../types/game';
 import {
-  useGameStore, skillCritMult, skillOutgoingDamageMult, skillLevel, enemyDeathLabel,
+  useGameStore, counterReplyDamage, skillLevel, enemyDeathLabel,
   BOSS_CRIT_DAMAGE_MULT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult, bossCritCdMult,
 } from '../store/gameStore';
@@ -275,8 +275,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
     counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
   } }));
   const counterBase = getActiveGun(cp)?.damage ?? 12;
-  const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
-  const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
+  const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
   useGameStore.getState().damageEnemy(boss.id, dmg, false, true);
   useGameStore.getState().spawnDamageNumber(bcx, boss.y, dmg, true);
   sfx.reward();

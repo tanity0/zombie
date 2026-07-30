@@ -16,8 +16,9 @@
 //   - プレイヤーのシステム値(無敵/counterCooldownEnd/counter-masterリファンド/コンボ/
 //     lastCounterSuccessTime/計測notify)は1bitも触らない=per-bossハンドラのghost分岐でスキップする。
 //   - 成立演出(青Counter!+金クリ層)はハンドラ側=成立が確定した時だけ出す(嘘のCounter!を出さない)。
+import type { Player } from '../types/game';
 import {
-  useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS,
+  useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage,
   COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
 } from '../store/gameStore';
 
@@ -64,15 +65,21 @@ export const consumeGhostCounterClaim = (bossId: string, nowMs: number): GhostCo
 export const clearGhostCounterClaim = (): void => { pendingClaim = null; };
 
 /**
- * 守護霊カウンターの確定クリダメージ。プレイヤーのカウンター反撃と同式
- * (counterBase × ボスクリ倍率 BOSS_CRIT_DAMAGE_MULT)を、ゴーストの既存方針(v0.25.2459:
- * 借用装備の生damage・スキル倍率 skillCritMult/skillOutgoingDamageMult/equipBonus は乗せない)に
- * 合わせたもの。12 はプレイヤー側 `getActiveGun(cp)?.damage ?? 12` と同じフォールバック。
+ * 守護霊カウンターの確定クリダメージ。**プレイヤーのカウンター反撃と同じ純関数**
+ * (gameStore.counterReplyDamage = 基準銃damage × クリ倍率(スキル込み) × バーサーカー等 × 装備火力)を
+ * そのまま使う。12 はプレイヤー側 `getActiveGun(cp)?.damage ?? 12` と同じフォールバック。
+ *
+ * v0.25.2514(GHOST-BUILD-1・§2.11訂正): 旧v0.25.2459方針「スキル倍率/装備は乗せない」を撤去。
+ * `buildPlayer` に**計測時ビルドの疑似Player**(ghostBuild.ts)を渡すと、その撃破ランのスキル・装備で
+ * 倍率が評価される。省略時は倍率なし(=旧挙動)のフォールバック=旧プロファイル/テスト用。
  */
 export const ghostCounterDamage = (
   borrowedGunDamage: number | undefined,
+  buildPlayer?: Player,
   bossCritMult: number = BOSS_CRIT_DAMAGE_MULT,
-): number => Math.max(1, Math.round((borrowedGunDamage ?? 12) * bossCritMult));
+): number => buildPlayer
+  ? counterReplyDamage(borrowedGunDamage, buildPlayer, bossCritMult)
+  : Math.max(1, Math.round((borrowedGunDamage ?? 12) * bossCritMult));
 
 /** 消費側がハンドラへ渡す1回分(請求+SEの距離減衰ゲイン。ゲインは消費時のカメラで算出)。 */
 export interface GhostCounterFire {

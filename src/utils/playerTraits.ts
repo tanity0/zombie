@@ -23,8 +23,9 @@
 //   に積む。リザルトを閉じる時に settlePendingTraits() が commit(既定・従来と同じ順序でEMA混合=結果は
 //   旧実装とビット一致)か全破棄を行う。リザルトを経由しない終了(ブラウザ閉じ等)は保留のまま消える
 //   =破棄と同じ(安全側)。
-import type { Enemy, EnemyType } from '../types/game';
+import type { Enemy, EnemyType, Player, PlayerBuildSnapshot } from '../types/game';
 import { getBotTelemetry, snapshotBotTelemetry, type BotTelemetry } from './botTelemetry';
+import { snapshotPlayerBuild } from './playerBuild'; // §2.11 裁定1: 計測時ビルドの写し(純関数・store非依存)
 import { isEngageableBoss } from './bossEngagement';
 import { isBossCounterableNowApprox } from './bossScript';
 import { isHiddenBoss } from './enemyUtils';
@@ -66,7 +67,8 @@ export interface BossStyleSlot {
   /** 仕様4: 同ランのsubStyle保留レコードが有ればそのラン実測レート(EMAなし)、無ければcommit後の軸1コピー。 */
   subStyles: SubStyleProfile;
   srcClass: string | null;
-  snapshot: { maxHealth: number; speed: number; level: number } | null;
+  /** v0.25.2514: 計測時ビルドの写し(旧3項目の上位互換=PlayerBuildSnapshot)。 */
+  snapshot: PlayerBuildSnapshot | null;
   srcName: string | null;
   /** 記録時刻(Date.now()・討伐記録一覧用)。 */
   at: number;
@@ -101,8 +103,11 @@ export interface PlayerProfile {
   /** v0.25.2467(社長指示): 計測時のクラス(ゴーストの絵の選択用)。旧プロファイルには無い=任意。 */
   srcClass?: string;
   /** v0.25.2468(社長指示「HPというか全ステータスをそのまま再現」): 計測時のステータスの写し。
-   * ゴーストはこれを100%再現する(無ければ召喚時の本人値へフォールバック)。 */
-  snapshot?: { maxHealth: number; speed: number; level: number };
+   * ゴーストはこれを100%再現する(無ければ召喚時の本人値へフォールバック)。
+   * v0.25.2514(§2.11 裁定1「計測時のビルドをそのまま」): **武器ロードアウト/スキル/装備/クリ率/
+   * サブウェポン/PHILL率まで含むビルド丸ごと**へ拡張(PlayerBuildSnapshot=旧3項目の上位互換・
+   * 旧プロファイルは追加項目が欠損=消費側がフォールバックする)。 */
+  snapshot?: PlayerBuildSnapshot;
   /** v0.25.2477(社長指示「守護霊にプレイヤーの名前を頭上に表示」): 計測時のプレイヤー名
    * (playerName.ts の台帳)。srcClass/snapshotと同じ流儀=旧プロファイルには無い・欠損可。
    * 頭上表示はこの記録名を使う=将来オンラインで他人のゴーストが来た時に「その人の名前」が
@@ -238,7 +243,13 @@ let session: Session | null = null;
 // v0.25.2467: このプロセスで最後に計測対象になったクラス(fold時にプロファイルsrcClassへ記録)。
 let sessionSrcClass: string | null = null;
 // v0.25.2468: 計測時ステータスの写し(社長指示「全ステータスをそのまま再現」)。
-let sessionSnapshot: { maxHealth: number; speed: number; level: number } | null = null;
+// v0.25.2514: ビルド丸ごと(PlayerBuildSnapshot)へ拡張。毎tickの純粋コピー(生きた参照を持たない=
+// CLAUDE.md 実装精度の規律3。ボス交戦中だけ・ゴーストランでは作らないので負荷1/10)。
+let sessionSnapshot: PlayerBuildSnapshot | null = null;
+// 裁定4(PHILL): このランのPHILL発射数/ヘッドショット数。ラン単位で数え(サブ様式tallyと同じ流儀)、
+// セッション確定時のスナップショットへ率として焼く。resetPlayerTraits(ラン開始)でリセット。
+let phillShots = 0;
+let phillHeadshots = 0;
 
 const startSession = (gameTime: number): Session => ({
   startGameTime: gameTime,
@@ -338,7 +349,7 @@ export interface PendingSessionRecord {
   approachSample: number | null;
   moveTally: MoveReactionState['tally'];
   srcClass: string | null;
-  snapshot: { maxHealth: number; speed: number; level: number } | null;
+  snapshot: PlayerBuildSnapshot | null;
   /** v0.25.2477: セッション確定時点のプレイヤー名(loadPlayerName=無ければ生成される)。 */
   srcName: string | null;
 }
@@ -367,7 +378,7 @@ export interface PendingBossStyleRecord {
   stationarySample: number | null;
   approachSample: number | null;
   srcClass: string | null;
-  snapshot: { maxHealth: number; speed: number; level: number } | null;
+  snapshot: PlayerBuildSnapshot | null;
   srcName: string | null;
   at: number;
   /** v0.25.2493: 交戦開始→撃破の時間(ms・撃破の瞬間に確定)。 */
@@ -411,7 +422,13 @@ const endSession = (): void => {
   const approachSample = durationMs > 0 ? s.approachEpisodes / (durationMs / 60000) : null;
   // v0.25.2467/2468: クラスとステータス写しは従来のendSession時点(=いま)の値を確定して積む。
   const srcClass = sessionSrcClass;
-  const snapshot = sessionSnapshot;
+  // v0.25.2514(裁定4): PHILLの実測(ラン累計)をこのセッションのビルド写しへ焼き込む。
+  // 母数0(PHILLを撃っていないラン)なら率は載せない=消費側は0扱い(ヘッドショットしない)。
+  const snapshot: PlayerBuildSnapshot | null = sessionSnapshot === null
+    ? null
+    : phillShots > 0
+      ? { ...sessionSnapshot, phillShots, phillHeadshots, phillHeadshotRate: phillHeadshots / phillShots }
+      : sessionSnapshot;
   // v0.25.2477: プレイヤー名も同じくendSession時点で確定(未設定なら台帳が初期名を生成して返す)。
   const srcName = loadPlayerName();
 
@@ -486,6 +503,9 @@ export interface PlayerTraitsTickInput {
     characterClass?: string;
     /** v0.25.2468: 計測時ステータスの写し(snapshot)用。 */
     speed?: number; level?: number };
+  /** v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元になる本人オブジェクト。
+   * 省略可(旧呼び出し/テスト)=その場合はビルド項目なしの旧snapshot相当だけを記録する。 */
+  buildSource?: Player;
   enemies: readonly Enemy[];
   /** このtickにプレイヤーの移動入力(上下左右いずれか)があったか。 */
   movementInput: boolean;
@@ -509,7 +529,11 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   }
   if (!session) session = startSession(input.gameTime);
   if (input.player.characterClass) sessionSrcClass = input.player.characterClass; // v0.25.2467
-  if (input.player.speed !== undefined && input.player.level !== undefined) { // v0.25.2468
+  if (input.buildSource) {
+    // v0.25.2514(§2.11 裁定1): ビルド丸ごと(武器ロードアウト/スキル+Lv/装備+集計効果/クリ率/サブ)を
+    // 純粋コピーで控える。PHILL率はendSessionで焼く(ラン累計が母数なので確定はセッション終わり)。
+    sessionSnapshot = snapshotPlayerBuild(input.buildSource);
+  } else if (input.player.speed !== undefined && input.player.level !== undefined) { // v0.25.2468(旧経路)
     sessionSnapshot = { maxHealth: input.player.maxHealth, speed: input.player.speed, level: input.player.level };
   }
   const s = session;
@@ -610,6 +634,19 @@ export const notifyCounterHit = (): void => {
 export const notifyMoveCounter = (): void => {
   if (session) markMoveReactionCounter(session.moveReactions);
 };
+
+/**
+ * 裁定4(PHILL・§2.11): PHILL銃(phill-revolver)を1発撃った(gameStore.firePhillShotの発砲確定点に1行)。
+ * 記録専用=挙動不変。ラン単位の累計で、撃破セッション確定時にビルド写しへ率として焼かれる。
+ * ※ゴーストランでも数えるが、そのランのセッション自体が保存されない(§2.7 制約1)ので影響しない。
+ */
+export const recordPhillShot = (): void => { phillShots += 1; };
+
+/**
+ * 裁定4(PHILL): PHILL弾が頭部に命中した(useGameLoopの着弾ロールでheadshot===trueになった合流点に1行)。
+ * 記録専用=挙動不変。
+ */
+export const recordPhillHeadshot = (): void => { phillHeadshots += 1; };
 
 /**
  * 技キー付き被弾の通知(技への反応表用・挙動不変)。gameStore.damagePlayerが
@@ -907,4 +944,7 @@ export const resetPlayerTraits = (): void => {
   subStyleTally = createSubStyleTally();
   subStyleGhostRun = false;
   pendingRecords = [];
+  // v0.25.2514(裁定4): PHILL計測もラン単位=ラン境界でリセット。
+  phillShots = 0;
+  phillHeadshots = 0;
 };
