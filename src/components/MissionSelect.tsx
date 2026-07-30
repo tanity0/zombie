@@ -951,7 +951,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <div className="menu-stagger p-3 space-y-3">
         <AudioSettings />
         <GraphicsSettings />
-        <PlayerNameSettings />
+        {/* 名前の決定は守護霊メニューへ一本化(社長裁定v0.25.2555「オプションから名前は外して」)。 */}
         {DEV_TOOLS_ENABLED && <DevTools selectedClass={selectedClass} onStartGame={onStartGame} onStartBenchmark={onStartBenchmark} onRefreshCleared={() => setCleared(getClearedStages())} />}
       </div>
     </>
