@@ -7170,6 +7170,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   counterPendingAt: ghostNow.ghostCounterPendingAt,
                   counterWillAttempt: ghostNow.ghostCounterWillAttempt,
                   moveRoll: prevMoveRoll,
+                  // §2.12(1) 反応遅延: 危険を認知した時刻の持ち越し(危険が消えたらdecideGhostがundefinedを返す)。
+                  dangerSeenAt: ghostNow.ghostDangerSeenAt,
                 },
                 player: { x: gsPlayer.x, y: gsPlayer.y, width: gsPlayer.width, height: gsPlayer.height },
                 // v0.25.2470(社長裁定「雑魚は基本的に避けつつボスと戦う」): 全敵を渡す(雑魚回避の
@@ -7236,6 +7238,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostMoveRollKey: decision.moveRoll?.moveKey,
                   ghostMoveRollDecision: decision.moveRoll?.decision,
                   ghostMoveRollAt: decision.moveRoll?.rolledAtMs,
+                  ghostDangerSeenAt: decision.dangerSeenAt, // §2.12(1): 反応遅延の起点(危険が消えたらundefined)
                   ...(wantSubClaim ? { ghostSubClaim: true } : {}),
                 } : s),
               }));

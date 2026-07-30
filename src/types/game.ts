@@ -756,6 +756,10 @@ export interface Summon {
   ghostMoveRollKey?: string;                                      // 進行中の技キー(undefined=技なし)
   ghostMoveRollDecision?: 'counter' | 'dodge' | 'tank' | 'fallback'; // その技へのロール結果
   ghostMoveRollAt?: number;                                       // ロールした時刻(ms・Date.now基準)
+  // ---- §2.12(1) 反応遅延(v0.25.2529): 危険(ボスの予告/回避対象の脅威)を最初に認知した時刻
+  // (ms・Date.now基準)。ここから計測 reactionMs(100-800clamp)経過して初めて回避を始める。
+  // 危険が消えた tick で undefined へ戻る(ghostDriver.decideGhost が返す値をそのまま持ち回るだけ)。
+  ghostDangerSeenAt?: number;
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';

@@ -1,0 +1,270 @@
+// BOT_AND_GHOST.md §2.12 要件7(回避対応表の全ボス技化)。**守護霊(ghostDriver)専用の予告台帳**。
+//
+// なぜ別ファイルか: 既存の `botSkill.telegraphDodge` は**テストAI(playtestBot)と共有**の関数で、
+// そちらの挙動は今回の発注の対象外(掟「プレイヤー挙動・計測・ボス側は一切変更しない」/ボットも
+// 別の仕様)。そこで **botSkill には一切手を入れず**(図形を作る純関数 circleThreat/bandThreat を
+// export しただけ=挙動不変)、ゴースト側で「既存表が拾えない予告」だけを足す差分表をここに置く。
+//
+// 台帳の形(CLAUDE.md「同じ"動作"を持つ全員に付ける」の機械化):
+//  - **ボスの予告状態を1つ残らず列挙**し、1件ずつ coverage を付ける。
+//      'shared' = 既存 telegraphDodge がその図形を拾う(ここでは何も足さない)
+//      'ghost'  = 既存表が拾えない → **この表が足す**
+//      'both'   = 既存表も拾うが図形が実態とズレる → ゴーストだけ正しい図形を足す
+//      'none'   = 避ける図形が無い/定義できない(硬直・移動・弾・別エンティティ)。理由を必ず書く。
+//  - 網羅は `ghostTelegraph.test.ts` が**ソースを走査して突き合わせ**る(状態を1つ足したら
+//    テストが落ちる=分類しないとマージできない)。憲法テスト(constitution.test.ts)と同じ流儀。
+//
+// 掟: **新しい判定を発明しない**(botSkill.telegraphDodge のコメントと同じ)。図形は敵(Enemy)が
+// 既に持っているフィールド(aiFromX/aiTargetX/gStompRadius/…)だけから作る。半径/半幅のような
+// 「ボス側の実寸」は store 非依存を保つため**複製値**を置く(moveReaction.ts の
+// GIANT_STOMP_RADIUS_MIRROR と同じ確立済みの作法)。**回避は安全側に広くて構わない**——
+// 判定と厳密に一致させる義務があるのは「赤い絵」の側であって、避ける側ではない。
+import type { Enemy } from '../types/game';
+import { bandThreat, circleThreat, DODGE_BAND_HALF_WIDTH, type DodgeThreat } from './botSkill';
+
+// ---- ボス側の実寸の複製値(叩き台ではなく**実装の複製**。元の定数が動いたらここも合わせる) ----
+const NOVA_RADIUS_END_MIRROR = 400;      // = gameStore.GIANT_NOVA_RADIUS_END(輪の最大半径)
+const DIVE_RADIUS_MIRROR = 220;          // = gameStore.GIANT_DIVE_RADIUS(急降下の着弾円)
+const MIMIR_BITE_RADIUS_MIRROR = 92;     // = useGameLoop.MIMIR_BITE_RADIUS(群体の噛みつき円)
+const SURIEL_RINGSPIN_RADIUS_MIRROR = 92;// = angelBossTick.SURIEL_RINGSPIN_RADIUS(回転斬りの円)
+const SURIEL_BEAM_RANGE_MIRROR = 2600;   // = angelBossTick.SURIEL_BEAM_RANGE(環ビームの射程)
+const ACRASIEL_SPIKE_RANGE_MIRROR = 310; // = angelBossTick.ACRASIEL_SPIKE_RANGE_PX(放射8本の長さ)
+const ACRASIEL_BURST_RADIUS_MIRROR = 140;// = angelBossTick.ACRASIEL_BURST_RADIUS(大円)
+const ACRASIEL_WARP_IMPACT_MIRROR = 92;  // = angelBossTick.ACRASIEL_WARP_IMPACT_RADIUS(転移衝撃)
+const IDOL_PUNCH_RANGE_MIRROR = 90;      // = useGameLoop.IDOL_PUNCH_RANGE(前方の短い帯の長さ)
+
+/** 既存 telegraphDodge がその状態で読む図形(テストのプローブ生成用=「何を根拠に shared と言えるか」)。 */
+export type SharedShape = 'band' | 'circle-target' | 'stomp' | 'tri-jump' | 'delayed';
+
+/** ゴースト側で足す図形。`range` 付きの band は aiFrom から aiTarget 方向へ range px 伸ばした線分。 */
+export type GhostShape =
+  | { kind: 'band'; range?: number }
+  | { kind: 'circle-self'; radius: number }
+  | { kind: 'circle-target'; radius: number; targetIsTopLeft?: boolean };
+
+export type TelegraphCoverage = 'shared' | 'ghost' | 'both' | 'none';
+
+export interface TelegraphLedgerEntry {
+  coverage: TelegraphCoverage;
+  sharedShape?: SharedShape;
+  ghostShape?: GhostShape;
+  /** 状態名が複数ボスで衝突する時の type ゲート(例: 'burst' は裏ボス=弾 / アクラシエル=大円)。 */
+  types?: readonly string[];
+  note: string;
+}
+
+type Ledger = Record<string, TelegraphLedgerEntry>;
+
+const put = (into: Ledger, keys: readonly string[], entry: TelegraphLedgerEntry): void => {
+  for (const k of keys) into[k] = entry;
+};
+
+const LEDGER: Ledger = {};
+
+// ---- shared: 既存 telegraphDodge が拾う(ここでは何も足さない) ---------------------------------
+put(LEDGER, ['g-stomp-windup'], {
+  coverage: 'shared', sharedShape: 'stomp',
+  note: '足元の円。gStompRadius(ステージ倍率込み)を既存表が読む。',
+});
+put(LEDGER, ['g-jump-windup', 'g-jump-air', 'jump-windup', 'jump-attack'], {
+  coverage: 'shared', sharedShape: 'circle-target',
+  note: '着地点の円。既存表が aiTarget 中心の円として拾う(ラフィの溜めは着地点未確定=本体位置へフォールバック)。',
+});
+put(LEDGER, ['g-trijump-windup', 'g-trijump-air'], {
+  coverage: 'shared', sharedShape: 'tri-jump',
+  note: '連続ジャンプの残り着地点(gTriJumpPts)を既存表が円で拾う。',
+});
+put(LEDGER, ['g-nihil-chant1', 'g-nihil-chant2', 'g-nihil-chant3'], {
+  coverage: 'shared', sharedShape: 'delayed',
+  note: '虚無の三唱は giantDelayedHits の遅延円=既存表がキューを直接読む(唱えている間ずっと見える)。',
+});
+put(LEDGER, [
+  // giantbat(城ボス/グレン/EX): 'g-' 接頭辞 + -windup/-active/-charge を既存表が帯として拾う。
+  'g-sweep-windup', 'g-sweep-active', 'g-dash-windup', 'g-dash-charge',
+  'g-bite-windup', 'g-bite-active', 'g-slam-windup', 'g-slam-active',
+  'g-glide-windup', 'g-glide-active', 'g-quad-windup', 'g-quad-charge',
+  'g-quad-breath-windup', 'g-quad-breath-active', 'g-wing-windup', 'g-wing-active',
+  'g-sweepbeam-windup', 'g-sweepbeam-active', 'g-talon-windup', 'g-boon-windup',
+  'g-reach-windup', 'g-reach-active',
+  // bossState 系(トール/天使/裏ボス/idol): 語尾 '-windup' を既存表が帯として拾う。
+  'mdash-windup', 'harai-windup', 'tate-windup', 'sweep-windup', 'downslash-windup',
+  'thrust-windup', 'ring-move-windup', 'ring-beam-windup', 'dash-windup', 'laser-windup',
+  'coil-windup', 'issen-windup', 'tsuki-windup',
+  // 既存表が状態名で名指ししている実行フェーズ(トール)。
+  'harai', 'issen-dash', 'tsuki',
+], {
+  coverage: 'shared', sharedShape: 'band',
+  note: '始点(aiFrom)→終点(aiTarget)の帯。既存表の語尾ルール/名指しで拾えている。',
+});
+
+// ---- ghost: 既存表が拾えない予告(この表が足す本体) ---------------------------------------------
+put(LEDGER, [
+  // 実行フェーズなのに語尾が '-windup/-active/-charge' でないため既存表の網から漏れていた帯。
+  // 帯の始点/終点は溜めで確定済み(実行中もそのまま残る)ので、同じフィールドで拾える。
+  'g-bite-hold',   // 噛みつきの"溜め直し"(帯を出したまま静止=学習点)
+  'dash',          // 裏ボス3体の突進(mimir/jormungand/skadi)
+  'coil',          // ヨルムンガルドの巻き付き薙ぎ
+  'mdash-move',    // ミゲルの踏み込み突進
+  'tate',          // ミゲルの縦払い
+  'sweep',         // ラフィ/ウリ/スリィエルの薙ぎ
+  'downslash',     // ウリの振り下ろし
+  'thrust',        // ウリの刺突(本体が線分上を移動する)
+  'idol-roll',     // idolの転がり突進
+], {
+  coverage: 'ghost', ghostShape: { kind: 'band' },
+  note: '実行中も帯(aiFrom→aiTarget)が危険。既存表は語尾ルールで拾えないためゴースト側で足す。',
+});
+put(LEDGER, ['laser-fire'], {
+  coverage: 'ghost', ghostShape: { kind: 'band' },
+  note: 'ミーミルのレーザー。発射中も aiTarget がゆっくり追尾する=毎tickの帯を読む(避けられる技)。',
+});
+put(LEDGER, ['ring-active'], {
+  coverage: 'ghost', ghostShape: { kind: 'band', range: SURIEL_BEAM_RANGE_MIRROR },
+  note: 'スリィエルの環ビーム。危険は aiTarget までではなく射線をビーム射程まで伸ばした線分。',
+});
+put(LEDGER, ['g-nova-windup', 'g-nova-active'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: NOVA_RADIUS_END_MIRROR },
+  note: '自己中心に広がる輪。終点(aiTarget)を持たないので既存の帯ルールに掛からない=外へ抜ける向きを足す。',
+});
+put(LEDGER, ['ring-spin-windup', 'ring-spin'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: SURIEL_RINGSPIN_RADIUS_MIRROR },
+  note: 'スリィエルの回転斬り=本体中心の近接拒否円。',
+});
+put(LEDGER, ['spike-windup', 'spike'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: ACRASIEL_SPIKE_RANGE_MIRROR },
+  note: 'アクラシエルの放射8本(隙間あり)。隙間へ入る読みは持たせず、外へ抜ける安全側の円で扱う。',
+});
+put(LEDGER, ['burst-windup', 'burst'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: ACRASIEL_BURST_RADIUS_MIRROR },
+  types: ['acrasiel'],
+  note: 'アクラシエルの大円。**裏ボスの同名 burst は弾3連**なので type で分ける(弾は projectileDodge)。',
+});
+put(LEDGER, ['bite-windup'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: MIMIR_BITE_RADIUS_MIRROR },
+  types: ['mimir'],
+  note: 'ミーミルの群体の噛みつき=本体直下の円AoE(踏み鳴らしと同じ作法)。',
+});
+put(LEDGER, ['idol-punch-windup'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: IDOL_PUNCH_RANGE_MIRROR },
+  note: 'idolの殴打。溜め中は向きが未確定なので、届く距離の円として外へ出す(安全側)。',
+});
+put(LEDGER, ['warp-in'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-target', radius: ACRASIEL_WARP_IMPACT_MIRROR },
+  note: 'アクラシエルの転移着地の衝撃円(中心=aiTarget=出現先)。',
+});
+put(LEDGER, ['g-dive-windup'], {
+  coverage: 'both', sharedShape: 'band',
+  ghostShape: { kind: 'circle-target', radius: DIVE_RADIUS_MIRROR, targetIsTopLeft: true },
+  note: '急降下。既存表は「消える前の本体→着地点」の帯を出すが、実際の危険は着地点の円だけ=ゴーストは円も足す。',
+});
+
+// ---- none: 避ける図形が無い/定義できない(理由を必ず残す) ---------------------------------------
+put(LEDGER, [
+  'g-stomp-recover', 'g-sweep-recover', 'g-jump-recover', 'g-dash-recover', 'g-bolt-recover',
+  'g-bite-recover', 'g-slam-recover', 'g-glide-recover', 'g-dive-recover', 'g-quad-recover',
+  'g-nova-recover', 'g-wing-recover', 'g-sweepbeam-recover', 'g-talon-recover', 'g-boon-recover',
+  'g-reach-recover', 'g-trijump-recover', 'g-nihil-recover',
+  'bite-recover', 'bolt-recover', 'bone-recover', 'burst-recover', 'cage-recover', 'coil-recover',
+  'consecrate-recover', 'dash-recover', 'downslash-recover', 'gaze-recover', 'harai-recover',
+  'idol-aim-recover', 'idol-fan-recover', 'idol-punch-recover', 'idol-roll-recover',
+  'issen-recover', 'jump-recover', 'lantern-recover', 'laser-recover', 'mdash-recover',
+  'radial-recover', 'ring-recover', 'ring-spin-recover', 'skadi-blade-recover', 'skadi-ice-recover',
+  'spear-recover', 'spike-recover', 'sweep-recover', 'tate-recover', 'thrust-recover',
+  'tsuki-recover', 'volley-recover', 'warp-recover',
+], {
+  coverage: 'none',
+  note: '硬直(技は終わっている)=避ける図形は無い。ここはむしろカウンターの窓側の話。',
+});
+put(LEDGER, [
+  'aim-burst', 'aim-radial', 'radial', 'volley', 'volley-windup', 'bolt', 'bolt-windup',
+  'gaze-windup', 'idol-aim-windup', 'idol-fan-windup', 'g-bolt-windup', 'g-bolt-burst',
+], {
+  coverage: 'none',
+  note: '弾を撃つだけの技=地面に図形が出ない。飛んだ弾は projectileDodge が別経路で避ける。',
+});
+put(LEDGER, [
+  'bone', 'bone-windup', 'spear-windup', 'lantern', 'lantern-windup',
+  'skadi-ice', 'skadi-ice-windup', 'skadi-blade', 'skadi-blade-windup',
+], {
+  coverage: 'none',
+  note: '危険が**別エンティティ**(骨/刃/氷/火)として撒かれる技。Enemyの予告フィールドに乗らないので、'
+    + 'この表では扱えない(拾うならエンティティ側の回避=別バッチ)。',
+});
+put(LEDGER, ['consecrate-windup', 'cage-windup'], {
+  coverage: 'none',
+  note: 'リング状(自分/プレイヤーを囲む輪の上に置く)。中へ寄るのが正解か外へ抜けるのが正解かが状況依存で、'
+    + '一方向の回避ベクトルに落とせない=足すと逆に危険側へ押しかねない。',
+});
+put(LEDGER, ['idol-roll-windup'], {
+  coverage: 'none',
+  note: '溜めの時点では突進先(aiTarget)が未確定=避ける向きが決められない。実行(idol-roll)側で足す。',
+});
+put(LEDGER, ['warp-windup', 'warp-out'], {
+  coverage: 'none',
+  note: '転移そのものはダメージを持たない(ジブリルの離脱/アクラシエルの消滅)。危険は着地の warp-in 側。',
+});
+put(LEDGER, ['chase', 'return', 'backstep', 'orbit-step', 'counter-leap'], {
+  coverage: 'none',
+  note: '移動だけの状態(追跡/戻り/後退/回り込み/カウンター後の跳び退き)=攻撃判定を持たない。',
+});
+put(LEDGER, ['charge', 'crouch', 'jump', 'recover', 'scream', 'windup'], {
+  coverage: 'none',
+  note: '雑魚(ゾンビ/ウェアウルフ/パンプキン等)の汎用フェーズ。ボスの予告ではなく、'
+    + 'chargeDodge/jumpDodge(botSkill)が別経路で扱う=この表では足さない。',
+});
+
+/** 予告状態の台帳(状態名 → 分類)。**ボスの予告はここに全て載っている**ことをテストが保証する。 */
+export const GHOST_TELEGRAPH_LEDGER: Readonly<Ledger> = LEDGER;
+
+/** その状態が「ボスの予告(危険)」か。§2.12の「危険時(windup中)」判定はこの1関数を正本にする。 */
+export const isTelegraphState = (state: string | undefined): boolean =>
+  state !== undefined && (GHOST_TELEGRAPH_LEDGER[state]?.coverage ?? 'none') !== 'none';
+
+/**
+ * その敵が今「予告を出している」か(= §2.12 要件3/4 の"危険時")。
+ * aiPhase(城ボス系)と bossState(トール/天使/裏ボス/idol)の**両方**を見る=実装経路の取りこぼし防止。
+ */
+export const isTelegraphActive = (
+  e: Pick<Enemy, 'aiPhase' | 'bossState'> | null | undefined,
+): boolean => !!e && (isTelegraphState(e.aiPhase) || isTelegraphState(e.bossState));
+
+const threatFor = (
+  pcx: number, pcy: number, e: Enemy, entry: TelegraphLedgerEntry,
+): DodgeThreat | null => {
+  const shape = entry.ghostShape;
+  if (!shape) return null;
+  if (entry.types && !entry.types.includes(e.type)) return null;
+  const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+  if (shape.kind === 'circle-self') return circleThreat(pcx, pcy, ecx, ecy, shape.radius);
+  if (shape.kind === 'circle-target') {
+    const half = shape.targetIsTopLeft ? { x: e.width / 2, y: e.height / 2 } : { x: 0, y: 0 };
+    const tx = (e.aiTargetX ?? e.x) + half.x, ty = (e.aiTargetY ?? e.y) + half.y;
+    return circleThreat(pcx, pcy, tx, ty, shape.radius);
+  }
+  // band: 始点/終点が揃っていない時は図形が確定していない=足さない(でっち上げない)。
+  if (e.aiFromX === undefined || e.aiTargetX === undefined) return null;
+  const fx = e.aiFromX, fy = e.aiFromY ?? e.y;
+  let tx = e.aiTargetX, ty = e.aiTargetY ?? e.y;
+  if (shape.range !== undefined) {
+    const dx = tx - fx, dy = ty - fy;
+    const l = Math.hypot(dx, dy);
+    if (l > 0.0001) { tx = fx + (dx / l) * shape.range; ty = fy + (dy / l) * shape.range; }
+  }
+  return bandThreat(pcx, pcy, fx, fy, tx, ty, DODGE_BAND_HALF_WIDTH);
+};
+
+/**
+ * **既存 telegraphDodge が拾えない予告**から逃げる向き(0〜2個)。ゴーストの回避ベクトルへ足す差分。
+ * 既存表と二重に数えないよう、coverage が 'ghost'/'both' の状態だけを扱う。
+ */
+export const ghostExtraTelegraphDodge = (pcx: number, pcy: number, e: Enemy): DodgeThreat[] => {
+  const out: DodgeThreat[] = [];
+  for (const state of [e.aiPhase, e.bossState]) {
+    if (state === undefined) continue;
+    const entry = GHOST_TELEGRAPH_LEDGER[state];
+    if (!entry || (entry.coverage !== 'ghost' && entry.coverage !== 'both')) continue;
+    const t = threatFor(pcx, pcy, e, entry);
+    if (t) out.push(t);
+  }
+  return out;
+};

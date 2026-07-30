@@ -1,5 +1,60 @@
 # Development Log
 
+## v0.25.2529 — バッチGHOST-BEHAVIOR: 守護霊の行動品質(§2.12)実装【2026-07-30 23:06 JST】
+
+**原則「選択=計測値・実行=常に本気」**(BOT_AND_GHOST.md §2.12)。ゴースト固有の意思決定層
+(`ghostDriver`)に閉じた改修で、**プレイヤー挙動・計測(playerTraits)・ボス側は1文字も触っていない**。
+数値は全て叩き台=実機調整前提で `ghostDriver.ts` の定数節1箇所に集約。
+
+| 要件 | 実装 |
+|---|---|
+| 1. dodgeStrength逆写像の廃止 | `hitsPerMinToDodgeStrength` と `HITS_PER_MIN_DODGE_REF` を**削除**(死コードを残さない)。回避は `GHOST_DODGE_PROFILE`(dodgeStrength=1固定)=常に全力。プロファイルの `hitsPerMin` は挙動へ効かなくなった(計測・保存は不変)。 |
+| 2. 反応遅延 | `ghostReactionMs()` で計測 reactionMs を[100,800]clamp。危険(標的ボスの予告 or 回避対象の脅威)を最初に見た時刻を `GhostSelf.dangerSeenAt`(Summon: `ghostDangerSeenAt`)へ記録し、**経過するまで回避しない**。カウンター待ちの成立判定も同じclamp値を使う。 |
+| 3. 間合い | `ghostDesiredDist(preferredDist, addMargin)`。平時=計測 preferredDist、**ボスwindup中だけ** `GHOST_WINDUP_SAFE_MARGIN_PX=120` を足して退避。§2.12の文言どおり**dodge/tankロールを引いている時は足さない**。 |
+| 4. 移動リズム | `ghostMoveChance(mobility, stationaryFrac)`=両者の平均(測り方が別なので平均・既定値で0.625≒従来のmobility単独運用)。`ghostApproachChance(approachPerMin)`=`/6` で床0.25。**危険時(予告中/脅威あり)は両ゲートを無視して必ず動く**。 |
+| 5. tank率 | **現行維持**(`rollGhostMoveReaction` は無改変。tankの時だけ回避を抑制する分岐もそのまま)。 |
+| 6. カウンター待ちの時限 | `GHOST_COUNTER_WAIT_MS=1000`。窓が開いてから1秒で見切り、`counterWatching=false` へ落として通常行動(銃/近接/間合い)へ戻る。見切り後は `reaction==='counter'` でも詰めない=離脱。`counterPendingAt` は窓が閉じるまで残す(同じ窓で構え直さない)。 |
+| 7. 回避対応表の全ボス技化 | 新規 `src/utils/ghostTelegraph.ts`(台帳+差分回避)。**159状態を全分類**。 |
+
+### 要件7の詳細(全実装経路の洗い出し)
+- 予告の実装経路は3つ: **①`gameStore.ts` の aiPhase(城ボス/グレン/EX の `g-*` + 雑魚の汎用フェーズ)
+  ②`angelBossTick.ts` の bossState(天使6体) ③`useGameLoop.ts` の bossState(裏ボス4体+idol)**。
+  3ファイルを走査して状態名を全部拾い、台帳と突き合わせるテストで機械化した(`ghostTelegraph.test.ts`)。
+- 分類: **shared 48 / ghost 22 / both 1 / none 88 = 159**。
+  - `shared` = 既存 `botSkill.telegraphDodge` が拾う(二重に足さない)。
+  - `ghost` = 既存表が拾えないので**この表が足す**: 実行フェーズの帯9種(`g-bite-hold`/`dash`/`coil`/
+    `mdash-move`/`tate`/`sweep`/`downslash`/`thrust`/`idol-roll`)・`laser-fire`・`ring-active`(射程まで
+    伸ばした射線)・自己中心の円(`g-nova-*`/`ring-spin*`/`spike*`/`burst*`/`bite-windup`/`idol-punch-windup`)・
+    `warp-in`(着地衝撃円)。
+  - `both` = `g-dive-windup` のみ(既存表は「消える前の本体→着地点」の帯を出すが、実際の危険は着地円)。
+  - `none` = 硬直51/弾のみ12/別エンティティ9(骨・刃・氷・火)/リング状2(`consecrate-windup`・
+    `cage-windup`=逃げ向きが定義できない)/移動7(chase・return・backstep・orbit-step・counter-leap・
+    warp-windup・warp-out)/突進先未確定1(`idol-roll-windup`)/雑魚の汎用6 と、**理由を必ず添えて**列挙。
+- **botSkill.ts は挙動不変**: `circleThreat`/`bandThreat` に `export` を付けただけ(同じ式を再実装しない
+  ため)。テストAI(playtestBot)の回避は1bitも変えていない=今回の発注対象外のため意図的に据え置き。
+
+### テスト
+- `src/utils/ghostTelegraph.test.ts`(新規13件): **ソース走査 vs 台帳の突き合わせ**(漏れ0/死にキー0)、
+  走査の健全性(3経路の代表状態+三項代入の`tate`が拾えること)、全ボス1技以上カバー、
+  **分類と実装の一致**(shared→既存表が拾う/ghost→この表が足す/none→どちらも足さない)、図形の向き。
+- `src/utils/ghostDriver.test.ts`(42→60件): 要件1〜6の純関数と`decideGhost`の挙動を追加。
+  旧`hitsPerMinToDodgeStrength`のテストは削除(関数ごと廃止)。
+- `npx vitest related`(8ファイル193件)= playtest.test.ts の M19(rusher深層到達)だけ落ちたが、
+  **未変更ツリーでも深度が毎回変わる無シードのボットランで、単体再実行では変更あり/なし双方pass**
+  =本改修と無関係のフレーク(記録のみ)。ゲート: typecheck 0 / lint エラー0(既存warning 8)。
+
+### 自己点検(CLAUDE.md 実装精度の規律5)
+憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)に**抵触しない**——本バッチは守護霊の
+意思決定のみで、湧き・ペーシング・ステージ構成・敵の強さに一切触れていない。
+
+### 申し送り
+- `hitsPerMin` はゴーストの挙動に効かなくなった(計測・保存・アルバム表示は従来どおり)。「下手さ」の
+  主表現は tank率(§2.12(4))に一本化された。
+- リング状の技2種(ジブリル聖別/スカジ氷結の檻)と別エンティティ系(骨/刃/氷/火)は**意図的に未対応**。
+  拾うなら「エンティティ側の回避」という別の器が要る(台帳にも理由を明記済み)。
+- 全ての数値は叩き台。実機で「下がりすぎ/詰めなさすぎ/見切りが早い」等があれば
+  `ghostDriver.ts` の定数節1箇所で調整できる。
+
 ## v0.25.2528 — 守護霊の文字callout裁定: 弾反射Counter!+処刑Kill!を追加(設計チャット直接実装)【2026-07-30 22:54 JST】
 
 - **社長裁定**: 「守護霊のカウンター、キル!とかの文字のこと?これは出して欲しいよ」→

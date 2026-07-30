@@ -225,8 +225,10 @@ export const DODGE_BAND_HALF_WIDTH = 64;   // 帯技の危険幅(安全側の代
 export const DODGE_CIRCLE_DEFAULT_R = 100; // 半径がEnemyに載っていない円技の代表値
 export const DODGE_AOE_MARGIN = 40;        // 円/帯の縁からこれだけ余分に外へ出たい
 
+// v0.25.2529(BOT_AND_GHOST.md §2.12 要件7): 守護霊側の予告台帳(ghostTelegraph.ts)が
+// **同じ式**で追加の予告図形を作れるよう export しただけ(呼び出し側・挙動は完全に不変)。
 /** 円の危険域から放射状に逃げる。中に居る/縁に近いほど weight が大きい。 */
-const circleThreat = (pcx: number, pcy: number, cx: number, cy: number, r: number): DodgeThreat | null => {
+export const circleThreat = (pcx: number, pcy: number, cx: number, cy: number, r: number): DodgeThreat | null => {
   const dx = pcx - cx, dy = pcy - cy;
   const d = Math.hypot(dx, dy);
   const danger = r + DODGE_AOE_MARGIN;
@@ -235,8 +237,8 @@ const circleThreat = (pcx: number, pcy: number, cx: number, cy: number, r: numbe
   return { kind: 'aoe', ux, uy, weight: Math.max(0, 1 - d / Math.max(1, danger)) };
 };
 
-/** 帯(線分)の危険域から直交方向へ逃げる。 */
-const bandThreat = (
+/** 帯(線分)の危険域から直交方向へ逃げる。(circleThreatと同じ理由で export・挙動不変) */
+export const bandThreat = (
   pcx: number, pcy: number, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
 ): DodgeThreat | null => {
   const vx = tx - fx, vy = ty - fy;

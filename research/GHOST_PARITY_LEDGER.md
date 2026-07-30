@@ -523,3 +523,41 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 - BOT_AND_GHOST.md 編集禁止。git add 明示列挙。ゲート: typecheck 0+lintエラー0+related。
 - 版管理: rebase後origin+1・changelog先頭(体験の変化=守護霊の立ち回り改善を短く)・
   DEVELOPMENT_LOG(JST打刻)・台帳ステータス更新。
+
+---
+
+## 実装ログ: バッチGHOST-BEHAVIOR(§2.12 行動品質・v0.25.2529・ステータス=実装済み)
+
+詳細(要件別の実装方式・網羅の内訳・申し送り)は DEVELOPMENT_LOG.md v0.25.2529 が正本。ここは要約。
+
+**原則「選択=計測値・実行=常に本気」。プレイヤー挙動・計測(playerTraits)・ボス側は1文字も変更していない**
+(触ったのは `ghostDriver.ts` / 新規 `ghostTelegraph.ts` / `botSkill.ts`の**export追加のみ(挙動不変)** /
+`types/game.ts`のSummon 1フィールド追加 / `useGameLoop.ts`のゴースト配線1往復)。
+
+| 要件 | 実装 | 定数(全て叩き台・`ghostDriver.ts`の定数節1箇所) |
+|---|---|---|
+| 1 逆写像廃止 | `hitsPerMinToDodgeStrength`+`HITS_PER_MIN_DODGE_REF`を**削除**。回避は常に dodgeStrength=1 | — |
+| 2 反応遅延 | `ghostReactionMs()`でclamp。危険の初認知時刻 `dangerSeenAt`(Summon: `ghostDangerSeenAt`)から経過するまで回避しない。カウンター成立判定も同じclamp値 | `GHOST_REACTION_MIN_MS=100` / `GHOST_REACTION_MAX_MS=800` |
+| 3 間合い | `ghostDesiredDist()`。平時=preferredDist / ボスwindup中のみ+マージン(dodge・tankロール時は足さない) | `GHOST_WINDUP_SAFE_MARGIN_PX=120` |
+| 4 移動リズム | `ghostMoveChance(mobility, stationaryFrac)`=平均 / `ghostApproachChance(approachPerMin)`=`/6`・床0.25。**危険時は両ゲート無視で必ず動く** | `GHOST_APPROACH_REF_PER_MIN=6` / `GHOST_APPROACH_MIN_CHANCE=0.25` / 欠損既定 `0.35`・`3` |
+| 5 tank率 | **無改変**(`rollGhostMoveReaction`はそのまま) | — |
+| 6 カウンター見切り | 窓が開いて1秒で `counterWatching=false`→通常行動へ。見切り後は`counter`ロールでも詰めない=離脱 | `GHOST_COUNTER_WAIT_MS=1000` |
+| 7 回避対応表 | 新規 `src/utils/ghostTelegraph.ts`=**予告台帳(159状態を全分類)**+既存表が拾えない分だけ足す差分回避 | 実寸は複製値(nova400/dive220/spike310/burst140/ringspin92/bite92/punch90/warp92/beam2600) |
+
+**要件7の網羅(3実装経路の全数)**: `gameStore.ts`(aiPhase: 城ボス/グレン/EX の `g-*`+雑魚の汎用) /
+`angelBossTick.ts`(bossState: 天使6体) / `useGameLoop.ts`(bossState: 裏ボス4体+idol)の3ファイルを
+**ソース走査**して状態名を全部拾い、台帳と突き合わせるテストで機械化(`ghostTelegraph.test.ts`)。
+内訳 = **shared 48(既存`telegraphDodge`が拾う) / ghost 22(この表が足す) / both 1(`g-dive-windup`) /
+none 88(硬直51・弾のみ12・別エンティティ9・リング状2・移動7・突進先未確定1・雑魚6)= 159**。
+分類と実装の一致(shared→既存表が拾う/ghost→この表が足す/none→どちらも足さない)もテストが検証する。
+
+### 実装メモ(次バッチが踏む前提)
+- **`botSkill.telegraphDodge` は変更していない**=テストAI(playtestBot)の回避挙動は1bitも動いていない。
+  ゴーストの追加分は `ghostTelegraph.ghostExtraTelegraphDodge` 側にだけあり、二重計上もしない
+  (shared分類の状態には足さない)。ボット側も強くしたい場合は**別発注**(仕様が別物のため)。
+- `hitsPerMin` はゴーストの**挙動に効かなくなった**(計測・保存・表示は従来どおり)。下手さの主表現は
+  tank率(§2.12(4))へ一本化。
+- 未対応(意図的・台帳に理由記載): リング状の技2種(ジブリル聖別/スカジ氷結の檻=逃げ向きが定義できない)、
+  別エンティティで危険を撒く技(骨/刃/氷/火=Enemyの予告フィールドに乗らない)。拾うなら
+  「エンティティ側の回避」という別の器が必要=別バッチ。
+- ★未決: **なし**(仕様に無い値は全て「叩き台」として定数化し、意図をコメントに明記した)。

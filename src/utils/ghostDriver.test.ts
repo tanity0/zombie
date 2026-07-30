@@ -1,12 +1,16 @@
 // BOT_AND_GHOST.md G2(ゴースト本体)。純関数の意思決定(decideGhost)+補助関数を検証する。
 import { describe, it, expect } from 'vitest';
 import {
-  decideGhost, defaultGhostProfile, ghostLeashWarp, hitsPerMinToDodgeStrength,
+  decideGhost, defaultGhostProfile, ghostLeashWarp,
   ghostSubUseIntervalMs, ghostSubClaimIntervalMs, GHOST_SUB_USE_MAX_INTERVAL_MS,
   shouldGhostClaimSub, DEFAULT_SUB_USES_PER_MIN,
   ghostRunEnabled, GUARDIAN_SPIRIT_SKILL,
   GHOST_LEASH_PX, GHOST_MELEE_RANGE, GHOST_BOSS_HP_MULT,
   rollGhostMoveReaction, GHOST_MOVE_ROLL_MIN_N, GHOST_MOVE_ROLL_TIMEOUT_MS,
+  ghostReactionMs, ghostMoveChance, ghostApproachChance, ghostDesiredDist,
+  ghostCounterWaitExpired, ghostDodgeVector,
+  GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS, GHOST_WINDUP_SAFE_MARGIN_PX,
+  GHOST_COUNTER_WAIT_MS, GHOST_DEFAULT_STATIONARY_FRAC, GHOST_APPROACH_MIN_CHANCE,
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
 } from './ghostDriver';
 import { jumpDodge, botSkillProfile } from './botSkill';
@@ -72,13 +76,204 @@ describe('ghostLeashWarp: プレイヤーから600px超えたら瞬時にワー�
   });
 });
 
-describe('hitsPerMinToDodgeStrength: 被弾が多いほど回避が下手(逆写像)', () => {
-  it('被弾0なら1(最大)', () => {
-    expect(hitsPerMinToDodgeStrength(0)).toBe(1);
+// ==== §2.12 行動品質(v0.25.2529)。原則「選択=計測値・実行=常に本気」 =========================
+describe('§2.12 要件1: dodgeStrength逆写像の廃止(実行は常に本気)', () => {
+  it('被弾/分(hitsPerMin)が幾つでも回避ベクトルの強さは1(=全力)で変わらない', () => {
+    const boss = mkBoss({ x: 1000, y: 0, aiPhase: 'jump' as Enemy['aiPhase'], aiTargetX: 15, aiTargetY: 10 });
+    const v = ghostDodgeVector(10, 10, [boss], []);
+    expect(v).not.toBeNull();
+    expect(Math.hypot(v!.x, v!.y)).toBeCloseTo(1, 5); // 単位ベクトル=減衰なし
   });
-  it('被弾が多いほど下がるが、0.15を床に完全には死なない', () => {
-    expect(hitsPerMinToDodgeStrength(4)).toBeLessThan(1);
-    expect(hitsPerMinToDodgeStrength(100)).toBeCloseTo(0.15, 5);
+
+  it('全ボス予告台帳(ghostTelegraph)の差分も回避ベクトルへ合成される', () => {
+    // 'sweep'(実行中の薙ぎ)は既存 telegraphDodge が拾わない状態=台帳の差分だけで避けられること。
+    const uri = mkBoss({
+      type: 'uri' as Enemy['type'], bossState: 'sweep',
+      x: 2000, y: 2000, aiFromX: 0, aiFromY: 0, aiTargetX: 300, aiTargetY: 0,
+    });
+    const v = ghostDodgeVector(150, 20, [uri], []);
+    expect(v).not.toBeNull();
+    expect(v!.y).toBeGreaterThan(0); // 帯(y=0)の下側へ抜ける
+  });
+});
+
+describe('§2.12 純関数(反応遅延/移動リズム/間合い/見切り)', () => {
+  it('ghostReactionMs: 100-800にclamp(異常値は下限)', () => {
+    expect(ghostReactionMs(320)).toBe(320);
+    expect(ghostReactionMs(0)).toBe(GHOST_REACTION_MIN_MS);
+    expect(ghostReactionMs(5000)).toBe(GHOST_REACTION_MAX_MS);
+    expect(ghostReactionMs(Number.NaN)).toBe(GHOST_REACTION_MIN_MS);
+  });
+
+  it('ghostMoveChance: mobilityと(1-stationaryFrac)の平均。止まる癖が強いほど動かない', () => {
+    expect(ghostMoveChance(1, 0)).toBe(1);
+    expect(ghostMoveChance(0, 1)).toBe(0);
+    expect(ghostMoveChance(0.6, 0.35)).toBeCloseTo(0.625, 5);
+    // 欠損(旧プロファイル)は既定のstationaryFracで評価する
+    expect(ghostMoveChance(0.6)).toBeCloseTo(ghostMoveChance(0.6, GHOST_DEFAULT_STATIONARY_FRAC), 5);
+    expect(ghostMoveChance(0.5, 0.2)).toBeGreaterThan(ghostMoveChance(0.5, 0.9)); // 単調
+  });
+
+  it('ghostApproachChance: 接近が少ない人ほど詰めが遅いが、床(0.25)で固まらない', () => {
+    expect(ghostApproachChance(6)).toBe(1);
+    expect(ghostApproachChance(3)).toBeCloseTo(0.5, 5);
+    expect(ghostApproachChance(0)).toBe(GHOST_APPROACH_MIN_CHANCE);
+    expect(ghostApproachChance(undefined)).toBeGreaterThan(0);
+  });
+
+  it('ghostDesiredDist: 予告中だけ安全マージンを足す', () => {
+    expect(ghostDesiredDist(180, false)).toBe(180);
+    expect(ghostDesiredDist(180, true)).toBe(180 + GHOST_WINDUP_SAFE_MARGIN_PX);
+  });
+
+  it('ghostCounterWaitExpired: 窓が開いてから約1秒で見切る', () => {
+    expect(ghostCounterWaitExpired(undefined, 99999)).toBe(false);
+    expect(ghostCounterWaitExpired(0, GHOST_COUNTER_WAIT_MS - 1)).toBe(false);
+    expect(ghostCounterWaitExpired(0, GHOST_COUNTER_WAIT_MS)).toBe(true);
+  });
+});
+
+describe('§2.12 要件2: 反応遅延(回避の開始をreactionMsだけ遅らせる)', () => {
+  const boss = (): Enemy => mkBoss({
+    x: 1000, y: 0, aiPhase: 'jump' as Enemy['aiPhase'], aiTargetX: 15, aiTargetY: 10,
+  });
+
+  it('危険を見た最初のtickは回避しない(認知時刻だけ記録する)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss()], nowMs: 1000,
+      profile: { ...PROFILE, reactionMs: 300 },
+    }));
+    expect(d.dangerSeenAt).toBe(1000);
+    expect(d.moveX).toBeGreaterThan(0); // まだ気づいていない=平時の間合い(接近)のまま
+  });
+
+  it('reactionMs経過後は回避する(遅い人ほど反応が遅れる=個性)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: 1000 }), enemies: [boss()], nowMs: 1300,
+      profile: { ...PROFILE, reactionMs: 300 },
+    }));
+    expect(d.moveX).toBeLessThan(0); // 着地点(+x)から逃げる
+  });
+
+  it('危険が消えたら認知時刻はリセットされる(次の予告でまた遅れる)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: 1000 }),
+      enemies: [mkBoss({ x: 1000, y: 0, bossState: 'chase' })], nowMs: 1300,
+    }));
+    expect(d.dangerSeenAt).toBeUndefined();
+  });
+});
+
+describe('§2.12 要件3: 予告中だけ安全マージンを足して退避する', () => {
+  it('予告(windup)中は preferredDist+マージン まで下がる', () => {
+    // 距離200 = preferredDist(180)の帯(±40)の中=平時なら動かない。予告中は目標が300へ伸びるので下がる。
+    const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'issen-windup' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 0, height: 0, dangerSeenAt: 0 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [boss], nowMs: 5000, profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.moveX).toBeLessThan(0); // ボス(右)から離れる
+  });
+
+  it('平時(chase)は preferredDist のまま=帯の中なら動かない', () => {
+    const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'chase' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 0, height: 0 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [boss], nowMs: 5000, profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.moveX).toBe(0);
+    expect(d.moveY).toBe(0);
+  });
+
+  it("'tank'ロール(苦手技=食らいに行く)の時はマージンを足さない", () => {
+    const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'issen-windup' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 0, height: 0, dangerSeenAt: 0 });
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 0, hitRate: 1 } },
+    };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 5000, rand: () => 0 }));
+    expect(d.moveRoll?.decision).toBe('tank');
+    expect(d.moveX).toBe(0); // 目標間合いは180のまま=帯の中なので下がらない
+  });
+});
+
+describe('§2.12 要件4: 移動リズム(平時のみ)・危険時は必ず動く', () => {
+  it('立ち止まる癖(stationaryFrac)が強いと平時は動かないtickが出る', () => {
+    const boss = mkBoss({ x: 1000, y: 0, bossState: 'chase' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss],
+      profile: { ...PROFILE, mobility: 1, stationaryFrac: 1 }, // moveChance=0.5
+      rand: () => 0.9,
+    }));
+    expect(d.moveX).toBe(0);
+  });
+
+  it('危険時(予告中)はリズムを無視して必ず動く', () => {
+    const boss = mkBoss({ x: 1000, y: 0, bossState: 'issen-windup' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss],
+      profile: { ...PROFILE, mobility: 0, stationaryFrac: 1 }, // 平時なら絶対に止まる設定
+      rand: () => 0.99,
+    }));
+    expect(d.moveX).toBeGreaterThan(0);
+  });
+
+  it('接近リズム(approachPerMin)が低いと、平時に詰めないtickが出る', () => {
+    const boss = mkBoss({ x: 1000, y: 0, bossState: 'chase' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss],
+      // 移動ゲートは通す(rand=0.5 < moveChance=1)が、接近ゲート(0.25)は通さない。
+      profile: { ...PROFILE, mobility: 1, stationaryFrac: 0, approachPerMin: 0 },
+      rand: () => 0.5,
+    }));
+    expect(d.moveX).toBe(0);
+  });
+});
+
+describe('§2.12 要件6: カウンター待ちは約1秒で見切って離脱する', () => {
+  const bossNear = (): Enemy => mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+
+  it('見切る前は窓を見ている(銃で代替しない)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 10, height: 10, counterPendingAt: 0, counterWillAttempt: false }),
+      enemies: [bossNear()], nowMs: GHOST_COUNTER_WAIT_MS - 1,
+      profile: { ...PROFILE, counterChance: 0, meleeBias: 0 },
+    }));
+    expect(d.action).toBe('none');
+  });
+
+  it('約1秒待って成立しなければ見切り、通常行動(銃)へ戻る', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 10, height: 10, counterPendingAt: 0, counterWillAttempt: false }),
+      enemies: [bossNear()], nowMs: GHOST_COUNTER_WAIT_MS,
+      profile: { ...PROFILE, counterChance: 0, meleeBias: 0 },
+    }));
+    expect(d.action).toBe('shoot');
+    expect(d.counterWillAttempt).toBe(false);
+  });
+
+  it("見切った後は'counter'ロールでも張り付かない(間合いへ戻る=離脱)", () => {
+    const boss = mkBoss({ x: 30, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } },
+    };
+    const ghost = mkGhost({
+      x: 0, y: 0, width: 10, height: 10, counterPendingAt: 0, counterWillAttempt: true,
+      dangerSeenAt: 0, moveRoll: { moveKey: 'thor-issen', decision: 'counter', rolledAtMs: 0 },
+    });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [boss], profile, nowMs: GHOST_COUNTER_WAIT_MS + 100, rand: () => 0.9,
+    }));
+    expect(d.moveX).toBeLessThan(0); // 詰める(+x)のをやめて離れる
+  });
+
+  it('窓が閉じれば待ち状態はクリアされる(次の窓ではまた構える)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 10, height: 10, counterPendingAt: 0, counterWillAttempt: true }),
+      enemies: [mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'chase' })],
+      nowMs: GHOST_COUNTER_WAIT_MS + 500, profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.counterPendingAt).toBeUndefined();
   });
 });
 
@@ -231,9 +426,11 @@ describe('decideGhost: 回避が間合い管理より優先される', () => {
       x: 1000, y: 0, aiPhase: 'jump' as Enemy['aiPhase'],
       aiTargetX: 15, aiTargetY: 10,
     });
-    const ghost = mkGhost({ x: 0, y: 0 }); // 中心(10,10)
-    const profile: GhostProfile = { ...PROFILE, hitsPerMin: 0 }; // dodgeStrength=1(最大)
-    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile }));
+    // §2.12(1) 反応遅延: 認知済み(dangerSeenAt)+reactionMs経過後の状態で見る(遅延そのものは専用の
+    // describeで検証する)。
+    const ghost = mkGhost({ x: 0, y: 0, dangerSeenAt: 0 }); // 中心(10,10)
+    const profile: GhostProfile = { ...PROFILE, hitsPerMin: 0 };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 5000 }));
 
     const expectedDodge = jumpDodge(10, 10, boss);
     expect(expectedDodge).not.toBeNull();
