@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2474',
+    items: [
+      'ゲーム内容の変更はありません(自動テスト用の開発フラグ?autotut=1を追加)。',
+    ],
+  },
+  {
     version: '0.25.2473',
     items: [
       '守護霊がサブウェポンを使うようになりました(青白い霊体仕様)。ボス戦中、装備中のサブ(手榴弾/トラップ/デコイ/シールド/タレット/発火ナイフ)を守護霊が自分の位置からボスへ向けて使います。',

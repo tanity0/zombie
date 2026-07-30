@@ -10706,6 +10706,13 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setCaptureFrame: (fn) => set({ captureFrame: fn }),
   showTutorialPopup: (p) => {
+    // v0.25.2474: `?autotut=1`(自動テスト用・社長合意v0.25.2472)= ポップアップを表示せず
+    // 既読処理だけしてポーズしない。stage-2等で「ポップアップのポーズによりシミュが1フレームも
+    // 進まず全てが動かないと誤判定」される事故の恒久策(ENGINEERING_NOTES「自動テストの地雷」参照)。
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('autotut') === '1') {
+      set({ tutorialPopupShown: true });
+      return;
+    }
     // 挿絵の優先順: img(事前収録の手本アセット)> SVG図解。社長決定v0.25.1839「基本的に全部
     // 事前に手本を見せるカタチ」=表示直前のライブキャプチャは廃止(素材は一度収録して使い回す)。
     set({ tutorialPopup: p, tutorialPopupShown: true, isPaused: true }); // 表示中はゲーム停止
