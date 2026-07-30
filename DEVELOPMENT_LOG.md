@@ -1,5 +1,60 @@
 # Development Log
 
+## v0.25.2473 — 守護霊のサブウェポン実働化+ゴースト起因サブの全青白化(社長指示「実装されないなら、してほしい。全てプレイヤーと同じく青白くして」)【2026-07-30 11:53 JST】
+
+- **診断(最初に実施・使い捨てプローブ=コミットなし)**: G2.6の予約方式(ghostSubClaim)は**発火していた**。
+  ヘッドレス実証(fakeタイマー+城ボスの写し(homeX/homeY付き)+runPlaytestTick+runGhostAndTraitsStep直呼び+
+  useGameLoopのclaim設定/サブ入口と同じ式の写し・120秒)で、守護霊装備+手榴弾のボス戦にてゴースト発動
+  3回(5s/35s/65s・30秒間隔=既定subUsesPerMin2どおり)を確認。**実機で観測されない原因は「見えない」**:
+  ①絵がプレイヤー発動と完全同一(tintなし) ②「1つの財布」=発動総数は増えず、プレイヤーの自動発動の
+  一部(プローブでは24回中3回)がゴースト位置へ置き換わるだけ ③そのゴースト位置もプレイヤー近傍
+  (実測約30px差)。=未配線バグではなく**無音の再帰属**。修正は「体感できる頻度の床」+「青白の明示」の2本。
+- **(2)実働化**:
+  - **頻度の床(唯一の挙動変更・社長指示の範囲内)**: `GHOST_SUB_USE_MAX_INTERVAL_MS = 25_000`
+    (ghostDriver.ts・定数化。叩き台20〜30秒の中庸)。実効予約間隔=`ghostSubClaimIntervalMs()` =
+    min(60000/subUsesPerMin, 25秒)。**subUsesPerMin<=0(使わない人)でも交戦中は床で予約する**
+    (旧: 一生予約しない)。shouldGhostClaimSubは呼び出し側が紐付きボス生存中しか呼ばない=床は自然に
+    ボス交戦中限定。既定プロファイル(2/分=30秒)も床の25秒へ。修正後プローブ実測: 25秒間隔で発動。
+  - **照準**: ゴースト発動の狙い先=**紐付きボス**(G2.6の1行ルールの照準版)。純関数 `pickSubAimTarget`
+    (subWeaponOwner.ts)へ合流: プレイヤー=従来の「最寄り非リーパー」をfilter→map→sort→[0]の手順まで
+    同一に再現(=1bit不変)/ゴースト=ghostBossId優先・不在の瞬間は最寄りへフォールバック。
+    適用は狙いを持つ2種(heavy-grenade/fire-knife)。設置系(trap/decoy/shield/turret)は従来どおり
+    オーナー位置/向き基準(ゴーストはボスへ向いているので自然にボス向きに置かれる)。
+- **(3)青白化(視覚のみ・判定/ダメージ/CD/資源は1bit不変)**: 発動時に生成物へ `Projectile.ownerGhost: true`
+  (types/game.ts・**視覚専用マーカー**)を付与し、レンダラがそれを見て守護霊本体と同じ
+  GHOST_ALLY_TINT(0x9fd8ff)/GHOST_ALLY_ALPHA(0.7)で描く。**プレイヤー起因のサブは1pxも変えない**
+  (ownerGhost未設定=全経路で従来色)。適用の全数表:
+  | 生成物 | マーカー付与(useGameLoop) | 青白の絵(pixiScene) |
+  |---|---|---|
+  | 手榴弾(散布3方向とも) | 発動ブロック+ボマー子グレネード(親のownerGhostを継承) | drawProjectile grenade(本体0x9fd8ff/ハイライト0xe0f2fe)+爆発FX(リング/バースト/グロー青白) |
+  | トラップ | 発動ブロック | drawProjectile trap(リング/コア青白)+設置リング+捕獲FX青白 |
+  | デコイ | 発動ブロック | drawDecoy(sprite tint+射程円青白)+投擲リング+Lv3爆発FX青白 |
+  | シールド | 発動ブロック | drawShield(基調tint=青白・被弾フラッシュ赤白は情報として維持)+設置リング青白 |
+  | タレット | 発動ブロック+**タレットの弾/ランチャー弾へ継承** | drawTurret(sprite tint)+弾(drawProjectile handgun/rifle=0xcfe8ff)+ランチャー着弾爆発FX+消滅爆発FX青白 |
+  | 発火ナイフ | 発動ブロック+ボマー子(継承) | drawFireKnife(sprite tint+火種青白)+刺さり火花+爆発FX青白 |
+  - 全ownerGhost生成物は描画αに×0.7(霊体の半透明)。FXの色差し替えはspawnRing/spawnBurst/spawnGlowの
+    **色引数の条件分岐のみ**(新規描画メソッドなし)。攻撃ヴィジュアル2分類: 手榴弾/ナイフ本体・トラップ円は
+    ①判定に揃える絵(位置/大きさ不変・色のみ)、爆発バースト等は②派手さの絵(既存サイズのまま色替え)。
+    赤い予告は元々無い=「赤いのに当たらない」は発生しない。
+- **対応/未対応の再掲(G2.6 §6)**: 対応6種=heavy-grenade/marksman-trap/decoy/shield/turret/fire-knife。
+  未対応(プレイヤー固定のまま・今回も対象外)=striker-quick-mag/dog/molotov/support-sniper/homing/
+  wire-anchor/drone-boomerang/sensor-mine/flare-gun/junk-weapon/shadow-clone/katana/murasame/whip/
+  alchemy/shijin/sage-stone/striker-hunting/first-aid-kit。
+- 変更ファイル: `src/utils/ghostDriver.ts`(床の定数+ghostSubClaimIntervalMs)/`src/utils/ghostDriver.test.ts`
+  (42件=床テスト追加・旧「<=0は一生予約しない」を新仕様へ)/`src/utils/subWeaponOwner.ts`(pickSubAimTarget)/
+  `src/utils/subWeaponOwner.test.ts`(9件=照準5件追加)/`src/types/game.ts`(Projectile.ownerGhost)/
+  `src/hooks/useGameLoop.ts`(マーカー付与+FX色分岐+照準合流)/`src/pixi/pixiScene.ts`(青白描画)/
+  `BOT_AND_GHOST.md` §6/package.json/changelog/本ログ。
+- ★未決: なし(曖昧点は出なかった)。
+- **Load score: 1/10**(rendering)。追加は「発動イベント時のフィールド1個」と「描画時の三項演算の色選択・
+  tint代入」のみ。per-frame Graphics/Text生成なし・強glow増加なし・React購読なし・新規レイヤー/マスク/
+  画面境界判定なし=`?zoomlock=1`(最大引き)でも破綻要素なし。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ) /
+  `npx vitest related`(変更ファイル一式)=16ファイル299件通過(4 skip既存)+プローブ(破棄済み)。
+  実機の見え方確認は社長(ボス戦で守護霊召喚→25秒以内に青白いサブが1発出るはず)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(変更はゴーストのサブ予約間隔の
+  床のみ。シーン・湧き・判定・ダメージ・CD・資源は不変。青白化は視覚専用マーカー経由で判定コード不介入)。
+
 ## v0.25.2472 — テスト報告書(守護霊×全13ボス)の付記3点への裁定+教訓の台帳化【2026-07-30 11:49 JST】
 
 - テストチャット報告(ce85e87)の「気づき(判定は設計チャット)」3点への裁定:

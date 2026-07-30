@@ -10085,7 +10085,8 @@ export class PixiScene {
   private drawDecoy(v: { container: Container; gfx: Graphics; sprite: Sprite }, p: Projectile) {
     v.container.position.set(p.x + p.width / 2, p.y + p.height / 2);
     // 設置物の共通: 上方(奥=画面上)へ流れたら地平線フェードで消す(盾/タレットと統一)。
-    v.container.alpha = this.horizonActorAlpha(p.y + p.height);
+    // v0.25.2472: ゴースト設置(ownerGhost)は守護霊本体と同じ青白tint+半透明(視覚のみ)。
+    v.container.alpha = this.horizonActorAlpha(p.y + p.height) * (p.ownerGhost ? GHOST_ALLY_ALPHA : 1);
     // 射程サークル(area=射程半径)。黒フチ+シアン本線の単一ストローク(軽量)。
     const g = v.gfx;
     g.clear();
@@ -10093,7 +10094,7 @@ export class PixiScene {
     if (range > 0) {
       const pulse = 0.85 + Math.sin(Date.now() / 320) * 0.15;
       g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });
-      g.circle(0, 0, range).stroke({ color: 0x38bdf8, alpha: 0.55 * pulse, width: 1.5 });
+      g.circle(0, 0, range).stroke({ color: p.ownerGhost ? 0x9fd8ff : 0x38bdf8, alpha: 0.55 * pulse, width: 1.5 });
     }
     // 装置本体スプライト(向きなし・全方向)。
     const tex = getTexture('decoy');
@@ -10101,6 +10102,7 @@ export class PixiScene {
       if (v.sprite.texture !== tex) v.sprite.texture = tex;
       const scale = tex.height > 0 ? DECOY_DISPLAY_H / tex.height : 1;
       v.sprite.scale.set(scale);
+      v.sprite.tint = p.ownerGhost ? GHOST_ALLY_TINT : 0xffffff;
     }
   }
 
@@ -10136,21 +10138,24 @@ export class PixiScene {
   private drawFireKnife(v: { container: Container; gfx: Graphics; sprite: Sprite }, p: Projectile) {
     v.container.position.set(p.x + p.width / 2, p.y + p.height / 2);
     v.container.rotation = Math.atan2(p.direction.y, p.direction.x) - FIRE_KNIFE_NATIVE_ANGLE;
+    // v0.25.2472: ゴースト投擲(ownerGhost)は守護霊本体と同じ青白tint+半透明(視覚のみ・判定不変)。
+    v.container.alpha = p.ownerGhost ? GHOST_ALLY_ALPHA : 1;
     const tex = getTexture('weapons/fire-knife-projectile');
     if (tex) {
       if (v.sprite.texture !== tex) v.sprite.texture = tex;
       v.sprite.scale.set(FIRE_KNIFE_DISPLAY_LEN / FIRE_KNIFE_NATIVE_LEN);
+      v.sprite.tint = p.ownerGhost ? GHOST_ALLY_TINT : 0xffffff;
     }
     const g = v.gfx;
     g.clear();
     if (p.isStuck) {
-      const blink = 0.55 + Math.sin(Date.now() / 90) * 0.45; // 火種の明滅(導火線)
+      const blink = 0.55 + Math.sin(Date.now() / 90) * 0.45; // 火種の明滅(導火線。ゴースト発は青白の火)
       const hiltAngle = FIRE_KNIFE_NATIVE_ANGLE + Math.PI;
       const hiltR = FIRE_KNIFE_DISPLAY_LEN * FIRE_KNIFE_HILT_RADIUS_FRAC;
       const hx = Math.cos(hiltAngle) * hiltR;
       const hy = Math.sin(hiltAngle) * hiltR;
-      g.circle(hx, hy, 2.6).fill({ color: 0xf97316, alpha: 0.9 * blink });
-      g.circle(hx, hy, 1.3).fill({ color: 0xfde047, alpha: blink });
+      g.circle(hx, hy, 2.6).fill({ color: p.ownerGhost ? 0x9fd8ff : 0xf97316, alpha: 0.9 * blink });
+      g.circle(hx, hy, 1.3).fill({ color: p.ownerGhost ? 0xe0f2fe : 0xfde047, alpha: blink });
     }
   }
 
@@ -10194,7 +10199,9 @@ export class PixiScene {
     // 寿命末の600msでフェードアウト。さらに他の設置物(盾)と同じ地平線フェードを乗算し、
     // 上方(奥=画面上)へ流れていったら消えるようにする(社長指示・盾と挙動を統一)。
     const remaining = p.duration - age;
-    const alpha = Math.max(0, Math.min(1, remaining / 600)) * this.horizonActorAlpha(footY);
+    // v0.25.2472: ゴースト設置(ownerGhost)は守護霊本体と同じ青白tint+半透明(視覚のみ・射撃/判定不変)。
+    const alpha = Math.max(0, Math.min(1, remaining / 600)) * this.horizonActorAlpha(footY)
+      * (p.ownerGhost ? GHOST_ALLY_ALPHA : 1);
     v.container.position.set(footX, footY);
     v.container.zIndex = footY;
     v.container.alpha = alpha;
@@ -10211,6 +10218,7 @@ export class PixiScene {
       // スプライト描画(紫背景は読込時に透過済み)。前方=照準へ回転(art は砲身が下向き基準)、全方位=回転なし。
       v.sprite.visible = true;
       v.sprite.texture = tex;
+      v.sprite.tint = p.ownerGhost ? GHOST_ALLY_TINT : 0xffffff;
       const targetH = 54;
       const sc = targetH / tex.height;
       v.sprite.scale.set(sc);
@@ -11510,15 +11518,20 @@ export class PixiScene {
     v.sprite.scale.set(baseScale * sqx * shieldDepth, baseScale * sqy * shieldDepth);
 
     // 寿命末で早めにフェードアウト。さらに他の者(敵/木)と同じ地平線フェードを乗算(消える位置を統一)。
+    // v0.25.2472: ゴースト設置(ownerGhost)は守護霊本体と同じ半透明を乗算(視覚のみ・遮断/耐久は不変)。
     const remaining = p.duration - age;
-    v.sprite.alpha = Math.max(0, Math.min(1, remaining / 600)) * this.horizonActorAlpha(footY);
+    v.sprite.alpha = Math.max(0, Math.min(1, remaining / 600)) * this.horizonActorAlpha(footY)
+      * (p.ownerGhost ? GHOST_ALLY_ALPHA : 1);
 
     // 耐久が減ると赤み(亀裂感)。tint のみ・常時glowなし。被弾直後は赤白フラッシュを上書き。
+    // ゴースト設置の基調は青白tint(被弾フラッシュ=情報はそのまま残す)。
     const hp = p.shieldHp ?? 1;
     const maxHp = p.shieldMaxHp ?? hp;
     const worn = maxHp > 0 ? 1 - Math.max(0, Math.min(1, hp / maxHp)) : 0;
     if (hitT > 0.35) {
       v.sprite.tint = 0xffd0d0; // 被弾フラッシュ(赤白)
+    } else if (p.ownerGhost) {
+      v.sprite.tint = GHOST_ALLY_TINT; // 霊体の盾(耐久の赤みより霊体色を優先=視覚のみ)
     } else if (worn > 0.01) {
       const c = Math.round(255 - 150 * (0.6 * worn));
       v.sprite.tint = (255 << 16) | (c << 8) | c;
@@ -11567,13 +11580,15 @@ export class PixiScene {
         g.rotation = Math.atan2(p.direction.y, p.direction.x);
         const len = Math.max(p.width, 6) * (p.weaponType === 'rifle' ? 2.6 : 1.7);
         const hh = Math.max(2, p.height / 2);
+        // v0.25.2472: ownerGhost(ゴースト設置タレットの弾)は青白(視覚のみ)。プレイヤー弾は従来色。
+        const bulletColor = p.ownerGhost ? 0xcfe8ff : p.crit ? 0xfde047 : 0xfef3c7;
         // A2弾トレーサー: 弾本体(既存の伸びた矩形)の後方にもう一段薄く長い尾を敷くだけ
         // (同じpooled Graphicsへの追加fill1回=新規オブジェクトなし)。
         if (BULLET_TRACER_ENABLED) {
           const tailLen = len * 2;
-          g.rect(-len / 2 - tailLen, -hh / 3, tailLen, hh * 0.66).fill({ color: p.crit ? 0xfde047 : 0xfef3c7, alpha: 0.25 });
+          g.rect(-len / 2 - tailLen, -hh / 3, tailLen, hh * 0.66).fill({ color: bulletColor, alpha: 0.25 });
         }
-        g.rect(-len / 2, -hh / 2, len, hh).fill({ color: p.crit ? 0xfde047 : 0xfef3c7 });
+        g.rect(-len / 2, -hh / 2, len, hh).fill({ color: bulletColor });
         break;
       }
       case 'shotgun': {
@@ -11605,8 +11620,9 @@ export class PixiScene {
         const hop = Math.abs(Math.sin(t * Math.PI * 5.2)) * 9 * hopEnvelope;
         g.ellipse(0, 4, Math.max(3, p.width * 0.48), Math.max(1.2, p.height * 0.14))
           .fill({ color: 0x000000, alpha: 0.28 });
-        g.circle(0, -hop, Math.max(3, p.width / 2)).fill({ color: 0x1f2937 });
-        g.circle(-1, -hop - 1, Math.max(1.5, p.width / 5)).fill({ color: 0x9ca3af, alpha: 0.55 });
+        // v0.25.2472: ownerGhost(守護霊が投げた手榴弾)は青白の霊体色(視覚のみ・判定/挙動不変)。
+        g.circle(0, -hop, Math.max(3, p.width / 2)).fill({ color: p.ownerGhost ? 0x9fd8ff : 0x1f2937 });
+        g.circle(-1, -hop - 1, Math.max(1.5, p.width / 5)).fill({ color: p.ownerGhost ? 0xe0f2fe : 0x9ca3af, alpha: 0.55 });
         break;
       }
       case 'drone-boomerang-projectile': {
@@ -11632,9 +11648,10 @@ export class PixiScene {
         const age = Math.max(0, Math.min(1, (Date.now() - p.createdAt) / Math.max(1, p.duration)));
         const pulse = 0.65 + Math.sin(age * Math.PI * 12) * 0.16;
         const radius = p.area ?? 34;
-        g.circle(0, 0, radius / depthD).stroke({ color: 0x38bdf8, alpha: 0.42 * pulse, width: 1.5 });
-        g.circle(0, 0, Math.max(4, p.width * 0.38)).fill({ color: 0x0f172a, alpha: 0.88 });
-        g.circle(0, 0, Math.max(2, p.width * 0.18)).fill({ color: 0x7dd3fc, alpha: 0.76 });
+        // v0.25.2472: ownerGhost(守護霊が置いたトラップ)は青白の霊体色(視覚のみ・判定/挙動不変)。
+        g.circle(0, 0, radius / depthD).stroke({ color: p.ownerGhost ? 0x9fd8ff : 0x38bdf8, alpha: 0.42 * pulse, width: 1.5 });
+        g.circle(0, 0, Math.max(4, p.width * 0.38)).fill({ color: p.ownerGhost ? 0x64748b : 0x0f172a, alpha: 0.88 });
+        g.circle(0, 0, Math.max(2, p.width * 0.18)).fill({ color: p.ownerGhost ? 0xe0f2fe : 0x7dd3fc, alpha: 0.76 });
         break;
       }
       case 'decoy': {
@@ -11704,6 +11721,8 @@ export class PixiScene {
       if (depthD !== 1) g.scale.set(depthD);
       g.alpha = this.horizonActorAlpha(drawY + p.height);
     }
+    // v0.25.2472: ゴースト発のサブ生成物は守護霊本体と同じ半透明(青白tintは各caseの色で対応済み)。
+    if (p.ownerGhost) g.alpha *= GHOST_ALLY_ALPHA;
   }
 
   // ---- 屋内(研究施設)ステージの床/壁/扉/マーカー(仮実装=塗り矩形) ----------

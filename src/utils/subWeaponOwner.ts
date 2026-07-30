@@ -61,3 +61,36 @@ export const ownerCenterX = (o: OwnerBodyLike): number => o.x + o.width / 2;
 export const ownerCenterY = (o: OwnerBodyLike): number => o.y + o.height / 2;
 /** 足元(設置物の footY 用)。 */
 export const ownerFootY = (o: OwnerBodyLike): number => o.y + o.height;
+
+// ---- 照準の合流点(v0.25.2472・社長指示「狙い先はゴーストの紐付きボス」) --------------------------
+// 狙いを持つサブ(heavy-grenade/fire-knife)のターゲット選択。
+// ・オーナー=ゴースト かつ 紐付きボス(ghostBossId)が生きている → そのボス(G2.6の1行ルール
+//   「効果はオーナーに対して解決する」の照準版)。
+// ・それ以外(プレイヤー/ボス不在の瞬間)→ 従来どおり「オーナーに最も近い非リーパー敵」
+//   (filter→map→sort→[0] を従来コードと同一手順で再現=プレイヤー起因の挙動は1bitも変わらない)。
+export interface SubAimEnemyLike {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  type: string;
+  reaperChaser?: boolean;
+}
+
+export const pickSubAimTarget = <E extends SubAimEnemyLike>(
+  owner: SubWeaponOwner,
+  ghostBossId: string | undefined,
+  enemies: readonly E[],
+): E | undefined => {
+  if (owner.kind === 'ghost-ally' && ghostBossId) {
+    const boss = enemies.find(e => e.id === ghostBossId);
+    if (boss) return boss;
+  }
+  const cx = ownerCenterX(owner);
+  const cy = ownerCenterY(owner);
+  return enemies
+    .filter(e => e.type !== 'reaper' || e.reaperChaser)
+    .map(e => ({ e, dist: Math.hypot(e.x + e.width / 2 - cx, e.y + e.height / 2 - cy) }))
+    .sort((a, b) => a.dist - b.dist)[0]?.e;
+};

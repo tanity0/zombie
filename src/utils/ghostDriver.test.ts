@@ -2,7 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   decideGhost, defaultGhostProfile, ghostLeashWarp, hitsPerMinToDodgeStrength,
-  ghostSubUseIntervalMs, shouldGhostClaimSub, DEFAULT_SUB_USES_PER_MIN,
+  ghostSubUseIntervalMs, ghostSubClaimIntervalMs, GHOST_SUB_USE_MAX_INTERVAL_MS,
+  shouldGhostClaimSub, DEFAULT_SUB_USES_PER_MIN,
   ghostRunEnabled, GUARDIAN_SPIRIT_SKILL,
   GHOST_LEASH_PX, GHOST_MELEE_RANGE, GHOST_BOSS_HP_MULT,
   rollGhostMoveReaction, GHOST_MOVE_ROLL_MIN_N, GHOST_MOVE_ROLL_TIMEOUT_MS,
@@ -261,15 +262,29 @@ describe('G2.6: サブウェポン使用の予約(subUsesPerMinノブ)', () => {
     expect(ghostSubUseIntervalMs(-1)).toBeNull();
   });
 
-  it('shouldGhostClaimSub: 前回使用から間隔が空いたら予約する', () => {
-    expect(shouldGhostClaimSub(0, 30000, 2)).toBe(true);   // ちょうど間隔=予約可
-    expect(shouldGhostClaimSub(0, 29999, 2)).toBe(false);  // まだ間隔前
-    expect(shouldGhostClaimSub(10000, 39999, 2)).toBe(false);
-    expect(shouldGhostClaimSub(10000, 40000, 2)).toBe(true);
+  // v0.25.2472(社長指示「守護霊のサブウェポンは実装されないなら、してほしい」): ボス交戦中の頻度の床。
+  // 予約間隔は min(プロファイル由来, GHOST_SUB_USE_MAX_INTERVAL_MS=25秒)。
+  it('ghostSubClaimIntervalMs: プロファイル間隔と床(25秒)の小さい方。使わない人(<=0)も床で拾う', () => {
+    expect(GHOST_SUB_USE_MAX_INTERVAL_MS).toBe(25_000);
+    expect(ghostSubClaimIntervalMs(6)).toBe(10000);                          // 実測が頻繁ならそのまま
+    expect(ghostSubClaimIntervalMs(2)).toBe(GHOST_SUB_USE_MAX_INTERVAL_MS); // 30秒 → 床の25秒へ
+    expect(ghostSubClaimIntervalMs(0)).toBe(GHOST_SUB_USE_MAX_INTERVAL_MS); // 使わない人も交戦中は床
+    expect(ghostSubClaimIntervalMs(-1)).toBe(GHOST_SUB_USE_MAX_INTERVAL_MS);
   });
 
-  it('shouldGhostClaimSub: subUsesPerMin<=0(サブを使わない人)は一生予約しない', () => {
-    expect(shouldGhostClaimSub(0, 10_000_000, 0)).toBe(false);
+  it('shouldGhostClaimSub: 前回使用から実効間隔(床込み)が空いたら予約する', () => {
+    expect(shouldGhostClaimSub(0, 25000, 2)).toBe(true);   // ちょうど床間隔=予約可
+    expect(shouldGhostClaimSub(0, 24999, 2)).toBe(false);  // まだ間隔前
+    expect(shouldGhostClaimSub(10000, 34999, 2)).toBe(false);
+    expect(shouldGhostClaimSub(10000, 35000, 2)).toBe(true);
+    expect(shouldGhostClaimSub(0, 10000, 6)).toBe(true);   // 実測6回/分=10秒間隔はそのまま
+    expect(shouldGhostClaimSub(0, 9999, 6)).toBe(false);
+  });
+
+  it('shouldGhostClaimSub: subUsesPerMin<=0(サブを使わない人)も交戦中は床(25秒)で予約する', () => {
+    // 旧仕様(〜v0.25.2471)は一生予約しなかった。社長指示の床(20〜30秒に1回)で挙動変更。
+    expect(shouldGhostClaimSub(0, 24999, 0)).toBe(false);
+    expect(shouldGhostClaimSub(0, 25000, 0)).toBe(true);
   });
 });
 

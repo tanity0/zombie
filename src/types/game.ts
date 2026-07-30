@@ -1051,6 +1051,10 @@ export interface Projectile {
   explodeDamageMult?: number;
   // ボマー: 手榴弾が一度だけ子グレネードを散布して再アーム済みであることを示す(再散布の防止)。
   bomberSpawned?: boolean;
+  // G2.6(BOT_AND_GHOST.md §2.8)+v0.25.2472「全てプレイヤーと同じく青白くして」:
+  // ゴースト(守護霊)がオーナーとして発動したサブウェポンの生成物マーカー。**視覚専用**
+  // (レンダラが青白tint/霊体αに使うだけ。判定・ダメージ・CD・挙動には一切使わない)。
+  ownerGhost?: boolean;
 }
 
 // Pickup types

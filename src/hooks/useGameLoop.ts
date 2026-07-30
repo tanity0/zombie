@@ -207,7 +207,7 @@ import {
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
 import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
-import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
+import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
 import { resolveBossHateAim, type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
@@ -5933,6 +5933,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const playerOwner = playerAsOwner(subWeaponPlayer);
         const ghostAllyForSub = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
         let subOwner: SubWeaponOwner = ghostAllyForSub?.ghostSubClaim ? ghostAsOwner(ghostAllyForSub) : playerOwner;
+        // v0.25.2472: ゴースト発動時の照準先=紐付きボス(pickSubAimTargetがowner.kindを見るので、
+        // プレイヤー発動時はこのidが渡っていても一切使われない=従来どおり最寄りの敵)。
+        const ghostSubBossId = ghostAllyForSub?.ghostBossId;
         // 予約の消費: ゴーストがオーナーとして実際に1発撃った瞬間に予約を下ろし、使用時刻を打刻する。
         // 同一フレームで複数のサブが明けていても、ゴーストとして出るのは1発だけ(以降はプレイヤー)。
         const consumeGhostSubClaim = () => {
@@ -5955,13 +5958,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // G2.6: 投擲位置/照準の起点はオーナー(既定=プレイヤー=従来と同値)。
           const pcx = ownerCenterX(subOwner);
           const pcy = ownerCenterY(subOwner);
-          const target = useGameStore.getState().enemies
-            .filter(e => e.type !== 'reaper' || e.reaperChaser)
-            .map(e => ({
-              enemy: e,
-              dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy)
-            }))
-            .sort((a, b) => a.dist - b.dist)[0]?.enemy;
+          const ghostOwned = subOwner.kind === 'ghost-ally';
+          // v0.25.2472: ターゲット選択は照準の合流点(純関数)へ。プレイヤー=従来の最寄り非リーパー
+          // (手順まで同一=挙動不変)/ゴースト=紐付きボス優先。
+          const target = pickSubAimTarget(subOwner, ghostSubBossId, useGameStore.getState().enemies);
           const aimX = target ? target.x + target.width / 2 - pcx : subOwner.facing?.x ?? 1;
           const aimY = target ? target.y + target.height / 2 - pcy : subOwner.facing?.y ?? 0;
           const mag = Math.max(0.001, Math.hypot(aimX, aimY));
@@ -5986,7 +5986,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               passthrough: false,
               hitEnemies: [],
               hostile: false,
-              reflected: false
+              reflected: false,
+              ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
             });
           });
           setSubWeaponCooldown('heavy-grenade', gameTime + HEAVY_GRENADE_COOLDOWN_MS);
@@ -6003,6 +6004,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // G2.6: 設置位置はオーナー(既定=プレイヤー=従来と同値)。
           const pcx = ownerCenterX(subOwner);
           const pcy = ownerCenterY(subOwner);
+          const ghostOwned = subOwner.kind === 'ghost-ally';
           addProjectile({
             id: `proj-marksman-trap-${Date.now()}`,
             x: pcx - 8,
@@ -6021,9 +6023,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             hostile: false,
             reflected: false,
             area: MARKSMAN_TRAP_RADIUS_BY_LEVEL[level],
-            count: level
+            count: level,
+            ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
           });
-          spawnRing(pcx, pcy, 4, MARKSMAN_TRAP_RADIUS_BY_LEVEL[level], 'rgba(56,189,248,0.46)', 2, 280);
+          spawnRing(pcx, pcy, 4, MARKSMAN_TRAP_RADIUS_BY_LEVEL[level],
+            ghostOwned ? 'rgba(159,216,255,0.5)' : 'rgba(56,189,248,0.46)', 2, 280);
           setSubWeaponCooldown('marksman-trap', gameTime + MARKSMAN_TRAP_COOLDOWN_MS);
           consumeGhostSubClaim(); // G2.6
         }
@@ -6293,6 +6297,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const size = 16;
           const pcx = ownerCenterX(subOwner);
           const pcy = ownerCenterY(subOwner);
+          const ghostOwned = subOwner.kind === 'ghost-ally';
           const decoyId = `proj-decoy-${nowMs}`;
           addProjectile({
             id: decoyId,
@@ -6314,10 +6319,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             reflected: false,
             decoyLandAt: nowMs + DECOY_THROW_MS,
             area: DECOY_RANGE_BY_LEVEL[level], // 射程(Lv別。描画のサークル半径と共有)
+            ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
           });
           // 初回迎撃は着地の0.5秒後。
           decoyPulseRef.current.set(decoyId, gameTime + DECOY_THROW_MS + DECOY_PULSE_MS);
-          spawnRing(pcx, pcy, 4, 18, 'rgba(56,189,248,0.6)', 2, 220);
+          spawnRing(pcx, pcy, 4, 18, ghostOwned ? 'rgba(159,216,255,0.65)' : 'rgba(56,189,248,0.6)', 2, 220);
           setSubWeaponCooldown('decoy', gameTime + DECOY_COOLDOWN_MS);
           consumeGhostSubClaim(); // G2.6
         }
@@ -6359,6 +6365,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (k.startsWith(`${s.id}:`)) shieldHitRef.current.delete(k);
             }
           }
+          const ghostOwned = subOwner.kind === 'ghost-ally';
           addProjectile({
             id: `proj-shield-${nowMs}`,
             x: footX - shieldW / 2,
@@ -6379,9 +6386,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // スキル: ナイト = 盾の最大HP ×1.5。
             shieldHp: Math.round(SHIELD_HP_BY_LEVEL[level] * skillSummonHpMult(useGameStore.getState().player)),
             shieldMaxHp: Math.round(SHIELD_HP_BY_LEVEL[level] * skillSummonHpMult(useGameStore.getState().player)),
+            ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
           });
           // ガチャンッ!: 着地ダスト + 金属音(構えた感)。スプライト側で着地スラム。
-          spawnRing(footX, footY, 6, 64, 'rgba(203,213,225,0.7)', 3, 260);
+          spawnRing(footX, footY, 6, 64, ghostOwned ? 'rgba(159,216,255,0.7)' : 'rgba(203,213,225,0.7)', 3, 260);
           playSfx('shield-deploy');
           recordShieldPlacement(); // G4a(§2.9(3)・記録専用): shield設置1回の様式カウンタ
           setSubWeaponCooldown('shield', gameTime + SHIELD_COOLDOWN_MS);
@@ -6414,6 +6422,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // x,y は足元から当たり判定矩形を作る(下辺=足元)。
           const footX = pcx + ux * TURRET_PLACE_FORWARD;
           const footY = pcy + uy * TURRET_PLACE_FORWARD;
+          const ghostOwned = subOwner.kind === 'ghost-ally';
           addProjectile({
             id: `proj-turret-${nowMs}`,
             x: footX - TURRET_FOOT_W / 2,
@@ -6432,10 +6441,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             hostile: false,
             reflected: false,
             turretMode: 'forward', // 設置時は必ず前方集中モードで開始
+            ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
           });
           // 設置演出: 軽い着地リング+小ダスト(短命・軽量)。
-          spawnRing(footX, footY, 4, 26, 'rgba(148,163,184,0.7)', 2, 220);
-          spawnBurst(footX, footY, '#94a3b8', 6);
+          spawnRing(footX, footY, 4, 26, ghostOwned ? 'rgba(159,216,255,0.7)' : 'rgba(148,163,184,0.7)', 2, 220);
+          spawnBurst(footX, footY, ghostOwned ? '#9fd8ff' : '#94a3b8', 6);
           playSfx('shield-deploy');
           setSubWeaponCooldown('turret', gameTime + TURRET_COOLDOWN_MS);
           consumeGhostSubClaim(); // G2.6
@@ -6709,11 +6719,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // G2.6: 投擲位置/照準の起点はオーナー(既定=プレイヤー=従来と同値)。
           const pcx = ownerCenterX(subOwner);
           const pcy = ownerCenterY(subOwner);
-          // ターゲット = オーナーに最も近い非リーパー敵(既存の自動射撃に準拠)。
-          const target = useGameStore.getState().enemies
-            .filter(e => e.type !== 'reaper' || e.reaperChaser)
-            .map(e => ({ enemy: e, dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) }))
-            .sort((a, b) => a.dist - b.dist)[0]?.enemy;
+          const ghostOwned = subOwner.kind === 'ghost-ally';
+          // v0.25.2472: ターゲット選択は照準の合流点(純関数)へ。プレイヤー=従来の最寄り非リーパー
+          // (手順まで同一=挙動不変)/ゴースト=紐付きボス優先。
+          const target = pickSubAimTarget(subOwner, ghostSubBossId, useGameStore.getState().enemies);
           if (target) {
             const aimX = target.x + target.width / 2 - pcx;
             const aimY = target.y + target.height / 2 - pcy;
@@ -6736,6 +6745,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               hostile: false,
               reflected: false,
               area: FIRE_KNIFE_RADIUS_BY_LEVEL[level], // 爆発半径(命中後の爆発で参照)
+              ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
             });
             playSfx('shot-damage');
             setSubWeaponCooldown('fire-knife', gameTime + FIRE_KNIFE_COOLDOWN_BY_LEVEL[level]);
@@ -7204,9 +7214,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // §6.10 M33④: エクスプローダーをタレット消滅爆発(半径+ダメージ)にも適用。
               const tExMult = skillExplosionMult(useGameStore.getState().player);
               const tBlastR = TURRET_EXPLOSION_RADIUS * tExMult;
-              spawnRing(tcx, tcy, 8, tBlastR, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
-              spawnBurst(tcx, tcy, '#f97316', 16);
-              useGameStore.getState().spawnGlow(tcx, tcy, 44, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              // v0.25.2472: ゴースト発(ownerGhost)の消滅爆発FXは青白系(視覚のみ・判定/ダメージ不変)。
+              if (turret.ownerGhost) {
+                spawnRing(tcx, tcy, 8, tBlastR, 'rgba(159,216,255,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+                spawnBurst(tcx, tcy, '#9fd8ff', 16);
+                useGameStore.getState().spawnGlow(tcx, tcy, 44, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              } else {
+                spawnRing(tcx, tcy, 8, tBlastR, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+                spawnBurst(tcx, tcy, '#f97316', 16);
+                useGameStore.getState().spawnGlow(tcx, tcy, 44, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              }
               const tWalls = aoeWalls(tcx, tcy);
               for (const enemy of useGameStore.getState().enemies) {
                 if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
@@ -7285,6 +7302,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 direction: dir, weaponType: 'rifle', weaponKey: GRENADE_WEAPON_KEY,
                 duration: 1400, createdAt: nowMs,
                 passthrough: true, hitEnemies: [], hostile: false, reflected: false,
+                ownerGhost: turret.ownerGhost, // 視覚専用: ゴースト設置タレットの弾も青白
               });
               { const g = npcSfxDistGain(tcx, tcy, tgPx, tgPy, tgCam, tgGb); if (g > 0) playSfx('rifle-fire', g); }
             } else {
@@ -7298,6 +7316,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 weaponType: 'handgun', weaponKey: 'sub-turret',
                 duration: 1400, createdAt: nowMs,
                 passthrough: false, hitEnemies: [], hostile: false, reflected: false,
+                ownerGhost: turret.ownerGhost, // 視覚専用: ゴースト設置タレットの弾も青白
               });
               { const g = npcSfxDistGain(tcx, tcy, tgPx, tgPy, tgCam, tgGb); if (g > 0) playSfx('handgun-fire', g); }
             }
@@ -7332,9 +7351,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // §6.10 M33④: エクスプローダーをデコイLv3消滅爆発(半径+ダメージ)にも適用。
             const dExMult = skillExplosionMult(useGameStore.getState().player);
             const dBlastR = DECOY_LV3_EXPLOSION_RADIUS * dExMult;
-            spawnRing(dcx, dcy, 8, dBlastR, 'rgba(56,189,248,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
-            spawnBurst(dcx, dcy, '#38bdf8', 16);
-            useGameStore.getState().spawnGlow(dcx, dcy, 44, 'rgba(56,189,248,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            // v0.25.2472: ゴースト発(ownerGhost)はシアン→青白へ(視覚のみ・判定/ダメージ不変)。
+            if (decoy.ownerGhost) {
+              spawnRing(dcx, dcy, 8, dBlastR, 'rgba(159,216,255,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              spawnBurst(dcx, dcy, '#9fd8ff', 16);
+              useGameStore.getState().spawnGlow(dcx, dcy, 44, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            } else {
+              spawnRing(dcx, dcy, 8, dBlastR, 'rgba(56,189,248,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              spawnBurst(dcx, dcy, '#38bdf8', 16);
+              useGameStore.getState().spawnGlow(dcx, dcy, 44, 'rgba(56,189,248,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            }
             const dWalls = aoeWalls(dcx, dcy);
             for (const enemy of useGameStore.getState().enemies) {
               if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
@@ -7395,9 +7421,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 passthrough: false, hitEnemies: [], hostile: false, reflected: false,
                 bomberSpawned: true, // 子はこれ以上散布しない
                 explodeRadius: HEAVY_GRENADE_RADIUS * 0.6, // 小ブラスト(下の爆発が blastR を参照)
+                ownerGhost: grenade.ownerGhost, // 視覚専用: 親がゴースト発ならば子も青白
               });
             }
-            spawnBurst(gx, gy, '#fbbf24', 8);
+            spawnBurst(gx, gy, grenade.ownerGhost ? '#9fd8ff' : '#fbbf24', 8);
             continue; // 親は +1s 後に通常どおり起爆する
           }
           removeProjectile(grenade.id);
@@ -7415,10 +7442,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           let hgHitCount = 0;
           const grenadeBaseDamage = grenade.damage || HEAVY_GRENADE_DAMAGE;
           const fxMs = HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
-          spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
-          spawnBurst(gx, gy, '#f97316', 20);
-          spawnBurst(gx, gy, '#7f1d1d', 8);
-          useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', fxMs);
+          // v0.25.2472: ゴースト発(ownerGhost)の爆発FXは青白系へtint差し替え(視覚のみ・判定/ダメージ不変)。
+          if (grenade.ownerGhost) {
+            spawnRing(gx, gy, 8, blastR, 'rgba(159,216,255,0.82)', 5, fxMs);
+            spawnBurst(gx, gy, '#9fd8ff', 20);
+            spawnBurst(gx, gy, '#1e3a5f', 8);
+            useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(159,216,255,', fxMs);
+          } else {
+            spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
+            spawnBurst(gx, gy, '#f97316', 20);
+            spawnBurst(gx, gy, '#7f1d1d', 8);
+            useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', fxMs);
+          }
           const gWalls = aoeWalls(gx, gy);
           for (const enemy of useGameStore.getState().enemies) {
             if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
@@ -7567,13 +7602,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playSfx('bomb');
               // §6.10 M33③: ボマー = 発火ナイフの爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
               if (hasSkill(useGameStore.getState().player, 'bomber')) {
-                for (const mini of buildBomberMinis(bx, by, `fk-${knife.id}`)) addProjectile(mini);
-                spawnBurst(bx, by, '#fbbf24', 8);
+                for (const mini of buildBomberMinis(bx, by, `fk-${knife.id}`)) {
+                  addProjectile({ ...mini, ownerGhost: knife.ownerGhost }); // 視覚専用: ゴースト発は子も青白
+                }
+                spawnBurst(bx, by, knife.ownerGhost ? '#9fd8ff' : '#fbbf24', 8);
               }
-              spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
-              spawnBurst(bx, by, '#f97316', 18);
-              spawnBurst(bx, by, '#7f1d1d', 8);
-              useGameStore.getState().spawnGlow(bx, by, Math.round(blastR * 0.68), 'rgba(251,146,60,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+              // v0.25.2472: ゴースト発(ownerGhost)の爆発FXは青白系(視覚のみ・判定/ダメージ不変)。
+              if (knife.ownerGhost) {
+                spawnRing(bx, by, 8, blastR, 'rgba(159,216,255,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+                spawnBurst(bx, by, '#9fd8ff', 18);
+                spawnBurst(bx, by, '#1e3a5f', 8);
+                useGameStore.getState().spawnGlow(bx, by, Math.round(blastR * 0.68), 'rgba(159,216,255,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+              } else {
+                spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+                spawnBurst(bx, by, '#f97316', 18);
+                spawnBurst(bx, by, '#7f1d1d', 8);
+                useGameStore.getState().spawnGlow(bx, by, Math.round(blastR * 0.68), 'rgba(251,146,60,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+              }
               const fkWalls = aoeWalls(bx, by);
               for (const enemy of useGameStore.getState().enemies) {
                 if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
@@ -7611,7 +7656,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hy = hit.y + hit.height / 2;
               const killed = damageEnemy(hit.id, knife.damage);
               spawnDamageNumber(hx, hit.y, knife.damage, false);
-              spawnBurst(hx, hy, '#fb923c', 5); // 刺さった火花(軽量)
+              spawnBurst(hx, hy, knife.ownerGhost ? '#9fd8ff' : '#fb923c', 5); // 刺さった火花(軽量。ゴースト発は青白)
               playSfx('shot-damage');
               // 刺さる: 敵に追従し2秒後に爆発(敵が死んでも死亡地点で爆発)。
               useGameStore.getState().stickFireKnife(knife.id, hit.id, hx - knife.width / 2, hy - knife.height / 2, FIRE_KNIFE_FUSE_MS);
@@ -7723,14 +7768,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().enemies, tx, ty, radius, remainingTargets, alreadyHit,
           ).map(enemy => ({ enemy }));
           if (targets.length === 0) continue;
-          spawnRing(tx, ty, 8, radius + 12, 'rgba(56,189,248,0.9)', 3, 360);
-          spawnBurst(tx, ty, '#38bdf8', 14);
-          useGameStore.getState().spawnGlow(tx, ty, radius + 28, 'rgba(56,189,248,', 320);
+          // v0.25.2472: ゴースト設置(ownerGhost)の捕獲FXはシアン→青白へ(視覚のみ・判定/捕縛不変)。
+          if (trap.ownerGhost) {
+            spawnRing(tx, ty, 8, radius + 12, 'rgba(159,216,255,0.9)', 3, 360);
+            spawnBurst(tx, ty, '#9fd8ff', 14);
+            useGameStore.getState().spawnGlow(tx, ty, radius + 28, 'rgba(159,216,255,', 320);
+          } else {
+            spawnRing(tx, ty, 8, radius + 12, 'rgba(56,189,248,0.9)', 3, 360);
+            spawnBurst(tx, ty, '#38bdf8', 14);
+            useGameStore.getState().spawnGlow(tx, ty, radius + 28, 'rgba(56,189,248,', 320);
+          }
           targets.forEach(({ enemy }) => {
             const ex = enemy.x + enemy.width / 2;
             const ey = enemy.y + enemy.height / 2;
             rootEnemy(enemy.id, gameTime + MARKSMAN_TRAP_STUN_MS);
-            spawnRing(ex, ey, 5, 28, 'rgba(125,211,252,0.86)', 2, 260);
+            spawnRing(ex, ey, 5, 28, trap.ownerGhost ? 'rgba(224,242,254,0.86)' : 'rgba(125,211,252,0.86)', 2, 260);
           });
           const nextHitEnemies = [...trap.hitEnemies, ...targets.map(({ enemy }) => enemy.id)];
           if (nextHitEnemies.length >= maxTargets) {
@@ -8145,10 +8197,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             let exHitCount = 1; // 直撃した敵を含む
             const blastX = enemyForFx.x + enemyForFx.width / 2;
             const blastY = enemyForFx.y + enemyForFx.height / 2;
-            spawnRing(blastX, blastY, 8, exRadius, 'rgba(251,146,60,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
-            spawnBurst(blastX, blastY, '#f97316', 16);
-            spawnBurst(blastX, blastY, '#7f1d1d', 6);
-            useGameStore.getState().spawnGlow(blastX, blastY, 46, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            // v0.25.2472: ゴースト発(ownerGhost=ゴースト設置タレットのランチャー弾のみ)は青白FX
+            // (視覚のみ・判定/ダメージ不変。プレイヤーの弾はownerGhost未設定=従来色)。
+            if (projectile.ownerGhost) {
+              spawnRing(blastX, blastY, 8, exRadius, 'rgba(159,216,255,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              spawnBurst(blastX, blastY, '#9fd8ff', 16);
+              spawnBurst(blastX, blastY, '#1e3a5f', 6);
+              useGameStore.getState().spawnGlow(blastX, blastY, 46, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            } else {
+              spawnRing(blastX, blastY, 8, exRadius, 'rgba(251,146,60,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              spawnBurst(blastX, blastY, '#f97316', 16);
+              spawnBurst(blastX, blastY, '#7f1d1d', 6);
+              useGameStore.getState().spawnGlow(blastX, blastY, 46, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            }
             const splashBase = dmg * (projectile.explodeDamageMult ?? 1) * exMult;
             const exWalls = aoeWalls(blastX, blastY);
             for (const splashEnemy of useGameStore.getState().enemies) {

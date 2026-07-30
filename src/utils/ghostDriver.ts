@@ -122,9 +122,25 @@ export const ghostRunEnabled = (ghostDebugEnabled: boolean, equippedSkills: read
 /** playerTraits.SEED_PROFILE と同じ「控えめな既定値」(叩き台)。欠損時のフォールバックにも使う。 */
 export const DEFAULT_SUB_USES_PER_MIN = 2;
 
-/** subUsesPerMin→予約間隔(ms)。0以下は「サブを使わない人」= null(予約しない)。 */
+/** subUsesPerMin→予約間隔(ms)。0以下は「サブを使わない人」= null(プロファイル上は予約間隔なし)。 */
 export const ghostSubUseIntervalMs = (subUsesPerMin: number): number | null =>
   subUsesPerMin > 0 ? 60000 / subUsesPerMin : null;
+
+/**
+ * v0.25.2472(社長指示「守護霊のサブウェポンは実装されないなら、してほしい」): ボス交戦中の
+ * サブ使用頻度の床=予約間隔の上限。プロファイルの subUsesPerMin が小さくても(0でも)、
+ * 交戦中は最低この間隔で1回は予約する(叩き台20〜30秒の中庸=25秒)。shouldGhostClaimSub は
+ * 呼び出し側(useGameLoop)が「紐付いたボスの生存中」だけ呼ぶので、床も自然にボス交戦中限定になる。
+ */
+export const GHOST_SUB_USE_MAX_INTERVAL_MS = 25_000;
+
+/** 実効の予約間隔 = min(プロファイル由来, 床)。プロファイルが「使わない人」(null)でも床は生きる。 */
+export const ghostSubClaimIntervalMs = (subUsesPerMin: number): number => {
+  const fromProfile = ghostSubUseIntervalMs(subUsesPerMin);
+  return fromProfile === null
+    ? GHOST_SUB_USE_MAX_INTERVAL_MS
+    : Math.min(fromProfile, GHOST_SUB_USE_MAX_INTERVAL_MS);
+};
 
 /**
  * このtickで「次のサブ発動1回」を予約するか。交戦中かの判定は呼び出し側(紐付いたボスの生存)。
@@ -134,10 +150,7 @@ export const shouldGhostClaimSub = (
   lastSubUseAtMs: number,
   nowMs: number,
   subUsesPerMin: number,
-): boolean => {
-  const interval = ghostSubUseIntervalMs(subUsesPerMin);
-  return interval !== null && nowMs - lastSubUseAtMs >= interval;
-};
+): boolean => nowMs - lastSubUseAtMs >= ghostSubClaimIntervalMs(subUsesPerMin);
 
 // ---- 定数(BOT_AND_GHOST.md §3裁定 + 実装の叩き台) ---------------------------------------------
 // GHOST_HP_FRAC(0.6)は v0.25.2468 で廃止: 社長裁定「HPは計測時のHPを100%再現。全ステータスを
