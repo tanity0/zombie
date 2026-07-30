@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2469',
+    items: [
+      '守護霊がボスに集中するようになりました: 弾は雑魚をすり抜けてボスにだけ当たり、本体も木や岩をすり抜けて移動します(霊体)。',
+    ],
+  },
+  {
     version: '0.25.2468',
     items: [
       '敵の弾に発射の火(赤い閃き)と着弾・消滅の爆ぜ(小さなリングと火花)が付きました(全ボス・植物の種弾など敵弾すべて)。',

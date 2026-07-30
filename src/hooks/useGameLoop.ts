@@ -77,7 +77,7 @@ import { GAME_SPEED } from '../config/gameSpeed';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
-import { treesInRegion, trunkRect, resolveTreeCollision } from '../world/trees';
+import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisionはv0.25.2469で不使用に(霊体すり抜け)
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
 import { rollWeaponKey } from '../utils/weaponDrop';
@@ -7022,6 +7022,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 player: { x: gsPlayer.x, y: gsPlayer.y, width: gsPlayer.width, height: gsPlayer.height },
                 // 「ゴーストは戦闘だけする」= 紐付いたボス1体だけを対象にする(雑魚に脇道しない)。
                 enemies: boundBoss ? [boundBoss] : [],
+                boundBossId: ghostNow.ghostBossId, // v0.25.2469: ボス束縛を純関数側でも明示
+
                 projectiles: useGameStore.getState().projectiles,
                 profile,
                 weapon: {
@@ -7036,7 +7038,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const step = ghostNow.speed * deltaTime;
               const nx = ghostNow.x + decision.moveX * step;
               const ny = ghostNow.y + decision.moveY * step;
-              const resolved = resolveTreeCollision({ x: nx, y: ny, width: ghostNow.width, height: ghostNow.height });
+              // v0.25.2469(社長指示): 霊体はオブジェクト(木・岩等)をすり抜ける。詰まって置き去りに
+              // なる事故を根絶(リーシュワープ=瞬間追いつきの世界観とも整合)。判定はゴースト移動のみ=
+              // 敵・プレイヤー・弾の衝突は不変。
+              const resolved = { x: nx, y: ny };
 
               // G2.6(BOT_AND_GHOST.md §2.8): サブウェポン使用の予約。「CDが明けていて交戦中なら使う」の
               // 単純判断=交戦中(紐付いたボスが生きている)かつ頻度ノブ(subUsesPerMin)の間隔が空いたら

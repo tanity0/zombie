@@ -1,5 +1,6 @@
 import { Player, Enemy, Projectile, Pickup, Summon } from '../types/game';
 import { enemyFootBox, enemyHitStrip } from '../pixi/renderSpec';
+import { isBossType } from './enemyUtils';
 
 // 当たり判定=「帯」方式(社長指示)。通常敵は足元の帯(幅=影と同規格=実描画幅×0.55 / 高さ=e.height)で判定。
 // 裏ボスは従来どおり生の帯(AABB=ENEMY_STATS の w×h、BOSS_SPRITE_FIT で絵を追従)。絵は別経路で帯より大きく描く。
@@ -123,6 +124,11 @@ export const checkProjectileEnemyCollisions = (
       // ジャンプ攻撃中(空中)の敵は当たり判定そのものを外す=あらゆる飛び道具をすり抜けさせる
       // (盾は別経路=敵AIの shield 判定で処理されるので影響しない)。
       if (enemy.aiPhase === 'jump') return;
+
+      // v0.25.2469(社長指示「守護霊は基本的にボスを狙う」): ゴースト銃弾はボス系以外を**すり抜ける**。
+      // 狙いは元々ボス束縛だが、途中の雑魚が弾を吸って「雑魚と戦っているように見える+ボスへ届かない」
+      // のを防ぐ(霊体の弾=実体の雑魚には干渉しない、の世界観にも合う)。
+      if (projectile.weaponKey === 'ghost-gun' && !isBossType(enemy.type)) return;
 
       // PHILL弾は「胴体ボックス または 頭部リージョン」で当たり判定し、頭部命中を headshot として返す。
       if (projectile.weaponType === 'phill-bullet') {

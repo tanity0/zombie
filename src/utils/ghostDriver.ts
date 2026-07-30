@@ -196,6 +196,9 @@ export interface GhostDriverInput {
   player: { x: number; y: number; width: number; height: number };
   /** 交戦対象の候補(通常はボス1体のみを想定=「ゴーストは戦闘だけする」)。 */
   enemies: readonly Enemy[];
+  /** v0.25.2469(社長指示「基本的にボスを狙う」): 紐付いたボスのid。生きていれば常にこれを狙い、
+   * 雑魚へ流れない(不在の瞬間だけ従来のpickTargetへフォールバック)。 */
+  boundBossId?: string;
   projectiles: readonly Projectile[];
   profile: GhostProfile;
   weapon: GhostWeapon;
@@ -224,9 +227,10 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   const gcx = ghost.x + ghost.width / 2;
   const gcy = ghost.y + ghost.height / 2;
 
-  // 標的選択(流用: pickTarget)。'threat'=攻撃中/スタン中を優先(ゴーストは戦闘だけするので
-  // targeting段階を持たない=固定モード)。
-  const target = pickTarget('threat', gcx, gcy, enemies, gameTime);
+  // 標的選択: **紐付いたボスが生きていれば常にボス**(社長指示v0.25.2469「基本的にボスを狙う様に
+  // しないと雑魚に流れていってる」)。不在の瞬間だけ従来のpickTarget('threat')へフォールバック。
+  const bound = input.boundBossId ? enemies.find(e => e.id === input.boundBossId) : undefined;
+  const target = bound ?? pickTarget('threat', gcx, gcy, enemies, gameTime);
   if (!target) {
     // 交戦対象が居ない(ボス撃破直後の1tick等): プレイヤーへ寄るだけ。
     const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
