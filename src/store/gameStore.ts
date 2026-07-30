@@ -946,6 +946,13 @@ export const WIRE_BOMB_RADIUS = 120;     // 爆撃の範囲
 export const WIRE_BOMB_DAMAGE_MULT = 2;  // 爆撃ダメージ倍率(近接基準)
 // Lv3 限定: ダッシュ中の「すり抜け攻撃」が爆発化(社長指示)。通過した敵を中心に小範囲AoE。
 export const WIRE_PASS_BOMB_RADIUS = 90; // すり抜け爆発の範囲(着地爆撃より小さめ)
+// スラム後ジャンプ離脱(ホップ・裁定: DEVELOPMENT_LOG v0.25.2487 / research/COUNTER_CRIT_LEDGER.md §8)。
+// 斬り下ろし対象が生き残った(=実質ボス)場合だけ、既存の着地処理を全部終えた後に安全圏へ短くホップする
+// (ボス密着着地→確定被弾の対策。通常敵スラムは即死するため対象外=1bit不変)。
+export const WIRE_HOP_MS = 220;     // ホップ移動の所要時間(叩き台・実機調整前提)
+export const WIRE_HOP_MARGIN = 24;  // 着地点=対象AABB外のマージン(叩き台・実機調整前提)
+// 復帰フラグ: ?wirehop=0 で無効化(完全に従来挙動=スラム着地のみでホップしない)。
+export const WIRE_HOP_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('wirehop') !== '0';
 
 // 敵タイプ → 死因表示用の日本語ラベル。
 const ENEMY_DEATH_LABELS: Record<string, string> = {
@@ -2922,6 +2929,9 @@ interface GameState {
   // ワイヤーアンカー: フリックでフリック方向に刺す(true=発動)。1秒後に startWireDash で高速移動。
   triggerWireAnchor: (dirX: number, dirY: number) => boolean;
   startWireDash: () => void;
+  // スラム後ジャンプ離脱(ホップ)開始。着地点(targetX/Y)は呼び出し側(useGameLoop)が
+  // computeWireHopLanding(src/utils/wireHop.ts)で計算して渡す。
+  startWireHop: (targetX: number, targetY: number) => void;
   // Whip (鞭) actions. performWhipStrike sweeps the given enemies with whip rules
   // (low damage, big knockback, crit, finisher, 20% ammo) and returns the hit
   // count for charge. performHurricane spawns the suction vortex at the tip;
@@ -3351,6 +3361,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     wireStuckUntil: 0,
     wireSlamEnemyId: '',
     wireSlamStart: 0,
+    wireSlamFromX: 0,
+    wireSlamFromY: 0,
+    wireHopUntil: 0,
+    wireHopTargetX: 0,
+    wireHopTargetY: 0,
+    wireHopSpeed: 0,
     straps: 0,
     vaccineRevives: 0,
     equipment: emptyEquipLoadout(),
@@ -3603,11 +3619,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       const nowMs = Date.now();
       // ワイヤーアンカーの高速移動中は入力を無視してアンカー地点へ高速で向かう(最優先)。
       const wireDashing = nowMs < player.wireDashUntil;
-      const dashing = !wireDashing && nowMs < player.katanaDashUntil;
+      // スラム後ジャンプ離脱(ホップ・DEVELOPMENT_LOG v0.25.2487): wireDashUntilとは別枠の専用ミニ移動。
+      // wireDashingの直後の優先度(こちらも入力無視の強制移動)。
+      const wireHopping = !wireDashing && nowMs < player.wireHopUntil;
+      const dashing = !wireDashing && !wireHopping && nowMs < player.katanaDashUntil;
       // 着地後の硬直中(刀・村雨共通)は移動入力を受け付けない(その場で停止)。
-      const recovering = !wireDashing && !dashing && nowMs < player.katanaRecoveryUntil;
+      const recovering = !wireDashing && !wireHopping && !dashing && nowMs < player.katanaRecoveryUntil;
       // 四神舞フリックの盾バッシュ風スライド(入力を無視して固定方向へ短く滑る)。
-      const sliding = !wireDashing && !dashing && !recovering && nowMs < player.shijinSlideUntil;
+      const sliding = !wireDashing && !wireHopping && !dashing && !recovering && nowMs < player.shijinSlideUntil;
       // 速度ランプ(MOVEMENT_REWORK.md 仕様1・社長裁定v0.25.2442): 「プレイヤーの入力方向」だけを
       // 見て、同じ方向へ走り続けた時間で速度ボーナスを立ち上げる。ダッシュ/ワイヤー/被弾ノックバック等の
       // 強制移動による実座標の変化では判定しない(下のtx/tyとは別に、素の入力だけをここで取り出す)。
@@ -3631,6 +3650,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       const moveSpeed = wireDashing
         ? player.wireDashSpeed
+        : wireHopping
+        ? player.wireHopSpeed
         : dashing
         ? KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000)
         : recovering ? 0
@@ -3666,6 +3687,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         const wcy = player.y + player.height / 2;
         tx = player.wireAnchorX - wcx;
         ty = player.wireAnchorY - wcy;
+      } else if (wireHopping) {
+        // ホップ着地点へ向かう単位ベクトル(プレイヤー中心基準)。wireDashingと同じ「毎フレーム
+        // 目標へ向け直す」ホーミング方式。
+        const wcx = player.x + player.width / 2;
+        const wcy = player.y + player.height / 2;
+        tx = player.wireHopTargetX - wcx;
+        ty = player.wireHopTargetY - wcy;
       } else if (dashing) {
         tx = player.katanaDashDirX;
         ty = player.katanaDashDirY;
@@ -3690,7 +3718,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // タッチ歩行のみアナログ速度: スティックの傾きが弱いとゆっくり歩く。
       // キーボードと特殊ロコモーション(ダッシュ等)はフル速度(speedScale=1)。
       const speedScale =
-        swipeDirection && !wireDashing && !dashing && !recovering && !sliding
+        swipeDirection && !wireDashing && !wireHopping && !dashing && !recovering && !sliding
           ? STICK_WALK_MIN_FACTOR + (1 - STICK_WALK_MIN_FACTOR) * Math.max(0, Math.min(1, swipeStrength))
           : 1;
 
@@ -6145,6 +6173,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           wireDashSpeed: ddist / (WIRE_SLAM_MS / 1000),
           wireStuckEnemyId: '', wireStuckUntil: 0,
           wireSlamEnemyId: target!.id, wireSlamStart: now,
+          // スラム後ジャンプ離脱(ホップ)用: 発動時のプレイヤー中心を保存(戻り方向の計算に使う)。
+          wireSlamFromX: pcx, wireSlamFromY: pcy,
           invulnerable: true,                        // 空中は無敵(既存被弾無敵を流用)
           invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_SLAM_MS),
         },
@@ -6198,6 +6228,29 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }));
     get().spawnRing(player.wireAnchorX, player.wireAnchorY, 8, 30, 'rgba(96,165,250,0.8)', 2, 260);
+  },
+
+  // スラム後ジャンプ離脱(ホップ)。着地点(targetX/Y)は呼び出し側(useGameLoop)が
+  // computeWireHopLanding(src/utils/wireHop.ts)で計算して渡す。startWireDashと同じ
+  // 「移動中は無敵(逆算打刻)」パターンを流用。wireDashUntil/wireAnchorXは一切触らない
+  // (既存のスラム/プラント着地処理を再発火させないための専用フィールド)。
+  startWireHop: (targetX, targetY) => {
+    const now = Date.now();
+    const { player } = get();
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const dist = Math.max(0.001, Math.hypot(targetX - pcx, targetY - pcy));
+    set(s => ({
+      player: {
+        ...s.player,
+        wireHopTargetX: targetX,
+        wireHopTargetY: targetY,
+        wireHopUntil: now + WIRE_HOP_MS,
+        wireHopSpeed: dist / (WIRE_HOP_MS / 1000),
+        invulnerable: true,
+        invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_HOP_MS),
+      }
+    }));
   },
 
   damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove) => {
@@ -12270,6 +12323,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           wireStuckUntil: 0,
           wireSlamEnemyId: '',
           wireSlamStart: 0,
+          wireSlamFromX: 0,
+          wireSlamFromY: 0,
+          wireHopUntil: 0,
+          wireHopTargetX: 0,
+          wireHopTargetY: 0,
+          wireHopSpeed: 0,
           straps: (state.startWithTestStraps ? 1000 : 0) + scrapBuilderBonus,
           vaccineRevives: 0,
           equipment: runLoadout,

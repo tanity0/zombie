@@ -171,6 +171,18 @@ export interface Player {
   // アンカーが敵に刺さった時の大技(引き上げ→垂直斬り下ろし→着地ノックバック)。
   wireSlamEnemyId: string; // 斬り下ろす対象の敵ID('' = 大技なし)。着地でフィニッシュ。
   wireSlamStart: number;   // 引き上げ開始時刻(Date.now)。描画のジャンプ弧の起点。終点は wireDashUntil。
+  // スラム発動時(triggerWireAnchorの刺し確定時点)のプレイヤー中心座標。ホップ(下記)の
+  // 「スラム起点へ戻る向き」の計算に使う(DEVELOPMENT_LOG v0.25.2487)。
+  wireSlamFromX: number;
+  wireSlamFromY: number;
+  // スラム後ジャンプ離脱(ホップ): 斬り下ろし対象が生き残った(=実質ボス)時だけ、既存の着地処理
+  // (斬り下ろし/Lv3爆撃/強制ノックバック)を終えた後に安全圏へ短くホップする(裁定=
+  // research/COUNTER_CRIT_LEDGER.md §8)。wireDashUntilとは別枠の専用ミニ移動
+  // (movePlayerのwireHopping分岐)。wireHopUntil=0はホップ中でない。
+  wireHopUntil: number;
+  wireHopTargetX: number;
+  wireHopTargetY: number;
+  wireHopSpeed: number; // ホップ移動速度(px/s。startWireHopで距離/WIRE_HOP_MSから算出)
   // In-run currency. Spent during the current play only.
   straps: number;
   // One-shot revive stock from the in-run vaccine shop item.

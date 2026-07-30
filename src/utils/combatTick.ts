@@ -670,8 +670,9 @@ export const applyContactDamage = (
   const collEnemies = collState.enemies;
   const playerEnemyCollisions = checkPlayerEnemyCollisions(collPlayer, collEnemies);
   // ワイヤーアンカーの高速移動中/敵吸着コンボ中は敵接触ダメージを無効化(敵弾は別経路でそのまま当たる)。
+  // スラム後ジャンプ離脱(ホップ)中も同じく無効(DEVELOPMENT_LOG v0.25.2487・接触無効の合流点)。
   const wpImmune = collPlayer;
-  const wireDashingNow = Date.now() < wpImmune.wireDashUntil || !!wpImmune.wireStuckEnemyId;
+  const wireDashingNow = Date.now() < wpImmune.wireDashUntil || Date.now() < wpImmune.wireHopUntil || !!wpImmune.wireStuckEnemyId;
   // 突進(ダッシュ)カウンター: 突進中(aiPhase==='charge')の敵にカウンター窓中で接触すると弾く
   // (無傷＋敵へのダメージ無し＋2倍ノックバックで突進中断)。ジャンプ着地と同じ「弾き」挙動。
   const counterActiveNow = Date.now() <= wpImmune.counterWindowEnd;

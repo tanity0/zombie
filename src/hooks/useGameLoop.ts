@@ -32,6 +32,7 @@ import {
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST, CAMERA_DOWN_OFFSET_FRAC, CORRIDOR_CAMERA_DOWN_FRAC,
   WIRE_LAND_KNOCKBACK_SPEED, WIRE_PASS_DAMAGE_MULT, WIRE_BOMB_RADIUS, WIRE_BOMB_DAMAGE_MULT, WIRE_PASS_BOMB_RADIUS,
+  WIRE_HOP_ENABLED, WIRE_HOP_MARGIN,
   BOSS_MELEE_STUN_MULT,
   bossSlowMult,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
@@ -56,6 +57,7 @@ import {
   SKATER_LOCK_ENABLED
 } from '../store/gameStore';
 import { clampRectToPlayableArea } from '../world/playableArea';
+import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
   detectWallBreach, isFirstWallBreach, isApproachingWall, markWallBreached, markSelfDeepest,
@@ -8853,6 +8855,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             wireLandedDashRef.current = wp.wireDashUntil;
             // 大技(敵に刺さって引き上げた)の着地: 斬り下ろし対象を「ぶった切る」。通常敵=即死フィニッシュ、
             // ボスは即死せず近接フィニッシュ相当(×5)ダメージ。垂直スラッシュ演出付き。続けて下の着地ノックバックも走る。
+            // ホップ(DEVELOPMENT_LOG v0.25.2487): 斬り下ろし後もこの対象が生きていた(=実質ボス)場合の
+            // みホップする。判定は「名前で判断せず、判定コードを確認」(CLAUDE.md)に合わせ、isBossType
+            // 決め打ちではなくダメージ適用後の実health>0で見る(通常敵は即死フィニッシュなので必然的に対象外)。
+            let wireHopTargetId = '';
             if (wp.wireSlamEnemyId) {
               const tgt = useGameStore.getState().enemies.find(e => e.id === wp.wireSlamEnemyId);
               if (tgt && tgt.health > 0) {
@@ -8872,6 +8878,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnBurst(tcx, tcy, '#bae6fd', 14);
                 playSfx('slash-damage');
               }
+              // ダメージ適用後の生存を再確認(通常敵はここで既にhealth<=0=対象外のまま)。
+              const survivor = useGameStore.getState().enemies.find(e => e.id === wp.wireSlamEnemyId);
+              if (WIRE_HOP_ENABLED && survivor && survivor.health > 0) wireHopTargetId = survivor.id;
               useGameStore.setState({ player: { ...useGameStore.getState().player, wireSlamEnemyId: '', wireSlamStart: 0 } });
             }
             const lvl = Math.max(1, Math.min(3, wp.subWeaponLevels['wire-anchor'] ?? 1));
@@ -8918,6 +8927,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(pcx, pcy, 10, WIRE_BOMB_RADIUS, 'rgba(147,197,253,0.7)', 3, 280);
               spawnBurst(pcx, pcy, '#93c5fd', 10);
               playSfx('melee');
+            }
+            // スラム後ジャンプ離脱(ホップ): 上の着地処理(斬り下ろし/爆撃/強制ノックバック)を全部
+            // 従来位置で終えた後、対象が生き残っていた時だけ開始する。wireDashUntil/wireAnchorXは
+            // 触らないため、この着地処理が再発火することはない(startWireHopは専用フィールドのみ書く)。
+            if (wireHopTargetId) {
+              const hopTarget = useGameStore.getState().enemies.find(e => e.id === wireHopTargetId);
+              if (hopTarget) {
+                const landing = computeWireHopLanding({
+                  targetCenterX: hopTarget.x + hopTarget.width / 2,
+                  targetCenterY: hopTarget.y + hopTarget.height / 2,
+                  targetHalfDiag: targetHalfDiagonal(hopTarget.width, hopTarget.height),
+                  playerHalfWidth: wp.width / 2,
+                  margin: WIRE_HOP_MARGIN,
+                  fromX: wp.wireSlamFromX,
+                  fromY: wp.wireSlamFromY,
+                });
+                useGameStore.getState().startWireHop(landing.x, landing.y);
+              }
             }
           }
         }

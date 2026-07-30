@@ -38,6 +38,8 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // v0.25.2483(社長指示): フルランプ速度線のゲート=「移動速度+10%以上のステータス」判定に、
   // movePlayerがランプへ渡す「対象倍率の積P」と同じ純関数を使う(判定の二重実装をしない)。
   skillRunnerSpeedMult, marksmanSpeedMult, skillWarmUpSpeedMult,
+  // ワイヤーアンカー・スラム後ジャンプ離脱(ホップ・DEVELOPMENT_LOG v0.25.2487): 見た目弧の進行度算出に使う。
+  WIRE_HOP_MS,
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -1026,6 +1028,10 @@ const PLAYER_FIRE_RECOIL_PX = 3.2;    // 銃口と逆向き(=後方)へ体が下
 const PLAYER_FIRE_RECOIL_SQUASH = 0.04; // 反動で軽く縦に縮む量
 const PLAYER_MELEE_SWING_MS = 280;    // 近接スイングの踏み込み→振り抜き→復帰の長さ(社長指示でもう少しスローに: 200→220→250→280。視覚のみ=攻撃レート/判定は別ゲート・不変)
 const WIRE_SLAM_JUMP_H = 92;          // アンカー大技の見た目ジャンプ高さ(px・負方向=上)。引き上げ→斬り下ろしの弧。
+// スラム後ジャンプ離脱(ホップ)の見た目弧の高さ(px・負方向=上)。DEVELOPMENT_LOG v0.25.2487・
+// 判定/座標には影響しない描画専用値(叩き台・実機調整前提)。スラムより短い離脱動作なので控えめ。
+const WIRE_HOP_JUMP_H = 46;
+const WIRE_HOP_DUST_SCALE = 1.4;      // ホップ着地の砂埃スケール(叩き台)。
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
@@ -8373,6 +8379,28 @@ export class PixiScene {
       const st = Math.max(0, Math.min(1, (now - p.wireSlamStart) / (p.wireDashUntil - p.wireSlamStart)));
       slamOffY = -WIRE_SLAM_JUMP_H * Math.sin(Math.PI * st) * this.depthScale(fb.footY);
     }
+    // スラム後ジャンプ離脱(ホップ)の弧(負=上)。実座標は store のホップ専用ミニ移動が担当
+    // (DEVELOPMENT_LOG v0.25.2487)。判定/座標には一切影響しない描画専用オフセット。
+    let hopOffY = 0;
+    if (p.wireHopUntil > 0 && now < p.wireHopUntil) {
+      const ht = Math.max(0, Math.min(1, 1 - (p.wireHopUntil - now) / WIRE_HOP_MS));
+      hopOffY = -WIRE_HOP_JUMP_H * Math.sin(Math.PI * ht) * this.depthScale(fb.footY);
+    }
+    // ホップ着地の砂埃: 溜め(=ホップ移動そのもの)の立ち上がりで着地点と時刻を焼き付け、
+    // 着弾から DUST_MS 再生(城ボス系ジャンプ着地の砂埃と同じ仕組み・latchFxで撮り直しを管理)。
+    {
+      const hopActive = p.wireHopUntil > 0 && now < p.wireHopUntil;
+      const hopToImpact = hopActive ? Math.max(0, p.wireHopUntil - now) : 0;
+      const hopL = this.latchFx('player:wirehopdust', hopActive, hopToImpact + DUST_MS, now, () => {
+        const r = Math.max(p.width, p.height) * WIRE_HOP_DUST_SCALE;
+        const frac = (hopToImpact + DUST_MS) > 0 ? hopToImpact / (hopToImpact + DUST_MS) : 0;
+        return [p.wireHopTargetX, p.wireHopTargetY, r, frac];
+      });
+      if (hopL && hopL.t >= hopL.d[3]) {
+        const dp = hopL.d[3] < 1 ? (hopL.t - hopL.d[3]) / (1 - hopL.d[3]) : 0;
+        this.drawDust(hopL.d[0], hopL.d[1], hopL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp), hopL.t0);
+      }
+    }
 
     // フェーズA(乗車中)はプレイヤーをヘリと同じ danceUiLayer の前面へ移し、ヘリのドアに重ねて見せる
     // (danceUiLayer は world と同一トランスフォームなので座標はそのまま)。降りたら actorLayer へ戻す。
@@ -8400,7 +8428,7 @@ export class PixiScene {
       : 0;
     view.sprite.position.set(
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
-      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY,
+      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY,
     );
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
     const seekerActive = p.seekerUntil > gameTime;

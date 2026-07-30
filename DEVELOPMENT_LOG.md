@@ -1,5 +1,58 @@
 # Development Log
 
+## v0.25.2488 — ワイヤーアンカー「スラム後ジャンプ離脱(ホップ)」実装(発注= v0.25.2487 / research/COUNTER_CRIT_LEDGER.md §8・実装サブエージェント)【2026-07-30 17:06 JST】
+
+- **仕様の正本**: DEVELOPMENT_LOG v0.25.2487 のエントリ / `research/COUNTER_CRIT_LEDGER.md §8`(社長裁定)。
+  スラム(敵ヒット型)の既存着地処理(斬り下ろし/Lv3爆撃/全Lv強制ノックバック)は**従来位置で全部先に
+  実行**してから、**斬り下ろし対象がまだ生きている場合だけ**(=実質ボス。通常敵は即死フィニッシュなので
+  対象外=1bit不変)、対象AABB外+マージンへ短くジャンプ離脱する。方向=スラム起点(発動時のプレイヤー
+  中心)へ戻る向き・潰れたら下向きフォールバック。プラント型(地点打ち込み)は完全不変。
+- **採用した移動実装 = 案(b)「新フィールド+専用ミニ移動」**(案(a)=wireDashUntil再利用は不採用)。
+  理由: 着地ブロック(useGameLoop)は`wireDashUntil`の値が変わるたびに**丸ごと**(斬り下ろし/Lv3爆撃/
+  強制ノックバック)を再実行する作りなので、`wireDashUntil`を書き換えるホップ方式だと再発火防止に
+  ガード追加が要り遠回り。専用フィールド(`wireHopUntil`/`wireHopTargetX/Y`/`wireHopSpeed`)なら
+  ホップの着地はこの着地ブロックの対象外になり、**構造的に再発火しない**(受け入れ条件①を設計で満たす)。
+- **新規純関数**(`src/utils/wireHop.ts`・store非依存): `computeWireHopLanding`(着地点計算)/
+  `targetHalfDiagonal`(対象AABBの半対角)。テスト`wireHop.test.ts`7件(方向・距離式・潰れフォールバック・
+  しきい値境界を実測)。`npx vitest run src/utils/wireHop.test.ts` = 7件全通過。
+- **配線(store)**: `src/types/game.ts`にPlayerフィールド追加(`wireSlamFromX/Y`=スラム発動時の
+  プレイヤー中心/`wireHopUntil`・`wireHopTargetX/Y`・`wireHopSpeed`)。`gameStore.ts`: 定数
+  `WIRE_HOP_MS=220`/`WIRE_HOP_MARGIN=24`/復帰フラグ`WIRE_HOP_ENABLED`(`?wirehop=0`で無効=完全に
+  従来挙動)を追加。`triggerWireAnchor`のスラム分岐で`wireSlamFromX/Y`を発動時のプレイヤー中心で
+  保存(既存の刺し込みロジックは無変更)。新規アクション`startWireHop(targetX,targetY)`を
+  `startWireDash`と同型で追加(既存の被弾無敵の逆算打刻パターンを流用: `invulnerable:true,
+  invulnerableTime: now - max(0, INVULN_MS-WIRE_HOP_MS)`)。`movePlayer`に`wireHopping`分岐を
+  `wireDashing`の直後の優先度で追加(dashing/recovering/sliding/speedScaleの各ゲートに
+  `!wireHopping`を追加=優先順位を守る)。initial player state・resetGameの2箇所に新フィールドの
+  デフォルト(0)を追加。
+- **配線(useGameLoop)**: 既存の着地ブロック内、斬り下ろしダメージ適用後に対象を再取得して
+  `health>0`かを見る(`isBossType`決め打ちではなく実health判定=CLAUDE.md「判定コードを確認してから
+  分類する」に合わせた)。既存の斬り下ろし/Lv3爆撃/強制ノックバックの実行順序・中身は1行も変えず、
+  その**全部が終わった後**に`wireHopTargetId`が立っていれば`computeWireHopLanding`で着地点を計算し
+  `startWireHop`を呼ぶ。`WIRE_HOP_ENABLED`が false(`?wirehop=0`)なら`wireHopTargetId`が立たず、
+  ホップは一切発生しない(完全に従来挙動)。
+- **接触無効の合流点**(`src/utils/combatTick.ts` 674行目付近 `wireDashingNow`): `|| Date.now() <
+  wpImmune.wireHopUntil` を追加。ホップ中は敵接触ダメージが無効(既存のwireDashingNowと同じ扱い)。
+- **見た目(pixiScene.ts・描画専用=判定/座標へ影響なし)**: `drawPlayer`に`slamOffY`と並ぶ`hopOffY`
+  (負=上のsin弧・`WIRE_HOP_JUMP_H=46`px・叩き台)を追加し、既存のスプライトY合成式に加算するだけ。
+  着地の砂埃は城ボス系ジャンプ着地と同じ`latchFx`+`drawDust`+`dustAlpha`の仕組みを流用した新規latch
+  (`player:wirehopdust`)で、ホップ開始時に着地点と着弾までの時間を焼き付け、着弾から`DUST_MS`ぶん
+  再生する。着地SEは適切な既存キー(着地系)が無かったため付けていない(仕様が明示的に許容する省略)。
+- **Load score: 1/10**。スラム着地(数秒に1回以下)のイベント時のみ・純関数1回+set()1回+pooled
+  dustスプライト1個。per-frame追加コストはmovePlayerの分岐比較(既存のwireDashing等と同型)のみ。
+  新規Graphics/Text生成なし・強glow不使用。
+- **検証**: `npm run typecheck` エラー0。`npm run lint` エラー0(既存8警告のみ)。
+  `npx vitest run src/utils/wireHop.test.ts` = 7件全通過(新規)。`npx vitest related`等の関連/フル
+  テストは指示どおり未実施(押上ゲート=typecheck+lint+新規テストのみ)。実機確認は社長。
+- **★未決**: なし。仕様に明記のない実装判断(移動実装の案選択=案b/生存判定の実装方法=実health判定/
+  ホップ視覚の弧の高さ・砂埃スケール等の描画専用叩き台値/着地SEの省略)は、全て「掟」の許容範囲内
+  (演出専用・座標非依存・既存パターンの流用)として記録専用の判断で進めた。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(スラム/プラントの既存
+  ダメージ・CD・爆撃・強制ノックバックは1bitも変えていない。追加はホップ=生存対象限定の後処理のみ)。
+- 次の申し送り: 実機確認(`?wirehop=0`での従来挙動一致・ホップの着地点/弧/砂埃の見え方)は社長が実施。
+  `WIRE_HOP_MS`/`WIRE_HOP_MARGIN`/`WIRE_HOP_JUMP_H`/`WIRE_HOP_DUST_SCALE`は明記どおり叩き台=実機
+  調整前提。
+
 ## v0.25.2487 — OP夢の呼吸ズーム2倍+ワイヤーホップ裁定→発注+クリ再設計の社長叩き台を記録【2026-07-30 16:46 JST】
 
 - **OP夢の呼吸ズーム2倍(社長指示・実装済み)**: `OpeningScene.tsx` の `opbreathe` keyframe 3%→6%
