@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2495',
+    items: [
+      'ゲーム内容の変更はありません(噛みつきの牙・上顎/下顎と爪の一振りの素材を搭載。エフェクトとしての実装は次のバッチで入ります)。',
+    ],
+  },
+  {
     version: '0.25.2494',
     items: [
       'ゲーム内容の変更はありません(牙素材の生成プロンプトを上顎・下顎の2枚構成へ差し替え)。',
