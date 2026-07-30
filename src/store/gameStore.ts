@@ -6530,6 +6530,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 即時処刑(プレイヤーの killed{finisher:true} 相当)。viaMeleeFinish=true=§5.21-追補4の
       // finishKillOnly個体にもこの経路でならトドメを刺せる。数字は出さない(プレイヤーの処刑と同じ)。
       const killed = get().damageEnemy(enemyId, enemy.health + 1, false, false, true, null, 'ghost');
+      if (killed) {
+        // 「Kill!」の文字はプレイヤーの処刑と同じ(社長裁定v0.25.2528「文字は出して欲しい」=
+        // 除外1は停止/スロー/ズームの演出だけで、文字calloutは除外に含めない)。文言・色・表示時間は
+        // プレイヤーのフィニッシュ(triggerFinishImpact内)と同一。停止/スロー/ズーム本体は出さない。
+        get().spawnCallout(enemy.x + enemy.width / 2, enemy.y - 6, 'Kill!', '#ffe4e6', {
+          bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS,
+        });
+      }
       return { kind: hit.kind, dmg: 0, killed };
     }
     const dmg = Math.max(1, Math.round(hit.dmg));

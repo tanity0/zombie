@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.2528 — 守護霊の文字callout裁定: 弾反射Counter!+処刑Kill!を追加(設計チャット直接実装)【2026-07-30 22:54 JST】
+
+- **社長裁定**: 「守護霊のカウンター、キル!とかの文字のこと?これは出して欲しいよ」→
+  **除外1(ズーム/停止/スロー)に文字calloutは含めない=出す**、を§2.11に明文化。
+- **実査**: 通常カウンターのCounter!(ghostCounter.ts)と城ボスパリィのCounter!(combatTick)は既に
+  表示済み。**出ていなかったのは①弾反射のCounter! ②処刑のKill!**(演出バンドル丸ごとスキップの
+  巻き添えで文字ごと落ちていた)。
+- **実装(直接・数行×2箇所のためサブエージェント発注より安い)**: applyGhostReflectCounterFxに
+  Counter!(プレイヤーの弾反射と同文言・同色・同表示時間)、applyGhostMeleeFinisherのexecute成立時に
+  Kill!(同上)。停止/スロー/ズーム本体は引き続き出さない。
+- ※タイミング注: GHOST-BEHAVIORエージェント並走中のため、コミットは自ファイル
+  (gameStore.ts/ghostCounter.ts=差分が自分の編集のみであることをdiffで確認済み)+版管理のみを明示add。
+  エージェントWIP(botSkill.ts/ghostDriver.ts/ghostTelegraph.ts)には触れていない。
+- 検証: typecheck 0・lintエラー0。
+- 申し送り継続: 窓リング(カウンター受付中の円)の可視化は別件=社長採否待ち。
+
 ## v0.25.2527 — POI-UX裁定の反映(承認+チュートリアル条件確定・文書のみ)【2026-07-30 22:50 JST】
 
 - **社長裁定**: 「poiはそれでお願い」=確定要件1〜3承認。提案a=要件1に統合。

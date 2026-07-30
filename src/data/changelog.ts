@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2528',
+    items: [
+      '守護霊の弾反射に「Counter!」、処刑に「Kill!」の文字が出るようになりました(プレイヤーと同じ表示。画面停止やスローは出ません)。',
+    ],
+  },
+  {
     version: '0.25.2527',
     items: [
       'ゲーム内容の変更はありません(寄り道POIの体験改修プランを承認・チュートリアルはM1初出撃時に1度と確定)。',

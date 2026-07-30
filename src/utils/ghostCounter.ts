@@ -111,6 +111,9 @@ export const applyGhostReflectCounterFx = (
   playSfxGain: ((key: 'counter' | 'headshot', gain: number) => void) | null,
 ): void => {
   ghostCounterBlueLayer(hitX, hitY, sfxGain, playSfxGain);
+  // 「Counter!」の文字はプレイヤーの弾反射と同じ(社長裁定v0.25.2528「文字は出して欲しい」=
+  // 除外1は停止/スロー/ズームの演出だけで、文字calloutは除外に含めない)。
+  useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
 };
 
 /** 消費側がハンドラへ渡す1回分(請求+SEの距離減衰ゲイン。ゲインは消費時のカメラで算出)。 */
