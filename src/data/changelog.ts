@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2517',
+    items: [
+      'ゲーム内容の変更はありません(守護霊の刀・一閃・ワイヤー再現バッチの発注仕様を確定)。',
+    ],
+  },
+  {
     version: '0.25.2516',
     items: [
       'ゲーム内容の変更はありません(同行守護霊のビルド表示はリザルト限定、討伐記録は名前のみ+タップで閲覧、に設計を訂正)。',
