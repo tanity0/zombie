@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2562',
+    items: [
+      'ゲーム内容の変更はありません(テスト#8分析: 守護霊が溶ける真因=高HP記録ではボスの体当たりを一切避けない閾値仕様。対策案を提示)。',
+    ],
+  },
+  {
     version: '0.25.2561',
     items: [
       'ゲーム内容の変更はありません(確認: 歴史年表は残す・バッヂは併設、を仕様に明記)。',
