@@ -1527,6 +1527,12 @@ const PLANT_SPIT_SCALE = 1.7;  // 口の絵の大きさ(敵の描画枠に対す
 const PLANT_SPIT_MAX = 12;     // 同時に生きている口の絵の安全弁(1発=300msの一瞬なので実質届かない)
 const GROUND_CRACK_MS = 1500;  // 地割れが床に残る時間(最後の45%でフェードアウト)
 const GROUND_CRACK_FADE_FROM = 0.55; // この進行度から消え始める
+// 社長報告v0.25.2548「画面占有率が強すぎて視認性が下がる。当たり判定が無いので考えた方がいい」→
+// 「少し小さくするか、地面に馴染む調整か」の両方を採用(叩き台・実機調整前提):
+// サイズ=砂埃の焼き付け半径×0.75(砂埃より一回り小さい傷)/最大不透明度=0.62(床が透ける
+// 「染み」にして、敵・弾・予告の視認性を奪わない。分類②でも"見やすさ"が優先=社長裁定)。
+const GROUND_CRACK_SIZE_MULT = 0.75;
+const GROUND_CRACK_MAX_ALPHA = 0.62;
 // 素材内のピボット位置(alpha実測・素材差し替え時は再計測すること)。
 const TENTACLE_ANCHOR_X = 0.0, TENTACLE_ANCHOR_Y = 0.47;  // 根元=左端・軸の高さ
 const WING_ANCHOR_X = 0.175, WING_ANCHOR_Y = 0.49;        // 翼の付け根(骨が集まる点)
@@ -12148,9 +12154,9 @@ export class PixiScene {
     if (!FX_RING_ENABLED) return;
     const tex = getTexture('fx/ground-crack');
     if (!tex) return;
-    const alpha = prog < GROUND_CRACK_FADE_FROM
+    const alpha = GROUND_CRACK_MAX_ALPHA * (prog < GROUND_CRACK_FADE_FROM
       ? 1
-      : Math.max(0, 1 - (prog - GROUND_CRACK_FADE_FROM) / (1 - GROUND_CRACK_FADE_FROM));
+      : Math.max(0, 1 - (prog - GROUND_CRACK_FADE_FROM) / (1 - GROUND_CRACK_FADE_FROM)));
     if (alpha <= 0.01) return;
     let sp = this.crackPool[this.crackUsed];
     if (!sp) {
@@ -12163,8 +12169,8 @@ export class PixiScene {
     if (sp.texture !== tex) sp.texture = tex;
     // 走り出しの12%だけ「割れて広がる」(以後は据え置き=床の傷は動かない)。
     const open = 0.72 + 0.28 * Math.min(1, prog / 0.12);
-    sp.width = radius * 2 * open;
-    sp.height = radius * 2 * open;
+    sp.width = radius * 2 * open * GROUND_CRACK_SIZE_MULT;
+    sp.height = radius * 2 * open * GROUND_CRACK_SIZE_MULT;
     // 同じ場所で何度も割れても同じ絵に見えないよう、決定的ジッターで回す(チラつかない)。
     sp.rotation = this.dustJitterHash(seed, x + y, 5) * Math.PI * 2;
     sp.position.set(x, y);

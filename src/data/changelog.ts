@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2548',
+    items: [
+      '地割れを一回り小さくし、床が透ける薄い染みに調整しました(画面の見やすさ優先)。',
+    ],
+  },
+  {
     version: '0.25.2547',
     items: [
       '守護霊が危険な体当たり(自分の最大HPの2割以上のダメージになる敵の接触)から距離を取るようになりました。弱い接触は今までどおり気にしません。',
