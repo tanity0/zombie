@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2537',
+    items: [
+      'ゲーム内容の変更はありません(方針確定:「守護霊は独立した2人目のプレイヤー」=分身・センサーマイン対応とサブCD独立化の発注仕様を確定)。',
+    ],
+  },
+  {
     version: '0.25.2536',
     items: [
       'ゲーム内容の変更はありません(受領済みエフェクト素材8種の配線バッチの発注仕様を確定)。',
