@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.2467 — 守護霊の絵とサイズ修正(社長報告2件: ちっちゃい/絵柄がおかしい)【2026-07-30 10:03 JST】
+
+- **サイズ**: 旧=当たり判定ボックスへの内接(containScale)で極小だった→**プレイヤー本人と同じ基準**
+  (PLAYER_ART_BASE_W=78px幅正規化×遠近)へ。
+- **絵**: 旧=レガシーのベース絵 `player` →**データ取得元クラスの待機立ち絵**(PLAYER_IDLE_SPRITE)。
+  プロファイルに v0.25.2467 から `srcClass`(計測時のクラス)を記録し、召喚時に Summon.ghostClass へ
+  搭載。**未記録(旧プロファイル/初回)の既定はヘビーガンナー(warrior)**=社長指示。
+- 配線: playerTraits(srcClass記録・後方互換=任意フィールド)/directorTick(クラス受け渡し+召喚時の
+  クラス確定)/types(Summon.ghostClass)/pixiScene(drawGhostAlly)。
+- 検証: typecheck+lint(エラー0)+playerTraits/ghostDriverテスト71件通過。見え方の最終確認は社長の実機。
+- 備考: V1エフェクト補完エージェントが並走中(動的採番ルールで自動回避)。
+
 ## v0.25.2466 — 技×ヴィジュアル2軸の全数棚卸し完了+補完計画(research/FX_GAP_LEDGER.md)【2026-07-30 09:54 JST】
 
 - 走査サブエージェントが全ボス13体+主要通常敵の「技×(物理の絵/エフェクトの絵)」を全数棚卸し。

@@ -62,6 +62,8 @@ export interface PlayerProfile {
   moveReactions: MoveReactionTable;
   /** G4a(§2.9(3)): サブウェポンの様式カウンタ(ボス交戦区間に限定しない=ラン単位でEMA)。 */
   subStyles: SubStyleProfile;
+  /** v0.25.2467(社長指示): 計測時のクラス(ゴーストの絵の選択用)。旧プロファイルには無い=任意。 */
+  srcClass?: string;
 }
 
 const STORAGE_KEY = 'zombie-ghost-profile-v1';
@@ -168,6 +170,8 @@ interface Session {
 }
 
 let session: Session | null = null;
+// v0.25.2467: このプロセスで最後に計測対象になったクラス(fold時にプロファイルsrcClassへ記録)。
+let sessionSrcClass: string | null = null;
 
 const startSession = (gameTime: number): Session => ({
   startGameTime: gameTime,
@@ -294,6 +298,8 @@ const endSession = (): void => {
     moveReactions: blendMoveReactionTable(base.moveReactions, moveTally, EMA_ALPHA),
     // サブ様式はボス交戦区間に限定しない=セッションではなくラン単位(foldSubStyleTallies)で更新する。
     subStyles: base.subStyles,
+    // v0.25.2467: 計測時のクラス(このセッションで観測できなければ前回値を保持)。
+    srcClass: sessionSrcClass ?? base.srcClass,
   };
   saveProfile(next);
 };
@@ -306,7 +312,9 @@ export interface PlayerTraitsTickInput {
   /** G3(§2.7 制約1): ゴーストが出うるラン(守護霊装備 or `?ghost=1`)。true の間はラン全体で計測しない。 */
   ghostRunActive: boolean;
   gameTime: number;
-  player: { x: number; y: number; width: number; height: number; health: number; maxHealth: number };
+  player: { x: number; y: number; width: number; height: number; health: number; maxHealth: number;
+    /** v0.25.2467: 計測時のクラス(プロファイルsrcClassへ記録=ゴーストの絵の選択用)。 */
+    characterClass?: string };
   enemies: readonly Enemy[];
   /** このtickにプレイヤーの移動入力(上下左右いずれか)があったか。 */
   movementInput: boolean;
@@ -329,6 +337,7 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
     return;
   }
   if (!session) session = startSession(input.gameTime);
+  if (input.player.characterClass) sessionSrcClass = input.player.characterClass; // v0.25.2467
   const s = session;
   const prevGameTime = s.lastGameTime;
   s.lastGameTime = input.gameTime;

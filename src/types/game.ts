@@ -647,6 +647,7 @@ export interface Summon {
   persistent?: boolean;
   // ---- kind='ghost-ally'専用(BOT_AND_GHOST.md G2)。他kindでは常にundefined ----
   ghostBossId?: string;        // 紐付いているボスのenemy.id(そのボスが居なくなったら解散)。
+  ghostClass?: CharacterClass; // v0.25.2467: 絵の選択用=プロファイル計測時のクラス(無ければwarrior=ヘビーガンナー)。
   ghostFacing?: 1 | -1;        // 向き(描画の左右反転のみ・当たり判定は不変)。
   ghostLastShotAt?: number;    // 銃のクールダウンゲート(ms・Date.now基準)。
   ghostLastMeleeAt?: number;   // 近接のクールダウンゲート(ms・Date.now基準)。

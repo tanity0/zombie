@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2467',
+    items: [
+      '守護霊の見た目を修正: プレイヤーと同じ大きさになり、絵はあなたが計測時に使っていたクラスの姿になります(記録が無い場合はヘビーガンナー)。',
+    ],
+  },
+  {
     version: '0.25.2466',
     items: [
       'ゲーム内容の変更はありません(技のビジュアル総点検の設計文書のみ)。',

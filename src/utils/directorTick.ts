@@ -624,6 +624,7 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     player: {
       x: player.x, y: player.y, width: player.width, height: player.height,
       health: player.health, maxHealth: player.maxHealth,
+      characterClass: player.characterClass, // v0.25.2467: プロファイルsrcClass(ゴーストの絵)用
     },
     enemies: state.enemies,
     movementInput: state.inputState.up || state.inputState.down || state.inputState.left || state.inputState.right,
@@ -678,6 +679,12 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     createdAt: Date.now(),
     lastHit: 0,
     ghostBossId: boss.id,
+    // v0.25.2467(社長指示): 絵=データ取得元のクラス。プロファイル未記録(旧データ/初回)は
+    // ヘビーガンナー(warrior)を既定にする。
+    ghostClass: (() => {
+      const src = (profile as { srcClass?: string }).srcClass;
+      return (src === 'mage' || src === 'warrior' || src === 'rogue' || src === 'necromancer') ? src : 'warrior';
+    })(),
     ghostFacing: 1,
     ghostLastShotAt: 0,
     ghostLastMeleeAt: 0,
