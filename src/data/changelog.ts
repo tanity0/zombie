@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2482',
+    items: [
+      'ゲーム内容の変更はありません(守護霊アルバム=2軸プロファイルの設計書を更新)。',
+    ],
+  },
+  {
     version: '0.25.2481',
     items: [
       'ゲーム内容の変更はありません(自動テスト用フラグ?autotut=1がレベルアップ/宝箱の選択画面も自動選択するようになりました。通常プレイは不変です)。',

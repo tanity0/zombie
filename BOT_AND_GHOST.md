@@ -557,3 +557,51 @@ counterRate→構え / dodgeRate→離脱 / 残り→逃げずに食らいに行
 - 発動SEを持つ3種(shield/turret='shield-deploy'・fire-knife='shot-damage')を、ゴースト発動時のみ
   設置/投擲点で減衰。プレイヤー発動は従来どおり等倍(1bit不変)。heavy-grenade/marksman-trap/decoyは
   発動SE自体が無く対象外。設置後のオブジェクト音(タレット発砲等)は既存のまま(タレット発砲は元々減衰済み)。
+
+## 2.10 G5: 守護霊アルバム=2軸プロファイル(社長発案・裁定 2026-07-30「城ボススロットも分けて」)
+
+### 決定(社長)
+- **2軸**: ①**共通プレイスタイル**(現行プロファイル=EMA蓄積・変更なし) ②**ボス別攻略スタイル**
+  (撃破ランの写し・ベストプレイ上書き)。**②のデータがあるボスは②でリプレイ、無ければ①で走る。**
+- **城ボス(giantbat系)はステージ別スロット**(城ボス/グレン/未確認変異体は同typeだが別の戦いのため)。
+- 「上書きしない選択」=**既存のリザルトチェック**(「今回のプレイを守護霊に反映しない」)が両軸に効く。
+  新しいUIは足さない。
+- 撃破ラン同士の優劣=**被弾/分(hitsPerMin)が少ない方を保持**。
+
+### 仕様(実装バッチG5・確定)
+1. **保存フォーマット**: `PlayerProfile`(v:1のまま)へ任意フィールド `bossStyles?: Record<string, BossStyleSlot>`
+   を追加(後方互換=欠損可・isValidProfileは任意オブジェクトとして許容)。localStorageキーは既存の1つのまま。
+   - **slotKey** = type が `giantbat` なら `giantbat@<stageId>`(`getSelectedStageId()`・例 `giantbat@stage-2`)、
+     それ以外は type そのまま(`thor` 等)。対象ボス= `ENGAGEABLE_BOSS_TYPES`(bossEngagement.tsが正本)。
+     slotKey計算は純関数 `bossStyleSlotKey(type, stageId)` に切り出す(計測側と消費側で同じ関数を使う)。
+   - **BossStyleSlot** = 撃破セッション1回ぶんのサンプル写し(**EMAしない**):
+     9ノブ(reactionMs/counterChance/preferredDist/meleeBias/mobility/hitsPerMin/subUsesPerMin/
+     stationaryFrac/approachPerMin・各null可=そのセッションで計測できなかったノブ)+
+     `subStyles`(下の注)+`snapshot`+`srcClass`+`srcName`+`at`(記録時刻・将来のアルバムUI用)。
+   - **moveReactions(技への反応表)は共有のまま**(既にボス×技キーで分かれている=軸2へ複製しない)。
+2. **撃破の検知**: `notifyBossClear(bossType, stageId)` を playerTraits に新設し、**ボス死亡の確定点に
+   1行ずつ**置く。経路は実装時に**全数列挙**すること(v0.25.2426の教訓「同じ動作を持つ全実装経路に付ける」。
+   少なくとも damageEnemy 死亡処理のボス分岐・ストーリーボス撃破(finaleDefeated系)を精査し、
+   置いた/置かなかった経路の全数表を実装報告に載せる。爆弾はボスを殺せない=対象外)。
+   - セッション(ボス交戦計測)が開いている時だけ session に clearedSlotKey を積む(セッション外の死亡は
+     無視=狭い側)。ゴーストランは既存ゲートで session=null のため自動的に記録されない(劣化コピー防止)。
+   - endSession で clearedSlotKey ごとに保留レコード `kind:'bossStyle'` を積む(サンプルはそのセッションの
+     確定値=既存 PendingSessionRecord と同じ計算)。**30秒フロア(MIN_SESSION_MS)は軸2にも適用**
+     (30秒未満の超速攻撃破は録れない=ノイズ防止優先の割り切り・実測で困ったら再訪)。
+3. **更新規則(ベスト保持・commit時)**: 既存slotが無ければ採用。有れば **新hitsPerMin ≤ 旧hitsPerMin
+   なら上書き**(同値は新しい方=スナップショット/レベルが新鮮)。新サンプルがnullなら上書きしない(保守側)。
+4. **subStylesの写し**: commit時、同ランの subStyle レコード(保留バッファ内)が有ればそのラン実測レートを
+   直接使い(EMAなし)、無ければ commit 後の軸1 subStyles をコピーする。このため commit は
+   **session/subStyle レコードを従来どおり先に順序どおり適用**(=軸1の保存結果は旧実装とビット一致のまま)
+   **→ bossStyle レコードを最後に適用**する。
+5. **消費(召喚側)**: directorTick の召喚時、bound するボスの slotKey を計算し、
+   `profile.bossStyles?.[slotKey]` が**有ればノブ単位で軸2値を優先**(nullノブは軸1へフォールバック)、
+   無ければ従来どおり軸1。snapshot/srcClass/srcName も slot 優先(絵と名前=その撃破ランのもの)。
+   合成は純関数 `effectiveGhostProfile(profile, slotKey): PlayerProfile` に切り出す
+   (ghostDriver 自体は変更しない=受け取るプロファイルの形は不変)。
+6. **不変条件(受け入れ条件)**:
+   - 撃破が無いラン/ゴーストラン/リザルトのチェックON では bossStyles に1bitも触らない。
+   - 軸1の計測・EMA・保存は完全不変(既存 playerTraits テストが無変更で通ること)。
+   - 新規純関数(bossStyleSlotKey/ベスト保持判定/effectiveGhostProfile)のユニットテストを同コミットで書く。
+   - typecheck+lint エラー0。実装報告に撃破経路の全数表を載せる。
+- 設計チャット裁量の叩き台(軽微・社長調整可): 30秒フロアの適用/同値タイは新しい方/`at`記録時刻の追加。
