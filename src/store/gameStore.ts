@@ -5990,6 +5990,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // これで敵が何体群がっても 1 無敵窓につき被弾は 1 回に制限される
           // (旧: 敵×召喚ペアごとの throttle で敵数ぶん多重被弾していた)。
           if (now - s.lastHit < INVULN_MS) return s;
+          // v0.25.2489(社長裁定「同じ仕様になってないのは漏れ」): カウンター成立の付与無敵
+          // (プレイヤーのinvulnerable相当)。lastHitを打刻しない=被弾音/被弾フラッシュも出ない(無傷)。
+          if (now < (s.ghostInvulnUntil ?? 0)) return s;
           return { ...s, health: s.health - amount, lastHit: now };
         })
         .filter(s => !isHittable(s) || s.health > 0),

@@ -17,7 +17,7 @@
 //     lastCounterSuccessTime/計測notify)は1bitも触らない=per-bossハンドラのghost分岐でスキップする。
 //   - 成立演出(青Counter!+金クリ層)はハンドラ側=成立が確定した時だけ出す(嘘のCounter!を出さない)。
 import {
-  useGameStore, BOSS_CRIT_DAMAGE_MULT,
+  useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS,
   COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
 } from '../store/gameStore';
 
@@ -87,9 +87,12 @@ export interface GhostCounterFire {
  *  - 金クリ層(v0.25.2479では「嘘になるため」保留していたもの。本物のクリになったので解禁)
  *  - 確定クリダメージ(damageEnemy crit=true → bumpBossCrit=5クリ紫気絶の蓄積に乗る)+金クリ数字
  *  - SEはコールバック注入(audioManagerをここでimportしない=angelBossTick/combatTickのヘッドレス縛り)
- * プレイヤー専用の副作用(計測notify/コンボ/無敵/CDリファンド/lastCounterSuccessTime/
+ * プレイヤー専用の副作用(計測notify/コンボ/CDリファンド/lastCounterSuccessTime/
  * triggerHitImpact/markMeleeSwingFx)は呼ばない、が仕様。ボスの状態遷移(技の中断/counter-leap等)は
  * 呼び出し元のper-bossハンドラが従来どおりのpatchで行う=プレイヤー成立と同一。
+ * 【v0.25.2489で仕様変更(社長裁定「プレイヤーと同じ仕様になってないのは漏れ」)】無敵はスキップ
+ * リストから外し、成立時にゴーストへ INVULN_MS の付与無敵(ghostInvulnUntil)を与える=プレイヤーの
+ * invulnerable付与と同等。専用フィールドなので被弾音/被弾フラッシュ(lastHitエッジ)は誤発火しない。
  */
 export const applyGhostCounterEffect = (
   boss: { id: string; x: number; y: number; width: number; height: number },
@@ -106,6 +109,14 @@ export const applyGhostCounterEffect = (
   st.spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
   if (GHOST_FX_SHAKE_ENABLED) st.triggerShake(COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG);
   if (playSfxGain && fire.sfxGain > 0) playSfxGain('counter', fire.sfxGain);
+  // v0.25.2489: カウンター成立の付与無敵(プレイヤーのinvulnerable+invulnerableTime相当=INVULN_MS)。
+  // 全per-bossハンドラ+城ボス系パリィがこの共通変換を通るので、ここ1箇所で全経路に効く。
+  {
+    const invulnUntil = Date.now() + INVULN_MS;
+    useGameStore.setState(s => ({
+      summons: s.summons.map(su => su.kind === 'ghost-ally' ? { ...su, ghostInvulnUntil: invulnUntil } : su),
+    }));
+  }
   // 確定クリ(crit=true → bumpBossCrit)+金クリ層
   st.damageEnemy(boss.id, fire.claim.dmg, false, true);
   st.spawnDamageNumber(bcx, boss.y, fire.claim.dmg, true);
