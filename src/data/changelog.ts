@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2527',
+    items: [
+      'ゲーム内容の変更はありません(寄り道POIの体験改修プランを承認・チュートリアルはM1初出撃時に1度と確定)。',
+    ],
+  },
+  {
     version: '0.25.2526',
     items: [
       'ゲーム内容の変更はありません(守護霊の立ち回り改善=反応速度・間合い・カウンター見切りの発注仕様を確定)。',

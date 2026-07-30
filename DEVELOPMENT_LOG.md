@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.2527 — POI-UX裁定の反映(承認+チュートリアル条件確定・文書のみ)【2026-07-30 22:50 JST】
+
+- **社長裁定**: 「poiはそれでお願い」=確定要件1〜3承認。提案a=要件1に統合。
+  提案c=承認・**M1初出撃時に端末で1度だけ**(M2型)。
+- **提案b(装備置換の明示)は保留→事実提示のうえ再諮問**: 社長「装備置換のpoiなんてあったっけ?
+  武器tier3確定しかわからない」→ 実装事実は**武器ではなく装備**(rollEquipment(slot,3))で、
+  スロット満杯時は最低Tier装備を自動置換(特殊=tier0扱いで最優先置換・equipment.ts armoryTargetSlot)。
+- `PACING_PUZZLE.md` §6.24-UX の★提案節を裁定済みに更新。実装はGHOST-BEHAVIOR着地後の隙間で発注。
+- 変更ファイル: PACING_PUZZLE.md+版管理3ファイル。GHOST-BEHAVIORエージェント走行中(非干渉のみ)。
+
 ## v0.25.2526 — REFLECT-MELEE-SUBS検収合格+GHOST-BEHAVIOR(§2.12行動品質)発注仕様(文書のみ)【2026-07-30 22:37 JST】
 
 - **検収(a54a429)**: 弾反射=applyCounterReflect主語引数化(プレイヤー分岐は従来コードの移設のみ・
