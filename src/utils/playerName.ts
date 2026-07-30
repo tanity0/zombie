@@ -19,6 +19,23 @@ const generateName = (): string =>
 // サロゲートペア(絵文字等)を割らないコードポイント単位の切り詰め。
 const clamp = (name: string): string => [...name.trim()].slice(0, PLAYER_NAME_MAX_LEN).join('');
 
+/**
+ * 空欄で確定した時の名前(BOT_AND_GHOST.md §2.16 C-1 の叩き台「空なら『名無し』」)。
+ * ※初期名(まだ一度も決めていない=保存が空)は従来どおりランダム生成の `player+5桁`。
+ * 「空にして確定した」は**意思のある操作**なので、勝手にランダム名へ戻さずこの名前にする。
+ */
+export const PLAYER_NAME_WHEN_BLANK = '名無し';
+
+/**
+ * 入力欄の値を「確定する名前」へ正規化する純関数(§2.16 C-1)。
+ * trim → 最大 PLAYER_NAME_MAX_LEN 文字(コードポイント単位)→ 空なら PLAYER_NAME_WHEN_BLANK。
+ * 文字種フィルタは掛けない(オンライン化時にG-ON側の受信フィルタと合わせて後決め=§2.14)。
+ */
+export const normalizePlayerNameInput = (raw: string): string => {
+  const cleaned = clamp(raw);
+  return cleaned.length > 0 ? cleaned : PLAYER_NAME_WHEN_BLANK;
+};
+
 /** 現在のプレイヤー名。保存が無ければランダム初期名を生成して保存し、それを返す。 */
 export const loadPlayerName = (): string => {
   try {

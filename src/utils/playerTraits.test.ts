@@ -12,7 +12,9 @@ import {
   hasPendingTraitRecords, commitPendingTraits, settlePendingTraits,
   // G5(BOT_AND_GHOST.md §2.10): ボス別攻略スタイル(軸2)
   notifyBossClear, bossStyleSlotKey, isBetterBossStyleSample, effectiveGhostProfile,
-  type PlayerProfile,
+  // GHOST-RESULT-UI(§2.16 A): スロット別決算(採用選択)+リザルト年表のビュー
+  selectPendingForSettlement, pendingBossClears,
+  type PlayerProfile, type PendingTraitRecord,
 } from './playerTraits';
 import { resetBotTelemetry, recordDamageDealt, recordSubUse } from './botTelemetry';
 import { savePlayerName } from './playerName'; // v0.25.2477: srcName(計測時のプレイヤー名)の固定用
@@ -966,5 +968,143 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
     delete (bParsed as Record<string, unknown>).bossStyles;
 
     expect(bParsed).toEqual(aParsed); // 軸1部分は完全一致(bossStyleの有無は軸1に影響しない)
+  });
+});
+
+// ============================================================================
+// GHOST-RESULT-UI(BOT_AND_GHOST.md §2.16 A): スロット別決算(リザルトの「採用」チェック)+
+// 同行守護霊の保存 + リザルト年表のビュー。
+// ============================================================================
+
+// 30秒以上の交戦セッションを1本張って、その中で指定スロットを撃破する共通手順。
+const runClearSession = (
+  clears: { type: Parameters<typeof notifyBossClear>[0]; stageId: string; ally?: Parameters<typeof notifyBossClear>[2] }[],
+  startAt = 0,
+) => {
+  tickPlayerTraits(baseInput({ gameTime: startAt, movementInput: true }));
+  for (const c of clears) notifyBossClear(c.type, c.stageId, c.ally ?? null);
+  tickPlayerTraits(baseInput({ gameTime: startAt + 30_000, movementInput: true }));
+  tickPlayerTraits(baseInput({ inCombat: false, gameTime: startAt + 30_100 }));
+};
+
+describe('playerTraits §2.16 A: 採用選択(selectPendingForSettlement)', () => {
+  const session = { kind: 'session' } as unknown as PendingTraitRecord;
+  const sub = { kind: 'subStyle' } as unknown as PendingTraitRecord;
+  const boss = (slotKey: string) => ({ kind: 'bossStyle', slotKey } as unknown as PendingTraitRecord);
+
+  it('undefined(年表を出さないラン)は1件も落とさない=従来どおり全採用', () => {
+    const recs = [session, boss('thor'), sub];
+    expect(selectPendingForSettlement(recs, undefined)).toEqual(recs);
+  });
+
+  it('撃破が保留に無いランは採用選択の対象外=そのまま通す(サブ様式だけのラン)', () => {
+    expect(selectPendingForSettlement([sub], [])).toEqual([sub]);
+  });
+
+  it('全不採用は全破棄(=「今回のプレイを守護霊に反映しない」と同義)', () => {
+    expect(selectPendingForSettlement([session, boss('thor'), sub], [])).toEqual([]);
+  });
+
+  it('一部採用は採用スロットのbossStyleだけ残し、軸1(session/subStyle)は反映する', () => {
+    const recs = [session, boss('thor'), boss('mimir'), sub];
+    expect(selectPendingForSettlement(recs, ['mimir'])).toEqual([session, boss('mimir'), sub]);
+  });
+});
+
+describe('playerTraits §2.16 A: settlePendingTraitsの採用引数(結線)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  it('採用したボスのスロットだけが保存され、軸1も反映される', () => {
+    runClearSession([{ type: 'thor', stageId: 'stage-1' }, { type: 'mimir', stageId: 'stage-1' }]);
+    settlePendingTraits(false, ['mimir']);
+    const p = loadPlayerProfile()!;
+    expect(Object.keys(p.bossStyles!)).toEqual(['mimir']);
+    expect(p.runs).toBe(1); // 軸1(共通傾向)は採用1件以上なので反映される
+  });
+
+  it('全不採用(空配列)は軸1にもスロットにも1bitも書かない', () => {
+    runClearSession([{ type: 'thor', stageId: 'stage-1' }]);
+    settlePendingTraits(false, []);
+    expect(loadPlayerProfile()).toBeNull();
+  });
+
+  it('採用引数を渡さない(従来経路)なら全スロットが保存される=旧挙動のまま', () => {
+    runClearSession([{ type: 'thor', stageId: 'stage-1' }, { type: 'giantbat', stageId: 'stage-5' }]);
+    settlePendingTraits(false);
+    expect(Object.keys(loadPlayerProfile()!.bossStyles!).sort()).toEqual(['giantbat@stage-5', 'thor']);
+  });
+
+  it('optOut=trueは採用引数より強い(全破棄)', () => {
+    runClearSession([{ type: 'thor', stageId: 'stage-1' }]);
+    settlePendingTraits(true, ['thor']);
+    expect(loadPlayerProfile()).toBeNull();
+  });
+
+  it('不採用にしたボスは既存の記録を上書きしない(前の記録がそのまま残る)', () => {
+    // 1ラン目: thorを普通に記録。
+    runClearSession([{ type: 'thor', stageId: 'stage-1' }]);
+    settlePendingTraits(false, ['thor']);
+    const first = loadPlayerProfile()!.bossStyles!.thor;
+    // 2ラン目: 同じthorを撃破するが不採用にする(撃破タイムが変わっていても記録は動かない)。
+    resetPlayerTraits();
+    runClearSession([{ type: 'thor', stageId: 'stage-1' }, { type: 'mimir', stageId: 'stage-1' }]);
+    settlePendingTraits(false, ['mimir']);
+    expect(loadPlayerProfile()!.bossStyles!.thor).toEqual(first);
+  });
+});
+
+describe('playerTraits §2.16 A: 同行守護霊の保存(撃破の瞬間の写し)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  const ally = { name: 'tanity', build: { maxHealth: 120, speed: 8, level: 9 }, isOwn: true };
+
+  it('撃破時に渡した同行者(名前+ビルド写し)がスロットへ保存される', () => {
+    runClearSession([{ type: 'thor', stageId: 'stage-1', ally }]);
+    settlePendingTraits(false, ['thor']);
+    expect(loadPlayerProfile()!.bossStyles!.thor.ally).toEqual(ally);
+  });
+
+  it('同行者が居ない撃破はallyを保存しない(欠損=カード非表示)', () => {
+    runClearSession([{ type: 'thor', stageId: 'stage-1' }]);
+    settlePendingTraits(false, ['thor']);
+    expect(loadPlayerProfile()!.bossStyles!.thor.ally).toBeUndefined();
+  });
+
+  it('スロットごとに別々の同行者が付く(同じセッションでも撃破ごとの写し)', () => {
+    const other = { name: 'someone', isOwn: false };
+    runClearSession([
+      { type: 'thor', stageId: 'stage-1', ally },
+      { type: 'mimir', stageId: 'stage-1', ally: other },
+    ]);
+    settlePendingTraits(false, ['thor', 'mimir']);
+    const p = loadPlayerProfile()!;
+    expect(p.bossStyles!.thor.ally).toEqual(ally);
+    expect(p.bossStyles!.mimir.ally).toEqual(other);
+  });
+});
+
+describe('playerTraits §2.16 B: リザルト年表のビュー(pendingBossClears)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  it('撃破順に生値(撃破タイム/被弾per分/カウンター成功率)を返す', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    tickPlayerTraits(baseInput({ gameTime: 20_000, movementInput: true }));
+    notifyBossClear('thor', 'stage-1');
+    notifyBossClear('giantbat', 'stage-5');
+    tickPlayerTraits(baseInput({ gameTime: 60_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
+    const view = pendingBossClears();
+    expect(view.map(v => v.slotKey)).toEqual(['thor', 'giantbat@stage-5']);
+    expect(view[0].clearTimeMs).toBe(20_000);
+    expect(view[0].hitsPerMin).toBe(0); // 被弾なし
+    expect(view[0].counterChance).toBeNull(); // 機会が無ければnull(未計測)
+  });
+
+  it('撃破が無いラン/決算後は空(年表セクションを出さない条件)', () => {
+    expect(pendingBossClears()).toEqual([]);
+    runClearSession([{ type: 'thor', stageId: 'stage-1' }]);
+    expect(pendingBossClears()).toHaveLength(1);
+    settlePendingTraits(false, ['thor']);
+    expect(pendingBossClears()).toEqual([]);
   });
 });

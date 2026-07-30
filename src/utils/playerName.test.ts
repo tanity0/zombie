@@ -1,6 +1,9 @@
 // プレイヤー名の台帳(v0.25.2477)。純関数+localStorageの契約を固定する。
 import { describe, it, expect, beforeEach } from 'vitest';
-import { loadPlayerName, savePlayerName, PLAYER_NAME_MAX_LEN } from './playerName';
+import {
+  loadPlayerName, savePlayerName, normalizePlayerNameInput,
+  PLAYER_NAME_MAX_LEN, PLAYER_NAME_WHEN_BLANK,
+} from './playerName';
 
 // jsdom を使わずに済む最小 localStorage スタブ(tutorialArchive.test.ts/playerTraits.test.tsと同じ作法)。
 const installStorage = () => {
@@ -73,5 +76,30 @@ describe('playerName: localStorageが使えない環境(プライベートモー
     installBrokenStorage();
     expect(loadPlayerName()).toMatch(/^player\d{5}$/);
     expect(savePlayerName('Tanity')).toBe('Tanity'); // 確定名は返す
+  });
+});
+
+// BOT_AND_GHOST.md §2.16 C-1(独立メニュー「守護霊」の名前決定・叩き台)。
+describe('playerName: 入力欄の正規化(normalizePlayerNameInput)', () => {
+  beforeEach(() => { installStorage(); });
+
+  it('前後の空白を落として返す', () => {
+    expect(normalizePlayerNameInput('  Tanity  ')).toBe('Tanity');
+  });
+
+  it('最大文字数へ切り詰める(コードポイント単位=サロゲートペアを割らない)', () => {
+    expect(normalizePlayerNameInput('a'.repeat(30))).toBe('a'.repeat(PLAYER_NAME_MAX_LEN));
+    expect(normalizePlayerNameInput('😀'.repeat(30))).toBe('😀'.repeat(PLAYER_NAME_MAX_LEN));
+  });
+
+  it('空/空白のみで確定したら「名無し」(ランダム名へは戻さない)', () => {
+    expect(normalizePlayerNameInput('')).toBe(PLAYER_NAME_WHEN_BLANK);
+    expect(normalizePlayerNameInput('   ')).toBe(PLAYER_NAME_WHEN_BLANK);
+  });
+
+  it('正規化した値は保存しても変化しない(二重適用で崩れない)', () => {
+    const decided = normalizePlayerNameInput('   ');
+    expect(savePlayerName(decided)).toBe(PLAYER_NAME_WHEN_BLANK);
+    expect(loadPlayerName()).toBe(PLAYER_NAME_WHEN_BLANK);
   });
 });

@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.2553 — バッチGHOST-RESULT-UI: リザルト討伐年表+採用チェック+独立メニュー「守護霊」【2026-07-31 08:03 JST】
+
+- **発注**: BOT_AND_GHOST.md §2.16(正本=§2.13年表/§2.14独立メニュー/§2.15同行カード)。実装サブエージェント。
+- **A. データ層(playerTraits)**:
+  - スロット別決算 `settlePendingTraits(optOut, adoptedSlotKeys?)`。判定は純関数
+    `selectPendingForSettlement` に分離(規律4)。**引数なし=従来どおり全採用**(既定経路のビット一致を維持)、
+    採用0件=全破棄、一部採用=そのスロットのbossStyleだけ残し軸1(session/subStyle)は反映。
+  - 同行守護霊の保存: `BossStyleSlot.ally?`(持ち主名+PlayerBuildSnapshot写し+クラス+isOwn)。写しは
+    `playerBuild.ghostAllySnapshot(findGhostAlly(summons))` の**1枚**で、記録側(`notifyBossClear`第3引数=
+    gameStoreの撃破合流点2箇所)と表示側(`store.ghostAlly`=召喚時に1回だけ書く不変値)が共用。
+  - リザルト用ビュー `pendingBossClears()`(撃破順の生値。**スコアは保存しない**裁定どおり合成は表示時)。
+- **B. リザルト年表(GameOverScreen)**: 撃破順アイコン帯+カード(撃破タイム/被弾per分/カウンター成功率+
+  現記録との良化悪化)+「採用」チェック既定ON。同行守護霊のフルカードは年表と独立に表示(**いいねボタンなし**)。
+  撃破が無いランは年表セクションごと出さない。
+- **C. 独立メニュー「守護霊」(MissionSelect)**: 拠点の資料室の下に入口を追加。名前の決定(既存
+  `PlayerNameSettings` を共用・空欄確定=「名無し」=§2.16 C-1の叩き台)+討伐記録一覧(同行者は名前のみ・
+  タップでビルド/ステータスのポップアップ)。**アップロードボタンは置かない**。資料室は不変。
+- **共通化(§2.11補足「写すな、共通化しろ」)**: 表示用純関数=`src/utils/ghostAlbum.ts`、カード部品=
+  `src/components/GhostRecordCards.tsx`(リザルトと一覧で同部品)、ボスアイコン表=`src/utils/bossIcon.ts`
+  (タイトルの歴史年表も同じ表を引くよう差し替え)、武器名=`weaponUtils.weaponDisplayName`(カタログが唯一の出どころ)。
+- **自己点検**: ゲームプレイ(判定・報酬・計測値・EMAの式)は不変=UI追加+決算の選択化+保存項目追加のみ。
+  ドクトリン準拠(共有/例外/ゴースト専用モデルの新設なし)。React再描画規律: 新規stateは全てローカル、
+  storeの購読は `ghostAlly`(召喚時に1回書かれる不変値)のみ=毎フレーム再描画なし。負荷 **1/10**
+  (静的なリザルト/メニューのDOMのみ・新規演出なし)。
+- **テスト**: 新規ユニット `ghostAlbum.test.ts` 13件、`playerTraits.test.ts` +15件(採用選択・同行者保存・
+  年表ビュー。既存56件は無修正で通過=軸1のビット一致要件を満たす)、`playerName.test.ts` +4件。
+  `npx vitest related`(変更12ファイル)= **28ファイル 496件パス**(4 skipped)。
+  ゲート: `npm run typecheck` 0 / `npm run lint` エラー0(既存warning 8のまま)。
+- **★未決(research/GHOST_PARITY_LEDGER.md 末尾に詳述)**: ①§2.7制約1により守護霊同行ランは計測が
+  止まるため、`BossStyleSlot.ally` はオフラインでは原理的に埋まらない(討伐記録の「同行者名」は当面空振り。
+  リザルトの同行カードはstore由来なので今でも出る)。②プレイヤー名の入力欄がオプションと守護霊メニューの
+  2箇所になった(同一部品・同一台帳。オプション側を畳むかは裁定待ち)。
+- 変更ファイル: playerTraits.ts / playerBuild.ts / playerName.ts / ghostAlbum.ts(新) / bossIcon.ts(新) /
+  weaponUtils.ts / directorTick.ts / gameStore.ts / GameOverScreen.tsx / MissionSelect.tsx / TitleScreen.tsx /
+  GhostRecordCards.tsx(新) + テスト3本 + research/GHOST_PARITY_LEDGER.md + 版管理3ファイル。
+
 ## v0.25.2552 — サブ6種の裁定確定(全種承認+ホーミング=保持秒数の計測平均方式)【2026-07-31 07:49 JST】
 
 - **社長裁定**: 「それで」=6種すべて「写す」承認。**ホーミングは固定則ではなく計測に変更**

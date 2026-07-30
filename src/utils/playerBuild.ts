@@ -9,7 +9,43 @@
 //
 // 武器(weapons/activeWeaponId)の復元だけは createWeapon(weaponUtils→gameStore)が必要でここには
 // 置けない(headless縛り)。武器を載せる最後の一手は ghostBuild.ts が担当する。
-import type { Player, PlayerBuildSnapshot } from '../types/game';
+import type { CharacterClass, Player, PlayerBuildSnapshot, Summon } from '../types/game';
+
+/**
+ * 同行守護霊の写し(BOT_AND_GHOST.md §2.15「討伐に付き合ってくれた人のビルドとステータス」/
+ * §2.16 A「ClearedSlotに同行者名+ビルド写し」)。**持ち主の名前+その守護霊が使っていたビルド**だけを
+ * 持つ(位置・HP等の実体の状態は入れない=記録として残す価値があるのは"誰の・どんなビルドか"だから)。
+ * 将来オンラインで他人の守護霊が下りてきた時も同じ器で通る(名前=他人の名前・isOwn=false)。
+ */
+export interface GhostAllySnapshot {
+  /** 守護霊の持ち主の名前(Summon.ghostName=プロファイルsrcName由来)。 */
+  name: string;
+  /** その守護霊のビルド写し(欠損=旧プロファイル由来で計測時ビルドが無い)。 */
+  build?: PlayerBuildSnapshot;
+  /** 絵の選択に使っているクラス(Summon.ghostClass)。カードのアイコン用。 */
+  className?: CharacterClass;
+  /** 自分のプロファイル由来か(オフラインは常にtrue。オンラインで他人の霊が来たらfalse)。 */
+  isOwn?: boolean;
+}
+
+/** 場に居る同行守護霊(kind='ghost-ally')。居なければ undefined。 */
+export const findGhostAlly = (summons: readonly Summon[]): Summon | undefined =>
+  summons.find(s => s.kind === 'ghost-ally');
+
+/**
+ * 同行守護霊の写しを1枚取る(純粋なコピー=生きた参照を持たない)。名前が無い(=ghost-allyでない/
+ * 不在)なら null=「同行者なし」。記録側(playerTraits.notifyBossClear)とリザルト表示側(store.ghostAlly)が
+ * **同じ1枚の変換**を使う(§2.11補足「写すな、共通化しろ」)。
+ */
+export const ghostAllySnapshot = (ghost: Summon | undefined | null): GhostAllySnapshot | null => {
+  if (!ghost || ghost.kind !== 'ghost-ally' || !ghost.ghostName) return null;
+  return {
+    name: ghost.ghostName,
+    ...(ghost.ghostBuild ? { build: { ...ghost.ghostBuild } } : {}),
+    ...(ghost.ghostClass ? { className: ghost.ghostClass } : {}),
+    ...(ghost.ghostIsOwn !== undefined ? { isOwn: ghost.ghostIsOwn } : {}),
+  };
+};
 
 /**
  * 現在のプレイヤーから「ビルドの写し」を1枚取る(純粋なコピー=生きた参照を持たない。

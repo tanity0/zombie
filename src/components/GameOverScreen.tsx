@@ -15,7 +15,9 @@ import { getArchiveRecord, unlockRecordsForStage, markRecordRead, type ArchiveRe
 import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
 import { isKomaLogEnabled, komaLogSummary, logKomaSummary } from '../utils/komaLog';
-import { hasPendingTraitRecords, settlePendingTraits } from '../utils/playerTraits';
+import { hasPendingTraitRecords, settlePendingTraits, pendingBossClears, loadPlayerProfile } from '../utils/playerTraits';
+import { buildRunTimeline } from '../utils/ghostAlbum';
+import { BossClearCardRow, BossClearStrip, GhostAllyCard } from './GhostRecordCards';
 import {
   wallAchievementHeadline, metersToNextWall, WALL_RANK_NAMES,
 } from '../utils/wallProgress';
@@ -134,11 +136,34 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // ボス交戦なし/守護霊装備/?ghost=1のランは保留が空(そもそも計測されていない)のでチェックは出ない。
   const [hasPendingTraits] = useState(() => hasPendingTraitRecords());
   const [traitOptOut, setTraitOptOut] = useState(false);
+  // BOT_AND_GHOST.md §2.13/§2.16 B: 撃破の年表。**マウント時に1回だけ**読む3つ(保留中の撃破/
+  // 反映前の保存プロファイル/同行守護霊)からカードを組み立てる。以後リザルト表示中は不変=
+  // 毎フレーム変わるstoreの購読はしない(React再描画規律)。撃破が無いランは空配列=年表を出さない。
+  const [runClears] = useState(() => pendingBossClears());
+  const [profileBeforeSettle] = useState(() => loadPlayerProfile());
+  const timeline = useMemo(
+    () => buildRunTimeline(runClears, profileBeforeSettle),
+    [runClears, profileBeforeSettle]
+  );
+  // 「守護霊へ採用」チェック。**既定=全部ON**(叩き台・§2.16 B)。ローカルstateのみ。
+  const [adoptedSlots, setAdoptedSlots] = useState<Set<string>>(() => new Set(runClears.map(c => c.slotKey)));
+  const toggleAdopt = (slotKey: string, next: boolean) => {
+    playSfx('ui-select');
+    setAdoptedSlots(prev => {
+      const s = new Set(prev);
+      if (next) s.add(slotKey); else s.delete(slotKey);
+      return s;
+    });
+  };
+  // §2.15/§2.16 B: このランに同行した守護霊(召喚時に1回だけ書かれる不変の写し=購読しても安定)。
+  const ghostAlly = useGameStore(s => s.ghostAlly);
   // リザルトを閉じる3操作(OK/もう一度プレイ/メニューに戻る)の合流点=commit/破棄の唯一の分岐点。
   // チェックなし(既定)=保留をcommit(従来どおりEMA反映・結果は旧実装とビット一致)/
   // チェックあり=全破棄。resetGame(次ラン開始)より前に呼ばれるのでbotTelemetryの分母も生きている。
+  // v0.25.2553(§2.16 A): 年表が出ているランは**採用スロットの一覧**を渡す(全不採用=反映しない)。
+  // 年表が無いラン(撃破なし)は undefined=従来どおり全採用のまま(既定経路の結果は不変)。
   const settleAnd = (navigate: () => void) => () => {
-    settlePendingTraits(traitOptOut);
+    settlePendingTraits(traitOptOut, timeline.length > 0 ? [...adoptedSlots] : undefined);
     navigate();
   };
   const {
@@ -369,6 +394,40 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       />
       <span>今回のプレイを守護霊に反映しない</span>
     </label>
+  ) : null;
+
+  // BOT_AND_GHOST.md §2.13/§2.16 B: 撃破年表(撃破順のアイコン帯+1件ずつのカード)。
+  // 撃破が無いラン(timeline空)はセクションごと出さない=従来のリザルトのまま。
+  // 文言・並び・見た目は叩き台(実機で社長調整前提)。新規演出(強glow等)は使わない=負荷1/10。
+  const ghostTimelineSection = timeline.length > 0 ? (
+    <div className="mb-3 rounded-none bg-purple-400/5 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-white/45">討伐年表</span>
+        <span className="text-[10px] text-white/40">チェックした撃破を守護霊へ記録</span>
+      </div>
+      <BossClearStrip cards={timeline} />
+      <div className="mt-1 space-y-2">
+        {timeline.map(card => (
+          <BossClearCardRow
+            key={card.slotKey}
+            card={card}
+            checked={adoptedSlots.has(card.slotKey)}
+            onToggle={toggleAdopt}
+          />
+        ))}
+      </div>
+      {adoptedSlots.size === 0 && (
+        <p className="mt-2 text-[10px] text-white/45">全て未採用＝今回のプレイを守護霊に反映しません。</p>
+      )}
+    </div>
+  ) : null;
+
+  // §2.15/§2.16 B: 同行守護霊のフルカード(持ち主名+ビルド+ステータス)。年表とは独立で、
+  // 守護霊が召喚されたランなら撃破の有無に関わらず出す(いいねボタンは置かない=裁定どおり)。
+  const ghostAllySection = ghostAlly ? (
+    <div className="mb-3">
+      <GhostAllyCard ally={ghostAlly} />
+    </div>
   ) : null;
 
   const handleCopyBenchmark = async () => {
@@ -631,6 +690,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   </div>
                 </div>
               </div>
+              {ghostTimelineSection}
+              {ghostAllySection}
               {traitOptOutRow}
               {/* PACING_PUZZLE.md §5.17 M14: 到達譜=縦の深度メーター(壁4本の目盛り+今回バー+自己最深旗)。 */}
               {/* stage-7 は深さも大罪も動かない回なので丸ごと隠す(社長指示v0.25.2385・上の hideDepthReview 参照)。 */}
@@ -709,6 +770,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   )}
                 </div>
               </div>
+              {ghostTimelineSection}
+              {ghostAllySection}
               {traitOptOutRow}
               {/* PACING_PUZZLE.md §5.19 M18②③: スコア内訳+残りの数字は「詳細▾」で開閉(既定は畳む)。 */}
               <button

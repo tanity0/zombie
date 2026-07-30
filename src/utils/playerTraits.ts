@@ -25,7 +25,8 @@
 //   =破棄と同じ(安全側)。
 import type { Enemy, EnemyType, Player, PlayerBuildSnapshot } from '../types/game';
 import { getBotTelemetry, snapshotBotTelemetry, type BotTelemetry } from './botTelemetry';
-import { snapshotPlayerBuild } from './playerBuild'; // §2.11 裁定1: 計測時ビルドの写し(純関数・store非依存)
+// §2.11 裁定1: 計測時ビルドの写し(純関数・store非依存)/ §2.16 A: 同行守護霊の写し(共通の1枚)
+import { snapshotPlayerBuild, type GhostAllySnapshot } from './playerBuild';
 import { isEngageableBoss } from './bossEngagement';
 import { isBossCounterableNowApprox } from './bossScript';
 import { isHiddenBoss } from './enemyUtils';
@@ -75,6 +76,10 @@ export interface BossStyleSlot {
   /** v0.25.2493(社長採用「撃破タイム+カウンター成功率であれば採用」): 交戦開始→撃破までの時間(ms)。
    * 旧レコード(v0.25.2485〜2492)には無い=欠損可。表示側はカウンター成功率(counterChance)と併記する。 */
   clearTimeMs?: number;
+  /** v0.25.2553(§2.15 置き場所の訂正/§2.16 A): その撃破に**同行していた守護霊**の持ち主名+ビルド写し。
+   * 討伐記録一覧で「同行者の名前」を出し、タップでビルド/ステータスのポップアップを描くための保存。
+   * 撃破の瞬間に召喚中のghost-allyから写す=不在なら未保存(欠損可・カード非表示)。 */
+  ally?: GhostAllySnapshot;
 }
 
 export interface PlayerProfile {
@@ -235,8 +240,9 @@ interface Session {
   lastPcy: number | null;
   // ---- G5(§2.10) ----
   // このセッション中にnotifyBossClearされたスロット(重複無し)。clearTimeMs=交戦開始→撃破の時間
-  // (v0.25.2493・撃破の瞬間のlastGameTimeで確定=同tick精度)。
-  clearedSlots: { key: string; clearTimeMs: number }[];
+  // (v0.25.2493・撃破の瞬間のlastGameTimeで確定=同tick精度)。ally=撃破の瞬間に同行していた
+  // 守護霊の写し(v0.25.2553・§2.16 A。不在ならnull)。
+  clearedSlots: { key: string; clearTimeMs: number; ally: GhostAllySnapshot | null }[];
 }
 
 let session: Session | null = null;
@@ -383,6 +389,8 @@ export interface PendingBossStyleRecord {
   at: number;
   /** v0.25.2493: 交戦開始→撃破の時間(ms・撃破の瞬間に確定)。 */
   clearTimeMs: number;
+  /** v0.25.2553(§2.16 A): 撃破の瞬間に同行していた守護霊の写し(不在ならnull)。 */
+  ally: GhostAllySnapshot | null;
 }
 
 export type PendingTraitRecord = PendingSessionRecord | PendingSubStyleRecord | PendingBossStyleRecord;
@@ -451,6 +459,7 @@ const endSession = (): void => {
       reactionSample, counterChanceSample, preferredDistSample, meleeBiasSample, mobilitySample,
       hitsPerMinSample, subUsesPerMinSample, stationarySample, approachSample,
       srcClass, snapshot, srcName, at: Date.now(), clearTimeMs: cleared.clearTimeMs,
+      ally: cleared.ally, // v0.25.2553(§2.16 A): 撃破の瞬間に写した同行守護霊(不在ならnull)
     });
   }
 };
@@ -665,14 +674,19 @@ export const notifyMoveDamage = (moveKey: string): void => {
  * 無視=狭い側)。ゴーストランは§2.7の既存ゲート(tickPlayerTraitsがghostActive/ghostRunActiveの間
  * session=null にする)により自動的に記録されない(劣化コピー防止・軸1と同じ理屈)。
  * 対象は `isEngageableBoss`(bossEngagement.tsが正本)の型のみ(reaper/hunter/pumpkin/lab-zombie-3等は無視)。
+ *
+ * v0.25.2553(§2.16 A): 第3引数 `ally` = **撃破の瞬間に召喚中だった同行守護霊の写し**
+ * (呼び出し側が `ghostAllySnapshot(findGhostAlly(summons))` で作る)。省略/nullなら「同行者なし」=未保存。
  */
-export const notifyBossClear = (bossType: EnemyType, stageId: string): void => {
+export const notifyBossClear = (
+  bossType: EnemyType, stageId: string, ally: GhostAllySnapshot | null = null,
+): void => {
   const s = session;
   if (!s || !isEngageableBoss(bossType)) return;
   const key = bossStyleSlotKey(bossType, stageId);
   // v0.25.2493: 撃破タイム=交戦開始→撃破。lastGameTimeは毎tick更新済み=撃破の瞬間の値(同tick精度)。
   if (!s.clearedSlots.some(c => c.key === key)) {
-    s.clearedSlots.push({ key, clearTimeMs: s.lastGameTime - s.startGameTime });
+    s.clearedSlots.push({ key, clearTimeMs: s.lastGameTime - s.startGameTime, ally });
   }
 };
 
@@ -827,6 +841,7 @@ export const applyPendingBossStyle = (
   const existing = prev.bossStyles?.[r.slotKey];
   if (!isBetterBossStyleSample(existing?.hitsPerMin, r.hitsPerMinSample)) return prev;
   const slot: BossStyleSlot = {
+    ...(r.ally ? { ally: r.ally } : {}), // v0.25.2553(§2.16 A): 同行者が居た撃破だけ写しを載せる
     reactionMs: r.reactionSample,
     counterChance: r.counterChanceSample,
     preferredDist: r.preferredDistSample,
@@ -850,6 +865,54 @@ export const applyPendingBossStyle = (
 
 /** リザルト表示用: このランで保留中の記録が1件以上あるか(=チェックボックスを出す条件)。 */
 export const hasPendingTraitRecords = (): boolean => pendingRecords.length > 0;
+
+/**
+ * リザルト年表(§2.13/§2.16 B)用の読み取り専用ビュー: **このランで撃破した順**に保留中の
+ * bossStyleレコードを並べて返す(保留バッファは撃破順に積まれる)。コピーを返す=UI側が触っても
+ * 保留バッファは汚れない。**スコアは保存しない裁定**なので、ここも生値(撃破タイム/被弾per分/
+ * カウンター成功率)だけを渡し、合成はUI側(ghostAlbum.ts)が表示時に行う。
+ */
+export interface PendingBossClearView {
+  slotKey: string;
+  clearTimeMs: number;
+  hitsPerMin: number | null;
+  counterChance: number | null;
+  at: number;
+  ally: GhostAllySnapshot | null;
+}
+
+export const pendingBossClears = (): PendingBossClearView[] =>
+  pendingRecords
+    .filter((r): r is PendingBossStyleRecord => r.kind === 'bossStyle')
+    .map(r => ({
+      slotKey: r.slotKey,
+      clearTimeMs: r.clearTimeMs,
+      hitsPerMin: r.hitsPerMinSample,
+      counterChance: r.counterChanceSample,
+      at: r.at,
+      ally: r.ally,
+    }));
+
+/**
+ * 純関数(§2.16 A スロット別決算): リザルトの「守護霊へ採用」チェックを保留バッファへ適用する。
+ * - `adopted === undefined`: **従来どおり全採用**(1文字も落とさない=既定経路のビット一致を保つ)。
+ * - 保留に撃破(bossStyle)が1件も無い: 採用の対象が存在しない=そのまま返す(サブ様式だけのランは従来どおり)。
+ * - 採用が0件(全不採用): **全破棄**=従来の「今回のプレイを守護霊に反映しない」と同義。
+ * - 採用が1件以上: 採用スロットのbossStyleレコードだけを残し、**軸1(session/subStyle)は反映する**
+ *   (§2.13「軸1(共通傾向)は採用1件以上のセッションぶんのみ反映」)。
+ */
+export const selectPendingForSettlement = (
+  records: readonly PendingTraitRecord[],
+  adopted: readonly string[] | undefined,
+): PendingTraitRecord[] => {
+  if (adopted === undefined) return [...records];
+  const hasBossStyle = records.some(r => r.kind === 'bossStyle');
+  if (!hasBossStyle) return [...records];
+  const keep = new Set(adopted);
+  const kept = records.filter(r => r.kind !== 'bossStyle' || keep.has(r.slotKey));
+  if (!kept.some(r => r.kind === 'bossStyle')) return []; // 全不採用=反映しない
+  return kept;
+};
 
 /**
  * 保留バッファを積んだ順に「load→従来と同一の式でEMA→save」で1件ずつ再生して確定する(既定経路)。
@@ -897,11 +960,16 @@ export const discardPendingTraits = (): void => {
  * まずサブ様式のラン集計を保留に積み(ゴーストラン/未使用ならno-op)、チェック状態に応じて
  * commit(optOut=false・既定)か全破棄(optOut=true)する。resetGame(次ラン開始)より前=
  * botTelemetryがまだ生きているうちに呼ばれる前提(分母の確定はfold側)。2回呼んでも2回目はno-op。
+ *
+ * v0.25.2553(§2.16 A スロット別決算): 第2引数 `adoptedSlotKeys` = リザルト年表で「守護霊へ採用」に
+ * チェックが入っているボススロット。**省略(undefined)なら従来どおり全採用**(年表を出さないラン=
+ * 撃破なし/ベンチ等はこの経路のまま)。空配列(全不採用)は「反映しない」と同義=全破棄になる。
  */
-export const settlePendingTraits = (optOut: boolean): void => {
+export const settlePendingTraits = (optOut: boolean, adoptedSlotKeys?: readonly string[]): void => {
   foldSubStyleTallies();
-  if (optOut) discardPendingTraits();
-  else commitPendingTraits();
+  if (optOut) { discardPendingTraits(); return; }
+  pendingRecords = selectPendingForSettlement(pendingRecords, adoptedSlotKeys);
+  commitPendingTraits();
 };
 
 // ==== G5(BOT_AND_GHOST.md §2.10 仕様5): 消費側(召喚時の合成) ======================================

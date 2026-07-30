@@ -5,8 +5,7 @@ import { Ff7rButton } from './ff7r';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { CHANGELOG } from '../data/changelog';
 import { loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data/progress';
-import { spritePath } from '../utils/spriteLoader';
-import { getStage } from '../data/campaign';
+import { bossIconSrc } from '../utils/bossIcon';
 import { getLoadProgress, subscribeLoadProgress } from '../utils/loadProgress';
 import { normalizeNamedNamesInText } from '../utils/namedEnemy';
 
@@ -57,33 +56,12 @@ const PANEL_STYLE: React.CSSProperties = {
 // 年表アイコン(社長指示v0.25.1720): 天使(ミゲル/ジブリル/ラフィ)・城ボス(giantbat)・裏ボス4体の
 // 討伐行に、テキスト横へ絵文字サイズの絵を添える。entryのkey=`stageId::kind::detail`のdetail(敵型)で引く。
 // ハンター/死神など対象外の行はアイコン無し(社長指名の3グループのみ)。
-const CHRONICLE_BOSS_ICON: Record<string, string> = {
-  miguel: 'miguel', jibril: 'jibril', rafi: 'rafi',
-  // PACING_PUZZLE.md §6.28-0★(バッチM52): 天使名ボス4〜6体目(ウリ/スリィエル/アクラシエル)。
-  uri: 'uri', suriel: 'suriel', acrasiel: 'acrasiel',
-  giantbat: 'atlas-px2/giantbat',
-  mimir: 'mimir', jormungand: 'jormungand', skadi: 'skadi', thor: 'thor',
-};
-// 城ボス(giantbat)だけは**全ステージに出る同じ敵**で、絵はステージごとに差し替わる
-// (pixiScene.ts の敵テクスチャ解決チェーン: 廃都/雪原/戦場のセット+stage-7のグレン)。
-// 上の表は型名1つ=1枚なので、年表では**どのステージで倒しても同じ絵**になっていた(社長報告v0.25.2387)。
-// ステージ→遠景(farBackdrop)は campaign.ts が唯一の出どころなので getStage() から引き、
-// 遠景→絵の対応だけをここに持つ(pixiScene の chain と同じ内容)。定義の無いステージ(1/6/ex1)は素の絵。
-const GIANTBAT_ICON_BY_BACKDROP: Record<string, string> = {
-  city: 'stage3-enemies/giantbat',   // stage-3(廃都)
-  snow: 'stage4-enemies/giantbat',   // stage-4(雪原)
-  stage5: 'stage5-enemies/giantbat', // stage-5(紅き月の城塞)
-  stage7: 'glen-boss',               // stage-7(グレン=物語ボスの専用アート)
-};
+// v0.25.2553: 対応表そのものは `utils/bossIcon.ts` へ移し、リザルトの撃破年表/討伐記録一覧
+// (BOT_AND_GHOST.md §2.16)と共用する(表を2箇所に持たない)。ここは年表エントリの分解だけを行う。
 const chronicleIconSrc = (e: ChronicleEntry): string | null => {
   if (e.kind !== 'boss') return null;
   const [stageId, , detail] = e.key.split('::');
-  if (detail === 'giantbat') {
-    const backdrop = getStage(stageId ?? '')?.farBackdrop ?? '';
-    return spritePath(GIANTBAT_ICON_BY_BACKDROP[backdrop] ?? CHRONICLE_BOSS_ICON.giantbat);
-  }
-  const base = CHRONICLE_BOSS_ICON[detail ?? ''];
-  return base ? spritePath(base) : null;
+  return detail ? bossIconSrc(detail, stageId) : null;
 };
 
 // 「初ミッション」行の実日付表示(社長指示v0.25.1772)。例: 2026/7/16

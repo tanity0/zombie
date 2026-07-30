@@ -88,7 +88,7 @@ const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey
   );
 };
 import {
-  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Sparkles
+  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Sparkles, Ghost
 } from 'lucide-react';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
@@ -102,7 +102,13 @@ import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
 import { TUTORIALS, type TutorialId } from '../data/tutorials';
 import TutorialMedia from './TutorialMedia';
 import { loadSeenTutorials } from '../utils/tutorialArchive';
-import { loadPlayerName, savePlayerName, PLAYER_NAME_MAX_LEN } from '../utils/playerName';
+import { loadPlayerName, savePlayerName, normalizePlayerNameInput, PLAYER_NAME_MAX_LEN, PLAYER_NAME_WHEN_BLANK } from '../utils/playerName';
+// BOT_AND_GHOST.md §2.14/§2.16 C: 独立メニュー「守護霊」= 名前の決定 + 討伐の保持記録(G5アルバム)。
+// カードはリザルト年表と**同じ部品**を流用する(§2.16 B)。
+import { loadPlayerProfile } from '../utils/playerTraits';
+import { buildAlbumCards, type BossClearCard } from '../utils/ghostAlbum';
+import type { GhostAllySnapshot } from '../utils/playerBuild';
+import { BossClearCardRow, GhostAllyCard } from './GhostRecordCards';
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
@@ -189,6 +195,8 @@ type Screen =
   | { name: 'options' }
   | { name: 'weaponDev' }
   | { name: 'archive' }
+  // BOT_AND_GHOST.md §2.14/§2.16 C: 独立メニュー「守護霊」(名前の決定+討伐の保持記録)。
+  | { name: 'ghost' }
   | { name: 'stageSelect' }
   | { name: 'missionDetail'; stageId: string; mission?: SelectedMission }
   | { name: 'characterSelect'; stageId: string; mission?: SelectedMission }
@@ -389,6 +397,16 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     setStoryHintNotice(false);
   };
 
+  // BOT_AND_GHOST.md §2.14/§2.16 C: 独立メニュー「守護霊」。討伐記録(G5アルバム)は
+  // storyArchive と同じ「入った時に1回だけ読む」方針(store購読なし=毎フレーム再描画しない)。
+  const [ghostAlbum, setGhostAlbum] = useState<BossClearCard[]>([]);
+  const [openAlly, setOpenAlly] = useState<GhostAllySnapshot | null>(null);
+  const goGhost = () => {
+    playSfx('ui-select');
+    setGhostAlbum(buildAlbumCards(loadPlayerProfile()));
+    setScreen({ name: 'ghost' });
+  };
+
   // タイトル曲の自動再生制限対策(初回タップで確実に再生開始)。
   useEffect(() => {
     const kick = () => setBgmScene('menu');
@@ -420,6 +438,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン1 / スキル最大${MAX_EQUIPPED_SKILLS}`} onClick={() => setScreen({ name: 'loadout' })} delay={50} />
         <HubButton icon={<ShoppingBag size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={100} />
         <HubButton icon={<BookOpen size={18} />} label="資料室" desc="記録・変異体資料" onClick={goArchive} delay={150} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
+        {/* BOT_AND_GHOST.md §2.14(社長裁定「独立メニュー化しよう」): 守護霊=名前の決定+討伐の保持記録。
+            資料室(操作記録・物語資料)とは別物なので独立させる。名称/位置は叩き台。 */}
+        <HubButton icon={<Ghost size={18} />} label="守護霊" desc="名前・討伐記録" onClick={goGhost} delay={175} />
         {/* オプションは最下段(社長指示v0.25.1781)。 */}
         <HubButton icon={<Settings size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} delay={200} />
         <p className="pt-1 text-center text-[11px] text-white/35">v{__APP_VERSION__}</p>
@@ -1122,6 +1143,55 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     );
   };
 
+  // ====================================================================
+  // 守護霊(BOT_AND_GHOST.md §2.14/§2.16 C): ①名前の決定 ②討伐の保持記録(G5アルバム)。
+  // **アップロードボタンは置かない**(オンライン基盤と同時=死にボタン回避の裁定)。
+  // 資料室は不変(操作記録専用)=ここへは何も移していない。文言/並びは叩き台。
+  // ====================================================================
+  const renderGhost = () => (
+    <>
+      <Header title="守護霊" subtitle="名前・討伐記録" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
+      <div className="menu-stagger p-3 space-y-3">
+        <PlayerNameSettings />
+        <Section label="討伐記録">
+          {ghostAlbum.length === 0 ? (
+            <p className="text-[11px] leading-relaxed text-white/45">
+              まだ討伐の記録がありません。ボスを倒してリザルトで「採用」すると、そのボスの戦い方がここに残ります。
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {ghostAlbum.map(card => (
+                <BossClearCardRow key={card.slotKey} card={card} onAllyTap={setOpenAlly} />
+              ))}
+            </div>
+          )}
+        </Section>
+      </div>
+      {/* §2.15 置き場所の訂正③: 同行者の名前タップ→ビルド/ステータスのポップアップ。
+          他のモーダルと同じくbody直下へポータル(menu-stagger等のtransform祖先の影響を受けないため)。 */}
+      {openAlly && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-3"
+          style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+        >
+          <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
+            <div className="px-4 py-5">
+              <GhostAllyCard ally={openAlly} />
+              <button
+                type="button"
+                onClick={() => { playSfx('ui-select'); setOpenAlly(null); }}
+                className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+
   // --- ルーティング ----------------------------------------------------
   // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
   if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId, screen.mission ?? 'main');
@@ -1134,6 +1204,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       {screen.name === 'options' && renderOptions()}
       {screen.name === 'weaponDev' && renderWeaponDev()}
       {screen.name === 'archive' && renderArchive()}
+      {screen.name === 'ghost' && renderGhost()}
     </Shell>
   );
 };
@@ -1222,15 +1293,18 @@ const GraphicsSettings: React.FC = () => {
   );
 };
 
-// === オプション内: プレイヤー名(守護霊の頭上に表示される名前・v0.25.2477) =================
+// === プレイヤー名(守護霊の頭上に表示される名前・v0.25.2477) ==============================
 // 台帳は utils/playerName.ts(初期値=player+ランダム5桁を自動生成)。React再描画規律:
 // 入力値はローカルstate(store購読なし・毎フレーム再描画なし)。保存はblur/Enter確定時に
-// savePlayerName(trim・最大10文字へ切り詰め・空ならランダム名を再生成)し、正規化後の値へ戻す。
+// normalizePlayerNameInput(trim・最大10文字へ切り詰め・空なら「名無し」=§2.16 C-1の叩き台)を
+// 通してから savePlayerName し、正規化後の値へ戻す。
+// v0.25.2553: 独立メニュー「守護霊」(§2.14)からも同じ部品を出す(名前の決定はそこが本籍。
+// オプション側もこの1部品を使い続ける=文言・挙動が2箇所で食い違わない)。
 const PlayerNameSettings: React.FC = () => {
   const [name, setName] = useState(loadPlayerName); // マウント時に1回読む(無ければ生成・保存される)
   // 未変更なら保存しない: 初期ランダム名(player+5桁=11文字)は生成物なので、触らず確定した時に
   // 10文字へ切り詰めてしまわない(切り詰めは手入力に対する正規化)。
-  const commit = () => setName(prev => (prev === loadPlayerName() ? prev : savePlayerName(prev)));
+  const commit = () => setName(prev => (prev === loadPlayerName() ? prev : savePlayerName(normalizePlayerNameInput(prev))));
   return (
     <Section label="プレイヤー名">
       <input
@@ -1245,7 +1319,7 @@ const PlayerNameSettings: React.FC = () => {
       />
       <p className="text-[11px] leading-relaxed text-white/45">
         守護霊(スキル)の頭上に表示される名前。最大{PLAYER_NAME_MAX_LEN}文字。
-        空のまま確定するとランダムな初期名(player+数字)に戻ります。
+        空のまま確定すると「{PLAYER_NAME_WHEN_BLANK}」になります。
       </p>
     </Section>
   );

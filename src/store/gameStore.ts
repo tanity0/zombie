@@ -33,7 +33,8 @@ import {
   recordPhillShot,
 } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a/G5
 // v0.25.2514(§2.11 裁定1): 計測時ビルドの疑似Player(被ダメ補正の主語)。純関数・store非依存。
-import { buildPseudoPlayer } from '../utils/playerBuild';
+// v0.25.2553(§2.16 A): 同行守護霊の写し(撃破記録へ添える持ち主名+ビルド)。同じく純関数。
+import { buildPseudoPlayer, findGhostAlly, ghostAllySnapshot, type GhostAllySnapshot } from '../utils/playerBuild';
 import { clearGhostBuildCache, ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild'; // ラン境界でビルドのメモ化を捨てる / 守護霊の疑似Player(裁定1)
 // 刀の一閃 / ワイヤーのロコモーション上書き(プレイヤーと守護霊で共有する状態機械・裁定2)。
 import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/dashLocomotion';
@@ -2433,7 +2434,8 @@ const grantMeleeKillRewards = (
     // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。近接全経路(通常近接カウンター/
     // 刀/鞭/シールドバッシュ/投擲スケボー/分身)はこのヘルパーを通るのでここ1箇所で拾える
     // (gun/接触/爆発/DoT/カウンター等の非近接経路は damageEnemy 側で同様に通知)。
-    notifyBossClear(enemy.type, getSelectedStageId());
+    // v0.25.2553(§2.16 A): 撃破の瞬間に召喚中の同行守護霊(居なければnull)を添えて記録する。
+    notifyBossClear(enemy.type, getSelectedStageId(), ghostAllySnapshot(findGhostAlly(get().summons)));
     // 二人組クエストのキル進捗(EVENT_QUEST_DESIGN.md)。近接全経路はここ1箇所で拾える。
     {
       const qs = useGameStore.getState();
@@ -3547,6 +3549,10 @@ interface GameState {
   // BOT_AND_GHOST.md §2.7 制約2(G3): このランで守護霊(ゴースト)が一度でも実際に召喚されたか。
   // ラン内限定(resetGameでリセット)。directorTickの召喚成立箇所が打刻し、リザルトのスコア×0.5が見る。
   ghostSummonedThisRun: boolean;
+  // BOT_AND_GHOST.md §2.15/§2.16 B: このランに同行した守護霊(持ち主名+ビルド写し)。召喚の瞬間に
+  // 1回だけ書き、以後は不変(=リザルトが購読しても毎フレーム再描画にならない)。ラン単位=resetGameでnull。
+  // 守護霊が死んで場から消えても残す(「このランに同行してくれた人」の記録なので)。
+  ghostAlly: GhostAllySnapshot | null;
   // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁(深さ×ランク)。wallMetaは現在ステージの永続メタ
   // (resetGameで現在の選択ステージ分を読み直す)。バンド/銘打ちはラン内限定の演出状態。
   wallMeta: WallMeta;                                    // ステージ毎の踏破/到達フラグ+自己最深+自己最高ランク
@@ -3922,6 +3928,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastDamagerType: null,
   lastDamagerWasNamed: false,
   ghostSummonedThisRun: false,
+  ghostAlly: null,
   wallMeta: getWallMeta(getSelectedStageId()), // 実際の再読込はresetGame開始時(ステージ切替に追従)
   wallBandText: '',
   wallBandUntil: 0,
@@ -7865,7 +7872,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。gun/接触/爆発/DoT/カウンター等
     // damageEnemyを経由する全キル経路の合流点。notifyBossClear内でセッション無し/対象外typeはno-op。
-    if (bossClearedType) notifyBossClear(bossClearedType, getSelectedStageId());
+    // v0.25.2553(§2.16 A): 撃破の瞬間に召喚中の同行守護霊(居なければnull)を添えて記録する。
+    if (bossClearedType) {
+      notifyBossClear(bossClearedType, getSelectedStageId(), ghostAllySnapshot(findGhostAlly(get().summons)));
+    }
 
     // 裏ボスが完全気絶(紫)に移行: 紫の衝撃リング＋発光＋コールアウトで知らせる。
     if (bossFullStunAt) {
@@ -12619,6 +12629,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastDamagerWasNamed: false,
       // BOT_AND_GHOST.md G3: 守護霊の発動フラグ(スコア×0.5の根拠)はラン単位でリセット。
       ghostSummonedThisRun: false,
+      // §2.16 B: 同行守護霊のカード(リザルト表示用)もラン単位。
+      ghostAlly: null,
       // PACING_PUZZLE.md §5.17 M14: ステージが変わっている可能性があるので、選択中ステージの壁メタを
       // 読み直す。演出キュー/帯はラン内限定なので新ランで必ずクリア。
       wallMeta: getWallMeta(getSelectedStageId()),

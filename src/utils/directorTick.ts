@@ -38,6 +38,7 @@ import { ZOOM_MIN_ABS } from './cameraZoom';
 import { bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
 import { tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey } from './playerTraits'; // BOT_AND_GHOST.md G1/G5
 import { loadPlayerName } from './playerName'; // v0.25.2477: 守護霊の頭上名(srcName未記録時のフォールバック)
+import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
@@ -718,7 +719,11 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   };
   // G3(§2.7 制約2): 「このランで一度でもゴーストが実際に召喚された」を打刻(resetGameでリセット)。
   // リザルトのスコア×0.5(resultScoring.ts GHOST_SCORE_MULT)がこのフラグを見る。
-  useGameStore.setState(s => ({ summons: [...s.summons, ghost], ghostSummonedThisRun: true }));
+  // v0.25.2553(§2.15/§2.16 B): 同行守護霊のカード(持ち主名+ビルド)をラン単位で1回だけ控える。
+  // リザルトが読むのはこの**不変の1枚**(summons配列を購読させない=React再描画規律)。
+  useGameStore.setState(s => ({
+    summons: [...s.summons, ghost], ghostSummonedThisRun: true, ghostAlly: ghostAllySnapshot(ghost),
+  }));
 }
 
 // ============================================================================

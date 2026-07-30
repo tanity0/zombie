@@ -175,6 +175,12 @@ export const createWeapon = (key: string): Weapon => {
 export const getGuns = (player: Player): Weapon[] =>
   player.weapons.filter(w => !w.isMelee);
 
+// 武器keyの表示名(カタログが唯一の出どころ)。ビルドの写し(PlayerBuildSnapshot)には
+// keyしか入っていないので、守護霊カード等の表示側はここから名前を引く(名前表を別に作らない)。
+// 未知/欠損キーは '—'(記録が古くて武器が判らないケース)。
+export const weaponDisplayName = (key: string | undefined | null): string =>
+  (key ? CATALOG[key]?.name : undefined) ?? '—';
+
 // The active gun: the one matching activeWeaponId, falling back to the first
 // gun owned (or undefined if the player somehow has none).
 export const getActiveGun = (player: Player): Weapon | undefined => {
