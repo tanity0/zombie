@@ -125,4 +125,6 @@
   **爪の一振り(残像付き)**→ `claw-swipe.png`。牙の全体絵(細かめスタイル)→ `bite-jaws-closed.png`
   (閉じ瞬間の差し替え候補だが上下パーツとスタイルが異なるため、実装時に「パーツのみで閉じ合わせ」を
   第一案とし、全体絵は使うか実機で判断。1.1MBと重いので採用時は縮小を検討)。
-- 実装バッチ(g-bite/mimir bite/g-talon)はCRIT-UNIFY着地後に発注(useGameLoop競合回避の直列運用)。
+- 2026-07-30(2便): **コウモリの翼**(透過済み・月光の青リム付き)→ `wing-swipe.png`(1227×1258・792KB)。
+- 実装バッチ(g-bite/mimir bite/g-talon/g-wing)はCRIT-UNIFY着地後に発注(useGameLoop競合回避の直列運用)。
+- 残りの支給待ち: 触手(g-reach)/拳(idol punch)/種吐き(plant)/砂埃A・B(任意)。
