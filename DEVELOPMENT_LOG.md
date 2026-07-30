@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.2542 — GHOST-SAME-SPEC検収合格+GHOST-BULLET-TECH発注仕様(文書のみ)【2026-07-31 01:33 JST】
+
+- **検収(7ebee1c)**: ①CD帳簿分離=自前帳簿+setActorSubWeaponCooldown、claim振り分け(subSubject)は
+  「ゴーストが持ち・CDも明けている時だけゴースト、他はプレイヤー(予約温存)」=プレイヤーのサブを
+  止めない設計を確認 ②分身=同型Stateの主語ごと化+描画2組(青白) ③センサー地雷=主語別上限・
+  自前チャージ ④ジャンクのrecordSubUse計測取りこぼしも併修正 ⑤並走ツリーでのpixiScene部分ステージは
+  クローンスロットの3ハンクのみ=FX WIPの混入なしをdiffで確認。テスト55件パス・型エラー0。合格。
+- ★未決2(センサー地雷)・★未決5(分身)クローズ。残るプレイヤー主語固定サブ6種
+  (dog/molotov/striker-quick-mag/homing/first-aid-kit/support-sniper)=裁定リスト(設計チャット宿題)へ。
+- **次バッチ発注**: 台帳末尾に GHOST-BULLET-TECH 仕様を確定。A=認知の持続(GHOST_DANGER_MEMORY_MS
+  叩き台2000ms・遅延はエピソード1回=弾幕毎波盲目の是正)、B=弾技の計測拡張(ボス全弾技にmoveKeyタグ→
+  技別被弾記録→ゴーストのdodge/tankロール適用=「弾も技」の個性再現)、C=掟。
+- 変更ファイル: research/GHOST_PARITY_LEDGER.md+版管理3ファイル。
+
 ## v0.25.2541 — バッチGHOST-SAME-SPEC: 守護霊=独立した2人目のプレイヤー(サブCD分離/分身/センサー地雷)【2026-07-31 01:25 JST】
 
 正本= BOT_AND_GHOST.md §2.11追補(社長裁定2026-07-31「もう例外はない。同じ仕様にして。将来オンライン

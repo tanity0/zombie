@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2542',
+    items: [
+      'ゲーム内容の変更はありません(守護霊の「弾も技」バッチ=弾幕への反応改善+弾技別の個性計測、の発注仕様を確定)。',
+    ],
+  },
+  {
     version: '0.25.2541',
     items: [
       '守護霊のサブウェポンが「あなたとは別のクールタイム」で回るようになりました(これまでは同じCDを取り合っていたため、守護霊が使うとあなたのサブが待たされていました)。',
