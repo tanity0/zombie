@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.2526 — REFLECT-MELEE-SUBS検収合格+GHOST-BEHAVIOR(§2.12行動品質)発注仕様(文書のみ)【2026-07-30 22:37 JST】
+
+- **検収(a54a429)**: 弾反射=applyCounterReflect主語引数化(プレイヤー分岐は従来コードの移設のみ・
+  1bit不変を確認)/気絶フィニッシュ=resolveStunnedMeleeHit抽出(値・条件・優先順不変)/相乗りサブ3種=
+  共通ヘルパ抽出+ゴースト入口。ゴーストのrecordSubUse計上は既存のゴースト発動サブ(setSubWeaponCooldown
+  合流点)と同じ扱い=既存挙動と整合。**併修正の実バグ**(疑似PlayerのsubWeaponCooldowns凍結=ワイヤー/
+  相乗りサブのCDゲート不全)も妥当。typecheck 0/lintエラー0/新テスト32件パスを再実行確認。合格。
+- **申し送り(実機)**: ゴーストのカウンター窓の可視化なし(プレイヤーは窓リングあり)/ゴーストの
+  ブーメランtint白固定(見た目のみ)/生存力・火力上昇とボスHP×1.6の釣り合い。
+- **次バッチ発注**: 台帳末尾に GHOST-BEHAVIOR 仕様を確定(§2.12の実装化)。dodgeStrength逆写像廃止・
+  reactionMs反応遅延・preferredDist間合い+windup退避・移動リズム・カウンター待ち約1秒時限・
+  回避対応表の全ボス技化(全実装経路の列挙+網羅テスト)。ゴースト意思決定層に閉じる=プレイヤー不変。
+- ★未決5(shadow-clone: 分身枠/見た目/主語)は社長裁定待ちとして台帳に記録済み。
+- 変更ファイル: research/GHOST_PARITY_LEDGER.md+版管理3ファイル。
+
 ## v0.25.2525 — GHOST-REFLECT-MELEE-SUBS: 守護霊が弾を反射し、気絶敵を処刑し、近接連動サブ3種を使う【2026-07-30 22:31 JST】
 
 - **発注**: research/GHOST_PARITY_LEDGER.md 末尾の発注仕様(A=弾反射 / B=気絶フィニッシュ / C=近接スイング
