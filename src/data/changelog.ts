@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2545',
+    items: [
+      'ゲーム内容の変更はありません(テスト結果#6の分析: 新エフェクト・POI改修・武器庫=銃は合格。守護霊の被弾源を特定する調査を継続)。',
+    ],
+  },
+  {
     version: '0.25.2544',
     items: [
       'ボスの技に「物理の絵」が付きました: 噛みつきの上下の顎(城ボス・ミーミル)・爪の一振り・翼の薙ぎ・伸びる触手・偶像の拳。',
