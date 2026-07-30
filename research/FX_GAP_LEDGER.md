@@ -128,5 +128,8 @@
 - 2026-07-30(2便): **コウモリの翼**(透過済み・月光の青リム付き)→ `wing-swipe.png`(1227×1258・792KB)。
 - 2026-07-30(3便): **触手**(透過済み・根元→先端の一直線構図・節・先端しなり)→ `tentacle-reach.png`
   (2149×690・585KB)。g-reachのカプセル判定に沿って回転・伸長して張る(分類①=判定に揃える)。
-- 実装バッチ(g-bite/mimir bite/g-talon/g-wing/g-reach)はCRIT-UNIFY着地後に発注(useGameLoop競合回避の直列運用)。
-- 残りの支給待ち: 拳(idol punch)/種吐き(plant)/砂埃A・B(任意)。
+- 2026-07-30(4便): **拳**(透過済み・白石+金装飾・正面ナックル)→ `idol-fist.png`(946×1223・940KB)。
+  idol punchの突き出しに合わせ拡大しながら迫る使い方(正面構図が活きる)。
+- 実装バッチ(g-bite/mimir bite/g-talon/g-wing/g-reach/idol punch)はCRIT-UNIFY着地後に発注
+  (useGameLoop競合回避の直列運用)。
+- 残りの支給待ち: 種吐き(plant)/砂埃A・B(任意)。
