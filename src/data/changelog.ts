@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2510',
+    items: [
+      'ゲーム内容の変更はありません(守護霊パリティの裁定4件を確定: 撃破時のビルドを丸ごと再現・刀/ワイヤーは共有方式・被弾シェイクなし・PHILLは撃破時のヘッドショット率で再現)。',
+    ],
+  },
+  {
     version: '0.25.2509',
     items: [
       'ゲーム内容の変更はありません(守護霊パリティの全数監査表が完成。未対応15項目を優先順に列挙し、順次実装します)。',
