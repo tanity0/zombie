@@ -13,6 +13,13 @@ Top-down HD-2D survival game. React + Zustand (simulation) + PixiJS (rendering).
   ための floor=意図的)。意味を確認せず変えない。
 - 例外: 明確なバグ修正で挙動の意図を変えないもの、または明示指示があるもの。
 
+## 配布方針(社長決定v0.25.2549)
+- **このゲームはWeb公開はしない。最終形=アプリ配布(ストア)**。素材はアプリに同梱される前提。
+- **GitHub Pagesは開発・実機テスト用チャネル**であり製品の配信形態ではない。よって:
+  - Service Worker/PWA/ブラウザキャッシュ最適化の類は**提案・導入しない**(テスト運用の
+    「バージョン番号で版を確認する」流れに毒。ロード問題は製品では同梱により消える)。
+  - 起動ローディング(全素材の確認往復+展開)は開発チャネルの宿命として許容する。
+
 ## Renderer
 - **PixiJS is the default and the only actively-developed renderer.** The legacy
   Canvas2D renderer is still reachable via `?renderer=canvas` as a fallback/

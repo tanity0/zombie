@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2549',
+    items: [
+      'ゲーム内容の変更はありません(配布方針の確定: 最終形はアプリ配布・現在のWeb版は開発テスト用)。',
+    ],
+  },
+  {
     version: '0.25.2548',
     items: [
       '地割れを一回り小さくし、床が透ける薄い染みに調整しました(画面の見やすさ優先)。',
