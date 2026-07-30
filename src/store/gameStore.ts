@@ -38,7 +38,7 @@ import { clearGhostBuildCache, ghostBuildFor, ghostActorPlayer } from '../utils/
 // 刀の一閃 / ワイヤーのロコモーション上書き(プレイヤーと守護霊で共有する状態機械・裁定2)。
 import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/dashLocomotion';
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
-import { playerAsOwner, ownerCenterX, ownerCenterY, ownerFootY } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
+import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { stepSpeedRamp, effectiveRampFrac, rampedBonusMult } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
@@ -149,7 +149,7 @@ import { labIdolSpotForDoc, type LabIdolSpot } from '../world/labIdolSpot';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { clampFinishKillOnlyHealth } from '../utils/finishKillOnly';
-import { stunnedMeleeOutcome, ELITE_MELEE_STUN_MULT } from '../utils/meleeExecute';
+import { stunnedMeleeOutcome, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS } from '../utils/meleeExecute';
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
@@ -2315,7 +2315,15 @@ export const combatActorPlayer = (ghostId?: string): Player | null => {
   if (!g) return null;
   const build = ghostBuildFor(g, st.player);
   if (!build) return null;
-  return { ...ghostActorPlayer(build, g), ...dashStateOf(g.ghostDash) };
+  // 「1つの財布」(G2.6): サブウェポンのCD/資源だけは**プレイヤーの現在値**を見る。ビルドは召喚1体に
+  // つき1件メモ化した写しなので、ここで重ねないとCD表が召喚時点で凍り、CD明け判定が壊れる
+  // (v0.25.2525でワイヤー/相乗りサブのCDゲートが効かない実バグとして検出)。
+  return {
+    ...ghostActorPlayer(build, g),
+    ...dashStateOf(g.ghostDash),
+    subWeaponCooldowns: st.player.subWeaponCooldowns,
+    straps: st.player.straps,
+  };
 };
 
 /** 刀/ワイヤー状態の書き込み(主語で宛先を振り分ける)。ghostExtra=ゴースト固有フィールドの同時更新。 */
@@ -2567,6 +2575,132 @@ const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, 
 const counterMasterKbScale = (player: Player): number => {
   const lv = skillLevel(player, 'counter-master');
   return lv ? [0, 2, 2.5, 3][lv] : 2;
+};
+
+// ---------------------------------------------------------------------------
+// 近接スイング相乗り型サブウェポンの発動 — 唯一の出どころ(主語=オーナー引数)。
+// research/GHOST_PARITY_LEDGER.md 発注C(v0.25.2525・GHOST-REFLECT-MELEE-SUBS)+BOT_AND_GHOST.md
+// §2.8 G2.6(オーナー抽象化)/§2.11補足「写すな、共通化しろ」。
+//
+// プレイヤーの `triggerCounter`(指離しスイング)と**守護霊の近接スイング**(useGameLoopのゴースト
+// 実行ブロック → `fireGhostMeleeSwingSubs`)が同じ3本を通る。呼び出し順(ブーメラン→フレア→ジャンク)も
+// triggerCounter の並びのまま。actor=倍率/所持/Lvの主語(プレイヤー本人 or 疑似Player)、
+// owner=座標/向きの主語(playerAsOwner / ghostAsOwner)。
+// 差分は**除外4(運用系)だけ**:
+//   ・SEのトリガ(boomerangThrowFxAt/junkShotFxAt=等倍で鳴る)はプレイヤーのみ。ゴーストは戻り値を見て
+//     呼び出し側が距離減衰(npcSfxDistGain)付きで鳴らす。
+//   ・ジャンクウェポンのスクラップ(=この武器の弾薬)は守護霊は消費しない=在庫ゲートも通さない
+//     (ghost-gunが弾薬/リロードの概念を持たないのと同じ扱い)。ダメージはLv固定なので在庫非依存。
+// ---------------------------------------------------------------------------
+
+/** ドローンブーメラン(近接スイング入口・CD5秒)。発動したら true。 */
+const fireDroneBoomerangOnSwing = (
+  get: () => GameState, actor: Player, owner: SubWeaponOwner, gameTime: number, meleeDamage: number,
+): boolean => {
+  if (
+    !actor.subWeapons.includes('drone-boomerang') ||
+    subWeaponBlockedByKatana(actor, 'drone-boomerang') ||
+    gameTime < (actor.subWeaponCooldowns['drone-boomerang'] ?? 0)
+  ) return false;
+  const ghostOwned = owner.kind === 'ghost-ally';
+  const lvl = Math.max(1, Math.min(3, actor.subWeaponLevels['drone-boomerang'] ?? 1));
+  // G2.6: 発射位置/向きはオーナー(既定=プレイヤー=従来と同値)。
+  const boomCx = ownerCenterX(owner);
+  const boomCy = ownerCenterY(owner);
+  const dir = owner.facing ?? { x: 1, y: 0 };
+  const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
+  get().addProjectile({
+    id: `proj-drone-boom-${Date.now()}`,
+    x: boomCx - 9, y: boomCy - 9, width: 18, height: 18,
+    speed: DRONE_BOOM_SPEED,
+    damage: meleeDamage, // 行き/戻りの接触=通常近接ダメージ同等
+    direction: { x: dir.x / dmag, y: dir.y / dmag },
+    weaponType: 'drone-boomerang-projectile',
+    weaponKey: 'sub-drone-boomerang',
+    duration: DRONE_BOOM_SAFETY_MS, // 安全消滅の上限
+    createdAt: Date.now(),
+    passthrough: true,
+    hitEnemies: [],
+    hostile: false,
+    reflected: false,
+    area: DRONE_BOOM_RADIUS,
+    boomPhase: 'out',
+    boomOriginX: boomCx,
+    boomOriginY: boomCy,
+    boomMaxDist: DRONE_BOOM_DIST_BY_LEVEL[lvl],
+    boomStopMs: DRONE_BOOM_STOP_MS_BY_LEVEL[lvl],
+    ...(ghostOwned ? { ownerGhost: true } : {}), // 既存のゴースト発動サブと同じ視覚専用マーカー(青白tint)
+  });
+  get().setSubWeaponCooldown('drone-boomerang', gameTime + DRONE_BOOM_COOLDOWN_MS);
+  if (!ghostOwned) useGameStore.setState({ boomerangThrowFxAt: Date.now() }); // ブーメラン投擲音SEのトリガ
+  return true;
+};
+
+/** フレアガン(近接スイング入口・CD=Lv別)。発動したら true。 */
+const fireFlareGunOnSwing = (
+  get: () => GameState, actor: Player, owner: SubWeaponOwner, gameTime: number,
+): boolean => {
+  if (
+    !actor.subWeapons.includes('flare-gun') ||
+    subWeaponBlockedByKatana(actor, 'flare-gun') ||
+    gameTime < (actor.subWeaponCooldowns['flare-gun'] ?? 0)
+  ) return false;
+  const fgLevel = Math.max(1, Math.min(3, actor.subWeaponLevels['flare-gun'] ?? 1));
+  // G2.6: 発射位置/向きはオーナー(既定=プレイヤー=従来と同値)。
+  const fgCx = ownerCenterX(owner);
+  const fgCy = ownerCenterY(owner);
+  const fgDir = owner.facing ?? { x: 1, y: 0 };
+  const fgMag = Math.max(0.001, Math.hypot(fgDir.x, fgDir.y));
+  const fgDist = RANGE_BY_CATEGORY.handgun; // 「ハンドガン距離」=既存のハンドガン射程定数(§6.6 実装指定)
+  const fgX = fgCx + (fgDir.x / fgMag) * fgDist;
+  const fgY = fgCy + (fgDir.y / fgMag) * fgDist;
+  useGameStore.setState(state => ({
+    flareGunFlares: [...state.flareGunFlares, {
+      id: `flare-${flareGunSeq++}`,
+      fromX: fgCx, fromY: fgCy,
+      x: fgX, y: fgY,
+      firedAt: gameTime,
+      landAt: gameTime + FLARE_GUN_FLIGHT_MS,
+      until: gameTime + FLARE_GUN_FLIGHT_MS + FLARE_GUN_DURATION_MS,
+    }],
+  }));
+  get().setSubWeaponCooldown('flare-gun', gameTime + FLARE_GUN_CD_MS_BY_LEVEL[fgLevel]);
+  return true;
+};
+
+/** ジャンクウェポン(近接スイング入口・CDなし/スクラップ消費)。発射したら true。 */
+const fireJunkWeaponOnSwing = (
+  get: () => GameState, actor: Player, owner: SubWeaponOwner,
+): boolean => {
+  if (
+    !actor.subWeapons.includes('junk-weapon') ||
+    subWeaponBlockedByKatana(actor, 'junk-weapon')
+  ) return false;
+  const ghostOwned = owner.kind === 'ghost-ally';
+  const jwLevel = Math.max(1, Math.min(3, actor.subWeaponLevels['junk-weapon'] ?? 1));
+  // 除外4(弾薬非消費): 守護霊はスクラップを消費しない=在庫ゲート(0で不発)も通さない。
+  // cost は下の「プレイヤーのみ消費」でしか使わないので Infinity 相当でも影響しない。
+  const jwShot = computeJunkShot(jwLevel, ghostOwned ? Number.POSITIVE_INFINITY : actor.straps);
+  if (!jwShot.fire) return false;
+  recordSubUse('junk-weapon'); // M35: CD無しサブの発動計測(手動合流点・挙動不変)
+  // G2.6: 発射位置/向きはオーナー(既定=プレイヤー=従来と同値)。
+  const jwDir = owner.facing ?? { x: 1, y: 0 };
+  const jwMag = Math.max(0.001, Math.hypot(jwDir.x, jwDir.y));
+  const pellets = buildJunkWeaponPellets(
+    ownerCenterX(owner), ownerCenterY(owner),
+    { x: jwDir.x / jwMag, y: jwDir.y / jwMag },
+    jwShot.pelletDamage,
+    JUNK_WEAPON_PELLETS
+  );
+  for (const p of pellets) get().addProjectile(ghostOwned ? { ...p, ownerGhost: true } : p);
+  if (!ghostOwned) {
+    useGameStore.setState(state => ({
+      player: { ...state.player, straps: Math.max(0, state.player.straps - jwShot.cost) },
+      gameStats: { ...state.gameStats, strapsSpent: state.gameStats.strapsSpent + jwShot.cost }, // 消費計上=ショップ購入と同じ経路
+      junkShotFxAt: Date.now(), // 発砲SE(shotgun-fire)のトリガ(useGameLoopが再生)
+    }));
+  }
+  return true;
 };
 
 // スキル: スラッシャー = アクティブリロード型のタイミングリング追撃(最大3連)。
@@ -3038,6 +3172,18 @@ interface GameState {
   // スラム後ジャンプ離脱(ホップ)開始。着地点(targetX/Y)は呼び出し側(useGameLoop)が
   // computeWireHopLanding(src/utils/wireHop.ts)で計算して渡す。
   startWireHop: (targetX: number, targetY: number, ghostId?: string) => void;
+  // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・発注B / 台帳§3-3・項目10): 守護霊の近接スイングが
+  // **気絶した敵**に当たった時のフィニッシュ(処刑)。裁定はプレイヤーのナイフスイングと同じ純関数
+  // (resolveStunnedMeleeHit)=ボス5×(完全気絶中のみ気絶維持)/強個体3×+気絶解除/それ以外は即時処刑。
+  // 素ダメージも同じ式(meleeSwingBaseDamage)で主語=疑似Player。null=気絶していない
+  // (呼び出し側は従来の通常スイング処理へ)。除外1: 停止/スロー/寄りズームは出さない(呼び出し側も
+  // triggerFinishImpactを呼ばない)。除外4: 計測(recordFinisherKill/recordDamageDealt)は積まない。
+  applyGhostMeleeFinisher: (ghostId: string, enemyId: string) => { kind: 'boss' | 'heavy' | 'execute'; dmg: number; killed: boolean } | null;
+  // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・発注C): 守護霊の近接スイングに相乗りするサブの発動入口。
+  // プレイヤーの triggerCounter が通るのと**同じ3本の共通ヘルパ**(ドローンブーメラン/フレアガン/
+  // ジャンクウェポン)を、主語(疑似Player+ghostAsOwner)だけ差し替えて同じ順序で呼ぶ。
+  // 戻り値=実際に発動したか(呼び出し側が距離減衰SEを鳴らすため)。
+  fireGhostMeleeSwingSubs: (ghostId: string) => { boomerang: boolean; flare: boolean; junk: boolean };
   // Whip (鞭) actions. performWhipStrike sweeps the given enemies with whip rules
   // (low damage, big knockback, crit, finisher, 20% ammo) and returns the hit
   // count for charge. performHurricane spawns the suction vortex at the tip;
@@ -3132,7 +3278,10 @@ interface GameState {
   removeProjectile: (id: string) => void;
   updateProjectiles: (deltaTime: number) => void;
   stickFireKnife: (id: string, enemyId: string, x: number, y: number, fuseMs: number) => void; // 発火ナイフを敵に刺す(追従+遅延爆発)
-  reflectProjectile: (id: string, multiplier?: number) => void;
+  // weaponKey: 反射弾の帰属を差し替える(既定=元の弾のまま=プレイヤーの反射と1bit同値)。
+  // v0.25.2525: 守護霊の反射だけ GHOST_REFLECT_WEAPON_KEY を渡す=計測除外/ヘイト='ghost'/
+  // 倍率の主語=疑似Player(着弾側の解決は useGameLoop の弾ヒット処理)。
+  reflectProjectile: (id: string, multiplier?: number, weaponKey?: string) => void;
   
   // Pickup actions
   addPickup: (pickup: Pickup) => void;
@@ -4262,47 +4411,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     // G2.6(BOT_AND_GHOST.md §2.8): サブウェポン発動の入口はオーナー(座標・向き・受け手)に対して
     // 解決する。近接スイング入口のサブ(ドローンブーメラン/センサー地雷/フレアガン/ジャンクウェポン/
     // 分身)のオーナーは「振った本人」=常にプレイヤー(値はpcx/pcy・lastDirectionと完全に同一=挙動不変)。
-    // ゴーストの近接はこの関数を通らないため、現状ここがゴーストをオーナーにする経路は無い(★未決の
-    // 未対応リスト参照)。
+    // v0.25.2525(発注C): ゴーストの近接スイングも同じ3本(ブーメラン/フレア/ジャンク)を通るように
+    // 共通ヘルパへ抽出した(主語=actor/owner引数。ここはオーナー=プレイヤー=従来と1bit同値)。
     const swingOwner = playerAsOwner(player);
 
     // ドローンブーメラン: 近接攻撃(このスイング)と同じ入力で発動(自動ではない)。5秒クールダウン中は不可。
     // ※発火経路を近接攻撃と統一(以前の「立ち止まり中」専用ゲートは廃止=近接と同ロジック)。
-    if (
-      player.subWeapons.includes('drone-boomerang') &&
-      !subWeaponBlockedByKatana(player, 'drone-boomerang') &&
-      gameTime >= (player.subWeaponCooldowns['drone-boomerang'] ?? 0)
-    ) {
-      const lvl = Math.max(1, Math.min(3, player.subWeaponLevels['drone-boomerang'] ?? 1));
-      // G2.6: 発射位置/向きはオーナー(既定=プレイヤー=従来と同値)。
-      const boomCx = ownerCenterX(swingOwner);
-      const boomCy = ownerCenterY(swingOwner);
-      const dir = swingOwner.facing ?? { x: 1, y: 0 };
-      const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
-      get().addProjectile({
-        id: `proj-drone-boom-${Date.now()}`,
-        x: boomCx - 9, y: boomCy - 9, width: 18, height: 18,
-        speed: DRONE_BOOM_SPEED,
-        damage: meleeDamage, // 行き/戻りの接触=通常近接ダメージ同等
-        direction: { x: dir.x / dmag, y: dir.y / dmag },
-        weaponType: 'drone-boomerang-projectile',
-        weaponKey: 'sub-drone-boomerang',
-        duration: DRONE_BOOM_SAFETY_MS, // 安全消滅の上限
-        createdAt: Date.now(),
-        passthrough: true,
-        hitEnemies: [],
-        hostile: false,
-        reflected: false,
-        area: DRONE_BOOM_RADIUS,
-        boomPhase: 'out',
-        boomOriginX: boomCx,
-        boomOriginY: boomCy,
-        boomMaxDist: DRONE_BOOM_DIST_BY_LEVEL[lvl],
-        boomStopMs: DRONE_BOOM_STOP_MS_BY_LEVEL[lvl],
-      });
-      get().setSubWeaponCooldown('drone-boomerang', gameTime + DRONE_BOOM_COOLDOWN_MS);
-      set({ boomerangThrowFxAt: Date.now() }); // ブーメラン投擲音SEのトリガ
-    }
+    fireDroneBoomerangOnSwing(get, player, swingOwner, gameTime, meleeDamage);
 
     // センサー地雷(sensor-mine): 近接攻撃(このスイング)と同じ入力で足元に1個設置
     // (§6.13 M36: グローバルCDではなくチャージ制。チャージ数=同時設置上限Lv1=3/Lv2=4/Lv3=5と同じ。
@@ -4343,62 +4458,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     // CD中のスイングでは出ない)。ダメージ無し。ハンドガン距離(RANGE_BY_CATEGORY.handgun)の地点に着弾し、
     // 着弾点が3秒間、召喚と同じ範囲(ALCHEMY_AGGRO_RANGE)の敵を引き付ける(疑似召喚として
     // resolveEnemyTarget へ合流=召喚と完全に同じ効き方。PACING_PUZZLE.md §6.6 M29)。スロー無し。
-    if (
-      player.subWeapons.includes('flare-gun') &&
-      !subWeaponBlockedByKatana(player, 'flare-gun') &&
-      gameTime >= (player.subWeaponCooldowns['flare-gun'] ?? 0)
-    ) {
-      const fgLevel = Math.max(1, Math.min(3, player.subWeaponLevels['flare-gun'] ?? 1));
-      // G2.6: 発射位置/向きはオーナー(既定=プレイヤー=従来と同値)。
-      const fgCx = ownerCenterX(swingOwner);
-      const fgCy = ownerCenterY(swingOwner);
-      const fgDir = swingOwner.facing ?? { x: 1, y: 0 };
-      const fgMag = Math.max(0.001, Math.hypot(fgDir.x, fgDir.y));
-      const fgDist = RANGE_BY_CATEGORY.handgun; // 「ハンドガン距離」=既存のハンドガン射程定数(§6.6 実装指定)
-      const fgX = fgCx + (fgDir.x / fgMag) * fgDist;
-      const fgY = fgCy + (fgDir.y / fgMag) * fgDist;
-      set(state => ({
-        flareGunFlares: [...state.flareGunFlares, {
-          id: `flare-${flareGunSeq++}`,
-          fromX: fgCx, fromY: fgCy,
-          x: fgX, y: fgY,
-          firedAt: gameTime,
-          landAt: gameTime + FLARE_GUN_FLIGHT_MS,
-          until: gameTime + FLARE_GUN_FLIGHT_MS + FLARE_GUN_DURATION_MS,
-        }],
-      }));
-      get().setSubWeaponCooldown('flare-gun', gameTime + FLARE_GUN_CD_MS_BY_LEVEL[fgLevel]);
-    }
+    fireFlareGunOnSwing(get, player, swingOwner, gameTime);
 
     // ジャンクウェポン(junk-weapon): 近接攻撃と同時にスイング方向へ散弾5発(ショットガンT1相当・CDなし。
     // PACING_PUZZLE.md §6.7 M30)。弾薬=スクラップ(1消費=3ダメージ・1発あたりLv1=1/Lv2=2/Lv3=3)。
     // 社長裁定v0.25.1693: スクラップ≥1なら常にフル5発発射・消費=min(フルコスト,所持全部)・ダメージはLv固定・
     // 0のみ不発。ショットガン弾薬は消費しない。判定=純関数 computeJunkShot(src/utils/junkWeapon.ts)。スロー無し。
-    if (
-      player.subWeapons.includes('junk-weapon') &&
-      !subWeaponBlockedByKatana(player, 'junk-weapon')
-    ) {
-      const jwLevel = Math.max(1, Math.min(3, player.subWeaponLevels['junk-weapon'] ?? 1));
-      const jwShot = computeJunkShot(jwLevel, player.straps);
-      if (jwShot.fire) {
-        recordSubUse('junk-weapon'); // M35: CD無しサブの発動計測(手動合流点・挙動不変)
-        // G2.6: 発射位置/向きはオーナー(既定=プレイヤー=従来と同値)。
-        const jwDir = swingOwner.facing ?? { x: 1, y: 0 };
-        const jwMag = Math.max(0.001, Math.hypot(jwDir.x, jwDir.y));
-        const pellets = buildJunkWeaponPellets(
-          ownerCenterX(swingOwner), ownerCenterY(swingOwner),
-          { x: jwDir.x / jwMag, y: jwDir.y / jwMag },
-          jwShot.pelletDamage,
-          JUNK_WEAPON_PELLETS
-        );
-        for (const p of pellets) get().addProjectile(p);
-        set(state => ({
-          player: { ...state.player, straps: Math.max(0, state.player.straps - jwShot.cost) },
-          gameStats: { ...state.gameStats, strapsSpent: state.gameStats.strapsSpent + jwShot.cost }, // 消費計上=ショップ購入と同じ経路
-          junkShotFxAt: Date.now(), // 発砲SE(shotgun-fire)のトリガ(useGameLoopが再生)
-        }));
-      }
-    }
+    fireJunkWeaponOnSwing(get, player, swingOwner);
 
     // ワイヤーアンカーはフリック発動に変更(triggerWireAnchor)。スイング(指離し)では発動しない。
 
@@ -4731,48 +4797,33 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Anything in reach gets cut — show a slash on it.
       slashAt.push({ x: ecx, y: ecy });
       meleeHitEnemyIds.push(enemy.id);
-      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
-      if (stunned) {
-        if (isBossType(enemy.type)) {
-          // Bosses can't be instakilled. A melee hit on a stunned boss deals
-          // 5× melee damage. 通常の気絶は1発で解除するが、裏ボスの「完全気絶(紫)」中は
-          // 解除せずタイマー切れまで5×近接を“し放題”(社長指示)。
-          const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
-          bossFinishHit = true;
-          const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
-          meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
-          // §5.21-追補4: スタン中ボスへの5×近接はボスにとっての「フィニッシュ」経路そのもの
-          // (finisher:trueの即時処刑に相当)なのでfinishKillOnlyでも clamp しない=通常どおり倒しきれる。
-          const newHealth = Math.max(0, enemy.health - dmg);
-          if (newHealth <= 0) {
-            killed.push({ enemy, finisher: false });
-          } else {
-            survivors.push({
-              ...enemy,
-              health: newHealth,
-              stunUntil: bossFull ? enemy.stunUntil : undefined,
-              lastHit: now,
-              liftUntil: now + 420,
-            });
-          }
+      // 気絶敵へのフィニッシュ裁定は resolveStunnedMeleeHit が唯一の出どころ
+      // (v0.25.2525で抽出=**守護霊の近接スイングと共有**・値/条件は不変。ボス5×は
+      // 完全気絶(紫)中のみ気絶維持 / 強個体はHP50%以上で3×+気絶解除 / それ以外は即時処刑)。
+      const stunnedHit = resolveStunnedMeleeHit(enemy, meleeDamage, gameTime, BOSS_MELEE_STUN_MULT);
+      if (stunnedHit) {
+        if (stunnedHit.kind === 'execute') {
+          killed.push({ enemy, finisher: true }); // normal instant execute
+          recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死
           continue;
         }
-        // §6.22 M47仕様①: 強個体(pumpkin/lab-zombie-3/isNamed/questTarget)はHP50%以上だと
-        // 即死せず近接ダメージ×3+気絶解除(ボス5×と同じフィニッシュ経路扱い)。雑魚は無条件即死。
-        if (stunnedMeleeOutcome(enemy) === 'heavy') {
-          bossFinishHit = true;
-          const dmg = meleeDamage * ELITE_MELEE_STUN_MULT;
-          meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
-          const newHealth = Math.max(0, enemy.health - dmg);
-          if (newHealth <= 0) {
-            killed.push({ enemy, finisher: false });
-          } else {
-            survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
-          }
-          continue;
+        bossFinishHit = true;
+        const dmg = stunnedHit.dmg;
+        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+        // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
+        // そのもの(finisher:trueの即時処刑に相当)なのでfinishKillOnlyでも clamp しない。
+        const newHealth = Math.max(0, enemy.health - dmg);
+        if (newHealth <= 0) {
+          killed.push({ enemy, finisher: false });
+        } else {
+          survivors.push({
+            ...enemy,
+            health: newHealth,
+            stunUntil: stunnedHit.kind === 'boss' && stunnedHit.keepStun ? enemy.stunUntil : undefined,
+            lastHit: now,
+            liftUntil: now + MELEE_STUN_LIFT_MS,
+          });
         }
-        killed.push({ enemy, finisher: true }); // normal instant execute
-        recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死
         continue;
       }
       // Melee weapons carry a fixed crit chance (varies by weapon). A crit
@@ -5517,7 +5568,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         killed.push({ enemy, finisher: true }); // 通常ナイフと同じ即時フィニッシュ
-        recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死(刀)
+        // §6.21 M46: 気絶中の敵への近接即死(刀)。除外4(運用系)= 守護霊起因はプレイヤーの計測に
+        // 混ぜない(v0.25.2525で他の計測=recordDamageDealt/recordMeleeSwingと揃えた。プレイヤーは不変)。
+        if (!isGhost) recordFinisherKill();
         continue;
       }
       // 刀のクリ率 = レベル別基礎(10/20/30%) + プレイヤーのレベルアップ クリティカル率アップ
@@ -6460,6 +6513,63 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 離脱(ホップ)の無敵もプレイヤーと同一規格。守護霊がボス密着着地で確定被弾する事故も同時に消える。
       setActorDashState(ghostId, hopPatch, { ghostInvulnUntil: now + WIRE_HOP_MS });
     }
+  },
+
+  // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・発注B / 台帳§3-3): 守護霊の気絶敵フィニッシュ。
+  applyGhostMeleeFinisher: (ghostId, enemyId) => {
+    const st = get();
+    const enemy = st.enemies.find(e => e.id === enemyId);
+    const actor = combatActorPlayer(ghostId); // 疑似Player(計測時ビルド+実体の座標/HP)
+    if (!enemy || !actor) return null;
+    const melee = actor.weapons.find(w => w.isMelee);
+    // 裁定はプレイヤーのナイフスイングと同じ1本(値・条件・優先順はそのまま)。
+    const hit = resolveStunnedMeleeHit(enemy, meleeSwingBaseDamage(melee, actor), st.gameTime, BOSS_MELEE_STUN_MULT);
+    if (!hit) return null;
+    const now = Date.now();
+    if (hit.kind === 'execute') {
+      // 即時処刑(プレイヤーの killed{finisher:true} 相当)。viaMeleeFinish=true=§5.21-追補4の
+      // finishKillOnly個体にもこの経路でならトドメを刺せる。数字は出さない(プレイヤーの処刑と同じ)。
+      const killed = get().damageEnemy(enemyId, enemy.health + 1, false, false, true, null, 'ghost');
+      return { kind: hit.kind, dmg: 0, killed };
+    }
+    const dmg = Math.max(1, Math.round(hit.dmg));
+    const killed = get().damageEnemy(enemyId, dmg, false, false, true, null, 'ghost');
+    get().spawnDamageNumber(enemy.x + enemy.width / 2, enemy.y, dmg, true); // 金の数字=プレイヤーのフィニッシュ打と同じ
+    if (!killed) {
+      // 倒しきれなかった時のパッチもプレイヤーと同じ(気絶解除=完全気絶中は維持 / 浮き420ms)。
+      set(s => ({
+        enemies: s.enemies.map(e => e.id === enemyId
+          ? {
+            ...e,
+            stunUntil: hit.kind === 'boss' && hit.keepStun ? e.stunUntil : undefined,
+            liftUntil: now + MELEE_STUN_LIFT_MS,
+          }
+          : e),
+      }));
+    }
+    return { kind: hit.kind, dmg, killed };
+  },
+
+  // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・発注C / 台帳§7・項目11の前倒し分):
+  // 守護霊の近接スイング(通常スイング/刀の一閃)を入口に、相乗り型サブをプレイヤーと同じ条件・
+  // 同じ効果で発動する。式・定数・CDの帳簿(=「1つの財布」player.subWeaponCooldowns)は共有ヘルパ側。
+  // 主語(倍率/所持/Lv)=計測時ビルドの疑似Player、狙い(座標/向き)=ゴースト実体。
+  // ※sensor-mine は対象外(チャージ制の★未決2が未裁定)。shadow-clone は★未決(分身の帰属/見た目/計測)。
+  fireGhostMeleeSwingSubs: (ghostId) => {
+    const none = { boomerang: false, flare: false, junk: false };
+    const st = get();
+    const ghost = st.summons.find(s => s.id === ghostId && s.kind === 'ghost-ally');
+    const actor = combatActorPlayer(ghostId); // 疑似Player(ビルド+実体の座標/HP)。ビルド無し=null
+    if (!ghost || !actor) return none;
+    const owner: SubWeaponOwner = ghostAsOwner(ghost);
+    const gameTime = st.gameTime;
+    const melee = actor.weapons.find(w => w.isMelee);
+    const meleeDamage = meleeSwingBaseDamage(melee, actor); // ブーメランの接触ダメージ=通常近接同等
+    // 呼び出し順は triggerCounter と同じ(ブーメラン→フレア→ジャンク)。
+    const boomerang = fireDroneBoomerangOnSwing(get, actor, owner, gameTime, meleeDamage);
+    const flare = fireFlareGunOnSwing(get, actor, owner, gameTime);
+    const junk = fireJunkWeaponOnSwing(get, actor, owner);
+    return { boomerang, flare, junk };
   },
 
   damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove) => {
@@ -9999,7 +10109,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  reflectProjectile: (id, multiplier = REFLECT_DAMAGE_MULTIPLIER) => {
+  reflectProjectile: (id, multiplier = REFLECT_DAMAGE_MULTIPLIER, weaponKey) => {
     set(state => ({
       projectiles: state.projectiles.map(p => {
         if (p.id !== id) return p;
@@ -10013,7 +10123,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 反射した敵弾は貫通しない=最初に当たった1体で消える(社長指示)。以前は貫通(plow through)していた。
           passthrough: false,
           hitEnemies: [],
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          // v0.25.2525: 守護霊の反射だけ帰属キーを差し替える(未指定=従来どおり元の弾のキーのまま)。
+          ...(weaponKey !== undefined ? { weaponKey } : {}),
         };
       })
     }));

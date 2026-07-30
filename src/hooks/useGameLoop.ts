@@ -28,6 +28,7 @@ import {
   INTRO_DIALOGUE_TRIGGER_T,
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
+  COUNTER_WINDOW, // v0.25.2525: 守護霊の弾反射の窓(プレイヤーのcounterWindowEndと同じ定数)
   MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG,
   SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG,
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV, DRONE_BOOM_SPEED,
@@ -252,7 +253,7 @@ import {
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
-import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY, isDirectGunWeaponKey } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
@@ -7243,6 +7244,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 音は小さく・画面外は無音。プレイヤー自身の攻撃音は従来どおり等倍で、この係数は使わない)。
               const gfxPcx = gsPlayer.x + gsPlayer.width / 2, gfxPcy = gsPlayer.y + gsPlayer.height / 2;
               const gfxCam = useGameStore.getState().camera, gfxGb = useGameStore.getState().gameBounds;
+              // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・発注A/C): ゴーストの近接スイング1回の共通後処理。
+              //  ① 弾反射のカウンター窓を開く: プレイヤーのスイングが counterWindowEnd を開くのと
+              //     **同じ定数(COUNTER_WINDOW)**で ghostCounterWindowEnd を打つ(反射の判定は
+              //     combatTick.applyEnemyProjectileHits のゴースト分岐=プレイヤーと同じ1本)。
+              //  ② 近接スイング相乗り型サブ(ドローンブーメラン/フレアガン/ジャンクウェポン)を
+              //     プレイヤーと同じ条件・同じ効果で発動(共通ヘルパ=store.fireGhostMeleeSwingSubs)。
+              //     SEはゴースト位置で距離減衰(除外4)。刀モード中は subWeaponBlockedByKatana が
+              //     プレイヤーと同じく全サブを止めるので、一閃から呼んでも何も出ない(=同じ条件)。
+              const onGhostMeleeSwing = (swingX: number, swingY: number): void => {
+                useGameStore.setState(st => ({
+                  summons: st.summons.map(s => s.id === ghostNow.id
+                    ? { ...s, ghostCounterWindowEnd: nowMs + COUNTER_WINDOW }
+                    : s),
+                }));
+                const subs = useGameStore.getState().fireGhostMeleeSwingSubs(ghostNow.id);
+                if (subs.boomerang || subs.junk) {
+                  const subGain = npcSfxDistGain(swingX, swingY, gfxPcx, gfxPcy, gfxCam, gfxGb);
+                  if (subGain > 0) {
+                    if (subs.boomerang) playSfx('boomerang-throw', subGain);
+                    if (subs.junk) playSfx('shotgun-fire', subGain); // ジャンクウェポン=ショットガン発砲音
+                  }
+                }
+              };
               if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana) {
                 // 銃 = **計測時ビルドのアクティブ銃**のdamage/intervalで撃つ。弾薬はプレイヤーの残弾と
                 // 完全分離(消費しない=除外4)。
@@ -7288,6 +7312,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const wasCounterMelee = isBossCounterableNowApprox(boundBoss.aiPhase, boundBoss.bossState);
                 const dashed = useGameStore.getState().triggerKatanaDash(btcx - gmcx, bccy - gmcy, ghostNow.id);
                 if (dashed) {
+                  // 一閃も「近接スイング」=弾反射の窓を開き、相乗り型サブの入口も通す(v0.25.2525)。
+                  onGhostMeleeSwing(gmcx, gmcy);
                   // 発動SEはプレイヤーのフリック(performFlickAction)と同じ 'katana-dash'。距離減衰のみ差分。
                   const kdGain = npcSfxDistGain(gmcx, gmcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
                   if (kdGain > 0) playSfx('katana-dash', kdGain);
@@ -7310,15 +7336,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // クリティカルD上昇・バーサーカーが計測時ビルドで評価される)。主語は疑似Player(ghostOwner)。
                 // クリ成立時のボス側効果(移動半減+CD2倍+紫蓄積=bumpBossCrit)は damageEnemy が中央適用する。
                 // 近接コンボ倍率はゴーストが計数を持たないため中立(★未決: ゴースト側のコンボ計数)。
-                const ghostMeleeCrit = Math.random() < meleeHitCritChance(meleeWeapon?.critChance ?? 0, ghostOwner, gameTime, boundBoss);
+                const btcx = boundBoss.x + boundBoss.width / 2, btcy = boundBoss.y;
+                const bccy = boundBoss.y + boundBoss.height / 2;
+                const gmcx = resolved.x + ghostNow.width / 2, gmcy = resolved.y + ghostNow.height / 2;
+                // v0.25.2525(発注A/C): このスイングで弾反射の窓を開き、相乗り型サブの入口も通す。
+                onGhostMeleeSwing(gmcx, gmcy);
+                // v0.25.2525(発注B・台帳§3-3): 気絶敵へのフィニッシュ(処刑)。プレイヤーのナイフ
+                // スイングと**同じ裁定+同じ素ダメージ式**(applyGhostMeleeFinisher → resolveStunnedMeleeHit)。
+                // 成立時はダメージ/金の数字/気絶解除/浮きまで共有アクション側で適用済み(クリ抽選は
+                // 走らない=プレイヤーも気絶敵にはクリを振らないのと同じ)。null=気絶していない→従来経路。
+                const ghostFinish = useGameStore.getState().applyGhostMeleeFinisher(ghostNow.id, boundBoss.id);
+                const ghostMeleeCrit = ghostFinish === null
+                  && Math.random() < meleeHitCritChance(meleeWeapon?.critChance ?? 0, ghostOwner, gameTime, boundBoss);
                 const dmg = Math.max(1, Math.round(
                   meleeSwingBaseDamage(meleeWeapon, ghostOwner)
                   * (ghostMeleeCrit ? skillCritMult(ghostOwner, CRIT_DAMAGE_MULT) : 1)
                   * skillOutgoingDamageMult(ghostOwner),
                 ));
-                const btcx = boundBoss.x + boundBoss.width / 2, btcy = boundBoss.y;
-                const bccy = boundBoss.y + boundBoss.height / 2;
-                const gmcx = resolved.x + ghostNow.width / 2, gmcy = resolved.y + ghostNow.height / 2;
                 // このスイングがカウンター試行だったか(**演出の出し分けのみに使用**・判定/ダメージ不変)。
                 // decideGhost は counterable(=射程内 && isBossCounterableNowApprox)の時だけカウンター経路の
                 // melee を出し、通常 melee は !counterable の時だけ出す。action==='melee' なら射程内は確定
@@ -7326,9 +7360,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const wasCounterMelee = isBossCounterableNowApprox(boundBoss.aiPhase, boundBoss.bossState);
                 // BOT_AND_GHOST.md §2.8 G2.5: ヘイト計測用にゴースト起因と明示する(damageChannelは
                 // 従来どおりnull=botTelemetryのプレイヤー計測は汚さない・独立したパラメータ)。
-                const ghostMeleeKilled = damageEnemy(boundBoss.id, dmg, false, ghostMeleeCrit, false, null, 'ghost');
-                spawnDamageNumber(btcx, btcy, dmg, ghostMeleeCrit);
-                spawnBurst(btcx, bccy, ghostMeleeCrit ? '#fde047' : '#9fd8ff', 6);
+                // フィニッシュ成立時はダメージ/数字を共有アクションが既に出しているので二重に出さない。
+                const ghostMeleeKilled = ghostFinish
+                  ? ghostFinish.killed
+                  : damageEnemy(boundBoss.id, dmg, false, ghostMeleeCrit, false, null, 'ghost');
+                if (!ghostFinish) spawnDamageNumber(btcx, btcy, dmg, ghostMeleeCrit);
+                spawnBurst(btcx, bccy, (ghostMeleeCrit || ghostFinish !== null) ? '#fde047' : '#9fd8ff', 6);
                 // v0.25.2479(プレイヤー近接ヒットとのパリティ=triggerCounterのslashAt処理と同型):
                 // スラッシュ+近接の血飛沫。血はspawnMeleeBloodと同じ幾何を「ゴーストへ向かって」計算する
                 // (spawnMeleeBloodは向き先がプレイヤー固定のため、同じ規則でspawnBloodを直接呼ぶ)。
@@ -7343,10 +7380,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   );
                 }
                 // SE(escort前例の距離減衰): 振り音=ゴースト位置 / 被撃音=着弾(ボス)位置。
+                // フィニッシュ成立時の被撃音は 'melee-finish'(ゴーストの刀フィニッシュと同じ流儀)。
                 const swingGain = npcSfxDistGain(gmcx, gmcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
                 const meleeHitGain = npcSfxDistGain(btcx, bccy, gfxPcx, gfxPcy, gfxCam, gfxGb);
                 if (swingGain > 0) playSfx('melee', swingGain);
-                if (meleeHitGain > 0) playSfx('slash-damage', meleeHitGain);
+                if (meleeHitGain > 0) playSfx(ghostFinish ? 'melee-finish' : 'slash-damage', meleeHitGain);
                 if (wasCounterMelee) {
                   // v0.25.2480(社長裁定「1」=v0.25.2479★未決1解消): カウンター成立の効果は
                   // per-bossハンドラへ合流して本物化(パリィ=技の中断/反応遷移+確定クリ=bumpBossCrit)。
@@ -8351,7 +8389,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 社長裁定「ステータス保存する意味ないやん」で廃止=守護霊は**計測時ビルドの倍率を全て乗せる**。
           // 倍率の主語(疑似Player)は ghostBuild(スナップショット)から作る=本人の現在ビルドではない。
           // escortは従来どおり倍率なしのまま(裁定は守護霊についてのみ)。
-          const isGhostShot = projectile?.weaponKey === 'ghost-gun';
+          // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・台帳§4-1): 守護霊の**反射弾**('ghost-reflect')も
+          // 同じ扱い=倍率の主語は疑似Player・計測除外・ヘイトは'ghost'(プレイヤーの反射弾は
+          // weaponKeyを持たないので、この判定はプレイヤー側を1bitも変えない)。
+          const isGhostShot = projectile?.weaponKey === 'ghost-gun' || projectile?.weaponKey === GHOST_REFLECT_WEAPON_KEY;
           const isAllyOwnedShot = isEscortShot;
           const ghostAllyForShot = isGhostShot ? collisionState.summons.find(s => s.kind === 'ghost-ally') : undefined;
           const ghostShotBuild = isGhostShot ? ghostBuildFor(ghostAllyForShot, skillPlayer) : null;
@@ -8380,14 +8421,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               : damage * critMult * skillOutgoingDamageMult(shotOwner) * sniperGunMult(shotOwner, enemyForFx) * comboMasterMult;
           // §6.21 M46: gun/otherチャネル分類(護衛NPC弾はnull=計測除外)。純関数=classifyProjectileDamageChannel。
           const dmgChannel = classifyProjectileDamageChannel(projectile?.weaponType, projectile?.weaponKey);
-          // BOT_AND_GHOST.md §2.8 G2.5: ゴースト銃弾(weaponKey='ghost-gun')だけヘイトの起因を
-          // 'ghost'にする(escort等それ以外は既定'player'=「1つの財布」の側という扱い・本バッチのスコープ外)。
-          const hateShotSource: HateSide = projectile?.weaponKey === 'ghost-gun' ? 'ghost' : 'player';
+          // BOT_AND_GHOST.md §2.8 G2.5: ゴースト銃弾(weaponKey='ghost-gun')と守護霊の反射弾
+          // ('ghost-reflect'・v0.25.2525)だけヘイトの起因を'ghost'にする(escort等それ以外は既定
+          // 'player'=「1つの財布」の側という扱い・本バッチのスコープ外)。
+          const hateShotSource: HateSide = isGhostShot ? 'ghost' : 'player';
           const enemyKilled = damageEnemy(enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource);
-          // 護衛NPC/守護霊(ghost-gun)の弾の被弾音も、発砲音と同じ距離減衰をかける
-          // (遠い味方の攻撃は被弾音も小さく/画面外は無音)。プレイヤー自身の弾は等倍(gain=1)。
+          // 護衛NPC/守護霊(ghost-gun・v0.25.2525で反射弾'ghost-reflect'も)の弾の被弾音も、発砲音と
+          // 同じ距離減衰をかける(遠い味方の攻撃は被弾音も小さく/画面外は無音)。プレイヤー自身の弾は等倍(gain=1)。
           let hitSfxGain = 1;
-          if ((projectile?.weaponKey === 'escort' || projectile?.weaponKey === 'ghost-gun') && enemyForFx) {
+          if ((projectile?.weaponKey === 'escort' || isGhostShot) && enemyForFx) {
             const hpl = collisionState.player;
             const hcam = useGameStore.getState().camera, hgb = useGameStore.getState().gameBounds;
             hitSfxGain = npcSfxDistGain(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2, hpl.x + hpl.width / 2, hpl.y + hpl.height / 2, hcam, hgb);

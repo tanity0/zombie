@@ -1,5 +1,54 @@
 # Development Log
 
+## v0.25.2525 — GHOST-REFLECT-MELEE-SUBS: 守護霊が弾を反射し、気絶敵を処刑し、近接連動サブ3種を使う【2026-07-30 22:31 JST】
+
+- **発注**: research/GHOST_PARITY_LEDGER.md 末尾の発注仕様(A=弾反射 / B=気絶フィニッシュ / C=近接スイング
+  相乗り型サブ4種)。方式は前2バッチと同じ**共有方式**(簡易モデル禁止・主語引数化・プレイヤー側の
+  式/定数/分岐は1文字も変えない)。
+- **A. 弾反射(項目8・台帳§4-1)**: 反射1回分を `combatTick.applyCounterReflect(projId, now, subject, tunables, ghostId?)`
+  へ主語引数化(プレイヤー分岐は従来コードのまま=`lastCounterSuccessTime`+counter-masterリファンド)。
+  守護霊は **`Summon.ghostCounterWindowEnd`(Summonへの追加はこの1つだけ)** を近接スイング(通常スイング/
+  刀の一閃)で `COUNTER_WINDOW` ぶん開き、窓中に当たったボス弾を**同じ反射弾生成**(逆向き/×REFLECT_DAMAGE_MULTIPLIER/
+  貫通なし)で打ち返す。反射のたびの窓延長(`COUNTER_EXTEND_PER_HIT`)も同一。ボムカウンター(スキル)の主語も
+  疑似Player。反射弾は `weaponKey='ghost-reflect'` 帰属=**計測除外/ヘイト='ghost'/倍率の主語=疑似Player/
+  被弾SEは距離減衰**(着弾ロールのトラップ+10%・弱点+10%は入れない=プレイヤーの反射弾と同じ)。
+  成立演出は `applyGhostReflectCounterFx`(青Counter!層+シェイク+counter SE。**除外1**でヒットストップ/
+  スロー/寄りズームは出さない)。
+- **B. 気絶フィニッシュ(項目10・台帳§3-3)**: 裁定を純関数 `meleeExecute.resolveStunnedMeleeHit` へ抽出し、
+  プレイヤーのナイフスイングと守護霊の近接(`gameStore.applyGhostMeleeFinisher`)が**同じ1本**を通る
+  (ボス5×・完全気絶(紫)中のみ気絶維持 / 強個体3×+気絶解除 / 雑魚は即時処刑。素ダメージも
+  `meleeSwingBaseDamage` で主語=疑似Player)。フィニッシュ時はクリ抽選を走らせない(プレイヤーと同型)。
+  **除外1**: `triggerFinishImpact` は呼ばない。**除外4**: `recordFinisherKill` はゴーストでは積まない
+  (同じ理由で刀経路の同計測も `if (!isGhost)` に揃えた=v0.25.2522の積み残し。プレイヤーは不変)。
+- **C. 近接スイング相乗り型サブ(項目11の一部)**: `triggerCounter` 直書きの3ブロックを主語引数の共通ヘルパへ
+  抽出(`fireDroneBoomerangOnSwing`/`fireFlareGunOnSwing`/`fireJunkWeaponOnSwing`)。守護霊の入口は
+  `fireGhostMeleeSwingSubs(ghostId)` で、ゴーストの近接スイング/一閃から呼ぶ。CDは「1つの財布」を共有し、
+  刀モード中は `subWeaponBlockedByKatana` がプレイヤーと同じく全サブを止める。差分は除外4だけ
+  (SEは距離減衰 / **ジャンクウェポンのスクラップ=弾薬は非消費・在庫ゲートも通さない**)。
+  **shadow-clone は★未決5(分身の帰属/見た目/計測)として実装せず停止**。sensor-mine は発注で対象外。
+- **同時に直したパリティ実バグ(新規テストで検出)**: 疑似Player(`combatActorPlayer`)はビルドのメモ化写しなので
+  `subWeaponCooldowns` が**召喚時点で凍っていた**=ゴーストのサブCD判定が更新されない(v0.25.2522のワイヤーも
+  同症状)。プレイヤーの現在の `subWeaponCooldowns`/`straps` を疑似Playerへ重ねて解消(ゴースト側のみ)。
+- 負荷: **1/10**(simulation)。増えるのは①敵弾のゴースト命中ループ内の窓チェック1回(ゴースト不在なら
+  従来どおり即抜け) ②近接スイング1回につきサブ入口3本のゲート評価(~1回/秒)だけ。新しい描画レイヤー・
+  強glow・フィルタは追加していない(反射の演出は既存のプール済みリング/バースト+glow43=強glow未満)。
+- 検証: `npx tsc --noEmit` エラー0 / `npm run lint` エラー0(既存8警告)。新規テスト
+  `utils/ghostReflectMeleeSubs.test.ts`(19件=反射の成立/不成立/帰属キー/窓延長/プレイヤー不変+**プレイヤー
+  対照**/フィニッシュ4種/サブ3種+刀排他+財布)、`utils/meleeExecute.test.ts` に6件追加。
+  関連テスト(`npx vitest related`)= 23ファイル403件パス(M9ボットスモーク込み)。
+- 自己点検(規律5): 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に**抵触しない**——変更は守護霊の
+  攻撃/防御の実行系と、その判定を持つ純関数の抽出のみ。スポーン/countCap/台本/しきい値・ディレクタには
+  一切触れていない。**プレイヤー側は式・定数・分岐を1文字も変えていない**(抽出+主語引数化。ghostId未指定=
+  従来と同一、`reflectProjectile` の追加引数も未指定で従来と同値)。なお**守護霊の生存力と火力は上がる**
+  (弾を弾き返す/気絶ボスへ5×/サブ3種が増える)=ボスHP×1.6との釣り合いは実機確認事項として申し送り。
+- **★未決の追記**: ★未決5(shadow-cloneの分身の帰属/見た目/計測)を台帳へ追加。他は新規なし。
+- 申し送り(実機確認事項): ①ゴーストのカウンター窓は**可視化が無い**(プレイヤーは窓リングが出る)。
+  ②ゴーストのブーメランは描画側でtint白固定のため青白にならない(見た目のみ)。
+- 変更ファイル: src/types/game.ts / src/utils/meleeExecute.ts / src/utils/combatTick.ts / src/utils/ghostCounter.ts /
+  src/utils/weaponUtils.ts / src/utils/botTelemetry.ts / src/store/gameStore.ts / src/hooks/useGameLoop.ts /
+  src/utils/ghostReflectMeleeSubs.test.ts(新規) / src/utils/meleeExecute.test.ts / research/GHOST_PARITY_LEDGER.md
+  +版管理3ファイル。
+
 ## v0.25.2524 — POI-UX監査: 寄り道POIの体験の穴と改修計画を§6.24-UXへ記録(文書のみ)【2026-07-30 22:15 JST】
 
 - **社長報告**:「POIにたどり着いて何が何の効果があったのか全然わからない。①サークルに入ったら何なのかを

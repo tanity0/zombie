@@ -98,7 +98,9 @@ export const classifyProjectileDamageChannel = (
   // 扱い=計測除外(null)。ゴーストはプレイヤーの装備を借りるだけで、プレイヤー自身の攻撃ではない
   // (§2.6の計測はプレイヤー本人の傾向を測るためのものなので、ここで混ぜると次世代のゴーストが
   // 「ゴーストと一緒に戦った自分」の劣化コピーになる=§2.7 制約1と同根の理由)。
-  if (weaponKey === 'escort' || weaponKey === 'ghost-gun') return null;
+  // v0.25.2525: 守護霊の反射弾('ghost-reflect'=weaponUtils.GHOST_REFLECT_WEAPON_KEY)も同じ理由で
+  // 計測除外(文字列で書くのは 'ghost-gun'/'escort' と同じ流儀=このモジュールはweaponUtilsを引かない)。
+  if (weaponKey === 'escort' || weaponKey === 'ghost-gun' || weaponKey === 'ghost-reflect') return null;
   if (weaponKey?.startsWith('sub-')) return 'other';
   return weaponType !== undefined && GUN_PROJECTILE_WEAPON_TYPES.has(weaponType) ? 'gun' : 'other';
 };

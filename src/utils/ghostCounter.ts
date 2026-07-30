@@ -81,6 +81,38 @@ export const ghostCounterDamage = (
   ? counterReplyDamage(borrowedGunDamage, buildPlayer, bossCritMult)
   : Math.max(1, Math.round((borrowedGunDamage ?? 12) * bossCritMult));
 
+/**
+ * ゴーストのカウンター成立の「青い層」(リング/バースト/glow/Counter!コールアウト)+シェイク+
+ * counter SE。全ゴースト成立経路(per-bossパリィ/城ボス系パリィ/**弾反射**)の共通部=1箇所で揃える。
+ * glowは43=STRONG_GLOW_RADIUS(44)未満のプールsprite経路に抑える(v0.25.2479の掟。プレイヤーの95=
+ * 強glowは真似ない)。除外1: 時間停止/スロー/ズーム(triggerHitImpact等)は絶対に呼ばない。
+ */
+const ghostCounterBlueLayer = (
+  hitX: number, hitY: number, sfxGain: number,
+  playSfxGain: ((key: 'counter' | 'headshot', gain: number) => void) | null,
+): void => {
+  const st = useGameStore.getState();
+  st.spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+  st.spawnBurst(hitX, hitY, '#38bdf8', 14);
+  st.spawnGlow(hitX, hitY, 43, 'rgba(56,189,248,', 360);
+  st.spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+  if (GHOST_FX_SHAKE_ENABLED) st.triggerShake(COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG);
+  if (playSfxGain && sfxGain > 0) playSfxGain('counter', sfxGain);
+};
+
+/**
+ * 弾反射カウンター(守護霊・台帳§4-1)の成立演出。**ダメージは反射弾そのものが運ぶ**ので
+ * ここでは与えない(=プレイヤーの弾反射と同じ構造。プレイヤー側の金クリ層も出ない)。
+ * 除外1: プレイヤー側の triggerHitImpact(停止+揺れ+寄りズーム)は呼ばず、シェイクのみ。
+ * 除外4: プレイヤー専用の副作用(計測notify/コンボ加算/CDリファンド/lastCounterSuccessTime)も呼ばない。
+ */
+export const applyGhostReflectCounterFx = (
+  hitX: number, hitY: number, sfxGain: number,
+  playSfxGain: ((key: 'counter' | 'headshot', gain: number) => void) | null,
+): void => {
+  ghostCounterBlueLayer(hitX, hitY, sfxGain, playSfxGain);
+};
+
 /** 消費側がハンドラへ渡す1回分(請求+SEの距離減衰ゲイン。ゲインは消費時のカメラで算出)。 */
 export interface GhostCounterFire {
   claim: GhostCounterClaim;
@@ -109,13 +141,8 @@ export const applyGhostCounterEffect = (
 ): void => {
   const st = useGameStore.getState();
   const bcx = boss.x + boss.width / 2;
-  // 青カウンター層(成立の合図)
-  st.spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-  st.spawnBurst(hitX, hitY, '#38bdf8', 14);
-  st.spawnGlow(hitX, hitY, 43, 'rgba(56,189,248,', 360);
-  st.spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-  if (GHOST_FX_SHAKE_ENABLED) st.triggerShake(COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG);
-  if (playSfxGain && fire.sfxGain > 0) playSfxGain('counter', fire.sfxGain);
+  // 青カウンター層(成立の合図)+SE+シェイク(全ゴースト成立経路の共通部)
+  ghostCounterBlueLayer(hitX, hitY, fire.sfxGain, playSfxGain);
   // v0.25.2489: カウンター成立の付与無敵(プレイヤーのinvulnerable+invulnerableTime相当=INVULN_MS)。
   // 全per-bossハンドラ+城ボス系パリィがこの共通変換を通るので、ここ1箇所で全経路に効く。
   {

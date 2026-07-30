@@ -58,7 +58,7 @@
 |---|---|---|---|---|
 | 3-1 | 近接リーチ(MELEE_RADIUS=74) | `gameStore.ts:787` | **同一(値の複製)** | `ghostDriver.ts:165`の`GHOST_MELEE_RANGE=74`はコメントで明記された複製値。ただし刀レベル別リーチ(`KATANA_RANGE_BY_LEVEL`=76/92/110・`gameStore.ts:903-907`)やhunting拡張(`HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL`)は反映されない=常に74固定。 |
 | 3-2 | スイングダメージ本体 | `gameStore.ts:4726-4727`等(meleeDamage×crit×skillOutgoingDamageMult×meleeComboMult) | **部分(素damageのみ)** | `useGameLoop.ts:7240`: `Math.max(1, Math.round(meleeWeapon?.damage ?? 6))`。§2の全補正が抜ける。 |
-| 3-3 | 気絶敵への近接フィニッシュ(処刑・即死) | `gameStore.ts:4710-4711`(ナイフ)/`5450-5451`(刀)/`5678-5679`(鞭)/分身5062 | **無し** | ghostの近接は`damageEnemy(boundBoss.id, dmg, ...)`固定ダメージのみ(`useGameLoop.ts:7251`)。stunned判定・finisher分岐が存在しない。ボス限定ターゲットなので実害は「気絶したボスへの即死処刑が出ない」程度(ボスは即死しない設計=CRIT-UNIFY §9.5と整合するので優先度は低いが、正本上は「全ダメージ/確率補正」の欠落として記録)。 |
+| 3-3 | 気絶敵への近接フィニッシュ(処刑・即死) | `gameStore.ts:4710-4711`(ナイフ)/`5450-5451`(刀)/`5678-5679`(鞭)/分身5062 | ✅**同一(v0.25.2525)** | ghostの近接は`damageEnemy(boundBoss.id, dmg, ...)`固定ダメージのみ(`useGameLoop.ts:7251`)。**v0.25.2525(GHOST-REFLECT-MELEE-SUBS 発注B)で解消**: 裁定を純関数 `meleeExecute.resolveStunnedMeleeHit` へ抽出し、プレイヤーのナイフスイングと守護霊の近接スイング(`applyGhostMeleeFinisher`)が同じ1本を通る(刀経路は v0.25.2522 で解消済み)。旧記述: stunned判定・finisher分岐が存在しない。ボス限定ターゲットなので実害は「気絶したボスへの即死処刑が出ない」程度(ボスは即死しない設計=CRIT-UNIFY §9.5と整合するので優先度は低いが、正本上は「全ダメージ/確率補正」の欠落として記録)。 |
 | 3-4 | ノックバック付与(敵へ) | `gameStore.ts:2455-2469`(counterMasterKnockback)・`knockbackEnemy`呼び出し各所 | **無し** | ghostの近接命中は`damageEnemy`のみ呼び、`knockbackEnemy`を一切呼ばない。 |
 | 3-5 | クリ気絶(5秒スタン=通常敵/半減+CD2倍=ボス) | `gameStore.ts:4727`等 | **部分** | ghostの通常スイングはcrit=false固定なのでクリ気絶が発生しない。カウンター成立時のみ確定クリ(crit=true)経由でボス半減+CD2倍+紫蓄積が乗る(§2-10参照)。 |
 | 3-6 | 近接3発目確定クリ(教習用) | `gameStore.ts:4722`コメント | **不成立** | ghostにはヒットカウント概念がない。実害は軽微(演出/教習目的の仕組みのため)。 |
@@ -71,7 +71,7 @@ COUNTER_CRIT_LEDGER.md §1・§9.3・§10 が正本。ゴースト側は`ghostCo
 
 | # | 系統 | プレイヤー成立条件/場所 | ゴースト現状 | メモ |
 |---|---|---|---|---|
-| 4-1 | 弾反射(窓400ms中の敵弾反射) | `combatTick.ts:447`(`applyEnemyProjectileHits`) | **無し** | ghostは弾を「反射」する経路を持たない(被弾はi-frame頼み)。COUNTER_CRIT_LEDGER §9.3では言及なし=未着手のまま。 |
+| 4-1 | 弾反射(窓400ms中の敵弾反射) | `combatTick.ts:447`(`applyEnemyProjectileHits`) | ✅**同一(v0.25.2525)** | **GHOST-REFLECT-MELEE-SUBS 発注A で解消**: 反射1回分を `applyCounterReflect(projId, now, subject, tunables, ghostId?)` へ主語引数化し、守護霊は `Summon.ghostCounterWindowEnd`(近接スイング起点・`COUNTER_WINDOW`)中の被弾を同じ反射弾生成で打ち返す。反射のたびの窓延長(`COUNTER_EXTEND_PER_HIT`)も同一。反射弾は `ghost-reflect` 帰属=計測除外/ヘイト'ghost'/倍率の主語=疑似Player。 |
 | 4-2 | ブラストパリィ(着地/爆発AoE無効化+反撃) | `combatTick.ts:223-321` | **部分(giantbat系のみ)** | `ghostCounter.ts`のTTL窓(150ms・`GHOST_COUNTER_CLAIM_TTL_MS`)を使ったパリィがCRIT-UNIFY実装(COUNTER_CRIT_LEDGER §9.7末尾)でgiantbat/pumpkin系の着地爆発に追加された。**crit=trueで確定クリ**(§9.3裁定どおり)。他ボス族(裏4/天使6/idol)のブラスト技への適用は個別確認が必要(未検証)。 |
 | 4-3 | 接触パリィ(dashParried=突進/硬直/気絶中敵) | `combatTick.ts:678-807` | **部分** | giantbat系は`combatTick.applyGhostBossParry`(568-655)で対応。気絶パリィ(気絶中ボスへの接触無効化)はCOUNTER_CRIT_LEDGER §9.7★1で「ゴーストに該当する接触被弾経路自体が存在しないためクローズ」= 仕様上N/A判定済み(欠落ではない)。 |
 | 4-4 | per-boss体当てカウンター(thor/裏3/idol/天使6) | `useGameLoop.ts`各ブロック+`angelBossTick.ts:280` | **同一** | `ghostCounter.ts`のconsumeGhostCounterClaimを各per-bossハンドラのghost分岐が消費し、プレイヤー成立と同じ機械的効果(技中断+確定クリ+bumpBossCrit)を与える(v0.25.2480実装・BOT_AND_GHOST.md §8)。 |
@@ -104,7 +104,7 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 | 6-1 | 鞭(whip)のリーチ延長スイング(`whipMult`) | `gameStore.ts:5595-5686` | **無し**(§6未対応リスト。CDではなくカウンター窓経済) |
 | 6-2 | 鞭のbumpBossCrit紫蓄積(v0.25.2506で解消済み・§9.4踏襲) | `gameStore.ts`(コミットa75b425) | **対象外**(鞭自体を振らないため無関係) |
 | 6-3 | 四神舞(shijin・リズム入力で技発動。刀と同じ排他グループ) | `gameStore.ts:11789-`(タップ/フリック判定+`SHIJIN_BY_ARROW`) | **無し**(§6未対応リスト「CD概念なし・常駐/リズム系」) |
-| 6-4 | ジャンクウェポン(junk-weapon・近接スイング同時発射5連弾) | `weaponUtils.ts:479-516`(`buildJunkWeaponPellets`)・発動入口=`triggerCounter`系近接スイング | **無し**(§6未対応リスト「発動入口が近接スイング=ゴーストの近接スイングに相乗りさせる配線が必要」) |
+| 6-4 | ジャンクウェポン(junk-weapon・近接スイング同時発射5連弾) | `weaponUtils.ts:479-516`(`buildJunkWeaponPellets`)・発動入口=`triggerCounter`系近接スイング | ✅**同一(v0.25.2525)** — 発注Cで相乗り配線済み(スクラップは除外4で非消費) |
 | 6-5 | 賢者の石(sage-stone・alchemyの上位・ハリケーン) | `gameStore.ts:5836-5837`(`sageStoneHurricaneMult`) | **無し**(§6「CD概念なし=常駐召喚」) |
 
 ---
@@ -127,16 +127,16 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 | whip | 未対応 | **無し** | §6参照(同上)。 |
 | alchemy / sage-stone | 未対応 | **無し** | CD概念なし(常駐召喚)。 |
 | shijin | 未対応 | **無し** | CD概念なし(リズム)。 |
-| drone-boomerang | 未対応 | **無し** | 発動入口が近接スイング。 |
+| drone-boomerang | ✅ | ✅**(v0.25.2525)** | 発注C: ゴーストの近接スイングに相乗り(共通ヘルパ `fireDroneBoomerangOnSwing`)。CDは1つの財布。 |
 | wire-anchor | 未対応 | **無し(移動系・特記対象)** | 効果=オーナーの体の高速移動(スラム/プラント/ホップ)。ghostDriverの移動系への特殊配線が必要=**現在オーナー常にプレイヤー固定**。§2.11では「除外1/4に該当しない=写す対象」。優先度が高い個別項目。 |
 | homing | 未対応 | **無し** | ロック蓄積=タッチ入力の押しっぱなし/離しで発射という入力方式そのもの。 |
-| shadow-clone | 未対応 | **無し** | 発動入口が近接スイング。 |
+| shadow-clone | 未対応 | **無し(★未決5で停止)** | 発動入口が近接スイング。v0.25.2525で着手したが「分身の帰属/見た目/計測」が未決のため**この種だけ停止**(★未決5)。 |
 | molotov | 未対応 | **無し** | 「本人が移動中のみ足元へ設置」=本人の移動と結合。 |
 | first-aid-kit | 未対応 | **無し** | CD概念なし(1ラン使い切り)。 |
 | sensor-mine | 未対応 | **無し** | チャージ制(個別チャージが別々に回復)でCD正規化を見送り済み(★未決2)。 |
 | support-sniper | 未対応 | **無し** | 専用タイマーが「プレイヤー移動中のみ」進行。 |
-| flare-gun | 未対応 | **無し** | 発動入口が近接スイング。 |
-| junk-weapon | 未対応 | **無し** | 同上(§6-4参照)。 |
+| flare-gun | ✅ | ✅**(v0.25.2525)** | 発注C: 同上(`fireFlareGunOnSwing`)。 |
+| junk-weapon | ✅ | ✅**(v0.25.2525)** | 発注C: 同上(`fireJunkWeaponOnSwing`)。スクラップ非消費=除外4。 |
 | striker-hunting | 未対応 | **無し** | CD概念なし(静止チャージ)。 |
 
 **未対応14種+対応6種+murasame/sage-stone(katana/alchemyの上位で同枠)=合計24種中6種のみ実働。**
@@ -204,10 +204,10 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 | 5 | ✅**済(v0.25.2522)** **刀モード(一閃ダッシュ/オート斬撃/村雨/フィニッシュ一閃)の再現** | 主語引数化: `performKatanaStrike`/`triggerKatanaDash` に `ghostId` / 抽出: `utils/dashLocomotion.ts`(ロコモーション)・`utils/katanaAuto.ts`(オート斬撃の標的選択) | **L** | 社長が名指しで「刀とか一閃とかも全部再現して」と明言した最重要項目の一つ。専用ロコモーション(katanaDashUntil系)をghost用に複製する必要があり、既存のカウンター窓経済(CD不使用)ともghostDriverの意思決定モデル(reactionMs/counterChance抽選)が根本的に噛み合わない=設計から要検討。 |
 | 6 | ✅**済(v0.25.2522)** **ワイヤーアンカー(スラム/プラント/ホップ)のゴースト対応** | 主語引数化: `triggerWireAnchor`/`startWireDash`/`startWireHop` に `ghostId`+useGameLoopのwire毎フレーム処理を `runWireAnchorTick(wp, ghostId)` へ | **L** | 社長が名指し。§2.8で「移動系=現在オーナー常にプレイヤー=未対応→写す対象」と特記済み。オーナー抽象化(subWeaponOwner.ts)は入口があるが、実際の高速移動処理(katanaDashUntil型のロコモーション上書き)をghost実体に適用する仕組みが無い。 |
 | 7 | ✅**済(v0.25.2514)** **被弾ノックバックの復元** | gameStore.ts `damageSummon`(6022-6042)にknockbackVx/Vy/knockbackUntil相当を追加 | **S** | 社長が名指し。damagePlayerの式をSummon型に横展開するだけ(Summon型にknockback系フィールドの追加が必要な場合はSで収まらずM)。 |
-| 8 | **弾反射(カウンター家系#1)のゴースト対応** | combatTick.ts `applyEnemyProjectileHits`(447)にghost分岐を追加 | **M** | 社長が名指し(「弾反射も全部再現」)。現状ghostは反射する経路自体が無い=新規実装。反射弾の生成(弾の`reflected`フラグ書き換え等)をゴースト起点で行う設計が必要。 |
+| 8 | ✅**済(v0.25.2525)** **弾反射(カウンター家系#1)のゴースト対応** | combatTick.ts `applyEnemyProjectileHits`(447)にghost分岐を追加 | **M** | 社長が名指し(「弾反射も全部再現」)。現状ghostは反射する経路自体が無い=新規実装。反射弾の生成(弾の`reflected`フラグ書き換え等)をゴースト起点で行う設計が必要。 |
 | 9 | ✅**済(v0.25.2514)** **被弾点滅(白フラッシュ)の追加** | pixiScene.ts `drawGhostAlly`(7971-8194)にhitFlash相当を追加 | **S** | 描画のみ。既存`view.hitFlash`パターン(9036-9055)を流用可能。 |
-| 10 | **気絶敵への近接フィニッシュ(処刑)のゴースト対応** | useGameLoop.ts 7237-7292のghost近接ブロックにfinisher分岐追加 | **S** | 実害は小さい(ghostは基本ボス専属でボスは即死しない設計=CRIT-UNIFY §9.5)が、正本上は欠落。 |
-| 11 | **サブウェポン未対応14種の個別配線**(wire-anchor除く: striker-quick-mag/dog/katana系/whip/alchemy系/shijin/drone-boomerang/homing/shadow-clone/molotov/first-aid-kit/sensor-mine/support-sniper/flare-gun/junk-weapon) | 各サブの発動入口(BOT_AND_GHOST.md §6の表参照) | **L(種によりS〜L)** | 「近接スイング相乗り型」(drone-boomerang/sensor-mine/flare-gun/junk-weapon/shadow-clone)は5-6と共通の近接実行ブロック整備で束ねられる可能性がある=先に近接まわりを整備すると割安。dog/molotov/support-sniper/homingは個別のプレイヤー直読み箇所の置き換えが必要でLサイズ。 |
+| 10 | ✅**済(v0.25.2525)** **気絶敵への近接フィニッシュ(処刑)のゴースト対応** | useGameLoop.ts 7237-7292のghost近接ブロックにfinisher分岐追加 | **S** | 実害は小さい(ghostは基本ボス専属でボスは即死しない設計=CRIT-UNIFY §9.5)が、正本上は欠落。 |
+| 11 | 一部済(v0.25.2525: drone-boomerang/flare-gun/junk-weapon) **サブウェポン未対応14種の個別配線**(wire-anchor除く: striker-quick-mag/dog/katana系/whip/alchemy系/shijin/drone-boomerang/homing/shadow-clone/molotov/first-aid-kit/sensor-mine/support-sniper/flare-gun/junk-weapon) | 各サブの発動入口(BOT_AND_GHOST.md §6の表参照) | **L(種によりS〜L)** | 「近接スイング相乗り型」(drone-boomerang/sensor-mine/flare-gun/junk-weapon/shadow-clone)は5-6と共通の近接実行ブロック整備で束ねられる可能性がある=先に近接まわりを整備すると割安。dog/molotov/support-sniper/homingは個別のプレイヤー直読み箇所の置き換えが必要でLサイズ。 |
 | 12 | ✅**済(v0.25.2514)** **スナップショットのビルド拡張**(skills/skillLevels/equipment/equipBonus/critChance/subWeapons/subWeaponLevels) | playerTraits.ts `PlayerProfile.snapshot`型拡張+計測箇所(directorTick.ts等) | **S〜M** | §10で論じたとおり、「召喚時点の"今の"player stateを都度参照する」方式で1〜4を実装するなら**スナップショット拡張自体は不要**になる可能性がある。「その撃破ランのビルドを再現したい」という要求が明確になった場合のみ本項目が必要=先に設計判断を仰ぐのが安い(実装前に★未決として提起すべき)。 |
 | 13 | ✅**済(v0.25.2514)** **被弾時のskillIncomingDamageMult(ナイト/バーサーカー)** | gameStore.ts `damageSummon` | **S** | 12(装備/スキル復元)と合わせて実装すると安い。 |
 | 14 | ✅**裁定3で決着(出さない)** **画面シェイク(被弾時)の扱い明確化** | ghostCounter.ts / useGameLoop.ts | **S(判断が主)** | 実装というより「除外1(演出)に含めるか」の裁定が先。 |
@@ -254,6 +254,20 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
    ゴースト自身のコンボを持たせる裁定が出れば、同じ共有関数へ計数を渡すだけで効く形にしてある。
 2. **バーサーカーの失HP基準**: 疑似Playerの health/maxHealth は**ゴースト実体**の値にした(ゴーストが傷つくほど
    強くなる=「その時のあなた」の写しとして自然な解釈)。「計測時のHP割合で固定」にするなら要裁定。
+3. **【新規・GHOST-REFLECT-MELEE-SUBS(v0.25.2525)で発生】分身(shadow-clone)を守護霊が使えるか**
+   ——発注Cの4種のうち**この1種だけ実装せず停止**した(発注文「未決に当たったらその種だけ止める」に従う)。
+   共有方式で書こうとすると、設計書に無い裁定が**3つ**必要になる:
+   1. **分身の枠(帰属)**: 分身はストアの**グローバル1枠**(`shadowClone`・生成条件が `!get().shadowClone`)。
+      守護霊が振ると同じ枠を占有し、**プレイヤーが分身を出せなくなる**(逆も同じ)。1枠を取り合う仕様で
+      よいか、守護霊専用枠(`ghostShadowClone`)を足すか。CDは「1つの財布」なので枠だけの話ではない。
+   2. **見た目**: `ShadowCloneState.characterClass` はプレイヤーのクラス固定(絵=本人の分身)。守護霊の
+      分身は守護霊のクラス(`ghostClass`)+青白tintにするのか、本人の絵のままにするのか。
+   3. **攻撃の主語と計測**: `shadowCloneStrike` は `get().player` を主語に固定(近接武器・クリ率・
+      コンボ・`skillOutgoingDamageMult`・XP/通貨の受け手・`recordKill('melee')`)。守護霊の分身なら
+      主語=疑似Player・ヘイト='ghost'・計測除外(除外4)が筋だが、これは1「誰の分身か」の裁定に従属する。
+      加えて `tickShadowClone` は毎フレーム**プレイヤーの状態**を読む(主語引数化の範囲が広い)。
+   → **裁定が出れば実装は小さい**(入口は `fireGhostMeleeSwingSubs` に1本足すだけ)。
+   ※`sensor-mine` は発注で明示的に対象外(★未決2=チャージ制の正規化が未裁定)のため手を付けていない。
 
 ## ★未決の裁定(2026-07-30・社長)
 1. **攻撃力の基準=計測時のステータス・ビルドをそのまま再現**(確定)。→ 項目12(スナップショットの
@@ -416,3 +430,61 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 - BOT_AND_GHOST.md は編集禁止。git add は明示列挙。抽出純関数にはユニットテスト同コミット。
 - ゲート: typecheck 0(grepのexit code罠に注意)+lint エラー0。related テスト実行。フルビルド不要。
 - 版管理: rebase後 origin+1・changelog先頭・DEVELOPMENT_LOG(JST打刻)・台帳ステータス更新。
+
+---
+
+## 実装ログ: バッチGHOST-REFLECT-MELEE-SUBS(v0.25.2525・項目8=弾反射 / 項目10=気絶フィニッシュ / 項目11の一部=相乗りサブ3種)
+
+**方式**: 前2バッチと同じ**共有方式**(コピー実装ゼロ・主語引数化+純関数抽出)。プレイヤー側は
+**式・定数・分岐を1文字も変えていない**(抽出と主語引数化のみ。ghostId未指定=従来と完全同一)。
+
+### A. 弾反射(項目8・台帳§4-1)
+| 何を | どこに |
+|---|---|
+| 反射1回分(反射弾生成+ボムカウンター化+窓延長) | `combatTick.applyCounterReflect(projId, now, subject, tunables, ghostId?)`。プレイヤー分岐は従来のコードそのまま(`lastCounterSuccessTime`+`refundCounterCooldown`)、ゴースト分岐は窓(`ghostCounterWindowEnd`)の延長のみ。 |
+| 守護霊の窓 | `Summon.ghostCounterWindowEnd`(**Summonへの追加はこの1フィールドだけ**)。近接スイング(通常スイング/刀の一閃)の成立時に `nowMs + COUNTER_WINDOW` を打つ=**プレイヤーのスイングが `counterWindowEnd` を開くのと同じ起点・同じ定数**。 |
+| 反射の判定位置 | `applyEnemyProjectileHits` の既存ゴースト分岐(G4b)。**プレイヤー解決の後**という順序も不変で、ゴーストに当たる弾(=ボス弾)が窓中なら反射、窓外なら従来どおり被弾。 |
+| 反射弾の帰属 | `weaponUtils.GHOST_REFLECT_WEAPON_KEY='ghost-reflect'`。`reflectProjectile(id, multiplier?, weaponKey?)` の第3引数で差し替え(未指定=プレイヤーの反射と1bit同値)。着弾側(useGameLoop)は `isGhostShot` に合流=**倍率の主語=疑似Player / ヘイト='ghost' / 計測除外(`classifyProjectileDamageChannel`→null) / 被弾SEは距離減衰**。着弾ロール(トラップ/弱点)は**入れない**=プレイヤーの反射弾と同じ。 |
+| 成立演出 | `ghostCounter.applyGhostReflectCounterFx`(青リング/バースト/glow43/`Counter!`+シェイク+counter SEの距離減衰)。既存 `applyGhostCounterEffect` と共通部(`ghostCounterBlueLayer`)を共有。**除外1**: `triggerHitImpact`(停止+スロー+寄りズーム)は呼ばない。**除外4**: `notifyMoveCounter`/`addMeleeFinishCombo`/CDリファンド/`lastCounterSuccessTime` はゴーストでは触らない。 |
+
+### B. 気絶フィニッシュ(項目10・台帳§3-3)
+- 裁定を純関数 `meleeExecute.resolveStunnedMeleeHit(enemy, baseDamage, gameTime, bossStunMult)` へ抽出
+  (ボス5×・完全気絶中のみ気絶維持 / 強個体3×+気絶解除 / それ以外は即時処刑。**優先順もプレイヤーのまま**)。
+  プレイヤーのナイフスイング(`triggerCounter`)をこの関数へ差し替え(値・条件は不変)。
+- 守護霊側は `gameStore.applyGhostMeleeFinisher(ghostId, enemyId)` が同じ関数を通し、素ダメージも同じ式
+  (`meleeSwingBaseDamage`・主語=疑似Player)。適用は `damageEnemy(..., viaMeleeFinish=true, channel=null, 'ghost')`
+  +金のダメージ数字+(倒しきれない時)気絶解除/浮き(`MELEE_STUN_LIFT_MS=420`)。フィニッシュ時はクリ抽選を
+  走らせない(プレイヤーも気絶敵にはクリを振らない=RNG消費も同型)。SEは `melee-finish`(距離減衰)。
+- **除外1**: `triggerFinishImpact`(停止/スロー/寄りズーム)はゴースト起因では出さない(KATANA-WIREと同じ)。
+- **除外4**: `recordFinisherKill` はゴーストでは積まない。**同じ理由で刀経路(`performKatanaStrike`)の
+  `recordFinisherKill` も `if (!isGhost)` に揃えた**(v0.25.2522の積み残し。プレイヤー側は不変)。
+
+### C. 近接スイング相乗り型サブ(項目11の一部)
+- `triggerCounter` に直書きされていた3ブロックを、主語(actor=倍率/所持/Lv、owner=座標/向き)引数の
+  共通ヘルパへ抽出: `fireDroneBoomerangOnSwing` / `fireFlareGunOnSwing` / `fireJunkWeaponOnSwing`。
+  プレイヤーは同じ順序(ブーメラン→フレア→ジャンク)で呼ぶだけ=挙動不変。
+- 守護霊側の入口は `gameStore.fireGhostMeleeSwingSubs(ghostId)`(疑似Player+`ghostAsOwner`)で、
+  useGameLoop のゴースト近接スイング(通常スイング/一閃)から呼ぶ。刀モード中は
+  `subWeaponBlockedByKatana` がプレイヤーと同じく全サブを止める(=同じ条件)。
+- 差分は**除外4だけ**: ①SEトリガ(`boomerangThrowFxAt`/`junkShotFxAt`=等倍)はプレイヤーのみで、
+  ゴーストは戻り値を見て距離減衰付きに鳴らす ②**ジャンクウェポンのスクラップ(=この武器の弾薬)は
+  消費せず在庫ゲートも通さない**(ghost-gunが弾薬/リロードの概念を持たないのと同じ扱い。ダメージはLv固定)。
+- 弾には既存のゴースト発動サブと同じ `ownerGhost: true`(視覚専用マーカー)を付ける。
+- **shadow-clone は★未決5として停止**(上記)。**sensor-mine は発注で対象外**。
+
+### 同時に直したパリティ実バグ(新規テストで検出)
+- **「1つの財布」が召喚時点で凍っていた**: `combatActorPlayer` の疑似Playerはビルドのメモ化写しなので
+  `subWeaponCooldowns` が召喚時のスナップショットのままで、**ゴーストのサブCD判定が更新されなかった**
+  (v0.25.2522のワイヤーも同症状)。疑似Playerに**プレイヤーの現在の `subWeaponCooldowns` / `straps`**
+  を重ねて解消(ゴースト側のみの変更)。
+
+### 実装メモ(次バッチが踏む前提)
+- ゴーストが反射できるのは**ゴーストに当たる弾=ボス弾(`isEngageableBoss`)だけ**。雑魚弾がゴーストに
+  当たらないのは G4b の既存仕様で、本バッチはその集合を広げていない(広げるなら別裁定)。
+- ゴーストのカウンター窓の**可視化は無い**(プレイヤーは pixiScene が窓リングを描く)。反射の瞬間は
+  `Counter!`+青リングが出るので伝わるが、「今なら弾ける」の予告は出ていない=描画バッチ候補。
+- ゴーストのブーメランは `drone-boomerang-projectile` の描画分岐で tint を白に固定しているため、
+  `ownerGhost` の青白tintが乗らない(見た目のみ・判定は同一)。
+- テスト: `utils/meleeExecute.test.ts` に6件追加(裁定の不変条件+ボス優先順)、
+  `utils/ghostReflectMeleeSubs.test.ts` 新規19件(反射の成立/不成立/帰属/窓延長/プレイヤー不変+
+  **プレイヤー対照**/フィニッシュ4種/サブ3種+刀排他+財布)。related実行=23ファイル403件パス。

@@ -730,6 +730,11 @@ export interface Summon {
   // 無敵の終了時刻(Date.now基準)。lastHitの被弾i-frameとは別枠(lastHitを流用すると被弾音/被弾
   // フラッシュのエッジ検知が無傷なのに誤発火するため専用フィールド)。他kindでは常にundefined。
   ghostInvulnUntil?: number;
+  // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・台帳§4-1「弾反射」): 守護霊のカウンター窓の終了時刻
+  // (Date.now基準)。プレイヤーの `counterWindowEnd` と**同じ意味・同じ定数(COUNTER_WINDOW)**で、
+  // 近接スイング(通常スイング/刀の一閃)を起点に開く。窓中に自分へ当たった敵弾を反射する
+  // (反射のたびに COUNTER_EXTEND_PER_HIT で延長=プレイヤーと同じ連続反射)。他kindでは常にundefined。
+  ghostCounterWindowEnd?: number;
   // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 召喚時に載せる「計測時ビルドの写し」。ゴーストの武器・
   // スキル・装備・クリ率はこれから復元する(欠損=旧プロファイル→召喚時のプレイヤー装備へフォールバック)。
   ghostBuild?: PlayerBuildSnapshot;

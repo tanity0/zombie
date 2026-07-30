@@ -117,6 +117,13 @@ export const GUN_KEYS_BY_CATEGORY: Record<AmmoType, string[]> = {
 // この10種のいずれか=weaponKeyを'ghost-gun'にしているのは計測除外/ヘイト分離のための別名にすぎない。
 // これでトラップ拘束+10%・弱点+10%の着弾ロールがプレイヤーと同じ条件で走る。
 export const GHOST_GUN_WEAPON_KEY = 'ghost-gun';
+// v0.25.2525(GHOST-REFLECT-MELEE-SUBS・台帳§4-1): 守護霊が**弾反射**で打ち返した弾の帰属キー。
+// プレイヤーの反射弾(weaponKeyは元の敵弾のまま=undefined)と区別するためだけの別名で、飛翔特性・
+// ダメージ倍率(REFLECT_DAMAGE_MULTIPLIER)・貫通なしはプレイヤーの反射と完全に同一。用途は3つ:
+// ①計測除外(botTelemetry.classifyProjectileDamageChannel→null) ②ヘイト起因='ghost'
+// ③倍率評価の主語=疑似Player(useGameLoopの弾ヒット処理)。**この集合(直接銃)には入れない**
+// =着弾時ロール(トラップ+10%/弱点+10%)はプレイヤーの反射弾と同じく対象外。
+export const GHOST_REFLECT_WEAPON_KEY = 'ghost-reflect';
 const DIRECT_GUN_WEAPON_KEYS = new Set<string>([...Object.values(GUN_KEYS_BY_CATEGORY).flat(), GHOST_GUN_WEAPON_KEY]);
 export const isDirectGunWeaponKey = (weaponKey: string | undefined): boolean =>
   weaponKey !== undefined && DIRECT_GUN_WEAPON_KEYS.has(weaponKey);

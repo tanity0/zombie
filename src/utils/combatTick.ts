@@ -31,12 +31,12 @@ import {
 } from './enemyUtils';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { activeFlareTargets } from './flareGun';
-import { getActiveGun } from './weaponUtils';
+import { getActiveGun, GHOST_REFLECT_WEAPON_KEY } from './weaponUtils';
 import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkCollision } from './collisionUtils';
 import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { EGG_BLAST_RADIUS } from '../world/mines';
 import {
-  useGameStore, isSeekerActive, skillLevel, counterReplyDamage, enemyDeathLabel,
+  useGameStore, isSeekerActive, skillLevel, counterReplyDamage, enemyDeathLabel, combatActorPlayer,
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
   COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
@@ -50,7 +50,7 @@ import { distToSegment } from './levelUpGate';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
-import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流
+import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出
 import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
 
 // 演出・音・死亡演出のコールバック注入(ヘッドレスではno-op)。判定条件自体はこのファイル内に残る。
@@ -450,6 +450,65 @@ export const applyEnemyFire = (now: number): void => {
   }
 };
 
+// ---- 弾反射(カウンター家系①)の主語引数化 ----------------------------------------------------
+// research/GHOST_PARITY_LEDGER.md §4-1 + 発注A(v0.25.2525・GHOST-REFLECT-MELEE-SUBS)。
+// 「窓中に自分へ当たった敵弾を打ち返す」1回分。プレイヤーと守護霊が**同じ1本**を通る
+// (BOT_AND_GHOST.md §2.11補足「写すな、共通化しろ」)。差分は主語(窓の宛先)だけ:
+//   ghostId 未指定 → プレイヤー(従来と1bitも変わらない: 窓延長+lastCounterSuccessTime+
+//                    counter-masterのCDリファンド)。
+//   ghostId 指定   → 守護霊(窓=Summon.ghostCounterWindowEnd を同じ COUNTER_EXTEND_PER_HIT で延長。
+//                    プレイヤーのシステム値(CD/成立時刻/コンボ/計測)には触らない=除外4)。
+// 反射弾の生成(向き反転/速度/×REFLECT_DAMAGE_MULTIPLIER/貫通なし)とボムカウンター化は共有。
+// スキル(bomb-counter)の主語は `subject`=守護霊なら計測時ビルドの疑似Player。
+const applyCounterReflect = (
+  projId: string,
+  now: number,
+  subject: Player,
+  tunables: Pick<CombatTunables, 'grenadeBlastRadius' | 'grenadeBlastDamageMult'>,
+  ghostId?: string,
+): void => {
+  useGameStore.getState().reflectProjectile(projId, undefined, ghostId !== undefined ? GHOST_REFLECT_WEAPON_KEY : undefined);
+  // スキル: ボムカウンター = 反射弾がランチャー弾化し、命中で GRENADE_* 爆発。
+  const bcLv = skillLevel(subject, 'bomb-counter');
+  if (bcLv) {
+    const bcRadiusMult = [0, 1, 1.15, 1.3][bcLv];
+    const bcDmgMult = [0, 1, 1.25, 1.5][bcLv];
+    useGameStore.setState(state => ({
+      projectiles: state.projectiles.map(p =>
+        p.id === projId
+          ? { ...p, explodeOnHit: true, explodeRadius: tunables.grenadeBlastRadius * bcRadiusMult, explodeDamageMult: tunables.grenadeBlastDamageMult * bcDmgMult }
+          : p
+      ),
+    }));
+  }
+  // Each successful reflect refreshes the window so a barrage
+  // can be turned back fully. The cooldown still gates a NEW
+  // counter trigger once the chain finally lapses.
+  if (ghostId === undefined) {
+    useGameStore.setState(state => ({
+      player: {
+        ...state.player,
+        counterWindowEnd: Math.max(
+          state.player.counterWindowEnd,
+          now + COUNTER_EXTEND_PER_HIT
+        ),
+        lastCounterSuccessTime: now,
+        // counter-master v2: カウンター成立(弾反射)時のみCDリファンド(未所持は無変換)。
+        counterCooldownEnd: refundCounterCooldown(
+          state.player.counterCooldownEnd, now, skillLevel(state.player, 'counter-master')),
+      }
+    }));
+    return;
+  }
+  // 守護霊: 窓の延長だけ同じ規格で行う(ゴーストにCD/成立時刻の帳簿は無い=ghostDriverのlastMeleeAtが
+  // スイング間隔を持つ。プレイヤーのCD/コンボ/計測は触らない)。
+  useGameStore.setState(state => ({
+    summons: state.summons.map(s => s.id === ghostId
+      ? { ...s, ghostCounterWindowEnd: Math.max(s.ghostCounterWindowEnd ?? 0, now + COUNTER_EXTEND_PER_HIT) }
+      : s),
+  }));
+};
+
 // ③ 敵弾→プレイヤー命中。カウンター窓中は反射(+ボムカウンター化)、それ以外はダメージ。
 // player は呼び出し元(フレーム冒頭のloopState)のスナップショットをそのまま使う(反射後の
 // 被弾バーストの座標に使うだけで、命中判定自体はstoreから読み直したprojectiles/playerを使う)。
@@ -469,37 +528,9 @@ export const applyEnemyProjectileHits = (
   for (const proj of incoming) {
     const currentPlayer = useGameStore.getState().player;
     if (now <= currentPlayer.counterWindowEnd) {
-      useGameStore.getState().reflectProjectile(proj.id);
-      // スキル: ボムカウンター = 反射弾がランチャー弾化し、命中で GRENADE_* 爆発。
-      const bcLv = skillLevel(currentPlayer, 'bomb-counter');
-      if (bcLv) {
-        const bcRadiusMult = [0, 1, 1.15, 1.3][bcLv];
-        const bcDmgMult = [0, 1, 1.25, 1.5][bcLv];
-        useGameStore.setState(state => ({
-          projectiles: state.projectiles.map(p =>
-            p.id === proj.id
-              ? { ...p, explodeOnHit: true, explodeRadius: tunables.grenadeBlastRadius * bcRadiusMult, explodeDamageMult: tunables.grenadeBlastDamageMult * bcDmgMult }
-              : p
-          ),
-        }));
-      }
+      // 反射1回分は共有関数(主語=プレイヤー。ghostId未指定=従来と1bit同値)。
+      applyCounterReflect(proj.id, now, currentPlayer, tunables);
       reflectedAny = true;
-      // Each successful reflect refreshes the window so a barrage
-      // can be turned back fully. The cooldown still gates a NEW
-      // counter trigger once the chain finally lapses.
-      useGameStore.setState(state => ({
-        player: {
-          ...state.player,
-          counterWindowEnd: Math.max(
-            state.player.counterWindowEnd,
-            now + COUNTER_EXTEND_PER_HIT
-          ),
-          lastCounterSuccessTime: now,
-          // counter-master v2: カウンター成立(弾反射)時のみCDリファンド(未所持は無変換)。
-          counterCooldownEnd: refundCounterCooldown(
-            state.player.counterCooldownEnd, now, skillLevel(state.player, 'counter-master')),
-        }
-      }));
     } else {
       const wasVulnerable = !useGameStore.getState().player.invulnerable;
       const rnMult = redNightActive ? 2 : 1;
@@ -540,10 +571,36 @@ export const applyEnemyProjectileHits = (
       const rnMult = redNightActive ? 2 : 1;
       const ghostHits = useGameStore.getState().projectiles.filter(p =>
         p.hostile && p.ownerType !== undefined && isEngageableBoss(p.ownerType) && checkCollision(p, ghostAlly));
+      // v0.25.2525(発注A・台帳§4-1「弾反射」): 守護霊も**プレイヤーと同じ窓・同じ条件・同じ反射弾生成**で
+      // 打ち返す。窓は近接スイング(通常スイング/一閃)起点で開く ghostCounterWindowEnd(=COUNTER_WINDOW)。
+      // 反射が成立した弾は当然ダメージにならない(プレイヤーの反射と同じ二択)。
+      // 除外1: 停止/スロー/寄りズームは出さない(青い成立層+シェイクのみ=applyGhostReflectCounterFx)。
+      // 除外4: 反射弾は 'ghost-reflect' 帰属=プレイヤーの計測を汚さない/ヘイトは'ghost'/SEは距離減衰。
+      let ghostReflectedAt: { x: number; y: number } | null = null;
       for (const proj of ghostHits) {
+        const liveGhost = useGameStore.getState().summons.find(s => s.id === ghostAlly.id);
+        if (!liveGhost) break; // 直前の被弾で解散した=以降の弾は素通り(既存の damageSummon の解散と同じ扱い)
+        if (now <= (liveGhost.ghostCounterWindowEnd ?? 0)) {
+          // 倍率評価の主語=計測時ビルドの疑似Player(combatActorPlayer)。ビルド無し(旧プロファイル)の
+          // 時は本人のプレイヤーで評価する=ghostBuild未搭載でも反射自体は成立する。
+          const subject = combatActorPlayer(liveGhost.id) ?? useGameStore.getState().player;
+          applyCounterReflect(proj.id, now, subject, tunables, liveGhost.id);
+          ghostReflectedAt = { x: liveGhost.x + liveGhost.width / 2, y: liveGhost.y + liveGhost.height / 2 };
+          continue;
+        }
         damageGhostAllyByBossMove(ghostAlly.id, proj.damage * rnMult, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3),
           proj.x + proj.width / 2, proj.y + proj.height / 2);
         useGameStore.getState().removeProjectile(proj.id);
+      }
+      // 成立演出は1フレーム1回(プレイヤー側の reflectedAny と同じ流儀)。SEはゴースト位置で距離減衰。
+      if (ghostReflectedAt) {
+        const gs = useGameStore.getState();
+        const gain = npcSfxDistGain(
+          ghostReflectedAt.x, ghostReflectedAt.y,
+          gs.player.x + gs.player.width / 2, gs.player.y + gs.player.height / 2,
+          gs.camera, gs.gameBounds,
+        );
+        applyGhostReflectCounterFx(ghostReflectedAt.x, ghostReflectedAt.y, gain, (key, g) => fx.playSfx(key, g));
       }
     }
   }
