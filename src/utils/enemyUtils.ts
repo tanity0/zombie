@@ -372,11 +372,24 @@ export const resolveEnemyTarget = (
   // シーカー発動中などでプレイヤーを標的にできない場合 true。召喚がいればそれを狙い、
   // いなければ hidden=true(=狙う相手なし。呼び出し側で待機/非発砲にする)。
   playerHidden = false,
+  // v0.25.2490(雑魚ヘイト): ghostHateUntil の期限判定に使う現在gameTime。未指定(旧呼び出し)は
+  // ラッチ無効=雑魚はゴーストを狙わない側に倒れる(既定候補からの除外は常に効く)。
+  gameTimeNow?: number,
 ): { x: number; y: number; isSummon: boolean; hidden: boolean } => {
   const ex = enemy.x + enemy.width / 2;
   const ey = enemy.y + enemy.height / 2;
   const px = player.x + player.width / 2;
   const py = player.y + player.height / 2;
+  // v0.25.2490(社長裁定「雑魚はプレイヤーを優先して狙う。守護霊に攻撃されたら守護霊に向く」):
+  // 雑魚(非ボス)はゴーストを**既定のターゲット候補に入れない**。ゴースト起因ダメージを受けた個体
+  // (ghostHateUntil期限内)だけ、距離を問わずゴーストへ向く(ハードラッチ・被弾のたび5秒更新)。
+  // ゴーストが消えていれば通常規則へ戻る。**ボスは従来どおり**(ゴーストのタンク役=既存規則不変)。
+  const mobGhostRules = !isBossType(enemy.type);
+  if (mobGhostRules && gameTimeNow !== undefined
+      && enemy.ghostHateUntil !== undefined && gameTimeNow < enemy.ghostHateUntil) {
+    const g = summons.find(s => s.kind === 'ghost-ally');
+    if (g) return { x: g.x + g.width / 2, y: g.y + g.height / 2, isSummon: true, hidden: false };
+  }
   let bestX = px;
   let bestY = py;
   let bestD2 = playerHidden ? Infinity : (px - ex) * (px - ex) + (py - ey) * (py - ey);
@@ -389,6 +402,8 @@ export const resolveEnemyTarget = (
     // 自分の攻撃対象をプレイヤーへ直接ハードコードしておりここを経由しないため、ゴーストへは
     // 自動で乗らない(★未決として最終報告に記載・本バッチのスコープ外)。
     if (s.kind !== 'normal' && s.kind !== 'ghost-ally') continue;
+    // v0.25.2490: 雑魚(非ボス)の既定候補からゴーストを外す(狙うのは上のラッチ経由のみ)。
+    if (s.kind === 'ghost-ally' && mobGhostRules) continue;
     const sx = s.x + s.width / 2;
     const sy = s.y + s.height / 2;
     const d2 = (sx - ex) * (sx - ex) + (sy - ey) * (sy - ey);

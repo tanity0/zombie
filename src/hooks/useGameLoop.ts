@@ -4295,7 +4295,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const chaseTgt = resolveEnemyTarget(
                 boss, player,
                 bossFlareTargets.length > 0 ? [...useGameStore.getState().summons, ...bossFlareTargets] : useGameStore.getState().summons,
-                BOSS_SUMMON_AGGRO
+                BOSS_SUMMON_AGGRO,
+                false, newGameTime // v0.25.2490: 引数追加(裏ボスはisBossType=雑魚ヘイト規則の対象外・挙動不変)
               );
               // 慣性付き移動: 目標方向の desired 速度へ現在速度を BOSS_TURN_RESPONSE で寄せて位置を更新
               // (急な方向転換がぬるっと効く=慣性)。最高速は spd*mult のまま不変。

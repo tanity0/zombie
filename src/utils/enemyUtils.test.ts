@@ -188,6 +188,41 @@ describe('resolveEnemyTarget (seeker hidden behavior)', () => {
   });
 });
 
+// v0.25.2490(社長裁定「雑魚はプレイヤーを優先して狙う。守護霊に攻撃されたら守護霊に向く」)
+describe('resolveEnemyTarget (mob vs ghost-ally hate rules)', () => {
+  const mkGhost = (x: number, y: number): Summon =>
+    ({ x, y, width: 24, height: 24, kind: 'ghost-ally' } as unknown as Summon);
+  it('雑魚はゴーストが至近でも既定ではプレイヤーを狙う(既定候補から除外)', () => {
+    // ゴースト(10,0)がプレイヤー(300,0)よりずっと近くても、ラッチが無ければプレイヤー狙い。
+    const t = resolveEnemyTarget(mkEnemy(0, 0), mkPlayer(300, 0), [mkGhost(10, 0)], 400, false, 1000);
+    expect(t.isSummon).toBe(false);
+    expect(t.x).toBeCloseTo(316); // player center
+  });
+  it('ghostHateUntil期限内の雑魚は距離を問わずゴーストへ向く(ハードラッチ)', () => {
+    const e = { ...mkEnemy(0, 0), ghostHateUntil: 6000 };
+    const t = resolveEnemyTarget(e, mkPlayer(50, 0), [mkGhost(700, 0)], 400, false, 1000);
+    expect(t.isSummon).toBe(true);
+    expect(t.x).toBeCloseTo(712); // ghost center(aggro範囲400の外でも向く)
+  });
+  it('期限切れ/ゴースト不在なら通常規則(プレイヤー狙い)へ戻る', () => {
+    const e = { ...mkEnemy(0, 0), ghostHateUntil: 6000 };
+    const expired = resolveEnemyTarget(e, mkPlayer(50, 0), [mkGhost(700, 0)], 400, false, 7000);
+    expect(expired.isSummon).toBe(false);
+    const noGhost = resolveEnemyTarget(e, mkPlayer(50, 0), [], 400, false, 1000);
+    expect(noGhost.isSummon).toBe(false);
+    expect(noGhost.hidden).toBe(false);
+  });
+  it('通常召喚(kind=normal)の既存ヘイトは従来どおり(近ければ狙う)', () => {
+    const t = resolveEnemyTarget(mkEnemy(0, 0), mkPlayer(300, 0), [mkSummon(50, 0)], 400, false, 1000);
+    expect(t.isSummon).toBe(true);
+  });
+  it('ボス(giantbat)は従来どおりゴーストを候補に含める(タンク役の既存規則不変)', () => {
+    const boss = { ...mkEnemy(0, 0), type: 'giantbat' as const };
+    const t = resolveEnemyTarget(boss, mkPlayer(300, 0), [mkGhost(50, 0)], 400, false, 1000);
+    expect(t.isSummon).toBe(true);
+  });
+});
+
 describe('isBossType', () => {
   it('flags boss/elite types only', () => {
     expect(isBossType('giantbat')).toBe(true);

@@ -733,6 +733,9 @@ export const BOSS_MELEE_STUN_MULT = 5;
 // 通常敵の気絶相当で、この間は攻撃を受けても起きず(stun 維持)、5× 近接をタイマー切れまで“し放題”。
 export const BOSS_FULLSTUN_CRITS = 5;    // 完全気絶に必要なクリ回数(社長指示)
 export const BOSS_FULLSTUN_MS = 5000;    // 完全気絶の持続(= STUN_DURATION_MS 相当)
+// v0.25.2490(社長裁定・雑魚ヘイト): ゴースト起因ダメージを受けた雑魚がゴーストへ向く時間(gameTime ms)。
+// 被弾のたびに更新。切れる/ゴースト消滅でプレイヤー狙いへ戻る(resolveEnemyTarget側)。実機調整前提の叩き台。
+export const GHOST_MOB_HATE_MS = 5000;
 // クリが裏ボスに入ったときのカウント更新。規定回数で完全気絶を発動。返り値=マージするEnemy差分＋発動フラグ。
 export const bumpBossCrit = (
   enemy: Enemy,
@@ -7239,8 +7242,13 @@ export const useGameStore = create<GameState>((set, get) => ({
             ? { hateGhostBuckets: addHateDamage(enemy.hateGhostBuckets, state.gameTime, eff) }
             : { hatePlayerBuckets: addHateDamage(enemy.hatePlayerBuckets, state.gameTime, eff) })
         : {};
+      // v0.25.2490(社長裁定「守護霊に攻撃されたら守護霊に向く」): ゴースト起因ダメージを受けた
+      // 雑魚(非ボス)はGHOST_MOB_HATE_MSの間ゴーストを狙う(被弾のたび更新)。ボスはG2.5バケツ側(上)。
+      const mobHatePatch = (eff > 0 && hateSource === 'ghost' && !isBossType(enemy.type))
+        ? { ghostHateUntil: state.gameTime + GHOST_MOB_HATE_MS }
+        : {};
       const updatedEnemies = enemies.map(e =>
-        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...hatePatch } : e
+        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...hatePatch, ...mobHatePatch } : e
       );
       
       // Check if enemy was killed
@@ -9026,7 +9034,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 与えた敵(meleeAggro)」はプレイヤーへターゲットを切り替える(社長指示)。死んでいたら最寄りNPCへ。
         // シーカー: プレイヤー半透明中は通常敵(ボス/死神/イベントボス級を除く)から狙われない。
         const playerHidden = isSeekerActive(player, gameTime) && !isBossType(enemy.type);
-        let tgt = resolveEnemyTarget(enemy, player, targetSummons, ALCHEMY_AGGRO_RANGE, playerHidden);
+        let tgt = resolveEnemyTarget(enemy, player, targetSummons, ALCHEMY_AGGRO_RANGE, playerHidden, gameTime); // v0.25.2490: 雑魚ヘイトのラッチ判定にgameTimeを渡す
         if (enemy.escortTarget && !enemy.meleeAggro && rescueSurvivors.length > 0) {
           let sv = rescueSurvivors.find(s => s.id === enemy.escortTarget);
           if (!sv) {
@@ -9349,7 +9357,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       for (const ge of giantBoltFires) {
         const liveGe = get().enemies.find(e => e.id === ge.id) ?? ge;
         const hidden = isSeekerActive(bp, bGameTime) && !isBossType(liveGe.type); // giantbatはisBossType=true=常にfalse
-        const tgt = resolveEnemyTarget(liveGe, bp, bTargetSummons, ALCHEMY_AGGRO_RANGE, hidden);
+        const tgt = resolveEnemyTarget(liveGe, bp, bTargetSummons, ALCHEMY_AGGRO_RANGE, hidden, bGameTime); // v0.25.2490: 引数追加(giantbatはボス=ラッチ対象外・挙動不変)
         if ((liveGe.gBoltPattern ?? 'fan') === 'burst') {
           // B案: 同じ方向へ1発ずつ(この関数は連射の1発ごとに呼ばれる)。弾速は素のまま=数で圧をかける。
           get().addProjectile(createEnemyProjectile(liveGe, bp, tgt.x, tgt.y));

@@ -408,7 +408,7 @@ export const applyEnemyFire = (now: number): void => {
     // 錬金術: aggro内の通常召喚を撃つ。いなければ従来どおりプレイヤー。
     // シーカー: 半透明中は通常敵(ボス/死神/イベントボス級を除く)はプレイヤーを撃たない。
     const playerHidden = isSeekerActive(livePlayer, liveGameTime) && !isBossType(enemy.type);
-    const tgt = resolveEnemyTarget(enemy, livePlayer, liveSummonsForFire, ALCHEMY_AGGRO_RANGE, playerHidden);
+    const tgt = resolveEnemyTarget(enemy, livePlayer, liveSummonsForFire, ALCHEMY_AGGRO_RANGE, playerHidden, liveGameTime); // v0.25.2490: 雑魚ヘイト=ラッチ中の射手はゴーストを撃つ
     if (tgt.hidden) return; // 標的なし=非発砲
     const dx = tgt.x - (enemy.x + enemy.width / 2);
     const dy = tgt.y - (enemy.y + enemy.height / 2);

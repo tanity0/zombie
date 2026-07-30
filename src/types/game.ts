@@ -625,6 +625,10 @@ export interface Enemy {
   hatePlayerBuckets?: { idx: number; dmg: number }[];
   hateGhostBuckets?: { idx: number; dmg: number }[];
   hateTarget?: 'player' | 'ghost';
+  // v0.25.2490(社長裁定「雑魚はプレイヤーを優先して狙う。守護霊に攻撃されたら守護霊に向く」):
+  // 雑魚(非ボス)専用のゴーストヘイト終了時刻(gameTime基準)。damageEnemyがhateSource='ghost'の
+  // 被弾のたびに更新し、resolveEnemyTargetが期限内ならゴーストを狙わせる。ボスはG2.5のバケツ側(上)。
+  ghostHateUntil?: number;
 }
 
 // 'ghost-ally' = BOT_AND_GHOST.md G2(ゴースト助っ人・デバッグ召喚 `?ghost=1`)。**'ghost-ally'という
