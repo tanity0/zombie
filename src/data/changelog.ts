@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2561',
+    items: [
+      'ゲーム内容の変更はありません(確認: 歴史年表は残す・バッヂは併設、を仕様に明記)。',
+    ],
+  },
+  {
     version: '0.25.2560',
     items: [
       'ゲーム内容の変更はありません(資料室に実績バッヂのコレクションを作る仕様を確定・実装は順次)。',
