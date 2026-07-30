@@ -2,7 +2,8 @@
 // 掟の機械化: 守護霊の刀(一閃)/ワイヤーは**プレイヤーと同じ状態機械・同じ定数**を通ること。
 //  - Summon.ghostDash(DashLocomotionState)へ状態が入り、プレイヤーの state は1bitも動かない。
 //  - 無敵(ghostInvulnUntil)の窓長がプレイヤーの逆算打刻(invulnerableTime+INVULN_MS)と一致する。
-//  - CD(サブウェポン)は「1つの財布」=プレイヤーの subWeaponCooldowns を共有する。
+//  - CD(サブウェポン)は**主語ごとの帳簿**(v0.25.2541 §2.11追補で「1つの財布」を廃止)=
+//    守護霊のCDは Summon.ghostSubWeaponCooldowns に入り、プレイヤーのCD表は動かない。
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   useGameStore, INVULN_MS,
@@ -128,13 +129,17 @@ describe('項目6: ワイヤーアンカー(triggerWireAnchor)を守護霊が同
     expect(useGameStore.getState().player.wireAnchored).toBe(false);
   });
 
-  it('CDは「1つの財布」=プレイヤーの subWeaponCooldowns を共有する', () => {
+  // v0.25.2541(§2.11追補・GHOST-SAME-SPEC 発注A): 「1つの財布」は廃止=CDは**主語ごとの帳簿**。
+  // ゴーストのワイヤーCDはゴースト自前(Summon.ghostSubWeaponCooldowns)に入り、プレイヤーは動かない。
+  it('CDは主語ごとの帳簿(ゴースト自前)に入り、プレイヤーのCD表は動かない', () => {
     place(snap(['wire-anchor'], { 'wire-anchor': 1 }));
     useGameStore.getState().triggerWireAnchor(1, 0, GID);
-    const cd = useGameStore.getState().player.subWeaponCooldowns['wire-anchor'] ?? 0;
+    const g = useGameStore.getState().summons.find(s => s.id === GID)!;
+    const cd = g.ghostSubWeaponCooldowns?.['wire-anchor'] ?? 0;
     const gameTime = useGameStore.getState().gameTime;
     expect(cd).toBeCloseTo(gameTime + WIRE_PLANT_DELAY_MS + WIRE_DASH_MS + WIRE_COOLDOWN_BY_LEVEL[1], 6);
-    // 共有CD中は再発動しない
+    expect(useGameStore.getState().player.subWeaponCooldowns['wire-anchor']).toBeUndefined();
+    // 自分のCD中は再発動しない(プレイヤーと同条件)
     expect(useGameStore.getState().triggerWireAnchor(1, 0, GID)).toBe(false);
   });
 

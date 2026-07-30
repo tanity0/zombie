@@ -38,7 +38,7 @@ import { clearGhostBuildCache, ghostBuildFor, ghostActorPlayer } from '../utils/
 // 刀の一閃 / ワイヤーのロコモーション上書き(プレイヤーと守護霊で共有する状態機械・裁定2)。
 import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/dashLocomotion';
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
-import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
+import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { stepSpeedRamp, effectiveRampFrac, rampedBonusMult } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
@@ -2343,15 +2343,49 @@ export const combatActorPlayer = (ghostId?: string): Player | null => {
   if (!g) return null;
   const build = ghostBuildFor(g, st.player);
   if (!build) return null;
-  // 「1つの財布」(G2.6): サブウェポンのCD/資源だけは**プレイヤーの現在値**を見る。ビルドは召喚1体に
-  // つき1件メモ化した写しなので、ここで重ねないとCD表が召喚時点で凍り、CD明け判定が壊れる
-  // (v0.25.2525でワイヤー/相乗りサブのCDゲートが効かない実バグとして検出)。
+  // §2.11追補(v0.25.2541・GHOST-SAME-SPEC): サブCDは**ゴースト自前の帳簿**を重ねる
+  // (旧「1つの財布」=プレイヤーのsubWeaponCooldowns/strapsの重ねは廃止。守護霊は独立した
+  // 2人目のプレイヤー=2人分のサブが独立に回る)。ビルドは召喚1体につき1件メモ化した写しなので、
+  // ここで実体側の帳簿を重ねないとCD表が召喚時点で凍る(v0.25.2525の実バグと同型)。
+  // undefined=空={} =全サブ即使用可(実プレイヤーが途中参戦した時と同じ)。
   return {
     ...ghostActorPlayer(build, g),
     ...dashStateOf(g.ghostDash),
-    subWeaponCooldowns: st.player.subWeaponCooldowns,
-    straps: st.player.straps,
+    subWeaponCooldowns: g.ghostSubWeaponCooldowns ?? EMPTY_SUB_COOLDOWNS,
   };
+};
+
+// 空のCD帳簿(未使用のゴースト用)。毎回 {} を作ると疑似Playerの参照が毎フレーム変わるので固定する。
+const EMPTY_SUB_COOLDOWNS: Partial<Record<SubWeaponKey, number>> = {};
+
+/**
+ * サブウェポンCDの書き込み(主語で宛先を振り分ける・setActorDashStateと同型)。
+ * ghostId 未指定 → プレイヤーの帳簿(従来の setSubWeaponCooldown をそのまま呼ぶ=1bit不変)。
+ * ghostId 指定   → そのゴースト自前の帳簿(Summon.ghostSubWeaponCooldowns)。
+ *   CD補正(オーバークロック→タイムキーパー)は**プレイヤーと同じ純関数**を、ゴースト自身の
+ *   ビルド(疑似Player)を主語に通す。計測(recordSubUse/recordOverclockProc)は除外4(運用系)= 積まない。
+ */
+export const setActorSubWeaponCooldown = (
+  ghostId: string | undefined,
+  key: SubWeaponKey,
+  readyAt: number,
+): void => {
+  if (ghostId === undefined) {
+    useGameStore.getState().setSubWeaponCooldown(key, readyAt);
+    return;
+  }
+  const actor = combatActorPlayer(ghostId);
+  if (!actor) return;
+  const gameTime = useGameStore.getState().gameTime;
+  const delta = readyAt - gameTime;
+  const cd = applySubCooldownSkills(skillOverclockChance(actor), skillCooldownMult(actor), delta);
+  if (cd.overclockProc) return; // 成立=CDを付けない(プレイヤーと同じ)
+  const effReadyAt = cd.deltaMs === delta ? readyAt : gameTime + cd.deltaMs;
+  useGameStore.setState(s => ({
+    summons: s.summons.map(x => x.id === ghostId
+      ? { ...x, ghostSubWeaponCooldowns: { ...(x.ghostSubWeaponCooldowns ?? {}), [key]: effReadyAt } }
+      : x),
+  }));
 };
 
 /** 刀/ワイヤー状態の書き込み(主語で宛先を振り分ける)。ghostExtra=ゴースト固有フィールドの同時更新。 */
@@ -2659,14 +2693,15 @@ const fireDroneBoomerangOnSwing = (
     boomStopMs: DRONE_BOOM_STOP_MS_BY_LEVEL[lvl],
     ...(ghostOwned ? { ownerGhost: true } : {}), // 既存のゴースト発動サブと同じ視覚専用マーカー(青白tint)
   });
-  get().setSubWeaponCooldown('drone-boomerang', gameTime + DRONE_BOOM_COOLDOWN_MS);
+  // v0.25.2541(§2.11追補): CDは**主語の帳簿**へ(プレイヤー=従来どおり/守護霊=自前帳簿)。
+  setActorSubWeaponCooldown(ownerGhostId(owner), 'drone-boomerang', gameTime + DRONE_BOOM_COOLDOWN_MS);
   if (!ghostOwned) useGameStore.setState({ boomerangThrowFxAt: Date.now() }); // ブーメラン投擲音SEのトリガ
   return true;
 };
 
 /** フレアガン(近接スイング入口・CD=Lv別)。発動したら true。 */
 const fireFlareGunOnSwing = (
-  get: () => GameState, actor: Player, owner: SubWeaponOwner, gameTime: number,
+  actor: Player, owner: SubWeaponOwner, gameTime: number,
 ): boolean => {
   if (
     !actor.subWeapons.includes('flare-gun') ||
@@ -2692,7 +2727,8 @@ const fireFlareGunOnSwing = (
       until: gameTime + FLARE_GUN_FLIGHT_MS + FLARE_GUN_DURATION_MS,
     }],
   }));
-  get().setSubWeaponCooldown('flare-gun', gameTime + FLARE_GUN_CD_MS_BY_LEVEL[fgLevel]);
+  // v0.25.2541(§2.11追補): CDは**主語の帳簿**へ(プレイヤー=従来どおり/守護霊=自前帳簿)。
+  setActorSubWeaponCooldown(ownerGhostId(owner), 'flare-gun', gameTime + FLARE_GUN_CD_MS_BY_LEVEL[fgLevel]);
   return true;
 };
 
@@ -2710,7 +2746,10 @@ const fireJunkWeaponOnSwing = (
   // cost は下の「プレイヤーのみ消費」でしか使わないので Infinity 相当でも影響しない。
   const jwShot = computeJunkShot(jwLevel, ghostOwned ? Number.POSITIVE_INFINITY : actor.straps);
   if (!jwShot.fire) return false;
-  recordSubUse('junk-weapon'); // M35: CD無しサブの発動計測(手動合流点・挙動不変)
+  // M35: CD無しサブの発動計測(手動合流点・挙動不変)。除外4(運用系)= **プレイヤーの発動だけ**積む
+  // (v0.25.2541: 他の守護霊サブは setActorSubWeaponCooldown 経由で計測を通らないのに、ここだけ
+  //  ゴーストぶんも数えていた取りこぼしを揃えた。recordWireAnchorUse の ghostId 分岐と同じ流儀)。
+  if (!ghostOwned) recordSubUse('junk-weapon');
   // G2.6: 発射位置/向きはオーナー(既定=プレイヤー=従来と同値)。
   const jwDir = owner.facing ?? { x: 1, y: 0 };
   const jwMag = Math.max(0.001, Math.hypot(jwDir.x, jwDir.y));
@@ -2727,6 +2766,126 @@ const fireJunkWeaponOnSwing = (
       gameStats: { ...state.gameStats, strapsSpent: state.gameStats.strapsSpent + jwShot.cost }, // 消費計上=ショップ購入と同じ経路
       junkShotFxAt: Date.now(), // 発砲SE(shotgun-fire)のトリガ(useGameLoopが再生)
     }));
+  }
+  return true;
+};
+
+// ---------------------------------------------------------------------------
+// 分身(shadow-clone)の枠 — §2.11追補(v0.25.2541・GHOST-SAME-SPEC 発注B)。
+// 旧: ストアのグローバル1枠(`shadowClone`)をプレイヤーと守護霊が取り合う設計だった。
+// 新: **主語ごとに1枠**(プレイヤー=store.shadowClone / 守護霊=Summon.ghostShadowClone)。
+// 型・寿命・攻撃間隔・CD・Lv別値は**同じ**(ゴースト専用の別モデルは作らない)。
+// ---------------------------------------------------------------------------
+
+/** 主語の分身枠を読む(ghostId 未指定=プレイヤー)。居なければ null。 */
+export const shadowCloneOf = (state: GameState, ghostId?: string): ShadowCloneState | null => {
+  if (ghostId === undefined) return state.shadowClone;
+  return state.summons.find(s => s.id === ghostId && s.kind === 'ghost-ally')?.ghostShadowClone ?? null;
+};
+
+/** 主語の分身枠へ書く(setActorDashStateと同型の宛先振り分け)。 */
+const setActorShadowClone = (ghostId: string | undefined, clone: ShadowCloneState | null): void => {
+  if (ghostId === undefined) {
+    useGameStore.setState({ shadowClone: clone });
+    return;
+  }
+  useGameStore.setState(s => ({
+    summons: s.summons.map(x => x.id === ghostId ? { ...x, ghostShadowClone: clone ?? undefined } : x),
+  }));
+};
+
+/**
+ * 分身(近接スイング入口)。READY(自分の枠が空 & 自分のCD明け)なら攻撃位置に1体生成する。
+ * プレイヤーの `triggerCounter` と守護霊の `fireGhostMeleeSwingSubs` が**この1本**を通る
+ * (相乗り型サブ3種と同じ形)。生成したら true。
+ * ※ subWeaponBlockedByKatana はプレイヤー経路では常に false(刀モードは triggerCounter が
+ *   手前で return する)= 相乗り型サブ3種と同じ扱い。守護霊の一閃から呼ばれた時に効く。
+ */
+const spawnShadowCloneOnSwing = (
+  get: () => GameState, actor: Player, owner: SubWeaponOwner, gameTime: number,
+): boolean => {
+  const ghostId = ownerGhostId(owner);
+  if (
+    !actor.subWeapons.includes('shadow-clone') ||
+    subWeaponBlockedByKatana(actor, 'shadow-clone') ||
+    shadowCloneOf(get(), ghostId) !== null ||
+    gameTime < (actor.subWeaponCooldowns['shadow-clone'] ?? 0)
+  ) return false;
+  // 向き: プレイヤーは従来式(立ち絵の向き or 振り向き)。守護霊は実体の向き(ghostFacing)。
+  const facingLeft = ghostId !== undefined
+    ? (owner.facing?.x ?? 1) < 0
+    : (actor.direction === 'left' || (owner.facing != null && owner.facing.x < 0));
+  setActorShadowClone(ghostId, {
+    x: owner.x, y: owner.y, width: owner.width, height: owner.height,
+    // 絵=持ち主の写し(プレイヤー=本人のクラス / 守護霊=計測時ビルドのクラス。青白tintは描画側)。
+    facingLeft, characterClass: actor.characterClass,
+    spawnedAt: gameTime, attacksDone: 0, nextAttackAt: gameTime, // 生成直後の tick で1発目
+  });
+  get().spawnRing(ownerCenterX(owner), ownerCenterY(owner), 6, 44, 'rgba(203,213,225,0.6)', 3, 240); // 生成の控えめな白リング
+  return true;
+};
+
+// ---------------------------------------------------------------------------
+// センサー地雷(sensor-mine)の設置 — §2.11追補(v0.25.2541・GHOST-SAME-SPEC 発注C)。
+// チャージ帳簿(=同時設置上限と同数・個別10秒回復)を**主語ごと**に持つ
+// (プレイヤー=store.sensorMineCharges / 守護霊=Summon.ghostSensorMineCharges)。
+// 盤面(store.sensorMines)は世界の設置物として1本のままだが、上限は主語ごとに数える
+// (placeSensorMine が ownerGhostId 単位で最古置換する)。
+// ---------------------------------------------------------------------------
+
+/** 主語のチャージ帳簿を読む(ghostId 未指定=プレイヤー)。 */
+const sensorMineChargesOf = (state: GameState, ghostId?: string): number[] => {
+  if (ghostId === undefined) return state.sensorMineCharges;
+  return state.summons.find(s => s.id === ghostId && s.kind === 'ghost-ally')?.ghostSensorMineCharges ?? [];
+};
+
+/**
+ * センサー地雷(近接スイング入口)。準備完了チャージが1つ以上あれば足元に1個置く。
+ * プレイヤーの `triggerCounter` と守護霊の `fireGhostMeleeSwingSubs` が**この1本**を通る。
+ * 設置したら true。CD補正(オーバークロック→タイムキーパー)は主語自身のスキルで評価する。
+ */
+const placeSensorMineOnSwing = (
+  get: () => GameState, actor: Player, owner: SubWeaponOwner, gameTime: number,
+): boolean => {
+  if (
+    !actor.subWeapons.includes('sensor-mine') ||
+    subWeaponBlockedByKatana(actor, 'sensor-mine')
+  ) return false;
+  const ghostId = ownerGhostId(owner);
+  const smLevel = Math.max(1, Math.min(3, actor.subWeaponLevels['sensor-mine'] ?? 1));
+  const smCap = SENSOR_MINE_CAP_BY_LEVEL[smLevel];
+  if (sensorMineChargesReady(sensorMineChargesOf(get(), ghostId), gameTime, smCap) <= 0) return false;
+  // G2.6: 設置位置はオーナーの足元(既定=プレイヤー=従来と同値)。
+  const smFootX = ownerCenterX(owner);
+  const smFootY = ownerFootY(owner);
+  // §6.8 M31と同じ抽選=発動(設置)時。オーバークロック→タイムキーパーの適用は合流点と同じ
+  // 共有純関数(G2.6 CD正規化・挙動不変。チャージ再充填CDは常に正なので抽選条件も従来と等価)。
+  const smCd = applySubCooldownSkills(skillOverclockChance(actor), skillCooldownMult(actor), SENSOR_MINE_CHARGE_COOLDOWN_MS);
+  const smDuration = smCd.deltaMs;
+  const mine: SensorMineState = {
+    id: `smine-${sensorMineSeq++}`, x: smFootX, y: smFootY, placedAt: gameTime, triggeredAt: 0,
+    ...(ghostId !== undefined ? { ownerGhostId: ghostId } : {}),
+  };
+  useGameStore.setState(state => {
+    const nextMines = placeSensorMine(state.sensorMines, mine, smCap);
+    if (ghostId === undefined) {
+      return {
+        sensorMines: nextMines,
+        sensorMineCharges: consumeSensorMineCharge(state.sensorMineCharges, gameTime, smCap, smDuration) ?? state.sensorMineCharges,
+      };
+    }
+    return {
+      sensorMines: nextMines,
+      summons: state.summons.map(x => x.id === ghostId
+        ? { ...x, ghostSensorMineCharges: consumeSensorMineCharge(x.ghostSensorMineCharges ?? [], gameTime, smCap, smDuration) ?? (x.ghostSensorMineCharges ?? []) }
+        : x),
+    };
+  });
+  get().spawnRing(smFootX, smFootY, 4, 20, 'rgba(148,163,184,0.6)', 2, 200); // 設置の小リング(軽量)
+  // 除外4(運用系): 計測は**プレイヤーの設置だけ**積む(守護霊起因はテレメトリへ混ぜない)。
+  if (ghostId === undefined) {
+    recordSubUse('sensor-mine'); // M35計測: setSubWeaponCooldown経由をやめたため手動合流点
+    if (smCd.overclockProc) recordOverclockProc(); // §6.13: 成立=そのチャージを即再準備(smDuration=0で表現済み)
   }
   return true;
 };
@@ -3122,10 +3281,12 @@ interface GameState {
   fireHoming: () => void;
 
   // 分身(サブウェポン)。生成中=ACTIVE、null=READY/COOLDOWN。レンダラが直読みして白黒で描く。
+  // ※これは**プレイヤーの枠**。守護霊の枠は Summon.ghostShadowClone(§2.11追補=主語ごとに1枠)。
+  // 下の3アクションは ghostId 未指定=プレイヤー(従来と完全同一)/指定=その守護霊の枠。
   shadowClone: ShadowCloneState | null;
-  shadowCloneStrike: (clone: ShadowCloneState) => void; // 分身がその場で近接攻撃(プレイヤーの近接処理＋スキル効果を共用)
-  tickShadowClone: () => void;                           // 毎フレーム: 1秒ごとの自動攻撃と寿命(5秒)消滅を進める
-  expireShadowClone: () => void;                         // 分身を消滅させCD(3s)開始(寿命切れ/画面外)
+  shadowCloneStrike: (clone: ShadowCloneState, ghostId?: string) => void; // 分身がその場で近接攻撃(プレイヤーの近接処理＋スキル効果を共用)
+  tickShadowClone: (ghostId?: string) => void;           // 毎フレーム: 1秒ごとの自動攻撃と寿命(5秒)消滅を進める
+  expireShadowClone: (ghostId?: string) => void;         // 分身を消滅させCD(3s)開始(寿命切れ/画面外)
 
   // 火炎瓶(molotov)サブウェポン。現在のサイクルの投下進捗(純関数 computeMolotovTick の状態)。
   // null=アイドル(次サイクルはCD明けで開始)。判定自体は src/utils/molotov.ts、ここは適用のみ。
@@ -3219,7 +3380,7 @@ interface GameState {
   // プレイヤーの triggerCounter が通るのと**同じ3本の共通ヘルパ**(ドローンブーメラン/フレアガン/
   // ジャンクウェポン)を、主語(疑似Player+ghostAsOwner)だけ差し替えて同じ順序で呼ぶ。
   // 戻り値=実際に発動したか(呼び出し側が距離減衰SEを鳴らすため)。
-  fireGhostMeleeSwingSubs: (ghostId: string) => { boomerang: boolean; flare: boolean; junk: boolean };
+  fireGhostMeleeSwingSubs: (ghostId: string) => { boomerang: boolean; flare: boolean; junk: boolean; clone: boolean; mine: boolean };
   // Whip (鞭) actions. performWhipStrike sweeps the given enemies with whip rules
   // (low damage, big knockback, crit, finisher, 20% ammo) and returns the hit
   // count for charge. performHurricane spawns the suction vortex at the tip;
@@ -4465,40 +4626,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     // タイムキーパー/オーバークロック/M35計測(recordSubUse・成立時recordOverclockProc)は援護射撃と同じ流儀で手動維持)。
     // 盤面上限=N(既存)。チャージがあっても盤面がN個埋まっていれば最古を置換(判定=純関数 placeSensorMine)。
     // 感知/起爆/爆発は useGameLoop 側。スロー演出は出さない(CLAUDE.md)。
-    if (
-      player.subWeapons.includes('sensor-mine') &&
-      !subWeaponBlockedByKatana(player, 'sensor-mine')
-    ) {
-      const smLevel = Math.max(1, Math.min(3, player.subWeaponLevels['sensor-mine'] ?? 1));
-      const smCap = SENSOR_MINE_CAP_BY_LEVEL[smLevel];
-      if (sensorMineChargesReady(get().sensorMineCharges, gameTime, smCap) > 0) {
-        // G2.6: 設置位置はオーナーの足元(既定=プレイヤー=従来と同値)。
-        const smFootX = ownerCenterX(swingOwner);
-        const smFootY = ownerFootY(swingOwner);
-        // §6.8 M31と同じ抽選=発動(設置)時。オーバークロック→タイムキーパーの適用は合流点と同じ
-        // 共有純関数(G2.6 CD正規化・挙動不変。チャージ再充填CDは常に正なので抽選条件も従来と等価)。
-        const smCd = applySubCooldownSkills(skillOverclockChance(player), skillCooldownMult(player), SENSOR_MINE_CHARGE_COOLDOWN_MS);
-        const smOverclock = smCd.overclockProc;
-        const smDuration = smCd.deltaMs;
-        set(state => ({
-          sensorMines: placeSensorMine(
-            state.sensorMines,
-            { id: `smine-${sensorMineSeq++}`, x: smFootX, y: smFootY, placedAt: gameTime, triggeredAt: 0 },
-            smCap
-          ),
-          sensorMineCharges: consumeSensorMineCharge(state.sensorMineCharges, gameTime, smCap, smDuration) ?? state.sensorMineCharges,
-        }));
-        get().spawnRing(smFootX, smFootY, 4, 20, 'rgba(148,163,184,0.6)', 2, 200); // 設置の小リング(軽量)
-        recordSubUse('sensor-mine'); // M35計測: setSubWeaponCooldown経由をやめたため手動合流点
-        if (smOverclock) recordOverclockProc(); // §6.13: 成立=そのチャージを即再準備(smDuration=0で表現済み)
-      }
-    }
+    // v0.25.2541(発注C): 設置本体は共通ヘルパ(主語=actor/owner引数)。ここはオーナー=プレイヤー
+    // =従来と1bit同値。守護霊は fireGhostMeleeSwingSubs から同じ1本を通る。
+    placeSensorMineOnSwing(get, player, swingOwner, gameTime);
 
     // フレアガン(flare-gun): 近接攻撃時に進行方向(プレイヤーの向き)へ発射(CD=Lv1:5秒/Lv2:4秒/Lv3:3秒・
     // CD中のスイングでは出ない)。ダメージ無し。ハンドガン距離(RANGE_BY_CATEGORY.handgun)の地点に着弾し、
     // 着弾点が3秒間、召喚と同じ範囲(ALCHEMY_AGGRO_RANGE)の敵を引き付ける(疑似召喚として
     // resolveEnemyTarget へ合流=召喚と完全に同じ効き方。PACING_PUZZLE.md §6.6 M29)。スロー無し。
-    fireFlareGunOnSwing(get, player, swingOwner, gameTime);
+    fireFlareGunOnSwing(player, swingOwner, gameTime);
 
     // ジャンクウェポン(junk-weapon): 近接攻撃と同時にスイング方向へ散弾5発(ショットガンT1相当・CDなし。
     // PACING_PUZZLE.md §6.7 M30)。弾薬=スクラップ(1消費=3ダメージ・1発あたりLv1=1/Lv2=2/Lv3=3)。
@@ -5121,22 +5257,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 分身(サブウェポン): READY(分身なし＆CD明け)で近接攻撃すると、攻撃位置に分身を1体生成(固定)。
     // 以後は分身が自律的に1秒ごと×5秒の近接攻撃を繰り返す(tickShadowClone)。ここに到達するのは通常
     // ナイフのスイングのみ(刀/鞭モードは手前で return 済み)。生成中(ACTIVE)の再スイングは何もしない。
-    if (
-      get().player.subWeapons.includes('shadow-clone') &&
-      !get().shadowClone &&
-      gameTime >= (get().player.subWeaponCooldowns['shadow-clone'] ?? 0)
-    ) {
-      // G2.6: 生成位置/向きはオーナー(既定=プレイヤー=従来と同値)。絵(characterClass)はプレイヤーの分身のまま。
-      const facingLeft = player.direction === 'left' || (swingOwner.facing != null && swingOwner.facing.x < 0);
-      set({
-        shadowClone: {
-          x: swingOwner.x, y: swingOwner.y, width: swingOwner.width, height: swingOwner.height,
-          facingLeft, characterClass: player.characterClass,
-          spawnedAt: gameTime, attacksDone: 0, nextAttackAt: gameTime, // 生成直後の tick で1発目
-        },
-      });
-      get().spawnRing(pcx, pcy, 6, 44, 'rgba(203,213,225,0.6)', 3, 240); // 生成の控えめな白リング
-    }
+    // v0.25.2541(発注B): 生成本体は共通ヘルパ(主語=actor/owner引数)。ここはオーナー=プレイヤー
+    // =従来と1bit同値(枠=store.shadowClone・絵=本人のクラス)。守護霊は fireGhostMeleeSwingSubs
+    // から同じ1本を通り、自分の枠(Summon.ghostShadowClone)へ自分のクラス絵で出す。
+    spawnShadowCloneOnSwing(get, player, swingOwner, gameTime);
 
     // 訓練(M0)の近接教習カウンタ(社長台本v0.25.2293)。**敵に当たったスイングだけ**数える
     // (空振り・小物破壊は数えない=「3発当てた」で強制クリティカルが来る体験にする)。
@@ -5154,14 +5278,24 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // 分身がその場(clone位置)で同方向に近接攻撃。攻撃範囲/当たり判定/ダメージ/クリティカルは
   // プレイヤーの近接スイングと同じ計算(専用倍率なし)。分身からの攻撃は再生成判定を持たない。
-  shadowCloneStrike: (clone) => {
+  // v0.25.2541(§2.11追補・発注B): 主語(ghostId 未指定=プレイヤー本体=従来と完全同一 /
+  // 指定=守護霊の疑似Player=計測時ビルド+実体の座標/HP)。差分は除外1(演出)/除外4(計測)だけ。
+  shadowCloneStrike: (clone, ghostId) => {
     const now = Date.now();
-    const { player, gameTime, enemies } = get();
+    const { gameTime, enemies } = get();
+    const player = combatActorPlayer(ghostId);
+    if (!player) return;
+    const isGhost = ghostId !== undefined;
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player);
     const meleeDamage = meleeSwingBaseDamage(melee, player);
     const meleeCritChance = melee?.critChance ?? 0;
-    const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
+    // 守護霊はコンボ計数を持たないため中立(×1)=GHOST-BUILD-1 ★未決1・刀と同じ扱い。
+    const meleeComboMult = skillMeleeComboMult(
+      player, gameTime,
+      isGhost ? 0 : get().meleeFinishComboCount,
+      isGhost ? 0 : get().meleeFinishComboUntil,
+    );
     const meleeRange = huntingMeleeRadius(player);
     const ccx = clone.x + clone.width / 2;
     const ccy = clone.y + clone.height / 2;
@@ -5174,6 +5308,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slashAt: { x: number; y: number }[] = [];
     const cloneHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): このストライクでヒットした敵ID
     const cloneBossFullStunHits: { x: number; y: number }[] = []; // CRIT-UNIFY §9.4: 分身のクリで完全気絶が発動した位置(紫FX用・現行漏れの解消)
+    const cloneDealt = new Map<string, number>(); // 敵ID→この一撃で入れた生ダメージ(守護霊のヘイト計上用)
     let bossFinishHit = false;
 
     for (const enemy of enemies) {
@@ -5195,6 +5330,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
           // §5.21-追補4: スタン中ボスへの5×近接=ボスのフィニッシュ経路そのものなのでclampしない。
           const nh = Math.max(0, enemy.health - dmg);
           if (nh <= 0) killed.push({ enemy, finisher: false });
@@ -5206,6 +5342,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = meleeDamage * ELITE_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
           const nh = Math.max(0, enemy.health - dmg);
           if (nh <= 0) killed.push({ enemy, finisher: false });
           else survivors.push({ ...enemy, health: nh, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
@@ -5217,6 +5354,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
+      cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
       // §5.21-追補4: 非スタンの通常近接チップ(分身の自動攻撃)。finishKillOnly個体はHP1で踏みとどまる。
       const nh = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
       if (nh <= 0) { killed.push({ enemy, finisher: false }); continue; }
@@ -5248,12 +5386,28 @@ export const useGameStore = create<GameState>((set, get) => ({
     // §6.21 M46: 分身(サブウェポン)によるダメージ計測。channel='other'(プレイヤー自身の近接カウンター
     // 振りではなくサブウェポンの自律攻撃のため。finisher即死もrecordFinisherKillの対象外=★未決事項参照)。
     const cloneStrikeDamage = damageNumbers.reduce((sum, n) => sum + n.value, 0);
-    recordDamageDealt('other', cloneStrikeDamage);
+    // 除外4(運用系): 守護霊起因はプレイヤーの計測(botTelemetry)に混ぜない(刀/近接と同じ分離方針)。
+    if (!isGhost) recordDamageDealt('other', cloneStrikeDamage);
     set(state => ({
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
       // 専用の meleeHitAt もスタンプ(gun/爆発は damageEnemy 側の別経路なので対象外)。ミゲル以外は
       // 無害な余剰フィールド(useGameLoop のミゲル専用コントローラだけが参照)。
-      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true, meleeHitAt: gameTime } : e),
+      // v0.25.2541: 守護霊の分身のヒットは**ヘイトも守護霊**(damageEnemy(hateSource='ghost')と同じ
+      // 2種の効き方=対象ボスのバケツ+雑魚のghostHateUntil。分身の近接は damageEnemy を通らない
+      // 直接更新経路なので、プレイヤーの meleeAggro と同じ場所でここに書く)。
+      enemies: survivors.map(e => e.lastHit === now
+        ? {
+          ...e,
+          ...(isGhost
+            ? {
+              ...(isHateTrackedBossType(e.type) && (cloneDealt.get(e.id) ?? 0) > 0
+                ? { hateGhostBuckets: addHateDamage(e.hateGhostBuckets, gameTime, cloneDealt.get(e.id) ?? 0) }
+                : {}),
+              ...(!isBossType(e.type) ? { ghostHateUntil: gameTime + GHOST_MOB_HATE_MS } : {}),
+            }
+            : { meleeAggro: true, meleeHitAt: gameTime }),
+        }
+        : e),
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
@@ -5262,7 +5416,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt + cloneStrikeDamage,
       },
-      player: { ...state.player, knifeComboCount: cloneKnifeCombo.count, knifeComboUntil: cloneKnifeCombo.until },
+      // コンボ台帳(プレイヤーのナイフコンボ)は**プレイヤーの分身だけ**が書く(守護霊の分身で
+      // 本人のコンボが伸びると二重取りになる=刀/近接と同じ扱い・GHOST-BUILD-1 ★未決1)。
+      ...(isGhost ? {} : {
+        player: { ...state.player, knifeComboCount: cloneKnifeCombo.count, knifeComboUntil: cloneKnifeCombo.until },
+      }),
       // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
     }));
 
@@ -5280,45 +5438,53 @@ export const useGameStore = create<GameState>((set, get) => ({
     grantMeleeKillRewards(get, killed, player, gun);
     get().spawnSlash(ccx, ccy, 'rgba(226,232,240,0.95)');
     get().spawnRing(ccx, ccy, 6, 40, 'rgba(203,213,225,0.7)', 3, 240);
-    if (finisherHit || bossFinishHit) {
+    // 除外1(演出): 停止/スロー/寄りズームは守護霊起因では出さない(刀フィニッシュと同じ掟)。
+    if ((finisherHit || bossFinishHit) && !isGhost) {
       const [ztx, zty] = finishZoomTargetOf(killed);
       get().triggerFinishImpact(ztx, zty);
     }
     // プレイヤーの装備スキル効果を分身の攻撃にも適用(リーパー波及/カウンターマスター/ヘビーガンナー)。
     applyMeleeFinishSkillSpread(get, player, finisherHit, ccx, ccy, meleeRange, meleeDamage);
-    get().registerMultiHit(slashAt.length); // ヘビーガンナー: 2体以上ヒットで爆発範囲バフ
+    // ヘビーガンナー: 2体以上ヒットで爆発範囲バフ。**プレイヤーの分身だけ**が本人のバフを積む
+    // (守護霊の分身で本人のバフ窓が伸びる=主語をまたぐ横取り。N HITSバナーもプレイヤー頭上=除外1)。
+    if (!isGhost) get().registerMultiHit(slashAt.length);
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) counterMasterKnockback(get, ccx, ccy, counterMasterKbScale(player));
     // スキル: 救難信号(§6.10 M33⑦: 分身のヒットでも発動判定。基本近接/刀と同条件・索敵起点は分身中心)。
     applyRescueSignalProc(get, player, meleeDamage, cloneHitEnemyIds, ccx, ccy);
   },
 
   // 毎フレーム: 分身の自動近接(1秒ごと×最大5回)を進め、寿命(5秒)到達 or 回数上限で消滅。
-  tickShadowClone: () => {
-    const clone = get().shadowClone;
+  // v0.25.2541: 主語ごと(ghostId 未指定=プレイヤーの枠=従来と完全同一)。寿命・攻撃間隔・
+  // 回数上限は同じ定数=ゴースト用の別ルールは無い。
+  tickShadowClone: (ghostId) => {
+    const clone = shadowCloneOf(get(), ghostId);
     if (!clone) return;
     const { gameTime } = get();
     if (clone.attacksDone >= SHADOW_CLONE_MAX_ATTACKS || gameTime >= clone.spawnedAt + SHADOW_CLONE_DURATION_MS) {
-      get().expireShadowClone();
+      get().expireShadowClone(ghostId);
       return;
     }
     if (gameTime >= clone.nextAttackAt) {
-      get().shadowCloneStrike(clone);
-      set(state => state.shadowClone ? {
-        shadowClone: {
-          ...state.shadowClone,
-          attacksDone: state.shadowClone.attacksDone + 1,
-          nextAttackAt: state.shadowClone.nextAttackAt + SHADOW_CLONE_ATTACK_INTERVAL_MS,
+      get().shadowCloneStrike(clone, ghostId);
+      const after = shadowCloneOf(get(), ghostId);
+      if (after) {
+        setActorShadowClone(ghostId, {
+          ...after,
+          attacksDone: after.attacksDone + 1,
+          nextAttackAt: after.nextAttackAt + SHADOW_CLONE_ATTACK_INTERVAL_MS,
           swingAt: Date.now(), // 斬撃モーション(本体と同じナイフ振り)の起点(描画のみ)
-        },
-      } : {});
+        });
+      }
     }
   },
 
-  expireShadowClone: () => {
-    if (!get().shadowClone) return;
-    const level = Math.max(1, Math.min(3, get().player.subWeaponLevels['shadow-clone'] ?? 1));
-    set({ shadowClone: null });
-    get().setSubWeaponCooldown('shadow-clone', get().gameTime + SHADOW_CLONE_COOLDOWN_MS_BY_LEVEL[level]);
+  expireShadowClone: (ghostId) => {
+    if (!shadowCloneOf(get(), ghostId)) return;
+    // Lvは主語自身のビルド(プレイヤー=本人 / 守護霊=計測時ビルド)。CDも主語自身の帳簿へ。
+    const actor = combatActorPlayer(ghostId);
+    const level = Math.max(1, Math.min(3, (actor ?? get().player).subWeaponLevels['shadow-clone'] ?? 1));
+    setActorShadowClone(ghostId, null);
+    setActorSubWeaponCooldown(ghostId, 'shadow-clone', get().gameTime + SHADOW_CLONE_COOLDOWN_MS_BY_LEVEL[level]);
   },
 
   // 火炎瓶(molotov): 判定(いつ・何本)は useGameLoop が computeMolotovTick(純関数)で決め、
@@ -6468,7 +6634,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         set({ anchorEnemyHitFxAt: now });              // 命中SEのトリガ(SE自体は共通経路)
       }
       get().spawnRing(tcx, tcy, 6, 26, 'rgba(186,230,253,0.9)', 2, 200);
-      get().setSubWeaponCooldown('wire-anchor', gameTime + WIRE_SLAM_MS + WIRE_COOLDOWN_BY_LEVEL[lvl]);
+      // v0.25.2541(§2.11追補): CDは主語の帳簿へ(プレイヤー=従来どおり/守護霊=自前帳簿)。
+      setActorSubWeaponCooldown(ghostId, 'wire-anchor', gameTime + WIRE_SLAM_MS + WIRE_COOLDOWN_BY_LEVEL[lvl]);
       return true;
     }
 
@@ -6487,7 +6654,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ anchorPlantFxAt: now }); // 打ち込み音SEのトリガ
     get().spawnRing(ax, ay, 6, 22, 'rgba(96,165,250,0.85)', 2, 220); // 刺さった地点の小ポップ
     // CD は刺した直後から「待ち1秒 + 移動 + 規定CD」分かけておく(待ち中の連射防止)。
-    get().setSubWeaponCooldown('wire-anchor', gameTime + WIRE_PLANT_DELAY_MS + WIRE_DASH_MS + WIRE_COOLDOWN_BY_LEVEL[lvl]);
+    // v0.25.2541(§2.11追補): CDは主語の帳簿へ(プレイヤー=従来どおり/守護霊=自前帳簿)。
+    setActorSubWeaponCooldown(ghostId, 'wire-anchor', gameTime + WIRE_PLANT_DELAY_MS + WIRE_DASH_MS + WIRE_COOLDOWN_BY_LEVEL[lvl]);
     return true;
   },
 
@@ -6600,11 +6768,13 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・発注C / 台帳§7・項目11の前倒し分):
   // 守護霊の近接スイング(通常スイング/刀の一閃)を入口に、相乗り型サブをプレイヤーと同じ条件・
-  // 同じ効果で発動する。式・定数・CDの帳簿(=「1つの財布」player.subWeaponCooldowns)は共有ヘルパ側。
+  // 同じ効果で発動する。式・定数は共有ヘルパ側。
   // 主語(倍率/所持/Lv)=計測時ビルドの疑似Player、狙い(座標/向き)=ゴースト実体。
-  // ※sensor-mine は対象外(チャージ制の★未決2が未裁定)。shadow-clone は★未決(分身の帰属/見た目/計測)。
+  // v0.25.2541(§2.11追補・発注B/C): CDの帳簿は**主語ごと**(守護霊は自前=旧「1つの財布」を廃止)。
+  // 相乗り型サブに **分身(shadow-clone)** と **センサー地雷(sensor-mine)** を追加=プレイヤーの
+  // 近接スイング入口(triggerCounter)と同じ顔ぶれ・同じ順序になった(★未決2/★未決5の裁定を実装)。
   fireGhostMeleeSwingSubs: (ghostId) => {
-    const none = { boomerang: false, flare: false, junk: false };
+    const none = { boomerang: false, flare: false, junk: false, clone: false, mine: false };
     const st = get();
     const ghost = st.summons.find(s => s.id === ghostId && s.kind === 'ghost-ally');
     const actor = combatActorPlayer(ghostId); // 疑似Player(ビルド+実体の座標/HP)。ビルド無し=null
@@ -6613,11 +6783,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const gameTime = st.gameTime;
     const melee = actor.weapons.find(w => w.isMelee);
     const meleeDamage = meleeSwingBaseDamage(melee, actor); // ブーメランの接触ダメージ=通常近接同等
-    // 呼び出し順は triggerCounter と同じ(ブーメラン→フレア→ジャンク)。
+    // 呼び出し順は triggerCounter と同じ(ブーメラン→地雷→フレア→ジャンク→分身)。
     const boomerang = fireDroneBoomerangOnSwing(get, actor, owner, gameTime, meleeDamage);
-    const flare = fireFlareGunOnSwing(get, actor, owner, gameTime);
+    const mine = placeSensorMineOnSwing(get, actor, owner, gameTime);
+    const flare = fireFlareGunOnSwing(actor, owner, gameTime);
     const junk = fireJunkWeaponOnSwing(get, actor, owner);
-    return { boomerang, flare, junk };
+    const clone = spawnShadowCloneOnSwing(get, actor, owner, gameTime);
+    return { boomerang, flare, junk, clone, mine };
   },
 
   damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove) => {

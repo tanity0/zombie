@@ -748,9 +748,16 @@ export interface Summon {
   knockbackVx?: number;
   knockbackVy?: number;
   knockbackUntil?: number;
-  // ---- G2.6(サブウェポンのオーナー抽象化)。CDは既存の1本を共有=個別CD/在庫は持たない ----
+  // ---- G2.6(サブウェポンのオーナー抽象化) ----
   ghostSubClaim?: boolean;     // 「次のサブ発動1回」をゴーストがオーナーとして使う予約。
   ghostLastSubUseAt?: number;  // ゴーストが最後にサブを実際に使った時刻(ms・Date.now基準)。
+  // §2.11追補(v0.25.2541・GHOST-SAME-SPEC): 守護霊は**独立した2人目のプレイヤー**なので、
+  // サブウェポンのCD/チャージ/分身の枠も**主語ごと**に持つ(旧「1つの財布」=プレイヤーの
+  // subWeaponCooldowns 共有は廃止)。型はプレイヤーと同じもの=ゴースト専用の別モデルは作らない。
+  // undefined = まだ一度も使っていない(=空=全サブ即使用可。実プレイヤーの参戦と同じ)。
+  ghostSubWeaponCooldowns?: Partial<Record<SubWeaponKey, number>>; // ゴースト自前のサブCD帳簿(gameTime基準)
+  ghostShadowClone?: ShadowCloneState;   // ゴーストが出した分身(プレイヤーの store.shadowClone と同型・同ルール)
+  ghostSensorMineCharges?: number[];     // ゴースト自前のセンサー地雷チャージ(回復待ちreadyAtの配列)
   // ---- G4b(BOT_AND_GHOST.md §2.9(4)): 技への反応ロール(ghostDriver.GhostMoveRollの持ち越し) ----
   // 型はghostDriver.tsのGhostMoveRollと同形(このファイルはutilsをimportしない=循環回避でフラットに持つ)。
   ghostMoveRollKey?: string;                                      // 進行中の技キー(undefined=技なし)

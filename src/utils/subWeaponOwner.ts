@@ -5,8 +5,11 @@
 // 呼び出し側が従来どおり適用する)。ゴースト(summons の kind='ghost-ally')は自分をオーナーとして渡す。
 // 純関数(store/React/PixiJS非依存)=ヘッドレスでテスト可能。
 //
-// 「1つの財布」原則: オーナーが誰でも CD は既存の1本(player.subWeaponCooldowns)を共有する。
-// この型は座標/向き/受け手の解決だけを担い、CD・資源の帳簿には関与しない。
+// この型は座標/向き/受け手の解決だけを担い、CD・資源の帳簿そのものは持たない。
+// ※旧「1つの財布」(オーナーが誰でもCDはplayer.subWeaponCooldowns 1本を共有)は §2.11追補
+//   (社長裁定2026-07-31「守護霊=独立した2人目のプレイヤー」)で**廃止**。帳簿は主語ごと
+//   (プレイヤー=player.subWeaponCooldowns / 守護霊=Summon.ghostSubWeaponCooldowns)。
+//   宛先の決定は ownerGhostId(下)を使う。
 
 export interface SubWeaponOwner {
   kind: 'player' | 'ghost-ally';
@@ -56,6 +59,14 @@ export const ghostAsOwner = (
   facing: { x: ghost.ghostFacing ?? 1, y: 0 },
   summonId: ghost.id,
 });
+
+/**
+ * オーナーの「主語ID」。プレイヤー=undefined(既定の主語)、守護霊=その summon.id。
+ * combatActorPlayer / setActorDashState / setActorSubWeaponCooldown へ渡す ghostId と同じ意味
+ * (§2.11追補 v0.25.2541: 状態は主語ごと=CD帳簿・分身・地雷チャージの宛先を決める1本)。
+ */
+export const ownerGhostId = (o: SubWeaponOwner): string | undefined =>
+  o.kind === 'ghost-ally' ? (o.summonId ?? undefined) : undefined;
 
 export const ownerCenterX = (o: OwnerBodyLike): number => o.x + o.width / 2;
 export const ownerCenterY = (o: OwnerBodyLike): number => o.y + o.height / 2;

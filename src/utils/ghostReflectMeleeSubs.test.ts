@@ -4,8 +4,10 @@
 //  A: 弾反射     — 窓(ghostCounterWindowEnd=COUNTER_WINDOW)中の被弾は反射になる。反射弾は
 //                  'ghost-reflect'帰属(計測除外/ヘイト分離)で、プレイヤーのCD/成立時刻は動かない。
 //  B: 気絶フィニッシュ — ボス5×(完全気絶中は気絶維持)/強個体3×/雑魚即死。裁定はプレイヤーと同じ純関数。
-//  C: サブ4種の相乗り — ドローンブーメラン/フレアガン/ジャンクウェポン(shadow-cloneは★未決で停止)。
-//                  CDは「1つの財布」=プレイヤーの subWeaponCooldowns を共有。スクラップは消費しない。
+//  C: サブの相乗り — ドローンブーメラン/フレアガン/ジャンクウェポン。スクラップは消費しない。
+//                  ※v0.25.2541(§2.11追補・GHOST-SAME-SPEC)で「1つの財布」は廃止=CDはゴースト
+//                    自前の帳簿(Summon.ghostSubWeaponCooldowns)。分身/センサー地雷も同じ入口に合流。
+//                    追加ぶんの不変条件は ghostSameSpec.test.ts が持つ。
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   useGameStore, COUNTER_WINDOW, COUNTER_EXTEND_PER_HIT, REFLECT_DAMAGE_MULTIPLIER,
@@ -229,7 +231,9 @@ describe('B: 気絶敵への近接フィニッシュ(台帳§3-3)', () => {
 
 // ---------------------------------------------------------------------------
 describe('C: 近接スイング相乗り型サブ(台帳§7)', () => {
-  it('ドローンブーメラン: ゴースト位置から出て、CDは「1つの財布」(プレイヤーのCD表)に入る', () => {
+  // v0.25.2541(§2.11追補): CDは「1つの財布」を**廃止**し、守護霊の自前帳簿へ入る
+  // (ghostSubWeaponCooldowns)。プレイヤーのCD表は動かない=2人分が独立に回る。
+  it('ドローンブーメラン: ゴースト位置から出て、CDはゴースト自前の帳簿に入る(プレイヤーは動かない)', () => {
     place(snap(['drone-boomerang']));
     const r = useGameStore.getState().fireGhostMeleeSwingSubs(GID);
     expect(r.boomerang).toBe(true);
@@ -237,20 +241,22 @@ describe('C: 近接スイング相乗り型サブ(台帳§7)', () => {
     expect(boom).toBeDefined();
     expect(boom.ownerGhost).toBe(true);
     expect(boom.boomOriginX).toBe(GX + 16); // ゴースト中心
-    expect(useGameStore.getState().player.subWeaponCooldowns['drone-boomerang'])
+    expect(ghost()!.ghostSubWeaponCooldowns?.['drone-boomerang'])
       .toBeGreaterThanOrEqual(useGameStore.getState().gameTime + DRONE_BOOM_COOLDOWN_MS - 1);
+    expect(useGameStore.getState().player.subWeaponCooldowns['drone-boomerang']).toBeUndefined();
     // CD中の次のスイングでは出ない(プレイヤーと同条件)
     expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID).boomerang).toBe(false);
   });
 
-  it('フレアガン: ゴースト位置から発射され、CDが入る', () => {
+  it('フレアガン: ゴースト位置から発射され、CDはゴースト自前の帳簿に入る', () => {
     place(snap(['flare-gun']));
     const r = useGameStore.getState().fireGhostMeleeSwingSubs(GID);
     expect(r.flare).toBe(true);
     const flare = useGameStore.getState().flareGunFlares[0];
     expect(flare.fromX).toBe(GX + 16);
-    expect(useGameStore.getState().player.subWeaponCooldowns['flare-gun'])
+    expect(ghost()!.ghostSubWeaponCooldowns?.['flare-gun'])
       .toBeGreaterThan(useGameStore.getState().gameTime);
+    expect(useGameStore.getState().player.subWeaponCooldowns['flare-gun']).toBeUndefined();
     expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID).flare).toBe(false);
   });
 
@@ -267,16 +273,19 @@ describe('C: 近接スイング相乗り型サブ(台帳§7)', () => {
   });
 
   it('刀ビルドでは相乗り型サブは出ない(プレイヤーと同じ排他=subWeaponBlockedByKatana)', () => {
-    place(snap(['katana', 'drone-boomerang', 'flare-gun', 'junk-weapon']));
+    place(snap(['katana', 'drone-boomerang', 'flare-gun', 'junk-weapon', 'shadow-clone', 'sensor-mine']));
     const r = useGameStore.getState().fireGhostMeleeSwingSubs(GID);
-    expect(r).toEqual({ boomerang: false, flare: false, junk: false });
+    expect(r).toEqual({ boomerang: false, flare: false, junk: false, clone: false, mine: false });
     expect(useGameStore.getState().projectiles.length).toBe(0);
+    expect(useGameStore.getState().sensorMines.length).toBe(0);
+    expect(ghost()!.ghostShadowClone).toBeUndefined();
   });
 
   it('持っていないサブは出ない / ゴースト不在なら何も起きない', () => {
     place(snap([]));
-    expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID)).toEqual({ boomerang: false, flare: false, junk: false });
-    expect(useGameStore.getState().fireGhostMeleeSwingSubs('nope')).toEqual({ boomerang: false, flare: false, junk: false });
+    const none = { boomerang: false, flare: false, junk: false, clone: false, mine: false };
+    expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID)).toEqual(none);
+    expect(useGameStore.getState().fireGhostMeleeSwingSubs('nope')).toEqual(none);
   });
 
   it('プレイヤーのスクラップ/CD以外の持ち物は動かない(ゴースト発動でプレイヤー在庫は減らない)', () => {

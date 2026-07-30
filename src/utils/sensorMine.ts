@@ -1,6 +1,7 @@
 // センサー地雷(sensor-mine)サブウェポン: 設置(同時数上限+最古置換)と感知→2秒起爆の判定を
 // 純関数に閉じ込める(CLAUDE.md「実装精度の規律」4: 配線ロジックは純関数に切り出してテスト)。
-// 設置は gameStore.triggerCounter(近接スイング)、起爆の反映と爆発処理は useGameLoop、
+// 設置は gameStore の近接スイング入口(プレイヤー=triggerCounter / 守護霊=fireGhostMeleeSwingSubs。
+// どちらも共通ヘルパ placeSensorMineOnSwing を通る)、起爆の反映と爆発処理は useGameLoop、
 // 描画は pixiScene.syncSensorMines(読むだけ)。仕様の正は PACING_PUZZLE.md §6.4(バッチM27)。
 // チャージ制(個別CD)の仕様の正は §6.13(バッチM36)。
 
@@ -16,14 +17,20 @@ export const SENSOR_MINE_CHARGE_COOLDOWN_MS = 10000;
 // (triggeredAt + SENSOR_MINE_FUSE_MS で起爆)。
 export interface SensorMineState {
   id: string;
-  x: number;         // 設置点(プレイヤー足元)
+  x: number;         // 設置点(オーナーの足元)
   y: number;
   placedAt: number;  // 設置時刻(gameTime ms)。最古置換の比較キー
   triggeredAt: number;
+  // §2.11追補(v0.25.2541・GHOST-SAME-SPEC): 置いた主語。undefined=プレイヤー(従来と同値)、
+  // 文字列=その守護霊(summon.id)。盤面(この配列)は世界の設置物として1本のままだが、
+  // **上限・チャージ・爆発の倍率評価は主語ごと**に解決する(実プレイヤーが2人いる時と同じ形)。
+  ownerGhostId?: string;
 }
 
 // 設置: 上限(cap)到達中は最古(placedAt 最小。同時刻は配列で先のもの)を消して置き直す(§6.4 叩き台)。
 // 副作用なし(新しい配列を返す)。cap<=0 は「置けない」(現状 level>=1 なので通常は到達しない)。
+// v0.25.2541: 上限は**同じオーナーの地雷だけ**を数える(=主語ごとの上限。プレイヤーの地雷しか
+// 盤面に無い従来ケースでは1bitも変わらない)。
 export const placeSensorMine = (
   mines: readonly SensorMineState[],
   mine: SensorMineState,
@@ -31,11 +38,14 @@ export const placeSensorMine = (
 ): SensorMineState[] => {
   if (cap <= 0) return [...mines];
   const next = [...mines];
-  while (next.length >= cap) {
-    let oldest = 0;
-    for (let i = 1; i < next.length; i++) {
-      if (next[i].placedAt < next[oldest].placedAt) oldest = i;
+  const mineOf = (m: SensorMineState) => m.ownerGhostId === mine.ownerGhostId;
+  while (next.filter(mineOf).length >= cap) {
+    let oldest = -1;
+    for (let i = 0; i < next.length; i++) {
+      if (!mineOf(next[i])) continue;
+      if (oldest < 0 || next[i].placedAt < next[oldest].placedAt) oldest = i;
     }
+    if (oldest < 0) break; // 理論上到達しない(filter長>0なら必ず見つかる)。無限ループ防止。
     next.splice(oldest, 1);
   }
   next.push(mine);

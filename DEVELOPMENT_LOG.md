@@ -1,5 +1,71 @@
 # Development Log
 
+## v0.25.2541 — バッチGHOST-SAME-SPEC: 守護霊=独立した2人目のプレイヤー(サブCD分離/分身/センサー地雷)【2026-07-31 01:25 JST】
+
+正本= BOT_AND_GHOST.md §2.11追補(社長裁定2026-07-31「もう例外はない。同じ仕様にして。将来オンライン
+プレイも考えているので他の考え方は入れないで」)+ research/GHOST_PARITY_LEDGER.md 発注 GHOST-SAME-SPEC。
+**プレイヤー側の式・定数・分岐は1文字も変えていない(主語引数化のみ)。** 差分は除外1(演出)/除外4(運用系)だけ。
+詳細な実装方式・申し送りは台帳の「実装ログ: バッチGHOST-SAME-SPEC」が正本。ここは要約。
+
+### A. サブCD帳簿の分離(「1つの財布」の廃止=体験が変わる)
+- `Summon.ghostSubWeaponCooldowns`(プレイヤーと**同じ型**)を新設。召喚時は空=全サブ即使用可。
+  `combatActorPlayer` は疑似Playerへ自前帳簿を重ねる(旧: プレイヤーの `subWeaponCooldowns`/`straps`
+  を重ねる=廃止)。書き込みは新 `setActorSubWeaponCooldown(ghostId, key, readyAt)` が主語で振り分け
+  (`setActorDashState` と同型)。CD補正(オーバークロック→タイムキーパー)は**同じ純関数**を
+  ゴースト自身のビルドで通す。計測(recordSubUse/recordOverclockProc)は除外4=積まない。
+- 合流させた発動口: ブーメラン/フレア/ワイヤー/分身/センサー地雷 + **claim経由6種**
+  (heavy-grenade/marksman-trap/decoy/shield/turret/fire-knife)。claim経由は新ヘルパ `subSubject(key)`
+  で主語を決める=**ゴーストがその種を持ちCDも明けている時だけゴースト**、それ以外はプレイヤー
+  (予約は残す)。→ ゴーストが持っていない種でプレイヤーのサブが止まる事故を作らない。予約が無い
+  間は従来と1bit同じ。
+- 取りこぼし修正: ジャンクウェポンの `recordSubUse` がゴースト発動でも計測に乗っていた(v0.25.2525)
+  → プレイヤーのみへ(`recordWireAnchorUse` の ghostId 分岐と同じ流儀・挙動不変)。
+
+### B. 分身(shadow-clone)の主語ごと化(★未決5クローズ)
+- 枠= プレイヤー `store.shadowClone` / 守護霊 `Summon.ghostShadowClone`(**同じ型**)。取り合いなし。
+- 生成は共通ヘルパ `spawnShadowCloneOnSwing` へ抽出(相乗り型サブ3種と同じ形)。`tickShadowClone` /
+  `expireShadowClone` / `shadowCloneStrike` を主語引数化(未指定=プレイヤー=完全同一)。寿命5秒・
+  1秒毎×5回・Lv別CD・画面外消滅は**同じ定数/同じ関数**。useGameLoop は主語ごとに1回ずつ回す。
+- 見た目= 計測ビルドのクラス立ち絵+守護霊と同じ青白tint/薄さ。描画は既存の分身描画を
+  `drawCloneSlot` へ主語引数化し、スプライト一式を主語ごとに1組(`cloneSlots.player/.ghost`)。
+- 攻撃= 主語は疑似Player。除外4(recordDamageDealt/本人のコンボ台帳/ヘビーガンナー窓は触らない)・
+  除外1(triggerFinishImpact を出さない)・ヘイト='ghost'(hateGhostBuckets+ghostHateUntil)。
+
+### C. センサー地雷(sensor-mine)の主語ごと化(★未決2クローズ)
+- チャージ帳簿= プレイヤー `store.sensorMineCharges` / 守護霊 `Summon.ghostSensorMineCharges`(同表現)。
+- 盤面 `store.sensorMines` は世界の1本のまま。`SensorMineState.ownerGhostId` で主語を持ち、**上限は
+  同じオーナーの地雷だけを数えて最古置換**(`placeSensorMine` を主語対応・プレイヤー単独では1bit不変)。
+- 設置は共通ヘルパ `placeSensorMineOnSwing`(プレイヤー=triggerCounter / 守護霊=近接スイング入口)。
+  起爆の倍率評価は置いた本人の主語、守護霊の地雷は `damageEnemy(..., null, 'ghost')`。
+  ※発注文の「発動=ghostSubClaim経由」は**プレイヤー側の入口が近接スイング**であるため近接スイング
+  入口へ合流させた(claim へ足すと"ゴースト専用の発動口"になる)。理由は台帳の実装ログに明記。
+
+### 変更ファイル
+`src/types/game.ts`(Summon 3フィールド) / `src/store/gameStore.ts`(combatActorPlayer・
+setActorSubWeaponCooldown新設・共通ヘルパ2本抽出・分身3アクションの主語引数化・
+fireGhostMeleeSwingSubs へ2種追加) / `src/hooks/useGameLoop.ts`(subSubject・claim経由6種の主語化・
+分身tickの主語ごと実行・地雷起爆の主語化) / `src/utils/sensorMine.ts`(ownerGhostId+主語別上限) /
+`src/utils/subWeaponOwner.ts`(ownerGhostId) / `src/pixi/pixiScene.ts`(分身描画の主語引数化=最小差分) /
+新規 `src/utils/ghostSameSpec.test.ts` + 既存2テスト更新 + 版管理3 + research/GHOST_PARITY_LEDGER.md。
+
+### 検証
+`npm run typecheck` エラー0 / `npm run lint` エラー0(既存warning 8) /
+`npx vitest related`(変更ファイル)= 28ファイル **395件パス**(2 skipped)。新規19件。実機確認は社長。
+
+### 自己点検(CLAUDE.md 実装精度の規律5)
+憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)に**抵触しない**——湧き・ペーシング・
+ステージ構成・敵の強さに一切触れていない。ドクトリン自己点検: **共有帳簿・専用枠・ゴースト専用モデルを
+1つも新設していない**(足したのは全て「プレイヤーと同じ型を主語ごとに持つ」状態と、主語で宛先を
+振り分ける関数のみ)。負荷 **1/10**(プール済みスプライトの差し替え+主語ぶんの分岐のみ。
+per-frame Graphics/Text 生成なし・強glow増やさない)。
+
+### 申し送り
+- 項目11の残り(dog/molotov/striker-quick-mag/homing/first-aid-kit/support-sniper)は**ゴーストが
+  そもそも発動しない**ため帳簿の共有も起きない。載せるなら各サブの発動本体を `(actor, owner)` 引数の
+  関数へ抽出する(claim経由6種と同じ形)=別発注。
+- 守護霊の地雷の見た目はプレイヤーの地雷と同一(主語マーカー無し)。付けるかは未発注。
+- ★未決: なし。
+
 ## v0.25.2540 — V4-3便2: 音波の弾丸(球形版)を受領・搭載(文書+素材のみ)【2026-07-31 01:15 JST】
 
 - 修正プロンプトでの再生成分を検分: 円形の同心円リング+白橙の核・向き非依存=**弾として合格**

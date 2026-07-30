@@ -1084,6 +1084,21 @@ const STATUS_ALLY = 0x38bdf8;   // sky-400: 味方(救助対象)
 // 装備の見た目は再現しない(霊体だから見えなくても世界観として自然)。
 const GHOST_ALLY_TINT = 0x9fd8ff;
 const GHOST_ALLY_ALPHA = 0.7;
+// 分身(shadow-clone)1体ぶんの描画スプライト一式。§2.11追補(v0.25.2541)で分身が**主語ごと**に
+// なったので、同じ一式をプレイヤー用と守護霊用に1組ずつ持つ(描画コードは drawCloneSlot で共有)。
+interface CloneSlotSprites {
+  body: Sprite;   // 立ち絵(白黒キャッシュ・足元アンカー)
+  knife: Sprite;  // 斬撃3コマ(1枚目)
+  slash: Sprite;  // 同 2枚目(弧)
+  trail: Sprite;  // 同 3枚目(残光)
+  wpn: Sprite;    // 装備近接の実絵
+  added: boolean; // 立ち絵をレイヤーへ追加済みか
+  setup: boolean; // 斬撃3コマをレイヤーへ追加済みか
+}
+const makeCloneSlot = (): CloneSlotSprites => ({
+  body: new Sprite(), knife: new Sprite(), slash: new Sprite(), trail: new Sprite(), wpn: new Sprite(),
+  added: false, setup: false,
+});
 // v0.25.2475(社長指示「はりぼてをやめたい。ちゃんとプレイヤーとまったく同じ描画に乗せて」):
 // 守護霊もプレイヤーと同じ歩きコマ/ナイフ振り/発砲反動+閃光で描く(全て視覚のみ=判定/挙動/ダメージ不変)。
 // 「移動中か」は store を増やさずレンダラ側で前フレーム位置との差分から推定する(最小実装)。
@@ -1701,15 +1716,15 @@ export class PixiScene {
   private thrownBagViews = new Map<string, Sprite>();
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
-  // 分身(サブウェポン): プレイヤーと同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト。
-  private shadowCloneSprite = new Sprite();
-  private shadowCloneAdded = false;
-  // 分身の斬撃モーション(本体と同じナイフ振り2枚)。actorLayer に置き zIndex で本体と前後ソート。
-  private cloneKnife = new Sprite();
-  private cloneKnifeSlash = new Sprite();
-  private cloneKnifeTrail = new Sprite();                  // 3枚目(弧の残光)。本体と同じ3コマ差し替え
-  private cloneMeleeWpn = new Sprite();                    // 分身にも装備近接の実絵を重ねる
-  private cloneKnifeSetup = false;
+  // 分身(サブウェポン): 持ち主と同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト+
+  // 斬撃モーション(本体と同じナイフ振り3コマ+装備近接の実絵)。actorLayer に置き zIndex で前後ソート。
+  // v0.25.2541(§2.11追補「分身は主語ごとに1体」): **同じ一式を主語ごとに1組**持つ
+  // (player=プレイヤーの分身 / ghost=守護霊の分身。描画コードは1本=drawCloneSlot を共有し、
+  //  差分は絵の主語(クラス/近接武器)と tint/alpha だけ)。
+  private cloneSlots: Record<'player' | 'ghost', CloneSlotSprites> = {
+    player: makeCloneSlot(),
+    ghost: makeCloneSlot(),
+  };
   // 守護霊(ghost-ally)のアニメ状態(v0.25.2475・視覚のみ)。歩き推定=前フレーム位置との差分(store追加なし)。
   private ghostAnim: { id: string; prevX: number; prevY: number; movingUntil: number } | null = null;
   // 守護霊の近接スイング(分身 cloneKnife 群と同じ型・守護霊専用の一式)。actorLayer 直下で zIndex ソート。
@@ -8706,61 +8721,98 @@ export class PixiScene {
     return rt;
   }
 
-  // 分身(サブウェポン)を描く。外見はプレイヤーと同一(待機=frame0)を白黒キャッシュで。
+  // 分身(サブウェポン)を描く。外見は**持ち主**と同一(待機=frame0)を白黒キャッシュで。
   // 位置は生成時に固定(clone.x/y)。攻撃の見た目は store 側のスラッシュ/リングが担当する。
+  // v0.25.2541(§2.11追補): 主語ごとに1体=プレイヤーの分身(store.shadowClone)と守護霊の分身
+  // (Summon.ghostShadowClone)を**同じ描画関数**で描く。守護霊の分身は「そのビルドのクラス絵+
+  // 守護霊と同じ青白tint/薄さ」= 既存の ownerGhost 視覚マーカー(ブーメラン/弾)の前例どおり。
   private syncShadowClone(player: Player) {
-    const clone: ShadowCloneState | null = useGameStore.getState().shadowClone;
-    const spr = this.shadowCloneSprite;
-    if (!clone) { spr.visible = false; this.cloneKnife.visible = false; this.cloneKnifeSlash.visible = false; this.cloneKnifeTrail.visible = false; this.cloneMeleeWpn.visible = false; return; }
-    if (!this.shadowCloneAdded) {
+    this.drawCloneSlot(
+      this.cloneSlots.player,
+      useGameStore.getState().shadowClone,
+      player,
+      player.weapons.find(w => w.isMelee)?.key,
+      0xffffff, 1,
+    );
+    const cloneGhost = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally' && s.ghostShadowClone);
+    const ghostClone = cloneGhost?.ghostShadowClone ?? null;
+    // 絵の主語=計測時ビルドのクラス(武将装備の混入は救難アライ/守護霊本体と同じく ALLY_PLAIN_EQUIP で防ぐ)。
+    const ghostTexSubject = ghostClone
+      ? { ...player, characterClass: ghostClone.characterClass, equipment: ALLY_PLAIN_EQUIP }
+      : player;
+    this.drawCloneSlot(
+      this.cloneSlots.ghost,
+      ghostClone,
+      ghostTexSubject,
+      cloneGhost?.ghostBuild?.meleeKey ?? player.weapons.find(w => w.isMelee)?.key,
+      GHOST_ALLY_TINT, GHOST_ALLY_ALPHA,
+    );
+  }
+
+  /**
+   * 分身1体ぶんの描画(主語ごとに1組のスプライトへ)。
+   * texSubject=立ち絵の選択に使う主語(クラス/装備)、meleeKey=振る武器の絵、tint/alphaMul=見た目の差分。
+   */
+  private drawCloneSlot(
+    slot: CloneSlotSprites,
+    clone: ShadowCloneState | null,
+    texSubject: Player,
+    meleeKey: string | undefined,
+    tint: number,
+    alphaMul: number,
+  ) {
+    const spr = slot.body;
+    if (!clone) { spr.visible = false; slot.knife.visible = false; slot.slash.visible = false; slot.trail.visible = false; slot.wpn.visible = false; return; }
+    if (!slot.added) {
       spr.anchor.set(0.5, 1); // foot-centre(プレイヤー本体と同じ)
       this.L.actorLayer.addChild(spr);
-      this.shadowCloneAdded = true;
+      slot.added = true;
     }
-    // 外見はプレイヤーと同じ立ち絵(クラス/武将装備)を共有。待機なので frame 0・walking=false
+    // 外見は持ち主と同じ立ち絵(クラス/武将装備)を共有。待機なので frame 0・walking=false
     // (スカベンジャーは専用の待機立ち絵になる)。
-    const name = playerTextureName(player, 0, false);
+    const name = playerTextureName(texSubject, 0, false);
     const gray = this.grayscaleTexture(name);
     if (!gray) { spr.visible = false; return; }
     spr.visible = true;
     spr.texture = gray;
+    spr.tint = tint;        // 守護霊の分身だけ青白(プレイヤーの分身は 0xffffff=従来と同値)
     const boxW = clone.width * PLAYER_VISUAL_SCALE;
     const boxH = clone.height * PLAYER_VISUAL_SCALE;
     const footX = clone.x + clone.width / 2;
     const footY = clone.y + clone.height;
-    const baseScale = playerBaseScale(player, gray, boxW, boxH);
+    const baseScale = playerBaseScale(texSubject, gray, boxW, boxH);
     const sc = this.snapTexelScale(baseScale * this.depthScale(footY)); // 本体と同じピクセルスナップ(案1)
     spr.scale.set(clone.facingLeft ? -sc : sc, sc);
     spr.position.set(
       this.snapToScreenPixel(footX, this.L.world.position.x),
       this.snapToScreenPixel(footY, this.L.world.position.y),
     );
-    spr.zIndex = footY;     // 他アクターと足元Yでy-sort
-    spr.alpha = 0.8;        // 分身とわかるよう少し透過
+    spr.zIndex = footY;         // 他アクターと足元Yでy-sort
+    spr.alpha = 0.8 * alphaMul; // 分身とわかるよう少し透過(守護霊の分身は更に霊体の薄さを継承)
 
     // 斬撃モーション(本体と同じナイフ振り)を分身にも付与(社長指示)。clone.swingAt 起点で3枚差し替え。
-    if (!this.cloneKnifeSetup) {
+    if (!slot.setup) {
       const f1 = getTexture('knife-swing-1');
       const f2 = getTexture('knife-swing-2');
       const f3 = getTexture('knife-swing-3');
       if (f1 && f2 && f3) {
-        this.cloneKnife.texture = f1; this.cloneKnife.anchor.set(0.5, 0.5); this.cloneKnife.visible = false;
-        this.L.actorLayer.addChild(this.cloneKnife);
-        this.cloneKnifeSlash.texture = f2; this.cloneKnifeSlash.anchor.set(0.5, 0.5); this.cloneKnifeSlash.visible = false;
-        this.L.actorLayer.addChild(this.cloneKnifeSlash);
-        this.cloneKnifeTrail.texture = f3; this.cloneKnifeTrail.anchor.set(0.5, 0.5); this.cloneKnifeTrail.visible = false;
-        this.L.actorLayer.addChild(this.cloneKnifeTrail);
-        this.cloneMeleeWpn.anchor.set(0.5, 0.5); this.cloneMeleeWpn.visible = false;
-        this.L.actorLayer.addChild(this.cloneMeleeWpn);
-        this.cloneKnifeSetup = true;
+        slot.knife.texture = f1; slot.knife.anchor.set(0.5, 0.5); slot.knife.visible = false;
+        this.L.actorLayer.addChild(slot.knife);
+        slot.slash.texture = f2; slot.slash.anchor.set(0.5, 0.5); slot.slash.visible = false;
+        this.L.actorLayer.addChild(slot.slash);
+        slot.trail.texture = f3; slot.trail.anchor.set(0.5, 0.5); slot.trail.visible = false;
+        this.L.actorLayer.addChild(slot.trail);
+        slot.wpn.anchor.set(0.5, 0.5); slot.wpn.visible = false;
+        this.L.actorLayer.addChild(slot.wpn);
+        slot.knife.tint = tint; slot.slash.tint = tint; slot.trail.tint = tint; slot.wpn.tint = tint;
+        slot.setup = true;
       }
     }
-    const knife = this.cloneKnife, slash = this.cloneKnifeSlash, trail = this.cloneKnifeTrail;
-    const wpn = this.cloneMeleeWpn;
-    const meleeKey = player.weapons.find(w => w.isMelee)?.key;
+    const knife = slot.knife, slash = slot.slash, trail = slot.trail;
+    const wpn = slot.wpn;
     const wtex = meleeKey ? getTexture(`weapons/${meleeKey}`) : null;
     const cSince = Date.now() - (clone.swingAt ?? 0);
-    if (this.cloneKnifeSetup && clone.swingAt && cSince >= 0 && cSince < PLAYER_MELEE_SWING_MS) {
+    if (slot.setup && clone.swingAt && cSince >= 0 && cSince < PLAYER_MELEE_SWING_MS) {
       const kt = meleeSwingEase(cSince / PLAYER_MELEE_SWING_MS); // 本体と同じイージング
       const mir = clone.facingLeft ? -1 : 1;
       const cDsc = this.depthScale(footY);

@@ -22,6 +22,7 @@ import {
   KATANA_SLASH_INTERVAL_MS,
   KATANA_DASH_SPEED,
   combatActorPlayer,
+  setActorSubWeaponCooldown,
   huntingMeleeRadius,
   PLAYER_INTRO_MS,
   PLAYER_INTRO_HELI_FRAC,
@@ -107,7 +108,7 @@ import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisi
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
 import { rollWeaponKey } from '../utils/weaponDrop';
-import type { AmmoType, Pickup, Projectile, EnemyType, Player } from '../types/game';
+import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey } from '../types/game';
 import {
   checkCollision,
   checkProjectileEnemyCollisions,
@@ -234,7 +235,7 @@ import {
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
 import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement, recordPhillHeadshot } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
-import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
+import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
 import { resolveBossHateAim, type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
@@ -6075,9 +6076,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const ghostSubBossId = ghostAllyForSub?.ghostBossId;
         // 予約の消費: ゴーストがオーナーとして実際に1発撃った瞬間に予約を下ろし、使用時刻を打刻する。
         // 同一フレームで複数のサブが明けていても、ゴーストとして出るのは1発だけ(以降はプレイヤー)。
-        const consumeGhostSubClaim = () => {
-          if (subOwner.kind !== 'ghost-ally') return;
-          const claimedId = subOwner.summonId;
+        // v0.25.2541: 実際に撃った主語(firedOwner)で判定する(ゴーストが予約中でもプレイヤーが
+        // 撃った場合は予約を下ろさない=下の subSubject でフォールバックした時のため)。
+        const consumeGhostSubClaim = (firedOwner: SubWeaponOwner) => {
+          if (firedOwner.kind !== 'ghost-ally') return;
+          const claimedId = firedOwner.summonId;
           subOwner = playerOwner;
           useGameStore.setState(st => ({
             summons: st.summons.map(s => s.id === claimedId
@@ -6085,28 +6088,45 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               : s),
           }));
         };
+        // v0.25.2541(§2.11追補・発注A「サブCD帳簿の分離」): サブ1種ぶんの**主語**を決める。
+        // 予約中のゴーストが「その種を自分のビルドに持っていて、自分のCD(自前帳簿)も明けている」
+        // 時だけ主語=ゴースト。そうでなければ主語=プレイヤー(予約は残したまま、プレイヤーの
+        // サブは従来どおり出る=ゴーストが持っていない種でプレイヤーの発動が止まる事故を作らない)。
+        // 予約が無い間は常に {subWeaponPlayer, playerOwner} = 従来と1bit同じ。
+        const subSubject = (key: SubWeaponKey): { actor: Player; owner: SubWeaponOwner } => {
+          if (subOwner.kind === 'ghost-ally' && subOwner.summonId) {
+            const ga = combatActorPlayer(subOwner.summonId);
+            if (
+              ga && ga.subWeapons.includes(key) &&
+              !subWeaponBlockedByKatana(ga, key) &&
+              gameTime >= (ga.subWeaponCooldowns[key] ?? 0)
+            ) return { actor: ga, owner: subOwner };
+          }
+          return { actor: subWeaponPlayer, owner: playerOwner };
+        };
         // v0.25.2480(★未決3解消): ゴースト発動サブの発動SE用の距離減衰(発音位置=設置/投擲点)。
         // プレイヤー発動のSEは従来どおり等倍のまま(この関数を通さない=1bit不変)。
         const subSfxGainAt = (x: number, y: number): number => {
           const s = useGameStore.getState();
           return npcSfxDistGain(x, y, s.player.x + s.player.width / 2, s.player.y + s.player.height / 2, s.camera, s.gameBounds);
         };
+        const { actor: hgActor, owner: hgOwner } = subSubject('heavy-grenade');
         if (
           !inReturnCircle &&
-          subWeaponPlayer.subWeapons.includes('heavy-grenade') &&
-          !subWeaponBlockedByKatana(subWeaponPlayer, 'heavy-grenade') &&
-          gameTime >= (subWeaponPlayer.subWeaponCooldowns['heavy-grenade'] ?? 0)
+          hgActor.subWeapons.includes('heavy-grenade') &&
+          !subWeaponBlockedByKatana(hgActor, 'heavy-grenade') &&
+          gameTime >= (hgActor.subWeaponCooldowns['heavy-grenade'] ?? 0)
         ) {
-          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['heavy-grenade'] ?? 1));
+          const level = Math.max(1, Math.min(3, hgActor.subWeaponLevels['heavy-grenade'] ?? 1));
           // G2.6: 投擲位置/照準の起点はオーナー(既定=プレイヤー=従来と同値)。
-          const pcx = ownerCenterX(subOwner);
-          const pcy = ownerCenterY(subOwner);
-          const ghostOwned = subOwner.kind === 'ghost-ally';
+          const pcx = ownerCenterX(hgOwner);
+          const pcy = ownerCenterY(hgOwner);
+          const ghostOwned = hgOwner.kind === 'ghost-ally';
           // v0.25.2472: ターゲット選択は照準の合流点(純関数)へ。プレイヤー=従来の最寄り非リーパー
           // (手順まで同一=挙動不変)/ゴースト=紐付きボス優先。
-          const target = pickSubAimTarget(subOwner, ghostSubBossId, useGameStore.getState().enemies);
-          const aimX = target ? target.x + target.width / 2 - pcx : subOwner.facing?.x ?? 1;
-          const aimY = target ? target.y + target.height / 2 - pcy : subOwner.facing?.y ?? 0;
+          const target = pickSubAimTarget(hgOwner, ghostSubBossId, useGameStore.getState().enemies);
+          const aimX = target ? target.x + target.width / 2 - pcx : hgOwner.facing?.x ?? 1;
+          const aimY = target ? target.y + target.height / 2 - pcy : hgOwner.facing?.y ?? 0;
           const mag = Math.max(0.001, Math.hypot(aimX, aimY));
           const baseDir = { x: aimX / mag, y: aimY / mag };
           const angles = GRENADE_SPREAD_BY_LEVEL[level] ?? GRENADE_SPREAD_BY_LEVEL[1];
@@ -6133,21 +6153,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
             });
           });
-          setSubWeaponCooldown('heavy-grenade', gameTime + HEAVY_GRENADE_COOLDOWN_MS);
-          consumeGhostSubClaim(); // G2.6: ゴースト予約で撃った場合のみ予約を下ろす(プレイヤー時はno-op)
+          setActorSubWeaponCooldown(ownerGhostId(hgOwner), 'heavy-grenade', gameTime + HEAVY_GRENADE_COOLDOWN_MS);
+          consumeGhostSubClaim(hgOwner); // G2.6: ゴースト予約で撃った場合のみ予約を下ろす(プレイヤー時はno-op)
         }
 
+        const { actor: mtActor, owner: mtOwner } = subSubject('marksman-trap');
         if (
           !inReturnCircle &&
-          subWeaponPlayer.subWeapons.includes('marksman-trap') &&
-          !subWeaponBlockedByKatana(subWeaponPlayer, 'marksman-trap') &&
-          gameTime >= (subWeaponPlayer.subWeaponCooldowns['marksman-trap'] ?? 0)
+          mtActor.subWeapons.includes('marksman-trap') &&
+          !subWeaponBlockedByKatana(mtActor, 'marksman-trap') &&
+          gameTime >= (mtActor.subWeaponCooldowns['marksman-trap'] ?? 0)
         ) {
-          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['marksman-trap'] ?? 1));
+          const level = Math.max(1, Math.min(3, mtActor.subWeaponLevels['marksman-trap'] ?? 1));
           // G2.6: 設置位置はオーナー(既定=プレイヤー=従来と同値)。
-          const pcx = ownerCenterX(subOwner);
-          const pcy = ownerCenterY(subOwner);
-          const ghostOwned = subOwner.kind === 'ghost-ally';
+          const pcx = ownerCenterX(mtOwner);
+          const pcy = ownerCenterY(mtOwner);
+          const ghostOwned = mtOwner.kind === 'ghost-ally';
           addProjectile({
             id: `proj-marksman-trap-${Date.now()}`,
             x: pcx - 8,
@@ -6171,8 +6192,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           });
           spawnRing(pcx, pcy, 4, MARKSMAN_TRAP_RADIUS_BY_LEVEL[level],
             ghostOwned ? 'rgba(159,216,255,0.5)' : 'rgba(56,189,248,0.46)', 2, 280);
-          setSubWeaponCooldown('marksman-trap', gameTime + MARKSMAN_TRAP_COOLDOWN_MS);
-          consumeGhostSubClaim(); // G2.6
+          setActorSubWeaponCooldown(ownerGhostId(mtOwner), 'marksman-trap', gameTime + MARKSMAN_TRAP_COOLDOWN_MS);
+          consumeGhostSubClaim(mtOwner); // G2.6
         }
 
         // バグ修正(社長報告v0.25.2318「途中から出なくなる」・案B採用): 旧実装は発動条件に
@@ -6419,15 +6440,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // Decoy: 10秒ごとに進行方向へ円盤を投げる。設置中は0.5秒ごとに射程内の
         // 最も近い敵弾を1発だけ迎撃する(高速弾の取りこぼしは許容)。
+        const { actor: dcActor, owner: dcOwner } = subSubject('decoy');
         if (
           !inReturnCircle &&
-          subWeaponPlayer.subWeapons.includes('decoy') &&
-          !subWeaponBlockedByKatana(subWeaponPlayer, 'decoy') &&
-          gameTime >= (subWeaponPlayer.subWeaponCooldowns['decoy'] ?? 0)
+          dcActor.subWeapons.includes('decoy') &&
+          !subWeaponBlockedByKatana(dcActor, 'decoy') &&
+          gameTime >= (dcActor.subWeaponCooldowns['decoy'] ?? 0)
         ) {
-          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['decoy'] ?? 1));
+          const level = Math.max(1, Math.min(3, dcActor.subWeaponLevels['decoy'] ?? 1));
           // G2.6: 投擲位置/向きはオーナー(既定=プレイヤー=従来と同値)。
-          const dir = subOwner.facing ?? { x: 1, y: 0 };
+          const dir = dcOwner.facing ?? { x: 1, y: 0 };
           const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
           const ux = dir.x / dmag;
           const uy = dir.y / dmag;
@@ -6438,9 +6460,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             decoyPulseRef.current.delete(d.id);
           }
           const size = 16;
-          const pcx = ownerCenterX(subOwner);
-          const pcy = ownerCenterY(subOwner);
-          const ghostOwned = subOwner.kind === 'ghost-ally';
+          const pcx = ownerCenterX(dcOwner);
+          const pcy = ownerCenterY(dcOwner);
+          const ghostOwned = dcOwner.kind === 'ghost-ally';
           const decoyId = `proj-decoy-${nowMs}`;
           addProjectile({
             id: decoyId,
@@ -6467,30 +6489,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 初回迎撃は着地の0.5秒後。
           decoyPulseRef.current.set(decoyId, gameTime + DECOY_THROW_MS + DECOY_PULSE_MS);
           spawnRing(pcx, pcy, 4, 18, ghostOwned ? 'rgba(159,216,255,0.65)' : 'rgba(56,189,248,0.6)', 2, 220);
-          setSubWeaponCooldown('decoy', gameTime + DECOY_COOLDOWN_MS);
-          consumeGhostSubClaim(); // G2.6
+          setActorSubWeaponCooldown(ownerGhostId(dcOwner), 'decoy', gameTime + DECOY_COOLDOWN_MS);
+          consumeGhostSubClaim(dcOwner); // G2.6
         }
 
         // 設置型シールド: 5秒ごとに進行方向の反対側へ遮蔽壁を建てる。敵の通行を
         // 止め、敵弾を消し、味方弾は通す。設置間隔/持続は全Lv共通、Lvで耐久だけ上がる。
+        const { actor: shActor, owner: shOwner } = subSubject('shield');
         if (
           !inReturnCircle &&
-          subWeaponPlayer.subWeapons.includes('shield') &&
-          !subWeaponBlockedByKatana(subWeaponPlayer, 'shield') &&
-          gameTime >= (subWeaponPlayer.subWeaponCooldowns['shield'] ?? 0)
+          shActor.subWeapons.includes('shield') &&
+          !subWeaponBlockedByKatana(shActor, 'shield') &&
+          gameTime >= (shActor.subWeaponCooldowns['shield'] ?? 0)
         ) {
-          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['shield'] ?? 1));
+          const level = Math.max(1, Math.min(3, shActor.subWeaponLevels['shield'] ?? 1));
           // 進行方向と反対(=外向き法線)。取れなければ最後の向き、それも無ければ下。
           // G2.6: 設置位置/向きはオーナー(既定=プレイヤー=従来と同値。フォールバック{x:0,y:1}もそのまま)。
-          const move = subOwner.facing ?? { x: 0, y: 1 };
+          const move = shOwner.facing ?? { x: 0, y: 1 };
           const mmag = Math.max(0.001, Math.hypot(move.x, move.y));
           let nx = -move.x / mmag;
           let ny = -move.y / mmag;
           // 法線を主軸へスナップ(4方向)。表裏と当たり判定を素直にするため。
           if (Math.abs(nx) >= Math.abs(ny)) { nx = Math.sign(nx) || 1; ny = 0; }
           else { nx = 0; ny = Math.sign(ny) || 1; }
-          const pcx = ownerCenterX(subOwner);
-          const pcy = ownerCenterY(subOwner);
+          const pcx = ownerCenterX(shOwner);
+          const pcy = ownerCenterY(shOwner);
           // 足元(下辺中央)。スプライトはここから上へ伸び、当たり判定は下部のみ。
           const footX = pcx + nx * SHIELD_PLACE_DISTANCE;
           const sideways = nx !== 0;
@@ -6508,7 +6531,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (k.startsWith(`${s.id}:`)) shieldHitRef.current.delete(k);
             }
           }
-          const ghostOwned = subOwner.kind === 'ghost-ally';
+          const ghostOwned = shOwner.kind === 'ghost-ally';
           addProjectile({
             id: `proj-shield-${nowMs}`,
             x: footX - shieldW / 2,
@@ -6537,21 +6560,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const shieldGain = ghostOwned ? subSfxGainAt(footX, footY) : 1;
           if (shieldGain > 0) playSfx('shield-deploy', shieldGain);
           recordShieldPlacement(); // G4a(§2.9(3)・記録専用): shield設置1回の様式カウンタ
-          setSubWeaponCooldown('shield', gameTime + SHIELD_COOLDOWN_MS);
-          consumeGhostSubClaim(); // G2.6
+          setActorSubWeaponCooldown(ownerGhostId(shOwner), 'shield', gameTime + SHIELD_COOLDOWN_MS);
+          consumeGhostSubClaim(shOwner); // G2.6
         }
 
         // 自動タレット: 10秒ごとにプレイヤー少し前方へ設置。設置地点に留まりオート射撃。
         // 追従しない=移動すると置き去り。設置時は必ず前方集中モードで開始する。
+        const { actor: trActor, owner: trOwner } = subSubject('turret');
         if (
           !inReturnCircle &&
-          subWeaponPlayer.subWeapons.includes('turret') &&
-          !subWeaponBlockedByKatana(subWeaponPlayer, 'turret') &&
-          gameTime >= (subWeaponPlayer.subWeaponCooldowns['turret'] ?? 0)
+          trActor.subWeapons.includes('turret') &&
+          !subWeaponBlockedByKatana(trActor, 'turret') &&
+          gameTime >= (trActor.subWeaponCooldowns['turret'] ?? 0)
         ) {
-          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['turret'] ?? 1));
+          const level = Math.max(1, Math.min(3, trActor.subWeaponLevels['turret'] ?? 1));
           // G2.6: 設置位置/向きはオーナー(既定=プレイヤー=従来と同値)。
-          const dir = subOwner.facing ?? { x: 1, y: 0 };
+          const dir = trOwner.facing ?? { x: 1, y: 0 };
           const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
           const ux = dir.x / dmag;
           const uy = dir.y / dmag;
@@ -6561,13 +6585,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             removeProjectile(t.id);
             turretFireRef.current.delete(t.id);
           }
-          const pcx = ownerCenterX(subOwner);
-          const pcy = ownerCenterY(subOwner);
+          const pcx = ownerCenterX(trOwner);
+          const pcy = ownerCenterY(trOwner);
           // 足元(下辺中央)= プレイヤー中心から進行方向へ少し前方。設置物ルール(footRect)に合わせ
           // x,y は足元から当たり判定矩形を作る(下辺=足元)。
           const footX = pcx + ux * TURRET_PLACE_FORWARD;
           const footY = pcy + uy * TURRET_PLACE_FORWARD;
-          const ghostOwned = subOwner.kind === 'ghost-ally';
+          const ghostOwned = trOwner.kind === 'ghost-ally';
           addProjectile({
             id: `proj-turret-${nowMs}`,
             x: footX - TURRET_FOOT_W / 2,
@@ -6594,8 +6618,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // v0.25.2480: ゴースト発動時のみ設置点で距離減衰(プレイヤー発動は従来どおり等倍)。
           const turretGain = ghostOwned ? subSfxGainAt(footX, footY) : 1;
           if (turretGain > 0) playSfx('shield-deploy', turretGain);
-          setSubWeaponCooldown('turret', gameTime + TURRET_COOLDOWN_MS);
-          consumeGhostSubClaim(); // G2.6
+          setActorSubWeaponCooldown(ownerGhostId(trOwner), 'turret', gameTime + TURRET_COOLDOWN_MS);
+          consumeGhostSubClaim(trOwner); // G2.6
         }
 
         // 火炎瓶(molotov): 10秒サイクルで、移動中のみ1秒に1個ずつ足元に火を設置(Lv別本数=3/5/7)。
@@ -6856,20 +6880,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // 発火ナイフ: クールダウンごとに最も近い敵1体へナイフを投擲(敵が居る時だけ)。
+        const { actor: fkActor, owner: fkOwner } = subSubject('fire-knife');
         if (
           !inReturnCircle &&
-          subWeaponPlayer.subWeapons.includes('fire-knife') &&
-          !subWeaponBlockedByKatana(subWeaponPlayer, 'fire-knife') &&
-          gameTime >= (subWeaponPlayer.subWeaponCooldowns['fire-knife'] ?? 0)
+          fkActor.subWeapons.includes('fire-knife') &&
+          !subWeaponBlockedByKatana(fkActor, 'fire-knife') &&
+          gameTime >= (fkActor.subWeaponCooldowns['fire-knife'] ?? 0)
         ) {
-          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['fire-knife'] ?? 1));
+          const level = Math.max(1, Math.min(3, fkActor.subWeaponLevels['fire-knife'] ?? 1));
           // G2.6: 投擲位置/照準の起点はオーナー(既定=プレイヤー=従来と同値)。
-          const pcx = ownerCenterX(subOwner);
-          const pcy = ownerCenterY(subOwner);
-          const ghostOwned = subOwner.kind === 'ghost-ally';
+          const pcx = ownerCenterX(fkOwner);
+          const pcy = ownerCenterY(fkOwner);
+          const ghostOwned = fkOwner.kind === 'ghost-ally';
           // v0.25.2472: ターゲット選択は照準の合流点(純関数)へ。プレイヤー=従来の最寄り非リーパー
           // (手順まで同一=挙動不変)/ゴースト=紐付きボス優先。
-          const target = pickSubAimTarget(subOwner, ghostSubBossId, useGameStore.getState().enemies);
+          const target = pickSubAimTarget(fkOwner, ghostSubBossId, useGameStore.getState().enemies);
           if (target) {
             const aimX = target.x + target.width / 2 - pcx;
             const aimY = target.y + target.height / 2 - pcy;
@@ -6897,8 +6922,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // v0.25.2480: ゴースト発動時のみ投擲点(オーナー中心)で距離減衰(プレイヤー発動は従来どおり等倍)。
             const knifeGain = ghostOwned ? subSfxGainAt(pcx, pcy) : 1;
             if (knifeGain > 0) playSfx('shot-damage', knifeGain);
-            setSubWeaponCooldown('fire-knife', gameTime + FIRE_KNIFE_COOLDOWN_BY_LEVEL[level]);
-            consumeGhostSubClaim(); // G2.6
+            setActorSubWeaponCooldown(ownerGhostId(fkOwner), 'fire-knife', gameTime + FIRE_KNIFE_COOLDOWN_BY_LEVEL[level]);
+            consumeGhostSubClaim(fkOwner); // G2.6
           }
         }
 
@@ -6959,18 +6984,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // 分身(サブウェポン): 画面外で消滅(攻撃なし)、画面内なら1秒ごとの自動近接(5秒)を進める。
+        // v0.25.2541(§2.11追補): **主語ごとに1回ずつ**回す(プレイヤーの枠=従来と同じ順序・同じ規則、
+        // 守護霊の枠=同じ関数・同じしきい値。ゴースト用の別ルールは無い)。
         {
-          const clone = useGameStore.getState().shadowClone;
-          if (clone) {
+          const runCloneTick = (clone: ShadowCloneState | null | undefined, ghostId?: string) => {
+            if (!clone) return;
             const { camera, gameBounds } = useGameStore.getState();
             const fullyOff =
               clone.x + clone.width < camera.x ||
               clone.x > camera.x + gameBounds.width ||
               clone.y + clone.height < camera.y ||
               clone.y > camera.y + gameBounds.height;
-            if (fullyOff) useGameStore.getState().expireShadowClone();
-            else useGameStore.getState().tickShadowClone();
-          }
+            if (fullyOff) useGameStore.getState().expireShadowClone(ghostId);
+            else useGameStore.getState().tickShadowClone(ghostId);
+          };
+          runCloneTick(useGameStore.getState().shadowClone);
+          const cloneGhost = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally' && s.ghostShadowClone);
+          if (cloneGhost) runCloneTick(cloneGhost.ghostShadowClone, cloneGhost.id);
         }
 
         // デコイの迎撃パルス(設置中、0.5秒ごとに1発)。毎フレーム判定ではなく
@@ -7902,8 +7932,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             });
             if (smResult.changed) smStore.setSensorMines(smResult.mines);
             for (const mine of smResult.detonated) {
+              // v0.25.2541(§2.11追補・発注C): 爆発の倍率評価の主語=**置いた本人**
+              // (プレイヤー=従来どおり本人 / 守護霊=計測時ビルドの疑似Player)。ビルドが解決できない
+              // 時だけ本人へフォールバック(ゴースト解散後に残った地雷が起爆する場合など)。
+              const smGhostId = mine.ownerGhostId;
+              const smActor = (smGhostId !== undefined ? combatActorPlayer(smGhostId) : null)
+                ?? useGameStore.getState().player;
+              const smIsGhost = smGhostId !== undefined;
               // スキル: ボマー = 起爆時にミニ手榴弾3個散布(手榴弾と同じ子グレネード処理。子は再散布しない)。
-              if (hasSkill(useGameStore.getState().player, 'bomber')) {
+              if (hasSkill(smActor, 'bomber')) {
                 const nowB = Date.now();
                 for (let k = 0; k < 3; k++) {
                   const ang = (Math.PI * 2 * k) / 3 + Math.random() * 0.5;
@@ -7925,10 +7962,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playSfx('bomb');
               // スキル: エクスプローダー = 半径/ダメージ倍率(手榴弾と同じ倍率経路)。
               // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲倍率(全爆発対象)。
-              const smExMult = skillExplosionMult(useGameStore.getState().player);
-              const smHgMult = heavyGunnerExplosionMult(useGameStore.getState().player, gameTime);
+              const smExMult = skillExplosionMult(smActor);
+              const smHgMult = heavyGunnerExplosionMult(smActor, gameTime);
               // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を爆発ダメージにも乗算。
-              const smOutMult = skillOutgoingDamageMult(useGameStore.getState().player);
+              const smOutMult = skillOutgoingDamageMult(smActor);
               const smBlastR = SENSOR_MINE_RADIUS * smExMult * smHgMult;
               const smFxMs = HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
               spawnRing(mine.x, mine.y, 8, smBlastR, 'rgba(251,146,60,0.82)', 5, smFxMs);
@@ -7946,7 +7983,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (smWalls.length > 0 && segmentBlocked(mine.x, mine.y, ex, ey, smWalls)) continue; // 壁越しには効かない
                 const falloff = 1 - dist / smBlastR;
                 const splashDamage = Math.max(1, Math.round(SENSOR_MINE_DAMAGE * smExMult * smOutMult * (0.55 + falloff * 0.45)));
-                const smKilled = damageEnemy(enemy.id, splashDamage, true); // 爆発=ボス系には非致死(手榴弾と同じ)
+                // 爆発=ボス系には非致死(手榴弾と同じ)。守護霊の地雷は帰属も守護霊
+                // (damageChannel=null=除外4の計測分離 / hateSource='ghost')。プレイヤーは従来の既定と同値。
+                const smKilled = smIsGhost
+                  ? damageEnemy(enemy.id, splashDamage, true, false, false, null, 'ghost')
+                  : damageEnemy(enemy.id, splashDamage, true);
                 smHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false);
                 spawnBurst(ex, ey, '#b91c1c', 4);
@@ -7964,7 +8005,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   dropEnemyXp(enemy, ex, ey, 'pickup-xp-sensor-mine');
                 }
               }
-              useGameStore.getState().registerMultiHit(smHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
+              // ヘビーガンナー: 2体以上で爆発範囲バフ。**プレイヤー自身の地雷だけ**が本人のバフを積む
+              // (守護霊の地雷でプレイヤーのバフ窓が伸びる=主語をまたぐ横取りになるため。N HITSの
+              // 頭上バナーもプレイヤー位置に出る演出=除外1)。
+              if (!smIsGhost) useGameStore.getState().registerMultiHit(smHitCount);
             }
           }
         }

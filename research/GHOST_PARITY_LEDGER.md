@@ -207,7 +207,7 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 | 8 | ✅**済(v0.25.2525)** **弾反射(カウンター家系#1)のゴースト対応** | combatTick.ts `applyEnemyProjectileHits`(447)にghost分岐を追加 | **M** | 社長が名指し(「弾反射も全部再現」)。現状ghostは反射する経路自体が無い=新規実装。反射弾の生成(弾の`reflected`フラグ書き換え等)をゴースト起点で行う設計が必要。 |
 | 9 | ✅**済(v0.25.2514)** **被弾点滅(白フラッシュ)の追加** | pixiScene.ts `drawGhostAlly`(7971-8194)にhitFlash相当を追加 | **S** | 描画のみ。既存`view.hitFlash`パターン(9036-9055)を流用可能。 |
 | 10 | ✅**済(v0.25.2525)** **気絶敵への近接フィニッシュ(処刑)のゴースト対応** | useGameLoop.ts 7237-7292のghost近接ブロックにfinisher分岐追加 | **S** | 実害は小さい(ghostは基本ボス専属でボスは即死しない設計=CRIT-UNIFY §9.5)が、正本上は欠落。 |
-| 11 | 一部済(v0.25.2525: drone-boomerang/flare-gun/junk-weapon) **サブウェポン未対応14種の個別配線**(wire-anchor除く: striker-quick-mag/dog/katana系/whip/alchemy系/shijin/drone-boomerang/homing/shadow-clone/molotov/first-aid-kit/sensor-mine/support-sniper/flare-gun/junk-weapon) | 各サブの発動入口(BOT_AND_GHOST.md §6の表参照) | **L(種によりS〜L)** | 「近接スイング相乗り型」(drone-boomerang/sensor-mine/flare-gun/junk-weapon/shadow-clone)は5-6と共通の近接実行ブロック整備で束ねられる可能性がある=先に近接まわりを整備すると割安。dog/molotov/support-sniper/homingは個別のプレイヤー直読み箇所の置き換えが必要でLサイズ。 |
+| 11 | 一部済(v0.25.2525: drone-boomerang/flare-gun/junk-weapon / **v0.25.2541: shadow-clone・sensor-mine**+claim経由6種が主語ごとのCD帳簿で回るように) **サブウェポン未対応の個別配線**(wire-anchor除く: striker-quick-mag/dog/katana系/whip/alchemy系/shijin/drone-boomerang/homing/shadow-clone/molotov/first-aid-kit/sensor-mine/support-sniper/flare-gun/junk-weapon) | 各サブの発動入口(BOT_AND_GHOST.md §6の表参照) | **L(種によりS〜L)** | 「近接スイング相乗り型」(drone-boomerang/sensor-mine/flare-gun/junk-weapon/shadow-clone)は5-6と共通の近接実行ブロック整備で束ねられる可能性がある=先に近接まわりを整備すると割安。dog/molotov/support-sniper/homingは個別のプレイヤー直読み箇所の置き換えが必要でLサイズ。 |
 | 12 | ✅**済(v0.25.2514)** **スナップショットのビルド拡張**(skills/skillLevels/equipment/equipBonus/critChance/subWeapons/subWeaponLevels) | playerTraits.ts `PlayerProfile.snapshot`型拡張+計測箇所(directorTick.ts等) | **S〜M** | §10で論じたとおり、「召喚時点の"今の"player stateを都度参照する」方式で1〜4を実装するなら**スナップショット拡張自体は不要**になる可能性がある。「その撃破ランのビルドを再現したい」という要求が明確になった場合のみ本項目が必要=先に設計判断を仰ぐのが安い(実装前に★未決として提起すべき)。 |
 | 13 | ✅**済(v0.25.2514)** **被弾時のskillIncomingDamageMult(ナイト/バーサーカー)** | gameStore.ts `damageSummon` | **S** | 12(装備/スキル復元)と合わせて実装すると安い。 |
 | 14 | ✅**裁定3で決着(出さない)** **画面シェイク(被弾時)の扱い明確化** | ghostCounter.ts / useGameLoop.ts | **S(判断が主)** | 実装というより「除外1(演出)に含めるか」の裁定が先。 |
@@ -268,6 +268,11 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
       加えて `tickShadowClone` は毎フレーム**プレイヤーの状態**を読む(主語引数化の範囲が広い)。
    → **裁定が出れば実装は小さい**(入口は `fireGhostMeleeSwingSubs` に1本足すだけ)。
    ※`sensor-mine` は発注で明示的に対象外(★未決2=チャージ制の正規化が未裁定)のため手を付けていない。
+   **✅クローズ(v0.25.2541・GHOST-SAME-SPEC)**: §2.11追補の裁定「守護霊=独立した2人目のプレイヤー」で
+   3点とも決着=①枠は**主語ごと**(`Summon.ghostShadowClone`。取り合いなし) ②絵は**そのビルドのクラス+
+   青白tint** ③主語=疑似Player・ヘイト='ghost'・計測除外。実装済み(下の実装ログ参照)。
+   **★未決2(sensor-mine のチャージ制正規化)も同裁定でクローズ**=チャージ帳簿を主語ごとに持つ
+   (`Summon.ghostSensorMineCharges`)ことで正規化の要否そのものが消えた。
 
 ## ★未決の裁定(2026-07-30・社長)
 1. **攻撃力の基準=計測時のステータス・ビルドをそのまま再現**(確定)。→ 項目12(スナップショットの
@@ -603,3 +608,47 @@ none 88(硬直51・弾のみ12・別エンティティ9・リング状2・移動
   台帳ステータス更新(★未決2・★未決5をクローズ)。
 - **並走注意**: FX-V3V4エージェントが pixiScene.ts / pixiTextures.ts を編集中。pixiSceneを触る場合
   (分身の青白tint)は**最小差分**にし、コンフリクトしたらrebaseで自分の差分を薄く保つこと。
+
+---
+
+## 実装ログ: バッチGHOST-SAME-SPEC(§2.11追補ドクトリン・v0.25.2541・ステータス=実装済み)
+
+正本ドクトリン= BOT_AND_GHOST.md §2.11追補「**守護霊は独立した2人目のプレイヤー**。共有帳簿・専用枠・
+例外を一生作らない」。**プレイヤー側の式・定数・分岐は1文字も変えていない**(主語引数化のみ)。
+差分は除外1(演出=停止/スロー/ズームを出さない)/除外4(計測・SE距離減衰)だけ。
+
+### A. サブCD帳簿の分離(「1つの財布」の廃止)
+| 何を | どう |
+|---|---|
+| ゴースト自前の帳簿 | `Summon.ghostSubWeaponCooldowns`(型はプレイヤーと同じ `Partial<Record<SubWeaponKey, number>>`)。**召喚時は空=全サブ即使用可**(実プレイヤーの参戦と同じ)。 |
+| 読み | `combatActorPlayer(ghostId)` が疑似Playerへ**自前帳簿**を重ねる(旧: `st.player.subWeaponCooldowns`+`straps` の重ね=廃止)。 |
+| 書き | 新 `setActorSubWeaponCooldown(ghostId, key, readyAt)`(`setActorDashState` と同型)。CD補正(オーバークロック→タイムキーパー)は**同じ純関数 `applySubCooldownSkills`** を、ゴースト自身のビルドを主語に通す。計測(`recordSubUse`/`recordOverclockProc`)は除外4=積まない。 |
+| 合流させた発動口 | ブーメラン/フレア/ワイヤー(スラム・プラント)/分身/センサー地雷+**claim経由の6種**(heavy-grenade / marksman-trap / decoy / shield / turret / fire-knife)。 |
+| claim経由の主語決定 | 新ヘルパ `subSubject(key)`(useGameLoop): 予約中のゴーストが**その種を自分のビルドに持ち、自分のCDも明けている**時だけ主語=ゴースト。それ以外はプレイヤー(予約は残す)。→ **ゴーストが持っていない種でプレイヤーのサブが止まる事故を作らない**。予約が無い間は `{subWeaponPlayer, playerOwner}` = 従来と1bit同じ。 |
+| 同時に揃えた取りこぼし | ジャンクウェポンの `recordSubUse` がゴースト発動でも計測に乗っていた(v0.25.2525)→ プレイヤーのみへ(`recordWireAnchorUse` の ghostId 分岐と同じ流儀・挙動不変)。 |
+
+### B. 分身(shadow-clone)の主語ごと化
+- **枠**: プレイヤー=`store.shadowClone`(現行のまま)/ 守護霊=`Summon.ghostShadowClone`(**同じ `ShadowCloneState` 型**)。取り合いなし=2人が同時に分身を出せる。
+- **入口**: 生成本体を共通ヘルパ `spawnShadowCloneOnSwing(get, actor, owner, gameTime)` へ抽出し、`triggerCounter`(プレイヤー)と `fireGhostMeleeSwingSubs`(守護霊)が**同じ1本**を通る(相乗り型サブ3種と同じ形)。刀モード排他も同じ `subWeaponBlockedByKatana`。
+- **共有した規則**: 寿命5秒(`SHADOW_CLONE_DURATION_MS`)/1秒毎×最大5回/Lv別CD(`SHADOW_CLONE_COOLDOWN_MS_BY_LEVEL`)/画面外で消滅。`tickShadowClone(ghostId?)`・`expireShadowClone(ghostId?)`・`shadowCloneStrike(clone, ghostId?)` の3アクションを主語引数化(未指定=プレイヤー=完全同一)。useGameLoop は**主語ごとに1回ずつ**回す。
+- **見た目**: 守護霊の分身=**計測ビルドの `characterClass` の立ち絵+守護霊と同じ青白tint(`GHOST_ALLY_TINT`)+霊体の薄さ(`GHOST_ALLY_ALPHA`)**。振る武器の絵は `ghostBuild.meleeKey`。描画は既存の分身描画を `drawCloneSlot(slot, …)` へ主語引数化し、スプライト一式を**主語ごとに1組**(`cloneSlots.player/.ghost`)持つ=描画コードは1本。
+- **攻撃**: 主語=疑似Player(計測ビルドの近接武器・クリ率・スキル倍率)。除外4=`recordDamageDealt` を積まない/コンボ台帳(`knifeCombo*`)は書かない(★未決1と同じ)/ヘビーガンナーのバフ窓(`registerMultiHit`)も本人のものは伸ばさない。除外1=`triggerFinishImpact`(停止+スロー+ズーム)を出さない。**ヘイト='ghost'**(damageEnemy を通らない直接更新経路なので、`hateGhostBuckets`(対象ボス)+`ghostHateUntil`(雑魚)を damageEnemy と同じ2種の効き方で付ける)。キル報酬(XP/通貨/弾薬)は `grantMeleeKillRewards` を共有=刀と同じ扱い。
+
+### C. センサー地雷(sensor-mine)の主語ごと化
+- **チャージ帳簿**: プレイヤー=`store.sensorMineCharges` / 守護霊=`Summon.ghostSensorMineCharges`(同じ「回復待ち readyAt 配列」表現・同じ `SENSOR_MINE_CHARGE_COOLDOWN_MS`)。
+- **盤面**: `store.sensorMines` の1本のまま(世界の設置物。実プレイヤー2人でも世界に置かれる物は1つの配列)。ただし **`SensorMineState.ownerGhostId` で主語を持ち、上限(`SENSOR_MINE_CAP_BY_LEVEL`)は同じオーナーの地雷だけを数えて最古置換**する(`placeSensorMine` を主語対応に。プレイヤー単独の盤面では1bit不変)。
+- **入口**: 設置本体を共通ヘルパ `placeSensorMineOnSwing(get, actor, owner, gameTime)` へ抽出し、`triggerCounter` と `fireGhostMeleeSwingSubs` が同じ1本を通る。設置位置はオーナーの足元。
+  - ※発注文の「発動=ghostSubClaim経由」は、**プレイヤー側の入口が近接スイングである**ため近接スイング入口に合流させた(claim経路は「プレイヤー側が自動発動する6種」の器。ここへゴースト専用の発動口を足すと"ゴースト専用モデル"になる)。ドクトリン「実プレイヤー2人ならどうなるか」に従った解釈。
+- **起爆**: 倍率評価の主語=置いた本人(ボマー/エクスプローダー/ヘビーガンナー/`skillOutgoingDamageMult`)。守護霊の地雷は `damageEnemy(..., null, 'ghost')`(計測分離+ヘイト)。ヘビーガンナーのバフ窓は本人のものを伸ばさない。
+
+### テスト
+- 新規 `src/utils/ghostSameSpec.test.ts`(19件): A=帳簿の独立(疑似Playerの読み/主語別の書き/プレイヤーCDが増えない/`ownerGhostId`)、B=枠の独立・再生成条件・Lv別CDの宛先・寿命/回数の共有定数・本人コンボ台帳を汚さない、C=`placeSensorMine` の主語別上限(プレイヤーの地雷が消えない)・チャージ切れ/回復・設置位置。
+- 既存更新: `ghostKatanaWire.test.ts`(ワイヤーCDの宛先を自前帳簿へ)/`ghostReflectMeleeSubs.test.ts`(同・戻り値に clone/mine を追加)。
+- `npx vitest related`(変更ファイル)= **28ファイル 395件パス**(2 skipped)。ゲート: `npm run typecheck` 0 / `npm run lint` エラー0(既存warning 8)。
+
+### 実装メモ(次バッチが踏む前提)
+- **残る「プレイヤー主語固定」のサブ**(項目11の残り): dog / molotov / striker-quick-mag / homing / first-aid-kit / support-sniper。claim を消費する器に載っていないため、ゴーストは**そもそも発動しない**(=帳簿の共有も起きない)。載せるなら各サブの発動本体を `(actor, owner)` 引数の関数へ抽出するのが筋(claim経由6種と同じ形)。
+- 疑似Playerが**本人の一時バフ窓**を読む箇所は GHOST-BUILD-1 の中立化リスト(quickMag/benkei/scavenger/knifeCombo)止まりで、`heavyGunnerExpBuffUntil` は live のまま(=本人がヘビーガンナー窓中なら守護霊の爆発半径にも乗る)。書き込みは主語ごとに閉じた(本バッチ)。中立化まで揃えるなら別裁定。
+- 守護霊の地雷は**見た目がプレイヤーの地雷と同じ**(pixiScene の `syncSensorMines` は共通の Graphics)。青白の主語マーカーを付けるかは未発注(判定・危険域の絵としては同一で問題なし)。
+- 分身の描画スプライトは主語ごとに1組=同時に生きる強glowは増えない(**負荷 1/10**: プール済みスプライト差し替えのみ・per-frame Graphics/Text 生成なし)。
+- ★未決: **なし**(裁定済みのドクトリンで全て決まった。上の「解釈」1点は実装ログに明記)。
