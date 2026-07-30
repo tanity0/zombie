@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2513',
+    items: [
+      'ゲーム内容の変更はありません(討伐記録を独立メニュー化しオンライン公開へつなげる構想を設計書へメモ)。',
+    ],
+  },
+  {
     version: '0.25.2512',
     items: [
       'ゲーム内容の変更はありません(撃破リザルトの「年表」仕様=倒したボスをアイコンと撃破タイムで一覧し、守護霊に採用するかボスごとに選べる、を設計書へ確定)。',
