@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2486',
+    items: [
+      'ゲーム内容の変更はありません(開発記録の更新: 守護霊の撃破データ仕様の確定・ワイヤーアンカーの調査結果)。',
+    ],
+  },
+  {
     version: '0.25.2485',
     items: [
       '守護霊がボスごとの攻略スタイルを覚えるようになりました: そのボスを撃破したプレイがあると、守護霊はその時の戦い方でリプレイします(城ボスはステージごと)。',
