@@ -10868,6 +10868,8 @@ export class PixiScene {
   // v0.25.2455: 発砲の瞬間に焼き付ける閃光の世界座標と射線(消えるまで場所固定=latchFxと同じ考え方)。
   private muzzleLatch: { x: number; y: number; rot: number; len: number; sortY: number } | null = null;
   private muzzlePrevFired = 0;
+  // v0.25.2464: カウンター窓のリーチリング(旧64線分の手描き円→焼き込みリングテクスチャ)。
+  private counterReachRing?: Sprite;
   private drawMuzzleFlash(x: number, y: number, angle: number, len: number, alpha: number, sortY: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) { this.hideMuzzleFlash(); return; }
     const tex = getTexture('fx/muzzle-flash');
@@ -13083,6 +13085,7 @@ export class PixiScene {
     // 成立した直後だけ既存のカウンターエフェクト(剣閃+リング)を表示する。
     const katana = player.subWeapons.includes('katana') || player.subWeapons.includes('murasame');
     const counterFxVisible = !katana || now - player.lastCounterSuccessTime < 360;
+    if (this.counterReachRing) this.counterReachRing.visible = false; // 既定OFF(下で出す時だけON)
     if (now <= player.counterWindowEnd && counterFxVisible) {
       // 元の黄色い攻撃範囲テレグラフ(社長指示で復活)。細いリーチリング + さっと出て
       // 速く消える静止クレセント。クレセントは狙い方向を向き、腹が太く先端が細い。
@@ -13093,21 +13096,30 @@ export class PixiScene {
       const ft = (now - openAt) / 140; // blade life ~140ms (a quick flash)
       if (ft < 1) {
         const fade = Math.max(0, 1 - ft);
-        const fullSegs = 64;
-        for (let i = 0; i < fullSegs; i++) {
-          const a1 = -Math.PI + (i / fullSegs) * Math.PI * 2;
-          const a2 = -Math.PI + ((i + 1) / fullSegs) * Math.PI * 2;
-          const mid = (a1 + a2) / 2;
-          const forward = Math.max(0, Math.cos(mid - head));
-          const rear = Math.max(0, Math.cos(mid - head - Math.PI));
-          const glow = 0.25 + forward * 0.75 + rear * 0.12;
-          const rr = r + Math.sin(i * 1.7) * 0.9;
-          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
-            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 2.4 + glow * 8.5, color: 0x3aa0ff, alpha: 0.12 * fade * glow, cap: 'round' });
-          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
-            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 0.75 + glow * 0.65, color: 0xd8f0ff, alpha: 0.55 * fade, cap: 'round' });
+        // リーチリング(v0.25.2464): 旧64線分の手描き円(半径±0.9px揺らぎ+向きで明暗)は破線状に
+        // ガタついて見えた(社長報告)。焼き込みリングテクスチャの滑らかな円へ置換。方向の強調は
+        // 直下のクレセント(前方三日月)が引き続き担う。per-frame Graphicsの線分128本描画も消滅。
+        {
+          let base = RING_TEX_BASES[RING_TEX_BASES.length - 1];
+          for (const b of RING_TEX_BASES) { if (r <= b * 1.42) { base = b; break; } }
+          let sp = this.counterReachRing;
+          if (!sp) {
+            sp = new Sprite(getRingTexture(base));
+            sp.anchor.set(0.5);
+            sp.blendMode = 'add';
+            (sp as unknown as { __ringBase?: number }).__ringBase = base;
+            g.parent?.addChild(sp);
+            this.counterReachRing = sp;
+          }
+          if ((sp as unknown as { __ringBase?: number }).__ringBase !== base) {
+            sp.texture = getRingTexture(base);
+            (sp as unknown as { __ringBase?: number }).__ringBase = base;
+          }
+          sp.position.set(cx, cy);
+          sp.scale.set(r / base);
+          sp.tint = 0x9ecbff; // 旧配色(縁0x3aa0ff+芯0xd8f0ff)の中間の青白
+          sp.alpha = 0.9 * fade;
+          sp.visible = true;
         }
 
         const span = Math.PI * 1.08;

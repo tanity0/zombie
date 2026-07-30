@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2464',
+    items: [
+      'カウンター時にプレイヤーを囲む青い円がガタついて見えていたのを、滑らかな円に描き直しました(方向は従来どおり前方の三日月で表示)。',
+    ],
+  },
+  {
     version: '0.25.2463',
     items: [
       '裏ボスの足元に常時表示されていた当たり判定の枠(確認用)を非表示にしました。',
