@@ -1075,6 +1075,12 @@ const STATUS_ALLY = 0x38bdf8;   // sky-400: 味方(救助対象)
 // 装備の見た目は再現しない(霊体だから見えなくても世界観として自然)。
 const GHOST_ALLY_TINT = 0x9fd8ff;
 const GHOST_ALLY_ALPHA = 0.7;
+// v0.25.2475(社長指示「はりぼてをやめたい。ちゃんとプレイヤーとまったく同じ描画に乗せて」):
+// 守護霊もプレイヤーと同じ歩きコマ/ナイフ振り/発砲反動+閃光で描く(全て視覚のみ=判定/挙動/ダメージ不変)。
+// 「移動中か」は store を増やさずレンダラ側で前フレーム位置との差分から推定する(最小実装)。
+const GHOST_WALK_HOLD_MS = 120;       // 差分検知の平滑化窓(simのtickと描画フレームのズレを吸収)
+const GHOST_WALK_MIN_DELTA_PX = 0.1;  // これ未満の差分は静止扱い
+const GHOST_WALK_TELEPORT_PX = 80;    // これ以上はリーシュワープ(瞬間追いつき)=歩き扱いにしない
 // M51(社長裁定6.26-9 #4): フェーズを持つボス(ジャイアント)のHPバー・Phase2色(橙)。
 // 既存のSTATUS_YELLOW(amber-400=リロード/注意の意味で使用中)とは別に用意し、意味の混同を避ける。
 const GIANT_PHASE2_BAR_COLOR = 0xf97316; // orange-500
@@ -1662,6 +1668,18 @@ export class PixiScene {
   private cloneKnifeTrail = new Sprite();                  // 3枚目(弧の残光)。本体と同じ3コマ差し替え
   private cloneMeleeWpn = new Sprite();                    // 分身にも装備近接の実絵を重ねる
   private cloneKnifeSetup = false;
+  // 守護霊(ghost-ally)のアニメ状態(v0.25.2475・視覚のみ)。歩き推定=前フレーム位置との差分(store追加なし)。
+  private ghostAnim: { id: string; prevX: number; prevY: number; movingUntil: number } | null = null;
+  // 守護霊の近接スイング(分身 cloneKnife 群と同じ型・守護霊専用の一式)。actorLayer 直下で zIndex ソート。
+  private ghostKnife = new Sprite();
+  private ghostKnifeSlash = new Sprite();
+  private ghostKnifeTrail = new Sprite();
+  private ghostMeleeWpn = new Sprite();
+  private ghostKnifeSetup = false;
+  // 守護霊の銃口フラッシュ(プレイヤーの muzzleSprite とは別に1枚・latch方式=v0.25.2455と同型)。
+  private ghostMuzzle?: Sprite;
+  private ghostMuzzleLatch: { x: number; y: number; dirX: number; dirY: number; rot: number; len: number; sortY: number } | null = null;
+  private ghostMuzzlePrevFired = 0;
   // 白黒テクスチャのキャッシュ(テクスチャ名→事前ベイクした RenderTexture)。毎フレームのフィルタ処理を避ける。
   private grayTexCache = new Map<string, Texture>();
   // 被弾フラッシュ用「真っ白シルエット」テクスチャのキャッシュ(元Texture→白ベイク)。加算で重ねると、
@@ -7836,6 +7854,9 @@ export class PixiScene {
       if (!view) { view = this.makeActor(); this.summonViews.set(s.id, view); }
       this.drawSummon(view, s, now);
     }
+    // 守護霊が場に居ないフレームは専用オーバーレイ(ナイフ振り/銃口閃光)も確実に消す
+    // (view本体はprune済みでもオーバーレイはactorLayer直下=消し忘れ事故の型・v0.25.2412の教訓)。
+    if (!summons.some(s => s.kind === 'ghost-ally')) this.hideGhostAllyOverlays();
     for (const [id, view] of this.summonViews) {
       if (!seen.has(id)) {
         view.light.destroy();
@@ -7850,7 +7871,7 @@ export class PixiScene {
     // (プレイヤーの基本テクスチャ+青白tint+半透明・装備は出さない=未決4の裁定)ので専用分岐で描く。
     // 新規描画経路・新規フィルタ・強glowは追加しない(CLAUDE.md負荷規律)= 既存のactorプール
     // (view.sprite/light/reticle/overlay)にそのまま乗せるだけ。
-    if (s.kind === 'ghost-ally') { this.drawGhostAlly(view, s); return; }
+    if (s.kind === 'ghost-ally') { this.drawGhostAlly(view, s, now); return; }
     // 敵と同じ視覚スケールの足元ボックスで描く(大きさを揃える)。
     const fb = summonFootBox(s);
     const tex = getTexture(s.reusedType);
@@ -7894,35 +7915,188 @@ export class PixiScene {
     }
   }
 
-  // BOT_AND_GHOST.md G2(未決4の裁定=霊体): プレイヤーの基本テクスチャ+青白tint+半透明。
-  // s.width/height は既にプレイヤーの実寸(directorTick.tsが召喚時にplayer.width/heightをコピー)
-  // なので、他summonのようなreusedType別スケール(summonFootBox)は使わない=1:1でそのまま置く。
-  // 動きの絵は最小限(ghostFacingによる左右反転のみ)。武器・装備の絵は出さない。
-  private drawGhostAlly(view: ActorView, s: Summon) {
+  // BOT_AND_GHOST.md G2(未決4の裁定=霊体)→社長指示v0.25.2475で上書き:「はりぼて(待機絵1枚)をやめ、
+  // プレイヤーとまったく同じ描画に乗せる」。青白tint(GHOST_ALLY_TINT)+半透明(GHOST_ALLY_ALPHA)の霊体の
+  // 見た目はそのまま、①クラス別歩きコマ(playerTextureName+playerWalkFrame共有) ②近接のナイフ振り3コマ+
+  // 装備近接の実絵(syncShadowCloneと同型) ③発砲の反動+銃口フラッシュ(latch方式=v0.25.2455と同型)を付ける。
+  // 全て視覚のみ=判定/挙動/ダメージ/クールダウンは1bitも不変。per-frame Graphics/Text生成なし・強glowなし
+  // (スプライト差し替え+tintのみ)。走り/スケボー/武将立ち絵/リロード・カウンターポーズはスコープ外。
+  // s.width/height は既にプレイヤーの実寸(directorTick.tsが召喚時にplayer.width/heightをコピー)なので、
+  // サイズ/遠近はプレイヤーと同じ基準(playerBaseScale+depthScale+ピクセルスナップ)で描く。
+  private drawGhostAlly(view: ActorView, s: Summon, now: number) {
     const footX = s.x + s.width / 2;
     const footY = s.y + s.height;
+    const boxW = s.width * PLAYER_VISUAL_SCALE;
+    const boxH = s.height * PLAYER_VISUAL_SCALE;
+    const dsc = this.depthScale(footY); // プレイヤーと同じ遠近カーブ(旧depthScaleEnemyから変更・v0.25.2475)
+    const faceSign = s.ghostFacing === -1 ? -1 : 1;
     view.light.visible = false;
-    view.sprite.position.set(Math.round(footX), Math.round(footY));
-    view.container.zIndex = footY;
+    view.container.zIndex = footY; // 足元Yソート(プレイヤー/敵と同じ)
     view.container.alpha = GHOST_ALLY_ALPHA;
-    // v0.25.2467(社長指示2件): ①絵=データ取得元クラスの待機立ち絵(無ければヘビーガンナー=warrior)。
-    // 旧ベース絵'player'は使わない。②大きさ=プレイヤー本人と同じ基準(PLAYER_ART_BASE_W幅正規化)。
-    // 旧: 当たり判定ボックスへの内接(containScale)=めちゃくちゃ小さかった。
+
+    // ① 歩き判定(store追加なしの最小実装): 前フレーム位置との差分。リーシュワープ(瞬間追いつき)は
+    //   歩きにしない(上限しきい値)。simのtickと描画フレームのズレで差分0のフレームが混ざるため、
+    //   短い保持窓(GHOST_WALK_HOLD_MS)で平滑化する。
+    if (!this.ghostAnim || this.ghostAnim.id !== s.id) {
+      this.ghostAnim = { id: s.id, prevX: s.x, prevY: s.y, movingUntil: 0 };
+    } else {
+      const ga = this.ghostAnim;
+      const moved = Math.hypot(s.x - ga.prevX, s.y - ga.prevY);
+      if (moved > GHOST_WALK_MIN_DELTA_PX && moved < GHOST_WALK_TELEPORT_PX) ga.movingUntil = now + GHOST_WALK_HOLD_MS;
+      ga.prevX = s.x; ga.prevY = s.y;
+    }
+    const walking = now < this.ghostAnim.movingUntil;
+
+    // ② テクスチャ選択はプレイヤー本体と同じ関数を共有(歩き中=クラス別歩きコマ/静止=クラス待機絵)。
+    //   equipmentはALLY_PLAIN_EQUIP=武将装備の混入防止(救難信号アライの前例v0.25.1726)。
+    const player = useGameStore.getState().player;
     const gcls = (s.ghostClass ?? 'warrior') as Player['characterClass'];
-    const tex = getTexture(PLAYER_IDLE_SPRITE[gcls] ?? 'player-shotgun-idle')
-      ?? getTexture('player-shotgun-idle') ?? getTexture('player');
+    const fakeGhost = { ...player, characterClass: gcls, equipment: ALLY_PLAIN_EQUIP };
+    const frame = playerWalkFrame(fakeGhost, now, walking, false);
+    const tex = getTexture(playerTextureName(fakeGhost, frame, walking, false))
+      ?? getTexture(PLAYER_IDLE_SPRITE[gcls] ?? 'player-shotgun-idle') ?? getTexture('player');
+
+    // ③ 発砲(ghostLastShotAt起点・視覚のみ): latch=発砲の瞬間に「実際に生まれた弾(ghost-gun)の射線」と
+    //   銃口の世界座標を焼き付け、消えるまで場所固定(v0.25.2455の本体実装と同型)。
+    const lastShot = s.ghostLastShotAt ?? 0;
+    const sinceFire = now - lastShot;
+    if (lastShot > 0 && sinceFire >= 0 && sinceFire < MUZZLE_FLASH_MS) {
+      if (lastShot !== this.ghostMuzzlePrevFired) {
+        this.ghostMuzzlePrevFired = lastShot;
+        let dx = faceSign, dy = 0; // 弾が見つからない瞬間のフォールバック=向き
+        const projs = useGameStore.getState().projectiles;
+        for (let i = projs.length - 1; i >= 0; i--) {
+          const pr = projs[i];
+          if (pr.weaponKey === 'ghost-gun' && !pr.hostile && Math.abs(pr.createdAt - lastShot) <= 40) {
+            const m = Math.hypot(pr.direction.x, pr.direction.y) || 1;
+            dx = pr.direction.x / m; dy = pr.direction.y / m;
+            break;
+          }
+        }
+        this.ghostMuzzleLatch = {
+          x: footX + dx * MUZZLE_OFFSET_PX * dsc,
+          y: footY - boxH * MUZZLE_HEIGHT_FRAC * dsc + dy * MUZZLE_OFFSET_PX * dsc,
+          dirX: dx, dirY: dy,
+          rot: Math.atan2(dy, dx),
+          len: MUZZLE_LEN_PX * dsc,
+          sortY: footY, // Yソートは焼き付けた瞬間の足元(閃光自身のYだと必ず背後に回る=v0.25.2427の教訓)
+        };
+      }
+      const L = this.ghostMuzzleLatch;
+      if (L) this.drawGhostMuzzleFlash(L.x, L.y, L.rot, L.len, (1 - sinceFire / MUZZLE_FLASH_MS) * GHOST_ALLY_ALPHA, L.sortY);
+      else this.hideGhostMuzzle();
+    } else this.hideGhostMuzzle();
+    // 反動: プレイヤーのPLAYER_FIRE_RECOIL系と同じ式(射線と逆へ数px+縦squash・急減衰)。
+    let actOffX = 0, actOffY = 0, actSqY = 1;
+    if (lastShot > 0 && sinceFire >= 0 && sinceFire < PLAYER_FIRE_RECOIL_MS) {
+      const e = 1 - sinceFire / PLAYER_FIRE_RECOIL_MS;
+      const rdx = this.ghostMuzzleLatch?.dirX ?? faceSign;
+      const rdy = this.ghostMuzzleLatch?.dirY ?? 0;
+      actOffX -= rdx * PLAYER_FIRE_RECOIL_PX * e * dsc;
+      actOffY -= rdy * PLAYER_FIRE_RECOIL_PX * e * dsc;
+      actSqY *= 1 - PLAYER_FIRE_RECOIL_SQUASH * e;
+    }
+
+    // 本体スプライト: プレイヤーと同じ基準(playerBaseScale=クラス絵は幅正規化+本体と同じピクセルスナップ)。
     if (tex) {
       // v0.25.2465: テクスチャ割り当て漏れ=透明守護霊の修正(割り当ては必須のまま維持)。
       if (view.sprite.texture !== tex) view.sprite.texture = tex;
-      const sc = (PLAYER_ART_BASE_W / tex.width) * this.depthScaleEnemy(footY);
-      const faceSign = s.ghostFacing === -1 ? -1 : 1;
-      view.sprite.scale.set(faceSign * sc, sc);
+      const sc = this.snapTexelScale(playerBaseScale(fakeGhost, tex, boxW, boxH) * dsc);
+      view.sprite.scale.set(faceSign * sc, sc * actSqY);
       view.sprite.tint = GHOST_ALLY_TINT;
+      view.sprite.position.set(
+        this.snapToScreenPixel(footX, this.L.world.position.x) + actOffX,
+        this.snapToScreenPixel(footY, this.L.world.position.y) + actOffY,
+      );
       view.sprite.visible = true;
     } else {
       view.sprite.visible = false;
     }
+
+    // ④ 近接スイング(ghostLastMeleeAt起点): 分身syncShadowCloneのcloneKnife群と同一の3コマ差し替え+
+    //   装備近接の実絵。守護霊専用スプライト一式(青白tint+×GHOST_ALLY_ALPHA)。
+    if (!this.ghostKnifeSetup) {
+      const f1 = getTexture('knife-swing-1');
+      const f2 = getTexture('knife-swing-2');
+      const f3 = getTexture('knife-swing-3');
+      if (f1 && f2 && f3) {
+        const setup = (sp: Sprite, t: Texture | null) => {
+          if (t) sp.texture = t;
+          sp.anchor.set(0.5, 0.5);
+          sp.tint = GHOST_ALLY_TINT; // 青白の統一(歩きコマ・振り・武器絵・銃口の全部=社長指示)
+          sp.visible = false;
+          this.L.actorLayer.addChild(sp);
+        };
+        setup(this.ghostKnife, f1);
+        setup(this.ghostKnifeSlash, f2);
+        setup(this.ghostKnifeTrail, f3);
+        setup(this.ghostMeleeWpn, null);
+        this.ghostKnifeSetup = true;
+      }
+    }
+    const knife = this.ghostKnife, slash = this.ghostKnifeSlash, trail = this.ghostKnifeTrail;
+    const wpn = this.ghostMeleeWpn;
+    const meleeKey = player.weapons.find(w => w.isMelee)?.key;
+    const wtex = meleeKey ? getTexture(`weapons/${meleeKey}`) : null;
+    const meleeAt = s.ghostLastMeleeAt ?? 0;
+    const mSince = now - meleeAt;
+    if (this.ghostKnifeSetup && meleeAt > 0 && mSince >= 0 && mSince < PLAYER_MELEE_SWING_MS) {
+      const kt = meleeSwingEase(mSince / PLAYER_MELEE_SWING_MS); // 本体/分身と同じイージング
+      const mir = faceSign;
+      const unit = boxH * dsc;
+      const baseX = this.snapToScreenPixel(footX, this.L.world.position.x);
+      const baseY = this.snapToScreenPixel(footY - boxH * 0.5 * dsc, this.L.world.position.y); // 胸あたり
+      const zc = footY + 0.5; // 本体のすぐ前面
+      const place = (sp: Sprite, cfg: { scale: number; ox: number; oy: number }, vis: boolean, alpha: number) => {
+        if (!vis || !sp.texture || sp.texture.width === 0) { sp.visible = false; return; }
+        const scl = (unit * cfg.scale) / sp.texture.width;
+        sp.scale.set(mir * scl, scl); // 左向き=水平ミラー(回転なし)
+        sp.position.set(baseX + mir * cfg.ox * unit, baseY + cfg.oy * unit);
+        sp.zIndex = zc;
+        sp.alpha = alpha * GHOST_ALLY_ALPHA; // 霊体の半透明を継承
+        sp.visible = sp.alpha > 0.01;
+      };
+      // 装備近接の実絵(本体/分身と同じ計測定数・霊体の透過/zIndexを継承)。
+      const placeWpn = (ox: number, oy: number, rot: number, lenFrac: number, alpha: number) => {
+        if (!wtex) { wpn.visible = false; return; }
+        if (wpn.texture !== wtex) wpn.texture = wtex;
+        const sc2 = (unit * lenFrac) / Math.max(1, Math.hypot(wtex.width, wtex.height));
+        wpn.scale.set(mir * sc2, sc2);
+        wpn.rotation = mir * rot;
+        wpn.position.set(baseX + mir * ox * unit, baseY + oy * unit);
+        wpn.zIndex = zc;
+        wpn.alpha = alpha * GHOST_ALLY_ALPHA;
+        wpn.visible = wpn.alpha > 0.01;
+      };
+      const arcAspect = slash.texture && slash.texture.width > 0 ? slash.texture.height / slash.texture.width : 0.577;
+      const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
+      const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
+      if (kt < KNIFE_SWING_SWITCH) {
+        const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
+        place(knife, KNIFE_F1, !wtex, a1);
+        placeWpn(KNIFE_F1.ox, KNIFE_F1.oy, MELEE_WPN_F1.rot, MELEE_WPN_F1.len, a1);
+        place(slash, KNIFE_F2, false, 0);
+        place(trail, KNIFE_F3, false, 0);
+      } else if (kt < KNIFE_SWING_SWITCH2) {
+        const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH); // 0..1
+        const a2 = Math.min(1, t2 / 0.25);                              // 本体と同じくsnapで出す
+        place(knife, KNIFE_F1, false, 0);
+        place(slash, KNIFE_F2, true, a2);
+        placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, a2);
+        place(trail, KNIFE_F3, false, 0);
+      } else {
+        const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2); // 0..1
+        place(knife, KNIFE_F1, false, 0);
+        place(slash, KNIFE_F2, false, 0);
+        wpn.visible = false;
+        place(trail, KNIFE_F3, true, 1 - t3);                           // 弧の残光フェード(本体と同じ)
+      }
+    } else {
+      knife.visible = false; slash.visible = false; trail.visible = false; wpn.visible = false;
+    }
+
     view.reticle.clear();
+    // HPバー(減った時だけ)は従来のまま維持。
     const o = view.overlay;
     o.clear();
     if (s.health < s.maxHealth) {
@@ -7931,6 +8105,43 @@ export class PixiScene {
       o.rect(bx, by, s.width, 3).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
       o.rect(bx, by, s.width * frac, 3).fill({ color: GHOST_ALLY_TINT });
     }
+  }
+
+  // 守護霊の銃口フラッシュ(drawMuzzleFlashの守護霊版)。本体の muzzleSprite と分けて1枚持つ
+  // (=プレイヤー本体の描画コードは触らない掟)。素材/アンカー/長さ換算/zIndexの扱いは本体と同じで、
+  // 青白tint(GHOST_ALLY_TINT)だけ足す。
+  private drawGhostMuzzleFlash(x: number, y: number, angle: number, len: number, alpha: number, sortY: number): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) { this.hideGhostMuzzle(); return; }
+    const tex = getTexture('fx/muzzle-flash');
+    if (!tex) return;
+    let sp = this.ghostMuzzle;
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(MUZZLE_ANCHOR_X, MUZZLE_ANCHOR_Y);
+      sp.tint = GHOST_ALLY_TINT; // 青白(霊体)
+      this.L.actorLayer.addChild(sp);
+      this.ghostMuzzle = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    const scl = len / 215; // 素材の可視長(215px)を狙いの長さへ(本体drawMuzzleFlashと同じ)
+    sp.scale.set(scl, scl);
+    sp.rotation = angle;
+    sp.position.set(x, y);
+    sp.zIndex = sortY + 1; // 撃った本人(守護霊)のすぐ手前
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+  private hideGhostMuzzle(): void { if (this.ghostMuzzle) this.ghostMuzzle.visible = false; }
+  // 守護霊が場に居ない間、専用オーバーレイ(ナイフ振り/銃口閃光)と推定状態を確実に落とす。
+  private hideGhostAllyOverlays(): void {
+    if (this.ghostKnifeSetup) {
+      this.ghostKnife.visible = false; this.ghostKnifeSlash.visible = false;
+      this.ghostKnifeTrail.visible = false; this.ghostMeleeWpn.visible = false;
+    }
+    this.hideGhostMuzzle();
+    this.ghostAnim = null;
+    this.ghostMuzzleLatch = null;
+    this.ghostMuzzlePrevFired = 0;
   }
 
   private drawPlayer(view: ActorView, p: Player, gameTime: number, now: number) {

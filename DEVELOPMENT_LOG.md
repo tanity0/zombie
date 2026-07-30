@@ -1,5 +1,40 @@
 # Development Log
 
+## v0.25.2475 — 守護霊の「はりぼて」廃止=プレイヤーと同じ描画系に乗せる(社長指示「絵が1枚うごいてるだけで共闘感がありません」)【2026-07-30 12:14 JST】
+
+- **全て視覚のみ=判定/挙動/ダメージ/クールダウンは1bitも不変**(ghostDriver/useGameLoop/storeは無変更)。
+  `drawGhostAlly`(pixiScene.ts)を待機立ち絵1枚の専用分岐から、プレイヤーと同じ描画系の共有へ書き換え:
+  1. **歩きアニメ**: `playerTextureName`+`playerWalkFrame` をそのまま共有(クラス=`Summon.ghostClass`・
+     equipment=`ALLY_PLAIN_EQUIP` で武将装備の混入を防ぐ=救難信号アライの前例v0.25.1726)。
+     「移動中か」はstore追加なしでレンダラ側の前フレーム位置差分から推定(`GHOST_WALK_HOLD_MS=120`で平滑化・
+     `GHOST_WALK_TELEPORT_PX=80`以上はリーシュワープ=歩き扱いにしない)。静止時は従来どおりクラス待機絵。
+  2. **近接スイング**: `ghostLastMeleeAt` 起点で分身(syncShadowClone)と同一のナイフ振り3コマ+装備近接の
+     実絵(`weapons/<meleeKey>`)。守護霊専用スプライト一式(ghostKnife群)をactorLayerに持ち、
+     KNIFE_F1/F2/F3・MELEE_WPN_F1/F2・meleeSwingEase を共有。
+  3. **発砲**: `ghostLastShotAt` 起点で ①反動(実際に生まれた弾`ghost-gun`の射線と逆へ・PLAYER_FIRE_RECOIL系と
+     同式) ②銃口フラッシュ(fx/muzzle-flash流用・青白tint・latch方式=v0.25.2455の本体実装と同型。
+     Yソートは足元Y+1=「閃光が背後に回って見えない」v0.25.2427の教訓を踏襲)。
+  4. **青白の統一**: 歩きコマ・振り3コマ・武器絵・銃口の全てに GHOST_ALLY_TINT(0x9fd8ff)+×GHOST_ALLY_ALPHA(0.7)。
+  5. **サイズ/遠近/zIndex**: プレイヤーと同じ基準へ(playerBaseScale+depthScale(旧depthScaleEnemyから変更)+
+     snapTexelScale/snapToScreenPixelのピクセルスナップ+足元Yソート)。HPバー(減った時だけ)は維持。
+  6. スコープ外(明記): 走りモーション/スケボー/武将立ち絵/リロード・カウンターポーズ/PHILLレティクル。
+- **プレイヤー本体の描画コードは1行も変更なし**(共有関数playerTextureName/playerWalkFrame/playerBaseScaleを
+  呼ぶだけ・シグネチャ変更なし)。守護霊不在フレームはsyncSummonsが専用オーバーレイを確実に消す
+  (hideGhostAllyOverlays=消し忘れ事故v0.25.2412の型への対策)。
+- 変更ファイル: `src/pixi/pixiScene.ts` / `BOT_AND_GHOST.md`(§2.5未決4の「はりぼて回避」設計が社長指示で
+  上書きされた旨を追記) / package.json / src/data/changelog.ts / 本ログ。
+- ★未決: なし(要件は全て指示書で確定済み。GHOST_WALK_HOLD_MS等の推定用しきい値3つは視覚のみの叩き台=実機調整可)。
+- **Load score: 2/10**(rendering)。追加は「スプライト差し替え+tint」のみ: 本体テクスチャ選択(既存共有関数)・
+  ナイフ3コマ+武器絵(同時可視は最大2枚・分身と同型のプール)・銃口フラッシュ1枚・歩き推定は算術数行/frame。
+  per-frame Graphics/Text生成なし・強glow増加なし・新規フィルタ/マスク/画面境界判定なし=`?zoomlock=1`でも
+  破綻要素なし(全てactorLayer内のworld座標スプライト)。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ) /
+  `npx vitest related src/pixi/pixiScene.ts`=対象テストなし(レンダラ描画コードはユニットテスト対象外の方針どおり)。
+  実機の見え方確認は社長(ボス戦で守護霊召喚→追従移動中に歩きモーション/ボスへ発砲で反動+青白閃光/
+  近接圏でナイフ振り)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(シーン・湧き・判定・ダメージ・CD・
+  資源は不変。変更はkind==='ghost-ally'の描画分岐内のみ=プレイヤー/敵/他summonの絵にも不干渉)。
+
 ## v0.25.2474 — `?autotut=1`(自動テスト用: ポップアップ非表示・既読処理のみ)+README申し送り【2026-07-30 11:58 JST】
 
 - 社長合意(v0.25.2472「ポップアップ出てたらOK押すっていうのは必要かも?」)の恒久策。
