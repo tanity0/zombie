@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2505',
+    items: [
+      'ゲーム内容の変更はありません(設計原則の明文化: 守護霊はプレイヤーの戦闘仕様の完全な写しとし、明示的な除外以外の差は全てバグとして扱います。全数監査を開始)。',
+    ],
+  },
+  {
     version: '0.25.2504',
     items: [
       'ゲーム内容の変更はありません(次の修正2件=ゴールサークル内の攻撃全停止・守護霊の生存性改善の仕様を記録)。',
