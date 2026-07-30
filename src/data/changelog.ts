@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2540',
+    items: [
+      'ゲーム内容の変更はありません(音波弾の本体素材を受領・搭載。適用はエフェクトバッチで行います)。',
+    ],
+  },
+  {
     version: '0.25.2539',
     items: [
       'ゲーム内容の変更はありません(天使の光弾素材を受領・搭載。適用はエフェクトバッチで行います)。',
