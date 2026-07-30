@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.2461 — 城ボス基本5技: 距離ハードゲート→距離ゾーン別の重み付き抽選(BOSS_RANGE_REWORK.md・社長裁定v0.25.2455)【2026-07-30 09:03 JST】
+
+- **仕様の正本**: research/BOSS_RANGE_REWORK.md(実測12ラン+社長裁定「城の重みづけはそれで」)。
+  ゾーン=密着0-120/近120-300/中300-600/遠600+(上限なし)。重み表は確定表のとおり
+  `GIANT_MOVE_WEIGHTS`(giantScript.ts・1箇所)へ固定(stomp 50/15/0/0・sweep 25/35/5/0・
+  jump 10/30/40/20・bolt 15/20/40/10・dash 0/0/15/70)。
+- **抽選**: `pickGiantMove`=readyかつ現在ゾーンの重み>0の技から重み比例(乱数注入可)。
+  `giantMoveEligible`=「そのゾーンの重み>0」へ読み替え(署名不変)→followup系
+  (pickGiantCombo/pickGiantStoryCombo)の「まだその技の間合いに居るなら」も自動で同じ読み替え
+  (連携の構造・確率40%/60%/70%・CD・フェーズ制約sweep=P2+は不変)。
+- **ステージ独自技/グレン技は不変**: 範囲表・CD・フェーズゲートに無改変。統合抽選での混ぜ方は
+  「追加技の重み=候補中の基本技の平均重み」(基本技0件なら1)で、旧等確率の当選率1/(n+k)を
+  厳密に保存=新しい数字を発明しない(境界テストで固定)。
+- **unlimitedJump(stage-7)**: 新表でjumpは全ゾーン>0なので実挙動不変。将来表を変えても跳べなく
+  ならないよう `GIANT_UNLIMITED_JUMP_WEIGHT_FLOOR`(=1)の>0保証ガードをgiantMoveWeightに実装
+  (注入表テストで検証)。
+- **調査結果**: ①GIANT_RANGEをimportして読むのはgiantScript.ts/giantScript.test.tsのみ(全域grep・
+  ボットのtelegraphDodge等は不読)。suriel/bossScriptはコメント言及のみ(SURIEL_RINGSPIN_RANGE=140は
+  独自定数で値不変・注記のみ更新)。②GIANT_STAGE_RANGE_MULTは間合い(抽選距離)には元から効いて
+  おらず、M65の3値(stomp AoE半径/jump着地半径/dash速度)のみ→ゾーン境界には掛けず従来適用を
+  無改変で維持(黙って落としていない、の確認)。
+- **意図的に変わる挙動(仕様どおり)**: 密着でもsweep/bolt/jumpが出る・stompは近(300)まで・
+  遠600+に上限なし(jump/bolt/dashが届く=引き撃ちの安全距離が消滅。グレン以外・ex1にも適用)。
+- 変更ファイル: `src/utils/giantScript.ts`(ゾーン/重み表/重み付き抽選)/`src/utils/giantScript.test.ts`
+  (93件: 重み表の不変条件・比例性・ready除外・ガード・旧ハードゲート前提テストの新仕様化=意図を
+  コメントで残した)/`src/store/gameStore.ts`(コメントのみ)/`src/utils/surielScript.ts`(コメントのみ)/
+  `research/BOSS_RANGE_REWORK.md`(実装状況+実装ノート)/package.json/changelog/本ログ。
+- ★未決: なし。
+- **検証**: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ) /
+  `npx vitest related`(変更ファイル一式)=17ファイル350件(346通過・4 skip既存)。
+- Load score: 1/10(抽選は技の発動間隔ごとに1回のreduce/filter・per-frameコストなし。描画・React購読に変更なし)。
+- 自己点検: この変更は憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(城ボスの技選択の
+  確率分布のみ。シーン・湧き・countCap・プレイヤー判定・ダメージ・CDは不変)。
+- 次への引き継ぎ: BOSS_RANGE_REWORK.mdの残タスク=同プローブ再計測でbolt選択率のビフォーアフター確認
+  (計測スクリプトは設計チャットのscratchpad・bossDistance.probe.test.ts)。
+
 ## v0.25.2460 — 砂埃のアルファを4点キーフレーム(70→100→70→30→0)へ(社長指示)【2026-07-30 08:43 JST】
 
 - 社長指示「70 100 70 30--- にしてみて」。砂埃専用の包絡線 `dustAlpha(t)` を復活: 寿命を4等分した

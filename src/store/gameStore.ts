@@ -8712,7 +8712,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
             default: {
               // 待機中(chase): 技を抽選する。全体クールダウン(aiReadyAt=パリィ直後の一時停止に流用)明け
-              // かつ、各技の個別CD明けのものだけを候補にする(giantScript.tsのpickGiantMoveが等確率選択)。
+              // かつ、各技の個別CD明けのものだけを候補にする(giantScript.tsのpickGiantMoveが距離ゾーン別の
+              // 重み付き抽選=BOSS_RANGE_REWORK.md・社長裁定v0.25.2455)。
               if (gameTime >= (enemy.aiReadyAt ?? 0)) {
                 const ready: Record<GiantMove, boolean> = {
                   stomp: gameTime >= (enemy.gStompReadyAt ?? 0),

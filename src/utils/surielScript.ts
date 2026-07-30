@@ -8,7 +8,7 @@ import { pickEligibleMove } from './bossScript';
 
 export type SurielMove = 'ringshot' | 'ringspin' | 'sweep' | 'gaze';
 
-export const SURIEL_RINGSPIN_RANGE = 140; // 「近接拒否」=密着帯(GIANT_RANGE.MELEE_MAXと同値を流用)
+export const SURIEL_RINGSPIN_RANGE = 140; // 「近接拒否」=密着帯(流用元は旧GIANT_RANGE.MELEE_MAX=140。城ボス側はBOSS_RANGE_REWORK.mdで120へ再設計されたが、この値は当時の裁定どおり140のまま=仕様不変)
 export const SURIEL_PHASE_HP_THRESHOLD = 0.5; // §6.28-18: フェーズ2 = HP50%
 export const SURIEL_COMBO_CHANCE = 0.7;   // ①環の射出→③本体の薙ぎ
 

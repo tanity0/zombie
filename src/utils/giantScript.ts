@@ -16,6 +16,14 @@
 //    (1|2|3)へ広げたが、phase∈{1,2}の入力に対する出力は一切変えていない(3は今までのコードから
 //    絶対に来ない値だったので、新しい枝を1つ足しただけ=既存の到達可能な入力領域では無改変)。
 //  ・Phase3専用の新規ロジック(giantPhaseForHealthStory/pickGiantStoryCombo等)はファイル末尾に集約。
+//
+// ==== BOSS_RANGE_REWORK.md追記(社長裁定v0.25.2455「城の重みづけはそれで」) ====
+// 基本5技(stomp/sweep/jump/dash/bolt)の距離ハードゲートを「距離ゾーン別の重み付き抽選」へ再設計。
+// ゾーン=密着0-120/近120-300/中300-600/遠600+(上限なし)、重み表=GIANT_MOVE_WEIGHTS(1箇所)。
+// followupの「まだその技の間合いに居るなら」は「そのゾーンの重み>0」へ読み替え(意味を保存する最小変更)。
+// CD・連携(followup)の構造・ステージ独自技(GIANT_STAGE_MOVE_RANGE)・グレン技(GLEN_MOVE_RANGE)・
+// フェーズ制約(sweep=P2+/nihil=P2+)・trijump・移動AIは不変。上のM60の「無改変」の記述は
+// M60時点の経緯の記録として残す(本リワークで抽選方式そのものが変わった)。
 
 import { phaseForHealth } from './bossScript';
 
@@ -24,14 +32,24 @@ export type GiantMove = 'stomp' | 'sweep' | 'jump' | 'dash' | 'bolt';
 // 通常城ボスはgiantPhaseForHealth(無改変)しか呼ばないため、実際には1|2までしか出ない。
 export type GiantPhase = 1 | 2 | 3;
 
-// 間合いの帯(px・中心間距離)。6.26-6の表で確定した最終値(由来はgameStore.ts側の定数から導出済み)。
+// 間合いのゾーン境界(px・中心間距離)。BOSS_RANGE_REWORK.md(社長裁定v0.25.2455)で距離ハードゲート
+// (旧6.26-6の表: 密着140/近320/中620/遠上限1000/飛び掛かり上限700)を廃止し、
+// 「密着0-120 / 近120-300 / 中300-600 / 遠600+」の4ゾーン×重み表(GIANT_MOVE_WEIGHTS)へ再設計した。
+// 遠ゾーンに上限は無い(旧FAR_MAX/JUMP_MAXの上限は撤廃=「重み0」がハードゲートの後継。
+// 引き撃ちで完全に安全な距離が構造的に存在しないようにする)。
 export const GIANT_RANGE = {
-  MELEE_MAX: 140,   // 密着 0〜140
-  NEAR_MAX: 320,    // 近 140〜320
-  MID_MAX: 620,     // 中 320〜620
-  FAR_MAX: 1000,    // 遠 620〜1000
-  JUMP_MAX: 700,    // 飛び掛かりの上限(近〜中 140〜700)
+  MELEE_MAX: 120, // 密着 0〜120
+  NEAR_MAX: 300,  // 近 120〜300
+  MID_MAX: 600,   // 中 300〜600(これを超えたら「遠」・上限なし)
 } as const;
+
+// 距離→ゾーン。境界は旧giantMoveEligibleと同じ「上限は含む(<=)」の作法。
+export type GiantZone = 'melee' | 'near' | 'mid' | 'far';
+export const giantZoneForDistance = (distance: number): GiantZone =>
+  distance <= GIANT_RANGE.MELEE_MAX ? 'melee'
+  : distance <= GIANT_RANGE.NEAR_MAX ? 'near'
+  : distance <= GIANT_RANGE.MID_MAX ? 'mid'
+  : 'far';
 
 // フェーズ移行のHP閾値(社長裁定6.26-9 #4で60%のまま据え置き)。
 export const GIANT_PHASE_HP_THRESHOLD = 0.6;
@@ -45,47 +63,85 @@ export const giantPhaseForHealth = (healthFrac: number): 1 | 2 =>
 export const giantPhaseJustChanged = (prevPhase: GiantPhase | undefined, nextPhase: GiantPhase): boolean =>
   prevPhase !== undefined && prevPhase !== nextPhase;
 
-// 各技の間合い適格判定(6.26-6 状態機械の抽選条件と同一)。CD(readyAt)は呼び出し側(gameStore.ts)が
-// 個別に持つタイムスタンプで判定するため、ここでは「間合い」と「フェーズ」だけを見る。
-// (M60: phaseの型をGiantPhaseへ広げ、sweepをphase>=2へ緩和。phase∈{1,2}での出力は無改変
-//  =通常城ボスは今までどおりphase===2の時だけsweepが解禁される。phase===3はstoryBoss専用で、
+// ==== 基本5技×距離ゾーンの重み表(BOSS_RANGE_REWORK.md確定表・社長裁定v0.25.2455「城の重みづけはそれで」) ====
+// 重み0=その距離では出ない(ハードゲートと同じ意味)。数字はこの表1箇所だけで管理し、
+// バランス調整は表の差し替えだけで済むようにする(数字を勝手に変えない=CLAUDE.md仕様変更ルール)。
+// sweepの「Phase2+で解禁」は表ではなくgiantMoveWeight側で維持する(重みはフェーズと独立)。
+export const GIANT_MOVE_WEIGHTS: Record<GiantMove, Record<GiantZone, number>> = {
+  stomp: { melee: 50, near: 15, mid: 0,  far: 0 },
+  sweep: { melee: 25, near: 35, mid: 5,  far: 0 },
+  jump:  { melee: 10, near: 30, mid: 40, far: 20 },
+  bolt:  { melee: 15, near: 20, mid: 40, far: 10 },
+  dash:  { melee: 0,  near: 0,  mid: 15, far: 70 },
+};
+
+// ★ステージ7(ラスボス)の「無限ジャンプ」(社長指示v0.25.2420「無限ジャンプで実質逃げれないように
+// する」)の保険。理由: **ステージ7は雑魚が出ない**ので、走って逃げれば完全に安全な時間が作れてしまい、
+// 回復して戻る=消耗戦が成立する。どこまで逃げても飛んで追ってくる=逃げ切れない。**予告(赤い着地円)は
+// 従来どおり出る**ので理不尽にはならない。現行の重み表ではjumpは全ゾーン重み>0なので実挙動には出ないが、
+// 将来表からjumpの重みを消してもstage-7が跳べなくならないよう、unlimitedJump=trueの時はjumpの実効重みを
+// 全ゾーンでこの床(>0)に保証する。
+export const GIANT_UNLIMITED_JUMP_WEIGHT_FLOOR = 1;
+
+// 技×距離×フェーズ→実効重み。0=出ない。CD(readyAt)は従来どおり呼び出し側(gameStore.ts)が見る。
+// sweepのPhase2+解禁(6.26-9・M60の原則⑥=Phase3でも消えない)はここで維持する。
+// weightsを注入可能にしてあるのはunlimitedJumpガードのテストのため(既定は確定表)。
+export const giantMoveWeight = (
+  move: GiantMove,
+  distance: number,
+  phase: GiantPhase,
+  unlimitedJump = false,
+  weights: Record<GiantMove, Record<GiantZone, number>> = GIANT_MOVE_WEIGHTS,
+): number => {
+  if (move === 'sweep' && phase < 2) return 0; // sweepはPhase2で解禁(従来どおり)
+  const w = weights[move][giantZoneForDistance(distance)];
+  if (move === 'jump' && unlimitedJump && w <= 0) return GIANT_UNLIMITED_JUMP_WEIGHT_FLOOR;
+  return w;
+};
+
+// 各技の適格判定=「現在ゾーンの重み>0」(旧ハードゲートの後継・BOSS_RANGE_REWORK.mdの読み替え)。
+// followup系(pickGiantCombo/pickGiantStoryCombo)の「まだその技の間合いに居るなら」判定もこの関数
+// 経由なので、同じ読み替えが自動的に効く(意味を保存する最小変更)。
+// (M60: phaseの型をGiantPhaseへ広げ、sweepをphase>=2へ緩和——phase===3はstoryBoss専用で、
 //  「Phase2で解禁された技はPhase3でも消えない」という原則⑥(6.28-2-2)どおりsweepを維持する。)
 export const giantMoveEligible = (
   move: GiantMove, distance: number, phase: GiantPhase,
-  // ★ステージ7(ラスボス)だけ飛び掛かりの上限を撤廃する(社長指示v0.25.2420「無限ジャンプで
-  // 実質逃げれないようにする」)。理由: **ステージ7は雑魚が出ない**ので、走って逃げれば完全に
-  // 安全な時間が作れてしまい、回復して戻る=消耗戦が成立する。上限を外すと、どこまで逃げても
-  // 飛んで追ってくる=逃げ切れない。**予告(赤い着地円)は従来どおり出る**ので理不尽にはならない
-  // (「見えない攻撃で殺される」ではなく「逃げても着地円が足元に出る」)。既定はfalse=他ステージ不変。
   unlimitedJump = false,
-): boolean => {
-  switch (move) {
-    case 'stomp': return distance <= GIANT_RANGE.MELEE_MAX;
-    case 'sweep': return (phase === 2 || phase === 3) && distance > GIANT_RANGE.MELEE_MAX && distance <= GIANT_RANGE.NEAR_MAX;
-    case 'jump':  return distance > GIANT_RANGE.MELEE_MAX && (unlimitedJump || distance <= GIANT_RANGE.JUMP_MAX);
-    case 'dash':  return distance > GIANT_RANGE.NEAR_MAX && distance <= GIANT_RANGE.FAR_MAX;
-    case 'bolt':  return distance > GIANT_RANGE.NEAR_MAX && distance <= GIANT_RANGE.MID_MAX;
-    default: return false;
-  }
-};
+): boolean => giantMoveWeight(move, distance, phase, unlimitedJump) > 0;
 
 const ALL_MOVES: GiantMove[] = ['stomp', 'sweep', 'jump', 'dash', 'bolt'];
 
-// 間合い+フェーズ+CD明けの技から等確率で1つ選ぶ(既存スケジューラ gameStore.ts:7338-7339 と同じ作法)。
-// 該当技が無ければ null(=通常チェイスへフォールスルー)。(M60: phase型のみGiantPhaseへ拡張。)
+// 重み比例で1つ選ぶ(重み付きルーレット)。乱数は既存の流儀に合わせて注入可能(テストのため)。
+// rand()が1.0ちょうどを返す端の数値誤差は最後の候補に落とす(旧実装のMath.min(...)と同旨の安全網)。
+type GiantWeighted<T> = { move: T; weight: number };
+const pickWeighted = <T,>(entries: GiantWeighted<T>[], rand: () => number): T | null => {
+  const total = entries.reduce((sum, e) => sum + e.weight, 0);
+  if (total <= 0) return null;
+  let r = rand() * total;
+  for (const e of entries) {
+    r -= e.weight;
+    if (r < 0) return e.move;
+  }
+  return entries[entries.length - 1].move;
+};
+
+// 使用可能(CD明け=ready)かつ現在ゾーンの重み>0の技から、重み比例で1つ選ぶ
+// (BOSS_RANGE_REWORK.md・旧「等確率」から変更)。該当技が無ければ null(=通常チェイスへフォールスルー)。
 export const pickGiantMove = (
   distance: number,
   phase: GiantPhase,
   ready: Record<GiantMove, boolean>,
   rand: () => number = Math.random,
 ): GiantMove | null => {
-  const pool = ALL_MOVES.filter(m => ready[m] && giantMoveEligible(m, distance, phase));
-  if (pool.length === 0) return null;
-  return pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))];
+  const entries: GiantWeighted<GiantMove>[] = ALL_MOVES
+    .map(m => ({ move: m, weight: ready[m] ? giantMoveWeight(m, distance, phase) : 0 }))
+    .filter(e => e.weight > 0);
+  return pickWeighted(entries, rand);
 };
 
 // Phase2限定の2連携(社長裁定6.26-9 #8): 許す組み合わせは2つのみ。
 // 「相手がまだその技の間合いに居るなら」確率40%でもう1発だけ続ける。
+// (BOSS_RANGE_REWORK.md: 「間合いに居る」=そのゾーンの重み>0、へ読み替え。連携の構造・確率は不変。)
 export const GIANT_COMBO_FOLLOWUP: Partial<Record<GiantMove, GiantMove>> = {
   sweep: 'stomp',
   dash: 'stomp',
@@ -101,7 +157,7 @@ export const pickGiantCombo = (
   if (phase !== 2) return null;
   const followup = GIANT_COMBO_FOLLOWUP[justFinished];
   if (!followup) return null;
-  if (!giantMoveEligible(followup, distance, phase)) return null; // 「まだその技の間合いに居るなら」
+  if (!giantMoveEligible(followup, distance, phase)) return null; // 「まだその技の間合いに居るなら」=そのゾーンの重み>0
   return rand() < GIANT_COMBO_CHANCE ? followup : null;
 };
 
@@ -148,7 +204,7 @@ export const pickGiantStoryCombo = (
 ): GiantMove | null => {
   const followup = GIANT_STORY_PHASE3_FOLLOWUP[justFinished];
   if (!followup) return null;
-  if (!giantMoveEligible(followup, distance, 3, unlimitedJump)) return null; // 「まだその技の間合いに居るなら」
+  if (!giantMoveEligible(followup, distance, 3, unlimitedJump)) return null; // 「まだその技の間合いに居るなら」=そのゾーンの重み>0
   const chance = isEx ? GIANT_STORY_COMBO_CHANCE_PHASE3_EX : GIANT_STORY_COMBO_CHANCE_PHASE3;
   return rand() < chance ? followup : null;
 };
@@ -227,11 +283,20 @@ export const giantStageMoveEligible = (move: GiantStageMoveId, distance: number)
   return distance >= r.min && distance <= r.max;
 };
 
-// 5技(既存・無改変)+ステージ固有の独自技(Phase1から)/大技(Phase2以上のみ)を対象にした統合抽選。
-// 複数該当したら等確率で1つ(既存pickGiantMoveと同じ作法)。stageIdに技が定義されていなければ
-// 実質pickGiantMoveと同じ結果になる(=stage-6/7/ex1・未知ステージは無改変)。
-// 既存pickGiantMove自体はこの関数から呼ばず、ALL_MOVESの絞り込みをここでも独立に行う
-// (=pickGiantMoveの挙動・テストに一切触れない。別名の新関数として追加)。
+// ステージ技の混ぜ方(BOSS_RANGE_REWORK.md「ステージ独自技は今回触らない」の保存):
+// 旧仕様は「候補n+k件から等確率」=各ステージ技の当選率は 1/(n+k)。重み方式でも各ステージ技に
+// 「候補中の基本技の平均重み」を与えると当選率は厳密に 1/(n+k) のまま(基本技グループ:ステージ技
+// グループの取り分も n:k で従来と同一)=新しい数字を発明しない。基本技の候補が0件なら従来どおり
+// ステージ技だけの等確率(重み1)。pickGiantMoveWithGlenのグレン技も同じ規則。
+const stageMixWeight = <T,>(basicEntries: GiantWeighted<T>[]): number =>
+  basicEntries.length > 0
+    ? basicEntries.reduce((sum, e) => sum + e.weight, 0) / basicEntries.length
+    : 1;
+
+// 5技(距離ゾーン別の重み付き抽選=BOSS_RANGE_REWORK.md)+ステージ固有の独自技(Phase1から)/
+// 大技(Phase2以上のみ)を対象にした統合抽選。ステージ技の範囲表(GIANT_STAGE_MOVE_RANGE)・CD・
+// フェーズゲートは不変で、混ぜ方は上のstageMixWeight(旧等確率の当選率を保存)。stageIdに技が
+// 定義されていなければ実質pickGiantMoveと同じ結果になる(=stage-6/7/ex1・未知ステージは基本5技のみ)。
 export const pickGiantMoveWithStage = (
   stageId: string,
   distance: number,
@@ -240,13 +305,19 @@ export const pickGiantMoveWithStage = (
   stageReady: Partial<Record<GiantStageMoveId, boolean>>,
   rand: () => number = Math.random,
 ): GiantMove | GiantStageMoveId | null => {
-  const pool: (GiantMove | GiantStageMoveId)[] = ALL_MOVES.filter(m => ready[m] && giantMoveEligible(m, distance, phase));
+  const entries: GiantWeighted<GiantMove | GiantStageMoveId>[] = ALL_MOVES
+    .map(m => ({ move: m as GiantMove | GiantStageMoveId, weight: ready[m] ? giantMoveWeight(m, distance, phase) : 0 }))
+    .filter(e => e.weight > 0);
+  const extraWeight = stageMixWeight(entries);
   const uniqueMove = GIANT_STAGE_UNIQUE_MOVE[stageId];
-  if (uniqueMove && (stageReady[uniqueMove] ?? false) && giantStageMoveEligible(uniqueMove, distance)) pool.push(uniqueMove);
+  if (uniqueMove && (stageReady[uniqueMove] ?? false) && giantStageMoveEligible(uniqueMove, distance)) {
+    entries.push({ move: uniqueMove, weight: extraWeight });
+  }
   const ultMove = GIANT_STAGE_ULT_MOVE[stageId];
-  if (ultMove && phase >= 2 && (stageReady[ultMove] ?? false) && giantStageMoveEligible(ultMove, distance)) pool.push(ultMove);
-  if (pool.length === 0) return null;
-  return pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))];
+  if (ultMove && phase >= 2 && (stageReady[ultMove] ?? false) && giantStageMoveEligible(ultMove, distance)) {
+    entries.push({ move: ultMove, weight: extraWeight });
+  }
+  return pickWeighted(entries, rand);
 };
 
 // stage-4「三連突進→氷の横薙ぎ」の学習装置③(回数で読ませる)。回数は常に3固定=乱数にしない
@@ -328,9 +399,9 @@ export const glenScriptApplies = (
   enabled: boolean,
 ): boolean => enabled && isStoryBoss === true && storyBossVariant === 'stage-7';
 
-// 既存5技(stomp/sweep/jump/dash/bolt・pickGiantMove無改変=このプールもALL_MOVESを独立に再絞り込み
-// するだけで既存関数は呼ばない・触らない)+グレン専用4技の統合抽選。複数該当したら等確率で1つ
-// (既存pickGiantMove/pickGiantMoveWithStageと同じ作法)。
+// 既存5技(距離ゾーン別の重み付き抽選=BOSS_RANGE_REWORK.md)+グレン専用4技の統合抽選。
+// グレン技の範囲表(GLEN_MOVE_RANGE)・CD・nihilのPhase2ゲートは不変で、混ぜ方はstageMixWeight
+// (旧等確率の当選率1/(n+k)を保存・pickGiantMoveWithStageと同じ規則)。
 // nihilだけPhase2(HP60%)以上でのみ候補に入る(表の「解禁」列)。talon/boon/reachはPhase1から常時
 // 候補(原則⑥=Phase2/3でも消えない。M60が既にsweepで確立した扱いをここでも踏襲)。
 export const pickGiantMoveWithGlen = (
@@ -341,15 +412,19 @@ export const pickGiantMoveWithGlen = (
   rand: () => number = Math.random,
   // 無限ジャンプ(社長指示v0.25.2420)。グレン=ステージ7専用の抽選関数なので既定でON。
   // ?glenjump=0 相当のフォールバックが要る時は呼び出し側から false を渡す。
+  // (新重み表ではjumpは全ゾーン重み>0なので実挙動には出ないが、将来表を変えた時の保険として
+  //  giantMoveWeightのGIANT_UNLIMITED_JUMP_WEIGHT_FLOORガードへ配線を残す。)
   unlimitedJump = true,
 ): GiantMove | GlenMoveId | null => {
-  const pool: (GiantMove | GlenMoveId)[] = ALL_MOVES.filter(m => ready[m] && giantMoveEligible(m, distance, phase, unlimitedJump));
+  const entries: GiantWeighted<GiantMove | GlenMoveId>[] = ALL_MOVES
+    .map(m => ({ move: m as GiantMove | GlenMoveId, weight: ready[m] ? giantMoveWeight(m, distance, phase, unlimitedJump) : 0 }))
+    .filter(e => e.weight > 0);
+  const extraWeight = stageMixWeight(entries);
   for (const move of GLEN_MOVES) {
     if (move === 'nihil' && phase < 2) continue;
-    if (glenReady[move] && glenMoveEligible(move, distance)) pool.push(move);
+    if (glenReady[move] && glenMoveEligible(move, distance)) entries.push({ move, weight: extraWeight });
   }
-  if (pool.length === 0) return null;
-  return pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))];
+  return pickWeighted(entries, rand);
 };
 
 // 虚無の三唱(nihil)の学習点④「数える」: 詠唱回数は常に3固定(乱数にしない・quaddashの

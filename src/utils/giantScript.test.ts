@@ -3,6 +3,9 @@ import {
   giantPhaseForHealth, giantPhaseJustChanged, giantMoveEligible, pickGiantMove, pickGiantCombo,
   giantPhaseForHealthStory, pickGiantStoryCombo,
   giantStageRangeMult,
+  // BOSS_RANGE_REWORK.md(社長裁定v0.25.2455): 距離ゾーン別の重み付き抽選。
+  GIANT_MOVE_WEIGHTS, giantMoveWeight, giantZoneForDistance, GIANT_UNLIMITED_JUMP_WEIGHT_FLOOR,
+  type GiantZone,
   GIANT_RANGE, type GiantMove, glenTriJumpPoints, GLEN_TRIJUMP_COUNT,
   GIANT_STAGE_UNIQUE_MOVE, GIANT_STAGE_ULT_MOVE, GIANT_STAGE_MOVE_RANGE,
   giantStageMoveEligible, pickGiantMoveWithStage,
@@ -42,38 +45,115 @@ describe('giantPhaseJustChanged', () => {
   });
 });
 
-describe('giantMoveEligible — 受け入れ条件①③: 各帯(密着含む)に必ず1つ以上の技がある', () => {
+// ====================================================================================
+// BOSS_RANGE_REWORK.md(社長裁定v0.25.2455): 距離ハードゲート→距離ゾーン別の重み付き抽選。
+// 旧テストの「帯の外なら不適格」前提はハードゲート前提だったため、新仕様(重み0=出ない/
+// 重み>0=出うる)に合わせて書き換えた(意図はコメントで残す)。
+// ====================================================================================
+
+describe('giantZoneForDistance — ゾーン境界(密着0-120/近120-300/中300-600/遠600+・上限は含む)', () => {
+  it('matches the confirmed zone boundaries exactly', () => {
+    expect(giantZoneForDistance(0)).toBe('melee');
+    expect(giantZoneForDistance(GIANT_RANGE.MELEE_MAX)).toBe('melee');      // 120は密着
+    expect(giantZoneForDistance(GIANT_RANGE.MELEE_MAX + 0.1)).toBe('near');
+    expect(giantZoneForDistance(GIANT_RANGE.NEAR_MAX)).toBe('near');        // 300は近
+    expect(giantZoneForDistance(GIANT_RANGE.NEAR_MAX + 0.1)).toBe('mid');
+    expect(giantZoneForDistance(GIANT_RANGE.MID_MAX)).toBe('mid');          // 600は中
+    expect(giantZoneForDistance(GIANT_RANGE.MID_MAX + 0.1)).toBe('far');
+    expect(giantZoneForDistance(99999)).toBe('far');                        // 遠に上限なし
+  });
+});
+
+const ZONES: GiantZone[] = ['melee', 'near', 'mid', 'far'];
+const ZONE_SAMPLE: Record<GiantZone, number> = { melee: 70, near: 230, mid: 470, far: 800 };
+
+describe('GIANT_MOVE_WEIGHTS — 重み表の不変条件(BOSS_RANGE_REWORK.md確定表)', () => {
+  it('matches the confirmed table exactly (リグレッションガード=数字を勝手に変えない)', () => {
+    expect(GIANT_MOVE_WEIGHTS).toEqual({
+      stomp: { melee: 50, near: 15, mid: 0, far: 0 },
+      sweep: { melee: 25, near: 35, mid: 5, far: 0 },
+      jump: { melee: 10, near: 30, mid: 40, far: 20 },
+      bolt: { melee: 15, near: 20, mid: 40, far: 10 },
+      dash: { melee: 0, near: 0, mid: 15, far: 70 },
+    });
+  });
+
+  it('stompは中以遠で0(「懐に潜る=踏まれる」の学習は密着〜近だけ)', () => {
+    expect(GIANT_MOVE_WEIGHTS.stomp.mid).toBe(0);
+    expect(GIANT_MOVE_WEIGHTS.stomp.far).toBe(0);
+  });
+
+  it('dashは密着・近で0(追いつき技の役割を維持)', () => {
+    expect(GIANT_MOVE_WEIGHTS.dash.melee).toBe(0);
+    expect(GIANT_MOVE_WEIGHTS.dash.near).toBe(0);
+  });
+
+  it('全ゾーンに重み>0の技が最低1つある(Phase1のsweep封印込みでも成立=ハメ間合いが無い)', () => {
+    for (const zone of ZONES) {
+      expect(ALL_MOVES.some(m => GIANT_MOVE_WEIGHTS[m][zone] > 0)).toBe(true);
+      // sweepがPhase1で閉じていても成立すること(giantMoveWeight経由の実効値で確認)。
+      expect(ALL_MOVES.some(m => giantMoveWeight(m, ZONE_SAMPLE[zone], 1) > 0)).toBe(true);
+    }
+  });
+
+  it('unlimitedJump時はjumpの実効重みが全ゾーン>0(現行表でも・将来表を変えても保証)', () => {
+    for (const d of [70, 230, 470, 800, 5000]) {
+      expect(giantMoveWeight('jump', d, 1, true)).toBeGreaterThan(0);
+    }
+    // ガード自体の検証: 仮にjumpの重みを全ゾーン0にした表でも、unlimitedJump=trueなら床(>0)が入る
+    // =stage-7(無限ジャンプ・社長指示v0.25.2420)が跳べなくならない。
+    const zeroJump = { ...GIANT_MOVE_WEIGHTS, jump: { melee: 0, near: 0, mid: 0, far: 0 } };
+    expect(giantMoveWeight('jump', 800, 1, false, zeroJump)).toBe(0);
+    expect(giantMoveWeight('jump', 800, 1, true, zeroJump)).toBe(GIANT_UNLIMITED_JUMP_WEIGHT_FLOOR);
+    expect(GIANT_UNLIMITED_JUMP_WEIGHT_FLOOR).toBeGreaterThan(0);
+  });
+});
+
+describe('giantMoveEligible — 「そのゾーンの重み>0」への読み替え(旧ハードゲートの後継)', () => {
   const bandSamples = [70, 230, 470, 800]; // 密着/近/中/遠の代表距離
 
-  it('every band has at least one eligible move in phase 1', () => {
+  it('every zone has at least one eligible move in phase 1', () => {
     for (const d of bandSamples) {
       const anyEligible = ALL_MOVES.some(m => giantMoveEligible(m, d, 1));
       expect(anyEligible).toBe(true);
     }
   });
 
-  it('every band has at least one eligible move in phase 2', () => {
+  it('every zone has at least one eligible move in phase 2', () => {
     for (const d of bandSamples) {
       const anyEligible = ALL_MOVES.some(m => giantMoveEligible(m, d, 2));
       expect(anyEligible).toBe(true);
     }
   });
 
-  it('密着帯(0〜140)にはstompが必ずある=ハメ間合いが存在しない', () => {
+  it('密着ゾーン(0〜120)にはstompが必ずある=ハメ間合いが存在しない', () => {
     expect(giantMoveEligible('stomp', 0, 1)).toBe(true);
-    expect(giantMoveEligible('stomp', 140, 1)).toBe(true);
+    expect(giantMoveEligible('stomp', 120, 1)).toBe(true);
     expect(giantMoveEligible('stomp', 70, 2)).toBe(true);
+  });
+
+  it('stompは近(重み15)まで・中以遠(重み0)では出ない', () => {
+    expect(giantMoveEligible('stomp', 300, 1)).toBe(true);
+    expect(giantMoveEligible('stomp', 301, 1)).toBe(false);
+    expect(giantMoveEligible('stomp', 800, 1)).toBe(false);
   });
 
   it('sweep is phase-2 only', () => {
     expect(giantMoveEligible('sweep', 230, 1)).toBe(false);
     expect(giantMoveEligible('sweep', 230, 2)).toBe(true);
   });
+
+  it('sweepは新重み表で密着(25)・中(5)にも顔を出す(旧: 近帯限定だった)', () => {
+    expect(giantMoveEligible('sweep', 70, 2)).toBe(true);
+    expect(giantMoveEligible('sweep', 400, 2)).toBe(true);
+    expect(giantMoveEligible('sweep', 800, 2)).toBe(false); // 遠=重み0
+  });
 });
 
 describe('giantMoveEligible — 受け入れ条件②: Phase2で追加されるのは種類/頻度だけ(既存技の帯を狭めない)', () => {
   it('phase 2 never removes eligibility phase 1 already granted (monotonic)', () => {
-    for (let d = 0; d <= GIANT_RANGE.FAR_MAX; d += 10) {
+    // 遠ゾーンに上限が無くなったので走査は代表として1500まで(600+は全て同じ「遠」ゾーン)。
+    for (let d = 0; d <= 1500; d += 10) {
       for (const m of ALL_MOVES) {
         if (giantMoveEligible(m, d, 1)) {
           expect(giantMoveEligible(m, d, 2)).toBe(true);
@@ -83,30 +163,52 @@ describe('giantMoveEligible — 受け入れ条件②: Phase2で追加される�
   });
 });
 
-describe('pickGiantMove', () => {
-  it('returns null when nothing is ready or eligible', () => {
+describe('pickGiantMove — 距離ゾーン別の重み付き抽選(BOSS_RANGE_REWORK.md)', () => {
+  it('returns null when nothing is ready', () => {
     expect(pickGiantMove(70, 1, { stomp: false, sweep: false, jump: false, dash: false, bolt: false })).toBeNull();
-    expect(pickGiantMove(5000, 1, allReady())).toBeNull(); // 全帯の外
   });
 
-  it('only returns eligible+ready moves (deterministic rand injection)', () => {
-    // 距離230(近帯)・phase1: stomp/sweep/dash/boltは不適格、jumpのみ適格。
-    const ready = allReady();
-    const pick = pickGiantMove(230, 1, ready, () => 0);
-    expect(pick).toBe('jump');
+  // 旧仕様は「全帯(上限1000)の外=null」だったが、新仕様の遠ゾーン(600+)に上限は無い
+  // (jump20/bolt10/dash70)=引き撃ちで完全に安全な距離が構造的に存在しない。
+  it('遠ゾーンに上限は無い(距離5000でも候補がある・旧仕様のnullから変更)', () => {
+    expect(pickGiantMove(5000, 1, allReady(), () => 0)).not.toBeNull();
   });
 
-  it('respects the ready gate even when eligible', () => {
+  it('重み0の技は選ばれない(dashは密着・近で出ない/stompは中・遠で出ない)', () => {
+    for (let i = 0; i < 40; i++) {
+      const r = () => i / 40;
+      expect(pickGiantMove(70, 2, allReady(), r)).not.toBe('dash');
+      expect(pickGiantMove(230, 2, allReady(), r)).not.toBe('dash');
+      expect(pickGiantMove(470, 2, allReady(), r)).not.toBe('stomp');
+      expect(pickGiantMove(800, 2, allReady(), r)).not.toBe('stomp');
+    }
+  });
+
+  it('抽選は重み比例(注入乱数で累積境界を決定的に確認)', () => {
+    // 近ゾーン(230)・Phase1: 候補はALL_MOVES順にstomp15/jump30/bolt20(合計65)。
+    // 累積区間: stomp[0,15) / jump[15,45) / bolt[45,65)。
+    const total = 15 + 30 + 20;
+    expect(pickGiantMove(230, 1, allReady(), () => 0)).toBe('stomp');
+    expect(pickGiantMove(230, 1, allReady(), () => 14.9 / total)).toBe('stomp');
+    expect(pickGiantMove(230, 1, allReady(), () => 15.1 / total)).toBe('jump');
+    expect(pickGiantMove(230, 1, allReady(), () => 44.9 / total)).toBe('jump');
+    expect(pickGiantMove(230, 1, allReady(), () => 45.1 / total)).toBe('bolt');
+    expect(pickGiantMove(230, 1, allReady(), () => 0.9999)).toBe('bolt');
+  });
+
+  it('ready=falseの技は選ばれず、残った候補の重み比で選ぶ', () => {
     const ready = allReady();
     ready.jump = false;
-    // 230は jump のみ適格だったので、readyを落とすと候補が空になる。
-    expect(pickGiantMove(230, 1, ready)).toBeNull();
+    // 近ゾーンPhase1の残り: stomp15/bolt20(合計35)。累積: stomp[0,15) / bolt[15,35)。
+    expect(pickGiantMove(230, 1, ready, () => 14.9 / 35)).toBe('stomp');
+    expect(pickGiantMove(230, 1, ready, () => 15.1 / 35)).toBe('bolt');
+    for (let i = 0; i < 20; i++) {
+      expect(pickGiantMove(230, 1, ready, () => i / 20)).not.toBe('jump');
+    }
   });
 
-  it('picks uniformly among the candidate pool via the injected rand', () => {
-    // 距離800(遠帯): dashのみ適格。
-    const pick = pickGiantMove(800, 2, allReady(), () => 0.999);
-    expect(pick).toBe('dash');
+  it('rand()が1.0ちょうどでも末尾の候補に落ちる(数値誤差の安全網=旧Math.min相当)', () => {
+    expect(pickGiantMove(230, 1, allReady(), () => 1)).toBe('bolt');
   });
 });
 
@@ -122,10 +224,14 @@ describe('pickGiantCombo — 受け入れ条件(6.26-9 #8): 40%・許可2組の�
     expect(pickGiantCombo('stomp', 2, 70, () => 0)).toBeNull();
   });
 
-  it('requires the target to still be in the follow-up move\'s band', () => {
-    // stompの追撃はdistance<=140が必要。800は密着帯の外なのでnull。
+  it('requires the target to still be in the follow-up move\'s zone (重み>0)', () => {
+    // stompの追撃はstompの重み>0のゾーン(密着50/近15)が必要。800=遠(重み0)なのでnull。
     expect(pickGiantCombo('sweep', 2, 800, () => 0)).toBeNull();
     expect(pickGiantCombo('dash', 2, 800, () => 0)).toBeNull();
+  });
+
+  it('「間合いに居る」は「そのゾーンの重み>0」へ読み替え(BOSS_RANGE_REWORK.md): stomp追撃は近ゾーン(重み15)でも成立する(旧ハードゲートでは140超はnullだった)', () => {
+    expect(pickGiantCombo('sweep', 2, 230, () => 0)).toBe('stomp');
   });
 
   it('fires the follow-up under the 40% threshold, and not above it', () => {
@@ -163,10 +269,12 @@ describe('giantPhaseForHealthStory — 受け入れ条件: Phase1/2の境界は�
 });
 
 describe('giantMoveEligible(phase=3) — sweepはPhase2で解禁されたままPhase3でも消えない', () => {
-  it('sweep stays eligible in phase 3 with the same band as phase 2', () => {
+  it('sweep stays eligible in phase 3 with the same zones as phase 2', () => {
+    // BOSS_RANGE_REWORK.md: sweepの重みは密着25/近35/中5/遠0(旧ハードゲートの近帯限定から拡張)。
     expect(giantMoveEligible('sweep', 230, 3)).toBe(true);
-    expect(giantMoveEligible('sweep', 70, 3)).toBe(false);  // 密着帯の外
-    expect(giantMoveEligible('sweep', 400, 3)).toBe(false); // 近帯の外
+    expect(giantMoveEligible('sweep', 70, 3)).toBe(true);   // 密着=重み25(旧仕様ではfalseだった)
+    expect(giantMoveEligible('sweep', 400, 3)).toBe(true);  // 中=重み5(旧仕様ではfalseだった)
+    expect(giantMoveEligible('sweep', 800, 3)).toBe(false); // 遠=重み0
   });
   it('phase does not change stomp/jump/dash/bolt eligibility (1と2と3で同じ)', () => {
     const samples = [70, 230, 470, 800];
@@ -191,12 +299,13 @@ describe('pickGiantStoryCombo — 受け入れ条件(§6.28-11 #2/#3): 薙ぎ払
   });
 
   it('adds the phase3-only 3rd link: stomp→dash', () => {
-    // stomp→dashの帯はdash自体の帯(320<d<=1000)を要求する。
+    // stomp→dashはdashの重み>0のゾーン(中15/遠70)を要求する(BOSS_RANGE_REWORK.mdの読み替え)。
     expect(pickGiantStoryCombo('stomp', 500, false, () => 0)).toBe('dash');
-    expect(pickGiantStoryCombo('stomp', 70, false, () => 0)).toBeNull(); // dashの帯の外
+    expect(pickGiantStoryCombo('stomp', 70, false, () => 0)).toBeNull(); // 密着=dashの重み0
   });
 
-  it('requires the target to still be in the follow-up move\'s band', () => {
+  it('requires the target to still be in the follow-up move\'s zone (重み>0)', () => {
+    // stompの重みは遠(800)で0=追撃は成立しない。
     expect(pickGiantStoryCombo('sweep', 800, false, () => 0)).toBeNull();
     expect(pickGiantStoryCombo('dash', 800, false, () => 0)).toBeNull();
   });
@@ -334,20 +443,29 @@ describe('pickGiantMoveWithStage — 受け入れ条件: ステージごとに�
     }
   });
 
-  it('stage-1・密着帯(70px)・Phase1: stomp/biteの2択(等確率選択の境界を確認)', () => {
+  it('stage-1・密着ゾーン(70px)・Phase1: 重み付き候補(stomp50/jump10/bolt15+bite=平均25)の両端を確認', () => {
     const ready = allReady();
     const stageReady = stageAllReady();
-    // rand=0 → プールの先頭(stomp)。既存ALL_MOVESの並び順=stomp,sweep,jump,dash,bolt+biteが末尾に追加される。
+    // rand=0 → 候補の先頭(stomp・重み50)。biteは末尾にpushされ、重みは基本技の平均(75/3=25)。
+    // 総重み100・累積: stomp[0,50) jump[50,60) bolt[60,75) bite[75,100)。
     expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => 0)).toBe('stomp');
     expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => 0.99)).toBe('bite');
+  });
+
+  it('ステージ技の当選率は旧仕様の1/(n+k)を厳密に保存(重み=候補中の基本技の平均重み)', () => {
+    // stage-1・密着70px・Phase1: 基本技候補はstomp50/jump10/bolt15(n=3・合計75・平均25)、bite=25。
+    // 総重み100のうちbite=25=1/4=旧等確率(候補4件から1つ)の1/(3+1)と一致。境界[75,100)がbite。
+    const ready = allReady();
+    const stageReady = stageAllReady();
+    expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => 74.9 / 100)).not.toBe('bite');
+    expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => 75.1 / 100)).toBe('bite');
   });
 
   it('Phase1では大技(slam)が選ばれない(受け入れ条件: Phase1では大技が選ばれない)', () => {
     const ready = allReady();
     const stageReady = stageAllReady();
-    // 距離230(slamの帯140〜420内)・Phase1: stomp/sweep/dash/boltは不適格(sweepはphase2限定・
-    // dash/boltは近帯の外)、jumpとbite(密着外なので不適格=180超)は? d=230はbiteの帯(≤180)外なので
-    // jumpのみが既存側の候補、slamはphase<2なので候補に入らない。
+    // 距離230(slamの帯140〜420内)・Phase1: slamはphase<2なので候補に入らない
+    // (基本技側はstomp15/jump30/bolt20が候補=BOSS_RANGE_REWORK.mdの重み表)。
     for (let i = 0; i < 50; i++) {
       const pick = pickGiantMoveWithStage('stage-1', 230, 1, ready, stageReady, () => i / 50);
       expect(pick).not.toBe('slam');
@@ -357,7 +475,8 @@ describe('pickGiantMoveWithStage — 受け入れ条件: ステージごとに�
   it('Phase2になるとslamが候補に入る(距離230・stage-1)', () => {
     const ready = allReady();
     const stageReady = stageAllReady();
-    // rand=0.99 → プール末尾(slamが最後に push される)を引く。
+    // rand=0.999 → 候補末尾(slamが最後に push される)を引く。
+    // 基本技候補=stomp15/sweep35/jump30/bolt20(合計100・平均25)、slam=25。
     expect(pickGiantMoveWithStage('stage-1', 230, 2, ready, stageReady, () => 0.999)).toBe('slam');
   });
 
@@ -373,22 +492,25 @@ describe('pickGiantMoveWithStage — 受け入れ条件: ステージごとに�
     const stageReady = stageAllReady();
     stageReady.bite = false;
     for (let i = 0; i < 20; i++) {
-      expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => i / 20)).toBe('stomp');
+      // 密着・Phase1の残り候補は基本技(stomp50/jump10/bolt15)のみ=biteは絶対に出ない。
+      const pick = pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => i / 20);
+      expect(pick).not.toBe('bite');
+      expect(['stomp', 'jump', 'bolt']).toContain(pick);
     }
   });
 
-  it('5技側のready/eligibleを落としても、ステージ技はそのまま候補に残る(独立)', () => {
-    const ready = allReady();
-    ready.stomp = false;
+  it('5技側が全てready=falseでも、ステージ技はそのまま候補に残る(独立・基本技0件なら重み1の等確率)', () => {
+    const ready: Record<GiantMove, boolean> = { stomp: false, sweep: false, jump: false, dash: false, bolt: false };
     const stageReady = stageAllReady();
-    // d=70は密着帯: 5技側はstompのみ適格だがreadyを落としたので候補ゼロ、biteだけが残る。
     expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, stageReady, () => 0)).toBe('bite');
   });
 
   it('stageReadyのキーが渡されていない(undefined)場合は「未ready」として除外される(安全側)', () => {
     const ready = allReady();
-    // ready.stomp=trueなので密着帯ではstompが候補に残る。biteはstageReadyに何も無いのでfalse扱い。
-    expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, {}, () => 0.99)).toBe('stomp');
+    // biteはstageReadyに何も無いのでfalse扱い=候補は基本技のみ。
+    for (let i = 0; i < 20; i++) {
+      expect(pickGiantMoveWithStage('stage-1', 70, 1, ready, {}, () => i / 20)).not.toBe('bite');
+    }
   });
 
   it('全ステージ技(8種)が定義どおりの間合い/フェーズで一意に取り出せる(網羅チェック)', () => {
@@ -522,22 +644,23 @@ describe('pickGiantMoveWithGlen — 受け入れ条件: 既存5技の選択が�
   });
 
   // ★社長指示v0.25.2420「ステージ7は無限ジャンプで実質逃げれないようにする」。
-  // ステージ7は雑魚が出ないので、走って逃げれば完全に安全な時間が作れてしまい、
-  // 回復して戻る消耗戦が成立する。飛び掛かりの上限を外して逃げ切れないようにする。
-  it('グレンは飛び掛かりの上限が無い(JUMP_MAXの外でもjumpが候補に入る)', () => {
-    const far = GIANT_RANGE.JUMP_MAX + 600; // 従来なら圏外
+  // BOSS_RANGE_REWORK.md後は、新重み表でjumpが遠600+でも重み20>0=フラグに関係なく跳べる
+  // (旧JUMP_MAX=700の上限は表が吸収した)。unlimitedJumpフラグ自体は「将来表からjumpの重みを
+  // 消してもstage-7が跳べなくならない」保険として残す(ガードの実効テストは
+  // GIANT_MOVE_WEIGHTSのdescribe側・注入表で実施)。
+  it('グレンは遠距離でもjumpが候補に入る(遠ゾーン重み20・上限なし)', () => {
+    const far = 1300; // 旧仕様ならJUMP_MAX=700の圏外だった距離
     const onlyJump: Record<GiantMove, boolean> = { stomp: false, sweep: false, jump: true, dash: false, bolt: false };
     expect(pickGiantMoveWithGlen(far, 2, onlyJump, noGlenReady, () => 0)).toBe('jump');
-    // OFF(既定外)なら従来どおり圏外=選ばれない。
-    expect(pickGiantMoveWithGlen(far, 2, onlyJump, noGlenReady, () => 0, false)).toBeNull();
+    // フラグOFFでも表の重み(遠20)で跳べる=旧「OFFなら圏外でnull」から新仕様で変更。
+    expect(pickGiantMoveWithGlen(far, 2, onlyJump, noGlenReady, () => 0, false)).toBe('jump');
   });
 
   // 初撃だけ届いて追撃だけ届かない、という不一致を作らないため、pickGiantStoryCombo にも同じ
   // unlimitedJump を通してある(既定true)。**現在の追撃表に jump は無い**ので実挙動には出ないが、
   // 将来 jump を追撃に足した時に片方だけ上限が残る事故(同じ判定を2箇所に書く型)を防ぐ配線。
-  it('追撃の間合い判定は従来どおり(jumpは追撃表に無いので現状は無影響)', () => {
-    const far = GIANT_RANGE.JUMP_MAX + 600; // dash(上限FAR_MAX=1000)の圏外
-    expect(pickGiantStoryCombo('stomp', far, false, () => 0)).toBeNull();
+  it('stomp→dashの追撃は遠ゾーン上限なしで成立する(旧: FAR_MAX=1000超はnullだった=ハードゲート廃止で意図が変わった)', () => {
+    expect(pickGiantStoryCombo('stomp', 1300, false, () => 0)).toBe('dash');
   });
   // v0.25.2430: 距離350では連続ジャンプ(min=200)も間合いに入る=候補に加わるのが正しい。
   it('only offers talon/boon/trijump at distance 350 when the existing 5 techs are all unready', () => {

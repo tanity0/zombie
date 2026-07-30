@@ -36,6 +36,36 @@
   死に技が見つかったボスだけ同方式を展開(全ボス一律にはしない)。
 
 ## 実装状況
-- [ ] 重み付き抽選の実装(giantScript.ts の giantMoveEligible/pickGiantMove 周辺+テスト)— 発注待ち
-  (G4b着地後。gameStore競合回避のため)
+- [x] 重み付き抽選の実装(giantScript.ts の giantMoveEligible/pickGiantMove 周辺+テスト)— **v0.25.2461で実装済み**
 - [ ] 実装後の再計測(同プローブ)でボルト選択率のビフォーアフター確認
+
+## 実装ノート(v0.25.2461・実装サブエージェント)
+- **定数表1箇所**: `GIANT_MOVE_WEIGHTS`(giantScript.ts)。ゾーン境界は `GIANT_RANGE`
+  (MELEE_MAX=120/NEAR_MAX=300/MID_MAX=600・上限は含む`<=`の従来作法)+`giantZoneForDistance`。
+  遠(600+)に上限なし=旧 FAR_MAX(1000)/JUMP_MAX(700) は撤廃(「重み0」がハードゲートの後継)。
+- **抽選**: `pickGiantMove` = ready かつ現在ゾーンの重み>0 の技から重み比例(乱数注入可・重み付き
+  ルーレット)。`giantMoveEligible` は「そのゾーンの重み>0」の判定へ読み替え(署名不変)。
+  followup系(pickGiantCombo/pickGiantStoryCombo)は giantMoveEligible 経由なので同じ読み替えが
+  自動で効く(連携の構造・確率40%/60%/70%は不変)。
+- **ステージ独自技/グレン技の混ぜ方(触らない、の保存)**: 旧仕様は「候補n+k件から等確率」=各追加技の
+  当選率 1/(n+k)。新実装では追加技に「候補中の基本技の平均重み」を与える(基本技0件なら重み1)。
+  これで追加技の当選率は厳密に 1/(n+k) のまま・基本技グループの取り分も n/(n+k) のまま=新しい数字を
+  発明していない(テストで境界を固定済み)。範囲表(GIANT_STAGE_MOVE_RANGE/GLEN_MOVE_RANGE)・
+  CD・フェーズゲート(sweep=P2+/nihil=P2+/大技=P2+)は不変。
+- **unlimitedJump(stage-7)**: 新表では jump が全ゾーン重み>0 なので実挙動に変化なし。将来表から
+  jump の重みを消しても stage-7 が跳べなくならないよう、unlimitedJump=true 時は jump の実効重みを
+  `GIANT_UNLIMITED_JUMP_WEIGHT_FLOOR`(=1・>0保証のみが目的)へ底上げするガードを giantMoveWeight に
+  実装(注入表テストでガード自体を検証)。
+- **GIANT_STAGE_RANGE_MULT の調査結果**: 現行は**技の抽選距離(間合い)には一切効いていない**。
+  効き先は M65 の3値のみ=①stomp AoE半径(gStompRadius)②jump着地AoE半径(gJumpRadius・cap1.30)
+  ③dash突進速度(gameStore.ts)。ゾーン境界に掛かる配線は元から無いので、「同じ意味で保存」=
+  ゾーン境界には掛けず、3値への適用を無改変で維持した(beginGiantMove側は未変更)。
+- **GIANT_RANGE の他所参照の全数確認**: import して読むのは giantScript.ts 本体と giantScript.test.ts
+  のみ(リポジトリ全域grep)。bossScript.ts/bossScript.test.ts/surielScript.ts はコメントで言及する
+  だけ(surielの SURIEL_RINGSPIN_RANGE=140 は独自定数=値は不変。コメントだけ「流用元は旧140」と
+  注記を更新)。ボットのtelegraphDodge等は GIANT_RANGE を読んでいない(gStompRadius等の実値を読む)。
+- **挙動が意図的に変わる点(仕様どおり)**: 密着でも sweep(P2+・25)/bolt(15)/jump(10) が出る。
+  stomp は近(〜300)まで出る(followupの sweep/dash→stomp も近まで成立)。遠600+はどこまでも
+  jump20/bolt10/dash70(逃げ切り不可はグレン以外にも適用=ハードゲート廃止の帰結)。
+  stage-ex1(pickGiantMove経路)でも同様。
+- ★未決: なし。
