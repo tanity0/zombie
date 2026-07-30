@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2508',
+    items: [
+      'ゲーム内容の変更はありません(実装方針の明文化: 守護霊のパリティはコピー実装禁止・プレイヤー関数の共通化で行う)。',
+    ],
+  },
+  {
     version: '0.25.2507',
     items: [
       'ゲーム内容の変更はありません(守護霊の行動方針を確定: 選択はあなたの計測値・実行は常に本気。反応速度や距離の取り方であなたらしさを出します)。',
