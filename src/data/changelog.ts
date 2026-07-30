@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2558',
+    items: [
+      'ゲーム内容の変更はありません(年表規則の訂正: 拠点・POIはゲーム全体で最初の1回だけ記録、に確定)。',
+    ],
+  },
+  {
     version: '0.25.2557',
     items: [
       'ゲーム内容の変更はありません(歴史年表の規則を確定: 拠点は「初めて開放した」1件のみ・警察署/武器庫/病院も初回のみ記録。実装は次push)。',
