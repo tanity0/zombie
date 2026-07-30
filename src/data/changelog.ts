@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2492',
+    items: [
+      'ゲーム内容の変更はありません(クリティカル再設計の確定仕様・ボス間合いAIの再設計案・素材生成プロンプト等の設計書更新)。',
+    ],
+  },
+  {
     version: '0.25.2491',
     items: [
       'ボスの紫の完全気絶(クリティカル5回)が5秒→3秒になりました。',
