@@ -9,10 +9,12 @@
 // - 追従リーシュ: プレイヤーから GHOST_LEASH_PX を超えたら瞬時にプレイヤー脇へワープする
 //   (霊体という設定なのでワープが世界観的に許される。演出は後回し)。
 //
-// ★未決(BOT_AND_GHOST.md最終報告に転記): ゴーストの近接ダメージは「射程内なら毎回damageEnemyを
-// 通す簡易スイング」で、各ボス固有のカウンター専用ボーナス(青FX/確定クリ/怯ませ/後退ジャンプ等)は
-// 再現していない。isBossCounterableNowApprox は語尾ヒューリスティックの概算であり、特に giantbat は
-// 実際の当たり判定(combatTick.tsのdashParried)より「機会あり」を広めに数える(bossScript.ts参照)。
+// v0.25.2480(社長裁定「1」=旧★未決の解消): counterアクションの効果は実行側(useGameLoop)が
+// 「請求(ghostCounter.ts)→per-bossハンドラで消費」の形で本物化された(パリィ=技の中断/反応遷移+
+// 確定クリ=bumpBossCrit蓄積)。このファイル(意思決定・乱数消費順)は不変。
+// isBossCounterableNowApprox は語尾ヒューリスティックの概算のままで、特に giantbat は windup を
+// 「機会あり」と数える(実際のパリィ可否=combatTick.tsのdashParried表)。差分は消費側が各ボスの
+// プレイヤー用判定で弾くので、プレイヤーが弾けない状態のcounterスイングは通常近接として落着する。
 import type { Enemy, Projectile, SkillKey } from '../types/game';
 import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from './botSkill';
 import { isBossType } from './enemyUtils'; // v0.25.2470: 雑魚回避(非ボス判定)用

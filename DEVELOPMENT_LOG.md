@@ -1,5 +1,74 @@
 # Development Log
 
+## v0.25.2480 — 守護霊のカウンターを機械的にプレイヤーと同等へ(社長裁定「1」=v0.25.2479★未決1解消。同梱: ★未決2=被弾音「入れてください」/★未決3=サブ発動SE減衰「処理重めならいらない」→軽量のため実施)【2026-07-30 14:23 JST】
+
+- **仕組み=請求(claim)方式**(新規 `src/utils/ghostCounter.ts`): ゴーストのcounterスイング
+  (窓+間合い成立=v0.25.2479の`isBossCounterableNowApprox`再計算)は効果を直接適用せず請求を1件積む。
+  各ボスの**per-bossハンドラが「プレイヤーがカウンター可能な状態」の時だけ消費**して、プレイヤー成立と
+  同じ機械的効果(技の中断/反応遷移+確定クリ crit=true → bumpBossCrit=5クリ紫気絶に蓄積)を与える。
+  **判定の二重実装なし**(per-boss側の既存条件をそのまま使う)。ghostDriver.tsは意思決定・乱数消費順とも
+  無変更(ヘッダの旧★未決コメントのみ更新)。通常近接ぶんのダメージ/斬撃/血/SEはスイング時に従来どおり
+  =プレイヤーの「スイング(近接ダメージ)+成立(クリ反撃)」の二段構造と同型。
+- **per-bossハンドラ合流の全数表(ボス×消費点×止まる技×ゴースト時スキップした副作用)**:
+  | ボス | 消費点(成立ゲート=プレイヤーと同一) | 止まる技/反応 | スキップした副作用(プレイヤー専用) |
+  |---|---|---|---|
+  | thor | useGameLoop hidden-bossブロック冒頭(語尾-windup/-recoverの8州=体当てカウンターと同じ州。実行中ライン=issen-dash/tsuki/haraiは対象外) | 一閃/突き/払い/ジャンプの溜め・硬直を中断→`counter-leap`後退 | notifyCounterHit/notifyMoveCounter・コンボ+1・counter SE等倍・強glow95・triggerHitImpact(停止+ズーム)・markMeleeSwingFx・無敵付与・lastCounterSuccessTime・counterCooldownEnd(counter-masterリファンド) |
+  | mimir/jormungand/skadi | 同上(`hiddenBossCounterableNow`=WINDUPS/RECOVERSリスト+`?bosscounter=0`ゲート込み。skadi-ice/bladeのwindupはプレイヤー同様リスト外=不成立) | 弾3連/全方位/突進/レーザー/噛みつき/うねり/檻の溜め・硬直を中断→`chase`+次アクション先送り | 同上 |
+  | idol | useGameLoop idolブロック(`idolCounterableNow`=同リスト) | aim/fan/roll/punchの溜め・硬直を中断→`chase`+先送り | 同上 |
+  | miguel(新+旧script) | angelBossTick 各tick冒頭(takeGhostAngelCounter=語尾判定∩プレイヤー分岐の全数確認) | volley/harai/tate/mdashの溜め・硬直を中断→**`counter-leap`後退** | 同上(angelCounterHitのghost分岐) |
+  | jibril(新script) | 同上(**'warp-recover'はプレイヤー不可の州=明示除外**。転移割り込みより後=プレイヤーと同じ優先順。旧scriptは可カウンター州なし=対象外) | volley/lantern/consecrate/warpの溜め・硬直を中断→`chase`+先送り | 同上 |
+  | rafi(新+旧script) | 同上 | bone/jump/sweepの溜め・硬直を中断→`chase`+先送り | 同上 |
+  | uri / suriel / acrasiel | 同上(acrasiel 'warp-out'はプレイヤー可だが語尾に載らない=請求が積まれず対象外=狭い側) | 各技の溜め・硬直を中断→`chase`+先送り | 同上 |
+  | giantbat(城ボス/グレン/未確認変異体) | **combatTick.applyGhostBossParry**(applyContactDamage直後に呼ぶ=プレイヤーの接触パリィが先に解決)。成立州=`isDashParryCounterPhase`(dashParriedと同表: 汎用charge/recover/crouch/jump/g-jump-air+giantの実行2種・硬直5種。**windupは対象外=W4**) | dashParriedと同じ中断+ノックバック(`dashParriedEnemyPatch`・起点=ゴースト)+aiReadyAt+1200 | 同上(+気絶パリィ=防御目的のためゴースト対象外) |
+- **同フレーム競合はプレイヤー優先**(全消費点で、プレイヤーの成立条件が立っている時は請求を消費しない/
+  giantbatはapplyContactDamage後に呼ぶ)=プレイヤーのカウンター体験・システム値は1bit不変。
+- **ダメージ式**: `max(1, round((借用銃damage ?? 12) × BOSS_CRIT_DAMAGE_MULT))`=プレイヤーのカウンター
+  反撃と同式の借用装備版(スキル倍率skillCritMult/skillOutgoingDamageMult/equipBonusは乗せない=
+  v0.25.2459方針)。crit=true でdamageEnemy→**bumpBossCrit(5クリ紫気絶)に乗る**。
+- **演出解禁**: 成立時のみ、青Counter!層(リング135/バースト14/glow43=強glow回避/コールアウト/counter SE
+  距離減衰/シェイクゲート)+**金クリ層(リング46/バースト10/glow34/金数字/headshot SE距離減衰)**。
+  v0.25.2479でスイング時に先出ししていた青Counter!層は廃止(不成立の空振りに嘘を出さない=
+  「赤いのに当たらない」型の禁止と同根)。**ズーム/時間停止/スローは引き続き一切出さない**
+  (`GHOST_FX_SHAKE_ENABLED`と掟コメントはghostCounter.tsへ移設・値/意味不変)。
+- **成立判定の差分の全数報告(タスク指示4「差があれば報告・勝手に広げない」)**:
+  概算(語尾)が広い側=消費側で全て弾いた: giantbatの全windup(W4)/jibril'warp-recover'/
+  skadi-ice・skadi-bladeのwindup。プレイヤーだけ可能な側(ゴーストは狙わない=狭い側・許容):
+  裏3体の'dash'実行中・aim-burst/aim-radial(語尾に載らない)・thor/suriel/acrasielの実行中ライン
+  カウンター・acrasiel'warp-out'・気絶中パリィ・giantbatのg-dash-charge/g-sweep-active(接触時のみ)。
+  **発見事項(仕様判断は変えず報告のみ)**: プレイヤーの接触パリィ(combatTick dashParried)の反撃
+  damageEnemyは**crit引数なし=bumpBossCritに乗っていない**(thor/裏3/idol/天使のハンドラはcrit=true)。
+  ゴーストは仕様指示どおり全ボスでcrit=trueにしたため、giantbatに限りゴーストの方が紫蓄積に乗る。
+  プレイヤー側も乗せるかは社長裁定待ち(★未決1として下記)。
+- **被弾音(★未決2解消・G4b掟v0.25.2459「被弾音は付けない」は本裁定で上書き)**: 全被弾経路(ボス技/
+  敵弾/汎用接触)の合流点=damageSummonのlastHit打刻をゴースト実行ブロックでエッジ検知し、
+  `player-damage` SEをゴースト位置の距離減衰(npcSfxDistGain)で1回再生。実ダメージはi-frame
+  (INVULN_MS)で間引かれ、二重保険で最短`GHOST_HURT_SFX_MIN_GAP_MS=200ms`。判定/ダメージ不変(音のみ)。
+- **サブ発動SEの距離減衰(★未決3解消)**: 発動SEを持つ3種=shield/turret(`shield-deploy`)・
+  fire-knife(`shot-damage`)を、**ゴースト発動時のみ**設置/投擲点で減衰(発動ブロック内のghostOwnedで
+  分岐=位置は手元にあり配線は軽量)。プレイヤー発動は従来どおり等倍(1bit不変)。heavy-grenade/
+  marksman-trap/decoyは発動SE自体なし=対象外。設置後のオブジェクト音は既存のまま(タレット発砲は元々減衰済み)。
+- **切り出しリファクタ(挙動同一)**: combatTickのdashParried変換→`dashParriedEnemyPatch`/giantの
+  パリィ可能フェーズ→`GIANT_PARRYABLE_PHASES`+述語`isDashParryCounterPhase`(プレイヤー経路も同じ
+  リストを参照=単一の正本)。`npcSfxDistGain`をuseGameLoop→`src/utils/npcSfx.ts`へ移設(式無変更)。
+  AngelSfx.counter/rewardに省略可能なgain引数(プレイヤー成立は引数なし=等倍のまま)。
+- **Load score: 1/10**(simulation/audio/rendering)。イベント時のみ(カウンター成立=数秒に1回以下)の
+  pooled FX+SE数発+claim1件のO(1)処理。per-frame追加は「claimのpeek(null比較)+ゴースト在場時の
+  lastHit比較」のみ。強glow増加なし(43/34=プールsprite経路)。per-frame Graphics/Text生成なし。
+- 変更ファイル: `src/utils/ghostCounter.ts`(新規)/`src/utils/npcSfx.ts`(新規)/
+  `src/utils/ghostCounter.test.ts`・`src/utils/npcSfx.test.ts`・`src/utils/ghostBossParry.test.ts`(新規16件)/
+  `src/utils/combatTick.ts`/`src/utils/angelBossTick.ts`/`src/hooks/useGameLoop.ts`/
+  `src/utils/ghostDriver.ts`(ヘッダコメントのみ)/`BOT_AND_GHOST.md`(§8追記+§5★未決解消記録)/
+  package.json/changelog/本ログ。
+- **★未決(社長裁定待ち・勝手に実装しない)**:
+  1. **プレイヤーの接触パリィ(城ボス系dashParried)の反撃をcrit=true(bumpBossCrit蓄積)に揃えるか**
+     (現状プレイヤーは非crit扱いで紫に乗らない・金数字表示のみ。ゴーストは指示どおりcrit=true)。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ) /
+  `npx vitest related`(変更6ファイル)=6ファイル66件通過+新規3ファイル16件通過。実機確認は社長。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(シーン・湧き・プレイヤーの
+  判定/ダメージ/CD/スコア/コンボ/計測は不変。変更はゴースト起因のボス反応・確定クリ・FX/SEのみで、
+  ボス側の中断/遷移はプレイヤーカウンターに既存の反応をゴーストにも許した形。W4=windup不可侵は
+  ゴーストにも堅持)。
+
 ## v0.25.2479 — 守護霊の戦闘フィードバックをプレイヤーとパリティに(社長指示・verbatim「ズームやストップ、スローは入れずに、それ以外の カウンター とか キル とかは守護霊にもちゃんと入れて。全部だよ全部」)【2026-07-30 13:01 JST】
 
 - **判定・ダメージ・CD・スコア・コンボ・計測などシステム値は一切不変(演出+SEのみ)。** 変更は

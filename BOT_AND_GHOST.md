@@ -316,6 +316,8 @@
     ヘイト対応を追加するバッチを別途発注する、のどちらか。
 - その他の★未決(reactionMs判定の概算/ゴースト近接の簡易化/スキル倍率を乗せない設計/
   defaultGhostProfileの叩き台数値)は DEVELOPMENT_LOG.md 参照。
+  ※うち「ゴースト近接の簡易化」のカウンター部分は **v0.25.2480で解消**(社長裁定「1」=カウンターは
+  per-bossハンドラ合流で本物化。§8参照。通常近接スイングの簡易形は従来どおり)。
 
 ## 6. G2.6 実装結果と★未決(v0.25.2449・実装サブエージェント)
 
@@ -519,3 +521,39 @@ counterRate→構え / dodgeRate→離脱 / 残り→逃げずに食らいに行
   技の解決(キー変化/null)かタイムアウト(10s安全弁)でリセット。持ち越しはSummonのフラット3フィールド
   (ghostMoveRollKey/Decision/At)。
 - ★未決: なし(実装メモはDEVELOPMENT_LOG参照)。
+
+## 8. ゴーストのカウンター本物化+被弾音+サブSE減衰(v0.25.2480・実装サブエージェント)
+
+詳細(per-bossハンドラ合流の全数表・検証)は DEVELOPMENT_LOG.md v0.25.2480 が正本。要約:
+
+### カウンター本物化(社長裁定「1」= DEVELOPMENT_LOG v0.25.2479 ★未決1の解消)
+- **旧★未決「ゴースト近接の簡易化」(§5)のうちカウンター部分はこれで解消**(通常近接スイングの
+  簡易化=毎回damageEnemyを通す形は従来どおり)。
+- **請求(claim)方式**(新規 `src/utils/ghostCounter.ts`): counterスイング(窓+間合い成立)は請求を
+  1件積むだけ。**per-bossハンドラ**(thorCounterHit/hiddenBossCounterHit/idolCounterHit=useGameLoop、
+  angelCounterHit=angelBossTick、dashParried相当=combatTick.applyGhostBossParry)が「プレイヤーが
+  カウンター可能な状態」の時だけ消費し、**プレイヤー成立と同じ機械的効果**(技の中断/怯み・後退遷移+
+  確定クリ crit=true=bumpBossCrit 5クリ紫気絶に蓄積)を与える。判定はper-boss側の既存条件を使う=
+  二重実装なし。
+- **プレイヤー専用の副作用はghost分岐でスキップ**(計測notifyCounterHit/notifyMoveCounter・コンボ・
+  無敵・counterCooldownEnd/counter-masterリファンド・lastCounterSuccessTime・triggerHitImpact・
+  markMeleeSwingFx)。プレイヤーのシステム値は1bitも動かない。
+- **ダメージ式**: プレイヤーのカウンター反撃と同式の借用装備版=`(借用銃damage ?? 12) × BOSS_CRIT_
+  DAMAGE_MULT`(スキル倍率/equipBonusは乗せない=v0.25.2459方針の踏襲)。
+- **演出解禁**: 成立時のみ青Counter!層+**金クリ層(リング/バースト/glow34)+headshot SE(距離減衰)**。
+  スイング時の先出しCounter!は廃止(不成立の空振りに嘘を出さない)。ズーム/停止/スローは引き続き禁止
+  (GHOST_FX_SHAKE_ENABLED は ghostCounter.ts へ移設)。
+- **成立判定の差分**(概算=語尾判定 vs プレイヤーの実判定・消費側で全て弾く=広げない):
+  giantbatのwindup(W4)/jibril 'warp-recover' /skadi-ice・skadi-bladeのwindup=不成立(請求は流れる)。
+  逆にプレイヤーだけ可能な州: 裏3体'dash'・aim-burst/aim-radial・thor/裏ボスの実行中ライン・
+  acrasiel 'warp-out'・気絶パリィ=ゴーストは狙わない(狭い側=許容)。
+
+### 被弾音(★未決2の解消・社長裁定「入れてください」)
+- **G4bの掟(v0.25.2459)「被弾音は付けない」は本裁定で上書き**。全被弾経路(ボス技/敵弾/汎用接触)の
+  合流点= damageSummon の lastHit 打刻をエッジ検知して `player-damage` SE を距離減衰
+  (npcSfxDistGain・ゴースト位置)で再生。i-frame(INVULN_MS)+最短200ms保険でスパムなし。
+
+### ゴースト発動サブの発動SE距離減衰(★未決3の解消・「処理重めならいらない」→距離計算のみで軽量=実施)
+- 発動SEを持つ3種(shield/turret='shield-deploy'・fire-knife='shot-damage')を、ゴースト発動時のみ
+  設置/投擲点で減衰。プレイヤー発動は従来どおり等倍(1bit不変)。heavy-grenade/marksman-trap/decoyは
+  発動SE自体が無く対象外。設置後のオブジェクト音(タレット発砲等)は既存のまま(タレット発砲は元々減衰済み)。

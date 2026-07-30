@@ -24,7 +24,7 @@
 // no-op(何もしない関数)を渡す=ヘッドレスでは判定条件はそのまま評価されるが、見た目/音/
 // gameOver遷移だけが起きない。
 
-import type { Player } from '../types/game';
+import type { Enemy, Player } from '../types/game';
 import type { SfxKey } from '../audio/audioManager';
 import {
   isBossType, isHiddenBoss, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile,
@@ -49,6 +49,7 @@ import { distToSegment } from './levelUpGate';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
+import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流
 
 // 演出・音・死亡演出のコールバック注入(ヘッドレスではno-op)。判定条件自体はこのファイル内に残る。
 export interface CombatEffects {
@@ -563,6 +564,96 @@ export const applyMineDamage = (fx: CombatEffects): void => {
   for (const m of triggered) fx.spawnRing(m.footX, m.footY - m.height * 0.5, 4, 26, 'rgba(248,113,113,0.85)', 2, 260);
 };
 
+// ==== 守護霊カウンターの城ボス系合流(v0.25.2480・DEVELOPMENT_LOG v0.25.2479★未決1解消) ==========
+// プレイヤーの「突進/ジャンプ/硬直パリィ」(下の applyContactDamage 内 dashParried)と同じ対象フェーズ表・
+// 同じ中断/ノックバック変換を、守護霊のカウンター請求(ghostCounter.ts)にも適用する。
+
+/** giantbat専用のパリィ可能フェーズ(M51受け入れ条件5=W4「予告を出したら必ず実行させる」= windupは
+ * 含めない。実行中2種+硬直5種のみ)。applyContactDamage内のdashParried判定と共有する正本リスト。 */
+const GIANT_PARRYABLE_PHASES: readonly string[] = [
+  'g-dash-charge', 'g-sweep-active',
+  'g-stomp-recover', 'g-sweep-recover', 'g-dash-recover', 'g-jump-recover', 'g-bolt-recover',
+];
+
+/** プレイヤーの接触パリィ(dashParried)が成立しうるフェーズか。applyContactDamage内の3分岐
+ * (①jump/g-jump-air ②charge/recover/crouch ③giantbatのGIANT_PARRYABLE_PHASES)の合成述語。
+ * ※分岐構造そのもの(①はカウンター窓外でも被弾無し等)は applyContactDamage 側が正本。
+ *   あちらの当該分岐を変更したら必ずここも同期すること(逆も然り)。
+ *   気絶中(stunUntil)のパリィは接触被弾回避の防御目的なので守護霊側には含めない。 */
+export const isDashParryCounterPhase = (enemy: Pick<Enemy, 'type' | 'aiPhase'>): boolean =>
+  enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air'
+  || enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch'
+  || (enemy.type === 'giantbat' && enemy.aiPhase !== undefined && GIANT_PARRYABLE_PHASES.includes(enemy.aiPhase));
+
+/** dashParried成立時の敵側変換(技の中断+攻め手から弾き飛ばすノックバック)。
+ * applyContactDamageのプレイヤー経路と守護霊経路(applyGhostBossParry)の両方がこの1本を使う
+ * (v0.25.2480でプレイヤー経路のインライン実装をここへ切り出し・挙動同一)。 */
+export const dashParriedEnemyPatch = (
+  e: Enemy, originX: number, originY: number, pnow: number, gameTimeNow: number,
+): Enemy => {
+  const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+  // ジャンプ同様、突進中の敵は攻め手に重なって向きが潰れることがある。
+  // 距離が小さいときは突進してきた向き(aiFrom→現在)の逆=「来た方へ弾き返す」を使う。
+  let ndx = ecx - originX, ndy = ecy - originY;
+  let d = Math.hypot(ndx, ndy);
+  if (d < 12) {
+    const ox = e.x - (e.aiFromX ?? e.x), oy = e.y - (e.aiFromY ?? e.y);
+    const od = Math.hypot(ox, oy);
+    if (od > 0.001) { ndx = ox; ndy = oy; d = od; }
+    else { ndx = 0; ndy = -1; d = 1; }
+  }
+  const ux = ndx / d, uy = ndy / d;
+  return {
+    ...e,
+    aiPhase: undefined, // 突進/ジャンプ中断
+    aiPhaseUntil: undefined, aiStartedAt: undefined,
+    aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+    aiReadyAt: gameTimeNow + 1200, // 少し間を空ける(giantbat は gbDashReadyAt 側で管理)
+    // 即時に弾き飛ばし+凍結系/ノックバック無敵を全解除(ジャンプカウンターと同根の対策)。
+    x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
+    y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
+    vx: 0, vy: 0,
+    stunUntil: undefined, liftUntil: undefined, rootUntil: undefined,
+    knockbackImmuneUntil: 0,
+    knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
+    knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,
+    knockbackUntil: pnow + KNOCKBACK_DURATION,
+  };
+};
+
+/**
+ * 守護霊カウンター請求の城ボス系(giantbat=城ボス/グレン/未確認変異体)での解決(v0.25.2480)。
+ * thor/裏ボス3体/idol/天使6体は各自のper-bossハンドラ側で請求を消費するので、ここでは型で弾く。
+ * 成立条件=プレイヤーのdashParriedと同じフェーズ表(isDashParryCounterPhase)。
+ * 効果=同じ中断/ノックバック(dashParriedEnemyPatch・起点はゴースト)+確定クリ(共通ヘルパ)。
+ * プレイヤーの無敵/CDリファンド/コンボ/計測(notify)はプレイヤー専用のため呼ばない。
+ * 呼び出し位置は applyContactDamage の直後(プレイヤーの接触カウンターを先に解決=同フレーム競合は
+ * プレイヤー優先。プレイヤーが先に弾いた場合は aiPhase 解除済み=下の述語が落ちて請求は流れる)。
+ */
+export const applyGhostBossParry = (
+  nowMs: number,
+  playCounterSfx: ((key: 'counter' | 'headshot', gain: number) => void) | null,
+  sfxGainAt: (x: number, y: number) => number,
+): void => {
+  const claim = peekGhostCounterClaim(nowMs);
+  if (!claim) return;
+  const state = useGameStore.getState();
+  const boss = state.enemies.find(e => e.id === claim.bossId);
+  if (!boss || boss.type !== 'giantbat') return; // 他ファミリーの請求はそれぞれのハンドラが消費する
+  if (consumeGhostCounterClaim(boss.id, nowMs) === null) return;
+  // プレイヤーが弾けない状態(windup等=W4「予告を出したら必ず実行」)では成立させず請求を流す。
+  // ※覗くだけで残さず「消費して流す」: windup中の請求が直後の実行(g-dash-charge等)へ持ち越されて
+  //   中断する=実質windupパリィになるのを防ぐ(判定を広げない)。スイング自体は通常近接として落着済み。
+  if (!isDashParryCounterPhase(boss)) return;
+  // 中断+ノックバック(プレイヤー経路と同じ変換・起点=ゴースト)→ aiPhase解除後にダメージ
+  // (プレイヤー経路と同じ順序=ジャンプ中無敵を回避してダメージを通す)。
+  useGameStore.setState(st => ({
+    enemies: st.enemies.map(e => e.id === boss.id ? dashParriedEnemyPatch(e, claim.ghostX, claim.ghostY, nowMs, st.gameTime) : e),
+  }));
+  const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
+  applyGhostCounterEffect(boss, bcx, bcy, { claim, sfxGain: sfxGainAt(bcx, bcy) }, playCounterSfx);
+};
+
 // ① 敵接触ダメージ。カウンター/パリィ(dashParried)・ワイヤー無効・トール特例・ジャンプ空中/
 // 気絶/溜め特例まで丸ごと(本体)。gameTime は呼び出し元(フレーム冒頭のloopState)の値を使う
 // (stunUntilとの比較に使うだけで、接触判定自体はstoreから読み直したplayer/enemiesを使う)。
@@ -611,11 +702,8 @@ export const applyContactDamage = (
     // 溜め(windup)ステートはここに含めない=予告を出したら必ず実行させる。実行中(g-dash-charge/
     // g-sweep-active)と硬直(g-*-recover=既にHITは終わっている)だけを対象にする(g-jump-airは
     // 直上のifで既に処理済み=ここへは到達しない)。
-    const giantParryablePhase = enemy.type === 'giantbat' && (
-      enemy.aiPhase === 'g-dash-charge' || enemy.aiPhase === 'g-sweep-active' ||
-      enemy.aiPhase === 'g-stomp-recover' || enemy.aiPhase === 'g-sweep-recover' ||
-      enemy.aiPhase === 'g-dash-recover' || enemy.aiPhase === 'g-jump-recover' || enemy.aiPhase === 'g-bolt-recover'
-    );
+    const giantParryablePhase = enemy.type === 'giantbat' && enemy.aiPhase !== undefined &&
+      GIANT_PARRYABLE_PHASES.includes(enemy.aiPhase); // v0.25.2480: リストを守護霊経路と共有(同値・挙動不変)
     if ((enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch' || giantParryablePhase) && counterActiveNow) {
       dashParried.push(enemy.id);
       return;
@@ -694,37 +782,8 @@ export const applyContactDamage = (
         ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
         counterCooldownEnd: refundCounterCooldown(st.player.counterCooldownEnd, pnow, skillLevel(st.player, 'counter-master')),
       },
-      enemies: st.enemies.map(e => {
-        if (!dashParried.includes(e.id)) return e;
-        const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-        // ジャンプ同様、突進中の敵はプレイヤーに重なって向きが潰れることがある。
-        // 距離が小さいときは突進してきた向き(aiFrom→現在)の逆=「来た方へ弾き返す」を使う。
-        let ndx = ecx - ppx, ndy = ecy - ppy;
-        let d = Math.hypot(ndx, ndy);
-        if (d < 12) {
-          const ox = e.x - (e.aiFromX ?? e.x), oy = e.y - (e.aiFromY ?? e.y);
-          const od = Math.hypot(ox, oy);
-          if (od > 0.001) { ndx = ox; ndy = oy; d = od; }
-          else { ndx = 0; ndy = -1; d = 1; }
-        }
-        const ux = ndx / d, uy = ndy / d;
-        return {
-          ...e,
-          aiPhase: undefined, // 突進/ジャンプ中断
-          aiPhaseUntil: undefined, aiStartedAt: undefined,
-          aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-          aiReadyAt: st.gameTime + 1200, // 少し間を空ける(giantbat は gbDashReadyAt 側で管理)
-          // 即時に弾き飛ばし+凍結系/ノックバック無敵を全解除(ジャンプカウンターと同根の対策)。
-          x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
-          y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
-          vx: 0, vy: 0,
-          stunUntil: undefined, liftUntil: undefined, rootUntil: undefined,
-          knockbackImmuneUntil: 0,
-          knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
-          knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,
-          knockbackUntil: pnow + KNOCKBACK_DURATION,
-        };
-      }),
+      // v0.25.2480: 中断+ノックバック変換を dashParriedEnemyPatch へ切り出し(守護霊経路と共有・挙動同一)。
+      enemies: st.enemies.map(e => dashParried.includes(e.id) ? dashParriedEnemyPatch(e, ppx, ppy, pnow, st.gameTime) : e),
     }));
     // クリティカル反撃(ヘッドショット): aiPhase を解除済みなのでダメージが通る(ジャンプ中無敵を回避)。
     // 威力は装備中の銃ダメージ基準 × クリ倍率(通常×1.5 / ボス×5)× スキル/装備補正。

@@ -67,9 +67,16 @@ import { ammoDirectorRate } from '../utils/ammoDirector';
 import { shouldSpawnAirdrop } from '../utils/ammoAirdrop';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
-  applyGlenFloorDamage, applyGhostAllyCapsuleHit,
+  applyGlenFloorDamage, applyGhostAllyCapsuleHit, applyGhostBossParry,
   type CombatEffects, type CombatTunables,
 } from '../utils/combatTick';
+// v0.25.2480(★未決1解消): 守護霊カウンターの請求(スイング側が積み、per-bossハンドラが消費)。
+// GHOST_FX_SHAKE_ENABLED(ゴースト演出のシェイク一括ゲート+ズーム/停止/スロー禁止の掟)もここへ移設。
+import {
+  GHOST_FX_SHAKE_ENABLED, setGhostCounterClaim, consumeGhostCounterClaim, ghostCounterDamage,
+  applyGhostCounterEffect, type GhostCounterFire,
+} from '../utils/ghostCounter';
+import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
@@ -274,17 +281,8 @@ const hitFireLen = (weaponType: string | undefined, shotgunPelletHits: number): 
   }
   return HIT_FIRE_LEN_MAGNUM; // rifle(マグナム系)/PHILL/その他は現状サイズ
 };
-// 護衛NPC関連SEの距離減衰ゲイン(発砲音＝NPC位置 / その弾の被弾音＝着弾位置 で共通)。画面外=0(無音)。
-// 近=1.0 / 画面中ほど≈0.27 / 端≈0.08(遠いほど強く減衰)。プレイヤー自身の攻撃音には使わない。
-const npcSfxDistGain = (
-  hx: number, hy: number, ppx: number, ppy: number,
-  cam: { x: number; y: number }, gb: { width: number; height: number },
-): number => {
-  if (hx < cam.x || hx > cam.x + gb.width || hy < cam.y || hy > cam.y + gb.height) return 0;
-  const maxDist = 0.5 * Math.hypot(gb.width, gb.height);
-  const tt = Math.min(1, Math.hypot(hx - ppx, hy - ppy) / maxDist);
-  return Math.max(0.08, Math.pow(1 - tt, 1.9));
-};
+// 護衛NPC関連SEの距離減衰ゲイン npcSfxDistGain は src/utils/npcSfx.ts へ移設(v0.25.2480・式は無変更。
+// 守護霊カウンターのSE減衰を angelBossTick/combatTick 側でも同じ式で使うため)。
 // 同じ敵に対して背中火を出してから、この時間は新しい火を出さない(=多弾/連射の重複を1本に間引く)。
 // ショットガンのペレットや跳弾が別方向から当たっても、最初の1本だけ残す→「2本/別方向に出る」を防ぐ。
 const FIRE_JET_DEDUP_MS = 180;
@@ -616,17 +614,17 @@ const BOT_GOAL: BotObjective = parseBotObjective(evParam('botgoal'));
 // G3以降は装備スキル「守護霊」(guardian-spirit)でも同じ召喚が有効(ghostRunEnabled=directorTick側でOR)。
 // このフラグは開発用として残す(装備なしでも従来どおり動く)。
 const GHOST_DEBUG_ENABLED = evParam('ghost') === '1';
-// 守護霊の戦闘フィードバック(社長指示「カウンターとかキルとかは守護霊にもちゃんと入れて。全部だよ全部」):
-// ゴースト起因の画面シェイクを一括で切るゲート(気になったらここを false にするだけ・演出のみ)。
-// 【除外の機械化】ゴースト起因の演出呼び出しは カメラズーム/アテンション(triggerZoom/triggerAttention)・
-// 時間停止(triggerHitstop/triggerHitImpact ※HitImpactは停止+ズーム+スロー同梱のため丸ごと使用禁止)・
-// スローモーション(triggerTimeSlow)を絶対に呼ばない。シェイクは triggerShake 単体のみ使う。
-const GHOST_FX_SHAKE_ENABLED = true;
+// GHOST_FX_SHAKE_ENABLED(ゴースト演出のシェイク一括ゲート+「ズーム/停止/スローは絶対に呼ばない」の掟)は
+// src/utils/ghostCounter.ts へ移設(v0.25.2480・値/意味は無変更。angelBossTick等のゴースト分岐も同じゲートを見る)。
+// 被弾音のスパム保険(v0.25.2480・★未決2解消): 実ダメージ自体は damageSummon の i-frame(INVULN_MS)で
+// 間引かれるので通常はこの保険に当たらない。二重保険の最短間隔のみ定数化。
+const GHOST_HURT_SFX_MIN_GAP_MS = 200;
 
 // 天使(ゲート2ボス)コントローラの音注入(本体はangelBossTick.ts=M26 Step3で抽出。ヘッドレスはNOOP、実プレイはここ)。
 const ANGEL_SFX: AngelSfx = {
-  counter: () => playSfx('counter'),
-  reward: () => playSfx('headshot'),
+  // gain(既定1=等倍)は守護霊カウンター(v0.25.2480)の距離減衰用。プレイヤー成立は従来どおり引数なし=等倍。
+  counter: (gain = 1) => playSfx('counter', gain),
+  reward: (gain = 1) => playSfx('headshot', gain),
   sweep: () => playSfx('thor-sweep'),
   // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): 予告SE(全技共通=hunter-alert流用・§6.26-9 #5)。
   alert: () => playSfx(BOSS_ALERT_SFX_KEY),
@@ -1187,6 +1185,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rankPaceRef = useRef<{ state: RankPaceState; prevKills: number }>({ state: createRankPaceState(), prevKills: 0 });
   // BOT_AND_GHOST.md G2: 召喚中ゴーストのプロファイル(6ノブ)。召喚時にdirectorTick側が1回だけ書き込む。
   const ghostProfileRef = useRef<GhostProfile | null>(null);
+  // v0.25.2480(★未決2解消): ゴースト被弾音のエッジ検知(damageSummonのlastHit打刻を見る)+最短間隔保険。
+  const ghostHurtSfxRef = useRef<{ id: string; seen: number; playedAt: number }>({ id: '', seen: 0, playedAt: 0 });
   // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
   // v0.25.1343: startTotalsは必ずディープコピー(snapshotKillTotals)で持つ。生参照だと差分が常に0になる。
   const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof snapshotKillTotals> | null; startSpawns: ReturnType<typeof snapshotSpawns> | null }>({ phaseKey: '', startTotals: null, startSpawns: null });
@@ -4352,7 +4352,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               };
               // カウンター成立時の共通処理(社長指示: すべての攻撃がカウンター可能)。通常カウンターと同じ
               // 演出(Counter!/ヒットインパクト/クリ反撃)を行い、近接距離ギリギリ外まで高速後退させる。
-              const thorCounterHit = (hitX: number, hitY: number) => {
+              const thorCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
+                if (ghost) {
+                  // v0.25.2480(★未決1解消): 守護霊カウンター成立。プレイヤー専用の副作用(G1/G4a計測
+                  // notify・コンボ・counter SE等倍・強glow95・triggerHitImpact(停止+ズーム)・
+                  // markMeleeSwingFx・無敵/CDリファンド/lastCounterSuccessTime)はスキップし、共通ヘルパで
+                  // 確定クリ(bumpBossCrit)+青/金FX+SE距離減衰だけ出す。ボスの反応(counter-leap)は
+                  // 下の共通処理=プレイヤー成立と同一。
+                  applyGhostCounterEffect(boss, hitX, hitY, ghost, (k, g) => playSfx(k, g));
+                } else {
                 // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
                 notifyCounterHit();
                 notifyMoveCounter(); // G4a(§2.9・記録専用): 成立④=技への反応表へも通知
@@ -4385,6 +4393,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
                 spawnBurst(hitX, hitY, '#fde047', 10);
                 useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
+                }
                 const lx = bcx - pcx, ly = bcy - pcy;
                 const ll = Math.hypot(lx, ly) || 1;
                 patch.bossState = 'counter-leap';
@@ -4409,7 +4418,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 即座に'chase'へ戻す(次アクションは少し間を空ける=通常のnextActionDelayと同じ式)。
               // `BOSS_COUNTER_ENABLED`(既定true・`?bosscounter=0`で無効)の時だけ各windup状態から呼ばれる
               // (呼び出し側でゲート済み=このヘルパ自体は常に定義するだけで無条件には呼ばない)。
-              const hiddenBossCounterHit = (hitX: number, hitY: number) => {
+              const hiddenBossCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
+                if (ghost) {
+                  // v0.25.2480(★未決1解消): 守護霊カウンター成立(thorCounterHitのghost分岐と同じ扱い)。
+                  applyGhostCounterEffect(boss, hitX, hitY, ghost, (k, g) => playSfx(k, g));
+                } else {
                 // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
                 notifyCounterHit();
                 notifyMoveCounter(); // G4a(§2.9・記録専用): 成立⑤=技への反応表へも通知(G4b対象ボスは表キー未定義=現状no-op)
@@ -4437,6 +4450,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
                 spawnBurst(hitX, hitY, '#fde047', 10);
                 useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
+                }
                 patch.bossState = 'chase';
                 patch.bossNextActionAt = nextActionDelay();
                 patch.bossBurstLeft = 0;
@@ -4587,9 +4601,36 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   hiddenBossCountered = true;
                 }
               }
-              if (hiddenBossCountered) {
-                // カウンター成立: hiddenBossCounterHitが既にpatch.bossState='chase'まで設定済みなので、
-                // 通常の状態遷移(下のif/elseチェーン)はこのフレームだけ丸ごとスキップする。
+              // v0.25.2480(★未決1解消): 守護霊のカウンター請求(前フレームのcounterスイング)を
+              // プレイヤーと同じper-bossハンドラで解決する。成立州はプレイヤーと同一:
+              //  - トール: 溜め/硬直の8州(語尾-windup/-recover=プレイヤーの体当てカウンターと同じ州。
+              //    実行中ライン(issen-dash等)は語尾に載らない=請求が積まれず対象外)。
+              //  - 裏3体: hiddenBossCounterableNow(プレイヤーと同じ州リスト・?bosscounter=0ゲート込み)。
+              // 同フレームにプレイヤーの成立(overlap&&窓)が立っている時はプレイヤー優先(体験を変えない)。
+              let ghostCountered = false;
+              if (!hiddenBossCountered) {
+                const ghostCounterableNow = boss.type === 'thor'
+                  ? isBossCounterableNowApprox(boss.aiPhase, st)
+                  : hiddenBossCounterableNow;
+                const { overlap: pOverlap, counterActive: pActive } = ghostCounterableNow
+                  ? thorBodyOverlapNow() : { overlap: false, counterActive: false };
+                if (ghostCounterableNow && !(pOverlap && pActive)) {
+                  const gClaim = consumeGhostCounterClaim(boss.id, Date.now());
+                  if (gClaim) {
+                    const gcSt = useGameStore.getState();
+                    const gFire: GhostCounterFire = {
+                      claim: gClaim,
+                      sfxGain: npcSfxDistGain(bcx, bcy, pcx, pcy, gcSt.camera, gcSt.gameBounds),
+                    };
+                    if (boss.type === 'thor') thorCounterHit(bcx, bcy, gFire);
+                    else hiddenBossCounterHit(bcx, bcy, gFire);
+                    ghostCountered = true;
+                  }
+                }
+              }
+              if (hiddenBossCountered || ghostCountered) {
+                // カウンター成立: hiddenBossCounterHit/thorCounterHitが既にpatch(chase復帰/counter-leap)まで
+                // 設定済みなので、通常の状態遷移(下のif/elseチェーン)はこのフレームだけ丸ごとスキップする。
               } else if (st === 'chase') {
                 if (boss.type === 'thor') {
                   // 社長指示:「たまに2秒さらに1/2の速度で歩く」。クールダウンが明けたら新しい減速ウィンドウへ
@@ -5359,7 +5400,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (出現経路が未決なのはidolの"場所"の話であって、"作法"は揃える)。windup中/硬直(recover)中の
             // 接触=カウンター可・active中(idol-roll等)はその技自身の判定に委ねる(=対象外)。
             // 既存の `?bosscounter=0`(BOSS_COUNTER_ENABLED)フォールバックの傘に入れ、idol専用フラグは作らない。
-            const idolCounterHit = (hitX: number, hitY: number) => {
+            const idolCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
+              if (ghost) {
+                // v0.25.2480(★未決1解消): 守護霊カウンター成立(thorCounterHitのghost分岐と同じ扱い)。
+                applyGhostCounterEffect(idol, hitX, hitY, ghost, (k, g) => playSfx(k, g));
+              } else {
               // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
               notifyCounterHit();
               notifyMoveCounter(); // G4a(§2.9・記録専用): 成立⑥=技への反応表へも通知(idolはG4b対象=表キー未定義・現状no-op)
@@ -5387,6 +5432,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
               spawnBurst(hitX, hitY, '#fde047', 10);
               useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
+              }
               iPatch.bossState = 'chase';
               iPatch.bossNextActionAt = newGameTime + IDOL_ACTION_MIN_MS + Math.random() * (IDOL_ACTION_MAX_MS - IDOL_ACTION_MIN_MS);
             };
@@ -5394,6 +5440,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const IDOL_COUNTER_RECOVERS = ['idol-aim-recover', 'idol-fan-recover', 'idol-roll-recover', 'idol-punch-recover'];
             const idolCounterableNow = BOSS_COUNTER_ENABLED && isCounterablePhase(st, IDOL_COUNTER_WINDUPS, IDOL_COUNTER_RECOVERS);
             let idolCountered = false;
+            let idolGhostCountered = false;
             if (idolCounterableNow) {
               const cp = useGameStore.getState().player;
               const overlap = rectsOverlap(
@@ -5404,9 +5451,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (overlap && counterActive) {
                 idolCounterHit(icx, icy);
                 idolCountered = true;
+              } else {
+                // v0.25.2480(★未決1解消): 守護霊のカウンター請求。成立州はプレイヤーと同一
+                // (idolCounterableNow=同じ州リスト・?bosscounter=0ゲート込み)。プレイヤー成立が
+                // 同フレームに立っている時はプレイヤー優先(上のif=体験を変えない)。
+                const gClaim = consumeGhostCounterClaim(idol.id, Date.now());
+                if (gClaim) {
+                  const gcSt = useGameStore.getState();
+                  idolCounterHit(icx, icy, {
+                    claim: gClaim,
+                    sfxGain: npcSfxDistGain(icx, icy, pcx, pcy, gcSt.camera, gcSt.gameBounds),
+                  });
+                  idolGhostCountered = true;
+                }
               }
             }
-            if (idolCountered) {
+            if (idolCountered || idolGhostCountered) {
               // カウンター成立: idolCounterHitが既にiPatch.bossState='chase'まで設定済みなので、
               // 通常の状態遷移(下のif/elseチェーン)はこのフレームだけ丸ごとスキップする。
             } else if (st === 'chase') {
@@ -5956,6 +6016,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               : s),
           }));
         };
+        // v0.25.2480(★未決3解消): ゴースト発動サブの発動SE用の距離減衰(発音位置=設置/投擲点)。
+        // プレイヤー発動のSEは従来どおり等倍のまま(この関数を通さない=1bit不変)。
+        const subSfxGainAt = (x: number, y: number): number => {
+          const s = useGameStore.getState();
+          return npcSfxDistGain(x, y, s.player.x + s.player.width / 2, s.player.y + s.player.height / 2, s.camera, s.gameBounds);
+        };
         if (
           !inReturnCircle &&
           subWeaponPlayer.subWeapons.includes('heavy-grenade') &&
@@ -6398,7 +6464,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           });
           // ガチャンッ!: 着地ダスト + 金属音(構えた感)。スプライト側で着地スラム。
           spawnRing(footX, footY, 6, 64, ghostOwned ? 'rgba(159,216,255,0.7)' : 'rgba(203,213,225,0.7)', 3, 260);
-          playSfx('shield-deploy');
+          // v0.25.2480: ゴースト発動時のみ設置点で距離減衰(プレイヤー発動は従来どおり等倍)。
+          const shieldGain = ghostOwned ? subSfxGainAt(footX, footY) : 1;
+          if (shieldGain > 0) playSfx('shield-deploy', shieldGain);
           recordShieldPlacement(); // G4a(§2.9(3)・記録専用): shield設置1回の様式カウンタ
           setSubWeaponCooldown('shield', gameTime + SHIELD_COOLDOWN_MS);
           consumeGhostSubClaim(); // G2.6
@@ -6454,7 +6522,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 設置演出: 軽い着地リング+小ダスト(短命・軽量)。
           spawnRing(footX, footY, 4, 26, ghostOwned ? 'rgba(159,216,255,0.7)' : 'rgba(148,163,184,0.7)', 2, 220);
           spawnBurst(footX, footY, ghostOwned ? '#9fd8ff' : '#94a3b8', 6);
-          playSfx('shield-deploy');
+          // v0.25.2480: ゴースト発動時のみ設置点で距離減衰(プレイヤー発動は従来どおり等倍)。
+          const turretGain = ghostOwned ? subSfxGainAt(footX, footY) : 1;
+          if (turretGain > 0) playSfx('shield-deploy', turretGain);
           setSubWeaponCooldown('turret', gameTime + TURRET_COOLDOWN_MS);
           consumeGhostSubClaim(); // G2.6
         }
@@ -6755,7 +6825,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               area: FIRE_KNIFE_RADIUS_BY_LEVEL[level], // 爆発半径(命中後の爆発で参照)
               ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
             });
-            playSfx('shot-damage');
+            // v0.25.2480: ゴースト発動時のみ投擲点(オーナー中心)で距離減衰(プレイヤー発動は従来どおり等倍)。
+            const knifeGain = ghostOwned ? subSfxGainAt(pcx, pcy) : 1;
+            if (knifeGain > 0) playSfx('shot-damage', knifeGain);
             setSubWeaponCooldown('fire-knife', gameTime + FIRE_KNIFE_COOLDOWN_BY_LEVEL[level]);
             consumeGhostSubClaim(); // G2.6
           }
@@ -7009,6 +7081,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         {
           const ghostNow = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
           if (ghostNow) {
+            // 被弾音(社長裁定v0.25.2480=v0.25.2479★未決2解消。G4bの掟「被弾音は付けない」
+            // (v0.25.2459)は本裁定で上書き): 全被弾経路(ボス技/敵弾/汎用接触)は damageSummon の
+            // lastHit 打刻に合流するので、そのエッジ検知1箇所で player-damage SE を距離減衰付きで
+            // 1回鳴らす(経路ごとの配線をしない)。実ダメージは i-frame(INVULN_MS)で間引かれるが、
+            // 二重保険で最短 GHOST_HURT_SFX_MIN_GAP_MS も空ける。判定/ダメージ/挙動は不変(音のみ)。
+            {
+              const hs = ghostHurtSfxRef.current;
+              const gLastHit = ghostNow.lastHit ?? 0;
+              if (hs.id !== ghostNow.id) {
+                hs.id = ghostNow.id; hs.seen = gLastHit; // 召喚直後の初期値を「既知」にして誤発火しない
+              } else if (gLastHit > hs.seen) {
+                hs.seen = gLastHit;
+                const rtNow = Date.now();
+                if (rtNow - hs.playedAt >= GHOST_HURT_SFX_MIN_GAP_MS) {
+                  const hsState = useGameStore.getState();
+                  const hGain = npcSfxDistGain(
+                    ghostNow.x + ghostNow.width / 2, ghostNow.y + ghostNow.height / 2,
+                    hsState.player.x + hsState.player.width / 2, hsState.player.y + hsState.player.height / 2,
+                    hsState.camera, hsState.gameBounds,
+                  );
+                  if (hGain > 0) { playSfx('player-damage', hGain); hs.playedAt = rtNow; }
+                }
+              }
+            }
             const gsPlayer = useGameStore.getState().player;
             const leash = ghostLeashWarp(ghostNow, gsPlayer);
             if (leash) {
@@ -7150,21 +7246,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (swingGain > 0) playSfx('melee', swingGain);
                 if (meleeHitGain > 0) playSfx('slash-damage', meleeHitGain);
                 if (wasCounterMelee) {
-                  // カウンター成立の演出(プレイヤーのthorCounterHit/hiddenBossCounterHit等と同型の青レイヤー)。
-                  // 【実態に合わせる】ゴーストのカウンターは機械的には「窓に合わせた通常近接ダメージ」で、
-                  // パリィ判定・確定クリ・bumpBossCrit・ボス怯み/後退は発生しない(★未決=BOT_AND_GHOST.md)。
-                  // よってクリ演出(金リング/金バースト/金グロー/headshot SE)は乗せない(クリしていないのに
-                  // クリの絵を出さない=CLAUDE.md「判定を持つ絵は判定に揃える」)。
-                  // 【除外】triggerHitImpact(停止+ズーム+スロー同梱)・triggerZoom・triggerHitstop・
-                  // triggerTimeSlow・triggerAttentionは呼ばない(冒頭GHOST_FX_SHAKE_ENABLEDの掟)。
-                  if (meleeHitGain > 0) playSfx('counter', meleeHitGain);
-                  spawnRing(btcx, bccy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-                  spawnBurst(btcx, bccy, '#38bdf8', 14);
-                  // グローはプレイヤー(半径95=強glow)と違い43=STRONG_GLOW_RADIUS(44)未満に抑えて
-                  // プールsprite経路(安い)に収める(掟: 強glow=半径44超の加算を新規に増やさない)。
-                  useGameStore.getState().spawnGlow(btcx, bccy, 43, 'rgba(56,189,248,', 360);
-                  useGameStore.getState().spawnCallout(btcx, bccy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-                  if (GHOST_FX_SHAKE_ENABLED) useGameStore.getState().triggerShake(COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG);
+                  // v0.25.2480(社長裁定「1」=v0.25.2479★未決1解消): カウンター成立の効果は
+                  // per-bossハンドラへ合流して本物化(パリィ=技の中断/反応遷移+確定クリ=bumpBossCrit)。
+                  // ここでは請求(claim)を積むだけ。成立演出(青Counter!+金クリ層+counter/headshot SEの
+                  // 距離減衰)もハンドラ側=成立が確定した時だけ出す(不成立の空振りに嘘のCounter!を
+                  // 出さない=CLAUDE.md「判定を持つ絵は判定に揃える」)。通常近接ぶんのダメージ/斬撃/血/SEは
+                  // 上の共通部で既に出ている=プレイヤーの「スイング(近接ダメージ)+成立(クリ反撃)」の
+                  // 二段構造と同じ。ダメージ式はプレイヤーのカウンター反撃と同式の借用装備版
+                  // (スキル倍率なし=v0.25.2459方針)。消費側: thor/裏3=hidden-bossブロック、idol=idolブロック、
+                  // 天使6=angelBossTick、城ボス系(giantbat)=combatTick.applyGhostBossParry。
+                  setGhostCounterClaim({
+                    bossId: boundBoss.id, ghostX: gmcx, ghostY: gmcy,
+                    dmg: ghostCounterDamage(gun?.damage), atMs: nowMs,
+                  });
                 } else if (GHOST_FX_SHAKE_ENABLED) {
                   // 通常ヒットのスイング揺れ(プレイヤーのtriggerCounter末尾と同型・方向=ゴースト→ボス)。
                   useGameStore.getState().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG, btcx - gmcx, bccy - gmcy);
@@ -8822,6 +8916,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           loopState.screamerBuffUntil,
           combatEffects,
         );
+        // v0.25.2480(★未決1解消): 城ボス系(giantbat=城ボス/グレン)の守護霊カウンター請求は、
+        // per-bossの状態機械閉包を持たない(プレイヤー側=上のapplyContactDamage内dashParried)ため、
+        // 同じフェーズ表・同じ中断/ノックバック変換の合流点(combatTick)で解決する。呼び出し位置は
+        // applyContactDamageの直後=プレイヤーの接触カウンターが先に解決される(同フレーム競合は
+        // プレイヤー優先・プレイヤーが弾いた後はaiPhase解除済みで請求は流れる)。
+        {
+          const gpNow = Date.now();
+          const gpState = useGameStore.getState();
+          const gpPcx = gpState.player.x + gpState.player.width / 2;
+          const gpPcy = gpState.player.y + gpState.player.height / 2;
+          applyGhostBossParry(gpNow, (k, g) => playSfx(k, g),
+            (x, y) => npcSfxDistGain(x, y, gpPcx, gpPcy, gpState.camera, gpState.gameBounds));
+        }
         // ↓ 以降のピックアップ衝突判定が使う collPlayer(位置は上の接触判定と同じフレームで不変)。
         const collPlayer = useGameStore.getState().player;
 

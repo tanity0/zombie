@@ -25,9 +25,11 @@ import { getActiveGun } from './weaponUtils';
 import { createEnemyProjectile, isGate2AngelBoss } from './enemyUtils';
 import { rectsOverlap } from '../world/obstacles';
 import { distToSegment } from './levelUpGate';
-import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY } from './bossScript';
+import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY, isBossCounterableNowApprox } from './bossScript';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
+import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの合流
+import { npcSfxDistGain } from './npcSfx'; // v0.25.2480: 守護霊カウンターSEの距離減衰
 import { pickMiguelMove, miguelDashFollowupEligible } from './miguelScript';
 import { pickJibrilMove, pickJibrilCombo, jibrilVolleyMode, JIBRIL_PHASE_HP_THRESHOLD, JIBRIL_EDGE_STICK_MS } from './jibrilScript';
 import { pickRafiMove, pickRafiCombo, RAFI_PHASE_HP_THRESHOLD } from './rafiScript';
@@ -41,8 +43,9 @@ import { resolveBossHateAim, type ResolvedHateAim } from './bossHate'; // BOT_AN
 
 // --- 音の注入(ヘッドレスはNOOP) -------------------------------------------
 export interface AngelSfx {
-  counter: () => void;  // カウンター成立(playSfx('counter'))
-  reward: () => void;   // 反撃ヒット(playSfx('headshot'))
+  // gain(省略時=等倍)は守護霊カウンター(v0.25.2480)の距離減衰用。プレイヤー成立は従来どおり引数なし=等倍。
+  counter: (gain?: number) => void;  // カウンター成立(playSfx('counter'))
+  reward: (gain?: number) => void;   // 反撃ヒット(playSfx('headshot'))
   sweep: () => void;    // 払い/縦払い実行(playSfx('thor-sweep'))
   // §6.28共通: 予告SE(全技共通=hunter-alert流用・§6.26-9 #5)。溜め(windup)へ入った瞬間に1回。
   alert: () => void;
@@ -242,7 +245,15 @@ export const createAngelBossState = (): AngelBossState => ({
 
 // カウンター成立の共通処理(旧miguelCounterHit/rafiCounterHit)。演出+プレイヤー無敵+反撃ダメージ。
 // 後退(counter-leap)は呼び出し側がpatchで行う(ミゲルのみ)。
-const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, sfx: AngelSfx): void => {
+// v0.25.2480: ghost(守護霊カウンター成立)付きで呼ばれた時は、プレイヤー専用の副作用
+// (G1/G4a計測notify・コンボ・無敵/CDリファンド/lastCounterSuccessTime・triggerHitImpact(停止+ズーム)・
+// markMeleeSwingFx・強glow95)をスキップし、共通ヘルパで確定クリ+青/金FX+SE距離減衰だけを出す。
+// ボスの状態遷移(chase復帰/counter-leap)は呼び出し側の従来patch=プレイヤー成立と同一。
+const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, sfx: AngelSfx, ghost?: GhostCounterFire): void => {
+  if (ghost) {
+    applyGhostCounterEffect(boss, hitX, hitY, ghost, (key, gain) => (key === 'counter' ? sfx.counter(gain) : sfx.reward(gain)));
+    return;
+  }
   // BOT_AND_GHOST.md G1(計測専用・挙動不変): miguel/jibril/rafi/uri/suriel/acrasielの6体が
   // 共通で通るこの1箇所で、カウンター成立をplayerTraitsへ通知する。
   notifyCounterHit();
@@ -280,6 +291,25 @@ const bodyOverlapNow = (boss: Enemy): { overlap: boolean; counterActive: boolean
     overlap: rectsOverlap({ x: boss.x, y: boss.y, width: boss.width, height: boss.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }),
     counterActive: Date.now() <= cp.counterWindowEnd,
   };
+};
+
+// v0.25.2480(DEVELOPMENT_LOG v0.25.2479★未決1解消): 守護霊カウンター請求(ghostCounter.ts)の
+// 天使6体側の消費。成立州はプレイヤーと同一=各tickの bodyOverlapNow 分岐が存在する州(全windup/recover)。
+// 概算(isBossCounterableNowApprox=語尾判定)との差分は次の2つだけ(全9tickの分岐を全数確認済み):
+//  - jibril 'warp-recover': プレイヤー不可の州(カウンター分岐なし)→ 明示除外(判定を広げない)。
+//  - acrasiel 'warp-out': プレイヤー可だが語尾に載らない → ゴーストの請求自体が積まれない(狭い側=許容)。
+// 同フレームにプレイヤーの成立(overlap&&窓)が立っている時はプレイヤー優先(体験を1bitも変えない)。
+const takeGhostAngelCounter = (boss: Enemy): GhostCounterFire | null => {
+  if (!isBossCounterableNowApprox(boss.aiPhase, boss.bossState)) return null;
+  if (boss.type === 'jibril' && boss.bossState === 'warp-recover') return null;
+  const { overlap, counterActive } = bodyOverlapNow(boss);
+  if (overlap && counterActive) return null; // プレイヤー成立が同フレームに立つ→各州の分岐に譲る
+  const claim = consumeGhostCounterClaim(boss.id, Date.now());
+  if (claim === null) return null;
+  const st = useGameStore.getState();
+  const pcx = st.player.x + st.player.width / 2, pcy = st.player.y + st.player.height / 2;
+  const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
+  return { claim, sfxGain: npcSfxDistGain(bcx, bcy, pcx, pcy, st.camera, st.gameBounds) };
 };
 
 const nextActionDelay = (t: number): number => t + ANGEL_ACTION_MIN_MS + Math.random() * (ANGEL_ACTION_MAX_MS - ANGEL_ACTION_MIN_MS);
@@ -332,8 +362,8 @@ export const runMiguelTick = (
     patch.y = mHomeY + Math.sin(newAngle) * correctedDist - miguel.height / 2;
   };
 
-  const miguelCounterHit = (hitX: number, hitY: number): void => {
-    angelCounterHit(miguel, mcx, hitX, hitY, sfx);
+  const miguelCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire): void => {
+    angelCounterHit(miguel, mcx, hitX, hitY, sfx, ghost);
     const lx = mcx - pcx, ly = mcy - pcy;
     const ll = Math.hypot(lx, ly) || 1;
     patch.bossState = 'counter-leap';
@@ -359,9 +389,13 @@ export const runMiguelTick = (
   };
 
   const miguelFullStun = miguel.bossFullStunUntil !== undefined && newGameTime < miguel.bossFullStunUntil;
+  let mGhostFire: GhostCounterFire | null = null;
   if (miguelFullStun) {
     patch.bossState = 'chase';
     patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+  } else if ((mGhostFire = takeGhostAngelCounter(miguel)) !== null) {
+    // v0.25.2480: 守護霊カウンター成立。効果はプレイヤー成立と同一(counter-leapまでmiguelCounterHitが設定)。
+    miguelCounterHit(mcx, mcy, mGhostFire);
   } else if (st === 'chase') {
     miguelOrbitMove();
     if (newGameTime >= (miguel.bossNextActionAt ?? 0)) {
@@ -577,8 +611,8 @@ export const runMiguelTickLegacy = (
     patch.y = mHomeY + Math.sin(newAngle) * correctedDist - miguel.height / 2;
   };
 
-  const miguelCounterHit = (hitX: number, hitY: number): void => {
-    angelCounterHit(miguel, mcx, hitX, hitY, sfx);
+  const miguelCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire): void => {
+    angelCounterHit(miguel, mcx, hitX, hitY, sfx, ghost);
     const lx = mcx - pcx, ly = mcy - pcy;
     const ll = Math.hypot(lx, ly) || 1;
     patch.bossState = 'counter-leap';
@@ -589,9 +623,13 @@ export const runMiguelTickLegacy = (
   };
 
   const miguelFullStun = miguel.bossFullStunUntil !== undefined && newGameTime < miguel.bossFullStunUntil;
+  let mGhostFire: GhostCounterFire | null = null;
   if (miguelFullStun) {
     patch.bossState = 'chase';
     patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+  } else if ((mGhostFire = takeGhostAngelCounter(miguel)) !== null) {
+    // v0.25.2480: 守護霊カウンター成立(旧実装フォールバックでも同作法)。
+    miguelCounterHit(mcx, mcy, mGhostFire);
   } else if (st === 'chase') {
     miguelOrbitMove();
     if (newGameTime >= (miguel.bossNextActionAt ?? 0)) {
@@ -717,7 +755,7 @@ export const runJibrilTick = (
     patch.x = nx - jibril.width / 2;
     patch.y = ny - jibril.height / 2;
   };
-  const jibrilCounterHit = (hx: number, hy: number): void => angelCounterHit(jibril, jcx, hx, hy, sfx);
+  const jibrilCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(jibril, jcx, hx, hy, sfx, ghost);
 
   const healthFrac = jibril.maxHealth > 0 ? jibril.health / jibril.maxHealth : 1;
   const phase = phaseForHealth(healthFrac, [JIBRIL_PHASE_HP_THRESHOLD]) as 1 | 2;
@@ -732,6 +770,7 @@ export const runJibrilTick = (
   const warpTriggered = (jr.hits - jr.lastWarpHits >= JIBRIL_HITS_WARP) || edgeStuckMs >= JIBRIL_EDGE_STICK_MS;
 
   const jibrilFull = jibril.bossFullStunUntil !== undefined && newGameTime < jibril.bossFullStunUntil;
+  let jGhostFire: GhostCounterFire | null = null;
   if (jibrilFull) {
     patch.bossState = 'chase';
     patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
@@ -742,6 +781,12 @@ export const runJibrilTick = (
     patch.bossStateUntil = newGameTime + JIBRIL_WARP_WINDUP_MS;
     jr.lastWarpHits = jr.hits;
     jr.edgeSince = undefined;
+  } else if ((jGhostFire = takeGhostAngelCounter(jibril)) !== null) {
+    // v0.25.2480: 守護霊カウンター成立(転移割り込みより後=プレイヤー時と同じ優先順)。
+    // 'warp-recover'はプレイヤー不可の州のためtakeGhostAngelCounterが除外済み。
+    jibrilCounterHit(jcx, jcy, jGhostFire);
+    patch.bossState = 'chase';
+    patch.bossNextActionAt = nextActionDelay(newGameTime);
   } else if (st === 'warp-windup') {
     const { overlap, counterActive } = bodyOverlapNow(jibril);
     if (overlap && counterActive) {
@@ -1046,11 +1091,16 @@ export const runRafiTick = (
     const c = clampArena(rcx + (dx / dl) * spd * bossMoveDt, rcy + (dy / dl) * spd * bossMoveDt);
     patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
   };
-  const rafiCounterHit = (hx: number, hy: number): void => angelCounterHit(rafi, rcx, hx, hy, sfx);
+  const rafiCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(rafi, rcx, hx, hy, sfx, ghost);
 
   const rafiFull = rafi.bossFullStunUntil !== undefined && newGameTime < rafi.bossFullStunUntil;
+  let rGhostFire: GhostCounterFire | null = null;
   if (rafiFull) {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+  } else if ((rGhostFire = takeGhostAngelCounter(rafi)) !== null) {
+    // v0.25.2480: 守護霊カウンター成立(効果=プレイヤー成立の各州分岐と同一のchase復帰)。
+    rafiCounterHit(rcx, rcy, rGhostFire);
+    patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime);
   } else if (st === 'chase') {
     const stepMinGap = phase === 2 ? RAFI_STEP_MIN_GAP_MS_P2 : RAFI_STEP_MIN_GAP_MS;
     const stepMaxGap = phase === 2 ? RAFI_STEP_MAX_GAP_MS_P2 : RAFI_STEP_MAX_GAP_MS;
@@ -1240,11 +1290,16 @@ export const runRafiTickLegacy = (
     patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
   };
 
-  const rafiCounterHit = (hx: number, hy: number): void => angelCounterHit(rafi, rcx, hx, hy, sfx);
+  const rafiCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(rafi, rcx, hx, hy, sfx, ghost);
 
   const rafiFull = rafi.bossFullStunUntil !== undefined && newGameTime < rafi.bossFullStunUntil;
+  let rGhostFire: GhostCounterFire | null = null;
   if (rafiFull) {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+  } else if ((rGhostFire = takeGhostAngelCounter(rafi)) !== null) {
+    // v0.25.2480: 守護霊カウンター成立(旧実装フォールバックでも同作法)。
+    rafiCounterHit(rcx, rcy, rGhostFire);
+    patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime);
   } else if (st === 'chase') {
     if (newGameTime < rr.stepUntil) {
       const c = clampArena(rcx + rr.stepDx * RAFI_STEP_SPEED * bossMoveDt, rcy + rr.stepDy * RAFI_STEP_SPEED * bossMoveDt);
@@ -1365,11 +1420,16 @@ export const runUriTick = (
     const c = clampArena(ucx + (dx / dl) * spd * bossMoveDt, ucy + (dy / dl) * spd * bossMoveDt);
     patch.x = c.x - uri.width / 2; patch.y = c.y - uri.height / 2;
   };
-  const uriCounterHit = (hx: number, hy: number): void => angelCounterHit(uri, ucx, hx, hy, sfx);
+  const uriCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(uri, ucx, hx, hy, sfx, ghost);
 
   const uriFull = uri.bossFullStunUntil !== undefined && newGameTime < uri.bossFullStunUntil;
+  let uGhostFire: GhostCounterFire | null = null;
   if (uriFull) {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+  } else if ((uGhostFire = takeGhostAngelCounter(uri)) !== null) {
+    // v0.25.2480: 守護霊カウンター成立(効果=プレイヤー成立の各州分岐と同一のchase復帰)。
+    uriCounterHit(ucx, ucy, uGhostFire);
+    patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime);
   } else if (st === 'chase') {
     chaseMove(uri.speed);
     if (newGameTime >= (uri.bossNextActionAt ?? 0)) {
@@ -1594,13 +1654,18 @@ export const runSurielTick = (
     const c = clampArena(scx + (dx / dl) * spd * bossMoveDt, scy + (dy / dl) * spd * bossMoveDt);
     patch.x = c.x - suriel.width / 2; patch.y = c.y - suriel.height / 2;
   };
-  const surielCounterHit = (hx: number, hy: number): void => angelCounterHit(suriel, scx, hx, hy, sfx);
+  const surielCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(suriel, scx, hx, hy, sfx, ghost);
 
   const deployed = surielRingDeployed(suriel.ringX, suriel.ringY, scx, scy);
 
   const surielFull = suriel.bossFullStunUntil !== undefined && newGameTime < suriel.bossFullStunUntil;
+  let sGhostFire: GhostCounterFire | null = null;
   if (surielFull) {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+  } else if ((sGhostFire = takeGhostAngelCounter(suriel)) !== null) {
+    // v0.25.2480: 守護霊カウンター成立(効果=プレイヤー成立の各州分岐と同一のchase復帰)。
+    surielCounterHit(scx, scy, sGhostFire);
+    patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime);
   } else if (st === 'chase') {
     chaseMove(suriel.speed);
     // 環を頭上へ戻す(未展開の間・展開中は次の技が動かすまでそのまま=「離れている間だけ使う」判定の土台)。
@@ -1820,11 +1885,17 @@ export const runAcrasielTick = (
   patch.bossPhase = phase;
   patch.bossPhaseFlashUntil = phaseJustChanged(acrasiel.bossPhase, phase) ? newGameTime + ANGEL_PHASE_FLASH_MS : acrasiel.bossPhaseFlashUntil;
 
-  const acrasielCounterHit = (hx: number, hy: number): void => angelCounterHit(acrasiel, acx, hx, hy, sfx);
+  const acrasielCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(acrasiel, acx, hx, hy, sfx, ghost);
 
   const acrasielFull = acrasiel.bossFullStunUntil !== undefined && newGameTime < acrasiel.bossFullStunUntil;
+  let aGhostFire: GhostCounterFire | null = null;
   if (acrasielFull) {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+  } else if ((aGhostFire = takeGhostAngelCounter(acrasiel)) !== null) {
+    // v0.25.2480: 守護霊カウンター成立(効果=プレイヤー成立の各州分岐と同一のchase復帰。
+    // 'warp-out'はプレイヤー可だが語尾判定に載らない=請求が積まれず対象外・報告済みの狭い側)。
+    acrasielCounterHit(acx, acy, aGhostFire);
+    patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime);
   } else if (st === 'chase') {
     // 動かない(speed:0)。技の抽選のみ行う。
     if (newGameTime >= (acrasiel.bossNextActionAt ?? 0)) {
