@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2478',
+    items: [
+      '敵の体当たりの前のめりが「しゃがみ込み→食いつく」の2拍の動きになり、見て分かりやすくなりました。',
+    ],
+  },
+  {
     version: '0.25.2477',
     items: [
       '守護霊の頭上にプレイヤー名が表示されるようになりました。自分の記録から生まれたゴーストには「(自分)」と添えられます。名前は拠点のオプションで変更できます(初期値はランダムなplayer+数字5桁)。',

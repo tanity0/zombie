@@ -1443,8 +1443,31 @@ const DASH_DUST_SCALE = 1.6;
 // 「強めに」の指示なのでskewは被弾(0.42)より強く、前方オフセット+軽いスカッシュも重ねる。視覚のみ。
 const CONTACT_LUNGE_MS = 360; // 180→360(社長報告v0.25.2470「全く視認できないから少し長めがいい」)
 const CONTACT_LUNGE_SKEW = 0.6;
-const CONTACT_LUNGE_SQUASH = 0.16;  // 縦を最大16%潰す(踏み込みの重み)
-const CONTACT_LUNGE_OFFSET_PX = 12; // プレイヤー方向へ最大12pxの見た目オフセット(hitbox不変)
+const CONTACT_LUNGE_OFFSET_PX = 16; // プレイヤー方向へ最大16pxの見た目オフセット(hitbox不変)
+// v0.25.2478(社長指示「長さじゃなくて地味なのかも、少ししゃがみも入れてみて」): 2拍構造へ。
+// 拍A(前35%)=しゃがみ込み(縦30%潰し+横に張る+6px沈む)→ 拍B(残り65%)=食いつき
+// (前傾スキュー+前方オフセットの山→戻り。しゃがみの潰れはBで滑らかに解放)。
+const CONTACT_CROUCH_FRAC = 0.35;
+const CONTACT_CROUCH_SQUASH = 0.30;
+const CONTACT_CROUCH_WIDEN = 0.15;
+const CONTACT_CROUCH_SINK_PX = 6;
+/** 接触攻撃の前屈みポーズ(t=経過0..1)。両描画経路(裏ボスfit/通常)で共用する純計算。 */
+const contactLungePose = (t: number): { skew: number; sqY: number; sqX: number; off: number; sink: number } => {
+  if (t < CONTACT_CROUCH_FRAC) {
+    const w = t / CONTACT_CROUCH_FRAC; // 0→1 しゃがみ込み
+    return { skew: 0, sqY: 1 - CONTACT_CROUCH_SQUASH * w, sqX: 1 + CONTACT_CROUCH_WIDEN * w, off: 0, sink: CONTACT_CROUCH_SINK_PX * w };
+  }
+  const u = (t - CONTACT_CROUCH_FRAC) / (1 - CONTACT_CROUCH_FRAC); // 0→1 食いつき→戻り
+  const rel = (1 - u) * (1 - u);              // しゃがみの余韻(境界で連続に解放)
+  const pulse = Math.sin(Math.min(1, u * 1.15) * Math.PI); // 出て戻る山(立ち上がり速め)
+  return {
+    skew: CONTACT_LUNGE_SKEW * pulse,
+    sqY: (1 - CONTACT_CROUCH_SQUASH * rel) * (1 + 0.08 * pulse), // 潰れの解放+伸び上がり
+    sqX: 1 + CONTACT_CROUCH_WIDEN * rel,
+    off: CONTACT_LUNGE_OFFSET_PX * pulse,
+    sink: CONTACT_CROUCH_SINK_PX * rel,
+  };
+};
 // V1(1)(FX_GAP_LEDGER.md): 敵弾(enemy_bolt)の発射フラッシュ/消滅の爆ぜ。弾1発につき各1回の
 // 一瞬(<250ms)のイベントFXなので、同時表示数は「その瞬間に生まれた/消えた弾の数」に自然に上限が
 // 付く(J130=弾130発PASSは常在数の話。こちらは発射/消滅の瞬間だけ)。強glow(半径44超)は不使用。
@@ -8830,17 +8853,18 @@ export class PixiScene {
       } else {
         view.sprite.skew.x = 0;
       }
-      // V1(3): 接触ダメージを与えた瞬間の前のめり(被弾しなりの逆位相・社長指示「強めに」)。視覚のみ。
-      let lungeOffX = 0, lungeOffY = 0;
+      // V1(3)→v0.25.2478: 接触ダメージを与えた瞬間の「しゃがみ込み→食いつき」2拍(社長指示)。視覚のみ。
+      let lungeOffX = 0, lungeOffY = 0, lungeSqX = 1;
       const sinceLunge = e.lastContactAttackAt !== undefined ? now - e.lastContactAttackAt : -1;
       if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
-        const lw = 1 - sinceLunge / CONTACT_LUNGE_MS;
+        const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);
         const lang = e.lastContactAttackDir ?? 0;
         const ldir = Math.cos(lang) >= 0 ? 1 : -1;
-        view.sprite.skew.x += -ldir * CONTACT_LUNGE_SKEW * lw; // 頭がプレイヤー側へ倒れ込む
-        flinchSqY *= 1 - CONTACT_LUNGE_SQUASH * lw;
-        lungeOffX = Math.cos(lang) * CONTACT_LUNGE_OFFSET_PX * lw;
-        lungeOffY = Math.sin(lang) * CONTACT_LUNGE_OFFSET_PX * lw;
+        view.sprite.skew.x += -ldir * pose.skew; // 頭がプレイヤー側へ倒れ込む
+        flinchSqY *= pose.sqY;
+        lungeSqX = pose.sqX;
+        lungeOffX = Math.cos(lang) * pose.off;
+        lungeOffY = Math.sin(lang) * pose.off + pose.sink;
       }
       view.sprite.position.set(Math.round(spx + liftShake + lungeOffX), Math.round(spy - liftHop - kbHop + lungeOffY));
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
@@ -8848,7 +8872,7 @@ export class PixiScene {
       // スケールXの符号だけを反転する見た目専用の変更で、hitbox(e.x/y/width/height)・座標・攻撃方向・
       // 弾の発射方向には一切触れない(CLAUDE.md「Visual vs. hitbox」)。
       const idolMirror = (e.type === 'idol' && e.idolFacingLeft) ? -1 : 1;
-      view.sprite.scale.set(idolMirror * scale * breath.x, scale * breath.y * flinchSqY);
+      view.sprite.scale.set(idolMirror * scale * breath.x * lungeSqX, scale * breath.y * flinchSqY);
       // プレイヤーが帯(当たり判定)より奥=裏に回り込んだら、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
       // 二値判定ではなく「遠ざかるほど急激」な二乗カーブで透明度を距離に応じて連続変化させる。
       const ply = useGameStore.getState().player;
@@ -8907,20 +8931,21 @@ export class PixiScene {
       } else {
         view.sprite.skew.x = 0;
       }
-      // V1(3): 接触ダメージを与えた瞬間の前のめり(被弾しなりの逆位相・社長指示「強めに」)。
+      // V1(3)→v0.25.2478: 接触ダメージを与えた瞬間の「しゃがみ込み→食いつき」2拍(社長指示)。
       // 対象は「接触ダメージを持つ全員」=この汎用経路(通常敵)と上の裏ボス経路の両方に置く。視覚のみ。
-      let lungeOffX = 0, lungeOffY = 0;
+      let lungeOffX = 0, lungeOffY = 0, lungeSqX = 1;
       const sinceLunge = e.lastContactAttackAt !== undefined ? now - e.lastContactAttackAt : -1;
       if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
-        const lw = 1 - sinceLunge / CONTACT_LUNGE_MS;
+        const pose = contactLungePose(sinceLunge / CONTACT_LUNGE_MS);
         const lang = e.lastContactAttackDir ?? 0;
         const ldir = Math.cos(lang) >= 0 ? 1 : -1;
-        view.sprite.skew.x += -ldir * CONTACT_LUNGE_SKEW * lw; // 頭がプレイヤー側へ倒れ込む
-        flinchSqY *= 1 - CONTACT_LUNGE_SQUASH * lw;
-        lungeOffX = Math.cos(lang) * CONTACT_LUNGE_OFFSET_PX * lw;
-        lungeOffY = Math.sin(lang) * CONTACT_LUNGE_OFFSET_PX * lw;
+        view.sprite.skew.x += -ldir * pose.skew; // 頭がプレイヤー側へ倒れ込む
+        flinchSqY *= pose.sqY;
+        lungeSqX = pose.sqX;
+        lungeOffX = Math.cos(lang) * pose.off;
+        lungeOffY = Math.sin(lang) * pose.off + pose.sink;
       }
-      const scaleX = sc * breath.x * aiSqX;
+      const scaleX = sc * breath.x * aiSqX * lungeSqX;
       view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY);
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
       // 中心からずれた個体は横に流れて見える。重心が footX に乗るよう x を寄せる(視覚のみ)。
