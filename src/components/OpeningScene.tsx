@@ -850,7 +850,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     `\n@keyframes opmote{0%,100%{transform:translate(0,0);opacity:var(--o0)}50%{transform:translate(var(--mx),var(--my));opacity:var(--o1)}}` +
     // 廊下の夢演出(v0.25.2158・社長選定B/E案): 舞台の呼吸ズーム / 光のカーテンの明滅。
     // v0.25.2162: 呼吸1.4%→3%・光帯の明滅を深く(0.5→0.35)=「違いがわかる」強さへ(社長指示)。
-    `\n@keyframes opbreathe{from{transform:scale(1)}to{transform:scale(1.03)}}` +
+    // v0.25.2487: 呼吸3%→6%(社長指示「ゆるいズームを繰り返してるやつ、2倍の動きにして」。周期7sは不変。
+    // このkeyframeは夢セット共通=廊下/アリーナ/射撃の3箇所が同時に2倍になる)。
+    `\n@keyframes opbreathe{from{transform:scale(1)}to{transform:scale(1.06)}}` +
     `\n@keyframes oplray{0%,100%{opacity:0.35}50%{opacity:1}}`;
 
   const cur = SHOOT_STEPS[step];

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2487',
+    items: [
+      'オープニングの夢の呼吸ズーム(廊下・アリーナ・射撃シーン共通)の動きを2倍にしました(周期はそのまま・振幅3%→6%)。',
+    ],
+  },
+  {
     version: '0.25.2486',
     items: [
       'ゲーム内容の変更はありません(開発記録の更新: 守護霊の撃破データ仕様の確定・ワイヤーアンカーの調査結果)。',
