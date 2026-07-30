@@ -7893,6 +7893,9 @@ export class PixiScene {
     view.container.alpha = GHOST_ALLY_ALPHA;
     const tex = getTexture('player');
     if (tex) {
+      // v0.25.2465: テクスチャの割り当てが抜けていた(=空スプライトに位置と色だけ設定していて
+      // **守護霊が完全に透明だった**。社長報告「ヘイトは向くのに見た感じ何も居ない」の正体)。
+      if (view.sprite.texture !== tex) view.sprite.texture = tex;
       const sc = containScale(s.width, s.height, tex.width, tex.height) * this.depthScaleEnemy(footY);
       const faceSign = s.ghostFacing === -1 ? -1 : 1;
       view.sprite.scale.set(faceSign * sc, sc);
