@@ -760,6 +760,8 @@ export interface Summon {
   // (ms・Date.now基準)。ここから計測 reactionMs(100-800clamp)経過して初めて回避を始める。
   // 危険が消えた tick で undefined へ戻る(ghostDriver.decideGhost が返す値をそのまま持ち回るだけ)。
   ghostDangerSeenAt?: number;
+  // §2.12追補(v0.25.2534): オービット(ボス正対の横流れ)の旋回方向。持ち越して低確率で反転。
+  ghostOrbitSign?: 1 | -1;
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';

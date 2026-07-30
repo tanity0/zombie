@@ -11,6 +11,7 @@ import {
   ghostCounterWaitExpired, ghostDodgeVector,
   GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS, GHOST_WINDUP_SAFE_MARGIN_PX,
   GHOST_COUNTER_WAIT_MS, GHOST_DEFAULT_STATIONARY_FRAC, GHOST_APPROACH_MIN_CHANCE,
+  GHOST_ORBIT_BASE_FRAC, GHOST_ORBIT_IDLE_FRAC, GHOST_ORBIT_TANK_FRAC,
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
 } from './ghostDriver';
 import { jumpDodge, botSkillProfile } from './botSkill';
@@ -175,14 +176,14 @@ describe('§2.12 要件3: 予告中だけ安全マージンを足して退避す
     expect(d.moveX).toBeLessThan(0); // ボス(右)から離れる
   });
 
-  it('平時(chase)は preferredDist のまま=帯の中なら動かない', () => {
+  it('平時(chase)・帯の中は前後せず、ボス正対の横流れ(オービット)をする(§2.12追補)', () => {
     const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'chase' });
     const ghost = mkGhost({ x: 0, y: 0, width: 0, height: 0 });
     const d = decideGhost(baseDriverInput({
       ghost, enemies: [boss], nowMs: 5000, profile: { ...PROFILE, meleeBias: 0 },
     }));
-    expect(d.moveX).toBe(0);
-    expect(d.moveY).toBe(0);
+    expect(d.moveX).toBeCloseTo(0, 5); // 前後(接近/後退)成分なし=間合いは維持
+    expect(Math.abs(d.moveY)).toBeCloseTo(GHOST_ORBIT_BASE_FRAC, 5); // 接線方向へ横流れ
   });
 
   it("'tank'ロール(苦手技=食らいに行く)の時はマージンを足さない", () => {
@@ -193,19 +194,22 @@ describe('§2.12 要件3: 予告中だけ安全マージンを足して退避す
     };
     const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 5000, rand: () => 0 }));
     expect(d.moveRoll?.decision).toBe('tank');
-    expect(d.moveX).toBe(0); // 目標間合いは180のまま=帯の中なので下がらない
+    expect(d.moveX).toBeCloseTo(0, 5); // 目標間合いは180のまま=帯の中なので下がらない(前後成分なし)
+    // §2.12追補: tank予告中も棒立ちしない=「避けようとして間に合わない」ゆっくり横歩き
+    expect(Math.abs(d.moveY)).toBeCloseTo(GHOST_ORBIT_TANK_FRAC, 5);
   });
 });
 
 describe('§2.12 要件4: 移動リズム(平時のみ)・危険時は必ず動く', () => {
-  it('立ち止まる癖(stationaryFrac)が強いと平時は動かないtickが出る', () => {
+  it('立ち止まる癖(stationaryFrac)が強い人の止まりtickは、完全停止ではなく遅い横流れ(§2.12追補)', () => {
     const boss = mkBoss({ x: 1000, y: 0, bossState: 'chase' });
     const d = decideGhost(baseDriverInput({
       ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss],
       profile: { ...PROFILE, mobility: 1, stationaryFrac: 1 }, // moveChance=0.5
-      rand: () => 0.9,
+      rand: () => 0.9, // 0.9 >= 0.5 → 止まりtick
     }));
-    expect(d.moveX).toBe(0);
+    expect(Math.abs(d.moveX)).toBeLessThan(0.05); // 接近はしない(「詰めない」個性は維持)
+    expect(Math.hypot(d.moveX, d.moveY)).toBeCloseTo(GHOST_ORBIT_IDLE_FRAC, 5); // 遅い横流れで足は止めない
   });
 
   it('危険時(予告中)はリズムを無視して必ず動く', () => {
@@ -218,7 +222,7 @@ describe('§2.12 要件4: 移動リズム(平時のみ)・危険時は必ず動�
     expect(d.moveX).toBeGreaterThan(0);
   });
 
-  it('接近リズム(approachPerMin)が低いと、平時に詰めないtickが出る', () => {
+  it('接近リズム(approachPerMin)が低いと、平時に詰めず横へ流れるtickが出る(§2.12追補)', () => {
     const boss = mkBoss({ x: 1000, y: 0, bossState: 'chase' });
     const d = decideGhost(baseDriverInput({
       ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss],
@@ -226,7 +230,8 @@ describe('§2.12 要件4: 移動リズム(平時のみ)・危険時は必ず動�
       profile: { ...PROFILE, mobility: 1, stationaryFrac: 0, approachPerMin: 0 },
       rand: () => 0.5,
     }));
-    expect(d.moveX).toBe(0);
+    expect(Math.abs(d.moveX)).toBeLessThan(0.05); // 詰めない(接近成分はほぼゼロ)
+    expect(Math.hypot(d.moveX, d.moveY)).toBeCloseTo(GHOST_ORBIT_IDLE_FRAC, 5); // 立ち尽くさず横へ流れる
   });
 });
 
@@ -274,6 +279,48 @@ describe('§2.12 要件6: カウンター待ちは約1秒で見切って離脱�
       nowMs: GHOST_COUNTER_WAIT_MS + 500, profile: { ...PROFILE, meleeBias: 0 },
     }));
     expect(d.counterPendingAt).toBeUndefined();
+  });
+});
+
+describe('§2.12追補: オービット(社長裁定「ぼーっと立たない・ボスを正面に横に歩く」)', () => {
+  const bandBoss = (): Enemy => mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'chase' });
+
+  it('旋回方向(orbitSign)は持ち越され、反転確率を引かない限り変わらない', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 0, height: 0, orbitSign: 1 }),
+      enemies: [bandBoss()], nowMs: 5000,
+      profile: { ...PROFILE, meleeBias: 0, stationaryFrac: 0 },
+      rand: () => 0.5, // flip(0.004)は引かない・移動ゲートは通る
+    }));
+    expect(d.orbitSign).toBe(1);
+    expect(d.moveY).toBeLessThan(0); // sign=1の接線方向(このジオメトリでは-y)
+  });
+
+  it('反転確率を引いたtickは旋回方向が反転する', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 0, height: 0, orbitSign: 1 }),
+      enemies: [bandBoss()], nowMs: 5000,
+      profile: { ...PROFILE, meleeBias: 0, stationaryFrac: 0 },
+      rand: () => 0.001, // flip(0.004)を引く
+    }));
+    expect(d.orbitSign).toBe(-1);
+    expect(d.moveY).toBeGreaterThan(0); // 反転後の接線方向(+y)
+  });
+
+  it('カウンター待ち(射程内)の静止だけは維持される=意味のある静止', () => {
+    const boss = mkBoss({ x: 30, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } },
+    };
+    const ghost = mkGhost({
+      x: 0, y: 0, width: 10, height: 10, counterPendingAt: 4900, counterWillAttempt: true,
+      dangerSeenAt: 0, moveRoll: { moveKey: 'thor-issen', decision: 'counter', rolledAtMs: 4900 },
+    });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [boss], profile, nowMs: 5000, rand: () => 0.9, // 見切り(1秒)前
+    }));
+    expect(d.moveX).toBe(0);
+    expect(d.moveY).toBe(0);
   });
 });
 
@@ -336,16 +383,16 @@ describe('decideGhost: 間合い管理(preferredDistへ寄せる)', () => {
     expect(d.moveX).toBeLessThan(0); // ボスは右側=離れるのは-x
   });
 
-  it('mobilityが低いと動かないtickが出る(rand>=mobilityで静止)', () => {
+  it('mobilityが低い人の止まりtickも、完全停止ではなく遅い横流れになる(§2.12追補)', () => {
     const boss = mkBoss({ x: 1000, y: 0 });
     const d = decideGhost(baseDriverInput({
       ghost: mkGhost({ x: 0, y: 0 }),
       enemies: [boss],
       profile: { ...PROFILE, mobility: 0.3 },
-      rand: () => 0.9, // 0.9 >= mobility(0.3) → 移動しない
+      rand: () => 0.9, // 0.9 >= moveChance → 止まりtick
     }));
-    expect(d.moveX).toBe(0);
-    expect(d.moveY).toBe(0);
+    expect(Math.abs(d.moveX)).toBeLessThan(0.05); // 接近はしない
+    expect(Math.hypot(d.moveX, d.moveY)).toBeCloseTo(GHOST_ORBIT_IDLE_FRAC, 5); // 遅い横流れ
   });
 });
 

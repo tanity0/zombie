@@ -204,6 +204,17 @@ export const GHOST_APPROACH_MIN_CHANCE = 0.25;
 /** 移動リズム2ノブの既定値(旧プロファイル/計測なしの欠損時。playerTraits.SEED_PROFILEと同値)。 */
 export const GHOST_DEFAULT_STATIONARY_FRAC = 0.35;
 export const GHOST_DEFAULT_APPROACH_PER_MIN = 3;
+/**
+ * §2.12追補(社長裁定v0.25.2534「人間なら攻撃/移動/カウンター待ちのどれかを必ずしている。
+ * ぼーっと立たない——せめてボスを正面に横に歩かせる」): 静止していた場面を全て
+ * 「ボス正対の横流れ(オービット)」に置換する。値は移動速度への倍率(0..1)・全て叩き台=実機調整前提。
+ * 例外はカウンター待ちの静止(=意味のある静止・窓リング表示つき)のみ。
+ */
+export const GHOST_ORBIT_BASE_FRAC = 0.55;   // 帯内(間合いが合っている)の移動tick=普通の横歩き
+export const GHOST_ORBIT_IDLE_FRAC = 0.3;    // 止まり癖tick(旧: 完全停止)=遅い横流れ。個性は速度差で残す
+export const GHOST_ORBIT_TANK_FRAC = 0.35;   // tankロールの予告中=「避けようとして間に合わない」ゆっくり歩き
+                                             // (速すぎると狙い撃ち技が偶然外れ、hitRate再現=「苦手技は食らう」が壊れる)
+export const GHOST_ORBIT_FLIP_CHANCE = 0.004; // 1tickあたりの旋回方向の反転確率(約4秒に1回@60fps)
 
 const clamp01 = (x: number): number => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
@@ -290,6 +301,8 @@ export interface GhostSelf {
   moveRoll?: GhostMoveRoll;     // G4b: 進行中の技への反応ロール(undefined=技なし/フォールバック運転)
   /** §2.12(1): 危険(予告/脅威)を最初に認知した時刻。reactionMs後に回避を開始する。undefined=危険なし。 */
   dangerSeenAt?: number;
+  /** §2.12追補: オービット(横流れ)の旋回方向。持ち越して低確率で反転(毎tick変わるとジグザグになる)。 */
+  orbitSign?: 1 | -1;
 }
 
 export interface GhostDriverInput {
@@ -320,6 +333,7 @@ export interface GhostDecision {
   counterWillAttempt?: boolean;
   moveRoll?: GhostMoveRoll; // G4b: 次tickへ持ち越す(技の解決でundefinedに戻る)
   dangerSeenAt?: number;    // §2.12(1): 次tickへ持ち越す(危険が消えたらundefinedに戻る)
+  orbitSign?: 1 | -1;       // §2.12追補: オービットの旋回方向(次tickへ持ち越し)
 }
 
 /** 毎tick1回呼ぶ純関数。次tickへ持ち越す自己状態(lastShotAt等)も戻り値に含めて返す。 */
@@ -344,7 +358,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       facing: ux !== 0 ? (ux > 0 ? 1 : -1) : ghost.facing,
       lastShotAt: ghost.lastShotAt, lastMeleeAt: ghost.lastMeleeAt,
       counterPendingAt: undefined, counterWillAttempt: false,
-      moveRoll: undefined, dangerSeenAt: undefined,
+      moveRoll: undefined, dangerSeenAt: undefined, orbitSign: ghost.orbitSign,
     };
   }
 
@@ -378,10 +392,20 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   const counterWatching = counterable && !counterGaveUp;
 
   // 間合い管理: preferredDist(平時)/+安全マージン(予告中)へ寄せる。
+  // §2.12追補(社長裁定v0.25.2534): 静止は「カウンター待ち」以外に存在させない。旧実装で立ち尽くして
+  // いた場面(帯内静止・止まり癖tick・tank予告中の棒立ち)は全てボス正対の横流れ(オービット)に置換。
+  let orbitSign: 1 | -1 = ghost.orbitSign ?? (rand() < 0.5 ? 1 : -1);
+  if (rand() < GHOST_ORBIT_FLIP_CHANCE) orbitSign = orbitSign === 1 ? -1 : 1;
+  // 接線方向(半径ベクトルの90°回転)×速度倍率。dist≈0ではnormが[0,0]を返す=安全に停止。
+  const orbitVec = (frac: number): [number, number] => {
+    const [rx, ry] = norm(gcx - tcx, gcy - tcy);
+    return [-ry * orbitSign * frac, rx * orbitSign * frac];
+  };
   let moveX = 0, moveY = 0;
   if (reaction === 'counter' && !counterGaveUp) {
     // G4b 'counter': その技をカウンターしにいく=この技の間は回避せず近接間合いへ詰め、
     // 射程内では静止して窓(counterable)を待つ。リズムのゲートも通さない(「行く」と決めた行動は確実に出す)。
+    // ※この静止は§2.12追補でも維持=「カウンター待ちしている」という意味のある静止(窓リング表示つき)。
     if (dist > GHOST_MELEE_RANGE) [moveX, moveY] = norm(tcx - gcx, tcy - gcy);
   } else if (activeDodge && reaction !== 'tank') {
     // G4b 'tank'(苦手の再現): この技に限り回避を抑制=逃げずに戦い続ける(①によりダメージは実際に入る)。
@@ -395,15 +419,26 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     );
     // **危険時(予告中/脅威あり)は必ず動く**=リズム(止まる癖)は平時のみ。
     const mustMove = dangerNow;
+    // tankロールの予告中は「避けようとしたが間に合わない」ゆっくり歩き(速いと苦手技が偶然外れる)。
+    const tankHolding = windupNow && reaction === 'tank';
     if (mustMove || rand() < ghostMoveChance(profile.mobility, profile.stationaryFrac)) {
       if (dist > desired + GHOST_MOVE_BAND_PX) {
         // 接近は approachPerMin のリズムに従う(詰めない人はじりじりとしか詰めない)。
         if (mustMove || rand() < ghostApproachChance(profile.approachPerMin)) {
           [moveX, moveY] = norm(tcx - gcx, tcy - gcy);
+        } else {
+          [moveX, moveY] = orbitVec(GHOST_ORBIT_IDLE_FRAC); // 詰めない人=詰めずに横へ流れる
         }
       } else if (dist < desired - GHOST_MOVE_BAND_PX) {
         [moveX, moveY] = norm(gcx - tcx, gcy - tcy);
+      } else {
+        // 帯内=間合いは合っている。立ち止まらず横流れ(§2.12追補)。
+        [moveX, moveY] = orbitVec(tankHolding ? GHOST_ORBIT_TANK_FRAC : GHOST_ORBIT_BASE_FRAC);
       }
+    } else {
+      // 止まり癖tick: 完全停止を廃止し遅い横流れ。「足を止めがち」の個性は速度差(IDLE_FRAC)と
+      // 「前後に詰めない」で残る(§2.12追補)。
+      [moveX, moveY] = orbitVec(GHOST_ORBIT_IDLE_FRAC);
     }
   }
 
@@ -475,7 +510,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   return {
     moveX, moveY, action, targetId: target.id, facing,
     lastShotAt, lastMeleeAt, counterPendingAt, counterWillAttempt,
-    moveRoll, dangerSeenAt,
+    moveRoll, dangerSeenAt, orbitSign,
   };
 };
 
