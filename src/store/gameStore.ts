@@ -5629,6 +5629,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
+    const whipBossFullStunHits: { x: number; y: number }[] = []; // §9.4(v0.25.2502): 鞭クリで完全気絶が発動した位置(紫FX用)
     const whipHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): 鞭のヒット敵ID(発動判定/対象選定用)
     let hits = 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
@@ -5688,6 +5689,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
       if (crit) critStunAt.push({ x: ecx, y: ecy });
+      // §9.4(v0.25.2502・CRIT-UNIFY★未決2の解消): 鞭のクリも紫カウントへ(発生枠=近接系共通。
+      // ナイフ4737/刀5479/分身5076と同じ作法=GAME_AUDIT #17「プレイヤーが直接出したクリは全部乗せる」)。
+      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
+      if (bossBump?.triggered) whipBossFullStunHits.push({ x: ecx, y: ecy });
       // 大ノックバック(通常の約3倍): 鞭の線に直交する向きへ、敵がいる側へ強く弾く=避難路。
       // 鞭は「必ずノックバック」: ノックバック無敵窓(knockbackImmuneUntil)を無視して毎回弾く。
       const side = ((ecx - pcx) * nx + (ecy - pcy) * ny) >= 0 ? 1 : -1;
@@ -5701,6 +5706,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         knockbackVy: side * ny * WHIP_KNOCKBACK_SPEED,
         knockbackUntil: now + KNOCKBACK_DURATION,
         knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+        ...(bossBump?.patch ?? {}), // 紫カウント/発動を反映(最後に展開して優先=刀5490と同じ作法)
       });
     }
 
@@ -5744,6 +5750,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const s of slashAt) get().spawnMeleeBlood(s.x, s.y);
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
+    // §9.4(v0.25.2502): 鞭クリの紫完全気絶FX(ナイフ4923/刀5573の紫リング+STUN!と同じ作法)。
+    for (const p of whipBossFullStunHits) {
+      get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
+      get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
+      get().spawnGlow(p.x, p.y, 130, 'rgba(168,85,247,', 620);
+      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
     // スキル: 救難信号(§6.10 M33⑦: 鞭のヒットでも発動判定。基本近接/刀と同条件。アライの一撃は
