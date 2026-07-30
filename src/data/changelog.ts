@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2503',
+    items: [
+      'ゲーム内容の変更はありません(追加素材リストV4=地面ひび割れ・ボス別の弾絵・魔法陣などのプロンプト8本を設計書へ追加)。',
+    ],
+  },
+  {
     version: '0.25.2502',
     items: [
       '鞭のクリティカルもボスの紫気絶ゲージに乗るようになりました(ナイフ・刀・分身と同じ扱いに統一)。',
