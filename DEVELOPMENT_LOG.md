@@ -1,5 +1,47 @@
 # Development Log
 
+## v0.25.2477 — 守護霊の頭上にプレイヤー名+「(自分)」表示・名前はオプションで設定可(社長指示・verbatim)【2026-07-30 12:44 JST】
+
+- **社長指示(verbatim)**: 「守護霊にプレイヤーの名前を頭上に表示するようにしたい。名前はオプションで
+  設定可能。当初はplayer01234とかで数字が被らなそうなランダムで」+追加「守護霊に(自分)っていうのも用意して」。
+- **名前の台帳(新規 `src/utils/playerName.ts`)**: 純関数+localStorage(`zombie-player-name-v1`・
+  tutorialArchive/playerTraitsと同じtry/catch作法)。`loadPlayerName()`=保存が無ければ
+  **player+ランダム5桁**(例 player48291)を生成・保存して返す。`savePlayerName(name)`=trim→
+  **最大10文字へ切り詰め**(コードポイント単位=絵文字を割らない)→空ならランダム名を再生成。
+- **プロファイルへ記録(playerTraits.ts)**: `PlayerProfile.srcName?: string` を追加(srcClass/snapshotと
+  同じ流儀=後方互換・欠損可・isValidProfile変更なし)。endSession時点の `loadPlayerName()` を
+  PendingSessionRecordに確定して積み、applyPendingSessionで `r.srcName ?? base.srcName`。
+  **頭上に出すのはこの記録名**=将来オンラインで他人のゴーストが来た時に「その人の名前」が出る構造
+  (プロファイル=通信ペイロード・BOT_AND_GHOST.md §2.5 未決5)。
+- **召喚時に搭載(directorTick.ts)**: `Summon.ghostName?`(プロファイルsrcName ?? loadPlayerName())+
+  `Summon.ghostIsOwn?: boolean`(現状オフライン=常にtrue。他人のゴーストを迎える時にfalseにする前提の構造)。
+- **頭上表示(pixiScene.ts drawGhostAlly ⑤)**: ラベル文字列=`ghostName + (ghostIsOwn ? '(自分)' : '')`。
+  **Pixi Text 1枚を保持して使い回し、再ラスタライズは名前が変わった時だけ**(同名なら.textに触れない=
+  毎フレームはtransform更新のみ。毎フレームText生成はCLAUDE.md実測の最重量経路=禁忌、コメントで明記)。
+  見た目: fontSize11・青白(GHOST_ALLY_TINT)・α0.85・暗い縁取り(namedFoeラベルと同型)・位置=絵の上端+4px上
+  (HPバー s.y-6 より上)・遠近=本体と同係数(dsc)・zIndex=本体と同じ足元Y。hideGhostAllyOverlaysで一緒に消す。
+- **オプションUI(MissionSelect.tsx)**: **拠点トップの「オプション」画面**(サウンド/グラフィックの下)に
+  「プレイヤー名」Sectionを追加(新画面なし)。選定理由: 社長指示の文言どおり「オプション」であり、
+  既存のAudioSettings/GraphicsSettingsと同じ「マウント時に1回読む→ローカルstate→確定時に保存」の型が
+  そのまま使えるため(store購読なし=React再描画規律)。保存はblur/Enterで `savePlayerName`
+  (**未変更なら保存しない**=初期ランダム名11文字を触らず確定した時に10文字へ切り詰めない)。
+- **判定・挙動・ダメージ不変**(名前は表示・保存のみ)。**Load score: 1/10**(rendering/memory)。
+  追加コストはText1枚のtransform更新/フレームと、召喚時・セッション確定時のlocalStorage読み1回ずつ。
+  per-frameのText生成/Graphics/強glow/React毎フレーム購読なし。
+- **テスト**: `playerName.test.ts` 新規7件(生成形式/永続/trim/切り詰め/サロゲート/空→再生成/壊れたstorage耐性)。
+  playerTraits.test.ts: 後方互換テストにsrcName欠損を追加+srcName記録の新2件+**ビット一致テストは
+  両アームで名前を固定**(endSessionがランダム初期名を生成すると(A)(B)で保存文字列が割れるため)。
+  計 related 15ファイル295件通過。
+- 変更ファイル: `src/utils/playerName.ts`(新規)/`src/utils/playerName.test.ts`(新規)/
+  `src/utils/playerTraits.ts`/`src/utils/playerTraits.test.ts`/`src/types/game.ts`(Summon.ghostName/ghostIsOwn)/
+  `src/utils/directorTick.ts`/`src/pixi/pixiScene.ts`/`src/components/MissionSelect.tsx`/
+  `BOT_AND_GHOST.md`(§2.5 未決5にsrcName追記)/package.json/changelog/本ログ。
+- ★未決: なし(名前の重複チェック・不適切語フィルタは現段階ローカル完結のため未実装=オンライン化時の課題)。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ) / `npx vitest related`
+  (変更8ファイル)=15ファイル295件通過(4 skip既存)。実機確認は社長。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(シーン・湧き・判定・ダメージ
+  不変。追加は名前の保存と頭上ラベルの描画のみ)。
+
 ## v0.25.2476 — リザルトで「今回のプレイを守護霊に反映しない」を選択可能に(社長裁定・verbatim承認「それで!」)【2026-07-30 12:27 JST】
 
 - **仕様**: 既定=自動でEMA混合(従来どおり)+リザルトにオプトアウトのチェック(自動の良し悪し判定はしない

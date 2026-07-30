@@ -12,6 +12,7 @@ import {
   hasPendingTraitRecords, commitPendingTraits, settlePendingTraits,
 } from './playerTraits';
 import { resetBotTelemetry, recordDamageDealt, recordSubUse } from './botTelemetry';
+import { savePlayerName } from './playerName'; // v0.25.2477: srcName(計測時のプレイヤー名)の固定用
 import type { Enemy } from '../types/game';
 
 // jsdom を使わずに済む最小 localStorage スタブ(tutorialArchive.test.tsと同じ作法)。
@@ -314,6 +315,30 @@ describe('playerTraits G4a: 後方互換(旧フォーマットの欠損はG4a既
     expect(p!.subStyles).toEqual({ wire: { n: 0, slamRatio: 0 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 } });
     expect(p!.reactionMs).toBe(300);                 // 既存ノブは保存値のまま
     expect(p!.subUsesPerMin).toBe(2.5);
+    expect(p!.srcName).toBeUndefined();              // v0.25.2477: srcNameも欠損可(srcClass/snapshotと同じ流儀)
+  });
+});
+
+// ==== v0.25.2477(社長指示「守護霊にプレイヤーの名前を頭上に表示」): srcName(計測時の名前)の記録 =====
+
+describe('playerTraits: srcName(計測時のプレイヤー名・v0.25.2477)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  it('セッション確定でプロファイルに現在のプレイヤー名を記録する', () => {
+    savePlayerName('Tanity');
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.srcName).toBe('Tanity');
+  });
+
+  it('名前未設定でもendSession時に初期名(player+5桁)が生成されて記録される', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.srcName).toMatch(/^player\d{5}$/);
   });
 });
 
@@ -575,6 +600,9 @@ describe('playerTraits: 保留バッファ(リザルトでのcommit/破棄)', ()
   it('既定経路(commit)の保存結果は旧実装(各確定点で即時保存)とビット一致する', () => {
     const playScenario = (commitEachStep: boolean) => {
       const step = () => { if (commitEachStep) commitPendingTraits(); };
+      // v0.25.2477: endSessionは現在のプレイヤー名(srcName)を記録する。名前未設定だとランダム初期名が
+      // 生成されて(A)と(B)で別名になり保存文字列が割れるため、両アームとも同じ名前に固定する。
+      savePlayerName('bit-fixed');
       // セッション1: 60秒・移動あり・被弾1・melee寄り・カウンター1機会1成立(reactionMs=250)・サブ1回。
       const counterableBoss = mkBoss({ bossState: 'issen-windup' as Enemy['bossState'] });
       now = 1_000_000;

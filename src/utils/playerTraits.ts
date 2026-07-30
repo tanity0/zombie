@@ -31,6 +31,7 @@ import {
   endMoveReactions, blendMoveReactionTable,
   type MoveReactionState, type MoveReactionTable,
 } from './moveReaction'; // G4a(BOT_AND_GHOST.md §2.9): 技への反応表の判定中核(純関数)
+import { loadPlayerName } from './playerName'; // v0.25.2477: 計測時のプレイヤー名(srcName)の出どころ
 
 // ---- 保存フォーマット -------------------------------------------------------------------------
 /** G4a(§2.9(3)): サブウェポンの様式(第1弾はwire-anchor/shieldの2種)。nは計測に使った母数の累計。 */
@@ -72,6 +73,11 @@ export interface PlayerProfile {
   /** v0.25.2468(社長指示「HPというか全ステータスをそのまま再現」): 計測時のステータスの写し。
    * ゴーストはこれを100%再現する(無ければ召喚時の本人値へフォールバック)。 */
   snapshot?: { maxHealth: number; speed: number; level: number };
+  /** v0.25.2477(社長指示「守護霊にプレイヤーの名前を頭上に表示」): 計測時のプレイヤー名
+   * (playerName.ts の台帳)。srcClass/snapshotと同じ流儀=旧プロファイルには無い・欠損可。
+   * 頭上表示はこの記録名を使う=将来オンラインで他人のゴーストが来た時に「その人の名前」が
+   * 出る構造(§2.5 未決5=プロファイルは通信ペイロード)。 */
+  srcName?: string;
 }
 
 const STORAGE_KEY = 'zombie-ghost-profile-v1';
@@ -281,6 +287,8 @@ export interface PendingSessionRecord {
   moveTally: MoveReactionState['tally'];
   srcClass: string | null;
   snapshot: { maxHealth: number; speed: number; level: number } | null;
+  /** v0.25.2477: セッション確定時点のプレイヤー名(loadPlayerName=無ければ生成される)。 */
+  srcName: string | null;
 }
 
 /** サブ様式のラン集計1件ぶん。分母(ラン総与ダメージ)は積む時点で確定する(resetBotTelemetry耐性)。 */
@@ -330,6 +338,8 @@ const endSession = (): void => {
     // v0.25.2467/2468: クラスとステータス写しは従来のendSession時点(=いま)の値を確定して積む。
     srcClass: sessionSrcClass,
     snapshot: sessionSnapshot,
+    // v0.25.2477: プレイヤー名も同じくendSession時点で確定(未設定なら台帳が初期名を生成して返す)。
+    srcName: loadPlayerName(),
   });
 };
 
@@ -360,6 +370,8 @@ export const applyPendingSession = (prev: PlayerProfile | null, r: PendingSessio
     srcClass: r.srcClass ?? base.srcClass,
     // v0.25.2468: 計測時ステータスの写し(同上)。
     snapshot: r.snapshot ?? base.snapshot,
+    // v0.25.2477: 計測時のプレイヤー名(同上)。
+    srcName: r.srcName ?? base.srcName,
   };
 };
 

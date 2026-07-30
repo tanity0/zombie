@@ -1081,6 +1081,10 @@ const GHOST_ALLY_ALPHA = 0.7;
 const GHOST_WALK_HOLD_MS = 120;       // 差分検知の平滑化窓(simのtickと描画フレームのズレを吸収)
 const GHOST_WALK_MIN_DELTA_PX = 0.1;  // これ未満の差分は静止扱い
 const GHOST_WALK_TELEPORT_PX = 80;    // これ以上はリーシュワープ(瞬間追いつき)=歩き扱いにしない
+// 守護霊の頭上プレイヤー名ラベル(v0.25.2477・視覚のみ)。小さめ・守護霊と同じ青白・半透明。
+const GHOST_NAME_FONT_SIZE = 11;      // 小さめ(10-11相当)
+const GHOST_NAME_ALPHA = 0.85;        // 半透明(container外に置くのでGHOST_ALLY_ALPHAは掛からない=直接この値)
+const GHOST_NAME_GAP_PX = 4;          // 絵の上端(頭)からの隙間px(HPバー s.y-6 より必ず上になる)
 // M51(社長裁定6.26-9 #4): フェーズを持つボス(ジャイアント)のHPバー・Phase2色(橙)。
 // 既存のSTATUS_YELLOW(amber-400=リロード/注意の意味で使用中)とは別に用意し、意味の混同を避ける。
 const GIANT_PHASE2_BAR_COLOR = 0xf97316; // orange-500
@@ -1680,6 +1684,9 @@ export class PixiScene {
   private ghostMuzzle?: Sprite;
   private ghostMuzzleLatch: { x: number; y: number; dirX: number; dirY: number; rot: number; len: number; sortY: number } | null = null;
   private ghostMuzzlePrevFired = 0;
+  // 守護霊の頭上プレイヤー名(v0.25.2477)。Pixi Text 1枚を保持して使い回し、glyphの再ラスタライズは
+  // 「名前が変わった時だけ」(毎フレームの new Text / 文言変更はCLAUDE.md実測の最重量経路=禁忌)。
+  private ghostNameLabel: Text | null = null;
   // 白黒テクスチャのキャッシュ(テクスチャ名→事前ベイクした RenderTexture)。毎フレームのフィルタ処理を避ける。
   private grayTexCache = new Map<string, Texture>();
   // 被弾フラッシュ用「真っ白シルエット」テクスチャのキャッシュ(元Texture→白ベイク)。加算で重ねると、
@@ -8105,6 +8112,43 @@ export class PixiScene {
       o.rect(bx, by, s.width, 3).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
       o.rect(bx, by, s.width * frac, 3).fill({ color: GHOST_ALLY_TINT });
     }
+
+    // ⑤ 頭上のプレイヤー名ラベル(v0.25.2477・視覚のみ・判定/挙動/ダメージ不変)。
+    //    負荷: Pixi Text 1枚を保持して使い回し、**テキストの再生成(glyph再ラスタライズ)は名前が
+    //    変わった時だけ**(同名なら .text へ触れもしない=毎フレームコストはtransform更新のみ。
+    //    毎フレームの Text 生成はCLAUDE.md実測の最重量経路なのでやらない)。Load score: 1/10。
+    //    位置=絵の上端の上(HPバー s.y-6 より上)/遠近=本体と同係数(dsc)/zIndex=本体と同じ足元Y。
+    //    「(自分)」添え字(社長指示): 自分のプロファイル由来(ghostIsOwn)の時だけ名前の後ろへ付ける。
+    //    将来オンラインで他人のゴーストが来たら ghostIsOwn=false で名前だけになる。
+    const nameText = (s.ghostName ?? '') + (s.ghostIsOwn ? '(自分)' : '');
+    if (nameText.length > 0) {
+      if (!this.ghostNameLabel) {
+        const label = new Text({
+          text: nameText,
+          resolution: Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2))),
+          style: {
+            fontFamily: FONT_STACK, fontSize: GHOST_NAME_FONT_SIZE, fontWeight: 'bold',
+            fill: GHOST_ALLY_TINT, // 守護霊と同じ青白
+            stroke: { color: 0x0b1020, width: 3 }, // 暗い縁取り=地面に溶けない(namedFoeラベルと同型)
+          },
+        });
+        label.anchor.set(0.5, 1); // 下端中央=頭のすぐ上に立てる
+        this.L.actorLayer.addChild(label);
+        this.ghostNameLabel = label;
+      }
+      const label = this.ghostNameLabel;
+      if (label.text !== nameText) label.text = nameText; // ←名前が変わった時だけ再ラスタライズ
+      label.scale.set(dsc); // 遠近スケール=本体と同係数
+      label.position.set(
+        this.snapToScreenPixel(footX, this.L.world.position.x),
+        Math.round(footY - boxH * dsc - GHOST_NAME_GAP_PX),
+      );
+      label.zIndex = footY; // 本体と同じ足元Yソート
+      label.alpha = GHOST_NAME_ALPHA;
+      label.visible = true;
+    } else if (this.ghostNameLabel) {
+      this.ghostNameLabel.visible = false; // 名前が無い(想定外)フレームは出さない
+    }
   }
 
   // 守護霊の銃口フラッシュ(drawMuzzleFlashの守護霊版)。本体の muzzleSprite と分けて1枚持つ
@@ -8139,6 +8183,7 @@ export class PixiScene {
       this.ghostKnifeTrail.visible = false; this.ghostMeleeWpn.visible = false;
     }
     this.hideGhostMuzzle();
+    if (this.ghostNameLabel) this.ghostNameLabel.visible = false; // 頭上名も一緒に消す(v0.25.2477)
     this.ghostAnim = null;
     this.ghostMuzzleLatch = null;
     this.ghostMuzzlePrevFired = 0;

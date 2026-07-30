@@ -102,6 +102,7 @@ import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
 import { TUTORIALS, type TutorialId } from '../data/tutorials';
 import TutorialMedia from './TutorialMedia';
 import { loadSeenTutorials } from '../utils/tutorialArchive';
+import { loadPlayerName, savePlayerName, PLAYER_NAME_MAX_LEN } from '../utils/playerName';
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
@@ -929,6 +930,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <div className="menu-stagger p-3 space-y-3">
         <AudioSettings />
         <GraphicsSettings />
+        <PlayerNameSettings />
         {DEV_TOOLS_ENABLED && <DevTools selectedClass={selectedClass} onStartGame={onStartGame} onStartBenchmark={onStartBenchmark} onRefreshCleared={() => setCleared(getClearedStages())} />}
       </div>
     </>
@@ -1215,6 +1217,35 @@ const GraphicsSettings: React.FC = () => {
       <p className="text-[11px] leading-relaxed text-white/45">
         光・炎・宝石などをにじませて発光させる演出。華やかになる反面、実機では最も重い処理。
         カクつく時はOFFにすると軽くなります(リロード不要)。
+      </p>
+    </Section>
+  );
+};
+
+// === オプション内: プレイヤー名(守護霊の頭上に表示される名前・v0.25.2477) =================
+// 台帳は utils/playerName.ts(初期値=player+ランダム5桁を自動生成)。React再描画規律:
+// 入力値はローカルstate(store購読なし・毎フレーム再描画なし)。保存はblur/Enter確定時に
+// savePlayerName(trim・最大10文字へ切り詰め・空ならランダム名を再生成)し、正規化後の値へ戻す。
+const PlayerNameSettings: React.FC = () => {
+  const [name, setName] = useState(loadPlayerName); // マウント時に1回読む(無ければ生成・保存される)
+  // 未変更なら保存しない: 初期ランダム名(player+5桁=11文字)は生成物なので、触らず確定した時に
+  // 10文字へ切り詰めてしまわない(切り詰めは手入力に対する正規化)。
+  const commit = () => setName(prev => (prev === loadPlayerName() ? prev : savePlayerName(prev)));
+  return (
+    <Section label="プレイヤー名">
+      <input
+        type="text"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        maxLength={PLAYER_NAME_MAX_LEN} // 手入力は最大10文字(初期ランダム名11文字の表示は妨げない)
+        aria-label="プレイヤー名"
+        className="w-full rounded-none border border-purple-400/20 bg-black/30 px-3 py-2 text-[14px] text-white/90 outline-none focus:border-purple-300/60"
+      />
+      <p className="text-[11px] leading-relaxed text-white/45">
+        守護霊(スキル)の頭上に表示される名前。最大{PLAYER_NAME_MAX_LEN}文字。
+        空のまま確定するとランダムな初期名(player+数字)に戻ります。
       </p>
     </Section>
   );

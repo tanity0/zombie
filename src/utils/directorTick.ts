@@ -37,6 +37,7 @@ import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
 import { bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
 import { tickPlayerTraits, loadPlayerProfile } from './playerTraits'; // BOT_AND_GHOST.md G1
+import { loadPlayerName } from './playerName'; // v0.25.2477: 守護霊の頭上名(srcName未記録時のフォールバック)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
@@ -690,6 +691,13 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       const src = (profile as { srcClass?: string }).srcClass;
       return (src === 'mage' || src === 'warrior' || src === 'rogue' || src === 'necromancer') ? src : 'warrior';
     })(),
+    // v0.25.2477(社長指示「守護霊にプレイヤーの名前を頭上に表示」): 名前=データ取得元のプレイヤー名
+    // (プロファイルsrcName)。未記録(旧データ/初回)は現在の名前へフォールバック。将来オンラインで
+    // 他人のゴーストが来た時は srcName が「その人の名前」になる構造(BOT_AND_GHOST.md §2.5 未決5)。
+    ghostName: (profile as { srcName?: string }).srcName ?? loadPlayerName(),
+    // v0.25.2477: 現状はローカル完結=常に自分のプロファイル。オンラインで他人のゴーストを迎える時に
+    // false を渡す前提の構造(頭上ラベルの「(自分)」添え字がこのフラグで消える)。
+    ghostIsOwn: true,
     ghostFacing: 1,
     ghostLastShotAt: 0,
     ghostLastMeleeAt: 0,
