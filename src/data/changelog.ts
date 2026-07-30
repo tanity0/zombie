@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2559',
+    items: [
+      'ゲーム内容の変更はありません(年表の文言確定: 「初めて拠点を開放」「初めて警察署を開放」等・種別ごと全体初回のみ)。',
+    ],
+  },
+  {
     version: '0.25.2558',
     items: [
       'ゲーム内容の変更はありません(年表規則の訂正: 拠点・POIはゲーム全体で最初の1回だけ記録、に確定)。',
