@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2524',
+    items: [
+      'ゲーム内容の変更はありません(寄り道POI=警察署・武器庫・病院の「何が起きたか分からない」問題の監査と改修計画を設計書へ記録)。',
+    ],
+  },
+  {
     version: '0.25.2523',
     items: [
       'ゲーム内容の変更はありません(守護霊の弾反射・気絶フィニッシュ・近接連動サブ4種の発注仕様を確定)。',
