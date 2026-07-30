@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2466',
+    items: [
+      'ゲーム内容の変更はありません(技のビジュアル総点検の設計文書のみ)。',
+    ],
+  },
+  {
     version: '0.25.2465',
     items: [
       '守護霊が透明で見えなかった不具合を修正しました(召喚もヘイトも機能していましたが、絵だけが出ていませんでした)。青白い霊体として表示されます。',
