@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2547',
+    items: [
+      '守護霊が危険な体当たり(自分の最大HPの2割以上のダメージになる敵の接触)から距離を取るようになりました。弱い接触は今までどおり気にしません。',
+    ],
+  },
+  {
     version: '0.25.2546',
     items: [
       'ゲーム内容の変更はありません(開発用: 守護霊の被弾源を調べるログを追加)。',

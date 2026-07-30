@@ -7236,6 +7236,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const decision = decideGhost({
                 ghost: {
                   x: ghostNow.x, y: ghostNow.y, width: ghostNow.width, height: ghostNow.height,
+                  maxHealth: ghostNow.maxHealth, // v0.25.2547: 接触脅威判定(危険な体当たりから離れる)用
                   facing: ghostNow.ghostFacing ?? 1,
                   lastShotAt: ghostNow.ghostLastShotAt ?? 0,
                   lastMeleeAt: ghostNow.ghostLastMeleeAt ?? 0,

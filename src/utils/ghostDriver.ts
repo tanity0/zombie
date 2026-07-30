@@ -331,12 +331,17 @@ export const ghostDodgeVector = (
   gcx: number, gcy: number,
   enemies: readonly Enemy[],
   projectiles: readonly Projectile[],
+  maxHealth: number,
   tankedBulletKey?: string,
 ): { x: number; y: number } | null => {
   const seen = tankedBulletKey === undefined
     ? projectiles
     : projectiles.filter(p => p.srcMoveKey !== tankedBulletKey);
-  const base = dodgeVector(GHOST_DODGE_PROFILE, gcx, gcy, enemies, seen, 0);
+  // v0.25.2547(社長裁定「オンにして」): 接触(体当たり)回避を有効化。maxHealth を渡すと
+  // botSkill の既存規格(接触ダメージ >= 最大HPの CONTACT_DANGER_HP_FRAC(20%) の敵が
+  // DODGE_CONTACT_DIST(260px) 以内 → 離れる)がそのまま効く。ゴースト専用の別モデルは作らない
+  // (§2.11追補ドクトリン)。0を渡すと従来どおり無効(テストの明示用)。
+  const base = dodgeVector(GHOST_DODGE_PROFILE, gcx, gcy, enemies, seen, maxHealth);
   // base は合成済みの単位ベクトル(強さ1)。差分の脅威は自分の weight(0..1)で足す。
   let sx = base ? base.x : 0, sy = base ? base.y : 0;
   for (const e of enemies) {
@@ -357,6 +362,8 @@ export interface GhostWeapon {
 
 export interface GhostSelf {
   x: number; y: number; width: number; height: number;
+  /** v0.25.2547(接触回避オン): 接触脅威判定(botSkill既存規格=damage>=最大HPの20%)に使う。 */
+  maxHealth: number;
   facing: 1 | -1;
   lastShotAt: number;   // ms(Date.now())
   lastMeleeAt: number;  // ms
@@ -459,7 +466,8 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   }
 
   // 回避(§2.12「実行は常に本気」=強さは常に1)。既存 dodgeVector + 全ボス予告台帳の差分。
-  const dodge = ghostDodgeVector(gcx, gcy, enemies, projectiles, tankedBulletKey);
+  // v0.25.2547: maxHealth を渡す=接触(体当たり)回避が有効(危険な接触のみ・botSkill既存規格)。
+  const dodge = ghostDodgeVector(gcx, gcy, enemies, projectiles, ghost.maxHealth, tankedBulletKey);
 
   // §2.12(1) 反応遅延 + GHOST-BULLET-TECH A(認知の持続): 「危険」(標的ボスの予告 or 回避対象の脅威)を
   // **エピソード**として持ち回り、計測 reactionMs(100-800clamp)経過して初めて回避を始める。

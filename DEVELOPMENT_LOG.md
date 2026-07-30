@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.2547 — 守護霊の接触(体当たり)回避オン(社長裁定・設計チャット直接実装)【2026-07-31 06:55 JST】
+
+- **社長裁定(提案2)**: 「ではオンにして」。
+- **実装**: ghostDodgeVectorへmaxHealthを配線(GhostSelf.maxHealth追加・useGameLoopからSummon.maxHealthを
+  渡す)。規格は**botSkill既存のまま流用**: 接触ダメージ>=最大HPの20%(CONTACT_DANGER_HP_FRAC)の敵が
+  260px(DODGE_CONTACT_DIST)以内→離れる。弱い接触は避けない(「敵に触れると逃げる」人にはしない)。
+  ゴースト専用の別モデル・新定数なし=§2.11追補ドクトリン準拠。
+- テスト: 旧「接触は不活性」テストを新仕様3件(危険接触=離れる/弱い接触=無視/maxHealth0=無効)へ
+  置換+既存呼び出しへmaxHealth追加。ghostDriver.test.ts 80件パス。typecheck 0・lintエラー0。
+- BOT_AND_GHOST.md §2.12追補2として記録。被弾源の確定(依頼#7・?ghostlog=1)は並行して継続。
+- 変更: ghostDriver.ts/useGameLoop.ts(1行)/ghostDriver.test.ts/BOT_AND_GHOST.md+版管理3ファイル。
+
 ## v0.25.2546 — 守護霊の被弾源ログ(?ghostlog=1)実装+テスト依頼#7(設計チャット直接実装)【2026-07-31 06:46 JST】
 
 - **社長Go(提案1)**: 被弾源の内訳を確定してからピンポイント修正する方針。

@@ -28,7 +28,7 @@ const mkBoss = (overrides: Partial<Enemy> = {}): Enemy => ({
 // lastShotAt/lastMeleeAtは既定で「大昔」にしておき、クールダウンを意図的に検証するテストだけが
 // 個別に上書きする(そうしないとGHOST_MELEE_COOLDOWN_MS(600ms)がnowMs=0付近のテストを毎回ブロックする)。
 const mkGhost = (overrides: Partial<GhostSelf> = {}): GhostSelf => ({
-  x: 0, y: 0, width: 20, height: 20, facing: 1, lastShotAt: -1_000_000, lastMeleeAt: -1_000_000,
+  x: 0, y: 0, width: 20, height: 20, maxHealth: 110, facing: 1, lastShotAt: -1_000_000, lastMeleeAt: -1_000_000,
   ...overrides,
 });
 
@@ -82,7 +82,7 @@ describe('ghostLeashWarp: プレイヤーから600px超えたら瞬時にワー�
 describe('§2.12 要件1: dodgeStrength逆写像の廃止(実行は常に本気)', () => {
   it('被弾/分(hitsPerMin)が幾つでも回避ベクトルの強さは1(=全力)で変わらない', () => {
     const boss = mkBoss({ x: 1000, y: 0, aiPhase: 'jump' as Enemy['aiPhase'], aiTargetX: 15, aiTargetY: 10 });
-    const v = ghostDodgeVector(10, 10, [boss], []);
+    const v = ghostDodgeVector(10, 10, [boss], [], 110);
     expect(v).not.toBeNull();
     expect(Math.hypot(v!.x, v!.y)).toBeCloseTo(1, 5); // 単位ベクトル=減衰なし
   });
@@ -93,7 +93,7 @@ describe('§2.12 要件1: dodgeStrength逆写像の廃止(実行は常に本気)
       type: 'uri' as Enemy['type'], bossState: 'sweep',
       x: 2000, y: 2000, aiFromX: 0, aiFromY: 0, aiTargetX: 300, aiTargetY: 0,
     });
-    const v = ghostDodgeVector(150, 20, [uri], []);
+    const v = ghostDodgeVector(150, 20, [uri], [], 110);
     expect(v).not.toBeNull();
     expect(v!.y).toBeGreaterThan(0); // 帯(y=0)の下側へ抜ける
   });
@@ -783,20 +783,35 @@ describe('GHOST-BULLET-TECH B: 弾技にも技ロールが効く', () => {
   // 「弾を1発も避けない段」だった(dodgeHandles('aoe','projectile')===false)=守護霊は敵弾を
   // 一切避けていなかった。'all' へ是正した不変条件をここで固定する。
   it('守護霊は敵弾を回避対象にする(弾を避けない段に戻ったら落ちる)', () => {
-    expect(ghostDodgeVector(10, 10, [], [mkProj()])).not.toBeNull();
+    expect(ghostDodgeVector(10, 10, [], [mkProj()], 110)).not.toBeNull();
   });
 
-  it('接触脅威は不活性のまま(maxHealth=0を渡す設計=「敵に触れると逃げる」人にはしない)', () => {
-    const mob = mkBoss({ type: 'zombie' as Enemy['type'], x: 20, y: 10, width: 20, height: 20, damage: 9999 });
-    expect(ghostDodgeVector(10, 10, [mob], [])).toBeNull();
+  // v0.25.2547(社長裁定「オンにして」): 接触(体当たり)回避を有効化。規格はbotSkill既存の
+  // 「接触ダメージ >= 最大HPの20%(CONTACT_DANGER_HP_FRAC)の敵が260px以内 → 離れる」のまま
+  // (ゴースト専用モデルなし=§2.11追補ドクトリン)。
+  it('危険な接触(damage>=最大HPの20%)からは離れる(v0.25.2547・接触回避オン)', () => {
+    const mob = mkBoss({ type: 'zombie' as Enemy['type'], x: 120, y: 10, width: 20, height: 20, damage: 38 });
+    const v = ghostDodgeVector(10, 10, [mob], [], 110); // 38 >= 110*0.2=22 → 危険=離れる
+    expect(v).not.toBeNull();
+    expect(v!.x).toBeLessThan(0); // 敵は右側=左へ離れる
+  });
+
+  it('弱い接触(damage<最大HPの20%)は避けない=「敵に触れると逃げる」人にはしない', () => {
+    const mob = mkBoss({ type: 'zombie' as Enemy['type'], x: 120, y: 10, width: 20, height: 20, damage: 38 });
+    expect(ghostDodgeVector(10, 10, [mob], [], 400)).toBeNull(); // 38 < 400*0.2=80 → 危険でない
+  });
+
+  it('maxHealth=0(未配線)では接触回避は働かない(明示の無効値)', () => {
+    const mob = mkBoss({ type: 'zombie' as Enemy['type'], x: 120, y: 10, width: 20, height: 20, damage: 9999 });
+    expect(ghostDodgeVector(10, 10, [mob], [], 0)).toBeNull();
   });
 
   it("ghostDodgeVector: 'tank'した弾技の弾だけ避けない(タグ無し/別の技の弾は避ける)", () => {
     const tagged = mkProj({ srcMoveKey: 'mimir-burst' });
-    expect(ghostDodgeVector(10, 10, [], [tagged])).not.toBeNull();               // 平時は避ける
-    expect(ghostDodgeVector(10, 10, [], [tagged], 'mimir-burst')).toBeNull();    // 苦手=避けない
-    expect(ghostDodgeVector(10, 10, [], [mkProj()], 'mimir-burst')).not.toBeNull(); // タグ無しは常に避ける
-    expect(ghostDodgeVector(10, 10, [], [mkProj({ srcMoveKey: 'idol-fan' })], 'mimir-burst')).not.toBeNull();
+    expect(ghostDodgeVector(10, 10, [], [tagged], 110)).not.toBeNull();               // 平時は避ける
+    expect(ghostDodgeVector(10, 10, [], [tagged], 110, 'mimir-burst')).toBeNull();    // 苦手=避けない
+    expect(ghostDodgeVector(10, 10, [], [mkProj()], 110, 'mimir-burst')).not.toBeNull(); // タグ無しは常に避ける
+    expect(ghostDodgeVector(10, 10, [], [mkProj({ srcMoveKey: 'idol-fan' })], 110, 'mimir-burst')).not.toBeNull();
   });
 
   it("'tank'を引いた弾技は、技が終わって弾だけ残っても弾の寿命ぶん避けない", () => {
