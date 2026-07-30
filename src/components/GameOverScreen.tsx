@@ -15,6 +15,7 @@ import { getArchiveRecord, unlockRecordsForStage, markRecordRead, type ArchiveRe
 import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
 import { isKomaLogEnabled, komaLogSummary, logKomaSummary } from '../utils/komaLog';
+import { hasPendingTraitRecords, settlePendingTraits } from '../utils/playerTraits';
 import {
   wallAchievementHeadline, metersToNextWall, WALL_RANK_NAMES,
 } from '../utils/wallProgress';
@@ -127,6 +128,19 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // 発動していたら totalScore が×0.5 される(掛け算は合流点=calculateResultScore の1箇所。黙って半分にしない
   // ため、下のSCORE欄に「守護霊が共闘: スコア半分」の1行を出す)。ゴールド換金は対象外(誇り=順位だけを差し出す)。
   const ghostSummoned = useGameStore(s => s.ghostSummonedThisRun);
+  // BOT_AND_GHOST.md §2.6(保存の保留化・社長裁定v0.25.2476): このランで守護霊プロファイルの保留記録
+  // (ボス交戦セッション)が1件以上あるか。モジュールシングルトンをマウント時に1回だけ読む(リザルト
+  // 表示中は不変)。チェック状態もローカルstateのみ=毎フレーム変化するstore購読なし(React再描画規律)。
+  // ボス交戦なし/守護霊装備/?ghost=1のランは保留が空(そもそも計測されていない)のでチェックは出ない。
+  const [hasPendingTraits] = useState(() => hasPendingTraitRecords());
+  const [traitOptOut, setTraitOptOut] = useState(false);
+  // リザルトを閉じる3操作(OK/もう一度プレイ/メニューに戻る)の合流点=commit/破棄の唯一の分岐点。
+  // チェックなし(既定)=保留をcommit(従来どおりEMA反映・結果は旧実装とビット一致)/
+  // チェックあり=全破棄。resetGame(次ラン開始)より前に呼ばれるのでbotTelemetryの分母も生きている。
+  const settleAnd = (navigate: () => void) => () => {
+    settlePendingTraits(traitOptOut);
+    navigate();
+  };
   const {
     damageScore,
     finisherScore,
@@ -342,6 +356,20 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       window.setTimeout(() => setKomaCopyState('idle'), 2200);
     }
   };
+
+  // スコア欄直下に置く小さなオプトアウト行(既定=オフ=反映する)。既存リザルトのトーン(bg-black/20・
+  // text-[11px])に合わせ、新規演出なし。classic/新レイアウト両方の分岐から同じものを差し込む。
+  const traitOptOutRow = hasPendingTraits ? (
+    <label className="mb-3 flex items-center gap-2 rounded-none bg-black/20 px-3 py-2 text-[11px] text-white/60 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={traitOptOut}
+        onChange={e => { playSfx('ui-select'); setTraitOptOut(e.target.checked); }}
+        className="h-4 w-4 shrink-0 accent-sky-400"
+      />
+      <span>今回のプレイを守護霊に反映しない</span>
+    </label>
+  ) : null;
 
   const handleCopyBenchmark = async () => {
     if (!benchmarkShareText) return;
@@ -603,6 +631,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   </div>
                 </div>
               </div>
+              {traitOptOutRow}
               {/* PACING_PUZZLE.md §5.17 M14: 到達譜=縦の深度メーター(壁4本の目盛り+今回バー+自己最深旗)。 */}
               {/* stage-7 は深さも大罪も動かない回なので丸ごと隠す(社長指示v0.25.2385・上の hideDepthReview 参照)。 */}
               {!isBenchmark && !hideDepthReview && (
@@ -680,6 +709,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   )}
                 </div>
               </div>
+              {traitOptOutRow}
               {/* PACING_PUZZLE.md §5.19 M18②③: スコア内訳+残りの数字は「詳細▾」で開閉(既定は畳む)。 */}
               <button
                 type="button"
@@ -857,7 +887,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               通常エンディング予約もこの経路に乗っているので変えない)。死亡/撤退/ベンチは従来どおり二択。 */}
           {won ? (
             <button
-              onClick={onReturnToMenu}
+              onClick={settleAnd(onReturnToMenu)}
               className="w-full py-3 rounded-none text-sm font-semibold text-white"
               style={{
                 background: 'linear-gradient(180deg, rgba(251, 191, 36, 0.95), rgba(245, 158, 11, 0.95))',
@@ -869,7 +899,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           ) : (
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={onPlayAgain}
+                onClick={settleAnd(onPlayAgain)}
                 className="w-full py-3 rounded-none text-sm font-semibold text-white"
                 style={{
                   background: 'linear-gradient(180deg, rgba(96, 165, 250, 0.95), rgba(59, 130, 246, 0.95))',
@@ -879,7 +909,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 もう一度プレイ
               </button>
               <button
-                onClick={onReturnToMenu}
+                onClick={settleAnd(onReturnToMenu)}
                 className="w-full py-3 rounded-none text-sm font-semibold text-white/90 bg-purple-400/10"
               >
                 メニューに戻る

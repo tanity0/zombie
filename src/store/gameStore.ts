@@ -25,7 +25,7 @@ import {
 import {
   resetPlayerTraits,
   // G4a(BOT_AND_GHOST.md §2.9・記録専用): 技への反応表の被弾タグ+サブ様式カウンタ。挙動は一切変えない。
-  notifyMoveDamage, recordWireAnchorUse, recordShieldBash, recordShieldBashDamage, foldSubStyleTallies,
+  notifyMoveDamage, recordWireAnchorUse, recordShieldBash, recordShieldBashDamage,
 } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
 import { playerAsOwner, ownerCenterX, ownerCenterY, ownerFootY } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
@@ -11910,13 +11910,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   resetGame: (characterClass) => {
     const state = get();
-    // G4a(BOT_AND_GHOST.md §2.9(3)・記録専用): 前ランのサブ様式集計をプロファイルへ確定する。
-    // **必ずresetBotTelemetry()より前に呼ぶ**(バッシュ与ダメ割合の分母=前ランの総与ダメージを
-    // botTelemetryから読むため。後だと分母が常に0になる)。
-    foldSubStyleTallies();
+    // v0.25.2476: 前ランのサブ様式集計(fold)+プロファイル保存の決算は、リザルト画面を閉じる操作
+    // (GameOverScreenのsettlePendingTraits)へ移動した(社長裁定「今回のプレイを守護霊に反映しない」を
+    // リザルトで選べるように)。ここでは呼ばない——リザルトを経由しなかったランの残骸は下の
+    // resetPlayerTraits()が保留ごと破棄する(=破棄と同じ・安全側の仕様)。
     // M35(§6.12): ボット計測カウンタをラン開始でリセット(実機/ヘッドレス両ハーネス共通の合流点)。
     resetBotTelemetry();
-    // BOT_AND_GHOST.md G1: 前ランの未確定セッション(交戦中に終了した場合等)を持ち越さない。
+    // BOT_AND_GHOST.md G1: 前ランの未確定セッション(交戦中に終了した場合等)+未決算の保留バッファを
+    // 持ち越さない。
     resetPlayerTraits();
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの

@@ -15,6 +15,11 @@
 // - **G3(§2.7 制約1の本則)**: 守護霊(guardian-spirit)を装備しているラン/`?ghost=1`のランは
 //   計測を丸ごと停止する(呼び出し側が ghostRunActive=ghostRunEnabled(ghostDriver.ts) を渡す。
 //   「召喚が起きた区間だけ除外」の細かい分岐にはしない——装備中のボス戦は必ず召喚が起きるので同値)。
+// - **保存の保留化(v0.25.2476 社長裁定「リザルトで守護霊化するか選べるように」)**: セッション確定
+//   (endSession)とサブ様式のラン集計(foldSubStyleTallies)は即 saveProfile せず**ラン内の保留バッファ**
+//   に積む。リザルトを閉じる時に settlePendingTraits() が commit(既定・従来と同じ順序でEMA混合=結果は
+//   旧実装とビット一致)か全破棄を行う。リザルトを経由しない終了(ブラウザ閉じ等)は保留のまま消える
+//   =破棄と同じ(安全側)。
 import type { Enemy } from '../types/game';
 import { getBotTelemetry, snapshotBotTelemetry, type BotTelemetry } from './botTelemetry';
 import { isEngageableBoss } from './bossEngagement';
@@ -255,6 +260,40 @@ const blend = (sample: number | null, base: number, isFirstEverSave: boolean): n
   return isFirstEverSave ? sample : base * (1 - EMA_ALPHA) + sample * EMA_ALPHA;
 };
 
+// ---- 保留バッファ(v0.25.2476 社長裁定「リザルトで今回のプレイを守護霊に反映しない、を選べるように」) ----
+// endSession(ボス交戦セッション確定)と foldSubStyleTallies(サブ様式のラン集計)は、ここへ「記録」を
+// 積むだけで localStorage には触らない。リザルトを閉じる操作で settlePendingTraits() が
+// commit(既定)か全破棄を行う。commit は積んだ順に「load→従来と同一の式でEMA→save」を1件ずつ
+// 再生するので、既定経路の保存結果は旧実装(即時保存)とビットレベルで一致する(テストで固定)。
+
+/** ボス交戦セッション1件ぶんの確定サンプル(endSession時点で計算済み・commit時にEMA混合)。 */
+export interface PendingSessionRecord {
+  kind: 'session';
+  reactionSample: number | null;
+  counterChanceSample: number | null;
+  preferredDistSample: number | null;
+  meleeBiasSample: number | null;
+  mobilitySample: number | null;
+  hitsPerMinSample: number | null;
+  subUsesPerMinSample: number | null;
+  stationarySample: number | null;
+  approachSample: number | null;
+  moveTally: MoveReactionState['tally'];
+  srcClass: string | null;
+  snapshot: { maxHealth: number; speed: number; level: number } | null;
+}
+
+/** サブ様式のラン集計1件ぶん。分母(ラン総与ダメージ)は積む時点で確定する(resetBotTelemetry耐性)。 */
+export interface PendingSubStyleRecord {
+  kind: 'subStyle';
+  tally: SubStyleTally;
+  totalDamage: number;
+}
+
+export type PendingTraitRecord = PendingSessionRecord | PendingSubStyleRecord;
+
+let pendingRecords: PendingTraitRecord[] = [];
+
 const endSession = (): void => {
   const s = session;
   session = null;
@@ -274,41 +313,54 @@ const endSession = (): void => {
   const reactionRaw = median(s.reactionSamplesMs);
   const reactionSample = reactionRaw === null ? null
     : Math.max(REACTION_CLAMP_MIN, Math.min(REACTION_CLAMP_MAX, reactionRaw));
-  const counterChanceSample = s.opportunities > 0 ? s.successes / s.opportunities : null;
-  const preferredDistSample = medianBucketDist(s.distBuckets);
-  const mobilitySample = s.totalTicks > 0 ? s.movedTicks / s.totalTicks : null;
-  const hitsPerMinSample = durationMs > 0 ? s.hits / (durationMs / 60000) : null;
-  const subUsesPerMinSample = durationMs > 0 ? subUsesDelta / (durationMs / 60000) : null;
-  // G4a: 移動2ノブのサンプル+技への反応表の確定(開いている/残響中のエピソードも全部畳む)。
-  const stationarySample = s.motionTicks > 0 ? s.stationaryTicks / s.motionTicks : null;
-  const approachSample = durationMs > 0 ? s.approachEpisodes / (durationMs / 60000) : null;
-  const moveTally = endMoveReactions(s.moveReactions);
+  // v0.25.2476: サンプル計算は従来のまま。ここで保存せず保留バッファへ積む(EMA混合はcommit時)。
+  pendingRecords.push({
+    kind: 'session',
+    reactionSample,
+    counterChanceSample: s.opportunities > 0 ? s.successes / s.opportunities : null,
+    preferredDistSample: medianBucketDist(s.distBuckets),
+    meleeBiasSample,
+    mobilitySample: s.totalTicks > 0 ? s.movedTicks / s.totalTicks : null,
+    hitsPerMinSample: durationMs > 0 ? s.hits / (durationMs / 60000) : null,
+    subUsesPerMinSample: durationMs > 0 ? subUsesDelta / (durationMs / 60000) : null,
+    // G4a: 移動2ノブのサンプル+技への反応表の確定(開いている/残響中のエピソードも全部畳む)。
+    stationarySample: s.motionTicks > 0 ? s.stationaryTicks / s.motionTicks : null,
+    approachSample: durationMs > 0 ? s.approachEpisodes / (durationMs / 60000) : null,
+    moveTally: endMoveReactions(s.moveReactions),
+    // v0.25.2467/2468: クラスとステータス写しは従来のendSession時点(=いま)の値を確定して積む。
+    srcClass: sessionSrcClass,
+    snapshot: sessionSnapshot,
+  });
+};
 
-  const prev = loadPlayerProfile();
+/**
+ * 純関数: 保留セッション1件を旧endSessionと**同一の式・同一の順序**でプロファイルへ畳む。
+ * (prev=null なら初回保存=サンプルそのまま。EMAの数学は不変=旧実装とビット一致がテストで固定される。)
+ */
+export const applyPendingSession = (prev: PlayerProfile | null, r: PendingSessionRecord): PlayerProfile => {
   const base = prev ?? { v: 1 as const, runs: 0, ...SEED_PROFILE, moveReactions: {}, subStyles: defaultSubStyles() };
   const isFirstEverSave = prev === null;
-  const next: PlayerProfile = {
+  return {
     v: 1,
     runs: base.runs + 1,
-    reactionMs: blend(reactionSample, base.reactionMs, isFirstEverSave),
-    counterChance: blend(counterChanceSample, base.counterChance, isFirstEverSave),
-    preferredDist: blend(preferredDistSample, base.preferredDist, isFirstEverSave),
-    meleeBias: blend(meleeBiasSample, base.meleeBias, isFirstEverSave),
-    mobility: blend(mobilitySample, base.mobility, isFirstEverSave),
-    hitsPerMin: blend(hitsPerMinSample, base.hitsPerMin, isFirstEverSave),
-    subUsesPerMin: blend(subUsesPerMinSample, base.subUsesPerMin, isFirstEverSave),
-    stationaryFrac: blend(stationarySample, base.stationaryFrac, isFirstEverSave),
-    approachPerMin: blend(approachSample, base.approachPerMin, isFirstEverSave),
+    reactionMs: blend(r.reactionSample, base.reactionMs, isFirstEverSave),
+    counterChance: blend(r.counterChanceSample, base.counterChance, isFirstEverSave),
+    preferredDist: blend(r.preferredDistSample, base.preferredDist, isFirstEverSave),
+    meleeBias: blend(r.meleeBiasSample, base.meleeBias, isFirstEverSave),
+    mobility: blend(r.mobilitySample, base.mobility, isFirstEverSave),
+    hitsPerMin: blend(r.hitsPerMinSample, base.hitsPerMin, isFirstEverSave),
+    subUsesPerMin: blend(r.subUsesPerMinSample, base.subUsesPerMin, isFirstEverSave),
+    stationaryFrac: blend(r.stationarySample, base.stationaryFrac, isFirstEverSave),
+    approachPerMin: blend(r.approachSample, base.approachPerMin, isFirstEverSave),
     // 技への反応表は技ごとにn=0を初回として個別にEMA(blendMoveReactionTable内)。
-    moveReactions: blendMoveReactionTable(base.moveReactions, moveTally, EMA_ALPHA),
-    // サブ様式はボス交戦区間に限定しない=セッションではなくラン単位(foldSubStyleTallies)で更新する。
+    moveReactions: blendMoveReactionTable(base.moveReactions, r.moveTally, EMA_ALPHA),
+    // サブ様式はボス交戦区間に限定しない=セッションではなくラン単位(subStyleレコード)で更新する。
     subStyles: base.subStyles,
     // v0.25.2467: 計測時のクラス(このセッションで観測できなければ前回値を保持)。
-    srcClass: sessionSrcClass ?? base.srcClass,
+    srcClass: r.srcClass ?? base.srcClass,
     // v0.25.2468: 計測時ステータスの写し(同上)。
-    snapshot: sessionSnapshot ?? base.snapshot,
+    snapshot: r.snapshot ?? base.snapshot,
   };
-  saveProfile(next);
 };
 
 export interface PlayerTraitsTickInput {
@@ -496,14 +548,14 @@ export const recordShieldBashDamage = (amount: number): void => {
 };
 
 /**
- * ラン境界でサブ様式集計をプロファイルへEMA混合する。gameStore.resetGameから
- * **resetBotTelemetry()より前に**呼ぶこと(バッシュ与ダメ割合の分母=ラン総与ダメージを
- * botTelemetry.damageDealtから読むため。リセット後だと分母が常に0になる)。
- * - ゴーストが出うるランだった場合は保存せず破棄(§2.7 制約1=6ノブの計測停止と同じゲート)。
- * - プロファイル未保存(ボス交戦セッションを一度も保存していない端末)なら保存しない:
- *   ここで新規作成すると loadPlayerProfile()!==null になり、守護霊ランのゴーストが
- *   defaultGhostProfile(casual: counterChance0.65等)ではなくSEED(0.5)で動いてしまう=
- *   「挙動1bit不変」の掟に反するため(記録より不変を優先する保守側の裁定)。
+ * ラン境界でサブ様式集計を**保留バッファへ積む**(v0.25.2476: 即保存からの保留化。実際のEMA混合は
+ * commitPendingTraits)。settlePendingTraits(リザルトを閉じる操作)から、**resetBotTelemetry()より
+ * 前に**呼ばれること(バッシュ与ダメ割合の分母=ラン総与ダメージをbotTelemetry.damageDealtから
+ * 読んでここで確定するため。リセット後だと分母が常に0になる)。
+ * - ゴーストが出うるランだった場合は積まず破棄(§2.7 制約1=6ノブの計測停止と同じゲート)。
+ * - プロファイル未保存なら保存しない、の判定は**commit時**(applyPendingSubStyle適用時)に行う:
+ *   同ラン内の先行ボスセッションがcommitでプロファイルを新規作成するケースがあり、判定順を
+ *   旧実装(セッション保存→fold)と揃えないと結果が変わるため。
  */
 export const foldSubStyleTallies = (): void => {
   const t = subStyleTally;
@@ -513,9 +565,24 @@ export const foldSubStyleTallies = (): void => {
   if (wasGhostRun) return;
   const wireUses = t.wireSlams + t.wirePlants;
   if (wireUses === 0 && t.shieldPlacements === 0) return; // 何も使っていないランはプロファイルに触らない
-  const prev = loadPlayerProfile();
-  if (prev === null) return; // 上記コメント参照(プロファイルはボス交戦セッションだけが新規作成する)
+  const tel = getBotTelemetry();
+  pendingRecords.push({
+    kind: 'subStyle',
+    tally: t,
+    totalDamage: tel.damageDealt.gun + tel.damageDealt.melee + tel.damageDealt.other,
+  });
+};
 
+/**
+ * 純関数: 保留サブ様式1件を旧foldSubStyleTallies後半と**同一の式**でプロファイルへ畳む。
+ * prev=null(プロファイル未保存)のスキップは呼び出し側(commitPendingTraits)が行う:
+ * ここで新規作成すると loadPlayerProfile()!==null になり、守護霊ランのゴーストが
+ * defaultGhostProfile(casual: counterChance0.65等)ではなくSEED(0.5)で動いてしまう=
+ * 「挙動1bit不変」の掟に反するため(記録より不変を優先する保守側の裁定・従来どおり)。
+ */
+export const applyPendingSubStyle = (prev: PlayerProfile, r: PendingSubStyleRecord): PlayerProfile => {
+  const t = r.tally;
+  const wireUses = t.wireSlams + t.wirePlants;
   const wire = prev.subStyles.wire;
   const nextWire = wireUses > 0
     ? {
@@ -529,8 +596,7 @@ export const foldSubStyleTallies = (): void => {
   const shield = prev.subStyles.shield;
   let nextShield = shield;
   if (t.shieldPlacements > 0) {
-    const tel = getBotTelemetry();
-    const totalDamage = tel.damageDealt.gun + tel.damageDealt.melee + tel.damageDealt.other;
+    const totalDamage = r.totalDamage;
     const bashPerSample = t.shieldBashes / t.shieldPlacements;
     const fracSample = totalDamage > 0 ? t.shieldBashDamage / totalDamage : null;
     nextShield = {
@@ -545,15 +611,58 @@ export const foldSubStyleTallies = (): void => {
           : fracSample,
     };
   }
-  saveProfile({ ...prev, subStyles: { wire: nextWire, shield: nextShield } });
+  return { ...prev, subStyles: { wire: nextWire, shield: nextShield } };
+};
+
+// ==== 保留バッファの決算(リザルト画面が呼ぶ・v0.25.2476) ==========================================
+
+/** リザルト表示用: このランで保留中の記録が1件以上あるか(=チェックボックスを出す条件)。 */
+export const hasPendingTraitRecords = (): boolean => pendingRecords.length > 0;
+
+/**
+ * 保留バッファを積んだ順に「load→従来と同一の式でEMA→save」で1件ずつ再生して確定する(既定経路)。
+ * 旧実装は各確定点で即 load/save していたので、同順再生の結果はビットレベルで一致する
+ * (JSONの数値round-tripは可逆・保存はplayerTraitsだけが行うため間に割り込む書き手も居ない)。
+ */
+export const commitPendingTraits = (): void => {
+  const records = pendingRecords;
+  pendingRecords = [];
+  for (const r of records) {
+    if (r.kind === 'session') {
+      saveProfile(applyPendingSession(loadPlayerProfile(), r));
+    } else {
+      const prev = loadPlayerProfile();
+      if (prev === null) continue; // applyPendingSubStyleのコメント参照(新規作成はセッションだけ)
+      saveProfile(applyPendingSubStyle(prev, r));
+    }
+  }
+};
+
+/** 保留バッファを全破棄する(「今回のプレイを守護霊に反映しない」)。localStorageには触らない。 */
+export const discardPendingTraits = (): void => {
+  pendingRecords = [];
+};
+
+/**
+ * リザルト画面を閉じる操作(OK/もう一度プレイ/メニューに戻る)で1回呼ぶ決算の合流点。
+ * まずサブ様式のラン集計を保留に積み(ゴーストラン/未使用ならno-op)、チェック状態に応じて
+ * commit(optOut=false・既定)か全破棄(optOut=true)する。resetGame(次ラン開始)より前=
+ * botTelemetryがまだ生きているうちに呼ばれる前提(分母の確定はfold側)。2回呼んでも2回目はno-op。
+ */
+export const settlePendingTraits = (optOut: boolean): void => {
+  foldSubStyleTallies();
+  if (optOut) discardPendingTraits();
+  else commitPendingTraits();
 };
 
 // gameStore.resetGame(ラン開始)で呼ぶ。前ランの未確定セッションを持ち越さない
 // (テストの beforeEach リセットにも使う。localStorage には触らない)。
-// G4a: サブ様式のラン集計とゴーストフラグも一緒にリセットする(resetGameでは直前に
-// foldSubStyleTalliesが確定済み。テストでは素のリセットとして機能する)。
+// G4a: サブ様式のラン集計とゴーストフラグも一緒にリセットする。
+// v0.25.2476: 保留バッファも破棄する——通常経路はリザルトの settlePendingTraits が先に決算済みで
+// 空のはず。ここに残っている=リザルトを経由しなかったランの記録なので、破棄が安全側(仕様どおり)。
 export const resetPlayerTraits = (): void => {
   session = null;
   subStyleTally = createSubStyleTally();
   subStyleGhostRun = false;
+  pendingRecords = [];
 };

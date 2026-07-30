@@ -1,5 +1,47 @@
 # Development Log
 
+## v0.25.2476 — リザルトで「今回のプレイを守護霊に反映しない」を選択可能に(社長裁定・verbatim承認「それで!」)【2026-07-30 12:27 JST】
+
+- **仕様**: 既定=自動でEMA混合(従来どおり)+リザルトにオプトアウトのチェック(自動の良し悪し判定はしない
+  =ボスごとにスコアが違い閾値が作れない・プロファイルは成績でなく癖の記録のため)。
+- **保存の保留化(playerTraits.ts)**: `endSession`(ボス交戦セッション確定)と `foldSubStyleTallies`
+  (サブ様式のラン集計)は即 `saveProfile` せず**ラン内の保留バッファ**(`pendingRecords`)へ記録を積む。
+  サンプル計算・EMAの式・順序は不変(セッションのサンプル値と、サブ様式の分母=ラン総与ダメージは
+  積む時点で確定)。「プロファイル未保存ならサブ様式を保存しない」判定は**commit時**に移動
+  (同ラン内の先行セッションが新規作成するケースで旧実装と判定順を揃えるため=結果不変)。
+- **commit/破棄の分岐点の表**:
+  | 経路 | タイミング | 動作 |
+  |---|---|---|
+  | リザルト「OK」(勝利) | GameOverScreen閉じ | `settlePendingTraits(チェック状態)` |
+  | リザルト「もう一度プレイ」 | 同上(startGameの前) | 同上 |
+  | リザルト「メニューに戻る」(死亡/撤退/ベンチ・M7エンディング経由含む) | 同上 | 同上 |
+  | チェックなし(既定) | settle内 | fold→保留を積んだ順に commit(load→従来と同一の式でEMA→save) |
+  | チェックあり | settle内 | fold→**全破棄**(localStorage不変) |
+  | リザルトを経由しない終了(ブラウザ閉じ/リロード) | — | 保留はメモリ上のみ=消える(破棄と同じ・安全側) |
+  | 次ラン開始(resetGame) | resetPlayerTraits | 残骸の保留も破棄(通常経路ではsettle済みで空)。resetGameからの`foldSubStyleTallies`呼び出しは撤去(決算はリザルトへ移動) |
+- **既定経路のビット一致をテストで固定**: 同一シナリオ(セッション2件+カウンター+サブ様式)を
+  「各確定点で即commit(=旧実装の再現)」と「全部保留→一括commit」で流し、localStorageの
+  **保存文字列そのものの一致**を確認(playerTraits.test.ts)。既存テストは各確定点直後に
+  `commitPendingTraits()` を挟む形へ更新=既存の期待値が全て無修正で通ること自体が旧実装との一致の固定。
+- **リザルトUI(GameOverScreen.tsx)**: スコア欄直下(classic/新レイアウト両方)に小さなチェック
+  「今回のプレイを守護霊に反映しない」(既定オフ・bg-black/20の既存トーン・新規演出なし)。
+  表示条件=保留バッファに1件以上(`hasPendingTraitRecords`をマウント時に1回読むローカルstate。
+  ボス交戦なし/守護霊装備/`?ghost=1`ランは保留が空なので出ない)。チェック状態もローカルstate
+  =毎フレーム変化するstore購読なし(React再描画規律)。
+- **§2.7 制約1(守護霊装備/`?ghost=1`の計測停止)は従来どおり**(このバッチでは不変)。
+- 変更ファイル: `src/utils/playerTraits.ts`(保留バッファ+applyPendingSession/applyPendingSubStyle+
+  settle/commit/discard/hasPending)/`src/utils/playerTraits.test.ts`(既存33箇所commit挿入+新7テスト=
+  計49テスト)/`src/components/GameOverScreen.tsx`(チェック+3ボタンの決算配線)/
+  `src/store/gameStore.ts`(resetGameのfold呼び出し撤去)/`BOT_AND_GHOST.md` §2.6/package.json/changelog/本ログ。
+- ★未決: なし(仕様どおり。ベンチ結果画面でも同じ決算が走るが保留は通常空=挙動差なし)。
+- **Load score: 1/10**(simulation/memory)。追加はラン内配列1本(ボス交戦セッション数件+ラン集計1件)と
+  リザルト閉時の1回の畳み込みのみ。per-frame処理・描画・React毎フレーム購読なし。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ) /
+  `npx vitest related`(変更4ファイル)=14ファイル286件通過(4 skip既存)。実機確認は社長。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(シーン・湧き・判定・
+  ダメージ不変。変わるのは守護霊プロファイルの「保存のタイミングと可否」だけ。既定経路の保存結果は
+  旧実装とビット一致をテストで固定済み)。
+
 ## v0.25.2475 — 守護霊の「はりぼて」廃止=プレイヤーと同じ描画系に乗せる(社長指示「絵が1枚うごいてるだけで共闘感がありません」)【2026-07-30 12:14 JST】
 
 - **全て視覚のみ=判定/挙動/ダメージ/クールダウンは1bitも不変**(ghostDriver/useGameLoop/storeは無変更)。
