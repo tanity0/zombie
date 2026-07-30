@@ -7989,8 +7989,9 @@ export class PixiScene {
         }
         const L = this.muzzleLatch;
         if (L) {
-          // v0.25.2458: 出だしから薄くなる線形フェード(0.9×k)をやめ、前70%は完全不透明で維持。
-          this.drawMuzzleFlash(L.x, L.y, L.rot, L.len, this.fxHoldFade(sinceFire / MUZZLE_FLASH_MS), L.sortY);
+          // v0.25.2461+ 社長原則「ピーク100%・減衰は自然な形」: 煙は保持→急落(fxHoldFade)より
+          // 「出た瞬間100%→散りながら減衰」が自然なので線形減衰(ピークは100%=旧0.9を廃止)。
+          this.drawMuzzleFlash(L.x, L.y, L.rot, L.len, 1 - sinceFire / MUZZLE_FLASH_MS, L.sortY);
         } else this.hideMuzzleFlash();
       } else this.hideMuzzleFlash();
     } else this.hideMuzzleFlash();
@@ -12224,7 +12225,7 @@ export class PixiScene {
     ringSp.scale.set(s);
     ringSp.alpha = this.cssAlpha(e.color);
     coreSp.scale.set(s);
-    coreSp.alpha = 0.5 * (1 - t); // 旧: 白芯は全体フェードと二重で減衰
+    coreSp.alpha = 1 - t; // v0.25.2461+ 社長原則「ピークは100%」: 旧0.5×(1-t)はピーク50%しかなかった
   }
 
   // trail: 白テクスチャ1枚を線分として伸縮(旧: 毎フレーム直線stroke)。groundLayer は旧経路と同じ。
