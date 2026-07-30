@@ -241,7 +241,7 @@ import {
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
-import { fireWeapon, buildSupportSniperShot, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY, isDirectGunWeaponKey } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY, isDirectGunWeaponKey } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
@@ -7211,21 +7211,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const gfxCam = useGameStore.getState().camera, gfxGb = useGameStore.getState().gameBounds;
               if (decision.action === 'shoot' && boundBoss && gun) {
                 // 銃 = 装備中の銃のdamage/intervalで撃つ。弾薬はプレイヤーの残弾と完全分離(消費しない)。
+                // GHOST-GUN-PARITY: 飛翔特性(count発/拡散/PROJECTILE_SPEED_MULT/projectileSize/
+                // passthrough・pierce)はプレイヤーのfireWeaponと同じ規則(buildGhostGunShots=共通
+                // ヘルパ経由)。ダメージ/クリ/weaponKeyの扱いは従来どおり(素damage・crit無し・
+                // weaponKey='ghost-gun'固定=計測除外/ヘイト分離は不変)。
                 const gcx = resolved.x + ghostNow.width / 2, gcy = resolved.y + ghostNow.height / 2;
                 const tcx = boundBoss.x + boundBoss.width / 2, tcy = boundBoss.y + boundBoss.height / 2;
                 const gdx = tcx - gcx, gdy = tcy - gcy;
                 const gdl = Math.hypot(gdx, gdy) || 1;
-                addProjectile({
-                  id: `proj-ghost-${ghostNow.id}-${nowMs}`,
-                  x: gcx - 4.5, y: gcy - 4.5, width: 9, height: 9,
-                  speed: gun.projectileSpeed ?? 640,
-                  damage: gun.damage,
-                  direction: { x: gdx / gdl, y: gdy / gdl },
-                  weaponType: gun.category ?? 'handgun',
-                  weaponKey: 'ghost-gun', // BOT_AND_GHOST.md: プレイヤー起因ではないため計測除外(null)
-                  duration: 1400, createdAt: nowMs,
-                  passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
-                });
+                const ghostShots = buildGhostGunShots(
+                  gun, gcx, gcy, { x: gdx / gdl, y: gdy / gdl }, nowMs, `proj-ghost-${ghostNow.id}`
+                );
+                for (const shot of ghostShots) addProjectile(shot);
                 // 発砲SE: プレイヤーと同じ銃種別の音(v0.25.2479パリティ。旧: 常にhandgun-fire)を
                 // ゴースト位置で距離減衰。種別分岐はプレイヤー自動発砲(SMG/グレネードランチャー特例含む)と同一。
                 const gGain = npcSfxDistGain(gcx, gcy, gfxPcx, gfxPcy, gfxCam, gfxGb);

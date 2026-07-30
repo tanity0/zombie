@@ -283,6 +283,41 @@ const rotate = (v: { x: number; y: number }, angle: number) => {
   return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
 };
 
+// GHOST-GUN-PARITY(共通ヘルパ): 弾の拡散角ルール。fireWeaponの生成ループから計算式を変えずに
+// 抽出しただけ(ショットガンは口径(SHOTGUN_SPREAD_CONE_RAD_BY_TIER)/(count-1)、それ以外はcount>1
+// なら0.12刻み)。プレイヤーの発射(fireWeapon)と守護霊の借用銃(buildGhostGunShots)が同じ規則を
+// 共有するための切り出し。count<=1やspreadStep<=0ならbaseDirをそのまま(コピー)で返す=元の
+// `let pd = {...baseDir}; if (...) pd = rotate(...)` と同じ分岐。
+export const computeShotDirections = (
+  weapon: Pick<Weapon, 'count' | 'category' | 'tier'>,
+  baseDir: { x: number; y: number },
+): { x: number; y: number }[] => {
+  const count = weapon.count ?? 1;
+  const shotgunSpread = SHOTGUN_SPREAD_CONE_RAD_BY_TIER[weapon.tier ?? 1] ?? SHOTGUN_SPREAD_CONE_RAD_BY_TIER[1];
+  const spreadStep = weapon.category === 'shotgun'
+    ? (count > 1 ? shotgunSpread / (count - 1) : 0)
+    : count > 1 ? 0.12 : 0;
+  const dirs: { x: number; y: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    let pd = { ...baseDir };
+    if (count > 1 && spreadStep > 0) {
+      const angle = -spreadStep * (count - 1) / 2 + i * spreadStep;
+      pd = rotate(baseDir, angle);
+    }
+    dirs.push(pd);
+  }
+  return dirs;
+};
+
+// GHOST-GUN-PARITY(共通ヘルパ): 弾の飛翔特性(サイズ/速度=PROJECTILE_SPEED_MULT込み)。
+// fireWeaponから計算式を変えずに抽出しただけ。
+export const projectileFlightStats = (
+  weapon: Pick<Weapon, 'projectileSize' | 'projectileSpeed'>,
+): { size: number; speed: number } => ({
+  size: weapon.projectileSize || 8,
+  speed: (weapon.projectileSpeed || 520) * PROJECTILE_SPEED_MULT,
+});
+
 // Fire a single weapon this tick (cooldown- and ammo-aware). Melee weapons
 // never fire here — they're handled by the counter. Guns auto-target the
 // nearest enemy, roll crits per pellet, and burn one round of their ammo
@@ -309,12 +344,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
 
   const baseDir = aimDirection(player, enemies);
   const count = weapon.count ?? 1;
-  const shotgunSpread = SHOTGUN_SPREAD_CONE_RAD_BY_TIER[weapon.tier ?? 1] ?? SHOTGUN_SPREAD_CONE_RAD_BY_TIER[1];
-  const spreadStep = weapon.category === 'shotgun'
-    ? (count > 1 ? shotgunSpread / (count - 1) : 0)
-    : count > 1 ? 0.12 : 0;
-  const size = weapon.projectileSize || 8;
-  const speed = (weapon.projectileSpeed || 520) * PROJECTILE_SPEED_MULT;
+  // GHOST-GUN-PARITY: 拡散角/サイズ・速度の計算式は共通ヘルパへ抽出しただけ(値は不変)。
+  const shotDirections = computeShotDirections(weapon, baseDir);
+  const { size, speed } = projectileFlightStats(weapon);
 
   // スキル: ファイアシューター = 20%の射撃が爆発弾化(×0.3 ダメージ・半径66)。
   // 連続爆発を防ぐため player.fireShooterCdUntil(gameTime ms)で 3秒の裏クールダウン。
@@ -336,11 +368,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
-    let pd = { ...baseDir };
-    if (count > 1 && spreadStep > 0) {
-      const angle = -spreadStep * (count - 1) / 2 + i * spreadStep;
-      pd = rotate(baseDir, angle);
-    }
+    const pd = shotDirections[i];
     const gt = useGameStore.getState().gameTime;
     const quickMagCritBonus = player.quickMagCritUntil > gt ? 0.10 : 0;
     // 装備(アクセ・クリ系)のクリ率は player.critChance とは別枠で加算(装備内上限とスキル枠は独立)。
@@ -485,6 +513,48 @@ export const buildJunkWeaponPellets = (
     });
   }
   return pellets;
+};
+
+// 守護霊の銃(ghost-gun・GHOST-GUN-PARITY・TEST_HANDOFF/results/20260730-0944-guardian-parity.md):
+// useGameLoopの手書きaddProjectileがプレイヤーのfireWeapon仕様(count発/拡散/PROJECTILE_SPEED_MULT/
+// projectileSize/passthrough・pierce)を無視していた5差のうち4つをここで揃える(社長裁定)。
+// 借用銃(装備中のgun)そのものの飛翔特性なので computeShotDirections/projectileFlightStats を
+// プレイヤーと共有する。
+// 【注記v0.25.2511】ダメージ=素damage・critChance=0 は本コミット時点の暫定。完全パリティ裁定
+// (BOT_AND_GHOST.md §2.11訂正=スキル倍率・装備・射撃クリも再現/攻撃力は計測時ビルド基準)により、
+// 次バッチGHOST-BUILD-1でスナップショットビルドの倍率・クリ率へ差し替える(飛翔特性の共通化=本関数の
+// 骨格はそのまま使う)。貫通はweapon自体のpassthrough/pierce(ここは確定仕様)。
+// weaponKeyは'ghost-gun'固定(計測除外/ヘイト分離は呼び出し元=useGameLoopが別途行う=不変)。
+// 副作用なし(弾薬/クールダウンは呼び出し元がghostLastShotAt等で別管理・ここでは触らない)。
+export const buildGhostGunShots = (
+  gun: Weapon,
+  originX: number, originY: number,          // 発射点(ゴースト中心)
+  baseDir: { x: number; y: number },         // 照準方向(正規化済み)
+  now: number,
+  idPrefix: string,                          // 弾idの一意化(呼び出し元がゴーストid等を渡す)
+): Projectile[] => {
+  const { size, speed } = projectileFlightStats(gun);
+  const dirs = computeShotDirections(gun, baseDir);
+  return dirs.map((direction, i) => ({
+    id: `${idPrefix}-${now}-${i}`,
+    x: originX - size / 2,
+    y: originY - size / 2,
+    width: size,
+    height: size,
+    speed,
+    damage: gun.damage,
+    direction,
+    weaponType: gun.category as WeaponType,
+    weaponKey: 'ghost-gun',
+    duration: 1400,
+    createdAt: now,
+    passthrough: gun.passthrough || false,
+    hitEnemies: [],
+    pierce: gun.pierce,
+    hostile: false,
+    reflected: false,
+    critChance: 0,
+  }));
 };
 
 export const getWeaponShortName = (type: WeaponType): string => {
