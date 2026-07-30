@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.2544 — バッチFX-V3V4着地(設計チャットが引き取り): 受領素材8種の配線【2026-07-31 02:40 JST】
+
+- **経緯**: 実装エージェントが版管理直前で停止(社長による停止)。WIPを検分した結果、8素材すべての
+  配線+テクスチャ登録+素材縮小(1MB級→長辺512)が完成していたため、設計チャットが引き取って着地
+  (社長指示「ちゃくち」)。
+- **発火確認(全数・状態名の実在をシミュ側grepで突き合わせ)**: 噛みつき上下顎=mimir『bite-windup』/
+  城ボス『g-bite-windup/hold』・爪=『g-talon-windup』・翼=『g-wing-windup』・触手=『g-reach-windup』・
+  拳=『idol-punch-windup』・種吐き=plant弾出現エッジ・種弾=弾スプライト差し替え・砂埃2種=既存dust
+  ラッチのバリエーション・地割れ=巨人系着地(jump/dive)。**全7状態の実在確認済み=到達不能な配線なし**。
+- 検証: npm run typecheck 0・lintエラー0。負荷: pooled sprite+linear縮小済みテクスチャ=1-2/10
+  (強glow増なし)。**社長の実機確認が完了条件**(見えない事故対策)。
+- 申し送り: 地割れは巨人系着地のみ=他ボス着地への横展開は実機を見て判断。
+- 変更ファイル: pixiScene.ts/pixiTextures.ts/素材8種(縮小)+版管理3ファイル+FX_GAP_LEDGER.md。
+
 ## v0.25.2543 — バッチGHOST-BULLET-TECH: 弾も技(認知の持続+弾技の技別計測+守護霊の弾回避)【2026-07-31 01:57 JST】
 
 正本= research/GHOST_PARITY_LEDGER.md 発注 GHOST-BULLET-TECH(社長方針2026-07-31「弾も技である以上、

@@ -402,6 +402,23 @@ export const ensureTextures = (): Promise<void> => {
       // 帯の上を走らせて「どこまで届くか」を絵で伝えるために使う(社長指示)。1024×256・進行方向=右。
       // 帯の長さに合わせて横だけ伸縮するので linear。
       { name: 'fx/shockwave', scaleMode: 'linear' as const },
+      // ── バッチ FX-V3V4(research/FX_GAP_LEDGER.md): 「物理の絵」+砂埃バリエーション+地割れ ──
+      // 全て社長支給。**表示は素材の数分の1に縮む**(例: 地割れ 512→直径~380 / 拳 512→~100)ので、
+      // 他の支給FX(telegraph-ring/band・slash-arc・blood-pool・dust・shockwave)と同じく linear
+      // (この倍率で nearest にすると縮小のたびに拾う画素が変わってチラつく)。
+      // 1MB級だった素材は取り込み時に長辺512(触手のみ1024)へ縮小済み=デコード後のメモリを抑える
+      // (v0.25.2166の教訓: 先読み総量がiOSのメモリ天井を押し上げる)。
+      { name: 'fx/bite-jaw-upper', scaleMode: 'linear' as const }, // 噛みつき: 上顎(歯先が下端)
+      { name: 'fx/bite-jaw-lower', scaleMode: 'linear' as const }, // 噛みつき: 下顎(歯先が上端)
+      { name: 'fx/claw-swipe', scaleMode: 'linear' as const },     // 爪の一振り(残像付き・爪先が右端)
+      { name: 'fx/wing-swipe', scaleMode: 'linear' as const },     // 翼の薙ぎ(付け根が左寄り)
+      { name: 'fx/tentacle-reach', scaleMode: 'linear' as const }, // 伸びる触手(根元が左端・先端が右端)
+      { name: 'fx/idol-fist', scaleMode: 'linear' as const },      // 偶像の拳(ナックルが下端=突く向き)
+      { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)
+      { name: 'fx/plant-seed', scaleMode: 'linear' as const },     // 種そのもの(植物の敵弾スプライト)
+      { name: 'fx/dust-puff', scaleMode: 'linear' as const },      // 砂埃バリエーションA(もこもこの塊)
+      { name: 'fx/dust-ring', scaleMode: 'linear' as const },      // 砂埃バリエーションB(放射状のリング)
+      { name: 'fx/ground-crack', scaleMode: 'linear' as const },   // 地割れ(着地衝撃の床。分類②)
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

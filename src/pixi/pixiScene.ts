@@ -31,6 +31,11 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   GIANT_QUAD_BREATH_WINDUP_MS, GIANT_QUAD_BREATH_ACTIVE_MS, GIANT_QUAD_BREATH_LENGTH, GIANT_QUAD_BREATH_HALF_WIDTH, GIANT_QUAD_BREATH_SWEEP_RAD,
   GIANT_NOVA_WINDUP_MS, GIANT_NOVA_ACTIVE_MS, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_END, GIANT_NOVA_BAND_THICKNESS,
   GIANT_WING_WINDUP_MS, GIANT_WING_HALF_WIDTH, GIANT_WING_LENGTH, GIANT_WING_SPREAD_RAD,
+  // バッチFX-V3V4: 噛みつきの牙(上下顎)を「閉じ切る瞬間=判定が出る瞬間」に合わせるため、
+  // 保持(hold)の長さを判定と同じ定数から読む(絵のためのコピー定数を作らない)。
+  GIANT_BITE_HOLD_MS,
+  // 同: 爪の一振り(g-talon)を3本の爪痕と同じ扇の中で振らせるための開き角。
+  GLEN_TALON_SPREAD_RAD,
   GIANT_SWEEPBEAM_WINDUP_MS, GIANT_SWEEPBEAM_ACTIVE_MS, GIANT_SWEEPBEAM_LENGTH, GIANT_SWEEPBEAM_HALF_WIDTH, GIANT_SWEEPBEAM_INNER_RADIUS, GIANT_SWEEPBEAM_SWEEP_RAD,
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
@@ -1504,6 +1509,37 @@ const contactLungePose = (t: number): { skew: number; sqY: number; sqX: number; 
 const BOLT_MUZZLE_MS = 170;   // 発射フラッシュの尺
 const BOLT_POP_MS = 240;      // 着弾/消滅の爆ぜの尺
 const BOLT_FX_MAX = 48;       // 安全弁(リセット等で全弾が同時消滅しても暴れない)
+
+// ── バッチ FX-V3V4(research/FX_GAP_LEDGER.md): 受領素材の配線 ─────────────────
+// CLAUDE.md「攻撃ヴィジュアルの2分類」の分類は以下で固定(新規エフェクトは必ずどちらかに分類する)。
+//  ①判定に揃える: 牙(g-bite/mimir bite)・爪(g-talon)・翼(g-wing)・触手(g-reach)・拳(idol punch)・
+//    種弾(plant)。**赤い予告そのものは従来どおり判定と厳密一致のまま**で、この絵は「武器」側なので
+//    社長方針「完璧でなくてよい」の範囲(帯の中心線/長さ/太さに合わせる)。
+//  ②派手さの絵: 砂埃バリエーション(dust-puff/dust-ring)・地割れ(ground-crack)。判定より大きく出す。
+// 尺はどれも**判定の窓とは独立**(絵だけの時間)=ゲームロジックには一切触れていない。
+const BITE_SNAP_MS = 220;      // 顎が閉じ切ってから消えるまで
+const CLAW_LINGER_MS = 240;    // 爪を振り抜いた後の余韻
+const WING_SWING_MS = 300;     // 翼を薙いだ絵の尺(判定のactive窓とは独立)
+const REACH_HOLD_MS = 340;     // 触手が伸び切ってから引っ込むまで
+const FIST_HOLD_MS = 280;      // 拳が当たってから消えるまで
+const PLANT_SPIT_MS = 300;     // 種を吐く反動(口の絵)の尺
+const PLANT_SPIT_SCALE = 1.7;  // 口の絵の大きさ(敵の描画枠に対する倍率・②寄りの見せ)
+const PLANT_SPIT_MAX = 12;     // 同時に生きている口の絵の安全弁(1発=300msの一瞬なので実質届かない)
+const GROUND_CRACK_MS = 1500;  // 地割れが床に残る時間(最後の45%でフェードアウト)
+const GROUND_CRACK_FADE_FROM = 0.55; // この進行度から消え始める
+// 素材内のピボット位置(alpha実測・素材差し替え時は再計測すること)。
+const TENTACLE_ANCHOR_X = 0.0, TENTACLE_ANCHOR_Y = 0.47;  // 根元=左端・軸の高さ
+const WING_ANCHOR_X = 0.175, WING_ANCHOR_Y = 0.49;        // 翼の付け根(骨が集まる点)
+const CLAW_ANCHOR_X = 0.0, CLAW_ANCHOR_Y = 0.32;          // 振りの起点(爪先と同じ高さ=軸が水平になる)
+// view.atkArt(物理の攻撃絵)のスロット。技ごとに使う枚数が違うので固定スロットで持つ
+// (1体が同時に使うのは最大2枚=翼のみ。牙も上下2枚だが翼とは同時に出ない)。
+const ATK_ART_BITE_UPPER = 0;
+const ATK_ART_BITE_LOWER = 1;
+const ATK_ART_CLAW = 2;
+const ATK_ART_WING_L = 3;
+const ATK_ART_WING_R = 4;
+const ATK_ART_TENTACLE = 5;
+const ATK_ART_FIST = 6;
 const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
 
@@ -1622,6 +1658,13 @@ const stablePhase = (id: string) => {
   return (Math.abs(h) % 1000) / 1000 * Math.PI * 2;
 };
 
+// FX-V3V4(V3-6): 「この弾は種の専用絵で描くか」。**描画側(drawProjectile)と配置側(syncProjectiles)の
+// 判断を1つの関数に集約**する(条件を2箇所に書くと必ずどちらかがズレて「絵が二重になる/出ない」)。
+// 素材未ロード時は false = 従来の赤い二重丸へ自動フォールバック(絵が消える事故を作らない)。
+const plantSeedArt = (p: Projectile): boolean =>
+  p.weaponType === 'enemy_bolt' && p.ownerType === 'plant' && !p.reflected
+  && getTexture('fx/plant-seed') !== null;
+
 const actorShadowWidthFromSprite = (view: ActorView | undefined | null, fallbackW: number) => {
   const spriteW = view?.sprite.visible === false ? 0 : Math.abs(view?.sprite.width ?? 0);
   return spriteW > 0 ? spriteW * 0.55 : fallbackW;
@@ -1661,6 +1704,12 @@ interface ActorView {
   clawMarks?: Sprite[];
   // 衝撃波(社長支給素材・v0.25.2414)。**判定の帯1本につき1枚**(翼撃は左右2本同時)。
   shockwaves?: Sprite[];
+  // バッチFX-V3V4: 「物理の絵」(牙/爪/翼/触手/拳)。ATK_ART_* の固定スロットで持つ配列。
+  // 生成は遅延(その技を使うボスだけ)。使わないフレームは visible=false にするだけ=draw callは増えない。
+  atkArt?: Sprite[];
+  // idol の殴りの向き。**予告の赤帯は毎フレームのプレイヤー方向で描かれる**(判定側 idolHateAim も
+  // windup終わりに評価する)ので、拳の絵も同じ値を追い続け、着弾後はその最後の値で固まる。
+  punchAim?: number;
 }
 
 interface PropView {
@@ -8480,6 +8529,9 @@ export class PixiScene {
         const dp = hopL.d[3] < 1 ? (hopL.t - hopL.d[3]) / (1 - hopL.d[3]) : 0;
         this.drawDust(hopL.d[0], hopL.d[1], hopL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp), hopL.t0);
       }
+      // FX-V3V4(V4-1): 地割れ。「着地衝撃」という**動作**で洗った3経路のうちの1つ(プレイヤーのホップ着地)。
+      this.latchGroundCrack('player:wirehopcrack', hopActive, hopToImpact, now,
+        () => [p.wireHopTargetX, p.wireHopTargetY, Math.max(p.width, p.height) * WIRE_HOP_DUST_SCALE]);
     }
 
     // フェーズA(乗車中)はプレイヤーをヘリと同じ danceUiLayer の前面へ移し、ヘリのドアに重ねて見せる
@@ -9215,6 +9267,8 @@ export class PixiScene {
     if (view.slash) view.slash.visible = false;
     if (view.clawMarks) for (const s of view.clawMarks) s.visible = false;
     if (view.shockwaves) for (const s of view.shockwaves) s.visible = false;
+    // FX-V3V4: 物理の攻撃絵(牙/爪/翼/触手/拳)も同じ作法で既定OFF。点けるのは各技の分岐だけ。
+    if (view.atkArt) for (const s of view.atkArt) if (s) s.visible = false;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       const ax = (e.aiTargetX ?? cx) - (e.aiFromX ?? cx);
@@ -9437,6 +9491,30 @@ export class PixiScene {
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, R, 0xff3b3b, (0.35 + 0.35 * prog) + 0.15 * pulse);
         else o.ellipse(cx, cy, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: (0.35 + 0.35 * prog) + 0.15 * pulse });
       }
+      // FX-V3V4(V3-1): 噛みつきの牙。**「噛みつき」という動作の実装経路は2つ**あり、こちらが
+      // 裏ボス側(mimir の bossState 経路)。もう1つは城ボスの g-bite(下の giantbat ブロック)。
+      // 片方だけに付けると必ず取りこぼす(v0.25.2426の教訓)ので必ず両方に置くこと。
+      // 判定は**足元の円**(MIMIR_BITE_RADIUS=92・向きが無い技)なので、顎は画面水平(angle=0)で
+      // 円の直径いっぱいに開き、**windupが終わる瞬間=ダメージが出る瞬間**に閉じ切る。
+      if (e.type === 'mimir') {
+        const biteWind = bs === 'bite-windup';
+        const toBite = biteWind ? Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime) : 0;
+        const biteTotal = toBite + BITE_SNAP_MS;
+        const biteL = this.latchFx(`${e.id}:mimirjaw`, biteWind, biteTotal, now,
+          () => [cx, cy, biteTotal > 0 ? toBite / biteTotal : 0]);
+        if (biteL) {
+          // 予告の赤円が出ている間は**毎フレームの実位置**(=赤円と同じ cx,cy)に付き、
+          // 閉じた後は焼き付け位置で固まる(カウンター等で状態が消えても噛み切る)。
+          const jx = biteWind ? cx : biteL.d[0], jy = biteWind ? cy : biteL.d[1];
+          const closeF = biteL.d[2];
+          const u = closeF > 0 ? Math.min(1, biteL.t / closeF) : 1;
+          const open = 1 - u * u * u; // 終盤で一気に噛み合う(ゆっくり閉じると"間"が読めない)
+          const after = closeF < 1 ? Math.max(0, (biteL.t - closeF) / (1 - closeF)) : 1;
+          const jawFade = biteL.t < closeF ? 1 : Math.max(0, 1 - after);
+          this.drawBiteJaws(view, jx, jy, 0, MIMIR_BITE_RADIUS_VIS * 2,
+            MIMIR_BITE_RADIUS_VIS * 2 * open, artFade * jawFade);
+        }
+      }
       // T3: ヨルムンガルド「うねり」(§6.28-7) = 赤い帯(トール払いと同じ意匠・角ばった四角ゾーン)。
       if (e.type === 'jormungand' && bs === 'coil-windup') {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
@@ -9488,6 +9566,28 @@ export class PixiScene {
         const tx = cx + Math.cos(ang) * IDOL_PUNCH_RANGE_VIS, ty = cy + Math.sin(ang) * IDOL_PUNCH_RANGE_VIS;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_PUNCH_WINDUP_MS_VIS));
         this.drawAngelZoneCapsule(view, o, cx, cy, tx, ty, IDOL_PUNCH_HALF_WIDTH_VIS, prog, now);
+        // FX-V3V4(V3-5): 拳の向きは**赤帯と同じ「毎フレームのプレイヤー方向」**を追う(判定側の
+        // idolHateAim も windup 終わりに評価するので、最後のフレームの値が実際に殴る向きになる)。
+        view.punchAim = ang;
+      }
+      // FX-V3V4(V3-5): 偶像の拳。溜めの進行に合わせて足元から突き出し(=拡大しながら迫る)、
+      // 判定(短い帯 IDOL_PUNCH_RANGE_VIS)の先端で当たる。当たった後は FIST_HOLD_MS で消える
+      // (硬直を1フレームも観測できない事故があるので latch で出し切らせる=v0.25.2412の作法)。
+      {
+        const punchWind = bs === 'idol-punch-windup';
+        const toPunch = punchWind ? Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime) : 0;
+        const punchTotal = toPunch + FIST_HOLD_MS;
+        const fistL = this.latchFx(`${e.id}:idolfist`, punchWind, punchTotal, now,
+          () => [punchTotal > 0 ? toPunch / punchTotal : 0]);
+        if (fistL && view.punchAim !== undefined) {
+          const hitF = fistL.d[0];
+          const reach = hitF > 0 ? Math.min(1, fistL.t / hitF) : 1;
+          const fade = fistL.t < hitF ? 1 : Math.max(0, 1 - (fistL.t - hitF) / (1 - hitF));
+          const ang = view.punchAim;
+          const dist = IDOL_PUNCH_RANGE_VIS * reach;
+          this.drawIdolFist(view, cx + Math.cos(ang) * dist, cy + Math.sin(ang) * dist, ang,
+            IDOL_PUNCH_HALF_WIDTH_VIS * 2 * (0.70 + 0.55 * reach), artFade * fade);
+        }
       }
       // 離脱ローリング: T4のみ(図形なし・無敵も無し=詰めた側の報酬・§6.28-20)。
     }
@@ -9772,6 +9872,15 @@ export class PixiScene {
         const dp = jL.d[3] < 1 ? (jL.t - jL.d[3]) / (1 - jL.d[3]) : 0;
         this.drawDust(jL.d[0], jL.d[1], jL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp), jL.t0);
       }
+      // FX-V3V4(V4-1): 地割れ。着地点/大きさは砂埃と**同じ焼き付け値**(判定と絵の出どころを分けない)。
+      // 対象は上の airNow と完全に同じ=汎用ジャンプ/裏ボス・天使の飛び掛かり/グレンの連続ジャンプ。
+      this.latchGroundCrack(`${e.id}:jcrack${triAir ? triIdx : ''}`, airNow, jToImpact, now, () => {
+        const tp = e.gTriJumpPts ?? [];
+        const jx = triAir ? (tp[triIdx * 2] ?? e.x) : (e.aiTargetX ?? e.x) + e.width / 2;
+        const jy = triAir ? (tp[triIdx * 2 + 1] ?? e.y) : (e.aiTargetY ?? e.y) + e.height / 2;
+        const r = (triAir ? GLEN_TRIJUMP_RADIUS : genericAir ? PUMPKIN_EXPLOSION_RADIUS : THOR_JUMP_RADIUS) * DUST_SCALE;
+        return [jx, jy, r];
+      });
     }
     // M51: 城ボス「ジャイアント」新スクリプトの予告描画(PACING_PUZZLE.md §6.26)。既存部品のみ流用
     // (T1赤ライン+終点リング=突進 / T2赤円=踏み鳴らし・飛び掛かり / T3赤い角ばった四角=薙ぎ払い /
@@ -9893,6 +10002,18 @@ export class PixiScene {
           const dp = dustL.d[3] < 1 ? (dustL.t - dustL.d[3]) / (1 - dustL.d[3]) : 0;
           this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp), dustL.t0);
         }
+        // FX-V3V4(V4-1): 地割れ。**踏み鳴らし/着地/急降下/のしかかり**=「地面を叩く」動作の全部に敷く
+        // (対象は上の dustMove と同じ集合=砂埃が出る所には必ず割れ目も出る)。
+        this.latchGroundCrack(`${e.id}:crack`, dustMove !== null, toImpact, now, () => {
+          const lands = dustMove === 'jump' || dustMove === 'dive';
+          const dx = lands ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
+          const dy = lands ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
+          const scale = dustMove === 'stomp' ? DUST_STOMP_SCALE : DUST_SCALE;
+          const dr = (dustMove === 'jump' ? (e.gJumpRadius ?? GIANT_JUMP_RADIUS)
+            : dustMove === 'dive' ? GIANT_DIVE_RADIUS
+            : dustMove === 'slam' ? GIANT_SLAM_HALF_WIDTH : (e.gStompRadius ?? GIANT_STOMP_RADIUS)) * scale;
+          return [dx, dy, dr];
+        });
       }
       // 「振った瞬間」の弧(素材D-1・v0.25.2400)。**予告ではなく実行の絵**なので当たり判定と一致させる
       // 義務は無いが、**判定の外へはみ出すと危険地帯に見える**ので間合い(長さ)の内側に収める。
@@ -9913,6 +10034,106 @@ export class PixiScene {
         if (swL && swL.t >= swL.d[4]) {
           const sp = swL.d[4] < 1 ? (swL.t - swL.d[4]) / (1 - swL.d[4]) : 0;
           this.drawSlashArc(view, swL.d[0], swL.d[1], swL.d[2], swL.d[3], 0xffd8d8, this.fxHoldFade(sp));
+        }
+      }
+      // ════ バッチ FX-V3V4: 城ボスの「物理の絵」(牙/爪/翼/触手) ════════════════════
+      // 全て**分類①=判定に揃える**。座標は溜め開始で store がロックした aiFrom/aiTarget を
+      // そのまま読む(=赤い帯を描いているのと同じ値。同じ計算を2箇所に書かない)。
+      // latch の起点は必ず**溜め**(実行状態は同tickのカウンターで1フレームも観測できないことがある
+      // =v0.25.2412の教訓)。
+      //
+      // (1) 噛みつきの牙。「噛みつき」という動作のもう1つの経路=裏ボス mimir は上のブロックに置いた。
+      // 閉じ切る瞬間 = hold の終わり = pumpkinBlasts が積まれる瞬間(gameStore の g-bite-hold)。
+      {
+        const biteWind = gph === 'g-bite-windup' || gph === 'g-bite-hold';
+        // 溜め中に arm した場合は「残りの溜め + 保持まるごと」、保持中に arm した場合は「残りの保持」。
+        const biteToClose = biteWind
+          ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime)
+            + (gph === 'g-bite-windup' ? GIANT_BITE_HOLD_MS / ENEMY_ATTACK_SPEED_MULT : 0)
+          : 0;
+        const biteTotal = biteToClose + BITE_SNAP_MS;
+        const bjL = this.latchFx(`${e.id}:giantjaw`, biteWind, biteTotal, now, () => [
+          e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy,
+          biteTotal > 0 ? biteToClose / biteTotal : 0,
+        ]);
+        if (bjL) {
+          const [bfx2, bfy2, btx2, bty2, closeF] = bjL.d;
+          const blen = Math.hypot(btx2 - bfx2, bty2 - bfy2);
+          const u = closeF > 0 ? Math.min(1, bjL.t / closeF) : 1;
+          const open = 1 - u * u * u; // 終盤で一気に噛み合う
+          const after = closeF < 1 ? Math.max(0, (bjL.t - closeF) / (1 - closeF)) : 1;
+          this.drawBiteJaws(
+            view, (bfx2 + btx2) / 2, (bfy2 + bty2) / 2, Math.atan2(bty2 - bfy2, btx2 - bfx2),
+            // 帯の全長(前後へ半幅ぶん伸ばした形=drawTelegraphBand と同じ寸法)と、帯の太さぶんの開き。
+            blen + GIANT_BITE_HALF_WIDTH * 2, GIANT_BITE_HALF_WIDTH * 2 * open,
+            artFade * (bjL.t < closeF ? 1 : Math.max(0, 1 - after)),
+          );
+        }
+      }
+      // (2) 爪の一振り(g-talon)。3本の爪痕(D-2)は溜め開始で全部置かれるので、爪は溜めの間に
+      // その扇(±GLEN_TALON_SPREAD_RAD)を左から右へ振り抜く=「この爪がこの痕を刻んだ」が読める。
+      {
+        const talonWind = gph === 'g-talon-windup';
+        const talonTo = talonWind ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
+        const talonTotal = talonTo + CLAW_LINGER_MS;
+        const clL = this.latchFx(`${e.id}:talonclaw`, talonWind, talonTotal, now, () => {
+          const tfx = e.aiFromX ?? cx, tfy = e.aiFromY ?? cy;
+          const ttx = e.aiTargetX ?? cx, tty = e.aiTargetY ?? cy;
+          return [tfx, tfy, Math.atan2(tty - tfy, ttx - tfx), Math.hypot(ttx - tfx, tty - tfy) || 1,
+            talonTotal > 0 ? talonTo / talonTotal : 0];
+        });
+        if (clL) {
+          const swingF = clL.d[4];
+          const swing = swingF > 0 ? Math.min(1, clL.t / swingF) : 1;
+          const ang = clL.d[2] - GLEN_TALON_SPREAD_RAD + 2 * GLEN_TALON_SPREAD_RAD * swing;
+          const fade = clL.t < swingF ? 1 : Math.max(0, 1 - (clL.t - swingF) / (1 - swingF));
+          this.drawClawSwipe(view, clL.d[0], clL.d[1], ang, clL.d[3], artFade * fade);
+        }
+      }
+      // (3) 翼の薙ぎ(g-wing)。左右2枚の帯=左右2枚の翼(判定1本につき絵1枚)。左右の終点は
+      // gameStore の g-wing-windup と**同じ式**で出す(角度の二重定義を作らない)。
+      {
+        const wingWind = gph === 'g-wing-windup';
+        const wingTo = wingWind ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
+        const wingTotal = wingTo + WING_SWING_MS;
+        const wgL = this.latchFx(`${e.id}:wingart`, wingWind, wingTotal, now, () => {
+          const wfx2 = e.aiFromX ?? cx, wfy2 = e.aiFromY ?? cy;
+          const wtx2 = e.aiTargetX ?? cx, wty2 = e.aiTargetY ?? cy;
+          const wl = Math.hypot(wtx2 - wfx2, wty2 - wfy2) || 1;
+          const ux = (wtx2 - wfx2) / wl, uy = (wty2 - wfy2) / wl;
+          const cS = Math.cos(GIANT_WING_SPREAD_RAD), sS = Math.sin(GIANT_WING_SPREAD_RAD);
+          const lX = ux * cS - uy * sS, lY = ux * sS + uy * cS;
+          const rX = ux * cS + uy * sS, rY = -ux * sS + uy * cS;
+          return [wfx2, wfy2,
+            wfx2 + lX * GIANT_WING_LENGTH, wfy2 + lY * GIANT_WING_LENGTH,
+            wfx2 + rX * GIANT_WING_LENGTH, wfy2 + rY * GIANT_WING_LENGTH,
+            wingTotal > 0 ? wingTo / wingTotal : 0];
+        });
+        if (wgL && wgL.t >= wgL.d[6]) {
+          const wp = wgL.d[6] < 1 ? (wgL.t - wgL.d[6]) / (1 - wgL.d[6]) : 0;
+          const wa = artFade * this.fxHoldFade(wp);
+          this.drawWingSwipe(view, ATK_ART_WING_L, wgL.d[0], wgL.d[1], wgL.d[2], wgL.d[3], wa, true);
+          this.drawWingSwipe(view, ATK_ART_WING_R, wgL.d[0], wgL.d[1], wgL.d[4], wgL.d[5], wa, false);
+        }
+      }
+      // (4) 伸びる触手(g-reach)。**カプセル判定に沿って回転・伸長**(台帳の指定)。溜めの進行に
+      // 合わせて根元から先端へ伸び、溜め終わり(=判定が出る瞬間)にちょうど帯の全長へ届く。
+      {
+        const reachWind = gph === 'g-reach-windup';
+        const reachTo = reachWind ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
+        const reachTotal = reachTo + REACH_HOLD_MS;
+        const rcL = this.latchFx(`${e.id}:reachart`, reachWind, reachTotal, now, () => {
+          const rfx2 = e.aiFromX ?? cx, rfy2 = e.aiFromY ?? cy;
+          const rtx2 = e.aiTargetX ?? cx, rty2 = e.aiTargetY ?? cy;
+          return [rfx2, rfy2, Math.atan2(rty2 - rfy2, rtx2 - rfx2), Math.hypot(rtx2 - rfx2, rty2 - rfy2) || 1,
+            reachTotal > 0 ? reachTo / reachTotal : 0];
+        });
+        if (rcL) {
+          const hitF = rcL.d[4];
+          const grow = hitF > 0 ? Math.min(1, rcL.t / hitF) : 1;
+          const fade = rcL.t < hitF ? 1 : Math.max(0, 1 - (rcL.t - hitF) / (1 - hitF));
+          this.drawTentacle(view, rcL.d[0], rcL.d[1], rcL.d[2], rcL.d[3] * grow,
+            GLEN_REACH_HALF_WIDTH, artFade * fade);
         }
       }
       if (gph === 'g-stomp-windup') {
@@ -10348,6 +10569,7 @@ export class PixiScene {
 
   private syncProjectiles(projectiles: Projectile[], now: number) {
     const seen = new Set<string>();
+    this.plantSeedUsed = 0; // FX-V3V4: 種弾スプライトのプール(使わなかった分はループ後に消す)
     for (const p of projectiles) {
       if (p.createdAt > now) continue; // scheduled / inactive
       if (p.weaponType === 'shield') continue; // 盾は syncShields で別管理(actorLayer/y-sort)
@@ -10369,13 +10591,23 @@ export class PixiScene {
       // 出現エッジ=発射フラッシュ。予約弾(createdAt>now)はビュー出現がそのまま「撃った瞬間」になる。
       if (p.weaponType === 'enemy_bolt' && p.hostile && !p.reflected) {
         const bx = p.x + p.width / 2, by = p.y + p.height / 2;
-        if (!this.boltLast.has(p.id)) this.pushBoltFx(bx, by, false, now);
+        if (!this.boltLast.has(p.id)) {
+          this.pushBoltFx(bx, by, false, now);
+          // FX-V3V4(V3-6): 植物の「種を吐く反動」。発射コードは useGameLoop の汎用射撃だが、
+          // **弾がここに現れた瞬間=撃った瞬間**なので、この合流点1箇所で全ステージ・全個体の
+          // 植物を漏れなく拾える(V1(1)の弾FXと同じ考え方)。
+          if (p.ownerType === 'plant') this.pushSpitFx(p, now);
+        }
         this.boltLast.set(p.id, { x: bx, y: by });
       } else if (this.boltLast.has(p.id)) {
         // 反射などで敵弾でなくなった(弾自体は存続): 爆ぜは出さない(カウンター反射のFXは既存・別経路)。
         this.boltLast.delete(p.id);
       }
+      // FX-V3V4(V3-6): 種弾の専用絵(赤い二重丸の差し替え)。反射弾は既存の黄色い絵のまま
+      // (「誰の弾か」を色で読ませる既存の語彙を壊さない)。
+      if (plantSeedArt(p)) this.drawPlantSeed(g, p);
     }
+    for (let i = this.plantSeedUsed; i < this.plantSeedPool.length; i++) this.plantSeedPool[i].visible = false;
     for (const [id, g] of this.projectiles) {
       if (!seen.has(id)) {
         g.destroy();
@@ -10391,6 +10623,86 @@ export class PixiScene {
       }
     }
     this.drawBoltFx(now);
+    this.drawSpitFx(now);
+  }
+
+  // ── FX-V3V4(V3-6): 植物の種吐き ─────────────────────────────────────────────
+  // 「口の絵」= 判定ゼロの**分類②**(反動の見せ)なので敵の描画枠より大きく出す。
+  // 「種弾」= 判定を持つ**分類①**なので判定の一辺そのままで置く(drawPlantSeed)。
+  private spitFx: { x: number; y: number; ang: number; size: number; t0: number }[] = [];
+  private spitPool: Sprite[] = [];
+  private spitUsed = 0;
+  private pushSpitFx(p: Projectile, now: number) {
+    if (!FX_RING_ENABLED) return;
+    if (this.spitFx.length >= PLANT_SPIT_MAX) this.spitFx.shift(); // 安全弁
+    // 撃った本人の描画枠から中心と大きさを引く(弾1発につき1回だけの探索=毎フレームではない)。
+    const shooter = useGameStore.getState().enemies.find(en => en.id === p.ownerId);
+    let x = p.x + p.width / 2, y = p.y + p.height / 2, size = 56;
+    if (shooter) {
+      const sfb = enemyFootBox(shooter);
+      x = sfb.footX;
+      y = sfb.footY - sfb.boxH * 0.5;
+      size = Math.max(sfb.boxW, sfb.boxH) * PLANT_SPIT_SCALE;
+    }
+    this.spitFx.push({ x, y, ang: Math.atan2(p.direction.y, p.direction.x), size, t0: now });
+  }
+  private drawSpitFx(now: number) {
+    this.spitUsed = 0;
+    const tex = getTexture('fx/plant-spit');
+    let w = 0;
+    for (const fx of this.spitFx) {
+      const t = (now - fx.t0) / PLANT_SPIT_MS;
+      if (t >= 1 || t < 0) continue; // 期限切れは間引く(in-place圧縮)
+      this.spitFx[w++] = fx;
+      if (!tex) continue;
+      const hFade = this.horizonActorAlpha(fx.y);
+      if (hFade <= 0.01) continue;
+      let sp = this.spitPool[this.spitUsed];
+      if (!sp) {
+        sp = new Sprite();
+        sp.anchor.set(0.5, 0.5);
+        this.L.effectLayer.addChild(sp);
+        this.spitPool[this.spitUsed] = sp;
+      }
+      this.spitUsed++;
+      if (sp.texture !== tex) sp.texture = tex;
+      const pop = 1 + 0.18 * Math.sin(Math.min(1, t * 1.6) * Math.PI); // 口を開けて戻る反動
+      const size = fx.size * pop;
+      sp.width = size;
+      sp.height = size * (tex.height / tex.width);
+      // 素材は口が +x 向き。射線の左右で上下が逆さまに見えないよう、左向きの時だけ縦ミラー
+      // (ミラーしても口の向きは射線のまま=見た目だけの整え)。
+      sp.rotation = fx.ang;
+      if (Math.cos(fx.ang) < 0) sp.scale.y = -sp.scale.y;
+      sp.position.set(fx.x, fx.y);
+      sp.alpha = (t < 0.45 ? 1 : Math.max(0, 1 - (t - 0.45) / 0.55)) * hFade;
+      sp.visible = true;
+    }
+    this.spitFx.length = w;
+    for (let i = this.spitUsed; i < this.spitPool.length; i++) this.spitPool[i].visible = false;
+  }
+  private plantSeedPool: Sprite[] = [];
+  private plantSeedUsed = 0;
+  private drawPlantSeed(g: Graphics, p: Projectile): void {
+    const tex = getTexture('fx/plant-seed');
+    if (!tex) return;
+    let sp = this.plantSeedPool[this.plantSeedUsed];
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(0.5, 0.5);
+      this.L.frontObjectLayer.addChild(sp);
+      this.plantSeedPool[this.plantSeedUsed] = sp;
+    }
+    this.plantSeedUsed++;
+    if (sp.texture !== tex) sp.texture = tex;
+    // 位置/フェードは弾本体(pooled Graphics)が既に確定させた値をそのまま使う
+    // =押し出し補間や地平線フェードが弾と1pxもズレない(同じ計算を2箇所に書かない)。
+    sp.width = p.width;                             // 判定の一辺そのまま(分類①)
+    sp.height = p.width * (tex.height / tex.width); // 素材のアスペクトは保つ
+    sp.rotation = Math.atan2(p.direction.y, p.direction.x);
+    sp.position.copyFrom(g.position);
+    sp.alpha = g.alpha;
+    sp.visible = true;
   }
 
   // ── V1(1): 敵弾の発射フラッシュ(赤系の小グロー+小バースト)と消滅の爆ぜ(小リング+火花) ──
@@ -11590,6 +11902,9 @@ export class PixiScene {
     this.bloodUsed = 0;
     for (let i = this.dustUsed; i < this.dustPool.length; i++) this.dustPool[i].visible = false;
     this.dustUsed = 0;
+    // FX-V3V4: 地割れ(V4-1)も同じ「消し忘れが起きない」作法で回収する。
+    for (let i = this.crackUsed; i < this.crackPool.length; i++) this.crackPool[i].visible = false;
+    this.crackUsed = 0;
   }
 
   /**
@@ -11656,15 +11971,34 @@ export class PixiScene {
       this.dustPool[this.dustUsed] = sp;
     }
     this.dustUsed++;
-    sp.texture = this.dustFrames[Math.max(0, Math.min(3, Math.floor(prog * 4)))];
-    // V1(4): 出現ごとの個体差(水平反転/±12°回転/スケール±15%)。素材は現行fx/dustのまま
-    // (別絵バリエーションはV3=社長支給待ち)。seed未指定の呼び出しは従来どおり無ジッター。
-    let sc = 1, rot = 0, flip = false;
+    // V1(4): 出現ごとの個体差(水平反転/±12°回転/スケール±15%)。
+    // FX-V3V4: これに**別絵のバリエーション**(社長支給 dust-puff / dust-ring)を混ぜる。
+    // 同じ決定的ハッシュ(種=latchの焼き付け時刻)で3種から1枚を選ぶので、
+    //  ・出現ごとに違う絵が出る(単調さの解消=これがV3(7)の狙い)
+    //  ・フレーム間では絶対に変わらない(チラつかない)
+    //  ・**スプライト枚数は従来どおり1枚**(同時数・draw callは1枚も増えない)
+    // seed未指定の呼び出しは従来どおり無ジッター=既存の4コマ帯。
+    let sc = 1, rot = 0, flip = false, style = 0;
     if (seed !== undefined) {
       flip = this.dustJitterHash(seed, x, 1) < 0.5;
       rot = (this.dustJitterHash(seed, y, 2) - 0.5) * 0.42;       // ±12°
       sc = 1 + (this.dustJitterHash(seed, x + y, 3) - 0.5) * 0.3; // ±15%
+      style = Math.min(2, Math.floor(this.dustJitterHash(seed, x - y, 7) * 3));
     }
+    const puff = style === 1 ? getTexture('fx/dust-puff') : null;
+    const ring = style === 2 ? getTexture('fx/dust-ring') : null;
+    // 素材が未ロードなら従来の4コマ帯へ自動フォールバック(絵が出ない事故を作らない)。
+    let grow = 1;
+    if (puff) {
+      sp.texture = puff;
+      grow = 0.78 + 0.42 * prog;  // もこもこが膨らむ
+    } else if (ring) {
+      sp.texture = ring;
+      grow = 0.45 + 0.95 * prog;  // 輪が外へ広がる(着地衝撃の読みやすさ)
+    } else {
+      sp.texture = this.dustFrames[Math.max(0, Math.min(3, Math.floor(prog * 4)))];
+    }
+    sc *= grow;
     sp.width = radius * 2 * sc;
     sp.height = radius * 2 * sc;
     sp.rotation = rot;                    // プール再利用なので毎回設定(残留防止)
@@ -11673,6 +12007,186 @@ export class PixiScene {
     sp.tint = tint;
     sp.alpha = alpha;
     sp.visible = true;
+  }
+
+  // ════ バッチ FX-V3V4(research/FX_GAP_LEDGER.md): 受領素材の描画部品 ════════════
+  //
+  // 共通の作法(既存の支給素材と同じ):
+  //  ・**プールしたSprite のみ**(per-frame Graphics/Text を作らない)。
+  //  ・**加算合成は使わない**(実測で唯一の律速=強glowの大面積オーバードローを増やさない)。
+  //  ・出す/消すの管理は latchFx(=「もう振った絵」は状態が消えても出し切る)。
+  //  ・ワールド座標のまま置くだけ=`?zoomlock=1`(最大引き)でも新しい画面境界判定を増やさない。
+
+  /**
+   * 「物理の攻撃絵」用のスロット付きプール(牙/爪/翼/触手/拳)。**ボスのビューに紐づく**ので、
+   * 敵が消えた時に container ごと破棄される(後片付けの取りこぼしが構造的に起きない)。
+   * 本体スプライトより後ろに addChild = 絵が体の手前を通る(刀/斬撃の弧と同じ扱い)。
+   */
+  private atkArtSprite(view: ActorView, idx: number, texName: string): Sprite | null {
+    if (!FX_RING_ENABLED) return null;
+    const tex = getTexture(texName);
+    if (!tex) return null;
+    if (!view.atkArt) view.atkArt = [];
+    let sp = view.atkArt[idx];
+    if (!sp) {
+      sp = new Sprite(tex);
+      view.container.addChild(sp);
+      view.atkArt[idx] = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    sp.visible = true;
+    return sp;
+  }
+
+  /**
+   * 噛みつきの牙(社長支給素材 V3-1・上下顎の2枚)。**分類①=判定に揃える**。
+   *
+   * 素材は「歯先が画像の端」(上顎=下端 / 下顎=上端)なので、その端をアンカーにすると
+   * **歯先どうしが噛み合う線 = 判定の中心線**になる。呼び出し側は
+   *  ・帯の技(城ボス g-bite): 中心=帯の中点 / angle=帯の向き / span=帯の全長 / gap最大=帯の太さ
+   *  ・円の技(mimir bite): 中心=円の中心 / angle=0(向きが無い技) / span=gap最大=直径
+   * を渡す。gap(顎の開き)が0になる瞬間 = ダメージが出る瞬間。
+   */
+  private drawBiteJaws(view: ActorView, cx: number, cy: number, angle: number, span: number, gap: number, alpha: number): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) return;
+    const up = this.atkArtSprite(view, ATK_ART_BITE_UPPER, 'fx/bite-jaw-upper');
+    const lo = this.atkArtSprite(view, ATK_ART_BITE_LOWER, 'fx/bite-jaw-lower');
+    if (!up || !lo) return;
+    up.anchor.set(0.5, 1); // 歯先(下端)がピボット
+    lo.anchor.set(0.5, 0); // 歯先(上端)がピボット
+    // 顎が開く向き = スプライトのローカル +y を angle で回した向き。
+    const nx = -Math.sin(angle), ny = Math.cos(angle);
+    const half = Math.max(0, gap) / 2;
+    const pairs: [Sprite, number][] = [[up, -1], [lo, 1]];
+    for (const [sp, sign] of pairs) {
+      const s = span / sp.texture.width; // 縦横同率=素材を歪ませない
+      sp.scale.set(s, s);
+      sp.rotation = angle;
+      sp.position.set(cx + nx * half * sign, cy + ny * half * sign);
+      sp.alpha = alpha;
+    }
+  }
+
+  /**
+   * 爪の一振り(社長支給素材 V3-2)。**分類①**: 爪先が判定(3本の爪痕)の届く先まで伸びる。
+   * 素材は「爪先が右端・残像が左へ流れる」構図なので、アンカー(左端・爪先と同じ高さ)から
+   * +x が振る方向。`reach` に判定の長さを渡すと爪先がその先端に来る。
+   */
+  private drawClawSwipe(view: ActorView, x: number, y: number, angle: number, reach: number, alpha: number): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) return;
+    const sp = this.atkArtSprite(view, ATK_ART_CLAW, 'fx/claw-swipe');
+    if (!sp) return;
+    sp.anchor.set(CLAW_ANCHOR_X, CLAW_ANCHOR_Y);
+    const s = reach / sp.texture.width;
+    sp.scale.set(s, s);
+    sp.rotation = angle;
+    sp.position.set(x, y);
+    sp.alpha = alpha;
+  }
+
+  /**
+   * 翼の薙ぎ(社長支給素材 V3-3)。**分類①**: 判定の帯1本につき1枚、付け根=帯の始点・
+   * 翼端=帯の終点に合わせる(翼撃は左右2本同時なのでスロットを2つ使う)。
+   * `flip`=左側の帯は上下ミラー(左右対称に見せる。判定は不変)。
+   */
+  private drawWingSwipe(view: ActorView, idx: number, fx: number, fy: number, tx: number, ty: number, alpha: number, flip: boolean): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) return;
+    const sp = this.atkArtSprite(view, idx, 'fx/wing-swipe');
+    if (!sp) return;
+    sp.anchor.set(WING_ANCHOR_X, WING_ANCHOR_Y);
+    const len = Math.hypot(tx - fx, ty - fy) || 1;
+    const s = len / (sp.texture.width * (1 - WING_ANCHOR_X)); // 付け根→右端 が帯の長さになる
+    sp.scale.set(s, flip ? -s : s);
+    sp.rotation = Math.atan2(ty - fy, tx - fx);
+    sp.position.set(fx, fy);
+    sp.alpha = alpha;
+  }
+
+  /**
+   * 伸びる触手(社長支給素材 V3-4)。**分類①=カプセル判定に沿って回転・伸長**(台帳の指定どおり)。
+   * 幅 = 現在の伸び(0→判定の長さ)、高さ = 判定の太さ(2*halfWidth)そのもの。
+   * 根元は素材の左端なので、アンカーを帯の始点に置けば「根元から先端へ伸びる」がそのまま出る。
+   */
+  private drawTentacle(view: ActorView, fx: number, fy: number, angle: number, len: number, halfWidth: number, alpha: number): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01 || len <= 1) return;
+    const sp = this.atkArtSprite(view, ATK_ART_TENTACLE, 'fx/tentacle-reach');
+    if (!sp) return;
+    sp.anchor.set(TENTACLE_ANCHOR_X, TENTACLE_ANCHOR_Y);
+    sp.rotation = angle;
+    sp.width = len;
+    sp.height = halfWidth * 2;
+    sp.position.set(fx, fy);
+    sp.alpha = alpha;
+  }
+
+  /**
+   * 偶像の拳(社長支給素材 V3-5)。**分類①**: 判定(短い帯)の上を、突き出しに合わせて
+   * 拡大しながら迫る(正面構図が活きる使い方=台帳の指定)。素材はナックルが下端なので、
+   * ローカル +y が突く方向 → rotation = 角度 - 90°。
+   */
+  private drawIdolFist(view: ActorView, x: number, y: number, angle: number, width: number, alpha: number): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) return;
+    const sp = this.atkArtSprite(view, ATK_ART_FIST, 'fx/idol-fist');
+    if (!sp) return;
+    sp.anchor.set(0.5, 0.5);
+    const s = width / sp.texture.width;
+    sp.scale.set(s, s);
+    sp.rotation = angle - Math.PI / 2;
+    sp.position.set(x, y);
+    sp.alpha = alpha;
+  }
+
+  /**
+   * 地割れ(社長支給素材 V4-1)。**分類②=派手さの絵**(判定ゼロ)なので、砂埃と同じく
+   * 判定より大きく出す(呼び出し側は砂埃と同じ半径=既にDUST_SCALE込みの値を渡す)。
+   * 床の傷なので groundLayer の**最背面**(addChildAt 0)へ置き、影・砂埃の下に敷く。
+   * tint は掛けない(爪痕D-2と同じ考え方=傷は素材そのままの濃さが正しい)。
+   */
+  private crackPool: Sprite[] = [];
+  private crackUsed = 0;
+  private drawGroundCrack(x: number, y: number, radius: number, prog: number, seed: number): void {
+    if (!FX_RING_ENABLED) return;
+    const tex = getTexture('fx/ground-crack');
+    if (!tex) return;
+    const alpha = prog < GROUND_CRACK_FADE_FROM
+      ? 1
+      : Math.max(0, 1 - (prog - GROUND_CRACK_FADE_FROM) / (1 - GROUND_CRACK_FADE_FROM));
+    if (alpha <= 0.01) return;
+    let sp = this.crackPool[this.crackUsed];
+    if (!sp) {
+      sp = new Sprite();
+      sp.anchor.set(0.5, 0.5);
+      this.L.groundLayer.addChildAt(sp, 0);
+      this.crackPool[this.crackUsed] = sp;
+    }
+    this.crackUsed++;
+    if (sp.texture !== tex) sp.texture = tex;
+    // 走り出しの12%だけ「割れて広がる」(以後は据え置き=床の傷は動かない)。
+    const open = 0.72 + 0.28 * Math.min(1, prog / 0.12);
+    sp.width = radius * 2 * open;
+    sp.height = radius * 2 * open;
+    // 同じ場所で何度も割れても同じ絵に見えないよう、決定的ジッターで回す(チラつかない)。
+    sp.rotation = this.dustJitterHash(seed, x + y, 5) * Math.PI * 2;
+    sp.position.set(x, y);
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
+  /**
+   * 「着地衝撃・踏み鳴らし」という**動作**に地割れを敷く共通配線(v0.25.2426の教訓=技ではなく動作で洗う)。
+   * 砂埃と同じ latch の作法(溜め/滞空の立ち上がりで着弾点と時刻を焼き付け、着弾から再生)だが、
+   * 床の傷は砂埃より長く残す(GROUND_CRACK_MS)ので**別のlatch**にしてある(砂埃の尺は1msも変えない)。
+   */
+  private latchGroundCrack(key: string, active: boolean, toImpact: number, now: number, at: () => [number, number, number]): void {
+    const total = toImpact + GROUND_CRACK_MS;
+    const L = this.latchFx(key, active, total, now, () => {
+      const [x, y, r] = at();
+      return [x, y, r, total > 0 ? toImpact / total : 0];
+    });
+    if (L && L.t >= L.d[3]) {
+      const p = L.d[3] < 1 ? (L.t - L.d[3]) / (1 - L.d[3]) : 0;
+      this.drawGroundCrack(L.d[0], L.d[1], L.d[2], p, L.t0);
+    }
   }
 
   private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number } | null, now: number) {
@@ -12045,6 +12559,13 @@ export class PixiScene {
       }
       case 'enemy_bolt': {
         if (p.reflected) break;
+        // FX-V3V4(V3-6): 植物の弾は専用絵(種)へ差し替える。中身の塗りはスプライトが担うが、
+        // **判定の縁だけは赤いまま**残す(「赤=当たる」という既存の語彙を消さないため。
+        // 縁の半径=p.width/2=当たり判定そのもの)。
+        if (plantSeedArt(p)) {
+          g.circle(0, 0, p.width / 2).stroke({ width: 1.5, color: 0xb91c1c, alpha: 0.55 });
+          break;
+        }
         g.circle(0, 0, p.width / 2).fill({ color: 0xb91c1c });
         g.circle(0, 0, p.width / 3).fill({ color: 0xfca5a5 });
         break;
