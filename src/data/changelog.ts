@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2472',
+    items: [
+      'ゲーム内容の変更はありません(テスト運用の教訓を開発台帳へ記録)。',
+    ],
+  },
+  {
     version: '0.25.2471',
     items: [
       '守護霊の弾が通常どおり雑魚にも当たるようになりました(雑魚回避で射線が通るため、すり抜けを撤回)。',
