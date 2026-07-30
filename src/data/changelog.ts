@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2550',
+    items: [
+      'ゲーム内容の変更はありません(撃破リザルトの年表・守護霊メニューの実装バッチを発注)。',
+    ],
+  },
+  {
     version: '0.25.2549',
     items: [
       'ゲーム内容の変更はありません(配布方針の確定: 最終形はアプリ配布・現在のWeb版は開発テスト用)。',
