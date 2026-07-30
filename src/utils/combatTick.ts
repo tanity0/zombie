@@ -107,11 +107,11 @@ const findGhostAlly = () => useGameStore.getState().summons.find(s => s.kind ===
 // (プレイヤーのdamagePlayerと同じ引数の意味)。省略時はノックバックなし=従来挙動。
 const damageGhostAllyByBossMove = (
   ghostId: string, amount: number, burst?: (x: number, y: number) => void,
-  fromX?: number, fromY?: number,
+  fromX?: number, fromY?: number, source?: string,
 ): void => {
   const before = useGameStore.getState().summons.find(s => s.id === ghostId);
   if (!before) return;
-  useGameStore.getState().damageSummon(ghostId, amount, fromX, fromY);
+  useGameStore.getState().damageSummon(ghostId, amount, fromX, fromY, source);
   const after = useGameStore.getState().summons.find(s => s.id === ghostId);
   if (burst && after && after.health < before.health) {
     burst(after.x + after.width / 2, after.y + after.height / 2);
@@ -126,7 +126,7 @@ const damageGhostAllyByBossMove = (
  */
 export const applyGhostAllyCapsuleHit = (
   fx0: number, fy0: number, tx0: number, ty0: number, halfWidth: number, damage: number,
-  burst?: (x: number, y: number) => void,
+  burst?: (x: number, y: number) => void, source?: string,
 ): void => {
   const ghost = findGhostAlly();
   if (!ghost) return;
@@ -134,7 +134,7 @@ export const applyGhostAllyCapsuleHit = (
   const gr = Math.max(ghost.width, ghost.height) / 2;
   if (distToSegment({ x: gcx, y: gcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= halfWidth + gr) {
     // 被弾KBの源=技の起点(ボス側)=プレイヤー側のカプセル技被弾と同じ「飛んできた方から弾かれる」向き。
-    damageGhostAllyByBossMove(ghost.id, damage, burst, fx0, fy0);
+    damageGhostAllyByBossMove(ghost.id, damage, burst, fx0, fy0, source ?? 'capsule');
   }
 };
 
@@ -231,7 +231,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           if (gClaim) {
             applyGhostCounterEffect(owner, gacx, gacy, { claim: gClaim, sfxGain: npcSfxDistGain(gacx, gacy, bpcx, bpcy, useGameStore.getState().camera, useGameStore.getState().gameBounds) }, (key, gain) => fx.playSfx(key, gain));
           } else {
-            damageGhostAllyByBossMove(ghostAlly.id, b.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3), b.x, b.y);
+            damageGhostAllyByBossMove(ghostAlly.id, b.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3), b.x, b.y,
+              `blast:${b.moveKey ?? (b.capsule ? 'capsule' : 'circle')}`);
           }
         }
       }
@@ -370,7 +371,8 @@ export const applyGlenFloorDamage = (fx: CombatEffects): void => {
           if (h.floorUntil === undefined) continue;
           if (gameTime < h.fireAt || gameTime >= h.floorUntil) continue;
           if (Math.hypot(gcx - h.x, gcy - h.y) > h.radius + gr) continue;
-          damageGhostAllyByBossMove(ghostAlly.id, e.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3), h.x, h.y);
+          damageGhostAllyByBossMove(ghostAlly.id, e.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3), h.x, h.y,
+            `floor:${h.moveKey ?? 'giant'}`);
           break outer; // 1フレーム1ヒット(プレイヤー側と同じ節度)
         }
       }
@@ -590,7 +592,8 @@ export const applyEnemyProjectileHits = (
           continue;
         }
         damageGhostAllyByBossMove(ghostAlly.id, proj.damage * rnMult, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3),
-          proj.x + proj.width / 2, proj.y + proj.height / 2);
+          proj.x + proj.width / 2, proj.y + proj.height / 2,
+          `proj:${proj.srcMoveKey ?? proj.ownerType ?? 'unknown'}`);
         useGameStore.getState().removeProjectile(proj.id);
       }
       // 成立演出は1フレーム1回(プレイヤー側の reflectedAny と同じ流儀)。SEはゴースト位置で距離減衰。

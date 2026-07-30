@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.2546 — 守護霊の被弾源ログ(?ghostlog=1)実装+テスト依頼#7(設計チャット直接実装)【2026-07-31 06:46 JST】
+
+- **社長Go(提案1)**: 被弾源の内訳を確定してからピンポイント修正する方針。
+- **実装(記録専用・挙動不変)**: damageSummonに`source?`タグ引数を追加し、`?ghostlog=1`の時だけ
+  `[GHOSTDMG] <時刻> <源> dmg= hp→` をconsole出力。全被弾入口をタグ化:
+  contact:(体当たり・useGameLoop接触)/blast:(円AoE=噛みつき等・moveKey付き)/
+  capsule:(mimir-laser/thor-issen/tsuki/harai)/proj:(srcMoveKey)/floor:(巨人床)。
+  タグ漏れ経路は`untagged`と出る=想定外経路の検出器を兼ねる。
+- **事前の読み(コードから)**: ミーミルbiteは本体中心の円AoE半径92=間合い180のオービットには本来
+  届かない→疑いの本命は**接触(巨体248pxの移動で重なる)**。接触回避は現状意図的に無効(提案2=
+  有効化は社長へ説明済み・裁定待ち)。
+- テスト依頼#7(10分・2ラン・?bossnow=1込みの手順改良版)をREQUEST.mdへ。
+- 検証: typecheck 0・lintエラー0。変更: gameStore/combatTick/useGameLoop(タグのみ)+REQUEST.md+版管理3。
+
 ## v0.25.2545 — テスト結果#6の分析(文書のみ)【2026-07-31 06:30 JST】
 
 - **P2噛みつき顎FX=✅**(bite-windup中に上下顎の描画をスクショ確認・白フラッシュ直後に見える)。

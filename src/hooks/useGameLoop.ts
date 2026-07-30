@@ -4967,7 +4967,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // G4b(§2.9): ビーム帯はゴースト(守護霊)にも当たる(同じ線分±半太さ・同じダメージ。
                 // 継続ダメージの間引きはdamageSummonのi-frame=プレイヤーのdamagePlayer i-frameと同型)。
                 applyGhostAllyCapsuleHit(bcx, bcy, bcx + ux * MIMIR_LASER_RANGE, bcy + uy * MIMIR_LASER_RANGE,
-                  MIMIR_LASER_HALF_WIDTH, MIMIR_LASER_DAMAGE, (x, y) => spawnBurst(x, y, '#bae6fd', 3));
+                  MIMIR_LASER_HALF_WIDTH, MIMIR_LASER_DAMAGE, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:mimir-laser');
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   if (MIMIR_SCRIPT_ENABLED) { patch.bossState = 'laser-recover'; patch.bossStateUntil = newGameTime + MIMIR_LASER_RECOVER_MS; }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
@@ -5134,7 +5134,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 // G4b(§2.9): 一閃はゴースト(守護霊)にも当たる(同じ線分カプセル・同じboss.damage・同じフレーム。
                 // 連続ヒットはdamageSummonのi-frameが間引く。プレイヤー側の判定は上のブロックのまま1bit不変)。
-                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_ISSEN_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3));
+                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_ISSEN_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-issen');
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   // §6.28-10「全技に硬直(recover)を新設」: 硬直900ms・青白tint(描画側)。既存のリード/
                   // 射程/半幅/カウンター等は無改変。?thorscript=0の間は現行どおり即chase復帰。
@@ -5189,7 +5189,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
                 // G4b(§2.9): 突きもゴーストに当たる(一閃と同じ作法)。
-                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_TSUKI_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3));
+                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_TSUKI_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-tsuki');
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   if (THOR_SCRIPT_ENABLED) { patch.bossState = 'tsuki-recover'; patch.bossStateUntil = newGameTime + THOR_TSUKI_RECOVER_MS; }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
@@ -5226,7 +5226,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
                 // G4b(§2.9): 払いもゴーストに当たる(一閃と同じ作法)。
-                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_HARAI_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3));
+                applyGhostAllyCapsuleHit(fx, fy, tx, ty, THOR_HARAI_HALF_WIDTH, boss.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:thor-harai');
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossCircleDir = 1; // 払い後は既定の時計回りへ復帰(社長指示・据え置き)
                   if (THOR_SCRIPT_ENABLED) { patch.bossState = 'harai-recover'; patch.bossStateUntil = newGameTime + THOR_HARAI_RECOVER_MS; }
@@ -9344,7 +9344,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const fromEnemy = hitFrom ? enemies.find(e => e.id === hitFrom.enemyId) : undefined;
               useGameStore.getState().damageSummon(summonId, dmg,
                 fromEnemy ? fromEnemy.x + fromEnemy.width / 2 : undefined,
-                fromEnemy ? fromEnemy.y + fromEnemy.height / 2 : undefined);
+                fromEnemy ? fromEnemy.y + fromEnemy.height / 2 : undefined,
+                `contact:${fromEnemy?.type ?? 'unknown'}`);
               // 実際にダメージが入った時(無敵中でない)だけ被弾バースト。シェイクは描画側が lastHit で出す。
               const after = useGameStore.getState().summons.find(su => su.id === summonId);
               if (before && after && after.health < before.health) {

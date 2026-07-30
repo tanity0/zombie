@@ -1834,6 +1834,10 @@ export const PLAYER_BASE_HP = 120;
 export const PLAYER_HITBOX = 28;
 const RELOAD_MOVE_SPEED_MULT = 1;
 export const INVULN_MS = 700;
+// テスト診断フラグ(依頼#7・v0.25.2546): ?ghostlog=1 で守護霊の被弾源タグをconsoleへ出す。
+// 記録専用=判定・挙動・描画には一切影響しない(window不在のヘッドレステストでは常にfalse)。
+const GHOST_DMG_LOG_ENABLED =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('ghostlog') === '1';
 // キャラ登場演出。2段構成:
 //  フェーズA(ヘリ飛来): 超遠く・高くから小さく飛来し、降下しながら拡大して着地ダッシュの開始点へ。
 //  フェーズB(ジャンプ着地): 従来のロックマン的ダッシュ着地(左から低く猛スピード→中央着地)。
@@ -3396,7 +3400,8 @@ interface GameState {
   updateSummons: (deltaTime: number) => void;
   // fromX/fromY=ダメージ源の位置(省略可)。守護霊(ghost-ally)の被弾ノックバックの向きに使う
   // (プレイヤーのdamagePlayerと同じ引数の意味・v0.25.2514 監査項目7)。
-  damageSummon: (id: string, amount: number, fromX?: number, fromY?: number) => void;
+  // source=被弾源タグ(記録専用・?ghostlog=1のconsole出力にだけ使う。判定・挙動には一切影響しない)。
+  damageSummon: (id: string, amount: number, fromX?: number, fromY?: number, source?: string) => void;
 
   // Weapon actions
   fireWeapons: (currentTime: number) => void;
@@ -6369,8 +6374,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  damageSummon: (id, amount, fromX, fromY) => {
+  damageSummon: (id, amount, fromX, fromY, source) => {
     const now = Date.now();
+    const gtNow = get().gameTime; // ?ghostlog=1 の診断出力用(下)。read-onlyで挙動不変。
     // BOT_AND_GHOST.md G2: ghost-ally(kind='ghost-ally')もHP制なので normal と同じ被弾/消滅の枠へ
     // 含める(i-frame・health<=0で消滅=「ゴーストHP0で解散」の土台)。rareは対象外のまま(既存挙動不変)。
     const isHittable = (s: Summon): boolean => s.kind === 'normal' || s.kind === 'ghost-ally';
@@ -6406,6 +6412,11 @@ export const useGameStore = create<GameState>((set, get) => ({
               knockbackVy: dy * PLAYER_KNOCKBACK_SPEED,
               knockbackUntil: now + PLAYER_KNOCKBACK_MS,
             };
+          }
+          // テスト診断(依頼#7・?ghostlog=1): 守護霊の被弾源の内訳をconsoleへ(記録専用・挙動不変)。
+          if (GHOST_DMG_LOG_ENABLED && s.kind === 'ghost-ally') {
+            console.log('[GHOSTDMG]', `${Math.round(gtNow / 100) / 10}s`, source ?? 'untagged',
+              `dmg=${Math.round(dealt)}`, `hp→${Math.round(s.health - dealt)}`);
           }
           return { ...s, health: s.health - dealt, lastHit: now, ...kb };
         })

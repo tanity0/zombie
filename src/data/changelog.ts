@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2546',
+    items: [
+      'ゲーム内容の変更はありません(開発用: 守護霊の被弾源を調べるログを追加)。',
+    ],
+  },
+  {
     version: '0.25.2545',
     items: [
       'ゲーム内容の変更はありません(テスト結果#6の分析: 新エフェクト・POI改修・武器庫=銃は合格。守護霊の被弾源を特定する調査を継続)。',
