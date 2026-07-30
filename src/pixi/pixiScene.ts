@@ -1725,6 +1725,8 @@ export class PixiScene {
   // 守護霊の頭上プレイヤー名(v0.25.2477)。Pixi Text 1枚を保持して使い回し、glyphの再ラスタライズは
   // 「名前が変わった時だけ」(毎フレームの new Text / 文言変更はCLAUDE.md実測の最重量経路=禁忌)。
   private ghostNameLabel: Text | null = null;
+  // 守護霊のカウンター窓リング(v0.25.2532・社長裁定「カウンター待ち 出しましょう」)。単一プール。
+  private ghostCounterRing: Sprite | null = null;
   // 白黒テクスチャのキャッシュ(テクスチャ名→事前ベイクした RenderTexture)。毎フレームのフィルタ処理を避ける。
   private grayTexCache = new Map<string, Texture>();
   // 被弾フラッシュ用「真っ白シルエット」テクスチャのキャッシュ(元Texture→白ベイク)。加算で重ねると、
@@ -8211,6 +8213,44 @@ export class PixiScene {
     } else if (this.ghostNameLabel) {
       this.ghostNameLabel.visible = false; // 名前が無い(想定外)フレームは出さない
     }
+
+    // 守護霊のカウンター窓リング(社長裁定v0.25.2532「カウンター待ち 出しましょう」)。
+    // 窓=ghostCounterWindowEnd(近接スイングで開く・COUNTER_WINDOWはプレイヤーと同定数・Date.now基準)。
+    // 見た目はプレイヤーの窓リング(counterReachRing)と同じ焼きテクスチャ+同じ約140msフラッシュ。
+    // 半径はゴースト近接リーチの視覚用複製値74(ghostDriverのGHOST_MELEE_RANGEと同値。1542行の
+    // 距離アンカーと同じ既存慣例。刀ビルドのリーチ差は実機確認後に調整=叩き台)。
+    // クレセント(狙い方向の刃)はゴーストでは省略しリングのみ。負荷: 1/10(単一プールsprite・140msのみ)。
+    if (this.ghostCounterRing) this.ghostCounterRing.visible = false; // 既定OFF(下で出す時だけON)
+    const gWinEnd = s.ghostCounterWindowEnd ?? 0;
+    if (now <= gWinEnd) {
+      const gOpenAt = gWinEnd - COUNTER_WINDOW;
+      const gt = (now - gOpenAt) / 140;
+      if (gt >= 0 && gt < 1) {
+        const gr = 74;
+        let base = RING_TEX_BASES[RING_TEX_BASES.length - 1];
+        for (const b of RING_TEX_BASES) { if (gr <= b * 1.42) { base = b; break; } }
+        let sp = this.ghostCounterRing;
+        if (!sp) {
+          sp = new Sprite(getCounterRingTexture(base));
+          sp.anchor.set(0.5);
+          sp.blendMode = 'add';
+          (sp as unknown as { __ringBase?: number }).__ringBase = base;
+          this.L.actorLayer.addChild(sp);
+          this.ghostCounterRing = sp;
+        }
+        if ((sp as unknown as { __ringBase?: number }).__ringBase !== base) {
+          sp.texture = getCounterRingTexture(base);
+          (sp as unknown as { __ringBase?: number }).__ringBase = base;
+        }
+        sp.position.set(footX, s.y + s.height / 2);
+        sp.scale.set(gr / base);
+        sp.rotation = faceSign === 1 ? 0 : Math.PI; // 太い側=向いている方(ghostFacingは左右のみ)
+        sp.tint = 0x9ecbff; // プレイヤーの窓リングと同じ青白
+        sp.alpha = 0.9 * (1 - gt) * GHOST_ALLY_ALPHA; // 霊体の薄さも乗せる
+        sp.zIndex = footY;
+        sp.visible = true;
+      }
+    }
   }
 
   // 守護霊の銃口フラッシュ(drawMuzzleFlashの守護霊版)。本体の muzzleSprite と分けて1枚持つ
@@ -8246,6 +8286,7 @@ export class PixiScene {
     }
     this.hideGhostMuzzle();
     if (this.ghostNameLabel) this.ghostNameLabel.visible = false; // 頭上名も一緒に消す(v0.25.2477)
+    if (this.ghostCounterRing) this.ghostCounterRing.visible = false; // 窓リングも一緒に消す(v0.25.2532)
     this.ghostAnim = null;
     this.ghostMuzzleLatch = null;
     this.ghostMuzzlePrevFired = 0;
