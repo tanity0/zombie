@@ -124,14 +124,19 @@ import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCirc
 import { armoryPos as armorySpot, resolveArmoryCollision, isInArmoryCircle, tickArmoryDwell, ARMORY_SCRAP_COST } from '../world/armory';
 import { policePos as policeSpot, resolvePoliceCollision } from '../world/police';
 import { assignDetourSectors } from '../world/detourPoi';
-import { bossSectorIndex } from '../world/pois';
+import { bossSectorIndex, poiSectorIndex } from '../world/pois';
+// PACING_PUZZLE.md §6.24-UX(POI-UX): 寄り道POIの通信/入手トースト/解放帯の文言とゲート(純関数)。
+import {
+  emptyPoiIntelShown, poiIntelLine, shouldShowPoiIntel, pickPoiIntelSpeaker,
+  poiUnlockBandText, POI_BAND_MS, POI_VACCINE_NAME, POI_VACCINE_DESC, type PoiKind,
+} from '../utils/detourPoiUx';
 import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled } from '../world/torches';
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
-import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, rollEquipment, armoryTargetSlot } from '../data/equipment';
+import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, rollEquipment, armoryTargetSlot, equipmentDescription } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import { isLeashableBoss, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT } from '../utils/bossEngagement';
@@ -504,6 +509,29 @@ const PRAISE_WITNESS_DIST = 700;      // 護衛がプレイヤーからこの距
 // 軍人は拠点固定ではなく「制圧順」で割り当てる(どの拠点でも1人目=エドガー)。
 const soldierByIndex = (idx: number): { name: string; capture: string; retreat: string } | null =>
   idx >= 0 ? BASE_SOLDIERS[idx % BASE_SOLDIERS.length] : null;
+
+// PACING_PUZZLE.md §6.24-UX 確定要件1: 寄り道POIの進入/発動時の通信(1ラン1回/種)。
+// **新しいUIは作らない**。既存の左上の会話(NpcDialogue)キューへ1行積む=長文が折り返せて、
+// 同時に出る帯バナー(eventBanner)を潰さない(バナーは1枠しかないので上書きになる)。
+// 話者はその方角を担当する護衛(既存の「担当NPCが喋る」慣例)。護衛が1人も居ない出撃
+// (ストーリーボス等)だけは既存のバナー(=モデル無しの通信)へフォールバックする。
+// 戻り値は set() にそのまま混ぜられるパッチ(既に出した種なら空=何もしない)。
+const poiIntelPatch = (
+  state: GameState,
+  kind: PoiKind,
+  pos: { x: number; y: number } | null,
+): Partial<GameState> => {
+  if (!pos || !shouldShowPoiIntel(state.poiIntelShown, kind)) return {};
+  const shown = { ...state.poiIntelShown, [kind]: true };
+  const text = poiIntelLine(kind);
+  const speaker = pickPoiIntelSpeaker(state.escorts, poiSectorIndex(pos));
+  const sol = speaker ? soldierByIndex(speaker.soldierIndex) : null;
+  if (!sol) {
+    return { poiIntelShown: shown, eventBannerText: text, eventBannerUntil: state.gameTime + 4000 };
+  }
+  // キュー直積み(tryNpcLine のCD/詰まり防止キャップを通さない)=1ラン1回の通信を取りこぼさない。
+  return { poiIntelShown: shown, npcDialogueQueue: [...state.npcDialogueQueue, { name: sol.name, text }] };
+};
 const createBaseSites = (): BaseSite[] => {
   const sites: BaseSite[] = [];
   for (let i = 0; i < BASE_SITE_COUNT; i++) {
@@ -3035,7 +3063,15 @@ interface GameState {
   };
   // Most recent weapon the player acquired (drop/crate). The HUD shows a
   // 5-second "got a weapon" popup off this. null until the first pickup.
-  lastWeaponGet: { name: string; at: number; color?: string; kind?: 'weapon' | 'treasure' | 'data'; weaponKey?: string; treasureVariant?: number } | null;
+  // PACING_PUZZLE.md §6.24-UX 確定要件2: 寄り道POIの入手(警察署スキル/武器庫装備/病院ワクチン)も
+  // **同じトースト枠**で出す(kind: 'poi-skill' | 'poi-equip' | 'poi-vaccine')。
+  // desc=効果説明1行(スキルはSKILLSのdesc・装備はequipmentDescriptionを流用=文章を二重管理しない)。
+  // note=但し書き(警察署スキルの「この出撃のみ」)。
+  lastWeaponGet: {
+    name: string; at: number; color?: string;
+    kind?: 'weapon' | 'treasure' | 'data' | 'poi-skill' | 'poi-equip' | 'poi-vaccine';
+    weaponKey?: string; treasureVariant?: number; desc?: string; note?: string;
+  } | null;
   // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
   // (melee-finisher impact pause). 0 = running.
   hitstopUntil: number;
@@ -3427,6 +3463,9 @@ interface GameState {
   police: { x: number; y: number } | null;              // この出撃の警察署の位置(null=この出撃には無い)
   policeTaken: boolean;                                 // 専用スキル入手済み(以後アリーナも矢印も出さない)
   policeTakenAt: number;                                // 入手した gameTime(描画のフェードアウト用)
+  // §6.24-UX 確定要件1: 進入時の通信を出したか(1ラン1回/種)。resetGameで戻す。
+  poiIntelShown: Record<PoiKind, boolean>;
+  showPoiIntel: (kind: PoiKind) => void;                // 進入/発動時の通信を1回だけ出す(既存の左上会話/バナーを流用)
   kogarasuUnlockedThisRun: boolean;                     // このランでトール初回討伐=小烏丸を永続解禁したか(リザルトの解禁ポップアップ用)
   debugLoopError: string;                               // 診断: ゲームループ本体で投げられた例外の要約(?debug=1 表示)
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
@@ -3759,6 +3798,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   police: null,
   policeTaken: false,
   policeTakenAt: 0,
+  poiIntelShown: emptyPoiIntelShown(),
   kogarasuUnlockedThisRun: false,
   debugLoopError: '',
   startWithTestStraps: false,
@@ -11437,18 +11477,29 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!pos || state.hospitalTaken || state.gameWon) return {};
       const inside = isInHospitalCircle(state.player, pos);
       const { dwellMs, done } = tickHospitalDwell(state.hospitalDwellMs, inside, deltaTime * 1000);
+      // §6.24-UX 確定要件1: サークルに入った瞬間、「ここが何で・何をすれば・何が貰えるか」を通信で1回。
+      const justEntered = dwellMs > 0 && state.hospitalDwellMs <= 0;
+      const intel = justEntered ? poiIntelPatch(state, 'hospital', pos) : {};
       if (done) {
         return {
+          ...intel,
           hospitalDwellMs: dwellMs,
           hospitalTaken: true,
           hospitalTakenAt: state.gameTime,
           player: { ...state.player, vaccineRevives: state.player.vaccineRevives + 1 },
-          eventBannerText: 'ワクチンを入手',
-          eventBannerUntil: state.gameTime + 2000,
+          // §6.24-UX 確定要件2: 旧バナー「ワクチンを入手」→ 武器取得と同じトースト(効果説明つき)へ置換。
+          lastWeaponGet: {
+            name: POI_VACCINE_NAME, at: Date.now(), color: '#86efac',
+            kind: 'poi-vaccine', desc: POI_VACCINE_DESC,
+          },
+          // §6.24-UX 確定要件3: 解放をゾーン到達と同型の帯(WallBand)で出す。
+          wallBandText: poiUnlockBandText('hospital'),
+          wallBandUntil: Date.now() + POI_BAND_MS,
+          wallBandColor: 'white' as const,
         };
       }
-      if (dwellMs === state.hospitalDwellMs) return {}; // 円外で0のまま=書き込み省略(毎フレのsetを避ける)
-      return { hospitalDwellMs: dwellMs };
+      if (dwellMs === state.hospitalDwellMs) return intel; // 円外で0のまま=書き込み省略(毎フレのsetを避ける)
+      return { ...intel, hospitalDwellMs: dwellMs };
     });
   },
 
@@ -11469,8 +11520,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ①円に入った瞬間 ②溜め切った瞬間 の2回、不足していることと必要量/所持量を出す。
       const shortOnScrap = state.player.straps < ARMORY_SCRAP_COST;
       const justEntered = dwellMs > 0 && state.armoryDwellMs <= 0;
+      // §6.24-UX 確定要件1(裁定a): サークルに入った瞬間、取引内容(スクラップいくらで何と交換か)を
+      // 含む通信を1回。**不足時の警告バナーは従来どおり毎回出す**(別枠なので両立する)。
+      const intel = justEntered ? poiIntelPatch(state, 'armory', pos) : {};
       if (shortOnScrap && (justEntered || done)) {
         return {
+          ...intel,
           armoryDwellMs: dwellMs,
           eventBannerText: `武器庫: スクラップ${ARMORY_SCRAP_COST}が必要 (所持 ${Math.floor(state.player.straps)})`,
           eventBannerUntil: state.gameTime + 2200,
@@ -11484,17 +11539,35 @@ export const useGameStore = create<GameState>((set, get) => ({
           def.id,
         );
         return {
+          ...intel,
           armoryDwellMs: dwellMs,
           armoryTaken: true,
           armoryTakenAt: state.gameTime,
           player: paidPlayer,
           gameStats: { ...state.gameStats, strapsSpent: state.gameStats.strapsSpent + ARMORY_SCRAP_COST },
-          eventBannerText: `武器庫: ${def.name}を入手`,
-          eventBannerUntil: state.gameTime + 2000,
+          // §6.24-UX 確定要件2: 旧バナー「武器庫: ◯◯を入手」→ 武器取得と同じトースト(効果1行つき)へ置換。
+          // 効果説明は既存の equipmentDescription を流用(装備の文章を二重管理しない)。
+          lastWeaponGet: {
+            name: def.name, at: Date.now(), color: '#fbbf24',
+            kind: 'poi-equip', desc: equipmentDescription(def),
+          },
+          // §6.24-UX 確定要件3: 解放をゾーン到達と同型の帯(WallBand)で出す。
+          wallBandText: poiUnlockBandText('armory'),
+          wallBandUntil: Date.now() + POI_BAND_MS,
+          wallBandColor: 'white' as const,
         };
       }
-      if (dwellMs === state.armoryDwellMs) return {}; // 円外で0のまま=書き込み省略(毎フレのsetを避ける)
-      return { armoryDwellMs: dwellMs };
+      if (dwellMs === state.armoryDwellMs) return intel; // 円外で0のまま=書き込み省略(毎フレのsetを避ける)
+      return { ...intel, armoryDwellMs: dwellMs };
+    });
+  },
+
+  // §6.24-UX 確定要件1: 寄り道POIの進入/発動時の通信(1ラン1回/種)。病院/武器庫は各 update*
+  // の中で同じ poiIntelPatch を混ぜているので、ここを呼ぶのは**警察署(アリーナ発動時=useGameLoop)**。
+  showPoiIntel: (kind) => {
+    set(state => {
+      const pos = kind === 'police' ? state.police : kind === 'armory' ? state.armory : state.hospital;
+      return poiIntelPatch(state, kind, pos);
     });
   },
 
@@ -12573,6 +12646,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         police: detourSectors ? policeSpot(detourSectors.police) : null,
         policeTaken: false,
         policeTakenAt: 0,
+        poiIntelShown: emptyPoiIntelShown(), // §6.24-UX: 進入時の通信は「1ラン1回/種」=新ランで戻す
+
         kogarasuUnlockedThisRun: false,
         labDoors: runDoors,
         labButtons: runButtons,

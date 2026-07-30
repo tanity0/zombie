@@ -46,8 +46,15 @@ describe('台帳の体裁(全チュートリアル共通)', () => {
     expect(new Set(TUTORIALS.map(t => t.id)).size).toBe(TUTORIALS.length);
   });
 
-  it('全件に手本(img)が付いている', () => {
-    for (const t of TUTORIALS) expect(t.img, `${t.id} に手本が無い`).toBeTruthy();
+  // 手本(img)は原則必須。**手本待ち**のものだけをここに明示列挙する(黙って抜けないように)。
+  // 'detour-poi'(寄り道POI・§6.24-UX 裁定c): 実機収録は後日社長が用意する取り決めなので、
+  // 当面はテキストのみで成立する構成。手本が入ったらこの配列から外すこと。
+  const AWAITING_SAMPLE: string[] = ['detour-poi'];
+  it('全件に手本(img)が付いている(手本待ちの明示列挙を除く)', () => {
+    for (const t of TUTORIALS) {
+      if (AWAITING_SAMPLE.includes(t.id)) continue;
+      expect(t.img, `${t.id} に手本が無い`).toBeTruthy();
+    }
   });
 
   // 「本文に数値を書かない」(後でバランス調整した時に文面が嘘にならないようにする)。

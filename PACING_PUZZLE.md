@@ -5086,7 +5086,9 @@ windupを1000msへ伸ばす必要は無く、伸ばすと社長が実機で慣�
 
 ---
 
-## §6.24-UX 寄り道POIの体験改修「POI-UX」(社長指示2026-07-30・後日実装のバックログ)
+## §6.24-UX 寄り道POIの体験改修「POI-UX」(社長指示2026-07-30・**実装済み v0.25.2531**)
+> ステータス: 確定要件1〜3+裁定c(チュートリアル)= **実装済み(v0.25.2531)**。詳細は本節末の「実装結果」。
+> 提案b(装備置換の明示)のみ**社長採否待ち=未実装**。
 
 社長報告:「POIが、そこにたどり着いて何が何の効果があったのか全然わからない。組み立てが雑」。
 設計チャットが実査した現状の全数と、確定要件+提案。**実装はパリティ列の後(隙間タスク)。**
@@ -5131,3 +5133,27 @@ windupを1000msへ伸ばす必要は無く、伸ばすと社長が実機で慣�
   equipment.ts armoryTargetSlot)。この事実を提示のうえ再諮問。
 - c. チュートリアル → **承認・条件確定**:「M1来た時に一度だけ」= M1初出撃時に表示・端末で1度だけ
   (M2型=台帳tutorials.ts+labTutorial型の発火純関数+tutorialArchive既読。本編ステージ扱い)。
+
+### 実装結果(v0.25.2531・バッチPOI-UX・Sonnetサブエージェント実装)
+**確定要件1〜3+裁定c(チュートリアル)を実装。提案bは社長採否待ちのため未着手(装備置換の明示は無し)。**
+ゲームプレイ(判定・報酬・値)は**1バイトも変えていない**=通知/表示の追加・置き換えのみ。
+
+| 要件 | 実装方式(流用した既存UI) |
+|---|---|
+| 1. 進入時の通信(1ラン1回/種) | **左上の会話(NpcDialogue)のキューへ1行直積み**。話者=その方角を担当する護衛(既存 `npcAreaEnterReact` の「担当NPCが喋る」慣例。居なければロスター先頭)。護衛が1人も居ない出撃(ストーリーボス等)だけ **eventBanner(モデル無しの通信)へフォールバック**。文言は§6.24-UXの叩き台のまま、**数値は定数から補間**(`ARMORY_SCRAP_COST`/`DETOUR_DWELL_MS`)。発火: 病院/武器庫=`updateHospital`/`updateArmory` のサークル進入(justEntered)、警察署=`useGameLoop` のアリーナ発動時に `showPoiIntel('police')`。ゲート=新state `poiIntelShown: Record<kind, boolean>`(resetGameで戻す)。 |
+| 2. 入手トースト(武器取得と同型) | `lastWeaponGet` を拡張(`kind: 'poi-skill'/'poi-equip'/'poi-vaccine'` + `desc`(効果1行) + `note`(但し書き))。**説明は既存定義を流用**(スキル=`SKILLS[key].desc`+`この出撃のみ`/装備=`equipmentDescription(def)`/ワクチン=固定文)。**旧eventBanner「ワクチンを入手」「武器庫: ◯◯を入手」は削除してトーストへ置換**(二重通知にしない)。**武器庫の不足時警告バナーは従来どおり残置**。警察署の現地浮き文字(スキルcallout)も残置。 |
+| 3. 解放の到達帯 | ゾーン到達と同じ**帯(WallBand)**を流用(`triggerWallBand` / store内は同フィールドへ直書き)。文言「警察署 解放」「武器庫 解放」「病院 解放」・色=white(金は宿敵出現の予約色なので使わない)・2800ms。 |
+| 4(裁定c). チュートリアル1枚 | 台帳 `src/data/tutorials.ts` に `id:'detour-poi'`(題「寄り道」)。本文=3種が何をくれる場所か+**矢印の色の意味**(緑=病院/琥珀=武器庫/青=警察署/赤=裏ボス)。**本文に数値なし**(テストで機械化)。発火=純関数 `src/utils/detourPoiTutorial.ts`(**stage-1のみ・POIが立つ出撃のみ・端末で1度だけ(loadSeenForGate)・開幕の会話/他ポップアップ/メニューには割り込まない**)。**手本メディアは無し**(後日社長が実機収録)=`m0Tutorial.test.ts` の「全件に手本」不変条件は**手本待ちの明示列挙(AWAITING_SAMPLE)**に変更して穴を可視化。 |
+
+- 新規ファイル: `src/utils/detourPoiUx.ts`(通信文言/1ラン1回ゲート/話者選択/帯文言=純関数)+
+  `src/utils/detourPoiTutorial.ts`(発火条件)。テスト `detourPoiUx.test.ts`(11)/`detourPoiTutorial.test.ts`(10)。
+- 変更ファイル: `gameStore.ts`(poiIntelShown/showPoiIntel/poiIntelPatch・updateHospital/updateArmory)、
+  `useGameLoop.ts`(警察署の通信/トースト/帯・POIチュートリアルの配線)、`GameHUD.tsx`(トーストのdesc/note対応・
+  長文の折り返し上限)、`tutorials.ts`(台帳1枚)、`m0Tutorial.test.ts`(上記の不変条件更新)。
+- **通信をNpcDialogue側にした理由**: eventBannerは**1枠しか無い**ため、警察署は同フレームの
+  「警察署 制圧開始」と食い合って必ずどちらかが消える。会話キューなら両方残り、長文も折り返せる。
+- 自己点検(規律5): 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に**抵触しない**
+  (スポーン/難度/報酬に触れていない=表示のみ)。負荷 **1/10**(イベント時のみのDOM更新・
+  per-frameの新規描画ゼロ・Reactの購読も既存の`lastWeaponGet`のみ)。
+- **★未決事項: なし**(要件1〜3は§6.24-UXで確定済み、裁定cも条件確定済み。提案bは社長採否待ちのため
+  意図的に未実装)。

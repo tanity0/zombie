@@ -1,5 +1,40 @@
 # Development Log
 
+## v0.25.2531 — バッチPOI-UX: 寄り道POIの体験改修(通信・入手トースト・解放帯・チュートリアル)【2026-07-30 23:36 JST】
+
+正本= PACING_PUZZLE.md §6.24-UX(社長報告「POIが、そこにたどり着いて何が何の効果があったのか
+全然わからない。組み立てが雑」)。**ゲームプレイ(判定・報酬・値)は一切変更なし=通知/表示の追加と置き換えのみ。**
+
+- **要件1 進入時の通信(1ラン1回/種)**: 既存の**左上の会話(NpcDialogue)キューへ直積み**。話者=その方角を
+  担当する護衛(既存 `npcAreaEnterReact` の慣例。居なければロスター先頭/護衛ゼロの出撃だけ eventBanner へ
+  フォールバック)。**eventBannerを主経路にしなかった理由**: バナーは1枠しかなく、警察署は同フレームの
+  「警察署 制圧開始」と食い合って必ず片方が消えるため。文言は§6.24-UXの叩き台どおりで、**数値は定数から
+  補間**(`ARMORY_SCRAP_COST`/`DETOUR_DWELL_MS`)=バランス調整で文面が嘘にならない。
+  発火: 病院/武器庫= `updateHospital`/`updateArmory` のサークル進入、警察署= アリーナ発動時に `showPoiIntel('police')`。
+  ゲート= 新state `poiIntelShown`(resetGameで戻す)。
+- **要件2 入手トースト(武器取得と同型・3種統一)**: `lastWeaponGet` を拡張(`kind:'poi-skill'/'poi-equip'/
+  'poi-vaccine'`+`desc`(効果1行)+`note`)。説明は**既存定義を流用**(`SKILLS[key].desc` / `equipmentDescription(def)`)
+  =文章を二重管理しない。**旧バナー「ワクチンを入手」「武器庫: ◯◯を入手」は削除してトーストへ置換**。
+  武器庫の**不足時警告バナーは残置**、警察署の現地浮き文字も残置(指示どおり)。
+- **要件3 解放の到達帯**: ゾーン到達と同じ帯(WallBand)を流用。「警察署 解放」「武器庫 解放」「病院 解放」・
+  色 white(金=宿敵出現の予約色は使わない)・2800ms。
+- **要件4(裁定c) チュートリアル1枚**: 台帳 `src/data/tutorials.ts` に `detour-poi`(題「寄り道」)。
+  本文=3種が何をくれる場所か+矢印の色の意味(緑/琥珀/青/赤)。**数値は書かない**(テストで固定)。
+  発火は純関数 `src/utils/detourPoiTutorial.ts`= **stage-1(M1)のみ・POIが立つ出撃のみ・端末で1度だけ
+  (loadSeenForGate)・開幕の会話/他ポップアップ/メニューには割り込まない**。手本メディアは無し(後日社長が収録)。
+- **既存の不変条件を1つ更新**: `m0Tutorial.test.ts` の「全件に手本(img)が付いている」は、手本待ちの
+  **明示列挙(AWAITING_SAMPLE=['detour-poi'])**を除外する形へ。黙って穴を開けず、収録後に配列から外す運用。
+- 新規: `src/utils/detourPoiUx.ts`(通信文言/ゲート/話者選択/帯文言)+`src/utils/detourPoiTutorial.ts`。
+  テスト新規21件(`detourPoiUx.test.ts` 11 / `detourPoiTutorial.test.ts` 10)。
+- 変更ファイル: `src/store/gameStore.ts` / `src/hooks/useGameLoop.ts` / `src/components/GameHUD.tsx` /
+  `src/data/tutorials.ts` / `src/utils/m0Tutorial.test.ts` + 新規4 + 版管理3(package.json/changelog.ts/本ログ)
+  + PACING_PUZZLE.md(§6.24-UXのステータス+実装結果)。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(既存warning 8) / 新規21件green /
+  `npx vitest related`(変更ファイル)= 380 pass(上記のimg不変条件1件を更新して解消済み)。実機確認は社長。
+- 自己点検(規律5): 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(表示のみでスポーン/難度/
+  報酬に触れていない)。負荷 **1/10**(イベント時のみのDOM更新・per-frameの新規描画ゼロ・React購読は既存のまま)。
+- 申し送り: **提案b(装備置換の明示)は社長採否待ちのため未実装**。★未決事項なし。
+
 ## v0.25.2530 — GHOST-BEHAVIOR検収合格+typecheck空振りの教訓を機械化(文書のみ)【2026-07-30 23:14 JST】
 
 - **検収(34ee601)**: diff実査+正規ゲート再実行で合格。①逆写像の関数ごと削除(死コードなし)

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
+import { shouldShowDetourPoiTutorial } from '../utils/detourPoiTutorial';
+// §6.24-UX(POI-UX): 寄り道POIの入手トースト/解放帯の文言(通信の文言は store 側が引く)。
+import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE } from '../utils/detourPoiUx';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
@@ -1061,6 +1064,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
   const rescueRespawnRef = useRef(0); // 救助イベント: 次の攻撃者復活の予定 gameTime(0=空き無し/未予約)
   const rescueFiredRef = useRef(false); // 救助イベントは1出撃で最大1回(社長指示)。発生済みなら以降の抽選から除外。
+  // この出撃のステージid(§6.24-UX のPOIチュートリアル判定用)。localStorageを毎フレーム読まないよう
+  // ラン中1回だけ読んでキャッシュする(新ランで null に戻す)。
+  const runStageIdRef = useRef<string | null>(null);
   // チュートリアルのM0序盤会話(グレッグ/ジュン)を左上の通信キューへ積んだか(1出撃1回)。
   const tutorialConvoQueuedRef = useRef(false);
   // 訓練(M0)の教習ビート: この出撃で既に出したもの(TUTORIAL_STAGE.md「M0 チュートリアル進行案」)。
@@ -2178,6 +2184,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
           tutorialConvoQueuedRef.current = false; // チュートリアルM0序盤会話も新ランで再有効化
+          runStageIdRef.current = null;          // ステージidのキャッシュも新ランで読み直す(§6.24-UX)
           m0BeatsFiredRef.current = new Set(); // M0の教習ビートも新ランで最初から(毎出撃で出す=社長指示v0.25.2266)
           m0PrevHpRef.current = -1;            // 強制回復の被弾検出も新ランでリセット
           m0HealAtRef.current = 0;             // 衛生兵の回復待ちも新ランでリセット
@@ -2885,6 +2892,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     policeTaken: true, policeTakenAt: newGameTime,
                   }));
                   useGameStore.getState().spawnCallout(ae.x, ae.y - 40, `スキル「${SKILLS[granted].name}」発動！(この出撃のみ)`, '#7dd3fc');
+                  // §6.24-UX 確定要件2: 現地の浮き文字(上)は残しつつ、**武器取得と同じトースト**でも
+                  // 出す(スキル名+効果説明1行+「この出撃のみ」)。説明は既存のSKILLS定義を流用。
+                  useGameStore.setState({
+                    lastWeaponGet: {
+                      name: SKILLS[granted].name, at: Date.now(), color: '#7dd3fc',
+                      kind: 'poi-skill', desc: SKILLS[granted].desc, note: POI_SKILL_NOTE,
+                    },
+                  });
+                  // §6.24-UX 確定要件3: 解放をゾーン到達と同型の帯(WallBand)で出す。
+                  useGameStore.getState().triggerWallBand(poiUnlockBandText('police'), 'white', POI_BAND_MS);
                 }
                 // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1クリア時の後処理。恒久解除+未達
                 // ペナルティ解除+ハンター消滅+M14到達判定を遅延実行(未達で止めていた分をここで出す)。
@@ -3090,6 +3107,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               policeArmedRef.current = false; // 一度離れるまで再発動させない(v0.25.2389)
               hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime, total: ARENA_HORDE_COUNT };
               useGameStore.setState({ eventBannerText: '警察署 制圧開始', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              // §6.24-UX 確定要件1: 「ここが何で・何をすれば・何が貰えるか」の通信を1ラン1回。
+              // 発生バナー(上)は1枠しかないので、通信は左上の会話(NpcDialogue)側へ積む=両方残る。
+              useGameStore.getState().showPoiIntel('police');
               playSfx('event-start');
               const peRingColor = 'rgba(96,165,250,0.9)'; // 警察=青
               spawnRing(ppos.x, ppos.y, POLICE_ARENA_RADIUS * 0.2, POLICE_ARENA_RADIUS, peRingColor, 6, 700);
@@ -3445,6 +3465,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             if (shouldShowScoutTutorial({ ...gate, seen: seenTutorials().has('scout'), nearestDormantDist })) {
               showTutorialOnce('scout');
+            }
+          }
+        }
+
+        // 寄り道POIのチュートリアル1枚(§6.24-UX 裁定c): **M1の初出撃時に、端末で1度だけ**。
+        // 判定は純関数 `shouldShowDetourPoiTutorial`。まだ見ていない時しか評価しない(見た後は
+        // ref のキャッシュだけで弾ける=毎フレームの localStorage 読みも stage id 読みも起きない)。
+        if (!indoor && !labTheme && !tutorialStage && !seenTutorials().has('detour-poi')) {
+          const st = useGameStore.getState();
+          const poiPresent = !!(st.hospital || st.armory || st.police);
+          if (poiPresent) {
+            if (shouldShowDetourPoiTutorial({
+              stageId: (runStageIdRef.current ??= getSelectedStageId()),
+              poiPresent,
+              seen: false, // ここへ来る時点で未読(上の has('detour-poi') で弾いている)
+              popupOpen: st.tutorialPopup !== null,
+              menuOpen: st.showShopMenu || st.showUpgradeMenu,
+              // 出撃時の通信/会話が流れている間は割り込まない(流れ終わってから出す)。
+              dialogueActive: st.npcDialogue !== null || st.npcDialogueQueue.length > 0,
+              gameTimeMs: newGameTime,
+            })) {
+              showTutorialOnce('detour-poi');
             }
           }
         }

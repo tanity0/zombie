@@ -73,6 +73,18 @@ const GameHUD: React.FC = () => {
   const itemGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
   const isTreasureGet = lastWeaponGet?.kind === 'treasure';
   const isDataGet = lastWeaponGet?.kind === 'data'; // 研究所の重要データ確保(武器/トレジャーと同じバナーUI)
+  // 寄り道POIの入手(PACING_PUZZLE.md §6.24-UX 確定要件2): 警察署スキル/武器庫装備/病院ワクチンを
+  // **この同じトースト枠**で出す(「何を貰ったか」と「それが何をするか」を同じ場所で読ませる)。
+  // 説明文(desc)/但し書き(note)は store が既存定義(SKILLS・equipmentDescription)から詰めてくる。
+  const poiGetKind =
+    lastWeaponGet?.kind === 'poi-skill' || lastWeaponGet?.kind === 'poi-equip' || lastWeaponGet?.kind === 'poi-vaccine'
+      ? lastWeaponGet.kind
+      : null;
+  const poiGetIcon = poiGetKind === 'poi-skill' ? '✨' : poiGetKind === 'poi-equip' ? '🎖️' : '💉';
+  const poiGetLabel =
+    poiGetKind === 'poi-skill' ? 'スキルを入手！' : poiGetKind === 'poi-equip' ? '装備を入手！' : 'ワクチンを入手！';
+  const poiGetLabelClass =
+    poiGetKind === 'poi-skill' ? 'text-sky-200/85' : poiGetKind === 'poi-equip' ? 'text-amber-100/85' : 'text-emerald-100/85';
 
   const toggleBgm = (e?: React.PointerEvent<HTMLButtonElement>) => {
     e?.preventDefault();
@@ -89,22 +101,22 @@ const GameHUD: React.FC = () => {
       {itemGetVisible && (
         <div
           className="absolute left-1/2 -translate-x-1/2"
-          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 118px)' }}
+          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 118px)', maxWidth: 'min(88vw, 360px)' }}
         >
           <div className="glass-pill px-4 py-2 flex items-center gap-2 animate-pulse">
             {isTreasureGet && lastWeaponGet!.treasureVariant
               // トレジャーは拾った実物の画像(treasure-N)を表示(社長指示)。variant が無ければ💎にフォールバック。
               ? <img src={spritePath(`treasure-${lastWeaponGet!.treasureVariant}`)} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
-              : !isTreasureGet && !isDataGet && hasWeaponIcon(lastWeaponGet!.weaponKey)
+              : !isTreasureGet && !isDataGet && !poiGetKind && hasWeaponIcon(lastWeaponGet!.weaponKey)
               ? <img src={spritePath(weaponIconName(lastWeaponGet!.weaponKey!))} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
-              : <span className="text-xl">{isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>}
+              : <span className="text-xl">{poiGetKind ? poiGetIcon : isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>}
             <div className="leading-tight">
               <div
                 className={`text-[10px] font-bold tracking-wide ${
-                  isTreasureGet ? 'text-amber-100/85' : isDataGet ? 'text-emerald-100/85' : 'text-purple-200/80'
+                  poiGetKind ? poiGetLabelClass : isTreasureGet ? 'text-amber-100/85' : isDataGet ? 'text-emerald-100/85' : 'text-purple-200/80'
                 }`}
               >
-                {isTreasureGet ? 'トレジャーを入手！' : isDataGet ? 'データを確保！' : '新しい銃器を入手！'}
+                {poiGetKind ? poiGetLabel : isTreasureGet ? 'トレジャーを入手！' : isDataGet ? 'データを確保！' : '新しい銃器を入手！'}
               </div>
               <div
                 className="text-sm font-bold"
@@ -112,6 +124,14 @@ const GameHUD: React.FC = () => {
               >
                 {lastWeaponGet!.name}
               </div>
+              {/* 効果説明1行(寄り道POIの入手のみ)。「何を貰ったか」だけでは何が起きたか分からない
+                  =§6.24-UXの穴5への対応。但し書き(note)は警察署スキルの「この出撃のみ」。 */}
+              {lastWeaponGet!.desc && (
+                <div className="mt-0.5 text-[11px] font-medium text-white/75" style={{ whiteSpace: 'normal' }}>
+                  {lastWeaponGet!.desc}
+                  {lastWeaponGet!.note && <span className="ml-1 text-amber-200/85">({lastWeaponGet!.note})</span>}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -130,6 +150,9 @@ const GameHUD: React.FC = () => {
               : 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
             left: 'max(env(safe-area-inset-left), 18px)',
             transition: 'top 0.25s ease',
+            // 長い文言(護衛が居ない出撃でPOIの通信がここへフォールバックする時)でも画面外へはみ出さない。
+            // 既存のバナーはどれも短いので見た目は変わらない。
+            maxWidth: 'min(70vw, 320px)',
           }}
         >
           <div
