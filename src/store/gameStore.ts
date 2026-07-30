@@ -3103,6 +3103,10 @@ interface GameState {
   goalReachedAt: number;                                // ゴール到達時刻(0=未到達)。演出後に勝利
   pendingIndoor: boolean;                               // 出撃が屋内ステージか(startMission→resetGame で受け渡し)
   setPendingIndoor: (indoor: boolean) => void;
+  // 社長指示v0.25.2462「ゲームオーバーでもう一度を押した時はスタート時の会話を飛ばす。m7は即ボス」。
+  // ゲームオーバー画面の「もう一度プレイ」からの再出撃か(startGame→resetGame で受け渡し・consume式)。
+  pendingRetryRun: boolean;
+  setPendingRetryRun: (retry: boolean) => void;
   pendingStageTheme: StageTheme;                        // 出撃ステージの見た目テーマ(resetGame で stageTheme へ)
   setPendingStageTheme: (theme: StageTheme) => void;
   stageTheme: StageTheme;                               // この出撃の見た目テーマ('lab'=研究所スキン。描画/商人が参照)
@@ -3471,6 +3475,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   goalReachedAt: 0,
   lastDamageSource: '',
   pendingIndoor: false,
+  pendingRetryRun: false,
   pendingStageTheme: 'forest',
   stageTheme: 'forest',
   labRadioX: null,
@@ -10847,6 +10852,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingIndoor: (indoor) => {
     set({ pendingIndoor: indoor });
   },
+  setPendingRetryRun: (retry) => {
+    set({ pendingRetryRun: retry });
+  },
   setPendingCorridor: (on) => {
     set({ pendingCorridor: on });
   },
@@ -12250,11 +12258,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 登場演出をアーム(初フレームで終了時刻確定)。練習モードは演出なし。
         // チュートリアル(地下洞窟)もヘリ降下演出なし(社長指示v0.25.1818「何もかも無し。全てイベントで特別仕様のみ」)。
         // 洋館(corridorMode)はヘリ登場なし=走り込み入場(v0.25.2110・社長指示)。
-        introUntil: (state.danceTestMode || farBackdrop === 'tutorial' || corridorMode) ? 0 : -1,
+        // リトライ(もう一度プレイ)のM7はヘリも無し=即ボス(社長指示v0.25.2462)。
+        introUntil: (state.danceTestMode || farBackdrop === 'tutorial' || corridorMode
+          || (state.pendingRetryRun && getSelectedStageId() === 'stage-7')) ? 0 : -1,
         corridorRunInActive: corridorMode,
         introDialogueActive: false,
         introDialogueStartedAt: 0,
-        introDialogueShown: false,
+        // リトライは「この登場のセリフは出さない」扱い=trueで再積みを防ぐ。M7ではこのフラグが
+        // グレン咆哮(グガガガ)の出現ゲートの前提条件でもあるため、trueにしないとボスが永久に出ない。
+        introDialogueShown: state.pendingRetryRun,
+        pendingRetryRun: false, // consume(次の通常出撃へ持ち越さない)
         reaperCross: null,
         enemies: runEnemies,
         pickups: runPickups,

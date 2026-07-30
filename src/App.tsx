@@ -167,7 +167,9 @@ function App() {
     else setBgmScene('off');
   }, [gameState]);
   
-  const startGame = async (characterClass: string, benchmark = false) => {
+  // retry=ゲームオーバー画面「もう一度プレイ」からの再出撃(社長指示v0.25.2462:
+  // リトライは開始時の会話を飛ばす。M7はヘリ演出も無し=咆哮→即ボス)。
+  const startGame = async (characterClass: string, benchmark = false, retry = false) => {
     // Web/iOS Safari BGM unlock workaround. Remove for native-app audio.
     unlockDanceAudio();
     // v0.25.1568: 選択ステージのBGMを開始前に先読み(非デフォルトステージのステージ開始BGM遅延対策)。
@@ -204,6 +206,7 @@ function App() {
       && typeof window !== 'undefined'
       && new URLSearchParams(window.location.search).get('cine') === '1';
     useGameStore.getState().setPendingIndoor(!!stageForRun?.indoor);
+    useGameStore.getState().setPendingRetryRun(retry && !benchmark); // resetGameが消費(M7=ヘリ無し即ボス等)
     useGameStore.getState().setPendingStageTheme(stageForRun?.theme === 'lab' ? 'lab' : 'forest');
     useGameStore.getState().setPendingFarBackdrop(stageForRun?.farBackdrop ?? '');
     useGameStore.getState().setPendingNearHorizon(stageForRun?.nearHorizon ?? '');
@@ -217,7 +220,8 @@ function App() {
     // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチ/再訪(通信なし)は空=会話なし。
     const free = getSelectedFreeMode();
     const selectedStage = (benchmark || free || revisitRun) ? undefined : stageForRun;
-    useGameStore.getState().setIntroDialogueLines(cineTestbed ? [] : (selectedStage?.main.dialogue ?? []));
+    // リトライ(もう一度プレイ)は開始時の会話を丸ごと飛ばす(社長指示v0.25.2462)。
+    useGameStore.getState().setIntroDialogueLines((cineTestbed || retry) ? [] : (selectedStage?.main.dialogue ?? []));
     setBenchmarkMode(pendingBenchmarkRef.current);
     // 出撃ローディング%のウィンドウをここでリセット(v0.25.1829): オーバーレイの初期描画が
     // 前回ウィンドウの100%を一瞬見せないように(PixiStage側のリセットより先=マウント前に0%へ)。
@@ -348,7 +352,7 @@ function App() {
           stats={gameStats}
           benchmarkResult={benchmarkResult}
           onReturnToMenu={returnToMenu}
-          onPlayAgain={() => startGame(useGameStore.getState().characterClass)}
+          onPlayAgain={() => startGame(useGameStore.getState().characterClass, false, true)}
         />
       )}
 

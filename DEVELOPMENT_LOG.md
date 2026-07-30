@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.2462 — リトライは開始会話スキップ+M7は即ボス+M7会話調整(社長指示3件)【2026-07-30 09:10 JST】
+
+- **リトライの会話スキップ**: `startGame(class, benchmark, retry)` に retry を追加し、ゲームオーバー画面の
+  「もう一度プレイ」だけ retry=true(App.tsx)。retry時は `setIntroDialogueLines([])`=開始会話なし。
+- **M7は即ボス**: store に `pendingRetryRun`(consume式・resetGameで false へ)を新設。retry かつ stage-7 は
+  `introUntil: 0`(ヘリ演出なし)+`introDialogueShown: true`。**このフラグはグレン咆哮の出現ゲートの
+  前提条件**(useGameLoop:2322)なので、true にしないと咆哮が積まれずボスが永久に出ない(罠を回避)。
+  結果: リトライのM7は開幕すぐ咆哮「グガガガガガガガガ！」→表示の瞬間にボス出現。
+- **M7会話**: グレンの行「ココマデ・・・カ」(旧「ジカン……ダ」)を削除(campaign.ts)。以後グレンの発話は
+  咆哮のみ。**ボス出現タイミングは元々「咆哮が表示された瞬間」の配線(v0.25.2076)**で、行削除後も
+  最終行「……終わらせてあげて！」→咆哮→出現の順は不変(社長指示「出現タイミングをグガガガに」は
+  この既存配線の確認+前段の行削除で達成)。
+- 変更: `src/App.tsx` / `src/store/gameStore.ts` / `src/data/campaign.ts` + 版数類。
+- 検証: typecheck+lint(エラー0)。実機確認(リトライ→会話なし/M7リトライ→即ボス/M7通常→短くなった会話)は社長。
+- 自己点検: 通常出撃(非リトライ)の会話・ヘリ・M7の段取りは完全不変(retry既定false+consume式で漏れなし)。
+
 ## v0.25.2461 — 城ボス基本5技: 距離ハードゲート→距離ゾーン別の重み付き抽選(BOSS_RANGE_REWORK.md・社長裁定v0.25.2455)【2026-07-30 09:03 JST】
 
 - **仕様の正本**: research/BOSS_RANGE_REWORK.md(実測12ラン+社長裁定「城の重みづけはそれで」)。
