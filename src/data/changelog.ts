@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2552',
+    items: [
+      'ゲーム内容の変更はありません(残りサブ6種の対応を承認・ホーミングは「押している秒数の平均」を記録して再現する方式に確定)。',
+    ],
+  },
+  {
     version: '0.25.2551',
     items: [
       'ゲーム内容の変更はありません(守護霊の残りサブウェポン6種の対応方針案を設計書へ記録)。',
