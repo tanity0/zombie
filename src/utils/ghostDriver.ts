@@ -139,7 +139,9 @@ export const shouldGhostClaimSub = (
 };
 
 // ---- 定数(BOT_AND_GHOST.md §3裁定 + 実装の叩き台) ---------------------------------------------
-export const GHOST_HP_FRAC = 0.6;       // ゴーストHP = player.maxHealth × これ(叩き台)
+// GHOST_HP_FRAC(0.6)は v0.25.2468 で廃止: 社長裁定「HPは計測時のHPを100%再現。全ステータスを
+// そのまま再現」により、HP/速度/レベルはプロファイルの計測時スナップショットを100%使う
+// (directorTick.ts参照。旧プロファイル等でスナップショットが無ければ召喚時の本人値=×1.0)。
 export const GHOST_BOSS_HP_MULT = 1.6;  // 召喚成立の瞬間に1回だけボスhealth/maxHealthへ乗せる(§3裁定)
 export const GHOST_LEASH_PX = 600;      // これを超えたらプレイヤー脇へ瞬間ワープ
 // MELEE_RADIUS(gameStore.ts)=74 の複製値。store非依存を保つため import せず複製する

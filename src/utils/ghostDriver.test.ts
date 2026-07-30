@@ -4,7 +4,7 @@ import {
   decideGhost, defaultGhostProfile, ghostLeashWarp, hitsPerMinToDodgeStrength,
   ghostSubUseIntervalMs, shouldGhostClaimSub, DEFAULT_SUB_USES_PER_MIN,
   ghostRunEnabled, GUARDIAN_SPIRIT_SKILL,
-  GHOST_LEASH_PX, GHOST_MELEE_RANGE, GHOST_BOSS_HP_MULT, GHOST_HP_FRAC,
+  GHOST_LEASH_PX, GHOST_MELEE_RANGE, GHOST_BOSS_HP_MULT,
   rollGhostMoveReaction, GHOST_MOVE_ROLL_MIN_N, GHOST_MOVE_ROLL_TIMEOUT_MS,
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
 } from './ghostDriver';
@@ -217,9 +217,9 @@ describe('decideGhost: 回避が間合い管理より優先される', () => {
 });
 
 describe('定数(BOT_AND_GHOST.md §3裁定)', () => {
-  it('GHOST_BOSS_HP_MULT=1.6 / GHOST_HP_FRAC=0.6 / GHOST_MELEE_RANGE=74(MELEE_RADIUSの複製)', () => {
+  it('GHOST_BOSS_HP_MULT=1.6 / GHOST_MELEE_RANGE=74(MELEE_RADIUSの複製)', () => {
+    // GHOST_HP_FRAC(0.6)は v0.25.2468 廃止=計測時スナップショットの100%再現へ(社長裁定)。
     expect(GHOST_BOSS_HP_MULT).toBe(1.6);
-    expect(GHOST_HP_FRAC).toBe(0.6);
     expect(GHOST_MELEE_RANGE).toBe(74);
   });
 });

@@ -37,7 +37,7 @@ import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
 import { bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
 import { tickPlayerTraits, loadPlayerProfile } from './playerTraits'; // BOT_AND_GHOST.md G1
-import { defaultGhostProfile, ghostRunEnabled, GHOST_HP_FRAC, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3
+import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
 import {
@@ -625,6 +625,7 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       x: player.x, y: player.y, width: player.width, height: player.height,
       health: player.health, maxHealth: player.maxHealth,
       characterClass: player.characterClass, // v0.25.2467: プロファイルsrcClass(ゴーストの絵)用
+      speed: player.speed, level: player.level, // v0.25.2468: 計測時ステータスの写し用
     },
     enemies: state.enemies,
     movementInput: state.inputState.up || state.inputState.down || state.inputState.left || state.inputState.right,
@@ -666,16 +667,20 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   const profile = loadPlayerProfile() ?? defaultGhostProfile();
   refs.ghostProfileRef.current = profile;
 
+  // v0.25.2468(社長裁定「HPは計測時のHPを100%再現。HPというか全ステータスをそのまま再現」):
+  // プロファイルの計測時スナップショット(maxHealth/speed/level)を100%使う。旧プロファイル等で
+  // 無ければ召喚時の本人値へフォールバック(×0.6の減額=GHOST_HP_FRACは廃止)。
+  const snap = (profile as { snapshot?: { maxHealth: number; speed: number; level: number } }).snapshot;
   const ghost: Summon = {
     id: `ghost-ally-${Date.now()}`,
     x: player.x - player.width - 16, y: player.y, width: player.width, height: player.height,
-    speed: player.speed,
-    health: player.maxHealth * GHOST_HP_FRAC,
-    maxHealth: player.maxHealth * GHOST_HP_FRAC,
+    speed: snap?.speed ?? player.speed,
+    health: snap?.maxHealth ?? player.maxHealth,
+    maxHealth: snap?.maxHealth ?? player.maxHealth,
     damage: 0, // kind='ghost-ally'では不使用(実ダメージは都度プレイヤーの現在装備から計算する)
     kind: 'ghost-ally',
     reusedType: 'zombie', // 見た目未使用(pixiSceneがkind==='ghost-ally'を専用分岐で描く)
-    level: player.level,
+    level: snap?.level ?? player.level,
     createdAt: Date.now(),
     lastHit: 0,
     ghostBossId: boss.id,

@@ -246,6 +246,11 @@ export interface Enemy {
   experienceValue: number;
   lastHit: number;
   lastShot: number;
+  // V1(3)(FX_GAP_LEDGER.md・社長指示): 接触ダメージが**プレイヤーに実際に入った瞬間**の打刻。
+  // 描画専用(レンダラが~180msの「前のめり」変形=被弾しなりの逆位相に使う)。判定・ダメージ・
+  // 移動には一切使わない。時計は lastHit と同じ Date.now() 基準。Dir は敵→プレイヤーの角度(rad)。
+  lastContactAttackAt?: number;
+  lastContactAttackDir?: number;
   // Chase velocity (px/s), smoothed toward the heading so enemies have ~0.3s of
   // inertia and curve into turns instead of snapping.
   vx?: number;

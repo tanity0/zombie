@@ -585,6 +585,11 @@ export const applyContactDamage = (
   // (無傷＋敵へのダメージ無し＋2倍ノックバックで突進中断)。ジャンプ着地と同じ「弾き」挙動。
   const counterActiveNow = Date.now() <= wpImmune.counterWindowEnd;
   const dashParried: string[] = [];
+  // V1(3)(FX_GAP_LEDGER.md・社長指示「敵がプレイヤーに触れてダメージ与える時、強めに前屈みに歪む」):
+  // 接触ダメージが実際に入った敵へ lastContactAttackAt(+向き)を打刻する(描画専用・判定不変)。
+  // ここが接触ダメージの唯一の合流点(checkPlayerEnemyCollisionsの使用箇所はここだけ)なので、
+  // 通常敵・ボスを問わず「接触ダメージを持つ全員」が1箇所で対象になる。
+  const contactLunges: { id: string; ang: number }[] = [];
 
   playerEnemyCollisions.forEach(enemy => {
     if (wireDashingNow) return;
@@ -639,6 +644,14 @@ export const applyContactDamage = (
         '#ef4444',
         6
       );
+      // V1(3): 前のめり変形の打刻(既存の被弾SE/赤フラッシュと同じ「ダメージが入った」条件に揃える)。
+      contactLunges.push({
+        id: enemy.id,
+        ang: Math.atan2(
+          (collPlayer.y + collPlayer.height / 2) - (enemy.y + enemy.height / 2),
+          (collPlayer.x + collPlayer.width / 2) - (enemy.x + enemy.width / 2),
+        ),
+      });
     }
     if (playerDied) {
       fx.triggerPlayerDeath(
@@ -647,6 +660,17 @@ export const applyContactDamage = (
       );
     }
   });
+  // V1(3): 打刻の反映(視覚専用フィールドのみ更新・判定/ダメージ/移動は1bitも変えない)。
+  // i-frameで接触ダメージは高々1回/無敵窓なので、このsetStateはダメージが入ったtickにしか走らない。
+  if (contactLunges.length > 0) {
+    const lungeAt = Date.now(); // レンダラの時計(lastHitと同じDate.now基準)
+    useGameStore.setState(st => ({
+      enemies: st.enemies.map(e => {
+        const l = contactLunges.find(c => c.id === e.id);
+        return l ? { ...e, lastContactAttackAt: lungeAt, lastContactAttackDir: l.ang } : e;
+      }),
+    }));
+  }
   if (dashParried.length > 0) {
     // BOT_AND_GHOST.md G1(計測専用・挙動不変): カウンター成立をplayerTraitsへ通知する。
     notifyCounterHit();

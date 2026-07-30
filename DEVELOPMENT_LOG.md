@@ -1,5 +1,66 @@
 # Development Log
 
+## v0.25.2468 — V1: 素材不要のエフェクト補完4点(敵弾FX/dash砂埃の横展開/前屈み/砂埃ジッター)【2026-07-30 10:17 JST】
+
+FX_GAP_LEDGER.md V1バッチ(社長方針v0.25.2463)。**全て視覚のみ=判定・ダメージ・移動・タイミングは1bitも不変。**
+
+- **(1) 敵弾(enemy_bolt)の発射フラッシュ+着弾/消滅の爆ぜ — 合流点方式**。
+  - 合流点は**レンダラ側**(pixiScene.syncProjectilesの出現/消滅エッジ検出)を採用。理由:
+    ①発射は全経路がaddProjectileに合流するが、**予約弾(volleyのcreatedAt先送り)はaddProjectile時点だと
+    絵が先に出る**。ビュー出現エッジなら「画面に弾が現れた瞬間」=正しいタイミング。
+    ②消滅は複数箇所(プレイヤー被弾removeProjectile/ゴースト被弾/盾/寿命切れ/発射元死亡)に散在するが、
+    「配列から消えた」事実は描画ループ1箇所で一律に観測できる。→判定コードに1行も触れない。
+  - 発射=赤系の小グロー(半径16→26px・0.17秒)+火花4粒。着弾/消滅=小リング(5→22px・0.24秒)+
+    小グロー+火花5粒。全てプールsprite(共有tex・加算)・**強glow(半径44超)不使用**。弾と同じ
+    地平線フェードに乗せる。反射弾化(hostile→false)は爆ぜを出さない(反射FXは既存・別経路)。
+  - これ1箇所で g-bolt/裏ボスburst・radial/天使volley/uri bolt/gaze/plant種弾/idol射撃 の全弾技をカバー。
+- **(2) dashの砂埃を「同じ動作を持つ全員」へ(掟v0.25.2426)**。既存の蹴り出し+停止latch(dashkick/
+  dashstop)の対象bossStateに 'dash'(mimir/jormungand/skadi)/'mdash-move'(ミゲル)/'thrust'(ウリ突き)/
+  'idol-roll'(idol)を追加。g-dive(城ボス急降下)は着地に砂埃が無かったので、既存のg-*砂埃latchに
+  'dive'を追加(着地点=aiTarget中心・半径GIANT_DIVE_RADIUS×DUST_SCALE・windup焼き付け=同tickパリィでも出る)。
+- **(3) 前屈み(社長指示「触れてダメージ与える時、強めに前屈みに歪む」)**。
+  - 信号: combatTick.applyContactDamage(**接触ダメージの唯一の合流点**=checkPlayerEnemyCollisions使用箇所
+    はここだけ)で、ダメージが実際に入った敵へ `lastContactAttackAt`(Date.now)+`lastContactAttackDir`
+    (敵→プレイヤー角)を打刻(Enemyに視覚専用フィールド2つ追加・判定不変)。条件は既存の被弾SE/赤フラッシュ
+    と同じ damageWasApplied=**通常敵・ボス問わず接触ダメージを持つ全員**が対象。
+  - 絵: 被弾しなり(ENEMY_HIT_FLINCH: skew0.42/230ms)の**逆位相**。180ms・skew0.6(強め)+プレイヤー方向へ
+    最大12pxオフセット+縦16%スカッシュ。drawEnemyの**両経路**(裏ボスfit描画/通常足元アンカー)に設置。
+- **(4) 砂埃の決定的ジッター**。drawDustにseed引数を追加し、latchFxの焼き付け時刻(t0を返すよう拡張)を
+  種に 水平反転50%/±12°回転/±15%スケール をハッシュで決める(出現ごとに固定・フレーム間不変=チラつかない)。
+  プール再利用対策でrotation/scale符号は毎回リセット。素材は現行fx/dustのまま(別絵はV3)。
+- **適用箇所の全数表**:
+  | 変更 | ファイル | 箇所 |
+  |---|---|---|
+  | 弾FX 出現/消滅エッジ+描画 | src/pixi/pixiScene.ts | syncProjectiles+pushBoltFx/drawBoltFx(新設)・定数BOLT_* |
+  | dash砂埃の対象拡大 | src/pixi/pixiScene.ts | drawEnemyのdashkick/dashstop latch(bossState 4種追加) |
+  | g-dive着地の砂埃 | src/pixi/pixiScene.ts | giantbatのg-*砂埃latch(dustMove='dive'追加) |
+  | 前屈み(打刻) | src/utils/combatTick.ts | applyContactDamage(contactLunges収集→setState1回) |
+  | 前屈み(型) | src/types/game.ts | Enemy.lastContactAttackAt/lastContactAttackDir(視覚専用) |
+  | 前屈み(変形) | src/pixi/pixiScene.ts | drawEnemy 裏ボス経路+通常経路(CONTACT_LUNGE_*定数) |
+  | 砂埃ジッター | src/pixi/pixiScene.ts | drawDust(seed)+dustJitterHash+latchFxがt0を返す+呼び出し4箇所 |
+- **発火条件と見え方(社長の実機確認用)**:
+  - 弾の発射: どの敵でも弾を撃った瞬間、銃口位置に**赤い小さな閃光+4粒の火花**(~0.2秒)。
+  - 弾の消滅: 弾がプレイヤー/守護霊/盾に当たった瞬間・射程で消えた瞬間、その場に**赤い小リング(~22px)
+    +5粒の火花**(~0.24秒)。裏ボスの全方位弾で一斉に出るのが分かりやすい。
+  - dash砂埃: 裏ボス3体の突進・ミゲル踏み込み・ウリの突き・idolローリングの**開始と停止の足元**、
+    城ボス急降下の**着地点**に土色の砂埃(ステージで色が変わる)。
+  - 前屈み: 敵の体当たりを食らった瞬間(赤フラッシュ+被弾SEと同時)、**その敵が0.18秒プレイヤー側へ
+    強くつんのめる**。ゾンビの群れに触られると分かりやすい。
+  - 砂埃の個体差: 同じ技を数回見ると砂埃の向き/大きさが毎回少し違う(1回の表示中は変わらない)。
+- ★未決: なし(曖昧点は出なかった)。
+- **Load score: 2/10**(rendering)。全てイベント駆動+プールsprite。弾FXは1発につき発射/消滅の各1回・
+  寿命<250msなので同時数は自然に有界(全方位16連でも sprite ~112枚が0.2秒)。強glow不使用・per-frame
+  Graphics/Text生成なし・React購読なし・storeへの追加書き込みは接触ダメージtickの1回のみ(i-frameで律速)。
+  ジッターはハッシュ3回/砂埃1枚。ズーム最大引きでも画面境界の新判定なし=破綻要素なし。
+- 検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(警告は既存8件のみ) /
+  `npx vitest related`(変更ファイル一式)=15ファイル318件通過(4 skip既存)。実機確認は社長
+  (**V1は実機確認までが完了条件**=FX_GAP_LEDGER.md)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(シーン・湧き・判定・ダメージ・
+  CD・タイミング一切不変。追加はEnemyの視覚専用フィールド2つと描画のみ)。
+- ※本コミットは設計チャットの守護霊スナップショット(playerTraits/directorTick/ghostDriver・
+  GHOST_HP_FRAC廃止=計測時ステータス100%再現)/月食リング(lighting.getCounterRingTexture+
+  counterReachRing差し替え)変更を同梱(社長の即時指示2件・完成済みを同一ツリーから分離不能のため)。
+
 ## v0.25.2467 — 守護霊の絵とサイズ修正(社長報告2件: ちっちゃい/絵柄がおかしい)【2026-07-30 10:03 JST】
 
 - **サイズ**: 旧=当たり判定ボックスへの内接(containScale)で極小だった→**プレイヤー本人と同じ基準**

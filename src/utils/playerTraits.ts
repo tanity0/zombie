@@ -64,6 +64,9 @@ export interface PlayerProfile {
   subStyles: SubStyleProfile;
   /** v0.25.2467(社長指示): 計測時のクラス(ゴーストの絵の選択用)。旧プロファイルには無い=任意。 */
   srcClass?: string;
+  /** v0.25.2468(社長指示「HPというか全ステータスをそのまま再現」): 計測時のステータスの写し。
+   * ゴーストはこれを100%再現する(無ければ召喚時の本人値へフォールバック)。 */
+  snapshot?: { maxHealth: number; speed: number; level: number };
 }
 
 const STORAGE_KEY = 'zombie-ghost-profile-v1';
@@ -172,6 +175,8 @@ interface Session {
 let session: Session | null = null;
 // v0.25.2467: このプロセスで最後に計測対象になったクラス(fold時にプロファイルsrcClassへ記録)。
 let sessionSrcClass: string | null = null;
+// v0.25.2468: 計測時ステータスの写し(社長指示「全ステータスをそのまま再現」)。
+let sessionSnapshot: { maxHealth: number; speed: number; level: number } | null = null;
 
 const startSession = (gameTime: number): Session => ({
   startGameTime: gameTime,
@@ -300,6 +305,8 @@ const endSession = (): void => {
     subStyles: base.subStyles,
     // v0.25.2467: 計測時のクラス(このセッションで観測できなければ前回値を保持)。
     srcClass: sessionSrcClass ?? base.srcClass,
+    // v0.25.2468: 計測時ステータスの写し(同上)。
+    snapshot: sessionSnapshot ?? base.snapshot,
   };
   saveProfile(next);
 };
@@ -314,7 +321,9 @@ export interface PlayerTraitsTickInput {
   gameTime: number;
   player: { x: number; y: number; width: number; height: number; health: number; maxHealth: number;
     /** v0.25.2467: 計測時のクラス(プロファイルsrcClassへ記録=ゴーストの絵の選択用)。 */
-    characterClass?: string };
+    characterClass?: string;
+    /** v0.25.2468: 計測時ステータスの写し(snapshot)用。 */
+    speed?: number; level?: number };
   enemies: readonly Enemy[];
   /** このtickにプレイヤーの移動入力(上下左右いずれか)があったか。 */
   movementInput: boolean;
@@ -338,6 +347,9 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   }
   if (!session) session = startSession(input.gameTime);
   if (input.player.characterClass) sessionSrcClass = input.player.characterClass; // v0.25.2467
+  if (input.player.speed !== undefined && input.player.level !== undefined) { // v0.25.2468
+    sessionSnapshot = { maxHealth: input.player.maxHealth, speed: input.player.speed, level: input.player.level };
+  }
   const s = session;
   const prevGameTime = s.lastGameTime;
   s.lastGameTime = input.gameTime;

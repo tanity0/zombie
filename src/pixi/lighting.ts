@@ -83,6 +83,47 @@ export const getRingTexture = (base: number): Texture => {
   return tex;
 };
 
+// カウンター窓のリーチリング(v0.25.2468・社長指示「進行方向寄りが太く、背面寄りに徐々に細い
+// 月食の月のようなデザイン」の再現)。前方(+x)が最も太く明るく、背面へ滑らかに細く薄くなる
+// アニュラスを一度だけ焼き込む。実行時はスプライトの rotation を狙い方向へ向けるだけ。
+// 旧v0.25.2427実装(64線分+半径揺らぎ)は破線状のガタつきが出たため、高分割(360セグ)の
+// ベイクで同じ意匠を滑らかに再現する。
+const counterRingTexCache = new Map<number, Texture>();
+export const getCounterRingTexture = (base: number): Texture => {
+  const hit = counterRingTexCache.get(base);
+  if (hit) return hit;
+  const pad = RING_TEX_PAD;
+  const half = base + pad;
+  const size = half * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.lineCap = 'round';
+  const SEGS = 360;
+  for (let i = 0; i < SEGS; i++) {
+    const a1 = (i / SEGS) * Math.PI * 2;
+    const a2 = ((i + 1.6) / SEGS) * Math.PI * 2; // 少し重ねて継ぎ目を消す
+    const mid = (a1 + a2) / 2;
+    const forward = 0.5 + 0.5 * Math.cos(mid); // +x(前方)=1 / -x(背面)=0
+    // 外側のソフトな光(前方ほど太く濃い)
+    ctx.beginPath();
+    ctx.arc(half, half, base, a1, a2);
+    ctx.lineWidth = 2.5 + forward * 8.5;
+    ctx.strokeStyle = `rgba(255,255,255,${(0.10 + 0.24 * forward).toFixed(3)})`;
+    ctx.stroke();
+    // 芯の細い明線(全周に出るが前方ほど太く明るい=月食の欠け際)
+    ctx.beginPath();
+    ctx.arc(half, half, base, a1, a2);
+    ctx.lineWidth = 0.9 + forward * 1.3;
+    ctx.strokeStyle = `rgba(255,255,255,${(0.30 + 0.60 * forward).toFixed(3)})`;
+    ctx.stroke();
+  }
+  const tex = Texture.from(canvas);
+  counterRingTexCache.set(base, tex);
+  return tex;
+};
+
 // リングの白い熱芯(旧: width*0.4 の白ストローク)。色リングと同ベース半径・同scaleで重ねる。
 const ringCoreTexCache = new Map<number, Texture>();
 export const getRingCoreTexture = (base: number): Texture => {

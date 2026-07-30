@@ -82,7 +82,7 @@ import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
 import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
-import { getSpotConeTexture, getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX } from './renderSpec';
@@ -1428,6 +1428,19 @@ const DUST_SCALE = 1.9;   // 着地(飛び掛かり)/のしかかり
 const DUST_STOMP_SCALE = 2.2;
 // 突進の土煙(v0.25.2427)。敵の大きさに対する広がり。蹴り出し/停止の一瞬なので大きめでよい。
 const DASH_DUST_SCALE = 1.6;
+// V1(3)(FX_GAP_LEDGER.md・社長指示): 敵が接触ダメージを「与えた」瞬間の前のめり変形。
+// 被弾しなり(ENEMY_HIT_FLINCH_*)の**逆位相**=同じ線形減衰の包絡線で、向きだけプレイヤー側。
+// 「強めに」の指示なのでskewは被弾(0.42)より強く、前方オフセット+軽いスカッシュも重ねる。視覚のみ。
+const CONTACT_LUNGE_MS = 180;
+const CONTACT_LUNGE_SKEW = 0.6;
+const CONTACT_LUNGE_SQUASH = 0.16;  // 縦を最大16%潰す(踏み込みの重み)
+const CONTACT_LUNGE_OFFSET_PX = 12; // プレイヤー方向へ最大12pxの見た目オフセット(hitbox不変)
+// V1(1)(FX_GAP_LEDGER.md): 敵弾(enemy_bolt)の発射フラッシュ/消滅の爆ぜ。弾1発につき各1回の
+// 一瞬(<250ms)のイベントFXなので、同時表示数は「その瞬間に生まれた/消えた弾の数」に自然に上限が
+// 付く(J130=弾130発PASSは常在数の話。こちらは発射/消滅の瞬間だけ)。強glow(半径44超)は不使用。
+const BOLT_MUZZLE_MS = 170;   // 発射フラッシュの尺
+const BOLT_POP_MS = 240;      // 着弾/消滅の爆ぜの尺
+const BOLT_FX_MAX = 48;       // 安全弁(リセット等で全弾が同時消滅しても暴れない)
 const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
 
@@ -3148,7 +3161,7 @@ export class PixiScene {
   // 「直前フレームに突進していた」敵のid(突進が明けた瞬間の土煙を出すための1フレーム記憶)。
   private dashWasOn = new Set<string>();
   private latchFx(key: string, active: boolean, durMs: number, now: number, data: () => number[]):
-    { t: number; d: number[] } | null {
+    { t: number; d: number[]; t0: number } | null {
     let L = this.fxLatches.get(key);
     if (active) {
       // 立ち上がり(前フレームまで非active)でだけ撮り直す。active が続く間は撮り直さない。
@@ -3159,7 +3172,8 @@ export class PixiScene {
     if (!L) return null;
     const t = (now - L.t0) / L.dur;
     if (t >= 1) { if (!L.armed) this.fxLatches.delete(key); return null; }
-    return { t: Math.max(0, t), d: L.d };
+    // t0=焼き付けた時刻。V1(4)の砂埃ジッター等「出現ごとに固定・フレーム間で不変」の種に使える。
+    return { t: Math.max(0, t), d: L.d, t0: L.t0 };
   }
   // 敵が消えた時の後始末(残っていると Map が育つ)。enemyビューの破棄と同じ場所から呼ぶ。
   private clearFxLatches(idPrefix: string) {
@@ -8560,7 +8574,19 @@ export class PixiScene {
       } else {
         view.sprite.skew.x = 0;
       }
-      view.sprite.position.set(Math.round(spx + liftShake), Math.round(spy - liftHop - kbHop));
+      // V1(3): 接触ダメージを与えた瞬間の前のめり(被弾しなりの逆位相・社長指示「強めに」)。視覚のみ。
+      let lungeOffX = 0, lungeOffY = 0;
+      const sinceLunge = e.lastContactAttackAt !== undefined ? now - e.lastContactAttackAt : -1;
+      if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
+        const lw = 1 - sinceLunge / CONTACT_LUNGE_MS;
+        const lang = e.lastContactAttackDir ?? 0;
+        const ldir = Math.cos(lang) >= 0 ? 1 : -1;
+        view.sprite.skew.x += -ldir * CONTACT_LUNGE_SKEW * lw; // 頭がプレイヤー側へ倒れ込む
+        flinchSqY *= 1 - CONTACT_LUNGE_SQUASH * lw;
+        lungeOffX = Math.cos(lang) * CONTACT_LUNGE_OFFSET_PX * lw;
+        lungeOffY = Math.sin(lang) * CONTACT_LUNGE_OFFSET_PX * lw;
+      }
+      view.sprite.position.set(Math.round(spx + liftShake + lungeOffX), Math.round(spy - liftHop - kbHop + lungeOffY));
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
       // スケールXの符号だけを反転する見た目専用の変更で、hitbox(e.x/y/width/height)・座標・攻撃方向・
@@ -8625,6 +8651,19 @@ export class PixiScene {
       } else {
         view.sprite.skew.x = 0;
       }
+      // V1(3): 接触ダメージを与えた瞬間の前のめり(被弾しなりの逆位相・社長指示「強めに」)。
+      // 対象は「接触ダメージを持つ全員」=この汎用経路(通常敵)と上の裏ボス経路の両方に置く。視覚のみ。
+      let lungeOffX = 0, lungeOffY = 0;
+      const sinceLunge = e.lastContactAttackAt !== undefined ? now - e.lastContactAttackAt : -1;
+      if (sinceLunge >= 0 && sinceLunge < CONTACT_LUNGE_MS) {
+        const lw = 1 - sinceLunge / CONTACT_LUNGE_MS;
+        const lang = e.lastContactAttackDir ?? 0;
+        const ldir = Math.cos(lang) >= 0 ? 1 : -1;
+        view.sprite.skew.x += -ldir * CONTACT_LUNGE_SKEW * lw; // 頭がプレイヤー側へ倒れ込む
+        flinchSqY *= 1 - CONTACT_LUNGE_SQUASH * lw;
+        lungeOffX = Math.cos(lang) * CONTACT_LUNGE_OFFSET_PX * lw;
+        lungeOffY = Math.sin(lang) * CONTACT_LUNGE_OFFSET_PX * lw;
+      }
       const scaleX = sc * breath.x * aiSqX;
       view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY);
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
@@ -8634,6 +8673,11 @@ export class PixiScene {
         if (footFrac !== undefined) {
           view.sprite.position.x = Math.round(fb.footX + liftShake - (footFrac - 0.5) * tex.width * scaleX);
         }
+      }
+      // V1(3): 前のめりの前方オフセット(位置はここが最終確定点=雪原補正の後に足す)。
+      if (lungeOffX !== 0 || lungeOffY !== 0) {
+        view.sprite.position.x += lungeOffX;
+        view.sprite.position.y += lungeOffY;
       }
       view.sprite.visible = true;
       // PACING_PUZZLE.md §5.15 M15: レア(色付き)個体は本体を専用色でtint(サイズ拡大はネームド専売
@@ -9242,17 +9286,22 @@ export class PixiScene {
     // 判定はゼロの②「派手さの絵」なので、判定より大きく出してよい(社長方針v0.25.2410)。
     {
       const dashPhase = e.aiPhase === 'charge' || e.aiPhase === 'g-dash-charge' || e.aiPhase === 'g-quad-charge';
-      const dashBoss = e.bossState === 'issen-dash' || e.bossState === 'tsuki';
+      // V1(2)(FX_GAP_LEDGER.md): 「突進という動作を持つ全員」へ横展開(掟「同じ動作を持つ全員に」)。
+      // 追加: 裏ボス3体(mimir/jormungand/skadi)の 'dash' / ミゲル 'mdash-move' / ウリ 'thrust'(踏み込み突き)/
+      // idol 'idol-roll'(離脱ローリング)。既存: トール 'issen-dash'・'tsuki'。
+      const dashBoss = e.bossState === 'issen-dash' || e.bossState === 'tsuki'
+        || e.bossState === 'dash' || e.bossState === 'mdash-move'
+        || e.bossState === 'thrust' || e.bossState === 'idol-roll';
       const dashing = dashPhase || dashBoss;
       // 蹴り出し: 突進の立ち上がりで、その場(足元)に一発。
       const kickL = this.latchFx(`${e.id}:dashkick`, dashing, DUST_MS, now,
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
-      if (kickL) this.drawDust(kickL.d[0], kickL.d[1], kickL.d[2], kickL.t, this.dustTintForStage(), this.dustAlpha(kickL.t));
+      if (kickL) this.drawDust(kickL.d[0], kickL.d[1], kickL.d[2], kickL.t, this.dustTintForStage(), this.dustAlpha(kickL.t), kickL.t0);
       // 止まった瞬間: 突進が明けた立ち上がり(=!dashing への遷移)で、止まった位置に一発。
       // `dashEndArmed` は「直前に突進していた」ことを覚えるための1フレーム遅延。
       const stopL = this.latchFx(`${e.id}:dashstop`, !dashing && this.dashWasOn.has(e.id), DUST_MS, now,
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
-      if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), this.dustAlpha(stopL.t));
+      if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), this.dustAlpha(stopL.t), stopL.t0);
       if (dashing) this.dashWasOn.add(e.id); else this.dashWasOn.delete(e.id);
     }
     // 汎用ジャンプ着地の砂埃(社長指摘v0.25.2426「パンプキンなどのジャンプにも砂埃ちゃんと出てる?」)。
@@ -9286,7 +9335,7 @@ export class PixiScene {
       });
       if (jL && jL.t >= jL.d[3]) {
         const dp = jL.d[3] < 1 ? (jL.t - jL.d[3]) / (1 - jL.d[3]) : 0;
-        this.drawDust(jL.d[0], jL.d[1], jL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp));
+        this.drawDust(jL.d[0], jL.d[1], jL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp), jL.t0);
       }
     }
     // M51: 城ボス「ジャイアント」新スクリプトの予告描画(PACING_PUZZLE.md §6.26)。既存部品のみ流用
@@ -9385,18 +9434,21 @@ export class PixiScene {
       {
         const dustMove = gph === 'g-stomp-windup' ? 'stomp'
           : gph === 'g-jump-air' ? 'jump'          // 着地=滞空の終わりが着弾(トールのjump-attackと同じ作法)
+          : gph === 'g-dive-windup' ? 'dive'       // V1(2): 急降下の着地(従来は爆発FXのみで砂埃なし)
           : gph === 'g-slam-windup' ? 'slam' : null;
         // 溜めの残り(=着弾までの時間)。latchFx は arming の瞬間しか durMs を読まないので、
         // ここで毎フレーム計算しても実際に使われるのは立ち上がりの1回だけ。
         const toImpact = dustMove !== null ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
         const dustL = this.latchFx(`${e.id}:dust`, dustMove !== null, toImpact + DUST_MS, now, () => {
-          // 中心と大きさは技ごとに変える。着地は着地点(溜め開始でロック済み)、それ以外は足元。
-          const jump = dustMove === 'jump';
-          const dx = jump ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
-          const dy = jump ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
+          // 中心と大きさは技ごとに変える。着地(jump/dive)は着地点(溜め開始でロック済み。aiTargetは
+          // 左上座標なので中心へ寄せる=g-dive-windupの予告円と同じ式)、それ以外は足元。
+          const lands = dustMove === 'jump' || dustMove === 'dive';
+          const dx = lands ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
+          const dy = lands ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
           // 踏み鳴らしだけ大きく外へ出す(社長指示v0.25.2408・絵に隠れて見えないため)。
           const scale = dustMove === 'stomp' ? DUST_STOMP_SCALE : DUST_SCALE;
-          const dr = (jump ? (e.gJumpRadius ?? GIANT_JUMP_RADIUS)
+          const dr = (dustMove === 'jump' ? (e.gJumpRadius ?? GIANT_JUMP_RADIUS)
+            : dustMove === 'dive' ? GIANT_DIVE_RADIUS
             : dustMove === 'slam' ? GIANT_SLAM_HALF_WIDTH : (e.gStompRadius ?? GIANT_STOMP_RADIUS)) * scale;
           // 4つ目=「この latch 全体のうち、どこが着弾の瞬間か」。溜め中は砂埃を出さないための境目。
           const impactFrac = (toImpact + DUST_MS) > 0 ? toImpact / (toImpact + DUST_MS) : 0;
@@ -9404,7 +9456,7 @@ export class PixiScene {
         });
         if (dustL && dustL.t >= dustL.d[3]) {
           const dp = dustL.d[3] < 1 ? (dustL.t - dustL.d[3]) / (1 - dustL.d[3]) : 0;
-          this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp));
+          this.drawDust(dustL.d[0], dustL.d[1], dustL.d[2], dp, this.dustTintForStage(), this.dustAlpha(dp), dustL.t0);
         }
       }
       // 「振った瞬間」の弧(素材D-1・v0.25.2400)。**予告ではなく実行の絵**なので当たり判定と一致させる
@@ -9876,6 +9928,18 @@ export class PixiScene {
         this.projectiles.set(p.id, g);
       }
       this.drawProjectile(g, p);
+      // V1(1)(FX_GAP_LEDGER.md): 敵弾(enemy_bolt)の**出現/消滅エッジ検出**。発射経路は多数
+      // (g-bolt/裏ボスburst・radial/天使volley/uri bolt/gaze/plant種弾/idol射撃)あるが、全て
+      // addProjectile→この描画ループに合流するので、ここ1箇所で全弾技をカバーできる(判定コード不介入)。
+      // 出現エッジ=発射フラッシュ。予約弾(createdAt>now)はビュー出現がそのまま「撃った瞬間」になる。
+      if (p.weaponType === 'enemy_bolt' && p.hostile && !p.reflected) {
+        const bx = p.x + p.width / 2, by = p.y + p.height / 2;
+        if (!this.boltLast.has(p.id)) this.pushBoltFx(bx, by, false, now);
+        this.boltLast.set(p.id, { x: bx, y: by });
+      } else if (this.boltLast.has(p.id)) {
+        // 反射などで敵弾でなくなった(弾自体は存続): 爆ぜは出さない(カウンター反射のFXは既存・別経路)。
+        this.boltLast.delete(p.id);
+      }
     }
     for (const [id, g] of this.projectiles) {
       if (!seen.has(id)) {
@@ -9883,6 +9947,111 @@ export class PixiScene {
         this.projectiles.delete(id);
       }
     }
+    // 消滅エッジ=着弾/寿命切れ/盾ブロックの爆ぜ。削除箇所は複数あるが「配列から消えた」事実は
+    // ここで一律に観測できる(最後に見えていた位置で爆ぜる)。
+    for (const [id, pos] of this.boltLast) {
+      if (!seen.has(id)) {
+        this.boltLast.delete(id);
+        this.pushBoltFx(pos.x, pos.y, true, now);
+      }
+    }
+    this.drawBoltFx(now);
+  }
+
+  // ── V1(1): 敵弾の発射フラッシュ(赤系の小グロー+小バースト)と消滅の爆ぜ(小リング+火花) ──
+  // 全てプールsprite(共有tex/加算合成)。弾色(0xb91c1c/0xfca5a5)に合わせた赤系。強glowは不使用
+  // (半径は最大でも~22px ≪ STRONG_GLOW_RADIUS 44)。画面境界の新判定は足さない=最大引きズームでも
+  // world座標のままカメラに従うだけで破綻しない。
+  private boltLast = new Map<string, { x: number; y: number }>();
+  private boltFx: { x: number; y: number; pop: boolean; t0: number; seed: number }[] = [];
+  private boltFxPool: Sprite[] = [];
+  private boltFxUsed = 0;
+  private pushBoltFx(x: number, y: number, pop: boolean, now: number) {
+    if (!FX_RING_ENABLED) return;
+    if (this.boltFx.length >= BOLT_FX_MAX) this.boltFx.shift(); // 安全弁(リセット時の一斉消滅等)
+    this.boltFx.push({ x, y, pop, t0: now, seed: ((x * 13 + y * 7 + now) | 0) & 0xffff });
+  }
+  private boltFxSprite(): Sprite {
+    let sp = this.boltFxPool[this.boltFxUsed];
+    if (!sp) {
+      sp = new Sprite();
+      sp.anchor.set(0.5);
+      sp.blendMode = 'add';
+      this.L.effectLayer.addChild(sp);
+      this.boltFxPool[this.boltFxUsed] = sp;
+    }
+    this.boltFxUsed++;
+    return sp;
+  }
+  private drawBoltFx(now: number) {
+    this.boltFxUsed = 0;
+    let w = 0;
+    for (const fx of this.boltFx) {
+      const dur = fx.pop ? BOLT_POP_MS : BOLT_MUZZLE_MS;
+      const t = (now - fx.t0) / dur;
+      if (t >= 1 || t < 0) continue; // 期限切れは間引く(in-place圧縮)
+      this.boltFx[w++] = fx;
+      // 弾本体と同じ地平線フェードに乗せる(奥で弾が薄れているのにFXだけ光るのを防ぐ)。
+      const hFade = this.horizonActorAlpha(fx.y);
+      if (hFade <= 0.01) continue;
+      const fade = 1 - t;
+      if (fx.pop) {
+        // 消滅の爆ぜ: 小リング(5→22px)+小さな赤グロー+火花5粒。
+        const ring = this.boltFxSprite();
+        const rr = 5 + 17 * t;
+        ring.texture = getRingTexture(16);
+        ring.tint = 0xf87171;
+        ring.width = ring.height = (rr / 16) * ring.texture.width;
+        ring.position.set(fx.x, fx.y);
+        ring.alpha = 0.95 * fade * hFade;
+        ring.rotation = 0;
+        ring.visible = true;
+        const glow = this.boltFxSprite();
+        glow.texture = getGlowTexture();
+        glow.tint = 0xef4444;
+        glow.width = glow.height = 30 * (1 - t * 0.4);
+        glow.position.set(fx.x, fx.y);
+        glow.alpha = 0.55 * fade * hFade;
+        glow.rotation = 0;
+        glow.visible = true;
+        for (let i = 0; i < 5; i++) {
+          const sp = this.boltFxSprite();
+          const ang = (fx.seed % 628) / 100 + i * (Math.PI * 2 / 5);
+          const dist = 6 + 18 * (1 - fade * fade); // ease-out で外へ
+          sp.texture = getCircleTexture();
+          sp.tint = 0xfca5a5;
+          sp.width = sp.height = 5 * (1 - t * 0.6);
+          sp.position.set(fx.x + Math.cos(ang) * dist, fx.y + Math.sin(ang) * dist);
+          sp.alpha = fade * hFade;
+          sp.rotation = 0;
+          sp.visible = true;
+        }
+      } else {
+        // 発射フラッシュ: 赤系の小グロー(すっと膨らんで消える)+小バースト4粒。
+        const glow = this.boltFxSprite();
+        glow.texture = getGlowTexture();
+        glow.tint = 0xf87171;
+        glow.width = glow.height = (16 + 10 * t) * 2;
+        glow.position.set(fx.x, fx.y);
+        glow.alpha = 0.9 * fade * hFade;
+        glow.rotation = 0;
+        glow.visible = true;
+        for (let i = 0; i < 4; i++) {
+          const sp = this.boltFxSprite();
+          const ang = (fx.seed % 628) / 100 + i * (Math.PI / 2);
+          const dist = 5 + 12 * (1 - fade * fade);
+          sp.texture = getCircleTexture();
+          sp.tint = 0xfecaca;
+          sp.width = sp.height = 4.4 * (1 - t * 0.5);
+          sp.position.set(fx.x + Math.cos(ang) * dist, fx.y + Math.sin(ang) * dist);
+          sp.alpha = fade * hFade;
+          sp.rotation = 0;
+          sp.visible = true;
+        }
+      }
+    }
+    this.boltFx.length = w;
+    for (let i = this.boltFxUsed; i < this.boltFxPool.length; i++) this.boltFxPool[i].visible = false;
   }
 
   // 設置型デコイは「射程サークル(地面)+ 装置スプライト」を中心アンカーで描画。
@@ -11019,7 +11188,15 @@ export class PixiScene {
     const i = Math.min(KEYS.length - 2, Math.floor(x));
     return KEYS[i] + (KEYS[i + 1] - KEYS[i]) * (x - i);
   }
-  private drawDust(x: number, y: number, radius: number, prog: number, tint: number, alpha: number): void {
+  // V1(4)(FX_GAP_LEDGER.md): 砂埃の**決定的ジッター**用ハッシュ(0..1)。種はlatchの焼き付け時刻
+  // (latchFxのt0)+焼き付け済み座標=**出現ごとに固定・フレーム間で不変**(毎フレーム変わって
+  // チラつくのは禁止)。乱数源を持たないので一時停止/ヒットストップでも安定。
+  private dustJitterHash(a: number, b: number, c: number): number {
+    let h = Math.imul(a | 0, 0x9e3779b1) ^ Math.imul(b | 0, 0x85ebca6b) ^ Math.imul((c * 8) | 0, 0xc2b2ae35);
+    h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12;
+    return (h >>> 0) / 4294967296;
+  }
+  private drawDust(x: number, y: number, radius: number, prog: number, tint: number, alpha: number, seed?: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;
     const tex = getTexture('fx/dust');
     if (!tex) return;
@@ -11037,8 +11214,18 @@ export class PixiScene {
     }
     this.dustUsed++;
     sp.texture = this.dustFrames[Math.max(0, Math.min(3, Math.floor(prog * 4)))];
-    sp.width = radius * 2;
-    sp.height = radius * 2;
+    // V1(4): 出現ごとの個体差(水平反転/±12°回転/スケール±15%)。素材は現行fx/dustのまま
+    // (別絵バリエーションはV3=社長支給待ち)。seed未指定の呼び出しは従来どおり無ジッター。
+    let sc = 1, rot = 0, flip = false;
+    if (seed !== undefined) {
+      flip = this.dustJitterHash(seed, x, 1) < 0.5;
+      rot = (this.dustJitterHash(seed, y, 2) - 0.5) * 0.42;       // ±12°
+      sc = 1 + (this.dustJitterHash(seed, x + y, 3) - 0.5) * 0.3; // ±15%
+    }
+    sp.width = radius * 2 * sc;
+    sp.height = radius * 2 * sc;
+    sp.rotation = rot;                    // プール再利用なので毎回設定(残留防止)
+    if (flip) sp.scale.x = -sp.scale.x;   // width代入でscale.xは毎回正に戻る→ここで反転
     sp.position.set(x, y);
     sp.tint = tint;
     sp.alpha = alpha;
@@ -13103,15 +13290,15 @@ export class PixiScene {
       const ft = (now - openAt) / 140; // blade life ~140ms (a quick flash)
       if (ft < 1) {
         const fade = Math.max(0, 1 - ft);
-        // リーチリング(v0.25.2464): 旧64線分の手描き円(半径±0.9px揺らぎ+向きで明暗)は破線状に
-        // ガタついて見えた(社長報告)。焼き込みリングテクスチャの滑らかな円へ置換。方向の強調は
-        // 直下のクレセント(前方三日月)が引き続き担う。per-frame Graphicsの線分128本描画も消滅。
+        // リーチリング(v0.25.2464→v0.25.2468): 旧64線分の手描き円は破線状にガタついた。
+        // 社長指示「進行方向寄りが太く、背面寄りに徐々に細い月食の月のようなデザイン」を、
+        // 高分割(360セグ)で一度だけ焼いたテクスチャ(getCounterRingTexture)+回転で滑らかに再現。
         {
           let base = RING_TEX_BASES[RING_TEX_BASES.length - 1];
           for (const b of RING_TEX_BASES) { if (r <= b * 1.42) { base = b; break; } }
           let sp = this.counterReachRing;
           if (!sp) {
-            sp = new Sprite(getRingTexture(base));
+            sp = new Sprite(getCounterRingTexture(base));
             sp.anchor.set(0.5);
             sp.blendMode = 'add';
             (sp as unknown as { __ringBase?: number }).__ringBase = base;
@@ -13119,11 +13306,12 @@ export class PixiScene {
             this.counterReachRing = sp;
           }
           if ((sp as unknown as { __ringBase?: number }).__ringBase !== base) {
-            sp.texture = getRingTexture(base);
+            sp.texture = getCounterRingTexture(base);
             (sp as unknown as { __ringBase?: number }).__ringBase = base;
           }
           sp.position.set(cx, cy);
           sp.scale.set(r / base);
+          sp.rotation = head; // 太い側=狙い方向(テクスチャは+xが前方)
           sp.tint = 0x9ecbff; // 旧配色(縁0x3aa0ff+芯0xd8f0ff)の中間の青白
           sp.alpha = 0.9 * fade;
           sp.visible = true;

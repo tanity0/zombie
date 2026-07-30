@@ -50,6 +50,10 @@
   **社長の実機確認を完了条件**にする(v0.25.2465の透明守護霊=見えない事故6件目の教訓)。
 
 ## 実装状況
-- [ ] V1(発注済み・v0.25.2467目標)
+- [x] V1(v0.25.2468実装済み・**社長の実機確認待ち**=見えない事故対策の完了条件)
+  - 1 弾FX=レンダラの合流点方式(syncProjectilesの出現/消滅エッジ検出。addProjectile側は不介入)。
+  - 2 dash砂埃=bossState 'dash'(mimir/jorm/skadi)/'mdash-move'/'thrust'/'idol-roll' を既存latchへ追加+g-dive着地。
+  - 3 前屈み=combatTick.applyContactDamage(接触の唯一の合流点)で lastContactAttackAt/Dir 打刻→レンダラ変形。
+  - 4 砂埃ジッター=latch焼き付け時刻を種に反転/±12°回転/±15%スケール(決定的・チラつきなし)。
 - [ ] V2(V1検収後)
 - [ ] V3(素材支給待ち)
