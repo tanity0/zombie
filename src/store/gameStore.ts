@@ -732,7 +732,7 @@ export const BOSS_MELEE_STUN_MULT = 5;
 // 裏ボス(mimir/jormungand/skadi)専用: クリティカルを規定回数当てると「完全気絶(紫)」に移行。
 // 通常敵の気絶相当で、この間は攻撃を受けても起きず(stun 維持)、5× 近接をタイマー切れまで“し放題”。
 export const BOSS_FULLSTUN_CRITS = 5;    // 完全気絶に必要なクリ回数(社長指示)
-export const BOSS_FULLSTUN_MS = 5000;    // 完全気絶の持続(= STUN_DURATION_MS 相当)
+export const BOSS_FULLSTUN_MS = 3000;    // 完全気絶の持続(社長裁定v0.25.2491「紫気絶は3秒で」。旧5000)
 // v0.25.2490(社長裁定・雑魚ヘイト): ゴースト起因ダメージを受けた雑魚がゴーストへ向く時間(gameTime ms)。
 // 被弾のたびに更新。切れる/ゴースト消滅でプレイヤー狙いへ戻る(resolveEnemyTarget側)。実機調整前提の叩き台。
 export const GHOST_MOB_HATE_MS = 5000;

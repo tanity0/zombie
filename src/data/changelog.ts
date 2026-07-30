@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2491',
+    items: [
+      'ボスの紫の完全気絶(クリティカル5回)が5秒→3秒になりました。',
+    ],
+  },
+  {
     version: '0.25.2490',
     items: [
       '雑魚敵は常にプレイヤーを優先して狙うようになりました。守護霊に攻撃された雑魚だけ、しばらく守護霊の方へ向かいます(守護霊が自分の巻き込んだ敵を自分で引き受ける共闘の形。ボスの狙い方は従来どおりです)。',
