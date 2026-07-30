@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2509',
+    items: [
+      'ゲーム内容の変更はありません(守護霊パリティの全数監査表が完成。未対応15項目を優先順に列挙し、順次実装します)。',
+    ],
+  },
+  {
     version: '0.25.2508',
     items: [
       'ゲーム内容の変更はありません(実装方針の明文化: 守護霊のパリティはコピー実装禁止・プレイヤー関数の共通化で行う)。',
