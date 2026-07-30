@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.2493 — 守護霊: 撃破セッションのみ記録(社長裁定)+撃破タイムclearTimeMs実装【2026-07-30 18:06 JST】
+
+- **社長裁定4件を実装/記録**: ①「Bは混ぜない。基本的に残るのは撃破だけ。その後死のうが生きようが残る」
+  =撃破の無い交戦セッションは軸1にも軸2にも残さない(endSessionで丸ごと破棄)。②撃破タイム+カウンター
+  成功率で採用→`BossStyleSlot.clearTimeMs`(交戦開始→撃破・撃破の瞬間に確定・同tick精度)を追加。
+  ③アルバムUIは作らない→討伐記録一覧を後続で(置き場所は提案予定)。④ホーミング維持(台帳(c)クローズ)。
+- 実装(playerTraits.tsのみ=CRIT-UNIFY並走のスコープ外): Session.clearedSlots(key+clearTimeMs)・
+  endSessionの撃破ゲート・PendingBossStyleRecord/BossStyleSlotへのclearTimeMs配線。
+- テスト: 仕様変更で既存33箇所へ撃破印を追加(意図的に落ちた=正しい検知)+新仕様の期待値へ7件書き換え
+  (撃破なし=何も保存されない/ビット一致の保証対象を軸1+subStylesに明確化)+clearTimeMs新規1件。
+  playerTraits 57件+ghostDriver 42件=99件通過。typecheckエラー0・lintエラー0(既存8警告のみ)。
+- 仕様の正本: BOT_AND_GHOST.md §2.10追補。
+- 並走メモ: CRIT-UNIFY(クリ統一)はOpusが529過負荷で3回中断→**Sonnetで新規再発注**(リトライ2回で方式変更の
+  掟どおり)。playerTraits系は触らない指示済み=本pushと非干渉。
+- 未発注の待機列(CRIT-UNIFY着地後に順次): ①V2 FXバッチ(「一旦乗せておいて」承認済み)
+  ②間合いAI(ER再定義にGo+「一気に詰めて踏みつぶし等の連携も」追記済み・まかせる) ③討伐記録一覧UI。
+
 ## v0.25.2492 — クリ再設計の確定仕様§9(E=援護射撃もクリ無し・貫通が理由で補填なし)+間合いAIのER再定義+V3プロンプト(文書のみ)【2026-07-30 17:40 JST】
 
 - **E裁定完結**: 「援護射撃もクリ無し」+「貫通あるので」(=補填なし)。DPS台帳の外れ値(b)

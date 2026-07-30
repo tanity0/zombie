@@ -9,6 +9,9 @@
 //   ディープコピーを控え、終了時に差分を取る(CLAUDE.md 実装精度の規律3。生きた参照を保存すると
 //   差分が常に0になる=v0.25.1343の実バグの型)。
 // - **セッション合計30秒未満は混ぜない**(ノイズでEMAが動くのを防ぐ)。
+// - **撃破セッションのみ混ぜる(v0.25.2493・社長裁定「Bは混ぜない。基本的に残るのは撃破だけ。
+//   その後死のうが生きようが残る」)**: ボスを撃破しなかった交戦(逃げて切れた負け戦)は軸1にも
+//   軸2にも一切残さない。撃破済みセッションは以後の死亡に関係なく保留バッファに残る。
 // - **集計はEMA(α=0.3)**。保存は1組(直近ランの移動平均・直近1回の事故で人格が変わらない)。
 // - **ゴーストが場に居る間は計測しない**(§2.7 制約1の土台)。呼び出し側が ghostActive を渡す。
 //   ゴースト同伴中に開いていたセッションは保存せず破棄する(「2人での戦い方」を録音しない)。
@@ -65,8 +68,11 @@ export interface BossStyleSlot {
   srcClass: string | null;
   snapshot: { maxHealth: number; speed: number; level: number } | null;
   srcName: string | null;
-  /** 記録時刻(Date.now()・将来のアルバムUI用)。 */
+  /** 記録時刻(Date.now()・討伐記録一覧用)。 */
   at: number;
+  /** v0.25.2493(社長採用「撃破タイム+カウンター成功率であれば採用」): 交戦開始→撃破までの時間(ms)。
+   * 旧レコード(v0.25.2485〜2492)には無い=欠損可。表示側はカウンター成功率(counterChance)と併記する。 */
+  clearTimeMs?: number;
 }
 
 export interface PlayerProfile {
@@ -223,7 +229,9 @@ interface Session {
   lastPcx: number | null;           // 前tickのプレイヤー中心(静止/接近の変位算出用)
   lastPcy: number | null;
   // ---- G5(§2.10) ----
-  clearedSlotKeys: string[];        // このセッション中にnotifyBossClearされたスロットキー(重複無し)
+  // このセッション中にnotifyBossClearされたスロット(重複無し)。clearTimeMs=交戦開始→撃破の時間
+  // (v0.25.2493・撃破の瞬間のlastGameTimeで確定=同tick精度)。
+  clearedSlots: { key: string; clearTimeMs: number }[];
 }
 
 let session: Session | null = null;
@@ -253,7 +261,7 @@ const startSession = (gameTime: number): Session => ({
   approachAcc: 0,
   lastPcx: null,
   lastPcy: null,
-  clearedSlotKeys: [],
+  clearedSlots: [],
 });
 
 // G4a(§2.9(2))の計測定数(計測専用・挙動には無関係)。
@@ -362,6 +370,8 @@ export interface PendingBossStyleRecord {
   snapshot: { maxHealth: number; speed: number; level: number } | null;
   srcName: string | null;
   at: number;
+  /** v0.25.2493: 交戦開始→撃破の時間(ms・撃破の瞬間に確定)。 */
+  clearTimeMs: number;
 }
 
 export type PendingTraitRecord = PendingSessionRecord | PendingSubStyleRecord | PendingBossStyleRecord;
@@ -374,6 +384,11 @@ const endSession = (): void => {
   if (!s) return;
   const durationMs = s.lastGameTime - s.startGameTime;
   if (durationMs < MIN_SESSION_MS) return; // §2.6: 交戦合計30秒未満は混ぜない
+  // v0.25.2493(社長裁定「Bは混ぜない。基本的に残るのは撃破だけ。その後死のうが生きようが残る」):
+  // **撃破が無かったセッションは軸1(共通スタイル)にも混ぜず丸ごと破棄**。逃げて交戦を切った負け戦が
+  // EMAへ混ざる旧挙動(v0.25.2441〜2492)はここで終了。撃破済みならこの後どこで死んでも保留バッファに
+  // 残る(リザルト経由でcommit)=裁定どおり。サブ様式(ラン単位・ボス交戦に非依存)は対象外で従来どおり。
+  if (s.clearedSlots.length === 0) return;
 
   const telemetryEnd = getBotTelemetry();
   const meleeDelta = Math.max(0, telemetryEnd.damageDealt.melee - s.telemetryStart.damageDealt.melee);
@@ -412,13 +427,13 @@ const endSession = (): void => {
   });
 
   // G5(§2.10 仕様2): このセッション中に撃破されたslotごとに、同じ確定値を写した保留レコードを積む
-  // (EMAはしない=ベスト保持はcommit時)。撃破が無いセッションは何も積まない(不変条件)。
-  for (const slotKey of s.clearedSlotKeys) {
+  // (EMAはしない=ベスト保持はcommit時)。v0.25.2493: clearTimeMs=撃破の瞬間に確定した交戦時間を写す。
+  for (const cleared of s.clearedSlots) {
     pendingRecords.push({
-      kind: 'bossStyle', slotKey,
+      kind: 'bossStyle', slotKey: cleared.key,
       reactionSample, counterChanceSample, preferredDistSample, meleeBiasSample, mobilitySample,
       hitsPerMinSample, subUsesPerMinSample, stationarySample, approachSample,
-      srcClass, snapshot, srcName, at: Date.now(),
+      srcClass, snapshot, srcName, at: Date.now(), clearTimeMs: cleared.clearTimeMs,
     });
   }
 };
@@ -618,7 +633,10 @@ export const notifyBossClear = (bossType: EnemyType, stageId: string): void => {
   const s = session;
   if (!s || !isEngageableBoss(bossType)) return;
   const key = bossStyleSlotKey(bossType, stageId);
-  if (!s.clearedSlotKeys.includes(key)) s.clearedSlotKeys.push(key);
+  // v0.25.2493: 撃破タイム=交戦開始→撃破。lastGameTimeは毎tick更新済み=撃破の瞬間の値(同tick精度)。
+  if (!s.clearedSlots.some(c => c.key === key)) {
+    s.clearedSlots.push({ key, clearTimeMs: s.lastGameTime - s.startGameTime });
+  }
 };
 
 // ==== G4a(§2.9(3)): サブウェポンの様式カウンタ(ラン単位・ボス交戦区間に限定しない) ==============
@@ -786,6 +804,7 @@ export const applyPendingBossStyle = (
     snapshot: r.snapshot,
     srcName: r.srcName,
     at: r.at,
+    clearTimeMs: r.clearTimeMs, // v0.25.2493: 討伐記録一覧用(表示はカウンター成功率と併記)
   };
   return { ...prev, bossStyles: { ...(prev.bossStyles ?? {}), [r.slotKey]: slot } };
 };

@@ -60,6 +60,7 @@ describe('playerTraits: セッション成立/破棄', () => {
   beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
 
   it('非交戦中は何もしない(保存されない)', () => {
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 0 }));
     commitPendingTraits();
     expect(loadPlayerProfile()).toBeNull();
@@ -68,6 +69,7 @@ describe('playerTraits: セッション成立/破棄', () => {
   it('交戦合計30秒未満のセッションは混ぜない(保存されない)', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 29_999 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_000 })); // 交戦解除でセッション確定
     commitPendingTraits();
     expect(loadPlayerProfile()).toBeNull();
@@ -76,6 +78,7 @@ describe('playerTraits: セッション成立/破棄', () => {
   it('交戦合計30秒以上のセッションは保存される(初回はEMAでなく実測値そのまま)', () => {
     tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
     tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile();
@@ -88,6 +91,7 @@ describe('playerTraits: セッション成立/破棄', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
     tickPlayerTraits(baseInput({ gameTime: 30_500, ghostActive: true })); // ここでセッション破棄
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_000, ghostActive: true }));
     commitPendingTraits();
     expect(loadPlayerProfile()).toBeNull();
@@ -96,6 +100,7 @@ describe('playerTraits: セッション成立/破棄', () => {
   it('ゴーストが出うるラン(ghostRunActive=守護霊装備 or ?ghost=1)は計測を丸ごと止める(G3・§2.7制約1)', () => {
     tickPlayerTraits(baseInput({ gameTime: 0, ghostRunActive: true }));
     tickPlayerTraits(baseInput({ gameTime: 60_000, ghostRunActive: true }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100, ghostRunActive: true }));
     commitPendingTraits();
     expect(loadPlayerProfile()).toBeNull(); // 30秒以上交戦していても一切保存されない
@@ -105,6 +110,7 @@ describe('playerTraits: セッション成立/破棄', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
     tickPlayerTraits(baseInput({ gameTime: 30_500, ghostRunActive: true })); // ここでセッション破棄
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_000, ghostRunActive: true }));
     commitPendingTraits();
     expect(loadPlayerProfile()).toBeNull();
@@ -114,6 +120,7 @@ describe('playerTraits: セッション成立/破棄', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
     resetPlayerTraits();
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_000 }));
     commitPendingTraits();
     expect(loadPlayerProfile()).toBeNull();
@@ -127,6 +134,7 @@ describe('playerTraits: EMA(α=0.3)混合', () => {
     // 1回目: mobility=1(全tick移動)を確定させる。
     tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
     tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const first = loadPlayerProfile()!;
@@ -136,6 +144,7 @@ describe('playerTraits: EMA(α=0.3)混合', () => {
     resetBotTelemetry();
     tickPlayerTraits(baseInput({ gameTime: 0, movementInput: false }));
     tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: false }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const second = loadPlayerProfile()!;
@@ -150,6 +159,7 @@ describe('playerTraits: meleeBias(botTelemetry差分)', () => {
   it('分母(melee+gun)が0なら今回はこのノブだけ前回値を維持する', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -164,6 +174,7 @@ describe('playerTraits: meleeBias(botTelemetry差分)', () => {
     recordDamageDealt('melee', 30);
     recordDamageDealt('gun', 10);
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -186,6 +197,7 @@ describe('playerTraits: counterChance(機会/成立)とreactionMs', () => {
     tickPlayerTraits(baseInput({ gameTime: 1000, enemies: [counterableBoss] }));
     tickPlayerTraits(baseInput({ gameTime: 2000, enemies: [counterableBoss] }));
     tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [counterableBoss] }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -198,6 +210,7 @@ describe('playerTraits: counterChance(機会/成立)とreactionMs', () => {
     now = 1_000_300; // 300ms後に成立
     notifyCounterHit();
     tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [counterableBoss] }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -211,6 +224,7 @@ describe('playerTraits: counterChance(機会/成立)とreactionMs', () => {
     now = 1_000_000 + 5000; // 5秒(想定外に長い)
     notifyCounterHit();
     tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [counterableBoss] }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     expect(loadPlayerProfile()!.reactionMs).toBe(800);
@@ -221,6 +235,7 @@ describe('playerTraits: counterChance(機会/成立)とreactionMs', () => {
     tickPlayerTraits(baseInput({ gameTime: 0, enemies: [nonCounterableBoss] }));
     notifyCounterHit(); // 機会が開いていないので無視されるはず
     tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [nonCounterableBoss] }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -236,6 +251,7 @@ describe('playerTraits: hitsPerMin', () => {
     tickPlayerTraits(baseInput({ gameTime: 10_000, player: mkPlayer(90, 100) })); // 被弾1
     tickPlayerTraits(baseInput({ gameTime: 20_000, player: mkPlayer(80, 100) })); // 被弾2
     tickPlayerTraits(baseInput({ gameTime: 60_000, player: mkPlayer(80, 100) }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -251,6 +267,7 @@ describe('playerTraits: subUsesPerMin(G2.6・botTelemetry.subUses差分)', () =>
     recordSubUse('heavy-grenade');
     recordSubUse('decoy');
     tickPlayerTraits(baseInput({ gameTime: 60_000 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -263,6 +280,7 @@ describe('playerTraits: subUsesPerMin(G2.6・botTelemetry.subUses差分)', () =>
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     recordSubUse('turret');
     tickPlayerTraits(baseInput({ gameTime: 60_000 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -290,6 +308,7 @@ describe('playerTraits: subUsesPerMin(G2.6・botTelemetry.subUses差分)', () =>
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     recordSubUse('shield'); // 60秒で1回=サンプル1
     tickPlayerTraits(baseInput({ gameTime: 60_000 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -331,6 +350,7 @@ describe('playerTraits: srcName(計測時のプレイヤー名・v0.25.2477)', (
     savePlayerName('Tanity');
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     expect(loadPlayerProfile()!.srcName).toBe('Tanity');
@@ -339,6 +359,7 @@ describe('playerTraits: srcName(計測時のプレイヤー名・v0.25.2477)', (
   it('名前未設定でもendSession時に初期名(player+5桁)が生成されて記録される', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     expect(loadPlayerProfile()!.srcName).toMatch(/^player\d{5}$/);
@@ -354,6 +375,7 @@ describe('playerTraits G4a: 移動2ノブ(stationaryFrac/approachPerMin)', () =>
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 15_000 }));
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     expect(loadPlayerProfile()!.stationaryFrac).toBe(1);
@@ -365,6 +387,7 @@ describe('playerTraits G4a: 移動2ノブ(stationaryFrac/approachPerMin)', () =>
     tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(10_000) }));
     tickPlayerTraits(baseInput({ gameTime: 1000, player: playerAt(10_200) }));
     tickPlayerTraits(baseInput({ gameTime: 30_000, player: playerAt(16_000) }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -378,6 +401,7 @@ describe('playerTraits G4a: 移動2ノブ(stationaryFrac/approachPerMin)', () =>
     tickPlayerTraits(baseInput({ gameTime: 20_000, player: playerAt(420) }));  // エピソード1
     tickPlayerTraits(baseInput({ gameTime: 40_000, player: playerAt(260) }));  // エピソード2
     tickPlayerTraits(baseInput({ gameTime: 60_000, player: playerAt(260) }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
     commitPendingTraits();
     expect(loadPlayerProfile()!.approachPerMin).toBeCloseTo(2, 5); // 60秒で2回=2/分
@@ -388,6 +412,7 @@ describe('playerTraits G4a: 移動2ノブ(stationaryFrac/approachPerMin)', () =>
     tickPlayerTraits(baseInput({ gameTime: 0, player: playerAt(600), enemies: [bossAt(100)] }));
     tickPlayerTraits(baseInput({ gameTime: 30_000, player: playerAt(600), enemies: [bossAt(500)] })); // ボスが400px接近
     tickPlayerTraits(baseInput({ gameTime: 60_000, player: playerAt(600), enemies: [bossAt(500)] }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
     commitPendingTraits();
     expect(loadPlayerProfile()!.approachPerMin).toBe(0);
@@ -405,6 +430,7 @@ describe('playerTraits G4a: 技への反応表(セッション経由のe2e)', ()
     tickPlayerTraits(baseInput({ gameTime: 2000, enemies: [thorAt('harai')] }));
     tickPlayerTraits(baseInput({ gameTime: 3000, enemies: [thorAt('chase')] }));
     tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [thorAt('chase')] })); // 残響も確定済み
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -418,6 +444,7 @@ describe('playerTraits G4a: 技への反応表(セッション経由のe2e)', ()
     notifyMoveCounter();
     tickPlayerTraits(baseInput({ gameTime: 2000, enemies: [thorAt('chase')] }));
     tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [thorAt('chase')] }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const p = loadPlayerProfile()!;
@@ -439,6 +466,7 @@ describe('playerTraits G4a: サブ様式カウンタ(ラン単位・ボス交戦
   const createProfileViaSession = () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     expect(loadPlayerProfile()).not.toBeNull();
@@ -527,6 +555,7 @@ describe('playerTraits: 保留バッファ(リザルトでのcommit/破棄)', ()
   const runOneSession = (gameTime0 = 0) => {
     tickPlayerTraits(baseInput({ gameTime: gameTime0, movementInput: true }));
     tickPlayerTraits(baseInput({ gameTime: gameTime0 + 30_000, movementInput: true }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: gameTime0 + 30_100 }));
   };
 
@@ -541,9 +570,11 @@ describe('playerTraits: 保留バッファ(リザルトでのcommit/破棄)', ()
 
   it('30秒未満/ゴーストランは保留にも積まれない(ボス交戦なし等ではチェックボックスが出ない)', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 29_000 })); // 30秒未満
     expect(hasPendingTraitRecords()).toBe(false);
     tickPlayerTraits(baseInput({ gameTime: 100_000, ghostRunActive: true }));
+    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 200_000, ghostRunActive: true }));
     expect(hasPendingTraitRecords()).toBe(false);    // G3ゲート: そもそも計測されていない
   });
@@ -617,12 +648,14 @@ describe('playerTraits: 保留バッファ(リザルトでのcommit/破棄)', ()
       recordSubUse('heavy-grenade');
       tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true, enemies: [counterableBoss], player: mkPlayer(90) }));
       tickPlayerTraits(baseInput({ gameTime: 60_000, movementInput: true, enemies: [counterableBoss], player: mkPlayer(90) }));
+      notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
       tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
       step();
       // セッション2: 40秒・静止・gun寄り(2回目=EMA混合の畳みが実際に起きる)。
       tickPlayerTraits(baseInput({ gameTime: 100_000 }));
       recordDamageDealt('gun', 100);
       tickPlayerTraits(baseInput({ gameTime: 140_000 }));
+      notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
       tickPlayerTraits(baseInput({ inCombat: false, gameTime: 140_100 }));
       step();
       // ラン集計(サブ様式): wire=slam3/plant1・shield=設置2/バッシュ3/バッシュ与ダメ60。
@@ -647,7 +680,15 @@ describe('playerTraits: 保留バッファ(リザルトでのcommit/破棄)', ()
     commitPendingTraits();
     const b = storeB.get('zombie-ghost-profile-v1');
 
-    expect(b).toBe(a); // 保存文字列そのものが一致=ビットレベルで同一
+    // ビット一致の保証対象は**軸1+subStyles部分**。bossStylesはG5仕様4(スロットのsubStyles写しは
+    // 「同じcommitバッチ内のsubStyleレコード」から解決)により、確定点の粒度=commitの切り方で写しが
+    // 変わり得るため対象外(v0.25.2493でセッションに撃破印が必須になったのに伴う比較範囲の明確化)。
+    const axis1Of = (s: string | undefined): string => {
+      const o = JSON.parse(s!) as Record<string, unknown>;
+      delete o.bossStyles;
+      return JSON.stringify(o);
+    };
+    expect(axis1Of(b)).toBe(axis1Of(a)); // 軸1+subStylesの保存文字列が一致=EMAの数学と順序は不変
   });
 });
 
@@ -728,12 +769,12 @@ describe('playerTraits G5: 新規純関数(bossStyleSlotKey/ベスト保持判�
 describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () => {
   beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
 
-  it('撃破が無いランはbossStylesに1bitも触らない', () => {
+  it('撃破が無いセッションは何も保存されない(軸1にも混ぜない・v0.25.2493社長裁定「残るのは撃破だけ」)', () => {
     tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
     tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
-    expect(loadPlayerProfile()!.bossStyles).toBeUndefined();
+    expect(loadPlayerProfile()).toBeNull(); // 旧仕様(軸1だけ混ざる)から変更: 丸ごと破棄
   });
 
   it('セッション中のnotifyBossClearはcommit時にセッション確定値のコピーとしてスロット化される', () => {
@@ -751,22 +792,22 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
     expect(typeof slot.at).toBe('number');
   });
 
-  it('対象外の型(isEngageableBoss=false)は撃破通知してもスロットを作らない', () => {
+  it('対象外の型(isEngageableBoss=false)の撃破通知は撃破と数えない=セッションごと破棄(v0.25.2493)', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     notifyBossClear('reaper', 'stage-1'); // 死神はENGAGEABLE_BOSS_TYPES対象外
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
-    expect(loadPlayerProfile()!.bossStyles).toBeUndefined();
+    expect(loadPlayerProfile()).toBeNull(); // 撃破印なし=何も保存されない
   });
 
-  it('セッション外(session=null)でのnotifyBossClearは無視される', () => {
+  it('セッション外(session=null)でのnotifyBossClearは無視される=そのセッションは撃破なし扱い(v0.25.2493)', () => {
     notifyBossClear('thor', 'stage-1'); // まだ交戦していない=session無し
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
-    expect(loadPlayerProfile()!.bossStyles).toBeUndefined();
+    expect(loadPlayerProfile()).toBeNull();
   });
 
   it('ゴーストランではsessionが常にnullなのでnotifyBossClearは自動的に無視される(§2.7と同じゲート)', () => {
@@ -776,6 +817,16 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100, ghostRunActive: true }));
     commitPendingTraits();
     expect(loadPlayerProfile()).toBeNull(); // 軸1も未保存(既存G3挙動)なのでbossStylesも当然無い
+  });
+
+  it('撃破タイム(v0.25.2493): 交戦開始→撃破の時間がスロットに記録される(撃破後の残り時間は含まない)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    tickPlayerTraits(baseInput({ gameTime: 45_000, movementInput: true }));
+    notifyBossClear('thor', 'stage-1'); // この瞬間の経過=45秒が撃破タイム
+    tickPlayerTraits(baseInput({ gameTime: 60_000, movementInput: true })); // 撃破後も交戦が続いた分
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.bossStyles!.thor.clearTimeMs).toBe(45_000);
   });
 
   it('同一slotKeyの重複通知は1件に重複排除される', () => {
@@ -802,21 +853,23 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
   });
 
   it('settlePendingTraits(true)=全破棄はbossStylesにも1bitも触らない', () => {
-    // 1ラン目: 撃破無しで普通にcommitしてプロファイルを作る。
+    // 1ラン目: mimir撃破込みで普通にcommitしてプロファイルを作る(v0.25.2493: 撃破が無いと何も保存されないため)。
     tickPlayerTraits(baseInput({ gameTime: 0 }));
+    notifyBossClear('mimir', 'stage-1');
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     settlePendingTraits(false);
-    expect(loadPlayerProfile()!.bossStyles).toBeUndefined();
+    expect(loadPlayerProfile()!.bossStyles!.mimir).toBeDefined();
+    const before = JSON.stringify(loadPlayerProfile());
 
-    // 2ラン目: ボス撃破込みで「反映しない」を選ぶ。
+    // 2ラン目: thor撃破込みで「反映しない」を選ぶ→プロファイルは1ラン目のまま1bitも動かない。
     resetPlayerTraits(); resetBotTelemetry();
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     notifyBossClear('thor', 'stage-1');
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     settlePendingTraits(true); // 破棄
-    expect(loadPlayerProfile()!.bossStyles).toBeUndefined(); // 何も乗らない
+    expect(JSON.stringify(loadPlayerProfile())).toBe(before); // thorスロットは乗らず全体不変
   });
 
   it('ベスト保持: 被弾/分が少ない撃破で上書きし、多い撃破では上書きしない', () => {
@@ -856,8 +909,10 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
   });
 
   it('subStylesの写し: 同ランにsubStyleレコードが有れば軸1のEMAとは異なるラン実測レート(EMAなし)を使う', () => {
-    // ラン1: プロファイル作成 + wire使用(スラム3回=slamRatio1)を先に確定させ、軸1の「前回値」を作る。
+    // ラン1: mimir撃破込みでプロファイル作成(v0.25.2493: 撃破必須)+wire使用(スラム3回=slamRatio1)で
+    // 軸1の「前回値」を作る。
     tickPlayerTraits(baseInput({ gameTime: 0 }));
+    notifyBossClear('mimir', 'stage-1');
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     recordWireAnchorUse('slam'); recordWireAnchorUse('slam'); recordWireAnchorUse('slam');
@@ -882,20 +937,22 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
     expect(p.bossStyles!.thor.subStyles.wire).toEqual({ n: 3, slamRatio: 0 });
   });
 
-  it('軸1の計測・EMA・保存はボス撃破の有無で変わらない(bossStyle併存でも軸1はビット一致)', () => {
-    // (A) 撃破無しの通常ラン。srcNameは未設定だとランダム初期名が生成され両アームで別名になるため固定する
-    // (既存の「既定経路(commit)の保存結果は旧実装とビット一致する」テストと同じ配慮)。
+  it('軸1の計測・EMA・保存は「どのボスを撃破したか」で変わらない(bossStyleの中身が違っても軸1はビット一致)', () => {
+    // v0.25.2493: 撃破の無いセッションは丸ごと破棄されるため、比較は「撃破したボスが違う2アーム」で行う。
+    // (A) mimir撃破のラン。srcNameは未設定だとランダム初期名が生成され両アームで別名になるため固定する。
     const storeA = installStorage(); resetBotTelemetry(); resetPlayerTraits();
     savePlayerName('axis1-fixed');
     tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    notifyBossClear('mimir', 'stage-1');
     tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     const a = storeA.get('zombie-ghost-profile-v1');
     const aParsed = JSON.parse(a!) as PlayerProfile & Record<string, unknown>;
+    expect(aParsed.bossStyles).toBeDefined();
     delete (aParsed as Record<string, unknown>).bossStyles; // 比較対象は軸1部分のみ
 
-    // (B) 同じ操作+撃破1件(bossStylesが増えるだけで軸1は変わらないはず)。
+    // (B) 同じ操作でthor撃破(bossStylesのキーが違うだけで軸1は変わらないはず)。
     const storeB = installStorage(); resetBotTelemetry(); resetPlayerTraits();
     savePlayerName('axis1-fixed');
     tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
