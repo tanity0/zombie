@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2520',
+    items: [
+      'ゲーム内容の変更はありません(オンライン仕様書の裁定3件を守護霊設計書へ同期)。',
+    ],
+  },
+  {
     version: '0.25.2519',
     items: [
       'タイトル画面右上の「最深到達」バッジを廃止しました(バージョン表示だけに)。',
