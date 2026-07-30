@@ -20,7 +20,7 @@
 //   に積む。リザルトを閉じる時に settlePendingTraits() が commit(既定・従来と同じ順序でEMA混合=結果は
 //   旧実装とビット一致)か全破棄を行う。リザルトを経由しない終了(ブラウザ閉じ等)は保留のまま消える
 //   =破棄と同じ(安全側)。
-import type { Enemy } from '../types/game';
+import type { Enemy, EnemyType } from '../types/game';
 import { getBotTelemetry, snapshotBotTelemetry, type BotTelemetry } from './botTelemetry';
 import { isEngageableBoss } from './bossEngagement';
 import { isBossCounterableNowApprox } from './bossScript';
@@ -43,6 +43,30 @@ export interface SubStyleProfile {
    * bashDamageFrac=ラン中の総与ダメージに占めるバッシュ与ダメの割合。
    */
   shield: { n: number; bashPerPlacement: number; bashDamageFrac: number };
+}
+
+/**
+ * G5(BOT_AND_GHOST.md §2.10 仕様1): ボス別攻略スタイル1スロット=撃破セッション1回ぶんのサンプル写し
+ * (**EMAしない**)。9ノブは各null可(そのセッションで計測できなかったノブ=消費側がその項目だけ
+ * 軸1へフォールバックする合図)。moveReactions(技への反応表)はここに含めない=共有のまま(軸2へ複製しない)。
+ */
+export interface BossStyleSlot {
+  reactionMs: number | null;
+  counterChance: number | null;
+  preferredDist: number | null;
+  meleeBias: number | null;
+  mobility: number | null;
+  hitsPerMin: number | null;
+  subUsesPerMin: number | null;
+  stationaryFrac: number | null;
+  approachPerMin: number | null;
+  /** 仕様4: 同ランのsubStyle保留レコードが有ればそのラン実測レート(EMAなし)、無ければcommit後の軸1コピー。 */
+  subStyles: SubStyleProfile;
+  srcClass: string | null;
+  snapshot: { maxHealth: number; speed: number; level: number } | null;
+  srcName: string | null;
+  /** 記録時刻(Date.now()・将来のアルバムUI用)。 */
+  at: number;
 }
 
 export interface PlayerProfile {
@@ -78,7 +102,22 @@ export interface PlayerProfile {
    * 頭上表示はこの記録名を使う=将来オンラインで他人のゴーストが来た時に「その人の名前」が
    * 出る構造(§2.5 未決5=プロファイルは通信ペイロード)。 */
   srcName?: string;
+  /**
+   * G5(BOT_AND_GHOST.md §2.10 仕様1): ボス別攻略スタイル(軸2)。キー=bossStyleSlotKey()の戻り値。
+   * 撃破が無いボス/計測不能な条件下では触らない=任意フィールド(後方互換=欠損可・v:1のまま)。
+   */
+  bossStyles?: Record<string, BossStyleSlot>;
 }
+
+/**
+ * G5(BOT_AND_GHOST.md §2.10 仕様1): ボス別スロットのキー(純関数)。giantbatだけステージ別
+ * (`giantbat@<stageId>`。城ボス/グレン/未確認変異体は同typeだが別の戦いのため)、他typeはtypeそのまま。
+ * 計測側(このファイル・notifyBossClear)と消費側(directorTick.ts・effectiveGhostProfile)が同じ関数を
+ * 使う(ズレ防止)。stageIdは呼び出し側が `getSelectedStageId()`(src/data/progress.ts)で取得して渡す
+ * (このファイルはstore/data非依存を保つため、ここではimportしない)。
+ */
+export const bossStyleSlotKey = (type: EnemyType, stageId: string): string =>
+  type === 'giantbat' ? `giantbat@${stageId}` : type;
 
 const STORAGE_KEY = 'zombie-ghost-profile-v1';
 
@@ -126,7 +165,9 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
     && (o.stationaryFrac === undefined || typeof o.stationaryFrac === 'number')
     && (o.approachPerMin === undefined || typeof o.approachPerMin === 'number')
     && (o.moveReactions === undefined || (typeof o.moveReactions === 'object' && o.moveReactions !== null))
-    && (o.subStyles === undefined || (typeof o.subStyles === 'object' && o.subStyles !== null));
+    && (o.subStyles === undefined || (typeof o.subStyles === 'object' && o.subStyles !== null))
+    // G5(§2.10仕様1): bossStylesは任意オブジェクトとして許容(後方互換=欠損可)。
+    && (o.bossStyles === undefined || (typeof o.bossStyles === 'object' && o.bossStyles !== null));
 };
 
 /** 保存済みプロファイル。無ければ null(G2側が既定プロファイルへフォールバックする)。 */
@@ -181,6 +222,8 @@ interface Session {
   approachAcc: number;              // (2) 進行中の接近量の累積(px)
   lastPcx: number | null;           // 前tickのプレイヤー中心(静止/接近の変位算出用)
   lastPcy: number | null;
+  // ---- G5(§2.10) ----
+  clearedSlotKeys: string[];        // このセッション中にnotifyBossClearされたスロットキー(重複無し)
 }
 
 let session: Session | null = null;
@@ -210,6 +253,7 @@ const startSession = (gameTime: number): Session => ({
   approachAcc: 0,
   lastPcx: null,
   lastPcy: null,
+  clearedSlotKeys: [],
 });
 
 // G4a(§2.9(2))の計測定数(計測専用・挙動には無関係)。
@@ -298,7 +342,29 @@ export interface PendingSubStyleRecord {
   totalDamage: number;
 }
 
-export type PendingTraitRecord = PendingSessionRecord | PendingSubStyleRecord;
+/**
+ * G5(BOT_AND_GHOST.md §2.10 仕様2/3): ボス撃破1件ぶんの保留レコード。サンプルは
+ * PendingSessionRecordと**同じセッション確定値**(撃破ボスの数だけ複製・EMAはしない=ベスト保持のみ)。
+ */
+export interface PendingBossStyleRecord {
+  kind: 'bossStyle';
+  slotKey: string;
+  reactionSample: number | null;
+  counterChanceSample: number | null;
+  preferredDistSample: number | null;
+  meleeBiasSample: number | null;
+  mobilitySample: number | null;
+  hitsPerMinSample: number | null;
+  subUsesPerMinSample: number | null;
+  stationarySample: number | null;
+  approachSample: number | null;
+  srcClass: string | null;
+  snapshot: { maxHealth: number; speed: number; level: number } | null;
+  srcName: string | null;
+  at: number;
+}
+
+export type PendingTraitRecord = PendingSessionRecord | PendingSubStyleRecord | PendingBossStyleRecord;
 
 let pendingRecords: PendingTraitRecord[] = [];
 
@@ -321,26 +387,40 @@ const endSession = (): void => {
   const reactionRaw = median(s.reactionSamplesMs);
   const reactionSample = reactionRaw === null ? null
     : Math.max(REACTION_CLAMP_MIN, Math.min(REACTION_CLAMP_MAX, reactionRaw));
+  const counterChanceSample = s.opportunities > 0 ? s.successes / s.opportunities : null;
+  const preferredDistSample = medianBucketDist(s.distBuckets);
+  const mobilitySample = s.totalTicks > 0 ? s.movedTicks / s.totalTicks : null;
+  const hitsPerMinSample = durationMs > 0 ? s.hits / (durationMs / 60000) : null;
+  const subUsesPerMinSample = durationMs > 0 ? subUsesDelta / (durationMs / 60000) : null;
+  const stationarySample = s.motionTicks > 0 ? s.stationaryTicks / s.motionTicks : null;
+  const approachSample = durationMs > 0 ? s.approachEpisodes / (durationMs / 60000) : null;
+  // v0.25.2467/2468: クラスとステータス写しは従来のendSession時点(=いま)の値を確定して積む。
+  const srcClass = sessionSrcClass;
+  const snapshot = sessionSnapshot;
+  // v0.25.2477: プレイヤー名も同じくendSession時点で確定(未設定なら台帳が初期名を生成して返す)。
+  const srcName = loadPlayerName();
+
   // v0.25.2476: サンプル計算は従来のまま。ここで保存せず保留バッファへ積む(EMA混合はcommit時)。
   pendingRecords.push({
     kind: 'session',
-    reactionSample,
-    counterChanceSample: s.opportunities > 0 ? s.successes / s.opportunities : null,
-    preferredDistSample: medianBucketDist(s.distBuckets),
-    meleeBiasSample,
-    mobilitySample: s.totalTicks > 0 ? s.movedTicks / s.totalTicks : null,
-    hitsPerMinSample: durationMs > 0 ? s.hits / (durationMs / 60000) : null,
-    subUsesPerMinSample: durationMs > 0 ? subUsesDelta / (durationMs / 60000) : null,
+    reactionSample, counterChanceSample, preferredDistSample, meleeBiasSample, mobilitySample,
+    hitsPerMinSample, subUsesPerMinSample,
     // G4a: 移動2ノブのサンプル+技への反応表の確定(開いている/残響中のエピソードも全部畳む)。
-    stationarySample: s.motionTicks > 0 ? s.stationaryTicks / s.motionTicks : null,
-    approachSample: durationMs > 0 ? s.approachEpisodes / (durationMs / 60000) : null,
+    stationarySample, approachSample,
     moveTally: endMoveReactions(s.moveReactions),
-    // v0.25.2467/2468: クラスとステータス写しは従来のendSession時点(=いま)の値を確定して積む。
-    srcClass: sessionSrcClass,
-    snapshot: sessionSnapshot,
-    // v0.25.2477: プレイヤー名も同じくendSession時点で確定(未設定なら台帳が初期名を生成して返す)。
-    srcName: loadPlayerName(),
+    srcClass, snapshot, srcName,
   });
+
+  // G5(§2.10 仕様2): このセッション中に撃破されたslotごとに、同じ確定値を写した保留レコードを積む
+  // (EMAはしない=ベスト保持はcommit時)。撃破が無いセッションは何も積まない(不変条件)。
+  for (const slotKey of s.clearedSlotKeys) {
+    pendingRecords.push({
+      kind: 'bossStyle', slotKey,
+      reactionSample, counterChanceSample, preferredDistSample, meleeBiasSample, mobilitySample,
+      hitsPerMinSample, subUsesPerMinSample, stationarySample, approachSample,
+      srcClass, snapshot, srcName, at: Date.now(),
+    });
+  }
 };
 
 /**
@@ -348,7 +428,7 @@ const endSession = (): void => {
  * (prev=null なら初回保存=サンプルそのまま。EMAの数学は不変=旧実装とビット一致がテストで固定される。)
  */
 export const applyPendingSession = (prev: PlayerProfile | null, r: PendingSessionRecord): PlayerProfile => {
-  const base = prev ?? { v: 1 as const, runs: 0, ...SEED_PROFILE, moveReactions: {}, subStyles: defaultSubStyles() };
+  const base: PlayerProfile = prev ?? { v: 1 as const, runs: 0, ...SEED_PROFILE, moveReactions: {}, subStyles: defaultSubStyles() };
   const isFirstEverSave = prev === null;
   return {
     v: 1,
@@ -372,6 +452,9 @@ export const applyPendingSession = (prev: PlayerProfile | null, r: PendingSessio
     snapshot: r.snapshot ?? base.snapshot,
     // v0.25.2477: 計測時のプレイヤー名(同上)。
     srcName: r.srcName ?? base.srcName,
+    // G5(§2.10): このレコード自体はbossStylesを触らない(bossStyleレコードは別途最後に適用される)が、
+    // ここで持ち越さないと以前保存済みのbossStylesが毎セッションcommitで消えてしまうため必ず引き継ぐ。
+    bossStyles: base.bossStyles,
   };
 };
 
@@ -521,6 +604,23 @@ export const notifyMoveDamage = (moveKey: string): void => {
   if (session) markMoveReactionHit(session.moveReactions, moveKey);
 };
 
+// ==== G5(BOT_AND_GHOST.md §2.10): ボス撃破の通知(1行フック) ======================================
+
+/**
+ * ボス撃破の通知。呼び出し箇所の全数表はBOT_AND_GHOST.md §2.10実装結果を参照
+ * (gameStore.damageEnemyの死亡分岐+grantMeleeKillRewardsの2箇所=近接/銃/接触/爆発/DoT/カウンター等
+ * 全キル経路の合流点)。**セッション(ボス交戦計測)が開いている時だけ**記録する(セッション外の死亡は
+ * 無視=狭い側)。ゴーストランは§2.7の既存ゲート(tickPlayerTraitsがghostActive/ghostRunActiveの間
+ * session=null にする)により自動的に記録されない(劣化コピー防止・軸1と同じ理屈)。
+ * 対象は `isEngageableBoss`(bossEngagement.tsが正本)の型のみ(reaper/hunter/pumpkin/lab-zombie-3等は無視)。
+ */
+export const notifyBossClear = (bossType: EnemyType, stageId: string): void => {
+  const s = session;
+  if (!s || !isEngageableBoss(bossType)) return;
+  const key = bossStyleSlotKey(bossType, stageId);
+  if (!s.clearedSlotKeys.includes(key)) s.clearedSlotKeys.push(key);
+};
+
 // ==== G4a(§2.9(3)): サブウェポンの様式カウンタ(ラン単位・ボス交戦区間に限定しない) ==============
 // サブの使い方は平時に出るため、セッション(ボス交戦区間)ではなくラン全体で数え、ラン境界
 // (gameStore.resetGame)で foldSubStyleTallies がプロファイルへEMA混合する。
@@ -626,6 +726,70 @@ export const applyPendingSubStyle = (prev: PlayerProfile, r: PendingSubStyleReco
   return { ...prev, subStyles: { wire: nextWire, shield: nextShield } };
 };
 
+// ==== G5(BOT_AND_GHOST.md §2.10): ボス別攻略スタイル(軸2)の commit 側 ==========================
+
+/**
+ * 純関数(ベスト保持判定): 既存slotが無ければ採用(true)。有れば被弾/分(hitsPerMin)が
+ * 少ない方を保持=**新hitsPerMin ≤ 旧hitsPerMinなら上書き**(同値は新しい方=スナップショット/
+ * レベルが新鮮)。新サンプルがnull(このセッションでは計測できなかった)なら上書きしない(保守側)。
+ */
+export const isBetterBossStyleSample = (
+  prevHitsPerMin: number | null | undefined,
+  newHitsPerMin: number | null,
+): boolean => {
+  if (newHitsPerMin === null) return false;
+  if (prevHitsPerMin === null || prevHitsPerMin === undefined) return true;
+  return newHitsPerMin <= prevHitsPerMin;
+};
+
+/**
+ * 純関数: ボス別スロットのsubStyles写し=「そのラン実測レート(EMAなし)」(§2.10 仕様4)。
+ * applyPendingSubStyleのサンプル計算と同じ式だが、既存値との混合(EMA)はしない
+ * (1ラン分の生値のみ=撃破ランそのものの様式を写す)。
+ */
+export const sampleSubStylesFromRecord = (r: PendingSubStyleRecord): SubStyleProfile => {
+  const t = r.tally;
+  const wireUses = t.wireSlams + t.wirePlants;
+  const wire = wireUses > 0 ? { n: wireUses, slamRatio: t.wireSlams / wireUses } : defaultSubStyles().wire;
+  const shield = t.shieldPlacements > 0
+    ? {
+      n: t.shieldPlacements,
+      bashPerPlacement: t.shieldBashes / t.shieldPlacements,
+      bashDamageFrac: r.totalDamage > 0 ? t.shieldBashDamage / r.totalDamage : 0,
+    }
+    : defaultSubStyles().shield;
+  return { wire, shield };
+};
+
+/**
+ * 純関数: 保留bossStyleレコード1件をベスト保持規則(isBetterBossStyleSample)でプロファイルへ適用する。
+ * subStylesForSlotは呼び出し側(commitPendingTraits)が仕様4のとおり解決して渡す
+ * (同ランにsubStyleレコードが有ればsampleSubStylesFromRecord、無ければcommit後の軸1コピー)。
+ */
+export const applyPendingBossStyle = (
+  prev: PlayerProfile, r: PendingBossStyleRecord, subStylesForSlot: SubStyleProfile,
+): PlayerProfile => {
+  const existing = prev.bossStyles?.[r.slotKey];
+  if (!isBetterBossStyleSample(existing?.hitsPerMin, r.hitsPerMinSample)) return prev;
+  const slot: BossStyleSlot = {
+    reactionMs: r.reactionSample,
+    counterChance: r.counterChanceSample,
+    preferredDist: r.preferredDistSample,
+    meleeBias: r.meleeBiasSample,
+    mobility: r.mobilitySample,
+    hitsPerMin: r.hitsPerMinSample,
+    subUsesPerMin: r.subUsesPerMinSample,
+    stationaryFrac: r.stationarySample,
+    approachPerMin: r.approachSample,
+    subStyles: subStylesForSlot,
+    srcClass: r.srcClass,
+    snapshot: r.snapshot,
+    srcName: r.srcName,
+    at: r.at,
+  };
+  return { ...prev, bossStyles: { ...(prev.bossStyles ?? {}), [r.slotKey]: slot } };
+};
+
 // ==== 保留バッファの決算(リザルト画面が呼ぶ・v0.25.2476) ==========================================
 
 /** リザルト表示用: このランで保留中の記録が1件以上あるか(=チェックボックスを出す条件)。 */
@@ -635,18 +799,35 @@ export const hasPendingTraitRecords = (): boolean => pendingRecords.length > 0;
  * 保留バッファを積んだ順に「load→従来と同一の式でEMA→save」で1件ずつ再生して確定する(既定経路)。
  * 旧実装は各確定点で即 load/save していたので、同順再生の結果はビットレベルで一致する
  * (JSONの数値round-tripは可逆・保存はplayerTraitsだけが行うため間に割り込む書き手も居ない)。
+ *
+ * G5(§2.10 仕様4): session/subStyle は**従来どおり先に、積んだ順で**適用する(=軸1の保存結果は
+ * 旧実装とビット一致のまま。bossStyleが混ざっていてもこのループは1文字も変わらない)。bossStyleは
+ * 後段でまとめて**最後に**適用する。
  */
 export const commitPendingTraits = (): void => {
   const records = pendingRecords;
   pendingRecords = [];
+  const bossStyleRecords: PendingBossStyleRecord[] = [];
   for (const r of records) {
     if (r.kind === 'session') {
       saveProfile(applyPendingSession(loadPlayerProfile(), r));
-    } else {
+    } else if (r.kind === 'subStyle') {
       const prev = loadPlayerProfile();
       if (prev === null) continue; // applyPendingSubStyleのコメント参照(新規作成はセッションだけ)
       saveProfile(applyPendingSubStyle(prev, r));
+    } else {
+      bossStyleRecords.push(r); // G5: 最後にまとめて適用する(下記)
     }
+  }
+  if (bossStyleRecords.length === 0) return;
+  // 仕様4: 同ラン(=このバッチ)にsubStyleレコードが有ればそのラン実測レート(EMAなし)を、
+  // 無ければcommit後の軸1subStylesをそのまま写す。
+  const subStyleRecord = records.find((r): r is PendingSubStyleRecord => r.kind === 'subStyle');
+  for (const r of bossStyleRecords) {
+    const prev = loadPlayerProfile();
+    if (prev === null) continue; // 軸1が未保存(保存失敗等)ならbossStyleも乗せない(既存subStyleと同じ保守側の裁定)
+    const subStylesForSlot = subStyleRecord ? sampleSubStylesFromRecord(subStyleRecord) : prev.subStyles;
+    saveProfile(applyPendingBossStyle(prev, r, subStylesForSlot));
   }
 };
 
@@ -665,6 +846,36 @@ export const settlePendingTraits = (optOut: boolean): void => {
   foldSubStyleTallies();
   if (optOut) discardPendingTraits();
   else commitPendingTraits();
+};
+
+// ==== G5(BOT_AND_GHOST.md §2.10 仕様5): 消費側(召喚時の合成) ======================================
+
+/**
+ * 純関数: 召喚時のプロファイル合成。`profile.bossStyles?.[slotKey]` が有れば**ノブ単位で軸2値を
+ * 優先**(そのノブがnull=このセッションでは計測できなかった場合だけ軸1へフォールバック)、
+ * snapshot/srcClass/srcNameもslot優先(絵と名前=その撃破ランのもの)。moveReactionsは共有のまま
+ * (軸2に複製しない=常に軸1のものを使う)。slotが無ければ軸1をそのまま返す。
+ * **ghostDriver.ts はこの関数を経由するだけで変更不要**(戻り値はPlayerProfileのまま=形は不変)。
+ */
+export const effectiveGhostProfile = (profile: PlayerProfile, slotKey: string): PlayerProfile => {
+  const slot = profile.bossStyles?.[slotKey];
+  if (!slot) return profile;
+  return {
+    ...profile,
+    reactionMs: slot.reactionMs ?? profile.reactionMs,
+    counterChance: slot.counterChance ?? profile.counterChance,
+    preferredDist: slot.preferredDist ?? profile.preferredDist,
+    meleeBias: slot.meleeBias ?? profile.meleeBias,
+    mobility: slot.mobility ?? profile.mobility,
+    hitsPerMin: slot.hitsPerMin ?? profile.hitsPerMin,
+    subUsesPerMin: slot.subUsesPerMin ?? profile.subUsesPerMin,
+    stationaryFrac: slot.stationaryFrac ?? profile.stationaryFrac,
+    approachPerMin: slot.approachPerMin ?? profile.approachPerMin,
+    subStyles: slot.subStyles,
+    srcClass: slot.srcClass ?? profile.srcClass,
+    snapshot: slot.snapshot ?? profile.snapshot,
+    srcName: slot.srcName ?? profile.srcName,
+  };
 };
 
 // gameStore.resetGame(ラン開始)で呼ぶ。前ランの未確定セッションを持ち越さない

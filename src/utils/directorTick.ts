@@ -36,7 +36,7 @@ import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
 import { bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
-import { tickPlayerTraits, loadPlayerProfile } from './playerTraits'; // BOT_AND_GHOST.md G1
+import { tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey } from './playerTraits'; // BOT_AND_GHOST.md G1/G5
 import { loadPlayerName } from './playerName'; // v0.25.2477: 守護霊の頭上名(srcName未記録時のフォールバック)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
 import { getSelectedStageId, recordChronicle } from '../data/progress';
@@ -665,7 +665,12 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   }
 
   // プロファイル未保存(初回)の場合は既定プロファイル(botSkillのcasual相当から変換)を使う。
-  const profile = loadPlayerProfile() ?? defaultGhostProfile();
+  // G5(BOT_AND_GHOST.md §2.10 仕様5): 軸1プロファイルが有れば、紐付くボスのスロット(bossStyles)を
+  // ノブ単位で優先合成する(effectiveGhostProfile。スロットが無い/そのノブがnullなら軸1へフォールバック)。
+  const loadedProfile = loadPlayerProfile();
+  const profile = loadedProfile
+    ? effectiveGhostProfile(loadedProfile, bossStyleSlotKey(boss.type, getSelectedStageId()))
+    : defaultGhostProfile();
   refs.ghostProfileRef.current = profile;
 
   // v0.25.2468(社長裁定「HPは計測時のHPを100%再現。HPというか全ステータスをそのまま再現」):

@@ -10,6 +10,9 @@ import {
   recordWireAnchorUse, recordShieldPlacement, recordShieldBash, recordShieldBashDamage, foldSubStyleTallies,
   // 保存の保留化(v0.25.2476): リザルトでのcommit/破棄
   hasPendingTraitRecords, commitPendingTraits, settlePendingTraits,
+  // G5(BOT_AND_GHOST.md §2.10): ボス別攻略スタイル(軸2)
+  notifyBossClear, bossStyleSlotKey, isBetterBossStyleSample, effectiveGhostProfile,
+  type PlayerProfile,
 } from './playerTraits';
 import { resetBotTelemetry, recordDamageDealt, recordSubUse } from './botTelemetry';
 import { savePlayerName } from './playerName'; // v0.25.2477: srcName(計測時のプレイヤー名)の固定用
@@ -645,5 +648,266 @@ describe('playerTraits: 保留バッファ(リザルトでのcommit/破棄)', ()
     const b = storeB.get('zombie-ghost-profile-v1');
 
     expect(b).toBe(a); // 保存文字列そのものが一致=ビットレベルで同一
+  });
+});
+
+// ==== G5(BOT_AND_GHOST.md §2.10): 守護霊アルバム=2軸プロファイル ==================================
+
+describe('playerTraits G5: 新規純関数(bossStyleSlotKey/ベスト保持判定/effectiveGhostProfile)', () => {
+  it('bossStyleSlotKey: giantbatだけステージ別、他typeはtypeそのまま', () => {
+    expect(bossStyleSlotKey('giantbat', 'stage-2')).toBe('giantbat@stage-2');
+    expect(bossStyleSlotKey('giantbat', 'stage-5')).toBe('giantbat@stage-5');
+    expect(bossStyleSlotKey('thor', 'stage-2')).toBe('thor');
+    expect(bossStyleSlotKey('idol', 'stage-9')).toBe('idol'); // stageIdは無視される
+  });
+
+  it('isBetterBossStyleSample(ベスト保持判定): 既存slot無しは採用/被弾少ない方保持/同値は新/新サンプルnullは不採用', () => {
+    expect(isBetterBossStyleSample(undefined, 5)).toBe(true);  // 既存slot無し=採用
+    expect(isBetterBossStyleSample(null, 5)).toBe(true);       // 既存slotはあるがサンプル無し=採用
+    expect(isBetterBossStyleSample(5, 3)).toBe(true);          // 新の方が被弾/分が少ない→上書き
+    expect(isBetterBossStyleSample(3, 5)).toBe(false);         // 新の方が多い→保持しない
+    expect(isBetterBossStyleSample(5, 5)).toBe(true);          // 同値は新しい方
+    expect(isBetterBossStyleSample(5, null)).toBe(false);      // 新サンプルがnullなら上書きしない
+  });
+
+  const mkAxis1Profile = (): PlayerProfile => ({
+    v: 1, runs: 3, reactionMs: 300, counterChance: 0.6, preferredDist: 200,
+    meleeBias: 0.5, mobility: 0.7, hitsPerMin: 4, subUsesPerMin: 2,
+    stationaryFrac: 0.3, approachPerMin: 2,
+    moveReactions: { 'thor-harai': { n: 5, counterRate: 0.5, hitRate: 0.1 } },
+    subStyles: { wire: { n: 2, slamRatio: 0.5 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 } },
+    srcClass: 'warrior', srcName: 'Axis1Name', snapshot: { maxHealth: 100, speed: 5, level: 3 },
+  });
+
+  it('effectiveGhostProfile: 対象slotが無ければ軸1をそのまま返す(同一参照)', () => {
+    const profile = mkAxis1Profile();
+    expect(effectiveGhostProfile(profile, 'thor')).toBe(profile);
+    // bossStylesは有るが該当キーが無いケースも同様。
+    const withOtherSlot: PlayerProfile = {
+      ...profile,
+      bossStyles: { giantbat: { reactionMs: 1, counterChance: 1, preferredDist: 1, meleeBias: 1, mobility: 1,
+        hitsPerMin: 1, subUsesPerMin: 1, stationaryFrac: 1, approachPerMin: 1, subStyles: profile.subStyles,
+        srcClass: null, snapshot: null, srcName: null, at: 0 } },
+    };
+    expect(effectiveGhostProfile(withOtherSlot, 'thor')).toBe(withOtherSlot);
+  });
+
+  it('effectiveGhostProfile: slot有りはノブ単位で優先し、nullノブだけ軸1へフォールバックする', () => {
+    const profile: PlayerProfile = {
+      ...mkAxis1Profile(),
+      bossStyles: {
+        thor: {
+          reactionMs: 150, counterChance: null, preferredDist: 120, meleeBias: null, mobility: 0.9,
+          hitsPerMin: 1, subUsesPerMin: null, stationaryFrac: 0.1, approachPerMin: null,
+          subStyles: { wire: { n: 9, slamRatio: 1 }, shield: { n: 9, bashPerPlacement: 9, bashDamageFrac: 1 } },
+          srcClass: 'mage', snapshot: { maxHealth: 50, speed: 9, level: 1 }, srcName: 'BossKiller', at: 12345,
+        },
+      },
+    };
+    const out = effectiveGhostProfile(profile, 'thor');
+    expect(out.reactionMs).toBe(150);       // slot優先
+    expect(out.counterChance).toBe(0.6);    // null→軸1へフォールバック
+    expect(out.preferredDist).toBe(120);
+    expect(out.meleeBias).toBe(0.5);        // フォールバック
+    expect(out.mobility).toBe(0.9);
+    expect(out.hitsPerMin).toBe(1);
+    expect(out.subUsesPerMin).toBe(2);      // フォールバック
+    expect(out.stationaryFrac).toBe(0.1);
+    expect(out.approachPerMin).toBe(2);     // フォールバック
+    // subStylesはslotで丸ごと置換(ノブ単位フォールバックはしない)。
+    expect(out.subStyles).toEqual({ wire: { n: 9, slamRatio: 1 }, shield: { n: 9, bashPerPlacement: 9, bashDamageFrac: 1 } });
+    expect(out.srcClass).toBe('mage');
+    expect(out.srcName).toBe('BossKiller');
+    expect(out.snapshot).toEqual({ maxHealth: 50, speed: 9, level: 1 });
+    // moveReactionsは共有のまま(軸2に複製しない)=軸1の参照がそのまま出る。
+    expect(out.moveReactions).toBe(profile.moveReactions);
+    expect(out.runs).toBe(3); // 軸1のまま
+  });
+});
+
+describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  it('撃破が無いランはbossStylesに1bitも触らない', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.bossStyles).toBeUndefined();
+  });
+
+  it('セッション中のnotifyBossClearはcommit時にセッション確定値のコピーとしてスロット化される', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    const p = loadPlayerProfile()!;
+    expect(p.bossStyles?.thor).toBeDefined();
+    const slot = p.bossStyles!.thor;
+    expect(slot.mobility).toBe(1);
+    expect(slot.mobility).toBe(p.mobility); // 軸1と同じセッション確定値(PendingSessionRecordと同一計算)
+    expect(slot.subStyles).toEqual(p.subStyles); // このランはsubStyle未使用=commit後の軸1コピー
+    expect(typeof slot.at).toBe('number');
+  });
+
+  it('対象外の型(isEngageableBoss=false)は撃破通知してもスロットを作らない', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    notifyBossClear('reaper', 'stage-1'); // 死神はENGAGEABLE_BOSS_TYPES対象外
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.bossStyles).toBeUndefined();
+  });
+
+  it('セッション外(session=null)でのnotifyBossClearは無視される', () => {
+    notifyBossClear('thor', 'stage-1'); // まだ交戦していない=session無し
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.bossStyles).toBeUndefined();
+  });
+
+  it('ゴーストランではsessionが常にnullなのでnotifyBossClearは自動的に無視される(§2.7と同じゲート)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, ghostRunActive: true }));
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 60_000, ghostRunActive: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100, ghostRunActive: true }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()).toBeNull(); // 軸1も未保存(既存G3挙動)なのでbossStylesも当然無い
+  });
+
+  it('同一slotKeyの重複通知は1件に重複排除される', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    notifyBossClear('thor', 'stage-1');
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    expect(Object.keys(loadPlayerProfile()!.bossStyles!)).toEqual(['thor']);
+  });
+
+  it('同じセッション内で複数の異なるボスを撃破すると両方のslotに同じサンプルが積まれる(城ボスはステージ別キー)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    notifyBossClear('thor', 'stage-1');
+    notifyBossClear('giantbat', 'stage-2');
+    tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    const p = loadPlayerProfile()!;
+    expect(p.bossStyles?.thor).toBeDefined();
+    expect(p.bossStyles?.['giantbat@stage-2']).toBeDefined();
+    expect(p.bossStyles!.thor.mobility).toBe(p.bossStyles!['giantbat@stage-2'].mobility);
+  });
+
+  it('settlePendingTraits(true)=全破棄はbossStylesにも1bitも触らない', () => {
+    // 1ラン目: 撃破無しで普通にcommitしてプロファイルを作る。
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    settlePendingTraits(false);
+    expect(loadPlayerProfile()!.bossStyles).toBeUndefined();
+
+    // 2ラン目: ボス撃破込みで「反映しない」を選ぶ。
+    resetPlayerTraits(); resetBotTelemetry();
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    settlePendingTraits(true); // 破棄
+    expect(loadPlayerProfile()!.bossStyles).toBeUndefined(); // 何も乗らない
+  });
+
+  it('ベスト保持: 被弾/分が少ない撃破で上書きし、多い撃破では上書きしない', () => {
+    // ラン1: 60秒で2回被弾(hitsPerMin=2)して撃破。
+    tickPlayerTraits(baseInput({ gameTime: 0, player: mkPlayer(100, 100), enemies: [mkBoss()] }));
+    tickPlayerTraits(baseInput({ gameTime: 10_000, player: mkPlayer(90, 100), enemies: [mkBoss()] }));
+    tickPlayerTraits(baseInput({ gameTime: 20_000, player: mkPlayer(80, 100), enemies: [mkBoss()] }));
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 60_000, player: mkPlayer(80, 100), enemies: [mkBoss()] }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.bossStyles!.thor.hitsPerMin).toBeCloseTo(2, 5);
+
+    // ラン2: 60秒で1回被弾(hitsPerMin=1・より上手い)で撃破→上書きされるはず。
+    resetBotTelemetry();
+    tickPlayerTraits(baseInput({ gameTime: 0, player: mkPlayer(100, 100) }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, player: mkPlayer(90, 100) }));
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 60_000, player: mkPlayer(90, 100) }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.bossStyles!.thor.hitsPerMin).toBeCloseTo(1, 5);
+
+    // ラン3: 60秒で5回被弾(hitsPerMin=5・より下手)で撃破→上書きされないはず(ラン2の1のまま)。
+    resetBotTelemetry();
+    tickPlayerTraits(baseInput({ gameTime: 0, player: mkPlayer(100, 100) }));
+    tickPlayerTraits(baseInput({ gameTime: 10_000, player: mkPlayer(90, 100) }));
+    tickPlayerTraits(baseInput({ gameTime: 20_000, player: mkPlayer(80, 100) }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, player: mkPlayer(70, 100) }));
+    tickPlayerTraits(baseInput({ gameTime: 40_000, player: mkPlayer(60, 100) }));
+    tickPlayerTraits(baseInput({ gameTime: 50_000, player: mkPlayer(50, 100) }));
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 60_000, player: mkPlayer(50, 100) }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.bossStyles!.thor.hitsPerMin).toBeCloseTo(1, 5); // ラン2のまま
+  });
+
+  it('subStylesの写し: 同ランにsubStyleレコードが有れば軸1のEMAとは異なるラン実測レート(EMAなし)を使う', () => {
+    // ラン1: プロファイル作成 + wire使用(スラム3回=slamRatio1)を先に確定させ、軸1の「前回値」を作る。
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    recordWireAnchorUse('slam'); recordWireAnchorUse('slam'); recordWireAnchorUse('slam');
+    foldSubStyleTallies();
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.subStyles.wire).toEqual({ n: 3, slamRatio: 1 });
+
+    // ラン2: thorを撃破しつつ、今回はプラントのみ(スラム比率0)を使う。
+    resetBotTelemetry();
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    recordWireAnchorUse('plant'); recordWireAnchorUse('plant'); recordWireAnchorUse('plant');
+    foldSubStyleTallies();
+    commitPendingTraits();
+
+    const p = loadPlayerProfile()!;
+    // 軸1はEMAで混ざる: 1*0.7 + 0*0.3 = 0.7
+    expect(p.subStyles.wire).toEqual({ n: 6, slamRatio: 0.7 });
+    // スロットは「そのラン実測レート」そのまま(このランは全プラント=0)。EMAされていないことの確認。
+    expect(p.bossStyles!.thor.subStyles.wire).toEqual({ n: 3, slamRatio: 0 });
+  });
+
+  it('軸1の計測・EMA・保存はボス撃破の有無で変わらない(bossStyle併存でも軸1はビット一致)', () => {
+    // (A) 撃破無しの通常ラン。srcNameは未設定だとランダム初期名が生成され両アームで別名になるため固定する
+    // (既存の「既定経路(commit)の保存結果は旧実装とビット一致する」テストと同じ配慮)。
+    const storeA = installStorage(); resetBotTelemetry(); resetPlayerTraits();
+    savePlayerName('axis1-fixed');
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    const a = storeA.get('zombie-ghost-profile-v1');
+    const aParsed = JSON.parse(a!) as PlayerProfile & Record<string, unknown>;
+    delete (aParsed as Record<string, unknown>).bossStyles; // 比較対象は軸1部分のみ
+
+    // (B) 同じ操作+撃破1件(bossStylesが増えるだけで軸1は変わらないはず)。
+    const storeB = installStorage(); resetBotTelemetry(); resetPlayerTraits();
+    savePlayerName('axis1-fixed');
+    tickPlayerTraits(baseInput({ gameTime: 0, movementInput: true }));
+    notifyBossClear('thor', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000, movementInput: true }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    const b = storeB.get('zombie-ghost-profile-v1');
+    const bParsed = JSON.parse(b!) as PlayerProfile & Record<string, unknown>;
+    expect(bParsed.bossStyles).toBeDefined(); // (B)だけbossStylesが増えている
+    delete (bParsed as Record<string, unknown>).bossStyles;
+
+    expect(bParsed).toEqual(aParsed); // 軸1部分は完全一致(bossStyleの有無は軸1に影響しない)
   });
 });

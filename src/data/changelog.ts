@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2485',
+    items: [
+      '守護霊がボスごとの攻略スタイルを覚えるようになりました: そのボスを撃破したプレイがあると、守護霊はその時の戦い方でリプレイします(城ボスはステージごと)。',
+    ],
+  },
+  {
     version: '0.25.2484',
     items: [
       'ゲーム内容の変更はありません(カウンター/クリティカル仕様の調査台帳を追加)。',

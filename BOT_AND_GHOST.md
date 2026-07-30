@@ -605,3 +605,30 @@ counterRate→構え / dodgeRate→離脱 / 残り→逃げずに食らいに行
    - 新規純関数(bossStyleSlotKey/ベスト保持判定/effectiveGhostProfile)のユニットテストを同コミットで書く。
    - typecheck+lint エラー0。実装報告に撃破経路の全数表を載せる。
 - 設計チャット裁量の叩き台(軽微・社長調整可): 30秒フロアの適用/同値タイは新しい方/`at`記録時刻の追加。
+
+### 実装結果(v0.25.2485・実装サブエージェント・ステータス=実装済み)
+
+詳細(commit順序の設計・実バグ修正の経緯・テスト方針)は DEVELOPMENT_LOG.md v0.25.2485 が正本。
+ここは要約。
+
+- 仕様1〜6を全て実装(`bossStyles?`フィールド/`bossStyleSlotKey`/`notifyBossClear`/保留化との合流/
+  `isBetterBossStyleSample`(ベスト保持)/`sampleSubStylesFromRecord`/`applyPendingBossStyle`/
+  `effectiveGhostProfile`。全て `src/utils/playerTraits.ts`)。`ghostDriver.ts` は無変更。
+- **撃破経路の全数表**(死亡分岐を持つ2つの合流点=`gameStore.damageEnemy`と
+  `gameStore.grantMeleeKillRewards`だけで、bomb(ボスは対象外=既存仕様)以外の全ボスキルを網羅):
+  1. `damageEnemy`(gun/接触/爆発/DoT/カウンター即死等。裏ボスカウンター`combatTick.ts`・
+     angelBossTick.tsのカウンター・ghostCounter.tsのゴーストカウンターも全てこの関数を経由)→
+     `newHealth===0`分岐で捕獲し`notifyBossClear`。
+  2. `grantMeleeKillRewards`(通常近接カウンター/刀/鞭/シールドバッシュ/投擲スケボー/分身の
+     melee kill。6呼び出し元すべてがこのヘルパーを経由することをコードで確認)→ for-loop先頭で
+     `notifyBossClear`。
+  3. 爆弾(VS rosary)はボスを対象外にする既存仕様のまま=対象外。
+  4. ストーリーボス(グレン/未確認変異体=giantbat型の別名)固有の死亡処理は無し(1/2の経路で網羅済み)。
+  5. デバッグ即死コマンドは存在しない。
+- **実装中に見つけて修正した実バグ**: `applyPendingSession`が固定フィールドの新規オブジェクトを
+  返しており、既存の`bossStyles`を引き継いでいなかった(2回目以降のセッションcommitでbossStylesが
+  消え、ベスト保持判定が常に「新規」扱いになる実バグ)。`base.bossStyles`を明示的に引き継ぐよう修正。
+  新規テストの「ベスト保持」ケースで検出。
+- テスト: `src/utils/playerTraits.test.ts` に新規15件(既存41件は無修正で通過=軸1のビット一致要件を
+  満たす)。`npx vitest run src/utils/playerTraits.test.ts` = 56件全通過。typecheck/lintともエラー0。
+- ★未決: なし。

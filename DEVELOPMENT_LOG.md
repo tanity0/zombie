@@ -1,5 +1,84 @@
 # Development Log
 
+## v0.25.2485 — 守護霊アルバム=2軸プロファイル(G5)実装(BOT_AND_GHOST.md §2.10・実装サブエージェント)【2026-07-30 15:05 JST】
+
+- **仕様の正本**: `BOT_AND_GHOST.md §2.10`(社長裁定2026-07-30「城ボススロットも分けて」)。軸1=現行
+  EMAプロファイル(完全不変)/軸2=ボス別攻略スタイル(撃破セッション1回ぶんのサンプル写し・EMAなし・
+  被弾/分が少ない撃破で上書き)。②が有るボスは②でリプレイ、無ければ①。
+- **保存フォーマット**(`src/utils/playerTraits.ts`): `PlayerProfile` に任意フィールド
+  `bossStyles?: Record<string, BossStyleSlot>` を追加(v:1のまま・後方互換=欠損可・`isValidProfile`は
+  任意オブジェクトとして許容)。`BossStyleSlot` = 9ノブ(各null可)+`subStyles`+`snapshot`+`srcClass`+
+  `srcName`+`at`(記録時刻)。`moveReactions`(技への反応表)はスロットに含めない=共有のまま。
+- **slotKey**: 純関数 `bossStyleSlotKey(type, stageId)`(playerTraits.ts)= giantbatのみ
+  `giantbat@<stageId>`、他typeはtypeそのまま。stageIdは呼び出し側(gameStore.ts/directorTick.ts)が
+  `getSelectedStageId()`(src/data/progress.ts)で取得して渡す(playerTraits.tsはstore/data非依存を維持)。
+- **撃破の検知**: `notifyBossClear(bossType, stageId)`(playerTraits.ts新設)をボス死亡の確定点に置いた。
+  **死亡経路の全数表**(調査方法: `damageEnemy`/`grantMeleeKillRewards`双方の全呼び出し元・
+  `finaleDefeated`の全セット箇所・`grantMeleeKillRewards`の全呼び出し元・giantbat/グレン/未確認変異体の
+  スクリプト固有死亡処理の有無をコード上で確認):
+
+  | # | 経路 | フック箇所 | 状態 |
+  |---|---|---|---|
+  | 1 | 銃/接触/爆発/DoT/カウンター即死等、`damageEnemy`を経由する**全キル**(裏ボスカウンター
+      `combatTick.ts`・angelBossTick.tsのカウンター・ghostCounter.tsのゴーストカウンター含む) | `gameStore.ts`
+      `damageEnemy`の`newHealth===0`死亡分岐に`bossClearedType`を捕獲し、`set()`後に
+      `notifyBossClear(bossClearedType, getSelectedStageId())` | 済 |
+  | 2 | 通常近接カウンター(`triggerCounter`)/刀(`triggerKatanaDash`)/鞭/シールドバッシュ/
+      投擲スケボー着弾/分身(shadow-clone)の**全melee kill**(いずれも共通ヘルパー
+      `grantMeleeKillRewards`を経由することをコードで確認=6呼び出し元すべて) | `gameStore.ts`
+      `grantMeleeKillRewards`のfor-loop先頭で`notifyBossClear(enemy.type, getSelectedStageId())` | 済 |
+  | 3 | 爆弾(VS rosary)によるボス撃破 | ボスは爆弾の対象から明示的に除外(`isBossType`除外・
+      `finaleDefeated`も変えない=既存仕様「爆弾はボスを殺せない」) | 対象外(仕様どおり) |
+  | 4 | ストーリーボス(グレン/未確認変異体=giantbat型の別名)固有の死亡処理 | コード確認: giantbat型は
+      HP0到達で上記1/2の経路以外を通らない(`giantScript.ts`に別経路の死亡処理なし。`finaleDefeated`/
+      `markCastleBossCleared`は`damageEnemy`/`grantMeleeKillRewards`のset後処理から呼ばれるのみ) | 経路1/2で網羅済み |
+  | 5 | デバッグ/開発用の即死コマンド | 検索の結果、該当コード無し(存在しない) | 該当なし |
+
+  補足: セッション(ボス交戦計測)が開いている時だけ`session.clearedSlotKeys`に積む(狭い側)。ゴーストラン/
+  守護霊装備中は`tickPlayerTraits`が既存ゲート(§2.7)でsession=nullにするため、`notifyBossClear`は
+  自動的にno-op(劣化コピー防止)。対象type以外(`isEngageableBoss`=false。reaper/hunter/pumpkin/
+  lab-zombie-3等)は無視。
+- **保留化との合流**(`endSession`): セッション確定と同じサンプル値(reactionSample等9種)を、
+  そのセッション中に撃破されたslotKeyの数だけ複製して`kind:'bossStyle'`の保留レコードとして積む
+  (EMAはしない)。**30秒フロア(MIN_SESSION_MS)は軸2にも適用**(endSessionの早期returnを共有)。
+- **commit順序**(`commitPendingTraits`): session/subStyleレコードを**従来どおり先に、積んだ順で**
+  適用(=軸1の保存結果は旧実装とビット一致のまま。既存41件のテストが無修正で通ることで固定)。
+  bossStyleレコードは**最後にまとめて**適用する。
+- **ベスト保持**(`isBetterBossStyleSample`・純関数): 既存slot無しは採用。有れば新hitsPerMin ≤
+  旧hitsPerMinで上書き(同値は新)。新サンプルがnullなら上書きしない。
+- **subStylesの写し**(`sampleSubStylesFromRecord`・純関数): 同ラン(同一commitバッチ)にsubStyle
+  保留レコードが有ればそのラン実測レート(EMAなし)、無ければcommit後の軸1subStylesをコピー。
+- **実装中に見つけた実バグ1件(要修正・修正済み)**: `applyPendingSession`が固定フィールドの
+  新規オブジェクトリテラルを返しており、**既存の`bossStyles`を引き継いでいなかった**——このため
+  2回目以降のセッションcommitのたびにbossStylesが消え、直後のbossStyleレコード適用時に
+  「既存slot無し」と誤判定されて常に上書きされてしまう実バグがあった(ユニットテストの
+  「ベスト保持」ケースで検出)。`base: PlayerProfile`型注釈+`bossStyles: base.bossStyles`を明示的に
+  引き継ぐよう修正。旧テストは`bossStyles`を使わないため`undefined`のまま=JSON化で省略され
+  ビット一致は保たれる(実測でも56件全通過を確認)。
+- **消費側**(`directorTick.ts` `runGhostAndTraitsStep`): 新設の純関数 `effectiveGhostProfile(profile,
+  slotKey)`(playerTraits.ts)で合成。紐付くボスの`bossStyleSlotKey(boss.type, getSelectedStageId())`を
+  計算し、`loadPlayerProfile()`が有ればslot優先(ノブ単位・nullは軸1へフォールバック。snapshot/
+  srcClass/srcNameもslot優先)、無ければ従来どおり`defaultGhostProfile()`。**`ghostDriver.ts`は無変更**
+  (受け取る`PlayerProfile`の形は不変)。`moveReactions`はスロットに含まれないため常に軸1のまま
+  (共有=複製しない)。
+- **リザルトの「反映しない」**: `settlePendingTraits(true)`は保留バッファを丸ごと破棄する既存の仕組みが
+  そのまま効く(bossStyleレコードも保留バッファに積まれるだけなので新UI不要)。
+- **新規/変更ファイル**:
+  - `src/utils/playerTraits.ts`: `BossStyleSlot`/`PendingBossStyleRecord`型、
+    `bossStyleSlotKey`/`notifyBossClear`/`isBetterBossStyleSample`/`sampleSubStylesFromRecord`/
+    `applyPendingBossStyle`/`effectiveGhostProfile`の6純関数・`Session.clearedSlotKeys`追加・
+    `endSession`/`commitPendingTraits`/`applyPendingSession`(バグ修正)を更新。
+  - `src/utils/playerTraits.test.ts`: 新規テスト15件を追加(既存41件は無修正)。
+  - `src/store/gameStore.ts`: `damageEnemy`/`grantMeleeKillRewards`へ`notifyBossClear`を1行ずつ追加
+    (import追加のみ・既存ロジックは無変更)。
+  - `src/utils/directorTick.ts`: `runGhostAndTraitsStep`の召喚プロファイル取得を
+    `effectiveGhostProfile`経由に変更(import追加のみ)。
+- **検証**: `npx vitest run src/utils/playerTraits.test.ts` = 56件全通過(新規15件+既存41件が
+  無修正で通過=軸1のビット一致要件を満たす)。`npm run typecheck` エラー0。`npm run lint` エラー0
+  (既存8警告のみ)。`npm test`/`npm run build`は社長指示制のため未実施。
+- **★未決**: なし(仕様に明記の無い実装判断は全て記録専用/保守側の解釈で、挙動は仕様どおり)。
+- 次の申し送り: 実機確認は社長が実施。将来のアルバムUI(`at`フィールドは既にその布石)は未着手。
+
 ## v0.25.2484 — カウンター/パリィ×クリティカルの現状仕様を実査・台帳化(文書のみ)【2026-07-30 14:59 JST】
 
 - 社長指示「城ボスパリィは深く検討が必要。まず仕様をちゃんと確認したい」への実査。

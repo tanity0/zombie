@@ -26,7 +26,9 @@ import {
   resetPlayerTraits,
   // G4a(BOT_AND_GHOST.md §2.9・記録専用): 技への反応表の被弾タグ+サブ様式カウンタ。挙動は一切変えない。
   notifyMoveDamage, recordWireAnchorUse, recordShieldBash, recordShieldBashDamage,
-} from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a
+  // G5(BOT_AND_GHOST.md §2.10・記録専用): ボス撃破の通知。挙動は一切変えない(session=null時はno-op)。
+  notifyBossClear,
+} from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a/G5
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
 import { playerAsOwner, ownerCenterX, ownerCenterY, ownerFootY } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { stepSpeedRamp, effectiveRampFrac, rampedBonusMult } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
@@ -2243,6 +2245,10 @@ const grantMeleeKillRewards = (
     // PACING_REDESIGN.mdバッチ2(計測): 近接全経路のキルを種別+スタイル集計へ記録(挙動には影響しない)。
     // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
     recordKill(enemy.type, 'melee', get().gameTime);
+    // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。近接全経路(通常近接カウンター/
+    // 刀/鞭/シールドバッシュ/投擲スケボー/分身)はこのヘルパーを通るのでここ1箇所で拾える
+    // (gun/接触/爆発/DoT/カウンター等の非近接経路は damageEnemy 側で同様に通知)。
+    notifyBossClear(enemy.type, getSelectedStageId());
     // 二人組クエストのキル進捗(EVENT_QUEST_DESIGN.md)。近接全経路はここ1箇所で拾える。
     {
       const qs = useGameStore.getState();
@@ -7146,6 +7152,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let dramaticDeathAt: { enemy: Enemy; x: number; y: number } | null = null; // juice: FF風クランブル(set後に発火)
     let appliedDamage = 0; // §6.21 M46計測用: 実際に加算された生ダメージ(HP床クランプ前・紅き夜補正後=既存damageDealtと同値)
     let thrallCandidate: Enemy | null = null; // §6.24 M48「使役」: 倒した通常敵(20%抽選はset後に行う)
+    let bossClearedType: EnemyType | null = null; // BOT_AND_GHOST.md §2.10 G5: 撃破ボスの型(set後にnotifyBossClear)
 
     set(state => {
       const { enemies, gameStats } = state;
@@ -7183,6 +7190,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Check if enemy was killed
       if (newHealth === 0) {
         killed = true;
+        bossClearedType = enemy.type; // BOT_AND_GHOST.md §2.10 G5: 撃破通知用(set後にnotifyBossClear。非対象typeはnotifyBossClear内で無視)
         if (enemy.type === 'reaper') reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
         if (enemy.isNamed) namedFoeKilled = enemy; // §5.14 M13: 宿敵討伐
         // §6.24 M48「使役」: 通常敵(ボス/裏ボス/ネームド/エリートは対象外=D1)を倒した時だけ候補にする。
@@ -7237,6 +7245,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // プレイヤー起因ではない)は加算しない。appliedDamage=0(対象なし/ジャンプ無敵で何も起きなかった)は
     // 加算してもスカラー0で無害。
     if (damageChannel !== null) recordDamageDealt(damageChannel, appliedDamage);
+
+    // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。gun/接触/爆発/DoT/カウンター等
+    // damageEnemyを経由する全キル経路の合流点。notifyBossClear内でセッション無し/対象外typeはno-op。
+    if (bossClearedType) notifyBossClear(bossClearedType, getSelectedStageId());
 
     // 裏ボスが完全気絶(紫)に移行: 紫の衝撃リング＋発光＋コールアウトで知らせる。
     if (bossFullStunAt) {
