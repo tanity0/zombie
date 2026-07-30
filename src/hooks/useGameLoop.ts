@@ -35,6 +35,7 @@ import {
   WIRE_HOP_ENABLED, WIRE_HOP_MARGIN,
   BOSS_MELEE_STUN_MULT,
   bossSlowMult,
+  bossCritCdMult,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   skillMagnetAmmoRangeMult, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
@@ -80,7 +81,7 @@ import {
 } from '../utils/ghostCounter';
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
 import { weaknessCritBonus } from '../utils/weaknessCrit';
-import { applyEnemyCritPenalty } from '../utils/critPenalty';
+import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPenalty';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -240,7 +241,7 @@ import {
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
-import { fireWeapon, buildSupportSniperShot, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY, isDirectGunWeaponKey } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
@@ -4325,7 +4326,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // チェイス復帰時は 'chase' として扱い、bossState も chase へ戻して必ず再開させる。
               if (boss.bossState === 'return') { patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS; }
               const st = (boss.bossState == null || boss.bossState === 'return') ? 'chase' : boss.bossState;
-              const nextActionDelay = () => newGameTime + BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS);
+              // CRIT-UNIFY §9.2: クリ窓(bossSlowUntil)中は次行動CDに×2。カウンター成立の直後に
+              // 同フレームでこの関数を呼ぶ経路があるため、閉じ込めたstale boss(フレーム先頭のスナップ
+              // ショット)ではなく、その時点の最新状態を読み直す(damageEnemyのcrit適用を取りこぼさない)。
+              const freshBoss = () => useGameStore.getState().enemies.find(e => e.id === boss.id) ?? boss;
+              const nextActionDelay = () => newGameTime + (BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS)) * bossCritCdMult(freshBoss(), newGameTime);
               // --- トール(ステージ5)専用ヘルパー(社長指示・独自攻撃) ------------------------------
               // 旋回運動: 現在の相対位置から角度/半径を毎フレーム自己補正しながら回す(専用の角度状態を持たない)。
               // Y-down画面座標では atan2 の角度が増える向き=視覚的に時計回り(社長指示「時計回り」の既定 dir=1)。
@@ -4366,7 +4371,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const thorNextActionDelay = () => {
                 const hpFrac = boss.maxHealth > 0 ? boss.health / boss.maxHealth : 1;
                 const mult = hpFrac <= THOR_LOWHP_FRAC ? THOR_LOWHP_INTERVAL_MULT : 1;
-                return newGameTime + (THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS)) * mult;
+                // CRIT-UNIFY §9.2: クリ窓中は×2(freshBossの理由はnextActionDelayと同じ)。
+                return newGameTime + (THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS)) * mult * bossCritCdMult(freshBoss(), newGameTime);
               };
               // カウンター成立時の共通処理(社長指示: すべての攻撃がカウンター可能)。通常カウンターと同じ
               // 演出(Counter!/ヒットインパクト/クリ反撃)を行い、近接距離ギリギリ外まで高速後退させる。
@@ -5403,6 +5409,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (phaseJustChanged(idol.bossPhase, phase)) iPatch.bossPhaseFlashUntil = newGameTime + HIDDEN_BOSS_PHASE_FLASH_MS;
             iPatch.bossPhase = phase;
             const st = idol.bossState ?? 'chase';
+            // CRIT-UNIFY §9.2: クリ窓中は次行動CDに×2。idolCounterHitはこの直後にdamageEnemyを呼ぶため、
+            // フレーム先頭のstale idolではなくその時点の最新状態を読み直す(nextActionDelayと同じ理由)。
+            const idolFresh = () => useGameStore.getState().enemies.find(e => e.id === idol.id) ?? idol;
             const idolFireBullet = (tx: number, ty: number) => addProjectile(createEnemyProjectile(idol, player, tx, ty));
             // BOT_AND_GHOST.md §2.8 G2.5: 各技のwindup終わり(=狙いロックの瞬間)で1回だけ呼ぶ。
             // 毎フレーム呼ばない(chaseのkiting/pickIdolMoveの距離計算はプレイヤー基準のまま不変)。
@@ -5452,7 +5461,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
               }
               iPatch.bossState = 'chase';
-              iPatch.bossNextActionAt = newGameTime + IDOL_ACTION_MIN_MS + Math.random() * (IDOL_ACTION_MAX_MS - IDOL_ACTION_MIN_MS);
+              iPatch.bossNextActionAt = newGameTime + (IDOL_ACTION_MIN_MS + Math.random() * (IDOL_ACTION_MAX_MS - IDOL_ACTION_MIN_MS)) * bossCritCdMult(idolFresh(), newGameTime);
             };
             const IDOL_COUNTER_WINDUPS = ['idol-aim-windup', 'idol-fan-windup', 'idol-roll-windup', 'idol-punch-windup'];
             const IDOL_COUNTER_RECOVERS = ['idol-aim-recover', 'idol-fan-recover', 'idol-roll-recover', 'idol-punch-recover'];
@@ -5569,7 +5578,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 硬直が長いこと自体が「近距離の彼女は弱い」の表現(§6.28-20・技数を増やさず精度で語る)。
               if (newGameTime >= (idol.bossStateUntil ?? 0)) {
                 iPatch.bossState = 'chase';
-                iPatch.bossNextActionAt = newGameTime + IDOL_ACTION_MIN_MS + Math.random() * (IDOL_ACTION_MAX_MS - IDOL_ACTION_MIN_MS);
+                iPatch.bossNextActionAt = newGameTime + (IDOL_ACTION_MIN_MS + Math.random() * (IDOL_ACTION_MAX_MS - IDOL_ACTION_MIN_MS)) * bossCritCdMult(idolFresh(), newGameTime);
               }
             }
             if (Object.keys(iPatch).length) {
@@ -7215,7 +7224,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   weaponType: gun.category ?? 'handgun',
                   weaponKey: 'ghost-gun', // BOT_AND_GHOST.md: プレイヤー起因ではないため計測除外(null)
                   duration: 1400, createdAt: nowMs,
-                  passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
+                  passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
                 });
                 // 発砲SE: プレイヤーと同じ銃種別の音(v0.25.2479パリティ。旧: 常にhandgun-fire)を
                 // ゴースト位置で距離減衰。種別分岐はプレイヤー自動発砲(SMG/グレネードランチャー特例含む)と同一。
@@ -8166,18 +8175,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // Apply the crit multiplier at hit time: bosses take 5× on a crit,
           // normal enemies 1.5×. `damage` is the projectile's base damage.
           const isBoss = enemyForFx ? isBossType(enemyForFx.type) : false;
+          // CRIT-UNIFY §9.4: 着弾時ロール(トラップ+10%/弱点+10%)は「プレイヤー直接武器」の銃10種
+          // (handgun/shotgun/rifle/phill)専用。escort/ghost-gun/タレット/ホーミング/跳弾/ジャンク等の
+          // サブ・味方系projectileはこの2つのロール自体をスキップする(発生枠=銃器+近接系+分身)。
+          const isDirectWeaponHit = isDirectGunWeaponKey(projectile?.weaponKey);
           // トラップ(root)中のクリ率+10%: ボスはクリペナルティ(-10%)と丁度相殺して実質0だったため、
           // ボスに限りペナルティを通さず既存値(MARKSMAN_TRAP_CRIT_BONUS=0.10)をそのまま適用
           // (社長指示v0.25.1688「ボスにはクリティカル率アップ(既存の値)」。ボス以外は従来どおり)。
           const trapCritBonus =
+            isDirectWeaponHit &&
             enemyForFx !== undefined &&
             enemyForFx.rootUntil !== undefined &&
             gameTime < enemyForFx.rootUntil &&
             Math.random() < (isBoss ? MARKSMAN_TRAP_CRIT_BONUS : applyEnemyCritPenalty(MARKSMAN_TRAP_CRIT_BONUS, enemyForFx));
           // PACING_PUZZLE.md §5.6 M7: チャフ(バット/ゾンビ)の武器弱点=銃+10%。命中対象の型は
           // ヒット時点でしか分からない(発射時は未確定)ため、ここで対象別に追加ロールする。
-          const weakCrit = WEAKCRIT_ENABLED && enemyForFx
+          const weakCrit = WEAKCRIT_ENABLED && isDirectWeaponHit && enemyForFx
             ? Math.random() < applyEnemyCritPenalty(weaknessCritBonus(enemyForFx.type, 'gun'), enemyForFx)
+            : false;
+          // CRIT-UNIFY §9.1: 生成時boolean抽選(旧projectile.crit)を廃止。critChance(数値)を運び、
+          // 命中時に対象別(ボスは半減+下限5%・通常敵はそのまま)でロールする。
+          const baseCrit = enemyForFx
+            ? Math.random() < projectileHitCritChance(projectile?.critChance ?? 0, enemyForFx)
             : false;
           // PHILL銃の頭部命中は確定ヘッドショット=クリティカル扱い(×1.5＋気絶＋headshot SE＋金VFX)。
           // 訓練(M0)の封印(社長指示v0.25.2293/2295): **教わるまでクリティカルは一切出さない**。
@@ -8188,7 +8207,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const m0CritLocked = !collisionState.m0Unlocked.crit;
           const hitCrit = (m0CritLocked || damage <= 0)
             ? false
-            : (!!projectile?.crit || trapCritBonus || weakCrit || headshot === true);
+            : (baseCrit || trapCritBonus || weakCrit || headshot === true);
           // スキル: クリティカルD上昇(+0.5) / バーサーカー(失HP%で全攻撃増) / スナイパー(停止敵・遠距離増)。
           const skillPlayer = collisionState.player;
           // §6.10 M33⑩(★8裁定): 護衛NPC弾(weaponKey='escort')はプレイヤーの攻撃ではないため、
@@ -8512,10 +8531,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // Crit that didn't outright kill → stun the target so it can be
           // executed with a melee finisher. Mark it with a brief yellow ring.
+          // CRIT-UNIFY §9.2: ボスは5秒完全停止(stunEnemy)にしない(v0.25.2422の変換漏れ=旧バグ)。
+          // ボスの移動半減+CD2倍+紫蓄積はdamageEnemy側で既に中央適用済み(crit=hitCritを渡してある)。
+          // 通常敵の気絶は不変(stunDurationMultを乗せた従来どおりの5秒スタン)。
           if (hitCrit && !enemyKilled && enemyForFx) {
-            // 気絶時間アップ(パッシブ): フィニッシュ受付時間を stunDurationMult 倍に。
-            const stunMs = STUN_DURATION_MS * (useGameStore.getState().player.stunDurationMult ?? 1);
-            useGameStore.getState().stunEnemy(enemyId, gameTime + stunMs);
+            if (!isBoss) {
+              // 気絶時間アップ(パッシブ): フィニッシュ受付時間を stunDurationMult 倍に。
+              const stunMs = STUN_DURATION_MS * (useGameStore.getState().player.stunDurationMult ?? 1);
+              useGameStore.getState().stunEnemy(enemyId, gameTime + stunMs);
+            }
             spawnRing(
               enemyForFx.x + enemyForFx.width / 2,
               enemyForFx.y + enemyForFx.height / 2,

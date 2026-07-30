@@ -5,7 +5,10 @@
 // and keeps counts/health sane. The "auto-debug" net for the logic layer —
 // see CLAUDE.md Testing policy.
 import { describe, it, expect, vi } from 'vitest';
-import { useGameStore, bumpBossCrit, BOSS_FULLSTUN_CRITS, BOSS_FULLSTUN_MS, PUMPKIN_JUMP_MAX_DIST } from './gameStore';
+import {
+  useGameStore, bumpBossCrit, BOSS_FULLSTUN_CRITS, BOSS_FULLSTUN_MS, PUMPKIN_JUMP_MAX_DIST,
+  bossCritCdMult, BOSS_CRIT_CD_MULT, STUN_DURATION_MS,
+} from './gameStore';
 
 // Minimal ambient declaration so the SIM_FUZZ env gate typechecks without
 // pulling in @types/node (the value is read only under the nightly cron).
@@ -219,6 +222,74 @@ describe('headless simulation invariants', () => {
     expect(bumpBossCrit(e, t + 100)).toBeNull();
     // non-hidden-boss enemies are never affected
     expect(bumpBossCrit(spawnEnemyAt('zombie', 0, 0, 0), t)).toBeNull();
+  });
+
+  it('CRIT-UNIFY §9.2: bossCritCdMult=クリ窓中のボスは次行動CDに×2、窓外・非ボスは×1', () => {
+    const t = 10_000;
+    const boss = spawnEnemyAt('pumpkin', 0, 0, 0);
+    // 窓が無い(bossSlowUntil未設定)ボスは×1。
+    expect(bossCritCdMult(boss, t)).toBe(1);
+    // 窓中(bossSlowUntil > t)のボスは×2。
+    const bossInWindow = { ...boss, bossSlowUntil: t + 3000 };
+    expect(bossCritCdMult(bossInWindow, t)).toBe(BOSS_CRIT_CD_MULT);
+    expect(bossCritCdMult(bossInWindow, t)).toBe(2);
+    // 窓が過ぎたら×1に戻る。
+    const bossWindowExpired = { ...boss, bossSlowUntil: t - 1 };
+    expect(bossCritCdMult(bossWindowExpired, t)).toBe(1);
+    // 非ボス(zombie)は同じbossSlowUntilが立っていても常に×1(ボス以外には無関係のフィールド)。
+    const zombie = { ...spawnEnemyAt('zombie', 0, 0, 0), bossSlowUntil: t + 3000 };
+    expect(bossCritCdMult(zombie, t)).toBe(1);
+  });
+
+  it('CRIT-UNIFY §9.2同梱修正: 刀のクリ気絶にもstunDurationMult(気絶時間アップ)が乗る(旧実装漏れ)', () => {
+    useGameStore.getState().resetGame('warrior');
+    // 刀の実ダメージ判定はperformKatanaStrike(targetIds, damageMult, allowFinisher)が持つ
+    // (triggerCounterのisKatanaMode分岐は窓/CDを開くだけで通常スイープを行わない=一閃は別入口)。
+    useGameStore.setState(s => ({ player: { ...s.player, subWeapons: [...s.player.subWeapons, 'katana'] } }));
+    const player = useGameStore.getState().player;
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const z = spawnEnemyAt('zombie', pcx + 4, pcy, useGameStore.getState().gameTime);
+    z.health = 9999; // 反撃で倒れないように(気絶時間を観測するため生存させる)
+    useGameStore.setState({ enemies: [z], effects: [] });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0); // 常にクリティカル
+    useGameStore.setState(s => ({ player: { ...s.player, critChance: 1, stunDurationMult: 2 } }));
+    const gt = useGameStore.getState().gameTime;
+
+    useGameStore.getState().performKatanaStrike([z.id], 1, true);
+
+    const after = useGameStore.getState().enemies.find(e => e.id === z.id);
+    expect(after).toBeTruthy();
+    expect(after!.stunUntil).toBeDefined();
+    // 修正前は stunDurationMult を無視して常に +STUN_DURATION_MS(5秒)だった。
+    expect(after!.stunUntil!).toBeCloseTo(gt + STUN_DURATION_MS * 2, -1);
+
+    randomSpy.mockRestore();
+  });
+
+  it('CRIT-UNIFY §9.4(現行漏れの解消): 分身(shadow clone)のクリもbumpBossCritへ正しく乗る', () => {
+    useGameStore.getState().resetGame('warrior');
+    const player = useGameStore.getState().player;
+    const boss = spawnEnemyAt('giantbat', player.x, player.y, useGameStore.getState().gameTime);
+    boss.health = boss.maxHealth;
+    boss.bossCritCount = 0;
+    useGameStore.setState({ enemies: [boss], effects: [] });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0); // 常にクリティカル
+    useGameStore.setState(s => ({ player: { ...s.player, critChance: 1 } }));
+    const clone = {
+      x: player.x, y: player.y, width: player.width, height: player.height,
+      facingLeft: false, characterClass: player.characterClass,
+      spawnedAt: useGameStore.getState().gameTime, attacksDone: 0, nextAttackAt: useGameStore.getState().gameTime,
+    };
+
+    useGameStore.getState().shadowCloneStrike(clone);
+
+    const after = useGameStore.getState().enemies.find(e => e.id === boss.id);
+    expect(after).toBeTruthy();
+    // 修正前は分身のクリがbumpBossCritを一切呼んでおらず、常に0のままだった。
+    expect(after!.bossCritCount).toBe(1);
+    expect(after!.bossSlowUntil).toBeGreaterThan(useGameStore.getState().gameTime);
+
+    randomSpy.mockRestore();
   });
 
   it('suppression event: an escort NPC captures its base after ~10s dwell and stays finite', () => {

@@ -23,7 +23,7 @@ import {
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, PUMPKIN_EXPLOSION_RADIUS, HUNTER_VISION_RANGE,
   GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH,
 } from '../store/gameStore';
-import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY } from './weaponUtils';
+import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey } from './weaponUtils';
 import { pickAmmoDropType } from './ammoDrop';
 import { ammoDirectorRate } from './ammoDirector';
 import { shouldSpawnAirdrop } from './ammoAirdrop';
@@ -38,7 +38,7 @@ import type { AmmoType } from '../types/game';
 import { areaIndexForPos, isBossType, spawnEnemyAt, spawnEnemyAtWithTier, AREA_THRESHOLDS } from './enemyUtils';
 import { checkProjectileEnemyCollisions, checkPlayerPickupCollisions } from './collisionUtils';
 import { weaknessCritBonus } from './weaknessCrit';
-import { applyEnemyCritPenalty } from './critPenalty';
+import { applyEnemyCritPenalty, projectileHitCritChance } from './critPenalty';
 import { phaseAt } from './difficultyDirector';
 import { createPuzzleClockState, createKomaAccumulator, createSoftenState, createRankPaceState, clampRank } from './rankAssessor';
 import { ZERO_NUISANCE, selectPattern, nuisanceTarget, type NuisanceType } from './scriptPuzzle';
@@ -185,8 +185,12 @@ const applyBotProjectileHits = (gameTime: number): void => {
     const projectile = st.projectiles.find(p => p.id === projectileId);
     if (!enemy || !projectile) continue; // 同フレーム内の先行ヒットで死亡/除去済み
     const isBoss = isBossType(enemy.type);
-    const weakCrit = Math.random() < applyEnemyCritPenalty(weaknessCritBonus(enemy.type, 'gun'), enemy);
-    const hitCrit = !!projectile.crit || weakCrit || headshot === true;
+    // CRIT-UNIFY §9.4: 弱点クリのロールは「プレイヤー直接武器」限定(実機経路と同じ)。
+    const isDirectWeaponHit = isDirectGunWeaponKey(projectile.weaponKey);
+    const weakCrit = isDirectWeaponHit && Math.random() < applyEnemyCritPenalty(weaknessCritBonus(enemy.type, 'gun'), enemy);
+    // CRIT-UNIFY §9.1: 生成時crit(boolean)は廃止。critChanceを命中時に対象別でロールする(実機経路と同じ)。
+    const baseCrit = Math.random() < projectileHitCritChance(projectile.critChance ?? 0, enemy);
+    const hitCrit = baseCrit || weakCrit || headshot === true;
     const player = st.player;
     const critMult = hitCrit ? skillCritMult(player, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) : 1;
     const comboMasterMult = skillComboMasterMult(player, gameTime, st.meleeFinishComboCount, st.meleeFinishComboUntil);

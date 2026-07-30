@@ -42,14 +42,16 @@ import {
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   KNOCKBACK_DURATION, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
-  CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT,
+  CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, STUN_DURATION_MS,
   GIANT_SCRIPT_ENABLED,
+  bossCritCdMult,
 } from '../store/gameStore';
 import { distToSegment } from './levelUpGate';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流
+import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
 
 // 演出・音・死亡演出のコールバック注入(ヘッドレスではno-op)。判定条件自体はこのファイル内に残る。
 export interface CombatEffects {
@@ -206,8 +208,12 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         if (died) fx.triggerPlayerDeath(bpcx, bpcy);
       }
     }
-    // G4b: 同じ爆発をゴーストにも(プレイヤーと同じ幾何・同じ量・同じ解決ループ内)。プレイヤーの
-    // カウンター/無敵とは独立(ゴーストは弾けない=居れば食らう。i-frameはdamageSummon側)。
+    // G4b: 同じ爆発をゴーストにも(プレイヤーと同じ幾何・同じ量・同じ解決ループ内)。
+    // CRIT-UNIFY §9.3(ゴーストのパリティ拡張): プレイヤーと同じく「ブラストパリィ」を持たせる。
+    // ただしプレイヤーのcounterWindowEnd(400ms)ではなく、ゴースト自身のカウンター請求TTL窓
+    // (150ms・GHOST_COUNTER_CLAIM_TTL_MS)で成立させる(ゴーストは狭い側許容=既存の作法)。
+    // 成立時は共通変換applyGhostCounterEffect(確定クリ+付与無敵)へ合流し、被弾させない。
+    // 請求が無い/期限切れなら従来どおり食らう(ゴーストは弾けない=居れば食らう。i-frameはdamageSummon側)。
     if (ghostAlly) {
       const owner = enemiesForGhost.find(e => e.id === b.enemyId);
       if (owner && isEngageableBoss(owner.type)) {
@@ -215,7 +221,12 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           ? distToSegment({ x: gacx, y: gacy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }) <= b.capsule.halfWidth + gar
           : Math.hypot(gacx - b.x, gacy - b.y) <= b.radius + gar;
         if (inBlastGhost) {
-          damageGhostAllyByBossMove(ghostAlly.id, b.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3));
+          const gClaim = consumeGhostCounterClaim(b.enemyId, Date.now());
+          if (gClaim) {
+            applyGhostCounterEffect(owner, gacx, gacy, { claim: gClaim, sfxGain: npcSfxDistGain(gacx, gacy, bpcx, bpcy, useGameStore.getState().camera, useGameStore.getState().gameBounds) }, (key, gain) => fx.playSfx(key, gain));
+          } else {
+            damageGhostAllyByBossMove(ghostAlly.id, b.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3));
+          }
         }
       }
     }
@@ -292,7 +303,13 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       const critMult = skillCritMult(bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
       const dmg = Math.max(1, Math.round(cBase * critMult * skillOutgoingDamageMult(bp) * (bp.equipBonus?.damageMult ?? 1)));
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-      useGameStore.getState().damageEnemy(hit.id, dmg);
+      // CRIT-UNIFY §9.3(社長裁定F): パリィ反撃は確定クリ。ボスは①の効果(半減+CD2倍+紫蓄積)が
+      // damageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
+      const parryKilled = useGameStore.getState().damageEnemy(hit.id, dmg, false, true);
+      if (!parryKilled && !boss) {
+        const stunMs = STUN_DURATION_MS * (bp.stunDurationMult ?? 1);
+        useGameStore.getState().stunEnemy(hit.id, useGameStore.getState().gameTime + stunMs);
+      }
       fx.spawnDamageNumber(ex, e.y, dmg, true);
       fx.spawnRing(ex, ey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
       fx.spawnBurst(ex, ey, '#fde047', 10);
@@ -404,7 +421,9 @@ export const applyEnemyFire = (now: number): void => {
     const profile = getEnemyFireProfile(enemy);
     if (!profile) return;
     // 発砲間隔も攻撃倍速で短縮(1/MULT)=より速く撃つ。1.0で従来等速。
-    if (now - enemy.lastShot < profile.interval / ENEMY_ATTACK_SPEED_MULT) return;
+    // CRIT-UNIFY §9.2: クリ窓中のボス(この経路は`?giantscript=0`のgiantbat旧経路のみ到達=
+    // isBossType該当)は発砲間隔にも×2(bossCritCdMult。非ボスのplantは1のまま=無改変)。
+    if (now - enemy.lastShot < (profile.interval / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, liveGameTime)) return;
     // 錬金術: aggro内の通常召喚を撃つ。いなければ従来どおりプレイヤー。
     // シーカー: 半透明中は通常敵(ボス/死神/イベントボス級を除く)はプレイヤーを撃たない。
     const playerHidden = isSeekerActive(livePlayer, liveGameTime) && !isBossType(enemy.type);
@@ -797,7 +816,14 @@ export const applyContactDamage = (
       const critMult = skillCritMult(collPlayer, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
       const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(collPlayer) * (collPlayer.equipBonus?.damageMult ?? 1)));
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-      counterKill = useGameStore.getState().damageEnemy(eid, dmg) || counterKill;
+      // CRIT-UNIFY §9.3(社長裁定F): 突進/気絶パリィの反撃も確定クリ。ボスは①の効果(半減+CD2倍+
+      // 紫蓄積)がdamageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
+      const dashParryKilled = useGameStore.getState().damageEnemy(eid, dmg, false, true);
+      counterKill = dashParryKilled || counterKill;
+      if (!dashParryKilled && !boss) {
+        const stunMs = STUN_DURATION_MS * (collPlayer.stunDurationMult ?? 1);
+        useGameStore.getState().stunEnemy(eid, useGameStore.getState().gameTime + stunMs);
+      }
       fx.spawnDamageNumber(ex, e.y, dmg, true); // 金色クリ表示
       fx.spawnRing(ex, ey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
       fx.spawnBurst(ex, ey, '#fde047', 10);

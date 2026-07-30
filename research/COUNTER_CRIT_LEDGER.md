@@ -154,3 +154,80 @@ bumpBossCritの門は`isBossType`=**全ボス共通**(pumpkin/giantbat/reaper/la
 - 純関数化+ユニットテスト同コミット: ボス×0.5+床/CD2倍乗算/命中時抽選ヘルパ/パリィ反撃のcrit分岐。
 - CD2倍スケジューリング点・着弾ロール分類の**全数表2枚**を報告に載せる。
 - typecheck+lintエラー0。紫3秒(v0.25.2491済み)との整合。
+
+### 9.7 実装結果(バッチCRIT-UNIFY・Sonnet実装・2026-07-30)
+実装済み。要点のみ記録(詳細はDEVELOPMENT_LOGの当該エントリ+コミット参照)。
+
+**全数表1: CD2倍スケジューリング点(isBossType全16型)**
+
+| ボス族 | 駆動 | CD2倍の適用点 |
+|---|---|---|
+| giantbat(新スクリプト・既定) | gameStore.ts updateEnemies | `finishGiantStageMove`/`finishGlenMove`/base5技の`justFinished`switch(計3箇所・全moveを一括カバー) |
+| giantbat(`?giantscript=0`旧経路)・hunter | 同上 | `gbDashReadyAt`/`gbJumpReadyAt`(jitter付き2箇所)+ pumpkin/lab-zombie-3と共有のjump-recover 1箇所 |
+| pumpkin・lab-zombie-3 | 同上 | jump-recover→cooldownの`aiReadyAt`(PUMPKIN_COOLDOWN_MS・1箇所。pumpkin/lab-zombie-3/giantbat旧/hunterで共有) |
+| reaper | 同上(素通り) | **N/A**(専用技・発砲プロファイル無し=深奥チェイサーの接触のみ。CD概念自体が存在しない) |
+| thor/mimir/jormungand/skadi(裏4) | useGameLoop.ts専用コントローラ(共有1ブロック) | 共有`nextActionDelay()`+thor専用`thorNextActionDelay()`(HP帯で短縮する式に×bossCritCdMult追加) |
+| miguel/jibril/rafi/uri/suriel/acrasiel(天使6・新旧スクリプト共通) | angelBossTick.ts(6関数+Legacy3関数で共有) | 共有`nextActionDelay(t,boss)`(81呼び出し全箇所)+miguel`mDashReadyAt`/jibril`jConsecrateReadyAt`/rafi`rSweepReadyAt` |
+| idol | useGameLoop.ts専用ブロック | 4技共通recover→chaseの`bossNextActionAt`計算(2箇所・カウンター成立時/通常時) |
+
+- 実装: `bossCritCdMult(enemy, gameTime)`(gameStore.ts)がクリ窓(`bossSlowUntil`)中のボスに×2を返す純関数。
+  カウンター成立の直後・同フレームでCDを組む経路(裏4/天使6/idolのカウンターハンドラ)は、フレーム先頭の
+  stale個体ではなくその時点の最新状態をidで読み直す(`freshBoss`/`freshCritCdMult`/`idolFresh`)ことで、
+  「この一撃自体が開いた窓」も直後のCD計算に正しく反映させた。
+- windup/active/recoverの各durationには一切適用していない(既存`atkUntil`のまま)。CD専用に`atkCdUntil`
+  (gameStore.ts)を新設し、readyAt系フィールドの代入箇所だけを差し替えた。
+
+**全数表2: 弾のcritChance発生枠+着弾時ロール(トラップ/弱点)の対象**
+
+| weaponKey | 種別 | critChance(生成時) | トラップ+10%/弱点+10%ロール |
+|---|---|---|---|
+| handgun-t1/t2/t3・shotgun-t1/t2/t3・rifle-t1/t2/t3 | プレイヤー直接武器(銃) | 装備値+パッシブ合算(従来どおり) | ✅対象 |
+| phill-revolver | プレイヤー直接武器(PHILL) | 常に0(ヘッドショット確定クリは別枠=裁定Cで補正の外・不変) | ✅対象(ただし基礎0) |
+| knife-t1〜anti-mutant-knife-t5(ナイフ)・katana(刀)・whip(鞭) | プレイヤー直接武器(近接) | (弾ではない・命中時抽選は従来どおり) | ―(近接は別ロール式・不変) |
+| shadow-clone(分身) | サブウェポンだが発生枠に含む | (弾ではない・命中時抽選) | ―(近接と同式。bumpBossCritの漏れを本バッチで修正) |
+| escort | サブ(護衛NPC援護) | 0固定 | ❌対象外 |
+| ghost-gun | サブ(守護霊の銃) | 0固定(v0.25.2459踏襲・不変) | ❌対象外 |
+| sub-turret(通常弾) | サブ(タレット) | 0固定 | ❌対象外 |
+| sub-turret扱いだがweaponKey='rifle-t3'(タレット10%ランチャー弾・スキル「爆撃」poi-bombing弾) | サブだがweaponKeyが直接武器と衝突 | 未設定=0扱い(実害なし) | ⚠️判別不能で対象扱いに紛れる(★実装精度の規律1で明記・下記) |
+| sub-heavy-grenade・sub-marksman-trap・sub-decoy・sub-shield・sub-fire-knife・sub-junk-weapon・skater・poi-guard(ドローン)・跳弾(ricochet) | サブ/演出系 | 0固定(またはcritChance未設定=0扱い) | ❌対象外 |
+| support-sniper(援護射撃) | サブ(裁定E) | 生成時抽選を撤去し**0固定**(基礎ダメージ補填はしない) | ❌対象外 |
+
+- 判定関数: `isDirectGunWeaponKey(weaponKey)`(weaponUtils.ts)。銃10種の完全一致集合で判定。
+- **既知の限界(実装精度の規律1・設計判断が要る点)**: タレットの10%ランチャー弾とスキル「爆撃」
+  (poi-bombing)は`GRENADE_WEAPON_KEY`(='rifle-t3')を発射元プレイヤーの経路ごと再借用しており、
+  weaponKeyだけでは実際のrifle-t3と区別できない(この曖昧さは本バッチが作ったものではなく、既存の
+  スキル倍率適用等でも同様に未区別)。実害は「トラップ/弱点ロールがこの2つにも掛かりうる」点のみ
+  (critChance自体は未設定=0のままなので生成時クリ抽選には影響しない)。厳密に切り分けるには
+  Projectileに`ownerSub?: boolean`等の新フィールドが要る=設計判断としてここに記録。
+
+**その他の実装結果**
+- `damageEnemy`(gameStore.ts)にボスクリの中央適用を追加: `crit && newHealth>0 && isBossType`で
+  `bossCritSlowPatch`(bossSlowUntil半減窓)を`bumpBossCrit`と並べてマージ。銃(useGameLoop)・
+  per-bossカウンター(thor/裏3/idol/天使6)・ゴーストカウンター(ghostCounter.ts)は全てこの1箇所を
+  経由するため、crit=trueを渡すだけで①の効果(半減+紫蓄積)が乗るようになった。
+- 銃クリのボス5秒完全停止(v0.25.2422の変換漏れ)を修正: useGameLoopの命中後スタン処理にボス分岐を
+  追加し、ボスはstunEnemyしない(damageEnemy側の中央適用に一本化)。通常敵は不変。
+- **実装中に発見した副次バグ2件(いずれも「明確なバグ修正・挙動の意図を変えない」範囲として同時修正)**:
+  1. ナイフ/刀/分身の近接クリがボスに入った時、`bossCritSlowPatch`(半減パッチ)を**計算するだけで
+     survivorsへの反映を忘れていた**(鞭は正しく反映済みだった=3経路中1経路だけ生きていた)。
+     コメント「ボスは半減」の意図どおりに動いていなかったため、鞭と同じ反映パターンに揃えた。
+  2. 刀のクリ気絶に`stunDurationMult`(気絶時間アップパッシブ)が乗っていなかった(ナイフ/鞭/分身/銃は
+     乗っていた=刀だけの実装漏れ・§9.2で明示指示済みの修正)。
+- 分身(shadow clone)のクリを`bumpBossCrit`/①へ正しく乗せた(§9.4指示。現行漏れの解消)。
+- パリィ反撃(ブラストパリィ/接触dashParried)をcrit=trueに変更。ボス対象は①が乗り、通常敵対象は
+  現行クリ規則どおり5秒スタン(stunDurationMult込み)をノックバックと併存させる(裁定F)。
+- ゴーストのブラストパリィ(パンプキン/lab-zombie-3等の着地爆発)に、ゴースト自身のカウンター請求
+  TTL窓(150ms・`GHOST_COUNTER_CLAIM_TTL_MS`)を使ったパリィを追加した(従来は「居れば必ず食らう」の
+  み)。成立時は共通変換`applyGhostCounterEffect`(確定クリ+付与無敵)へ合流。
+
+**★未決(設計判断が必要・実装せず記録のみ)**
+1. **「ゴーストの気絶中ボス接触の無効化」が指す具体的な機構が見つからなかった**。現行コードを
+   調査した限り、ゴーストが「気絶中のボスに接触してダメージを受ける/不利益を受ける」経路自体が
+   存在しない(ゴーストは`damageGhostAllyByBossMove`系=ボスの技ヒットでのみ被弾し、プレイヤーの
+   ような汎用接触ダメージ経路を持たない)。ブラストパリィの拡張(上記実装済み)以外に何を
+   "無効化"すべきかが確認できなかったため、実装を見送った。意図を具体化していただければ次バッチで対応可能。
+2. **鞭(whip)・分身の`bumpBossCrit`registration漏れは分身のみ修正した**。§9.4は「分身のクリは
+   bumpBossCrit/①にも正しく乗せる」と分身だけを名指ししており、鞭についての明示指示が無かったため
+   未着手(現状: 鞭のクリはボス半減窓=bossSlowUntilの反映は他の近接と同様に修正したが、
+   `bumpBossCrit`=紫蓄積への計上は従来どおり乗らない)。GAME_AUDIT #17の原則(プレイヤー直接クリは
+   全部紫に乗せる)に照らすと鞭だけ非対称のままなので、裁定があれば同型の1行追加で揃えられる。

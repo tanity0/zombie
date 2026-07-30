@@ -1010,9 +1010,19 @@ export interface Projectile {
   pierce?: number;
   hostile: boolean;
   reflected: boolean;
-  // Gun crit flag — set when the shot rolled a critical. Crits hit harder
-  // and stun whatever they connect with.
+  // Gun crit flag — legacy generation-time roll. CRIT-UNIFY §9.1(this batch) stopped rolling
+  // this at fire time; new code should carry `critChance` instead and roll at hit time
+  // (per-target: bosses get ×0.5+floor5%, normal enemies use critChance as-is). The field is
+  // kept (always false/undefined for player bullets now) only because pixiScene.ts/
+  // renderUtils.ts still branch on it for the in-flight gold bullet tint — that visual can no
+  // longer be pre-determined (a piercing shot may crit one enemy and not the next), so it now
+  // simply never lights up pre-impact; the post-hit crit FX (ring/burst/gold number/stun) is
+  // unaffected since those already run off `hitCrit` computed at impact.
   crit?: boolean;
+  // Crit chance (0..1) the shot carries from fire time. Rolled per-target at hit time via
+  // `projectileHitCritChance` (src/utils/critPenalty.ts) — NOT a fixed roll — so the same shot
+  // can crit against one enemy and not another (relevant for piercing/passthrough rounds).
+  critChance?: number;
   area?: number;
   count?: number;
   // Optional motion modifiers. Axes set `gravity` so they arc upward then

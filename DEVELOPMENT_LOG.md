@@ -1,5 +1,42 @@
 # Development Log
 
+## v0.25.2501 — バッチCRIT-UNIFY: クリティカル/カウンター仕様の2軸統一(通常敵=不変/ボス=新仕様)【2026-07-30 19:01 JST】
+
+発注元=research/COUNTER_CRIT_LEDGER.md §9(確定仕様)。実装=Sonnetサブエージェント。設計判断はせず、
+§9に無い2件は同ファイル§9.7末尾に★未決として記録(下記参照)。
+
+- **9.1 弾のクリ率化**: `Projectile.critChance`(数値)を新設し、生成時boolean抽選(`crit`)を廃止。
+  命中時に対象別で抽選する純関数`projectileHitCritChance`(critPenalty.ts)を新設: ボス=`max(0.05, critChance×0.5)`
+  (`applyEnemyCritPenalty`のボス分岐を流用)/通常敵=critChanceそのまま(統計的に旧生成時抽選と同一)。
+  近接(ナイフ/刀/鞭/分身)の`applyEnemyCritPenalty`ボス分岐も「−10pt」→「×0.5+下限5%」に変更
+  (ネームド−10pt/色階層−3/6/9ptの非ボス分岐は不変)。確定クリ系(PHILLヘッドショット/トラップ+10%ボス特例)は対象外のまま。
+- **9.2 ①ボスクリ効果=移動半減+CD2倍**: `damageEnemy`(gameStore.ts)にボスクリの中央適用を追加
+  (`bossCritSlowPatch`を`bumpBossCrit`と並べてマージ)。銃(useGameLoop)/per-bossカウンター(thor・裏3・idol・天使6)/
+  ゴーストカウンターは全てこの1箇所を経由するためcrit=trueを渡すだけで効くようになった。
+  新純関数`bossCritCdMult`(クリ窓中のボスは次行動CDに×2)をisBossType全16型のスケジューリング点へ適用
+  (全数表はCOUNTER_CRIT_LEDGER.md §9.7参照)。銃クリのボス5秒完全停止(v0.25.2422の変換漏れ)を修正。
+  刀のクリ気絶に`stunDurationMult`が乗っていない実装漏れも修正。
+  **副次バグ修正**: ナイフ/刀/分身の近接クリがボスに入った時、`bossCritSlowPatch`を計算するだけで
+  survivorsへ反映し忘れていた(鞭だけ正しく反映済みだった=コメントの意図「ボスは半減」どおりに動いていなかった)。
+- **9.3 ②カウンター/パリィ=確定クリ**: combatTickのブラストパリィ/接触dashParried反撃をcrit=trueへ変更。
+  ボス対象は①の効果+紫蓄積、通常敵対象(狼・パンプキン含む)は現行クリ規則どおり5秒スタンをノックバックと併存。
+  ゴーストのブラストパリィに、ゴースト自身のカウンター請求TTL窓(150ms)を使ったパリィを追加(従来は必ず被弾)。
+  成立時は共通変換`applyGhostCounterEffect`へ合流。
+- **9.4 サブウェポンのクリ全廃**: 援護射撃の生成時クリ抽選を撤去(critChance=0固定・基礎ダメージ補填なし)。
+  着弾時ロール(トラップ+10%/弱点+10%)を「プレイヤー直接武器(銃10種)+近接+分身」専用に限定
+  (`isDirectGunWeaponKey`・weaponUtils.ts)。escort/ghost-gun/タレット/ホーミング/跳弾/ジャンク等は対象外。
+  分身(shadow clone)のクリを`bumpBossCrit`/①へ正しく乗せた(現行漏れの解消)。
+- **★未決2件(COUNTER_CRIT_LEDGER.md §9.7末尾に詳細記録)**: ①「ゴーストの気絶中ボス接触の無効化」が
+  指す具体的な機構が現行コードに見当たらず未実装 ②鞭(whip)の`bumpBossCrit`registration漏れは§9.4が
+  分身のみを名指ししていたため未着手(現状=ボス半減窓の反映は修正済み・紫蓄積への計上のみ据え置き)。
+- **検証**: `npm run typecheck`(0 errors)・`npm run lint`(0 errors/8 warnings=既存許容分)・
+  `npx vitest related`(変更ファイル起点・284 passed/4 skipped=既存の未実行分のみ)。新規テスト: 
+  `combatCritParity.test.ts`(3件・パリィのcrit=true検証)+`sim.test.ts`に4件追加(bossCritCdMult/
+  刀stunDurationMult/分身bumpBossCrit)+`critPenalty.test.ts`のボス分岐系7件を新仕様へ更新。
+- 変更ファイル: gameStore.ts / useGameLoop.ts / combatTick.ts / critPenalty.ts / weaponUtils.ts /
+  angelBossTick.ts / playtestDriver.ts / types/game.ts + 上記テスト。フルテスト/ビルドは社長指示が
+  無いため回していない(typecheck+lint+関連テストのみ・CLAUDE.md現行方針どおり)。
+
 ## v0.25.2500 — V3素材受領5便: 植物・種吐き(搭載のみ)=必須素材コンプリート【2026-07-30 18:58 JST】
 
 - 社長支給の種吐き(透過済み)を**本体**(`plant-spit.png` 791×1012=吐く瞬間の口)と**種**

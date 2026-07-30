@@ -104,6 +104,17 @@ export const GUN_KEYS_BY_CATEGORY: Record<AmmoType, string[]> = {
   rifle:   ['rifle-t1', 'rifle-t2', 'rifle-t3'],
   phill:   ['phill-revolver'] // 屋内固定銃。ドロップ/商人の銃ラインには出ない(weaponDrop は handgun/shotgun/rifle のみ抽選)。
 };
+// CRIT-UNIFY §9.4: 「プレイヤー直接武器」の銃10種(全カテゴリ合算)。着弾時ロール(トラップ+10%/
+// 弱点+10%)をこの集合の弾だけに限定するための判定(escort/ghost-gun/タレット/ホーミング/跳弾/
+// ジャンク等のサブ・味方系projectileは対象外=weaponKeyがこの集合に無い)。
+// 既知の限界(★実装精度の規律1で明記): タレットの10%ランチャー弾とスキル「爆撃」(poi-bombing)の弾は
+// GRENADE_WEAPON_KEY('rifle-t3')を発射元プレイヤーの経路ごと再借用しており(useGameLoop.ts)、
+// weaponKeyだけでは実銃と区別できない(既存のスキル倍率適用等でも同様に区別していない=本バッチ由来の
+// 新しい曖昧さではない)。この2つは着弾時ロール対象に紛れ込むが、critChanceを持たない(0扱い)ため
+// このバッチが問題にしていた生成時crit boolean側には影響しない。
+const DIRECT_GUN_WEAPON_KEYS = new Set<string>(Object.values(GUN_KEYS_BY_CATEGORY).flat());
+export const isDirectGunWeaponKey = (weaponKey: string | undefined): boolean =>
+  weaponKey !== undefined && DIRECT_GUN_WEAPON_KEYS.has(weaponKey);
 // Tier 昇順。MELEE_KEYS[tier] が「1段階上」のキー(tier は 1 始まり=0-indexed の次要素)。
 export const MELEE_KEYS = ['knife-t1', 'hatchet-t2', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5'];
 export const MAX_KNIFE_TIER = MELEE_KEYS.length; // = 5
@@ -335,7 +346,6 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     // 装備(アクセ・クリ系)のクリ率は player.critChance とは別枠で加算(装備内上限とスキル枠は独立)。
     // スキル ウォームアップ: 出撃から60秒間クリ率+20%(§6.8 M31)。
     const critChance = Math.min(1, (weapon.critChance ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0) + quickMagCritBonus + skillBenkeiCritBonus(player, gt) + skillWarmUpCritBonus(player, gt));
-    const crit = Math.random() < critChance;
     projectiles.push({
       id: `proj-${weapon.id}-${now}-${i}`,
       x: player.x + player.width / 2 - size / 2,
@@ -360,7 +370,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
         : weapon.pierce,
       hostile: false,
       reflected: false,
-      crit,
+      // CRIT-UNIFY §9.1: 生成時に抽選しない。critChanceを運び、命中時に対象別(ボスは半減+下限5%)で
+      // ロールする(useGameLoop.tsのprojectileHitCritChance)。
+      critChance,
       // スキル: ファイアシューターの爆発弾。直撃ダメージ ×0.3、命中で半径66の小爆発。
       ...(fireShooterShot
         ? { explodeOnHit: true, explodeRadius: FIRE_SHOOTER_RADIUS, explodeDamageMult: 1, damage: shotDamage * 0.3 }
@@ -407,10 +419,6 @@ export const buildSupportSniperShot = (
   const size = def.projectileSize || 8;
   const speed = (def.projectileSpeed || 520) * PROJECTILE_SPEED_MULT;
   const shotDamage = CATALOG['rifle-t1'].damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1) * 0.5;
-  const quickMagCritBonus = player.quickMagCritUntil > gameTime ? 0.10 : 0;
-  // ウォームアップのクリ率+20%も通常のプレイヤー弾と同じ扱いで加算(§6.8 M31)。
-  // ラストマガジンは対象外(援護射撃弾は弾倉を持たない・§6.8)。
-  const critChance = Math.min(1, (weaponBaseCritChance(def) ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0) + quickMagCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime));
   return {
     id: `proj-support-sniper-${Date.now()}`,
     x: x - size / 2,
@@ -418,7 +426,7 @@ export const buildSupportSniperShot = (
     width: size,
     height: size,
     speed,
-    damage: shotDamage, // クリ倍率は命中時適用(通常のプレイヤー弾と同じ)
+    damage: shotDamage,
     direction,
     weaponType: def.category as WeaponType, // 'rifle'
     weaponKey: def.key,                     // 'rifle-t2'
@@ -429,7 +437,9 @@ export const buildSupportSniperShot = (
     pierce: def.pierce,
     hostile: false,
     reflected: false,
-    crit: Math.random() < critChance,
+    // CRIT-UNIFY §9.4(裁定E「援護射撃もクリ無し」): 生成時クリ抽選を撤去。critChance=0固定
+    // (基礎ダメージの補填はしない=DPS台帳裁定(b)は別件のまま保留)。
+    critChance: 0,
   };
 };
 
@@ -470,7 +480,8 @@ export const buildJunkWeaponPellets = (
       hitEnemies: [],
       hostile: false,
       reflected: false,
-      crit: false,
+      // CRIT-UNIFY §9.4: サブウェポン(ジャンク)はクリ発生枠の対象外=critChance固定0。
+      critChance: 0,
     });
   }
   return pellets;
