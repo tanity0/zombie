@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2556',
+    items: [
+      'ゲーム内容の変更はありません(討伐年表への記載は同行撃破でも初回のみ、と確定。守護霊の被弾内訳テストを依頼)。',
+    ],
+  },
+  {
     version: '0.25.2555',
     items: [
       '名前の決定を守護霊メニューに一本化しました(オプションから撤去)。討伐年表を「ソロ」と「同行」の二枠にする方針も確定(同行ランの撃破も記録・実装は次バッチ)。',
