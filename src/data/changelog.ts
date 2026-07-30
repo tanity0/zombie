@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2551',
+    items: [
+      'ゲーム内容の変更はありません(守護霊の残りサブウェポン6種の対応方針案を設計書へ記録)。',
+    ],
+  },
+  {
     version: '0.25.2550',
     items: [
       'ゲーム内容の変更はありません(撃破リザルトの年表・守護霊メニューの実装バッチを発注)。',
