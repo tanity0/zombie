@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.2523 — GHOST-KATANA-WIRE検収合格+次バッチGHOST-REFLECT-MELEE-SUBS発注仕様(文書のみ)【2026-07-30 22:00 JST】
+
+- **検収(d4e9167→d2f811a)**: 設計チャットがdiff全数実査。movePlayerのロコモーション優先順・速度・
+  目標ベクトルは dashLocomotion.ts へ値/順序不変で抽出、wireティックは主語引数化のみ(プレイヤーは
+  既定値と同値の明示渡し=1bit不変)、防御規格はプレイヤーの逆算打刻と同じ終了時刻を
+  ghostInvulnUntilへ=等価、を確認。typecheck 0/lintエラー0/新規テスト29件パスを再実行で確認。合格。
+- **申し送り(実機確認事項)**: ①刀身・ワイヤー線の「絵」はpixiScene無改変のため出ない(斬撃弧・血・
+  「斬」・ダメージ数字・砂埃は出る)。気になるなら小バッチで追加可。②刀/ワイヤービルドの守護霊は
+  実火力が上がるため、ボスHP×1.6との釣り合いは実機で。
+- **次バッチ発注**: `research/GHOST_PARITY_LEDGER.md` 末尾に GHOST-REFLECT-MELEE-SUBS 仕様を確定。
+  A=弾反射(共有・窓/条件/反射弾生成同一)、B=気絶フィニッシュ(ナイフ処刑分岐の共有)、
+  C=近接スイング相乗り型サブ4種(drone-boomerang/flare-gun/junk-weapon/shadow-clone。
+  sensor-mineは★未決2未裁定のため対象外)、D=共通の掟(前2バッチと同一)。
+- 残る未対応サブ10種は構造ズレ組=設計チャットが社長向け裁定リストを別途用意する。
+- 変更ファイル: research/GHOST_PARITY_LEDGER.md+版管理3ファイル。
+
 ## v0.25.2522 — GHOST-KATANA-WIRE: 守護霊が刀(一閃/オート斬撃/村雨)とワイヤーを共有方式で使う【2026-07-30 21:53 JST】
 
 - **発注**: research/GHOST_PARITY_LEDGER.md 末尾の発注仕様(項目5=刀モード / 項目6=ワイヤーアンカー)。

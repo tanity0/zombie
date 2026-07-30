@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2523',
+    items: [
+      'ゲーム内容の変更はありません(守護霊の弾反射・気絶フィニッシュ・近接連動サブ4種の発注仕様を確定)。',
+    ],
+  },
+  {
     version: '0.25.2522',
     items: [
       '守護霊(ガーディアン)が刀ビルドを引いた時、プレイヤーと同じ刀モードで戦うようになりました(自動斬撃・一閃の踏み込み・村雨の連発・気絶した敵へのフィニッシュ一閃)。',
