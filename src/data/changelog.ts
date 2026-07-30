@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2536',
+    items: [
+      'ゲーム内容の変更はありません(受領済みエフェクト素材8種の配線バッチの発注仕様を確定)。',
+    ],
+  },
+  {
     version: '0.25.2535',
     items: [
       'ゲーム内容の変更はありません(地割れエフェクト素材を受領・搭載。画面への適用はエフェクト実装バッチで行います)。',
