@@ -536,10 +536,11 @@ export const applyEnemyProjectileHits = (
       const rnMult = redNightActive ? 2 : 1;
       // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の飛び道具ダメージも×SCREAMER_BUFF_MULT。
       const scMult = (screamerBuffUntil > gameTime && proj.ownerType && proj.ownerType !== 'screamer' && !isBossType(proj.ownerType)) ? SCREAMER_BUFF_MULT : 1;
-      // G4a(§2.9・記録専用): 新スクリプトのgiantbatが撃つ弾は咆哮弾(g-bolt)だけ(汎用発砲は
-      // GIANT_SCRIPT_ENABLED時に完全無効=上のapplyEnemyFire参照)なので、発射元タイプから技キーが確定する。
-      const boltMoveKey = proj.ownerType === 'giantbat' && GIANT_SCRIPT_ENABLED ? 'g-bolt' : undefined;
-      const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2, undefined, undefined, boltMoveKey);
+      // G4a/GHOST-BULLET-TECH(§2.9・記録専用): 技キーは**弾自身が持っている**(発射時に
+      // createEnemyProjectile が付ける `srcMoveKey`)。旧実装は「giantbat の弾=g-bolt」という
+      // 発射元タイプ推定だったが、弾技を全ボスへ広げたので弾のタグを読むだけにする
+      // (giantbat 新スクリプトの咆哮弾は同じ 'g-bolt' が載る=旧挙動と同値)。
+      const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2, undefined, undefined, proj.srcMoveKey);
       if (wasVulnerable) {
         fx.playSfx('player-damage');
         fx.spawnFlash('rgba(239,68,68,0.22)', 200);

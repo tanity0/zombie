@@ -1,5 +1,6 @@
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
+import { projectileMoveKeyForEnemy } from './moveReaction'; // GHOST-BULLET-TECH: 弾へ載せる技キー(記録専用)
 
 // 固定ビュー矩形からの「画面外」バンド(px・社長指示Bで具体値決め直し)。全辺一律で「画面端から○px外」を意味する。
 // 固定ビューにしたので画面サイズ比ではなく固定px。SPAWN<RECYCLE のヒステリシスで湧いた敵が即リサイクルされない。実機で微調整可。
@@ -647,7 +648,12 @@ export const createEnemyProjectile = (
     passthrough: false,
     hitEnemies: [],
     hostile: true,
-    reflected: false
+    reflected: false,
+    // GHOST-BULLET-TECH(BOT_AND_GHOST.md §2.9・**記録専用**): 「どのボスの弾技が撃った弾か」。
+    // 判定・ダメージ・弾の挙動には一切使わない(被弾時に技別の反応表へ帰属させるだけ)。
+    // **発射経路が3つに分かれている**(gameStore/useGameLoop/angelBossTick)ので、呼び出し側ではなく
+    // 生成の1箇所で付ける=経路の取りこぼしが構造的に起きない。非ボス(plant等)は undefined。
+    srcMoveKey: projectileMoveKeyForEnemy(enemy),
   };
 };
 

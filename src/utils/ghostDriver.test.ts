@@ -9,13 +9,14 @@ import {
   rollGhostMoveReaction, GHOST_MOVE_ROLL_MIN_N, GHOST_MOVE_ROLL_TIMEOUT_MS,
   ghostReactionMs, ghostMoveChance, ghostApproachChance, ghostDesiredDist,
   ghostCounterWaitExpired, ghostDodgeVector,
+  stepGhostDanger, GHOST_DANGER_MEMORY_MS, GHOST_BULLET_TANK_MS,
   GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS, GHOST_WINDUP_SAFE_MARGIN_PX,
   GHOST_COUNTER_WAIT_MS, GHOST_DEFAULT_STATIONARY_FRAC, GHOST_APPROACH_MIN_CHANCE,
   GHOST_ORBIT_BASE_FRAC, GHOST_ORBIT_IDLE_FRAC, GHOST_ORBIT_TANK_FRAC,
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
 } from './ghostDriver';
 import { jumpDodge, botSkillProfile } from './botSkill';
-import type { Enemy } from '../types/game';
+import type { Enemy, Projectile } from '../types/game';
 
 const mkBoss = (overrides: Partial<Enemy> = {}): Enemy => ({
   id: 'boss-1', x: 0, y: 0, width: 40, height: 40, speed: 0,
@@ -156,12 +157,77 @@ describe('§2.12 要件2: 反応遅延(回避の開始をreactionMsだけ遅ら�
     expect(d.moveX).toBeLessThan(0); // 着地点(+x)から逃げる
   });
 
-  it('危険が消えたら認知時刻はリセットされる(次の予告でまた遅れる)', () => {
+  // GHOST-BULLET-TECH A(v0.25.2543): 危険が消えた瞬間にリセットする旧仕様は廃止。
+  // 記憶(GHOST_DANGER_MEMORY_MS)が切れて初めてリセットされる。
+  it('危険が消えても記憶の間は認知を保つ(弾の波ごとに盲目窓を作らない)', () => {
     const d = decideGhost(baseDriverInput({
-      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: 1000 }),
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: 1000, dangerLastAt: 1200 }),
       enemies: [mkBoss({ x: 1000, y: 0, bossState: 'chase' })], nowMs: 1300,
     }));
+    expect(d.dangerSeenAt).toBe(1000);
+    expect(d.dangerLastAt).toBe(1200); // 危険が見えていないtickでは更新しない=ここから失効を数える
+  });
+
+  it('記憶が切れたら認知はリセットされる(次の危険でまた遅れる)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: 1000, dangerLastAt: 1200 }),
+      enemies: [mkBoss({ x: 1000, y: 0, bossState: 'chase' })],
+      nowMs: 1200 + GHOST_DANGER_MEMORY_MS + 1,
+    }));
     expect(d.dangerSeenAt).toBeUndefined();
+  });
+
+  it('記憶が生きている間に危険が戻ったら、遅延を払い直さず即回避する(遅延はエピソードに1回)', () => {
+    const seen = 1000;
+    const gap = GHOST_DANGER_MEMORY_MS - 100; // 記憶が切れる直前に次の波が来る
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: seen, dangerLastAt: seen + 100 }),
+      enemies: [boss()], nowMs: seen + 100 + gap,
+      profile: { ...PROFILE, reactionMs: 800 }, // 反応が最も遅い人でも即応する
+    }));
+    expect(d.moveX).toBeLessThan(0); // 着地点(+x)から逃げる=盲目窓が再発生していない
+    expect(d.dangerSeenAt).toBe(seen); // エピソードは同じまま(認知時刻は据え置き)
+  });
+});
+
+describe('GHOST-BULLET-TECH A: stepGhostDanger(認知の持続・純関数)', () => {
+  it('危険なし→認知: 初認知のtickでは反応しない(認知時刻だけ記録)', () => {
+    const r = stepGhostDanger(undefined, true, 1000, 300);
+    expect(r.reacted).toBe(false);
+    expect(r.memory).toEqual({ seenAt: 1000, lastDangerAt: 1000 });
+  });
+
+  it('認知→反応済み: reactionMs経過で反応する(境界=以上)', () => {
+    expect(stepGhostDanger({ seenAt: 1000, lastDangerAt: 1200 }, true, 1299, 300).reacted).toBe(false);
+    expect(stepGhostDanger({ seenAt: 1000, lastDangerAt: 1200 }, true, 1300, 300).reacted).toBe(true);
+  });
+
+  it('反応済み→記憶: 危険が消えてもエピソードは残り、lastDangerAtは進まない', () => {
+    const r = stepGhostDanger({ seenAt: 1000, lastDangerAt: 1200 }, false, 2000, 300);
+    expect(r.memory).toEqual({ seenAt: 1000, lastDangerAt: 1200 });
+    expect(r.reacted).toBe(false); // 避ける対象が無いtick
+  });
+
+  it('記憶→失効: 最後に危険を見てからGHOST_DANGER_MEMORY_MSを過ぎたらエピソードを閉じる', () => {
+    const prev = { seenAt: 1000, lastDangerAt: 1200 };
+    const keep = stepGhostDanger(prev, false, 1200 + GHOST_DANGER_MEMORY_MS, 300);
+    expect(keep.memory).toEqual(prev); // ちょうどは保持(超えたら失効)
+    const gone = stepGhostDanger(prev, false, 1200 + GHOST_DANGER_MEMORY_MS + 1, 300);
+    expect(gone.memory).toBeUndefined();
+  });
+
+  it('失効後の危険は「初認知」からやり直す(また反応が遅れる=個性が消えない)', () => {
+    const prev = { seenAt: 1000, lastDangerAt: 1200 };
+    const t = 1200 + GHOST_DANGER_MEMORY_MS + 1;
+    const r = stepGhostDanger(prev, true, t, 300);
+    expect(r.memory).toEqual({ seenAt: t, lastDangerAt: t });
+    expect(r.reacted).toBe(false);
+  });
+
+  it('旧状態(lastDangerAt無し)は記憶が生きている扱い=移行tickで遅延を払い直さない', () => {
+    const r = stepGhostDanger({ seenAt: 0 }, true, 99999, 300);
+    expect(r.reacted).toBe(true);
+    expect(r.memory?.seenAt).toBe(0);
   });
 });
 
@@ -686,5 +752,100 @@ describe('G3: ghostRunEnabled(召喚ゲート=計測停止ゲートの共通判�
   it('どちらも無ければ無効(通常プレイは無改変)', () => {
     expect(ghostRunEnabled(false, [])).toBe(false);
     expect(ghostRunEnabled(false, ['runner', 'seeker'])).toBe(false);
+  });
+});
+
+// ==== GHOST-BULLET-TECH B(弾技の得手不得手・v0.25.2543) =========================================
+// 社長方針「弾も技である以上、記録に弾を避ける確率、避ける動きもあるべき」。
+// 弾技にも技ロール(counter/dodge/tank)が効き、'tank'を引いた弾技の弾だけを避けなくなる。
+const mkProj = (over: Partial<Projectile> = {}): Projectile => ({
+  id: 'p1', x: -104, y: 6, width: 10, height: 10, speed: 400, damage: 5,
+  direction: { x: 1, y: 0 }, weaponType: 'enemy_bolt', duration: 4000, createdAt: 0,
+  passthrough: false, hitEnemies: [], hostile: true, reflected: false,
+  ...over,
+} as Projectile);
+
+describe('GHOST-BULLET-TECH B: 弾技にも技ロールが効く', () => {
+  const mimirBurst = (): Enemy => mkBoss({ type: 'mimir', x: 1000, y: 0, bossState: 'burst' });
+
+  it('弾技のキー(裏ボスburst)でロールできる=弾も「技」として扱われる', () => {
+    const table = { 'mimir-burst': { n: 5, counterRate: 0, hitRate: 1 } };
+    expect(rollGhostMoveReaction(undefined, mimirBurst(), table, 0, () => 0.5)?.moveKey).toBe('mimir-burst');
+    expect(rollGhostMoveReaction(undefined, mimirBurst(), table, 0, () => 0.5)?.decision).toBe('tank');
+  });
+
+  it('記録が無い弾技は従来どおりフォールバック(乱数も消費しない=既存プロファイルは1bit不変)', () => {
+    const roll = rollGhostMoveReaction(undefined, mimirBurst(), {}, 0, randNever);
+    expect(roll?.decision).toBe('fallback');
+  });
+
+  // 是正(v0.25.2543): 旧 GHOST_DODGE_PROFILE.dodge='aoe' は botSkill の段階表で
+  // 「弾を1発も避けない段」だった(dodgeHandles('aoe','projectile')===false)=守護霊は敵弾を
+  // 一切避けていなかった。'all' へ是正した不変条件をここで固定する。
+  it('守護霊は敵弾を回避対象にする(弾を避けない段に戻ったら落ちる)', () => {
+    expect(ghostDodgeVector(10, 10, [], [mkProj()])).not.toBeNull();
+  });
+
+  it('接触脅威は不活性のまま(maxHealth=0を渡す設計=「敵に触れると逃げる」人にはしない)', () => {
+    const mob = mkBoss({ type: 'zombie' as Enemy['type'], x: 20, y: 10, width: 20, height: 20, damage: 9999 });
+    expect(ghostDodgeVector(10, 10, [mob], [])).toBeNull();
+  });
+
+  it("ghostDodgeVector: 'tank'した弾技の弾だけ避けない(タグ無し/別の技の弾は避ける)", () => {
+    const tagged = mkProj({ srcMoveKey: 'mimir-burst' });
+    expect(ghostDodgeVector(10, 10, [], [tagged])).not.toBeNull();               // 平時は避ける
+    expect(ghostDodgeVector(10, 10, [], [tagged], 'mimir-burst')).toBeNull();    // 苦手=避けない
+    expect(ghostDodgeVector(10, 10, [], [mkProj()], 'mimir-burst')).not.toBeNull(); // タグ無しは常に避ける
+    expect(ghostDodgeVector(10, 10, [], [mkProj({ srcMoveKey: 'idol-fan' })], 'mimir-burst')).not.toBeNull();
+  });
+
+  it("'tank'を引いた弾技は、技が終わって弾だけ残っても弾の寿命ぶん避けない", () => {
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, moveReactions: { 'mimir-burst': { n: 5, counterRate: 0, hitRate: 1 } },
+    };
+    const bullet = mkProj({ srcMoveKey: 'mimir-burst' });
+    // ① 技の最中に tank を引く=避けない弾の記憶が立つ。
+    const rolled = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), enemies: [mimirBurst()], projectiles: [bullet],
+      profile, nowMs: 1000, rand: () => 0,
+    }));
+    expect(rolled.moveRoll?.decision).toBe('tank');
+    expect(rolled.tankedBulletKey).toBe('mimir-burst');
+    expect(rolled.tankedBulletUntil).toBe(1000 + GHOST_BULLET_TANK_MS);
+
+    // ② 技が終わった(chase)後も、記憶が生きている間はその弾を避けない=間合い管理(接近)を続ける。
+    const carried = mkGhost({
+      x: 0, y: 0, dangerSeenAt: 0, dangerLastAt: 1000,
+      tankedBulletKey: rolled.tankedBulletKey, tankedBulletUntil: rolled.tankedBulletUntil,
+    });
+    const after = decideGhost(baseDriverInput({
+      ghost: carried, enemies: [mkBoss({ type: 'mimir', x: 1000, y: 0, bossState: 'chase' })],
+      projectiles: [bullet], profile, nowMs: 1500, rand: () => 0,
+    }));
+    expect(after.moveX).toBeGreaterThan(0); // ボス(+x)へ寄る=弾から逃げていない
+    expect(after.tankedBulletKey).toBe('mimir-burst');
+
+    // ③ 期限が切れたら、同じ弾を今度は避ける(苦手の再現は技1回ぶんで終わる)。
+    const expired = decideGhost(baseDriverInput({
+      ghost: { ...carried, dangerLastAt: 1000 + GHOST_BULLET_TANK_MS },
+      enemies: [mkBoss({ type: 'mimir', x: 1000, y: 0, bossState: 'chase' })],
+      projectiles: [bullet], profile, nowMs: 1000 + GHOST_BULLET_TANK_MS, rand: () => 0,
+    }));
+    expect(expired.tankedBulletKey).toBeUndefined();
+    expect(expired.moveY).toBeLessThan(0); // 弾の進行方向(+x)に対して横(-y)へ外す
+  });
+
+  it("'dodge'/'fallback'の弾技は従来どおり全部避ける(苦手の再現は'tank'だけ)", () => {
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, moveReactions: { 'mimir-burst': { n: 5, counterRate: 0, hitRate: 0 } },
+    };
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: 0, dangerLastAt: 1000 }),
+      enemies: [mimirBurst()], projectiles: [mkProj({ srcMoveKey: 'mimir-burst' })],
+      profile, nowMs: 1000, rand: () => 0.5,
+    }));
+    expect(d.moveRoll?.decision).toBe('dodge');
+    expect(d.tankedBulletKey).toBeUndefined();
+    expect(d.moveY).toBeLessThan(0); // 本気で避ける
   });
 });

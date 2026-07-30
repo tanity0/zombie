@@ -30,8 +30,31 @@ export const MOVE_REACTION_KEYS = [
   'g-talon', 'g-boon', 'g-reach', 'g-nihil',
   'thor-issen', 'thor-tsuki', 'thor-harai', 'thor-jump',
 ] as const;
-export type MoveReactionKey = (typeof MOVE_REACTION_KEYS)[number];
-const MOVE_KEY_SET: ReadonlySet<string> = new Set(MOVE_REACTION_KEYS);
+
+// ---- 弾技の台帳(GHOST-BULLET-TECH・v0.25.2543) -------------------------------------------------
+// 社長方針「**弾も技である以上、記録に弾を避ける確率、避ける動きもあるべき**」。上のG4a台帳は
+// 城ボス(giantbat)とトールの近接/AoE技しか持たず、**弾で被弾しても技別に記録されなかった**
+// (弾で技キーが付くのは g-bolt だけ=combatTick の ownerType 判定)。ここでボス
+// (isEngageableBoss)の**弾を撃つ技**を全数台帳化する。
+//
+// 掟(CLAUDE.md v0.25.2426の教訓「同じ"動作"を持つ全員に付ける」): 弾の発射は
+// **3実装経路**に分かれている。1経路だけ書くと必ず取りこぼすので全部を洗って表に載せる:
+//   ① gameStore.ts   : giantbat の咆哮弾(aiPhase 'g-bolt-*')= 既存 MOVE_REACTION_KEYS の 'g-bolt'
+//   ② useGameLoop.ts : 裏ボス4体(mimir/jormungand/skadi/thor)の burst/radial + idol の aim/fan
+//   ③ angelBossTick.ts: 天使(miguel/jibril の volley・uri の bolt・suriel/acrasiel の gaze)
+// ※弾を撃たない技(acrasielのburst=自己中心の爆発、rafiの骨=別エンティティ)は**入れない**。
+export const BULLET_MOVE_KEYS = [
+  'mimir-burst', 'mimir-radial',
+  'jormungand-burst', 'jormungand-radial',
+  'skadi-burst', 'skadi-radial',
+  'thor-burst', 'thor-radial',
+  'miguel-volley', 'jibril-volley', 'uri-bolt', 'suriel-gaze', 'acrasiel-gaze',
+  'idol-aim', 'idol-fan',
+] as const;
+export type BulletMoveKey = (typeof BULLET_MOVE_KEYS)[number];
+
+export type MoveReactionKey = (typeof MOVE_REACTION_KEYS)[number] | BulletMoveKey;
+const MOVE_KEY_SET: ReadonlySet<string> = new Set<string>(MOVE_REACTION_KEYS);
 
 /** エピソード終了後もこのms間はhit/counterの帰属先として残す(遅延起爆・飛翔中の弾の着弾を拾う)。 */
 export const MOVE_REACTION_LINGER_MS = 2000;
@@ -69,6 +92,51 @@ const THOR_STATE_TO_MOVE: Readonly<Record<string, MoveReactionKey>> = {
   'jump-windup': 'thor-jump', 'jump-attack': 'thor-jump', 'jump-recover': 'thor-jump',
 };
 
+// 弾技の状態→技キー(GHOST-BULLET-TECH)。**必ず type でゲートする**: 状態名は複数のボスで衝突する
+// ('volley'=miguel/jibril、'burst'/'radial'=裏ボス4体、'gaze-windup'=suriel/acrasiel)。
+// 溜め(windup)・実行・硬直(recover)の**全フェーズ**を同じキーへ寄せる(THOR_STATE_TO_MOVE と同じ流儀)=
+// エピソードが技の間ずっと開いたままになり、飛翔中の弾の着弾は残響(linger)で帰属できる。
+const BULLET_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<string, BulletMoveKey>>>>> = {
+  // 裏ボス4体(useGameLoop.ts): aim-burst→burst→burst-recover / aim-radial→radial→radial-recover。
+  // ※thor は台本(?thorscript=1)では弾を撃たない=旧挙動フォールバック(?thorscript=0)専用。
+  mimir: {
+    'aim-burst': 'mimir-burst', burst: 'mimir-burst', 'burst-recover': 'mimir-burst',
+    'aim-radial': 'mimir-radial', radial: 'mimir-radial', 'radial-recover': 'mimir-radial',
+  },
+  jormungand: {
+    'aim-burst': 'jormungand-burst', burst: 'jormungand-burst', 'burst-recover': 'jormungand-burst',
+    'aim-radial': 'jormungand-radial', radial: 'jormungand-radial', 'radial-recover': 'jormungand-radial',
+  },
+  skadi: {
+    'aim-burst': 'skadi-burst', burst: 'skadi-burst', 'burst-recover': 'skadi-burst',
+    'aim-radial': 'skadi-radial', radial: 'skadi-radial', 'radial-recover': 'skadi-radial',
+  },
+  thor: {
+    'aim-burst': 'thor-burst', burst: 'thor-burst', 'burst-recover': 'thor-burst',
+    'aim-radial': 'thor-radial', radial: 'thor-radial', 'radial-recover': 'thor-radial',
+  },
+  // 天使(angelBossTick.ts)。
+  miguel: { 'volley-windup': 'miguel-volley', volley: 'miguel-volley', 'volley-recover': 'miguel-volley' },
+  jibril: { 'volley-windup': 'jibril-volley', volley: 'jibril-volley', 'volley-recover': 'jibril-volley' },
+  uri: { 'bolt-windup': 'uri-bolt', bolt: 'uri-bolt', 'bolt-recover': 'uri-bolt' },
+  // 視線弾は windup の終わりに1発撃って即 recover へ移る(active フェーズが無い)。
+  suriel: { 'gaze-windup': 'suriel-gaze', 'gaze-recover': 'suriel-gaze' },
+  acrasiel: { 'gaze-windup': 'acrasiel-gaze', 'gaze-recover': 'acrasiel-gaze' },
+  // idol(useGameLoop.ts)。roll/punch は近接なので入れない。
+  idol: {
+    'idol-aim-windup': 'idol-aim', 'idol-aim-recover': 'idol-aim',
+    'idol-fan-windup': 'idol-fan', 'idol-fan-recover': 'idol-fan',
+  },
+};
+
+/** 弾技の技キー導出(弾を撃つ技だけ)。非ボス/弾を撃たない技は null。 */
+export const bulletMoveKeyForEnemy = (
+  e: Pick<MoveReactionEnemy, 'type' | 'bossState'>,
+): BulletMoveKey | null => {
+  if (!e.bossState) return null;
+  return BULLET_STATE_TO_MOVE[e.type]?.[e.bossState] ?? null;
+};
+
 export const moveKeyForEnemy = (
   e: Pick<MoveReactionEnemy, 'type' | 'aiPhase' | 'bossState'>,
 ): MoveReactionKey | null => {
@@ -82,6 +150,35 @@ export const moveKeyForEnemy = (
   }
   if (e.type === 'thor' && e.bossState) return THOR_STATE_TO_MOVE[e.bossState] ?? null;
   return null;
+};
+
+/**
+ * 技キーの導出(近接/AoE技=G4a台帳 + 弾技=BULLET台帳)の**唯一の入口**。
+ * 計測(stepMoveReactions)とゴースト(ghostDriver.rollGhostMoveReaction)が同じ1本を使う
+ * =「見ている技」が2つの真実に割れない。
+ */
+export const anyMoveKeyForEnemy = (
+  e: Pick<MoveReactionEnemy, 'type' | 'aiPhase' | 'bossState'>,
+): MoveReactionKey | null => moveKeyForEnemy(e) ?? bulletMoveKeyForEnemy(e);
+
+// ---- 弾へ載せる技キー(Projectile.srcMoveKey) ---------------------------------------------------
+/** 弾に載りうる技キーの全数(= 咆哮弾 g-bolt + 弾技台帳)。 */
+export const PROJECTILE_MOVE_KEYS: readonly MoveReactionKey[] = ['g-bolt', ...BULLET_MOVE_KEYS];
+const PROJECTILE_MOVE_KEY_SET: ReadonlySet<string> = new Set<string>(PROJECTILE_MOVE_KEYS);
+
+/** その技キーは「弾に載るキー」か(ゴーストの弾フィルタ用)。 */
+export const isProjectileMoveKey = (key: string): boolean => PROJECTILE_MOVE_KEY_SET.has(key);
+
+/**
+ * 発射した弾に載せる技キー(**記録専用**・createEnemyProjectileが1箇所で付ける)。
+ * 弾を撃つ技のキーだけを返す(万一「弾を撃たない技」の状態で弾が生まれても誤タグしない安全弁)。
+ * 非ボス(plant等)は常に undefined = 従来どおりタグ無し。
+ */
+export const projectileMoveKeyForEnemy = (
+  e: Pick<MoveReactionEnemy, 'type' | 'aiPhase' | 'bossState'>,
+): MoveReactionKey | undefined => {
+  const key = anyMoveKeyForEnemy(e);
+  return key !== null && PROJECTILE_MOVE_KEY_SET.has(key) ? key : undefined;
 };
 
 // 接触ダメージの技キー導出(combatTick.applyContactDamage用): 「体当たりそのものが技のダメージ」の
@@ -144,10 +241,13 @@ export const stepMoveReactions = (
   const pr = Math.max(player.width, player.height) / 2;
   const seen = new Set<string>();
   for (const e of enemies) {
-    if (e.type !== 'giantbat' && e.type !== 'thor') continue;
-    seen.add(e.id);
-    const key = moveKeyForEnemy(e);
+    // GHOST-BULLET-TECH: 型のホワイトリスト(giantbat/thorのみ)を廃止し、**技キーが導出できるか**で
+    // 判定する(弾技の台帳=裏ボス/天使/idolもここへ入る)。キーが無く追跡中でもない敵は素通り
+    // =giantbat/thorの挙動は1bitも変わらない。
+    const key = anyMoveKeyForEnemy(e);
     const cur = st.open[e.id];
+    if (key === null && cur === undefined) continue;
+    seen.add(e.id);
     if (cur && cur.moveKey !== key) closeEpisode(st, e.id, gameTime); // 技の切り替わり(連携含む)=前の技を確定へ
     if (key && !st.open[e.id]) {
       st.open[e.id] = {

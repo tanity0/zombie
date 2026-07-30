@@ -7242,9 +7242,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   counterPendingAt: ghostNow.ghostCounterPendingAt,
                   counterWillAttempt: ghostNow.ghostCounterWillAttempt,
                   moveRoll: prevMoveRoll,
-                  // §2.12(1) 反応遅延: 危険を認知した時刻の持ち越し(危険が消えたらdecideGhostがundefinedを返す)。
+                  // §2.12(1) 反応遅延 + GHOST-BULLET-TECH A: 危険エピソード(認知時刻+最後に見えた時刻)の
+                  // 持ち越し(記憶が切れたらdecideGhostがundefinedを返す)。
                   dangerSeenAt: ghostNow.ghostDangerSeenAt,
+                  dangerLastAt: ghostNow.ghostDangerLastAt,
                   orbitSign: ghostNow.ghostOrbitSign, // §2.12追補: オービット旋回方向の持ち越し
+                  // GHOST-BULLET-TECH B: 「苦手」と出た弾技の弾を避けない期限の持ち越し。
+                  tankedBulletKey: ghostNow.ghostTankedBulletKey,
+                  tankedBulletUntil: ghostNow.ghostTankedBulletUntil,
                 },
                 player: { x: gsPlayer.x, y: gsPlayer.y, width: gsPlayer.width, height: gsPlayer.height },
                 // v0.25.2470(社長裁定「雑魚は基本的に避けつつボスと戦う」): 全敵を渡す(雑魚回避の
@@ -7311,8 +7316,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostMoveRollKey: decision.moveRoll?.moveKey,
                   ghostMoveRollDecision: decision.moveRoll?.decision,
                   ghostMoveRollAt: decision.moveRoll?.rolledAtMs,
-                  ghostDangerSeenAt: decision.dangerSeenAt, // §2.12(1): 反応遅延の起点(危険が消えたらundefined)
+                  ghostDangerSeenAt: decision.dangerSeenAt, // §2.12(1): 反応遅延の起点(記憶が切れたらundefined)
+                  ghostDangerLastAt: decision.dangerLastAt, // GHOST-BULLET-TECH A: 記憶の失効起点
                   ghostOrbitSign: decision.orbitSign,       // §2.12追補: オービット旋回方向の持ち越し
+                  ghostTankedBulletKey: decision.tankedBulletKey,     // GHOST-BULLET-TECH B: 避けない弾技
+                  ghostTankedBulletUntil: decision.tankedBulletUntil,
                   ...(wantSubClaim ? { ghostSubClaim: true } : {}),
                 } : s),
               }));

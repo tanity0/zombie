@@ -691,3 +691,82 @@ none 88(硬直51・弾のみ12・別エンティティ9・リング状2・移動
 - **並走注意**: FX-V3V4エージェントが pixiScene.ts/pixiTextures.ts/sprites/fx を編集中=触らない。
   ゲート: `npm run typecheck` 0+lintエラー0+related。
 - 版管理: rebase後origin+1・changelog先頭・DEVELOPMENT_LOG(JST打刻)・台帳ステータス更新。
+
+---
+
+## 実装ログ: バッチGHOST-BULLET-TECH(弾も技・v0.25.2543・ステータス=実装済み)
+
+正本= 上の発注仕様(社長方針2026-07-31「弾も技である以上、記録に弾を避ける確率、避ける動きもあるべき」)。
+**プレイヤーの被ダメ・弾の挙動・ボス側の判定/ダメージ/タイミングは1文字も変えていない**
+(`Projectile.srcMoveKey` は記録専用の付加。判定・ダメージ・描画は読まない)。
+
+### 0. 前提の穴の是正(**最も体験が変わった点**・発注文には無かった発見)
+`GHOST_DODGE_PROFILE.dodge` が `'aoe'` 段=botSkillの段階表では
+**`dodgeHandles('aoe','projectile') === false`「弾を1発も避けない段」**で、守護霊はこれまで
+**敵弾を一切避けていなかった**。発注Bの「タグ無し弾=従来どおり常時回避対象」「tankした弾技の弾だけ
+外す」が成立する前提が無かったため `'all'` へ是正。差分は**弾だけ**('jump'/'charge'/'aoe' は
+'aoe' 段でも既に true、'contact' は `ghostDodgeVector` が maxHealth=0 を渡すので不活性のまま)。
+不変条件をテストで固定(「弾を避けない段に戻したら落ちる」)。
+
+### A. 認知の持続(状態遷移=純関数 `stepGhostDanger`)
+| 状態 | 条件 | 振る舞い |
+|---|---|---|
+| 危険なし | memory=undefined・危険なし | 何もしない |
+| 認知 | 危険を見た最初のtick | `seenAt=now` を記録・**まだ回避しない** |
+| 反応済み | `now - seenAt >= reactionMs` | 回避を実行(以後このエピソードでは即応=遅延を払い直さない) |
+| 記憶 | 危険が消えた | `seenAt` を保持(`lastDangerAt` は進めない) |
+| 失効 | `now - lastDangerAt > GHOST_DANGER_MEMORY_MS`(**叩き台2000ms**) | memory=undefined=次の危険で改めて遅れる |
+
+- 状態は `Summon.ghostDangerSeenAt`(既存)+ `ghostDangerLastAt`(新設)の2フィールドのみ。
+  「反応済み」は `now - seenAt >= reactionMs` の**導出**なので持たない(エピソードが続く限り真のまま)。
+- `lastDangerAt` 未設定(旧Summon)は「記憶は生きている」扱い=移行tickで遅延を払い直さない。
+
+### B. 弾技の計測拡張
+**タグ付けは `createEnemyProjectile` の1箇所**(`projectileMoveKeyForEnemy(enemy)`)。発射経路
+(gameStore/useGameLoop/angelBossTick の12箇所)には触らないので**取りこぼしが構造的に起きない**。
+
+| ボス | 弾技キー | 拾う状態(全フェーズ) | 発射経路 |
+|---|---|---|---|
+| giantbat | `g-bolt`(既存) | `g-bolt-*`(既存の `moveKeyForEnemy`) | gameStore: 咆哮弾 連射(burst)/扇(fan) |
+| mimir | `mimir-burst` / `mimir-radial` | aim-burst/burst/burst-recover、aim-radial/radial/radial-recover | useGameLoop `fireBullet` |
+| jormungand | `jormungand-burst` / `jormungand-radial` | 同上 | useGameLoop `fireBullet`(3-way扇 / 螺旋16発) |
+| skadi | `skadi-burst` / `skadi-radial` | 同上 | useGameLoop `fireBullet` |
+| thor | `thor-burst` / `thor-radial` | 同上 | useGameLoop `fireBullet`(**`?thorscript=0` の旧3択専用**。台本では弾を撃たない) |
+| miguel | `miguel-volley` | volley-windup/volley/volley-recover | angelBossTick(台本/旧の**2経路**) |
+| jibril | `jibril-volley` | 同上 | angelBossTick(台本/旧の**2経路**・snipe/closeとも同キー) |
+| uri | `uri-bolt` | bolt-windup/bolt/bolt-recover | angelBossTick |
+| suriel | `suriel-gaze` | gaze-windup/gaze-recover | angelBossTick(windupの終わりに1発) |
+| acrasiel | `acrasiel-gaze` | gaze-windup/gaze-recover | angelBossTick |
+| idol | `idol-aim` / `idol-fan` | idol-aim-windup/recover、idol-fan-windup/recover | useGameLoop `idolFireBullet` |
+
+**入れなかったもの(意図的)**: acrasielの`burst`=自己中心の**爆発**(弾ではない)/ rafiの骨・skadiの氷/刃・
+jibrilの炎=**別エンティティ**(Projectileではない)/ idolのroll・punch=近接。
+
+- 記録: combatTick の `boltMoveKey`(ownerType推定)を廃止し `proj.srcMoveKey` を
+  `damagePlayer(..., damageSourceMove)` → 既存 `notifyMoveDamage` へ渡すだけ。**エピソード数(n)は
+  既存の `stepMoveReactions` が技の状態で開閉して数える**(新しい記録モデルは作っていない。
+  型ホワイトリスト giantbat/thor を「技キーが導出できるか」に置換しただけ=giantbat/thorの計測は不変)。
+- ゴースト: `rollGhostMoveReaction` の技キー導出を `anyMoveKeyForEnemy`(近接AoE台帳→弾技台帳)へ一本化。
+  **tankを引いた弾技の弾は `GHOST_BULLET_TANK_MS`(=`ENEMY_PROJECTILE_DURATION` 4000ms)だけ回避対象から
+  外す**(技の状態は弾より先に終わるので、状態だけ見ると「撃たれた瞬間だけ避けない」になる)。
+- 記録が無い弾技は従来どおり fallback、かつ**乱数を消費しない**=既存プロファイルのRNG列は不変。
+  `moveReactions` へのキー追加のみでスキーマ版 `v` は据え置き。
+
+### テスト
+- `moveReaction.test.ts` +15件: 発射箇所の全数表(型×状態×キー)/溜め・実行・硬直が同キーへ寄る/
+  状態名衝突の型ゲート/弾を撃たない技はタグ無し/近接AoEキーは弾に載らない安全弁/弾技エピソードの
+  暴露・残響・counter優先/giantbat・thorの既存計測が不変。**網羅の機械化2件**=台帳の状態名がソースに
+  実在するか(リネーム検知)+ `createEnemyProjectile(` の箇所数を12に固定(**新しい発射経路を足すと落ちる**)。
+- `ghostDriver.test.ts` +12件: `stepGhostDanger` の5遷移/記憶中に危険が戻れば即応/旧状態の移行/
+  守護霊が弾を回避対象にする不変条件+接触は不活性/弾技ロール/tank記憶の発生・持続・失効。
+  既存の「危険が消えたらリセット」は**新仕様(記憶切れでリセット)へ更新**。
+- `npx vitest related`(変更6ファイル)= **41ファイル 799件パス**(4 skipped)。
+  ゲート: `npm run typecheck` 0 / `npm run lint` エラー0(既存warning 8)。負荷 **1/10**。
+
+### 実装メモ(次バッチが踏む前提)
+- `markMoveReactionCounter` は「開いているエピソード全部(無ければ残響)」へ付ける既存仕様のため、
+  giantbat/thorの残響と他ボスの弾技エピソードが**同時に生きている**場面ではマーク先が残響から
+  開いている側へ移る。実運用ではボスは同時に1体なので影響しない(仕様の解釈は変えていない)。
+- 弾以外で危険を撒く技(骨/刃/氷/火=別エンティティ)は今回も対象外。拾うなら
+  GHOST-BEHAVIOR の申し送りと同じ「エンティティ側の回避」という別の器が要る。
+- ★未決: **なし**(発注文に無い値は全て叩き台として定数化し、意図をコメントに明記した)。

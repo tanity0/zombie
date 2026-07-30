@@ -765,10 +765,15 @@ export interface Summon {
   ghostMoveRollAt?: number;                                       // ロールした時刻(ms・Date.now基準)
   // ---- §2.12(1) 反応遅延(v0.25.2529): 危険(ボスの予告/回避対象の脅威)を最初に認知した時刻
   // (ms・Date.now基準)。ここから計測 reactionMs(100-800clamp)経過して初めて回避を始める。
-  // 危険が消えた tick で undefined へ戻る(ghostDriver.decideGhost が返す値をそのまま持ち回るだけ)。
+  // GHOST-BULLET-TECH A(v0.25.2543): 危険が消えても GHOST_DANGER_MEMORY_MS の間は認知を保つ
+  // (=反応遅延は危険エピソードにつき1回だけ)。記憶が切れた tick で undefined へ戻る。
   ghostDangerSeenAt?: number;
+  ghostDangerLastAt?: number; // 最後に危険が見えた時刻(記憶の失効起点)
   // §2.12追補(v0.25.2534): オービット(ボス正対の横流れ)の旋回方向。持ち越して低確率で反転。
   ghostOrbitSign?: 1 | -1;
+  // GHOST-BULLET-TECH B(v0.25.2543): 計測で「苦手」(tank)と出た弾技の技キーと、その弾を避けない期限。
+  ghostTankedBulletKey?: string;
+  ghostTankedBulletUntil?: number;
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';
@@ -1080,6 +1085,10 @@ export interface Projectile {
   weaponKey?: string;
   ownerType?: EnemyType; // 敵弾の発射元タイプ(盾への被ダメージ算定などに使用)。
   ownerId?: string;      // 敵弾の発射元の個体ID(発射元が倒れたら在弾を消す等に使用)。
+  // GHOST-BULLET-TECH(BOT_AND_GHOST.md §2.9・**記録専用**): 発射元の技キー(moveReaction.tsの台帳)。
+  // 「弾も技」=被弾を技別の反応表へ帰属させ、守護霊が弾技ごとの得手不得手を再現するために持つ。
+  // **判定・ダメージ・弾の挙動・ボス側には一切影響しない**(createEnemyProjectileが1箇所で付ける)。
+  srcMoveKey?: string;
   duration: number;
   createdAt: number;
   passthrough: boolean;

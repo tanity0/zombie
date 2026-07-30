@@ -22,10 +22,11 @@
 // ③移動リズム(stationaryFrac/approachPerMin) ④苦手技は食らう(tank率=現行維持) で出す。
 import type { Enemy, Projectile, SkillKey } from '../types/game';
 import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile, type DodgeThreat } from './botSkill';
-import { isBossType } from './enemyUtils'; // v0.25.2470: 雑魚回避(非ボス判定)用
+// v0.25.2470: 雑魚回避(非ボス判定)用 / ENEMY_PROJECTILE_DURATION=弾の寿命(tankした弾技の弾を無視し続ける長さ)
+import { isBossType, ENEMY_PROJECTILE_DURATION } from './enemyUtils';
 import { isBossCounterableNowApprox } from './bossScript';
 import { ghostExtraTelegraphDodge, isTelegraphActive } from './ghostTelegraph'; // §2.12 要件7: 予告台帳(全ボス)
-import { moveKeyForEnemy, type MoveReactionTable } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
+import { anyMoveKeyForEnemy, isProjectileMoveKey, type MoveReactionTable } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
 
 // ---- プロファイル(playerTraits.PlayerProfileと同じノブ形。循環import回避のため型は独立定義) ----
 export interface GhostProfile {
@@ -73,8 +74,9 @@ export const defaultGhostProfile = (): GhostProfile => {
 };
 
 // ---- G4b(BOT_AND_GHOST.md §2.9(4)): 技への反応の再現(ロールの状態機械・純関数) -----------------
-// ボスの溜め(aiPhase/bossState)の立ち上がりで技キーを導出(moveReaction.moveKeyForEnemyをそのまま
-// 流用)し、プロファイルの moveReactions[moveKey] で**技1回の発動につき1回だけ**ロールする:
+// ボスの溜め(aiPhase/bossState)の立ち上がりで技キーを導出(moveReaction.anyMoveKeyForEnemyをそのまま
+// 流用=**弾技も含む**(GHOST-BULLET-TECH: 裏ボスburst/radial・天使volley/uri bolt・idol射撃など))し、
+// プロファイルの moveReactions[moveKey] で**技1回の発動につき1回だけ**ロールする:
 //   r < counterRate                → 'counter' = その技をカウンターしにいく(既存カウンター試行を優先発動)
 //   r < counterRate + dodgeRate    → 'dodge'   = 離脱(既存のtelegraphDodge/dodgeVectorに従う=従来挙動)
 //   残り(= hitRate)               → 'tank'    = 「苦手」の再現: この技に限り回避を抑制(①により実際に食らう)
@@ -98,7 +100,7 @@ export const rollGhostMoveReaction = (
   nowMs: number,
   rand: () => number,
 ): GhostMoveRoll | undefined => {
-  const moveKey = target ? moveKeyForEnemy(target) : null;
+  const moveKey = target ? anyMoveKeyForEnemy(target) : null;
   if (!moveKey) return undefined; // 技が解決した(または技なし)=リセット
   if (prev && prev.moveKey === moveKey) {
     // 同じ技が続く間は振り直さない(技1回の発動=1ロール)。タイムアウトだけは従来挙動へ落とす。
@@ -215,6 +217,20 @@ export const GHOST_ORBIT_IDLE_FRAC = 0.3;    // 止まり癖tick(旧: 完全停�
 export const GHOST_ORBIT_TANK_FRAC = 0.35;   // tankロールの予告中=「避けようとして間に合わない」ゆっくり歩き
                                              // (速すぎると狙い撃ち技が偶然外れ、hitRate再現=「苦手技は食らう」が壊れる)
 export const GHOST_ORBIT_FLIP_CHANCE = 0.004; // 1tickあたりの旋回方向の反転確率(約4秒に1回@60fps)
+/**
+ * GHOST-BULLET-TECH A(認知の持続・**叩き台2000ms**): 危険が見えなくなってもこの時間は「認知」を
+ * 保持する。旧実装は危険が1tickでも途切れると認知が undefined へ戻り、**弾の波ごとに反応遅延
+ * (100-800ms)の盲目窓が再発生**していた(近距離弾は200-500msで着弾=ほぼ確定被弾)。
+ * 反応遅延は**危険エピソードにつき1回だけ**払い、記憶が切れて初めて次の危険でまた遅れる
+ * =「初弾は食らうが、以降は本気で避ける」人間らしさ。
+ */
+export const GHOST_DANGER_MEMORY_MS = 2000;
+/**
+ * GHOST-BULLET-TECH B(苦手な弾技の再現): 弾技で 'tank' を引いた時、その技の弾を回避対象から
+ * 外し続ける長さ。技の状態(windup/active/recover)は弾より先に終わるので、状態だけで判定すると
+ * 「撃たれた瞬間だけ避けない」になってしまう。**弾の寿命ぶん**(ENEMY_PROJECTILE_DURATION)覚えておく。
+ */
+export const GHOST_BULLET_TANK_MS = ENEMY_PROJECTILE_DURATION;
 
 const clamp01 = (x: number): number => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
@@ -248,6 +264,40 @@ export const ghostApproachChance = (approachPerMin?: number): number => {
 export const ghostDesiredDist = (preferredDist: number, addSafeMargin: boolean): number =>
   preferredDist + (addSafeMargin ? GHOST_WINDUP_SAFE_MARGIN_PX : 0);
 
+// ---- GHOST-BULLET-TECH A: 危険の認知(エピソード)の状態機械(純関数) --------------------------
+// 状態遷移: **危険なし → 認知(seenAt) → 反応済み(reactionMs経過) → 記憶(危険が消えても保持) → 失効**。
+//  - 認知〜反応済みは「エピソードにつき1回」。同じエピソードの間は何度危険が途切れても遅延を払い直さない。
+//  - 記憶は最後に危険を見てから GHOST_DANGER_MEMORY_MS で失効し、次の危険がまた「初認知」になる。
+export interface GhostDangerMemory {
+  /** 危険エピソードを最初に認知した時刻(ms)。反応遅延の起点。 */
+  seenAt: number;
+  /**
+   * 最後に危険が見えた時刻(ms)。記憶の失効起点。
+   * **undefined = 旧状態(v0.25.2542以前のSummon)からの引き継ぎ**で、記憶は「生きている」として扱う
+   * (失効判定の材料が無いのに勝手に切ると、移行tickだけ反応遅延を余計に払うため)。
+   */
+  lastDangerAt?: number;
+}
+
+/**
+ * 危険の認知を1tick進める。戻り値 reacted=true の間だけ回避を実行してよい。
+ * `reactionMs` は ghostReactionMs() でclamp済みの値を渡すこと。
+ */
+export const stepGhostDanger = (
+  prev: GhostDangerMemory | undefined,
+  dangerNow: boolean,
+  nowMs: number,
+  reactionMs: number,
+): { memory: GhostDangerMemory | undefined; reacted: boolean } => {
+  const expired = prev !== undefined && prev.lastDangerAt !== undefined
+    && nowMs - prev.lastDangerAt > GHOST_DANGER_MEMORY_MS;
+  const alive = expired ? undefined : prev;
+  // 危険が見えないtick: 記憶だけ保持する(回避するものが無いので reacted は問わない)。
+  if (!dangerNow) return { memory: alive, reacted: false };
+  const seenAt = alive?.seenAt ?? nowMs;
+  return { memory: { seenAt, lastDangerAt: nowMs }, reacted: nowMs - seenAt >= reactionMs };
+};
+
 /** §2.12: カウンター待ちを見切ったか(窓が開いてから GHOST_COUNTER_WAIT_MS 経過)。 */
 export const ghostCounterWaitExpired = (pendingAt: number | undefined, nowMs: number): boolean =>
   pendingAt !== undefined && nowMs - pendingAt >= GHOST_COUNTER_WAIT_MS;
@@ -256,8 +306,15 @@ export const ghostCounterWaitExpired = (pendingAt: number | undefined, nowMs: nu
 // 2フィールドだけ(botSkill.tsのdodgeVector実装参照)なので、残りはTSの構造的型付けを満たすためだけの
 // 無害なプレースホルダ値(ゴーストの標的選択/交戦距離判断そのものには一切使わない)。
 // **dodgeStrength は常に1(§2.12「実行は常に本気」)**=旧hitsPerMin逆写像は廃止した。
+//
+// GHOST-BULLET-TECH(v0.25.2543): **dodge を 'aoe' → 'all' へ是正**。'aoe' 段は
+// `dodgeHandles('aoe','projectile') === false`(botSkill.ts)=**弾を1発も回避対象にしない**段で、
+// 守護霊は今まで敵弾を一切避けていなかった(赤い予告と突進だけ避ける人)。発注仕様B「タグ無し弾=
+// 従来どおり常時回避対象」「'tank'した弾技の弾だけ外す」が成立する前提そのものが無かったため是正する。
+// 'all' との差分は**弾('projectile')だけ**: 'jump'/'charge'/'aoe' は 'aoe' 段でも既に true で、
+// 'contact' は ghostDodgeVector が maxHealth=0 を渡す(=`contactDodge` が常に null)ので不活性のまま。
 const GHOST_DODGE_PROFILE: BotSkillProfile = {
-  reactionMs: 0, counterChance: 0, dodge: 'aoe', targeting: 'threat', surroundCount: 0,
+  reactionMs: 0, counterChance: 0, dodge: 'all', targeting: 'threat', surroundCount: 0,
   disengageHp: 0, engageDist: 0, dodgeVsAttack: 0, avoidContactDist: 0, meleeVsDanger: true,
   warpReact: false, upgradePolicy: 'random', dodgeStrength: 1,
 };
@@ -266,13 +323,20 @@ const GHOST_DODGE_PROFILE: BotSkillProfile = {
  * ゴーストの回避ベクトル(常に全力)。既存 dodgeVector(弾/汎用ジャンプ/突進/既存の予告表)に、
  * §2.12 要件7の**全ボス予告台帳が足す差分**(ghostTelegraph)を合成する。
  * 戻り値 null = 避けるものが無い。
+ *
+ * `tankedBulletKey`(GHOST-BULLET-TECH B)= その技キーの弾は**避けない**(計測hitRateで'tank'を
+ * 引いた=「この弾技は苦手」の再現)。タグの無い弾(非ボス/従来の弾)は常に回避対象のまま。
  */
 export const ghostDodgeVector = (
   gcx: number, gcy: number,
   enemies: readonly Enemy[],
   projectiles: readonly Projectile[],
+  tankedBulletKey?: string,
 ): { x: number; y: number } | null => {
-  const base = dodgeVector(GHOST_DODGE_PROFILE, gcx, gcy, enemies, projectiles, 0);
+  const seen = tankedBulletKey === undefined
+    ? projectiles
+    : projectiles.filter(p => p.srcMoveKey !== tankedBulletKey);
+  const base = dodgeVector(GHOST_DODGE_PROFILE, gcx, gcy, enemies, seen, 0);
   // base は合成済みの単位ベクトル(強さ1)。差分の脅威は自分の weight(0..1)で足す。
   let sx = base ? base.x : 0, sy = base ? base.y : 0;
   for (const e of enemies) {
@@ -301,8 +365,14 @@ export interface GhostSelf {
   moveRoll?: GhostMoveRoll;     // G4b: 進行中の技への反応ロール(undefined=技なし/フォールバック運転)
   /** §2.12(1): 危険(予告/脅威)を最初に認知した時刻。reactionMs後に回避を開始する。undefined=危険なし。 */
   dangerSeenAt?: number;
+  /** GHOST-BULLET-TECH A: 最後に危険が見えた時刻(記憶=GHOST_DANGER_MEMORY_MSの失効起点)。 */
+  dangerLastAt?: number;
   /** §2.12追補: オービット(横流れ)の旋回方向。持ち越して低確率で反転(毎tick変わるとジグザグになる)。 */
   orbitSign?: 1 | -1;
+  /** GHOST-BULLET-TECH B: 'tank'を引いた弾技の技キー(この技の弾は避けない)。 */
+  tankedBulletKey?: string;
+  /** 同上の有効期限(ms)。これを過ぎたら弾を避ける側へ戻る。 */
+  tankedBulletUntil?: number;
 }
 
 export interface GhostDriverInput {
@@ -332,8 +402,11 @@ export interface GhostDecision {
   counterPendingAt?: number;
   counterWillAttempt?: boolean;
   moveRoll?: GhostMoveRoll; // G4b: 次tickへ持ち越す(技の解決でundefinedに戻る)
-  dangerSeenAt?: number;    // §2.12(1): 次tickへ持ち越す(危険が消えたらundefinedに戻る)
+  dangerSeenAt?: number;    // §2.12(1): 次tickへ持ち越す(記憶が切れたらundefinedに戻る)
+  dangerLastAt?: number;    // GHOST-BULLET-TECH A: 最後に危険が見えた時刻(記憶の失効起点)
   orbitSign?: 1 | -1;       // §2.12追補: オービットの旋回方向(次tickへ持ち越し)
+  tankedBulletKey?: string;  // GHOST-BULLET-TECH B: 避けない弾技(undefined=全ての弾を避ける)
+  tankedBulletUntil?: number;
 }
 
 /** 毎tick1回呼ぶ純関数。次tickへ持ち越す自己状態(lastShotAt等)も戻り値に含めて返す。 */
@@ -358,7 +431,9 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       facing: ux !== 0 ? (ux > 0 ? 1 : -1) : ghost.facing,
       lastShotAt: ghost.lastShotAt, lastMeleeAt: ghost.lastMeleeAt,
       counterPendingAt: undefined, counterWillAttempt: false,
-      moveRoll: undefined, dangerSeenAt: undefined, orbitSign: ghost.orbitSign,
+      moveRoll: undefined, dangerSeenAt: undefined, dangerLastAt: undefined, orbitSign: ghost.orbitSign,
+      // 弾技のtank記憶は持ち越す(標的が1tick居ないだけで在弾は飛び続けているため。期限で自然に切れる)。
+      tankedBulletKey: ghost.tankedBulletKey, tankedBulletUntil: ghost.tankedBulletUntil,
     };
   }
 
@@ -372,17 +447,34 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   const moveRoll = rollGhostMoveReaction(ghost.moveRoll, target, profile.moveReactions, nowMs, rand);
   const reaction = moveRoll?.decision;
 
-  // 回避(§2.12「実行は常に本気」=強さは常に1)。既存 dodgeVector + 全ボス予告台帳の差分。
-  const dodge = ghostDodgeVector(gcx, gcy, enemies, projectiles);
+  // GHOST-BULLET-TECH B: 弾技で'tank'を引いたら、その技の弾を**弾の寿命ぶん**回避対象から外す
+  // (技の状態は弾より先に終わるので、状態だけ見ると「撃たれた瞬間だけ避けない」になってしまう)。
+  let tankedBulletKey = ghost.tankedBulletKey;
+  let tankedBulletUntil = ghost.tankedBulletUntil;
+  if (moveRoll?.decision === 'tank' && isProjectileMoveKey(moveRoll.moveKey)) {
+    tankedBulletKey = moveRoll.moveKey;
+    tankedBulletUntil = nowMs + GHOST_BULLET_TANK_MS;
+  } else if (tankedBulletUntil !== undefined && nowMs >= tankedBulletUntil) {
+    tankedBulletKey = undefined; tankedBulletUntil = undefined; // 期限切れ=また避ける人へ戻る
+  }
 
-  // §2.12(1) 反応遅延: 「危険」(標的ボスの予告 or 回避対象の脅威)を認知した時刻を持ち回り、
-  // 計測 reactionMs(100-800clamp)経過して初めて回避を始める。気づきの早さがそのまま個性になる。
+  // 回避(§2.12「実行は常に本気」=強さは常に1)。既存 dodgeVector + 全ボス予告台帳の差分。
+  const dodge = ghostDodgeVector(gcx, gcy, enemies, projectiles, tankedBulletKey);
+
+  // §2.12(1) 反応遅延 + GHOST-BULLET-TECH A(認知の持続): 「危険」(標的ボスの予告 or 回避対象の脅威)を
+  // **エピソード**として持ち回り、計測 reactionMs(100-800clamp)経過して初めて回避を始める。
+  // 遅延を払うのは**エピソードにつき1回**で、危険が途切れても GHOST_DANGER_MEMORY_MS は認知を保つ
+  // =弾幕の波ごとに盲目窓が再発生しない(初弾は食らうが以降は本気で避ける)。
   const reactionMs = ghostReactionMs(profile.reactionMs);
   const windupNow = isTelegraphActive(target);
   const dangerNow = windupNow || dodge !== null;
-  const dangerSeenAt = dangerNow ? (ghost.dangerSeenAt ?? nowMs) : undefined;
-  const reacted = dangerSeenAt !== undefined && nowMs - dangerSeenAt >= reactionMs;
-  const activeDodge = reacted ? dodge : null;
+  const danger = stepGhostDanger(
+    ghost.dangerSeenAt !== undefined ? { seenAt: ghost.dangerSeenAt, lastDangerAt: ghost.dangerLastAt } : undefined,
+    dangerNow, nowMs, reactionMs,
+  );
+  const dangerSeenAt = danger.memory?.seenAt;
+  const dangerLastAt = danger.memory?.lastDangerAt;
+  const activeDodge = danger.reacted ? dodge : null;
 
   // カウンター窓の見切り(§2.12・要件6)。**移動より先に**判定する: 見切った後は「詰める/張り付く」を
   // やめて通常の間合い管理へ戻す(旧: 窓が閉じるまで無時限に張り付いて被弾していた)。
@@ -510,7 +602,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   return {
     moveX, moveY, action, targetId: target.id, facing,
     lastShotAt, lastMeleeAt, counterPendingAt, counterWillAttempt,
-    moveRoll, dangerSeenAt, orbitSign,
+    moveRoll, dangerSeenAt, dangerLastAt, orbitSign, tankedBulletKey, tankedBulletUntil,
   };
 };
 

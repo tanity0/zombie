@@ -5,9 +5,11 @@ import {
   moveKeyForEnemy, contactDamageMoveKey, createMoveReactionState, stepMoveReactions,
   markMoveReactionCounter, markMoveReactionHit, endMoveReactions, blendMoveReactionTable,
   MOVE_REACTION_LINGER_MS,
+  bulletMoveKeyForEnemy, anyMoveKeyForEnemy, projectileMoveKeyForEnemy,
+  isProjectileMoveKey, BULLET_MOVE_KEYS, PROJECTILE_MOVE_KEYS,
   type MoveReactionEnemy,
 } from './moveReaction';
-import type { Enemy } from '../types/game';
+import type { Enemy, EnemyType } from '../types/game';
 
 const giant = (aiPhase: Enemy['aiPhase'], over: Partial<MoveReactionEnemy> = {}): MoveReactionEnemy => ({
   id: 'g1', type: 'giantbat', aiPhase, bossState: undefined,
@@ -172,5 +174,183 @@ describe('moveReaction: blendMoveReactionTable(EMA更新とnの累計)', () => {
     expect(next['g-jump']).toEqual(prev['g-jump']);
     expect(next['thor-issen']).toEqual({ n: 1, counterRate: 0, hitRate: 1 });
     expect(blendMoveReactionTable(prev, {}, 0.3)).toBe(prev);
+  });
+});
+
+// ==== GHOST-BULLET-TECH(弾も技・v0.25.2543) ====================================================
+// 社長方針「弾も技である以上、記録に弾を避ける確率、避ける動きもあるべき」。
+// 弾を撃つ技を**3実装経路すべて**(gameStore=城ボス / useGameLoop=裏ボス+idol /
+// angelBossTick=天使)から拾えているかを、台帳と発射経路の両面で機械的に確認する。
+
+const bulletBoss = (
+  type: EnemyType, bossState: string, over: Partial<MoveReactionEnemy> = {},
+): MoveReactionEnemy => ({
+  id: `${type}-1`, type, aiPhase: undefined, bossState,
+  x: 500, y: 500, width: 60, height: 60, gStompRadius: undefined,
+  ...over,
+} as MoveReactionEnemy);
+
+// 「このボスのこの状態で弾が出る」= 実際の発射箇所の全数表(ソース走査の対応表)。
+// 左から: 敵タイプ / 発射時の状態 / 期待キー / 発射箇所。
+const FIRE_SITES: ReadonlyArray<[EnemyType, string, string, string]> = [
+  ['mimir', 'burst', 'mimir-burst', 'useGameLoop fireBullet(burst)'],
+  ['mimir', 'aim-radial', 'mimir-radial', 'useGameLoop fireBullet(aim-radial=16発一斉)'],
+  ['jormungand', 'burst', 'jormungand-burst', 'useGameLoop fireBullet(burst 3-way)'],
+  ['jormungand', 'radial', 'jormungand-radial', 'useGameLoop fireBullet(radial 螺旋)'],
+  ['skadi', 'burst', 'skadi-burst', 'useGameLoop fireBullet(burst)'],
+  ['skadi', 'aim-radial', 'skadi-radial', 'useGameLoop fireBullet(aim-radial)'],
+  ['thor', 'burst', 'thor-burst', 'useGameLoop fireBullet(?thorscript=0の旧3択)'],
+  ['thor', 'aim-radial', 'thor-radial', 'useGameLoop fireBullet(?thorscript=0の旧3択)'],
+  ['miguel', 'volley', 'miguel-volley', 'angelBossTick miguel volley(台本/旧の2経路)'],
+  ['jibril', 'volley', 'jibril-volley', 'angelBossTick jibril volley(台本/旧の2経路)'],
+  ['uri', 'bolt', 'uri-bolt', 'angelBossTick uri bolt'],
+  ['suriel', 'gaze-windup', 'suriel-gaze', 'angelBossTick suriel gaze(windupの終わりに1発)'],
+  ['acrasiel', 'gaze-windup', 'acrasiel-gaze', 'angelBossTick acrasiel gaze'],
+  ['idol', 'idol-aim-windup', 'idol-aim', 'useGameLoop idol 単発'],
+  ['idol', 'idol-fan-windup', 'idol-fan', 'useGameLoop idol 扇'],
+];
+
+describe('GHOST-BULLET-TECH: 弾技の技キー導出', () => {
+  it('発射箇所の全数(3経路)で技キーが付く', () => {
+    for (const [type, state, key, where] of FIRE_SITES) {
+      expect(projectileMoveKeyForEnemy(bulletBoss(type, state)), where).toBe(key);
+    }
+  });
+
+  it('咆哮弾(giantbat g-bolt)も同じ1本で解決する=combatTickのownerType推定を廃止できる', () => {
+    expect(projectileMoveKeyForEnemy(giant('g-bolt-windup'))).toBe('g-bolt');
+    expect(projectileMoveKeyForEnemy(giant('g-bolt-burst'))).toBe('g-bolt');
+    expect(projectileMoveKeyForEnemy(giant('g-bolt-recover'))).toBe('g-bolt');
+  });
+
+  it('溜め/実行/硬直の全フェーズが同じキーへ寄る(飛翔中の弾を残響で帰属させるため)', () => {
+    for (const st of ['aim-burst', 'burst', 'burst-recover']) {
+      expect(bulletMoveKeyForEnemy(bulletBoss('mimir', st))).toBe('mimir-burst');
+    }
+    for (const st of ['volley-windup', 'volley', 'volley-recover']) {
+      expect(bulletMoveKeyForEnemy(bulletBoss('jibril', st))).toBe('jibril-volley');
+    }
+    for (const st of ['bolt-windup', 'bolt', 'bolt-recover']) {
+      expect(bulletMoveKeyForEnemy(bulletBoss('uri', st))).toBe('uri-bolt');
+    }
+  });
+
+  it('状態名の衝突を型ゲートで捌く(volley/burst/radial/gaze-windupは複数ボスが使う)', () => {
+    expect(bulletMoveKeyForEnemy(bulletBoss('miguel', 'volley'))).toBe('miguel-volley');
+    expect(bulletMoveKeyForEnemy(bulletBoss('jibril', 'volley'))).toBe('jibril-volley');
+    expect(bulletMoveKeyForEnemy(bulletBoss('suriel', 'gaze-windup'))).toBe('suriel-gaze');
+    expect(bulletMoveKeyForEnemy(bulletBoss('acrasiel', 'gaze-windup'))).toBe('acrasiel-gaze');
+    expect(bulletMoveKeyForEnemy(bulletBoss('skadi', 'burst'))).toBe('skadi-burst');
+  });
+
+  it('弾を撃たない技・非ボスはタグ無し(従来どおり常時回避対象のままにする)', () => {
+    // アクラシエルの burst は自己中心の**爆発**(弾ではない)=入れない。
+    expect(bulletMoveKeyForEnemy(bulletBoss('acrasiel', 'burst'))).toBeNull();
+    expect(bulletMoveKeyForEnemy(bulletBoss('acrasiel', 'burst-windup'))).toBeNull();
+    // ラフィの骨は別エンティティ(spawnSkadiBlade)=弾ではない。
+    expect(bulletMoveKeyForEnemy(bulletBoss('rafi', 'bone'))).toBeNull();
+    expect(bulletMoveKeyForEnemy(bulletBoss('idol', 'idol-roll'))).toBeNull();
+    expect(bulletMoveKeyForEnemy(bulletBoss('mimir', 'chase'))).toBeNull();
+    expect(projectileMoveKeyForEnemy({ type: 'plant', aiPhase: undefined, bossState: undefined })).toBeUndefined();
+  });
+
+  it('近接/AoE技のキーは弾に載らない(万一その状態で弾が生まれても誤タグしない安全弁)', () => {
+    expect(anyMoveKeyForEnemy(giant('g-stomp-windup'))).toBe('g-stomp');
+    expect(projectileMoveKeyForEnemy(giant('g-stomp-windup'))).toBeUndefined();
+    expect(projectileMoveKeyForEnemy(thor('issen-dash'))).toBeUndefined();
+    expect(isProjectileMoveKey('g-stomp')).toBe(false);
+    expect(isProjectileMoveKey('g-bolt')).toBe(true);
+  });
+
+  it('anyMoveKeyForEnemy は近接/AoE台帳を優先し、弾技台帳へ落ちる(thorは両方を持つ)', () => {
+    expect(anyMoveKeyForEnemy(thor('issen-windup'))).toBe('thor-issen'); // G4a台帳が勝つ
+    expect(anyMoveKeyForEnemy(thor('burst'))).toBe('thor-burst');        // G4a台帳に無い→弾技台帳
+  });
+
+  it('PROJECTILE_MOVE_KEYS = g-bolt + 弾技台帳の全数(重複なし)', () => {
+    expect(PROJECTILE_MOVE_KEYS).toEqual(['g-bolt', ...BULLET_MOVE_KEYS]);
+    expect(new Set(PROJECTILE_MOVE_KEYS).size).toBe(PROJECTILE_MOVE_KEYS.length);
+    // 発射箇所の表が使うキーは、全て台帳(BULLET_MOVE_KEYS)に載っている。
+    for (const [, , key] of FIRE_SITES) expect(BULLET_MOVE_KEYS as readonly string[]).toContain(key);
+  });
+});
+
+describe('GHOST-BULLET-TECH: 弾技のエピソード(既存の技と同じ流儀でnを数える)', () => {
+  it('弾技も「解決1回=暴露1」。無傷ならdodge(hitRate=0)', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [bulletBoss('uri', 'bolt-windup')], farPlayer, 0);
+    stepMoveReactions(st, [bulletBoss('uri', 'bolt')], farPlayer, 500);
+    stepMoveReactions(st, [bulletBoss('uri', 'chase')], farPlayer, 1500); // 技終了→残響
+    expect(endMoveReactions(st)['uri-bolt']).toEqual({ exposures: 1, counters: 0, hits: 0 });
+  });
+
+  it('被弾は弾のタグ(srcMoveKey)経由で技へ帰属する。飛翔中の着弾は残響で拾う', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [bulletBoss('jibril', 'volley')], farPlayer, 0);
+    stepMoveReactions(st, [bulletBoss('jibril', 'chase')], farPlayer, 800); // 技終了(弾はまだ飛んでいる)
+    markMoveReactionHit(st, 'jibril-volley');                                // 残響中の着弾
+    expect(endMoveReactions(st)['jibril-volley']).toEqual({ exposures: 1, counters: 0, hits: 1 });
+  });
+
+  it('残響が切れてから届いた弾は数えない(既存g-boltと同じ扱い)', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [bulletBoss('mimir', 'aim-radial')], farPlayer, 0);
+    stepMoveReactions(st, [bulletBoss('mimir', 'chase')], farPlayer, 500);
+    stepMoveReactions(st, [bulletBoss('mimir', 'chase')], farPlayer, 500 + MOVE_REACTION_LINGER_MS);
+    markMoveReactionHit(st, 'mimir-radial');
+    expect(endMoveReactions(st)['mimir-radial']).toEqual({ exposures: 1, counters: 0, hits: 0 });
+  });
+
+  it('反射(カウンター成立)は開いているエピソードへ付く=counterがhitに優先する', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [bulletBoss('idol', 'idol-fan-windup')], farPlayer, 0);
+    markMoveReactionHit(st, 'idol-fan');
+    markMoveReactionCounter(st);
+    expect(endMoveReactions(st)['idol-fan']).toEqual({ exposures: 1, counters: 1, hits: 0 });
+  });
+
+  it('giantbat/thorの既存計測は変わらない(型ホワイトリスト撤廃の副作用が無いこと)', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [giant('g-sweep-windup'), bulletBoss('mimir', 'chase')], farPlayer, 0);
+    stepMoveReactions(st, [giant(undefined), bulletBoss('mimir', 'chase')], farPlayer, 500);
+    const tally = endMoveReactions(st);
+    expect(tally['g-sweep']).toEqual({ exposures: 1, counters: 0, hits: 0 });
+    expect(Object.keys(tally)).toEqual(['g-sweep']); // 技を出していないボスはエピソードを作らない
+  });
+});
+
+// ---- 網羅の機械化(CLAUDE.md「同じ"動作"を持つ全員に付ける」の再発防止) ------------------------
+// ソースは vite の ?raw で読む(このリポジトリは @types/node を入れていないので node:fs は使わない。
+// ghostTelegraph.test.ts と同じ作法)。
+const BULLET_SOURCES = import.meta.glob<string>(
+  ['../store/gameStore.ts', './angelBossTick.ts', '../hooks/useGameLoop.ts', './combatTick.ts'],
+  { query: '?raw', import: 'default', eager: true },
+);
+
+describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
+  it('台帳に書いた状態名は実際にソースへ存在する(状態のリネーム/打ち間違いを検知)', () => {
+    const all = Object.values(BULLET_SOURCES).join('\n');
+    for (const [, state, , where] of FIRE_SITES) {
+      expect(all.includes(`'${state}'`), `${state} (${where})`).toBe(true);
+    }
+  });
+
+  it('敵弾の生成箇所の数は固定(新しい発射経路を足したらこのテストが落ちる=分類してから入れる)', () => {
+    // 内訳(v0.25.2543時点・全数):
+    //   gameStore.ts   2 = 咆哮弾の連射(burst)/扇(fan)
+    //   useGameLoop.ts 2 = 裏ボス fireBullet / idol idolFireBullet
+    //   angelBossTick  7 = miguel×2(台本/旧)・jibril×2(台本/旧)・uri・suriel・acrasiel
+    //   combatTick.ts  1 = 汎用発砲(plant等の非ボス。?giantscript=0のgiantbat旧経路も同じ口)
+    // 合計12。増えたら「そのボスのその状態」をBULLET_STATE_TO_MOVEへ足すこと(足さないと
+    // その弾だけ技キーが付かず、記録にも守護霊の再現にも一生乗らない)。
+    let sites = 0;
+    for (const text of Object.values(BULLET_SOURCES)) {
+      for (const line of text.split('\n')) {
+        const t = line.trim();
+        if (t.startsWith('//') || t.startsWith('*')) continue;
+        sites += (line.match(/createEnemyProjectile\(/g) ?? []).length;
+      }
+    }
+    expect(sites).toBe(12);
   });
 });

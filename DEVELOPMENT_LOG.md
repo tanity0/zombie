@@ -1,5 +1,75 @@
 # Development Log
 
+## v0.25.2543 — バッチGHOST-BULLET-TECH: 弾も技(認知の持続+弾技の技別計測+守護霊の弾回避)【2026-07-31 01:57 JST】
+
+正本= research/GHOST_PARITY_LEDGER.md 発注 GHOST-BULLET-TECH(社長方針2026-07-31「弾も技である以上、
+記録に弾を避ける確率、避ける動きもあるべき。それも含めたボスとの距離の取り方の癖という個性もある」)。
+**プレイヤーの被ダメ・弾の挙動・ボス側の判定/ダメージ/タイミングは1文字も変えていない**(タグは記録専用の付加のみ)。
+実装方式の詳細は台帳の「実装ログ: バッチGHOST-BULLET-TECH」が正本。ここは要約。
+
+### 0. 着手して分かった前提の穴(**是正**・体験がいちばん変わった点)
+- `GHOST_DODGE_PROFILE.dodge` が `'aoe'` 段だった。botSkill の段階表では
+  **`dodgeHandles('aoe','projectile') === false`=「弾を1発も避けない段」**で、守護霊はこれまで
+  **敵弾を一切回避していなかった**(赤い予告と突進だけ避ける人)。発注Bの「タグ無し弾=従来どおり
+  常時回避対象」「tankした弾技の弾だけ外す」が成立する前提そのものが無かったため `'all'` へ是正。
+  差分は**弾だけ**('jump'/'charge'/'aoe' は 'aoe' 段でも既に true、'contact' は
+  `ghostDodgeVector` が maxHealth=0 を渡すので不活性のまま)。不変条件をテストで固定した。
+
+### A. 認知の持続(反応遅延の是正)
+- 旧: 危険が1tickでも途切れると `dangerSeenAt` が undefined へ戻り、**弾の波ごとに反応遅延
+  (100-800ms)の盲目窓が再発生**していた。
+- 新: 純関数 `stepGhostDanger(prev, dangerNow, nowMs, reactionMs)` で
+  **危険なし→認知→反応済み→記憶→失効**の状態遷移を持つ。危険が消えても
+  `GHOST_DANGER_MEMORY_MS`(**叩き台2000ms**)は認知を保持し、**反応遅延はエピソードにつき1回**。
+  記憶が切れて初めて次の危険で改めて遅れる(=初弾は食らうが以降は本気で避ける個性は残る)。
+- 状態は `Summon.ghostDangerSeenAt`(既存)+ `ghostDangerLastAt`(新設=記憶の失効起点)の2つだけ。
+  `lastDangerAt` 未設定(旧セーブ/旧Summon)は「記憶は生きている」扱い=移行tickで遅延を払い直さない。
+
+### B. 弾技の計測拡張(「弾も技」)
+- `Projectile.srcMoveKey`(**記録専用**)を新設し、**`createEnemyProjectile` の1箇所**で
+  `projectileMoveKeyForEnemy(enemy)` を付ける。呼び出し側(3経路12箇所)には触らないので
+  **経路の取りこぼしが構造的に起きない**(CLAUDE.md「同じ"動作"を持つ全員に付ける」への対処)。
+- 弾技台帳 `BULLET_MOVE_KEYS`(15技)を moveReaction.ts へ新設。状態名は複数ボスで衝突する
+  ('volley'/'burst'/'radial'/'gaze-windup')ため**必ずtypeでゲート**。溜め/実行/硬直の全フェーズを
+  同じキーへ寄せ、飛翔中の弾の着弾を既存の残響(linger 2000ms)で帰属させる。
+- 被弾記録は**既存の流儀のまま**: combatTick の `boltMoveKey`(ownerType推定)を廃し
+  `proj.srcMoveKey` を `damagePlayer(..., damageSourceMove)` → `notifyMoveDamage` へ渡すだけ。
+  エピソード数(n)は `stepMoveReactions` が技の状態で開閉して数える=**新しい記録モデルは作っていない**
+  (型ホワイトリスト giantbat/thor を「技キーが導出できるか」に置換しただけ。giantbat/thorの計測は不変)。
+- ゴースト側: `rollGhostMoveReaction` の技キー導出を `anyMoveKeyForEnemy`(近接AoE台帳→弾技台帳)へ
+  一本化=弾技にも counter/dodge/tank のロールが効く。**tankを引いた弾技の弾は
+  `GHOST_BULLET_TANK_MS`(=弾の寿命4000ms)の間だけ回避対象から外す**(技の状態は弾より先に終わるため、
+  状態だけ見ると「撃たれた瞬間だけ避けない」になってしまう)。タグ無し弾・別の技の弾は常に回避対象。
+- 記録が無い弾技は従来どおり fallback、かつ**乱数を消費しない**=既存プロファイルのRNG列は不変。
+  `moveReactions` へのキー追加のみでプロファイルのスキーマ版 `v` は上げていない(前方後方互換)。
+
+### 変更ファイル
+`src/utils/moveReaction.ts`(弾技台帳+導出+ホワイトリスト撤廃)/`src/utils/ghostDriver.ts`
+(認知の持続の純関数+弾tank記憶+dodge段是正)/`src/utils/enemyUtils.ts`(生成1箇所でタグ)/
+`src/utils/combatTick.ts`(ownerType推定→弾のタグ)/`src/types/game.ts`(Projectile 1・Summon 3フィールド)/
+`src/hooks/useGameLoop.ts`(ゴースト状態の持ち回り配線)/テスト2本 + 版管理3ファイル + 台帳。
+
+### 検証
+- 新規/更新テスト: `moveReaction.test.ts`(+15件=弾技キーの全数表・エピソード・**ソース走査2件**
+  =台帳の状態名が実在するか/敵弾生成箇所の数が12で固定=新経路を足すと落ちる)、
+  `ghostDriver.test.ts`(+12件=認知の状態遷移5・弾回避の不変条件2・弾技ロール/tank記憶5。
+  既存の「危険が消えたらリセット」は新仕様=記憶切れでリセットへ更新)。
+- `npx vitest related`(変更6ファイル)= **41ファイル 799件パス**(4 skipped)。
+  ゲート: `npm run typecheck` エラー0 / `npm run lint` エラー0(既存warning 8)。
+- 自己点検(実装精度の規律5): 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に**抵触しない**
+  (湧き/ペーシング/台本の定数・分岐は一切触れていない。変更は守護霊の意思決定と記録タグのみ)。
+- 負荷 **1/10**: 追加コストは弾生成1回あたりのテーブル参照1回と、ゴーストの回避で弾配列を
+  tank中だけ filter する1パス(毎tick1回・既に全弾を走査している同じループの規模)。
+  描画・エフェクト・per-frame Graphics/Text の追加はゼロ。
+
+### 申し送り
+- 弾を撃たない危険(rafiの骨/skadiの氷/jibrilの炎=別エンティティ)は**弾ではない**ので今回の対象外
+  (台帳GHOST-BEHAVIORの「エンティティ側の回避」と同じ器が必要=別バッチ)。
+- `markMoveReactionCounter` は「開いているエピソード全部(無ければ残響)」へ付ける既存仕様のため、
+  giantbat/thorの残響と他ボスの弾技エピソードが**同時に生きている**場面ではマーク先が残響から
+  開いている側へ移る。実運用ではボスは同時に1体なので影響しない(仕様の解釈は変えていない)。
+- ★未決: **なし**。
+
 ## v0.25.2542 — GHOST-SAME-SPEC検収合格+GHOST-BULLET-TECH発注仕様(文書のみ)【2026-07-31 01:33 JST】
 
 - **検収(7ebee1c)**: ①CD帳簿分離=自前帳簿+setActorSubWeaponCooldown、claim振り分け(subSubject)は
