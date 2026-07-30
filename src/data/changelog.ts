@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2497',
+    items: [
+      'ゲーム内容の変更はありません(触手の素材を搭載。エフェクト実装は次のバッチで入ります)。',
+    ],
+  },
+  {
     version: '0.25.2496',
     items: [
       'ゲーム内容の変更はありません(コウモリの翼の素材を搭載。エフェクト実装は次のバッチで入ります)。',

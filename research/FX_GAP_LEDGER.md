@@ -126,5 +126,7 @@
   (閉じ瞬間の差し替え候補だが上下パーツとスタイルが異なるため、実装時に「パーツのみで閉じ合わせ」を
   第一案とし、全体絵は使うか実機で判断。1.1MBと重いので採用時は縮小を検討)。
 - 2026-07-30(2便): **コウモリの翼**(透過済み・月光の青リム付き)→ `wing-swipe.png`(1227×1258・792KB)。
-- 実装バッチ(g-bite/mimir bite/g-talon/g-wing)はCRIT-UNIFY着地後に発注(useGameLoop競合回避の直列運用)。
-- 残りの支給待ち: 触手(g-reach)/拳(idol punch)/種吐き(plant)/砂埃A・B(任意)。
+- 2026-07-30(3便): **触手**(透過済み・根元→先端の一直線構図・節・先端しなり)→ `tentacle-reach.png`
+  (2149×690・585KB)。g-reachのカプセル判定に沿って回転・伸長して張る(分類①=判定に揃える)。
+- 実装バッチ(g-bite/mimir bite/g-talon/g-wing/g-reach)はCRIT-UNIFY着地後に発注(useGameLoop競合回避の直列運用)。
+- 残りの支給待ち: 拳(idol punch)/種吐き(plant)/砂埃A・B(任意)。
