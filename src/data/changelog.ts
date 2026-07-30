@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2519',
+    items: [
+      'タイトル画面右上の「最深到達」バッジを廃止しました(バージョン表示だけに)。',
+    ],
+  },
+  {
     version: '0.25.2518',
     items: [
       'ゲーム内容の変更はありません(守護霊オンライン化の仕様書 GHOST_ONLINE.md を新規作成)。',

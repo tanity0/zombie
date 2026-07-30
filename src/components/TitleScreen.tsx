@@ -4,12 +4,10 @@ import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { CHANGELOG } from '../data/changelog';
-import { getSelectedStageId, getWallMeta, loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data/progress';
+import { loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data/progress';
 import { spritePath } from '../utils/spriteLoader';
 import { getStage } from '../data/campaign';
 import { getLoadProgress, subscribeLoadProgress } from '../utils/loadProgress';
-import { deepestReachedBadge } from '../utils/wallProgress';
-import { clampRank } from '../utils/rankAssessor';
 import { normalizeNamedNamesInText } from '../utils/namedEnemy';
 
 // 前回セッション末尾の状態(クラッシュ診断・社長報告のスマホ真っ白現象の手がかり用)。タイトル表示のたび
@@ -26,14 +24,6 @@ const formatHeartbeat = (): string | null => {
   const ss = String(h.gameTimeSec % 60).padStart(2, '0');
   const heap = h.heapMB != null ? ` heap${h.heapMB}MB` : '';
   return `前回終了: 敵${h.enemies} 弾${h.projectiles} FX${h.effects} 拾${h.pickups} 設置${h.breakableProps} / ${mm}:${ss}${heap}`;
-};
-
-// PACING_PUZZLE.md §5.17 M14: タイトルバッジ「最深到達: {区域名}の{ランク名}」(選択中ステージの自己最深)。
-// heartbeatと同じ「レンダー内で直接読む」方針(localStorage読み取り1回・state化するほどでもない)。
-const formatWallBadge = (): string | null => {
-  const meta = getWallMeta(getSelectedStageId());
-  if (meta.selfDeepestDist <= 0) return null;
-  return deepestReachedBadge(meta.selfDeepestDist, clampRank(meta.selfHighestRank));
 };
 
 interface TitleScreenProps {
@@ -59,7 +49,7 @@ const PANEL_STYLE: React.CSSProperties = {
 };
 
 // 歴史年表(社長決定v0.25.1628 / 見た目v0.25.1630): 各ステージの要所マイルストーンを時系列で縦に並べる
-// 読み取り専用の記録。heartbeat/wallBadge と同じ「タイトル表示時に localStorage を1回読むだけ」方針
+// 読み取り専用の記録。heartbeat と同じ「タイトル表示時に localStorage を1回読むだけ」方針
 // (store購読なし=毎フレーム再描画しない)。上=過去 / 下=最新(最下部へ自動スクロール)。指で上へスクロール
 // して過去へ遡れる。スクロールバーは出さない。上下端はマスクでフェード=「流れていく」見た目。
 // スタイル(社長指示v0.25.1630): 見出し無し・中央揃え・フォントは更新情報くらい(12.5px)・全体エルデンリング風
@@ -289,7 +279,6 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   };
 
   const heartbeatLine = SHOW_HEARTBEAT && phase === 'title' ? formatHeartbeat() : null;
-  const wallBadgeLine = phase === 'title' ? formatWallBadge() : null;
 
   return (
     <div
@@ -314,19 +303,6 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       {phase === 'title' && (
         <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] font-mono tabular-nums text-purple-200/75" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.7)' }}>
           v{__APP_VERSION__}
-        </span>
-      )}
-
-      {/* PACING_PUZZLE.md §5.17 M14: 最深到達バッジ(選択中ステージの自己最深・金の細枠+菱形ドット)。 */}
-      {wallBadgeLine && (
-        <span
-          className="absolute top-9 right-3 px-2 py-0.5 text-[10px] font-mono tabular-nums text-amber-100/90"
-          style={{
-            background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))',
-            border: '1px solid rgba(255,215,0,0.55)',
-          }}
-        >
-          {'◆'} {wallBadgeLine}
         </span>
       )}
 
