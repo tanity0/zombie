@@ -7461,9 +7461,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       if (key === 'medkit') {
         if (state.player.health >= state.player.maxHealth) return {};
-        return spend(SHOP_MEDKIT_COST, {
+        const base = spend(SHOP_MEDKIT_COST, {
           health: Math.min(state.player.maxHealth, state.player.health + Math.round(state.player.maxHealth * HEAL_FRACTION))
         });
+        // §2.11追補3(v0.25.2554): 回復の連動30%は入手経路によらず同じ扱い(拾い救急セットと同じ)。
+        // 購入成立時のみ守護霊も自分の最大HPの30%回復。不成立/守護霊不在なら従来と完全同一。
+        if (!('player' in base) || !state.summons.some(s => s.kind === 'ghost-ally')) return base;
+        return {
+          ...base,
+          summons: state.summons.map(s => s.kind === 'ghost-ally'
+            ? { ...s, health: Math.min(s.health + Math.round(s.maxHealth * HEAL_FRACTION), s.maxHealth) }
+            : s),
+        };
       }
       if (key === 'vaccine') {
         if (state.vaccinePurchased) return {};
