@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.2530 — GHOST-BEHAVIOR検収合格+typecheck空振りの教訓を機械化(文書のみ)【2026-07-30 23:14 JST】
+
+- **検収(34ee601)**: diff実査+正規ゲート再実行で合格。①逆写像の関数ごと削除(死コードなし)
+  ②反応遅延=ghostDangerSeenAt起点のclamp(100-800) ③windup中のみ+120px退避(dodge/tankロール時は
+  足さない=仕様どおり) ④移動リズム=mobility/stationaryFracの平均+approach確率(床0.25・危険時は
+  必ず動く) ⑤tank率不変 ⑥カウンター見切り1秒 ⑦予告台帳ghostTelegraph.ts=**3実装経路159状態を全列挙・
+  網羅テストで機械化**(漏れ0)。botSkillはexport2行のみ=テストAIの回避は不変。テスト73件パス。
+- **教訓の機械化(規律6)**: エージェント指摘により**素の`npx tsc --noEmit`は何も検査しない**
+  (ルートtsconfig=files:[]のソリューション形式)ことが発覚。ENGINEERING_NOTES.md「ビルド・型チェック」節を
+  訂正——型ゲートは必ず`npm run typecheck`。設計チャットの直近の直接実装2件(v0.25.2519/2528)は
+  正規typecheck+lintで事後再検証済み=混入なし。
+- 申し送り: playtest.test.ts M19は無シードボットランのフレーク(変更なしツリーでも再現・単体では両条件pass)。
+- 変更ファイル: ENGINEERING_NOTES.md+版管理3ファイル。
+
 ## v0.25.2529 — バッチGHOST-BEHAVIOR: 守護霊の行動品質(§2.12)実装【2026-07-30 23:06 JST】
 
 **原則「選択=計測値・実行=常に本気」**(BOT_AND_GHOST.md §2.12)。ゴースト固有の意思決定層

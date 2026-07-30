@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2530',
+    items: [
+      'ゲーム内容の変更はありません(守護霊の立ち回りバッチの検収と開発メモの更新)。',
+    ],
+  },
+  {
     version: '0.25.2529',
     items: [
       '守護霊の立ち回りを作り直しました。回避は常に全力で行い、代わりに「予告に気づくまでの速さ」があなたの実測どおりになります(反応が速い人の守護霊は早く動き出します)。',

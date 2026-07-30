@@ -198,10 +198,12 @@
     刻む(B方式化)」or「素材を短く」で回避(連続ループを避ける)。
 
 ### ビルド・型チェック
-- **`tsc --noEmit`が未import識別子(TS2304)を見逃すことがある**(過去に未importが
-  ランタイムReferenceErrorですり抜けた実例)。ビルドはesbuildで型チェックしない。
-  新規import追加時は目視確認し、`npx tsc --noEmit; echo exit:$?`でexitコードを必ず見る
-  (`| head`でマスクしない)。
+- **【重要・v0.25.2529発覚】素の`npx tsc --noEmit`はこのリポジトリでは何も検査しない。**
+  ルート`tsconfig.json`は`files: []`+`references`のソリューション形式なので、プロジェクト指定なしの
+  tscは0ファイルを対象に「エラー0」を返す(=ゲートが空振りする)。**型チェックは必ず
+  `npm run typecheck`(= `tsc -p tsconfig.app.json --noEmit`)を使う。**
+  過去の「`tsc --noEmit`がTS2304を見逃す」事例も、実はこの空振りだった可能性が高い。
+  ビルドはesbuildで型チェックしないため、typecheckが唯一の型ゲート。新規import追加時は目視も併用。
 
 ### Tailwind(メニューUI)
 - **色透過`/N`は既定スケール(おおむね5刻み)外だと静かに未生成=完全透明になる**
