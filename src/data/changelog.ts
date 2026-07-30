@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2516',
+    items: [
+      'ゲーム内容の変更はありません(同行守護霊のビルド表示はリザルト限定、討伐記録は名前のみ+タップで閲覧、に設計を訂正)。',
+    ],
+  },
+  {
     version: '0.25.2515',
     items: [
       'ゲーム内容の変更はありません(討伐記録の独立メニュー化を確定、リザルトに同行守護霊のビルド表示+いいねボタンの仕様を設計書へ記録)。',
