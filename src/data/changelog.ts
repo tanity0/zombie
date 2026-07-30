@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2494',
+    items: [
+      'ゲーム内容の変更はありません(牙素材の生成プロンプトを上顎・下顎の2枚構成へ差し替え)。',
+    ],
+  },
+  {
     version: '0.25.2493',
     items: [
       '守護霊に記録されるのは「ボスを撃破した戦い」だけになりました(撃破できなかった戦いは戦い方に反映されません。撃破後はその後死んでも記録は残ります)。',
