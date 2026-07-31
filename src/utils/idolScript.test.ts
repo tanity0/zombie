@@ -2,11 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   idolMoveEligible, idolPhaseForHealth, idolFanCount, idolZone, idolOrbCount, idolWaveActive,
   IDOL_ALL_MOVES, IDOL_STRINGS, IDOL_STRING_LEN, IDOL_REST, IDOL_TIMING, IDOL_NEUTRAL_BAND,
-  IDOL_ZONE_EDGES, IDOL_FAIRNESS_P1, IDOL_FAIRNESS_P2, IDOL_WAVE_MOVES, IDOL_WAVE_DELAY_MS,
-  IDOL_ROLL_DIST, IDOL_PUNISH, type IdolMove,
+  IDOL_ZONE_EDGES, idolFairnessP1, idolFairnessP2, IDOL_WAVE_MOVES, IDOL_PUNISH,
+  IDOL_TUNING, IDOL_TUNING_DEFAULTS, type IdolMove,
 } from './idolScript';
 import { fairnessViolations, classMix, pickStringScript, stringMaxLen, type BossZone } from './bossSkeleton';
 import { PLAYER_ATTACK_CYCLE_MS } from './bossTelegraph';
+import { ENEMY_STATS } from './enemyUtils';
 
 const ZONES: BossZone[] = ['melee', 'near', 'mid', 'far'];
 const allReady = (): Record<IdolMove, boolean> =>
@@ -41,7 +42,7 @@ describe('技の本数と帯', () => {
   it('主戦帯は中帯の内側(下限=離脱ローリング1回で戻れる距離)', () => {
     expect(IDOL_NEUTRAL_BAND.max).toBe(IDOL_ZONE_EDGES.nearMax);
     expect(IDOL_NEUTRAL_BAND.min).toBeGreaterThan(IDOL_ZONE_EDGES.meleeMax);
-    expect(IDOL_NEUTRAL_BAND.min).toBeGreaterThanOrEqual(IDOL_ROLL_DIST);
+    expect(IDOL_NEUTRAL_BAND.min).toBeGreaterThanOrEqual(IDOL_TUNING.shape.rollDist);
   });
   it('どのゾーンにも台本がある(死に帯を作らない)', () => {
     for (const z of ZONES) {
@@ -104,24 +105,24 @@ describe('MAX枠の水準', () => {
 // ==== ★公平性の歯止め(社長指示「どう考えても無理だろ、にしない」) ====
 describe('公平性: C分類は100%、決断の時刻より前にヒントが出ている', () => {
   it('Phase1の全技が公平性の検算を通る', () => {
-    expect(fairnessViolations(IDOL_FAIRNESS_P1)).toEqual([]);
+    expect(fairnessViolations(idolFairnessP1())).toEqual([]);
   });
   it('Phase2(第二波つき)の全技が公平性の検算を通る', () => {
-    expect(fairnessViolations(IDOL_FAIRNESS_P2)).toEqual([]);
+    expect(fairnessViolations(idolFairnessP2())).toEqual([]);
   });
   it('第二波の遅れは公平性の下限を満たす(650ms=押してよい幅400ms)', () => {
-    expect(fairnessViolations([{ key: 'wave', cls: 'C', telegraphMs: IDOL_WAVE_DELAY_MS }])).toEqual([]);
+    expect(fairnessViolations([{ key: 'wave', cls: 'C', telegraphMs: IDOL_TUNING.waveDelayMs }])).toEqual([]);
   });
   it('MAX枠なのでC寄り: Phase1でCが過半、Phase2は全部C', () => {
-    const p1 = classMix(IDOL_FAIRNESS_P1);
+    const p1 = classMix(idolFairnessP1());
     expect(p1.C).toBeGreaterThanOrEqual(p1.A + p1.B - 1); // A1/B2/C2 = 拮抗以上
-    const p2 = classMix(IDOL_FAIRNESS_P2);
+    const p2 = classMix(idolFairnessP2());
     expect(p2.A).toBe(0);
     expect(p2.B).toBe(0);
-    expect(p2.C).toBe(IDOL_FAIRNESS_P2.length);
+    expect(p2.C).toBe(idolFairnessP2().length);
   });
   it('公平性台帳が実際の秒数と同じ値を見ている(台帳だけ直して実装が置き去りになる事故の防止)', () => {
-    const byKey = Object.fromEntries(IDOL_FAIRNESS_P1.map(m => [m.key, m.telegraphMs]));
+    const byKey = Object.fromEntries(idolFairnessP1().map((m: { key: string; telegraphMs: number }) => [m.key, m.telegraphMs]));
     expect(byKey.aim).toBe(IDOL_TIMING.aim.windup);
     expect(byKey.fan).toBe(IDOL_TIMING.fan.windup);
     expect(byKey.snipe).toBe(IDOL_TIMING.snipe.windup);
@@ -144,5 +145,79 @@ describe('懲罰(ER原則⑤)', () => {
   });
   it('遠距離の懲罰は狙撃線(逃げ撃ちを消す担い手)', () => {
     expect(IDOL_PUNISH.farMove).toBe('snipe');
+  });
+});
+
+// ==== ★ボスメーカー(BOSS_MAKER.md §2-4): テーブル化は純粋なリファクタであること ====
+// 「**既定値が現行の実装値と1つも変わらないこと**」が絶対条件。ここに**テーブル化する前の実装値を
+// 直接ベタ書き**して突き合わせる(テーブル自身から取ると何も検証できないので、必ず literal を書く)。
+describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変の担保)', () => {
+  it('帯・主戦帯・移動倍率・フェーズ', () => {
+    expect(IDOL_TUNING_DEFAULTS.zoneEdges).toEqual({ meleeMax: 140, nearMax: 340, midMax: 700 });
+    expect(IDOL_TUNING_DEFAULTS.neutralBand).toEqual({ min: 200, max: 340 });
+    expect(IDOL_TUNING_DEFAULTS.verbSpeedMult).toEqual({ close: 1, retreat: 0.45, strafe: 0.45, hold: 0 });
+    expect(IDOL_TUNING_DEFAULTS.phaseHpThreshold).toBe(0.5);
+    expect(IDOL_TUNING_DEFAULTS.fanCount).toEqual({ p1: 3, p2: 5 });
+    expect(IDOL_TUNING_DEFAULTS.orbCount).toEqual({ p1: 2, p2: 3 });
+  });
+  it('技の秒数(硬直は6技すべて900=withRecoverFloorの床が既定値になっている)', () => {
+    expect(IDOL_TUNING_DEFAULTS.timing).toEqual({
+      aim:   { windup: 700,  active: 0,   recover: 900 },
+      fan:   { windup: 900,  active: 0,   recover: 900 },
+      roll:  { windup: 400,  active: 300, recover: 900 },
+      punch: { windup: 600,  active: 0,   recover: 900 },
+      snipe: { windup: 1100, active: 200, recover: 900 },
+      orb:   { windup: 800,  active: 0,   recover: 900 },
+    });
+  });
+  it('図形(判定と厳密一致させる値)', () => {
+    expect(IDOL_TUNING_DEFAULTS.shape).toEqual({
+      rollDist: 140, punchRange: 90, punchHalfWidth: 30,
+      snipeRange: 900, snipeHalfWidth: 40, fanSpreadStep: 0.14,
+      orbSpeed: 155, orbTurnRate: 1.5,
+    });
+  });
+  it('第二波・ストリング・休符・中立・懲罰', () => {
+    expect(IDOL_TUNING_DEFAULTS.waveDelayMs).toBe(650);
+    expect(IDOL_TUNING_DEFAULTS.stringLen).toEqual({ p1: 3, p2: 4 });
+    expect(IDOL_TUNING_DEFAULTS.rest).toEqual({ p1: 900, p2: 900 });
+    expect(IDOL_TUNING_DEFAULTS.neutral).toEqual({ minMs: 700, maxMs: 1300 });
+    expect(IDOL_TUNING_DEFAULTS.punish).toEqual({
+      farMs: 2000, farMove: 'snipe', meleeMs: 3000, meleeMove: 'roll', sameAngleMs: 4000,
+    });
+    expect(IDOL_TUNING_DEFAULTS.sameAngleDeg).toBe(30);
+  });
+  it('台本(ゾーン・重み・並び)', () => {
+    expect(IDOL_TUNING_DEFAULTS.strings).toEqual([
+      { zone: 'melee', weight: 55, moves: ['punch', 'roll', 'fan', 'orb'] },
+      { zone: 'melee', weight: 45, moves: ['roll', 'fan', 'punch', 'orb'] },
+      { zone: 'near', weight: 40, moves: ['fan', 'fan', 'orb', 'snipe'] },
+      { zone: 'near', weight: 35, moves: ['fan', 'snipe', 'orb', 'fan'] },
+      { zone: 'near', weight: 25, moves: ['orb', 'fan', 'punch', 'snipe'] },
+      { zone: 'mid', weight: 50, moves: ['aim', 'aim', 'snipe', 'orb'] },
+      { zone: 'mid', weight: 50, moves: ['snipe', 'orb', 'aim', 'snipe'] },
+      { zone: 'far', weight: 45, moves: ['aim', 'snipe', 'orb', 'snipe'] },
+      { zone: 'far', weight: 55, moves: ['orb', 'orb', 'snipe', 'aim'] },
+    ]);
+  });
+  it('基礎値は ENEMY_STATS.idol と同値(2箇所に違う数字を持たない)', () => {
+    expect(IDOL_TUNING_DEFAULTS.stats).toEqual({
+      health: ENEMY_STATS.idol.health, damage: ENEMY_STATS.idol.damage, speed: ENEMY_STATS.idol.speed,
+    });
+  });
+  it('既定値はテーブルとは別オブジェクト(テーブルを書き換えても既定が動かない)', () => {
+    const before = IDOL_TUNING_DEFAULTS.timing.aim.windup;
+    IDOL_TUNING.timing.aim.windup = 12345;
+    expect(IDOL_TUNING_DEFAULTS.timing.aim.windup).toBe(before);
+    IDOL_TUNING.timing.aim.windup = before; // 後片付け(他のテストへ漏らさない)
+  });
+  it('従来名の再exportはテーブルと同じ参照(書き換えが使用箇所へ自動で届く)', () => {
+    expect(IDOL_TIMING).toBe(IDOL_TUNING.timing);
+    expect(IDOL_NEUTRAL_BAND).toBe(IDOL_TUNING.neutralBand);
+    expect(IDOL_REST).toBe(IDOL_TUNING.rest);
+    expect(IDOL_PUNISH).toBe(IDOL_TUNING.punish);
+    expect(IDOL_STRINGS).toBe(IDOL_TUNING.strings);
+    expect(IDOL_STRING_LEN).toBe(IDOL_TUNING.stringLen);
+    expect(IDOL_ZONE_EDGES).toBe(IDOL_TUNING.zoneEdges);
   });
 });

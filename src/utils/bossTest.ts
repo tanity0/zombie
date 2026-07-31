@@ -64,7 +64,7 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
 // ---- 現在モードの表示(社長指示2026-07-31「いまどのモードになってるか出しといて」) ---------------
 // パラメータ残留事故(v0.25.2576で修正)の再発をその場で見抜くための可視化。強制出現フラグは
 // モジュールロード時定数なので、**ページ読込時のURL**が今セッションの真実=それを解析して表示する。
-export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow'] as const;
+export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker'] as const;
 
 export interface BossTestModeInfo {
   active: boolean;                          // いずれかのテスト系パラメータが生きているか
@@ -118,3 +118,20 @@ export interface GateBossGateState {
 export const canForceGateBossNow = (s: GateBossGateState): boolean =>
   s.forceParamOn && !s.alreadySpawned && !s.danceTest && !s.indoor && !s.labTheme
   && !s.corridorRunInActive && !s.gameWon;
+
+// ---- ボスメーカー(BOSS_MAKER.md §3): 入口は既存のボス戦テストに1項目足す形 ----------------------
+// **一騎打ちのトレーニング場**。`?nospawn=1`(既存)で湧きを全て止め、`?bossmaker=1` で
+// 部屋(方眼・無敵・調整フォーム)を立てる。数値の受け渡しにURLは使わない(社長明示「?パラメータは
+// 回りくどい」)——URLは**部屋へ入るためだけ**に使う。
+export const BOSS_MAKER_STAGE = 'stage-1'; // 森(平地)。広さ無限・木はメーカー側で消す。
+export const bossMakerQuery = (opts: BossTestOptions): string => {
+  const p = new URLSearchParams();
+  p.set('smoke', '1');
+  p.set('stage', BOSS_MAKER_STAGE);
+  p.set('nospawn', '1');
+  p.set('bossmaker', '1');
+  p.set('class', opts.characterClass);
+  p.set('retry', '1');
+  if (opts.ghost) p.set('ghost', '1');
+  return `?${p.toString()}`;
+};

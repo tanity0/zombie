@@ -1,0 +1,109 @@
+// ボスメーカー(BOSS_MAKER.md §2-3): idol の**スキーマ**とレジストリ登録。
+// UIはこのスキーマを読んでフォームを自動生成する=**1ボス対応 = テーブル + スキーマを1つ書くだけ**。
+// ボスを足すたびにUIを書かない(ここを守らないと14体で破綻する)。
+//
+// ★社長補足v0.25.2621「一騎打ちのトレーニング場 兼 メーカー。**その場で動かしながら**数字を調整する」:
+// 主たる操作は**キーボードで打つことではなく「摘まむ」**(ドラッグでスクラブ / +− ボタン)。
+// よって **step(刻み幅)がスキーマの主役**になる。刻みが合っていないとスクラブが使い物にならない。
+// 叩き台の刻み: ms=50 / px=10 / 倍率=0.05 / 重み=5 / 個数=1。
+import { registerBossTuning, type TuningField } from './bossTuning';
+import { IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_ALL_MOVES, type IdolMove } from './idolScript';
+
+const MOVE_LABEL: Record<IdolMove, string> = {
+  aim: '狙い撃ち(aim)', fan: '連射扇(fan)', roll: '離脱ローリング(roll)',
+  punch: '至近の殴り(punch)', snipe: '狙撃線(snipe)', orb: '追尾弾(orb)',
+};
+
+// 技ごとの「図形」欄(判定と描画が同じ値を読むので、ここを動かすと赤い予告も一緒に動く)。
+const SHAPE_FIELDS: Partial<Record<IdolMove, TuningField[]>> = {
+  roll: [{ path: 'shape.rollDist', label: '離脱距離', group: 'move', section: MOVE_LABEL.roll, kind: 'px', min: 0, max: 600, step: 10 }],
+  punch: [
+    { path: 'shape.punchRange', label: '帯の長さ', group: 'move', section: MOVE_LABEL.punch, kind: 'px', min: 10, max: 400, step: 10 },
+    { path: 'shape.punchHalfWidth', label: '帯の半幅', group: 'move', section: MOVE_LABEL.punch, kind: 'px', min: 4, max: 200, step: 10 },
+  ],
+  snipe: [
+    { path: 'shape.snipeRange', label: '線の長さ', group: 'move', section: MOVE_LABEL.snipe, kind: 'px', min: 100, max: 2000, step: 25 },
+    { path: 'shape.snipeHalfWidth', label: '線の半幅', group: 'move', section: MOVE_LABEL.snipe, kind: 'px', min: 4, max: 200, step: 10 },
+  ],
+  fan: [
+    { path: 'shape.fanSpreadStep', label: '1本あたりの開き角', group: 'move', section: MOVE_LABEL.fan, kind: 'num', min: 0, max: 1, step: 0.01, hint: 'rad' },
+    { path: 'fanCount.p1', label: '本数 P1', group: 'move', section: MOVE_LABEL.fan, kind: 'num', min: 1, max: 15, step: 1 },
+    { path: 'fanCount.p2', label: '本数 P2', group: 'move', section: MOVE_LABEL.fan, kind: 'num', min: 1, max: 15, step: 1 },
+  ],
+  orb: [
+    { path: 'shape.orbSpeed', label: '弾速', group: 'move', section: MOVE_LABEL.orb, kind: 'pxs', min: 20, max: 600, step: 10 },
+    { path: 'shape.orbTurnRate', label: '旋回速度', group: 'move', section: MOVE_LABEL.orb, kind: 'rate', min: 0, max: 8, step: 0.05, hint: '小さいほど密着で振り切れる' },
+    { path: 'orbCount.p1', label: '発数 P1', group: 'move', section: MOVE_LABEL.orb, kind: 'num', min: 1, max: 10, step: 1 },
+    { path: 'orbCount.p2', label: '発数 P2', group: 'move', section: MOVE_LABEL.orb, kind: 'num', min: 1, max: 10, step: 1 },
+  ],
+};
+
+const moveFields = (): TuningField[] => {
+  const out: TuningField[] = [];
+  for (const m of IDOL_ALL_MOVES) {
+    const sec = MOVE_LABEL[m];
+    out.push(
+      { path: `timing.${m}.windup`, label: '予告', group: 'move', section: sec, kind: 'ms', min: 0, max: 5000, step: 50, hint: '予告が出てから判定まで' },
+      { path: `timing.${m}.active`, label: '判定', group: 'move', section: sec, kind: 'ms', min: 0, max: 3000, step: 50 },
+      { path: `timing.${m}.recover`, label: '硬直', group: 'move', section: sec, kind: 'ms', min: 0, max: 5000, step: 50, hint: '反撃窓。820ms=近接1発' },
+    );
+    out.push(...(SHAPE_FIELDS[m] ?? []));
+  }
+  return out;
+};
+
+// 台本の重み(距離帯ごとの頻度)。BOSS_MAKER.md §1-4「頻度(重み)…ゾーン別に出す」。
+const ZONE_LABEL: Record<string, string> = { melee: '密着(0〜140)', near: '主戦帯(140〜340)', mid: '遠(340〜700)', far: '超遠(700〜)' };
+const stringFields = (): TuningField[] =>
+  IDOL_TUNING_DEFAULTS.strings.map((s, i) => ({
+    path: `strings.${i}.weight`,
+    label: s.moves.join('→'),
+    group: 'behavior' as const,
+    section: `台本の頻度 ${ZONE_LABEL[s.zone] ?? s.zone}`,
+    kind: 'num' as const,
+    min: 0, max: 200, step: 5,
+  }));
+
+const behaviorFields = (): TuningField[] => [
+  { path: 'stats.health', label: 'HP', group: 'behavior', section: '基礎値', kind: 'num', min: 500, max: 40000, step: 500 },
+  { path: 'stats.damage', label: '与ダメージ', group: 'behavior', section: '基礎値', kind: 'num', min: 0, max: 999, step: 5 },
+  { path: 'stats.speed', label: '移動速度', group: 'behavior', section: '基礎値', kind: 'pxs', min: 0, max: 600, step: 10 },
+  { path: 'phaseHpThreshold', label: 'フェーズ2の閾値', group: 'behavior', section: '基礎値', kind: 'frac', min: 0, max: 1, step: 0.05, hint: 'HP割合' },
+
+  { path: 'neutralBand.min', label: '主戦帯 下限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 10 },
+  { path: 'neutralBand.max', label: '主戦帯 上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 10 },
+  { path: 'zoneEdges.meleeMax', label: '密着帯の上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 10 },
+  { path: 'zoneEdges.nearMax', label: '中帯の上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 1500, step: 10 },
+  { path: 'zoneEdges.midMax', label: '遠帯の上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 20 },
+
+  { path: 'verbSpeedMult.close', label: '詰める倍率', group: 'behavior', section: '中立の移動', kind: 'frac', min: 0, max: 3, step: 0.05 },
+  { path: 'verbSpeedMult.retreat', label: '離れる倍率', group: 'behavior', section: '中立の移動', kind: 'frac', min: 0, max: 3, step: 0.05 },
+  { path: 'verbSpeedMult.strafe', label: '並走の倍率', group: 'behavior', section: '中立の移動', kind: 'frac', min: 0, max: 3, step: 0.05 },
+  { path: 'neutral.minMs', label: '中立の最短', group: 'behavior', section: '中立の移動', kind: 'ms', min: 0, max: 6000, step: 50 },
+  { path: 'neutral.maxMs', label: '中立の最長', group: 'behavior', section: '中立の移動', kind: 'ms', min: 0, max: 8000, step: 50 },
+
+  { path: 'stringLen.p1', label: '段数 P1', group: 'behavior', section: 'ストリングと休符', kind: 'num', min: 1, max: 8, step: 1 },
+  { path: 'stringLen.p2', label: '段数 P2', group: 'behavior', section: 'ストリングと休符', kind: 'num', min: 1, max: 8, step: 1 },
+  { path: 'rest.p1', label: '休符 P1', group: 'behavior', section: 'ストリングと休符', kind: 'ms', min: 0, max: 5000, step: 50, hint: '0にすると反撃窓が消える' },
+  { path: 'rest.p2', label: '休符 P2', group: 'behavior', section: 'ストリングと休符', kind: 'ms', min: 0, max: 5000, step: 50 },
+  { path: 'waveDelayMs', label: '第二波の遅れ(P2)', group: 'behavior', section: 'ストリングと休符', kind: 'ms', min: 0, max: 3000, step: 50 },
+
+  { path: 'punish.farMs', label: '遠距離の長居', group: 'behavior', section: '懲罰', kind: 'ms', min: 0, max: 10000, step: 100 },
+  { path: 'punish.meleeMs', label: '密着の居座り', group: 'behavior', section: '懲罰', kind: 'ms', min: 0, max: 10000, step: 100 },
+  { path: 'punish.sameAngleMs', label: '同角度の長居', group: 'behavior', section: '懲罰', kind: 'ms', min: 0, max: 10000, step: 100 },
+  { path: 'sameAngleDeg', label: '同角度とみなす幅', group: 'behavior', section: '懲罰', kind: 'deg', min: 1, max: 180, step: 5 },
+];
+
+export const IDOL_TUNING_FIELDS: readonly TuningField[] = [
+  ...behaviorFields(), ...stringFields(), ...moveFields(),
+];
+
+export const registerIdolTuning = (): void => {
+  registerBossTuning({
+    bossType: 'idol',
+    label: 'アイドル',
+    table: IDOL_TUNING as unknown as Record<string, unknown>,
+    defaults: IDOL_TUNING_DEFAULTS as unknown as Record<string, unknown>,
+    fields: IDOL_TUNING_FIELDS,
+  });
+};

@@ -56,6 +56,12 @@ const currentMoveVec = (): { x: number; y: number } => {
 export const useGameControls = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // v0.25.2621(ボスメーカー): **入力欄にフォーカスがある間は移動/攻撃キーを食べない**。
+      // 数値を直接打っている最中に自機が走り出すと調整にならない(社長補足「動きながら数字を変える」)。
+      // フォーカスが外れれば即座に元どおり戦える。ボスメーカー以外でも同じ判定で無害。
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+
       const { key } = e;
 
       // 四神舞リズムモード中(PC): 移動キー=フリック(移動しない)、Space=タップ、Escape=終了。
@@ -136,6 +142,12 @@ export const useGameControls = () => {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      // v0.25.2621(ボスメーカー): **入力欄にフォーカスがある間は移動/攻撃キーを食べない**。
+      // 数値を直接打っている最中に自機が走り出すと調整にならない(社長補足「動きながら数字を変える」)。
+      // フォーカスが外れれば即座に元どおり戦える。ボスメーカー以外でも同じ判定で無害。
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+
       const { key } = e;
       const inputState = { ...useGameStore.getState().inputState };
 

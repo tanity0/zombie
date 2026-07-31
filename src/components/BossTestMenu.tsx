@@ -3,7 +3,7 @@
 // 出撃=ページ再読込(location遷移)なのでReact状態はこの画面を開いている間だけ=プレイ中コストゼロ。
 // ※アプリ配布(最終形)ではこの入口ごと非表示にする想定(TitleScreen側の1フラグで消せる)。
 import React, { useState } from 'react';
-import { BOSS_TEST_ENTRIES, bossTestQuery, type BossTestEntry } from '../utils/bossTest';
+import { BOSS_TEST_ENTRIES, bossTestQuery, bossMakerQuery, type BossTestEntry } from '../utils/bossTest';
 import { enemyDeathLabel } from '../store/gameStore';
 import { getStage } from '../data/campaign';
 
@@ -47,6 +47,18 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
         </div>
         <div className="px-4 pb-2 text-[10px] leading-relaxed text-white/45">
           実ステージへ直行してボスが即出現します(環境・サークル・雑魚は本物)。選ぶと再読込して出撃。
+        </div>
+        {/* ボスメーカー(BOSS_MAKER.md §3): 入口はここに1項目だけ足す。本編の導線からは入れない。 */}
+        <div className="px-4 pb-3">
+          <button
+            className="w-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-2 text-left"
+            onClick={() => { window.location.search = bossMakerQuery({ characterClass: cls, ghost: false, ghostlog: false }); }}
+          >
+            <div className="text-[12px] font-bold text-emerald-300">ボスメーカー(調整部屋)</div>
+            <div className="text-[10px] text-white/50">
+              一騎打ちの訓練場。無敵・湧きなし・方眼。数字を画面で回してその場で反映 → コピーで共有。
+            </div>
+          </button>
         </div>
         {/* クラスとトグル */}
         <div className="flex flex-wrap items-center gap-1 px-4 pb-2">

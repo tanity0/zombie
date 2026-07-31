@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Game from './components/Game';
+import { BossMakerPanel } from './components/BossMakerPanel';
 import MissionSelect from './components/MissionSelect';
 import TitleScreen from './components/TitleScreen';
 import GameOverScreen from './components/GameOverScreen';
@@ -349,6 +350,10 @@ function App() {
       {/* the ONE 通常エンディング(聴取記録→暗転→PHILL→スタッフロール)。終了でメニューへ。 */}
       {gameState === 'ending' && <EndingScreen onDone={finishEnding} />}
       
+      {/* ボスメーカー(BOSS_MAKER.md): 一騎打ちの調整部屋のUI。部屋の外(本編)では
+          bossMaker.active=false なので何も描かない=本編の負荷は変わらない。 */}
+      {gameState === 'playing' && <BossMakerPanel />}
+
       {gameState === 'playing' && (
         <Game
           onGameOver={handleGameOver}

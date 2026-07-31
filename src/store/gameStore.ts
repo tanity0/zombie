@@ -3700,6 +3700,17 @@ interface GameState {
   // resetGameがプレイヤー/護衛を下(+y)に置きtrueにする→useGameLoopが上へ自動走行させ、到着(y<=0)で解除。
   // trueの間はisInputLockedで操作を遮断(実移動なので歩行アニメ/護衛追走/カメラ追従は通常システムのまま)。
   corridorRunInActive: boolean;
+  /**
+   * ボスメーカー(BOSS_MAKER.md)。**開発用の一騎打ち部屋**の状態。本編では常に active:false。
+   * ここに置くのは「毎フレームの描画/ロジックが読む」ものだけ(数値テーブル本体は bossTuning レジストリ)。
+   */
+  bossMaker: {
+    active: boolean;      // 部屋に居るか(湧き停止・方眼・無敵などの傘)
+    invincible: boolean;  // プレイヤーが死なない(既定ON・トグルで切れる)
+    paused: boolean;      // ボスの時間を止める(絵を止めて見たい時)
+    showHitbox: boolean;  // 当たり判定の可視化
+  };
+  setBossMaker: (patch: Partial<GameState['bossMaker']>) => void;
   clearCorridorRunIn: () => void;
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
   labButtons: LabButton[];                              // ボタン(押下状態)
@@ -4067,6 +4078,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   corridorMode: false,
   pendingCorridor: false,
   corridorRunInActive: false,
+  bossMaker: { active: false, invincible: true, paused: false, showHitbox: false },
   labDoors: [],
   labButtons: [],
   labProps: [],
@@ -7009,7 +7021,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 衛生兵が1秒後には回復しちゃう」)。ハンターのジャンプ攻撃のような大ダメージでもHP1で踏みとどまる。
     // 教習の途中でゲームオーバーになると台本が最初からやり直しになり、教える順序が成立しない。
     // ※回復(衛生兵)は useGameLoop 側の台本が1秒後に行う。ここは「死なせない」だけ。
-    const amount = get().farBackdrop === 'tutorial' && skilled > 0
+    // v0.25.2621(ボスメーカー): 無敵ONの間も**同じ機構**で死なせない(HP1で踏みとどまる)。
+    // 「ダメージを受けるが死なない・HPは減らして表示だけする」(BOSS_MAKER.md §1-2)ため、
+    // ダメージ0にはせず上限だけ削る=当たったことが数字で分かる。
+    const noDeath = get().farBackdrop === 'tutorial' || (get().bossMaker.active && get().bossMaker.invincible);
+    const amount = noDeath && skilled > 0
       ? Math.min(skilled, Math.max(0, player.health - 1))
       : skilled;
 
@@ -11780,6 +11796,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   setPendingCorridor: (on) => {
     set({ pendingCorridor: on });
+  },
+  setBossMaker: (patch) => {
+    set(state => ({ bossMaker: { ...state.bossMaker, ...patch } }));
   },
   clearCorridorRunIn: () => {
     set({ corridorRunInActive: false });

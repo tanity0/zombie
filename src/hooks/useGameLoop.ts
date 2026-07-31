@@ -1022,6 +1022,9 @@ const THOR_HARAI_RECOVER_MS = withRecoverFloor(700);
 // 側の既存テーマ判定=campaign.tsの再設計はしない)。実機/自動検証用に?idolnow=1で強制召喚できるように
 // するだけに留める(fromEvent的な単発デバッグ召喚。giant/gatebossの?castlenow=1/?gateboss=1と同じ作法)。
 const FORCE_IDOL = evParam('idolnow') === '1';
+// ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋。`?nospawn=1` と併用して湧きを止める。
+// **数値の受け渡しにURLは使わない**(社長明示「?パラメータは回りくどい」)。この1個は部屋への入口だけ。
+const BOSS_MAKER = evParam('bossmaker') === '1';
 // idolのステータス(width/height/speed/health/damage)はenemyUtils.tsのENEMY_STATS.idolを唯一の出所とする
 // (ここでは複製しない)。以下は台本(帯/技)のms・半径のみ。
 // ★叩き台(設計書に実行秒数の列が無い・§6.28-14と同型の未決): ローリングの実行(移動)所要時間と距離。
@@ -1384,6 +1387,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const policeArmedRef = useRef(true);
   // ミゲル専用「たまにゆっくり歩く」タイマー(社長指示・トールのthorNextSlowWalkAt/thorSlowWalkUntil相当)。
   // ミゲルは bossRef を使わない独立ブロックのため専用の小さな ref を持つ。
+  const bossMakerReadyRef = useRef(false); // ボスメーカーの相手を1回だけ出す
   const idolStateRef = useRef(createIdolTickState()); // idol(stage-2隠しボス)のラン内状態(バッチ3でidolTick.tsへ抽出)
   const angelStateRef = useRef(createAngelBossState()); // 天使(ゲート2ボス)3体のラン内状態(M26 Step3でangelBossTick.tsへ抽出)
   // ゲート戦闘中フラグ(activeGateRef)のstore反映用・直前値(変化時だけsetして毎フレームchurnを避ける)。
@@ -2304,6 +2308,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
+          bossMakerReadyRef.current = false;
           idolStateRef.current = createIdolTickState(); // idolのストリング/懲罰タイマも新ランでリセット
           angelStateRef.current = createAngelBossState(); // 天使(ゲート2ボス)状態も新ランでリセット(M26 Step3)
           // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
@@ -5488,6 +5493,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             addEnemy(idolE);
             useGameStore.getState().triggerAttention(ix, iy);
           }
+          // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋を立てて相手を1体だけ出す。休眠は使わない(即戦闘)。
+          if (BOSS_MAKER && !bossMakerReadyRef.current) {
+            bossMakerReadyRef.current = true;
+            useGameStore.getState().setBossMaker({ active: true });
+            const mcx = player.x + player.width / 2, mcy = player.y + player.height / 2;
+            const mk = spawnEnemyAt('idol', mcx - 20, mcy - 300, newGameTime);
+            mk.fromEvent = true; mk.dormant = false; mk.fixed = false;
+            mk.bossState = 'chase'; mk.bossPhase = 1;
+            mk.bossNextActionAt = newGameTime + 800;
+            addEnemy(mk);
+          }
           const idol = pickActiveIdol(useGameStore.getState().enemies); // v0.25.2614: 起きている個体を優先(2体並んだ時の保険)
           if (idol) {
             const icx = idol.x + idol.width / 2, icy = idol.y + idol.height / 2;
@@ -5529,10 +5545,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 駆動できるので、受け入れ条件(技の配分/主戦帯の滞在/休符の割合)を実測で確認できる。
               // 起床のうち「被弾で起きる」は idolTick 側(社長裁定v0.25.2613)。距離+視線での起床は
               // 壁クエリが要るのでこのブロック(上)に残す。
-              runIdolTick(
-                idol, idolStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT,
-                IDOL_SFX, BOSS_COUNTER_ENABLED, triggerPlayerDeath,
-              );
+              // ボスメーカーの「停止」トグル: ボスの時間だけ止める(絵を止めて見たい時)。
+              // プレイヤーは動けるまま=当たり判定の位置関係を落ち着いて確かめられる。
+              if (!useGameStore.getState().bossMaker.paused) {
+                runIdolTick(
+                  idol, idolStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT,
+                  IDOL_SFX, BOSS_COUNTER_ENABLED, triggerPlayerDeath,
+                );
+              }
             }
           }
          } catch (err) {

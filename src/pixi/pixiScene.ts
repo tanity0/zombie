@@ -52,7 +52,7 @@ import {
   BOSS_RECOVER_TINT,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
-import { idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_SNIPE_HALF_WIDTH } from '../utils/idolScript';
+import { idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING } from '../utils/idolScript';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
   URI_SCRIPT_ENABLED, SURIEL_SCRIPT_ENABLED, ACRASIEL_SCRIPT_ENABLED,
@@ -1159,8 +1159,7 @@ const IDOL_PUNCH_HALF_WIDTH_VIS = 30;   // 至近の殴りの描画半太さ(use
 // v0.25.2613(バッチ3・idolのMAX化): 狙撃線/追尾弾。**判定と同じ定数を idolScript.ts から読む**
 // (上の旧4定数は useGameLoop からの手写しだが、新規分は写し間違いが起きない形にする=
 //  CLAUDE.md「赤い予告そのものは判定と厳密に一致させる」)。
-const IDOL_SNIPE_WINDUP_MS_VIS = IDOL_TIMING.snipe.windup;
-const IDOL_ORB_WINDUP_MS_VIS = IDOL_TIMING.orb.windup;
+
 // トールの刀(社長提供・横払い/突きの視認性を上げる追加ビジュアル)。素材(thor-katana、紫背景色キー
 // 透過済み・1254x1254正方形)は切っ先が左上・柄/房が右下の対角線上に描かれている。柄(握り)を
 // フラクション座標で近似し、そこを回転軸として当たり判定ライン方向へ向ける。実機調整前提。
@@ -2463,6 +2462,7 @@ export class PixiScene {
   private bossBehindAlpha = 1; // 裏ボスの「裏回り透け」alpha を滑らかに追従させる実値(スナップ回避)
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
+  private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
   constructor(layers: SceneLayers) {
     this.L = layers;
@@ -3325,6 +3325,44 @@ export class PixiScene {
 
   // フェード幅は通路(corridorMode)で狭める(v0.25.2149)。毎フレームsyncで更新される。
   private horizonActorFadePx = HORIZON_ACTOR_FADE_PX;
+  /**
+   * ボスメーカーの方眼(BOSS_MAKER.md §1-1「距離が目で分かること」)。
+   * 100pxごとに薄い線、500pxごとに濃い線+数字。**部屋に居る時だけ**生成・描画するので
+   * 本編の負荷は1バイトも増えない(§5 負荷スコア1/10の根拠)。
+   * 可視域は最大引き(ZOOM_MIN_ABS)で広がるので、その分オーバースキャンして描く
+   * (CLAUDE.md「ズーム引き考慮(必須)」)。
+   */
+  private updateMakerGrid(s: ReturnType<typeof useGameStore.getState>) {
+    if (!s.bossMaker.active) {
+      if (this.makerGrid) { this.makerGrid.visible = false; }
+      return;
+    }
+    if (!this.makerGrid) {
+      this.makerGrid = new Graphics();
+      this.L.world.addChildAt(this.makerGrid, 0); // 床の上・アクターの下
+    }
+    const g = this.makerGrid;
+    g.visible = true;
+    g.clear();
+    const overscan = 1 / ZOOM_MIN_ABS;
+    const w = s.gameBounds.width * overscan, h = s.gameBounds.height * overscan;
+    const cx = s.camera.x - (w - s.gameBounds.width) / 2;
+    const cy = s.camera.y - (h - s.gameBounds.height) / 2;
+    const STEP = 100;
+    const x0 = Math.floor(cx / STEP) * STEP, x1 = cx + w;
+    const y0 = Math.floor(cy / STEP) * STEP, y1 = cy + h;
+    for (let x = x0; x <= x1; x += STEP) {
+      const major = x % 500 === 0;
+      g.moveTo(x, y0).lineTo(x, y1).stroke({ width: major ? 2 : 1, color: 0x7fdcff, alpha: major ? 0.30 : 0.12 });
+    }
+    for (let y = y0; y <= y1; y += STEP) {
+      const major = y % 500 === 0;
+      g.moveTo(x0, y).lineTo(x1, y).stroke({ width: major ? 2 : 1, color: 0x7fdcff, alpha: major ? 0.30 : 0.12 });
+    }
+    // 原点(プレイヤーの開始点)を強調して距離の基準にする。
+    g.circle(0, 0, 6).stroke({ width: 2, color: 0xffd166, alpha: 0.8 });
+  }
+
   private horizonActorAlpha(footWorldY: number) {
     return Math.max(0, Math.min(1, (footWorldY - this.horizonForestFootWorldY) / this.horizonActorFadePx));
   }
@@ -4672,6 +4710,7 @@ export class PixiScene {
     // 「地面の切れ目」が出ない(v0.25.1880〜1882の画面固定ピンは森1を床から剥がして切れ目を生んだため撤回=v0.25.1883)。
     // 洋館通路: 森レイヤー由来の境界(非表示でもレイアウト値が残り画面中央に居座る)を使わず、
     // 画面上部の固定ライン+狭めのフェード幅に差し替え(v0.25.2149・詳細は定数コメント)。
+    this.updateMakerGrid(s);
     if (s.corridorMode && !s.indoorMode) {
       this.horizonActorFadePx = CORRIDOR_ACTOR_FADE_PX;
       this.horizonForestFootWorldY = s.camera.y + s.gameBounds.height * CORRIDOR_ACTOR_FADE_TOP_FRAC;
@@ -9471,10 +9510,13 @@ export class PixiScene {
       const nx = Math.max(hb.x, Math.min(px, hb.x + hb.width));
       const ny = Math.max(hb.y, Math.min(py, hb.y + hb.height));
       const edge = Math.hypot(px - nx, py - ny);
-      if (edge < BOSS_HITBOX_HINT_NEAR_PX) {
+      // v0.25.2621(ボスメーカー): 「判定」トグルON中は**距離に関係なく常時・最大**で出す。
+      // 社長補足「無敵なので技の中に立ち続けて、当たりや避け、ヴィジュアルを詰められる」= この部屋の主用途。
+      const hbAlways = useGameStore.getState().bossMaker.showHitbox;
+      if (hbAlways || edge < BOSS_HITBOX_HINT_NEAR_PX) {
         const t = 1 - Math.max(0, edge - BOSS_HITBOX_HINT_FULL_PX)
           / Math.max(1, BOSS_HITBOX_HINT_NEAR_PX - BOSS_HITBOX_HINT_FULL_PX);
-        const k = Math.max(0, Math.min(1, t));
+        const k = hbAlways ? 1 : Math.max(0, Math.min(1, t));
         r.rect(hb.x, hb.y, hb.width, hb.height)
           .fill({ color: 0xff6a55, alpha: BOSS_HITBOX_HINT_FILL_ALPHA * k })
           .stroke({ width: 2, color: 0xff6a55, alpha: BOSS_HITBOX_HINT_LINE_ALPHA * k });
@@ -9792,12 +9834,12 @@ export class PixiScene {
       // T2帯(長): 狙撃線。**溜め開始でロックした2点(aiFrom→aiTarget)をそのまま描く**ので、
       // 赤帯と当たり判定(idolTick の distToSegment)は同じ線・同じ半幅で厳密に一致する。
       if (bs === 'idol-snipe-windup' && e.aiTargetX !== undefined && e.aiTargetY !== undefined) {
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_SNIPE_WINDUP_MS_VIS));
-        this.drawAngelZoneCapsule(view, o, e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX, e.aiTargetY, IDOL_SNIPE_HALF_WIDTH, prog, now);
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_TIMING.snipe.windup));
+        this.drawAngelZoneCapsule(view, o, e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX, e.aiTargetY, IDOL_TUNING.shape.snipeHalfWidth, prog, now);
       }
       // T6線が扇状に(2発/Phase2は3発): 追尾弾の発射方向。弾自体が追ってくるので線は「発射の合図」。
       if (bs === 'idol-orb-windup') {
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_ORB_WINDUP_MS_VIS));
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_TIMING.orb.windup));
         const pl = useGameStore.getState().player;
         const base = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
         const n = idolOrbCount(e.bossPhase === 2 ? 2 : 1);

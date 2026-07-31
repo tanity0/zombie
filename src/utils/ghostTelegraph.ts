@@ -44,7 +44,7 @@ const SURIEL_BEAM_RANGE_MIRROR = 2600;   // = angelBossTick.SURIEL_BEAM_RANGE(�
 const ACRASIEL_SPIKE_RANGE_MIRROR = 310; // = angelBossTick.ACRASIEL_SPIKE_RANGE_PX(放射8本の長さ)
 const ACRASIEL_BURST_RADIUS_MIRROR = 140;// = angelBossTick.ACRASIEL_BURST_RADIUS(大円)
 const ACRASIEL_WARP_IMPACT_MIRROR = 92;  // = angelBossTick.ACRASIEL_WARP_IMPACT_RADIUS(転移衝撃)
-const IDOL_PUNCH_RANGE_MIRROR = 90;      // = useGameLoop.IDOL_PUNCH_RANGE(前方の短い帯の長さ)
+const IDOL_PUNCH_RANGE_MIRROR = 90;      // = useGameLoop.IDOL_TUNING.shape.punchRange(前方の短い帯の長さ)
 
 /** 既存 telegraphDodge がその状態で読む図形(テストのプローブ生成用=「何を根拠に shared と言えるか」)。 */
 export type SharedShape = 'band' | 'circle-target' | 'stomp' | 'tri-jump' | 'delayed';

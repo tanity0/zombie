@@ -28,11 +28,8 @@ import { refundCounterCooldown } from './counterMaster';
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter';
 import { npcSfxDistGain } from './npcSfx';
 import {
-  IDOL_STRINGS, IDOL_STRING_LEN, IDOL_REST, IDOL_PUNISH, IDOL_NEUTRAL_BAND, IDOL_VERB_SPEED_MULT,
-  IDOL_TIMING, IDOL_ROLL_DIST, IDOL_PUNCH_RANGE, IDOL_PUNCH_HALF_WIDTH,
-  IDOL_SNIPE_RANGE, IDOL_SNIPE_HALF_WIDTH, IDOL_FAN_SPREAD_STEP,
-  IDOL_ORB_SPEED, IDOL_ORB_TURN_RATE, IDOL_SAME_ANGLE_DEG, IDOL_WAVE_DELAY_MS,
-  IDOL_NEUTRAL_MIN_MS, IDOL_NEUTRAL_MAX_MS,
+  IDOL_TUNING, IDOL_STRINGS, IDOL_STRING_LEN, IDOL_REST, IDOL_PUNISH, IDOL_NEUTRAL_BAND,
+  IDOL_VERB_SPEED_MULT, IDOL_TIMING,
   idolZone, idolPhaseForHealth, idolFanCount, idolOrbCount, idolWaveActive, type IdolMove,
 } from './idolScript';
 
@@ -148,7 +145,7 @@ export const runIdolTick = (
           let d = want - cur;
           while (d > Math.PI) d -= Math.PI * 2;
           while (d < -Math.PI) d += Math.PI * 2;
-          const step = Math.max(-IDOL_ORB_TURN_RATE * dt, Math.min(IDOL_ORB_TURN_RATE * dt, d));
+          const step = Math.max(-IDOL_TUNING.shape.orbTurnRate * dt, Math.min(IDOL_TUNING.shape.orbTurnRate * dt, d));
           const a = cur + step;
           return { ...p, direction: { x: Math.cos(a), y: Math.sin(a) } };
         }),
@@ -221,15 +218,15 @@ export const runIdolTick = (
       const aim = hateAim();
       const dl = Math.hypot(aim.x - icx, aim.y - icy) || 1;
       patch.aiFromX = icx; patch.aiFromY = icy;
-      patch.aiTargetX = icx + ((aim.x - icx) / dl) * IDOL_SNIPE_RANGE;
-      patch.aiTargetY = icy + ((aim.y - icy) / dl) * IDOL_SNIPE_RANGE;
+      patch.aiTargetX = icx + ((aim.x - icx) / dl) * IDOL_TUNING.shape.snipeRange;
+      patch.aiTargetY = icy + ((aim.y - icy) / dl) * IDOL_TUNING.shape.snipeRange;
       patch.hateTarget = aim.side;
     } else if (m === 'roll') {
       const aim = hateAim();
       const dl = Math.hypot(icx - aim.x, icy - aim.y) || 1;
       patch.aiFromX = icx; patch.aiFromY = icy;
-      patch.aiTargetX = icx + ((icx - aim.x) / dl) * IDOL_ROLL_DIST;
-      patch.aiTargetY = icy + ((icy - aim.y) / dl) * IDOL_ROLL_DIST;
+      patch.aiTargetX = icx + ((icx - aim.x) / dl) * IDOL_TUNING.shape.rollDist;
+      patch.aiTargetY = icy + ((icy - aim.y) / dl) * IDOL_TUNING.shape.rollDist;
       patch.hateTarget = aim.side;
     }
   };
@@ -242,7 +239,7 @@ export const runIdolTick = (
       s.wavePending = false;
       sfx.alert();
       patch.bossState = windupState(m);
-      patch.bossStateUntil = newGameTime + IDOL_WAVE_DELAY_MS;
+      patch.bossStateUntil = newGameTime + IDOL_TUNING.waveDelayMs;
       return;
     }
     if (s.step < s.seq.length) { beginMove(s.seq[s.step++]); return; }
@@ -288,7 +285,7 @@ export const runIdolTick = (
     const ang = Math.atan2(pcy - icy, pcx - icx);
     let dAng = Math.abs(ang - s.lastAngle);
     while (dAng > Math.PI) dAng = Math.abs(dAng - Math.PI * 2);
-    s.angleSince = dAng <= (IDOL_SAME_ANGLE_DEG * Math.PI) / 180 ? s.angleSince + stepMs : 0;
+    s.angleSince = dAng <= (IDOL_TUNING.sameAngleDeg * Math.PI) / 180 ? s.angleSince + stepMs : 0;
     s.lastAngle = ang;
 
     if (newGameTime >= (idol.bossNextActionAt ?? 0)) {
@@ -309,7 +306,7 @@ export const runIdolTick = (
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       // 休符明けは**中立へ戻る**。ここで主戦帯まで歩き直す時間を必ず取る(ER原則③)。
       patch.bossState = 'chase';
-      patch.bossNextActionAt = newGameTime + IDOL_NEUTRAL_MIN_MS + Math.random() * (IDOL_NEUTRAL_MAX_MS - IDOL_NEUTRAL_MIN_MS);
+      patch.bossNextActionAt = newGameTime + IDOL_TUNING.neutral.minMs + Math.random() * (IDOL_TUNING.neutral.maxMs - IDOL_TUNING.neutral.minMs);
     }
   } else if (st === 'idol-aim-windup') {
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
@@ -326,7 +323,7 @@ export const runIdolTick = (
       const ang = Math.atan2(aim.y - icy, aim.x - icx);
       const half = (count - 1) / 2;
       for (let k = 0; k < count; k++) {
-        const a = ang + (k - half) * IDOL_FAN_SPREAD_STEP;
+        const a = ang + (k - half) * IDOL_TUNING.shape.fanSpreadStep;
         fire(icx + Math.cos(a) * 100, icy + Math.sin(a) * 100);
       }
       toRecover('fan');
@@ -342,7 +339,7 @@ export const runIdolTick = (
         const a = base + (k - (n - 1) / 2) * 0.5; // 少し散らして出す(全弾が同じ線に乗らない)
         const p = createEnemyProjectile(idol, player, icx + Math.cos(a) * 100, icy + Math.sin(a) * 100);
         p.id = `${ORB_ID_PREFIX}${idol.id}-${newGameTime}-${k}`;
-        p.speed = IDOL_ORB_SPEED;
+        p.speed = IDOL_TUNING.shape.orbSpeed;
         useGameStore.getState().addProjectile(p);
         ids.push(p.id);
       }
@@ -359,7 +356,7 @@ export const runIdolTick = (
     const fx = idol.aiFromX ?? icx, fy = idol.aiFromY ?? icy;
     const tx = idol.aiTargetX ?? icx, ty = idol.aiTargetY ?? icy;
     const pr = Math.max(player.width, player.height) / 2;
-    if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }) <= IDOL_SNIPE_HALF_WIDTH + pr) {
+    if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }) <= IDOL_TUNING.shape.snipeHalfWidth + pr) {
       const died = useGameStore.getState().damagePlayer(idol.damage, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy);
       if (died) onPlayerDeath(pcx, pcy);
     }
@@ -369,7 +366,7 @@ export const runIdolTick = (
       const aim = hateAim();
       patch.hateTarget = aim.side;
       const ang = Math.atan2(aim.y - icy, aim.x - icx);
-      hitCapsule(icx, icy, icx + Math.cos(ang) * IDOL_PUNCH_RANGE, icy + Math.sin(ang) * IDOL_PUNCH_RANGE, IDOL_PUNCH_HALF_WIDTH);
+      hitCapsule(icx, icy, icx + Math.cos(ang) * IDOL_TUNING.shape.punchRange, icy + Math.sin(ang) * IDOL_TUNING.shape.punchRange, IDOL_TUNING.shape.punchHalfWidth);
       toRecover('punch');
     }
   } else if (st === 'idol-roll-windup') {
