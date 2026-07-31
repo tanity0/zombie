@@ -3,7 +3,7 @@ import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
 import { shouldShowDetourPoiTutorial } from '../utils/detourPoiTutorial';
 // §6.24-UX(POI-UX): 寄り道POIの入手トースト/解放帯の文言(通信の文言は store 側が引く)。
-import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE } from '../utils/detourPoiUx';
+import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE, POI_LABEL } from '../utils/detourPoiUx';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
@@ -262,7 +262,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, effectiveStartRank, stageInRunFloorRank, setStartRankFromFinal } from '../data/progress';
+import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, recordChronicleGlobalFirst, effectiveStartRank, stageInRunFloorRank, setStartRankFromFinal } from '../data/progress';
 import { exposeKomaLog, logKomaSummary } from '../utils/komaLog';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
 import {
@@ -2919,6 +2919,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   });
                   // §6.24-UX 確定要件3: 解放をゾーン到達と同型の帯(WallBand)で出す。
                   useGameStore.getState().triggerWallBand(poiUnlockBandText('police'), 'white', POI_BAND_MS);
+                  // 歴史年表(社長裁定2026-07-31「初めて警察署を開放 ね」): POI開放は種別ごと
+                  // ゲーム全体で初回のみ記録(拠点の「初めて拠点を開放」と同じ全体初回ガード)。
+                  recordChronicleGlobalFirst(getSelectedStageId(), 'poi', 'police', `初めて${POI_LABEL.police}を開放`, true);
                 }
                 // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1クリア時の後処理。恒久解除+未達
                 // ペナルティ解除+ハンター消滅+M14到達判定を遅延実行(未達で止めていた分をここで出す)。

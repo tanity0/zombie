@@ -602,7 +602,9 @@ export const setSelectedMission = (m: SelectedMission): void => {
 //     hunter(ハンター討伐) / reaper(死神討伐) / redNight(紅き夜を越えた) /
 //     cave(洞窟発見=将来ステージに洞窟を置いた時用・型だけ予約し現状は未配線)。
 // 'clear'=ステージクリア(現状ステージ6のみ・社長指示v0.25.2150「ステージ6はクリアしたか否かだけ」)。
-export type ChronicleKind = 'zone' | 'rank' | 'boss' | 'base' | 'hunter' | 'reaper' | 'redNight' | 'cave' | 'clear';
+// 'poi'=寄り道POI開放(警察署/武器庫/病院・社長裁定2026-07-31「初めて警察署を開放 ね」=種別ごと
+//   ゲーム全体で初回のみ。detail=PoiKind('police'|'armory'|'hospital'))。
+export type ChronicleKind = 'zone' | 'rank' | 'boss' | 'base' | 'hunter' | 'reaper' | 'redNight' | 'cave' | 'clear' | 'poi';
 
 export interface ChronicleEntry {
   key: string;          // dedup キー = `${stageId}::${kind}::${detail}`
@@ -679,6 +681,21 @@ export const recordChronicle = (
   list.push({ key, stageId, kind, label: prefix ? `${prefix} ${phrase}` : phrase, at: Date.now() });
   saveChronicle(list);
   return true;
+};
+
+// 年表の「ゲーム全体で初回のみ」記録(社長裁定2026-07-31)。拠点は「初めて拠点を開放」の1件だけ、
+// POIは「初めて警察署を開放」等**種別(detail)ごとに全体1件**だけを載せる(2件目以降はどのステージでも
+// 載せない=年表が同種で埋まるのを防ぐ)。ガードは kind 単位(perDetail=false・拠点)か kind+detail
+// 単位(perDetail=true・POI)。既存セーブに旧形式の同kindエントリ(方位付き拠点等)があればそれを
+// 「初回」と数えて新たに載せない(過去の記録は消さない=可逆)。
+export const recordChronicleGlobalFirst = (
+  stageId: string, kind: ChronicleKind, detail: string, phrase: string, perDetail = false,
+): boolean => {
+  const list = loadChronicle();
+  const dup = list.some(e =>
+    e.kind === kind && (!perDetail || e.key.split('::').slice(2).join('::') === detail));
+  if (dup) return false;
+  return recordChronicle(stageId, kind, detail, phrase);
 };
 
 // 開発用: 全ステージ解放 / 進行リセット。

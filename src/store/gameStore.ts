@@ -99,7 +99,7 @@ import {
 import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
-  getSelectedStageId, getWallMeta, recordChronicle,
+  getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
   getEventQuestMeta, setEventQuestMeta, markCastleBossCleared, syncQuestStageClear,
   updateStoryFlags, markMissionCleared,
   isKogarasuUnlocked, markKogarasuUnlocked,
@@ -129,7 +129,7 @@ import { bossSectorIndex, poiSectorIndex } from '../world/pois';
 // PACING_PUZZLE.md §6.24-UX(POI-UX): 寄り道POIの通信/入手トースト/解放帯の文言とゲート(純関数)。
 import {
   emptyPoiIntelShown, poiIntelLine, shouldShowPoiIntel, pickPoiIntelSpeaker,
-  poiUnlockBandText, POI_BAND_MS, POI_VACCINE_NAME, POI_VACCINE_DESC, type PoiKind,
+  poiUnlockBandText, POI_BAND_MS, POI_VACCINE_NAME, POI_VACCINE_DESC, POI_LABEL, type PoiKind,
 } from '../utils/detourPoiUx';
 import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled } from '../world/torches';
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
@@ -550,12 +550,6 @@ const createBaseSites = (): BaseSite[] => {
   }
   return sites;
 };
-
-// 拠点の方位名(社長指示v0.25.1630「拠点は方位で、北の拠点を開放 とか」)。拠点は原点中心の円周90度刻み
-// (createBaseSites)=常にいずれかの基本方位軸上に乗る。y+ が画面下=南 / y- が上=北(標準スクリーン座標)。
-// 支配軸で判定(拠点座標は片軸が~0なので厳密)。
-const baseCompassLabel = (x: number, y: number): string =>
-  Math.abs(x) >= Math.abs(y) ? (x >= 0 ? '東' : '西') : (y >= 0 ? '南' : '北');
 
 // 帰還フェーズ(フィナーレボス撃破/終了アイテム後): 即勝利せず帰還サークルへ誘導。3秒とどまると帰還完了=gameWon。
 const RETURN_CIRCLE_RADIUS = 95;        // 帰還サークル半径(円コリジョン)
@@ -11720,6 +11714,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 病院(社長指示v0.25.2331): サークル内滞在を計測。3秒でワクチン(死亡時に一度だけ復活)を1つ入手し、
   // 建物はフェードアウトして消える(そのランでは再取得できない)。判定の中身は world/hospital.ts の純関数。
   updateHospital: (deltaTime) => {
+    // 歴史年表(社長裁定2026-07-31): POI開放は**種別ごとゲーム全体で初回のみ**。set外で記録する
+    // (localStorage副作用をset内へ入れない=updateArmoryのgrantGunKeyと同じ持ち出しパターン)。
+    let unlocked = false;
     set(state => {
       const pos = state.hospital;
       if (!pos || state.hospitalTaken || state.gameWon) return {};
@@ -11729,6 +11726,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const justEntered = dwellMs > 0 && state.hospitalDwellMs <= 0;
       const intel = justEntered ? poiIntelPatch(state, 'hospital', pos) : {};
       if (done) {
+        unlocked = true;
         return {
           ...intel,
           hospitalDwellMs: dwellMs,
@@ -11749,6 +11747,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (dwellMs === state.hospitalDwellMs) return intel; // 円外で0のまま=書き込み省略(毎フレのsetを避ける)
       return { ...intel, hospitalDwellMs: dwellMs };
     });
+    if (unlocked) {
+      recordChronicleGlobalFirst(getSelectedStageId(), 'poi', 'hospital', `初めて${POI_LABEL.hospital}を開放`, true);
+    }
   },
 
   // 武器庫(PACING_PUZZLE.md §6.24 M48): サークル内滞在を計測。3秒到達時にスクラップが足りていれば
@@ -11759,6 +11760,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   updateArmory: (deltaTime) => {
     // §6.24-W: 付与はset外のgrantWeapon(自前のsetを持つ)で行うため、選定結果をここへ持ち出す。
     let grantGunKey: string | null = null;
+    // 歴史年表(社長裁定2026-07-31): POI開放は種別ごとゲーム全体で初回のみ(返金決着も「開放」に数える)。
+    let unlocked = false;
     set(state => {
       const pos = state.armory;
       if (!pos || state.armoryTaken || state.gameWon) return {};
@@ -11787,6 +11790,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // そのカテゴリのTier3を付与する。付与はset後の grantWeapon=既存規則(カテゴリごと1挺・
         // 高Tier優先)+武器取得トーストをそのまま通す(§6.24-UX要件2は武器取得UIそのもので満たす)。
         const upgradable = armoryUpgradableGunCategories(state.player.weapons);
+        unlocked = true;
         if (upgradable.length === 0) {
           // 全カテゴリ最高位=「返金されて終わり」: スクラップを消費せず取引完了として武器庫は消える
           // (叩き台。残す運用にするなら armoryTaken を立てない形へ変更)。
@@ -11821,6 +11825,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     // §6.24-W: Tier3銃の付与(grantWeaponが弾薬重複/アクティブ切替/武器トーストまで面倒を見る)。
     if (grantGunKey) get().grantWeapon(grantGunKey);
+    if (unlocked) {
+      recordChronicleGlobalFirst(getSelectedStageId(), 'poi', 'armory', `初めて${POI_LABEL.armory}を開放`, true);
+    }
   },
 
   // §6.24-UX 確定要件1: 寄り道POIの進入/発動時の通信(1ラン1回/種)。病院/武器庫は各 update*
@@ -12237,9 +12244,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const sol = BASE_SOLDIERS[c.soldierIndex % BASE_SOLDIERS.length];
       get().tryNpcLine(sol.name, 'baseCaptured', pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured), BASE_CAPTURED_CAT_CD_MS);
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
-      // 歴史年表: 拠点解放を即載せ(社長決定v0.25.1628=A方式。拠点は永続前例が無いので年表用に新規)。
-      // 4拠点それぞれを初回のみ記録(dedup=拠点id)。ラベルは方位名(社長指示v0.25.1630)。
-      recordChronicle(getSelectedStageId(), 'base', c.id, `${baseCompassLabel(c.x, c.y)}の拠点を開放`);
+      // 歴史年表: 拠点解放は**ゲーム全体で初回のみ**「初めて拠点を開放」を載せる(社長裁定2026-07-31
+      // 「初めて拠点を開放した のみ拠点系は記録」。旧: 各ステージ×4拠点で方位付きを毎回記録=廃止。
+      // 既存セーブの旧形式エントリも「初回」と数える=recordChronicleGlobalFirstのkindガード)。
+      recordChronicleGlobalFirst(getSelectedStageId(), 'base', c.id, '初めて拠点を開放');
     }
     // 「敵に囲まれた時」セリフ(時間停止なしHUD)。同一NPC/同一カテゴリのCDを守って1件だけ通す。
     for (const ev of npcSurroundEvents) {

@@ -15,7 +15,7 @@ const backing: Record<string, string> = {};
 } as Storage;
 
 import {
-  recordChronicle, loadChronicle, stageChronicleLabel,
+  recordChronicle, recordChronicleGlobalFirst, loadChronicle, stageChronicleLabel,
   markStageCleared, getClearedStages, getClearedMissions, markMissionCleared, missionIdForMain, resetProgress,
 } from './progress';
 
@@ -93,6 +93,36 @@ describe('歴史年表(chronicle)', () => {
 
   it('stageChronicleLabel: 本編ステージは「ステージN」', () => {
     expect(stageChronicleLabel('stage-1')).toBe('ステージ1');
+  });
+});
+
+// 社長裁定2026-07-31: 拠点=「初めて拠点を開放」ゲーム全体で1件のみ / POI=「初めて警察署を開放」等
+// 種別ごとゲーム全体で1件のみ(各ステージの2件目以降は載せない)。
+describe('recordChronicleGlobalFirst(ゲーム全体で初回のみ)', () => {
+  it('拠点(perDetail=false): 別ステージ・別拠点でも同kindが既にあれば載せない', () => {
+    expect(recordChronicleGlobalFirst('stage-1', 'base', 'base-1', '初めて拠点を開放')).toBe(true);
+    expect(recordChronicleGlobalFirst('stage-1', 'base', 'base-2', '初めて拠点を開放')).toBe(false); // 同ステージ別拠点
+    expect(recordChronicleGlobalFirst('stage-2', 'base', 'base-1', '初めて拠点を開放')).toBe(false); // 別ステージ
+    expect(loadChronicle().filter(e => e.kind === 'base')).toHaveLength(1);
+  });
+
+  it('既存セーブの旧形式(方位付き拠点)も「初回」と数えて新たに載せない(過去記録は消さない)', () => {
+    recordChronicle('stage-1', 'base', 'base-3', '北の拠点を開放'); // 旧形式の既存エントリを再現
+    expect(recordChronicleGlobalFirst('stage-2', 'base', 'base-1', '初めて拠点を開放')).toBe(false);
+    expect(loadChronicle().filter(e => e.kind === 'base')).toHaveLength(1); // 旧エントリだけが残る
+  });
+
+  it('POI(perDetail=true): 種別ごとに全体1件=同種は別ステージでも載せず、別種は載る', () => {
+    expect(recordChronicleGlobalFirst('stage-1', 'poi', 'police', '初めて警察署を開放', true)).toBe(true);
+    expect(recordChronicleGlobalFirst('stage-2', 'poi', 'police', '初めて警察署を開放', true)).toBe(false);
+    expect(recordChronicleGlobalFirst('stage-2', 'poi', 'armory', '初めて武器庫を開放', true)).toBe(true);
+    expect(recordChronicleGlobalFirst('stage-1', 'poi', 'hospital', '初めて病院を開放', true)).toBe(true);
+    expect(loadChronicle().filter(e => e.kind === 'poi')).toHaveLength(3);
+  });
+
+  it('ラベルは従来どおりステージ見出しが前置される(記録本体はrecordChronicleへ委譲)', () => {
+    recordChronicleGlobalFirst('stage-1', 'poi', 'police', '初めて警察署を開放', true);
+    expect(loadChronicle().find(e => e.kind === 'poi')?.label).toBe('ステージ1 初めて警察署を開放');
   });
 });
 

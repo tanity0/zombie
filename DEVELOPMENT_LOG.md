@@ -1,5 +1,26 @@
 # Development Log
 
+## v0.25.2566 — 年表規則: 拠点・POIは「ゲーム全体で初回のみ」記録(設計チャット直接実装)【2026-07-31 09:15 JST】
+
+- **裁定(社長2026-07-31・3段階の訂正を経た確定形)**: ①拠点=「**初めて拠点を開放**」をゲーム全体で
+  1件のみ(旧: 各ステージ×4拠点で方位付きを毎回記録=廃止) ②POI=「**初めて警察署を開放**」
+  「初めて武器庫を開放」「初めて病院を開放」を**種別ごと**ゲーム全体で1件のみ。
+- **実装**:
+  - `progress.ts`: `ChronicleKind` に `'poi'` 追加+`recordChronicleGlobalFirst(stageId, kind, detail,
+    phrase, perDetail)` 新設(既存 `recordChronicle` の per-stage dedup の前に、kind単位(拠点)/
+    kind+detail単位(POI)の**全体スキャンガード**を前置。既存セーブの旧形式エントリ(方位付き拠点)も
+    「初回」と数える=過去記録は消さず新規も足さない)。
+  - 拠点: `gameStore.ts` の拠点確保ブロックを `recordChronicleGlobalFirst(...,'base',c.id,'初めて拠点を開放')`
+    へ変更。`baseCompassLabel`(方位名)は用途消滅で削除。
+  - POI: 警察署=useGameLoopのアリーナ制圧クリア(スキル付与ブロック)/病院=updateHospitalのワクチン
+    付与/武器庫=updateArmoryの銃付与+**全T3返金決着も「開放」に数える**。病院・武器庫はset外へ
+    フラグ持ち出しで記録(grantGunKeyと同じパターン=localStorage副作用をset内へ入れない)。
+    文言は `POI_LABEL` から合成=呼び名の二重管理なし。
+- **テスト**: progress.test.ts に4件(拠点=同ステージ別拠点/別ステージとも2件目なし・旧形式が初回扱い・
+  POI=種別ごと全体1件・ラベル前置の維持)。`vitest related`=**465件全通過**・typecheck/lint(エラー0)。
+- **自己点検**: 記録の読み出し側(年表UI)は変更なし(kind追加はadditive・網羅switchなしを確認済み)。
+  憲法抵触なし。負荷 **1/10**(イベント発火時のlocalStorage読み書きのみ・per-frameコストなし)。
+
 ## v0.25.2565 — 監査収録: 守護霊の暗黙条件(借り物ヒューリスティック)全数監査の検収・版管理【2026-07-31 09:05 JST】
 
 - **経緯**: 社長「謎の条件(借り物)は何なの?他にもあるの?潰したい」→ 読み取り専用の監査エージェントを
