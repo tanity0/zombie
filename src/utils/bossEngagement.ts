@@ -21,7 +21,8 @@ import type { Enemy, EnemyType } from '../types/game';
  * **hunter も入れない**: ハンターは索敵→立ち去りのある巡回敵で、ボス戦の幕が上がる相手ではない。
  * (どちらも `isBossType` には含まれるので、`isBossType` を流用せず**この表を正本にする**。)
  */
-const ENGAGEABLE_BOSS_TYPES = new Set<EnemyType>([
+// export はボス戦テストメニュー(bossTest.test.ts)の網羅突き合わせ用(読み取りのみ)。
+export const ENGAGEABLE_BOSS_TYPES = new Set<EnemyType>([
   'giantbat',                                   // 城ボス(ジャイアント)+ ストーリーボス(グレン/未確認変異体)
   'mimir', 'jormungand', 'skadi', 'thor',       // 裏ボス4体
   'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', // ゲート2ボス6体

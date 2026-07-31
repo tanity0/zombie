@@ -1,0 +1,62 @@
+// ボス戦テストメニュー(社長依頼2026-07-31「テスト用にボス戦だけの部屋」→採用案=専用部屋ではなく
+// **実ステージ+既存の強制出現パラメータ+出撃メニュー**)。専用部屋を作らない理由: 人工環境はテスト
+// 結果ごと偽物になる前例がある(arenanow=bossでは守護霊の召喚ゲートが反応しない/同じボスでも場所だけで
+// 生存が3倍変わった=TEST_HANDOFF依頼#7/#8)。実ステージなら囲いサークル・M2通路・雑魚の挙動が全部本物。
+//
+// このモジュールは純関数のみ(カタログ+URL合成)。表示と遷移は components/BossTestMenu.tsx。
+// 強制出現フラグ(bossnow等)はuseGameLoopの**モジュールロード時定数**なので、出撃はページ再読込
+// (location遷移)で行う=`?smoke=1`(タイトル/メニュー全スキップの既存クイックスタート)に相乗りする。
+import type { EnemyType } from '../types/game';
+
+/** 出撃1件の定義。param=useGameLoopに既にある強制出現フラグ(新しい召喚機構は作らない)。 */
+export interface BossTestEntry {
+  boss: EnemyType;
+  stageId: string;
+  /**
+   * 既存デバッグパラメータ: bossnow=そのステージの裏ボスをプレイヤー近く(画面外)へ即出現 /
+   * idolnow=idol強制召喚 / gateboss=ゲート2天使を拘束サークル付きで即発動 /
+   * castlenow=城ボスを城へ即出現(城マーカーへ向かって戦う)。
+   */
+  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow';
+}
+
+// 掲載順=裏ボス4 → idol → 天使6 → 城ボス。ステージ対応は campaign.ts の hiddenBoss と
+// useGameLoop の GATE2_BOSS_TYPE_BY_STAGE を写した固定表(どちらも変更頻度が低い設定値。
+// ズレたら bossTest.test.ts の突き合わせテストが落ちる)。
+export const BOSS_TEST_ENTRIES: readonly BossTestEntry[] = [
+  { boss: 'mimir', stageId: 'stage-1', param: 'bossnow' },
+  { boss: 'jormungand', stageId: 'stage-3', param: 'bossnow' },
+  { boss: 'skadi', stageId: 'stage-4', param: 'bossnow' },
+  { boss: 'thor', stageId: 'stage-5', param: 'bossnow' },
+  { boss: 'idol', stageId: 'stage-2', param: 'idolnow' },
+  { boss: 'miguel', stageId: 'stage-1', param: 'gateboss' },
+  { boss: 'jibril', stageId: 'stage-3', param: 'gateboss' },
+  { boss: 'rafi', stageId: 'stage-4', param: 'gateboss' },
+  { boss: 'uri', stageId: 'stage-5', param: 'gateboss' },
+  { boss: 'suriel', stageId: 'stage-6', param: 'gateboss' },
+  { boss: 'acrasiel', stageId: 'stage-ex1', param: 'gateboss' },
+  { boss: 'giantbat', stageId: 'stage-1', param: 'castlenow' },
+];
+
+export interface BossTestOptions {
+  characterClass: string; // 'warrior' | 'mage' | 'rogue' | 'necromancer'
+  ghost: boolean;         // ?ghost=1 デバッグ守護霊召喚(装備不要で守護霊が出る)
+  ghostlog: boolean;      // ?ghostlog=1 守護霊の被弾源タグをconsoleへ([GHOSTDMG])
+}
+
+/**
+ * 出撃URLのクエリ部を合成する。`smoke=1&stage=…&<強制フラグ>=1&class=…&retry=1` の組み合わせで
+ * 再読込後にタイトル/メニューを全スキップして該当ボス戦へ直行する。`retry=1`は開始時会話のスキップ
+ * (ゲームオーバーの「もう一度プレイ」と同じ扱い=テストの回転を速くする)。
+ */
+export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string => {
+  const p = new URLSearchParams();
+  p.set('smoke', '1');
+  p.set('stage', e.stageId);
+  p.set(e.param, '1');
+  p.set('class', opts.characterClass);
+  p.set('retry', '1');
+  if (opts.ghost) p.set('ghost', '1');
+  if (opts.ghostlog) p.set('ghostlog', '1');
+  return `?${p.toString()}`;
+};

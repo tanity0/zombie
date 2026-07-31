@@ -240,7 +240,8 @@ function App() {
     const benchmark = smokeParam === 'bench' || params.get('bench') === '1';
     // 既定はステージ1(STAGES[0]はチュートリアル追加で先頭が変わったため固定・従来挙動を維持)。
     setSelectedStageId(params.get('stage') || 'stage-1');
-    void startGame(params.get('class') ?? 'warrior', benchmark);
+    // ?retry=1(ボス戦テストメニュー用): 開始時会話をスキップ(GOの「もう一度プレイ」と同じ扱い)。
+    void startGame(params.get('class') ?? 'warrior', benchmark, params.get('retry') === '1');
   }, []);
 
   const handleGameOver = () => {

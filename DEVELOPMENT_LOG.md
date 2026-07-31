@@ -1,5 +1,30 @@
 # Development Log
 
+## v0.25.2569 — ボス戦テストメニュー(社長依頼・設計チャット直接実装)【2026-07-31 09:35 JST】
+
+- **依頼**: 「テスト用にボス戦だけの部屋…パラメータ付きで出撃するメニューを並べとく が一番楽なのかな」。
+  採用案=**専用部屋は作らず、実ステージ+既存の強制出現パラメータ+出撃メニュー**。理由: 人工環境は
+  テスト結果ごと偽物になる前例(arenanow=bossで守護霊が出ない/場所だけで生存3倍差=依頼#7/#8)。
+  実ステージなら囲いサークル・M2通路・雑魚挙動が全部本物(サークル再現の要望はgatebossの実拘束
+  サークルで充足)。
+- **実装**: 新しい召喚機構ゼロ=全て既存パラメータの合成。
+  - `src/utils/bossTest.ts`(純関数): カタログ12件(裏ボス4=bossnow / idol=idolnow / 天使6=gateboss /
+    城ボス=castlenow・ステージ対応はhiddenBoss/GATE2_BOSS_TYPE_BY_STAGEの写し)+URL合成
+    (`?smoke=1&stage=…&<флаг>=1&class=…&retry=1[&ghost=1][&ghostlog=1]`)。強制フラグは
+    useGameLoopのモジュールロード時定数のため**ページ再読込で出撃**(=?smoke クイックスタートに相乗り)。
+  - `src/components/BossTestMenu.tsx`: オーバーレイ(クラス4択+守護霊召喚トグル(既定ON)+被弾ログ
+    トグル)。開いている間だけのReact状態=プレイ中コストゼロ。
+  - `TitleScreen.tsx`: 左下に控えめな入口(SHOW_BOSS_TEST=trueの1フラグ。アプリ配布時はfalseで
+    入口ごと消す)。全画面タップ(tapStart)とはstopPropagation+表示中無効化で分離。
+  - `App.tsx`: smokeハンドラに `?retry=1` 対応1行(開始時会話スキップ=GOの「もう一度プレイ」と同じ)。
+  - `bossEngagement.ts`: ENGAGEABLE_BOSS_TYPESをexport(テストの網羅突き合わせ用・読み取りのみ)。
+- **テスト**: bossTest.test.ts 6件(hiddenBoss表との突き合わせ/ステージ実在/全掲載ボスがENGAGEABLE/
+  ENGAGEABLE全型の網羅/URL合成2件)。`vitest related`=**540件通過**・typecheck/lint(エラー0)。
+- **自己点検**: 通常プレイ経路は不変(入口ボタンとsmokeハンドラの第3引数のみ。retry未指定=従来どおり)。
+  負荷 **1/10**(タイトル画面のみのUI)。憲法抵触なし。
+- **既知の注記**: suriel(stage-6)は通路モードとの相性未確認(gatebossは通路を除外していないため掲載。
+  実機で問題があれば報告を)。castlenowのみ「城へ向かう」移動が必要(即隣接ではない)。
+
 ## v0.25.2568 — バッチGHOST-DUO-RECORDS: 同行撃破の二枠記録(BOT_AND_GHOST.md §2.17)【2026-07-31 09:28 JST】
 
 - **検収(設計チャット)**: 合格。台帳の排他構造(同行=notifyBossClearがno-op/ソロ=時計が開かない)・

@@ -1,0 +1,94 @@
+// ボス戦テストメニュー(社長依頼2026-07-31)。タイトル画面の入口から開く**開発チャネル用**オーバーレイ。
+// 実ステージへ既存の強制出現パラメータ付きで出撃する(仕組みは utils/bossTest.ts のコメント参照)。
+// 出撃=ページ再読込(location遷移)なのでReact状態はこの画面を開いている間だけ=プレイ中コストゼロ。
+// ※アプリ配布(最終形)ではこの入口ごと非表示にする想定(TitleScreen側の1フラグで消せる)。
+import React, { useState } from 'react';
+import { BOSS_TEST_ENTRIES, bossTestQuery, type BossTestEntry } from '../utils/bossTest';
+import { enemyDeathLabel } from '../store/gameStore';
+import { getStage } from '../data/campaign';
+
+const CLASSES = [
+  { key: 'warrior', label: 'ウォリアー' },
+  { key: 'mage', label: 'メイジ' },
+  { key: 'rogue', label: 'ローグ' },
+  { key: 'necromancer', label: 'ネクロ' },
+] as const;
+
+// 出撃方式の注記(何がどう出るか)。パラメータの実挙動(useGameLoop)に合わせた説明文。
+const PARAM_NOTE: Record<BossTestEntry['param'], string> = {
+  bossnow: '近くへ即出現',
+  idolnow: '強制召喚',
+  gateboss: '拘束サークル+即発動',
+  castlenow: '城へ即出現(移動あり)',
+};
+
+interface Props { onClose: () => void }
+
+const BossTestMenu: React.FC<Props> = ({ onClose }) => {
+  const [cls, setCls] = useState<string>('warrior');
+  const [ghost, setGhost] = useState(true);      // 既定ON: 現在の主用途=守護霊のボス戦実機確認
+  const [ghostlog, setGhostlog] = useState(false);
+
+  const sortie = (e: BossTestEntry): void => {
+    window.location.search = bossTestQuery(e, { characterClass: cls, ghost, ghostlog });
+  };
+
+  return (
+    <div
+      className="absolute inset-0 z-40 flex items-center justify-center bg-black/75 px-4 py-6"
+      onClick={ev => ev.stopPropagation()}
+    >
+      <div className="flex max-h-full w-full max-w-md flex-col overflow-hidden border border-purple-400/40 bg-[#0b0a12]/95">
+        <div className="flex items-center justify-between px-4 pt-3 pb-2">
+          <h2 className="text-[13px] font-bold tracking-[0.18em] text-white" style={{ borderBottom: '1px solid rgba(168,85,247,0.6)' }}>
+            ボス戦テスト
+          </h2>
+          <button className="px-2 py-1 text-[12px] text-white/60" onClick={onClose}>閉じる</button>
+        </div>
+        <div className="px-4 pb-2 text-[10px] leading-relaxed text-white/45">
+          実ステージへ直行してボスが即出現します(環境・サークル・雑魚は本物)。選ぶと再読込して出撃。
+        </div>
+        {/* クラスとトグル */}
+        <div className="flex flex-wrap items-center gap-1 px-4 pb-2">
+          {CLASSES.map(c => (
+            <button
+              key={c.key}
+              className={`px-2 py-1 text-[11px] ${cls === c.key ? 'bg-purple-500/40 text-white' : 'bg-white/5 text-white/55'}`}
+              onClick={() => setCls(c.key)}
+            >{c.label}</button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3 px-4 pb-2 text-[11px] text-white/70">
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={ghost} onChange={ev => setGhost(ev.target.checked)} />
+            守護霊を召喚
+          </label>
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={ghostlog} onChange={ev => setGhostlog(ev.target.checked)} />
+            被弾ログ(console)
+          </label>
+        </div>
+        {/* ボス一覧 */}
+        <div className="overflow-y-auto overscroll-contain touch-pan-y px-4 pb-4">
+          {BOSS_TEST_ENTRIES.map(e => {
+            const stage = getStage(e.stageId);
+            return (
+              <button
+                key={`${e.boss}-${e.stageId}-${e.param}`}
+                className="mt-1 flex w-full items-baseline justify-between gap-2 bg-white/5 px-3 py-2 text-left hover:bg-purple-500/25"
+                onClick={() => sortie(e)}
+              >
+                <span className="text-[12px] font-bold text-white/90">{enemyDeathLabel(e.boss)}</span>
+                <span className="shrink-0 text-[10px] text-white/45">
+                  {stage?.locationTitle ?? e.stageId}・{PARAM_NOTE[e.param]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default BossTestMenu;

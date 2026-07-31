@@ -8,6 +8,7 @@ import { loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data
 import { bossIconSrc } from '../utils/bossIcon';
 import { getLoadProgress, subscribeLoadProgress } from '../utils/loadProgress';
 import { normalizeNamedNamesInText } from '../utils/namedEnemy';
+import BossTestMenu from './BossTestMenu'; // ボス戦テストメニュー(社長依頼2026-07-31・開発チャネル用)
 
 // 前回セッション末尾の状態(クラッシュ診断・社長報告のスマホ真っ白現象の手がかり用)。タイトル表示のたび
 // 読み直しても軽い(localStorageの読み取り1回)ので、レンダー内で直接読む(state化するほどでもない)。
@@ -209,8 +210,13 @@ const ChronicleTimeline: React.FC = () => {
   );
 };
 
+// ボス戦テストメニューの入口(社長依頼2026-07-31)。開発チャネル(GitHub Pages)用。
+// アプリ配布(最終形)ではここを false にして入口ごと消す。
+const SHOW_BOSS_TEST = true;
+
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForAssets, onDone }) => {
   const [phase, setPhase] = useState<'notice' | 'title' | 'blackout' | 'loading'>('notice');
+  const [bossTestOpen, setBossTestOpen] = useState(false); // ボス戦テストメニュー(タイトル時のみ)
   const doneRef = useRef(false);
   // ローディング%表示(社長指示v0.25.1776)。購読は loading フェーズ中だけ(他フェーズを
   // バックグラウンド先読みの進捗で再描画しない)。更新はファイル完了ごと=毎フレームではない。
@@ -240,7 +246,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
 
   // STARTタップ → 先に本物ローディング(完了待ち) → 完了したら暗転
   const tapStart = () => {
-    if (phase !== 'title') return;
+    if (phase !== 'title' || bossTestOpen) return; // テストメニュー表示中は全画面タップを無効化
     playSfx('title-start');
     setPhase('loading');
     const startedAt = performance.now();
@@ -283,6 +289,19 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           v{__APP_VERSION__}
         </span>
       )}
+
+      {/* ボス戦テストの入口(開発チャネル用・左下に控えめ)。全画面タップ(tapStart)に食われないよう
+          stopPropagation。メニュー本体は BossTestMenu(出撃=ページ再読込なので閉じれば痕跡なし)。 */}
+      {SHOW_BOSS_TEST && phase === 'title' && !bossTestOpen && (
+        <button
+          className="absolute bottom-3 left-3 px-2 py-1 text-[10px] tracking-wider text-purple-200/50"
+          style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}
+          onClick={ev => { ev.stopPropagation(); playSfx('ui-select'); setBossTestOpen(true); }}
+        >
+          ボス戦テスト
+        </button>
+      )}
+      {bossTestOpen && phase === 'title' && <BossTestMenu onClose={() => setBossTestOpen(false)} />}
 
       {/* 歴史年表(縦の時系列・各個人の軌跡)。ローディング中だけ全画面表示(社長指示v0.25.1653)。
           z-[35]=暗幕(z-30)より前面で白が沈まない / スピナー(z-40)は年表の更に前面に残す。 */}
