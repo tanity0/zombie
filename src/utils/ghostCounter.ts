@@ -21,7 +21,9 @@ import {
   useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage,
   COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   COUNTER_HITSTOP_MS, COUNTER_ZOOM_MAG, GHOST_ZOOM_TRIAL_ENABLED, LATE_COUNTER_ENABLED, COUNTER_WINDOW,
+  enemyMeleeDist,
 } from '../store/gameStore';
+import { GHOST_MELEE_RANGE } from './ghostDriver'; // 成立の間合い=意思決定側と同じ定数(二重定義しない)
 
 // (useGameLoop v0.25.2479 から移設: angelBossTick/combatTickのゴースト分岐も同じゲートを見るため)
 // 守護霊の戦闘フィードバック(社長指示「カウンターとかキルとかは守護霊にもちゃんと入れて。全部だよ全部」):
@@ -69,9 +71,21 @@ export const setGhostCounterClaim = (claim: GhostCounterClaim): void => { pendin
  */
 export const peekGhostCounterClaim = (nowMs: number): GhostCounterClaim | null => {
   if (pendingClaim === null || nowMs - pendingClaim.atMs > GHOST_COUNTER_CLAIM_TTL_MS) return null;
-  if (!LATE_COUNTER_ENABLED) {
-    const ghost = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
-    if (ghost && ghost.lastHit > pendingClaim.atMs) return null; // 請求後に被弾=弾き失敗
+  const st = useGameStore.getState();
+  const ghost = st.summons.find(s => s.kind === 'ghost-ally');
+  if (!LATE_COUNTER_ENABLED && ghost && ghost.lastHit > pendingClaim.atMs) return null; // 請求後に被弾=弾き失敗
+  // v0.25.2594(社長報告「守護霊がありえない位置でカウンター取ってる」): **成立の瞬間にボスの間合いに
+  // 居ること**を要求する(プレイヤーは `overlap && counterActive`=解決の瞬間に体が重なっている事が必須)。
+  // v0.25.2588で受付を150→400ms(=プレイヤーと同じ窓長)へ広げた際、位置条件を写し忘れていたため、
+  // スイング後に離れても成立していた=遠くでカウンターが出る絵になっていた。距離はプレイヤーと同じ
+  // 縁基準(enemyMeleeDist)で、近接射程(GHOST_MELEE_RANGE)以内であること。ボスが見つからない
+  // (撃破直後等)場合は従来どおり通す=判定を厳しくするのは「離れている」と確認できた時だけ。
+  if (ghost) {
+    const boss = st.enemies.find(e => e.id === pendingClaim!.bossId);
+    if (boss) {
+      const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
+      if (enemyMeleeDist(gcx, gcy, boss) > GHOST_MELEE_RANGE) return null;
+    }
   }
   return pendingClaim;
 };
