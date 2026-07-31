@@ -1631,8 +1631,18 @@ const HIT_SHAKE_PX = 4;
 // プレイヤーが裏ボスの当たり判定(帯)より奥=裏に回り込んだとき、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
 const BOSS_BEHIND_ALPHA = 0.5;
 // #2(社長指示): 裏に回って 0.5 まで薄くなった後、さらに奥(=手前へ遠ざかる)へ離れたら、
-// この距離(behindDist=70→FAR)で 0.5→0(完全透明)へ続ける。#1(0.5まで)の数値・カーブは不変。
+// この距離(behindDist=70→FAR)でさらに薄くする。#1(0.5まで)の数値・カーブは不変。
 const BOSS_BEHIND_FAR_PX = 220;
+// v0.25.2622(社長裁定「0.15で」): #2の行き先を **0(完全透明)→0.15** へ。
+//
+// なぜ変えたか: 0まで落ちると**当たり判定はあるのに1ピクセルも見えない**状態になり、
+// 社長報告「当たり判定だけあって透明だから何もできずにやられる」が巨体4体
+// (mimir/jormungand/skadi/thor)で成立していた。近接圏(#3)の外に居れば誰でも踏める。
+// また CLAUDE.md に「BOSS_BEHIND_ALPHA=0.5 は**裏に回り込んでも薄く見える**ための floor=意図的」と
+// 明記されており、**0まで落とす#2はその意図と矛盾していた**(社長指示どうしの衝突)。
+// 0.15 は「自機を隠さない」という#2の狙いを保ったまま、**輪郭は残る**ようにする折衷値(社長裁定)。
+// ※小さい絵のボス(idol/天使)はそもそも #1〜#2 を通らない(v0.25.2615・bossBehindFadeApplies)。
+const BOSS_BEHIND_FAR_ALPHA = 0.15;
 // #3(社長指示v0.25.1599): 裏に回っても「近接攻撃距離くらい」までは完全透明にせず、半透明
 // (=BOSS_BEHIND_ALPHA)を下限に保つ。#2で0へ薄くなる区間でも、この距離以内なら0.5で止める。
 // 距離アンカーは近接攻撃距離(gameStore の MELEE_RADIUS=74)に合わせた視覚用の複製値(描画は
@@ -9331,8 +9341,9 @@ export class PixiScene {
         let a = 1 - t * t * (1 - BOSS_BEHIND_ALPHA);
         // #2(追加): さらに奥(70px超=手前へ遠ざかる)へ離れたら 0.5→0(完全透明)へ続ける。
         if (behindDist > 70) {
+          // v0.25.2622(社長裁定「0.15で」): 0ではなく BOSS_BEHIND_FAR_ALPHA まで。
           const t2 = Math.min(1, (behindDist - 70) / (BOSS_BEHIND_FAR_PX - 70));
-          a = BOSS_BEHIND_ALPHA * (1 - t2);
+          a = BOSS_BEHIND_ALPHA + (BOSS_BEHIND_FAR_ALPHA - BOSS_BEHIND_ALPHA) * t2;
         }
         behindTarget = a;
       }
