@@ -5,7 +5,9 @@ import {
   bandForDistance, type RangeBand,
   phaseForHealth, phaseJustChanged,
   pickEligibleMove, pickComboFollowup,
+  BOSS_RANGE, bossZoneForDistance, pickWeightedMove, type BossZone,
 } from './bossScript';
+import { GIANT_RANGE, giantZoneForDistance } from './giantScript';
 
 describe('shared constants', () => {
   it('BOSS_RECOVER_TINT matches the existing giant/thor blue-white value (§6.26-4(d))', () => {
@@ -127,5 +129,71 @@ describe('pickComboFollowup (確率つき追撃の一般形)', () => {
     expect(pickComboFollowup('sweep', table, 0.4, () => true, () => 0.39)).toBe('stomp');
     expect(pickComboFollowup('sweep', table, 0.4, () => true, () => 0.41)).toBeNull();
     expect(pickComboFollowup('dash', table, 0.4, () => true, () => 0.39)).toBe('stomp');
+  });
+});
+
+
+// ==== v0.25.2609(ボス動き横断監査・バッチ1): 全ボス共通の距離ゾーン ==========================
+describe('BOSS_RANGE — 城ボスのGIANT_RANGEと同値であること(複製のズレ検知)', () => {
+  it('境界値が一致する', () => {
+    expect(BOSS_RANGE.MELEE_MAX).toBe(GIANT_RANGE.MELEE_MAX);
+    expect(BOSS_RANGE.NEAR_MAX).toBe(GIANT_RANGE.NEAR_MAX);
+    expect(BOSS_RANGE.MID_MAX).toBe(GIANT_RANGE.MID_MAX);
+  });
+  it('ゾーン判定も城ボスと完全に一致する(境界±1を含めて全走査)', () => {
+    const probes = [0, 1, 119, 120, 121, 299, 300, 301, 599, 600, 601, 1000, 5000];
+    for (const d of probes) {
+      expect(bossZoneForDistance(d), `distance=${d}`).toBe(giantZoneForDistance(d));
+    }
+  });
+  it('遠ゾーンに上限が無い(引き撃ちで安全な距離を作らせない・BOSS_RANGE_REWORK.mdの帰結)', () => {
+    expect(bossZoneForDistance(999999)).toBe('far');
+  });
+  it('境界は「上限を含む(<=)」の既存作法', () => {
+    const expected: [number, BossZone][] = [
+      [120, 'melee'], [121, 'near'], [300, 'near'], [301, 'mid'], [600, 'mid'], [601, 'far'],
+    ];
+    for (const [d, zone] of expected) expect(bossZoneForDistance(d), `distance=${d}`).toBe(zone);
+  });
+});
+
+describe('pickWeightedMove — 重み比例ルーレット', () => {
+  type M = 'a' | 'b' | 'c';
+  const moves: M[] = ['a', 'b', 'c'];
+  const allReady: Record<M, boolean> = { a: true, b: true, c: true };
+  const w = (m: M): number => ({ a: 10, b: 30, c: 60 }[m]);
+
+  it('累積境界どおりに選ぶ(rand=0→先頭)', () => {
+    expect(pickWeightedMove(moves, w, allReady, () => 0)).toBe('a');
+    expect(pickWeightedMove(moves, w, allReady, () => 0.05)).toBe('a');   // 0..10%
+    expect(pickWeightedMove(moves, w, allReady, () => 0.2)).toBe('b');    // 10..40%
+    expect(pickWeightedMove(moves, w, allReady, () => 0.5)).toBe('c');    // 40..100%
+  });
+  it('rand=1.0ちょうどの端は最後の候補へ落ちる(nullにしない安全網)', () => {
+    expect(pickWeightedMove(moves, w, allReady, () => 1)).toBe('c');
+  });
+  it('重み0の技は選ばれない', () => {
+    const zeroB = (m: M): number => (m === 'b' ? 0 : w(m));
+    for (let i = 0; i < 200; i++) expect(pickWeightedMove(moves, zeroB, allReady)).not.toBe('b');
+  });
+  it('readyでない技は選ばれない', () => {
+    const ready: Record<M, boolean> = { a: true, b: false, c: true };
+    for (let i = 0; i < 200; i++) expect(pickWeightedMove(moves, w, ready)).not.toBe('b');
+  });
+  it('候補が全滅したらnull', () => {
+    const none: Record<M, boolean> = { a: false, b: false, c: false };
+    expect(pickWeightedMove(moves, w, none)).toBeNull();
+    expect(pickWeightedMove(moves, () => 0, allReady)).toBeNull();
+  });
+  it('分布がおおよそ重みどおり(10/30/60・許容±4pt)', () => {
+    const N = 20000;
+    const c: Record<string, number> = { a: 0, b: 0, c: 0 };
+    for (let i = 0; i < N; i++) {
+      const m = pickWeightedMove(moves, w, allReady);
+      if (m) c[m] += 1;
+    }
+    expect(Math.abs((c.a / N) * 100 - 10)).toBeLessThan(4);
+    expect(Math.abs((c.b / N) * 100 - 30)).toBeLessThan(4);
+    expect(Math.abs((c.c / N) * 100 - 60)).toBeLessThan(4);
   });
 });

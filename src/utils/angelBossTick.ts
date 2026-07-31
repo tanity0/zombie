@@ -40,6 +40,12 @@ import {
   pickSpikeGapMask, isSpikeGapSector,
 } from './acrasielScript';
 import { resolveBossHateAim, type ResolvedHateAim } from './bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
+// v0.25.2609(ボス動き横断監査・バッチ2): 硬直=パニッシュ窓の床。本作の「1発」=カウンター1サイクル
+// (COUNTER_WINDOW 400ms + COUNTER_COOLDOWN 420ms = 820ms)なので、硬直がそれ未満だと
+// 「硬直はあるがプレイヤーは1発も入れられない」=休符が存在しないのと同じ。監査で天使の硬直の
+// 大半(300〜750ms)が該当した。**定数の宣言側を withRecoverFloor で包む**ことで、元の数字を
+// 履歴として残したまま床を1箇所で保証する(呼び出し箇所は一切変えない)。
+import { withRecoverFloor } from './bossTelegraph';
 
 // --- 音の注入(ヘッドレスはNOOP) -------------------------------------------
 export interface AngelSfx {
@@ -91,12 +97,12 @@ const MIGUEL_SLOW_WALK_MAX_GAP_MS = 9000;
 const MIGUEL_VOLLEY_CHANCE_LEGACY = 0.6; // 旧(?miguelscript=0)専用。新は miguelScript.ts の MIGUEL_VOLLEY_CHANCE。
 // §6.28-4(バッチM53): 新規windup/recover+踏み込み(dash)【新規】。
 const MIGUEL_VOLLEY_WINDUP_MS = 450;
-const MIGUEL_VOLLEY_RECOVER_MS = 300;
-const MIGUEL_TATE_RECOVER_MS = 800;
+const MIGUEL_VOLLEY_RECOVER_MS = withRecoverFloor(300);
+const MIGUEL_TATE_RECOVER_MS = withRecoverFloor(800);
 const MIGUEL_DASH_WINDUP_MS = 700;
 const MIGUEL_DASH_MOVE_MS = 400;         // ★未決事項(§6.28-14に追記): 移動そのものの所要時間は設計書に無い叩き台。
 const MIGUEL_DASH_STRIKE_MS = MIGUEL_HARAI_ACTIVE_MS; // 「MIGUEL_HARAI_ACTIVE_MS相当の斬り抜け」(設計書指定どおり)
-const MIGUEL_DASH_RECOVER_MS = 800;
+const MIGUEL_DASH_RECOVER_MS = withRecoverFloor(800);
 const MIGUEL_DASH_CD_MS = 6000;
 // ジブリル(社長指示v0.25.1663)
 const JIBRIL_RETREAT_SPEED = 55;
@@ -117,15 +123,21 @@ const JIBRIL_FIRE_DAMAGE = 30;
 const JIBRIL_FIRE_RADIUS = 22;
 // §6.28-6(バッチM55): 新規windup/recover+聖別【新規・Phase2】+転移の溜め【新設】。
 const JIBRIL_VOLLEY_WINDUP_MS = 450;
-const JIBRIL_VOLLEY_RECOVER_MS = 400;
+const JIBRIL_VOLLEY_RECOVER_MS = withRecoverFloor(400);
 const JIBRIL_LANTERN_WINDUP_MS = 700;
-const JIBRIL_LANTERN_RECOVER_MS = 750;
+const JIBRIL_LANTERN_RECOVER_MS = withRecoverFloor(750);
 const JIBRIL_CONSECRATE_WINDUP_MS = 700;
-const JIBRIL_CONSECRATE_RECOVER_MS = 750;
+const JIBRIL_CONSECRATE_RECOVER_MS = withRecoverFloor(750);
 const JIBRIL_CONSECRATE_CD_MS = 8000;
 const JIBRIL_CONSECRATE_RING_RADIUS = 160; // §6.28-6: 自分を中心とした半径160pxのリング
 const JIBRIL_CONSECRATE_FIRE_COUNT = 6;    // 6個・隙間1箇所(=7分割の1つを空ける)
 const JIBRIL_WARP_WINDUP_MS = 450;
+// v0.25.2609(バッチ2): **硬直の床(withRecoverFloor)を意図的に適用しない**唯一の硬直。
+// 理由: ジブリルの転移はダメージ判定を持たない**純粋な移動**であり、'warp-recover' は
+// プレイヤーのカウンター分岐が存在しない州(takeGhostAngelCounterも明示除外している)。
+// 床の目的は「パニッシュ窓を作ること」なので、カウンターできない州を伸ばしても
+// **ただの待ち時間が増えるだけ**(しかもバッチ0で下げたワープ滞在率を押し戻してしまう)。
+// 対になるアクラシエルの転移は着地に半径92pxのダメージ判定を持つ=技なので床を適用済み。
 const JIBRIL_WARP_RECOVER_MS = 400;
 // ラフィ(社長指示v0.25.1665)
 const RAFI_CHASE_SPEED = 62;
@@ -146,10 +158,10 @@ const SKADI_BLADE_RING_MAX = 180;
 const SKADI_BLADE_DELAY_MS = 1000;
 // §6.28-8(バッチM57): 新規windup/recover+薙ぎ【新規・Phase2】+Phase2の横ステップ短縮。
 const RAFI_BONE_WINDUP_MS = 450;
-const RAFI_BONE_RECOVER_MS = 700;
+const RAFI_BONE_RECOVER_MS = withRecoverFloor(700);
 const RAFI_SWEEP_WINDUP_MS = 700;
 const RAFI_SWEEP_ACTIVE_MS = 220;         // =THOR_HARAI_ACTIVE_MS相当(§6.26-9 #3の流用作法を継承)
-const RAFI_SWEEP_RECOVER_MS = 700;
+const RAFI_SWEEP_RECOVER_MS = withRecoverFloor(700);
 const RAFI_SWEEP_CD_MS = 7000;
 const RAFI_SWEEP_RANGE_PX = 310;          // =THOR_HARAI_RANGE(流用)
 const RAFI_SWEEP_HALF_WIDTH_PX = 40;      // =THOR_HARAI_HALF_WIDTH(流用)
@@ -159,16 +171,16 @@ const RAFI_STEP_MAX_GAP_MS_P2 = 2800;
 // --- ウリ(§6.28-17・バッチM61・新規) ---------------------------------------------------------
 const URI_SWEEP_WINDUP_MS = 1100;
 const URI_SWEEP_ACTIVE_MS = 260;
-const URI_SWEEP_RECOVER_MS = 580;
+const URI_SWEEP_RECOVER_MS = withRecoverFloor(580);
 const URI_DOWNSLASH_WINDUP_MS = 1000;
 const URI_DOWNSLASH_ACTIVE_MS = 200;
-const URI_DOWNSLASH_RECOVER_MS = 900;
+const URI_DOWNSLASH_RECOVER_MS = withRecoverFloor(900);
 const URI_THRUST_WINDUP_MS = 900;
 const URI_THRUST_MOVE_MS = 400;           // ★未決事項: 踏み込み突きの移動所要時間は設計書に無い叩き台(ミゲル踏み込みと同値)。
 const URI_THRUST_STRIKE_MS = 220;
-const URI_THRUST_RECOVER_MS = 580;
+const URI_THRUST_RECOVER_MS = withRecoverFloor(580);
 const URI_BOLT_WINDUP_MS = 450;
-const URI_BOLT_RECOVER_MS = 500;
+const URI_BOLT_RECOVER_MS = withRecoverFloor(500);
 const URI_SWEEP_RANGE_PX = 310;           // =THOR_HARAI_RANGE(流用・§6.28-17「新しい描画方式を作らない」の精神)
 const URI_SWEEP_HALF_WIDTH_PX = 40;       // =THOR_HARAI_HALF_WIDTH(流用)
 const URI_DOWNSLASH_RANGE_PX = 310;       // ★未決事項: 「前方・細長」の実寸は設計書に無い叩き台(THOR_HARAI_RANGE流用)。
@@ -180,15 +192,15 @@ const URI_THRUST_HALF_WIDTH_PX = MIGUEL_HARAI_HALF_WIDTH;
 const SURIEL_RINGSHOT_MOVE_MS = 900;
 const SURIEL_RINGSHOT_BEAM_WINDUP_MS = 700;
 const SURIEL_RINGSHOT_ACTIVE_MS = 220;    // ★未決事項: 「実行」の秒数は設計書に無い(MIGUEL_HARAI_ACTIVE_MS流用)。
-const SURIEL_RINGSHOT_RECOVER_MS = 530;
+const SURIEL_RINGSHOT_RECOVER_MS = withRecoverFloor(530);
 const SURIEL_RINGSPIN_WINDUP_MS = 800;
 const SURIEL_RINGSPIN_ACTIVE_MS = 600;
-const SURIEL_RINGSPIN_RECOVER_MS = 700;
+const SURIEL_RINGSPIN_RECOVER_MS = withRecoverFloor(700);
 const SURIEL_SWEEP_WINDUP_MS = 800;
 const SURIEL_SWEEP_ACTIVE_MS = 220;
-const SURIEL_SWEEP_RECOVER_MS = 650;
+const SURIEL_SWEEP_RECOVER_MS = withRecoverFloor(650);
 const SURIEL_GAZE_WINDUP_MS = 450;
-const SURIEL_GAZE_RECOVER_MS = 500;
+const SURIEL_GAZE_RECOVER_MS = withRecoverFloor(500);
 const SURIEL_SWEEP_RANGE_PX = 310;        // =THOR_HARAI_RANGE(流用)
 const SURIEL_SWEEP_HALF_WIDTH_PX = 40;    // =THOR_HARAI_HALF_WIDTH(流用)
 // v0.25.2579: GIANT_STOMP_RADIUS流用をやめ独立値92で固定+export(描画pixiSceneが同じ値で赤円を描く)。
@@ -209,25 +221,30 @@ void SURIEL_RINGSPIN_TRIGGER_RANGE; // (帯の判定自体はsurielMoveEligible�
 // --- アクラシエル(§6.28-19・バッチM63・新規) ----------------------------------------------------
 const ACRASIEL_SPIKE_WINDUP_MS = 1100;
 const ACRASIEL_SPIKE_ACTIVE_MS = 240;
-const ACRASIEL_SPIKE_RECOVER_MS = 500;
+const ACRASIEL_SPIKE_RECOVER_MS = withRecoverFloor(500);
 const ACRASIEL_SPIKE_RANGE_PX = 310;      // =THOR_HARAI_RANGE(流用)
 const ACRASIEL_SPIKE_HALF_WIDTH_PX = 40;  // =THOR_HARAI_HALF_WIDTH(流用)
 const ACRASIEL_SPEAR_WINDUP_MS = 700;
-const ACRASIEL_SPEAR_RECOVER_MS = 500;
+const ACRASIEL_SPEAR_RECOVER_MS = withRecoverFloor(500);
 const ACRASIEL_SPEAR_COUNT = 6;
 const ACRASIEL_SPEAR_RANGE_PX = 310;      // 着地距離(★未決事項: 設計書に無い・THOR_HARAI_RANGE流用)
 export const ACRASIEL_SPEAR_DETONATE_MS = 2000;
 export const ACRASIEL_SPEAR_RADIUS = 92;  // =GRENADE_BLAST_RADIUS(流用・★未決事項=設計書に無い半径)
 const ACRASIEL_WARP_WINDUP_MS = 800;
-const ACRASIEL_WARP_TELEGRAPH_MS = 800;
-const ACRASIEL_WARP_RECOVER_MS = 600;
+// v0.25.2609(バッチ2・換算式②違反の是正): 旧800ms。転移先の赤円(半径92px)が見えてから実行までの
+// 猶予がこの値そのものなのに、800msでプレイヤーが歩ける距離は 800/1000×104.4 = **83.5px < 92px**。
+// ⇒ **見てから歩いても構造的に円から出られない**(=避けようが無い)状態だった。
+// minWindupMs(92)=881ms が必要下限。反応の余裕を見て 1000ms(=104.4px)にする。
+// 判定半径(ACRASIEL_WARP_IMPACT_RADIUS)と赤円の描画は同じ定数を読むので図形と判定は一致したまま。
+const ACRASIEL_WARP_TELEGRAPH_MS = 1000;
+const ACRASIEL_WARP_RECOVER_MS = withRecoverFloor(600);
 const ACRASIEL_WARP_IMPACT_RADIUS = 92;   // ★未決事項: 「衝撃」の半径は設計書に無い(GRENADE_BLAST_RADIUS流用)。
 const ACRASIEL_BURST_WINDUP_MS = 1200;
 const ACRASIEL_BURST_ACTIVE_MS = 300;
-const ACRASIEL_BURST_RECOVER_MS = 900;
+const ACRASIEL_BURST_RECOVER_MS = withRecoverFloor(900);
 const ACRASIEL_BURST_RADIUS = 140;        // ★未決事項: 「大円」の半径は設計書に無い叩き台。
 const ACRASIEL_GAZE_WINDUP_MS = 450;
-const ACRASIEL_GAZE_RECOVER_MS = 500;
+const ACRASIEL_GAZE_RECOVER_MS = withRecoverFloor(500);
 
 // --- ラン単位の状態(useGameLoopの各refの移設。両呼び出し側がラン開始時に作り直す) ---
 export interface AngelBossState {
@@ -776,8 +793,23 @@ export const runJibrilTick = (
   patch.bossPhaseFlashUntil = phaseJustChanged(jibril.bossPhase, phase) ? newGameTime + ANGEL_PHASE_FLASH_MS : jibril.bossPhaseFlashUntil;
 
   // §6.28-6 #5追補: アリーナ縁に3秒張り付いたら強制転移(縁ハメ潰し)。
+  //
+  // ==== v0.25.2609(ボス動き横断監査・バッチ0) 永久ワープの是正 ================================
+  // 実測(ヘッドレス180秒×3ペルソナ): **ワープ58回に対し攻撃はわずか1回**。ワープ状態の滞在28.0%。
+  // 原因は「縁ハメ潰しの安全弁を、ジブリル自身の中立移動が踏み続けていた」こと:
+  //   ① 中立(chase)の retreatMove() は**常にプレイヤーから離れる**うえ、位置は maxR へ厳密に
+  //      クランプされる ⇒ 開幕数秒で縁へ到達したあと**構造的に二度と縁から離れられない**。
+  //   ② よって edgeStuckMs は延々と積み上がり、3秒ごとに強制転移が発火。
+  //   ③ しかも強制転移は「今何をしていても」割り込むため、**溜め中/連射中の技が毎回キャンセル**され、
+  //      次の行動ゲート(2200〜4200ms=平均3200ms)は転移周期(3100ms)より長いので、
+  //      技を選ぶ前に次の転移が来る。=「ほぼワープしかしない・追いかけ回すだけ」の正体。
+  // 修理(社長承認の (a)+(b)。(c)=中立移動そのものの作り直しは横展開バッチへ):
+  //   (a) 縁の滞在は**中立(chase)に居る間だけ**数える。技の実行中は数えない
+  //       (=技を出している間は「ハメられている」状態ではない)。
+  //   (b) 強制転移は**中立(chase)からのみ**発火する。進行中の技は必ず完走させる。
+  // これで安全弁は本来の役目(プレイヤーが縁へ押し込んで殴り続ける状況の打破)だけに戻る。
   const distFromHome = Math.hypot(jcx - jHomeX, jcy - jHomeY);
-  const atEdge = distFromHome >= maxR - 2;
+  const atEdge = st === 'chase' && distFromHome >= maxR - 2; // (a)
   if (atEdge) { if (jr.edgeSince === undefined) jr.edgeSince = newGameTime; } else { jr.edgeSince = undefined; }
   const edgeStuckMs = atEdge && jr.edgeSince !== undefined ? newGameTime - jr.edgeSince : 0;
   const warpTriggered = (jr.hits - jr.lastWarpHits >= JIBRIL_HITS_WARP) || edgeStuckMs >= JIBRIL_EDGE_STICK_MS;
@@ -787,8 +819,9 @@ export const runJibrilTick = (
   if (jibrilFull) {
     patch.bossState = 'chase';
     patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
-  } else if (warpTriggered && st !== 'warp-windup' && st !== 'warp-recover') {
-    // 既存どおり「今何をしていても」割り込む安全弁(旧: 即時転移)。新: 450ms静止の予告を挟む。
+  } else if (warpTriggered && st === 'chase') {
+    // (b) 中立からのみ発火(旧: st !== 'warp-*' =実質どの状態からでも割り込んでいた)。
+    // 被弾10回による転移(JIBRIL_HITS_WARP)も同じ扱い=技を完走してから転移する。
     sfx.alert();
     patch.bossState = 'warp-windup';
     patch.bossStateUntil = newGameTime + JIBRIL_WARP_WINDUP_MS;

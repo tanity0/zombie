@@ -1,5 +1,119 @@
 # Development Log
 
+## v0.25.2609 — ボス動き横断監査の修理3本(ジブリル永久ワープ/死に技の解放/硬直の床)【2026-07-31 22:04 JST】
+
+### 社長指示
+> ボスの動きがかなりおかしいやつが多い。たとえば**アイドルとか微動だにしない**し、**ワープするやつとか
+> ほぼワープしてて追いかけまわすだけになっててクソゲー化してる**し、ほかにも**動きが単調すぎて
+> ボスの役割果たしてないやつ**とかいる。
+>
+> (監査レポートを受けて)**では一旦任せた!** → 修理3本(バッチ0/1/2)を実装。作り込み(idolパイロット)は次回。
+
+### 監査で分かったこと(実測・レポート全文は設計チャット)
+ヘッドレス実走(天使6体×3ペルソナ×180秒=194,400tick)+技選択純関数の掃引(各20,000回)で計測。
+
+| ボス | 症状(実測) |
+|---|---|
+| jibril | **180秒でワープ58回・攻撃1回**。ワープ状態の滞在28.0% |
+| uri | **4技のうち bolt が100%**。sweep/downslash/thrust は0回 |
+| rafi | **Phase1は bone が100%**。jump は0回 |
+| mimir / jormungand | 密着帯で **bite / coil の1本だけ**(CD6〜7秒)。CD中は候補ゼロ=無行動 |
+| skadi | 密着帯で **候補なし50%**。Phase3は **cage 100%** |
+| acrasiel | 転移衝撃の予告800msに対し半径92px=**歩いて逃げ切れない**(換算式②違反) |
+| 天使/裏ボス全般 | 硬直が300〜750ms=プレイヤーの1攻撃サイクル(820ms)より短い=**休符が存在しない** |
+
+### 実装(3バッチ)
+**バッチ0: ジブリルの永久ワープ(社長承認の(a)+(b))** — `angelBossTick.ts`
+原因は「縁ハメ潰しの安全弁を、ジブリル自身の中立移動が踏み続けていた」こと。中立(`retreatMove`)は
+常にプレイヤーから離れ、位置は `maxR` へ厳密クランプされるので**構造的に二度と縁から離れられない**。
+- (a) 縁の滞在は **`bossState === 'chase'` の間だけ**数える(技の実行中は数えない)
+- (b) 強制転移は **中立からのみ**発火(旧: `st !== 'warp-*'` =実質どの状態からでも割り込んでいた)
+- (c)中立移動そのものの作り直しは横展開バッチ(バッチ4)へ。今回は入れない。
+
+**バッチ1: 死に技の解放** — `mimirScript.ts` / `jormungandScript.ts` / `skadiScript.ts` /
+`uriScript.ts` / `rafiScript.ts` / `bossScript.ts`
+城ボスで社長裁定済み(BOSS_RANGE_REWORK.md v0.25.2455)の「距離ハードゲート廃止→ゾーン×重み表」を
+5体へ展開。共通土台として `bossScript.ts` に **`BOSS_RANGE`(120/300/600・遠は上限なし)**・
+`bossZoneForDistance`・`pickWeightedMove` を追加(値は `GIANT_RANGE` の複製。同値であることは
+`bossScript.test.ts` が両方 import して機械検証)。
+- 各ボスに `<BOSS>_MOVE_WEIGHTS` 表(1箇所)+ `<boss>MoveWeight()` を新設。`<boss>MoveEligible` は
+  「そのゾーンの重み>0」へ読み替え=**連携(combo)の「まだその間合いに居るなら」判定が自動で追随**。
+- 確率ロールの畳み込み: mimirの `mimirLaserChance`(0.34→0.50)は **laser重み×1.5** へ、
+  skadiの `SKADI_ATTACK_CHANCE`(0.5)と `cage` の無条件最優先は**重みの配分**へ意味を保存して移設。
+- uriの `thrust` は「620px超」=**ゲート2アリーナの最大分離565pxを超える到達不能条件**だったので、
+  追いつき技(近10/中25/遠60)へ役割変更。
+
+**バッチ2: 休符(硬直)の床 + 予告秒数の下限** — `bossTelegraph.ts`(新規)
+プレイヤー側の実測値からボスの秒数を機械的に導く純関数レイヤを新設。
+- `PLAYER_WALK_PX_PER_SEC = 104.4`(= PLAYER_BASE_SPEED 87 × GAME_SPEED 1.2)
+- **換算式② `minWindupMs(radiusPx) = radiusPx / 104.4 × 1000`** … 自己中心AoEの予告下限
+- **換算式③ `BOSS_RECOVER_FLOOR_MS = 900`**(= カウンター1サイクル 400+420=820ms を上回る最小値)
+  と `withRecoverFloor()`。**定数の宣言側を包む**ことで元の数字を履歴として残したまま床を保証。
+- 天使21本 + 裏ボス/トール/idol 21本の硬直へ適用。**城ボス(giantbat/グレン)は対象外**
+  (既に900〜1080msで床を満たし、Phase3の500ms床は社長裁定§6.28-21★2で意図的に短いもの)。
+- **`ACRASIEL_WARP_TELEGRAPH_MS` 800→1000ms**(必要値881msを満たす)。
+- `AOE_TELEGRAPH_AUDIT` 表 + テストで、自己中心AoEの予告が式②を満たすかを機械検証。
+
+### 検証(前後比較・同一プローブ)
+プローブは scratchpad に保全(`zzBossProbe.probe.test.ts` / `zzPickProbe.probe.test.ts`)。
+
+**ジブリル(受け入れ条件: 攻撃≥12回/180秒・ワープ滞在<10%)**
+
+| ペルソナ | 攻撃回数 前→後 | ワープ回数 前→後 | ワープ滞在 前→後 |
+|---|---|---|---|
+| kiter | **1 → 14** | 58 → 18 | **28.0% → 8.7%** |
+| rusher | **1 → 21** | 58 → 4 | 28.0% → 1.9% |
+| orbit | **1 → 19** | 58 → 7 | 28.0% → 3.4% |
+
+**死に技(受け入れ条件: 各ボスの全技が10%以上・WIDE掃引)**
+
+| ボス | 前 | 後 |
+|---|---|---|
+| uri | bolt 68% / sweep 16% / downslash 10% / thrust 6%(実戦では bolt 100%) | downslash 29 / bolt 28 / sweep 22 / **thrust 21** |
+| rafi P1 | bone 50 / jump 50(実戦では bone 100%) | bone 54 / jump 46(密着でも jump が出る) |
+| mimir P1 | bite 40 / radial 18 / dash 18 / laser 17 / burst 7 | laser 25 / bite 21 / radial 19 / burst 18 / dash 17 |
+| jormungand | coil 50 / radial 22 / dash 17 / burst 12 | radial 32 / coil 24 / burst 22 / dash 22 |
+| skadi P1 | **候補なし 25%** / ice 25 / blade 24 / dash 14 / radial 6 / burst 6 | blade 24 / ice 24 / radial 19 / burst 18 / dash 16(候補なし 0%) |
+| skadi P3 | **cage 100%** | blade 22 / ice 21 / radial 17 / burst 16 / dash 14 / cage 11 |
+
+**密着帯(実戦の主戦場)で「1技100%」「候補ゼロ」が全て解消**:
+mimir bite100%→bite50/radial20/laser15/burst15 ・ jormungand coil100%→coil55/radial25/burst20 ・
+uri bolt100%→bolt49/downslash39/sweep12 ・ rafi bone100%→bone75/jump25 ・
+skadi 候補なし50%→ice34/blade33/radial17/burst16。
+
+**回帰(実走)**: miguel/suriel/acrasiel は技構成・発動回数ともほぼ不変(全技が引き続き発動)。
+
+**テスト**: `npm run typecheck` OK / `npm run lint` **エラー0**(warningのみ・既存分) /
+新規・更新ユニット **139 passed**(bossTelegraph 17 / bossScript 31 / 5ボス 91)。
+`npm test` フル: **2350 passed / 2 failed**。2件とも本変更とは無関係:
+- `src/data` の stage-7 台詞テスト … **HEADでも失敗する既存の赤**(stash して確認済み)。範囲外なので直していません。
+- `playtest.test.ts` M16(パンプキン逃走) … ボット実走の**揺らぎ**。単体3回・同一コマンドでのHEAD比較で通過。
+
+### 触っていないもの(範囲外・報告のみ)
+- **城ボス(giantbat/グレン)** … 硬直の床の対象外(上記の理由)。重み表も既に導入済みなので無改変。
+- **`?<boss>script=0` の旧挙動フォールバック** … `useGameLoop.ts` の旧経路(等確率3択・
+  `MIMIR_LASER_CHANCE` / `SKADI_ATTACK_CHANCE` のローカル定数)は無改変で残してある。
+- **換算式②を満たさない技が他に3件**(直さず記録・`AOE_TELEGRAPH_AUDIT` に理由付きで登録):
+  `mimir-bite`(700ms/92px・必要881ms)/ `suriel-ringspin`(800ms/92px)/
+  `acrasiel-burst`(1200ms/140px・必要1341ms)。前2つは「密着への懲罰技」なので意図として据え置き。
+  **acrasiel-burst だけは★未決**(1400msへ延ばすか半径125pxへ縮めるかの二択。社長裁定待ち)。
+
+### ★未決事項
+1. **acrasiel-burst の予告不足141ms**(上記)。
+2. **予告メーター演出**(社長検討中の「赤ラインの中をなぞる色塗りがメーターのように溜まる」)は
+   今回**実装していない**。土台として `telegraphProgress01(now, start, end)` を
+   `bossTelegraph.ts` に用意済み(描画側が `aiStartedAt` / `bossStateUntil` から呼べる純関数)。
+   ★ただし一部の州は開始時刻を保持していない(`bossStateUntil` のみ)ので、実装時は
+   `bossStateFrom` 相当のフィールド追加が要る。
+3. **計測プローブを恒久化するか**。横展開バッチで毎回この前後比較が要るが、`src/**/*.test.ts` は
+   CIが自動で拾うため置き場所に判断が要る(現状は scratchpad へ退避=次の担当が作り直す羽目になる)。
+
+### 次の担当への引き継ぎ
+- **バッチ3(idolパイロット)は未着手**。仕様は監査レポート §2 に確定済み(トレース元=エレメール §3-6 +
+  竜装大騎士 §3-1 / 主戦帯200〜340px / 移動語彙4つ / 新技2本 / 受け入れ条件8項目)。
+- **バッチ4(横展開)** で jibril の (c)=中立移動の作り直し(常時後退→主戦帯の維持)を行う。
+  今回の (a)+(b) は安全弁の暴発を止めただけで、「常に後退する中立」自体は残っている。
+
 ## v0.25.2608 — 寄りズームの調停(純関数のみ・配線は次版)【2026-07-31 21:58 JST】
 
 ### 社長指示

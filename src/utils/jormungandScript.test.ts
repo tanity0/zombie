@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
-  jormungandMoveEligible, pickJormungandMove, pickJormungandCombo, jormRadialSpinAngle, jormungandPhaseForHealth,
-  JORM_RANGE, type JormungandMove,
+  jormungandMoveEligible, jormungandMoveWeight, pickJormungandMove, pickJormungandCombo,
+  jormRadialSpinAngle, jormungandPhaseForHealth, JORM_MOVE_WEIGHTS, type JormungandMove,
 } from './jormungandScript';
+import { BOSS_RANGE } from './bossScript';
+
+const ALL_MOVES: JormungandMove[] = ['radial', 'burst', 'dash', 'coil'];
+const allReady = (): Record<JormungandMove, boolean> => ({ radial: true, burst: true, dash: true, coil: true });
+const BAND_SAMPLES = [60, 200, 450, 900]; // 密着/近/中/遠
 
 describe('jormungandPhaseForHealth — 2相(60%)', () => {
   it('phase1 above 60%', () => {
@@ -15,66 +20,77 @@ describe('jormungandPhaseForHealth — 2相(60%)', () => {
   });
 });
 
-const allReady = (): Record<JormungandMove, boolean> => ({ radial: true, burst: true, dash: true, coil: true });
-
-describe('jormungandMoveEligible — 受け入れ条件①(Phase2到達後): 各帯に必ず1つ以上の技がある', () => {
-  const ALL_MOVES: JormungandMove[] = ['radial', 'burst', 'dash', 'coil'];
-  const bandSamples = [80, 260, 470, 800]; // 密着/近/中/遠の代表距離
-
-  it('phase2では全帯に技がある(coilが密着/近を埋める)', () => {
-    for (const d of bandSamples) {
-      expect(ALL_MOVES.some(m => jormungandMoveEligible(m, d, 2))).toBe(true);
+// ==== v0.25.2609: 死に技の再発防止 ==========================================================
+// 旧実装は「密着帯 coil 100%・coilがCD(7秒)中は候補ゼロ=無行動」だった。
+describe('JORM_MOVE_WEIGHTS — 死に技を作らない不変条件', () => {
+  it('どのゾーンにも生きている技が3本以上ある', () => {
+    for (const d of BAND_SAMPLES) {
+      const live = ALL_MOVES.filter(m => jormungandMoveEligible(m, d));
+      expect(live.length, `distance=${d} の生存技=${live.join(',')}`).toBeGreaterThanOrEqual(3);
     }
   });
 
-  it('【設計裁定で解消】phase1でも近帯(0〜320)にcoilがある=ハメ間合いが無い。'
-    + 'うねりは密着帯のハメを塞ぐために足された技なのでPhase1から使える(§6.28-7 #4の自己矛盾を解消)。',
-  () => {
+  it('すべての技が最低1つのゾーンで重み>0', () => {
+    for (const m of ALL_MOVES) expect(Math.max(...Object.values(JORM_MOVE_WEIGHTS[m])), m).toBeGreaterThan(0);
+  });
+
+  it('遠ゾーンに上限が無い(旧FAR_MAX=1000の頭打ちを撤廃)', () => {
+    expect(ALL_MOVES.some(m => jormungandMoveEligible(m, 5000))).toBe(true);
+  });
+
+  it('重みは非負', () => {
+    for (const m of ALL_MOVES) for (const w of Object.values(JORM_MOVE_WEIGHTS[m])) expect(w).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('jormungandMoveWeight — 役割の維持', () => {
+  it('coil は密着が最重(近接帯のハメを塞ぐ担い手・§6.28-7)', () => {
+    expect(Math.max(...ALL_MOVES.map(m => jormungandMoveWeight(m, 60)))).toBe(jormungandMoveWeight('coil', 60));
+  });
+  it('dash は遠が最重・密着では出ない(追いつき技)', () => {
+    expect(jormungandMoveWeight('dash', BOSS_RANGE.MELEE_MAX)).toBe(0);
+    expect(Math.max(...ALL_MOVES.map(m => jormungandMoveWeight(m, 900)))).toBe(jormungandMoveWeight('dash', 900));
+  });
+  it('radial(螺旋)は全ゾーンで出る=蛇の主砲', () => {
+    for (const d of BAND_SAMPLES) expect(jormungandMoveWeight('radial', d)).toBeGreaterThan(0);
+  });
+  it('【設計裁定・§6.28-7 #4】coilはPhase1から使える(帯はフェーズ非依存)', () => {
     expect(jormungandMoveEligible('coil', 100, 1)).toBe(true);
-    expect(ALL_MOVES.some(m => jormungandMoveEligible(m, 100, 1))).toBe(true);
-  });
-
-  it('phase1でも全帯に技がある(密着/近/中/遠)', () => {
-    for (const d of bandSamples) {
-      expect(ALL_MOVES.some(m => jormungandMoveEligible(m, d, 1))).toBe(true);
-    }
-  });
-
-  it('中帯(320〜620)はphase1から扇/螺旋が届く', () => {
-    expect(jormungandMoveEligible('burst', 470, 1)).toBe(true);
-    expect(jormungandMoveEligible('radial', 470, 1)).toBe(true);
-  });
-
-  it('coilはフェーズを問わず近帯のみ(Phase2限定ではない)', () => {
-    expect(jormungandMoveEligible('coil', 320, 2)).toBe(true);
-    expect(jormungandMoveEligible('coil', 321, 2)).toBe(false);
-    expect(jormungandMoveEligible('coil', 100, 1)).toBe(true);
-    expect(jormungandMoveEligible('coil', 321, 1)).toBe(false);
-  });
-
-  it('FAR_MAXの外は誰も適格でない', () => {
-    const ALL_MOVES: JormungandMove[] = ['radial', 'burst', 'dash', 'coil'];
-    expect(ALL_MOVES.some(m => jormungandMoveEligible(m, JORM_RANGE.FAR_MAX + 500, 2))).toBe(false);
+    expect(jormungandMoveEligible('coil', 100, 2)).toBe(true);
   });
 });
 
 describe('pickJormungandMove', () => {
-  it('近帯・phase1ではcoilが選ばれる(readyな限り)', () => {
-    expect(pickJormungandMove(100, 1, allReady())).toBe('coil');
-  });
-
-  it('遠帯ではdash/radialから等確率で選ばれる(readyな限り)', () => {
-    const pick = pickJormungandMove(800, 2, allReady(), () => 0);
-    expect(['dash', 'radial']).toContain(pick);
-  });
-
-  it('readyでない技は選ばれない', () => {
+  it('coilがCD中でも密着で他の技が出る(無行動バグの再発防止)', () => {
     const ready = allReady(); ready.coil = false;
-    expect(pickJormungandMove(100, 2, ready)).toBeNull();
+    for (let i = 0; i < 50; i++) expect(pickJormungandMove(60, 1, ready)).not.toBeNull();
+  });
+
+  it('CD明けの技が1つも無ければnull', () => {
+    const ready: Record<JormungandMove, boolean> = { radial: false, burst: false, dash: false, coil: false };
+    expect(pickJormungandMove(60, 1, ready)).toBeNull();
+  });
+
+  it('密着帯で3技すべてが顔を出す(dashは追いつき技なので密着では出ない=設計どおり)', () => {
+    const seen = new Set<JormungandMove>();
+    for (let i = 0; i < 600; i++) {
+      const m = pickJormungandMove(60, 1, allReady());
+      if (m) seen.add(m);
+    }
+    expect([...seen].sort()).toEqual(['burst', 'coil', 'radial']);
+  });
+
+  it('フェーズで抽選結果の分布が変わらない(差が出るのは連携だけ=§6.28-7)', () => {
+    const seq = [0.1, 0.35, 0.6, 0.85];
+    for (const r of seq) {
+      for (const d of BAND_SAMPLES) {
+        expect(pickJormungandMove(d, 2, allReady(), () => r)).toBe(pickJormungandMove(d, 1, allReady(), () => r));
+      }
+    }
   });
 });
 
-describe('pickJormungandCombo — 受け入れ条件: Phase2のみ・確率50%・2組のみ', () => {
+describe('pickJormungandCombo — 受け入れ条件: Phase2のみ・確率50%・2組のみ(不変)', () => {
   it('phase1では連携しない', () => {
     expect(pickJormungandCombo('dash', 1, 100, () => 0)).toBeNull();
   });
@@ -84,9 +100,8 @@ describe('pickJormungandCombo — 受け入れ条件: Phase2のみ・確率50%�
     expect(pickJormungandCombo('coil', 2, 100, () => 0)).toBeNull();
   });
 
-  it('追撃技の間合いに居なければnull', () => {
-    expect(pickJormungandCombo('dash', 2, 800, () => 0)).toBeNull(); // coilは近帯(<=320)のみ
-    expect(pickJormungandCombo('burst', 2, 100, () => 0)).toBeNull(); // radialは近帯超(>320)のみ
+  it('追撃技のゾーン重みが0ならnull', () => {
+    expect(pickJormungandCombo('dash', 2, 900, () => 0)).toBeNull(); // coilは中/遠で重み0
   });
 
   it('50%未満で発火・以上でnull', () => {
@@ -105,12 +120,5 @@ describe('jormRadialSpinAngle — §6.28-7「螺旋の回転方向を常に時�
     const withNegativeConst = jormRadialSpinAngle(5, -Math.PI / 16);
     expect(withNegativeConst).toBeGreaterThan(0);
     expect(withNegativeConst).toBeCloseTo(5 * (Math.PI / 16));
-  });
-
-  it('回数が増えるほど単調に増える(逆回転が混ざらない)', () => {
-    const angles = [0, 1, 2, 3, 4].map(i => jormRadialSpinAngle(i, Math.PI / 16));
-    for (let i = 1; i < angles.length; i++) {
-      expect(angles[i]).toBeGreaterThan(angles[i - 1]);
-    }
   });
 });

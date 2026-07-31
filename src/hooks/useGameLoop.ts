@@ -104,6 +104,7 @@ import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPen
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
+import { withRecoverFloor } from '../utils/bossTelegraph';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -941,7 +942,7 @@ const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
 const THOR_JUMP_WINDUP_MS = 700;             // ジャンプ前の溜め(pumpkinのcrouchより短め=間合いを詰める性質上)
 const THOR_JUMP_MS = 620;                    // 滞空時間(ハンターの速いジャンプ感を踏襲)
 const THOR_JUMP_RADIUS = 70;                 // 着地爆風半径(pumpkinの54よりやや広め=ボス級)
-const THOR_JUMP_RECOVER_MS = 900;            // 着地後の硬直
+const THOR_JUMP_RECOVER_MS = withRecoverFloor(900);            // 着地後の硬直
 
 const THOR_COUNTER_LEAP_MS = 260;            // カウンターを受けた時の後退ジャンプ所要時間(社長指示)
 
@@ -954,24 +955,31 @@ const THOR_COUNTER_LEAP_MS = 260;            // カウンターを受けた時�
 // フェーズ移行の点滅(社長裁定6.26-9 #4の踏襲。HPバー色の変化に気づかせる一瞬の点滅。値=GIANT_PHASE_FLASH_MSと同一)。
 const HIDDEN_BOSS_PHASE_FLASH_MS = 1200;
 
+// v0.25.2609(ボス動き横断監査・バッチ2): 全ての硬直に**下限900ms(withRecoverFloor)**を敷いた。
+// 本作の「近接1発」= カウンター1サイクル(COUNTER_WINDOW 400ms + COUNTER_COOLDOWN 420ms = 820ms)
+// なので、硬直がそれ未満だと「硬直はあるがプレイヤーは1発も入れられない」=**休符が存在しない**。
+// ER資料 §1-2(ミドラ=設計の見本)の「ほぼ全コンボ後に1〜2秒の確定パニッシュ窓」を本作へ換算した床。
+// 定数の宣言側を包む形にしてあるので、元の数字は履歴として読めるまま・呼び出し箇所は無改変。
+// ※城ボス(giantbat/グレン)は対象外: 既に900〜1080msで床を満たしており、Phase3の500ms床は
+//   社長裁定(§6.28-21★2)で意図的に短くしたものなので上書きしない。
 // 硬直(recover)の実効ms(§6.28-5/7/9・裏ボスは壁時計系=このmsがそのまま実効)。硬直中は完全静止+
 // 青白tint(BOSS_RECOVER_TINT)+次技抽選なし(W6)。ボスごとに値が違う技はボス別定数を分ける。
-const MIMIR_LASER_RECOVER_MS = 900;   // ミーミル レーザーの硬直
-const BOSS_DASH_RECOVER_MS = 800;     // 突進の硬直(mimir/jormungand/skadi共通・§6.28-5/7/9で同値)
-const MIMIR_RADIAL_RECOVER_MS = 500;  // ミーミル 全方位の硬直
-const MIMIR_BURST_RECOVER_MS = 300;   // ミーミル 弾3連の硬直
-const JORM_RADIAL_RECOVER_MS = 900;   // ヨルムンガルド 螺旋全方位の硬直
-const JORM_BURST_RECOVER_MS = 500;    // ヨルムンガルド 3-way扇の硬直
+const MIMIR_LASER_RECOVER_MS = withRecoverFloor(900);   // ミーミル レーザーの硬直
+const BOSS_DASH_RECOVER_MS = withRecoverFloor(800);     // 突進の硬直(mimir/jormungand/skadi共通・§6.28-5/7/9で同値)
+const MIMIR_RADIAL_RECOVER_MS = withRecoverFloor(500);  // ミーミル 全方位の硬直
+const MIMIR_BURST_RECOVER_MS = withRecoverFloor(300);   // ミーミル 弾3連の硬直
+const JORM_RADIAL_RECOVER_MS = withRecoverFloor(900);   // ヨルムンガルド 螺旋全方位の硬直
+const JORM_BURST_RECOVER_MS = withRecoverFloor(500);    // ヨルムンガルド 3-way扇の硬直
 const SKADI_PRE_WINDUP_MS = 450;      // スカジ 氷塊/氷刃 共通の設置前windup(壁時計系=このmsがそのまま実効・§6.28-9【新設】)
-const SKADI_ICE_RECOVER_MS = 600;     // スカジ 氷塊の硬直
-const SKADI_BLADE_RECOVER_MS = 600;   // スカジ 氷刃の硬直
-const SKADI_RADIAL_RECOVER_MS = 500;  // スカジ 全方位の硬直
-const SKADI_BURST_RECOVER_MS = 300;   // スカジ 弾3連の硬直
+const SKADI_ICE_RECOVER_MS = withRecoverFloor(600);     // スカジ 氷塊の硬直
+const SKADI_BLADE_RECOVER_MS = withRecoverFloor(600);   // スカジ 氷刃の硬直
+const SKADI_RADIAL_RECOVER_MS = withRecoverFloor(500);  // スカジ 全方位の硬直
+const SKADI_BURST_RECOVER_MS = withRecoverFloor(300);   // スカジ 弾3連の硬直
 
 // ミーミル「群体の噛みつき」(§6.28-5・密着専用の新技)。§6.28-15裁定で「踏み潰し」から改名=役割
 // (密着帯を塞ぐ)・図形(T2即時円)・リード・硬直は不変、意味だけ「本体直下の群体が一斉に噛む」へ差し替え。
 const MIMIR_BITE_WINDUP_MS = 700;
-const MIMIR_BITE_RECOVER_MS = 800;
+const MIMIR_BITE_RECOVER_MS = withRecoverFloor(800);
 const MIMIR_BITE_CD_MS = 6000;
 const MIMIR_BITE_RADIUS = GRENADE_BLAST_RADIUS; // = 92(社長裁定6.26-9 #3と同じ値・同じ意味を流用)
 
@@ -979,7 +987,7 @@ const MIMIR_BITE_RADIUS = GRENADE_BLAST_RADIUS; // = 92(社長裁定6.26-9 #3と
 // HALF_WIDTHをそのまま流用(=ジャイアントの薙ぎ払いと同値・同じ意味・§6.28-7で明記)。
 const JORM_COIL_WINDUP_MS = 700;
 const JORM_COIL_ACTIVE_MS = THOR_HARAI_ACTIVE_MS; // 220ms(既存の帯判定と同じ実行秒数を流用)
-const JORM_COIL_RECOVER_MS = 700;
+const JORM_COIL_RECOVER_MS = withRecoverFloor(700);
 const JORM_COIL_CD_MS = 7000;
 const JORM_COIL_RANGE = THOR_HARAI_RANGE;
 const JORM_COIL_HALF_WIDTH = THOR_HARAI_HALF_WIDTH;
@@ -987,16 +995,16 @@ const JORM_COIL_HALF_WIDTH = THOR_HARAI_HALF_WIDTH;
 // スカジ「氷結の檻」(§6.28-9・全帯の大技・Phase3限定)。プレイヤーを中心とした半径180pxのリング上に
 // 氷塊8個・1箇所だけ空ける(設置の瞬間に確定=掟W4。ジブリル聖別=JIBRIL_CONSECRATE_*と同じ作法)。
 const SKADI_CAGE_WINDUP_MS = 1000;
-const SKADI_CAGE_RECOVER_MS = 900;
+const SKADI_CAGE_RECOVER_MS = withRecoverFloor(900);
 const SKADI_CAGE_CD_MS = 12000;
 const SKADI_CAGE_RING_RADIUS = 180;
 const SKADI_CAGE_COUNT = 8;
 
 // トール(§6.28-10): 全技に硬直を新設。既存の社長指定値(リード/射程/半幅/追従率/旋回/バックステップ/
 // スロー歩き)は1つも変えない。足すのは硬直・SE・連携・フェーズだけ。
-const THOR_ISSEN_RECOVER_MS = 900;
-const THOR_TSUKI_RECOVER_MS = 600;
-const THOR_HARAI_RECOVER_MS = 700;
+const THOR_ISSEN_RECOVER_MS = withRecoverFloor(900);
+const THOR_TSUKI_RECOVER_MS = withRecoverFloor(600);
+const THOR_HARAI_RECOVER_MS = withRecoverFloor(700);
 
 // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)。★未決(下記コメント参照)により
 // campaign.tsのhiddenBoss機構は通常プレイでは`!labTheme`ゲートに阻まれて到達しない(useGameLoop.ts
@@ -1006,16 +1014,16 @@ const FORCE_IDOL = evParam('idolnow') === '1';
 // idolのステータス(width/height/speed/health/damage)はenemyUtils.tsのENEMY_STATS.idolを唯一の出所とする
 // (ここでは複製しない)。以下は台本(帯/技)のms・半径のみ。
 const IDOL_AIM_WINDUP_MS = 700;
-const IDOL_AIM_RECOVER_MS = 500;
+const IDOL_AIM_RECOVER_MS = withRecoverFloor(500);
 const IDOL_FAN_WINDUP_MS = 900;
-const IDOL_FAN_RECOVER_MS = 600;
+const IDOL_FAN_RECOVER_MS = withRecoverFloor(600);
 // ★叩き台(設計書に実行秒数の列が無い・§6.28-14と同型の未決): ローリングの実行(移動)所要時間と距離。
 const IDOL_ROLL_WINDUP_MS = 400;
 const IDOL_ROLL_ACTIVE_MS = 300;
 const IDOL_ROLL_DIST = 140;
-const IDOL_ROLL_RECOVER_MS = 800;
+const IDOL_ROLL_RECOVER_MS = withRecoverFloor(800);
 const IDOL_PUNCH_WINDUP_MS = 600;
-const IDOL_PUNCH_RECOVER_MS = 900;
+const IDOL_PUNCH_RECOVER_MS = withRecoverFloor(900);
 const IDOL_PUNCH_RANGE = 90;    // T3帯(短)の長さ=近帯(<140)の内側で完結させる叩き台
 const IDOL_PUNCH_HALF_WIDTH = 30;
 const IDOL_ACTION_MIN_MS = BOSS_ACTION_MIN_MS; // 既存の一般行動ゲートを流用(新しい数字を発明しない)

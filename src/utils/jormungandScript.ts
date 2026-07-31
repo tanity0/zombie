@@ -3,47 +3,56 @@
 // 数値の根拠は PACING_PUZZLE.md §6.28-7 を参照。
 //
 // 単位: 「壁時計系」(§6.28-1-0)。ここに書くmsは実効msそのもの。
-import { pickEligibleMove, pickComboFollowup, phaseForHealth } from './bossScript';
+// ==== v0.25.2609(ボス動き横断監査・バッチ1「死に技の解放」) ====================================
+// 旧実装は距離ハードゲート(近0-320=coil専用 / 中620 / 遠1000で頭打ち)だった。実測(純関数掃引)で
+// **密着帯 coil 100%**(他3技はゲートで弾かれる)。ヨルムンガルドの中立は moveToward()=直進で
+// 速度90×1.2=108 > プレイヤー104.4 なので必ず密着へ張り付き、coilはCD7秒。
+// ⇒ 「7秒に1回薙ぐだけ、あとは歩いてぶつかってくる」ボスになっていた。
+// 対策: 城ボス裁定(BOSS_RANGE_REWORK.md v0.25.2455)の「ゾーン×重み表」を適用。
+import { pickComboFollowup, phaseForHealth, pickWeightedMove, bossZoneForDistance, type BossMoveWeights } from './bossScript';
 
 export type JormungandMove = 'radial' | 'burst' | 'dash' | 'coil';
-
-// 間合いの帯(px・中心間距離)。§6.28-7の表から確定。
-export const JORM_RANGE = {
-  NEAR_MAX: 320,  // 近(うねり専用)
-  MID_MAX: 620,   // 中(3-way扇まで届く)
-  FAR_MAX: 1000,  // 遠(突進/螺旋の上限。giant系と同じ慣例)
-} as const;
 
 export const JORM_PHASE_HP_THRESHOLD = 0.6;
 export const jormungandPhaseForHealth = (healthFrac: number): 1 | 2 => phaseForHealth(healthFrac, [JORM_PHASE_HP_THRESHOLD]) as 1 | 2;
 export const JORM_COMBO_CHANCE = 0.5;
 
-// 【設計裁定・§6.28-7 #4の自己矛盾の解消】うねりは「近接帯のハメを塞ぐ」ために足された技なので、
-// Phase1から使える(密着すると弾幕は当たらず接触ダメージだけになる欠陥はPhase1にも存在するため)。
-// Phase2で増えるのは技の種類ではなく連携(pickJormungandCombo)だけ=帯そのものはフェーズ非依存。
-export const jormungandMoveEligible = (move: JormungandMove, distance: number, _phase: 1 | 2): boolean => {
-  switch (move) {
-    case 'coil':   return distance <= JORM_RANGE.NEAR_MAX;                                          // 近(全フェーズ)
-    case 'burst':  return distance > JORM_RANGE.NEAR_MAX && distance <= JORM_RANGE.MID_MAX;         // 中
-    case 'radial': return distance > JORM_RANGE.NEAR_MAX && distance <= JORM_RANGE.FAR_MAX;         // 中〜遠
-    case 'dash':   return distance > 420 && distance <= JORM_RANGE.FAR_MAX;                          // 遠(>420px)
-    default: return false;
-  }
+// ==== 4技×距離ゾーンの重み表(v0.25.2609) ====================================================
+// 是正の狙い: 密着を coil100% → **coil55 / burst20 / radial25** の3本立てへ(coilのCD7秒の空白を埋める)。
+// radial(螺旋)は蛇の主砲なので全ゾーンで顔を出す。dashは追いつき技として遠で圧倒的優先(城ボス準拠)。
+// 【設計裁定・§6.28-7 #4の踏襲】うねりは「近接帯のハメを塞ぐ」技なのでPhase1から使える
+// (帯=重みはフェーズ非依存。Phase2で増えるのは連携だけ)。旧FAR_MAX(1000)の頭打ちは撤廃。
+export const JORM_MOVE_WEIGHTS: BossMoveWeights<JormungandMove> = {
+  coil:   { melee: 55, near: 40, mid: 0,  far: 0 },
+  burst:  { melee: 20, near: 25, mid: 30, far: 10 },
+  radial: { melee: 25, near: 35, mid: 40, far: 25 },
+  dash:   { melee: 0,  near: 0,  mid: 30, far: 65 },
 };
+
+/** 技×距離→実効重み(ヨルムンガルドはフェーズで重みが変わらない=帯はフェーズ非依存の裁定どおり)。 */
+export const jormungandMoveWeight = (
+  move: JormungandMove,
+  distance: number,
+  weights: BossMoveWeights<JormungandMove> = JORM_MOVE_WEIGHTS,
+): number => weights[move][bossZoneForDistance(distance)];
+
+// 各技の適格判定=「現在ゾーンの重み>0」(旧ハードゲートの後継)。phase引数は呼び出し側の互換のため
+// 残すが、上の裁定どおり帯はフェーズ非依存なので参照しない。
+export const jormungandMoveEligible = (move: JormungandMove, distance: number, _phase: 1 | 2 = 1): boolean =>
+  jormungandMoveWeight(move, distance) > 0;
 
 const POOL: JormungandMove[] = ['dash', 'burst', 'radial', 'coil'];
 
-// 間合い+フェーズ+CD明けから等確率で1つ(giant/rafi/uriと同じ作法)。
+/** CD明けかつ現在ゾーンの重み>0の技から重み比例で1つ。該当無しはnull。 */
 export const pickJormungandMove = (
   distance: number,
   phase: 1 | 2,
   ready: Record<JormungandMove, boolean>,
   rand: () => number = Math.random,
-): JormungandMove | null => pickEligibleMove(
-  POOL,
-  m => jormungandMoveEligible(m, distance, phase) && ready[m],
-  rand,
-);
+): JormungandMove | null => {
+  void phase; // 帯・重みはフェーズ非依存(§6.28-7 #4の設計裁定)。差が出るのは連携だけ。
+  return pickWeightedMove(POOL, m => jormungandMoveWeight(m, distance), ready, rand);
+};
 
 // Phase2限定の2連携(§6.28-7): 突進→うねり(終点で密着した相手を薙ぐ) / 扇→螺旋(逃げた先へ弾幕)。
 export const JORM_COMBO_FOLLOWUP: Partial<Record<JormungandMove, JormungandMove>> = {

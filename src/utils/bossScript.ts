@@ -84,6 +84,67 @@ export const bandForDistance = <T extends string>(
   return null;
 };
 
+// ---- 全ボス共通の距離ゾーン(BOSS_RANGE_REWORK.md 社長裁定v0.25.2455の城ボス表を全ボスへ昇格) ----
+// v0.25.2609(ボス動き横断監査): 裏ボス/天使は各自バラバラの帯(140/200/320/340/620/1000)を持ち、
+// **アリーナ内で到達不能な条件**(uriのthrust: 条件620px超に対しアリーナ最大分離565px)や、
+// **張り付き帯で候補が1本しか無い**(mimir密着=bite100% / jormungand密着=coil100% / uri密着=bolt100% /
+// rafi密着=bone100%)といった死に技を大量に生んでいた。城ボスで既に社長裁定済みの
+// 「距離ハードゲート廃止 → ゾーン×重み表」をそのまま全ボスへ適用するための共通土台。
+//
+// 値は giantScript.ts の GIANT_RANGE と**同値の複製**。giantScript.ts は「1ミリも挙動を変えない」
+// 方針で bossScript.ts へ依存させていない(このファイルが giantScript を import すると循環する)ため、
+// 重複管理は既存の慣例(THOR_PHASE_HP_THRESHOLDS 等)に倣う。同値であることは
+// bossScript.test.ts が両方を import して機械的に検証する。
+export const BOSS_RANGE = {
+  MELEE_MAX: 120, // 密着 0〜120
+  NEAR_MAX: 300,  // 近 120〜300
+  MID_MAX: 600,   // 中 300〜600(これを超えたら「遠」・上限なし)
+} as const;
+
+export type BossZone = 'melee' | 'near' | 'mid' | 'far';
+
+/** 距離→ゾーン。境界は「上限を含む(<=)」の既存作法(giantZoneForDistanceと同一)。 */
+export const bossZoneForDistance = (distance: number): BossZone =>
+  distance <= BOSS_RANGE.MELEE_MAX ? 'melee'
+  : distance <= BOSS_RANGE.NEAR_MAX ? 'near'
+  : distance <= BOSS_RANGE.MID_MAX ? 'mid'
+  : 'far';
+
+/** 技→ゾーン別の重み表。重み0=そのゾーンでは出ない(旧ハードゲートと同じ意味)。 */
+export type BossMoveWeights<M extends string> = Record<M, Record<BossZone, number>>;
+
+/**
+ * 重み比例で1つ選ぶ(重み付きルーレット)。giantScript.ts の pickWeighted と同一仕様
+ * (rand()が1.0ちょうどを返す端の数値誤差は最後の候補へ落とす)。乱数は注入可能=テストのため。
+ */
+const pickWeighted = <T>(entries: { move: T; weight: number }[], rand: () => number): T | null => {
+  const total = entries.reduce((sum, e) => sum + e.weight, 0);
+  if (total <= 0) return null;
+  let r = rand() * total;
+  for (const e of entries) {
+    r -= e.weight;
+    if (r < 0) return e.move;
+  }
+  return entries[entries.length - 1].move;
+};
+
+/**
+ * 「CD明け(ready)かつ現在ゾーンの実効重み>0」の技から重み比例で1つ選ぶ。該当無しはnull。
+ * 実効重みの導出(フェーズ制約・フェーズ倍率など)は各ボスの weightFn が受け持つ
+ * =giantMoveWeight と同じ責務分割。
+ */
+export const pickWeightedMove = <M extends string>(
+  allMoves: readonly M[],
+  weightFn: (move: M) => number,
+  ready: Record<M, boolean>,
+  rand: () => number = Math.random,
+): M | null => pickWeighted(
+  allMoves
+    .map(m => ({ move: m, weight: ready[m] ? weightFn(m) : 0 }))
+    .filter(e => e.weight > 0),
+  rand,
+);
+
 // ---- HPフェーズの汎用化(giantPhaseForHealth/giantPhaseJustChangedのN段階版) --------------------
 // thresholdsDescending = フェーズが上がる閾値を降順で並べたもの。
 // 例: 2段(ジャイアント相当)なら[0.6]。3段(スカジ/トール/アクラシエル等)なら[0.7, 0.35]。
