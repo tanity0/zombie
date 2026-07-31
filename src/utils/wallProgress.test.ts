@@ -3,7 +3,7 @@ import {
   createDefaultWallMeta, distanceToNextWall, isApproachingWall, detectWallBreach,
   isFirstWallBreach, isFirstRankReach, markWallBreached, markRankReached,
   markSelfDeepest, markSelfHighestRank, metersToNextWall, isOneRankAwayFromNext,
-  nextRankName, wallAchievementHeadline, zoneIdxForDist, deepestReachedBadge,
+  nextRankName, wallAchievementHeadline, zoneIdxForDist, deepestReachedBadge, rankLabel,
   sortWallEventsByPriority, WALL_COUNT, RANK_COUNT,
 } from './wallProgress';
 
@@ -89,20 +89,26 @@ describe('惜しさ計算(死亡リザルト)', () => {
   it('isOneRankAwayFromNext/nextRankNameはR7未満で該当', () => {
     expect(isOneRankAwayFromNext(6)).toBe(true);
     expect(isOneRankAwayFromNext(7)).toBe(false);
-    expect(nextRankName(6)).toBe('傲慢'); // R7=傲慢
+    // v0.25.2587(社長指示「ランクに数字入れてほしい ランク7 なんちゃら みたいに」): 表示は数字つき。
+    expect(nextRankName(6)).toBe('ランク7 傲慢'); // R7=傲慢
     expect(nextRankName(7)).toBe(null);
   });
 });
 
 describe('掛け合わせ表示', () => {
+  // v0.25.2587: ランクの表示は必ず rankLabel(=「ランク{n} {罪名}」)を通す(数字と名前の並びを1箇所で決める)。
+  it('rankLabelは「ランク{数字} {罪名}」', () => {
+    expect(rankLabel(1)).toBe('ランク1 怠惰');
+    expect(rankLabel(7)).toBe('ランク7 傲慢');
+  });
   it('wallAchievementHeadlineは区域名×ランク名を合成する', () => {
-    expect(wallAchievementHeadline(4, 7)).toBe('深層域の傲慢 に到達');
+    expect(wallAchievementHeadline(4, 7)).toBe('深層域のランク7 傲慢 に到達');
   });
   it('zoneIdxForDist/deepestReachedBadgeは距離から区域を逆引きする', () => {
     expect(zoneIdxForDist(0)).toBe(0);
     expect(zoneIdxForDist(1500)).toBe(1);
     expect(zoneIdxForDist(8000)).toBe(4);
-    expect(deepestReachedBadge(8000, 7)).toBe('最深到達: 深層域の傲慢');
+    expect(deepestReachedBadge(8000, 7)).toBe('最深到達: 深層域のランク7 傲慢');
   });
 });
 

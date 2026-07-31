@@ -15,7 +15,7 @@ import { OFFSCREEN_SPAWN_MARGIN } from './enemyUtils';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import {
-  isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES, WALL_RANK_NAMES_EN,
+  isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES_EN, rankLabel,
 } from './wallProgress';
 import type { ActiveEvent, Enemy, EnemyType, GameBounds, Player, PlayerBuildSnapshot, Summon } from '../types/game';
 import {
@@ -158,14 +158,15 @@ function announceRankChange(prevRank: PuzzleRank, newRank: PuzzleRank): void {
       const nextMeta = markSelfHighestRank(markRankReached(st.wallMeta, newRank), newRank);
       useGameStore.setState({ wallMeta: nextMeta });
     }
+    // v0.25.2587(社長指示「ランクに数字入れてほしい」): 表示は rankLabel(=「ランク7 傲慢」)で統一。
     useGameStore.getState().enqueueWallEvent(
-      'rank', `${WALL_RANK_NAMES[newRank]} —— 到達`, WALL_RANK_NAMES_EN[newRank], '#ff6a55'
+      'rank', `${rankLabel(newRank)} —— 到達`, WALL_RANK_NAMES_EN[newRank], '#ff6a55'
     );
     playSfx('level-up'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
-    recordChronicle(getSelectedStageId(), 'rank', String(newRank), `ランク「${WALL_RANK_NAMES[newRank]}」に到達`);
+    recordChronicle(getSelectedStageId(), 'rank', String(newRank), `${rankLabel(newRank)}に到達`);
   } else if (newRank < prevRank) {
     useGameStore.getState().enqueueWallEvent(
-      'rank', `${WALL_RANK_NAMES[newRank]} —— 降格`, WALL_RANK_NAMES_EN[newRank], '#9ca3af'
+      'rank', `${rankLabel(newRank)} —— 降格`, WALL_RANK_NAMES_EN[newRank], '#9ca3af'
     );
   }
 }

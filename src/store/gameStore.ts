@@ -1473,10 +1473,13 @@ export const CAMERA_INTRO_LIFT_FRAC = camNum('camintrolift', 0.7); // 登場中�
 // 死亡の寄り。強さはKILLと同じ(1.0=2倍)・長さは死亡スロー(PLAYER_DEATH_SLOW_MS=820)と同期させ、
 // holdはフィニッシュと同じカーブ(最大で保持してから戻る)。叩き台・実機調整前提。
 // **キル演出のCD(JUICE_CD)は通さない**=死は稀で必ず見せたい瞬間なので毎回出す。
+// v0.25.2587(社長指示「しゃがみ絵状態の…そこを少し長めにスローで見せて 死んだとわかる感じに。
+// 今はズームされても一瞬でしかももう何もいなかった」): 尺を延長。旧820ms/hold560msでは
+// ①ピークが一瞬 ②立ち絵が1秒で消え ③1.1秒でリザルトへ切替、と全部が短く重なって「何も見えない」だった。
 export const DEATH_ZOOM_MAG = 1.0;
-export const DEATH_ZOOM_MS = 820;      // = PLAYER_DEATH_SLOW_MS(useGameLoop)と同値=スローと同時に戻る
-export const DEATH_ZOOM_HOLD_MS = 560; // = MELEE_FINISH_SLOW_HOLD_MS(同じhold-then-rampカーブ)
-export const DEATH_SLOW_SCALE = 0.32;  // = 既存のプレイヤー死亡スローと同じ倍率(守護霊にも同値を使う)
+export const DEATH_ZOOM_MS = 1700;      // 寄り〜戻りの全長(スローと同値=一緒に戻る)
+export const DEATH_ZOOM_HOLD_MS = 1150; // 最大寄り+最スローを保持する長さ(=「見せる」時間の本体)
+export const DEATH_SLOW_SCALE = 0.22;   // 死亡スローの倍率(旧0.32よりさらに遅く=死が分かる)
 export const MELEE_FINISH_ZOOM_MAG = 1.0;  // 近接フィニッシュ(KILL)の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
 export const MELEE_FINISH_ZOOM_MS = 500;   // KILLだけ専用のズーム長さ(社長指示・スローとは非連動)
 export const MELEE_FINISH_ZOOM_HOLD_MS = 400; // 上記のうち最大寄りを保持する長さ(比率80%はスローと同じ)
@@ -6508,6 +6511,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       const at: { x: number; y: number } = ghostDeathAt;
       get().triggerZoom(DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, at.x, at.y);
       get().triggerTimeSlow(DEATH_SLOW_SCALE, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS);
+      // v0.25.2587(社長報告「ズームされても一瞬でしかももう何もいなかった」の守護霊側): 守護霊の実体は
+      // この瞬間に summons から消える(上のfilter)ので、**寄った先に何も無い**状態だった。
+      // 消滅の絵を置いて「死んだ」と分かるようにする。色は守護霊の青白(§2.11の霊体の統一色。
+      // 霊が赤い血を流すのは世界観に合わないためプレイヤーの赤とは別色)。演出のみ=判定に影響なし。
+      get().spawnRing(at.x, at.y, 8, 128, 'rgba(159,216,255,0.9)', 6, DEATH_ZOOM_HOLD_MS);
+      get().spawnRing(at.x, at.y, 22, 176, 'rgba(96,165,250,0.6)', 4, DEATH_ZOOM_MS);
+      get().spawnGlow(at.x, at.y, 96, 'rgba(159,216,255,', DEATH_ZOOM_MS);
+      get().spawnBurst(at.x, at.y, '#9fd8ff', 30);
+      get().spawnBurst(at.x, at.y, '#60a5fa', 18);
     }
   },
 

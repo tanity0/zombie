@@ -1046,7 +1046,11 @@ const LAB_SPAWN_INTERVAL_MULT_AWAY = 1.6; // v0.25.2243以前の値(=3/3の量)
 const LAB_SPAWN_COUNT_MAX = 1;
 // M2は上下からではなく左右のみから湧く(社長指示v0.25.2182)。Yは歩ける帯の中に限定
 // (社長指示v0.25.2242)。位置の決定は src/utils/labSpawn.ts の placeLabSpawn に一本化した。
-const PLAYER_DEATH_SLOW_MS = 820;
+// v0.25.2587(社長指示「少し長めにスローで見せて 死んだとわかる感じに」): 820→1700(=DEATH_ZOOM_MSと同値)。
+const PLAYER_DEATH_SLOW_MS = DEATH_ZOOM_MS;
+// 死亡演出を見せ切ってからリザルトへ移るまで(旧1100ms=寄りのピーク中に画面が切り替わっていた)。
+// 寄り/スローの全長(1700)+余韻300ms。立ち絵の保持/フェード(pixiScene)もこの中に収まる。
+const PLAYER_DEATH_TO_RESULT_MS = DEATH_ZOOM_MS + 300;
 const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
 const COUNTER_REFLECT_SLOW_MS = 560;
 const GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS = 440;
@@ -1541,12 +1545,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // v0.25.2586(社長指示「守護霊死んだときもカメラズーム スローしてほしい これプレイヤーも」):
     // 死亡スローは従来からあったが**寄りズームが無かった**ので追加。守護霊の死(gameStore.damageSummon)と
     // 同じ定数・同じ長さ=どちらの死も同じ絵になる。holdを付けてスローと同じhold-then-rampで戻る。
+    // v0.25.2587: 尺を延長(DEATH_ZOOM_MS=1700/hold=1150)し、立ち絵の保持・リザルト遷移もそれに揃えた。
     useGameStore.getState().triggerZoom(DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, x, y);
     useGameStore.getState().triggerTimeSlow(DEATH_SLOW_SCALE, PLAYER_DEATH_SLOW_MS, DEATH_ZOOM_HOLD_MS);
     spawnBurst(x, y, '#ef4444', 36);
     spawnBurst(x, y, '#7f1d1d', 22);
-    // 立ち絵の1秒フェードを見せてからゲームオーバー画面へ(現状の死亡演出はそのまま)。
-    window.setTimeout(onGameOver, 1100);
+    // 死亡演出(寄り+スロー+血)を見せ切ってからゲームオーバー画面へ(v0.25.2587: 1100→PLAYER_DEATH_TO_RESULT_MS)。
+    window.setTimeout(onGameOver, PLAYER_DEATH_TO_RESULT_MS);
   }, [onGameOver, spawnBurst, spawnFlash, spawnRing, emitBotReport]);
 
   const spawnEggFluidSplash = useCallback((x: number, y: number, intensity = 1) => {

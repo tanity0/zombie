@@ -1398,7 +1398,11 @@ const GROUND_FIRE_VIEWPORT_MARGIN = 120;
 const SMALL_GLOW_SPRITE_RADIUS_MAX = STRONG_GLOW_RADIUS - 1;
 const SMALL_GLOW_RADIUS_SCALE = 0.88;
 const SMALL_GLOW_ALPHA_SCALE = 0.74;
-const PLAYER_DEATH_FADE_MS = 1000; // 死亡時に立ち絵をフェードアウトする長さ(社長指示=1秒)
+// v0.25.2587(社長報告「ズームされても一瞬でしかももう何もいなかった」): 旧実装は死亡と同時に
+// 1秒かけて薄くなり始めるため、寄り+スローのピーク(〜1.15秒)には**もう立ち絵が消えていた**。
+// 「保持してからフェード」の2段にして、見せる瞬間は絵が残るようにする。
+const PLAYER_DEATH_HOLD_MS = 1150; // = DEATH_ZOOM_HOLD_MS(ピーク保持の間はフェードを始めない)
+const PLAYER_DEATH_FADE_MS = 600;  // 保持のあとフェードアウトする長さ
 const GROUND_REFLECTION_ENABLED = true;
 const GROUND_REFLECTION_ALPHA = 0.28;
 const GEM_BODY_GLOW_ALPHA = 0.38;
@@ -8587,7 +8591,11 @@ export class PixiScene {
     // 死亡時: 立ち絵を1秒でフェードアウト(現状の死亡演出はそのまま)。health>0 で基準時刻をリセット。
     if (p.health <= 0) { if (this.playerDeathAt === 0) this.playerDeathAt = now; }
     else this.playerDeathAt = 0;
-    const deathFade = this.playerDeathAt > 0 ? Math.max(0, 1 - (now - this.playerDeathAt) / PLAYER_DEATH_FADE_MS) : 1;
+    // v0.25.2587: 死亡直後は PLAYER_DEATH_HOLD_MS のあいだ**そのまま残し**(寄り+スローのピークで
+    // 死んだ絵を見せる)、そのあと PLAYER_DEATH_FADE_MS でフェードアウトする。
+    const deathFade = this.playerDeathAt > 0
+      ? Math.max(0, 1 - Math.max(0, (now - this.playerDeathAt) - PLAYER_DEATH_HOLD_MS) / PLAYER_DEATH_FADE_MS)
+      : 1;
     // カウンター成立の無敵は点滅させない(被弾と紛らわしいため・社長指示)。カウンターは invulnerableTime と
     // lastCounterSuccessTime を同時刻に立てるので、両者一致=カウンター由来の無敵と判定して点滅を抑止。
     // 被弾i-frame は invulnerableTime のみ更新されるので一致せず、従来どおり点滅する。

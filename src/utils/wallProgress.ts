@@ -17,6 +17,13 @@ export const WALL_RANK_NAMES_EN: Record<PuzzleRank, string> = {
   1: 'SLOTH', 2: 'GLUTTONY', 3: 'LUST', 4: 'GREED', 5: 'ENVY', 6: 'WRATH', 7: 'PRIDE',
 };
 
+/**
+ * v0.25.2587(社長指示「ランクに数字入れてほしい ランク7 なんちゃら みたいに」): ランクの表示名。
+ * 罪名だけだと何段目か分からないため、**表示は必ずこの関数を通す**(数字と名前の並びを1箇所で決める)。
+ * 記録・判定・保存は従来どおり数値(PuzzleRank)のまま=表示だけの変更。
+ */
+export const rankLabel = (rank: PuzzleRank): string => `ランク${rank} ${WALL_RANK_NAMES[rank]}`;
+
 // selfHighestRankはnumberで持つ(永続化(src/data/progress.ts)側の型と揃える。読み出し時は
 // rankAssessor.clampRankでPuzzleRankへ絞ってから各関数(deepestReachedBadge等)へ渡す)。
 export interface StageWallMeta {
@@ -81,11 +88,11 @@ export const metersToNextWall = (dist: number): number | null => {
 // 「次のランクまであと1昇格だった」: R7未満なら常に該当(1つ上げれば次のランクに届く)。
 export const isOneRankAwayFromNext = (rank: PuzzleRank): boolean => rank < 7;
 export const nextRankName = (rank: PuzzleRank): string | null =>
-  rank < 7 ? WALL_RANK_NAMES[(rank + 1) as PuzzleRank] : null;
+  rank < 7 ? rankLabel((rank + 1) as PuzzleRank) : null;
 
-// 到達譜の見出し: 「{そのラン最深の区域名}の{最高ランク名} に到達」。
+// 到達譜の見出し: 「{そのラン最深の区域名}の{最高ランク名} に到達」(v0.25.2587: ランクは数字つき)。
 export const wallAchievementHeadline = (deepestZoneIdx: number, highestRank: PuzzleRank): string =>
-  `${AREA_ZONE_NAMES[deepestZoneIdx]}の${WALL_RANK_NAMES[highestRank]} に到達`;
+  `${AREA_ZONE_NAMES[deepestZoneIdx]}の${rankLabel(highestRank)} に到達`;
 
 // タイトル画面バッジ: 「最深到達: {区域名}の{ランク名}」(自己最深の距離から区域名を逆引き)。
 export const zoneIdxForDist = (dist: number): number => {
@@ -93,7 +100,7 @@ export const zoneIdxForDist = (dist: number): number => {
   return 0;
 };
 export const deepestReachedBadge = (selfDeepestDist: number, selfHighestRank: PuzzleRank): string =>
-  `最深到達: ${AREA_ZONE_NAMES[zoneIdxForDist(selfDeepestDist)]}の${WALL_RANK_NAMES[selfHighestRank]}`;
+  `最深到達: ${AREA_ZONE_NAMES[zoneIdxForDist(selfDeepestDist)]}の${rankLabel(selfHighestRank)}`;
 
 // ---- 演出キューの優先順(演出仕様v0.25.1499: 「両軸が同時に起きたら深さ優先」) --------------------
 export type WallEventKind = 'depth' | 'rank' | 'revenge';

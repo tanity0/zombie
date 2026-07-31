@@ -20,7 +20,7 @@ import { buildRunTimeline, buildDuoRunTimeline } from '../utils/ghostAlbum';
 import { duoClearsThisRun } from '../utils/duoRecords';
 import { BossClearCardRow, BossClearStrip, GhostAllyCard } from './GhostRecordCards';
 import {
-  wallAchievementHeadline, metersToNextWall, WALL_RANK_NAMES,
+  wallAchievementHeadline, metersToNextWall, rankLabel,
 } from '../utils/wallProgress';
 import DirectorResult from './DirectorResult';
 import ResultReach from './ResultReach';
@@ -516,7 +516,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   </p>
                   <div className="mx-auto mt-0.5 h-[2px] w-24 rounded-full" style={{ background: 'linear-gradient(90deg, transparent, #ffd700, transparent)' }} />
                   <p className="mt-1 text-[10px] text-white/50">
-                    {AREA_ZONE_NAMES[stats.maxAreaReached]} × {WALL_RANK_NAMES[wallHighestRank]}
+                    {AREA_ZONE_NAMES[stats.maxAreaReached]} × {rankLabel(wallHighestRank)}
                   </p>
                 </div>
               )}
@@ -742,7 +742,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   <div className="min-w-0 flex-1 text-[11px] text-white/70 space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-white/50">到達ランク</span>
-                      <span className="font-semibold tabular-nums" style={{ color: '#ff6a55' }}>{WALL_RANK_NAMES[wallHighestRank]}</span>
+                      <span className="font-semibold tabular-nums" style={{ color: '#ff6a55' }}>{rankLabel(wallHighestRank)}</span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-white/50">最深区域</span>
