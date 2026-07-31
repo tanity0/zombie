@@ -14,7 +14,7 @@ import { useGameStore } from '../store/gameStore';
 import type { Enemy } from '../types/game';
 import {
   getBossTuning, getAtPath, setAtPath, clampField, changedPaths, resetTuning,
-  formatTuningText, parseTuningText, UNIT_SUFFIX, type TuningField,
+  formatTuningText, parseTuningText, UNIT_SUFFIX, type TuningField, type BossTuningEntry,
 } from '../utils/bossTuning';
 import { registerIdolTuning } from '../utils/idolTuning';
 import { BossMakerLive } from './BossMakerLive';
@@ -111,31 +111,114 @@ const NumberScrub = ({ field, value, changed, onChange }: {
   );
 };
 
-// ---- グループ(左上=行動パターン / 右上=技) ------------------------------------------------------
-const FieldGroup = ({ fields, table, defaults, onChange }: {
-  fields: TuningField[]; table: Record<string, unknown>; defaults: Record<string, unknown>;
+// ---- 折りたたみの記憶(BOSS_MAKER.md 社長要望v0.25.2625「開き直すたびに畳み直すのは苦痛」) ------
+const OPEN_KEY = 'bossmaker.open.v1';
+const loadOpen = (boss: string): Set<string> => {
+  try {
+    const raw = localStorage.getItem(`${OPEN_KEY}.${boss}`);
+    return new Set<string>(raw ? (JSON.parse(raw) as string[]) : []); // 既定は全部畳んだ状態
+  } catch { return new Set<string>(); }
+};
+const saveOpen = (boss: string, set: Set<string>): void => {
+  try { localStorage.setItem(`${OPEN_KEY}.${boss}`, JSON.stringify([...set])); } catch { /* 保存できなくても動く */ }
+};
+
+/** 畳んでいる時に見出しへ出す要点(先頭3欄)。「どれを開けばいいか」が分かるように。 */
+const summarize = (fs: TuningField[], table: Record<string, unknown>): string =>
+  fs.slice(0, 3).map(f => {
+    const v = getAtPath(table, f.path) ?? 0;
+    return `${f.label}${fmt(v, f.step ?? 1)}${UNIT_SUFFIX[f.kind]}`;
+  }).join(' ');
+
+// ---- グループ(左上=行動パターン / 右上=技)。**セクション単位で開閉**する ----------------------
+const SectionList = ({ group, entry, open, toggle, onChange, onPlay, playState, bump }: {
+  group: 'behavior' | 'move';
+  entry: BossTuningEntry;
+  open: Set<string>;
+  toggle: (sec: string) => void;
   onChange: (path: string, v: number) => void;
+  onPlay: (sec: string) => void;
+  playState: { verb: string | null; loop: string | null };
+  bump: number;
 }) => {
+  // セクションの並び = スキーマの出現順 + 欄を持たない再生専用セクション(移動語彙)を末尾へ。
   const sections = useMemo(() => {
     const m = new Map<string, TuningField[]>();
-    for (const f of fields) { const a = m.get(f.section) ?? []; a.push(f); m.set(f.section, a); }
+    for (const f of entry.fields) if (f.group === group) {
+      const a = m.get(f.section) ?? []; a.push(f); m.set(f.section, a);
+    }
+    for (const p of entry.playables ?? []) {
+      if (group === 'behavior' && !m.has(p.section) && !entry.fields.some(f => f.section === p.section)) m.set(p.section, []);
+    }
     return [...m.entries()];
-  }, [fields]);
+    // bump は「値が変わったら要点表示を作り直す」ため(依存に入れないと畳んだ見出しが古いまま)。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry, group, bump]);
+
   return (
     <>
-      {sections.map(([sec, fs]) => (
-        <div key={sec} className="mb-1">
-          <div className="mb-[2px] text-[10px] font-bold text-emerald-300/90">{sec}</div>
-          {fs.map(f => (
-            <NumberScrub
-              key={f.path} field={f}
-              value={getAtPath(table, f.path) ?? 0}
-              changed={getAtPath(table, f.path) !== getAtPath(defaults, f.path)}
-              onChange={v => onChange(f.path, v)}
-            />
-          ))}
-        </div>
-      ))}
+      {sections.map(([sec, fs]) => {
+        const isOpen = open.has(sec);
+        const plays = (entry.playables ?? []).filter(p => p.section === sec);
+        const single = plays.length === 1 ? plays[0] : null;
+        const active = single !== null
+          && (playState.verb === single.key || playState.loop === single.key);
+        return (
+          <div key={sec} className="mb-1 rounded bg-white/[0.04]">
+            <div className="flex items-center gap-1 px-1">
+              <button
+                className="min-w-0 flex-1 py-1 text-left"
+                onClick={() => toggle(sec)}
+              >
+                <div className="flex items-center gap-1">
+                  {/* 開閉の印は細い三角(▸/▾)。**再生ボタンの塗り三角(▶)と見間違えない**ため。 */}
+                  <span className="text-[9px] text-white/40">{isOpen ? '▾' : '▸'}</span>
+                  <span className="truncate text-[10px] font-bold text-emerald-300/90">{sec}</span>
+                </div>
+                {!isOpen && fs.length > 0 && (
+                  <div className="truncate pl-3 font-mono text-[9px] text-white/40">{summarize(fs, entry.table)}</div>
+                )}
+              </button>
+              {single && (
+                <button
+                  className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] leading-none ${active ? 'bg-emerald-400 text-black' : 'bg-white/15 text-white/80'}`}
+                  onClick={ev => { ev.stopPropagation(); onPlay(single.key); }}
+                  title="この技/動きだけを再生"
+                  aria-label={`${single.label} を再生`}
+                >▶</button>
+              )}
+            </div>
+            {isOpen && (
+              <div className="px-1 pb-1">
+                {/* 欄を持たない再生専用セクション(移動語彙)は、ここへボタンを並べる。 */}
+                {plays.length > 1 && (
+                  <div className="mb-1 flex flex-wrap gap-1">
+                    {plays.map(p => {
+                      const on = playState.verb === p.key || playState.loop === p.key;
+                      return (
+                        <button
+                          key={p.key}
+                          className={`rounded px-2 py-1 text-[10px] ${on ? 'bg-emerald-400 text-black' : 'bg-white/15 text-white/80'}`}
+                          onClick={() => onPlay(p.key)}
+                          aria-label={`${p.label} を再生`}
+                        >▶ {p.label}</button>
+                      );
+                    })}
+                  </div>
+                )}
+                {fs.map(f => (
+                  <NumberScrub
+                    key={f.path} field={f}
+                    value={getAtPath(entry.table, f.path) ?? 0}
+                    changed={getAtPath(entry.table, f.path) !== getAtPath(entry.defaults, f.path)}
+                    onChange={v => onChange(f.path, v)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </>
   );
 };
@@ -147,11 +230,32 @@ export const BossMakerPanel = () => {
   const paused = useGameStore(s => s.bossMaker.paused);
   const showHitbox = useGameStore(s => s.bossMaker.showHitbox);
   const setBossMaker = useGameStore(s => s.setBossMaker);
-  const [, bump] = useState(0);
+  const [rev, bump] = useState(0);
   const [note, setNote] = useState('');
   const [open, setOpen] = useState(true);
   const bossType = 'idol'; // フェーズ1はアイドル1体(BOSS_MAKER.md §6)
   const entry = getBossTuning(bossType);
+  // 折りたたみ: 既定は全部畳んだ状態。localStorage に覚える(社長要望v0.25.2625)。
+  const [openSecs, setOpenSecs] = useState<Set<string>>(() => loadOpen(bossType));
+  const [loop, setLoop] = useState(false);
+  const toggleSec = useCallback((sec: string) => {
+    setOpenSecs(prev => {
+      const next = new Set(prev);
+      if (next.has(sec)) next.delete(sec); else next.add(sec);
+      saveOpen(bossType, next);
+      return next;
+    });
+  }, []);
+  const setAllSecs = useCallback((all: boolean) => {
+    if (!entry) return;
+    const secs = new Set<string>();
+    if (all) {
+      for (const f of entry.fields) secs.add(f.section);
+      for (const p of entry.playables ?? []) secs.add(p.section);
+    }
+    saveOpen(bossType, secs);
+    setOpenSecs(secs);
+  }, [entry]);
 
   const onChange = useCallback((path: string, v: number) => {
     if (!entry) return;
@@ -169,11 +273,18 @@ export const BossMakerPanel = () => {
     bump(n => n + 1);
   }, [entry]);
 
+  // 再生(社長要望v0.25.2625): 押した1つだけを実行。停止中なら硬直明けでまた止まる。
+  const play = useCallback((key: string) => {
+    if (!entry?.onPlay) return;
+    const a = (entry.playables ?? []).find(p => p.key === key);
+    if (!a) return;
+    entry.onPlay(a, { solo: useGameStore.getState().bossMaker.paused, loop });
+    bump(n => n + 1);
+  }, [entry, loop]);
+
   if (!active || !entry) return null;
 
   const changed = changedPaths(entry).length;
-  const behavior = entry.fields.filter(f => f.group === 'behavior');
-  const moves = entry.fields.filter(f => f.group === 'move');
 
   const btn = 'rounded px-2 py-1 text-[10px] font-bold';
   const on = 'bg-emerald-500/80 text-black';
@@ -191,6 +302,9 @@ export const BossMakerPanel = () => {
         <button className={`${btn} ${invincible ? on : off}`} onClick={() => setBossMaker({ invincible: !invincible })}>無敵</button>
         <button className={`${btn} ${paused ? on : off}`} onClick={() => setBossMaker({ paused: !paused })}>停止</button>
         <button className={`${btn} ${showHitbox ? on : off}`} onClick={() => setBossMaker({ showHitbox: !showHitbox })}>判定</button>
+        <button className={`${btn} ${loop ? on : off}`} onClick={() => setLoop(l => !l)} title="再生を繰り返す">ループ</button>
+        <button className={`${btn} ${off}`} onClick={() => setAllSecs(false)}>全部畳む</button>
+        <button className={`${btn} ${off}`} onClick={() => setAllSecs(true)}>全部開く</button>
       </div>
 
       {open && (
@@ -201,7 +315,10 @@ export const BossMakerPanel = () => {
               <div className="text-[11px] font-bold text-white">行動パターン</div>
               <BossMakerLive bossType={bossType} />
             </div>
-            <FieldGroup fields={behavior} table={entry.table} defaults={entry.defaults} onChange={onChange} />
+            <SectionList
+              group="behavior" entry={entry} open={openSecs} toggle={toggleSec}
+              onChange={onChange} onPlay={play} playState={entry.playState?.() ?? { verb: null, loop: null }} bump={rev}
+            />
             <div className="mt-1 flex flex-wrap gap-1">
               <button className={`${btn} ${off}`} onClick={() => patchBoss(e => ({ health: Math.max(1, Math.round(e.maxHealth * 0.4)) }))}>HP40%</button>
               <button className={`${btn} ${off}`} onClick={() => patchBoss(() => ({ bossPhase: 2 }))}>P2</button>
@@ -216,7 +333,10 @@ export const BossMakerPanel = () => {
           {/* 右上: 技ごと */}
           <div className="pointer-events-auto absolute right-1 top-9 max-h-[72vh] w-[210px] overflow-y-auto rounded bg-black/75 p-1.5">
             <div className="mb-1 text-[11px] font-bold text-white">技({entry.label})</div>
-            <FieldGroup fields={moves} table={entry.table} defaults={entry.defaults} onChange={onChange} />
+            <SectionList
+              group="move" entry={entry} open={openSecs} toggle={toggleSec}
+              onChange={onChange} onPlay={play} playState={entry.playState?.() ?? { verb: null, loop: null }} bump={rev}
+            />
           </div>
 
           {/* 下部中央: コピー/貼り戻し/リセット */}

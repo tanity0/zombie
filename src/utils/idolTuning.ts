@@ -6,8 +6,10 @@
 // 主たる操作は**キーボードで打つことではなく「摘まむ」**(ドラッグでスクラブ / +− ボタン)。
 // よって **step(刻み幅)がスキーマの主役**になる。刻みが合っていないとスクラブが使い物にならない。
 // 叩き台の刻み: ms=50 / px=10 / 倍率=0.05 / 重み=5 / 個数=1。
-import { registerBossTuning, type TuningField } from './bossTuning';
+import { registerBossTuning, type TuningField, type PlayableAction } from './bossTuning';
 import { IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_ALL_MOVES, type IdolMove } from './idolScript';
+import { requestIdolMovePlay, requestIdolVerbPlay, getIdolPlayback } from './idolTick';
+import type { NeutralVerb } from './bossSkeleton';
 
 const MOVE_LABEL: Record<IdolMove, string> = {
   aim: '狙い撃ち(aim)', fan: '連射扇(fan)', roll: '離脱ローリング(roll)',
@@ -98,6 +100,19 @@ export const IDOL_TUNING_FIELDS: readonly TuningField[] = [
   ...behaviorFields(), ...stringFields(), ...moveFields(),
 ];
 
+// ---- 個別再生(社長要望v0.25.2625) --------------------------------------------------------------
+// 技6本はスキーマの section(=MOVE_LABEL)と対応させる。移動語彙4つは専用の見出しにまとめる。
+export const VERB_SECTION = '動き(単独再生)';
+const VERB_LABEL: Record<NeutralVerb, string> = {
+  close: '詰める', retreat: '離れる', strafe: '並走', hold: '止まる',
+};
+
+export const IDOL_PLAYABLES: readonly PlayableAction[] = [
+  ...IDOL_ALL_MOVES.map(m => ({ kind: 'move' as const, key: m, label: MOVE_LABEL[m], section: MOVE_LABEL[m] })),
+  ...(['close', 'retreat', 'strafe', 'hold'] as NeutralVerb[])
+    .map(v => ({ kind: 'verb' as const, key: v, label: VERB_LABEL[v], section: VERB_SECTION })),
+];
+
 export const registerIdolTuning = (): void => {
   registerBossTuning({
     bossType: 'idol',
@@ -105,5 +120,11 @@ export const registerIdolTuning = (): void => {
     table: IDOL_TUNING as unknown as Record<string, unknown>,
     defaults: IDOL_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: IDOL_TUNING_FIELDS,
+    playables: IDOL_PLAYABLES,
+    onPlay: (a, opts) => {
+      if (a.kind === 'move') requestIdolMovePlay(a.key as IdolMove, opts);
+      else requestIdolVerbPlay(a.key as NeutralVerb);
+    },
+    playState: () => getIdolPlayback(),
   });
 };

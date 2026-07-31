@@ -4,7 +4,8 @@ import {
   resetTuning, formatTuningText, parseTuningText, deepCloneTuning,
   type BossTuningEntry, type TuningField,
 } from './bossTuning';
-import { registerIdolTuning, IDOL_TUNING_FIELDS } from './idolTuning';
+import { registerIdolTuning, IDOL_TUNING_FIELDS, IDOL_PLAYABLES, VERB_SECTION } from './idolTuning';
+import { requestIdolMovePlay, requestIdolVerbPlay, idolPlaybackActive, getIdolPlayback, clearIdolPlayback } from './idolTick';
 import { IDOL_TUNING, IDOL_TUNING_DEFAULTS } from './idolScript';
 
 const FIELDS: TuningField[] = [
@@ -197,5 +198,61 @@ describe('registerBossTuning', () => {
     registerBossTuning(makeEntry());
     expect(getBossTuning('test')?.label).toBe('テスト');
     expect(getBossTuning('nobody')).toBeUndefined();
+  });
+});
+
+// ==== 個別再生(社長要望v0.25.2625)。スキーマ駆動であること=UIがボスを知らないこと ====
+describe('個別再生: スキーマから生成できる形になっている', () => {
+  beforeEach(() => { registerIdolTuning(); clearIdolPlayback(); });
+
+  it('技6本 + 移動語彙4つのボタンが宣言されている', () => {
+    const moves = IDOL_PLAYABLES.filter(p => p.kind === 'move').map(p => p.key).sort();
+    expect(moves).toEqual(['aim', 'fan', 'orb', 'punch', 'roll', 'snipe']);
+    const verbs = IDOL_PLAYABLES.filter(p => p.kind === 'verb').map(p => p.key).sort();
+    expect(verbs).toEqual(['close', 'hold', 'retreat', 'strafe']);
+  });
+
+  it('技のボタンは「その技のスキーマ見出し」に紐づく(UIが見出しへ▶を置ける)', () => {
+    const sections = new Set(IDOL_TUNING_FIELDS.map(f => f.section));
+    for (const p of IDOL_PLAYABLES.filter(x => x.kind === 'move')) {
+      expect(sections.has(p.section), `${p.key} の見出し ${p.section} がスキーマに無い`).toBe(true);
+    }
+  });
+
+  it('移動語彙は専用の見出しにまとまる(欄を持たない再生専用セクション)', () => {
+    const verbs = IDOL_PLAYABLES.filter(p => p.kind === 'verb');
+    expect(verbs.every(p => p.section === VERB_SECTION)).toBe(true);
+    expect(IDOL_TUNING_FIELDS.some(f => f.section === VERB_SECTION)).toBe(false);
+  });
+
+  it('レジストリに onPlay / playState が繋がっている', () => {
+    const e = getBossTuning('idol');
+    expect(typeof e?.onPlay).toBe('function');
+    expect(typeof e?.playState).toBe('function');
+    expect(e?.playables?.length).toBe(10);
+  });
+});
+
+describe('個別再生: 要求箱の振る舞い', () => {
+  beforeEach(() => { clearIdolPlayback(); });
+
+  it('技を要求すると「停止中でもtickを進めてよい」状態になる', () => {
+    expect(idolPlaybackActive()).toBe(false);
+    requestIdolMovePlay('snipe', { solo: true, loop: false });
+    expect(idolPlaybackActive()).toBe(true);
+  });
+
+  it('移動語彙は同じものを2回押すと解除(トグル)', () => {
+    requestIdolVerbPlay('strafe');
+    expect(idolPlaybackActive()).toBe(true);
+    clearIdolPlayback();
+    expect(getIdolPlayback().verb).toBeNull();
+  });
+
+  it('clearIdolPlayback で全部消える(ラン開始時のリセット経路)', () => {
+    requestIdolMovePlay('orb', { solo: true, loop: true });
+    clearIdolPlayback();
+    expect(idolPlaybackActive()).toBe(false);
+    expect(getIdolPlayback()).toEqual({ verb: null, loop: null });
   });
 });

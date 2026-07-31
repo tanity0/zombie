@@ -49,10 +49,55 @@ export interface IdolTickState {
   farSince: number; meleeSince: number; angleSince: number; lastAngle: number;
   orbIds: string[];       // 追尾弾(毎フレーム旋回させる対象)
 }
+/**
+ * ★**副作用を持たせてはいけない**(v0.25.2625の実バグ)。
+ * 呼び出し側は `useRef(createIdolTickState())` の形で使うが、**`useRef` の引数は毎レンダー評価される**
+ * (refが初回の値を保持するだけで、式そのものは毎回走る)。ここに `clearIdolPlayback()` を仕込んだところ、
+ * パネルが再描画するたびに再生要求が消え、**▶を押しても技が1フレームで止まる**症状になった。
+ * 「新ランで再生状態も消す」のは**リセット地点(useGameLoop)で明示的に呼ぶ**こと。
+ */
 export const createIdolTickState = (): IdolTickState => ({
   seq: [], step: 0, strafeDir: 1, wavePending: false,
   farSince: 0, meleeSince: 0, angleSince: 0, lastAngle: 0, orbIds: [],
 });
+
+// ============================================================================================
+// ボスメーカーの「個別再生」(BOSS_MAKER.md・社長要望v0.25.2625)
+// > 停止中は技、動きごとに再生ボタンで個々に再生できる様にしたい
+//
+// 押した技を**即座に開始**する。CD・距離帯・ストリングの抽選は**全部バイパス**する
+// (「いま見たい技を見る」ための道具なので、条件が揃うまで待たせない)。
+//
+// 置き場所: パネル(React)は `IdolTickState` の実体を持てない(useGameLoopのrefの中)ので、
+// **モジュール変数の要求箱**を経由する。tickが毎フレーム先頭で1回だけ引き取る。
+// 掟: 強制発動の前に**進行中のストリング・第二波の予約・懲罰シグナルを必ずリセット**する
+// (中途半端な状態が残ると以後の挙動が「たまに変」になり、原因究明が地獄になる)。
+// ============================================================================================
+interface IdolPlayRequest { move?: IdolMove; verb?: NeutralVerb | null; solo: boolean; loop: boolean }
+let pendingPlay: IdolPlayRequest | null = null;
+/** 単独再生の実行中(=停止中でも tick を進めてよい)。硬直明けに false へ戻る。 */
+let soloActive = false;
+/** 維持中の移動語彙(null=通常の中立判断)。技の抽選は止める=その動きだけを見るため。 */
+let verbHold: NeutralVerb | null = null;
+/** ループ再生中の技(null=1回で止まる)。 */
+let loopMove: IdolMove | null = null;
+
+/** 技を1つだけ再生する。solo=停止中でもこの技が終わるまで進めて、終わったらまた止まる。 */
+export const requestIdolMovePlay = (move: IdolMove, opts?: { solo?: boolean; loop?: boolean }): void => {
+  // ループ中の技をもう一度押したら**停止**(移動語彙の▶と同じトグルの作法)。
+  // ループのON/OFFトグルは「次に押す再生」に効くだけなので、走っているループを止める手段がここに要る。
+  if (loopMove === move) { pendingPlay = { verb: null, solo: false, loop: false }; return; }
+  pendingPlay = { move, solo: opts?.solo ?? false, loop: opts?.loop ?? false };
+};
+/** 移動語彙を維持する(同じものを再度指定 or null で解除)。終わりが無いので押し続ける形。 */
+export const requestIdolVerbPlay = (verb: NeutralVerb | null): void => {
+  pendingPlay = { verb: verbHold === verb ? null : verb, solo: false, loop: false };
+};
+/** 停止中でも tick を回す必要があるか(useGameLoop のポーズ判定が読む)。 */
+export const idolPlaybackActive = (): boolean => soloActive || verbHold !== null || pendingPlay !== null;
+/** 画面表示用(どの語彙を維持中か・どの技をループ中か)。 */
+export const getIdolPlayback = (): { verb: NeutralVerb | null; loop: IdolMove | null } => ({ verb: verbHold, loop: loopMove });
+export const clearIdolPlayback = (): void => { pendingPlay = null; soloActive = false; verbHold = null; loopMove = null; };
 
 const ORB_ID_PREFIX = 'proj-idolorb-';
 const WINDUP_STATES = ['idol-aim-windup', 'idol-fan-windup', 'idol-roll-windup', 'idol-punch-windup', 'idol-snipe-windup', 'idol-orb-windup'];
@@ -249,6 +294,15 @@ export const runIdolTick = (
       patch.bossStateUntil = newGameTime + IDOL_TUNING.waveDelayMs;
       return;
     }
+    // ボスメーカーの単独再生: この技だけを見せる約束なので、ストリングへは続けない。
+    if (soloActive) {
+      if (loopMove !== null) { beginMove(loopMove); return; } // ループ再生(同じ技を繰り返す)
+      soloActive = false;
+      s.seq = []; s.step = 0;
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + IDOL_TUNING.neutral.minMs;
+      return;
+    }
     if (s.step < s.seq.length) { beginMove(s.seq[s.step++]); return; }
     // ストリング終端=休符(必ず入る)。
     s.seq = []; s.step = 0;
@@ -274,11 +328,45 @@ export const runIdolTick = (
   };
 
   // ---- 状態機械 -------------------------------------------------------------------------------
-  if (countered) {
+  // ---- ボスメーカー: 要求箱の引き取り(毎フレーム先頭で1回) --------------------------------------
+  let forcedThisFrame = false;
+  if (pendingPlay !== null) {
+    const req = pendingPlay;
+    pendingPlay = null;
+    if (req.verb !== undefined) {
+      // 移動語彙の維持/解除。技は出さない=その動きだけを見る。
+      verbHold = req.verb;
+      soloActive = false; loopMove = null;
+      s.seq = []; s.step = 0; s.wavePending = false;
+      s.farSince = 0; s.meleeSince = 0; s.angleSince = 0;
+      patch.bossState = 'chase';
+      // 維持中は抽選しない。**解除した時は通常の中立へ必ず戻す**——ここを MAX のままにすると
+      // 「再生をやめたのにボスが二度と技を出さない」状態で置き去りになる(実機で踏んだ)。
+      patch.bossNextActionAt = verbHold !== null
+        ? Number.MAX_SAFE_INTEGER
+        : newGameTime + IDOL_TUNING.neutral.minMs;
+      forcedThisFrame = true;
+    } else if (req.move) {
+      // 掟: 中途半端な状態を持ち越さない(ストリング/第二波/懲罰シグナルを全部リセットしてから始める)。
+      s.seq = []; s.step = 0; s.wavePending = false;
+      s.farSince = 0; s.meleeSince = 0; s.angleSince = 0;
+      s.orbIds = [];
+      verbHold = null;
+      soloActive = req.solo;
+      loopMove = req.loop ? req.move : null;
+      beginMove(req.move); // CD・距離帯・抽選を全部バイパスして即開始
+      forcedThisFrame = true;
+    }
+  }
+
+  if (forcedThisFrame) {
+    // ボスメーカーの強制発動フレーム: 上で patch を組み終えているので通常遷移はスキップ。
+  } else if (countered) {
     // カウンター成立フレームは遷移をスキップ(counterHitが休符まで設定済み)。
   } else if (st === 'chase') {
     // === NEUTRAL: 主戦帯を維持する(監査レポート§2-5の移動語彙4つ) ===
-    const verb: NeutralVerb = neutralVerb(dist, IDOL_NEUTRAL_BAND, false);
+    // ボスメーカーで語彙を維持中はそれを使う(通常は距離から判断)。
+    const verb: NeutralVerb = verbHold ?? neutralVerb(dist, IDOL_NEUTRAL_BAND, false);
     const spd = idol.speed * IDOL_VERB_SPEED_MULT[verb] * dt;
     const ux = dist > 0.001 ? (pcx - icx) / dist : 0, uy = dist > 0.001 ? (pcy - icy) / dist : 0;
     if (verb === 'close') { patch.x = idol.x + ux * spd; patch.y = idol.y + uy * spd; }
@@ -295,7 +383,7 @@ export const runIdolTick = (
     s.angleSince = dAng <= (IDOL_TUNING.sameAngleDeg * Math.PI) / 180 ? s.angleSince + stepMs : 0;
     s.lastAngle = ang;
 
-    if (newGameTime >= (idol.bossNextActionAt ?? 0)) {
+    if (verbHold === null && newGameTime >= (idol.bossNextActionAt ?? 0)) {
       const pun = punishTrigger({ farMs: s.farSince, meleeMs: s.meleeSince, sameAngleMs: s.angleSince }, IDOL_PUNISH);
       if (pun.flipStrafe) { s.strafeDir = (s.strafeDir === 1 ? -1 : 1); s.angleSince = 0; }
       if (pun.move) {

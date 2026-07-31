@@ -26,6 +26,20 @@ export interface TuningField {
   hint?: string;
 }
 
+/**
+ * 個別再生(BOSS_MAKER.md・社長要望v0.25.2625「停止中は技、動きごとに再生ボタンで個々に再生」)。
+ * **スキーマと同じくボス側が宣言する**ので、UIは一切ボスを知らないまま▶ボタンを並べられる。
+ *  - kind='move': 1回だけ再生(停止中なら硬直明けでまた止まる)
+ *  - kind='verb': 押した動きを維持し続ける(もう一度押すか別の動きを押すと切替)
+ * section = このボタンを出す見出し(スキーマの TuningField.section と対応させる)。
+ */
+export interface PlayableAction {
+  kind: 'move' | 'verb';
+  key: string;
+  label: string;
+  section: string;
+}
+
 export interface BossTuningEntry {
   bossType: string;
   label: string;
@@ -34,6 +48,12 @@ export interface BossTuningEntry {
   /** 既定値(リセットと差分表示用)。テーブルとは**別のオブジェクト**として保持する。 */
   defaults: Record<string, unknown>;
   fields: readonly TuningField[];
+  /** 個別再生のボタン(未定義=そのボスは再生に未対応)。 */
+  playables?: readonly PlayableAction[];
+  /** 再生の実行(ボス側の状態機械へ繋ぐ)。 */
+  onPlay?: (action: PlayableAction, opts: { solo: boolean; loop: boolean }) => void;
+  /** いま何を再生中か(▶の点灯表示用)。 */
+  playState?: () => { verb: string | null; loop: string | null };
 }
 
 const REGISTRY = new Map<string, BossTuningEntry>();

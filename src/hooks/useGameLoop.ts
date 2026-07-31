@@ -106,7 +106,7 @@ import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow } from '../utils/bossTest';
-import { runIdolTick, createIdolTickState, pickActiveIdol, type IdolSfx } from '../utils/idolTick';
+import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -2310,6 +2310,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
           bossMakerReadyRef.current = false;
           idolStateRef.current = createIdolTickState(); // idolのストリング/懲罰タイマも新ランでリセット
+          clearIdolPlayback(); // ボスメーカーの個別再生も新ランで解除(createIdolTickStateに副作用を持たせない=v0.25.2625の教訓)
           angelStateRef.current = createAngelBossState(); // 天使(ゲート2ボス)状態も新ランでリセット(M26 Step3)
           // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
           botTickRef.current = 0;
@@ -5547,7 +5548,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 壁クエリが要るのでこのブロック(上)に残す。
               // ボスメーカーの「停止」トグル: ボスの時間だけ止める(絵を止めて見たい時)。
               // プレイヤーは動けるまま=当たり判定の位置関係を落ち着いて確かめられる。
-              if (!useGameStore.getState().bossMaker.paused) {
+              // 停止中でも「個別再生」の間だけは時間を進める(社長要望v0.25.2625)。
+              // ポーズは入力ロック(isInputLocked)とは別系統なので、再生ボタンは常に効く。
+              if (!useGameStore.getState().bossMaker.paused || idolPlaybackActive()) {
                 runIdolTick(
                   idol, idolStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT,
                   IDOL_SFX, BOSS_COUNTER_ENABLED, triggerPlayerDeath,
