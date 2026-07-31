@@ -1469,6 +1469,14 @@ export const CAMERA_INTRO_LIFT_FRAC = camNum('camintrolift', 0.7); // 登場中�
 // 銃/接触/爆発キルや非フィニッシュの通常近接キルはズームしない=社長指示で撤回・v0.25.1466)。
 // KILLだけ社長指示で1.2倍・0.5秒へ変更→倍率はやはり1.5倍へ戻す(社長指示・v0.25.1495。
 // 秒数(0.5秒/holdは不変)。代わりにズーム効果自体へ連発防止CDを追加(下記CD_MS)。
+// v0.25.2586(社長指示「守護霊死んだときもカメラズーム スローしてほしい これプレイヤーも」):
+// 死亡の寄り。強さはKILLと同じ(1.0=2倍)・長さは死亡スロー(PLAYER_DEATH_SLOW_MS=820)と同期させ、
+// holdはフィニッシュと同じカーブ(最大で保持してから戻る)。叩き台・実機調整前提。
+// **キル演出のCD(JUICE_CD)は通さない**=死は稀で必ず見せたい瞬間なので毎回出す。
+export const DEATH_ZOOM_MAG = 1.0;
+export const DEATH_ZOOM_MS = 820;      // = PLAYER_DEATH_SLOW_MS(useGameLoop)と同値=スローと同時に戻る
+export const DEATH_ZOOM_HOLD_MS = 560; // = MELEE_FINISH_SLOW_HOLD_MS(同じhold-then-rampカーブ)
+export const DEATH_SLOW_SCALE = 0.32;  // = 既存のプレイヤー死亡スローと同じ倍率(守護霊にも同値を使う)
 export const MELEE_FINISH_ZOOM_MAG = 1.0;  // 近接フィニッシュ(KILL)の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
 export const MELEE_FINISH_ZOOM_MS = 500;   // KILLだけ専用のズーム長さ(社長指示・スローとは非連動)
 export const MELEE_FINISH_ZOOM_HOLD_MS = 400; // 上記のうち最大寄りを保持する長さ(比率80%はスローと同じ)
@@ -6446,6 +6454,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 含める(i-frame・health<=0で消滅=「ゴーストHP0で解散」の土台)。rareは対象外のまま(既存挙動不変)。
     const isHittable = (s: Summon): boolean => s.kind === 'normal' || s.kind === 'ghost-ally';
     const livePlayer = get().player;
+    // v0.25.2586(社長指示): 守護霊が死んだ瞬間の位置(ズーム+スローの寄り先)。set外へ持ち出す
+    // (演出はset内で呼ばない=updateArmory/updateHospitalと同じ「副作用は外」の作法)。
+    let ghostDeathAt: { x: number; y: number } | null = null;
     set(state => ({
       summons: state.summons
         .map(s => {
@@ -6483,10 +6494,21 @@ export const useGameStore = create<GameState>((set, get) => ({
             console.log('[GHOSTDMG]', `${Math.round(gtNow / 100) / 10}s`, source ?? 'untagged',
               `dmg=${Math.round(dealt)}`, `hp→${Math.round(s.health - dealt)}`);
           }
+          // v0.25.2586: 守護霊がこの被弾で落ちる(HP0以下=下のfilterで消える)なら寄り先を控える。
+          if (s.kind === 'ghost-ally' && s.health - dealt <= 0) {
+            ghostDeathAt = { x: s.x + s.width / 2, y: s.y + s.height / 2 };
+          }
           return { ...s, health: s.health - dealt, lastHit: now, ...kb };
         })
         .filter(s => !isHittable(s) || s.health > 0),
     }));
+    // v0.25.2586(社長指示「守護霊死んだときもカメラズーム スローしてほしい」): 死んだ守護霊の位置へ
+    // 寄る+スロー。プレイヤーの死亡演出(useGameLoop)と同じ定数・同じ長さで揃える(停止は入れない)。
+    if (ghostDeathAt) {
+      const at: { x: number; y: number } = ghostDeathAt;
+      get().triggerZoom(DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, at.x, at.y);
+      get().triggerTimeSlow(DEATH_SLOW_SCALE, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS);
+    }
   },
 
   triggerKatanaDash: (dirX, dirY, ghostId) => {

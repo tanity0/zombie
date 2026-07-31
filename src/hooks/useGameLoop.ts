@@ -53,6 +53,7 @@ import {
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
+  DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, DEATH_SLOW_SCALE, // v0.25.2586: 死亡の寄り+スロー
   EVENT_QUEST_DWELL_MS, EVENT_QUEST_REWARD_GOLD,
   NPC_DIALOGUE_MS, NPC_DIALOGUE_GAP_MS,
   RN_ENEMY_FORCE,
@@ -1537,7 +1538,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     spawnRing(x, y, 8, 118, 'rgba(220,38,38,0.9)', 7, 620);
     spawnRing(x, y, 24, 168, 'rgba(127,29,29,0.66)', 4, 760);
     useGameStore.getState().spawnGlow(x, y, 96, 'rgba(220,38,38,', PLAYER_DEATH_SLOW_MS);
-    useGameStore.getState().triggerTimeSlow(0.32, PLAYER_DEATH_SLOW_MS);
+    // v0.25.2586(社長指示「守護霊死んだときもカメラズーム スローしてほしい これプレイヤーも」):
+    // 死亡スローは従来からあったが**寄りズームが無かった**ので追加。守護霊の死(gameStore.damageSummon)と
+    // 同じ定数・同じ長さ=どちらの死も同じ絵になる。holdを付けてスローと同じhold-then-rampで戻る。
+    useGameStore.getState().triggerZoom(DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, x, y);
+    useGameStore.getState().triggerTimeSlow(DEATH_SLOW_SCALE, PLAYER_DEATH_SLOW_MS, DEATH_ZOOM_HOLD_MS);
     spawnBurst(x, y, '#ef4444', 36);
     spawnBurst(x, y, '#7f1d1d', 22);
     // 立ち絵の1秒フェードを見せてからゲームオーバー画面へ(現状の死亡演出はそのまま)。

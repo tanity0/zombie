@@ -1525,6 +1525,9 @@ const FIST_HOLD_MS = 280;      // 拳が当たってから消えるまで
 const PLANT_SPIT_MS = 300;     // 種を吐く反動(口の絵)の尺
 const PLANT_SPIT_SCALE = 1.7;  // 口の絵の大きさ(敵の描画枠に対する倍率・②寄りの見せ)
 const PLANT_SPIT_MAX = 12;     // 同時に生きている口の絵の安全弁(1発=300msの一瞬なので実質届かない)
+// v0.25.2586(社長報告「中央にターゲット捉えれてなさそう」): 寄りズームで対象を画面中央へ寄せる割合。
+// 1=完全に中央へ(社長要望どおり)/0=旧挙動(対象を軸に拡大するだけで中央へは寄らない)。叩き台=1。
+const ZOOM_TARGET_CENTER_FRAC = 1;
 const GROUND_CRACK_MS = 1500;  // 地割れが床に残る時間(最後の45%でフェードアウト)
 const GROUND_CRACK_FADE_FROM = 0.55; // この進行度から消え始める
 // 社長報告v0.25.2548「画面占有率が強すぎて視認性が下がる。当たり判定が無いので考えた方がいい」→
@@ -4349,11 +4352,22 @@ export class PixiScene {
     // 寄り先(社長指示・v0.25.1498): KILLはキルされた対象(zoomTargetX/Y・世界座標)を画面中央の
     // 代わりに寄りの軸にする(zoomDecay>0=パンチ演出中のみ・カウンター等は指定なしで従来どおり中央)。
     // world.position は本関数の先頭でカメラオフセット込み更新済みなのでここでそのまま使える。
-    const pivotX = (s.zoomHasTarget && zoomDecay > 0) ? this.L.world.position.x + s.zoomTargetX : this.screenW / 2;
-    const pivotY = (s.zoomHasTarget && zoomDecay > 0) ? this.L.world.position.y + s.zoomTargetY : this.screenH / 2;
-    if (Math.abs(zoom - 1) > 0.0005) {
+    // v0.25.2586(社長報告「カメラが寄り切ってない。対象には向かってる気配あるけど、中央に
+    // ターゲット捉えれてなさそう」): 旧実装は**対象を軸にした拡大だけ**(pivot方式)で、対象は画面上の
+    // 元の位置に留まったまま周りが大きくなるだけだった=「中央に来ない」の正体。
+    // 対象を**画面中央へ寄せる並進**を足す: 拡大は画面中央基準にし、対象が中央へ来る量だけ余計に
+    // ずらす(ずらし量は zoomDecay=演出エンベロープで0→1→0するので、終わると自然に元の画角へ戻る)。
+    // 検算: decay=1 で対象は厳密に画面中央(下の式に代入すると center に一致)/ decay=0 で従来と同一。
+    const centerX = this.screenW / 2, centerY = this.screenH / 2;
+    const zoomAimsTarget = s.zoomHasTarget && zoomDecay > 0;
+    // 対象の「等倍時の画面座標」(world.position は本関数の先頭でカメラオフセット込み更新済み)。
+    const targetScreenX = this.L.world.position.x + s.zoomTargetX;
+    const targetScreenY = this.L.world.position.y + s.zoomTargetY;
+    const panX = zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0;
+    const panY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0;
+    if (Math.abs(zoom - 1) > 0.0005 || panX !== 0 || panY !== 0) {
       this.L.worldGroup.scale.set(zoom);
-      this.L.worldGroup.position.set(pivotX * (1 - zoom), pivotY * (1 - zoom));
+      this.L.worldGroup.position.set(centerX * (1 - zoom) - panX, centerY * (1 - zoom) - panY);
       this.zoomApplied = true;
     } else if (this.zoomApplied) {
       this.L.worldGroup.scale.set(1);
