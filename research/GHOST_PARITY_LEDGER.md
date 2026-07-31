@@ -1012,3 +1012,52 @@ jibrilの炎=**別エンティティ**(Projectileではない)/ idolのroll・pu
 - botSkill.ts無改変・BOT_AND_GHOST.md編集禁止・§2.7計測ゲートに例外を作らない・
   ゲート=`npm run typecheck`+`npm run lint`(エラー0)+`npx vitest related <触ったファイル>`・
   DEVELOPMENT_LOG.md先頭に「(未採番)」エントリ・git操作/バージョンbump禁止・未決はこの台帳へ追記して停止。
+
+## 発注仕様: バッチ GHOST-CMD-2A(§2.18追補: 隙コマンド・v0.25.2584発注)
+
+**正本**: BOT_AND_GHOST.md §2.18「追補: 抜けカードの裁定」の隙コマンド(社長裁定2026-07-31)。
+発端=社長実機報告「紫サークルになったら基本的に叩きに行ったはずなのに、AIは近づいていく気配すらなく
+中距離から撃ってた」。**数値がなければデフォ=詰めて叩く/数値があれば記録が常に勝つ**(決めつけ禁止)。
+
+### 1. 文脈(3つ・1機構)
+隙(punish window)の開始をイベント錨点にする:
+- **stun**: 交戦中ボスの気絶(完全気絶(紫)含む)。判定は既存の気絶述語を流用(weaponUtils.pickTargetが
+  使う isStunned / meleeExecute.resolveStunnedMeleeHit の成立条件と同じ出どころ。**新しい判定を発明しない**)。
+- **recover**: ボスの技後硬直。aiPhase/bossState の語尾 `-recover`(既存の語尾流儀=isBossCounterableNowApproxと同類。
+  giantの`g-*-recover`+裏ボス/天使のrecover系)。
+- **afterCounter**: カウンター成立直後の追撃窓(叩き台=成立から1200ms・export定数)。
+  プレイヤー側=lastCounterSuccessTime、ゴースト側=applyGhostCounterEffect成立時刻(Summonへ
+  `ghostLastCounterAt`を追加して打刻)。
+
+### 2. 計測(playerTraits.ts・文脈ごとに1エピソード1票)
+- 窓が開いた(文脈発生)→閉じたまでを1エピソードとし、**窓中にプレイヤーの近接ダメージが出たか**で
+  2分類: 出た='rush'(叩きに行った)/出ない='shoot'。近接ダメージ検知は**botTelemetryの
+  damageDealt.meleeの区間差分**(セッションtickで毎tick取れる=新しいnotify配線を作らない)。
+- 保存: `PlayerProfile.punish?: Partial<Record<'stun'|'recover'|'afterCounter', {n, rushRate}>>`
+  (疎・文脈ごと・技キー横断)。混合はdodgeDirと同じ数式(初回そのまま・EMA・n累計)。
+  スキーマv据え置き+normalize補完。BossStyleSlotへも写す(丸ごと写し)。
+- 既存ゲート(ゴーストラン破棄・30秒フロアの現行v0.25.2579形)に新しい例外を作らない。
+
+### 3. 消費(ghostDriver.ts+useGameLoop配線)
+- `GhostProfile.punish?`(同形)追加+effectiveGhostProfile経路(1Bと同じ形)。
+- 紐付きボスで文脈が開いた瞬間に**2モード袋**から1枚引く(文脈×ランで引き切り・詰め直し=
+  commandBagと同じ寿命規則。境界ガードは不要=被弾の意味を持たない)。**n=0/欠損のデフォ='rush'**
+  (社長裁定「ベストは数値がなければ」)。乱数はdecideGhostのrandを注入(消費は文脈開始tickの1回のみ)。
+- 'rush'を引いたら、その窓の間**カウンター接近と同じ型**で移動を上書き: 縁74pxまで詰め、射程内で
+  melee(気絶中は既存のapplyGhostMeleeFinisher経路が処刑を面倒見る。meleeBias抽選は通さない=
+  「行くと決めた」ので確実に出す)。**回避(dodge)は上位のまま**(他の脅威は避けながら詰める)。
+  'shoot'は従来どおり。窓が閉じたら通常の意思決定へ戻る(持ち越し状態はGhostSelf/GhostDecisionの
+  既存パターン=フラット項目で)。
+- **2モード袋は汎用形で新設**(`src/utils/modeBag.ts`等・{n, rate}→2種札・一様引き・引き切り・
+  ラン単位リセット(resetGameから)・rand注入)。以後のPhase 2サブモード%で流用する前提のAPIにする。
+
+### 4. テスト
+計測: stun窓で近接デルタあり→rush票/なし→shoot票/窓外の近接は数えない/文脈別に独立。
+消費: n=0→常にrush(デフォ)/rushRate=0の記録→常にshoot(決めつけない)/引き切りで割合一致/
+rush中は接近(縁基準)+melee・dodge優先維持/窓が閉じたら通常へ/欠損=従来とビット一致・乱数消費は
+文脈開始時の1回のみ。
+
+### 5. 掟
+botSkill.ts無改変・BOT_AND_GHOST.md編集禁止・気絶/硬直の判定を発明しない(既存述語・語尾流儀の流用)・
+ゲート=`npm run typecheck`+`npm run lint`(エラー0)+`npx vitest related`・DEVELOPMENT_LOG.md先頭に
+「(未採番)」エントリ・git操作/バージョンbump禁止・未決はこの台帳へ追記して停止。
