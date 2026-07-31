@@ -1569,6 +1569,19 @@ const BOSS_HITBOX_HINT_ENABLED = (() => {
   if (typeof window === 'undefined') return true;
   return new URLSearchParams(window.location.search).get('bosshitbox') !== '0';
 })();
+// v0.25.2598(社長裁定A・社長報告「カウンターとっても黄色しびれ(移動半分)になってない時がある」):
+// **移動半減窓(bossSlowUntil)に視覚を付ける**。半減自体は全ての近接系カウンターで確実に入っていたが、
+// 黄色い輪の描画は `stunUntil`(=痺れ/フィニッシュ受付)に紐づいており、ボスは v0.25.2422 の裁定
+// 「ボスはクリで痺れない・代わりに移動半減」以降 `stunUntil` を受け取らないため、**半減窓は完全に
+// 不可視**だった(効いているのに見えない=社長の体感どおり)。ここで専用の輪を足す。
+// 痺れの輪と混同させないため「半分」を形で表す: **弧は2本(痺れは4本)・回転速度も半分**。
+// 判定・ダメージ・窓長は1bitも変えない(描画専用)。`?bossslow=0` で従来(不可視)へ復帰。
+const BOSS_SLOW_RING_ENABLED = (() => {
+  if (typeof window === 'undefined') return true;
+  return new URLSearchParams(window.location.search).get('bossslow') !== '0';
+})();
+const BOSS_SLOW_RING_FADE_MS = 700;  // 窓の終わり際にこの時間だけ薄れていく(=攻めどきの残りが分かる)
+const BOSS_SLOW_RING_ALPHA = 0.85;   // 弧の濃さ(叩き台・実機調整前提)
 const BOSS_HITBOX_HINT_NEAR_PX = 300;   // これより遠い=完全不可視(何も描かない)
 const BOSS_HITBOX_HINT_FULL_PX = 110;   // これ以内=最大の濃さ(近接の間合い〜接触帯)
 const BOSS_HITBOX_HINT_LINE_ALPHA = 0.34; // 最大時の縁の濃さ(控えめ=景観優先)
@@ -9299,6 +9312,10 @@ export class PixiScene {
       // 裏ボスの完全気絶(5クリ)中は黄→紫のサークル(社長指示)。それ以外は従来の黄。
       const fullStun = e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil;
       this.drawStunReticle(r, cx, cy, Math.max(e.width, e.height), now, fullStun ? 0xa855f7 : 0xfacc15);
+    } else if (BOSS_SLOW_RING_ENABLED && e.bossSlowUntil !== undefined && gameTime < e.bossSlowUntil) {
+      // v0.25.2598: 移動半減窓(クリ/カウンター成立の①効果=半減+次行動CD2倍)。痺れ中(上)は
+      // そちらの輪を優先し重ねない=「痺れ」と「半減」が同時に出て読めなくなるのを防ぐ。
+      this.drawBossSlowRing(r, cx, cy, Math.max(e.width, e.height), now, e.bossSlowUntil - gameTime);
     }
     // 当たり判定=足元の「帯」(通常敵=幅は影と同規格=実描画幅×0.55 / 高さ=e.height、裏ボス=生の帯)。確認しやすい
     // よう帯=四角をうっすら色付きで表示。絵の「下」=この reticle 層(スプライトより背面)へ。当たり判定と必ず一致させる
@@ -10636,6 +10653,29 @@ export class PixiScene {
       g.moveTo(cx + Math.cos(a0) * rad, cy + Math.sin(a0) * rad)
         .arc(cx, cy, rad, a0, a1)
         .stroke({ width: 2, color });
+    }
+  }
+
+  /**
+   * v0.25.2598: ボスの移動半減窓(bossSlowUntil)の輪。痺れの輪(drawStunReticle)と**同じ黄**だが、
+   * 「半分」を形で表して混同を避ける: **弧は2本(痺れは4本)/回転は半分の速さ/面の塗りは無し**。
+   * 残り時間が BOSS_SLOW_RING_FADE_MS を切ったら薄れていく=攻めどきの残りが見た目で分かる。
+   * 描画は既存の per-enemy `reticle` Graphics(毎フレーム clear 済み)へ相乗り=新しい表示物を増やさない。
+   * 判定・ダメージ・窓長には一切触らない(描画専用)。
+   */
+  private drawBossSlowRing(g: Graphics, cx: number, cy: number, size: number, now: number, remainMs: number) {
+    const rad = size * 0.85 + 10; // 痺れの輪(+6)より少し外側=同時期に見比べても別物と分かる
+    const spin = (now * 0.002) % (Math.PI * 2); // 痺れ(0.004)の半分の速さ=「動きが半分」
+    const fade = Math.max(0, Math.min(1, remainMs / BOSS_SLOW_RING_FADE_MS));
+    const alpha = BOSS_SLOW_RING_ALPHA * fade;
+    if (alpha <= 0.01) return;
+    for (let i = 0; i < 2; i++) {
+      const a0 = spin + i * Math.PI + 0.3;
+      const a1 = spin + i * Math.PI + Math.PI - 0.3;
+      // moveTo before arc: 直前のペン位置から弧の始点へ線が引かれるのを防ぐ(drawStunReticleと同じ理由)。
+      g.moveTo(cx + Math.cos(a0) * rad, cy + Math.sin(a0) * rad)
+        .arc(cx, cy, rad, a0, a1)
+        .stroke({ width: 2.5, color: 0xfacc15, alpha });
     }
   }
 
