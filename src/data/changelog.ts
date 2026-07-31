@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2572',
+    items: [
+      'ゲーム内容の変更はありません(仕様書の訂正: 台本方式の節を「設計確定」から「相談中・未確定」へ格下げ。誤って確定扱いにしていた記載の是正)。',
+    ],
+  },
+  {
     version: '0.25.2571',
     items: [
       'ゲーム内容の変更はありません(守護霊のプロダクト観を仕様書に追記: ソロ出撃=AIの設計・同行出撃=攻略・霊は設計どおりに動くだけ)。',
