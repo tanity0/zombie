@@ -1643,6 +1643,27 @@ const BOSS_BEHIND_FAR_PX = 220;
 // 0.15 は「自機を隠さない」という#2の狙いを保ったまま、**輪郭は残る**ようにする折衷値(社長裁定)。
 // ※小さい絵のボス(idol/天使)はそもそも #1〜#2 を通らない(v0.25.2615・bossBehindFadeApplies)。
 const BOSS_BEHIND_FAR_ALPHA = 0.15;
+/**
+ * v0.25.2623(社長報告「まだアイドルワープすると絵が消える」): **戦っているボスは、位置の都合で
+ * 見えなくならない。**
+ *
+ * このコードは自分でフェードを2種類に分けて説明している(下記 posFade の注記):
+ *   ・**位置の法則**(地平線フェード / 手前フェード / 裏回り透け) = 「奥すぎる/手前すぎるから見えない」
+ *   ・**存在の法則**(死神のワープ / ハンターの立ち去り)         = 「**そこに居ない**」
+ * 「そこに居ない」なら0で正しい。しかし**居るのに位置の都合で0**になると、
+ * **当たり判定だけ残って1ピクセルも見えない**=社長報告の
+ * 「当たり判定だけあって透明だから何もできずにやられる」になる。
+ *
+ * 短期間に**同じ種類の事故を3回**踏んだ(v0.25.2615 裏回り透け / v0.25.2622 巨体の完全透明 /
+ * 本件 地平線フェード)。**経路ごとに潰すのをやめ、位置由来のフェード全部に下限を敷く。**
+ * 地平線フェードは**カメラ相対(画面上部の帯)**なので、アイドルの離脱ローリング(140pxの瞬間移動)で
+ * 上へ跳ぶと帯に入って消えていた。
+ *
+ * **存在の法則(container.alpha)には掛けない**=ワープ中や立ち去りは従来どおり完全に消える。
+ */
+const BOSS_MIN_VISIBLE_ALPHA = 0.15;
+/** 位置由来のフェード(地平線/手前/裏回り)に下限を敷く。ボス以外・存在の法則には使わない。 */
+const bossPositionAlpha = (a: number): number => Math.max(BOSS_MIN_VISIBLE_ALPHA, a);
 // #3(社長指示v0.25.1599): 裏に回っても「近接攻撃距離くらい」までは完全透明にせず、半透明
 // (=BOSS_BEHIND_ALPHA)を下限に保つ。#2で0へ薄くなる区間でも、この距離以内なら0.5で止める。
 // 距離アンカーは近接攻撃距離(gameStore の MELEE_RADIUS=74)に合わせた視覚用の複製値(描画は
@@ -9327,7 +9348,8 @@ export class PixiScene {
       // 同時に居る巨体の透け具合が混ざって壊れる)。artFade だけ掛けて確定させる。
       const behindApplies = bossBehindFadeApplies(spriteW, ply.width);
       if (!behindApplies) {
-        view.sprite.alpha = artFade;
+        // v0.25.2623: 位置由来のフェードに下限を敷く(artFade は地平線フェードを含む)。
+        view.sprite.alpha = bossPositionAlpha(artFade);
         view.sprite.visible = true;
       } else {
       const behindDist = fb.footY - (ply.y + ply.height);   // 正 = プレイヤーが帯より奥
@@ -9361,7 +9383,8 @@ export class PixiScene {
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
       const fastLerp = 1 - (1 - this.seeThroughLerp) ** 2;
       this.bossBehindAlpha += (behindTarget - this.bossBehindAlpha) * fastLerp;
-      view.sprite.alpha = this.bossBehindAlpha * artFade;
+      // v0.25.2623: 裏回り透け × 地平線フェードの積にも下限を敷く(掛け算で0へ落ちるのを防ぐ)。
+      view.sprite.alpha = bossPositionAlpha(this.bossBehindAlpha * artFade);
       view.sprite.visible = true;
       }
     } else {
