@@ -2255,6 +2255,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // バッチM2/M3/M4/M6も新ランでリセット(コマ=リラックス・湧きCD・被弾/緩め検知)。
           // ランクは持ち越し開始値(前ラン最終−1・社長決定v0.25.1844)から。
           puzzleClockRef.current = seededPuzzleClockState();
+          // v0.25.2592(社長報告「ボスモードでランク1だったのに、死ぬ瞬間にランク6のアテンション。
+          // でもリザルトはランク1」): **開始ランクを到達記録の初期値にする**。
+          // 旧: resetGameが maxRankReached=1 で初期化し、以後 announceRankChange(=ランクが上がった
+          // 瞬間)でしか更新しないため、**持ち越しで高ランクから始まったランはそこから上がらない限り
+          // ずっと1のまま**表示されていた(実際のランクは6でも、HUD/リザルト/年表の見出しが1)。
+          // 開始値で初期化すれば「そのランで最も高かったランク」の意味と一致する。
+          {
+            const startRank = puzzleClockRef.current.rank;
+            useGameStore.setState(state => state.gameStats.maxRankReached >= startRank ? {} : ({
+              gameStats: { ...state.gameStats, maxRankReached: startRank },
+            }));
+          }
           puzzleKomaRef.current = {
             kind: 'relax', elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
             lastPatternId: null, acc: createKomaAccumulator(), provisionalDelta: null, pendingFinalDelta: null,
