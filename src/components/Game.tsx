@@ -7,6 +7,7 @@ import { getTexture } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
 import DebugOverlay from './DebugOverlay';
+import GhostDamageLog from './GhostDamageLog';
 import DirectorOverlay from './DirectorOverlay';
 import StatsHud from './StatsHud';
 import DanceTapMeter from './DanceTapMeter';
@@ -228,6 +229,7 @@ const Game: React.FC<GameProps> = ({
       {showStatsOverlay && <StatsHud />}
       {showStatsOverlay && <PerfOverlay fps={fps} />}
       {debugOverlay && <DebugOverlay />}
+      <GhostDamageLog />{/* v0.25.2591: ?ghostlog=1 の被弾ログを画面に出す(スマホでコンソールが見られないため) */}
       {directorOverlay && <DirectorOverlay />}
       <DanceTapMeter />{/* テスト用タップms計測(?dev=0で非表示・ダンス中のみ) */}
       {benchmarkMode && (

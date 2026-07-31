@@ -1865,8 +1865,14 @@ const RELOAD_MOVE_SPEED_MULT = 1;
 export const INVULN_MS = 700;
 // テスト診断フラグ(依頼#7・v0.25.2546): ?ghostlog=1 で守護霊の被弾源タグをconsoleへ出す。
 // 記録専用=判定・挙動・描画には一切影響しない(window不在のヘッドレステストでは常にfalse)。
-const GHOST_DMG_LOG_ENABLED =
+export const GHOST_DMG_LOG_ENABLED =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('ghostlog') === '1';
+// v0.25.2591: 画面表示用の被弾ログ(?ghostlog=1の時だけ溜まる)。storeのstateではなくモジュール変数に
+// 持ち、表示側(GhostDamageLog)が自前の間隔で読む=毎フレームの購読・再レンダーを一切増やさない。
+const GHOST_DMG_LOG_MAX = 14;
+let ghostDmgLines: string[] = [];
+export const ghostDamageLogLines = (): string[] => ghostDmgLines;
+export const resetGhostDamageLog = (): void => { ghostDmgLines = []; };
 // v0.25.2582(社長「ためしたい」=§2.11追補・除外1の試験改定): 守護霊起因でもズーム/スロー/ストップの
 // 同梱演出(triggerFinishImpact/triggerHitImpact)を出す。CDはプレイヤーと**共有の1本**
 // (lastKillZoomAt/JUICE_CD)=演出はカメラ=世界にひとつの資源なので、主語ごとに持たず連鎖スパムを
@@ -6521,9 +6527,14 @@ export const useGameStore = create<GameState>((set, get) => ({
             };
           }
           // テスト診断(依頼#7・?ghostlog=1): 守護霊の被弾源の内訳をconsoleへ(記録専用・挙動不変)。
+          // v0.25.2591(社長「logつけてやったけど、どうしたらいいの?」): スマホではコンソールが見えないので
+          // **画面にも出す**(ghostDmgLog。表示はGhostDamageLogオーバーレイ)。被弾の瞬間だけ更新される
+          // =毎フレームのstore書き込みではないので再レンダー規律に抵触しない。
           if (GHOST_DMG_LOG_ENABLED && s.kind === 'ghost-ally') {
-            console.log('[GHOSTDMG]', `${Math.round(gtNow / 100) / 10}s`, source ?? 'untagged',
-              `dmg=${Math.round(dealt)}`, `hp→${Math.round(s.health - dealt)}`);
+            const line = `${Math.round(gtNow / 100) / 10}s ${source ?? 'untagged'} `
+              + `dmg=${Math.round(dealt)} hp→${Math.round(s.health - dealt)}`;
+            console.log('[GHOSTDMG]', line);
+            ghostDmgLines = [...ghostDmgLines, line].slice(-GHOST_DMG_LOG_MAX);
           }
           // v0.25.2586: 守護霊がこの被弾で落ちる(HP0以下=下のfilterで消える)なら寄り先を控える。
           if (s.kind === 'ghost-ally' && s.health - dealt <= 0) {
@@ -12797,6 +12808,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // BOT_AND_GHOST.md G1: 前ランの未確定セッション(交戦中に終了した場合等)+未決算の保留バッファを
     // 持ち越さない。
     resetPlayerTraits();
+    resetGhostDamageLog(); // v0.25.2591: 被弾ログ(?ghostlog=1の画面表示)は1ランごとに読めればよい
     // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ+ラン内打刻ビューも持ち越さない
     // (台帳=localStorageは打刻の瞬間に確定済みなので触らない)。
     resetDuoRunRecords();
