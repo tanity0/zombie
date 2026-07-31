@@ -72,7 +72,7 @@ import { contextZoomTarget, isLargeForZoom, ZOOM_MIN_ABS } from '../utils/camera
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
 const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(ボス戦=BOSS_ZOOM_MIN)を基準にする
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
-import { getEnemyColor, isHiddenBoss, isGate2AngelBoss } from '../utils/enemyUtils';
+import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType } from '../utils/enemyUtils';
 import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
 import {
   HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
@@ -1560,6 +1560,19 @@ const STAGE3_BOSS_VISUAL_SCALE = 1.2;
 
 // ★確認用: 全敵の当たり判定「帯」をうっすら色付きで描くデバッグ表示。社長確認OK=通常時OFF(裏ボスの帯は別途常時表示)。
 const SHOW_HITBOX_STRIP = false;
+
+// v0.25.2590(社長指示「ボス系当たり判定がわかりづらい。かといって景観を損ねるのもなー。少しくらいなら妥協」):
+// **ボスの判定帯を、近づいた時だけ薄く**見せる(平時は完全に不可視=景観維持)。枠は当たり判定と同じ
+// 出どころ(裏ボス=生AABB / 他=enemyHitStrip)なので「見えている枠=触ると食らう枠」が厳密に一致する。
+// 数値は全て叩き台・実機調整前提。`?bosshitbox=0` で完全非表示(従来)へ復帰。
+const BOSS_HITBOX_HINT_ENABLED = (() => {
+  if (typeof window === 'undefined') return true;
+  return new URLSearchParams(window.location.search).get('bosshitbox') !== '0';
+})();
+const BOSS_HITBOX_HINT_NEAR_PX = 300;   // これより遠い=完全不可視(何も描かない)
+const BOSS_HITBOX_HINT_FULL_PX = 110;   // これ以内=最大の濃さ(近接の間合い〜接触帯)
+const BOSS_HITBOX_HINT_LINE_ALPHA = 0.34; // 最大時の縁の濃さ(控えめ=景観優先)
+const BOSS_HITBOX_HINT_FILL_ALPHA = 0.08; // 最大時の面の濃さ(枠の中を「危険な床」として薄く示す)
 
 // 裏ボスは「当たり判定=足元の帯(AABB=enemy.width×height)」と「絵(巨体)」を分離して描く(社長指示)。
 // fit = 絵の中での帯の位置・大きさ(0..1 の割合): w/h=帯が絵に占める幅/高さ, cx/cy=帯中心の絵内座標(左上原点)。
@@ -9280,6 +9293,29 @@ export class PixiScene {
       const hb = isHiddenBoss(e.type) ? { x: e.x, y: e.y, width: e.width, height: e.height } : enemyHitStrip(e);
       r.rect(hb.x, hb.y, hb.width, hb.height).fill({ color: 0xf97316, alpha: 0.07 + 0.04 * pulse });
       r.rect(hb.x, hb.y, hb.width, hb.height).stroke({ width: 2, color: 0xfb923c, alpha: 0.3 + 0.1 * pulse });
+    } else if (BOSS_HITBOX_HINT_ENABLED && isBossType(e.type)) {
+      // v0.25.2590(社長指示「ボス系当たり判定(こっちが食らうのも)わかりづらいから、なにか分かるものが
+      // ほしい。かといって景観を損ねるのもなー。少しくらいなら妥協」):
+      // **ボスだけ・近づいた時だけ**、足元の判定帯を薄い縁取りで示す。平時(離れている間)は完全に不可視
+      // =景観を損ねない。判定枠は**当たり判定と同じ出どころ**(裏ボス=生AABB / 他=enemyHitStrip)を
+      // 使うので「見えている枠=触ると食らう枠」が厳密に一致する(分類①の掟)。
+      // 濃さは距離で連続的に上げる(遠い=0 → BOSS_HITBOX_HINT_FULL_PXで最大)=近づくほど自然に浮かぶ。
+      // ?bosshitbox=0 で従来どおり完全非表示へ復帰。
+      const hb = isHiddenBoss(e.type) ? { x: e.x, y: e.y, width: e.width, height: e.height } : enemyHitStrip(e);
+      const pl = useGameStore.getState().player;
+      const px = pl.x + pl.width / 2, py = pl.y + pl.height / 2;
+      // プレイヤー中心→判定帯の最近点(=gameplay側 enemyMeleeDist と同じ幾何)。
+      const nx = Math.max(hb.x, Math.min(px, hb.x + hb.width));
+      const ny = Math.max(hb.y, Math.min(py, hb.y + hb.height));
+      const edge = Math.hypot(px - nx, py - ny);
+      if (edge < BOSS_HITBOX_HINT_NEAR_PX) {
+        const t = 1 - Math.max(0, edge - BOSS_HITBOX_HINT_FULL_PX)
+          / Math.max(1, BOSS_HITBOX_HINT_NEAR_PX - BOSS_HITBOX_HINT_FULL_PX);
+        const k = Math.max(0, Math.min(1, t));
+        r.rect(hb.x, hb.y, hb.width, hb.height)
+          .fill({ color: 0xff6a55, alpha: BOSS_HITBOX_HINT_FILL_ALPHA * k })
+          .stroke({ width: 2, color: 0xff6a55, alpha: BOSS_HITBOX_HINT_LINE_ALPHA * k });
+      }
     }
 
     // Above-sprite layer(前半): 攻撃予告(赤い線/帯/円/扇)。**tele レイヤー**へ描く。
