@@ -191,3 +191,14 @@ export const formatRatePercent = (v: number | null | undefined): string =>
 /** 被弾/分の表示(小数1桁)。null=未計測は「—」。 */
 export const formatPerMin = (v: number | null | undefined): string =>
   v === null || v === undefined || !Number.isFinite(v) ? '—' : v.toFixed(1);
+
+/**
+ * v0.25.2606(社長指示「ボス別にAIで使うスコアを表示されていればいい」): 評点の表示(整数)。
+ * 用途は**判断材料**——「このボスのデータないや」「このボスはもっといいデータ撮るか」を一目で分かるように
+ * するためのもので、過去の記録を残すためのものではない(自己ベスト台帳は作らない=社長裁定)。
+ * 評点が出せない撃破(技に一度も晒されずに倒し切った等)は **「？？？」**(社長指示v0.25.2606)。
+ * 他の数値の「—」(未計測)と違い、ここは「点が付いていない=撮り直す判断がまだできない」を意味するので
+ * 別の記号にする。
+ */
+export const formatPerfScore = (v: number | null | undefined): string =>
+  v === null || v === undefined || !Number.isFinite(v) ? '？？？' : String(Math.round(v));

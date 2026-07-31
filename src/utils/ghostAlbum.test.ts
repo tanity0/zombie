@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseBossSlotKey, trendLowerBetter, trendHigherBetter,
   buildRunTimeline, buildAlbumCards, buildDuoRunTimeline, buildDuoAlbumCards,
-  formatClearTime, formatPerMin, formatRatePercent,
+  formatClearTime, formatPerMin, formatRatePercent, formatPerfScore,
 } from './ghostAlbum';
 import { bossStyleSlotKey, type BossStyleSlot, type PendingBossClearView, type PlayerProfile } from './playerTraits';
 import type { DuoAlbum, DuoRunClearView } from './duoRecords';
@@ -181,5 +181,24 @@ describe('ghostAlbum: 表示フォーマット', () => {
     expect(formatRatePercent(null)).toBe('—');
     expect(formatPerMin(2.35)).toBe('2.4');
     expect(formatPerMin(null)).toBe('—');
+  });
+});
+
+// v0.25.2606(社長指示「ボス別にAIで使うスコアを表示されていればいい」「？？？としてもいいかも」):
+// 討伐記録一覧に出す評点の表示。用途は**撮り直しの判断だけ**——過去のベストは残さない(自己ベスト台帳は
+// 作らない=社長裁定)。倒していないボスはそもそも一覧に出ない=**居ないこと自体が「まだ倒してない」の合図**。
+describe('ghostAlbum: 評点の表示(formatPerfScore)', () => {
+  it('整数へ丸める', () => {
+    expect(formatPerfScore(180)).toBe('180');
+    expect(formatPerfScore(179.6)).toBe('180');
+    expect(formatPerfScore(-59.4)).toBe('-59');
+    expect(formatPerfScore(0)).toBe('0');
+  });
+
+  it('評点が出せない撃破は ？？？(他の数値の「—」とは区別する)', () => {
+    expect(formatPerfScore(null)).toBe('？？？');
+    expect(formatPerfScore(undefined)).toBe('？？？');
+    expect(formatPerfScore(NaN)).toBe('？？？');
+    expect(formatPerMin(null)).toBe('—'); // 未計測は従来どおり「—」=意味が違うので記号も分ける
   });
 });

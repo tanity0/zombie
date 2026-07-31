@@ -8,7 +8,7 @@
 // - 文言・レイアウト・並びは**叩き台**(実機で社長調整前提)。数値の意味は台帳(playerTraits)のまま。
 import React from 'react';
 import type { BossClearCard, ClearTrend } from '../utils/ghostAlbum';
-import { formatClearTime, formatPerMin, formatRatePercent, trendHigherBetter, trendLowerBetter } from '../utils/ghostAlbum';
+import { formatClearTime, formatPerMin, formatPerfScore, formatRatePercent, trendHigherBetter, trendLowerBetter } from '../utils/ghostAlbum';
 import type { GhostAllySnapshot } from '../utils/playerBuild';
 import { bossIconSrc } from '../utils/bossIcon';
 import { enemyDeathLabel, subWeaponDisplayName } from '../store/gameStore';
@@ -152,6 +152,13 @@ export const BossClearCardRow: React.FC<{
         {/* §2.17: 同行枠(duo)は挙動計測をしないので評価数値の行自体を出さない(「—」も出さない)。 */}
         {!duo && (
           <>
+            {/* v0.25.2606(社長指示): **AIが使うデータの評点**。討伐記録一覧では「このボスのデータは
+                良いか/そもそも有るか」の判断材料になる(過去のベストではなく、今入っているデータの点)。 */}
+            <MetricRow
+              label="評点" value={formatPerfScore(card.perfScore)}
+              best={card.best ? formatPerfScore(card.best.perfScore) : null}
+              trend={card.best ? trendHigherBetter(card.perfScore, card.best.perfScore) : 'first'}
+            />
             <MetricRow
               label="被弾/分" value={formatPerMin(card.hitsPerMin)}
               best={card.best ? formatPerMin(card.best.hitsPerMin) : null}
