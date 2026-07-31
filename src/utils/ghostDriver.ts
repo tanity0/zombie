@@ -224,6 +224,14 @@ export const GHOST_ORBIT_TANK_FRAC = 0.35;   // tankロールの予告中=「避
                                              // (速すぎると狙い撃ち技が偶然外れ、hitRate再現=「苦手技は食らう」が壊れる)
 export const GHOST_ORBIT_FLIP_CHANCE = 0.004; // 1tickあたりの旋回方向の反転確率(約4秒に1回@60fps)
 /**
+ * v0.25.2564(社長裁定「対処して」=テスト#7/#8の溶け対策): **ボスの体は、HPに関わらず常時回避対象**。
+ * 借り物のHP閾値(CONTACT_DANGER_HP_FRAC=ボット用ヒューリスティック)はボスには適用しない
+ * (高HP記録の守護霊がボス体当たりを1発も避けない実バグの根治)。雑魚の弱接触は従来どおり
+ * 閾値制のまま=臆病化しない。距離は**体の縁(meleeDist注入=プレイヤーと同じAABB最近点)基準**。
+ * 近接レンジ(74)より内側の値にして、攻撃の踏み込み(近接/カウンター)は殺さない(叩き台)。
+ */
+export const GHOST_BOSS_BODY_AVOID_PX = 48;
+/**
  * GHOST-BULLET-TECH A(認知の持続・**叩き台2000ms**): 危険が見えなくなってもこの時間は「認知」を
  * 保持する。旧実装は危険が1tickでも途切れると認知が undefined へ戻り、**弾の波ごとに反応遅延
  * (100-800ms)の盲目窓が再発生**していた(近距離弾は200-500msで着弾=ほぼ確定被弾)。
@@ -347,6 +355,7 @@ export const ghostDodgeVector = (
   enemies: readonly Enemy[],
   projectiles: readonly Projectile[],
   maxHealth: number,
+  meleeDist?: (cx: number, cy: number, e: Enemy) => number,
   tankedBulletKey?: string,
 ): { x: number; y: number } | null => {
   const seen = tankedBulletKey === undefined
@@ -354,14 +363,27 @@ export const ghostDodgeVector = (
     : projectiles.filter(p => p.srcMoveKey !== tankedBulletKey);
   // v0.25.2547(社長裁定「オンにして」): 接触(体当たり)回避を有効化。maxHealth を渡すと
   // botSkill の既存規格(接触ダメージ >= 最大HPの CONTACT_DANGER_HP_FRAC(20%) の敵が
-  // DODGE_CONTACT_DIST(260px) 以内 → 離れる)がそのまま効く。ゴースト専用の別モデルは作らない
-  // (§2.11追補ドクトリン)。0を渡すと従来どおり無効(テストの明示用)。
+  // DODGE_CONTACT_DIST(260px) 以内 → 離れる)がそのまま効く=**雑魚向けの規格として維持**。
+  // 0を渡すと従来どおり無効(テストの明示用)。
   const base = dodgeVector(GHOST_DODGE_PROFILE, gcx, gcy, enemies, seen, maxHealth);
   // base は合成済みの単位ベクトル(強さ1)。差分の脅威は自分の weight(0..1)で足す。
   let sx = base ? base.x : 0, sy = base ? base.y : 0;
   for (const e of enemies) {
     const extras: DodgeThreat[] = ghostExtraTelegraphDodge(gcx, gcy, e);
     for (const t of extras) { sx += t.ux * t.weight; sy += t.uy * t.weight; }
+    // v0.25.2564(社長裁定「対処して」): **ボスの体は常時回避対象**(HP閾値なし・縁基準)。
+    // meleeDist(プレイヤーと同じAABB最近点)注入時のみ有効。縁からGHOST_BOSS_BODY_AVOID_PX未満で
+    // 体の中心から離れる方向へ、縁に近いほど強く反発(重なり=weight1)。近接レンジ(74)より内側の
+    // 帯なので、攻撃の踏み込みは届く距離で保てる。
+    if (meleeDist && isBossType(e.type)) {
+      const ed = meleeDist(gcx, gcy, e);
+      if (ed < GHOST_BOSS_BODY_AVOID_PX) {
+        const bcx = e.x + e.width / 2, bcy = e.y + e.height / 2;
+        const [ax, ay] = norm(gcx - bcx, gcy - bcy);
+        const w = 1 - Math.max(0, ed) / GHOST_BOSS_BODY_AVOID_PX;
+        sx += ax * w; sy += ay * w;
+      }
+    }
   }
   const [ux, uy] = norm(sx, sy);
   return ux === 0 && uy === 0 ? null : { x: ux, y: uy };
@@ -413,6 +435,14 @@ export interface GhostDriverInput {
    * undefined = 拾う物なし=従来と1bit同じ意思決定。
    */
   retrieveTarget?: { x: number; y: number };
+  /**
+   * v0.25.2564(社長裁定「対処して」): 近接/カウンター射程の物差し=**プレイヤーと同じ**
+   * 「体の縁(当たり判定のAABB最近点)までの距離」を注入する(gameStore.enemyMeleeDist。store依存の
+   * 関数なので、katanaAutoの前例どおり注入で受けて純関数を保つ)。旧実装は中心間距離で
+   * GHOST_MELEE_RANGE(74)を測っていたため、巨体ボス(例: mimir幅248=半幅124)では**体内に
+   * 立たない限り近接もカウンターも成立しない**=体当たりを食らい続けるパリティ写し損ねだった。
+   */
+  meleeDist: (cx: number, cy: number, e: Enemy) => number;
   profile: GhostProfile;
   weapon: GhostWeapon;
   gameTime: number; // pickTargetのスタン判定に使う(sim時計)
@@ -468,6 +498,9 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
 
   const tcx = target.x + target.width / 2, tcy = target.y + target.height / 2;
   const dist = Math.hypot(tcx - gcx, tcy - gcy);
+  // v0.25.2564: 近接/カウンターの射程は**体の縁**(meleeDist=プレイヤーと同じAABB最近点)で測る。
+  // 間合い管理(preferredDist)は計測値じたいが中心間距離なので従来どおり dist(中心間)のまま。
+  const edgeDist = input.meleeDist(gcx, gcy, target);
   const facing: 1 | -1 = (tcx - gcx) >= 0 ? 1 : -1;
 
   // G4b(§2.9(4)): 技への反応の再現。ボスの技(aiPhase/bossState)の立ち上がりで1回だけロールし、
@@ -489,7 +522,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
 
   // 回避(§2.12「実行は常に本気」=強さは常に1)。既存 dodgeVector + 全ボス予告台帳の差分。
   // v0.25.2547: maxHealth を渡す=接触(体当たり)回避が有効(危険な接触のみ・botSkill既存規格)。
-  const dodge = ghostDodgeVector(gcx, gcy, enemies, projectiles, ghost.maxHealth, tankedBulletKey);
+  const dodge = ghostDodgeVector(gcx, gcy, enemies, projectiles, ghost.maxHealth, input.meleeDist, tankedBulletKey);
 
   // §2.12(1) 反応遅延 + GHOST-BULLET-TECH A(認知の持続): 「危険」(標的ボスの予告 or 回避対象の脅威)を
   // **エピソード**として持ち回り、計測 reactionMs(100-800clamp)経過して初めて回避を始める。
@@ -508,7 +541,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
 
   // カウンター窓の見切り(§2.12・要件6)。**移動より先に**判定する: 見切った後は「詰める/張り付く」を
   // やめて通常の間合い管理へ戻す(旧: 窓が閉じるまで無時限に張り付いて被弾していた)。
-  const inMeleeRange = dist <= GHOST_MELEE_RANGE;
+  const inMeleeRange = edgeDist <= GHOST_MELEE_RANGE;
   const counterable = inMeleeRange && isBossCounterableNowApprox(target.aiPhase, target.bossState);
   const counterGaveUp = counterable && ghostCounterWaitExpired(ghost.counterPendingAt, nowMs);
   const counterWatching = counterable && !counterGaveUp;
@@ -528,7 +561,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     // G4b 'counter': その技をカウンターしにいく=この技の間は回避せず近接間合いへ詰め、
     // 射程内では静止して窓(counterable)を待つ。リズムのゲートも通さない(「行く」と決めた行動は確実に出す)。
     // ※この静止は§2.12追補でも維持=「カウンター待ちしている」という意味のある静止(窓リング表示つき)。
-    if (dist > GHOST_MELEE_RANGE) [moveX, moveY] = norm(tcx - gcx, tcy - gcy);
+    if (edgeDist > GHOST_MELEE_RANGE) [moveX, moveY] = norm(tcx - gcx, tcy - gcy);
   } else if (activeDodge && reaction !== 'tank') {
     // G4b 'tank'(苦手の再現): この技に限り回避を抑制=逃げずに戦い続ける(①によりダメージは実際に入る)。
     moveX = activeDodge.x; moveY = activeDodge.y;

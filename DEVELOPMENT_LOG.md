@@ -1,5 +1,29 @@
 # Development Log
 
+## v0.25.2564 — ボス体当たり対策: 縁基準の近接射程+ボスの体の常時回避(設計チャット直接実装)【2026-07-31 09:00 JST】
+
+- **裁定**: 社長「対処して」(2026-07-31)。実測根拠=テスト依頼#7/#8(死因はほぼ `contact:mimir` のみ・
+  高HP記録では接触回避の20%閾値が無反応)+私の実査(距離が全て**中心間**=mimir(幅248)では体内に
+  立たないと近接/カウンター不成立=プレイヤーの `enemyMeleeDist`(縁基準)の写し損ね)。
+  仕様の正本= BOT_AND_GHOST.md §2.12追補2「改」。
+- **実装(2点・ghostDriver.ts+useGameLoop.ts配線)**:
+  1. **縁基準化**: `GhostDriverInput.meleeDist`(必須)を新設し、`gameStore.enemyMeleeDist`
+     (プレイヤーと同じ「当たり判定帯のAABB最近点」)を**注入**(katanaAuto=オート斬撃の前例と同形。
+     store非依存の純関数を保つ)。`inMeleeRange`・'counter'ロールの接近停止を `edgeDist` 基準へ。
+     間合い管理(preferredDist)と銃射程は従来どおり中心間(銃の縁基準化は監査の要裁定=未着手)。
+  2. **ボスの体は常時回避対象**: `ghostDodgeVector` に `meleeDist` を追加し、`isBossType` の敵は
+     縁から `GHOST_BOSS_BODY_AVOID_PX=48` 未満で中心から反発(近いほど強い・HP閾値なし)。
+     48<近接レンジ74=踏み込みは殺さない。雑魚は既存の20%規格のまま。カウンター待ちの静止は
+     回避分岐より先に評価される=構えは崩れない(§2.12追補の「意味のある静止」維持)。
+- **テスト**: ghostDriver.test.ts に新規6件(巨体ボスの縁近接成立/'counter'接近の縁基準停止/
+  高maxHealthでも体反発・縁48超は反発なし・非ボス不適用・未注入時不活性)+シグネチャ変更の追随
+  (`aabbMeleeDist` ヘルパ注入・ghostSubsFinal.test.ts の baseInput にも注入)。
+  `npx vitest related`=**163件全通過**・typecheck/lint(エラー0・既存8警告)クリーン。
+- **自己点検**: プレイヤー側の式・定数は不変(enemyMeleeDistは読み取り共有のみ)。憲法第4条・第5条に
+  抵触なし。負荷 **1/10**(毎tickの距離計算が数回増えるだけ・描画コストなし)。
+- **並走**: 暗黙条件の全数監査(research/GHOST_HIDDEN_RULES.md・119件/C=41件)が完了報告。検収と
+  要裁定リスト(14件・銃射程の縁基準化/preferredDist単位不一致ほか)の社長提示は次エントリ以降。
+
 ## v0.25.2563 — バッチGHOST-SUBS-FINAL: 構造ズレ組サブ5種の守護霊対応(犬のみ★未決で停止)【2026-07-31 08:43 JST】
 
 - **発注**: research/GHOST_PARITY_LEDGER.md「構造ズレ組サブ6種の裁定案」+「裁定(社長2026-07-31)」。

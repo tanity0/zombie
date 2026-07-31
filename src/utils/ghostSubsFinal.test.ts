@@ -234,6 +234,11 @@ describe('3. 回収行動(クイックマガジンを自分で拾いに行く)',
     enemies: [{ ...enemyAt('boss', 400, 0), type: 'giantbat' } as Enemy],
     boundBossId: 'boss',
     projectiles: [],
+    // v0.25.2564: 縁基準の射程(プレイヤーのenemyMeleeDistと同じ幾何=AABB最近点)を注入。
+    meleeDist: (cx, cy, e) => Math.hypot(
+      cx - Math.max(e.x, Math.min(cx, e.x + e.width)),
+      cy - Math.max(e.y, Math.min(cy, e.y + e.height)),
+    ),
     profile: {
       reactionMs: 100, counterChance: 0, preferredDist: 180, meleeBias: 0,
       mobility: 1, hitsPerMin: 3, subUsesPerMin: 2, stationaryFrac: 0, approachPerMin: 6,

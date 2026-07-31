@@ -12,7 +12,7 @@ import {
   stepGhostDanger, GHOST_DANGER_MEMORY_MS, GHOST_BULLET_TANK_MS,
   GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS, GHOST_WINDUP_SAFE_MARGIN_PX,
   GHOST_COUNTER_WAIT_MS, GHOST_DEFAULT_STATIONARY_FRAC, GHOST_APPROACH_MIN_CHANCE,
-  GHOST_ORBIT_BASE_FRAC, GHOST_ORBIT_IDLE_FRAC, GHOST_ORBIT_TANK_FRAC,
+  GHOST_ORBIT_BASE_FRAC, GHOST_ORBIT_IDLE_FRAC, GHOST_ORBIT_TANK_FRAC, GHOST_BOSS_BODY_AVOID_PX,
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
 } from './ghostDriver';
 import { jumpDodge, botSkillProfile } from './botSkill';
@@ -32,6 +32,14 @@ const mkGhost = (overrides: Partial<GhostSelf> = {}): GhostSelf => ({
   ...overrides,
 });
 
+// v0.25.2564: プレイヤーと同じ「体の縁」距離(gameStore.enemyMeleeDist の裏ボス分岐=生AABB最近点と
+// 同じ幾何)。純関数側はstoreに依存しないので、テストは同じ幾何のローカル実装を注入する。
+const aabbMeleeDist = (cx: number, cy: number, e: Enemy): number => {
+  const nx = Math.max(e.x, Math.min(cx, e.x + e.width));
+  const ny = Math.max(e.y, Math.min(cy, e.y + e.height));
+  return Math.hypot(cx - nx, cy - ny);
+};
+
 const PROFILE: GhostProfile = {
   reactionMs: 200, counterChance: 1, preferredDist: 180, meleeBias: 1, mobility: 1, hitsPerMin: 0,
   subUsesPerMin: 2,
@@ -43,6 +51,7 @@ const baseDriverInput = (over: Partial<GhostDriverInput> = {}): GhostDriverInput
   player: { x: 0, y: 0, width: 20, height: 20 },
   enemies: [],
   projectiles: [],
+  meleeDist: aabbMeleeDist,
   profile: PROFILE,
   weapon: WEAPON,
   gameTime: 0,
@@ -809,9 +818,9 @@ describe('GHOST-BULLET-TECH B: 弾技にも技ロールが効く', () => {
   it("ghostDodgeVector: 'tank'した弾技の弾だけ避けない(タグ無し/別の技の弾は避ける)", () => {
     const tagged = mkProj({ srcMoveKey: 'mimir-burst' });
     expect(ghostDodgeVector(10, 10, [], [tagged], 110)).not.toBeNull();               // 平時は避ける
-    expect(ghostDodgeVector(10, 10, [], [tagged], 110, 'mimir-burst')).toBeNull();    // 苦手=避けない
-    expect(ghostDodgeVector(10, 10, [], [mkProj()], 110, 'mimir-burst')).not.toBeNull(); // タグ無しは常に避ける
-    expect(ghostDodgeVector(10, 10, [], [mkProj({ srcMoveKey: 'idol-fan' })], 110, 'mimir-burst')).not.toBeNull();
+    expect(ghostDodgeVector(10, 10, [], [tagged], 110, undefined, 'mimir-burst')).toBeNull();    // 苦手=避けない
+    expect(ghostDodgeVector(10, 10, [], [mkProj()], 110, undefined, 'mimir-burst')).not.toBeNull(); // タグ無しは常に避ける
+    expect(ghostDodgeVector(10, 10, [], [mkProj({ srcMoveKey: 'idol-fan' })], 110, undefined, 'mimir-burst')).not.toBeNull();
   });
 
   it("'tank'を引いた弾技は、技が終わって弾だけ残っても弾の寿命ぶん避けない", () => {
@@ -862,5 +871,65 @@ describe('GHOST-BULLET-TECH B: 弾技にも技ロールが効く', () => {
     expect(d.moveRoll?.decision).toBe('dodge');
     expect(d.tankedBulletKey).toBeUndefined();
     expect(d.moveY).toBeLessThan(0); // 本気で避ける
+  });
+});
+
+// ==== v0.25.2564: ボス体当たり対策(縁基準の射程+体の常時回避)===================================
+// 実測(テスト依頼#7/#8): 守護霊の死因はほぼ contact:mimir のみ。旧実装は①距離が全て中心間
+// =巨体ボス(mimir幅248)では体内に立たないと近接/カウンター不成立、②接触回避の閾値
+// (damage>=最大HPの20%)が高HP記録では反応しない、の合わせ技で体当たりを食らい続けていた。
+describe('v0.25.2564: 縁基準の近接射程(パリティ=プレイヤーのenemyMeleeDistと同じ物差し)', () => {
+  // 巨体ボス(mimir級=248×248)。ghost(20×20)を右縁から60pxに置く: 縁60 ≤ 74(圏内)だが
+  // 中心間は184 > 74=旧実装(中心間)なら近接不成立だった配置。
+  const bigBoss = (over: Partial<Enemy> = {}): Enemy =>
+    mkBoss({ type: 'mimir' as Enemy['type'], x: 0, y: 0, width: 248, height: 248, bossState: 'chase', ...over });
+
+  it('巨体ボスは体内に立たなくても縁から74px以内で近接が成立する', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 298, y: 114 }), // 中心(308,124): 縁(x=248)から60px
+      enemies: [bigBoss()],
+      profile: { ...PROFILE, meleeBias: 1 },
+    }));
+    expect(d.action).toBe('melee');
+  });
+
+  it("'counter'ロールの接近も縁基準で止まる(巨体の中心まで突っ込まない)", () => {
+    const profile: GhostProfile = {
+      ...PROFILE, moveReactions: { 'mimir-burst': { n: 5, counterRate: 1, hitRate: 0 } },
+    };
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 298, y: 114 }),
+      enemies: [bigBoss({ bossState: 'burst' })], profile, rand: () => 0.5,
+    }));
+    expect(d.moveRoll?.decision).toBe('counter');
+    expect(d.moveX).toBe(0); // 縁60 ≤ 74=射程内なので詰めない(旧: 中心間184>74で体へ突っ込み続けた)
+    expect(d.moveY).toBe(0);
+  });
+});
+
+describe('v0.25.2564: ボスの体は常時回避対象(HP閾値なし・縁基準)', () => {
+  // maxHealth=400 → 既存の接触規格(damage>=最大HPの20%)では危険にならない(damage10<80)
+  // =旧実装なら反応しなかった条件で、ボスの体だけは避けることを固定する。
+  const smallBoss = (): Enemy => mkBoss({ x: 0, y: 0, width: 40, height: 40 }); // type=thor(ボス)
+
+  it('縁からGHOST_BOSS_BODY_AVOID_PX未満なら、最大HPに関わらず体の中心から離れる', () => {
+    const v = ghostDodgeVector(60, 20, [smallBoss()], [], 400, aabbMeleeDist); // 縁(x=40)から20px
+    expect(v).not.toBeNull();
+    expect(v!.x).toBeGreaterThan(0); // 中心(20,20)の反対=+xへ
+    expect(Math.abs(v!.y)).toBeLessThan(1e-6);
+  });
+
+  it('縁からGHOST_BOSS_BODY_AVOID_PX以上は反発しない(近接の踏み込み(74px圏)を殺さない)', () => {
+    const v = ghostDodgeVector(40 + GHOST_BOSS_BODY_AVOID_PX + 1, 20, [smallBoss()], [], 400, aabbMeleeDist);
+    expect(v).toBeNull();
+  });
+
+  it('非ボス(雑魚)の体には効かない=雑魚は既存の接触規格(damage>=最大HPの20%)だけ', () => {
+    const mob = mkBoss({ id: 'mob-1', type: 'zombie' as Enemy['type'], x: 0, y: 0, width: 40, height: 40 });
+    expect(ghostDodgeVector(60, 20, [mob], [], 400, aabbMeleeDist)).toBeNull();
+  });
+
+  it('meleeDist未注入(旧経路の直接呼び出し)では働かない=注入時のみ有効', () => {
+    expect(ghostDodgeVector(60, 20, [smallBoss()], [], 400)).toBeNull();
   });
 });

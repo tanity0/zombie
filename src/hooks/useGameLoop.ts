@@ -7508,6 +7508,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // マガジンが場に残っていれば、それを拾いに行く(間合い管理より優先・危険回避には譲る)。
                 // 飛翔中(着地前)は目標にしない=着地点で待たずに落ちる場所へ歩き出す形にする。
                 retrieveTarget: ghostRetrieveTarget,
+                // v0.25.2564(ボス体当たり対策): 近接/カウンター射程の物差し=プレイヤーと同じ
+                // enemyMeleeDist(当たり判定帯のAABB最近点)を注入。巨体ボスの体内に立たなくても
+                // 縁から74pxで近接/カウンターが成立する(旧: 中心間距離=パリティ写し損ね)。
+                meleeDist: enemyMeleeDist,
                 profile,
                 weapon: {
                   gunDamage: gun?.damage ?? 0,
