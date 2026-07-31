@@ -61,6 +61,29 @@ export const bossEngagedNow = (
   });
 };
 
+/**
+ * v0.25.2577(社長裁定「現状維持でいいんだけど、ボスごとのタイムにはしたいな」): 撃破タイム用の
+ * **スロット(ボス×ステージ)ごと**の交戦判定。bossEngagedNowと同じENTER/EXITヒステリシスを
+ * キー単位で適用する(prevKeys=前tickで交戦中だったキー集合。在=EXIT/不在=ENTER)。
+ * 旧実装は交戦「窓」1本の時計だったため、交戦が途切れない連戦では2体目のタイムが1体目の交戦開始から
+ * 数えられていた。同一スロットのボスが複数体いる縮退は「どれかが圏内なら交戦中」(台帳の粒度と同じ)。
+ */
+export const engagedBossSlotKeys = (
+  enemies: readonly Enemy[], playerCx: number, playerCy: number,
+  prevKeys: ReadonlySet<string>, slotKeyOf: (t: EnemyType) => string,
+): Set<string> => {
+  const keys = new Set<string>();
+  for (const e of enemies) {
+    if (!isEngageableBoss(e.type) || e.dormant === true) continue;
+    const key = slotKeyOf(e.type);
+    if (keys.has(key)) continue;
+    const limit = prevKeys.has(key) ? BOSS_ENGAGE_EXIT_PX : BOSS_ENGAGE_ENTER_PX;
+    const d = Math.hypot((e.x + e.width / 2) - playerCx, (e.y + e.height / 2) - playerCy);
+    if (d <= limit) keys.add(key);
+  }
+  return keys;
+};
+
 // ---------------------------------------------------------------------------------------------
 // リーシュ(社長裁定v0.25.2418「そのリーシュ方式で」)
 // ---------------------------------------------------------------------------------------------

@@ -4,9 +4,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   loadDuoAlbum, isBetterDuoClearTime, applyDuoClear,
-  tickDuoClearClock, recordDuoBossClear, duoClearsThisRun, resetDuoRunRecords,
+  setDuoRunActive, recordDuoBossClear, duoClearsThisRun, resetDuoRunRecords,
   type DuoAlbum,
 } from './duoRecords';
+import { tickBossClocks, resetBossClocks } from './bossClock'; // v0.25.2577: 時計はボスごと共有時計へ移設
 import { bossStyleSlotKey } from './playerTraits';
 import type { GhostAllySnapshot } from './playerBuild';
 
@@ -28,15 +29,18 @@ const ally = (over: Partial<GhostAllySnapshot> = {}): GhostAllySnapshot => ({
   name: 'tanity', className: 'warrior', isOwn: true, ...over,
 });
 
-// 守護霊同行ラン中の交戦をtで開始し、durationMsぶん時計を進める(60fps相当の粗いtickで十分)。
-const engageFor = (startGameTime: number, durationMs: number): void => {
-  tickDuoClearClock({ ghostRunActive: true, inCombat: true, gameTime: startGameTime });
-  tickDuoClearClock({ ghostRunActive: true, inCombat: true, gameTime: startGameTime + durationMs });
+// 守護霊同行ラン中に、slotKeyのボスとの交戦をtで開始しdurationMsぶん時計を進める
+// (v0.25.2577: 時計はボスごとの共有時計 bossClock.ts。粗いtickで十分)。
+const engageFor = (slotKey: string, startGameTime: number, durationMs: number): void => {
+  setDuoRunActive(true);
+  tickBossClocks(new Set([slotKey]), startGameTime);
+  tickBossClocks(new Set([slotKey]), startGameTime + durationMs);
 };
 
 beforeEach(() => {
   installStorage();
   resetDuoRunRecords();
+  resetBossClocks();
 });
 
 describe('duoRecords: ベスト保持の純関数', () => {
@@ -71,7 +75,7 @@ describe('duoRecords: 台帳の読み出し(localStorage耐性)', () => {
 
 describe('duoRecords: 交戦時計と打刻', () => {
   it('守護霊同行ラン中の撃破は「交戦開始→撃破」のタイムで台帳へ保存される', () => {
-    engageFor(1_000, 45_000);
+    engageFor('thor', 1_000, 45_000);
     recordDuoBossClear('thor', 'stage-3', ally());
     const album = loadDuoAlbum();
     expect(album?.slots.thor.clearTimeMs).toBe(45_000);
@@ -82,51 +86,59 @@ describe('duoRecords: 交戦時計と打刻', () => {
   });
 
   it('スロットキーはソロ台帳と同じ規則(giantbatだけステージ別)', () => {
-    engageFor(0, 30_000);
+    engageFor('giantbat@stage-2', 0, 30_000);
     recordDuoBossClear('giantbat', 'stage-2', null);
     expect(loadDuoAlbum()?.slots[bossStyleSlotKey('giantbat', 'stage-2')]).toBeDefined();
     expect(loadDuoAlbum()?.slots['giantbat@stage-2']).toBeDefined();
   });
 
-  it('ソロラン(ghostRunActive=false)では時計が開かず打刻されない', () => {
-    tickDuoClearClock({ ghostRunActive: false, inCombat: true, gameTime: 0 });
-    tickDuoClearClock({ ghostRunActive: false, inCombat: true, gameTime: 40_000 });
+  it('ソロラン(ghostRunActive=false)では打刻されない(時計が開いていても)', () => {
+    setDuoRunActive(false);
+    tickBossClocks(new Set(['thor']), 0);
+    tickBossClocks(new Set(['thor']), 40_000);
     recordDuoBossClear('thor', 'stage-3', ally());
     expect(loadDuoAlbum()).toBeNull();
     expect(duoClearsThisRun()).toHaveLength(0);
   });
 
   it('非交戦(時計が閉じた後)の打刻はno-op / 対象外typeもno-op', () => {
-    engageFor(0, 30_000);
-    tickDuoClearClock({ ghostRunActive: true, inCombat: false, gameTime: 31_000 }); // 交戦解除=時計が閉じる
+    engageFor('thor', 0, 30_000);
+    tickBossClocks(new Set(), 31_000); // 交戦解除=時計が閉じる
     recordDuoBossClear('thor', 'stage-3', ally());
     expect(loadDuoAlbum()).toBeNull();
 
-    engageFor(40_000, 10_000);
+    engageFor('thor', 40_000, 10_000);
     recordDuoBossClear('zombie', 'stage-3', ally()); // isEngageableBossでない型は無視
     expect(loadDuoAlbum()).toBeNull();
   });
 
-  it('同一交戦区間内の同スロット二重打刻は1回だけ記録される(ソロ枠と同じ流儀)', () => {
-    engageFor(0, 30_000);
+  it('同一交戦区間内の同スロット二重打刻は1回だけ記録される(打刻で時計が閉じる)', () => {
+    engageFor('thor', 0, 30_000);
     recordDuoBossClear('thor', 'stage-3', ally());
     recordDuoBossClear('thor', 'stage-3', ally());
     expect(duoClearsThisRun()).toHaveLength(1);
   });
 
+  it('連戦: 交戦が途切れなくても2体目のタイムは2体目自身の交戦開始から数える(v0.25.2577)', () => {
+    setDuoRunActive(true);
+    tickBossClocks(new Set(['mimir']), 0);
+    tickBossClocks(new Set(['mimir', 'thor']), 60_000); // 60秒後にthor乱入(交戦は途切れない)
+    tickBossClocks(new Set(['mimir', 'thor']), 70_000);
+    recordDuoBossClear('thor', 'stage-3', ally());
+    expect(loadDuoAlbum()?.slots.thor.clearTimeMs).toBe(10_000); // 旧実装なら70_000だった
+  });
+
   it('ベスト保持: 速い時だけ台帳が上書きされ、ラン内ビューには更新の有無つきで必ず積まれる', () => {
     // 1回目の交戦: 60秒で撃破=初記録
-    engageFor(0, 60_000);
+    engageFor('thor', 0, 60_000);
     recordDuoBossClear('thor', 'stage-3', ally({ name: 'first' }));
-    // 交戦を一度閉じてから2回目: 90秒(遅い)=台帳は不変・ビューには積まれる
-    tickDuoClearClock({ ghostRunActive: true, inCombat: false, gameTime: 61_000 });
-    engageFor(100_000, 90_000);
+    // 2回目: 90秒(遅い)=台帳は不変・ビューには積まれる(打刻で時計が閉じるので再交戦から)
+    engageFor('thor', 100_000, 90_000);
     recordDuoBossClear('thor', 'stage-3', ally({ name: 'second' }));
     expect(loadDuoAlbum()?.slots.thor.clearTimeMs).toBe(60_000);
     expect(loadDuoAlbum()?.slots.thor.ally?.name).toBe('first');
     // 3回目: 30秒(速い)=上書き
-    tickDuoClearClock({ ghostRunActive: true, inCombat: false, gameTime: 200_000 });
-    engageFor(300_000, 30_000);
+    engageFor('thor', 300_000, 30_000);
     recordDuoBossClear('thor', 'stage-3', ally({ name: 'third' }));
     expect(loadDuoAlbum()?.slots.thor.clearTimeMs).toBe(30_000);
     expect(loadDuoAlbum()?.slots.thor.ally?.name).toBe('third');
@@ -137,7 +149,7 @@ describe('duoRecords: 交戦時計と打刻', () => {
   });
 
   it('同行者不在(先に倒れていた等)の撃破はally未保存のまま記録される(§2.16 Aと同じ「不在なら未保存」)', () => {
-    engageFor(0, 30_000);
+    engageFor('mimir', 0, 30_000);
     recordDuoBossClear('mimir', 'stage-3', null);
     const slot = loadDuoAlbum()?.slots.mimir;
     expect(slot?.clearTimeMs).toBe(30_000);
@@ -145,13 +157,14 @@ describe('duoRecords: 交戦時計と打刻', () => {
     expect(duoClearsThisRun()[0].ally).toBeNull();
   });
 
-  it('resetDuoRunRecordsはラン内ビューと時計だけを捨て、台帳(localStorage)は保持する', () => {
-    engageFor(0, 30_000);
+  it('resetDuoRunRecordsはラン内ビューとフラグだけを捨て、台帳(localStorage)は保持する', () => {
+    engageFor('thor', 0, 30_000);
     recordDuoBossClear('thor', 'stage-3', ally());
     resetDuoRunRecords();
     expect(duoClearsThisRun()).toHaveLength(0);
     expect(loadDuoAlbum()?.slots.thor.clearTimeMs).toBe(30_000);
-    // リセット後は時計も閉じている=そのままの打刻はno-op
+    // リセット後はフラグが降りている=時計だけ開いていても打刻はno-op
+    tickBossClocks(new Set(['mimir']), 40_000);
     recordDuoBossClear('mimir', 'stage-3', ally());
     expect(loadDuoAlbum()?.slots.mimir).toBeUndefined();
   });
@@ -159,7 +172,7 @@ describe('duoRecords: 交戦時計と打刻', () => {
   it('打刻は既存の他スロットを巻き添えにしない(additive)', () => {
     const pre: DuoAlbum = { v: 1, slots: { skadi: { clearTimeMs: 20_000, at: 5 } } };
     localStorage.setItem('zombie-ghost-duo-album-v1', JSON.stringify(pre));
-    engageFor(0, 30_000);
+    engageFor('thor', 0, 30_000);
     recordDuoBossClear('thor', 'stage-3', ally());
     const album = loadDuoAlbum();
     expect(album?.slots.skadi.clearTimeMs).toBe(20_000); // 既存スロットは不変

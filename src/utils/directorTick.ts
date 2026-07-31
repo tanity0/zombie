@@ -35,12 +35,13 @@ import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDir
 import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
-import { bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
+import { bossEngagedNow, engagedBossSlotKeys, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
 import {
   tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey,
   subStyleHomingHoldMs, type SubStyleProfile,
 } from './playerTraits'; // BOT_AND_GHOST.md G1/G5
-import { tickDuoClearClock } from './duoRecords'; // §2.17(GHOST-DUO-RECORDS): 同行撃破タイムの時計
+import { setDuoRunActive } from './duoRecords'; // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ(時計はbossClockへ移設)
+import { tickBossClocks } from './bossClock'; // v0.25.2577: 撃破タイムのボスごと交戦時計(ソロ/同行共有)
 import { loadPlayerName } from './playerName'; // v0.25.2477: 守護霊の頭上名(srcName未記録時のフォールバック)
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
@@ -594,6 +595,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
 // 完全に同じ純関数を再利用=新しい交戦判定は発明していない。ヒステリシスの前回値だけ
 // runKomaBoardMaintenance側のbossRelaxPrevとは別の変数で持つ=互いに干渉しない)。
 let ghostBossEngagePrev = false;
+// v0.25.2577: ボスごと交戦時計のヒステリシス用(前tickで交戦中だったスロットキー集合)。
+// ghostBossEngagePrevと同じくラン跨ぎの明示リセットは不要(敵が空の次tickで自然に空へ収束する)。
+let engagedSlotKeysPrev = new Set<string>();
 
 export interface GhostAndTraitsRefs {
   /** 召喚中ゴーストのプロファイル(6ノブ)。召喚時に1回だけ書き込み、解散まで固定して使う。 */
@@ -640,10 +644,19 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     movementInput: state.inputState.up || state.inputState.down || state.inputState.left || state.inputState.right,
   });
 
-  // §2.17(GHOST-DUO-RECORDS): 同行撃破台帳の撃破タイム時計(交戦開始→撃破)。挙動計測
-  // (tickPlayerTraits=G4a)とは**別モジュールの独立打刻**で、計測パスには触れない(§2.7 制約1不変)。
-  // 交戦信号は上で計算済みのengagedNow(同じ純関数bossEngagedNowの結果)を共有=新しい判定は発明しない。
-  tickDuoClearClock({ ghostRunActive, inCombat: engagedNow, gameTime });
+  // v0.25.2577(社長裁定「ボスごとのタイムにはしたいな」): 撃破タイム用の**ボスごと**交戦時計。
+  // ソロ台帳(notifyBossClear)と同行台帳(recordDuoBossClear)の両方がこの時計を読む(定義=交戦開始→
+  // 撃破は不変・時計の単位だけスロットごとへ)。交戦判定はbossEngagedNowと同じENTER/EXITヒステリシスを
+  // スロット単位に適用した純関数(engagedBossSlotKeys)。
+  {
+    const stageIdNow = getSelectedStageId();
+    engagedSlotKeysPrev = engagedBossSlotKeys(
+      state.enemies, pcx, pcy, engagedSlotKeysPrev, t => bossStyleSlotKey(t, stageIdNow),
+    );
+    tickBossClocks(engagedSlotKeysPrev, gameTime);
+  }
+  // §2.17(GHOST-DUO-RECORDS): 同行台帳側は「同行ランか」のフラグだけ預かる(時計は上の共有時計)。
+  setDuoRunActive(ghostRunActive);
 
   // G2/G3: 召喚ゲート。`?ghost=1`(開発用・従来どおり) OR 守護霊装備(G3)のランだけ先へ進む。
   if (!ghostRunActive) return;

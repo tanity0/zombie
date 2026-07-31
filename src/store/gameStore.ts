@@ -35,6 +35,8 @@ import {
 // §2.17(GHOST-DUO-RECORDS・記録専用): 同行撃破台帳の打刻。挙動は一切変えない(計測パスとは独立の
 // 別モジュール。ソロラン=交戦時計が開いていない時はno-op)。
 import { recordDuoBossClear, resetDuoRunRecords } from '../utils/duoRecords';
+// v0.25.2577: 撃破タイムのボスごと交戦時計(ソロ/同行共有)のラン境界リセット。
+import { resetBossClocks } from '../utils/bossClock';
 // §2.18(GHOST-CMD-1): 技への反応の袋(境界ガード付き袋式)。寿命=ラン単位なのでresetGameでリセット。
 import { resetGhostCommandBags } from '../utils/commandBag';
 // v0.25.2514(§2.11 裁定1): 計測時ビルドの疑似Player(被ダメ補正の主語)。純関数・store非依存。
@@ -12693,9 +12695,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // BOT_AND_GHOST.md G1: 前ランの未確定セッション(交戦中に終了した場合等)+未決算の保留バッファを
     // 持ち越さない。
     resetPlayerTraits();
-    // §2.17(GHOST-DUO-RECORDS): 同行撃破の交戦時計+ラン内打刻ビューも持ち越さない
+    // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ+ラン内打刻ビューも持ち越さない
     // (台帳=localStorageは打刻の瞬間に確定済みなので触らない)。
     resetDuoRunRecords();
+    // v0.25.2577: 撃破タイムのボスごと交戦時計(ソロ/同行共有)も持ち越さない。
+    resetBossClocks();
     // §2.18(GHOST-CMD-1): 技への反応の袋もラン単位(ラン内は交戦を跨いで保持・ラン間は持ち越さない)。
     resetGhostCommandBags();
     // v0.25.2514(GHOST-BUILD-1): 前ランのゴーストビルド(メモ化1件)も持ち越さない。

@@ -12,9 +12,9 @@
 // - ソロ枠との排他は構造で成立する: 同行ランは playerTraits の session=null なので notifyBossClear が
 //   no-op / ソロランは本モジュールの交戦時計が開かない(ghostRunActive=false)ので recordDuoBossClear が
 //   no-op。**同じ撃破が両方の台帳に入ることは無い。**
-// - 撃破タイムの定義はソロ枠と同じ**「交戦開始→撃破」**(交戦信号=directorTickが計算済みの
-//   bossEngagedNowの結果を受け取るだけ。新しい交戦判定は発明しない)。時計はtickでlastGameTimeを
-//   更新し、撃破の瞬間はその値を使う=ソロ(session.lastGameTime)と同tick精度。
+// - 撃破タイムの定義はソロ枠と同じ**「交戦開始→撃破」**。v0.25.2577(社長裁定)から時計は
+//   **ボスごと**の共有時計(bossClock.ts・ソロ台帳と同じ1本を読む)になった=交戦が途切れない連戦でも
+//   2体目のタイムは2体目自身の交戦開始から数える。撃破の瞬間に読む=同tick精度。
 // - 打刻は**撃破の瞬間に即保存**(ソロ枠の保留化=リザルトの採用チェックの都合であり、同行枠には
 //   採用が無い(写し不可)ので保留する理由が無い)。
 // - localStorage読み書きは tutorialArchive.ts と同じ作法(try/catchでプライベートモード耐性)。
@@ -23,6 +23,7 @@ import type { EnemyType } from '../types/game';
 import type { GhostAllySnapshot } from './playerBuild';
 import { isEngageableBoss } from './bossEngagement';
 import { bossStyleSlotKey } from './playerTraits';
+import { bossClockDurationMs, closeBossClock } from './bossClock'; // v0.25.2577: ボスごと交戦時計(共有)
 
 // ---- 保存フォーマット -------------------------------------------------------------------------
 
@@ -93,17 +94,13 @@ export const applyDuoClear = (
   slot: DuoClearSlot,
 ): DuoAlbum => ({ v: 1, slots: { ...(prev?.slots ?? {}), [slotKey]: slot } });
 
-// ---- 交戦時計+ラン内の打刻(モジュールシングルトン) --------------------------------------------
+// ---- 同行ランのフラグ+ラン内の打刻(モジュールシングルトン) ------------------------------------
 
-// 交戦一区間(bossEngagedNowのon→off)ぶんの時計。clearedKeys=同一区間内の同スロット二重打刻防止
-// (ソロ枠のsession.clearedSlotsと同じ流儀)。
-interface DuoEngagement {
-  startGameTime: number;
-  lastGameTime: number;
-  clearedKeys: Set<string>;
-}
-
-let engagement: DuoEngagement | null = null;
+// v0.25.2577(社長裁定「ボスごとのタイムにはしたいな」): 交戦時計は**ボスごと**の共有時計
+// (bossClock.ts)へ移設。このモジュールが持つのは「守護霊同行ランか」のフラグだけになった。
+// ソロ枠との排他は従来どおり構造で成立: ソロラン=このフラグがfalseでrecordDuoBossClearがno-op /
+// 同行ラン=notifyBossClearがno-op(session=null)。
+let duoRunActive = false;
 
 /** リザルト年表(同行枠)用: このランで打刻した撃破1件ぶんの読み取りビュー。 */
 export interface DuoRunClearView {
@@ -120,23 +117,11 @@ export interface DuoRunClearView {
 let runClears: DuoRunClearView[] = [];
 
 /**
- * 毎tick1回、directorTick(runGhostAndTraitsStep)から呼ぶ撃破タイム時計。
- * 交戦信号(inCombat)は同所が計算済みの bossEngagedNow の結果=**新しい交戦判定は発明しない**。
- * 守護霊同行ラン(ghostRunActive)以外では時計を開かない=ソロランの撃破はこの台帳に入らない。
+ * 毎tick1回、directorTick(runGhostAndTraitsStep)から呼ぶ。v0.25.2577以降、時計そのものは
+ * bossClock.ts(ボスごとの共有時計)が持ち、ここは「同行ランか」のフラグを預かるだけ。
  */
-export const tickDuoClearClock = (input: {
-  ghostRunActive: boolean;
-  inCombat: boolean;
-  gameTime: number;
-}): void => {
-  if (!input.ghostRunActive || !input.inCombat) {
-    engagement = null;
-    return;
-  }
-  if (!engagement) {
-    engagement = { startGameTime: input.gameTime, lastGameTime: input.gameTime, clearedKeys: new Set() };
-  }
-  engagement.lastGameTime = input.gameTime;
+export const setDuoRunActive = (ghostRunActive: boolean): void => {
+  duoRunActive = ghostRunActive;
 };
 
 /**
@@ -150,12 +135,14 @@ export const recordDuoBossClear = (
   stageId: string,
   ally: GhostAllySnapshot | null = null,
 ): void => {
-  const e = engagement;
-  if (!e || !isEngageableBoss(bossType)) return;
+  if (!duoRunActive || !isEngageableBoss(bossType)) return;
   const key = bossStyleSlotKey(bossType, stageId);
-  if (e.clearedKeys.has(key)) return; // 同一交戦区間内の二重打刻防止(ソロ枠と同じ)
-  e.clearedKeys.add(key);
-  const clearTimeMs = e.lastGameTime - e.startGameTime;
+  // v0.25.2577: 撃破タイム=**そのボスの**交戦時計(bossClock.ts・交戦開始→撃破)。時計が無い
+  // (非交戦=遠距離撃破等)は打刻しない(旧: 交戦窓が閉じていれば同じくno-op)。打刻後は時計を
+  // 明示的に閉じる=同一交戦区間内の同スロット二重打刻防止(旧clearedKeysの後継)。
+  const clearTimeMs = bossClockDurationMs(key);
+  if (clearTimeMs === null) return;
+  closeBossClock(key);
   const at = Date.now();
   const prev = loadDuoAlbum();
   const prevBest = prev?.slots[key]?.clearTimeMs;
@@ -170,10 +157,11 @@ export const recordDuoBossClear = (
 export const duoClearsThisRun = (): DuoRunClearView[] => runClears.map(r => ({ ...r }));
 
 /**
- * ラン境界(gameStore.resetGame)で呼ぶ。前ランの時計とラン内ビューを持ち越さない
- * (台帳=localStorageは打刻時に確定済みなので触らない。テストのbeforeEachリセットにも使う)。
+ * ラン境界(gameStore.resetGame)で呼ぶ。前ランのフラグとラン内ビューを持ち越さない
+ * (台帳=localStorageは打刻時に確定済みなので触らない。テストのbeforeEachリセットにも使う。
+ * ボスごと時計のリセットは bossClock.resetBossClocks が別途担う)。
  */
 export const resetDuoRunRecords = (): void => {
-  engagement = null;
+  duoRunActive = false;
   runClears = [];
 };
