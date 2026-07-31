@@ -1872,6 +1872,11 @@ const GHOST_DMG_LOG_ENABLED =
 // (lastKillZoomAt/JUICE_CD)=演出はカメラ=世界にひとつの資源なので、主語ごとに持たず連鎖スパムを
 // CDで抑える。`?ghostzoom=0` で従来(除外1=守護霊はシェイクと文字のみ)へ完全復帰(A/B比較用)。
 // 対象はキル・フィニッシュ・カウンター成立のみ(サブ起因のスロー禁止ルールはプレイヤー同様に維持)。
+// v0.25.2588(社長裁定「食らうタイミングをカウンターと見ない修正」): 既定で**被弾=カウンター窓が閉じる**
+// (他ゲーム標準の二値へ)。`?lastcounter=1` で旧挙動(被弾していてもカウンター成立)へ完全復帰。
+// プレイヤー(damagePlayer)と守護霊(damageSummon)の**両方**に同じ規則を適用する(§2.11追補=同じ仕様)。
+export const LATE_COUNTER_ENABLED =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('lastcounter') === '1';
 export const GHOST_ZOOM_TRIAL_ENABLED =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('ghostzoom') !== '0';
 // キャラ登場演出。2段構成:
@@ -6501,7 +6506,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (s.kind === 'ghost-ally' && s.health - dealt <= 0) {
             ghostDeathAt = { x: s.x + s.width / 2, y: s.y + s.height / 2 };
           }
-          return { ...s, health: s.health - dealt, lastHit: now, ...kb };
+          // v0.25.2588(社長裁定): 守護霊も**被弾したらカウンター窓を閉じる**(プレイヤーと同じ規則=
+          // §2.11追補「同じ仕様」。守護霊の全成立経路も ghostCounterWindowEnd を読むのでここ1箇所で効く)。
+          const counterClose = (dealt > 0 && !LATE_COUNTER_ENABLED) ? { ghostCounterWindowEnd: 0 } : {};
+          return { ...s, health: s.health - dealt, lastHit: now, ...kb, ...counterClose };
         })
         .filter(s => !isHittable(s) || s.health > 0),
     }));
@@ -6990,6 +6998,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           health: newHealth,
           invulnerable: amount > 0,
           invulnerableTime: Date.now(),
+          // v0.25.2588(社長裁定「食らうタイミングをカウンターと見ない修正」): **被弾したらカウンター窓を
+          // 閉じる**。他ゲーム(Sekiro/ソウル系/アーカム)と同じ二値=「被弾した=弾き失敗」へ揃える。
+          // 旧: 窓さえ開いていれば被弾していてもカウンターが成立し、「Counter!と出たのにHPが減る」
+          // (=バグにしか見えない)状態だった。**窓を閉じる1箇所で全成立経路(7箇所)に効く**
+          // ——どの経路も counterWindowEnd を読むため、判定コードには一切触らない。
+          // `?lastcounter=1` で旧挙動(被弾していてもカウンター可)へ完全復帰(A/B比較用)。
+          counterWindowEnd: (amount > 0 && !LATE_COUNTER_ENABLED) ? 0 : state.player.counterWindowEnd,
           knockbackVx: kbApply ? kbVx : state.player.knockbackVx,
           knockbackVy: kbApply ? kbVy : state.player.knockbackVy,
           knockbackUntil: kbApply ? kbNow + PLAYER_KNOCKBACK_MS : state.player.knockbackUntil,

@@ -20,7 +20,7 @@ import type { Player } from '../types/game';
 import {
   useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage,
   COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
-  COUNTER_HITSTOP_MS, COUNTER_ZOOM_MAG, GHOST_ZOOM_TRIAL_ENABLED,
+  COUNTER_HITSTOP_MS, COUNTER_ZOOM_MAG, GHOST_ZOOM_TRIAL_ENABLED, LATE_COUNTER_ENABLED, COUNTER_WINDOW,
 } from '../store/gameStore';
 
 // (useGameLoop v0.25.2479 から移設: angelBossTick/combatTickのゴースト分岐も同じゲートを見るため)
@@ -40,19 +40,41 @@ export interface GhostCounterClaim {
   atMs: number;     // 請求時刻(Date.now)
 }
 
-/** 請求の鮮度。消費はスイングと同フレーム(城ボス系)〜次フレーム(状態機械の閉包ハンドラ系)。
- * 低fps(50ms/フレーム)でも1〜2フレームは生きる長さにし、それより古い請求は流す
- * (ボスの技が進んでからの後出しパリィを防ぐ)。 */
-export const GHOST_COUNTER_CLAIM_TTL_MS = 150;
+/**
+ * 請求の鮮度=**プレイヤーのカウンター窓(COUNTER_WINDOW=400ms)と同じ長さ**。
+ *
+ * v0.25.2588(社長報告「見た目より守護霊のカウンター認識は遅延がある」の真因): 旧値は150msで、
+ * **プレイヤーの窓(400ms)より2.6倍シビア**だった=守護霊だけスイングしても期限切れで成立しない
+ * (スイング→ボスの攻撃解決までのフレーム差で落ちる)。これは意図した個性ではなく**パリティの
+ * 写し損ね**(§2.11追補「同じ仕様にして」)。プレイヤーと同じ窓長へ是正する。
+ * ※「後出しパリィを防ぐ」という旧コメントの意図は、プレイヤー側も同じ400msで運用できているので
+ *   400でも満たされる(ボスの技が進めば成立州から外れる=別のゲートで弾かれる)。
+ */
+export const GHOST_COUNTER_CLAIM_TTL_MS = COUNTER_WINDOW;
 
 let pendingClaim: GhostCounterClaim | null = null;
 
 /** スイング側(useGameLoopのゴースト実行ブロック)が積む。常に最新1件だけ(同時ゴーストは1体)。 */
 export const setGhostCounterClaim = (claim: GhostCounterClaim): void => { pendingClaim = claim; };
 
-/** 期限内の請求を覗く(消費しない)。城ボス系入口(ボス型で振り分ける前段)用。 */
-export const peekGhostCounterClaim = (nowMs: number): GhostCounterClaim | null =>
-  pendingClaim !== null && nowMs - pendingClaim.atMs <= GHOST_COUNTER_CLAIM_TTL_MS ? pendingClaim : null;
+/**
+ * 期限内の請求を覗く(消費しない)。城ボス系入口(ボス型で振り分ける前段)用。
+ *
+ * v0.25.2588(社長裁定「食らうタイミングをカウンターと見ない修正」): **請求してから被弾していたら
+ * その請求は無効**(=プレイヤー側の「被弾でカウンター窓を閉じる」と同じ規則。§2.11追補「同じ仕様」)。
+ * 守護霊の近接カウンターは窓(ghostCounterWindowEnd=弾反射専用)ではなくこの請求で成立するため、
+ * **ここ1箇所で全消費経路(useGameLoop×2/angelBossTick×1)に効く**。
+ * 被弾時刻は damageSummon が打つ `lastHit`(ダメージが実際に入った時だけ更新=カウンター無敵や
+ * i-frameで弾かれた時は更新されない)。`?lastcounter=1` で旧挙動へ復帰。
+ */
+export const peekGhostCounterClaim = (nowMs: number): GhostCounterClaim | null => {
+  if (pendingClaim === null || nowMs - pendingClaim.atMs > GHOST_COUNTER_CLAIM_TTL_MS) return null;
+  if (!LATE_COUNTER_ENABLED) {
+    const ghost = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
+    if (ghost && ghost.lastHit > pendingClaim.atMs) return null; // 請求後に被弾=弾き失敗
+  }
+  return pendingClaim;
+};
 
 /** 対象ボスの期限内の請求を消費する(1請求=最大1回の成立)。対象違い/期限切れはnull(残置/実質破棄)。 */
 export const consumeGhostCounterClaim = (bossId: string, nowMs: number): GhostCounterClaim | null => {
