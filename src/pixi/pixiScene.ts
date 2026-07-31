@@ -8512,6 +8512,14 @@ export class PixiScene {
       const poseTex = getTexture(`${meleePosePrefix}-swing`);
       if (poseTex) view.sprite.texture = poseTex;
     }
+    // v0.25.2595(社長報告「死にモーション、強制されてないからか、攻撃モーションとかほかの動きが
+    // 優先されてて しゃがみ絵になってない」): **死亡中は何より優先してしゃがみ絵(-ready)へ固定**。
+    // 上の分岐(近接スイング/救急鞄)や歩き/待機コマの差し替えを**後から上書き**する位置に置くことで、
+    // 直前に振っていた/歩いていた絵のまま倒れるのを防ぐ(死んだと分かる絵を寄りズームの間ずっと出す)。
+    if (p.health <= 0 && meleePosePrefix) {
+      const downTex = getTexture(`${meleePosePrefix}-ready`);
+      if (downTex) view.sprite.texture = downTex;
+    }
     if (PLAYER_MOTION_FX && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const t = sinceSwing / swingWindowMs;
       const arc = Math.sin(t * Math.PI); // 0→1→0(踏み込みのピークは中盤)

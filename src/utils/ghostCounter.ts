@@ -20,7 +20,7 @@ import type { Player } from '../types/game';
 import {
   useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage,
   COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
-  COUNTER_HITSTOP_MS, COUNTER_ZOOM_MAG, GHOST_ZOOM_TRIAL_ENABLED, LATE_COUNTER_ENABLED, COUNTER_WINDOW,
+  COUNTER_HITSTOP_MS, COUNTER_ZOOM_MAG, GHOST_ZOOM_TRIAL_ENABLED, LATE_COUNTER_ENABLED,
   enemyMeleeDist,
 } from '../store/gameStore';
 import { GHOST_MELEE_RANGE } from './ghostDriver'; // 成立の間合い=意思決定側と同じ定数(二重定義しない)
@@ -43,16 +43,24 @@ export interface GhostCounterClaim {
 }
 
 /**
- * 請求の鮮度=**プレイヤーのカウンター窓(COUNTER_WINDOW=400ms)と同じ長さ**。
+ * 請求の鮮度。消費はスイングと同フレーム(城ボス系)〜次フレーム(状態機械の閉包ハンドラ系)。
+ * 低fps(50ms/フレーム)でも1〜2フレームは生きる長さにし、それより古い請求は流す
+ * (**ボスの技が進んでからの後出しパリィを防ぐ**)。
  *
- * v0.25.2588(社長報告「見た目より守護霊のカウンター認識は遅延がある」の真因): 旧値は150msで、
- * **プレイヤーの窓(400ms)より2.6倍シビア**だった=守護霊だけスイングしても期限切れで成立しない
- * (スイング→ボスの攻撃解決までのフレーム差で落ちる)。これは意図した個性ではなく**パリティの
- * 写し損ね**(§2.11追補「同じ仕様にして」)。プレイヤーと同じ窓長へ是正する。
- * ※「後出しパリィを防ぐ」という旧コメントの意図は、プレイヤー側も同じ400msで運用できているので
- *   400でも満たされる(ボスの技が進めば成立州から外れる=別のゲートで弾かれる)。
+ * v0.25.2595(社長報告「カウンター窓伸びたことによって、ボスの技が着地したあとにカウンター!って
+ * なってる」※社長自身は「かも・確信はない」と保留): **v0.25.2588で400msへ広げたのを150msへ差し戻す。**
+ * 差し戻しの主因は観測ではなく**変更の根拠が誤っていたこと**(下記)。観測が別要因だった場合でも、
+ * 根拠の無い値変更を残す理由がないため戻す。再発したら値を勘で動かさず、請求が未消費で期限切れした
+ * 回数をログに出して実測してから決める。
+ * あの変更は「プレイヤーの窓(400ms)と揃えるべきパリティ写し損ね」という私の誤読だった——
+ * **この値はプレイヤーの窓と同じ概念ではない**。プレイヤーの400msは「入力してから成立を待てる長さ」で、
+ * 成立の瞬間は常にボスの攻撃解決時。一方この値は「スイング済みの請求が生き残る長さ」で、長くすると
+ * **技が着地したあとの状態(-recover等)で消費されて後出しカウンターになる**。上の旧コメントに
+ * その意図が明記されていたのに上書きしてしまった。
+ * ※v0.25.2588で同時に入れた「被弾していたら請求無効」と、v0.25.2594の「成立の瞬間に間合いに居ること」は
+ *   位置/被弾の条件であり有効なので残す(この差し戻しは長さだけ)。
  */
-export const GHOST_COUNTER_CLAIM_TTL_MS = COUNTER_WINDOW;
+export const GHOST_COUNTER_CLAIM_TTL_MS = 150;
 
 let pendingClaim: GhostCounterClaim | null = null;
 
