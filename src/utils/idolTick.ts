@@ -15,6 +15,10 @@ import {
 import { getActiveGun } from './weaponUtils';
 import { createEnemyProjectile } from './enemyUtils';
 import { rectsOverlap } from '../world/obstacles';
+// v0.25.2617(社長報告「m2は移動できる範囲が限られてるのに、ボスだけその外に移動してる」):
+// プレイヤーの移動クランプと**同じ純関数**を使う。`playableArea.ts` は「行ける帯」の唯一の出どころで、
+// プレイヤー移動・湧き制限・帯の外の減光が全てここから導かれている。ボスだけがこれを通っていなかった。
+import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { distToSegment } from './levelUpGate';
 import { isCounterablePhase, phaseJustChanged } from './bossScript';
 import { neutralVerb, pickStringScript, restMsFor, punishTrigger, type NeutralVerb } from './bossSkeleton';
@@ -390,6 +394,27 @@ export const runIdolTick = (
   } else {
     patch.bossState = 'chase';
     patch.bossNextActionAt = newGameTime;
+  }
+
+  // v0.25.2617: **プレイヤーが行けない場所へボスを出さない**(社長報告「m2は移動できる範囲が
+  // 限られてるのに、ボスだけその外に移動してる」)。中立の移動語彙(close/retreat/strafe)も
+  // 離脱ローリングも生の座標を書いていたため、ステージ2の廊下帯(|中心Y| ≤ 200)を平気で越えていた。
+  // プレイヤーは `clampRectToPlayableArea` を通っているので、**同じ純関数を同じように通す**
+  // =「行ける帯」の定義が1本のまま(片方だけ直すとズレる、と playableArea.ts に明記されている)。
+  // 追いかけられない相手は戦えない=理不尽なので、帯の外へは出さない。
+  if (patch.x !== undefined || patch.y !== undefined) {
+    const st0 = useGameStore.getState();
+    const ctx: PlayableAreaCtx = {
+      farBackdrop: st0.farBackdrop,
+      labTheme: st0.stageTheme === 'lab' && !st0.indoorMode,
+      corridorMode: st0.corridorMode,
+      m0AdvanceLimitX: st0.m0AdvanceLimitX,
+      corridorRunInActive: st0.corridorRunInActive,
+    };
+    const c = clampRectToPlayableArea(
+      patch.x ?? idol.x, patch.y ?? idol.y, idol.width, idol.height, ctx,
+    );
+    patch.x = c.x; patch.y = c.y;
   }
 
   if (Object.keys(patch).length) {

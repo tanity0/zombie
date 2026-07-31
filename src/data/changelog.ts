@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2617',
+    items: [
+      'ステージ2のアイドルが、プレイヤーの歩けない範囲まで出て行ってしまう問題を直しました。追いかけられない場所へ逃げられて戦えなくなることがなくなります。',
+    ],
+  },
+  {
     version: '0.25.2616',
     items: [
       'ゲーム内容の変更はありません（設計方針の記録のみ）。',
