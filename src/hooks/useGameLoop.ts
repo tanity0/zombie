@@ -8780,7 +8780,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           //   ワープせず定位置を周回する設計。かつ専用コントローラで動くため汎用ボスの reaperWarpAlpha フェードイン
           //   復帰(useGameLoop 3009付近)を通らず、reaperWarpAlpha=0 のまま固定=絵が消えたままになっていた。
           //   ワープ対象から外し、反射弾のダメージだけ通す(=消えない)。
-          if (projectile?.reflected && enemyForFx && isHiddenBoss(enemyForFx.type) && !isGate2AngelBoss(enemyForFx.type) && !enemyKilled
+          // ★v0.25.2624(社長報告「反撃してワープするとかならず消える」): **アイドルも除外**。
+          // ミゲルと**全く同じ原因**——アイドルは専用コントローラ(`runIdolTick`)で動くため、
+          // 汎用ボスコントローラの `reaperWarpAlpha` フェードイン復帰(本ファイル4400付近)を通らない。
+          // よってワープで 0 にした alpha を**誰も1へ戻さず、絵が消えたまま固定**される
+          // (当たり判定・影・攻撃は生きているので「見えないのに殴られる」)。
+          // 加えて設計上も、アイドルは**自前の離脱(roll)と主戦帯200-340pxの間合い管理**を持つので、
+          // 汎用の強制ワープはその設計を壊す(§6.28-20「近づくほど安全」の距離設計)。
+          // **掟: 専用コントローラで動くボスは、汎用ボスの alpha を触る演出の対象にしない。**
+          if (projectile?.reflected && enemyForFx && isHiddenBoss(enemyForFx.type)
+              && !isGate2AngelBoss(enemyForFx.type) && enemyForFx.type !== 'idol' && !enemyKilled
               && Date.now() >= bossRef.current.warpUntil) {
             const wpl = useGameStore.getState().player;
             const wpcx = wpl.x + wpl.width / 2, wpcy = wpl.y + wpl.height / 2;

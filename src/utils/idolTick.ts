@@ -121,6 +121,13 @@ export const runIdolTick = (
     return;
   }
 
+  // v0.25.2624(社長報告「反撃してワープするとかならず消える」)の**保険**。
+  // 本体の修正は useGameLoop 側(アイドルを汎用ボスのカウンターワープから除外)だが、
+  // 汎用側が alpha を 0 にする経路は他にも増えうる。**専用コントローラで動く以上、
+  // 自分の見た目を1へ戻す責務は自分にある**ので、消えたままにならないようここでも戻す。
+  // (描画は container.alpha に使われる値。ゲーム判定には一切影響しない。)
+  if ((idol.reaperWarpAlpha ?? 1) < 1) patch.reaperWarpAlpha = 1;
+
   const hpFrac = idol.maxHealth > 0 ? idol.health / idol.maxHealth : 1;
   const phase = idolPhaseForHealth(hpFrac);
   if (phaseJustChanged(idol.bossPhase, phase)) patch.bossPhaseFlashUntil = newGameTime + 1200;
