@@ -4380,8 +4380,17 @@ export class PixiScene {
     // 対象の「等倍時の画面座標」(world.position は本関数の先頭でカメラオフセット込み更新済み)。
     const targetScreenX = this.L.world.position.x + s.zoomTargetX;
     const targetScreenY = this.L.world.position.y + s.zoomTargetY;
-    const panX = zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0;
-    const panY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0;
+    // v0.25.2593(社長報告「起点が守護霊によったことで、映ってはいけない画面外がでちゃってる感じ。
+    // レイヤーが切れてる」): 寄せ量に**安全上限**を掛ける。ズーム倍率 z で拡大している間は可視範囲が
+    // 1/z に縮むので、**(1 - 1/z) × 画面半分**までなら平行移動しても「等倍時に見えていた範囲」の内側に
+    // 収まる=カリング済みの外・背景レイヤーの外を絶対に露出しない。z<=1(文脈ズームで引いている時)は
+    // 上限0=寄せない。中央捕捉はこの範囲内で最大限行う(ほとんどの場合そのまま中央に来る)。
+    const panLimitX = Math.max(0, (1 - 1 / Math.max(0.001, zoom)) * centerX);
+    const panLimitY = Math.max(0, (1 - 1 / Math.max(0.001, zoom)) * centerY);
+    const panRawX = zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0;
+    const panRawY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0;
+    const panX = Math.max(-panLimitX, Math.min(panLimitX, panRawX));
+    const panY = Math.max(-panLimitY, Math.min(panLimitY, panRawY));
     if (Math.abs(zoom - 1) > 0.0005 || panX !== 0 || panY !== 0) {
       this.L.worldGroup.scale.set(zoom);
       this.L.worldGroup.position.set(centerX * (1 - zoom) - panX, centerY * (1 - zoom) - panY);
