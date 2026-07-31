@@ -88,9 +88,18 @@ export const peekGhostCounterClaim = (nowMs: number): GhostCounterClaim | null =
   // スイング後に離れても成立していた=遠くでカウンターが出る絵になっていた。距離はプレイヤーと同じ
   // 縁基準(enemyMeleeDist)で、近接射程(GHOST_MELEE_RANGE)以内であること。ボスが見つからない
   // (撃破直後等)場合は従来どおり通す=判定を厳しくするのは「離れている」と確認できた時だけ。
+  // v0.25.2596(社長指摘「技は赤いラインなのでボスの体の距離は関係ない」): **カウンターには2方式ある**。
+  //  (A) 体接触型(トール/裏ボス/天使/idol): プレイヤー側が `overlap && counterActive`=**ボスの体と
+  //      重なっている**ことを要求する。守護霊もここへ揃える(下の間合い判定)。
+  //  (B) 攻撃被弾型(城ボスgiantbat): `applyContactDamage`の dashParried=**その攻撃に当たる位置に居て**
+  //      窓が開いていれば成立(薙ぎ払いの帯・突進・着地など)。ボスは動かず衝撃波だけ飛んでくる技を
+  //      離れた位置でカウンターできるのはこの方式だから。**この方式に体の距離は無関係**なので、
+  //      間合い判定を掛けてはいけない(掛けると社長が実際に取れているカウンターが取れなくなる)。
+  // よって間合い判定は (A) のボスにだけ適用する。判定の場所自体が「攻撃に当たる位置」を保証している
+  // (B) は素通しでよい。
   if (ghost) {
     const boss = st.enemies.find(e => e.id === pendingClaim!.bossId);
-    if (boss) {
+    if (boss && boss.type !== 'giantbat') {
       const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
       if (enemyMeleeDist(gcx, gcy, boss) > GHOST_MELEE_RANGE) return null;
     }
