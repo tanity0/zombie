@@ -1583,7 +1583,12 @@ export const GIANT_SCRIPT_ENABLED = typeof window === 'undefined' || new URLSear
 export const GIANT_STOMP_WINDUP_MS = 840;    // 実効700ms・完全静止(T7+T2+T4)
 export const GIANT_STOMP_RECOVER_MS = 1080;  // 実効900ms・硬直=反撃窓
 export const GIANT_STOMP_CD_MS = 6000;       // 実効5.0s
-export const GIANT_STOMP_RADIUS = 92;        // = GRENADE_BLAST_RADIUS(社長裁定6.26-9 #3。54では密着帯のハメを潰せない)
+// v0.25.2578(社長指示「範囲狭すぎてそもそもそんな距離に近づいていることが近接でもほぼない。少し広げた方がいい」):
+// 92→130。近接の定位置=縁74px(MELEE_RADIUS)+帯半幅≈38 → **中心から≈112px**で、92は近接の標準立ち位置に
+// すら届かない技だった(54→92の裁定6.26-9 #3は密着ハメ対策で、近接定位置のカバーは対象外だった)。
+// 130=定位置112+余裕18px(叩き台・実機調整前提)。判定・赤円・レベルアップ保留・守護霊回避台帳は
+// すべて gStompRadius(この値×ステージ倍率)経由で読むので図形と判定はドリフトしない。
+export const GIANT_STOMP_RADIUS = 130;
 // 薙ぎ払い(sweep・近140〜320・Phase2限定=新規解禁)。
 export const GIANT_SWEEP_WINDUP_MS = 840;    // 実効700ms(T3+T4)
 export const GIANT_SWEEP_ACTIVE_MS = 264;    // 実効220ms(THOR_HARAI_ACTIVE_MS相当)
