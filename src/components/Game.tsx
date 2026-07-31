@@ -76,6 +76,10 @@ const Game: React.FC<GameProps> = ({
   const isPaused = useGameStore(state => state.isPaused);
   const tutorialPopupOpen = useGameStore(state => state.tutorialPopup !== null); // boolean派生=開閉時のみ再描画
   const showStatsOverlay = useGameStore(state => state.showStatsOverlay);
+  // ボスメーカーの部屋ではゲームHUDを消す(社長指示v0.25.2628「重なって邪魔」)。
+  // レベル円/サブ武器欄/武器スロット/スコアは調整に不要。**派生boolean購読**なので
+  // 毎フレーム再描画しない(CLAUDE.md React再描画の規律)。ライブ表示はメーカー側に残る。
+  const makerHideHud = useGameStore(state => state.bossMaker.active && state.bossMaker.hideHud);
   // 凍結診断オンスクリーン表示(?debug=1)。
   const debugOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
   // AIディレクター(ステップA)可視化(?director=1)。読むだけ=ゲーム挙動には影響しない。
@@ -221,7 +225,7 @@ const Game: React.FC<GameProps> = ({
       {/* PC(非タッチ): マウス照準 + 左クリック=タップ / 右クリック=フリック。HUDより手前(z低)に置く。 */}
       {!isTouch && <MouseControls />}
 
-      <GameHUD />
+      {!makerHideHud && <GameHUD />}
       {/* PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出(中格=帯/大格=銘打ち)。 */}
       <WallBand />
       <WallInscription />
@@ -243,7 +247,7 @@ const Game: React.FC<GameProps> = ({
       {benchmarkMode && onBenchmarkComplete && (
         <BenchmarkOverlay fps={fps} onComplete={onBenchmarkComplete} />
       )}
-      {isTouch && <MobileControls />}
+      {isTouch && !makerHideHud && <MobileControls />}
       
       {/* チュートリアルの操作説明ポップアップ(表示中はisPaused=trueだがPauseMenuは出さない=ポップアップ優先) */}
       <TutorialPopup />

@@ -58,13 +58,24 @@ export interface IdolTuning {
   /** 基礎値(§1-5)。ENEMY_STATS.idol と同値で始まる。画面から変えた時は生きている個体へ反映する。 */
   stats: { health: number; damage: number; speed: number };
   /**
-   * v0.25.2627(社長報告「これ速さの項目がない」): **狙い撃ち(aim)/連射扇(fan)が撃つ弾の性能。**
+   * **弾の性能は技ごとに持つ**(社長指示v0.25.2628)。
+   *
    * これまで `enemyUtils.getEnemyFireProfile` の**11ボス共通の1行**(speed320/damage20/size16)を
-   * 使っていたため、**ボスごとに変えられず、メーカーの技欄にも出せなかった**。ここへ持ってきて
-   * `registerEnemyFireProfile('idol', ...)` で上書き登録する(既定値は共通行と同値=挙動は不変)。
-   * 追尾弾(orb)はアイドル固有の実装なので別(`shape.orbSpeed`)。
+   * 使っていたため、ボスごとに変えられなかった(v0.25.2627でここへ移設)。さらにv0.25.2628で
+   * **aim/fanを1組に共通化していたのを技ごとへ分けた**——同じ弾を撃つ技どうしでも共通化すると
+   * 「狙い撃ち=速い1発 / 連射扇=遅いが数で押す」のような**技の性格を数字で作り分けられなくなる**。
+   * 追尾弾(orb)はアイドル固有の実装なので別(`shape.orbSpeed`/`shape.orbTurnRate`)。
+   *
+   * interval/range はアイドルでは未使用(発射タイミングは台本が直接制御)。
+   * `bullet.aim` は `registerEnemyFireProfile('idol', ...)` に渡す**型の既定**も兼ねる
+   * (どの技でもない経路から撃たれた時の値。実際の aim/fan は発射地点で明示的に渡す)。
    */
-  bullet: { interval: number; range: number; speed: number; damage: number; size: number };
+  bullet: {
+    aim: { interval: number; range: number; speed: number; damage: number; size: number };
+    fan: { interval: number; range: number; speed: number; damage: number; size: number };
+    /** 追尾弾は**速度が既存の `shape.orbSpeed` に居る**ので、ここは威力と大きさだけ持つ(値を二重に持たない)。 */
+    orb: { damage: number; size: number };
+  };
 }
 
 export const IDOL_TUNING: IdolTuning = {
@@ -135,9 +146,12 @@ export const IDOL_TUNING: IdolTuning = {
   sameAngleDeg: 30,
   // 基礎値。既定は ENEMY_STATS.idol と同値(テストで突き合わせる)。
   stats: { health: 9000, damage: 30, speed: 150 },
-  // v0.25.2627: 既定は従来の共通行と同値(speed320/damage20/size16)=テーブル化で挙動は変わらない。
-  // interval/range はアイドルでは未使用(発射タイミングは台本が直接制御)。共通行と同値のまま持つ。
-  bullet: { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 },
+  // 既定は従来の共通行と同値(speed320/damage20/size16)=**技ごとに分けても挙動は変わらない**。
+  bullet: {
+    aim: { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 },
+    fan: { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 },
+    orb: { damage: 20, size: 16 },
+  },
 };
 
 /** 既定値(リセット/差分表示用)。テーブルとは別オブジェクトとして凍結せずに保持する。 */

@@ -648,10 +648,18 @@ export const createEnemyProjectile = (
   // 省略時は従来どおり敵本体中心(既存の全呼び出し側は無改変=挙動不変)。
   originX?: number,
   originY?: number,
+  /**
+   * **技ごとの弾**(社長指示v0.25.2628「弾速度とか個別にしないと」)。
+   * 型ごとの既定(`getEnemyFireProfile`)に上書きする。省略時は従来どおり=既存の全呼び出し側は無改変。
+   * ★**生成時に効かせる**のが肝: `size` は下で x/y の逆算(中心合わせ)に使うので、
+   * 生成後に上書きすると**弾の位置がズレる**。だからここで受け取る。
+   */
+  profileOverride?: Partial<FireProfile>,
 ): Projectile => {
-  const profile = getEnemyFireProfile(enemy) ?? {
+  const base = getEnemyFireProfile(enemy) ?? {
     speed: 200, damage: 6, size: 12, interval: 0, range: 0
   };
+  const profile = profileOverride ? { ...base, ...profileOverride } : base;
   const ex = originX ?? (enemy.x + enemy.width / 2);
   const ey = originY ?? (enemy.y + enemy.height / 2);
   // 既定はプレイヤー中心(従来挙動と等価)。錬金術で召喚が標的なら呼出側が座標を渡す。

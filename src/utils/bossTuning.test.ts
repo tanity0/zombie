@@ -261,19 +261,25 @@ describe('個別再生: 要求箱の振る舞い', () => {
 
 // v0.25.2627(社長報告「これ速さの項目がない」): 狙い撃ち/連射扇の弾速がメーカーに出ていなかった。
 // 原因は敵弾の性能が enemyUtils の「11ボス共通の1行」にあり、ボスの数値テーブルに無かったこと。
+// v0.25.2628(社長指示「弾速度とか個別にしないと」): **弾は技ごと**。同じ弾を撃つ技どうしでも
+// 共通化しない(共通だと技の性格を数字で作り分けられない)。
 describe('弾の性能がテーブルに載っている(社長報告「速さの項目がない」)', () => {
   beforeEach(() => { registerIdolTuning(); });
 
-  it('アイドルの弾は enemyUtils の上書きとして登録され、テーブルと同じ参照を指す', () => {
+  it('アイドルの弾は enemyUtils の上書きとして登録され、テーブル(aim=型の既定)と同じ参照を指す', () => {
     const e = { type: 'idol' } as unknown as Enemy;
     const profile = getEnemyFireProfile(e);
-    expect(profile).toBe(IDOL_TUNING.bullet); // 同一参照=メーカーの変更がその場で効く
+    expect(profile).toBe(IDOL_TUNING.bullet.aim); // 同一参照=メーカーの変更がその場で効く
   });
 
-  it('既定値は従来の共通行と同値(テーブル化で挙動が変わっていない)', () => {
-    expect(IDOL_TUNING.bullet.speed).toBe(320);
-    expect(IDOL_TUNING.bullet.damage).toBe(20);
-    expect(IDOL_TUNING.bullet.size).toBe(16);
+  it('既定値は従来の共通行と同値(技ごとに分けても挙動が変わっていない)', () => {
+    for (const m of ['aim', 'fan'] as const) {
+      expect(IDOL_TUNING.bullet[m].speed, m).toBe(320);
+      expect(IDOL_TUNING.bullet[m].damage, m).toBe(20);
+      expect(IDOL_TUNING.bullet[m].size, m).toBe(16);
+    }
+    expect(IDOL_TUNING.bullet.orb.damage).toBe(20);
+    expect(IDOL_TUNING.bullet.orb.size).toBe(16);
   });
 
   it('上書きの無いボスは従来どおりの共通行を返す(他ボスは1バイトも変わらない)', () => {
@@ -281,10 +287,31 @@ describe('弾の性能がテーブルに載っている(社長報告「速さの
     expect(mimir).toEqual({ interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 });
   });
 
-  it('弾速・弾のダメージ・弾の大きさがスキーマに出ている(=画面に項目が並ぶ)', () => {
+  it('★掟: 弾の項目は技ごとに分かれている(共通の1組を作らない)', () => {
     const paths = (getBossTuning('idol')?.fields ?? []).map((f: TuningField) => f.path);
-    expect(paths).toContain('bullet.speed');
-    expect(paths).toContain('bullet.damage');
-    expect(paths).toContain('bullet.size');
+    expect(paths).toContain('bullet.aim.speed');
+    expect(paths).toContain('bullet.fan.speed');
+    // 共通の1組(旧v0.25.2627の形)へ戻していないこと
+    expect(paths).not.toContain('bullet.speed');
+  });
+
+  it('★弾を撃つ3技(aim/fan/orb)は、同じ並び順で 弾速→弾のダメージ→弾の大きさ を持つ', () => {
+    const fields = getBossTuning('idol')?.fields ?? [];
+    for (const sec of ['狙い撃ち(aim)', '連射扇(fan)', '追尾弾(orb)']) {
+      const labels = fields.filter((f: TuningField) => f.section === sec).map((f: TuningField) => f.label);
+      const i = labels.indexOf('弾速');
+      expect(i, sec).toBeGreaterThanOrEqual(0);
+      expect(labels.slice(i, i + 3), sec).toEqual(['弾速', '弾のダメージ', '弾の大きさ']);
+      // 予告/判定/硬直の直後に来る=どの技でも同じ位置
+      expect(labels.slice(0, 3), sec).toEqual(['予告', '判定', '硬直']);
+    }
+  });
+
+  it('弾を撃たない技(roll/punch/snipe)には弾の項目を出さない', () => {
+    const fields = getBossTuning('idol')?.fields ?? [];
+    for (const sec of ['離脱ローリング(roll)', '至近の殴り(punch)', '狙撃線(snipe)']) {
+      const labels = fields.filter((f: TuningField) => f.section === sec).map((f: TuningField) => f.label);
+      expect(labels, sec).not.toContain('弾速');
+    }
   });
 });

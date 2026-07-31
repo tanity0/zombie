@@ -124,6 +124,14 @@ export const canForceGateBossNow = (s: GateBossGateState): boolean =>
 // 部屋(方眼・無敵・調整フォーム)を立てる。数値の受け渡しにURLは使わない(社長明示「?パラメータは
 // 回りくどい」)——URLは**部屋へ入るためだけ**に使う。
 export const BOSS_MAKER_STAGE = 'stage-1'; // 森(平地)。広さ無限・木はメーカー側で消す。
+
+/**
+ * この読込が**ボスメーカーの部屋**か(ページ読込時のURLが今セッションの真実)。
+ * `useGameLoop` の `BOSS_MAKER` と同じ判定だが、**resetGame(store)からも要る**ので
+ * ここへ置いて1本にする(§1-1「壁なし・障害物なし・敵は選んだボス1体だけ」の履行に使う)。
+ */
+export const isBossMakerRun = (): boolean =>
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bossmaker') === '1';
 export const bossMakerQuery = (opts: BossTestOptions): string => {
   const p = new URLSearchParams();
   p.set('smoke', '1');

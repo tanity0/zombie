@@ -33,10 +33,17 @@ const hash2 = (x: number, y: number): number => {
 };
 
 // stageId が対象なら、可視領域の各区画へ決定的に花を散布。対象外は空配列(=描画no-op)。
+// ボスメーカーの部屋(BOSS_MAKER.md §1-1「壁なし・障害物なし・敵は選んだボス1体だけ」)では
+// 飾りも出さない。花は判定こそ無いが**Y-sort層に並ぶ大きな絵(128px)**なのでボスの足元に重なり、
+// 「いま見えている絵はボスのものか飾りか」を毎回疑う羽目になる(社長指示v0.25.2628)。
+// trees.ts の setTreesDisabled と同じ world 層モジュール状態方式=描画側は何も知らないまま消える。
+let flowersDisabled = false;
+export const setFlowersDisabled = (disabled: boolean): void => { flowersDisabled = disabled; };
+
 export const forestFlowersInRegion = (
   stageId: string, minX: number, minY: number, maxX: number, maxY: number,
 ): ForestFlower[] => {
-  if (!FLOWER_STAGES.has(stageId)) return [];
+  if (flowersDisabled || !FLOWER_STAGES.has(stageId)) return [];
   const out: ForestFlower[] = [];
   const cx0 = Math.floor(minX / FLOWER_ZONE) - 1, cx1 = Math.floor(maxX / FLOWER_ZONE) + 1;
   const cy0 = Math.floor(minY / FLOWER_ZONE) - 1, cy1 = Math.floor(maxY / FLOWER_ZONE) + 1;

@@ -295,6 +295,58 @@ describe('個別再生: 移動語彙を維持できる', () => {
   });
 });
 
+// v0.25.2628(社長指示「弾速度とか個別にしないと」): 弾の性能は**技ごと**。
+// ★勘所: `createEnemyProjectile` は size から x/y を逆算する(中心合わせ)ので、
+// **生成後に上書きすると弾の位置がズレる**。生成時に渡していることをここで固定する。
+describe('弾の性能は技ごとに効く', () => {
+  beforeEach(() => { clearIdolPlayback(); });
+
+  /** 指定の技を強制発動し、最初に出た敵弾を返す(予告が明けるまで進める)。 */
+  const fireAndGrab = (move: 'aim' | 'fan') => {
+    const g = setup(250);
+    g.step();
+    requestIdolMovePlay(move, { solo: false, loop: false });
+    for (let i = 0; i < 200; i++) {
+      g.step(20);
+      const ps = useGameStore.getState().projectiles.filter(p => p.hostile);
+      if (ps.length > 0) return { g, p: ps[0], boss: useGameStore.getState().enemies[0] };
+    }
+    throw new Error(`${move} の弾が出なかった`);
+  };
+
+  it('技ごとに弾速・大きさ・威力が変わる(狙い撃ち=速い / 連射扇=遅い が作れる)', () => {
+    const bul = IDOL_TUNING.bullet;
+    const save = JSON.stringify(bul);
+    try {
+      bul.aim.speed = 700; bul.aim.size = 40; bul.aim.damage = 55;
+      bul.fan.speed = 90;  bul.fan.size = 8;  bul.fan.damage = 3;
+
+      const a = fireAndGrab('aim');
+      expect(a.p.speed).toBe(700);
+      expect(a.p.width).toBe(40);
+      expect(a.p.height).toBe(40);
+      expect(a.p.damage).toBe(55);
+
+      clearIdolPlayback();
+      const f = fireAndGrab('fan');
+      expect(f.p.speed).toBe(90);
+      expect(f.p.width).toBe(8);
+      expect(f.p.damage).toBe(3);
+    } finally { Object.assign(IDOL_TUNING.bullet, JSON.parse(save)); }
+  });
+
+  it('★大きさを変えても弾の中心はボスの中心のまま(生成時に渡している証拠)', () => {
+    const bul = IDOL_TUNING.bullet;
+    const save = JSON.stringify(bul);
+    try {
+      bul.aim.size = 48; // 既定16から大きく変える
+      const { p, boss } = fireAndGrab('aim');
+      expect(p.x + p.width / 2).toBeCloseTo(boss.x + boss.width / 2, 3);
+      expect(p.y + p.height / 2).toBeCloseTo(boss.y + boss.height / 2, 3);
+    } finally { Object.assign(IDOL_TUNING.bullet, JSON.parse(save)); }
+  });
+});
+
 describe('フェーズの扱い(報告事項)', () => {
   beforeEach(() => { clearIdolPlayback(); });
   it('第二波はフェーズ設定を尊重する: P1で技を再生しても第二波は出ない', () => {

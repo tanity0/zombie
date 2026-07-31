@@ -315,8 +315,15 @@ export const runIdolTick = (
     patch.bossStateUntil = newGameTime + IDOL_TIMING[m].recover;
   };
 
-  const fire = (tx: number, ty: number): void =>
-    useGameStore.getState().addProjectile(createEnemyProjectile(idol, player, tx, ty));
+  /**
+   * 弾を1発撃つ。**弾の性能は技ごと**(社長指示v0.25.2628「弾速度とか個別にしないと」)。
+   * `createEnemyProjectile` は size から x/y を逆算する(中心合わせ)ので、**生成時に渡す**
+   * ——生成後に上書きすると位置がズレる。
+   */
+  const fire = (move: 'aim' | 'fan', tx: number, ty: number): void =>
+    useGameStore.getState().addProjectile(
+      createEnemyProjectile(idol, player, tx, ty, undefined, undefined, IDOL_TUNING.bullet[move]),
+    );
 
   const hitCapsule = (fx: number, fy: number, tx: number, ty: number, halfW: number): void => {
     useGameStore.setState(state => ({
@@ -406,7 +413,7 @@ export const runIdolTick = (
   } else if (st === 'idol-aim-windup') {
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       const aim = hateAim();
-      fire(aim.x, aim.y);
+      fire('aim', aim.x, aim.y);
       patch.hateTarget = aim.side;
       toRecover('aim');
     }
@@ -419,7 +426,7 @@ export const runIdolTick = (
       const half = (count - 1) / 2;
       for (let k = 0; k < count; k++) {
         const a = ang + (k - half) * IDOL_TUNING.shape.fanSpreadStep;
-        fire(icx + Math.cos(a) * 100, icy + Math.sin(a) * 100);
+        fire('fan', icx + Math.cos(a) * 100, icy + Math.sin(a) * 100);
       }
       toRecover('fan');
     }
@@ -432,9 +439,13 @@ export const runIdolTick = (
       const ids: string[] = [];
       for (let k = 0; k < n; k++) {
         const a = base + (k - (n - 1) / 2) * 0.5; // 少し散らして出す(全弾が同じ線に乗らない)
-        const p = createEnemyProjectile(idol, player, icx + Math.cos(a) * 100, icy + Math.sin(a) * 100);
+        // 追尾弾も**技ごとの弾**として生成時に渡す(size は x/y の逆算に使うので後から書けない)。
+        // 速度は既存パス `shape.orbSpeed` が正(値を二重に持たない・社長指示v0.25.2628)。
+        const p = createEnemyProjectile(
+          idol, player, icx + Math.cos(a) * 100, icy + Math.sin(a) * 100, undefined, undefined,
+          { speed: IDOL_TUNING.shape.orbSpeed, damage: IDOL_TUNING.bullet.orb.damage, size: IDOL_TUNING.bullet.orb.size },
+        );
         p.id = `${ORB_ID_PREFIX}${idol.id}-${newGameTime}-${k}`;
-        p.speed = IDOL_TUNING.shape.orbSpeed;
         useGameStore.getState().addProjectile(p);
         ids.push(p.id);
       }

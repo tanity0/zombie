@@ -128,6 +128,8 @@ import {
   ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE, ALCHEMY_RARE_SUCTION_RADIUS
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
+import { setFlowersDisabled } from '../world/forestDecor';
+import { isBossMakerRun } from '../utils/bossTest';
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
@@ -1923,9 +1925,11 @@ export const setGhostDeathPose = (p: GhostDeathPose): void => { ghostDeathPoseRe
 // v0.25.2589(社長指示「ボスモードではNPC出撃しないで」): ボス戦テスト出撃かどうか。
 // タイトルの「ボス戦テスト」が付ける強制出現フラグ(utils/bossTest.FORCE_PARAMS と同じ4種)の
 // いずれかが立っていれば真。判定はモジュールロード時に1回だけ(他のデバッグフラグと同じ作法)。
+// v0.25.2628(社長「npcじゃま」): **ボスメーカーの部屋(bossmaker)も含める**。旧は4種だけを見ており、
+// メーカーの部屋には護衛NPCが出撃していた(§1-1「敵は選んだボス1体だけ」に反する)。
 export const BOSS_TEST_RUN =
   typeof window !== 'undefined'
-  && ['bossnow', 'idolnow', 'gateboss', 'castlenow']
+  && ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker']
     .some(k => new URLSearchParams(window.location.search).get(k) === '1');
 export const LATE_COUNTER_ENABLED =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('lastcounter') === '1';
@@ -3709,6 +3713,7 @@ interface GameState {
     invincible: boolean;  // プレイヤーが死なない(既定ON・トグルで切れる)
     paused: boolean;      // ボスの時間を止める(絵を止めて見たい時)
     showHitbox: boolean;  // 当たり判定の可視化
+    hideHud: boolean;     // ゲームHUD(レベル円/サブ武器/武器スロット等)を消す(既定ON・社長指示v0.25.2628)
   };
   setBossMaker: (patch: Partial<GameState['bossMaker']>) => void;
   clearCorridorRunIn: () => void;
@@ -4078,7 +4083,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   corridorMode: false,
   pendingCorridor: false,
   corridorRunInActive: false,
-  bossMaker: { active: false, invincible: true, paused: false, showHitbox: false },
+  bossMaker: { active: false, invincible: true, paused: false, showHitbox: false, hideHud: true },
   labDoors: [],
   labButtons: [],
   labProps: [],
@@ -13023,12 +13028,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ステージ5(戦場)=残骸プロップに置換・チュートリアル(洞窟)=木なし(社長指示2026-07-17)。
       // world層のゲートを毎ラン設定(描画/幹当たり/配置回避が treesInRegion 経由で一括に空になる)。
       // 洋館通路も木/トーチ/緑卵を出さない(社長指示)。
-      setTreesDisabled(farBackdrop === 'stage5' || farBackdrop === 'tutorial' || corridorMode);
+      // ボスメーカーの部屋(BOSS_MAKER.md §1-1)は**壁なし・障害物なし・ボス1体だけ**。木が残っていると
+      // 弾が木に当たって消える/ボスが引っかかる/方眼が読めない、で数字を詰める邪魔になる(社長指示v0.25.2628)。
+      const bossMakerRoom = isBossMakerRun() && !state.danceTestMode;
+      setTreesDisabled(farBackdrop === 'stage5' || farBackdrop === 'tutorial' || corridorMode || bossMakerRoom);
       // チュートリアル: 松明(破壊可能プロップ=資材ドロップ源)も出さない(社長指示v0.25.1818
       // 「アイテムも通常NPCも何もかも無し。全てイベントで特別仕様のみ」)。
-      setTorchesDisabled(farBackdrop === 'tutorial' || corridorMode);
+      setTorchesDisabled(farBackdrop === 'tutorial' || corridorMode || bossMakerRoom);
       // チュートリアル: 緑卵(地雷)のワールド生成も出さない(社長指示v0.25.1820「緑卵も非表示」)。
-      setMinesDisabled(farBackdrop === 'tutorial' || corridorMode);
+      setMinesDisabled(farBackdrop === 'tutorial' || corridorMode || bossMakerRoom);
+      // 飾りの花(判定なし・だが128pxの大きな絵)も部屋では出さない=画面にはプレイヤーとボスだけ。
+      setFlowersDisabled(bossMakerRoom);
       // 洋館通路の湧き方向ゲート(上=奥 主体・左右は湧かせない)。generateEnemy が参照(新規/リサイクル両方)。
       setCorridorSpawn(corridorMode);
       // 遠景森2(手前の帯)は forest/lab どちらでも有効(ダンステストのみ無効)。lab は機材シルエット帯。
@@ -13036,12 +13046,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 裏ボス(深層域)。屋外(非ラボ/非屋内)・非ダンステストのときだけ有効。
       // 洋館通路(corridorMode)では裏ボス深層域を無効化(v0.25.2119): 通路は奥へ歩き続ける構造のため
       // 距離条件を必ず踏み、森用のデンジャーゾーン暗幕が通路背景を覆って画面が黒地化していた(社長報告)。
-      const hiddenBoss = (!state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode) ? state.pendingHiddenBoss : null;
+      const hiddenBoss = (!state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode && !bossMakerRoom) ? state.pendingHiddenBoss : null;
       // PACING_PUZZLE.md §6.24 M48: 寄り道POI(病院/武器庫/警察署)は病院と同じ条件系(通常ステージ=
       // 屋外・森スキン・通路/ダンステストでない)にだけ立つ。3種の位置は、裏ボスのセクターを除いた
       // 残り3セクターへ毎ランランダムに割り当てる(assignDetourSectors。乱数はここで1度だけ引く=
       // hospital.ts/armory.ts/police.ts の各 *Pos はその結果を受け取るだけの純関数)。
-      const detourVisible = !state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode;
+      const detourVisible = !state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode && !bossMakerRoom;
       const detourSectors = detourVisible ? assignDetourSectors(bossSectorIndex(hiddenBoss)) : null;
       const spawnTL = indoor
         ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
@@ -13318,7 +13328,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? { x: LAB_MERCHANT.x, y: LAB_MERCHANT.y, radius: MERCHANT_INTERACT_RADIUS }
           // チュートリアル: 商人も出さない(社長指示v0.25.1818)。不在状態が型に無いため到達不能座標へ
           // (描画は画面外カリング・interactは距離判定=radius 0 で成立しない)。
-          : farBackdrop === 'tutorial'
+          // ボスメーカーの部屋も同じく商人を出さない(§1-1「部屋にはプレイヤーとボスだけ」・社長指示v0.25.2628)。
+          // 既定配置(y:-130)は**ちょうど交戦距離**なので、居ると必ず視界に入って邪魔になる。
+          : (farBackdrop === 'tutorial' || bossMakerRoom)
             ? { x: 1e9, y: 1e9, radius: 0 }
             // 研究所(屋外・横長廊下)は上下固定クランプ(±100)の外(y:-130)に商人がいると一生話しかけ
             // られない(M2_LAB_CORRIDOR_SPEC.md ★未決2・社長承認で追加)。labThemeだけYを上書きし、
@@ -13330,7 +13342,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // サブ納品済みステージにも以後出現しない(そのプレイ中に消えないのは completeEventQuest 側)。
         eventQuestNpc: (() => {
           const qCfg = getEventQuestConfig(getSelectedStageId());
-          const qGone = !qCfg || getEventQuestMeta(getSelectedStageId()).sub;
+          // ボスメーカーの部屋では二人組クエストNPCも出さない(社長指示v0.25.2628「npcじゃま」)。
+          const qGone = bossMakerRoom || !qCfg || getEventQuestMeta(getSelectedStageId()).sub;
           return qGone ? { ...createEventQuestNpc(), status: 'gone' as const } : createEventQuestNpc();
         })(),
         eventQuestActive: null,

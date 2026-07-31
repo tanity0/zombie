@@ -34,11 +34,40 @@ const SHAPE_FIELDS: Partial<Record<IdolMove, TuningField[]>> = {
     { path: 'fanCount.p2', label: '本数 P2', group: 'move', section: MOVE_LABEL.fan, kind: 'num', min: 1, max: 15, step: 1 },
   ],
   orb: [
-    { path: 'shape.orbSpeed', label: '弾速', group: 'move', section: MOVE_LABEL.orb, kind: 'pxs', min: 20, max: 600, step: 10 },
     { path: 'shape.orbTurnRate', label: '旋回速度', group: 'move', section: MOVE_LABEL.orb, kind: 'rate', min: 0, max: 8, step: 0.05, hint: '小さいほど密着で振り切れる' },
     { path: 'orbCount.p1', label: '発数 P1', group: 'move', section: MOVE_LABEL.orb, kind: 'num', min: 1, max: 10, step: 1 },
     { path: 'orbCount.p2', label: '発数 P2', group: 'move', section: MOVE_LABEL.orb, kind: 'num', min: 1, max: 10, step: 1 },
   ],
+};
+
+/**
+ * 弾を撃つ技の「弾の三点セット」(弾速 / 弾のダメージ / 弾の大きさ)。
+ *
+ * ★**弾のパラメータは技ごとに持つ**(社長指示v0.25.2628)。同じ弾を撃つ技どうしでも共通化しない
+ * ——共通化すると「狙い撃ち=速い1発 / 連射扇=遅いが数で押す」のような**技の性格を数字で作り分け
+ * られない**(v0.25.2627で aim/fan を1組にしたのが誤り)。
+ * 追尾弾(orb)は**速度だけ既存パス `shape.orbSpeed` が正**(値を二重に持たない)。
+ * **並び順と項目名は3技で同じ**にする=社長から見て「どの技にも弾の項目が同じ形で並んでいる」。
+ */
+const bulletFields = (m: IdolMove): TuningField[] => {
+  const sec = MOVE_LABEL[m];
+  const dmgSize = (base: string): TuningField[] => [
+    { path: `${base}.damage`, label: '弾のダメージ', group: 'move', section: sec, kind: 'num', min: 0, max: 200, step: 1 },
+    { path: `${base}.size`, label: '弾の大きさ', group: 'move', section: sec, kind: 'px', min: 4, max: 64, step: 2 },
+  ];
+  if (m === 'aim' || m === 'fan') {
+    return [
+      { path: `bullet.${m}.speed`, label: '弾速', group: 'move', section: sec, kind: 'pxs', min: 40, max: 1200, step: 20 },
+      ...dmgSize(`bullet.${m}`),
+    ];
+  }
+  if (m === 'orb') {
+    return [
+      { path: 'shape.orbSpeed', label: '弾速', group: 'move', section: sec, kind: 'pxs', min: 20, max: 600, step: 10 },
+      ...dmgSize('bullet.orb'),
+    ];
+  }
+  return []; // roll/punch/snipe は弾を撃たない(帯・線の直接判定)
 };
 
 const moveFields = (): TuningField[] => {
@@ -50,6 +79,7 @@ const moveFields = (): TuningField[] => {
       { path: `timing.${m}.active`, label: '判定', group: 'move', section: sec, kind: 'ms', min: 0, max: 3000, step: 50 },
       { path: `timing.${m}.recover`, label: '硬直', group: 'move', section: sec, kind: 'ms', min: 0, max: 5000, step: 50, hint: '反撃窓。820ms=近接1発' },
     );
+    out.push(...bulletFields(m));       // 予告/判定/硬直の直後=どの技でも同じ位置に弾の項目が並ぶ
     out.push(...(SHAPE_FIELDS[m] ?? []));
   }
   return out;
@@ -70,12 +100,6 @@ const stringFields = (): TuningField[] =>
 const behaviorFields = (): TuningField[] => [
   { path: 'stats.health', label: 'HP', group: 'behavior', section: '基礎値', kind: 'num', min: 500, max: 40000, step: 500 },
   { path: 'stats.damage', label: '与ダメージ', group: 'behavior', section: '基礎値', kind: 'num', min: 0, max: 999, step: 5 },
-  // v0.25.2627(社長報告「これ速さの項目がない」): 狙い撃ち/連射扇が撃つ弾の性能。
-  // 追尾弾(orb)だけが shape.orbSpeed として出ており、**普通の弾の速さが1つも無かった**。
-  // aim と fan は同じ弾を撃つので**共通の1組**として出す(技ごとに分けると嘘になる)。
-  { path: 'bullet.speed', label: '弾速', group: 'move', section: '弾(狙い撃ち・連射扇 共通)', kind: 'pxs', min: 40, max: 1200, step: 20 },
-  { path: 'bullet.damage', label: '弾のダメージ', group: 'move', section: '弾(狙い撃ち・連射扇 共通)', kind: 'num', min: 0, max: 200, step: 1 },
-  { path: 'bullet.size', label: '弾の大きさ', group: 'move', section: '弾(狙い撃ち・連射扇 共通)', kind: 'px', min: 4, max: 64, step: 2 },
   { path: 'stats.speed', label: '移動速度', group: 'behavior', section: '基礎値', kind: 'pxs', min: 0, max: 600, step: 10 },
   { path: 'phaseHpThreshold', label: 'フェーズ2の閾値', group: 'behavior', section: '基礎値', kind: 'frac', min: 0, max: 1, step: 0.05, hint: 'HP割合' },
 
@@ -121,9 +145,11 @@ export const IDOL_PLAYABLES: readonly PlayableAction[] = [
 ];
 
 export const registerIdolTuning = (): void => {
-  // v0.25.2627: 弾の性能を「11ボス共通の1行」から**このテーブル**へ差し替える。
-  // 同じ参照を渡すので、メーカーで数字を変えるとその場で次の弾から反映される。
-  registerEnemyFireProfile('idol', IDOL_TUNING.bullet);
+  // 弾の性能を「11ボス共通の1行」から**このテーブル**へ差し替える。同じ参照を渡すので、
+  // メーカーで数字を変えるとその場で次の弾から反映される。
+  // ここに渡すのは**型の既定**(どの技でもない経路から撃たれた時の値)。実際の aim/fan/orb は
+  // 発射地点(idolTick)で技ごとの値を明示的に渡す(社長指示v0.25.2628「弾速度とか個別にしないと」)。
+  registerEnemyFireProfile('idol', IDOL_TUNING.bullet.aim);
   registerBossTuning({
     bossType: 'idol',
     label: 'アイドル',
