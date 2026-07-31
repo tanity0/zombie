@@ -167,3 +167,21 @@ export const horizonActorFadePx = (screenH: number, screenW: number): number => 
   if (!Number.isFinite(screenW) || screenW <= 0 || screenH >= screenW) return HORIZON_ACTOR_FADE_PX;
   return Math.max(HORIZON_FADE_MIN_PX, Math.min(HORIZON_ACTOR_FADE_PX, screenH * HORIZON_FADE_SCREEN_FRAC));
 };
+
+// ---- ボスの「裏回り透け」を掛けてよい絵の大きさ(v0.25.2615) -------------------------------------
+// pixiScene の透け処理は、コメントどおり「**巨体の絵で自機が隠れないよう**薄く透かす」ための救済。
+// ところが対象を絞っていなかったため、**自機を隠せない大きさの人型ボスにも掛かり**、
+// 条件が揃うと alpha=0(完全透明)まで落ちていた。当たり判定は不変なので
+// 「見えないのに殺される」(社長報告v0.25.2614「どこにいても影しかない…当たり判定だけあって透明」)。
+//
+// 絵の幅 = 当たり判定幅 / BOSS_SPRITE_FIT[type].w。実測(自機幅 PLAYER_HITBOX=28):
+//   idol 95px(3.40倍) / acrasiel 109px(3.90倍) / 天使5体 120px(**4.29倍**)
+//   ‖ 谷 ‖ thor 280px(**10.0倍**) / skadi 330px(11.8倍) / mimir 451px(16.1倍) / jormungand 570px(20.4倍)
+// 4.29倍と10.0倍の間が完全に空いているので **谷の中央=7倍** を閾値にする(絶対値をベタ書きしない)。
+// 人型サイズを除外側に置く理由: 自機は横へ一歩ずれれば絵からはみ出せる一方、半径300pxのアリーナで
+// ボスが透明になる害は比較にならないほど大きい。
+export const BOSS_BEHIND_MIN_SPRITE_W_MULT = 7;
+
+/** その絵に「裏回り透け」を掛けてよいか(=自機を隠しうる大きさか)。描画のみ・判定には無関係。 */
+export const bossBehindFadeApplies = (spriteW: number, playerW: number): boolean =>
+  spriteW >= playerW * BOSS_BEHIND_MIN_SPRITE_W_MULT;

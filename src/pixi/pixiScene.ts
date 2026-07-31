@@ -97,7 +97,7 @@ import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from '
 import { getSpotConeTexture, getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
-import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX } from './renderSpec';
+import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX, bossBehindFadeApplies } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
   RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
@@ -1639,6 +1639,8 @@ const BOSS_BEHIND_FAR_PX = 220;
 // 距離アンカーは近接攻撃距離(gameStore の MELEE_RADIUS=74)に合わせた視覚用の複製値(描画は
 // ゲーム定数へ結合させない方針)。当たり判定/近接判定は不変=見た目の下限だけを足す。
 const BOSS_BEHIND_MELEE_PX = 74;
+// v0.25.2615: 「裏回り透け」を掛けてよい絵の大きさの判定は renderSpec.ts の純関数
+// (bossBehindFadeApplies)へ集約した。理由・実測値・閾値の根拠はそちらのコメントを参照。
 const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社長指示)。足元アンカーで上方向に拡大。
 // 色付き(レア)個体のサイズ差は enemyUtils の COLOR_TIER_SIZE_MULT で「当たり判定ごと」拡大する
 // (社長指示)。描画は判定箱(fb)にフィットするため、ここでの追加倍率は不要(掛けると二重拡大になる)。
@@ -9271,6 +9273,14 @@ export class PixiScene {
       // プレイヤーが帯(当たり判定)より奥=裏に回り込んだら、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
       // 二値判定ではなく「遠ざかるほど急激」な二乗カーブで透明度を距離に応じて連続変化させる。
       const ply = useGameStore.getState().player;
+      // v0.25.2615: 自機を隠せない大きさの絵(人型ボス)は透かしの対象外。
+      // **共有値 this.bossBehindAlpha を読み書きしない**(1変数なので、対象外の個体が触ると
+      // 同時に居る巨体の透け具合が混ざって壊れる)。artFade だけ掛けて確定させる。
+      const behindApplies = bossBehindFadeApplies(spriteW, ply.width);
+      if (!behindApplies) {
+        view.sprite.alpha = artFade;
+        view.sprite.visible = true;
+      } else {
       const behindDist = fb.footY - (ply.y + ply.height);   // 正 = プレイヤーが帯より奥
       const inHoriz = (ply.x + ply.width) > (spx - spriteW / 2) && ply.x < (spx + spriteW / 2);
       let behindTarget: number;
@@ -9303,6 +9313,7 @@ export class PixiScene {
       this.bossBehindAlpha += (behindTarget - this.bossBehindAlpha) * fastLerp;
       view.sprite.alpha = this.bossBehindAlpha * artFade;
       view.sprite.visible = true;
+      }
     } else {
     view.sprite.anchor.set(0.5, 1);
     view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop - kbHop));
