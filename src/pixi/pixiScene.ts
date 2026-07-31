@@ -1828,6 +1828,10 @@ export class PixiScene {
   // 保持/フェードの長さはプレイヤーの死亡演出と同じ定数(PLAYER_DEATH_HOLD_MS/FADE_MS)を共有する。
   private ghostDeathSprite = new Sprite();
   private ghostDeathSetup = false;
+  // v0.25.2602(社長希望「刀も武将装備も反映してほしい」): 守護霊の背負い刀(プレイヤーの
+  // playerKatanaBack と同じ絵・同じ式)。武将フル装備の立ち絵中は一枚絵に武器が描かれているので隠す。
+  private ghostKatanaBack = new Sprite();
+  private ghostKatanaBackSetup = false;
   private ghostDeathLatchAt = 0; // 直近ラッチした GhostDeathPose.atMs(変わった時だけ差し替える)
   private ghostDeathPoseRec: GhostDeathPose | null = null;
   // 守護霊の銃口フラッシュ(プレイヤーの muzzleSprite とは別に1枚・latch方式=v0.25.2455と同型)。
@@ -8182,7 +8186,19 @@ export class PixiScene {
     //   equipmentはALLY_PLAIN_EQUIP=武将装備の混入防止(救難信号アライの前例v0.25.1726)。
     const player = useGameStore.getState().player;
     const gcls = (s.ghostClass ?? 'warrior') as Player['characterClass'];
-    const fakeGhost = { ...player, characterClass: gcls, equipment: ALLY_PLAIN_EQUIP };
+    // v0.25.2602(社長希望「刀も武将装備も反映してほしい」): **計測時ビルドの装備/サブウェポン**を
+    // 立ち絵の選択へ渡す。これで武将フル装備で撃破した霊は武将立ち絵(村雨持ちなら刀version)になる。
+    // ALLY_PLAIN_EQUIP(空装備)は救難信号アライ用の対処(v0.25.1726)——あちらは `{...player}` を
+    // spreadするので**プレイヤー本人の装備**が残って別人の絵になるバグだった。守護霊はここで
+    // **自分の記録**を渡すので、その対処は不要(むしろ空にすると記録を捨てることになる)。
+    // 旧プロファイル(装備の記録が無い)は従来どおり空装備=素のクラス立ち絵へフォールバック。
+    const gbuild = s.ghostBuild;
+    const fakeGhost = {
+      ...player, characterClass: gcls,
+      equipment: gbuild?.equipment ?? ALLY_PLAIN_EQUIP,
+      subWeapons: gbuild?.subWeapons ?? [],
+    };
+    const warlordFullGhost = hasFullWarlordSet(fakeGhost.equipment);
     const frame = playerWalkFrame(fakeGhost, now, walking, false);
     const tex = getTexture(playerTextureName(fakeGhost, frame, walking, false))
       ?? getTexture(PLAYER_IDLE_SPRITE[gcls] ?? 'player-shotgun-idle') ?? getTexture('player');
@@ -8242,6 +8258,41 @@ export class PixiScene {
       view.sprite.visible = true;
     } else {
       view.sprite.visible = false;
+    }
+
+    // v0.25.2602: 背負い刀(刀/小烏丸を**計測時ビルドで**持っていた霊だけ)。式はプレイヤーの
+    // playerKatanaBack と同一(体高基準の全長・胸あたり中心・向きで左右反転)。武将フル装備の立ち絵中は
+    // 一枚絵に武器が描かれているので出さない(プレイヤー側と同じ二重表示回避)。
+    // 親は actorLayer(view.container ではない): 守護霊の消滅時に container ごと destroy されるため、
+    // 使い回しのスプライトを子にすると一緒に破棄されてしまう(既存の ghostKnife 群と同じ作法)。
+    {
+      const kb = this.ghostKatanaBack;
+      const gSubs = fakeGhost.subWeapons;
+      const hasKatanaSub = gSubs.includes('murasame') || gSubs.includes('katana');
+      const katanaTex = getTexture('katana-item');
+      if (hasKatanaSub && !warlordFullGhost && katanaTex && tex) {
+        if (!this.ghostKatanaBackSetup) {
+          kb.anchor.set(0.5, 0.5);
+          kb.tint = GHOST_ALLY_TINT; // 霊体の青白を武器絵にも通す(振り絵・銃口と同じ扱い)
+          this.L.actorLayer.addChild(kb);
+          this.ghostKatanaBackSetup = true;
+        }
+        const h = boxH * dsc;
+        const targetLen = h * 1.7 * KATANA_BACK_SCALE;
+        const ksc = targetLen / Math.max(katanaTex.width, katanaTex.height);
+        if (kb.texture !== katanaTex) kb.texture = katanaTex;
+        kb.scale.set((faceSign === -1 ? -1 : 1) * ksc, ksc);
+        kb.rotation = KATANA_BACK_IMG_ROT;
+        kb.position.set(
+          this.snapToScreenPixel(footX, this.L.world.position.x) + actOffX,
+          this.snapToScreenPixel(footY, this.L.world.position.y) + actOffY - h * 0.55,
+        );
+        kb.zIndex = footY - 0.5; // 本体(zIndex=footY)のすぐ背面
+        kb.alpha = GHOST_ALLY_ALPHA;
+        kb.visible = true;
+      } else if (this.ghostKatanaBackSetup) {
+        kb.visible = false;
+      }
     }
 
     // ④ 近接スイング(ghostLastMeleeAt起点): 分身syncShadowCloneのcloneKnife群と同一の3コマ差し替え+
@@ -8468,6 +8519,7 @@ export class PixiScene {
       this.ghostKnife.visible = false; this.ghostKnifeSlash.visible = false;
       this.ghostKnifeTrail.visible = false; this.ghostMeleeWpn.visible = false;
     }
+    if (this.ghostKatanaBackSetup) this.ghostKatanaBack.visible = false; // v0.25.2602: 背負い刀も消す
     this.hideGhostMuzzle();
     if (this.ghostNameLabel) this.ghostNameLabel.visible = false; // 頭上名も一緒に消す(v0.25.2477)
     if (this.ghostCounterRing) this.ghostCounterRing.visible = false; // 窓リングも一緒に消す(v0.25.2532)
