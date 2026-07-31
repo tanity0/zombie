@@ -905,6 +905,40 @@ describe('v0.25.2564: 縁基準の近接射程(パリティ=プレイヤーのen
     expect(d.moveX).toBe(0); // 縁60 ≤ 74=射程内なので詰めない(旧: 中心間184>74で体へ突っ込み続けた)
     expect(d.moveY).toBe(0);
   });
+
+  // v0.25.2567(監査9-2の是正): 銃の射程ゲートはプレイヤーと同じ式(裏ボス=AABB最近点)。
+  it('銃: 裏ボスは縁基準=短射程(ショットガン級)でも体外から撃てる(旧: 中心間で永久に射程外)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 298, y: 114 }), // 縁から60px・中心間184
+      enemies: [bigBoss()],
+      profile: { ...PROFILE, meleeBias: 0 },
+      weapon: { ...WEAPON, gunRangePx: 120 }, // ショットガンの射程。旧実装: 184>120で撃てなかった
+    }));
+    expect(d.action).toBe('shoot');
+  });
+
+  it('銃: 裏ボス以外はプレイヤーと同じ中心基準のまま(縁で緩めない)', () => {
+    // giantbat(城ボス=isHiddenBossでない)を射程ちょうど外の中心距離に置く: 縁なら射程内でも撃たない。
+    const giant = mkBoss({ type: 'giantbat' as Enemy['type'], x: 400, y: 0, bossState: 'chase' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), // 中心(10,10)→giantbat中心(420,20)=中心間410 > 400
+      enemies: [giant],
+      profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.action).toBe('none');
+  });
+
+  // v0.25.2567(監査9-3の是正): 間合い管理(preferredDist)も縁基準(計測=bossBandDist=縁と同じ単位)。
+  it('間合い管理: 縁からpreferredDistに立てば帯の中=前後せず横流れ(旧: 中心間で体内を目指した)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 418, y: 114 }), // 中心(428,124): 縁(x=248)から180=preferredDistちょうど
+      enemies: [bigBoss()],
+      profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    // 旧実装: 中心間304 > 180+40 → 接近(-x)し続けて体へ向かった。新: 帯の中=接線オービット。
+    expect(Math.abs(d.moveX)).toBeLessThan(1e-6);
+    expect(Math.abs(d.moveY)).toBeCloseTo(GHOST_ORBIT_BASE_FRAC, 5);
+  });
 });
 
 describe('v0.25.2564: ボスの体は常時回避対象(HP閾値なし・縁基準)', () => {

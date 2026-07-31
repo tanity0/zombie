@@ -23,7 +23,7 @@
 import type { Enemy, Projectile, SkillKey } from '../types/game';
 import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile, type DodgeThreat } from './botSkill';
 // v0.25.2470: 雑魚回避(非ボス判定)用 / ENEMY_PROJECTILE_DURATION=弾の寿命(tankした弾技の弾を無視し続ける長さ)
-import { isBossType, ENEMY_PROJECTILE_DURATION } from './enemyUtils';
+import { isBossType, aimEnemyDist2, ENEMY_PROJECTILE_DURATION } from './enemyUtils';
 import { isBossCounterableNowApprox } from './bossScript';
 import { ghostExtraTelegraphDodge, isTelegraphActive } from './ghostTelegraph'; // §2.12 要件7: 予告台帳(全ボス)
 import { anyMoveKeyForEnemy, isProjectileMoveKey, type MoveReactionTable } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
@@ -497,10 +497,15 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   }
 
   const tcx = target.x + target.width / 2, tcy = target.y + target.height / 2;
-  const dist = Math.hypot(tcx - gcx, tcy - gcy);
   // v0.25.2564: 近接/カウンターの射程は**体の縁**(meleeDist=プレイヤーと同じAABB最近点)で測る。
-  // 間合い管理(preferredDist)は計測値じたいが中心間距離なので従来どおり dist(中心間)のまま。
+  // v0.25.2567(監査9-3の是正): 間合い管理(preferredDist)も縁基準。計測側(playerTraits.bossBandDist)が
+  // 縁で測っている(設計書§2.6「判定帯への最近点距離」どおり)のに、消費だけ中心間だった単位取り違え
+  // =巨体ボスでは「体から60pxの人」が「中心から60px=体内」に立とうとしていた。
   const edgeDist = input.meleeDist(gcx, gcy, target);
+  // v0.25.2567(監査9-2の是正): 銃の射程ゲートは**プレイヤーと同じ式**(aimEnemyDist2=裏ボスのみ
+  // AABB最近点・他は中心)。プレイヤー側は是正済み(weaponUtils「銃が中心にしか届かない」)なのに
+  // 守護霊だけ中心間のままで、ショットガン(120)等は裏ボスの体外から永久に撃てなかった。
+  const gunDist = Math.sqrt(aimEnemyDist2(gcx, gcy, target));
   const facing: 1 | -1 = (tcx - gcx) >= 0 ? 1 : -1;
 
   // G4b(§2.9(4)): 技への反応の再現。ボスの技(aiPhase/bossState)の立ち上がりで1回だけロールし、
@@ -581,14 +586,14 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     // tankロールの予告中は「避けようとしたが間に合わない」ゆっくり歩き(速いと苦手技が偶然外れる)。
     const tankHolding = windupNow && reaction === 'tank';
     if (mustMove || rand() < ghostMoveChance(profile.mobility, profile.stationaryFrac)) {
-      if (dist > desired + GHOST_MOVE_BAND_PX) {
+      if (edgeDist > desired + GHOST_MOVE_BAND_PX) {
         // 接近は approachPerMin のリズムに従う(詰めない人はじりじりとしか詰めない)。
         if (mustMove || rand() < ghostApproachChance(profile.approachPerMin)) {
           [moveX, moveY] = norm(tcx - gcx, tcy - gcy);
         } else {
           [moveX, moveY] = orbitVec(GHOST_ORBIT_IDLE_FRAC); // 詰めない人=詰めずに横へ流れる
         }
-      } else if (dist < desired - GHOST_MOVE_BAND_PX) {
+      } else if (edgeDist < desired - GHOST_MOVE_BAND_PX) {
         [moveX, moveY] = norm(gcx - tcx, gcy - tcy);
       } else {
         // 帯内=間合いは合っている。立ち止まらず横流れ(§2.12追補)。
@@ -662,7 +667,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // 近接を選ばなかった tick は、射程内なら銃で代替する(手を空けない)。
   // ただし**窓を見ている最中(counterWatching)は代替しない**=銃を挟まない(反応遅延で待っている/
   // 抽選に外れた、のどちらでも「その窓には手を出さない」で統一する)。見切った後は通常どおり撃つ。
-  if (action === 'none' && !counterWatching && gunReady && dist <= weapon.gunRangePx) {
+  if (action === 'none' && !counterWatching && gunReady && gunDist <= weapon.gunRangePx) {
     action = 'shoot'; lastShotAt = nowMs;
   }
 

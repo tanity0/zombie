@@ -115,6 +115,21 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
 // 基本値がそのまま実効値になる。§6.28-1-1)・updateEnemiesの通常AIからの除外は今のうちに揃えておく。
 export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol';
 
+// 銃の照準/射程ゲート用の二乗距離(v0.25.2567でweaponUtils.aimDist2の中身をここへ移設=正本)。
+// 裏ボスは巨体で「当たり判定=帯(AABB)」なので中心ではなく最近点で測る(中心基準だと帯の縁に居ても
+// 射程外になる=社長報告「銃が中心にしか届かない」の是正)。他の敵は中心。プレイヤー(weaponUtils)と
+// 守護霊(ghostDriver)が**同じこの1本**を使う(§2.11追補ドクトリン: ルール=式は共有・二重実装しない)。
+export const aimEnemyDist2 = (pcx: number, pcy: number, e: Enemy): number => {
+  if (isHiddenBoss(e.type)) {
+    const nx = Math.max(e.x, Math.min(pcx, e.x + e.width));
+    const ny = Math.max(e.y, Math.min(pcy, e.y + e.height));
+    return (pcx - nx) * (pcx - nx) + (pcy - ny) * (pcy - ny);
+  }
+  const dx = e.x + e.width / 2 - pcx;
+  const dy = e.y + e.height / 2 - pcy;
+  return dx * dx + dy * dy;
+};
+
 // ゲート2の天使ボス(ミゲル/ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)。裏ボスの部分集合=
 // ゲート2から fromEvent スポーンされ、専用コントローラ(bossState機械)で動き、ミゲルの攻撃描画を
 // 流用する型。将来の天使を足す時はここ1箇所に追加する。idolはゲート2ではないため含めない。

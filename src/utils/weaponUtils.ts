@@ -1,20 +1,12 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, skillWarmUpCritBonus, skillWarmUpReloadMult } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { isHiddenBoss } from './enemyUtils';
+import { aimEnemyDist2 } from './enemyUtils';
 
 // プレイヤー中心→敵 の二乗距離。裏ボスは巨体で「当たり判定=足元の帯(AABB)」なので、中心ではなく
 // 帯の最近点で測る(中心基準だと帯の縁にいる時に銃の射程判定に入らない=社長報告「銃が中心にしか届かない」)。
-const aimDist2 = (pcx: number, pcy: number, e: Enemy): number => {
-  if (isHiddenBoss(e.type)) {
-    const nx = Math.max(e.x, Math.min(pcx, e.x + e.width));
-    const ny = Math.max(e.y, Math.min(pcy, e.y + e.height));
-    return (pcx - nx) * (pcx - nx) + (pcy - ny) * (pcy - ny);
-  }
-  const dx = e.x + e.width / 2 - pcx;
-  const dy = e.y + e.height / 2 - pcy;
-  return dx * dx + dy * dy;
-};
+// v0.25.2567: 式の正本は enemyUtils.aimEnemyDist2 へ移設(守護霊の銃射程ゲートと同じ1本を使うため)。
+const aimDist2 = aimEnemyDist2;
 
 // Global muzzle-velocity multiplier. Bullets leave the barrel faster so shots
 // feel snappier and reach their target sooner.
