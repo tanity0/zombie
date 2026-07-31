@@ -329,6 +329,13 @@ export interface Enemy {
   knockbackUntil?: number;
   knockbackVx?: number;
   knockbackVy?: number;
+  /**
+   * v0.25.2607(社長裁定): **押し道具(鞭・シールドバッシュ)による押し**の有効期限。
+   * ボスは通常の殴り/弾では押されず、このフラグが立っている間だけ押される(updateEnemiesの
+   * ノックバック適用ガード)。通常敵はこのフラグと無関係に従来どおり押される。
+   * 時刻で自然に切れるので解除処理は不要(押す側の2箇所が knockbackUntil と同じ値を入れるだけ)。
+   */
+  knockbackShoveUntil?: number;
   // Melee-knockback debounce: an enemy shoved by a counter can't be shoved
   // again until this gameless ms timestamp (damage still applies). Prevents
   // infinite knockback-locking.

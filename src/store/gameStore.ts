@@ -798,6 +798,23 @@ export const bumpBossCrit = (
   }
   return { patch: { bossCritCount: c }, triggered: false };
 };
+/**
+ * v0.25.2607(社長裁定): その敵をノックバックで押してよいか。
+ * **ボスは通常の殴り/弾では押されない。押し道具(鞭・シールドバッシュ)を当てた時だけ押される。**
+ * 通常敵は常に true(従来どおり)。押し道具側は knockbackUntil と同じ期限で knockbackShoveUntil を
+ * 立てる=時刻で自然に切れるので解除処理は要らない。
+ *
+ * なぜ要るか(直した不格好さ2つ):
+ *  ① 紫の完全気絶中、殴るたびに巨体がズルズル動く(気絶は技を解除する=「技の最中は押されない」
+ *     ガードが外れ、押しが通っていた)。
+ *  ② 天使がイベントのサークルから押し出され、次フレームの閉じ込めクランプに引き戻される綱引き
+ *     =「押される→すぐ戻る」。押す力を消せば綱引き自体が起きない。
+ */
+export const canShoveEnemy = (
+  enemy: Pick<Enemy, 'type' | 'knockbackShoveUntil'>,
+  now: number,
+): boolean => !isBossType(enemy.type) || now < (enemy.knockbackShoveUntil ?? 0);
+
 // ★ボスはクリティカルで「痺れない」(社長指示v0.25.2422)。代わりに一定時間**動きが半減**する。
 // なぜ: 5秒の完全停止は、ソウル式の「技を読んで避ける」ボス戦を成立させなくする(止まっている相手に
 // 読みは要らない)。半減なら、ボスは技を出し続ける=読みの練習台であり続けたまま、クリの手応えは残る。
@@ -4538,6 +4555,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: hx * SHIELD_BASH_KNOCKBACK_SPEED, // 進行方向へノックバック(バッシュ同等・距離2倍)
           knockbackVy: hy * SHIELD_BASH_KNOCKBACK_SPEED,
           knockbackUntil: now + KNOCKBACK_DURATION,
+          knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
         });
       }
@@ -4635,6 +4653,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...enemy, health: nh, lastHit: now, meleeAggro: true,
           knockbackVx: dirX * SHIELD_BASH_KNOCKBACK_SPEED, knockbackVy: dirY * SHIELD_BASH_KNOCKBACK_SPEED,
           knockbackUntil: now + KNOCKBACK_DURATION, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+          knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
         });
       }
       const bossKilled = killedList.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
@@ -5087,6 +5106,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: bashShove.dux * SHIELD_BASH_KNOCKBACK_SPEED,
           knockbackVy: bashShove.duy * SHIELD_BASH_KNOCKBACK_SPEED,
           knockbackUntil: now + KNOCKBACK_DURATION,
+          knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
         });
         continue;
@@ -6175,6 +6195,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         knockbackVx: side * nx * WHIP_KNOCKBACK_SPEED,
         knockbackVy: side * ny * WHIP_KNOCKBACK_SPEED,
         knockbackUntil: now + KNOCKBACK_DURATION,
+        knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
         knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
         ...(bossBump?.patch ?? {}), // 紫カウント/発動を反映(最後に展開して優先=刀5490と同じ作法)
       });
@@ -8401,7 +8422,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         // Knockback overrides chase AI: while it's active, slide outward
         // with linearly-decaying velocity instead of seeking the player.
         // ただし攻撃モーション中(inAttackMotion)はノックバックで中断/スライドさせない(やり切る)。
-        if (!inAttackMotion && enemy.knockbackUntil && now < enemy.knockbackUntil) {
+        // v0.25.2607(社長裁定「2にしよう」): **ボスは通常の殴り/弾では押されない。押し道具(鞭・
+        // シールドバッシュ)だけ効く。** 直した不格好さは2つ:
+        //  ① 紫の完全気絶中、殴るたびに巨体がズルズル動く(気絶は技を解除する=下のinAttackMotionが
+        //     外れるので押しが通っていた)。
+        //  ② 天使がイベントのサークルから押し出され、次フレームのクランプ(上のfromEvent閉じ込め)に
+        //     引き戻される綱引き=「押される→すぐ戻る」。押す力を消せば綱引きも起きない。
+        // 通常敵はこのガードと無関係=従来どおり全ての手段で押される。
+        const bossShoveOk = canShoveEnemy(enemy, now);
+        if (!inAttackMotion && bossShoveOk && enemy.knockbackUntil && now < enemy.knockbackUntil) {
           const remaining = enemy.knockbackUntil - now;
           const decay = Math.max(0, remaining / KNOCKBACK_DURATION); // 1 → 0
           const kb = resolveMove(

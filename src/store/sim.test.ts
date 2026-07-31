@@ -7,8 +7,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   useGameStore, bumpBossCrit, BOSS_FULLSTUN_CRITS, BOSS_FULLSTUN_MS, PUMPKIN_JUMP_MAX_DIST,
-  bossCritCdMult, BOSS_CRIT_CD_MULT, STUN_DURATION_MS,
+  bossCritCdMult, BOSS_CRIT_CD_MULT, STUN_DURATION_MS, canShoveEnemy,
 } from './gameStore';
+import type { Enemy } from '../types/game';
 
 // Minimal ambient declaration so the SIM_FUZZ env gate typechecks without
 // pulling in @types/node (the value is read only under the nightly cron).
@@ -578,5 +579,34 @@ describe('headless simulation invariants', () => {
     } finally {
       randomSpy.mockRestore();
     }
+  });
+});
+
+// v0.25.2607(社長裁定「2にしよう」): ボスは通常の殴り/弾では押されない。押し道具(鞭・シールド
+// バッシュ)を当てた時だけ押される。直した不格好さは①紫の完全気絶中に巨体がズルズル動く
+// ②天使がイベントのサークルから押し出されクランプに引き戻される綱引き(押される→すぐ戻る)。
+describe('canShoveEnemy: ボスは押し道具でだけ押される', () => {
+  const e = (type: string, shoveUntil?: number) =>
+    ({ type, knockbackShoveUntil: shoveUntil } as unknown as Pick<Enemy, 'type' | 'knockbackShoveUntil'>);
+
+  it('通常敵は従来どおり常に押せる(押し道具でなくても)', () => {
+    expect(canShoveEnemy(e('zombie'), 1000)).toBe(true);
+    expect(canShoveEnemy(e('runner'), 1000)).toBe(true);
+  });
+
+  it('ボスは押し道具の印が無ければ押せない', () => {
+    for (const t of ['giantbat', 'thor', 'idol', 'jibril', 'acrasiel', 'mimir', 'skadi']) {
+      expect(canShoveEnemy(e(t), 1000)).toBe(false);
+    }
+  });
+
+  it('ボスも押し道具(鞭/バッシュ)の有効期限内なら押せる', () => {
+    expect(canShoveEnemy(e('giantbat', 1500), 1000)).toBe(true);
+    expect(canShoveEnemy(e('idol', 1500), 1000)).toBe(true);
+  });
+
+  it('押し道具の印は時刻で切れる(解除処理は要らない)', () => {
+    expect(canShoveEnemy(e('giantbat', 1000), 1000)).toBe(false); // 期限ちょうど=もう押せない
+    expect(canShoveEnemy(e('giantbat', 999), 1000)).toBe(false);
   });
 });
