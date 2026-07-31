@@ -427,12 +427,18 @@ const endSession = (): void => {
   session = null;
   if (!s) return;
   const durationMs = s.lastGameTime - s.startGameTime;
-  if (durationMs < MIN_SESSION_MS) return; // §2.6: 交戦合計30秒未満は混ぜない
   // v0.25.2493(社長裁定「Bは混ぜない。基本的に残るのは撃破だけ。その後死のうが生きようが残る」):
   // **撃破が無かったセッションは軸1(共通スタイル)にも混ぜず丸ごと破棄**。逃げて交戦を切った負け戦が
   // EMAへ混ざる旧挙動(v0.25.2441〜2492)はここで終了。撃破済みならこの後どこで死んでも保留バッファに
   // 残る(リザルト経由でcommit)=裁定どおり。サブ様式(ラン単位・ボス交戦に非依存)は対象外で従来どおり。
   if (s.clearedSlots.length === 0) return;
+  // v0.25.2579(社長報告「城ボスを倒したのに記録されない・採用UIも出ない」の真因): 旧実装は
+  // 30秒フロア(§2.6「短い交戦は混ぜない」)が撃破チェックより**前**にあり、撃破スロット記録まで
+  // 丸ごと捨てていた=**30秒未満で倒し切った最速の勝ち戦ほど記録が消える**。裁定v0.25.2493
+  // 「撃破は残る」と食い違うため適用先を分離: 撃破スロット(bossStyle)は交戦時間に関わらず必ず積む。
+  // フロアは軸1(共通スタイル=sessionレコード)だけに適用する(下のif)。短い交戦のスタイル標本が
+  // 薄いのは§2.18の裁定(n=1でも事実は事実)どおり許容。
+  const sessionLongEnough = durationMs >= MIN_SESSION_MS;
 
   const telemetryEnd = getBotTelemetry();
   const meleeDelta = Math.max(0, telemetryEnd.damageDealt.melee - s.telemetryStart.damageDealt.melee);
@@ -466,15 +472,18 @@ const endSession = (): void => {
   const srcName = loadPlayerName();
 
   // v0.25.2476: サンプル計算は従来のまま。ここで保存せず保留バッファへ積む(EMA混合はcommit時)。
-  pendingRecords.push({
-    kind: 'session',
-    reactionSample, counterChanceSample, preferredDistSample, meleeBiasSample, mobilitySample,
-    hitsPerMinSample, subUsesPerMinSample,
-    // G4a: 移動2ノブのサンプル+技への反応表の確定(開いている/残響中のエピソードも全部畳む)。
-    stationarySample, approachSample,
-    moveTally: endMoveReactions(s.moveReactions),
-    srcClass, snapshot, srcName,
-  });
+  // v0.25.2579: 軸1(共通スタイル)だけ30秒フロアの対象(撃破スロットは下のループで無条件に積む)。
+  if (sessionLongEnough) {
+    pendingRecords.push({
+      kind: 'session',
+      reactionSample, counterChanceSample, preferredDistSample, meleeBiasSample, mobilitySample,
+      hitsPerMinSample, subUsesPerMinSample,
+      // G4a: 移動2ノブのサンプル+技への反応表の確定(開いている/残響中のエピソードも全部畳む)。
+      stationarySample, approachSample,
+      moveTally: endMoveReactions(s.moveReactions),
+      srcClass, snapshot, srcName,
+    });
+  }
 
   // G5(§2.10 仕様2): このセッション中に撃破されたslotごとに、同じ確定値を写した保留レコードを積む
   // (EMAはしない=ベスト保持はcommit時)。v0.25.2493: clearTimeMs=撃破の瞬間に確定した交戦時間を写す。
@@ -1003,8 +1012,11 @@ export const commitPendingTraits = (): void => {
   // 無ければcommit後の軸1subStylesをそのまま写す。
   const subStyleRecord = records.find((r): r is PendingSubStyleRecord => r.kind === 'subStyle');
   for (const r of bossStyleRecords) {
-    const prev = loadPlayerProfile();
-    if (prev === null) continue; // 軸1が未保存(保存失敗等)ならbossStyleも乗せない(既存subStyleと同じ保守側の裁定)
+    // v0.25.2579(裁定v0.25.2493「撃破は残る」の徹底): 軸1が未保存でも撃破スロットは保存する
+    // (旧: prev===nullでスキップ=初プレイヤーの初撃破が30秒未満だと記録ごと消えた)。
+    // ベースはapplyPendingSessionの初回作成と同じSEED形。subStyleは従来どおり保守側(新規作成しない)。
+    const prev = loadPlayerProfile()
+      ?? { v: 1 as const, runs: 0, ...SEED_PROFILE, moveReactions: {}, subStyles: defaultSubStyles() };
     const subStylesForSlot = subStyleRecord ? sampleSubStylesFromRecord(subStyleRecord) : prev.subStyles;
     saveProfile(applyPendingBossStyle(prev, r, subStylesForSlot));
   }

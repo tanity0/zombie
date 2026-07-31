@@ -191,7 +191,11 @@ const SURIEL_GAZE_WINDUP_MS = 450;
 const SURIEL_GAZE_RECOVER_MS = 500;
 const SURIEL_SWEEP_RANGE_PX = 310;        // =THOR_HARAI_RANGE(流用)
 const SURIEL_SWEEP_HALF_WIDTH_PX = 40;    // =THOR_HARAI_HALF_WIDTH(流用)
-const SURIEL_RINGSPIN_RADIUS = 92;        // ★未決事項: 「近接拒否」円の実寸は設計書に無い(GIANT_STOMP_RADIUS流用)。
+// v0.25.2579: GIANT_STOMP_RADIUS流用をやめ独立値92で固定+export(描画pixiSceneが同じ値で赤円を描く)。
+// 旧: 描画側がGIANT_STOMP_RADIUSを直接参照していたため、踏み鳴らしの範囲拡大(92→130)で
+// スリィエルだけ「赤130・判定92」に割れかけた(分類①「赤=判定は厳密一致」違反の芽)。
+// ★未決事項(継続): 「近接拒否」円の実寸92は設計書に無い叩き台。
+export const SURIEL_RINGSPIN_RADIUS = 92;
 const SURIEL_RINGSPIN_TRIGGER_RANGE = 140; // surielScript.SURIEL_RINGSPIN_RANGEと同値(帯の再定義を避けるためimport済み値をそのまま使用)
 const SURIEL_BEAM_RANGE = 2600;           // =MIMIR_LASER_VIS_RANGE(流用)
 const SURIEL_BEAM_HALF_WIDTH = 20;        // ★未決事項: ビーム半幅は設計書に無い叩き台。

@@ -1583,11 +1583,15 @@ export const GIANT_SCRIPT_ENABLED = typeof window === 'undefined' || new URLSear
 export const GIANT_STOMP_WINDUP_MS = 840;    // 実効700ms・完全静止(T7+T2+T4)
 export const GIANT_STOMP_RECOVER_MS = 1080;  // 実効900ms・硬直=反撃窓
 export const GIANT_STOMP_CD_MS = 6000;       // 実効5.0s
-// v0.25.2578(社長指示「範囲狭すぎてそもそもそんな距離に近づいていることが近接でもほぼない。少し広げた方がいい」):
-// 92→130。近接の定位置=縁74px(MELEE_RADIUS)+帯半幅≈38 → **中心から≈112px**で、92は近接の標準立ち位置に
-// すら届かない技だった(54→92の裁定6.26-9 #3は密着ハメ対策で、近接定位置のカバーは対象外だった)。
-// 130=定位置112+余裕18px(叩き台・実機調整前提)。判定・赤円・レベルアップ保留・守護霊回避台帳は
-// すべて gStompRadius(この値×ステージ倍率)経由で読むので図形と判定はドリフトしない。
+// v0.25.2578(社長指示「範囲狭すぎ…近接でもほぼない。少し広げた方がいい」)→v0.25.2579(社長指示
+// 「ボスの当たり判定プラスアルファで設定した方がいい」): 実効半径は固定値でなく、windup開始時に
+// **体の判定帯の半径+GIANT_STOMP_REACH_PX(縁からの届き)**で導出して gStompRadius へ確定する。
+// 判定・赤円・レベルアップ保留・守護霊回避台帳は全て gStompRadius を読む=図形と判定はドリフトしない。
+// 届き92の根拠: 近接の定位置=縁74px(MELEE_RADIUS)+プレイヤー半幅≈10 → 縁から≈84px。92=定位置+8px
+// (叩き台・実機調整前提)。旧92(中心基準)は近接の標準立ち位置にすら届かない技だった。
+export const GIANT_STOMP_REACH_PX = 92;
+// フォールバック(gStompRadius未確定の描画/レベルアップ保留の近似用): giantbat標準体格での実効値
+// (帯半幅≈38+届き92≈130)。実判定は常にgStompRadius側。
 export const GIANT_STOMP_RADIUS = 130;
 // 薙ぎ払い(sweep・近140〜320・Phase2限定=新規解禁)。
 export const GIANT_SWEEP_WINDUP_MS = 840;    // 実効700ms(T3+T4)
@@ -8482,15 +8486,20 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 技ごとの溜め開始パッチ(通常抽選/Phase2連携の両方から呼べる共通ヘルパ)。
           const beginGiantMove = (move: GiantMove): Partial<Enemy> => {
             switch (move) {
-              case 'stomp':
+              case 'stomp': {
                 // 実際に使う半径をステージ別倍率込みでここに確定して敵へ持たせる(M65)。判定
                 // (下のg-stomp-windup完了時)・描画(pixiScene.ts)・レベルアップ保留判定
                 // (isPlayerInAttackTelegraph)の3箇所が同じ値を読むので図形と判定がドリフトしない。
+                // v0.25.2579(社長指示「ボスの当たり判定プラスアルファで設定した方がいい」): 固定値でなく
+                // **体の判定帯の半径+GIANT_STOMP_REACH_PX(縁からの届き)**で導出。体格が変わっても
+                // 近接の間合い(縁基準)と自動で整合する。
+                const strip = enemyHitStrip(enemy);
                 return {
                   aiPhase: 'g-stomp-windup', aiPhaseUntil: atkUntil(GIANT_STOMP_WINDUP_MS),
                   aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: ecx, aiTargetY: ecy, aiStartedAt: gameTime,
-                  gStompRadius: GIANT_STOMP_RADIUS * stageMult,
+                  gStompRadius: (Math.max(strip.width, strip.height) / 2 + GIANT_STOMP_REACH_PX) * stageMult,
                 };
+              }
               case 'sweep': {
                 // 向きは溜め開始時にロック(掟W4=テルを出したら必ず撃つ。トール払いと同じ作法)。
                 // BOT_AND_GHOST.md §2.8 G2.5: 狙い点はpcx/pcyの代わりにヘイト対象の中心を読む。

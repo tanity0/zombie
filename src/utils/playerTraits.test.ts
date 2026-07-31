@@ -68,11 +68,25 @@ describe('playerTraits: セッション成立/破棄', () => {
     expect(loadPlayerProfile()).toBeNull();
   });
 
-  it('交戦合計30秒未満のセッションは混ぜない(保存されない)', () => {
+  it('交戦合計30秒未満: 軸1は混ぜない——ただし撃破スロットは残る(v0.25.2579)', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     tickPlayerTraits(baseInput({ gameTime: 29_999 }));
-    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
+    notifyBossClear('thor', 'test-stage');
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_000 })); // 交戦解除でセッション確定
+    commitPendingTraits();
+    const p = loadPlayerProfile();
+    // v0.25.2579(社長報告「城ボスを倒したのに記録されない・採用UIも出ない」): 旧実装は30秒フロアが
+    // 撃破記録まで丸ごと捨てていた=**最速の勝ち戦ほど消える**。裁定v0.25.2493「基本的に残るのは
+    // 撃破だけ。その後死のうが生きようが残る」どおり、撃破スロットだけは交戦時間に関わらず残す。
+    expect(p).not.toBeNull();
+    expect(p!.runs).toBe(0); // 軸1(セッション)は混ぜない=30秒フロアは従来どおり効いている
+    expect(p!.bossStyles?.[bossStyleSlotKey('thor', 'test-stage')]).toBeDefined();
+  });
+
+  it('交戦合計30秒未満かつ撃破なしのセッションは丸ごと破棄(従来どおり)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 29_999 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_000 }));
     commitPendingTraits();
     expect(loadPlayerProfile()).toBeNull();
   });
@@ -571,15 +585,21 @@ describe('playerTraits: 保留バッファ(リザルトでのcommit/破棄)', ()
     expect(loadPlayerProfile()!.mobility).toBe(1);   // 従来と同じ値で確定
   });
 
-  it('30秒未満/ゴーストランは保留にも積まれない(ボス交戦なし等ではチェックボックスが出ない)', () => {
+  it('撃破なし/ゴーストランは保留に積まれない。撃破ありは30秒未満でも積まれる(v0.25.2579)', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
-    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
-    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 29_000 })); // 30秒未満
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 29_000 })); // 30秒未満・撃破なし=破棄
     expect(hasPendingTraitRecords()).toBe(false);
+    // v0.25.2579(社長報告「城ボスを倒したのに記録されない」): 撃破があれば30秒未満でも
+    // 撃破スロットが保留に積まれる=採用チェックが出る(裁定v0.25.2493「撃破は残る」)。
+    tickPlayerTraits(baseInput({ gameTime: 50_000 }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_000 })); // 交戦10秒で撃破
+    expect(hasPendingTraitRecords()).toBe(true);
+    settlePendingTraits(true); // 破棄して次の検証へ
     tickPlayerTraits(baseInput({ gameTime: 100_000, ghostRunActive: true }));
-    notifyBossClear('thor', 'test-stage'); // v0.25.2493: 撃破セッションのみ混ぜる裁定(セッション未開時はno-op)
+    notifyBossClear('thor', 'test-stage'); // G3ゲート: ゴーストランはそもそも計測されない
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 200_000, ghostRunActive: true }));
-    expect(hasPendingTraitRecords()).toBe(false);    // G3ゲート: そもそも計測されていない
+    expect(hasPendingTraitRecords()).toBe(false);
   });
 
   it('settlePendingTraits(true)=全破棄: セッションもサブ様式も1バイトも保存されない・次ランには影響しない', () => {

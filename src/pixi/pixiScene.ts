@@ -54,7 +54,7 @@ import { idolFanCount } from '../utils/idolScript';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
   URI_SCRIPT_ENABLED, SURIEL_SCRIPT_ENABLED, ACRASIEL_SCRIPT_ENABLED,
-  ACRASIEL_SPEAR_RADIUS,
+  ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS,
 } from '../utils/angelBossTick';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -9752,10 +9752,12 @@ export class PixiScene {
       // ---- スリィエル: 環の回転斬(近接拒否)=T2円(即時)。環自体はsyncSurielRingが本体周りへ描く ----
       else if (scriptActive && e.type === 'suriel' && (bs === 'ring-spin-windup' || bs === 'ring-spin')) {
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-        o.ellipse(cx, cy, GIANT_STOMP_RADIUS, GIANT_STOMP_RADIUS).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
+        // v0.25.2579: GIANT_STOMP_RADIUS流用をやめ、判定(angelBossTick)と同じSURIEL_RINGSPIN_RADIUSで描く。
+        // 踏み鳴らしの範囲拡大(92→縁+92導出)でスリィエルだけ「赤が判定より大きい」に割れるのを防ぐ(分類①)。
+        o.ellipse(cx, cy, SURIEL_RINGSPIN_RADIUS, SURIEL_RINGSPIN_RADIUS).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
-        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, GIANT_STOMP_RADIUS, 0xff3b3b, 0.45 + 0.3 * pulse);
-        else o.ellipse(cx, cy, GIANT_STOMP_RADIUS, GIANT_STOMP_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, SURIEL_RINGSPIN_RADIUS, 0xff3b3b, 0.45 + 0.3 * pulse);
+        else o.ellipse(cx, cy, SURIEL_RINGSPIN_RADIUS, SURIEL_RINGSPIN_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
       }
       // ---- スリィエル: 本体の薙ぎ(環が離れている間だけ・§6.28-18)=T3帯(マントを広げる・武器絵なし) ----
       else if (scriptActive && e.type === 'suriel' && (bs === 'sweep-windup' || bs === 'sweep' || bs === 'sweep-recover')) {
