@@ -636,6 +636,8 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       health: player.health, maxHealth: player.maxHealth,
       characterClass: player.characterClass, // v0.25.2467: プロファイルsrcClass(ゴーストの絵)用
       speed: player.speed, level: player.level, // v0.25.2468: 計測時ステータスの写し用
+      // GHOST-CMD-2A(§2.18追補): カウンター成立直後の追撃窓(afterCounter文脈)の錨点。
+      lastCounterSuccessTime: player.lastCounterSuccessTime,
     },
     // v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元。写し取りはplayerTraits側の
     // 純関数(snapshotPlayerBuild)がボス交戦中のtickだけ行う=ここは本人オブジェクトを渡すだけ。

@@ -37,6 +37,11 @@ import {
   endMoveReactions, blendMoveReactionTable, blendDodgeDirStat,
   type MoveReactionState, type MoveReactionTable, type DodgeDirTally, type DodgeDirStat,
 } from './moveReaction'; // G4a(BOT_AND_GHOST.md §2.9): 技への反応表の判定中核(純関数)
+import {
+  createPunishEpisodeState, createPunishTally, stepPunishEpisodes, closePunishEpisodes,
+  punishWindowsOpen, blendPunishProfile,
+  type PunishEpisodeState, type PunishTally, type PunishProfile,
+} from './punishWindow'; // GHOST-CMD-2A(§2.18追補): 隙(気絶/硬直/カウンター直後)の窓判定+票の共通部品
 import { loadPlayerName } from './playerName'; // v0.25.2477: 計測時のプレイヤー名(srcName)の出どころ
 
 // ---- 保存フォーマット -------------------------------------------------------------------------
@@ -99,6 +104,9 @@ export interface BossStyleSlot {
   /** GHOST-CMD-1B(§2.18-2): 避け方向の癖(そのセッションの生値の写し=EMAなし・丸ごと写しの一部)。
    * このセッションで分類できたdodgeが無ければ未保存(欠損可=消費側が軸1へフォールバック)。 */
   dodgeDir?: DodgeDirStat;
+  /** GHOST-CMD-2A(§2.18追補): 隙コマンド(詰めて叩く/撃つ)の文脈別記録。dodgeDirと同じ「丸ごと写し」
+   * (そのセッションの生値=EMAなし)。票が1つも無ければ未保存(欠損可=消費側が軸1へフォールバック)。 */
+  punish?: PunishProfile;
 }
 
 export interface PlayerProfile {
@@ -129,6 +137,13 @@ export interface PlayerProfile {
    * 無い=欠損可(スキーマ版vは据え置き。欠損=undefined=消費側はバイアス0で従来とビット一致)。
    */
   dodgeDir?: DodgeDirStat;
+  /**
+   * GHOST-CMD-2A(§2.18追補 隙コマンド): 隙(気絶/技後硬直/カウンター成立直後)に「詰めて叩いたか
+   * 撃っていたか」の文脈別記録(技キー横断・疎な辞書=観測した文脈だけ入る)。混合はdodgeDirと
+   * 同じ数式(初回そのまま・EMA・n累計)。旧プロファイルには無い=欠損可(スキーマ版vは据え置き。
+   * 欠損=消費側は既定の'rush'=詰めて叩く)。
+   */
+  punish?: PunishProfile;
   /** G4a(§2.9(3)): サブウェポンの様式カウンタ(ボス交戦区間に限定しない=ラン単位でEMA)。 */
   subStyles: SubStyleProfile;
   /** v0.25.2467(社長指示): 計測時のクラス(ゴーストの絵の選択用)。旧プロファイルには無い=任意。 */
@@ -218,6 +233,8 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
     && (o.moveReactions === undefined || (typeof o.moveReactions === 'object' && o.moveReactions !== null))
     // GHOST-CMD-1B: dodgeDir(避け方向の癖)。欠損可(旧プロファイル=undefinedのまま読める)。
     && (o.dodgeDir === undefined || (typeof o.dodgeDir === 'object' && o.dodgeDir !== null))
+    // GHOST-CMD-2A: punish(隙コマンドの文脈別記録)。同じく欠損可(旧プロファイル)。
+    && (o.punish === undefined || (typeof o.punish === 'object' && o.punish !== null))
     && (o.subStyles === undefined || (typeof o.subStyles === 'object' && o.subStyles !== null))
     // G5(§2.10仕様1): bossStylesは任意オブジェクトとして許容(後方互換=欠損可)。
     && (o.bossStyles === undefined || (typeof o.bossStyles === 'object' && o.bossStyles !== null));
@@ -275,6 +292,9 @@ interface Session {
   approachAcc: number;              // (2) 進行中の接近量の累積(px)
   lastPcx: number | null;           // 前tickのプレイヤー中心(静止/接近の変位算出用)
   lastPcy: number | null;
+  // ---- GHOST-CMD-2A(§2.18追補): 隙コマンドの計測(文脈ごとに1エピソード1票) ----
+  punish: PunishEpisodeState;       // 進行中の窓(文脈ごと・開いた瞬間の近接与ダメ累計を控える)
+  punishTally: PunishTally;         // このセッションの票(rush/shoot)
   // ---- G5(§2.10) ----
   // このセッション中にnotifyBossClearされたスロット(重複無し)。clearTimeMs=交戦開始→撃破の時間
   // (v0.25.2493・撃破の瞬間のlastGameTimeで確定=同tick精度)。ally=撃破の瞬間に同行していた
@@ -315,6 +335,8 @@ const startSession = (gameTime: number): Session => ({
   approachAcc: 0,
   lastPcx: null,
   lastPcy: null,
+  punish: createPunishEpisodeState(),
+  punishTally: createPunishTally(),
   clearedSlots: [],
 });
 
@@ -393,6 +415,8 @@ export interface PendingSessionRecord {
   moveTally: MoveReactionState['tally'];
   /** GHOST-CMD-1B: 避け方向の癖のセッション集計(dodgeで確定したエピソードの3分類カウント)。 */
   dodgeDirSample: DodgeDirTally;
+  /** GHOST-CMD-2A: 隙コマンドのセッション集計(文脈ごとのrush/shoot票)。 */
+  punishSample: PunishTally;
   srcClass: string | null;
   snapshot: PlayerBuildSnapshot | null;
   /** v0.25.2477: セッション確定時点のプレイヤー名(loadPlayerName=無ければ生成される)。 */
@@ -424,6 +448,8 @@ export interface PendingBossStyleRecord {
   approachSample: number | null;
   /** GHOST-CMD-1B: 避け方向の癖(セッションレコードと同じ確定値の写し)。 */
   dodgeDirSample: DodgeDirTally;
+  /** GHOST-CMD-2A: 隙コマンドの票(セッションレコードと同じ確定値の写し)。 */
+  punishSample: PunishTally;
   srcClass: string | null;
   snapshot: PlayerBuildSnapshot | null;
   srcName: string | null;
@@ -491,6 +517,9 @@ const endSession = (): void => {
   // 撃破スロット(bossStyle=フロア対象外・v0.25.2579)にも同じサンプルを写すため。フロアの適用先は
   // 従来どおり軸1(sessionレコード)だけ=既存ゲートに新しい例外は作らない。
   const moveResult = endMoveReactions(s.moveReactions);
+  // GHOST-CMD-2A: まだ開いている隙の窓も畳んで票にする(moveReactionの開きエピソードと同じ流儀)。
+  closePunishEpisodes(s.punish, s.punishTally, telemetryEnd.damageDealt.melee);
+  const punishSample = s.punishTally;
 
   // v0.25.2476: サンプル計算は従来のまま。ここで保存せず保留バッファへ積む(EMA混合はcommit時)。
   // v0.25.2579: 軸1(共通スタイル)だけ30秒フロアの対象(撃破スロットは下のループで無条件に積む)。
@@ -503,6 +532,7 @@ const endSession = (): void => {
       stationarySample, approachSample,
       moveTally: moveResult.tally,
       dodgeDirSample: moveResult.dodgeDir,
+      punishSample, // GHOST-CMD-2A: 隙コマンドの票(文脈別)
       srcClass, snapshot, srcName,
     });
   }
@@ -515,6 +545,7 @@ const endSession = (): void => {
       reactionSample, counterChanceSample, preferredDistSample, meleeBiasSample, mobilitySample,
       hitsPerMinSample, subUsesPerMinSample, stationarySample, approachSample,
       dodgeDirSample: moveResult.dodgeDir, // GHOST-CMD-1B: セッションと同じ確定値の写し
+      punishSample,                        // GHOST-CMD-2A: 同上(丸ごと写し)
       srcClass, snapshot, srcName, at: Date.now(), clearTimeMs: cleared.clearTimeMs,
       ally: cleared.ally, // v0.25.2553(§2.16 A): 撃破の瞬間に写した同行守護霊(不在ならnull)
     });
@@ -544,6 +575,8 @@ export const applyPendingSession = (prev: PlayerProfile | null, r: PendingSessio
     moveReactions: blendMoveReactionTable(base.moveReactions, r.moveTally, EMA_ALPHA),
     // GHOST-CMD-1B: 避け方向の癖も同じ数式で1キー分だけ混合(サンプル0なら前回値=欠損なら欠損のまま)。
     dodgeDir: blendDodgeDirStat(base.dodgeDir, r.dodgeDirSample, EMA_ALPHA),
+    // GHOST-CMD-2A: 隙コマンドも同じ数式を文脈ごとに適用(票0の文脈は前回値を維持=欠損なら欠損のまま)。
+    punish: blendPunishProfile(base.punish, r.punishSample, EMA_ALPHA),
     // サブ様式はボス交戦区間に限定しない=セッションではなくラン単位(subStyleレコード)で更新する。
     subStyles: base.subStyles,
     // v0.25.2467: 計測時のクラス(このセッションで観測できなければ前回値を保持)。
@@ -570,7 +603,10 @@ export interface PlayerTraitsTickInput {
     /** v0.25.2467: 計測時のクラス(プロファイルsrcClassへ記録=ゴーストの絵の選択用)。 */
     characterClass?: string;
     /** v0.25.2468: 計測時ステータスの写し(snapshot)用。 */
-    speed?: number; level?: number };
+    speed?: number; level?: number;
+    /** GHOST-CMD-2A(§2.18追補): カウンター成立の錨点(Date.now基準・player.lastCounterSuccessTime)。
+     * afterCounter文脈の窓判定に使う。省略(旧呼び出し/テスト)= その文脈は開かない。 */
+    lastCounterSuccessTime?: number };
   /** v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元になる本人オブジェクト。
    * 省略可(旧呼び出し/テスト)=その場合はビルド項目なしの旧snapshot相当だけを記録する。 */
   buildSource?: Player;
@@ -628,6 +664,17 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   }
 
   const boss = nearestEngagedBoss(pcx, pcy, input.enemies);
+
+  // GHOST-CMD-2A(§2.18追補): 隙(punish window)の計測。3文脈の窓を毎tick判定し、**閉じた瞬間に
+  // 1票**入れる(窓中に近接与ダメが出た=`rush`/出ない=`shoot`)。窓判定は消費側(ghostDriver)と
+  // 共有の純関数(punishWindow.ts)=気絶/硬直の判定をここで発明しない。boss=null(交戦相手が
+  // 消えた瞬間)は stun/recover が閉じる=開いていた窓はここで票になる。
+  stepPunishEpisodes(
+    s.punish, s.punishTally,
+    punishWindowsOpen(boss, input.gameTime, input.player.lastCounterSuccessTime, Date.now()),
+    getBotTelemetry().damageDealt.melee,
+  );
+
   if (!boss) {
     s.wasOpportunity = false;
     s.pendingOpportunityAt = null;
@@ -937,9 +984,12 @@ export const applyPendingBossStyle = (
   // GHOST-CMD-1B: そのセッションの生値(EMAなし=prev:undefinedへの適用はサンプルそのまま)。
   // 分類できたdodgeが無いセッションはundefined=載せない(消費側が軸1へフォールバック)。
   const dodgeDir = blendDodgeDirStat(undefined, r.dodgeDirSample, EMA_ALPHA);
+  // GHOST-CMD-2A: 隙コマンドも同じ扱い(そのセッションの生値・票が1つも無ければ載せない)。
+  const punish = blendPunishProfile(undefined, r.punishSample, EMA_ALPHA);
   const slot: BossStyleSlot = {
     ...(r.ally ? { ally: r.ally } : {}), // v0.25.2553(§2.16 A): 同行者が居た撃破だけ写しを載せる
     ...(dodgeDir ? { dodgeDir } : {}),
+    ...(punish ? { punish } : {}),
     reactionMs: r.reactionSample,
     counterChance: r.counterChanceSample,
     preferredDist: r.preferredDistSample,
@@ -1099,6 +1149,9 @@ export const effectiveGhostProfile = (profile: PlayerProfile, slotKey: string): 
     // GHOST-CMD-1B: 避け方向の癖もノブ単位でslot優先(slot欠損=そのセッションで分類できたdodgeなし
     // →軸1へフォールバック。軸1も欠損ならundefined=消費側はバイアス0)。
     dodgeDir: slot.dodgeDir ?? profile.dodgeDir,
+    // GHOST-CMD-2A: 隙コマンドもノブ単位でslot優先(slot欠損=そのセッションで票なし→軸1へ。
+    // 両方欠損=undefined=消費側は既定の'rush')。
+    punish: slot.punish ?? profile.punish,
     subStyles: slot.subStyles,
     srcClass: slot.srcClass ?? profile.srcClass,
     snapshot: slot.snapshot ?? profile.snapshot,

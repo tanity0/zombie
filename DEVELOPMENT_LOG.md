@@ -1,5 +1,73 @@
 # Development Log
 
+## v0.25.2585 — バッチGHOST-CMD-2A(隙コマンド)+ 守護霊カウンターのズーム寄り先修正【2026-07-31 15:15 JST】
+
+- **検収(設計チャット)**: 合格。窓判定(punishWindow.ts)は既存述語の流用のみで**新しい判定を発明していない**
+  (stun=`stunUntil`の既存式・紫は同時打刻で同式で入る/recover=`-recover`語尾の既存流儀/afterCounterのみ
+  新設1200ms)。消費はdodgeの**下**=他の脅威を避けながら詰める、n=0はrand不消費でrush、を実装で確認。
+  ゲート3種を検収側でも再実行し一致(typecheck 0 / related **675件通過** / lint エラー0)。
+  実装側の細部3点(複数窓の優先=stun>recover>afterCounter・セッション確定時に開窓を畳んで1票・
+  記録なしはrand不消費)は妥当として採用。
+- **同版に同梱: 守護霊カウンターのズーム寄り先(社長報告「カメラが当人に向いてない。プレイヤーのみに
+  なってる」)**: `triggerHitImpact`に寄り先(targetX/Y)を追加し、守護霊のカウンター成立で**成立位置**を
+  渡す。旧: カウンター経路だけ寄り先未指定=画面中央=カメラが追うプレイヤーへ寄っていた(キル/
+  フィニッシュ経路は元から敵座標を渡していたので正常)。**プレイヤー側の呼び出しは引数省略=挙動不変**。
+- **申し送り(未確定・依頼待ち)**: オンラインco-opのテスト実装。社長「夜中に依頼するかも。一旦覚えておいて」
+  =**未発注**。合意済みの前提は ①通信の土台(シグナリング/WebRTC/DataChannel)は**ゲーム非依存**として
+  切り出しCodexへ発注可(新規ディレクトリのみ=衝突ゼロ) ②こちらは継ぎ目の契約(createNetLink相当)を
+  1枚書き、**ループバックの偽トランスポート**で状態同期を先行開発 ③一晩の現実的な到達点は
+  「ゲストがホストのボス戦を観戦できる」まで(A+B)。着手指示が来たら継ぎ目の仕様から書く。
+
+## (旧見出し=検収前) バッチGHOST-CMD-2A: 隙コマンド(気絶/硬直/カウンター後 × 詰めて叩く/撃つ)
+
+- **正本**: research/GHOST_PARITY_LEDGER.md「発注仕様: バッチ GHOST-CMD-2A」(背景=BOT_AND_GHOST.md
+  §2.18「追補: 抜けカードの裁定」)。検収・バージョン採番・changelogは設計チャット
+  (このエントリはサブエージェントの実装報告)。
+- **新設(器)**: `src/utils/modeBag.ts` — **汎用2モード袋**。`{n, rate}`→枚数導出
+  (`primary=round(n×rate)` / `other=n−primary`・commandBagと同じ丸め流儀)、残枚数から一様に1枚、
+  引き切りで詰め直し、**キー単位のモジュールシングルトン**、`resetModeBags()`をgameStore.resetGameから
+  (commandBagと同じラン単位の寿命)。**境界ガードは無し**(モード選択に被弾の意味が無い=発注仕様どおり)。
+  Phase 2のサブモード%へそのまま流用できるAPI(punish専用の形にしていない)。
+- **新設(共有判定)**: `src/utils/punishWindow.ts` — 隙3文脈の窓判定+票の状態機械+保存形。
+  **計測(playerTraits)と消費(ghostDriver)が同じ関数を使う**(bossStyleSlotKeyと同じズレ防止の流儀)。
+  - `stun`=既存の気絶述語の式そのまま(`stunUntil !== undefined && gameTime < stunUntil`)。
+    **完全気絶(紫)も同式で入る**——gameStoreの紫発火が`bossFullStunUntil`と`stunUntil`を同時に打つため
+    (専用判定を発明していない)。
+  - `recover`=既存の語尾流儀(`-recover`語尾 on aiPhase/bossState + 旧来の素の`aiPhase==='recover'`)。
+  - `afterCounter`=成立から`PUNISH_AFTER_COUNTER_MS=1200`(export定数)。錨点はプレイヤー=
+    `player.lastCounterSuccessTime` / ゴースト=`Summon.ghostLastCounterAt`(いずれもDate.now基準)。
+- **計測**: `playerTraits.ts` — セッションに窓状態+票を持ち、毎tick`stepPunishEpisodes`。窓が**閉じた
+  瞬間に1票**(窓中の`botTelemetry.damageDealt.melee`の区間差分>0 → 'rush' / 0 → 'shoot')。
+  `PlayerProfile.punish?`(文脈別`{n, rushRate}`・疎)+`BossStyleSlot.punish?`(丸ごと写し)。混合は
+  dodgeDirと同じ数式(初回そのまま・EMA α=0.3・n累計)。スキーマ`v`据え置き+`isValidProfile`で欠損許容。
+  `effectiveGhostProfile`はslot優先→軸1→undefined。**既存ゲート(ゴーストラン破棄・30秒フロアの
+  現行形)に新しい例外は作っていない**(sessionレコードに乗る=自然に同じゲートに従う)。
+- **消費**: `ghostDriver.ts` — `GhostProfile.punish?`+`drawPunishMode`(袋キー=`punish:<文脈>`)。
+  **文脈が開いた瞬間に1回だけ**引き、窓の間は`GhostSelf/GhostDecision`のフラット項目で持ち越す
+  (Summonは`ghostPunishContext`/`ghostPunishMode`/`ghostLastCounterAt`)。**n=0/欠損='rush'**
+  (この時randは1回も消費しない)。'rush'中は**カウンター接近と同型**で縁74pxへ詰め、射程内は
+  meleeBias抽選を通さず必ずmelee(気絶の処刑は既存の`applyGhostMeleeFinisher`経路がそのまま担当)。
+  **回避(dodge)は上位のまま**(rush分岐はdodgeの下)。窓が閉じたら文脈/モードともundefined=通常へ。
+  ゴースト側の打刻は`applyGhostCounterEffect`(全成立経路の共通変換)1箇所に追加。
+- **実装側で決めた細部(仕様の空白ではなく実装の詳細)**: ①複数の窓が同時に開いた時の消費側の優先=
+  `PUNISH_CONTEXTS`順(stun>recover>afterCounter)。計測側は文脈ごとに独立(優先順を使わない)。
+  ②セッション確定時に開いたままの窓は畳んで票にする(`endMoveReactions`が開きエピソードを畳むのと
+  同じ流儀)。③記録なし(n=0/欠損)の引きはrandを消費しない(引く札が存在しないため)。
+- **テスト**: 新規`modeBag.test.ts`(8)/`punishWindow.test.ts`(13)、`playerTraits.test.ts`+8
+  (rush票/shoot票/窓外の近接は数えない/文脈別に独立/afterCounter/窓なしは欠損のまま/EMA/
+  effectiveGhostProfile)、`ghostDriver.test.ts`+8(欠損デフォrush/rushRate=0は常にshoot/
+  引き切り割合/rush中の接近+melee/dodge優先/窓が閉じたら通常へ/乱数消費は窓の開始1回のみ/
+  afterCounterの錨点)。
+- **ゲート**: `npm run typecheck` エラー0 / `npm run lint` エラー0(既存warning 8のみ)/
+  `npx vitest related`(触った実装ファイル一式)= 32ファイル675テスト全通過。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない——本バッチは守護霊
+  (guardian-spirit装備ラン)の意思決定と計測のみを触り、スポーン/ランク/台本・通常敵の挙動には
+  一切触れていない。負荷 **1/10**(シミュ層のみ: 毎tickスカラー比較3件+窓開閉時のみの整数加算。
+  描画・音声・メモリの増加なし)。
+- **未決の追記**: なし(台帳の★未決へ追記した項目はない)。
+- **次の手番**: 設計チャットの検収(実機で「紫サークル→詰めて叩く」が出るか)。バージョンbump/
+  changelog/コミットは未実施(掟どおりサブエージェントは行わない)。
+
 ## v0.25.2584 — 発注: バッチGHOST-CMD-2A(隙コマンド)【2026-07-31 14:40 JST】
 
 - 発注仕様の正本=research/GHOST_PARITY_LEDGER.md「発注仕様: バッチ GHOST-CMD-2A」。

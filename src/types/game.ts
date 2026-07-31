@@ -781,6 +781,14 @@ export interface Summon {
   // GHOST-BULLET-TECH B(v0.25.2543): 計測で「苦手」(tank)と出た弾技の技キーと、その弾を避けない期限。
   ghostTankedBulletKey?: string;
   ghostTankedBulletUntil?: number;
+  // ---- GHOST-CMD-2A(BOT_AND_GHOST.md §2.18追補「隙コマンド」) ----
+  // 自分のカウンターが成立した時刻(ms・Date.now基準)。プレイヤーの player.lastCounterSuccessTime と
+  // 同じ意味で、成立直後の追撃窓(afterCounter文脈)の錨点になる。打刻は applyGhostCounterEffect(1箇所)。
+  ghostLastCounterAt?: number;
+  // いま従っている隙の文脈と、その窓で引いたモード(型はghostDriver/punishWindowと同形。
+  // このファイルはutilsをimportしない=循環回避でフラットに持つ=ghostMoveRoll*と同じ流儀)。
+  ghostPunishContext?: 'stun' | 'recover' | 'afterCounter';
+  ghostPunishMode?: 'rush' | 'shoot';
   // ---- GHOST-SUBS-FINAL(v0.25.2563・§2.11追補「状態は主語ごと」): 構造ズレ組サブの自前状態 ----
   // どれも**プレイヤーが持っているのと同じ型**(store側のフィールドと1対1)。ゴースト専用の別モデルは作らない。
   ghostMolotovCycle?: MolotovCycleState | null; // 火炎瓶の投下サイクル(store.molotovCycle と同型)

@@ -39,6 +39,8 @@ import { recordDuoBossClear, resetDuoRunRecords } from '../utils/duoRecords';
 import { resetBossClocks } from '../utils/bossClock';
 // §2.18(GHOST-CMD-1): 技への反応の袋(境界ガード付き袋式)。寿命=ラン単位なのでresetGameでリセット。
 import { resetGhostCommandBags } from '../utils/commandBag';
+// GHOST-CMD-2A(§2.18追補): 隙コマンドの2モード袋(汎用)。同じくラン単位の寿命=resetGameでリセット。
+import { resetModeBags } from '../utils/modeBag';
 // v0.25.2514(§2.11 裁定1): 計測時ビルドの疑似Player(被ダメ補正の主語)。純関数・store非依存。
 // v0.25.2553(§2.16 A): 同行守護霊の写し(撃破記録へ添える持ち主名+ビルド)。同じく純関数。
 import { buildPseudoPlayer, findGhostAlly, ghostAllySnapshot, type GhostAllySnapshot } from '../utils/playerBuild';
@@ -3716,7 +3718,10 @@ interface GameState {
   clearAttention: () => void;
   triggerTimeSlow: (scale: number, durationMs: number, holdMs?: number) => void; // holdMs=最も遅い倍率を保持する時間(既定0)
   triggerHitstop: (durationMs: number) => void; // 全停止の瞬間ストップ(カウンター/近接フィニッシュの衝撃)
-  triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number) => void; // ストップ→(後で)揺れ+寄り。ダンス中はストップ無しで即時
+  // targetX/Y(v0.25.2585・任意): 寄り先の世界座標。未指定=従来どおり画面中央(=カメラが追う
+  // プレイヤー)へ寄る。**守護霊のカウンター成立**は成立位置を渡す(社長報告「カメラが当人に
+  // 向いてない。プレイヤーのみになってる」)。プレイヤー側の呼び出しは未指定のまま=挙動不変。
+  triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number, targetX?: number, targetY?: number) => void; // ストップ→(後で)揺れ+寄り。ダンス中はストップ無しで即時
   // targetX/Y省略時は画面中央基準(カウンター等・従来どおり)。指定時はその世界座標点へ寄る(社長指示: KILLはキルされた対象へ)。
   // 近接フィニッシュ: ストップ+ズーム+スローを1拍エンベロープで発火(CD明けのみ・CD内は最低保証フラッシュのみ)。
   // 戻り値=そのキルでフル演出(CD明け)が出たか(呼び出し元が武器固有フラッシュを出すかの判断に使う)。
@@ -12727,6 +12732,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetBossClocks();
     // §2.18(GHOST-CMD-1): 技への反応の袋もラン単位(ラン内は交戦を跨いで保持・ラン間は持ち越さない)。
     resetGhostCommandBags();
+    // GHOST-CMD-2A(§2.18追補): 隙コマンドの2モード袋も同じ寿命規則(ラン内は保持・ラン間は持ち越さない)。
+    resetModeBags();
     // v0.25.2514(GHOST-BUILD-1): 前ランのゴーストビルド(メモ化1件)も持ち越さない。
     clearGhostBuildCache();
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
@@ -13289,11 +13296,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({ hitstopUntil: Math.max(state.hitstopUntil, now + Math.max(0, durationMs)) }));
   },
 
-  triggerHitImpact: (stopMs, shakeMs, shakeMag, zoomMag) => {
+  triggerHitImpact: (stopMs, shakeMs, shakeMag, zoomMag, targetX, targetY) => {
     // カウンター/バッシュの衝撃: 寄りパンチズームは命中の瞬間に即(=早く寄る)。
     // ストップを入れ、揺れはストップ後に(止まりが揺れに埋もれないよう)。
     // ダンス中(四神舞)は gameTime を止めるとリズムが乱れるためストップ抜き=全て即時。
-    get().triggerZoom(zoomMag, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // 即・寄り(スローと同期)
+    // v0.25.2585: targetX/Y 指定時はその点へ寄る(守護霊のカウンター=成立位置)。未指定は従来どおり中央。
+    get().triggerZoom(zoomMag, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, targetX, targetY); // 即・寄り(スローと同期)
     if (get().rhythm.active) {
       get().triggerShake(shakeMs, shakeMag);
       return;

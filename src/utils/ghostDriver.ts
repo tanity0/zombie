@@ -28,6 +28,11 @@ import { isBossCounterableNowApprox } from './bossScript';
 import { ghostExtraTelegraphDodge, isTelegraphActive, type GhostDodgeThreat } from './ghostTelegraph'; // §2.12 要件7: 予告台帳(全ボス)
 import { anyMoveKeyForEnemy, isProjectileMoveKey, type MoveReactionTable, type DodgeDirStat } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
 import { drawFromCommandBag } from './commandBag'; // §2.18(GHOST-CMD-1): 決定の出どころ=境界ガード付き袋式
+import { drawFromModeBag } from './modeBag'; // GHOST-CMD-2A: 汎用2モード袋(隙コマンドの「詰める/撃つ」)
+import {
+  punishWindowsOpen, activePunishContext, punishModeStat, PUNISH_DEFAULT_MODE,
+  type PunishContext, type PunishMode, type PunishProfile,
+} from './punishWindow'; // GHOST-CMD-2A(§2.18追補): 隙の窓判定は計測側と共有の純関数
 
 // ---- プロファイル(playerTraits.PlayerProfileと同じノブ形。循環import回避のため型は独立定義) ----
 export interface GhostProfile {
@@ -65,6 +70,14 @@ export interface GhostProfile {
    * 欠損(旧プロファイル/既定プロファイル/n=0)= バイアス0 = 従来とビット一致。
    */
   dodgeDir?: DodgeDirStat;
+  /**
+   * GHOST-CMD-2A(§2.18追補 隙コマンド): 隙(気絶/技後硬直/カウンター成立直後)に「詰めて叩く」か
+   * 「撃つ」かの文脈別記録(playerTraits.PlayerProfile.punishと同形)。directorTickの
+   * effectiveGhostProfile経路(PlayerProfileの構造互換)でそのまま載る。
+   * **欠損(旧プロファイル/既定プロファイル/n=0)= 既定の 'rush'(詰めて叩く)**
+   * (社長裁定「数値がなければベストで動く/数値があるのに決めつけない」)。
+   */
+  punish?: PunishProfile;
 }
 
 /**
@@ -308,6 +321,27 @@ export const ghostDodgeLateralFrac = (dodgeDir?: DodgeDirStat): number => {
   return clamp01(lateral + through);
 };
 
+// ---- GHOST-CMD-2A(§2.18追補): 隙コマンド(詰めて叩く/撃つ) --------------------------------------
+/**
+ * 隙コマンドの袋キー(**文脈×ラン**で引き切り・詰め直し=commandBagと同じ寿命規則。
+ * ラン境界のリセットは modeBag.resetModeBags を gameStore.resetGame が呼ぶ)。
+ */
+export const punishBagKey = (ctx: PunishContext): string => `punish:${ctx}`;
+
+/**
+ * その文脈のモードを袋から1枚引く(**文脈が開いた瞬間に1回だけ**呼ぶ)。
+ * primary札='rush'(rate=rushRate)。**記録なし(n=0/欠損)は PUNISH_DEFAULT_MODE='rush' で、
+ * この時 rand は1回も消費しない**(引く札が無い=抽選が発生しない)。
+ */
+export const drawPunishMode = (
+  punish: PunishProfile | undefined,
+  ctx: PunishContext,
+  rand: () => number,
+): PunishMode =>
+  drawFromModeBag(punishBagKey(ctx), punishModeStat(punish, ctx), rand, PUNISH_DEFAULT_MODE === 'rush')
+    ? 'rush'
+    : 'shoot';
+
 // ---- GHOST-BULLET-TECH A: 危険の認知(エピソード)の状態機械(純関数) --------------------------
 // 状態遷移: **危険なし → 認知(seenAt) → 反応済み(reactionMs経過) → 記憶(危険が消えても保持) → 失効**。
 //  - 認知〜反応済みは「エピソードにつき1回」。同じエピソードの間は何度危険が途切れても遅延を払い直さない。
@@ -470,6 +504,13 @@ export interface GhostSelf {
   tankedBulletKey?: string;
   /** 同上の有効期限(ms)。これを過ぎたら弾を避ける側へ戻る。 */
   tankedBulletUntil?: number;
+  /** GHOST-CMD-2A: 自分のカウンターが成立した時刻(ms・Date.now基準=Summon.ghostLastCounterAt)。
+   * afterCounter文脈の窓判定に使う(プレイヤー側のlastCounterSuccessTimeと同じ意味)。 */
+  lastCounterAtMs?: number;
+  /** GHOST-CMD-2A: いま従っている隙の文脈(undefined=窓が開いていない)。 */
+  punishContext?: PunishContext;
+  /** GHOST-CMD-2A: その文脈で引いたモード(窓の間だけ持ち越す)。 */
+  punishMode?: PunishMode;
 }
 
 export interface GhostDriverInput {
@@ -519,6 +560,8 @@ export interface GhostDecision {
   orbitSign?: 1 | -1;       // §2.12追補: オービットの旋回方向(次tickへ持ち越し)
   tankedBulletKey?: string;  // GHOST-BULLET-TECH B: 避けない弾技(undefined=全ての弾を避ける)
   tankedBulletUntil?: number;
+  punishContext?: PunishContext; // GHOST-CMD-2A: 隙の文脈(窓が閉じたらundefinedへ戻る)
+  punishMode?: PunishMode;       // GHOST-CMD-2A: その窓で引いたモード('rush'=詰めて叩く)
 }
 
 /** 毎tick1回呼ぶ純関数。次tickへ持ち越す自己状態(lastShotAt等)も戻り値に含めて返す。 */
@@ -546,6 +589,8 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       moveRoll: undefined, dangerSeenAt: undefined, dangerLastAt: undefined, orbitSign: ghost.orbitSign,
       // 弾技のtank記憶は持ち越す(標的が1tick居ないだけで在弾は飛び続けているため。期限で自然に切れる)。
       tankedBulletKey: ghost.tankedBulletKey, tankedBulletUntil: ghost.tankedBulletUntil,
+      // GHOST-CMD-2A: 交戦相手が居ない=隙の窓も無い(次に開いた時にまた引く)。
+      punishContext: undefined, punishMode: undefined,
     };
   }
 
@@ -584,6 +629,22 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // ブロックの位置繰り上げだけでは消費順は1bitも変わらない)。
   let orbitSign: 1 | -1 = ghost.orbitSign ?? (rand() < 0.5 ? 1 : -1);
   if (rand() < GHOST_ORBIT_FLIP_CHANCE) orbitSign = orbitSign === 1 ? -1 : 1;
+
+  // GHOST-CMD-2A(§2.18追補 隙コマンド): 標的の隙(気絶/技後硬直/自分のカウンター成立直後)の窓。
+  // 判定は計測側(playerTraits)と**共有の純関数**(punishWindow.ts)=気絶/硬直の判定を発明しない。
+  // モードは**文脈が開いた瞬間に1回だけ**2モード袋から引き、窓の間は持ち越す(毎tick引き直さない)。
+  // 窓が開いていない時・記録が無い時(=デフォルトの'rush')は rand を1回も消費しない
+  // =窓の外の意思決定は従来と1bitも変わらない。
+  const punishOpen = punishWindowsOpen(target, gameTime, ghost.lastCounterAtMs, nowMs);
+  const punishContext = activePunishContext(punishOpen);
+  let punishMode: PunishMode | undefined;
+  if (punishContext !== null) {
+    punishMode = (punishContext === ghost.punishContext && ghost.punishMode !== undefined)
+      ? ghost.punishMode // 同じ窓が続いている=引き直さない(1窓=1引き)
+      : drawPunishMode(profile.punish, punishContext, rand);
+  }
+  // 'rush' = 「詰めて叩く」。'shoot'/窓なしは従来どおり(間合い管理のまま撃つ)。
+  const punishRush = punishMode === 'rush';
 
   // 回避(§2.12「実行は常に本気」=強さは常に1)。既存 dodgeVector + 全ボス予告台帳の差分。
   // v0.25.2547: maxHealth を渡す=接触(体当たり)回避が有効(危険な接触のみ・botSkill既存規格)。
@@ -633,6 +694,12 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   } else if (activeDodge && reaction !== 'tank') {
     // G4b 'tank'(苦手の再現): この技に限り回避を抑制=逃げずに戦い続ける(①によりダメージは実際に入る)。
     moveX = activeDodge.x; moveY = activeDodge.y;
+  } else if (punishRush) {
+    // GHOST-CMD-2A 'rush': 隙が開いている間は**カウンター接近と同じ型**で体の縁(GHOST_MELEE_RANGE=74)
+    // まで詰める。移動リズム(mobility/approachPerMin)のゲートは通さない=「行くと決めた」ので確実に詰める。
+    // 射程内(else)は詰めるのをやめてその場で振る(攻撃側でmeleeBias抽選を通さず必ずmeleeを出す)。
+    // **回避(dodge)は上位のまま**=他の脅威は避けながら詰める(この分岐は回避の下)。
+    if (edgeDist > GHOST_MELEE_RANGE) [moveX, moveY] = norm(tcx - gcx, tcy - gcy);
   } else if (input.retrieveTarget) {
     // GHOST-SUBS-FINAL: 自分の落し物(クイックマガジン)を拾いに行く。間合い管理より優先だが、
     // 危険(上の回避)とカウンターには譲る。乱数は消費しない=拾い物が無い時は従来と同一。
@@ -723,7 +790,10 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     if (!counterable) counterPendingAt = undefined;
     counterWillAttempt = false;
     // 通常の近接/銃の振り分けはmeleeBias(近接の傾向)で抽選。
-    if (inMeleeRange && meleeReady && rand() < profile.meleeBias) {
+    // GHOST-CMD-2A: 隙コマンドで'rush'を引いている間は**meleeBias抽選を通さない**(「行くと決めた」ので
+    // 確実に振る)。短絡評価なので rand も消費しない。気絶中の処刑は既存の applyGhostMeleeFinisher 経路
+    // (useGameLoopの melee 実行ブロック)がそのまま面倒を見る=ここに処刑の分岐は作らない。
+    if (inMeleeRange && meleeReady && (punishRush || rand() < profile.meleeBias)) {
       action = 'melee'; lastMeleeAt = nowMs;
     }
   }
@@ -738,6 +808,8 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     moveX, moveY, action, targetId: target.id, facing,
     lastShotAt, lastMeleeAt, counterPendingAt, counterWillAttempt,
     moveRoll, dangerSeenAt, dangerLastAt, orbitSign, tankedBulletKey, tankedBulletUntil,
+    // GHOST-CMD-2A: 隙の文脈とモードを次tickへ持ち越す(窓が閉じたら両方undefined=通常へ戻る)。
+    punishContext: punishContext ?? undefined, punishMode,
   };
 };
 

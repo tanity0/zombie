@@ -7499,6 +7499,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // GHOST-BULLET-TECH B: 「苦手」と出た弾技の弾を避けない期限の持ち越し。
                   tankedBulletKey: ghostNow.ghostTankedBulletKey,
                   tankedBulletUntil: ghostNow.ghostTankedBulletUntil,
+                  // GHOST-CMD-2A(§2.18追補 隙コマンド): 自分のカウンター成立時刻(afterCounter文脈の
+                  // 錨点)と、進行中の窓の文脈/モードの持ち越し。
+                  lastCounterAtMs: ghostNow.ghostLastCounterAt,
+                  punishContext: ghostNow.ghostPunishContext,
+                  punishMode: ghostNow.ghostPunishMode,
                 },
                 player: { x: gsPlayer.x, y: gsPlayer.y, width: gsPlayer.width, height: gsPlayer.height },
                 // v0.25.2470(社長裁定「雑魚は基本的に避けつつボスと戦う」): 全敵を渡す(雑魚回避の
@@ -7578,6 +7583,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostOrbitSign: decision.orbitSign,       // §2.12追補: オービット旋回方向の持ち越し
                   ghostTankedBulletKey: decision.tankedBulletKey,     // GHOST-BULLET-TECH B: 避けない弾技
                   ghostTankedBulletUntil: decision.tankedBulletUntil,
+                  // GHOST-CMD-2A: 隙の文脈/モードの持ち越し(窓が閉じたら両方undefined=通常へ戻る)。
+                  ghostPunishContext: decision.punishContext,
+                  ghostPunishMode: decision.punishMode,
                   // GHOST-SUBS-FINAL(v0.25.2563): 「移動中のみ」で動くサブ(火炎瓶/援護射撃)の主語判定。
                   // プレイヤーの isMoving と同じしきい値(最大速の15%超)。一閃/ワイヤーの高速移動中も移動扱い。
                   ghostIsMoving: gDashMode !== null

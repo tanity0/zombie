@@ -554,6 +554,124 @@ describe('playerTraits GHOST-CMD-1B: 避け方向の癖(dodgeDir)', () => {
   });
 });
 
+// ==== GHOST-CMD-2A(§2.18追補 隙コマンド): 隙(気絶/技後硬直/カウンター直後)の計測 ==============
+// 窓が閉じた瞬間に1票。票=窓中の近接与ダメ(botTelemetry.damageDealt.melee)の区間差分>0で 'rush'。
+
+describe('playerTraits GHOST-CMD-2A: 隙コマンド(punish)の計測', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  const slotKey = bossStyleSlotKey('thor', 'test-stage');
+  // セッションを撃破+30秒フロア越えで確定させ、プロファイルを読む。
+  const finish = () => {
+    tickPlayerTraits(baseInput({ gameTime: 35_000 }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 35_100 }));
+    commitPendingTraits();
+    return loadPlayerProfile()!;
+  };
+
+  it('stun窓中に近接ダメージが出たら rush 票(BossStyleSlotにも同じ写しが載る)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 1000, enemies: [mkBoss({ stunUntil: 3000 })] })); // 窓open
+    recordDamageDealt('melee', 25);                                                          // 詰めて叩いた
+    tickPlayerTraits(baseInput({ gameTime: 2000, enemies: [mkBoss({ stunUntil: 3000 })] }));
+    tickPlayerTraits(baseInput({ gameTime: 3500 }));                                         // 窓close=1票
+    const p = finish();
+    expect(p.punish?.stun).toEqual({ n: 1, rushRate: 1 });
+    expect(p.bossStyles?.[slotKey]?.punish?.stun).toEqual({ n: 1, rushRate: 1 });
+  });
+
+  it('stun窓中に近接ダメージが出なければ shoot 票(遠くから撃っていた人を決めつけない)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 1000, enemies: [mkBoss({ stunUntil: 3000 })] }));
+    recordDamageDealt('gun', 40); // 銃は票に影響しない
+    tickPlayerTraits(baseInput({ gameTime: 2000, enemies: [mkBoss({ stunUntil: 3000 })] }));
+    tickPlayerTraits(baseInput({ gameTime: 3500 }));
+    const p = finish();
+    expect(p.punish?.stun).toEqual({ n: 1, rushRate: 0 });
+  });
+
+  it('窓の外で出た近接ダメージは数えない(起点は窓が開いた瞬間の累計)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    recordDamageDealt('melee', 80); // 窓の外(平時の近接)
+    tickPlayerTraits(baseInput({ gameTime: 1000 }));
+    tickPlayerTraits(baseInput({ gameTime: 2000, enemies: [mkBoss({ stunUntil: 4000 })] })); // 窓open
+    tickPlayerTraits(baseInput({ gameTime: 4500 }));                                          // 窓close
+    const p = finish();
+    expect(p.punish?.stun).toEqual({ n: 1, rushRate: 0 });
+  });
+
+  it('文脈別に独立(recover=技後硬直の票はstunに入らない)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 1000, enemies: [mkBoss({ bossState: 'harai-recover' })] }));
+    recordDamageDealt('melee', 12);
+    tickPlayerTraits(baseInput({ gameTime: 2000 })); // 硬直明け=1票
+    const p = finish();
+    expect(p.punish?.recover).toEqual({ n: 1, rushRate: 1 });
+    expect(p.punish?.stun).toBeUndefined();
+    expect(p.punish?.afterCounter).toBeUndefined();
+  });
+
+  it('afterCounter=カウンター成立から1200ms(プレイヤーはlastCounterSuccessTimeが錨点)', () => {
+    const t0 = Date.now();
+    const withCounter = (at: number) => ({ ...mkPlayer(), lastCounterSuccessTime: at });
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 1000, player: withCounter(t0) })); // 成立直後=窓open
+    recordDamageDealt('melee', 9);
+    // 錨点を過去へずらす=窓は閉じている(1200ms経過相当)。
+    tickPlayerTraits(baseInput({ gameTime: 2000, player: withCounter(t0 - 5000) }));
+    const p = finish();
+    expect(p.punish?.afterCounter).toEqual({ n: 1, rushRate: 1 });
+  });
+
+  it('隙の窓が1度も開かないセッションは punish を作らない(欠損=undefinedのまま)', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 1000 }));
+    const p = finish();
+    expect(p.punish).toBeUndefined();
+    expect(p.bossStyles?.[slotKey]?.punish).toBeUndefined();
+  });
+
+  it('2セッション目はα=0.3でEMA混合しnは累計(dodgeDirと同じ数式)', () => {
+    // 1回目: rush(rushRate=1)
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 1000, enemies: [mkBoss({ stunUntil: 3000 })] }));
+    recordDamageDealt('melee', 10);
+    tickPlayerTraits(baseInput({ gameTime: 3500 }));
+    finish();
+    // 2回目: shoot(rushRate=0)
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    tickPlayerTraits(baseInput({ gameTime: 1000, enemies: [mkBoss({ stunUntil: 3000 })] }));
+    tickPlayerTraits(baseInput({ gameTime: 3500 }));
+    const p = finish();
+    expect(p.punish!.stun!.n).toBe(2);
+    expect(p.punish!.stun!.rushRate).toBeCloseTo(1 * 0.7 + 0 * 0.3, 10);
+  });
+
+  it('effectiveGhostProfile: punishはslot優先・slot欠損は軸1へ・両方欠損はundefined', () => {
+    const base: PlayerProfile = {
+      v: 1, runs: 1, reactionMs: 300, counterChance: 0.6, preferredDist: 200,
+      meleeBias: 0.5, mobility: 0.7, hitsPerMin: 4, subUsesPerMin: 2,
+      stationaryFrac: 0.3, approachPerMin: 2, moveReactions: {},
+      subStyles: { wire: { n: 0, slamRatio: 0 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 }, homing: { n: 0, holdMsAvg: 0 } },
+    };
+    const slot = (punish?: PlayerProfile['punish']) => ({
+      reactionMs: null, counterChance: null, preferredDist: null, meleeBias: null, mobility: null,
+      hitsPerMin: 1, subUsesPerMin: null, stationaryFrac: null, approachPerMin: null,
+      subStyles: base.subStyles, srcClass: null, snapshot: null, srcName: null, at: 0,
+      ...(punish ? { punish } : {}),
+    });
+    const slotPunish = { stun: { n: 1, rushRate: 1 } };
+    const axisPunish = { stun: { n: 9, rushRate: 0.2 } };
+    const both: PlayerProfile = { ...base, punish: axisPunish, bossStyles: { thor: slot(slotPunish) } };
+    expect(effectiveGhostProfile(both, 'thor').punish).toEqual(slotPunish);
+    const slotMissing: PlayerProfile = { ...base, punish: axisPunish, bossStyles: { thor: slot() } };
+    expect(effectiveGhostProfile(slotMissing, 'thor').punish).toEqual(axisPunish);
+    const neither: PlayerProfile = { ...base, bossStyles: { thor: slot() } };
+    expect(effectiveGhostProfile(neither, 'thor').punish).toBeUndefined();
+  });
+});
+
 describe('playerTraits G4a: サブ様式カウンタ(ラン単位・ボス交戦区間に限定しない)', () => {
   beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
 

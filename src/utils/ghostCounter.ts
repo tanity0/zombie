@@ -99,8 +99,10 @@ const ghostCounterBlueLayer = (
   st.spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
   // v0.25.2582(社長「ためしたい」=除外1の試験改定): 守護霊のカウンター成立にも停止+揺れ+寄りズーム
   // (プレイヤー成立=useGameLoopのthorCounterHit等と同じ定数)。?ghostzoom=0で従来(シェイクのみ)へ。
+  // v0.25.2585(社長報告「カメラが当人に向いてない。プレイヤーのみになってる」): 寄り先=**成立位置**
+  // (守護霊とボスの間)を明示的に渡す。旧: 寄り先なし=画面中央=カメラが追うプレイヤーへ寄っていた。
   if (GHOST_ZOOM_TRIAL_ENABLED) {
-    st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+    st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, hitX, hitY);
   } else if (GHOST_FX_SHAKE_ENABLED) st.triggerShake(COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG);
   if (playSfxGain && sfxGain > 0) playSfxGain('counter', sfxGain);
 };
@@ -153,10 +155,16 @@ export const applyGhostCounterEffect = (
   ghostCounterBlueLayer(hitX, hitY, fire.sfxGain, playSfxGain);
   // v0.25.2489: カウンター成立の付与無敵(プレイヤーのinvulnerable+invulnerableTime相当=INVULN_MS)。
   // 全per-bossハンドラ+城ボス系パリィがこの共通変換を通るので、ここ1箇所で全経路に効く。
+  // GHOST-CMD-2A(§2.18追補 隙コマンド): カウンター成立の打刻(ghostLastCounterAt)。プレイヤー側の
+  // player.lastCounterSuccessTime と同じ意味で、成立直後の追撃窓(afterCounter文脈)の錨点になる。
+  // 全ゴースト成立経路がこの共通変換を通るので、無敵付与と同じ1箇所で全経路に効く。
   {
-    const invulnUntil = Date.now() + INVULN_MS;
+    const atMs = Date.now();
+    const invulnUntil = atMs + INVULN_MS;
     useGameStore.setState(s => ({
-      summons: s.summons.map(su => su.kind === 'ghost-ally' ? { ...su, ghostInvulnUntil: invulnUntil } : su),
+      summons: s.summons.map(su => su.kind === 'ghost-ally'
+        ? { ...su, ghostInvulnUntil: invulnUntil, ghostLastCounterAt: atMs }
+        : su),
     }));
   }
   // 確定クリ(crit=true → bumpBossCrit)+金クリ層

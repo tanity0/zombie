@@ -10,6 +10,7 @@ import {
   ghostReactionMs, ghostMoveChance, ghostApproachChance, ghostDesiredDist,
   ghostCounterWaitExpired, ghostDodgeVector,
   ghostDodgeLateralFrac, GHOST_DODGE_DIR_MAX_RAD,
+  drawPunishMode, // GHOST-CMD-2A(§2.18追補): 隙コマンドのモード抽選(2モード袋)
   stepGhostDanger, GHOST_DANGER_MEMORY_MS, GHOST_BULLET_TANK_MS,
   GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS, GHOST_WINDUP_SAFE_MARGIN_PX,
   GHOST_COUNTER_WAIT_MS, GHOST_DEFAULT_STATIONARY_FRAC, GHOST_APPROACH_MIN_CHANCE,
@@ -18,6 +19,8 @@ import {
 } from './ghostDriver';
 import { jumpDodge, botSkillProfile } from './botSkill';
 import { resetGhostCommandBags } from './commandBag';
+import { resetModeBags } from './modeBag'; // GHOST-CMD-2A: 隙コマンドの2モード袋(ラン単位)
+import { PUNISH_AFTER_COUNTER_MS } from './punishWindow';
 import type { Enemy, Projectile } from '../types/game';
 
 // §2.18(GHOST-CMD-1): 技への反応の決定はラン単位の袋(モジュールシングルトン)から引くようになった。
@@ -1083,5 +1086,155 @@ describe('GHOST-CMD-1B: 避け方向の癖(円形脅威の接線バイアス)', 
     const biased = run({ ...PROFILE, dodgeDir: { n: 4, awayRate: 0, lateralRate: 1 } });
     expect(biased.calls).toBe(plain.calls); // 回転は決定的=乱数消費は不変
     expect(biased.d.action).toBe(plain.d.action); // 変わるのは回避ベクトルの向きだけ
+  });
+});
+
+// ==== GHOST-CMD-2A(§2.18追補): 隙コマンド(気絶/技後硬直/カウンター直後 × 詰めて叩く/撃つ) ======
+describe('decideGhost GHOST-CMD-2A: 隙コマンド(punish)の消費', () => {
+  beforeEach(() => resetModeBags());
+
+  // 遠い(+x)ボス。気絶させると stun 文脈の窓が開く。
+  const farBoss = (over: Partial<Enemy> = {}) => mkBoss({ x: 600, y: 0, ...over });
+  const stunned = (over: Partial<Enemy> = {}) => farBoss({ stunUntil: 5000, ...over });
+  // 近接射程内(縁40px)に立つゴースト+meleeBias=0=「通常なら絶対に振らない人」。
+  const nearBoss = (over: Partial<Enemy> = {}) => mkBoss({ x: 300, y: 0, ...over });
+  const NO_MELEE: GhostProfile = { ...PROFILE, meleeBias: 0, counterChance: 0 };
+  // 0.99 = 移動リズム(ghostMoveChance≈0.825)のゲートを必ず外す乱数。
+  //        rush はリズムを通さない=符号で「詰めに行った」ことを判別できる。
+  const LAZY = () => 0.99;
+
+  it('記録なし(punish欠損)でも窓が開けば既定の rush=縁74pxへ詰める(リズムのゲートを通さない)', () => {
+    const idle = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, orbitSign: -1 }), enemies: [farBoss()], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(idle.moveX).toBeLessThan(0.1);   // 窓なし=止まり癖tick(横流れ)=ボスへ詰めない
+    expect(idle.punishContext).toBeUndefined();
+    expect(idle.punishMode).toBeUndefined();
+
+    const rush = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, orbitSign: -1 }), enemies: [stunned()], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(rush.punishContext).toBe('stun');
+    expect(rush.punishMode).toBe('rush');
+    expect(rush.moveX).toBeGreaterThan(0.9); // ボス(+x)へ真っ直ぐ詰める
+  });
+
+  it("rush中は射程内で必ず melee(meleeBias抽選を通さない)/'shoot'記録なら従来どおり撃つ", () => {
+    const ghost = () => mkGhost({ x: 250, y: 0, orbitSign: -1 }); // 中心(260,10)=縁から40px
+    const noWindow = decideGhost(baseDriverInput({
+      ghost: ghost(), enemies: [nearBoss()], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(noWindow.action).toBe('shoot'); // meleeBias=0=通常は振らない
+
+    const rush = decideGhost(baseDriverInput({
+      ghost: ghost(), enemies: [nearBoss({ stunUntil: 5000 })], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(rush.punishMode).toBe('rush');
+    expect(rush.action).toBe('melee'); // 気絶中の処刑は実行側(applyGhostMeleeFinisher)が受け持つ
+
+    // 記録が「撃つ人」(rushRate=0)なら決めつけない=従来どおり(振らない/撃つ)。
+    const shoot = decideGhost(baseDriverInput({
+      ghost: ghost(), enemies: [nearBoss({ stunUntil: 5000 })], boundBossId: 'boss-1',
+      profile: { ...NO_MELEE, punish: { stun: { n: 4, rushRate: 0 } } },
+      rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(shoot.punishMode).toBe('shoot');
+    expect(shoot.action).toBe('shoot');
+  });
+
+  it('rush中でも回避(dodge)が上位=他の脅威は避けながら詰める', () => {
+    const bullet = mkProj(); // +x方向へ飛ぶ弾(ゴーストの左手前から)
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, orbitSign: -1, dangerSeenAt: 0, dangerLastAt: 1000 }),
+      enemies: [stunned()], boundBossId: 'boss-1', projectiles: [bullet],
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(d.punishMode).toBe('rush');  // 窓は開いている(モードは引けている)
+    expect(d.moveY).toBeLessThan(0);    // が、移動は弾を外す横方向(-y)=回避が勝つ
+  });
+
+  it('窓が閉じたら通常の意思決定へ戻る(文脈/モードを持ち越さない)', () => {
+    const opened = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, orbitSign: -1 }), enemies: [stunned()], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(opened.punishContext).toBe('stun');
+    const closed = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 0, y: 0, orbitSign: -1,
+        punishContext: opened.punishContext, punishMode: opened.punishMode,
+      }),
+      enemies: [farBoss({ stunUntil: 5000 })], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 6000, gameTime: 6000, // 気絶が切れた
+    }));
+    expect(closed.punishContext).toBeUndefined();
+    expect(closed.punishMode).toBeUndefined();
+    expect(closed.moveX).toBeLessThan(0.1); // 詰めをやめて通常(横流れ)へ
+  });
+
+  it('乱数消費: 窓なし/記録なしは0回、記録ありは文脈開始tickの1回のみ(同じ窓では引き直さない)', () => {
+    const run = (over: Partial<GhostDriverInput>, ghostOver: Partial<GhostSelf> = {}) => {
+      let calls = 0;
+      const d = decideGhost(baseDriverInput({
+        ghost: mkGhost({ x: 0, y: 0, orbitSign: -1, ...ghostOver }), // orbitSign指定=初期化の1回を除く
+        enemies: [farBoss()], boundBossId: 'boss-1', profile: NO_MELEE,
+        nowMs: 1000, gameTime: 1000,
+        rand: () => { calls += 1; return 0.99; },
+        ...over,
+      }));
+      return { d, calls };
+    };
+    // 窓なし: 旋回反転(1)+移動リズム(1)= 2回(隙コマンドは1回も引かない)。
+    const plain = run({});
+    expect(plain.calls).toBe(2);
+    // 窓あり・記録なし: 引く札が無い=デフォルトrush。rushはリズムを通さない=旋回反転(1)のみ。
+    const noRecord = run({ enemies: [stunned()] });
+    expect(noRecord.d.punishMode).toBe('rush');
+    expect(noRecord.calls).toBe(1);
+    // 窓あり・記録あり: 旋回反転(1)+モード抽選(1)= 2回。
+    const withRecord = run({
+      enemies: [stunned()], profile: { ...NO_MELEE, punish: { stun: { n: 4, rushRate: 1 } } },
+    });
+    expect(withRecord.d.punishMode).toBe('rush');
+    expect(withRecord.calls).toBe(2);
+    // 同じ窓の続き(文脈/モードを持ち越し): 抽選は起きない=旋回反転(1)のみ。
+    const carried = run(
+      { enemies: [stunned()], profile: { ...NO_MELEE, punish: { stun: { n: 4, rushRate: 1 } } } },
+      { punishContext: 'stun', punishMode: 'rush' },
+    );
+    expect(carried.calls).toBe(1);
+  });
+
+  it('drawPunishMode: 引き切りで割合が記録どおり(n=10・rushRate=0.7 → rush7/shoot3)', () => {
+    const values = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95];
+    let i = 0;
+    const rand = () => values[i++ % values.length];
+    const drawn = Array.from({ length: 10 }, () =>
+      drawPunishMode({ stun: { n: 10, rushRate: 0.7 } }, 'stun', rand));
+    expect(drawn.filter(m => m === 'rush').length).toBe(7);
+    expect(drawn.filter(m => m === 'shoot').length).toBe(3);
+  });
+
+  it('drawPunishMode: 記録なし/n=0は既定のrush・rushRate=0の記録は常にshoot(決めつけない)', () => {
+    expect(drawPunishMode(undefined, 'stun', () => 0)).toBe('rush');
+    expect(drawPunishMode({ stun: { n: 0, rushRate: 0 } }, 'stun', () => 0)).toBe('rush');
+    for (let k = 0; k < 6; k++) {
+      expect(drawPunishMode({ recover: { n: 3, rushRate: 0 } }, 'recover', () => 0)).toBe('shoot');
+    }
+  });
+
+  it('afterCounter: 自分のカウンター成立から1200ms(ghostLastCounterAt)が窓の錨点', () => {
+    const at = (lastCounterAtMs: number | undefined, nowMs: number) => decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, orbitSign: -1, lastCounterAtMs }),
+      enemies: [farBoss()], boundBossId: 'boss-1', profile: NO_MELEE,
+      rand: LAZY, nowMs, gameTime: nowMs,
+    }));
+    expect(at(1000, 1500).punishContext).toBe('afterCounter');
+    expect(at(1000, 1000 + PUNISH_AFTER_COUNTER_MS).punishContext).toBeUndefined();
+    expect(at(undefined, 1500).punishContext).toBeUndefined();
   });
 });
