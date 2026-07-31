@@ -558,7 +558,7 @@ const endSession = (): void => {
       dodgeDirSample: moveResult.dodgeDir, // GHOST-CMD-1B: セッションと同じ確定値の写し
       punishSample,                        // GHOST-CMD-2A: 同上(丸ごと写し)
       // v0.25.2603(社長式): 評点=1技あたりの平均点(時間では割らない。速さはタイブレーク)。
-      perfScoreSample: bossStylePerfScore(moveResult.tally),
+      perfScoreSample: bossStylePerfScore(moveResult.tally, cleared.clearTimeMs),
       srcClass, snapshot, srcName, at: Date.now(), clearTimeMs: cleared.clearTimeMs,
       ally: cleared.ally, // v0.25.2553(§2.16 A): 撃破の瞬間に写した同行守護霊(不在ならnull)
     });
@@ -970,34 +970,60 @@ export const applyPendingSubStyle = (prev: PlayerProfile, r: PendingSubStyleReco
  * 旧基準(被弾/分)は**分あたり**だったため「1発20秒=3.0/分」が「3発3分=1.0/分」に負ける=
  * **速く倒すほど不利**という直感に反する挙動だった(社長報告「上書きしたはずなのに前の守護霊が出る」)。
  */
-export const MOVE_COUNTER_WEIGHT = 3;
-export const MOVE_DODGE_WEIGHT = 1;
-/** 被弾の重み(負の加点)。**この1つが霊の性格を決める調整ノブ**(社長へ提示済み・実機調整前提):
- *  −0.5=カウンター重視(攻めて取りに行く霊が上) / −1=中間(社長の元の値) / −2=無傷重視。 */
-export const MOVE_HIT_WEIGHT = -1;
+/**
+ * v0.25.2604(社長式・確定): 記録の勝ち負けを決める**評点**。高いほど良い。
+ *
+ *   評点 = 60 × (5×カウンター率 − 3×被弾率) − かかった秒数
+ *
+ * 社長が定めた「上手いの概念」の順位=**カウンター > ミスが少ない > 速い**をそのまま表す。
+ *
+ * 設計の根拠(いずれも検算で確かめた。**むやみに項を足さないこと**):
+ *  - **避けた数は入れない。** 1つの技は必ず カウンター/避け/被弾 のどれか1つに決まる(排他3分類・
+ *    moveReaction.ts)ので、カウンター率と被弾率が決まれば避け率は自動的に決まる=独立した情報ではない。
+ *    しかも避けに点を付けると重み比が勝手にズレる: 避け+1点にすると式は
+ *    `1 + 4×カウンター率 − 4×被弾率` に化け、**カウンターとミスが同格**になる(5:3 → 4:4)。
+ *  - **DPSは入れない。** ボスのHPは固定なので DPS = HP/交戦時間 = **1/時間そのもの**。
+ *    時間と別に足すと同じものを2回数える(そもそもボス毎の与ダメージは計測していない)。
+ *  - **時間は引き算・スケールは60。** 基礎点の幅は−3〜+5しかないのに秒数は20〜300あるため、
+ *    素の秒数を引くと基礎点が誤差になり**時間だけの勝負**になる(被弾40%の力押し45秒が、
+ *    カウンター90%無傷の70秒に勝ってしまう)。60を掛けると「基礎点1点=60秒」=1分で1点減点になり、
+ *    社長の順位どおりに並ぶ。10だと1分6点減=速攻が完璧に勝つ(検算のうえ不採用)。
+ *
+ * 旧基準(被弾/分)は**分あたり**だったため「1発20秒=3.0/分」が「3発3分=1.0/分」に負ける=
+ * **速く倒すほど不利**という直感に反する挙動だった(社長報告「上書きしたはずなのに前の守護霊が出る」)。
+ */
+export const MOVE_COUNTER_WEIGHT = 5;
+/** 被弾(ミス)の重み(社長指定・**引く**側なので正の数で持つ)。 */
+export const MOVE_HIT_WEIGHT = 3;
+/** 基礎点1点が何秒ぶんの価値か。60=**1分かかるごとに1点減点**。 */
+export const PERF_TIME_SCALE_SEC = 60;
 
 /**
- * 純関数: 技への反応表(1セッションぶんの生tally)から評点を出す。
+ * 純関数: 技への反応表(1セッションぶんの生tally)と交戦時間から評点を出す。
+ *
+ *   評点 = 60 × (5×カウンター率 − 3×被弾率) − かかった秒数
+ *
  * 技に一度も晒されていない(分母0)なら null=**比較不能**(比較側が扱いを決める)。
- * ※技への反応表の対象は城ボス系+トール(MOVE_REACTION_KEYS)。天使/idol/裏ボスは計測対象外なので
- *   常に null=「毎回いちばん新しい撃破が残る」挙動になる(データが無い以上ここでは順位を付けない)。
+ *
+ * 弾を撃つ技の扱い(社長の但し書き「弾はカウントしない。ただしカウンターしたらカウンターをカウント」):
+ * **カウンターできた回だけ**分子・分母の両方に数える。避け/被弾は数えない(分母にも入れない——
+ * 入れると弾幕の多いボスほど分母が膨らんで近接技のカウンター率が薄まるため)。
  */
 export const bossStylePerfScore = (
   tally: Readonly<Record<string, MoveReactionTally>>,
+  durationMs: number,
 ): number | null => {
-  let points = 0, moves = 0;
+  if (!(durationMs > 0)) return null;
+  let counters = 0, hits = 0, moves = 0;
   for (const [key, t] of Object.entries(tally)) {
-    if (isProjectileMoveKey(key)) {
-      // 弾の技: カウンターできた回だけを数える(避け/被弾は分子にも分母にも入れない)。
-      points += t.counters * MOVE_COUNTER_WEIGHT;
-      moves += t.counters;
-      continue;
-    }
-    const dodges = Math.max(0, t.exposures - t.counters - t.hits);
-    points += t.counters * MOVE_COUNTER_WEIGHT + dodges * MOVE_DODGE_WEIGHT + t.hits * MOVE_HIT_WEIGHT;
+    counters += t.counters;
+    if (isProjectileMoveKey(key)) { moves += t.counters; continue; } // 弾技=反射できた回だけ
     moves += t.exposures;
+    hits += t.hits;
   }
-  return moves === 0 ? null : points / moves;
+  if (moves === 0) return null;
+  const base = MOVE_COUNTER_WEIGHT * (counters / moves) - MOVE_HIT_WEIGHT * (hits / moves);
+  return PERF_TIME_SCALE_SEC * base - durationMs / 1000;
 };
 
 /**
@@ -1059,12 +1085,11 @@ export const sampleSubStylesFromRecord = (r: PendingSubStyleRecord): SubStylePro
 export const applyPendingBossStyle = (
   prev: PlayerProfile, r: PendingBossStyleRecord, subStylesForSlot: SubStyleProfile,
 ): PlayerProfile => {
-  const existing = prev.bossStyles?.[r.slotKey];
-  // v0.25.2603(社長裁定A): リザルトで**明示的に採用**した撃破は比較を通さず無条件で上書きする
-  // (旧: 採用チェックがONでも被弾/分が悪ければ黙って据え置き=「採用したのに反映されない」の正体)。
-  if (!r.adopted && !isBetterBossStyleSample(
-    existing?.perfScore, r.perfScoreSample, existing !== undefined, existing?.clearTimeMs, r.clearTimeMs,
-  )) return prev;
+  // v0.25.2604(社長裁定・最終): **守護霊のデータは評点を見ずに必ず最新の撃破で上書きする。**
+  // 理由=「じゃないとリプレイにならん」。この写しは"戦績"ではなく**その戦いの再生データ**なので、
+  // ベスト保持にすると霊が過去の自分のまま固まり、今の腕・今のビルドを映さなくなる。
+  // 評点(perfScore)は**表示(記録更新バッジ/討伐記録一覧)と既定の基準**にだけ使う=ここでは使わない。
+  // どのスロットを書くか自体は、リザルトの採用チェック(selectPendingForSettlement)が先に絞っている。
   // GHOST-CMD-1B: そのセッションの生値(EMAなし=prev:undefinedへの適用はサンプルそのまま)。
   // 分類できたdodgeが無いセッションはundefined=載せない(消費側が軸1へフォールバック)。
   const dodgeDir = blendDodgeDirStat(undefined, r.dodgeDirSample, EMA_ALPHA);
