@@ -1,0 +1,67 @@
+// v0.25.2601(社長裁定「その第三案でいい」): 城ボスの飛び掛かり(g-jump-air)のカウンターは
+// **着地したら当たる位置**でだけ成立する。「赤い着地円=弾ける範囲」を一致させる不変条件を固定する
+// (CLAUDE.md 攻撃ヴィジュアルの分類①「赤いのに当たらない/赤くないのに当たるは絶対にやらない」の
+//  カウンター版=「赤い円の外に居るのに弾ける」を潰す)。
+import { describe, it, expect } from 'vitest';
+import { useGameStore, GIANT_JUMP_RADIUS } from '../store/gameStore';
+import { applyContactDamage, inGiantJumpLandingZone, NOOP_COMBAT_EFFECTS } from './combatTick';
+import { spawnEnemyAt } from './enemyUtils';
+import type { Enemy } from '../types/game';
+
+const jumpingGiantAt = (x: number, y: number, landX: number, landY: number): Enemy => {
+  const boss = spawnEnemyAt('giantbat', x, y, useGameStore.getState().gameTime);
+  boss.aiPhase = 'g-jump-air';
+  boss.aiTargetX = landX; boss.aiTargetY = landY;
+  boss.gJumpRadius = GIANT_JUMP_RADIUS;
+  boss.health = boss.maxHealth; // 反撃で倒れない
+  boss.bossCritCount = 0;
+  return boss;
+};
+
+describe('inGiantJumpLandingZone: 幾何は着地の爆風判定と同一', () => {
+  const boss = { aiTargetX: 1000, aiTargetY: 1000, width: 80, height: 80, gJumpRadius: 100 };
+  const lx = 1040, ly = 1040; // 着地円の中心 = aiTarget + 半身
+
+  it('円の中(中心)は成立する', () => {
+    expect(inGiantJumpLandingZone(lx, ly, 16, boss)).toBe(true);
+  });
+  it('縁ちょうど(半径+自分の当たり半径)は成立する=爆風と同じ境界', () => {
+    expect(inGiantJumpLandingZone(lx + 100 + 16, ly, 16, boss)).toBe(true);
+    expect(inGiantJumpLandingZone(lx + 100 + 16 + 0.5, ly, 16, boss)).toBe(false);
+  });
+  it('円の外は成立しない(ボスの通り道に立っているだけでは弾けない)', () => {
+    expect(inGiantJumpLandingZone(lx + 400, ly, 16, boss)).toBe(false);
+  });
+  it('着地点が未確定(旧セーブ等)は従来どおり通す=厳しくするのは外だと確認できた時だけ', () => {
+    expect(inGiantJumpLandingZone(0, 0, 16, { ...boss, aiTargetX: undefined })).toBe(true);
+    expect(inGiantJumpLandingZone(0, 0, 16, { ...boss, aiTargetY: undefined })).toBe(true);
+  });
+});
+
+describe('プレイヤーの空中パリィ: 着地円の中でだけ成立する', () => {
+  const setup = (landOffset: number) => {
+    useGameStore.getState().resetGame('warrior');
+    const now = Date.now();
+    useGameStore.setState(s => ({
+      player: { ...s.player, x: 0, y: 0, counterWindowEnd: now + 400, invulnerable: false },
+    }));
+    const p = useGameStore.getState().player;
+    // ボス本体はプレイヤーに重ねる(接触=分岐①に入る条件)。着地点だけを遠近で振り分ける。
+    const boss = jumpingGiantAt(p.x, p.y, p.x + landOffset, p.y);
+    useGameStore.setState({ enemies: [boss] });
+    applyContactDamage(useGameStore.getState().gameTime, false, 0, NOOP_COMBAT_EFFECTS);
+    return useGameStore.getState().enemies.find(e => e.id === boss.id);
+  };
+
+  it('着地点が自分の真上=円の中 → パリィ成立(確定クリ=bossCritCountが増える)', () => {
+    const after = setup(0);
+    expect(after?.bossCritCount).toBe(1);
+  });
+
+  it('着地点が遠く=円の外 → 体が重なっていてもパリィしない(赤くないのに弾ける、を潰す)', () => {
+    const after = setup(1200);
+    expect(after?.bossCritCount ?? 0).toBe(0);
+    // 空中の相手からは被弾しない(この不変条件は据え置き=分岐①のreturnは変えていない)。
+    expect(useGameStore.getState().player.health).toBe(useGameStore.getState().player.maxHealth);
+  });
+});

@@ -43,7 +43,7 @@ import {
   KNOCKBACK_DURATION, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, STUN_DURATION_MS,
-  GIANT_SCRIPT_ENABLED,
+  GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS,
   bossCritCdMult,
 } from '../store/gameStore';
 import { distToSegment } from './levelUpGate';
@@ -669,6 +669,32 @@ const GIANT_PARRYABLE_PHASES: readonly string[] = [
  * ※分岐構造そのもの(①はカウンター窓外でも被弾無し等)は applyContactDamage 側が正本。
  *   あちらの当該分岐を変更したら必ずここも同期すること(逆も然り)。
  *   気絶中(stunUntil)のパリィは接触被弾回避の防御目的なので守護霊側には含めない。 */
+/**
+ * v0.25.2601(社長裁定「その第三案でいい」): 城ボスの**飛び掛かり中(g-jump-air)のカウンターは
+ * 「着地したら当たる位置」に居る時だけ成立する**。
+ *
+ * なぜ: 空中は「体に触れれば取れる」ため、**着地の赤い円と無関係な位置**(ボスの通り道)でも成立して
+ * いた=「見たまんまが当たり判定」(CLAUDE.md 攻撃ヴィジュアルの分類①)に反していた。空中で弾ける
+ * こと自体は残す(消すとジャンプが「避ける/食らう」の二択になり、硬直を叩くしか残らなくなる)。
+ *
+ * 幾何は**着地の爆風判定と1バイトも同じ**(中心=ロック済み着地点 aiTarget+半身、半径=gJumpRadius、
+ * 相手の当たり半径を足す)。描画の赤円(pixiScene)も同じフィールドを読むので、**赤い円の中=弾ける**が
+ * 厳密に一致する。着地点が未確定(旧セーブ等)の時は従来どおり通す=判定を厳しくするのは
+ * 「円の外に居る」と確認できた時だけ。
+ */
+export const inGiantJumpLandingZone = (
+  actorCx: number, actorCy: number, actorRadius: number,
+  enemy: Pick<Enemy, 'aiTargetX' | 'aiTargetY' | 'width' | 'height' | 'gJumpRadius'>,
+): boolean => {
+  if (enemy.aiTargetX === undefined || enemy.aiTargetY === undefined) return true;
+  const lx = enemy.aiTargetX + enemy.width / 2;
+  const ly = enemy.aiTargetY + enemy.height / 2;
+  const r = enemy.gJumpRadius ?? GIANT_JUMP_RADIUS;
+  return Math.hypot(actorCx - lx, actorCy - ly) <= r + actorRadius;
+};
+
+/** ※ v0.25.2601: `g-jump-air` はこの述語を通ったうえで **inGiantJumpLandingZone** も要る
+ *   (位置条件はこの述語に持たせない=主語の座標を受け取らない純粋なフェーズ判定のまま保つ)。 */
 export const isDashParryCounterPhase = (enemy: Pick<Enemy, 'type' | 'aiPhase'>): boolean =>
   enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air'
   || enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch'
@@ -733,6 +759,18 @@ export const applyGhostBossParry = (
   const state = useGameStore.getState();
   const boss = state.enemies.find(e => e.id === claim.bossId);
   if (!boss || boss.type !== 'giantbat') return; // 他ファミリーの請求はそれぞれのハンドラが消費する
+  // v0.25.2601(社長裁定・第三案): 飛び掛かり中は**着地したら当たる位置**に居る時だけ弾ける
+  // (プレイヤー側 applyContactDamage の同じ条件と対。幾何は着地の爆風判定と同一)。
+  // ここは**消費せずに帰る**=円の外なら請求は残し、着地の爆風側(inBlastGhost経路)の判定に回す
+  // (円の外なら爆風にも当たらないので実質は流れるだけ。同フレームの正当な弾きを潰さないため)。
+  if (boss.aiPhase === 'g-jump-air') {
+    const g = state.summons.find(s => s.kind === 'ghost-ally');
+    if (!g) return;
+    const inZone = inGiantJumpLandingZone(
+      g.x + g.width / 2, g.y + g.height / 2, Math.max(g.width, g.height) / 2, boss,
+    );
+    if (!inZone) return;
+  }
   if (consumeGhostCounterClaim(boss.id, nowMs) === null) return;
   // プレイヤーが弾けない状態(windup等=W4「予告を出したら必ず実行」)では成立させず請求を流す。
   // ※覗くだけで残さず「消費して流す」: windup中の請求が直後の実行(g-dash-charge等)へ持ち越されて
@@ -786,7 +824,15 @@ export const applyContactDamage = (
     // カウンター窓中ならカウンター成立=クリティカル反撃(ヘッドショット)を返す。
     // M51: ジャイアント新スクリプトの飛び掛かり滞空(g-jump-air)も同じ扱い(既存'jump'と同義)。
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air') {
-      if (counterActiveNow) dashParried.push(enemy.id);
+      // v0.25.2601(社長裁定・第三案): 城ボスの飛び掛かりは**着地したら当たる位置**でだけ弾ける
+      // (赤い着地円=カウンターできる範囲、を一致させる)。空中で被弾しないこと自体は不変。
+      // 旧 'jump'(パンプキン等の非ボス)は対象外=従来どおり触れていれば弾ける。
+      const jumpZoneOk = enemy.aiPhase !== 'g-jump-air'
+        || inGiantJumpLandingZone(
+          collPlayer.x + collPlayer.width / 2, collPlayer.y + collPlayer.height / 2,
+          Math.max(collPlayer.width, collPlayer.height) / 2, enemy,
+        );
+      if (counterActiveNow && jumpZoneOk) dashParried.push(enemy.id);
       return;
     }
     // 突進(charge)/ジャンプの着地硬直(recover)/溜め(crouch)も、カウンター窓中は弾く。
