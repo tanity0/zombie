@@ -188,6 +188,20 @@ describe('ghostExtraTelegraphDodge: 図形の向き', () => {
     expect(t).toHaveLength(1);
     expect(t[0].ux).toBeGreaterThan(0);
   });
+
+  // GHOST-CMD-1B: 円形タグ。避け方向の癖(ghostDriver)の回転対象は円だけ=帯にタグを付けない。
+  it("円形の脅威(circle-self/circle-target)には shape:'circle' が付き、帯には付かない", () => {
+    const circleSelf = ghostExtraTelegraphDodge(100, 20, mk({ aiPhase: 'g-nova-windup' as Enemy['aiPhase'] }));
+    expect(circleSelf[0].shape).toBe('circle');
+    const circleTarget = ghostExtraTelegraphDodge(430, 20, mk({
+      aiPhase: 'g-dive-windup' as Enemy['aiPhase'], aiFromX: 0, aiFromY: 0, aiTargetX: 400, aiTargetY: 0,
+    }));
+    expect(circleTarget[0].shape).toBe('circle');
+    const band = ghostExtraTelegraphDodge(150, 20, mk({
+      type: 'uri' as Enemy['type'], bossState: 'sweep', aiFromX: 0, aiFromY: 0, aiTargetX: 300, aiTargetY: 0,
+    }));
+    expect(band[0].shape).toBeUndefined();
+  });
 });
 
 describe('isTelegraphActive: 危険時(§2.12 要件3/4)の判定', () => {

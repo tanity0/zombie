@@ -34,8 +34,8 @@ import { isHiddenBoss } from './enemyUtils';
 import { enemyHitStrip } from '../pixi/renderSpec';
 import {
   createMoveReactionState, stepMoveReactions, markMoveReactionCounter, markMoveReactionHit,
-  endMoveReactions, blendMoveReactionTable,
-  type MoveReactionState, type MoveReactionTable,
+  endMoveReactions, blendMoveReactionTable, blendDodgeDirStat,
+  type MoveReactionState, type MoveReactionTable, type DodgeDirTally, type DodgeDirStat,
 } from './moveReaction'; // G4a(BOT_AND_GHOST.md §2.9): 技への反応表の判定中核(純関数)
 import { loadPlayerName } from './playerName'; // v0.25.2477: 計測時のプレイヤー名(srcName)の出どころ
 
@@ -96,6 +96,9 @@ export interface BossStyleSlot {
    * 討伐記録一覧で「同行者の名前」を出し、タップでビルド/ステータスのポップアップを描くための保存。
    * 撃破の瞬間に召喚中のghost-allyから写す=不在なら未保存(欠損可・カード非表示)。 */
   ally?: GhostAllySnapshot;
+  /** GHOST-CMD-1B(§2.18-2): 避け方向の癖(そのセッションの生値の写し=EMAなし・丸ごと写しの一部)。
+   * このセッションで分類できたdodgeが無ければ未保存(欠損可=消費側が軸1へフォールバック)。 */
+  dodgeDir?: DodgeDirStat;
 }
 
 export interface PlayerProfile {
@@ -119,6 +122,13 @@ export interface PlayerProfile {
   approachPerMin: number;
   /** G4a(§2.9(1)): 技への反応表。キー=G2.5のボス×技表の名称(moveReaction.ts参照)。 */
   moveReactions: MoveReactionTable;
+  /**
+   * GHOST-CMD-1B(§2.18-2 dodgeの味付け): 避け方向の癖(技キー横断のグローバル記録)。
+   * awayRate=後退 / lateralRate=横流し / through(前抜け)=1−away−lateral で導出。混合は
+   * blendMoveReactionTable と同じ数式を1キー分だけ適用(blendDodgeDirStat)。旧プロファイルには
+   * 無い=欠損可(スキーマ版vは据え置き。欠損=undefined=消費側はバイアス0で従来とビット一致)。
+   */
+  dodgeDir?: DodgeDirStat;
   /** G4a(§2.9(3)): サブウェポンの様式カウンタ(ボス交戦区間に限定しない=ラン単位でEMA)。 */
   subStyles: SubStyleProfile;
   /** v0.25.2467(社長指示): 計測時のクラス(ゴーストの絵の選択用)。旧プロファイルには無い=任意。 */
@@ -206,6 +216,8 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
     && (o.stationaryFrac === undefined || typeof o.stationaryFrac === 'number')
     && (o.approachPerMin === undefined || typeof o.approachPerMin === 'number')
     && (o.moveReactions === undefined || (typeof o.moveReactions === 'object' && o.moveReactions !== null))
+    // GHOST-CMD-1B: dodgeDir(避け方向の癖)。欠損可(旧プロファイル=undefinedのまま読める)。
+    && (o.dodgeDir === undefined || (typeof o.dodgeDir === 'object' && o.dodgeDir !== null))
     && (o.subStyles === undefined || (typeof o.subStyles === 'object' && o.subStyles !== null))
     // G5(§2.10仕様1): bossStylesは任意オブジェクトとして許容(後方互換=欠損可)。
     && (o.bossStyles === undefined || (typeof o.bossStyles === 'object' && o.bossStyles !== null));
@@ -379,6 +391,8 @@ export interface PendingSessionRecord {
   stationarySample: number | null;
   approachSample: number | null;
   moveTally: MoveReactionState['tally'];
+  /** GHOST-CMD-1B: 避け方向の癖のセッション集計(dodgeで確定したエピソードの3分類カウント)。 */
+  dodgeDirSample: DodgeDirTally;
   srcClass: string | null;
   snapshot: PlayerBuildSnapshot | null;
   /** v0.25.2477: セッション確定時点のプレイヤー名(loadPlayerName=無ければ生成される)。 */
@@ -408,6 +422,8 @@ export interface PendingBossStyleRecord {
   subUsesPerMinSample: number | null;
   stationarySample: number | null;
   approachSample: number | null;
+  /** GHOST-CMD-1B: 避け方向の癖(セッションレコードと同じ確定値の写し)。 */
+  dodgeDirSample: DodgeDirTally;
   srcClass: string | null;
   snapshot: PlayerBuildSnapshot | null;
   srcName: string | null;
@@ -470,6 +486,11 @@ const endSession = (): void => {
       : sessionSnapshot;
   // v0.25.2477: プレイヤー名も同じくendSession時点で確定(未設定なら台帳が初期名を生成して返す)。
   const srcName = loadPlayerName();
+  // G4a: 技への反応表の確定(開いている/残響中のエピソードも全部畳む)。
+  // GHOST-CMD-1B: 避け方向の癖(dodgeDir)も同じ確定で返る。30秒フロアの手前で確定するのは、
+  // 撃破スロット(bossStyle=フロア対象外・v0.25.2579)にも同じサンプルを写すため。フロアの適用先は
+  // 従来どおり軸1(sessionレコード)だけ=既存ゲートに新しい例外は作らない。
+  const moveResult = endMoveReactions(s.moveReactions);
 
   // v0.25.2476: サンプル計算は従来のまま。ここで保存せず保留バッファへ積む(EMA混合はcommit時)。
   // v0.25.2579: 軸1(共通スタイル)だけ30秒フロアの対象(撃破スロットは下のループで無条件に積む)。
@@ -478,9 +499,10 @@ const endSession = (): void => {
       kind: 'session',
       reactionSample, counterChanceSample, preferredDistSample, meleeBiasSample, mobilitySample,
       hitsPerMinSample, subUsesPerMinSample,
-      // G4a: 移動2ノブのサンプル+技への反応表の確定(開いている/残響中のエピソードも全部畳む)。
+      // G4a: 移動2ノブのサンプル+技への反応表(+GHOST-CMD-1Bの避け方向)の確定値。
       stationarySample, approachSample,
-      moveTally: endMoveReactions(s.moveReactions),
+      moveTally: moveResult.tally,
+      dodgeDirSample: moveResult.dodgeDir,
       srcClass, snapshot, srcName,
     });
   }
@@ -492,6 +514,7 @@ const endSession = (): void => {
       kind: 'bossStyle', slotKey: cleared.key,
       reactionSample, counterChanceSample, preferredDistSample, meleeBiasSample, mobilitySample,
       hitsPerMinSample, subUsesPerMinSample, stationarySample, approachSample,
+      dodgeDirSample: moveResult.dodgeDir, // GHOST-CMD-1B: セッションと同じ確定値の写し
       srcClass, snapshot, srcName, at: Date.now(), clearTimeMs: cleared.clearTimeMs,
       ally: cleared.ally, // v0.25.2553(§2.16 A): 撃破の瞬間に写した同行守護霊(不在ならnull)
     });
@@ -519,6 +542,8 @@ export const applyPendingSession = (prev: PlayerProfile | null, r: PendingSessio
     approachPerMin: blend(r.approachSample, base.approachPerMin, isFirstEverSave),
     // 技への反応表は技ごとにn=0を初回として個別にEMA(blendMoveReactionTable内)。
     moveReactions: blendMoveReactionTable(base.moveReactions, r.moveTally, EMA_ALPHA),
+    // GHOST-CMD-1B: 避け方向の癖も同じ数式で1キー分だけ混合(サンプル0なら前回値=欠損なら欠損のまま)。
+    dodgeDir: blendDodgeDirStat(base.dodgeDir, r.dodgeDirSample, EMA_ALPHA),
     // サブ様式はボス交戦区間に限定しない=セッションではなくラン単位(subStyleレコード)で更新する。
     subStyles: base.subStyles,
     // v0.25.2467: 計測時のクラス(このセッションで観測できなければ前回値を保持)。
@@ -909,8 +934,12 @@ export const applyPendingBossStyle = (
 ): PlayerProfile => {
   const existing = prev.bossStyles?.[r.slotKey];
   if (!isBetterBossStyleSample(existing?.hitsPerMin, r.hitsPerMinSample)) return prev;
+  // GHOST-CMD-1B: そのセッションの生値(EMAなし=prev:undefinedへの適用はサンプルそのまま)。
+  // 分類できたdodgeが無いセッションはundefined=載せない(消費側が軸1へフォールバック)。
+  const dodgeDir = blendDodgeDirStat(undefined, r.dodgeDirSample, EMA_ALPHA);
   const slot: BossStyleSlot = {
     ...(r.ally ? { ally: r.ally } : {}), // v0.25.2553(§2.16 A): 同行者が居た撃破だけ写しを載せる
+    ...(dodgeDir ? { dodgeDir } : {}),
     reactionMs: r.reactionSample,
     counterChance: r.counterChanceSample,
     preferredDist: r.preferredDistSample,
@@ -1067,6 +1096,9 @@ export const effectiveGhostProfile = (profile: PlayerProfile, slotKey: string): 
     subUsesPerMin: slot.subUsesPerMin ?? profile.subUsesPerMin,
     stationaryFrac: slot.stationaryFrac ?? profile.stationaryFrac,
     approachPerMin: slot.approachPerMin ?? profile.approachPerMin,
+    // GHOST-CMD-1B: 避け方向の癖もノブ単位でslot優先(slot欠損=そのセッションで分類できたdodgeなし
+    // →軸1へフォールバック。軸1も欠損ならundefined=消費側はバイアス0)。
+    dodgeDir: slot.dodgeDir ?? profile.dodgeDir,
     subStyles: slot.subStyles,
     srcClass: slot.srcClass ?? profile.srcClass,
     snapshot: slot.snapshot ?? profile.snapshot,

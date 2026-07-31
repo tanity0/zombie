@@ -9,6 +9,7 @@ import {
   rollGhostMoveReaction, GHOST_MOVE_ROLL_MIN_N, GHOST_MOVE_ROLL_TIMEOUT_MS,
   ghostReactionMs, ghostMoveChance, ghostApproachChance, ghostDesiredDist,
   ghostCounterWaitExpired, ghostDodgeVector,
+  ghostDodgeLateralFrac, GHOST_DODGE_DIR_MAX_RAD,
   stepGhostDanger, GHOST_DANGER_MEMORY_MS, GHOST_BULLET_TANK_MS,
   GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS, GHOST_WINDUP_SAFE_MARGIN_PX,
   GHOST_COUNTER_WAIT_MS, GHOST_DEFAULT_STATIONARY_FRAC, GHOST_APPROACH_MIN_CHANCE,
@@ -1002,5 +1003,85 @@ describe('v0.25.2564: ボスの体は常時回避対象(HP閾値なし・縁基�
 
   it('meleeDist未注入(旧経路の直接呼び出し)では働かない=注入時のみ有効', () => {
     expect(ghostDodgeVector(60, 20, [smallBoss()], [], 400)).toBeNull();
+  });
+});
+
+// ==== GHOST-CMD-1B(§2.18-2/-3): 避け方向の癖(dodgeの味付け・円形脅威の接線バイアス)=============
+// suriel 'ring-spin'(circle-self r=92)=台帳(ghostTelegraph)が円形タグ付きで足す脅威。
+// 中心(20,20)の右(100,20)に立つ=放射方向は+x・接線は±y(orbitSignの側)=角度の期待値が読みやすい。
+describe('GHOST-CMD-1B: 避け方向の癖(円形脅威の接線バイアス)', () => {
+  const spinBoss = (): Enemy => mkBoss({ type: 'suriel' as Enemy['type'], x: 0, y: 0, bossState: 'ring-spin' });
+
+  it('ghostDodgeLateralFrac: 欠損/n=0/away10割は0・lateral+through(前抜け)を横に畳む', () => {
+    expect(ghostDodgeLateralFrac(undefined)).toBe(0);
+    expect(ghostDodgeLateralFrac({ n: 0, awayRate: 0, lateralRate: 1 })).toBe(0);
+    expect(ghostDodgeLateralFrac({ n: 3, awayRate: 1, lateralRate: 0 })).toBe(0);
+    expect(ghostDodgeLateralFrac({ n: 3, awayRate: 0.5, lateralRate: 0.2 })).toBeCloseTo(0.5, 10); // lateral0.2+through0.3
+    expect(ghostDodgeLateralFrac({ n: 3, awayRate: 0, lateralRate: 0 })).toBe(1); // through10割もv1では横へ
+  });
+
+  it('lateralFrac=1で45°(=GHOST_DODGE_DIR_MAX_RADの上限)・orbitSign=1の接線側へ回る', () => {
+    const v = ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined,
+      { n: 4, awayRate: 0, lateralRate: 1 }, 1);
+    expect(v).not.toBeNull();
+    expect(Math.atan2(v!.y, v!.x)).toBeCloseTo(GHOST_DODGE_DIR_MAX_RAD, 5); // = π/4
+  });
+
+  it('lateralFrac=0.5で22.5°・orbitSign=-1なら反対の接線側へ回る', () => {
+    const dir = { n: 4, awayRate: 0.5, lateralRate: 0.5 };
+    const right = ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined, dir, 1);
+    expect(Math.atan2(right!.y, right!.x)).toBeCloseTo(Math.PI / 8, 5);
+    const left = ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined, dir, -1);
+    expect(Math.atan2(left!.y, left!.x)).toBeCloseTo(-Math.PI / 8, 5);
+  });
+
+  it('帯脅威は幾何のまま(バイアスが乗らない=従来とベクトル一致)', () => {
+    const uri = mkBoss({
+      type: 'uri' as Enemy['type'], bossState: 'sweep',
+      x: 2000, y: 2000, aiFromX: 0, aiFromY: 0, aiTargetX: 300, aiTargetY: 0,
+    });
+    const base = ghostDodgeVector(150, 20, [uri], [], 110);
+    const biased = ghostDodgeVector(150, 20, [uri], [], 110, undefined, undefined,
+      { n: 9, awayRate: 0, lateralRate: 1 }, 1);
+    expect(biased).toEqual(base);
+  });
+
+  it('dodgeDir欠損・n=0・away10割はバイアス0=従来とベクトルもビット一致', () => {
+    const plain = ghostDodgeVector(100, 20, [spinBoss()], [], 0);
+    expect(plain).toEqual({ x: 1, y: 0 }); // 放射そのまま(回転なしの基準値)
+    expect(ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined, undefined, 1)).toEqual(plain);
+    expect(ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined,
+      { n: 0, awayRate: 0, lateralRate: 1 }, 1)).toEqual(plain);
+    expect(ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined,
+      { n: 4, awayRate: 1, lateralRate: 0 }, 1)).toEqual(plain); // まっすぐ下がる人=癖ゼロ
+  });
+
+  it('decideGhost: profile.dodgeDir+orbitSignが回避の移動へ配線される(向きはorbitSignの接線側)', () => {
+    const profile: GhostProfile = { ...PROFILE, dodgeDir: { n: 4, awayRate: 0, lateralRate: 1 } };
+    const input = (orbitSign: 1 | -1) => baseDriverInput({
+      ghost: mkGhost({ x: 90, y: 10, dangerSeenAt: 0, dangerLastAt: 1000, orbitSign }), // 中心(100,20)
+      enemies: [spinBoss()], boundBossId: 'boss-1',
+      profile, nowMs: 1000, rand: () => 0.5, // 0.5 ≥ FLIP_CHANCE=旋回は反転しない
+    });
+    const right = decideGhost(input(1));
+    expect(Math.atan2(right.moveY, right.moveX)).toBeCloseTo(Math.PI / 4, 5);
+    const left = decideGhost(input(-1));
+    expect(Math.atan2(left.moveY, left.moveX)).toBeCloseTo(-Math.PI / 4, 5);
+  });
+
+  it('dodgeDirはrandを消費しない(消費回数・行動の決定とも従来と同一)', () => {
+    const run = (profile: GhostProfile) => {
+      let calls = 0;
+      const d = decideGhost(baseDriverInput({
+        ghost: mkGhost({ x: 90, y: 10, dangerSeenAt: 0, dangerLastAt: 1000, orbitSign: 1 }),
+        enemies: [spinBoss()], boundBossId: 'boss-1', profile, nowMs: 1000,
+        rand: () => { calls += 1; return 0.5; },
+      }));
+      return { d, calls };
+    };
+    const plain = run(PROFILE);
+    const biased = run({ ...PROFILE, dodgeDir: { n: 4, awayRate: 0, lateralRate: 1 } });
+    expect(biased.calls).toBe(plain.calls); // 回転は決定的=乱数消費は不変
+    expect(biased.d.action).toBe(plain.d.action); // 変わるのは回避ベクトルの向きだけ
   });
 });

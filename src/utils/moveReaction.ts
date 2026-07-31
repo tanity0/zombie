@@ -201,18 +201,41 @@ export interface MoveEpisode {
   exposed: boolean;
   countered: boolean;
   hit: boolean;
+  // GHOST-CMD-1B(§2.18-2 dodgeの味付け): エピソード中のプレイヤー変位を、その敵への半径方向/
+  // 接線方向へ分解した累積(px)。dodgeで確定した時だけ最大軸で3分類に使う(計測のみ・挙動不変)。
+  radialOut: number; // 敵から離れる向きの累積
+  lateral: number;   // 接線方向の累積(左右は問わない=絶対値)
+  radialIn: number;  // 敵へ向かう向きの累積
 }
 interface PendingEpisode extends MoveEpisode { lingerUntil: number }
 
 export interface MoveReactionTally { exposures: number; counters: number; hits: number }
 
+/** GHOST-CMD-1B: 避け方向の癖のセッション集計(dodgeで確定したエピソードの3分類カウント)。 */
+export interface DodgeDirTally { away: number; lateral: number; through: number }
+
+/**
+ * GHOST-CMD-1B: 避け方向の癖の保存形(プロファイル/BossStyleSlot共通)。throughRateは
+ * 1 − awayRate − lateralRate で導出する(2レートで3分類を持つ)。n=分類できたdodge回数の累計。
+ */
+export interface DodgeDirStat { n: number; awayRate: number; lateralRate: number }
+
 export interface MoveReactionState {
   open: Record<string, MoveEpisode>;               // enemyId → 進行中のエピソード
   pending: PendingEpisode[];                        // 終了直後の残響(linger)中エピソード
   tally: Partial<Record<MoveReactionKey, MoveReactionTally>>; // セッション集計(確定済みエピソード)
+  // GHOST-CMD-1B: 避け方向の癖。**技キー横断**(グローバルな癖=§2.18-2「味付けはスカラー」・
+  // 技別に持って標本を薄めない)。
+  dodgeDirTally: DodgeDirTally;
+  // GHOST-CMD-1B: 前tickのプレイヤー中心(変位分解用)。引数は増やさず状態に持つ(発注仕様§1)。
+  lastPx: number | null;
+  lastPy: number | null;
 }
 
-export const createMoveReactionState = (): MoveReactionState => ({ open: {}, pending: [], tally: {} });
+export const createMoveReactionState = (): MoveReactionState => ({
+  open: {}, pending: [], tally: {},
+  dodgeDirTally: { away: 0, lateral: 0, through: 0 }, lastPx: null, lastPy: null,
+});
 
 const foldEpisode = (st: MoveReactionState, ep: MoveEpisode): void => {
   if (!ep.exposed) return; // 暴露なし(遠くで自己中心技が空振り等)は数えない
@@ -220,6 +243,17 @@ const foldEpisode = (st: MoveReactionState, ep: MoveEpisode): void => {
   t.exposures += 1;
   if (ep.countered) t.counters += 1;       // 優先順位: counter > hit > dodge
   else if (ep.hit) t.hits += 1;
+  else {
+    // GHOST-CMD-1B: dodge(暴露あり・カウンター/被弾なし)だけ、変位累積の最大軸で避け方向を分類する。
+    // 全軸0(エピソード中に一歩も動かず攻撃が外れた等)は方向が定義できない=数えない(nはdodgeDir
+    // 独自のnなので薄めない)。同値は radialOut > lateral > radialIn の優先で決める(決定的)。
+    const { radialOut, lateral, radialIn } = ep;
+    if (radialOut > 0 || lateral > 0 || radialIn > 0) {
+      if (radialOut >= lateral && radialOut >= radialIn) st.dodgeDirTally.away += 1;
+      else if (lateral >= radialIn) st.dodgeDirTally.lateral += 1;
+      else st.dodgeDirTally.through += 1;
+    }
+  }
 };
 
 const closeEpisode = (st: MoveReactionState, enemyId: string, gameTime: number): void => {
@@ -248,12 +282,31 @@ export const stepMoveReactions = (
     const cur = st.open[e.id];
     if (key === null && cur === undefined) continue;
     seen.add(e.id);
+    // GHOST-CMD-1B: 変位アキュムレータ。前tick→今tickのプレイヤー変位を、その敵への半径方向
+    // (離れる=radialOut / 向かう=radialIn)と接線方向(lateral)へ分解して累積する。帰属は
+    // 「前tick時点で開いていたエピソード」(cur)= 開いた/閉じたそのtickを跨ぐ変位は前の主へ。
+    // 分解の基底は敵中心→前tickプレイヤー中心の半径ベクトル(重なり等の縮退は数えない)。
+    if (cur && st.lastPx !== null && st.lastPy !== null) {
+      const dx = pcx - st.lastPx, dy = pcy - st.lastPy;
+      if (dx !== 0 || dy !== 0) {
+        const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+        const rx = st.lastPx - ecx, ry = st.lastPy - ecy;
+        const rl = Math.hypot(rx, ry);
+        if (rl > 0.0001) {
+          const radial = (dx * rx + dy * ry) / rl;             // + = 敵から離れる / − = 敵へ向かう
+          const tangent = Math.abs((dx * -ry + dy * rx) / rl); // 接線成分(左右は問わない)
+          if (radial >= 0) cur.radialOut += radial; else cur.radialIn += -radial;
+          cur.lateral += tangent;
+        }
+      }
+    }
     if (cur && cur.moveKey !== key) closeEpisode(st, e.id, gameTime); // 技の切り替わり(連携含む)=前の技を確定へ
     if (key && !st.open[e.id]) {
       st.open[e.id] = {
         enemyId: e.id, moveKey: key,
         exposed: SELF_EXPOSURE[key] === undefined, // aimed技はロック対象=プレイヤー(ゴースト不在ラン)=即暴露
         countered: false, hit: false,
+        radialOut: 0, lateral: 0, radialIn: 0, // GHOST-CMD-1B: 変位の累積は次tickから(この技の分だけ)
       };
     }
     const ep = st.open[e.id];
@@ -278,6 +331,9 @@ export const stepMoveReactions = (
     }
     st.pending = still;
   }
+  // GHOST-CMD-1B: 次tickの変位分解の基準点(毎tick更新・エピソードの有無に関わらず)。
+  st.lastPx = pcx;
+  st.lastPy = pcy;
 };
 
 /** カウンター成立(成立7箇所)の通知。開いているエピソード全部(無ければ残響中)にマークする。 */
@@ -299,15 +355,22 @@ export const markMoveReactionHit = (st: MoveReactionState, moveKey: string): voi
   // どのエピソードにも一致しない(残響切れの床ダメージ等)=数えない(実装メモ参照)
 };
 
+/** endMoveReactionsの返り値(GHOST-CMD-1B: 技への反応表+避け方向の癖の2集計)。 */
+export interface MoveReactionSessionResult {
+  tally: MoveReactionState['tally'];
+  /** GHOST-CMD-1B: dodgeで確定したエピソードの避け方向3分類(技キー横断)。 */
+  dodgeDir: DodgeDirTally;
+}
+
 /** セッション終了時: 開いている/残響中のエピソードを全て確定して集計を返す。 */
-export const endMoveReactions = (st: MoveReactionState): MoveReactionState['tally'] => {
+export const endMoveReactions = (st: MoveReactionState): MoveReactionSessionResult => {
   for (const id of Object.keys(st.open)) {
     foldEpisode(st, st.open[id]);
     delete st.open[id];
   }
   for (const p of st.pending) foldEpisode(st, p);
   st.pending = [];
-  return st.tally;
+  return { tally: st.tally, dodgeDir: st.dodgeDirTally };
 };
 
 // ---- プロファイル側のEMA更新 -------------------------------------------------------------------
@@ -343,4 +406,28 @@ export const blendMoveReactionTable = (
       };
   }
   return changed ? next : prev;
+};
+
+/**
+ * GHOST-CMD-1B: セッションの避け方向集計をプロファイルの1キー分へ混ぜる。数式は
+ * blendMoveReactionTable と同じ(初回=サンプルそのまま・2回目以降はEMA(α)・nは累計)。
+ * サンプル0(このセッションで分類できたdodgeなし)は前回値を参照ごと返す(欠損=undefinedのまま)。
+ * prev=undefinedへサンプルを混ぜる呼び方(α無視)は「そのセッションの生値」= BossStyleSlotの写しにも使う。
+ */
+export const blendDodgeDirStat = (
+  prev: DodgeDirStat | undefined,
+  tally: DodgeDirTally,
+  alpha: number,
+): DodgeDirStat | undefined => {
+  const n = tally.away + tally.lateral + tally.through;
+  if (n <= 0) return prev;
+  const awaySample = tally.away / n;
+  const lateralSample = tally.lateral / n;
+  return (!prev || prev.n <= 0)
+    ? { n, awayRate: awaySample, lateralRate: lateralSample }
+    : {
+      n: prev.n + n,
+      awayRate: prev.awayRate * (1 - alpha) + awaySample * alpha,
+      lateralRate: prev.lateralRate * (1 - alpha) + lateralSample * alpha,
+    };
 };

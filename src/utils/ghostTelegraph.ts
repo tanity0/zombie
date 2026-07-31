@@ -22,6 +22,19 @@
 import type { Enemy } from '../types/game';
 import { bandThreat, circleThreat, DODGE_BAND_HALF_WIDTH, type DodgeThreat } from './botSkill';
 
+/**
+ * GHOST-CMD-1B(§2.18-2/-3): この台帳が返す脅威。`shape: 'circle'` = 円形の危険域
+ * (circleThreatで作った脅威)で、守護霊の「避け方向の癖」(ghostDriver.ghostDodgeVector)が
+ * 単位ベクトルを接線側へ回転させてよい対象。帯(bandThreat)はタグ無し=幾何のまま
+ * (横へ降りる一択なので癖の入り込む余地が無い)。DodgeThreat自体(botSkill.ts)は
+ * テストボット共用のため触らない=拡張はこちら側で持つ。
+ */
+export interface GhostDodgeThreat extends DodgeThreat { shape?: 'circle' }
+
+/** circleThreatの結果に円形タグを付ける(nullはそのまま)。 */
+const tagCircle = (t: DodgeThreat | null): GhostDodgeThreat | null =>
+  t ? { ...t, shape: 'circle' } : null;
+
 // ---- ボス側の実寸の複製値(叩き台ではなく**実装の複製**。元の定数が動いたらここも合わせる) ----
 const NOVA_RADIUS_END_MIRROR = 400;      // = gameStore.GIANT_NOVA_RADIUS_END(輪の最大半径)
 const DIVE_RADIUS_MIRROR = 220;          // = gameStore.GIANT_DIVE_RADIUS(急降下の着弾円)
@@ -230,16 +243,17 @@ export const isTelegraphActive = (
 
 const threatFor = (
   pcx: number, pcy: number, e: Enemy, entry: TelegraphLedgerEntry,
-): DodgeThreat | null => {
+): GhostDodgeThreat | null => {
   const shape = entry.ghostShape;
   if (!shape) return null;
   if (entry.types && !entry.types.includes(e.type)) return null;
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-  if (shape.kind === 'circle-self') return circleThreat(pcx, pcy, ecx, ecy, shape.radius);
+  // GHOST-CMD-1B: 円形はタグを付ける(避け方向の癖の回転対象)。帯はタグ無しのまま。
+  if (shape.kind === 'circle-self') return tagCircle(circleThreat(pcx, pcy, ecx, ecy, shape.radius));
   if (shape.kind === 'circle-target') {
     const half = shape.targetIsTopLeft ? { x: e.width / 2, y: e.height / 2 } : { x: 0, y: 0 };
     const tx = (e.aiTargetX ?? e.x) + half.x, ty = (e.aiTargetY ?? e.y) + half.y;
-    return circleThreat(pcx, pcy, tx, ty, shape.radius);
+    return tagCircle(circleThreat(pcx, pcy, tx, ty, shape.radius));
   }
   // band: 始点/終点が揃っていない時は図形が確定していない=足さない(でっち上げない)。
   if (e.aiFromX === undefined || e.aiTargetX === undefined) return null;
@@ -256,9 +270,10 @@ const threatFor = (
 /**
  * **既存 telegraphDodge が拾えない予告**から逃げる向き(0〜2個)。ゴーストの回避ベクトルへ足す差分。
  * 既存表と二重に数えないよう、coverage が 'ghost'/'both' の状態だけを扱う。
+ * GHOST-CMD-1B: 円形の脅威には `shape: 'circle'` タグが付く(避け方向の癖の回転対象の目印)。
  */
-export const ghostExtraTelegraphDodge = (pcx: number, pcy: number, e: Enemy): DodgeThreat[] => {
-  const out: DodgeThreat[] = [];
+export const ghostExtraTelegraphDodge = (pcx: number, pcy: number, e: Enemy): GhostDodgeThreat[] => {
+  const out: GhostDodgeThreat[] = [];
   for (const state of [e.aiPhase, e.bossState]) {
     if (state === undefined) continue;
     const entry = GHOST_TELEGRAPH_LEDGER[state];

@@ -1,5 +1,52 @@
 # Development Log
 
+## v0.25.2582 — バッチGHOST-CMD-1B: 避け方向の癖の計測と適用(§2.18 Phase 1b)【2026-07-31 14:27 JST】
+
+- **検収(設計チャット)**: 合格。回転コードを通読——決定的(rand不使用)・θ≤45°で半径成分維持(円から
+  必ず脱出=成功優先)・円形タグ付き脅威のみ・botSkill不触・欠損=ビット一致をテストで固定済み。
+  乱数消費順の保全(orbitSign確定の前倒し=間に乱数消費なし)も確認。ゲート3種を検収側でも再実行し一致
+  (typecheck 0 / related **901件通過** / lint エラー0)。実装側の計測詳細4点(全軸0は数えない/タイは
+  away>lateral>through/帰属=前tick開エピソード/基底=敵中心→前tickプレイヤー中心)は全て妥当として採用。
+
+- **正本**: research/GHOST_PARITY_LEDGER.md「発注仕様: バッチ GHOST-CMD-1B」。検収・バージョン採番・
+  changelogは設計チャット(このエントリはサブエージェントの実装報告)。
+- **実装物(計測)**: `moveReaction.ts` — `MoveEpisode`に変位アキュムレータ(radialOut/lateral/radialIn)、
+  `MoveReactionState`に前tickプレイヤー中心(lastPx/lastPy)と`dodgeDirTally{away,lateral,through}`を追加。
+  `stepMoveReactions`が毎tickの変位を敵への半径/接線方向へ分解して累積(引数は増やしていない)。
+  `foldEpisode`が**dodgeで確定したエピソードだけ**最大軸で3分類し技キー横断のtallyへ加算。
+  `endMoveReactions`の返り値を`{tally, dodgeDir}`へ拡張。`blendDodgeDirStat`(blendMoveReactionTableと
+  同じ数式の1キー版)を新設。
+- **実装物(記録)**: `playerTraits.ts` — `PlayerProfile.dodgeDir?{n,awayRate,lateralRate}`(スキーマv=1
+  据え置き・欠損=undefined)。`PendingSessionRecord`/`PendingBossStyleRecord`に`dodgeDirSample`、
+  `BossStyleSlot.dodgeDir?`(そのセッションの生値写し)。`applyPendingSession`でEMA混合・
+  `effectiveGhostProfile`でslot優先→軸1フォールバック。30秒フロア/撃破スロット例外/ゴーストラン破棄の
+  ゲート構造は不変(sessionレコードに乗るだけ=新しい例外なし)。
+- **実装物(消費)**: `ghostTelegraph.ts` — `GhostDodgeThreat extends DodgeThreat {shape?:'circle'}`を新設し
+  circleThreat生成2箇所(circle-self/circle-target)にタグ。帯はタグ無し。`ghostDriver.ts` —
+  `GhostProfile.dodgeDir?`+`ghostDodgeLateralFrac`(lateral+throughを横に畳む=前抜けの真実装はPhase 2)+
+  `GHOST_DODGE_DIR_MAX_RAD`(45°)。`ghostDodgeVector`が**円形タグ付き脅威だけ**単位ベクトルを
+  θ=min(45°,45°×lateralFrac)だけghost.orbitSignの接線側へ回転(決定的・randなし)。`decideGhost`は
+  orbitSignの確定を回避計算の前へ移動して配線(randの呼び出し順・回数は従来と同一)。
+- **触ったファイル**: src/utils/moveReaction.ts / playerTraits.ts / ghostTelegraph.ts / ghostDriver.ts
+  +各テスト4本。**botSkill.tsは無改変**(baseベクトル内の着地円はバイアス対象外=コメントに明記)。
+  directorTick.tsは変更不要(PlayerProfileの構造互換でdodgeDirがそのまま載る)。
+- **実装メモ(仕様の範囲内で決めた計測詳細・コメント+テストで固定)**: ①全軸0のdodge(一歩も動かず
+  攻撃が外れた)は方向が定義できない=dodgeDirに数えない ②同値タイは away>lateral>through の優先
+  ③変位の帰属は「前tick時点で開いていたエピソード」(開始tickへ跨ぐ変位=数えない/解決tickへ跨ぐ
+  変位=数える) ④分解の基底=敵中心→前tickプレイヤー中心の半径ベクトル。
+- **テスト**: moveReaction 10件(3分類・hit/counter/暴露なし/全軸0は数えない・境界tickの帰属・blend)
+  / playerTraits 5件(セッション→初回サンプル・EMA/n累計・スロット写し・欠損維持・effectiveの合成)
+  +旧フォーマット試験へ欠損assert1行 / ghostTelegraph 1件(circleタグ・帯タグ無し) / ghostDriver 6件
+  (45°/22.5°/orbitSign反転・帯不変・欠損=ビット一致・decideGhost配線・rand不消費)。既存テストは
+  endMoveReactionsの返り値形変更に伴う機械的追随(`.tally`)のみ=期待値は全て無修正で通過。
+- **ゲート**: `npm run typecheck` エラー0 / `npm run lint` エラー0(既存warning 8) /
+  `npx vitest related`(実装4ファイル)= **44ファイル 901件パス**(4 skipped)。
+- **負荷 1/10**: 計測はボス交戦セッション中の開いているエピソード(通常0〜1個)への数flopのみ・
+  消費は守護霊の円形脅威1件あたりcos/sin各1回。レンダリング/メモリ/乱数消費に影響なし。
+- **自己点検(規律5)**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触なし(スポーン/ランク/
+  配分不触)。dodgeDir欠損(旧プロファイル)=バイアス0で回避ベクトルもビット一致・乱数消費不変を
+  テストで固定。§2.7計測ゲートに新しい例外なし。★未決の追記なし。
+
 ## v0.25.2581 — 裁定記録: 抜けカード4点(§2.18追補・文書のみ)【2026-07-31 14:14 JST】
 
 - 社長「他に抜けてそうなカードないの?」→洗い出し→裁定「おけ、ではそれでお願い」。§2.18追補に確定記録:

@@ -21,12 +21,12 @@
 // 個性は ①反応遅延(reactionMs) ②間合いの取り方(preferredDist+予告中の安全マージン)
 // ③移動リズム(stationaryFrac/approachPerMin) ④苦手技は食らう(tank率=現行維持) で出す。
 import type { Enemy, Projectile, SkillKey } from '../types/game';
-import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile, type DodgeThreat } from './botSkill';
+import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from './botSkill';
 // v0.25.2470: 雑魚回避(非ボス判定)用 / ENEMY_PROJECTILE_DURATION=弾の寿命(tankした弾技の弾を無視し続ける長さ)
 import { isBossType, aimEnemyDist2, ENEMY_PROJECTILE_DURATION } from './enemyUtils';
 import { isBossCounterableNowApprox } from './bossScript';
-import { ghostExtraTelegraphDodge, isTelegraphActive } from './ghostTelegraph'; // §2.12 要件7: 予告台帳(全ボス)
-import { anyMoveKeyForEnemy, isProjectileMoveKey, type MoveReactionTable } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
+import { ghostExtraTelegraphDodge, isTelegraphActive, type GhostDodgeThreat } from './ghostTelegraph'; // §2.12 要件7: 予告台帳(全ボス)
+import { anyMoveKeyForEnemy, isProjectileMoveKey, type MoveReactionTable, type DodgeDirStat } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
 import { drawFromCommandBag } from './commandBag'; // §2.18(GHOST-CMD-1): 決定の出どころ=境界ガード付き袋式
 
 // ---- プロファイル(playerTraits.PlayerProfileと同じノブ形。循環import回避のため型は独立定義) ----
@@ -58,6 +58,13 @@ export interface GhostProfile {
    * 「満タンで発射」へフォールバックする。directorTick が召喚時に subStyles から解決して載せる。
    */
   homingHoldMsAvg?: number;
+  /**
+   * GHOST-CMD-1B(§2.18-2/-3 dodgeの味付け): 避け方向の癖(playerTraits.PlayerProfile.dodgeDirと同形)。
+   * directorTickの effectiveGhostProfile 経路(PlayerProfileの構造互換)でそのまま載る。
+   * 消費は**円形タグ付き脅威の回避ベクトルの接線回転だけ**(ghostDodgeVector)。
+   * 欠損(旧プロファイル/既定プロファイル/n=0)= バイアス0 = 従来とビット一致。
+   */
+  dodgeDir?: DodgeDirStat;
 }
 
 /**
@@ -281,6 +288,26 @@ export const ghostApproachChance = (approachPerMin?: number): number => {
 export const ghostDesiredDist = (preferredDist: number, addSafeMargin: boolean): number =>
   preferredDist + (addSafeMargin ? GHOST_WINDUP_SAFE_MARGIN_PX : 0);
 
+// ---- GHOST-CMD-1B(§2.18-2/-3): 避け方向の癖(dodgeの味付け・成功が主・癖は従) --------------------
+/**
+ * 円形脅威の回避を接線側へ倒す最大角(45°)。cos45°>0 = 半径成分が必ず残る = 円からは必ず脱出できる
+ * (成功優先の上限=§2.18-3「正解が複数ある時だけ癖で選ぶ」の円形版)。
+ */
+export const GHOST_DODGE_DIR_MAX_RAD = Math.PI / 4;
+
+/**
+ * 「横へ流す」度合い(0..1)= lateralRate + throughRate。前抜け(through)は v1 では横に畳む
+ * (敵を横切る移動の真実装はPhase 2スコープ)。throughRate は 1 − away − lateral から導出。
+ * 欠損(旧プロファイル)・n=0 は 0 = バイアス無し(従来とビット一致)。
+ */
+export const ghostDodgeLateralFrac = (dodgeDir?: DodgeDirStat): number => {
+  if (!dodgeDir || dodgeDir.n <= 0) return 0;
+  const away = clamp01(dodgeDir.awayRate);
+  const lateral = clamp01(dodgeDir.lateralRate);
+  const through = Math.max(0, 1 - away - lateral);
+  return clamp01(lateral + through);
+};
+
 // ---- GHOST-BULLET-TECH A: 危険の認知(エピソード)の状態機械(純関数) --------------------------
 // 状態遷移: **危険なし → 認知(seenAt) → 反応済み(reactionMs経過) → 記憶(危険が消えても保持) → 失効**。
 //  - 認知〜反応済みは「エピソードにつき1回」。同じエピソードの間は何度危険が途切れても遅延を払い直さない。
@@ -352,6 +379,14 @@ const GHOST_DODGE_PROFILE: BotSkillProfile = {
  *
  * `tankedBulletKey`(GHOST-BULLET-TECH B)= その技キーの弾は**避けない**(計測hitRateで'tank'を
  * 引いた=「この弾技は苦手」の再現)。タグの無い弾(非ボス/従来の弾)は常に回避対象のまま。
+ *
+ * `dodgeDir`/`orbitSign`(GHOST-CMD-1B)= 避け方向の癖。**台帳(ghostTelegraph)の円形タグ付き
+ * 脅威だけ**、放射方向の単位ベクトルを接線側(orbitSignの旋回向き)へ
+ * θ = min(45°, 45° × (lateralRate+throughRate)) 回転してから合成する(θ≤45°なので半径成分は
+ * 必ず正=円からは必ず脱出できる=成功が主・癖は従=§2.18-3)。帯・突進・弾・接触、および
+ * base(dodgeVector=botSkill)内の着地円(jumpDodge/telegraphDodgeの円)は**本バッチのバイアス
+ * 対象外**=幾何のまま(botSkill.tsはテストボット共用のため不触)。回転は決定的(randを使わない)。
+ * dodgeDir欠損(旧プロファイル・n=0)= θ=0 = 従来とベクトルもビット一致。
  */
 export const ghostDodgeVector = (
   gcx: number, gcy: number,
@@ -360,6 +395,8 @@ export const ghostDodgeVector = (
   maxHealth: number,
   meleeDist?: (cx: number, cy: number, e: Enemy) => number,
   tankedBulletKey?: string,
+  dodgeDir?: DodgeDirStat,
+  orbitSign?: 1 | -1,
 ): { x: number; y: number } | null => {
   const seen = tankedBulletKey === undefined
     ? projectiles
@@ -371,9 +408,22 @@ export const ghostDodgeVector = (
   const base = dodgeVector(GHOST_DODGE_PROFILE, gcx, gcy, enemies, seen, maxHealth);
   // base は合成済みの単位ベクトル(強さ1)。差分の脅威は自分の weight(0..1)で足す。
   let sx = base ? base.x : 0, sy = base ? base.y : 0;
+  // GHOST-CMD-1B: 接線回転の角度(決定的・randなし)。0なら従来の合成式に1bitも触れない。
+  const theta = Math.min(GHOST_DODGE_DIR_MAX_RAD, GHOST_DODGE_DIR_MAX_RAD * ghostDodgeLateralFrac(dodgeDir));
   for (const e of enemies) {
-    const extras: DodgeThreat[] = ghostExtraTelegraphDodge(gcx, gcy, e);
-    for (const t of extras) { sx += t.ux * t.weight; sy += t.uy * t.weight; }
+    const extras: GhostDodgeThreat[] = ghostExtraTelegraphDodge(gcx, gcy, e);
+    for (const t of extras) {
+      if (theta > 0 && t.shape === 'circle') {
+        // 放射(ux,uy)を接線側へθ回転。接線の向きの規約は decideGhost の orbitVec と同一:
+        // 放射(rx,ry)に対し (-ry*s, rx*s)=orbitSignの旋回側。
+        const s = orbitSign ?? 1;
+        const cosT = Math.cos(theta), sinT = Math.sin(theta);
+        sx += (t.ux * cosT - t.uy * sinT * s) * t.weight;
+        sy += (t.uy * cosT + t.ux * sinT * s) * t.weight;
+      } else {
+        sx += t.ux * t.weight; sy += t.uy * t.weight;
+      }
+    }
     // v0.25.2564(社長裁定「対処して」): **ボスの体は常時回避対象**(HP閾値なし・縁基準)。
     // meleeDist(プレイヤーと同じAABB最近点)注入時のみ有効。縁からGHOST_BOSS_BODY_AVOID_PX未満で
     // 体の中心から離れる方向へ、縁に近いほど強く反発(重なり=weight1)。近接レンジ(74)より内側の
@@ -528,9 +578,20 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     tankedBulletKey = undefined; tankedBulletUntil = undefined; // 期限切れ=また避ける人へ戻る
   }
 
+  // §2.12追補: オービット(横流れ)の旋回方向。GHOST-CMD-1B: 回避の接線バイアス(避け方向の癖)が
+  // 同じ旋回向きを共有するため、回避計算の**前**に確定させる。randの呼び出し順は従来と同一
+  // (ロール→旋回初期化→旋回反転→移動リズム→カウンター。この間に乱数を読む処理は無いので、
+  // ブロックの位置繰り上げだけでは消費順は1bitも変わらない)。
+  let orbitSign: 1 | -1 = ghost.orbitSign ?? (rand() < 0.5 ? 1 : -1);
+  if (rand() < GHOST_ORBIT_FLIP_CHANCE) orbitSign = orbitSign === 1 ? -1 : 1;
+
   // 回避(§2.12「実行は常に本気」=強さは常に1)。既存 dodgeVector + 全ボス予告台帳の差分。
   // v0.25.2547: maxHealth を渡す=接触(体当たり)回避が有効(危険な接触のみ・botSkill既存規格)。
-  const dodge = ghostDodgeVector(gcx, gcy, enemies, projectiles, ghost.maxHealth, input.meleeDist, tankedBulletKey);
+  // GHOST-CMD-1B: 避け方向の癖(円形タグ付き脅威だけ接線へ≤45°回転・決定的)。欠損=従来とビット一致。
+  const dodge = ghostDodgeVector(
+    gcx, gcy, enemies, projectiles, ghost.maxHealth, input.meleeDist, tankedBulletKey,
+    profile.dodgeDir, orbitSign,
+  );
 
   // §2.12(1) 反応遅延 + GHOST-BULLET-TECH A(認知の持続): 「危険」(標的ボスの予告 or 回避対象の脅威)を
   // **エピソード**として持ち回り、計測 reactionMs(100-800clamp)経過して初めて回避を始める。
@@ -557,8 +618,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // 間合い管理: preferredDist(平時)/+安全マージン(予告中)へ寄せる。
   // §2.12追補(社長裁定v0.25.2534): 静止は「カウンター待ち」以外に存在させない。旧実装で立ち尽くして
   // いた場面(帯内静止・止まり癖tick・tank予告中の棒立ち)は全てボス正対の横流れ(オービット)に置換。
-  let orbitSign: 1 | -1 = ghost.orbitSign ?? (rand() < 0.5 ? 1 : -1);
-  if (rand() < GHOST_ORBIT_FLIP_CHANCE) orbitSign = orbitSign === 1 ? -1 : 1;
+  // (orbitSignの確定はGHOST-CMD-1Bで回避計算の前へ移動=上のブロック。)
   // 接線方向(半径ベクトルの90°回転)×速度倍率。dist≈0ではnormが[0,0]を返す=安全に停止。
   const orbitVec = (frac: number): [number, number] => {
     const [rx, ry] = norm(gcx - tcx, gcy - tcy);

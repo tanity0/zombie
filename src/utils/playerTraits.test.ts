@@ -355,6 +355,7 @@ describe('playerTraits G4a: 後方互換(旧フォーマットの欠損はG4a既
     expect(p!.reactionMs).toBe(300);                 // 既存ノブは保存値のまま
     expect(p!.subUsesPerMin).toBe(2.5);
     expect(p!.srcName).toBeUndefined();              // v0.25.2477: srcNameも欠損可(srcClass/snapshotと同じ流儀)
+    expect(p!.dodgeDir).toBeUndefined();             // GHOST-CMD-1B: dodgeDirも欠損可(undefinedのまま=バイアス0)
   });
 });
 
@@ -472,6 +473,84 @@ describe('playerTraits G4a: 技への反応表(セッション経由のe2e)', ()
     notifyMoveCounter();
     notifyMoveDamage('thor-harai');
     expect(loadPlayerProfile()).toBeNull();
+  });
+});
+
+// ==== GHOST-CMD-1B(§2.18-2 dodgeの味付け): 避け方向の癖のセッション→プロファイル ================
+// mkBoss(thor)=x100,y100,40x40 → 中心(120,120)。at(cx,cy)=プレイヤー中心を(cx,cy)へ。
+// (300,120)からは敵への半径方向=x軸・接線方向=y軸(moveReaction.test.tsと同じ読みやすい配置)。
+
+describe('playerTraits GHOST-CMD-1B: 避け方向の癖(dodgeDir)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  const thorAt = (bossState: Enemy['bossState']) => mkBoss({ bossState });
+  const at = (cx: number, cy: number) => ({ ...mkPlayer(), x: cx - 10, y: cy - 10 });
+
+  // 1セッション=harai1回をdodge(無傷)で確定させる。dodgeEnd=避け先のプレイヤー中心。
+  const runSession = (dodgeEndX: number, dodgeEndY: number) => {
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [thorAt('chase')], player: at(300, 120) }));
+    tickPlayerTraits(baseInput({ gameTime: 1000, enemies: [thorAt('harai-windup')], player: at(300, 120) }));
+    tickPlayerTraits(baseInput({ gameTime: 2000, enemies: [thorAt('harai')], player: at(dodgeEndX, dodgeEndY) }));
+    tickPlayerTraits(baseInput({ gameTime: 3000, enemies: [thorAt('chase')], player: at(dodgeEndX, dodgeEndY) }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [thorAt('chase')], player: at(dodgeEndX, dodgeEndY) }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+  };
+
+  it('横移動のdodge → 初回はサンプルそのまま(n=1・lateralRate=1)。BossStyleSlotにも同じ写しが載る', () => {
+    runSession(300, 180); // 接線方向(y)へ60px
+    const p = loadPlayerProfile()!;
+    expect(p.dodgeDir).toEqual({ n: 1, awayRate: 0, lateralRate: 1 });
+    expect(p.bossStyles?.[bossStyleSlotKey('thor', 'test-stage')]?.dodgeDir)
+      .toEqual({ n: 1, awayRate: 0, lateralRate: 1 });
+  });
+
+  it('2回目以降はα=0.3でEMA混合しnは累計(blendMoveReactionTableと同じ数式の1キー版)', () => {
+    runSession(300, 180); // 1回目: lateral
+    runSession(360, 120); // 2回目: away(敵から離れる)
+    const p = loadPlayerProfile()!;
+    expect(p.dodgeDir!.n).toBe(2);
+    expect(p.dodgeDir!.awayRate).toBeCloseTo(0 * 0.7 + 1 * 0.3, 10);
+    expect(p.dodgeDir!.lateralRate).toBeCloseTo(1 * 0.7 + 0 * 0.3, 10);
+  });
+
+  it('dodgeが1つも無いセッションはdodgeDirを作らない(欠損=undefinedのまま)', () => {
+    // 技を1度も出さない交戦=分類できるdodgeなし。
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [thorAt('chase')] }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [thorAt('chase')] }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    const p = loadPlayerProfile()!;
+    expect(p.dodgeDir).toBeUndefined();
+    expect(p.bossStyles?.[bossStyleSlotKey('thor', 'test-stage')]?.dodgeDir).toBeUndefined();
+  });
+
+  // effectiveGhostProfile 用の最小プロファイル/スロット(dodgeDirの合成だけを見る)。
+  const mkProfile = (dodgeDir?: PlayerProfile['dodgeDir']): PlayerProfile => ({
+    v: 1, runs: 1, reactionMs: 300, counterChance: 0.6, preferredDist: 200,
+    meleeBias: 0.5, mobility: 0.7, hitsPerMin: 4, subUsesPerMin: 2,
+    stationaryFrac: 0.3, approachPerMin: 2, moveReactions: {},
+    subStyles: { wire: { n: 0, slamRatio: 0 }, shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 }, homing: { n: 0, holdMsAvg: 0 } },
+    ...(dodgeDir ? { dodgeDir } : {}),
+  });
+  const mkSlot = (dodgeDir?: PlayerProfile['dodgeDir']) => ({
+    reactionMs: null, counterChance: null, preferredDist: null, meleeBias: null, mobility: null,
+    hitsPerMin: 1, subUsesPerMin: null, stationaryFrac: null, approachPerMin: null,
+    subStyles: mkProfile().subStyles, srcClass: null, snapshot: null, srcName: null, at: 0,
+    ...(dodgeDir ? { dodgeDir } : {}),
+  });
+
+  it('effectiveGhostProfile: dodgeDirはslot優先・slot欠損は軸1へ・両方欠損はundefined', () => {
+    const slotDir = { n: 1, awayRate: 0, lateralRate: 1 };
+    const axisDir = { n: 5, awayRate: 0.8, lateralRate: 0.1 };
+    const both: PlayerProfile = { ...mkProfile(axisDir), bossStyles: { thor: mkSlot(slotDir) } };
+    expect(effectiveGhostProfile(both, 'thor').dodgeDir).toEqual(slotDir);
+    const slotMissing: PlayerProfile = { ...mkProfile(axisDir), bossStyles: { thor: mkSlot() } };
+    expect(effectiveGhostProfile(slotMissing, 'thor').dodgeDir).toEqual(axisDir);
+    const neither: PlayerProfile = { ...mkProfile(), bossStyles: { thor: mkSlot() } };
+    expect(effectiveGhostProfile(neither, 'thor').dodgeDir).toBeUndefined();
   });
 });
 

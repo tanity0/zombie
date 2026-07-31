@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
   moveKeyForEnemy, contactDamageMoveKey, createMoveReactionState, stepMoveReactions,
   markMoveReactionCounter, markMoveReactionHit, endMoveReactions, blendMoveReactionTable,
+  blendDodgeDirStat,
   MOVE_REACTION_LINGER_MS,
   bulletMoveKeyForEnemy, anyMoveKeyForEnemy, projectileMoveKeyForEnemy,
   isProjectileMoveKey, BULLET_MOVE_KEYS, PROJECTILE_MOVE_KEYS,
@@ -87,7 +88,7 @@ describe('moveReaction: エピソード状態機械と3分類(counter > hit > do
     const st = createMoveReactionState();
     stepMoveReactions(st, [giant('g-stomp-recover', { gStompRadius: 92 })], farPlayer, 0);
     stepMoveReactions(st, [giant('g-dash-windup')], farPlayer, 500); // 連携: stomp→dash
-    const tally = endMoveReactions(st);
+    const { tally } = endMoveReactions(st);
     // stompは遠方で暴露なし=数えない / dashはaimed=暴露1
     expect(tally['g-stomp']).toBeUndefined();
     expect(tally['g-dash']).toEqual({ exposures: 1, counters: 0, hits: 0 });
@@ -98,7 +99,7 @@ describe('moveReaction: エピソード状態機械と3分類(counter > hit > do
     stepMoveReactions(st, [thor('harai-windup')], farPlayer, 0);
     stepMoveReactions(st, [thor('harai')], farPlayer, 1000);
     markMoveReactionHit(st, 'thor-harai');
-    const tally = endMoveReactions(st);
+    const { tally } = endMoveReactions(st);
     expect(tally['thor-harai']).toEqual({ exposures: 1, counters: 0, hits: 1 });
   });
 
@@ -107,7 +108,7 @@ describe('moveReaction: エピソード状態機械と3分類(counter > hit > do
     stepMoveReactions(st, [thor('jump-windup')], farPlayer, 0);
     markMoveReactionHit(st, 'thor-jump');
     markMoveReactionCounter(st);
-    const tally = endMoveReactions(st);
+    const { tally } = endMoveReactions(st);
     expect(tally['thor-jump']).toEqual({ exposures: 1, counters: 1, hits: 0 });
   });
 
@@ -119,7 +120,7 @@ describe('moveReaction: エピソード状態機械と3分類(counter > hit > do
     stepMoveReactions(st, [giant(undefined)], farPlayer, 1000 + MOVE_REACTION_LINGER_MS);
     expect(st.tally['g-bolt']).toEqual({ exposures: 1, counters: 0, hits: 1 });
     markMoveReactionHit(st, 'g-bolt'); // 残響切れ後の被弾(帰属先なし)=無視
-    expect(endMoveReactions(st)['g-bolt']).toEqual({ exposures: 1, counters: 0, hits: 1 });
+    expect(endMoveReactions(st).tally['g-bolt']).toEqual({ exposures: 1, counters: 0, hits: 1 });
   });
 
   it('counter: 開いているエピソードが無ければ残響中のエピソードへマークする(反射の遅れ等)', () => {
@@ -127,14 +128,14 @@ describe('moveReaction: エピソード状態機械と3分類(counter > hit > do
     stepMoveReactions(st, [giant('g-bolt-burst')], farPlayer, 0);
     stepMoveReactions(st, [giant(undefined)], farPlayer, 500); // 技終了→残響
     markMoveReactionCounter(st); // 飛んでいる咆哮弾を反射した
-    expect(endMoveReactions(st)['g-bolt']).toEqual({ exposures: 1, counters: 1, hits: 0 });
+    expect(endMoveReactions(st).tally['g-bolt']).toEqual({ exposures: 1, counters: 1, hits: 0 });
   });
 
   it('自己中心技(g-stomp): 溜め中に危険域の外なら暴露なし=数えない', () => {
     const st = createMoveReactionState();
     stepMoveReactions(st, [giant('g-stomp-windup', { gStompRadius: 92 })], farPlayer, 0);
     stepMoveReactions(st, [giant('g-stomp-recover', { gStompRadius: 92 })], farPlayer, 700);
-    expect(endMoveReactions(st)['g-stomp']).toBeUndefined();
+    expect(endMoveReactions(st).tally['g-stomp']).toBeUndefined();
   });
 
   it('自己中心技(g-stomp): 溜め中に半径内へ居たら暴露1(離れて無傷ならdodge)', () => {
@@ -143,14 +144,14 @@ describe('moveReaction: エピソード状態機械と3分類(counter > hit > do
     const nearPlayer = { x: 1040, y: 1040, width: 20, height: 20 };
     stepMoveReactions(st, [giant('g-stomp-windup', { gStompRadius: 92 })], nearPlayer, 0);
     stepMoveReactions(st, [giant('g-stomp-recover', { gStompRadius: 92 })], farPlayer, 700); // 離脱
-    expect(endMoveReactions(st)['g-stomp']).toEqual({ exposures: 1, counters: 0, hits: 0 });
+    expect(endMoveReactions(st).tally['g-stomp']).toEqual({ exposures: 1, counters: 0, hits: 0 });
   });
 
   it('追跡中のボスが消えた(撃破等)らエピソードは残響へ移り、セッション終了で確定する', () => {
     const st = createMoveReactionState();
     stepMoveReactions(st, [thor('tsuki-windup')], farPlayer, 0);
     stepMoveReactions(st, [], farPlayer, 500); // 敵消滅
-    expect(endMoveReactions(st)['thor-tsuki']).toEqual({ exposures: 1, counters: 0, hits: 0 });
+    expect(endMoveReactions(st).tally['thor-tsuki']).toEqual({ exposures: 1, counters: 0, hits: 0 });
   });
 });
 
@@ -174,6 +175,107 @@ describe('moveReaction: blendMoveReactionTable(EMA更新とnの累計)', () => {
     expect(next['g-jump']).toEqual(prev['g-jump']);
     expect(next['thor-issen']).toEqual({ n: 1, counterRate: 0, hitRate: 1 });
     expect(blendMoveReactionTable(prev, {}, 0.3)).toBe(prev);
+  });
+});
+
+// ==== GHOST-CMD-1B(§2.18-2 dodgeの味付け): 避け方向の癖の計測 ====================================
+// thor(500,500,40x40)の中心=(520,520)。at(cx,cy)=プレイヤー中心を(cx,cy)に置く。
+// (200,520)からは敵への半径方向=x軸・接線方向=y軸になる=分解の期待値が読みやすい配置。
+
+describe('GHOST-CMD-1B: 避け方向の癖(dodgeDirTally)の計測', () => {
+  const at = (cx: number, cy: number) => ({ x: cx - 10, y: cy - 10, width: 20, height: 20 });
+
+  it('横移動でdodge確定 → lateral加算', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [thor('harai-windup')], at(200, 520), 0);
+    stepMoveReactions(st, [thor('harai')], at(200, 560), 100);  // 接線方向(y)へ40px
+    stepMoveReactions(st, [thor('chase')], at(200, 560), 200);  // 技終了→残響へ
+    const r = endMoveReactions(st);
+    expect(r.tally['thor-harai']).toEqual({ exposures: 1, counters: 0, hits: 0 });
+    expect(r.dodgeDir).toEqual({ away: 0, lateral: 1, through: 0 });
+  });
+
+  it('後退(敵から離れる)でdodge確定 → away加算', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [thor('harai-windup')], at(200, 520), 0);
+    stepMoveReactions(st, [thor('harai')], at(150, 520), 100);  // 半径方向へ離れる50px
+    stepMoveReactions(st, [thor('chase')], at(150, 520), 200);
+    expect(endMoveReactions(st).dodgeDir).toEqual({ away: 1, lateral: 0, through: 0 });
+  });
+
+  it('敵へ向かう移動でdodge確定 → through加算', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [thor('harai-windup')], at(200, 520), 0);
+    stepMoveReactions(st, [thor('harai')], at(260, 520), 100);  // 敵へ向かって60px
+    stepMoveReactions(st, [thor('chase')], at(260, 520), 200);
+    expect(endMoveReactions(st).dodgeDir).toEqual({ away: 0, lateral: 0, through: 1 });
+  });
+
+  it('被弾(hit)したエピソードはdodgeDirに数えない', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [thor('harai-windup')], at(200, 520), 0);
+    stepMoveReactions(st, [thor('harai')], at(200, 560), 100);
+    markMoveReactionHit(st, 'thor-harai');
+    const r = endMoveReactions(st);
+    expect(r.tally['thor-harai']).toEqual({ exposures: 1, counters: 0, hits: 1 });
+    expect(r.dodgeDir).toEqual({ away: 0, lateral: 0, through: 0 });
+  });
+
+  it('カウンター成立したエピソードはdodgeDirに数えない', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [thor('harai-windup')], at(200, 520), 0);
+    stepMoveReactions(st, [thor('harai')], at(200, 560), 100);
+    markMoveReactionCounter(st);
+    const r = endMoveReactions(st);
+    expect(r.tally['thor-harai']).toEqual({ exposures: 1, counters: 1, hits: 0 });
+    expect(r.dodgeDir).toEqual({ away: 0, lateral: 0, through: 0 });
+  });
+
+  it('暴露なし(自己中心技の危険域の外)はdodgeDirに数えない', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [giant('g-stomp-windup', { gStompRadius: 92 })], at(200, 520), 0);
+    stepMoveReactions(st, [giant('g-stomp-windup', { gStompRadius: 92 })], at(200, 560), 100);
+    stepMoveReactions(st, [giant(undefined)], at(200, 560), 200);
+    const r = endMoveReactions(st);
+    expect(r.tally['g-stomp']).toBeUndefined();
+    expect(r.dodgeDir).toEqual({ away: 0, lateral: 0, through: 0 });
+  });
+
+  it('一歩も動かなかったdodge(全軸0)は方向が定義できない=数えない(nを薄めない)', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [thor('harai-windup')], at(200, 520), 0);
+    stepMoveReactions(st, [thor('harai')], at(200, 520), 100);
+    stepMoveReactions(st, [thor('chase')], at(200, 520), 200);
+    const r = endMoveReactions(st);
+    expect(r.tally['thor-harai']).toEqual({ exposures: 1, counters: 0, hits: 0 }); // dodge自体は数える
+    expect(r.dodgeDir).toEqual({ away: 0, lateral: 0, through: 0 });
+  });
+
+  it('エピソード開始のtickへ跨ぐ変位は数えない(開始前の移動が分類を汚さない)', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [thor('chase')], at(200, 520), 0);          // 技なし(基準tickのみ)
+    stepMoveReactions(st, [thor('harai-windup')], at(400, 520), 100); // 敵へ200px詰めたtickで技が開始
+    stepMoveReactions(st, [thor('harai')], at(400, 560), 200);        // エピソード中は横へ40px
+    stepMoveReactions(st, [thor('chase')], at(400, 560), 300);
+    expect(endMoveReactions(st).dodgeDir).toEqual({ away: 0, lateral: 1, through: 0 });
+  });
+
+  it('技が解決するtickへ跨ぐ変位はその技に数える(避けの最後の一歩を取りこぼさない)', () => {
+    const st = createMoveReactionState();
+    stepMoveReactions(st, [thor('harai-windup')], at(200, 520), 0);
+    stepMoveReactions(st, [thor('chase')], at(200, 560), 100); // 解決と同tickの横移動
+    expect(endMoveReactions(st).dodgeDir).toEqual({ away: 0, lateral: 1, through: 0 });
+  });
+
+  it('blendDodgeDirStat: 初回=サンプルそのまま・2回目以降はEMA・nは累計・サンプル0は前回値を参照ごと返す', () => {
+    const first = blendDodgeDirStat(undefined, { away: 1, lateral: 3, through: 0 }, 0.3);
+    expect(first).toEqual({ n: 4, awayRate: 0.25, lateralRate: 0.75 });
+    const second = blendDodgeDirStat(first, { away: 2, lateral: 0, through: 0 }, 0.3);
+    expect(second!.n).toBe(6);
+    expect(second!.awayRate).toBeCloseTo(0.25 * 0.7 + 1 * 0.3, 10);
+    expect(second!.lateralRate).toBeCloseTo(0.75 * 0.7 + 0 * 0.3, 10);
+    expect(blendDodgeDirStat(first, { away: 0, lateral: 0, through: 0 }, 0.3)).toBe(first);
+    expect(blendDodgeDirStat(undefined, { away: 0, lateral: 0, through: 0 }, 0.3)).toBeUndefined();
   });
 });
 
@@ -281,7 +383,7 @@ describe('GHOST-BULLET-TECH: 弾技のエピソード(既存の技と同じ流�
     stepMoveReactions(st, [bulletBoss('uri', 'bolt-windup')], farPlayer, 0);
     stepMoveReactions(st, [bulletBoss('uri', 'bolt')], farPlayer, 500);
     stepMoveReactions(st, [bulletBoss('uri', 'chase')], farPlayer, 1500); // 技終了→残響
-    expect(endMoveReactions(st)['uri-bolt']).toEqual({ exposures: 1, counters: 0, hits: 0 });
+    expect(endMoveReactions(st).tally['uri-bolt']).toEqual({ exposures: 1, counters: 0, hits: 0 });
   });
 
   it('被弾は弾のタグ(srcMoveKey)経由で技へ帰属する。飛翔中の着弾は残響で拾う', () => {
@@ -289,7 +391,7 @@ describe('GHOST-BULLET-TECH: 弾技のエピソード(既存の技と同じ流�
     stepMoveReactions(st, [bulletBoss('jibril', 'volley')], farPlayer, 0);
     stepMoveReactions(st, [bulletBoss('jibril', 'chase')], farPlayer, 800); // 技終了(弾はまだ飛んでいる)
     markMoveReactionHit(st, 'jibril-volley');                                // 残響中の着弾
-    expect(endMoveReactions(st)['jibril-volley']).toEqual({ exposures: 1, counters: 0, hits: 1 });
+    expect(endMoveReactions(st).tally['jibril-volley']).toEqual({ exposures: 1, counters: 0, hits: 1 });
   });
 
   it('残響が切れてから届いた弾は数えない(既存g-boltと同じ扱い)', () => {
@@ -298,7 +400,7 @@ describe('GHOST-BULLET-TECH: 弾技のエピソード(既存の技と同じ流�
     stepMoveReactions(st, [bulletBoss('mimir', 'chase')], farPlayer, 500);
     stepMoveReactions(st, [bulletBoss('mimir', 'chase')], farPlayer, 500 + MOVE_REACTION_LINGER_MS);
     markMoveReactionHit(st, 'mimir-radial');
-    expect(endMoveReactions(st)['mimir-radial']).toEqual({ exposures: 1, counters: 0, hits: 0 });
+    expect(endMoveReactions(st).tally['mimir-radial']).toEqual({ exposures: 1, counters: 0, hits: 0 });
   });
 
   it('反射(カウンター成立)は開いているエピソードへ付く=counterがhitに優先する', () => {
@@ -306,14 +408,14 @@ describe('GHOST-BULLET-TECH: 弾技のエピソード(既存の技と同じ流�
     stepMoveReactions(st, [bulletBoss('idol', 'idol-fan-windup')], farPlayer, 0);
     markMoveReactionHit(st, 'idol-fan');
     markMoveReactionCounter(st);
-    expect(endMoveReactions(st)['idol-fan']).toEqual({ exposures: 1, counters: 1, hits: 0 });
+    expect(endMoveReactions(st).tally['idol-fan']).toEqual({ exposures: 1, counters: 1, hits: 0 });
   });
 
   it('giantbat/thorの既存計測は変わらない(型ホワイトリスト撤廃の副作用が無いこと)', () => {
     const st = createMoveReactionState();
     stepMoveReactions(st, [giant('g-sweep-windup'), bulletBoss('mimir', 'chase')], farPlayer, 0);
     stepMoveReactions(st, [giant(undefined), bulletBoss('mimir', 'chase')], farPlayer, 500);
-    const tally = endMoveReactions(st);
+    const { tally } = endMoveReactions(st);
     expect(tally['g-sweep']).toEqual({ exposures: 1, counters: 0, hits: 0 });
     expect(Object.keys(tally)).toEqual(['g-sweep']); // 技を出していないボスはエピソードを作らない
   });
