@@ -30,7 +30,7 @@ import {
   ghostAimSwingNow, ghostAimLeadMs, ghostAimSlowness01,
 } from './ghostCounterAim'; // A-2(社長裁定v0.25.2600): 着弾の瞬間から逆算して振る(純関数・store非依存)
 import { ghostExtraTelegraphDodge, isTelegraphActive, type GhostDodgeThreat } from './ghostTelegraph'; // §2.12 要件7: 予告台帳(全ボス)
-import { anyMoveKeyForEnemy, isProjectileMoveKey, type MoveReactionTable, type DodgeDirStat } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
+import { anyMoveKeyForEnemy, isProjectileMoveKey, type MoveReactionTable, type MoveReactionStat, type DodgeDirStat } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
 import { drawFromCommandBag } from './commandBag'; // §2.18(GHOST-CMD-1): 決定の出どころ=境界ガード付き袋式
 import { drawFromModeBag } from './modeBag'; // GHOST-CMD-2A: 汎用2モード袋(隙コマンドの「詰める/撃つ」)
 import {
@@ -129,6 +129,23 @@ export interface GhostMoveRoll {
  * n=0(記録なし)・キー未定義は従来どおり'fallback'(乱数消費を含め1bit不変)。
  */
 export const GHOST_MOVE_ROLL_MIN_N = 1;
+/**
+ * v0.25.2610(社長裁定「1で」): **記録が無い技の既定の反応**。
+ *
+ * 社長報告「データ持ってないAIが遠くをキープしててほぼ何もしない。ボスがくると逃げるだけ」の原因:
+ * 記録が無い技は全て `'fallback'` になり、`'fallback'` は `'tank'` でも `'dodge'` でもないため、
+ * 間合い計算(下の `ghostDesiredDist`)の**安全マージン +120px が予告のたびに必ず足されていた**。
+ * 既定 `preferredDist=180` と合わせて常に **300px** に居座る一方、近接の間合いは `GHOST_MELEE_RANGE=74`。
+ * ⇒ **届かない → カウンター窓に入れない → counterChance 0.65 が一度も試行されない**。
+ * 「詰める理由」を生む `'counter'` を引く可能性がゼロなので、構造的に永久カイターになっていた。
+ * (天使6体は G4b の計測自体が未対応=常にこの状態だった。)
+ *
+ * よって記録が無い場合も**袋を引く**ようにし、その袋の中身をこの既定値から導く。
+ * `deriveBagCounts` の規則(counter=round(n×counterRate) / tank=min(round(n×hitRate), n−counter) /
+ * dodge=残り)により **counter 4 / dodge 4 / tank 2**(社長承認の「カウンター4割・回避4割・耐える2割」)。
+ * **値は叩き台=実機調整前提。** 記録がある技は従来どおり本人の記録が勝つ(ここは一切変わらない)。
+ */
+export const GHOST_DEFAULT_MOVE_STAT: MoveReactionStat = { n: 10, counterRate: 0.4, hitRate: 0.2 };
 /** 同一技キーが異常に続いた時の安全弁(通常の技はaiPhase/bossStateが数秒で抜ける)。超えたら従来挙動へ。 */
 export const GHOST_MOVE_ROLL_TIMEOUT_MS = 10_000;
 
@@ -146,8 +163,10 @@ export const rollGhostMoveReaction = (
     if (nowMs - prev.rolledAtMs <= GHOST_MOVE_ROLL_TIMEOUT_MS) return prev;
     return prev.decision === 'fallback' ? prev : { moveKey, decision: 'fallback', rolledAtMs: prev.rolledAtMs };
   }
-  const stat = moveReactions?.[moveKey];
-  if (!stat || stat.n < GHOST_MOVE_ROLL_MIN_N) return { moveKey, decision: 'fallback', rolledAtMs: nowMs };
+  // v0.25.2610: 記録が無い技も袋を引く(既定の配分=GHOST_DEFAULT_MOVE_STAT)。旧実装はここで
+  // 'fallback' を返しており、それが「データ無し守護霊は何もしない」の直接原因だった(上の注記)。
+  const recorded = moveReactions?.[moveKey];
+  const stat = (recorded && recorded.n >= GHOST_MOVE_ROLL_MIN_N) ? recorded : GHOST_DEFAULT_MOVE_STAT;
   // §2.18(GHOST-CMD-1): 確率ロール→袋式の1枚引きへ。乱数消費は従来と同じ「決定1回=rand1回」。
   const decision: GhostMoveDecision = drawFromCommandBag(moveKey, stat, rand);
   return { moveKey, decision, rolledAtMs: nowMs };

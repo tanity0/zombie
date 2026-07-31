@@ -6,7 +6,7 @@ import {
   shouldGhostClaimSub, DEFAULT_SUB_USES_PER_MIN,
   ghostRunEnabled, GUARDIAN_SPIRIT_SKILL,
   GHOST_LEASH_PX, GHOST_MELEE_RANGE, GHOST_BOSS_HP_MULT,
-  rollGhostMoveReaction, GHOST_MOVE_ROLL_MIN_N, GHOST_MOVE_ROLL_TIMEOUT_MS,
+  rollGhostMoveReaction, GHOST_MOVE_ROLL_MIN_N, GHOST_MOVE_ROLL_TIMEOUT_MS, GHOST_DEFAULT_MOVE_STAT,
   ghostReactionMs, ghostMoveChance, ghostApproachChance, ghostDesiredDist,
   ghostCounterWaitExpired, ghostDodgeVector,
   ghostDodgeLateralFrac, GHOST_DODGE_DIR_MAX_RAD,
@@ -252,8 +252,13 @@ describe('GHOST-BULLET-TECH A: stepGhostDanger(認知の持続・純関数)', ()
 describe('§2.12 要件3: 予告中だけ安全マージンを足して退避する', () => {
   it('予告(windup)中は preferredDist+マージン まで下がる', () => {
     // 距離200 = preferredDist(180)の帯(±40)の中=平時なら動かない。予告中は目標が300へ伸びるので下がる。
+    // v0.25.2610: マージンが乗るのは 'fallback'(=タイムアウト安全弁)と「カウンターを諦めた」時だけに
+    // なった(記録なしは既定の袋を引くようになったため)。ここでは持ち越しロールで fallback を明示して測る。
     const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'issen-windup' });
-    const ghost = mkGhost({ x: 0, y: 0, width: 0, height: 0, dangerSeenAt: 0 });
+    const ghost = mkGhost({
+      x: 0, y: 0, width: 0, height: 0, dangerSeenAt: 0,
+      moveRoll: { moveKey: 'thor-issen', decision: 'fallback' as const, rolledAtMs: 5000 },
+    });
     const d = decideGhost(baseDriverInput({
       ghost, enemies: [boss], nowMs: 5000, profile: { ...PROFILE, meleeBias: 0 },
     }));
@@ -640,13 +645,29 @@ describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () =>
 
   // §2.18裁定(GHOST-CMD-1): 旧ゲート「n<3はfallback」(§2.9(1))は廃止。「n=1は確定行動になる=
   // 仕様として許容」により、fallbackはn=0(記録なし)とキー未定義だけになった(GHOST_MOVE_ROLL_MIN_N=1)。
-  it('n=0(記録なし)の技・表に無い技は fallback(randを消費しない=従来挙動の乱数列を汚さない)', () => {
+  // v0.25.2610(社長裁定「1で」): 記録が無い技も**既定の袋**を引く。旧挙動(全部 'fallback')は
+  // 「詰める理由」が一度も生まれず、間合いの安全マージンが常時乗って永久カイター化する原因だった
+  // (社長報告「データ持ってないAIが遠くをキープしててほぼ何もしない。ボスがくると逃げるだけ」)。
+  it('n=0(記録なし)の技・表に無い技は「既定の配分」で引く(fallbackではない)', () => {
     expect(GHOST_MOVE_ROLL_MIN_N).toBe(1);
     const boss = mkBoss({ bossState: 'issen-windup' });
     const none = { 'thor-issen': { n: GHOST_MOVE_ROLL_MIN_N - 1, counterRate: 1, hitRate: 0 } };
-    expect(rollGhostMoveReaction(undefined, boss, none, 0, randNever)?.decision).toBe('fallback');
-    expect(rollGhostMoveReaction(undefined, boss, {}, 0, randNever)?.decision).toBe('fallback');
-    expect(rollGhostMoveReaction(undefined, boss, undefined, 0, randNever)?.decision).toBe('fallback');
+    for (const table of [none, {}, undefined]) {
+      resetGhostCommandBags();
+      const d = rollGhostMoveReaction(undefined, boss, table, 0, () => 0)?.decision;
+      expect(d).not.toBe('fallback');
+      expect(['counter', 'dodge', 'tank']).toContain(d);
+    }
+  });
+
+  it('既定の配分は counter4 / dodge4 / tank2(社長承認「カウンター4割・回避4割・耐える2割」)', () => {
+    expect(GHOST_DEFAULT_MOVE_STAT).toEqual({ n: 10, counterRate: 0.4, hitRate: 0.2 });
+    const boss = mkBoss({ bossState: 'issen-windup' });
+    // 新品の袋(counter4 / dodge4 / tank2)からの初引き: v=r*10 → <4=counter / <8=dodge / 残り=tank
+    for (const [r, want] of [[0, 'counter'], [0.39, 'counter'], [0.5, 'dodge'], [0.79, 'dodge'], [0.9, 'tank']] as const) {
+      resetGhostCommandBags();
+      expect(rollGhostMoveReaction(undefined, boss, {}, 0, () => r)?.decision).toBe(want);
+    }
   });
 
   it('n=1は確定行動(§2.18裁定「仕様として許容」): 乱数によらず記録の1枚がそのまま出る', () => {
@@ -769,13 +790,14 @@ describe('G4b decideGhost: 技への反応の再現(ロールが挙動を切り�
 
   // §2.18裁定(GHOST-CMD-1): 旧「n<3はfallback」→新ゲートn<1。n=0(記録なし)だけが従来挙動へ落ちる
   // (n=1は確定行動=仕様として許容・記録がある所を集計デフォで上書きしない)。
-  it('n=0(記録なし)はfallback=従来挙動(counterChanceの抽選がそのまま生きる)', () => {
+  it('n=0(記録なし)でも既定の袋を引く(v0.25.2610・旧: fallback)', () => {
     const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
     const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
     const profile: GhostProfile = { ...PROFILE, counterChance: 1, moveReactions: { 'thor-issen': { n: 0, counterRate: 0, hitRate: 1 } } };
+    resetGhostCommandBags();
     const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0.5 }));
-    expect(d.moveRoll?.decision).toBe('fallback');
-    expect(d.counterWillAttempt).toBe(true); // rand(0.5) < counterChance(1)=従来の抽選
+    expect(d.moveRoll?.decision).not.toBe('fallback');
+    expect(['counter', 'dodge', 'tank']).toContain(d.moveRoll?.decision);
   });
 
   it('ロールは技1回につき1回=2tick目も同じ決定を持ち越す(振り直さない)', () => {
@@ -829,9 +851,11 @@ describe('GHOST-BULLET-TECH B: 弾技にも技ロールが効く', () => {
     expect(rollGhostMoveReaction(undefined, mimirBurst(), table, 0, () => 0.5)?.decision).toBe('tank');
   });
 
-  it('記録が無い弾技は従来どおりフォールバック(乱数も消費しない=既存プロファイルは1bit不変)', () => {
-    const roll = rollGhostMoveReaction(undefined, mimirBurst(), {}, 0, randNever);
-    expect(roll?.decision).toBe('fallback');
+  it('記録が無い弾技も既定の袋を引く(v0.25.2610・旧: フォールバック)', () => {
+    resetGhostCommandBags();
+    const roll = rollGhostMoveReaction(undefined, mimirBurst(), {}, 0, () => 0);
+    expect(roll?.decision).not.toBe('fallback');
+    expect(['counter', 'dodge', 'tank']).toContain(roll?.decision);
   });
 
   // 是正(v0.25.2543): 旧 GHOST_DODGE_PROFILE.dodge='aoe' は botSkill の段階表で
