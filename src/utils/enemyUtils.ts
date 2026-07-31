@@ -31,7 +31,7 @@ interface EnemyStats {
   experienceValue: number;
 }
 
-const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
+export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   bat:       { width: 22, height: 22, speed: 75,  health: 8,    damage: 6,   experienceValue: 1 },
   skeleton:  { width: 26, height: 26, speed: 60,  health: 18,   damage: 8,   experienceValue: 1 },
   zombie:    { width: 30, height: 30, speed: 42,  health: 40,   damage: 10,  experienceValue: 2 },

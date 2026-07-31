@@ -982,7 +982,11 @@ const SKADI_BURST_RECOVER_MS = withRecoverFloor(300);   // スカジ 弾3連の�
 const MIMIR_BITE_WINDUP_MS = 700;
 const MIMIR_BITE_RECOVER_MS = withRecoverFloor(800);
 const MIMIR_BITE_CD_MS = 6000;
-const MIMIR_BITE_RADIUS = GRENADE_BLAST_RADIUS; // = 92(社長裁定6.26-9 #3と同じ値・同じ意味を流用)
+// v0.25.2612(社長指示「ミーミルは直して / そして二度と起きない学習」): 92→216。
+// 旧値は GRENADE_BLAST_RADIUS(=92・城ボス系の値)の流用だったが、ミーミルは当たり判定が
+// 248×138(半幅124)なので**円が体の中に収まり構造的に当たらなかった**。値と不変条件は
+// utils/bodyCenteredAoe.ts へ移設(足元の円AoEは体の外へ届くことをテストで機械検証する)。
+import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 
 // ヨルムンガルド「うねり」(§6.28-7・近接専用の新技・Phase2限定)。長さ/半幅はTHOR_HARAI_RANGE/
 // HALF_WIDTHをそのまま流用(=ジャイアントの薙ぎ払いと同値・同じ意味・§6.28-7で明記)。
