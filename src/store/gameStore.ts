@@ -1854,6 +1854,13 @@ export const INVULN_MS = 700;
 // 記録専用=判定・挙動・描画には一切影響しない(window不在のヘッドレステストでは常にfalse)。
 const GHOST_DMG_LOG_ENABLED =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('ghostlog') === '1';
+// v0.25.2582(社長「ためしたい」=§2.11追補・除外1の試験改定): 守護霊起因でもズーム/スロー/ストップの
+// 同梱演出(triggerFinishImpact/triggerHitImpact)を出す。CDはプレイヤーと**共有の1本**
+// (lastKillZoomAt/JUICE_CD)=演出はカメラ=世界にひとつの資源なので、主語ごとに持たず連鎖スパムを
+// CDで抑える。`?ghostzoom=0` で従来(除外1=守護霊はシェイクと文字のみ)へ完全復帰(A/B比較用)。
+// 対象はキル・フィニッシュ・カウンター成立のみ(サブ起因のスロー禁止ルールはプレイヤー同様に維持)。
+export const GHOST_ZOOM_TRIAL_ENABLED =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('ghostzoom') !== '0';
 // キャラ登場演出。2段構成:
 //  フェーズA(ヘリ飛来): 超遠く・高くから小さく飛来し、降下しながら拡大して着地ダッシュの開始点へ。
 //  フェーズB(ジャンプ着地): 従来のロックマン的ダッシュ着地(左から低く猛スピード→中央着地)。
@@ -5481,8 +5488,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     grantMeleeKillRewards(get, killed, player, gun);
     get().spawnSlash(ccx, ccy, 'rgba(226,232,240,0.95)');
     get().spawnRing(ccx, ccy, 6, 40, 'rgba(203,213,225,0.7)', 3, 240);
-    // 除外1(演出): 停止/スロー/寄りズームは守護霊起因では出さない(刀フィニッシュと同じ掟)。
-    if ((finisherHit || bossFinishHit) && !isGhost) {
+    // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも停止/スロー/寄りズームを出す(?ghostzoom=0で従来へ)。
+    if ((finisherHit || bossFinishHit) && (!isGhost || GHOST_ZOOM_TRIAL_ENABLED)) {
       const [ztx, zty] = finishZoomTargetOf(killed);
       get().triggerFinishImpact(ztx, zty);
     }
@@ -5976,9 +5983,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
     grantMeleeKillRewards(get, killed, player, gun, true);
-    // 除外1(演出): ヒットストップ/スロー/寄りズームは守護霊起因では出さない
-    // (ghostCounter.ts の掟と同じ。triggerFinishImpactは停止+スロー+ズームの同梱なので丸ごと不使用)。
-    if ((finisherHit || bossFinishHit) && !isGhost) {
+    // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも出す(?ghostzoom=0で従来=除外1へ)。
+    if ((finisherHit || bossFinishHit) && (!isGhost || GHOST_ZOOM_TRIAL_ENABLED)) {
       const [ztx, zty] = finishZoomTargetOf(killed);
       get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
     }
@@ -6799,6 +6805,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const hit = resolveStunnedMeleeHit(enemy, meleeSwingBaseDamage(melee, actor), st.gameTime, BOSS_MELEE_STUN_MULT);
     if (!hit) return null;
     const now = Date.now();
+    // v0.25.2582(試験改定): 守護霊のフィニッシュにも停止+スロー+寄りズーム(プレイヤーの
+    // triggerCounter側と同型・CDはtriggerFinishImpact内の共有1本=スパムしない)。?ghostzoom=0で従来へ。
+    if (GHOST_ZOOM_TRIAL_ENABLED) {
+      get().triggerFinishImpact(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+    }
     if (hit.kind === 'execute') {
       // 即時処刑(プレイヤーの killed{finisher:true} 相当)。viaMeleeFinish=true=§5.21-追補4の
       // finishKillOnly個体にもこの経路でならトドメを刺せる。数字は出さない(プレイヤーの処刑と同じ)。

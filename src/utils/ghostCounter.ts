@@ -20,6 +20,7 @@ import type { Player } from '../types/game';
 import {
   useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage,
   COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
+  COUNTER_HITSTOP_MS, COUNTER_ZOOM_MAG, GHOST_ZOOM_TRIAL_ENABLED,
 } from '../store/gameStore';
 
 // (useGameLoop v0.25.2479 から移設: angelBossTick/combatTickのゴースト分岐も同じゲートを見るため)
@@ -96,7 +97,11 @@ const ghostCounterBlueLayer = (
   st.spawnBurst(hitX, hitY, '#38bdf8', 14);
   st.spawnGlow(hitX, hitY, 43, 'rgba(56,189,248,', 360);
   st.spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-  if (GHOST_FX_SHAKE_ENABLED) st.triggerShake(COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG);
+  // v0.25.2582(社長「ためしたい」=除外1の試験改定): 守護霊のカウンター成立にも停止+揺れ+寄りズーム
+  // (プレイヤー成立=useGameLoopのthorCounterHit等と同じ定数)。?ghostzoom=0で従来(シェイクのみ)へ。
+  if (GHOST_ZOOM_TRIAL_ENABLED) {
+    st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+  } else if (GHOST_FX_SHAKE_ENABLED) st.triggerShake(COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG);
   if (playSfxGain && sfxGain > 0) playSfxGain('counter', sfxGain);
 };
 
