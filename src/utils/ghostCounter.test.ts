@@ -6,7 +6,9 @@ import {
   setGhostCounterClaim, peekGhostCounterClaim, consumeGhostCounterClaim, clearGhostCounterClaim,
   ghostCounterDamage, GHOST_COUNTER_CLAIM_TTL_MS, type GhostCounterClaim,
 } from './ghostCounter';
-import { BOSS_CRIT_DAMAGE_MULT } from '../store/gameStore';
+import { BOSS_CRIT_DAMAGE_MULT, useGameStore } from '../store/gameStore';
+import { spawnEnemyAt } from './enemyUtils';
+import type { Summon } from '../types/game';
 
 const claimAt = (atMs: number, bossId = 'boss-1'): GhostCounterClaim =>
   ({ bossId, ghostX: 100, ghostY: 200, dmg: 60, atMs });
@@ -53,5 +55,44 @@ describe('カウンター請求レジストリ: 1請求=最大1成立・鮮度TT
     setGhostCounterClaim(claimAt(1100, 'boss-9'));
     expect(consumeGhostCounterClaim('boss-1', 1110)).toBeNull();
     expect(consumeGhostCounterClaim('boss-9', 1110)?.atMs).toBe(1100);
+  });
+});
+
+// v0.25.2597(社長報告「赤いサークルとかなり離れた位置でカウンターを取っていた」= giantbatのジャンプ攻撃):
+// 位置ゲートは**ボスの型**ではなく**経路(その技のダメージがどこに置かれているか)**で切り替わる、の固定。
+//  - 接触型(既定・dashParried相当): 成立の瞬間にボスの間合いに居ること。
+//  - ゾーン型(inAttackZone=呼び出し側がゾーンの幾何で確認済み): 間合いは見ない。
+// これを型分岐(旧: `boss.type !== 'giantbat'`)へ戻すと、giantbatは両方の技を持つため
+// ジャンプ(接触型)がどんな距離からでも成立する=このテストが落ちる。
+describe('位置ゲート: 接触型は間合い必須・ゾーン型は素通し(型では切り替えない)', () => {
+  const BOSS_ID = 'boss-far';
+  /** ボスから遠く離れた位置にゴーストを置いた盤面を作り、その時刻の請求を積む。 */
+  const setupFarGhost = (nowMs: number) => {
+    useGameStore.getState().resetGame('warrior');
+    const boss = spawnEnemyAt('giantbat', 0, 0, useGameStore.getState().gameTime);
+    boss.id = BOSS_ID;
+    const ghost: Summon = {
+      id: 'ghost-test', x: 4000, y: 4000, width: 32, height: 32, speed: 200, // 間合いの遥か外
+      health: 100, maxHealth: 100, damage: 0, kind: 'ghost-ally', reusedType: 'zombie', level: 1,
+      createdAt: nowMs, lastHit: 0, ghostBossId: BOSS_ID,
+    };
+    useGameStore.setState({ enemies: [boss], summons: [ghost] });
+    setGhostCounterClaim({ bossId: BOSS_ID, ghostX: 4000, ghostY: 4000, dmg: 60, atMs: nowMs });
+  };
+
+  beforeEach(() => clearGhostCounterClaim());
+
+  it('接触型(既定)は、間合いの外なら giantbat でも成立しない(ジャンプ攻撃の遠距離カウンター封じ)', () => {
+    const now = Date.now();
+    setupFarGhost(now);
+    expect(peekGhostCounterClaim(now)).toBeNull();
+    expect(consumeGhostCounterClaim(BOSS_ID, now)).toBeNull();
+  });
+
+  it('ゾーン型(inAttackZone)は、間合いの外でも成立する(衝撃波/帯はボスの体の距離と無関係)', () => {
+    const now = Date.now();
+    setupFarGhost(now);
+    expect(peekGhostCounterClaim(now, { inAttackZone: true })?.bossId).toBe(BOSS_ID);
+    expect(consumeGhostCounterClaim(BOSS_ID, now, { inAttackZone: true })?.dmg).toBe(60);
   });
 });

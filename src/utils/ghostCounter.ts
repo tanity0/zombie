@@ -42,6 +42,17 @@ export interface GhostCounterClaim {
   atMs: number;     // 請求時刻(Date.now)
 }
 
+/** 請求を覗く/消費する時の位置ゲートの切り替え(peek/consume 共通)。 */
+export interface GhostClaimGateOpts {
+  /**
+   * 呼び出し側が既に**その攻撃のダメージゾーンの幾何**で「ゴーストが当たる位置に居る」ことを
+   * 確かめている経路(例: combatTickのブラスト判定 `inBlastGhost`)は true。
+   * この場合、下の「ボスの体の間合い」判定は掛けない(ゾーン型の技はボスの体の距離と無関係)。
+   * 既定(false/未指定)=接触型として扱い、成立の瞬間にボスの間合いに居ることを要求する。
+   */
+  inAttackZone?: boolean;
+}
+
 /**
  * 請求の鮮度。消費はスイングと同フレーム(城ボス系)〜次フレーム(状態機械の閉包ハンドラ系)。
  * 低fps(50ms/フレーム)でも1〜2フレームは生きる長さにし、それより古い請求は流す
@@ -77,29 +88,29 @@ export const setGhostCounterClaim = (claim: GhostCounterClaim): void => { pendin
  * 被弾時刻は damageSummon が打つ `lastHit`(ダメージが実際に入った時だけ更新=カウンター無敵や
  * i-frameで弾かれた時は更新されない)。`?lastcounter=1` で旧挙動へ復帰。
  */
-export const peekGhostCounterClaim = (nowMs: number): GhostCounterClaim | null => {
+export const peekGhostCounterClaim = (nowMs: number, opts?: GhostClaimGateOpts): GhostCounterClaim | null => {
   if (pendingClaim === null || nowMs - pendingClaim.atMs > GHOST_COUNTER_CLAIM_TTL_MS) return null;
   const st = useGameStore.getState();
   const ghost = st.summons.find(s => s.kind === 'ghost-ally');
   if (!LATE_COUNTER_ENABLED && ghost && ghost.lastHit > pendingClaim.atMs) return null; // 請求後に被弾=弾き失敗
-  // v0.25.2594(社長報告「守護霊がありえない位置でカウンター取ってる」): **成立の瞬間にボスの間合いに
-  // 居ること**を要求する(プレイヤーは `overlap && counterActive`=解決の瞬間に体が重なっている事が必須)。
-  // v0.25.2588で受付を150→400ms(=プレイヤーと同じ窓長)へ広げた際、位置条件を写し忘れていたため、
-  // スイング後に離れても成立していた=遠くでカウンターが出る絵になっていた。距離はプレイヤーと同じ
-  // 縁基準(enemyMeleeDist)で、近接射程(GHOST_MELEE_RANGE)以内であること。ボスが見つからない
-  // (撃破直後等)場合は従来どおり通す=判定を厳しくするのは「離れている」と確認できた時だけ。
-  // v0.25.2596(社長指摘「技は赤いラインなのでボスの体の距離は関係ない」): **カウンターには2方式ある**。
-  //  (A) 体接触型(トール/裏ボス/天使/idol): プレイヤー側が `overlap && counterActive`=**ボスの体と
-  //      重なっている**ことを要求する。守護霊もここへ揃える(下の間合い判定)。
-  //  (B) 攻撃被弾型(城ボスgiantbat): `applyContactDamage`の dashParried=**その攻撃に当たる位置に居て**
-  //      窓が開いていれば成立(薙ぎ払いの帯・突進・着地など)。ボスは動かず衝撃波だけ飛んでくる技を
-  //      離れた位置でカウンターできるのはこの方式だから。**この方式に体の距離は無関係**なので、
-  //      間合い判定を掛けてはいけない(掛けると社長が実際に取れているカウンターが取れなくなる)。
-  // よって間合い判定は (A) のボスにだけ適用する。判定の場所自体が「攻撃に当たる位置」を保証している
-  // (B) は素通しでよい。
-  if (ghost) {
+  // v0.25.2594(社長報告「守護霊がありえない位置でカウンター取ってる」): **成立の瞬間にその攻撃の
+  // 当たる場所に居ること**を要求する(プレイヤー側は全経路が位置を必ず確かめている)。v0.25.2588で
+  // 受付を150→400msへ広げた際に位置条件を写し忘れていたため、スイング後に離れても成立していた。
+  // v0.25.2597(社長報告「ありえないタイミングといったのはジャンプ攻撃。赤いサークルとかなり離れた
+  // 位置でカウンターを取っていた」): **v0.25.2596の「giantbatは型ごと素通し」は広過ぎた**。
+  // プレイヤー側の位置条件は「ボスの型」ではなく**経路(その技のダメージがどこに置かれているか)**で
+  // 決まっていた:
+  //   - ゾーン型(衝撃波/薙ぎ払いの帯/着地AoE=blast): `applyBossBlasts` が **ゾーンの幾何**で当たりを
+  //     見る。ボスの体の距離は無関係。→ 呼び出し側が `inBlastGhost` で既に確かめているので素通し。
+  //   - 接触型(突進の体当たり/滞空中の飛び掛かり/硬直への差し込み=dashParried): プレイヤーは
+  //     `checkPlayerEnemyCollisions`=**体が重なっている**ことが必須。→ 守護霊も間合いを要求する。
+  // giantbatは**両方を持つ**(衝撃波はゾーン型・ジャンプ/突進は接触型)ので、型で素通しにすると
+  // 接触型のジャンプまで無条件成立になっていた=社長が見た「赤サークルから離れてカウンター」。
+  // よって判定は型ではなく **`opts.inAttackZone`(呼び出し側がゾーンの幾何で確認済みか)** で切り替える。
+  // ボスが見つからない(撃破直後等)場合は従来どおり通す=厳しくするのは「離れている」と確認できた時だけ。
+  if (!opts?.inAttackZone && ghost) {
     const boss = st.enemies.find(e => e.id === pendingClaim!.bossId);
-    if (boss && boss.type !== 'giantbat') {
+    if (boss) {
       const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
       if (enemyMeleeDist(gcx, gcy, boss) > GHOST_MELEE_RANGE) return null;
     }
@@ -108,8 +119,10 @@ export const peekGhostCounterClaim = (nowMs: number): GhostCounterClaim | null =
 };
 
 /** 対象ボスの期限内の請求を消費する(1請求=最大1回の成立)。対象違い/期限切れはnull(残置/実質破棄)。 */
-export const consumeGhostCounterClaim = (bossId: string, nowMs: number): GhostCounterClaim | null => {
-  const c = peekGhostCounterClaim(nowMs);
+export const consumeGhostCounterClaim = (
+  bossId: string, nowMs: number, opts?: GhostClaimGateOpts,
+): GhostCounterClaim | null => {
+  const c = peekGhostCounterClaim(nowMs, opts);
   if (c === null || c.bossId !== bossId) return null;
   pendingClaim = null;
   return c;

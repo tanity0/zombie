@@ -227,7 +227,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           ? distToSegment({ x: gacx, y: gacy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }) <= b.capsule.halfWidth + gar
           : Math.hypot(gacx - b.x, gacy - b.y) <= b.radius + gar;
         if (inBlastGhost) {
-          const gClaim = consumeGhostCounterClaim(b.enemyId, Date.now());
+          // v0.25.2597: inAttackZone=この直上の `inBlastGhost` が「ゴーストが爆風/帯の中に居る」ことを
+          // ゾーンの幾何で確かめ済み=**ゾーン型**。ボスの体の間合い判定は掛けない(掛けると、ボスが
+          // その場から動かず衝撃波だけ飛ばす技を離れた位置でカウンターできなくなる=社長の実運用を壊す)。
+          const gClaim = consumeGhostCounterClaim(b.enemyId, Date.now(), { inAttackZone: true });
           if (gClaim) {
             applyGhostCounterEffect(owner, gacx, gacy, { claim: gClaim, sfxGain: npcSfxDistGain(gacx, gacy, bpcx, bpcy, useGameStore.getState().camera, useGameStore.getState().gameBounds) }, (key, gain) => fx.playSfx(key, gain));
           } else {
@@ -721,6 +724,10 @@ export const applyGhostBossParry = (
   playCounterSfx: ((key: 'counter' | 'headshot', gain: number) => void) | null,
   sfxGainAt: (x: number, y: number) => number,
 ): void => {
+  // v0.25.2597: ここは**接触型**(プレイヤー側の対応経路 dashParried は checkPlayerEnemyCollisions=
+  // 体が重なっていることが必須)。よって inAttackZone は渡さない=既定の間合い判定が掛かる。
+  // これが無いと giantbat の飛び掛かり(g-jump-air)/着地硬直(g-jump-recover)を**どんな距離からでも**
+  // 成立させてしまう(社長報告「赤いサークルとかなり離れた位置でカウンターを取っていた」)。
   const claim = peekGhostCounterClaim(nowMs);
   if (!claim) return;
   const state = useGameStore.getState();
