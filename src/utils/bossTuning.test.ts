@@ -7,6 +7,8 @@ import {
 import { registerIdolTuning, IDOL_TUNING_FIELDS, IDOL_PLAYABLES, VERB_SECTION } from './idolTuning';
 import { requestIdolMovePlay, requestIdolVerbPlay, idolPlaybackActive, getIdolPlayback, clearIdolPlayback } from './idolTick';
 import { IDOL_TUNING, IDOL_TUNING_DEFAULTS } from './idolScript';
+import { getEnemyFireProfile } from './enemyUtils';
+import type { Enemy } from '../types/game';
 
 const FIELDS: TuningField[] = [
   { path: 'a.b', label: 'AB', group: 'behavior', section: 'S', kind: 'ms', min: 0, max: 1000, step: 50 },
@@ -254,5 +256,35 @@ describe('個別再生: 要求箱の振る舞い', () => {
     clearIdolPlayback();
     expect(idolPlaybackActive()).toBe(false);
     expect(getIdolPlayback()).toEqual({ verb: null, loop: null });
+  });
+});
+
+// v0.25.2627(社長報告「これ速さの項目がない」): 狙い撃ち/連射扇の弾速がメーカーに出ていなかった。
+// 原因は敵弾の性能が enemyUtils の「11ボス共通の1行」にあり、ボスの数値テーブルに無かったこと。
+describe('弾の性能がテーブルに載っている(社長報告「速さの項目がない」)', () => {
+  beforeEach(() => { registerIdolTuning(); });
+
+  it('アイドルの弾は enemyUtils の上書きとして登録され、テーブルと同じ参照を指す', () => {
+    const e = { type: 'idol' } as unknown as Enemy;
+    const profile = getEnemyFireProfile(e);
+    expect(profile).toBe(IDOL_TUNING.bullet); // 同一参照=メーカーの変更がその場で効く
+  });
+
+  it('既定値は従来の共通行と同値(テーブル化で挙動が変わっていない)', () => {
+    expect(IDOL_TUNING.bullet.speed).toBe(320);
+    expect(IDOL_TUNING.bullet.damage).toBe(20);
+    expect(IDOL_TUNING.bullet.size).toBe(16);
+  });
+
+  it('上書きの無いボスは従来どおりの共通行を返す(他ボスは1バイトも変わらない)', () => {
+    const mimir = getEnemyFireProfile({ type: 'mimir' } as unknown as Enemy);
+    expect(mimir).toEqual({ interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 });
+  });
+
+  it('弾速・弾のダメージ・弾の大きさがスキーマに出ている(=画面に項目が並ぶ)', () => {
+    const paths = (getBossTuning('idol')?.fields ?? []).map((f: TuningField) => f.path);
+    expect(paths).toContain('bullet.speed');
+    expect(paths).toContain('bullet.damage');
+    expect(paths).toContain('bullet.size');
   });
 });

@@ -6,6 +6,7 @@
 // 主たる操作は**キーボードで打つことではなく「摘まむ」**(ドラッグでスクラブ / +− ボタン)。
 // よって **step(刻み幅)がスキーマの主役**になる。刻みが合っていないとスクラブが使い物にならない。
 // 叩き台の刻み: ms=50 / px=10 / 倍率=0.05 / 重み=5 / 個数=1。
+import { registerEnemyFireProfile } from './enemyUtils';
 import { registerBossTuning, type TuningField, type PlayableAction } from './bossTuning';
 import { IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_ALL_MOVES, type IdolMove } from './idolScript';
 import { requestIdolMovePlay, requestIdolVerbPlay, getIdolPlayback } from './idolTick';
@@ -69,6 +70,12 @@ const stringFields = (): TuningField[] =>
 const behaviorFields = (): TuningField[] => [
   { path: 'stats.health', label: 'HP', group: 'behavior', section: '基礎値', kind: 'num', min: 500, max: 40000, step: 500 },
   { path: 'stats.damage', label: '与ダメージ', group: 'behavior', section: '基礎値', kind: 'num', min: 0, max: 999, step: 5 },
+  // v0.25.2627(社長報告「これ速さの項目がない」): 狙い撃ち/連射扇が撃つ弾の性能。
+  // 追尾弾(orb)だけが shape.orbSpeed として出ており、**普通の弾の速さが1つも無かった**。
+  // aim と fan は同じ弾を撃つので**共通の1組**として出す(技ごとに分けると嘘になる)。
+  { path: 'bullet.speed', label: '弾速', group: 'move', section: '弾(狙い撃ち・連射扇 共通)', kind: 'pxs', min: 40, max: 1200, step: 20 },
+  { path: 'bullet.damage', label: '弾のダメージ', group: 'move', section: '弾(狙い撃ち・連射扇 共通)', kind: 'num', min: 0, max: 200, step: 1 },
+  { path: 'bullet.size', label: '弾の大きさ', group: 'move', section: '弾(狙い撃ち・連射扇 共通)', kind: 'px', min: 4, max: 64, step: 2 },
   { path: 'stats.speed', label: '移動速度', group: 'behavior', section: '基礎値', kind: 'pxs', min: 0, max: 600, step: 10 },
   { path: 'phaseHpThreshold', label: 'フェーズ2の閾値', group: 'behavior', section: '基礎値', kind: 'frac', min: 0, max: 1, step: 0.05, hint: 'HP割合' },
 
@@ -114,6 +121,9 @@ export const IDOL_PLAYABLES: readonly PlayableAction[] = [
 ];
 
 export const registerIdolTuning = (): void => {
+  // v0.25.2627: 弾の性能を「11ボス共通の1行」から**このテーブル**へ差し替える。
+  // 同じ参照を渡すので、メーカーで数字を変えるとその場で次の弾から反映される。
+  registerEnemyFireProfile('idol', IDOL_TUNING.bullet);
   registerBossTuning({
     bossType: 'idol',
     label: 'アイドル',

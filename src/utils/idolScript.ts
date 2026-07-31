@@ -57,6 +57,14 @@ export interface IdolTuning {
   sameAngleDeg: number;
   /** 基礎値(§1-5)。ENEMY_STATS.idol と同値で始まる。画面から変えた時は生きている個体へ反映する。 */
   stats: { health: number; damage: number; speed: number };
+  /**
+   * v0.25.2627(社長報告「これ速さの項目がない」): **狙い撃ち(aim)/連射扇(fan)が撃つ弾の性能。**
+   * これまで `enemyUtils.getEnemyFireProfile` の**11ボス共通の1行**(speed320/damage20/size16)を
+   * 使っていたため、**ボスごとに変えられず、メーカーの技欄にも出せなかった**。ここへ持ってきて
+   * `registerEnemyFireProfile('idol', ...)` で上書き登録する(既定値は共通行と同値=挙動は不変)。
+   * 追尾弾(orb)はアイドル固有の実装なので別(`shape.orbSpeed`)。
+   */
+  bullet: { interval: number; range: number; speed: number; damage: number; size: number };
 }
 
 export const IDOL_TUNING: IdolTuning = {
@@ -127,6 +135,9 @@ export const IDOL_TUNING: IdolTuning = {
   sameAngleDeg: 30,
   // 基礎値。既定は ENEMY_STATS.idol と同値(テストで突き合わせる)。
   stats: { health: 9000, damage: 30, speed: 150 },
+  // v0.25.2627: 既定は従来の共通行と同値(speed320/damage20/size16)=テーブル化で挙動は変わらない。
+  // interval/range はアイドルでは未使用(発射タイミングは台本が直接制御)。共通行と同値のまま持つ。
+  bullet: { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 },
 };
 
 /** 既定値(リセット/差分表示用)。テーブルとは別オブジェクトとして凍結せずに保持する。 */

@@ -597,7 +597,28 @@ interface FireProfile {
   size: number;
 }
 
+/**
+ * v0.25.2627(社長報告「これ速さの項目がない」): **弾の性能をボスメーカーから触れるようにするための
+ * 上書き置き場。**
+ *
+ * 事情: 敵弾の speed/damage/size は下の `getEnemyFireProfile` が持つが、**裏ボス〜天使〜アイドルの11体は
+ * 全員が同じ1行(speed 320 / damage 20 / size 16)を共有**していた。よってボスごとの数値テーブル
+ * (BOSS_MAKER.md §2)には**弾速が入っておらず、メーカーの技欄に「速さ」が出ない**状態だった
+ * (追尾弾だけはアイドル固有の実装なので `shape.orbSpeed` として出ていた)。
+ *
+ * ここに型ごとの上書きを登録できるようにし、ボス側の tuning テーブルから登録する。
+ * **登録が無ければ従来どおり**=他ボスの挙動は1バイトも変わらない。
+ * ※逆向き(enemyUtils → 各ボスの script)に import すると循環するので、**登録は呼ぶ側から**行う。
+ */
+const FIRE_PROFILE_OVERRIDES = new Map<string, FireProfile>();
+/** 型ごとの発射プロファイルを上書き登録する(同じ参照を渡せば、その場の書き換えが即反映される)。 */
+export const registerEnemyFireProfile = (type: string, profile: FireProfile): void => {
+  FIRE_PROFILE_OVERRIDES.set(type, profile);
+};
+
 export const getEnemyFireProfile = (enemy: Enemy): FireProfile | null => {
+  const override = FIRE_PROFILE_OVERRIDES.get(enemy.type);
+  if (override) return override;
   if (enemy.type === 'plant') {
     return { interval: 2200, range: 380, speed: 230, damage: 7, size: 12 };
   }
