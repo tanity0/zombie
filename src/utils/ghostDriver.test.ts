@@ -1,5 +1,5 @@
 // BOT_AND_GHOST.md G2(ゴースト本体)。純関数の意思決定(decideGhost)+補助関数を検証する。
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   decideGhost, defaultGhostProfile, ghostLeashWarp,
   ghostSubUseIntervalMs, ghostSubClaimIntervalMs, GHOST_SUB_USE_MAX_INTERVAL_MS,
@@ -16,7 +16,12 @@ import {
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
 } from './ghostDriver';
 import { jumpDodge, botSkillProfile } from './botSkill';
+import { resetGhostCommandBags } from './commandBag';
 import type { Enemy, Projectile } from '../types/game';
+
+// §2.18(GHOST-CMD-1): 技への反応の決定はラン単位の袋(モジュールシングルトン)から引くようになった。
+// テスト間で袋(残枚数・連続tank回数)を持ち越さない=各テストは「ラン開始直後」から始まる。
+beforeEach(() => resetGhostCommandBags());
 
 const mkBoss = (overrides: Partial<Enemy> = {}): Enemy => ({
   id: 'boss-1', x: 0, y: 0, width: 40, height: 40, speed: 0,
@@ -624,20 +629,50 @@ describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () =>
     expect(rollGhostMoveReaction(undefined, miguel, TABLE, 0, randNever)).toBeUndefined();
   });
 
-  it('n<3の技・表に無い技は fallback(randを消費しない=従来挙動の乱数列を汚さない)', () => {
+  // §2.18裁定(GHOST-CMD-1): 旧ゲート「n<3はfallback」(§2.9(1))は廃止。「n=1は確定行動になる=
+  // 仕様として許容」により、fallbackはn=0(記録なし)とキー未定義だけになった(GHOST_MOVE_ROLL_MIN_N=1)。
+  it('n=0(記録なし)の技・表に無い技は fallback(randを消費しない=従来挙動の乱数列を汚さない)', () => {
+    expect(GHOST_MOVE_ROLL_MIN_N).toBe(1);
     const boss = mkBoss({ bossState: 'issen-windup' });
-    const few = { 'thor-issen': { n: GHOST_MOVE_ROLL_MIN_N - 1, counterRate: 1, hitRate: 0 } };
-    expect(rollGhostMoveReaction(undefined, boss, few, 0, randNever)?.decision).toBe('fallback');
+    const none = { 'thor-issen': { n: GHOST_MOVE_ROLL_MIN_N - 1, counterRate: 1, hitRate: 0 } };
+    expect(rollGhostMoveReaction(undefined, boss, none, 0, randNever)?.decision).toBe('fallback');
     expect(rollGhostMoveReaction(undefined, boss, {}, 0, randNever)?.decision).toBe('fallback');
     expect(rollGhostMoveReaction(undefined, boss, undefined, 0, randNever)?.decision).toBe('fallback');
   });
 
-  it('n>=3: r<counterRate→counter / r<counterRate+dodgeRate→dodge / 残り(=hitRate)→tank', () => {
+  it('n=1は確定行動(§2.18裁定「仕様として許容」): 乱数によらず記録の1枚がそのまま出る', () => {
     const boss = mkBoss({ bossState: 'issen-windup' });
-    expect(rollGhostMoveReaction(undefined, boss, TABLE, 0, () => 0.29)?.decision).toBe('counter');
-    expect(rollGhostMoveReaction(undefined, boss, TABLE, 0, () => 0.31)?.decision).toBe('dodge');
-    expect(rollGhostMoveReaction(undefined, boss, TABLE, 0, () => 0.59)?.decision).toBe('dodge');
-    expect(rollGhostMoveReaction(undefined, boss, TABLE, 0, () => 0.61)?.decision).toBe('tank');
+    const one = { 'thor-issen': { n: 1, counterRate: 1, hitRate: 0 } };
+    for (const r of [0, 0.5, 0.999]) {
+      resetGhostCommandBags();
+      expect(rollGhostMoveReaction(undefined, boss, one, 0, () => r)?.decision).toBe('counter');
+    }
+  });
+
+  // §2.18(GHOST-CMD-1): 決定の出どころは毎回の確率ロール→袋式の1枚引きへ。袋=[counter2, dodge1, tank2]
+  // (n=5, 0.3/0.4: counter=round(1.5)=2 / tank=min(round(2.0)=2, 3)=2 / dodge=1)。新品の袋からの
+  // 初引きは残枚数から一様=乱数の区間が枚数比になる。
+  it('n>=1: 袋式の1枚引き(新品の袋: r<2/5→counter / r<3/5→dodge / 残り→tank)', () => {
+    const boss = mkBoss({ bossState: 'issen-windup' });
+    const first = (r: number) => {
+      resetGhostCommandBags(); // 新品の袋からの初引きを見る(引くたび袋は減る=毎回リセット)
+      return rollGhostMoveReaction(undefined, boss, TABLE, 0, () => r)?.decision;
+    };
+    expect(first(0.39)).toBe('counter'); // 0.39*5=1.95 < counter(2)
+    expect(first(0.41)).toBe('dodge');   // 2.05 < counter+dodge(3)
+    expect(first(0.59)).toBe('dodge');   // 2.95 < 3
+    expect(first(0.61)).toBe('tank');    // 3.05 >= 3
+  });
+
+  it('袋は引き切りで割合=記録どおり(5回の決定の内訳が枚数と一致する)', () => {
+    const boss = mkBoss({ bossState: 'issen-windup' });
+    const tally = { counter: 0, dodge: 0, tank: 0, fallback: 0 };
+    // 技1回=1引き。技の解決(prev=undefinedで渡す)を5回繰り返す=同じ袋から5枚引き切る。
+    for (const r of [0.99, 0.01, 0.62, 0.34, 0.77]) {
+      const roll = rollGhostMoveReaction(undefined, boss, TABLE, 0, () => r);
+      tally[roll!.decision] += 1;
+    }
+    expect(tally).toEqual({ counter: 2, dodge: 1, tank: 2, fallback: 0 });
   });
 
   it('同じ技が続く間は振り直さない(技1回の発動=1ロール。randも消費しない)', () => {
@@ -723,10 +758,12 @@ describe('G4b decideGhost: 技への反応の再現(ロールが挙動を切り�
     expect(d.counterWillAttempt).toBe(false);
   });
 
-  it('n<3はfallback=従来挙動(counterChanceの抽選がそのまま生きる)', () => {
+  // §2.18裁定(GHOST-CMD-1): 旧「n<3はfallback」→新ゲートn<1。n=0(記録なし)だけが従来挙動へ落ちる
+  // (n=1は確定行動=仕様として許容・記録がある所を集計デフォで上書きしない)。
+  it('n=0(記録なし)はfallback=従来挙動(counterChanceの抽選がそのまま生きる)', () => {
     const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
     const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
-    const profile: GhostProfile = { ...PROFILE, counterChance: 1, moveReactions: { 'thor-issen': { n: 2, counterRate: 0, hitRate: 1 } } };
+    const profile: GhostProfile = { ...PROFILE, counterChance: 1, moveReactions: { 'thor-issen': { n: 0, counterRate: 0, hitRate: 1 } } };
     const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0.5 }));
     expect(d.moveRoll?.decision).toBe('fallback');
     expect(d.counterWillAttempt).toBe(true); // rand(0.5) < counterChance(1)=従来の抽選

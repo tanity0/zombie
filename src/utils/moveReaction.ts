@@ -317,7 +317,8 @@ export type MoveReactionTable = Partial<Record<string, MoveReactionStat>>;
 
 /**
  * セッション集計をEMA(α)でプロファイル表へ混ぜる。技ごとに: 初記録(n=0/未登録)はサンプルそのまま、
- * 2回目以降は既存6ノブと同じ per-session EMA。nは暴露回数の累計(n<3フォールバック用=G4b消費側)。
+ * 2回目以降は既存6ノブと同じ per-session EMA。nは暴露回数の累計(G4b消費側のゲート兼、§2.18の
+ * 袋式(commandBag)の枚数導出のベース。n=0のみフォールバック=GHOST-CMD-1で旧n<3ゲートを廃止)。
  */
 export const blendMoveReactionTable = (
   prev: MoveReactionTable,

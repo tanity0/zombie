@@ -35,6 +35,8 @@ import {
 // §2.17(GHOST-DUO-RECORDS・記録専用): 同行撃破台帳の打刻。挙動は一切変えない(計測パスとは独立の
 // 別モジュール。ソロラン=交戦時計が開いていない時はno-op)。
 import { recordDuoBossClear, resetDuoRunRecords } from '../utils/duoRecords';
+// §2.18(GHOST-CMD-1): 技への反応の袋(境界ガード付き袋式)。寿命=ラン単位なのでresetGameでリセット。
+import { resetGhostCommandBags } from '../utils/commandBag';
 // v0.25.2514(§2.11 裁定1): 計測時ビルドの疑似Player(被ダメ補正の主語)。純関数・store非依存。
 // v0.25.2553(§2.16 A): 同行守護霊の写し(撃破記録へ添える持ち主名+ビルド)。同じく純関数。
 import { buildPseudoPlayer, findGhostAlly, ghostAllySnapshot, type GhostAllySnapshot } from '../utils/playerBuild';
@@ -12694,6 +12696,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // §2.17(GHOST-DUO-RECORDS): 同行撃破の交戦時計+ラン内打刻ビューも持ち越さない
     // (台帳=localStorageは打刻の瞬間に確定済みなので触らない)。
     resetDuoRunRecords();
+    // §2.18(GHOST-CMD-1): 技への反応の袋もラン単位(ラン内は交戦を跨いで保持・ラン間は持ち越さない)。
+    resetGhostCommandBags();
     // v0.25.2514(GHOST-BUILD-1): 前ランのゴーストビルド(メモ化1件)も持ち越さない。
     clearGhostBuildCache();
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/

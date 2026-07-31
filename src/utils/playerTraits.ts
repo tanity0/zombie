@@ -164,8 +164,9 @@ const SEED_PROFILE: Omit<PlayerProfile, 'v' | 'runs' | 'moveReactions' | 'subSty
   stationaryFrac: 0.35, approachPerMin: 3,
 };
 
-// G4a: 表/様式の「データ無し」初期値。n=0が「まだ計測していない」の印(n<3はG4b側で
-// グローバルノブへフォールバックする約束=§2.9(1))なので、レート値はダミーの0でよい。
+// G4a: 表/様式の「データ無し」初期値。n=0が「まだ計測していない」の印(n<1=記録なしはG4b側で
+// グローバルノブへフォールバックする約束=§2.18でn≥1は袋式・旧n<3ゲートはGHOST-CMD-1で廃止)なので、
+// レート値はダミーの0でよい。
 const defaultSubStyles = (): SubStyleProfile => ({
   wire: { n: 0, slamRatio: 0 },
   shield: { n: 0, bashPerPlacement: 0, bashDamageFrac: 0 },

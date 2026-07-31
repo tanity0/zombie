@@ -27,6 +27,7 @@ import { isBossType, aimEnemyDist2, ENEMY_PROJECTILE_DURATION } from './enemyUti
 import { isBossCounterableNowApprox } from './bossScript';
 import { ghostExtraTelegraphDodge, isTelegraphActive } from './ghostTelegraph'; // §2.12 要件7: 予告台帳(全ボス)
 import { anyMoveKeyForEnemy, isProjectileMoveKey, type MoveReactionTable } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
+import { drawFromCommandBag } from './commandBag'; // §2.18(GHOST-CMD-1): 決定の出どころ=境界ガード付き袋式
 
 // ---- プロファイル(playerTraits.PlayerProfileと同じノブ形。循環import回避のため型は独立定義) ----
 export interface GhostProfile {
@@ -46,7 +47,8 @@ export interface GhostProfile {
   approachPerMin?: number;
   /**
    * G4b(BOT_AND_GHOST.md §2.9(4)): 技への反応表(G4aがplayerTraitsで実測)。技の立ち上がりで
-   * counterRate/dodgeRate/hitRateからロールし、その技への反応(カウンター/離脱/苦手=被弾)を再現する。
+   * その技への反応(カウンター/離脱/苦手=被弾)を決めて再現する。§2.18(GHOST-CMD-1)以降、決定は
+   * 記録から導出した袋(commandBag.ts=境界ガード付き袋式)からの1枚引き。
    * 未定義・空表(旧プロファイル/既定プロファイル)は全技フォールバック=従来挙動(グローバルノブ)。
    */
   moveReactions?: MoveReactionTable;
@@ -79,13 +81,16 @@ export const defaultGhostProfile = (): GhostProfile => {
   };
 };
 
-// ---- G4b(BOT_AND_GHOST.md §2.9(4)): 技への反応の再現(ロールの状態機械・純関数) -----------------
+// ---- G4b(BOT_AND_GHOST.md §2.9(4))→§2.18(GHOST-CMD-1): 技への反応(ロールの状態機械・純関数) ----
 // ボスの溜め(aiPhase/bossState)の立ち上がりで技キーを導出(moveReaction.anyMoveKeyForEnemyをそのまま
 // 流用=**弾技も含む**(GHOST-BULLET-TECH: 裏ボスburst/radial・天使volley/uri bolt・idol射撃など))し、
-// プロファイルの moveReactions[moveKey] で**技1回の発動につき1回だけ**ロールする:
-//   r < counterRate                → 'counter' = その技をカウンターしにいく(既存カウンター試行を優先発動)
-//   r < counterRate + dodgeRate    → 'dodge'   = 離脱(既存のtelegraphDodge/dodgeVectorに従う=従来挙動)
-//   残り(= hitRate)               → 'tank'    = 「苦手」の再現: この技に限り回避を抑制(①により実際に食らう)
+// プロファイルの moveReactions[moveKey] で**技1回の発動につき1回だけ**決める:
+//   'counter' = その技をカウンターしにいく(既存カウンター試行を優先発動)
+//   'dodge'   = 離脱(既存のtelegraphDodge/dodgeVectorに従う=従来挙動)
+//   'tank'    = 「苦手」の再現: この技に限り回避を抑制(①により実際に食らう)
+// §2.18(GHOST-CMD-1): 決定の出どころは毎回の確率ロール→**境界ガード付き袋式**(commandBag.ts)へ置換。
+// 記録の結果をそのまま袋に入れて引き切る=ラン全体で見れば割合は記録どおり(1ラン=記録の1回の再演)。
+// ロールの状態機械(技1回=1引き・持ち越し・タイムアウト・キー変化でリセット)は従来のまま。
 // n < GHOST_MOVE_ROLL_MIN_N の技・キー未定義(天使等G4b計測未対応)は 'fallback' = 従来挙動
 // (グローバルノブ)。ロールは技の解決(キーがnull/別キーへ変化)かタイムアウトでリセットする。
 export type GhostMoveDecision = 'counter' | 'dodge' | 'tank' | 'fallback';
@@ -94,8 +99,12 @@ export interface GhostMoveRoll {
   decision: GhostMoveDecision;
   rolledAtMs: number;
 }
-/** §2.9(1)の約束: 暴露n<3の技は既存グローバルノブへフォールバック(初見の技で変な確信を持たせない)。 */
-export const GHOST_MOVE_ROLL_MIN_N = 3;
+/**
+ * §2.18裁定(社長2026-07-31)「n=1は確定行動になる=仕様として許容」: 旧ゲートn<3(§2.9(1))を廃し、
+ * 記録が1回でもあれば袋を引く(記録がある所を集計デフォで上書きしない=§2.18-8)。
+ * n=0(記録なし)・キー未定義は従来どおり'fallback'(乱数消費を含め1bit不変)。
+ */
+export const GHOST_MOVE_ROLL_MIN_N = 1;
 /** 同一技キーが異常に続いた時の安全弁(通常の技はaiPhase/bossStateが数秒で抜ける)。超えたら従来挙動へ。 */
 export const GHOST_MOVE_ROLL_TIMEOUT_MS = 10_000;
 
@@ -115,14 +124,8 @@ export const rollGhostMoveReaction = (
   }
   const stat = moveReactions?.[moveKey];
   if (!stat || stat.n < GHOST_MOVE_ROLL_MIN_N) return { moveKey, decision: 'fallback', rolledAtMs: nowMs };
-  const counterRate = Math.max(0, Math.min(1, stat.counterRate));
-  const hitRate = Math.max(0, Math.min(1, stat.hitRate));
-  const dodgeRate = Math.max(0, 1 - counterRate - hitRate); // dodgeRate=1-両者(moveReaction.tsの保存形)
-  const r = rand();
-  const decision: GhostMoveDecision =
-    r < counterRate ? 'counter'
-      : r < counterRate + dodgeRate ? 'dodge'
-        : 'tank';
+  // §2.18(GHOST-CMD-1): 確率ロール→袋式の1枚引きへ。乱数消費は従来と同じ「決定1回=rand1回」。
+  const decision: GhostMoveDecision = drawFromCommandBag(moveKey, stat, rand);
   return { moveKey, decision, rolledAtMs: nowMs };
 };
 
@@ -508,9 +511,9 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   const gunDist = Math.sqrt(aimEnemyDist2(gcx, gcy, target));
   const facing: 1 | -1 = (tcx - gcx) >= 0 ? 1 : -1;
 
-  // G4b(§2.9(4)): 技への反応の再現。ボスの技(aiPhase/bossState)の立ち上がりで1回だけロールし、
-  // 同じ技が続く間は保持する(毎tick振り直さない)。'fallback'(n<3・キー未定義=天使等G4b計測未対応)
-  // の間は以降の全分岐が従来挙動(グローバルノブ)のまま=乱数の消費順も従来と同一。
+  // G4b(§2.9(4))→§2.18(GHOST-CMD-1): 技への反応。ボスの技(aiPhase/bossState)の立ち上がりで1回だけ
+  // 袋から引き、同じ技が続く間は保持する(毎tick振り直さない)。'fallback'(n=0=記録なし・キー未定義=
+  // 天使等G4b計測未対応)の間は以降の全分岐が従来挙動(グローバルノブ)のまま=乱数の消費順も従来と同一。
   const moveRoll = rollGhostMoveReaction(ghost.moveRoll, target, profile.moveReactions, nowMs, rand);
   const reaction = moveRoll?.decision;
 

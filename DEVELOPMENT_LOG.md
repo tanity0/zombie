@@ -1,5 +1,45 @@
 # Development Log
 
+## v0.25.2575 — バッチGHOST-CMD-1: 技への反応の袋式化(§2.18 Phase 1a)【2026-07-31 11:45 JST】
+
+- **検収(設計チャット)**: 合格。commandBag.tsの実装を通読——乱数消費=毎引き1回固定(decideGhostの
+  乱数列を汚さない)・ガード=並べ替えのみ(中身不変=割合は記録どおり)・tankStreakは詰め直しを跨いで
+  持ち越し(境界事故も抑止)・tank専用袋は不発(苦手の個性維持)・moveKeyはボス接頭辞付きで衝突なし。
+  ゲート3種を検収側でも再実行し一致(typecheck 0 / related **894件通過** / lint エラー0)。
+  計測側の古い「n<3」コメント2箇所(playerTraits/moveReaction)は検収時にコメントのみ是正。
+
+- **実装物(発注仕様=research/GHOST_PARITY_LEDGER.md「発注仕様: バッチ GHOST-CMD-1」どおり)**:
+  1. **`src/utils/commandBag.ts` 新設**(純関数+モジュールシングルトン・store/React/PixiJS非依存):
+     - `deriveBagCounts`: 既存 `MoveReactionStat {n, counterRate, hitRate}` から枚数導出
+       (counter=round(n×counterRate) → tank=min(round(n×hitRate), n−counter) → dodge=残り・clamp≥0・
+       この順=決定的・合計は常にn)。スキーマ変更なし。
+     - `drawFromCommandBag`: 残枚数から一様に1枚(rand注入・Math.random直呼びなし・毎引きちょうど
+       rand1回=ガード発動時も1回)。空になったら詰め直し。
+     - **毎引きガード**: moveKeyごとの連続tank引きが `GHOST_BAG_MAX_HIT_STREAK`(=2・export定数)以上
+       かつ袋に非tank札が残っていれば非tank札から一様に引く。tank専用袋はガード不発(仕様=苦手は
+       食らい続ける)。並べ替えのみ=引き切れば割合は記録どおり。
+     - `resetGhostCommandBags`: ラン単位リセット。`gameStore.resetGame` の `resetDuoRunRecords()` の
+       隣から呼ぶ(duoRecordsと同じ前例)。
+  2. **`ghostDriver.rollGhostMoveReaction`**: ロールの状態機械(技1回=1引き・持ち越し・タイムアウト・
+     キー変化リセット)は不変のまま、決定の出どころだけ確率ロール→袋の1枚引きへ置換。
+  3. **`GHOST_MOVE_ROLL_MIN_N` 3→1**(§2.18裁定「n=1は確定行動=仕様として許容」)。n=0/キー未定義は
+     従来どおり'fallback'=乱数消費含め1bit不変(fallback経路はrandを消費しない・従来と同一)。
+- **触ったファイル**: 新規 `src/utils/commandBag.ts` / `src/utils/commandBag.test.ts`。変更
+  `src/utils/ghostDriver.ts`(決定出どころの置換+ゲート値+コメント追随)/
+  `src/utils/ghostDriver.test.ts`(袋式への追随=旧「n<3はfallback」を新ゲートn<1へ書き換え・
+  §2.18裁定をコメントに明記・n=1確定/引き切り割合テスト追加・beforeEachで袋リセット)/
+  `src/store/gameStore.ts`(resetGameへ`resetGhostCommandBags()`1行+import)。
+  **計測パス(playerTraits/G4a/moveReaction.ts)は1行も触っていない。BOT_AND_GHOST.mdも不触。**
+- **テスト**: `commandBag.test.ts` 新設17件(枚数導出・引き切りで割合=記録どおり・混合袋は非tank残が
+  ある限り3連被弾しない・[食食食避]偏袋の袋内挙動・tank専用袋は3連以上も出る・ガード引きの一様性・
+  streakのmoveKey独立・n=1確定・詰め直し・リセット・乱数消費数)。`ghostDriver.test.ts` 91件(追随済み)。
+  `npx vitest related`(触った実装ファイル)= **30ファイル 532件パス**(4 skipped)。
+- **ゲート**: `npm run typecheck` エラー0 / `npm run lint` エラー0(既存warning 8)/ vitest related 全通過。
+- **自己点検(実装精度の規律5)**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触なし
+  (守護霊の技反応の決定方式のみ・スポーン/ランク/配分は不触)。負荷 **1/10**(袋=moveKeyごとの
+  カウンタ3個+整数演算のみ・引きは技1回につき1回・per-frameコストなし)。★未決の追記なし。
+- git操作・バージョンbump・changelogは未実施(掟どおり設計チャットが検収後に行う)。
+
 ## v0.25.2574 — 発注: バッチGHOST-CMD-1(§2.18 Phase 1a=技への反応の袋式化)【2026-07-31 11:40 JST】
 
 - §2.18確定(v0.25.2573)を受けた最初の実装バッチ。発注仕様の正本=research/GHOST_PARITY_LEDGER.md
