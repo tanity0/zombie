@@ -55,8 +55,49 @@ describe('moveReaction: moveKeyForEnemy(技キーの導出)', () => {
     expect(moveKeyForEnemy(thor('backstep'))).toBeNull();
   });
 
-  it('同名bossStateでもthor以外のボスはnull(型ゲート=miguelのharai等を拾わない)', () => {
-    expect(moveKeyForEnemy({ type: 'miguel', aiPhase: undefined, bossState: 'harai' })).toBeNull();
+  // v0.25.2603(社長指示「ちゃんと広げて揃えましょう」): 残り全ボスの近接/AoE技も台帳へ。
+  // **同名の状態を型で正しく振り分けること**が要点(名前は複数のボスで衝突している)。
+  it('同名bossStateでもtypeごとに別の技キーへ振り分ける(名前の衝突を型で解く)', () => {
+    const at = (type: string, bossState: string) =>
+      moveKeyForEnemy({ type, aiPhase: undefined, bossState } as unknown as MoveReactionEnemy);
+    expect(at('thor', 'harai')).toBe('thor-harai');       // 'harai' は thor と miguel が使う
+    expect(at('miguel', 'harai')).toBe('miguel-harai');
+    expect(at('rafi', 'sweep')).toBe('rafi-sweep');       // 'sweep' は rafi/uri/suriel が使う
+    expect(at('uri', 'sweep')).toBe('uri-sweep');
+    expect(at('suriel', 'sweep')).toBe('suriel-sweep');
+    expect(at('thor', 'jump-attack')).toBe('thor-jump');  // 'jump-*' は thor と rafi が使う
+    expect(at('rafi', 'jump-attack')).toBe('rafi-jump');
+    expect(at('acrasiel', 'burst')).toBe('acrasiel-burst'); // 'burst' は裏ボス(弾)と acrasiel(爆発)
+    // 'burst' は裏ボス側だと**弾技**なので近接台帳には無い(弾台帳=anyMoveKeyForEnemyが拾う)。
+    expect(at('mimir', 'burst')).toBeNull();
+    expect(anyMoveKeyForEnemy({ type: 'mimir', aiPhase: undefined, bossState: 'burst' } as unknown as MoveReactionEnemy))
+      .toBe('mimir-burst');
+    expect(at('mimir', 'dash')).toBe('mimir-dash');         // 'dash' は裏ボス3体が共有
+    expect(at('skadi', 'dash')).toBe('skadi-dash');
+  });
+
+  it('その技の全フェーズ(溜め/実行/硬直)が同じキーへ寄る=1つの技が2回に数えられない', () => {
+    const at = (type: string, bossState: string) =>
+      moveKeyForEnemy({ type, aiPhase: undefined, bossState } as unknown as MoveReactionEnemy);
+    for (const st of ['laser-windup', 'laser-fire', 'laser-recover']) expect(at('mimir', st)).toBe('mimir-laser');
+    for (const st of ['coil-windup', 'coil', 'coil-recover']) expect(at('jormungand', st)).toBe('jormungand-coil');
+    for (const st of ['skadi-ice-windup', 'skadi-ice', 'skadi-ice-recover']) expect(at('skadi', st)).toBe('skadi-ice');
+    for (const st of ['mdash-windup', 'mdash-move', 'mdash-recover']) expect(at('miguel', st)).toBe('miguel-mdash');
+    for (const st of ['thrust-windup', 'thrust', 'thrust-recover']) expect(at('uri', st)).toBe('uri-thrust');
+    // スリィエルの輪は3系統の溜めから実行・硬直まで**1つの技**として扱う。
+    for (const st of ['ring-move-windup', 'ring-beam-windup', 'ring-spin-windup', 'ring-active', 'ring-spin',
+      'ring-recover', 'ring-spin-recover']) expect(at('suriel', st)).toBe('suriel-ring');
+    for (const st of ['idol-roll-windup', 'idol-roll', 'idol-roll-recover']) expect(at('idol', st)).toBe('idol-roll');
+  });
+
+  it('移動だけの状態は技ではない=null(warp系・counter-leap・chase)', () => {
+    const at = (type: string, bossState: string) =>
+      moveKeyForEnemy({ type, aiPhase: undefined, bossState } as unknown as MoveReactionEnemy);
+    expect(at('jibril', 'warp-windup')).toBeNull();
+    expect(at('acrasiel', 'warp-in')).toBeNull();
+    expect(at('acrasiel', 'warp-out')).toBeNull();
+    expect(at('miguel', 'counter-leap')).toBeNull();
+    expect(at('rafi', 'chase')).toBeNull();
   });
 });
 

@@ -628,9 +628,14 @@ describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () =>
     expect(rollGhostMoveReaction(undefined, chase, TABLE, 0, randNever)).toBeUndefined();
   });
 
-  it('キー未定義のボス(天使等G4b計測未対応)は undefined=従来挙動', () => {
-    const miguel = mkBoss({ type: 'miguel' as Enemy['type'], bossState: 'harai' });
+  // v0.25.2603(社長指示「ちゃんと広げて揃えましょう」): 天使/idol/裏ボスの近接・AoE技も台帳へ入った
+  // ので、'harai' 等は**キーが付く**ようになった(記録が無ければ下のテストのとおり fallback)。
+  // キー未定義=**技ではない状態**(移動/追跡)だけ。ここはその回帰に差し替える。
+  it('技ではない状態(移動/追跡)は undefined=従来挙動', () => {
+    const miguel = mkBoss({ type: 'miguel' as Enemy['type'], bossState: 'counter-leap' });
     expect(rollGhostMoveReaction(undefined, miguel, TABLE, 0, randNever)).toBeUndefined();
+    const jibril = mkBoss({ type: 'jibril' as Enemy['type'], bossState: 'warp-windup' });
+    expect(rollGhostMoveReaction(undefined, jibril, TABLE, 0, randNever)).toBeUndefined();
   });
 
   // §2.18裁定(GHOST-CMD-1): 旧ゲート「n<3はfallback」(§2.9(1))は廃止。「n=1は確定行動になる=

@@ -29,6 +29,23 @@ export const MOVE_REACTION_KEYS = [
   'g-trijump', 'g-bite', 'g-slam', 'g-glide', 'g-dive', 'g-quad', 'g-nova', 'g-wing', 'g-sweepbeam',
   'g-talon', 'g-boon', 'g-reach', 'g-nihil',
   'thor-issen', 'thor-tsuki', 'thor-harai', 'thor-jump',
+  // v0.25.2603(社長指示「ちゃんと広げて揃えましょう」): **残り全ボスの近接/AoE技**。
+  // ここが城ボス+トールだけで止まっていたため、天使6体/アイドル/裏ボス3体は「弾を撃つ技」しか
+  // 記録されず(BULLET_MOVE_KEYS=v0.25.2543で全数化済み)、評点・技への反応・避け方向の全部が
+  // 出せなかった。状態名は各ボスの状態機械から全数を洗って対応させる(下の *_STATE_TO_MOVE)。
+  // 裏ボス3体(useGameLoop.ts)。burst/radial は弾台帳に既出なのでここには入れない。
+  'mimir-bite', 'mimir-laser', 'mimir-dash',
+  'jormungand-coil', 'jormungand-dash',
+  'skadi-ice', 'skadi-blade', 'skadi-cage', 'skadi-dash',
+  // 天使6体(angelBossTick.ts)。volley/bolt/gaze は弾台帳に既出。
+  'miguel-mdash', 'miguel-tate', 'miguel-harai',
+  'jibril-consecrate', 'jibril-lantern',
+  'rafi-bone', 'rafi-jump', 'rafi-sweep',
+  'uri-downslash', 'uri-sweep', 'uri-thrust',
+  'suriel-ring', 'suriel-sweep',
+  'acrasiel-burst', 'acrasiel-spear', 'acrasiel-spike',
+  // アイドル(useGameLoop.ts)。aim/fan は弾台帳に既出。
+  'idol-roll', 'idol-punch',
 ] as const;
 
 // ---- 弾技の台帳(GHOST-BULLET-TECH・v0.25.2543) -------------------------------------------------
@@ -92,6 +109,69 @@ const THOR_STATE_TO_MOVE: Readonly<Record<string, MoveReactionKey>> = {
   'jump-windup': 'thor-jump', 'jump-attack': 'thor-jump', 'jump-recover': 'thor-jump',
 };
 
+/**
+ * v0.25.2603: 近接/AoE技の状態→技キー(**必ず type でゲートする**: 状態名は複数のボスで衝突する。
+ * 'sweep-*'=rafi/uri/suriel、'burst-*'=acrasiel と裏ボス、'gaze-*'=suriel/acrasiel、'jump-*'=rafi/thor)。
+ * **その技の全フェーズ(溜め/実行/硬直)を同じキーへ寄せる**のが掟(THOR_STATE_TO_MOVE と同じ流儀)。
+ * 中間フェーズを載せ忘れるとエピソードが途中で閉じて開き直る=**1つの技が2回に数えられる**。
+ * 移動だけの状態(warp系・counter-leap・backstep・chase・return)は技ではないので**載せない**。
+ */
+const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<string, MoveReactionKey>>>>> = {
+  // ---- 裏ボス3体(useGameLoop.ts) ----
+  mimir: {
+    'bite-windup': 'mimir-bite', 'bite-recover': 'mimir-bite',
+    'laser-windup': 'mimir-laser', 'laser-fire': 'mimir-laser', 'laser-recover': 'mimir-laser',
+    'dash-windup': 'mimir-dash', dash: 'mimir-dash', 'dash-recover': 'mimir-dash',
+  },
+  jormungand: {
+    'coil-windup': 'jormungand-coil', coil: 'jormungand-coil', 'coil-recover': 'jormungand-coil',
+    'dash-windup': 'jormungand-dash', dash: 'jormungand-dash', 'dash-recover': 'jormungand-dash',
+  },
+  skadi: {
+    'skadi-ice-windup': 'skadi-ice', 'skadi-ice': 'skadi-ice', 'skadi-ice-recover': 'skadi-ice',
+    'skadi-blade-windup': 'skadi-blade', 'skadi-blade': 'skadi-blade', 'skadi-blade-recover': 'skadi-blade',
+    'cage-windup': 'skadi-cage', 'cage-recover': 'skadi-cage',
+    'dash-windup': 'skadi-dash', dash: 'skadi-dash', 'dash-recover': 'skadi-dash',
+  },
+  // ---- 天使6体(angelBossTick.ts) ----
+  miguel: {
+    'mdash-windup': 'miguel-mdash', 'mdash-move': 'miguel-mdash', 'mdash-recover': 'miguel-mdash',
+    'tate-windup': 'miguel-tate', tate: 'miguel-tate', 'tate-recover': 'miguel-tate',
+    'harai-windup': 'miguel-harai', harai: 'miguel-harai',
+  },
+  jibril: {
+    'consecrate-windup': 'jibril-consecrate', 'consecrate-recover': 'jibril-consecrate',
+    'lantern-windup': 'jibril-lantern', lantern: 'jibril-lantern', 'lantern-recover': 'jibril-lantern',
+  },
+  rafi: {
+    'bone-windup': 'rafi-bone', bone: 'rafi-bone', 'bone-recover': 'rafi-bone',
+    'jump-windup': 'rafi-jump', 'jump-attack': 'rafi-jump', 'jump-recover': 'rafi-jump',
+    'sweep-windup': 'rafi-sweep', sweep: 'rafi-sweep', 'sweep-recover': 'rafi-sweep',
+  },
+  uri: {
+    'downslash-windup': 'uri-downslash', downslash: 'uri-downslash', 'downslash-recover': 'uri-downslash',
+    'sweep-windup': 'uri-sweep', sweep: 'uri-sweep', 'sweep-recover': 'uri-sweep',
+    'thrust-windup': 'uri-thrust', thrust: 'uri-thrust', 'thrust-recover': 'uri-thrust',
+  },
+  suriel: {
+    // 輪は3系統の溜め(移動/ビーム/回転)から実行・硬直まで**1つの技**として扱う。
+    'ring-move-windup': 'suriel-ring', 'ring-beam-windup': 'suriel-ring', 'ring-spin-windup': 'suriel-ring',
+    'ring-active': 'suriel-ring', 'ring-spin': 'suriel-ring',
+    'ring-recover': 'suriel-ring', 'ring-spin-recover': 'suriel-ring',
+    'sweep-windup': 'suriel-sweep', sweep: 'suriel-sweep', 'sweep-recover': 'suriel-sweep',
+  },
+  acrasiel: {
+    'burst-windup': 'acrasiel-burst', burst: 'acrasiel-burst', 'burst-recover': 'acrasiel-burst',
+    'spear-windup': 'acrasiel-spear', 'spear-recover': 'acrasiel-spear',
+    'spike-windup': 'acrasiel-spike', spike: 'acrasiel-spike', 'spike-recover': 'acrasiel-spike',
+  },
+  // ---- アイドル(useGameLoop.ts) ----
+  idol: {
+    'idol-roll-windup': 'idol-roll', 'idol-roll': 'idol-roll', 'idol-roll-recover': 'idol-roll',
+    'idol-punch-windup': 'idol-punch', 'idol-punch-recover': 'idol-punch',
+  },
+};
+
 // 弾技の状態→技キー(GHOST-BULLET-TECH)。**必ず type でゲートする**: 状態名は複数のボスで衝突する
 // ('volley'=miguel/jibril、'burst'/'radial'=裏ボス4体、'gaze-windup'=suriel/acrasiel)。
 // 溜め(windup)・実行・硬直(recover)の**全フェーズ**を同じキーへ寄せる(THOR_STATE_TO_MOVE と同じ流儀)=
@@ -149,6 +229,8 @@ export const moveKeyForEnemy = (
     return null; // 旧スクリプト(?giantscript=0)のwindup/charge等はg-接頭辞が無い=計測対象外
   }
   if (e.type === 'thor' && e.bossState) return THOR_STATE_TO_MOVE[e.bossState] ?? null;
+  // v0.25.2603: 残り全ボス(裏3/天使6/idol)の近接・AoE技。typeでゲートしてから状態名を引く。
+  if (e.bossState) return MELEE_STATE_TO_MOVE[e.type]?.[e.bossState] ?? null;
   return null;
 };
 
