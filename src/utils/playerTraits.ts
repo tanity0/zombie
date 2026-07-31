@@ -34,8 +34,9 @@ import { isHiddenBoss } from './enemyUtils';
 import { enemyHitStrip } from '../pixi/renderSpec';
 import {
   createMoveReactionState, stepMoveReactions, markMoveReactionCounter, markMoveReactionHit,
-  endMoveReactions, blendMoveReactionTable, blendDodgeDirStat,
+  endMoveReactions, blendMoveReactionTable, blendDodgeDirStat, isProjectileMoveKey,
   type MoveReactionState, type MoveReactionTable, type DodgeDirTally, type DodgeDirStat,
+  type MoveReactionTally,
 } from './moveReaction'; // G4a(BOT_AND_GHOST.md §2.9): 技への反応表の判定中核(純関数)
 import {
   createPunishEpisodeState, createPunishTally, stepPunishEpisodes, closePunishEpisodes,
@@ -92,6 +93,9 @@ export interface BossStyleSlot {
   /** v0.25.2514: 計測時ビルドの写し(旧3項目の上位互換=PlayerBuildSnapshot)。 */
   snapshot: PlayerBuildSnapshot | null;
   srcName: string | null;
+  /** v0.25.2603(社長式・記録基準): 評点=(カウンター×3 + 避けた技 − 被弾した技)/分。
+   * 旧レコードには無い=欠損可。欠損は「比較できない」扱いで新しい方を採用する(下の比較関数)。 */
+  perfScore?: number;
   /** 記録時刻(Date.now()・討伐記録一覧用)。 */
   at: number;
   /** v0.25.2493(社長採用「撃破タイム+カウンター成功率であれば採用」): 交戦開始→撃破までの時間(ms)。
@@ -454,6 +458,13 @@ export interface PendingBossStyleRecord {
   snapshot: PlayerBuildSnapshot | null;
   srcName: string | null;
   at: number;
+  /** v0.25.2603(社長式): 記録の勝ち負けを決める評点。null=比較不能(技に一度も晒されていない)。
+   * 交戦時間はこのボスの clearTimeMs を使う(セッション全体ではなく**そのボスと戦った時間**)。 */
+  perfScoreSample: number | null;
+  /** v0.25.2603(社長裁定A): リザルトで**明示的に「採用」された**撃破か。
+   * true の時はベスト保持の比較を通さず**無条件で上書き**する(社長の意思が自動判定に勝つ)。
+   * undefined/false = 自動判定(下の isBetterBossStyleSample)に委ねる。 */
+  adopted?: boolean;
   /** v0.25.2493: 交戦開始→撃破の時間(ms・撃破の瞬間に確定)。 */
   clearTimeMs: number;
   /** v0.25.2553(§2.16 A): 撃破の瞬間に同行していた守護霊の写し(不在ならnull)。 */
@@ -546,6 +557,8 @@ const endSession = (): void => {
       hitsPerMinSample, subUsesPerMinSample, stationarySample, approachSample,
       dodgeDirSample: moveResult.dodgeDir, // GHOST-CMD-1B: セッションと同じ確定値の写し
       punishSample,                        // GHOST-CMD-2A: 同上(丸ごと写し)
+      // v0.25.2603(社長式): 評点=1技あたりの平均点(時間では割らない。速さはタイブレーク)。
+      perfScoreSample: bossStylePerfScore(moveResult.tally),
       srcClass, snapshot, srcName, at: Date.now(), clearTimeMs: cleared.clearTimeMs,
       ally: cleared.ally, // v0.25.2553(§2.16 A): 撃破の瞬間に写した同行守護霊(不在ならnull)
     });
@@ -936,17 +949,84 @@ export const applyPendingSubStyle = (prev: PlayerProfile, r: PendingSubStyleReco
 // ==== G5(BOT_AND_GHOST.md §2.10): ボス別攻略スタイル(軸2)の commit 側 ==========================
 
 /**
- * 純関数(ベスト保持判定): 既存slotが無ければ採用(true)。有れば被弾/分(hitsPerMin)が
- * 少ない方を保持=**新hitsPerMin ≤ 旧hitsPerMinなら上書き**(同値は新しい方=スナップショット/
- * レベルが新鮮)。新サンプルがnull(このセッションでは計測できなかった)なら上書きしない(保守側)。
+ * v0.25.2603(社長式 + 社長の「上手いの概念」= **カウンター > 避ける > 当たらない > 早い**):
+ * 記録の勝ち負けを決める**評点**。高いほど良い。
+ *
+ *   評点 = (カウンター×3 + 避けた技 − 食らった技) ÷ **技の回数**
+ *   同点なら撃破が速い方(=「そして早い」は最後の優先度=タイブレーク)
+ *
+ * **分母が「時間」ではなく「技の回数」なのが要点**(社長式からの唯一の変更・v0.25.2603で検算):
+ * 時間で割ると「早い」が全項目に掛かる支配項になり、社長が**最後**に置いた優先度が**最優先**に
+ * 化ける。実例: 10技を8カウンター2回避・無傷/3分(=2.60点)が、技が3回しか来なかった
+ * 1カウンター2回避/20秒(=1.67点)に、時間割りだと 8.67 対 15.00 で**負ける**。
+ * 技の回数で割れば「来た技にどう応えたか」だけを測れる(全部カウンター=3.0 / 全部回避=1.0 /
+ * 全部被弾=−1.0)。速さは別軸としてタイブレークで効かせる。
+ *
+ * - **弾を撃つ技は「避けた/食らった」を数えない**(避けようが当たろうが弾は弾)。
+ *   **ただしカウンター(反射)が成立した回だけは分子・分母とも数える**(社長の但し書き)。
+ * - 「カウンターしたら避けにはしない」は計測側が既に保証している(1エピソード=
+ *   counter > hit > dodge の**排他**分類・moveReaction.ts)。二重計上は構造的に起きない。
+ *
+ * 旧基準(被弾/分)は**分あたり**だったため「1発20秒=3.0/分」が「3発3分=1.0/分」に負ける=
+ * **速く倒すほど不利**という直感に反する挙動だった(社長報告「上書きしたはずなのに前の守護霊が出る」)。
+ */
+export const MOVE_COUNTER_WEIGHT = 3;
+export const MOVE_DODGE_WEIGHT = 1;
+/** 被弾の重み(負の加点)。**この1つが霊の性格を決める調整ノブ**(社長へ提示済み・実機調整前提):
+ *  −0.5=カウンター重視(攻めて取りに行く霊が上) / −1=中間(社長の元の値) / −2=無傷重視。 */
+export const MOVE_HIT_WEIGHT = -1;
+
+/**
+ * 純関数: 技への反応表(1セッションぶんの生tally)から評点を出す。
+ * 技に一度も晒されていない(分母0)なら null=**比較不能**(比較側が扱いを決める)。
+ * ※技への反応表の対象は城ボス系+トール(MOVE_REACTION_KEYS)。天使/idol/裏ボスは計測対象外なので
+ *   常に null=「毎回いちばん新しい撃破が残る」挙動になる(データが無い以上ここでは順位を付けない)。
+ */
+export const bossStylePerfScore = (
+  tally: Readonly<Record<string, MoveReactionTally>>,
+): number | null => {
+  let points = 0, moves = 0;
+  for (const [key, t] of Object.entries(tally)) {
+    if (isProjectileMoveKey(key)) {
+      // 弾の技: カウンターできた回だけを数える(避け/被弾は分子にも分母にも入れない)。
+      points += t.counters * MOVE_COUNTER_WEIGHT;
+      moves += t.counters;
+      continue;
+    }
+    const dodges = Math.max(0, t.exposures - t.counters - t.hits);
+    points += t.counters * MOVE_COUNTER_WEIGHT + dodges * MOVE_DODGE_WEIGHT + t.hits * MOVE_HIT_WEIGHT;
+    moves += t.exposures;
+  }
+  return moves === 0 ? null : points / moves;
+};
+
+/**
+ * 純関数(ベスト保持判定): 新しい撃破の方が良ければ true。
+ *  1. 評点が高い方
+ *  2. 同点なら**撃破が速い方**(社長の順位の最後=タイブレーク)
+ *  3. それも同じなら新しい方(スナップショット/レベルが新鮮)
+ * 例外:
+ *  - **既存slotが無い(初記録)** → 必ず採用。評点が出せなくても残す(比較相手が居ない)。
+ *  - **既存slotに評点が無い**(旧レコード / 技への反応表を持たないボス=天使・idol・裏ボス3体)
+ *    → 比較の土台が無いので**新しい方**を採用(それらのボスでは実質「最新の撃破が残る」)。
+ *  - 既存には評点があるのに新サンプルが null(技に晒される前に倒し切った等) → 既存を守る(保守側)。
  */
 export const isBetterBossStyleSample = (
-  prevHitsPerMin: number | null | undefined,
-  newHitsPerMin: number | null,
+  prevScore: number | null | undefined,
+  nextScore: number | null,
+  hasPrevSlot = prevScore !== undefined,
+  prevClearMs?: number | null,
+  nextClearMs?: number | null,
 ): boolean => {
-  if (newHitsPerMin === null) return false;
-  if (prevHitsPerMin === null || prevHitsPerMin === undefined) return true;
-  return newHitsPerMin <= prevHitsPerMin;
+  if (!hasPrevSlot) return true;
+  // 既存記録に評点が無い(旧レコード / 技への反応表を持たないボス)=比較の土台が無い → 新しい方を採る。
+  // ※この順序が要点: 下の「新サンプルnullは不採用」より**先**に置く。逆にすると、計測対象外のボスは
+  //   両方nullで永久に初回の記録が居座る(=ビルドを更新できない)。
+  if (prevScore === null || prevScore === undefined) return true;
+  if (nextScore === null) return false; // 既存には評点があるのに今回は比較不能 → 既存を守る(保守側)
+  if (nextScore !== prevScore) return nextScore > prevScore;
+  if (prevClearMs != null && nextClearMs != null && nextClearMs !== prevClearMs) return nextClearMs < prevClearMs;
+  return true;
 };
 
 /**
@@ -980,7 +1060,11 @@ export const applyPendingBossStyle = (
   prev: PlayerProfile, r: PendingBossStyleRecord, subStylesForSlot: SubStyleProfile,
 ): PlayerProfile => {
   const existing = prev.bossStyles?.[r.slotKey];
-  if (!isBetterBossStyleSample(existing?.hitsPerMin, r.hitsPerMinSample)) return prev;
+  // v0.25.2603(社長裁定A): リザルトで**明示的に採用**した撃破は比較を通さず無条件で上書きする
+  // (旧: 採用チェックがONでも被弾/分が悪ければ黙って据え置き=「採用したのに反映されない」の正体)。
+  if (!r.adopted && !isBetterBossStyleSample(
+    existing?.perfScore, r.perfScoreSample, existing !== undefined, existing?.clearTimeMs, r.clearTimeMs,
+  )) return prev;
   // GHOST-CMD-1B: そのセッションの生値(EMAなし=prev:undefinedへの適用はサンプルそのまま)。
   // 分類できたdodgeが無いセッションはundefined=載せない(消費側が軸1へフォールバック)。
   const dodgeDir = blendDodgeDirStat(undefined, r.dodgeDirSample, EMA_ALPHA);
@@ -996,6 +1080,7 @@ export const applyPendingBossStyle = (
     meleeBias: r.meleeBiasSample,
     mobility: r.mobilitySample,
     hitsPerMin: r.hitsPerMinSample,
+    perfScore: r.perfScoreSample ?? undefined, // v0.25.2603: 記録の勝ち負けを決める評点(社長式)
     subUsesPerMin: r.subUsesPerMinSample,
     stationaryFrac: r.stationarySample,
     approachPerMin: r.approachSample,
@@ -1025,6 +1110,8 @@ export interface PendingBossClearView {
   clearTimeMs: number;
   hitsPerMin: number | null;
   counterChance: number | null;
+  /** v0.25.2603(社長式): 記録の勝ち負けを決める評点。「記録更新」表示の判定に使う。 */
+  perfScore: number | null;
   at: number;
   ally: GhostAllySnapshot | null;
 }
@@ -1037,6 +1124,7 @@ export const pendingBossClears = (): PendingBossClearView[] =>
       clearTimeMs: r.clearTimeMs,
       hitsPerMin: r.hitsPerMinSample,
       counterChance: r.counterChanceSample,
+      perfScore: r.perfScoreSample,
       at: r.at,
       ally: r.ally,
     }));
@@ -1057,7 +1145,11 @@ export const selectPendingForSettlement = (
   const hasBossStyle = records.some(r => r.kind === 'bossStyle');
   if (!hasBossStyle) return [...records];
   const keep = new Set(adopted);
-  const kept = records.filter(r => r.kind !== 'bossStyle' || keep.has(r.slotKey));
+  // v0.25.2603(社長裁定A): 残った撃破=社長がリザルトで**明示的に採用**したもの。印を付けて渡し、
+  // commit側(applyPendingBossStyle)はベスト保持の比較を通さず無条件で上書きする。
+  // adopted===undefined(年表を出さない=撃破なしのラン等)はここへ来ないので、自動判定の経路は不変。
+  const kept = records.filter(r => r.kind !== 'bossStyle' || keep.has(r.slotKey))
+    .map(r => (r.kind === 'bossStyle' ? { ...r, adopted: true } : r));
   if (!kept.some(r => r.kind === 'bossStyle')) return []; // 全不採用=反映しない
   return kept;
 };

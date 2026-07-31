@@ -803,7 +803,12 @@ export const bumpBossCrit = (
 // 読みは要らない)。半減なら、ボスは技を出し続ける=読みの練習台であり続けたまま、クリの手応えは残る。
 // 既存の「5クリで完全気絶(紫)」(bumpBossCrit・裏ボス専用)は**別経路として据え置き**=フィニッシュ受付の
 // 入口はそのまま。ここで消すのは「1クリごとの5秒スタン」だけ。
-export const BOSS_CRIT_SLOW_MS = STUN_DURATION_MS; // 窓は従来のスタンと同じ長さ(止める→半減へ置換)
+// v0.25.2603(社長裁定「黄色3秒 + 頻度を実際に半分へ」): 半減窓は**3秒**。
+// 旧値は STUN_DURATION_MS(5000)=「旧スタンの長さをそのまま流用しただけ」で、半減用に選んだ値では
+// なかった。紫の完全気絶(BOSS_FULLSTUN_MS=3000)と長さが揃い、「黄色3秒=半減 / 紫3秒=完全停止」と
+// 読める。同時に入った critFlinchPatch(技と技の間のひるみ)で窓の中身が実際に効くようになったため、
+// 長さは短くてよいという判断。
+export const BOSS_CRIT_SLOW_MS = 3000;
 export const BOSS_CRIT_SLOW_MULT = 0.5;            // 「動きが半減」(社長指示の文言そのまま)
 /**
  * クリがボスに入った時の差分。**ボス以外には何もしない**(通常敵のスタンは完全に不変)。
@@ -8372,6 +8377,26 @@ export const useGameStore = create<GameState>((set, get) => ({
         // CRIT-UNIFY §9.2: 次行動CD専用のatkUntil。クリ窓中のボスは×2(bossCritCdMult)。
         // windup/active/recoverの各durationは従来のatkUntilのまま(予告のリード時間は変えない)。
         const atkCdUntil = (ms: number) => gameTime + (ms / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, gameTime);
+        /**
+         * v0.25.2603(社長裁定「3秒 + 頻度を実際に半分へ」): クリ窓(黄色)中の**技と技の間のひるみ**。
+         *
+         * なぜ要るか(社長報告「黄色痺れ中、ボスの攻撃頻度変わらないんだけど?」): 城ボスの次の行動は
+         * **技ごとの独立CD(5本+ステージ固有+グレン)**で決まる。よって「いま終わった技のCD」だけを×2に
+         * しても、他の技が明けていれば**すぐ次を撃ってくる**=攻撃頻度が体感で変わらなかった。
+         * (トール/裏ボス/天使/idolは次行動タイマーが1本なので×2がそのまま効いていた=城ボスだけの穴。)
+         *
+         * 直し方: 全体の仕切り `aiReadyAt` へ **(倍率-1)×いま終わった技のCD** を足す。
+         *  - 窓の外(倍率1)は足す量が **0** = 今までと1バイトも同じ挙動。
+         *  - 窓の中(倍率2)は「終わった技のCD1本ぶん」余分に待つ = 窓の間だけ本当に間隔が伸びる。
+         * 物差しに既存のCD値を使うので新しい定数を増やさない(重い技のあとほど長く休む=自然)。
+         * 実行中の技は中断しない(掟W4「予告を出したら必ず実行」)=ひるみは**技の間にだけ**入る。
+         * 既存の `aiReadyAt`(パリィ直後の一時停止)は **Math.max で縮めない**。
+         */
+        const critFlinchPatch = (cdMs: number): Partial<Enemy> => {
+          const mult = bossCritCdMult(enemy, gameTime);
+          if (mult <= 1) return {};
+          return { aiReadyAt: Math.max(enemy.aiReadyAt ?? 0, gameTime + (mult - 1) * (cdMs / ENEMY_ATTACK_SPEED_MULT)) };
+        };
 
         // Knockback overrides chase AI: while it's active, slide outward
         // with linearly-decaying velocity instead of seeking the player.
@@ -8778,6 +8803,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 上限を超やさない・社長裁定6.26-9 #8の精神を継承)。recoverの後は必ずchase(抽選)へ戻る。
           const finishGiantStageMove = (moveId: GiantStageMoveId, cdMs: number): Partial<Enemy> => ({
             gStageReadyAt: { ...enemy.gStageReadyAt, [moveId]: atkCdUntil(cdMs) },
+            ...critFlinchPatch(cdMs), // v0.25.2603: ステージ固有技も同じひるみ(窓外は空=無改変)
             aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
             aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
             gQuadIndex: undefined, giantActiveHit: undefined,
@@ -8892,6 +8918,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (覚えられる上限を超やさない=社長裁定6.26-9 #8の精神を継承)。
           const finishGlenMove = (moveId: GlenMoveId, cdMs: number): Partial<Enemy> => ({
             gGlenReadyAt: { ...enemy.gGlenReadyAt, [moveId]: atkCdUntil(cdMs) },
+            ...critFlinchPatch(cdMs), // v0.25.2603: グレンの技も同じひるみ(窓外は空=無改変)
             aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
             aiFromX: undefined, aiFromY: undefined, aiTargetX: undefined, aiTargetY: undefined,
             giantActiveHit: undefined,
@@ -9078,12 +9105,20 @@ export const useGameStore = create<GameState>((set, get) => ({
                   enemy.aiPhase === 'g-sweep-recover' ? 'sweep' :
                   enemy.aiPhase === 'g-dash-recover' ? 'dash' :
                   enemy.aiPhase === 'g-jump-recover' ? 'jump' : 'bolt';
-                const readyPatch: Partial<Enemy> =
-                  justFinished === 'stomp' ? { gStompReadyAt: atkCdUntil(GIANT_STOMP_CD_MS) } :
-                  justFinished === 'sweep' ? { gSweepReadyAt: atkCdUntil(GIANT_SWEEP_CD_MS) } :
-                  justFinished === 'dash' ? { gDashReadyAt: atkCdUntil(GIANTBAT_DASH_CD_MS + werewolfExtraCd('giantbat')) } :
-                  justFinished === 'jump' ? { gJumpReadyAt: atkCdUntil(GIANT_JUMP_CD_MS) } :
-                  { gBoltReadyAt: atkCdUntil(boltCdMs) };
+                // v0.25.2603: ひるみの物差し=いま終わった技の生CD(倍率を掛ける前の値)。
+                const finishedCdMs =
+                  justFinished === 'stomp' ? GIANT_STOMP_CD_MS :
+                  justFinished === 'sweep' ? GIANT_SWEEP_CD_MS :
+                  justFinished === 'dash' ? GIANTBAT_DASH_CD_MS + werewolfExtraCd('giantbat') :
+                  justFinished === 'jump' ? GIANT_JUMP_CD_MS : boltCdMs;
+                const readyPatch: Partial<Enemy> = {
+                  ...(justFinished === 'stomp' ? { gStompReadyAt: atkCdUntil(GIANT_STOMP_CD_MS) } :
+                    justFinished === 'sweep' ? { gSweepReadyAt: atkCdUntil(GIANT_SWEEP_CD_MS) } :
+                    justFinished === 'dash' ? { gDashReadyAt: atkCdUntil(GIANTBAT_DASH_CD_MS + werewolfExtraCd('giantbat')) } :
+                    justFinished === 'jump' ? { gJumpReadyAt: atkCdUntil(GIANT_JUMP_CD_MS) } :
+                    { gBoltReadyAt: atkCdUntil(boltCdMs) }),
+                  ...critFlinchPatch(finishedCdMs), // クリ窓中だけ「技の間」を伸ばす(窓外は空=無改変)
+                };
                 // Phase2: 確率40%・許す組み合わせは2つのみ(giantScript.ts・社長裁定6.26-9 #8・無改変)。
                 // Phase3(storyBossのみ到達): 確率60%(EXのみ70%)・3発目(踏み鳴らし→突進)も解禁
                 // (社長裁定6.28-11 #2/#3)。既存pickGiantComboはphase!==2を弾く専用実装のため、

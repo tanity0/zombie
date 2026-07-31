@@ -26,7 +26,7 @@ const profileWith = (bossStyles: Record<string, BossStyleSlot>): PlayerProfile =
 });
 
 const clear = (over: Partial<PendingBossClearView> = {}): PendingBossClearView => ({
-  slotKey: 'thor', clearTimeMs: 50_000, hitsPerMin: 2, counterChance: 0.6, at: 2000, ally: null,
+  slotKey: 'thor', clearTimeMs: 50_000, hitsPerMin: 2, counterChance: 0.6, perfScore: 10, at: 2000, ally: null,
   ...over,
 });
 
@@ -64,18 +64,21 @@ describe('ghostAlbum: リザルト年表の組み立て', () => {
     const profile = profileWith({ thor: slot({ hitsPerMin: 5, clearTimeMs: 80_000, counterChance: 0.4 }) });
     const cards = buildRunTimeline([clear({ slotKey: 'thor' }), clear({ slotKey: 'mimir', at: 2001 })], profile);
     expect(cards.map(c => c.slotKey)).toEqual(['thor', 'mimir']); // 撃破順のまま
-    expect(cards[0].best).toEqual({ clearTimeMs: 80_000, hitsPerMin: 5, counterChance: 0.4 });
+    expect(cards[0].best).toEqual({ clearTimeMs: 80_000, hitsPerMin: 5, counterChance: 0.4, perfScore: null });
     expect(cards[1].best).toBeNull(); // 記録が無いボス=比較対象なし
   });
 
-  it('記録更新の判定はベスト保持規則(被弾/分)と一致する', () => {
-    const profile = profileWith({ thor: slot({ hitsPerMin: 1 }) });
-    // 今回の方が被弾が多い=上書きされない
-    expect(buildRunTimeline([clear({ hitsPerMin: 4 })], profile)[0].isRecordUpdate).toBe(false);
-    // 同値は新しい方を採る(playerTraits.isBetterBossStyleSampleの規則)
-    expect(buildRunTimeline([clear({ hitsPerMin: 1 })], profile)[0].isRecordUpdate).toBe(true);
-    // 記録が無ければ初記録=更新
-    expect(buildRunTimeline([clear({ slotKey: 'skadi' })], profile)[0].isRecordUpdate).toBe(true);
+  // v0.25.2603(社長式): 判定基準は**評点**(高いほど良い)。commit側と同じ純関数を共有する。
+  it('記録更新の判定はベスト保持規則(評点)と一致する', () => {
+    const profile = profileWith({ thor: slot({ perfScore: 2.0, clearTimeMs: 60_000 }) });
+    // 今回の方が評点が低い=上書きされない
+    expect(buildRunTimeline([clear({ perfScore: 1.0 })], profile)[0].isRecordUpdate).toBe(false);
+    // 評点が高い=更新
+    expect(buildRunTimeline([clear({ perfScore: 2.5 })], profile)[0].isRecordUpdate).toBe(true);
+    // 同点は撃破が速い方(clear()の既定は50_000ms=記録の60_000msより速い)
+    expect(buildRunTimeline([clear({ perfScore: 2.0 })], profile)[0].isRecordUpdate).toBe(true);
+    // 記録が無ければ初記録=更新(評点が出せなくても残す)
+    expect(buildRunTimeline([clear({ slotKey: 'skadi', perfScore: null })], profile)[0].isRecordUpdate).toBe(true);
   });
 
   it('プロファイル未保存(初プレイ)でも比較なしのカードが作れる', () => {
@@ -139,7 +142,7 @@ describe('ghostAlbum: 同行枠(§2.17)のカード組み立て', () => {
     expect(cards[0].isRecordUpdate).toBe(true);
     expect(cards[0].ally?.name).toBe('tanity');
     expect(cards[1].stageId).toBe('stage-2');       // giantbatはステージ別スロット
-    expect(cards[1].best).toEqual({ clearTimeMs: 40_000, hitsPerMin: null, counterChance: null });
+    expect(cards[1].best).toEqual({ clearTimeMs: 40_000, hitsPerMin: null, counterChance: null, perfScore: null });
     expect(cards[1].isRecordUpdate).toBe(false);
   });
 

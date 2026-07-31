@@ -60,13 +60,18 @@ export interface BossClearCard {
   /** 同行していた守護霊(持ち主名+ビルド写し)。不在ならnull=カード/名前を出さない。 */
   ally: GhostAllySnapshot | null;
   /** 比較対象=**このランを反映する前**の保存記録。一覧(それ自体が記録)ではnull。 */
-  best: { clearTimeMs: number | null; hitsPerMin: number | null; counterChance: number | null } | null;
+  best: { clearTimeMs: number | null; hitsPerMin: number | null; counterChance: number | null; perfScore: number | null } | null;
+  /** v0.25.2603(社長式): このカード自身の評点(年表用。一覧/同行カードはnull)。 */
+  perfScore: number | null;
   /** 採用したら記録が上書きされるか(=「記録更新」表示)。既存記録が無ければtrue(初記録)。 */
   isRecordUpdate: boolean;
 }
 
 const slotBest = (slot: BossStyleSlot | undefined) => slot
-  ? { clearTimeMs: slot.clearTimeMs ?? null, hitsPerMin: slot.hitsPerMin, counterChance: slot.counterChance }
+  ? {
+    clearTimeMs: slot.clearTimeMs ?? null, hitsPerMin: slot.hitsPerMin, counterChance: slot.counterChance,
+    perfScore: slot.perfScore ?? null, // v0.25.2603(社長式): 記録更新の判定はこの評点で行う
+  }
   : null;
 
 /**
@@ -84,10 +89,12 @@ export const buildRunTimeline = (
     clearTimeMs: c.clearTimeMs,
     hitsPerMin: c.hitsPerMin,
     counterChance: c.counterChance,
+    perfScore: c.perfScore,
     at: c.at,
     ally: c.ally,
     best: slotBest(prev),
-    isRecordUpdate: isBetterBossStyleSample(prev?.hitsPerMin, c.hitsPerMin),
+    // v0.25.2603(社長式): 判定基準を評点へ差し替え(旧: 被弾/分)。commit側と同じ純関数を使う。
+    isRecordUpdate: isBetterBossStyleSample(prev?.perfScore, c.perfScore, prev !== undefined),
   };
 });
 
@@ -107,6 +114,7 @@ export const buildAlbumCards = (profile: PlayerProfile | null): BossClearCard[] 
         clearTimeMs: slot.clearTimeMs ?? null,
         hitsPerMin: slot.hitsPerMin,
         counterChance: slot.counterChance,
+        perfScore: slot.perfScore ?? null,
         at: slot.at,
         ally: slot.ally ?? null,
         best: null,
@@ -131,10 +139,11 @@ export const buildDuoRunTimeline = (clears: readonly DuoRunClearView[]): BossCle
       clearTimeMs: c.clearTimeMs,
       hitsPerMin: null,
       counterChance: null,
+      perfScore: null,
       at: c.at,
       ally: c.ally,
       best: c.bestBefore !== null
-        ? { clearTimeMs: c.bestBefore, hitsPerMin: null, counterChance: null }
+        ? { clearTimeMs: c.bestBefore, hitsPerMin: null, counterChance: null, perfScore: null }
         : null,
       isRecordUpdate: c.isRecordUpdate,
     };
@@ -154,6 +163,7 @@ export const buildDuoAlbumCards = (album: DuoAlbum | null): BossClearCard[] => {
         bossType, stageId,
         clearTimeMs: slot.clearTimeMs,
         hitsPerMin: null,
+        perfScore: null,
         counterChance: null,
         at: slot.at,
         ally: slot.ally ?? null,

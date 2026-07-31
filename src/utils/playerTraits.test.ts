@@ -11,7 +11,7 @@ import {
   // 保存の保留化(v0.25.2476): リザルトでのcommit/破棄
   hasPendingTraitRecords, commitPendingTraits, settlePendingTraits,
   // G5(BOT_AND_GHOST.md §2.10): ボス別攻略スタイル(軸2)
-  notifyBossClear, bossStyleSlotKey, isBetterBossStyleSample, effectiveGhostProfile,
+  notifyBossClear, bossStyleSlotKey, isBetterBossStyleSample, bossStylePerfScore, effectiveGhostProfile,
   // GHOST-RESULT-UI(§2.16 A): スロット別決算(採用選択)+リザルト年表のビュー
   selectPendingForSettlement, pendingBossClears,
   type PlayerProfile, type PendingTraitRecord,
@@ -922,13 +922,33 @@ describe('playerTraits G5: 新規純関数(bossStyleSlotKey/ベスト保持判�
     expect(bossStyleSlotKey('idol', 'stage-9')).toBe('idol'); // stageIdは無視される
   });
 
-  it('isBetterBossStyleSample(ベスト保持判定): 既存slot無しは採用/被弾少ない方保持/同値は新/新サンプルnullは不採用', () => {
-    expect(isBetterBossStyleSample(undefined, 5)).toBe(true);  // 既存slot無し=採用
-    expect(isBetterBossStyleSample(null, 5)).toBe(true);       // 既存slotはあるがサンプル無し=採用
-    expect(isBetterBossStyleSample(5, 3)).toBe(true);          // 新の方が被弾/分が少ない→上書き
-    expect(isBetterBossStyleSample(3, 5)).toBe(false);         // 新の方が多い→保持しない
-    expect(isBetterBossStyleSample(5, 5)).toBe(true);          // 同値は新しい方
-    expect(isBetterBossStyleSample(5, null)).toBe(false);      // 新サンプルがnullなら上書きしない
+  // v0.25.2603(社長式): 基準を**評点(高いほど良い)**へ差し替え。同点は撃破タイムでタイブレーク。
+  it('isBetterBossStyleSample: 初記録は必ず採用/評点が高い方/同点は速い方/新サンプルnullは不採用', () => {
+    expect(isBetterBossStyleSample(undefined, 5, false)).toBe(true); // 既存slot無し=初記録は必ず残す
+    expect(isBetterBossStyleSample(undefined, null, false)).toBe(true); // 評点が出せない初記録も残す
+    expect(isBetterBossStyleSample(null, 1.5)).toBe(true);       // 旧レコード(評点なし)=新形式へ入れ替え
+    expect(isBetterBossStyleSample(null, null)).toBe(true);      // 計測対象外のボス=最新の撃破が残る
+    expect(isBetterBossStyleSample(1.0, 2.5)).toBe(true);        // 評点が高い→上書き
+    expect(isBetterBossStyleSample(2.5, 1.0)).toBe(false);       // 評点が低い→保持しない
+    expect(isBetterBossStyleSample(2.0, null)).toBe(false);      // 比較不能=既存を守る
+    // 同点はタイム(速い方)。タイムが無ければ新しい方。
+    expect(isBetterBossStyleSample(2.0, 2.0, true, 50_000, 40_000)).toBe(true);  // 速い→上書き
+    expect(isBetterBossStyleSample(2.0, 2.0, true, 40_000, 50_000)).toBe(false); // 遅い→保持しない
+    expect(isBetterBossStyleSample(2.0, 2.0)).toBe(true);        // タイム不明=新しい方
+  });
+
+  it('bossStylePerfScore: (カウンター×3 + 避け − 被弾)/技の回数。弾技はカウンターだけ数える', () => {
+    // 10技: 8カウンター2回避・無傷 → (8*3 + 2 - 0)/10 = 2.6
+    expect(bossStylePerfScore({ 'g-jump': { exposures: 10, counters: 8, hits: 0 } })).toBeCloseTo(2.6, 5);
+    // 全部カウンター=3.0 / 全部回避=1.0 / 全部被弾=-1.0(評点の上下限が読める)
+    expect(bossStylePerfScore({ 'g-jump': { exposures: 4, counters: 4, hits: 0 } })).toBeCloseTo(3, 5);
+    expect(bossStylePerfScore({ 'g-jump': { exposures: 4, counters: 0, hits: 0 } })).toBeCloseTo(1, 5);
+    expect(bossStylePerfScore({ 'g-jump': { exposures: 4, counters: 0, hits: 4 } })).toBeCloseTo(-1, 5);
+    // 弾を撃つ技(g-bolt)は避け/被弾を数えない=カウンターできた回だけ分子・分母に入る。
+    expect(bossStylePerfScore({ 'g-bolt': { exposures: 10, counters: 2, hits: 5 } })).toBeCloseTo(3, 5);
+    // 技に一度も晒されていない=比較不能(null)。
+    expect(bossStylePerfScore({})).toBeNull();
+    expect(bossStylePerfScore({ 'g-bolt': { exposures: 6, counters: 0, hits: 3 } })).toBeNull();
   });
 
   const mkAxis1Profile = (): PlayerProfile => ({
@@ -1092,8 +1112,10 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
     expect(JSON.stringify(loadPlayerProfile())).toBe(before); // thorスロットは乗らず全体不変
   });
 
-  it('ベスト保持: 被弾/分が少ない撃破で上書きし、多い撃破では上書きしない', () => {
-    // ラン1: 60秒で2回被弾(hitsPerMin=2)して撃破。
+  // v0.25.2603(社長式): 基準が**評点**(技への反応)へ変わった。この計測ハーネスは技エピソードを
+  // 起こさない=評点は常にnull → 「比較の土台が無いボスは最新の撃破が残る」経路の回帰になる。
+  it('評点が出せないボスは最新の撃破が残る(比較の土台が無い=居座らせない)', () => {
+    // ラン1: 60秒で2回被弾して撃破。
     tickPlayerTraits(baseInput({ gameTime: 0, player: mkPlayer(100, 100), enemies: [mkBoss()] }));
     tickPlayerTraits(baseInput({ gameTime: 10_000, player: mkPlayer(90, 100), enemies: [mkBoss()] }));
     tickPlayerTraits(baseInput({ gameTime: 20_000, player: mkPlayer(80, 100), enemies: [mkBoss()] }));
@@ -1102,18 +1124,9 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
     commitPendingTraits();
     expect(loadPlayerProfile()!.bossStyles!.thor.hitsPerMin).toBeCloseTo(2, 5);
+    expect(loadPlayerProfile()!.bossStyles!.thor.perfScore).toBeUndefined(); // 評点は出せていない
 
-    // ラン2: 60秒で1回被弾(hitsPerMin=1・より上手い)で撃破→上書きされるはず。
-    resetBotTelemetry();
-    tickPlayerTraits(baseInput({ gameTime: 0, player: mkPlayer(100, 100) }));
-    tickPlayerTraits(baseInput({ gameTime: 30_000, player: mkPlayer(90, 100) }));
-    notifyBossClear('thor', 'stage-1');
-    tickPlayerTraits(baseInput({ gameTime: 60_000, player: mkPlayer(90, 100) }));
-    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
-    commitPendingTraits();
-    expect(loadPlayerProfile()!.bossStyles!.thor.hitsPerMin).toBeCloseTo(1, 5);
-
-    // ラン3: 60秒で5回被弾(hitsPerMin=5・より下手)で撃破→上書きされないはず(ラン2の1のまま)。
+    // ラン2: 60秒で5回被弾(前より下手)でも、比較の土台が無いので**最新が残る**。
     resetBotTelemetry();
     tickPlayerTraits(baseInput({ gameTime: 0, player: mkPlayer(100, 100) }));
     tickPlayerTraits(baseInput({ gameTime: 10_000, player: mkPlayer(90, 100) }));
@@ -1125,7 +1138,7 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
     tickPlayerTraits(baseInput({ gameTime: 60_000, player: mkPlayer(50, 100) }));
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 60_100 }));
     commitPendingTraits();
-    expect(loadPlayerProfile()!.bossStyles!.thor.hitsPerMin).toBeCloseTo(1, 5); // ラン2のまま
+    expect(loadPlayerProfile()!.bossStyles!.thor.hitsPerMin).toBeCloseTo(5, 5);
   });
 
   it('subStylesの写し: 同ランにsubStyleレコードが有れば軸1のEMAとは異なるラン実測レート(EMAなし)を使う', () => {
@@ -1225,7 +1238,9 @@ describe('playerTraits §2.16 A: 採用選択(selectPendingForSettlement)', () =
 
   it('一部採用は採用スロットのbossStyleだけ残し、軸1(session/subStyle)は反映する', () => {
     const recs = [session, boss('thor'), boss('mimir'), sub];
-    expect(selectPendingForSettlement(recs, ['mimir'])).toEqual([session, boss('mimir'), sub]);
+    // v0.25.2603(社長裁定A): 残った撃破には adopted:true の印が付く(commit側が無条件で上書きする)。
+    expect(selectPendingForSettlement(recs, ['mimir']))
+      .toEqual([session, { ...boss('mimir'), adopted: true }, sub]);
   });
 });
 
