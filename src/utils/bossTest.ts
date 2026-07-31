@@ -87,3 +87,34 @@ export const parseBossTestMode = (search: string): BossTestModeInfo => {
     ghost, smoke,
   };
 };
+
+// ---- ?gateboss=1 の発火ゲート(v0.25.2611・実装精度の規律4で純関数へ切り出し) -------------------
+/**
+ * ボス戦テストの強制出現(?gateboss=1)を「今フレーム発火してよいか」。
+ *
+ * 社長報告v0.25.2610「すりぃえるのボスモード、強制的に上に歩かされて何もできない」の本体は
+ * **corridorRunIn の取りこぼし**だった。ステージ6(古い洋館)だけが corridorMode で、ラン開始直後に
+ * 「入力を遮断して自動で上へ走らせる」入場演出(v0.25.2110)が約6秒走る。その最中にゲート2ボスを
+ * 強制出現させると:
+ *   ① 入力は isInputLocked(corridorRunInActive) で遮断されたまま
+ *   ② プレイヤーは強制的に上へ歩かされ続ける
+ *   ③ 進路上(拘束サークル中心の150px上)にボスが湧いて接触ダメージを受け続ける
+ * さらに走り込みの解除条件は「y<=0 到達」か「gameTime>6000」だけで、**①で張った拘束サークル
+ * (半径300)が y<=0 への到達を構造的に阻む**ため、6秒の安全弁が切れるまで何もできなかった。
+ * 実ゲート2は走り込みが終わった後にしか発火しないので、この事故はテスト経路だけに存在した。
+ *
+ * 掟: **新しい「入力を奪う演出」を足したらここへも足す**(CLAUDE.md「教訓は即機械化」)。
+ */
+export interface GateBossGateState {
+  forceParamOn: boolean;      // ?gateboss=1
+  alreadySpawned: boolean;    // このランで既に出したか(gatebossForceRef)
+  danceTest: boolean;
+  indoor: boolean;
+  labTheme: boolean;
+  corridorRunInActive: boolean; // 洋館の走り込み入場中(=入力が奪われている)
+  gameWon: boolean;
+}
+
+export const canForceGateBossNow = (s: GateBossGateState): boolean =>
+  s.forceParamOn && !s.alreadySpawned && !s.danceTest && !s.indoor && !s.labTheme
+  && !s.corridorRunInActive && !s.gameWon;

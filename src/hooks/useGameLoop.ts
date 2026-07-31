@@ -105,6 +105,7 @@ import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { withRecoverFloor } from '../utils/bossTelegraph';
+import { canForceGateBossNow } from '../utils/bossTest';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -4220,7 +4221,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 実機バグ修正(社長報告v0.25.1593「開始位置的にこっちが強制的に食らって即死」): 旧実装は
         // ボスをプレイヤーの真上(gcx-24,gcy-24)に出していた=接触ダメージ190で即死。実ゲート2と同じく
         // ①拘束サークル(beginArenaEvent)を張り ②ボスは周回半径ぶん離した位置(中心の上方)へ出す。
-        if (FORCE_GATEBOSS && !gatebossForceRef.current && !danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
+        // 実機バグ修正(社長報告v0.25.2610「すりぃえるのボスモード、強制的に上に歩かされて何もできない」):
+        // 発火条件は bossTest.ts の純関数 canForceGateBossNow へ切り出した(理由と再発防止の掟は同ファイル)。
+        // 要点だけ: **洋館(ステージ6)の走り込み入場が終わるまで待つ**。走り込み中は入力が奪われており、
+        // そこへ拘束サークル+ボスを出すと「強制的に上へ歩かされながら殴られ続ける」状態になっていた。
+        if (canForceGateBossNow({
+          forceParamOn: FORCE_GATEBOSS,
+          alreadySpawned: gatebossForceRef.current,
+          danceTest, indoor, labTheme,
+          corridorRunInActive: useGameStore.getState().corridorRunInActive,
+          gameWon: useGameStore.getState().gameWon,
+        })) {
           const gbType = GATE2_BOSS_TYPE_BY_STAGE[getSelectedStageId()];
           if (gbType) {
             gatebossForceRef.current = true;

@@ -1,7 +1,7 @@
 // ボス戦テストメニュー(bossTest.ts)のユニット。カタログの固定表が実設定(campaign.tsのhiddenBoss/
 // ENGAGEABLE_BOSS_TYPES)とズレたら落ちる突き合わせ+URL合成の検証。
 import { describe, it, expect } from 'vitest';
-import { BOSS_TEST_ENTRIES, bossTestQuery, parseBossTestMode } from './bossTest';
+import { BOSS_TEST_ENTRIES, bossTestQuery, parseBossTestMode, canForceGateBossNow, type GateBossGateState } from './bossTest';
 import { ENGAGEABLE_BOSS_TYPES } from './bossEngagement';
 import { getStage } from '../data/campaign';
 
@@ -74,5 +74,46 @@ describe('parseBossTestMode(現在モードの判定・社長指示「いまど�
     expect(m.active).toBe(true);
     expect(m.params).toEqual([]);
     expect(m.ghost).toBe(true);
+  });
+});
+
+// ==== v0.25.2611: 走り込み入場中にボスを出さない(社長報告「すりぃえるのボスモードで何もできない」) ====
+describe('canForceGateBossNow — ?gateboss=1 の発火ゲート', () => {
+  const ok = (): GateBossGateState => ({
+    forceParamOn: true, alreadySpawned: false, danceTest: false,
+    indoor: false, labTheme: false, corridorRunInActive: false, gameWon: false,
+  });
+
+  it('通常条件では発火する', () => {
+    expect(canForceGateBossNow(ok())).toBe(true);
+  });
+
+  it('【本件の再発防止】洋館の走り込み入場中は発火しない', () => {
+    // 走り込み中は入力が奪われている(isInputLocked)。そこへ拘束サークル+ボスを出すと
+    // 「強制的に上へ歩かされながら殴られ続ける」状態になる。しかも拘束サークルが
+    // 走り込みの解除条件(y<=0到達)を構造的に阻むため、6秒の安全弁まで操作不能だった。
+    expect(canForceGateBossNow({ ...ok(), corridorRunInActive: true })).toBe(false);
+  });
+
+  it('走り込みが終われば発火する(出さないのではなく「待つ」)', () => {
+    const during = { ...ok(), corridorRunInActive: true };
+    expect(canForceGateBossNow(during)).toBe(false);
+    expect(canForceGateBossNow({ ...during, corridorRunInActive: false })).toBe(true);
+  });
+
+  it('既存のガードは従来どおり(パラメータOFF/二重出現/ダンス/屋内/ラボ/クリア後)', () => {
+    expect(canForceGateBossNow({ ...ok(), forceParamOn: false })).toBe(false);
+    expect(canForceGateBossNow({ ...ok(), alreadySpawned: true })).toBe(false);
+    expect(canForceGateBossNow({ ...ok(), danceTest: true })).toBe(false);
+    expect(canForceGateBossNow({ ...ok(), indoor: true })).toBe(false);
+    expect(canForceGateBossNow({ ...ok(), labTheme: true })).toBe(false);
+    expect(canForceGateBossNow({ ...ok(), gameWon: true })).toBe(false);
+  });
+
+  it('どのガードも単独で発火を止められる(AND条件であることの固定)', () => {
+    const keys: (keyof GateBossGateState)[] = ['alreadySpawned', 'danceTest', 'indoor', 'labTheme', 'corridorRunInActive', 'gameWon'];
+    for (const k of keys) {
+      expect(canForceGateBossNow({ ...ok(), [k]: true }), `${k} がガードになっていない`).toBe(false);
+    }
   });
 });

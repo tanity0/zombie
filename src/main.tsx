@@ -1,6 +1,3 @@
-import { useGameStore as __dbgStore } from './store/gameStore';
-// TEMP DIAGNOSTIC (v0.25.2609 suriel boss-mode repro) — revert before commit.
-(window as unknown as Record<string, unknown>).__dbg = __dbgStore;
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
