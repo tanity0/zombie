@@ -60,3 +60,30 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
   if (opts.ghostlog) p.set('ghostlog', '1');
   return `?${p.toString()}`;
 };
+
+// ---- 現在モードの表示(社長指示2026-07-31「いまどのモードになってるか出しといて」) ---------------
+// パラメータ残留事故(v0.25.2576で修正)の再発をその場で見抜くための可視化。強制出現フラグは
+// モジュールロード時定数なので、**ページ読込時のURL**が今セッションの真実=それを解析して表示する。
+export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow'] as const;
+
+export interface BossTestModeInfo {
+  active: boolean;                          // いずれかのテスト系パラメータが生きているか
+  params: string[];                         // 生きている強制出現フラグ(表示用)
+  stageId: string | null;
+  ghost: boolean;                           // ?ghost=1(デバッグ守護霊)
+  smoke: boolean;                           // ?smoke(クイックスタート)
+}
+
+/** ページ読込時のURLクエリから現在モードを判定する純関数(テスト可能・window非依存)。 */
+export const parseBossTestMode = (search: string): BossTestModeInfo => {
+  const p = new URLSearchParams(search);
+  const params = FORCE_PARAMS.filter(k => p.get(k) === '1');
+  const ghost = p.get('ghost') === '1';
+  const smoke = p.get('smoke') !== null;
+  return {
+    active: params.length > 0 || ghost || smoke,
+    params: [...params],
+    stageId: p.get('stage'),
+    ghost, smoke,
+  };
+};

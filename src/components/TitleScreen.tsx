@@ -9,6 +9,20 @@ import { bossIconSrc } from '../utils/bossIcon';
 import { getLoadProgress, subscribeLoadProgress } from '../utils/loadProgress';
 import { normalizeNamedNamesInText } from '../utils/namedEnemy';
 import BossTestMenu from './BossTestMenu'; // ボス戦テストメニュー(社長依頼2026-07-31・開発チャネル用)
+import { parseBossTestMode, BOSS_TEST_ENTRIES } from '../utils/bossTest';
+import { enemyDeathLabel } from '../store/gameStore';
+
+// 現在モード(社長指示2026-07-31「いまどのモード(通常含めて)になってるか出しといて」)。
+// 強制出現フラグはモジュールロード時定数なので、**読込時のURL**をモジュールロード時に1回だけ写して
+// 判定する(後からURLが書き換わっても、このセッションの実効モードは読込時の値のまま=それを表示する)。
+const LOADED_MODE = parseBossTestMode(typeof window !== 'undefined' ? window.location.search : '');
+const loadedModeLabel = (): string => {
+  if (!LOADED_MODE.active) return 'モード: 通常';
+  const entry = BOSS_TEST_ENTRIES.find(e =>
+    LOADED_MODE.params.includes(e.param) && (LOADED_MODE.stageId === null || e.stageId === LOADED_MODE.stageId));
+  const boss = entry ? enemyDeathLabel(entry.boss) : LOADED_MODE.params.join('+') || 'クイックスタート';
+  return `モード: テスト(${boss}${LOADED_MODE.ghost ? '・守護霊ON' : ''})`;
+};
 
 // 前回セッション末尾の状態(クラッシュ診断・社長報告のスマホ真っ白現象の手がかり用)。タイトル表示のたび
 // 読み直しても軽い(localStorageの読み取り1回)ので、レンダー内で直接読む(state化するほどでもない)。
@@ -290,16 +304,24 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
         </span>
       )}
 
-      {/* ボス戦テストの入口(開発チャネル用・左下に控えめ)。全画面タップ(tapStart)に食われないよう
-          stopPropagation。メニュー本体は BossTestMenu(出撃=ページ再読込なので閉じれば痕跡なし)。 */}
+      {/* ボス戦テストの入口(開発チャネル用・左下に控えめ)+現在モード表示(社長指示: 残留事故を
+          その場で見抜く)。全画面タップ(tapStart)に食われないようstopPropagation。 */}
       {SHOW_BOSS_TEST && phase === 'title' && !bossTestOpen && (
-        <button
-          className="absolute bottom-3 left-3 px-2 py-1 text-[10px] tracking-wider text-purple-200/50"
-          style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}
-          onClick={ev => { ev.stopPropagation(); playSfx('ui-select'); setBossTestOpen(true); }}
-        >
-          ボス戦テスト
-        </button>
+        <div className="absolute bottom-3 left-3 flex items-center gap-2">
+          <button
+            className="px-2 py-1 text-[10px] tracking-wider text-purple-200/50"
+            style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}
+            onClick={ev => { ev.stopPropagation(); playSfx('ui-select'); setBossTestOpen(true); }}
+          >
+            ボス戦テスト
+          </button>
+          <span
+            className={`px-2 py-1 text-[10px] tracking-wider ${LOADED_MODE.active ? 'text-amber-300/90' : 'text-white/35'}`}
+            style={LOADED_MODE.active ? { background: 'rgba(120,53,15,0.35)', borderLeft: '2px solid rgba(251,191,36,0.7)' } : undefined}
+          >
+            {loadedModeLabel()}
+          </span>
+        </div>
       )}
       {bossTestOpen && phase === 'title' && <BossTestMenu onClose={() => setBossTestOpen(false)} />}
 

@@ -962,3 +962,53 @@ jibrilの炎=**別エンティティ**(Projectileではない)/ idolのroll・pu
 - 計測パス不触・BOT_AND_GHOST.md編集禁止・fallback経路は乱数消費含め1bit不変・
   ゲート=`npm run typecheck`+`npm run lint`(エラー0)+`npx vitest related`(触ったファイル)・
   DEVELOPMENT_LOG.md先頭に「(未採番)」エントリ・git操作/バージョンbump禁止・未決はこの台帳へ追記して停止。
+
+## 発注仕様: バッチ GHOST-CMD-1B(§2.18 Phase 1b: 味付け=避け方向の癖・v0.25.2580発注)
+
+**正本**: BOT_AND_GHOST.md §2.18(コマンド方式)の「意図3分類×味付け2層」(C案)のうち、
+**dodgeの味付け=避け方向の癖(横に流す/後ろへ下がる/前へ抜ける)**の計測と適用。
+※「動き出しの早さ」は**既存のreactionMs計測で実装済み=本バッチでは何も足さない**(重複計測しない)。
+※ tankの「撃ち続けるか」・counterの「待ち位置」・「前へ抜ける」の真実装(敵を横切る移動)は
+**Phase 2スコープ=本バッチ対象外**(★未決にもしない)。
+
+### 1. 計測(moveReaction.ts+playerTraits.ts)
+- `MoveEpisode` に変位アキュムレータを追加: エピソード中の毎tick、プレイヤー変位(dx,dy)を
+  **その敵への半径方向/接線方向へ分解**して累積する(radialOut / lateral / radialIn の3スカラー。
+  前tick座標は `MoveReactionState` に持たせる。`stepMoveReactions` は既に player と enemies を
+  毎tick受けている=新しい引数は増やさない)。
+- `foldEpisode` で**結果がdodge**(exposed && !countered && !hit)のエピソードだけ、累積の
+  **最大軸で3分類**(radialOut優勢→'away' / lateral優勢→'lateral' / radialIn優勢→'through')し、
+  `MoveReactionState` に新設する `dodgeDirTally {away, lateral, through}` へ加算(技キー横断=
+  グローバルな癖。技別には持たない=§2.18-2「味付けはスカラー」・標本を薄めない)。
+- `endMoveReactions` の返り値に dodgeDirTally を含め、セッションレコード→プロファイルへ:
+  - `PlayerProfile.dodgeDir?: { n: number; awayRate: number; lateralRate: number }`(throughRateは
+    1−away−lateralで導出)。混合は `blendMoveReactionTable` と同じ数式(初回=サンプルそのまま・
+    以後EMA・nは累計)を1キー分だけ適用。スキーマ版`v`は据え置き+normalize補完(欠損=undefined)。
+  - `BossStyleSlot` にも同名フィールドを写す(丸ごと写しの一部)。`PendingBossStyleRecord`/
+    `PendingSessionRecord` に dodgeDirSample を追加。
+- ゴーストラン破棄・30秒フロア等の既存ゲートに**新しい例外を作らない**(sessionレコードに乗る=
+  自然に同じゲートに従う)。
+
+### 2. 消費(ghostDriver.ts+ghostTelegraph.ts)
+- `GhostProfile.dodgeDir?`(同形)を追加し、directorTickの effectiveGhostProfile 経路で載せる。
+- **バイアスは円形脅威のみ**(成功が主・癖は従=§2.18-3): `ghostExtraTelegraphDodge` が返す
+  DodgeThreat に `shape?: 'circle'` タグを追加し(circleThreat生成箇所)、`ghostDodgeVector` で
+  円形タグ付きの脅威単位ベクトルだけを**接線方向へ回転**してから合成する:
+  - 回転角 θ = min(45°, 45° × lateralFrac)。lateralFrac = lateralRate + throughRate(前抜けは
+    v1では横に畳む・コメントに明記)。回転の向き=ghost.orbitSign の接線側。
+  - **上限45°**(円から必ず脱出できる角度=成功優先)。帯・突進・弾・接触の回避は幾何のまま触らない。
+- `dodgeDir` 欠損(旧プロファイル・n=0)= バイアス0=**従来とビット一致**(乱数消費も不変。
+  回転は決定的でrandを使わない)。
+- **botSkill.ts は1文字も触らない**(テストボット共用のため。baseベクトル内の着地円は本バッチでは
+  バイアス対象外=対象は台帳(ghostTelegraph)の円形脅威のみ、とコメントに明記)。
+
+### 3. テスト
+- 計測: 横移動でdodge確定→lateral加算/後退→away/敵へ向かう→through/被弾・カウンター・暴露なしは
+  dodgeDirに数えない/セッション→プロファイル混合(初回そのまま・EMA・n累計)。
+- 消費: 円形脅威が接線へ≤45°回転(lateralFrac=1で45°・0.5で22.5°)/帯脅威は不変/
+  dodgeDir欠損=完全に従来どおり(ベクトル一致)/randを消費しない。
+
+### 4. 掟
+- botSkill.ts無改変・BOT_AND_GHOST.md編集禁止・§2.7計測ゲートに例外を作らない・
+  ゲート=`npm run typecheck`+`npm run lint`(エラー0)+`npx vitest related <触ったファイル>`・
+  DEVELOPMENT_LOG.md先頭に「(未採番)」エントリ・git操作/バージョンbump禁止・未決はこの台帳へ追記して停止。

@@ -1,7 +1,7 @@
 // ボス戦テストメニュー(bossTest.ts)のユニット。カタログの固定表が実設定(campaign.tsのhiddenBoss/
 // ENGAGEABLE_BOSS_TYPES)とズレたら落ちる突き合わせ+URL合成の検証。
 import { describe, it, expect } from 'vitest';
-import { BOSS_TEST_ENTRIES, bossTestQuery } from './bossTest';
+import { BOSS_TEST_ENTRIES, bossTestQuery, parseBossTestMode } from './bossTest';
 import { ENGAGEABLE_BOSS_TYPES } from './bossEngagement';
 import { getStage } from '../data/campaign';
 
@@ -50,5 +50,29 @@ describe('bossTestQuery(URL合成)', () => {
     const q = new URLSearchParams(bossTestQuery(entry, { characterClass: 'warrior', ghost: true, ghostlog: true }));
     expect(q.get('ghost')).toBe('1');
     expect(q.get('ghostlog')).toBe('1');
+  });
+});
+
+describe('parseBossTestMode(現在モードの判定・社長指示「いまどのモードか出しといて」)', () => {
+  it('素のURL=通常モード', () => {
+    const m = parseBossTestMode('');
+    expect(m.active).toBe(false);
+    expect(m.params).toEqual([]);
+  });
+
+  it('テスト出撃のURL=activeで内訳(フラグ/ステージ/守護霊)が取れる', () => {
+    const q = bossTestQuery({ boss: 'mimir', stageId: 'stage-1', param: 'bossnow' }, { characterClass: 'warrior', ghost: true, ghostlog: false });
+    const m = parseBossTestMode(q);
+    expect(m.active).toBe(true);
+    expect(m.params).toEqual(['bossnow']);
+    expect(m.stageId).toBe('stage-1');
+    expect(m.ghost).toBe(true);
+  });
+
+  it('?ghost=1単独の残留もactiveとして検出する', () => {
+    const m = parseBossTestMode('?ghost=1');
+    expect(m.active).toBe(true);
+    expect(m.params).toEqual([]);
+    expect(m.ghost).toBe(true);
   });
 });
