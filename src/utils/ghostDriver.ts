@@ -25,6 +25,10 @@ import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from '
 // v0.25.2470: 雑魚回避(非ボス判定)用 / ENEMY_PROJECTILE_DURATION=弾の寿命(tankした弾技の弾を無視し続ける長さ)
 import { isBossType, aimEnemyDist2, ENEMY_PROJECTILE_DURATION } from './enemyUtils';
 import { isBossCounterableNowApprox } from './bossScript';
+import {
+  isGiantAimWindup, isGiantDeadWindup, isGiantWatchActivePhase,
+  ghostAimSwingNow, ghostAimLeadMs, ghostAimSlowness01,
+} from './ghostCounterAim'; // A-2(社長裁定v0.25.2600): 着弾の瞬間から逆算して振る(純関数・store非依存)
 import { ghostExtraTelegraphDodge, isTelegraphActive, type GhostDodgeThreat } from './ghostTelegraph'; // §2.12 要件7: 予告台帳(全ボス)
 import { anyMoveKeyForEnemy, isProjectileMoveKey, type MoveReactionTable, type DodgeDirStat } from './moveReaction'; // G4b(§2.9(4)): 技キー導出は計測側と同じ純関数を流用(二重実装しない)
 import { drawFromCommandBag } from './commandBag'; // §2.18(GHOST-CMD-1): 決定の出どころ=境界ガード付き袋式
@@ -672,7 +676,17 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // カウンター窓の見切り(§2.12・要件6)。**移動より先に**判定する: 見切った後は「詰める/張り付く」を
   // やめて通常の間合い管理へ戻す(旧: 窓が閉じるまで無時限に張り付いて被弾していた)。
   const inMeleeRange = edgeDist <= GHOST_MELEE_RANGE;
-  const counterable = inMeleeRange && isBossCounterableNowApprox(target.aiPhase, target.bossState);
+  // A-2(社長裁定v0.25.2600): 城ボス系(giantbat)は**狙う表と成立表が食い違っていた**ので揃える。
+  //  - 死に予告(その終わりにダメージが無い予告)は狙わない=空振りで近接CDを捨てない。
+  //    これだけで飛び掛かり(g-jump-air)や体当たりに振りを回せる(社長報告の主因)。
+  //  - 成立表にあるのに近似が拾えていなかった実行フェーズ(g-dash-charge/g-sweep-active)を監視に加える。
+  // 他ファミリー(トール/裏3/天使/idol)は近似=成立州で一致しているので**一切変えない**(giantbat限定)。
+  const targetIsGiant = target.type === 'giantbat';
+  const aimWindup = targetIsGiant && isGiantAimWindup(target.aiPhase);
+  const deadWindup = targetIsGiant && isGiantDeadWindup(target.aiPhase);
+  const counterable = inMeleeRange && !deadWindup
+    && (isBossCounterableNowApprox(target.aiPhase, target.bossState)
+      || (targetIsGiant && isGiantWatchActivePhase(target.aiPhase)));
   const counterGaveUp = counterable && ghostCounterWaitExpired(ghost.counterPendingAt, nowMs);
   const counterWatching = counterable && !counterGaveUp;
 
@@ -780,7 +794,18 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
           ? false
           : rand() < profile.counterChance;
     }
-    if (counterWillAttempt && meleeReady && nowMs - counterPendingAt >= reactionMs) {
+    // A-2(§2.18⑩「実行=ベスト・ゴール逆算」): 着弾予告(その終わりにダメージが出る予告)の間は、
+    // 反応遅延で振らずに**着弾の瞬間から逆算**して振る=請求(TTL150ms)が着弾時に生きている状態を作る。
+    // 実効先行時間は反応の遅さで決まる決定的な値(乱数を使わない=意思決定の乱数消費順は不変)。
+    // 遅い霊ほど早く振ってしまい請求がTTL切れして食らう=個性がそのまま結果に出る。
+    // 着弾予告以外(実行中/硬直)は従来どおり反応遅延で振る(隙を叩く挙動は維持)。
+    const aimReady = aimWindup && target.aiPhaseUntil !== undefined
+      ? ghostAimSwingNow(
+          target.aiPhaseUntil - gameTime,
+          ghostAimLeadMs(ghostAimSlowness01(reactionMs, GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS)),
+        )
+      : nowMs - counterPendingAt >= reactionMs;
+    if (counterWillAttempt && meleeReady && aimReady) {
       action = 'melee'; lastMeleeAt = nowMs;
       counterPendingAt = undefined; counterWillAttempt = false;
     }
