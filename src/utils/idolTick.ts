@@ -65,6 +65,29 @@ type BossStateName = NonNullable<Enemy['bossState']>;
 const windupState = (m: IdolMove): BossStateName => `idol-${m}-windup` as BossStateName;
 const recoverState = (m: IdolMove): BossStateName => `idol-${m}-recover` as BossStateName;
 
+/**
+ * 実際に制御すべきアイドル1体を選ぶ(純関数)。v0.25.2614・社長報告「ボスモードだからかな？アイドル動かない」。
+ *
+ * 事故: ラボ資料のステージでは `resetGame` が**固定・休眠のアイドル**を最奥に置く。そこへ `?idolnow=1`
+ * が**2体目**をプレイヤーの近くへ強制召喚するので、盤面にアイドルが2体並ぶ。コントローラは
+ * `enemies.find(e => e.type === 'idol')` で**配列の先頭1体しか見ていなかった**ため、先に置かれた
+ * 遠くの休眠個体が拾われ、起床判定に落ちて `runIdolTick` が一度も呼ばれない
+ * ⇒ **プレイヤーの隣にいる2体目が誰にも動かされず、完全に静止する。**
+ *
+ * 対策は2段構え(どちらか片方でも症状は消えるが、両方やって再発の芽を摘む):
+ *  1. 強制召喚の側で**既存のアイドルを消してから**出す(=盤面のアイドルは常に1体・呼び出し側)。
+ *  2. ここで**起きている個体を優先**して選ぶ(万一2体並んでも、動く方が確実に制御される)。
+ */
+export const pickActiveIdol = (enemies: readonly Enemy[]): Enemy | undefined => {
+  let dormantOne: Enemy | undefined;
+  for (const e of enemies) {
+    if (e.type !== 'idol') continue;
+    if (!e.dormant) return e;          // 起きている個体が最優先
+    dormantOne ??= e;                   // 休眠しかいなければ先頭の1体(=従来どおり起床判定に回す)
+  }
+  return dormantOne;
+};
+
 export const runIdolTick = (
   idol: Enemy,
   s: IdolTickState,

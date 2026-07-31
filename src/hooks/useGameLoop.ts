@@ -106,7 +106,7 @@ import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow } from '../utils/bossTest';
-import { runIdolTick, createIdolTickState, type IdolSfx } from '../utils/idolTick';
+import { runIdolTick, createIdolTickState, pickActiveIdol, type IdolSfx } from '../utils/idolTick';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -5481,10 +5481,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 設置時の向き(社長指示)をデバッグ召喚にも揃える: 出現位置とプレイヤーの左右関係だけで決める
             // (固定配置=src/world/labIdolSpot.tsのlabIdolSpotForDocと同じ「原点/プレイヤー側を向く」式)。
             idolE.idolFacingLeft = ix > pcx0;
+            // v0.25.2614(社長報告「ボスモードだからかな？アイドル動かない」): 先に**盤面の既存アイドルを消す**。
+            // ラボ資料のステージは resetGame が固定・休眠のアイドルを最奥に置くので、消さないと2体並び、
+            // コントローラが遠くの休眠個体だけを拾って**近くの1体が誰にも動かされない**(pickActiveIdolの注記)。
+            useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.type !== 'idol') }));
             addEnemy(idolE);
             useGameStore.getState().triggerAttention(ix, iy);
           }
-          const idol = useGameStore.getState().enemies.find(e => e.type === 'idol');
+          const idol = pickActiveIdol(useGameStore.getState().enemies); // v0.25.2614: 起きている個体を優先(2体並んだ時の保険)
           if (idol) {
             const icx = idol.x + idol.width / 2, icy = idol.y + idol.height / 2;
             const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
