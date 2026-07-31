@@ -40,6 +40,7 @@ import {
   tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey,
   subStyleHomingHoldMs, type SubStyleProfile,
 } from './playerTraits'; // BOT_AND_GHOST.md G1/G5
+import { tickDuoClearClock } from './duoRecords'; // §2.17(GHOST-DUO-RECORDS): 同行撃破タイムの時計
 import { loadPlayerName } from './playerName'; // v0.25.2477: 守護霊の頭上名(srcName未記録時のフォールバック)
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
@@ -638,6 +639,11 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     enemies: state.enemies,
     movementInput: state.inputState.up || state.inputState.down || state.inputState.left || state.inputState.right,
   });
+
+  // §2.17(GHOST-DUO-RECORDS): 同行撃破台帳の撃破タイム時計(交戦開始→撃破)。挙動計測
+  // (tickPlayerTraits=G4a)とは**別モジュールの独立打刻**で、計測パスには触れない(§2.7 制約1不変)。
+  // 交戦信号は上で計算済みのengagedNow(同じ純関数bossEngagedNowの結果)を共有=新しい判定は発明しない。
+  tickDuoClearClock({ ghostRunActive, inCombat: engagedNow, gameTime });
 
   // G2/G3: 召喚ゲート。`?ghost=1`(開発用・従来どおり) OR 守護霊装備(G3)のランだけ先へ進む。
   if (!ghostRunActive) return;

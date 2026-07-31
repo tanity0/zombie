@@ -106,7 +106,8 @@ import { loadPlayerName, savePlayerName, normalizePlayerNameInput, PLAYER_NAME_M
 // BOT_AND_GHOST.md §2.14/§2.16 C: 独立メニュー「守護霊」= 名前の決定 + 討伐の保持記録(G5アルバム)。
 // カードはリザルト年表と**同じ部品**を流用する(§2.16 B)。
 import { loadPlayerProfile } from '../utils/playerTraits';
-import { buildAlbumCards, type BossClearCard } from '../utils/ghostAlbum';
+import { buildAlbumCards, buildDuoAlbumCards, type BossClearCard } from '../utils/ghostAlbum';
+import { loadDuoAlbum } from '../utils/duoRecords';
 import type { GhostAllySnapshot } from '../utils/playerBuild';
 import { BossClearCardRow, GhostAllyCard } from './GhostRecordCards';
 
@@ -400,10 +401,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // BOT_AND_GHOST.md §2.14/§2.16 C: 独立メニュー「守護霊」。討伐記録(G5アルバム)は
   // storyArchive と同じ「入った時に1回だけ読む」方針(store購読なし=毎フレーム再描画しない)。
   const [ghostAlbum, setGhostAlbum] = useState<BossClearCard[]>([]);
+  // §2.17(GHOST-DUO-RECORDS): 同行撃破台帳(二枠のうちの同行枠)。ソロ台帳と同じく入った時に1回だけ読む。
+  const [duoAlbum, setDuoAlbum] = useState<BossClearCard[]>([]);
   const [openAlly, setOpenAlly] = useState<GhostAllySnapshot | null>(null);
   const goGhost = () => {
     playSfx('ui-select');
     setGhostAlbum(buildAlbumCards(loadPlayerProfile()));
+    setDuoAlbum(buildDuoAlbumCards(loadDuoAlbum()));
     setScreen({ name: 'ghost' });
   };
 
@@ -1153,7 +1157,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <Header title="守護霊" subtitle="名前・討伐記録" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
       <div className="menu-stagger p-3 space-y-3">
         <PlayerNameSettings />
-        <Section label="討伐記録">
+        {/* §2.17: 討伐記録の二枠化。ソロ枠=従来のG5アルバム(計測つき)/同行枠=同行撃破台帳(下)。 */}
+        <Section label="討伐記録（ソロ）">
           {ghostAlbum.length === 0 ? (
             <p className="text-[11px] leading-relaxed text-white/45">
               まだ討伐の記録がありません。ボスを倒してリザルトで「採用」すると、そのボスの戦い方がここに残ります。
@@ -1162,6 +1167,21 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <div className="flex flex-col gap-2">
               {ghostAlbum.map(card => (
                 <BossClearCardRow key={card.slotKey} card={card} onAllyTap={setOpenAlly} />
+              ))}
+            </div>
+          )}
+        </Section>
+        {/* §2.17 同行枠: 撃破タイム+同行者(名前+クラス絵)のみ(評価数値は計測しないので無い)。
+            同行者名タップ→ビルドのポップアップ(ソロ枠と同じ既存部品openAllyを流用)。文言は叩き台。 */}
+        <Section label="討伐記録（同行）">
+          {duoAlbum.length === 0 ? (
+            <p className="text-[11px] leading-relaxed text-white/45">
+              まだ同行討伐の記録がありません。守護霊と共にボスを倒すと、ベストタイムと同行者がここに残ります。
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {duoAlbum.map(card => (
+                <BossClearCardRow key={card.slotKey} card={card} duo onAllyTap={setOpenAlly} />
               ))}
             </div>
           )}

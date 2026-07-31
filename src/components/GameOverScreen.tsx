@@ -16,7 +16,8 @@ import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
 import { isKomaLogEnabled, komaLogSummary, logKomaSummary } from '../utils/komaLog';
 import { hasPendingTraitRecords, settlePendingTraits, pendingBossClears, loadPlayerProfile } from '../utils/playerTraits';
-import { buildRunTimeline } from '../utils/ghostAlbum';
+import { buildRunTimeline, buildDuoRunTimeline } from '../utils/ghostAlbum';
+import { duoClearsThisRun } from '../utils/duoRecords';
 import { BossClearCardRow, BossClearStrip, GhostAllyCard } from './GhostRecordCards';
 import {
   wallAchievementHeadline, metersToNextWall, WALL_RANK_NAMES,
@@ -155,6 +156,11 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       return s;
     });
   };
+  // §2.17(GHOST-DUO-RECORDS): 同行枠の年表。守護霊同行ランの撃破は打刻時に台帳へ確定済みなので、
+  // ここは**マウント時に1回だけ**読む表示専用ビュー(以後不変=毎フレーム変わるstore購読なし)。
+  // ソロ枠(timeline)とは構造的に排他: 同行ランは計測されない(保留=空)/ソロランは同行台帳に積まれない。
+  const [duoClears] = useState(() => duoClearsThisRun());
+  const duoTimeline = useMemo(() => buildDuoRunTimeline(duoClears), [duoClears]);
   // §2.15/§2.16 B: このランに同行した守護霊(召喚時に1回だけ書かれる不変の写し=購読しても安定)。
   const ghostAlly = useGameStore(s => s.ghostAlly);
   // リザルトを閉じる3操作(OK/もう一度プレイ/メニューに戻る)の合流点=commit/破棄の唯一の分岐点。
@@ -419,6 +425,24 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       {adoptedSlots.size === 0 && (
         <p className="mt-2 text-[10px] text-white/45">全て未採用＝今回のプレイを守護霊に反映しません。</p>
       )}
+    </div>
+  ) : null;
+
+  // §2.17(GHOST-DUO-RECORDS): 同行枠の年表(守護霊同行ランの撃破)。**採用チェック無し**(写し不可)・
+  // 評価数値無し(計測しない)。撃破タイム+同行者(名前+クラス絵)+ベスト更新表示のみ。
+  // 撃破が無い同行ラン(duoTimeline空)はセクションごと出さない。文言・見た目は叩き台。
+  const duoTimelineSection = duoTimeline.length > 0 ? (
+    <div className="mb-3 rounded-none bg-sky-400/5 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-white/45">討伐年表（同行）</span>
+        <span className="text-[10px] text-white/40">守護霊と共闘した撃破の記録</span>
+      </div>
+      <BossClearStrip cards={duoTimeline} />
+      <div className="mt-1 space-y-2">
+        {duoTimeline.map(card => (
+          <BossClearCardRow key={`${card.slotKey}:${card.at}`} card={card} duo />
+        ))}
+      </div>
     </div>
   ) : null;
 
@@ -691,6 +715,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 </div>
               </div>
               {ghostTimelineSection}
+              {duoTimelineSection}
               {ghostAllySection}
               {traitOptOutRow}
               {/* PACING_PUZZLE.md §5.17 M14: 到達譜=縦の深度メーター(壁4本の目盛り+今回バー+自己最深旗)。 */}
@@ -771,6 +796,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 </div>
               </div>
               {ghostTimelineSection}
+              {duoTimelineSection}
               {ghostAllySection}
               {traitOptOutRow}
               {/* PACING_PUZZLE.md §5.19 M18②③: スコア内訳+残りの数字は「詳細▾」で開閉(既定は畳む)。 */}

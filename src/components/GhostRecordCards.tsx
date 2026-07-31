@@ -52,17 +52,64 @@ const MetricRow: React.FC<{
 };
 
 /**
+ * 同行者の行(名前+任意でクラス絵)。§2.15/§2.17の共通部品。
+ * - `withClassIcon`(同行枠=§2.17)でクラス絵(CHARACTER_CLASSESのスプライト)を名前の左に出す。
+ * - `onAllyTap` があればタップでビルドのポップアップ(討伐記録一覧)、無ければ静的表示(リザルト)。
+ *   見た目(色・余白・文言)は従来のタップ行と同一=既存部品の流用で新UIを発明しない。
+ */
+const AllyLine: React.FC<{
+  ally: GhostAllySnapshot;
+  withClassIcon: boolean;
+  onAllyTap?: (ally: GhostAllySnapshot) => void;
+}> = ({ ally, withClassIcon, onAllyTap }) => {
+  const cls = withClassIcon
+    ? CHARACTER_CLASSES.find(c => c.id === (ally.className ?? ally.build?.characterClass))
+    : undefined;
+  const content = (
+    <span className="flex items-center gap-1.5">
+      {cls && (
+        <span className="flex h-6 w-6 shrink-0 items-end justify-center overflow-hidden bg-sky-400/15">
+          <img
+            src={cls.sprite}
+            alt={cls.name}
+            draggable={false}
+            className="max-h-5 object-contain"
+            style={{ imageRendering: 'pixelated' }}
+          />
+        </span>
+      )}
+      <span className="min-w-0 truncate">
+        同行 <span className="font-semibold">{ally.name}</span>
+        {onAllyTap && <span className="ml-1 text-[10px] text-white/40">（タップでビルド）</span>}
+      </span>
+    </span>
+  );
+  const rowClass = 'mt-2 w-full rounded-none bg-sky-400/10 px-2 py-1.5 text-left text-[11px] text-sky-100/90';
+  return onAllyTap ? (
+    <button type="button" onClick={() => onAllyTap(ally)} className={`${rowClass} active:bg-sky-400/20`}>
+      {content}
+    </button>
+  ) : (
+    <div className={rowClass}>{content}</div>
+  );
+};
+
+/**
  * 撃破1件のカード(年表の1コマ)。
  * - `checked` を渡した時だけ「守護霊へ採用」チェックを出す(リザルト・既定ONは呼び出し側)。
  * - `onAllyTap` を渡した時だけ同行者の**名前をタップ**できる(討伐記録一覧→ビルドのポップアップ)。
  * - `allyFull` を渡すと同行者のフルカードをこのカードの下に出す(リザルト用途)。
+ * - `duo`(§2.17 同行枠): 評価数値(被弾/分・カウンター成功率)は計測由来のため**行ごと出さない**
+ *   (撃破タイムのみ)。同行者は名前+クラス絵で常に表示(onAllyTapが無くても出す)。採用チェックは
+ *   呼び出し側が渡さない(写し不可)前提。
  */
 export const BossClearCardRow: React.FC<{
   card: BossClearCard;
   checked?: boolean;
   onToggle?: (slotKey: string, next: boolean) => void;
   onAllyTap?: (ally: GhostAllySnapshot) => void;
-}> = ({ card, checked, onToggle, onAllyTap }) => {
+  duo?: boolean;
+}> = ({ card, checked, onToggle, onAllyTap, duo }) => {
   const icon = bossIconSrc(card.bossType, card.stageId);
   return (
     <div className="rounded-none bg-black/25 px-3 py-2.5">
@@ -102,27 +149,26 @@ export const BossClearCardRow: React.FC<{
           best={card.best ? formatClearTime(card.best.clearTimeMs) : null}
           trend={card.best ? trendLowerBetter(card.clearTimeMs, card.best.clearTimeMs) : 'first'}
         />
-        <MetricRow
-          label="被弾/分" value={formatPerMin(card.hitsPerMin)}
-          best={card.best ? formatPerMin(card.best.hitsPerMin) : null}
-          trend={card.best ? trendLowerBetter(card.hitsPerMin, card.best.hitsPerMin) : 'first'}
-        />
-        <MetricRow
-          label="カウンター成功率" value={formatRatePercent(card.counterChance)}
-          best={card.best ? formatRatePercent(card.best.counterChance) : null}
-          trend={card.best ? trendHigherBetter(card.counterChance, card.best.counterChance) : 'first'}
-        />
+        {/* §2.17: 同行枠(duo)は挙動計測をしないので評価数値の行自体を出さない(「—」も出さない)。 */}
+        {!duo && (
+          <>
+            <MetricRow
+              label="被弾/分" value={formatPerMin(card.hitsPerMin)}
+              best={card.best ? formatPerMin(card.best.hitsPerMin) : null}
+              trend={card.best ? trendLowerBetter(card.hitsPerMin, card.best.hitsPerMin) : 'first'}
+            />
+            <MetricRow
+              label="カウンター成功率" value={formatRatePercent(card.counterChance)}
+              best={card.best ? formatRatePercent(card.best.counterChance) : null}
+              trend={card.best ? trendHigherBetter(card.counterChance, card.best.counterChance) : 'first'}
+            />
+          </>
+        )}
       </div>
-      {/* §2.15 置き場所の訂正: 討伐記録では**同行者の名前だけ**。タップでビルドのポップアップ。 */}
-      {card.ally && onAllyTap && (
-        <button
-          type="button"
-          onClick={() => onAllyTap(card.ally!)}
-          className="mt-2 w-full rounded-none bg-sky-400/10 px-2 py-1.5 text-left text-[11px] text-sky-100/90 active:bg-sky-400/20"
-        >
-          同行 <span className="font-semibold">{card.ally.name}</span>
-          <span className="ml-1 text-[10px] text-white/40">（タップでビルド）</span>
-        </button>
+      {/* §2.15 置き場所の訂正: 討伐記録では**同行者の名前だけ**。タップでビルドのポップアップ。
+          §2.17 同行枠(duo)は名前+クラス絵を常時表示(リザルトはタップ無し・一覧はタップでビルド)。 */}
+      {card.ally && (duo || onAllyTap) && (
+        <AllyLine ally={card.ally} withClassIcon={duo === true} onAllyTap={onAllyTap} />
       )}
     </div>
   );

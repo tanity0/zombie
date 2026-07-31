@@ -3,9 +3,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseBossSlotKey, trendLowerBetter, trendHigherBetter,
-  buildRunTimeline, buildAlbumCards, formatClearTime, formatPerMin, formatRatePercent,
+  buildRunTimeline, buildAlbumCards, buildDuoRunTimeline, buildDuoAlbumCards,
+  formatClearTime, formatPerMin, formatRatePercent,
 } from './ghostAlbum';
 import { bossStyleSlotKey, type BossStyleSlot, type PendingBossClearView, type PlayerProfile } from './playerTraits';
+import type { DuoAlbum, DuoRunClearView } from './duoRecords';
 
 const slot = (over: Partial<BossStyleSlot> = {}): BossStyleSlot => ({
   reactionMs: 250, counterChance: 0.5, preferredDist: 180, meleeBias: 0.4, mobility: 0.6,
@@ -115,6 +117,52 @@ describe('ghostAlbum: 討伐記録一覧の組み立て', () => {
     const cards = buildAlbumCards(profileWith({ thor: s }));
     expect(cards[0].clearTimeMs).toBeNull();
     expect(formatClearTime(cards[0].clearTimeMs)).toBe('—');
+  });
+});
+
+describe('ghostAlbum: 同行枠(§2.17)のカード組み立て', () => {
+  const duoClear = (over: Partial<DuoRunClearView> = {}): DuoRunClearView => ({
+    slotKey: 'thor', clearTimeMs: 45_000, at: 3000, ally: { name: 'tanity', className: 'warrior', isOwn: true },
+    bestBefore: null, isRecordUpdate: true,
+    ...over,
+  });
+
+  it('リザルト年表: 撃破順のまま・評価数値は常にnull(計測しない)・記録更新は打刻時の確定値を写す', () => {
+    const cards = buildDuoRunTimeline([
+      duoClear(),
+      duoClear({ slotKey: 'giantbat@stage-2', at: 3001, bestBefore: 40_000, isRecordUpdate: false }),
+    ]);
+    expect(cards.map(c => c.slotKey)).toEqual(['thor', 'giantbat@stage-2']);
+    expect(cards[0].hitsPerMin).toBeNull();
+    expect(cards[0].counterChance).toBeNull();
+    expect(cards[0].best).toBeNull();               // 初記録=比較対象なし
+    expect(cards[0].isRecordUpdate).toBe(true);
+    expect(cards[0].ally?.name).toBe('tanity');
+    expect(cards[1].stageId).toBe('stage-2');       // giantbatはステージ別スロット
+    expect(cards[1].best).toEqual({ clearTimeMs: 40_000, hitsPerMin: null, counterChance: null });
+    expect(cards[1].isRecordUpdate).toBe(false);
+  });
+
+  it('討伐記録一覧: 新しい順・比較対象なし・ally欠損(不在撃破)はnull', () => {
+    const album: DuoAlbum = {
+      v: 1,
+      slots: {
+        thor: { clearTimeMs: 45_000, at: 100 },
+        'giantbat@stage-5': { clearTimeMs: 30_000, at: 300, ally: { name: 'tanity' } },
+        mimir: { clearTimeMs: 20_000, at: 200, ally: { name: 'tanity' } },
+      },
+    };
+    const cards = buildDuoAlbumCards(album);
+    expect(cards.map(c => c.slotKey)).toEqual(['giantbat@stage-5', 'mimir', 'thor']);
+    expect(cards[0].clearTimeMs).toBe(30_000);
+    expect(cards[0].best).toBeNull();
+    expect(cards[0].isRecordUpdate).toBe(false);
+    expect(cards[2].ally).toBeNull();
+  });
+
+  it('台帳が無ければ空配列', () => {
+    expect(buildDuoAlbumCards(null)).toEqual([]);
+    expect(buildDuoRunTimeline([])).toEqual([]);
   });
 });
 

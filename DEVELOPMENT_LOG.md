@@ -1,5 +1,49 @@
 # Development Log
 
+## v0.25.2568 — バッチGHOST-DUO-RECORDS: 同行撃破の二枠記録(BOT_AND_GHOST.md §2.17)【2026-07-31 09:28 JST】
+
+- **検収(設計チャット)**: 合格。台帳の排他構造(同行=notifyBossClearがno-op/ソロ=時計が開かない)・
+  計測パス不触・resetGameの清算・UI購読(useState初期化1回読み=毎フレーム購読なし)をdiffで確認。
+  ゲート3種を検収側でも再実行し一致(typecheck 0 / related 452件通過 / lint エラー0)。
+  実装判断メモ3点はいずれも前例準拠で採用(①ソロと同義の撃破タイム ②不在なら未保存=§2.16 A
+  ③chronicle付加=撃破の瞬間の召喚中判定)。
+
+- **実装物(§2.17 バッチ項目1〜3+chronicle同行者名・全4項目)**:
+  1. **同行撃破台帳の新設** `src/utils/duoRecords.ts`(新規・純関数+モジュールシングルトン・
+     localStorage `zombie-ghost-duo-album-v1`)。スロットキー=ソロと同じ `bossStyleSlotKey`(boss×stage・
+     キー関数だけをplayerTraitsから借用=ズレ防止)。保持=スロット別ベストタイム+同行者写し
+     (GhostAllySnapshot流用・不在なら未保存)。ベスト保持=新タイム≤旧タイムで上書き(ソロの
+     `isBetterBossStyleSample`と同じ「同値は新しい方」の流儀)。記録経路=ボス撃破合流点
+     (gameStore.grantMeleeKillRewards / damageEnemyの死亡分岐)から `recordDuoBossClear` を
+     計測セッションと独立に打刻(撃破の瞬間に即保存。同行枠に採用チェックは無い=保留化の理由が無い)。
+     **挙動計測(G4a/playerTraits)は1行も触っていない**(§2.7制約1不変)。二枠の排他は構造で成立:
+     同行ランはnotifyBossClearがno-op(session=null)/ソロランはrecordDuoBossClearがno-op(交戦時計が開かない)。
+  2. **リザルト二枠**: GameOverScreenに「討伐年表（同行）」セクション追加(マウント時1回読み=毎フレーム
+     購読なし)。同行枠カード=ボスアイコン+撃破タイム+同行者名+クラス絵+ベスト更新表示のみ
+     (採用チェック無し・被弾/分・カウンター率の**行自体を出さない**=計測由来のため)。ソロ年表は不変。
+  3. **独立メニュー「守護霊」の討伐記録二枠化**: 「討伐記録（ソロ）」(従来のまま)+「討伐記録（同行）」
+     (新台帳のカード・同行者名タップ→既存のビルドポップアップ(openAlly/GhostAllyCard)流用)。
+  4. **chronicle同行者名**: `triggerDramaticDeath` の初回討伐行に、撃破の瞬間に同行者が居た場合のみ
+     「(◯◯と共闘)」を付加。`recordChronicle`のdedupキーは不変=「同行でも初回のみ」規則そのまま。
+- **実装判断メモ(設計チャットの検収対象)**:
+  - 同行枠の撃破タイムの定義=**ソロと同じ「交戦開始→撃破」**。directorTick(runGhostAndTraitsStep)で
+    計算済みの `engagedNow`(bossEngagedNow)を新設 `tickDuoClearClock` に渡すだけ(新しい交戦判定は
+    発明していない・計測パスと別モジュールの独立時計)。
+  - 同行ラン中に守護霊が先に倒れた後の撃破も打刻する(ally未保存=§2.16 A「不在なら未保存」の前例に従う)。
+  - chronicle付加の対象は「撃破の瞬間に召喚中の守護霊が居たか」(=台帳のally写しと同じ出どころ)。
+- **触ったファイル**: 新規=`src/utils/duoRecords.ts`・`src/utils/duoRecords.test.ts`。
+  変更=`src/utils/ghostAlbum.ts`(buildDuoRunTimeline/buildDuoAlbumCards追加)・`src/utils/ghostAlbum.test.ts`・
+  `src/utils/directorTick.ts`(時計tick 1行)・`src/store/gameStore.ts`(打刻2箇所+resetGame+chronicle文言)・
+  `src/components/GhostRecordCards.tsx`(BossClearCardRowに`duo`変種+AllyLine部品化・既存ソロ表示は同一)・
+  `src/components/GameOverScreen.tsx`・`src/components/MissionSelect.tsx`。
+- **テスト**: duoRecords.test.ts 新設11件+ghostAlbum.test.ts 3件追加。
+  `npx vitest related`(触った実装ファイル7本)=**452件通過/4 skip**。`npm run typecheck` エラー0・
+  `npm run lint` エラー0(既存8警告のみ)。git操作・バージョンbump・changelogは未実施(取り決めどおり)。
+- **★未決**: 追加なし(上記の実装判断メモ3点はいずれも既存前例・ソロ同義の写しで解釈が一意と判断。
+  検収で否なら差し戻し可能=表示・記録のみでゲーム挙動への影響なし)。
+- **自己点検**: ゲームプレイ(判定・報酬・計測値)は不変=記録+表示のみ。負荷 **1/10**
+  (時計tickはスカラー比較のみ・localStorage読み書きは撃破イベント時のみ・UIはマウント時1回読み)。
+
 ## v0.25.2567 — 監査是正2件: 守護霊の銃射程と間合い管理も縁基準へ(明確なバグ修正・設計チャット直接実装)【2026-07-31 09:30 JST】
 
 - **根拠**: research/GHOST_HIDDEN_RULES.md 重大発見 **9-2/9-3**。どちらも「正がファイルに明記済みなのに

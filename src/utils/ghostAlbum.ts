@@ -13,6 +13,7 @@ import {
   isBetterBossStyleSample,
   type BossStyleSlot, type PendingBossClearView, type PlayerProfile,
 } from './playerTraits';
+import type { DuoAlbum, DuoRunClearView } from './duoRecords';
 
 /** 良化/悪化の向き。first=比較対象なし(初記録)。 */
 export type ClearTrend = 'first' | 'better' | 'worse' | 'same';
@@ -106,6 +107,54 @@ export const buildAlbumCards = (profile: PlayerProfile | null): BossClearCard[] 
         clearTimeMs: slot.clearTimeMs ?? null,
         hitsPerMin: slot.hitsPerMin,
         counterChance: slot.counterChance,
+        at: slot.at,
+        ally: slot.ally ?? null,
+        best: null,
+        isRecordUpdate: false,
+      };
+    })
+    .sort((a, b) => b.at - a.at);
+};
+
+/**
+ * §2.17(GHOST-DUO-RECORDS): このランの同行撃破(duoRecordsの打刻ビュー)を**撃破順**に
+ * 年表カードへ組み立てる。同行枠は**計測しない**ので評価数値(被弾/分・カウンター率)は常にnull=
+ * 表示側(BossClearCardRowのduoモード)がその行自体を出さない。比較対象(best)は打刻時点で確定済みの
+ * bestBefore(撃破タイムのみ)を写す=「記録更新」表示は台帳の上書き結果とズレない。
+ */
+export const buildDuoRunTimeline = (clears: readonly DuoRunClearView[]): BossClearCard[] =>
+  clears.map(c => {
+    const { bossType, stageId } = parseBossSlotKey(c.slotKey);
+    return {
+      slotKey: c.slotKey,
+      bossType, stageId,
+      clearTimeMs: c.clearTimeMs,
+      hitsPerMin: null,
+      counterChance: null,
+      at: c.at,
+      ally: c.ally,
+      best: c.bestBefore !== null
+        ? { clearTimeMs: c.bestBefore, hitsPerMin: null, counterChance: null }
+        : null,
+      isRecordUpdate: c.isRecordUpdate,
+    };
+  });
+
+/**
+ * §2.17(GHOST-DUO-RECORDS): 保存済みの同行撃破台帳(スロット別ベスト)を一覧カードへ組み立てる。
+ * 並びはソロ枠(buildAlbumCards)と同じ**新しい順**(at降順)。比較対象は無い(カード自身が現在の記録)。
+ */
+export const buildDuoAlbumCards = (album: DuoAlbum | null): BossClearCard[] => {
+  if (!album) return [];
+  return Object.entries(album.slots)
+    .map(([slotKey, slot]) => {
+      const { bossType, stageId } = parseBossSlotKey(slotKey);
+      return {
+        slotKey,
+        bossType, stageId,
+        clearTimeMs: slot.clearTimeMs,
+        hitsPerMin: null,
+        counterChance: null,
         at: slot.at,
         ally: slot.ally ?? null,
         best: null,

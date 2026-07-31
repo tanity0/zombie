@@ -32,6 +32,9 @@ import {
   // 裁定4(§2.11・記録専用): PHILLの発射数(ヘッドショット数はuseGameLoopの着弾側でフックする)。
   recordPhillShot,
 } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a/G5
+// §2.17(GHOST-DUO-RECORDS・記録専用): 同行撃破台帳の打刻。挙動は一切変えない(計測パスとは独立の
+// 別モジュール。ソロラン=交戦時計が開いていない時はno-op)。
+import { recordDuoBossClear, resetDuoRunRecords } from '../utils/duoRecords';
 // v0.25.2514(§2.11 裁定1): 計測時ビルドの疑似Player(被ダメ補正の主語)。純関数・store非依存。
 // v0.25.2553(§2.16 A): 同行守護霊の写し(撃破記録へ添える持ち主名+ビルド)。同じく純関数。
 import { buildPseudoPlayer, findGhostAlly, ghostAllySnapshot, type GhostAllySnapshot } from '../utils/playerBuild';
@@ -2275,9 +2278,15 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     //  ・固有名持ち(天使/裏ボス)は「CODE:◯◯を討伐」(§6.20 M45)。「天使」等の種族接頭辞は
     //    付けない(社長指示v0.25.1756「天使 はいらない」)。
     //  ・ハンターは従来どおり種族ラベル「変異体(狩猟型)を討伐」。
+    // §2.17(GHOST-DUO-RECORDS・社長2026-07-31「もちろん、年表は同行でも初のみね」): 「初回のみ」規則は
+    // 従来のまま(recordChronicleのdedupキー不変)。その初回の撃破の瞬間に守護霊が同行していた場合のみ、
+    // 行の文言へ同行者名を添える(叩き台「CODE:◯◯を討伐(◯◯と共闘)」)。2回目以降はdedupで弾かれるので
+    // ソロ初回討伐の後に同行で倒しても行は増えない・変わらない。
+    const chronicleAlly = ghostAllySnapshot(findGhostAlly(get().summons));
     const phrase =
-      enemy.type === 'giantbat' ? 'ストーリーボスを討伐'
-      : `${enemyDeathLabel(enemy.type)}を討伐`;
+      (enemy.type === 'giantbat' ? 'ストーリーボスを討伐'
+        : `${enemyDeathLabel(enemy.type)}を討伐`)
+      + (chronicleAlly ? `(${chronicleAlly.name}と共闘)` : '');
     recordChronicle(
       getSelectedStageId(),
       enemy.type === 'hunter' ? 'hunter' : 'boss',
@@ -2438,7 +2447,13 @@ const grantMeleeKillRewards = (
     // 刀/鞭/シールドバッシュ/投擲スケボー/分身)はこのヘルパーを通るのでここ1箇所で拾える
     // (gun/接触/爆発/DoT/カウンター等の非近接経路は damageEnemy 側で同様に通知)。
     // v0.25.2553(§2.16 A): 撃破の瞬間に召喚中の同行守護霊(居なければnull)を添えて記録する。
-    notifyBossClear(enemy.type, getSelectedStageId(), ghostAllySnapshot(findGhostAlly(get().summons)));
+    // §2.17(GHOST-DUO-RECORDS): 同行枠の台帳へも同じ写しで打刻する。二枠は構造的に排他=
+    // 同行ランはnotifyBossClearがno-op(session=null)/ソロランはrecordDuoBossClearがno-op(時計なし)。
+    {
+      const allySnap = ghostAllySnapshot(findGhostAlly(get().summons));
+      notifyBossClear(enemy.type, getSelectedStageId(), allySnap);
+      recordDuoBossClear(enemy.type, getSelectedStageId(), allySnap);
+    }
     // 二人組クエストのキル進捗(EVENT_QUEST_DESIGN.md)。近接全経路はここ1箇所で拾える。
     {
       const qs = useGameStore.getState();
@@ -7922,8 +7937,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。gun/接触/爆発/DoT/カウンター等
     // damageEnemyを経由する全キル経路の合流点。notifyBossClear内でセッション無し/対象外typeはno-op。
     // v0.25.2553(§2.16 A): 撃破の瞬間に召喚中の同行守護霊(居なければnull)を添えて記録する。
+    // §2.17(GHOST-DUO-RECORDS): 同行枠の台帳へも同じ写しで打刻(排他の理屈はgrantMeleeKillRewards側の
+    // コメント参照)。
     if (bossClearedType) {
-      notifyBossClear(bossClearedType, getSelectedStageId(), ghostAllySnapshot(findGhostAlly(get().summons)));
+      const allySnap = ghostAllySnapshot(findGhostAlly(get().summons));
+      notifyBossClear(bossClearedType, getSelectedStageId(), allySnap);
+      recordDuoBossClear(bossClearedType, getSelectedStageId(), allySnap);
     }
 
     // 裏ボスが完全気絶(紫)に移行: 紫の衝撃リング＋発光＋コールアウトで知らせる。
@@ -12672,6 +12691,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // BOT_AND_GHOST.md G1: 前ランの未確定セッション(交戦中に終了した場合等)+未決算の保留バッファを
     // 持ち越さない。
     resetPlayerTraits();
+    // §2.17(GHOST-DUO-RECORDS): 同行撃破の交戦時計+ラン内打刻ビューも持ち越さない
+    // (台帳=localStorageは打刻の瞬間に確定済みなので触らない)。
+    resetDuoRunRecords();
     // v0.25.2514(GHOST-BUILD-1): 前ランのゴーストビルド(メモ化1件)も持ち越さない。
     clearGhostBuildCache();
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
