@@ -1873,6 +1873,23 @@ const GHOST_DMG_LOG_MAX = 14;
 let ghostDmgLines: string[] = [];
 export const ghostDamageLogLines = (): string[] => ghostDmgLines;
 export const resetGhostDamageLog = (): void => { ghostDmgLines = []; };
+// v0.25.2599(社長報告「まだ守護霊だけ死に絵がない」): 守護霊が落ちた瞬間の「倒れた絵」を出すための
+// **視覚専用の控え**。守護霊の実体は死亡と同時に summons から消える(damageSummonのfilter)ため、
+// レンダラは state から倒れた姿を描けない=寄りズームの先に何も居ない状態だった。
+// プレイヤー側は死んでも player が残るのでレンダラ内ラッチ(this.playerDeathAt)だけで足りるが、
+// 守護霊は「死んだ」という事実を store しか知らないので、その1点だけをここへ置く。
+// §2.11追補: 主語ごとの状態であって共有帳簿ではない。ルール(保持/フェード長=プレイヤーと同じ定数)は共有。
+// 判定・ダメージ・挙動には一切使わない(レンダラが読むだけ)。
+export interface GhostDeathPose {
+  x: number; y: number; width: number; height: number; // 死亡フレームの矩形(足元=x+w/2, y+h)
+  klass: string;   // ghostClass(倒れ絵=そのクラスの近接ポーズ-ready)
+  facing: number;  // ghostFacing(-1=左)
+  atMs: number;    // 死亡時刻(Date.now)。レンダラはこれが変わった時だけラッチし直す。
+}
+let ghostDeathPoseRec: GhostDeathPose | null = null;
+export const ghostDeathPose = (): GhostDeathPose | null => ghostDeathPoseRec;
+export const resetGhostDeathPose = (): void => { ghostDeathPoseRec = null; };
+export const setGhostDeathPose = (p: GhostDeathPose): void => { ghostDeathPoseRec = p; };
 // v0.25.2582(社長「ためしたい」=§2.11追補・除外1の試験改定): 守護霊起因でもズーム/スロー/ストップの
 // 同梱演出(triggerFinishImpact/triggerHitImpact)を出す。CDはプレイヤーと**共有の1本**
 // (lastKillZoomAt/JUICE_CD)=演出はカメラ=世界にひとつの資源なので、主語ごとに持たず連鎖スパムを
@@ -6539,6 +6556,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           // v0.25.2586: 守護霊がこの被弾で落ちる(HP0以下=下のfilterで消える)なら寄り先を控える。
           if (s.kind === 'ghost-ally' && s.health - dealt <= 0) {
             ghostDeathAt = { x: s.x + s.width / 2, y: s.y + s.height / 2 };
+            // v0.25.2599: 倒れた絵(しゃがみ)を描くための控え。実体はこの直後のfilterで消えるので、
+            // レンダラが必要とする分(矩形/クラス/向き/時刻)をここで写す。描画専用。
+            setGhostDeathPose({
+              x: s.x, y: s.y, width: s.width, height: s.height,
+              klass: s.ghostClass ?? 'warrior', facing: s.ghostFacing === -1 ? -1 : 1, atMs: now,
+            });
           }
           // v0.25.2588(社長裁定): 守護霊も**被弾したらカウンター窓を閉じる**(プレイヤーと同じ規則=
           // §2.11追補「同じ仕様」。守護霊の全成立経路も ghostCounterWindowEnd を読むのでここ1箇所で効く)。
@@ -12809,6 +12832,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 持ち越さない。
     resetPlayerTraits();
     resetGhostDamageLog(); // v0.25.2591: 被弾ログ(?ghostlog=1の画面表示)は1ランごとに読めればよい
+    resetGhostDeathPose(); // v0.25.2599: 前ランの倒れ絵を持ち越さない(描画専用の控え)
     // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ+ラン内打刻ビューも持ち越さない
     // (台帳=localStorageは打刻の瞬間に確定済みなので触らない)。
     resetDuoRunRecords();

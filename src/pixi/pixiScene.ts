@@ -45,6 +45,8 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   skillRunnerSpeedMult, marksmanSpeedMult, skillWarmUpSpeedMult,
   // ワイヤーアンカー・スラム後ジャンプ離脱(ホップ・DEVELOPMENT_LOG v0.25.2487): 見た目弧の進行度算出に使う。
   WIRE_HOP_MS,
+  // v0.25.2599: 守護霊の倒れ絵(描画専用の控え。実体が消えた後もしゃがみ絵を出すため)。
+  ghostDeathPose, type GhostDeathPose,
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -1821,6 +1823,13 @@ export class PixiScene {
   private ghostKnifeTrail = new Sprite();
   private ghostMeleeWpn = new Sprite();
   private ghostKnifeSetup = false;
+  // v0.25.2599(社長報告「まだ守護霊だけ死に絵がない」): 守護霊の**倒れた絵**(しゃがみ=近接ポーズ-ready)。
+  // 実体は死亡と同時に summons から消える=通常の view はpruneされるので、専用スプライト1枚を持つ。
+  // 保持/フェードの長さはプレイヤーの死亡演出と同じ定数(PLAYER_DEATH_HOLD_MS/FADE_MS)を共有する。
+  private ghostDeathSprite = new Sprite();
+  private ghostDeathSetup = false;
+  private ghostDeathLatchAt = 0; // 直近ラッチした GhostDeathPose.atMs(変わった時だけ差し替える)
+  private ghostDeathPoseRec: GhostDeathPose | null = null;
   // 守護霊の銃口フラッシュ(プレイヤーの muzzleSprite とは別に1枚・latch方式=v0.25.2455と同型)。
   private ghostMuzzle?: Sprite;
   private ghostMuzzleLatch: { x: number; y: number; dirX: number; dirY: number; rot: number; len: number; sortY: number } | null = null;
@@ -8027,6 +8036,9 @@ export class PixiScene {
     // 守護霊が場に居ないフレームは専用オーバーレイ(ナイフ振り/銃口閃光)も確実に消す
     // (view本体はprune済みでもオーバーレイはactorLayer直下=消し忘れ事故の型・v0.25.2412の教訓)。
     if (!summons.some(s => s.kind === 'ghost-ally')) this.hideGhostAllyOverlays();
+    // v0.25.2599: 守護霊の倒れ絵。**summonsに居ない時にこそ描く**もの(実体は死亡と同時に消える)ので、
+    // 上のループの外・prune の前後どちらでも成立する位置で毎フレーム呼ぶ。
+    this.syncGhostDeathPose(now);
     for (const [id, view] of this.summonViews) {
       if (!seen.has(id)) {
         view.light.destroy();
@@ -8034,6 +8046,55 @@ export class PixiScene {
         this.summonViews.delete(id);
       }
     }
+  }
+
+  /**
+   * v0.25.2599(社長報告「まだ守護霊だけ死に絵がない」): 守護霊が落ちた場所に**しゃがみ絵**を残す。
+   *
+   * なぜ専用スプライトなのか: 守護霊の実体は死亡と同時に `summons` から消える(damageSummonのfilter)ため、
+   * 通常の summonView は同フレームで破棄される=寄りズームの先に何も居なかった(v0.25.2587で青白の
+   * リング/バーストは足したが、**倒れた本人の絵**が無いままだった)。
+   * プレイヤー(v0.25.2595)と揃えて、絵は各クラスの近接ポーズ `-ready`(=しゃがみ/構え)を使い、
+   * 保持(PLAYER_DEATH_HOLD_MS)→フェード(PLAYER_DEATH_FADE_MS)も**同じ定数**で見せる。
+   * 霊体の作法は維持: 青白tint(GHOST_ALLY_TINT)×半透明(GHOST_ALLY_ALPHA)。判定・挙動は一切不変。
+   */
+  private syncGhostDeathPose(now: number) {
+    const rec = ghostDeathPose();
+    if (rec === null) { this.ghostDeathPoseRec = null; this.ghostDeathLatchAt = 0; }
+    else if (rec.atMs !== this.ghostDeathLatchAt) { this.ghostDeathLatchAt = rec.atMs; this.ghostDeathPoseRec = rec; }
+    const pose = this.ghostDeathPoseRec;
+    const spr = this.ghostDeathSprite;
+    if (!pose) { spr.visible = false; return; }
+    const since = now - pose.atMs;
+    const fade = Math.max(0, 1 - Math.max(0, since - PLAYER_DEATH_HOLD_MS) / PLAYER_DEATH_FADE_MS);
+    if (since < 0 || fade <= 0.01) { spr.visible = false; this.ghostDeathPoseRec = null; return; }
+    const klass = pose.klass as Player['characterClass'];
+    const prefix = MELEE_POSE_PREFIX[klass];
+    const tex = (prefix ? getTexture(`${prefix}-ready`) : null)
+      ?? getTexture(PLAYER_IDLE_SPRITE[klass] ?? 'player-shotgun-idle') ?? getTexture('player');
+    if (!tex) { spr.visible = false; return; }
+    if (!this.ghostDeathSetup) {
+      spr.anchor.set(0.5, 1); // 足元アンカー(プレイヤー/守護霊の本体スプライトと同じ)
+      spr.tint = GHOST_ALLY_TINT;
+      this.L.actorLayer.addChild(spr);
+      this.ghostDeathSetup = true;
+    }
+    if (spr.texture !== tex) spr.texture = tex;
+    const footX = pose.x + pose.width / 2;
+    const footY = pose.y + pose.height;
+    const boxW = pose.width * PLAYER_VISUAL_SCALE;
+    const boxH = pose.height * PLAYER_VISUAL_SCALE;
+    const player = useGameStore.getState().player;
+    const fakeGhost = { ...player, characterClass: klass, equipment: ALLY_PLAIN_EQUIP };
+    const sc = this.snapTexelScale(playerBaseScale(fakeGhost, tex, boxW, boxH) * this.depthScale(footY));
+    spr.scale.set((pose.facing === -1 ? -1 : 1) * sc, sc);
+    spr.position.set(
+      this.snapToScreenPixel(footX, this.L.world.position.x),
+      this.snapToScreenPixel(footY, this.L.world.position.y),
+    );
+    spr.zIndex = footY; // 足元Yソート(生きている時と同じ基準)
+    spr.alpha = GHOST_ALLY_ALPHA * fade;
+    spr.visible = true;
   }
 
   private drawSummon(view: ActorView, s: Summon, now: number) {
