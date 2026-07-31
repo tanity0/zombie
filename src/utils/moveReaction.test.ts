@@ -466,7 +466,7 @@ describe('GHOST-BULLET-TECH: 弾技のエピソード(既存の技と同じ流�
 // ソースは vite の ?raw で読む(このリポジトリは @types/node を入れていないので node:fs は使わない。
 // ghostTelegraph.test.ts と同じ作法)。
 const BULLET_SOURCES = import.meta.glob<string>(
-  ['../store/gameStore.ts', './angelBossTick.ts', '../hooks/useGameLoop.ts', './combatTick.ts'],
+  ['../store/gameStore.ts', './angelBossTick.ts', '../hooks/useGameLoop.ts', './combatTick.ts', './idolTick.ts'],
   { query: '?raw', import: 'default', eager: true },
 );
 
@@ -481,10 +481,11 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
   it('敵弾の生成箇所の数は固定(新しい発射経路を足したらこのテストが落ちる=分類してから入れる)', () => {
     // 内訳(v0.25.2543時点・全数):
     //   gameStore.ts   2 = 咆哮弾の連射(burst)/扇(fan)
-    //   useGameLoop.ts 2 = 裏ボス fireBullet / idol idolFireBullet
+    //   useGameLoop.ts 1 = 裏ボス fireBullet(idolはv0.25.2613でidolTick.tsへ移設)
     //   angelBossTick  7 = miguel×2(台本/旧)・jibril×2(台本/旧)・uri・suriel・acrasiel
     //   combatTick.ts  1 = 汎用発砲(plant等の非ボス。?giantscript=0のgiantbat旧経路も同じ口)
-    // 合計12。増えたら「そのボスのその状態」をBULLET_STATE_TO_MOVEへ足すこと(足さないと
+    //   idolTick.ts    2 = idolの通常弾(aim/fan)/ 追尾弾(orb)
+    // 合計13。増えたら「そのボスのその状態」をBULLET_STATE_TO_MOVEへ足すこと(足さないと
     // その弾だけ技キーが付かず、記録にも守護霊の再現にも一生乗らない)。
     let sites = 0;
     for (const text of Object.values(BULLET_SOURCES)) {
@@ -494,6 +495,6 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
         sites += (line.match(/createEnemyProjectile\(/g) ?? []).length;
       }
     }
-    expect(sites).toBe(12);
+    expect(sites).toBe(13);
   });
 });

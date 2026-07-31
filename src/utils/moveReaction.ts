@@ -46,6 +46,8 @@ export const MOVE_REACTION_KEYS = [
   'acrasiel-burst', 'acrasiel-spear', 'acrasiel-spike',
   // アイドル(useGameLoop.ts)。aim/fan は弾台帳に既出。
   'idol-roll', 'idol-punch',
+  // v0.25.2613(バッチ3・idolのMAX化): 狙撃線=帯の近接技。追尾弾は弾台帳(下)へ。
+  'idol-snipe',
 ] as const;
 
 // ---- 弾技の台帳(GHOST-BULLET-TECH・v0.25.2543) -------------------------------------------------
@@ -66,7 +68,7 @@ export const BULLET_MOVE_KEYS = [
   'skadi-burst', 'skadi-radial',
   'thor-burst', 'thor-radial',
   'miguel-volley', 'jibril-volley', 'uri-bolt', 'suriel-gaze', 'acrasiel-gaze',
-  'idol-aim', 'idol-fan',
+  'idol-aim', 'idol-fan', 'idol-orb',
 ] as const;
 export type BulletMoveKey = (typeof BULLET_MOVE_KEYS)[number];
 
@@ -169,6 +171,7 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
   idol: {
     'idol-roll-windup': 'idol-roll', 'idol-roll': 'idol-roll', 'idol-roll-recover': 'idol-roll',
     'idol-punch-windup': 'idol-punch', 'idol-punch-recover': 'idol-punch',
+    'idol-snipe-windup': 'idol-snipe', 'idol-snipe': 'idol-snipe', 'idol-snipe-recover': 'idol-snipe',
   },
 };
 
@@ -206,6 +209,7 @@ const BULLET_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<stri
   idol: {
     'idol-aim-windup': 'idol-aim', 'idol-aim-recover': 'idol-aim',
     'idol-fan-windup': 'idol-fan', 'idol-fan-recover': 'idol-fan',
+    'idol-orb-windup': 'idol-orb', 'idol-orb-recover': 'idol-orb',
   },
 };
 

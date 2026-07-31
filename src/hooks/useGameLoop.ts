@@ -106,6 +106,7 @@ import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow } from '../utils/bossTest';
+import { runIdolTick, createIdolTickState, type IdolSfx } from '../utils/idolTick';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -178,7 +179,6 @@ import {
   skadiPhaseForHealth, pickSkadiMove, pickSkadiCombo, type SkadiMove,
 } from '../utils/skadiScript';
 import { pickThorCombo, thorPhaseForHealth, pickThorPool } from '../utils/thorScript';
-import { pickIdolMove, idolPhaseForHealth, idolFanCount, type IdolMove } from '../utils/idolScript';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
@@ -258,7 +258,7 @@ import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, 
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
-import { resolveBossHateAim, type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
+import { type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
 import { calculateResultScore } from '../utils/resultScoring';
 import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
@@ -672,6 +672,12 @@ const ANGEL_SFX: AngelSfx = {
   // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): 予告SE(全技共通=hunter-alert流用・§6.26-9 #5)。
   alert: () => playSfx(BOSS_ALERT_SFX_KEY),
 };
+// idol(stage-2隠しボス)の音。予告SEは全ボス共通の hunter-alert 流用(§6.26-9 #5)。
+const IDOL_SFX: IdolSfx = {
+  alert: () => playSfx(BOSS_ALERT_SFX_KEY),
+  counter: (gain = 1) => playSfx('counter', gain),
+  reward: (gain = 1) => playSfx('headshot', gain),
+};
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
 const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/速度)。?scenes=0 で無効化(素の分布・等速)。
@@ -982,7 +988,7 @@ const SKADI_BURST_RECOVER_MS = withRecoverFloor(300);   // スカジ 弾3連の�
 const MIMIR_BITE_WINDUP_MS = 700;
 const MIMIR_BITE_RECOVER_MS = withRecoverFloor(800);
 const MIMIR_BITE_CD_MS = 6000;
-// v0.25.2612(社長指示「ミーミルは直して / そして二度と起きない学習」): 92→216。
+// v0.25.2613(社長指示「ミーミルは直して / そして二度と起きない学習」): 92→216。
 // 旧値は GRENADE_BLAST_RADIUS(=92・城ボス系の値)の流用だったが、ミーミルは当たり判定が
 // 248×138(半幅124)なので**円が体の中に収まり構造的に当たらなかった**。値と不変条件は
 // utils/bodyCenteredAoe.ts へ移設(足元の円AoEは体の外へ届くことをテストで機械検証する)。
@@ -1018,21 +1024,8 @@ const THOR_HARAI_RECOVER_MS = withRecoverFloor(700);
 const FORCE_IDOL = evParam('idolnow') === '1';
 // idolのステータス(width/height/speed/health/damage)はenemyUtils.tsのENEMY_STATS.idolを唯一の出所とする
 // (ここでは複製しない)。以下は台本(帯/技)のms・半径のみ。
-const IDOL_AIM_WINDUP_MS = 700;
-const IDOL_AIM_RECOVER_MS = withRecoverFloor(500);
-const IDOL_FAN_WINDUP_MS = 900;
-const IDOL_FAN_RECOVER_MS = withRecoverFloor(600);
 // ★叩き台(設計書に実行秒数の列が無い・§6.28-14と同型の未決): ローリングの実行(移動)所要時間と距離。
-const IDOL_ROLL_WINDUP_MS = 400;
-const IDOL_ROLL_ACTIVE_MS = 300;
-const IDOL_ROLL_DIST = 140;
-const IDOL_ROLL_RECOVER_MS = withRecoverFloor(800);
-const IDOL_PUNCH_WINDUP_MS = 600;
-const IDOL_PUNCH_RECOVER_MS = withRecoverFloor(900);
-const IDOL_PUNCH_RANGE = 90;    // T3帯(短)の長さ=近帯(<140)の内側で完結させる叩き台
-const IDOL_PUNCH_HALF_WIDTH = 30;
 const IDOL_ACTION_MIN_MS = BOSS_ACTION_MIN_MS; // 既存の一般行動ゲートを流用(新しい数字を発明しない)
-const IDOL_ACTION_MAX_MS = BOSS_ACTION_MAX_MS;
 // 弾の速度/ダメージは createEnemyProjectile が enemyUtils.ts の getEnemyFireProfile('idol') から
 // 引く(既に裏ボス/天使共通の320/20が登録済み・§6.28-20★配線)。ここでは複製しない。
 
@@ -1391,6 +1384,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const policeArmedRef = useRef(true);
   // ミゲル専用「たまにゆっくり歩く」タイマー(社長指示・トールのthorNextSlowWalkAt/thorSlowWalkUntil相当)。
   // ミゲルは bossRef を使わない独立ブロックのため専用の小さな ref を持つ。
+  const idolStateRef = useRef(createIdolTickState()); // idol(stage-2隠しボス)のラン内状態(バッチ3でidolTick.tsへ抽出)
   const angelStateRef = useRef(createAngelBossState()); // 天使(ゲート2ボス)3体のラン内状態(M26 Step3でangelBossTick.tsへ抽出)
   // ゲート戦闘中フラグ(activeGateRef)のstore反映用・直前値(変化時だけsetして毎フレームchurnを避ける)。
   const gateActivePrevRef = useRef(false);
@@ -2310,6 +2304,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
+          idolStateRef.current = createIdolTickState(); // idolのストリング/懲罰タイマも新ランでリセット
           angelStateRef.current = createAngelBossState(); // 天使(ゲート2ボス)状態も新ランでリセット(M26 Step3)
           // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
           botTickRef.current = 0;
@@ -5525,187 +5520,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }));
               }
             } else {
-            const dist = Math.hypot(pcx - icx, pcy - icy);
-            const hpFrac = idol.maxHealth > 0 ? idol.health / idol.maxHealth : 1;
-            const phase = idolPhaseForHealth(hpFrac);
-            const iPatch: Partial<typeof idol> = {};
-            if (phaseJustChanged(idol.bossPhase, phase)) iPatch.bossPhaseFlashUntil = newGameTime + HIDDEN_BOSS_PHASE_FLASH_MS;
-            iPatch.bossPhase = phase;
-            const st = idol.bossState ?? 'chase';
-            // CRIT-UNIFY §9.2: クリ窓中は次行動CDに×2。idolCounterHitはこの直後にdamageEnemyを呼ぶため、
-            // フレーム先頭のstale idolではなくその時点の最新状態を読み直す(nextActionDelayと同じ理由)。
-            const idolFresh = () => useGameStore.getState().enemies.find(e => e.id === idol.id) ?? idol;
-            const idolFireBullet = (tx: number, ty: number) => addProjectile(createEnemyProjectile(idol, player, tx, ty));
-            // BOT_AND_GHOST.md §2.8 G2.5: 各技のwindup終わり(=狙いロックの瞬間)で1回だけ呼ぶ。
-            // 毎フレーム呼ばない(chaseのkiting/pickIdolMoveの距離計算はプレイヤー基準のまま不変)。
-            const idolHateAim = () => resolveBossHateAim(idol, { x: pcx, y: pcy }, useGameStore.getState().summons, newGameTime);
-            const beginIdolMove = (move: IdolMove) => {
-              playSfx(BOSS_ALERT_SFX_KEY);
-              if (move === 'aim') { iPatch.bossState = 'idol-aim-windup'; iPatch.bossStateUntil = newGameTime + IDOL_AIM_WINDUP_MS; }
-              else if (move === 'fan') { iPatch.bossState = 'idol-fan-windup'; iPatch.bossStateUntil = newGameTime + IDOL_FAN_WINDUP_MS; }
-              else if (move === 'roll') { iPatch.bossState = 'idol-roll-windup'; iPatch.bossStateUntil = newGameTime + IDOL_ROLL_WINDUP_MS; }
-              else { iPatch.bossState = 'idol-punch-windup'; iPatch.bossStateUntil = newGameTime + IDOL_PUNCH_WINDUP_MS; }
-            };
-            // 【設計裁定】W7(§6.28-3)は全ボス共通の掟=idolも他ボスと同じ作法でカウンターを開放する
-            // (出現経路が未決なのはidolの"場所"の話であって、"作法"は揃える)。windup中/硬直(recover)中の
-            // 接触=カウンター可・active中(idol-roll等)はその技自身の判定に委ねる(=対象外)。
-            // 既存の `?bosscounter=0`(BOSS_COUNTER_ENABLED)フォールバックの傘に入れ、idol専用フラグは作らない。
-            const idolCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
-              if (ghost) {
-                // v0.25.2480(★未決1解消): 守護霊カウンター成立(thorCounterHitのghost分岐と同じ扱い)。
-                applyGhostCounterEffect(idol, hitX, hitY, ghost, (k, g) => playSfx(k, g));
-              } else {
-              // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
-              notifyCounterHit();
-              notifyMoveCounter(); // G4a(§2.9・記録専用): 成立⑥=技への反応表へも通知(idolはG4b対象=表キー未定義・現状no-op)
-              const cp = useGameStore.getState().player;
-              const pnow = Date.now();
-              addMeleeFinishCombo(1);
-              playSfx('counter');
-              useGameStore.getState().spawnGlow(hitX, hitY, 95, 'rgba(56,189,248,', 360);
-              useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-              useGameStore.getState().markMeleeSwingFx();
-              spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-              spawnBurst(hitX, hitY, '#38bdf8', 14);
-              useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-              // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
-              useGameStore.setState(stt => ({ player: {
-                ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
-                counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
-              } }));
-              const counterBase = getActiveGun(cp)?.damage ?? 12;
-              const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
-              damageEnemy(idol.id, dmg, false, true);
-              spawnDamageNumber(icx, idol.y, dmg, true);
-              playSfx('headshot');
-              spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
-              spawnBurst(hitX, hitY, '#fde047', 10);
-              useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
-              }
-              iPatch.bossState = 'chase';
-              iPatch.bossNextActionAt = newGameTime + (IDOL_ACTION_MIN_MS + Math.random() * (IDOL_ACTION_MAX_MS - IDOL_ACTION_MIN_MS)) * bossCritCdMult(idolFresh(), newGameTime);
-            };
-            const IDOL_COUNTER_WINDUPS = ['idol-aim-windup', 'idol-fan-windup', 'idol-roll-windup', 'idol-punch-windup'];
-            const IDOL_COUNTER_RECOVERS = ['idol-aim-recover', 'idol-fan-recover', 'idol-roll-recover', 'idol-punch-recover'];
-            const idolCounterableNow = BOSS_COUNTER_ENABLED && isCounterablePhase(st, IDOL_COUNTER_WINDUPS, IDOL_COUNTER_RECOVERS);
-            let idolCountered = false;
-            let idolGhostCountered = false;
-            if (idolCounterableNow) {
-              const cp = useGameStore.getState().player;
-              const overlap = rectsOverlap(
-                { x: idol.x, y: idol.y, width: idol.width, height: idol.height },
-                { x: cp.x, y: cp.y, width: cp.width, height: cp.height },
+              // 監査レポート§2(バッチ3・v0.25.2613): 状態機械は src/utils/idolTick.ts の純関数へ移設した
+              // (angelBossTick.tsと同じ流儀・実装精度の規律4)。ヘッドレスの計測プローブから同じ1本を
+              // 駆動できるので、受け入れ条件(技の配分/主戦帯の滞在/休符の割合)を実測で確認できる。
+              // 起床のうち「被弾で起きる」は idolTick 側(社長裁定v0.25.2613)。距離+視線での起床は
+              // 壁クエリが要るのでこのブロック(上)に残す。
+              runIdolTick(
+                idol, idolStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT,
+                IDOL_SFX, BOSS_COUNTER_ENABLED, triggerPlayerDeath,
               );
-              const counterActive = Date.now() <= cp.counterWindowEnd;
-              if (overlap && counterActive) {
-                idolCounterHit(icx, icy);
-                idolCountered = true;
-              } else {
-                // v0.25.2480(★未決1解消): 守護霊のカウンター請求。成立州はプレイヤーと同一
-                // (idolCounterableNow=同じ州リスト・?bosscounter=0ゲート込み)。プレイヤー成立が
-                // 同フレームに立っている時はプレイヤー優先(上のif=体験を変えない)。
-                const gClaim = consumeGhostCounterClaim(idol.id, Date.now());
-                if (gClaim) {
-                  const gcSt = useGameStore.getState();
-                  idolCounterHit(icx, icy, {
-                    claim: gClaim,
-                    sfxGain: npcSfxDistGain(icx, icy, pcx, pcy, gcSt.camera, gcSt.gameBounds),
-                  });
-                  idolGhostCountered = true;
-                }
-              }
-            }
-            if (idolCountered || idolGhostCountered) {
-              // カウンター成立: idolCounterHitが既にiPatch.bossState='chase'まで設定済みなので、
-              // 通常の状態遷移(下のif/elseチェーン)はこのフレームだけ丸ごとスキップする。
-            } else if (st === 'chase') {
-              // §6.28-20の主題: 常にプレイヤーから離れようとする(kiting・全ボスの逆)。
-              // 移動テンポは他の裏ボスと同じ bossMoveDt(= deltaTime × MOVE_SPEED_MULT・社長指示の踏襲)。
-              const idolMoveDt = deltaTime * MOVE_SPEED_MULT;
-              const dx = icx - pcx, dy = icy - pcy;
-              const dl = Math.hypot(dx, dy) || 1;
-              const mv = idol.speed * idolMoveDt;
-              iPatch.x = idol.x + (dx / dl) * mv;
-              iPatch.y = idol.y + (dy / dl) * mv;
-              if (newGameTime >= (idol.bossNextActionAt ?? 0)) {
-                const ready: Record<IdolMove, boolean> = { aim: true, fan: true, roll: true, punch: true };
-                const move = pickIdolMove(dist, ready);
-                if (move) beginIdolMove(move);
-              }
-            } else if (st === 'idol-aim-windup') {
-              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-                const aim = idolHateAim(); // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(単発の実弾は撃つ瞬間に確定)
-                idolFireBullet(aim.x, aim.y);
-                iPatch.hateTarget = aim.side;
-                iPatch.bossState = 'idol-aim-recover';
-                iPatch.bossStateUntil = newGameTime + IDOL_AIM_RECOVER_MS;
-              }
-            } else if (st === 'idol-fan-windup') {
-              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-                // §6.28-20 Phase2: 扇3→5本(idolFanCount)。近距離技(roll/punch)は一切変えない。
-                const aim = idolHateAim(); // BOT_AND_GHOST.md §2.8 G2.5
-                iPatch.hateTarget = aim.side;
-                const count = idolFanCount(phase);
-                const ang = Math.atan2(aim.y - icy, aim.x - icx);
-                const spreadStep = 0.14; // 1本あたりの開き角(rad・叩き台=JORM_BURST_FAN_SPREADと同オーダー)
-                const half = (count - 1) / 2;
-                for (let k = 0; k < count; k++) {
-                  const a = ang + (k - half) * spreadStep;
-                  idolFireBullet(icx + Math.cos(a) * 100, icy + Math.sin(a) * 100);
-                }
-                iPatch.bossState = 'idol-fan-recover';
-                iPatch.bossStateUntil = newGameTime + IDOL_FAN_RECOVER_MS;
-              }
-            } else if (st === 'idol-roll-windup') {
-              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-                const aim = idolHateAim(); // BOT_AND_GHOST.md §2.8 G2.5: 離脱ローリングも「狙う対象から離れる」向き
-                iPatch.hateTarget = aim.side;
-                const dx = icx - aim.x, dy = icy - aim.y;
-                const dl = Math.hypot(dx, dy) || 1;
-                iPatch.bossState = 'idol-roll';
-                iPatch.bossStateUntil = newGameTime + IDOL_ROLL_ACTIVE_MS;
-                iPatch.aiFromX = icx; iPatch.aiFromY = icy;
-                iPatch.aiTargetX = icx + (dx / dl) * IDOL_ROLL_DIST;
-                iPatch.aiTargetY = icy + (dy / dl) * IDOL_ROLL_DIST;
-              }
-            } else if (st === 'idol-roll') {
-              // §6.28-20「無敵は付けない」=詰めた側の報酬。i-frame等は一切付与しない。
-              const fx = idol.aiFromX ?? icx, fy = idol.aiFromY ?? icy;
-              const tx = idol.aiTargetX ?? icx, ty = idol.aiTargetY ?? icy;
-              const t = Math.max(0, Math.min(1, 1 - ((idol.bossStateUntil ?? newGameTime) - newGameTime) / IDOL_ROLL_ACTIVE_MS));
-              iPatch.x = (fx + (tx - fx) * t) - idol.width / 2;
-              iPatch.y = (fy + (ty - fy) * t) - idol.height / 2;
-              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-                iPatch.bossState = 'idol-roll-recover';
-                iPatch.bossStateUntil = newGameTime + IDOL_ROLL_RECOVER_MS;
-              }
-            } else if (st === 'idol-punch-windup') {
-              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-                const aim = idolHateAim(); // BOT_AND_GHOST.md §2.8 G2.5
-                iPatch.hateTarget = aim.side;
-                const ang = Math.atan2(aim.y - icy, aim.x - icx);
-                const tx2 = icx + Math.cos(ang) * IDOL_PUNCH_RANGE, ty2 = icy + Math.sin(ang) * IDOL_PUNCH_RANGE;
-                useGameStore.setState(state => ({
-                  pumpkinBlasts: [...state.pumpkinBlasts, {
-                    x: (icx + tx2) / 2, y: (icy + ty2) / 2, radius: IDOL_PUNCH_HALF_WIDTH,
-                    damage: idol.damage, enemyId: idol.id,
-                    capsule: { fx: icx, fy: icy, tx: tx2, ty: ty2, halfWidth: IDOL_PUNCH_HALF_WIDTH },
-                  }],
-                }));
-                iPatch.bossState = 'idol-punch-recover';
-                iPatch.bossStateUntil = newGameTime + IDOL_PUNCH_RECOVER_MS;
-              }
-            } else if (st === 'idol-aim-recover' || st === 'idol-fan-recover' || st === 'idol-roll-recover' || st === 'idol-punch-recover') {
-              // §6.28-3 W6: 硬直中は完全静止+青白tint(描画側)+次技抽選なし。近距離技(roll/punch)の
-              // 硬直が長いこと自体が「近距離の彼女は弱い」の表現(§6.28-20・技数を増やさず精度で語る)。
-              if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-                iPatch.bossState = 'chase';
-                iPatch.bossNextActionAt = newGameTime + (IDOL_ACTION_MIN_MS + Math.random() * (IDOL_ACTION_MAX_MS - IDOL_ACTION_MIN_MS)) * bossCritCdMult(idolFresh(), newGameTime);
-              }
-            }
-            if (Object.keys(iPatch).length) {
-              useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === idol.id ? { ...e, ...iPatch } : e) }));
-            }
             }
           }
          } catch (err) {

@@ -52,7 +52,7 @@ import {
   BOSS_RECOVER_TINT,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
-import { idolFanCount } from '../utils/idolScript';
+import { idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_SNIPE_HALF_WIDTH } from '../utils/idolScript';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
   URI_SCRIPT_ENABLED, SURIEL_SCRIPT_ENABLED, ACRASIEL_SCRIPT_ENABLED,
@@ -1156,6 +1156,11 @@ const IDOL_BULLET_VIS_HALFWIDTH = 8;    // T6線の描画半太さ(叩き台。�
 const IDOL_FAN_VIS_RANGE = 700;         // T6線の描画上の長さ(px・叩き台)
 const IDOL_PUNCH_RANGE_VIS = 90;        // 至近の殴りの描画長さ(useGameLoop IDOL_PUNCH_RANGEと一致)
 const IDOL_PUNCH_HALF_WIDTH_VIS = 30;   // 至近の殴りの描画半太さ(useGameLoop IDOL_PUNCH_HALF_WIDTHと一致)
+// v0.25.2613(バッチ3・idolのMAX化): 狙撃線/追尾弾。**判定と同じ定数を idolScript.ts から読む**
+// (上の旧4定数は useGameLoop からの手写しだが、新規分は写し間違いが起きない形にする=
+//  CLAUDE.md「赤い予告そのものは判定と厳密に一致させる」)。
+const IDOL_SNIPE_WINDUP_MS_VIS = IDOL_TIMING.snipe.windup;
+const IDOL_ORB_WINDUP_MS_VIS = IDOL_TIMING.orb.windup;
 // トールの刀(社長提供・横払い/突きの視認性を上げる追加ビジュアル)。素材(thor-katana、紫背景色キー
 // 透過済み・1254x1254正方形)は切っ先が左上・柄/房が右下の対角線上に描かれている。柄(握り)を
 // フラクション座標で近似し、そこを回転軸として当たり判定ライン方向へ向ける。実機調整前提。
@@ -9739,8 +9744,11 @@ export class PixiScene {
     // 描き込み済み)。銃口フラッシュはT6線の描画自体が担う(強glowは使わない・小glow相当の軽い描画)。
     if (e.type === 'idol') {
       const bs = e.bossState;
-      const IDOL_RECOVER_STATES: string[] = ['idol-aim-recover', 'idol-fan-recover', 'idol-roll-recover', 'idol-punch-recover'];
-      const IDOL_FLASH_TAIL_STATES: string[] = ['idol-aim-windup', 'idol-fan-windup', 'idol-roll-windup', 'idol-punch-windup'];
+      // v0.25.2613: 狙撃線/追尾弾/休符を追加。休符(idol-rest)も青白tint=「いま殴っていい」の合図。
+      const IDOL_RECOVER_STATES: string[] = ['idol-aim-recover', 'idol-fan-recover', 'idol-roll-recover', 'idol-punch-recover',
+        'idol-snipe-recover', 'idol-orb-recover', 'idol-rest'];
+      const IDOL_FLASH_TAIL_STATES: string[] = ['idol-aim-windup', 'idol-fan-windup', 'idol-roll-windup', 'idol-punch-windup',
+        'idol-snipe-windup', 'idol-orb-windup'];
       if (bs && IDOL_RECOVER_STATES.includes(bs)) {
         view.sprite.tint = BOSS_RECOVER_TINT;
       } else if (bs && IDOL_FLASH_TAIL_STATES.includes(bs)) {
@@ -9767,6 +9775,23 @@ export class PixiScene {
         const half = (count - 1) / 2;
         for (let k = 0; k < count; k++) {
           const a = ang + (k - half) * spreadStep;
+          this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, IDOL_BULLET_VIS_HALFWIDTH, prog, now);
+        }
+      }
+      // T2帯(長): 狙撃線。**溜め開始でロックした2点(aiFrom→aiTarget)をそのまま描く**ので、
+      // 赤帯と当たり判定(idolTick の distToSegment)は同じ線・同じ半幅で厳密に一致する。
+      if (bs === 'idol-snipe-windup' && e.aiTargetX !== undefined && e.aiTargetY !== undefined) {
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_SNIPE_WINDUP_MS_VIS));
+        this.drawAngelZoneCapsule(view, o, e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX, e.aiTargetY, IDOL_SNIPE_HALF_WIDTH, prog, now);
+      }
+      // T6線が扇状に(2発/Phase2は3発): 追尾弾の発射方向。弾自体が追ってくるので線は「発射の合図」。
+      if (bs === 'idol-orb-windup') {
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_ORB_WINDUP_MS_VIS));
+        const pl = useGameStore.getState().player;
+        const base = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
+        const n = idolOrbCount(e.bossPhase === 2 ? 2 : 1);
+        for (let k = 0; k < n; k++) {
+          const a = base + (k - (n - 1) / 2) * 0.5;
           this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, IDOL_BULLET_VIS_HALFWIDTH, prog, now);
         }
       }

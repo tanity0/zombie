@@ -641,7 +641,11 @@ export interface Enemy {
     | 'idol-aim-windup' | 'idol-aim' | 'idol-aim-recover'
     | 'idol-fan-windup' | 'idol-fan' | 'idol-fan-recover'
     | 'idol-roll-windup' | 'idol-roll' | 'idol-roll-recover'
-    | 'idol-punch-windup' | 'idol-punch' | 'idol-punch-recover';
+    | 'idol-punch-windup' | 'idol-punch' | 'idol-punch-recover'
+    // v0.25.2613(バッチ3・idolのMAX化): 狙撃線/追尾弾/休符。詳細は src/utils/idolTick.ts。
+    | 'idol-snipe-windup' | 'idol-snipe' | 'idol-snipe-recover'
+    | 'idol-orb-windup' | 'idol-orb-recover'
+    | 'idol-rest';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   bossBurstLeft?: number;    // 3連発の残弾

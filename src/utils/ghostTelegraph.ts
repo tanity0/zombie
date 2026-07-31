@@ -123,6 +123,7 @@ put(LEDGER, [
   'downslash',     // ウリの振り下ろし
   'thrust',        // ウリの刺突(本体が線分上を移動する)
   'idol-roll',     // idolの転がり突進
+  'idol-snipe', 'idol-snipe-windup', // idolの狙撃線(v0.25.2613)。溜めでロックした帯がそのまま判定。
 ], {
   coverage: 'ghost', ghostShape: { kind: 'band' },
   note: '実行中も帯(aiFrom→aiTarget)が危険。既存表は語尾ルールで拾えないためゴースト側で足す。',
@@ -180,6 +181,7 @@ put(LEDGER, [
   'bite-recover', 'bolt-recover', 'bone-recover', 'burst-recover', 'cage-recover', 'coil-recover',
   'consecrate-recover', 'dash-recover', 'downslash-recover', 'gaze-recover', 'harai-recover',
   'idol-aim-recover', 'idol-fan-recover', 'idol-punch-recover', 'idol-roll-recover',
+  'idol-snipe-recover', 'idol-orb-recover',
   'issen-recover', 'jump-recover', 'lantern-recover', 'laser-recover', 'mdash-recover',
   'radial-recover', 'ring-recover', 'ring-spin-recover', 'skadi-blade-recover', 'skadi-ice-recover',
   'spear-recover', 'spike-recover', 'sweep-recover', 'tate-recover', 'thrust-recover',
@@ -190,7 +192,7 @@ put(LEDGER, [
 });
 put(LEDGER, [
   'aim-burst', 'aim-radial', 'radial', 'volley', 'volley-windup', 'bolt', 'bolt-windup',
-  'gaze-windup', 'idol-aim-windup', 'idol-fan-windup', 'g-bolt-windup', 'g-bolt-burst',
+  'gaze-windup', 'idol-aim-windup', 'idol-fan-windup', 'idol-orb-windup', 'g-bolt-windup', 'g-bolt-burst',
 ], {
   coverage: 'none',
   note: '弾を撃つだけの技=地面に図形が出ない。飛んだ弾は projectileDodge が別経路で避ける。',
@@ -207,6 +209,10 @@ put(LEDGER, ['consecrate-windup', 'cage-windup'], {
   coverage: 'none',
   note: 'リング状(自分/プレイヤーを囲む輪の上に置く)。中へ寄るのが正解か外へ抜けるのが正解かが状況依存で、'
     + '一方向の回避ベクトルに落とせない=足すと逆に危険側へ押しかねない。',
+});
+put(LEDGER, ['idol-rest'], {
+  coverage: 'none',
+  note: 'idolの休符(v0.25.2613)。技は出ていない=避ける図形は無い。むしろプレイヤーが殴りに行く州。',
 });
 put(LEDGER, ['idol-roll-windup'], {
   coverage: 'none',

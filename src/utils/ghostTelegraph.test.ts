@@ -18,9 +18,10 @@ import type { Enemy } from '../types/game';
 // (このリポジトリは @types/node を入れていないので node:fs は使わない)。
 //  - gameStore.ts     : 城ボス(giantbat/グレン/EX)の aiPhase 'g-*' + 雑魚の汎用フェーズ
 //  - angelBossTick.ts : 天使6体(ミゲル/ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)の bossState
-//  - useGameLoop.ts   : 裏ボス4体(ミーミル/ヨルムンガルド/スカジ/トール)+ idol の bossState
+//  - useGameLoop.ts   : 裏ボス4体(ミーミル/ヨルムンガルド/スカジ/トール)の bossState
+//  - idolTick.ts      : idol の bossState(v0.25.2613でuseGameLoopから移設)
 const SOURCES = import.meta.glob<string>(
-  ['../store/gameStore.ts', './angelBossTick.ts', '../hooks/useGameLoop.ts'],
+  ['../store/gameStore.ts', './angelBossTick.ts', '../hooks/useGameLoop.ts', './idolTick.ts'],
   { query: '?raw', import: 'default', eager: true },
 );
 
@@ -28,6 +29,11 @@ const SOURCES = import.meta.glob<string>(
 // `bossState = cond ? 'a' : 'b'` の三項(ミゲルの harai/tate がこの形)を拾う。
 const DIRECT = /(?:bossState|aiPhase)\s*(?::|=|===|!==)\s*'([a-z0-9-]+)'/g;
 const TERNARY = /(?:bossState|aiPhase)\s*=\s*[^;]*?\?\s*'([a-z0-9-]+)'\s*:\s*'([a-z0-9-]+)'/g;
+// v0.25.2613: 州名を**配列/定数で宣言する**書き方(idolTick.ts の *_STATES / *_STATE)も拾う。
+// 状態機械を関数(windupState(m)等)で組むと `bossState = 'x'` の直接指定が消えるため、
+// この形を拾わないと「実装したのに台帳に載っていない技」を検知できなくなる。
+const STATE_LIST = /(?:_STATES?)\b[^=]*=\s*(?:\[|')/;
+const QUOTED = /'([a-z0-9-]+-(?:windup|recover|rest)|idol-[a-z]+)'/g;
 
 const scanStates = (): Map<string, string> => {
   const found = new Map<string, string>(); // 状態名 → 最初に見つけた場所(失敗時のメッセージ用)
@@ -35,6 +41,13 @@ const scanStates = (): Map<string, string> => {
     text.split('\n').forEach((line: string, i: number) => {
       const t = line.trim();
       if (t.startsWith('//') || t.startsWith('*')) return; // コメント行は拾わない
+      if (STATE_LIST.test(t) || t.startsWith("'idol-") || /^'[a-z0-9-]+',/.test(t)) {
+        QUOTED.lastIndex = 0;
+        let q: RegExpExecArray | null;
+        while ((q = QUOTED.exec(line)) !== null) {
+          if (q[1] && !found.has(q[1])) found.set(q[1], `${file}:${i + 1}`);
+        }
+      }
       for (const re of [DIRECT, TERNARY]) {
         re.lastIndex = 0;
         let m: RegExpExecArray | null;
