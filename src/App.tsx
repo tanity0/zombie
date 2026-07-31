@@ -240,6 +240,11 @@ function App() {
     const benchmark = smokeParam === 'bench' || params.get('bench') === '1';
     // 既定はステージ1(STAGES[0]はチュートリアル追加で先頭が変わったため固定・従来挙動を維持)。
     setSelectedStageId(params.get('stage') || 'stage-1');
+    // v0.25.2576(社長報告「ボス戦モード一度やるとリセットされてない」): クエリはここで消費し
+    // **アドレスバーから即除去**する。残すと再読込のたびテスト出撃が再発火し、?ghost=1や強制出現
+    // フラグがその後の通常プレイにも残留する。フラグ群は全てモジュールロード時定数なので、除去しても
+    // このセッションのテスト実行自体には影響しない。
+    try { window.history.replaceState(null, '', window.location.pathname); } catch { /* ignore */ }
     // ?retry=1(ボス戦テストメニュー用): 開始時会話をスキップ(GOの「もう一度プレイ」と同じ扱い)。
     void startGame(params.get('class') ?? 'warrior', benchmark, params.get('retry') === '1');
   }, []);
@@ -275,6 +280,14 @@ function App() {
   };
 
   const returnToMenu = () => {
+    // v0.25.2576(社長報告): ?smoke起動(ボス戦テスト等)のセッションは、メニューへ戻る時に
+    // **素のURLで再読込**して終える。強制出現・?ghost=1等はモジュールロード時定数のため、ページを
+    // 再起動しない限り効き続け、テスト後の通常出撃に守護霊やボス即出現が漏れていた。
+    // 「もう一度プレイ」(retry)は再読込しない=同じボス戦テストを連続で回せる(意図どおり)。
+    if (smokeHandledRef.current) {
+      window.location.replace(window.location.pathname);
+      return;
+    }
     setBenchmarkMode(false);
     setBenchmarkResult(null);
     // the ONE: M7勝利後の「メニューに戻る」は聴取記録エンディングを挟む(統合正本7章)。
