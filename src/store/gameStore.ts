@@ -1875,6 +1875,13 @@ const GHOST_DMG_LOG_ENABLED =
 // v0.25.2588(社長裁定「食らうタイミングをカウンターと見ない修正」): 既定で**被弾=カウンター窓が閉じる**
 // (他ゲーム標準の二値へ)。`?lastcounter=1` で旧挙動(被弾していてもカウンター成立)へ完全復帰。
 // プレイヤー(damagePlayer)と守護霊(damageSummon)の**両方**に同じ規則を適用する(§2.11追補=同じ仕様)。
+// v0.25.2589(社長指示「ボスモードではNPC出撃しないで」): ボス戦テスト出撃かどうか。
+// タイトルの「ボス戦テスト」が付ける強制出現フラグ(utils/bossTest.FORCE_PARAMS と同じ4種)の
+// いずれかが立っていれば真。判定はモジュールロード時に1回だけ(他のデバッグフラグと同じ作法)。
+export const BOSS_TEST_RUN =
+  typeof window !== 'undefined'
+  && ['bossnow', 'idolnow', 'gateboss', 'castlenow']
+    .some(k => new URLSearchParams(window.location.search).get(k) === '1');
 export const LATE_COUNTER_ENABLED =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('lastcounter') === '1';
 export const GHOST_ZOOM_TRIAL_ENABLED =
@@ -1995,6 +2002,22 @@ export const isGameTimeStopped = (): boolean => {
 // 操作を一切受け付けない状態(社長指示): プレイヤーが動いてはいけない場面。
 // =ヘリ登場/登場セリフ等の時間停止中(isGameTimeStopped)、メニュー等の一時停止中(isPaused)、
 //   死亡後(health<=0)。移動・向き・攻撃すべてここで弾く(ジョイスティック/操作層の各ハンドラが参照)。
+/**
+ * v0.25.2589(社長指示「死にモーション中に攻撃できちゃうのやめたい。あとアテンション系のイベント中も
+ * 攻撃できちゃう」): **攻撃だけ**を止めるゲート。isInputLocked(操作全般)は入力ハンドラ(ジョイスティック/
+ * マウス)しか見ておらず、**自動射撃・オート斬撃・サブの自動発動はループ側で走り続けていた**ため、
+ * 死亡モーション中(health<=0)やボス出現アテンション中も撃ち続けていた。
+ * isInputLocked に加えて **attention(ボス出現等の演出中)** も攻撃禁止に含める。
+ * ※移動はここでは止めない(isInputLockedの範囲は変えない=アテンション中に歩けるのは従来どおり)。
+ */
+export const isAttackLocked = (): boolean => {
+  const s = useGameStore.getState();
+  // v0.25.2589(社長指示「ゴール入ると敵は入れないのに、こっちは一方的に攻撃してる」): 帰還サークル内も
+  // 攻撃禁止。旧は triggerKatanaDash(刀の一閃)だけが個別に見ていて、銃/近接/サブは撃ち放題だった
+  // =敵が入れない安全地帯からの一方的な攻撃が成立していた。ここへ集約して全攻撃に効かせる。
+  return isInputLocked() || s.attention !== null || isInReturnCircle(s.player, s.returnCircle);
+};
+
 export const isInputLocked = (): boolean => {
   const s = useGameStore.getState();
   return s.isPaused || s.player.health <= 0 || s.corridorRunInActive || isGameTimeStopped();
@@ -12998,7 +13021,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 出撃セリフ(sortieEsc)はチュートリアルでは使わない(セリフは全てイベントで特別に組む)。
       // storyBoss ステージ(M7=グレン戦/EX)は護衛NPCを出さない(社長指示v0.25.1876「M7はNPCいない予定」。
       // 拠点占拠の無いボス直行ステージなので護衛4人は元々そぐわない)。
-      const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss) ? []
+      // v0.25.2589(社長指示「ボスモードではNPC出撃しないで」): ボス戦テスト出撃(強制出現フラグ付き)は
+      // 護衛NPCを出さない。ボスと守護霊の挙動だけを見る場のため、NPCの射撃・セリフ・拠点占拠が混ざると
+      // 観測が汚れる(storyBossステージが護衛を出さないのと同じ理由)。通常出撃には影響しない。
+      const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss || BOSS_TEST_RUN) ? []
         : farBackdrop === 'tutorial' ? makeTutorialCompanions(spawnTL.x, spawnTL.y)
         : makeEscorts(spawnTL.x, spawnTL.y, corridorMode);
       const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;

@@ -49,6 +49,7 @@ import {
   meleeSwingBaseDamage, meleeHitCritChance, counterReplyDamage,
   skillMagnetAmmoRangeMult, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isGameTimeStopped, enemyMeleeDist,
+  isAttackLocked, // v0.25.2589: 死亡モーション中/アテンション演出中は自動攻撃を止める共通ゲート
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
@@ -68,6 +69,7 @@ import {
   SKATER_LOCK_ENABLED
 } from '../store/gameStore';
 import { clampRectToPlayableArea } from '../world/playableArea';
+import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
 import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -6031,8 +6033,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const activeGun = getActiveGun(postReloadPlayer);
         // MOVEMENT_REWORK.md 仕様2: スケーター乗車中は銃の自動発砲も封印(?skaterlock=0で復帰)。
         const skaterLocked = SKATER_LOCK_ENABLED && postReloadPlayer.skaterRiding;
+        // v0.25.2589(社長指示): 死亡モーション中・アテンション演出中は攻撃しない(共通ゲート)。
+        const attackLocked = isAttackLocked();
         // PHILL銃は自動射撃しない(指離しの手動発砲のみ=firePhillShot)。
-        if (activeGun && !katanaActive && !skaterLocked && activeGun.category !== 'phill') {
+        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && activeGun.category !== 'phill') {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             // handgun系のうちマシンピストル(=サブマシンガン, handgun-t3)だけ専用音、それ以外(ハンドガン/二丁)はhandgun-fire。
@@ -6057,7 +6061,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // nearest non-stunned enemy first (stunned fallback = finisher chance),
         // Hunting-Lv3-equivalent reach, one cut per interval. Guns and the
         // release knife sweep are disabled while the katana is owned.
-        if (katanaActive) {
+        if (katanaActive && !attackLocked) { // v0.25.2589: オート斬撃も死亡/アテンション中は止める
           if (gameTime < lastKatanaSlashRef.current) lastKatanaSlashRef.current = 0; // new run
           if (gameTime - lastKatanaSlashRef.current >= KATANA_SLASH_INTERVAL_MS) {
             const kp = useGameStore.getState().player;
@@ -7570,7 +7574,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // v0.25.2469(社長指示): 霊体はオブジェクト(木・岩等)をすり抜ける。詰まって置き去りに
               // なる事故を根絶(リーシュワープ=瞬間追いつきの世界観とも整合)。判定はゴースト移動のみ=
               // 敵・プレイヤー・弾の衝突は不変。
+              // v0.25.2589(社長報告「サークル系ボスと戦ってる時、守護霊はサークル無視して外で戦ってる。
+              // さらに、そのままどっかいっちゃった」): **囲い(アリーナ)の拘束は守護霊にも掛ける**。
+              // §2.11追補「守護霊は独立した2人目のプレイヤー」= プレイヤーが閉じ込められる円には
+              // 守護霊も閉じ込められる。判定はプレイヤーと**同じ純関数**(clampRectInsideCircle)・同じ
+              // 除外条件(rescue / confinesPlayer=false は拘束しない)。円外へ出る→リーシュ距離を超えて
+              // ワープで戻る、の往復が「どっか行った」の正体でもある。
               const resolved = { x: nx, y: ny };
+              {
+                const ae = useGameStore.getState().activeEvent;
+                if (ae && ae.kind !== 'rescue' && ae.confinesPlayer !== false) {
+                  const c = clampRectInsideCircle(
+                    { x: resolved.x, y: resolved.y, width: ghostNow.width, height: ghostNow.height },
+                    { x: ae.x, y: ae.y, radius: ae.radius },
+                  );
+                  resolved.x = c.x; resolved.y = c.y;
+                }
+              }
 
               // G2.6(BOT_AND_GHOST.md §2.8): サブウェポン使用の予約。「CDが明けていて交戦中なら使う」の
               // 単純判断=交戦中(紐付いたボスが生きている)かつ頻度ノブ(subUsesPerMin)の間隔が空いたら

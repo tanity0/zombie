@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
 import {
   useGameStore,
-  isGameTimeStopped,
   isInputLocked,
+  isAttackLocked, // v0.25.2589: 死亡モーション/アテンション/帰還サークル内の攻撃禁止(共通ゲート)
   KATANA_FLICK_WINDOW_MS,
   KATANA_FLICK_MIN_DIST,
   KATANA_FLICK_MIN_SPEED
@@ -125,8 +125,12 @@ const VirtualJoystick: React.FC = () => {
     const pointerId = pointerIdRef.current;
     // 会話/登場演出(ゲーム内時間停止)＋一時停止(レベルアップ/ショップ/クエスト等のメニュー)中は
     // 指離しの攻撃入力を一切受け付けない(メニューを閉じた瞬間にカウンター/PHILL/一閃が暴発しないように)。
-    const paused = useGameStore.getState().isPaused;
-    if (pointerId !== null && fireCounter && !isGameTimeStopped() && !paused) {
+    // v0.25.2589(社長報告「死にモーション中に攻撃できちゃう/アテンション中も/ゴール内から一方的に攻撃」):
+    // 判定を共通ゲート isAttackLocked() へ置換。旧は時間停止と一時停止しか見ていないため、
+    // **死亡モーション中(health<=0)・アテンション演出中・帰還サークル内**では指離しの近接/カウンター/
+    // 一閃/PHILL/ホーミングが全部通っていた(押下は isInputLocked で弾かれても、押しっぱなしからの
+    // 指離しは素通りする=死ぬ瞬間に握っていると必ず暴発する)。
+    if (pointerId !== null && fireCounter && !isAttackLocked()) {
       // 四神舞リズムモード中は、タップ/フリックをリズム入力へ振り分ける(カウンター/一閃は出さない)。
       // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
       if (useGameStore.getState().rhythm.active) {
