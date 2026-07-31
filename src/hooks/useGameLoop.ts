@@ -3500,7 +3500,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 純関数、表示は既存の showTutorialPopup(ゲーム停止)を流用。**端末に1度だけ**記憶する。
         //  1) PHILL銃を入手した時 = 狙いの合わせ方 + ヘッドショット2種(通常/吸い付き)
         //  2) 初めて敵に近づいた時(**見つかる前**) = 索敵と遮蔽物
-        if (labTheme && !indoor) {
+        // v0.25.2626(社長裁定「ださない」): **ボスメーカーの部屋ではチュートリアルを出さない。**
+        // 数字を詰める部屋でポップアップに割り込まれると(ゲームが止まる)調整が途切れる。
+        if (labTheme && !indoor && !useGameStore.getState().bossMaker.active) {
           const st = useGameStore.getState();
           const gate = {
             popupOpen: st.tutorialPopup !== null,
@@ -3530,7 +3532,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 寄り道POIのチュートリアル1枚(§6.24-UX 裁定c): **M1の初出撃時に、端末で1度だけ**。
         // 判定は純関数 `shouldShowDetourPoiTutorial`。まだ見ていない時しか評価しない(見た後は
         // ref のキャッシュだけで弾ける=毎フレームの localStorage 読みも stage id 読みも起きない)。
-        if (!indoor && !labTheme && !tutorialStage && !seenTutorials().has('detour-poi')) {
+        // v0.25.2626(社長裁定「ださない」): ボスメーカーの部屋では出さない(上と同じ理由)。
+        // 部屋の土台が stage-1 なので、この「寄り道POI」が入室3秒ほどで割り込んでいた。
+        if (!indoor && !labTheme && !tutorialStage && !seenTutorials().has('detour-poi')
+            && !useGameStore.getState().bossMaker.active) {
           const st = useGameStore.getState();
           const poiPresent = !!(st.hospital || st.armory || st.police);
           if (poiPresent) {

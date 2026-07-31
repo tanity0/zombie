@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2626',
+    items: [
+      'ボスメーカーの部屋でチュートリアルが出なくなりました。調整中にポップアップでゲームが止まる割り込みがなくなります。',
+    ],
+  },
+  {
     version: '0.25.2625',
     items: [
       'ボスメーカー: 技ごと・項目ごとに畳めるようになりました。既定は全部畳んだ状態で、畳んだ見出しにも要点が出ます(開閉は端末に記憶)。',
