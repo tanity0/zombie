@@ -925,3 +925,40 @@ jibrilの炎=**別エンティティ**(Projectileではない)/ idolのroll・pu
 
 ### ★未決6(新規・社長裁定待ち): 守護霊の犬(dog)の扱い
 → 上の「犬(dog)を止めた理由」節の3案から裁定を求める(実装は裁定後・小さい)。
+
+## 発注仕様: バッチ GHOST-CMD-1(§2.18 Phase 1a: 技への反応の袋式化・v0.25.2574発注)
+
+**正本**: BOT_AND_GHOST.md §2.18(コマンド方式・社長裁定2026-07-31「よし、ではそれで行こう。サイコロも提案の案で」)。
+**スコープ**: 消費側のみ=技への反応ロールを「毎回確率抽選」→「境界ガード付き袋式」へ置換。
+**計測(playerTraits/G4a)は1行も触らない**(味付け計測はPhase 1bで別発注)。
+
+### 1. 新規純モジュール `src/utils/commandBag.ts`
+- **袋の中身は既存記録から導出**(スキーマ変更なし): `MoveReaction {n, counterRate, hitRate}` →
+  枚数 `counter = round(n×counterRate)` / `tank = min(round(n×hitRate), n−counter)` /
+  `dodge = n−counter−tank`(clamp≥0・この順で決める=決定的)。
+- **引き=残枚数から一様に1枚**(シャッフル済みデッキのpopと等価)。空になったら詰め直し。
+- **境界ガード**(§2.18-7): moveKeyごとに「連続で'tank'を引いた回数」を持ち、
+  **streak≥GHOST_BAG_MAX_HIT_STREAK(=2・定数)かつ袋に非tank札が残っていれば、その引きは非tank札から一様に引く**。
+  - 詰め直し境界に限定せず毎引きに適用する(実装が単純で、[食食食避]のような偏袋の袋内3連も抑えられる)。
+  - **並べ替えであって中身の変更ではない**=引き切れば割合は記録どおり(§2.18の思想と矛盾しない)。
+  - **tank専用袋(全部「食」)はガード不発**(非tank札が無い)=「苦手技は食らい続ける」個性を壊さない(仕様)。
+- **状態はラン単位のモジュールシングルトン**(duoRecordsのengagement/resetの前例):
+  `resetGhostCommandBags()` を gameStore.resetGame から呼ぶ(ラン間リセット・ラン内は交戦を跨いでも保持)。
+- 乱数は**注入**(decideGhostのrandを渡す)。Math.random直呼び禁止。
+
+### 2. `ghostDriver.rollGhostMoveReaction` の置換
+- ロールの状態機械(技1回につき1回・持ち越し・タイムアウト・キー変化でリセット)は**不変**。
+  変えるのは「決定の出どころ」だけ: 確率ロール → `commandBag` からの1枚引き。
+- **ゲート変更: `GHOST_MOVE_ROLL_MIN_N` 3 → 1**(§2.18裁定「n=1は確定行動=仕様として許容」。
+  n統計デフォは実績null時のみ)。n=0/キー未定義は従来どおり 'fallback'(1bit不変)。
+- 既存テストの追随: 極端率(0/1)のテストは袋でも同じ決定になるはず。「n<3はfallback」テストは
+  新ゲート(n<1)に合わせて書き換え(コメントに§2.18裁定を記す)。
+
+### 3. テスト(commandBag.test.ts 新設+ghostDriver.test.ts 追随)
+- 枚数導出(丸め規則・clamp)/引き切りで割合=記録どおり/ガード: 混合袋で非tank残がある限り3連被弾しない/
+  tank専用袋はガード不発(3連以上も出る)/n=1=確定行動/詰め直し/リセット/n=0はfallback。
+
+### 4. 掟
+- 計測パス不触・BOT_AND_GHOST.md編集禁止・fallback経路は乱数消費含め1bit不変・
+  ゲート=`npm run typecheck`+`npm run lint`(エラー0)+`npx vitest related`(触ったファイル)・
+  DEVELOPMENT_LOG.md先頭に「(未採番)」エントリ・git操作/バージョンbump禁止・未決はこの台帳へ追記して停止。

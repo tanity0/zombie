@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2574',
+    items: [
+      'ゲーム内容の変更はありません(コマンド方式Phase 1a「技への反応の袋式化」の実装仕様を確定し発注)。',
+    ],
+  },
+  {
     version: '0.25.2573',
     items: [
       'ゲーム内容の変更はありません(守護霊の次期行動モデル「コマンド方式」の設計を社長裁定で確定: パーツ辞書×選択率×袋式抽選×実行はベスト。実装はこれから段階的に)。',
