@@ -1,5 +1,45 @@
 # Development Log
 
+## v0.25.2667 — CO-1(協力プレイの通信基盤・1段目)を検収して取り込み【2026-08-01 23:00 JST】
+
+Codex から `codex/coop-online` で納品。**検収合格**として設計ブランチへマージ。
+
+### 納品物(5ファイル・**新規のみ**)
+`src/online/` に `types.ts` / `config.ts` / `id.ts` / `loopback.ts` / `boundary.test.ts`。
+
+### 受け取り条件の照合(全部○)
+| 条件 | 結果 |
+|---|---|
+| **既存ファイルを1つも変更していない** | ○ `git diff --stat` で新規5ファイル・579行のみ。`package.json` も無傷 |
+| 境界テストが通る | ○ **TypeScript のコンパイラAPIで import を構文解析**して禁止ディレクトリを検出(正規表現より堅い) |
+| loopback が遅延100ms・ロス5%で壊れない | ○ reliable は順序どおり到達・unreliable は落ちる |
+| `?online=0` で `enabled()` が false | ○ |
+| typecheck / lint エラー0 | ○(warning 8=既存) |
+
+### ★検収で見つけた穴(バグではなくテストの取りこぼし)を塞いだ
+Codex のテストは `Math.random` を **0** に固定していた。`sendUnreliable` の判定は
+`Math.random()*100 < packetLossPercent` なので、**0 固定だと unreliable が必ず落ちる**。
+つまり**「落ちる側」しか通っておらず、「そもそも届かない実装」でも緑になる**状態だった。
+→ `0.99` に固定した**届く側の1本を追加**(実装自体は正しく動いていた)。テスト5本へ。
+
+### 申し送り(CO-2 へ渡す時に確認する・ブロッカーではない)
+1. **`enabled()` は「基盤未設定」を見ていない**(`?online=0` と window の有無だけ)。
+   CO-2 でシグナリング先が入ったら「設定が無ければ false」を足す。
+2. **`id.ts` は `crypto.randomUUID()` だけに依存**。非セキュアコンテキストで未定義だと
+   ID が取れず null。CO-2 までにフォールバックを入れるか、null 時の扱いを決める。
+3. **loopback の役割が固定**(host は advertise 専用 / guest は join 専用)。
+   同一プロセスの2者としては十分だが、**双方向に部屋を立てたくなったら拡張が要る**。
+4. `sendUnreliable` のロスは `Math.random()` 直呼び。テストは spy で固定できているが、
+   **再現可能な検証をしたくなったら乱数を注入口にする**(このリポジトリの既存作法)。
+
+### 変更ファイル
+- (マージ)`src/online/*` 5ファイル
+- `src/online/boundary.test.ts`(検収でテスト1本追加)/ `COOP_ONLINE.md`(CO-1に合格印)
+- `src/data/changelog.ts` / `package.json`
+
+### 次
+- **CO-2 = 自前シグナリングをローカルで起動**(社長のアカウント作業はまだ不要)。
+
 ## v0.25.2666 — 光の改善 #3: 城 / 商人 / イベントNPC + ★光源DOFの横展開開始【2026-08-01 22:55 JST】
 
 `research/LIGHT_REWORK.md` §3 の **#3**。**ここで初めて光源DOF(§4-3)が載る。**

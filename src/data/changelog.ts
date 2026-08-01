@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2667',
+    items: [
+      'ゲーム内容の変更はありません（協力プレイの通信基盤の1段目を取り込みました。ゲーム側からはまだ何も使っていません）。',
+    ],
+  },
+  {
     version: '0.25.2666',
     items: [
       '城・商人・イベントNPCの光が、芯のある光に見えるようになりました。さらに画面の手前や奥にいる時は、その光がやわらかくボケるようになりました（明るさは変えていません）。',
