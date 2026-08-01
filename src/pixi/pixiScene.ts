@@ -749,6 +749,14 @@ const MOON_POOL_TINT = 0xbcd0f5;  // 夜(月明り)用の寒色プール。暖�
 // 中心は濃く・外は早く消える(=「芯があって外へ消える」)形になり、面積(塗り)は一切増えない。
 const SOFT_CURVE_ALPHA_GAIN = 1.69;
 
+// ★プレイヤー本体の補助光(playerLight)だけは別係数(社長実機v0.25.2661「プレイヤーの光強すぎるな」)。
+// ソフトカーブは**総光量が同じでも芯が濃くなる**ので、1.69を掛けると中心が元の1.69倍まぶしくなる。
+// プレイヤーは画面のど真ん中に常に居るので、そこだけは「総光量を保つ」より
+// **元のピークの明るさを保つ**方が正しい ⇒ 既定は 1.0(=カーブの形だけが変わる)。
+// 足元の光だまり(playerGroundPool)は据え置き(社長の指摘は本体の光について)。
+// 実機の生調整: `?plight=1.3` のように倍率で回せる。
+const PLAYER_LIGHT_ALPHA_GAIN = Math.max(0, tsNum('plight', 1.0));
+
 // Selective bloom — only pixels brighter than the threshold glow, so the dark
 // forest stays clean while gems / muzzle flashes / crits / lights bloom.
 // Applied to the world group alongside the tilt-shift.
@@ -2772,7 +2780,7 @@ export class PixiScene {
     // style). Behind the foot shadows so those still read.
     this.playerLight.anchor.set(0.5);
     this.playerLight.tint = ACTIVE_STAGE_LIGHTING.color;
-    this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha * SOFT_CURVE_ALPHA_GAIN;
+    this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha * PLAYER_LIGHT_ALPHA_GAIN;
     this.playerLight.blendMode = 'add';
     this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * 2;
     // A: 光だまり(足元の広い地面プール)。playerLight より広く濃い。位置/濃さは毎フレーム更新。
@@ -5074,7 +5082,7 @@ export class PixiScene {
     const lp = this.lighting();
     this.playerLight.position.set(lx, ly);
     this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : lp.color;
-    this.playerLight.alpha = lp.playerAssistAlpha * SOFT_CURVE_ALPHA_GAIN * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
+    this.playerLight.alpha = lp.playerAssistAlpha * PLAYER_LIGHT_ALPHA_GAIN * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
     this.playerLight.width = this.playerLight.height = lp.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2) * lightScale;
 
     // A: 光だまり(足元の地面プール)を追従。?pool=0 で無効。微かに脈動。
