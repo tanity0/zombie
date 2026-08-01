@@ -20,6 +20,16 @@ const textures = new Map<string, Texture>();
 let ready = false;
 let loading: Promise<void> | null = null;
 
+// ---- 松明(社長支給v0.25.2640・炎つき3コマの横並び1枚) -------------------------------------------
+// **支給ファイルは一切加工しない**(社長指示「切り出さないで」)。コマはここの枠指定だけで読む。
+// `props/torch-fire` = 492×264 の1枚。1コマ 164×264 が3つ横に並んでいる。
+// 名前 `props/torch-fire-0..2` で `getTexture` から引ける。
+export const TORCH_FIRE_SHEET = 'props/torch-fire';
+export const TORCH_FIRE_FRAMES = 3;
+export const TORCH_FIRE_FRAME_W = 164;
+/** 1枚の中で**台座**が占める縦の範囲(実測 y=76〜263 / キャンバス264)。表示サイズの基準に使う。 */
+export const TORCH_FIRE_STAND_TOP = 76;
+
 // M8改→§5.9-追補2(社長の事実訂正v0.25.1462「軍人も同じドット風素材・同じ処理でいい」)で置き換え:
 // プレイヤー4クラス(マークスマン=magnum/ヘビーガンナー=shotgun/スカベンジャー=striker/
 // ストライカー=scavenger)は軍人NPCと同じ「ドット絵風」生成素材。違いは軍人が**表示実寸(×1)まで
@@ -218,8 +228,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/slash-streak-3', scaleMode: 'nearest' },
       { name: 'fx/slash-streak-4', scaleMode: 'nearest' },
       { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)
-      // 松明の炎(社長支給v0.25.2638)。ドット絵=**nearest**(linearだと縁がぼやけて"塊"に戻る)。
-      { name: 'props/torch-flame', scaleMode: 'nearest' },
+      // 松明(社長支給v0.25.2640)。**炎つき3コマの横並び1枚**。台座ごと差し替え(社長指示「台座毎変えてよ」)。
+      // ★社長指示「切り出さないで」= **支給ファイルをそのまま置き**、コマは下の TORCH_FIRE_FRAMES で
+      // 枠を指定して読む(こちらで画像を加工しない=位置ズレも劣化も起こりようがない)。
+      { name: 'props/torch-fire', scaleMode: 'nearest' },
       { name: 'castle', scaleMode: 'nearest' },
       { name: 'hospital', scaleMode: 'nearest' }, // 通常ステージの廃病院(ワクチン入手・社長指示v0.25.2331)
       // §6.24 M48: 寄り道POIの一般化(社長支給素材v0.25.2352・アルファ透過あり)。
@@ -510,6 +522,17 @@ export const ensureTextures = (): Promise<void> => {
           console.warn(`[sprites] ${name}: 幅${tex.width}px>基準${PLAYER_ART_BASE_W}px。ドット保持焼き(--dot)を通していない素材の疑い`);
         }
         textures.set(name, tex);
+        // 松明(社長支給・炎つき3コマの横並び1枚)。**画像は加工せず、枠だけ切って登録**する
+        // (社長指示v0.25.2640「切り出さないで」)。アトラスと同じ作法=同じ source を共有する
+        // サブテクスチャなので、追加のメモリもデコードも発生しない。
+        if (name === TORCH_FIRE_SHEET) {
+          for (let i = 0; i < TORCH_FIRE_FRAMES; i++) {
+            textures.set(`${TORCH_FIRE_SHEET}-${i}`, new Texture({
+              source: tex.source,
+              frame: new Rectangle(i * TORCH_FIRE_FRAME_W, 0, TORCH_FIRE_FRAME_W, tex.height),
+            }));
+          }
+        }
       }),
     ]);
 

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2640',
+    items: [
+      '松明が台座ごと新しい絵になりました（社長支給）。炎は3コマで揺れます。',
+    ],
+  },
+  {
     version: '0.25.2639',
     items: [
       '松明の炎が描き絵になりました（社長支給）。揺らぎ・火の粉・明かりはそのままです。',
