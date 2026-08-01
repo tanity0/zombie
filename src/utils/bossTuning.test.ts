@@ -571,3 +571,97 @@ describe('射撃枠の州名が漏れなく一覧に入っている(予告/硬�
     }
   });
 });
+
+// ==== 台本エディタの往復(3便目・v0.25.2642) ====
+//
+// ★ここが守る一番大事なこと: **部屋を出たら本編の台本が既定へ戻る**。台本はゲームが毎フレーム読む
+// 実体なので、戻し忘れると調整中の台本が本編のボスに乗る(数値と同じ事故を台本でも起こさない)。
+describe('台本エディタ(BossScriptApi)', () => {
+  const api = () => {
+    const e = getBossTuning('idol');
+    if (!e?.scripts) throw new Error('idol の台本APIが未登録');
+    return { e, s: e.scripts };
+  };
+  afterEach(() => { const { e } = api(); resetTuning(e); });
+
+  it('既定では serialize が null(触っていないことが一目で分かる)', () => {
+    const { s } = api();
+    expect(s.serialize()).toBeNull();
+  });
+
+  it('段に置ける技 = 中核6技 + 有効な射撃枠(2便目と噛み合う)', () => {
+    const { s } = api();
+    expect(s.moveChoices().map(m => m.key)).toEqual(['aim', 'fan', 'roll', 'punch', 'snipe', 'orb']);
+    addIdolShot();
+    IDOL_TUNING.shotLabels.s1 = 'ジャブ';
+    const after = s.moveChoices();
+    expect(after.map(m => m.key)).toContain('s1');
+    expect(after.find(m => m.key === 's1')?.label).toBe('ジャブ');
+    IDOL_TUNING.shotLabels.s1 = '';
+    IDOL_TUNING.shots.s1.enabled = 0;
+  });
+
+  it('★「何かの後に撃つジャブ」が画面の操作だけで作れる', () => {
+    const { s } = api();
+    addIdolShot();                                   // ＋技 → 射撃枠s1
+    const si = s.rows().length;
+    s.edit({ t: 'addScript' });                      // ＋台本
+    s.edit({ t: 'setStep', si, mi: 0, move: 'punch' });   // 1段目=殴り
+    s.edit({ t: 'insertStep', si, mi: 0, move: 's1' });   // 2段目=ジャブ
+    expect(s.rows()[si].moves.map(m => m.key)).toEqual(['punch', 's1']);
+    IDOL_TUNING.shots.s1.enabled = 0;
+  });
+
+  it('編集するとゲームが読む配列そのものが変わる(参照が切れない)', () => {
+    const { s } = api();
+    const live = IDOL_TUNING.strings;
+    s.edit({ t: 'setWeight', si: 0, weight: 123 });
+    expect(IDOL_TUNING.strings).toBe(live);
+    expect(live[0].weight).toBe(123);
+    expect(s.serialize()).not.toBeNull();
+  });
+
+  it('コピー→貼り戻しで台本まで戻る', () => {
+    const { e, s } = api();
+    s.edit({ t: 'setWeight', si: 0, weight: 77 });
+    s.edit({ t: 'insertStep', si: 0, mi: 0, move: 'snipe' });
+    const txt = formatTuningText(e, 'vX');
+    expect(txt).toContain('## 台本');
+    const before = s.serialize();
+
+    resetTuning(e);
+    expect(s.serialize()).toBeNull();          // いったん既定へ
+    const r = parseTuningText(e, txt);
+    expect(r.errors).toEqual([]);
+    expect(s.serialize()).toBe(before);
+  });
+
+  it('★リセットで既定へ戻る(部屋を出た時に本編へ持ち出さない)', () => {
+    const { e, s } = api();
+    s.edit({ t: 'addScript' });
+    s.edit({ t: 'setWeight', si: 0, weight: 0 });
+    expect(IDOL_TUNING.strings.length).toBe(IDOL_TUNING_DEFAULTS.strings.length + 1);
+    resetTuning(e);
+    expect(IDOL_TUNING.strings).toEqual(IDOL_TUNING_DEFAULTS.strings);
+  });
+
+  it('最後の1本/1段は消せない(ボスが何もしなくなる状態を作らせない)', () => {
+    const { s } = api();
+    while (IDOL_TUNING.strings.length > 1) s.edit({ t: 'removeScript', si: 0 });
+    expect(s.edit({ t: 'removeScript', si: 0 }).ok).toBe(false);
+    while (IDOL_TUNING.strings[0].moves.length > 1) s.edit({ t: 'removeStep', si: 0, mi: 0 });
+    expect(s.edit({ t: 'removeStep', si: 0, mi: 0 }).ok).toBe(false);
+    expect(IDOL_TUNING.strings[0].moves.length).toBe(1);
+  });
+
+  it('フェーズ上限を返す(「書いたのに出ない」段を薄く出すため)', () => {
+    const { s } = api();
+    expect(s.cutoff()).toEqual({ p1: IDOL_TUNING.stringLen.p1, p2: IDOL_TUNING.stringLen.p2 });
+  });
+
+  it('★重みの欄は数値スキーマから消えている(添字パスのズレ事故の再発防止)', () => {
+    // 旧実装は `strings.0.weight` のように**添字**でパスを作っていたので、台本を1本消すと
+    // 以降の重みが1つずつ手前の台本に化けていた。台本が可変になった以上、添字パスは持たない。
+    expect(IDOL_TUNING_FIELDS.some(f => f.path.startsWith('strings.'))).toBe(false);
+  });
+});

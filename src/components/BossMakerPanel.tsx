@@ -32,6 +32,7 @@ import {
 } from '../utils/bossTuning';
 import { registerIdolTuning } from '../utils/idolTuning';
 import { BossMakerLive } from './BossMakerLive';
+import { BossScriptEditor } from './BossScriptEditor';
 
 registerIdolTuning(); // フェーズ1はアイドル1体(BOSS_MAKER.md §6)
 
@@ -571,6 +572,14 @@ export const BossMakerPanel = () => {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-1.5">
+              {/* 台本エディタは「行動パターン」タブの先頭(=ボスの手そのものなので一番上)。 */}
+              {tab === 'behavior' && entry.scripts && (
+                <BossScriptEditor
+                  api={entry.scripts}
+                  note={note}
+                  onChanged={m => { setNote(m); saveSoon(); bump(n => n + 1); }}
+                />
+              )}
               <SectionList
                 group={tab} entry={entry} open={openSecs} toggle={toggleSec} pins={pins}
                 onChange={onChange} onText={onText} onPin={togglePin} onPlay={play} playState={playState} bump={rev}

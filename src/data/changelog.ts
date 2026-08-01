@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2642',
+    items: [
+      'ボスメーカー: 台本を画面で組めるようになりました（技の段を並べ替え・台本の増減）。',
+      '足した射撃技もそのまま段に置けます。フェーズ上限で出ない段は薄く表示されます。',
+    ],
+  },
+  {
     version: '0.25.2641',
     items: [
       '炎が新しい絵になりました（社長支給・8コマ）。松明・火炎瓶・焚き火・フレアガンで共通です。',

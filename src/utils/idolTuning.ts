@@ -9,11 +9,19 @@
 import { registerEnemyFireProfile } from './enemyUtils';
 import {
   registerBossTuning, type TuningField, type TuningTextField, type PlayableAction,
+  type BossScriptApi, type BossScriptOp,
 } from './bossTuning';
 import {
   IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_ALL_MOVES, IDOL_SHOT_SLOTS,
-  idolShotName, idolEnabledShots, type IdolMove, type IdolCoreMove, type IdolShotSlot,
+  idolShotName, idolEnabledShots, isIdolShot,
+  type IdolMove, type IdolCoreMove, type IdolShotSlot,
 } from './idolScript';
+import {
+  addScript, removeScript, setScriptZone, setScriptWeight,
+  setStep, insertStep, removeStep, moveStep, stepCutoffIndex,
+  serializeScripts, parseScripts, replaceScripts, scriptWarnings, SCRIPT_ZONES,
+} from './bossScriptEdit';
+import type { BossZone } from './bossSkeleton';
 import { requestIdolMovePlay, requestIdolVerbPlay, getIdolPlayback } from './idolTick';
 import type { NeutralVerb } from './bossSkeleton';
 
@@ -146,17 +154,12 @@ const shotTextFields = (): TuningTextField[] => IDOL_SHOT_SLOTS.map(m => ({
   visibleWhen: `shots.${m}.enabled`,
 }));
 
-// 台本の重み(距離帯ごとの頻度)。BOSS_MAKER.md §1-4「頻度(重み)…ゾーン別に出す」。
+// 距離帯の表示名。台本エディタと共用。
 const ZONE_LABEL: Record<string, string> = { melee: '密着(0〜140)', near: '主戦帯(140〜340)', mid: '遠(340〜700)', far: '超遠(700〜)' };
-const stringFields = (): TuningField[] =>
-  IDOL_TUNING_DEFAULTS.strings.map((s, i) => ({
-    path: `strings.${i}.weight`,
-    label: s.moves.join('→'),
-    group: 'behavior' as const,
-    section: `台本の頻度 ${ZONE_LABEL[s.zone] ?? s.zone}`,
-    kind: 'num' as const,
-    min: 0, max: 200, step: 5,
-  }));
+
+// ★v0.25.2642: 台本の重みは**数値スキーマから外した**。旧実装は `strings.${i}.weight` と
+// **添字でパスを作っていた**ので、台本を足す/消すと**パスの指す先がズレる**(2本目を消すと
+// 3本目の重みが2本目に化ける)。台本エディタが行ごとに重みを持つ形へ移した。
 
 const behaviorFields = (): TuningField[] => [
   { path: 'stats.health', label: 'HP', group: 'behavior', section: '基礎値', kind: 'num', min: 500, max: 40000, step: 500 },
@@ -191,7 +194,7 @@ const behaviorFields = (): TuningField[] => [
 ];
 
 export const IDOL_TUNING_FIELDS: readonly TuningField[] = [
-  ...behaviorFields(), ...stringFields(), ...moveFields(), ...shotFields(),
+  ...behaviorFields(), ...moveFields(), ...shotFields(),
 ];
 export const IDOL_TUNING_TEXT_FIELDS: readonly TuningTextField[] = shotTextFields();
 
@@ -222,6 +225,66 @@ export const addIdolShot = (): { ok: boolean; message: string } => {
   return { ok: true, message: `${idolShotName(free)} を足しました(${idolEnabledShots().length}/${IDOL_SHOT_SLOTS.length})` };
 };
 
+
+// ---- 台本エディタ(3便目・v0.25.2642) -----------------------------------------------------------
+// 社長要望「技をパズルピースみたいにできる? 遠近中の枠にはめていく」+ 訂正「**台本の数の+-** /
+// **技の段は入れ放題**」。UIはボスを知らないまま動くよう、必要な操作をこの1個にまとめて渡す。
+//
+// ★段に置ける技は**中核6技 + 有効な射撃枠**。射撃枠を足すと自動でここへ現れる
+// (2便目と3便目が噛み合う=「ジャブを作って、殴りの後ろに置く」が画面だけで完結する)。
+const scriptMoveKeys = (): IdolMove[] => [...IDOL_ALL_MOVES, ...idolEnabledShots()];
+const moveLabelOf = (m: IdolMove): string =>
+  isIdolShot(m) ? idolShotName(m) : MOVE_LABEL[m].replace(/\(.*\)$/, '');
+
+export const IDOL_SCRIPT_API: BossScriptApi = {
+  rows: () => IDOL_TUNING.strings.map(s => ({
+    zone: s.zone,
+    zoneLabel: ZONE_LABEL[s.zone] ?? s.zone,
+    weight: s.weight,
+    moves: s.moves.map(m => ({ key: m, label: moveLabelOf(m) })),
+  })),
+  moveChoices: () => scriptMoveKeys().map(m => ({ key: m, label: moveLabelOf(m) })),
+  zoneChoices: () => SCRIPT_ZONES.map(z => ({ key: z, label: ZONE_LABEL[z] ?? z })),
+  cutoff: () => stepCutoffIndex(IDOL_TUNING.stringLen.p1, IDOL_TUNING.stringLen.p2),
+  warnings: () => scriptWarnings(IDOL_TUNING.strings),
+  edit: (op: BossScriptOp) => {
+    const L = IDOL_TUNING.strings;
+    const mv = (k: string): IdolMove | null =>
+      (scriptMoveKeys() as string[]).includes(k) ? (k as IdolMove) : null;
+    switch (op.t) {
+      case 'addScript': {
+        // 足す時の1段目は**必ず使える技**にする(空や不明な技で始めない)。
+        return addScript(L, 'near', scriptMoveKeys()[0]);
+      }
+      case 'removeScript': return removeScript(L, op.si);
+      case 'setZone': return setScriptZone(L, op.si, op.zone as BossZone);
+      case 'setWeight': return setScriptWeight(L, op.si, op.weight);
+      case 'setStep': {
+        const m = mv(op.move);
+        return m ? setStep(L, op.si, op.mi, m) : { ok: false, message: '使えない技です' };
+      }
+      case 'insertStep': {
+        const m = mv(op.move);
+        return m ? insertStep(L, op.si, op.mi, m) : { ok: false, message: '使えない技です' };
+      }
+      case 'removeStep': return removeStep(L, op.si, op.mi);
+      case 'moveStep': return moveStep(L, op.si, op.mi, op.dir);
+    }
+  },
+  // 既定と同じなら null=保存もコピーもしない(「触っていない」が一目で分かる)。
+  serialize: () => {
+    const now = serializeScripts(IDOL_TUNING.strings);
+    return now === serializeScripts(IDOL_TUNING_DEFAULTS.strings) ? null : now;
+  },
+  deserialize: (text: string) => {
+    const next = parseScripts(text, scriptMoveKeys());
+    if (!next) return false;
+    replaceScripts(IDOL_TUNING.strings, next);
+    return true;
+  },
+  reset: () => replaceScripts(IDOL_TUNING.strings, IDOL_TUNING_DEFAULTS.strings),
+};
+
 export const registerIdolTuning = (): void => {
   // 弾の性能を「11ボス共通の1行」から**このテーブル**へ差し替える。同じ参照を渡すので、
   // メーカーで数字を変えるとその場で次の弾から反映される。
@@ -242,6 +305,7 @@ export const registerIdolTuning = (): void => {
       return slot ? `${idolShotName(slot)}(${slot})` : sec;
     },
     addMove: addIdolShot,
+    scripts: IDOL_SCRIPT_API,
     onPlay: (a, opts) => {
       if (a.kind === 'move') requestIdolMovePlay(a.key as IdolMove, opts);
       else requestIdolVerbPlay(a.key as NeutralVerb);

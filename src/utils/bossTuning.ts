@@ -81,11 +81,53 @@ export interface BossTuningEntry {
   sectionLabel?: (section: string) => string;
   /** 「技を1つ足す」ボタン(未定義=そのボスは追加に未対応)。押すと空きスロットを1つ有効にする。 */
   addMove?: () => { ok: boolean; message: string };
+  /**
+   * 台本エディタ(3便目・v0.25.2642)。未定義=そのボスは台本編集に未対応。
+   * **UIはボスを一切知らない**まま編集できるよう、必要な操作を全部ここから受け取る
+   * (スキーマ駆動のフォームと同じ考え方。ボスを足す側がこの1個を宣言すれば画面が生える)。
+   */
+  scripts?: BossScriptApi;
   /** 再生の実行(ボス側の状態機械へ繋ぐ)。 */
   onPlay?: (action: PlayableAction, opts: { solo: boolean; loop: boolean }) => void;
   /** いま何を再生中か(▶の点灯表示用)。 */
   playState?: () => { verb: string | null; loop: string | null };
 }
+
+/**
+ * 台本エディタがボスへ求めるもの(v0.25.2642)。
+ * 読み取り(`rows`/`moveChoices`/`cutoff`/`warnings`)と書き込み(`edit`)を分けてあるのは、
+ * **書き込みは必ずボス側の純関数を通す**ため(UIが配列を直接触ると検証を素通りする)。
+ */
+export interface BossScriptApi {
+  /** いまの台本(表示用のコピー)。 */
+  rows: () => { zone: string; zoneLabel: string; weight: number; moves: { key: string; label: string }[] }[];
+  /** 段に置ける技の一覧(射撃枠を足せば増える)。 */
+  moveChoices: () => { key: string; label: string }[];
+  /** 距離帯の一覧。 */
+  zoneChoices: () => { key: string; label: string }[];
+  /** フェーズ上限で切られる段数(ここから先は実戦で出ない)。 */
+  cutoff: () => { p1: number; p2: number };
+  /** 気づかせるだけの警告(止めない)。 */
+  warnings: () => string[];
+  /** 編集。戻り値のメッセージはそのまま画面へ出す。 */
+  edit: (op: BossScriptOp) => { ok: boolean; message: string };
+  /** 保存/コピー用の1行。既定と同じなら null(=保存しない・貼り付け文にも出さない)。 */
+  serialize: () => string | null;
+  /** 読み戻す。成功したら true。壊れていたら既定のまま false。 */
+  deserialize: (text: string) => boolean;
+  /** 既定の台本へ戻す(部屋を出る時=本編へ調整値を持ち出さないため)。 */
+  reset: () => void;
+}
+
+export type BossScriptOp =
+  | { t: 'addScript' }
+  | { t: 'removeScript'; si: number }
+  | { t: 'setZone'; si: number; zone: string }
+  | { t: 'setWeight'; si: number; weight: number }
+  | { t: 'setStep'; si: number; mi: number; move: string }
+  | { t: 'insertStep'; si: number; mi: number; move: string }
+  | { t: 'removeStep'; si: number; mi: number }
+  | { t: 'moveStep'; si: number; mi: number; dir: -1 | 1 };
 
 const REGISTRY = new Map<string, BossTuningEntry>();
 
@@ -205,6 +247,8 @@ const SAVE_KEY = 'bossmaker.tuning.v1';
 // 文字(技の名前)は**別のキー**に置く。既存の `SAVE_KEY` は「{パス: 数値}」だけの形で既に
 // 社長の端末に保存済みなので、そこへ文字を混ぜると**過去の保存が読めなくなる**(v0.25.2638)。
 const LABEL_KEY = 'bossmaker.labels.v1';
+// 台本(構造)も**別キー**。数値・名前と同じ理由で、既存の保存を壊さずに足せる。
+const SCRIPT_KEY = 'bossmaker.scripts.v1';
 
 /** 既定から変わっている項目だけを {パス: 値} で取り出す(保存/コピーの共通形)。 */
 export const tuningDiff = (entry: BossTuningEntry): Record<string, number> => {
@@ -237,6 +281,10 @@ export const saveTuning = (entry: BossTuningEntry): void => {
     const lkey = `${LABEL_KEY}.${entry.bossType}`;
     if (Object.keys(labels).length === 0) localStorage.removeItem(lkey);
     else localStorage.setItem(lkey, JSON.stringify(labels));
+    const skey = `${SCRIPT_KEY}.${entry.bossType}`;
+    const sc = entry.scripts?.serialize();
+    if (!sc) localStorage.removeItem(skey);
+    else localStorage.setItem(skey, sc);
   } catch { /* 保存できなくても動く(プライベートモード等) */ }
 };
 
@@ -275,6 +323,12 @@ export const applySavedTuning = (entry: BossTuningEntry): number => {
       if (setTextAtPath(entry.table, path, raw)) applied += 1;
     }
   }
+  // 台本(構造)。**名前より後に当てる**——射撃枠を有効にしてからでないと、その技を含む台本が
+  // 「知らない技」として落ちてしまう(復元の順番が意味を持つ数少ない場所)。
+  try {
+    const raw = localStorage.getItem(`${SCRIPT_KEY}.${entry.bossType}`);
+    if (raw && entry.scripts?.deserialize(raw)) applied += 1;
+  } catch { /* 読めなくても既定のまま動く */ }
   return applied;
 };
 
@@ -294,6 +348,7 @@ export const clearSavedTuning = (bossType: string): void => {
   try {
     localStorage.removeItem(`${SAVE_KEY}.${bossType}`);
     localStorage.removeItem(`${LABEL_KEY}.${bossType}`);
+    localStorage.removeItem(`${SCRIPT_KEY}.${bossType}`);
   } catch { /* 消せなくても動く */ }
 };
 
@@ -307,6 +362,7 @@ export const resetTuning = (entry: BossTuningEntry): void => {
     const d = getTextAtPath(entry.defaults, f.path);
     if (d !== undefined) setTextAtPath(entry.table, f.path, d);
   }
+  entry.scripts?.reset();
 };
 
 // ---- コピー/貼り戻しのテキスト形式(BOSS_MAKER.md §1-6) ----------------------------------------
@@ -355,11 +411,17 @@ export const formatTuningText = (entry: BossTuningEntry, version: string): strin
     if (v !== undefined) payload[p] = v;
   }
   const labels = tuningTextDiff(entry);
-  lines.push('', JSON_MARK, JSON.stringify(
-    Object.keys(labels).length > 0
-      ? { boss: entry.bossType, changed: payload, labels }
-      : { boss: entry.bossType, changed: payload },
-  ));
+  const scripts = entry.scripts?.serialize() ?? null;
+  if (scripts !== null) {
+    lines.push('', '## 台本(* = 既定から変更)');
+    for (const [i, r] of entry.scripts!.rows().entries()) {
+      lines.push(`* ${i + 1}. ${r.zoneLabel} 重み${r.weight}: ${r.moves.map(m => m.label).join(' → ')}`);
+    }
+  }
+  const machine: Record<string, unknown> = { boss: entry.bossType, changed: payload };
+  if (Object.keys(labels).length > 0) machine.labels = labels;
+  if (scripts !== null) machine.scripts = scripts;
+  lines.push('', JSON_MARK, JSON.stringify(machine));
   return lines.join('\n');
 };
 
@@ -373,9 +435,10 @@ export const parseTuningText = (entry: BossTuningEntry, text: string): PasteResu
   const idx = text.indexOf(JSON_MARK);
   if (idx < 0) return { applied: 0, errors: ['機械用の行が見つかりません(コピーしたテキストをそのまま貼ってください)'] };
   const json = text.slice(idx + JSON_MARK.length).trim().split('\n')[0];
-  let parsed: { boss?: string; changed?: Record<string, number>; labels?: Record<string, string> };
+  type Machine = { boss?: string; changed?: Record<string, number>; labels?: Record<string, string>; scripts?: string };
+  let parsed: Machine;
   try {
-    parsed = JSON.parse(json) as { boss?: string; changed?: Record<string, number>; labels?: Record<string, string> };
+    parsed = JSON.parse(json) as Machine;
   } catch {
     return { applied: 0, errors: ['機械用の行が壊れています'] };
   }
@@ -399,6 +462,11 @@ export const parseTuningText = (entry: BossTuningEntry, text: string): PasteResu
     if (!okText.has(path)) { errors.push(`不明な名前欄: ${path}`); continue; }
     if (typeof raw !== 'string') { errors.push(`文字ではない: ${path}`); continue; }
     if (setTextAtPath(entry.table, path, raw)) applied += 1;
+  }
+  // 台本。**名前の後**に当てる(射撃枠を有効にしてから=上の applySavedTuning と同じ理由)。
+  if (typeof parsed.scripts === 'string') {
+    if (entry.scripts?.deserialize(parsed.scripts)) applied += 1;
+    else errors.push('台本を読み戻せませんでした(既定のままにしました)');
   }
   return { applied, errors };
 };
