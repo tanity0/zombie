@@ -1523,6 +1523,12 @@ const PLAYER_DEATH_FADE_MS = 600;  // 保持のあとフェードアウトする
 // 既定ON。?refl=0 で映り込み(地面のスペキュラ)を丸ごと切れる=計測時の切り分け用スイッチ
 // (v0.25.2689: 映り込みを pooled sprite 化した v0.25.2687 が回帰の犯人かを A/B するため)。
 const GROUND_REFLECTION_ENABLED = tsBool('refl', true);
+// ★計測用スイッチ(v0.25.2699)。`?evshadow=0` で**強glowが落とす投影影**だけを止める。
+// 狙い: 「強glow 1個 ≈ 2ms」の正体が glow の絵なのか、それとも glow をトリガーに走る
+// `syncLocalEventLighting` の per-frame Graphics(1個につき最大22体×4図形)なのかを切り分ける。
+// 実測で **塗り面積を0.58倍にしてもコストが 1.98ms/個 のまま動かなかった**(v0.25.2698)ため、
+// 絵の大きさに依存しない後者が濃厚。既定は ON=挙動は不変。
+const LOCAL_EVENT_GLOW_SHADOW_ENABLED = tsBool('evshadow', true);
 const GROUND_REFLECTION_ALPHA = 0.28;
 const GEM_BODY_GLOW_ALPHA = 0.38;
 const LOCAL_EVENT_SHADE_ALPHA = 0.5;
@@ -7004,6 +7010,7 @@ export class PixiScene {
     g.clear();
 
     for (const e of effects) {
+      if (!LOCAL_EVENT_GLOW_SHADOW_ENABLED) break; // ?evshadow=0(計測用・既定ON)
       if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
       const t = Math.min(1, (now - e.createdAt) / e.duration);
       const life = 1 - t;
