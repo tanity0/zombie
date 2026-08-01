@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2689',
+    items: [
+      'ゲーム内容の変更はありません（計測の切り分け用に、地面の映り込みを一時的に切るスイッチを追加しました）。',
+    ],
+  },
+  {
     version: '0.25.2688',
     items: [
       'ゲーム内容の変更はありません（実機ベンチの全系統の結果を記録しました）。',

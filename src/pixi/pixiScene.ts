@@ -1520,7 +1520,9 @@ const SMALL_GLOW_ALPHA_SCALE = 0.74;
 // 「保持してからフェード」の2段にして、見せる瞬間は絵が残るようにする。
 const PLAYER_DEATH_HOLD_MS = 1150; // = DEATH_ZOOM_HOLD_MS(ピーク保持の間はフェードを始めない)
 const PLAYER_DEATH_FADE_MS = 600;  // 保持のあとフェードアウトする長さ
-const GROUND_REFLECTION_ENABLED = true;
+// 既定ON。?refl=0 で映り込み(地面のスペキュラ)を丸ごと切れる=計測時の切り分け用スイッチ
+// (v0.25.2689: 映り込みを pooled sprite 化した v0.25.2687 が回帰の犯人かを A/B するため)。
+const GROUND_REFLECTION_ENABLED = tsBool('refl', true);
 const GROUND_REFLECTION_ALPHA = 0.28;
 const GEM_BODY_GLOW_ALPHA = 0.38;
 const LOCAL_EVENT_SHADE_ALPHA = 0.5;

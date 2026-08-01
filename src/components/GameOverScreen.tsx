@@ -60,7 +60,7 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     if (typeof window === 'undefined') return '';
     const q = new URLSearchParams(window.location.search);
     // 描画負荷に効く/計測の解釈に効くものだけを拾う(全部出すと読みにくい)。
-    const keys = ['glowhalo', 'glowcore', 'benchonly', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev'];
+    const keys = ['glowhalo', 'glowcore', 'refl', 'benchonly', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev'];
     const on = keys.filter(k => q.get(k) !== null).map(k => `${k}=${q.get(k)}`);
     return on.length ? on.join(' ') : 'なし(既定)';
   })();
