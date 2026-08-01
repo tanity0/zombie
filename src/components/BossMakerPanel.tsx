@@ -21,12 +21,13 @@
 // 毎フレーム変わる表示(状態名/距離/経過ms)は BossMakerLive.tsx へ隔離してある。
 // ここが再描画されるのは「数値を触った時」「トグルを押した時」だけ。
 // **シートのドラッグ中は state を更新しない**(DOMのstyleを直接動かし、離した時に1回だけ確定する)。
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import type { Enemy } from '../types/game';
 import {
   getBossTuning, getAtPath, setAtPath, clampField, changedPaths, resetTuning,
-  formatTuningText, parseTuningText, UNIT_SUFFIX, type TuningField, type BossTuningEntry,
+  formatTuningText, parseTuningText, saveTuning, applySavedTuning, clearSavedTuning,
+  UNIT_SUFFIX, type TuningField, type BossTuningEntry,
 } from '../utils/bossTuning';
 import { registerIdolTuning } from '../utils/idolTuning';
 import { BossMakerLive } from './BossMakerLive';
@@ -333,9 +334,32 @@ export const BossMakerPanel = () => {
   const setTabSaved = useCallback((t: 'behavior' | 'move') => { saveStr(TAB_KEY, bossType, t); setTab(t); }, []);
   const setSheetSaved = useCallback((s: Snap) => { saveStr(SNAP_KEY, bossType, s); setSheet(s); }, []);
 
+  // ---- 自動保存(社長要望v0.25.2631「毎回やり直すのは無理」) --------------------------------------
+  // ★**適用は部屋の中だけ**。数値テーブルは本編と同じ実体なので、部屋を出る時は**必ず既定へ戻す**
+  // (戻さないと調整値が本編のボスに乗る)。入る=適用 / 出る=リセット を対にして useEffect で持つ。
+  useEffect(() => {
+    if (!active || !entry) return;
+    applySavedTuning(entry);
+    bump(n => n + 1);
+    return () => { resetTuning(entry); };
+  }, [active, entry]);
+
+  // 保存はまとめ書き(スクラブ中は毎フレーム値が動くので、止まってから1回だけ書く)。
+  const saveTimer = useRef<number | null>(null);
+  const saveSoon = useCallback(() => {
+    if (!entry) return;
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => { saveTimer.current = null; saveTuning(entry); }, 400);
+  }, [entry]);
+  useEffect(() => () => {
+    // 画面を閉じる瞬間に書き残しがあれば流し込む(まとめ書きの取りこぼし防止)。
+    if (saveTimer.current !== null && entry) { window.clearTimeout(saveTimer.current); saveTuning(entry); }
+  }, [entry]);
+
   const onChange = useCallback((path: string, v: number) => {
     if (!entry) return;
     setAtPath(entry.table, path, v);
+    saveSoon();
     // 基礎値(HP/与ダメ/速度)は生きている個体へ即反映する(数字を打った瞬間に効く=受け入れ条件1)。
     if (path.startsWith('stats.')) {
       const t = entry.table as { stats: { health: number; damage: number; speed: number } };
@@ -347,7 +371,7 @@ export const BossMakerPanel = () => {
       }));
     }
     bump(n => n + 1);
-  }, [entry]);
+  }, [entry, saveSoon]);
 
   // 再生(社長要望v0.25.2625): 押した1つだけを実行。停止中なら硬直明けでまた止まる。
   const play = useCallback((key: string) => {
@@ -511,13 +535,19 @@ export const BossMakerPanel = () => {
                   try { txt = await navigator.clipboard.readText(); } catch { txt = window.prompt('貼り付け') ?? ''; }
                   if (!txt) return;
                   const r = parseTuningText(entry, txt);
+                  saveTuning(entry);
                   setNote(r.errors.length ? r.errors[0] : `${r.applied}件を反映`);
                   bump(n => n + 1);
                 }}
               >貼り戻し</button>
               <button
                 className="rounded bg-white/10 px-2 py-1.5 text-[11px] font-bold text-white/75"
-                onClick={() => { resetTuning(entry); setNote('既定へ戻しました'); bump(n => n + 1); }}
+                onClick={() => {
+                  resetTuning(entry);
+                  clearSavedTuning(entry.bossType); // 保存も消す=次に入った時も既定から
+                  setNote('既定へ戻しました(保存も削除)');
+                  bump(n => n + 1);
+                }}
               >リセット</button>
               {note && <span className="truncate text-[10px] text-white/70">{note}</span>}
             </div>

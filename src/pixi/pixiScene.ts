@@ -1149,13 +1149,19 @@ const MIMIR_BITE_WINDUP_MS_VIS = 700;   // 噛みつきのwindup時間(useGameLo
 const MIMIR_BITE_RADIUS_VIS = 92;       // = GRENADE_BLAST_RADIUS(useGameLoop MIMIR_BITE_RADIUSと一致)
 const JORM_COIL_WINDUP_MS_VIS = 700;    // うねりのwindup時間(useGameLoop JORM_COIL_WINDUP_MSと一致)
 // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)の描画用(useGameLoop のゲームプレイ値と一致させること)。
-const IDOL_AIM_WINDUP_MS_VIS = 700;     // 狙い撃ちのwindup時間(useGameLoop IDOL_AIM_WINDUP_MSと一致)
-const IDOL_FAN_WINDUP_MS_VIS = 900;     // 連射のwindup時間(useGameLoop IDOL_FAN_WINDUP_MSと一致)
-const IDOL_PUNCH_WINDUP_MS_VIS = 600;   // 至近の殴りのwindup時間(useGameLoop IDOL_PUNCH_WINDUP_MSと一致)
-const IDOL_BULLET_VIS_HALFWIDTH = 8;    // T6線の描画半太さ(叩き台。弾サイズ16=半径8と一致させる)
-const IDOL_FAN_VIS_RANGE = 700;         // T6線の描画上の長さ(px・叩き台)
-const IDOL_PUNCH_RANGE_VIS = 90;        // 至近の殴りの描画長さ(useGameLoop IDOL_PUNCH_RANGEと一致)
-const IDOL_PUNCH_HALF_WIDTH_VIS = 30;   // 至近の殴りの描画半太さ(useGameLoop IDOL_PUNCH_HALF_WIDTHと一致)
+// ★予告の描画は**数値テーブルを直接読む**(社長指示v0.25.2631・共有値の洗い出しで発見)。
+// 旧はここに 700/900/600/90/30 と**同じ数字を手で写していた**ため、ボスメーカーで判定側を変えると
+// **赤い予告だけが古い形のまま**になり、CLAUDE.md「赤いのに当たらない/赤くないのに当たる」の
+// 禁止事項をそのまま踏む状態だった(BOSS_MAKER.md §2-4「判定と描画の一致を壊さない」にも違反)。
+// 関数にしてあるのは、テーブルが実行中に書き換わるため(モジュール定数だと初期値で固まる)。
+const idolAimWindupVis = () => IDOL_TIMING.aim.windup;
+const idolFanWindupVis = () => IDOL_TIMING.fan.windup;
+const idolPunchWindupVis = () => IDOL_TIMING.punch.windup;
+const idolPunchRangeVis = () => IDOL_TUNING.shape.punchRange;
+const idolPunchHalfWidthVis = () => IDOL_TUNING.shape.punchHalfWidth;
+// 弾の見た目の半太さ=弾サイズの半分(狙い撃ちと連射扇でサイズが違えるようになったので技ごとに引く)。
+const idolBulletHalfWidthVis = (m: 'aim' | 'fan') => IDOL_TUNING.bullet[m].size / 2;
+const IDOL_FAN_VIS_RANGE = 700;         // T6線の描画上の長さ(px・判定を持たない"派手さの絵"側=②)
 // v0.25.2613(バッチ3・idolのMAX化): 狙撃線/追尾弾。**判定と同じ定数を idolScript.ts から読む**
 // (上の旧4定数は useGameLoop からの手写しだが、新規分は写し間違いが起きない形にする=
 //  CLAUDE.md「赤い予告そのものは判定と厳密に一致させる」)。
@@ -9847,14 +9853,14 @@ export class PixiScene {
       }
       // T6: 狙い撃ち(終点リング無し=遠隔が通る・本体は来ない)。
       if (bs === 'idol-aim-windup') {
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_AIM_WINDUP_MS_VIS));
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / idolAimWindupVis()));
         const pl = useGameStore.getState().player;
         const px = pl.x + pl.width / 2, py = pl.y + pl.height / 2;
-        this.drawAngelBeamLine(o, cx, cy, px, py, IDOL_BULLET_VIS_HALFWIDTH, prog, now);
+        this.drawAngelBeamLine(o, cx, cy, px, py, idolBulletHalfWidthVis('aim'), prog, now);
       }
       // T6が扇状に3本(Phase2で5本): 連射。
       if (bs === 'idol-fan-windup') {
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_FAN_WINDUP_MS_VIS));
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / idolFanWindupVis()));
         const pl = useGameStore.getState().player;
         const ang = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
         const count = idolFanCount(e.bossPhase === 2 ? 2 : 1);
@@ -9862,7 +9868,7 @@ export class PixiScene {
         const half = (count - 1) / 2;
         for (let k = 0; k < count; k++) {
           const a = ang + (k - half) * spreadStep;
-          this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, IDOL_BULLET_VIS_HALFWIDTH, prog, now);
+          this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now);
         }
       }
       // T2帯(長): 狙撃線。**溜め開始でロックした2点(aiFrom→aiTarget)をそのまま描く**ので、
@@ -9879,22 +9885,22 @@ export class PixiScene {
         const n = idolOrbCount(e.bossPhase === 2 ? 2 : 1);
         for (let k = 0; k < n; k++) {
           const a = base + (k - (n - 1) / 2) * 0.5;
-          this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, IDOL_BULLET_VIS_HALFWIDTH, prog, now);
+          this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now);
         }
       }
       // T3(短): 至近の殴り。
       if (bs === 'idol-punch-windup') {
         const pl = useGameStore.getState().player;
         const ang = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
-        const tx = cx + Math.cos(ang) * IDOL_PUNCH_RANGE_VIS, ty = cy + Math.sin(ang) * IDOL_PUNCH_RANGE_VIS;
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_PUNCH_WINDUP_MS_VIS));
-        this.drawAngelZoneCapsule(view, o, cx, cy, tx, ty, IDOL_PUNCH_HALF_WIDTH_VIS, prog, now);
+        const tx = cx + Math.cos(ang) * idolPunchRangeVis(), ty = cy + Math.sin(ang) * idolPunchRangeVis();
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / idolPunchWindupVis()));
+        this.drawAngelZoneCapsule(view, o, cx, cy, tx, ty, idolPunchHalfWidthVis(), prog, now);
         // FX-V3V4(V3-5): 拳の向きは**赤帯と同じ「毎フレームのプレイヤー方向」**を追う(判定側の
         // idolHateAim も windup 終わりに評価するので、最後のフレームの値が実際に殴る向きになる)。
         view.punchAim = ang;
       }
       // FX-V3V4(V3-5): 偶像の拳。溜めの進行に合わせて足元から突き出し(=拡大しながら迫る)、
-      // 判定(短い帯 IDOL_PUNCH_RANGE_VIS)の先端で当たる。当たった後は FIST_HOLD_MS で消える
+      // 判定(短い帯 idolPunchRangeVis())の先端で当たる。当たった後は FIST_HOLD_MS で消える
       // (硬直を1フレームも観測できない事故があるので latch で出し切らせる=v0.25.2412の作法)。
       {
         const punchWind = bs === 'idol-punch-windup';
@@ -9907,9 +9913,9 @@ export class PixiScene {
           const reach = hitF > 0 ? Math.min(1, fistL.t / hitF) : 1;
           const fade = fistL.t < hitF ? 1 : Math.max(0, 1 - (fistL.t - hitF) / (1 - hitF));
           const ang = view.punchAim;
-          const dist = IDOL_PUNCH_RANGE_VIS * reach;
+          const dist = idolPunchRangeVis() * reach;
           this.drawIdolFist(view, cx + Math.cos(ang) * dist, cy + Math.sin(ang) * dist, ang,
-            IDOL_PUNCH_HALF_WIDTH_VIS * 2 * (0.70 + 0.55 * reach), artFade * fade);
+            idolPunchHalfWidthVis() * 2 * (0.70 + 0.55 * reach), artFade * fade);
         }
       }
       // 離脱ローリング: T4のみ(図形なし・無敵も無し=詰めた側の報酬・§6.28-20)。

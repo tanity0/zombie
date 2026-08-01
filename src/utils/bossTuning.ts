@@ -125,6 +125,71 @@ export const changedPaths = (entry: BossTuningEntry): string[] =>
     .filter(f => getAtPath(entry.table, f.path) !== getAtPath(entry.defaults, f.path))
     .map(f => f.path);
 
+// ---- 自動保存(社長要望v0.25.2631「毎回やり直すのは無理」) ---------------------------------------
+//
+// ★**復元は「部屋の中だけ」**。数値テーブルは**本編と同じ実体**(ゲームのボスが読む参照そのもの)なので、
+// 無条件に復元すると**調整値が本編のボスに乗ってしまう**。よって:
+//   ・部屋へ入る時に `applySavedTuning`(既定へ戻してから保存ぶんを適用)
+//   ・部屋を出る時に `resetTuning`(必ず既定へ)
+// この2つが対になっていることを **テストで固定**する(BossMakerPanel の useEffect が呼ぶ)。
+//
+// 保存するのは**既定から変えた項目だけ**(貼り戻しの機械行と同じ形)。項目が増減しても壊れない。
+const SAVE_KEY = 'bossmaker.tuning.v1';
+
+/** 既定から変わっている項目だけを {パス: 値} で取り出す(保存/コピーの共通形)。 */
+export const tuningDiff = (entry: BossTuningEntry): Record<string, number> => {
+  const out: Record<string, number> = {};
+  for (const path of changedPaths(entry)) {
+    const v = getAtPath(entry.table, path);
+    if (v !== undefined) out[path] = v;
+  }
+  return out;
+};
+
+/** いまの差分を端末へ保存する(変更が無ければキーごと消す=綺麗に空へ戻る)。 */
+export const saveTuning = (entry: BossTuningEntry): void => {
+  try {
+    const diff = tuningDiff(entry);
+    const key = `${SAVE_KEY}.${entry.bossType}`;
+    if (Object.keys(diff).length === 0) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(diff));
+  } catch { /* 保存できなくても動く(プライベートモード等) */ }
+};
+
+/** 保存済みの差分を読む(無ければ null)。 */
+export const loadTuningDiff = (bossType: string): Record<string, number> | null => {
+  try {
+    const raw = localStorage.getItem(`${SAVE_KEY}.${bossType}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Record<string, number>;
+  } catch { return null; }
+};
+
+/**
+ * **部屋へ入る時**に呼ぶ。必ず既定へ戻してから保存ぶんを適用する
+ * (前回の残りが混ざらない=「保存した値そのもの」になる)。適用できた件数を返す。
+ */
+export const applySavedTuning = (entry: BossTuningEntry): number => {
+  resetTuning(entry);
+  const diff = loadTuningDiff(entry.bossType);
+  if (!diff) return 0;
+  const byPath = new Map(entry.fields.map(f => [f.path, f]));
+  let applied = 0;
+  for (const [path, raw] of Object.entries(diff)) {
+    const f = byPath.get(path);
+    if (!f || typeof raw !== 'number' || !Number.isFinite(raw)) continue;
+    if (setAtPath(entry.table, path, clampField(f, raw))) applied += 1;
+  }
+  return applied;
+};
+
+/** 保存を消す(「保存も消す」操作用)。 */
+export const clearSavedTuning = (bossType: string): void => {
+  try { localStorage.removeItem(`${SAVE_KEY}.${bossType}`); } catch { /* 消せなくても動く */ }
+};
+
 /** テーブルを既定値へ戻す(参照は保つ=ゲーム側が持っている参照が切れない)。 */
 export const resetTuning = (entry: BossTuningEntry): void => {
   for (const f of entry.fields) {

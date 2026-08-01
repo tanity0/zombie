@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   registerBossTuning, getBossTuning, getAtPath, setAtPath, clampField, changedPaths,
   resetTuning, formatTuningText, parseTuningText, deepCloneTuning,
+  saveTuning, loadTuningDiff, applySavedTuning, clearSavedTuning, tuningDiff,
   type BossTuningEntry, type TuningField,
 } from './bossTuning';
 import { registerIdolTuning, IDOL_TUNING_FIELDS, IDOL_PLAYABLES, VERB_SECTION } from './idolTuning';
@@ -331,5 +332,114 @@ describe('弾の性能がテーブルに載っている(社長報告「速さの
       const labels = fields.filter((f: TuningField) => f.section === sec).map((f: TuningField) => f.label);
       expect(labels, sec).not.toContain('弾速');
     }
+  });
+});
+
+
+// ============================================================================================
+// 自動保存(社長要望v0.25.2631「毎回やり直すのは無理」)
+//
+// ★最重要の掟: **復元は「部屋の中だけ」**。数値テーブルは**本編と同じ実体**なので、
+// 部屋を出る時に既定へ戻さないと**社長の調整値が本編のボスに乗る**。
+// 「入る=適用 / 出る=リセット」が対になっていることをここで固定する。
+// ============================================================================================
+describe('自動保存: 部屋の中だけ復元し、出る時は必ず既定へ戻る', () => {
+  // node環境には localStorage が無いので最小のスタブを差す(実装は try/catch 済み)。
+  const store = new Map<string, string>();
+  beforeEach(() => {
+    store.clear();
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, v); },
+      removeItem: (k: string) => { store.delete(k); },
+      clear: () => store.clear(),
+      key: () => null,
+      length: 0,
+    } as unknown as Storage;
+    registerIdolTuning();
+    resetTuning(getBossTuning('idol')!);
+  });
+
+  const entry = () => getBossTuning('idol')!;
+
+  it('変えた項目だけが保存される(既定と同じ値は保存しない)', () => {
+    setAtPath(entry().table, 'timing.aim.windup', 1200);
+    saveTuning(entry());
+    const diff = loadTuningDiff('idol');
+    expect(diff).toEqual({ 'timing.aim.windup': 1200 });
+  });
+
+  it('保存 → 既定へ戻す → 適用 で、保存した値が返ってくる(往復)', () => {
+    setAtPath(entry().table, 'timing.aim.windup', 1200);
+    setAtPath(entry().table, 'bullet.fan.speed', 600);
+    saveTuning(entry());
+
+    resetTuning(entry()); // 部屋を出た状態
+    expect(getAtPath(entry().table, 'timing.aim.windup')).toBe(IDOL_TUNING_DEFAULTS.timing.aim.windup);
+
+    const applied = applySavedTuning(entry()); // もう一度入った
+    expect(applied).toBe(2);
+    expect(getAtPath(entry().table, 'timing.aim.windup')).toBe(1200);
+    expect(getAtPath(entry().table, 'bullet.fan.speed')).toBe(600);
+  });
+
+  it('★掟: 部屋を出たら(resetTuning)本編のテーブルは既定に戻る=調整値が本編へ漏れない', () => {
+    setAtPath(entry().table, 'stats.health', 20000);
+    setAtPath(entry().table, 'moveDamage.punch', 200);
+    saveTuning(entry());
+
+    resetTuning(entry()); // 退室時に BossMakerPanel の useEffect クリーンアップが呼ぶもの
+
+    expect(changedPaths(entry())).toEqual([]);          // 1つも変更が残っていない
+    expect(IDOL_TUNING.stats.health).toBe(IDOL_TUNING_DEFAULTS.stats.health);
+    expect(IDOL_TUNING.moveDamage.punch).toBe(IDOL_TUNING_DEFAULTS.moveDamage.punch);
+    // 保存自体は残る(次に入った時に復元できる)
+    expect(loadTuningDiff('idol')).not.toBeNull();
+  });
+
+  it('★掟: 適用は必ず「既定へ戻してから」(前回の残りが混ざらない)', () => {
+    // 保存には windup だけが入っている状態を作る
+    setAtPath(entry().table, 'timing.aim.windup', 1200);
+    saveTuning(entry());
+    // その後、保存していない別項目を手で汚す(前回の残り相当)
+    setAtPath(entry().table, 'timing.fan.windup', 2000);
+
+    applySavedTuning(entry());
+
+    expect(getAtPath(entry().table, 'timing.aim.windup')).toBe(1200);            // 保存ぶんは戻る
+    expect(getAtPath(entry().table, 'timing.fan.windup'))
+      .toBe(IDOL_TUNING_DEFAULTS.timing.fan.windup);                            // 保存に無い汚れは消える
+  });
+
+  it('変更をすべて戻して保存すると、保存キーごと消える(綺麗に空へ)', () => {
+    setAtPath(entry().table, 'timing.aim.windup', 1200);
+    saveTuning(entry());
+    expect(loadTuningDiff('idol')).not.toBeNull();
+    resetTuning(entry());
+    saveTuning(entry());
+    expect(loadTuningDiff('idol')).toBeNull();
+  });
+
+  it('保存を消せる(リセットボタン)', () => {
+    setAtPath(entry().table, 'timing.aim.windup', 1200);
+    saveTuning(entry());
+    clearSavedTuning('idol');
+    expect(loadTuningDiff('idol')).toBeNull();
+    expect(applySavedTuning(entry())).toBe(0);
+  });
+
+  it('壊れた保存・知らない項目・範囲外は落ちずに無視/丸められる', () => {
+    store.set('bossmaker.tuning.v1.idol', '{ ここは壊れたJSON');
+    expect(applySavedTuning(entry())).toBe(0);
+    store.set('bossmaker.tuning.v1.idol', JSON.stringify({ 'まだ無い項目': 1, 'timing.aim.windup': 999999 }));
+    const applied = applySavedTuning(entry());
+    expect(applied).toBe(1); // 知らない項目は無視
+    const f = IDOL_TUNING_FIELDS.find(x => x.path === 'timing.aim.windup')!;
+    expect(getAtPath(entry().table, 'timing.aim.windup')).toBe(f.max); // 範囲外は丸める
+  });
+
+  it('保存の中身は「差分」= 項目が増えても古い保存が壊れない', () => {
+    setAtPath(entry().table, 'timing.aim.windup', 1200);
+    expect(tuningDiff(entry())).toEqual({ 'timing.aim.windup': 1200 });
   });
 });
