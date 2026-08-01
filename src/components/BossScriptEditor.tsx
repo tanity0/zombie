@@ -18,11 +18,17 @@ import type { BossScriptApi } from '../utils/bossTuning';
 
 const chip = 'shrink-0 rounded px-2 py-1 text-[11px] leading-none';
 
-export const BossScriptEditor = ({ api, onChanged, note }: {
+export const BossScriptEditor = ({ api, onChanged, note, help }: {
   api: BossScriptApi;
   /** 編集後に呼ぶ(親が保存と再描画をする)。 */
   onChanged: (message: string) => void;
   note?: string;
+  /**
+   * §14 ヘルプ: ヘルプONの時だけ親から渡ってくる「台本」節の説明文(未指定=出さない)。
+   * **このコンポーネント自身はボスを知らない**ので、文言は親(BossMakerPanel)が
+   * `entry.sectionHelp['台本']` から引いて渡す(スキーマ駆動を崩さない)。
+   */
+  help?: string;
 }) => {
   // 開いている段のメニュー("si:mi")。1つだけ開く=画面を食わない。
   const [open, setOpen] = useState<string | null>(null);
@@ -52,10 +58,19 @@ export const BossScriptEditor = ({ api, onChanged, note }: {
         >＋台本</button>
       </div>
 
+      {/* ヘルプON時だけ、見出しの直下へ「台本」節の説明を本文として出す(§14-2)。 */}
+      {help && <div className="mb-1 whitespace-pre-line text-[10px] leading-snug text-sky-200/80">{help}</div>}
+
       {rows.map((r, si) => (
-        <div key={si} className="mb-1 rounded bg-black/30 px-1.5 py-1">
-          {/* 1行目: 距離帯 + 重み + 台本を消す */}
+        <div key={si} className={`mb-1 rounded bg-black/30 px-1.5 py-1 ${r.off ? 'opacity-40' : ''}`}>
+          {/* 1行目: on/off + 距離帯 + 重み + 台本を消す */}
           <div className="mb-1 flex items-center gap-1">
+            {/* 台本の on/off(BOSS_MAKER.md §15)。**消さずに一時的に外す**——重み・段はそのまま保つ。 */}
+            <button
+              className={`${chip} shrink-0 ${r.off ? 'bg-white/10 text-white/40' : 'bg-emerald-500/80 text-black'}`}
+              title={r.off ? 'offにしている台本(タップでonへ戻す)' : 'onの台本(タップでoff)'}
+              onClick={() => run(() => api.edit({ t: 'toggleScript', si }))}
+            >{r.off ? 'OFF' : 'ON'}</button>
             <select
               className="h-6 shrink-0 rounded bg-black/50 px-1 text-[10px] text-white outline-none"
               value={r.zone}

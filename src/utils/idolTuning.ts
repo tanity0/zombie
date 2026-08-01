@@ -17,7 +17,7 @@ import {
   type IdolMove, type IdolCoreMove, type IdolShotSlot,
 } from './idolScript';
 import {
-  addScript, removeScript, setScriptZone, setScriptWeight,
+  addScript, removeScript, setScriptZone, setScriptWeight, toggleScript,
   setStep, insertStep, removeStep, moveStep, stepCutoffIndex,
   serializeScripts, parseScripts, replaceScripts, scriptWarnings, SCRIPT_ZONES,
 } from './bossScriptEdit';
@@ -112,7 +112,8 @@ const moveFields = (): TuningField[] => {
     const sec = MOVE_LABEL[m];
     out.push(
       { path: `timing.${m}.windup`, label: '予告', group: 'move', section: sec, kind: 'ms', min: 0, max: 5000, step: 50, hint: '予告が出てから判定まで' },
-      { path: `timing.${m}.active`, label: '判定', group: 'move', section: sec, kind: 'ms', min: 0, max: 3000, step: 50 },
+      // §14-4: 「判定」欄はまだ hint が無かったので足す(既存の予告/硬直は既に持っているので触らない)。
+      { path: `timing.${m}.active`, label: '判定', group: 'move', section: sec, kind: 'ms', min: 0, max: 3000, step: 50, hint: '当たり判定が出ている時間。0=出た瞬間だけ。' },
       { path: `timing.${m}.recover`, label: '硬直', group: 'move', section: sec, kind: 'ms', min: 0, max: 5000, step: 50, hint: '反撃窓。820ms=近接1発' },
     );
     out.push(...bulletFields(m));       // 予告/判定/硬直の直後=どの技でも同じ位置に弾の項目が並ぶ
@@ -184,11 +185,12 @@ const behaviorFields = (): TuningField[] => [
   { path: 'stats.speed', label: '移動速度', group: 'behavior', section: '基礎値', kind: 'pxs', min: 0, max: 600, step: 10 },
   { path: 'phaseHpThreshold', label: 'フェーズ2の閾値', group: 'behavior', section: '基礎値', kind: 'frac', min: 0, max: 1, step: 0.05, hint: 'HP割合' },
 
-  { path: 'neutralBand.min', label: '主戦帯 下限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 10 },
-  { path: 'neutralBand.max', label: '主戦帯 上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 10 },
-  { path: 'zoneEdges.meleeMax', label: '密着帯の上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 10 },
-  { path: 'zoneEdges.nearMax', label: '中帯の上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 1500, step: 10 },
-  { path: 'zoneEdges.midMax', label: '遠帯の上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 20 },
+  // §14-4: 「主戦帯」「密着帯の上限/中帯の上限/遠帯の上限」の hint はまだ無かったので足す。
+  { path: 'neutralBand.min', label: '主戦帯 下限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 10, hint: 'ボスが保ちたい距離。これより遠いと詰め、近いと離れる。' },
+  { path: 'neutralBand.max', label: '主戦帯 上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 10, hint: 'ボスが保ちたい距離。これより遠いと詰め、近いと離れる。' },
+  { path: 'zoneEdges.meleeMax', label: '密着帯の上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 10, hint: '距離帯の境目。密着/主戦/遠/超遠の4つに分かれ、どの台本を使うかが決まる。' },
+  { path: 'zoneEdges.nearMax', label: '中帯の上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 1500, step: 10, hint: '距離帯の境目。密着/主戦/遠/超遠の4つに分かれ、どの台本を使うかが決まる。' },
+  { path: 'zoneEdges.midMax', label: '遠帯の上限', group: 'behavior', section: '間合い', kind: 'px', min: 0, max: 2000, step: 20, hint: '距離帯の境目。密着/主戦/遠/超遠の4つに分かれ、どの台本を使うかが決まる。' },
 
   { path: 'verbSpeedMult.close', label: '詰める倍率', group: 'behavior', section: '中立の移動', kind: 'frac', min: 0, max: 3, step: 0.05 },
   { path: 'verbSpeedMult.retreat', label: '離れる倍率', group: 'behavior', section: '中立の移動', kind: 'frac', min: 0, max: 3, step: 0.05 },
@@ -196,15 +198,17 @@ const behaviorFields = (): TuningField[] => [
   { path: 'neutral.minMs', label: '中立の最短', group: 'behavior', section: '中立の移動', kind: 'ms', min: 0, max: 6000, step: 50 },
   { path: 'neutral.maxMs', label: '中立の最長', group: 'behavior', section: '中立の移動', kind: 'ms', min: 0, max: 8000, step: 50 },
 
-  { path: 'stringLen.p1', label: '段数 P1', group: 'behavior', section: 'ストリングと休符', kind: 'num', min: 1, max: 8, step: 1 },
-  { path: 'stringLen.p2', label: '段数 P2', group: 'behavior', section: 'ストリングと休符', kind: 'num', min: 1, max: 8, step: 1 },
+  // §14-4: 「段数」「第二波」の hint はまだ無かったので足す。
+  { path: 'stringLen.p1', label: '段数 P1', group: 'behavior', section: 'ストリングと休符', kind: 'num', min: 1, max: 8, step: 1, hint: '1回のストリングで出す技の数。フェーズ2で1段増える。' },
+  { path: 'stringLen.p2', label: '段数 P2', group: 'behavior', section: 'ストリングと休符', kind: 'num', min: 1, max: 8, step: 1, hint: '1回のストリングで出す技の数。フェーズ2で1段増える。' },
   { path: 'rest.p1', label: '休符 P1', group: 'behavior', section: 'ストリングと休符', kind: 'ms', min: 0, max: 5000, step: 50, hint: '0にすると反撃窓が消える' },
   { path: 'rest.p2', label: '休符 P2', group: 'behavior', section: 'ストリングと休符', kind: 'ms', min: 0, max: 5000, step: 50 },
-  { path: 'waveDelayMs', label: '第二波の遅れ(P2)', group: 'behavior', section: 'ストリングと休符', kind: 'ms', min: 0, max: 3000, step: 50 },
+  { path: 'waveDelayMs', label: '第二波の遅れ(P2)', group: 'behavior', section: 'ストリングと休符', kind: 'ms', min: 0, max: 3000, step: 50, hint: 'フェーズ2で、同じ技がもう一度追いかけてくる仕組み。避けが2回必要になる。' },
 
-  { path: 'punish.farMs', label: '遠距離の長居', group: 'behavior', section: '懲罰', kind: 'ms', min: 0, max: 10000, step: 100 },
-  { path: 'punish.meleeMs', label: '密着の居座り', group: 'behavior', section: '懲罰', kind: 'ms', min: 0, max: 10000, step: 100 },
-  { path: 'punish.sameAngleMs', label: '同角度の長居', group: 'behavior', section: '懲罰', kind: 'ms', min: 0, max: 10000, step: 100 },
+  // §14-4: 「遠距離の長居」「密着の居座り」「同角度の長居」の hint はまだ無かったので足す。
+  { path: 'punish.farMs', label: '遠距離の長居', group: 'behavior', section: '懲罰', kind: 'ms', min: 0, max: 10000, step: 100, hint: 'この時間だけ遠くに居続けると、懲罰の技が飛ぶ。' },
+  { path: 'punish.meleeMs', label: '密着の居座り', group: 'behavior', section: '懲罰', kind: 'ms', min: 0, max: 10000, step: 100, hint: 'この時間だけ密着し続けると、ボスが離脱する。' },
+  { path: 'punish.sameAngleMs', label: '同角度の長居', group: 'behavior', section: '懲罰', kind: 'ms', min: 0, max: 10000, step: 100, hint: '同じ方向に居続けると、並走の向きが反転する(回り込みを読まれる)。' },
   { path: 'sameAngleDeg', label: '同角度とみなす幅', group: 'behavior', section: '懲罰', kind: 'deg', min: 1, max: 180, step: 5 },
 ];
 
@@ -240,6 +244,29 @@ export const addIdolShot = (): { ok: boolean; message: string } => {
   return { ok: true, message: `${idolShotName(free)} を足しました(${idolEnabledShots().length}/${IDOL_SHOT_SLOTS.length})` };
 };
 
+// ---- ヘルプ(BOSS_MAKER.md §14) ------------------------------------------------------------------
+// 節の説明。**文言は仕様書(§14-3)のそのまま**——ここで書き直すと表示と設計書が食い違う。
+// キーは実際に画面へ出る `section` 文字列と一致させる(スキーマ駆動=UIはこの辞書を引くだけ)。
+// ★roll/punch は MOVE_LABEL が `(roll)`/`(punch)` 付きの表記なので、**そのキーに合わせる**
+//   (§14-3本文の見出しは括弧無し表記だが、section文字列と一致しないと該当節に説明が出ない=
+//   「作ったのに出ていない」事故になる。CLAUDE.md 攻撃ヴィジュアル節の教訓と同型)。
+const SECTION_HELP: Record<string, string> = {
+  '基礎値': 'このボスの土台。HP・移動速度と、体が触れた時のダメージ。\n技ごとの威力は各技の欄にある(ここではない)。',
+  '間合い': 'ボスが保ちたい距離と、距離帯の境目。距離帯ごとに出す技が変わる。',
+  '中立の移動': '技を出していない間の動き方。詰める/離れる/並走の速さと、次の技までの間。',
+  'ストリングと休符': '技を何回続けて出すか(段数)と、その後に必ず入る休み。\nこの休みがプレイヤーの攻撃チャンス。0にすると反撃する暇が無くなる。',
+  '懲罰': 'プレイヤーが同じことを続けた時に、ボスが決まった返し技を出す仕組み。\n例: 遠くに居続けたら狙撃線 / 密着し続けたら離脱。「見られている」感を作る。',
+  '台本': 'どの距離帯で、どの技を、どの順に出すか。ボスの手そのもの。',
+  [MOVE_LABEL.aim]: '単発の弾。遠距離の圧の基礎。',
+  [MOVE_LABEL.fan]: '扇状に複数発。主戦帯の主力。',
+  [MOVE_LABEL.roll]: '判定を持たない移動だけの技。密着から間合いを作り直す。',
+  [MOVE_LABEL.punch]: '目の前の帯にダメージ。密着に居座らせないための技。',
+  [MOVE_LABEL.snipe]: '細長い帯。まっすぐ下がるだけでは避けられない=横に動かせる技。',
+  [MOVE_LABEL.orb]: '追いかけてくる弾。走っても振り切れないので、詰めて内側に入るのが答え。',
+  [VERB_SECTION]: '技を出さず、移動だけを見るための再生ボタン。',
+  // 射撃枠は section が `射撃枠 s1`.. と枠ごとに違う文字列なので、8枠ぶんを機械的に展開する。
+  ...Object.fromEntries(IDOL_SHOT_SLOTS.map(m => [shotSection(m), '画面から足した弾撃ち技。数字を変えると赤い予告の線も一緒に変わる。'])),
+};
 
 // ---- 台本エディタ(3便目・v0.25.2642) -----------------------------------------------------------
 // 社長要望「技をパズルピースみたいにできる? 遠近中の枠にはめていく」+ 訂正「**台本の数の+-** /
@@ -256,6 +283,7 @@ export const IDOL_SCRIPT_API: BossScriptApi = {
     zone: s.zone,
     zoneLabel: ZONE_LABEL[s.zone] ?? s.zone,
     weight: s.weight,
+    off: !!s.off,
     moves: s.moves.map(m => ({ key: m, label: moveLabelOf(m) })),
   })),
   moveChoices: () => scriptMoveKeys().map(m => ({ key: m, label: moveLabelOf(m) })),
@@ -274,6 +302,7 @@ export const IDOL_SCRIPT_API: BossScriptApi = {
       case 'removeScript': return removeScript(L, op.si);
       case 'setZone': return setScriptZone(L, op.si, op.zone as BossZone);
       case 'setWeight': return setScriptWeight(L, op.si, op.weight);
+      case 'toggleScript': return toggleScript(L, op.si);
       case 'setStep': {
         const m = mv(op.move);
         return m ? setStep(L, op.si, op.mi, m) : { ok: false, message: '使えない技です' };
@@ -321,6 +350,7 @@ export const registerIdolTuning = (): void => {
     },
     addMove: addIdolShot,
     scripts: IDOL_SCRIPT_API,
+    sectionHelp: SECTION_HELP,
     onPlay: (a, opts) => {
       if (a.kind === 'move') requestIdolMovePlay(a.key as IdolMove, opts);
       else requestIdolVerbPlay(a.key as NeutralVerb);

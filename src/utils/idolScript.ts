@@ -338,6 +338,11 @@ export const idolMoveTiming = (m: IdolMove): { windup: number; active: number; r
  * 台本の全量 = **コードで書いた台本 + 社長が足した射撃技**。
  * 足した射撃は「その距離帯の1段だけの台本」として混ざる(重み0なら出ない)。
  * ※複数段の組み立て(「何かの後に撃つジャブ」)は台本エディタ(3便目)の仕事。ここでは1段。
+ *
+ * **off にした台本は落とす**(BOSS_MAKER.md §15)。重みはテーブル側で保持したままなので、
+ * onへ戻せば元どおり抽選に混ざる——ここは「今この瞬間に抽選へ渡してよい台本」だけを返す係。
+ * off が1本も無ければ `IDOL_TUNING.strings` を**そのまま**返す(参照を変えない=既存の
+ * 「同じ配列の同じ参照」不変条件を崩さない)。
  */
 export const idolStrings = (): StringScript<IdolMove>[] => {
   const extra: StringScript<IdolMove>[] = [];
@@ -347,7 +352,9 @@ export const idolStrings = (): StringScript<IdolMove>[] => {
     const zi = Math.max(0, Math.min(IDOL_SHOT_ZONES.length - 1, Math.round(sp.zoneIdx)));
     extra.push({ zone: IDOL_SHOT_ZONES[zi], weight: sp.weight, moves: [s] });
   }
-  return extra.length === 0 ? IDOL_TUNING.strings : [...IDOL_TUNING.strings, ...extra];
+  const hasOff = IDOL_TUNING.strings.some(s => s.off);
+  const base = hasOff ? IDOL_TUNING.strings.filter(s => !s.off) : IDOL_TUNING.strings;
+  return extra.length === 0 && !hasOff ? IDOL_TUNING.strings : [...base, ...extra];
 };
 
 export const idolZone = (distance: number): BossZone => zoneForDistance(distance, IDOL_TUNING.zoneEdges);

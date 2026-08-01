@@ -21,7 +21,7 @@
 // 毎フレーム変わる表示(状態名/距離/経過ms)は BossMakerLive.tsx へ隔離してある。
 // ここが再描画されるのは「数値を触った時」「トグルを押した時」だけ。
 // **シートのドラッグ中は state を更新しない**(DOMのstyleを直接動かし、離した時に1回だけ確定する)。
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import type { Enemy } from '../types/game';
 import {
@@ -48,11 +48,13 @@ const fmt = (v: number, step: number): string => {
 const snap = (v: number, step: number): number => Math.round(v / step) * step;
 
 // ---- 1つの数値欄(スクラブ + ± + 直接入力 + ピン) ------------------------------------------------
-const NumberScrub = ({ field, value, changed, pinned, withSection, onChange, onPin }: {
+const NumberScrub = ({ field, value, changed, pinned, withSection, help, onChange, onPin }: {
   field: TuningField; value: number; changed: boolean;
   pinned?: boolean;
   /** ピン行のように**文脈が無い場所**では見出し名も出す(「予告」だけだとどの技か分からない)。 */
   withSection?: boolean;
+  /** §14 ヘルプON時だけ hint を欄の下へ本文として出す(未指定/false=出さない=ピン行はこれまで通り)。 */
+  help?: boolean;
   onChange: (v: number) => void;
   onPin?: () => void;
 }) => {
@@ -96,46 +98,52 @@ const NumberScrub = ({ field, value, changed, pinned, withSection, onChange, onP
   const holdEnd = () => { if (repeat.current !== null) { window.clearInterval(repeat.current); repeat.current = null; } };
 
   return (
-    <div className="flex items-center gap-1 py-[2px]">
-      <div className="min-w-0 flex-1 truncate text-[11px] text-white/70" title={field.hint ?? field.path}>
-        {withSection && <span className="text-white/40">{field.section}・</span>}{field.label}
-      </div>
-      <button
-        className="h-7 w-7 shrink-0 rounded bg-white/10 text-[15px] leading-none text-white/80 active:bg-white/25"
-        onPointerDown={() => holdStart(-1)} onPointerUp={holdEnd} onPointerLeave={holdEnd} onPointerCancel={holdEnd}
-        aria-label={`${field.label} を減らす`}
-      >−</button>
-      {editing ? (
-        <input
-          autoFocus type="number" inputMode="decimal" value={draft}
-          className="h-7 w-[68px] shrink-0 rounded bg-black/60 px-1 text-right font-mono text-[12px] text-white outline-none ring-1 ring-emerald-400"
-          onChange={ev => setDraft(ev.target.value)}
-          onBlur={() => { const n = Number(draft); if (Number.isFinite(n)) apply(n); setEditing(false); }}
-          onKeyDown={ev => {
-            if (ev.key === 'Enter') { const n = Number(draft); if (Number.isFinite(n)) apply(n); setEditing(false); }
-            if (ev.key === 'Escape') setEditing(false);
-          }}
-        />
-      ) : (
-        <div
-          className={`h-7 w-[68px] shrink-0 cursor-ew-resize select-none touch-none rounded px-1 text-right font-mono text-[12px] leading-7 ${changed ? 'bg-amber-500/25 text-amber-200' : 'bg-black/40 text-white'}`}
-          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-          title="左右にドラッグで増減 / タップで直接入力"
-        >{fmt(value, step)}</div>
-      )}
-      <button
-        className="h-7 w-7 shrink-0 rounded bg-white/10 text-[15px] leading-none text-white/80 active:bg-white/25"
-        onPointerDown={() => holdStart(1)} onPointerUp={holdEnd} onPointerLeave={holdEnd} onPointerCancel={holdEnd}
-        aria-label={`${field.label} を増やす`}
-      >＋</button>
-      <div className="w-6 shrink-0 text-[9px] text-white/40">{UNIT_SUFFIX[field.kind]}</div>
-      {onPin && (
+    <div className="py-[2px]">
+      <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1 truncate text-[11px] text-white/70" title={field.hint ?? field.path}>
+          {withSection && <span className="text-white/40">{field.section}・</span>}{field.label}
+        </div>
         <button
-          className={`h-7 w-7 shrink-0 rounded text-[12px] leading-none ${pinned ? 'bg-amber-400 text-black' : 'bg-white/10 text-white/50'}`}
-          onClick={onPin}
-          title="下端に残して、戦いながら回す"
-          aria-label={`${field.label} をピン留め`}
-        >📌</button>
+          className="h-7 w-7 shrink-0 rounded bg-white/10 text-[15px] leading-none text-white/80 active:bg-white/25"
+          onPointerDown={() => holdStart(-1)} onPointerUp={holdEnd} onPointerLeave={holdEnd} onPointerCancel={holdEnd}
+          aria-label={`${field.label} を減らす`}
+        >−</button>
+        {editing ? (
+          <input
+            autoFocus type="number" inputMode="decimal" value={draft}
+            className="h-7 w-[68px] shrink-0 rounded bg-black/60 px-1 text-right font-mono text-[12px] text-white outline-none ring-1 ring-emerald-400"
+            onChange={ev => setDraft(ev.target.value)}
+            onBlur={() => { const n = Number(draft); if (Number.isFinite(n)) apply(n); setEditing(false); }}
+            onKeyDown={ev => {
+              if (ev.key === 'Enter') { const n = Number(draft); if (Number.isFinite(n)) apply(n); setEditing(false); }
+              if (ev.key === 'Escape') setEditing(false);
+            }}
+          />
+        ) : (
+          <div
+            className={`h-7 w-[68px] shrink-0 cursor-ew-resize select-none touch-none rounded px-1 text-right font-mono text-[12px] leading-7 ${changed ? 'bg-amber-500/25 text-amber-200' : 'bg-black/40 text-white'}`}
+            onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+            title="左右にドラッグで増減 / タップで直接入力"
+          >{fmt(value, step)}</div>
+        )}
+        <button
+          className="h-7 w-7 shrink-0 rounded bg-white/10 text-[15px] leading-none text-white/80 active:bg-white/25"
+          onPointerDown={() => holdStart(1)} onPointerUp={holdEnd} onPointerLeave={holdEnd} onPointerCancel={holdEnd}
+          aria-label={`${field.label} を増やす`}
+        >＋</button>
+        <div className="w-6 shrink-0 text-[9px] text-white/40">{UNIT_SUFFIX[field.kind]}</div>
+        {onPin && (
+          <button
+            className={`h-7 w-7 shrink-0 rounded text-[12px] leading-none ${pinned ? 'bg-amber-400 text-black' : 'bg-white/10 text-white/50'}`}
+            onClick={onPin}
+            title="下端に残して、戦いながら回す"
+            aria-label={`${field.label} をピン留め`}
+          >📌</button>
+        )}
+      </div>
+      {/* §14-2②: ヘルプON時だけ、欄の下へ hint を本文として出す(PCホバーの title 頼みをやめる=§14-1)。 */}
+      {help && field.hint && (
+        <div className="pl-0.5 text-[10px] leading-snug text-sky-200/70">{field.hint}</div>
       )}
     </div>
   );
@@ -157,11 +165,16 @@ const TextRow = ({ field, value, onChange }: {
   </div>
 );
 
-// ---- 記憶(localStorage)。開閉・タブ・ピン・シートの段はすべて端末に覚える -----------------------
+// ---- 記憶(localStorage)。開閉・タブ・ピン・シートの高さ・ヘルプはすべて端末に覚える -----------------
 const OPEN_KEY = 'bossmaker.open.v1';
 const PIN_KEY = 'bossmaker.pins.v1';
-const SNAP_KEY = 'bossmaker.snap.v1';
+// ★シートの高さは v0.25.2655 で3段スナップ(閉/半/全)から**連続px**へ変えたので**新しいキー**にする
+// (旧キーの 'half'/'full' は数値として読めない=事故る。読めない値は既定へフォールバックする作法で
+// 実質互換は保つが、キー自体は分けて古い値を誤読しないようにする)。
+const SHEET_PX_KEY = 'bossmaker.sheetpx.v1';
 const TAB_KEY = 'bossmaker.tab.v1';
+// §14 ヘルプのON/OFF(既定OFF=普段は邪魔にならない)。
+const HELP_KEY = 'bossmaker.help.v1';
 export const MAX_PINS = 3; // 多すぎると画面を食う(社長指示「2〜3個」)
 
 const loadSet = (key: string, boss: string): Set<string> => {
@@ -188,7 +201,7 @@ const summarize = (fs: TuningField[], table: Record<string, unknown>): string =>
   }).join(' ');
 
 // ---- タブ1枚ぶんの中身。**セクション単位で開閉**する --------------------------------------------
-const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin, onPlay, playState, bump }: {
+const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin, onPlay, playState, bump, help }: {
   group: 'behavior' | 'move';
   entry: BossTuningEntry;
   open: Set<string>;
@@ -200,6 +213,8 @@ const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin
   onPlay: (key: string) => void;
   playState: { verb: string | null; loop: string | null };
   bump: number;
+  /** §14 ヘルプがONか。ON時だけ見出しの説明・欄のhintを本文として出す(既定OFF)。 */
+  help: boolean;
 }) => {
   // セクションの並び = スキーマの出現順 + 欄を持たない再生専用セクション(移動語彙)を末尾へ。
   // ★`fieldVisible` を通す=**足していない射撃枠は見出しごと消える**(欄が0本なら Map に入らない)。
@@ -246,6 +261,12 @@ const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin
                 >▶</button>
               )}
             </div>
+            {/* §14-2①: ヘルプON時だけ、見出しの直下に節の説明を出す(畳んでいても見える=中を開く前の目印)。 */}
+            {help && entry.sectionHelp?.[sec] && (
+              <div className="whitespace-pre-line px-1.5 pb-1 text-[10px] leading-snug text-sky-200/80">
+                {entry.sectionHelp[sec]}
+              </div>
+            )}
             {isOpen && (
               <div className="px-1.5 pb-1.5">
                 {/* 欄を持たない再生専用セクション(移動語彙)は、ここへボタンを並べる。 */}
@@ -277,6 +298,7 @@ const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin
                     value={getAtPath(entry.table, f.path) ?? 0}
                     changed={getAtPath(entry.table, f.path) !== getAtPath(entry.defaults, f.path)}
                     pinned={pins.has(f.path)}
+                    help={help}
                     onChange={v => onChange(f.path, v)}
                     onPin={() => onPin(f.path)}
                   />
@@ -290,18 +312,14 @@ const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin
   );
 };
 
-// ---- シートの段(3段) ---------------------------------------------------------------------------
-type Snap = 'closed' | 'half' | 'full';
-const HANDLE_PX = 34;                       // 閉じている時に残る高さ(つまみ+タブの帯)
-const snapPx = (s: Snap, vh: number): number =>
-  s === 'closed' ? HANDLE_PX : s === 'half' ? Math.round(vh * 0.46) : Math.round(vh * 0.88);
-/** 高さから一番近い段を選ぶ(離した瞬間の確定)。 */
-const nearestSnap = (px: number, vh: number): Snap => {
-  const cands: Snap[] = ['closed', 'half', 'full'];
-  let best: Snap = 'half', bd = Infinity;
-  for (const c of cands) { const d = Math.abs(snapPx(c, vh) - px); if (d < bd) { bd = d; best = c; } }
-  return best;
-};
+// ---- シートの高さ(連続値・社長実機報告v0.25.2655で3段スナップから変更) -----------------------------
+// 経緯: 全画面(旧 88vh)にすると**上端がツールバー(実測70〜90px)の下に潜り**、つまみが掴めず
+// 「大きさを変えられない」「上に戻れない(実際はスクロール先頭だが先頭行がツールバーの裏で見えない)」
+// という事故になった。3段固定ではこの食い違いを吸収できないので、**上限を実測で動的にクランプする
+// 連続pxドラッグ**へ変える。
+const HANDLE_PX = 40;                       // 閉じている時に残る高さ(つまみの帯。掴みやすく少し厚くした)
+const SHEET_MARGIN_PX = 8;                  // ツールバー(+ピン行)の下に余す最小の隙間
+const SHEET_DEFAULT_FRAC = 0.46;            // 初回(保存が無い時)の既定=旧「半分」相当
 
 // ---- 本体 --------------------------------------------------------------------------------------
 export const BossMakerPanel = () => {
@@ -319,13 +337,20 @@ export const BossMakerPanel = () => {
   const [openSecs, setOpenSecs] = useState<Set<string>>(() => loadSet(OPEN_KEY, bossType));
   const [pins, setPins] = useState<Set<string>>(() => loadSet(PIN_KEY, bossType));
   const [tab, setTab] = useState<'behavior' | 'move'>(() => (loadStr(TAB_KEY, bossType, 'move') === 'behavior' ? 'behavior' : 'move'));
-  const [sheet, setSheet] = useState<Snap>(() => {
-    const v = loadStr(SNAP_KEY, bossType, 'half');
-    return v === 'closed' || v === 'full' ? v : 'half';
+  // §14 ヘルプ(既定OFF)。既存の🛡⏸⬚🔁👁と同じ作法=localStorageへ端末に覚える(loadStr/saveStr流用)。
+  const [help, setHelp] = useState<boolean>(() => loadStr(HELP_KEY, bossType, '0') === '1');
+  const [sheetPx, setSheetPxState] = useState<number>(() => {
+    const raw = Number(loadStr(SHEET_PX_KEY, bossType, ''));
+    // 読めない(空/非数値=旧キーの 'half' 等を誤って踏んだ場合も含む)なら既定へフォールバック。
+    return Number.isFinite(raw) && raw > 0 ? raw : Math.round(window.innerHeight * SHEET_DEFAULT_FRAC);
   });
   const [loop, setLoop] = useState(false);
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const pinRowRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ y: number; h: number } | null>(null);
+  // タップで閉じた時に「直前の開き高さ」へ戻すための記憶(閉じている間は更新しない)。
+  const lastOpenPxRef = useRef<number>(sheetPx > HANDLE_PX + 1 ? sheetPx : Math.round(window.innerHeight * SHEET_DEFAULT_FRAC));
 
   const toggleSec = useCallback((sec: string) => {
     setOpenSecs(prev => {
@@ -360,7 +385,46 @@ export const BossMakerPanel = () => {
   }, []);
 
   const setTabSaved = useCallback((t: 'behavior' | 'move') => { saveStr(TAB_KEY, bossType, t); setTab(t); }, []);
-  const setSheetSaved = useCallback((s: Snap) => { saveStr(SNAP_KEY, bossType, s); setSheet(s); }, []);
+  const setHelpSaved = useCallback((v: boolean) => { saveStr(HELP_KEY, bossType, v ? '1' : '0'); setHelp(v); }, []);
+
+  // ---- シートの高さの上限(社長実機報告v0.25.2655) ------------------------------------------------
+  // **ツールバー(+出ていればピン行)の高さを実測**して引く。決め打ち定数にしないのは、safe-area・
+  // 折り返し・ピンの本数で毎回変わるため(これを決め打ちにしたのが今回の事故の本質)。
+  const clampBounds = useCallback((): { min: number; max: number } => {
+    const toolbarH = toolbarRef.current?.getBoundingClientRect().height ?? 0;
+    const pinH = pinRowRef.current?.getBoundingClientRect().height ?? 0;
+    const max = Math.max(HANDLE_PX, window.innerHeight - toolbarH - pinH - SHEET_MARGIN_PX);
+    return { min: HANDLE_PX, max };
+  }, []);
+
+  /** 高さを確定する(クランプ+保存+state更新の1本化)。ドラッグ「中」はここを通さない(DOM直操作)。 */
+  const setSheetPx = useCallback((px: number) => {
+    const { min, max } = clampBounds();
+    const next = Math.min(Math.max(Math.round(px), min), max);
+    if (next > min + 1) lastOpenPxRef.current = next; // 開いた高さだけ記憶(閉タップの戻り先)
+    saveStr(SHEET_PX_KEY, bossType, String(next));
+    setSheetPxState(next);
+  }, [clampBounds]);
+
+  // 初回描画後 + リサイズ/回転 + ピンの本数が変わった時に**現在の高さを上限内へ再クランプ**する。
+  // ★これが今回のバグの直し所そのもの: 上限を実測してから、はみ出ていれば詰め直す。
+  // useLayoutEffect=ペイント前に直すので「一瞬だけツールバーへ潜る」ちらつきを避ける。
+  useLayoutEffect(() => {
+    const reclamp = () => {
+      const { min, max } = clampBounds();
+      setSheetPxState(prev => {
+        const next = Math.min(Math.max(prev, min), max);
+        if (next === prev) return prev;
+        saveStr(SHEET_PX_KEY, bossType, String(next));
+        const el = sheetRef.current;
+        if (el) el.style.height = `${next}px`;
+        return next;
+      });
+    };
+    reclamp();
+    window.addEventListener('resize', reclamp);
+    return () => window.removeEventListener('resize', reclamp);
+  }, [clampBounds, pins]);
 
   // ---- 自動保存(社長要望v0.25.2631「毎回やり直すのは無理」) --------------------------------------
   // ★**適用は部屋の中だけ**。数値テーブルは本編と同じ実体なので、部屋を出る時は**必ず既定へ戻す**
@@ -439,6 +503,8 @@ export const BossMakerPanel = () => {
   }, [entry, loop]);
 
   // ---- つまみのドラッグ。**ドラッグ中は state を触らない**(DOMを直接動かす=再描画ゼロ) ----------
+  // 上限は毎回 clampBounds() で実測し直す(ドラッグ開始時にツールバー/ピン行の高さが変わっている
+  // 可能性があるため=固定値を握ったままにしない)。
   const onHandleDown = (e: React.PointerEvent) => {
     const el = sheetRef.current;
     if (!el) return;
@@ -449,23 +515,24 @@ export const BossMakerPanel = () => {
   const onHandleMove = (e: React.PointerEvent) => {
     const d = dragRef.current, el = sheetRef.current;
     if (!d || !el) return;
-    const vh = window.innerHeight;
-    const h = Math.max(HANDLE_PX, Math.min(vh * 0.92, d.h + (d.y - e.clientY)));
+    const { min, max } = clampBounds();
+    const h = Math.max(min, Math.min(max, d.h + (d.y - e.clientY)));
     el.style.height = `${h}px`;
   };
   const onHandleUp = () => {
     const d = dragRef.current, el = sheetRef.current;
     dragRef.current = null;
     if (!d || !el) return;
-    const vh = window.innerHeight;
+    const { min } = clampBounds();
     const h = el.getBoundingClientRect().height;
     el.style.transition = '';
     el.style.height = '';
-    // 動かしていない(タップ)なら段を1つ進める=つまみを叩くだけで開け閉めできる。
-    const next = Math.abs(h - d.h) < 6
-      ? (sheet === 'closed' ? 'half' : sheet === 'half' ? 'full' : 'closed')
-      : nearestSnap(h, vh);
-    setSheetSaved(next);
+    // 動かしていない(タップ)なら「閉じる ⇄ 直前の開き高さ」をトグル(ドラッグが主・タップは副)。
+    if (Math.abs(h - d.h) < 6) {
+      setSheetPx(d.h <= min + 1 ? lastOpenPxRef.current : min);
+    } else {
+      setSheetPx(h);
+    }
   };
 
   if (!active || !entry) return null;
@@ -474,6 +541,11 @@ export const BossMakerPanel = () => {
   const playState = entry.playState?.() ?? { verb: null, loop: null };
   // 消した射撃枠がピン行に残り続けないよう、ピンも表示条件を通す。
   const pinFields = entry.fields.filter(f => pins.has(f.path) && fieldVisible(entry.table, f));
+
+  // シートの開閉状態と目盛り表示(段が連続値になったので「閉/半/全」の代わりに%を出す)。
+  const { min: sheetMin, max: sheetMax } = clampBounds();
+  const sheetIsOpen = sheetPx > sheetMin + 1;
+  const sheetPct = sheetMax > sheetMin ? Math.round(((sheetPx - sheetMin) / (sheetMax - sheetMin)) * 100) : 0;
 
   const ico = 'flex h-8 w-8 shrink-0 items-center justify-center rounded text-[14px] leading-none';
   const on = 'bg-emerald-500/85 text-black';
@@ -487,6 +559,7 @@ export const BossMakerPanel = () => {
     <div className="pointer-events-none fixed inset-0 z-[60] select-none">
       {/* ── 上端の固定行: ライブ表示 + アイコン列(横スクロール) ── */}
       <div
+        ref={toolbarRef}
         className="pointer-events-auto absolute left-0 right-0 top-0 bg-gradient-to-b from-black/85 to-black/0 px-1 pb-2"
         style={{ paddingTop: 'max(env(safe-area-inset-top), 4px)' }}
       >
@@ -501,6 +574,8 @@ export const BossMakerPanel = () => {
           <button className={`${ico} ${showHitbox ? on : off}`} onClick={() => setBossMaker({ showHitbox: !showHitbox })} title="当たり判定" aria-label="判定">⬚</button>
           <button className={`${ico} ${loop ? on : off}`} onClick={() => setLoop(l => !l)} title="再生を繰り返す" aria-label="ループ">🔁</button>
           <button className={`${ico} ${hideHud ? on : off}`} onClick={() => setBossMaker({ hideHud: !hideHud })} title="ゲームHUDを消す" aria-label="HUD">👁</button>
+          {/* §14 ヘルプ。既存トグルと同じ見た目・同じ作法(localStorageへ端末記憶)。既定OFF。 */}
+          <button className={`${ico} ${help ? on : off}`} onClick={() => setHelpSaved(!help)} title="ヘルプ(用語の説明)" aria-label="ヘルプ">？</button>
           <div className="w-1 shrink-0" />
           <button className={`${ico} ${off}`} onClick={() => setAllSecs(false)} title="全部畳む" aria-label="全部畳む">⇧</button>
           <button className={`${ico} ${off}`} onClick={() => setAllSecs(true)} title="全部開く" aria-label="全部開く">⇩</button>
@@ -521,15 +596,16 @@ export const BossMakerPanel = () => {
         </div>
       </div>
 
-      {/* ── ボトムシート: つまみをドラッグして 閉じる/半分/全画面 ── */}
+      {/* ── ボトムシート: つまみをドラッグして高さを変える(社長実機報告v0.25.2655で連続px化) ── */}
       <div
         ref={sheetRef}
         className="pointer-events-auto absolute bottom-0 left-0 right-0 flex flex-col rounded-t-xl bg-black/85 backdrop-blur-sm transition-[height] duration-150"
-        style={{ height: `${sheet === 'closed' ? HANDLE_PX : sheet === 'half' ? 46 : 88}${sheet === 'closed' ? 'px' : 'vh'}` }}
+        style={{ height: `${sheetPx}px` }}
       >
-        {/* ③ ピン行: **シートを閉じても残る**(これを回しながら戦う)。シートの上に浮かせる。 */}
+        {/* ③ ピン行: **シートを閉じても残る**(これを回しながら戦う)。シートの上に浮かせる。
+            ★このピン行の高さも clampBounds() が引いている(全画面まで上げてもツールバーへ潜らない)。 */}
         {pinFields.length > 0 && (
-          <div className="pointer-events-auto absolute bottom-full left-0 right-0 mb-1 px-1">
+          <div ref={pinRowRef} className="pointer-events-auto absolute bottom-full left-0 right-0 mb-1 px-1">
             <div className="rounded-lg bg-black/80 px-1.5 py-0.5">
               {pinFields.map(f => (
                 <NumberScrub
@@ -545,20 +621,18 @@ export const BossMakerPanel = () => {
           </div>
         )}
 
-        {/* つまみ(ドラッグ=無段階、タップ=次の段へ) */}
+        {/* つまみ(常に表示・掴みやすく厚め)。ドラッグ=無段階、タップ=閉じる⇄直前の高さ。 */}
         <div
-          className="flex shrink-0 cursor-ns-resize touch-none items-center justify-center py-1"
+          className="flex shrink-0 cursor-ns-resize touch-none items-center justify-center py-2"
           onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}
-          title="ドラッグで 閉じる/半分/全画面"
+          title="ドラッグで高さを変える / タップで閉じる⇄戻す"
           aria-label="シートのつまみ"
         >
-          <div className="h-1 w-12 rounded-full bg-white/40" />
-          <span className="ml-2 text-[10px] text-white/40">
-            {sheet === 'closed' ? '閉' : sheet === 'half' ? '半' : '全'}
-          </span>
+          <div className="h-1.5 w-14 rounded-full bg-white/40" />
+          <span className="ml-2 text-[10px] text-white/40">{sheetIsOpen ? `${sheetPct}%` : '閉'}</span>
         </div>
 
-        {sheet !== 'closed' && (
+        {sheetIsOpen && (
           <>
             {/* ② タブ(スキーマの group からそのまま作る=ボスを足しても手書きしない) */}
             <div className="flex shrink-0 gap-1 px-1.5 pb-1">
@@ -578,11 +652,13 @@ export const BossMakerPanel = () => {
                   api={entry.scripts}
                   note={note}
                   onChanged={m => { setNote(m); saveSoon(); bump(n => n + 1); }}
+                  help={help ? entry.sectionHelp?.['台本'] : undefined}
                 />
               )}
               <SectionList
                 group={tab} entry={entry} open={openSecs} toggle={toggleSec} pins={pins}
                 onChange={onChange} onText={onText} onPin={togglePin} onPlay={play} playState={playState} bump={rev}
+                help={help}
               />
             </div>
 

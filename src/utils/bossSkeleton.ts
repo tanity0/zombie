@@ -47,6 +47,13 @@ export interface StringScript<M extends string> {
   weight: number;
   /** 段の並び。**フェーズ上限(stringMaxLen)で先頭から切り詰めて使う**=P2で1段伸びる。 */
   moves: readonly M[];
+  /**
+   * 一時的にオフ(BOSS_MAKER.md §15・台本の on/off)。true=抽選の対象から外す。
+   * **重みは保持したまま**外せる(重み0にすると値が失われる/削除すると段の並びが失われる、を避ける
+   * ための第3の手段=A/B比較の基本操作)。未指定=on。**既存の保存/台本はこのキーを持たないので、
+   * そのまま「有効」として読める**(後方互換)。
+   */
+  off?: boolean;
 }
 
 /** フェーズ別のストリング上限段数。 */

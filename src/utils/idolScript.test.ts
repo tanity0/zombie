@@ -316,6 +316,43 @@ describe('射撃部品(shots)', () => {
   });
 });
 
+// ==== 台本の on/off(BOSS_MAKER.md §15)。idolStrings() が抽選対象から off を落とすことを確認する ====
+describe('台本の on/off — idolStrings()', () => {
+  afterEach(() => {
+    // ★テーブルは本編と同じ実体なので、触ったら必ず既定へ戻す(他テストへ漏らさない)。
+    for (let i = 0; i < IDOL_TUNING.strings.length; i++) delete IDOL_TUNING.strings[i].off;
+  });
+
+  it('触っていない時は idolStrings() が IDOL_TUNING.strings と同じ参照(既存不変条件を崩さない)', () => {
+    expect(idolStrings()).toBe(IDOL_TUNING.strings);
+  });
+
+  it('off にした台本は idolStrings() から落ちる。**重みはテーブル側に残る**(onへ戻せば復活)', () => {
+    const targetWeight = IDOL_TUNING.strings[0].weight;
+    IDOL_TUNING.strings[0].off = true;
+    const ss = idolStrings();
+    expect(ss).not.toBe(IDOL_TUNING.strings);            // フィルタしたので別配列
+    expect(ss.includes(IDOL_TUNING.strings[0])).toBe(false); // off にした1本目が混ざらない
+    expect(ss.length).toBe(IDOL_TUNING.strings.length - 1);
+    expect(IDOL_TUNING.strings[0].weight).toBe(targetWeight); // 重みは消えていない
+
+    IDOL_TUNING.strings[0].off = false;
+    expect(idolStrings().includes(IDOL_TUNING.strings[0])).toBe(true); // onに戻すと復活
+  });
+
+  it('抽選(pickStringScript)にも off は渡らない', () => {
+    // melee帯の2本のうち片方をoffにし、もう片方だけが出ることを確認する。
+    const meleeScripts = IDOL_TUNING.strings.filter(s => s.zone === 'melee');
+    expect(meleeScripts.length).toBeGreaterThanOrEqual(2);
+    meleeScripts[0].off = true;
+    for (let i = 0; i < 20; i++) {
+      const seq = pickStringScript(idolStrings(), 'melee', 1, IDOL_STRING_LEN, allReady(), () => 0.01);
+      expect(seq).not.toBeNull();
+      expect(seq).toEqual(meleeScripts[1].moves.slice(0, stringMaxLen(1, IDOL_STRING_LEN)));
+    }
+  });
+});
+
 // ==== エフェクトの速さ(v0.25.2651・社長「拳とかダメージ判定早いのにエフェクト遅い」) ====
 describe('拳の伸び(idolFistReach)', () => {
   it('★判定の瞬間(u=1)に必ず伸び切る — 速さを変えても着弾の瞬間は動かない', () => {

@@ -636,6 +636,22 @@ describe('台本エディタ(BossScriptApi)', () => {
     expect(s.serialize()).toBe(before);
   });
 
+  it('toggleScript(BOSS_MAKER.md §15)の往復: コピー→貼り戻しでon/offが戻る', () => {
+    const { e, s } = api();
+    const r = s.edit({ t: 'toggleScript', si: 0 });
+    expect(r.ok).toBe(true);
+    expect(s.rows()[0].off).toBe(true);
+    const txt = formatTuningText(e, 'vX');
+    const before = s.serialize();
+
+    resetTuning(e);
+    expect(s.rows()[0].off).toBe(false);        // 既定へ戻すとonに戻る
+    const p = parseTuningText(e, txt);
+    expect(p.errors).toEqual([]);
+    expect(s.serialize()).toBe(before);
+    expect(s.rows()[0].off).toBe(true);          // 貼り戻すとoffが復元される
+  });
+
   it('★リセットで既定へ戻る(部屋を出た時に本編へ持ち出さない)', () => {
     const { e, s } = api();
     s.edit({ t: 'addScript' });
@@ -663,5 +679,33 @@ describe('台本エディタ(BossScriptApi)', () => {
     // 旧実装は `strings.0.weight` のように**添字**でパスを作っていたので、台本を1本消すと
     // 以降の重みが1つずつ手前の台本に化けていた。台本が可変になった以上、添字パスは持たない。
     expect(IDOL_TUNING_FIELDS.some(f => f.path.startsWith('strings.'))).toBe(false);
+  });
+});
+
+// ==== ヘルプ(§14)の宛先が実在すること ====
+//
+// ★この機能そのものが「説明があるのに見えていなかった」事故の後始末なので、
+// **説明の宛先が実在しない**(= またしても見えない)を機械で潰しておく。
+// 節の見出し文字列は `MOVE_LABEL`(例 '至近の殴り(punch)')が正で、
+// うっかり短い名前で書くと**そのセクションだけ永遠に説明が出ない**。
+describe('節の説明(sectionHelp)の宛先', () => {
+  it('★説明のキーが全部、実在する見出しである(出ない説明を作らない)', () => {
+    const e = getBossTuning('idol');
+    if (!e?.sectionHelp) throw new Error('idol の sectionHelp が未登録');
+    const real = new Set<string>([
+      ...e.fields.map(f => f.section),
+      ...(e.textFields ?? []).map(f => f.section),
+      ...(e.playables ?? []).map(p => p.section),
+      '台本',   // 台本エディタは fields を持たない専用の節
+    ]);
+    const dead = Object.keys(e.sectionHelp).filter(k => !real.has(k));
+    expect(dead, `実在しない見出しへの説明: ${dead.join(', ')}`).toEqual([]);
+  });
+
+  it('説明が空文字でない(キーだけ作って中身を忘れない)', () => {
+    const e = getBossTuning('idol');
+    for (const [k, v] of Object.entries(e?.sectionHelp ?? {})) {
+      expect(v.trim().length, `${k} の説明が空`).toBeGreaterThan(0);
+    }
   });
 });

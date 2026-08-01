@@ -63,6 +63,28 @@ export const setScriptWeight = <M extends string>(
   return OK;
 };
 
+/**
+ * 台本を on/off する(BOSS_MAKER.md §15「台本の on/off」)。**重みと段は一切触らない**——
+ * 消す/重み0にするのと違い、いつでも元どおりに戻せる一時的な除外。
+ * **最後に生きている(=on の)1本は off にできない**(全部offにすると removeScript の
+ * 「最後の1本」と同じ理由でボスが何もしなくなる)。
+ */
+export const toggleScript = <M extends string>(
+  list: StringScript<M>[], index: number,
+): ScriptEditResult => {
+  if (!inRange(index, list.length)) return { ok: false, message: '無い台本です' };
+  const turningOff = !list[index].off;
+  if (turningOff) {
+    const aliveAfter = list.filter((s, i) => i !== index && !s.off).length;
+    if (aliveAfter === 0) return { ok: false, message: '最後の1本はoffにできません(ボスが何もしなくなります)' };
+  }
+  // off:false を明示的に持たせない(既存の保存/直列化と形を揃える=旧来のオブジェクトと一致させる)。
+  const next: StringScript<M> = { ...list[index] };
+  if (turningOff) next.off = true; else delete next.off;
+  list[index] = next;
+  return { ok: true, message: turningOff ? `台本${index + 1}本目をoffにしました` : `台本${index + 1}本目をonに戻しました` };
+};
+
 /** 段の技を差し替える。 */
 export const setStep = <M extends string>(
   list: StringScript<M>[], si: number, mi: number, move: M,
@@ -126,8 +148,10 @@ export const stepCutoffIndex = (phase1Len: number, phase2Len: number): { p1: num
 // ---- 直列化(保存・コピー・貼り戻し) --------------------------------------------------------------
 // 形式: `zone|weight|move,move,...` を `;` で連結。**人が読めて1行に収まる**ことを優先
 // (機械用JSONの中に入れるので、行が増えると貼り付け文が読めなくなる)。
+// off(BOSS_MAKER.md §15-2-5)は **zone 側へ接頭辞 `-`** を付けて表す(例 `-near|40|fan,orb`)。
+// **接頭辞が無ければ従来どおり有効**=off を知らない古い保存もそのまま読める(後方互換)。
 export const serializeScripts = <M extends string>(list: readonly StringScript<M>[]): string =>
-  list.map(s => `${s.zone}|${s.weight}|${s.moves.join(',')}`).join(';');
+  list.map(s => `${s.off ? '-' : ''}${s.zone}|${s.weight}|${s.moves.join(',')}`).join(';');
 
 /**
  * 読み戻す。**壊れた行は捨てて残りを活かす**(1行の打ち間違いで全部消えると復旧できない)。
@@ -143,14 +167,19 @@ export const parseScripts = <M extends string>(
   for (const row of text.split(';')) {
     const part = row.split('|');
     if (part.length !== 3) continue;
-    const [zone, w, moves] = part;
+    const [zoneRaw, w, moves] = part;
+    // 先頭 `-` = off。無ければ(古い保存も含めて)on として読む。
+    const off = zoneRaw.startsWith('-');
+    const zone = off ? zoneRaw.slice(1) : zoneRaw;
     if (!okZone.has(zone)) continue;
     const weight = Number(w);
     if (!Number.isFinite(weight) || weight < 0) continue;
     const ms = moves.split(',').filter(m => okMove.has(m)) as M[];
     if (ms.length === 0) continue;
     if (out.length >= SCRIPT_MAX) break;
-    out.push({ zone: zone as BossZone, weight: Math.round(weight), moves: ms.slice(0, SCRIPT_STEP_MAX) });
+    const row2: StringScript<M> = { zone: zone as BossZone, weight: Math.round(weight), moves: ms.slice(0, SCRIPT_STEP_MAX) };
+    if (off) row2.off = true;
+    out.push(row2);
   }
   return out.length > 0 ? out : null;
 };
@@ -160,7 +189,11 @@ export const replaceScripts = <M extends string>(
   list: StringScript<M>[], next: readonly StringScript<M>[],
 ): void => {
   list.length = 0;
-  for (const s of next) list.push({ zone: s.zone, weight: s.weight, moves: [...s.moves] });
+  for (const s of next) {
+    const row: StringScript<M> = { zone: s.zone, weight: s.weight, moves: [...s.moves] };
+    if (s.off) row.off = true; // off も一緒に運ぶ(reset/deserializeの経路でここを通す)
+    list.push(row);
+  }
 };
 
 /**
@@ -172,11 +205,13 @@ export const scriptWarnings = <M extends string>(
 ): string[] => {
   const out: string[] = [];
   for (const z of zonesInUse) {
-    if (!list.some(s => s.zone === z && s.weight > 0)) {
+    // off の台本は「生きている」と数えない(BOSS_MAKER.md §15-2-6)= 重み0と同じ扱い。
+    if (!list.some(s => s.zone === z && !s.off && s.weight > 0)) {
       out.push(`${z}: 重み>0の台本が無い(この距離では何も出ない)`);
     }
   }
   for (const [i, s] of list.entries()) {
+    if (s.off) continue; // offは社長が意図して外した状態なので、個別の警告(段が空/重み0)は出さない
     if (s.moves.length === 0) out.push(`${i + 1}本目: 段が空`);
     if (s.weight === 0) out.push(`${i + 1}本目: 重み0(抽選に出ない)`);
   }

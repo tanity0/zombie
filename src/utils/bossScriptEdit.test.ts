@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  addScript, removeScript, setScriptZone, setScriptWeight,
+  addScript, removeScript, setScriptZone, setScriptWeight, toggleScript,
   setStep, insertStep, removeStep, moveStep, stepCutoffIndex,
   serializeScripts, parseScripts, replaceScripts, scriptWarnings,
   SCRIPT_MAX, SCRIPT_STEP_MAX,
@@ -152,5 +152,51 @@ describe('警告(止めずに気づかせる)', () => {
     expect(w.join()).toContain('far');
     expect(w.join()).toContain('1本目');   // 重み0
     expect(w.join()).not.toContain('2本目');
+  });
+  it('off の台本は「生きている」と数えない(BOSS_MAKER.md §15-2-6)', () => {
+    // near は重み>0のonが無い(1本目はoff・2本目は重み0)ので「出ない」警告が出る。
+    // 一方、offの行そのものについて「段が空」「重み0」の個別警告は出さない(社長が意図して外した状態)。
+    const w = scriptWarnings([
+      { zone: 'near', weight: 40, moves: ['fan'], off: true },
+      { zone: 'near', weight: 0, moves: ['aim'] },
+    ] as StringScript<M>[]);
+    expect(w.join()).toContain('near');
+    expect(w.join()).not.toContain('1本目'); // off行は個別警告の対象外
+    expect(w.join()).toContain('2本目');     // onで重み0の行は従来どおり警告
+  });
+});
+
+describe('台本の on/off(BOSS_MAKER.md §15・A/B比較のための一時オフ)', () => {
+  it('off にしても重みと段の並びは消えない(onへ戻すと元どおり)', () => {
+    const l = base();
+    const r = toggleScript(l, 0);
+    expect(r.ok).toBe(true);
+    expect(l[0]).toEqual({ zone: 'melee', weight: 50, moves: ['punch', 'fan'], off: true });
+    const r2 = toggleScript(l, 0);
+    expect(r2.ok).toBe(true);
+    expect(l[0]).toEqual({ zone: 'melee', weight: 50, moves: ['punch', 'fan'] }); // off:false を残さない
+  });
+  it('最後に生きている(on の)1本は off にできない', () => {
+    const l = base();
+    toggleScript(l, 0);                       // 1本目をoff→2本目だけがon
+    const r = toggleScript(l, 1);              // 最後のonをoffにしようとする
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain('最後の1本');
+    expect(l[1].off).toBeFalsy();              // 弾かれたので変化しない
+  });
+  it('直列化の往復: off は zone の前に `-` が付き、読み戻すと off が復元される', () => {
+    const l = base();
+    toggleScript(l, 1); // 2本目をoff
+    const txt = serializeScripts(l);
+    expect(txt).toBe('melee|50|punch,fan;-near|40|fan,orb,aim');
+    const back = parseScripts(txt, MOVES);
+    expect(back).toEqual(l);
+    expect(back?.[1].off).toBe(true);
+    expect(back?.[0].off).toBeUndefined();
+  });
+  it('★接頭辞なしの古い形式がそのまま読める(offを知らない保存=全部on)', () => {
+    const got = parseScripts('melee|50|punch,fan;near|40|fan,orb,aim', MOVES);
+    expect(got).toEqual(base());
+    expect(got?.every(s => s.off === undefined)).toBe(true);
   });
 });

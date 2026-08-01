@@ -79,6 +79,12 @@ export interface BossTuningEntry {
    * `section` 文字列そのものを後から書き換えることはできない)。
    */
   sectionLabel?: (section: string) => string;
+  /**
+   * 節(section)の説明文(BOSS_MAKER.md §14 ヘルプ・未定義=そのボスは節の説明に未対応)。
+   * ヘルプONの時だけ、UIが見出しの直下にそのまま表示する。**UIはボスを知らないまま出す**
+   * ——ボス側がこの1個(section文字列→説明文の辞書)を宣言すれば説明が生える。
+   */
+  sectionHelp?: Record<string, string>;
   /** 「技を1つ足す」ボタン(未定義=そのボスは追加に未対応)。押すと空きスロットを1つ有効にする。 */
   addMove?: () => { ok: boolean; message: string };
   /**
@@ -100,7 +106,7 @@ export interface BossTuningEntry {
  */
 export interface BossScriptApi {
   /** いまの台本(表示用のコピー)。 */
-  rows: () => { zone: string; zoneLabel: string; weight: number; moves: { key: string; label: string }[] }[];
+  rows: () => { zone: string; zoneLabel: string; weight: number; off: boolean; moves: { key: string; label: string }[] }[];
   /** 段に置ける技の一覧(射撃枠を足せば増える)。 */
   moveChoices: () => { key: string; label: string }[];
   /** 距離帯の一覧。 */
@@ -124,6 +130,7 @@ export type BossScriptOp =
   | { t: 'removeScript'; si: number }
   | { t: 'setZone'; si: number; zone: string }
   | { t: 'setWeight'; si: number; weight: number }
+  | { t: 'toggleScript'; si: number }
   | { t: 'setStep'; si: number; mi: number; move: string }
   | { t: 'insertStep'; si: number; mi: number; move: string }
   | { t: 'removeStep'; si: number; mi: number }
