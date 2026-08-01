@@ -7026,10 +7026,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 衛生兵が1秒後には回復しちゃう」)。ハンターのジャンプ攻撃のような大ダメージでもHP1で踏みとどまる。
     // 教習の途中でゲームオーバーになると台本が最初からやり直しになり、教える順序が成立しない。
     // ※回復(衛生兵)は useGameLoop 側の台本が1秒後に行う。ここは「死なせない」だけ。
-    // v0.25.2621(ボスメーカー): 無敵ONの間も**同じ機構**で死なせない(HP1で踏みとどまる)。
-    // 「ダメージを受けるが死なない・HPは減らして表示だけする」(BOSS_MAKER.md §1-2)ため、
-    // ダメージ0にはせず上限だけ削る=当たったことが数字で分かる。
-    const noDeath = get().farBackdrop === 'tutorial' || (get().bossMaker.active && get().bossMaker.invincible);
+    // v0.25.2630(社長裁定「おねがい」): **ボスメーカーの無敵を訓練(M0)と別扱いにする。**
+    //
+    // 事故(社長報告「殴り、狙撃線は何も食らってない」): 当初は両方を同じ `noDeath` 機構
+    // (=HP1で踏みとどまる)に載せていた。するとHPが1に達した瞬間から
+    // `Math.max(0, player.health - 1)` が 0 になり、**以降どんな技を食らっても amount=0**。
+    // ダメージ数字・シェイクは `amount > 0` を条件にしているので**全部止まる**。
+    // しかも技によって見え方が割れた:
+    //   ・**爆風経路の技** … `combatTick` が player-damage SE を**無条件**で鳴らす ⇒「点滅とSEはなる」
+    //   ・**狙撃線** … `damagePlayer` を直接呼ぶだけでSEを鳴らさない ⇒ **本当に何も出ない**
+    // 社長の「この二つは何もない」という観測はこの割れ方そのものだった。
+    //
+    // 直し方: メーカーの無敵は **HPを一切減らさない**代わりに **ダメージは満額で通す**
+    // (=数字・フラッシュ・シェイク・被弾ノックバックが正しく出る)。
+    // 「**当たったことが分かる**」がこの部屋の目的(BOSS_MAKER.md §1-2)なので、こちらが正しい。
+    // 訓練(M0)の「HP1で踏みとどまる」は**従来どおり**(社長指示v0.25.2302・意図が別物)。
+    const makerInvincible = get().bossMaker.active && get().bossMaker.invincible;
+    const noDeath = get().farBackdrop === 'tutorial';
     const amount = noDeath && skilled > 0
       ? Math.min(skilled, Math.max(0, player.health - 1))
       : skilled;
@@ -7038,7 +7051,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 「その技を食らった」事実は同じなので、分岐より前のここで1回だけ)。挙動には一切影響しない。
     if (amount > 0 && damageSourceMove !== undefined) notifyMoveDamage(damageSourceMove);
 
-    const wouldDie = player.health - amount <= 0;
+    // メーカーの無敵中はHPを減らさないので構造的にも死なないが、明示しておく(ワクチン発動も抑止)。
+    const wouldDie = !makerInvincible && player.health - amount <= 0;
     if (wouldDie && player.vaccineRevives > 0) {
       set(state => ({
         shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
@@ -7080,7 +7094,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     set(state => {
-      const newHealth = Math.max(0, state.player.health - amount);
+      // v0.25.2630: メーカーの無敵は**HPを減らさない**。amount は満額のまま通してあるので、
+      // ダメージ数字・フラッシュ・シェイク・ノックバックは通常どおり出る=「当たった」が必ず分かる。
+      const newHealth = makerInvincible ? state.player.health : Math.max(0, state.player.health - amount);
       return {
         // 被弾総量(survivalScore用)。実ダメージ(amount>0)のみ加算。
         gameStats: amount > 0 ? { ...state.gameStats, damageTaken: state.gameStats.damageTaken + amount } : state.gameStats,
