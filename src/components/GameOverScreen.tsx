@@ -66,9 +66,11 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     const first = result.stages.find(stage => stage.id === rep.id);
     if (!first) return `repeat: ${rep.label} avg ${rep.avgFps.toFixed(1)} Δ${rep.deltaMs >= 0 ? '+' : ''}${rep.deltaMs.toFixed(1)}ms`;
     const shift = rep.deltaMs - first.deltaMs;
+    // fx/n も出す: **検算段が本当に同じ負荷を測ったか**の検算(数が違えば熱ダレではなく実装ミス)。
     return `repeat: ${rep.label} ${first.avgFps.toFixed(1)} → ${rep.avgFps.toFixed(1)} `
       + `(Δ${first.deltaMs >= 0 ? '+' : ''}${first.deltaMs.toFixed(1)} → Δ${rep.deltaMs >= 0 ? '+' : ''}${rep.deltaMs.toFixed(1)}ms, `
-      + `shift ${shift >= 0 ? '+' : ''}${shift.toFixed(1)}ms)`;
+      + `shift ${shift >= 0 ? '+' : ''}${shift.toFixed(1)}ms) `
+      + `fx ${first.maxFx}→${rep.maxFx} enemy ${first.maxEnemies}→${rep.maxEnemies} sd ${first.sdMs.toFixed(1)}→${rep.sdMs.toFixed(1)} n ${first.sampleCount}→${rep.sampleCount}`;
   })();
 
   // ★計測条件(URLのツマミ)を結果に焼き込む(v0.25.2682)。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2692',
+    items: [
+      'ゲーム内容の変更はありません（計測機能の基準測定を作り直しました）。',
+    ],
+  },
+  {
     version: '0.25.2691',
     items: [
       'ゲーム内容の変更はありません（計測機能の進捗バーが途中で止まって見える表示を直しました）。',
