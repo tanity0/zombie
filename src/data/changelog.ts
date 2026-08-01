@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2658',
+    items: [
+      '画面外のボスマークが出るのは「ボスと交戦中」の間だけになりました。逃げてボスが巣へ戻った後は、マークも消えます。',
+    ],
+  },
+  {
     version: '0.25.2657',
     items: [
       'ボスが画面の外に出ている間、画面の縁にボスの居る方角のマークが出るようになりました（裏ボス・天使・グレンなど、一騎打ちの相手）。',

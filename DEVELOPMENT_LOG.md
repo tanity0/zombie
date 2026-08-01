@@ -1,5 +1,32 @@
 # Development Log
 
+## v0.25.2658 — ボスマークは「交戦中」だけ(社長指示)【2026-08-01 19:15 JST】
+
+> あ、ちなみに画面外のボスマークはボスと交戦中だけね。
+
+v0.25.2657 は「ボスが生きている」で出していた。裏ボスは**逃げても巣で復活待機したまま生き続ける**ので、
+そのままだと**巣を指す矢印がランの最後まで残る**。「居る」と「交戦中」は別物だった。
+
+### 交戦中の定義(`utils/bossMarker.ts` の `isEngagedBoss`・純関数)
+1. **帰巣/離脱中ではない**(`bossState !== 'return'`)。`'return'` を書くのは裏ボス4体の
+   コントローラ(`useGameLoop.ts:4391/4401`)だけ=天使/idol/グレンは常に交戦中扱い
+   (グレンはリーシュしない仕様なので正しい)。
+2. **直近6秒以内に殴った**(`lastHit`・`Date.now()`基準)。
+
+★**2番目が要る理由(ここを外すと機能ごと死ぬ)**: 裏ボスは**画面外へ出た瞬間に `'return'` へ落ちる**
+(`else if (!onScreen)` の枝)。つまり「マークを出したい状況」と「帰巣状態」が**完全に重なる**。
+1番だけで判定すると、画面外へ出た瞬間にマークも消えて**一度も見えない**。殴り合いの記録で繋ぐ。
+この構造をテストに固定した(`return`+直近ヒット=出す / `return`+猶予超え=出さない)。
+
+### 変更ファイル
+- `src/utils/bossMarker.ts`(`isEngagedBoss` / `BOSS_ENGAGE_GRACE_MS=6000` 追加)
+- `src/utils/bossMarker.test.ts`(交戦中の3ケースを追加・計14件)
+- `src/pixi/pixiScene.ts`(絞り込みに `isEngagedBoss` を追加。時計は `Date.now()`)
+- `BOSS_MAKER.md` §16-2 / `src/data/changelog.ts` / `package.json`
+
+### 検証
+- typecheck 0 / lint 0 errors / `bossMarker.test.ts` 14 passed
+
 ## v0.25.2657 — 画面外のボスマーク(ゲーム中も) / ボスメーカーの距離表示【2026-08-01 19:05 JST】
 
 社長指示2件。仕様は BOSS_MAKER.md §16 に確定。

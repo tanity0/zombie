@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isMarkedBoss, projectToEdge, bossMarkFor, type MarkBox } from './bossMarker';
+import { isMarkedBoss, isEngagedBoss, BOSS_ENGAGE_GRACE_MS, projectToEdge, bossMarkFor, type MarkBox } from './bossMarker';
 import type { Enemy } from '../types/game';
 
 const BOX: MarkBox = { w: 400, h: 300, marginX: 26, marginTop: 60, marginBottom: 30 };
@@ -21,6 +21,30 @@ describe('誰にマークを出すか(「ボス交戦中」の定義)', () => {
     expect(isMarkedBoss(mk('hunter'))).toBe(false);     // 「検知された時だけ」の赤矢印が既にある
     expect(isMarkedBoss(mk('pumpkin'))).toBe(false);    // 同時に複数湧く=画面端が渋滞する
     expect(isMarkedBoss(mk('zombie'))).toBe(false);
+  });
+});
+
+describe('交戦中だけ出す(社長指示v0.25.2658「画面外のボスマークはボスと交戦中だけね」)', () => {
+  const NOW = 1_000_000;
+  const eng = (bossState: string | undefined, lastHit: number) =>
+    isEngagedBoss({ bossState: bossState as Enemy['bossState'], lastHit }, NOW);
+
+  it('帰巣/離脱中でなければ交戦中(追ってきている)', () => {
+    expect(eng('chase', 0)).toBe(true);
+    expect(eng('issen-windup', 0)).toBe(true);
+    expect(eng(undefined, 0)).toBe(true); // 状態機械を持たない経路(グレン等)は常に交戦中
+  });
+
+  it('★帰巣中(return)でも、直近に殴っていれば交戦中のまま', () => {
+    // 裏ボスは**画面外へ出た瞬間に return へ落ちる**=マークを出したい状況と完全に重なる。
+    // ここで切ると「画面外へ出た瞬間にマークも消える」=道具にならない。
+    expect(eng('return', NOW - 1)).toBe(true);
+    expect(eng('return', NOW - BOSS_ENGAGE_GRACE_MS)).toBe(true);
+  });
+
+  it('帰巣中 + 殴り合いが猶予を超えて途切れた = 交戦中ではない(巣を指す矢印が残らない)', () => {
+    expect(eng('return', NOW - BOSS_ENGAGE_GRACE_MS - 1)).toBe(false);
+    expect(eng('return', 0)).toBe(false); // 一度も殴っていない(lastHitの初期値0)
   });
 });
 

@@ -24,6 +24,30 @@ import { isHiddenBoss } from './enemyUtils';
 export const isMarkedBoss = (e: Pick<Enemy, 'type' | 'isStoryBoss'>): boolean =>
   isHiddenBoss(e.type) || e.isStoryBoss === true;
 
+/**
+ * 殴り合いが途切れてから「交戦中」を保つ猶予(ms)。
+ * ★これが要る理由: 裏ボスは**画面外へ出た瞬間に `bossState='return'`(帰巣)へ落ちる**。
+ * つまり「マークを出したい状況」と「帰巣状態」が完全に重なる。直近の殴り合いで繋がないと、
+ * 画面外へ出た瞬間にマークまで消えて**役に立たない**。
+ */
+export const BOSS_ENGAGE_GRACE_MS = 6000;
+
+/**
+ * **交戦中か**(社長指示v0.25.2658「画面外のボスマークはボスと交戦中だけね」)。
+ * 「ボスが生きている」だけでは出さない——裏ボスは巣で復活待機したまま生き続けるので、
+ * 逃げた後もずっと巣を指す矢印が残ってしまう。
+ *
+ * 交戦中 = 次のどちらか。
+ *  1. **帰巣/離脱中ではない**(`bossState !== 'return'`)= まだこちらを見ている。
+ *     `'return'` を使うのは裏ボス4体のコントローラだけ(天使/idol/グレンは使わない=常に交戦中扱い。
+ *     グレンはリーシュしない仕様なので正しい)。
+ *  2. **直近 `BOSS_ENGAGE_GRACE_MS` 以内に殴った**(`lastHit`)= 画面外へ出た直後を拾う。
+ *
+ * `now` と `lastHit` は**どちらも `Date.now()` 基準**(types/game.ts の注記どおり)。gameTime を渡さないこと。
+ */
+export const isEngagedBoss = (e: Pick<Enemy, 'bossState' | 'lastHit'>, now: number): boolean =>
+  e.bossState !== 'return' || now - e.lastHit <= BOSS_ENGAGE_GRACE_MS;
+
 /** マークを置ける画面の内側矩形(余白はHUD/ノッチを避けるための既存の値をそのまま受け取る)。 */
 export interface MarkBox {
   w: number; h: number;

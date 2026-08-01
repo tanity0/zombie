@@ -79,7 +79,7 @@ import { contextZoomTarget, isLargeForZoom, ZOOM_MIN_ABS } from '../utils/camera
 const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(ボス戦=BOSS_ZOOM_MIN)を基準にする
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType } from '../utils/enemyUtils';
-import { isMarkedBoss, bossMarkFor, type MarkBox } from '../utils/bossMarker';
+import { isMarkedBoss, isEngagedBoss, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
 import {
   HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
@@ -5019,10 +5019,11 @@ export class PixiScene {
       { kind: 'armory', pos: !s.armoryTaken ? s.armory : null },
       { kind: 'police', pos: !s.policeTaken ? s.police : null },
     ];
-    // 交戦中のボス(社長指示v0.25.2657「(ゲーム中も)ボス交戦中は画面外のボスマーク表示」)。
-    // 誰がボスかの定義は utils/bossMarker.ts に1本化(pixiSceneは判定を持たない)。
-    // ★裏ボスは「巣へ近づいた時だけ出現し、深層域を出ると帰巣→退場」なので、**生きて居ること自体が交戦中**。
-    const markedBosses = s.enemies.filter(e => e.health > 0 && isMarkedBoss(e));
+    // 交戦中のボス(社長指示v0.25.2657「(ゲーム中も)ボス交戦中は画面外のボスマーク表示」/
+    // v0.25.2658「**交戦中だけ**」)。誰がボスか・交戦中かの定義は utils/bossMarker.ts に1本化
+    // (pixiSceneは判定を持たない)。時計は lastHit と同じ Date.now 基準。
+    const markNow = Date.now();
+    const markedBosses = s.enemies.filter(e => e.health > 0 && isMarkedBoss(e) && isEngagedBoss(e, markNow));
     const revealedPois = getRunPois(s.hiddenBoss, detourPois)
       .filter(p => !(p.kind === 'boss' && s.hiddenBossDefeated))
       // 裏ボスが実際に出ている間は、巣のPOI矢印を下げてボスマークへ一本化する(同じ座標=下の .map で
