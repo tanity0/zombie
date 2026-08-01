@@ -76,6 +76,17 @@ export interface IdolTuning {
     /** 追尾弾は**速度が既存の `shape.orbSpeed` に居る**ので、ここは威力と大きさだけ持つ(値を二重に持たない)。 */
     orb: { damage: number; size: number };
   };
+  /**
+   * **判定を直接出す技のダメージ**(社長報告v0.25.2629「射撃線と殴り はそもそもダメージのパラメータがない」)。
+   *
+   * 事故の形は弾速(v0.25.2627)と同じ:**技ごとに違ってよい値が、ボス共通の1箇所から流用されていた。**
+   * 殴りは `hitCapsule(damage: idol.damage)`、狙撃線は `damagePlayer(idol.damage)` と、どちらも
+   * **接触ダメージ(`stats.damage`)を流用**していたため、メーカーに欄が出せなかった。
+   * 既定は現行の実効値(=`ENEMY_STATS.idol.damage` の 30)。**`stats.damage` は「体が触れた時」の
+   * ダメージとして別に残す**(技とは別軸)。
+   * 弾を撃つ技(aim/fan/orb)は `bullet[move].damage` が正。
+   */
+  moveDamage: { punch: number; snipe: number };
 }
 
 export const IDOL_TUNING: IdolTuning = {
@@ -152,6 +163,8 @@ export const IDOL_TUNING: IdolTuning = {
     fan: { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 },
     orb: { damage: 20, size: 16 },
   },
+  // 既定は現行の実効値(接触ダメージ 30 の流用)=**欄を足しても挙動は変わらない**。
+  moveDamage: { punch: 30, snipe: 30 },
 };
 
 /** 既定値(リセット/差分表示用)。テーブルとは別オブジェクトとして凍結せずに保持する。 */

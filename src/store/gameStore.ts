@@ -8285,7 +8285,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
-    const pumpkinBlasts: PumpkinBlast[] = []; // 着地爆発イベント(ice=スカジ氷=青FX・capsule=M51薙ぎ払い)
+    // 着地爆発イベント(ice=スカジ氷=青FX・capsule=M51薙ぎ払い)。
+    // ★**空から作らない**(v0.25.2629・社長報告「殴り、狙撃線は何も食らってない」の原因):
+    // このローカル配列は最後に `return { ..., pumpkinBlasts }` で **state を丸ごと差し替える**。
+    // 一方でボス専用コントローラ(useGameLoop の ミーミル/トール、angelBossTick の ラフィ、
+    // idolTick の アイドル)は **updateEnemies より前**に `state.pumpkinBlasts` へ追記している。
+    // 空から作ると**同じフレームのうちにそれが捨てられ、それらの技は一度も当たらない**。
+    // よって**必ず既存 state を引き継いでから積む**。
+    // (積み残しは起きない: 消費側 `combatTick.applyPumpkinBlastDamage` が同フレームの直後に
+    //  全件処理して空にする。updateEnemies と消費の間に脱出経路は無い=useGameLoop 7209→7240。)
+    const pumpkinBlasts: PumpkinBlast[] = [];
     const giantBoltFires: Enemy[] = []; // M51: ジャイアント新スクリプトの咆哮弾。set() 後に post-set で addProjectile する。
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
@@ -8294,6 +8303,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
     set(state => {
+      // ★上の注記のとおり、**このフレームに他所から積まれた判定を先に引き継ぐ**。
+      // set の中で読む=引き継ぎ元は必ず最新の state(get()のタイミングずれを作らない)。
+      pumpkinBlasts.push(...state.pumpkinBlasts);
       const { enemies, player, gameTime, breakableProps, summons, rescueSurvivors } = state;
       // フレアガン(§6.6 M29): 着弾中のフレアを疑似召喚として敵ターゲット解決へ合流
       // (召喚と完全に同じ効き方=専用ヘイト機構なし)。ループ外で一度だけ合成する。

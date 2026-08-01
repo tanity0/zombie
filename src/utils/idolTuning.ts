@@ -67,7 +67,12 @@ const bulletFields = (m: IdolMove): TuningField[] => {
       ...dmgSize('bullet.orb'),
     ];
   }
-  return []; // roll/punch/snipe は弾を撃たない(帯・線の直接判定)
+  // 弾を撃たない技(帯・線の直接判定)も**自分のダメージを持つ**(社長報告v0.25.2629
+  // 「射撃線と殴り はそもそもダメージのパラメータがない」)。旧は接触ダメージ(stats.damage)の流用だった。
+  if (m === 'punch' || m === 'snipe') {
+    return [{ path: `moveDamage.${m}`, label: 'ダメージ', group: 'move', section: sec, kind: 'num', min: 0, max: 400, step: 5 }];
+  }
+  return []; // roll は判定を持たない(離脱のみ)
 };
 
 const moveFields = (): TuningField[] => {
@@ -99,7 +104,9 @@ const stringFields = (): TuningField[] =>
 
 const behaviorFields = (): TuningField[] => [
   { path: 'stats.health', label: 'HP', group: 'behavior', section: '基礎値', kind: 'num', min: 500, max: 40000, step: 500 },
-  { path: 'stats.damage', label: '与ダメージ', group: 'behavior', section: '基礎値', kind: 'num', min: 0, max: 999, step: 5 },
+  // ★これは**体が触れた時**のダメージ(技のダメージとは別軸)。技ごとの威力は各技のセクションにある
+  // (`bullet.*.damage` / `moveDamage.*`)。v0.25.2629で分離するまでは殴り/狙撃線がこの値を流用していた。
+  { path: 'stats.damage', label: '接触ダメージ', group: 'behavior', section: '基礎値', kind: 'num', min: 0, max: 999, step: 5, hint: '体が触れた時。技の威力は各技の欄' },
   { path: 'stats.speed', label: '移動速度', group: 'behavior', section: '基礎値', kind: 'pxs', min: 0, max: 600, step: 10 },
   { path: 'phaseHpThreshold', label: 'フェーズ2の閾値', group: 'behavior', section: '基礎値', kind: 'frac', min: 0, max: 1, step: 0.05, hint: 'HP割合' },
 

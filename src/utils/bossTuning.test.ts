@@ -307,6 +307,24 @@ describe('弾の性能がテーブルに載っている(社長報告「速さの
     }
   });
 
+  // v0.25.2629(社長報告「射撃線と殴り はそもそもダメージのパラメータがない」)
+  it('★掟: 判定を持つ技はすべて自分のダメージを持つ(接触ダメージの流用をしない)', () => {
+    const fields = getBossTuning('idol')?.fields ?? [];
+    for (const sec of ['至近の殴り(punch)', '狙撃線(snipe)']) {
+      const labels = fields.filter((f: TuningField) => f.section === sec).map((f: TuningField) => f.label);
+      expect(labels, sec).toContain('ダメージ');
+    }
+    // 既定は現行の実効値(接触ダメージ30の流用)=欄を足しても挙動は変わらない
+    expect(IDOL_TUNING.moveDamage.punch).toBe(30);
+    expect(IDOL_TUNING.moveDamage.snipe).toBe(30);
+  });
+
+  it('接触ダメージ(stats.damage)は技のダメージとは別物として残る', () => {
+    const f = (getBossTuning('idol')?.fields ?? []).find((x: TuningField) => x.path === 'stats.damage');
+    expect(f?.label).toBe('接触ダメージ'); // 画面で「技の威力」と区別が付くこと
+    expect(f?.section).toBe('基礎値');
+  });
+
   it('弾を撃たない技(roll/punch/snipe)には弾の項目を出さない', () => {
     const fields = getBossTuning('idol')?.fields ?? [];
     for (const sec of ['離脱ローリング(roll)', '至近の殴り(punch)', '狙撃線(snipe)']) {

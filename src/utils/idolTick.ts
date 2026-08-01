@@ -325,10 +325,14 @@ export const runIdolTick = (
       createEnemyProjectile(idol, player, tx, ty, undefined, undefined, IDOL_TUNING.bullet[move]),
     );
 
-  const hitCapsule = (fx: number, fy: number, tx: number, ty: number, halfW: number): void => {
+  /**
+   * 帯(カプセル)の当たり判定を1件積む。**ダメージは技ごと**(社長報告v0.25.2629)。
+   * 旧は `idol.damage`(=接触ダメージの流用)で、技ごとに変えられなかった。
+   */
+  const hitCapsule = (fx: number, fy: number, tx: number, ty: number, halfW: number, damage: number): void => {
     useGameStore.setState(state => ({
       pumpkinBlasts: [...state.pumpkinBlasts, {
-        x: (fx + tx) / 2, y: (fy + ty) / 2, radius: halfW, damage: idol.damage, enemyId: idol.id,
+        x: (fx + tx) / 2, y: (fy + ty) / 2, radius: halfW, damage, enemyId: idol.id,
         capsule: { fx, fy, tx, ty, halfWidth: halfW },
       }],
     }));
@@ -463,7 +467,7 @@ export const runIdolTick = (
     const tx = idol.aiTargetX ?? icx, ty = idol.aiTargetY ?? icy;
     const pr = Math.max(player.width, player.height) / 2;
     if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }) <= IDOL_TUNING.shape.snipeHalfWidth + pr) {
-      const died = useGameStore.getState().damagePlayer(idol.damage, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy);
+      const died = useGameStore.getState().damagePlayer(IDOL_TUNING.moveDamage.snipe, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy);
       if (died) onPlayerDeath(pcx, pcy);
     }
     if (newGameTime >= (idol.bossStateUntil ?? 0)) toRecover('snipe');
@@ -472,7 +476,7 @@ export const runIdolTick = (
       const aim = hateAim();
       patch.hateTarget = aim.side;
       const ang = Math.atan2(aim.y - icy, aim.x - icx);
-      hitCapsule(icx, icy, icx + Math.cos(ang) * IDOL_TUNING.shape.punchRange, icy + Math.sin(ang) * IDOL_TUNING.shape.punchRange, IDOL_TUNING.shape.punchHalfWidth);
+      hitCapsule(icx, icy, icx + Math.cos(ang) * IDOL_TUNING.shape.punchRange, icy + Math.sin(ang) * IDOL_TUNING.shape.punchRange, IDOL_TUNING.shape.punchHalfWidth, IDOL_TUNING.moveDamage.punch);
       toRecover('punch');
     }
   } else if (st === 'idol-roll-windup') {

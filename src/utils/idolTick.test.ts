@@ -347,6 +347,34 @@ describe('弾の性能は技ごとに効く', () => {
   });
 });
 
+// v0.25.2629(社長報告「殴り、狙撃線は何も食らってない」)の切り分け用。
+// idolTick だけを回して「線の上に立っていれば当たる」ことを確かめる=当たらなければ tick 側のバグ、
+// 当たるならバグは配管側(useGameLoop/updateEnemies/描画)にある、と切り分けられる。
+describe('狙撃線は線の上に居れば当たる(切り分け)', () => {
+  beforeEach(() => { clearIdolPlayback(); });
+
+  it('プレイヤーが線上に静止していれば狙撃で被弾する', () => {
+    const g = setup(250);
+    g.step();
+    const hp0 = useGameStore.getState().player.health;
+    requestIdolMovePlay('snipe', { solo: false, loop: false });
+    g.step();
+    expect(g.state()).toBe('idol-snipe-windup');
+    // 予告(1100ms)+判定(200ms)を跨ぐまで進める。プレイヤーは動かさない。
+    const states: string[] = [];
+    for (let i = 0; i < 120; i++) {
+      g.step(20);
+      const st = g.state();
+      if (states[states.length - 1] !== st) states.push(st);
+    }
+    expect(states, `状態遷移=${states.join('→')}`).toContain('idol-snipe');
+    const boss = useGameStore.getState().enemies[0];
+    expect(boss.aiFromX, '線の起点が未設定だと点に潰れて絶対に当たらない').toBeDefined();
+    expect(boss.aiTargetX).toBeDefined();
+    expect(useGameStore.getState().player.health).toBeLessThan(hp0);
+  });
+});
+
 describe('フェーズの扱い(報告事項)', () => {
   beforeEach(() => { clearIdolPlayback(); });
   it('第二波はフェーズ設定を尊重する: P1で技を再生しても第二波は出ない', () => {

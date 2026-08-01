@@ -610,3 +610,57 @@ describe('canShoveEnemy: ボスは押し道具でだけ押される', () => {
     expect(canShoveEnemy(e('giantbat', 999), 1000)).toBe(false);
   });
 });
+
+// ============================================================================================
+// v0.25.2629(社長報告「殴り、狙撃線は何も食らってない」)★重大な配管事故の回帰テスト
+//
+// 事故: `updateEnemies` は当たり判定キュー(`pumpkinBlasts`)を**空のローカル配列から作り直して
+// state を丸ごと差し替える**。ところがボス専用コントローラ(useGameLoop の ミーミル/トール、
+// angelBossTick の ラフィ、idolTick の アイドル)は**その前**に `state.pumpkinBlasts` へ追記する。
+// ⇒ 同じフレームのうちに捨てられ、**それらの技は一度も当たらなかった**。
+//
+// ★一般化した教訓(ENGINEERING_NOTES にも採録):
+//   **「配列を丸ごと差し替える更新」と「別の場所からの追記」が同居すると、追記側は必ず消える。**
+//   差し替える側は**必ず既存 state を引き継いでから積む**こと。
+// ============================================================================================
+describe('★配管: コントローラが積んだ当たり判定は updateEnemies を跨いで生き残る', () => {
+  const blast = (id: string) => ({ x: 0, y: 0, radius: 50, damage: 10, enemyId: id });
+
+  it('updateEnemies は state.pumpkinBlasts を捨てない(追記が生き残る)', () => {
+    useGameStore.getState().resetGame('assault');
+    // コントローラ(useGameLoop/angelBossTick/idolTick)がやっているのと同じ形の追記。
+    useGameStore.setState(state => ({ pumpkinBlasts: [...state.pumpkinBlasts, blast('boss-A')] }));
+    expect(useGameStore.getState().pumpkinBlasts).toHaveLength(1);
+
+    useGameStore.getState().setGameTime(1000);
+    useGameStore.getState().updateEnemies(1 / 60);
+
+    const after = useGameStore.getState().pumpkinBlasts;
+    expect(after.map(b => b.enemyId)).toContain('boss-A');
+  });
+
+  it('複数の追記がすべて残る(2体が同じフレームに技を出しても取りこぼさない)', () => {
+    useGameStore.getState().resetGame('assault');
+    useGameStore.setState(state => ({ pumpkinBlasts: [...state.pumpkinBlasts, blast('boss-A')] }));
+    useGameStore.setState(state => ({ pumpkinBlasts: [...state.pumpkinBlasts, blast('boss-B')] }));
+
+    useGameStore.getState().setGameTime(1000);
+    useGameStore.getState().updateEnemies(1 / 60);
+
+    const ids = useGameStore.getState().pumpkinBlasts.map(b => b.enemyId);
+    expect(ids).toContain('boss-A');
+    expect(ids).toContain('boss-B');
+  });
+
+  it('積み残しは溜まらない(消費側が空にすれば次フレームは空から始まる)', () => {
+    useGameStore.getState().resetGame('assault');
+    useGameStore.setState(state => ({ pumpkinBlasts: [...state.pumpkinBlasts, blast('boss-A')] }));
+    useGameStore.getState().setGameTime(1000);
+    useGameStore.getState().updateEnemies(1 / 60);
+    // 消費側(combatTick.applyPumpkinBlastDamage の最後)と同じ後始末。
+    useGameStore.setState({ pumpkinBlasts: [] });
+    useGameStore.getState().setGameTime(1016);
+    useGameStore.getState().updateEnemies(1 / 60);
+    expect(useGameStore.getState().pumpkinBlasts).toHaveLength(0);
+  });
+});
