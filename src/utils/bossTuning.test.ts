@@ -1,13 +1,17 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   registerBossTuning, getBossTuning, getAtPath, setAtPath, clampField, changedPaths,
   resetTuning, formatTuningText, parseTuningText, deepCloneTuning,
   saveTuning, loadTuningDiff, applySavedTuning, clearSavedTuning, tuningDiff,
+  getTextAtPath, setTextAtPath, fieldVisible,
   type BossTuningEntry, type TuningField,
 } from './bossTuning';
-import { registerIdolTuning, IDOL_TUNING_FIELDS, IDOL_PLAYABLES, VERB_SECTION } from './idolTuning';
-import { requestIdolMovePlay, requestIdolVerbPlay, idolPlaybackActive, getIdolPlayback, clearIdolPlayback } from './idolTick';
-import { IDOL_TUNING, IDOL_TUNING_DEFAULTS } from './idolScript';
+import { registerIdolTuning, addIdolShot, IDOL_TUNING_FIELDS, IDOL_PLAYABLES, VERB_SECTION } from './idolTuning';
+import {
+  requestIdolMovePlay, requestIdolVerbPlay, idolPlaybackActive, getIdolPlayback, clearIdolPlayback,
+  IDOL_WINDUP_STATES, IDOL_RECOVER_STATES,
+} from './idolTick';
+import { IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_SHOT_SLOTS, idolEnabledShots } from './idolScript';
 import { getEnemyFireProfile } from './enemyUtils';
 import type { Enemy } from '../types/game';
 
@@ -210,7 +214,13 @@ describe('個別再生: スキーマから生成できる形になっている',
 
   it('技6本 + 移動語彙4つのボタンが宣言されている', () => {
     const moves = IDOL_PLAYABLES.filter(p => p.kind === 'move').map(p => p.key).sort();
-    expect(moves).toEqual(['aim', 'fan', 'orb', 'punch', 'roll', 'snipe']);
+    // 中核6技 + 射撃枠8つ(v0.25.2638)。射撃枠は**足していなければ見出しごと画面に出ない**ので、
+    // ここに8つ並んでいても余計なボタンは現れない。
+    expect(moves).toEqual([
+      'aim', 'fan', 'orb', 'punch', 'roll',
+      's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8',
+      'snipe',
+    ]);
     const verbs = IDOL_PLAYABLES.filter(p => p.kind === 'verb').map(p => p.key).sort();
     expect(verbs).toEqual(['close', 'hold', 'retreat', 'strafe']);
   });
@@ -232,7 +242,7 @@ describe('個別再生: スキーマから生成できる形になっている',
     const e = getBossTuning('idol');
     expect(typeof e?.onPlay).toBe('function');
     expect(typeof e?.playState).toBe('function');
-    expect(e?.playables?.length).toBe(10);
+    expect(e?.playables?.length).toBe(6 + 8 + 4); // 中核6 + 射撃8枠 + 移動語彙4
   });
 });
 
@@ -441,5 +451,123 @@ describe('自動保存: 部屋の中だけ復元し、出る時は必ず既定�
   it('保存の中身は「差分」= 項目が増えても古い保存が壊れない', () => {
     setAtPath(entry().table, 'timing.aim.windup', 1200);
     expect(tuningDiff(entry())).toEqual({ 'timing.aim.windup': 1200 });
+  });
+});
+
+// ==== 射撃部品まわり(v0.25.2638): 表示条件・名前・「＋技を足す」 ====
+describe('表示条件(visibleWhen)と名前欄', () => {
+  const makeShotEntry = (): BossTuningEntry => {
+    const table = { on: 0, v: 10, name: '' };
+    return {
+      bossType: 'shot-test', label: 'テスト', table, defaults: deepCloneTuning(table),
+      fields: [
+        { path: 'on', label: '有効', group: 'move', section: 'S', kind: 'num', min: 0, max: 1, step: 1, visibleWhen: 'on' },
+        { path: 'v', label: 'ヒミツ', group: 'move', section: 'S', kind: 'px', min: 0, max: 100, step: 1, visibleWhen: 'on' },
+      ],
+      textFields: [{ path: 'name', label: '名前', group: 'move', section: 'S', maxLen: 8 }],
+    };
+  };
+
+  it('0なら隠れ、0以外なら出る(条件が無い欄は常に出る)', () => {
+    const e = makeShotEntry();
+    expect(fieldVisible(e.table, e.fields[1])).toBe(false);
+    setAtPath(e.table, 'on', 1);
+    expect(fieldVisible(e.table, e.fields[1])).toBe(true);
+    expect(fieldVisible(e.table, { })).toBe(true);
+  });
+
+  it('隠れている欄はコピーの平文に出ない(画面と貼り付け文が食い違わない)', () => {
+    const e = makeShotEntry();
+    expect(formatTuningText(e, 'vX')).not.toContain('ヒミツ');
+    setAtPath(e.table, 'on', 1);
+    expect(formatTuningText(e, 'vX')).toContain('ヒミツ');
+  });
+
+  it('名前は文字として往復する(コピー→貼り戻しで元に戻る)', () => {
+    const e = makeShotEntry();
+    setAtPath(e.table, 'on', 1);
+    setTextAtPath(e.table, 'name', 'ジャブ');
+    setAtPath(e.table, 'v', 42);
+    const txt = formatTuningText(e, 'vX');
+    expect(txt).toContain('ジャブ');
+
+    const e2 = makeShotEntry();
+    const r = parseTuningText(e2, txt);
+    expect(r.errors).toEqual([]);
+    expect(getTextAtPath(e2.table, 'name')).toBe('ジャブ');
+    expect(getAtPath(e2.table, 'v')).toBe(42);
+    expect(getAtPath(e2.table, 'on')).toBe(1);
+  });
+
+  it('名前が既定のままなら機械用に labels を出さない(古い貼り付け文もそのまま読める)', () => {
+    const e = makeShotEntry();
+    setAtPath(e.table, 'on', 1);
+    expect(formatTuningText(e, 'vX')).not.toContain('labels');
+    // labels が無い旧形式でもエラーにしない。
+    expect(parseTuningText(makeShotEntry(), formatTuningText(e, 'vX')).errors).toEqual([]);
+  });
+
+  it('リセットは名前も既定へ戻す(部屋を出た時に名前だけ残らない)', () => {
+    const e = makeShotEntry();
+    setAtPath(e.table, 'on', 1);
+    setTextAtPath(e.table, 'name', 'ジャブ');
+    resetTuning(e);
+    expect(getAtPath(e.table, 'on')).toBe(0);
+    expect(getTextAtPath(e.table, 'name')).toBe('');
+  });
+
+  it('文字は「既にキーがある場所」にしか書かない', () => {
+    const e = makeShotEntry();
+    expect(setTextAtPath(e.table, 'name', 'x')).toBe(true);
+    expect(setTextAtPath(e.table, 'nope', 'x')).toBe(false);
+    expect(setTextAtPath(e.table, 'v', 'x')).toBe(false); // 数値の場所へ文字を書かない
+  });
+});
+
+describe('＋技を足す(addIdolShot)', () => {
+  beforeEach(() => {
+    for (const m of IDOL_SHOT_SLOTS) IDOL_TUNING.shots[m].enabled = IDOL_TUNING_DEFAULTS.shots[m].enabled;
+  });
+  afterEach(() => {
+    for (const m of IDOL_SHOT_SLOTS) IDOL_TUNING.shots[m].enabled = IDOL_TUNING_DEFAULTS.shots[m].enabled;
+  });
+
+  it('空いている枠を先頭から1つずつ有効にし、8枠で打ち止め', () => {
+    for (let i = 0; i < IDOL_SHOT_SLOTS.length; i++) {
+      expect(addIdolShot().ok, `${i + 1}枠目`).toBe(true);
+      expect(idolEnabledShots()).toHaveLength(i + 1);
+    }
+    const over = addIdolShot();
+    expect(over.ok).toBe(false);
+    expect(over.message).toContain('8');
+    expect(idolEnabledShots()).toHaveLength(8);
+  });
+
+  it('足した枠の欄がスキーマ上で見えるようになる(＋を押すと画面に現れる)', () => {
+    const e = getBossTuning('idol');
+    if (!e) throw new Error('idol 未登録');
+    const shotFields = e.fields.filter(f => f.path.startsWith('shots.s1.'));
+    expect(shotFields.length).toBeGreaterThan(0);
+    expect(shotFields.every(f => !fieldVisible(e.table, f))).toBe(true);
+    addIdolShot();
+    expect(shotFields.every(f => fieldVisible(e.table, f))).toBe(true);
+  });
+
+  it('見出しは社長が付けた名前で表示される', () => {
+    const e = getBossTuning('idol');
+    if (!e) throw new Error('idol 未登録');
+    expect(e.sectionLabel?.('射撃枠 s1')).toBe('射撃1(s1)');
+    IDOL_TUNING.shotLabels.s1 = 'ジャブ';
+    expect(e.sectionLabel?.('射撃枠 s1')).toBe('ジャブ(s1)');
+    IDOL_TUNING.shotLabels.s1 = '';
+  });
+});
+
+describe('射撃枠の州名が漏れなく一覧に入っている(予告/硬直の演出が付く)', () => {
+  it('8枠すべての windup / recover が州の一覧にある', () => {
+    for (const m of IDOL_SHOT_SLOTS) {
+      expect(IDOL_WINDUP_STATES).toContain(`idol-${m}-windup`);
+      expect(IDOL_RECOVER_STATES).toContain(`idol-${m}-recover`);
+    }
   });
 });

@@ -10,6 +10,8 @@ import {
   isProjectileMoveKey, BULLET_MOVE_KEYS, PROJECTILE_MOVE_KEYS,
   type MoveReactionEnemy,
 } from './moveReaction';
+import { IDOL_SHOT_SLOTS } from './idolScript';
+import { IDOL_WINDUP_STATES, IDOL_RECOVER_STATES, IDOL_FIRE_STATES } from './idolTick';
 import type { Enemy, EnemyType } from '../types/game';
 
 const giant = (aiPhase: Enemy['aiPhase'], over: Partial<MoveReactionEnemy> = {}): MoveReactionEnemy => ({
@@ -349,8 +351,13 @@ const FIRE_SITES: ReadonlyArray<[EnemyType, string, string, string]> = [
   ['uri', 'bolt', 'uri-bolt', 'angelBossTick uri bolt'],
   ['suriel', 'gaze-windup', 'suriel-gaze', 'angelBossTick suriel gaze(windupの終わりに1発)'],
   ['acrasiel', 'gaze-windup', 'acrasiel-gaze', 'angelBossTick acrasiel gaze'],
-  ['idol', 'idol-aim-windup', 'idol-aim', 'useGameLoop idol 単発'],
-  ['idol', 'idol-fan-windup', 'idol-fan', 'useGameLoop idol 扇'],
+  ['idol', 'idol-aim-windup', 'idol-aim', 'idolTick idol 単発'],
+  ['idol', 'idol-fan-windup', 'idol-fan', 'idolTick idol 扇'],
+  // 射撃部品(v0.25.2638): メーカーで足す8枠。1枠でも技キーが付かないと、その弾だけ記録にも
+  // 守護霊の再現にも一生乗らない(=このファイルの冒頭に書いてある事故そのもの)。
+  ...IDOL_SHOT_SLOTS.map(m => (
+    ['idol', `idol-${m}-windup`, `idol-${m}`, `idolTick 射撃枠 ${m}`] as [EnemyType, string, string, string]
+  )),
 ];
 
 describe('GHOST-BULLET-TECH: 弾技の技キー導出', () => {
@@ -473,9 +480,21 @@ const BULLET_SOURCES = import.meta.glob<string>(
 describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
   it('台帳に書いた状態名は実際にソースへ存在する(状態のリネーム/打ち間違いを検知)', () => {
     const all = Object.values(BULLET_SOURCES).join('\n');
+    // v0.25.2638: idol の州名は技の一覧から機械的に組むのでソースに文字列リテラルが無い。
+    // その場合は**実装がエクスポートしている州の一覧**と突き合わせる(同じ「実在するか」の検査)。
+    const declared = new Set<string>([...IDOL_WINDUP_STATES, ...IDOL_RECOVER_STATES, ...IDOL_FIRE_STATES]);
     for (const [, state, , where] of FIRE_SITES) {
-      expect(all.includes(`'${state}'`), `${state} (${where})`).toBe(true);
+      expect(all.includes(`'${state}'`) || declared.has(state), `${state} (${where})`).toBe(true);
     }
+  });
+
+  it('射撃枠の複製値が本体とズレていない(moveReaction.ts はボス実装に依存しない層なので複製で持つ)', () => {
+    for (const m of IDOL_SHOT_SLOTS) {
+      expect(BULLET_MOVE_KEYS as readonly string[], `${m} の技キーが無い`).toContain(`idol-${m}`);
+    }
+    // 逆向き: 台帳にあるのに本体に無い枠(消した枠の取り残し)も検知する。
+    const slotKeys = (BULLET_MOVE_KEYS as readonly string[]).filter(k => /^idol-s\d+$/.test(k));
+    expect(slotKeys).toHaveLength(IDOL_SHOT_SLOTS.length);
   });
 
   it('敵弾の生成箇所の数は固定(新しい発射経路を足したらこのテストが落ちる=分類してから入れる)', () => {
@@ -484,9 +503,10 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
     //   useGameLoop.ts 1 = 裏ボス fireBullet(idolはv0.25.2613でidolTick.tsへ移設)
     //   angelBossTick  7 = miguel×2(台本/旧)・jibril×2(台本/旧)・uri・suriel・acrasiel
     //   combatTick.ts  1 = 汎用発砲(plant等の非ボス。?giantscript=0のgiantbat旧経路も同じ口)
-    //   idolTick.ts    2 = idolの通常弾(aim/fan)/ 追尾弾(orb)
-    // 合計13。増えたら「そのボスのその状態」をBULLET_STATE_TO_MOVEへ足すこと(足さないと
+    //   idolTick.ts    3 = idolの通常弾(aim/fan)/ 追尾弾(orb)/ **射撃部品の斉射**(v0.25.2638)
+    // 合計14。増えたら「そのボスのその状態」をBULLET_STATE_TO_MOVEへ足すこと(足さないと
     // その弾だけ技キーが付かず、記録にも守護霊の再現にも一生乗らない)。
+    // ※射撃部品は1箇所(fireShotVolley)で8枠ぶんを撃つので、枠を増やしても発射箇所は増えない。
     let sites = 0;
     for (const text of Object.values(BULLET_SOURCES)) {
       for (const line of text.split('\n')) {
@@ -495,6 +515,6 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
         sites += (line.match(/createEnemyProjectile\(/g) ?? []).length;
       }
     }
-    expect(sites).toBe(13);
+    expect(sites).toBe(14);
   });
 });

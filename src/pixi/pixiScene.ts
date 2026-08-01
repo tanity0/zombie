@@ -52,7 +52,10 @@ import {
   BOSS_RECOVER_TINT,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
-import { idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING } from '../utils/idolScript';
+import {
+  idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING, IDOL_ORB_SPREAD_RAD, IDOL_MOVES_ALL,
+  idolShot, isIdolShot, type IdolShotSlot, type IdolMove,
+} from '../utils/idolScript';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
   URI_SCRIPT_ENABLED, SURIEL_SCRIPT_ENABLED, ACRASIEL_SCRIPT_ENABLED,
@@ -1162,6 +1165,10 @@ const idolPunchHalfWidthVis = () => IDOL_TUNING.shape.punchHalfWidth;
 // 弾の見た目の半太さ=弾サイズの半分(狙い撃ちと連射扇でサイズが違えるようになったので技ごとに引く)。
 const idolBulletHalfWidthVis = (m: 'aim' | 'fan') => IDOL_TUNING.bullet[m].size / 2;
 const IDOL_FAN_VIS_RANGE = 700;         // T6線の描画上の長さ(px・判定を持たない"派手さの絵"側=②)
+// 硬直の青白tint / 予告の赤ブリンクを出す州。**技の一覧から機械的に組む**(v0.25.2638)——
+// 手書きの配列だと射撃枠を足した時に「予告なのに赤くならない」という形で静かに漏れる。
+const IDOL_RECOVER_STATES: readonly string[] = [...IDOL_MOVES_ALL.map(m => `idol-${m}-recover`), 'idol-rest'];
+const IDOL_FLASH_TAIL_STATES: readonly string[] = IDOL_MOVES_ALL.map(m => `idol-${m}-windup`);
 // v0.25.2613(バッチ3・idolのMAX化): 狙撃線/追尾弾。**判定と同じ定数を idolScript.ts から読む**
 // (上の旧4定数は useGameLoop からの手写しだが、新規分は写し間違いが起きない形にする=
 //  CLAUDE.md「赤い予告そのものは判定と厳密に一致させる」)。
@@ -9908,10 +9915,6 @@ export class PixiScene {
     if (e.type === 'idol') {
       const bs = e.bossState;
       // v0.25.2613: 狙撃線/追尾弾/休符を追加。休符(idol-rest)も青白tint=「いま殴っていい」の合図。
-      const IDOL_RECOVER_STATES: string[] = ['idol-aim-recover', 'idol-fan-recover', 'idol-roll-recover', 'idol-punch-recover',
-        'idol-snipe-recover', 'idol-orb-recover', 'idol-rest'];
-      const IDOL_FLASH_TAIL_STATES: string[] = ['idol-aim-windup', 'idol-fan-windup', 'idol-roll-windup', 'idol-punch-windup',
-        'idol-snipe-windup', 'idol-orb-windup'];
       if (bs && IDOL_RECOVER_STATES.includes(bs)) {
         view.sprite.tint = BOSS_RECOVER_TINT;
       } else if (bs && IDOL_FLASH_TAIL_STATES.includes(bs)) {
@@ -9934,7 +9937,9 @@ export class PixiScene {
         const pl = useGameStore.getState().player;
         const ang = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
         const count = idolFanCount(e.bossPhase === 2 ? 2 : 1);
-        const spreadStep = 0.14;
+        // ★テーブルの値をそのまま読む(v0.25.2638)。ここに `0.14` を書いておくと、メーカーで
+        // 開き角を変えた瞬間に**赤い線と実弾がズレる**(CLAUDE.md「赤いのに当たらない」の禁止事項)。
+        const spreadStep = IDOL_TUNING.shape.fanSpreadStep;
         const half = (count - 1) / 2;
         for (let k = 0; k < count; k++) {
           const a = ang + (k - half) * spreadStep;
@@ -9954,8 +9959,30 @@ export class PixiScene {
         const base = Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
         const n = idolOrbCount(e.bossPhase === 2 ? 2 : 1);
         for (let k = 0; k < n; k++) {
-          const a = base + (k - (n - 1) / 2) * 0.5;
+          const a = base + (k - (n - 1) / 2) * IDOL_ORB_SPREAD_RAD;
           this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now);
+        }
+      }
+      // 射撃部品(v0.25.2638): **数字から予告を引く**ので、社長が弾数/広がり/狙い方を変えると
+      // 赤い線もその場で変わる。狙い方=1(予告開始で固定)の時だけロック済みの2点を読む
+      // (=snipeと同じ作法。撃つ向きが決まっているのに線が追従すると嘘になる)。
+      if (bs !== undefined && bs.startsWith('idol-s') && bs.endsWith('-windup')) {
+        const slot = bs.slice('idol-'.length, bs.length - '-windup'.length) as IdolMove;
+        if (isIdolShot(slot)) {
+          const sp = idolShot(slot as IdolShotSlot);
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / Math.max(1, sp.windup)));
+          const pl = useGameStore.getState().player;
+          const locked = Math.round(sp.aimMode) === 1 && e.aiTargetX !== undefined && e.aiTargetY !== undefined;
+          const base = locked
+            ? Math.atan2(e.aiTargetY! - (e.aiFromY ?? cy), e.aiTargetX! - (e.aiFromX ?? cx))
+            : Math.atan2((pl.y + pl.height / 2) - cy, (pl.x + pl.width / 2) - cx);
+          const n = Math.max(1, Math.round(sp.count));
+          const spread = (sp.spreadDeg * Math.PI) / 180;
+          const half = (n - 1) / 2;
+          for (let k = 0; k < n; k++) {
+            const a = base + (k - half) * spread;
+            this.drawAngelBeamLine(o, cx, cy, cx + Math.cos(a) * IDOL_FAN_VIS_RANGE, cy + Math.sin(a) * IDOL_FAN_VIS_RANGE, sp.size / 2, prog, now);
+          }
         }
       }
       // T3(短): 至近の殴り。

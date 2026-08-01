@@ -28,9 +28,11 @@ import { refundCounterCooldown } from './counterMaster';
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter';
 import { npcSfxDistGain } from './npcSfx';
 import {
-  IDOL_TUNING, IDOL_STRINGS, IDOL_STRING_LEN, IDOL_REST, IDOL_PUNISH, IDOL_NEUTRAL_BAND,
-  IDOL_VERB_SPEED_MULT, IDOL_TIMING,
-  idolZone, idolPhaseForHealth, idolFanCount, idolOrbCount, idolWaveActive, type IdolMove,
+  IDOL_TUNING, IDOL_STRING_LEN, IDOL_REST, IDOL_PUNISH, IDOL_NEUTRAL_BAND,
+  IDOL_VERB_SPEED_MULT, IDOL_TIMING, IDOL_MOVES_ALL, IDOL_ORB_SPREAD_RAD,
+  idolZone, idolPhaseForHealth, idolFanCount, idolOrbCount, idolWaveActive,
+  idolStrings, idolShot, idolShotFireMs, idolMoveTiming, isIdolShot,
+  type IdolMove, type IdolShotSlot, type IdolShotSpec,
 } from './idolScript';
 
 export interface IdolSfx {
@@ -47,7 +49,19 @@ export interface IdolTickState {
   strafeDir: 1 | -1;      // 並走の向き
   wavePending: boolean;   // Phase2の第二波が未発火か
   farSince: number; meleeSince: number; angleSince: number; lastAngle: number;
-  orbIds: string[];       // 追尾弾(毎フレーム旋回させる対象)
+  /**
+   * 誘導弾(毎フレーム旋回させる対象)。**旋回速度は毎フレーム引き直す**ので、
+   * ここには「どの技から出た弾か」だけを持つ(メーカーで旋回速度を変えると飛行中の弾にも効く)。
+   */
+  homing: { id: string; move: IdolMove }[];
+  // ---- 射撃部品の連射(v0.25.2638) ----
+  shotSlot: IdolShotSlot | null;  // いま撃っている枠
+  shotWavesLeft: number;          // 残りの斉射数
+  shotNextAt: number;             // 次の斉射の時刻(gameTime)
+  shotAngle: number;              // aimMode=1(予告開始で固定)のロック角
+  shotWaveIdx: number;            // 何斉射目か(waveTurnDeg の回転に使う)
+  // ---- 偏差撃ち(aimMode=2)のためのプレイヤー速度 ----
+  lastPx: number; lastPy: number; playerVx: number; playerVy: number;
 }
 /**
  * ★**副作用を持たせてはいけない**(v0.25.2625の実バグ)。
@@ -58,7 +72,9 @@ export interface IdolTickState {
  */
 export const createIdolTickState = (): IdolTickState => ({
   seq: [], step: 0, strafeDir: 1, wavePending: false,
-  farSince: 0, meleeSince: 0, angleSince: 0, lastAngle: 0, orbIds: [],
+  farSince: 0, meleeSince: 0, angleSince: 0, lastAngle: 0, homing: [],
+  shotSlot: null, shotWavesLeft: 0, shotNextAt: 0, shotAngle: 0, shotWaveIdx: 0,
+  lastPx: 0, lastPy: 0, playerVx: 0, playerVy: 0,
 });
 
 // ============================================================================================
@@ -100,16 +116,34 @@ export const getIdolPlayback = (): { verb: NeutralVerb | null; loop: IdolMove | 
 export const clearIdolPlayback = (): void => { pendingPlay = null; soloActive = false; verbHold = null; loopMove = null; };
 
 const ORB_ID_PREFIX = 'proj-idolorb-';
-const WINDUP_STATES = ['idol-aim-windup', 'idol-fan-windup', 'idol-roll-windup', 'idol-punch-windup', 'idol-snipe-windup', 'idol-orb-windup'];
-const RECOVER_STATES = ['idol-aim-recover', 'idol-fan-recover', 'idol-roll-recover', 'idol-punch-recover', 'idol-snipe-recover', 'idol-orb-recover'];
+const SHOT_ID_PREFIX = 'proj-idolshot-';
+/** aimMode=1(予告開始で固定)のロック線の長さ(px)。判定は弾が持つので**描画の都合だけ**の値。 */
+const SHOT_LOCK_VIS_RANGE = 900;
+// **技の一覧から機械的に組む**(v0.25.2638)。手書きの配列は射撃枠を足した時に必ず取りこぼす
+// ——予告中にカウンターが通らない/硬直の青白tintが出ない、という形で静かに壊れる。
+const WINDUP_STATES = IDOL_MOVES_ALL.map(m => `idol-${m}-windup`);
+const RECOVER_STATES = IDOL_MOVES_ALL.map(m => `idol-${m}-recover`);
 export const IDOL_WINDUP_STATES: readonly string[] = WINDUP_STATES;
 export const IDOL_RECOVER_STATES: readonly string[] = RECOVER_STATES;
 /** 休符(REST)の州。W6と同じ「完全静止+青白tint+次技抽選なし」だが、**カウンターは通る**。 */
 export const IDOL_REST_STATE = 'idol-rest';
+/** 連射中(斉射と斉射の間)。予告は終わっているので**カウンターは通らない**(snipeのactiveと同じ扱い)。 */
+const FIRE_SUFFIX = '-fire';
+/**
+ * 射撃部品の連射州の一覧。**外へ公開する**——予告台帳(ghostTelegraph)の網羅テストは
+ * ソースの文字列リテラルを走査するが、ここは関数で州名を組んでいるので走査では見えない。
+ * 「実装が持っている州の正本」をエクスポートして、台帳側がそれと突き合わせる形にする。
+ */
+export const IDOL_FIRE_STATES: readonly string[] =
+  IDOL_MOVES_ALL.filter(isIdolShot).map(m => `idol-${m}${FIRE_SUFFIX}`);
 
 type BossStateName = NonNullable<Enemy['bossState']>;
 const windupState = (m: IdolMove): BossStateName => `idol-${m}-windup` as BossStateName;
 const recoverState = (m: IdolMove): BossStateName => `idol-${m}-recover` as BossStateName;
+const fireState = (m: IdolShotSlot): BossStateName => `idol-${m}${FIRE_SUFFIX}` as BossStateName;
+/** 状態名から技名を取り出す(`idol-s3-windup` → `s3`)。 */
+const moveOfState = (st: string, suffix: string): IdolMove =>
+  st.slice('idol-'.length, st.length - suffix.length) as IdolMove;
 
 /**
  * 実際に制御すべきアイドル1体を選ぶ(純関数)。v0.25.2614・社長報告「ボスモードだからかな？アイドル動かない」。
@@ -181,23 +215,39 @@ export const runIdolTick = (
   const fresh = (): Enemy => useGameStore.getState().enemies.find(e => e.id === idol.id) ?? idol;
   const hateAim = () => resolveBossHateAim(idol, { x: pcx, y: pcy }, useGameStore.getState().summons, newGameTime);
 
-  // ---- 追尾弾の旋回(毎フレーム・上限3発=負荷1/10) ---------------------------------------------
+  // ---- プレイヤーの速度(偏差撃ち aimMode=2 のため・v0.25.2638) --------------------------------
+  // store はプレイヤー速度を持たないので、**前フレームとの差**から出す。dt=0のフレームでは更新しない
+  // (0除算で速度が爆発し、偏差が画面外を狙う)。
+  if (deltaTime > 0.0001) {
+    s.playerVx = (pcx - s.lastPx) / deltaTime;
+    s.playerVy = (pcy - s.lastPy) / deltaTime;
+  }
+  s.lastPx = pcx; s.lastPy = pcy;
+
+  // ---- 誘導弾の旋回(毎フレーム・上限3発=負荷1/10) ---------------------------------------------
   // 速度155 > プレイヤー104.4 なので走っても振り切れない。**旋回速度1.5rad/sは有限**なので、
   // 密着して小さく回れば内側に入って外せる=「近づくほど安全」の主題そのもの(詰めた側の報酬)。
-  if (s.orbIds.length > 0) {
+  // v0.25.2638: 射撃部品の誘導弾も同じ経路へ乗せる。旋回速度は**技ごと**に引く。
+  if (s.homing.length > 0) {
     const live = new Set(useGameStore.getState().projectiles.map(p => p.id));
-    s.orbIds = s.orbIds.filter(id => live.has(id));
-    if (s.orbIds.length > 0) {
-      const ids = new Set(s.orbIds);
+    s.homing = s.homing.filter(h => live.has(h.id));
+    if (s.homing.length > 0) {
+      const rate = new Map<string, number>();
+      for (const h of s.homing) {
+        rate.set(h.id, isIdolShot(h.move)
+          ? (idolShot(h.move).homingDeg * Math.PI) / 180
+          : IDOL_TUNING.shape.orbTurnRate);
+      }
       useGameStore.setState(state => ({
         projectiles: state.projectiles.map(p => {
-          if (!ids.has(p.id)) return p;
+          const turn = rate.get(p.id);
+          if (turn === undefined) return p;
           const cur = Math.atan2(p.direction.y, p.direction.x);
           const want = Math.atan2(pcy - (p.y + p.height / 2), pcx - (p.x + p.width / 2));
           let d = want - cur;
           while (d > Math.PI) d -= Math.PI * 2;
           while (d < -Math.PI) d += Math.PI * 2;
-          const step = Math.max(-IDOL_TUNING.shape.orbTurnRate * dt, Math.min(IDOL_TUNING.shape.orbTurnRate * dt, d));
+          const step = Math.max(-turn * dt, Math.min(turn * dt, d));
           const a = cur + step;
           return { ...p, direction: { x: Math.cos(a), y: Math.sin(a) } };
         }),
@@ -264,8 +314,22 @@ export const runIdolTick = (
     sfx.alert();
     s.wavePending = idolWaveActive(m, phase);
     patch.bossState = windupState(m);
-    patch.bossStateUntil = newGameTime + IDOL_TIMING[m].windup;
-    if (m === 'snipe') {
+    patch.bossStateUntil = newGameTime + idolMoveTiming(m).windup;
+    if (isIdolShot(m)) {
+      // 射撃部品(v0.25.2638)。狙いの決め方が「予告開始で固定」なら**ここで線をロック**する
+      // =掟W4(テルを出したら必ずその向きへ撃つ)。描画側は同じ2点を読むので赤い線と一致する。
+      const sp = idolShot(m);
+      s.shotSlot = m;
+      s.shotWaveIdx = 0;
+      if (Math.round(sp.aimMode) === 1) {
+        const aim = hateAim();
+        s.shotAngle = Math.atan2(aim.y - icy, aim.x - icx);
+        patch.aiFromX = icx; patch.aiFromY = icy;
+        patch.aiTargetX = icx + Math.cos(s.shotAngle) * SHOT_LOCK_VIS_RANGE;
+        patch.aiTargetY = icy + Math.sin(s.shotAngle) * SHOT_LOCK_VIS_RANGE;
+        patch.hateTarget = aim.side;
+      }
+    } else if (m === 'snipe') {
       // 掟W4: 溜め開始で線をロック(テルを出したら必ず撃つ)。図形=判定=描画が同じ2点を読む。
       const aim = hateAim();
       const dl = Math.hypot(aim.x - icx, aim.y - icy) || 1;
@@ -312,7 +376,7 @@ export const runIdolTick = (
 
   const toRecover = (m: IdolMove): void => {
     patch.bossState = recoverState(m);
-    patch.bossStateUntil = newGameTime + IDOL_TIMING[m].recover;
+    patch.bossStateUntil = newGameTime + idolMoveTiming(m).recover;
   };
 
   /**
@@ -324,6 +388,71 @@ export const runIdolTick = (
     useGameStore.getState().addProjectile(
       createEnemyProjectile(idol, player, tx, ty, undefined, undefined, IDOL_TUNING.bullet[move]),
     );
+
+  /**
+   * 射撃部品の狙う向き(rad)。**3つの決め方**(`aimMode`):
+   *  - 0 追従: 撃つ瞬間のプレイヤーへ(既存の aim/fan と同じ)
+   *  - 1 固定: 予告の開始でロック済み(`s.shotAngle`)=**歩いて避けられる**
+   *  - 2 偏差: プレイヤーの移動先を読む。弾の到達時間ぶんだけ先へ置く=**まっすぐ走り続けると当たる**
+   *
+   * ★2は「読めなさ」ではなく「読み合い」を作るための物(社長方針: MAXは密度で作る)。
+   * 止まる/曲がるで外れる=プレイヤー側に必ず答えがある。
+   */
+  const shotAimAngle = (sp: IdolShotSpec): number => {
+    const mode = Math.round(sp.aimMode);
+    if (mode === 1) return s.shotAngle;
+    const aim = hateAim();
+    if (mode !== 2) return Math.atan2(aim.y - icy, aim.x - icx);
+    const spd = Math.max(1, sp.speed);
+    let tx = aim.x, ty = aim.y;
+    // 到達時間→予測位置→到達時間、の2回で十分収束する(弾速がプレイヤー速度より十分速いため)。
+    for (let i = 0; i < 2; i++) {
+      const t = Math.hypot(tx - icx, ty - icy) / spd;
+      tx = aim.x + s.playerVx * t;
+      ty = aim.y + s.playerVy * t;
+    }
+    return Math.atan2(ty - icy, tx - icx);
+  };
+
+  /**
+   * 射撃部品の1斉射。`count` 本を `spreadDeg` ずつ開いて撃つ。誘導があれば旋回リストへ登録する。
+   * `createEnemyProjectile` は size から x/y を逆算するので**生成時にプロファイルを渡す**
+   * (生成後に上書きすると弾の位置がズレる=BOSS_MAKER.md §2-4)。
+   */
+  const fireShotVolley = (slot: IdolShotSlot, waveIdx: number): void => {
+    const sp = idolShot(slot);
+    const n = Math.max(1, Math.round(sp.count));
+    const base = shotAimAngle(sp) + (waveIdx * sp.waveTurnDeg * Math.PI) / 180;
+    const spread = (sp.spreadDeg * Math.PI) / 180;
+    const half = (n - 1) / 2;
+    const profile = { speed: sp.speed, damage: sp.damage, size: sp.size };
+    const homing = sp.homingDeg > 0;
+    for (let k = 0; k < n; k++) {
+      const a = base + (k - half) * spread;
+      const p = createEnemyProjectile(
+        idol, player, icx + Math.cos(a) * 100, icy + Math.sin(a) * 100, undefined, undefined, profile,
+      );
+      if (homing) {
+        p.id = `${SHOT_ID_PREFIX}${idol.id}-${slot}-${newGameTime}-${waveIdx}-${k}`;
+        s.homing.push({ id: p.id, move: slot });
+      }
+      useGameStore.getState().addProjectile(p);
+    }
+  };
+
+  /** 射撃の予告が終わった: 1斉射目を撃ち、連射があれば連射州へ、無ければ硬直へ。 */
+  const startShotFire = (slot: IdolShotSlot): void => {
+    const sp = idolShot(slot);
+    s.shotSlot = slot;
+    s.shotWaveIdx = 0;
+    fireShotVolley(slot, 0);
+    const waves = Math.max(1, Math.round(sp.waves));
+    if (waves <= 1) { toRecover(slot); return; }
+    s.shotWavesLeft = waves - 1;
+    s.shotNextAt = newGameTime + Math.max(0, sp.intervalMs);
+    patch.bossState = fireState(slot);
+    patch.bossStateUntil = newGameTime + idolShotFireMs(sp);
+  };
 
   /**
    * 帯(カプセル)の当たり判定を1件積む。**ダメージは技ごと**(社長報告v0.25.2629)。
@@ -361,7 +490,7 @@ export const runIdolTick = (
       // 掟: 中途半端な状態を持ち越さない(ストリング/第二波/懲罰シグナルを全部リセットしてから始める)。
       s.seq = []; s.step = 0; s.wavePending = false;
       s.farSince = 0; s.meleeSince = 0; s.angleSince = 0;
-      s.orbIds = [];
+      s.homing = []; s.shotWavesLeft = 0; s.shotSlot = null;
       verbHold = null;
       soloActive = req.solo;
       loopMove = req.loop ? req.move : null;
@@ -402,8 +531,10 @@ export const runIdolTick = (
         s.seq = []; s.step = 0;
         beginMove(pun.move);
       } else {
-        const ready: Record<IdolMove, boolean> = { aim: true, fan: true, roll: true, punch: true, snipe: true, orb: true };
-        const seq = pickStringScript(IDOL_STRINGS, zone, phase, IDOL_STRING_LEN, ready);
+        // CDの概念はまだ無い(全技いつでも使える)。**技の一覧から機械的に組む**ので
+        // 射撃枠を足しても取りこぼさない。
+        const ready = Object.fromEntries(IDOL_MOVES_ALL.map(m => [m, true])) as Record<IdolMove, boolean>;
+        const seq = pickStringScript(idolStrings(), zone, phase, IDOL_STRING_LEN, ready);
         if (seq) { s.seq = seq; s.step = 0; beginMove(s.seq[s.step++]); }
       }
     }
@@ -442,7 +573,7 @@ export const runIdolTick = (
       const base = Math.atan2(aim.y - icy, aim.x - icx);
       const ids: string[] = [];
       for (let k = 0; k < n; k++) {
-        const a = base + (k - (n - 1) / 2) * 0.5; // 少し散らして出す(全弾が同じ線に乗らない)
+        const a = base + (k - (n - 1) / 2) * IDOL_ORB_SPREAD_RAD; // 少し散らして出す(全弾が同じ線に乗らない)
         // 追尾弾も**技ごとの弾**として生成時に渡す(size は x/y の逆算に使うので後から書けない)。
         // 速度は既存パス `shape.orbSpeed` が正(値を二重に持たない・社長指示v0.25.2628)。
         const p = createEnemyProjectile(
@@ -453,7 +584,7 @@ export const runIdolTick = (
         useGameStore.getState().addProjectile(p);
         ids.push(p.id);
       }
-      s.orbIds = [...s.orbIds, ...ids];
+      for (const id of ids) s.homing.push({ id, move: 'orb' });
       toRecover('orb');
     }
   } else if (st === 'idol-snipe-windup') {
@@ -492,11 +623,30 @@ export const runIdolTick = (
     patch.x = (fx + (tx - fx) * t) - idol.width / 2;
     patch.y = (fy + (ty - fy) * t) - idol.height / 2;
     if (newGameTime >= (idol.bossStateUntil ?? 0)) toRecover('roll');
+  } else if (st.endsWith('-windup') && isIdolShot(moveOfState(st, '-windup'))) {
+    // === 射撃部品の予告明け(v0.25.2638) ===
+    if (newGameTime >= (idol.bossStateUntil ?? 0)) {
+      const slot = moveOfState(st, '-windup') as IdolShotSlot;
+      patch.hateTarget = hateAim().side;
+      startShotFire(slot);
+    }
+  } else if (st.endsWith(FIRE_SUFFIX)) {
+    // === 射撃部品の連射中: 間隔ごとに次の斉射を出す ===
+    // **1フレームに複数斉射が溜まっても撃ち切る**(低フレームレートで弾数が減らない=数字どおり出る)。
+    const slot = moveOfState(st, FIRE_SUFFIX) as IdolShotSlot;
+    const sp = idolShot(slot);
+    const interval = Math.max(1, sp.intervalMs);
+    while (s.shotWavesLeft > 0 && newGameTime >= s.shotNextAt) {
+      s.shotWaveIdx += 1;
+      fireShotVolley(slot, s.shotWaveIdx);
+      s.shotWavesLeft -= 1;
+      s.shotNextAt += interval;
+    }
+    if (s.shotWavesLeft <= 0 || newGameTime >= (idol.bossStateUntil ?? 0)) toRecover(slot);
   } else if (RECOVER_STATES.includes(st)) {
     // W6: 硬直中は完全静止+青白tint(描画側)+次技抽選なし。硬直明けに第二波/次段/休符を決める。
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
-      const m = st.slice('idol-'.length, st.length - '-recover'.length) as IdolMove;
-      afterMove(m);
+      afterMove(moveOfState(st, '-recover'));
     }
   } else {
     patch.bossState = 'chase';

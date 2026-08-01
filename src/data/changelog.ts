@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2638',
+    items: [
+      'ボスメーカー: 新しい射撃技を画面から足せるようになりました（弾数・連射・広がり・誘導・狙い方）。',
+      '足した技には名前を付けられます。予告の赤い線は入れた数字どおりに変わります。',
+    ],
+  },
+  {
     version: '0.25.2637',
     items: [
       'ゲーム内容の変更はありません（松明の炎の素材仕様を記録しました）。',

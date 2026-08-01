@@ -17,12 +17,74 @@ import {
   zoneForDistance, type ZoneEdges, type NeutralBand, type StringScript, type StringLenConfig,
   type RestConfig, type PunishConfig, type MoveFairness, type BossZone,
 } from './bossSkeleton';
+import { PLAYER_WALK_PX_PER_SEC } from './bossTelegraph';
 import { deepCloneTuning } from './bossTuning';
 
 // v0.25.2613: 狙撃線(snipe)と追尾弾(orb)を新設。既存4技は消さず条件を与え直す(社長方針)。
-export type IdolMove = 'aim' | 'fan' | 'roll' | 'punch' | 'snipe' | 'orb';
+export type IdolCoreMove = 'aim' | 'fan' | 'roll' | 'punch' | 'snipe' | 'orb';
 
-export const IDOL_ALL_MOVES: readonly IdolMove[] = ['aim', 'fan', 'roll', 'punch', 'snipe', 'orb'];
+/**
+ * **射撃スロット**(v0.25.2638・社長要望「通常弾とかも入れたい 連射の弾幕とか、何かの後に普通に撃つ
+ * ジャブを入れたい とかできる」)。**空の技枠を8つ用意しておき、メーカーの画面で中身を作る。**
+ *
+ * なぜ「部品」なのか: 弾を撃つ技は aim/fan/orb と3つ書いてきたが、違いは**数字だけ**だった
+ * (1発/扇3本/追尾)。ならば**弾数・斉射・広がり・速度・誘導・狙い方をパラメータにした1つの技**を
+ * 8枠置けば、社長が画面で新しい射撃技を作れる。コードを書き足す必要が無くなる。
+ *
+ * 上限8の理由: 技が多すぎるとプレイヤーが読めない(ERのボスでも実質10前後)。加えて
+ * 型・状態名・スキーマを**静的に持てる**上限にしておくと、動的な型を持ち込まずに済む。
+ */
+export type IdolShotSlot = 's1' | 's2' | 's3' | 's4' | 's5' | 's6' | 's7' | 's8';
+export type IdolMove = IdolCoreMove | IdolShotSlot;
+
+/** 中核6技(コードで台本を書いてある技)。**射撃スロットは含まない**。 */
+export const IDOL_ALL_MOVES: readonly IdolCoreMove[] = ['aim', 'fan', 'roll', 'punch', 'snipe', 'orb'];
+export const IDOL_SHOT_SLOTS: readonly IdolShotSlot[] = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
+/** 中核6技+射撃8枠。状態名の一覧やCD表など「全ての技」が要る所で使う。 */
+export const IDOL_MOVES_ALL: readonly IdolMove[] = [...IDOL_ALL_MOVES, ...IDOL_SHOT_SLOTS];
+export const isIdolShot = (m: IdolMove): m is IdolShotSlot =>
+  (IDOL_SHOT_SLOTS as readonly string[]).includes(m);
+
+/**
+ * 射撃部品の1枠ぶんの数値。**全部が数字**=メーカーのフォームがそのまま生える。
+ *
+ * ★分類(CLAUDE.md 攻撃ヴィジュアルの2分類): 射撃は**1(危険を伝える絵)**。
+ * 予告の線は `count`/`spreadDeg`/`aimMode` から引くので、**数字を変えると赤い線も一緒に変わる**
+ * (「描画用に同じ数字を書いておく」を絶対にやらない=v0.25.2631の教訓)。
+ */
+export interface IdolShotSpec {
+  /** 0=この枠は存在しない(画面にも台本にも出ない)。1=有効。 */
+  enabled: number;
+  /** どの距離帯で出すか(0=密着 / 1=主戦 / 2=遠 / 3=超遠)。 */
+  zoneIdx: number;
+  /** その距離帯での抽選の重み。0=台本には出ない(▶の単独再生では出せる)。 */
+  weight: number;
+  /** 1斉射で出る弾数。 */
+  count: number;
+  /** 斉射の回数(1=単発。2以上で連射になる)。 */
+  waves: number;
+  /** 斉射の間隔(ms)。 */
+  intervalMs: number;
+  /** 弾1本あたりの開き角(度)。0=全部同じ向き。 */
+  spreadDeg: number;
+  /** 斉射ごとに向きをずらす量(度)。回転する弾幕が作れる。 */
+  waveTurnDeg: number;
+  speed: number;
+  damage: number;
+  size: number;
+  /** 誘導の旋回速度(度/秒)。0=直進。速度がプレイヤー(104.4px/s)より速い誘導弾は「走っても振り切れない」。 */
+  homingDeg: number;
+  /** 狙いの決め方: 0=撃つ瞬間に狙う / 1=予告の開始で固定(歩いて避けられる) / 2=移動先を読む(偏差)。 */
+  aimMode: number;
+  windup: number;
+  recover: number;
+}
+
+/** `zoneIdx` → 距離帯。並びは近い順(メーカーの数字と意味を1対1にする)。 */
+export const IDOL_SHOT_ZONES: readonly BossZone[] = ['melee', 'near', 'mid', 'far'];
+
+/** 追尾弾(orb)の発射時の散らし角(rad)。**判定と描画が同じ値を読む**ために定数を1つだけ置く。 */
+export const IDOL_ORB_SPREAD_RAD = 0.5;
 
 // ============================================================================================
 // ★ボスメーカー対応(BOSS_MAKER.md §2・v0.25.2621): 数値は**すべてこの1つの可変テーブル**に集約する。
@@ -42,7 +104,8 @@ export interface IdolTuning {
   phaseHpThreshold: number;
   fanCount: { p1: number; p2: number };
   orbCount: { p1: number; p2: number };
-  timing: Record<IdolMove, { windup: number; active: number; recover: number }>;
+  /** **中核6技だけ**の秒数。射撃スロットは自分の `windup`/`recover` を持つ(`idolMoveTiming` が吸収)。 */
+  timing: Record<IdolCoreMove, { windup: number; active: number; recover: number }>;
   shape: {
     rollDist: number; punchRange: number; punchHalfWidth: number;
     snipeRange: number; snipeHalfWidth: number; fanSpreadStep: number;
@@ -87,7 +150,25 @@ export interface IdolTuning {
    * 弾を撃つ技(aim/fan/orb)は `bullet[move].damage` が正。
    */
   moveDamage: { punch: number; snipe: number };
+  /** 射撃部品の8枠(既定は全て `enabled:0` = 何も無い)。 */
+  shots: Record<IdolShotSlot, IdolShotSpec>;
+  /** 枠に付けた名前(空=`射撃1` のような既定名)。台本に並べた時に読めるようにするためだけの値。 */
+  shotLabels: Record<IdolShotSlot, string>;
 }
+
+/**
+ * 射撃枠の既定値=**「ごく普通の弾を1発」**。社長が枠を足した瞬間に「とりあえず撃つ技」が
+ * 手に入り、そこから数字を動かして性格を作る、という手順にする(空の枠から作らせない)。
+ * 弾の3点(速度320/威力20/大きさ16)は既存の共通行と同値=**足しても既存の見た目と揃う**。
+ */
+const shotDefault = (): IdolShotSpec => ({
+  enabled: 0, zoneIdx: 1, weight: 30,
+  count: 1, waves: 1, intervalMs: 150,
+  spreadDeg: 8, waveTurnDeg: 0,
+  speed: 320, damage: 20, size: 16,
+  homingDeg: 0, aimMode: 0,
+  windup: 700, recover: 900,
+});
 
 export const IDOL_TUNING: IdolTuning = {
   // ①帯(§6.28-20の確定表 140/340 をそのまま使い、遠を2つに割っただけ=仕様不変)
@@ -165,6 +246,12 @@ export const IDOL_TUNING: IdolTuning = {
   },
   // 既定は現行の実効値(接触ダメージ 30 の流用)=**欄を足しても挙動は変わらない**。
   moveDamage: { punch: 30, snipe: 30 },
+  // 射撃部品(v0.25.2638)。**既定は8枠すべて無効**=本編のアイドルの挙動は1ミリも変わらない。
+  shots: {
+    s1: shotDefault(), s2: shotDefault(), s3: shotDefault(), s4: shotDefault(),
+    s5: shotDefault(), s6: shotDefault(), s7: shotDefault(), s8: shotDefault(),
+  },
+  shotLabels: { s1: '', s2: '', s3: '', s4: '', s5: '', s6: '', s7: '', s8: '' },
 };
 
 /** 既定値(リセット/差分表示用)。テーブルとは別オブジェクトとして凍結せずに保持する。 */
@@ -179,6 +266,47 @@ export const IDOL_STRING_LEN: StringLenConfig = IDOL_TUNING.stringLen;
 export const IDOL_STRINGS: readonly StringScript<IdolMove>[] = IDOL_TUNING.strings;
 export const IDOL_REST: RestConfig = IDOL_TUNING.rest;
 export const IDOL_PUNISH: PunishConfig<IdolMove> = IDOL_TUNING.punish;
+
+// ---- 射撃部品のアクセサ(v0.25.2638) -----------------------------------------------------------
+export const idolShot = (m: IdolShotSlot): IdolShotSpec => IDOL_TUNING.shots[m];
+/** 表示名。空なら `射撃1` のような既定名(枠を足しただけで名無しにならない)。 */
+export const idolShotName = (m: IdolShotSlot): string =>
+  IDOL_TUNING.shotLabels[m]?.trim() || `射撃${IDOL_SHOT_SLOTS.indexOf(m) + 1}`;
+/** 技の表示名(中核も射撃も1つの関数で引ける)。 */
+export const idolMoveName = (m: IdolMove): string => (isIdolShot(m) ? idolShotName(m) : m);
+/** 有効な枠(社長が足した射撃技)。 */
+export const idolEnabledShots = (): IdolShotSlot[] =>
+  IDOL_SHOT_SLOTS.filter(s => IDOL_TUNING.shots[s].enabled >= 0.5);
+
+/** 斉射を撃ち切るのに要る時間(ms)。1斉射なら0=撃った瞬間に硬直へ入る(既存の aim/fan と同じ形)。 */
+export const idolShotFireMs = (sp: IdolShotSpec): number =>
+  Math.max(0, Math.round(sp.waves) - 1) * Math.max(0, sp.intervalMs);
+
+/**
+ * 技の秒数を1つの関数で引く。**射撃スロットは `timing` に居ない**(自分の windup/recover を持つ)ので、
+ * `IDOL_TIMING[m]` を直接引いてはいけない(射撃枠で undefined になる)。
+ */
+export const idolMoveTiming = (m: IdolMove): { windup: number; active: number; recover: number } => {
+  if (!isIdolShot(m)) return IDOL_TUNING.timing[m];
+  const sp = IDOL_TUNING.shots[m];
+  return { windup: sp.windup, active: idolShotFireMs(sp), recover: sp.recover };
+};
+
+/**
+ * 台本の全量 = **コードで書いた台本 + 社長が足した射撃技**。
+ * 足した射撃は「その距離帯の1段だけの台本」として混ざる(重み0なら出ない)。
+ * ※複数段の組み立て(「何かの後に撃つジャブ」)は台本エディタ(3便目)の仕事。ここでは1段。
+ */
+export const idolStrings = (): StringScript<IdolMove>[] => {
+  const extra: StringScript<IdolMove>[] = [];
+  for (const s of idolEnabledShots()) {
+    const sp = IDOL_TUNING.shots[s];
+    if (sp.weight <= 0) continue;
+    const zi = Math.max(0, Math.min(IDOL_SHOT_ZONES.length - 1, Math.round(sp.zoneIdx)));
+    extra.push({ zone: IDOL_SHOT_ZONES[zi], weight: sp.weight, moves: [s] });
+  }
+  return extra.length === 0 ? IDOL_TUNING.strings : [...IDOL_TUNING.strings, ...extra];
+};
 
 export const idolZone = (distance: number): BossZone => zoneForDistance(distance, IDOL_TUNING.zoneEdges);
 export const idolPhaseForHealth = (healthFrac: number): 1 | 2 =>
@@ -199,6 +327,20 @@ export const idolWaveActive = (move: IdolMove, phase: 1 | 2): boolean =>
 // idolのCは「その距離に居続ける限り避けられない」=答えが「詰める」になる技=本ボスの主題そのもの。
 // escapePx = 判定から歩いて出るのに要る距離(自機半径16px込み)。
 const PLAYER_HALF = 16;
+
+/**
+ * 社長が足した射撃技の公平性(v0.25.2638)。**足した技も必ず検算に載る**ようにする——
+ * ここを空のままにすると「メーカーで作った技だけ公平性の網の外」という穴になる。
+ *  - 誘導があり、かつプレイヤーより速い ⇒ **走っても振り切れない = C**(答えは詰めること)
+ *  - それ以外は **B**(判定=弾の太さぶんだけ横へ歩けば出られる)
+ */
+const idolShotFairness = (): MoveFairness[] => idolEnabledShots().map(s => {
+  const sp = IDOL_TUNING.shots[s];
+  const unshakeable = sp.homingDeg > 0 && sp.speed > PLAYER_WALK_PX_PER_SEC;
+  return unshakeable
+    ? { key: idolShotName(s), cls: 'C' as const, telegraphMs: sp.windup }
+    : { key: idolShotName(s), cls: 'B' as const, telegraphMs: sp.windup, escapePx: sp.size / 2 + PLAYER_HALF };
+});
 // ★ボスメーカー対応: 数値がテーブルから来る=**モジュール読み込み時のスナップショットにしない**。
 // 呼ぶたびに今の値で組み直す関数にする(数字を画面で変えたら公平性の検算も追随する)。
 export const idolFairnessP1 = (): MoveFairness[] => {
@@ -211,6 +353,7 @@ export const idolFairnessP1 = (): MoveFairness[] => {
     { key: 'punch', cls: 'C', telegraphMs: T.timing.punch.windup },
     // 追尾弾: 速度155>プレイヤー104.4=走っても振り切れない。答えは「詰めて旋回を振り切る」。
     { key: 'orb', cls: 'C', telegraphMs: T.timing.orb.windup },
+    ...idolShotFairness(),
   ];
 };
 export const idolFairnessP2 = (): MoveFairness[] => {
@@ -223,6 +366,7 @@ export const idolFairnessP2 = (): MoveFairness[] => {
     { key: 'snipe+wave', cls: 'C', telegraphMs: T.waveDelayMs },
     { key: 'punch', cls: 'C', telegraphMs: T.timing.punch.windup },
     { key: 'orb', cls: 'C', telegraphMs: T.timing.orb.windup },
+    ...idolShotFairness(),
   ];
 };
 
@@ -230,5 +374,5 @@ export const idolFairnessP2 = (): MoveFairness[] => {
 /** 旧 idolMoveEligible の後継。台本方式へ移行したので「そのゾーンの台本に登場するか」で答える。 */
 export const idolMoveEligible = (move: IdolMove, distance: number): boolean => {
   const z = idolZone(distance);
-  return IDOL_STRINGS.some(s => s.zone === z && s.weight > 0 && s.moves.includes(move));
+  return idolStrings().some(s => s.zone === z && s.weight > 0 && s.moves.includes(move));
 };

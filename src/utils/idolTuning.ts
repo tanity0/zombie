@@ -7,18 +7,26 @@
 // よって **step(刻み幅)がスキーマの主役**になる。刻みが合っていないとスクラブが使い物にならない。
 // 叩き台の刻み: ms=50 / px=10 / 倍率=0.05 / 重み=5 / 個数=1。
 import { registerEnemyFireProfile } from './enemyUtils';
-import { registerBossTuning, type TuningField, type PlayableAction } from './bossTuning';
-import { IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_ALL_MOVES, type IdolMove } from './idolScript';
+import {
+  registerBossTuning, type TuningField, type TuningTextField, type PlayableAction,
+} from './bossTuning';
+import {
+  IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_ALL_MOVES, IDOL_SHOT_SLOTS,
+  idolShotName, idolEnabledShots, type IdolMove, type IdolCoreMove, type IdolShotSlot,
+} from './idolScript';
 import { requestIdolMovePlay, requestIdolVerbPlay, getIdolPlayback } from './idolTick';
 import type { NeutralVerb } from './bossSkeleton';
 
-const MOVE_LABEL: Record<IdolMove, string> = {
+const MOVE_LABEL: Record<IdolCoreMove, string> = {
   aim: '狙い撃ち(aim)', fan: '連射扇(fan)', roll: '離脱ローリング(roll)',
   punch: '至近の殴り(punch)', snipe: '狙撃線(snipe)', orb: '追尾弾(orb)',
 };
 
+/** 射撃枠の見出し。**固定文字列**にする(社長が付けた名前は `sectionLabel` で後から差し替える)。 */
+const shotSection = (m: IdolShotSlot): string => `射撃枠 ${m}`;
+
 // 技ごとの「図形」欄(判定と描画が同じ値を読むので、ここを動かすと赤い予告も一緒に動く)。
-const SHAPE_FIELDS: Partial<Record<IdolMove, TuningField[]>> = {
+const SHAPE_FIELDS: Partial<Record<IdolCoreMove, TuningField[]>> = {
   roll: [{ path: 'shape.rollDist', label: '離脱距離', group: 'move', section: MOVE_LABEL.roll, kind: 'px', min: 0, max: 600, step: 10 }],
   punch: [
     { path: 'shape.punchRange', label: '帯の長さ', group: 'move', section: MOVE_LABEL.punch, kind: 'px', min: 10, max: 400, step: 10 },
@@ -49,7 +57,7 @@ const SHAPE_FIELDS: Partial<Record<IdolMove, TuningField[]>> = {
  * 追尾弾(orb)は**速度だけ既存パス `shape.orbSpeed` が正**(値を二重に持たない)。
  * **並び順と項目名は3技で同じ**にする=社長から見て「どの技にも弾の項目が同じ形で並んでいる」。
  */
-const bulletFields = (m: IdolMove): TuningField[] => {
+const bulletFields = (m: IdolCoreMove): TuningField[] => {
   const sec = MOVE_LABEL[m];
   const dmgSize = (base: string): TuningField[] => [
     { path: `${base}.damage`, label: '弾のダメージ', group: 'move', section: sec, kind: 'num', min: 0, max: 200, step: 1 },
@@ -89,6 +97,54 @@ const moveFields = (): TuningField[] => {
   }
   return out;
 };
+
+/**
+ * 射撃部品の欄(v0.25.2638・社長要望「通常弾/連射の弾幕/ジャブを入れたい」)。
+ *
+ * **足していない枠は1行も出さない**(`visibleWhen`)。8枠×15欄=120行が常時並ぶと道具として
+ * 使えない(社長報告v0.25.2628「大分まだみづらい」の再来)。「＋技を足す」で1枠ずつ現れる。
+ * 並び順は**中核6技と同じ**(予告→判定相当→硬直→弾→形)にして、どの技も同じ場所に同じ項目がある状態を保つ。
+ */
+const shotFields = (): TuningField[] => {
+  const out: TuningField[] = [];
+  for (const m of IDOL_SHOT_SLOTS) {
+    const sec = shotSection(m);
+    const on = `shots.${m}.enabled`;
+    const f = (
+      key: string, label: string, kind: TuningField['kind'],
+      min: number, max: number, step: number, hint?: string,
+    ): TuningField => ({ path: `shots.${m}.${key}`, label, group: 'move', section: sec, kind, min, max, step, hint, visibleWhen: on });
+    out.push(
+      f('windup', '予告', 'ms', 0, 5000, 50, '予告が出てから撃つまで'),
+      f('recover', '硬直', 'ms', 0, 5000, 50, '反撃窓。820ms=近接1発'),
+      f('count', '弾数(1斉射)', 'num', 1, 24, 1),
+      f('spreadDeg', '広がり', 'deg', 0, 60, 1, '弾1本あたりの開き角'),
+      f('waves', '斉射の回数', 'num', 1, 12, 1, '2以上で連射'),
+      f('intervalMs', '斉射の間隔', 'ms', 20, 1500, 10),
+      f('waveTurnDeg', '斉射ごとの回転', 'deg', -60, 60, 1, '回る弾幕が作れる'),
+      f('speed', '弾速', 'pxs', 40, 1200, 20, 'プレイヤーは104.4px/s'),
+      f('damage', '弾のダメージ', 'num', 0, 200, 1),
+      f('size', '弾の大きさ', 'px', 4, 64, 2),
+      f('homingDeg', '誘導', 'rate', 0, 360, 5, '0=直進。旋回速度(度/秒)'),
+      f('aimMode', '狙い方', 'num', 0, 2, 1, '0=撃つ瞬間 1=予告で固定 2=偏差'),
+      f('zoneIdx', '出す距離帯', 'num', 0, 3, 1, '0密着 1主戦 2遠 3超遠'),
+      f('weight', '頻度(重み)', 'num', 0, 200, 5, '0=台本に出ない(▶では出せる)'),
+      // 一番下=「消す」に近い操作なので、うっかり触らない位置へ置く。
+      f('enabled', '有効(0で消す)', 'num', 0, 1, 1, '0にするとこの枠は消える'),
+    );
+  }
+  return out;
+};
+
+const shotTextFields = (): TuningTextField[] => IDOL_SHOT_SLOTS.map(m => ({
+  path: `shotLabels.${m}`,
+  label: '名前',
+  group: 'move' as const,
+  section: shotSection(m),
+  maxLen: 12,
+  placeholder: idolShotName(m),
+  visibleWhen: `shots.${m}.enabled`,
+}));
 
 // 台本の重み(距離帯ごとの頻度)。BOSS_MAKER.md §1-4「頻度(重み)…ゾーン別に出す」。
 const ZONE_LABEL: Record<string, string> = { melee: '密着(0〜140)', near: '主戦帯(140〜340)', mid: '遠(340〜700)', far: '超遠(700〜)' };
@@ -135,8 +191,9 @@ const behaviorFields = (): TuningField[] => [
 ];
 
 export const IDOL_TUNING_FIELDS: readonly TuningField[] = [
-  ...behaviorFields(), ...stringFields(), ...moveFields(),
+  ...behaviorFields(), ...stringFields(), ...moveFields(), ...shotFields(),
 ];
+export const IDOL_TUNING_TEXT_FIELDS: readonly TuningTextField[] = shotTextFields();
 
 // ---- 個別再生(社長要望v0.25.2625) --------------------------------------------------------------
 // 技6本はスキーマの section(=MOVE_LABEL)と対応させる。移動語彙4つは専用の見出しにまとめる。
@@ -147,9 +204,23 @@ const VERB_LABEL: Record<NeutralVerb, string> = {
 
 export const IDOL_PLAYABLES: readonly PlayableAction[] = [
   ...IDOL_ALL_MOVES.map(m => ({ kind: 'move' as const, key: m, label: MOVE_LABEL[m], section: MOVE_LABEL[m] })),
+  // 射撃枠にも▶を出す。足していない枠は**見出しごと画面に出ない**(欄が全部隠れる)ので、
+  // ここに8つ並べておいても余計なボタンは現れない。
+  ...IDOL_SHOT_SLOTS.map(m => ({ kind: 'move' as const, key: m, label: '再生', section: shotSection(m) })),
   ...(['close', 'retreat', 'strafe', 'hold'] as NeutralVerb[])
     .map(v => ({ kind: 'verb' as const, key: v, label: VERB_LABEL[v], section: VERB_SECTION })),
 ];
+
+/**
+ * 「＋技を足す」: 空いている射撃枠を1つ有効にする(社長要望「新しい技を入れたい」)。
+ * **8枠が上限**(技が多すぎるとプレイヤーが読めない)。埋まっている時は理由を返して何もしない。
+ */
+export const addIdolShot = (): { ok: boolean; message: string } => {
+  const free = IDOL_SHOT_SLOTS.find(m => IDOL_TUNING.shots[m].enabled < 0.5);
+  if (!free) return { ok: false, message: `射撃枠は${IDOL_SHOT_SLOTS.length}個までです` };
+  IDOL_TUNING.shots[free].enabled = 1;
+  return { ok: true, message: `${idolShotName(free)} を足しました(${idolEnabledShots().length}/${IDOL_SHOT_SLOTS.length})` };
+};
 
 export const registerIdolTuning = (): void => {
   // 弾の性能を「11ボス共通の1行」から**このテーブル**へ差し替える。同じ参照を渡すので、
@@ -163,7 +234,14 @@ export const registerIdolTuning = (): void => {
     table: IDOL_TUNING as unknown as Record<string, unknown>,
     defaults: IDOL_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: IDOL_TUNING_FIELDS,
+    textFields: IDOL_TUNING_TEXT_FIELDS,
     playables: IDOL_PLAYABLES,
+    // 見出しは固定文字列(`射撃枠 s3`)で持ち、表示だけ社長が付けた名前へ差し替える。
+    sectionLabel: sec => {
+      const slot = IDOL_SHOT_SLOTS.find(m => shotSection(m) === sec);
+      return slot ? `${idolShotName(slot)}(${slot})` : sec;
+    },
+    addMove: addIdolShot,
     onPlay: (a, opts) => {
       if (a.kind === 'move') requestIdolMovePlay(a.key as IdolMove, opts);
       else requestIdolVerbPlay(a.key as NeutralVerb);

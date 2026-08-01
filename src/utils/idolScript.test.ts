@@ -1,17 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   idolMoveEligible, idolPhaseForHealth, idolFanCount, idolZone, idolOrbCount, idolWaveActive,
   IDOL_ALL_MOVES, IDOL_STRINGS, IDOL_STRING_LEN, IDOL_REST, IDOL_TIMING, IDOL_NEUTRAL_BAND,
   IDOL_ZONE_EDGES, idolFairnessP1, idolFairnessP2, IDOL_WAVE_MOVES, IDOL_PUNISH,
-  IDOL_TUNING, IDOL_TUNING_DEFAULTS, type IdolMove,
+  IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_MOVES_ALL, IDOL_SHOT_SLOTS,
+  idolEnabledShots, idolStrings, idolMoveTiming, idolShotFireMs, idolShotName, type IdolMove,
 } from './idolScript';
+import { deepCloneTuning } from './bossTuning';
 import { fairnessViolations, classMix, pickStringScript, stringMaxLen, type BossZone } from './bossSkeleton';
 import { PLAYER_ATTACK_CYCLE_MS } from './bossTelegraph';
 import { ENEMY_STATS } from './enemyUtils';
 
 const ZONES: BossZone[] = ['melee', 'near', 'mid', 'far'];
 const allReady = (): Record<IdolMove, boolean> =>
-  ({ aim: true, fan: true, roll: true, punch: true, snipe: true, orb: true });
+  Object.fromEntries(IDOL_MOVES_ALL.map(m => [m, true])) as Record<IdolMove, boolean>;
 
 describe('idolPhaseForHealth / idolFanCount(§6.28-20の確定値・不変)', () => {
   it('HP50%でPhase2', () => {
@@ -219,5 +221,95 @@ describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変
     expect(IDOL_STRINGS).toBe(IDOL_TUNING.strings);
     expect(IDOL_STRING_LEN).toBe(IDOL_TUNING.stringLen);
     expect(IDOL_ZONE_EDGES).toBe(IDOL_TUNING.zoneEdges);
+  });
+});
+
+// ==== 射撃部品(v0.25.2638・社長要望「通常弾/連射の弾幕/ジャブを入れたい」) ====
+//
+// ★この節が守る一番大事な不変条件: **既定では8枠すべて無効=本編のアイドルは1ミリも変わらない。**
+// メーカーは本編と同じテーブルの実体を書き換える道具なので、ここが崩れると
+// 「調整したつもりの値が本編のボスに乗る」という最悪の事故になる。
+describe('射撃部品(shots)', () => {
+  const resetShots = (): void => {
+    for (const m of IDOL_SHOT_SLOTS) {
+      IDOL_TUNING.shots[m] = deepCloneTuning(IDOL_TUNING_DEFAULTS.shots[m]);
+      IDOL_TUNING.shotLabels[m] = IDOL_TUNING_DEFAULTS.shotLabels[m];
+    }
+  };
+  beforeEach(resetShots);
+  afterEach(resetShots);
+
+  it('既定は8枠すべて無効(本編の挙動は変わらない)', () => {
+    expect(IDOL_SHOT_SLOTS).toHaveLength(8);
+    for (const m of IDOL_SHOT_SLOTS) expect(IDOL_TUNING_DEFAULTS.shots[m].enabled).toBe(0);
+    expect(idolEnabledShots()).toEqual([]);
+    // 台本も公平性の台帳も、足していない限り**同じ配列の同じ参照**が返る。
+    expect(idolStrings()).toBe(IDOL_TUNING.strings);
+    expect(idolFairnessP1().map(f => f.key)).toEqual(['aim', 'fan', 'snipe', 'punch', 'orb']);
+  });
+
+  it('中核6技と射撃枠を1つの関数で引ける(timing に居ない技を直接引かない)', () => {
+    expect(idolMoveTiming('aim')).toEqual(IDOL_TUNING.timing.aim);
+    IDOL_TUNING.shots.s1.windup = 320;
+    IDOL_TUNING.shots.s1.recover = 640;
+    IDOL_TUNING.shots.s1.waves = 4;
+    IDOL_TUNING.shots.s1.intervalMs = 150;
+    // 判定(active)= 撃ち切るのに要る時間 = (斉射数-1)×間隔。単発なら0=撃った瞬間に硬直へ。
+    expect(idolMoveTiming('s1')).toEqual({ windup: 320, active: 450, recover: 640 });
+    IDOL_TUNING.shots.s1.waves = 1;
+    expect(idolShotFireMs(IDOL_TUNING.shots.s1)).toBe(0);
+  });
+
+  it('有効かつ重み>0の枠だけが台本へ1段の演目として混ざる', () => {
+    IDOL_TUNING.shots.s2.enabled = 1;
+    IDOL_TUNING.shots.s2.zoneIdx = 2;   // 遠
+    IDOL_TUNING.shots.s2.weight = 40;
+    IDOL_TUNING.shots.s3.enabled = 1;
+    IDOL_TUNING.shots.s3.weight = 0;    // 重み0=台本には出ない(▶の単独再生では出せる)
+    const ss = idolStrings();
+    expect(ss).toHaveLength(IDOL_TUNING.strings.length + 1);
+    expect(ss[ss.length - 1]).toEqual({ zone: 'mid', weight: 40, moves: ['s2'] });
+    expect(idolMoveEligible('s2', 500)).toBe(true);   // 遠(340〜700)
+    expect(idolMoveEligible('s2', 250)).toBe(false);  // 主戦帯には出ない
+    expect(idolMoveEligible('s3', 250)).toBe(false);  // 重み0
+  });
+
+  it('抽選に載る(足した技が実際にボスの手として出る)', () => {
+    IDOL_TUNING.shots.s1.enabled = 1;
+    IDOL_TUNING.shots.s1.zoneIdx = 0;   // 密着
+    IDOL_TUNING.shots.s1.weight = 1000; // 既存の55/45に対して圧倒的
+    const seq = pickStringScript(idolStrings(), 'melee', 1, IDOL_STRING_LEN, allReady(), () => 0.99);
+    expect(seq).toEqual(['s1']);
+  });
+
+  it('名前は空なら既定名(枠を足しただけで名無しにならない)', () => {
+    expect(idolShotName('s1')).toBe('射撃1');
+    IDOL_TUNING.shotLabels.s1 = ' ジャブ ';
+    expect(idolShotName('s1')).toBe('ジャブ');
+  });
+
+  it('足した技も公平性の検算に載る(メーカー製だけ網の外、を作らない)', () => {
+    IDOL_TUNING.shots.s1.enabled = 1;
+    IDOL_TUNING.shots.s1.homingDeg = 0;
+    IDOL_TUNING.shots.s1.windup = 700;
+    IDOL_TUNING.shotLabels.s1 = '通常弾';
+    const f = idolFairnessP1().find(x => x.key === '通常弾');
+    expect(f).toBeDefined();
+    expect(f?.cls).toBe('B');                 // 直進弾=弾の太さぶん横へ歩けば出られる
+    expect(fairnessViolations(idolFairnessP1())).toEqual([]);
+
+    // 予告を人の反応より短くしたら**必ず検算に引っかかる**(ここが鳴らないと歯止めが無い)。
+    IDOL_TUNING.shots.s1.windup = 60;
+    expect(fairnessViolations(idolFairnessP1()).join()).toContain('通常弾');
+  });
+
+  it('誘導があってプレイヤーより速い弾は C(走っても振り切れない=詰めるのが答え)', () => {
+    IDOL_TUNING.shots.s1.enabled = 1;
+    IDOL_TUNING.shots.s1.homingDeg = 90;
+    IDOL_TUNING.shots.s1.speed = 300;    // プレイヤー104.4px/sより速い
+    expect(idolFairnessP1().find(x => x.key === '射撃1')?.cls).toBe('C');
+    // 誘導があっても遅ければ歩いて逃げられる=B。
+    IDOL_TUNING.shots.s1.speed = 60;
+    expect(idolFairnessP1().find(x => x.key === '射撃1')?.cls).toBe('B');
   });
 });

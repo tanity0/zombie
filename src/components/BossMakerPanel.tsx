@@ -27,7 +27,8 @@ import type { Enemy } from '../types/game';
 import {
   getBossTuning, getAtPath, setAtPath, clampField, changedPaths, resetTuning,
   formatTuningText, parseTuningText, saveTuning, applySavedTuning, clearSavedTuning,
-  UNIT_SUFFIX, type TuningField, type BossTuningEntry,
+  getTextAtPath, setTextAtPath, fieldVisible,
+  UNIT_SUFFIX, type TuningField, type TuningTextField, type BossTuningEntry,
 } from '../utils/bossTuning';
 import { registerIdolTuning } from '../utils/idolTuning';
 import { BossMakerLive } from './BossMakerLive';
@@ -139,6 +140,22 @@ const NumberScrub = ({ field, value, changed, pinned, withSection, onChange, onP
   );
 };
 
+// ---- 1つの文字欄(技の名前だけ・v0.25.2638) ------------------------------------------------------
+// 数値欄と違って「摘まむ」操作が無いので普通の入力にする。**入力中は移動キーを殺す**必要があるが、
+// それは useGameControls 側が「入力欄にフォーカスがあるか」で見ているので、ここは素の input でよい。
+const TextRow = ({ field, value, onChange }: {
+  field: TuningTextField; value: string; onChange: (v: string) => void;
+}) => (
+  <div className="flex items-center gap-1 py-[2px]">
+    <div className="min-w-0 flex-1 truncate text-[11px] text-white/70">{field.label}</div>
+    <input
+      type="text" value={value} maxLength={field.maxLen ?? 16} placeholder={field.placeholder}
+      className="h-7 w-[140px] shrink-0 rounded bg-black/40 px-1.5 text-[12px] text-white outline-none focus:ring-1 focus:ring-emerald-400"
+      onChange={ev => onChange(ev.target.value)}
+    />
+  </div>
+);
+
 // ---- 記憶(localStorage)。開閉・タブ・ピン・シートの段はすべて端末に覚える -----------------------
 const OPEN_KEY = 'bossmaker.open.v1';
 const PIN_KEY = 'bossmaker.pins.v1';
@@ -170,22 +187,24 @@ const summarize = (fs: TuningField[], table: Record<string, unknown>): string =>
   }).join(' ');
 
 // ---- タブ1枚ぶんの中身。**セクション単位で開閉**する --------------------------------------------
-const SectionList = ({ group, entry, open, toggle, pins, onChange, onPin, onPlay, playState, bump }: {
+const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin, onPlay, playState, bump }: {
   group: 'behavior' | 'move';
   entry: BossTuningEntry;
   open: Set<string>;
   toggle: (sec: string) => void;
   pins: Set<string>;
   onChange: (path: string, v: number) => void;
+  onText: (path: string, v: string) => void;
   onPin: (path: string) => void;
   onPlay: (key: string) => void;
   playState: { verb: string | null; loop: string | null };
   bump: number;
 }) => {
   // セクションの並び = スキーマの出現順 + 欄を持たない再生専用セクション(移動語彙)を末尾へ。
+  // ★`fieldVisible` を通す=**足していない射撃枠は見出しごと消える**(欄が0本なら Map に入らない)。
   const sections = useMemo(() => {
     const m = new Map<string, TuningField[]>();
-    for (const f of entry.fields) if (f.group === group) {
+    for (const f of entry.fields) if (f.group === group && fieldVisible(entry.table, f)) {
       const a = m.get(f.section) ?? []; a.push(f); m.set(f.section, a);
     }
     for (const p of entry.playables ?? []) {
@@ -200,6 +219,7 @@ const SectionList = ({ group, entry, open, toggle, pins, onChange, onPin, onPlay
     <>
       {sections.map(([sec, fs]) => {
         const isOpen = open.has(sec);
+        const texts = (entry.textFields ?? []).filter(t => t.section === sec && fieldVisible(entry.table, t));
         const plays = (entry.playables ?? []).filter(p => p.section === sec);
         const single = plays.length === 1 ? plays[0] : null;
         const active = single !== null && (playState.verb === single.key || playState.loop === single.key);
@@ -210,7 +230,7 @@ const SectionList = ({ group, entry, open, toggle, pins, onChange, onPin, onPlay
                 <div className="flex items-center gap-1">
                   {/* 開閉の印は細い三角(▸/▾)。**再生ボタンの塗り三角(▶)と見間違えない**ため。 */}
                   <span className="text-[10px] text-white/40">{isOpen ? '▾' : '▸'}</span>
-                  <span className="truncate text-[12px] font-bold text-emerald-300/90">{sec}</span>
+                  <span className="truncate text-[12px] font-bold text-emerald-300/90">{entry.sectionLabel?.(sec) ?? sec}</span>
                 </div>
                 {!isOpen && fs.length > 0 && (
                   <div className="truncate pl-3 font-mono text-[10px] text-white/40">{summarize(fs, entry.table)}</div>
@@ -243,6 +263,13 @@ const SectionList = ({ group, entry, open, toggle, pins, onChange, onPin, onPlay
                     })}
                   </div>
                 )}
+                {texts.map(t => (
+                  <TextRow
+                    key={t.path} field={t}
+                    value={getTextAtPath(entry.table, t.path) ?? ''}
+                    onChange={v => onText(t.path, v)}
+                  />
+                ))}
                 {fs.map(f => (
                   <NumberScrub
                     key={f.path} field={f}
@@ -373,6 +400,34 @@ export const BossMakerPanel = () => {
     bump(n => n + 1);
   }, [entry, saveSoon]);
 
+  const onText = useCallback((path: string, v: string) => {
+    if (!entry) return;
+    setTextAtPath(entry.table, path, v);
+    saveSoon();
+    bump(n => n + 1);
+  }, [entry, saveSoon]);
+
+  /** 「＋技を足す」(v0.25.2638): 空いている射撃枠を1つ有効にして、その見出しを開いておく。 */
+  const addMove = useCallback(() => {
+    if (!entry?.addMove) return;
+    const before = new Set(entry.fields.filter(f => fieldVisible(entry.table, f)).map(f => f.section));
+    const r = entry.addMove();
+    setNote(r.message);
+    if (r.ok) {
+      const fresh = entry.fields.filter(f => fieldVisible(entry.table, f)).map(f => f.section).find(s => !before.has(s));
+      if (fresh) {
+        setOpenSecs(prev => {
+          const next = new Set(prev).add(fresh);
+          saveSet(OPEN_KEY, bossType, next);
+          return next;
+        });
+      }
+      setTabSaved('move');
+      saveSoon();
+    }
+    bump(n => n + 1);
+  }, [entry, saveSoon, setTabSaved]);
+
   // 再生(社長要望v0.25.2625): 押した1つだけを実行。停止中なら硬直明けでまた止まる。
   const play = useCallback((key: string) => {
     if (!entry?.onPlay) return;
@@ -416,7 +471,8 @@ export const BossMakerPanel = () => {
 
   const changed = changedPaths(entry).length;
   const playState = entry.playState?.() ?? { verb: null, loop: null };
-  const pinFields = entry.fields.filter(f => pins.has(f.path));
+  // 消した射撃枠がピン行に残り続けないよう、ピンも表示条件を通す。
+  const pinFields = entry.fields.filter(f => pins.has(f.path) && fieldVisible(entry.table, f));
 
   const ico = 'flex h-8 w-8 shrink-0 items-center justify-center rounded text-[14px] leading-none';
   const on = 'bg-emerald-500/85 text-black';
@@ -447,6 +503,12 @@ export const BossMakerPanel = () => {
           <div className="w-1 shrink-0" />
           <button className={`${ico} ${off}`} onClick={() => setAllSecs(false)} title="全部畳む" aria-label="全部畳む">⇧</button>
           <button className={`${ico} ${off}`} onClick={() => setAllSecs(true)} title="全部開く" aria-label="全部開く">⇩</button>
+          {entry.addMove && (
+            <button
+              className={`${ico} bg-sky-500/85 !w-auto px-2 text-[10px] font-bold text-black`}
+              onClick={addMove} title="射撃の技を1つ足す"
+            >＋技</button>
+          )}
           <div className="w-1 shrink-0" />
           <button className={`${ico} ${off} !w-auto px-2 text-[10px] font-bold`} onClick={() => patchBoss(e => ({ health: Math.max(1, Math.round(e.maxHealth * 0.4)) }))}>HP40%</button>
           <button className={`${ico} ${off} !w-auto px-2 text-[10px] font-bold`} onClick={() => patchBoss(() => ({ bossPhase: 2 }))}>P2</button>
@@ -511,7 +573,7 @@ export const BossMakerPanel = () => {
             <div className="min-h-0 flex-1 overflow-y-auto px-1.5">
               <SectionList
                 group={tab} entry={entry} open={openSecs} toggle={toggleSec} pins={pins}
-                onChange={onChange} onPin={togglePin} onPlay={play} playState={playState} bump={rev}
+                onChange={onChange} onText={onText} onPin={togglePin} onPlay={play} playState={playState} bump={rev}
               />
             </div>
 

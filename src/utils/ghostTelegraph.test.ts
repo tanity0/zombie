@@ -12,6 +12,9 @@ import {
   type TelegraphLedgerEntry,
 } from './ghostTelegraph';
 import { telegraphDodge } from './botSkill';
+import {
+  IDOL_WINDUP_STATES, IDOL_RECOVER_STATES, IDOL_FIRE_STATES, IDOL_REST_STATE,
+} from './idolTick';
 import type { Enemy } from '../types/game';
 
 // 走査対象=ボスの状態(aiPhase/bossState)を書いている全ファイル。ソースは vite の ?raw で読む
@@ -37,6 +40,19 @@ const QUOTED = /'([a-z0-9-]+-(?:windup|recover|rest)|idol-[a-z]+)'/g;
 
 const scanStates = (): Map<string, string> => {
   const found = new Map<string, string>(); // 状態名 → 最初に見つけた場所(失敗時のメッセージ用)
+  // v0.25.2638(射撃部品): idol は州名を**技の一覧から機械的に組む**ようになったので、
+  // ソースには `'idol-aim-windup'` のような文字列リテラルが残っていない=正規表現では拾えない。
+  // 手書きの配列に戻すと8枠ぶんを取りこぼす(そもそもそれを避けるために機械化した)ので、
+  // **実装がエクスポートしている州の一覧を正本として使う**。
+  // 新しい語尾(例 '-charge')を足した時は、その一覧もここへ足さないと台帳の網羅が効かなくなる。
+  for (const [label, list] of [
+    ['IDOL_WINDUP_STATES', IDOL_WINDUP_STATES],
+    ['IDOL_RECOVER_STATES', IDOL_RECOVER_STATES],
+    ['IDOL_FIRE_STATES', IDOL_FIRE_STATES],
+    ['IDOL_REST_STATE', [IDOL_REST_STATE]],
+  ] as const) {
+    for (const st of list) if (!found.has(st)) found.set(st, `idolTick.ts(${label})`);
+  }
   for (const [file, text] of Object.entries(SOURCES)) {
     text.split('\n').forEach((line: string, i: number) => {
       const t = line.trim();

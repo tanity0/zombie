@@ -21,6 +21,7 @@
 // 判定と厳密に一致させる義務があるのは「赤い絵」の側であって、避ける側ではない。
 import type { Enemy } from '../types/game';
 import { bandThreat, circleThreat, DODGE_BAND_HALF_WIDTH, type DodgeThreat } from './botSkill';
+import { IDOL_SHOT_SLOTS } from './idolScript';
 
 /**
  * GHOST-CMD-1B(§2.18-2/-3): この台帳が返す脅威。`shape: 'circle'` = 円形の危険域
@@ -209,6 +210,18 @@ put(LEDGER, ['consecrate-windup', 'cage-windup'], {
   coverage: 'none',
   note: 'リング状(自分/プレイヤーを囲む輪の上に置く)。中へ寄るのが正解か外へ抜けるのが正解かが状況依存で、'
     + '一方向の回避ベクトルに落とせない=足すと逆に危険側へ押しかねない。',
+});
+// 射撃部品(v0.25.2638・BOSS_MAKER.md): 社長がメーカーで足す弾撃ち技。**8枠ぶんを機械的に登録**する
+// ——1枠でも手書きで漏らすと「実装したのに台帳に無い」状態になる(v0.25.2426の教訓と同じ形)。
+// 分類は既存の弾撃ち技(idol-aim/fan/orb)と同じ `none`: 地面に図形が出ず、危険は飛んだ弾そのもの
+// (projectileDodge が別経路で避ける)。連射州(-fire)も同じで、その時点で弾はもう外に出ている。
+put(LEDGER, IDOL_SHOT_SLOTS.flatMap(m => [`idol-${m}-windup`, `idol-${m}-fire`]), {
+  coverage: 'none',
+  note: 'メーカーで足した射撃技。弾を撃つだけ=地面に図形が出ない。飛んだ弾は projectileDodge が避ける。',
+});
+put(LEDGER, IDOL_SHOT_SLOTS.map(m => `idol-${m}-recover`), {
+  coverage: 'none',
+  note: '硬直(技は終わっている)=避ける図形は無い。ここはむしろカウンターの窓側の話。',
 });
 put(LEDGER, ['idol-rest'], {
   coverage: 'none',

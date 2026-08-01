@@ -69,8 +69,19 @@ export const BULLET_MOVE_KEYS = [
   'thor-burst', 'thor-radial',
   'miguel-volley', 'jibril-volley', 'uri-bolt', 'suriel-gaze', 'acrasiel-gaze',
   'idol-aim', 'idol-fan', 'idol-orb',
+  // 射撃部品(v0.25.2638・BOSS_MAKER.md): 社長がメーカーで足す弾撃ち技の8枠。
+  // **技キーは枠の記号(s1〜s8)で固定**する——社長が付けた名前(「ジャブ」等)は実行中に変わるので、
+  // 記録のキーに使うと**同じ技の記録が名前を変えた瞬間に分断される**。表示名は引く側で解決する。
+  'idol-s1', 'idol-s2', 'idol-s3', 'idol-s4', 'idol-s5', 'idol-s6', 'idol-s7', 'idol-s8',
 ] as const;
 export type BulletMoveKey = (typeof BULLET_MOVE_KEYS)[number];
+
+/**
+ * idol の射撃枠の**複製値**(v0.25.2638)。このファイルは store/ボス実装に依存しない層なので、
+ * 状態名は全て文字列リテラルで持つ流儀にしてある(`GIANT_STOMP_RADIUS_MIRROR` と同じ確立済みの作法)。
+ * 本体は `idolScript.IDOL_SHOT_SLOTS`。**ズレたら moveReaction.test.ts が落ちる**。
+ */
+const IDOL_SHOT_SLOTS_MIRROR = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'] as const;
 
 export type MoveReactionKey = (typeof MOVE_REACTION_KEYS)[number] | BulletMoveKey;
 const MOVE_KEY_SET: ReadonlySet<string> = new Set<string>(MOVE_REACTION_KEYS);
@@ -205,11 +216,18 @@ const BULLET_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<stri
   // 視線弾は windup の終わりに1発撃って即 recover へ移る(active フェーズが無い)。
   suriel: { 'gaze-windup': 'suriel-gaze', 'gaze-recover': 'suriel-gaze' },
   acrasiel: { 'gaze-windup': 'acrasiel-gaze', 'gaze-recover': 'acrasiel-gaze' },
-  // idol(useGameLoop.ts)。roll/punch は近接なので入れない。
+  // idol(idolTick.ts)。roll/punch は近接なので入れない。
   idol: {
     'idol-aim-windup': 'idol-aim', 'idol-aim-recover': 'idol-aim',
     'idol-fan-windup': 'idol-fan', 'idol-fan-recover': 'idol-fan',
     'idol-orb-windup': 'idol-orb', 'idol-orb-recover': 'idol-orb',
+    // 射撃部品の8枠(v0.25.2638)。溜め/連射中/硬直の3フェーズを**同じキーへ寄せる**
+    // (飛翔中の弾を残響で帰属させるため=既存の弾技と同じ作法)。
+    ...Object.fromEntries(IDOL_SHOT_SLOTS_MIRROR.flatMap(m => [
+      [`idol-${m}-windup`, `idol-${m}`],
+      [`idol-${m}-fire`, `idol-${m}`],
+      [`idol-${m}-recover`, `idol-${m}`],
+    ])) as Record<string, BulletMoveKey>,
   },
 };
 
