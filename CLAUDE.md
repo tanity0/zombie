@@ -109,72 +109,53 @@ Unless a task says otherwise, follow the convention in `src/world/obstacles.ts`:
   per-frame global effects, per-pixel passes, unbounded loops, or new heavy
   dependencies.
 
-### Empirical render budget (from the in-game benchmark — keep scores aligned to this)
-The bottleneck is **NOT enemy/projectile count, and NOT the bloom post-process.**
-A bloom-OFF run barely changed any result (FX/IMG/LIGHT still FAIL), so the cost
-is the **per-effect DRAW METHOD itself**, not the full-screen filter. Score new
-work by what kind of effect-draw it adds and how many are alive at once.
-- **Cheap (score low):**
-  - `enemy` — 60 on screen is *safe* (E60 PASS). Sprite draw is light.
-  - `projectile` — 130 *safe* (J130 PASS). Movement + collision is light.
-  - **mine (緑卵)** — 52 *safe* (`M52` PASS avg55 @res1, `M32` 60fps・実測v0.25.1543)。
-    ベイク済プールスプライト1枚+卵1個ごとの影キャスターだが、待ち伏せ最悪ケースの52個でも耐える。
-    **重い原因ではないと実測で確定**(M23=§5.24でこの切り分けのために追加)。
-  - **small glow** (radius < `STRONG_GLOW_RADIUS` ~44) — drawn as a pooled
-    tinted sprite (`drawSmallGlowSprite`), cheap.
-  - **Bloom (AdvancedBloomFilter)** — turning it off barely moves FPS; treat its
-    marginal cost as small. It is NOT the thing to cut first.
-- **Expensive (score high) — and WHY (the actual draw path):**
-  - **arbitrary text via `Text` (`FX-D`'s old path) = WORST**: each is a Pixi
-    `Text` → glyph rasterization to canvas + GPU texture upload on create. `D20`
-    ≈ avg 17 / min 10. Never spawn many `Text` per moment; use a bitmap-font /
-    pre-rendered digit atlas / pooled sprites. **NOTE: numeric damage numbers are
-    ALREADY fixed** — `drawDamageNumberBitmap` uses a baked `BitmapFont`
-    (`dmg-num`, pooled `BitmapText`, color via tint). Only the rare *callout/
-    serif* text (e.g. 「斬」) still takes the `Text` fallback; keep those few.
-  - **strong glow (`FX-G`) — 残る唯一の主犯 (re-measured v0.25.1446)**: pooled
-    additive sprites化(`drawStrongGlowSprite`)後も **`G12` FAIL (avg 32, 旧24)**。
-    コストは再テッセレーションではなく**加算合成の大面積オーバードロー(塗り面積)**。
-    `T16` FAIL(29.5)や`F2` CAUTION(38.5)も混合中の G10 が主因(純ライト`T24p`は
-    PASS=トーチ光自体は安い)。対策方向: 同時強glow数のキャップ/半径縮小/解像度
-    (塗り面積)削減。**res1再計測(v0.25.1543・実機スマホ)で `G12` 依然 FAIL avg30**
-    (res1.5の32からほぼ横ばい)=強glowは res1 でも律速のまま。解像度では逃げ切れず、
-    同時数キャップ/半径縮小が本筋。
-  - **ring / particle / slash (`FX-R/P/S`) — FIXED・実測確認済み (v0.25.1446)**:
-    per-frame `Graphics` → ALL pooled sprites (v0.25.1425)。再計測で
-    **`P90` PASS(60fps) / `R12` PASS(avg55) / `S16` PASS(60fps) / `F1` PASS(avg53)**
-    (旧: P64 avg~17 FAIL / R8 FAIL)。`F2`のみCAUTION(38.5)でこれはG10混合が主因。
-  - **image marks (`IMG`) — 実測で無罪化 (v0.25.1446)**: `I12` まで PASS(60fps)。
-    旧`I4` FAIL(avg~30)は同居していたGraphicsエフェクトが犯人だった。大型αスプライト
-    自体は12枚まで安全。
-  - **lights / torches (`LIGHT`)** — `T8` PASS(avg46・旧FAIL31) / **`T16` FAIL(29.5)**。
-    ただしT16の混合はG10入り=強glowが主因の疑い濃厚。純ライト(`LIGHT-P`)は
-    `T24p` PASS(avg51)=トーチ光そのものは安い。
-  - **everything-at-once** — `ALL A1` **FAIL avg25**(旧15-17から+8〜10fps改善)。
-    まだ**forbidden line**。残る要素はG8(強glow)+T12。
-- **Current safe lines (measured v0.25.1446 @resolution1.5):**
-  `enemy E60 60fps / projectile J130 60fps / bloom≈free / FX-D D20 60fps /
-  FX-R R12 pass / FX-P P90 60fps / FX-S S16 60fps / FX composite F1 pass・F2 caution /
-  image I12 pass / light T8 pass・T16 fail / strong glow G12 FAIL(唯一の主犯) /
-  all A1 fail(avg25)`。
-  (v0.25.1447でスマホ解像度デフォルト1.5→1=塗り面積44%。)
-- **Re-measured @res1 (v0.25.1543・実機スマホ・↑の"宿題"消化):**
-  `enemy E60 60fps / projectile J130 60fps / mine M52 pass(avg55)・M32 60fps /
-  image I12 60fps / FX-P P90・FX-R R12・FX-S S16・FX-D D20 全60fps /
-  FX F1 pass・F2 pass(avg40)・F3 FAIL(glow14) / strong glow G12 FAIL(avg30・依然唯一の主犯) /
-  pure light T24p pass(avg57)=光は安い・但し light T24/T16 FAIL は混在glowが主因 / all A1 FAIL(avg25)`。
-  **res1でもオーバードロー律速(G12/LIGHT/ALL)は解消せず=強glowが本丸のまま。緑卵は無罪確定(M52 pass)。**
-  ※`ALL MAX`(A3)/`A2`は絶対ピークでスマホのメモリ天井超え=クラッシュのため、ベンチはスマホ時 ALL を A1 までに制限(v0.25.1542-3)。
-- **Scoring rule of thumb (v0.25.1446改訂):** the cost is **draw-method ×
-  simultaneous count**。per-frame `Graphics`とText生成は全廃済みなので、現在の
-  ランクは: **強glow(加算・大面積オーバードロー)が突出して最重** > 多数のトーチ
-  (T16+) ≫ 大型αスプライト(I12まで安全)・リング/パーティクル/スラッシュ
-  (pooled sprite=P90でも60fps)・敵/弾(60fps張り付き)。新機能は「同時に生きる
-  強glowを増やすか?」を最初に問うこと(増やすならキャップ必須)。
-- The fix path for heavy effects is **a cheaper render method (pooled sprite /
-  bitmap text / baked texture), not fewer enemies/bullets, and not cutting bloom.**
-- (Benchmark caveat: the net diagnostic reads `network unstable`, so trust the
-  FPS/render verdicts here, not the network line.)
+### 描画コストの実測値(★v0.25.2690で計測器を全面的に作り直した後の値。これが正)
+
+**まず読む**: 旧「Empirical render budget」節(v0.25.1543の表)は、**1段あたりの独立観測が2〜3個
+しかない壊れた計測器**で取られていた。同じ負荷で G12 が 35.0/36.8/39.6/41.5/58.8 と暴れており、
+**あの絶対値を根拠にしてはいけない**(順位付けの目安としては使えた)。経緯は ENGINEERING_NOTES.md
+「計測器を疑う」、詳細は `research/LIGHT_REWORK.md` §3-1k / §3-1l。
+
+#### 新計測器で分かっていること(社長の実機・`?benchonly=FXG`・n=113〜150・4本で再現)
+| 事実 | 数字 | 出どころ |
+|---|---|---|
+| **強glow 1個のコスト** | **≈2ms/フレーム = 60fps予算(16.67ms)の約12%** | Δadj 1.90〜2.05ms/個・v0.25.2694 |
+| 強glow 12個(G12) | avg 41.5〜42.6 PASS | 4本 |
+| 強glow 8個(G8) | avg 51.8〜55.8 PASS | 4本 |
+| **強glow以外は事実上ただ** | **敵36(重量級)+弾70+粒子64+リング8+斬12+数字12+画像6+松明12 = 60fps張り付き** | 基準段(=ALL A1から強glowだけ抜いた負荷)・v0.25.2692 |
+| 地面の映り込み(pooled sprite×2) | 差 ±0.6ms = **測定限界以下** | `?refl=0` のA/B・v0.25.2691 |
+| **端末の熱ダレ** | **20〜30秒で +4.3〜+8.5ms/フレーム** | 検算段・4本 |
+
+#### ★ここから直接出る設計ルール(新機能を出す前にこの4つ)
+1. **「同時に生きる強glowを増やすか?」を最初に問う。増やすならキャップを付ける。**
+   1個で予算の12%。**12個→8個にするだけで約8ms(予算のほぼ半分)が浮く。**
+2. **大きさより個数。** `glowhalo` 1.7→1.3(面積0.63倍)の効果は測定限界に埋もれた。
+   半径やα曲線の微調整で性能を稼ごうとしない。
+3. **強glow以外(敵・弾・粒子・リング・斬撃・ダメージ数字・画像マーク・トーチ)は、
+   常識的な数なら気にしなくてよい。**「敵を減らす/弾を減らす」は効かない。
+4. 重いエフェクトの直し方は**描き方を安くする**こと(pooled sprite / bitmap font /
+   焼いたテクスチャ)。敵や弾を減らすことでも、bloomを切ることでもない。
+
+#### 未計測(新計測器ではまだ測っていない=**ここに数字を書かない**)
+LIGHT(トーチ+glow混在)/ ALL / FX合成(F1〜F3)/ IMG / MINE / ENEMY / PROJ の各段。
+旧計測器では LIGHT T24 が唯一の FAIL だったが、**新計測器で取り直すまで確定扱いしない**。
+測ったら、その系統だけをこの表に足す(推測で埋めない)。
+
+#### ベンチの回し方(v0.25.2695時点)
+- **オプション画面の BENCH**(ミッション一覧ではない)。`?benchonly=FXG` で1系統だけ回せる
+  (全系統は数分かかる)。カンマ区切りで複数指定可。
+- **暖機・基準段・検算段はベンチが自分でやる**ので、「1本目は捨てる」手作業はもう不要。
+- **読む順は `Δadj` → `shift` → `n`。** avg/min は体感の確認用。
+  - `Δadj` = 熱ダレ補正後の1フレーム増分ms。**基準段が vsync 天井(60fps)なので絶対値は
+    一律に過小に出る(負もありうる)。必ず「段どうしの差」で読む。**
+  - `shift` = **その1本の中で端末が遅くなった量**。強glow全部のコストに匹敵するので、
+    **これを見ずに離れた段の絶対値を比べない**(全系統の後半と単独計測は比較不能)。
+  - `n` = 観測フレーム数。**100未満なら結論にしない。**
+- ツマミ: `?glowhalo= ?glowcore= ?refl= ?warm=0 ?canary=0 ?repeat=0`。
+  結果の `knobs:` 行に自動で焼き込まれる(条件が書かれていない計測結果は資料にならない)。
+- `net:` の行は当てにならない。FPS/描画の判定だけ信じる。
+
+### スローモーション/サブウェポン通知の禁則(性能の話ではないがこの節に置いてある)
 - Sub-weapon events, including grenades and similar class skills, must not
   trigger slow motion unless the user explicitly names that sub-weapon as a
   slow-motion target.
