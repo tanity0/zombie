@@ -79,6 +79,7 @@ import { contextZoomTarget, isLargeForZoom, ZOOM_MIN_ABS } from '../utils/camera
 const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(ボス戦=BOSS_ZOOM_MIN)を基準にする
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType } from '../utils/enemyUtils';
+import { isMarkedBoss, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
 import {
   HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
@@ -5018,8 +5019,15 @@ export class PixiScene {
       { kind: 'armory', pos: !s.armoryTaken ? s.armory : null },
       { kind: 'police', pos: !s.policeTaken ? s.police : null },
     ];
+    // 交戦中のボス(社長指示v0.25.2657「(ゲーム中も)ボス交戦中は画面外のボスマーク表示」)。
+    // 誰がボスかの定義は utils/bossMarker.ts に1本化(pixiSceneは判定を持たない)。
+    // ★裏ボスは「巣へ近づいた時だけ出現し、深層域を出ると帰巣→退場」なので、**生きて居ること自体が交戦中**。
+    const markedBosses = s.enemies.filter(e => e.health > 0 && isMarkedBoss(e));
     const revealedPois = getRunPois(s.hiddenBoss, detourPois)
       .filter(p => !(p.kind === 'boss' && s.hiddenBossDefeated))
+      // 裏ボスが実際に出ている間は、巣のPOI矢印を下げてボスマークへ一本化する(同じ座標=下の .map で
+      // 実体位置へ寄せているため、両方描くと同じ点に2枚重なるだけ)。情報は減らない(マークは常に出る)。
+      .filter(p => !(p.kind === 'boss' && markedBosses.length > 0))
       .filter(p => isPoiRevealed(p, s.baseSites))
       .map(p => (p.kind === 'boss' && liveHiddenBoss)
         ? { ...p, x: liveHiddenBoss.x + liveHiddenBoss.width / 2, y: liveHiddenBoss.y + liveHiddenBoss.height / 2 }
@@ -5029,7 +5037,12 @@ export class PixiScene {
     const questTargets = s.enemies.filter(e => e.questTarget).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
     // 叫喚型(screamer)は同時1体だけ(ディレクター管理)なので検知条件なしで常に方角を示す(優先処理対象)。
     const liveScreamers = s.enemies.filter(e => e.type === 'screamer').map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
-    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets);
+    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, {
+      targets: markedBosses,
+      // 距離は**ボスメーカーの部屋の中だけ常時**表示(社長指示v0.25.2657)。本編は数字を出さない=
+      // マーク(方角)だけ。道具としての計測値をゲーム画面へ持ち込まない。
+      showDistance: s.bossMaker.active,
+    });
     this.syncFlash(s.effects, now);
     this.updatePunchGrade(s.effects, now); // 攻撃/爆発の光でコントラストパンチ(?punchgrade=1・既定OFF)
     this.updateCloudShadow(now, s.camera.x, s.camera.y, s.indoorMode); // フィールドの動く雲影(屋外のみ・?cloudshadow=0で無効)
@@ -14637,7 +14650,8 @@ export class PixiScene {
           stroke: { color: 0x020617, width: 5 },
         },
         // §5.23 M22 C3: 「N HITS」バナー用に space/H/I/T/S を追加(同じアトラス・同じ1回のbake)。
-        chars: '0123456789 HITS',
+        // v0.25.2657: ボスメーカーの距離ラベル「340px」用に p/x を追加(同上・数値ダメージには出ない字)。
+        chars: '0123456789 HITSpx',
         resolution: 2,
       });
       this.damageFontReady = true;
@@ -15059,7 +15073,10 @@ export class PixiScene {
     playerCenter?: { x: number; y: number },
     hunters: { x: number; y: number }[] = [],
     screamers: { x: number; y: number }[] = [],
-    questTargets: { x: number; y: number }[] = []
+    questTargets: { x: number; y: number }[] = [],
+    // 交戦中のボス(社長指示v0.25.2657)。位置決めは utils/bossMarker.ts の純関数、ここは描くだけ。
+    bossMark: { targets: { x: number; y: number; width: number; height: number }[]; showDistance: boolean }
+      = { targets: [], showDistance: false }
   ) {
     const g = this.arrowGfx;
     g.clear();
@@ -15482,6 +15499,80 @@ export class PixiScene {
       const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
       g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
     }
+
+    // ---- 交戦中のボス(社長指示v0.25.2657) ---------------------------------------------------------
+    //   > (ゲーム中も)ボス交戦中は画面外のボスマーク表示
+    //   > ボスメーカー中は常にボスとの距離を表示
+    // 画面外=縁にドクロ+矢印(他のマークより一回り大きい輪=「これが本命」)。画面内は輪も矢印も出さない
+    // (本体が見えているので不要)。**ボスメーカーの部屋の中だけ**、画面内でも頭上に距離を出す。
+    let distSlot = 0;
+    if (playerCenter && bossMark.targets.length > 0) {
+      const box: MarkBox = { w: this.screenW, h: this.screenH, marginX, marginTop, marginBottom };
+      // ★ワールド→画面は **Pixi の実値から**組む(式を2箇所に持たない)。ボス戦は常時 BOSS_ZOOM_MIN
+      // まで引く=可視域が画面の1/zoom倍あるので、`world - camera` を画面座標にすると「まだ見えている
+      // のにマークが出る」。カメラシェイク/ズーム時の寄せもこの1本に乗る(CLAUDE.md ズーム引き考慮)。
+      const wz = this.L.worldGroup.scale.x || 1;
+      const view = {
+        zoom: wz,
+        originX: this.L.world.position.x * wz + this.L.worldGroup.position.x,
+        originY: this.L.world.position.y * wz + this.L.worldGroup.position.y,
+      };
+      // 矢印の起点=プレイヤーの**実際の画面位置**(同じ写像で出す)。既存マークが使う cxC/cyC は
+      // 等倍前提の近似(camdown を画面比で足したもの)なので、引いている間だけ数十px ずれる。
+      const centerScreen = {
+        x: view.originX + playerCenter.x * wz,
+        y: view.originY + playerCenter.y * wz,
+      };
+      for (const b of bossMark.targets) {
+        const m = bossMarkFor({ boss: b, playerCenter, view, center: centerScreen, box });
+        if (!m) continue;
+        if (m.offscreen) {
+          const ex = m.x, ey = m.y;
+          const color = 0xef4444; // ボス=赤(裏ボスPOI/城マーカーと同じ「危険」の色)
+          g.circle(ex, ey, 13).fill({ color: 0x020617, alpha: 0.92 });
+          g.circle(ex, ey, 12).stroke({ width: 2, color, alpha: 0.75 + 0.25 * pulse });
+          // ドクロ(白い頭+眼窩+顎)。POIの巣マークと同じシルエット=「ボス」と読める形を揃える。
+          g.circle(ex, ey - 1, 4.8).fill({ color: 0xe2e8f0, alpha: 0.96 });
+          g.rect(ex - 3.2, ey + 2.4, 6.4, 3.2).fill({ color: 0xe2e8f0, alpha: 0.96 });
+          g.circle(ex - 1.9, ey - 1, 1.3).fill({ color: 0x020617, alpha: 0.98 });
+          g.circle(ex + 1.9, ey - 1, 1.3).fill({ color: 0x020617, alpha: 0.98 });
+          const hx = ex + Math.cos(m.angle) * 17, hy = ey + Math.sin(m.angle) * 17;
+          const ca = Math.cos(m.angle), sa = Math.sin(m.angle);
+          const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+          g.poly([...rot(8, 0), ...rot(-5, -7), ...rot(-5, 7)]).fill({ color, alpha: pulse });
+        }
+        if (bossMark.showDistance) {
+          // 画面外=マークの下 / 画面内=当たり帯の上端の少し上。数字だけを見て距離帯を詰められるように。
+          this.drawBossDistLabel(distSlot++, `${m.distPx}px`, m.x, m.offscreen ? m.y + 22 : m.y - 12);
+        }
+      }
+    }
+    this.hideBossDistFrom(distSlot);
+  }
+
+  // ボスまでの距離ラベル(ボスメーカー専用)。**焼いたビットマップフォントのプール**を使う=
+  // Text の生成(グリフのラスタライズ+GPUアップロード)を一切しない(CLAUDE.md「FX-D=最悪」の教訓)。
+  // 同時に生きるのはボスの数(通常1)なので負荷は無視できる。
+  private bossDistPool: BitmapText[] = [];
+  private drawBossDistLabel(slot: number, text: string, x: number, y: number) {
+    this.ensureDamageFont();
+    if (!this.damageFontReady) return; // 焼けていない環境では距離だけ出ない(マークは出る)
+    let bt = this.bossDistPool[slot];
+    if (!bt) {
+      bt = new BitmapText({ text, style: { fontFamily: PixiScene.DAMAGE_FONT, fontSize: PixiScene.DAMAGE_FONT_SIZE } });
+      bt.anchor.set(0.5, 0.5);
+      bt.scale.set(0.5);
+      bt.eventMode = 'none';
+      bt.tint = 0xfca5a5;
+      this.bossDistPool[slot] = bt;
+      this.L.uiLayer.addChild(bt);
+    }
+    if (bt.text !== text) bt.text = text;
+    bt.position.set(x, y);
+    bt.visible = true;
+  }
+  private hideBossDistFrom(n: number) {
+    for (let i = n; i < this.bossDistPool.length; i += 1) this.bossDistPool[i].visible = false;
   }
 
   // ---- screen-space: full-screen damage flashes ----------------------------
@@ -15519,6 +15610,8 @@ export class PixiScene {
     for (const e of this.pickups.values()) e.container.destroy({ children: true });
     for (const g of this.projectiles.values()) g.destroy();
     for (const o of this.effects.values()) o.destroy();
+    for (const t of this.bossDistPool) t.destroy();
+    this.bossDistPool.length = 0;
     for (const o of this.thorSlashFx.values()) o.destroy({ children: true });
     for (const o of this.miguelSlashFx.values()) o.destroy({ children: true });
     for (const o of this.uriSlashFx.values()) o.destroy({ children: true });
