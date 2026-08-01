@@ -1,0 +1,14 @@
+{
+  "name": "zombie-coop-signaling",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "WRANGLER_SEND_METRICS=false WRANGLER_SEND_ERROR_REPORTS=false CLOUDFLARE_CF_FETCH_ENABLED=false wrangler dev --local --ip 127.0.0.1 --port 8787 --show-interactive-dev-session=false",
+    "start": "npm run dev",
+    "test": "node --test test/*.node.js"
+  },
+  "devDependencies": {
+    "wrangler": "4.114.0"
+  }
+}
