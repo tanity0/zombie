@@ -153,4 +153,32 @@ describe('loopback transport', () => {
     expect(hostClosed).toEqual(['peer-left']);
     expect(guestClosed).toEqual(['local']);
   });
+
+  // ★検収で追加(設計チャット v0.25.2667)。
+  // 上のケースは `Math.random()` を **0** に固定しているため `0*100 < 5` が常に真=
+  // **unreliable が必ず落ちる経路しか通っていない**。それだけだと「unreliable がそもそも
+  // 届かない実装」でもテストが緑になる。**届く側も必ず1本張る**。
+  it('★ロス判定を通り抜けた unreliable は双方向に届く(落ちる側だけを見て緑にしない)', async () => {
+    vi.stubGlobal('window', { location: { search: '' } });
+    vi.spyOn(Math, 'random').mockReturnValue(0.99); // 0.99*100=99 > 5 → 落とさない
+    const pair = createLoopbackPair({ latencyMs: 10, packetLossPercent: 5 });
+    expect(pair).not.toBeNull();
+    if (!pair) return;
+
+    const hostSession = await pair.host.advertise({ buildVersion: 'v1', matchKey: 'opaque', label: 'loopback' });
+    const rooms = await pair.guest.listOpen('opaque', 'v1');
+    const guestSession = await pair.guest.join(rooms[0].roomId);
+
+    const hostUnreliable: number[][] = [];
+    const guestUnreliable: number[][] = [];
+    hostSession?.onMessage((data, channel) => { if (channel === 'unreliable') hostUnreliable.push([...data]); });
+    guestSession?.onMessage((data, channel) => { if (channel === 'unreliable') guestUnreliable.push([...data]); });
+
+    hostSession?.sendUnreliable(Uint8Array.of(9));
+    guestSession?.sendUnreliable(Uint8Array.of(8));
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    expect(guestUnreliable).toEqual([[9]]);
+    expect(hostUnreliable).toEqual([[8]]);
+  });
 });
