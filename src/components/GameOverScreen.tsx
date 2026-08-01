@@ -52,8 +52,22 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     `${stage.id} ${stage.category} ${stage.label}: ${stage.grade} avg ${stage.avgFps.toFixed(1)} min ${stage.minFps} drops ${stage.drops} n${stage.sampleCount} / ${stage.stress}`
   );
 
+  // ★計測条件(URLのツマミ)を結果に焼き込む(v0.25.2682)。
+  // これが無いと**後から「どの条件で測ったか」が分からない**——実際にそれで判定が止まった
+  // (社長のベンチ結果を見て `?glowhalo=` を付けたか分からず、結論を書けなかった)。
+  // 「計測結果は、条件が一緒に書かれていて初めて資料になる」。
+  const knobs = (() => {
+    if (typeof window === 'undefined') return '';
+    const q = new URLSearchParams(window.location.search);
+    // 描画負荷に効く/計測の解釈に効くものだけを拾う(全部出すと読みにくい)。
+    const keys = ['glowhalo', 'glowcore', 'benchonly', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev'];
+    const on = keys.filter(k => q.get(k) !== null).map(k => `${k}=${q.get(k)}`);
+    return on.length ? on.join(' ') : 'なし(既定)';
+  })();
+
   return [
     `BENCH v${typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'unknown'}`,
+    `knobs: ${knobs}`,
     `grade: ${result.grade === 'PASS' ? 'SAFE' : result.grade}`,
     `summary: avg ${result.avgFps.toFixed(1)} min ${result.minFps} drops ${result.drops} enemy/fx ${result.maxEnemies}/${result.maxFx}`,
     `safe: ${safeStage?.safeStress ?? 'not found'}`,

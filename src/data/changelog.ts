@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2682',
+    items: [
+      '開発用: ベンチマークの結果に、そのとき効いていた調整つまみが表示されるようになりました。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.2681',
     items: [
       'ゲーム内容の変更はありません（実機ベンチの計測結果を記録しました）。',
