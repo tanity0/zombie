@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   canaryDriftMs,
+  driftAdjustedDeltaMs,
   frameCostMs,
   frameIntervals,
   isSignificantDelta,
@@ -120,6 +121,29 @@ describe('Δms(基準段との差)', () => {
   it('未計測(0)は0を返す', () => {
     expect(stageDeltaMs(0, 60)).toBe(0);
     expect(stageDeltaMs(40, 0)).toBe(0);
+  });
+});
+
+describe('driftAdjustedDeltaMs(熱ダレ補正)', () => {
+  it('最初の段(経過0)は補正されない', () => {
+    expect(driftAdjustedDeltaMs(7.2, 0, 20000, 4.5)).toBeCloseTo(7.2, 5);
+  });
+  it('検算段の位置(経過=span)では shift をまるごと引く', () => {
+    expect(driftAdjustedDeltaMs(11.7, 20000, 20000, 4.5)).toBeCloseTo(7.2, 5);
+  });
+  it('途中の段は経過時間で按分する', () => {
+    // 半分の時点なら shift の半分を引く
+    expect(driftAdjustedDeltaMs(6.1, 10000, 20000, 4.5)).toBeCloseTo(6.1 - 2.25, 5);
+  });
+  it('ドリフトが無ければ生値のまま', () => {
+    expect(driftAdjustedDeltaMs(2.2, 8000, 20000, 0)).toBeCloseTo(2.2, 5);
+  });
+  it('spanが取れない(検算段なし)なら生値のまま', () => {
+    expect(driftAdjustedDeltaMs(2.2, 8000, 0, 4.5)).toBe(2.2);
+  });
+  it('範囲外の経過時間でも按分は0..1に収まる', () => {
+    expect(driftAdjustedDeltaMs(5, 30000, 20000, 4)).toBeCloseTo(1, 5);
+    expect(driftAdjustedDeltaMs(5, -100, 20000, 4)).toBeCloseTo(5, 5);
   });
 });
 

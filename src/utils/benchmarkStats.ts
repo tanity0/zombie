@@ -119,6 +119,30 @@ export const canaryDriftMs = (canaryFps: number[]): number => {
 };
 
 /**
+ * ★熱ダレ補正(v0.25.2694)。
+ *
+ * 段は**重→軽の順**に走るので、**軽い段ほど熱い状態で測られる**。実測では1本(20〜30秒)の中で
+ * 端末が +4.5〜+8.5ms 遅くなっており、これは強glow12個ぶんのコストに匹敵する=無視できない。
+ *
+ * 基準段でこれを打ち消したかったが、**この端末は強glow以外の負荷を全部60fpsで回してしまう**ので、
+ * 頭打ちしない非glow基準段が作れなかった(v0.25.2692実測)。そこで**検算段(最初の段を最後に
+ * もう一度)で実測した増加量 `shiftMs` を、経過時間で線形に按分して各段から引く**。
+ *
+ * 仮定: ドリフトは時間に対して線形。実際は頭打ちする曲線なので**近似**だが、
+ * 「補正しない(=軽い段ほど不当に重く出る)」よりは確実に良い。**生値も併記して両方見せる。**
+ */
+export const driftAdjustedDeltaMs = (
+  deltaMs: number,
+  stageElapsedMs: number,
+  spanMs: number,
+  shiftMs: number
+): number => {
+  if (spanMs <= 0) return deltaMs;
+  const ratio = Math.min(1, Math.max(0, stageElapsedMs / spanMs));
+  return deltaMs - shiftMs * ratio;
+};
+
+/**
  * 2つの計測が有意に違うか。フレーム時間の標準偏差から標準誤差を出して比べる
  * (±2fps を一律の有意線にしていた運用の置き換え。**観測数が増えたので統計で言える**)。
  */

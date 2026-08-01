@@ -50,10 +50,13 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
   const stopStage = result.stages.find(stage => stage.grade !== 'PASS');
   // Δms = その段の負荷が1フレームに足したms(直前の基準段との差)。**系統・実行順・熱をまたいで
   // 比較できる唯一の量**なので avg より先に読む(v0.25.2690)。sd はばらつき=差が有意かの目安。
+  // Δadj = 熱ダレ補正後(検算段で実測した増加量を経過時間で按分して引いたもの)。**まずこれを読む**。
+  // Δraw は補正前。段は重→軽の順に走るので、raw は軽い段ほど不当に重く出る(v0.25.2694)。
   const stageLines = result.stages.map(stage =>
-    `${stage.id} ${stage.category} ${stage.label}: ${stage.grade} Δ${stage.deltaMs >= 0 ? '+' : ''}${stage.deltaMs.toFixed(1)}ms `
+    `${stage.id} ${stage.category} ${stage.label}: ${stage.grade} `
+    + `Δadj ${stage.deltaAdjMs >= 0 ? '+' : ''}${stage.deltaAdjMs.toFixed(1)}ms (raw ${stage.deltaMs >= 0 ? '+' : ''}${stage.deltaMs.toFixed(1)}) `
     + `avg ${stage.avgFps.toFixed(1)} min ${stage.minFps} sd ${stage.sdMs.toFixed(1)} p95 ${stage.p95Ms.toFixed(1)}ms `
-    + `slow ${(stage.drops * 100).toFixed(0)}% n${stage.sampleCount} cal ${stage.canaryFps.toFixed(1)} / ${stage.stress}`
+    + `slow ${(stage.drops * 100).toFixed(0)}% n${stage.sampleCount} t${(stage.elapsedAtStartMs / 1000).toFixed(0)}s / ${stage.stress}`
   );
   const canaryLine = result.canaryFps.length
     ? `canary: ${result.canaryFps.map(v => v.toFixed(1)).join(' → ')} (drift ${result.driftMs >= 0 ? '+' : ''}${result.driftMs.toFixed(1)}ms/frame)`

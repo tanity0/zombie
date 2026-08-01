@@ -4,6 +4,7 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { mineRect } from '../world/mines';
 import {
   canaryDriftMs,
+  driftAdjustedDeltaMs,
   slowFrameRatio,
   stageDeltaMs,
   summarizeFrames,
@@ -148,14 +149,16 @@ export const BENCHMARK_PROFILES: BenchmarkProfile[] = [
 //    ドリフトが見えない。
 //  - 中身は**固定**。ここを触るとビルドをまたいだ Δms が比較できなくなる(触るなら全部測り直し)。
 //
-// ★v0.25.2692で作り直した(初版が軽すぎた)。初版(敵40+弾80+粒子64+松明8+画像4)は
-// 実機で **60.0 → 60.0 → 60.0 と完全に頭打ち**になり、**同じ1本の中で検算段が +5.4ms の
-// 熱ダレを捉えているのに、基準段は「ドリフト -0.0ms」と報告した**(v0.25.2691実測)。
-// 頭打ちの基準段は「安定した基準」ではなく**目隠し**だった。
-// 新版は **ALL A1 から強glowだけを抜いたもの**=この端末で40fps台に落ちる実績のある重さ。
+// ★経緯(重要): 「頭打ちしない非glow基準段」は**この端末では作れないと実測で確定した**。
+//  - v0.25.2691(敵40+弾80+粒子64+松明8+画像4)→ **60.0 で頭打ち**
+//  - v0.25.2692(**ALL A1 から強glowだけ抜いた重さ**)→ **やはり 60.0**
+// つまり **この端末は強glow以外の負荷を全部60fpsで回す**。基準段でドリフトを測る路線は成立しない。
+// ⇒ 基準段の役割を**「vsync天井のアンカー(+ひどい熱ダレの警報)」に限定**し、ドリフトの補正は
+//   **検算段の実測 shift を経過時間で按分する**方式に移した(`driftAdjustedDeltaMs`・v0.25.2694)。
+//   どちらも 60.0 を返す以上 Δms の基準は同じなので、**自分で熱を作らない軽い方に戻す**。
 const CANARY_PROFILE: BenchmarkProfile =
-  //   id     cat      label   E   heavy  G  R  P   S   D   I  T   J   yOsc jit mine
-  P('CAL', 'CANARY', 'CAL', 36, true,  0, 8, 64, 12, 12, 6, 12, 70, 36,  14, 0);
+  //   id     cat      label   E   heavy  G  R  P   S  D  I  T  J   yOsc jit mine
+  P('CAL', 'CANARY', 'CAL', 40, true,  0, 0, 64, 0, 0, 4, 8, 80, 36,  14, 0);
 
 // §5.24-追補(社長報告v0.25.1542): 重い順化でALLカテゴリがMAX(A3・敵72+弾140+全FX+強glow=絶対
 // ピーク)から始まるようになり、スマホでは一度も食らったことのない負荷=天井超えでクラッシュ
@@ -220,6 +223,10 @@ export type BenchmarkStageResult = {
   sampleCount: number;
   /** ★この段の負荷が1フレームに足したms(直前の基準段との差)。実行順・熱をまたいで比較できる量。 */
   deltaMs: number;
+  /** 熱ダレ補正後のΔms(検算段の shift を経過時間で按分して引いたもの)。検算段が無ければ生値と同じ。 */
+  deltaAdjMs: number;
+  /** この段が始まった時刻(最初の段の開始からのms)。熱ダレ補正の按分に使う。 */
+  elapsedAtStartMs: number;
   /** この段の直前に測った基準段のfps(Δmsの基準)。 */
   canaryFps: number;
   /** フレーム時間の標準偏差(ms)=ばらつき。2つの計測の差が有意かの判断に使う。 */
@@ -486,6 +493,8 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const lastCanaryFpsRef = useRef(0);
   const finalCanaryRef = useRef(false);
   const repeatStageRef = useRef<BenchmarkStageResult | null>(null);
+  /** 最初の**本番の段**が始まった時刻。熱ダレ補正の按分の原点。 */
+  const firstStageStartRef = useRef(0);
   const netRttSamplesRef = useRef<number[]>([]);
   const netFailuresRef = useRef(0);
   const mainDelaySamplesRef = useRef<number[]>([]);
@@ -549,6 +558,9 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       maxFx: attemptMaxCountsRef.current.fx,
       sampleCount: stats.frames,
       deltaMs: stageDeltaMs(stats.avgFps, lastCanaryFpsRef.current),
+      // 補正は全段が出揃ってから(shift が分かるのは検算段の後)。ここでは生値を入れておく。
+      deltaAdjMs: stageDeltaMs(stats.avgFps, lastCanaryFpsRef.current),
+      elapsedAtStartMs: Math.max(0, attemptStartedAtRef.current - firstStageStartRef.current),
       canaryFps: lastCanaryFpsRef.current,
       sdMs: stats.sdMs,
       p95Ms: stats.p95Ms,
@@ -588,7 +600,18 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     setPhase('net');
     void (async () => {
       await runNetworkSamples();
-      const attempts = completedAttemptsRef.current;
+      // ★熱ダレ補正: 検算段(最初の段の再測定)で実測した増加量を、経過時間で按分して各段から引く。
+      // 基準段が60fpsで頭打ちしてドリフトを打ち消せないため、こちらが実質の補正になっている。
+      const repeat = repeatStageRef.current;
+      const firstOfRepeat = repeat
+        ? completedAttemptsRef.current.find(stage => stage.id === repeat.id)
+        : undefined;
+      const shiftMs = repeat && firstOfRepeat ? repeat.deltaMs - firstOfRepeat.deltaMs : 0;
+      const spanMs = repeat ? repeat.elapsedAtStartMs : 0;
+      const attempts = completedAttemptsRef.current.map(stage => ({
+        ...stage,
+        deltaAdjMs: driftAdjustedDeltaMs(stage.deltaMs, stage.elapsedAtStartMs, spanMs, shiftMs),
+      }));
       const passAttempt = attempts.filter(attempt => attempt.grade === 'PASS').at(-1);
       const finalGrade: BenchmarkGrade = passAttempt ? 'PASS' : 'FAIL';
       const displaySummary = passAttempt ?? attempts.at(-1) ?? { avgFps: 0, minFps: 0, drops: 0 };
@@ -705,6 +728,12 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
 
   useEffect(() => {
     if (result || phase === 'net') return;
+    // 最初の**本番の段**の開始=熱ダレ補正の按分の原点(暖機・基準段は含めない)。
+    // startPhase ではなくここに置く: 暖機も基準段も切られている時は startPhase を通らずに
+    // いきなり 'stage' から始まるため(そのとき原点が2段目にズレる)。
+    if (phase === 'stage' && firstStageStartRef.current === 0) {
+      firstStageStartRef.current = attemptStartedAtRef.current;
+    }
     const stageProfile = profiles[activeAttempt] ?? profiles[profiles.length - 1];
     // 検算段は「最初に走った段」を再現する。暖機段・基準段は**常に同じ固定負荷**(CANARY_PROFILE)。
     const replayProfile = phase === 'repeat' ? repeatProfile() : null;
