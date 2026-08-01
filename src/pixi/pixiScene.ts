@@ -62,6 +62,7 @@ import {
   ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS,
 } from '../utils/angelBossTick';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
+import { windAt } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
   SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_SLIDE_START_OUT, SUPPORT_SNIPER_INSET,
@@ -1417,12 +1418,17 @@ const TORCH_EMBER_COUNT = 7;
 // 奥に置くと腕が炎を背にシルエットで立ち、実物の松明の見え方になる。
 /** コマ送りの間隔(ms)。8コマを前向きに回す(8×90ms=0.72秒で1周)。 */
 const FLAME_FRAME_MS = 90;
+/** 風で炎が倒れる最大量(rad・skew)。0.30rad≒17°。上げすぎると炎が寝てしまう。 */
+const FLAME_WIND_SKEW = 0.30;
+/** 火の粉が風に流される量(px/風1.0)。炎より**大きく流れる**=軽いものほど飛ぶ、が絵で分かる。 */
+const EMBER_WIND_DRIFT = 26;
 /**
  * 松明の炎の大きさ(社長報告v0.25.2643「🔥でかい」)。**1.0=支給された2枚を1:1で重ねた大きさ**。
  * 1.0だと炎の高さが99px・台座が64.5pxで、**炎が台座の1.5倍**になり大きすぎた。
- * ここだけを動かせば大きさが決まる(根元の位置=鉢の縁は変わらない)。
+ * v0.25.2643で0.65 → v0.25.2646で **0.55**(社長「もう少しだけ小さく」)。
+ * ここだけを動かせば大きさが決まる(根元の位置=鉢の中は変わらない)。
  */
-const TORCH_FLAME_SCALE = 0.65;
+const TORCH_FLAME_SCALE = 0.55;
 /**
  * 炎を「従来の楕円の炎」と同じ大きさで出すための倍率(高さ ÷ 従来の r)。
  * 旧 `drawFlameShape` の見た目は**おおよそ 6.5r の高さ**だったので、そこへ合わせる
@@ -7201,6 +7207,11 @@ export class PixiScene {
     sp.height = height;
     sp.width = height * (FLAME_FRAME_W / FLAME_FRAME_H);
     sp.position.set(x, baseY);
+    // 風で倒れる(社長要望v0.25.2646「たまに風で揺らめかせられる？」)。
+    // アンカーが**根元**なので、skew.x は「根元を支点に穂先だけ倒れる」動きになる=炎の倒れ方そのもの。
+    // 突風は世界で共通(=全部の火が同じ瞬間に同じ向きへ倒れる)、微風だけ seed でずらす。
+    // per-frame の追加コストは行列1つぶん=描画は増えない。
+    sp.skew.x = windAt(now, seed) * FLAME_WIND_SKEW;
     sp.visible = true;
   }
 
@@ -7238,11 +7249,13 @@ export class PixiScene {
     g: Graphics, flameX: number, flameY: number, r: number,
     seedX: number, seedY: number, now: number, emberAlphaMult: number,
   ) {
+    const wind = windAt(now, seedX * 0.013 + seedY * 0.007);
     for (let i = 0; i < TORCH_EMBER_COUNT; i++) {
       const seed = seedX * 0.021 + seedY * 0.007 + i * 1.931;
       const rise = ((now / (760 + i * 73) + seed) % 1);
       const drift = Math.sin(now / (230 + i * 29) + seed * 9) * r * (0.9 + i * 0.12);
-      const ex = flameX + drift;
+      // 風で流す。**上へ行くほど大きく流れる**(rise を掛ける)=下から上へ吹き上がる形になる。
+      const ex = flameX + drift + wind * EMBER_WIND_DRIFT * rise;
       const ey = flameY - r * (1.7 + rise * 9.5);
       const emberAlpha = emberAlphaMult * Math.sin(rise * Math.PI) * (0.18 + (i % 3) * 0.05);
       const emberR = r * (0.22 + (i % 3) * 0.08);

@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2646',
+    items: [
+      'たまに風が吹いて、炎が倒れて火の粉が流れるようになりました。全部の火が同じ瞬間に同じ向きへ倒れます。',
+      '松明の炎をもう少し小さくしました。',
+    ],
+  },
+  {
     version: '0.25.2645',
     items: [
       '火炎瓶の火を大きくしました（従来の1.8倍）。',
