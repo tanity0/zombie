@@ -489,3 +489,51 @@ co-op 全体は **A〜D の4段・合計5〜8バッチ**。**この依頼書は 
 9. **ゲストの報酬**(§1-5): ①同行枠の討伐記録 + ②ゴールド/スクラップの少額固定、でよいか。
 10. **`?online=0` 相当のUI**: 基盤側は `?online=0` を作るが、**プレイヤーが設定画面から切れる**必要があるか
     (あるならゲーム側の作業)。
+
+---
+
+## 11. 発注文(Codexへコピペする用・v0.25.2659)
+
+**リポジトリ**: `https://github.com/tanity0/zombie`
+**この依頼書のあるブランチ**: `claude/chat-context-continuity-saxlH`(※`main` にはまだ無い)
+
+```
+リポジトリ: https://github.com/tanity0/zombie
+
+まず `claude/chat-context-continuity-saxlH` ブランチの `COOP_ONLINE.md` を最初から最後まで読んでください。
+それがこの仕事の仕様書です。今回お願いするのは、その §6 の表の CO-1 だけです。
+
+作業ブランチ: 上記ブランチから `codex/coop-online` を切って、そこへ push してください。
+（PRは立てても立てなくてもよい。マージはこちらで行います）
+
+■ CO-1 の成果物
+1. `src/online/types.ts` — 仕様書 §4 の型をそのまま置く（CoopApi / CoopSession / CoopAd /
+   CoopOpenRoom / CoopStatus / CoopCloseReason / CoopRole）。中身の実装はまだ無くてよい。
+2. `src/online/id.ts` — 端末ごとの匿名UUID（localStorage）。無ければ生成、あれば再利用。
+3. `src/online/config.ts` — `?online=0` で全部を無効にする安全弁。`enabled()` の判定。
+4. `src/online/loopback.ts` — ★偽トランスポート。§4 の型を満たす「同一プロセス内の2者」を作り、
+   遅延（ms）とパケットロス（%）を任意に注入できること。これがこの段の主役です。
+5. `src/online/boundary.test.ts` — `src/online/**` が `src/store` `src/pixi` `src/utils` `src/world`
+   `src/components` `src/hooks` を一切 import していないことを機械的に検証するテスト。
+
+■ 受け入れ条件（これが通れば完了）
+- 境界テストが通る。
+- loopback 越しに、同一プロセスの2者が双方向にバイト列を送受できる。
+  遅延100ms・ロス5%を注入しても壊れない（unreliable は落ちてよい／reliable は必ず届く）。
+- `?online=0` で `enabled()` が false。
+- `npm run typecheck` と `npm run lint` がエラー0。
+- ★**既存ファイルを1つも変更していないこと**（新規ファイルのみ。`package.json` も触らない）。
+
+■ 掟（仕様書 §3・§4-1 に詳細。特に重要な3つ）
+- オンライン層はゲームを一切知らない。運ぶのは `Uint8Array` だけで、中身を解釈しない。
+- すべての関数が例外を投げない。失敗は null / 空配列 / 'off' で返す。
+- `status()` と `rttMs()` は同期・軽い（毎フレーム呼ばれても平気なこと）。
+
+CO-2 以降（自前シグナリングサーバ、WebRTC、デプロイ、TURN）は、CO-1 を確認してから順に出します。
+仕様書に書かれていない判断が必要になったら、勝手に決めずに質問してください。
+```
+
+### 発注のしかた(段階を守る)
+- **1回に1段だけ出す。** CO-1 が返ってきて確認できたら CO-2、という順で進める(社長指示「段階的にやっていきたい」)。
+- **CO-3 までは社長のアカウント作業が要らない。** CO-4(デプロイ)の直前に Cloudflare のアカウントを用意する。
+- **`main` にはこの依頼書がまだ無い。** Codex には必ず**ブランチ名を伝える**こと。
