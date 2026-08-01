@@ -7980,7 +7980,10 @@ export class PixiScene {
       // 全体を2/3スケール(社長指示v0.25.1698「フレアガンの火の描写を2/3の大きさに」・見た目のみ=
       // 引き付け範囲や判定は不変)。
       const pulse = 0.80 + 0.13 * Math.sin(now / 125 + f.x * 0.03) + 0.07 * Math.sin(now / 53 + f.y * 0.05);
-      const FLARE_VISUAL_SCALE = 2 / 3;
+      // v0.25.2644(社長指示「フレアガンは少し大きく」): 2/3 → 0.85。
+      // 旧値 2/3 は v0.25.1698 の社長指示だが、**楕円で描いていた頃の炎**に対する調整。
+      // 絵に変わって同じ倍率だと小さく見えるため、改めて指示された値へ上げる。
+      const FLARE_VISUAL_SCALE = 0.85;
       const sizeMult = (flying ? 0.6 : 1) * FLARE_VISUAL_SCALE;
       const r = GROUND_FIRE_FLAME_R * d * pulse * sizeMult;
       const sway = flying ? 0 : Math.sin(now / 160 + f.x * 0.015) * r * 0.55;

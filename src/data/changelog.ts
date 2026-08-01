@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2644',
+    items: [
+      '松明の火が鉢の中から出るようになりました（浮いて見えていたのを修正）。',
+      'フレアガンの火を少し大きくしました。',
+    ],
+  },
+  {
     version: '0.25.2643',
     items: [
       '松明の炎を台座の手前に出し、大きさを控えめにしました（社長指摘）。',
