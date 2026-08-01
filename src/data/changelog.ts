@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2668',
+    items: [
+      'エフェクトの小さな光（着弾・発射の光、蛍や吹雪の粒、爆発の閃光など）が、芯のある光に見えるようになりました（明るさは変えていません）。',
+    ],
+  },
+  {
     version: '0.25.2667',
     items: [
       'ゲーム内容の変更はありません（協力プレイの通信基盤の1段目を取り込みました。ゲーム側からはまだ何も使っていません）。',

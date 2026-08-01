@@ -2762,7 +2762,8 @@ export class PixiScene {
     // They stay outside filteredWorld so the field depth-of-field never blurs
     // them, but they are added before grade/vignette so atmosphere still binds.
     if (FIREFLY_ENABLED) {
-      const tex = getGlowTexture();
+      // v0.25.2668(LIGHT_REWORK §3 #4): 環境の粒(蛍/吹雪/火の粉)。共有→ソフトカーブ。**αは不変**。
+      const tex = getSoftGlowTexture();
       // ステージ4(snow)は雪プールを吹雪化=数を増やす(蛍プール流用)。ステージ5(stage5)は火の粉プール。
       // それ以外(M1蛍)は従来の40。
       const fb = typeof window !== 'undefined' ? useGameStore.getState().farBackdrop : '';
@@ -3008,7 +3009,8 @@ export class PixiScene {
       this.stage5FireGlow.tint = 0xff7a3a;
       this.stage5WarGroup.addChild(this.stage5FireGlow);
       for (let i = 0; i < 4; i++) {
-        const sp = new Sprite(getGlowTexture());
+        // v0.25.2668(§3 #4): 爆発の閃光。共有→ソフトカーブ。**αは不変**。
+        const sp = new Sprite(getSoftGlowTexture());
         sp.anchor.set(0.5);
         sp.blendMode = 'add';
         sp.tint = 0xffe0b0; // 爆発の閃光=暖白
@@ -11472,7 +11474,7 @@ export class PixiScene {
         ring.rotation = 0;
         ring.visible = true;
         const glow = this.boltFxSprite();
-        glow.texture = getGlowTexture();
+        glow.texture = getSoftGlowTexture(); // v0.25.2668(§3 #4): 共有→ソフト。αは不変
         glow.tint = 0xef4444;
         glow.width = glow.height = 30 * (1 - t * 0.4);
         glow.position.set(fx.x, fx.y);
@@ -11494,7 +11496,7 @@ export class PixiScene {
       } else {
         // 発射フラッシュ: 赤系の小グロー(すっと膨らんで消える)+小バースト4粒。
         const glow = this.boltFxSprite();
-        glow.texture = getGlowTexture();
+        glow.texture = getSoftGlowTexture(); // v0.25.2668(§3 #4): 共有→ソフト。αは不変
         glow.tint = 0xf87171;
         glow.width = glow.height = (16 + 10 * t) * 2;
         glow.position.set(fx.x, fx.y);
@@ -14157,7 +14159,9 @@ export class PixiScene {
     let sprite = this.effects.get(e.id);
     if (!(sprite instanceof Sprite)) {
       if (sprite) sprite.destroy();
-      sprite = new Sprite(getGlowTexture());
+      // v0.25.2668(LIGHT_REWORK §3 #4): **小グローはエフェクト全般が使う本命の1枚**。
+      // 共有→ソフトカーブ。**αは触らない=ピーク保存**(§3-1の掟)。半径も枚数も不変=負荷据え置き。
+      sprite = new Sprite(getSoftGlowTexture());
       (sprite as Sprite).anchor.set(0.5);
       sprite.blendMode = 'add';
       this.L.effectLayer.addChild(sprite);
