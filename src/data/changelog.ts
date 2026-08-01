@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2701',
+    items: [
+      'ゲーム内容の変更はありません（動作が重くなる原因を特定し、記録しました）。',
+    ],
+  },
+  {
     version: '0.25.2700',
     items: [
       'ゲーム内容の変更はありません（オンライン対応の土台を追加しました。ゲームからはまだ使われません）。',
