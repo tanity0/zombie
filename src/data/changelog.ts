@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2688',
+    items: [
+      'ゲーム内容の変更はありません（実機ベンチの全系統の結果を記録しました）。',
+    ],
+  },
+  {
     version: '0.25.2687',
     items: [
       '光が地面に映り込む表現（レベルアップや撃破の光の下、拾い物や弾の下）が、輪郭のあるベタ塗りから、なめらかな映り込みになりました（明るさは変えていません）。描画も軽くなっています。',
