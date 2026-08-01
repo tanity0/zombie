@@ -1469,6 +1469,14 @@ const FLAME_ART_H_PER_R = 6.5;
 const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
 const STRONG_GLOW_RADIUS = 44;
+// 強glowの大きさ倍率。**既定は従来値そのままで無変更**(挙動も見た目も変わらない)。
+// ★これは「ベンチの G12(唯一残った性能FAIL)を実機で A/B するためのツマミ」(社長指示v0.25.2671)。
+// G12 の原因は加算合成の**塗り面積**なので、**面積は倍率の2乗で効く**:
+//   1.7=基準1.00 / 1.5=0.78 / 1.3=0.58 / 1.2=0.50。
+// ソフトカーブ(#6・v0.25.2670)にしたことで**外周の寄与が激減**しており、
+// 縮めても「光っている面積」の見た目は保てるはず——それを実機の数字で確かめるためのもの。
+const STRONG_GLOW_HALO_MULT = Math.max(0.1, tsNum('glowhalo', 1.7));
+const STRONG_GLOW_CORE_MULT = Math.max(0.1, tsNum('glowcore', 0.62));
 const EFFECT_VIEWPORT_MARGIN = 180;
 // 設置型シールド: スプライト表示と「ガチャン」着地スラムのパラメータ(実機調整TODO)。
 const SHIELD_DISPLAY_H = 92;     // 画面上の盾の高さ(px)。横幅はテクスチャ比で従属。
@@ -14206,12 +14214,12 @@ export class PixiScene {
     c.visible = true;
     c.position.set(e.x, e.y);
     // halo: 色付きの広い柔らかい光球(従来 main disc ~radius*0.82 相当)。
-    const haloD = e.radius * 1.7;
+    const haloD = e.radius * STRONG_GLOW_HALO_MULT;
     halo.tint = this.glowTint(e.color);
     halo.width = halo.height = haloD;
     halo.alpha = life * 0.5;
     // core: 熱い白芯(従来 white core ~radius*0.22 を少し広めに)。
-    const coreD = e.radius * 0.62;
+    const coreD = e.radius * STRONG_GLOW_CORE_MULT;
     core.width = core.height = coreD;
     core.alpha = life * 0.55;
   }
