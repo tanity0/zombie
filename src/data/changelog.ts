@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2700',
+    items: [
+      'ゲーム内容の変更はありません（オンライン対応の土台を追加しました。ゲームからはまだ使われません）。',
+    ],
+  },
+  {
     version: '0.25.2699',
     items: [
       'ゲーム内容の変更はありません（計測の切り分け用に、光が落とす影を一時的に切るスイッチを追加しました）。',

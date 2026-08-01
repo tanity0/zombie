@@ -1,5 +1,31 @@
 # Development Log
 
+## v0.25.2700 — ★CO-2(自前シグナリング)検収=合格・取り込み【2026-08-02 02:20 JST】
+
+Codex が `codex/coop-online-2` へ push。検収して**合格**、開発ブランチへマージした。
+
+**成果物**: `server/`(Cloudflare Worker + Durable Object・room-store・wrangler設定・node:test 6本)
++ `src/online/signaling.ts`(WebSocketクライアント・4テスト)。`config.ts`/`id.ts` に追記。
+
+| 検収項目 | 結果 |
+|---|---|
+| **境界** | **合格**。差分は `server/` と `src/online/` のみ。**ゲーム側から `src/online` の import は0**(まだ1行も走らない) |
+| **バージョン隔離** | **合格**。`RoomStore.list()` が `buildVersion` 不一致を**サーバ側で**弾く |
+| **匿名IDの流用** | **合格**。サーバはUUID形式のみ受理。`id.ts` は古いWebView向け代替経路を追加 |
+| 安全側の作り | 良。1接続=1部屋 / 部屋128 / 16KB / 接続256 / 開室TTL90秒 / SDP・ICE検証 / Originはlocalhostのみ(=**まだデプロイできない**=発注どおり) |
+| **2タブの実走** | **未実施**(社長のPCで `npm i && npm run dev` が要る) |
+
+**検証**: typecheck / lint(エラー0)/ `src/online` 9テスト / `server` 6テスト、全部合格。
+
+### ★CO-3 へ持ち越す申し送り(3件・今は実害なし)
+1. **`DEFAULT_SIGNAL_URL='ws://localhost:8787'` を出荷時の既定にしない。** 配線した瞬間に
+   **製品版がプレイヤー自身のPCへ繋ぎに行く**。配信ビルドでは未設定(=`enabled()`=false)が既定であるべき。
+   (https から `ws://` は mixed content で塞がるので、事故っても失敗側に倒れる。)
+2. **自分の部屋に自分で入れる**。`join()` は接続は区別するが同一端末IDの別接続を禁じていない。
+3. サーバのUUID判定が v1〜v5 を受理(`id.ts` が作るのは v4)。緩いだけで害は無い。
+
+文書: `COOP_ONLINE.md` §11-2b。
+
 ## v0.25.2699 — ★面積説は棄却 / 真犯人は「強glow=投影影のトリガー」疑い【2026-08-02 02:13 JST】
 
 ### 実測(社長・実機 `?benchonly=FXG&glowhalo=0.9`)= **予測が外れた**
