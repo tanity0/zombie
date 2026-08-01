@@ -62,7 +62,7 @@ import {
   ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS,
 } from '../utils/angelBossTick';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
-import { windAt } from '../utils/windGust';
+import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import {
   SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_SLIDE_START_OUT, SUPPORT_SNIPER_INSET,
@@ -1422,6 +1422,14 @@ const FLAME_FRAME_MS = 90;
 const FLAME_WIND_SKEW = 0.30;
 /** 火の粉が風に流される量(px/風1.0)。炎より**大きく流れる**=軽いものほど飛ぶ、が絵で分かる。 */
 const EMBER_WIND_DRIFT = 26;
+/** 花が風にしなる量(rad・skew)。軽いので炎より大きくしなる。判定を持たない飾りなので自由に振れる。 */
+const FLOWER_WIND_SKEW = 0.20;
+/**
+ * 木が風にしなる量(rad・skew)。**わざと小さい**。
+ * ①幹まで傾くとゴムに見える ②**木は当たり判定を持つ**(幹の矩形)ので、絵を大きく動かすと
+ * 「見た目と当たりがズレる」。葉がそよぐ程度(0.035rad≒2°)に留める。
+ */
+const TREE_WIND_SKEW = 0.035;
 /**
  * 松明の炎の大きさ(社長報告v0.25.2643「🔥でかい」)。**1.0=支給された2枚を1:1で重ねた大きさ**。
  * 1.0だと炎の高さが99px・台座が64.5pxで、**炎が台座の1.5倍**になり大きすぎた。
@@ -2203,6 +2211,8 @@ export class PixiScene {
   private snowStage = false; // ステージ4(farBackdrop'snow'): 松明を焚き火スプライトに置き換え
   /** 炎8コマの解決結果。undefined=未解決 / null=素材無し(旧描画へ) / 配列=揃っている。 */
   private flameCache: Texture[] | null | undefined = undefined;
+  /** このフレームの風(-1..1)。**世界に1つ**。炎も花も木もこれを読む(v0.25.2648)。 */
+  private windNow = 0;
   private battlefieldStage = false; // ステージ5(farBackdrop'stage5'): 敵絵=戦場セット・木なし(残骸プロップに置換)
   private stage5Stage = false; // ステージ5(farBackdrop'stage5'): 近景森(戦場の残骸)を下げる
   // ステージ5の戦争照明(社長指示v0.25.1980「上部を爆発フラッシュ/炎のゆらめきで照らす」)。加算・上部のみ。
@@ -4871,6 +4881,13 @@ export class PixiScene {
     );
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
 
+    // ---- 風(v0.25.2648・社長指示「世界で揃えたい」) --------------------------------------------
+    // ★**毎フレーム1回だけ引いて、全部の揺れ物で使い回す**。炎・花・木がそれぞれ別に引くと、
+    // 将来 `WIND_PHASE_SPREAD` を上げた時にバラバラの向きへ倒れて世界が嘘になる。
+    // 強さは場面で決まる(屋内=無風・雪原=強め)。判断は純関数(worldWindScaleFor)に置いてある。
+    setWorldWindScale(worldWindScaleFor({ indoor: s.indoorMode, farBackdrop: s.farBackdrop }));
+    this.windNow = windAt(now);
+
     this.syncTrees(s.camera);
     this.syncLabWalls(); // 壁オブジェクト(研究所スキン・区画生成。森では no-op)
     this.syncLabProps(); // 遮蔽物プロップ(研究所スキン・区画生成。森/屋内では no-op)
@@ -5714,6 +5731,11 @@ export class PixiScene {
       // (the focal plane) walks past it. Anchored at the foot, stays rooted.
       if (tex) entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       this.applyObstacleAlpha(entry.sprite, entry.footY);
+      // 風でしなる(v0.25.2648)。**炎・花と同じ1本の風**。
+      // ★木は花よりずっと控えめ(TREE_WIND_SKEW)。幹まで大きく傾くとゴムに見えるうえ、
+      //   **木は当たり判定を持つ**(`trees.ts` の幹の矩形)。判定は動かないので、
+      //   絵だけ大きく動かすと「見た目と当たりがズレている」ことになる=揺れは葉のそよぎ程度に留める。
+      entry.sprite.skew.x = this.windNow * TREE_WIND_SKEW;
     }
     for (const [key, entry] of this.trees) {
       if (!seen.has(key)) {
@@ -5877,6 +5899,10 @@ export class PixiScene {
       entry.sprite.tint = tint;
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       entry.sprite.alpha = this.horizonActorAlpha(entry.footY) * this.foregroundActorAlpha(entry.footY); // 地平線+手前でフェード
+      // 風でたなびく(社長要望v0.25.2648「花とかも揺らぎたい」)。**炎と同じ1本の風**を読む。
+      // アンカーが足元(0.5,1)なので、skew.x は「根を残して上だけしなる」動きになる。
+      // 花は軽いので炎より大きくしなる。判定を持たない純粋な飾りなので、揺れてもゲームに影響はゼロ。
+      entry.sprite.skew.x = this.windNow * FLOWER_WIND_SKEW;
     }
     for (const [id, entry] of this.flowerObjs) {
       if (!seen.has(id)) { entry.sprite.destroy(); this.flowerObjs.delete(id); }
@@ -7210,11 +7236,11 @@ export class PixiScene {
     sp.height = height;
     sp.width = height * (FLAME_FRAME_W / FLAME_FRAME_H);
     sp.position.set(x, baseY);
-    // 風で倒れる(社長要望v0.25.2646「たまに風で揺らめかせられる？」)。
-    // アンカーが**根元**なので、skew.x は「根元を支点に穂先だけ倒れる」動きになる=炎の倒れ方そのもの。
-    // 突風は世界で共通(=全部の火が同じ瞬間に同じ向きへ倒れる)、微風だけ seed でずらす。
-    // per-frame の追加コストは行列1つぶん=描画は増えない。
-    sp.skew.x = windAt(now, seed) * FLAME_WIND_SKEW;
+    // 風で倒れる(社長要望v0.25.2646)。アンカーが**根元**なので、skew.x は
+    // 「根元を支点に穂先だけ倒れる」動きになる=炎の倒れ方そのもの。
+    // 風はフレーム先頭で1回引いた**世界に1つの値**(v0.25.2648)。per-frame の追加コストは
+    // 行列1つぶん=描画呼び出しは増えない。
+    sp.skew.x = this.windNow * FLAME_WIND_SKEW;
     sp.visible = true;
   }
 
@@ -7252,7 +7278,7 @@ export class PixiScene {
     g: Graphics, flameX: number, flameY: number, r: number,
     seedX: number, seedY: number, now: number, emberAlphaMult: number,
   ) {
-    const wind = windAt(now, seedX * 0.013 + seedY * 0.007);
+    const wind = this.windNow;
     for (let i = 0; i < TORCH_EMBER_COUNT; i++) {
       const seed = seedX * 0.021 + seedY * 0.007 + i * 1.931;
       const rise = ((now / (760 + i * 73) + seed) % 1);

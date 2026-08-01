@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2648',
+    items: [
+      '花と木も風で揺れるようになりました。炎と同じ風なので、世界のものが同じ瞬間に同じ向きへ倒れます。',
+      '屋内では風が吹きません。雪原は風が強めです。',
+    ],
+  },
+  {
     version: '0.25.2647',
     items: [
       'ゲーム内容の変更はありません（火炎瓶の火の大きさが確定したので、その記録だけ）。',
