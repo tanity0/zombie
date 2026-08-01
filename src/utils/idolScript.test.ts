@@ -4,7 +4,8 @@ import {
   IDOL_ALL_MOVES, IDOL_STRINGS, IDOL_STRING_LEN, IDOL_REST, IDOL_TIMING, IDOL_NEUTRAL_BAND,
   IDOL_ZONE_EDGES, idolFairnessP1, idolFairnessP2, IDOL_WAVE_MOVES, IDOL_PUNISH,
   IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_MOVES_ALL, IDOL_SHOT_SLOTS,
-  idolEnabledShots, idolStrings, idolMoveTiming, idolShotFireMs, idolShotName, type IdolMove,
+  idolEnabledShots, idolStrings, idolMoveTiming, idolShotFireMs, idolShotName, idolFistReach,
+  type IdolMove,
 } from './idolScript';
 import { deepCloneTuning } from './bossTuning';
 import { fairnessViolations, classMix, pickStringScript, stringMaxLen, type BossZone } from './bossSkeleton';
@@ -311,5 +312,45 @@ describe('射撃部品(shots)', () => {
     // 誘導があっても遅ければ歩いて逃げられる=B。
     IDOL_TUNING.shots.s1.speed = 60;
     expect(idolFairnessP1().find(x => x.key === '射撃1')?.cls).toBe('B');
+  });
+});
+
+// ==== エフェクトの速さ(v0.25.2651・社長「拳とかダメージ判定早いのにエフェクト遅い」) ====
+describe('拳の伸び(idolFistReach)', () => {
+  it('★判定の瞬間(u=1)に必ず伸び切る — 速さを変えても着弾の瞬間は動かない', () => {
+    // ここが崩れると「絵はまだ届いていないのにダメージが入る」「絵が当たったのにダメージが無い」に
+    // なる=CLAUDE.md の禁止事項。**どのパラメータでも**成り立つことを機械で確認する。
+    for (const lead of [0.05, 0.2, 0.35, 0.7, 1]) {
+      for (const ease of [0.3, 1, 1.8, 3]) {
+        expect(idolFistReach(1, lead, ease), `lead=${lead} ease=${ease}`).toBeCloseTo(1, 10);
+      }
+    }
+  });
+  it('溜めの開始では伸びていない / 単調に伸びる(戻らない)', () => {
+    expect(idolFistReach(0, 0.35, 1)).toBe(0);
+    let prev = -1;
+    for (let i = 0; i <= 100; i++) {
+      const v = idolFistReach(i / 100, 0.35, 1.4);
+      expect(v).toBeGreaterThanOrEqual(prev);
+      prev = v;
+    }
+  });
+  it('lead が小さいほど「遅くまで動かない」= 速く見える', () => {
+    const u = 0.8;
+    expect(idolFistReach(u, 1.0, 1)).toBeGreaterThan(idolFistReach(u, 0.35, 1));
+    expect(idolFistReach(u, 0.35, 1)).toBeGreaterThan(idolFistReach(u, 0.1, 1));
+  });
+  it('壊れた値でも 0..1 に収まる(0除算・負・巨大)', () => {
+    for (const [lead, ease] of [[0, 1], [-1, 1], [0.35, 0], [0.35, -5], [99, 99]] as const) {
+      for (const u of [-1, 0, 0.5, 1, 2]) {
+        const v = idolFistReach(u, lead, ease);
+        expect(Number.isFinite(v)).toBe(true);
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+  it('既定は「溜めの最後の35%で等速に突き出す」(旧実装=1.0の等速は遅く見えた)', () => {
+    expect(IDOL_TUNING_DEFAULTS.fx).toEqual({ punchFistLead: 0.35, punchFistEase: 1, punchFistHoldMs: 280 });
   });
 });

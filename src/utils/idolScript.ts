@@ -150,6 +150,18 @@ export interface IdolTuning {
    * 弾を撃つ技(aim/fan/orb)は `bullet[move].damage` が正。
    */
   moveDamage: { punch: number; snipe: number };
+  /**
+   * エフェクトの速さ(社長要望v0.25.2651「エフェクトの速さもいじりたい / 拳とかダメージ判定
+   * 早いのにエフェクト遅いので」)。**判定は変えず、絵の動き方だけ**を持つ欄。
+   */
+  fx: {
+    /** 拳が動く区間(溜めの後ろ何割で伸びるか)。1=溜め全体を使って等速(旧実装=遅く見える) / 0.3=最後の3割で突き出す。 */
+    punchFistLead: number;
+    /** 拳の伸びのカーブ。1=等速 / 1より大=溜めてから伸びる / 1より小=出だしが速い。 */
+    punchFistEase: number;
+    /** 拳が当たってから消えるまで(ms)。 */
+    punchFistHoldMs: number;
+  };
   /** 射撃部品の8枠(既定は全て `enabled:0` = 何も無い)。 */
   shots: Record<IdolShotSlot, IdolShotSpec>;
   /** 枠に付けた名前(空=`射撃1` のような既定名)。台本に並べた時に読めるようにするためだけの値。 */
@@ -246,6 +258,11 @@ export const IDOL_TUNING: IdolTuning = {
   },
   // 既定は現行の実効値(接触ダメージ 30 の流用)=**欄を足しても挙動は変わらない**。
   moveDamage: { punch: 30, snipe: 30 },
+  // エフェクトの速さ(v0.25.2651)。**旧実装は lead=1.0(溜め600msかけて等速)** だったが、
+  // 社長報告「ダメージ判定早いのにエフェクト遅い」のとおり**遅く見える**ので 0.35 を既定にする
+  // (溜めの最後の35%で突き出す=拳らしい速さ)。**伸び切る瞬間は判定の瞬間のまま**なので、
+  // 「絵が当たったのにダメージが来ない/逆」は起きない(CLAUDE.md 攻撃ヴィジュアルの分類①)。
+  fx: { punchFistLead: 0.35, punchFistEase: 1, punchFistHoldMs: 280 },
   // 射撃部品(v0.25.2638)。**既定は8枠すべて無効**=本編のアイドルの挙動は1ミリも変わらない。
   shots: {
     s1: shotDefault(), s2: shotDefault(), s3: shotDefault(), s4: shotDefault(),
@@ -266,6 +283,21 @@ export const IDOL_STRING_LEN: StringLenConfig = IDOL_TUNING.stringLen;
 export const IDOL_STRINGS: readonly StringScript<IdolMove>[] = IDOL_TUNING.strings;
 export const IDOL_REST: RestConfig = IDOL_TUNING.rest;
 export const IDOL_PUNISH: PunishConfig<IdolMove> = IDOL_TUNING.punish;
+
+/**
+ * 拳の伸び具合(0..1)。`u` = 溜めの進行(0=溜め開始 / **1=判定の瞬間**)。
+ *
+ * ★**不変条件: `u=1` で必ず 1**(=判定の瞬間にちょうど伸び切る)。
+ * ここを崩すと「絵はまだ届いていないのにダメージが入る」「絵が当たったのにダメージが無い」に
+ * なる=CLAUDE.md の禁止事項そのもの。**速さを変えても着弾の瞬間は動かさない**、が設計の芯。
+ * `lead` が変えるのは「いつ動き出すか」だけ。
+ */
+export const idolFistReach = (u: number, lead: number, ease: number): number => {
+  const t = Math.max(0, Math.min(1, u));
+  const L = Math.max(0.01, Math.min(1, lead));      // 0除算と「動かない拳」を防ぐ
+  const p = Math.max(0, Math.min(1, (t - (1 - L)) / L));
+  return Math.pow(p, Math.max(0.1, ease));
+};
 
 // ---- 射撃部品のアクセサ(v0.25.2638) -----------------------------------------------------------
 export const idolShot = (m: IdolShotSlot): IdolShotSpec => IDOL_TUNING.shots[m];

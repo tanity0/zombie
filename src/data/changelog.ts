@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2651',
+    items: [
+      'アイドルの拳が素早く突き出るようになりました（当たる瞬間は今までどおりです）。',
+      'ボスメーカーで拳のエフェクトの速さを調整できるようになりました。',
+    ],
+  },
+  {
     version: '0.25.2650',
     items: [
       'M7（逆探知地点）の風をさらに強くしました。',

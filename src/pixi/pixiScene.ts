@@ -54,7 +54,7 @@ import {
 } from '../utils/bossScript';
 import {
   idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING, IDOL_ORB_SPREAD_RAD, IDOL_MOVES_ALL,
-  idolShot, isIdolShot, type IdolShotSlot, type IdolMove,
+  idolShot, isIdolShot, idolFistReach, type IdolShotSlot, type IdolMove,
 } from '../utils/idolScript';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
@@ -1605,7 +1605,8 @@ const BITE_SNAP_MS = 220;      // 顎が閉じ切ってから消えるまで
 const CLAW_LINGER_MS = 240;    // 爪を振り抜いた後の余韻
 const WING_SWING_MS = 300;     // 翼を薙いだ絵の尺(判定のactive窓とは独立)
 const REACH_HOLD_MS = 340;     // 触手が伸び切ってから引っ込むまで
-const FIST_HOLD_MS = 280;      // 拳が当たってから消えるまで
+// 拳が当たってから消えるまでは `IDOL_TUNING.fx.punchFistHoldMs`(メーカーで触れる・v0.25.2651)。
+// ここに定数を置くと**メーカーで変えても効かない**ので置かない(v0.25.2631の教訓と同じ形)。
 const PLANT_SPIT_MS = 300;     // 種を吐く反動(口の絵)の尺
 const PLANT_SPIT_SCALE = 1.7;  // 口の絵の大きさ(敵の描画枠に対する倍率・②寄りの見せ)
 const PLANT_SPIT_MAX = 12;     // 同時に生きている口の絵の安全弁(1発=300msの一瞬なので実質届かない)
@@ -10182,12 +10183,16 @@ export class PixiScene {
       {
         const punchWind = bs === 'idol-punch-windup';
         const toPunch = punchWind ? Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime) : 0;
-        const punchTotal = toPunch + FIST_HOLD_MS;
+        // v0.25.2651(社長報告「拳とかダメージ判定早いのにエフェクト遅い」): 残り時間と
+        // 伸び方をテーブルから引く。**伸び切る瞬間は判定の瞬間のまま**で、動き出す時刻だけが変わる。
+        const punchTotal = toPunch + IDOL_TUNING.fx.punchFistHoldMs;
         const fistL = this.latchFx(`${e.id}:idolfist`, punchWind, punchTotal, now,
           () => [punchTotal > 0 ? toPunch / punchTotal : 0]);
         if (fistL && view.punchAim !== undefined) {
           const hitF = fistL.d[0];
-          const reach = hitF > 0 ? Math.min(1, fistL.t / hitF) : 1;
+          const reach = hitF > 0
+            ? idolFistReach(fistL.t / hitF, IDOL_TUNING.fx.punchFistLead, IDOL_TUNING.fx.punchFistEase)
+            : 1;
           const fade = fistL.t < hitF ? 1 : Math.max(0, 1 - (fistL.t - hitF) / (1 - hitF));
           const ang = view.punchAim;
           const dist = idolPunchRangeVis() * reach;

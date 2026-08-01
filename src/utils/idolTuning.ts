@@ -85,8 +85,19 @@ const bulletFields = (m: IdolCoreMove): TuningField[] => {
   }
   // 弾を撃たない技(帯・線の直接判定)も**自分のダメージを持つ**(社長報告v0.25.2629
   // 「射撃線と殴り はそもそもダメージのパラメータがない」)。旧は接触ダメージ(stats.damage)の流用だった。
-  if (m === 'punch' || m === 'snipe') {
-    return [{ path: `moveDamage.${m}`, label: 'ダメージ', group: 'move', section: sec, kind: 'num', min: 0, max: 400, step: 5 }];
+  if (m === 'punch') {
+    return [
+      { path: 'moveDamage.punch', label: 'ダメージ', group: 'move', section: sec, kind: 'num', min: 0, max: 400, step: 5 },
+      // エフェクトの速さ(社長要望v0.25.2651「拳とかダメージ判定早いのにエフェクト遅い」)。
+      // ★**伸び切る瞬間は判定の瞬間で固定**。ここで変わるのは「いつ動き出すか/どう伸びるか」だけなので、
+      //   いくら触っても「絵が当たったのにダメージが無い」side へはズレない。
+      { path: 'fx.punchFistLead', label: '拳が動く区間', group: 'move', section: sec, kind: 'frac', min: 0.05, max: 1, step: 0.05, hint: '溜めの後ろ何割で伸ばすか。小さいほど速く見える' },
+      { path: 'fx.punchFistEase', label: '拳の伸び方', group: 'move', section: sec, kind: 'num', min: 0.3, max: 3, step: 0.1, hint: '1=等速 / 大=溜めて伸びる / 小=出だしが速い' },
+      { path: 'fx.punchFistHoldMs', label: '拳が残る時間', group: 'move', section: sec, kind: 'ms', min: 0, max: 1200, step: 20 },
+    ];
+  }
+  if (m === 'snipe') {
+    return [{ path: 'moveDamage.snipe', label: 'ダメージ', group: 'move', section: sec, kind: 'num', min: 0, max: 400, step: 5 }];
   }
   return []; // roll は判定を持たない(離脱のみ)
 };
