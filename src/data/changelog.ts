@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2686',
+    items: [
+      '爆発などの大きい光が少し引き締まり、光が重なる場面での動作が大きく軽くなりました（光が密集した時のカクつきが解消します）。エフェクトが減ることはありません。',
+    ],
+  },
+  {
     version: '0.25.2685',
     items: [
       'ゲーム内容の変更はありません（実機ベンチの結果を記録しました）。',
