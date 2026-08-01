@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2653',
+    items: [
+      'ボスメーカーで技ごとの「押し出す距離」を調整できるようになりました（ゲーム内容の変更はありません）。',
+    ],
+  },
+  {
     version: '0.25.2652',
     items: [
       '風が常に吹くようになりました。止まらずに、強くなったり弱くなったりします。',

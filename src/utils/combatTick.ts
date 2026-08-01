@@ -203,13 +203,17 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の落下攻撃`, undefined, undefined, undefined, undefined, b.moveKey);
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
+        // v0.25.2653: **技ごとの押し量**(b.kbSpeed/kbMs)があればそれを使う。未指定=従来の共通値。
         const ddx = bpcx - b.x, ddy = bpcy - b.y;
         const dd = Math.max(0.001, Math.hypot(ddx, ddy));
+        const kbSp = b.kbSpeed ?? PLAYER_KNOCKBACK_SPEED;
+        const kbMs = b.kbMs ?? PLAYER_KNOCKBACK_MS;
         useGameStore.setState(st => ({ player: {
           ...st.player,
-          knockbackVx: (ddx / dd) * PLAYER_KNOCKBACK_SPEED,
-          knockbackVy: (ddy / dd) * PLAYER_KNOCKBACK_SPEED,
-          knockbackUntil: Date.now() + PLAYER_KNOCKBACK_MS,
+          knockbackVx: (ddx / dd) * kbSp,
+          knockbackVy: (ddy / dd) * kbSp,
+          knockbackUntil: Date.now() + kbMs,
+          knockbackMs: kbMs,
         } }));
         if (died) fx.triggerPlayerDeath(bpcx, bpcy);
       }

@@ -8,6 +8,7 @@ import {
   type IdolMove,
 } from './idolScript';
 import { deepCloneTuning } from './bossTuning';
+import { knockbackSpeedFor, PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS } from '../store/gameStore';
 import { fairnessViolations, classMix, pickStringScript, stringMaxLen, type BossZone } from './bossSkeleton';
 import { PLAYER_ATTACK_CYCLE_MS } from './bossTelegraph';
 import { ENEMY_STATS } from './enemyUtils';
@@ -352,5 +353,32 @@ describe('拳の伸び(idolFistReach)', () => {
   });
   it('既定は「溜めの最後の35%で等速に突き出す」(旧実装=1.0の等速は遅く見えた)', () => {
     expect(IDOL_TUNING_DEFAULTS.fx).toEqual({ punchFistLead: 0.35, punchFistEase: 1, punchFistHoldMs: 280 });
+  });
+});
+
+// ==== 技ごとの押し出し(v0.25.2653・社長要望「押しやる殴り」) ====
+describe('押し出し(moveKnockback)', () => {
+  it('既定は全ゲーム共通の押し量と同じ=挙動不変', () => {
+    // 共通値: 初速460px/s を 260ms かけて 1→0 で減衰 ⇒ 距離 = 460×0.26÷2 ≒ 59.8px。
+    expect(IDOL_TUNING_DEFAULTS.moveKnockback.punch).toEqual({ distPx: 60, ms: 260 });
+    const speed = knockbackSpeedFor(60, 260);
+    expect(speed).toBeCloseTo(PLAYER_KNOCKBACK_SPEED, -1);   // 461.5 ≒ 460
+    expect(IDOL_TUNING_DEFAULTS.moveKnockback.punch.ms).toBe(PLAYER_KNOCKBACK_MS);
+  });
+  it('★距離→初速の逆算が正しい(速度は1→0へ直線減衰するので 距離 = 初速×秒÷2)', () => {
+    for (const [dist, ms] of [[60, 260], [200, 300], [400, 500]] as const) {
+      const v = knockbackSpeedFor(dist, ms);
+      expect(v * (ms / 1000) / 2).toBeCloseTo(dist, 6);
+    }
+  });
+  it('壊れた値でも落ちない(0除算・負)', () => {
+    expect(Number.isFinite(knockbackSpeedFor(100, 0))).toBe(true);
+    expect(knockbackSpeedFor(-50, 260)).toBe(0);
+  });
+  it('「中距離まで押しやる」が作れる(主戦帯の下限200pxまで押せる)', () => {
+    // 社長要望「殴りは一気に中距離まで押しやる技にしたい」。主戦帯は200〜340px。
+    const v = knockbackSpeedFor(200, 260);
+    expect(v * 0.26 / 2).toBeCloseTo(200, 6);
+    expect(v).toBeLessThan(2000);   // 初速が現実的な範囲に収まる(画面外へ吹き飛ばさない)
   });
 });

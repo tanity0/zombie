@@ -11,6 +11,7 @@ import {
   useGameStore, counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossCritCdMult, enemyDeathLabel,
+  knockbackSpeedFor,
 } from '../store/gameStore';
 import { getActiveGun } from './weaponUtils';
 import { createEnemyProjectile } from './enemyUtils';
@@ -458,11 +459,16 @@ export const runIdolTick = (
    * 帯(カプセル)の当たり判定を1件積む。**ダメージは技ごと**(社長報告v0.25.2629)。
    * 旧は `idol.damage`(=接触ダメージの流用)で、技ごとに変えられなかった。
    */
-  const hitCapsule = (fx: number, fy: number, tx: number, ty: number, halfW: number, damage: number): void => {
+  const hitCapsule = (
+    fx: number, fy: number, tx: number, ty: number, halfW: number, damage: number,
+    // v0.25.2653: **押し出しも技ごと**(社長要望「押しやる殴り」)。距離(px)で受けて初速へ直す。
+    knockback?: { distPx: number; ms: number },
+  ): void => {
     useGameStore.setState(state => ({
       pumpkinBlasts: [...state.pumpkinBlasts, {
         x: (fx + tx) / 2, y: (fy + ty) / 2, radius: halfW, damage, enemyId: idol.id,
         capsule: { fx, fy, tx, ty, halfWidth: halfW },
+        ...(knockback ? { kbSpeed: knockbackSpeedFor(knockback.distPx, knockback.ms), kbMs: knockback.ms } : {}),
       }],
     }));
   };
@@ -607,7 +613,12 @@ export const runIdolTick = (
       const aim = hateAim();
       patch.hateTarget = aim.side;
       const ang = Math.atan2(aim.y - icy, aim.x - icx);
-      hitCapsule(icx, icy, icx + Math.cos(ang) * IDOL_TUNING.shape.punchRange, icy + Math.sin(ang) * IDOL_TUNING.shape.punchRange, IDOL_TUNING.shape.punchHalfWidth, IDOL_TUNING.moveDamage.punch);
+      hitCapsule(
+        icx, icy,
+        icx + Math.cos(ang) * IDOL_TUNING.shape.punchRange, icy + Math.sin(ang) * IDOL_TUNING.shape.punchRange,
+        IDOL_TUNING.shape.punchHalfWidth, IDOL_TUNING.moveDamage.punch,
+        IDOL_TUNING.moveKnockback.punch,
+      );
       toRecover('punch');
     }
   } else if (st === 'idol-roll-windup') {

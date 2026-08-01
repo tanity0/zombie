@@ -80,6 +80,12 @@ export interface Player extends DashLocomotionState {
   knockbackUntil?: number;
   knockbackVx?: number;
   knockbackVy?: number;
+  /**
+   * この吹き飛びの**持続時間(ms)**。未指定=`PLAYER_KNOCKBACK_MS`(従来どおり)。
+   * v0.25.2653: 技ごとに押し量を変えられるようにしたので、減衰の割り算もこの値で行う
+   * ——ここを共通定数のままにすると、長い吹き飛びで**減衰率が1を超えて初速が跳ね上がる**。
+   */
+  knockbackMs?: number;
   width: number;
   height: number;
   speed: number;

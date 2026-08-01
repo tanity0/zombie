@@ -3158,7 +3158,23 @@ export interface PumpkinBlast {
   x: number; y: number; radius: number; damage: number; enemyId: string; ice?: boolean;
   capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number };
   moveKey?: string;
+  /**
+   * **この技だけの押し出し**(v0.25.2653・BOSS_MAKER.md §9-2)。未指定=全ゲーム共通の
+   * `PLAYER_KNOCKBACK_SPEED/MS`(従来どおり)。「押しやる殴り」のように**技ごとに押す量を
+   * 変えたい**時だけ積む側が指定する。距離は `knockbackSpeedFor` で距離から逆算する。
+   */
+  kbSpeed?: number;
+  kbMs?: number;
 }
+
+/**
+ * 「**この距離だけ押したい**」を初速へ直す(v0.25.2653)。
+ * 吹き飛びの速度は持続時間で**1→0へ直線的に減衰**するので、進む距離は `初速 × 秒 ÷ 2`。
+ * よって初速 = `距離 × 2 ÷ 秒`。**メーカーには距離(px)で出す**——「中距離まで押しやる」のような
+ * 言い方は距離の話であって、速度×時間で考えるものではないため。
+ */
+export const knockbackSpeedFor = (distancePx: number, ms: number): number =>
+  (Math.max(0, distancePx) * 2) / Math.max(0.001, ms / 1000);
 
 interface GameState {
   player: Player;
@@ -4317,7 +4333,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const skaterStopping = !kbActive && kbNow < player.skaterStopUntil;
       let vx: number, vy: number;
       if (kbActive) {
-        const decay = Math.max(0, (player.knockbackUntil! - kbNow) / PLAYER_KNOCKBACK_MS); // 1→0
+        // 持続時間は**その吹き飛び自身の値**で割る(技ごとに変わるため。未指定=従来の共通値)。
+        const decay = Math.max(0, (player.knockbackUntil! - kbNow) / (player.knockbackMs ?? PLAYER_KNOCKBACK_MS)); // 1→0
         vx = (player.knockbackVx ?? 0) * decay;
         vy = (player.knockbackVy ?? 0) * decay;
       } else if (skaterStopping) {
@@ -7128,6 +7145,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: kbApply ? kbVx : state.player.knockbackVx,
           knockbackVy: kbApply ? kbVy : state.player.knockbackVy,
           knockbackUntil: kbApply ? kbNow + PLAYER_KNOCKBACK_MS : state.player.knockbackUntil,
+          // ★持続時間も**必ず一緒に書く**(v0.25.2653)。技ごとの長い押し出しの直後に通常の被弾が
+          // 来た時、ここを書かないと**前の技の持続時間で減衰が計算され**、初速が合わなくなる。
+          knockbackMs: kbApply ? PLAYER_KNOCKBACK_MS : state.player.knockbackMs,
         }
       };
     });

@@ -94,6 +94,10 @@ const bulletFields = (m: IdolCoreMove): TuningField[] => {
       { path: 'fx.punchFistLead', label: '拳が動く区間', group: 'move', section: sec, kind: 'frac', min: 0.05, max: 1, step: 0.05, hint: '溜めの後ろ何割で伸ばすか。小さいほど速く見える' },
       { path: 'fx.punchFistEase', label: '拳の伸び方', group: 'move', section: sec, kind: 'num', min: 0.3, max: 3, step: 0.1, hint: '1=等速 / 大=溜めて伸びる / 小=出だしが速い' },
       { path: 'fx.punchFistHoldMs', label: '拳が残る時間', group: 'move', section: sec, kind: 'ms', min: 0, max: 1200, step: 20 },
+      // 押し出し(v0.25.2653・社長要望「押しやる殴り」)。**距離で入れる**——「中距離まで押しやる」は
+      // 距離の話。速度×時間はコード側で逆算する(`knockbackSpeedFor`)。
+      { path: 'moveKnockback.punch.distPx', label: '押し出す距離', group: 'move', section: sec, kind: 'px', min: 0, max: 600, step: 10, hint: '共通の被弾ノックバックは60px' },
+      { path: 'moveKnockback.punch.ms', label: '押し出す時間', group: 'move', section: sec, kind: 'ms', min: 60, max: 1200, step: 20, hint: '短いほど鋭く飛ぶ' },
     ];
   }
   if (m === 'snipe') {
