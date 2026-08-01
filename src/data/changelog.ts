@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2637',
+    items: [
+      'ゲーム内容の変更はありません（松明の炎の素材仕様を記録しました）。',
+    ],
+  },
+  {
     version: '0.25.2636',
     items: [
       '画面に巨大な白い玉が出てしまう不具合を直しました（v0.25.2635で入れた光のボケ処理の初期化漏れ）。',
