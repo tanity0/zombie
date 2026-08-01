@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2652',
+    items: [
+      '風が常に吹くようになりました。止まらずに、強くなったり弱くなったりします。',
+    ],
+  },
+  {
     version: '0.25.2651',
     items: [
       'アイドルの拳が素早く突き出るようになりました（当たる瞬間は今までどおりです）。',

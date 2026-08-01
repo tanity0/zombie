@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  windAt, windGustAt, windBreezeAt, isGusting,
+  windAt, windGustAt, windSwellAt, isGusting,
   setWorldWindScale, getWorldWindScale, worldWindScaleFor,
-  GUST_PERIOD_MS, GUST_MS, BREEZE_AMP, WIND_PHASE_SPREAD,
+  GUST_PERIOD_MS, GUST_MS, SWELL_AMP, WIND_PHASE_SPREAD,
 } from './windGust';
 
 const sample = (n: number, step: number, seed = 0): number[] =>
@@ -24,19 +24,33 @@ describe('風(社長要望「たまに風で揺らめかせられる？」)', ()
     }
   });
 
-  it('★「たまに」であること: ほとんどの時間は微風だけ(吹きっぱなしにしない)', () => {
-    const xs = sample(4000, 25);                       // 100秒ぶんを25ms刻み
-    const strong = xs.filter(v => Math.abs(v) > 0.4).length / xs.length;
-    expect(strong).toBeGreaterThan(0.05);              // まったく吹かないのも困る
-    // 上限は「たまに」の定義そのもの。v0.25.2649で周期を7200→5200へ縮めた結果、実測 17.9%。
-    // **社長が頻度を上げたくなったらここも一緒に上げる**(テストが仕様を縛るのではなく、記録する)。
-    expect(strong).toBeLessThan(0.30);
+  // ★ここが v0.25.2652 で**意図ごと変わった**テスト。
+  // 旧: 「たまに吹く(ほとんどの時間は止まっている)」/ 新: **「常に吹いていて強弱がある」**
+  // (社長「止まる方が不自然。常に吹いてて大小の緩急があるくらいな感じ」)。
+  it('★止まって見える時間が短い(常に吹いている)', () => {
+    // 「止まって見える」= |風|<0.08 が **0.25秒以上続く**こと。一瞬の通過は目に留まらない。
+    const step = 16;                                   // 60fps 相当
+    const xs = sample(40000, step);                    // 約10分ぶん
+    let still = 0, run = 0;
+    for (const v of xs) {
+      if (Math.abs(v) < 0.08) run += 1;
+      else { if (run * step >= 250) still += run; run = 0; }
+    }
+    const frac = still / xs.length;
+    // v0.25.2651(そよぎ+たまの突風)では **49%** が止まって見えていた。3波のうねりで 16% まで下げた。
+    expect(frac).toBeLessThan(0.25);
   });
 
-  it('突風が無い間は微風の振れ幅に収まっている', () => {
+  it('★大小の緩急がある(強い時と弱い時の両方が出る)', () => {
+    const xs = sample(40000, 16).map(Math.abs);
+    expect(xs.filter(v => v > 0.55).length / xs.length).toBeGreaterThan(0.02); // 強い瞬間がある
+    expect(xs.filter(v => v < 0.20).length / xs.length).toBeGreaterThan(0.15); // 弱い時間もある
+  });
+
+  it('突風が無い間はうねりの振れ幅に収まっている', () => {
     const quiet = Array.from({ length: 4000 }, (_, i) => i * 25).filter(t => !isGusting(t));
     expect(quiet.length).toBeGreaterThan(0);
-    for (const t of quiet) expect(Math.abs(windAt(t))).toBeLessThanOrEqual(BREEZE_AMP + 1e-9);
+    for (const t of quiet) expect(Math.abs(windAt(t))).toBeLessThanOrEqual(SWELL_AMP + 1e-9);
   });
 
   it('突風は1周期に1回、決められた長さだけ起きる', () => {
@@ -66,13 +80,24 @@ describe('風(社長要望「たまに風で揺らめかせられる？」)', ()
   });
 
   it('強さは有界(炎が寝てしまうほど倒れない)', () => {
-    const xs = sample(8000, 13);
-    for (const v of xs) expect(Math.abs(v)).toBeLessThan(1.2);
+    // ★M7(2.3倍)がこれに掛かるので、**上限を上げると一番強いステージが破綻する**。
+    // 常時のうねりを足した v0.25.2652 でも、突風の強さを下げて合計の天井は据え置いてある。
+    const xs = sample(40000, 13);
+    for (const v of xs) expect(Math.abs(v)).toBeLessThan(1.15);
   });
 
-  it('突風と微風を別々に引ける(描画側が突風だけ使いたい時のため)', () => {
+  it('突風とうねりを別々に引ける(描画側が突風だけ使いたい時のため)', () => {
     for (const t of [0, 3000, 9000]) {
-      expect(windGustAt(t) + windBreezeAt(t)).toBeCloseTo(windAt(t), 10);
+      expect(windGustAt(t) + windSwellAt(t)).toBeCloseTo(windAt(t), 10);
+    }
+  });
+
+  it('うねりの周期は互いに割り切れない(揃うと周期的な"呼吸"に見える)', () => {
+    const ps = [3400, 1620, 820];
+    for (let i = 0; i < ps.length; i++) {
+      for (let j = i + 1; j < ps.length; j++) {
+        expect(ps[i] % ps[j], `${ps[i]} が ${ps[j]} の倍数`).not.toBe(0);
+      }
     }
   });
 });
