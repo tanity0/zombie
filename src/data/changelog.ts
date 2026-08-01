@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2636',
+    items: [
+      '画面に巨大な白い玉が出てしまう不具合を直しました（v0.25.2635で入れた光のボケ処理の初期化漏れ）。',
+    ],
+  },
+  {
     version: '0.25.2635',
     items: [
       '松明の光にピントの概念が入りました。画面のピント位置から離れた松明は、光が大きく柔らかくボケます（明るさは変わりません）。',

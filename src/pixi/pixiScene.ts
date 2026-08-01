@@ -3673,6 +3673,7 @@ export class PixiScene {
     const lightBokeh = new Sprite(getGlowTexture());
     lightBokeh.anchor.set(0.5);
     lightBokeh.blendMode = 'add';
+    lightBokeh.visible = false; // ★既定は非表示(下の「毎フレーム先頭で消す」と対。付け忘れると原点に白い玉が出る)
     const reflection = new Sprite(getGlowTexture());
     reflection.anchor.set(0.5);
     reflection.blendMode = 'add';
@@ -6911,6 +6912,13 @@ export class PixiScene {
   }
 
   private drawBreakableProp(view: PropView, prop: BreakableProp, now: number) {
+    // ★v0.25.2636(社長報告「ばぐった」= 画面に巨大な白い玉): ボケ用スプライトは**毎フレームここで消し**、
+    // 松明の枝だけが true にする。この関数には**早期returnが2箇所**(UVバー/非表示)あり、
+    // v0.25.2635 では UVバーの枝が `lightBokeh` に一切触れなかったため、**生成時の既定のまま**
+    // (白・256px・α1・位置(0,0)=ワールド原点)で描かれ続けていた。
+    // 教訓: **プールされたスプライトを足したら「毎フレーム必ず通る場所で消す」までが1セット。**
+    // 分岐ごとに消し忘れを潰す形にすると、分岐が増えた時に必ず再発する。
+    view.lightBokeh.visible = false;
     if (prop.type === 'mine') {
       // 緑卵=ベイクしたプールスプライト1枚で描画(旧:per-frame Graphics の clear()+約12楕円塗りを撤去)。
       // 「息づく」脈動はスケールの微振動だけで再現(per-frame Graphics は使わない)。
@@ -7022,7 +7030,7 @@ export class PixiScene {
 
     if (!visibleTorch) {
       view.light.visible = false;
-      view.lightBokeh.visible = false;
+      view.lightBokeh.visible = false; // (先頭で消してあるが、意図を明示するため残す)
       view.reflection.visible = false;
       view.flame.clear();
       view.overlay.clear();
