@@ -242,6 +242,12 @@ export type BenchmarkResult = {
   canaryFps: number[];
   /** 計測中に端末が遅くなった量(1フレームあたりms)。正=遅くなった。 */
   driftMs: number;
+  /**
+   * ★検算段: **最初に走った段を最後にもう一度**測ったもの(v0.25.2691)。
+   * 基準段は軽くて60fpsで頭打ちになりやすく、**軽い熱ダレを見逃す**。
+   * 同じ重い段を最初と最後で測れば、頭打ちに関係なく「この1本の中で数字が動いたか」が分かる。
+   */
+  repeatStage: BenchmarkStageResult | null;
 };
 
 export type BenchmarkDiagnostics = {
@@ -446,8 +452,11 @@ const createBenchBullet = (px: number, py: number, idx: number, total: number): 
   };
 };
 
-/** 進行の段階。stage=本番の段 / warmup=捨て段 / canary=基準段 / net=通信計測(全段終了後)。 */
-type BenchmarkPhase = 'warmup' | 'canary' | 'stage' | 'net';
+/**
+ * 進行の段階。stage=本番の段 / warmup=捨て段 / canary=基準段 /
+ * repeat=**最初の段をもう一度**(ドリフト検算) / net=通信計測(全段終了後)。
+ */
+type BenchmarkPhase = 'warmup' | 'canary' | 'stage' | 'repeat' | 'net';
 
 const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) => {
   // §5.24-追補: モバイルはALLカテゴリの最重段(MAX=A3・A2)を除外(=クラッシュしうる段を走らせない)。
@@ -455,6 +464,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const [profiles] = useState<BenchmarkProfile[]>(() => activeBenchmarkProfiles(isMobileBenchDevice(), benchmarkOnlyFilter()));
   const [warmupEnabled] = useState(() => benchFlag('warm', true));
   const [canaryEnabled] = useState(() => benchFlag('canary', true));
+  const [repeatEnabled] = useState(() => benchFlag('repeat', true));
   const [startedAt] = useState(() => performance.now());
   const [now, setNow] = useState(() => performance.now());
   const [result, setResult] = useState<BenchmarkResult | null>(null);
@@ -469,6 +479,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const canaryFpsRef = useRef<number[]>([]);
   const lastCanaryFpsRef = useRef(0);
   const finalCanaryRef = useRef(false);
+  const repeatStageRef = useRef<BenchmarkStageResult | null>(null);
   const netRttSamplesRef = useRef<number[]>([]);
   const netFailuresRef = useRef(0);
   const mainDelaySamplesRef = useRef<number[]>([]);
@@ -600,6 +611,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
         diagnostics,
         canaryFps: [...canaryFpsRef.current],
         driftMs: canaryDriftMs(canaryFpsRef.current),
+        repeatStage: repeatStageRef.current,
       };
       setResult(nextResult);
       window.setTimeout(() => onComplete(nextResult), 450);
@@ -611,7 +623,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     startPhase(canaryEnabled ? 'canary' : 'stage');
   }, [canaryEnabled, startPhase]);
 
-  /** 基準段の終わり → 記録して本番へ。最後の基準段だったら締める。 */
+  /** 検算段で走らせる段(=最初に実際に走った段)。1段も走っていなければ null。 */
+  const repeatProfile = useCallback((): BenchmarkProfile | null => {
+    const firstId = completedAttemptsRef.current[0]?.id;
+    return firstId ? (profiles.find(p => p.id === firstId) ?? null) : null;
+  }, [profiles]);
+
+  /** 基準段の終わり → 記録して本番へ。最後の基準段だったら検算段へ(無ければ締める)。 */
   const completeCanary = useCallback(() => {
     const stats = summarizeFrames(frameTimesRef.current);
     if (stats.avgFps > 0) {
@@ -619,11 +637,19 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       lastCanaryFpsRef.current = stats.avgFps;
     }
     if (finalCanaryRef.current) {
-      finishBenchmark();
+      if (repeatEnabled && repeatProfile()) startPhase('repeat');
+      else finishBenchmark();
       return;
     }
     startPhase('stage');
-  }, [finishBenchmark, startPhase]);
+  }, [finishBenchmark, repeatEnabled, repeatProfile, startPhase]);
+
+  /** 検算段の終わり → 記録して締める。**成績には入れない**(同じ段を二重に数えない)。 */
+  const completeRepeat = useCallback((profile: BenchmarkProfile) => {
+    const times = frameTimesRef.current;
+    repeatStageRef.current = buildAttemptResult(profile, summarizeFrames(times), times);
+    finishBenchmark();
+  }, [buildAttemptResult, finishBenchmark]);
 
   /** 本番の段の終わり → 次の段へ。系統をまたぐ時だけ基準段を挟む。 */
   const completeStage = useCallback((profile: BenchmarkProfile) => {
@@ -635,6 +661,8 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       if (canaryEnabled) {
         finalCanaryRef.current = true;
         startPhase('canary');
+      } else if (repeatEnabled && repeatProfile()) {
+        startPhase('repeat');
       } else {
         finishBenchmark();
       }
@@ -643,7 +671,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     const crossesCategory = profiles[nextAttempt].category !== profiles[activeAttempt].category;
     setActiveAttempt(nextAttempt);
     startPhase(crossesCategory && canaryEnabled ? 'canary' : 'stage');
-  }, [activeAttempt, buildAttemptResult, canaryEnabled, finishBenchmark, profiles, startPhase]);
+  }, [activeAttempt, buildAttemptResult, canaryEnabled, finishBenchmark, profiles, repeatEnabled, repeatProfile, startPhase]);
 
   useEffect(() => {
     let expected = performance.now() + BENCHMARK_MAIN_DELAY_SAMPLE_MS;
@@ -672,14 +700,16 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   useEffect(() => {
     if (result || phase === 'net') return;
     const stageProfile = profiles[activeAttempt] ?? profiles[profiles.length - 1];
-    // 暖機段・基準段は**常に同じ固定負荷**(CANARY_PROFILE)を出す。
-    const profile = phase === 'stage' ? stageProfile : CANARY_PROFILE;
+    // 検算段は「最初に走った段」を再現する。暖機段・基準段は**常に同じ固定負荷**(CANARY_PROFILE)。
+    const replayProfile = phase === 'repeat' ? repeatProfile() : null;
+    const profile = phase === 'stage' ? stageProfile : (replayProfile ?? CANARY_PROFILE);
     const pool = enemyPool(profile);
     const phaseTotalMs =
       phase === 'warmup' ? BENCHMARK_WARMUP_MS : phase === 'canary' ? BENCHMARK_CANARY_MS : BENCHMARK_ATTEMPT_MS;
     const completePhase = () => {
       if (phase === 'warmup') completeWarmup();
       else if (phase === 'canary') completeCanary();
+      else if (phase === 'repeat') completeRepeat(profile);
       else completeStage(stageProfile);
     };
 
@@ -879,9 +909,11 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     addEnemy,
     addProjectile,
     completeCanary,
+    completeRepeat,
     completeStage,
     completeWarmup,
     phase,
+    repeatProfile,
     profiles,
     removeEnemy,
     result,
@@ -902,10 +934,16 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const phaseTotalMs =
     phase === 'warmup' ? BENCHMARK_WARMUP_MS : phase === 'canary' ? BENCHMARK_CANARY_MS : BENCHMARK_ATTEMPT_MS;
   const attemptElapsed = Math.min(phaseTotalMs, now - attemptStartedAtRef.current);
-  const progress = result ? 100 : Math.round((attemptElapsed / phaseTotalMs) * 100);
+  // 通信計測(net)の間は描画を止めているので `now` が進まない=**メーターが途中で固まって見える**
+  // (社長指摘v0.25.2691)。計測自体は正常なので、この段は満タン表示にして「終わって通信を測っている」
+  // ことを示す(見出しにも `net` と出る)。
+  const progress = result || phase === 'net' ? 100 : Math.round((attemptElapsed / phaseTotalMs) * 100);
   const secondsLeft = Math.max(0, Math.ceil((phaseTotalMs - attemptElapsed) / 1000));
   const phaseLabel =
-    phase === 'warmup' ? '暖機(捨て)' : phase === 'canary' ? '基準段' : phase === 'net' ? '通信計測' : null;
+    phase === 'warmup' ? '暖機(捨て)'
+      : phase === 'canary' ? '基準段'
+        : phase === 'repeat' ? '検算段(最初の段を再測定)'
+          : phase === 'net' ? '通信計測' : null;
   const gradeStyle = useMemo(() => {
     switch (result?.grade) {
       case 'PASS':
@@ -948,7 +986,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
             {phaseLabel
               ? <div>{phaseLabel}{phase === 'canary' && lastCanaryFpsRef.current > 0 ? ` (前回 ${lastCanaryFpsRef.current.toFixed(0)})` : ''}</div>
               : <div>{profile.id} {profile.category} {profile.label}</div>}
-            <div>{stressLabel(phase === 'stage' ? profile : CANARY_PROFILE)}</div>
+            <div>{stressLabel(phase === 'stage' ? profile : (phase === 'repeat' ? (repeatProfile() ?? CANARY_PROFILE) : CANARY_PROFILE))}</div>
           </>
         )}
       </div>

@@ -58,6 +58,18 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
   const canaryLine = result.canaryFps.length
     ? `canary: ${result.canaryFps.map(v => v.toFixed(1)).join(' → ')} (drift ${result.driftMs >= 0 ? '+' : ''}${result.driftMs.toFixed(1)}ms/frame)`
     : 'canary: off';
+  // 検算段=最初の段を最後にもう一度。**この1本の中で数字が動いたか**の直接の答え
+  // (基準段は軽くて60fpsで頭打ちになり、軽い熱ダレを見逃すため・v0.25.2691)。
+  const repeatLine = (() => {
+    const rep = result.repeatStage;
+    if (!rep) return 'repeat: off';
+    const first = result.stages.find(stage => stage.id === rep.id);
+    if (!first) return `repeat: ${rep.label} avg ${rep.avgFps.toFixed(1)} Δ${rep.deltaMs >= 0 ? '+' : ''}${rep.deltaMs.toFixed(1)}ms`;
+    const shift = rep.deltaMs - first.deltaMs;
+    return `repeat: ${rep.label} ${first.avgFps.toFixed(1)} → ${rep.avgFps.toFixed(1)} `
+      + `(Δ${first.deltaMs >= 0 ? '+' : ''}${first.deltaMs.toFixed(1)} → Δ${rep.deltaMs >= 0 ? '+' : ''}${rep.deltaMs.toFixed(1)}ms, `
+      + `shift ${shift >= 0 ? '+' : ''}${shift.toFixed(1)}ms)`;
+  })();
 
   // ★計測条件(URLのツマミ)を結果に焼き込む(v0.25.2682)。
   // これが無いと**後から「どの条件で測ったか」が分からない**——実際にそれで判定が止まった
@@ -67,7 +79,7 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     if (typeof window === 'undefined') return '';
     const q = new URLSearchParams(window.location.search);
     // 描画負荷に効く/計測の解釈に効くものだけを拾う(全部出すと読みにくい)。
-    const keys = ['glowhalo', 'glowcore', 'refl', 'benchonly', 'warm', 'canary', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev'];
+    const keys = ['glowhalo', 'glowcore', 'refl', 'benchonly', 'warm', 'canary', 'repeat', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev'];
     const on = keys.filter(k => q.get(k) !== null).map(k => `${k}=${q.get(k)}`);
     return on.length ? on.join(' ') : 'なし(既定)';
   })();
@@ -78,6 +90,7 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     `grade: ${result.grade === 'PASS' ? 'SAFE' : result.grade}`,
     `summary: avg ${result.avgFps.toFixed(1)} min ${result.minFps} slow ${(result.drops * 100).toFixed(0)}% enemy/fx ${result.maxEnemies}/${result.maxFx}`,
     canaryLine,
+    repeatLine,
     `safe: ${safeStage?.safeStress ?? 'not found'}`,
     `stop: ${stopStage ? `${stopStage.label} ${stopStage.grade}` : 'max passed'}`,
     `device: ${result.diagnostics.verdict}`,
@@ -629,6 +642,15 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                       : 'off'}
                   </span>
                 </div>
+                {benchmarkResult.repeatStage && (
+                  <div className="mt-0.5 grid grid-cols-[44px_1fr] gap-2">
+                    <span className="text-white/40">repeat</span>
+                    <span className="truncate text-sky-100/80">
+                      {benchmarkResult.repeatStage.label} {benchmarkResult.stages.find(s => s.id === benchmarkResult.repeatStage?.id)?.avgFps.toFixed(1) ?? '-'}
+                      {' → '}{benchmarkResult.repeatStage.avgFps.toFixed(1)}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="mt-2 rounded-none bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
                 <div className="grid grid-cols-[44px_1fr] gap-2">
