@@ -2240,7 +2240,11 @@ export class PixiScene {
   private battlefieldStage = false; // ステージ5(farBackdrop'stage5'): 敵絵=戦場セット・木なし(残骸プロップに置換)
   private stage5Stage = false; // ステージ5(farBackdrop'stage5'): 近景森(戦場の残骸)を下げる
   // ステージ5の戦争照明(社長指示v0.25.1980「上部を爆発フラッシュ/炎のゆらめきで照らす」)。加算・上部のみ。
-  private stage5FireGlow = new Sprite(getGlowTexture()); // 炎のゆらめき(横長の暖色グロー)
+  // v0.25.2663(LIGHT_REWORK §3 #2): ステージ5の炎のゆらめき。共有カーブ→ソフトカーブ、**αは不変**。
+  // ★注意: これは点光源ではなく**画面幅1.4倍の横長の"空気"**(`filteredWorld` の外=画面固定)。
+  // ソフトカーブは中心へ寄るので、他の3つと違い**印象が変わりやすい**。実機で合わなければ
+  // ここだけ共有カーブへ戻す判断があり得る(生調整: `?s5fire=` 濃さ / `?s5fireh=` 高さ)。
+  private stage5FireGlow = new Sprite(getSoftGlowTexture()); // 炎のゆらめき(横長の暖色グロー)
   private stage5Flashes: { sprite: Sprite; start: number; dur: number; peak: number }[] = []; // 遠くの爆発フラッシュ(プール)
   private stage5NextFlashAt = 0; // 次の爆発の予定時刻
   private stage5WarGroup = new Container(); // 炎/フラッシュをまとめる箱(マスク対象)
@@ -3763,7 +3767,10 @@ export class PixiScene {
     lightBokeh.anchor.set(0.5);
     lightBokeh.blendMode = 'add';
     lightBokeh.visible = false; // ★既定は非表示(下の「毎フレーム先頭で消す」と対。付け忘れると原点に白い玉が出る)
-    const reflection = new Sprite(getGlowTexture());
+    // v0.25.2663(LIGHT_REWORK §3 #2): 松明/焚き火の**地面の光だまり**。共有カーブ(45%でまだ0.55=塊)
+    // からソフトカーブへ。**αは触らない=ピーク保存**(§3-1の掟)。visible=true になるのは
+    // torch/焚き火の枝だけ(他のpropは false)なので、実質この2つ専用。
+    const reflection = new Sprite(getSoftGlowTexture());
     reflection.anchor.set(0.5);
     reflection.blendMode = 'add';
     this.L.groundLayer.addChild(reflection, lightBokeh, light);
@@ -3787,7 +3794,9 @@ export class PixiScene {
   // 最小構成(炎Graphics + 暖色ライトのみ)を切り出したもの。
   private makeGroundFireView(): { container: Container; flameArt: Sprite; flame: Graphics; light: Sprite } {
     const container = new Container();
-    const light = new Sprite(getGlowTexture());
+    // v0.25.2663(LIGHT_REWORK §3 #2): 火炎瓶の地面の火の暖色ライト(フレアガンもこのビューを流用)。
+    // 共有カーブ→ソフトカーブ。**αは触らない=ピーク保存**(§3-1の掟)。半径も不変。
+    const light = new Sprite(getSoftGlowTexture());
     light.anchor.set(0.5);
     light.blendMode = 'add';
     this.L.groundLayer.addChild(light);
