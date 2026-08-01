@@ -92,7 +92,10 @@ import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
-import { getTexture, PLAYER_ART_BASE_W, TORCH_FIRE_SHEET, TORCH_FIRE_FRAMES, TORCH_FIRE_STAND_TOP } from './pixiTextures';
+import {
+  getTexture, PLAYER_ART_BASE_W,
+  FLAME_SHEET, FLAME_FRAMES, FLAME_FRAME_W, FLAME_FRAME_H, FLAME_LIGHT_FRAC, TORCH_STAND_RIM_ABOVE_FOOT,
+} from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
@@ -1406,21 +1409,20 @@ const TORCH_HALO_SQUASH = 0.86;
 // 半径キャップを必ず確認すること(v0.25.2149の教訓)。
 const TORCH_BOKEH_R_MULT = 1.6;
 const TORCH_EMBER_COUNT = 7;
-// ---- 松明(社長支給の絵・v0.25.2640) ------------------------------------------------------------
-// 支給素材 = **炎つきの松明3コマ**(492×264の1枚に164×264が横並び)。社長指示「台座毎変えてよ」なので
-// **台座ごと**この絵へ差し替える(旧 torch.png はもう使わない)。
-// 3コマとも台座は同じ位置・同じ形で、違うのは炎と、その照り返しが金属へ落ちる具合だけ。
-// ⇒ **絵ごと差し替えるだけで台は動かない**ので、こちらで炎を切り離す必要がない
-//   (社長指示「切り出さないで」と噛み合う。支給ファイルは1バイトも触っていない)。
+// ---- 炎(社長支給v0.25.2641・8コマ) -------------------------------------------------------------
+// 社長が**炎と台座を分けて**支給。炎は松明だけでなく**火炎瓶・焚き火・フレアガン**でも同じものを使う
+// (社長指示「火炎瓶とキャンプでもこの炎つかって」)。
 //
-// 表示の大きさは**台座の高さが従来と同じ(TORCH_VISUAL_H)になる**ように合わせる。
-// 支給絵はキャンバスの上7割が炎なので、絵全体を 42×68 へ収めると台座が極端に小さくなってしまう。
-// 台座 = キャンバスの y76〜263(3コマとも一致・実測)。
-const TORCH_ART_STAND_H_FRAC = (264 - TORCH_FIRE_STAND_TOP) / 264;
-/** 光(ハロー)を置く高さ ÷ 松明の表示高さ。**炎の明るさの重心**(3コマ平均 y=90.1)の実測から。 */
-const TORCH_FLAME_LIGHT_FRAC = ((264 - 90.1) / 264) / TORCH_ART_STAND_H_FRAC;
-/** コマ送りの間隔(ms)。3コマを 0→1→2→1 の**往復**で回す(社長の当初指定=右まで行って左へ戻る)。 */
-const TORCH_FIRE_FRAME_MS = 110;
+// ★重ね順は**炎が台座の奥**。手前にすると台座の腕が炎に塗り潰されて消える(実測比較で確認)。
+// 奥に置くと腕が炎を背にシルエットで立ち、実物の松明の見え方になる。
+/** コマ送りの間隔(ms)。8コマを前向きに回す(8×90ms=0.72秒で1周)。 */
+const FLAME_FRAME_MS = 90;
+/**
+ * 炎を「従来の楕円の炎」と同じ大きさで出すための倍率(高さ ÷ 従来の r)。
+ * 旧 `drawFlameShape` の見た目は**おおよそ 6.5r の高さ**だったので、そこへ合わせる
+ * =**火炎瓶などの火の大きさは変えない**(絵だけ良くなる)。判定は元から別物(半径22px)で不変。
+ */
+const FLAME_ART_H_PER_R = 6.5;
 const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
 const STRONG_GLOW_RADIUS = 44;
@@ -1834,6 +1836,8 @@ interface PropView {
   lightBokeh: Sprite;
   reflection: Sprite;
   sprite: Sprite;
+  /** v0.25.2641: 炎(社長支給8コマ)。**台座スプライトより奥**に居る。 */
+  flameArt: Sprite;
   flame: Graphics;
   overlay: Graphics;
 }
@@ -1956,11 +1960,11 @@ export class PixiScene {
   private droneBoomerangViews = new Map<string, { container: Container; sprite: Sprite }>();
   // 火炎瓶(molotov)の地面の火: 松明と同じ炎Graphics(drawFlameShape流用)+ 小さめの暖色ライト。
   // 状態(寿命/DoT)は gameStore.groundFires が持つ。ここは描画のみ(CLAUDE.md「Pixiは描画専門」)。
-  private groundFireViews = new Map<string, { container: Container; flame: Graphics; light: Sprite }>();
+  private groundFireViews = new Map<string, { container: Container; flameArt: Sprite; flame: Graphics; light: Sprite }>();
   private bossFireGfx = new Graphics();                    // ジブリルのランタン火(紫の単発火)を一括描画(予告=赤円/有効=紫火)
   private sensorMineGfx = new Graphics();                  // センサー地雷(sensor-mine)を一括描画(待機=ディスク+ランプ/感知=赤点滅テレグラフ)
   private supportSniperSprite: Sprite | null = null;       // 援護射撃(support-sniper)のNPC(同時1人・護衛軍人スプライト流用のプールSprite)
-  private flareGunViews = new Map<string, { container: Container; flame: Graphics; light: Sprite }>(); // フレアガン(flare-gun)の火(makeGroundFireView流用・同時1-2個)
+  private flareGunViews = new Map<string, { container: Container; flameArt: Sprite; flame: Graphics; light: Sprite }>(); // フレアガン(flare-gun)の火(makeGroundFireView流用・同時1-2個)
   private effects = new Map<string, EffectView>();
   // トール(一閃/突き/払い)専用: プレイヤーの斬撃と同じピクセル演出(streak+burst)を、実際の当たり判定
   // ライン(fx,fy→tx,ty・半幅)に合わせて出す。enemy.id keyed(裏ボスは1体のみだが将来の複数化にも耐える)。
@@ -2170,8 +2174,8 @@ export class PixiScene {
   // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
   private daylight = false;
   private snowStage = false; // ステージ4(farBackdrop'snow'): 松明を焚き火スプライトに置き換え
-  /** 松明3コマの解決結果。undefined=未解決 / null=素材無し(旧描画へ) / 配列=揃っている。 */
-  private torchFireCache: Texture[] | null | undefined = undefined;
+  /** 炎8コマの解決結果。undefined=未解決 / null=素材無し(旧描画へ) / 配列=揃っている。 */
+  private flameCache: Texture[] | null | undefined = undefined;
   private battlefieldStage = false; // ステージ5(farBackdrop'stage5'): 敵絵=戦場セット・木なし(残骸プロップに置換)
   private stage5Stage = false; // ステージ5(farBackdrop'stage5'): 近景森(戦場の残骸)を下げる
   // ステージ5の戦争照明(社長指示v0.25.1980「上部を爆発フラッシュ/炎のゆらめきで照らす」)。加算・上部のみ。
@@ -3705,27 +3709,34 @@ export class PixiScene {
 
     const sprite = new Sprite();
     sprite.anchor.set(0.5, 1);
+    // 炎(v0.25.2641)。**台座より先に addChild する=炎が奥**。手前にすると台座の腕が炎に
+    // 塗り潰されて消える(実測比較で確認)。奥に置くと腕が炎を背にシルエットで立つ。
+    const flameArt = new Sprite();
+    flameArt.visible = false; // 既定は非表示(松明以外のプロップには出さない=v0.25.2636の教訓)
     const flame = new Graphics();
     flame.blendMode = 'add';
     const overlay = new Graphics();
-    container.addChild(sprite, flame, overlay);
+    container.addChild(flameArt, sprite, flame, overlay);
     this.L.actorLayer.addChild(container);
-    return { container, light, lightBokeh, reflection, sprite, flame, overlay };
+    return { container, light, lightBokeh, reflection, sprite, flameArt, flame, overlay };
   }
 
   // 火炎瓶(molotov)の地面の火1個ぶんのビュー。松明(makeProp)から「柱スプライト無し」の
   // 最小構成(炎Graphics + 暖色ライトのみ)を切り出したもの。
-  private makeGroundFireView(): { container: Container; flame: Graphics; light: Sprite } {
+  private makeGroundFireView(): { container: Container; flameArt: Sprite; flame: Graphics; light: Sprite } {
     const container = new Container();
     const light = new Sprite(getGlowTexture());
     light.anchor.set(0.5);
     light.blendMode = 'add';
     this.L.groundLayer.addChild(light);
+    // 炎(v0.25.2641・松明と同じ支給素材)。ここは台座が無いので手前/奥の区別は不要。
+    const flameArt = new Sprite();
+    flameArt.visible = false;
     const flame = new Graphics();
     flame.blendMode = 'add';
-    container.addChild(flame);
+    container.addChild(flameArt, flame);
     this.L.actorLayer.addChild(container);
-    return { container, flame, light };
+    return { container, flameArt, flame, light };
   }
 
   // ---- top-level frame sync ------------------------------------------------
@@ -6943,6 +6954,7 @@ export class PixiScene {
     // 教訓: **プールされたスプライトを足したら「毎フレーム必ず通る場所で消す」までが1セット。**
     // 分岐ごとに消し忘れを潰す形にすると、分岐が増えた時に必ず再発する。
     view.lightBokeh.visible = false;
+    view.flameArt.visible = false; // 同上(v0.25.2641。松明/焚き火の枝だけが true にする)
     if (prop.type === 'mine') {
       // 緑卵=ベイクしたプールスプライト1枚で描画(旧:per-frame Graphics の clear()+約12楕円塗りを撤去)。
       // 「息づく」脈動はスケールの微振動だけで再現(per-frame Graphics は使わない)。
@@ -7024,33 +7036,24 @@ export class PixiScene {
 
     // ステージ4は松明を焚き火に置き換え(破壊可能・炎エフェクトはこのまま流用)。torch型のみ。
     const campfire = this.snowStage && prop.type === 'torch';
-    // v0.25.2640: 松明は**炎つき3コマの支給絵**へ台座ごと差し替え(社長指示)。3コマを往復で回す。
-    // 松明ごとに位相をずらす(footX)=画面中の松明が一斉に同じ形で揺れない。
-    const fireFrames = campfire ? null : this.torchFireFrames();
-    let fireIdx = 0;
-    if (fireFrames) {
-      const step = Math.floor(now / TORCH_FIRE_FRAME_MS + prop.footX * 0.07) % 4; // 0,1,2,1 の往復
-      fireIdx = step === 3 ? 1 : step;
-    }
-    const tex = fireFrames
-      ? fireFrames[fireIdx]
-      : campfire ? (getTexture('props/stage4-campfire') ?? getTexture(prop.type)) : getTexture(prop.type);
+    // v0.25.2641: 炎は**社長支給の8コマ**を全部の火で共用する。台座も支給絵(炎なし)へ差し替え。
+    const flames = this.flameFrames();
+    // 松明の台座。支給絵が読めない時だけ旧 torch.png へ落ちる(絵が消えるより古い絵の方がまし)。
+    const standTex = campfire
+      ? (getTexture('props/stage4-campfire') ?? getTexture(prop.type))
+      : (getTexture('props/torch-stand') ?? getTexture(prop.type));
+    const tex = standTex;
     const d = this.depthScale(prop.footY);
     const visualW = (campfire ? CAMPFIRE_VISUAL_W : TORCH_VISUAL_W) * prop.scale;
     const visualH = (campfire ? CAMPFIRE_VISUAL_H : TORCH_VISUAL_H) * prop.scale;
-    // 支給絵は絵の上7割が炎。**台座の高さ**が従来と同じになるよう、絵全体はその5割増しで描く
-    // (contain で 42×68 に収めると台座が小さくなってしまう)。
-    const sc = fireFrames && tex
-      ? (visualH / TORCH_ART_STAND_H_FRAC) / tex.height * d
-      : tex ? containScale(visualW, visualH, tex.width, tex.height) * d : d;
+    const sc = tex ? containScale(visualW, visualH, tex.width, tex.height) * d : d;
     const horizonAlpha = this.horizonActorAlpha(prop.footY);
     const flameX = Math.round(prop.footX);
-    // 松明=先端(高い)/焚き火=台の中央付近(低い)に炎を置く。
-    // 炎が絵になったぶん、光の中心も**その絵の明るさの重心**へ置く(実測 TORCH_FLAME_LIGHT_FRAC)。
-    // v0.25.2633 で決めた「光源は炎であって台ではない」を、炎の実体が変わったぶん引き直しただけ
-    // ——絵より下で光ると光源が浮く。
-    const flameY = Math.round(prop.footY - visualH * d
-      * (campfire ? 0.42 : (fireFrames ? TORCH_FLAME_LIGHT_FRAC : 0.72)));
+    // 炎の**根元**。松明は台座の鉢の縁(支給絵の実測)、焚き火は台の中央付近(従来どおり)。
+    const usingStandArt = !campfire && !!getTexture('props/torch-stand');
+    const flameBaseY = campfire
+      ? Math.round(prop.footY - visualH * d * 0.42)
+      : Math.round(prop.footY - (usingStandArt ? TORCH_STAND_RIM_ABOVE_FOOT * sc : visualH * d * 0.72));
     const viewportDistance = this.distanceOutsideViewport(prop.footX, prop.footY, TORCH_VIEWPORT_MARGIN);
     const visibleTorch = viewportDistance <= 0 && horizonAlpha > 0;
     const outsideScreenDistance = this.distanceOutsideViewport(prop.footX, prop.footY, 0);
@@ -7060,6 +7063,13 @@ export class PixiScene {
     const pulse = visibleTorch
       ? 0.80 + 0.13 * Math.sin(now / 125 + prop.footX * 0.03) + 0.07 * Math.sin(now / 53 + prop.footY * 0.05)
       : 0.94;
+    // 炎の絵の高さ。松明は**台座と1:1**(支給された2枚は同じドット粒で描かれている=そのまま重なる)。
+    // 焚き火は従来の楕円と同じ見た目の大きさ(FLAME_ART_H_PER_R)を保つ=火の大きさを変えない。
+    const flameH = campfire
+      ? FLAME_ART_H_PER_R * (5.5 * d * prop.scale * pulse)
+      : (usingStandArt ? FLAME_FRAME_H * sc : FLAME_ART_H_PER_R * (5.5 * d * prop.scale * pulse));
+    // 光は**炎の明るさの重心**へ置く(v0.25.2633「光源は炎であって台ではない」を絵で引き直したもの)。
+    const flameY = Math.round(flameBaseY - flameH * FLAME_LIGHT_FRAC);
 
     view.container.zIndex = prop.footY;
     view.container.alpha = torchAlpha;
@@ -7076,7 +7086,7 @@ export class PixiScene {
       view.reflection.visible = false;
       view.flame.clear();
       view.overlay.clear();
-      return;
+      return;                          // flameArt は関数の先頭で毎フレーム消してある
     }
 
     // v0.25.2633: 炎のハロー。**M6(洋館の壁灯)と同じ作法**へ寄せた:
@@ -7125,9 +7135,10 @@ export class PixiScene {
     if (torchAlpha > 0) {
       const r = 5.5 * d * prop.scale * pulse;
       const sway = Math.sin(now / 160 + prop.footX * 0.015) * r * 0.55;
-      if (fireFrames) {
-        // 炎そのものは絵(3コマ)が描く。コード側は**舞い上がる火の粉だけ**足す
-        // ——絵に描かれた粉はコマ内で瞬くだけで上へ昇らないので、動きはここが担う。
+      if (flames) {
+        // 炎そのものは絵(8コマ)が描く。**台座より奥**(makeProp で先に addChild 済み)。
+        this.placeFlame(view.flameArt, flames, flameX, flameBaseY, flameH, now, prop.footX * 0.13);
+        // コード側は**舞い上がる火の粉だけ**足す(絵の粉はコマ内で瞬くだけで上へ昇らないため)。
         this.drawFlameEmbers(f, flameX, flameY, r, prop.footX, prop.footY, now, torchAlpha);
       } else {
         this.drawFlameShape(f, flameX, flameY, r, sway, prop.footX, prop.footY, now, torchAlpha, false);
@@ -7143,20 +7154,35 @@ export class PixiScene {
   }
 
   /**
-   * 松明(社長支給・炎つき3コマ)のテクスチャ。**全部揃っている時だけ**返す
-   * ——1枚でも欠けたまま回すとコマ落ちで炎が消えたり点滅したりするので、その時は素材無しとして
-   * 従来の描画(torch.png + 楕円の炎)へ丸ごと戻す。読み込み後は Map 参照だけなので毎フレームでも安い。
+   * 炎(社長支給・8コマ)のテクスチャ。**全部揃っている時だけ**返す——1枚でも欠けたまま回すと
+   * コマ落ちで炎が消えたり点滅したりするので、その時は素材無しとして従来の楕円の炎へ丸ごと戻す。
+   * 解決は1回だけ(以後はキャッシュ)。
    */
-  private torchFireFrames(): Texture[] | null {
-    if (this.torchFireCache !== undefined) return this.torchFireCache;
+  private flameFrames(): Texture[] | null {
+    if (this.flameCache !== undefined) return this.flameCache;
     const out: Texture[] = [];
-    for (let i = 0; i < TORCH_FIRE_FRAMES; i++) {
-      const t = getTexture(`${TORCH_FIRE_SHEET}-${i}`);
-      if (!t) { this.torchFireCache = null; return null; }
+    for (let i = 0; i < FLAME_FRAMES; i++) {
+      const t = getTexture(`${FLAME_SHEET}-${i}`);
+      if (!t) { this.flameCache = null; return null; }
       out.push(t);
     }
-    this.torchFireCache = out;
+    this.flameCache = out;
     return out;
+  }
+
+  /**
+   * 炎スプライトを1つ置く(松明/焚き火/火炎瓶/フレアガンで共用)。
+   * `baseY` = **炎の根元**(支給絵の下端)。アンカーは (0.5, 1) 固定なので、置きたい所へそのまま渡す。
+   * `seed` で松明ごとにコマの位相をずらす=画面内の火が一斉に同じ形にならない。
+   */
+  private placeFlame(sp: Sprite, frames: Texture[], x: number, baseY: number, height: number, now: number, seed: number) {
+    const idx = Math.floor(now / FLAME_FRAME_MS + seed) % FLAME_FRAMES;
+    sp.texture = frames[(idx + FLAME_FRAMES) % FLAME_FRAMES];
+    sp.anchor.set(0.5, 1);
+    sp.height = height;
+    sp.width = height * (FLAME_FRAME_W / FLAME_FRAME_H);
+    sp.position.set(x, baseY);
+    sp.visible = true;
   }
 
   // 松明/焚き火の炎の形そのもの(旧: drawBreakablePropに直書き)。火炎瓶(molotov)の地面の火
@@ -7876,6 +7902,7 @@ export class PixiScene {
       view.container.visible = visible;
       view.container.alpha = horizonAlpha;
       view.light.visible = visible;
+      view.flameArt.visible = false;   // 毎フレーム消して、出す枝だけが true にする(v0.25.2636の教訓)
       if (!visible) { view.flame.clear(); continue; }
 
       // 揺らぎ/形は松明(drawBreakableProp)と同じ式を再利用(見た目の一貫性)。
@@ -7891,7 +7918,16 @@ export class PixiScene {
       view.light.alpha = 0.16 * horizonAlpha * pulse;
 
       view.flame.clear();
-      this.drawFlameShape(view.flame, flameX, flameY, r, sway, fire.x, fire.y, now, horizonAlpha);
+      // v0.25.2641(社長指示「火炎瓶とキャンプでもこの炎つかって」): 松明と同じ支給素材の炎へ。
+      // **大きさは従来と同じ**(FLAME_ART_H_PER_R が旧 drawFlameShape の見た目の高さに揃えてある)
+      // =火の見た目の広さは変えない。DoTの判定(半径22px)は元から別物で不変。
+      const flames = this.flameFrames();
+      if (flames) {
+        this.placeFlame(view.flameArt, flames, flameX, flameY + r, FLAME_ART_H_PER_R * r, now, fire.x * 0.13);
+        this.drawFlameEmbers(view.flame, flameX, flameY, r, fire.x, fire.y, now, horizonAlpha);
+      } else {
+        this.drawFlameShape(view.flame, flameX, flameY, r, sway, fire.x, fire.y, now, horizonAlpha);
+      }
     }
     for (const [id, view] of this.groundFireViews) {
       if (!seen.has(id)) {
@@ -7930,6 +7966,7 @@ export class PixiScene {
       view.container.visible = visible;
       view.container.alpha = horizonAlpha * lifeFade;
       view.light.visible = visible;
+      view.flameArt.visible = false;   // 毎フレーム消して、出す枝だけが true にする
       if (!visible) { view.flame.clear(); continue; }
 
       // 揺らぎ/形は molotov の地面の火(syncGroundFires)と同じ式を再利用。飛翔中は小さめの火。
@@ -7947,7 +7984,16 @@ export class PixiScene {
       view.light.alpha = 0.16 * horizonAlpha * pulse * lifeFade;
 
       view.flame.clear();
-      this.drawFlameShape(view.flame, Math.round(fx), Math.round(fy), r, sway, f.x, f.y, now, horizonAlpha * lifeFade);
+      // v0.25.2641: **火炎瓶と同じ火**なので同じ絵にする(コード上も「molotovの地面の火の流用」と
+      // 明記されている元の火。片方だけ差し替えると"同じ火"が2種類の見た目に割れる=v0.25.2426の教訓)。
+      // 2/3スケール(社長指示v0.25.1698)は sizeMult としてそのまま効いている。
+      const flames = this.flameFrames();
+      if (flames) {
+        this.placeFlame(view.flameArt, flames, Math.round(fx), Math.round(fy) + r, FLAME_ART_H_PER_R * r, now, f.x * 0.13);
+        this.drawFlameEmbers(view.flame, Math.round(fx), Math.round(fy), r, f.x, f.y, now, horizonAlpha * lifeFade);
+      } else {
+        this.drawFlameShape(view.flame, Math.round(fx), Math.round(fy), r, sway, f.x, f.y, now, horizonAlpha * lifeFade);
+      }
     }
     for (const [id, view] of this.flareGunViews) {
       if (!seen.has(id)) {

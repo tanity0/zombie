@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2641',
+    items: [
+      '炎が新しい絵になりました（社長支給・8コマ）。松明・火炎瓶・焚き火・フレアガンで共通です。',
+      '松明の台座も新しくなりました。炎は台座の奥で燃え、腕が炎を背に立ちます。',
+    ],
+  },
+  {
     version: '0.25.2640',
     items: [
       '松明が台座ごと新しい絵になりました（社長支給）。炎は3コマで揺れます。',

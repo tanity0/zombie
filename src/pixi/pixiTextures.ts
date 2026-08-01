@@ -20,15 +20,24 @@ const textures = new Map<string, Texture>();
 let ready = false;
 let loading: Promise<void> | null = null;
 
-// ---- 松明(社長支給v0.25.2640・炎つき3コマの横並び1枚) -------------------------------------------
-// **支給ファイルは一切加工しない**(社長指示「切り出さないで」)。コマはここの枠指定だけで読む。
-// `props/torch-fire` = 492×264 の1枚。1コマ 164×264 が3つ横に並んでいる。
-// 名前 `props/torch-fire-0..2` で `getTexture` から引ける。
-export const TORCH_FIRE_SHEET = 'props/torch-fire';
-export const TORCH_FIRE_FRAMES = 3;
-export const TORCH_FIRE_FRAME_W = 164;
-/** 1枚の中で**台座**が占める縦の範囲(実測 y=76〜263 / キャンバス264)。表示サイズの基準に使う。 */
-export const TORCH_FIRE_STAND_TOP = 76;
+// ---- 炎と松明の台座(社長支給v0.25.2641) ---------------------------------------------------------
+// 社長が**炎と台座を別々に**描き分けて支給(「炎と分けた、火炎瓶とキャンプでもこの炎つかって」)。
+// **支給ファイルは一切加工しない**。コマはここの枠指定だけで読む(アトラスと同じ作法=同じ source を
+// 共有するサブテクスチャなので、追加のメモリもデコードも発生しない)。
+//
+// `props/flame` = 1472×264 の1枚。**1コマ 184×264 が8つ**横に並ぶ。炎の根元は全コマ**下端(y=263)**、
+// 中心は**キャンバス中央**で揃っている(実測)= どのコマへ切り替えても炎が跳ねない。
+// 名前 `props/flame-0..7` で `getTexture` から引ける。
+export const FLAME_SHEET = 'props/flame';
+export const FLAME_FRAMES = 8;
+export const FLAME_FRAME_W = 184;
+export const FLAME_FRAME_H = 264;
+/** 炎の**明るさの重心**が下端から何割の高さに来るか(8コマ平均の実測)。光を置く高さに使う。 */
+export const FLAME_LIGHT_FRAC = 0.3197;
+
+// `props/torch-stand` = 112×172 の松明の台座(炎なし)。
+/** 台座の**鉢の縁**の高さ(足元から・art px)。炎の根元をここへ置く(実測: 上から y=44 / 全高172)。 */
+export const TORCH_STAND_RIM_ABOVE_FOOT = 172 - 44;
 
 // M8改→§5.9-追補2(社長の事実訂正v0.25.1462「軍人も同じドット風素材・同じ処理でいい」)で置き換え:
 // プレイヤー4クラス(マークスマン=magnum/ヘビーガンナー=shotgun/スカベンジャー=striker/
@@ -228,10 +237,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/slash-streak-3', scaleMode: 'nearest' },
       { name: 'fx/slash-streak-4', scaleMode: 'nearest' },
       { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)
-      // 松明(社長支給v0.25.2640)。**炎つき3コマの横並び1枚**。台座ごと差し替え(社長指示「台座毎変えてよ」)。
-      // ★社長指示「切り出さないで」= **支給ファイルをそのまま置き**、コマは下の TORCH_FIRE_FRAMES で
-      // 枠を指定して読む(こちらで画像を加工しない=位置ズレも劣化も起こりようがない)。
-      { name: 'props/torch-fire', scaleMode: 'nearest' },
+      // 炎(8コマ)と松明の台座(社長支給v0.25.2641)。ドット絵=**nearest**。
+      // 炎は松明だけでなく**火炎瓶・焚き火・フレアガン**でも同じものを使う(社長指示)。
+      { name: 'props/flame', scaleMode: 'nearest' },
+      { name: 'props/torch-stand', scaleMode: 'nearest' },
       { name: 'castle', scaleMode: 'nearest' },
       { name: 'hospital', scaleMode: 'nearest' }, // 通常ステージの廃病院(ワクチン入手・社長指示v0.25.2331)
       // §6.24 M48: 寄り道POIの一般化(社長支給素材v0.25.2352・アルファ透過あり)。
@@ -525,11 +534,11 @@ export const ensureTextures = (): Promise<void> => {
         // 松明(社長支給・炎つき3コマの横並び1枚)。**画像は加工せず、枠だけ切って登録**する
         // (社長指示v0.25.2640「切り出さないで」)。アトラスと同じ作法=同じ source を共有する
         // サブテクスチャなので、追加のメモリもデコードも発生しない。
-        if (name === TORCH_FIRE_SHEET) {
-          for (let i = 0; i < TORCH_FIRE_FRAMES; i++) {
-            textures.set(`${TORCH_FIRE_SHEET}-${i}`, new Texture({
+        if (name === FLAME_SHEET) {
+          for (let i = 0; i < FLAME_FRAMES; i++) {
+            textures.set(`${FLAME_SHEET}-${i}`, new Texture({
               source: tex.source,
-              frame: new Rectangle(i * TORCH_FIRE_FRAME_W, 0, TORCH_FIRE_FRAME_W, tex.height),
+              frame: new Rectangle(i * FLAME_FRAME_W, 0, FLAME_FRAME_W, tex.height),
             }));
           }
         }
