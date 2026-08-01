@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2678',
+    items: [
+      'ゲーム内容の変更はありません（実機ベンチの結果を記録しました）。',
+    ],
+  },
+  {
     version: '0.25.2677',
     items: [
       '開発用: ベンチマークの強い光の系統に、軽い段（G8/G6/G4）を足しました。ゲーム内容の変更はありません。',
