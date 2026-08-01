@@ -2128,6 +2128,12 @@ export class PixiScene {
   private rhythmArrowsGfx = new Graphics();
   private rhythmArrowsKey = '';
   private groundReflectionGfx = new Graphics();
+  // v0.25.2687(LIGHT_REWORK §3 #10・社長指摘「光の映り込み…これはベタ塗りなんだよね」):
+  // 映り込みは**均一fillの楕円2枚を毎フレーム描き直し**ていた(禁止事項1+per-frame Graphics)。
+  // **焼いたソフトカーブのプール済みスプライト**へ置換する。1件につき halo+core の2枚。
+  private groundReflGroup = new Container();
+  private groundReflPool: Sprite[] = [];
+  private groundReflUsed = 0;
   private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
   private returnGfx = new Graphics(); // 帰還サークル(地面・world座標。滞在で外周が満ちる)
   private static enemyDrawErrLogged = false; // drawEnemy 例外ログは初回だけ(1体の描画失敗で全体が固まらないよう保護)
@@ -2847,8 +2853,10 @@ export class PixiScene {
     this.castleSummonCircle.visible = false;
     this.castleSummonCircle.tint = 0xfca5a5; // 城ボスは赤系(錬金のシアンと差別化)
     // tint は付けない: テクスチャに焼いたシアン→白ホットの階調をそのまま活かす。
+    this.groundReflGroup.eventMode = 'none';
     this.L.groundLayer.addChild(
       this.groundReflectionGfx,
+      this.groundReflGroup,
       this.arenaGfx, // 囲い系イベントの柵リング(地面・アクターの下・world座標)
       this.returnGfx, // 帰還サークル(地面・world座標)
       this.baseSitesGfx, // 拠点候補地サークル(地面・world座標)
@@ -6847,8 +6855,39 @@ export class PixiScene {
     alpha: number
   ) {
     if (!GROUND_REFLECTION_ENABLED || alpha <= 0) return;
-    g.ellipse(x, y, width * 0.5, height * 0.5).fill({ color, alpha });
-    g.ellipse(x, y, width * 0.28, height * 0.34).fill({ color: 0xffffff, alpha: alpha * 0.22 });
+    // 旧: `ellipse(...).fill()` を2枚(均一塗り=縁で突然0になる=「ベタ塗り」の見本)。
+    // 新: **焼いたソフトカーブのスプライト2枚**。**中心のピークは保存**(旧 = alpha + alpha×0.22)。
+    // 大きさは旧と一致させる: 外側は radii(w/2, h/2) なので**全体幅=width**、
+    // 内側は radii(w×0.28, h×0.34) なので**全体幅=width×0.56 / 高さ=height×0.68**。
+    void g; // Graphics は使わなくなった(引数は呼び出し側の形を変えないために残す)
+    const halo = this.groundReflSprite();
+    if (!halo) return;
+    halo.tint = typeof color === 'number' ? color : this.glowTint(String(color));
+    halo.position.set(x, y);
+    halo.width = width; halo.height = height;
+    halo.alpha = alpha;
+    const core = this.groundReflSprite();
+    if (!core) return;
+    core.tint = 0xffffff;
+    core.position.set(x, y);
+    core.width = width * 0.56; core.height = height * 0.68;
+    core.alpha = alpha * 0.22;
+  }
+
+  /** 映り込み用のプール済みスプライトを1枚借りる(足りなければ作る)。 */
+  private groundReflSprite(): Sprite | null {
+    let sp = this.groundReflPool[this.groundReflUsed];
+    if (!sp) {
+      sp = new Sprite(getSoftGlowTexture());
+      sp.anchor.set(0.5);
+      sp.blendMode = 'add';
+      sp.eventMode = 'none';
+      this.groundReflPool.push(sp);
+      this.groundReflGroup.addChild(sp);
+    }
+    this.groundReflUsed += 1;
+    sp.visible = true;
+    return sp;
   }
 
   private syncGroundReflections(
@@ -6860,7 +6899,8 @@ export class PixiScene {
   ) {
     const g = this.groundReflectionGfx;
     g.clear();
-    if (!GROUND_REFLECTION_ENABLED) return;
+    this.groundReflUsed = 0; // プールの使用数を毎フレーム巻き戻す(余りは末尾で隠す)
+    if (!GROUND_REFLECTION_ENABLED) { this.hideGroundReflFrom(0); return; }
 
     for (const p of pickups) {
       if (p.type === 'experience') continue;
@@ -6937,6 +6977,13 @@ export class PixiScene {
         GROUND_REFLECTION_ALPHA * 1.15 * (1 - t) * horizonAlpha
       );
     }
+
+    this.hideGroundReflFrom(this.groundReflUsed);
+  }
+
+  /** 今フレーム使わなかった映り込みスプライトを隠す(破棄せず使い回す)。 */
+  private hideGroundReflFrom(n: number) {
+    for (let i = n; i < this.groundReflPool.length; i += 1) this.groundReflPool[i].visible = false;
   }
 
   private syncLocalEventLighting(
@@ -15735,6 +15782,8 @@ export class PixiScene {
     for (const e of this.pickups.values()) e.container.destroy({ children: true });
     for (const g of this.projectiles.values()) g.destroy();
     for (const o of this.effects.values()) o.destroy();
+    for (const t of this.groundReflPool) t.destroy();
+    this.groundReflPool.length = 0;
     for (const t of this.bossDistPool) t.destroy();
     this.bossDistPool.length = 0;
     for (const o of this.thorSlashFx.values()) o.destroy({ children: true });
