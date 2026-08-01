@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2664',
+    items: [
+      'ステージ5の敵に白い縁が見えていたのを、縁を薄くして目立たなくしました。',
+    ],
+  },
+  {
     version: '0.25.2663',
     items: [
       '火炎瓶とフレアガンの地面の火、松明・焚き火の足元の光、ステージ5の炎のゆらめきが、輪郭のある「塗り」ではなく芯のある光に見えるようになりました（明るさは変えていません）。',

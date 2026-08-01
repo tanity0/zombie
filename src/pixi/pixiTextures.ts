@@ -480,6 +480,53 @@ export const ensureTextures = (): Promise<void> => {
       }
     };
 
+    // ステージ5の敵絵の「白い縁」対策(社長指示v0.25.2664「縁を透過半分とかで誤魔化しといて」)。
+    //
+    // ★実測(2026-08-01・全10枚): この素材のαは**2段しか無い**(α65-128 と α129-192。
+    // 完全不透明が縁に接する画素は0=硬い境界が無い)。そして**外側の段(α65-128)だけ色が明るい**
+    // (平均RGB≈(120,116,116) / 内側の段は≈(42,37,36))。**この明るい半透明リングが白縁の正体。**
+    // 暗いステージ5の背景に薄いグレーの輪が乗るので「白く縁取られて見える」。
+    //
+    // 直し: **外側の段のαだけ半分にする**(内側は触らない=シルエットを痩せさせない)。
+    // **支給されたPNGそのものは加工しない**(このプロジェクトの作法)。読み込み時にcanvasで焼き直すだけ。
+    // 生調整: `?s5edge=0` で無効(元に戻る) / `?s5edge=0.3` のように倍率を直接指定。
+    const S5_EDGE_ALPHA_MAX = 128; // ここ以下のαを「外側の段」とみなす(実測の2段の境目)
+    const s5EdgeMult = (() => {
+      const raw = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('s5edge');
+      if (raw == null) return 0.5;                       // 既定=社長指示の「透過半分」
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0.5;
+    })();
+
+    /** 半透明の外周だけαを弱めて登録する(白縁対策)。失敗したら素の読み込みへ落とす。 */
+    const loadEdgeSoftened = async (name: string, scaleMode: 'nearest' | 'linear'): Promise<void> => {
+      try {
+        const img = new Image();
+        await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = spritePath(name); });
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return;
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const im = ctx.getImageData(0, 0, w, h);
+        const d = im.data;
+        for (let i = 3; i < d.length; i += 4) {
+          const a = d[i];
+          if (a > 0 && a <= S5_EDGE_ALPHA_MAX) d[i] = Math.round(a * s5EdgeMult);
+        }
+        ctx.putImageData(im, 0, 0);
+        const tex = Texture.from(cv);
+        tex.source.scaleMode = scaleMode;
+        textures.set(name, tex);
+      } catch (e) {
+        console.warn(`[pixiTextures] failed to soften edge "${name}":`, e);
+      } finally {
+        loadProgressDone();
+      }
+    };
+
     // 紫ベタ背景の単体PNGを「左上隅の色をキーに透過」して登録(自動タレット絵など。背景未透過対策)。
     const loadKeyed = async (name: string, scaleMode: 'nearest' | 'linear' = 'nearest') => {
       try {
@@ -525,6 +572,12 @@ export const ensureTextures = (): Promise<void> => {
         }
       })(),
       ...standalone.map(async ({ name, scaleMode }) => {
+        // ステージ5の敵絵だけは、明るい半透明の外周を弱めてから登録する(白縁対策・上の loadEdgeSoftened)。
+        // `?s5edge=0` を指定した時は素の読み込みに戻す(元の見た目へ即復帰できる安全弁)。
+        if (s5EdgeMult < 1 && name.startsWith('stage5-enemies/')) {
+          await loadEdgeSoftened(name, scaleMode === 'linear' ? 'linear' : 'nearest');
+          return;
+        }
         const tex = await loadOne(name);
         if (!tex) return;
         if (scaleMode) tex.source.scaleMode = scaleMode;
