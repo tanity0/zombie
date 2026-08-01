@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2670',
+    items: [
+      '爆発などの大きな光も、芯のある光に見えるようになりました（明るさは変えていません）。',
+    ],
+  },
+  {
     version: '0.25.2669',
     items: [
       'ゲーム内容の変更はありません（協力プレイの通信基盤・2段目の発注文を用意しました）。',

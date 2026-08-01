@@ -14189,8 +14189,12 @@ export class PixiScene {
       if (view) view.destroy({ children: true });
       const c = new Container();
       (c as { __strongGlow?: boolean }).__strongGlow = true;
-      const halo = new Sprite(getGlowTexture()); halo.anchor.set(0.5); halo.blendMode = 'add';
-      const core = new Sprite(getGlowTexture()); core.anchor.set(0.5); core.blendMode = 'add'; core.tint = 0xffffff;
+      // v0.25.2670(LIGHT_REWORK §3 #6): 強glowも共有カーブ→ソフトカーブ。**αは触らない=ピーク保存**。
+      // ★半径は**変えていない**=塗り面積は不変なので、ベンチの G12(唯一のFAIL)は良くも悪くもならない。
+      // ただしソフトカーブは外周の寄与が激減するので、**見た目を保ったまま半径を縮められる余地**が
+      // 生まれる(=G12に効く道)。それは印象を変える調整なので**別の版**で社長に諮る(§3-1e)。
+      const halo = new Sprite(getSoftGlowTexture()); halo.anchor.set(0.5); halo.blendMode = 'add';
+      const core = new Sprite(getSoftGlowTexture()); core.anchor.set(0.5); core.blendMode = 'add'; core.tint = 0xffffff;
       c.addChild(halo, core);
       view = c;
       this.effects.set(e.id, c);
