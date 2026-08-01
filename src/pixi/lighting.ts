@@ -55,6 +55,42 @@ export const getSoftGlowTexture = (): Texture => {
   return softGlowTex;
 };
 
+/**
+ * v0.25.2635(社長指示「光源側もDOF、松明からやって」): **ピントが外れた光源用**の平坦なカーブ。
+ *
+ * 考え方: 普通の物体をボカすには**ブラー版の素材を焼く**必要がある(M6の柱は `-blur`/`-farblur` を
+ * 事前に焼いてクロスフェードしている)。しかし**光には輪郭が無い**ので、
+ * **カーブを緩くして半径を広げるだけ**でボケになる ⇒ **素材の追加が要らず、全光源で使い回せる。**
+ *
+ * `getSoftGlowTexture`(ピント)との差:
+ * | 距離 | ピント | ボケ |
+ * |---|---|---|
+ * | 25% | 0.55 | **0.72** |
+ * | 60% | 0.18 | **0.34** |
+ * ⇒ 中心の締まりが緩み、外へ広く残る=「大きく柔らかい玉」に見える。
+ *
+ * **使う側の義務**: ボケ側は**半径を広げるぶん必ずαを下げる**(総光量を保つ=ボケて明るくならない)。
+ * 半径キャップも掛けること。**加算の塗り面積が律速**なので、ここを守らないと v0.25.2149 の再来になる。
+ */
+let bokehGlowTex: Texture | null = null;
+export const getBokehGlowTexture = (): Texture => {
+  if (bokehGlowTex) return bokehGlowTex;
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const r = size / 2;
+  const g = ctx.createRadialGradient(r, r, 0, r, r, r);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(255,255,255,0.72)');
+  g.addColorStop(0.6, 'rgba(255,255,255,0.34)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  bokehGlowTex = Texture.from(canvas);
+  return bokehGlowTex;
+};
+
 export const getGlowTexture = (): Texture => {
   if (glowTex) return glowTex;
   const size = 256;

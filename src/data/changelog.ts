@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2635',
+    items: [
+      '松明の光にピントの概念が入りました。画面のピント位置から離れた松明は、光が大きく柔らかくボケます（明るさは変わりません）。',
+    ],
+  },
+  {
     version: '0.25.2634',
     items: [
       'ゲーム内容の変更はありません（光の描写を全面改善するための計画を記録しました）。',

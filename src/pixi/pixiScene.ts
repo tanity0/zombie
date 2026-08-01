@@ -94,7 +94,7 @@ import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
 import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
-import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX, bossBehindFadeApplies } from './renderSpec';
@@ -1394,6 +1394,10 @@ const TORCH_LIGHT_RADIUS = 92;
 const TORCH_HALO_MAX_R_FRAC = 0.11;
 // 縦の潰し。真円だと「浮いた玉」に見えるので少しだけ平たくする(叩き台・実機調整前提)。
 const TORCH_HALO_SQUASH = 0.86;
+// v0.25.2635: ピントが外れきった時の半径倍率(ボケ玉の大きさ)。叩き台・実機調整前提。
+// **大きくするほど塗り面積が増える**(加算オーバードローが律速)ので、上げる時はαの減衰と
+// 半径キャップを必ず確認すること(v0.25.2149の教訓)。
+const TORCH_BOKEH_R_MULT = 1.6;
 const TORCH_EMBER_COUNT = 7;
 const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
@@ -1804,6 +1808,8 @@ interface ActorView {
 interface PropView {
   container: Container;
   light: Sprite;
+  /** v0.25.2635: ピントが外れた時の光(ボケ用・lightとクロスフェード)。 */
+  lightBokeh: Sprite;
   reflection: Sprite;
   sprite: Sprite;
   flame: Graphics;
@@ -3405,6 +3411,20 @@ export class PixiScene {
     g.circle(0, 0, 6).stroke({ width: 2, color: 0xffd166, alpha: 0.8 });
   }
 
+  /**
+   * v0.25.2635(社長指示「光源側もDOF」): その光源が**ピントからどれだけ外れているか**(0=くっきり / 1=最大ボケ)。
+   *
+   * 基準は**既存の tilt-shift と同じ帯**にする(`TILT_SHIFT_BAND` の高さがくっきり、そこから
+   * `TILT_SHIFT_GRADIENT` px でボケへ)。別の基準を作ると、**背景のボケ方と光のボケ方がズレて**
+   * かえって不自然になるため。純粋な計算のみ=判定・座標には一切影響しない(描画専用)。
+   */
+  private lightDefocus01(worldY: number): number {
+    const screenY = worldY - this.cameraY;
+    const bandY = this.screenH * TILT_SHIFT_BAND;
+    const d = Math.abs(screenY - bandY);
+    return Math.max(0, Math.min(1, d / Math.max(1, TILT_SHIFT_GRADIENT)));
+  }
+
   private horizonActorAlpha(footWorldY: number) {
     return Math.max(0, Math.min(1, (footWorldY - this.horizonForestFootWorldY) / this.horizonActorFadePx));
   }
@@ -3647,10 +3667,16 @@ export class PixiScene {
     const light = new Sprite(getGlowTexture());
     light.anchor.set(0.5);
     light.blendMode = 'add';
+    // v0.25.2635: 光源の被写体深度。**ピント用とボケ用を2枚重ねてクロスフェード**する
+    // (M6の柱が `-blur`/`-farblur` でやっているのと同じ作法。ただし光は輪郭が無いので
+    //  専用のブラー素材が要らず、カーブの違う焼きグラデ2枚で足りる)。
+    const lightBokeh = new Sprite(getGlowTexture());
+    lightBokeh.anchor.set(0.5);
+    lightBokeh.blendMode = 'add';
     const reflection = new Sprite(getGlowTexture());
     reflection.anchor.set(0.5);
     reflection.blendMode = 'add';
-    this.L.groundLayer.addChild(reflection, light);
+    this.L.groundLayer.addChild(reflection, lightBokeh, light);
 
     const sprite = new Sprite();
     sprite.anchor.set(0.5, 1);
@@ -3659,7 +3685,7 @@ export class PixiScene {
     const overlay = new Graphics();
     container.addChild(sprite, flame, overlay);
     this.L.actorLayer.addChild(container);
-    return { container, light, reflection, sprite, flame, overlay };
+    return { container, light, lightBokeh, reflection, sprite, flame, overlay };
   }
 
   // 火炎瓶(molotov)の地面の火1個ぶんのビュー。松明(makeProp)から「柱スプライト無し」の
@@ -6996,6 +7022,7 @@ export class PixiScene {
 
     if (!visibleTorch) {
       view.light.visible = false;
+      view.lightBokeh.visible = false;
       view.reflection.visible = false;
       view.flame.clear();
       view.overlay.clear();
@@ -7010,13 +7037,29 @@ export class PixiScene {
     //  ・半径は画面高でキャップ(M6の GLOW_MAX_R_FRAC=0.11 と同じ考え方)=近距離の大玉オーバードローを防ぐ。
     // 塗り面積はむしろ減る(中心以外が薄い)。per-frame Graphics も1枚減る。
     const haloR = Math.min(TORCH_LIGHT_RADIUS * d * pulse, this.screenH * TORCH_HALO_MAX_R_FRAC);
+    const haloA = 0.62 * torchAlpha * pulse * (0.84 + 0.16 * farFade);
+    // v0.25.2635(社長指示): **光源の被写体深度**。既存の tilt-shift は「画面の帯」で決まる
+    // (TILT_SHIFT_BAND=0.54 の位置がくっきり・そこから TILT_SHIFT_GRADIENT px でボケへ)。
+    // その**同じ帯**を基準に、この光がピントからどれだけ外れているかを 0..1 で出し、
+    // **ピント用とボケ用の2枚をクロスフェード**する。フィルタは使わない(per-pixel処理ゼロ)。
+    const focusT = this.lightDefocus01(flameY);
+    // ボケ側は**半径を広げるぶんαを下げる**(総光量を保つ=ボケて明るくならない)。
+    const bokehR = Math.min(haloR * TORCH_BOKEH_R_MULT, this.screenH * TORCH_HALO_MAX_R_FRAC * TORCH_BOKEH_R_MULT);
     view.light.texture = getSoftGlowTexture();
-    view.light.visible = true;
+    view.light.visible = focusT < 0.995;
     view.light.position.set(flameX, flameY);
     view.light.tint = 0xffb45f;
     view.light.width = haloR * 2;
     view.light.height = haloR * 2 * TORCH_HALO_SQUASH;
-    view.light.alpha = 0.62 * torchAlpha * pulse * (0.84 + 0.16 * farFade);
+    view.light.alpha = haloA * (1 - focusT);
+    view.lightBokeh.texture = getBokehGlowTexture();
+    view.lightBokeh.visible = focusT > 0.005;
+    view.lightBokeh.position.set(flameX, flameY);
+    view.lightBokeh.tint = 0xffb45f;
+    view.lightBokeh.width = bokehR * 2;
+    view.lightBokeh.height = bokehR * 2 * TORCH_HALO_SQUASH;
+    // 面積が (R_MULT)^2 倍になるので、αはその逆数で割って総光量を揃える。
+    view.lightBokeh.alpha = haloA * focusT / (TORCH_BOKEH_R_MULT * TORCH_BOKEH_R_MULT);
 
     // 地面の光だまり(reflection を活用): 暗いベースの上で松明が光源として読めるよう、
     // 従来より広く・丸く・少し濃く。揺らぎで微かに脈動。
