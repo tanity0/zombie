@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2654',
+    items: [
+      'ゲーム内容の変更はありません（ボスメーカーのヘルプと台本on/offの仕様を記録しました）。',
+    ],
+  },
+  {
     version: '0.25.2653',
     items: [
       'ボスメーカーで技ごとの「押し出す距離」を調整できるようになりました（ゲーム内容の変更はありません）。',
