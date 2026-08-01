@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2645',
+    items: [
+      '火炎瓶の火を大きくしました（従来の1.8倍）。',
+    ],
+  },
+  {
     version: '0.25.2644',
     items: [
       '松明の火が鉢の中から出るようになりました（浮いて見えていたのを修正）。',

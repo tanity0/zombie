@@ -1444,6 +1444,18 @@ const TORCH_FAR_FADE_MARGIN = 120;
 // 地面の火だまりなので松明本体より小さめの半径(見た目のみ・当たり判定は MOLOTOV_FIRE_RADIUS で
 // 別管理=CLAUDE.md「見た目と当たり判定の分離」)。
 const GROUND_FIRE_FLAME_R = 4.2;
+/**
+ * 火炎瓶の地面の火の**見た目の倍率**(社長指示v0.25.2645「火炎瓶も大きく」)。1.0=従来の楕円と同じ大きさ。
+ *
+ * ★背景: この火は**DoTの判定を持つ**(半径22px=直径44px)ので、CLAUDE.md の分類では
+ * **①危険を伝える絵=判定に揃える**側。ところが従来の絵は**高さ22px・地面の footprint 10px前後**で、
+ * **判定よりずっと小さかった**(=「赤くないのに当たる」側にズレていた)。
+ * ここを上げるのは見た目の要望であると同時に、そのズレを縮める方向でもある。
+ * ※支給された炎は**縦に高い焚き火の絵**なので、地面の footprint を直径44pxまで広げると
+ *   高さが200px超になって画面を食う。**完全一致は素材の形からして無理**なので、
+ *   「判定より小さいが、火として読める」ところで折り合う(★判定側を絞る案は社長裁定)。
+ */
+const MOLOTOV_VISUAL_SCALE = 1.8;
 const GROUND_FIRE_LIGHT_RADIUS = 46;
 const GROUND_FIRE_VIEWPORT_MARGIN = 120;
 const SMALL_GLOW_SPRITE_RADIUS_MAX = STRONG_GLOW_RADIUS - 1;
@@ -7930,7 +7942,7 @@ export class PixiScene {
       // =火の見た目の広さは変えない。DoTの判定(半径22px)は元から別物で不変。
       const flames = this.flameFrames();
       if (flames) {
-        this.placeFlame(view.flameArt, flames, flameX, flameY + r, FLAME_ART_H_PER_R * r, now, fire.x * 0.13);
+        this.placeFlame(view.flameArt, flames, flameX, flameY + r, FLAME_ART_H_PER_R * r * MOLOTOV_VISUAL_SCALE, now, fire.x * 0.13);
         this.drawFlameEmbers(view.flame, flameX, flameY, r, fire.x, fire.y, now, horizonAlpha);
       } else {
         this.drawFlameShape(view.flame, flameX, flameY, r, sway, fire.x, fire.y, now, horizonAlpha);
