@@ -118,8 +118,29 @@ export const isMobileBenchDevice = (): boolean => {
   return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 };
 
-export const activeBenchmarkProfiles = (mobile: boolean): BenchmarkProfile[] =>
-  mobile ? BENCHMARK_PROFILES.filter(p => !(p.category === 'ALL' && (p.id === 'A3' || p.id === 'A2'))) : BENCHMARK_PROFILES;
+// ★1系統だけ回す絞り込み(社長指示v0.25.2675「テストって具体的になにやるの？」)。
+// 既定(パラメータ無し)は**従来どおり全部**。`?benchonly=FXG` のようにカテゴリIDを渡すと
+// **その系統だけ**を回す。A/B(例: `?glowhalo=1.3` の有無)を何度も測り比べる時、
+// 全系統(数分)を毎回待たずに済む。カンマ区切りで複数指定も可(`?benchonly=FXG,ALL`)。
+// 指定が1つも当たらなければ**無視して全部**(タイプミスで何も走らない事故を作らない)。
+const benchmarkOnlyFilter = (): string[] => {
+  if (typeof window === 'undefined') return [];
+  const raw = new URLSearchParams(window.location.search).get('benchonly');
+  if (!raw) return [];
+  return raw.split(',').map(v => v.trim().toUpperCase()).filter(Boolean);
+};
+
+export const activeBenchmarkProfiles = (mobile: boolean, only: string[] = []): BenchmarkProfile[] => {
+  const base = mobile
+    ? BENCHMARK_PROFILES.filter(p => !(p.category === 'ALL' && (p.id === 'A3' || p.id === 'A2')))
+    : BENCHMARK_PROFILES;
+  if (only.length === 0) return base;
+  // カテゴリ(例 FX-G / FXG)でも、段のID(例 G12)でも当てられるようにする。
+  const norm = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const wanted = new Set(only.map(norm));
+  const picked = base.filter(p => wanted.has(norm(p.category)) || wanted.has(norm(p.id)));
+  return picked.length > 0 ? picked : base;
+};
 
 // 軽量プール(雑魚スウォーム)と重量級プール(大スプライト=影/ライティング負荷)。
 const LIGHT_ENEMY_TYPES: EnemyType[] = ['zombie', 'skeleton', 'bat', 'ghost', 'plant'];
@@ -372,7 +393,7 @@ const createBenchBullet = (px: number, py: number, idx: number, total: number): 
 const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) => {
   // §5.24-追補: モバイルはALLカテゴリの最重段(MAX=A3・A2)を除外(=クラッシュしうる段を走らせない)。
   // デバイス種別はセッション中に変わらない前提で一度だけ判定する。
-  const [profiles] = useState<BenchmarkProfile[]>(() => activeBenchmarkProfiles(isMobileBenchDevice()));
+  const [profiles] = useState<BenchmarkProfile[]>(() => activeBenchmarkProfiles(isMobileBenchDevice(), benchmarkOnlyFilter()));
   const [startedAt] = useState(() => performance.now());
   const [now, setNow] = useState(() => performance.now());
   const [result, setResult] = useState<BenchmarkResult | null>(null);

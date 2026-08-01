@@ -1,5 +1,34 @@
 # Development Log
 
+## v0.25.2675 — ベンチを1系統だけ回せるようにした(`?benchonly=`)【2026-08-02 00:50 JST】
+
+社長「テストって具体的になにやるの？ URLにはつけたけど」→ **手順を出していなかったこちらの不備。**
+確認したら、**ベンチは押すと全系統(数分)を自動で走る作り**で、G12 だけ測ることができなかった。
+A/B(`?glowhalo=` の有無)で2回やるのに毎回全部待つのは無駄なので、**1系統だけ回す絞り込み**を足した。
+
+### 足したもの
+- **`?benchonly=FXG`** … その系統だけ回す。**カテゴリ(`FXG`)でも段ID(`G12`)でも**指定可、カンマ区切り可。
+- **付けなければ従来どおり全系統**(既定は無変更)。
+- **当たらない指定は無視して全部回す**(タイプミスで「何も走らない」事故を作らない)。
+
+### 実機の手順(社長へ・§3-1eにも記載)
+1. `?benchonly=FXG` で開く / A/B側は `?benchonly=FXG&glowhalo=1.3`
+2. タイトル →「はじめる」→ **ミッション選択画面を下までスクロール** →「**BENCH（ベンチマーク開始）**」
+3. 結果の **G12 の avg / min** を控える
+4. URLを入れ替えてもう1回(**同じ端末・同じ状況で続けて**)
+
+### 補足
+`benchmarkOnlyFilter` は**あえて export していない**——export すると
+`react-refresh/only-export-components` の warning が1本増えるため(このファイルは
+コンポーネントと定数を同居させている)。lint は 0 errors / 8 warnings のまま(増やしていない)。
+
+### 変更ファイル
+- `src/components/BenchmarkOverlay.tsx`(`benchmarkOnlyFilter` / `activeBenchmarkProfiles` に絞り込み引数)
+- `research/LIGHT_REWORK.md` §3-1e(実機手順)/ `src/data/changelog.ts` / `package.json`
+
+### 検証
+- typecheck 0 / lint 0 errors(warning 8=据え置き)/ `src/components` のテスト 15 passed。
+
 ## v0.25.2674(文書) — レベルアップの光は対応済み + 絵の判定台として使う【2026-08-02 00:35 JST】
 
 社長質問「レベルアップの光は大丈夫そう？」→ **大丈夫。#6 で既に直っている。**
