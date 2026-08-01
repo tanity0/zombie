@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2639',
+    items: [
+      '松明の炎が描き絵になりました（社長支給）。揺らぎ・火の粉・明かりはそのままです。',
+    ],
+  },
+  {
     version: '0.25.2638',
     items: [
       'ボスメーカー: 新しい射撃技を画面から足せるようになりました（弾数・連射・広がり・誘導・狙い方）。',

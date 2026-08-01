@@ -1406,6 +1406,23 @@ const TORCH_HALO_SQUASH = 0.86;
 // 半径キャップを必ず確認すること(v0.25.2149の教訓)。
 const TORCH_BOKEH_R_MULT = 1.6;
 const TORCH_EMBER_COUNT = 7;
+// ---- 松明の炎(社長支給の絵・v0.25.2638) --------------------------------------------------------
+// 支給された絵は**炎つきの松明1枚**(128×256)だったので、炎の本体だけを切り出して
+// `props/torch-flame.png`(68×112)にしてある。台は既存の torch.png のまま使う——
+// 理由は2つ: ①炎は台と**別々に動かないと揺れない**(1枚絵だと台ごと揺れる) ②松明の表示は
+// 42×68px なので、どちらの絵も十分大きく、解像度は選定理由にならない。
+// 下の3つは**支給された絵の中の実測値**。絵を差し替えたら測り直すこと。
+// 置き場所と大きさは**支給絵の台を現物(torch.png)の台へ重ねて**決めた(シルエットの一致度で
+// 倍率と縦位置を総当たり。一致度 IoU=0.74。2枚は縦横比が少し違うので横2.16倍・縦2.60倍)。
+// つまり下の3つは「社長が描いた通りの位置・大きさ」であって、こちらで見繕った値ではない。
+// **絵を差し替えたら測り直す**(scratchpadの手順は DEVELOPMENT_LOG v0.25.2639 に記載)。
+const TORCH_FLAME_W_FRAC = 0.495;     // 炎の幅 ÷ 松明の表示幅
+const TORCH_FLAME_H_FRAC = 0.607;     // 炎の高さ ÷ 松明の表示高さ
+const TORCH_FLAME_BASE_FRAC = 0.733;  // 炎の下端の高さ ÷ 松明の表示高さ(足元から上へ)
+/** 光(ハロー)を置く高さ。**炎の絵の明るさの重心**(実測: 絵の下端から38.9%)を足元基準へ直したもの。 */
+const TORCH_FLAME_LIGHT_FRAC = 0.969;
+/** 揺らぎ(pulse 0.6〜1.0)を炎の伸び縮みへ。1枚絵なので**控えめに**(大きく動かすとゴム的に見える)。 */
+const TORCH_FLAME_STRETCH = 0.18;
 const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
 const STRONG_GLOW_RADIUS = 44;
@@ -1819,6 +1836,8 @@ interface PropView {
   lightBokeh: Sprite;
   reflection: Sprite;
   sprite: Sprite;
+  /** v0.25.2638: 松明の炎(社長支給のドット絵)。台スプライトの**後ろ**に居る。 */
+  flameArt: Sprite;
   flame: Graphics;
   overlay: Graphics;
 }
@@ -3688,12 +3707,17 @@ export class PixiScene {
 
     const sprite = new Sprite();
     sprite.anchor.set(0.5, 1);
+    // 松明の炎(社長支給の絵・v0.25.2638)。**台スプライトより先に addChild する=炎が後ろ**。
+    // 支給された絵は「鉢と前側の腕が炎に重なる」構図なので、前に出すと台の腕が隠れて絵が変わる。
+    // アンカーのyは「絵の中で鉢の縁が来る高さ」(下の TORCH_FLAME_RIM_FRAC)。
+    const flameArt = new Sprite();
+    flameArt.visible = false; // 既定は非表示(松明以外のプロップは触れない=v0.25.2636の教訓)
     const flame = new Graphics();
     flame.blendMode = 'add';
     const overlay = new Graphics();
-    container.addChild(sprite, flame, overlay);
+    container.addChild(flameArt, sprite, flame, overlay);
     this.L.actorLayer.addChild(container);
-    return { container, light, lightBokeh, reflection, sprite, flame, overlay };
+    return { container, light, lightBokeh, reflection, sprite, flameArt, flame, overlay };
   }
 
   // 火炎瓶(molotov)の地面の火1個ぶんのビュー。松明(makeProp)から「柱スプライト無し」の
@@ -6926,6 +6950,7 @@ export class PixiScene {
     // 教訓: **プールされたスプライトを足したら「毎フレーム必ず通る場所で消す」までが1セット。**
     // 分岐ごとに消し忘れを潰す形にすると、分岐が増えた時に必ず再発する。
     view.lightBokeh.visible = false;
+    view.flameArt.visible = false; // 同上(v0.25.2638で追加。松明の枝だけが true にする)
     if (prop.type === 'mine') {
       // 緑卵=ベイクしたプールスプライト1枚で描画(旧:per-frame Graphics の clear()+約12楕円塗りを撤去)。
       // 「息づく」脈動はスケールの微振動だけで再現(per-frame Graphics は使わない)。
@@ -7014,8 +7039,15 @@ export class PixiScene {
     const sc = tex ? containScale(visualW, visualH, tex.width, tex.height) * d : d;
     const horizonAlpha = this.horizonActorAlpha(prop.footY);
     const flameX = Math.round(prop.footX);
+    // v0.25.2638: **松明だけ**炎を社長支給の絵に置き換える。焚き火(ステージ4)は指示が出ていないので
+    // 従来の楕円のまま(同じ関数を通っているが、絵の差し替えは頼まれた方だけ=CLAUDE.md 仕様変更のルール)。
+    const flameTex = campfire ? null : getTexture('props/torch-flame');
     // 松明=先端(高い)/焚き火=台の中央付近(低い)に炎を置く。
-    const flameY = Math.round(prop.footY - visualH * d * (campfire ? 0.42 : 0.72));
+    // 炎が絵になったぶん、光の中心も**その絵の明るさの重心**へ置く(実測 TORCH_FLAME_LIGHT_FRAC)。
+    // v0.25.2633 で決めた「光源は炎であって台ではない」を、炎の実体が変わったぶん引き直しただけ
+    // ——絵より下で光ると光源が浮く。
+    const flameY = Math.round(prop.footY - visualH * d
+      * (campfire ? 0.42 : (flameTex ? TORCH_FLAME_LIGHT_FRAC : 0.72)));
     const viewportDistance = this.distanceOutsideViewport(prop.footX, prop.footY, TORCH_VIEWPORT_MARGIN);
     const visibleTorch = viewportDistance <= 0 && horizonAlpha > 0;
     const outsideScreenDistance = this.distanceOutsideViewport(prop.footX, prop.footY, 0);
@@ -7090,7 +7122,20 @@ export class PixiScene {
     if (torchAlpha > 0) {
       const r = 5.5 * d * prop.scale * pulse;
       const sway = Math.sin(now / 160 + prop.footX * 0.015) * r * 0.55;
-      this.drawFlameShape(f, flameX, flameY, r, sway, prop.footX, prop.footY, now, torchAlpha, false);
+      if (flameTex) {
+        const fa = view.flameArt;
+        fa.texture = flameTex;
+        fa.anchor.set(0.5, 1);              // 下端=炎の付け根。台の後ろに居るので鉢が根元を隠す
+        const stretch = 1 + (pulse - 0.8) * TORCH_FLAME_STRETCH;
+        fa.width = visualW * d * TORCH_FLAME_W_FRAC / stretch;   // 縦に伸びたぶん横は締まる(体積を保つ)
+        fa.height = visualH * d * TORCH_FLAME_H_FRAC * stretch;
+        fa.position.set(flameX + sway * 0.18, Math.round(prop.footY - visualH * d * TORCH_FLAME_BASE_FRAC));
+        fa.visible = true;
+        // 火の粉だけコード側で出す(支給絵に描かれていた点は切り離してある=静止した点は"汚れ"に見えるため)。
+        this.drawFlameEmbers(f, flameX, flameY, r, prop.footX, prop.footY, now, torchAlpha);
+      } else {
+        this.drawFlameShape(f, flameX, flameY, r, sway, prop.footX, prop.footY, now, torchAlpha, false);
+      }
     }
 
     const o = view.overlay;
@@ -7123,6 +7168,18 @@ export class PixiScene {
       .fill({ color: 0xffedd5, alpha: 0.48 });
     g.circle(flameX + sway * 0.25, flameY - r * 0.35, r * 1.2)
       .fill({ color: 0xffffff, alpha: 0.28 });
+    this.drawFlameEmbers(g, flameX, flameY, r, seedX, seedY, now, emberAlphaMult);
+  }
+
+  /**
+   * 舞い上がる火の粉だけ(v0.25.2638で `drawFlameShape` から切り出し)。
+   * 炎の本体を絵に置き換えても**火の粉はコード側で動かし続ける**ために要る
+   * ——絵に焼き込まれた点は動かないので「汚れ」に見える(支給絵の点は切り離してある)。
+   */
+  private drawFlameEmbers(
+    g: Graphics, flameX: number, flameY: number, r: number,
+    seedX: number, seedY: number, now: number, emberAlphaMult: number,
+  ) {
     for (let i = 0; i < TORCH_EMBER_COUNT; i++) {
       const seed = seedX * 0.021 + seedY * 0.007 + i * 1.931;
       const rise = ((now / (760 + i * 73) + seed) % 1);

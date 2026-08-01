@@ -218,6 +218,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/slash-streak-3', scaleMode: 'nearest' },
       { name: 'fx/slash-streak-4', scaleMode: 'nearest' },
       { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)
+      // 松明の炎(社長支給v0.25.2638)。ドット絵=**nearest**(linearだと縁がぼやけて"塊"に戻る)。
+      { name: 'props/torch-flame', scaleMode: 'nearest' },
       { name: 'castle', scaleMode: 'nearest' },
       { name: 'hospital', scaleMode: 'nearest' }, // 通常ステージの廃病院(ワクチン入手・社長指示v0.25.2331)
       // §6.24 M48: 寄り道POIの一般化(社長支給素材v0.25.2352・アルファ透過あり)。
