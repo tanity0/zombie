@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "zombie-coop-signaling",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-22",
+  "send_metrics": false,
+  "dev": {
+    "ip": "127.0.0.1",
+    "port": 8787
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SIGNALING_LOBBY",
+        "class_name": "SignalingLobby"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SignalingLobby"]
+    }
+  ]
+}
