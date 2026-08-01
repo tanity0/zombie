@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2673',
+    items: [
+      'ゲーム内容の変更はありません（大きい光の測り方のメモを直しました）。',
+    ],
+  },
+  {
     version: '0.25.2672',
     items: [
       '経験値ジェムの光が、輪郭の見える段々の塗りから、芯のあるなめらかな光になりました（明るさは変えていません）。描画も軽くなっています。',
