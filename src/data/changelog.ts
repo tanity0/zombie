@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2634',
+    items: [
+      'ゲーム内容の変更はありません（光の描写を全面改善するための計画を記録しました）。',
+    ],
+  },
+  {
     version: '0.25.2633',
     items: [
       '松明の光を作り直しました。これまで炎の周りに縁のはっきりした塊が出ていたのが、外へ滑らかに消える光になります（洋館の燭台と同じ描き方に揃えました）。',
