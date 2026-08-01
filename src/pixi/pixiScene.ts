@@ -737,6 +737,18 @@ const LIGHT_POOL_RADIUS = Math.max(0, tsNum('poolr', 210));
 const LIGHT_POOL_TINT = 0xffe3a3; // 昼/日差し用の暖色(足元プール)
 const MOON_POOL_TINT = 0xbcd0f5;  // 夜(月明り)用の寒色プール。暖色のままだと夜に黄色く浮く
 
+// --- 共有カーブ → ソフトカーブ へ差し替える時の総光量の補正(research/LIGHT_REWORK.md §3 #1) ---
+// ★なぜ要るか: カーブを差し替えると**同じαでも出る光の量が変わる**。補正しないと
+// 「綺麗になったけど暗くなった」になり、絵の良し悪しと明るさの変化が混ざって判断できない。
+// よって**総光量を保ったままカーブだけ変える**(松明のボケ側でαを面積比で割ったのと同じ考え方)。
+//
+// 面積で重み付けした平均α = 2∫₀¹ a(u)·u du  (u = 中心からの距離 ÷ 半径)
+//   共有 `getGlowTexture`      : (0,1)-(0.45,0.55)-(1,0) = 直線 a=1-u  → 2×(1/6)      = 0.3333
+//   ソフト `getSoftGlowTexture`: (0,1)-(0.25,0.55)-(0.6,0.18)-(1,0)   → 2×0.09879     = 0.1976
+// 比 = 0.1976 / 0.3333 = 0.593 ⇒ **αを 1/0.593 = 1.69 倍**すれば出る光の総量が元と等しくなる。
+// 中心は濃く・外は早く消える(=「芯があって外へ消える」)形になり、面積(塗り)は一切増えない。
+const SOFT_CURVE_ALPHA_GAIN = 1.69;
+
 // Selective bloom — only pixels brighter than the threshold glow, so the dark
 // forest stays clean while gems / muzzle flashes / crits / lights bloom.
 // Applied to the world group alongside the tilt-shift.
@@ -2168,8 +2180,11 @@ export class PixiScene {
   private stage1MoonGlowZ = -1; // 光源グローのz順の適用済み値(?s1moonglowz=・変化時のみ並べ替え。社長指示v0.25.1959)
   private stage1IsM1 = getSelectedStageId() === 'stage-1'; // M1判定(レイアウト時に確定)
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
-  private playerLight = new Sprite(getGlowTexture());
-  private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
+  // v0.25.2660(LIGHT_REWORK §3 #1): 共有カーブ(45%でまだ0.55=中心付近が広く均一に濃い=塊に見える)
+  // から、M6の壁灯と同じソフトカーブ(早く落ちて尾を引く=光に見える)へ差し替え。
+  // αは SOFT_CURVE_ALPHA_GAIN で補正=**総光量は不変**、形だけが変わる。塗り面積も不変。
+  private playerLight = new Sprite(getSoftGlowTexture());
+  private playerGroundPool = new Sprite(getSoftGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
   private playerKatanaBack = new Sprite();                 // 背負い刀(刀/小烏丸 装備中・プレイヤー背面)
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
   private playerSkateboard = new Sprite();                 // スケボー乗車中に足元へ敷く板(プレイヤー背面=足の下)
@@ -2757,7 +2772,7 @@ export class PixiScene {
     // style). Behind the foot shadows so those still read.
     this.playerLight.anchor.set(0.5);
     this.playerLight.tint = ACTIVE_STAGE_LIGHTING.color;
-    this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha;
+    this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha * SOFT_CURVE_ALPHA_GAIN;
     this.playerLight.blendMode = 'add';
     this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * 2;
     // A: 光だまり(足元の広い地面プール)。playerLight より広く濃い。位置/濃さは毎フレーム更新。
@@ -5059,13 +5074,13 @@ export class PixiScene {
     const lp = this.lighting();
     this.playerLight.position.set(lx, ly);
     this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : lp.color;
-    this.playerLight.alpha = lp.playerAssistAlpha * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
+    this.playerLight.alpha = lp.playerAssistAlpha * SOFT_CURVE_ALPHA_GAIN * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
     this.playerLight.width = this.playerLight.height = lp.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2) * lightScale;
 
     // A: 光だまり(足元の地面プール)を追従。?pool=0 で無効。微かに脈動。
     if (this.playerGroundPool.visible) {
       this.playerGroundPool.position.set(lx, ly);
-      this.playerGroundPool.alpha = LIGHT_POOL_ALPHA * (0.94 + 0.06 * Math.sin(now / 700));
+      this.playerGroundPool.alpha = LIGHT_POOL_ALPHA * SOFT_CURVE_ALPHA_GAIN * (0.94 + 0.06 * Math.sin(now / 700));
       this.playerGroundPool.width = this.playerGroundPool.height = LIGHT_POOL_RADIUS * 2 * lightScale;
     }
 
