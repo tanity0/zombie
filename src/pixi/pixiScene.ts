@@ -737,24 +737,23 @@ const LIGHT_POOL_RADIUS = Math.max(0, tsNum('poolr', 210));
 const LIGHT_POOL_TINT = 0xffe3a3; // 昼/日差し用の暖色(足元プール)
 const MOON_POOL_TINT = 0xbcd0f5;  // 夜(月明り)用の寒色プール。暖色のままだと夜に黄色く浮く
 
-// --- 共有カーブ → ソフトカーブ へ差し替える時の総光量の補正(research/LIGHT_REWORK.md §3 #1) ---
-// ★なぜ要るか: カーブを差し替えると**同じαでも出る光の量が変わる**。補正しないと
-// 「綺麗になったけど暗くなった」になり、絵の良し悪しと明るさの変化が混ざって判断できない。
-// よって**総光量を保ったままカーブだけ変える**(松明のボケ側でαを面積比で割ったのと同じ考え方)。
+// --- 共有カーブ → ソフトカーブ へ差し替える時の「揃え方」(research/LIGHT_REWORK.md §3-1) ---
+// ★**ピーク保存で揃える**(社長裁定v0.25.2662「揃えよう」)。
+//   = **αは触らない。カーブの形だけが変わる。** 中心の明るさは差し替え前と完全に同じ。
 //
-// 面積で重み付けした平均α = 2∫₀¹ a(u)·u du  (u = 中心からの距離 ÷ 半径)
-//   共有 `getGlowTexture`      : (0,1)-(0.45,0.55)-(1,0) = 直線 a=1-u  → 2×(1/6)      = 0.3333
-//   ソフト `getSoftGlowTexture`: (0,1)-(0.25,0.55)-(0.6,0.18)-(1,0)   → 2×0.09879     = 0.1976
-// 比 = 0.1976 / 0.3333 = 0.593 ⇒ **αを 1/0.593 = 1.69 倍**すれば出る光の総量が元と等しくなる。
-// 中心は濃く・外は早く消える(=「芯があって外へ消える」)形になり、面積(塗り)は一切増えない。
-const SOFT_CURVE_ALPHA_GAIN = 1.69;
+// なぜこちらを採ったか(v0.25.2660→2661→2662の経緯):
+//   最初は「**総光量保存**」で揃えようとして α×1.69 を掛けた。
+//   面積で重み付けした平均α `2∫₀¹ a(u)·u du` は 共有=0.3333(このカーブは実は直線 a=1-u)/
+//   ソフト=0.1976 なので、比 0.593 の逆数=1.69 で出る光の総量が元と等しくなる、という理屈。
+//   → **実機で「プレイヤーの光強すぎるな」。** ソフトカーブは総光量が同じでも**芯が濃くなる**ので、
+//     さらに1.69を掛けると中心が元の1.69倍まぶしくなる。**総光量を保っても、見た目のピークは保たれない。**
+//   ⇒ **人が見て判断するのはピーク。** カーブを差し替える回では**明るさを1ミリも動かさない**方が、
+//     「形が良くなったか」だけを実機で切り分けられる(変数を1つにする)。
+//
+// **#2 以降も全部この揃え方でいく。** 明るさを変えたい時は、カーブの差し替えとは**別の版で**行う。
+const LIGHT_CURVE_ALPHA_GAIN = 1.0;
 
-// ★プレイヤー本体の補助光(playerLight)だけは別係数(社長実機v0.25.2661「プレイヤーの光強すぎるな」)。
-// ソフトカーブは**総光量が同じでも芯が濃くなる**ので、1.69を掛けると中心が元の1.69倍まぶしくなる。
-// プレイヤーは画面のど真ん中に常に居るので、そこだけは「総光量を保つ」より
-// **元のピークの明るさを保つ**方が正しい ⇒ 既定は 1.0(=カーブの形だけが変わる)。
-// 足元の光だまり(playerGroundPool)は据え置き(社長の指摘は本体の光について)。
-// 実機の生調整: `?plight=1.3` のように倍率で回せる。
+// プレイヤー本体の補助光だけ、実機で回せる倍率を持たせてある(既定1.0=無補正)。`?plight=1.3` 等。
 const PLAYER_LIGHT_ALPHA_GAIN = Math.max(0, tsNum('plight', 1.0));
 
 // Selective bloom — only pixels brighter than the threshold glow, so the dark
@@ -2190,7 +2189,7 @@ export class PixiScene {
   private cineEnabled = CINE_MODE && getSelectedStageId() === 'stage-7';
   // v0.25.2660(LIGHT_REWORK §3 #1): 共有カーブ(45%でまだ0.55=中心付近が広く均一に濃い=塊に見える)
   // から、M6の壁灯と同じソフトカーブ(早く落ちて尾を引く=光に見える)へ差し替え。
-  // αは SOFT_CURVE_ALPHA_GAIN で補正=**総光量は不変**、形だけが変わる。塗り面積も不変。
+  // αは触らない(LIGHT_CURVE_ALPHA_GAIN=1.0=ピーク保存)。**形だけが変わる。**塗り面積も不変。
   private playerLight = new Sprite(getSoftGlowTexture());
   private playerGroundPool = new Sprite(getSoftGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
   private playerKatanaBack = new Sprite();                 // 背負い刀(刀/小烏丸 装備中・プレイヤー背面)
@@ -2780,7 +2779,7 @@ export class PixiScene {
     // style). Behind the foot shadows so those still read.
     this.playerLight.anchor.set(0.5);
     this.playerLight.tint = ACTIVE_STAGE_LIGHTING.color;
-    this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha * PLAYER_LIGHT_ALPHA_GAIN;
+    this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha * LIGHT_CURVE_ALPHA_GAIN * PLAYER_LIGHT_ALPHA_GAIN;
     this.playerLight.blendMode = 'add';
     this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * 2;
     // A: 光だまり(足元の広い地面プール)。playerLight より広く濃い。位置/濃さは毎フレーム更新。
@@ -5082,13 +5081,13 @@ export class PixiScene {
     const lp = this.lighting();
     this.playerLight.position.set(lx, ly);
     this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : lp.color;
-    this.playerLight.alpha = lp.playerAssistAlpha * PLAYER_LIGHT_ALPHA_GAIN * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
+    this.playerLight.alpha = lp.playerAssistAlpha * LIGHT_CURVE_ALPHA_GAIN * PLAYER_LIGHT_ALPHA_GAIN * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
     this.playerLight.width = this.playerLight.height = lp.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2) * lightScale;
 
     // A: 光だまり(足元の地面プール)を追従。?pool=0 で無効。微かに脈動。
     if (this.playerGroundPool.visible) {
       this.playerGroundPool.position.set(lx, ly);
-      this.playerGroundPool.alpha = LIGHT_POOL_ALPHA * SOFT_CURVE_ALPHA_GAIN * (0.94 + 0.06 * Math.sin(now / 700));
+      this.playerGroundPool.alpha = LIGHT_POOL_ALPHA * LIGHT_CURVE_ALPHA_GAIN * (0.94 + 0.06 * Math.sin(now / 700));
       this.playerGroundPool.width = this.playerGroundPool.height = LIGHT_POOL_RADIUS * 2 * lightScale;
     }
 

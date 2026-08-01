@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2662',
+    items: [
+      '足元の光だまりも以前と同じ明るさに戻しました。プレイヤーまわりの光は「形（芯があって外へ溶ける）」だけが変わり、明るさは前と同じです。',
+    ],
+  },
+  {
     version: '0.25.2661',
     items: [
       'プレイヤーの周りの明かりが強すぎたのを、以前と同じ明るさに戻しました（光の形の改善はそのままです）。',
