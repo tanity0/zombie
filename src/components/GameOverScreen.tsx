@@ -48,9 +48,16 @@ interface GameOverScreenProps {
 const formatBenchmarkShareText = (result: BenchmarkResult): string => {
   const safeStage = result.stages.filter(stage => stage.grade === 'PASS').at(-1);
   const stopStage = result.stages.find(stage => stage.grade !== 'PASS');
+  // Δms = その段の負荷が1フレームに足したms(直前の基準段との差)。**系統・実行順・熱をまたいで
+  // 比較できる唯一の量**なので avg より先に読む(v0.25.2690)。sd はばらつき=差が有意かの目安。
   const stageLines = result.stages.map(stage =>
-    `${stage.id} ${stage.category} ${stage.label}: ${stage.grade} avg ${stage.avgFps.toFixed(1)} min ${stage.minFps} drops ${stage.drops} n${stage.sampleCount} / ${stage.stress}`
+    `${stage.id} ${stage.category} ${stage.label}: ${stage.grade} Δ${stage.deltaMs >= 0 ? '+' : ''}${stage.deltaMs.toFixed(1)}ms `
+    + `avg ${stage.avgFps.toFixed(1)} min ${stage.minFps} sd ${stage.sdMs.toFixed(1)} p95 ${stage.p95Ms.toFixed(1)}ms `
+    + `slow ${(stage.drops * 100).toFixed(0)}% n${stage.sampleCount} cal ${stage.canaryFps.toFixed(1)} / ${stage.stress}`
   );
+  const canaryLine = result.canaryFps.length
+    ? `canary: ${result.canaryFps.map(v => v.toFixed(1)).join(' → ')} (drift ${result.driftMs >= 0 ? '+' : ''}${result.driftMs.toFixed(1)}ms/frame)`
+    : 'canary: off';
 
   // ★計測条件(URLのツマミ)を結果に焼き込む(v0.25.2682)。
   // これが無いと**後から「どの条件で測ったか」が分からない**——実際にそれで判定が止まった
@@ -60,7 +67,7 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     if (typeof window === 'undefined') return '';
     const q = new URLSearchParams(window.location.search);
     // 描画負荷に効く/計測の解釈に効くものだけを拾う(全部出すと読みにくい)。
-    const keys = ['glowhalo', 'glowcore', 'refl', 'benchonly', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev'];
+    const keys = ['glowhalo', 'glowcore', 'refl', 'benchonly', 'warm', 'canary', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev'];
     const on = keys.filter(k => q.get(k) !== null).map(k => `${k}=${q.get(k)}`);
     return on.length ? on.join(' ') : 'なし(既定)';
   })();
@@ -69,7 +76,8 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     `BENCH v${typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'unknown'}`,
     `knobs: ${knobs}`,
     `grade: ${result.grade === 'PASS' ? 'SAFE' : result.grade}`,
-    `summary: avg ${result.avgFps.toFixed(1)} min ${result.minFps} drops ${result.drops} enemy/fx ${result.maxEnemies}/${result.maxFx}`,
+    `summary: avg ${result.avgFps.toFixed(1)} min ${result.minFps} slow ${(result.drops * 100).toFixed(0)}% enemy/fx ${result.maxEnemies}/${result.maxFx}`,
+    canaryLine,
     `safe: ${safeStage?.safeStress ?? 'not found'}`,
     `stop: ${stopStage ? `${stopStage.label} ${stopStage.grade}` : 'max passed'}`,
     `device: ${result.diagnostics.verdict}`,
@@ -596,7 +604,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-right text-[11px] text-white/70 tabular-nums">
                   <span>avg</span><span className="text-white">{benchmarkResult.avgFps.toFixed(1)}</span>
                   <span>min</span><span className="text-white">{benchmarkResult.minFps}</span>
-                  <span>drops</span><span className="text-white">{benchmarkResult.drops}</span>
+                  <span>slow</span><span className="text-white">{(benchmarkResult.drops * 100).toFixed(0)}%</span>
                   <span>enemy/fx</span><span className="text-white">{benchmarkResult.maxEnemies}/{benchmarkResult.maxFx}</span>
                 </div>
               </div>
@@ -608,6 +616,18 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 <div className="min-w-0 text-right">
                   <span className="block text-white/40">stop</span>
                   <span className="block truncate text-rose-100/80">{stoppedBenchmarkStage ? `${stoppedBenchmarkStage.label} ${stoppedBenchmarkStage.grade}` : 'max passed'}</span>
+                </div>
+              </div>
+              {/* 基準段(canary)= 系統の切れ目ごとに測る固定負荷。ここが下がっていたら
+                  「端末が熱で遅くなった」ので、後半の段の絶対値は前半と比べられない(v0.25.2690)。 */}
+              <div className="mt-2 rounded-none bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
+                <div className="grid grid-cols-[44px_1fr] gap-2">
+                  <span className="text-white/40">canary</span>
+                  <span className="truncate text-sky-100/80">
+                    {benchmarkResult.canaryFps.length
+                      ? `${benchmarkResult.canaryFps.map(v => v.toFixed(0)).join('→')} (drift ${benchmarkResult.driftMs >= 0 ? '+' : ''}${benchmarkResult.driftMs.toFixed(1)}ms)`
+                      : 'off'}
+                  </span>
                 </div>
               </div>
               <div className="mt-2 rounded-none bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">

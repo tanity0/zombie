@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2690',
+    items: [
+      'ゲーム内容の変更はありません（動作の計測機能を作り直し、結果が毎回ブレる問題を直しました）。',
+    ],
+  },
+  {
     version: '0.25.2689',
     items: [
       'ゲーム内容の変更はありません（計測の切り分け用に、地面の映り込みを一時的に切るスイッチを追加しました）。',
