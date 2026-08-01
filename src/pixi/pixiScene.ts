@@ -94,7 +94,7 @@ import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
 import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
-import { getSpotConeTexture, getGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX, bossBehindFadeApplies } from './renderSpec';
@@ -1389,6 +1389,11 @@ const EGG_VISUAL_H = 29;
 const CAMPFIRE_VISUAL_W = 60;
 const CAMPFIRE_VISUAL_H = 34;
 const TORCH_LIGHT_RADIUS = 92;
+// v0.25.2633: 炎のハローの上限(画面高比)。M6の壁灯 GLOW_MAX_R_FRAC=0.11 と同じ考え方
+// (近距離で大玉になると加算オーバードローがベンチのG12 FAIL帯に入るため・v0.25.2149の教訓)。
+const TORCH_HALO_MAX_R_FRAC = 0.11;
+// 縦の潰し。真円だと「浮いた玉」に見えるので少しだけ平たくする(叩き台・実機調整前提)。
+const TORCH_HALO_SQUASH = 0.86;
 const TORCH_EMBER_COUNT = 7;
 const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
@@ -6997,12 +7002,21 @@ export class PixiScene {
       return;
     }
 
+    // v0.25.2633: 炎のハロー。**M6(洋館の壁灯)と同じ作法**へ寄せた:
+    //  ・焼いたグラデーション(getSoftGlowTexture=25%で0.55/60%で0.18の早い減衰)を使う
+    //    ⇒ 縁が消える。旧実装は `fill` の均一円+この薄い横長楕円で「塊」に見えていた。
+    //  ・**炎の位置**を中心にする(旧: 台の足元基準で下寄り)。光源は炎であって台ではない。
+    //  ・αを上げて**濃く・狭く**(旧0.18は薄すぎて、面積のコストを払いながら光って見えなかった)。
+    //  ・半径は画面高でキャップ(M6の GLOW_MAX_R_FRAC=0.11 と同じ考え方)=近距離の大玉オーバードローを防ぐ。
+    // 塗り面積はむしろ減る(中心以外が薄い)。per-frame Graphics も1枚減る。
+    const haloR = Math.min(TORCH_LIGHT_RADIUS * d * pulse, this.screenH * TORCH_HALO_MAX_R_FRAC);
+    view.light.texture = getSoftGlowTexture();
     view.light.visible = true;
-    view.light.position.set(prop.footX, flameY + 6);
+    view.light.position.set(flameX, flameY);
     view.light.tint = 0xffb45f;
-    view.light.width = TORCH_LIGHT_RADIUS * d * pulse * 2;
-    view.light.height = TORCH_LIGHT_RADIUS * d * pulse * 1.45;
-    view.light.alpha = 0.18 * torchAlpha * pulse * (0.84 + 0.16 * farFade);
+    view.light.width = haloR * 2;
+    view.light.height = haloR * 2 * TORCH_HALO_SQUASH;
+    view.light.alpha = 0.62 * torchAlpha * pulse * (0.84 + 0.16 * farFade);
 
     // 地面の光だまり(reflection を活用): 暗いベースの上で松明が光源として読めるよう、
     // 従来より広く・丸く・少し濃く。揺らぎで微かに脈動。
@@ -7018,7 +7032,7 @@ export class PixiScene {
     if (torchAlpha > 0) {
       const r = 5.5 * d * prop.scale * pulse;
       const sway = Math.sin(now / 160 + prop.footX * 0.015) * r * 0.55;
-      this.drawFlameShape(f, flameX, flameY, r, sway, prop.footX, prop.footY, now, torchAlpha);
+      this.drawFlameShape(f, flameX, flameY, r, sway, prop.footX, prop.footY, now, torchAlpha, false);
     }
 
     const o = view.overlay;
@@ -7036,8 +7050,13 @@ export class PixiScene {
   private drawFlameShape(
     g: Graphics, flameX: number, flameY: number, r: number, sway: number,
     seedX: number, seedY: number, now: number, emberAlphaMult: number,
+    // v0.25.2633(社長報告「松明台の外に出てきてるやつ。明らかにベタ塗りじゃん」):
+    // 外側ハローは `fill` の**均一な円**で、縁で突然0になるため「縁のあるベタ塗り」に見えていた。
+    // 松明は**焼いたグラデーション(getSoftGlowTexture)のスプライト**へ置き換えたのでここでは描かない。
+    // 火炎瓶の地面の火/焚き火は**従来どおり**(見た目を変えない)なので既定 true のまま。
+    outerHalo = true,
   ) {
-    g.circle(flameX, flameY + 3, r * 5.1).fill({ color: 0xff9f1c, alpha: 0.09 });
+    if (outerHalo) g.circle(flameX, flameY + 3, r * 5.1).fill({ color: 0xff9f1c, alpha: 0.09 });
     g.ellipse(flameX + sway * 0.12, flameY - r * 0.6, r * 2.4, r * 4.4)
       .fill({ color: 0xff7a18, alpha: 0.22 });
     g.ellipse(flameX + sway * 0.36, flameY - r * 2.1, r * 1.45, r * 3.7)

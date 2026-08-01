@@ -13,6 +13,48 @@ let fogBankTex: Texture | null = null;
 
 // Soft round light: opaque white centre fading to transparent at the rim.
 // Tinted warm + 'add' blended for the player halo.
+/**
+ * v0.25.2633(社長報告「松明台の外に出てきてるやつ。明らかにベタ塗りじゃん」): **柔らかく減衰する**光源用テクスチャ。
+ *
+ * 事故: 松明の外側ハローは `Graphics.circle(...).fill({alpha:0.09})` = **均一に塗った円**だった。
+ * `fill` は中心から縁まで同じ濃さで、**縁で突然0になる**ので、加算合成すると「縁のあるベタ塗り」に見える。
+ * 一方 **M6(洋館)の壁灯は綺麗**で、社長から「同じ技術を他でも使いたい」との相談があった。
+ * 実装を突き合わせると、違いは**減衰カーブ**だった:
+ *
+ * | 中心からの距離 | 共有の `getGlowTexture` | M6の壁灯 |
+ * |---|---|---|
+ * | 0%   | 1.00 | 0.90 |
+ * | 25%  | —    | **0.50** |
+ * | 45%  | 0.55 | — |
+ * | 60%  | —    | **0.16** |
+ * | 100% | 0    | 0 |
+ *
+ * `getGlowTexture` は**45%でまだ0.55**=中心付近が広く均一に濃い(=塊に見える)。
+ * M6は**25%で0.50・60%で0.16**と早く落ちて尾を引く=「芯があって外へ消える」光に見える。
+ *
+ * ここではM6と**同じ形**の減衰を焼く(色は白=使う側が tint する。共有テクスチャは**変更しない**
+ * ——他のエフェクトが多数ぶら下がっており、影響が読めないため)。
+ */
+let softGlowTex: Texture | null = null;
+export const getSoftGlowTexture = (): Texture => {
+  if (softGlowTex) return softGlowTex;
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const r = size / 2;
+  const g = ctx.createRadialGradient(r, r, 0, r, r, r);
+  // M6(corridorLayer.bakeRadialGlow の壁灯)と同じ相対カーブ。色は白で焼き、使う側で tint する。
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.6, 'rgba(255,255,255,0.18)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  softGlowTex = Texture.from(canvas);
+  return softGlowTex;
+};
+
 export const getGlowTexture = (): Texture => {
   if (glowTex) return glowTex;
   const size = 256;
