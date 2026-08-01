@@ -96,6 +96,11 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     `summary: avg ${result.avgFps.toFixed(1)} min ${result.minFps} slow ${(result.drops * 100).toFixed(0)}% enemy/fx ${result.maxEnemies}/${result.maxFx}`,
     canaryLine,
     repeatLine,
+    // ★凡例(v0.25.2695)。Δが負になるのはバグではない——基準段は vsync 天井(60fps=16.67ms)で
+    // 頭打ちしており、端末の素の速さがそれより速いぶんだけ**全段が一律に過小**に出るため。
+    // 一律のオフセットなので**段どうしの差は正しい**。この注意書きが無いと必ず誤読される。
+    'legend: Δ=基準段(vsync 60fps)からの1フレーム増分ms / adj=熱ダレ補正後・raw=補正前 / '
+    + '基準が天井なので絶対値は一律に過小(負もありうる)=**段どうしの差**で読む / t=段の開始時刻',
     `safe: ${safeStage?.safeStress ?? 'not found'}`,
     `stop: ${stopStage ? `${stopStage.label} ${stopStage.grade}` : 'max passed'}`,
     `device: ${result.diagnostics.verdict}`,

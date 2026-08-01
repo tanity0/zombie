@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2695',
+    items: [
+      'ゲーム内容の変更はありません（計測結果に読み方の説明を追加しました）。',
+    ],
+  },
+  {
     version: '0.25.2694',
     items: [
       'ゲーム内容の変更はありません（計測機能に、端末の発熱による低下を差し引く補正を入れました）。',
