@@ -487,15 +487,18 @@ export const ensureTextures = (): Promise<void> => {
     // (平均RGB≈(120,116,116) / 内側の段は≈(42,37,36))。**この明るい半透明リングが白縁の正体。**
     // 暗いステージ5の背景に薄いグレーの輪が乗るので「白く縁取られて見える」。
     //
-    // 直し: **外側の段のαだけ半分にする**(内側は触らない=シルエットを痩せさせない)。
+    // 直し: **外側の段のαだけ弱める**(内側は触らない=シルエットを痩せさせない)。
     // **支給されたPNGそのものは加工しない**(このプロジェクトの作法)。読み込み時にcanvasで焼き直すだけ。
-    // 生調整: `?s5edge=0` で無効(元に戻る) / `?s5edge=0.3` のように倍率を直接指定。
+    // 生調整 `?s5edge=` (0〜1の倍率):
+    //   **`1` = 無効**(元の見た目へ即復帰) / **`0` = 外側の段を完全に消す** / 既定 = **0.25**。
+    //   ※v0.25.2664時点のコメントは「`0` で無効」と書いていたが**誤り**。0は「全部消す」。
     const S5_EDGE_ALPHA_MAX = 128; // ここ以下のαを「外側の段」とみなす(実測の2段の境目)
+    const S5_EDGE_MULT_DEFAULT = 0.25; // 社長「もうちょい削れる？」v0.25.2665(初出0.5からさらに半分)
     const s5EdgeMult = (() => {
       const raw = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('s5edge');
-      if (raw == null) return 0.5;                       // 既定=社長指示の「透過半分」
+      if (raw == null) return S5_EDGE_MULT_DEFAULT;
       const n = Number(raw);
-      return Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0.5;
+      return Number.isFinite(n) && n >= 0 && n <= 1 ? n : S5_EDGE_MULT_DEFAULT;
     })();
 
     /** 半透明の外周だけαを弱めて登録する(白縁対策)。失敗したら素の読み込みへ落とす。 */
@@ -573,7 +576,7 @@ export const ensureTextures = (): Promise<void> => {
       })(),
       ...standalone.map(async ({ name, scaleMode }) => {
         // ステージ5の敵絵だけは、明るい半透明の外周を弱めてから登録する(白縁対策・上の loadEdgeSoftened)。
-        // `?s5edge=0` を指定した時は素の読み込みに戻す(元の見た目へ即復帰できる安全弁)。
+        // `?s5edge=1` を指定した時は素の読み込みに戻る(元の見た目へ即復帰できる安全弁)。
         if (s5EdgeMult < 1 && name.startsWith('stage5-enemies/')) {
           await loadEdgeSoftened(name, scaleMode === 'linear' ? 'linear' : 'nearest');
           return;

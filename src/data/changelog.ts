@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2665',
+    items: [
+      'ステージ5の敵の白い縁を、さらに薄くしました。',
+    ],
+  },
+  {
     version: '0.25.2664',
     items: [
       'ステージ5の敵に白い縁が見えていたのを、縁を薄くして目立たなくしました。',
