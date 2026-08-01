@@ -1429,6 +1429,9 @@ const TORCH_HALO_SQUASH = 0.86;
 // **大きくするほど塗り面積が増える**(加算オーバードローが律速)ので、上げる時はαの減衰と
 // 半径キャップを必ず確認すること(v0.25.2149の教訓)。
 const TORCH_BOKEH_R_MULT = 1.6;
+// 光源のボケ半径倍率(全光源共通)。松明(v0.25.2635)で社長が実機で通した値をそのまま使う=
+// LIGHT_REWORK §3 #3 以降の光源DOFは**全部この値**で揃える(揃わない方が事故る)。
+const LIGHT_BOKEH_R_MULT = TORCH_BOKEH_R_MULT;
 const TORCH_EMBER_COUNT = 7;
 // ---- 炎(社長支給v0.25.2641・8コマ) -------------------------------------------------------------
 // 社長が**炎と台座を分けて**支給。炎は松明だけでなく**火炎瓶・焚き火・フレアガン**でも同じものを使う
@@ -1986,14 +1989,20 @@ export class PixiScene {
   private whiteTexCache = new Map<Texture, Texture>();
   private castleView = new Container();
   private castleSprite = new Sprite();
-  private castleGlow = new Sprite(getGlowTexture());
+  // v0.25.2666(LIGHT_REWORK §3 #3): 城/商人/イベントNPCのグロー。共有カーブ→ソフトカーブ
+  // (**αは触らない=ピーク保存**・§3-1の掟)。加えて**光源DOF**(松明と同じピント/ボケの
+  // クロスフェード)を載せる=プレイヤーから離れた光なので効く(#1では効かなかった理由は §3-2)。
+  private castleGlow = new Sprite(getSoftGlowTexture());
+  private castleGlowBokeh = new Sprite(getBokehGlowTexture());
   private merchantView = new Container();
   private merchantSprite = new Sprite();
-  private merchantGlow = new Sprite(getGlowTexture());
+  private merchantGlow = new Sprite(getSoftGlowTexture());
+  private merchantGlowBokeh = new Sprite(getBokehGlowTexture());
   private merchantGfx = new Graphics();
   private eventNpcView = new Container();
   private eventNpcSprite = new Sprite();
-  private eventNpcGlow = new Sprite(getGlowTexture());
+  private eventNpcGlow = new Sprite(getSoftGlowTexture());
+  private eventNpcGlowBokeh = new Sprite(getBokehGlowTexture());
   private eventNpcGfx = new Graphics();
 
   private pickups = new Map<string, PickupView>();
@@ -2888,22 +2897,22 @@ export class PixiScene {
     this.L.danceUiLayer.addChild(this.rhythmArrowsGfx);
 
     this.castleSprite.anchor.set(0.5, 1);
-    this.castleGlow.anchor.set(0.5);
-    this.castleGlow.blendMode = 'add';
-    this.castleGlow.tint = 0xef4444;
-    this.castleView.addChild(this.castleGlow, this.castleSprite);
+    for (const g of [this.castleGlow, this.castleGlowBokeh]) {
+      g.anchor.set(0.5); g.blendMode = 'add'; g.tint = 0xef4444; g.eventMode = 'none';
+    }
+    this.castleView.addChild(this.castleGlowBokeh, this.castleGlow, this.castleSprite);
 
     this.merchantSprite.anchor.set(0.5, 1);
-    this.merchantGlow.anchor.set(0.5);
-    this.merchantGlow.blendMode = 'add';
-    this.merchantGlow.tint = 0xfbbf24;
-    this.merchantView.addChild(this.merchantGfx, this.merchantGlow, this.merchantSprite);
+    for (const g of [this.merchantGlow, this.merchantGlowBokeh]) {
+      g.anchor.set(0.5); g.blendMode = 'add'; g.tint = 0xfbbf24; g.eventMode = 'none';
+    }
+    this.merchantView.addChild(this.merchantGfx, this.merchantGlowBokeh, this.merchantGlow, this.merchantSprite);
 
     this.eventNpcSprite.anchor.set(0.5, 1);
-    this.eventNpcGlow.anchor.set(0.5);
-    this.eventNpcGlow.blendMode = 'add';
-    this.eventNpcGlow.tint = 0x60a5fa;
-    this.eventNpcView.addChild(this.eventNpcGfx, this.eventNpcGlow, this.eventNpcSprite);
+    for (const g of [this.eventNpcGlow, this.eventNpcGlowBokeh]) {
+      g.anchor.set(0.5); g.blendMode = 'add'; g.tint = 0x60a5fa; g.eventMode = 'none';
+    }
+    this.eventNpcView.addChild(this.eventNpcGfx, this.eventNpcGlowBokeh, this.eventNpcGlow, this.eventNpcSprite);
 
     this.L.effectLayer.addChild(this.playerFx);
     // 照準サークルは uiLayer(研究所の暗幕/森の暗転より上=環境光の影響外)へ。screen座標で描画する。
@@ -3511,6 +3520,31 @@ export class PixiScene {
    * `TILT_SHIFT_GRADIENT` px でボケへ)。別の基準を作ると、**背景のボケ方と光のボケ方がズレて**
    * かえって不自然になるため。純粋な計算のみ=判定・座標には一切影響しない(描画専用)。
    */
+  /**
+   * 光源1つぶんの**ピント/ボケのクロスフェード**(松明 v0.25.2635 の処方を共通化・v0.25.2666)。
+   * - ピント側 = ソフトカーブ・元の大きさ・α×(1-t)
+   * - ボケ側   = 平坦カーブ・大きさ×`LIGHT_BOKEH_R_MULT`・**α×t ÷ 倍率²**
+   *   → **面積比でαを割る**ので「ボケたら明るくなる」が起きない(=加算オーバードローの本丸を踏まない)。
+   * `worldY` はその**光そのもの**のワールドY(親の位置+ローカルオフセット)を渡すこと。
+   * `on=false` の時は両方消す(呼び側の表示条件をここでANDする)。
+   */
+  private placeDofGlow(
+    focus: Sprite, bokeh: Sprite, on: boolean,
+    worldY: number, x: number, y: number, w: number, h: number, alpha: number,
+  ) {
+    if (!on || alpha <= 0) { focus.visible = false; bokeh.visible = false; return; }
+    const t = this.lightDefocus01(worldY);
+    focus.visible = t < 0.995;
+    focus.position.set(x, y);
+    focus.width = w; focus.height = h;
+    focus.alpha = alpha * (1 - t);
+    bokeh.visible = t > 0.005;
+    bokeh.position.set(x, y);
+    bokeh.width = w * LIGHT_BOKEH_R_MULT;
+    bokeh.height = h * LIGHT_BOKEH_R_MULT;
+    bokeh.alpha = alpha * t / (LIGHT_BOKEH_R_MULT * LIGHT_BOKEH_R_MULT);
+  }
+
   private lightDefocus01(worldY: number): number {
     const screenY = worldY - this.cameraY;
     const bandY = this.screenH * TILT_SHIFT_BAND;
@@ -4964,7 +4998,7 @@ export class PixiScene {
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
     if (s.indoorMode || s.stageTheme === 'lab') {
       // 屋内 / 研究所スキンは城(建物)を描かない。※ giantbat ボスは城座標に出る(クリア条件)ので湧き自体は維持。
-      this.castleView.visible = false; this.castleShadow = null; this.castleGlow.visible = false;
+      this.castleView.visible = false; this.castleShadow = null; this.castleGlow.visible = false; this.castleGlowBokeh.visible = false;
       this.eventNpcView.visible = false; this.npcShadow = null;
     } else {
       this.syncCastle(s.castleEvent, now);
@@ -5550,11 +5584,12 @@ export class PixiScene {
     this.castleSprite.texture = tex;
     this.castleSprite.scale.set(sc);
 
-    this.castleGlow.visible = castle.bossSpawned;
-    this.castleGlow.position.set(0, -targetH * 0.5);
-    this.castleGlow.width = targetH * 1.35;
-    this.castleGlow.height = targetH * 0.9;
-    this.castleGlow.alpha = castle.bossSpawned ? 0.14 + 0.08 * pulse : 0;
+    // 光源DOF(v0.25.2666): ワールドYは「城の位置 + グローのローカルY」。
+    this.placeDofGlow(
+      this.castleGlow, this.castleGlowBokeh, castle.bossSpawned,
+      castle.y - targetH * 0.5, 0, -targetH * 0.5, targetH * 1.35, targetH * 0.9,
+      0.14 + 0.08 * pulse,
+    );
 
     // 出現魔法陣(錬金と同じ magic-circle テクスチャ)を城の足元に短時間表示(拡大しながらフェードアウト)。
     const SUMMON_MS = 1100;
@@ -5612,10 +5647,11 @@ export class PixiScene {
     this.merchantSprite.texture = tex;
     this.merchantSprite.scale.set(sc);
 
-    this.merchantGlow.position.set(0, -targetH * 0.52);
-    this.merchantGlow.width = targetH * 0.92;
-    this.merchantGlow.height = targetH * 0.72;
-    this.merchantGlow.alpha = (near ? 0.18 : 0.08) + pulse * (near ? 0.08 : 0.025);
+    this.placeDofGlow(
+      this.merchantGlow, this.merchantGlowBokeh, true,
+      merchant.y - targetH * 0.52, 0, -targetH * 0.52, targetH * 0.92, targetH * 0.72,
+      (near ? 0.18 : 0.08) + pulse * (near ? 0.08 : 0.025),
+    );
 
     // 接地影は syncShadows のソフト方向影に統一(可視時のみリクエスト)。
     this.merchantShadow = { x: merchant.x, y: merchant.y, w: 82 * d, alpha: horizonAlpha };
@@ -5697,10 +5733,11 @@ export class PixiScene {
     this.eventNpcSprite.texture = tex;
     this.eventNpcSprite.scale.set(sc * breathX, sc * breathY);
 
-    this.eventNpcGlow.position.set(0, -targetH * 0.58);
-    this.eventNpcGlow.width = targetH * 1.05;
-    this.eventNpcGlow.height = targetH * 0.72;
-    this.eventNpcGlow.alpha = (near ? 0.16 : 0.06) + pulse * (near ? 0.08 : 0.02);
+    this.placeDofGlow(
+      this.eventNpcGlow, this.eventNpcGlowBokeh, true,
+      npc.y - targetH * 0.58, 0, -targetH * 0.58, targetH * 1.05, targetH * 0.72,
+      (near ? 0.16 : 0.06) + pulse * (near ? 0.08 : 0.02),
+    );
 
     // 接地影は syncShadows のソフト方向影に統一(可視時のみリクエスト。フェード中は statusAlpha 反映)。
     this.npcShadow = { x: npc.x, y: npc.y, w: 84 * d, alpha: horizonAlpha * statusAlpha };

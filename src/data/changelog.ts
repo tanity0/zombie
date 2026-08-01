@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2666',
+    items: [
+      '城・商人・イベントNPCの光が、芯のある光に見えるようになりました。さらに画面の手前や奥にいる時は、その光がやわらかくボケるようになりました（明るさは変えていません）。',
+    ],
+  },
+  {
     version: '0.25.2665',
     items: [
       'ステージ5の敵の白い縁を、さらに薄くしました。',
