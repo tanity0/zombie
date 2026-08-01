@@ -1914,6 +1914,10 @@ interface PickupView {
   glow: Graphics;
   gfx: Graphics;
   sprite?: Sprite;
+  // v0.25.2672(LIGHT_REWORK §3 #9): XPジェムの光を**プール済みスプライト2枚**にする。
+  // 旧: 均一fillの円を4枚重ねて**毎フレーム描き直し**(禁止事項1+per-frame Graphics)。
+  glowHalo?: Sprite;
+  glowCore?: Sprite;
 }
 
 type EffectView = Container | Graphics | Text | Sprite;
@@ -13877,10 +13881,38 @@ export class PixiScene {
           const gx = Math.round(cx);
           const gy = Math.round(footY + floatOffset - size * 0.48 * d);
           const r = size * d * pulse;
-          glow.circle(gx, gy, r * 1.28).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.12 });
-          glow.circle(gx, gy, r * 0.88).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.24 });
-          glow.circle(gx, gy, r * 0.52).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.32 });
-          glow.circle(gx, gy, r * 0.12).fill({ color: 0xffffff, alpha: GEM_BODY_GLOW_ALPHA * 0.22 });
+          // v0.25.2672(LIGHT_REWORK §3 #9・社長「光さ、アイテム形もだと思う」):
+          // 旧実装は**均一fillの円4枚**(半径 1.28/0.88/0.52/0.12・α 0.12/0.24/0.32/0.22)を
+          // **加算で重ねて毎フレーム描き直し**ていた。=禁止事項1(縁で突然0になる塊)の見本で、
+          // しかも4段の階段になっていた。さらにジェムは**画面に一番数が出る拾い物**。
+          // → **焼いたソフトカーブのプール済みスプライト2枚**へ置換(色のhalo+白い芯)。
+          // ★**中心のピークは保存**: 旧の中心は4枚の和=GEM×(0.12+0.24+0.32+0.22)=GEM×0.90。
+          //   新は halo(色3枚ぶん=GEM×0.68)+ core(白1枚ぶん=GEM×0.22)で**同じ0.90**。
+          //   外へ向かう落ち方だけが「階段」から「なめらか」に変わる(§3-1の掟どおり明るさは不変)。
+          if (!entry.glowHalo) {
+            const halo = new Sprite(getSoftGlowTexture());
+            halo.anchor.set(0.5); halo.blendMode = 'add'; halo.eventMode = 'none';
+            const core = new Sprite(getSoftGlowTexture());
+            core.anchor.set(0.5); core.blendMode = 'add'; core.eventMode = 'none'; core.tint = 0xffffff;
+            entry.container.addChildAt(halo, 0);
+            entry.container.addChildAt(core, 1);
+            entry.glowHalo = halo; entry.glowCore = core;
+          }
+          const halo = entry.glowHalo, core = entry.glowCore;
+          if (halo && core) {
+            halo.visible = true; core.visible = true;
+            halo.tint = color;
+            halo.position.set(gx, gy);
+            halo.width = halo.height = r * 1.28 * 2;
+            halo.alpha = GEM_BODY_GLOW_ALPHA * 0.68;
+            core.position.set(gx, gy);
+            core.width = core.height = r * 0.40 * 2;
+            core.alpha = GEM_BODY_GLOW_ALPHA * 0.22;
+          }
+        } else if (entry.glowHalo) {
+          // 経験値以外の拾い物では出さない(旧実装と同じ=glow.clear() 相当)。
+          entry.glowHalo.visible = false;
+          if (entry.glowCore) entry.glowCore.visible = false;
         }
         if (!entry.sprite) {
           entry.sprite = new Sprite();
@@ -13897,6 +13929,8 @@ export class PixiScene {
       }
     }
     if (entry.sprite) entry.sprite.visible = false;
+    if (entry.glowHalo) entry.glowHalo.visible = false;
+    if (entry.glowCore) entry.glowCore.visible = false;
     glow.clear();
     this.drawProceduralPickup(g, p, cx, cy + floatOffset, now);
   }
