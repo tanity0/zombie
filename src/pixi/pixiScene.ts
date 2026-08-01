@@ -1418,6 +1418,12 @@ const TORCH_EMBER_COUNT = 7;
 /** コマ送りの間隔(ms)。8コマを前向きに回す(8×90ms=0.72秒で1周)。 */
 const FLAME_FRAME_MS = 90;
 /**
+ * 松明の炎の大きさ(社長報告v0.25.2643「🔥でかい」)。**1.0=支給された2枚を1:1で重ねた大きさ**。
+ * 1.0だと炎の高さが99px・台座が64.5pxで、**炎が台座の1.5倍**になり大きすぎた。
+ * ここだけを動かせば大きさが決まる(根元の位置=鉢の縁は変わらない)。
+ */
+const TORCH_FLAME_SCALE = 0.65;
+/**
  * 炎を「従来の楕円の炎」と同じ大きさで出すための倍率(高さ ÷ 従来の r)。
  * 旧 `drawFlameShape` の見た目は**おおよそ 6.5r の高さ**だったので、そこへ合わせる
  * =**火炎瓶などの火の大きさは変えない**(絵だけ良くなる)。判定は元から別物(半径22px)で不変。
@@ -3709,14 +3715,15 @@ export class PixiScene {
 
     const sprite = new Sprite();
     sprite.anchor.set(0.5, 1);
-    // 炎(v0.25.2641)。**台座より先に addChild する=炎が奥**。手前にすると台座の腕が炎に
-    // 塗り潰されて消える(実測比較で確認)。奥に置くと腕が炎を背にシルエットで立つ。
+    // 炎(v0.25.2641)。**台座より後に addChild する=炎が手前**(社長報告v0.25.2643「🔥が前に出てないよ」)。
+    // ※v0.25.2641では「腕が炎を背にシルエットで立つ方が良い」と判断して奥に置いたが、
+    //   実機で見た社長の判断は**手前**。絵の見え方は社長が決める(CLAUDE.md 仕様変更のルール)。
     const flameArt = new Sprite();
     flameArt.visible = false; // 既定は非表示(松明以外のプロップには出さない=v0.25.2636の教訓)
     const flame = new Graphics();
     flame.blendMode = 'add';
     const overlay = new Graphics();
-    container.addChild(flameArt, sprite, flame, overlay);
+    container.addChild(sprite, flameArt, flame, overlay);
     this.L.actorLayer.addChild(container);
     return { container, light, lightBokeh, reflection, sprite, flameArt, flame, overlay };
   }
@@ -7067,7 +7074,7 @@ export class PixiScene {
     // 焚き火は従来の楕円と同じ見た目の大きさ(FLAME_ART_H_PER_R)を保つ=火の大きさを変えない。
     const flameH = campfire
       ? FLAME_ART_H_PER_R * (5.5 * d * prop.scale * pulse)
-      : (usingStandArt ? FLAME_FRAME_H * sc : FLAME_ART_H_PER_R * (5.5 * d * prop.scale * pulse));
+      : (usingStandArt ? FLAME_FRAME_H * sc * TORCH_FLAME_SCALE : FLAME_ART_H_PER_R * (5.5 * d * prop.scale * pulse));
     // 光は**炎の明るさの重心**へ置く(v0.25.2633「光源は炎であって台ではない」を絵で引き直したもの)。
     const flameY = Math.round(flameBaseY - flameH * FLAME_LIGHT_FRAC);
 
