@@ -27,8 +27,10 @@ describe('風(社長要望「たまに風で揺らめかせられる？」)', ()
   it('★「たまに」であること: ほとんどの時間は微風だけ(吹きっぱなしにしない)', () => {
     const xs = sample(4000, 25);                       // 100秒ぶんを25ms刻み
     const strong = xs.filter(v => Math.abs(v) > 0.4).length / xs.length;
-    expect(strong).toBeGreaterThan(0.01);              // まったく吹かないのも困る
-    expect(strong).toBeLessThan(0.25);                 // 4分の1を超えたら「たまに」ではない
+    expect(strong).toBeGreaterThan(0.05);              // まったく吹かないのも困る
+    // 上限は「たまに」の定義そのもの。v0.25.2649で周期を7200→5200へ縮めた結果、実測 17.9%。
+    // **社長が頻度を上げたくなったらここも一緒に上げる**(テストが仕様を縛るのではなく、記録する)。
+    expect(strong).toBeLessThan(0.30);
   });
 
   it('突風が無い間は微風の振れ幅に収まっている', () => {
@@ -83,7 +85,7 @@ describe('世界の風の強さ(「変数か何かで」)', () => {
     expect(getWorldWindScale()).toBe(2);
     expect(windAt(t)).toBeCloseTo(base * 2, 10);
     setWorldWindScale(0);
-    expect(windAt(t)).toBe(0);                          // 0=完全な無風
+    expect(Math.abs(windAt(t))).toBe(0);                // 0=完全な無風(符号付きゼロは同一視)
   });
 
   it('異常値は握り潰す(NaNで世界の揺れが全部壊れない)', () => {
@@ -100,9 +102,12 @@ describe('世界の風の強さ(「変数か何かで」)', () => {
     expect(worldWindScaleFor({ indoor: true, farBackdrop: 'snow' })).toBe(0);
   });
 
-  it('雪原は強め / それ以外は標準(叩き台)', () => {
-    expect(worldWindScaleFor({ indoor: false, farBackdrop: 'snow' })).toBeGreaterThan(1);
-    expect(worldWindScaleFor({ indoor: false })).toBe(1);
-    expect(worldWindScaleFor({ indoor: false, farBackdrop: 'city' })).toBe(1);
+  it('ステージごとの強さ(社長指示v0.25.2649: M4 > M3 > 標準)', () => {
+    const snow = worldWindScaleFor({ indoor: false, farBackdrop: 'snow' });   // M4 封鎖地域
+    const city = worldWindScaleFor({ indoor: false, farBackdrop: 'city' });   // M3 廃都
+    const plain = worldWindScaleFor({ indoor: false });                       // 森など
+    expect(plain).toBe(1);
+    expect(city).toBeGreaterThan(plain);
+    expect(snow).toBeGreaterThan(city);   // ★この順序が社長指示そのもの(m4 は m3 より強い)
   });
 });

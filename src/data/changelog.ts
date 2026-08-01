@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2649',
+    items: [
+      '風が吹く頻度を上げました。',
+      'M3（廃都）は風が強め、M4（封鎖地域）はさらに強い吹雪になりました。',
+    ],
+  },
+  {
     version: '0.25.2648',
     items: [
       '花と木も風で揺れるようになりました。炎と同じ風なので、世界のものが同じ瞬間に同じ向きへ倒れます。',
