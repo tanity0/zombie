@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2671',
+    items: [
+      'ゲーム内容の変更はありません（大きい光の大きさを実機で測り比べるための調整つまみを足しました。既定値は今までと同じです）。',
+    ],
+  },
+  {
     version: '0.25.2670',
     items: [
       '爆発などの大きな光も、芯のある光に見えるようになりました（明るさは変えていません）。',
