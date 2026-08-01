@@ -56,12 +56,17 @@ export interface WindCtx {
  * | 屋内 | 0 | 正しさ(屋内に風は吹かない) |
  * | **M3 廃都**(city) | **1.3** | 社長指示v0.25.2649「m3はもう少し風強く」 |
  * | **M4 封鎖地域**(snow) | **1.8** | 社長指示v0.25.2649「m4はもっと強く」 |
+ * | **M7 逆探知地点**(stage7) | **2.3** | 社長指示v0.25.2650「m7もさらに強く」 |
  * | その他(森・チュートリアル等) | 1.0 | 標準 |
+ *
+ * ★**強さの序列が指示そのもの**(M7 > M4 > M3 > 標準 > 屋内0)。テストはこの順序を固定してある
+ * ——数字の微調整でテストが落ちないように、縛るのは意図の方。
  */
 export const worldWindScaleFor = (ctx: WindCtx): number => {
-  if (ctx.indoor) return 0;                    // 屋内=無風(ここは好みではなく正しさ)
-  if (ctx.farBackdrop === 'snow') return 1.8;  // M4 封鎖地域=吹雪
-  if (ctx.farBackdrop === 'city') return 1.3;  // M3 廃都=ビル風
+  if (ctx.indoor) return 0;                      // 屋内=無風(ここは好みではなく正しさ)
+  if (ctx.farBackdrop === 'stage7') return 2.3;  // M7 逆探知地点=吹きさらし
+  if (ctx.farBackdrop === 'snow') return 1.8;    // M4 封鎖地域=吹雪
+  if (ctx.farBackdrop === 'city') return 1.3;    // M3 廃都=ビル風
   return 1;
 };
 

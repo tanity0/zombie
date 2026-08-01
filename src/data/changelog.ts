@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2650',
+    items: [
+      'M7（逆探知地点）の風をさらに強くしました。',
+    ],
+  },
+  {
     version: '0.25.2649',
     items: [
       '風が吹く頻度を上げました。',

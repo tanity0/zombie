@@ -102,12 +102,25 @@ describe('世界の風の強さ(「変数か何かで」)', () => {
     expect(worldWindScaleFor({ indoor: true, farBackdrop: 'snow' })).toBe(0);
   });
 
-  it('ステージごとの強さ(社長指示v0.25.2649: M4 > M3 > 標準)', () => {
+  it('★ステージごとの強さの序列(社長指示: M7 > M4 > M3 > 標準 > 屋内)', () => {
+    const s7 = worldWindScaleFor({ indoor: false, farBackdrop: 'stage7' });   // M7 逆探知地点
     const snow = worldWindScaleFor({ indoor: false, farBackdrop: 'snow' });   // M4 封鎖地域
     const city = worldWindScaleFor({ indoor: false, farBackdrop: 'city' });   // M3 廃都
     const plain = worldWindScaleFor({ indoor: false });                       // 森など
+    const inside = worldWindScaleFor({ indoor: true });
+    // 縛るのは**数字ではなく順序**(=社長指示の意図)。微調整でテストが落ちないようにする。
+    expect(inside).toBeLessThan(plain);
     expect(plain).toBe(1);
     expect(city).toBeGreaterThan(plain);
-    expect(snow).toBeGreaterThan(city);   // ★この順序が社長指示そのもの(m4 は m3 より強い)
+    expect(snow).toBeGreaterThan(city);
+    expect(s7).toBeGreaterThan(snow);
+  });
+
+  it('どのステージでも上限(3)を超えない=倍率の握り潰しに掛からない', () => {
+    for (const fb of ['stage7', 'snow', 'city', 'tutorial', 'stage5', undefined]) {
+      const v = worldWindScaleFor({ indoor: false, farBackdrop: fb });
+      setWorldWindScale(v);
+      expect(getWorldWindScale(), `farBackdrop=${String(fb)}`).toBe(v);
+    }
   });
 });
