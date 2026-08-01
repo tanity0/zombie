@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2656',
+    items: [
+      'ゲーム内容の変更はありません（M7の台詞を確認するテストが、削除済みの1行を古いまま見ていたのを直しました）。',
+    ],
+  },
+  {
     version: '0.25.2655',
     items: [
       'ボスメーカー: 「？」ボタンで各項目の説明が読めるようになりました。',
