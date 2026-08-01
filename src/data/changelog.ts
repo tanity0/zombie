@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2659',
+    items: [
+      'ゲーム内容の変更はありません（オンライン協力プレイ「救助」の設計をまとめました）。',
+    ],
+  },
+  {
     version: '0.25.2658',
     items: [
       '画面外のボスマークが出るのは「ボスと交戦中」の間だけになりました。逃げてボスが巣へ戻った後は、マークも消えます。',
