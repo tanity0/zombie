@@ -17,7 +17,7 @@ import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sp
 import type { ColorMatrix } from 'pixi.js';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
-import { shadowProbeCount, shadowProbeMode, shadowProbeStretch } from './shadowProbe'; // 影ベンチのプローブ(計測専用)
+import { shadowProbeCount, shadowProbeMode, shadowProbeStretch, noteShadowProbeFrame, noteShadowProbeSigma } from './shadowProbe'; // 影ベンチのプローブ(計測専用)
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
@@ -7555,6 +7555,7 @@ export class PixiScene {
     // (本番も歩行コマ/skew/depthScale/支配光の振れで4隅が毎フレーム動くため、
     //  静止させて測ると頂点更新のコストを取りこぼす)。
     const vw = this.screenW, vh = this.screenH;
+    let checks = 0;
     for (let i = 0; i < count; i++) {
       const fx = ((i * 97) % 100) / 100 * vw + camera.x;
       const fy = ((i * 53) % 100) / 100 * vh + camera.y;
@@ -7577,7 +7578,11 @@ export class PixiScene {
           ax += (dx / dist) * w;
           ay += (dy / dist) * w;
         }
+        checks += linkLights.length;
         sigma = Math.min(sum, PixiScene.PROBE_GLOW_SUM_CAP);
+        // ★自己申告: 実際に何が起きたかを記録する(「常に上限に張り付いていて伸び縮みしていない」
+        // のか「本当に動いている」のかを、推測ではなく結果で示すため)。
+        noteShadowProbeSigma(sigma, sum >= PixiScene.PROBE_GLOW_SUM_CAP, i === 0);
         ang = Math.atan2(ay, ax);
       } else if (stretch > 0) {
         // 決め打ちの脈動(連動計算をしない=面積と振れ幅だけを測る段)
@@ -7626,6 +7631,7 @@ export class PixiScene {
         sp.visible = true;
       }
     }
+    noteShadowProbeFrame(linkLights.length, checks);
     // 段が軽くなった時に余りを消す(枚数を正確に保つ=段どうしの差が数字になる)
     for (let i = count; i < this.probeMeshes.length; i++) this.probeMeshes[i].visible = false;
     for (let i = count; i < this.probeSprites.length; i++) this.probeSprites[i].visible = false;

@@ -52,3 +52,60 @@ export const setShadowProbe = (count: number, mode: ShadowProbeMode, stretch = 0
 export const shadowProbeCount = (): number => probeCount;
 export const shadowProbeMode = (): ShadowProbeMode => probeMode;
 export const shadowProbeStretch = (): number => probeStretch;
+
+// ★プローブの自己申告(社長指摘 v0.25.2744「これ伸び縮みしてる? 常に光ってるからそう見えるだけで
+// 計れてるの?」)。**推測で「測れています」と言わない**ため、プローブ自身に実績を吐かせる。
+// このプロジェクトの教訓「計測器を疑う」の適用。
+export interface ShadowProbeTelemetry {
+  frames: number;      // プローブが動いたフレーム数
+  lights: number;      // 直近フレームで拾えた強glowの数(0なら連動を1回も計算していない)
+  checks: number;      // 直近フレームの距離判定の回数(= 枚数 × 光源数)
+  sigmaMin: number;    // Σw_g の最小 / 最大 / 平均。**min==max なら伸び縮みしていない**
+  sigmaMax: number;
+  sigmaSum: number;
+  capped: number;      // Σが上限に張り付いた回数(全体に対する割合で読む)
+  samples: number;     // sigma を数えた回数
+  // ★1枚(index 0)だけを時間で追う。全体の min/max は**場所による差**も混ざるので、
+  // 「時間で伸び縮みしているか」はこれを見ないと分からない(社長指摘 v0.25.2744 の核心)。
+  oneMin: number;
+  oneMax: number;
+}
+const telemetry: ShadowProbeTelemetry = {
+  frames: 0, lights: 0, checks: 0,
+  sigmaMin: Number.POSITIVE_INFINITY, sigmaMax: 0, sigmaSum: 0, capped: 0, samples: 0,
+  oneMin: Number.POSITIVE_INFINITY, oneMax: 0,
+};
+
+export const resetShadowProbeTelemetry = () => {
+  telemetry.frames = 0; telemetry.lights = 0; telemetry.checks = 0;
+  telemetry.sigmaMin = Number.POSITIVE_INFINITY; telemetry.sigmaMax = 0;
+  telemetry.sigmaSum = 0; telemetry.capped = 0; telemetry.samples = 0;
+  telemetry.oneMin = Number.POSITIVE_INFINITY; telemetry.oneMax = 0;
+};
+export const noteShadowProbeFrame = (lights: number, checks: number) => {
+  telemetry.frames++; telemetry.lights = lights; telemetry.checks = checks;
+};
+export const noteShadowProbeSigma = (sigma: number, atCap: boolean, isFirst = false) => {
+  if (isFirst) {
+    if (sigma < telemetry.oneMin) telemetry.oneMin = sigma;
+    if (sigma > telemetry.oneMax) telemetry.oneMax = sigma;
+  }
+  if (sigma < telemetry.sigmaMin) telemetry.sigmaMin = sigma;
+  if (sigma > telemetry.sigmaMax) telemetry.sigmaMax = sigma;
+  telemetry.sigmaSum += sigma;
+  if (atCap) telemetry.capped++;
+  telemetry.samples++;
+};
+/** 段の結果に1行で焼き込む用。**条件が書かれていない計測結果は資料にならない**(CLAUDE.md)。 */
+export const shadowProbeReport = (): string => {
+  if (telemetry.frames === 0) return 'probe off';
+  if (telemetry.samples === 0) return `probe f${telemetry.frames} lights${telemetry.lights} nolink`;
+  const avg = telemetry.sigmaSum / telemetry.samples;
+  const capPct = Math.round((telemetry.capped / telemetry.samples) * 100);
+  const mul = (v: number) => (1 + 0.9 * v).toFixed(2);
+  return `probe f${telemetry.frames} lights${telemetry.lights} chk${telemetry.checks}`
+    + ` sig${telemetry.sigmaMin.toFixed(2)}-${telemetry.sigmaMax.toFixed(2)}(av${avg.toFixed(2)})`
+    + ` len×${mul(telemetry.sigmaMin)}-${mul(telemetry.sigmaMax)} cap${capPct}%`
+    // ★one = 1枚を時間で追った幅。**ここが動いていなければ「伸び縮みしていない」**。
+    + ` one${(telemetry.oneMin === Number.POSITIVE_INFINITY ? 0 : telemetry.oneMin).toFixed(2)}-${telemetry.oneMax.toFixed(2)}`;
+};

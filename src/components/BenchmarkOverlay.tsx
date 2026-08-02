@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { setShadowProbe, type ShadowProbeMode } from '../pixi/shadowProbe';
+import { setShadowProbe, shadowProbeReport, resetShadowProbeTelemetry, type ShadowProbeMode } from '../pixi/shadowProbe';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { mineRect } from '../world/mines';
@@ -611,7 +611,9 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       minFps: stats.minFps,
       drops: slowFrameRatio(times, BENCHMARK_PASS_AVG_FPS),
       enemyTarget: profile.enemyTarget,
-      stress: stressLabel(profile),
+      // ★プローブの自己申告を段の行に焼き込む(社長指摘 v0.25.2744)。**推測で「測れています」と
+      // 言わない**ため、光源を何個拾い、距離判定を何回回し、Σがどこからどこまで動いたかを結果に残す。
+      stress: profile.probeCount > 0 ? `${stressLabel(profile)} | ${shadowProbeReport()}` : stressLabel(profile),
       safeStress: grade === 'PASS' ? stressLabel(profile) : 'not found',
       adjusted: profile.id !== profiles[0].id,
       maxTorches: attemptMaxCountsRef.current.torches,
@@ -813,6 +815,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     // ★影プローブ(計測専用)。段ごとに枚数/モードを切り替える。
     // 暖機・基準段・検算段は CANARY_PROFILE / 再現段の値を使うので、ここに置けば
     // 「基準段では0枚」が自動で守られる(=段どうしの差がプローブの差だけになる)。
+    resetShadowProbeTelemetry(); // 段ごとに集計をリセット(前の段の数字が混ざらないように)
     setShadowProbe(profile.probeCount, profile.probeMode, profile.probeStretch);
 
     const runBenchmarkTick = () => {
