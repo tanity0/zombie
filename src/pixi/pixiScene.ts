@@ -1633,11 +1633,18 @@ const SHADOW_GLOW_PUNCH = tsNum('glowpunch', 1.25);
 // やめ、**最も強い1つ(勝者)から直接取る**。合成だと寿命が減る過程で合成ベクトルの向きが連続的に
 // 動き、影が中間角度を全部通って回転してしまう(時間平滑では消えない=足し算そのものの性質)。
 // 勝者だけを見れば「光源が動けば影も動く/光源が消えるだけなら中間角度を通らない」の両方が成り立つ。
-/** 勝者は現在の勝者を this だけ(比率)上回らないと交代しない(チャタリング防止)。 */
+/** 勝者は現在の勝者を this だけ(比率)上回らないと交代しない(チャタリング防止=tipTargetが暴れない)。 */
 const SHADOW_WINNER_HYSTERESIS = 0.2;
-/** 勝者交代時、旧向き→新向きをこの時間(ms)でクロスフェードする(角度を補間しない=回転させない)。
- * `?glowfade=0` で無効化(即切替)。社長が実機で回せるURLツマミ。 */
-const SHADOW_WINNER_FADE_MS = tsNum('glowfade', 120);
+// ★S-7(社長実機報告「戻り方の経路が違う(L字)」): S-5の「向きだけクロスフェード」は、勝者交代の
+// 瞬間に長さが変わらないまま角度だけ滑らかに動くため、**先端が「遠くへ伸びる→横へ回る→縮む」の
+// L字経路**を描いてしまっていた(=向きと長さを別々に平滑した結果)。正しい戻り方は「先端の位置
+// ベクトルそのものを直線で補間する」こと。⇒ 向きのクロスフェード(prevDir/transitionStartAt/
+// meshPrevの2枚目メッシュ)は廃止し、**先端オフセット(dirX*length, dirY*length)を2次元ベクトルの
+// まま`placeShadowV9`で直接補間する**(正規化しない=補間の結果は自動的に直線になる)。
+/** ★S-7: 先端ベクトル補間の時定数(ms)。伸びる時は即時(社長「1は合ってる」=変更なし)・縮む時だけ
+ * この時定数で補間する。`?glowfade=` を流用(名前は据え置き=社長が既に覚えているため)。
+ * 既定はΣw_g側の下り(`SHADOW_LDOM_RELEASE_MS`=220ms)と同じ値を採用。`?glowfade=0`で即切替。 */
+const SHADOW_TIP_RELEASE_MS = tsNum('glowfade', 220);
 /** 支配光に強glowが参加する条件は旧投影影と同じ(effects[] の kind==='glow' && radius>=STRONG_GLOW_RADIUS)。
  * 松明/焚き火/城・商人のグロー/緑卵の光/プレイヤーライトはスプライトでありeffectではないため対象外
  * (§3-9-B確定)。`?evshadow=0` は「支配光に強glowを参加させない(環境光のみ)」の意味(裁定O)。 */
@@ -2138,11 +2145,10 @@ interface BuildingShadowReq {
 interface ShadowPoolEntry {
   core: Sprite;
   outer: Sprite;
-  mesh: PerspectiveMesh | null; // 現在(新)の勝者向き。未生成 or シルエット対象外 = null
-  // ★S-5: 勝者交代のクロスフェード中だけ使う「旧向き」の一時メッシュ。同じ bakeTex を使う
-  // (キャスター自身の見た目は変わらず、向きだけが違う2枚を重ねる)。遷移が終われば hide して温存
-  // (裁定Iと同じ理由=作り直さない。次の交代で再利用)。
-  meshPrev: PerspectiveMesh | null;
+  // ★S-5→★S-7: 一時期(S-5)は勝者交代のクロスフェード用に2枚目(meshPrev)を持たせていたが、
+  // S-7で「先端ベクトルを直線補間する」方式に変えたことで角度のクロスフェードが不要になり、
+  // 1体1枚に戻した(社長裁定「メッシュは1体1枚に戻る」)。
+  mesh: PerspectiveMesh | null; // 未生成 or シルエット対象外 = null
   lastSeenAt: number;           // 裁定I: この時刻からSHADOW_MESH_GC_ms非表示が続いたら実解放
   lastMeshTexture: Texture | null;
   meshFadeStartAt: number;      // 焼き上がって初めて出た時刻(150msフェードイン用。§3-9-B確定)
@@ -2308,13 +2314,15 @@ export class PixiScene {
   private silhouetteQueued = new Set<Texture>();
   private silhouetteBakeLoggedOnce = false; // 常駐バイト数を1回だけログする(仕様書指示)
   private silhouetteBakeTimeLoggedOnce = false; // ★検収差し戻し(高6): ベイク1枚のフレーム時間を1回だけログする
-  // ★S-5: 支配光の「勝者」状態。キャスターid別。winnerKey='amb'|強glowのeffect.id。
-  // sum は Σw_g(長さ/濃さ用。S-3の非対称エンベロープは維持=向きの計算とは無関係)。
+  // ★S-5/S-7: 支配光の「勝者」状態+先端ベクトルの平滑状態。キャスターid別。
+  // winnerKey='amb'|強glowのeffect.id。sum は Σw_g(長さ/濃さ用。S-3の非対称エンベロープは
+  // 向きの計算とは無関係)。tipX/tipY は★S-7で実際に描く先端オフセット(footからの相対px、
+  // 正規化しない2次元ベクトルのまま補間=これが直線で戻る仕組みの本体)。hasTip=falseの間は
+  // 初回なので次のplaceShadowV9呼び出しで即座にスナップする。
   private shadowWinnerState = new Map<string, {
     winnerKey: string; winnerDirX: number; winnerDirY: number; winnerStrength: number;
-    prevKey: string; prevDirX: number; prevDirY: number; // クロスフェード元(遷移中のみ意味を持つ)
-    transitionStartAt: number; // 0=遷移していない
     sum: number; punchUntil: number;
+    tipX: number; tipY: number; hasTip: boolean;
   }>();
   private lastShadowLdomNow = 0; // 平滑の dt 計算用
   // 地平線帯の詰め(§3-9-B確定)の平滑後の長さ。キャスターid別。
@@ -8263,6 +8271,8 @@ export class PixiScene {
     this.lastShadowLdomNow = now;
     const releaseLerp = 1 - Math.exp(-dt / (SHADOW_LDOM_RELEASE_MS / 1000));
     const horizonTrimLerp = 1 - Math.exp(-dt / (SHADOW_HORIZON_TRIM_SMOOTH_MS / 1000));
+    // ★S-7: 先端ベクトル(footからのオフセット)そのものを直線補間する時のlerp係数(縮む時だけ使う)。
+    const tipReleaseLerp = 1 - Math.exp(-dt / (SHADOW_TIP_RELEASE_MS / 1000));
 
     // ステージ光の向き(正規化)・伸び比率・濃さ倍率は1フレーム1回だけ計算(全キャスター共通)。
     const lighting = this.lighting();
@@ -8286,7 +8296,7 @@ export class PixiScene {
 
     const seen = new Set<string>();
     const place = (req: ShadowCasterReq) =>
-      this.placeShadowV9(req, seen, now, releaseLerp, horizonTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
+      this.placeShadowV9(req, seen, now, releaseLerp, horizonTrimLerp, tipReleaseLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
 
     // ---- プレイヤー ----
     // §3-9-B: 登場演出中も影を出す(旧実装の「introActive中はスキップ」を撤廃)。
@@ -8563,7 +8573,6 @@ export class PixiScene {
       entry.core.destroy();
       entry.outer.destroy();
       if (entry.mesh) this.destroyShadowMesh(entry.mesh);
-      if (entry.meshPrev) this.destroyShadowMesh(entry.meshPrev); // ★S-5: 交代クロスフェード用の旧向きメッシュ
     }
     this.shadowPoolV9.clear();
     this.shadowWinnerState.clear();
@@ -8788,24 +8797,28 @@ export class PixiScene {
    * 直接取る**(環境光=固定強さ1 / 各強glow=falloff×life×WEIGHT の中で最大のもの)。
    * 勝者が同じ間は毎フレームその光の現在位置へ直接追従(平滑なし=光源が動けば影も動く)。
    * 勝者交代はヒステリシス(現在の勝者を`SHADOW_WINNER_HYSTERESIS`だけ上回らないと交代しない)で
-   * 抑え、交代時は角度を補間せず`SHADOW_WINNER_FADE_MS`でクロスフェードする(=中間角度を通らない)。
-   * 環境光は常に候補に居るので「勝者が居ない/弱すぎる」状態が原理的に起きない(裁定Lの0除算/
-   * ゼロ交差ガードは不要になった)。
+   * チャタリングを抑える。環境光は常に候補に居るので「勝者が居ない/弱すぎる」状態が原理的に
+   * 起きない(裁定Lの0除算/ゼロ交差ガードは不要)。
+   * ★S-7(社長実機報告「戻り方の経路が違う(L字)」): 勝者交代そのものは**即時**(角度のクロス
+   * フェードはしない=このメソッドは常にその瞬間の"生"の勝者方向を返す)。滑らかさは、この
+   * dirX/dirYに長さを掛けた「先端ベクトル」を`placeShadowV9`側で2次元のまま直線補間することで
+   * 出す(向きと長さを別々に平滑するとL字になる。ここでは平滑しない=平滑は先端ベクトル側の責務)。
    * 長さ/濃さは従来どおり Σw_g(全glowの強さの合計。勝者とは無関係)から出す(S-3: 上りは平滑ゼロ・
    * 下りだけ`SHADOW_LDOM_RELEASE_MS`。S-4: 立ち上がりからの`SHADOW_GLOW_PUNCH_MS`だけ長さに punch)。
+   * `rising`(=Σが今フレーム増えた)を返す: `placeShadowV9`が先端ベクトルを即時スナップさせるか
+   * 補間するかの分岐にこの既存シグナルをそのまま使う(伸びる時は即時=社長「1は合ってる」=不変)。
    */
   private computeDominantLight(
     id: string, x: number, y: number,
     ambDirX: number, ambDirY: number,
     glowLights: { key: string; x: number; y: number; reach: number; life: number }[],
     releaseLerp: number, now: number,
-  ): { dirX: number; dirY: number; lenMult: number; darkMult: number; prevDirX: number; prevDirY: number; fadeT: number } {
+  ): { dirX: number; dirY: number; lenMult: number; darkMult: number; rising: boolean } {
     let st = this.shadowWinnerState.get(id);
     if (!st) {
       st = {
         winnerKey: 'amb', winnerDirX: ambDirX, winnerDirY: ambDirY, winnerStrength: 1,
-        prevKey: 'amb', prevDirX: ambDirX, prevDirY: ambDirY,
-        transitionStartAt: 0, sum: 0, punchUntil: 0,
+        sum: 0, punchUntil: 0, tipX: 0, tipY: 0, hasTip: false,
       };
       this.shadowWinnerState.set(id, st);
     }
@@ -8828,16 +8841,9 @@ export class PixiScene {
       if (L.key === st.winnerKey) { curWinnerStrength = strength; curWinnerDirX = dirX; curWinnerDirY = dirY; }
     }
 
-    // ★S-5: 勝者交代はヒステリシスを超えた時だけ。交代時はクロスフェードを開始(角度は補間しない)。
+    // 勝者交代はヒステリシスを超えた時だけ(tipTargetのチャタリング防止)。交代そのものは即時
+    // (★S-7: 角度の補間はもうしない。滑らかさは先端ベクトルの直線補間側に任せる)。
     if (bestKey !== st.winnerKey && bestStrength > curWinnerStrength * (1 + SHADOW_WINNER_HYSTERESIS)) {
-      if (SHADOW_WINNER_FADE_MS > 0) {
-        st.prevKey = st.winnerKey;
-        st.prevDirX = curWinnerDirX; // 消える瞬間の(=交代直前の)向きを凍結
-        st.prevDirY = curWinnerDirY;
-        st.transitionStartAt = now;
-      } else {
-        st.transitionStartAt = 0; // ?glowfade=0: 即切替(クロスフェード無効)
-      }
       st.winnerKey = bestKey;
       st.winnerStrength = bestStrength;
       st.winnerDirX = bestDirX;
@@ -8852,7 +8858,8 @@ export class PixiScene {
     }
 
     // ★S-3/S-4: Σは向きと無関係に従来どおり(上りは平滑ゼロ・下りだけ平滑。立ち上がりでpunch窓)。
-    if (sum > st.sum) {
+    const rising = sum > st.sum;
+    if (rising) {
       st.sum = sum;
       st.punchUntil = now + SHADOW_GLOW_PUNCH_MS;
     } else {
@@ -8861,17 +8868,11 @@ export class PixiScene {
     const sigma = Math.min(Math.max(0, st.sum), SHADOW_GLOW_SUM_CAP);
     const punch = now < st.punchUntil ? SHADOW_GLOW_PUNCH : 1; // S-4: 長さだけに掛ける(濃さには掛けない)
 
-    // クロスフェードの進捗(1=遷移完了・旧向きは不要)。
-    const fadeT = st.transitionStartAt <= 0 || SHADOW_WINNER_FADE_MS <= 0
-      ? 1
-      : Math.min(1, (now - st.transitionStartAt) / SHADOW_WINNER_FADE_MS);
-    if (fadeT >= 1) st.transitionStartAt = 0; // 遷移完了=次回から即fadeT=1に固定(再計算不要)
-
     return {
       dirX: st.winnerDirX, dirY: st.winnerDirY,
       lenMult: (1 + SHADOW_GLOW_STRETCH * sigma) * punch,
       darkMult: 1 + SHADOW_GLOW_DARKEN * sigma,
-      prevDirX: st.prevDirX, prevDirY: st.prevDirY, fadeT,
+      rising,
     };
   }
 
@@ -8962,7 +8963,8 @@ export class PixiScene {
    */
   private placeShadowV9(
     req: ShadowCasterReq, seen: Set<string>, now: number,
-    releaseLerp: number, horizonTrimLerp: number, ambDirX: number, ambDirY: number, lenRatio: number, densityMult: number,
+    releaseLerp: number, horizonTrimLerp: number, tipReleaseLerp: number,
+    ambDirX: number, ambDirY: number, lenRatio: number, densityMult: number,
     glowLights: { key: string; x: number; y: number; reach: number; life: number }[],
   ) {
     const shadowFade = req.shadowFade ?? 1;
@@ -8983,7 +8985,7 @@ export class PixiScene {
 
     let entry = this.shadowPoolV9.get(req.id);
     if (totalAlpha <= 0) {
-      if (entry) { entry.core.visible = false; entry.outer.visible = false; if (entry.mesh) entry.mesh.visible = false; if (entry.meshPrev) entry.meshPrev.visible = false; }
+      if (entry) { entry.core.visible = false; entry.outer.visible = false; if (entry.mesh) entry.mesh.visible = false; }
       return;
     }
     seen.add(req.id);
@@ -8993,7 +8995,7 @@ export class PixiScene {
       const outer = new Sprite(getShadowOuterTexture());
       outer.anchor.set(0.5, 0.5);
       this.shadowGroundLayer.addChild(outer, core); // 描画順: 1外側 → 2芯(仕様書の描画順)。バッチ用に別層(高9)
-      entry = { core, outer, mesh: null, meshPrev: null, lastSeenAt: now, lastMeshTexture: null, meshFadeStartAt: 0 };
+      entry = { core, outer, mesh: null, lastSeenAt: now, lastMeshTexture: null, meshFadeStartAt: 0 };
       this.shadowPoolV9.set(req.id, entry);
     }
     entry.lastSeenAt = now;
@@ -9036,7 +9038,6 @@ export class PixiScene {
     // ---- シルエット本体(台形) ----
     if (req.silhouetteExempt || !req.texture) {
       if (entry.mesh) entry.mesh.visible = false; // 松明/焚き火/緑卵、または絵の無いGraphics拾い物
-      if (entry.meshPrev) entry.meshPrev.visible = false;
       return;
     }
     // ★検収差し戻し(中15): 未ベイクの新コマに切り替わるたびに毎回メッシュを隠すと、出撃直後や
@@ -9046,7 +9047,6 @@ export class PixiScene {
     const bakeTex = this.silhouetteEnsure(req.texture)?.texture ?? entry.lastMeshTexture ?? undefined;
     if (!bakeTex) {
       if (entry.mesh) entry.mesh.visible = false; // まだ1枚も焼けていない
-      if (entry.meshPrev) entry.meshPrev.visible = false;
       return;
     }
     const rawLength = nonExplLen * ldom.lenMult * shrink;
@@ -9057,6 +9057,8 @@ export class PixiScene {
     // rawLength をそのまま使い、遅れをゼロにする。以前は全キャスター・全フレームで無条件に平滑して
     // おり、Σw_g 側(裁定N・180ms)と合わせて約360ms鈍り、しかも Math.min(raw,smoothed) の形で
     // 伸びる側だけ遅れていた(縮む側は素通り)ため、爆発が消えるまでにピークへ到達できていなかった。
+    // ★S-7注記: この節はあくまで「(まだ平滑されていない)生の勝者向き」に対する地平線クリップ
+    // であり、この後の先端ベクトル補間より前に評価する(=補間の目標値そのものを帯の内側に収める)。
     let length = rawLength;
     if (ldom.dirY < 0) { // 上向き(=地平線に近づく方向)の時だけ効く
       const rawTipY = footY + ldom.dirY * rawLength;
@@ -9079,15 +9081,51 @@ export class PixiScene {
     }
     const nearHalf = req.rawW * SHADOW_FOOT_NARROW / 2 * shrink;
     const farHalf = req.rawW / 2 * shrink;
-    if (length <= SHADOW_DEGENERATE_PX || nearHalf * 2 <= SHADOW_DEGENERATE_PX) {
+
+    // ★S-7(社長実機報告「戻り方の経路が違う(L字)」): 先端の位置ベクトル(footからのオフセット)
+    // そのものを2次元のまま直線補間する(正規化しない=これだけで軌跡が直線になる。向きと長さを
+    // 別々に滑らせる=S-5のクロスフェードだと、角度が先に戻ってから縮む「L字」になっていた)。
+    // 伸びる時(Σが今フレーム増えた=ldom.rising)は即時スナップ(社長「1は合ってる」=変更なし)。
+    // 縮む時だけ`tipReleaseLerp`(`?glowfade=`)で補間する。
+    const targetTipX = ldom.dirX * length, targetTipY = ldom.dirY * length;
+    const tipSt = this.shadowWinnerState.get(req.id)!; // computeDominantLightが必ず作る(先端の平滑状態も同居)
+    let curTipX: number, curTipY: number;
+    if (!tipSt.hasTip || ldom.rising) {
+      curTipX = targetTipX;
+      curTipY = targetTipY;
+    } else {
+      curTipX = tipSt.tipX + (targetTipX - tipSt.tipX) * tipReleaseLerp;
+      curTipY = tipSt.tipY + (targetTipY - tipSt.tipY) * tipReleaseLerp;
+      // ★退化ガード: 直線で戻る途中、経路が足元の近くを通ると影が一瞬つぶれる幾何になりうる。
+      // 補間後の|tip|に「環境光での通常の長さ」を下限として置く(伸びる方向にだけ自由=このガードは
+      // 縮む方向にしか効かない。向きは補間結果のまま=変えるのは長さの下限だけ)。
+      const restLen = nonExplLen * shrink; // sigma=0/punch=1相当=通常時の長さ
+      const curLen = Math.hypot(curTipX, curTipY);
+      if (curLen < restLen) {
+        if (curLen > 1e-3) {
+          const k = restLen / curLen;
+          curTipX *= k;
+          curTipY *= k;
+        } else {
+          // ほぼ原点=向きが定まらない退化点。環境光の向きへ逃がす。
+          curTipX = ambDirX * restLen;
+          curTipY = ambDirY * restLen;
+        }
+      }
+    }
+    tipSt.tipX = curTipX;
+    tipSt.tipY = curTipY;
+    tipSt.hasTip = true;
+
+    const drawnLen = Math.hypot(curTipX, curTipY);
+    if (drawnLen <= SHADOW_DEGENERATE_PX || nearHalf * 2 <= SHADOW_DEGENERATE_PX) {
       if (entry.mesh) entry.mesh.visible = false;
-      if (entry.meshPrev) entry.meshPrev.visible = false;
       return;
     }
-    const tipX = footX + ldom.dirX * length, tipY = footY + ldom.dirY * length;
+    const drawnDirX = curTipX / drawnLen, drawnDirY = curTipY / drawnLen;
+    const tipX = footX + curTipX, tipY = footY + curTipY;
     if (!this.segmentIntersectsRect(footX, footY, tipX, tipY, this.shadowVisibleRect())) {
       if (entry.mesh) entry.mesh.visible = false; // カリング(可視域の外)。長さは詰めない(ズーム時に縮む破綻を防ぐ)
-      if (entry.meshPrev) entry.meshPrev.visible = false;
       return;
     }
 
@@ -9102,33 +9140,17 @@ export class PixiScene {
     const uSign = req.flip ? -1 : 1; // 裁定H: 左右反転はu=0/u=1の入れ替え(焼き直し不要)
     const skewShift = Math.tan(req.skewX ?? 0) * req.rawH; // 先端側の2隅だけをこの量ずらす(仕様確定値)
 
-    // ★S-5(社長実機報告「回転しながら戻る」対応): 向きは合成しない=勝者交代の瞬間だけ、旧向き
-    // (ldom.prevDirX/Y・凍結済み)のメッシュをもう1枚重ねて、角度を補間せずαだけクロスフェードする
-    // (fadeT: 0=旧向きのみ ⇔ 1=新向きのみ)。length/nearHalf/farHalf/skewShiftは向きと無関係
-    // (Σw_gから出す=裁定どおり)なので両メッシュで共有してよい。
-    entry.mesh.alpha = Math.min(1, SHADOW_SIL_ALPHA_BASE * densityMult * totalAlpha * fadeIn * ldom.fadeT);
-    this.setSilhouetteMeshCorners(entry.mesh, footX, footY, ldom.dirX, ldom.dirY, length, nearHalf, farHalf, skewShift, uSign);
+    entry.mesh.alpha = Math.min(1, SHADOW_SIL_ALPHA_BASE * densityMult * totalAlpha * fadeIn);
+    this.setSilhouetteMeshCorners(entry.mesh, footX, footY, drawnDirX, drawnDirY, drawnLen, nearHalf, farHalf, skewShift, uSign);
     entry.mesh.visible = true;
-
-    if (ldom.fadeT < 1) {
-      if (!entry.meshPrev) {
-        entry.meshPrev = new PerspectiveMesh({ texture: bakeTex, verticesX: SHADOW_MESH_VX, verticesY: SHADOW_MESH_VY });
-        this.shadowMeshLayer.addChild(entry.meshPrev);
-      }
-      if (entry.meshPrev.texture !== bakeTex) entry.meshPrev.texture = bakeTex;
-      entry.meshPrev.alpha = Math.min(1, SHADOW_SIL_ALPHA_BASE * densityMult * totalAlpha * fadeIn * (1 - ldom.fadeT));
-      this.setSilhouetteMeshCorners(entry.meshPrev, footX, footY, ldom.prevDirX, ldom.prevDirY, length, nearHalf, farHalf, skewShift, uSign);
-      entry.meshPrev.visible = true;
-    } else if (entry.meshPrev) {
-      entry.meshPrev.visible = false; // 遷移完了=旧向きはもう不要(実解放はsweep/clear任せ)
-    }
   }
 
   /**
-   * シルエット台形の4隅を計算してセットする(S-5: 勝者/旧勝者どちらのメッシュにも使う共通ロジック)。
-   * 裁定H: PerspectiveMesh.setCorners(x0..x3) は (top-left=u0v0, top-right=u1v0, bottom-right=u1v1,
-   * bottom-left=u0v1)。焼いたテクスチャは v=0(上端)=絵の頭側=影の遠い側(先端)、v=1(下端)=絵の足元
-   * =影の近い側。よって top-*=先端(tip)、bottom-*=足元(near)。
+   * シルエット台形の4隅を計算してセットする。渡す dirX/dirY/length は★S-7で先端ベクトル補間済み
+   * (=既に「実際に描く」向き・長さ)。裁定H: PerspectiveMesh.setCorners(x0..x3) は
+   * (top-left=u0v0, top-right=u1v0, bottom-right=u1v1, bottom-left=u0v1)。焼いたテクスチャは
+   * v=0(上端)=絵の頭側=影の遠い側(先端)、v=1(下端)=絵の足元=影の近い側。よって top-*=先端(tip)、
+   * bottom-*=足元(near)。
    */
   private setSilhouetteMeshCorners(
     mesh: PerspectiveMesh, footX: number, footY: number, dirX: number, dirY: number,
@@ -9151,12 +9173,10 @@ export class PixiScene {
       entry.core.visible = false;
       entry.outer.visible = false;
       if (entry.mesh) entry.mesh.visible = false;
-      if (entry.meshPrev) entry.meshPrev.visible = false;
       if (now - entry.lastSeenAt > SHADOW_MESH_GC_MS) {
         entry.core.destroy();
         entry.outer.destroy();
         if (entry.mesh) this.destroyShadowMesh(entry.mesh);
-        if (entry.meshPrev) this.destroyShadowMesh(entry.meshPrev); // ★S-5
         this.shadowPoolV9.delete(id);
         this.shadowWinnerState.delete(id);
         this.shadowHorizonTrimState.delete(id);

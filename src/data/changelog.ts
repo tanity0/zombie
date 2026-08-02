@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2763',
+    items: [
+      '爆発などの強い光が消える時、影の先端が遠回りせず真っすぐ元の位置へ戻るよう調整しました。',
+    ],
+  },
+  {
     version: '0.25.2762',
     items: [
       '一部の花が地面から少し浮いて見える不具合を修正しました。',
