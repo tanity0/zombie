@@ -84,7 +84,8 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     if (typeof window === 'undefined') return '';
     const q = new URLSearchParams(window.location.search);
     // 描画負荷に効く/計測の解釈に効くものだけを拾う(全部出すと読みにくい)。
-    const keys = ['glowhalo', 'glowcore', 'refl', 'evshadow', 'benchonly', 'warm', 'canary', 'repeat', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev'];
+    // glowweight/glowstretch/glowsumcap/glowpunch: 影の支配光(Ldom)の量ツマミ(§3-9-B v9・社長裁定S-2/S-4)。
+    const keys = ['glowhalo', 'glowcore', 'refl', 'evshadow', 'benchonly', 'warm', 'canary', 'repeat', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev', 'glowweight', 'glowstretch', 'glowsumcap', 'glowpunch'];
     const on = keys.filter(k => q.get(k) !== null).map(k => `${k}=${q.get(k)}`);
     return on.length ? on.join(' ') : 'なし(既定)';
   })();

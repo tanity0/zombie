@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2759',
+    items: [
+      '爆発などの強い光で影が伸びる勢いを調整しました（伸びる時は素早く、戻る時はゆっくりに）。',
+    ],
+  },
+  {
     version: '0.25.2758',
     items: [
       '裏ボスを倒した瞬間に影だけ消え、消えていく本体に影が無いまま残る不具合を修正しました。',

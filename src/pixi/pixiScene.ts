@@ -1579,6 +1579,9 @@ const SHADOW_FOOT_NARROW = 0.34;
 const SHADOW_BLUR_FRAC = 0.02;
 /** 余白=ぼかし×この倍率ぶん確保してからベイクする(縁のclamp伸びを防ぐ)。 */
 const SHADOW_BLUR_PAD_MULT = 3;
+/** ★検収差し戻し(高6): ベイク前の長辺の上限(px)。skadi.png(1151×1243)級を原寸で焼くと
+ * 7.1MB/枚(仕様見積り1.25MBの約5.7倍)で32MB LRUが張り付く。影は台形へ伸ばしてぼかすので原寸精度は不要。 */
+const SHADOW_BAKE_MAX_LONG_EDGE = 512;
 /** PerspectiveMesh の分割数。事前計測(SHD-M)と同じ値にする(§3-9-B確定)。 */
 const SHADOW_MESH_VX = 8;
 const SHADOW_MESH_VY = 12;
@@ -1606,14 +1609,26 @@ const SHADOW_CORE_ALPHA_BASE = 0.62 * 0.95;
 const SHADOW_OUTER_ALPHA_BASE = 0.22 * 0.95;
 const SHADOW_SIL_ALPHA_BASE = 0.46;
 
-// ---- 支配光(Ldom)。§3-9-B確定初期値(★未決E) + 設計チャット裁定K/L/M/N ------------------------------------
+// ---- 支配光(Ldom)。§3-9-B確定初期値(★未決E) + 設計チャット裁定K/L/M/N + 実機フィードバック裁定S-1〜S-4 ---
 // probe(shadowProbe.ts 計測用)の PROBE_GLOW_WEIGHT / PROBE_GLOW_SUM_CAP と同じ値(計測と実装を揃える)。
-const SHADOW_GLOW_WEIGHT = 1.6;   // GLOW_SHADOW_WEIGHT
-const SHADOW_GLOW_STRETCH = 0.9;  // GLOW_STRETCH(長さ倍率 = 1 + STRETCH×min(Σw_g, CAP))
-const SHADOW_GLOW_DARKEN = 0.6;   // GLOW_DARKEN(濃さ倍率 = 1 + DARKEN×min(Σw_g, CAP))
-const SHADOW_GLOW_SUM_CAP = 2.0;  // GLOW_SUM_CAP
-/** 裁定L/N: Ldomベクトル・Σw_g とも同じ時定数(ms)で指数平滑する(角度ではなくベクトルを平滑)。 */
-const SHADOW_LDOM_SMOOTH_MS = 180;
+// ★S-2: 社長が実機で回せるURLツマミ(?glowweight= ?glowstretch= ?glowsumcap=。既定はweightのみ
+// 1.6→2.2に引き上げ、他2つは据え置き=一度に2つ以上動かすとどれが効いたか分からなくなるため)。
+// ★これ以上、実装側の判断で既定値を動かさない(★未決E=実機で社長がツマミで決める)。
+const SHADOW_GLOW_WEIGHT = tsNum('glowweight', 2.2);   // GLOW_SHADOW_WEIGHT(既定1.6→2.2)
+const SHADOW_GLOW_STRETCH = tsNum('glowstretch', 0.9); // GLOW_STRETCH(長さ倍率 = 1 + STRETCH×min(Σw_g, CAP))
+const SHADOW_GLOW_DARKEN = 0.6;   // GLOW_DARKEN(濃さ倍率 = 1 + DARKEN×min(Σw_g, CAP))。ツマミ対象外(社長指示)
+const SHADOW_GLOW_SUM_CAP = tsNum('glowsumcap', 2.0);  // GLOW_SUM_CAP
+/** ★S-3(社長実機報告「勢いがない」への訂正裁定。S-1の「上り50ms」は撤回): `life` が生成直後から
+ * 線形に減り始めるため、上りに50msでも平滑を掛けると目標値自体が下がった所へ追いつく形になり
+ * 「丸い山」になって勢いが出ない。⇒ **上り(Σ/Ldomベクトルが増える方向)は平滑ゼロ(即時)**、
+ * **下りだけ** この時定数(ms)で指数平滑する。反転防止(裁定L・下記HOLD_BELOW)は下り側で起きるため、
+ * 上りを即時にしても安全。 */
+const SHADOW_LDOM_RELEASE_MS = 220;
+/** ★S-4(社長実機報告「勢いがない」): Σが立ち上がった瞬間から この時間(ms)だけ、長さ倍率に
+ * `SHADOW_GLOW_PUNCH` を掛けるオーバーシュート。「滑らかに近づく動き」ではなく「行き過ぎて戻る動き」
+ * で"勢い"を出す。濃さ(DARKEN)には掛けない(点滅に見えるため・社長指示)。`?glowpunch=1`で無効化。 */
+const SHADOW_GLOW_PUNCH_MS = 90;
+const SHADOW_GLOW_PUNCH = tsNum('glowpunch', 1.25);
 /** 裁定L: 平滑後の |Ldom| がこの値未満の間は、前フレームの向きを保持する(0通過での反転を防ぐ)。 */
 const SHADOW_LDOM_HOLD_BELOW = 0.35;
 /** 支配光に強glowが参加する条件は旧投影影と同じ(effects[] の kind==='glow' && radius>=STRONG_GLOW_RADIUS)。
@@ -2261,6 +2276,11 @@ export class PixiScene {
   private shadowPool = new Map<string, Sprite>();
   // §3-9-B v9(新シルエット影)。旧 shadowPool とは別プール(?silshadow=0 で完全に切り替え)。
   private shadowPoolV9 = new Map<string, ShadowPoolEntry>();
+  // ★検収差し戻し(高9): 接地2枚(Sprite)とシルエット(PerspectiveMesh)を交互に描くと
+  // バッチが分断される(90体で約270ドローコール)。子コンテナを2つに分け、Spriteを全部先に→
+  // Meshを全部後にまとめて描く(色は全部黒の通常合成なので見た目は変わらない)。
+  private shadowGroundLayer = new Container();
+  private shadowMeshLayer = new Container();
   // シルエットのベイクキャッシュ(裁定D: 事前ベイク/オンデマンドを1本のキューに統合)。
   // キー=元テクスチャ(コマごとに別Textureなのでコマごとに別鍵=歩行ポーズが1コマに固定されない)。
   private silhouetteCache = new Map<Texture, SilhouetteBake>();
@@ -2268,8 +2288,9 @@ export class PixiScene {
   private silhouetteQueue: Texture[] = [];
   private silhouetteQueued = new Set<Texture>();
   private silhouetteBakeLoggedOnce = false; // 常駐バイト数を1回だけログする(仕様書指示)
+  private silhouetteBakeTimeLoggedOnce = false; // ★検収差し戻し(高6): ベイク1枚のフレーム時間を1回だけログする
   // 支配光(Ldom)のベクトル平滑状態。キャスターid別(裁定L/N)。
-  private shadowLdomState = new Map<string, { vx: number; vy: number; sum: number; dirX: number; dirY: number }>();
+  private shadowLdomState = new Map<string, { vx: number; vy: number; sum: number; dirX: number; dirY: number; punchUntil: number }>();
   private lastShadowLdomNow = 0; // 平滑の dt 計算用
   // 地平線帯の詰め(§3-9-B確定)の平滑後の長さ。キャスターid別。
   private shadowHorizonTrimState = new Map<string, number>();
@@ -3060,6 +3081,8 @@ export class PixiScene {
       this.castleSummonCircle,
       this.shadowContainer,
     );
+    // ★検収差し戻し(高9): ground(Sprite)を先、mesh(PerspectiveMesh)を後の2層に分けてバッチを保つ。
+    this.shadowContainer.addChild(this.shadowGroundLayer, this.shadowMeshLayer);
     this.bossCorpseSprite.visible = false;
     this.L.actorLayer.addChild(this.bossCorpseSprite); // 裏ボス討伐フェード(アクター層・y-sort)
     this.arenaGfx.blendMode = 'add'; // 半透明の光る柵(加算で発光感)
@@ -8200,9 +8223,10 @@ export class PixiScene {
     this.drainSilhouetteQueue(); // 裁定D
 
     // Ldom平滑のdt(this.seeThroughLerp等と同じ作法。frame間の実測秒)。
+    // ★S-3: 上りは即時(平滑なし)なのでこのlerpは「下り」専用(SHADOW_LDOM_RELEASE_MS)。
     const dt = this.lastShadowLdomNow ? Math.min(0.1, (now - this.lastShadowLdomNow) / 1000) : 0;
     this.lastShadowLdomNow = now;
-    const ldomLerp = 1 - Math.exp(-dt / (SHADOW_LDOM_SMOOTH_MS / 1000));
+    const releaseLerp = 1 - Math.exp(-dt / (SHADOW_LDOM_RELEASE_MS / 1000));
     const horizonTrimLerp = 1 - Math.exp(-dt / (SHADOW_HORIZON_TRIM_SMOOTH_MS / 1000));
 
     // ステージ光の向き(正規化)・伸び比率・濃さ倍率は1フレーム1回だけ計算(全キャスター共通)。
@@ -8227,7 +8251,7 @@ export class PixiScene {
 
     const seen = new Set<string>();
     const place = (req: ShadowCasterReq) =>
-      this.placeShadowV9(req, seen, now, ldomLerp, horizonTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
+      this.placeShadowV9(req, seen, now, releaseLerp, horizonTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
 
     // ---- プレイヤー ----
     // §3-9-B: 登場演出中も影を出す(旧実装の「introActive中はスキップ」を撤廃)。
@@ -8485,12 +8509,21 @@ export class PixiScene {
   // §3-9-B v9: 新シルエット影(1体1メッシュ・支配光・台形)。`syncShadowsLegacy` の対。
   // ===========================================================================
 
+  /** ★検収差し戻し(高8): Pixi 8.19 の `Mesh.destroy()` は `_geometry=null` にするだけで
+   * `geometry.destroy()` を呼ばない(GPUバッファがリークする)。PerspectiveMeshは1体1個の専用
+   * geometry(共有していない=コンストラクタで毎回 new)なので、必ずここで明示的に破棄してから
+   * mesh自体を破棄する。 */
+  private destroyShadowMesh(mesh: PerspectiveMesh) {
+    mesh.geometry.destroy();
+    mesh.destroy();
+  }
+
   /** 新影プール(接地2枚+メッシュ)を全破棄する(?shadow=0 / 経路切替時)。 */
   private clearShadowPoolV9() {
     for (const [, entry] of this.shadowPoolV9) {
       entry.core.destroy();
       entry.outer.destroy();
-      if (entry.mesh) entry.mesh.destroy();
+      if (entry.mesh) this.destroyShadowMesh(entry.mesh);
     }
     this.shadowPoolV9.clear();
     this.shadowLdomState.clear();
@@ -8568,8 +8601,16 @@ export class PixiScene {
    */
   private bakeSilhouette(src: Texture): SilhouetteBake | null {
     if (!this.renderer || !src || src.width <= 1 || src.height <= 1) return null;
+    const bakeStart = performance.now();
     try {
-      const srcW = Math.round(src.width), srcH = Math.round(src.height);
+      const rawW = Math.round(src.width), rawH = Math.round(src.height);
+      // ★検収差し戻し(高6): 原寸のままだと skadi.png(1151×1243)が7.1MB/枚(仕様見積り1.25MBの
+      // 約5.7倍)で32MB LRUが張り付き、BlurFilter(quality:3)も1.8Mpxに掛かる。影は台形へ伸ばして
+      // ぼかすので原寸精度は不要 ⇒ ベイク前に長辺512px上限まで縮小する。
+      const longEdge = Math.max(rawW, rawH);
+      const downscale = longEdge > SHADOW_BAKE_MAX_LONG_EDGE ? SHADOW_BAKE_MAX_LONG_EDGE / longEdge : 1;
+      const srcW = Math.max(1, Math.round(rawW * downscale));
+      const srcH = Math.max(1, Math.round(rawH * downscale));
       const shortEdge = Math.min(srcW, srcH);
       const blurPx = Math.max(1, shortEdge * SHADOW_BLUR_FRAC);
       const pad = Math.max(1, Math.round(blurPx * SHADOW_BLUR_PAD_MULT));
@@ -8578,6 +8619,8 @@ export class PixiScene {
 
       const body = new Sprite(src);
       body.tint = 0x000000; // 手順1: 黒tint(RGBを0倍。αは触らない=PMAを壊さない)
+      body.width = srcW;    // 縮小はスプライト側で(元テクスチャは変えない=他の用途に影響しない)
+      body.height = srcH;
       body.position.set(pad, pad);
 
       const gradTex = this.buildVerticalEraseGradientTexture(paddedH, pad, srcH);
@@ -8600,19 +8643,47 @@ export class PixiScene {
     } catch (err) {
       console.error('[shadow-v9] bakeSilhouette failed (suppressed):', err);
       return null;
+    } finally {
+      // ★検収差し戻し(高6): 仕様書指示「事前ベイク中のフレーム時間を1回ログに出す」。
+      if (!this.silhouetteBakeTimeLoggedOnce) {
+        const elapsed = performance.now() - bakeStart;
+        console.info(
+          `[shadow-v9] bakeSilhouette: ${elapsed.toFixed(2)}ms/枚 (予算=${SHADOW_BAKE_BUDGET_PER_FRAME}枚/フレーム。` +
+          `${SHADOW_BAKE_BUDGET_PER_FRAME}枚合計が16.67msを割るなら枚数を下げる)`
+        );
+        this.silhouetteBakeTimeLoggedOnce = true;
+      }
     }
+  }
+
+  /** ★検収差し戻し(高7): この元テクスチャのベイク結果が、いま可視のメッシュから参照されているか。
+   * LRU追い出しの対象から外すためのガード(見えているシルエットのRTを追い出すと一瞬黒くなる/
+   * 消えるため)。shadowPoolV9は高々90前後なのでO(n)スキャンで十分安い。 */
+  private isSilhouetteTextureInUse(bakedTex: Texture): boolean {
+    for (const [, entry] of this.shadowPoolV9) {
+      if (entry.mesh && entry.mesh.visible && entry.mesh.texture === bakedTex) return true;
+    }
+    return false;
   }
 
   private silhouetteCacheAdd(tex: Texture, baked: SilhouetteBake) {
     this.silhouetteCache.set(tex, baked);
     this.silhouetteCacheBytes += baked.bytes;
     // LRU(裁定G): 予算超過分は最古(Map先頭)から rt.destroy(true) で実解放しつつ追い出す。
+    // ★検収差し戻し(高7): ただし今まさに可視のメッシュが使っているRTは飛ばす(使用中を壊さない)。
     while (this.silhouetteCacheBytes > SHADOW_SIL_CACHE_BUDGET_BYTES && this.silhouetteCache.size > 1) {
-      const oldestKey: Texture | undefined = this.silhouetteCache.keys().next().value;
-      if (!oldestKey) break;
-      const old = this.silhouetteCache.get(oldestKey);
-      this.silhouetteCache.delete(oldestKey);
-      if (old) { this.silhouetteCacheBytes -= old.bytes; old.texture.destroy(true); }
+      let victimKey: Texture | undefined;
+      let victimBake: SilhouetteBake | undefined;
+      for (const [key, val] of this.silhouetteCache) {
+        if (key === tex) continue; // 今追加したばかりのものは対象外(直後に使われる)
+        if (this.isSilhouetteTextureInUse(val.texture)) continue;
+        victimKey = key; victimBake = val;
+        break;
+      }
+      if (!victimKey || !victimBake) break; // 残り全部使用中=これ以上追い出せない(予算超過を一時許容)
+      this.silhouetteCache.delete(victimKey);
+      this.silhouetteCacheBytes -= victimBake.bytes;
+      victimBake.texture.destroy(true);
     }
     if (!this.silhouetteBakeLoggedOnce && this.silhouetteCache.size >= 6) {
       // 仕様書指示:「実装後、常駐バイト数をログで1回見る」。
@@ -8627,15 +8698,18 @@ export class PixiScene {
   // ---- 支配光(Ldom)。裁定K/L/M/N ---------------------------------------------
 
   /**
-   * 支配光ベクトル。1キャスターにつき1回。環境光(重み1)+生きている強glowをベクトル合成し、
-   * 結果をベクトルのまま180ms指数平滑する(裁定L)。|Ldom|<0.35の間は前フレームの向きを保持し、
-   * 0通過での瞬間反転を防ぐ。`strength`(キャスター側の重み)は混ぜない(裁定M)。
+   * 支配光ベクトル。1キャスターにつき1回。環境光(重み1)+生きている強glowをベクトル合成する。
+   * ★S-3/S-4(社長実機報告「勢いがない」): 上り(増える方向)は平滑ゼロ(即時)、下りだけ
+   * `SHADOW_LDOM_RELEASE_MS` で指数平滑する(裁定L=|Ldom|<0.35の間は前フレームの向きを保持し
+   * 0通過での瞬間反転を防ぐ、はそのまま維持=反転は下り側でしか起きないため安全)。
+   * `strength`(キャスター側の重み)は混ぜない(裁定M)。Σが立ち上がった瞬間から
+   * `SHADOW_GLOW_PUNCH_MS` の間、長さ倍率だけに `SHADOW_GLOW_PUNCH` を掛ける(S-4・濃さには掛けない)。
    */
   private computeDominantLight(
     id: string, x: number, y: number,
     ambDirX: number, ambDirY: number,
     glowLights: { x: number; y: number; reach: number; life: number }[],
-    ldomLerp: number,
+    releaseLerp: number, now: number,
   ): { dirX: number; dirY: number; lenMult: number; darkMult: number } {
     let vx = ambDirX, vy = ambDirY, sum = 0;
     for (let i = 0; i < glowLights.length; i++) {
@@ -8649,10 +8723,23 @@ export class PixiScene {
       vy += (dy / dist) * w;
     }
     let st = this.shadowLdomState.get(id);
-    if (!st) { st = { vx: ambDirX, vy: ambDirY, sum: 0, dirX: ambDirX, dirY: ambDirY }; this.shadowLdomState.set(id, st); }
-    st.vx += (vx - st.vx) * ldomLerp;
-    st.vy += (vy - st.vy) * ldomLerp;
-    st.sum += (sum - st.sum) * ldomLerp; // 裁定N
+    if (!st) { st = { vx: ambDirX, vy: ambDirY, sum: 0, dirX: ambDirX, dirY: ambDirY, punchUntil: 0 }; this.shadowLdomState.set(id, st); }
+    // ★S-3: ベクトルの大きさが増える方向は即時、減る方向だけ平滑。
+    const rawMag = Math.hypot(vx, vy);
+    const curMag = Math.hypot(st.vx, st.vy);
+    if (rawMag > curMag) {
+      st.vx = vx; st.vy = vy;
+    } else {
+      st.vx += (vx - st.vx) * releaseLerp;
+      st.vy += (vy - st.vy) * releaseLerp;
+    }
+    // ★S-3/S-4: Σも同じ非対称。上り(即時)の瞬間だけ punch窓を張る。
+    if (sum > st.sum) {
+      st.sum = sum;
+      st.punchUntil = now + SHADOW_GLOW_PUNCH_MS;
+    } else {
+      st.sum += (sum - st.sum) * releaseLerp;
+    }
     const mag = Math.hypot(st.vx, st.vy);
     if (mag >= SHADOW_LDOM_HOLD_BELOW) {
       const inv = 1 / mag;
@@ -8660,9 +8747,10 @@ export class PixiScene {
       st.dirY = st.vy * inv;
     } // else: 前フレームの向きを保持(裁定L)
     const sigma = Math.min(Math.max(0, st.sum), SHADOW_GLOW_SUM_CAP);
+    const punch = now < st.punchUntil ? SHADOW_GLOW_PUNCH : 1; // S-4: 長さだけに掛ける(濃さには掛けない)
     return {
       dirX: st.dirX, dirY: st.dirY,
-      lenMult: 1 + SHADOW_GLOW_STRETCH * sigma,
+      lenMult: (1 + SHADOW_GLOW_STRETCH * sigma) * punch,
       darkMult: 1 + SHADOW_GLOW_DARKEN * sigma,
     };
   }
@@ -8754,7 +8842,7 @@ export class PixiScene {
    */
   private placeShadowV9(
     req: ShadowCasterReq, seen: Set<string>, now: number,
-    ldomLerp: number, horizonTrimLerp: number, ambDirX: number, ambDirY: number, lenRatio: number, densityMult: number,
+    releaseLerp: number, horizonTrimLerp: number, ambDirX: number, ambDirY: number, lenRatio: number, densityMult: number,
     glowLights: { x: number; y: number; reach: number; life: number }[],
   ) {
     const shadowFade = req.shadowFade ?? 1;
@@ -8784,13 +8872,13 @@ export class PixiScene {
       core.anchor.set(0.5, 0.5);
       const outer = new Sprite(getShadowOuterTexture());
       outer.anchor.set(0.5, 0.5);
-      this.shadowContainer.addChild(outer, core); // 描画順: 1外側 → 2芯(仕様書の描画順)
+      this.shadowGroundLayer.addChild(outer, core); // 描画順: 1外側 → 2芯(仕様書の描画順)。バッチ用に別層(高9)
       entry = { core, outer, mesh: null, lastSeenAt: now, lastMeshTexture: null, meshFadeStartAt: 0 };
       this.shadowPoolV9.set(req.id, entry);
     }
     entry.lastSeenAt = now;
 
-    const ldom = this.computeDominantLight(req.id, footX, footY, ambDirX, ambDirY, glowLights, ldomLerp);
+    const ldom = this.computeDominantLight(req.id, footX, footY, ambDirX, ambDirY, glowLights, releaseLerp, now);
 
     // ---- 接地2枚(画面軸のまま=回さない。芯は足元ぴったり) ----
     const scaleMult = req.scaleMult ?? 1;
@@ -8877,7 +8965,7 @@ export class PixiScene {
 
     if (!entry.mesh) {
       entry.mesh = new PerspectiveMesh({ texture: bake.texture, verticesX: SHADOW_MESH_VX, verticesY: SHADOW_MESH_VY });
-      this.shadowContainer.addChild(entry.mesh);
+      this.shadowMeshLayer.addChild(entry.mesh); // バッチ用に別層(高9)
       entry.meshFadeStartAt = now; // §3-9-B確定: 焼き上がって初めて出す時は150msでαをフェードイン
     }
     if (entry.mesh.texture !== bake.texture) { entry.mesh.texture = bake.texture; entry.lastMeshTexture = bake.texture; }
@@ -8909,7 +8997,7 @@ export class PixiScene {
       if (now - entry.lastSeenAt > SHADOW_MESH_GC_MS) {
         entry.core.destroy();
         entry.outer.destroy();
-        if (entry.mesh) entry.mesh.destroy();
+        if (entry.mesh) this.destroyShadowMesh(entry.mesh);
         this.shadowPoolV9.delete(id);
         this.shadowLdomState.delete(id);
         this.shadowHorizonTrimState.delete(id);
