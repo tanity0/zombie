@@ -1516,9 +1516,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       scrapSpent: Math.round(s.gameStats.strapsSpent),
       damageTaken: Math.round(s.gameStats.damageTaken),
       goldEarned: Math.round(
-        // G3: ghostSummonedThisRun も合流点へ渡す(スコア×0.5の対象はtotalScoreのみ=goldEarnedは不変だが、
-        // 全系統が同じ引数で合流点を通る形を保つ)。
-        calculateResultScore(s.gameStats, outcome === 'clear', s.stageTheme === 'lab', s.ghostSummonedThisRun).goldEarned
+        // ★v0.25.2768: スコア倍率の廃止に伴い ghostSummonedThisRun の受け渡しも撤去
+        // (元々 goldEarned には効いていなかった=引数を揃えるためだけに渡していた)。
+        calculateResultScore(s.gameStats, outcome === 'clear', s.stageTheme === 'lab').goldEarned
         * skillGoldRushMult(s.player)
       ),
       // M46(§6.21): 与ダメ/即死/近接ペース計測(gun/melee/otherチャネル・total=出力時に合算)。

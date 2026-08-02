@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { topScoreItem, calculateResultScore, GHOST_SCORE_MULT } from './resultScoring';
+import { topScoreItem, calculateResultScore } from './resultScoring';
 import type { GameStats } from '../types/game';
 
 // 全項目0の GameStats(必要なものだけ上書きして使う)。
@@ -59,31 +59,30 @@ describe('topScoreItem', () => {
   });
 });
 
-// BOT_AND_GHOST.md §2.7 制約2(G3): 守護霊(ゴースト)が一度でも召喚されたランは totalScore×0.5。
-// 対象はハイスコア/順位(totalScore)のみで、換金(goldScore/goldEarned)には掛けない(誇りだけを差し出す)。
-describe('守護霊(ゴースト)発動ランのスコア半減(G3)', () => {
+// ★v0.25.2768(社長裁定): 守護霊ランのスコア半減は**廃止**。
+// 「スコアは換金されないのだから、自然に減る以外いじらない。0.5もしない。」
+// + 「AI有無のスコアは分けない」= ハイスコアは1本・霊の有無で計算を変えない。
+// ⇒ `calculateResultScore` に守護霊の引数は無い。**この不変条件をここで固定する。**
+describe('守護霊(ゴースト)ランのスコアは素通し(v0.25.2768で半減を廃止)', () => {
   const stats = mkStats({
     timeAlive: 300, damageDealt: 4000, meleeFinishers: 5, maxCombo: 10,
     treasuresCollected: 2, strapsCollected: 100, damageTaken: 100,
   });
 
-  it('totalScoreだけが×0.5される(換金goldScore/goldEarnedは完全不変)', () => {
+  it('スコアを左右する引数は stats / won / isLab の3つだけ(守護霊の口が生えていない)', () => {
+    expect(calculateResultScore.length).toBe(2); // 既定値つき isLab は length に数えられない
+    // 旧実装は第4引数 ghostSummoned=true で totalScore が半分になっていた。余分な引数を渡しても
+    // 結果が変わらない=倍率の口が塞がっていることを固定する。
     const base = calculateResultScore(stats, true);
-    const halved = calculateResultScore(stats, true, false, true);
-    expect(halved.totalScore).toBe(Math.round(base.totalScore * GHOST_SCORE_MULT));
-    expect(halved.totalScore).toBeLessThan(base.totalScore);
-    expect(halved.goldScore).toBe(base.goldScore);
-    expect(halved.goldEarned).toBe(base.goldEarned);
-    // 内訳項目も不変(半減は最終集計の1箇所でのみ掛ける=散在させない)
-    expect(halved.damageScore).toBe(base.damageScore);
-    expect(halved.clearBonus).toBe(base.clearBonus);
+    const extra = (calculateResultScore as unknown as
+      (s: typeof stats, w: boolean, l?: boolean, g?: boolean) => typeof base)(stats, true, false, true);
+    expect(extra).toEqual(base);
   });
 
-  it('未発動(引数省略/false)は完全不変', () => {
-    expect(calculateResultScore(stats, true, false, false)).toEqual(calculateResultScore(stats, true));
-  });
-
-  it('倍率は1/2(叩き台・社長調整)', () => {
-    expect(GHOST_SCORE_MULT).toBe(0.5);
+  it('内訳の合計がそのまま totalScore になる(どこにも倍率が掛かっていない)', () => {
+    const r = calculateResultScore(stats, true);
+    expect(r.totalScore).toBe(
+      r.clearBonus + r.treasureScore + r.damageScore + r.finisherScore +
+      r.comboScore + r.eliteBossScore + r.scrapScore + r.survivalScore + r.speedBonus);
   });
 });

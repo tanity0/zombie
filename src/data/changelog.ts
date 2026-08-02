@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2768',
+    items: [
+      '守護霊を呼んだランのスコアが半分になる仕様を廃止しました。スコアはそのまま記録されます（守護霊のコストはボスHP1.6倍が担います）。',
+    ],
+  },
+  {
     version: '0.25.2767',
     items: [
       "名前に ' ! ? が使えるようになりました（iPhoneの「’」も同じ扱いになります）。",
