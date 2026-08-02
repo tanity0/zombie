@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2719',
+    items: [
+      'レア敵の足元の影を、ほかの敵と同じ色・濃さに揃えました（レア敵は本体の色で見分けられるため）。',
+    ],
+  },
+  {
     version: '0.25.2718',
     items: [
       'ゲーム内容の変更はありません（影の長さの改善案をまとめました）。',

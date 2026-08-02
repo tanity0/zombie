@@ -1289,13 +1289,12 @@ const ACRASIEL_WARP_TELEGRAPH_MS_VIS = 800;
 const ACRASIEL_BURST_RADIUS_VIS = 140; // ★未決事項(angelBossTick.tsと同じ叩き台値)。
 const THIN_BEAM_VIS_HALFWIDTH = 20; // スリィエル環の射出/アクラシエル単眼レーザー(T6細ビーム)の描画半太さ
 
-// 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
-const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
-  // 色はそのまま、濃さ(alphaMult)を上げて色が地面に乗りやすく=見分けやすく(社長指示)。1.7/1.7/1.9→2.1/2.1/2.3。
-  blue: { tint: 0x3b82f6, alphaMult: 2.1 },
-  purple: { tint: 0xa855f7, alphaMult: 2.1 },
-  red: { tint: 0xef4444, alphaMult: 2.3 },
-};
+// ★v0.25.2719(社長決定「レアは本体に色ついてれば影は他と一緒でいい。どちらにしても見分けられなかった
+// 名残りなので」): 色付き個体の影の色分け(青/紫/赤 tint + 濃さ×2.1〜2.3)を**廃止**し、
+// 影は他の敵と完全に同じにした。**見分けは本体スプライトの tint(下の M15)が担う。**
+// 経緯: もともと「体格拡大」→「影の色」→「本体の色(M15)」と手段が移ってきており、影の色は
+// 本体に色が付く前の名残りだった。**濃さ×2.1〜2.3 が影テクスチャのカーブを固定する制約に
+// なっていた**ので、これが外れたことで影のカーブを自由に作り替えられる(§3-9-A)。
 // PACING_PUZZLE.md §5.15 M15(社長決定・既定ON): 体格拡大の代わりに本体スプライトをtintで色分け
 // (遠目でも分かる濃さ)。?raretint=0で旧(tintなし=影のみ+体格拡大)へ戻す
 // (enemyUtils.tsのRARE_TINT_ENABLEDと同名パラメータ・各自読む=既存の流儀どおり)。
@@ -7653,8 +7652,7 @@ export class PixiScene {
       const footY = e.y + e.height;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
-      // 色付き個体は影を色で染める(青<紫<赤)。本体の見た目は変えない。
-      const ct = e.colorTier ? ENEMY_COLOR_TIER_SHADOW[e.colorTier] : undefined;
+      // ★色付き個体の影の色分けは廃止(v0.25.2719・社長決定)。見分けは本体スプライトの tint が担う。
       if (isHiddenBoss(e.type)) {
         // 裏ボスは絵が巨大で当たり判定(帯)と分離。帯の中心にフラット楕円(方向の伸びなし)で置く。
         // 当たり判定より一回り大きく見せ(×BOSS_SHADOW_SCALE)、色は鮮やかめの赤(社長指示)。
@@ -7666,7 +7664,7 @@ export class PixiScene {
       } else {
         const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
         const shadowW = actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
-        this.placeShadowSprite(e.id, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, seen, ct?.tint ?? 0x000000, ct?.alphaMult ?? 1);
+        this.placeShadowSprite(e.id, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, seen);
       }
     }
     // 召喚(味方ユニット)も敵と同じ方向影で揃える。
