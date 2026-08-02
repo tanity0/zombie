@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2760',
+    items: [
+      '大きなボスの影が、絵の余白のぶん足元からズレて表示されることがある不具合を修正しました。',
+    ],
+  },
+  {
     version: '0.25.2759',
     items: [
       '爆発などの強い光で影が伸びる勢いを調整しました（伸びる時は素早く、戻る時はゆっくりに）。',

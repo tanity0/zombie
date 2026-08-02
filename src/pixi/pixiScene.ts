@@ -2294,6 +2294,9 @@ export class PixiScene {
   private lastShadowLdomNow = 0; // 平滑の dt 計算用
   // 地平線帯の詰め(§3-9-B確定)の平滑後の長さ。キャスターid別。
   private shadowHorizonTrimState = new Map<string, number>();
+  // ★検収差し戻し(中12): テクスチャのαの実体bbox(0..1、テクスチャ高さに対する割合)。1回だけ測って
+  // キャッシュ(裁定Dのベイクとは別物=軽いのでLRU無し。マップは小さい数値だけなのでメモリ圧は無視できる)。
+  private textureContentCache = new Map<Texture, { top: number; bottom: number }>();
   // 商人/イベントNPC/城/拾い物 のソフト影リクエスト(各 sync が可視時に設定、syncShadows が配置)。
   // §3-9-B v9裁定A: legacyW=旧実装用の固定px(?silshadow=0)。rawW/rawH/texture=新実装用の表示実寸。
   private merchantShadow: BuildingShadowReq | null = null;
@@ -8307,8 +8310,12 @@ export class PixiScene {
       if (corpse.visible && corpse.alpha > 0 && corpse.texture) {
         const cw = Math.abs(corpse.width), ch = Math.abs(corpse.height);
         if (cw > 0 && ch > 0) {
+          // ★検収差し戻し(中12の横展開): 生きている裏ボスと同じく、実アルファ内容の下端を使う
+          // (単純な中心±高さ/2だと透明な余白を「絵の下端」と誤認する)。
+          const contentBottomFrac = this.textureContentBottomFrac(corpse.texture);
+          const groundY = corpse.y + ch * (contentBottomFrac - 0.5);
           place({
-            id: 'bossCorpse', x: corpse.x, y: corpse.y + ch / 2, // anchor(0.5,0.5)の下端=論理の足元
+            id: 'bossCorpse', x: corpse.x, y: groundY,
             rawW: cw, rawH: ch, texture: corpse.texture,
             alpha: 1, shadowFade: corpse.alpha,
           });
@@ -8532,8 +8539,10 @@ export class PixiScene {
 
   // ---- シルエットのベイク(裁定D/E/F/G) --------------------------------------
 
-  /** キャッシュ済みなら返す。無ければベイクキューへ積んで null(=接地2枚だけで描く。150msフェードインは
-   * 呼び出し側の alpha 自然増加に任せる=このコミットでは専用の遅延タイマーは実装していない・★未決)。 */
+  /** キャッシュ済みなら返す。無ければベイクキューへ積んで null を返す(呼び出し側=placeShadowV9が
+   * 中15の「直前コマのテクスチャで維持」フォールバック、それも無ければ接地2枚だけで待つ。
+   * 焼き上がって初めて表示する時の150msフェードインは meshFadeStartAt/SHADOW_MESH_FADE_IN_MS で
+   * 実装済み=★未決ではない)。 */
   private silhouetteEnsure(tex: Texture | null): SilhouetteBake | null {
     if (!tex) return null;
     const hit = this.silhouetteCache.get(tex);
@@ -8692,6 +8701,44 @@ export class PixiScene {
         `${(this.silhouetteCacheBytes / 1024 / 1024).toFixed(2)}MB (budget ${(SHADOW_SIL_CACHE_BUDGET_BYTES / 1024 / 1024) | 0}MB)`
       );
       this.silhouetteBakeLoggedOnce = true;
+    }
+  }
+
+  /**
+   * ★検収差し戻し(中12): テクスチャの実アルファ内容の下端(0=テクスチャ上端/1=下端の割合)。
+   * 裏ボスは anchor(0.5,0.5)+`BOSS_SPRITE_FIT` の手動係数で位置決めしており、テクスチャに透明な
+   * 余白があると「絵の下端」の計算(スプライト中心±テクスチャ高さ/2)が実際に見えている絵より
+   * 上下にズレる(社長報告の例: ヨルムンガルドで足元より80px級下に影が置かれる)。
+   * `renderer.extract.pixels` で1回だけ実測してキャッシュする(ベイクと同じく1回きりのper-pixel
+   * パスは仕様上許容されている)。renderer未準備等で測れない時は 1(=テクスチャ下端。従来の挙動)
+   * にフォールバックする(キャッシュはしない=次回呼び出しで再試行できる)。
+   */
+  private textureContentBottomFrac(tex: Texture): number {
+    const cached = this.textureContentCache.get(tex);
+    if (cached) return cached.bottom;
+    if (!this.renderer || !tex || tex.width <= 1 || tex.height <= 1) return 1;
+    try {
+      const { pixels, width, height } = this.renderer.extract.pixels(tex);
+      const findRow = (fromTop: boolean): number => {
+        const start = fromTop ? 0 : height - 1;
+        const end = fromTop ? height : -1;
+        const step = fromTop ? 1 : -1;
+        for (let y = start; y !== end; y += step) {
+          for (let x = 0; x < width; x++) {
+            if (pixels[(y * width + x) * 4 + 3] > 10) return y;
+          }
+        }
+        return -1;
+      };
+      const foundTop = findRow(true);
+      const foundBottom = findRow(false);
+      const top = foundTop < 0 ? 0 : foundTop / height;
+      const bottom = foundBottom < 0 ? 1 : (foundBottom + 1) / height;
+      this.textureContentCache.set(tex, { top, bottom });
+      return bottom;
+    } catch (err) {
+      console.error('[shadow-v9] textureContentBottomFrac failed (suppressed):', err);
+      return 1;
     }
   }
 
@@ -8918,9 +8965,13 @@ export class PixiScene {
       if (entry.mesh) entry.mesh.visible = false; // 松明/焚き火/緑卵、または絵の無いGraphics拾い物
       return;
     }
-    const bake = this.silhouetteEnsure(req.texture);
-    if (!bake) {
-      if (entry.mesh) entry.mesh.visible = false; // 未ベイク=接地2枚だけで待つ(★未決: 150msフェードイン未実装)
+    // ★検収差し戻し(中15): 未ベイクの新コマに切り替わるたびに毎回メッシュを隠すと、出撃直後や
+    // 敵の歩行コマが変わるたびに明滅する。直前に表示していたテクスチャ(lastMeshTexture)があれば、
+    // 新しいベイクが焼けるまでそれを使い続ける(=1コマ前のポーズのまま位置/αだけ更新される。
+    // 一度も焼けていない=表示するものが無い時だけ隠す)。
+    const bakeTex = this.silhouetteEnsure(req.texture)?.texture ?? entry.lastMeshTexture ?? undefined;
+    if (!bakeTex) {
+      if (entry.mesh) entry.mesh.visible = false; // まだ1枚も焼けていない
       return;
     }
     const rawLength = nonExplLen * ldom.lenMult * shrink;
@@ -8964,11 +9015,12 @@ export class PixiScene {
     }
 
     if (!entry.mesh) {
-      entry.mesh = new PerspectiveMesh({ texture: bake.texture, verticesX: SHADOW_MESH_VX, verticesY: SHADOW_MESH_VY });
+      entry.mesh = new PerspectiveMesh({ texture: bakeTex, verticesX: SHADOW_MESH_VX, verticesY: SHADOW_MESH_VY });
       this.shadowMeshLayer.addChild(entry.mesh); // バッチ用に別層(高9)
       entry.meshFadeStartAt = now; // §3-9-B確定: 焼き上がって初めて出す時は150msでαをフェードイン
     }
-    if (entry.mesh.texture !== bake.texture) { entry.mesh.texture = bake.texture; entry.lastMeshTexture = bake.texture; }
+    if (entry.mesh.texture !== bakeTex) entry.mesh.texture = bakeTex;
+    entry.lastMeshTexture = bakeTex; // 中13: 次に未ベイクへ落ちた時のフォールバック用に更新
     const fadeIn = entry.meshFadeStartAt > 0 ? Math.min(1, (now - entry.meshFadeStartAt) / SHADOW_MESH_FADE_IN_MS) : 1;
     entry.mesh.alpha = Math.min(1, SHADOW_SIL_ALPHA_BASE * densityMult * totalAlpha * fadeIn);
 
@@ -11022,7 +11074,11 @@ export class PixiScene {
       // heightPx相当(shadowLiftPx)として別途渡す(=殴るたびに影が跳ねる/静止時に呼吸で脈動する事故を防ぐ)。
       view.shadowScale = scale;
       view.shadowLiftPx = liftHop + kbHop - lungeOffY;
-      view.shadowGroundY = spy + (scale * tex.height) / 2; // 論理の足元(絵の下端。リフト/スカッシュ無し)
+      // ★検収差し戻し(中12): 「絵の下端」は単純な中心±テクスチャ高さ/2ではなく、テクスチャの
+      // 実アルファ内容の下端(余白を除いた実体)を使う(社長報告: ヨルムンガルドで足元より80px級下に
+      // 影が置かれていた=透明な余白を「絵の下端」と誤認していたため)。
+      const contentBottomFrac = this.textureContentBottomFrac(tex);
+      view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5); // 論理の足元(実体下端。リフト/スカッシュ無し)
       view.sprite.position.set(Math.round(spx + liftShake + lungeOffX), Math.round(spy - liftHop - kbHop + lungeOffY));
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
