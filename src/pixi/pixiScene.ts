@@ -1446,6 +1446,11 @@ const FLAME_WIND_SKEW = 0.30;
 const EMBER_WIND_DRIFT = 26;
 /** 花が風にしなる量(rad・skew)。軽いので炎より大きくしなる。判定を持たない飾りなので自由に振れる。 */
 const FLOWER_WIND_SKEW = 0.20;
+// 花の接地影(v0.25.2721・社長報告「m1の💐も浮いてる」)。他のアクターは絵幅×0.55だが、
+// 花は**株の広がりに対して接地面が狭い**(茎で立っている)ので細めに。濃さも控えめ=軽い飾りなので。
+// どちらも実機で見ながら調整する叩き台。
+const FLOWER_SHADOW_WIDTH_RATIO = 0.34;
+const FLOWER_SHADOW_ALPHA_MULT = 0.72;
 /**
  * 木が風にしなる量(rad・skew)。**わざと小さい**。
  * ①幹まで傾くとゴムに見える ②**木は当たり判定を持つ**(幹の矩形)ので、絵を大きく動かすと
@@ -7683,6 +7688,18 @@ export class PixiScene {
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
       this.placeShadowSprite('pw:' + p.id, p.x + p.width / 2, footY - 2, this.placedWeaponShadowWidth(p), horizonAlpha, seen);
+    }
+    // ★ステージ1の飾りの花にも接地影を出す(社長報告v0.25.2721「m1の💐も浮いてる」)。
+    // 原因は素材ではない——花のPNGは余白ゼロで、足元(anchor 0.5,1)も正しく地面に置かれている。
+    // **接地影が無いこと**が浮いて見える理由。花は「128pxの絵が10px幅の茎で立っている」形
+    // (実測: flower-0 の最下行の実体幅は絵の1割未満)なので、影が無いと地面に乗って見えない。
+    // 判定は持たないまま=見た目だけの修正。影1枚はプール済みスプライトなので負荷は据え置き(1/10)。
+    for (const [id, entry] of this.flowerObjs) {
+      const alpha = this.horizonActorAlpha(entry.footY);
+      if (alpha <= 0 || entry.sprite.visible === false) continue;
+      const w = Math.abs(entry.sprite.width) * FLOWER_SHADOW_WIDTH_RATIO;
+      if (w <= 0) continue;
+      this.placeShadowSprite('flw:' + id, entry.sprite.x, entry.footY, w, alpha, seen, 0x000000, FLOWER_SHADOW_ALPHA_MULT);
     }
     // 商人 / イベントNPC(各 sync が可視時にリクエストを立てる)。
     if (this.merchantShadow) {

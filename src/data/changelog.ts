@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2721',
+    items: [
+      'ステージ1の花に影が付き、地面に乗って見えるようになりました。',
+    ],
+  },
+  {
     version: '0.25.2720',
     items: [
       'ゲーム内容の変更はありません（影の見え方の比較資料を作りました）。',
