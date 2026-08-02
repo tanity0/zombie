@@ -5065,7 +5065,7 @@ export class PixiScene {
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
-    this.syncShadowProbe(s.camera, now); // 計測専用(ベンチ以外では count=0 で即 return)
+    this.syncShadowProbe(s.camera, now, s.effects); // 計測専用(ベンチ以外では count=0 で即 return)
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
@@ -7490,6 +7490,8 @@ export class PixiScene {
   //       **実装前に**測る。ここが高いと台形をやめる=設計ごと作り直しになるため。
   // 仕様(§3-9-B v8)の `GLOW_SUM_CAP` と同じ値。ここを変えたら仕様側も揃えること。
   private static readonly PROBE_GLOW_SUM_CAP = 2.0;
+  // 仕様(§3-9-B v8)の `GLOW_SHADOW_WEIGHT` 初期値と同じ。
+  private static readonly PROBE_GLOW_WEIGHT = 1.6;
   private probeMeshes: PerspectiveMesh[] = [];
   private probeSprites: Sprite[] = [];
   private probeTexes: Texture[] = [];
@@ -7516,7 +7518,7 @@ export class PixiScene {
     return rt;
   }
 
-  private syncShadowProbe(camera: { x: number; y: number }, now: number) {
+  private syncShadowProbe(camera: { x: number; y: number }, now: number, effects: VisualEffect[]) {
     const count = shadowProbeCount();
     if (count <= 0) {
       if (this.probeMeshes.length || this.probeSprites.length) {
@@ -7529,6 +7531,24 @@ export class PixiScene {
     }
     const mode = shadowProbeMode();
     const stretch = shadowProbeStretch();
+    // ★stretch>=2 = 本物の連動(社長指摘 v0.25.2741)。生きている強glowを1フレーム1回だけ集め、
+    // 下でキャスター1体ごとに**全部と突き合わせる**(= 本番 `Ldom` と同じ計算量: 体数 × 光源数)。
+    // 集める条件は `syncLocalEventLighting` と同一(kind==='glow' && radius>=STRONG_GLOW_RADIUS、
+    // life>0)。reach/strength の式もそこから流用しているので、代金が本番と同じ形になる。
+    const linkLights: { x: number; y: number; reach: number; w: number }[] = [];
+    if (stretch >= 2) {
+      for (const e of effects) {
+        if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
+        const life = 1 - Math.min(1, (now - e.createdAt) / e.duration);
+        if (life <= 0) continue;
+        linkLights.push({
+          x: e.x,
+          y: e.y,
+          reach: e.radius * LOCAL_EVENT_SHADOW_REACH_MULT,
+          w: life * PixiScene.PROBE_GLOW_WEIGHT,
+        });
+      }
+    }
     const useMesh = mode !== 'sprite';
     const perTex = mode === 'meshtex'; // 1枚ずつ別テクスチャ=バインドの代金を測る
     // 画面いっぱいに散らす。位置・大きさ・向きを**毎フレーム動かす**
@@ -7542,13 +7562,32 @@ export class PixiScene {
       // ★「爆発で伸びる」の再現(社長指摘 v0.25.2740)。stretch=0 の段は従来どおり伸びない。
       // Σw_g が 0〜GLOW_SUM_CAP(2.0) を脈打つ ⇒ 長さ ×(1+0.9×Σ) = 最大2.8倍。
       // これで **塗る面積(フィルレート)** と **4隅の振れ幅** の両方が本番と同じ形になる。
-      const sigma = stretch > 0 ? stretch * PixiScene.PROBE_GLOW_SUM_CAP * (0.5 + 0.5 * Math.sin(now / 1100 + i * 0.05)) : 0;
+      let sigma = 0;
+      let ang = 1.17 + Math.sin(now / 900 + i * 0.37) * 0.35;
+      if (stretch >= 2) {
+        // ★本物の支配光。環境光(重み1)に、届いている強glowを1つずつ足していく。
+        let ax = Math.cos(1.17), ay = Math.sin(1.17), sum = 0;
+        for (let g = 0; g < linkLights.length; g++) {
+          const L = linkLights[g];
+          const dx = fx - L.x, dy = fy - L.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 1 || dist > L.reach) continue;
+          const w = (1 - dist / L.reach) * L.w;
+          sum += w;
+          ax += (dx / dist) * w;
+          ay += (dy / dist) * w;
+        }
+        sigma = Math.min(sum, PixiScene.PROBE_GLOW_SUM_CAP);
+        ang = Math.atan2(ay, ax);
+      } else if (stretch > 0) {
+        // 決め打ちの脈動(連動計算をしない=面積と振れ幅だけを測る段)
+        sigma = PixiScene.PROBE_GLOW_SUM_CAP * (0.5 + 0.5 * Math.sin(now / 1100 + i * 0.05));
+        ang += Math.sin(now / 900 + i * 0.37) * 0.9 * sigma;
+      }
       const lenMul = 1 + 0.9 * sigma;
       const len = (120 + wobble * 26) * lenMul;
       const halfNear = 16 + wobble * 3;              // 足元=細い(伸びても足元は絞ったまま)
       const halfFar = (46 + wobble * 6) * (1 + 0.35 * sigma); // 先端は少し広がる
-      // 支配光が振れる想定。爆発が効いている時ほど大きく振れる。
-      const ang = 1.17 + Math.sin(now / 900 + i * 0.37) * (0.35 + 0.9 * sigma);
       const ux = Math.cos(ang), uy = Math.sin(ang);
       const px = -uy, py = ux; // 光方向に直交
       const tipX = fx + ux * len, tipY = fy + uy * len;

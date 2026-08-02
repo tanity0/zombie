@@ -1,5 +1,37 @@
 # Development Log
 
+## v0.25.2742 — 影ベンチ2本目=合格 / ★「光と連動」の段を追加(社長指摘)【2026-08-02 15:02 JST】
+
+**2本目の結果(社長・実機 v0.25.2740 / `?benchonly=SHD-X,SHD-XG` `evshadow=0`)**
+| 段 | 中身 | Δadj | avg | min | n |
+|---|---|---|---|---|---|
+| SHD-X **X90** | 90枚・伸びあり(最大2.8倍)・glow0 | **−0.2ms** | 60.0 | 60 | 160 |
+| SHD-XG **XG90** | 90枚・伸びあり・**強glow12＋松明2** | **−0.1ms** | 60.0 | 60 | 161 |
+canary 59.4→60.0→60.0 / drift −0.2ms / repeat shift +0.2ms ⇒ 誤差の範囲。全段 PASS・SAFE。
+⇒ ★**強glow12個と伸びた90枚が同時でも60fps。**
+⇒ ★**旧実装では glow12 = avg 41.5〜42.6**(投影影のせい)。**`evshadow=0` で 60.0 に戻る**ので、
+  **投影影を捨てる効果がそのまま数字に出ている**=v8の方向で正しいことの裏付け。
+
+**★社長指摘「光と連動して伸び縮みしてないけど、その動きの負荷は計らなくて平気なの?」= また抜けていた。**
+1〜2本目の伸びは **`sin()` の決め打ち**で、**光との連動計算をしていない**。本番は
+**キャスター1体ごとに、生きている強glow全部との距離・減衰・ベクトル合成**を毎フレーム回す
+(90体×12個 = **1080回/フレーム**)。**塗る量ではなくCPUの話なので独立して測る必要がある。**
+- `shadowProbe.ts`: `stretch` を 0=なし / 1=決め打ち / **2=本物の連動** の3段階へ。
+- `pixiScene.ts`: `syncShadowProbe` に `effects` を渡し、**`syncLocalEventLighting` と同一条件**で
+  生きた強glowを1フレーム1回集め、**キャスターごとに全部と突き合わせて `Ldom` を実計算**。
+  reach(`radius × LOCAL_EVENT_SHADOW_REACH_MULT`)も本番の式を流用=代金が同じ形になる。
+  重み定数は仕様の `GLOW_SHADOW_WEIGHT`(1.6)/`GLOW_SUM_CAP`(2.0)と同じ値を持つ。
+- `BenchmarkOverlay.tsx`: `SHD-XL`(XL90/XL60/XL30)を追加。**枚数・伸び・glow数は XG90 と同一**なので、
+  **XG90 との差が連動計算の代金そのもの**。段を3つにしたのは「体数×光源数」で効くかの確認
+  (体数を半分にすれば代金も半分のはず)。
+- **回し方**: `?benchonly=SHD-XG,SHD-XL&evshadow=0`
+  ★XG90 を**同じ1本の中に**入れて同一run内で比べる(別runの絶対値を比べない)。
+
+**変更ファイル**: `src/pixi/shadowProbe.ts` / `src/pixi/pixiScene.ts` /
+`src/components/BenchmarkOverlay.tsx` / `research/LIGHT_REWORK.md` / `package.json` / `src/data/changelog.ts`
+**検証**: `npm run typecheck` / `npm run lint` エラー0。
+**次の引き継ぎ**: 社長が `?benchonly=SHD-XG,SHD-XL&evshadow=0` を1本。これで測り残しが無くなる。
+
 ## v0.25.2741 — オンラインはアプリ配布後も動くか(社長質問)の整理【2026-08-02 14:52 JST】
 
 **社長質問**: 「workerってなに?具体的な手順が分からないとできない」

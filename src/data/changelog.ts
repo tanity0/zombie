@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2742',
+    items: [
+      'ゲーム内容の変更はありません（影のベンチに「光と連動して伸び縮みする」段を追加しました）。',
+    ],
+  },
+  {
     version: '0.25.2741',
     items: [
       'ゲーム内容の変更はありません（オンラインがアプリ配布後も成立するかの整理を書きました）。',
