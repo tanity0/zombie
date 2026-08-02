@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2781',
+    items: [
+      '松明や爆発に十分近づくと、プレイヤー自身のまわりの明かりが完全に消えるようになりました。',
+    ],
+  },
+  {
     version: '0.25.2780',
     items: [
       '松明や爆発でプレイヤーの明かりが弱まる範囲が狭すぎて、ほとんど効いていなかったのを直しました。',

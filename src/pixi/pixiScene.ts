@@ -1551,7 +1551,7 @@ const LOCAL_EVENT_SHADE_ALPHA = 0.5;
 const assistLightDebug = { b: 0, mult: 1, lights: 0 };
 export const getAssistLightDebug = () => assistLightDebug;
 
-const PLAYER_LIGHT_YIELD = tsNum('lightyield', 0.85);      // 明るさ最大でどれだけ引くか(1=完全に消える)
+const PLAYER_LIGHT_YIELD = tsNum('lightyield', 1.0);       // 明るさ最大でどれだけ引くか(1=完全に消える。社長裁定v0.25.2781「ゼロがいい」)
 const PLAYER_LIGHT_YIELD_MS = tsNum('lightyieldms', 220);  // 平滑の時定数ms(松明のpulseで明滅させない)
 // ★v0.25.2780(社長「何も変わってない?」): 初版の届く距離が**まったく足りていなかった**。
 // 松明は reach=haloR(=TORCH_LIGHT_RADIUS 92px)そのままで「抱きつく距離」、強glowも×2.5で約200px。
