@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2778',
+    items: [
+      'ゲーム内容の変更はありません（影の作り替えで、プレイヤーの光の見え方を壊さないための確認手順を決めました）。',
+    ],
+  },
+  {
     version: '0.25.2777',
     items: [
       'ゲーム内容の変更はありません（残りの花の浮きの原因を特定し、影の作り替えと同時に直すことにしました）。',
