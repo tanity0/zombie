@@ -1730,6 +1730,13 @@ const SHADOW_GLOW_STRETCH = tsNum('glowstretch', 0.9); // GLOW_STRETCH(長さ倍
 // ★v12で廃止: const SHADOW_TIP_RELEASE_MS = tsNum('glowfade', 220);
 /** ★v12: 近すぎる光を影の向きから外すガード(px)。`?glowmindist=0` で切れる(=v9と同じ「足元の光でも伸びる」)。 */
 const SHADOW_GLOW_MIN_DIST = tsNum('glowmindist', SHADOW_GLOW_MIN_DIST_PX);
+/**
+ * ★v0.25.2801 診断(社長「爆発もどんな光でも影は動いてない。画面が暗くなるだけ」):
+ * `?glowshadowtest=1` で**プレイヤーの左上140pxに強glow相当の光を常時1つ**注入する(絵は出さない=影だけ)。
+ * これが出れば**影の仕組みは動いている**=光の一覧(`glowLights`)側の問題。出なければ描画側の問題。
+ * ヘッドレスでは同じ注入で伸びた影が正しく描かれることを確認済みなので、実機で切り分ける。
+ */
+const SHADOW_GLOW_TEST = tsBool('glowshadowtest', false);
 /** 支配光に強glowが参加する条件は旧投影影と同じ(effects[] の kind==='glow' && radius>=STRONG_GLOW_RADIUS)。
  * 松明/焚き火/城・商人のグロー/緑卵の光/プレイヤーライトはスプライトでありeffectではないため対象外
  * (§3-9-B確定)。`?evshadow=0` は「支配光に強glowを参加させない(環境光のみ)」の意味(裁定O)。 */
@@ -8592,6 +8599,12 @@ export class PixiScene {
         if (life <= 0) continue;
         glowLights.push({ key: e.id, x: e.x, y: e.y, reach: e.radius * SHADOW_GLOW_REACH_MULT, life });
       }
+    }
+
+    if (SHADOW_GLOW_TEST) {
+      // 診断用の合成光(既定OFF)。プレイヤーの左上140px・reach275px・life0.7 相当で固定。
+      const px = player.x + player.width / 2, py = player.y + player.height / 2;
+      glowLights.push({ key: 'glowtest', x: px - 140, y: py - 60, reach: 275, life: 0.7 });
     }
 
     const seen = new Set<string>();
