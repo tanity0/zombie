@@ -283,6 +283,9 @@ const tsNum = (key: string, def: number): number => {
  * 設計チャットが層を推測で当てにいって2回外したので、**現物で1枚ずつ消して特定する**道具に切り替えた。
  * `?hidelayer=far|hz|nh|ff|fog|ground`(カンマ区切りで複数可)。**線が消えた時に指定していた層が犯人**。
  *   far=遠景パノラマ / hz=遠景森1(地平帯) / nh=遠景森2 / ff=手前森 / fog=霧 / ground=地面ベース
+ *   ★v0.25.2786で追加(遠景を全部消しても線が残ったため、上に被せている幕も対象にした):
+ *   grade=全画面グレード / vig=周辺減光 / air=寒色グレード / cloud=雲影 / strips=地面ストリップ /
+ *   dim=帯外の暗幕 / veil=研究所の暗幕 / mask=森のフェードマスクを外す
  */
 const HIDE_LAYERS = new Set(
   (typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('hidelayer') || '')
@@ -5567,6 +5570,18 @@ export class PixiScene {
       if (HIDE_LAYERS.has('ff')) this.L.frontForest.visible = false;
       if (HIDE_LAYERS.has('fog')) this.snowHorizonFog.visible = false;
       if (HIDE_LAYERS.has('ground')) this.L.groundBase.visible = false;
+      // ★v0.25.2786: 遠景の層を全部消しても線が残ったので、**上に被せている幕**も落とせるようにした。
+      if (HIDE_LAYERS.has('grade')) this.gradeSprite.visible = false;
+      if (HIDE_LAYERS.has('vig')) this.vignette.visible = false;
+      if (HIDE_LAYERS.has('air')) this.snowAir.visible = false;
+      if (HIDE_LAYERS.has('cloud')) this.cloudShadow.visible = false;
+      if (HIDE_LAYERS.has('strips')) for (const st of this.L.groundStrips) st.visible = false;
+      if (HIDE_LAYERS.has('dim') && this.labOutDim) this.labOutDim.visible = false;
+      if (HIDE_LAYERS.has('veil') && this.labVeilSprite) this.labVeilSprite.visible = false;
+      if (HIDE_LAYERS.has('mask')) { // マスクを外す(マスクの端が線に見えている可能性を切り分ける)
+        this.L.horizonForest.mask = null;
+        this.L.frontForest.mask = null;
+      }
     }
     this.syncAlchemyCircle(s.player, s.gameTime, now);
     this.syncWhipHurricane(s.hurricane, now);
