@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2764',
+    items: [
+      '影が元の位置へ戻る動きをさらに調整しました(前バージョンの修正が不十分だった箇所の追加対応)。',
+    ],
+  },
+  {
     version: '0.25.2763',
     items: [
       '爆発などの強い光が消える時、影の先端が遠回りせず真っすぐ元の位置へ戻るよう調整しました。',

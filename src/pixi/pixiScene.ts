@@ -2314,14 +2314,19 @@ export class PixiScene {
   private silhouetteQueued = new Set<Texture>();
   private silhouetteBakeLoggedOnce = false; // 常駐バイト数を1回だけログする(仕様書指示)
   private silhouetteBakeTimeLoggedOnce = false; // ★検収差し戻し(高6): ベイク1枚のフレーム時間を1回だけログする
-  // ★S-5/S-7: 支配光の「勝者」状態+先端ベクトルの平滑状態。キャスターid別。
-  // winnerKey='amb'|強glowのeffect.id。sum は Σw_g(長さ/濃さ用。S-3の非対称エンベロープは
-  // 向きの計算とは無関係)。tipX/tipY は★S-7で実際に描く先端オフセット(footからの相対px、
-  // 正規化しない2次元ベクトルのまま補間=これが直線で戻る仕組みの本体)。hasTip=falseの間は
-  // 初回なので次のplaceShadowV9呼び出しで即座にスナップする。
+  // ★S-5/S-7/S-8: 支配光の「勝者」状態+先端ベクトルの平滑状態。キャスターid別。
+  // winnerKey='amb'|強glowのeffect.id。
+  // ★S-8(社長実機報告「まだL字」の訂正裁定): 長さ用のΣ(sigmaLen)は平滑を持たない(毎フレーム
+  // 生のsumをそのまま使う=状態を持たない)。濃さ用のΣだけ`sumDark`にこれまでどおりの下り220ms
+  // 平滑を残す(濃さは経路を持たないので、平滑しても点滅防止の役にしか立たない)。
+  // `prevRawSum`はrising判定(=生のsumが前フレームより増えたか)専用の記憶(平滑後の値と比べると
+  // 「Σは平滑してもtipTargetの向き/長さは平滑しない」というS-8の前提が崩れるため分離した)。
+  // tipX/tipY は★S-7で実際に描く先端オフセット(footからの相対px、正規化しない2次元ベクトルの
+  // まま補間=これが直線で戻る仕組みの本体)。hasTip=falseの間は初回なので次のplaceShadowV9
+  // 呼び出しで即座にスナップする。
   private shadowWinnerState = new Map<string, {
     winnerKey: string; winnerDirX: number; winnerDirY: number; winnerStrength: number;
-    sum: number; punchUntil: number;
+    sumDark: number; prevRawSum: number; punchUntil: number;
     tipX: number; tipY: number; hasTip: boolean;
   }>();
   private lastShadowLdomNow = 0; // 平滑の dt 計算用
@@ -8802,11 +8807,18 @@ export class PixiScene {
    * ★S-7(社長実機報告「戻り方の経路が違う(L字)」): 勝者交代そのものは**即時**(角度のクロス
    * フェードはしない=このメソッドは常にその瞬間の"生"の勝者方向を返す)。滑らかさは、この
    * dirX/dirYに長さを掛けた「先端ベクトル」を`placeShadowV9`側で2次元のまま直線補間することで
-   * 出す(向きと長さを別々に平滑するとL字になる。ここでは平滑しない=平滑は先端ベクトル側の責務)。
-   * 長さ/濃さは従来どおり Σw_g(全glowの強さの合計。勝者とは無関係)から出す(S-3: 上りは平滑ゼロ・
-   * 下りだけ`SHADOW_LDOM_RELEASE_MS`。S-4: 立ち上がりからの`SHADOW_GLOW_PUNCH_MS`だけ長さに punch)。
-   * `rising`(=Σが今フレーム増えた)を返す: `placeShadowV9`が先端ベクトルを即時スナップさせるか
-   * 補間するかの分岐にこの既存シグナルをそのまま使う(伸びる時は即時=社長「1は合ってる」=不変)。
+   * 出す。
+   * ★S-8(社長実機報告「まだL字」の訂正裁定): S-7では「長さ用のΣも下り220msで平滑する」と
+   * 書いたのが誤りだった。向き(即時)と長さ(220ms遅延)が別々に決まるため、**目標(tipTarget)
+   * そのものがL字を描いており**、先端ベクトルを直線補間しても目標がL字ならL字のままだった
+   * (二重平滑)。⇒ **長さ用のΣ(sigmaLen)は状態を持たず、生のΣw_gをそのまま使う(上りも下りも
+   * 平滑ゼロ)**。爆発が消えた瞬間、tipTarget(向き×長さ)は両成分とも即座に規定位置になり、
+   * **先端ベクトルの直線補間だけが唯一の平滑段**になる。**濃さ用のΣ(sigmaDark)だけ**、従来どおり
+   * 下り220msの平滑を残す(濃さは経路を持たない量なので、平滑しても点滅を防ぐ役にしか立たない)。
+   * `rising`(=**生の**Σw_gが前フレームの生の値より増えたか)を返す: `placeShadowV9`が先端ベクトルを
+   * 即時スナップさせるか補間するかの分岐にこの信号を使う(伸びる時は即時=社長「1は合ってる」=不変)。
+   * ★S-8: rising判定は平滑後の`sumDark`とは比較しない(平滑値と比べると「Σは平滑してよいが
+   * tipTargetは平滑しない」というS-8の前提が壊れるため、前フレームの生Σ=`prevRawSum`と比較する)。
    */
   private computeDominantLight(
     id: string, x: number, y: number,
@@ -8818,7 +8830,7 @@ export class PixiScene {
     if (!st) {
       st = {
         winnerKey: 'amb', winnerDirX: ambDirX, winnerDirY: ambDirY, winnerStrength: 1,
-        sum: 0, punchUntil: 0, tipX: 0, tipY: 0, hasTip: false,
+        sumDark: 0, prevRawSum: 0, punchUntil: 0, tipX: 0, tipY: 0, hasTip: false,
       };
       this.shadowWinnerState.set(id, st);
     }
@@ -8857,21 +8869,30 @@ export class PixiScene {
       st.winnerDirY = curWinnerDirY;
     }
 
-    // ★S-3/S-4: Σは向きと無関係に従来どおり(上りは平滑ゼロ・下りだけ平滑。立ち上がりでpunch窓)。
-    const rising = sum > st.sum;
-    if (rising) {
-      st.sum = sum;
-      st.punchUntil = now + SHADOW_GLOW_PUNCH_MS;
-    } else {
-      st.sum += (sum - st.sum) * releaseLerp;
-    }
-    const sigma = Math.min(Math.max(0, st.sum), SHADOW_GLOW_SUM_CAP);
+    // ★S-8: risingは「生のsum」の前フレーム比較で判定する(平滑後のsumDarkとは比べない)。
+    const rising = sum > st.prevRawSum;
+    st.prevRawSum = sum;
+    if (rising) st.punchUntil = now + SHADOW_GLOW_PUNCH_MS; // S-4: 立ち上がりの瞬間だけpunch窓を開く
+
+    // ★S-8: 長さ用のΣ(sigmaLen)は状態を持たない=生のsumをそのまま使う(上りも下りも平滑ゼロ)。
+    // これでtipTarget(向き×長さ)の両成分が「平滑なしの即時値」になり、先端ベクトルの直線補間
+    // (placeShadowV9)だけが唯一の平滑段になる。
+    const sigmaLen = Math.min(Math.max(0, sum), SHADOW_GLOW_SUM_CAP);
     const punch = now < st.punchUntil ? SHADOW_GLOW_PUNCH : 1; // S-4: 長さだけに掛ける(濃さには掛けない)
+
+    // ★S-8: 濃さ用のΣ(sigmaDark)だけ、従来どおり上り即時・下り220ms平滑(S-3のエンベロープ)。
+    // 濃さは経路(向き)を持たない量なので、平滑しても点滅を防ぐだけで幾何のバグは生まれない。
+    if (rising) {
+      st.sumDark = sum;
+    } else {
+      st.sumDark += (sum - st.sumDark) * releaseLerp;
+    }
+    const sigmaDark = Math.min(Math.max(0, st.sumDark), SHADOW_GLOW_SUM_CAP);
 
     return {
       dirX: st.winnerDirX, dirY: st.winnerDirY,
-      lenMult: (1 + SHADOW_GLOW_STRETCH * sigma) * punch,
-      darkMult: 1 + SHADOW_GLOW_DARKEN * sigma,
+      lenMult: (1 + SHADOW_GLOW_STRETCH * sigmaLen) * punch,
+      darkMult: 1 + SHADOW_GLOW_DARKEN * sigmaDark,
       rising,
     };
   }
