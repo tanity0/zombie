@@ -1594,6 +1594,10 @@ const GLOW_LIGHT_GAIN = tsNum('glowlightgain', 2.5);       // 強glowの life→
 // ★v0.25.2784(社長「松明と焚き火、コントラスト上げるのはもう少し近づいたら」):
 // **コントラストパンチ用の松明の届く距離だけ**を短くする(補助光の弱まり方は `torchreach` のまま=変えない)。
 const TORCH_PUNCH_REACH_MULT = tsNum('torchpunchreach', 1.5); // パンチ用の松明の距離=haloR×これ(補助光は3.0)
+// ★v0.25.2793(社長「焚き火とか松明のコントラストだけ少し弱めて」):
+// **松明/焚き火のパンチの強さだけ**を下げる。距離(torchpunchreach)も補助光(torchgain)も、
+// 爆発・レベルアップの強glowのパンチも**触らない**=弱めるのは火の明かりのコントラストだけ。
+const TORCH_PUNCH_GAIN_MULT = tsNum('torchpunchgain', 0.7);   // パンチ用の松明の強さ=描画の強さ×これ
 // ★爆発の「黒い円」の立ち上がり。旧実装は life 比例のみで**フェードインが無く**、湧いた瞬間に
 // 最大の黒が乗っていた(社長「パッときえてるんだよね」)。消える側は life→0 で元々滑らか。
 const LOCAL_EVENT_SHADE_RISE_MS = tsNum('shaderise', 110);
@@ -7867,8 +7871,9 @@ export class PixiScene {
     if (haloA > 0 && haloR > 0) {
       const strength = haloA * TORCH_LIGHT_GAIN;
       this.worldLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_LIGHT_REACH_MULT, strength });
-      // ★パンチ用は届く距離を短くする(近づいて初めてコントラストが上がる)。
-      this.punchLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_PUNCH_REACH_MULT, strength });
+      // ★パンチ用は届く距離を短くする(近づいて初めてコントラストが上がる)+強さも下げる
+      // (社長v0.25.2793「焚き火とか松明のコントラストだけ少し弱めて」)。爆発側の強さは別経路=不変。
+      this.punchLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_PUNCH_REACH_MULT, strength: strength * TORCH_PUNCH_GAIN_MULT });
     }
     const focusT = this.lightDefocus01(flameY);
     // ボケ側は**半径を広げるぶんαを下げる**(総光量を保つ=ボケて明るくならない)。

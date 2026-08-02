@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.2793 — 松明/焚き火のコントラストパンチだけ少し弱めた【2026-08-03 01:06 JST】
+
+社長「焚き火とか松明のコントラストだけ少し弱めて欲しい」。
+
+`TORCH_PUNCH_GAIN_MULT = 0.7`(`?torchpunchgain=`)を足し、**パンチ用に積む松明の光の強さだけ**に掛けた
+(`pixiScene.ts` の松明描画内 `punchLights.push`)。松明と焚き火は同じ描画経路
+(`campfire = snowStage && prop.type === 'torch'`)なので**この1箇所で両方**に効く。
+
+**触っていないもの**(意図的):
+- `TORCH_LIGHT_GAIN` / `TORCH_LIGHT_REACH_MULT`= プレイヤー補助光の弱まり方(絵の明るさ)は不変
+- `TORCH_PUNCH_REACH_MULT`= 「もう少し近づいてから上がる」距離(v0.25.2784の社長指示)は不変
+- 爆発・レベルアップの強glowのパンチ(別経路 `:5611`)は不変
+
+**変更ファイル**: `src/pixi/pixiScene.ts` / `src/data/changelog.ts` / `package.json` / `DEVELOPMENT_LOG.md`
+**検証**: `npm run typecheck` OK / `npm run lint` エラー0(warning 8=既存)。実機確認は社長。
+**次の申し送り**: 弱め方が足りない/効き過ぎなら `?torchpunchgain=0.5` 等で当たりを取ってから定数を決める。
+
 ## v0.25.2792 — 遠景の線: ヘッドレスで再現に成功。ただし「常に出る線」ではなかった【2026-08-03 01:03 JST】
 
 社長の許可を得て(「お願いします」)、この環境の Chromium(SwiftShader)で実走した。
