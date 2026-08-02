@@ -278,6 +278,17 @@ const tsNum = (key: string, def: number): number => {
   const n = v == null ? NaN : Number(v);
   return Number.isFinite(n) ? n : def;
 };
+/**
+ * ★v0.25.2785(社長報告「ステージ1の遠景に1pxの切れ目」・v2631時点で既に発生): 遠景の層を1枚ずつ隠す診断ツマミ。
+ * 設計チャットが層を推測で当てにいって2回外したので、**現物で1枚ずつ消して特定する**道具に切り替えた。
+ * `?hidelayer=far|hz|nh|ff|fog|ground`(カンマ区切りで複数可)。**線が消えた時に指定していた層が犯人**。
+ *   far=遠景パノラマ / hz=遠景森1(地平帯) / nh=遠景森2 / ff=手前森 / fog=霧 / ground=地面ベース
+ */
+const HIDE_LAYERS = new Set(
+  (typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('hidelayer') || '')
+    .split(',').map(v => v.trim()).filter(Boolean)
+);
+
 const tsBool = (key: string, def: boolean): boolean => {
   if (typeof window === 'undefined') return def;
   const v = new URLSearchParams(window.location.search).get(key);
@@ -5548,6 +5559,15 @@ export class PixiScene {
       this.playerGroundPool.width = this.playerGroundPool.height = LIGHT_POOL_RADIUS * 2 * lightScale;
     }
 
+    // ★v0.25.2785: 診断ツマミ。指定された遠景の層を毎フレーム隠す(他所の visible 設定に勝つため毎フレーム)。
+    if (HIDE_LAYERS.size > 0) {
+      if (HIDE_LAYERS.has('far')) this.L.farBackdrop.visible = false;
+      if (HIDE_LAYERS.has('hz')) this.L.horizonForest.visible = false;
+      if (HIDE_LAYERS.has('nh')) this.L.nearHorizon.visible = false;
+      if (HIDE_LAYERS.has('ff')) this.L.frontForest.visible = false;
+      if (HIDE_LAYERS.has('fog')) this.snowHorizonFog.visible = false;
+      if (HIDE_LAYERS.has('ground')) this.L.groundBase.visible = false;
+    }
     this.syncAlchemyCircle(s.player, s.gameTime, now);
     this.syncWhipHurricane(s.hurricane, now);
     // リズムの拍/演出は実時間(now=Date.now)基準。store の firstBeatAt/lastTapAt 等も Date.now ベース。
