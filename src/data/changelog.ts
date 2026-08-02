@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2780',
+    items: [
+      '松明や爆発でプレイヤーの明かりが弱まる範囲が狭すぎて、ほとんど効いていなかったのを直しました。',
+    ],
+  },
+  {
     version: '0.25.2779',
     items: [
       '松明や爆発の近くにいると、プレイヤー自身のまわりの明かりが自然に弱まるようになりました（明るい場所では自分の明かりが要らないため）。',

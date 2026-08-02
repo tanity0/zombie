@@ -1547,10 +1547,22 @@ const LOCAL_EVENT_SHADE_ALPHA = 0.5;
 // ★v0.25.2779(社長要望「光源の強さと連動できないかなーと。松明の近くに来ると薄まるとかも」):
 // 周りが明るいほどプレイヤーの補助光を引く。**明るい所では自分の光が要らない**(物理に沿う)。
 // 光源の数値は「実際に描いている光」からそのまま取る(松明=描画に使う haloR/haloA)ので、絵とズレない。
+/** ★v0.25.2780: 補助光の連動を目で確かめられないので、実測値を外へ出す(`?lightdbg=1` で表示)。 */
+const assistLightDebug = { b: 0, mult: 1, lights: 0 };
+export const getAssistLightDebug = () => assistLightDebug;
+
 const PLAYER_LIGHT_YIELD = tsNum('lightyield', 0.85);      // 明るさ最大でどれだけ引くか(1=完全に消える)
 const PLAYER_LIGHT_YIELD_MS = tsNum('lightyieldms', 220);  // 平滑の時定数ms(松明のpulseで明滅させない)
-const TORCH_LIGHT_GAIN = tsNum('torchgain', 2.0);          // 松明のhaloA→明るさへの倍率(haloA≒0.5で約1.0)
-const GLOW_LIGHT_REACH_MULT = tsNum('glowlightreach', 2.5); // 強glowの届く距離=半径×これ
+// ★v0.25.2780(社長「何も変わってない?」): 初版の届く距離が**まったく足りていなかった**。
+// 松明は reach=haloR(=TORCH_LIGHT_RADIUS 92px)そのままで「抱きつく距離」、強glowも×2.5で約200px。
+// ★このプロジェクトの既存の物差しは `SHADOW_GLOW_REACH_MULT = 6.25`(影は半径の6.25倍まで光が届く扱い)。
+// そこから2倍以上ズレていた。**同じ世界の光なのに、影と補助光で届き方が食い違っていた。**
+// さらに補助光は元々 α0.1 の淡い光なので、**3割減らしても画面上は0.03の差=見えない**。
+// ⇒ **近づいたら b が 1 へ飽和する**ように gain も上げる(「灯りの中に入ったら要らない」を作る)。
+const TORCH_LIGHT_REACH_MULT = tsNum('torchreach', 3.0);   // 松明の届く距離=haloR×これ(92→約276px)
+const TORCH_LIGHT_GAIN = tsNum('torchgain', 4.0);          // haloA→明るさ。halo半径の内側で b が1へ飽和する量
+const GLOW_LIGHT_REACH_MULT = tsNum('glowlightreach', 5.0); // 強glowの届く距離=半径×これ(影の6.25に寄せる)
+const GLOW_LIGHT_GAIN = tsNum('glowlightgain', 2.5);       // 強glowの life→明るさ。半径の内側で飽和させる
 // ★爆発の「黒い円」の立ち上がり。旧実装は life 比例のみで**フェードインが無く**、湧いた瞬間に
 // 最大の黒が乗っていた(社長「パッときえてるんだよね」)。消える側は life→0 で元々滑らか。
 const LOCAL_EVENT_SHADE_RISE_MS = tsNum('shaderise', 110);
@@ -5459,15 +5471,20 @@ export class PixiScene {
       if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
       const life = 1 - Math.min(1, (now - e.createdAt) / e.duration);
       if (life <= 0) continue;
-      this.worldLights.push({ x: e.x, y: e.y, reach: e.radius * GLOW_LIGHT_REACH_MULT, strength: life });
+      this.worldLights.push({ x: e.x, y: e.y, reach: e.radius * GLOW_LIGHT_REACH_MULT, strength: life * GLOW_LIGHT_GAIN });
     }
-    const assistTarget = assistLightMult(lightAt(lx, ly, this.worldLights), PLAYER_LIGHT_YIELD);
+    const assistBrightness = lightAt(lx, ly, this.worldLights);
+    const assistTarget = assistLightMult(assistBrightness, PLAYER_LIGHT_YIELD);
     // 松明は pulse で脈打つので、生の値だとプレイヤーが一緒に明滅する ⇒ 時定数で平滑する。
     const assistDt = this.lastAssistLightNow ? Math.min(0.1, (now - this.lastAssistLightNow) / 1000) : 0;
     this.lastAssistLightNow = now;
     this.assistLightMultSmoothed += (assistTarget - this.assistLightMultSmoothed)
       * lightSmoothLerp(assistDt, PLAYER_LIGHT_YIELD_MS);
     const assistMult = this.assistLightMultSmoothed;
+    // ★v0.25.2780: `?lightdbg=1` で画面下の debug 行に出す。**目視で「変わってない?」を繰り返さない**ため。
+    assistLightDebug.b = assistBrightness;
+    assistLightDebug.mult = assistMult;
+    assistLightDebug.lights = this.worldLights.length;
 
     this.playerLight.position.set(lx, ly);
     this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : lp.color;
@@ -7688,7 +7705,7 @@ export class PixiScene {
     // **ピント用とボケ用の2枚をクロスフェード**する。フィルタは使わない(per-pixel処理ゼロ)。
     // ★v0.25.2779: 描画に使う値(haloR/haloA)をそのまま「世界の光」として登録する。
     // ここで別の数式を作ると**絵と挙動がズレる**ので、必ず描画と同じ数字を使う。
-    if (haloA > 0 && haloR > 0) this.worldLights.push({ x: flameX, y: flameY, reach: haloR, strength: haloA * TORCH_LIGHT_GAIN });
+    if (haloA > 0 && haloR > 0) this.worldLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_LIGHT_REACH_MULT, strength: haloA * TORCH_LIGHT_GAIN });
     const focusT = this.lightDefocus01(flameY);
     // ボケ側は**半径を広げるぶんαを下げる**(総光量を保つ=ボケて明るくならない)。
     const bokehR = Math.min(haloR * TORCH_BOKEH_R_MULT, this.screenH * TORCH_HALO_MAX_R_FRAC * TORCH_BOKEH_R_MULT);

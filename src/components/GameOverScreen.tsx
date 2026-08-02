@@ -89,7 +89,8 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     // footalpha: 絵の「実アルファ内容の下端」を測る際の不透明しきい値(裁定S-6・既定128)。
     const keys = ['glowhalo', 'glowcore', 'refl', 'evshadow', 'benchonly', 'warm', 'canary', 'repeat', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev', 'glowweight', 'glowstretch', 'glowsumcap', 'glowpunch', 'glowfade', 'footalpha',
       // v0.25.2779: 補助光の連動 / 黒い円の立ち上がり / コントラストパンチの置き場所
-      'lightyield', 'lightyieldms', 'torchgain', 'glowlightreach', 'shaderise', 'punchgrade', 'punchfw'];
+      'lightyield', 'lightyieldms', 'torchreach', 'torchgain', 'glowlightreach', 'glowlightgain',
+      'shaderise', 'punchgrade', 'punchfw', 'lightdbg'];
     const on = keys.filter(k => q.get(k) !== null).map(k => `${k}=${q.get(k)}`);
     return on.length ? on.join(' ') : 'なし(既定)';
   })();

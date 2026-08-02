@@ -3,6 +3,7 @@ import { useGameStore } from '../store/gameStore';
 import GameCanvas from './GameCanvas';
 import PixiStage from '../pixi/PixiStage';
 import { isPixiRenderer, getAppliedResolution } from '../config/renderer';
+import { getAssistLightDebug } from '../pixi/pixiScene';
 import { getTexture } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
@@ -292,9 +293,31 @@ const Game: React.FC<GameProps> = ({
         {isPixiRenderer() ? 'pixi' : 'canvas'} · v{__APP_VERSION__}
         {' · '}floor:{getTexture('lab-floor/lab-floor-stage2') ? 'S' : '-'}{getTexture('lab-floor/lab-floor-ground') ? 'G' : '-'}{getTexture('lab-floor/lab-floor-clean') ? 'C' : '-'}
         {' · '}res:{getAppliedResolution() || '?'}/{typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : '?'}
+        {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('lightdbg') === '1' && <LightDebug />}
       </div>
     </div>
   );
+};
+
+/**
+ * ★v0.25.2780: 補助光の連動(周りの明るさでプレイヤー光を引く)の実測値を出す。`?lightdbg=1` の時だけ。
+ * 社長「何も変わってない?」に目視で答えられず推測でチューニングしかけたので、**数字を出す**。
+ * ★React再描画規律(CLAUDE.md): stateを持たず、**refのtextContentを rAF で書き換えるだけ**。
+ * 毎フレーム更新でも React は1度も再描画しない。
+ */
+const LightDebug: React.FC = () => {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const d = getAssistLightDebug();
+      if (ref.current) ref.current.textContent = ` · light:${d.b.toFixed(2)} mult:${d.mult.toFixed(2)} n:${d.lights}`;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <span ref={ref} />;
 };
 
 export default Game;
