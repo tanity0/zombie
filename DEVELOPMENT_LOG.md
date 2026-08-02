@@ -1,5 +1,68 @@
 # Development Log
 
+## v0.25.2750 — 影の作り替え(§3-9-B v9)段① 土台〜支配光まで実装(Sonnetサブエージェント)【2026-08-02 15:57 JST】
+
+**やったこと**: `research/LIGHT_REWORK.md` §3-9-B v8(+同ファイル末尾の「★v9 実装時の設計チャット裁定」
+=品質監査で見つかった A〜Q の裁定)に沿って、影を「1体1メッシュ(PerspectiveMesh・台形)+接地2枚
+(芯/外側)+支配光(Ldom)」方式へ作り替え。旧実装は**1バイトも変えず** `syncShadowsLegacy` として
+温存し、`?silshadow=0` で切り替えられる(既定は新実装)。
+
+**実装した範囲**(段1〜4相当+段5の一部を1本にまとめて着手前提どおり実装):
+1. **土台**: シルエットのベイク(黒tint→縦グラデ→BlurFilter→RenderTexture resolution1、余白=ぼかし×3)
+   を1パスで焼く(`bakeSilhouette`/`buildVerticalEraseGradientTexture`)。事前ベイクとオンデマンドを
+   1本のキューに統合し毎フレーム4枚ずつ消化(`drainSilhouetteQueue`)。32MB LRU(`silhouetteCacheAdd`。
+   追い出しは `rt.destroy(true)` でGPUメモリも解放)。
+2. **接地2枚**: 新カーブを `lighting.ts` に焼き込み(`getShadowCoreTexture`/`getShadowOuterTexture`)。
+   画面軸のまま(回さない)。芯=足元ぴったり。
+3. **シルエット本体**: `PerspectiveMesh`(8×12分割)の台形。足元34%絞り→先端100%。左右反転は4隅の
+   u=0/u=1入れ替え。skewは先端側2隅だけ perp軸へ。位置丸めは `shadowContainer.toGlobal/toLocal` で
+   画面px単位(裁定J)。
+4. **支配光**: 環境光+生きている強glowのベクトル合成。ベクトル自体を180ms指数平滑し|Ldom|<0.35は
+   前フレーム向きを保持(裁定L)、`w_g=falloff×life×WEIGHT`(strengthは混ぜない=裁定M)、Σw_gも同じ
+   180msで平滑(裁定N)。旧投影影(`syncLocalEventLighting`のGraphics楕円+線3本)は削除せず
+   `?silshadow=0`側にのみ残し、新経路では shadeAlpha の暗いディスクだけ描く。
+5. **段5の一部**: 浮遊(高さ→縮小/減光、不感帯6px)、静止物の距離クロスフェード(`shadowStaticFade`。
+   旧`rankFade`/`OBJECT_SHADOW_MAX`廃止の代替=裁定B)、可視域カリング(足元→先端の線分×可視矩形)、
+   地平線帯の詰め(不感帯12px・180ms平滑・帯が勝つ)、シルエット初出150msフェードイン、メッシュは
+   destroyせずvisible=falseで温存し非表示4秒でGC(裁定I)、`shadowFade`(退場/死亡フェードのみ)を
+   player/enemy/npc/hospital/armory/police/pickupに配線(裁定Q。監査で escort/breakableProp/pickupには
+   既存の退場フェード機構自体が無いことを確認=追加配線不要)。
+
+**影リクエスト構造体の拡張(裁定A)で触った経路の全数表**(この動作=影を落とす、で洗った):
+player / enemy(通常+裏ボス) / summon / 設置武器(shield/decoy/turret) / 花 / 商人 / イベントNPC /
+城 / 病院 / 武器庫 / 警察署 / 護衛NPC / 救助NPC / 拠点駐留兵 / 拾い物 / 木 / 壁 / プロップ / city props
+= 全19経路。旧係数(×0.55/0.34/0.36/固定px)は新経路からは除去し、生の表示実寸(rawW/rawH)を渡す形に
+統一(裁定A)。旧経路(`syncShadowsLegacy`)は元の係数のまま完全温存。
+
+**ファイル**: `src/pixi/pixiScene.ts`(本体)/ `src/pixi/lighting.ts`(新カーブ2種。前回pushで既にHEAD入り)/
+`research/LIGHT_REWORK.md`(設計チャット裁定A〜Qを§3-9-B末尾に追記。前回pushで既にHEAD入り)/
+`package.json` / `src/data/changelog.ts`。
+
+**検証**: `npm run typecheck` / `npm run lint` エラー0(社長指示が無いので `npm test`/`npm run build`/
+実機は未実施)。
+
+**★未決・次回への申し送り**(推測で埋めず、ここに書いて止めたもの):
+- **敵の`artFade`を`shadowFade`に含めるか**: 仕様書「掛ける」列挙に「敵のartFade」とあるが、実装コード上の
+  `artFade`はまさに同じ仕様書が「掛けない」と明記した地平線フェード(`posFade`)そのもので文言が
+  内部矛盾している。受け入れ条件「地平線フェードの二重掛けが無い」を優先し、`shadowFade`には
+  `reaperWarpFade×hunterLeaveFade`のみ渡した(artFadeは含めていない)。
+- **「裏ボスの討伐フェード」**: 該当する専用alpha変数がコード上に見つからなかった(討伐時は他のpop系
+  エンティティと同様に配列から即除去される)。独自のフェード配線はしていない。
+- **設置武器(盾/デコイ/タレット)のシルエット**: 実絵の縦横比を未取得のため`silhouetteExempt:true`
+  (接地2枚のみ)で妥協。テクスチャ参照を足せばシルエット化できる(次回の小さな追加候補)。
+- **登場演出以外の「高さ」(ジャンプhop等)**: プレイヤーの登場演出(ヘリ)と救助NPCの`savedAt`退場は
+  対応済みだが、パンプキン/ハンター/ジャイアントのジャンプhopや盾ブロック落下、**救援アライ(スキル)
+  の飛来**は`heightPx`を渡していない(未配線)。ジャンプhop系は影の位置がもともと「論理座標(e.y+e.height)」
+  基準で、描画側のhopオフセットを含まないため実害は無い(=旧実装から変わらず地面に残る)が、
+  **救援アライだけは受け入れ条件「飛来中、影が地面に残っている」が仕様書名指しなので未達**。次回の
+  優先候補。
+- **シルエット未ベイク時の150msフェードイン**: メッシュ自体の初出はフェードインするが、`silhouetteEnsure`
+  がキャッシュmissの間は接地2枚のみ(仕様の「接地2枚だけで描き、焼き上がったコマからシルエットを出す」
+  は満たすが、この間の見え方に追加のポップ防止演出はしていない=接地2枚→シルエット出現は瞬間切り替え)。
+
+**次のハンドオフ**: 実機確認(`?silshadow=0`のA/B・爆発で伸びるか・密集10体・cine巨大ボス・松明が
+泳がないか等、仕様書「受け入れ条件」参照)と、上記★未決の実装可否判断は社長/設計チャットへ。
+
 ## (版番号は実装サブエージェントに譲る) — G6 v6: ★査定④を撤回・いいねをローンチに入れる【2026-08-02 16:06 JST】
 
 **社長の設計**: いいねは**リザルトで押す**。「AIが使われた記録」と「いいねを押されたか」だけが戻り、

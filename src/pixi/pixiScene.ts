@@ -1584,6 +1584,8 @@ const SHADOW_MESH_VX = 8;
 const SHADOW_MESH_VY = 12;
 /** 退化ガード: 長さ/幅がこれ以下なら描かない。 */
 const SHADOW_DEGENERATE_PX = 2;
+/** シルエットが焼き上がって初めて出る時のフェードイン時間(§3-9-B確定: 無から現れる印象を消す)。 */
+const SHADOW_MESH_FADE_IN_MS = 150;
 
 // ---- 接地2枚(芯/外側) ---------------------------------------------------------------------
 /** 芯 = 絵幅 × max(SHADOW_CORE_MIN_W_FRAC, 絞り×SHADOW_CORE_W_MULT)。 */
@@ -2050,30 +2052,22 @@ const SNOW_WIND_FACTOR = 0.5; // プレイヤー速度に対する雪の流れ�
 const RHYTHM_VFX_OFF = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dancevfx') === '0';
 
 // =============================================================================
-// §3-9-B v9: 影リクエスト構造体。旧実装(`?silshadow=0`)の呼び出し互換のため legacy* を残しつつ、
-// 新実装は raw* (絵の表示実寸。設計チャット裁定A) を読む。1つの構造体に両方乗せて呼び出し側の
-// 分岐を作らず、`placeShadow()` 内部だけで新旧を切り替える。
+// §3-9-B v9: 影リクエスト構造体(新実装 `syncShadowsV9` 専用)。
+// `?silshadow=0` は旧実装 `syncShadowsLegacy`(元の syncShadows を無改変のまま複製)を丸ごと使うため、
+// この構造体には旧実装の互換フィールドを持たせない(新実装だけが読む=分岐が要らない)。
 // ---------------------------------------------------------------------------
-/** 旧実装(placeShadowSprite)がそのまま使っていた個体別係数の種別。§3-9-B v9裁定Aの互換用。 */
-type LegacyShadowKind = 'actor' | 'tree' | 'wallOrProp' | 'fixed' | 'boss';
-
 interface ShadowCasterReq {
   id: string;
   x: number;      // 足元 world X
-  y: number;      // 足元 world Y(§3-9-B v9裁定C: -2 オフセットは新経路では付けない。呼び出し側の
-                   // 値をそのまま足元として使う)
-  legacyW: number; // 旧実装にそのまま渡す最終影幅(?silshadow=0 用。呼び出し側で旧係数を掛けた値)
-  legacyKind: LegacyShadowKind;
-  legacyTint?: number;
-  legacyAlphaMult?: number;
-  legacyFlatSize?: { w: number; h: number }; // 裏ボス専用(旧実装のみ)
-  rawW: number;    // 絵の表示実寸(幅)。新実装の入力(§3-9-B v9裁定A)
-  rawH: number;    // 絵の表示実寸(高さ)。新実装の長さ計算に使う
+  y: number;      // 足元 world Y(§3-9-B v9裁定C: -2 オフセットは新経路では付けない)
+  rawW: number;    // 絵の表示実寸(幅)。設計チャット裁定A
+  rawH: number;    // 絵の表示実寸(高さ)。長さ計算に使う
   texture: Texture | null; // シルエット用。null=接地2枚のみ(未ロード or シルエット対象外)
-  alpha: number;   // 位置由来alpha(horizonActorAlpha等)。新旧共通の入力
+  alpha: number;   // 位置由来alpha(horizonActorAlpha等)
   shadowFade?: number; // 退場/死亡由来のみ(既定1)
   flip?: boolean;
-  scaleMult?: number;  // 接地2枚にのみ掛ける個体係数(PLAYER_SHADOW_SCALE)。新実装専用
+  skewX?: number;      // 被弾しなり(view.sprite.skew.x)。先端側の2隅だけに織り込む(ラジアン)
+  scaleMult?: number;  // 接地2枚にのみ掛ける個体係数(PLAYER_SHADOW_SCALE)
   silhouetteExempt?: boolean; // 松明/焚き火/緑卵=接地2枚のみ
   isStatic?: boolean;  // 木/壁/プロップ/city props/建物=距離クロスフェード(縮退)の対象
   heightPx?: number;   // 浮遊時の高さ(px, world単位)。省略=0(地上)
@@ -2109,6 +2103,7 @@ interface ShadowPoolEntry {
   mesh: PerspectiveMesh | null; // 未生成 or シルエット対象外 = null
   lastSeenAt: number;           // 裁定I: この時刻からSHADOW_MESH_GC_ms非表示が続いたら実解放
   lastMeshTexture: Texture | null;
+  meshFadeStartAt: number;      // 焼き上がって初めて出た時刻(150msフェードイン用。§3-9-B確定)
 }
 
 export class PixiScene {
@@ -2251,6 +2246,20 @@ export class PixiScene {
   // 「伸びる/向き」を保ちつつ、毎フレームのブラーパス無しで柔らかいエッジにする。
   private shadowContainer = new Container();
   private shadowPool = new Map<string, Sprite>();
+  // §3-9-B v9(新シルエット影)。旧 shadowPool とは別プール(?silshadow=0 で完全に切り替え)。
+  private shadowPoolV9 = new Map<string, ShadowPoolEntry>();
+  // シルエットのベイクキャッシュ(裁定D: 事前ベイク/オンデマンドを1本のキューに統合)。
+  // キー=元テクスチャ(コマごとに別Textureなのでコマごとに別鍵=歩行ポーズが1コマに固定されない)。
+  private silhouetteCache = new Map<Texture, SilhouetteBake>();
+  private silhouetteCacheBytes = 0;
+  private silhouetteQueue: Texture[] = [];
+  private silhouetteQueued = new Set<Texture>();
+  private silhouetteBakeLoggedOnce = false; // 常駐バイト数を1回だけログする(仕様書指示)
+  // 支配光(Ldom)のベクトル平滑状態。キャスターid別(裁定L/N)。
+  private shadowLdomState = new Map<string, { vx: number; vy: number; sum: number; dirX: number; dirY: number }>();
+  private lastShadowLdomNow = 0; // 平滑の dt 計算用
+  // 地平線帯の詰め(§3-9-B確定)の平滑後の長さ。キャスターid別。
+  private shadowHorizonTrimState = new Map<string, number>();
   // 商人/イベントNPC/城/拾い物 のソフト影リクエスト(各 sync が可視時に設定、syncShadows が配置)。
   // §3-9-B v9裁定A: legacyW=旧実装用の固定px(?silshadow=0)。rawW/rawH/texture=新実装用の表示実寸。
   private merchantShadow: BuildingShadowReq | null = null;
@@ -5219,7 +5228,7 @@ export class PixiScene {
     this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
-    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
+    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now, s.effects);
     this.syncShadowProbe(s.camera, now, s.effects); // 計測専用(ベンチ以外では count=0 で即 return)
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -7286,8 +7295,14 @@ export class PixiScene {
       // Soft local contrast under the light source. Avoid a visible dark rim
       // around the glow; the cast shadows below should read as coming from
       // actors/props, not from the edge of the light disc.
+      // §3-9-B v9: この暗いディスクは廃止しない(仕様書「shadeAlphaの暗いディスクは残す」)。新旧どちらでも描く。
       g.ellipse(lightX, lightY + Math.round(18 * d), rx * 1.1, ry * 0.9)
         .fill({ color: 0x000000, alpha: shadeAlpha * 0.22 });
+
+      // §3-9-B v9: 「強glowが落とす投影影」(このellipse以降=旧CastShadowの楕円+線3本)は廃止し、
+      // 支配光(syncShadowsV9 → computeDominantLight)へ統合した。以下は `?silshadow=0` の間だけ動かす
+      // (旧実装のA/B比較用。コードは削除しない)。
+      if (!SILHOUETTE_SHADOWS_DISABLED) continue;
 
       type CastShadow = {
         x: number;
@@ -7952,6 +7967,10 @@ export class PixiScene {
     return p.width * 0.55;
   }
 
+  /**
+   * §3-9-B v9: `?silshadow=0` で旧実装(syncShadowsLegacy)、既定で新実装(syncShadowsV9)。
+   * どちらも `ACTOR_SHADOWS_DISABLED`(?shadow=0)を先に見て、影を丸ごと消す。
+   */
   private syncShadows(
     player: Player,
     enemies: Enemy[],
@@ -7960,15 +7979,42 @@ export class PixiScene {
     escorts: EscortSoldier[] = [],
     rescueSurvivors: RescueSurvivor[] = [],
     baseSites: BaseSite[] = [],
-    now = 0
+    now = 0,
+    effects: VisualEffect[] = []
   ) {
-    // ?shadow=0 診断(社長v0.25.1558): 全アクター足影オフ。既存のプール影を全破棄して以降1枚も置かない。
+    // ?shadow=0 診断(社長v0.25.1558): 全アクター足影オフ。両実装のプール影を全破棄して以降1枚も置かない。
     if (ACTOR_SHADOWS_DISABLED) {
       if (this.shadowPool.size > 0) {
         for (const [id, sp] of this.shadowPool) { sp.destroy(); this.shadowPool.delete(id); }
       }
+      this.clearShadowPoolV9();
       return;
     }
+    if (SILHOUETTE_SHADOWS_DISABLED) {
+      if (this.shadowPoolV9.size > 0) this.clearShadowPoolV9(); // 経路切替時に新プールの残骸を消す
+      this.syncShadowsLegacy(player, enemies, summons, projectiles, escorts, rescueSurvivors, baseSites, now);
+      return;
+    }
+    if (this.shadowPool.size > 0) {
+      for (const [id, sp] of this.shadowPool) { sp.destroy(); this.shadowPool.delete(id); } // 経路切替時に旧プールの残骸を消す
+    }
+    this.syncShadowsV9(player, enemies, summons, projectiles, escorts, rescueSurvivors, baseSites, now, effects);
+  }
+
+  /**
+   * 旧実装(§3-9-A以前)。**§3-9-B v9着手前と1バイトも変えていない**(`?silshadow=0` のA/B比較用)。
+   * `.w`→`.legacyW` 等のフィールド名変更にだけ追従している(値は同一)。
+   */
+  private syncShadowsLegacy(
+    player: Player,
+    enemies: Enemy[],
+    summons: Summon[],
+    projectiles: Projectile[],
+    escorts: EscortSoldier[],
+    rescueSurvivors: RescueSurvivor[],
+    baseSites: BaseSite[],
+    now: number
+  ) {
     const seen = new Set<string>();
     // 登場演出中はプレイヤーが空中なので足影は出さない(着地後に出る)。
     if (!this.introActive) {
@@ -8015,10 +8061,6 @@ export class PixiScene {
       this.placeShadowSprite('pw:' + p.id, p.x + p.width / 2, footY - 2, this.placedWeaponShadowWidth(p), horizonAlpha, seen);
     }
     // ★ステージ1の飾りの花にも接地影を出す(社長報告v0.25.2721「m1の💐も浮いてる」)。
-    // 原因は素材ではない——花のPNGは余白ゼロで、足元(anchor 0.5,1)も正しく地面に置かれている。
-    // **接地影が無いこと**が浮いて見える理由。花は「128pxの絵が10px幅の茎で立っている」形
-    // (実測: flower-0 の最下行の実体幅は絵の1割未満)なので、影が無いと地面に乗って見えない。
-    // 判定は持たないまま=見た目だけの修正。影1枚はプール済みスプライトなので負荷は据え置き(1/10)。
     for (const [id, entry] of this.flowerObjs) {
       const alpha = this.horizonActorAlpha(entry.footY);
       if (alpha <= 0 || entry.sprite.visible === false) continue;
@@ -8029,34 +8071,32 @@ export class PixiScene {
     // 商人 / イベントNPC(各 sync が可視時にリクエストを立てる)。
     if (this.merchantShadow) {
       const m = this.merchantShadow;
-      this.placeShadowSprite('merchant', m.x, m.y, m.w, m.alpha, seen);
+      this.placeShadowSprite('merchant', m.x, m.y, m.legacyW, m.alpha * (m.shadowFade ?? 1), seen);
     }
     if (this.npcShadow) {
       const n = this.npcShadow;
-      this.placeShadowSprite('npc', n.x, n.y, n.w, n.alpha, seen);
+      this.placeShadowSprite('npc', n.x, n.y, n.legacyW, n.alpha * (n.shadowFade ?? 1), seen);
     }
     // 城(可視時のみ syncCastle がリクエスト)。
     if (this.castleShadow) {
       const c = this.castleShadow;
-      this.placeShadowSprite('castle', c.x, c.y, c.w, c.alpha, seen);
+      this.placeShadowSprite('castle', c.x, c.y, c.legacyW, c.alpha * (c.shadowFade ?? 1), seen);
     }
     // 廃病院(可視時のみ syncHospital がリクエスト)。
     if (this.hospitalShadow) {
       const h = this.hospitalShadow;
-      this.placeShadowSprite('hospital', h.x, h.y, h.w, h.alpha, seen);
+      this.placeShadowSprite('hospital', h.x, h.y, h.legacyW, h.alpha * (h.shadowFade ?? 1), seen);
     }
     // §6.24 M48: 武器庫/警察署(可視時のみ syncArmory/syncPolice がリクエスト)。
     if (this.armoryShadow) {
       const a = this.armoryShadow;
-      this.placeShadowSprite('armory', a.x, a.y, a.w, a.alpha, seen);
+      this.placeShadowSprite('armory', a.x, a.y, a.legacyW, a.alpha * (a.shadowFade ?? 1), seen);
     }
     if (this.policeShadow) {
       const pl = this.policeShadow;
-      this.placeShadowSprite('police', pl.x, pl.y, pl.w, pl.alpha, seen);
+      this.placeShadowSprite('police', pl.x, pl.y, pl.legacyW, pl.alpha * (pl.shadowFade ?? 1), seen);
     }
-    // 護衛軍人NPC(屋外のみ・他アクターと同じ足影)。スプライトは anchor(0.5,1) で esc.x/esc.y が足元。
-    // 影幅=スプライト実幅×0.55(他アクターと同基準)。地平線で透明化(空に浮かない描画と整合)。
-    // 登場演出中は兵士本体と同じフェードを影にも掛ける(ヘリ飛来中に影だけ先に出るのを防ぐ)。
+    // 護衛軍人NPC(屋外のみ・他アクターと同じ足影)。
     const escIntroFade = this.currentIntroFade(now);
     for (const esc of escorts) {
       const ha = this.horizonActorAlpha(esc.y) * escIntroFade;
@@ -8077,7 +8117,7 @@ export class PixiScene {
       const outroA = s.savedAt ? Math.max(0, 1 - (Date.now() - s.savedAt) / RESCUE_OUTRO_MS) : 1;
       this.placeShadowSprite('rescue:' + s.id, s.x + s.width / 2, fy - 2, baseW * 0.55, ha * outroA, seen);
     }
-    // 拠点駐留兵(base soldiers・captured拠点のみ。現状 SUPP_BASE_ATTACKS_ENABLED=false で実体なしだが整合のため対応)。
+    // 拠点駐留兵(base soldiers・captured拠点のみ)。
     for (const bsite of baseSites) {
       for (let i = 0; i < bsite.soldiers.length; i++) {
         const sol = bsite.soldiers[i];
@@ -8091,7 +8131,7 @@ export class PixiScene {
     }
     // 拾い物(syncPickups が毎フレーム配列を作り直す)。
     for (const ps of this.pickupShadows) {
-      this.placeShadowSprite(ps.id, ps.x, ps.y, ps.w, ps.alpha, seen);
+      this.placeShadowSprite(ps.id, ps.x, ps.y, ps.legacyW, ps.alpha * (ps.shadowFade ?? 1), seen);
     }
     // オブジェクト(木/壁/プロップ/city props)の常時足影。負荷キャップで「プレイヤーに近い順
     // OBJECT_SHADOW_MAX 個」だけに出す。順位が下のものほど rankFade で薄くし、境界(N位↔N+1位)の
@@ -8104,8 +8144,6 @@ export class PixiScene {
         const dx = sx - pfb.footX, dy = fy - pfb.footY;
         cands.push({ id, x: sx, y: fy, w, d: dx * dx + dy * dy });
       };
-      // 木だけ他のオブジェクト(壁0.34/プロップ0.36)と違う固定係数(0.28・箱基準)で影が小さめだった
-      // バグ修正: wallObjs/propObjsと同じ「実際の描画幅(containScale/depthScale込み)×係数」方式に統一。
       for (const [key, t] of this.trees) addObj('osh:tree:' + key, t.sprite.x, t.footY, Math.max(8, Math.abs(t.sprite.width) * 0.34));
       for (const [id, e] of this.wallObjs) addObj('osh:wall:' + id, e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.34));
       for (const [id, e] of this.propObjs) addObj('osh:prop:' + id, e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.36));
@@ -8124,6 +8162,652 @@ export class PixiScene {
     // mark-and-sweep: 消えたアクター/設置物の影スプライトを破棄。
     for (const [id, sp] of this.shadowPool) {
       if (!seen.has(id)) { sp.destroy(); this.shadowPool.delete(id); }
+    }
+  }
+
+  /**
+   * §3-9-B v9(新実装)。旧実装(syncShadowsLegacy)と対になる、影を落とす物すべてを1本の
+   * 経路(ShadowCasterReq → placeShadowV9)にまとめたもの。段取り:
+   * 1. ベイクキュー消化(裁定D・毎フレーム4枚) 2. 支配光の平滑lerp/強glow一覧を1回だけ作る
+   * 3. 全キャスターを ShadowCasterReq に正規化して placeShadowV9 4. mark-and-sweep(裁定I)。
+   */
+  private syncShadowsV9(
+    player: Player,
+    enemies: Enemy[],
+    summons: Summon[],
+    projectiles: Projectile[],
+    escorts: EscortSoldier[],
+    rescueSurvivors: RescueSurvivor[],
+    baseSites: BaseSite[],
+    now: number,
+    effects: VisualEffect[],
+  ) {
+    this.drainSilhouetteQueue(); // 裁定D
+
+    // Ldom平滑のdt(this.seeThroughLerp等と同じ作法。frame間の実測秒)。
+    const dt = this.lastShadowLdomNow ? Math.min(0.1, (now - this.lastShadowLdomNow) / 1000) : 0;
+    this.lastShadowLdomNow = now;
+    const ldomLerp = 1 - Math.exp(-dt / (SHADOW_LDOM_SMOOTH_MS / 1000));
+    const horizonTrimLerp = 1 - Math.exp(-dt / (SHADOW_HORIZON_TRIM_SMOOTH_MS / 1000));
+
+    // ステージ光の向き(正規化)・伸び比率・濃さ倍率は1フレーム1回だけ計算(全キャスター共通)。
+    const lighting = this.lighting();
+    const dir = this.cineEnabled ? CINE_SHADOW_DIRECTION : this.isLabStage ? LAB_SHADOW_DIRECTION : lighting.direction;
+    const dmag = Math.hypot(dir.x, dir.y) || 1;
+    const ambDirX = dir.x / dmag, ambDirY = dir.y / dmag;
+    const lenRatio = this.cineEnabled ? SHADOW_LEN_RATIO_CINE : (lighting.name === 'sunlight' ? SHADOW_LEN_RATIO_DAY : SHADOW_LEN_RATIO_NIGHT);
+    const shAlphaRef = this.cineEnabled ? CINE_SHADOW_ALPHA : lighting.shadowAlpha;
+    const densityMult = Math.sqrt(Math.max(0, shAlphaRef) / SHADOW_DENSITY_REF_ALPHA);
+
+    // 支配光に参加する強glow(裁定O: `?evshadow=0` は「環境光のみ」の意味に変更)。
+    const glowLights: { x: number; y: number; reach: number; life: number }[] = [];
+    if (LOCAL_EVENT_GLOW_SHADOW_ENABLED) {
+      for (const e of effects) {
+        if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
+        const life = 1 - Math.min(1, (now - e.createdAt) / e.duration);
+        if (life <= 0) continue;
+        glowLights.push({ x: e.x, y: e.y, reach: e.radius * SHADOW_GLOW_REACH_MULT, life });
+      }
+    }
+
+    const seen = new Set<string>();
+    const place = (req: ShadowCasterReq) =>
+      this.placeShadowV9(req, seen, now, ldomLerp, horizonTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
+
+    // ---- プレイヤー ----
+    // §3-9-B: 登場演出中も影を出す(旧実装の「introActive中はスキップ」を撤廃)。ヘリに随伴する
+    // 高さぶんだけ heightPx を明示的に渡す(store座標は地上のままなので差分では取れないケース)。
+    {
+      const pf = playerFootBox(player);
+      const disp = this.actorDisplaySize(this.playerView);
+      let heightPx = 0;
+      if (this.introActive) {
+        const t = this.introUntil === -1 ? 0 : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
+        const introScale = playerIntroScale(Math.min(t, PLAYER_INTRO_HELI_FRAC));
+        heightPx = heliAboveAt(t) * introScale;
+      }
+      const rawW = disp?.w ?? pf.boxW * 0.55;
+      const rawH = disp?.h ?? pf.boxH;
+      place({
+        id: '__player__', x: pf.footX, y: pf.footY,
+        rawW, rawH, texture: this.playerView?.sprite.texture ?? null,
+        alpha: 1, shadowFade: this.playerView?.shadowFade ?? 1,
+        flip: disp?.flip, scaleMult: PLAYER_SHADOW_SCALE, heightPx,
+      });
+    }
+
+    // ---- 敵(通常/裏ボス) ----
+    for (const e of enemies) {
+      const footY = e.y + e.height;
+      const horizonAlpha = this.horizonActorAlpha(footY);
+      if (horizonAlpha <= 0) continue;
+      const view = this.enemies.get(e.id);
+      const disp = this.actorDisplaySize(view);
+      if (!disp) continue; // 絵が無い/未ロード=接地2枚も出さない(旧実装のフォールバック幅は使わない=裁定A)
+      // 裏ボス: 「足元」は判定帯の中心ではなく絵の下端(=スプライトの実体下端)。§3-9-B確定
+      // 「flatSize廃止・通常の3枚(接地2+シルエット)へ統合・赤tint廃止」。裏ボスのスプライトは
+      // anchor(0.5,0.5)なので、実体下端 = sprite.y(中心) + 表示実寸の高さ/2。
+      const bossFixed = isHiddenBoss(e.type);
+      const cx = bossFixed ? view!.sprite.x : e.x + e.width / 2;
+      const cy = bossFixed ? view!.sprite.y + disp.h / 2 : footY;
+      place({
+        id: e.id, x: cx, y: cy,
+        rawW: disp.w, rawH: disp.h, texture: view?.sprite.texture ?? null,
+        alpha: horizonAlpha, shadowFade: view?.shadowFade ?? 1,
+        flip: disp.flip, skewX: view?.sprite.skew.x,
+      });
+    }
+    // ---- 召喚(味方ユニット) ----
+    for (const s of summons) {
+      const fb = summonFootBox(s);
+      const horizonAlpha = this.horizonActorAlpha(fb.footY);
+      if (horizonAlpha <= 0) continue;
+      const view = this.summonViews.get(s.id);
+      const disp = this.actorDisplaySize(view);
+      if (!disp) continue;
+      place({
+        id: 'sum:' + s.id, x: fb.footX, y: fb.footY,
+        rawW: disp.w, rawH: disp.h, texture: view?.sprite.texture ?? null,
+        alpha: horizonAlpha, flip: disp.flip, skewX: view?.sprite.skew.x,
+      });
+    }
+    // ---- 設置型ウェポン(盾/デコイ/タレット) ----
+    for (const p of projectiles) {
+      if (p.weaponType !== 'shield' && p.weaponType !== 'decoy' && p.weaponType !== 'turret') continue;
+      const footY = p.y + p.height;
+      const horizonAlpha = this.horizonActorAlpha(footY);
+      if (horizonAlpha <= 0) continue;
+      const rawW = this.placedWeaponShadowWidth(p) / 0.55; // 旧関数は×0.55済みなので戻す(裁定A)
+      place({
+        id: 'pw:' + p.id, x: p.x + p.width / 2, y: footY,
+        rawW, rawH: rawW * 1.4, texture: null, // 絵の縦横比は未取得なので接地2枚のみ(★未決: シルエット未対応)
+        alpha: horizonAlpha, silhouetteExempt: true,
+      });
+    }
+    // ---- ステージ1の花 ----
+    for (const [id, entry] of this.flowerObjs) {
+      const alpha = this.horizonActorAlpha(entry.footY);
+      if (alpha <= 0 || entry.sprite.visible === false) continue;
+      const w = Math.abs(entry.sprite.width);
+      if (w <= 0) continue;
+      place({
+        id: 'flw:' + id, x: entry.sprite.x, y: entry.footY,
+        rawW: w, rawH: Math.abs(entry.sprite.height), texture: entry.sprite.texture,
+        alpha,
+      });
+    }
+    // ---- 商人/イベントNPC/城/病院/武器庫/警察署 ----
+    if (this.merchantShadow) {
+      const m = this.merchantShadow;
+      place({ id: 'merchant', x: m.x, y: m.y, rawW: m.rawW, rawH: m.rawH, texture: m.texture, alpha: m.alpha, shadowFade: m.shadowFade });
+    }
+    if (this.npcShadow) {
+      const n = this.npcShadow;
+      place({ id: 'npc', x: n.x, y: n.y, rawW: n.rawW, rawH: n.rawH, texture: n.texture, alpha: n.alpha, shadowFade: n.shadowFade });
+    }
+    if (this.castleShadow) {
+      const c = this.castleShadow;
+      place({ id: 'castle', x: c.x, y: c.y, rawW: c.rawW, rawH: c.rawH, texture: c.texture, alpha: c.alpha, shadowFade: c.shadowFade });
+    }
+    if (this.hospitalShadow) {
+      const h = this.hospitalShadow;
+      place({ id: 'hospital', x: h.x, y: h.y, rawW: h.rawW, rawH: h.rawH, texture: h.texture, alpha: h.alpha, shadowFade: h.shadowFade });
+    }
+    if (this.armoryShadow) {
+      const a = this.armoryShadow;
+      place({ id: 'armory', x: a.x, y: a.y, rawW: a.rawW, rawH: a.rawH, texture: a.texture, alpha: a.alpha, shadowFade: a.shadowFade });
+    }
+    if (this.policeShadow) {
+      const pl = this.policeShadow;
+      place({ id: 'police', x: pl.x, y: pl.y, rawW: pl.rawW, rawH: pl.rawH, texture: pl.texture, alpha: pl.alpha, shadowFade: pl.shadowFade });
+    }
+    // ---- 護衛軍人NPC ----
+    const escIntroFade = this.currentIntroFade(now);
+    for (const esc of escorts) {
+      const ha = this.horizonActorAlpha(esc.y) * escIntroFade;
+      if (ha <= 0) continue;
+      const escSp = this.escortSprites.get(esc.id);
+      if (!escSp || escSp.visible === false) continue;
+      const w = Math.abs(escSp.width);
+      if (w <= 0) continue;
+      place({
+        id: 'esc:' + esc.id, x: esc.x, y: esc.y,
+        rawW: w, rawH: Math.abs(escSp.height), texture: escSp.texture,
+        alpha: ha, flip: escSp.scale.x < 0,
+      });
+    }
+    // ---- 救助NPC(退場フェード=savedAt) ----
+    for (const s of rescueSurvivors) {
+      const fy = s.y + s.height;
+      const ha = this.horizonActorAlpha(fy);
+      if (ha <= 0) continue;
+      const sp = this.rescueSurvivorSprites.get(s.id);
+      if (!sp || sp.visible === false) continue;
+      const w = Math.abs(sp.width);
+      if (w <= 0) continue;
+      const outroA = s.savedAt ? Math.max(0, 1 - (Date.now() - s.savedAt) / RESCUE_OUTRO_MS) : 1;
+      place({
+        id: 'rescue:' + s.id, x: s.x + s.width / 2, y: fy,
+        rawW: w, rawH: Math.abs(sp.height), texture: sp.texture,
+        alpha: ha, shadowFade: outroA, flip: sp.scale.x < 0,
+      });
+    }
+    // ---- 拠点駐留兵 ----
+    for (const bsite of baseSites) {
+      for (let i = 0; i < bsite.soldiers.length; i++) {
+        const sol = bsite.soldiers[i];
+        const ha = this.horizonActorAlpha(sol.y);
+        if (ha <= 0) continue;
+        const sp = this.baseSoldierSprites.get(`${bsite.id}-${i}`);
+        if (!sp || sp.visible === false) continue;
+        const w = Math.abs(sp.width);
+        if (w <= 0) continue;
+        place({
+          id: `bsol:${bsite.id}-${i}`, x: sol.x, y: sol.y,
+          rawW: w, rawH: Math.abs(sp.height), texture: sp.texture,
+          alpha: ha, flip: sp.scale.x < 0,
+        });
+      }
+    }
+    // ---- 拾い物 ----
+    for (const ps of this.pickupShadows) {
+      place({ id: ps.id, x: ps.x, y: ps.y, rawW: ps.rawW, rawH: ps.rawH, texture: ps.texture, alpha: ps.alpha, shadowFade: ps.shadowFade });
+    }
+    // ---- 静止物(木/壁/プロップ/city props): 枚数キャップ廃止=可視域内は全部出し、
+    // 縮退は距離クロスフェード(shadowStaticFade)に一本化(裁定B)。
+    for (const [key, tr] of this.trees) {
+      const w = Math.abs(tr.sprite.width);
+      if (w <= 0) continue;
+      place({ id: 'osh:tree:' + key, x: tr.sprite.x, y: tr.footY, rawW: w, rawH: Math.abs(tr.sprite.height), texture: tr.sprite.texture, alpha: this.horizonActorAlpha(tr.footY), isStatic: true });
+    }
+    for (const [id, e] of this.wallObjs) {
+      const w = Math.abs(e.sprite.width);
+      if (w <= 0) continue;
+      place({ id: 'osh:wall:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha: this.horizonActorAlpha(e.footY), isStatic: true });
+    }
+    for (const [id, e] of this.propObjs) {
+      const w = Math.abs(e.sprite.width);
+      if (w <= 0) continue;
+      place({ id: 'osh:prop:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha: this.horizonActorAlpha(e.footY), isStatic: true });
+    }
+    for (const [id, e] of this.cityPropObjs) {
+      if (e.sprite.parent === this.L.groundLayer) continue; // 地面デカールは影なし
+      const w = Math.abs(e.sprite.width);
+      if (w <= 0) continue;
+      place({ id: 'osh:city:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha: this.horizonActorAlpha(e.footY), isStatic: true });
+    }
+
+    this.sweepShadowPoolV9(seen, now);
+  }
+
+  // ===========================================================================
+  // §3-9-B v9: 新シルエット影(1体1メッシュ・支配光・台形)。`syncShadowsLegacy` の対。
+  // ===========================================================================
+
+  /** 新影プール(接地2枚+メッシュ)を全破棄する(?shadow=0 / 経路切替時)。 */
+  private clearShadowPoolV9() {
+    for (const [, entry] of this.shadowPoolV9) {
+      entry.core.destroy();
+      entry.outer.destroy();
+      if (entry.mesh) entry.mesh.destroy();
+    }
+    this.shadowPoolV9.clear();
+    this.shadowLdomState.clear();
+    this.shadowHorizonTrimState.clear();
+  }
+
+  // ---- シルエットのベイク(裁定D/E/F/G) --------------------------------------
+
+  /** キャッシュ済みなら返す。無ければベイクキューへ積んで null(=接地2枚だけで描く。150msフェードインは
+   * 呼び出し側の alpha 自然増加に任せる=このコミットでは専用の遅延タイマーは実装していない・★未決)。 */
+  private silhouetteEnsure(tex: Texture | null): SilhouetteBake | null {
+    if (!tex) return null;
+    const hit = this.silhouetteCache.get(tex);
+    if (hit) {
+      // Map は挿入順=LRU順。触ったら末尾へ移動(delete+set)。
+      this.silhouetteCache.delete(tex);
+      this.silhouetteCache.set(tex, hit);
+      return hit;
+    }
+    if (!this.silhouetteQueued.has(tex)) {
+      this.silhouetteQueued.add(tex);
+      this.silhouetteQueue.push(tex);
+    }
+    return null;
+  }
+
+  /** 毎フレーム、事前ベイク/オンデマンドを統合した1本のキューを予算ぶんだけ消化する(裁定D)。 */
+  private drainSilhouetteQueue() {
+    let budget = SHADOW_BAKE_BUDGET_PER_FRAME;
+    while (budget > 0 && this.silhouetteQueue.length > 0) {
+      const tex = this.silhouetteQueue.shift()!;
+      this.silhouetteQueued.delete(tex);
+      budget--;
+      const baked = this.bakeSilhouette(tex);
+      if (baked) {
+        this.silhouetteCacheAdd(tex, baked);
+      } else if (!this.silhouetteQueued.has(tex)) {
+        // renderer未準備等で失敗 → 次フレーム再試行のためキューへ戻す(裁定D)。
+        this.silhouetteQueued.add(tex);
+        this.silhouetteQueue.push(tex);
+      }
+    }
+  }
+
+  /** 縦方向の erase 用グラデーションテクスチャ(白, α=erase量)。縦グラデ→ぼかしの順を
+   * 1パスの合成順序で満たすため、黒tintスプライトの上に blendMode:'erase' で重ねて使う(裁定E)。
+   * `padTop`/`contentH` は元テクスチャ(=絵の実体)の位置(裁定F: 余白の外側=元テクスチャの下端/上端)。 */
+  private buildVerticalEraseGradientTexture(totalH: number, padTop: number, contentH: number): Texture {
+    const h = Math.max(2, Math.round(totalH));
+    const canvas = document.createElement('canvas');
+    canvas.width = 2;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    const bottomOffset = Math.max(0, Math.min(1, (padTop + contentH) / h)); // 元テクスチャ下端=足元
+    const topOffset = Math.max(0, Math.min(bottomOffset, padTop / h));      // 元テクスチャ上端=頭側
+    // §3-9-B確定カーブ: [t(0=足元/1=頭側), keepAlpha]。t=0→offset=bottomOffset、t=1→offset=topOffset。
+    const curve: [number, number][] = [[0, 1.0], [0.35, 0.92], [0.7, 0.55], [1, 0.15]];
+    const points: [number, number][] = [[0, curve[3][1]]]; // 画像最上端=頭側の値で平坦(パディング)
+    for (const [t, keep] of curve) points.push([topOffset + (1 - t) * (bottomOffset - topOffset), keep]);
+    points.push([1, curve[0][1]]); // 画像最下端=足元側の値で平坦(パディング)
+    points.sort((a, b) => a[0] - b[0]);
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    for (const [offset, keep] of points) {
+      g.addColorStop(Math.max(0, Math.min(1, offset)), `rgba(255,255,255,${Math.max(0, Math.min(1, 1 - keep))})`);
+    }
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    return Texture.from(canvas);
+  }
+
+  /**
+   * 1テクスチャぶんのシルエットを1パスで焼く(裁定E/F): [黒tintのスプライト, blendMode:'erase' の
+   * 縦グラデ] を同じ Container に入れ、その Container に BlurFilter を掛けて RenderTexture へ焼く
+   * (`farBloomCache` L6222付近と同じ作法)。resolution は 1 固定。余白=ぼかし×3(§3-9-B確定)。
+   */
+  private bakeSilhouette(src: Texture): SilhouetteBake | null {
+    if (!this.renderer || !src || src.width <= 1 || src.height <= 1) return null;
+    try {
+      const srcW = Math.round(src.width), srcH = Math.round(src.height);
+      const shortEdge = Math.min(srcW, srcH);
+      const blurPx = Math.max(1, shortEdge * SHADOW_BLUR_FRAC);
+      const pad = Math.max(1, Math.round(blurPx * SHADOW_BLUR_PAD_MULT));
+      const paddedW = srcW + pad * 2;
+      const paddedH = srcH + pad * 2;
+
+      const body = new Sprite(src);
+      body.tint = 0x000000; // 手順1: 黒tint(RGBを0倍。αは触らない=PMAを壊さない)
+      body.position.set(pad, pad);
+
+      const gradTex = this.buildVerticalEraseGradientTexture(paddedH, pad, srcH);
+      const grad = new Sprite(gradTex);
+      grad.blendMode = 'erase';
+      grad.position.set(0, 0);
+      grad.width = paddedW;
+      grad.height = paddedH;
+
+      const wrap = new Container();
+      wrap.addChild(body, grad);
+      wrap.filters = [new BlurFilter({ strength: blurPx, quality: 3 })];
+
+      const rt = RenderTexture.create({ width: paddedW, height: paddedH, resolution: 1 });
+      this.renderer.render({ container: wrap, target: rt, clear: true });
+      wrap.destroy({ children: true });
+      gradTex.destroy(true);
+
+      return { texture: rt, pad, srcW, srcH, bytes: paddedW * paddedH * 4 };
+    } catch (err) {
+      console.error('[shadow-v9] bakeSilhouette failed (suppressed):', err);
+      return null;
+    }
+  }
+
+  private silhouetteCacheAdd(tex: Texture, baked: SilhouetteBake) {
+    this.silhouetteCache.set(tex, baked);
+    this.silhouetteCacheBytes += baked.bytes;
+    // LRU(裁定G): 予算超過分は最古(Map先頭)から rt.destroy(true) で実解放しつつ追い出す。
+    while (this.silhouetteCacheBytes > SHADOW_SIL_CACHE_BUDGET_BYTES && this.silhouetteCache.size > 1) {
+      const oldestKey: Texture | undefined = this.silhouetteCache.keys().next().value;
+      if (!oldestKey) break;
+      const old = this.silhouetteCache.get(oldestKey);
+      this.silhouetteCache.delete(oldestKey);
+      if (old) { this.silhouetteCacheBytes -= old.bytes; old.texture.destroy(true); }
+    }
+    if (!this.silhouetteBakeLoggedOnce && this.silhouetteCache.size >= 6) {
+      // 仕様書指示:「実装後、常駐バイト数をログで1回見る」。
+      console.info(
+        `[shadow-v9] silhouette cache: ${this.silhouetteCache.size} tex / ` +
+        `${(this.silhouetteCacheBytes / 1024 / 1024).toFixed(2)}MB (budget ${(SHADOW_SIL_CACHE_BUDGET_BYTES / 1024 / 1024) | 0}MB)`
+      );
+      this.silhouetteBakeLoggedOnce = true;
+    }
+  }
+
+  // ---- 支配光(Ldom)。裁定K/L/M/N ---------------------------------------------
+
+  /**
+   * 支配光ベクトル。1キャスターにつき1回。環境光(重み1)+生きている強glowをベクトル合成し、
+   * 結果をベクトルのまま180ms指数平滑する(裁定L)。|Ldom|<0.35の間は前フレームの向きを保持し、
+   * 0通過での瞬間反転を防ぐ。`strength`(キャスター側の重み)は混ぜない(裁定M)。
+   */
+  private computeDominantLight(
+    id: string, x: number, y: number,
+    ambDirX: number, ambDirY: number,
+    glowLights: { x: number; y: number; reach: number; life: number }[],
+    ldomLerp: number,
+  ): { dirX: number; dirY: number; lenMult: number; darkMult: number } {
+    let vx = ambDirX, vy = ambDirY, sum = 0;
+    for (let i = 0; i < glowLights.length; i++) {
+      const L = glowLights[i];
+      const dx = x - L.x, dy = y - L.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1 || dist > L.reach) continue; // 裁定K: ゼロ除算ガード
+      const w = (1 - dist / L.reach) * L.life * SHADOW_GLOW_WEIGHT; // 裁定M: w_g=falloff×life×WEIGHT(strengthは混ぜない)
+      sum += w;
+      vx += (dx / dist) * w;
+      vy += (dy / dist) * w;
+    }
+    let st = this.shadowLdomState.get(id);
+    if (!st) { st = { vx: ambDirX, vy: ambDirY, sum: 0, dirX: ambDirX, dirY: ambDirY }; this.shadowLdomState.set(id, st); }
+    st.vx += (vx - st.vx) * ldomLerp;
+    st.vy += (vy - st.vy) * ldomLerp;
+    st.sum += (sum - st.sum) * ldomLerp; // 裁定N
+    const mag = Math.hypot(st.vx, st.vy);
+    if (mag >= SHADOW_LDOM_HOLD_BELOW) {
+      const inv = 1 / mag;
+      st.dirX = st.vx * inv;
+      st.dirY = st.vy * inv;
+    } // else: 前フレームの向きを保持(裁定L)
+    const sigma = Math.min(Math.max(0, st.sum), SHADOW_GLOW_SUM_CAP);
+    return {
+      dirX: st.dirX, dirY: st.dirY,
+      lenMult: 1 + SHADOW_GLOW_STRETCH * sigma,
+      darkMult: 1 + SHADOW_GLOW_DARKEN * sigma,
+    };
+  }
+
+  // ---- 可視域(ズーム引き込み)まわり ------------------------------------------
+
+  /** 可視matrix(world座標)。distanceOutsideViewport と同じ式(margin=0)。 */
+  private shadowVisibleRect(): { left: number; top: number; right: number; bottom: number } {
+    const { ox, oy } = this.zoomViewportOverscan();
+    const left = -this.L.world.position.x - ox;
+    const top = -this.L.world.position.y - oy;
+    return { left, top, right: left + this.screenW + ox * 2, bottom: top + this.screenH + oy * 2 };
+  }
+
+  /** 線分と矩形が交差するか(§3-9-B: 両端が外でも中間が交差すれば描く=cineの巨大ボス対策)。 */
+  private segmentIntersectsRect(
+    x1: number, y1: number, x2: number, y2: number,
+    r: { left: number; top: number; right: number; bottom: number },
+  ): boolean {
+    if (x1 >= r.left && x1 <= r.right && y1 >= r.top && y1 <= r.bottom) return true;
+    if (x2 >= r.left && x2 <= r.right && y2 >= r.top && y2 <= r.bottom) return true;
+    const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx;
+    const segCross = (ax: number, ay: number, bx: number, by: number) => {
+      const d1 = cross(bx - ax, by - ay, x1 - ax, y1 - ay);
+      const d2 = cross(bx - ax, by - ay, x2 - ax, y2 - ay);
+      const d3 = cross(x2 - x1, y2 - y1, ax - x1, ay - y1);
+      const d4 = cross(x2 - x1, y2 - y1, bx - x1, by - y1);
+      return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+    };
+    return segCross(r.left, r.top, r.right, r.top) ||
+      segCross(r.right, r.top, r.right, r.bottom) ||
+      segCross(r.right, r.bottom, r.left, r.bottom) ||
+      segCross(r.left, r.bottom, r.left, r.top);
+  }
+
+  /** 静止物(木/壁/プロップ/city props)の距離クロスフェード(旧 rankFade / OBJECT_SHADOW_MAX の代替。裁定B)。 */
+  private shadowStaticFade(x: number, y: number): number {
+    const d = this.distanceOutsideViewport(x, y, SHADOW_STATIC_FADE_MARGIN_PX);
+    if (d <= 0) return 1;
+    return Math.max(0, 1 - d / SHADOW_STATIC_FADE_RANGE_PX);
+  }
+
+  /** メッシュは roundPixels の対象外なので、本体スプライトと同じ「画面(デバイス)ピクセル」空間で
+   * 丸める(裁定J)。shadowContainer の toGlobal/toLocal を介す(ワールド→画面倍率が非整数でもズレない)。 */
+  private shadowSnap(x: number, y: number): { x: number; y: number } {
+    const g = this.shadowContainer.toGlobal({ x, y });
+    g.x = Math.round(g.x);
+    g.y = Math.round(g.y);
+    const l = this.shadowContainer.toLocal(g);
+    return { x: l.x, y: l.y };
+  }
+
+  /** sprite.width/height は自身の scale しか含まない。祖先コンテナ側の拡縮(登場演出/分身/救援アライ)を
+   * 含めた実寸を得るため、`stopAt` の手前まで祖先の scale.x を掛け合わせる(§3-9-B確定)。 */
+  private shadowAncestorScaleX(sprite: Sprite, stopAt: Container): number {
+    let s = 1;
+    let c: Container | null = sprite.parent;
+    while (c && c !== stopAt) { s *= Math.abs(c.scale.x); c = c.parent; }
+    return s;
+  }
+
+  /** ActorView から表示実寸(幅・高さ・反転)を取る。`getBounds()` は使わない(被弾しなりでAABBが膨らむため)。 */
+  private actorDisplaySize(view: ActorView | undefined | null): { w: number; h: number; flip: boolean } | null {
+    if (!view || view.sprite.visible === false) return null;
+    const s = this.shadowAncestorScaleX(view.sprite, this.L.world);
+    const w = Math.abs(view.sprite.width) * s;
+    const h = Math.abs(view.sprite.height) * s;
+    if (!(w > 0) || !(h > 0)) return null;
+    return { w, h, flip: view.sprite.scale.x < 0 };
+  }
+
+  // ---- 1体ぶんの配置(接地2枚+シルエット) -------------------------------------
+
+  /**
+   * §3-9-B v9 本体。1キャスターぶんの接地2枚+シルエットメッシュを置く。
+   * `ambDirX/ambDirY`=正規化済みステージ光方向。`lenRatio`=絵の高さに掛ける伸び比率(昼/夜/cine)。
+   * `densityMult`=★未決D→D-1の濃さ倍率。`glowLights`=このフレームの強glow一覧(裁定O)。
+   */
+  private placeShadowV9(
+    req: ShadowCasterReq, seen: Set<string>, now: number,
+    ldomLerp: number, horizonTrimLerp: number, ambDirX: number, ambDirY: number, lenRatio: number, densityMult: number,
+    glowLights: { x: number; y: number; reach: number; life: number }[],
+  ) {
+    const shadowFade = req.shadowFade ?? 1;
+    const alpha = req.alpha * shadowFade;
+    if (alpha <= 0 || req.rawW <= 0 || req.rawH <= 0) return;
+
+    // 浮遊: 高さ→縮小/減光/投影点(足元Y+高さ)。§3-9-B確定。
+    // 不感帯6px(仕様書「高さの取り方」(a)): 微小な描画オフセット(テクセル丸め等)を高さと誤判定しない。
+    const rawHeight = Math.max(0, req.heightPx ?? 0);
+    const height = rawHeight > SHADOW_HEIGHT_DEADZONE_PX ? rawHeight - SHADOW_HEIGHT_DEADZONE_PX : 0;
+    const t = Math.min(1, height / (req.rawH * SHADOW_FLOAT_T_HEIGHT_MULT));
+    const shrink = 1 - SHADOW_FLOAT_SHRINK * t;
+    const floatFade = 1 - SHADOW_FLOAT_FADE * t;
+    const footX = req.x, footY = req.y + height;
+
+    const staticFade = req.isStatic ? this.shadowStaticFade(footX, footY) : 1;
+    const totalAlpha = alpha * floatFade * staticFade;
+
+    let entry = this.shadowPoolV9.get(req.id);
+    if (totalAlpha <= 0) {
+      if (entry) { entry.core.visible = false; entry.outer.visible = false; if (entry.mesh) entry.mesh.visible = false; }
+      return;
+    }
+    seen.add(req.id);
+    if (!entry) {
+      const core = new Sprite(getShadowCoreTexture());
+      core.anchor.set(0.5, 0.5);
+      const outer = new Sprite(getShadowOuterTexture());
+      outer.anchor.set(0.5, 0.5);
+      this.shadowContainer.addChild(outer, core); // 描画順: 1外側 → 2芯(仕様書の描画順)
+      entry = { core, outer, mesh: null, lastSeenAt: now, lastMeshTexture: null, meshFadeStartAt: 0 };
+      this.shadowPoolV9.set(req.id, entry);
+    }
+    entry.lastSeenAt = now;
+
+    const ldom = this.computeDominantLight(req.id, footX, footY, ambDirX, ambDirY, glowLights, ldomLerp);
+
+    // ---- 接地2枚(画面軸のまま=回さない。芯は足元ぴったり) ----
+    const scaleMult = req.scaleMult ?? 1;
+    const coreW = req.rawW * Math.max(SHADOW_CORE_MIN_W_FRAC, SHADOW_FOOT_NARROW * SHADOW_CORE_W_MULT) * scaleMult * shrink;
+    const coreH = coreW * SHADOW_CORE_ASPECT;
+    const outerW = coreW * SHADOW_OUTER_SCALE;
+    const outerH = coreH * SHADOW_OUTER_SCALE;
+    // 外側オフセット: 非爆発時の長さ×0.16(爆発の伸びは掛けない)。頭打ち=方向半径×0.8。
+    const nonExplLen = req.rawH * lenRatio;
+    const a = Math.max(1, outerW / 2), b = Math.max(1, outerH / 2);
+    const dirDenom = Math.hypot(ldom.dirX / a, ldom.dirY / b) || 1;
+    const dirRadius = 1 / dirDenom;
+    const offset = Math.min(nonExplLen * SHADOW_OUTER_OFFSET_LEN_FRAC, dirRadius * SHADOW_OUTER_OFFSET_CAP_FRAC);
+
+    const corePos = this.shadowSnap(footX, footY);
+    entry.core.position.set(corePos.x, corePos.y);
+    entry.core.width = Math.max(3, coreW);
+    entry.core.height = Math.max(3, coreH);
+    entry.core.rotation = 0;
+    entry.core.alpha = Math.min(1, SHADOW_CORE_ALPHA_BASE * densityMult * totalAlpha);
+    entry.core.visible = true;
+
+    const outerPos = this.shadowSnap(footX + ldom.dirX * offset, footY + ldom.dirY * offset);
+    entry.outer.position.set(outerPos.x, outerPos.y);
+    entry.outer.width = Math.max(3, outerW);
+    entry.outer.height = Math.max(3, outerH);
+    entry.outer.rotation = 0;
+    entry.outer.alpha = Math.min(1, SHADOW_OUTER_ALPHA_BASE * densityMult * totalAlpha);
+    entry.outer.visible = true;
+
+    // ---- シルエット本体(台形) ----
+    if (req.silhouetteExempt || !req.texture) {
+      if (entry.mesh) entry.mesh.visible = false; // 松明/焚き火/緑卵、または絵の無いGraphics拾い物
+      return;
+    }
+    const bake = this.silhouetteEnsure(req.texture);
+    if (!bake) {
+      if (entry.mesh) entry.mesh.visible = false; // 未ベイク=接地2枚だけで待つ(★未決: 150msフェードイン未実装)
+      return;
+    }
+    const rawLength = nonExplLen * ldom.lenMult * shrink;
+    // 地平線帯の詰め(§3-9-B確定・実質的に効くのは昼のみ): 先端Yが地平線ライン
+    // (horizonForestFootWorldY)を越えないよう、必要ならlengthだけ詰める(αは触らない=接地は薄くしない)。
+    // 不感帯12px・時定数180msで平滑(ボスが上下に歩くたびに影が伸縮するのを防ぐ)。
+    let wantLength = rawLength;
+    if (ldom.dirY < 0) { // 上向き(=地平線に近づく方向)の時だけ効く
+      const rawTipY = footY + ldom.dirY * rawLength;
+      const overshoot = this.horizonForestFootWorldY - rawTipY; // 正=帯の外(空)へ出ている
+      if (overshoot > SHADOW_HORIZON_TRIM_DEADZONE_PX) {
+        const allowedLen = Math.max(0, (footY - this.horizonForestFootWorldY) / -ldom.dirY);
+        wantLength = Math.min(rawLength, allowedLen);
+      }
+    }
+    const prevLen = this.shadowHorizonTrimState.get(req.id);
+    const smoothedLen = prevLen === undefined ? wantLength : prevLen + (wantLength - prevLen) * horizonTrimLerp;
+    this.shadowHorizonTrimState.set(req.id, smoothedLen);
+    // 「伸びる」と「帯を越えない」なら帯が勝つ(§3-9-B確定): 平滑後もrawLengthは超えない。
+    const length = Math.min(rawLength, smoothedLen);
+    const nearHalf = req.rawW * SHADOW_FOOT_NARROW / 2 * shrink;
+    const farHalf = req.rawW / 2 * shrink;
+    if (length <= SHADOW_DEGENERATE_PX || nearHalf * 2 <= SHADOW_DEGENERATE_PX) {
+      if (entry.mesh) entry.mesh.visible = false;
+      return;
+    }
+    const tipX = footX + ldom.dirX * length, tipY = footY + ldom.dirY * length;
+    if (!this.segmentIntersectsRect(footX, footY, tipX, tipY, this.shadowVisibleRect())) {
+      if (entry.mesh) entry.mesh.visible = false; // カリング(可視域の外)。長さは詰めない(ズーム時に縮む破綻を防ぐ)
+      return;
+    }
+
+    if (!entry.mesh) {
+      entry.mesh = new PerspectiveMesh({ texture: bake.texture, verticesX: SHADOW_MESH_VX, verticesY: SHADOW_MESH_VY });
+      this.shadowContainer.addChild(entry.mesh);
+      entry.meshFadeStartAt = now; // §3-9-B確定: 焼き上がって初めて出す時は150msでαをフェードイン
+    }
+    if (entry.mesh.texture !== bake.texture) { entry.mesh.texture = bake.texture; entry.lastMeshTexture = bake.texture; }
+    const fadeIn = entry.meshFadeStartAt > 0 ? Math.min(1, (now - entry.meshFadeStartAt) / SHADOW_MESH_FADE_IN_MS) : 1;
+    entry.mesh.alpha = Math.min(1, SHADOW_SIL_ALPHA_BASE * densityMult * totalAlpha * fadeIn);
+
+    const px = -ldom.dirY, py = ldom.dirX; // 光方向に直交(先端側のskewはこの軸へずらす)
+    const uSign = req.flip ? -1 : 1; // 裁定H: 左右反転はu=0/u=1の入れ替え(焼き直し不要)
+    const skewShift = Math.tan(req.skewX ?? 0) * req.rawH; // 先端側の2隅だけをこの量ずらす(仕様確定値)
+    const farCx = tipX + px * skewShift, farCy = tipY + py * skewShift;
+    // §3-9-B v9裁定H: PerspectiveMesh.setCorners(x0..x3) は (top-left=u0v0, top-right=u1v0,
+    // bottom-right=u1v1, bottom-left=u0v1)。焼いたテクスチャは v=0(上端)=絵の頭側=影の遠い側(先端)、
+    // v=1(下端)=絵の足元=影の近い側。よって top-*=先端(tip)、bottom-*=足元(near)。
+    const c0 = this.shadowSnap(farCx + uSign * px * farHalf, farCy + uSign * py * farHalf);   // top-left (u0,v0)
+    const c1 = this.shadowSnap(farCx - uSign * px * farHalf, farCy - uSign * py * farHalf);   // top-right (u1,v0)
+    const c2 = this.shadowSnap(footX - uSign * px * nearHalf, footY - uSign * py * nearHalf); // bottom-right (u1,v1)
+    const c3 = this.shadowSnap(footX + uSign * px * nearHalf, footY + uSign * py * nearHalf); // bottom-left (u0,v1)
+    entry.mesh.setCorners(c0.x, c0.y, c1.x, c1.y, c2.x, c2.y, c3.x, c3.y);
+    entry.mesh.visible = true;
+  }
+
+  /** mark-and-sweep(裁定I): 見えなかったものは隠すだけ。実解放は非表示がSHADOW_MESH_GC_ms続いた時だけ。 */
+  private sweepShadowPoolV9(seen: Set<string>, now: number) {
+    for (const [id, entry] of this.shadowPoolV9) {
+      if (seen.has(id)) continue;
+      entry.core.visible = false;
+      entry.outer.visible = false;
+      if (entry.mesh) entry.mesh.visible = false;
+      if (now - entry.lastSeenAt > SHADOW_MESH_GC_MS) {
+        entry.core.destroy();
+        entry.outer.destroy();
+        if (entry.mesh) entry.mesh.destroy();
+        this.shadowPoolV9.delete(id);
+        this.shadowLdomState.delete(id);
+        this.shadowHorizonTrimState.delete(id);
+      }
     }
   }
 
@@ -9617,6 +10301,9 @@ export class PixiScene {
     const deathFade = this.playerDeathAt > 0
       ? Math.max(0, 1 - Math.max(0, (now - this.playerDeathAt) - PLAYER_DEATH_HOLD_MS) / PLAYER_DEATH_FADE_MS)
       : 1;
+    // §3-9-B v9裁定Q「掛ける」: 死亡フェードのみ(無敵点滅/シーカー半透明/introFade/corridorRunInFade
+    // =「掛けない」演出用の一時透過は含めない。地平線フェードとの二重掛け防止は影側の別経路が担う)。
+    view.shadowFade = deathFade;
     // カウンター成立の無敵は点滅させない(被弾と紛らわしいため・社長指示)。カウンターは invulnerableTime と
     // lastCounterSuccessTime を同時刻に立てるので、両者一致=カウンター由来の無敵と判定して点滅を抑止。
     // 被弾i-frame は invulnerableTime のみ更新されるので一致せず、従来どおり点滅する。
@@ -10083,6 +10770,10 @@ export class PixiScene {
     const artFade = TELEGRAPH_OWN_FADE ? posFade : 1;
     view.reticle.alpha = artFade;
     view.overlay.alpha = artFade;
+    // §3-9-B v9裁定Q: 「存在の法則」(reaperWarpFade=死神ワープ/hunterLeaveFade=索敵タイムアウト立ち去り)
+    // だけを影へ渡す。posFade(=horizonAlpha×foreFade、位置の法則)は影側が別途持つため含めない
+    // (地平線フェードの二重掛け防止。裏回り透け(bossBehindAlpha)も含めない=裏に回っても影は薄くならない)。
+    view.shadowFade = reaperWarpFade * hunterLeaveFade;
 
     if (bossFixed && tex) {
       // 裏ボス: 当たり判定=帯(AABB=e.width×e.height)。絵はそれより大きく、帯の上に伸ばす(見た目と判定を分離)。
@@ -12474,10 +13165,12 @@ export class PixiScene {
     this.armorySprite.visible = true;
     this.applyObstacleAlpha(this.armorySprite, footY);
     this.armorySprite.alpha *= fade;
+    // §3-9-B v9裁定Q: fade(入手後の退場フェード)は shadowFade へ分離。
     this.armoryShadow = {
       x: pos.x, y: footY,
-      w: Math.min(180 * d, tex.width * sc * 0.42),
-      alpha: horizonAlpha * 0.8 * fade,
+      legacyW: Math.min(180 * d, tex.width * sc * 0.42),
+      rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
+      alpha: horizonAlpha * 0.8, shadowFade: fade,
     };
 
     if (s.armoryTaken) return;
@@ -12541,10 +13234,12 @@ export class PixiScene {
     this.policeSprite.visible = true;
     this.applyObstacleAlpha(this.policeSprite, footY);
     this.policeSprite.alpha *= fade;
+    // §3-9-B v9裁定Q: fade(入手後の退場フェード)は shadowFade へ分離。
     this.policeShadow = {
       x: pos.x, y: footY,
-      w: Math.min(180 * d, tex.width * sc * 0.42),
-      alpha: horizonAlpha * 0.8 * fade,
+      legacyW: Math.min(180 * d, tex.width * sc * 0.42),
+      rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
+      alpha: horizonAlpha * 0.8, shadowFade: fade,
     };
   }
 
@@ -14267,14 +14962,26 @@ export class PixiScene {
     // Shadow stays at the base (not floating) so the bob lifts the item off it.
     // ソフト方向影に統一(他オブジェクトと同じプール経路。重みは lighting.shadowAlpha 基準で
     // アクターと揃え、bob で少しだけ薄れて浮遊感を出す)。syncShadows が配置する。
+    // §3-9-B v9裁定A: legacyW は旧実装用にそのまま残す(?silshadow=0)。texture/rawW/rawH は
+    // 新実装のシルエット用で、実際のアイコンテクスチャが解決した時点(下の各分岐)で確定するため、
+    // ここでは一旦 null/legacy相当で積み、各分岐末尾で最後の要素を上書きする。
     const lift = Math.max(0.62, 1 - Math.abs(floatOffset) * 0.07);
+    const legacyPickupW = size * 0.85 * d;
     this.pickupShadows.push({
       id: 'pk:' + p.id,
       x: cx,
       y: footY,
-      w: size * 0.85 * d,
+      legacyW: legacyPickupW,
+      rawW: legacyPickupW, rawH: legacyPickupW, texture: null,
       alpha: horizonAlpha * lift,
     });
+    const finalizePickupShadow = (tex: Texture | null, sc: number) => {
+      const last = this.pickupShadows[this.pickupShadows.length - 1];
+      if (!last || !tex) return;
+      last.texture = tex;
+      last.rawW = tex.width * sc;
+      last.rawH = tex.height * sc;
+    };
 
     // weapon-drop: ドロップした具体的な銃のスプライト(weaponKey 別)。素材がある銃のみ。
     if (p.type === 'weapon-drop' && hasWeaponIcon(p.weaponKey)) {
@@ -14290,6 +14997,7 @@ export class PixiScene {
         entry.sprite.scale.set(sc);
         entry.sprite.position.set(Math.round(cx), Math.round(footY + floatOffset));
         entry.sprite.visible = true;
+        finalizePickupShadow(tex, sc);
         return;
       }
     }
@@ -14356,6 +15064,7 @@ export class PixiScene {
         entry.sprite.scale.set(sc);
         entry.sprite.position.set(Math.round(cx), Math.round(footY + floatOffset));
         entry.sprite.visible = true;
+        finalizePickupShadow(tex, sc);
         return;
       }
     }
