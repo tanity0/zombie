@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2756',
+    items: [
+      'ゲーム内容の変更はありません（守護霊のコストはゴールドのみになり、スコアの半減は廃止する方針になりました）。',
+    ],
+  },
+  {
     version: '0.25.2755',
     items: [
       'ゲーム内容の変更はありません（守護霊のコストはゴールドのみで取ることに決まりました）。',
