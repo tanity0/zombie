@@ -54,6 +54,7 @@ import {
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
+import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
 import {
   idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING, IDOL_ORB_SPREAD_RAD, IDOL_MOVES_ALL,
   idolShot, isIdolShot, idolFistReach, type IdolShotSlot, type IdolMove,
@@ -1542,6 +1543,24 @@ const LOCAL_EVENT_GLOW_SHADOW_ENABLED = tsBool('evshadow', true);
 const GROUND_REFLECTION_ALPHA = 0.28;
 const GEM_BODY_GLOW_ALPHA = 0.38;
 const LOCAL_EVENT_SHADE_ALPHA = 0.5;
+
+// ★v0.25.2779(社長要望「光源の強さと連動できないかなーと。松明の近くに来ると薄まるとかも」):
+// 周りが明るいほどプレイヤーの補助光を引く。**明るい所では自分の光が要らない**(物理に沿う)。
+// 光源の数値は「実際に描いている光」からそのまま取る(松明=描画に使う haloR/haloA)ので、絵とズレない。
+const PLAYER_LIGHT_YIELD = tsNum('lightyield', 0.85);      // 明るさ最大でどれだけ引くか(1=完全に消える)
+const PLAYER_LIGHT_YIELD_MS = tsNum('lightyieldms', 220);  // 平滑の時定数ms(松明のpulseで明滅させない)
+const TORCH_LIGHT_GAIN = tsNum('torchgain', 2.0);          // 松明のhaloA→明るさへの倍率(haloA≒0.5で約1.0)
+const GLOW_LIGHT_REACH_MULT = tsNum('glowlightreach', 2.5); // 強glowの届く距離=半径×これ
+// ★爆発の「黒い円」の立ち上がり。旧実装は life 比例のみで**フェードインが無く**、湧いた瞬間に
+// 最大の黒が乗っていた(社長「パッときえてるんだよね」)。消える側は life→0 で元々滑らか。
+const LOCAL_EVENT_SHADE_RISE_MS = tsNum('shaderise', 110);
+// ★コントラストパンチの置き場所(社長要望の本命=オクトラ風。既定 OFF は従来どおり)。
+// 旧: worldGroup=**夜はフィルタが空**なので、パンチが「最初の1枚」になり
+//     画面全体を描き直すパスが爆発のたびに付いては外れる=一番高い形だった。
+// 新: filteredWorld=**tilt-shift が常時付いている**ので描き直し先が既にある
+//     ⇒ 追加は「同じ render target へシェーダ1パス」だけ(cineContrast と同じ理屈・:2606 のコメント)。
+// ★どちらが安いかは実機ベンチで測る。`?punchfw=1` で新しい置き場所に切り替わる。
+const PUNCH_ON_FILTERED_WORLD = tsBool('punchfw', false);
 const LOCAL_EVENT_SHADOW_ALPHA = 0.96;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
 const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
@@ -2429,6 +2448,11 @@ export class PixiScene {
   // ロックオンサークルの出現アニメ(敵ID→開始時刻+ロック数)。ズームアウト→イン+フェードインの起点。
   private lockAnim = new Map<string, { startedAt: number; count: number }>();
   private localEventShadeGfx = new Graphics();
+  // ★v0.25.2779: このフレームの「世界の光」(松明/焚き火)。syncBreakableProps の描画中に積み、
+  // プレイヤー光の更新(同フレームの後段)で読む。強glowは effects から直接足す。
+  private worldLights: PointLight[] = [];
+  private assistLightMultSmoothed = 1; // 補助光に掛ける倍率(平滑後)
+  private lastAssistLightNow = 0;      // 平滑の dt 計算用(既存の zdt と同じ作法)
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。uiLayer(=研究所の暗幕 labVeil や
   // 森の暗転/tilt-shift より上)に置き、環境光の影響を一切受けない。uiLayer は screen 座標なので
@@ -2615,6 +2639,8 @@ export class PixiScene {
       }
       filters.push(this.cineContrast);
     }
+    // ★v0.25.2779: `?punchfw=1` の時だけ、コントラストパンチをここへ入れる(上の applyPunchFilter 参照)。
+    if (PUNCH_ON_FILTERED_WORLD && this.punchInList && this.punchGrade) filters.push(this.punchGrade);
     this.L.filteredWorld.filters = filters;
   }
 
@@ -2658,10 +2684,25 @@ export class PixiScene {
       const k = this.punchStrength;
       this.punchGrade.contrast(k * tsNum('punchcontrast', 1.2), false); // 影締まり+ハイライト飛び。最大値へ(社長v0.25.1977)。?punchcontrast=
       this.punchGrade.brightness(1 + k * tsNum('punchbright', 0.22), true); // 全体を持ち上げ(?punchbright=)
-      if (!this.punchInList) { this.punchInList = true; this.syncWorldGroupFilters(); } // 立ち上がり時だけ付ける(昼コントラストと合成)
+      if (!this.punchInList) { this.punchInList = true; this.applyPunchFilter(); } // 立ち上がり時だけ付ける(昼コントラストと合成)
     } else if (this.punchInList) {
-      this.punchStrength = 0; this.punchInList = false; this.syncWorldGroupFilters(); // 減衰しきったら外す(昼コントラストは残る)
+      this.punchStrength = 0; this.punchInList = false; this.applyPunchFilter(); // 減衰しきったら外す(昼コントラストは残る)
     }
+  }
+
+  /**
+   * ★v0.25.2779: パンチのフィルタをどちらのコンテナへ入れるか(`?punchfw=1` で切替)。
+   * - 既定(false)= 従来どおり `worldGroup`。**夜はここのフィルタが空**なので、パンチが
+   *   「最初の1枚」になり、**画面全体を描き直すパスが爆発のたびに付いては外れる**=一番高い形。
+   * - `?punchfw=1` = `filteredWorld`。**tilt-shift が常時付いている**(`rebuildWorldFilters`)ので
+   *   描き直し先が既にあり、追加は「同じ render target へシェーダ1パス」だけで済む
+   *   (`cineContrast` を同じ理屈でここへ置いている前例あり)。
+   * ★どちらが安いかは実機ベンチで測る。**覆う範囲が違う**(worldGroup=地面含む画面全体 /
+   *   filteredWorld=地面ベースを除く)ので、**見え方も変わる**。安さと見え方の両方を見て決める。
+   */
+  private applyPunchFilter() {
+    if (PUNCH_ON_FILTERED_WORLD) this.rebuildWorldFilters();
+    else this.syncWorldGroupFilters();
   }
 
   // フィールドに落とす「動く雲の影」(社長指示v0.25.1974)。屋外ステージのみ・地面の上(worldGroup内)に multiply の雲影タイルをドリフト。
@@ -5410,15 +5451,33 @@ export class PixiScene {
     // 屋内(研究施設)は「明るい部分」を狭くする(社長指示): プレイヤー光/光だまりを縮小。
     const lightScale = s.indoorMode ? 0.62 : 1;
     const lp = this.lighting();
+    // ★v0.25.2779(社長要望): 周りが明るいほど補助光を引く。**明るい所では自分の光が要らない**。
+    // 光源 = 松明/焚き火(この上の syncBreakableProps で積んだ描画そのままの値) + 強glow(爆発・レベルアップ)。
+    // ★レベルアップの光はプレイヤー自身の位置に出る(gameStore.ts:7314 半径150)ので距離0=明るさ最大
+    //   ⇒ 社長が「意図的」と示した"レベルアップ中は補助光が無い"見え方が、この一般ルールから自動的に出る。
+    for (const e of s.effects) {
+      if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
+      const life = 1 - Math.min(1, (now - e.createdAt) / e.duration);
+      if (life <= 0) continue;
+      this.worldLights.push({ x: e.x, y: e.y, reach: e.radius * GLOW_LIGHT_REACH_MULT, strength: life });
+    }
+    const assistTarget = assistLightMult(lightAt(lx, ly, this.worldLights), PLAYER_LIGHT_YIELD);
+    // 松明は pulse で脈打つので、生の値だとプレイヤーが一緒に明滅する ⇒ 時定数で平滑する。
+    const assistDt = this.lastAssistLightNow ? Math.min(0.1, (now - this.lastAssistLightNow) / 1000) : 0;
+    this.lastAssistLightNow = now;
+    this.assistLightMultSmoothed += (assistTarget - this.assistLightMultSmoothed)
+      * lightSmoothLerp(assistDt, PLAYER_LIGHT_YIELD_MS);
+    const assistMult = this.assistLightMultSmoothed;
+
     this.playerLight.position.set(lx, ly);
     this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : lp.color;
-    this.playerLight.alpha = lp.playerAssistAlpha * LIGHT_CURVE_ALPHA_GAIN * PLAYER_LIGHT_ALPHA_GAIN * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
+    this.playerLight.alpha = lp.playerAssistAlpha * LIGHT_CURVE_ALPHA_GAIN * PLAYER_LIGHT_ALPHA_GAIN * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600)) * assistMult;
     this.playerLight.width = this.playerLight.height = lp.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2) * lightScale;
 
     // A: 光だまり(足元の地面プール)を追従。?pool=0 で無効。微かに脈動。
     if (this.playerGroundPool.visible) {
       this.playerGroundPool.position.set(lx, ly);
-      this.playerGroundPool.alpha = LIGHT_POOL_ALPHA * LIGHT_CURVE_ALPHA_GAIN * (0.94 + 0.06 * Math.sin(now / 700));
+      this.playerGroundPool.alpha = LIGHT_POOL_ALPHA * LIGHT_CURVE_ALPHA_GAIN * (0.94 + 0.06 * Math.sin(now / 700)) * assistMult;
       this.playerGroundPool.width = this.playerGroundPool.height = LIGHT_POOL_RADIUS * 2 * lightScale;
     }
 
@@ -7107,6 +7166,7 @@ export class PixiScene {
   }
 
   private syncBreakableProps(props: BreakableProp[], now: number) {
+    this.worldLights.length = 0; // ★v0.25.2779: このフレームの光を集め直す(松明はこの下の描画で積まれる)
     const seen = new Set<string>();
     for (const prop of props) {
       seen.add(prop.id);
@@ -7375,7 +7435,12 @@ export class PixiScene {
       if (life <= 0 || horizonAlpha <= 0) continue;
 
       const d = this.depthScale(e.y);
-      const shadeAlpha = LOCAL_EVENT_SHADE_ALPHA * life * horizonAlpha;
+      // ★v0.25.2779(社長「パッときえてるんだよね」): 立ち上がりを足す。旧実装は life 比例だけで
+      // **湧いた瞬間に最大の黒**が乗っていた(消える側は life→0 で元々滑らか=出方だけが急だった)。
+      const rise = LOCAL_EVENT_SHADE_RISE_MS > 0
+        ? Math.min(1, (now - e.createdAt) / LOCAL_EVENT_SHADE_RISE_MS)
+        : 1;
+      const shadeAlpha = LOCAL_EVENT_SHADE_ALPHA * life * horizonAlpha * rise;
       const lightX = Math.round(e.x);
       const lightY = Math.round(e.y);
       const rx = e.radius * 2.55 * d;
@@ -7621,6 +7686,9 @@ export class PixiScene {
     // (TILT_SHIFT_BAND=0.54 の位置がくっきり・そこから TILT_SHIFT_GRADIENT px でボケへ)。
     // その**同じ帯**を基準に、この光がピントからどれだけ外れているかを 0..1 で出し、
     // **ピント用とボケ用の2枚をクロスフェード**する。フィルタは使わない(per-pixel処理ゼロ)。
+    // ★v0.25.2779: 描画に使う値(haloR/haloA)をそのまま「世界の光」として登録する。
+    // ここで別の数式を作ると**絵と挙動がズレる**ので、必ず描画と同じ数字を使う。
+    if (haloA > 0 && haloR > 0) this.worldLights.push({ x: flameX, y: flameY, reach: haloR, strength: haloA * TORCH_LIGHT_GAIN });
     const focusT = this.lightDefocus01(flameY);
     // ボケ側は**半径を広げるぶんαを下げる**(総光量を保つ=ボケて明るくならない)。
     const bokehR = Math.min(haloR * TORCH_BOKEH_R_MULT, this.screenH * TORCH_HALO_MAX_R_FRAC * TORCH_BOKEH_R_MULT);

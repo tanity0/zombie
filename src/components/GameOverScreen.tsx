@@ -87,7 +87,9 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     // glowweight/glowstretch/glowsumcap/glowpunch: 影の支配光(Ldom)の量ツマミ(§3-9-B v9・社長裁定S-2/S-4)。
     // glowfade: 影の先端ベクトルが縮む時の補間時定数ms(裁定S-7・既定220)。0=即戻り。
     // footalpha: 絵の「実アルファ内容の下端」を測る際の不透明しきい値(裁定S-6・既定128)。
-    const keys = ['glowhalo', 'glowcore', 'refl', 'evshadow', 'benchonly', 'warm', 'canary', 'repeat', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev', 'glowweight', 'glowstretch', 'glowsumcap', 'glowpunch', 'glowfade', 'footalpha'];
+    const keys = ['glowhalo', 'glowcore', 'refl', 'evshadow', 'benchonly', 'warm', 'canary', 'repeat', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev', 'glowweight', 'glowstretch', 'glowsumcap', 'glowpunch', 'glowfade', 'footalpha',
+      // v0.25.2779: 補助光の連動 / 黒い円の立ち上がり / コントラストパンチの置き場所
+      'lightyield', 'lightyieldms', 'torchgain', 'glowlightreach', 'shaderise', 'punchgrade', 'punchfw'];
     const on = keys.filter(k => q.get(k) !== null).map(k => `${k}=${q.get(k)}`);
     return on.length ? on.join(' ') : 'なし(既定)';
   })();
