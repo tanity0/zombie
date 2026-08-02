@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2787',
+    items: [
+      'ゲーム内容の変更はありません（遠景の線の切り分け用スイッチを足しました）。',
+    ],
+  },
+  {
     version: '0.25.2786',
     items: [
       'ゲーム内容の変更はありません（遠景の線を特定する開発用スイッチに、上に重ねている幕も追加しました）。',

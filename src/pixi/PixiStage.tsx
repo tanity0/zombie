@@ -82,7 +82,11 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
         height,
         antialias: false, // pixel art — keep edges crisp
         roundPixels: true,
-        background: 0x0b0b12,
+        // ★v0.25.2787(遠景の1pxの線の切り分け): `?bgtest=1` で下地をマゼンタにする。
+        // **線がマゼンタになれば「層と層の間の隙間」で確定**(隙間から下地が覗いている)。
+        // 変わらなければ隙間ではなく、どれかの層が実際にその線を描いている。
+        background: (typeof window !== 'undefined'
+          && new URLSearchParams(window.location.search).get('bgtest') === '1') ? 0xff00ff : 0x0b0b12,
         resolution: Math.min(window.devicePixelRatio || 1, resolutionCap()),
         autoDensity: true,
       });
