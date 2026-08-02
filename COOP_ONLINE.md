@@ -560,6 +560,56 @@ CO-2 以降（自前シグナリングサーバ、WebRTC、デプロイ、TURN�
    同じ端末IDが別接続で入るのを禁じていない。乱入型では「自分の卓に自分が乱入」は起こしたくない。
 3. サーバの UUID 判定が **v1〜v5** を受理(`id.ts` が作るのは v4)。緩いだけで害は無いが、揃えると綺麗。
 
+### 11-3b. ★CO-3 検収結果(v0.25.2739 = **不合格・差し戻し**)
+
+**納品**: `codex/coop-online-3` / `16fad0be feat(online): add WebRTC coop transport and netcheck`
+(3009行・実装＋ユニット19本＋e2e)。`typecheck` / `lint` / `vitest run src/online` は通過、
+変更は `src/online/` `server/` `tools/netcheck/` の外に1つも無い(確認済み)。
+
+**依頼した4点の判定**
+| # | 項目 | 判定 | 根拠 |
+|---|---|---|---|
+| 1 | 境界(2本ともopenの時だけ connected) | **合格** | `webrtc.ts:436-451`。`maintenance` は判定外・単独closeでセッションを殺さない(`:339,549`)。`webrtc.test.ts:293-300` で固定 |
+| 2 | バージョン隔離 | **不合格** | `room-store.js:78-97` の `list()` は版一致のみ返すが **`join()`(:99-110) が `buildVersion` を見ない**。`update-room` で開室後に版を変えれば**版違いのまま connected まで行く**。結果 `types.ts:14` の `'version'` は**誰も生成しない死語** |
+| 3 | 匿名IDの再利用 | **合格(ただし無テスト)** | `id.ts:44-50` で localStorage 再利用。`?anonid=` は保存せず(:38-42)、v4でなければ通常IDへ。**★指定の2条件にテストが1本も無い** |
+| 4 | 2タブの往復 | **概ね合格** | `online.e2e.ts` が双方向/無送信10秒/`peer-left`1回/版違い非表示/`?signal=`無し/`?online=0`/3分負荷+ヒープ/募集3分放置 を検証。**未達は下の C** |
+
+**★最優先の2件(これが CO-4 を止める)**
+- **A: LAN許可を足したのに LAN Origin が発生し得ない。** `origin.js` で RFC1918 を許可したが、
+  `server/package.json:7` / `wrangler.jsonc:8` / `tools/netcheck/package.json:7` が
+  **3つとも 127.0.0.1 固定バインド**。スマホはページにもWSにも到達できず、**LAN分岐は到達不能なコード**。
+- **B: 平文HTTPのLAN IPは secure context ではない。** `RTCPeerConnection` は secure context 限定なので
+  `webrtc.ts:144` が失敗 → `create` が null → **netcheck は無言**(下の E)。
+  **⇒ 現設計では CO-4(実機確認)が成立しない。**
+
+**★A/B への方針(設計チャット判断 v0.25.2739): LANをやめる。**
+**netcheck を既存の GitHub Pages チャネルで配信し、Worker はデプロイして公開HTTPSで叩く。**
+理由: ①CLAUDE.md が **Pages を「開発・実機テスト用チャネル」と定めている**ので、実機テストの
+導線は既にそこにある ②Pages も Worker も**HTTPS＝secure context** なので B が丸ごと消える
+③証明書のインストールもトンネルも要らない ④**LAN許可(`origin.js`)は不要になる**(残しても無害)。
+⇒ **CO-3b では 127.0.0.1 固定を外すのではなく、公開HTTPS前提へ振り替える。**
+★**社長にしかできないこと**: Cloudflare アカウントでの Worker デプロイ(URLの発行)。
+
+**その他の指摘(CO-3b で差し戻す)**
+- **C**: 「close後の再募集」e2e が空振り。`app.ts:148-153` の `closeSession()` が **`api = null`** するため、
+  `signaling.ts:544/600` の**再利用ゲートを一度も通っていない**。ゲーム側は `CoopApi` を1個長生きさせる。
+  さらに**確立に失敗させてから再募集するテストが1本も無い**(発注文が最も警戒した経路)。
+- **D**: `?anonid=` の★2条件(保存しない / v4でなければ無視)に**テストが無い**。
+- **E**: `app.ts:77-80` — advertise が無効時に **notice を一切更新せず完全沈黙**。
+  Signal URL不正 / `?online=0` / RTCPeerConnection不在 のどれでも「待機中」のまま。**切り分け不能**。
+- **F**: `taken` の部屋に TTL が無い(`room-store.js:36-46` は `open` のみ剪定)。
+  無言切断で**永久に残り** `MAX_ROOMS=128` を食う。
+- **G**: `maintenance` 混入の e2e が**間接**。比べているのが `messagesReceived` で、
+  **カウンタと `onMessage` が同じ関数の中**(`webrtc.ts:453-467`)。直接の証人 `receivedPayloads` で assert すべき。
+- **H**: ロス表示が**順序入れ替えをロス計上し続ける**(`app.ts:59-66`)。`unreliable` は unordered なので常時発生。
+  加えて `sequence` が再接続でリセットされず、2回目以降は分母だけ膨らんでロス率が低く出る。
+- **I**: 受信側16KB切り捨て(`webrtc.ts:457`)が契約に無い独自ルールで、統計にも残らず観測不能。
+- **J**: `connected` 前に着いた受信データが黙って落ちる(`webrtc.ts:455`)。
+- **K**: `tools/netcheck/tsconfig.json:12` の include に `vite.config.ts` が無い。
+- **L**: `rttMs` を丸めずに表示 / セッション中にURLを変えると欄と実接続がズレる / `snapshot()` が毎回 API 生成。
+
+**直す順**: A+B → C → E → D/G → 2/F/H → I/J/K/L。
+
 ### 11-3. CO-3 の発注文(v0.25.2712・★品質監査6回ぶんを反映・判定「渡してよい」)
 
 ```

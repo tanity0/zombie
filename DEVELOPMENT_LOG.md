@@ -1,5 +1,35 @@
 # Development Log
 
+## v0.25.2739 — CO-3 検収=**不合格・差し戻し**(12件)【2026-08-02 14:33 JST】
+
+**納品**: `codex/coop-online-3` / `16fad0be`(3009行)。typecheck/lint/`vitest run src/online`(19本)通過、
+変更は `src/online/` `server/` `tools/netcheck/` の外に無し。
+
+**依頼した4点**: 境界(2本openで connected)=**合格** / 匿名IDの再利用=**合格(ただし無テスト)** /
+2タブe2e=**概ね合格** / **バージョン隔離=不合格**(`join()` が `buildVersion` を見ないので、
+開室後に `update-room` で版を変えると**版違いのまま connected まで行く**。`types.ts` の `'version'` は死語)。
+
+**★CO-4 を止める2件**
+- **A**: LAN許可(`origin.js`)を足したのに、server/netcheck が**3つとも 127.0.0.1 固定バインド**で
+  **LAN Origin が発生し得ない**=到達不能なコード。
+- **B**: 平文HTTPのLAN IPは **secure context ではない**ので `RTCPeerConnection` が使えない
+  ⇒ **現設計では実機確認(CO-4)が成立しない**。
+
+**★方針(設計チャット判断): LANをやめ、公開HTTPSへ振り替える。**
+netcheck を**既存の GitHub Pages チャネル**で配信し、**Worker はデプロイして公開HTTPSで叩く**。
+CLAUDE.md が Pages を「開発・実機テスト用チャネル」と定めているので導線は既にあり、
+Pages も Worker も HTTPS なので **B が丸ごと消え、証明書もトンネルも要らず、LAN許可自体が不要になる**。
+★**社長にしかできないこと**: Cloudflare で Worker をデプロイして URL を発行すること。
+
+**その他**: close後の再募集e2eが `api=null` で再利用ゲートを素通り(＋失敗後の再試行が無テスト) /
+`?anonid=` の★2条件が無テスト / advertise 無効時に netcheck が完全沈黙 / `taken` 部屋にTTL無し /
+maintenance混入の検査が間接 / ロス表示が順序入れ替えを誤計上 / 受信16KB切り捨てが契約外 /
+connected前の受信が黙って落ちる / `vite.config.ts` が型検査外 / 表示の細かい3件。
+
+**変更ファイル**: `COOP_ONLINE.md` / `package.json` / `src/data/changelog.ts`
+**検証**: `npm run typecheck` / `npm run lint` エラー0。
+**次の引き継ぎ**: 社長が Worker デプロイURLを用意 → CO-3b の発注文を書いて Codex へ差し戻し。
+
 ## v0.25.2738 — 影仕様 v8(未決Dを裁定=D-1 / 監査7回目を全反映)【2026-08-02 14:26 JST】
 
 **社長裁定**: 「おすすめで」= **未決D は D-1**(承認時の濃さを基準にし、昼夜差だけ浅く残す)。
