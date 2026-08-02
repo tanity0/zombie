@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2762',
+    items: [
+      '一部の花が地面から少し浮いて見える不具合を修正しました。',
+    ],
+  },
+  {
     version: '0.25.2761',
     items: [
       '爆発などの強い光が消える時、影が中間の向きを通って回転しながら戻る不具合を修正しました（元の向きへふわっと切り替わるようにしました）。',

@@ -86,7 +86,8 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     // 描画負荷に効く/計測の解釈に効くものだけを拾う(全部出すと読みにくい)。
     // glowweight/glowstretch/glowsumcap/glowpunch: 影の支配光(Ldom)の量ツマミ(§3-9-B v9・社長裁定S-2/S-4)。
     // glowfade: 勝者交代時のクロスフェード時間ms(裁定S-5)。0=角度補間せず即切替。
-    const keys = ['glowhalo', 'glowcore', 'refl', 'evshadow', 'benchonly', 'warm', 'canary', 'repeat', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev', 'glowweight', 'glowstretch', 'glowsumcap', 'glowpunch', 'glowfade'];
+    // footalpha: 絵の「実アルファ内容の下端」を測る際の不透明しきい値(裁定S-6・既定128)。
+    const keys = ['glowhalo', 'glowcore', 'refl', 'evshadow', 'benchonly', 'warm', 'canary', 'repeat', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev', 'glowweight', 'glowstretch', 'glowsumcap', 'glowpunch', 'glowfade', 'footalpha'];
     const on = keys.filter(k => q.get(k) !== null).map(k => `${k}=${q.get(k)}`);
     return on.length ? on.join(' ') : 'なし(既定)';
   })();

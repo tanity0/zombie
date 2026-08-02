@@ -1,5 +1,55 @@
 # Development Log
 
+## v0.25.2762 — S-6: 花の「浮き」を実測で特定・不透明しきい値の作り替え【2026-08-02 17:31 JST】
+
+社長の実機スクショ「まだ浮いてる花があった」への対応。社長仮説(「なにか絵にノイズが混じっているか。
+草が生えてる部分が下限で間違いない」)が的中。
+
+### 実測(座長=coordinator側でflower-0〜11の12枚をデコードして確認)
+`flower-7.png`(255×342)は最下行にα=45(薄いゴースト画素・4px幅)が1つだけあり、その上53行は
+完全な空白で、本物の草はさらに54px上(342px中54px=15.8%)から始まっていた。同じα=45級の薄い
+ゴーストが`flower-11.png`にも(6px分)乗っていた。書き出し時に混入したノイズとみられ、**「絵の
+最下行に不透明画素がある」だけを基準にすると、この薄いノイズを「絵の内容」と誤判定**していた。
+
+このリポジトリでこの計測結果を再現できることを確認: 自作の最小PNGデコーダで同じ数値
+(flower-7: gap 54px/15.8%、flower-11: gap 6px)を再現した。
+
+### S-6(裁定): 「不透明」の基準を α>10 → α≥128(既定・`?footalpha=`で可変)に変更
+- v0.25.2760で作った実アルファ内容bbox実測機構(`textureContentBottomFrac`。裏ボスの影の接地点
+  計算に使用)の「不透明とみなす」しきい値を、`SHADOW_FOOT_ALPHA_THRESHOLD = tsNum('footalpha', 128)`
+  に一本化(旧: 両端とも固定値10)。**1箇所のしきい値変更で、この機構を使っている全ての場所
+  (生きている裏ボス・討伐フェード中の裏ボス死体の影の接地点)に自動で効く。**
+- **花にもこの機構を新規適用**: `syncForestFlowers`でスプライト生成時、`anchor.set(0.5, 1)`
+  (テクスチャのliteralな下端をfootYにピン留め)を`anchor.set(0.5, textureContentBottomFrac(tex))`
+  (実際に見える株元をfootYにピン留め)に変更。花は壁判定なしの純装飾(`world/obstacles.ts`の
+  footRect/hitboxを持たない)なので、アンカー調整はhitboxに一切影響しない。影(`place()`呼び出し)
+  は従来どおり同じ`f.footY`を使っているため、絵と影は自動で同じ基準点になる(影側は変更不要)。
+  シルエットの寸法(rawW/rawH)は絵の実寸のまま=形は変えていない(社長が形には満足済みのため)。
+
+### 横展開の調査(社長指示「木/プロップ/city props/建物/敵/ボスにも確認してください」)
+自作PNGデコーダで下端付近のα分布を実測(α>10の最下行 vs α≥128の最下行の差)。結果:
+**このノイズは花セット以外には見つからなかった**(全て差0〜1px = 測定誤差級)。
+- 木(tree-new*.png/tree-snow.png): 差0px
+- city props(`prop-r*-c*.png`全84枚): 差0px
+- 建物(hospital/armory/castle-church/police): 差0px
+- 通常敵(atlas-px/px2・stage3〜5-enemies・lab-zombie 全variant): 差0〜1px
+- ボス(skadi/jormungand/glen-boss/acrasiel/suriel/thor/uri/rafi/miguel/zan/mimir/hunter/idol): 差0〜1px
+⇒ よって花以外への追加のアンカー変更は行っていない(しきい値の一本化により、裏ボスの影は既に
+恩恵を受けている)。`castle.png`はインデックスカラーPNGで簡易デコーダが非対応のため今回は未検証
+(必要なら別途)。
+
+### 実装
+- `SHADOW_FOOT_ALPHA_THRESHOLD`定数を追加(`?footalpha=`、既定128)。
+- `textureContentBottomFrac`の2箇所のしきい値(`> 10`)を`>= SHADOW_FOOT_ALPHA_THRESHOLD`に変更。
+- `syncForestFlowers`のスプライト生成時アンカーを実測値ベースに変更。
+- BENCHの`knobs:`行(`GameOverScreen.tsx`)に`footalpha`を追加。
+
+**ファイル**: `src/pixi/pixiScene.ts` / `src/components/GameOverScreen.tsx` / `package.json` /
+`src/data/changelog.ts`。
+**検証**: `npm run typecheck` / `npm run lint` エラー0(社長指示により test/build は未実行)。
+自作PNGデコーダでflower-7/flower-11の実測値が座長側の実測(54px/15.8%、6px)と一致することを確認。
+**次**: 社長の実機確認待ち。
+
 ## v0.25.2761 — S-5: 影の向きを「合成」から「勝者総取り+クロスフェード」へ作り替え【2026-08-02 17:22 JST】
 
 社長実機報告:「影が動く時、その方向に行く過程で回転するのが違和感ある。光源が実際に周囲を回っていて、

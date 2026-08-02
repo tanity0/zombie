@@ -1643,6 +1643,14 @@ const SHADOW_WINNER_FADE_MS = tsNum('glowfade', 120);
  * (§3-9-B確定)。`?evshadow=0` は「支配光に強glowを参加させない(環境光のみ)」の意味(裁定O)。 */
 const SHADOW_GLOW_REACH_MULT = LOCAL_EVENT_SHADOW_REACH_MULT; // 旧投影影の reach と同じ式を流用
 
+// ★S-6(社長実機報告「まだ浮いてる花があった」の実測裁定): テクスチャの実アルファ内容の下端
+// (`textureContentBottomFrac`)を測る際の「不透明とみなす」しきい値。書き出し時に混入したとみられる
+// α=45級の薄いゴースト画素(例: flower-7.pngは最下行に4px・α=45の点が1つだけあり、その上53行は
+// 完全な空白で、本物の草はさらに54px上から始まる)を「絵の内容」と誤認しないよう、はっきり見える
+// 濃さ(α≥128)だけを内容とみなす(旧しきい値=α>10は薄いノイズも拾ってしまっていた)。
+// `?footalpha=` で実機微調整できるようにする(既定128)。
+const SHADOW_FOOT_ALPHA_THRESHOLD = tsNum('footalpha', 128);
+
 // ---- 浮遊(§3-9-B確定) --------------------------------------------------------------------
 const SHADOW_FLOAT_T_HEIGHT_MULT = 1.2; // t = min(1, h / (絵の高さ×1.2))
 const SHADOW_FLOAT_SHRINK = 0.35;       // 小さく: ×(1-0.35t)
@@ -6247,7 +6255,14 @@ export class PixiScene {
       if (!entry) {
         const tex = getTexture(`props/flower-${f.variant}`);
         const sprite = new Sprite(tex ?? undefined);
-        sprite.anchor.set(0.5, 1);
+        // ★S-6(社長実機報告「まだ浮いてる花があった」): anchor(0.5,1)=テクスチャの literal な
+        // 下端をfootYに固定していたが、一部の変種(flower-7/11等)は最下部に書き出しノイズの薄い
+        // ゴースト画素(α=45級)だけが乗っており、実際に目に見える株元はそこから数十px上にある。
+        // アンカーを「literal な下端(1)」ではなく「実アルファ内容の下端」(textureContentBottomFrac、
+        // α≥SHADOW_FOOT_ALPHA_THRESHOLDだけを内容とみなす)にする=見た目の株元がfootYに来る
+        // (絵の形・寸法は変えない。花は壁判定なしの純装飾=アンカー調整がhitboxに影響しない)。
+        // 影(place()呼び出し)は従来どおり同じ f.footY を使う=絵と影は自動で同じ基準点になる。
+        sprite.anchor.set(0.5, tex ? this.textureContentBottomFrac(tex) : 1);
         sprite.x = f.footX;
         sprite.y = f.footY;
         sprite.zIndex = f.footY; // 立ち物=足元Yでアクター/敵とY-sort
@@ -8723,10 +8738,15 @@ export class PixiScene {
   }
 
   /**
-   * ★検収差し戻し(中12): テクスチャの実アルファ内容の下端(0=テクスチャ上端/1=下端の割合)。
-   * 裏ボスは anchor(0.5,0.5)+`BOSS_SPRITE_FIT` の手動係数で位置決めしており、テクスチャに透明な
-   * 余白があると「絵の下端」の計算(スプライト中心±テクスチャ高さ/2)が実際に見えている絵より
-   * 上下にズレる(社長報告の例: ヨルムンガルドで足元より80px級下に影が置かれる)。
+   * ★検収差し戻し(中12)+★S-6(社長実機報告「まだ浮いてる花があった」の実測裁定): テクスチャの
+   * 実アルファ内容の下端(0=テクスチャ上端/1=下端の割合)。裏ボスは anchor(0.5,0.5)+
+   * `BOSS_SPRITE_FIT` の手動係数で位置決めしており、テクスチャに透明な余白があると「絵の下端」の
+   * 計算(スプライト中心±テクスチャ高さ/2)が実際に見えている絵より上下にズレる(社長報告の例:
+   * ヨルムンガルドで足元より80px級下に影が置かれる)。
+   * 「不透明とみなす」しきい値は `SHADOW_FOOT_ALPHA_THRESHOLD`(既定128・`?footalpha=`)。
+   * 書き出し時に混入したとみられる薄いゴースト画素(α=45級)を「絵の内容」と誤認しないよう、
+   * はっきり見える濃さだけを内容とみなす(社長実測: flower-7.pngは最下行にα=45の点が1つだけあり、
+   * その上53行は完全な空白だった。旧しきい値=α>10ではこの薄い点を拾って足元を誤判定していた)。
    * `renderer.extract.pixels` で1回だけ実測してキャッシュする(ベイクと同じく1回きりのper-pixel
    * パスは仕様上許容されている)。renderer未準備等で測れない時は 1(=テクスチャ下端。従来の挙動)
    * にフォールバックする(キャッシュはしない=次回呼び出しで再試行できる)。
@@ -8743,7 +8763,7 @@ export class PixiScene {
         const step = fromTop ? 1 : -1;
         for (let y = start; y !== end; y += step) {
           for (let x = 0; x < width; x++) {
-            if (pixels[(y * width + x) * 4 + 3] > 10) return y;
+            if (pixels[(y * width + x) * 4 + 3] >= SHADOW_FOOT_ALPHA_THRESHOLD) return y;
           }
         }
         return -1;
