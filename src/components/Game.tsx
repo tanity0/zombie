@@ -311,7 +311,7 @@ const LightDebug: React.FC = () => {
     let raf = 0;
     const tick = () => {
       const d = getAssistLightDebug();
-      if (ref.current) ref.current.textContent = ` · light:${d.b.toFixed(2)} mult:${d.mult.toFixed(2)} n:${d.lights}`;
+      if (ref.current) ref.current.textContent = ` · light:${d.b.toFixed(2)} punch:${d.punch.toFixed(2)} mult:${d.mult.toFixed(2)} n:${d.lights}`;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

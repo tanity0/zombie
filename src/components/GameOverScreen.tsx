@@ -90,7 +90,7 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     const keys = ['glowhalo', 'glowcore', 'refl', 'evshadow', 'benchonly', 'warm', 'canary', 'repeat', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev', 'glowweight', 'glowstretch', 'glowsumcap', 'glowpunch', 'glowfade', 'footalpha',
       // v0.25.2779: 補助光の連動 / 黒い円の立ち上がり / コントラストパンチの置き場所
       'lightyield', 'lightyieldms', 'torchreach', 'torchgain', 'glowlightreach', 'glowlightgain',
-      'shaderise', 'punchgrade', 'punchfw', 'punchlight', 'punchgain', 'punchcontrast', 'punchbright', 'lightdbg'];
+      'shaderise', 'punchgrade', 'punchfw', 'punchlight', 'punchgain', 'punchcontrast', 'punchbright', 'torchpunchreach', 'lightdbg'];
     const on = keys.filter(k => q.get(k) !== null).map(k => `${k}=${q.get(k)}`);
     return on.length ? on.join(' ') : 'なし(既定)';
   })();

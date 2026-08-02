@@ -1548,7 +1548,7 @@ const LOCAL_EVENT_SHADE_ALPHA = 0.5;
 // 周りが明るいほどプレイヤーの補助光を引く。**明るい所では自分の光が要らない**(物理に沿う)。
 // 光源の数値は「実際に描いている光」からそのまま取る(松明=描画に使う haloR/haloA)ので、絵とズレない。
 /** ★v0.25.2780: 補助光の連動を目で確かめられないので、実測値を外へ出す(`?lightdbg=1` で表示)。 */
-const assistLightDebug = { b: 0, mult: 1, lights: 0 };
+const assistLightDebug = { b: 0, punch: 0, mult: 1, lights: 0 };
 export const getAssistLightDebug = () => assistLightDebug;
 
 const PLAYER_LIGHT_YIELD = tsNum('lightyield', 1.0);       // 明るさ最大でどれだけ引くか(1=完全に消える。社長裁定v0.25.2781「ゼロがいい」)
@@ -1563,6 +1563,9 @@ const TORCH_LIGHT_REACH_MULT = tsNum('torchreach', 3.0);   // 松明の届く距
 const TORCH_LIGHT_GAIN = tsNum('torchgain', 4.0);          // haloA→明るさ。halo半径の内側で b が1へ飽和する量
 const GLOW_LIGHT_REACH_MULT = tsNum('glowlightreach', 5.0); // 強glowの届く距離=半径×これ(影の6.25に寄せる)
 const GLOW_LIGHT_GAIN = tsNum('glowlightgain', 2.5);       // 強glowの life→明るさ。半径の内側で飽和させる
+// ★v0.25.2784(社長「松明と焚き火、コントラスト上げるのはもう少し近づいたら」):
+// **コントラストパンチ用の松明の届く距離だけ**を短くする(補助光の弱まり方は `torchreach` のまま=変えない)。
+const TORCH_PUNCH_REACH_MULT = tsNum('torchpunchreach', 1.5); // パンチ用の松明の距離=haloR×これ(補助光は3.0)
 // ★爆発の「黒い円」の立ち上がり。旧実装は life 比例のみで**フェードインが無く**、湧いた瞬間に
 // 最大の黒が乗っていた(社長「パッときえてるんだよね」)。消える側は life→0 で元々滑らか。
 const LOCAL_EVENT_SHADE_RISE_MS = tsNum('shaderise', 110);
@@ -2466,7 +2469,9 @@ export class PixiScene {
   private worldLights: PointLight[] = [];
   private assistLightMultSmoothed = 1; // 補助光に掛ける倍率(平滑後)
   private lastAssistLightNow = 0;      // 平滑の dt 計算用(既存の zdt と同じ作法)
-  private assistBrightnessNow = 0;     // プレイヤー足元の明るさ(補助光とコントラストパンチが共用)
+  private assistBrightnessNow = 0;     // プレイヤー足元の明るさ(補助光用)
+  private punchLights: PointLight[] = []; // パンチ用の光(松明だけ届く距離が短い)
+  private punchBrightnessNow = 0;      // プレイヤー足元の明るさ(コントラストパンチ用)
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。uiLayer(=研究所の暗幕 labVeil や
   // 森の暗転/tilt-shift より上)に置き、環境光の影響を一切受けない。uiLayer は screen 座標なので
@@ -2695,7 +2700,7 @@ export class PixiScene {
     // spawnFlash が無い)。⇒ 「世界の光」(松明+強glow)の**プレイヤー足元での明るさ**も強度に混ぜる。
     // 補助光と同じ値を使うので、**「自分の光が消えるほど明るい場所」= 「世界のコントラストが上がる場所」**
     // になり、2つの演出が同じ理屈で動く。
-    target = Math.max(target, Math.min(1, this.assistBrightnessNow * PUNCH_LIGHT_GAIN));
+    target = Math.max(target, Math.min(1, this.punchBrightnessNow * PUNCH_LIGHT_GAIN));
     // 立ち上がりは即・減衰はなめらかに(前フレームより下がる時だけ緩める)。
     this.punchStrength = target >= this.punchStrength ? target : this.punchStrength + (target - this.punchStrength) * 0.22;
     const active = this.punchStrength > 0.012;
@@ -5494,11 +5499,13 @@ export class PixiScene {
       if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
       const glowLife = 1 - Math.min(1, (now - e.createdAt) / e.duration);
       if (glowLife <= 0) continue;
-      this.worldLights.push({ x: e.x, y: e.y, reach: e.radius * GLOW_LIGHT_REACH_MULT, strength: glowLife * GLOW_LIGHT_GAIN });
+      const gl = { x: e.x, y: e.y, reach: e.radius * GLOW_LIGHT_REACH_MULT, strength: glowLife * GLOW_LIGHT_GAIN };
+      this.worldLights.push(gl);
+      this.punchLights.push(gl); // 爆発は距離を変えない(社長「コントラスト上がった!いい感じ」)
     }
-    this.assistBrightnessNow = lightAt(
-      s.player.x + s.player.width / 2, s.player.y + s.player.height / 2, this.worldLights,
-    );
+    const pfx = s.player.x + s.player.width / 2, pfy = s.player.y + s.player.height / 2;
+    this.assistBrightnessNow = lightAt(pfx, pfy, this.worldLights);
+    this.punchBrightnessNow = lightAt(pfx, pfy, this.punchLights);
     this.updatePunchGrade(s.effects, now); // 攻撃/爆発の光でコントラストパンチ(?punchgrade=1・既定OFF)
     this.updateCloudShadow(now, s.camera.x, s.camera.y, s.indoorMode); // フィールドの動く雲影(屋外のみ・?cloudshadow=0で無効)
     this.updateSnowAir(now); // ステージ4の冷たい空気(寒色グレード)+遠景森前の霧(snowのみ)
@@ -5525,6 +5532,7 @@ export class PixiScene {
     const assistMult = this.assistLightMultSmoothed;
     // ★v0.25.2780: `?lightdbg=1` で画面下の debug 行に出す。**目視で「変わってない?」を繰り返さない**ため。
     assistLightDebug.b = assistBrightness;
+    assistLightDebug.punch = this.punchBrightnessNow;
     assistLightDebug.mult = assistMult;
     assistLightDebug.lights = this.worldLights.length;
 
@@ -7226,6 +7234,7 @@ export class PixiScene {
 
   private syncBreakableProps(props: BreakableProp[], now: number) {
     this.worldLights.length = 0; // ★v0.25.2779: このフレームの光を集め直す(松明はこの下の描画で積まれる)
+    this.punchLights.length = 0;
     const seen = new Set<string>();
     for (const prop of props) {
       seen.add(prop.id);
@@ -7747,7 +7756,12 @@ export class PixiScene {
     // **ピント用とボケ用の2枚をクロスフェード**する。フィルタは使わない(per-pixel処理ゼロ)。
     // ★v0.25.2779: 描画に使う値(haloR/haloA)をそのまま「世界の光」として登録する。
     // ここで別の数式を作ると**絵と挙動がズレる**ので、必ず描画と同じ数字を使う。
-    if (haloA > 0 && haloR > 0) this.worldLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_LIGHT_REACH_MULT, strength: haloA * TORCH_LIGHT_GAIN });
+    if (haloA > 0 && haloR > 0) {
+      const strength = haloA * TORCH_LIGHT_GAIN;
+      this.worldLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_LIGHT_REACH_MULT, strength });
+      // ★パンチ用は届く距離を短くする(近づいて初めてコントラストが上がる)。
+      this.punchLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_PUNCH_REACH_MULT, strength });
+    }
     const focusT = this.lightDefocus01(flameY);
     // ボケ側は**半径を広げるぶんαを下げる**(総光量を保つ=ボケて明るくならない)。
     const bokehR = Math.min(haloR * TORCH_BOKEH_R_MULT, this.screenH * TORCH_HALO_MAX_R_FRAC * TORCH_BOKEH_R_MULT);

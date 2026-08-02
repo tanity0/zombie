@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2784',
+    items: [
+      'ゲーム内容の変更はありません（試験中のコントラスト演出で、松明と焚き火はもっと近づいてから効くようにしました）。',
+    ],
+  },
+  {
     version: '0.25.2783',
     items: [
       '遠景に横一直線の細い切れ目が入ることがあったのを直しました。',

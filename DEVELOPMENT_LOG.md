@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.2784 — 松明/焚き火はもっと近づいてからコントラストを上げる【2026-08-02 23:35 JST】
+
+社長「コントラスト上がった!いい感じなので微調整。とりあえず松明と焚き火、コントラスト上げるのは
+もう少し近づいたら にして」。
+
+★**補助光の弱まり方は変えない**(社長が既に良しとした挙動)。**パンチ用の松明の距離だけ**短くする。
+⇒ 光のリストを2本に分けた:
+- `worldLights`(補助光用): 松明 reach = `haloR × torchreach`(3.0)
+- `punchLights`(パンチ用): 松明 reach = `haloR × torchpunchreach`(**新・1.5**)
+- **爆発は両方とも同じ**(社長「コントラスト上がった!いい感じ」= 触らない)
+`?torchpunchreach=` で調整。デバッグ行に `punch:` を追加(補助光の `light:` と別々に見える)。
+
+**変更ファイル**: src/pixi/pixiScene.ts / src/components/Game.tsx / src/components/GameOverScreen.tsx /
+package.json / src/data/changelog.ts
+**検証**: typecheck・lint エラー0。
+**次の引き継ぎ**: まだ遠ければ `?torchpunchreach=1.0`、近すぎれば `2.0`。
+
 ## v0.25.2783 — 遠景の1pxの切れ目(タイルの縦ループ)【2026-08-02 23:20 JST】
 
 社長報告「少し前からステージ1の遠景のところに1pxくらいの切れ目が入った」。`?ts=0`(ぼかしOFF)でも残る
