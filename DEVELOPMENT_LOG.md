@@ -1,5 +1,55 @@
 # Development Log
 
+## v0.25.2761 — S-5: 影の向きを「合成」から「勝者総取り+クロスフェード」へ作り替え【2026-08-02 17:22 JST】
+
+社長実機報告:「影が動く時、その方向に行く過程で回転するのが違和感ある。光源が実際に周囲を回っていて、
+連動して回るのはいいけど、光源と反対に影が移動するたびに影が回転しながら縮み戻ってくる。」
+
+### 原因(設計側の裁定)
+`computeDominantLight` が支配光(Ldom)の**向き**を環境光+各強glowの**ベクトル合成**で出していたため、
+爆発の `life` が減衰する過程で合成ベクトルの向きが連続的に動き、消えるだけの光でも影が中間角度を
+全部通って回転して戻っていた。時間平滑を切っても消えない、足し算そのものが持つ性質だった。
+
+### S-5(裁定): 向きは合成をやめ、勝者総取り+クロスフェード
+- **向きは最も強い1光源(勝者)からそのまま取る**(合成しない)。候補=環境光(強さ固定1)+各強glow
+  (強さ=`falloff × life × SHADOW_GLOW_WEIGHT`)。勝者が同じ間は毎フレームその光の現在位置へ直接
+  追従(平滑なし=光源が動けば影も動く=「連動して回る」は保たれる)。
+- **勝者交代はヒステリシス**(`SHADOW_WINNER_HYSTERESIS=0.2`。現在の勝者を20%以上上回らないと
+  交代しない)で抑え、**チャタリング(点滅・微小交代の連打)を防止**。
+- **交代時は角度を補間せず、クロスフェードする**(`?glowfade=`、既定`SHADOW_WINNER_FADE_MS=120ms`。
+  0なら即切替=クロスフェード無効)。実装は「その1体だけ遷移中の120msだけシルエットメッシュが
+  2枚になる」形。旧向き(交代直前の向きを凍結)を`entry.meshPrev`として新設し、`entry.mesh`
+  (新向き)とαだけをクロスフェードする(角度は一切補間しない=中間角度を通らない)。接地2枚
+  (core/outer)は増やさない(向きを持たない仕様のため)。
+- **長さ/濃さは従来どおり`Σw_g`(S-3/S-4の非対称エンベロープ・punchオーバーシュート含む)から出す**。
+  向きだけを勝者から取るため、両メッシュ(新旧向き)で`length`/`nearHalf`/`farHalf`/`skewShift`は
+  共有できる(方向非依存)。共通の角計算は`setSilhouetteMeshCorners`ヘルパーに切り出した。
+- 廃止: `Ldom`のベクトル平滑(旧`SHADOW_LDOM_HOLD_BELOW`=|Ldom|<0.35の前フレーム保持含む)。
+  環境光が常に強さ1で候補に居るため「勝者が居ない/弱すぎる」状態が原理的に起きなくなり、
+  ゼロ交差ガードそのものが不要になった。`shadowLdomState`→`shadowWinnerState`に改名し、
+  値の形も`{winnerKey/winnerDirX/winnerDirY/winnerStrength, prevKey/prevDirX/prevDirY,
+  transitionStartAt, sum, punchUntil}`に作り替えた。
+
+### 実装
+- `ShadowPoolEntry`に`meshPrev: PerspectiveMesh | null`を追加(遷移中だけ使う一時メッシュ)。
+- `clearShadowPoolV9`/`sweepShadowPoolV9`の破棄・非表示パスに`meshPrev`を追加。
+- `placeShadowV9`のシルエット早期returnの全分岐(silhouetteExempt/未ベイク/縮退長/画面外カリング)
+  で`meshPrev`も一緒に隠すよう網羅。
+- `syncShadowsV9`内の`glowLights`配列に`key: e.id`を追加(勝者の同一性判定に使用)。
+- BENCHの`knobs:`行(`GameOverScreen.tsx`)に`glowfade`を追加。
+
+### 受け入れ条件
+爆発が消える時、影が中間角度を通らずクロスフェードで元の向きへ戻る。光源が動いている間は
+影の向きも連続して一緒に動く(勝者が同じなら向きは連続)。強い光が2つあっても影は基本1本
+(遷移中の120msだけ2枚重なるのは仕様どおり許容)。`?glowfade=0`で旧向きの補間なし即切替の
+挙動確認が可能。
+
+**ファイル**: `src/pixi/pixiScene.ts` / `src/components/GameOverScreen.tsx` / `package.json` /
+`src/data/changelog.ts`。
+**検証**: `npm run typecheck` / `npm run lint` エラー0(社長指示により test/build は未実行)。
+**次**: 社長の実機確認待ち。あわせてS-6(花の「見た目の足元」測定・全12変種のうち細い茎の変種が
+浮く問題)の対応が続く。
+
 ## v0.25.2760 — 中12〜15(検収差し戻しリスト完了)【2026-08-02 17:05 JST】
 
 これで最初の検収監査(15項目=致命1-4/高5-9/中10-15)を全て対応した。

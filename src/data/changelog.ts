@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2761',
+    items: [
+      '爆発などの強い光が消える時、影が中間の向きを通って回転しながら戻る不具合を修正しました（元の向きへふわっと切り替わるようにしました）。',
+    ],
+  },
+  {
     version: '0.25.2760',
     items: [
       '大きなボスの影が、絵の余白のぶん足元からズレて表示されることがある不具合を修正しました。',
