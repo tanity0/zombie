@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2790',
+    items: [
+      'ゲーム内容の変更はありません（遠景の線を詰めるための診断スイッチを足しました）。',
+    ],
+  },
+  {
     version: '0.25.2789',
     items: [
       'ステージ6の走り込み入場中は敵が湧かなくなりました（操作できないまま敵にぶつかる事故の修正）。',

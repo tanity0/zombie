@@ -742,7 +742,19 @@ interface FogLayer {
   flow: number;      // 右への流れ(px/ms。tilePosition.x を増やす)
   ph: number;        // 位相
   texKey?: string;   // 外部PNGテクスチャ(非同期ロード)。指定時は sync で getTexture して割当+tileScale。
+  dbg?: Graphics;    // ?fogedge=1 の診断枠(通常は生成しない)
 }
+/**
+ * ★v0.25.2790 診断(社長「fogback だわ」= 奥霧が犯人と判明した後の詰め): `?fogedge=1` で
+ * **霧スプライトの矩形そのものを線で描く**。線が
+ *   ①外周に乗っている ⇒ **矩形の縁**が見えている(位置/寸法の問題)
+ *   ②中央の横線に乗っている ⇒ **縦に2枚敷かれた継ぎ目**(tileScale の問題)
+ *   ③どちらでもない ⇒ 素材の中身か、上に乗るフィルタ
+ * のどれかが1回の実機確認で確定する。**推測で当てにいって外す**のを止めるための道具
+ * (v0.25.2785 と同じ方針)。色: 奥=マゼンタ / 森下=シアン / 森上=黄。
+ */
+const FOG_EDGE_DEBUG = tsBool('fogedge', false);
+const FOG_EDGE_COLORS = [0xff00ff, 0x00ffff, 0xffff00];
 
 // --- A: 光だまり(プレイヤー足元の地面に敷く加算ライト) ------------------------
 // 暗いベース(envdark)の上で「光の島」を作る。groundLayer(world座標・アクターの下)に
@@ -4835,6 +4847,22 @@ export class PixiScene {
    * `addressModeV = 'clamp-to-edge'` にすれば端の画素で止まるので、**寸法を一切変えずに**消える
    * (epsilonで少し伸ばす等の誤魔化しを入れない)。横(`addressModeU`)は**パララックスで必要なので repeat のまま**。
    */
+  /** `?fogedge=1` の診断枠。霧スプライトの矩形(外周)と、縦の中点(=2枚敷きなら継ぎ目が来る位置)を線で描く。 */
+  private drawFogEdge(f: FogLayer) {
+    if (!f.dbg) {
+      const g = new Graphics();
+      g.eventMode = 'none';
+      f.sp.parent?.addChild(g); // 霧と同じコンテナ=同じ変換で動く(ズレない)
+      f.dbg = g;
+    }
+    const color = FOG_EDGE_COLORS[this.fogLayers.indexOf(f) % FOG_EDGE_COLORS.length];
+    const { x, y, width: w, height: h } = f.sp;
+    const g = f.dbg;
+    g.clear();
+    g.rect(x, y, w, h).stroke({ width: 1, color, alpha: 1 });
+    g.moveTo(x, y + h / 2).lineTo(x + w, y + h / 2).stroke({ width: 1, color, alpha: 0.7 });
+  }
+
   private clampTilingV(sp: TilingSprite) {
     const src = sp.texture?.source;
     if (!src?.style || src.style.addressModeV === 'clamp-to-edge') return;
@@ -5260,6 +5288,7 @@ export class PixiScene {
       const stageMult = (this.currentFarKey === 'city' || this.snowStage) ? M34_CLOUD_SPEED_MULT : 1;
       f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED * fogDir * stageMult + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX; // 流れ+横の揺らめき
       f.sp.tilePosition.y = 0;
+      if (FOG_EDGE_DEBUG) this.drawFogEdge(f); // 診断のみ(既定OFF=通常は1命令も走らない)
     }
     // cine: 空を生かす(A+B・社長指示v0.25.1865)。既存ベイクSpriteのtransformだけ=軽い。
     //  A=idleドリフト+呼吸スケール(sin)、B=層ごとに違う速度+カメラ移動へ僅かに連動=奥行き視差。
