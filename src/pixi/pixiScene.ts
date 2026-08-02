@@ -8273,6 +8273,24 @@ export class PixiScene {
         flip: disp.flip, skewX: view?.sprite.skew.x, heightPx: liftPx,
       });
     }
+    // ---- 裏ボス討伐フェード(★致命4修正: 討伐の瞬間に影だけ消え、2.6秒間「影の無い巨体」が
+    // 残っていた)。`store.bossCorpse` は `syncBossCorpse` が `bossCorpseSprite` へ焼く
+    // (anchor 0.5,0.5・alpha=討伐フェードそのもの)。syncBossCorpse は syncShadows より後に走るため
+    // 1フレーム遅れた前フレームの値を読むが、フェードが2.6秒と長いため実害は無い(hospital/armory/
+    // police と同じ既存の許容パターン)。
+    {
+      const corpse = this.bossCorpseSprite;
+      if (corpse.visible && corpse.alpha > 0 && corpse.texture) {
+        const cw = Math.abs(corpse.width), ch = Math.abs(corpse.height);
+        if (cw > 0 && ch > 0) {
+          place({
+            id: 'bossCorpse', x: corpse.x, y: corpse.y + ch / 2, // anchor(0.5,0.5)の下端=論理の足元
+            rawW: cw, rawH: ch, texture: corpse.texture,
+            alpha: 1, shadowFade: corpse.alpha,
+          });
+        }
+      }
+    }
     // ---- 召喚(味方ユニット) ----
     for (const s of summons) {
       const fb = summonFootBox(s);
@@ -8306,21 +8324,19 @@ export class PixiScene {
       });
     }
     // ---- ステージ1の花 ----
-    // ★検収差し戻し(F-1/F-2/F-3): 花のスプライトは horizonActorAlpha × foregroundActorAlpha
-    // (applyObstacleAlphaと同型)でフェードしているが、影は horizonActorAlpha しか見ていなかった
-    // (画面下端で花が消えても影だけ残る=F-1)。花は「房が広く株元は細い」素材固有の形なので、
-    // 絵幅そのままではなく旧係数 FLOWER_SHADOW_WIDTH_RATIO を残す(裁定Aの対象=アクターの話とは別。
-    // F-2)。シルエットは対象外(細い茎がぼけて塊になり、株元から離れて繋がって見えない。F-3=仕様の
-    // 適用範囲表の設計ミスを訂正)。
+    // ★検収差し戻し(F-1のみ有効。F-2/F-3は社長報告「形に文句はない、位置がズレている」により
+    // 保留=撤回。絵幅そのまま・シルエットありに戻す)。F-1: 花のスプライトは
+    // horizonActorAlpha × foregroundActorAlpha(applyObstacleAlphaと同型)でフェードしているが、
+    // 影は horizonActorAlpha しか見ていなかった(画面下端で花が消えても影だけ残る)。
     for (const [id, entry] of this.flowerObjs) {
       const alpha = this.horizonActorAlpha(entry.footY) * this.foregroundActorAlpha(entry.footY);
       if (alpha <= 0 || entry.sprite.visible === false) continue;
-      const w = Math.abs(entry.sprite.width) * FLOWER_SHADOW_WIDTH_RATIO;
+      const w = Math.abs(entry.sprite.width);
       if (w <= 0) continue;
       place({
         id: 'flw:' + id, x: entry.sprite.x, y: entry.footY,
-        rawW: w, rawH: Math.abs(entry.sprite.height), texture: null,
-        alpha, silhouetteExempt: true,
+        rawW: w, rawH: Math.abs(entry.sprite.height), texture: entry.sprite.texture,
+        alpha,
       });
     }
     // ---- 商人/イベントNPC/城/病院/武器庫/警察署 ----
@@ -8689,14 +8705,16 @@ export class PixiScene {
     return Math.max(0, 1 - d / SHADOW_STATIC_FADE_RANGE_PX);
   }
 
-  /** メッシュは roundPixels の対象外なので、本体スプライトと同じ「画面(デバイス)ピクセル」空間で
-   * 丸める(裁定J)。shadowContainer の toGlobal/toLocal を介す(ワールド→画面倍率が非整数でもズレない)。 */
+  /** メッシュ(PerspectiveMesh)専用。メッシュは roundPixels の対象外(自動デバイスpx丸めが効かない)
+   * なので手動で丸める。★検収差し戻し(中10)対応: 当初 toGlobal/toLocal(ズーム込みのデバイスpx直算)
+   * を使っていたが、アクター本体は `snapToScreenPixel`(world位置+world.position分だけの素朴な丸め)
+   * を使っており、両者は丸め方が異なるため本体とメッシュの間でズーム遷移中に最大1pxズレ続けていた。
+   * 本体と同じ `snapToScreenPixel` に揃える(裁定どおり)。 */
   private shadowSnap(x: number, y: number): { x: number; y: number } {
-    const g = this.shadowContainer.toGlobal({ x, y });
-    g.x = Math.round(g.x);
-    g.y = Math.round(g.y);
-    const l = this.shadowContainer.toLocal(g);
-    return { x: l.x, y: l.y };
+    return {
+      x: this.snapToScreenPixel(x, this.L.world.position.x),
+      y: this.snapToScreenPixel(y, this.L.world.position.y),
+    };
   }
 
   /** sprite.width/height は自身の scale しか含まない。祖先コンテナ側の拡縮(登場演出/分身/救援アライ)を
@@ -8787,16 +8805,20 @@ export class PixiScene {
     const dirRadius = 1 / dirDenom;
     const offset = Math.min(nonExplLen * SHADOW_OUTER_OFFSET_LEN_FRAC, dirRadius * SHADOW_OUTER_OFFSET_CAP_FRAC);
 
-    const corePos = this.shadowSnap(footX, footY);
-    entry.core.position.set(corePos.x, corePos.y);
+    // ★社長実機報告(花の影がピクセルずれ)対応: core/outer は PerspectiveMesh と違い普通の Sprite
+    // なので、renderer の `roundPixels:true` が最終的な描画時に自動でデバイスpxへ丸めてくれる
+    // (花/木/プロップ等の本体スプライトも sprite.x/y に生の浮動小数をそのまま渡し、丸めをrendererに
+    // 任せている=検収監査10と同じ問題)。ここで shadowSnap(手動の事前丸め)を挟むと、本体側の
+    // 「rendererまかせ」の丸め結果と異なる丸め方を二重に行うことになり、本体と影がピクセル単位で
+    // ズレる。⇒ core/outer は生の座標をそのまま渡す(本体スプライトと同じ丸めパイプラインに揃える)。
+    entry.core.position.set(footX, footY);
     entry.core.width = Math.max(3, coreW);
     entry.core.height = Math.max(3, coreH);
     entry.core.rotation = 0;
     entry.core.alpha = Math.min(1, SHADOW_CORE_ALPHA_BASE * densityMult * totalAlpha);
     entry.core.visible = true;
 
-    const outerPos = this.shadowSnap(footX + ldom.dirX * offset, footY + ldom.dirY * offset);
-    entry.outer.position.set(outerPos.x, outerPos.y);
+    entry.outer.position.set(footX + ldom.dirX * offset, footY + ldom.dirY * offset);
     entry.outer.width = Math.max(3, outerW);
     entry.outer.height = Math.max(3, outerH);
     entry.outer.rotation = 0;
