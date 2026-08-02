@@ -1,5 +1,10 @@
-import { enabled as onlineEnabled, signalUrl } from './config';
+import { enabled as onlineEnabled, signalUrl as configuredSignalUrl } from './config';
 import { getAnonymousId } from './id';
+import {
+  WebRtcSession,
+  type PeerConnectionFactory,
+  type SignalPayload,
+} from './webrtc';
 import type {
   CoopAd,
   CoopApi,
@@ -7,13 +12,11 @@ import type {
   CoopOpenRoom,
   CoopRole,
   CoopSession,
+  CoopStats,
   CoopStatus,
 } from './types';
 
 type CoopChannel = 'unreliable' | 'reliable';
-type SignalPayload =
-  | { kind: 'sdp'; sdpType: 'offer' | 'answer'; sdp: string }
-  | { kind: 'ice'; candidate: string; sdpMid: string | null; sdpMLineIndex: number | null };
 
 type ServerMessage = {
   type?: string;
@@ -30,15 +33,20 @@ type PendingRequest = {
 };
 
 export interface SignalingApiOptions {
+  signalUrl?: string;
   webSocketFactory?: (url: string) => WebSocket;
+  peerConnectionFactory?: PeerConnectionFactory;
   requestTimeoutMs?: number;
   connectTimeoutMs?: number;
 }
 
 const NOOP = () => {};
 const DEFAULT_REQUEST_TIMEOUT_MS = 2_500;
-const DEFAULT_CONNECT_TIMEOUT_MS = 8_000;
-const MAX_EVENT_BACKLOG = 8;
+const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 8_000;
+const DEFAULT_CONNECT_TIMEOUT_MS = 20_000;
+const ROOM_HEARTBEAT_INTERVAL_MS = 30_000;
+const SIGNAL_GRACE_MS = 5_000;
+const MAX_EVENT_BACKLOG = 64;
 const MAX_INCOMING_MESSAGE_LENGTH = 16_384;
 
 function safeCall<T extends unknown[]>(callback: (...args: T) => void, ...args: T): void {
@@ -223,7 +231,8 @@ class SignalConnection {
 function openConnection(
   url: string,
   factory: (url: string) => WebSocket,
-  timeoutMs: number,
+  connectTimeoutMs: number,
+  requestTimeoutMs: number,
 ): Promise<SignalConnection | null> {
   try {
     const socket = factory(url);
@@ -242,8 +251,8 @@ function openConnection(
           // Best effort.
         }
         finish(null);
-      }, timeoutMs);
-      socket.addEventListener('open', () => finish(new SignalConnection(socket, timeoutMs)), { once: true });
+      }, connectTimeoutMs);
+      socket.addEventListener('open', () => finish(new SignalConnection(socket, requestTimeoutMs)), { once: true });
       socket.addEventListener('error', () => finish(null), { once: true });
       socket.addEventListener('close', () => finish(null), { once: true });
     });
@@ -252,17 +261,30 @@ function openConnection(
   }
 }
 
-/** CO-2では待ち合わせ後を connecting まで進める。connected への遷移はCO-3のWebRTC確立時に使う。 */
+/** WebRTCの確立中だけ生かす、ゲームデータを一切通さないシグナリング状態。 */
 export class SignalingSession implements CoopSession {
   readonly role: CoopRole;
 
   private currentStatus: CoopStatus;
   private closeReason: CoopCloseReason | null = null;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private signalCloseTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly messageCallbacks = new Set<(data: Uint8Array, channel: CoopChannel) => void>();
   private readonly peerJoinedCallbacks = new Set<() => void>();
   private readonly closedCallbacks = new Set<(reason: CoopCloseReason) => void>();
   private readonly signalCallbacks = new Set<(signal: SignalPayload) => void>();
+  private readonly connectingCallbacks = new Set<() => void>();
+  private readonly signalBacklog: SignalPayload[] = [];
+  private readonly emptyStats: CoopStats = {
+    rttMs: -1,
+    bytesSent: 0,
+    bytesReceived: 0,
+    messagesSent: 0,
+    messagesReceived: 0,
+    lastReceivedAtMs: 0,
+    maintenanceOpen: false,
+  };
 
   constructor(
     role: CoopRole,
@@ -275,7 +297,10 @@ export class SignalingSession implements CoopSession {
     this.role = role;
     this.currentStatus = initialStatus;
     connection.onEvent((message) => this.handleEvent(message));
-    connection.onClose(() => this.finish('error'));
+    connection.onClose(() => {
+      if (this.currentStatus !== 'connected') this.finish('error');
+    });
+    if (role === 'host') this.startHeartbeat();
     if (initialStatus === 'connecting') this.startConnectTimeout();
   }
 
@@ -285,6 +310,10 @@ export class SignalingSession implements CoopSession {
 
   rttMs(): number {
     return -1;
+  }
+
+  stats(): CoopStats {
+    return this.emptyStats;
   }
 
   sendUnreliable(_data: Uint8Array): void {
@@ -357,9 +386,26 @@ export class SignalingSession implements CoopSession {
   onSignal(callback: (signal: SignalPayload) => void): () => void {
     try {
       this.signalCallbacks.add(callback);
+      for (const signal of this.signalBacklog.splice(0)) safeCall(callback, signal);
       return () => {
         try {
           this.signalCallbacks.delete(callback);
+        } catch {
+          // Idempotent and silent.
+        }
+      };
+    } catch {
+      return NOOP;
+    }
+  }
+
+  onConnecting(callback: () => void): () => void {
+    try {
+      this.connectingCallbacks.add(callback);
+      if (this.currentStatus === 'connecting') callSoon(callback);
+      return () => {
+        try {
+          this.connectingCallbacks.delete(callback);
         } catch {
           // Idempotent and silent.
         }
@@ -373,8 +419,10 @@ export class SignalingSession implements CoopSession {
     try {
       if (this.currentStatus !== 'connecting') return;
       this.clearConnectTimeout();
+      this.clearHeartbeat();
       this.currentStatus = 'connected';
       for (const callback of [...this.peerJoinedCallbacks]) safeCall(callback);
+      this.signalCloseTimer = setTimeout(() => this.connection.close(), SIGNAL_GRACE_MS);
     } catch {
       this.finish('error');
     }
@@ -399,12 +447,19 @@ export class SignalingSession implements CoopSession {
       if (message.type === 'peer-joined' && this.role === 'host' && this.currentStatus === 'advertising') {
         this.currentStatus = 'connecting';
         this.startConnectTimeout();
+        for (const callback of this.connectingCallbacks) safeCall(callback);
         return;
       }
       if (message.type === 'signal' && isSignal(message.signal)) {
-        for (const callback of [...this.signalCallbacks]) safeCall(callback, message.signal);
+        if (this.signalCallbacks.size === 0) {
+          if (this.signalBacklog.length >= MAX_EVENT_BACKLOG) this.signalBacklog.shift();
+          this.signalBacklog.push(message.signal);
+        } else {
+          for (const callback of this.signalCallbacks) safeCall(callback, message.signal);
+        }
         return;
       }
+      if (this.currentStatus === 'connected') return;
       if (message.type === 'peer-left') this.finish('peer-left');
       if (message.type === 'room-expired') this.finish('timeout');
     } catch {
@@ -423,9 +478,29 @@ export class SignalingSession implements CoopSession {
     this.connectTimer = null;
   }
 
+  private startHeartbeat(): void {
+    this.clearHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      try {
+        if (this.currentStatus !== 'advertising' && this.currentStatus !== 'connecting') return;
+        this.connection.send({ type: 'heartbeat', roomId: this.roomId });
+      } catch {
+        // TTL provides the eventual cleanup path.
+      }
+    }, ROOM_HEARTBEAT_INTERVAL_MS);
+  }
+
+  private clearHeartbeat(): void {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+  }
+
   private finish(reason: CoopCloseReason): void {
     if (this.currentStatus === 'closed') return;
     this.clearConnectTimeout();
+    this.clearHeartbeat();
+    if (this.signalCloseTimer) clearTimeout(this.signalCloseTimer);
+    this.signalCloseTimer = null;
     this.currentStatus = 'closed';
     this.closeReason = reason;
     this.connection.close();
@@ -438,12 +513,13 @@ export function createSignalingApi(options: SignalingApiOptions = {}): CoopApi {
   const factory = options.webSocketFactory ?? ((url: string) => new WebSocket(url));
   const requestTimeoutMs = finiteTimeout(options.requestTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS);
   const connectTimeoutMs = finiteTimeout(options.connectTimeoutMs, DEFAULT_CONNECT_TIMEOUT_MS);
-  let activeSession: SignalingSession | null = null;
+  const explicitSignalUrl = options.signalUrl;
+  let activeSession: WebRtcSession | null = null;
   let sessionPending = false;
 
   const available = (): boolean => {
     try {
-      return onlineEnabled() && typeof factory === 'function';
+      return onlineEnabled(explicitSignalUrl) && typeof factory === 'function';
     } catch {
       return false;
     }
@@ -451,9 +527,9 @@ export function createSignalingApi(options: SignalingApiOptions = {}): CoopApi {
 
   const connect = async (): Promise<SignalConnection | null> => {
     try {
-      const url = signalUrl();
+      const url = configuredSignalUrl(explicitSignalUrl);
       if (!available() || !url) return null;
-      return await openConnection(url, factory, requestTimeoutMs);
+      return await openConnection(url, factory, DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS, requestTimeoutMs);
     } catch {
       return null;
     }
@@ -463,19 +539,21 @@ export function createSignalingApi(options: SignalingApiOptions = {}): CoopApi {
     enabled: available,
 
     async advertise(ad: CoopAd): Promise<CoopSession | null> {
+      let connection: SignalConnection | null = null;
       try {
         if (!available() || sessionPending || (activeSession && activeSession.status() !== 'closed')) return null;
         sessionPending = true;
         const hostId = getAnonymousId();
         if (!hostId) return null;
-        const connection = await connect();
+        connection = await connect();
         if (!connection) return null;
         const response = await connection.request({ type: 'advertise', hostId, ad });
         if (!response?.ok || typeof response.roomId !== 'string') {
           connection.close();
           return null;
         }
-        const session = new SignalingSession(
+        let session: WebRtcSession | null = null;
+        const signaling = new SignalingSession(
           'host',
           'advertising',
           response.roomId,
@@ -485,9 +563,17 @@ export function createSignalingApi(options: SignalingApiOptions = {}): CoopApi {
             if (activeSession === session) activeSession = null;
           },
         );
+        session = WebRtcSession.create(signaling, {
+          peerConnectionFactory: options.peerConnectionFactory,
+        });
+        if (!session) {
+          signaling.close('error');
+          return null;
+        }
         activeSession = session;
         return session;
       } catch {
+        connection?.close();
         return null;
       } finally {
         sessionPending = false;
@@ -509,19 +595,21 @@ export function createSignalingApi(options: SignalingApiOptions = {}): CoopApi {
     },
 
     async join(roomId: string): Promise<CoopSession | null> {
+      let connection: SignalConnection | null = null;
       try {
         if (!available() || sessionPending || (activeSession && activeSession.status() !== 'closed')) return null;
         sessionPending = true;
         const guestId = getAnonymousId();
         if (!guestId) return null;
-        const connection = await connect();
+        connection = await connect();
         if (!connection) return null;
         const response = await connection.request({ type: 'join', guestId, roomId });
         if (!response?.ok || response.roomId !== roomId) {
           connection.close();
           return null;
         }
-        const session = new SignalingSession(
+        let session: WebRtcSession | null = null;
+        const signaling = new SignalingSession(
           'guest',
           'connecting',
           roomId,
@@ -531,9 +619,17 @@ export function createSignalingApi(options: SignalingApiOptions = {}): CoopApi {
             if (activeSession === session) activeSession = null;
           },
         );
+        session = WebRtcSession.create(signaling, {
+          peerConnectionFactory: options.peerConnectionFactory,
+        });
+        if (!session) {
+          signaling.close('error');
+          return null;
+        }
         activeSession = session;
         return session;
       } catch {
+        connection?.close();
         return null;
       } finally {
         sessionPending = false;

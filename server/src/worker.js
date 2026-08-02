@@ -1,22 +1,10 @@
 import { DurableObject } from 'cloudflare:workers';
+import { allowedOrigin } from './origin.js';
 import { RoomStore } from './room-store.js';
 
 const MAX_CONNECTIONS = 256;
 const MAX_MESSAGE_BYTES = 16_384;
 const MAX_REQUEST_ID_LENGTH = 64;
-const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-
-function allowedOrigin(request) {
-  try {
-    const origin = request.headers.get('Origin');
-    if (!origin) return false;
-    const url = new URL(origin);
-    return (url.protocol === 'http:' || url.protocol === 'https:') && ALLOWED_HOSTS.has(url.hostname);
-  } catch {
-    return false;
-  }
-}
-
 function requestIdOf(message) {
   const requestId = message?.requestId;
   return typeof requestId === 'string' && requestId.length > 0 && requestId.length <= MAX_REQUEST_ID_LENGTH
@@ -137,6 +125,12 @@ export class SignalingLobby extends DurableObject {
 
       if (message.type === 'update-room') {
         const room = this.rooms.update(connectionId, message.roomId, message.ad);
+        this.reply(socket, requestId, Boolean(room));
+        return;
+      }
+
+      if (message.type === 'heartbeat' && typeof message.roomId === 'string') {
+        const room = this.rooms.heartbeat(connectionId, message.roomId);
         this.reply(socket, requestId, Boolean(room));
         return;
       }

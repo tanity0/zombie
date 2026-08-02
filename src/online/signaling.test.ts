@@ -6,6 +6,61 @@ import { createSignalingApi } from './signaling';
 type FakeEvent = { data?: string };
 type FakeListener = (event: FakeEvent) => void;
 
+class FakeDataChannel {
+  binaryType = '';
+  bufferedAmount = 0;
+  readyState: RTCDataChannelState = 'connecting';
+  onopen: ((event: Event) => void) | null = null;
+  onclose: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+
+  send(): void {}
+  close(): void {
+    this.readyState = 'closed';
+  }
+}
+
+class FakePeerConnection {
+  localDescription: RTCSessionDescription | null = null;
+  remoteDescription: RTCSessionDescription | null = null;
+  connectionState: RTCPeerConnectionState = 'new';
+  iceConnectionState: RTCIceConnectionState = 'new';
+  onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null;
+  onconnectionstatechange: ((event: Event) => void) | null = null;
+  oniceconnectionstatechange: ((event: Event) => void) | null = null;
+
+  createDataChannel(): RTCDataChannel {
+    return new FakeDataChannel() as unknown as RTCDataChannel;
+  }
+
+  async createOffer(): Promise<RTCSessionDescriptionInit> {
+    return { type: 'offer', sdp: 'offer' };
+  }
+
+  async createAnswer(): Promise<RTCSessionDescriptionInit> {
+    return { type: 'answer', sdp: 'answer' };
+  }
+
+  async setLocalDescription(description: RTCLocalSessionDescriptionInit): Promise<void> {
+    this.localDescription = description as RTCSessionDescription;
+  }
+
+  async setRemoteDescription(description: RTCSessionDescriptionInit): Promise<void> {
+    this.remoteDescription = description as RTCSessionDescription;
+  }
+
+  async addIceCandidate(): Promise<void> {}
+
+  async getStats(): Promise<RTCStatsReport> {
+    return new Map() as unknown as RTCStatsReport;
+  }
+
+  close(): void {
+    this.connectionState = 'closed';
+  }
+}
+
 class FakeSignalingSocket {
   static readonly OPEN = 1;
 
@@ -92,10 +147,10 @@ afterEach(() => {
 });
 
 describe('signaling configuration and fallbacks', () => {
-  it('uses the local signal URL, supports an override, and disables an empty endpoint', () => {
+  it('defaults to disabled and supports query and instance endpoint overrides', () => {
     vi.stubGlobal('window', { location: { search: '' } });
-    expect(enabled()).toBe(true);
-    expect(signalUrl()).toBe('ws://localhost:8787/');
+    expect(enabled()).toBe(false);
+    expect(signalUrl()).toBeNull();
 
     vi.stubGlobal('window', { location: { search: '?signal=ws%3A%2F%2F127.0.0.1%3A9999' } });
     expect(signalUrl()).toBe('ws://127.0.0.1:9999/');
@@ -103,6 +158,11 @@ describe('signaling configuration and fallbacks', () => {
     vi.stubGlobal('window', { location: { search: '?signal=' } });
     expect(signalUrl()).toBeNull();
     expect(enabled()).toBe(false);
+
+    expect(enabled('ws://localhost:8787')).toBe(true);
+    expect(signalUrl('ws://localhost:8787')).toBe('ws://localhost:8787/');
+    vi.stubGlobal('window', { location: { search: '?online=0' } });
+    expect(enabled('ws://localhost:8787')).toBe(false);
   });
 
   it('creates a UUID when randomUUID is unavailable', () => {
@@ -129,6 +189,7 @@ describe('signaling configuration and fallbacks', () => {
       setItem: () => {},
     });
     const api = createSignalingApi({
+      signalUrl: 'ws://localhost:8787',
       webSocketFactory: () => {
         throw new Error('offline');
       },
@@ -149,7 +210,9 @@ describe('signaling configuration and fallbacks', () => {
     vi.stubGlobal('WebSocket', FakeSignalingSocket);
     const hub = new FakeSignalingHub();
     const options = {
+      signalUrl: 'ws://localhost:8787',
       webSocketFactory: () => hub.connect() as unknown as WebSocket,
+      peerConnectionFactory: () => new FakePeerConnection() as unknown as RTCPeerConnection,
       requestTimeoutMs: 100,
       connectTimeoutMs: 1_000,
     };

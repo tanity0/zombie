@@ -1,7 +1,7 @@
 export const OPEN_ROOM_TTL_MS = 90_000;
 export const MAX_ROOMS = 128;
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/g;
 
 function boundedString(value, maxLength, { filter = false } = {}) {
@@ -37,7 +37,7 @@ export class RoomStore {
     const now = this.now();
     const expired = [];
     for (const [roomId, room] of this.rooms) {
-      if (room.state === 'open' && now - room.createdAt >= OPEN_ROOM_TTL_MS) {
+      if (room.state === 'open' && now - room.lastSeenAt >= OPEN_ROOM_TTL_MS) {
         this.rooms.delete(roomId);
         expired.push(room);
       }
@@ -58,13 +58,15 @@ export class RoomStore {
     if (!connectionId || !validAnonymousId(hostId) || !ad) return null;
     if (this.rooms.size >= MAX_ROOMS || this.hasSession(connectionId)) return null;
 
+    const createdAt = this.now();
     const room = {
       roomId: this.createId(),
       hostId,
       buildVersion: ad.buildVersion,
       matchKey: ad.matchKey,
       label: ad.label,
-      createdAt: this.now(),
+      createdAt,
+      lastSeenAt: createdAt,
       state: 'open',
       hostConnectionId: connectionId,
       guestConnectionId: null,
@@ -100,6 +102,7 @@ export class RoomStore {
     if (this.hasSession(connectionId)) return null;
     const room = this.rooms.get(roomId);
     if (!room || room.state !== 'open') return null;
+    if (room.hostId === guestId) return null;
 
     room.state = 'taken';
     room.guestConnectionId = connectionId;
@@ -114,6 +117,15 @@ export class RoomStore {
     room.buildVersion = ad.buildVersion;
     room.matchKey = ad.matchKey;
     room.label = ad.label;
+    room.lastSeenAt = this.now();
+    return room;
+  }
+
+  heartbeat(connectionId, roomId) {
+    this.pruneExpired();
+    const room = this.rooms.get(roomId);
+    if (!room || room.state !== 'open' || room.hostConnectionId !== connectionId) return null;
+    room.lastSeenAt = this.now();
     return room;
   }
 

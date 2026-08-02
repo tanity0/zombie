@@ -33,6 +33,20 @@ export interface CoopOpenRoom {
   ageMs: number;
 }
 
+/**
+ * 1秒ごとに更新される接続統計。同じオブジェクトが再利用されるため、呼び出し側は書き換えない。
+ * lastReceivedAtMs はゲームデータをまだ受信していない間は 0。
+ */
+export interface CoopStats {
+  rttMs: number;
+  bytesSent: number;
+  bytesReceived: number;
+  messagesSent: number;
+  messagesReceived: number;
+  lastReceivedAtMs: number;
+  maintenanceOpen: boolean;
+}
+
 export interface CoopSession {
   readonly role: CoopRole;
   status(): CoopStatus;
@@ -51,6 +65,9 @@ export interface CoopSession {
 
   /** 往復遅延の実測(ms)。まだ測れていなければ -1。 */
   rttMs(): number;
+
+  /** キャッシュ済み統計。同じオブジェクトを返すので、値は呼んだその場で読み取る。 */
+  stats(): CoopStats;
 
   close(reason: CoopCloseReason): void;
 }

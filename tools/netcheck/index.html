@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zombie CO-3 netcheck</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>CO-3 netcheck</h1>
+      <label>Signal URL <input id="signal" value="ws://localhost:8787" inputmode="url" /></label>
+      <label>Match key <input id="match" value="netcheck" /></label>
+      <label>Build version <input id="build" value="co3" /></label>
+      <label>Room label <input id="label" value="Netcheck room" /></label>
+      <div class="actions">
+        <button id="host">部屋を立てる</button>
+        <button id="refresh">一覧を更新</button>
+        <button id="traffic">8KB × 20/s 開始</button>
+        <button id="close">切断</button>
+      </div>
+      <p id="notice" aria-live="polite">待機中</p>
+      <section>
+        <h2>Rooms</h2>
+        <div id="rooms">なし</div>
+      </section>
+      <section class="grid">
+        <h2>Live</h2>
+        <span>Status</span><output id="status">off</output>
+        <span>Role</span><output id="role">-</output>
+        <span>RTT</span><output id="rtt">-1 ms</output>
+        <span>Maintenance</span><output id="maintenance">closed</output>
+        <span>送信</span><output id="sent">0 B / 0 msg</output>
+        <span>受信</span><output id="received">0 B / 0 msg</output>
+        <span>送信レート</span><output id="send-rate">0 B/s</output>
+        <span>受信レート</span><output id="receive-rate">0 B/s</output>
+        <span>Unreliable loss</span><output id="loss">0 / 0 (0.00%)</output>
+        <span>Close</span><output id="closed">-</output>
+      </section>
+    </main>
+    <script type="module" src="/app.ts"></script>
+  </body>
+</html>

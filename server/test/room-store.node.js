@@ -40,6 +40,40 @@ test('open rooms expire at 90 seconds and are removed', () => {
   assert.equal(store.rooms.has(room.roomId), false);
 });
 
+test('heartbeat extends TTL without changing room age', () => {
+  const { store, setNow } = storeFixture();
+  const room = store.create('host-socket', HOST_ID, AD);
+  setNow(10_000 + 30_000);
+  assert.equal(store.heartbeat('host-socket', room.roomId)?.lastSeenAt, 40_000);
+  assert.equal(store.list('opaque', 'v1')[0].ageMs, 30_000);
+  setNow(10_000 + OPEN_ROOM_TTL_MS + 29_999);
+  assert.equal(store.list('opaque', 'v1').length, 1);
+  setNow(10_000 + OPEN_ROOM_TTL_MS + 30_000);
+  assert.deepEqual(store.list('opaque', 'v1'), []);
+});
+
+test('only the host socket can refresh its open room', () => {
+  const { store, setNow } = storeFixture();
+  const room = store.create('host-socket', HOST_ID, AD);
+  setNow(40_000);
+  assert.equal(store.heartbeat('other-socket', room.roomId), null);
+  assert.equal(room.lastSeenAt, 10_000);
+  assert.equal(store.heartbeat('host-socket', room.roomId)?.lastSeenAt, 40_000);
+});
+
+test('joining with the host anonymous id is rejected', () => {
+  const { store } = storeFixture();
+  const room = store.create('host-socket', HOST_ID, AD);
+  assert.equal(store.join('guest-socket', HOST_ID, room.roomId), null);
+  assert.equal(room.state, 'open');
+});
+
+test('anonymous ids must be UUID v4', () => {
+  const { store } = storeFixture();
+  assert.equal(store.create('host-v1', '123e4567-e89b-12d3-a456-426614174000', AD), null);
+  assert.ok(store.create('host-v4', HOST_ID, AD));
+});
+
 test('only the creating host socket can update or delete a room', () => {
   const { store } = storeFixture();
   const room = store.create('host-socket', HOST_ID, AD);

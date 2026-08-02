@@ -1,0 +1,16 @@
+{
+  "name": "zombie-coop-netcheck",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4173",
+    "typecheck": "tsc --noEmit",
+    "test:online": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "typescript": "5.8.3",
+    "vite": "5.4.19"
+  }
+}

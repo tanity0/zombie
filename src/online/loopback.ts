@@ -1,4 +1,4 @@
-import { enabled as onlineEnabled } from './config';
+import { onlineAllowed } from './config';
 import type {
   CoopAd,
   CoopApi,
@@ -6,6 +6,7 @@ import type {
   CoopOpenRoom,
   CoopRole,
   CoopSession,
+  CoopStats,
   CoopStatus,
 } from './types';
 
@@ -64,6 +65,15 @@ class LoopbackSession implements CoopSession {
   private readonly messageCallbacks = new Set<MessageCallback>();
   private readonly peerJoinedCallbacks = new Set<() => void>();
   private readonly closedCallbacks = new Set<ClosedCallback>();
+  private readonly cachedStats: CoopStats = {
+    rttMs: -1,
+    bytesSent: 0,
+    bytesReceived: 0,
+    messagesSent: 0,
+    messagesReceived: 0,
+    lastReceivedAtMs: 0,
+    maintenanceOpen: false,
+  };
 
   constructor(
     role: CoopRole,
@@ -82,6 +92,11 @@ class LoopbackSession implements CoopSession {
 
   rttMs(): number {
     return this.currentStatus === 'connected' ? this.latencyMs * 2 : -1;
+  }
+
+  stats(): CoopStats {
+    this.cachedStats.rttMs = this.rttMs();
+    return this.cachedStats;
   }
 
   link(peer: LoopbackSession): void {
@@ -125,12 +140,17 @@ class LoopbackSession implements CoopSession {
     if (this.currentStatus !== 'connected' || !this.peer) return;
     const receiver = this.peer;
     const payload = data.slice();
+    this.cachedStats.bytesSent += data.byteLength;
+    this.cachedStats.messagesSent += 1;
     setTimeout(() => receiver.receive(payload, channel), this.latencyMs);
   }
 
   private receive(data: Uint8Array, channel: CoopChannel): void {
     try {
       if (this.currentStatus !== 'connected') return;
+      this.cachedStats.bytesReceived += data.byteLength;
+      this.cachedStats.messagesReceived += 1;
+      this.cachedStats.lastReceivedAtMs = Date.now();
       for (const callback of [...this.messageCallbacks]) callSafely(callback, data, channel);
     } catch {
       // Receiving must never escape into the game loop.
@@ -225,10 +245,10 @@ export function createLoopbackPair(options: LoopbackOptions = {}): LoopbackPair 
     let nextRoomId = 1;
 
     const host: CoopApi = {
-      enabled: onlineEnabled,
+      enabled: onlineAllowed,
       async advertise(ad: CoopAd): Promise<CoopSession | null> {
         try {
-          if (!onlineEnabled() || (hostActive && hostActive.status() !== 'closed')) return null;
+          if (!onlineAllowed() || (hostActive && hostActive.status() !== 'closed')) return null;
           const session = new LoopbackSession(
             'host',
             'advertising',
@@ -260,13 +280,13 @@ export function createLoopbackPair(options: LoopbackOptions = {}): LoopbackPair 
     };
 
     const guest: CoopApi = {
-      enabled: onlineEnabled,
+      enabled: onlineAllowed,
       async advertise(): Promise<CoopSession | null> {
         return null;
       },
       async listOpen(matchKey: string, buildVersion: string): Promise<CoopOpenRoom[]> {
         try {
-          if (!onlineEnabled() || !room || room.hostSession.status() !== 'advertising') return [];
+          if (!onlineAllowed() || !room || room.hostSession.status() !== 'advertising') return [];
           if (room.ad.matchKey !== matchKey || room.ad.buildVersion !== buildVersion) return [];
           return [{
             roomId: room.roomId,
@@ -280,7 +300,7 @@ export function createLoopbackPair(options: LoopbackOptions = {}): LoopbackPair 
       },
       async join(roomId: string): Promise<CoopSession | null> {
         try {
-          if (!onlineEnabled() || (guestActive && guestActive.status() !== 'closed')) return null;
+          if (!onlineAllowed() || (guestActive && guestActive.status() !== 'closed')) return null;
           const selected = room;
           if (!selected || selected.roomId !== roomId || selected.hostSession.status() !== 'advertising') {
             return null;
