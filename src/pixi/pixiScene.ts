@@ -2007,6 +2007,14 @@ interface ActorView {
   // ★§3-9-B v9: 影用の"退場・死亡由来のみ"のフェード係数(既定1)。地平線フェード/裏回り透け/
   // GHOST_ALLY_ALPHA/無敵点滅/演出用の一時透過は含めない(影側が別途持つ・二重掛け防止)。
   shadowFade?: number;
+  // ★検収差し戻し(致命2/中11)対応: 影の寸法・接地点は「アニメーション由来の一時スケール
+  // (呼吸・被弾スカッシュ・crouch/jump)を含まない基準の表示実寸」を使う。未設定の場合は
+  // actorDisplaySize が sprite.width/height にフォールバックする(敵以外は従来どおり)。
+  shadowScale?: number;   // texture.width/height に掛ける「素の」スケール(depthScale/containScale/
+                            // stageEnemyVisualMul等の構造的な倍率のみ。breath/flinch/aiSq/lungeSqは含まない)
+  shadowLiftPx?: number;  // 持ち上げ系(liftHop/kbHop/aiHop/lungeOffY)の合計。影の heightPx に使う
+  shadowGroundY?: number; // 裏ボス専用: 論理の足元Y(spy±素のhalf-height、リフト無し)。非ボスは
+                            // anchor(0.5,1)なので footY で足りるため未使用。
 }
 
 interface PropView {
@@ -8222,24 +8230,20 @@ export class PixiScene {
       this.placeShadowV9(req, seen, now, ldomLerp, horizonTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
 
     // ---- プレイヤー ----
-    // §3-9-B: 登場演出中も影を出す(旧実装の「introActive中はスキップ」を撤廃)。ヘリに随伴する
-    // 高さぶんだけ heightPx を明示的に渡す(store座標は地上のままなので差分では取れないケース)。
+    // §3-9-B: 登場演出中も影を出す(旧実装の「introActive中はスキップ」を撤廃)。
+    // ★致命1修正: `drawPlayer` は `introOffY=0`(飛び降り演出は廃止済み)で1pxも持ち上げていないため、
+    // heliAboveAt由来の高さ計算は「廃止済み演出の残骸」で誤り=丸ごと削除(heightPxは常に0)。
+    // 代わりに、本体がα0の間は影もα0にする(introFadeを shadowFade に掛ける)。
     {
       const pf = playerFootBox(player);
       const disp = this.actorDisplaySize(this.playerView);
-      let heightPx = 0;
-      if (this.introActive) {
-        const t = this.introUntil === -1 ? 0 : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
-        const introScale = playerIntroScale(Math.min(t, PLAYER_INTRO_HELI_FRAC));
-        heightPx = heliAboveAt(t) * introScale;
-      }
       const rawW = disp?.w ?? pf.boxW * 0.55;
       const rawH = disp?.h ?? pf.boxH;
       place({
         id: '__player__', x: pf.footX, y: pf.footY,
         rawW, rawH, texture: this.playerView?.sprite.texture ?? null,
-        alpha: 1, shadowFade: this.playerView?.shadowFade ?? 1,
-        flip: disp?.flip, scaleMult: PLAYER_SHADOW_SCALE, heightPx,
+        alpha: 1, shadowFade: (this.playerView?.shadowFade ?? 1) * this.currentIntroFade(now),
+        flip: disp?.flip, scaleMult: PLAYER_SHADOW_SCALE,
       });
     }
 
@@ -8251,17 +8255,22 @@ export class PixiScene {
       const view = this.enemies.get(e.id);
       const disp = this.actorDisplaySize(view);
       if (!disp) continue; // 絵が無い/未ロード=接地2枚も出さない(旧実装のフォールバック幅は使わない=裁定A)
-      // 裏ボス: 「足元」は判定帯の中心ではなく絵の下端(=スプライトの実体下端)。§3-9-B確定
-      // 「flatSize廃止・通常の3枚(接地2+シルエット)へ統合・赤tint廃止」。裏ボスのスプライトは
-      // anchor(0.5,0.5)なので、実体下端 = sprite.y(中心) + 表示実寸の高さ/2。
+      // ★検収差し戻し(致命2)対応: 接地点は「論理の足元」(呼吸/被弾スカッシュ/liftHop/kbHop/
+      // lungeOffYを含まない)を使い、持ち上げ系だけを heightPx として渡す。req.y は「描画上の足元Y」
+      // (drawn位置)なので、論理の足元(ground)から liftPx を引いた値を渡す(投影点=req.y+heightPx=ground)。
       const bossFixed = isHiddenBoss(e.type);
+      const liftPx = view?.shadowLiftPx ?? 0;
       const cx = bossFixed ? view!.sprite.x : e.x + e.width / 2;
-      const cy = bossFixed ? view!.sprite.y + disp.h / 2 : footY;
+      const groundY = bossFixed ? (view!.shadowGroundY ?? view!.sprite.y + disp.h / 2) : footY;
+      const cy = groundY - liftPx;
+      // ★検収差し戻し(F-1の横展開): 非ボス敵の本体alphaは horizonAlpha × foreFade
+      // (foregroundActorAlpha。裏ボスは foreFade=1 で対象外=drawEnemyと同じ)。
+      const foreFade = bossFixed ? 1 : this.foregroundActorAlpha(footY);
       place({
         id: e.id, x: cx, y: cy,
         rawW: disp.w, rawH: disp.h, texture: view?.sprite.texture ?? null,
-        alpha: horizonAlpha, shadowFade: view?.shadowFade ?? 1,
-        flip: disp.flip, skewX: view?.sprite.skew.x,
+        alpha: horizonAlpha * foreFade, shadowFade: view?.shadowFade ?? 1,
+        flip: disp.flip, skewX: view?.sprite.skew.x, heightPx: liftPx,
       });
     }
     // ---- 召喚(味方ユニット) ----
@@ -8297,15 +8306,21 @@ export class PixiScene {
       });
     }
     // ---- ステージ1の花 ----
+    // ★検収差し戻し(F-1/F-2/F-3): 花のスプライトは horizonActorAlpha × foregroundActorAlpha
+    // (applyObstacleAlphaと同型)でフェードしているが、影は horizonActorAlpha しか見ていなかった
+    // (画面下端で花が消えても影だけ残る=F-1)。花は「房が広く株元は細い」素材固有の形なので、
+    // 絵幅そのままではなく旧係数 FLOWER_SHADOW_WIDTH_RATIO を残す(裁定Aの対象=アクターの話とは別。
+    // F-2)。シルエットは対象外(細い茎がぼけて塊になり、株元から離れて繋がって見えない。F-3=仕様の
+    // 適用範囲表の設計ミスを訂正)。
     for (const [id, entry] of this.flowerObjs) {
-      const alpha = this.horizonActorAlpha(entry.footY);
+      const alpha = this.horizonActorAlpha(entry.footY) * this.foregroundActorAlpha(entry.footY);
       if (alpha <= 0 || entry.sprite.visible === false) continue;
-      const w = Math.abs(entry.sprite.width);
+      const w = Math.abs(entry.sprite.width) * FLOWER_SHADOW_WIDTH_RATIO;
       if (w <= 0) continue;
       place({
         id: 'flw:' + id, x: entry.sprite.x, y: entry.footY,
-        rawW: w, rawH: Math.abs(entry.sprite.height), texture: entry.sprite.texture,
-        alpha,
+        rawW: w, rawH: Math.abs(entry.sprite.height), texture: null,
+        alpha, silhouetteExempt: true,
       });
     }
     // ---- 商人/イベントNPC/城/病院/武器庫/警察署 ----
@@ -8398,11 +8413,13 @@ export class PixiScene {
         alpha: ha, shadowFade: v.shadowAlpha, flip: v.shadowFlip, heightPx: v.shadowHeight,
       });
     }
-    // ---- 松明/焚き火(§3-9-B確定「シルエットの対象外」だが接地2枚は出す。緑卵(mine)はテクスチャに
-    // 接地影を焼き込み済みのため対象外のまま触らない。UVバーは絵に光/影が焼き込まれているか未確認の
-    // ため、現状維持(★未決: シルエット対象外リストにuv-barが無いのは仕様書の書き漏れの可能性)。
+    // ---- 松明/焚き火/緑卵(§3-9-B確定「シルエットの対象外」だが接地2枚は出す)。
+    // ★検収差し戻し訂正: 「シルエット対象外」は「影が無い」ではない。緑卵(mine)は絵自体に接地影を
+    // 焼き込み済みだがシルエット(輪郭の台形)は不要というだけで、接地2枚(芯/外側)は他と同様に出す。
+    // UVバーは絵に光/影が焼き込まれているか未確認のため現状維持
+    // (★未決: シルエット対象外リストにuv-barが無いのは仕様書の書き漏れの可能性)。
     for (const prop of props) {
-      if (prop.type !== 'torch') continue; // 焚き火(campfire)も type='torch' で表現(this.snowStage判定)
+      if (prop.type !== 'torch' && prop.type !== 'mine') continue; // 焚き火(campfire)もtype='torch'
       const view = this.breakableProps.get(prop.id);
       if (!view || view.sprite.visible === false) continue;
       const w = Math.abs(view.sprite.width);
@@ -8417,26 +8434,32 @@ export class PixiScene {
     }
     // ---- 静止物(木/壁/プロップ/city props): 枚数キャップ廃止=可視域内は全部出し、
     // 縮退は距離クロスフェード(shadowStaticFade)に一本化(裁定B)。
+    // ★検収差し戻し(F-1の横展開): これらのスプライトは applyObstacleAlpha
+    // (horizonActorAlpha × foregroundActorAlpha)でフェードしているので、影も同じ式にする。
     for (const [key, tr] of this.trees) {
       const w = Math.abs(tr.sprite.width);
       if (w <= 0) continue;
-      place({ id: 'osh:tree:' + key, x: tr.sprite.x, y: tr.footY, rawW: w, rawH: Math.abs(tr.sprite.height), texture: tr.sprite.texture, alpha: this.horizonActorAlpha(tr.footY), isStatic: true });
+      const alpha = this.horizonActorAlpha(tr.footY) * this.foregroundActorAlpha(tr.footY);
+      place({ id: 'osh:tree:' + key, x: tr.sprite.x, y: tr.footY, rawW: w, rawH: Math.abs(tr.sprite.height), texture: tr.sprite.texture, alpha, isStatic: true });
     }
     for (const [id, e] of this.wallObjs) {
       const w = Math.abs(e.sprite.width);
       if (w <= 0) continue;
-      place({ id: 'osh:wall:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha: this.horizonActorAlpha(e.footY), isStatic: true });
+      const alpha = this.horizonActorAlpha(e.footY) * this.foregroundActorAlpha(e.footY);
+      place({ id: 'osh:wall:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha, isStatic: true });
     }
     for (const [id, e] of this.propObjs) {
       const w = Math.abs(e.sprite.width);
       if (w <= 0) continue;
-      place({ id: 'osh:prop:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha: this.horizonActorAlpha(e.footY), isStatic: true });
+      const alpha = this.horizonActorAlpha(e.footY) * this.foregroundActorAlpha(e.footY);
+      place({ id: 'osh:prop:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha, isStatic: true });
     }
     for (const [id, e] of this.cityPropObjs) {
       if (e.sprite.parent === this.L.groundLayer) continue; // 地面デカールは影なし
       const w = Math.abs(e.sprite.width);
       if (w <= 0) continue;
-      place({ id: 'osh:city:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha: this.horizonActorAlpha(e.footY), isStatic: true });
+      const alpha = this.horizonActorAlpha(e.footY) * this.foregroundActorAlpha(e.footY);
+      place({ id: 'osh:city:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha, isStatic: true });
     }
 
     this.sweepShadowPoolV9(seen, now);
@@ -8689,8 +8712,17 @@ export class PixiScene {
   private actorDisplaySize(view: ActorView | undefined | null): { w: number; h: number; flip: boolean } | null {
     if (!view || view.sprite.visible === false) return null;
     const s = this.shadowAncestorScaleX(view.sprite, this.L.world);
-    const w = Math.abs(view.sprite.width) * s;
-    const h = Math.abs(view.sprite.height) * s;
+    const tex = view.sprite.texture;
+    let w: number, h: number;
+    if (view.shadowScale !== undefined && tex && tex.width > 0 && tex.height > 0) {
+      // ★検収差し戻し(中11)対応: sprite.width/height は「今のフレームの見た目」(呼吸/被弾スカッシュ/
+      // crouch・jump込み)。影の寸法はそれらを含まない「素の」表示実寸(shadowScale)から算出する。
+      w = tex.width * view.shadowScale * s;
+      h = tex.height * view.shadowScale * s;
+    } else {
+      w = Math.abs(view.sprite.width) * s;
+      h = Math.abs(view.sprite.height) * s;
+    }
     if (!(w > 0) || !(h > 0)) return null;
     return { w, h, flip: view.sprite.scale.x < 0 };
   }
@@ -9540,9 +9572,11 @@ export class PixiScene {
       body.zIndex = footY; // 他アクターと足元Yでy-sort
       body.alpha = alpha;
       body.visible = true;
-      // §3-9-B v9: 影は「地面の軌道(footY)」を足元、hop(sinアーチ)を高さとして渡す(飛来・離脱中も
-      // 影が地面に残るようにするため。仕様書「救援アライだけは飛行高度を明示的に渡す」)。
-      v.shadowFootY = footY;
+      // §3-9-B v9: shadowFootY は「描画上の足元Y(＝持ち上げた後の位置)」、shadowHeight(=heightPx)は
+      // そこから地面へ戻すための量(投影点 = shadowFootY + shadowHeight = 地面)。本体は `footY - hop`
+      // に描いているので、影の基準もそこに合わせる(★致命1修正: 以前は地面の footY をそのまま渡していた
+      // ため、投影点が footY + hop = 地面から更に hop px 下=本体からは 2×hop 離れていた)。
+      v.shadowFootY = footY - hop;
       v.shadowHeight = hop;
       v.shadowAlpha = alpha;
       v.shadowFlip = facingLeft;
@@ -10873,6 +10907,12 @@ export class PixiScene {
         lungeOffX = Math.cos(lang) * pose.off;
         lungeOffY = Math.sin(lang) * pose.off + pose.sink;
       }
+      // ★検収差し戻し(致命2)対応: 影の接地点・寸法は呼吸(breath)/被弾スカッシュ(flinchSqY)/
+      // lungeSqXを一切含まない「素のscale」を使う。持ち上げ系(liftHop/kbHop/lungeOffY)だけを
+      // heightPx相当(shadowLiftPx)として別途渡す(=殴るたびに影が跳ねる/静止時に呼吸で脈動する事故を防ぐ)。
+      view.shadowScale = scale;
+      view.shadowLiftPx = liftHop + kbHop - lungeOffY;
+      view.shadowGroundY = spy + (scale * tex.height) / 2; // 論理の足元(絵の下端。リフト/スカッシュ無し)
       view.sprite.position.set(Math.round(spx + liftShake + lungeOffX), Math.round(spy - liftHop - kbHop + lungeOffY));
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
@@ -10964,6 +11004,10 @@ export class PixiScene {
         lungeOffX = Math.cos(lang) * pose.off;
         lungeOffY = Math.sin(lang) * pose.off + pose.sink;
       }
+      // ★検収差し戻し(中11)対応: 影の寸法は呼吸/被弾スカッシュ/crouch・jump(aiSqX/Y)を含まない
+      // 「素のscale」(sc)を使う。持ち上げ系(liftHop/aiHop/kbHop/lungeOffY)は heightPx 相当として渡す。
+      view.shadowScale = sc;
+      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY;
       const scaleX = sc * breath.x * aiSqX * lungeSqX;
       view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY);
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
@@ -13154,11 +13198,13 @@ export class PixiScene {
     this.hospitalSprite.alpha *= fade;
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は存在の法則なので shadowFade へ分離
     // (alpha=位置由来のみ。地平線フェードとの二重掛けを避ける)。
+    // ★検収差し戻し(F-1の横展開): hospitalSprite は applyObstacleAlpha(horizon×foreground)で
+    // フェードしているので、影も foregroundActorAlpha を含める。
     this.hospitalShadow = {
       x: pos.x, y: footY,
       legacyW: Math.min(180 * d, tex.width * sc * 0.42),
       rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
-      alpha: horizonAlpha * 0.8, shadowFade: fade,
+      alpha: horizonAlpha * 0.8 * this.foregroundActorAlpha(footY), shadowFade: fade,
     };
 
     // サークルは「近づいたら」出す(社長指示)。距離でフェードイン=遠くから見えて煩くならない。
@@ -13227,11 +13273,12 @@ export class PixiScene {
     this.applyObstacleAlpha(this.armorySprite, footY);
     this.armorySprite.alpha *= fade;
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は shadowFade へ分離。
+    // ★検収差し戻し(F-1の横展開): armorySprite は applyObstacleAlpha(horizon×foreground)。
     this.armoryShadow = {
       x: pos.x, y: footY,
       legacyW: Math.min(180 * d, tex.width * sc * 0.42),
       rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
-      alpha: horizonAlpha * 0.8, shadowFade: fade,
+      alpha: horizonAlpha * 0.8 * this.foregroundActorAlpha(footY), shadowFade: fade,
     };
 
     if (s.armoryTaken) return;
@@ -13296,11 +13343,12 @@ export class PixiScene {
     this.applyObstacleAlpha(this.policeSprite, footY);
     this.policeSprite.alpha *= fade;
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は shadowFade へ分離。
+    // ★検収差し戻し(F-1の横展開): policeSprite は applyObstacleAlpha(horizon×foreground)。
     this.policeShadow = {
       x: pos.x, y: footY,
       legacyW: Math.min(180 * d, tex.width * sc * 0.42),
       rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
-      alpha: horizonAlpha * 0.8, shadowFade: fade,
+      alpha: horizonAlpha * 0.8 * this.foregroundActorAlpha(footY), shadowFade: fade,
     };
   }
 

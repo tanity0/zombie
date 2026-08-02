@@ -1,5 +1,46 @@
 # Development Log
 
+## v0.25.2757 — 影の検収差し戻し対応(致命1/2 + F-1/F-2/F-3 + 緑卵)【2026-08-02 16:42 JST】
+
+(致命3の単独push=90b6e4ccは既に完了・別entry無し。今回はその続き。)
+
+### ★致命1: `req.y`/`heightPx` の符号を取り違えていた(2箇所)
+- **救援アライ**: 本体は `footY - hop` に描いているのに `shadowFootY = footY`(地面そのもの)を渡して
+  いたため、投影点(`req.y+heightPx`)が地面から更に hop px 下 = 本体から 2×hop 離れていた。
+  ⇒ `v.shadowFootY = footY - hop`(描画上の足元Y)に修正。`heightPx`(=hop)は据え置き。
+- **プレイヤー登場演出**: `drawPlayer` は `introOffY=0`(飛び降り演出は廃止済み)で1pxも持ち上げて
+  いないのに、`heliAboveAt` 由来の高さを heightPx として渡していた(=廃止済み演出の残骸)。
+  ⇒ 高さ計算を丸ごと削除(heightPx=0)。代わりに `shadowFade` に `currentIntroFade(now)` を掛け、
+  本体がα0の間(ヘリ着地〜離陸開始まで)は影もα0にした。
+
+### ★致命2: 裏ボスの接地点がスプライトYに追従し、殴るたび跳ね・呼吸で常時脈動していた
+`cy = view.sprite.y + disp.h/2` が liftHop/kbHop/lungeOffY(持ち上げ系)と呼吸(breath.y)・
+被弾スカッシュ(flinchSqY)を全部拾っていた。⇒ ActorViewに `shadowScale`(呼吸/スカッシュ抜きの
+素のスケール)/`shadowLiftPx`(持ち上げ系の合計)/`shadowGroundY`(論理の足元=スプライト中心+
+素のhalf-height)を追加し、drawEnemyの両分岐(裏ボス/通常敵)で配線。`actorDisplaySize` は
+`shadowScale` があればそれを優先(sprite.width/heightではなくtexture×shadowScaleから寸法を出す)。
+これは差し戻しの**中11**(アニメーションのスカッシュが影の寸法に直結する問題)も同時に解決する
+(通常敵のcrouch/jump squashにも同じ機構を配線済み)。
+
+### F-1/F-2/F-3: 社長実機スクショ「花が浮いている」(設計側裁定)
+- **F-1**(バグ): 花・木・壁・プロップ・city props・病院・武器庫・警察署のスプライトは
+  `applyObstacleAlpha`(horizonActorAlpha×foregroundActorAlpha)でフェードしているのに、影は
+  horizonActorAlphaだけだった(画面下端で本体が消えても影だけ残る)。非ボス敵も同型
+  (`foreFade`)。⇒ 該当する影リクエストすべてに `foregroundActorAlpha` を掛けた。
+- **F-2**(素材固有・裁定Aの対象外): 花は房が広く株元が細いため、絵幅をそのまま使うと
+  旧実装(実効半幅=絵幅×0.187)の約1.7倍(絵幅×0.323)太くなり浮いて見える。
+  ⇒ 花だけ `FLOWER_SHADOW_WIDTH_RATIO`(0.34)を残して掛ける。
+- **F-3**(仕様の適用範囲表の訂正): 花はシルエット対象外に変更(細い茎が台形に引き伸ばされると
+  形の情報が失われて塊になり、株元から離れて見える)。接地2枚のみ。
+
+### 緑卵(mine)に影が1枚も出ていなかった
+`if (prop.type !== 'torch') continue;` で mine が対象から漏れていた。「シルエット対象外」と
+「影が無い」を混同していた誤り。⇒ 接地2枚(シルエット無し)を出すよう対象に追加。
+
+**ファイル**: `src/pixi/pixiScene.ts` / `package.json` / `src/data/changelog.ts`。
+**検証**: `npm run typecheck` / `npm run lint` エラー0。
+**次**: 差し戻しリストの残り(致命4→高→中)を順に進める。
+
 ## v0.25.2756 — スコア倍率は廃止 / 影「伸びてない」は既知バグと一致【2026-08-02 16:56 JST】
 
 ### G6: スコア倍率を廃止(社長裁定)
