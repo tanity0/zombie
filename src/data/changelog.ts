@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2769',
+    items: [
+      'ゲーム内容の変更はありません（影の作り替えの設計と、オンライン共有の設計を詰めています）。',
+    ],
+  },
+  {
     version: '0.25.2768',
     items: [
       '守護霊を呼んだランのスコアが半分になる仕様を廃止しました。スコアはそのまま記録されます（守護霊のコストはボスHP1.6倍が担います）。',
