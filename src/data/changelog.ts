@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2783',
+    items: [
+      '遠景に横一直線の細い切れ目が入ることがあったのを直しました。',
+    ],
+  },
+  {
     version: '0.25.2782',
     items: [
       'ゲーム内容の変更はありません（試験中のコントラスト演出が、爆発では一度も動いていなかったのを直しました）。',

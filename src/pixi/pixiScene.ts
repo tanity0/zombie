@@ -3436,6 +3436,7 @@ export class PixiScene {
     this.L.farBackdrop.width = w;
     this.L.farBackdrop.height = farDrawH;
     this.L.farBackdrop.tileScale.set(farScale);
+    this.clampTilingV(this.L.farBackdrop); // ★縦の継ぎ目対策(上の clampTilingV 参照)
     this.L.farBackdrop.alpha = 1;
     const horizonH = this.horizonForestHeight();
     // 横オーバースキャン: 引いた時に地平森の左右が切れて黒帯にならないよう画面より広く敷いて中央寄せ(worldGroup内=スケール対象)。
@@ -3445,6 +3446,7 @@ export class PixiScene {
     // 横伸び防止: frontForest と同じく y 基準の均一スケール(x も同値)。横は自然比率のままタイルで繰り返して幅を埋める
     // (parallax で横スクロールする=元々シームレスにタイルできる素材)。非均一(w/texW)だと横に引き伸ばされていた。
     this.L.horizonForest.tileScale.set(horizonH / this.L.horizonForest.texture.height);
+    this.clampTilingV(this.L.horizonForest); // ★縦の継ぎ目対策
     this.L.horizonForest.position.set(-horizonMarginX, this.horizonForestY(farH, horizonH));
     this.layoutNearHorizon(); // 遠景手前森の寸法/位置も追従
     this.updateHorizonForestFadeMask(w, horizonH);
@@ -3456,6 +3458,7 @@ export class PixiScene {
     this.L.frontForest.width = w;
     this.L.frontForest.height = frontH;
     this.L.frontForest.tileScale.set(frontScale);
+    this.clampTilingV(this.L.frontForest); // ★縦の継ぎ目対策
     this.L.frontForest.alpha = this.frontForestAlpha();
     this.updateFrontForestFadeMask(w, frontH);
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
@@ -4529,6 +4532,7 @@ export class PixiScene {
     // tileScale だけ更新(maskは不変=安全)。
     const frontH = this.frontForestHeight();
     this.L.frontForest.tileScale.set(frontH / Math.max(1, tex.height));
+    this.clampTilingV(this.L.frontForest); // ★縦の継ぎ目対策
     // 差し替え近景(屋根帯/氷壁)は半透明にしない(不透明・フェードOFF)。森に戻すと半透明+フェード復帰。
     if (override) {
       this.L.frontForest.alpha = 1;
@@ -4627,6 +4631,7 @@ export class PixiScene {
     this.L.nearHorizon.height = height;
     // 横伸び防止: y 基準の均一スケール(横は自然比率でタイル繰り返し)。nearHorizon も parallax で横スクロールするので継ぎ目なし。
     this.L.nearHorizon.tileScale.set(height / tex.height);
+    this.clampTilingV(this.L.nearHorizon); // ★縦の継ぎ目対策
     this.L.nearHorizon.position.set(-nhMarginX, bottom - height);
   }
   setStage3Ground(t: Texture | null) {
@@ -4694,6 +4699,7 @@ export class PixiScene {
     this.L.horizonForest.height = horizonH;
     // 横伸び防止: y 基準の均一スケール(横は自然比率でタイル)。resize と同方式。
     this.L.horizonForest.tileScale.set(horizonH / tex.height);
+    this.clampTilingV(this.L.horizonForest); // ★縦の継ぎ目対策
     this.L.horizonForest.position.set(-marginX, this.horizonForestY(this.farBackdropHeight(), horizonH));
     // 高さがステージ別に変わる(北部=拡大等)ため、フェードマスクをこの高さで焼き直す。
     // resize 時の高さのままだとマスクが森より短く、素材下側(地面)がフェードせず切れる(社長指示v0.25.1888「地面が斬られてる」)。
@@ -4735,6 +4741,28 @@ export class PixiScene {
       this.layoutFarBackdrop();
     }
   }
+  /**
+   * ★v0.25.2783(社長報告「ステージ1の遠景に1pxくらいの切れ目が入った」): 遠景の帯(TilingSprite)は
+   * **横だけループさせ、縦はループさせない**。
+   *
+   * 原因: これらの帯は**縦がちょうど1枚**になる寸法で敷かれている。
+   *  - `horizonForest`: `height = horizonH` かつ `tileScale = horizonH / texH` ⇒ **どの端末でも必ず**ぴったり1枚。
+   *  - `farBackdrop`: `farScale = max(w/texW, farH/texH)`。素材は 1280×720(アスペクト1.778)で、
+   *    `farH = 画面高 × FAR_BACKDROP_HEIGHT_RATIO(0.26)`。**端末のアスペクトが素材に近いと縦がわずかに勝ち**、
+   *    やはり縦ぴったり1枚になる(実測: 430×932相当で 0.3360 対 0.3365)。
+   * ⇒ 縦がぴったりだと**下端でUVが1周し、反対側の画素が1px出る**=横一直線の切れ目。
+   *
+   * `addressModeV = 'clamp-to-edge'` にすれば端の画素で止まるので、**寸法を一切変えずに**消える
+   * (epsilonで少し伸ばす等の誤魔化しを入れない)。横(`addressModeU`)は**パララックスで必要なので repeat のまま**。
+   */
+  private clampTilingV(sp: TilingSprite) {
+    const src = sp.texture?.source;
+    if (!src?.style || src.style.addressModeV === 'clamp-to-edge') return;
+    src.style.addressModeU = 'repeat';
+    src.style.addressModeV = 'clamp-to-edge';
+    src.style.update();
+  }
+
   // 遠景TilingSpriteの寸法/タイルスケールを現在のテクスチャと画面サイズで再計算。
   private layoutFarBackdrop() {
     const tex = this.L.farBackdrop.texture;
@@ -4809,6 +4837,7 @@ export class PixiScene {
         this.L.frontForest.texture = frontTex;
         const frontH = this.frontForestHeight();
         this.L.frontForest.tileScale.set(frontH / Math.max(1, frontTex.height));
+    this.clampTilingV(this.L.frontForest); // ★縦の継ぎ目対策
       }
       if (this.outdoorGroundTheme !== 'lab') {
         // 地平帯(遠景森1)を研究所版へ(森→ラボ)。遠景は applyFarBackdrop・近景森は上のfrontTexが管理。
