@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2767',
+    items: [
+      "名前に ' ! ? が使えるようになりました（iPhoneの「’」も同じ扱いになります）。",
+      '長い名前でも守護霊の頭上のラベルが横に伸びすぎないよう、はみ出す分は「…」で省略するようにしました。',
+    ],
+  },
+  {
     version: '0.25.2766',
     items: [
       'プレイヤー名の上限を11文字に統一しました（初期名の player+5桁がちょうど11文字で、上限10だと保存のたびに1文字削れることがありました）。',

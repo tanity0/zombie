@@ -1345,7 +1345,7 @@ const PlayerNameSettings: React.FC = () => {
       />
       <p className="text-[11px] leading-relaxed text-white/45">
         守護霊(スキル)の頭上に表示される名前。最大{PLAYER_NAME_MAX_LEN}文字。
-        絵文字と記号は使えません(<span className="whitespace-nowrap">_ - . ・</span> と空白のみ可)。
+        絵文字は使えません(記号は <span className="whitespace-nowrap">_ - . ・ ' ! ?</span> と空白のみ)。
         空のまま確定すると「{PLAYER_NAME_WHEN_BLANK}」になります。
       </p>
     </Section>

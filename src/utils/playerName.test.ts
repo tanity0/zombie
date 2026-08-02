@@ -283,3 +283,34 @@ describe('playerName: 品質監査の回帰(v0.25.2766)', () => {
     }
   });
 });
+
+// ★v0.25.2767(未決N-2・社長「おすすめで任せる」): 許可記号を `'` `!` `?` まで広げた。
+describe('playerName: 許可記号の拡張(N-2)', () => {
+  it("`'` `!` `?` は通る(O'Brien が OBrien に化けない)", () => {
+    expect(sanitizePlayerName("O'Brien")).toBe("O'Brien");
+    expect(sanitizePlayerName('やった!')).toBe('やった!');
+    expect(sanitizePlayerName('だれ?')).toBe('だれ?');
+  });
+
+  it('★iOSのスマート引用符(U+2019)も `\'` へ寄せる(これが無いとiPhoneで打つと落ちる)', () => {
+    // U+2019 はカテゴリ Pf なので、許可リストに ASCII の ' を足しただけでは落ちてしまう。
+    // NFKC も U+2019 は畳まない。⇒ 明示的に寄せているかを固定する。
+    expect(sanitizePlayerName('O\u2019Brien')).toBe("O'Brien");
+    expect(sanitizePlayerName('O\u2018Brien')).toBe("O'Brien");
+    expect(sanitizePlayerName('O\u02BCBrien')).toBe("O'Brien");
+    expect(sanitizePlayerName('O\u2032Brien')).toBe("O'Brien");
+    // 見た目が同じ4種が1つの形に畳まれる=「そっくりな別名」を作れない
+    expect(new Set(['\u2019', '\u2018', '\u02BC', '\u2032'].map(c => sanitizePlayerName('a' + c))).size).toBe(1);
+  });
+
+  it('全角の ！？＇ は NFKC で半角へ畳まれてから通る', () => {
+    expect(sanitizePlayerName('\uFF01\uFF1F')).toBe('!?');
+    expect(sanitizePlayerName('a\uFF07b')).toBe("a'b");
+  });
+
+  it('許可していない記号は落としたまま(☆ ♪ @ # + など)', () => {
+    expect(sanitizePlayerName('a\u2606b\u266Ac')).toBe('abc');
+    expect(sanitizePlayerName('a@b#c+d')).toBe('abcd');
+    expect(sanitizePlayerName('C++')).toBe('C');
+  });
+});

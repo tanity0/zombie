@@ -39,9 +39,26 @@ const generateName = (): string =>
 
 /**
  * ★許可する記号(これ以外の記号・絵文字は落とす)。
- * 「K.O.」「A_B」「ジョン・ドゥ」程度が書ければ十分という判断で最小限に絞る。
+ * ★v0.25.2767(未決N-2・社長「おすすめで任せる」): `'` `!` `?` を追加した。
+ * 旧セットは「K.O. が書ければ十分」という設計チャットの独断で、**`O'Brien` が `OBrien` に化けていた**
+ * (実在の姓)。`!` `?` は和製ハンドルの最低線。`☆` `♪` 等の記号類は**同梱フォントの対象外になりやすい**
+ * ので落としたまま(絵文字を落とすのと同じ理由)。
  */
-const EXTRA_ALLOWED = new Set([' ', '_', '-', '.', '・']);
+const EXTRA_ALLOWED = new Set([' ', '_', '-', '.', '・', "'", '!', '?']);
+
+/**
+ * ★見た目が同じ記号を1つの形へ寄せる(NFKCが畳んでくれないもの)。
+ * ★これが無いと iPhone が壊れる: **iOSのスマート引用符は `'`(U+0027)ではなく `’`(U+2019)を打つ**。
+ * U+2019 はカテゴリ Pf(終わり引用符)なので、許可リストに `'` だけ足しても**iPhoneで打った
+ * アポストロフィは落ちる**(`O’Brien` → `OBrien` のまま直らない)。NFKC も U+2019 は畳まない。
+ * ⇒ 明示的に寄せる。ついでに「見た目が同じで中身が違う名前」も1つに畳まれる。
+ */
+const CANONICAL: ReadonlyMap<string, string> = new Map([
+  ['‘', "'"], // LEFT SINGLE QUOTATION MARK
+  ['’', "'"], // RIGHT SINGLE QUOTATION MARK(iOSのスマート引用符)
+  ['ʼ', "'"], // MODIFIER LETTER APOSTROPHE
+  ['′', "'"], // PRIME
+]);
 
 /**
  * 文字(L=漢字/かな/ラテン/長音符ー/々…)・数字(Nd/Nl)・結合文字(Mn)。絵文字はSoなのでここに入らない。
@@ -103,7 +120,8 @@ export const sanitizePlayerName = (raw: string): string => {
   let out = '';
   let marks = 0;      // 直近の基底文字に付いた結合文字の数
   let hasBase = false; // 直前が基底文字か(空白直後・先頭では false)
-  for (const ch of s) {
+  for (const raw of s) {
+    const ch = CANONICAL.get(raw) ?? raw; // 見た目が同じ記号を1つの形へ(iOSのスマート引用符など)
     if (SPACE_RE.test(ch)) {
       out += ' ';
       marks = 0;

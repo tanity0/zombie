@@ -1144,6 +1144,10 @@ const GHOST_WALK_TELEPORT_PX = 80;    // これ以上はリーシュワープ(�
 const GHOST_NAME_FONT_SIZE = 11;      // 小さめ(10-11相当)
 const GHOST_NAME_ALPHA = 0.85;        // 半透明(container外に置くのでGHOST_ALLY_ALPHAは掛からない=直接この値)
 const GHOST_NAME_GAP_PX = 4;          // 絵の上端(頭)からの隙間px(HPバー s.y-6 より必ず上になる)
+// ★v0.25.2767(未決N-3): 頭上ラベルの最大幅px(スケール前=ワールド単位)。超えたら名前側を「…」で詰める。
+// 128 ≒ 霊の絵幅(PLAYER_HITBOX 28 × PLAYER_VISUAL_SCALE 2.3 ≒ 64px)の2倍。全角11文字+「(自分)」は
+// この2.4倍まで伸びるので詰まる。半角中心の名前は11文字+「(自分)」でも収まって詰まらない。
+const GHOST_NAME_MAX_WIDTH_PX = 128;
 // M51(社長裁定6.26-9 #4): フェーズを持つボス(ジャイアント)のHPバー・Phase2色(橙)。
 // 既存のSTATUS_YELLOW(amber-400=リロード/注意の意味で使用中)とは別に用意し、意味の混同を避ける。
 const GIANT_PHASE2_BAR_COLOR = 0xf97316; // orange-500
@@ -10394,7 +10398,26 @@ export class PixiScene {
         this.ghostNameLabel = label;
       }
       const label = this.ghostNameLabel;
-      if (label.text !== nameText) label.text = nameText; // ←名前が変わった時だけ再ラスタライズ
+      // ★v0.25.2767(未決N-3・社長「おすすめで任せる」): 長い名前はラベル側で省略する。
+      // 上限11文字の根拠は「全角なら頭上でいっぱい」だったが、実際に描かれるのは
+      // **名前+「(自分)」=最大15グリフ**で、霊の絵幅(約64px)の2倍を超える。名前の入力上限を
+      // 表示の都合で削るのではなく、**描く側で詰める**(名前は記録・名簿でも使うため)。
+      // ★「(自分)」は削らない(誰の霊かの情報を優先し、名前側だけを詰める)。
+      // ★比較は「元の文字列」で持つ。`label.text` と比べると、省略した瞬間に毎フレーム
+      //   不一致になって再ラスタライズが走り続ける(`__ringBase` と同じ作法でキャッシュする)。
+      const cache = label as unknown as { __srcText?: string };
+      if (cache.__srcText !== nameText) {
+        cache.__srcText = nameText;
+        label.text = nameText; // ←名前が変わった時だけ再ラスタライズ
+        if (label.width > GHOST_NAME_MAX_WIDTH_PX) {
+          const suffix = s.ghostIsOwn ? '(自分)' : '';
+          const chars = [...ghostName];
+          while (chars.length > 1 && label.width > GHOST_NAME_MAX_WIDTH_PX) {
+            chars.pop();
+            label.text = `${chars.join('')}…${suffix}`;
+          }
+        }
+      }
       label.scale.set(dsc); // 遠近スケール=本体と同係数
       label.position.set(
         this.snapToScreenPixel(footX, this.L.world.position.x),
