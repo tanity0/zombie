@@ -5233,7 +5233,7 @@ export class PixiScene {
     this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
-    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now, s.effects);
+    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now, s.effects, s.breakableProps);
     this.syncShadowProbe(s.camera, now, s.effects); // 計測専用(ベンチ以外では count=0 で即 return)
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -7985,7 +7985,8 @@ export class PixiScene {
     rescueSurvivors: RescueSurvivor[] = [],
     baseSites: BaseSite[] = [],
     now = 0,
-    effects: VisualEffect[] = []
+    effects: VisualEffect[] = [],
+    props: BreakableProp[] = []
   ) {
     // ?shadow=0 診断(社長v0.25.1558): 全アクター足影オフ。両実装のプール影を全破棄して以降1枚も置かない。
     if (ACTOR_SHADOWS_DISABLED) {
@@ -8003,7 +8004,7 @@ export class PixiScene {
     if (this.shadowPool.size > 0) {
       for (const [id, sp] of this.shadowPool) { sp.destroy(); this.shadowPool.delete(id); } // 経路切替時に旧プールの残骸を消す
     }
-    this.syncShadowsV9(player, enemies, summons, projectiles, escorts, rescueSurvivors, baseSites, now, effects);
+    this.syncShadowsV9(player, enemies, summons, projectiles, escorts, rescueSurvivors, baseSites, now, effects, props);
   }
 
   /**
@@ -8186,6 +8187,7 @@ export class PixiScene {
     baseSites: BaseSite[],
     now: number,
     effects: VisualEffect[],
+    props: BreakableProp[],
   ) {
     this.drainSilhouetteQueue(); // 裁定D
 
@@ -8394,6 +8396,23 @@ export class PixiScene {
         id: 'rescueAlly:' + id, x: v.body.x, y: v.shadowFootY,
         rawW: w, rawH: Math.abs(v.body.height), texture: v.body.texture,
         alpha: ha, shadowFade: v.shadowAlpha, flip: v.shadowFlip, heightPx: v.shadowHeight,
+      });
+    }
+    // ---- 松明/焚き火(§3-9-B確定「シルエットの対象外」だが接地2枚は出す。緑卵(mine)はテクスチャに
+    // 接地影を焼き込み済みのため対象外のまま触らない。UVバーは絵に光/影が焼き込まれているか未確認の
+    // ため、現状維持(★未決: シルエット対象外リストにuv-barが無いのは仕様書の書き漏れの可能性)。
+    for (const prop of props) {
+      if (prop.type !== 'torch') continue; // 焚き火(campfire)も type='torch' で表現(this.snowStage判定)
+      const view = this.breakableProps.get(prop.id);
+      if (!view || view.sprite.visible === false) continue;
+      const w = Math.abs(view.sprite.width);
+      if (w <= 0) continue;
+      const alpha = view.container.alpha;
+      if (alpha <= 0) continue;
+      place({
+        id: 'prop:' + prop.id, x: view.sprite.x, y: view.sprite.y,
+        rawW: w, rawH: Math.abs(view.sprite.height), texture: null,
+        alpha, silhouetteExempt: true,
       });
     }
     // ---- 静止物(木/壁/プロップ/city props): 枚数キャップ廃止=可視域内は全部出し、
