@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2765',
+    items: [
+      'プレイヤー名に使える文字を整理しました。絵文字と記号は使えなくなり（_ - . ・ と空白は使えます）、全角英数や半角カナは自動で揃えられます。最大10文字はこれまでどおりです。',
+    ],
+  },
+  {
     version: '0.25.2764',
     items: [
       '影が元の位置へ戻る動きをさらに調整しました(前バージョンの修正が不十分だった箇所の追加対応)。',

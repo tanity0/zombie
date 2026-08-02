@@ -1316,8 +1316,10 @@ const GraphicsSettings: React.FC = () => {
 // === プレイヤー名(守護霊の頭上に表示される名前・v0.25.2477) ==============================
 // 台帳は utils/playerName.ts(初期値=player+ランダム5桁を自動生成)。React再描画規律:
 // 入力値はローカルstate(store購読なし・毎フレーム再描画なし)。保存はblur/Enter確定時に
-// normalizePlayerNameInput(trim・最大10文字へ切り詰め・空なら「名無し」=§2.16 C-1の叩き台)を
-// 通してから savePlayerName し、正規化後の値へ戻す。
+// normalizePlayerNameInput(★文字種フィルタ・trim・最大10文字へ切り詰め・空なら「名無し」
+// =§2.16 C-1の叩き台)を通してから savePlayerName し、正規化後の値へ戻す。
+// ★v0.25.2765: 不許可文字は**入力中は弾かず、確定時に黙って除去する**(IME変換の途中で
+// 文字を奪うと日本語入力が壊れるため)。何が消えるかは下のヘルプ文で先に伝える。
 // v0.25.2553: 独立メニュー「守護霊」(§2.14)からも同じ部品を出す(名前の決定はそこが本籍。
 // オプション側もこの1部品を使い続ける=文言・挙動が2箇所で食い違わない)。
 const PlayerNameSettings: React.FC = () => {
@@ -1339,6 +1341,7 @@ const PlayerNameSettings: React.FC = () => {
       />
       <p className="text-[11px] leading-relaxed text-white/45">
         守護霊(スキル)の頭上に表示される名前。最大{PLAYER_NAME_MAX_LEN}文字。
+        絵文字と記号は使えません(<span className="whitespace-nowrap">_ - . ・</span> と空白のみ可)。
         空のまま確定すると「{PLAYER_NAME_WHEN_BLANK}」になります。
       </p>
     </Section>
