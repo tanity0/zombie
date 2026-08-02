@@ -8784,21 +8784,31 @@ export class PixiScene {
     const rawLength = nonExplLen * ldom.lenMult * shrink;
     // 地平線帯の詰め(§3-9-B確定・実質的に効くのは昼のみ): 先端Yが地平線ライン
     // (horizonForestFootWorldY)を越えないよう、必要ならlengthだけ詰める(αは触らない=接地は薄くしない)。
-    // 不感帯12px・時定数180msで平滑(ボスが上下に歩くたびに影が伸縮するのを防ぐ)。
-    let wantLength = rawLength;
+    // ★致命3修正(社長実機報告「伸びてない」): 平滑は「詰めが実際に効いているフレームだけ」に限定する。
+    // 詰めが発動していない(=ほとんどのフレーム。特に夜/cineは光が下向きで原理的に効かない)時は
+    // rawLength をそのまま使い、遅れをゼロにする。以前は全キャスター・全フレームで無条件に平滑して
+    // おり、Σw_g 側(裁定N・180ms)と合わせて約360ms鈍り、しかも Math.min(raw,smoothed) の形で
+    // 伸びる側だけ遅れていた(縮む側は素通り)ため、爆発が消えるまでにピークへ到達できていなかった。
+    let length = rawLength;
     if (ldom.dirY < 0) { // 上向き(=地平線に近づく方向)の時だけ効く
       const rawTipY = footY + ldom.dirY * rawLength;
       const overshoot = this.horizonForestFootWorldY - rawTipY; // 正=帯の外(空)へ出ている
       if (overshoot > SHADOW_HORIZON_TRIM_DEADZONE_PX) {
         const allowedLen = Math.max(0, (footY - this.horizonForestFootWorldY) / -ldom.dirY);
-        wantLength = Math.min(rawLength, allowedLen);
+        const wantLength = Math.min(rawLength, allowedLen);
+        // 不感帯12px・時定数180msで平滑(ボスが上下に歩くたびに影が伸縮するのを防ぐ)。
+        // 詰めがちょうど発動した最初のフレームは prevLen が無い(前回delete済み)ので遅れ無しで開始する。
+        const prevLen = this.shadowHorizonTrimState.get(req.id);
+        const smoothedLen = prevLen === undefined ? wantLength : prevLen + (wantLength - prevLen) * horizonTrimLerp;
+        this.shadowHorizonTrimState.set(req.id, smoothedLen);
+        // 「伸びる」と「帯を越えない」なら帯が勝つ(§3-9-B確定): 平滑後もrawLengthは超えない。
+        length = Math.min(rawLength, smoothedLen);
+      } else {
+        this.shadowHorizonTrimState.delete(req.id); // 詰めが効いていない=平滑状態を持たない
       }
+    } else {
+      this.shadowHorizonTrimState.delete(req.id);
     }
-    const prevLen = this.shadowHorizonTrimState.get(req.id);
-    const smoothedLen = prevLen === undefined ? wantLength : prevLen + (wantLength - prevLen) * horizonTrimLerp;
-    this.shadowHorizonTrimState.set(req.id, smoothedLen);
-    // 「伸びる」と「帯を越えない」なら帯が勝つ(§3-9-B確定): 平滑後もrawLengthは超えない。
-    const length = Math.min(rawLength, smoothedLen);
     const nearHalf = req.rawW * SHADOW_FOOT_NARROW / 2 * shrink;
     const farHalf = req.rawW / 2 * shrink;
     if (length <= SHADOW_DEGENERATE_PX || nearHalf * 2 <= SHADOW_DEGENERATE_PX) {
