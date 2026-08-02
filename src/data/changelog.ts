@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2737',
+    items: [
+      'ゲーム内容の変更はありません（影の作り替えの前に、描画コストを測るベンチマークを追加しました）。',
+    ],
+  },
+  {
     version: '0.25.2736',
     items: [
       'ゲーム内容の変更はありません（影の実装仕様を「爆発で影が伸びる」ところまで含む一本の仕事に作り直しました）。',

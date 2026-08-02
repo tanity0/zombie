@@ -13,10 +13,11 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, ColorMatrixFilter, Container, Graphics, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, TilingSprite, RenderTexture } from 'pixi.js';
+import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, TilingSprite, RenderTexture } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
+import { shadowProbeCount, shadowProbeMode } from './shadowProbe'; // 影ベンチのプローブ(計測専用)
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
@@ -5064,6 +5065,7 @@ export class PixiScene {
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
+    this.syncShadowProbe(s.camera, now); // 計測専用(ベンチ以外では count=0 で即 return)
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
@@ -7480,6 +7482,105 @@ export class PixiScene {
       g.circle(ex, ey, emberR * 2.4).fill({ color: 0xff9f1c, alpha: emberAlpha * 0.28 });
       g.circle(ex, ey, emberR).fill({ color: i % 2 === 0 ? 0xfef3c7 : 0xfbbf24, alpha: emberAlpha });
     }
+  }
+
+  // ---- 影ベンチのプローブ(計測専用) ---------------------------------------
+  // ★見え方には一切関与しない。`setShadowProbe(0, ...)` の間は1フレームも触らない。
+  // 目的: 影の作り替え(§3-9-B v7)が前提にしている **PerspectiveMesh 1枚のコスト**を
+  //       **実装前に**測る。ここが高いと台形をやめる=設計ごと作り直しになるため。
+  private probeMeshes: PerspectiveMesh[] = [];
+  private probeSprites: Sprite[] = [];
+  private probeTexes: Texture[] = [];
+
+  // プローブ用のシルエット風テクスチャ(1回だけ焼く)。本番と同じく
+  // 「黒 + ぼかし」を焼いた RenderTexture(resolution 1)。
+  // variant を変えると**別テクスチャ**になる(=テクスチャバインドの代金を測る `meshtex` 用)。
+  private shadowProbeTexture(variant: number): Texture | null {
+    if (!this.renderer) return null;
+    const cached = this.probeTexes[variant];
+    if (cached) return cached;
+    const g = new Graphics();
+    // 人型に近い塊(腕/脚があると帯の幅が場所で変わる=本番に近い頂点分布になる)
+    const sway = (variant % 7) * 2 - 6; // 見た目を少しずらすだけ。コストは同じ
+    g.rect(44 + sway, 0, 40, 60).fill({ color: 0x000000, alpha: 1 });   // 頭〜胴
+    g.rect(20, 55, 88, 46).fill({ color: 0x000000, alpha: 1 });         // 肩〜腕
+    g.rect(38 - sway, 95, 22, 60).fill({ color: 0x000000, alpha: 1 });  // 左脚
+    g.rect(70 + sway, 95, 22, 60).fill({ color: 0x000000, alpha: 1 });  // 右脚
+    g.filters = [new BlurFilter({ strength: 3 })];
+    const rt = RenderTexture.create({ width: 128, height: 168, resolution: 1 });
+    this.renderer.render({ container: g, target: rt });
+    g.destroy(true);
+    this.probeTexes[variant] = rt;
+    return rt;
+  }
+
+  private syncShadowProbe(camera: { x: number; y: number }, now: number) {
+    const count = shadowProbeCount();
+    if (count <= 0) {
+      if (this.probeMeshes.length || this.probeSprites.length) {
+        this.probeMeshes.forEach(m => m.destroy());
+        this.probeSprites.forEach(s => s.destroy());
+        this.probeMeshes = [];
+        this.probeSprites = [];
+      }
+      return;
+    }
+    const mode = shadowProbeMode();
+    const useMesh = mode !== 'sprite';
+    const perTex = mode === 'meshtex'; // 1枚ずつ別テクスチャ=バインドの代金を測る
+    // 画面いっぱいに散らす。位置・大きさ・向きを**毎フレーム動かす**
+    // (本番も歩行コマ/skew/depthScale/支配光の振れで4隅が毎フレーム動くため、
+    //  静止させて測ると頂点更新のコストを取りこぼす)。
+    const vw = this.screenW, vh = this.screenH;
+    for (let i = 0; i < count; i++) {
+      const fx = ((i * 97) % 100) / 100 * vw + camera.x;
+      const fy = ((i * 53) % 100) / 100 * vh + camera.y;
+      const wobble = Math.sin(now / 420 + i * 0.9);
+      const len = 120 + wobble * 26;
+      const halfNear = 16 + wobble * 3;   // 足元=細い
+      const halfFar = 46 + wobble * 6;    // 先端=広い
+      const ang = 1.17 + Math.sin(now / 900 + i * 0.37) * 0.35; // 支配光が振れる想定
+      const ux = Math.cos(ang), uy = Math.sin(ang);
+      const px = -uy, py = ux; // 光方向に直交
+      const tipX = fx + ux * len, tipY = fy + uy * len;
+      const tex = this.shadowProbeTexture(perTex ? i : 0);
+      if (!tex) return; // renderer 未設定=焼けない(ベンチ以外では到達しない)
+      if (useMesh) {
+        let m = this.probeMeshes[i];
+        if (!m) {
+          m = new PerspectiveMesh({ texture: tex, verticesX: 8, verticesY: 12 });
+          m.alpha = 0.42;
+          this.shadowContainer.addChild(m);
+          this.probeMeshes[i] = m;
+        }
+        if (m.texture !== tex) m.texture = tex;
+        m.setCorners(
+          Math.round(fx + px * halfNear), Math.round(fy + py * halfNear),
+          Math.round(tipX + px * halfFar), Math.round(tipY + py * halfFar),
+          Math.round(tipX - px * halfFar), Math.round(tipY - py * halfFar),
+          Math.round(fx - px * halfNear), Math.round(fy - py * halfNear)
+        );
+        m.visible = true;
+      } else {
+        let sp = this.probeSprites[i];
+        if (!sp) {
+          sp = new Sprite(tex);
+          sp.anchor.set(0.5, 0.5);
+          sp.alpha = 0.42;
+          this.shadowContainer.addChild(sp);
+          this.probeSprites[i] = sp;
+        }
+        if (sp.texture !== tex) sp.texture = tex;
+        sp.rotation = ang;
+        sp.width = len;
+        sp.height = halfFar * 2;
+        sp.position.set(Math.round(fx + ux * len * 0.5), Math.round(fy + uy * len * 0.5));
+        sp.visible = true;
+      }
+    }
+    // 段が軽くなった時に余りを消す(枚数を正確に保つ=段どうしの差が数字になる)
+    for (let i = count; i < this.probeMeshes.length; i++) this.probeMeshes[i].visible = false;
+    for (let i = count; i < this.probeSprites.length; i++) this.probeSprites[i].visible = false;
   }
 
   // ---- foot shadows (player + enemies) into one graphics -------------------

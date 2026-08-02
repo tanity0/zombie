@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { setShadowProbe, type ShadowProbeMode } from '../pixi/shadowProbe';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { mineRect } from '../world/mines';
@@ -67,6 +68,11 @@ type BenchmarkProfile = {
   yOscillation: number;
   shadowJitter: number;
   mineCount: number;     // §5.24 M23: 緑卵(mine)。プールスプライト1枚+個別影キャスターの実パスを計測。
+  // ★v0.25.2737(影の作り替えの事前計測): 影プローブ。**見え方には関与しない計測専用**。
+  // 影の新方式(§3-9-B v7)は 1体1枚の PerspectiveMesh を前提にしているが、
+  // このプロジェクトはメッシュを1枚も描いたことがない=1枚の値段が未知。実装前にここだけ測る。
+  probeCount: number;
+  probeMode: ShadowProbeMode;
 };
 
 const P = (
@@ -76,11 +82,13 @@ const P = (
   slashCount: number, dmgCount: number, imageCount: number,
   torchCount: number, projectileCount: number,
   yOscillation: number, shadowJitter: number,
-  mineCount: number
+  mineCount: number,
+  probeCount = 0, probeMode: ShadowProbeMode = 'mesh'
 ): BenchmarkProfile => ({
   id, category, label, enemyTarget, heavy,
   glowCount, ringCount, particleCount, slashCount, dmgCount, imageCount,
   torchCount, projectileCount, yOscillation, shadowJitter, mineCount,
+  probeCount, probeMode,
 });
 
 // §5.24 M23(社長採用v0.25.1538): 「軽すぎる段を毎回律儀に走る」不満を解消するため、各カテゴリを
@@ -139,6 +147,32 @@ export const BENCHMARK_PROFILES: BenchmarkProfile[] = [
   P('MI3', 'MINE',  'M52',  14, false, 1,  1,  4,  0,  0,  0,  0,  0,  16,  6, 52),
   P('MI2', 'MINE',  'M32',  14, false, 1,  1,  4,  0,  0,  0,  0,  0,  16,  6, 32),
   P('MI1', 'MINE',  'M16',  14, false, 1,  1,  4,  0,  0,  0,  0,  0,  16,  6, 16),
+
+  // ★v0.25.2737 影の作り替えの**事前計測**(社長指示「まずはベンチマークをつくってテスト」)。
+  // ここで測るのは **PerspectiveMesh 1枚の値段**だけ。これが高いと §3-9-B v7 の
+  // 「1体1枚のメッシュで台形」という前提が崩れ、設計ごと作り直しになる。
+  //
+  // ★段はすべて **glow=0(平常時)**。理由(監査指摘で計画を訂正):
+  //   旧投影影のコストは**爆発が生きている間だけ**の一過性だが、新方式のシルエットは
+  //   **強glowが1個も無い通常プレイの全フレーム**に載る。**測るべきはピークではなく平常時の増分。**
+  //
+  // 3モードで分解する(同じ枚数で比較すること):
+  //   SHD-S  = プール済みスプライト・共有テクスチャ(= 今の影の描き方。対照群)
+  //   SHD-M  = PerspectiveMesh・共有テクスチャ  ⇒ S との差 = **メッシュにした代金**
+  //   SHD-MT = PerspectiveMesh・1枚ずつ別テクスチャ ⇒ M との差 = **テクスチャバインドの代金**
+  //            (本番はキャラごとに別テクスチャなので、「全部同じ焼きテクスチャ=1バッチ」で
+  //             取った旧実測はそのまま持ち込めない)
+  //   他カテゴリと同じ重→軽の並び。最重段の90は v7 の最悪ケース見積りの上端。
+  P('SM3', 'SHD-M',  'M90',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 90, 'mesh'),
+  P('SM2', 'SHD-M',  'M60',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 60, 'mesh'),
+  P('SM1', 'SHD-M',  'M40',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 40, 'mesh'),
+  P('SM0', 'SHD-M',  'M20',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 20, 'mesh'),
+
+  P('ST3', 'SHD-S',  'S90',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 90, 'sprite'),
+  P('ST1', 'SHD-S',  'S40',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 40, 'sprite'),
+
+  P('SX3', 'SHD-MT', 'MT90', 14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 90, 'meshtex'),
+  P('SX1', 'SHD-MT', 'MT40', 14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 40, 'meshtex'),
 ];
 
 // ★基準段(canary)の負荷。暖機と、系統の切れ目ごとの「端末の今の速さ」測定に使う。
@@ -528,6 +562,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const spawnImageMark = useGameStore(state => state.spawnImageMark);
 
   const cleanupBenchmarkObjects = useCallback(() => {
+    setShadowProbe(0, 'mesh'); // ★影プローブを必ず止める(ベンチ終了後にゲームへ持ち込まない)
     spawnedEnemyIdsRef.current.forEach(removeEnemy);
     spawnedEnemyIdsRef.current.clear();
     benchEnemyBaseRef.current = {};
@@ -747,6 +782,11 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       else if (phase === 'repeat') completeRepeat(profile);
       else completeStage(stageProfile);
     };
+
+    // ★影プローブ(計測専用)。段ごとに枚数/モードを切り替える。
+    // 暖機・基準段・検算段は CANARY_PROFILE / 再現段の値を使うので、ここに置けば
+    // 「基準段では0枚」が自動で守られる(=段どうしの差がプローブの差だけになる)。
+    setShadowProbe(profile.probeCount, profile.probeMode);
 
     const runBenchmarkTick = () => {
       const elapsed = performance.now() - startedAt;
