@@ -10373,8 +10373,12 @@ export class PixiScene {
     //    位置=絵の上端の上(HPバー s.y-6 より上)/遠近=本体と同係数(dsc)/zIndex=本体と同じ足元Y。
     //    「(自分)」添え字(社長指示): 自分のプロファイル由来(ghostIsOwn)の時だけ名前の後ろへ付ける。
     //    将来オンラインで他人のゴーストが来たら ghostIsOwn=false で名前だけになる。
-    const nameText = (s.ghostName ?? '') + (s.ghostIsOwn ? '(自分)' : '');
-    if (nameText.length > 0) {
+    // ★v0.25.2766(品質監査A-3): 空判定は**名前そのもの**で見る。旧実装は「(自分)」を連結した後の
+    // 文字列長を見ており、ghostIsOwn の時は常に長さ>0=**ガードが永久に真**だった。
+    // その結果 ghostName='' のフレームで「(自分)」だけのラベルが宙に浮いていた。
+    const ghostName = s.ghostName ?? '';
+    const nameText = ghostName + (s.ghostIsOwn ? '(自分)' : '');
+    if (ghostName.length > 0) {
       if (!this.ghostNameLabel) {
         const label = new Text({
           text: nameText,

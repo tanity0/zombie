@@ -9,12 +9,17 @@
 const STORAGE_KEY = 'zombie-player-name-v1';
 
 /**
- * 手入力名の最大文字数(超過は切り詰め)。初期ランダム名(player+5桁=11文字)は生成物なので対象外。
- * ★v0.25.2765(社長指示「相場の数字で任せる」): 10 のまま据え置き。相場は
- * Switch 10 / Xbox 12 / X 15 / PSN 16 で、**頭上表示のある和ゲーとしては10が中央**。
- * 全角10文字は頭上表示だと既に横幅いっぱいなので、これ以上は増やさない。
+ * 名前の最大文字数(超過は切り詰め)。相場は Switch 10 / Xbox 12 / X 15 / PSN 16。
+ * ★v0.25.2766(品質監査 C-1): **10 → 11**。理由は「初期ランダム名 `player`+5桁が**ちょうど11文字**で、
+ * 上限10だと**モジュール自身が自分の上限を破っていた**」こと。旧実装は
+ * 「生成物なので対象外」と例外にしていたが、例外にすると
+ * **`savePlayerName(loadPlayerName())` が不動点でなくなる**(`player12345`→`player1234`)。
+ * UI 側は「未変更なら保存しない」ガードでこれを避けていたが、**localStorage が例外を投げる環境
+ * (プライベートモード)では `loadPlayerName()` が毎回別名を返すのでガードが恒久的に不成立**になり、
+ * 入力欄をタップしてブラーしただけで名前から1文字消えていた。
+ * ⇒ **例外を無くし、上限を1つに統一する**。11 は相場の内側(Xbox 12 / X 15)。
  */
-export const PLAYER_NAME_MAX_LEN = 10;
+export const PLAYER_NAME_MAX_LEN = 11;
 
 /**
  * ★結合文字(濁点・アクセント等)を基底1文字あたり何個まで許すか。
@@ -38,17 +43,33 @@ const generateName = (): string =>
  */
 const EXTRA_ALLOWED = new Set([' ', '_', '-', '.', '・']);
 
-/** 文字(L=漢字/かな/ラテン/長音符ー/々…)・数字(Nd)・結合文字(Mn)。絵文字はSoなのでここに入らない。 */
-const ALLOWED_RE = /[\p{L}\p{Nd}\p{Mn}]/u;
+/**
+ * 文字(L=漢字/かな/ラテン/長音符ー/々…)・数字(Nd/Nl)・結合文字(Mn)。絵文字はSoなのでここに入らない。
+ * ★`\p{Nl}` は品質監査Bの指摘で追加: **`〇`(U+3007)は Nd ではなく Nl** なので、
+ * `\p{Nd}` だけだと「〇〇」のような和名が丸ごと落ちて「名無し」になっていた。
+ */
+const ALLOWED_RE = /[\p{L}\p{Nd}\p{Nl}\p{Mn}]/u;
 const COMBINING_RE = /\p{Mn}/u;
 const SPACE_RE = /\p{Zs}/u;
 
 /**
- * ★異体字セレクタ。カテゴリが Mn なので ALLOWED_RE をすり抜けるが、**不可視**なので明示的に落とす
- * (放置すると「見た目が同じで中身が違う名前」を作れてしまう)。
+ * ★不可視文字は Unicode の **Default_Ignorable_Code_Point** 一発で落とす(品質監査A-2)。
+ * 旧実装は異体字セレクタの範囲(`FE00-FE0F` / `E0100-E01EF`)を手書きしていたが、
+ * **「個別に列挙すると必ず取りこぼす」を実装自身が踏んでいた**——監査の全コードポイント走査で
+ * `U+034F`(CGJ) / `U+115F` / `U+1160` / `U+17B4` / `U+17B5` / **`U+180B〜180F`
+ * (MONGOLIAN FREE VARIATION SELECTOR=まさに塞いだつもりの当のカテゴリ)** / `U+3164` / `U+FFA0`
+ * の**11個が生き残っていた**。
+ *
+ * ★これが塞ぐ最悪ケース(監査A-1・実際に再現した): `U+3164`(HANGUL FILLER)は NFKC で `U+1160` になり、
+ * `U+1160` は**カテゴリ Lo なので `\p{L}` を通る**。長さ>0 なので空欄フォールバックも発火しない。
+ * ⇒ **「見えない名前」が確定・保存でき、頭上ラベルは「(自分)」だけが浮く**。
+ * Discord/X で定番の手口で、**文字数の上限でも空欄チェックでも防げない**。
+ *
+ * ※ZWJ/ZWNJ もこの性質に含まれる=落ちる。デーヴァナーガリー/アラビア語の正しい表示には
+ *   本来必要な文字だが、**このゲームが同梱するフォントでそれらの字は元々豆腐になる**(BOT_AND_GHOST.md
+ *   §2.11 ★未決=許可スクリプトの範囲)。範囲を決めるまでは落とす側で通す。
  */
-const isVariationSelector = (cp: number): boolean =>
-  (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xe0100 && cp <= 0xe01ef);
+const IGNORABLE_RE = /\p{Default_Ignorable_Code_Point}/u;
 
 /**
  * ★純関数(v0.25.2765・社長指示「入れれない文字とか」): 名前として使えない文字を落とす。
@@ -89,7 +110,7 @@ export const sanitizePlayerName = (raw: string): string => {
       hasBase = false;
       continue;
     }
-    if (isVariationSelector(ch.codePointAt(0)!)) continue;
+    if (IGNORABLE_RE.test(ch)) continue; // 不可視(ゼロ幅/フィラー/異体字セレクタ/タグ文字…)は全部ここで落ちる
     if (COMBINING_RE.test(ch)) {
       if (!hasBase || marks >= PLAYER_NAME_MAX_COMBINING) continue;
       marks++;
@@ -133,9 +154,11 @@ export const normalizePlayerNameInput = (raw: string): string => {
  * 現在のプレイヤー名。保存が無ければランダム初期名を生成して保存し、それを返す。
  * ★v0.25.2765: 保存値にも sanitize を掛ける(フィルタ導入前に保存された絵文字入りの名前が
  * そのまま頭上表示・オンライン送信へ流れるのを塞ぐ)。全部落ちて空になったら初期名を作り直す。
- * ★ただし**長さの切り詰めはここでは掛けない**。初期ランダム名は `player`+5桁=**11文字**で上限10を
- * 超えており、切り詰めると2回目の読み出しで `player1234` に化けるため(切り詰めは手入力に対する
- * 正規化=save/normalize側の責務。保存値はそのどちらかを通ってきたものしか無い)。
+ * ★v0.25.2766(品質監査C-3): **切り詰めもここで掛ける**。上限を11へ統一して初期ランダム名も
+ * 収まるようになったので、旧実装の例外(「読み出しでは切り詰めない」)は不要になった。
+ * ⇒ **「この関数が返す名前は必ず sanitize 済みかつ上限以内」**という不変条件が全経路で成立する。
+ * ★浄化した結果は**書き戻す**(汚れた生値を localStorage に残すと、将来のエクスポートや
+ * G6の送信ペイロード生成がこの関数を通らなかった時に汚れたまま出るため)。
  * ※呼び出しは毎フレームではない(守護霊の湧き=directorTick / セッション確定=playerTraits)ので
  * 1回あたり十数文字の走査は無視できる。
  */
@@ -143,8 +166,13 @@ export const loadPlayerName = (): string => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw !== null) {
-      const cleaned = sanitizePlayerName(raw);
-      if (cleaned.length > 0) return cleaned;
+      const cleaned = clamp(raw);
+      if (cleaned.length > 0) {
+        if (cleaned !== raw) {
+          try { localStorage.setItem(STORAGE_KEY, cleaned); } catch { /* 書き戻せなくても返す値は正しい */ }
+        }
+        return cleaned;
+      }
     }
   } catch {
     /* 読めない環境では下の生成へ(保存も効かないだけで壊れない) */
@@ -156,6 +184,24 @@ export const loadPlayerName = (): string => {
     /* 保存できなくても名前自体は返す(次回また生成されるだけ) */
   }
   return name;
+};
+
+/**
+ * ★他所から来た名前(自分のプロファイルの `srcName` / 将来G6で他人から届く名前)を、
+ * **表示に使える形**へ通す関数(品質監査 D-1/D-2)。使えない場合は `null` を返す。
+ *
+ * ★なぜ要るか: 頭上ラベルの実際の出どころは `directorTick` の
+ * `srcName ?? loadPlayerName()` で、**`??` の左辺(プロファイルの srcName)はフィルタを一切
+ * 通っていなかった**。浄化されるのは右辺(フォールバック)だけなので、フィルタ導入前に
+ * `srcName:'勇者(絵文字)'` で保存されたプロファイルは**そのまま頭上に描かれていた**。
+ * =「送る側で塞ぐ」が成立していなかった。**ここが本当の出口。**
+ * ★型ゲート込み: 壊れた/手で書き換えたJSONの `srcName: 12345` や `{}` が
+ * 文字列連結へ流れないよう、`typeof` を先に見る(`isValidProfile` は srcName を検査していない)。
+ */
+export const displayNameFrom = (raw: unknown): string | null => {
+  if (typeof raw !== 'string') return null;
+  const cleaned = clamp(raw);
+  return cleaned.length > 0 ? cleaned : null;
 };
 
 /**

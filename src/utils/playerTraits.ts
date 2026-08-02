@@ -231,6 +231,10 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
     && typeof o.mobility === 'number' && typeof o.hitsPerMin === 'number'
     // G2.6で追加したノブ。旧フォーマット(6ノブ時代の保存)は欠損を許し、load側で既定値を埋める(後方互換)。
     && (o.subUsesPerMin === undefined || typeof o.subUsesPerMin === 'number')
+    // ★v0.25.2766(品質監査D-2): srcName の型ゲート。ここは将来G6で他人から届くペイロードの入口に
+    // なる場所で、壊れた/手で書き換えたJSONの `srcName: 12345` や `{}` が ghostName へ流れて
+    // 文字列連結されるのを防ぐ。欠損は許す(旧フォーマット互換)。中身の浄化は displayNameFrom。
+    && (o.srcName === undefined || typeof o.srcName === 'string')
     // G4a(§2.9)で追加した項目。同じく欠損を許し、load側で既定値を埋める(後方互換)。
     && (o.stationaryFrac === undefined || typeof o.stationaryFrac === 'number')
     && (o.approachPerMin === undefined || typeof o.approachPerMin === 'number')

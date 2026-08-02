@@ -1335,7 +1335,11 @@ const PlayerNameSettings: React.FC = () => {
         onChange={e => setName(e.target.value)}
         onBlur={commit}
         onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-        maxLength={PLAYER_NAME_MAX_LEN} // 手入力は最大10文字(初期ランダム名11文字の表示は妨げない)
+        // ★v0.25.2766(品質監査E-1): HTMLの maxLength は**UTF-16コードユニット長**、こちらのロジックは
+        // **コードポイント単位**。同じ数を渡すと `𠮟`(U+20B9F・実在の姓に出る字)が半分しか打てない。
+        // 2倍を渡して入力欄では止めず、確定時の normalizePlayerNameInput でコードポイント単位に揃える
+        // (暴走ペースト防止の上限としてだけ効かせる)。
+        maxLength={PLAYER_NAME_MAX_LEN * 2}
         aria-label="プレイヤー名"
         className="w-full rounded-none border border-purple-400/20 bg-black/30 px-3 py-2 text-[14px] text-white/90 outline-none focus:border-purple-300/60"
       />

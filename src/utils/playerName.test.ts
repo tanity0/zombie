@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   loadPlayerName, savePlayerName, normalizePlayerNameInput, sanitizePlayerName,
+  displayNameFrom,
   PLAYER_NAME_MAX_LEN, PLAYER_NAME_WHEN_BLANK, PLAYER_NAME_MAX_COMBINING,
 } from './playerName';
 
@@ -204,10 +205,81 @@ describe('playerName: 文字種フィルタ(sanitizePlayerName)', () => {
     expect(loadPlayerName()).toMatch(/^player\d{5}$/);
   });
 
-  it('★読み出しでは長さを切り詰めない(初期ランダム名 player+5桁=11文字 が化けないこと)', () => {
+  it('★初期ランダム名は上限の内側に収まっている(モジュールが自分の上限を破らない)', () => {
     const n = loadPlayerName();
     expect(n).toMatch(/^player\d{5}$/);
+    expect([...n].length).toBeLessThanOrEqual(PLAYER_NAME_MAX_LEN);
+    expect(loadPlayerName()).toBe(n); // 読み出しを重ねても化けない
+  });
+});
+
+// ★v0.25.2766: 品質監査で見つかった穴の回帰テスト。
+// **どれも「テストが主張していない不変条件」から漏れていた**ので、主張ごと足す。
+describe('playerName: 品質監査の回帰(v0.25.2766)', () => {
+  beforeEach(() => { installStorage(); });
+
+  it('★A-1: 不可視だが\\p{L}を通る文字で「見えない名前」を作れない', () => {
+    // U+3164(HANGUL FILLER)は NFKC で U+1160 になり、U+1160 はカテゴリ Lo なので
+    // \\p{L} を通ってしまっていた。長さ>0 なので空欄フォールバックも発火せず、
+    // 「見えない名前」が確定・保存できていた(頭上ラベルは「(自分)」だけが浮く)。
+    expect(sanitizePlayerName('\u3164\u3164\u3164')).toBe('');
+    expect(normalizePlayerNameInput('\u3164\u3164\u3164')).toBe(PLAYER_NAME_WHEN_BLANK);
+    expect(sanitizePlayerName('\u1160')).toBe('');
+    expect(sanitizePlayerName('\u115F')).toBe('');
+    expect(sanitizePlayerName('\uFFA0')).toBe('');
+  });
+
+  it('★A-2: 不可視文字はDefault_Ignorable全体で落ちる(個別列挙の取りこぼしが無い)', () => {
+    // 手書きの異体字セレクタ範囲(FE00-FE0F / E0100-E01EF)では、まさに同じカテゴリの
+    // MONGOLIAN FREE VARIATION SELECTOR(U+180B〜180F)や CGJ(U+034F)を取りこぼしていた。
+    const invisible = [
+      0x034F, 0x115F, 0x1160, 0x17B4, 0x17B5,
+      0x180B, 0x180C, 0x180D, 0x180F, 0x3164, 0xFFA0,
+      0x200B, 0x200C, 0x200D, 0xFEFF, 0x202E, 0xFE0F, 0x00AD,
+    ];
+    for (const cp of invisible) {
+      const ch = String.fromCodePoint(cp);
+      expect(sanitizePlayerName(ch)).toBe('');
+      expect(sanitizePlayerName('a' + ch + 'b')).toBe('ab');
+    }
+  });
+
+  it('★B: 〇(U+3007)は通る(Ndではなく Nl なので \\p{Nd} だけだと落ちていた)', () => {
+    expect(sanitizePlayerName('\u3007\u3007')).toBe('\u3007\u3007');
+    expect(normalizePlayerNameInput('\u3007\u3007')).toBe('\u3007\u3007');
+  });
+
+  it('★C-1: savePlayerName(loadPlayerName()) は不動点(初期名が1文字削られない)', () => {
+    const n = loadPlayerName();
+    expect(savePlayerName(n)).toBe(n);
     expect(loadPlayerName()).toBe(n);
-    expect(n.length).toBeGreaterThan(PLAYER_NAME_MAX_LEN);
+  });
+
+  it('★C-3: 読み出しは必ず sanitize済み かつ 上限以内 を返し、浄化結果を書き戻す', () => {
+    localStorage.setItem('zombie-player-name-v1', '  a'.repeat(40));
+    const got = loadPlayerName();
+    expect([...got].length).toBeLessThanOrEqual(PLAYER_NAME_MAX_LEN);
+    // 浄化した値が保存し直されている(汚れた生値を残さない)
+    expect(localStorage.getItem('zombie-player-name-v1')).toBe(got);
+  });
+
+  it('★D-1/D-2: displayNameFrom は他所から来た名前を浄化し、文字列以外を拒否する', () => {
+    expect(displayNameFrom('勇者')).toBe('勇者');
+    expect(displayNameFrom('a'.repeat(40))).toBe('a'.repeat(PLAYER_NAME_MAX_LEN));
+    expect(displayNameFrom('\u202Eabc')).toBe('abc');
+    expect(displayNameFrom('\u3164')).toBeNull();   // 見えない名前は「無い」扱い
+    expect(displayNameFrom('')).toBeNull();
+    expect(displayNameFrom(undefined)).toBeNull();
+    expect(displayNameFrom(12345)).toBeNull();       // 壊れたJSONが文字列連結へ流れない
+    expect(displayNameFrom({})).toBeNull();
+    expect(displayNameFrom(null)).toBeNull();
+  });
+
+  it('★clamp後も冪等(NFKCで伸びる入力を切った断面が壊れない)', () => {
+    for (const raw of ['\u337F'.repeat(5), 'a'.repeat(40), '\u3000' + 'あ'.repeat(30)]) {
+      const once = normalizePlayerNameInput(raw);
+      expect(normalizePlayerNameInput(once)).toBe(once);
+      expect(savePlayerName(once)).toBe(once);
+    }
   });
 });

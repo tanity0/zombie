@@ -9,6 +9,7 @@
 //   上書きされるかと、UIの「記録更新」表示がズレないようにする=写さない・共通化する)。
 import type { EnemyType } from '../types/game';
 import type { GhostAllySnapshot } from './playerBuild';
+import { displayNameFrom } from './playerName';
 import {
   isBetterBossStyleSample,
   type BossStyleSlot, type PendingBossClearView, type PlayerProfile,
@@ -19,6 +20,20 @@ import type { DuoAlbum, DuoRunClearView } from './duoRecords';
 export type ClearTrend = 'first' | 'better' | 'worse' | 'same';
 
 /** 小さい方が良い指標(撃破タイム・被弾/分)の比較。 */
+/**
+ * ★保存済みレコードの同行者名を、表示に出す前に浄化する(品質監査D-3・v0.25.2766)。
+ * 名前の入力フィルタ導入前に記録された `ally.name`(絵文字/双方向制御文字/長すぎる名前)が、
+ * **討伐記録として永続化されたまま DOM へ出る**経路がここだった。
+ * 全部落ちて空になったら `null`=「同行者なし」にする(名前の無い同行者カードは出さない、という
+ * `ghostAllySnapshot` 側の既存の契約と揃える)。
+ */
+const cleanAlly = (a: GhostAllySnapshot | null | undefined): GhostAllySnapshot | null => {
+  if (!a) return null;
+  const name = displayNameFrom(a.name);
+  if (name === null) return null;
+  return name === a.name ? a : { ...a, name };
+};
+
 export const trendLowerBetter = (sample: number | null, best: number | null | undefined): ClearTrend => {
   if (sample === null || best === null || best === undefined) return 'first';
   if (sample < best) return 'better';
@@ -91,7 +106,7 @@ export const buildRunTimeline = (
     counterChance: c.counterChance,
     perfScore: c.perfScore,
     at: c.at,
-    ally: c.ally,
+    ally: cleanAlly(c.ally),
     best: slotBest(prev),
     // v0.25.2603(社長式): 判定基準を評点へ差し替え(旧: 被弾/分)。commit側と同じ純関数を使う。
     isRecordUpdate: isBetterBossStyleSample(prev?.perfScore, c.perfScore, prev !== undefined),
@@ -116,7 +131,7 @@ export const buildAlbumCards = (profile: PlayerProfile | null): BossClearCard[] 
         counterChance: slot.counterChance,
         perfScore: slot.perfScore ?? null,
         at: slot.at,
-        ally: slot.ally ?? null,
+        ally: cleanAlly(slot.ally),
         best: null,
         isRecordUpdate: false,
       };
@@ -141,7 +156,7 @@ export const buildDuoRunTimeline = (clears: readonly DuoRunClearView[]): BossCle
       counterChance: null,
       perfScore: null,
       at: c.at,
-      ally: c.ally,
+      ally: cleanAlly(c.ally),
       best: c.bestBefore !== null
         ? { clearTimeMs: c.bestBefore, hitsPerMin: null, counterChance: null, perfScore: null }
         : null,
@@ -166,7 +181,7 @@ export const buildDuoAlbumCards = (album: DuoAlbum | null): BossClearCard[] => {
         perfScore: null,
         counterChance: null,
         at: slot.at,
-        ally: slot.ally ?? null,
+        ally: cleanAlly(slot.ally),
         best: null,
         isRecordUpdate: false,
       };
