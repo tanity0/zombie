@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2745',
+    items: [
+      'ゲーム内容の変更はありません（アプリ化の形式と、AI共有案の技術的な整理を書きました）。',
+    ],
+  },
+  {
     version: '0.25.2744',
     items: [
       'ゲーム内容の変更はありません（影のベンチが「実際に何を測ったか」を結果に出すようにしました）。',
