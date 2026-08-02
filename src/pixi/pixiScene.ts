@@ -1737,6 +1737,13 @@ const SHADOW_GLOW_MIN_DIST = tsNum('glowmindist', SHADOW_GLOW_MIN_DIST_PX);
  * ヘッドレスでは同じ注入で伸びた影が正しく描かれることを確認済みなので、実機で切り分ける。
  */
 const SHADOW_GLOW_TEST = tsBool('glowshadowtest', false);
+/**
+ * ★v0.25.2802 診断(社長「恐らく新しく追加した伸びる方の影が見えてない」):
+ * `?glowshadowdebug=1` で**爆発シルエットだけを真っ赤・不透明**にする。
+ * 赤い影が出れば「**描いてはいるが薄くて見えない**」=濃さの問題。
+ * 出なければ「**そもそも描いていない**」=スロット/ベイク/カリングの問題。**濃さの話と切り離す**ための道具。
+ */
+const SHADOW_GLOW_DEBUG_RED = tsBool('glowshadowdebug', false);
 /** 支配光に強glowが参加する条件は旧投影影と同じ(effects[] の kind==='glow' && radius>=STRONG_GLOW_RADIUS)。
  * 松明/焚き火/城・商人のグロー/緑卵の光/プレイヤーライトはスプライトでありeffectではないため対象外
  * (§3-9-B確定)。`?evshadow=0` は「支配光に強glowを参加させない(環境光のみ)」の意味(裁定O)。 */
@@ -9475,7 +9482,11 @@ export class PixiScene {
     if (sl.mesh.texture !== sl.texture) sl.mesh.texture = sl.texture;
     sl.lastTexture = sl.texture;
     const fadeIn = allowFadeIn && sl.fadeInAt > 0 ? Math.min(1, (now - sl.fadeInAt) / SHADOW_MESH_FADE_IN_MS) : 1;
-    const a = Math.min(1, alpha * fadeIn);
+    let a = Math.min(1, alpha * fadeIn);
+    if (SHADOW_GLOW_DEBUG_RED) { // 診断: 爆発シルエット(=allowFadeIn=false)だけ真っ赤・不透明にする
+      sl.mesh.tint = allowFadeIn ? 0xffffff : 0xff0000;
+      if (!allowFadeIn) a = 1;
+    }
     sl.mesh.alpha = a;
     sl.alpha = a;
     this.setSilhouetteMeshCorners(
