@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2776',
+    items: [
+      '一部の花で影が株元より下にずれて、花が浮いて見えていたのを直しました。',
+    ],
+  },
+  {
     version: '0.25.2775',
     items: [
       'ゲーム内容の変更はありません（オンライン共有の設計を詰めています）。',

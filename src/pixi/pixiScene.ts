@@ -53,6 +53,7 @@ import {
   BOSS_RECOVER_TINT,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
+import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
 import {
   idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING, IDOL_ORB_SPREAD_RAD, IDOL_MOVES_ALL,
   idolShot, isIdolShot, idolFistReach, type IdolShotSlot, type IdolMove,
@@ -8775,19 +8776,17 @@ export class PixiScene {
     if (!this.renderer || !tex || tex.width <= 1 || tex.height <= 1) return 1;
     try {
       const { pixels, width, height } = this.renderer.extract.pixels(tex);
-      const findRow = (fromTop: boolean): number => {
-        const start = fromTop ? 0 : height - 1;
-        const end = fromTop ? height : -1;
-        const step = fromTop ? 1 : -1;
-        for (let y = start; y !== end; y += step) {
-          for (let x = 0; x < width; x++) {
-            if (pixels[(y * width + x) * 4 + 3] >= SHADOW_FOOT_ALPHA_THRESHOLD) return y;
-          }
-        }
-        return -1;
-      };
-      const foundTop = findRow(true);
-      const foundBottom = findRow(false);
+      // 行ごとの不透明画素数(下端の判定と、下の「取り残された断片」判定の両方で使う)。
+      const rowCount = new Array<number>(height).fill(0);
+      for (let y = 0; y < height; y++) {
+        let n = 0;
+        for (let x = 0; x < width; x++) if (pixels[(y * width + x) * 4 + 3] >= SHADOW_FOOT_ALPHA_THRESHOLD) n++;
+        rowCount[y] = n;
+      }
+      // ★v0.25.2776(社長報告「まだいた」): 判定は `src/utils/spriteFoot.ts` の純関数へ切り出した
+      // (「花が浮く」は3回再発しているので、不変条件をユニットテストで固定する)。ここは計測だけ。
+      const foundTop = spriteTopRow(rowCount);
+      const foundBottom = spriteFootRow(rowCount);
       const top = foundTop < 0 ? 0 : foundTop / height;
       const bottom = foundBottom < 0 ? 1 : (foundBottom + 1) / height;
       this.textureContentCache.set(tex, { top, bottom });
