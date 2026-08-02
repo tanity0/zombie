@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.2794 — 松明/焚き火のコントラストパンチをさらに抑えた(0.7→0.5)【2026-08-03 01:18 JST】
+
+社長「焚き火と松明もう少し抑えて」。`TORCH_PUNCH_GAIN_MULT` を **0.7 → 0.5**(`?torchpunchgain=`)。
+掛かる先は v0.25.2793 と同じ**パンチ用に積む松明の光の強さだけ**。補助光・距離・爆発側は不変。
+まだ強ければ `?torchpunchgain=0.3` 等で当たりを取ってから定数化する。
+
+**変更ファイル**: `src/pixi/pixiScene.ts` / `src/data/changelog.ts` / `package.json` / `DEVELOPMENT_LOG.md`
+**検証**: `npm run typecheck` OK / `npm run lint` エラー0(warning 8=既存)。
+
 ## v0.25.2793 — 松明/焚き火のコントラストパンチだけ少し弱めた【2026-08-03 01:06 JST】
 
 社長「焚き火とか松明のコントラストだけ少し弱めて欲しい」。

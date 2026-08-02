@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2794',
+    items: [
+      '松明と焚き火のコントラストをさらに抑えました。',
+    ],
+  },
+  {
     version: '0.25.2793',
     items: [
       '松明と焚き火に近づいた時のコントラストの上がり方を少し弱めました。',

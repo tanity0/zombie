@@ -1597,7 +1597,8 @@ const TORCH_PUNCH_REACH_MULT = tsNum('torchpunchreach', 1.5); // パンチ用の
 // ★v0.25.2793(社長「焚き火とか松明のコントラストだけ少し弱めて」):
 // **松明/焚き火のパンチの強さだけ**を下げる。距離(torchpunchreach)も補助光(torchgain)も、
 // 爆発・レベルアップの強glowのパンチも**触らない**=弱めるのは火の明かりのコントラストだけ。
-const TORCH_PUNCH_GAIN_MULT = tsNum('torchpunchgain', 0.7);   // パンチ用の松明の強さ=描画の強さ×これ
+// v0.25.2794(社長「もう少し抑えて」): 0.7 → 0.5。
+const TORCH_PUNCH_GAIN_MULT = tsNum('torchpunchgain', 0.5);   // パンチ用の松明の強さ=描画の強さ×これ
 // ★爆発の「黒い円」の立ち上がり。旧実装は life 比例のみで**フェードインが無く**、湧いた瞬間に
 // 最大の黒が乗っていた(社長「パッときえてるんだよね」)。消える側は life→0 で元々滑らか。
 const LOCAL_EVENT_SHADE_RISE_MS = tsNum('shaderise', 110);
