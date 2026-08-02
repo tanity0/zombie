@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2777',
+    items: [
+      'ゲーム内容の変更はありません（残りの花の浮きの原因を特定し、影の作り替えと同時に直すことにしました）。',
+    ],
+  },
+  {
     version: '0.25.2776',
     items: [
       '一部の花で影が株元より下にずれて、花が浮いて見えていたのを直しました。',
