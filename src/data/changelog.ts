@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2726',
+    items: [
+      'ゲーム内容の変更はありません（影のやわらかさの作り方を検討しました）。',
+    ],
+  },
+  {
     version: '0.25.2725',
     items: [
       'ゲーム内容の変更はありません（影の見え方の検討を進めました）。',
