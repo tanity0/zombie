@@ -2056,6 +2056,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 通常湧き/コマ盤面/囲い・関所発火/城ボス/ハンター/叫喚型/死神/紅き夜を全て止める。
         // (farBackdrop==='tutorial' をrun識別に使うのは setTreesDisabled と同じ既存慣例。)
         const tutorialStage = loopState.farBackdrop === 'tutorial';
+        // 洋館(ステージ6)の走り込み入場中は敵を一切湧かせない(社長裁定v0.25.2789・案A)。
+        // 走り込み中は isInputLocked(corridorRunInActive) で操作を奪っている一方、
+        // isGameTimeStopped() には入らない=シミュレーションは走り続ける。さらに通路は
+        // setCorridorSpawn(=敵が上から湧く)なので、上へ自動で走るプレイヤーが湧いた敵に
+        // **避けられないまま**突っ込む。ヘリ入場のステージは introUntil で時間ごと止まるため
+        // 起きない、この入場方式だけの穴(v0.25.2789)。
+        // (変数名: 走り込みの解除は下の movePlayer 側=同フレームのもっと後ろで起きるため、
+        //  湧きゲートはフレーム頭のスナップショットを見る。別名にして取り違えを防ぐ。)
+        const runningIn = loopState.corridorRunInActive;
+        // 以降の湧きゲートは NOSPAWN ではなく noSpawn を見る(?nospawn=1 と同じ止め方に相乗り)。
+        const noSpawn = NOSPAWN || runningIn;
 
         // PACING_PUZZLE.md §5.18 M17: 被ダメ5経路(src/utils/combatTick.ts)へ渡す演出コールバック+
         // チューニング値。値そのものは以下のローカル定数のまま(二重管理を避けるため引数化しただけ)。
@@ -2376,7 +2387,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
         // 洋館通路(corridorMode)は城なし(v0.25.2144・社長指示「城も出現しないで。時間で出るのは死神だけ」)
         // =7分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
@@ -2434,7 +2445,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // cine実験台(?cine=1 & stage-7)ではストーリーボス(グレン)を出さない=クリーンな映像確認(社長v0.25.1879)。
           // ?nospawn=1 でもストーリーボスを出さない(=イベント不発火。社長指示v0.25.1995・QAのクリーン撮影用)。
           const cineSuppress = CINE_TESTBED && getSelectedStageId() === 'stage-7';
-          if (!storyBossSpawnedRef.current && introDone && glenSpawnOk && !cineSuppress && !NOSPAWN) {
+          if (!storyBossSpawnedRef.current && introDone && glenSpawnOk && !cineSuppress && !noSpawn) {
             storyBossSpawnedRef.current = true;
             const scx = player.x + player.width / 2;
             const scy = player.y + player.height / 2 - STORY_BOSS_SPAWN_DIST;
@@ -2528,7 +2539,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 「進行(スポーン段階/クリア判定/タイムアウト)」は M20 の新経路(軸1退屈補正の囲い等)が
         // puzzleActiveNow=true(通常プレイ)中に activeEvent をセットするケースでも動く必要があるため、
         // ゲートを「発火」側だけに絞る(進行側は常時稼働=puzzleActiveNow=falseの旧来挙動は無変更)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn) {
           // PACING_PUZZLE.md §5.21-追補5(社長決定v0.25.1555): ゲート発火待ちが立っていて、かつ城ボス
           // 以外のイベント(レスキュー/退屈囲い=kind 'rescue'|'horde')が進行中なら、それを強制解除して
           // ゲートを発火可能にする(「ゲート>他イベント」の優先を発火時に効かせる)。城ボスは PHASE
@@ -3029,7 +3040,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ゲーム開始3分後に1回だけ発動。警告10秒→本番20秒→暗転終了。
         // 本番中: 全敵ステータス×2・経験値×2・画面赤染め。
         // 拠点近接 or 商人に話しかけると「やり過ごした」で即脱出(商人側は performAttack 内で処理)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn) {
           const rnGs = useGameStore.getState();
           const rn = rnGs.redNight;
 
@@ -3244,7 +3255,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 屋内/練習モードでは出さない。出現〜索敵〜発見〜追跡〜撤退〜増援を状態機械で管理。
         // ステージ2(研究所スキン=labTheme)にも出さない(社長指示v0.25.1753。凶悪ハンター含む
         // コントローラごと停止=死神をlabで止めるのと同じ扱い)。ストーリーボス専用ラン(M7/EX)も出さない。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn) {
           const H = hunterRef.current;
           const hs = useGameStore.getState();
           const hpx = hs.player.x + hs.player.width / 2;
@@ -3469,7 +3480,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 社長指示v0.25.2249「m2は叫び沸かないで」: 研究所スキン(M2)では叫喚型を出さない。
         // M2は puzzleActiveNow=false(1908行)なのでこのディレクターが動いていた=唯一の湧き経路。
         // 忍び込むステージで画面外から通常敵を一斉強化されるのは設計と噛み合わないため止める。
-        if (!danceTest && !indoor && !labTheme && !puzzleActiveNow && !NOSPAWN) {
+        if (!danceTest && !indoor && !labTheme && !puzzleActiveNow && !noSpawn) {
           const sS = useGameStore.getState();
           const aliveScreamer = sS.enemies.some(e => e.type === 'screamer');
           const sCinematic = sS.bossChasing || !!sS.attention || sS.redNight?.phase === 'active'
@@ -3902,7 +3913,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 洋館通路(corridorMode)の死神は v0.25.2144 で復活(社長指示「時間で出るのは死神だけ」=
         // v0.25.2130の「死神なし」裁定を撤回。ゴール設置済みなので時間切れの圧として死神を使う)。
         // 区域バナー/壁踏破/ゲート予約は下の内側ゲート(!corridorMode)が引き続きスキップする。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !NOSPAWN) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn) {
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
@@ -10371,7 +10382,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (
           !danceTest &&
           !indoor &&
-          !NOSPAWN && // ?nospawn=1 デバッグ: 旧スポナーも止める(社長試作v0.25.1861)
+          !noSpawn && // ?nospawn=1 デバッグ: 旧スポナーも止める(社長試作v0.25.1861)
           !storyBoss && // ストーリーボス専用ラン(M7/EX)は通常湧きなし(統合正本10.3)
           !tutorialStage && // チュートリアルは自動湧きなし(イベント湧きのみ予定・社長指示)
           !confining &&
@@ -10514,7 +10525,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (実装: src/utils/directorTick.ts の runKomaBoardMaintenance へ移設。挙動は不変)。
         // PACING_PUZZLE.md §5.21-追補4: 追補3の「ゲート1中はchaff目標=ピーク・CD0を強制」は撤回済み
         // (gate1.ts参照)。ゲート1中もkomaは通常どおりディレクター駆動のまま=ここに特別分岐は無い。
-        if (!NOSPAWN) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
+        if (!noSpawn) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
           {
             puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef,
             rankPaceRef,

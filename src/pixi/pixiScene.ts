@@ -286,6 +286,8 @@ const tsNum = (key: string, def: number): number => {
  *   ★v0.25.2786で追加(遠景を全部消しても線が残ったため、上に被せている幕も対象にした):
  *   grade=全画面グレード / vig=周辺減光 / air=寒色グレード / cloud=雲影 / strips=地面ストリップ /
  *   dim=帯外の暗幕 / veil=研究所の暗幕 / mask=森のフェードマスクを外す
+ *   ★v0.25.2789で追加(社長の示唆「霧っぽいのがあやしい」): `fog` を**霧全部**に拡張し、
+ *   1枚ずつ詰める鍵も足した。fogback=奥霧 / fogunder=森下霧 / fogtop=森上霧 / nhmist=森2の底の境界霧
  */
 const HIDE_LAYERS = new Set(
   (typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('hidelayer') || '')
@@ -2869,7 +2871,10 @@ export class PixiScene {
     fw.height = bandH;
     const ftex = fw.texture;
     // 雲(霧)の粒サイズ: 横倍率も2倍(1.5→3.0)=帯高2倍と合わせて雲の大きさ2倍(社長指示v0.25.1995)。
-    if (ftex && ftex.width > 1) fw.tileScale.set((fw.width / ftex.width) * tsNum('snowfogpuff', 3.0), fw.height / ftex.height);
+    if (ftex && ftex.width > 1) {
+      fw.tileScale.set((fw.width / ftex.width) * tsNum('snowfogpuff', 3.0), fw.height / ftex.height);
+      this.clampTilingV(fw); // ★縦の継ぎ目対策(縦はちょうど1枚=ループさせない)
+    }
     fw.alpha = tsNum('snowfog', 0.7); // 遠景森前の霧の濃さ
     // 左へ流す(雲と同じ向き)。0.03 →(v0.25.1995 社長指示「流れ2倍」)→ 0.06 →
     // (v0.25.2267 社長指示「m4の雲の流れの動く速度上げて」)→ **0.12**。前回と同じく2倍で刻んだ。
@@ -3517,6 +3522,7 @@ export class PixiScene {
       const tw = f.sp.texture.width || 1;
       const th = f.sp.texture.height || 1;
       f.sp.tileScale.set(f.sp.width / tw, f.sp.height / th);
+      this.clampTilingV(f.sp); // ★縦の継ぎ目対策(縦はちょうど1枚=ループさせない。clampTilingV 参照)
     }
     this.updateStageLightShafts(w, h);
 
@@ -4773,7 +4779,24 @@ export class PixiScene {
     if (HIDE_LAYERS.has('hz')) this.L.horizonForest.visible = false;
     if (HIDE_LAYERS.has('nh')) this.L.nearHorizon.visible = false;
     if (HIDE_LAYERS.has('ff')) this.L.frontForest.visible = false;
-    if (HIDE_LAYERS.has('fog')) this.snowHorizonFog.visible = false;
+    // ★v0.25.2789: `fog` は**霧を全部**落とす(社長の示唆「霧っぽいのがあやしい」)。
+    // v0.25.2788 までは snowHorizonFog(ステージ4の遠景森前)1枚しか消しておらず、
+    // **森下/森上/奥のスモッグ3層・森2境界霧・M0岩間霧は残ったまま**だった=切り分けになっていない。
+    if (HIDE_LAYERS.has('fog')) {
+      this.snowHorizonFog.visible = false;
+      for (const f of this.fogLayers) f.sp.visible = false;
+      if (this.nearHorizonMist) this.nearHorizonMist.visible = false;
+      if (this.tutorialMist) this.tutorialMist.visible = false;
+    }
+    // 霧を1枚ずつ切るツマミ(fog で消えた時に**どの1枚か**まで詰めるため)。
+    const hideFog = (i: number, key: string) => {
+      const f = this.fogLayers[i];
+      if (f && HIDE_LAYERS.has(key)) f.sp.visible = false;
+    };
+    hideFog(0, 'fogback');  // 奥(キャラの後ろ)
+    hideFog(1, 'fogunder'); // 森下(やまぎり)
+    hideFog(2, 'fogtop');   // 森上(最下部)
+    if (HIDE_LAYERS.has('nhmist') && this.nearHorizonMist) this.nearHorizonMist.visible = false;   // 森2の底=森と地面の境界
     if (HIDE_LAYERS.has('ground')) this.L.groundBase.visible = false;
     // ★v0.25.2786: 遠景の層を全部消しても線が残ったので、**上に被せている幕**も落とせるようにした。
     if (HIDE_LAYERS.has('grade')) this.gradeSprite.visible = false;
@@ -5165,6 +5188,7 @@ export class PixiScene {
         mist.width = w;
         mist.height = h;
         mist.tileScale.set((w / mist.texture.width) * TUTORIAL_FRONT_FOG_SCALE, h / mist.texture.height);
+        this.clampTilingV(mist); // ★縦の継ぎ目対策(縦はちょうど1枚=ループさせない)
         mist.alpha = FOG_FRONT_ALPHA;
         const mx = (this.screenW - w) / 2;
         const my = this.farBackdropHeight() - TUTORIAL_FRONT_FOG_CENTER_UP_PX - h / 2
@@ -5204,6 +5228,7 @@ export class PixiScene {
             const h = this.screenH * 0.45;                                  // 帯の高さ(境界を跨ぐ)
             nm.width = w; nm.height = h;
             nm.tileScale.set((w / nm.texture.width) * TUTORIAL_FRONT_FOG_SCALE, h / nm.texture.height); // 柄は半分サイズ
+            this.clampTilingV(nm); // ★縦の継ぎ目対策(縦はちょうど1枚=ループさせない)
             nm.alpha = NEAR_HORIZON_MIST_ALPHA;
             nm.position.set(-nhMarginX, seamY - h * 0.5 - NEAR_HORIZON_MIST_UP_PX + Math.sin(now * 0.0004 * FOG_SPEED + 1.9) * 7);
             const nmT = (now - this.fogT0) * 0.024 * FOG_SPEED + Math.sin(now * 0.0007 * FOG_SPEED + 2.3) * 20;
@@ -5225,6 +5250,7 @@ export class PixiScene {
         f.sp.width = this.screenW * f.widthFrac;
         f.sp.height = this.screenH * f.heightFrac;
         f.sp.tileScale.set(f.sp.width / ft.width, f.sp.height / ft.height);
+        this.clampTilingV(f.sp); // ★縦の継ぎ目対策(非同期ロード後にも必ず1回通す)
       }
       f.sp.x = (this.screenW - f.sp.width) / 2; // 画面中央に固定(横の動きは texture スクロールで)
       f.sp.y = f.yFrac * this.screenH - f.sp.height / 2 + Math.sin(now * f.spdY * FOG_SPEED + f.ph) * f.ampY; // 縦の揺らめき

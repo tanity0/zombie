@@ -1,5 +1,40 @@
 # Development Log
 
+## v0.25.2789 — ステージ6の走り込み入場中は敵を湧かせない(案A)+ 霧を切り分け対象に足した【2026-08-03 00:00 JST】
+
+### 1. ステージ6の登場シーンで敵に強制的にぶつかる(社長報告 → 案Aで承認)
+
+**原因**: `isGameTimeStopped()`(`gameStore.ts:2046`)に `corridorRunInActive` が**入っていない**。
+入っているのは `isInputLocked()`(`:2072`)だけ。⇒ 走り込み入場の約6秒間は
+**入力だけ奪われてシミュレーションは走り続ける**。洋館(ステージ6)は `setCorridorSpawn`=
+**敵が上から湧く**ので、上へ自動で走るプレイヤーが湧いた敵に**避けられないまま**突っ込む。
+ヘリ入場のステージは `introUntil` で時間ごと止まるため起きない、**この入場方式だけの穴**。
+
+**対処(案A・社長裁定「ステージ6はaで」)**: 走り込み中は敵を**一切湧かせない**。
+`useGameLoop` のフレーム頭に `noSpawn = NOSPAWN || corridorRunInActive` を置き、
+既存の `!NOSPAWN` ゲート9箇所(城ボス/グレン/イベント発火/紅き夜/ハンター/叫喚/死神/旧スポナー/
+パズル盤面 `runKomaBoardMaintenance`)を `!noSpawn` に差し替え=**`?nospawn=1` と同じ止め方に相乗り**。
+- 走り込み以外(`corridorRunInActive=false`)では `noSpawn === NOSPAWN` なので**挙動は1bitも変わらない**。
+- セットピース波(`consumeDueWaves`)は最速でも 0:35 発火=走り込み(最長6秒)には掛からないので触っていない。
+- 警察署アリーナは `detourVisible = … && !corridorMode` で corridorMode に `police=null`=そもそも出ない。
+
+### 2. 遠景の1px線: 「霧」を切り分けられるようにした(社長の示唆「霧っぽいのがあやしい」)
+
+`?hidelayer=fog` は **`snowHorizonFog`(ステージ4の遠景森前)1枚しか消していなかった**。
+森下/森上/奥のスモッグ3層・森2の底の境界霧(`nearHorizonMist`)・M0の岩間霧は**残ったまま**で、
+社長が `fog` を指定しても切り分けになっていなかった。⇒ `fog` を**霧全部**に拡張し、
+1枚ずつ詰める鍵 `fogback`(奥)/`fogunder`(森下)/`fogtop`(森上)/`nhmist`(森2の底)を足した。
+
+あわせて**霧のTilingSprite全部に `clampTilingV` が漏れていた**ので入れた(v0.25.2783で
+遠景4層には入れたが霧は対象外だった)。霧はどれも `tileScale.y = 高さ/テクスチャ高`=**縦ちょうど1枚**なので、
+`addressModeV='repeat'` のままだと**下端で反対側の画素が1px出る**——遠景と同じ型の事故。
+寸法は一切変えていない(縦ループは元から意図されていない)。
+
+**変更ファイル**: `src/hooks/useGameLoop.ts` / `src/pixi/pixiScene.ts` / `src/data/changelog.ts` / `package.json`
+**検証**: `npm run typecheck` OK / `npm run lint` エラー0(warning 8=既存)。実機確認は社長。
+**次の申し送り**: 線が `?hidelayer=fog` で消えるか。消えるなら `fogback`/`fogunder`/`fogtop`/`nhmist` で1枚に詰める。
+消えないなら霧は白。`?nhmist=0`(濃さ0)でも同じ切り分けができる。
+
 ## v0.25.2785 — 遠景の線: 推測をやめて層を1枚ずつ消せるツマミを入れた【2026-08-02 23:50 JST】
 
 社長「線消えてない!」「ver2631の時点ですでに線が入ってる」。
