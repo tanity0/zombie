@@ -1,5 +1,29 @@
 # Development Log
 
+## v0.25.2702(文書) — CO-3(WebRTC DataChannel 2本+接続確認ページ)の発注文【2026-08-02 09:42 JST】
+
+社長指示「co3だそ」。`COOP_ONLINE.md` §11-3 に発注文を用意(コピペ用)。作業ブランチは `codex/coop-online-3`。
+
+### CO-3 の中身(§6の表どおり)
+1. **WebRTC DataChannel 2本**(`unreliable` = `{ordered:false, maxRetransmits:0}` / `reliable` = 既定)で
+   §4 の `CoopSession` を完成。**オファーは必ずホスト側から**(ホスト権威なので perfect negotiation は不要)。
+   ICEは CO-2 の `relay` でtrickle。**STUNのみ・TURNはCO-5**。
+2. **`rttMs()` は同期・軽い**: `getStats()` は非同期なので**1秒に1回更新してキャッシュ**、
+   `rttMs()` はキャッシュを返すだけ。未測定は 0 ではなく -1(意味をコメントに)。時計は `Date.now()`。
+3. **`tools/netcheck/` に接続確認の単体ページ**(§7)。`src/online/` の**実物をimport**。
+   **自己完結**(直下の package.json / vite.config.ts / index.html を触らない)。**CO-4で社長が実機確認に使う1枚**。
+4. §7 の疎通テストを `npm run test:online` に(**既定の `npm test` には入れない**)。
+5. **CO-2 の申し送り3点をここで直す**(§11-2b):
+   - ★**接続先の既定を「未設定」に**。`?signal=` が無ければ `enabled()` は false
+     (=配線しても製品版がプレイヤー自身のPCへ繋ぎに行かない)。
+   - **`hostId === guestId` の入室を弾く**(自分の部屋に自分で入れない)。
+   - サーバのUUID判定を **v4のみ**に揃える。
+
+### 受け入れ条件の要点
+2タブが `connected` に到達し双方向に届く / **毎秒20回×数KBを流し続けて落ちない** /
+`onClosed('peer-left')` が1回だけ / `?signal=` 無しなら何も起きない / 例外を投げない /
+typecheck+lint エラー0 / **既存ファイル不可侵** / まだデプロイしない。
+
 ## v0.25.2701(文書) — ★決着: 強glowのコストは100%投影影だった【2026-08-02 02:22 JST】
 
 ### 実測(社長・実機 `?benchonly=FXG&evshadow=0`)
