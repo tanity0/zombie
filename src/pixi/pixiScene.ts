@@ -4761,6 +4761,44 @@ export class PixiScene {
     }
   }
   /**
+   * ★v0.25.2788: 診断ツマミ `?hidelayer=` の適用。**フレームの最後に呼ぶ**。
+   * v0.25.2785 では毎フレームの途中で呼んでいたが、`syncLab()` の遠景可視の決定(`farBackdrop.visible` /
+   * `horizonForest.visible` / `groundBase.visible`)が**その後に走って true へ戻していた**ため、
+   * **far/hz/nh の3つは一度も隠れていなかった**(社長の実機で「大半はマゼンタ、空だけ残る」で発覚)。
+   * ⇒ 可視を決める全処理の**後**で上書きする。
+   */
+  private applyHideLayers() {
+    if (HIDE_LAYERS.size === 0) return;
+    if (HIDE_LAYERS.has('far')) this.L.farBackdrop.visible = false;
+    if (HIDE_LAYERS.has('hz')) this.L.horizonForest.visible = false;
+    if (HIDE_LAYERS.has('nh')) this.L.nearHorizon.visible = false;
+    if (HIDE_LAYERS.has('ff')) this.L.frontForest.visible = false;
+    if (HIDE_LAYERS.has('fog')) this.snowHorizonFog.visible = false;
+    if (HIDE_LAYERS.has('ground')) this.L.groundBase.visible = false;
+    // ★v0.25.2786: 遠景の層を全部消しても線が残ったので、**上に被せている幕**も落とせるようにした。
+    if (HIDE_LAYERS.has('grade')) this.gradeSprite.visible = false;
+    if (HIDE_LAYERS.has('vig')) this.vignette.visible = false;
+    if (HIDE_LAYERS.has('air')) this.snowAir.visible = false;
+    if (HIDE_LAYERS.has('cloud')) this.cloudShadow.visible = false;
+    if (HIDE_LAYERS.has('strips')) for (const st of this.L.groundStrips) st.visible = false;
+    if (HIDE_LAYERS.has('dim') && this.labOutDim) this.labOutDim.visible = false;
+    if (HIDE_LAYERS.has('veil') && this.labVeilSprite) this.labVeilSprite.visible = false;
+    // ★v0.25.2788: 「空だけ残る」の正体を潰すため、空まわりの残りも落とせるようにした。
+    if (HIDE_LAYERS.has('all')) { // 空に見えるもの全部(far/hz/nh をまとめて確実に消す)
+      this.L.farBackdrop.visible = false;
+      this.L.horizonForest.visible = false;
+      this.L.nearHorizon.visible = false;
+      this.L.frontForest.visible = false;
+      this.L.groundBase.visible = false;
+      for (const st of this.L.groundStrips) st.visible = false;
+    }
+    if (HIDE_LAYERS.has('mask')) { // マスクを外す(マスクの端が線に見えている可能性を切り分ける)
+      this.L.horizonForest.mask = null;
+      this.L.frontForest.mask = null;
+    }
+  }
+
+  /**
    * ★v0.25.2783(社長報告「ステージ1の遠景に1pxくらいの切れ目が入った」): 遠景の帯(TilingSprite)は
    * **横だけループさせ、縦はループさせない**。
    *
@@ -5562,27 +5600,7 @@ export class PixiScene {
       this.playerGroundPool.width = this.playerGroundPool.height = LIGHT_POOL_RADIUS * 2 * lightScale;
     }
 
-    // ★v0.25.2785: 診断ツマミ。指定された遠景の層を毎フレーム隠す(他所の visible 設定に勝つため毎フレーム)。
-    if (HIDE_LAYERS.size > 0) {
-      if (HIDE_LAYERS.has('far')) this.L.farBackdrop.visible = false;
-      if (HIDE_LAYERS.has('hz')) this.L.horizonForest.visible = false;
-      if (HIDE_LAYERS.has('nh')) this.L.nearHorizon.visible = false;
-      if (HIDE_LAYERS.has('ff')) this.L.frontForest.visible = false;
-      if (HIDE_LAYERS.has('fog')) this.snowHorizonFog.visible = false;
-      if (HIDE_LAYERS.has('ground')) this.L.groundBase.visible = false;
-      // ★v0.25.2786: 遠景の層を全部消しても線が残ったので、**上に被せている幕**も落とせるようにした。
-      if (HIDE_LAYERS.has('grade')) this.gradeSprite.visible = false;
-      if (HIDE_LAYERS.has('vig')) this.vignette.visible = false;
-      if (HIDE_LAYERS.has('air')) this.snowAir.visible = false;
-      if (HIDE_LAYERS.has('cloud')) this.cloudShadow.visible = false;
-      if (HIDE_LAYERS.has('strips')) for (const st of this.L.groundStrips) st.visible = false;
-      if (HIDE_LAYERS.has('dim') && this.labOutDim) this.labOutDim.visible = false;
-      if (HIDE_LAYERS.has('veil') && this.labVeilSprite) this.labVeilSprite.visible = false;
-      if (HIDE_LAYERS.has('mask')) { // マスクを外す(マスクの端が線に見えている可能性を切り分ける)
-        this.L.horizonForest.mask = null;
-        this.L.frontForest.mask = null;
-      }
-    }
+    this.applyHideLayers();
     this.syncAlchemyCircle(s.player, s.gameTime, now);
     this.syncWhipHurricane(s.hurricane, now);
     // リズムの拍/演出は実時間(now=Date.now)基準。store の firstBeatAt/lastTapAt 等も Date.now ベース。
