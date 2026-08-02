@@ -7009,6 +7009,89 @@ export class PixiScene {
     const g = this.localEventShadeGfx;
     g.clear();
 
+    // ★v0.25.2703(影#1): **影を落とす候補の走査を「強glow 1個ごと」から「1フレームに1回」へ巻き上げた。**
+    // 旧実装は強glow 1個につき世界中(敵/escort/props/trees/cityProps/walls/propObjs/城/商人/NPC)を
+    // 舐め直しており、glow 12個なら**同じ走査を12回**していた。候補の中身
+    // (位置・影の幅・重み・地平線フェード)は**光源に依存しない**ので、1回作れば全部の光源で使い回せる。
+    // 光源ごとに変わるのは「距離で切る/falloff」だけなので、そこだけをループ内に残す。
+    // **見た目は1ピクセルも変わらない**(同じ候補・同じ順序・同じ描画)。
+    type CasterCandidate = {
+      x: number;
+      y: number;
+      w: number;
+      strength: number;
+      horizonAlpha: number;
+    };
+    const isNearScreen = (x: number, y: number, pad = 150) =>
+      x >= camera.x - pad &&
+      x <= camera.x + this.screenW + pad &&
+      y >= camera.y - pad &&
+      y <= camera.y + this.screenH + pad;
+    // 強glowが1個も無いフレームでは走査を一切しない(遅延生成)。
+    let casterCandidates: CasterCandidate[] | null = null;
+    const buildCasterCandidates = (): CasterCandidate[] => {
+      const out: CasterCandidate[] = [];
+      const push = (x: number, y: number, w: number, strength = 1) => {
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w)) return;
+        if (!isNearScreen(x, y)) return;
+        const actorHorizonAlpha = this.horizonActorAlpha(y);
+        if (actorHorizonAlpha <= 0) return;
+        out.push({ x, y, w, strength, horizonAlpha: actorHorizonAlpha });
+      };
+
+      const playerBox = playerFootBox(player);
+      push(
+        playerBox.footX,
+        playerBox.footY,
+        playerBox.boxW * 0.55 * this.depthScale(playerBox.footY),
+        1.12
+      );
+      for (const enemy of enemies) {
+        const box = enemyFootBox(enemy);
+        const bossWeight = enemy.type === 'reaper' || enemy.type === 'giantbat' || enemy.type === 'pumpkin'
+          ? 1.28
+          : 1;
+        push(box.footX, box.footY, box.boxW * 0.55 * this.depthScaleEnemy(box.footY), bossWeight);
+      }
+      // 進軍NPC(escort)も敵/プレイヤーと同じく爆発などの局所光で影が伸びるようにする(社長指示)。
+      // 影幅=立ち絵実幅×0.55(他アクター同基準)。足元=esc.x/esc.y(anchor 0.5,1)。
+      for (const esc of escorts) {
+        const escSp = this.escortSprites.get(esc.id);
+        const escW = escSp && escSp.visible !== false ? Math.abs(escSp.width) : 0;
+        const baseW = escW > 0 ? escW : 30 * this.depthScale(esc.y);
+        push(esc.x, esc.y, baseW * 0.55, 1);
+      }
+      for (const prop of props) {
+        const propWeight = prop.type === 'torch' ? 0.82 : 0.62;
+        const d = this.depthScale(prop.footY);
+        const shadowW = prop.type === 'mine'
+          ? 16 * prop.scale * d
+          : TORCH_VISUAL_W * prop.scale * d * 0.55;
+        push(prop.footX, prop.footY, shadowW, propWeight);
+      }
+      for (const tree of this.trees.values()) {
+        push(tree.sprite.x, tree.footY, 48 * TREE_VISUAL_SCALE * this.depthScale(tree.footY) * 0.36, 0.72);
+      }
+      // ただのオブジェクト(壊せない: トラック/瓦礫/ドラム=city props、ラボの壁/什器)も影を落とす(グローは無し)。
+      // 地面デカール(groundLayer 配置・平面)は除外。影幅は表示幅から算出。
+      for (const entry of this.cityPropObjs.values()) {
+        if (entry.sprite.parent === this.L.groundLayer) continue; // 地面デカールは影なし
+        push(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.32), 0.6);
+      }
+      for (const entry of this.wallObjs.values()) {
+        push(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.3), 0.55);
+      }
+      for (const entry of this.propObjs.values()) {
+        push(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.32), 0.6);
+      }
+      push(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, 90 * this.depthScale(castle.y + CASTLE_FOOT_OFFSET_Y), castle.bossSpawned ? 1.15 : 0.82);
+      push(merchant.x, merchant.y, 82 * this.depthScale(merchant.y), 0.9);
+      if (eventNpc.status !== 'completed') {
+        push(eventNpc.x, eventNpc.y, 76 * this.depthScale(eventNpc.y), 0.9);
+      }
+      return out;
+    };
+
     for (const e of effects) {
       if (!LOCAL_EVENT_GLOW_SHADOW_ENABLED) break; // ?evshadow=0(計測用・既定ON)
       if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
@@ -7039,80 +7122,23 @@ export class PixiScene {
         strength: number;
       };
       const reach = e.radius * LOCAL_EVENT_SHADOW_REACH_MULT;
+      // 候補は1フレームに1回だけ作る(最初の強glowで生成し、以降の光源は使い回す)。
+      if (!casterCandidates) casterCandidates = buildCasterCandidates();
+      // 光源ごとに変わるのは「届く範囲で切る」ことと falloff だけ。
       const castActors: CastShadow[] = [];
-      const isNearScreen = (x: number, y: number, pad = 150) =>
-        x >= camera.x - pad &&
-        x <= camera.x + this.screenW + pad &&
-        y >= camera.y - pad &&
-        y <= camera.y + this.screenH + pad;
-      const addCaster = (x: number, y: number, w: number, strength = 1) => {
-        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w)) return;
-        if (!isNearScreen(x, y)) return;
-        const actorHorizonAlpha = this.horizonActorAlpha(y);
-        if (actorHorizonAlpha <= 0) return;
-        const dx = x - lightX;
-        const dy = y - lightY;
+      for (const candidate of casterCandidates) {
+        const dx = candidate.x - lightX;
+        const dy = candidate.y - lightY;
         const dist = Math.hypot(dx, dy);
-        if (dist < 1 || dist > reach) return;
+        if (dist < 1 || dist > reach) continue;
         castActors.push({
-          x,
-          y,
-          w,
+          x: candidate.x,
+          y: candidate.y,
+          w: candidate.w,
           falloff: 1 - dist / reach,
-          horizonAlpha: actorHorizonAlpha,
-          strength,
+          horizonAlpha: candidate.horizonAlpha,
+          strength: candidate.strength,
         });
-      };
-
-      const playerBox = playerFootBox(player);
-      addCaster(
-        playerBox.footX,
-        playerBox.footY,
-        playerBox.boxW * 0.55 * this.depthScale(playerBox.footY),
-        1.12
-      );
-      for (const enemy of enemies) {
-        const box = enemyFootBox(enemy);
-        const bossWeight = enemy.type === 'reaper' || enemy.type === 'giantbat' || enemy.type === 'pumpkin'
-          ? 1.28
-          : 1;
-        addCaster(box.footX, box.footY, box.boxW * 0.55 * this.depthScaleEnemy(box.footY), bossWeight);
-      }
-      // 進軍NPC(escort)も敵/プレイヤーと同じく爆発などの局所光で影が伸びるようにする(社長指示)。
-      // 影幅=立ち絵実幅×0.55(他アクター同基準)。足元=esc.x/esc.y(anchor 0.5,1)。
-      for (const esc of escorts) {
-        const escSp = this.escortSprites.get(esc.id);
-        const escW = escSp && escSp.visible !== false ? Math.abs(escSp.width) : 0;
-        const baseW = escW > 0 ? escW : 30 * this.depthScale(esc.y);
-        addCaster(esc.x, esc.y, baseW * 0.55, 1);
-      }
-      for (const prop of props) {
-        const propWeight = prop.type === 'torch' ? 0.82 : 0.62;
-        const d = this.depthScale(prop.footY);
-        const shadowW = prop.type === 'mine'
-          ? 16 * prop.scale * d
-          : TORCH_VISUAL_W * prop.scale * d * 0.55;
-        addCaster(prop.footX, prop.footY, shadowW, propWeight);
-      }
-      for (const tree of this.trees.values()) {
-        addCaster(tree.sprite.x, tree.footY, 48 * TREE_VISUAL_SCALE * this.depthScale(tree.footY) * 0.36, 0.72);
-      }
-      // ただのオブジェクト(壊せない: トラック/瓦礫/ドラム=city props、ラボの壁/什器)も影を落とす(グローは無し)。
-      // 地面デカール(groundLayer 配置・平面)は除外。影幅は表示幅から算出。
-      for (const entry of this.cityPropObjs.values()) {
-        if (entry.sprite.parent === this.L.groundLayer) continue; // 地面デカールは影なし
-        addCaster(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.32), 0.6);
-      }
-      for (const entry of this.wallObjs.values()) {
-        addCaster(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.3), 0.55);
-      }
-      for (const entry of this.propObjs.values()) {
-        addCaster(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.32), 0.6);
-      }
-      addCaster(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, 90 * this.depthScale(castle.y + CASTLE_FOOT_OFFSET_Y), castle.bossSpawned ? 1.15 : 0.82);
-      addCaster(merchant.x, merchant.y, 82 * this.depthScale(merchant.y), 0.9);
-      if (eventNpc.status !== 'completed') {
-        addCaster(eventNpc.x, eventNpc.y, 76 * this.depthScale(eventNpc.y), 0.9);
       }
 
       castActors
