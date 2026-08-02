@@ -108,7 +108,7 @@ import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from '
 import {
   glowFalloff, glowLenMult, glowScore, explosionSilAlpha, ambientSilAlpha,
   pickExplSlot, rankFade, shouldFreezeGeom,
-  SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS,
+  SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS, SHADOW_GLOW_MIN_DIST_PX,
 } from '../utils/shadowSlots';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
@@ -1728,6 +1728,8 @@ const SHADOW_GLOW_STRETCH = tsNum('glowstretch', 0.9); // GLOW_STRETCH(長さ倍
  * この時定数で補間する。`?glowfade=` を流用(名前は据え置き=社長が既に覚えているため)。
  * 既定はΣw_g側の下り(`SHADOW_LDOM_RELEASE_MS`=220ms)と同じ値を採用。`?glowfade=0`で即切替。 */
 // ★v12で廃止: const SHADOW_TIP_RELEASE_MS = tsNum('glowfade', 220);
+/** ★v12: 近すぎる光を影の向きから外すガード(px)。`?glowmindist=0` で切れる(=v9と同じ「足元の光でも伸びる」)。 */
+const SHADOW_GLOW_MIN_DIST = tsNum('glowmindist', SHADOW_GLOW_MIN_DIST_PX);
 /** 支配光に強glowが参加する条件は旧投影影と同じ(effects[] の kind==='glow' && radius>=STRONG_GLOW_RADIUS)。
  * 松明/焚き火/城・商人のグロー/緑卵の光/プレイヤーライトはスプライトでありeffectではないため対象外
  * (§3-9-B確定)。`?evshadow=0` は「支配光に強glowを参加させない(環境光のみ)」の意味(裁定O)。 */
@@ -9107,7 +9109,7 @@ export class PixiScene {
       const dx = x - L.x, dy = y - L.y;
       const dist = Math.hypot(dx, dy);
       if (dist < 1) continue; // ゼロ除算ガード(向きが定まらない)
-      const falloff = glowFalloff(dist, L.reach);
+      const falloff = glowFalloff(dist, L.reach, SHADOW_GLOW_MIN_DIST);
       const inRange = dist <= L.reach;
       if (falloff <= 0 && inRange) continue; // 圏内で寄与ゼロ(近接ガードの内側)は候補にしない
       out.push({

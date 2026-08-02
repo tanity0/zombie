@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2799',
+    items: [
+      'ゲーム内容の変更はありません（影の伸び方を調べるスイッチを足しました）。',
+    ],
+  },
+  {
     version: '0.25.2798',
     items: [
       '爆発やレベルアップの光で伸びた影が、消える時に回りながら戻る現象を直しました（伸びたまま薄くなって消えます）。',
