@@ -1573,6 +1573,7 @@ const LOCAL_EVENT_SHADE_RISE_MS = tsNum('shaderise', 110);
 //     ⇒ 追加は「同じ render target へシェーダ1パス」だけ(cineContrast と同じ理屈・:2606 のコメント)。
 // ★どちらが安いかは実機ベンチで測る。`?punchfw=1` で新しい置き場所に切り替わる。
 const PUNCH_ON_FILTERED_WORLD = tsBool('punchfw', false);
+const PUNCH_LIGHT_GAIN = tsNum('punchlight', 1.0); // 「世界の光」の明るさ→パンチ強度(0で従来どおりflashのみ)
 const LOCAL_EVENT_SHADOW_ALPHA = 0.96;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
 const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
@@ -2465,6 +2466,7 @@ export class PixiScene {
   private worldLights: PointLight[] = [];
   private assistLightMultSmoothed = 1; // 補助光に掛ける倍率(平滑後)
   private lastAssistLightNow = 0;      // 平滑の dt 計算用(既存の zdt と同じ作法)
+  private assistBrightnessNow = 0;     // プレイヤー足元の明るさ(補助光とコントラストパンチが共用)
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。uiLayer(=研究所の暗幕 labVeil や
   // 森の暗転/tilt-shift より上)に置き、環境光の影響を一切受けない。uiLayer は screen 座標なので
@@ -2688,6 +2690,12 @@ export class PixiScene {
       target = Math.max(target, a * lum);
     }
     target = Math.min(1, target * tsNum('punchgain', 6)); // フラッシュ強度→パンチ強度の増幅。最大値へ(社長v0.25.1977)。?punchgain=
+    // ★v0.25.2782(社長「これよく分からなかった」): **爆発では一度も発火していなかった。**
+    // ここは `kind==='flash'` しか見ていないが、**爆発が出すのは `glow`**(`gameStore.ts:5855-5857` に
+    // spawnFlash が無い)。⇒ 「世界の光」(松明+強glow)の**プレイヤー足元での明るさ**も強度に混ぜる。
+    // 補助光と同じ値を使うので、**「自分の光が消えるほど明るい場所」= 「世界のコントラストが上がる場所」**
+    // になり、2つの演出が同じ理屈で動く。
+    target = Math.max(target, Math.min(1, this.assistBrightnessNow * PUNCH_LIGHT_GAIN));
     // 立ち上がりは即・減衰はなめらかに(前フレームより下がる時だけ緩める)。
     this.punchStrength = target >= this.punchStrength ? target : this.punchStrength + (target - this.punchStrength) * 0.22;
     const active = this.punchStrength > 0.012;
@@ -5451,6 +5459,17 @@ export class PixiScene {
       showDistance: s.bossMaker.active,
     });
     this.syncFlash(s.effects, now);
+    // ★v0.25.2782: 強glow(爆発など)を「世界の光」へ足し、プレイヤー足元の明るさを先に出す。
+    // ここで出すのは、この値を**コントラストパンチと補助光の両方**が使うため(松明は syncBreakableProps で既に積み済み)。
+    for (const e of s.effects) {
+      if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
+      const glowLife = 1 - Math.min(1, (now - e.createdAt) / e.duration);
+      if (glowLife <= 0) continue;
+      this.worldLights.push({ x: e.x, y: e.y, reach: e.radius * GLOW_LIGHT_REACH_MULT, strength: glowLife * GLOW_LIGHT_GAIN });
+    }
+    this.assistBrightnessNow = lightAt(
+      s.player.x + s.player.width / 2, s.player.y + s.player.height / 2, this.worldLights,
+    );
     this.updatePunchGrade(s.effects, now); // 攻撃/爆発の光でコントラストパンチ(?punchgrade=1・既定OFF)
     this.updateCloudShadow(now, s.camera.x, s.camera.y, s.indoorMode); // フィールドの動く雲影(屋外のみ・?cloudshadow=0で無効)
     this.updateSnowAir(now); // ステージ4の冷たい空気(寒色グレード)+遠景森前の霧(snowのみ)
@@ -5467,13 +5486,7 @@ export class PixiScene {
     // 光源 = 松明/焚き火(この上の syncBreakableProps で積んだ描画そのままの値) + 強glow(爆発・レベルアップ)。
     // ★レベルアップの光はプレイヤー自身の位置に出る(gameStore.ts:7314 半径150)ので距離0=明るさ最大
     //   ⇒ 社長が「意図的」と示した"レベルアップ中は補助光が無い"見え方が、この一般ルールから自動的に出る。
-    for (const e of s.effects) {
-      if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
-      const life = 1 - Math.min(1, (now - e.createdAt) / e.duration);
-      if (life <= 0) continue;
-      this.worldLights.push({ x: e.x, y: e.y, reach: e.radius * GLOW_LIGHT_REACH_MULT, strength: life * GLOW_LIGHT_GAIN });
-    }
-    const assistBrightness = lightAt(lx, ly, this.worldLights);
+    const assistBrightness = this.assistBrightnessNow;
     const assistTarget = assistLightMult(assistBrightness, PLAYER_LIGHT_YIELD);
     // 松明は pulse で脈打つので、生の値だとプレイヤーが一緒に明滅する ⇒ 時定数で平滑する。
     const assistDt = this.lastAssistLightNow ? Math.min(0.1, (now - this.lastAssistLightNow) / 1000) : 0;

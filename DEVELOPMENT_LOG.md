@@ -1,5 +1,28 @@
 # Development Log
 
+## v0.25.2782 — コントラストパンチが爆発で発火していなかった【2026-08-02 22:55 JST】
+
+社長「`?punchgrade=1&punchfw=1` これよく分からなかった」。**そもそも発火していなかった。**
+
+### 原因
+`updatePunchGrade` は **`kind === 'flash'` のエフェクトしか見ていない**。
+だが**爆発が出すのは `glow`**——`gameStore.ts:5855-5857` は `spawnRing`/`spawnBurst`/`spawnGlow` だけで
+**`spawnFlash` を呼んでいない**。⇒ **手榴弾では一度もパンチが動いていなかった。**
+(`flash` を出す箇所は42あるが、暗転(黒)は `lum<0.25` で除外され、残りは特定イベント限定。)
+
+### 直し
+「世界の光」(松明+強glow)の**プレイヤー足元での明るさ**をパンチ強度に混ぜる(`?punchlight=`・既定1.0)。
+★**補助光と同じ値を使う**ので、**「自分の光が消えるほど明るい場所」=「世界のコントラストが上がる場所」**
+となり、2つの演出が同じ理屈で動く(別々の閾値を持たない)。
+実装上は、強glowの収集と `lightAt` を `updatePunchGrade` の**前**へ移し、
+`assistBrightnessNow` を**パンチと補助光で共用**する(走査は1回のまま=追加コストなし)。
+`?punchlight=0` で従来どおり flash のみに戻せる。
+
+**変更ファイル**: src/pixi/pixiScene.ts / src/components/GameOverScreen.tsx / package.json / src/data/changelog.ts
+**検証**: typecheck・lint エラー0。
+**次の引き継ぎ**: `?punchgrade=1&punchfw=1` で手榴弾を投げて、爆発の瞬間にコントラストが跳ねるか。
+効きが弱ければ `?punchcontrast=`(既定1.2) `?punchbright=`(0.22) `?punchlight=`(1.0)。
+
 ## v0.25.2781 — 補助光は明るい所で完全に消える(社長裁定「ゼロがいい」)【2026-08-02 22:40 JST】
 
 `PLAYER_LIGHT_YIELD` の既定を **0.85 → 1.0**。明るさが最大の地点で補助光が**ちょうど0**になる。

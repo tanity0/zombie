@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2782',
+    items: [
+      'ゲーム内容の変更はありません（試験中のコントラスト演出が、爆発では一度も動いていなかったのを直しました）。',
+    ],
+  },
+  {
     version: '0.25.2781',
     items: [
       '松明や爆発に十分近づくと、プレイヤー自身のまわりの明かりが完全に消えるようになりました。',
