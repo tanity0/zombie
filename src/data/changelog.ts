@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2749',
+    items: [
+      'ゲーム内容の変更はありません（守護霊の共有の設計が固まりました）。',
+    ],
+  },
+  {
     version: '0.25.2748',
     items: [
       'ゲーム内容の変更はありません（他人の守護霊は別スキルで受け取る形に決まりました）。',

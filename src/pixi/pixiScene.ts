@@ -103,7 +103,7 @@ import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
 import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
-import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX, bossBehindFadeApplies } from './renderSpec';
@@ -1553,7 +1553,96 @@ const FIRE_KNIFE_NATIVE_LEN = 624;         // 実測: テクスチャ内の柄(�
 const FIRE_KNIFE_HILT_RADIUS_FRAC = 0.49;  // 実測: 中心→柄(石)中心は全長の約半分弱
 // 木/壁/プロップへの常時足影(太陽/月の方向影)。負荷キャップ=プレイヤーに近い順この個数まで。
 // 順位下ほど薄くして境界の入れ替わりポップを防ぐ(社長指示・視覚のみ)。
+// ★v9(§3-9-B)では OBJECT_SHADOW_MAX の枚数キャップ自体は廃止だが、`?silshadow=0`(旧実装)
+// 経路がこの定数をそのまま使い続けるのでコードは残す(削除しない)。
 const OBJECT_SHADOW_MAX = 7;
+
+// =============================================================================
+// research/LIGHT_REWORK.md §3-9-B v8「★影の実装仕様」+ 同ファイル「★v9 実装時の設計チャット裁定」。
+// 1体1メッシュ(PerspectiveMesh・台形)+接地2枚(芯/外側)+支配光(Ldom)。
+// `?silshadow=0` で旧実装(placeShadowSprite / syncLocalEventLighting の投影影)に戻せる
+// (旧コードは削除しない。この節は新経路にのみ関わる)。
+// =============================================================================
+
+/** `?silshadow=0`: 新シルエット影を無効化し、旧実装(§3-9-A以前)へ完全に戻す(A/B比較用)。 */
+const SILHOUETTE_SHADOWS_DISABLED = DZ_PARAMS?.get('silshadow') === '0';
+
+// ---- 伸び(絵の高さ×比率。旧shadowLength 36/32/52の比を保存。§3-9-B確定値) -------------------
+const SHADOW_LEN_RATIO_DAY = 0.85;
+const SHADOW_LEN_RATIO_NIGHT = 0.76;
+const SHADOW_LEN_RATIO_CINE = 1.23;
+
+// ---- シルエット台形(足元の絞り・ぼかし・分割数) ------------------------------------------------
+/** 足元の絞り: 接地端(近い辺)の幅=絵幅×この値、先端(遠い辺)は絵幅×1.0。接地の芯サイズ計算にも共用。 */
+const SHADOW_FOOT_NARROW = 0.34;
+/** ぼかし=絵の短辺×この割合のガウス(§3-9-B確定値。6%は換算ミスと訂正済み=2%が正)。 */
+const SHADOW_BLUR_FRAC = 0.02;
+/** 余白=ぼかし×この倍率ぶん確保してからベイクする(縁のclamp伸びを防ぐ)。 */
+const SHADOW_BLUR_PAD_MULT = 3;
+/** PerspectiveMesh の分割数。事前計測(SHD-M)と同じ値にする(§3-9-B確定)。 */
+const SHADOW_MESH_VX = 8;
+const SHADOW_MESH_VY = 12;
+/** 退化ガード: 長さ/幅がこれ以下なら描かない。 */
+const SHADOW_DEGENERATE_PX = 2;
+
+// ---- 接地2枚(芯/外側) ---------------------------------------------------------------------
+/** 芯 = 絵幅 × max(SHADOW_CORE_MIN_W_FRAC, 絞り×SHADOW_CORE_W_MULT)。 */
+const SHADOW_CORE_MIN_W_FRAC = 0.42;
+const SHADOW_CORE_W_MULT = 1.9;
+/** 芯の縦横比(高さ/幅)。 */
+const SHADOW_CORE_ASPECT = 0.44;
+/** 外側 = 芯 × この倍率。 */
+const SHADOW_OUTER_SCALE = 1.9;
+/** 外側オフセット = 足元から光方向へ「非爆発時の長さ」×この割合(爆発の伸びは掛けない=§3-9-B v7)。 */
+const SHADOW_OUTER_OFFSET_LEN_FRAC = 0.16;
+/** 外側オフセットの頭打ち = 「外側楕円の、オフセット方向の半径」×この値。 */
+const SHADOW_OUTER_OFFSET_CAP_FRAC = 0.8;
+
+// ---- 濃さ(★未決D→D-1採用。densityMult = sqrt(preset.shadowAlpha / 0.26)) ------------------------
+const SHADOW_DENSITY_REF_ALPHA = 0.26; // 夜(既定)の shadowAlpha 基準値
+const SHADOW_CORE_ALPHA_BASE = 0.62 * 0.95;
+const SHADOW_OUTER_ALPHA_BASE = 0.22 * 0.95;
+const SHADOW_SIL_ALPHA_BASE = 0.46;
+
+// ---- 支配光(Ldom)。§3-9-B確定初期値(★未決E) + 設計チャット裁定K/L/M/N ------------------------------------
+// probe(shadowProbe.ts 計測用)の PROBE_GLOW_WEIGHT / PROBE_GLOW_SUM_CAP と同じ値(計測と実装を揃える)。
+const SHADOW_GLOW_WEIGHT = 1.6;   // GLOW_SHADOW_WEIGHT
+const SHADOW_GLOW_STRETCH = 0.9;  // GLOW_STRETCH(長さ倍率 = 1 + STRETCH×min(Σw_g, CAP))
+const SHADOW_GLOW_DARKEN = 0.6;   // GLOW_DARKEN(濃さ倍率 = 1 + DARKEN×min(Σw_g, CAP))
+const SHADOW_GLOW_SUM_CAP = 2.0;  // GLOW_SUM_CAP
+/** 裁定L/N: Ldomベクトル・Σw_g とも同じ時定数(ms)で指数平滑する(角度ではなくベクトルを平滑)。 */
+const SHADOW_LDOM_SMOOTH_MS = 180;
+/** 裁定L: 平滑後の |Ldom| がこの値未満の間は、前フレームの向きを保持する(0通過での反転を防ぐ)。 */
+const SHADOW_LDOM_HOLD_BELOW = 0.35;
+/** 支配光に強glowが参加する条件は旧投影影と同じ(effects[] の kind==='glow' && radius>=STRONG_GLOW_RADIUS)。
+ * 松明/焚き火/城・商人のグロー/緑卵の光/プレイヤーライトはスプライトでありeffectではないため対象外
+ * (§3-9-B確定)。`?evshadow=0` は「支配光に強glowを参加させない(環境光のみ)」の意味(裁定O)。 */
+const SHADOW_GLOW_REACH_MULT = LOCAL_EVENT_SHADOW_REACH_MULT; // 旧投影影の reach と同じ式を流用
+
+// ---- 浮遊(§3-9-B確定) --------------------------------------------------------------------
+const SHADOW_FLOAT_T_HEIGHT_MULT = 1.2; // t = min(1, h / (絵の高さ×1.2))
+const SHADOW_FLOAT_SHRINK = 0.35;       // 小さく: ×(1-0.35t)
+const SHADOW_FLOAT_FADE = 0.5;          // 薄く: ×(1-0.5t)
+/** 高さ(=論理の足元Yと実際の描画足元Yの差)の不感帯(px)。これ以下は高さ0扱い。 */
+const SHADOW_HEIGHT_DEADZONE_PX = 6;
+
+// ---- 地平線帯の詰め(昼のみ実質的に効く。§3-9-B確定) -----------------------------------------
+const SHADOW_HORIZON_TRIM_DEADZONE_PX = 12;
+const SHADOW_HORIZON_TRIM_SMOOTH_MS = 180;
+
+// ---- キャッシュ/ベイク予算(§3-9-B確定・実測前提の見積り) --------------------------------------
+const SHADOW_SIL_CACHE_BUDGET_BYTES = 32 * 1024 * 1024;
+const SHADOW_BAKE_BUDGET_PER_FRAME = 4;
+
+// ---- 静止物(木/壁/プロップ/city props/建物)の距離クロスフェード(旧 OBJECT_SHADOW_MAX の代替) ------
+// ★未決E(閾値は実測後に決める・§3-9-B確定文言どおり初期値で着手): 可視域からの距離(px、
+// distanceOutsideViewport=ズーム引き込みの可視域基準)でフェード。0px=可視域内→α1、
+// FADE_RANGE_PX 進むとα0でメッシュ解放(裁定I: 猶予後に実解放)。
+const SHADOW_STATIC_FADE_MARGIN_PX = 150; // この距離までは可視域内扱い(isNearScreenの既定padと同じ)
+const SHADOW_STATIC_FADE_RANGE_PX = 250;  // ここからさらにこの距離でα1→0
+/** 裁定I: 非表示が続いたメッシュを実解放するまでの猶予(ms)。画面出入りの毎フレーム destroy/recreate を避ける。 */
+const SHADOW_MESH_GC_MS = 4000;
+
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure', 'lab-clear-item']);
 
@@ -1913,6 +2002,9 @@ interface ActorView {
   // idol の殴りの向き。**予告の赤帯は毎フレームのプレイヤー方向で描かれる**(判定側 idolHateAim も
   // windup終わりに評価する)ので、拳の絵も同じ値を追い続け、着弾後はその最後の値で固まる。
   punchAim?: number;
+  // ★§3-9-B v9: 影用の"退場・死亡由来のみ"のフェード係数(既定1)。地平線フェード/裏回り透け/
+  // GHOST_ALLY_ALPHA/無敵点滅/演出用の一時透過は含めない(影側が別途持つ・二重掛け防止)。
+  shadowFade?: number;
 }
 
 interface PropView {
@@ -1956,6 +2048,68 @@ const SNOW_WIND_FACTOR = 0.5; // プレイヤー速度に対する雪の流れ�
 
 // 診断用: URLに ?dancevfx=0 を付けるとダンスのPixi描画(ミラーボール/サークル/矢印/暗転/発光)を一切出さない。
 const RHYTHM_VFX_OFF = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dancevfx') === '0';
+
+// =============================================================================
+// §3-9-B v9: 影リクエスト構造体。旧実装(`?silshadow=0`)の呼び出し互換のため legacy* を残しつつ、
+// 新実装は raw* (絵の表示実寸。設計チャット裁定A) を読む。1つの構造体に両方乗せて呼び出し側の
+// 分岐を作らず、`placeShadow()` 内部だけで新旧を切り替える。
+// ---------------------------------------------------------------------------
+/** 旧実装(placeShadowSprite)がそのまま使っていた個体別係数の種別。§3-9-B v9裁定Aの互換用。 */
+type LegacyShadowKind = 'actor' | 'tree' | 'wallOrProp' | 'fixed' | 'boss';
+
+interface ShadowCasterReq {
+  id: string;
+  x: number;      // 足元 world X
+  y: number;      // 足元 world Y(§3-9-B v9裁定C: -2 オフセットは新経路では付けない。呼び出し側の
+                   // 値をそのまま足元として使う)
+  legacyW: number; // 旧実装にそのまま渡す最終影幅(?silshadow=0 用。呼び出し側で旧係数を掛けた値)
+  legacyKind: LegacyShadowKind;
+  legacyTint?: number;
+  legacyAlphaMult?: number;
+  legacyFlatSize?: { w: number; h: number }; // 裏ボス専用(旧実装のみ)
+  rawW: number;    // 絵の表示実寸(幅)。新実装の入力(§3-9-B v9裁定A)
+  rawH: number;    // 絵の表示実寸(高さ)。新実装の長さ計算に使う
+  texture: Texture | null; // シルエット用。null=接地2枚のみ(未ロード or シルエット対象外)
+  alpha: number;   // 位置由来alpha(horizonActorAlpha等)。新旧共通の入力
+  shadowFade?: number; // 退場/死亡由来のみ(既定1)
+  flip?: boolean;
+  scaleMult?: number;  // 接地2枚にのみ掛ける個体係数(PLAYER_SHADOW_SCALE)。新実装専用
+  silhouetteExempt?: boolean; // 松明/焚き火/緑卵=接地2枚のみ
+  isStatic?: boolean;  // 木/壁/プロップ/city props/建物=距離クロスフェード(縮退)の対象
+  heightPx?: number;   // 浮遊時の高さ(px, world単位)。省略=0(地上)
+}
+
+/** ベイク済みシルエットテクスチャ+その幾何メタ(裁定F: pad補正に使う)。 */
+interface SilhouetteBake {
+  texture: Texture;
+  pad: number;     // ベイク時に追加した余白(px、原寸=resolution1)
+  srcW: number;    // 元テクスチャの幅(px)
+  srcH: number;    // 元テクスチャの高さ(px)
+  bytes: number;   // 常駐バイト数の見積り(width×height×4)
+}
+
+/**
+ * 商人/イベントNPC/城/病院/武器庫/警察署/拾い物の影リクエスト(各 sync が可視時に設定)。
+ * legacyW=旧実装(?silshadow=0)がそのまま使う固定px。rawW/rawH/texture=新実装の表示実寸(裁定A)。
+ */
+interface BuildingShadowReq {
+  x: number; y: number;
+  legacyW: number;
+  rawW: number; rawH: number;
+  texture: Texture | null;
+  alpha: number;         // 位置由来(horizonActorAlpha等)のみ
+  shadowFade?: number;   // 退場由来のみ(既定1。例: イベントNPC完了後のフェード)
+  isStatic?: boolean; // 建物=距離クロスフェード対象(木/壁/プロップ/city propsと同じ扱い)
+}
+
+/** 新影プールの1体ぶん(接地2枚+シルエットメッシュ)。裁定I: メッシュはdestroyせずvisible=falseで温存。 */
+interface ShadowPoolEntry {
+  core: Sprite;
+  outer: Sprite;
+  mesh: PerspectiveMesh | null; // 未生成 or シルエット対象外 = null
+  lastSeenAt: number;           // 裁定I: この時刻からSHADOW_MESH_GC_ms非表示が続いたら実解放
+  lastMeshTexture: Texture | null;
+}
 
 export class PixiScene {
   private L: SceneLayers;
@@ -2098,13 +2252,14 @@ export class PixiScene {
   private shadowContainer = new Container();
   private shadowPool = new Map<string, Sprite>();
   // 商人/イベントNPC/城/拾い物 のソフト影リクエスト(各 sync が可視時に設定、syncShadows が配置)。
-  private merchantShadow: { x: number; y: number; w: number; alpha: number } | null = null;
-  private npcShadow: { x: number; y: number; w: number; alpha: number } | null = null;
-  private castleShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  // §3-9-B v9裁定A: legacyW=旧実装用の固定px(?silshadow=0)。rawW/rawH/texture=新実装用の表示実寸。
+  private merchantShadow: BuildingShadowReq | null = null;
+  private npcShadow: BuildingShadowReq | null = null;
+  private castleShadow: BuildingShadowReq | null = null;
   // 洋館再訪(the ONE): true の間、城(洋館)の画面端マーカーをボス未出現でも表示する。
   private revisitMarker = false;
   // 拾い物は複数あるので配列で要求(id は 'pk:'+pickup.id)。syncPickups が毎フレーム作り直す。
-  private pickupShadows: { id: string; x: number; y: number; w: number; alpha: number }[] = [];
+  private pickupShadows: (BuildingShadowReq & { id: string })[] = [];
   private introUntil = 0;       // 登場演出の終了時刻(store から毎フレーム反映)
   private introActive = false;  // 登場演出中(影スキップ判定用)
   // 障害物の「裏に回ったら透ける」用: プレイヤーの足元矩形(world)とフェードlerp係数を毎フレ更新。
@@ -2153,13 +2308,13 @@ export class PixiScene {
   private baseSitesGfx = new Graphics(); // 拠点候補地サークル(地面・world座標。滞在で外周が満ちる)
   private hospitalSprite = new Sprite(); // 廃病院の本体(足元アンカー・actorLayer で y-sort)
   private hospitalGfx = new Graphics(); // 病院サークル(地面・world座標。滞在で外周が満ちる)
-  private hospitalShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  private hospitalShadow: BuildingShadowReq | null = null;
   // §6.24 M48: 武器庫(病院と同じサークル+滞在の枠組み)/警察署(建物のみ・アリーナ方式でサークルなし)。
   private armorySprite = new Sprite();
   private armoryGfx = new Graphics();
-  private armoryShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  private armoryShadow: BuildingShadowReq | null = null;
   private policeSprite = new Sprite();
-  private policeShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  private policeShadow: BuildingShadowReq | null = null;
   private hunterVisionGfx = new Graphics(); // ハンターの視界(索敵)範囲=薄い紫サークル(地面・world座標)
   private bossCorpseSprite = new Sprite(); // 裏ボス討伐時のフェードアウト演出(頭基準・world座標。store.bossCorpse を参照)
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
@@ -5611,7 +5766,10 @@ export class PixiScene {
     this.castleShadow = {
       x: castle.x,
       y: castleFootScreenY,
-      w: Math.min(120 * d, tex.width * sc * 0.42),
+      legacyW: Math.min(120 * d, tex.width * sc * 0.42),
+      rawW: tex.width * sc,
+      rawH: tex.height * sc,
+      texture: tex,
       alpha: horizonAlpha * 0.8,
     };
 
@@ -5696,7 +5854,12 @@ export class PixiScene {
     );
 
     // 接地影は syncShadows のソフト方向影に統一(可視時のみリクエスト)。
-    this.merchantShadow = { x: merchant.x, y: merchant.y, w: 82 * d, alpha: horizonAlpha };
+    this.merchantShadow = {
+      x: merchant.x, y: merchant.y,
+      legacyW: 82 * d,
+      rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
+      alpha: horizonAlpha,
+    };
 
     const g = this.merchantGfx;
     g.clear();
@@ -5782,7 +5945,14 @@ export class PixiScene {
     );
 
     // 接地影は syncShadows のソフト方向影に統一(可視時のみリクエスト。フェード中は statusAlpha 反映)。
-    this.npcShadow = { x: npc.x, y: npc.y, w: 84 * d, alpha: horizonAlpha * statusAlpha };
+    // §3-9-B v9裁定Q: statusAlpha は納品完了後の退場フェード(存在の法則)なので shadowFade へ
+    // (alpha=位置由来のみ。地平線フェードとの二重掛けを避けるため分けて渡す)。
+    this.npcShadow = {
+      x: npc.x, y: npc.y,
+      legacyW: 84 * d,
+      rawW: tex.width * sc * breathX, rawH: tex.height * sc * breathY, texture: tex,
+      alpha: horizonAlpha, shadowFade: statusAlpha,
+    };
 
     const g = this.eventNpcGfx;
     g.clear();
@@ -12230,10 +12400,13 @@ export class PixiScene {
     // 裏に回り込んだら透ける(木/城/プロップと同じ規格)。入手後のフェードを最後に掛ける。
     this.applyObstacleAlpha(this.hospitalSprite, footY);
     this.hospitalSprite.alpha *= fade;
+    // §3-9-B v9裁定Q: fade(入手後の退場フェード)は存在の法則なので shadowFade へ分離
+    // (alpha=位置由来のみ。地平線フェードとの二重掛けを避ける)。
     this.hospitalShadow = {
       x: pos.x, y: footY,
-      w: Math.min(180 * d, tex.width * sc * 0.42),
-      alpha: horizonAlpha * 0.8 * fade,
+      legacyW: Math.min(180 * d, tex.width * sc * 0.42),
+      rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
+      alpha: horizonAlpha * 0.8, shadowFade: fade,
     };
 
     // サークルは「近づいたら」出す(社長指示)。距離でフェードイン=遠くから見えて煩くならない。

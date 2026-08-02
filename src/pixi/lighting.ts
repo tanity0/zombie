@@ -808,3 +808,38 @@ export const getSoftShadowTexture = (): Texture => {
   softShadowTex = Texture.from(canvas);
   return softShadowTex;
 };
+
+// ---------------------------------------------------------------------------
+// research/LIGHT_REWORK.md §3-9-B v8「テクスチャの焼き方」: 接地2枚(芯/外側)専用の新カーブ。
+// getSoftShadowTexture の 0→1/0.66→0.94/1→0 は「ベタ塗りの正体」として名指しで否定されたカーブ
+// (§3-9-B v5訂正)なので流用しない。ここに新規で焼く。起動時に1回だけ・以後キャッシュ。
+let shadowCoreTex: Texture | null = null;
+let shadowOuterTex: Texture | null = null;
+
+const bakeRadialAlphaCurve = (stops: [number, number][]): Texture => {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const r = size / 2;
+  const g = ctx.createRadialGradient(r, r, 0, r, r, r);
+  for (const [offset, alpha] of stops) g.addColorStop(offset, `rgba(0,0,0,${alpha})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  return Texture.from(canvas);
+};
+
+/** 接地の芯(§3-9-B v8): 0→1 / 0.52→0.93 / 0.82→0.40 / 1→0。 */
+export const getShadowCoreTexture = (): Texture => {
+  if (shadowCoreTex) return shadowCoreTex;
+  shadowCoreTex = bakeRadialAlphaCurve([[0, 1], [0.52, 0.93], [0.82, 0.40], [1, 0]]);
+  return shadowCoreTex;
+};
+
+/** 接地の外側(§3-9-B v8): 0→0.95 / 0.25→0.80 / 0.6→0.42 / 1→0(社長承認モックのカーブ)。 */
+export const getShadowOuterTexture = (): Texture => {
+  if (shadowOuterTex) return shadowOuterTex;
+  shadowOuterTex = bakeRadialAlphaCurve([[0, 0.95], [0.25, 0.80], [0.6, 0.42], [1, 0]]);
+  return shadowOuterTex;
+};
