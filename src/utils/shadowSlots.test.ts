@@ -78,9 +78,24 @@ describe('glowLenMult: 伸び(位置だけで決まる)', () => {
 });
 
 describe('濃さ', () => {
-  it('爆発シルエットαは falloff×life に比例', () => {
-    expect(explosionSilAlpha(0.46, 0.5, 0.5)).toBeCloseTo(0.46 * 0.25, 6);
+  it('★爆発シルエットは「環境光から受け取った濃さ」を引き継ぐ(1でクランプ)', () => {
+    // score=0.25 → 0.25×2.0=0.5 ぶん受け取る(環境光は 1-0.5=0.5 残る)=足して base
+    expect(explosionSilAlpha(0.46, 0.5, 0.5)).toBeCloseTo(0.46 * 0.5, 6);
     expect(explosionSilAlpha(0.46, 1, 1)).toBeCloseTo(0.46, 6);
+  });
+
+  it('★Σ=0.5(環境光が消えきる点)で爆発シルエットが base に達する=v9 の絵と一致する', () => {
+    const base = 0.46;
+    expect(ambientSilAlpha(base, 0.5)).toBe(0);              // 環境光は消えきり
+    expect(explosionSilAlpha(base, 0.5, 1)).toBeCloseTo(base, 6); // 爆発が丸ごと受け取る
+  });
+
+  it('★環境光+爆発の合計が base を保つ(濃さが痩せない=「伸びていない」に見えない)', () => {
+    const base = 0.46;
+    for (const score of [0, 0.1, 0.2, 0.3, 0.4, 0.5]) {
+      const total = ambientSilAlpha(base, score) + explosionSilAlpha(base, score, 1);
+      expect(total).toBeCloseTo(base, 6);
+    }
   });
   it('life は 0..1 でクランプ(壊れた値で濃くならない)', () => {
     expect(glowScore(1, 5)).toBe(1);

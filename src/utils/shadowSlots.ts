@@ -62,9 +62,20 @@ export const glowLenMult = (
 export const glowScore = (falloff: number, life: number): number =>
   Math.max(0, falloff) * Math.max(0, Math.min(1, life));
 
-/** 爆発シルエットのα。`SHADOW_SIL_ALPHA_BASE × falloff × life`。 */
-export const explosionSilAlpha = (baseAlpha: number, falloff: number, life: number): number =>
-  baseAlpha * glowScore(falloff, life);
+/**
+ * 爆発シルエットのα。
+ *
+ * ★v0.25.2800(社長「爆発でも伸びてないよ / 画面が暗くなるだけ」): 素の `base × falloff × life` は
+ * **環境光を洗う量と釣り合わない**。実測(手榴弾相当の光・距離152px)で
+ * `score=0.313` ⇒ 環境光 0.173 / 爆発 **0.144**(v9 は勝者1枚で **0.46**)=**約1/3の濃さ**になり、
+ * **伸びた影が見えない**(社長には「伸びていない」ように見える)。
+ * ⇒ **環境光から受け取った濃さをそのまま引き継ぐ**ように `wash` を掛けて 1 でクランプする。
+ * これで `Σ=0.5`(=環境光が消えきる点=v9の勝者交代点)で **爆発シルエットが `base` に達し、v9の絵と一致する**。
+ * 設計書 §3-9-C の「中距離でも実質1枚になり v9 の絵に寄る」という狙いは、この形で初めて成立する。
+ */
+export const explosionSilAlpha = (
+  baseAlpha: number, falloff: number, life: number, wash: number = SHADOW_AMB_WASH,
+): number => baseAlpha * Math.min(1, glowScore(falloff, life) * wash);
 
 /**
  * 環境光シルエットのα。★Σ は**実際に描いている爆発シルエットのぶんだけ**を渡すこと。

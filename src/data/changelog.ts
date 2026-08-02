@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2800',
+    items: [
+      '爆発の光で伸びる影が薄すぎて見えなかったのを直しました。',
+    ],
+  },
+  {
     version: '0.25.2799',
     items: [
       'ゲーム内容の変更はありません（影の伸び方を調べるスイッチを足しました）。',
