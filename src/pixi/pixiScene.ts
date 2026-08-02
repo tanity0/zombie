@@ -17,7 +17,7 @@ import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sp
 import type { ColorMatrix } from 'pixi.js';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
-import { shadowProbeCount, shadowProbeMode } from './shadowProbe'; // 影ベンチのプローブ(計測専用)
+import { shadowProbeCount, shadowProbeMode, shadowProbeStretch } from './shadowProbe'; // 影ベンチのプローブ(計測専用)
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
@@ -7488,6 +7488,8 @@ export class PixiScene {
   // ★見え方には一切関与しない。`setShadowProbe(0, ...)` の間は1フレームも触らない。
   // 目的: 影の作り替え(§3-9-B v7)が前提にしている **PerspectiveMesh 1枚のコスト**を
   //       **実装前に**測る。ここが高いと台形をやめる=設計ごと作り直しになるため。
+  // 仕様(§3-9-B v8)の `GLOW_SUM_CAP` と同じ値。ここを変えたら仕様側も揃えること。
+  private static readonly PROBE_GLOW_SUM_CAP = 2.0;
   private probeMeshes: PerspectiveMesh[] = [];
   private probeSprites: Sprite[] = [];
   private probeTexes: Texture[] = [];
@@ -7526,6 +7528,7 @@ export class PixiScene {
       return;
     }
     const mode = shadowProbeMode();
+    const stretch = shadowProbeStretch();
     const useMesh = mode !== 'sprite';
     const perTex = mode === 'meshtex'; // 1枚ずつ別テクスチャ=バインドの代金を測る
     // 画面いっぱいに散らす。位置・大きさ・向きを**毎フレーム動かす**
@@ -7536,10 +7539,16 @@ export class PixiScene {
       const fx = ((i * 97) % 100) / 100 * vw + camera.x;
       const fy = ((i * 53) % 100) / 100 * vh + camera.y;
       const wobble = Math.sin(now / 420 + i * 0.9);
-      const len = 120 + wobble * 26;
-      const halfNear = 16 + wobble * 3;   // 足元=細い
-      const halfFar = 46 + wobble * 6;    // 先端=広い
-      const ang = 1.17 + Math.sin(now / 900 + i * 0.37) * 0.35; // 支配光が振れる想定
+      // ★「爆発で伸びる」の再現(社長指摘 v0.25.2740)。stretch=0 の段は従来どおり伸びない。
+      // Σw_g が 0〜GLOW_SUM_CAP(2.0) を脈打つ ⇒ 長さ ×(1+0.9×Σ) = 最大2.8倍。
+      // これで **塗る面積(フィルレート)** と **4隅の振れ幅** の両方が本番と同じ形になる。
+      const sigma = stretch > 0 ? stretch * PixiScene.PROBE_GLOW_SUM_CAP * (0.5 + 0.5 * Math.sin(now / 1100 + i * 0.05)) : 0;
+      const lenMul = 1 + 0.9 * sigma;
+      const len = (120 + wobble * 26) * lenMul;
+      const halfNear = 16 + wobble * 3;              // 足元=細い(伸びても足元は絞ったまま)
+      const halfFar = (46 + wobble * 6) * (1 + 0.35 * sigma); // 先端は少し広がる
+      // 支配光が振れる想定。爆発が効いている時ほど大きく振れる。
+      const ang = 1.17 + Math.sin(now / 900 + i * 0.37) * (0.35 + 0.9 * sigma);
       const ux = Math.cos(ang), uy = Math.sin(ang);
       const px = -uy, py = ux; // 光方向に直交
       const tipX = fx + ux * len, tipY = fy + uy * len;

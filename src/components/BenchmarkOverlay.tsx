@@ -73,6 +73,7 @@ type BenchmarkProfile = {
   // このプロジェクトはメッシュを1枚も描いたことがない=1枚の値段が未知。実装前にここだけ測る。
   probeCount: number;
   probeMode: ShadowProbeMode;
+  probeStretch: number;  // ★爆発で影が伸びる分(0=伸びない / 1=最大2.8倍まで脈打つ)
 };
 
 const P = (
@@ -83,12 +84,12 @@ const P = (
   torchCount: number, projectileCount: number,
   yOscillation: number, shadowJitter: number,
   mineCount: number,
-  probeCount = 0, probeMode: ShadowProbeMode = 'mesh'
+  probeCount = 0, probeMode: ShadowProbeMode = 'mesh', probeStretch = 0
 ): BenchmarkProfile => ({
   id, category, label, enemyTarget, heavy,
   glowCount, ringCount, particleCount, slashCount, dmgCount, imageCount,
   torchCount, projectileCount, yOscillation, shadowJitter, mineCount,
-  probeCount, probeMode,
+  probeCount, probeMode, probeStretch,
 });
 
 // §5.24 M23(社長採用v0.25.1538): 「軽すぎる段を毎回律儀に走る」不満を解消するため、各カテゴリを
@@ -173,6 +174,20 @@ export const BENCHMARK_PROFILES: BenchmarkProfile[] = [
 
   P('SX3', 'SHD-MT', 'MT90', 14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 90, 'meshtex'),
   P('SX1', 'SHD-MT', 'MT40', 14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 40, 'meshtex'),
+
+  // ★v0.25.2740(社長指摘「これ影伸びてないけどそのテストは要らないの?」)。
+  // 上の3系統は**静止した90枚**しか測っていない=**いちばん重くなる瞬間を測っていない**。
+  // 「爆発で影が伸びる」は §3-9-B v8 の中核なので、伸びた状態を必ず測る。
+  // 伸びると増えるもの: ①**塗る面積が最大2.8倍**(フィルレート) ②**4隅の振れ幅**
+  //                    ③本番では**静止物(木/壁/建物)まで爆発中は全部4隅が動く**
+  //
+  // ★読み方(3つの差で読む):
+  //   SM3(M90・伸びなし・glow0)  → XS3(X90・**伸びあり**・glow0)  = **伸びの代金(面積+振れ)**
+  //   XS3(glow0)                → XG3(X90・伸びあり・**glow12**) = **爆発と同居した時の代金**
+  //   XG3 を `?evshadow=0` で1本、`=1` で1本 ⇒ **旧投影影を消した"あとの世界"との比較**
+  //     (`=1` は「新旧が二重に乗った状態」=実装途中でしか起きない。**判断に使うのは `=0`**)
+  P('XS3', 'SHD-X',  'X90',   14, false,  0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 90, 'meshtex', 1),
+  P('XG3', 'SHD-XG', 'XG90',  14, false, 12, 0, 0, 0, 0, 0, 2, 0, 16, 6, 0, 90, 'meshtex', 1),
 ];
 
 // ★基準段(canary)の負荷。暖機と、系統の切れ目ごとの「端末の今の速さ」測定に使う。
@@ -562,7 +577,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const spawnImageMark = useGameStore(state => state.spawnImageMark);
 
   const cleanupBenchmarkObjects = useCallback(() => {
-    setShadowProbe(0, 'mesh'); // ★影プローブを必ず止める(ベンチ終了後にゲームへ持ち込まない)
+    setShadowProbe(0, 'mesh', 0); // ★影プローブを必ず止める(ベンチ終了後にゲームへ持ち込まない)
     spawnedEnemyIdsRef.current.forEach(removeEnemy);
     spawnedEnemyIdsRef.current.clear();
     benchEnemyBaseRef.current = {};
@@ -786,7 +801,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     // ★影プローブ(計測専用)。段ごとに枚数/モードを切り替える。
     // 暖機・基準段・検算段は CANARY_PROFILE / 再現段の値を使うので、ここに置けば
     // 「基準段では0枚」が自動で守られる(=段どうしの差がプローブの差だけになる)。
-    setShadowProbe(profile.probeCount, profile.probeMode);
+    setShadowProbe(profile.probeCount, profile.probeMode, profile.probeStretch);
 
     const runBenchmarkTick = () => {
       const elapsed = performance.now() - startedAt;

@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.2740 — 影ベンチ1本目=合格 / ★「伸びた状態」の段を追加(社長指摘)【2026-08-02 14:44 JST】
+
+**1本目の結果(社長・実機 v0.25.2737 / `?benchonly=SHD-S,SHD-M,SHD-MT`)**
+| 段 | Δadj | avg | min | sd | n |
+|---|---|---|---|---|---|
+| SHD-M **M90**(メッシュ・共有テクスチャ) | **+0.0ms** | 60.0 | 60 | 0.5 | 161 |
+| SHD-S **S90**(スプライト・共有テクスチャ) | **+0.0ms** | 60.0 | 60 | 0.6 | 161 |
+| SHD-MT **MT90**(メッシュ・**1枚ずつ別テクスチャ**) | **+0.0ms** | 59.9 | 59 | 0.7 | 160 |
+canary 60.0×4 / drift −0.0ms / repeat shift +0.0ms ⇒ **熱ダレ無し**。全段 PASS・SAFE。
+⇒ **メッシュ90枚でも、1枚ずつ別テクスチャにしても60fpsを割らない。**
+⇒ **`PerspectiveMesh` を使う前提(v8の台形)はこのまま進めてよい。**
+★**ただし全段が vsync 天井なので「90枚では割らない」までしか分かっていない**
+(1枚あたりの実コストは測れていない=端末に余裕があるという意味)。
+
+**★社長指摘「これ影伸びてないけどそのテストは要らないの?」= 抜けていた。段を追加した。**
+1本目は**静止した90枚**しか測っておらず、**いちばん重くなる瞬間**が入っていなかった。
+伸びると増えるのは ①**塗る面積が最大2.8倍**(フィルレート) ②**4隅の振れ幅**
+③本番では**静止物(木/壁/建物)まで爆発中は全部4隅が動く**。
+- `shadowProbe.ts`: `setShadowProbe(count, mode, stretch)` に **stretch** を追加。
+  Σw_g が 0〜`GLOW_SUM_CAP`(2.0) を脈打ち、**長さ ×(1+0.9×Σ)=最大2.8倍**・向きも大きく振れる。
+- `pixiScene.ts`: 先端の幅も少し広げ、振れ幅を Σ に比例させた(仕様の `GLOW_SUM_CAP` と同じ定数を持つ)。
+- `BenchmarkOverlay.tsx`: 2系統を追加。
+  | 系統 | 中身 | 差が意味するもの |
+  |---|---|---|
+  | `SHD-X`(X90) | 90枚・**伸びあり**・glow0 | **M90との差 = 伸びの代金** |
+  | `SHD-XG`(XG90) | 90枚・伸びあり・**強glow12＋松明2** | **X90との差 = 爆発と同居した代金** |
+- **回し方**: `?benchonly=SHD-X,SHD-XG` を **`?evshadow=0` で1本、`?evshadow=1` で1本**。
+  ★**判断に使うのは `evshadow=0`**(旧投影影を廃止した"あとの世界")。`=1` は新旧が二重に乗った
+  状態で**実装途中でしか起きない**。
+
+**変更ファイル**: `src/pixi/shadowProbe.ts` / `src/pixi/pixiScene.ts` /
+`src/components/BenchmarkOverlay.tsx` / `research/LIGHT_REWORK.md` / `package.json` / `src/data/changelog.ts`
+**検証**: `npm run typecheck` / `npm run lint` エラー0。
+**次の引き継ぎ**: 社長が `?benchonly=SHD-X,SHD-XG&evshadow=0` を1本(＋比較用に `evshadow=1` を1本)。
+これで着手可否が確定する。co は Worker のデプロイURL待ち。
+
 ## v0.25.2739 — CO-3 検収=**不合格・差し戻し**(12件)【2026-08-02 14:33 JST】
 
 **納品**: `codex/coop-online-3` / `16fad0be`(3009行)。typecheck/lint/`vitest run src/online`(19本)通過、

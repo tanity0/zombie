@@ -30,12 +30,22 @@ export type ShadowProbeMode = 'mesh' | 'sprite' | 'meshtex';
 
 let probeCount = 0;
 let probeMode: ShadowProbeMode = 'mesh';
+let probeStretch = 0;
 
-/** ベンチ側から毎tick呼ぶ。count=0 で完全に停止(プールも破棄される)。 */
-export const setShadowProbe = (count: number, mode: ShadowProbeMode) => {
+/**
+ * ベンチ側から毎tick呼ぶ。count=0 で完全に停止(プールも破棄される)。
+ * `stretch` は「爆発で影が伸びる」の再現(社長指摘 v0.25.2740「これ影伸びてないけど」):
+ *   0 = 伸びない(平常時の段)
+ *   1 = 支配光の Σw_g が 0〜GLOW_SUM_CAP(2.0) を脈打つ
+ *       ⇒ 長さ ×(1 + 0.9×Σ) = **最大2.8倍**、向きも大きく振れる
+ * これを入れないと **①塗る面積が2.8倍 ②4隅の振れ幅** を取りこぼす。
+ */
+export const setShadowProbe = (count: number, mode: ShadowProbeMode, stretch = 0) => {
   probeCount = Math.max(0, count | 0);
   probeMode = mode;
+  probeStretch = Math.max(0, stretch);
 };
 
 export const shadowProbeCount = (): number => probeCount;
 export const shadowProbeMode = (): ShadowProbeMode => probeMode;
+export const shadowProbeStretch = (): number => probeStretch;
