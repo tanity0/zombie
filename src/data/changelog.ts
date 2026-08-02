@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2798',
+    items: [
+      '爆発やレベルアップの光で伸びた影が、消える時に回りながら戻る現象を直しました（伸びたまま薄くなって消えます）。',
+      '光が2つある時は、影も2本出るようになりました。',
+    ],
+  },
+  {
     version: '0.25.2797',
     items: [
       'ゲーム内容の変更はありません（影の作り替えの下準備）。',

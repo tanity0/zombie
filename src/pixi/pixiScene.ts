@@ -105,6 +105,11 @@ import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
 import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
+import {
+  glowFalloff, glowLenMult, glowScore, explosionSilAlpha, ambientSilAlpha,
+  pickExplSlot, rankFade, shouldFreezeGeom,
+  SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS,
+} from '../utils/shadowSlots';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
@@ -1692,25 +1697,27 @@ const SHADOW_SIL_ALPHA_BASE = 0.46;
 // ★これ以上、実装側の判断で既定値を動かさない(★未決E=実機で社長がツマミで決める)。
 const SHADOW_GLOW_WEIGHT = tsNum('glowweight', 2.2);   // GLOW_SHADOW_WEIGHT(既定1.6→2.2)
 const SHADOW_GLOW_STRETCH = tsNum('glowstretch', 0.9); // GLOW_STRETCH(長さ倍率 = 1 + STRETCH×min(Σw_g, CAP))
-const SHADOW_GLOW_DARKEN = 0.6;   // GLOW_DARKEN(濃さ倍率 = 1 + DARKEN×min(Σw_g, CAP))。ツマミ対象外(社長指示)
-const SHADOW_GLOW_SUM_CAP = tsNum('glowsumcap', 2.0);  // GLOW_SUM_CAP
+// ★v12: `SHADOW_GLOW_DARKEN` と `darkMult` は **placeShadowV9 が一度も読んでいない死にコード**だった
+// (監査が発見)。=v9 に「爆発で影が濃くなる」挙動は存在しなかった。⇒ 削除。
+// ★v12: 旧 `SHADOW_GLOW_SUM_CAP` は `SHADOW_GLOW_LEN_CAP`(shadowSlots.ts・同値2.0)へ改名。
+// 最大の伸びは 1+0.9×2.0=2.8倍 で v9 と一致する(実機で見てきた最大長が変わらない)。
 /** ★S-3(社長実機報告「勢いがない」への訂正裁定。S-1の「上り50ms」は撤回): `life` が生成直後から
  * 線形に減り始めるため、上りに50msでも平滑を掛けると目標値自体が下がった所へ追いつく形になり
  * 「丸い山」になって勢いが出ない。⇒ **上り(Σ/Ldomベクトルが増える方向)は平滑ゼロ(即時)**、
  * **下りだけ** この時定数(ms)で指数平滑する。反転防止(裁定L・下記HOLD_BELOW)は下り側で起きるため、
  * 上りを即時にしても安全。 */
-const SHADOW_LDOM_RELEASE_MS = 220;
+// ★v12で廃止: const SHADOW_LDOM_RELEASE_MS = 220;
 /** ★S-4(社長実機報告「勢いがない」): Σが立ち上がった瞬間から この時間(ms)だけ、長さ倍率に
  * `SHADOW_GLOW_PUNCH` を掛けるオーバーシュート。「滑らかに近づく動き」ではなく「行き過ぎて戻る動き」
  * で"勢い"を出す。濃さ(DARKEN)には掛けない(点滅に見えるため・社長指示)。`?glowpunch=1`で無効化。 */
-const SHADOW_GLOW_PUNCH_MS = 90;
-const SHADOW_GLOW_PUNCH = tsNum('glowpunch', 1.25);
+// ★v12で廃止: const SHADOW_GLOW_PUNCH_MS = 90;
+// ★v12で廃止: const SHADOW_GLOW_PUNCH = tsNum('glowpunch', 1.25);
 // ★S-5(社長実機報告「回転しながら戻る」への方式変更): 向きは環境光/各強glowの**ベクトル合成**を
 // やめ、**最も強い1つ(勝者)から直接取る**。合成だと寿命が減る過程で合成ベクトルの向きが連続的に
 // 動き、影が中間角度を全部通って回転してしまう(時間平滑では消えない=足し算そのものの性質)。
 // 勝者だけを見れば「光源が動けば影も動く/光源が消えるだけなら中間角度を通らない」の両方が成り立つ。
 /** 勝者は現在の勝者を this だけ(比率)上回らないと交代しない(チャタリング防止=tipTargetが暴れない)。 */
-const SHADOW_WINNER_HYSTERESIS = 0.2;
+// ★v12で廃止: const SHADOW_WINNER_HYSTERESIS = 0.2;
 // ★S-7(社長実機報告「戻り方の経路が違う(L字)」): S-5の「向きだけクロスフェード」は、勝者交代の
 // 瞬間に長さが変わらないまま角度だけ滑らかに動くため、**先端が「遠くへ伸びる→横へ回る→縮む」の
 // L字経路**を描いてしまっていた(=向きと長さを別々に平滑した結果)。正しい戻り方は「先端の位置
@@ -1720,7 +1727,7 @@ const SHADOW_WINNER_HYSTERESIS = 0.2;
 /** ★S-7: 先端ベクトル補間の時定数(ms)。伸びる時は即時(社長「1は合ってる」=変更なし)・縮む時だけ
  * この時定数で補間する。`?glowfade=` を流用(名前は据え置き=社長が既に覚えているため)。
  * 既定はΣw_g側の下り(`SHADOW_LDOM_RELEASE_MS`=220ms)と同じ値を採用。`?glowfade=0`で即切替。 */
-const SHADOW_TIP_RELEASE_MS = tsNum('glowfade', 220);
+// ★v12で廃止: const SHADOW_TIP_RELEASE_MS = tsNum('glowfade', 220);
 /** 支配光に強glowが参加する条件は旧投影影と同じ(effects[] の kind==='glow' && radius>=STRONG_GLOW_RADIUS)。
  * 松明/焚き火/城・商人のグロー/緑卵の光/プレイヤーライトはスプライトでありeffectではないため対象外
  * (§3-9-B確定)。`?evshadow=0` は「支配光に強glowを参加させない(環境光のみ)」の意味(裁定O)。 */
@@ -2218,16 +2225,43 @@ interface BuildingShadowReq {
 }
 
 /** 新影プールの1体ぶん(接地2枚+シルエットメッシュ)。裁定I: メッシュはdestroyせずvisible=falseで温存。 */
+/**
+ * ★v12(§3-9-C): シルエットは **光1つ = 1枚**。スロットは `#amb` / `#x0` / `#x1` の**固定3枚**で、
+ * **プール鍵に光IDを使わない**(使うと爆発のたびに PerspectiveMesh+geometry を新規生成し、
+ * GC猶予の間エントリが滞留する=「作っては壊す」に逆戻りする)。
+ * v9 の「1本の影を勝者交代で動かす」= **動かす限り先端の角度が掃く=回る**、が回転の根本原因だった。
+ */
+interface ShadowMeshSlot {
+  /** どのキャスターのスロットか(Σ をキャスター単位で積むため)。 */
+  ownerId: string;
+  mesh: PerspectiveMesh | null;
+  /** `'amb'`=環境光(常時) / 強glowのID / `null`=空き。 */
+  lightId: string | null;
+  /** 直近の `falloff × life`(スロット争いの点数・Σの材料)。 */
+  score: number;
+  /** ★直近に**実際に描いた**α。「見えている影は追い出さない」判定に使う。 */
+  alpha: number;
+  /** 圏外へ出て幾何を凍結したか。★圏内へ戻っても解除しない(解除すると幾何が飛ぶ)。 */
+  frozen: boolean;
+  dirX: number; dirY: number; lenMult: number; falloff: number;
+  lastTexture: Texture | null;
+  /** 光が候補一覧から消えた時刻(0=生きている)。幾何は凍結したまま α だけ落とす。 */
+  fadeOutAt: number;
+  /** 焼き上がって初めて出た時刻(環境光のみ150msフェードイン。★爆発は即時=対象外)。 */
+  fadeInAt: number;
+  // --- 2パス目(枠配り)へ渡す描画パラメータ ---
+  want: boolean;
+  texture: Texture | null;
+  baseAlpha: number;   // SHADOW_SIL_ALPHA_BASE × densityMult × totalAlpha まで掛けた値
+  footX: number; footY: number; drawDirX: number; drawDirY: number; drawLen: number;
+  nearHalf: number; farHalf: number; skewShift: number; uSign: number;
+}
 interface ShadowPoolEntry {
   core: Sprite;
   outer: Sprite;
-  // ★S-5→★S-7: 一時期(S-5)は勝者交代のクロスフェード用に2枚目(meshPrev)を持たせていたが、
-  // S-7で「先端ベクトルを直線補間する」方式に変えたことで角度のクロスフェードが不要になり、
-  // 1体1枚に戻した(社長裁定「メッシュは1体1枚に戻る」)。
-  mesh: PerspectiveMesh | null; // 未生成 or シルエット対象外 = null
+  /** ★固定3枚 `[amb, x0, x1]`。 */
+  slots: ShadowMeshSlot[];
   lastSeenAt: number;           // 裁定I: この時刻からSHADOW_MESH_GC_ms非表示が続いたら実解放
-  lastMeshTexture: Texture | null;
-  meshFadeStartAt: number;      // 焼き上がって初めて出た時刻(150msフェードイン用。§3-9-B確定)
 }
 
 export class PixiScene {
@@ -2400,12 +2434,11 @@ export class PixiScene {
   // tipX/tipY は★S-7で実際に描く先端オフセット(footからの相対px、正規化しない2次元ベクトルの
   // まま補間=これが直線で戻る仕組みの本体)。hasTip=falseの間は初回なので次のplaceShadowV9
   // 呼び出しで即座にスナップする。
-  private shadowWinnerState = new Map<string, {
-    winnerKey: string; winnerDirX: number; winnerDirY: number; winnerStrength: number;
-    sumDark: number; prevRawSum: number; punchUntil: number;
-    tipX: number; tipY: number; hasTip: boolean;
-  }>();
+  // ★v12で廃止: 勝者(支配光)・先端ベクトルの平滑状態。**1本の影を動かすのをやめた**ので、
+  // 記憶しておく「途中の姿」自体が存在しなくなった(=回転が構造的に消える)。
   private lastShadowLdomNow = 0; // 平滑の dt 計算用
+  /** ★v12: `collectShadowGlows` の使い回しバッファ(毎フレーム×キャスター数の配列生成を避ける)。 */
+  private shadowGlowScratch: { key: string; dirX: number; dirY: number; falloff: number; score: number; dist: number; reach: number; inRange: boolean }[] = [];
   // 地平線帯の詰め(§3-9-B確定)の平滑後の長さ。キャスターid別。
   private shadowHorizonTrimState = new Map<string, number>();
   // ★検収差し戻し(中12): テクスチャのαの実体bbox(0..1、テクスチャ高さに対する割合)。1回だけ測って
@@ -8537,10 +8570,7 @@ export class PixiScene {
     // ★S-3: 上りは即時(平滑なし)なのでこのlerpは「下り」専用(SHADOW_LDOM_RELEASE_MS)。
     const dt = this.lastShadowLdomNow ? Math.min(0.1, (now - this.lastShadowLdomNow) / 1000) : 0;
     this.lastShadowLdomNow = now;
-    const releaseLerp = 1 - Math.exp(-dt / (SHADOW_LDOM_RELEASE_MS / 1000));
     const horizonTrimLerp = 1 - Math.exp(-dt / (SHADOW_HORIZON_TRIM_SMOOTH_MS / 1000));
-    // ★S-7: 先端ベクトル(footからのオフセット)そのものを直線補間する時のlerp係数(縮む時だけ使う)。
-    const tipReleaseLerp = 1 - Math.exp(-dt / (SHADOW_TIP_RELEASE_MS / 1000));
 
     // ステージ光の向き(正規化)・伸び比率・濃さ倍率は1フレーム1回だけ計算(全キャスター共通)。
     const lighting = this.lighting();
@@ -8564,7 +8594,7 @@ export class PixiScene {
 
     const seen = new Set<string>();
     const place = (req: ShadowCasterReq) =>
-      this.placeShadowV9(req, seen, now, releaseLerp, horizonTrimLerp, tipReleaseLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
+      this.placeShadowV9(req, seen, now, horizonTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
 
     // ---- プレイヤー ----
     // §3-9-B: 登場演出中も影を出す(旧実装の「introActive中はスキップ」を撤廃)。
@@ -8819,6 +8849,7 @@ export class PixiScene {
       place({ id: 'osh:city:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha, isStatic: true });
     }
 
+    this.finishShadowSilhouettesV12(now); // ★v12 2パス目: 総メッシュ枠の配分 → α決定 → 描画
     this.sweepShadowPoolV9(seen, now);
   }
 
@@ -8840,10 +8871,9 @@ export class PixiScene {
     for (const [, entry] of this.shadowPoolV9) {
       entry.core.destroy();
       entry.outer.destroy();
-      if (entry.mesh) this.destroyShadowMesh(entry.mesh);
+      for (const sl of entry.slots) if (sl.mesh) this.destroyShadowMesh(sl.mesh);
     }
     this.shadowPoolV9.clear();
-    this.shadowWinnerState.clear();
     this.shadowHorizonTrimState.clear();
   }
 
@@ -8980,7 +9010,7 @@ export class PixiScene {
    * 消えるため)。shadowPoolV9は高々90前後なのでO(n)スキャンで十分安い。 */
   private isSilhouetteTextureInUse(bakedTex: Texture): boolean {
     for (const [, entry] of this.shadowPoolV9) {
-      if (entry.mesh && entry.mesh.visible && entry.mesh.texture === bakedTex) return true;
+      for (const sl of entry.slots) if (sl.mesh && sl.mesh.visible && sl.mesh.texture === bakedTex) return true;
     }
     return false;
   }
@@ -9058,105 +9088,35 @@ export class PixiScene {
   // ---- 支配光(Ldom)。裁定K/M/N + 社長実機フィードバック裁定S-3/S-4/S-5 -------------------------
 
   /**
-   * 支配光。1キャスターにつき1回。
-   * ★S-5(社長実機報告「回転しながら戻る」): 向きは**ベクトル合成をやめ、最も強い1つ(勝者)から
-   * 直接取る**(環境光=固定強さ1 / 各強glow=falloff×life×WEIGHT の中で最大のもの)。
-   * 勝者が同じ間は毎フレームその光の現在位置へ直接追従(平滑なし=光源が動けば影も動く)。
-   * 勝者交代はヒステリシス(現在の勝者を`SHADOW_WINNER_HYSTERESIS`だけ上回らないと交代しない)で
-   * チャタリングを抑える。環境光は常に候補に居るので「勝者が居ない/弱すぎる」状態が原理的に
-   * 起きない(裁定Lの0除算/ゼロ交差ガードは不要)。
-   * ★S-7(社長実機報告「戻り方の経路が違う(L字)」): 勝者交代そのものは**即時**(角度のクロス
-   * フェードはしない=このメソッドは常にその瞬間の"生"の勝者方向を返す)。滑らかさは、この
-   * dirX/dirYに長さを掛けた「先端ベクトル」を`placeShadowV9`側で2次元のまま直線補間することで
-   * 出す。
-   * ★S-8(社長実機報告「まだL字」の訂正裁定): S-7では「長さ用のΣも下り220msで平滑する」と
-   * 書いたのが誤りだった。向き(即時)と長さ(220ms遅延)が別々に決まるため、**目標(tipTarget)
-   * そのものがL字を描いており**、先端ベクトルを直線補間しても目標がL字ならL字のままだった
-   * (二重平滑)。⇒ **長さ用のΣ(sigmaLen)は状態を持たず、生のΣw_gをそのまま使う(上りも下りも
-   * 平滑ゼロ)**。爆発が消えた瞬間、tipTarget(向き×長さ)は両成分とも即座に規定位置になり、
-   * **先端ベクトルの直線補間だけが唯一の平滑段**になる。**濃さ用のΣ(sigmaDark)だけ**、従来どおり
-   * 下り220msの平滑を残す(濃さは経路を持たない量なので、平滑しても点滅を防ぐ役にしか立たない)。
-   * `rising`(=**生の**Σw_gが前フレームの生の値より増えたか)を返す: `placeShadowV9`が先端ベクトルを
-   * 即時スナップさせるか補間するかの分岐にこの信号を使う(伸びる時は即時=社長「1は合ってる」=不変)。
-   * ★S-8: rising判定は平滑後の`sumDark`とは比較しない(平滑値と比べると「Σは平滑してよいが
-   * tipTargetは平滑しない」というS-8の前提が壊れるため、前フレームの生Σ=`prevRawSum`と比較する)。
+   * ★v12(§3-9-C): この足元に届いている強glowを列挙する。**v9の「支配光を1つ選ぶ」は廃止**。
+   * 1本の影を勝者交代で動かす限り、先端の角度が必ず掃く=**回る**。社長の実機報告
+   * (`?glowfade=0` だと回らないが即座に戻る)が、回転が「移動」から出ていることを証明していた。
+   * ⇒ v12 は**光ごとに別のシルエットを出し、爆発の影は伸びたまま α だけ落として消す**。
+   *
+   * ★長さ・向きは光の**位置だけ**(`falloff`)で決まる。明るさ(`life`)は**濃さだけ**に効く
+   * (v9 は `falloff × life` を長さに使っていたので、**光が暗くなると影が縮んで**いた)。
    */
-  private computeDominantLight(
-    id: string, x: number, y: number,
-    ambDirX: number, ambDirY: number,
+  private collectShadowGlows(
+    x: number, y: number,
     glowLights: { key: string; x: number; y: number; reach: number; life: number }[],
-    releaseLerp: number, now: number,
-  ): { dirX: number; dirY: number; lenMult: number; darkMult: number; rising: boolean } {
-    let st = this.shadowWinnerState.get(id);
-    if (!st) {
-      st = {
-        winnerKey: 'amb', winnerDirX: ambDirX, winnerDirY: ambDirY, winnerStrength: 1,
-        sumDark: 0, prevRawSum: 0, punchUntil: 0, tipX: 0, tipY: 0, hasTip: false,
-      };
-      this.shadowWinnerState.set(id, st);
-    }
-
-    // 候補探索: 環境光(強さ1・固定) + 各強glow。Σw_g(長さ/濃さ用)も同時に積む。
-    // 現在の勝者がこの一覧の中で"今どれだけ強いか"も同時に拾う(ヒステリシスの比較基準)。
-    let sum = 0;
-    let bestKey = 'amb', bestStrength = 1, bestDirX = ambDirX, bestDirY = ambDirY;
-    let curWinnerStrength = st.winnerKey === 'amb' ? 1 : 0; // 見つからなければ0(=消えた扱い)
-    let curWinnerDirX = st.winnerDirX, curWinnerDirY = st.winnerDirY;
+    out: { key: string; dirX: number; dirY: number; falloff: number; score: number; dist: number; reach: number; inRange: boolean }[],
+  ) {
+    out.length = 0;
     for (let i = 0; i < glowLights.length; i++) {
       const L = glowLights[i];
       const dx = x - L.x, dy = y - L.y;
       const dist = Math.hypot(dx, dy);
-      if (dist < 1 || dist > L.reach) continue; // 裁定K: ゼロ除算ガード(=このglowは候補にもΣにも参加しない)
-      const strength = (1 - dist / L.reach) * L.life * SHADOW_GLOW_WEIGHT; // 裁定M: strengthを混ぜない
-      sum += strength;
-      const dirX = dx / dist, dirY = dy / dist;
-      if (strength > bestStrength) { bestStrength = strength; bestKey = L.key; bestDirX = dirX; bestDirY = dirY; }
-      if (L.key === st.winnerKey) { curWinnerStrength = strength; curWinnerDirX = dirX; curWinnerDirY = dirY; }
+      if (dist < 1) continue; // ゼロ除算ガード(向きが定まらない)
+      const falloff = glowFalloff(dist, L.reach);
+      const inRange = dist <= L.reach;
+      if (falloff <= 0 && inRange) continue; // 圏内で寄与ゼロ(近接ガードの内側)は候補にしない
+      out.push({
+        key: L.key, dirX: dx / dist, dirY: dy / dist,
+        falloff, score: glowScore(falloff, L.life), dist, reach: L.reach, inRange,
+      });
     }
-
-    // 勝者交代はヒステリシスを超えた時だけ(tipTargetのチャタリング防止)。交代そのものは即時
-    // (★S-7: 角度の補間はもうしない。滑らかさは先端ベクトルの直線補間側に任せる)。
-    if (bestKey !== st.winnerKey && bestStrength > curWinnerStrength * (1 + SHADOW_WINNER_HYSTERESIS)) {
-      st.winnerKey = bestKey;
-      st.winnerStrength = bestStrength;
-      st.winnerDirX = bestDirX;
-      st.winnerDirY = bestDirY;
-    } else {
-      // 勝者据え置き: その光の"今の"向きへ直接追従(平滑なし)。光が消えていれば curWinnerStrength=0
-      // だが、それでもヒステリシス的に交代しなかった=環境光すら勝てていない状況は無い(環境光は常に
-      // 強さ1で候補に居るため、消えた光の強さ0は必ず環境光に負ける=次のフレームで即交代する)。
-      st.winnerStrength = curWinnerStrength;
-      st.winnerDirX = curWinnerDirX;
-      st.winnerDirY = curWinnerDirY;
-    }
-
-    // ★S-8: risingは「生のsum」の前フレーム比較で判定する(平滑後のsumDarkとは比べない)。
-    const rising = sum > st.prevRawSum;
-    st.prevRawSum = sum;
-    if (rising) st.punchUntil = now + SHADOW_GLOW_PUNCH_MS; // S-4: 立ち上がりの瞬間だけpunch窓を開く
-
-    // ★S-8: 長さ用のΣ(sigmaLen)は状態を持たない=生のsumをそのまま使う(上りも下りも平滑ゼロ)。
-    // これでtipTarget(向き×長さ)の両成分が「平滑なしの即時値」になり、先端ベクトルの直線補間
-    // (placeShadowV9)だけが唯一の平滑段になる。
-    const sigmaLen = Math.min(Math.max(0, sum), SHADOW_GLOW_SUM_CAP);
-    const punch = now < st.punchUntil ? SHADOW_GLOW_PUNCH : 1; // S-4: 長さだけに掛ける(濃さには掛けない)
-
-    // ★S-8: 濃さ用のΣ(sigmaDark)だけ、従来どおり上り即時・下り220ms平滑(S-3のエンベロープ)。
-    // 濃さは経路(向き)を持たない量なので、平滑しても点滅を防ぐだけで幾何のバグは生まれない。
-    if (rising) {
-      st.sumDark = sum;
-    } else {
-      st.sumDark += (sum - st.sumDark) * releaseLerp;
-    }
-    const sigmaDark = Math.min(Math.max(0, st.sumDark), SHADOW_GLOW_SUM_CAP);
-
-    return {
-      dirX: st.winnerDirX, dirY: st.winnerDirY,
-      lenMult: (1 + SHADOW_GLOW_STRETCH * sigmaLen) * punch,
-      darkMult: 1 + SHADOW_GLOW_DARKEN * sigmaDark,
-      rising,
-    };
   }
+
 
   // ---- 可視域(ズーム引き込み)まわり ------------------------------------------
 
@@ -9243,9 +9203,14 @@ export class PixiScene {
    * `ambDirX/ambDirY`=正規化済みステージ光方向。`lenRatio`=絵の高さに掛ける伸び比率(昼/夜/cine)。
    * `densityMult`=★未決D→D-1の濃さ倍率。`glowLights`=このフレームの強glow一覧(裁定O)。
    */
+  /**
+   * ★v12(§3-9-C): 1キャスターぶんの影を置く。**光1つ = シルエット1枚**。
+   * ここでは幾何と「描きたい」印だけを付け、**実際のα/表示は2パス目**(`finishShadowSilhouettesV12`)で決める
+   * (総メッシュ枠の配分と、環境光を洗う Σ が「実際に描いた爆発シルエット」で決まるため)。
+   */
   private placeShadowV9(
     req: ShadowCasterReq, seen: Set<string>, now: number,
-    releaseLerp: number, horizonTrimLerp: number, tipReleaseLerp: number,
+    horizonTrimLerp: number,
     ambDirX: number, ambDirY: number, lenRatio: number, densityMult: number,
     glowLights: { key: string; x: number; y: number; reach: number; life: number }[],
   ) {
@@ -9267,7 +9232,7 @@ export class PixiScene {
 
     let entry = this.shadowPoolV9.get(req.id);
     if (totalAlpha <= 0) {
-      if (entry) { entry.core.visible = false; entry.outer.visible = false; if (entry.mesh) entry.mesh.visible = false; }
+      if (entry) { entry.core.visible = false; entry.outer.visible = false; this.hideShadowSlots(entry); }
       return;
     }
     seen.add(req.id);
@@ -9277,32 +9242,78 @@ export class PixiScene {
       const outer = new Sprite(getShadowOuterTexture());
       outer.anchor.set(0.5, 0.5);
       this.shadowGroundLayer.addChild(outer, core); // 描画順: 1外側 → 2芯(仕様書の描画順)。バッチ用に別層(高9)
-      entry = { core, outer, mesh: null, lastSeenAt: now, lastMeshTexture: null, meshFadeStartAt: 0 };
+      const slots: ShadowMeshSlot[] = [];
+      for (let i = 0; i < 1 + SHADOW_EXPL_SLOTS; i++) slots.push(this.makeShadowSlot(req.id, i === 0 ? 'amb' : null));
+      entry = { core, outer, slots, lastSeenAt: now };
       this.shadowPoolV9.set(req.id, entry);
     }
     entry.lastSeenAt = now;
+    for (const sl of entry.slots) sl.want = false;
 
-    const ldom = this.computeDominantLight(req.id, footX, footY, ambDirX, ambDirY, glowLights, releaseLerp, now);
+    // ---- ★光を集める(環境光は常に slots[0]) ----
+    this.collectShadowGlows(footX, footY, glowLights, this.shadowGlowScratch);
+    const cands = this.shadowGlowScratch;
+
+    // 1) 既存の爆発スロットを更新する / 光が消えていたらフェードアウトを始める(幾何は凍結したまま)
+    for (let i = 1; i < entry.slots.length; i++) {
+      const sl = entry.slots[i];
+      if (!sl.lightId) continue;
+      const c = cands.find(v => v.key === sl.lightId);
+      if (!c) {
+        // ★effects の400件上限で寿命前に splice されうる。幾何を凍結したまま α だけ 120ms で 0 へ。
+        // **これは「戻る動き」ではない**(αだけ)ので回転しない。
+        if (sl.fadeOutAt === 0) sl.fadeOutAt = now;
+        if (now - sl.fadeOutAt >= SHADOW_EXPL_FADE_MS) { this.releaseShadowSlot(sl); }
+        continue;
+      }
+      sl.fadeOutAt = 0;
+      sl.score = c.score;
+      if (!shouldFreezeGeom(c.dist, c.reach, sl.frozen)) {
+        // 圏内=毎フレーム再計算(社長裁定「光源から見て物体が動いたなら動かす。自然の法則に従う」)
+        sl.dirX = c.dirX; sl.dirY = c.dirY; sl.falloff = c.falloff;
+        sl.lenMult = glowLenMult(c.falloff, SHADOW_GLOW_WEIGHT, SHADOW_GLOW_STRETCH, SHADOW_GLOW_LEN_CAP);
+      } else {
+        sl.frozen = true; // ★一度凍結したら圏内へ戻っても解除しない
+      }
+    }
+    // 2) まだスロットに居ない光を、強い順に入れてみる
+    const fresh = cands.filter(c => c.inRange && c.falloff > 0 && !entry.slots.some(sl => sl.lightId === c.key));
+    fresh.sort((a, b) => b.score - a.score);
+    for (const c of fresh) {
+      const view = entry.slots.slice(1).map(sl => ({ lightId: sl.lightId, score: sl.score, alpha: sl.alpha }));
+      const d = pickExplSlot(view, c.key, c.score);
+      if (d.kind === 'reject') continue; // 3つ目の濃い爆発は「出ないだけ」=ポップは起きない
+      const sl = entry.slots[d.slot + 1];
+      if (d.kind === 'evict') this.releaseShadowSlot(sl);
+      sl.lightId = c.key;
+      sl.score = c.score;
+      sl.dirX = c.dirX; sl.dirY = c.dirY; sl.falloff = c.falloff;
+      sl.lenMult = glowLenMult(c.falloff, SHADOW_GLOW_WEIGHT, SHADOW_GLOW_STRETCH, SHADOW_GLOW_LEN_CAP);
+      sl.frozen = false; sl.fadeOutAt = 0;
+      sl.fadeInAt = 0; // ★点く側は即時。フェードインは付けない(通すと必ず150msかけて出てくる)
+    }
 
     // ---- 接地2枚(画面軸のまま=回さない。芯は足元ぴったり) ----
+    // ★アウターの寄せ方向だけは「環境光 + 描いている爆発光」のうち最強の1つを使う(v9の足元の見え方を保つ)。
+    // v9 の勝者判定と同じ物差し(強glowは falloff×life×WEIGHT、環境光は1)。**濃さは変えない。**
+    let gdirX = ambDirX, gdirY = ambDirY, gbest = 1;
+    for (let i = 1; i < entry.slots.length; i++) {
+      const sl = entry.slots[i];
+      if (!sl.lightId) continue;
+      const st = sl.score * SHADOW_GLOW_WEIGHT;
+      if (st > gbest) { gbest = st; gdirX = sl.dirX; gdirY = sl.dirY; }
+    }
     const scaleMult = req.scaleMult ?? 1;
     const coreW = req.rawW * Math.max(SHADOW_CORE_MIN_W_FRAC, SHADOW_FOOT_NARROW * SHADOW_CORE_W_MULT) * scaleMult * shrink;
     const coreH = coreW * SHADOW_CORE_ASPECT;
     const outerW = coreW * SHADOW_OUTER_SCALE;
     const outerH = coreH * SHADOW_OUTER_SCALE;
-    // 外側オフセット: 非爆発時の長さ×0.16(爆発の伸びは掛けない)。頭打ち=方向半径×0.8。
     const nonExplLen = req.rawH * lenRatio;
     const a = Math.max(1, outerW / 2), b = Math.max(1, outerH / 2);
-    const dirDenom = Math.hypot(ldom.dirX / a, ldom.dirY / b) || 1;
-    const dirRadius = 1 / dirDenom;
-    const offset = Math.min(nonExplLen * SHADOW_OUTER_OFFSET_LEN_FRAC, dirRadius * SHADOW_OUTER_OFFSET_CAP_FRAC);
+    const dirDenom = Math.hypot(gdirX / a, gdirY / b) || 1;
+    const offset = Math.min(nonExplLen * SHADOW_OUTER_OFFSET_LEN_FRAC, (1 / dirDenom) * SHADOW_OUTER_OFFSET_CAP_FRAC);
 
-    // ★社長実機報告(花の影がピクセルずれ)対応: core/outer は PerspectiveMesh と違い普通の Sprite
-    // なので、renderer の `roundPixels:true` が最終的な描画時に自動でデバイスpxへ丸めてくれる
-    // (花/木/プロップ等の本体スプライトも sprite.x/y に生の浮動小数をそのまま渡し、丸めをrendererに
-    // 任せている=検収監査10と同じ問題)。ここで shadowSnap(手動の事前丸め)を挟むと、本体側の
-    // 「rendererまかせ」の丸め結果と異なる丸め方を二重に行うことになり、本体と影がピクセル単位で
-    // ズレる。⇒ core/outer は生の座標をそのまま渡す(本体スプライトと同じ丸めパイプラインに揃える)。
+    // core/outer は普通の Sprite なので renderer の roundPixels に丸めを任せる(本体スプライトと同じ経路)。
     entry.core.position.set(footX, footY);
     entry.core.width = Math.max(3, coreW);
     entry.core.height = Math.max(3, coreH);
@@ -9310,122 +9321,155 @@ export class PixiScene {
     entry.core.alpha = Math.min(1, SHADOW_CORE_ALPHA_BASE * densityMult * totalAlpha);
     entry.core.visible = true;
 
-    entry.outer.position.set(footX + ldom.dirX * offset, footY + ldom.dirY * offset);
+    entry.outer.position.set(footX + gdirX * offset, footY + gdirY * offset);
     entry.outer.width = Math.max(3, outerW);
     entry.outer.height = Math.max(3, outerH);
     entry.outer.rotation = 0;
     entry.outer.alpha = Math.min(1, SHADOW_OUTER_ALPHA_BASE * densityMult * totalAlpha);
     entry.outer.visible = true;
 
-    // ---- シルエット本体(台形) ----
+    // ---- シルエット(スロットごとに1枚) ----
     if (req.silhouetteExempt || !req.texture) {
-      if (entry.mesh) entry.mesh.visible = false; // 松明/焚き火/緑卵、または絵の無いGraphics拾い物
+      this.hideShadowSlots(entry); // 松明/焚き火/緑卵、または絵の無いGraphics拾い物
       return;
     }
-    // ★検収差し戻し(中15): 未ベイクの新コマに切り替わるたびに毎回メッシュを隠すと、出撃直後や
-    // 敵の歩行コマが変わるたびに明滅する。直前に表示していたテクスチャ(lastMeshTexture)があれば、
-    // 新しいベイクが焼けるまでそれを使い続ける(=1コマ前のポーズのまま位置/αだけ更新される。
-    // 一度も焼けていない=表示するものが無い時だけ隠す)。
-    const bakeTex = this.silhouetteEnsure(req.texture)?.texture ?? entry.lastMeshTexture ?? undefined;
-    if (!bakeTex) {
-      if (entry.mesh) entry.mesh.visible = false; // まだ1枚も焼けていない
-      return;
-    }
-    const rawLength = nonExplLen * ldom.lenMult * shrink;
-    // 地平線帯の詰め(§3-9-B確定・実質的に効くのは昼のみ): 先端Yが地平線ライン
-    // (horizonForestFootWorldY)を越えないよう、必要ならlengthだけ詰める(αは触らない=接地は薄くしない)。
-    // ★致命3修正(社長実機報告「伸びてない」): 平滑は「詰めが実際に効いているフレームだけ」に限定する。
-    // 詰めが発動していない(=ほとんどのフレーム。特に夜/cineは光が下向きで原理的に効かない)時は
-    // rawLength をそのまま使い、遅れをゼロにする。以前は全キャスター・全フレームで無条件に平滑して
-    // おり、Σw_g 側(裁定N・180ms)と合わせて約360ms鈍り、しかも Math.min(raw,smoothed) の形で
-    // 伸びる側だけ遅れていた(縮む側は素通り)ため、爆発が消えるまでにピークへ到達できていなかった。
-    // ★S-7注記: この節はあくまで「(まだ平滑されていない)生の勝者向き」に対する地平線クリップ
-    // であり、この後の先端ベクトル補間より前に評価する(=補間の目標値そのものを帯の内側に収める)。
-    let length = rawLength;
-    if (ldom.dirY < 0) { // 上向き(=地平線に近づく方向)の時だけ効く
-      const rawTipY = footY + ldom.dirY * rawLength;
-      const overshoot = this.horizonForestFootWorldY - rawTipY; // 正=帯の外(空)へ出ている
-      if (overshoot > SHADOW_HORIZON_TRIM_DEADZONE_PX) {
-        const allowedLen = Math.max(0, (footY - this.horizonForestFootWorldY) / -ldom.dirY);
-        const wantLength = Math.min(rawLength, allowedLen);
-        // 不感帯12px・時定数180msで平滑(ボスが上下に歩くたびに影が伸縮するのを防ぐ)。
-        // 詰めがちょうど発動した最初のフレームは prevLen が無い(前回delete済み)ので遅れ無しで開始する。
-        const prevLen = this.shadowHorizonTrimState.get(req.id);
-        const smoothedLen = prevLen === undefined ? wantLength : prevLen + (wantLength - prevLen) * horizonTrimLerp;
-        this.shadowHorizonTrimState.set(req.id, smoothedLen);
-        // 「伸びる」と「帯を越えない」なら帯が勝つ(§3-9-B確定): 平滑後もrawLengthは超えない。
-        length = Math.min(rawLength, smoothedLen);
-      } else {
-        this.shadowHorizonTrimState.delete(req.id); // 詰めが効いていない=平滑状態を持たない
-      }
-    } else {
-      this.shadowHorizonTrimState.delete(req.id);
-    }
+    const bakedNow = this.silhouetteEnsure(req.texture)?.texture ?? null;
     const nearHalf = req.rawW * SHADOW_FOOT_NARROW / 2 * shrink;
     const farHalf = req.rawW / 2 * shrink;
+    const skewShift = Math.tan(req.skewX ?? 0) * req.rawH;
+    const uSign = req.flip ? -1 : 1;
+    const silBase = SHADOW_SIL_ALPHA_BASE * densityMult * totalAlpha;
+    const visRect = this.shadowVisibleRect();
 
-    // ★S-7(社長実機報告「戻り方の経路が違う(L字)」): 先端の位置ベクトル(footからのオフセット)
-    // そのものを2次元のまま直線補間する(正規化しない=これだけで軌跡が直線になる。向きと長さを
-    // 別々に滑らせる=S-5のクロスフェードだと、角度が先に戻ってから縮む「L字」になっていた)。
-    // 伸びる時(Σが今フレーム増えた=ldom.rising)は即時スナップ(社長「1は合ってる」=変更なし)。
-    // 縮む時だけ`tipReleaseLerp`(`?glowfade=`)で補間する。
-    const targetTipX = ldom.dirX * length, targetTipY = ldom.dirY * length;
-    const tipSt = this.shadowWinnerState.get(req.id)!; // computeDominantLightが必ず作る(先端の平滑状態も同居)
-    let curTipX: number, curTipY: number;
-    if (!tipSt.hasTip || ldom.rising) {
-      curTipX = targetTipX;
-      curTipY = targetTipY;
-    } else {
-      curTipX = tipSt.tipX + (targetTipX - tipSt.tipX) * tipReleaseLerp;
-      curTipY = tipSt.tipY + (targetTipY - tipSt.tipY) * tipReleaseLerp;
-      // ★退化ガード: 直線で戻る途中、経路が足元の近くを通ると影が一瞬つぶれる幾何になりうる。
-      // 補間後の|tip|に「環境光での通常の長さ」を下限として置く(伸びる方向にだけ自由=このガードは
-      // 縮む方向にしか効かない。向きは補間結果のまま=変えるのは長さの下限だけ)。
-      const restLen = nonExplLen * shrink; // sigma=0/punch=1相当=通常時の長さ
-      const curLen = Math.hypot(curTipX, curTipY);
-      if (curLen < restLen) {
-        if (curLen > 1e-3) {
-          const k = restLen / curLen;
-          curTipX *= k;
-          curTipY *= k;
+    for (let i = 0; i < entry.slots.length; i++) {
+      const sl = entry.slots[i];
+      const isAmb = i === 0;
+      if (!isAmb && !sl.lightId) { if (sl.mesh) sl.mesh.visible = false; continue; }
+      // ★未ベイクでも消さない: プール鍵が固定なのでスロットは前回テクスチャを持ち続けている。
+      const tex = bakedNow ?? sl.lastTexture;
+      if (!tex) { if (sl.mesh) sl.mesh.visible = false; continue; }
+
+      const dirX = isAmb ? ambDirX : sl.dirX;
+      const dirY = isAmb ? ambDirY : sl.dirY;
+      const lenMult = isAmb ? 1 : sl.lenMult;
+      const rawLength = nonExplLen * lenMult * shrink;
+      // 地平線帯の詰め: 先端Yが地平線ラインを越えないよう長さだけ詰める(αは触らない)。
+      // 平滑状態はスロットごとに独立(鍵をスロット鍵に合わせる)。
+      const trimKey = `${req.id}#${i}`;
+      let length = rawLength;
+      if (dirY < 0) {
+        const rawTipY = footY + dirY * rawLength;
+        const overshoot = this.horizonForestFootWorldY - rawTipY;
+        if (overshoot > SHADOW_HORIZON_TRIM_DEADZONE_PX) {
+          const allowedLen = Math.max(0, (footY - this.horizonForestFootWorldY) / -dirY);
+          const wantLength = Math.min(rawLength, allowedLen);
+          const prevLen = this.shadowHorizonTrimState.get(trimKey);
+          const smoothedLen = prevLen === undefined ? wantLength : prevLen + (wantLength - prevLen) * horizonTrimLerp;
+          this.shadowHorizonTrimState.set(trimKey, smoothedLen);
+          length = Math.min(rawLength, smoothedLen);
         } else {
-          // ほぼ原点=向きが定まらない退化点。環境光の向きへ逃がす。
-          curTipX = ambDirX * restLen;
-          curTipY = ambDirY * restLen;
+          this.shadowHorizonTrimState.delete(trimKey);
         }
+      } else {
+        this.shadowHorizonTrimState.delete(trimKey);
+      }
+      if (length <= SHADOW_DEGENERATE_PX || nearHalf * 2 <= SHADOW_DEGENERATE_PX) {
+        if (sl.mesh) sl.mesh.visible = false; continue;
+      }
+      // カリングは3枚それぞれ独立(爆発シルエットは環境光より長い)。
+      if (!this.segmentIntersectsRect(footX, footY, footX + dirX * length, footY + dirY * length, visRect)) {
+        if (sl.mesh) sl.mesh.visible = false; continue;
+      }
+      sl.want = true;
+      sl.texture = tex;
+      sl.baseAlpha = silBase;
+      sl.footX = footX; sl.footY = footY;
+      sl.drawDirX = dirX; sl.drawDirY = dirY; sl.drawLen = length;
+      sl.nearHalf = nearHalf; sl.farHalf = farHalf; sl.skewShift = skewShift; sl.uSign = uSign;
+    }
+  }
+
+  /** 固定3スロットの1枚を作る(生成は placeShadowV9 の初回だけ)。 */
+  private makeShadowSlot(ownerId: string, lightId: string | null): ShadowMeshSlot {
+    return {
+      ownerId, mesh: null, lightId, score: 0, alpha: 0, frozen: false,
+      dirX: 0, dirY: 1, lenMult: 1, falloff: 0, lastTexture: null, fadeOutAt: 0, fadeInAt: 0,
+      want: false, texture: null, baseAlpha: 0,
+      footX: 0, footY: 0, drawDirX: 0, drawDirY: 1, drawLen: 0,
+      nearHalf: 0, farHalf: 0, skewShift: 0, uSign: 1,
+    };
+  }
+
+  /** 爆発スロットを空きへ戻す。★メッシュ自体は destroy しない(固定3枚のプールを保つ)。 */
+  private releaseShadowSlot(sl: ShadowMeshSlot) {
+    sl.lightId = null; sl.score = 0; sl.alpha = 0; sl.frozen = false;
+    sl.fadeOutAt = 0; sl.want = false;
+    if (sl.mesh) sl.mesh.visible = false;
+  }
+
+  private hideShadowSlots(entry: ShadowPoolEntry) {
+    for (const sl of entry.slots) { sl.want = false; if (sl.mesh) sl.mesh.visible = false; }
+  }
+
+  /**
+   * ★v12 の2パス目: 総メッシュ枠を配り、α を決めて実際に描く。
+   * - **環境光ぶんを先に確保**し、残り枠を爆発シルエットへ `falloff × life` の**降順**で配る。
+   * - 枠の**下位20%はランクフェード**(切り落とすと明滅するため)。
+   * - ★Σ は「**実際に描いた**爆発シルエット」だけで数える。圏内の全光で数えると、混戦で環境光も
+   *   爆発影も薄くなって**影がほぼ消える**。枠から溢れたぶんを数えると**影ゼロ**になる。
+   */
+  private finishShadowSilhouettesV12(now: number) {
+    const ambs: ShadowMeshSlot[] = [];
+    const expls: ShadowMeshSlot[] = [];
+    for (const entry of this.shadowPoolV9.values()) {
+      for (let i = 0; i < entry.slots.length; i++) {
+        const sl = entry.slots[i];
+        if (!sl.want) { if (sl.mesh) sl.mesh.visible = false; continue; }
+        (i === 0 ? ambs : expls).push(sl);
       }
     }
-    tipSt.tipX = curTipX;
-    tipSt.tipY = curTipY;
-    tipSt.hasTip = true;
+    const explBudget = Math.max(0, SHADOW_TOTAL_MESH_MAX - ambs.length);
+    expls.sort((a, b) => b.score - a.score);
 
-    const drawnLen = Math.hypot(curTipX, curTipY);
-    if (drawnLen <= SHADOW_DEGENERATE_PX || nearHalf * 2 <= SHADOW_DEGENERATE_PX) {
-      if (entry.mesh) entry.mesh.visible = false;
-      return;
+    // 爆発シルエット: 枠の中だけ描き、Σ をキャスター単位で積む(環境光を洗う量)。
+    const sigma = new Map<string, number>(); // キャスターidごとの Σ(実際に描いた爆発シルエットぶんだけ)
+    for (let i = 0; i < expls.length; i++) {
+      const sl = expls[i];
+      const fade = rankFade(i, explBudget);
+      if (fade <= 0) { if (sl.mesh) sl.mesh.visible = false; sl.alpha = 0; continue; }
+      const life = sl.score > 0 && sl.falloff > 0 ? sl.score / sl.falloff : 0;
+      let a = explosionSilAlpha(sl.baseAlpha, sl.falloff, life) * fade;
+      if (sl.fadeOutAt > 0) a *= Math.max(0, 1 - (now - sl.fadeOutAt) / SHADOW_EXPL_FADE_MS);
+      this.drawShadowSlot(sl, a, now, false);
+      sigma.set(sl.ownerId, (sigma.get(sl.ownerId) ?? 0) + sl.score * fade);
     }
-    const drawnDirX = curTipX / drawnLen, drawnDirY = curTipY / drawnLen;
-    const tipX = footX + curTipX, tipY = footY + curTipY;
-    if (!this.segmentIntersectsRect(footX, footY, tipX, tipY, this.shadowVisibleRect())) {
-      if (entry.mesh) entry.mesh.visible = false; // カリング(可視域の外)。長さは詰めない(ズーム時に縮む破綻を防ぐ)
-      return;
+    // 環境光シルエット: Σ で洗う。★接地2層は薄めないので、閃光の間も足元の接地は消えない。
+    for (const sl of ambs) {
+      this.drawShadowSlot(sl, ambientSilAlpha(sl.baseAlpha, sigma.get(sl.ownerId) ?? 0), now, true);
     }
-
-    if (!entry.mesh) {
-      entry.mesh = new PerspectiveMesh({ texture: bakeTex, verticesX: SHADOW_MESH_VX, verticesY: SHADOW_MESH_VY });
-      this.shadowMeshLayer.addChild(entry.mesh); // バッチ用に別層(高9)
-      entry.meshFadeStartAt = now; // §3-9-B確定: 焼き上がって初めて出す時は150msでαをフェードイン
-    }
-    if (entry.mesh.texture !== bakeTex) entry.mesh.texture = bakeTex;
-    entry.lastMeshTexture = bakeTex; // 中13: 次に未ベイクへ落ちた時のフォールバック用に更新
-    const fadeIn = entry.meshFadeStartAt > 0 ? Math.min(1, (now - entry.meshFadeStartAt) / SHADOW_MESH_FADE_IN_MS) : 1;
-    const uSign = req.flip ? -1 : 1; // 裁定H: 左右反転はu=0/u=1の入れ替え(焼き直し不要)
-    const skewShift = Math.tan(req.skewX ?? 0) * req.rawH; // 先端側の2隅だけをこの量ずらす(仕様確定値)
-
-    entry.mesh.alpha = Math.min(1, SHADOW_SIL_ALPHA_BASE * densityMult * totalAlpha * fadeIn);
-    this.setSilhouetteMeshCorners(entry.mesh, footX, footY, drawnDirX, drawnDirY, drawnLen, nearHalf, farHalf, skewShift, uSign);
-    entry.mesh.visible = true;
   }
+
+  /** スロット1枚を実際に描く。`fadeIn` は環境光だけ(爆発は即時)。 */
+  private drawShadowSlot(sl: ShadowMeshSlot, alpha: number, now: number, allowFadeIn: boolean) {
+    if (!(alpha > 0) || !sl.texture) { if (sl.mesh) sl.mesh.visible = false; sl.alpha = 0; return; }
+    if (!sl.mesh) {
+      sl.mesh = new PerspectiveMesh({ texture: sl.texture, verticesX: SHADOW_MESH_VX, verticesY: SHADOW_MESH_VY });
+      this.shadowMeshLayer.addChild(sl.mesh); // バッチ用に別層(高9)
+      sl.fadeInAt = allowFadeIn ? now : 0;
+    }
+    if (sl.mesh.texture !== sl.texture) sl.mesh.texture = sl.texture;
+    sl.lastTexture = sl.texture;
+    const fadeIn = allowFadeIn && sl.fadeInAt > 0 ? Math.min(1, (now - sl.fadeInAt) / SHADOW_MESH_FADE_IN_MS) : 1;
+    const a = Math.min(1, alpha * fadeIn);
+    sl.mesh.alpha = a;
+    sl.alpha = a;
+    this.setSilhouetteMeshCorners(
+      sl.mesh, sl.footX, sl.footY, sl.drawDirX, sl.drawDirY, sl.drawLen,
+      sl.nearHalf, sl.farHalf, sl.skewShift, sl.uSign,
+    );
+    sl.mesh.visible = true;
+  }
+
 
   /**
    * シルエット台形の4隅を計算してセットする。渡す dirX/dirY/length は★S-7で先端ベクトル補間済み
@@ -9454,14 +9498,16 @@ export class PixiScene {
       if (seen.has(id)) continue;
       entry.core.visible = false;
       entry.outer.visible = false;
-      if (entry.mesh) entry.mesh.visible = false;
+      this.hideShadowSlots(entry);
       if (now - entry.lastSeenAt > SHADOW_MESH_GC_MS) {
         entry.core.destroy();
         entry.outer.destroy();
-        if (entry.mesh) this.destroyShadowMesh(entry.mesh);
+        for (let i = 0; i < entry.slots.length; i++) {
+          const m = entry.slots[i].mesh;
+          if (m) this.destroyShadowMesh(m);
+          this.shadowHorizonTrimState.delete(`${id}#${i}`);
+        }
         this.shadowPoolV9.delete(id);
-        this.shadowWinnerState.delete(id);
-        this.shadowHorizonTrimState.delete(id);
       }
     }
   }
