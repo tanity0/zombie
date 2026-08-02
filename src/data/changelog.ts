@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2752',
+    items: [
+      'ゲーム内容の変更はありません（守護霊の共有で「いいね」をボスごとに付ける設計を固めました）。',
+    ],
+  },
+  {
     version: '0.25.2751',
     items: [
       '救援アライ(スキル)が飛来・離脱する間も、影が地面に残るようにしました。設置した盾/デコイの影も、他のキャラと同じ新方式にしました。',
