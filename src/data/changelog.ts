@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2751',
+    items: [
+      '救援アライ(スキル)が飛来・離脱する間も、影が地面に残るようにしました。設置した盾/デコイの影も、他のキャラと同じ新方式にしました。',
+    ],
+  },
+  {
     version: '0.25.2750',
     items: [
       '影の描き方を作り替え中です（キャラの形そのままの影+爆発で影が伸びる新方式。今回は土台〜支配光までの実装で、旧方式にも `?silshadow=0` でいつでも戻せます）。',

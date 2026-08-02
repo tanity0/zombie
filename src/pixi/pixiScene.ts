@@ -2120,7 +2120,12 @@ export class PixiScene {
   // スキル 救難信号: 飛来する援護アライ(一過性)。同時に生きるのは基本1体程度なので per-id プールで十分軽い。
   // 救援アライ(スキル救難信号): 本体スプライト+近接スイング3枚(分身と同じ焼き込みダガー差し替え)を
   // per-idで持つ。飛来=放物線ジャンプ、着弾=本体と同じ近接モーション(社長指示v0.25.1613)。
-  private rescueAllyViews = new Map<string, { body: Sprite; knife: Sprite; slash: Sprite; trail: Sprite }>();
+  // §3-9-B v9: shadowFootY/shadowHeight/shadowAlpha/shadowFlip は影(syncShadowsV9)専用の読み出し値。
+  // 救援アライは飛来・離脱で「論理座標そのものが空中を動く」ため、高さを明示的に渡す(仕様書確定)。
+  private rescueAllyViews = new Map<string, {
+    body: Sprite; knife: Sprite; slash: Sprite; trail: Sprite;
+    shadowFootY: number; shadowHeight: number; shadowAlpha: number; shadowFlip: boolean;
+  }>();
   // 救急鞄(first-aid-kit): 空鞄投擲(一過性・1ラン1回=同時に生きるのは常に0-1体)。per-id プール。
   private thrownBagViews = new Map<string, Sprite>();
   private breakableProps = new Map<string, PropView>();
@@ -8277,11 +8282,16 @@ export class PixiScene {
       const footY = p.y + p.height;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
-      const rawW = this.placedWeaponShadowWidth(p) / 0.55; // 旧関数は×0.55済みなので戻す(裁定A)
+      // タレットは Graphics 描画(実テクスチャ無し)=接地2枚のみ。盾/デコイは実テクスチャがあるので
+      // シルエットも出す(裁定A: 表示実寸を渡す。placedWeaponShadowWidth の×0.55は使わない)。
+      const wpnTex = p.weaponType === 'decoy' ? getTexture('decoy') : p.weaponType === 'shield' ? getTexture('shield-down') : null;
+      const targetH = p.weaponType === 'decoy' ? DECOY_DISPLAY_H : p.weaponType === 'shield' ? SHIELD_DISPLAY_H : 0;
+      const rawH = wpnTex && wpnTex.height > 0 ? targetH : this.placedWeaponShadowWidth(p) / 0.55 * 1.4;
+      const rawW = wpnTex && wpnTex.height > 0 ? wpnTex.width * (targetH / wpnTex.height) : this.placedWeaponShadowWidth(p) / 0.55;
       place({
         id: 'pw:' + p.id, x: p.x + p.width / 2, y: footY,
-        rawW, rawH: rawW * 1.4, texture: null, // 絵の縦横比は未取得なので接地2枚のみ(★未決: シルエット未対応)
-        alpha: horizonAlpha, silhouetteExempt: true,
+        rawW, rawH, texture: wpnTex,
+        alpha: horizonAlpha, silhouetteExempt: !wpnTex,
       });
     }
     // ---- ステージ1の花 ----
@@ -8372,6 +8382,19 @@ export class PixiScene {
     // ---- 拾い物 ----
     for (const ps of this.pickupShadows) {
       place({ id: ps.id, x: ps.x, y: ps.y, rawW: ps.rawW, rawH: ps.rawH, texture: ps.texture, alpha: ps.alpha, shadowFade: ps.shadowFade });
+    }
+    // ---- 救援アライ(スキル救難信号): 飛来・離脱中も影が地面に残るよう高さを明示的に渡す(仕様書確定)。
+    for (const [id, v] of this.rescueAllyViews) {
+      if (v.body.visible === false || v.shadowAlpha <= 0) continue;
+      const w = Math.abs(v.body.width);
+      if (w <= 0) continue;
+      const ha = this.horizonActorAlpha(v.shadowFootY);
+      if (ha <= 0) continue;
+      place({
+        id: 'rescueAlly:' + id, x: v.body.x, y: v.shadowFootY,
+        rawW: w, rawH: Math.abs(v.body.height), texture: v.body.texture,
+        alpha: ha, shadowFade: v.shadowAlpha, flip: v.shadowFlip, heightPx: v.shadowHeight,
+      });
     }
     // ---- 静止物(木/壁/プロップ/city props): 枚数キャップ廃止=可視域内は全部出し、
     // 縮退は距離クロスフェード(shadowStaticFade)に一本化(裁定B)。
@@ -9376,7 +9399,10 @@ export class PixiScene {
           this.L.actorLayer.addChild(s);
           return s;
         };
-        v = { body, knife: mk('knife-swing-1'), slash: mk('knife-swing-2'), trail: mk('knife-swing-3') };
+        v = {
+          body, knife: mk('knife-swing-1'), slash: mk('knife-swing-2'), trail: mk('knife-swing-3'),
+          shadowFootY: 0, shadowHeight: 0, shadowAlpha: 1, shadowFlip: false,
+        };
         this.rescueAllyViews.set(a.id, v);
       }
       const { body, knife, slash, trail } = v;
@@ -9485,6 +9511,12 @@ export class PixiScene {
       body.zIndex = footY; // 他アクターと足元Yでy-sort
       body.alpha = alpha;
       body.visible = true;
+      // §3-9-B v9: 影は「地面の軌道(footY)」を足元、hop(sinアーチ)を高さとして渡す(飛来・離脱中も
+      // 影が地面に残るようにするため。仕様書「救援アライだけは飛行高度を明示的に渡す」)。
+      v.shadowFootY = footY;
+      v.shadowHeight = hop;
+      v.shadowAlpha = alpha;
+      v.shadowFlip = facingLeft;
 
       // 近接スイング3枚オーバーレイ(分身 syncShadowClone と同一ロジック=本体と同じ見た目。救援アライは
       // 装備武器を持たないので常に焼き込みダガー frame1/2/3 を差し替える)。
