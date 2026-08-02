@@ -784,7 +784,15 @@ ghostDriver.ts:184  ghostRunEnabled = ghostDebugEnabled || equippedSkills.includ
 - **登録先(全部やること)**: `SKILL_KEYS` / `SKILLS`(name/desc/rarity) / `SKILL_DESC_BY_LEVEL`(:749) /
   `GACHA_EXCLUDED_SKILLS`(:870) / `DEFAULT_OWNED_SKILLS`(:875) / `SKILL_MAX_LEVEL`(:902) /
   既存セーブへの `ensureDefaultOwnedSkills` 移行。
-- ★**入手は無料配布**(`DEFAULT_OWNED_SKILLS` に入れ、ガチャからは除外)。**経済を回す入口なので絞らない。**
+- ★**入手 = 最初から所持**(社長裁定 v0.25.2771「このスキルは最初からある」)。
+  **既存の `guardian-spirit` とまったく同じ形**で入れる(前例どおりにする=迷う所を作らない):
+  `DEFAULT_OWNED_SKILLS` へ追加 / `GACHA_EXCLUDED_SKILLS` へ追加(最初から持っているのでガチャに出す意味が無い)。
+  ★**既存セーブへの移行は自動で通る**——`ensureDefaultOwnedSkills`(`campaign.ts:877`)は
+  **`DEFAULT_OWNED_SKILLS` を舐めて欠けを補うだけの純関数**で、キーがハードコードされていない。
+  ⇒ **配列に2つ足すだけ**でよく、移行コードは書かない。
+  ★**帰結**: 初回プレイから「倒して欲しい」を装備できる。**これは意図どおり**——
+  社長「基本は他者のを使って欲しい。じゃないと経済が回らない」。値段(ゴールド0.5/0.7)とボスHP1.6倍が
+  歯止めなので、入手を絞る必要は無い。**守護霊も v0.25.2452 で同じ理由で最初から解禁している。**
 - ★**`campaign.ts:703`/`:749` の守護霊スキルの説明文が現状すでに嘘**(「スコアが半分になる」=v0.25.2768で撤去済み)。
   **同じコミットで直す。** 新スキルの説明にはゴールド倍率を書く。
 
