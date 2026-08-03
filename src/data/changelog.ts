@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2807',
+    items: [
+      '松明や焚き火に近づいた時に暗くなる度合いを弱めました。',
+    ],
+  },
+  {
     version: '0.25.2806',
     items: [
       '爆発やレベルアップの光が地面を明るく照らすようになりました。',
