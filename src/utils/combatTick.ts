@@ -25,6 +25,7 @@
 // gameOver遷移だけが起きない。
 
 import type { Enemy, Player } from '../types/game';
+import { GLOW_R_L } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
   isBossType, isHiddenBoss, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile,
@@ -253,7 +254,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     // 通常カウンター(弾反射)と同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
     fx.addMeleeFinishCombo(1);
     fx.playSfx('counter');
-    fx.spawnGlow(bpcx, bpcy, 95, 'rgba(56,189,248,', 360);
+    fx.spawnGlow(bpcx, bpcy, GLOW_R_L, 'rgba(56,189,248,', 360);
     fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
     fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
     fx.spawnRing(bpcx, bpcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
@@ -624,7 +625,7 @@ export const applyEnemyProjectileHits = (
     fx.playSfx('counter');
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
-    fx.spawnGlow(pcx, pcy, 95, 'rgba(56,189,248,', tunables.counterReflectSlowMs);
+    fx.spawnGlow(pcx, pcy, GLOW_R_L, 'rgba(56,189,248,', tunables.counterReflectSlowMs);
     // カウンター: ストップ→(後で)揺れ+寄りズーム(社長指示)。ダンス中はストップ抜きで即時。
     fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
     fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
@@ -913,7 +914,7 @@ export const applyContactDamage = (
     // 通常カウンターと同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
     fx.addMeleeFinishCombo(1);
     fx.playSfx('counter');
-    fx.spawnGlow(ppx, ppy, 95, 'rgba(56,189,248,', 360);
+    fx.spawnGlow(ppx, ppy, GLOW_R_L, 'rgba(56,189,248,', 360);
     fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
     fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
     fx.spawnRing(ppx, ppy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);

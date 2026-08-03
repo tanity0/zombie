@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
 import { shouldShowDetourPoiTutorial } from '../utils/detourPoiTutorial';
@@ -1554,7 +1555,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     spawnFlash('rgba(127, 29, 29, 0.48)', 520);
     spawnRing(x, y, 8, 118, 'rgba(220,38,38,0.9)', 7, 620);
     spawnRing(x, y, 24, 168, 'rgba(127,29,29,0.66)', 4, 760);
-    useGameStore.getState().spawnGlow(x, y, 96, 'rgba(220,38,38,', PLAYER_DEATH_SLOW_MS);
+    useGameStore.getState().spawnGlow(x, y, GLOW_R_L, 'rgba(220,38,38,', PLAYER_DEATH_SLOW_MS);
     // v0.25.2586(社長指示「守護霊死んだときもカメラズーム スローしてほしい これプレイヤーも」):
     // 死亡スローは従来からあったが**寄りズームが無かった**ので追加。守護霊の死(gameStore.damageSummon)と
     // 同じ定数・同じ長さ=どちらの死も同じ絵になる。holdを付けてスローと同じhold-then-rampで戻る。
@@ -1667,7 +1668,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnRing(bx, by, 10, blastR, 'rgba(248,113,113,0.85)', 5, fxMs);
           spawnBurst(bx, by, '#f87171', 20);
           spawnBurst(bx, by, '#7f1d1d', 8);
-          useGameStore.getState().spawnGlow(bx, by, 58, 'rgba(248,113,113,', fxMs);
+          useGameStore.getState().spawnGlow(bx, by, GLOW_R_S, 'rgba(248,113,113,', fxMs);
           for (const e of useGameStore.getState().enemies) {
             if (e.type === 'reaper' && !e.reaperChaser) continue;
             const dist = Math.hypot(e.x + e.width / 2 - bx, e.y + e.height / 2 - by);
@@ -2404,7 +2405,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnFlash('rgba(127,29,29,0.28)', 420);
           spawnRing(castle.x, castle.y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
           spawnRing(castle.x, castle.y, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
-          useGameStore.getState().spawnGlow(castle.x, castle.y, 150, 'rgba(239,68,68,', 900);
+          useGameStore.getState().spawnGlow(castle.x, castle.y, GLOW_R_XXL, 'rgba(239,68,68,', 900);
           spawnBurst(castle.x, castle.y + 20, '#7f1d1d', 28);
           // アテンションは出現エフェクトが消えてから(=ぼやけ防止・社長指示)。下のディスパッチャが発火。
           castleAttnRef.current = { at: newGameTime + 950, x: castle.x, y: castle.y };
@@ -2472,7 +2473,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnFlash('rgba(127,29,29,0.28)', 420);
             spawnRing(scx, scy, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
             spawnRing(scx, scy, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
-            useGameStore.getState().spawnGlow(scx, scy, 150, 'rgba(239,68,68,', 900);
+            useGameStore.getState().spawnGlow(scx, scy, GLOW_R_XXL, 'rgba(239,68,68,', 900);
             spawnBurst(scx, scy + 20, '#7f1d1d', 28);
             useGameStore.getState().triggerAttention(scx, scy);
             playSfx('boss-appear');
@@ -4534,7 +4535,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const pnow = Date.now();
                 addMeleeFinishCombo(1);
                 playSfx('counter');
-                useGameStore.getState().spawnGlow(hitX, hitY, 95, 'rgba(56,189,248,', 360);
+                useGameStore.getState().spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
                 useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
                 useGameStore.getState().markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
                 spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
@@ -4595,7 +4596,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const pnow = Date.now();
                 addMeleeFinishCombo(1);
                 playSfx('counter');
-                useGameStore.getState().spawnGlow(hitX, hitY, 95, 'rgba(56,189,248,', 360);
+                useGameStore.getState().spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
                 useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
                 useGameStore.getState().markMeleeSwingFx();
                 spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
@@ -5447,7 +5448,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 bs.lastCrushFxAt = newGameTime;
                 spawnBurst(cxFx, cyFx, '#fbbf24', 6);                                   // 木片/破片(使い回し)
                 spawnRing(cxFx, cyFx, 6, 40, 'rgba(251,146,60,0.86)', 3, 300);          // 衝撃リング(使い回し)
-                useGameStore.getState().spawnGlow(cxFx, cyFx, 44, 'rgba(251,146,60,', 340); // 火光(プール済みスプライト=軽い)
+                useGameStore.getState().spawnGlow(cxFx, cyFx, GLOW_R_XS, 'rgba(251,146,60,', 340); // 火光(プール済みスプライト=軽い)
                 playSfx('bomb');                                                        // 爆破SE(使い回し)
                 useGameStore.getState().triggerShake(BOSS_CRUSH_SHAKE_MS, BOSS_CRUSH_SHAKE_MAG); // 少し揺れる
               }
@@ -7243,7 +7244,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             enemyCrushFxRef.current = newGameTime;
             spawnBurst(crushedX, crushedY, '#fbbf24', 6);
             spawnRing(crushedX, crushedY, 6, 40, 'rgba(251,146,60,0.86)', 3, 300);
-            useGameStore.getState().spawnGlow(crushedX, crushedY, 44, 'rgba(251,146,60,', 340);
+            useGameStore.getState().spawnGlow(crushedX, crushedY, GLOW_R_XS, 'rgba(251,146,60,', 340);
             playSfx('bomb');
           }
         }
@@ -7811,7 +7812,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     useGameStore.getState().completeEventEncounter();
                     useGameStore.getState().enqueueNpcDialogue(EVENT_QUEST_ENCOUNTER_LINES);
                     spawnRing(q.x, q.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, 520);
-                    useGameStore.getState().spawnGlow(q.x, q.y - 30, 68, 'rgba(96,165,250,', 520);
+                    useGameStore.getState().spawnGlow(q.x, q.y - 30, GLOW_R_M, 'rgba(96,165,250,', 520);
                     playSfx('event-start');
                   } else {
                     useGameStore.getState().acceptEventQuest();
@@ -7822,7 +7823,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                         accepted.eventQuestActive === 'forced' ? EVENT_QUEST_LINES_FORCED : eventQuestSubAcceptLines(qStageId)
                       );
                       spawnRing(q.x, q.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, 520);
-                      accepted.spawnGlow(q.x, q.y - 30, 68, 'rgba(96,165,250,', 520);
+                      accepted.spawnGlow(q.x, q.y - 30, GLOW_R_M, 'rgba(96,165,250,', 520);
                       accepted.spawnCallout(q.x, q.y - 76, 'QUEST', '#bfdbfe');
                       playSfx('event-start');
                     }
@@ -7833,7 +7834,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().completeEventQuest();
                   if (wasSub) useGameStore.getState().enqueueNpcDialogue(eventQuestSubCompleteLines(qStageId));
                   spawnRing(q.x, q.y - 22, 12, 62, 'rgba(253,230,138,0.85)', 3, 520);
-                  useGameStore.getState().spawnGlow(q.x, q.y - 30, 68, 'rgba(253,230,138,', 520);
+                  useGameStore.getState().spawnGlow(q.x, q.y - 30, GLOW_R_M, 'rgba(253,230,138,', 520);
                   // §6.10 M33⑪: ゴールドラッシュの獲得倍率を表示にも反映(付与額=completeEventQuestと同じ式)。
                   useGameStore.getState().spawnCallout(q.x, q.y - 76, `+${Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(useGameStore.getState().player))}G`, '#fde68a');
                   playSfx('event-clear');
@@ -7880,11 +7881,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (turret.ownerGhost) {
                 spawnRing(tcx, tcy, 8, tBlastR, 'rgba(159,216,255,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
                 spawnBurst(tcx, tcy, '#9fd8ff', 16);
-                useGameStore.getState().spawnGlow(tcx, tcy, 44, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+                useGameStore.getState().spawnGlow(tcx, tcy, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               } else {
                 spawnRing(tcx, tcy, 8, tBlastR, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
                 spawnBurst(tcx, tcy, '#f97316', 16);
-                useGameStore.getState().spawnGlow(tcx, tcy, 44, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+                useGameStore.getState().spawnGlow(tcx, tcy, GLOW_R_XS, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               }
               const tWalls = aoeWalls(tcx, tcy);
               for (const enemy of useGameStore.getState().enemies) {
@@ -8017,11 +8018,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (decoy.ownerGhost) {
               spawnRing(dcx, dcy, 8, dBlastR, 'rgba(159,216,255,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(dcx, dcy, '#9fd8ff', 16);
-              useGameStore.getState().spawnGlow(dcx, dcy, 44, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              useGameStore.getState().spawnGlow(dcx, dcy, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             } else {
               spawnRing(dcx, dcy, 8, dBlastR, 'rgba(56,189,248,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(dcx, dcy, '#38bdf8', 16);
-              useGameStore.getState().spawnGlow(dcx, dcy, 44, 'rgba(56,189,248,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              useGameStore.getState().spawnGlow(dcx, dcy, GLOW_R_XS, 'rgba(56,189,248,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             }
             const dWalls = aoeWalls(dcx, dcy);
             for (const enemy of useGameStore.getState().enemies) {
@@ -8109,12 +8110,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnRing(gx, gy, 8, blastR, 'rgba(159,216,255,0.82)', 5, fxMs);
             spawnBurst(gx, gy, '#9fd8ff', 20);
             spawnBurst(gx, gy, '#1e3a5f', 8);
-            useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(159,216,255,', fxMs);
+            useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(159,216,255,', fxMs);
           } else {
             spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
             spawnBurst(gx, gy, '#f97316', 20);
             spawnBurst(gx, gy, '#7f1d1d', 8);
-            useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', fxMs);
+            useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(251,146,60,', fxMs);
           }
           const gWalls = aoeWalls(gx, gy);
           for (const enemy of useGameStore.getState().enemies) {
@@ -8204,7 +8205,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(mine.x, mine.y, 8, smBlastR, 'rgba(251,146,60,0.82)', 5, smFxMs);
               spawnBurst(mine.x, mine.y, '#f97316', 20);
               spawnBurst(mine.x, mine.y, '#7f1d1d', 8);
-              useGameStore.getState().spawnGlow(mine.x, mine.y, 50, 'rgba(251,146,60,', smFxMs);
+              useGameStore.getState().spawnGlow(mine.x, mine.y, GLOW_R_S, 'rgba(251,146,60,', smFxMs);
               const smWalls = aoeWalls(mine.x, mine.y);
               let smHitCount = 0;
               for (const enemy of useGameStore.getState().enemies) {
@@ -8288,12 +8289,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnRing(bx, by, 8, blastR, 'rgba(159,216,255,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
                 spawnBurst(bx, by, '#9fd8ff', 18);
                 spawnBurst(bx, by, '#1e3a5f', 8);
-                useGameStore.getState().spawnGlow(bx, by, Math.round(blastR * 0.68), 'rgba(159,216,255,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+                useGameStore.getState().spawnGlow(bx, by, snapGlowRadius(blastR * 0.68), 'rgba(159,216,255,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
               } else {
                 spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
                 spawnBurst(bx, by, '#f97316', 18);
                 spawnBurst(bx, by, '#7f1d1d', 8);
-                useGameStore.getState().spawnGlow(bx, by, Math.round(blastR * 0.68), 'rgba(251,146,60,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+                useGameStore.getState().spawnGlow(bx, by, snapGlowRadius(blastR * 0.68), 'rgba(251,146,60,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
               }
               const fkWalls = aoeWalls(bx, by);
               for (const enemy of useGameStore.getState().enemies) {
@@ -8869,7 +8870,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnRing(blastX, blastY, 10, exRadius, 'rgba(251,146,60,0.82)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
             spawnBurst(blastX, blastY, '#f97316', 24);
             spawnBurst(blastX, blastY, '#7f1d1d', 10);
-            useGameStore.getState().spawnGlow(blastX, blastY, 58, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
+            useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
 
             const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT * exMult;
             const glWalls = aoeWalls(blastX, blastY);
@@ -8921,12 +8922,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(blastX, blastY, 8, exRadius, 'rgba(159,216,255,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(blastX, blastY, '#9fd8ff', 16);
               spawnBurst(blastX, blastY, '#1e3a5f', 6);
-              useGameStore.getState().spawnGlow(blastX, blastY, 46, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             } else {
               spawnRing(blastX, blastY, 8, exRadius, 'rgba(251,146,60,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(blastX, blastY, '#f97316', 16);
               spawnBurst(blastX, blastY, '#7f1d1d', 6);
-              useGameStore.getState().spawnGlow(blastX, blastY, 46, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_XS, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             }
             const splashBase = dmg * (projectile.explodeDamageMult ?? 1) * exMult;
             const exWalls = aoeWalls(blastX, blastY);
@@ -10717,7 +10718,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             cy,
             60, 260, 'rgba(255,255,255,0.5)', 3, 700
           ); // 追加の外周閃光
-          useGameStore.getState().spawnGlow(cx, cy, 130, 'rgba(253,224,71,', 620);
+          useGameStore.getState().spawnGlow(cx, cy, GLOW_R_XL, 'rgba(253,224,71,', 620);
           spawnBurst(
             cx,
             cy,
@@ -10762,7 +10763,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnRing(bcx, bcy, 10, radius, 'rgba(251,146,60,0.85)', 5, 380);
             spawnBurst(bcx, bcy, '#f97316', 20);
             spawnBurst(bcx, bcy, '#7f1d1d', 8);
-            useGameStore.getState().spawnGlow(bcx, bcy, 58, 'rgba(251,146,60,', 380);
+            useGameStore.getState().spawnGlow(bcx, bcy, GLOW_R_S, 'rgba(251,146,60,', 380);
             playSfx('bomb');
             for (const e of useGameStore.getState().enemies) {
               if ((e.type === 'reaper' && !e.reaperChaser) || e.aiPhase === 'jump') continue; // 深奥チェイサーは対象・空中無敵は対象外

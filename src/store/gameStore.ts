@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { generateEquipmentChoices } from '../utils/upgradeUtils';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
@@ -2345,7 +2346,7 @@ const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: 
     get().enqueueWallEvent('revenge', `REVENGE —— ${normalizeNamedName(st.namedFoe.name)}`, 'NEMESIS FELLED', '#ffd700', namedGold);
   }
   get().spawnRing(x, y, 14, 220, 'rgba(255,215,0,0.85)', 5, 560);
-  get().spawnGlow(x, y, 140, 'rgba(255,215,0,', 620);
+  get().spawnGlow(x, y, GLOW_R_XXL, 'rgba(255,215,0,', 620);
 };
 
 // PACING_PUZZLE.md §5.23 M22 A3: 全キル(近接/銃/接触/爆発共通)の死亡ポップ=小リング(膨らんで消える)
@@ -2647,7 +2648,7 @@ const grantMeleeKillRewards = (
       get().spawnRing(ex, ey, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
       get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
       get().spawnRing(ex, ey, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
-      get().spawnGlow(ex, ey, 58, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS); // KILLの光サークルを少し大きく(社長指示。46→58)
+      get().spawnGlow(ex, ey, GLOW_R_S, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS); // KILLの光サークルを少し大きく(社長指示。46→58)
       // "Kill!" callout over the executed enemy's head. 刀の一閃は代わりに
       // 軌道中央へ「斬」を出すので、ここでは出さない。
       if (!suppressKillCallout) {
@@ -4868,7 +4869,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           },
         });
         get().spawnRing(b.x, b.y - 26, 12, 58, 'rgba(251,191,36,0.88)', 3, SHOP_INTERACT_RING_MS);
-        get().spawnGlow(b.x, b.y - 28, 62, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
+        get().spawnGlow(b.x, b.y - 28, GLOW_R_S, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
         get().spawnCallout(b.x, b.y - 70, 'SHOP', '#fde68a');
         return { swung: true, hit: true, finish: false, killed: 0 };
       }
@@ -5391,7 +5392,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const p of bossFullStunHits) {
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
-      get().spawnGlow(p.x, p.y, 130, 'rgba(168,85,247,', 620);
+      get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
       get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
     }
 
@@ -5608,7 +5609,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const p of cloneBossFullStunHits) {
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
-      get().spawnGlow(p.x, p.y, 130, 'rgba(168,85,247,', 620);
+      get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
       get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
     }
     grantMeleeKillRewards(get, killed, player, gun);
@@ -5854,7 +5855,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       get().spawnRing(cx, cy, 12, radius, 'rgba(255,170,70,0.9)', 5, 400);
       get().spawnBurst(cx, cy, '#ffae46', 22);
-      get().spawnGlow(cx, cy, radius * 0.55, 'rgba(255,150,60,', 400);
+      get().spawnGlow(cx, cy, snapGlowRadius(radius * 0.55), 'rgba(255,150,60,', 400); // ★段へ丸める(v0.25.2808)
       // 半径内の敵に falloff ダメージ+押し出し(中心=b.fromX/Yではなく着弾点基準)。
       for (const e of get().enemies) {
         if (e.type === 'reaper' && !e.reaperChaser) continue;
@@ -6103,7 +6104,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const p of katanaBossFullStunHits) {
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
-      get().spawnGlow(p.x, p.y, 130, 'rgba(168,85,247,', 620);
+      get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
       get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
     }
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
@@ -6279,7 +6280,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const p of whipBossFullStunHits) {
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
-      get().spawnGlow(p.x, p.y, 130, 'rgba(168,85,247,', 620);
+      get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
       get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
     }
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
@@ -6390,7 +6391,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const rare = buildSummon(lvl, 'rare', sx, sy);
       set({ summons: [...persistentPets, rare] });
       get().spawnRing(sx, sy, 16, 120, 'rgba(125,211,252,0.85)', 3, 360);
-      get().spawnGlow(sx, sy, 72, 'rgba(125,211,252,', 420);
+      get().spawnGlow(sx, sy, GLOW_R_M, 'rgba(125,211,252,', 420);
       // 召喚完了演出(レアは強め): 暗転 + スロー + パーティクル(死神=黒も混ぜる)。
       get().triggerTimeSlow(0.3, 480);
       get().spawnFlash('rgba(0,0,0,0.5)', 260);
@@ -6405,7 +6406,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       : normals;
     const unit = buildSummon(lvl, 'normal', sx, sy, skillSummonHpMult(player)); // スキル: ナイト=召喚HP×1.5
     set({ summons: [...persistentPets, ...kept, unit] });
-    get().spawnGlow(sx, sy, 54, 'rgba(125,211,252,', 360);
+    get().spawnGlow(sx, sy, GLOW_R_S, 'rgba(125,211,252,', 360);
     // 召喚完了演出: 暗転 + スロー + シアンのパーティクル。
     get().triggerTimeSlow(0.4, 320);
     get().spawnFlash('rgba(0,0,0,0.4)', 200);
@@ -6642,7 +6643,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 霊が赤い血を流すのは世界観に合わないためプレイヤーの赤とは別色)。演出のみ=判定に影響なし。
       get().spawnRing(at.x, at.y, 8, 128, 'rgba(159,216,255,0.9)', 6, DEATH_ZOOM_HOLD_MS);
       get().spawnRing(at.x, at.y, 22, 176, 'rgba(96,165,250,0.6)', 4, DEATH_ZOOM_MS);
-      get().spawnGlow(at.x, at.y, 96, 'rgba(159,216,255,', DEATH_ZOOM_MS);
+      get().spawnGlow(at.x, at.y, GLOW_R_L, 'rgba(159,216,255,', DEATH_ZOOM_MS);
       get().spawnBurst(at.x, at.y, '#9fd8ff', 30);
       get().spawnBurst(at.x, at.y, '#60a5fa', 18);
     }
@@ -6771,11 +6772,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (broken.type === 'mine') {
               get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
               get().spawnRing(broken.footX, broken.footY - 8, 5, 50, 'rgba(132,204,22,0.82)', 4, 320);
-              get().spawnGlow(broken.footX, broken.footY - 8, 54, 'rgba(132,204,22,', 320);
+              get().spawnGlow(broken.footX, broken.footY - 8, GLOW_R_S, 'rgba(132,204,22,', 320);
             } else {
               get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
               get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
-              get().spawnGlow(broken.footX, broken.footY - 18, 44, 'rgba(251,146,60,', 360);
+              get().spawnGlow(broken.footX, broken.footY - 18, GLOW_R_XS, 'rgba(251,146,60,', 360);
               get().dropBreakablePropLoot(broken);
             }
           }
@@ -7091,7 +7092,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const cy = p.y + p.height / 2;
       get().spawnFlash('rgba(34, 197, 94, 0.34)', 320);
       get().spawnRing(cx, cy, 10, 90, 'rgba(74,222,128,0.88)', 5, 520);
-      get().spawnGlow(cx, cy, 78, 'rgba(74,222,128,', 520);
+      get().spawnGlow(cx, cy, GLOW_R_M, 'rgba(74,222,128,', 520);
       get().spawnCallout(cx, cy - 18, 'VACCINE', '#bbf7d0');
       return false;
     }
@@ -7167,7 +7168,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const baseDmg = [0, 60, 80, 100][rfLv] * exMult * skillOutgoingDamageMult(p);
         get().spawnRing(pcx, pcy, 10, radius, 'rgba(56,189,248,0.85)', 5, 360);
         get().spawnBurst(pcx, pcy, '#38bdf8', 18);
-        get().spawnGlow(pcx, pcy, 56, 'rgba(56,189,248,', 360);
+        get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(56,189,248,', 360);
         const kbMult = (KNOCKBACK_SPEED * 2) / BULLET_KNOCKBACK_SPEED;
         for (const e of get().enemies) {
           if (e.type === 'reaper' && !e.reaperChaser) continue;
@@ -7311,8 +7312,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const cx = lp.x + lp.width / 2, cy = lp.y + lp.height / 2;
     get().spawnRing(cx, cy, 14, LEVELUP_KNOCKBACK_RADIUS, 'rgba(250,204,21,0.7)', 3, 260);
     // キャラを派手に: 大きく明るいグロー(芯=白＋金ハロー)を重ねがけ。
-    get().spawnGlow(cx, cy, 150, 'rgba(253,224,71,', LEVELUP_INTRO_MS + 200);
-    get().spawnGlow(cx, cy, 88, 'rgba(255,255,255,', LEVELUP_INTRO_MS);
+    get().spawnGlow(cx, cy, GLOW_R_XXL, 'rgba(253,224,71,', LEVELUP_INTRO_MS + 200);
+    get().spawnGlow(cx, cy, GLOW_R_L, 'rgba(255,255,255,', LEVELUP_INTRO_MS);
   },
   
   // Weapon actions
@@ -7889,7 +7890,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       swipeStrength: 1,
     });
     get().spawnRing(weaponMerchant.x, weaponMerchant.y - 26, 12, 58, 'rgba(251,191,36,0.88)', 3, SHOP_INTERACT_RING_MS);
-    get().spawnGlow(weaponMerchant.x, weaponMerchant.y - 28, 62, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
+    get().spawnGlow(weaponMerchant.x, weaponMerchant.y - 28, GLOW_R_S, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
     get().spawnCallout(weaponMerchant.x, weaponMerchant.y - 70, 'SHOP', '#fde68a');
   },
 
@@ -8168,7 +8169,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const p = bossFullStunAt as { x: number; y: number };
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
-      get().spawnGlow(p.x, p.y, 130, 'rgba(168,85,247,', 620);
+      get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
       get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
     }
 
@@ -8194,7 +8195,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const tx = tc.x + tc.width / 2, ty = tc.y + tc.height / 2;
         const unit: Summon = { ...buildSummon(1, 'normal', tx, ty), persistent: true };
         set(state => ({ summons: [...state.summons, unit] }));
-        get().spawnGlow(tx, ty, 54, 'rgba(56,189,248,', 360);
+        get().spawnGlow(tx, ty, GLOW_R_S, 'rgba(56,189,248,', 360);
         get().spawnBurst(tx, ty, '#38bdf8', 18);
         get().spawnCallout(tx, ty - 20, '使役！', '#38bdf8');
       }
@@ -10289,7 +10290,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (screamerWindupAt.length > 0) {
       const { x, y } = screamerWindupAt[0];
       get().spawnRing(x, y, 8, 130, 'rgba(190,242,100,0.5)', 3, SCREAMER_WINDUP_MS);
-      get().spawnGlow(x, y, 70, 'rgba(163,230,53,', SCREAMER_WINDUP_MS);
+      get().spawnGlow(x, y, GLOW_R_M, 'rgba(163,230,53,', SCREAMER_WINDUP_MS);
     }
     // 叫喚発動: 強い衝撃リング＋発光＋コールアウト＋画面揺れ。「叫んだ」感を強めるため(社長指示)、
     // 外側にもう一段リング(遅れて届く音波のイメージ)＋画面全体がわずかに緑へ明滅するフラッシュを追加し、
@@ -10299,7 +10300,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(x, y, 10, 240, 'rgba(190,242,100,0.72)', 4, 480);
       get().spawnRing(x, y, 6, 150, 'rgba(255,255,255,0.85)', 3, 340);
       get().spawnRing(x, y, 20, 330, 'rgba(163,230,53,0.5)', 3, 620); // 一段外側=音波が遅れて届くイメージ
-      get().spawnGlow(x, y, 130, 'rgba(163,230,53,', 520);
+      get().spawnGlow(x, y, GLOW_R_XL, 'rgba(163,230,53,', 520);
       get().spawnCallout(x, y - 30, '叫喚!', '#bef264', { scale: 1.1 });
       get().spawnFlash('rgba(163,230,53,0.22)', 260); // 叫びが画面全体に響くイメージの淡い緑フラッシュ
       get().triggerShake(260, 10);
@@ -11433,12 +11434,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
         get().spawnBurst(broken.footX, broken.footY - 8, '#166534', 16);
         get().spawnRing(broken.footX, broken.footY - 8, 5, 50, 'rgba(132,204,22,0.82)', 4, 320);
-        get().spawnGlow(broken.footX, broken.footY - 8, 54, 'rgba(132,204,22,', 320);
+        get().spawnGlow(broken.footX, broken.footY - 8, GLOW_R_S, 'rgba(132,204,22,', 320);
       } else {
         get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
         get().spawnBurst(broken.footX, broken.footY - 18, '#fde68a', 8);
         get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
-        get().spawnGlow(broken.footX, broken.footY - 18, 44, 'rgba(251,146,60,', 360);
+        get().spawnGlow(broken.footX, broken.footY - 18, GLOW_R_XS, 'rgba(251,146,60,', 360);
         get().dropBreakablePropLoot(broken);
       }
     }
@@ -12534,7 +12535,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (capturedThisFrame) {
       const c = capturedThisFrame as { id: string; x: number; y: number; soldierIndex: number };
       get().spawnRing(c.x, c.y, 14, BASE_CAPTURE_RADIUS, 'rgba(251,191,36,0.9)', 4, 560);
-      get().spawnGlow(c.x, c.y, 70, 'rgba(251,191,36,', 600);
+      get().spawnGlow(c.x, c.y, GLOW_R_M, 'rgba(251,191,36,', 600);
       // 拠点解放時セリフ(Critical): 時間停止なしのHUDセリフに置換(管理表 baseCaptured)。バナー/SEは併用。
       const sol = BASE_SOLDIERS[c.soldierIndex % BASE_SOLDIERS.length];
       get().tryNpcLine(sol.name, 'baseCaptured', pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured), BASE_CAPTURED_CAT_CD_MS);

@@ -7,6 +7,7 @@
 // 状態文法(監査レポート§3-1): NEUTRAL(主戦帯を維持) → STRING(連段) → REST(休符) → NEUTRAL。
 // 懲罰(PUNISH)は中立中いつでも割り込む。**休符は必ず入る**(プレイヤーのターンを消さない)。
 import type { Enemy } from '../types/game';
+import { GLOW_R_L } from './glowTiers';
 import {
   useGameStore, counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
@@ -268,7 +269,7 @@ export const runIdolTick = (
       const g = useGameStore.getState();
       g.addMeleeFinishCombo(1);
       sfx.counter();
-      g.spawnGlow(hx, hy, 95, 'rgba(56,189,248,', 360);
+      g.spawnGlow(hx, hy, GLOW_R_L, 'rgba(56,189,248,', 360);
       g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
       g.markMeleeSwingFx();
       g.spawnRing(hx, hy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);

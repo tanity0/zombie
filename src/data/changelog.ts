@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2808',
+    items: [
+      '光の大きさを6段に整理しました（見え方が少し揃います）。',
+    ],
+  },
+  {
     version: '0.25.2807',
     items: [
       '松明や焚き火に近づいた時に暗くなる度合いを弱めました。',

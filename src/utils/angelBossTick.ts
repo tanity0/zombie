@@ -16,6 +16,7 @@
 // 時間の単位(重要・§6.28-1-0): このファイルの天使勢は「壁時計系」。定数はそのまま実効msで書く
 // (giantbatのようにENEMY_ATTACK_SPEED_MULTを掛けも割りもしない)。
 import type { Enemy } from '../types/game';
+import { GLOW_R_L } from './glowTiers';
 import {
   useGameStore, counterReplyDamage, skillLevel, enemyDeathLabel,
   BOSS_CRIT_DAMAGE_MULT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
@@ -284,7 +285,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   const pnow = Date.now();
   st.addMeleeFinishCombo(1);
   sfx.counter();
-  st.spawnGlow(hitX, hitY, 95, 'rgba(56,189,248,', 360);
+  st.spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
   st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
   st.markMeleeSwingFx();
   st.spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
