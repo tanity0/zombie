@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.2812 — v0.25.2811 の型エラーを修正【2026-08-03 07:05 JST】
+
+`glowmindist` の既定を 0 にした際、`SHADOW_GLOW_MIN_DIST_PX` の import が未使用になり
+`TS6133` が出たまま push してしまった。import を外して修正。**ゲーム挙動の変更なし。**
+
+★**反省**: `npm run typecheck 2>&1 | tail` をコマンド連結の途中に置いたため、
+**エラーが出ても後続の commit/push が走った**(パイプで終了コードが握り潰される)。
+CLAUDE.md の「push前は typecheck+lint」は**結果を目で見るだけでなく、失敗したら止まる形**で回すこと。
+
+**変更ファイル**: `src/pixi/pixiScene.ts` / `src/data/changelog.ts` / `package.json` / `DEVELOPMENT_LOG.md`
+**検証**: typecheck OK / lint エラー0(warning 8=既存)。
+
 ## v0.25.2811 — 光まわりの推薦値を社長決定で既定にした【2026-08-03 07:00 JST】
 
 社長がURLで指定した値をそのまま既定へ。

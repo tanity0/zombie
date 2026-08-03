@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2812',
+    items: [
+      'ゲーム内容の変更はありません（ビルドエラーの修正）。',
+    ],
+  },
+  {
     version: '0.25.2811',
     items: [
       '光った瞬間の演出を強くしました（地面がより広く明るくなり、明暗の差がはっきりします）。',

@@ -108,7 +108,7 @@ import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from '
 import {
   glowFalloff, glowLenMult, glowScore, explosionSilAlpha, ambientSilAlpha,
   pickExplSlot, rankFade, shouldFreezeGeom,
-  SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS, SHADOW_GLOW_MIN_DIST_PX,
+  SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS,
 } from '../utils/shadowSlots';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
