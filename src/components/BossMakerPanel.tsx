@@ -28,8 +28,10 @@ import {
   getBossTuning, getAtPath, setAtPath, clampField, changedPaths, resetTuning,
   formatTuningText, parseTuningText, saveTuning, applySavedTuning, clearSavedTuning,
   getTextAtPath, setTextAtPath, fieldVisible,
-  UNIT_SUFFIX, type TuningField, type TuningTextField, type BossTuningEntry,
+  choiceApplicable, matchedOption, matchedOptionLabel, choiceValues,
+  UNIT_SUFFIX, type TuningField, type TuningTextField, type TuningChoiceField, type BossTuningEntry,
 } from '../utils/bossTuning';
+import { hiddenPaths } from '../utils/bossPresets';
 import { registerIdolTuning } from '../utils/idolTuning';
 import { BossMakerLive } from './BossMakerLive';
 import { BossScriptEditor } from './BossScriptEditor';
@@ -149,6 +151,41 @@ const NumberScrub = ({ field, value, changed, pinned, withSection, help, onChang
   );
 };
 
+// ---- 束で選ぶ欄(BOSS_MAKER.md §18・v0.25.2819) --------------------------------------------------
+// 社長指示「行動などについて数字が細かすぎて使いづらい。主要な数字だけ入れる仕様にしたい」。
+// 行動の値は大半が**単独では決められない**(現行値は束で辻褄が合っている)ので、**束のまま選ばせる**。
+// ★選択の状態は保存しない——**いまの数値がどの束と一致するか**を引き直して点灯させる
+// (`matchedOption`)。数値を直接いじれる経路が何本あっても表示が実態とズレない。
+const ChoiceRow = ({ field, table, help, onPick }: {
+  field: TuningChoiceField;
+  table: Record<string, unknown>;
+  help?: boolean;
+  onPick: (optionKey: string) => void;
+}) => {
+  const current = matchedOption(table, field);
+  return (
+    <div className="py-[3px]">
+      <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1 truncate text-[11px] text-white/70" title={field.hint}>{field.label}</div>
+        {/* どれとも一致しない=「カスタム」。詳細で数字を直接触った/古い保存を読んだ時に出る。 */}
+        {current === null && <div className="shrink-0 text-[10px] text-amber-300">カスタム</div>}
+      </div>
+      <div className="mt-0.5 flex gap-1">
+        {field.options.map(o => (
+          <button
+            key={o.key}
+            className={`flex-1 rounded py-1.5 text-[12px] font-bold ${current === o.key ? 'bg-emerald-500/85 text-black' : 'bg-white/10 text-white/70'}`}
+            onClick={() => onPick(o.key)}
+          >{o.label}</button>
+        ))}
+      </div>
+      {help && field.hint && (
+        <div className="pl-0.5 pt-0.5 text-[10px] leading-snug text-sky-200/70">{field.hint}</div>
+      )}
+    </div>
+  );
+};
+
 // ---- 1つの文字欄(技の名前だけ・v0.25.2638) ------------------------------------------------------
 // 数値欄と違って「摘まむ」操作が無いので普通の入力にする。**入力中は移動キーを殺す**必要があるが、
 // それは useGameControls 側が「入力欄にフォーカスがあるか」で見ているので、ここは素の input でよい。
@@ -175,6 +212,10 @@ const SHEET_PX_KEY = 'bossmaker.sheetpx.v1';
 const TAB_KEY = 'bossmaker.tab.v1';
 // §14 ヘルプのON/OFF(既定OFF=普段は邪魔にならない)。
 const HELP_KEY = 'bossmaker.help.v1';
+// §18 詳細表示のON/OFF(既定OFF=社長指示「表示しない」)。ONで束の中身の生数字が全部出る。
+// ★逃げ道として必ず要る: 貼り戻し・古い保存で**どの束とも一致しない中間値**に入りうるので、
+// 詳細が無いとその状態で触れなくなる(=道具が壊れる)。
+const DETAIL_KEY = 'bossmaker.detail.v1';
 export const MAX_PINS = 3; // 多すぎると画面を食う(社長指示「2〜3個」)
 
 const loadSet = (key: string, boss: string): Set<string> => {
@@ -201,13 +242,18 @@ const summarize = (fs: TuningField[], table: Record<string, unknown>): string =>
   }).join(' ');
 
 // ---- タブ1枚ぶんの中身。**セクション単位で開閉**する --------------------------------------------
-const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin, onPlay, playState, bump, help }: {
+const SectionList = ({ group, entry, open, toggle, pins, hidden, choices, onChange, onChoice, onText, onPin, onPlay, playState, bump, help }: {
   group: 'behavior' | 'move';
   entry: BossTuningEntry;
   open: Set<string>;
   toggle: (sec: string) => void;
   pins: Set<string>;
+  /** §18 簡易表示で隠すパス(詳細ONなら空)。**束が持つパスから派生**=手書きリストを二重管理しない。 */
+  hidden: Set<string>;
+  /** §18 このボスで出せる束(チップ)。 */
+  choices: readonly TuningChoiceField[];
   onChange: (path: string, v: number) => void;
+  onChoice: (field: TuningChoiceField, optionKey: string) => void;
   onText: (path: string, v: string) => void;
   onPin: (path: string) => void;
   onPlay: (key: string) => void;
@@ -220,21 +266,26 @@ const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin
   // ★`fieldVisible` を通す=**足していない射撃枠は見出しごと消える**(欄が0本なら Map に入らない)。
   const sections = useMemo(() => {
     const m = new Map<string, TuningField[]>();
-    for (const f of entry.fields) if (f.group === group && fieldVisible(entry.table, f)) {
+    for (const f of entry.fields) {
+      if (f.group !== group || !fieldVisible(entry.table, f) || hidden.has(f.path)) continue;
       const a = m.get(f.section) ?? []; a.push(f); m.set(f.section, a);
     }
+    // ★§18: **束のチップが属する節は、欄が0本でも必ず生やす。** 簡易表示では間合い/中立の移動/
+    // ストリングと休符/懲罰の欄が全部隠れるので、これが無いと**見出しごと消えてチップの置き場が無くなる**。
+    for (const c of choices) if (c.group === group && !m.has(c.section)) m.set(c.section, []);
     for (const p of entry.playables ?? []) {
       if (group === 'behavior' && !m.has(p.section) && !entry.fields.some(f => f.section === p.section)) m.set(p.section, []);
     }
     return [...m.entries()];
     // bump は「値が変わったら要点表示を作り直す」ため(依存に入れないと畳んだ見出しが古いまま)。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry, group, bump]);
+  }, [entry, group, bump, hidden, choices]);
 
   return (
     <>
       {sections.map(([sec, fs]) => {
         const isOpen = open.has(sec);
+        const chs = choices.filter(c => c.group === group && c.section === sec);
         const texts = (entry.textFields ?? []).filter(t => t.section === sec && fieldVisible(entry.table, t));
         const plays = (entry.playables ?? []).filter(p => p.section === sec);
         const single = plays.length === 1 ? plays[0] : null;
@@ -248,8 +299,15 @@ const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin
                   <span className="text-[10px] text-white/40">{isOpen ? '▾' : '▸'}</span>
                   <span className="truncate text-[12px] font-bold text-emerald-300/90">{entry.sectionLabel?.(sec) ?? sec}</span>
                 </div>
-                {!isOpen && fs.length > 0 && (
-                  <div className="truncate pl-3 font-mono text-[10px] text-white/40">{summarize(fs, entry.table)}</div>
+                {/* 畳んだ見出しの要点。★簡易表示では欄が0本なので、**選択名を出す**
+                    (値から作ると空欄になり、今より情報が減る)。束と欄が両方ある時は両方出す。 */}
+                {!isOpen && (chs.length > 0 || fs.length > 0) && (
+                  <div className="truncate pl-3 font-mono text-[10px] text-white/40">
+                    {[
+                      ...chs.map(c => `${c.label}:${matchedOptionLabel(entry.table, c)}`),
+                      ...(fs.length > 0 ? [summarize(fs, entry.table)] : []),
+                    ].join(' ')}
+                  </div>
                 )}
               </button>
               {single && (
@@ -285,6 +343,13 @@ const SectionList = ({ group, entry, open, toggle, pins, onChange, onText, onPin
                     })}
                   </div>
                 )}
+                {/* 束のチップは節の先頭(主役)。数値欄はその下=詳細を開いた時だけ並ぶ。 */}
+                {chs.map(c => (
+                  <ChoiceRow
+                    key={c.key} field={c} table={entry.table} help={help}
+                    onPick={k => onChoice(c, k)}
+                  />
+                ))}
                 {texts.map(t => (
                   <TextRow
                     key={t.path} field={t}
@@ -339,6 +404,8 @@ export const BossMakerPanel = () => {
   const [tab, setTab] = useState<'behavior' | 'move'>(() => (loadStr(TAB_KEY, bossType, 'move') === 'behavior' ? 'behavior' : 'move'));
   // §14 ヘルプ(既定OFF)。既存の🛡⏸⬚🔁👁と同じ作法=localStorageへ端末に覚える(loadStr/saveStr流用)。
   const [help, setHelp] = useState<boolean>(() => loadStr(HELP_KEY, bossType, '0') === '1');
+  // §18 詳細(束の中身の生数字)。既定OFF。
+  const [detail, setDetail] = useState<boolean>(() => loadStr(DETAIL_KEY, bossType, '0') === '1');
   const [sheetPx, setSheetPxState] = useState<number>(() => {
     const raw = Number(loadStr(SHEET_PX_KEY, bossType, ''));
     // 読めない(空/非数値=旧キーの 'half' 等を誤って踏んだ場合も含む)なら既定へフォールバック。
@@ -386,6 +453,21 @@ export const BossMakerPanel = () => {
 
   const setTabSaved = useCallback((t: 'behavior' | 'move') => { saveStr(TAB_KEY, bossType, t); setTab(t); }, []);
   const setHelpSaved = useCallback((v: boolean) => { saveStr(HELP_KEY, bossType, v ? '1' : '0'); setHelp(v); }, []);
+  const setDetailSaved = useCallback((v: boolean) => { saveStr(DETAIL_KEY, bossType, v ? '1' : '0'); setDetail(v); }, []);
+
+  // ---- §18 束(チップ) ---------------------------------------------------------------------------
+  // ★そのボスが持っていないパスを含む束は出さない(`setAtPath` は無い場所へ黙って false を返すので、
+  // 出すと「押しても効かず永久にカスタム表示」という無言の故障になる)。
+  const choices = useMemo(
+    () => (entry?.choices ?? []).filter(c => choiceApplicable(entry!.table, c)),
+    [entry],
+  );
+  // 簡易表示で隠すパス。★**束から派生させる**(手書きリストを別に持つと束を1つ足した日にズレる)。
+  // 詳細ONなら空=これまでどおり全部出る。束を宣言していないボスは何も隠さない。
+  const hidden = useMemo(
+    () => (detail || choices.length === 0 ? new Set<string>() : hiddenPaths(choices)),
+    [detail, choices],
+  );
 
   // ---- シートの高さの上限(社長実機報告v0.25.2655) ------------------------------------------------
   // **ツールバー(+出ていればピン行)の高さを実測**して引く。決め打ち定数にしないのは、safe-area・
@@ -465,6 +547,24 @@ export const BossMakerPanel = () => {
     bump(n => n + 1);
   }, [entry, saveSoon]);
 
+  /**
+   * §18 束を1つ当てる。★**既存の onChange と同じ道を通す**(setAtPath → saveSoon → bump)。
+   * `saveSoon()` を通らないと**保存されないまま退室時の `resetTuning` で消え**、次に入ると
+   * 全部「まん中」に戻る(BOSS_MAKER.md §18-7-4)。
+   * ※束は `stats.*` を1つも持たない(テストで固定)ので、生きている個体へのHP等の反映は要らない。
+   */
+  const applyChoice = useCallback((field: TuningChoiceField, optionKey: string) => {
+    if (!entry) return;
+    const byPath = new Map(entry.fields.map(f => [f.path, f]));
+    for (const [path, v] of Object.entries(choiceValues(field, optionKey))) {
+      const f = byPath.get(path);
+      setAtPath(entry.table, path, f ? clampField(f, v) : v);
+    }
+    saveSoon();
+    setNote(`${field.label} = ${field.options.find(o => o.key === optionKey)?.label ?? optionKey}`);
+    bump(n => n + 1);
+  }, [entry, saveSoon]);
+
   const onText = useCallback((path: string, v: string) => {
     if (!entry) return;
     setTextAtPath(entry.table, path, v);
@@ -540,7 +640,9 @@ export const BossMakerPanel = () => {
   const changed = changedPaths(entry).length;
   const playState = entry.playState?.() ?? { verb: null, loop: null };
   // 消した射撃枠がピン行に残り続けないよう、ピンも表示条件を通す。
-  const pinFields = entry.fields.filter(f => pins.has(f.path) && fieldVisible(entry.table, f));
+  // ★§18: 詳細OFFの間は**隠した欄のピンも出さない**(社長指示「表示しない」)。端末に残っている
+  // 古いピン(`bossmaker.pins.v1.idol`)が生数字を出し続けるのを防ぐ。ピン自体は消さない=詳細ONで戻る。
+  const pinFields = entry.fields.filter(f => pins.has(f.path) && fieldVisible(entry.table, f) && !hidden.has(f.path));
 
   // シートの開閉状態と目盛り表示(段が連続値になったので「閉/半/全」の代わりに%を出す)。
   const { min: sheetMin, max: sheetMax } = clampBounds();
@@ -576,6 +678,10 @@ export const BossMakerPanel = () => {
           <button className={`${ico} ${hideHud ? on : off}`} onClick={() => setBossMaker({ hideHud: !hideHud })} title="ゲームHUDを消す" aria-label="HUD">👁</button>
           {/* §14 ヘルプ。既存トグルと同じ見た目・同じ作法(localStorageへ端末記憶)。既定OFF。 */}
           <button className={`${ico} ${help ? on : off}`} onClick={() => setHelpSaved(!help)} title="ヘルプ(用語の説明)" aria-label="ヘルプ">？</button>
+          {/* §18 詳細: 束の中身の生数字を出す(既定OFF)。中間値に入った時の逃げ道。 */}
+          {choices.length > 0 && (
+            <button className={`${ico} ${detail ? on : off}`} onClick={() => setDetailSaved(!detail)} title="詳細(束の中身の数字)" aria-label="詳細">⚙</button>
+          )}
           <div className="w-1 shrink-0" />
           <button className={`${ico} ${off}`} onClick={() => setAllSecs(false)} title="全部畳む" aria-label="全部畳む">⇧</button>
           <button className={`${ico} ${off}`} onClick={() => setAllSecs(true)} title="全部開く" aria-label="全部開く">⇩</button>
@@ -657,6 +763,7 @@ export const BossMakerPanel = () => {
               )}
               <SectionList
                 group={tab} entry={entry} open={openSecs} toggle={toggleSec} pins={pins}
+                hidden={hidden} choices={choices} onChoice={applyChoice}
                 onChange={onChange} onText={onText} onPin={togglePin} onPlay={play} playState={playState} bump={rev}
                 help={help}
               />

@@ -48,6 +48,33 @@ export interface TuningTextField {
 }
 
 /**
+ * **束で選ぶ欄**(BOSS_MAKER.md §18・社長指示「主要な数字だけ入れる仕様」)。
+ *
+ * 行動パターンの値は大半が**単独では決められない**(現行値は `主戦帯 上限 = 中帯の上限` のように
+ * 束で辻褄が合っている)。よって**束のまま選ばせ、中身の数値は画面に出さない**。
+ * 中身は裏マスター(`bossPresets.ts`)にあり、変えたくなったらそこを直す。
+ *
+ * ★**選択の状態は保存しない。** いまテーブルに入っている数値が**どの束と一致するか**を
+ * 引き直して表示する(`matchedOption`)。⇒ 保存/コピー/貼り戻しの形式を**1つも増やさない**。
+ */
+export interface PresetOption {
+  key: string;
+  label: string;
+  /** この選択が書き込む「パス→値」。 */
+  values: Readonly<Record<string, number>>;
+}
+
+export interface TuningChoiceField {
+  key: string;
+  label: string;
+  group: 'behavior' | 'move';
+  /** 表示する見出し(`TuningField.section` と対応させる)。 */
+  section: string;
+  options: readonly PresetOption[];
+  hint?: string;
+}
+
+/**
  * 個別再生(BOSS_MAKER.md・社長要望v0.25.2625「停止中は技、動きごとに再生ボタンで個々に再生」)。
  * **スキーマと同じくボス側が宣言する**ので、UIは一切ボスを知らないまま▶ボタンを並べられる。
  *  - kind='move': 1回だけ再生(停止中なら硬直明けでまた止まる)
@@ -71,6 +98,12 @@ export interface BossTuningEntry {
   fields: readonly TuningField[];
   /** 文字の欄(技の名前など・未定義=無し)。 */
   textFields?: readonly TuningTextField[];
+  /**
+   * **束で選ぶ欄**(BOSS_MAKER.md §18・未定義=そのボスは束選択に未対応)。
+   * ★**ボス側が宣言する**ので、UIは一切ボスを知らないままチップを並べられる
+   * (§2-3「1ボス対応=テーブル+スキーマを1つ書くだけ」を崩さない)。
+   */
+  choices?: readonly TuningChoiceField[];
   /** 個別再生のボタン(未定義=そのボスは再生に未対応)。 */
   playables?: readonly PlayableAction[];
   /**
@@ -226,6 +259,61 @@ export const fieldVisible = (
   table: unknown,
   f: { visibleWhen?: string },
 ): boolean => f.visibleWhen === undefined || (getAtPath(table, f.visibleWhen) ?? 0) !== 0;
+
+// ---- 束で選ぶ欄(BOSS_MAKER.md §18)の汎用関数 ---------------------------------------------------
+// ★マスター(どの束にどの値が入るか)は `bossPresets.ts` にあり、ここには**データを置かない**
+// (この層は「スキーマをどう扱うか」だけを知る。`TuningField` 側と同じ役割分担)。
+
+/** 数値の一致判定の許容。`snap()` が `0.35000000000000003` を作るので生の `===` は使えない。 */
+const CHOICE_EPS = 1e-6;
+
+/** その束が触る全パス(重複なし)。 */
+export const choicePaths = (field: TuningChoiceField): string[] => {
+  const out = new Set<string>();
+  for (const o of field.options) for (const p of Object.keys(o.values)) out.add(p);
+  return [...out];
+};
+
+/**
+ * そのボスでこの束を出してよいか。
+ * ★`setAtPath` は**存在しないパスへ黙って false** を返すので、持っていないボスに出すと
+ * 「押しても効かず、永久にカスタム表示」という無言の故障になる(BOSS_MAKER.md §18-7-3)。
+ */
+export const choiceApplicable = (table: unknown, field: TuningChoiceField): boolean =>
+  choicePaths(field).every(p => getAtPath(table, p) !== undefined);
+
+/**
+ * いまテーブルに入っている数値が**どの束と一致するか**(逆引き)。どれとも一致しなければ null=「カスタム」。
+ *
+ * ★**選択を別に保存しない**ための仕掛け。数値を直接いじれる経路(詳細トグル/貼り戻し/保存の復元/
+ * 古い保存)が何本あっても、**表示が実態とズレることが原理的に起きない**。
+ */
+export const matchedOption = (table: unknown, field: TuningChoiceField): string | null => {
+  for (const o of field.options) {
+    let ok = true;
+    for (const [path, want] of Object.entries(o.values)) {
+      const got = getAtPath(table, path);
+      if (got === undefined || Math.abs(got - want) > CHOICE_EPS) { ok = false; break; }
+    }
+    if (ok) return o.key;
+  }
+  return null;
+};
+
+/** 選択の表示名(未一致は「カスタム」)。 */
+export const matchedOptionLabel = (table: unknown, field: TuningChoiceField): string =>
+  field.options.find(o => o.key === matchedOption(table, field))?.label ?? 'カスタム';
+
+/**
+ * その選択が書き込む「パス→値」の対を返す**だけ**。★**ここでは書かない。**
+ * 書き込みはUIが既存の `onChange` と同じ道(setAtPath → saveSoon → bump)で行う——
+ * `saveSoon()` を通らないと**保存されないまま退室時の `resetTuning` で消える**
+ * (次に入ると全部「まん中」に戻る。BOSS_MAKER.md §18-7-4)。
+ */
+export const choiceValues = (field: TuningChoiceField, optionKey: string): Record<string, number> => {
+  const o = field.options.find(x => x.key === optionKey);
+  return o ? { ...o.values } : {};
+};
 
 /** 欄の値を範囲へ丸める(min/max未指定なら素通し)。 */
 export const clampField = (f: TuningField, v: number): number => {
@@ -387,13 +475,20 @@ export const formatTuningText = (entry: BossTuningEntry, version: string): strin
     // 画面に出ていない欄(足していない射撃スロット等)は平文にも出さない=画面と貼り付け文が一致する。
     const fs = entry.fields.filter(f => f.group === group && fieldVisible(entry.table, f));
     const ts = (entry.textFields ?? []).filter(f => f.group === group && fieldVisible(entry.table, f));
-    if (fs.length === 0 && ts.length === 0) continue;
+    // 束で選ぶ欄(§18)。**画面で隠れていても平文には出す**——社長は「間合いは近」と喋るので、
+    // 貼られた側が px 5個を読む羽目になるのは道具の目的(「貼るだけで伝わる」)に反する。
+    // ※派生値(数値から逆引きしたもの)なので**保存形式は1つも増えていない**。
+    const cs = (entry.choices ?? []).filter(c => c.group === group && choiceApplicable(entry.table, c));
+    if (fs.length === 0 && ts.length === 0 && cs.length === 0) continue;
     lines.push('', group === 'behavior' ? '## 行動パターン' : '## 技');
     let section = '';
     const openSection = (sec: string): void => {
       if (sec === section) return;
       section = sec;
       lines.push(`### ${labelOf(sec)}`);
+      for (const c of cs.filter(c2 => c2.section === sec)) {
+        lines.push(`  【${c.label}】= ${matchedOptionLabel(entry.table, c)}`);
+      }
       for (const t of ts.filter(t2 => t2.section === sec)) {
         lines.push(`  ${t.label} = ${getTextAtPath(entry.table, t.path) ?? ''}`);
       }
@@ -407,8 +502,9 @@ export const formatTuningText = (entry: BossTuningEntry, version: string): strin
       const diff = changed.has(f.path) ? `   (既定 ${d}${unit})` : '';
       lines.push(`${mark} ${f.label} = ${v}${unit}${diff}`);
     }
-    // 欄が1つも無い見出し(名前だけ持つ)を取りこぼさない。
+    // 欄が1つも無い見出し(名前だけ・選択だけ持つ)を取りこぼさない。
     for (const t of ts) openSection(t.section);
+    for (const c of cs) openSection(c.section);
   }
   // 機械用: **変更があった欄だけ**を出す(全部出すと差分が読めない・貼り戻しは既定+差分で復元できる)。
   // ※隠れている欄でも「既定から変わっている」なら機械用には残す(貼り戻しで完全に同じ状態へ戻すため)。

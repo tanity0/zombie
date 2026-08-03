@@ -21,6 +21,7 @@ import {
   setStep, insertStep, removeStep, moveStep, stepCutoffIndex,
   serializeScripts, parseScripts, replaceScripts, scriptWarnings, SCRIPT_ZONES,
 } from './bossScriptEdit';
+import { BEHAVIOR_CHOICES, stringLenWarnings } from './bossPresets';
 import type { BossZone } from './bossSkeleton';
 import { requestIdolMovePlay, requestIdolVerbPlay, getIdolPlayback } from './idolTick';
 import type { NeutralVerb } from './bossSkeleton';
@@ -252,10 +253,11 @@ export const addIdolShot = (): { ok: boolean; message: string } => {
 //   「作ったのに出ていない」事故になる。CLAUDE.md 攻撃ヴィジュアル節の教訓と同型)。
 const SECTION_HELP: Record<string, string> = {
   '基礎値': 'このボスの土台。HP・移動速度と、体が触れた時のダメージ。\n技ごとの威力は各技の欄にある(ここではない)。',
-  '間合い': 'ボスが保ちたい距離と、距離帯の境目。距離帯ごとに出す技が変わる。',
+  // §18: 詳細OFFでは px の欄が画面に無いので、px の話をやめて「選ぶ」話に書き換える。
+  '間合い': 'ボスが保ちたい距離と、距離帯の境目をまとめて選ぶ。近/中/遠で「どのくらい離れて戦うボスか」が決まる。\n細かい px は裏で決まっている(詳細を開くと出る)。距離帯ごとに出す技が変わる。',
   '中立の移動': '技を出していない間の動き方。詰める/離れる/並走の速さと、次の技までの間。',
-  'ストリングと休符': '技を何回続けて出すか(段数)と、その後に必ず入る休み。\nこの休みがプレイヤーの攻撃チャンス。0にすると反撃する暇が無くなる。',
-  '懲罰': 'プレイヤーが同じことを続けた時に、ボスが決まった返し技を出す仕組み。\n例: 遠くに居続けたら狙撃線 / 密着し続けたら離脱。「見られている」感を作る。',
+  'ストリングと休符': '「手数」=技を何回続けて出すか。「休み」=その後に必ず入る休み。\nこの休みがプレイヤーの攻撃チャンス。短いほど厳しい。\n※台本の段が足りないと、手数を増やしても段数までしか出ない(下の警告に出る)。',
+  '懲罰': 'プレイヤーが同じことを続けた時に、ボスが決まった返し技を出す仕組み。\n例: 遠くに居続けたら狙撃線 / 密着し続けたら離脱。「見られている」感を作る。\n厳しいほど早く反応する。',
   '台本': 'どの距離帯で、どの技を、どの順に出すか。ボスの手そのもの。',
   [MOVE_LABEL.aim]: '単発の弾。遠距離の圧の基礎。',
   [MOVE_LABEL.fan]: '扇状に複数発。主戦帯の主力。',
@@ -289,7 +291,12 @@ export const IDOL_SCRIPT_API: BossScriptApi = {
   moveChoices: () => scriptMoveKeys().map(m => ({ key: m, label: moveLabelOf(m) })),
   zoneChoices: () => SCRIPT_ZONES.map(z => ({ key: z, label: ZONE_LABEL[z] ?? z })),
   cutoff: () => stepCutoffIndex(IDOL_TUNING.stringLen.p1, IDOL_TUNING.stringLen.p2),
-  warnings: () => scriptWarnings(IDOL_TUNING.strings),
+  warnings: () => [
+    ...scriptWarnings(IDOL_TUNING.strings),
+    // ★「手数=多」を選んでも P2 が台本の段数で切り詰められて**並と1ミリも変わらない**、という
+    // 無言の空振りを気づける形にする(BOSS_MAKER.md §18-5)。段を足すのは社長が台本エディタでやる。
+    ...stringLenWarnings(IDOL_TUNING.stringLen, IDOL_TUNING.strings.filter(s2 => !s2.off).map(s2 => s2.moves.length)),
+  ],
   edit: (op: BossScriptOp) => {
     const L = IDOL_TUNING.strings;
     const mv = (k: string): IdolMove | null =>
@@ -342,6 +349,8 @@ export const registerIdolTuning = (): void => {
     defaults: IDOL_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: IDOL_TUNING_FIELDS,
     textFields: IDOL_TUNING_TEXT_FIELDS,
+    // §18: 行動パターンは「束で選ぶ」を主にする(中身の数値は詳細トグルでのみ出る)。
+    choices: BEHAVIOR_CHOICES,
     playables: IDOL_PLAYABLES,
     // 見出しは固定文字列(`射撃枠 s3`)で持ち、表示だけ社長が付けた名前へ差し替える。
     sectionLabel: sec => {
