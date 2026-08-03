@@ -46,6 +46,7 @@ import { resetModeBags } from '../utils/modeBag';
 // v0.25.2553(§2.16 A): 同行守護霊の写し(撃破記録へ添える持ち主名+ビルド)。同じく純関数。
 import { buildPseudoPlayer, findGhostAlly, ghostAllySnapshot, type GhostAllySnapshot } from '../utils/playerBuild';
 import { clearGhostBuildCache, ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild'; // ラン境界でビルドのメモ化を捨てる / 守護霊の疑似Player(裁定1)
+import { beginGhostOnlineRun, type GhostSource } from '../online/ghost';
 // 刀の一閃 / ワイヤーのロコモーション上書き(プレイヤーと守護霊で共有する状態機械・裁定2)。
 import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/dashLocomotion';
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
@@ -3694,6 +3695,10 @@ interface GameState {
   // BOT_AND_GHOST.md §2.7 制約2(G3): このランで守護霊(ゴースト)が一度でも実際に召喚されたか。
   // ラン内限定(resetGameでリセット)。directorTickの召喚成立箇所が打刻し、リザルトのスコア×0.5が見る。
   ghostSummonedThisRun: boolean;
+  /** 実際に召喚された霊の出どころ。報酬倍率は装備ではなくこの値から決める。 */
+  ghostSourceThisRun: GhostSource | null;
+  /** オンライン霊のサーバ内部ID。リザルト送信だけに使い、アルバムには保存しない。 */
+  ghostRecordIdThisRun: string | null;
   // BOT_AND_GHOST.md §2.15/§2.16 B: このランに同行した守護霊(持ち主名+ビルド写し)。召喚の瞬間に
   // 1回だけ書き、以後は不変(=リザルトが購読しても毎フレーム再描画にならない)。ラン単位=resetGameでnull。
   // 守護霊が死んで場から消えても残す(「このランに同行してくれた人」の記録なので)。
@@ -4088,6 +4093,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastDamagerType: null,
   lastDamagerWasNamed: false,
   ghostSummonedThisRun: false,
+  ghostSourceThisRun: null,
+  ghostRecordIdThisRun: null,
   ghostAlly: null,
   wallMeta: getWallMeta(getSelectedStageId()), // 実際の再読込はresetGame開始時(ステージ切替に追従)
   wallBandText: '',
@@ -12981,6 +12988,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetModeBags();
     // v0.25.2514(GHOST-BUILD-1): 前ランのゴーストビルド(メモ化1件)も持ち越さない。
     clearGhostBuildCache();
+    // G6: 1ランにつき1回だけ非同期取得。通信は開始をブロックせず、間に合わなければ自分の霊へ落ちる。
+    beginGhostOnlineRun(state.pendingSkills, getSelectedStageId());
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
     // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。
@@ -12999,6 +13008,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastDamagerWasNamed: false,
       // BOT_AND_GHOST.md G3: 守護霊の発動フラグ(スコア×0.5の根拠)はラン単位でリセット。
       ghostSummonedThisRun: false,
+      ghostSourceThisRun: null,
+      ghostRecordIdThisRun: null,
       // §2.16 B: 同行守護霊のカード(リザルト表示用)もラン単位。
       ghostAlly: null,
       // PACING_PUZZLE.md §5.17 M14: ステージが変わっている可能性があるので、選択中ステージの壁メタを

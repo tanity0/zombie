@@ -44,6 +44,7 @@ import {
   type PunishEpisodeState, type PunishTally, type PunishProfile,
 } from './punishWindow'; // GHOST-CMD-2A(§2.18追補): 隙(気絶/硬直/カウンター直後)の窓判定+票の共通部品
 import { loadPlayerName } from './playerName'; // v0.25.2477: 計測時のプレイヤー名(srcName)の出どころ
+import { GHOST_KNOB_SET_V, GHOST_PROFILE_DEFAULTS } from '../../shared/ghostSanitize.mjs';
 
 // ---- 保存フォーマット -------------------------------------------------------------------------
 /** G4a(§2.9(3)): サブウェポンの様式(第1弾はwire-anchor/shieldの2種)。nは計測に使った母数の累計。 */
@@ -96,6 +97,8 @@ export interface BossStyleSlot {
   /** v0.25.2603(社長式・記録基準): 評点=(カウンター×3 + 避けた技 − 被弾した技)/分。
    * 旧レコードには無い=欠損可。欠損は「比較できない」扱いで新しい方を採用する(下の比較関数)。 */
   perfScore?: number;
+  /** 共有ノブ集合の版。欠損/小さい値は表示上「古い記録」になるが共有自体は可能。 */
+  knobsV?: number;
   /** 記録時刻(Date.now()・討伐記録一覧用)。 */
   at: number;
   /** v0.25.2493(社長採用「撃破タイム+カウンター成功率であれば採用」): 交戦開始→撃破までの時間(ms)。
@@ -185,13 +188,8 @@ const STORAGE_KEY = 'zombie-ghost-profile-v1';
 // 何もデータが無い状態から最初のEMAを起こす時の「種」の値(botSkillのcasual相当に寄せた叩き台)。
 // ghostDriver.ts の defaultGhostProfile とは別に持つ(playerTraits はゴーストの既定値そのものには
 // 関与しない=循環import回避。数値がここと重複するのは意図的=どちらも「casual相当」の同じ目安のため)。
-const SEED_PROFILE: Omit<PlayerProfile, 'v' | 'runs' | 'moveReactions' | 'subStyles'> = {
-  reactionMs: 250, counterChance: 0.5, preferredDist: 180, meleeBias: 0.4, mobility: 0.6, hitsPerMin: 3,
-  // G2.6: 控えめな既定値(ghostDriver.DEFAULT_SUB_USES_PER_MINと同値=どちらも「casual相当」の目安。
-  // 重複は意図的=循環import回避、上のコメント参照)。旧フォーマット(このノブが無い保存)の欠損埋めにも使う。
-  subUsesPerMin: 2,
-  // G4a: 移動2ノブの種(casual相当の叩き台。G4bの消費側が入るまでは記録専用)。
-  stationaryFrac: 0.35, approachPerMin: 3,
+export const SEED_PROFILE: Omit<PlayerProfile, 'v' | 'runs' | 'moveReactions' | 'subStyles'> = {
+  ...GHOST_PROFILE_DEFAULTS,
 };
 
 // G4a: 表/様式の「データ無し」初期値。n=0が「まだ計測していない」の印(n<1=記録なしはG4b側で
@@ -1106,6 +1104,7 @@ export const applyPendingBossStyle = (
     mobility: r.mobilitySample,
     hitsPerMin: r.hitsPerMinSample,
     perfScore: r.perfScoreSample ?? undefined, // v0.25.2603: 記録の勝ち負けを決める評点(社長式)
+    knobsV: GHOST_KNOB_SET_V,
     subUsesPerMin: r.subUsesPerMinSample,
     stationaryFrac: r.stationarySample,
     approachPerMin: r.approachSample,

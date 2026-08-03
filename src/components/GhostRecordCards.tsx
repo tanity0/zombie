@@ -128,6 +128,9 @@ export const BossClearCardRow: React.FC<{
             {card.best === null && card.isRecordUpdate && (
               <span className="shrink-0 rounded-full bg-amber-400/25 px-1.5 py-0.5 text-[9px] font-bold tracking-widest text-amber-100">初記録</span>
             )}
+            {card.isStale && (
+              <span className="shrink-0 rounded-full bg-sky-400/20 px-1.5 py-0.5 text-[9px] font-bold text-sky-100">古い記録</span>
+            )}
           </div>
           <div className="text-[10px] text-white/40">討伐タイム {formatClearTime(card.clearTimeMs)}</div>
         </div>

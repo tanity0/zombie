@@ -110,6 +110,10 @@ import { buildAlbumCards, buildDuoAlbumCards, type BossClearCard } from '../util
 import { loadDuoAlbum } from '../utils/duoRecords';
 import type { GhostAllySnapshot } from '../utils/playerBuild';
 import { BossClearCardRow, GhostAllyCard } from './GhostRecordCards';
+import {
+  ghostNetworkSlotKey, isOnlineGhostSkill, loadGhostInbox,
+  requestGhostOnlineConsent, type GhostInboxItem,
+} from '../online/ghost';
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
@@ -403,11 +407,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const [ghostAlbum, setGhostAlbum] = useState<BossClearCard[]>([]);
   // §2.17(GHOST-DUO-RECORDS): 同行撃破台帳(二枠のうちの同行枠)。ソロ台帳と同じく入った時に1回だけ読む。
   const [duoAlbum, setDuoAlbum] = useState<BossClearCard[]>([]);
+  const [ghostInbox, setGhostInbox] = useState<Record<string, GhostInboxItem>>({});
   const [openAlly, setOpenAlly] = useState<GhostAllySnapshot | null>(null);
   const goGhost = () => {
     playSfx('ui-select');
     setGhostAlbum(buildAlbumCards(loadPlayerProfile()));
     setDuoAlbum(buildDuoAlbumCards(loadDuoAlbum()));
+    setGhostInbox(loadGhostInbox());
     setScreen({ name: 'ghost' });
   };
 
@@ -869,6 +875,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       playSfx('ui-select');
       if (equippedSkills.includes(k)) { setPendingSkills(equippedSkills.filter(x => x !== k)); return; }
       if (equippedSkills.length >= MAX_EQUIPPED_SKILLS) return; // 最大2(満杯なら無視)
+      if (isOnlineGhostSkill(k) && !requestGhostOnlineConsent()) return;
       setPendingSkills([...equippedSkills, k]);
     };
     return (
@@ -1165,9 +1172,20 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </p>
           ) : (
             <div className="flex flex-col gap-2">
-              {ghostAlbum.map(card => (
-                <BossClearCardRow key={card.slotKey} card={card} onAllyTap={setOpenAlly} />
-              ))}
+              {ghostAlbum.map(card => {
+                const inbox = ghostInbox[ghostNetworkSlotKey(card.slotKey)];
+                return (
+                  <div key={card.slotKey}>
+                    <BossClearCardRow card={card} onAllyTap={setOpenAlly} />
+                    {inbox && (
+                      <p className="mt-1 px-1 text-[10px] text-sky-200/70">
+                        他のプレイヤーに {inbox.used.toLocaleString()}回同行・いいね {inbox.likes.toLocaleString()}
+                        {inbox.recent[0] ? ` ／ 最近: ${inbox.recent[0].name}` : ''}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </Section>

@@ -24,6 +24,9 @@ import {
 } from '../utils/wallProgress';
 import DirectorResult from './DirectorResult';
 import ResultReach from './ResultReach';
+import {
+  endGhostOnlineRun, ghostGoldMultiplier, sendGhostFeedback, uploadGhostSlots,
+} from '../online/ghost';
 
 // PACING_PUZZLE.md §5.17 M14: 縦の深度メーターの表示スケール(深層域の余白込み)。表示専用の定数。
 const WALL_METER_SCALE_MAX = AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1] + 1000;
@@ -216,13 +219,27 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const duoTimeline = useMemo(() => buildDuoRunTimeline(duoClears), [duoClears]);
   // §2.15/§2.16 B: このランに同行した守護霊(召喚時に1回だけ書かれる不変の写し=購読しても安定)。
   const ghostAlly = useGameStore(s => s.ghostAlly);
+  const ghostSummonedThisRun = useGameStore(s => s.ghostSummonedThisRun);
+  const ghostSourceThisRun = useGameStore(s => s.ghostSourceThisRun);
+  const ghostRecordIdThisRun = useGameStore(s => s.ghostRecordIdThisRun);
+  const [ghostLiked, setGhostLiked] = useState(false);
+  const ghostFeedbackSentRef = useRef(false);
   // リザルトを閉じる3操作(OK/もう一度プレイ/メニューに戻る)の合流点=commit/破棄の唯一の分岐点。
   // チェックなし(既定)=保留をcommit(従来どおりEMA反映・結果は旧実装とビット一致)/
   // チェックあり=全破棄。resetGame(次ラン開始)より前に呼ばれるのでbotTelemetryの分母も生きている。
   // v0.25.2553(§2.16 A): 年表が出ているランは**採用スロットの一覧**を渡す(全不採用=反映しない)。
   // 年表が無いラン(撃破なし)は undefined=従来どおり全採用のまま(既定経路の結果は不変)。
   const settleAnd = (navigate: () => void) => () => {
-    settlePendingTraits(traitOptOut, timeline.length > 0 ? [...adoptedSlots] : undefined);
+    const adopted = timeline.length > 0 ? [...adoptedSlots] : undefined;
+    settlePendingTraits(traitOptOut, adopted);
+    if (!traitOptOut && !ghostSummonedThisRun && adopted && adopted.length > 0) {
+      uploadGhostSlots(loadPlayerProfile(), adopted);
+    }
+    if (!ghostFeedbackSentRef.current && ghostRecordIdThisRun) {
+      ghostFeedbackSentRef.current = true;
+      void sendGhostFeedback(ghostRecordIdThisRun, ghostLiked);
+    }
+    endGhostOnlineRun();
     navigate();
   };
   const {
@@ -241,7 +258,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // スキル: ゴールドラッシュ(§6.10 M33⑪) = リザルトのラン獲得ゴールド ×1.2/1.35/1.5(Lv・四捨五入)。
   // そのランで装備していた場合に適用(storeのplayerはこのランの状態のまま)。表示と加算で同じ値を使う。
   const goldRushMult = useGameStore(s => skillGoldRushMult(s.player));
-  const goldEarned = Math.round(goldEarnedBase * goldRushMult);
+  const goldEarned = Math.round(goldEarnedBase * goldRushMult * ghostGoldMultiplier(ghostSourceThisRun));
   // このランで得たゴールドを永続財布へ加算(マウント時1回。ベンチマークは加算しない)。
   const isBenchmarkRun = benchmarkResult !== null;
   const addGold = useGameStore(s => s.addGold);
@@ -500,10 +517,22 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   ) : null;
 
   // §2.15/§2.16 B: 同行守護霊のフルカード(持ち主名+ビルド+ステータス)。年表とは独立で、
-  // 守護霊が召喚されたランなら撃破の有無に関わらず出す(いいねボタンは置かない=裁定どおり)。
+  // 守護霊が召喚されたランなら撃破の有無に関わらず出す。オンライン霊だけ1ラン1回のいいねを付ける。
   const ghostAllySection = ghostAlly ? (
     <div className="mb-3">
       <GhostAllyCard ally={ghostAlly} />
+      {ghostRecordIdThisRun && (
+        <button
+          type="button"
+          disabled={ghostLiked}
+          onClick={() => { playSfx('ui-select'); setGhostLiked(true); }}
+          className={`mt-2 w-full rounded-none px-3 py-2 text-[12px] font-semibold ${
+            ghostLiked ? 'bg-pink-400/20 text-pink-100' : 'bg-white/5 text-white/70 active:bg-pink-400/15'
+          }`}
+        >
+          {ghostLiked ? '♥ いいね済み' : '♡ この守護霊にいいね'}
+        </button>
+      )}
     </div>
   ) : null;
 

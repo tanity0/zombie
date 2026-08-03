@@ -56,6 +56,8 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __ASSET_HASHES__: JSON.stringify(assetHashes),
+    // G6守護霊API。未指定は空=完全OFF。Pagesではworkflowから公開Worker URLを両系統へ渡す。
+    __GHOST_API_BASE__: JSON.stringify(process.env.GHOST_API_BASE ?? ''),
   },
   optimizeDeps: {
     exclude: ['lucide-react'],

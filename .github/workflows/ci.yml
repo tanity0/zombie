@@ -28,5 +28,8 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Worker tests
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm test
+        working-directory: server
       - name: Build
         run: npm run build

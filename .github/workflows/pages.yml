@@ -20,6 +20,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # 公開URLのみ。Cloudflareの認証情報はGitHubへ渡さない。旧線/新線の両ビルドで同じ値を使う。
+      GHOST_API_BASE: https://zombie-coop-signaling.tanity0-zombie.workers.dev
     steps:
       - uses: actions/checkout@v4
         with:

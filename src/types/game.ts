@@ -1031,7 +1031,7 @@ export type SkillKey =
   // 超レア
   | 'reaper' | 'berserker' | 'skater' | 'overclock'
   // BOT_AND_GHOST.md G3: 守護霊(ゴースト助っ人)。ガチャからは出ない+最初から所持(社長指示)。
-  | 'guardian-spirit'
+  | 'guardian-spirit' | 'ghost-helper' | 'ghost-slayer'
   // レア
   | 'crit-up' | 'knight' | 'exploder' | 'sharpshooter' | 'sniper' | 'ricochet'
   | 'bomber' | 'fire-shooter' | 'bomb-counter' | 'punisher' | 'combo-master'

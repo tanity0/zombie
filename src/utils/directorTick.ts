@@ -45,6 +45,7 @@ import { tickBossClocks } from './bossClock'; // v0.25.2577: 撃破タイムの�
 import { loadPlayerName, displayNameFrom } from './playerName'; // v0.25.2477: 守護霊の頭上名(srcName未記録時のフォールバック)
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
+import { resolveRemoteGhost, selectedGhostMode } from '../online/ghost';
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
 import {
@@ -683,23 +684,31 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     && Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy) <= BOSS_ENGAGE_ENTER_PX);
   if (!boss) return;
 
-  // BOT_AND_GHOST.md §3裁定: ボスHPを召喚成立の瞬間に1回だけ×1.6(割合保存・二重適用防止フラグ)。
-  // ゴーストが死んでも戻さない(戻り値の判定はしない=このif自体が「まだ適用していない時だけ」)。
-  if (!boss.ghostHpBoosted) {
+  // プロファイル未保存(初回)の場合は既定プロファイル(botSkillのcasual相当から変換)を使う。
+  // G5(BOT_AND_GHOST.md §2.10 仕様5): 軸1プロファイルが有れば、紐付くボスのスロット(bossStyles)を
+  // ノブ単位で優先合成する(effectiveGhostProfile。スロットが無い/そのノブがnullなら軸1へフォールバック)。
+  const localSlot = bossStyleSlotKey(boss.type, getSelectedStageId());
+  const requestedMode = selectedGhostMode(player.skills);
+  const remote = requestedMode === 'random' || requestedMode === 'top'
+    ? resolveRemoteGhost(localSlot)
+    : null;
+  const loadedProfile = loadPlayerProfile();
+  const profile = remote
+    ? effectiveGhostProfile(remote.profile, remote.slot)
+    : loadedProfile
+      ? effectiveGhostProfile(loadedProfile, localSlot)
+      : defaultGhostProfile();
+  const ghostSource = remote?.source ?? 'own';
+  // 新オンラインスキルで取得できなかった時は「対価が来ていない」ためHPを増やさない。
+  // 自分の守護霊/デバッグ、またはオンライン霊が実際に解決できた時だけ、ボス個体ごとに1回×1.6。
+  const shouldBoostBoss = remote !== null || requestedMode === 'own' || ghostDebugEnabled;
+  if (shouldBoostBoss && !boss.ghostHpBoosted) {
     useGameStore.setState(s => ({
       enemies: s.enemies.map(e => e.id === boss.id
         ? { ...e, health: e.health * GHOST_BOSS_HP_MULT, maxHealth: e.maxHealth * GHOST_BOSS_HP_MULT, ghostHpBoosted: true }
         : e),
     }));
   }
-
-  // プロファイル未保存(初回)の場合は既定プロファイル(botSkillのcasual相当から変換)を使う。
-  // G5(BOT_AND_GHOST.md §2.10 仕様5): 軸1プロファイルが有れば、紐付くボスのスロット(bossStyles)を
-  // ノブ単位で優先合成する(effectiveGhostProfile。スロットが無い/そのノブがnullなら軸1へフォールバック)。
-  const loadedProfile = loadPlayerProfile();
-  const profile = loadedProfile
-    ? effectiveGhostProfile(loadedProfile, bossStyleSlotKey(boss.type, getSelectedStageId()))
-    : defaultGhostProfile();
   // GHOST-SUBS-FINAL(v0.25.2563): ホーミングの「押す時間」= G4a計測(subStyles.homing)の平均。
   // 計測なし(旧プロファイル/未使用)は undefined のまま=消費側が満タン発射へフォールバックする。
   const homingHoldMsAvg = subStyleHomingHoldMs((profile as { subStyles?: SubStyleProfile }).subStyles);
@@ -745,7 +754,7 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     ghostName: displayNameFrom((profile as { srcName?: unknown }).srcName) ?? loadPlayerName(),
     // v0.25.2477: 現状はローカル完結=常に自分のプロファイル。オンラインで他人のゴーストを迎える時に
     // false を渡す前提の構造(頭上ラベルの「(自分)」添え字がこのフラグで消える)。
-    ghostIsOwn: true,
+    ghostIsOwn: ghostSource === 'own',
     ghostFacing: 1,
     ghostLastShotAt: 0,
     ghostLastMeleeAt: 0,
@@ -755,7 +764,11 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // v0.25.2553(§2.15/§2.16 B): 同行守護霊のカード(持ち主名+ビルド)をラン単位で1回だけ控える。
   // リザルトが読むのはこの**不変の1枚**(summons配列を購読させない=React再描画規律)。
   useGameStore.setState(s => ({
-    summons: [...s.summons, ghost], ghostSummonedThisRun: true, ghostAlly: ghostAllySnapshot(ghost),
+    summons: [...s.summons, ghost],
+    ghostSummonedThisRun: true,
+    ghostSourceThisRun: ghostSource,
+    ghostRecordIdThisRun: remote?.recordId ?? null,
+    ghostAlly: ghostAllySnapshot(ghost),
   }));
 }
 
