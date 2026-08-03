@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SUB_WEAPON_KEYS } from './campaign';
+import { CHARACTER_SUBWEAPON_KEYS, SUB_WEAPON_KEYS, classSubWeaponFor } from './campaign';
 import {
   FIXED_GUARDIANS,
   FIXED_GUARDIAN_BOSS_SLOT_ORDER,
@@ -48,6 +48,18 @@ describe('固定の先人守護霊20体', () => {
     }
   });
 
+  it('全員が職業固有1枠と本人向け汎用1枠のちょうど2枠だけを持つ', () => {
+    for (const g of FIXED_GUARDIANS) {
+      const subWeapons = g.profile.snapshot?.subWeapons ?? [];
+      const classSubWeapon = classSubWeaponFor(g.classId);
+      expect(subWeapons, g.name).toHaveLength(2);
+      expect(subWeapons[0], g.name).toBe(classSubWeapon);
+      expect(subWeapons.filter(key => CHARACTER_SUBWEAPON_KEYS.includes(key)), g.name)
+        .toEqual([classSubWeapon]);
+      expect(CHARACTER_SUBWEAPON_KEYS, g.name).not.toContain(subWeapons[1]);
+    }
+  });
+
   it('個性の核になる特殊値を保持する', () => {
     const byName = (name: string) => FIXED_GUARDIANS.find(g => g.name === name)!;
     expect(byName('黒鉄').profile.snapshot?.maxHealth).toBe(320);
@@ -57,6 +69,13 @@ describe('固定の先人守護霊20体', () => {
     expect(byName('番匠').profile.subUsesPerMin).toBe(16);
     expect(byName('フィル').profile.snapshot?.phillHeadshotRate).toBe(1);
     expect(byName('無銘').profile.snapshot?.subWeapons).toContain('katana');
+    expect(byName('黒鉄').profile.snapshot?.subWeapons).toEqual(['heavy-grenade', 'wire-anchor']);
+    expect(byName('千代').profile.snapshot?.subWeapons).toEqual(['striker-quick-mag', 'sensor-mine']);
+    expect(byName('静').profile.snapshot?.subWeapons).toEqual(['marksman-trap', 'turret']);
+    expect(byName('ハツネ').profile.snapshot?.subWeapons).toEqual(['striker-quick-mag', 'homing']);
+    expect(byName('早瀬').profile.snapshot?.subWeapons).toEqual(['striker-hunting', 'shadow-clone']);
+    expect(byName('番匠').profile.snapshot?.subWeapons).toEqual(['heavy-grenade', 'turret']);
+    expect(byName('あかね').profile.snapshot?.subWeapons).toEqual(['striker-quick-mag', 'shield']);
   });
 
   it('ステージ1〜5は上位4人が重複せず、20人全員へ分散する', () => {

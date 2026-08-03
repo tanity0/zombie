@@ -641,13 +641,13 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
   },
 ];
 
+/** プレイヤー・守護霊で共有する、職業ごとの固定サブウェポン。 */
+export const classSubWeaponFor = (characterClass: CharacterClass): SubWeaponKey =>
+  CHARACTER_CLASSES.find(character => character.id === characterClass)?.skillKey ?? 'heavy-grenade';
+
 // キャラ固有サブウェポン(各キャラの職スキル枠)。キャラ固有スキル化に伴い、ショップでは扱わない。
-export const CHARACTER_SUBWEAPON_KEYS: SubWeaponKey[] = [
-  'heavy-grenade',   // ヘビーガンナー
-  'marksman-trap',   // マークスマン
-  'striker-hunting', // ストライカー
-  'striker-quick-mag', // スカベンジャー
-];
+// CHARACTER_CLASSESのskillKeyから導出し、職業と除外リストの対応を二重管理しない。
+export const CHARACTER_SUBWEAPON_KEYS: SubWeaponKey[] = CHARACTER_CLASSES.map(character => character.skillKey);
 
 // 装備選択(サブウェポン)で選べる候補。スキルショップ(開発施設)の陳列とも共通。
 export const SUB_WEAPON_KEYS: SubWeaponKey[] = [

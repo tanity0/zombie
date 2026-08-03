@@ -149,7 +149,7 @@ import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled }
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
+import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
@@ -2251,15 +2251,6 @@ const strapDropValues = (totalValue: number): number[] => {
     ...Array.from({ length: goldCount }, () => GOLD_STRAP_VALUE),
     ...Array.from({ length: normalCount }, () => 1)
   ];
-};
-export const classSubWeaponFor = (characterClass: CharacterClass): SubWeaponKey => {
-  switch (characterClass) {
-    case 'warrior': return 'heavy-grenade';
-    case 'mage': return 'marksman-trap';
-    case 'rogue': return 'striker-hunting';
-    case 'necromancer': return 'striker-quick-mag';
-    default: return 'heavy-grenade';
-  }
 };
 export const subWeaponDisplayName = (key: SubWeaponKey): string => {
   switch (key) {
