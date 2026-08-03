@@ -772,8 +772,8 @@ const LIGHT_POOL_ENABLED =
 // オクトラは暗部を思い切り沈めても影が読める——**影が落ちる地面を光が明るくしている**から。
 // 明るい床の上の黒い影は、暗部を沈めるほど**むしろくっきりする**。うちは光がキャラの周りに
 // 乗るだけで地面を照らしていなかったので、沈めると影も地面も一緒に黒へ行っていた。
-const GLOW_GROUND_POOL_ALPHA = Math.max(0, tsNum('glowpool', 0.55)); // 光だまりの濃さ(0で無効)
-const GLOW_GROUND_POOL_R_MULT = Math.max(0, tsNum('glowpoolr', 3.2)); // 半径 = glowの radius × これ
+const GLOW_GROUND_POOL_ALPHA = Math.max(0, tsNum('glowpool', 0.6));  // ★v0.25.2811 社長決定 // 光だまりの濃さ(0で無効)
+const GLOW_GROUND_POOL_R_MULT = Math.max(0, tsNum('glowpoolr', 6));  // ★v0.25.2811 社長決定(3.2→6=床が広く起きる) // 半径 = glowの radius × これ
 const GLOW_GROUND_POOL_MAX = 8;         // 同時に敷く枚数の上限(強い順)
 const GLOW_GROUND_POOL_TINT = 0xffe2b0; // 温かい光(床が起きる色)
 const LIGHT_POOL_ALPHA = Math.max(0, tsNum('pool', 0.4));
@@ -1740,7 +1740,10 @@ const SHADOW_GLOW_STRETCH = tsNum('glowstretch', 0.9); // GLOW_STRETCH(長さ倍
  * 既定はΣw_g側の下り(`SHADOW_LDOM_RELEASE_MS`=220ms)と同じ値を採用。`?glowfade=0`で即切替。 */
 // ★v12で廃止: const SHADOW_TIP_RELEASE_MS = tsNum('glowfade', 220);
 /** ★v12: 近すぎる光を影の向きから外すガード(px)。`?glowmindist=0` で切れる(=v9と同じ「足元の光でも伸びる」)。 */
-const SHADOW_GLOW_MIN_DIST = tsNum('glowmindist', SHADOW_GLOW_MIN_DIST_PX);
+// ★v0.25.2811 社長決定: 既定 24 → **0**(近接ガードを切る)。
+// レベルアップの光は**プレイヤー中心**に湧くため、24pxのガードでは**足元から14〜20px=圏内**になり、
+// 一番よく見る光が影を伸ばせていなかった(v0.25.2799で判明)。§4-7 の未決A/B/Cのうち**A**を採用。
+const SHADOW_GLOW_MIN_DIST = tsNum('glowmindist', 0);
 // ★影の台形の作り方(社長 v0.25.2809)。**既定は今までと同じ値**なので、指定しない限り見え方は変わらない。
 //  今は「手前を34%に絞り、奥は実物どおり」。そのため**手前の辺が実物の底辺より細く**、
 //  四角い建物(城)では底辺が合わずに斜めの線が浮いて見えていた(社長報告 v0.25.2808)。
@@ -2829,7 +2832,7 @@ export class PixiScene {
       //  **肩(90〜95%)だけ +8〜+17**、**頂点(99%)は上げず**、**彩度が上がる**(0.709→0.775)。
       //  ⇒ 旧実装の `brightness(1 + k×0.22)`(=全体を明るくする)は**方向が逆**なので既定0にした。
       //  明るい側は「光そのもの」(§4手順1の光だまり+glow)が作る。ここは**階調と色**だけを担う。
-      this.punchGrade.contrast(k * tsNum('punchcontrast', 1.2), false); // 暗部を沈め、肩を持ち上げる
+      this.punchGrade.contrast(k * tsNum('punchcontrast', 1.9), false); // ★v0.25.2811 社長決定(1.2→1.9) // 暗部を沈め、肩を持ち上げる
       this.punchGrade.saturate(k * tsNum('punchsat', 0.35), true);      // ★彩度を上げる(暗部が黒潰れに見えにくくなる)
       const pb = tsNum('punchbright', 0); // ★既定0=全体は明るくしない(?punchbright=0.22 で旧挙動)
       if (pb !== 0) this.punchGrade.brightness(1 + k * pb, true);

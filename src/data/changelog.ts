@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2811',
+    items: [
+      '光った瞬間の演出を強くしました（地面がより広く明るくなり、明暗の差がはっきりします）。',
+      'レベルアップの光でも影が伸びるようになりました。',
+    ],
+  },
+  {
     version: '0.25.2810',
     items: [
       '影の形を作り直しました。足元の幅が実物どおりになり、先へ行くほど広がります（奥行きに合わせて広がり方も変わります）。',
