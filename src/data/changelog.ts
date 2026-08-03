@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2814',
+    items: [
+      '横から光が当たった時に影が細くなるようになりました（影の根元は物体の底辺に付いたままです）。',
+    ],
+  },
+  {
     version: '0.25.2813',
     items: [
       '影の足元が物体から離れて見える問題を直しました（影の根元が物体の底辺にぴったり付きます）。',

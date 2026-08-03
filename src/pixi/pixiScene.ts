@@ -1761,17 +1761,22 @@ const SHADOW_FAR_MULT = tsNum('shadowfar', 1.8);   // ★v0.25.2810: 1 → **1.8
  */
 const SHADOW_PERSP = tsNum('shadowpersp', 1);
 /**
- * ★v0.25.2813(社長「やはり足元が離れちゃう。城に限らず木もその他オブジェクトも。花みたいに元が細いものは
- * 気にならない」): **手前の辺を"光に垂直"ではなく"地面の横方向"に置く**。
+ * ★v0.25.2814(社長「横に光が当たった時、ちゃんと底辺張り付く? つまり影は細くなるはず」):
+ * **手前の辺の"長さ"を影の角度で変える**。向きは影に垂直のまま(それが正しい)。
  *
- * 旧: 手前の辺は光の向きに**垂直**だった。斜め光だと辺自体が斜めになり、
- * **幅のあるものほど端が物体の底辺から外れる**(片側は物体の裏へ食い込み、片側は前へ出る)。
- * `shadownear=1` で手前を実物幅にした結果、**その外れが幅ぶんそのまま出て「足元が離れる」**ようになった。
- * 花のように細いものが平気だったのは、外れる量が幅に比例するため。
- * 新: 手前の2点を **`footX ± 半幅`, `footY`** に固定する = **物体の底辺そのもの**。
- * 社長が最初に言われた「底辺の二点は固定して台形に伸ばす」がこれ。`?shadowbase=0` で旧に戻せる。
+ * ```
+ * 手前の半幅 = 実物の半幅 × |影の向きのY成分|
+ * ```
+ * - 光が上下方向(影が縦に伸びる) → Y成分≒1 → **実物の幅そのまま**
+ * - 光が横(影が横に伸びる)       → Y成分≒0 → ★**細くなる**(真上から見た横光の影は物体の奥行きぶんしかない)
+ * - 斜め → その中間。**端が物体の底辺からはみ出さない**=足元が離れない
+ *
+ * ★「足元が離れる」(v0.25.2813 社長報告)の本当の原因は**辺の向き**ではなく、
+ * **角度に関係なく実物の幅をそのまま使っていたこと**。v0.25.2813 は辺を横一直線に固定して症状を消したが、
+ * **横光で辺が影と平行になり台形が潰れる**穴があった(社長指摘)。⇒ 角度で長さを決める形へ差し替え。
+ * `?shadowaniso=0` で角度を無視(=v0.25.2810〜2812 の挙動)に戻せる。
  */
-const SHADOW_BASE_HORIZONTAL = tsBool('shadowbase', true);      // ★v0.25.2810: 0 → **1**(絵と同じ depthScale をフルに効かせる)
+const SHADOW_NEAR_ANISO = tsBool('shadowaniso', true);      // ★v0.25.2810: 0 → **1**(絵と同じ depthScale をフルに効かせる)
 /**
  * ★v0.25.2801 診断(社長「爆発もどんな光でも影は動いてない。画面が暗くなるだけ」):
  * `?glowshadowtest=1` で**プレイヤーの左上140pxに強glow相当の光を常時1つ**注入する(絵は出さない=影だけ)。
@@ -9494,7 +9499,7 @@ export class PixiScene {
       } else {
         this.shadowHorizonTrimState.delete(trimKey);
       }
-      if (length <= SHADOW_DEGENERATE_PX || nearHalf * 2 <= SHADOW_DEGENERATE_PX) {
+      if (length <= SHADOW_DEGENERATE_PX) {
         if (sl.mesh) sl.mesh.visible = false; continue;
       }
       // カリングは3枚それぞれ独立(爆発シルエットは環境光より長い)。
@@ -9510,7 +9515,9 @@ export class PixiScene {
       const persp = SHADOW_PERSP > 0
         ? 1 + SHADOW_PERSP * (this.depthScale(footY + dirY * length) / footDepth - 1)
         : 1;
-      sl.nearHalf = nearHalf; sl.farHalf = Math.max(nearHalf, farHalfBase * persp);
+      // ★手前の半幅は影の角度で決まる(横光ほど細い)。足元の底辺から端がはみ出さない量。
+      const nearHalfSlot = SHADOW_NEAR_ANISO ? nearHalf * Math.abs(dirY) : nearHalf;
+      sl.nearHalf = nearHalfSlot; sl.farHalf = Math.max(nearHalfSlot, farHalfBase * persp);
       sl.skewShift = skewShift; sl.uSign = uSign;
     }
   }
@@ -9617,11 +9624,8 @@ export class PixiScene {
     const farCx = tipX + px * skewShift, farCy = tipY + py * skewShift;
     const c0 = this.shadowSnap(farCx + uSign * px * farHalf, farCy + uSign * py * farHalf);   // top-left (u0,v0)
     const c1 = this.shadowSnap(farCx - uSign * px * farHalf, farCy - uSign * py * farHalf);   // top-right (u1,v0)
-    // ★手前の2点=物体の底辺(横一直線)。旧実装は光に垂直だったので、幅のあるものほど足元から外れた。
-    const nx = SHADOW_BASE_HORIZONTAL ? 1 : px;
-    const ny = SHADOW_BASE_HORIZONTAL ? 0 : py;
-    const c2 = this.shadowSnap(footX - uSign * nx * nearHalf, footY - uSign * ny * nearHalf); // bottom-right (u1,v1)
-    const c3 = this.shadowSnap(footX + uSign * nx * nearHalf, footY + uSign * ny * nearHalf); // bottom-left (u0,v1)
+    const c2 = this.shadowSnap(footX - uSign * px * nearHalf, footY - uSign * py * nearHalf); // bottom-right (u1,v1)
+    const c3 = this.shadowSnap(footX + uSign * px * nearHalf, footY + uSign * py * nearHalf); // bottom-left (u0,v1)
     mesh.setCorners(c0.x, c0.y, c1.x, c1.y, c2.x, c2.y, c3.x, c3.y);
   }
 
