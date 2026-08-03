@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2823',
+    items: [
+      'ゲーム内容の変更はありません（公開検査の実行環境を修正しました）。',
+    ],
+  },
+  {
     version: '0.25.2822',
     items: [
       'ゲーム内容の変更はありません（オンライン守護霊の公開検査を整えました）。',

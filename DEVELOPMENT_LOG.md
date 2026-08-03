@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.2823 — ステージ素材テストをPixi非依存化【2026-08-03 22:17 JST】
+
+G6以前からCIに残っていた `stageTextures.test.ts` の `navigator is not defined` を解消した。
+検査対象の `skinLayersExpectedFor` をPixi/Store非依存の `stageTextureSkin.ts` へ分離し、実装側は同じ
+純関数を再exportして使用する。レイヤー待機の既存結果とゲーム挙動は変更していない。
+
 ## v0.25.2822 — オンライン依存境界と既存テスト期待値の整合【2026-08-03 22:12 JST】
 
 CIで判明した、G6クライアントを既存のリアルタイム協力用 `src/online` 境界へ置いたことによる違反を修正。
