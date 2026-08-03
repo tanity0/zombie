@@ -45,7 +45,7 @@ import { tickBossClocks } from './bossClock'; // v0.25.2577: 撃破タイムの�
 import { loadPlayerName, displayNameFrom } from './playerName'; // v0.25.2477: 守護霊の頭上名(srcName未記録時のフォールバック)
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
-import { resolveRemoteGhost, selectedGhostMode } from './ghostOnline';
+import { isGhostOnlinePickPending, resolveRemoteGhost, selectedGhostMode } from './ghostOnline';
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
 import {
@@ -597,6 +597,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
 // 完全に同じ純関数を再利用=新しい交戦判定は発明していない。ヒステリシスの前回値だけ
 // runKomaBoardMaintenance側のbossRelaxPrevとは別の変数で持つ=互いに干渉しない)。
 let ghostBossEngagePrev = false;
+// ボス戦テスト等で交戦開始がオンライン候補取得より早かった時だけ、同じ交戦の召喚を保留する。
+// 召喚後はnullへ戻すため、守護霊が倒れても同じボスへ再召喚しない。
+let pendingRemoteGhostSlot: string | null = null;
 // v0.25.2577: ボスごと交戦時計のヒステリシス用(前tickで交戦中だったスロットキー集合)。
 // ghostBossEngagePrevと同じくラン跨ぎの明示リセットは不要(敵が空の次tickで自然に空へ収束する)。
 let engagedSlotKeysPrev = new Set<string>();
@@ -621,6 +624,7 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   const engagedNow = BOSS_RELAX_ENABLED && bossEngagedNow(state.enemies, pcx, pcy, ghostBossEngagePrev);
   const rising = engagedNow && !ghostBossEngagePrev;
   ghostBossEngagePrev = engagedNow;
+  if (!engagedNow) pendingRemoteGhostSlot = null;
 
   const ghostActive = state.summons.some(s => s.kind === 'ghost-ally');
   // G3: このランでゴースト系を有効にするか = `?ghost=1`(開発用) OR 守護霊(guardian-spirit)装備。
@@ -677,8 +681,6 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     return; // 同時1体(既に居るなら新規召喚はしない)
   }
 
-  if (!rising) return; // 召喚は交戦の立ち上がりの瞬間だけ
-
   const boss = state.enemies.find(e =>
     isEngageableBoss(e.type) && e.dormant !== true
     && Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy) <= BOSS_ENGAGE_ENTER_PX);
@@ -689,6 +691,16 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // ノブ単位で優先合成する(effectiveGhostProfile。スロットが無い/そのノブがnullなら軸1へフォールバック)。
   const localSlot = bossStyleSlotKey(boss.type, getSelectedStageId());
   const requestedMode = selectedGhostMode(player.skills);
+  const onlineMode = requestedMode === 'random' || requestedMode === 'top';
+  const pickPending = onlineMode && isGhostOnlinePickPending();
+  if (rising && pickPending) {
+    pendingRemoteGhostSlot = localSlot;
+    return;
+  }
+  const delayedSummon = pendingRemoteGhostSlot === localSlot;
+  if (!rising && !delayedSummon) return; // 通常は交戦の立ち上がりだけ。取得待ち時だけ後続tickを許す。
+  if (delayedSummon && pickPending) return;
+  pendingRemoteGhostSlot = null;
   const remote = requestedMode === 'random' || requestedMode === 'top'
     ? resolveRemoteGhost(localSlot)
     : null;

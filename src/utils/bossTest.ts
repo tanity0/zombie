@@ -6,7 +6,7 @@
 // このモジュールは純関数のみ(カタログ+URL合成)。表示と遷移は components/BossTestMenu.tsx。
 // 強制出現フラグ(bossnow等)はuseGameLoopの**モジュールロード時定数**なので、出撃はページ再読込
 // (location遷移)で行う=`?smoke=1`(タイトル/メニュー全スキップの既存クイックスタート)に相乗りする。
-import type { EnemyType } from '../types/game';
+import type { EnemyType, SkillKey } from '../types/game';
 
 /** 出撃1件の定義。param=useGameLoopに既にある強制出現フラグ(新しい召喚機構は作らない)。 */
 export interface BossTestEntry {
@@ -40,9 +40,26 @@ export const BOSS_TEST_ENTRIES: readonly BossTestEntry[] = [
 
 export interface BossTestOptions {
   characterClass: string; // 'warrior' | 'mage' | 'rogue' | 'necromancer'
-  ghost: boolean;         // ?ghost=1 デバッグ守護霊召喚(装備不要で守護霊が出る)
+  ghostMode: BossTestGhostMode | null; // null=召喚なし / 3種は本番スキルと同じ取得経路
   ghostlog: boolean;      // ?ghostlog=1 守護霊の被弾源タグをconsoleへ([GHOSTDMG])
 }
+
+export type BossTestGhostMode = 'own' | 'random' | 'top';
+
+const BOSS_TEST_GHOST_SKILL: Readonly<Record<BossTestGhostMode, SkillKey>> = {
+  own: 'guardian-spirit',
+  random: 'ghost-helper',
+  top: 'ghost-slayer',
+};
+
+/** ボス戦テストの3択を、本番と同じ守護霊スキルへ変換する。旧URLの ?ghost=1 は自分扱い。 */
+export const bossTestGhostSkill = (search?: string): SkillKey | null => {
+  const raw = search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const p = new URLSearchParams(raw);
+  if (p.get('ghost') !== '1') return null;
+  const mode = p.get('ghostmode');
+  return BOSS_TEST_GHOST_SKILL[mode === 'random' || mode === 'top' ? mode : 'own'];
+};
 
 /**
  * 出撃URLのクエリ部を合成する。`smoke=1&stage=…&<強制フラグ>=1&class=…&retry=1` の組み合わせで
@@ -56,7 +73,10 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
   p.set(e.param, '1');
   p.set('class', opts.characterClass);
   p.set('retry', '1');
-  if (opts.ghost) p.set('ghost', '1');
+  if (opts.ghostMode) {
+    p.set('ghost', '1');
+    p.set('ghostmode', opts.ghostMode);
+  }
   if (opts.ghostlog) p.set('ghostlog', '1');
   return `?${p.toString()}`;
 };
@@ -71,6 +91,7 @@ export interface BossTestModeInfo {
   params: string[];                         // 生きている強制出現フラグ(表示用)
   stageId: string | null;
   ghost: boolean;                           // ?ghost=1(デバッグ守護霊)
+  ghostMode: BossTestGhostMode | null;       // ボス戦テストで選んだ3種(旧URLはown)
   smoke: boolean;                           // ?smoke(クイックスタート)
 }
 
@@ -79,12 +100,15 @@ export const parseBossTestMode = (search: string): BossTestModeInfo => {
   const p = new URLSearchParams(search);
   const params = FORCE_PARAMS.filter(k => p.get(k) === '1');
   const ghost = p.get('ghost') === '1';
+  const rawGhostMode = p.get('ghostmode');
+  const ghostMode: BossTestGhostMode | null = !ghost ? null
+    : rawGhostMode === 'random' || rawGhostMode === 'top' ? rawGhostMode : 'own';
   const smoke = p.get('smoke') !== null;
   return {
     active: params.length > 0 || ghost || smoke,
     params: [...params],
     stageId: p.get('stage'),
-    ghost, smoke,
+    ghost, ghostMode, smoke,
   };
 };
 
@@ -140,6 +164,9 @@ export const bossMakerQuery = (opts: BossTestOptions): string => {
   p.set('bossmaker', '1');
   p.set('class', opts.characterClass);
   p.set('retry', '1');
-  if (opts.ghost) p.set('ghost', '1');
+  if (opts.ghostMode) {
+    p.set('ghost', '1');
+    p.set('ghostmode', opts.ghostMode);
+  }
   return `?${p.toString()}`;
 };

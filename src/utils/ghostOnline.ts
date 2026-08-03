@@ -34,6 +34,7 @@ const INBOX_KEY = 'zombie-ghost-inbox-v1';
 let runGeneration = 0;
 let runCandidates = new Map<string, RemoteGhostCandidate>();
 let runMode: 'random' | 'top' | null = null;
+let runPickPending = false;
 
 const apiBase = (): string => {
   try {
@@ -88,6 +89,7 @@ export const ghostGoldMultiplier = (source: GhostSource | null): number =>
 const clearRunCache = (): void => {
   runCandidates = new Map();
   runMode = null;
+  runPickPending = false;
   try { localStorage.removeItem(CACHE_KEY); } catch { /* メモリ上の破棄だけで十分 */ }
 };
 
@@ -103,6 +105,7 @@ export const beginGhostOnlineRun = (skills: readonly SkillKey[], stageId: string
   if (mode !== 'random' && mode !== 'top') return;
   if (!hasGhostOnlineConsent() || !apiBase() || !getAnonymousId()) return;
   runMode = mode;
+  runPickPending = true;
   const slots = [...ENGAGEABLE_BOSS_TYPES].map(type =>
     ghostNetworkSlotKey(bossStyleSlotKey(type, stageId)));
   void (async () => {
@@ -135,6 +138,9 @@ export const beginGhostOnlineRun = (skills: readonly SkillKey[], stageId: string
         localStorage.setItem(CACHE_KEY, JSON.stringify({ epoch: GHOST_SHARE_EPOCH, mode, slots: [...next.keys()] }));
       } catch { /* 実データはメモリだけに保持する */ }
     } catch { /* オフラインは自分の霊へ黙ってフォールバック */ }
+    finally {
+      if (generation === runGeneration) runPickPending = false;
+    }
   })();
   void refreshGhostInbox();
 };
@@ -143,6 +149,9 @@ export const resolveRemoteGhost = (localSlot: string): RemoteGhostCandidate | nu
   if (!runMode) return null;
   return runCandidates.get(ghostNetworkSlotKey(localSlot)) ?? null;
 };
+
+/** オンライン候補を取得中か。即ボス戦では完了まで召喚を待ち、選択した霊種を正しく試す。 */
+export const isGhostOnlinePickPending = (): boolean => runPickPending;
 
 export const shareableProfile = (profile: PlayerProfile, localSlot: string): PlayerProfile | null => {
   const slot = profile.bossStyles?.[localSlot];

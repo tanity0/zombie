@@ -132,7 +132,7 @@ import {
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { setFlowersDisabled } from '../world/forestDecor';
-import { isBossMakerRun } from '../utils/bossTest';
+import { bossTestGhostSkill, isBossMakerRun } from '../utils/bossTest';
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
@@ -13069,7 +13069,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.2514(GHOST-BUILD-1): 前ランのゴーストビルド(メモ化1件)も持ち越さない。
     clearGhostBuildCache();
     // G6: 1ランにつき1回だけ非同期取得。通信は開始をブロックせず、間に合わなければ自分の霊へ落ちる。
-    beginGhostOnlineRun(state.pendingSkills, getSelectedStageId());
+    const testGhostSkill = bossTestGhostSkill();
+    const selectedRunSkills = testGhostSkill ? [testGhostSkill] : state.pendingSkills;
+    beginGhostOnlineRun(selectedRunSkills, getSelectedStageId());
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
     // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。
@@ -13141,7 +13143,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 装備スキル(別枠アクティブ・最大2)。出撃時に player.skills へ反映(効果は今後配線)。
       const runSkills: SkillKey[] = state.danceTestMode
         ? []
-        : Array.from(new Set<SkillKey>(state.pendingSkills)).slice(0, 2);
+        : Array.from(new Set<SkillKey>(selectedRunSkills)).slice(0, 2);
       // 装備スキルのLvは所持Lv(ownedSkillLevels)を反映(未設定=1、最大Lvでクランプ)。
       const runSkillLevels: Partial<Record<SkillKey, number>> = Object.fromEntries(
         runSkills.map(k => [k, Math.max(1, Math.min(skillMaxLevel(k), state.ownedSkillLevels[k] ?? 1))])

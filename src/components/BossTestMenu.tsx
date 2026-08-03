@@ -3,7 +3,10 @@
 // 出撃=ページ再読込(location遷移)なのでReact状態はこの画面を開いている間だけ=プレイ中コストゼロ。
 // ※アプリ配布(最終形)ではこの入口ごと非表示にする想定(TitleScreen側の1フラグで消せる)。
 import React, { useState } from 'react';
-import { BOSS_TEST_ENTRIES, bossTestQuery, bossMakerQuery, type BossTestEntry } from '../utils/bossTest';
+import {
+  BOSS_TEST_ENTRIES, bossTestQuery, bossMakerQuery,
+  type BossTestEntry, type BossTestGhostMode,
+} from '../utils/bossTest';
 import { enemyDeathLabel } from '../store/gameStore';
 import { getStage } from '../data/campaign';
 
@@ -22,15 +25,21 @@ const PARAM_NOTE: Record<BossTestEntry['param'], string> = {
   castlenow: '城へ即出現(移動あり)',
 };
 
+const GHOST_MODES: readonly { key: BossTestGhostMode; label: string; note: string }[] = [
+  { key: 'own', label: '守護霊', note: '自分' },
+  { key: 'random', label: '助っ人の霊', note: 'ランダム' },
+  { key: 'top', label: '討伐者の霊', note: '評点上位20%' },
+];
+
 interface Props { onClose: () => void }
 
 const BossTestMenu: React.FC<Props> = ({ onClose }) => {
   const [cls, setCls] = useState<string>('warrior');
-  const [ghost, setGhost] = useState(true);      // 既定ON: 現在の主用途=守護霊のボス戦実機確認
+  const [ghostMode, setGhostMode] = useState<BossTestGhostMode>('own');
   const [ghostlog, setGhostlog] = useState(false);
 
   const sortie = (e: BossTestEntry): void => {
-    window.location.search = bossTestQuery(e, { characterClass: cls, ghost, ghostlog });
+    window.location.search = bossTestQuery(e, { characterClass: cls, ghostMode, ghostlog });
   };
 
   return (
@@ -52,7 +61,7 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
         <div className="px-4 pb-3">
           <button
             className="w-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-2 text-left"
-            onClick={() => { window.location.search = bossMakerQuery({ characterClass: cls, ghost: false, ghostlog: false }); }}
+            onClick={() => { window.location.search = bossMakerQuery({ characterClass: cls, ghostMode: null, ghostlog: false }); }}
           >
             <div className="text-[12px] font-bold text-emerald-300">ボスメーカー(調整部屋)</div>
             <div className="text-[10px] text-white/50">
@@ -70,11 +79,23 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
             >{c.label}</button>
           ))}
         </div>
+        <div className="px-4 pb-2">
+          <div className="mb-1 text-[10px] text-white/45">同行する霊（3択）</div>
+          <div className="grid grid-cols-3 gap-1">
+            {GHOST_MODES.map(mode => (
+              <button
+                key={mode.key}
+                type="button"
+                className={`px-1 py-1.5 text-center ${ghostMode === mode.key ? 'bg-sky-500/35 text-white' : 'bg-white/5 text-white/50'}`}
+                onClick={() => setGhostMode(mode.key)}
+              >
+                <span className="block text-[10px] font-semibold">{mode.label}</span>
+                <span className="block text-[8px] text-white/45">{mode.note}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex items-center gap-3 px-4 pb-2 text-[11px] text-white/70">
-          <label className="flex items-center gap-1">
-            <input type="checkbox" checked={ghost} onChange={ev => setGhost(ev.target.checked)} />
-            守護霊を召喚
-          </label>
           <label className="flex items-center gap-1">
             <input type="checkbox" checked={ghostlog} onChange={ev => setGhostlog(ev.target.checked)} />
             被弾ログ(console)
