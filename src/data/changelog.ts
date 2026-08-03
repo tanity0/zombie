@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2819',
+    items: [
+      '伸びる影の根元と先端を素材の底辺に沿う水平な形へ統一し、光の角度で影全体が回転しないようにしました。',
+    ],
+  },
+  {
     version: '0.25.2818',
     items: [
       '守護霊の評点を、全技カウンターが3分短縮・全技被弾が2分加算に相当する配点へ調整しました。',

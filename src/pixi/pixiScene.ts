@@ -55,6 +55,7 @@ import {
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
 import { contentSpanFrac, needsContentTrim, contentTrimFrameY } from '../utils/shadowBake';
+import { horizontalShadowCorners } from '../utils/shadowProjection';
 import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
 import {
   idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING, IDOL_ORB_SPREAD_RAD, IDOL_MOVES_ALL,
@@ -9852,23 +9853,21 @@ export class PixiScene {
 
 
   /**
-   * シルエット台形の4隅を計算してセットする。渡す dirX/dirY/length は★S-7で先端ベクトル補間済み
-   * (=既に「実際に描く」向き・長さ)。裁定H: PerspectiveMesh.setCorners(x0..x3) は
-   * (top-left=u0v0, top-right=u1v0, bottom-right=u1v1, bottom-left=u0v1)。焼いたテクスチャは
-   * v=0(上端)=絵の頭側=影の遠い側(先端)、v=1(下端)=絵の足元=影の近い側。よって top-*=先端(tip)、
-   * bottom-*=足元(near)。
+   * 案C「全部水平」: 根元と先端の幅方向をどちらも画面水平=素材の底辺と平行に固定する。
+   * 光に合わせて幅軸を回さず、dirX/dirY/length は先端中心の位置だけに使う。
+   * PerspectiveMesh のUV対応は従来どおり top=先端 / bottom=足元。
    */
   private setSilhouetteMeshCorners(
     mesh: PerspectiveMesh, footX: number, footY: number, dirX: number, dirY: number,
     length: number, nearHalf: number, farHalf: number, skewShift: number, uSign: number,
   ) {
-    const tipX = footX + dirX * length, tipY = footY + dirY * length;
-    const px = -dirY, py = dirX; // 光方向に直交(先端側のskewはこの軸へずらす)
-    const farCx = tipX + px * skewShift, farCy = tipY + py * skewShift;
-    const c0 = this.shadowSnap(farCx + uSign * px * farHalf, farCy + uSign * py * farHalf);   // top-left (u0,v0)
-    const c1 = this.shadowSnap(farCx - uSign * px * farHalf, farCy - uSign * py * farHalf);   // top-right (u1,v0)
-    const c2 = this.shadowSnap(footX - uSign * px * nearHalf, footY - uSign * py * nearHalf); // bottom-right (u1,v1)
-    const c3 = this.shadowSnap(footX + uSign * px * nearHalf, footY + uSign * py * nearHalf); // bottom-left (u0,v1)
+    const q = horizontalShadowCorners(
+      footX, footY, dirX, dirY, length, nearHalf, farHalf, skewShift, uSign,
+    );
+    const c0 = this.shadowSnap(q.c0.x, q.c0.y);
+    const c1 = this.shadowSnap(q.c1.x, q.c1.y);
+    const c2 = this.shadowSnap(q.c2.x, q.c2.y);
+    const c3 = this.shadowSnap(q.c3.x, q.c3.y);
     mesh.setCorners(c0.x, c0.y, c1.x, c1.y, c2.x, c2.y, c3.x, c3.y);
   }
 
