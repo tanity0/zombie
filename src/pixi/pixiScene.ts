@@ -1741,6 +1741,22 @@ const SHADOW_GLOW_STRETCH = tsNum('glowstretch', 0.9); // GLOW_STRETCH(長さ倍
 // ★v12で廃止: const SHADOW_TIP_RELEASE_MS = tsNum('glowfade', 220);
 /** ★v12: 近すぎる光を影の向きから外すガード(px)。`?glowmindist=0` で切れる(=v9と同じ「足元の光でも伸びる」)。 */
 const SHADOW_GLOW_MIN_DIST = tsNum('glowmindist', SHADOW_GLOW_MIN_DIST_PX);
+// ★影の台形の作り方(社長 v0.25.2809)。**既定は今までと同じ値**なので、指定しない限り見え方は変わらない。
+//  今は「手前を34%に絞り、奥は実物どおり」。そのため**手前の辺が実物の底辺より細く**、
+//  四角い建物(城)では底辺が合わずに斜めの線が浮いて見えていた(社長報告 v0.25.2808)。
+//  社長案=「**手前を実物どおりにして、奥を広げる**」。実際の影の出来方(点光源から離れるほど広がる)と同じで、
+//  底辺が必ず実物と一致するので**建物だけ特別扱いしなくてよくなる**。
+/** 手前(足元)の幅=実物の幅×これ。**1.0 で実物の底辺どおり**。 */
+const SHADOW_NEAR_FRAC = tsNum('shadownear', SHADOW_FOOT_NARROW);
+/** 奥(先端)の広がり=実物の幅×これ。1.0 が現状。 */
+const SHADOW_FAR_MULT = tsNum('shadowfar', 1);
+/**
+ * ★擬似遠近を奥側の広がりに効かせる量(0=効かせない=現状 / 1=フルに効かせる)。
+ * このゲームは**手前ほど大きく奥ほど小さい**(`depthScale`)。影が手前(画面下)へ伸びる時は
+ * **よけいに広げ**、奥(画面上)へ伸びる時は**ほとんど広げない**——でないと奥行きと食い違う(社長指摘)。
+ * ★**キャラを大きくしているのと同じ `depthScale` を使う**(別の式を作ると絵と影がだんだんズレる)。
+ */
+const SHADOW_PERSP = tsNum('shadowpersp', 0);
 /**
  * ★v0.25.2801 診断(社長「爆発もどんな光でも影は動いてない。画面が暗くなるだけ」):
  * `?glowshadowtest=1` で**プレイヤーの左上140pxに強glow相当の光を常時1つ**注入する(絵は出さない=影だけ)。
@@ -9423,8 +9439,9 @@ export class PixiScene {
       return;
     }
     const bakedNow = this.silhouetteEnsure(req.texture)?.texture ?? null;
-    const nearHalf = req.rawW * SHADOW_FOOT_NARROW / 2 * shrink;
-    const farHalf = req.rawW / 2 * shrink;
+    const nearHalf = req.rawW * SHADOW_NEAR_FRAC / 2 * shrink;
+    const farHalfBase = req.rawW * SHADOW_FAR_MULT / 2 * shrink;
+    const footDepth = SHADOW_PERSP > 0 ? Math.max(1e-3, this.depthScale(footY)) : 1;
     const skewShift = Math.tan(req.skewX ?? 0) * req.rawH;
     const uSign = req.flip ? -1 : 1;
     const silBase = SHADOW_SIL_ALPHA_BASE * densityMult * totalAlpha;
@@ -9474,7 +9491,12 @@ export class PixiScene {
       sl.baseAlpha = silBase;
       sl.footX = footX; sl.footY = footY;
       sl.drawDirX = dirX; sl.drawDirY = dirY; sl.drawLen = length;
-      sl.nearHalf = nearHalf; sl.farHalf = farHalf; sl.skewShift = skewShift; sl.uSign = uSign;
+      // ★奥側の広がりに擬似遠近を効かせる(手前へ伸びるほど広く/奥へ伸びるほど広がらない)。
+      const persp = SHADOW_PERSP > 0
+        ? 1 + SHADOW_PERSP * (this.depthScale(footY + dirY * length) / footDepth - 1)
+        : 1;
+      sl.nearHalf = nearHalf; sl.farHalf = Math.max(nearHalf, farHalfBase * persp);
+      sl.skewShift = skewShift; sl.uSign = uSign;
     }
   }
 
