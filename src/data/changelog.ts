@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2821',
+    items: [
+      'ゲーム内容の変更はありません（オンライン守護霊の公開検査を修正しました）。',
+    ],
+  },
+  {
     version: '0.25.2820',
     items: [
       '他のプレイヤーの守護霊を呼べる「助っ人の霊」と「討伐者の霊」を追加しました。',

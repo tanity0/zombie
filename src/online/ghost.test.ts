@@ -28,7 +28,7 @@ describe('G6 online guardian rules', () => {
     };
     const safe = sanitizeSharedProfile(raw, 'thor');
     expect(safe).not.toBeNull();
-    expect(safe?.reactionMs).toBe(GHOST_PROFILE_DEFAULTS.reactionMs);
+    expect((safe as { reactionMs?: number } | null)?.reactionMs).toBe(GHOST_PROFILE_DEFAULTS.reactionMs);
     expect(sanitizeSharedProfile(raw, 'skadi')).toBeNull();
   });
 });
