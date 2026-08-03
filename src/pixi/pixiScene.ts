@@ -13,7 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, TilingSprite, RenderTexture } from 'pixi.js';
+import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
@@ -54,6 +54,7 @@ import {
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
+import { contentSpanFrac, needsContentTrim, contentTrimFrameY } from '../utils/shadowBake';
 import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
 import {
   idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING, IDOL_ORB_SPREAD_RAD, IDOL_MOVES_ALL,
@@ -1674,6 +1675,38 @@ const SHADOW_BLUR_PAD_MULT = 3;
 /** ★検収差し戻し(高6): ベイク前の長辺の上限(px)。skadi.png(1151×1243)級を原寸で焼くと
  * 7.1MB/枚(仕様見積り1.25MBの約5.7倍)で32MB LRUが張り付く。影は台形へ伸ばしてぼかすので原寸精度は不要。 */
 const SHADOW_BAKE_MAX_LONG_EDGE = 512;
+
+// ---- ★v12 §3-9-C ★A: 半影(ペナンブラ)= **④内側フェザー** ------------------------------------
+// 半影は面光源の幾何から出る(遮蔽物→受光面の距離が増えるほど広がる)。**遠端ほど半影の幅を広げ、
+// 輪郭のコントラストを滑らかに落とす**。★ノイズ/ディザは不採用——影は台形へ最大2.8倍まで非一様に
+// 引き伸ばされるので、粒も格子も縦だけ伸びて破綻する(モアレ)。
+//
+//   a_hard = blur(SHADOW_BLUR_FRAC × HARD) のα   ← 外形はこれで決め打ち(=外へ広がらない)
+//   a_soft = blur(SHADOW_BLUR_FRAC × SOFT) のα   ← 「縁からの距離」の代用として使うだけ
+//   k(t)   = K0 + (K1 - K0) × t^POW              ← t=0 足元 / t=1 先端。半影の幅
+//   a_out  = a_hard × smoothstep(0, k(t), a_soft)
+//
+// ★**余白(pad)を1pxも増やさない ⇒ 常駐メモリ増ゼロ**(外へにじませず輪郭の"内側"でαを落とすため)。
+// ★**引き伸ばしに強い**: 側面の縁のフェザー幅は横方向で測られるので、台形が縦に2.8倍伸びても幅を保つ。
+// ★実装は**カスタムFilter(GPU)一本**。`renderer.extract` によるCPU読み戻しはフレームを止めるので使わない。
+// ★**3タップの重ね塗りは採らない**: `clear:false` の source-over は加算にならず、タップ境界に明るい帯が入る。
+/** `?penumbra=0` で内側フェザーを切る(=v0.25.2816 以前の1パスぼかしに戻す。A/B比較用)。 */
+const SHADOW_PENUMBRA = tsBool('penumbra', true);
+/** a_hard のぼかし = 基準ぼかし×これ(外形を決める硬い方)。 */
+const SHADOW_PENUMBRA_HARD_MULT = tsNum('penumbrahard', 0.25);
+/** a_soft のぼかし = 基準ぼかし×これ(「縁からの距離」の代用)。 */
+const SHADOW_PENUMBRA_SOFT_MULT = tsNum('penumbrasoft', 3.0);
+/** 半影の幅 k(t) = K0 + (K1-K0)×t^POW。t=0 足元(硬い)/ t=1 先端(広い)。 */
+const SHADOW_PENUMBRA_K0 = tsNum('penumbrak0', 0.06);
+const SHADOW_PENUMBRA_K1 = tsNum('penumbrak1', 0.86);
+const SHADOW_PENUMBRA_POW = tsNum('penumbrapow', 1.15);
+
+// ---- ★v12 §3-9-C ★D-2: 素材の下側の空白を、焼く時に切り詰める ---------------------------------
+/** `?shadowtrim=0` で切り詰めを止める(=v0.25.2816 以前の「空白ごと焼く」に戻す。A/B比較用)。 */
+const SHADOW_TRIM_CONTENT = tsBool('shadowtrim', true);
+/** 絵の実体行の実測(`extract`=GPU読み戻し)は1フレームこの枚数まで。未実測ぶんは次フレームへ回す。 */
+const SHADOW_CONTENT_MEASURE_PER_FRAME = 1;
+
 /** PerspectiveMesh の分割数。事前計測(SHD-M)と同じ値にする(§3-9-B確定)。 */
 const SHADOW_MESH_VX = 8;
 const SHADOW_MESH_VY = 12;
@@ -2276,9 +2309,63 @@ interface SilhouetteBake {
   texture: Texture;
   pad: number;     // ベイク時に追加した余白(px、原寸=resolution1)
   srcW: number;    // 元テクスチャの幅(px)
-  srcH: number;    // 元テクスチャの高さ(px)
+  srcH: number;    // 元テクスチャの高さ(px。★D-2: 切り詰め後=絵のある範囲の高さ)
   bytes: number;   // 常駐バイト数の見積り(width×height×4)
+  contentFrac: number; // ★D-2: 焼いた時に使った「絵の実体が縦に占める割合」(空白の無い素材は1)
 }
+
+// ---- ★v12 §3-9-C ★A: 内側フェザー合成シェーダ(GPU 1パス) ------------------------------------
+// 頂点は Pixi v8 既定のフィルタ頂点シェーダ(`displacement.vert` と同型)に、**出力フレーム内の
+// 正規化座標 `vLocal`(= aPosition)** を1本足しただけ。`vTextureCoord` はプール由来の
+// 入力テクスチャ座標なので、**別サンプラ(a_soft)を引くのには使えない**——そのための `vLocal`。
+const PENUMBRA_VERT = `
+in vec2 aPosition;
+out vec2 vTextureCoord;
+out vec2 vLocal;
+
+uniform vec4 uInputSize;
+uniform vec4 uOutputFrame;
+uniform vec4 uOutputTexture;
+
+vec4 filterVertexPosition( void )
+{
+    vec2 position = aPosition * uOutputFrame.zw + uOutputFrame.xy;
+    position.x = position.x * (2.0 / uOutputTexture.x) - 1.0;
+    position.y = position.y * (2.0*uOutputTexture.z / uOutputTexture.y) - uOutputTexture.z;
+    return vec4(position, 0.0, 1.0);
+}
+
+void main(void)
+{
+    gl_Position = filterVertexPosition();
+    vTextureCoord = aPosition * (uOutputFrame.zw * uInputSize.zw);
+    vLocal = aPosition;
+}
+`;
+// a_hard は**プリマルチプライドアルファ**なので、vec4 ごと係数を掛けるのが正しい(αだけ触らない)。
+// uPenumbra = (topOffset, bottomOffset, k0, k1) / uPenumbraPow = t のべき。
+// t は「焼いたテクスチャ内での絵の位置」で測る(余白ぶんは平坦に延長される)。
+const PENUMBRA_FRAG = `
+in vec2 vTextureCoord;
+in vec2 vLocal;
+
+out vec4 finalColor;
+
+uniform sampler2D uTexture;
+uniform sampler2D uSoftTexture;
+uniform vec4 uPenumbra;
+uniform float uPenumbraPow;
+
+void main(void)
+{
+    vec4 hard = texture(uTexture, vTextureCoord);
+    float soft = texture(uSoftTexture, vLocal).a;
+    float span = max(1e-5, uPenumbra.y - uPenumbra.x);
+    float t = clamp((uPenumbra.y - vLocal.y) / span, 0.0, 1.0);
+    float k = max(1e-4, uPenumbra.z + (uPenumbra.w - uPenumbra.z) * pow(t, uPenumbraPow));
+    finalColor = hard * smoothstep(0.0, k, soft);
+}
+`;
 
 /**
  * 商人/イベントNPC/城/病院/武器庫/警察署/拾い物の影リクエスト(各 sync が可視時に設定)。
@@ -2514,6 +2601,9 @@ export class PixiScene {
   // ★検収差し戻し(中12): テクスチャのαの実体bbox(0..1、テクスチャ高さに対する割合)。1回だけ測って
   // キャッシュ(裁定Dのベイクとは別物=軽いのでLRU無し。マップは小さい数値だけなのでメモリ圧は無視できる)。
   private textureContentCache = new Map<Texture, { top: number; bottom: number }>();
+  // ★v12 §3-9-C ★A: 内側フェザーの合成フィルタ(1個だけ作って全ベイクで使い回す)。
+  private penumbraFilter: Filter | null = null;
+  private penumbraFilterFailed = false; // シェーダが通らない環境で旧経路へ落ちたか(再試行しない)
   // 商人/イベントNPC/城/拾い物 のソフト影リクエスト(各 sync が可視時に設定、syncShadows が配置)。
   // §3-9-B v9裁定A: legacyW=旧実装用の固定px(?silshadow=0)。rawW/rawH/texture=新実装用の表示実寸。
   private merchantShadow: BuildingShadowReq | null = null;
@@ -9032,8 +9122,18 @@ export class PixiScene {
   /** 毎フレーム、事前ベイク/オンデマンドを統合した1本のキューを予算ぶんだけ消化する(裁定D)。 */
   private drainSilhouetteQueue() {
     let budget = SHADOW_BAKE_BUDGET_PER_FRAME;
-    while (budget > 0 && this.silhouetteQueue.length > 0) {
+    // ★D-2: 絵の実体行の実測(`extract.pixels`=GPU読み戻し)は**同期待ちでフレームを止める**ので、
+    // 1フレーム SHADOW_CONTENT_MEASURE_PER_FRAME 枚まで。未実測のものはキューの末尾へ回して
+    // 次フレームに持ち越す(枠を使い切っても他の"実測済み"のベイクは進む=キューが詰まらない)。
+    let measure = SHADOW_CONTENT_MEASURE_PER_FRAME;
+    let rotateGuard = this.silhouetteQueue.length; // 1周だけ(押し戻しで無限に回らないため)
+    while (budget > 0 && this.silhouetteQueue.length > 0 && rotateGuard-- > 0) {
       const tex = this.silhouetteQueue.shift()!;
+      if (SHADOW_TRIM_CONTENT && !this.textureContentCache.has(tex)) {
+        if (measure <= 0) { this.silhouetteQueue.push(tex); continue; } // 実測枠切れ=後回し(queued は立てたまま)
+        measure--;
+        this.textureContentBottomFrac(tex); // 1回だけ実測してキャッシュ(失敗時は未キャッシュ=次フレーム再試行)
+      }
       this.silhouetteQueued.delete(tex);
       budget--;
       const baked = this.bakeSilhouette(tex);
@@ -9074,15 +9174,77 @@ export class PixiScene {
   }
 
   /**
-   * 1テクスチャぶんのシルエットを1パスで焼く(裁定E/F): [黒tintのスプライト, blendMode:'erase' の
-   * 縦グラデ] を同じ Container に入れ、その Container に BlurFilter を掛けて RenderTexture へ焼く
-   * (`farBloomCache` L6222付近と同じ作法)。resolution は 1 固定。余白=ぼかし×3(§3-9-B確定)。
+   * ★v12 §3-9-C ★A の合成フィルタ(内側フェザー)を1個だけ作って使い回す。
+   * a_soft は毎ベイクで差し替わるので `resources.uSoftTexture` を書き換えて使う。
+   */
+  private penumbraFilterGet(): Filter | null {
+    if (this.penumbraFilterFailed) return null;
+    if (this.penumbraFilter) return this.penumbraFilter;
+    try {
+      this.penumbraFilter = new Filter({
+        glProgram: GlProgram.from({ vertex: PENUMBRA_VERT, fragment: PENUMBRA_FRAG, name: 'shadow-penumbra' }),
+        resources: {
+          penumbraUniforms: new UniformGroup({
+            uPenumbra: { value: new Float32Array([0, 1, SHADOW_PENUMBRA_K0, SHADOW_PENUMBRA_K1]), type: 'vec4<f32>' },
+            uPenumbraPow: { value: SHADOW_PENUMBRA_POW, type: 'f32' },
+          }),
+          uSoftTexture: Texture.WHITE.source,
+          uSoftSampler: Texture.WHITE.source.style,
+        },
+        padding: 0,
+        resolution: 1,
+        antialias: 'off',
+      });
+      return this.penumbraFilter;
+    } catch (err) {
+      // シェーダが通らない環境(WebGPU等)では**黙って旧経路へ落ちる**。影が消えるより薄く硬い方がまし。
+      console.error('[shadow-v12] penumbra filter unavailable → 1パスぼかしへ戻す:', err);
+      this.penumbraFilterFailed = true;
+      return null;
+    }
+  }
+
+  /**
+   * 1テクスチャぶんのシルエットを焼く(裁定E/F + ★v12 §3-9-C ★A/★D-2)。
+   *
+   * ★D-2: 焼く前に**元テクスチャを「絵のある範囲」へ縦に切り詰める**(下側の透明な空白が
+   * そのまま影の足元側に来て、株元と影の間に隙間が空くため)。空白の無い素材(610枚)は
+   * `needsContentTrim` が false になり**1pxも変わらない**。
+   *
+   * ★A: 半影(内側フェザー)。
+   *   1. a_hard = 黒シルエット + blur(blurPx × 0.25) → RT
+   *   2. a_soft = 黒シルエット + blur(blurPx × 3.0)  → RT
+   *   3. a_out  = a_hard × smoothstep(0, k(t), a_soft) を1パスの Filter で合成し、
+   *      その上に**濃さの縦カーブ**(§3-9-B確定・不変)を `blendMode:'erase'` で最後に掛ける。
+   * ★**余白(pad)は現行のまま**(外へにじませないので増やす必要が無い)= 常駐メモリ増ゼロ。
+   * 中間の2枚は焼き終わったら即 destroy する(常駐しない)。
+   * `?penumbra=0` で旧来の1パス(縦グラデ→blur)へ戻る。
    */
   private bakeSilhouette(src: Texture): SilhouetteBake | null {
     if (!this.renderer || !src || src.width <= 1 || src.height <= 1) return null;
     const bakeStart = performance.now();
+    let trimmed: Texture | null = null;
     try {
-      const rawW = Math.round(src.width), rawH = Math.round(src.height);
+      // ---- ★D-2: 絵のある範囲へ縦に切り詰める ----
+      const content = SHADOW_TRIM_CONTENT ? this.textureContentCache.get(src) : undefined;
+      let bakeSrc = src;
+      let contentFrac = 1;
+      // ★top/bottom は `extract.pixels(src)` の**表示上の高さ**に対する割合なので、frame と表示寸法が
+      // 一致するテクスチャ(=単体PNG)にだけ適用する。アトラスの trim/回転が入っているものは触らない。
+      const trimSafe = this.shadowTrimSafe(src);
+      if (trimSafe && content && needsContentTrim(content.top, content.bottom)) {
+        const f = src.frame;
+        const box = contentTrimFrameY(f.y, f.height, content.top, content.bottom);
+        trimmed = new Texture({
+          source: src.source,
+          frame: new Rectangle(f.x, box.y, f.width, box.height),
+          label: 'shadow-trim',
+        });
+        bakeSrc = trimmed;
+        contentFrac = contentSpanFrac(content.top, content.bottom);
+      }
+
+      const rawW = Math.round(bakeSrc.width), rawH = Math.round(bakeSrc.height);
       // ★検収差し戻し(高6): 原寸のままだと skadi.png(1151×1243)が7.1MB/枚(仕様見積り1.25MBの
       // 約5.7倍)で32MB LRUが張り付き、BlurFilter(quality:3)も1.8Mpxに掛かる。影は台形へ伸ばして
       // ぼかすので原寸精度は不要 ⇒ ベイク前に長辺512px上限まで縮小する。
@@ -9092,11 +9254,11 @@ export class PixiScene {
       const srcH = Math.max(1, Math.round(rawH * downscale));
       const shortEdge = Math.min(srcW, srcH);
       const blurPx = Math.max(1, shortEdge * SHADOW_BLUR_FRAC);
-      const pad = Math.max(1, Math.round(blurPx * SHADOW_BLUR_PAD_MULT));
+      const pad = Math.max(1, Math.round(blurPx * SHADOW_BLUR_PAD_MULT)); // ★半影でも増やさない
       const paddedW = srcW + pad * 2;
       const paddedH = srcH + pad * 2;
 
-      const body = new Sprite(src);
+      const body = new Sprite(bakeSrc);
       body.tint = 0x000000; // 手順1: 黒tint(RGBを0倍。αは触らない=PMAを壊さない)
       body.width = srcW;    // 縮小はスプライト側で(元テクスチャは変えない=他の用途に影響しない)
       body.height = srcH;
@@ -9109,25 +9271,70 @@ export class PixiScene {
       grad.width = paddedW;
       grad.height = paddedH;
 
-      const wrap = new Container();
-      wrap.addChild(body, grad);
-      wrap.filters = [new BlurFilter({ strength: blurPx, quality: 3 })];
-
       const rt = RenderTexture.create({ width: paddedW, height: paddedH, resolution: 1 });
-      this.renderer.render({ container: wrap, target: rt, clear: true });
-      wrap.destroy({ children: true });
+      const penumbra = SHADOW_PENUMBRA ? this.penumbraFilterGet() : null;
+
+      if (!penumbra) {
+        // 旧経路(`?penumbra=0` / シェーダ不可): [黒tint + 縦グラデ] を1パスぼかし。
+        const wrap = new Container();
+        wrap.addChild(body, grad);
+        wrap.filters = [new BlurFilter({ strength: blurPx, quality: 3 })];
+        this.renderer.render({ container: wrap, target: rt, clear: true });
+        wrap.destroy({ children: true });
+      } else {
+        // 1) a_hard / 2) a_soft: **同じ黒シルエット**を強さ違いのぼかしで2枚焼く(縦グラデは掛けない)。
+        const silo = new Container();
+        silo.addChild(body);
+        const hardRT = RenderTexture.create({ width: paddedW, height: paddedH, resolution: 1 });
+        const softRT = RenderTexture.create({ width: paddedW, height: paddedH, resolution: 1 });
+        silo.filters = [new BlurFilter({ strength: Math.max(0.1, blurPx * SHADOW_PENUMBRA_HARD_MULT), quality: 3 })];
+        this.renderer.render({ container: silo, target: hardRT, clear: true });
+        silo.filters = [new BlurFilter({ strength: Math.max(0.1, blurPx * SHADOW_PENUMBRA_SOFT_MULT), quality: 3 })];
+        this.renderer.render({ container: silo, target: softRT, clear: true });
+
+        // 3) 合成: a_hard に内側フェザーを掛け、その上から濃さの縦カーブを erase で最後に掛ける。
+        // t の基準は「焼いたテクスチャ内での絵の位置」= 縦グラデと同じ offset(余白ぶんは平坦)。
+        const u = (penumbra.resources.penumbraUniforms as UniformGroup).uniforms as
+          { uPenumbra: Float32Array; uPenumbraPow: number };
+        u.uPenumbra[0] = pad / paddedH;            // topOffset(=絵の頭側=影の先端 t=1)
+        u.uPenumbra[1] = (pad + srcH) / paddedH;   // bottomOffset(=絵の足元=影の近い側 t=0)
+        u.uPenumbra[2] = SHADOW_PENUMBRA_K0;
+        u.uPenumbra[3] = SHADOW_PENUMBRA_K1;
+        u.uPenumbraPow = SHADOW_PENUMBRA_POW;
+        penumbra.resources.uSoftTexture = softRT.source;
+        penumbra.resources.uSoftSampler = softRT.source.style;
+
+        const hardSp = new Sprite(hardRT);
+        hardSp.position.set(0, 0);
+        hardSp.filters = [penumbra];
+        const wrap = new Container();
+        wrap.addChild(hardSp, grad);
+        this.renderer.render({ container: wrap, target: rt, clear: true });
+        hardSp.filters = []; // 使い回すフィルタなので参照を切ってから破棄する
+        wrap.destroy({ children: true });
+        silo.destroy({ children: true });
+        hardRT.destroy(true);
+        softRT.destroy(true);
+      }
       gradTex.destroy(true);
 
-      return { texture: rt, pad, srcW, srcH, bytes: paddedW * paddedH * 4 };
+      return { texture: rt, pad, srcW, srcH, bytes: paddedW * paddedH * 4, contentFrac };
     } catch (err) {
       console.error('[shadow-v9] bakeSilhouette failed (suppressed):', err);
+      // ★半影の合成中に落ちたなら、以後は旧経路(1パスぼかし)へ落とす。そうしないと
+      // 失敗→再キュー→また失敗を毎フレーム繰り返し、**影が一枚も出ないまま**になる。
+      if (this.penumbraFilter) { this.penumbraFilterFailed = true; }
       return null;
     } finally {
+      if (trimmed) trimmed.destroy(false); // ★source は共有なので絶対に破棄しない(元の絵が消える)
       // ★検収差し戻し(高6): 仕様書指示「事前ベイク中のフレーム時間を1回ログに出す」。
+      // ★v12: 半影は1枚あたり**3パス**(hard/soft/合成)になったので、ここの実測を必ず見て
+      // 4枚合計が16.67msを割るなら SHADOW_BAKE_BUDGET_PER_FRAME を下げる(判断材料を残す)。
       if (!this.silhouetteBakeTimeLoggedOnce) {
         const elapsed = performance.now() - bakeStart;
         console.info(
-          `[shadow-v9] bakeSilhouette: ${elapsed.toFixed(2)}ms/枚 (予算=${SHADOW_BAKE_BUDGET_PER_FRAME}枚/フレーム。` +
+          `[shadow-v12] bakeSilhouette: ${elapsed.toFixed(2)}ms/枚 (半影=${SHADOW_PENUMBRA ? 'ON(3パス)' : 'OFF(1パス)'}・` +
+          `予算=${SHADOW_BAKE_BUDGET_PER_FRAME}枚/フレーム。` +
           `${SHADOW_BAKE_BUDGET_PER_FRAME}枚合計が16.67msを割るなら枚数を下げる)`
         );
         this.silhouetteBakeTimeLoggedOnce = true;
@@ -9213,6 +9420,27 @@ export class PixiScene {
       console.error('[shadow-v9] textureContentBottomFrac failed (suppressed):', err);
       return 1;
     }
+  }
+
+  /**
+   * ★v12 §3-9-C ★D-2: この素材の「絵の実体が縦に占める割合」。影の長さに掛ける。
+   * **キャッシュを読むだけ**(ここでは絶対に `extract` しない=毎フレーム経路なのでGPU読み戻しは厳禁)。
+   * 未実測/切り詰めOFF なら 1 ⇒ 従来どおりの長さになる。
+   */
+  private shadowContentFrac(tex: Texture | null): number {
+    if (!SHADOW_TRIM_CONTENT || !tex || !this.shadowTrimSafe(tex)) return 1;
+    const c = this.textureContentCache.get(tex);
+    if (!c || !needsContentTrim(c.top, c.bottom)) return 1;
+    return contentSpanFrac(c.top, c.bottom);
+  }
+
+  /**
+   * ★D-2: 切り詰めてよいテクスチャか。`top`/`bottom` は `extract.pixels` の**表示上の高さ**に対する
+   * 割合なので、`frame` と表示寸法が一致するもの(=単体PNG)にだけ適用する。
+   * アトラスの trim / 回転が入っているものは**触らない**(座標系が食い違って絵がズレるため)。
+   */
+  private shadowTrimSafe(tex: Texture): boolean {
+    return !tex.trim && !tex.rotate && Math.round(tex.frame.height) === Math.round(tex.height);
   }
 
   // ---- 支配光(Ldom)。裁定K/M/N + 社長実機フィードバック裁定S-3/S-4/S-5 -------------------------
@@ -9463,7 +9691,14 @@ export class PixiScene {
       this.hideShadowSlots(entry); // 松明/焚き火/緑卵、または絵の無いGraphics拾い物
       return;
     }
-    const bakedNow = this.silhouetteEnsure(req.texture)?.texture ?? null;
+    const baked = this.silhouetteEnsure(req.texture);
+    const bakedNow = baked?.texture ?? null;
+    // ★D-2 直し2: 影の長さは「**見えている絵**の高さ×比率」。素材の下側に透明な空白があると
+    // `rawH` はその空白ぶん長い ⇒ 焼いたテクスチャを切り詰めたのと同じ割合を長さにも掛ける。
+    // 空白の無い素材(610枚)は割合 1 なので**1pxも変わらない**。
+    // 未ベイク(baked=null)の間は実測前の可能性があるので、キャッシュがあればそれを使う。
+    const contentFrac = baked?.contentFrac ?? this.shadowContentFrac(req.texture);
+    const silBaseLen = nonExplLen * contentFrac;
     const nearHalf = req.rawW * SHADOW_NEAR_FRAC / 2 * shrink;
     const farHalfBase = req.rawW * SHADOW_FAR_MULT / 2 * shrink;
     const footDepth = SHADOW_PERSP > 0 ? Math.max(1e-3, this.depthScale(footY)) : 1;
@@ -9483,7 +9718,7 @@ export class PixiScene {
       const dirX = isAmb ? ambDirX : sl.dirX;
       const dirY = isAmb ? ambDirY : sl.dirY;
       const lenMult = isAmb ? 1 : sl.lenMult;
-      const rawLength = nonExplLen * lenMult * shrink;
+      const rawLength = silBaseLen * lenMult * shrink;
       // 地平線帯の詰め: 先端Yが地平線ラインを越えないよう長さだけ詰める(αは触らない)。
       // 平滑状態はスロットごとに独立(鍵をスロット鍵に合わせる)。
       const trimKey = `${req.id}#${i}`;
@@ -17784,6 +18019,9 @@ export class PixiScene {
     // 影は shadowContainer + プール済みスプライトで管理(旧 shadowGfx は存在しない孤児参照だった)。
     // 以前はここで存在しない shadowGfx.destroy() を呼んで例外→以降の解放(playerFx等)が握り潰されていた。
     this.shadowContainer.destroy({ children: true });
+    // ★v12 §3-9-C ★A: 内側フェザーの合成フィルタ(全ベイクで使い回している1個)。
+    try { this.penumbraFilter?.destroy(); } catch { /* ignore */ }
+    this.penumbraFilter = null;
     this.playerFx.destroy();
     this.reticleGfx.destroy();
     this.flashGfx.destroy();

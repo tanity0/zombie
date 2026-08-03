@@ -90,7 +90,10 @@ const formatBenchmarkShareText = (result: BenchmarkResult): string => {
     const keys = ['glowhalo', 'glowcore', 'refl', 'evshadow', 'benchonly', 'warm', 'canary', 'repeat', 'pool', 'poolr', 'plight', 'res', 'bloom', 's5fire', 'zoomlock', 'dev', 'glowweight', 'glowstretch', 'glowsumcap', 'glowpunch', 'glowfade', 'footalpha',
       // v0.25.2779: 補助光の連動 / 黒い円の立ち上がり / コントラストパンチの置き場所
       'lightyield', 'lightyieldms', 'torchreach', 'torchgain', 'glowlightreach', 'glowlightgain',
-      'shaderise', 'punchgrade', 'punchfw', 'punchlight', 'punchgain', 'punchcontrast', 'punchbright', 'torchpunchreach', 'lightdbg', 'hidelayer'];
+      'shaderise', 'punchgrade', 'punchfw', 'punchlight', 'punchgain', 'punchcontrast', 'punchbright', 'torchpunchreach', 'lightdbg', 'hidelayer',
+      // v0.25.2817(§3-9-C ★A/★D-2): 半影(内側フェザー)と、素材の空白の切り詰め。
+      // penumbra=0 で半影OFF(1パスぼかしへ)/ shadowtrim=0 で切り詰めOFF(空白ごと焼く)。
+      'penumbra', 'penumbrahard', 'penumbrasoft', 'penumbrak0', 'penumbrak1', 'penumbrapow', 'shadowtrim'];
     const on = keys.filter(k => q.get(k) !== null).map(k => `${k}=${q.get(k)}`);
     return on.length ? on.join(' ') : 'なし(既定)';
   })();

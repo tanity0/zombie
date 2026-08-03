@@ -1556,6 +1556,13 @@ pixiScene.ts:8853   const strength = (1 - dist / L.reach) * L.life * SHADOW_GLOW
 
 ## ★A. 半影(ペナンブラ)— **④内側フェザー**(社長裁定 v0.25.2773「では4」)
 
+> **実装済み: v0.25.2817**(★D-2 と同じコミット)。`pixiScene.ts` の `bakeSilhouette` を
+> **3パス**(a_hard / a_soft / 合成Filter)に書き換えた。ツマミ `?penumbra=0`(=旧1パスに戻す)/
+> `?penumbrahard= ?penumbrasoft= ?penumbrak0= ?penumbrak1= ?penumbrapow=`。**pad は1pxも増えていない**
+> (`SHADOW_BLUR_PAD_MULT=3` のまま)=常駐メモリ増ゼロ。中間の2枚は焼き終わり次第 destroy。
+> k(t) の式は `src/utils/shadowBake.ts` の `penumbraWidth` に同じ形で置き、端点・単調増加・
+> 「先端でも k<1(本影が残る)」をユニットテストで固定した。**実機確認は未実施(社長)**。
+
 ### ★言葉の訂正(これが設計を1回間違えさせた)
 社長の「**縁を崩す**」を設計チャットが**ランダムノイズで虫食いにする**と読んだのは**誤り**。正しくは:
 > **遠端ほど半影の幅を広げ、輪郭のコントラストを滑らかに落とす**
@@ -1726,6 +1733,19 @@ lenMult    = 1 + SHADOW_GLOW_STRETCH × min(falloff × SHADOW_GLOW_WEIGHT, SHADO
 ---
 
 ## ★D-2. 素材の下側の空白を、焼く時に切り詰める(社長報告 v0.25.2777「ラベンダーっぽいやつも浮いてる」)
+
+> **実装済み: v0.25.2817**(★A と同じコミット)。下の「直し」**1と2**を実装した。
+> ツマミ `?shadowtrim=0` で切り詰めOFF(=空白ごと焼く旧挙動)。
+> - 判定は `src/utils/shadowBake.ts` の純関数(`needsContentTrim` / `contentSpanFrac` /
+>   `contentTrimFrameY`)に切り出し、**「空白の無い素材は切り詰めない・割合はちょうど1」**を
+>   ユニットテストで固定した(=受け入れ条件「610枚が1pxも変わらない」の機械化)。
+> - 実体行の実測(`extract.pixels`=GPU読み戻し)は**1フレーム1枚まで**に絞ってある
+>   (フレームを止めないため。未実測ぶんはキューの末尾へ回す)。
+> - アトラスの trim/回転が入ったテクスチャは**触らない**(座標系が食い違うため)。
+> - ★**接地アウターの寄せ量(`SHADOW_OUTER_OFFSET_LEN_FRAC × 非爆発時の長さ`)には掛けていない**
+>   ——接地2層は§Bで「不変」と決めているため。掛けるのはシルエットの長さだけ。
+> - **★D-2b の 1/3(横方向の実体bboxと横中央寄せ)は未実装**(今回の範囲外。次段)。
+> **実機確認は未実施(社長)**。
 
 ### 事実(コードと素材を実測して確認)
 - **メッシュは焼いたテクスチャ"全体"を台形に貼る**(`pixiScene.ts:9155` `new PerspectiveMesh({ texture: bakeTex })`)。
