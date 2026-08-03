@@ -1744,6 +1744,8 @@ const SHADOW_GLOW_TEST = tsBool('glowshadowtest', false);
  * 出なければ「**そもそも描いていない**」=スロット/ベイク/カリングの問題。**濃さの話と切り離す**ための道具。
  */
 const SHADOW_GLOW_DEBUG_RED = tsBool('glowshadowdebug', false);
+/** ★`?evshade=0`: 強glowの周りを暗くする幕(局所減光)を出さない。影のコントラストだけを見る診断用。 */
+const LOCAL_EVENT_SHADE_OFF = DZ_PARAMS?.get('evshade') === '0';
 /** 支配光に強glowが参加する条件は旧投影影と同じ(effects[] の kind==='glow' && radius>=STRONG_GLOW_RADIUS)。
  * 松明/焚き火/城・商人のグロー/緑卵の光/プレイヤーライトはスプライトでありeffectではないため対象外
  * (§3-9-B確定)。`?evshadow=0` は「支配光に強glowを参加させない(環境光のみ)」の意味(裁定O)。 */
@@ -7575,6 +7577,11 @@ export class PixiScene {
   ) {
     const g = this.localEventShadeGfx;
     g.clear();
+    // ★v0.25.2804 診断(社長「一旦黒くする重ねてるやつ非表示にしてみて」):
+    // 強glowの周りを暗く落とす幕(局所減光)を丸ごと切る。伸びた影は**光と反対側=一番暗く落とした所へ**
+    // 向かうので、影と幕が同じ黒で潰し合う。幕を切れば影のコントラストだけを見られる。
+    // ★早期returnしない: この関数は投影影など他の仕事もするので、**幕を非表示にするだけ**にする。
+    g.visible = !LOCAL_EVENT_SHADE_OFF;
 
     // ★v0.25.2703(影#1): **影を落とす候補の走査を「強glow 1個ごと」から「1フレームに1回」へ巻き上げた。**
     // 旧実装は強glow 1個につき世界中(敵/escort/props/trees/cityProps/walls/propObjs/城/商人/NPC)を
