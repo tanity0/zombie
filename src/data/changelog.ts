@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2815',
+    items: [
+      '影が巨大な黒い帯になってしまう不具合を直しました。',
+    ],
+  },
+  {
     version: '0.25.2814',
     items: [
       '横から光が当たった時に影が細くなるようになりました（影の根元は物体の底辺に付いたままです）。',

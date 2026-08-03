@@ -1752,14 +1752,16 @@ const SHADOW_GLOW_MIN_DIST = tsNum('glowmindist', 0);
 /** 手前(足元)の幅=実物の幅×これ。**1.0 で実物の底辺どおり**。 */
 const SHADOW_NEAR_FRAC = tsNum('shadownear', 1);   // ★v0.25.2810: 0.34 → **1.0**(実物の底辺どおり)
 /** 奥(先端)の広がり=実物の幅×これ。1.0 が現状。 */
-const SHADOW_FAR_MULT = tsNum('shadowfar', 1.8);   // ★v0.25.2810: 1 → **1.8**(手前を絞らない代わりに奥を広げる)
+// ★v0.25.2815: 1.8 は広すぎて画面が黒帯になった(社長報告)。**1.0 へ戻す**。
+const SHADOW_FAR_MULT = tsNum('shadowfar', 1);   // ★v0.25.2810: 1 → **1.8**(手前を絞らない代わりに奥を広げる)
 /**
  * ★擬似遠近を奥側の広がりに効かせる量(0=効かせない=現状 / 1=フルに効かせる)。
  * このゲームは**手前ほど大きく奥ほど小さい**(`depthScale`)。影が手前(画面下)へ伸びる時は
  * **よけいに広げ**、奥(画面上)へ伸びる時は**ほとんど広げない**——でないと奥行きと食い違う(社長指摘)。
  * ★**キャラを大きくしているのと同じ `depthScale` を使う**(別の式を作ると絵と影がだんだんズレる)。
  */
-const SHADOW_PERSP = tsNum('shadowpersp', 1);
+// ★v0.25.2815: 上限を付けずに1.0で入れたのが黒帯の主因。**0(切る)へ戻す**。上げる時は上限付きで。
+const SHADOW_PERSP = tsNum('shadowpersp', 0);
 /**
  * ★v0.25.2814(社長「横に光が当たった時、ちゃんと底辺張り付く? つまり影は細くなるはず」):
  * **手前の辺の"長さ"を影の角度で変える**。向きは影に垂直のまま(それが正しい)。
@@ -1776,7 +1778,10 @@ const SHADOW_PERSP = tsNum('shadowpersp', 1);
  * **横光で辺が影と平行になり台形が潰れる**穴があった(社長指摘)。⇒ 角度で長さを決める形へ差し替え。
  * `?shadowaniso=0` で角度を無視(=v0.25.2810〜2812 の挙動)に戻せる。
  */
-const SHADOW_NEAR_ANISO = tsBool('shadowaniso', true);      // ★v0.25.2810: 0 → **1**(絵と同じ depthScale をフルに効かせる)
+const SHADOW_NEAR_ANISO = tsBool('shadowaniso', true);
+/** ★遠近の倍率は必ずこの範囲で挟む(v0.25.2815: 青天井にして画面が黒帯になった)。 */
+const SHADOW_PERSP_MIN = tsNum('shadowperspmin', 0.5);
+const SHADOW_PERSP_MAX = tsNum('shadowperspmax', 1.6);      // ★v0.25.2810: 0 → **1**(絵と同じ depthScale をフルに効かせる)
 /**
  * ★v0.25.2801 診断(社長「爆発もどんな光でも影は動いてない。画面が暗くなるだけ」):
  * `?glowshadowtest=1` で**プレイヤーの左上140pxに強glow相当の光を常時1つ**注入する(絵は出さない=影だけ)。
@@ -9512,8 +9517,11 @@ export class PixiScene {
       sl.footX = footX; sl.footY = footY;
       sl.drawDirX = dirX; sl.drawDirY = dirY; sl.drawLen = length;
       // ★奥側の広がりに擬似遠近を効かせる(手前へ伸びるほど広く/奥へ伸びるほど広がらない)。
+      // ★v0.25.2815: **必ず上限で挟む**。旧実装は青天井で、長い影ほど奥側が無制限に広がり
+      // 画面全体が黒帯になった(社長報告 v0.25.2813 の実機)。0.5〜1.6倍の間に収める。
       const persp = SHADOW_PERSP > 0
-        ? 1 + SHADOW_PERSP * (this.depthScale(footY + dirY * length) / footDepth - 1)
+        ? Math.min(SHADOW_PERSP_MAX, Math.max(SHADOW_PERSP_MIN,
+            1 + SHADOW_PERSP * (this.depthScale(footY + dirY * length) / footDepth - 1)))
         : 1;
       // ★手前の半幅は影の角度で決まる(横光ほど細い)。足元の底辺から端がはみ出さない量。
       const nearHalfSlot = SHADOW_NEAR_ANISO ? nearHalf * Math.abs(dirY) : nearHalf;
