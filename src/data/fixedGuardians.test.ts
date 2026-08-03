@@ -4,6 +4,8 @@ import {
   FIXED_GUARDIANS,
   FIXED_GUARDIAN_BOSS_SLOT_ORDER,
   fixedGuardianLeadersForBoss,
+  pickFixedGuardianForGhostMode,
+  shouldPickFixedGuardian,
 } from './fixedGuardians';
 import { sanitizePlayerName } from '../utils/playerName';
 import { bossStylePerfScore } from '../utils/playerTraits';
@@ -74,5 +76,26 @@ describe('固定の先人守護霊20体', () => {
       expect(second.map(guardian => guardian.id)).toEqual(first.map(guardian => guardian.id));
       expect(first.every(guardian => Number.isFinite(guardian.performance.score))).toBe(true);
     }
+  });
+
+  it('助っ人は20人全体、討伐者はボス担当の上位4人から選ぶ', () => {
+    expect(pickFixedGuardianForGhostMode('giantbat@stage-1', 'random', () => 0).name).toBe('黒鉄');
+    expect(pickFixedGuardianForGhostMode('giantbat@stage-1', 'random', () => 0.999).name).toBe('無銘');
+
+    const leaders = fixedGuardianLeadersForBoss('giantbat@stage-2');
+    const topFirst = pickFixedGuardianForGhostMode('giantbat@stage-2', 'top', () => 0);
+    const topLast = pickFixedGuardianForGhostMode('giantbat@stage-2', 'top', () => 0.999);
+    expect(topFirst.id).toBe(leaders[0].id);
+    expect(topLast.id).toBe(leaders[3].id);
+  });
+
+  it('固定候補と実プレイヤー候補を人数比で同じ抽選プールへ混ぜる', () => {
+    expect(shouldPickFixedGuardian('random', 0, () => 0.999)).toBe(true);
+    // 固定20 + 実プレイヤー20なら境界は50%。
+    expect(shouldPickFixedGuardian('random', 20, () => 0.499)).toBe(true);
+    expect(shouldPickFixedGuardian('random', 20, () => 0.5)).toBe(false);
+    // 討伐者は固定上位4 + 実プレイヤー側の上位候補4なら同じく50%。
+    expect(shouldPickFixedGuardian('top', 4, () => 0.499)).toBe(true);
+    expect(shouldPickFixedGuardian('top', 4, () => 0.5)).toBe(false);
   });
 });

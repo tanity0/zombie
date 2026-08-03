@@ -61,10 +61,16 @@ async function putGhost(request, env) {
 
 async function randomCandidate(env, slot, anonId) {
   return env.GHOST_DB.prepare(`
-    SELECT record_id, slot, profile_json FROM ghost_records
+    SELECT record_id, slot, profile_json,
+      (SELECT COUNT(*) FROM ghost_records AS pool
+       WHERE pool.slot=? AND pool.epoch=? AND pool.anon_id<>?) AS pool_size
+    FROM ghost_records
     WHERE slot=? AND epoch=? AND anon_id<>?
     ORDER BY RANDOM() LIMIT 1
-  `).bind(slot, GHOST_SHARE_EPOCH, anonId ?? '').first();
+  `).bind(
+    slot, GHOST_SHARE_EPOCH, anonId ?? '',
+    slot, GHOST_SHARE_EPOCH, anonId ?? '',
+  ).first();
 }
 
 async function topCandidate(env, slot, anonId) {
@@ -75,13 +81,14 @@ async function topCandidate(env, slot, anonId) {
   const count = Number(countRow?.n ?? 0);
   if (count < 1) return null;
   const limit = Math.max(1, Math.ceil(count * TOP_PERCENT));
-  return env.GHOST_DB.prepare(`
+  const row = await env.GHOST_DB.prepare(`
     SELECT record_id, slot, profile_json FROM (
       SELECT record_id, slot, profile_json FROM ghost_records
       WHERE slot=? AND epoch=? AND anon_id<>? AND perf IS NOT NULL
       ORDER BY perf DESC LIMIT ?
     ) ORDER BY RANDOM() LIMIT 1
   `).bind(slot, GHOST_SHARE_EPOCH, anonId ?? '', limit).first();
+  return row ? { ...row, pool_size: limit } : null;
 }
 
 async function pickGhosts(request, env) {
@@ -99,7 +106,12 @@ async function pickGhosts(request, env) {
     try { profile = JSON.parse(row.profile_json); } catch { continue; }
     const safe = sanitizeSharedProfile(profile, slot);
     if (!safe) continue;
-    const item = { slot, recordId: row.record_id, profile: safe };
+    const item = {
+      slot,
+      recordId: row.record_id,
+      poolSize: Math.max(1, Math.floor(Number(row.pool_size) || 1)),
+      profile: safe,
+    };
     const bytes = utf8Size(item);
     if (responseBytes + bytes > GHOST_MAX_RESPONSE_BYTES) break;
     responseBytes += bytes;

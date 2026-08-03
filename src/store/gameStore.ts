@@ -13068,7 +13068,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetModeBags();
     // v0.25.2514(GHOST-BUILD-1): 前ランのゴーストビルド(メモ化1件)も持ち越さない。
     clearGhostBuildCache();
-    // G6: 1ランにつき1回だけ非同期取得。通信は開始をブロックせず、間に合わなければ自分の霊へ落ちる。
+    // G6: 1ランにつき1回だけ非同期取得。実プレイヤー候補が取れなければ召喚側で固定20人を使う。
     const testGhostSkill = bossTestGhostSkill();
     const selectedRunSkills = testGhostSkill ? [testGhostSkill] : state.pendingSkills;
     beginGhostOnlineRun(selectedRunSkills, getSelectedStageId());

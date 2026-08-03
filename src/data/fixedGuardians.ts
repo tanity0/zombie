@@ -1,5 +1,6 @@
 // 社長裁定 v0.25.2818: オンラインプールを埋める弱いボットシードは廃止し、
-// 消えない固定データとして持つ「先人守護霊」20体。オンラインの実プレイヤー記録とは混ぜない。
+// 消えない固定データとして持つ「先人守護霊」20体。
+// 助っ人系の初期候補を埋め、オンライン実プレイヤーと同じ抽選母集団で使う。
 import type { CharacterClass, EquipBonus, SubWeaponKey } from '../types/game';
 import { BULLET_MOVE_KEYS, MOVE_REACTION_KEYS, type MoveReactionTable } from '../utils/moveReaction';
 import type { PlayerProfile } from '../utils/playerTraits';
@@ -312,4 +313,36 @@ export const fixedGuardianLeadersForBoss = (slotKey: string): readonly FixedGuar
   return FIXED_GUARDIANS
     .slice(start, start + FIXED_GUARDIAN_LEADERS_PER_BOSS)
     .sort((a, b) => b.performance.score - a.performance.score);
+};
+
+/**
+ * 同じ抽選母集団で固定側が選ばれた時に呼ぶ先人守護霊。
+ * 助っ人は20人全体、討伐者はそのボス担当の上位4人からランダムに選ぶ。
+ */
+export const pickFixedGuardianForGhostMode = (
+  slotKey: string,
+  mode: 'random' | 'top',
+  random: () => number = Math.random,
+): FixedGuardian => {
+  const pool = mode === 'top' ? fixedGuardianLeadersForBoss(slotKey) : FIXED_GUARDIANS;
+  const roll = random();
+  const safeRoll = Number.isFinite(roll) ? Math.max(0, Math.min(0.999999999, roll)) : 0;
+  return pool[Math.floor(safeRoll * pool.length)];
+};
+
+/**
+ * 固定候補とオンライン実プレイヤー候補を、候補1人あたり同じ確率で混ぜる。
+ * 助っ人は固定20人、討伐者はボス担当4人を実プレイヤー側の抽選対象人数へ足す。
+ */
+export const shouldPickFixedGuardian = (
+  mode: 'random' | 'top',
+  remotePoolSize: number,
+  random: () => number = Math.random,
+): boolean => {
+  const fixedPoolSize = mode === 'top' ? FIXED_GUARDIAN_LEADERS_PER_BOSS : FIXED_GUARDIANS.length;
+  const remoteSize = Number.isFinite(remotePoolSize) ? Math.max(0, Math.floor(remotePoolSize)) : 0;
+  if (remoteSize === 0) return true;
+  const roll = random();
+  const safeRoll = Number.isFinite(roll) ? Math.max(0, Math.min(0.999999999, roll)) : 0;
+  return safeRoll < fixedPoolSize / (fixedPoolSize + remoteSize);
 };

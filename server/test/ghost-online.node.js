@@ -3,8 +3,10 @@ import test from 'node:test';
 import { allowedGhostOriginValue } from '../src/ghost-origin.js';
 import {
   GHOST_PROFILE_DEFAULTS,
+  GHOST_SHARE_EPOCH,
   sanitizeSharedProfile,
 } from '../../shared/ghostSanitize.mjs';
+import { handleGhostRequest } from '../src/ghost-api.js';
 
 const profile = (slot = 'thor') => ({
   v: 1,
@@ -42,4 +44,44 @@ test('shared profile sanitizer clamps hostile data and rejects slot mismatch', (
   assert.equal(safe.moveReactions['thor-issen'].counterRate, 1);
   assert.equal(safe.moveReactions.evil, undefined);
   assert.equal(sanitizeSharedProfile(profile('thor'), 'skadi'), null);
+});
+
+const pickEnv = (realCount) => ({
+  GHOST_DB: {
+    prepare(sql) {
+      return {
+        bind() {
+          return {
+            async first() {
+              if (sql.includes('COUNT(*) AS n')) return { n: realCount };
+              return {
+                record_id: 'record-1',
+                slot: 'thor',
+                profile_json: JSON.stringify(profile('thor')),
+                pool_size: realCount,
+              };
+            },
+          };
+        },
+      };
+    },
+  },
+});
+
+test('pick response reports the real-player pool size for fixed/real weighted mixing', async () => {
+  const anon = '11111111-1111-4111-8111-111111111111';
+  const randomResponse = await handleGhostRequest(
+    new Request(`https://example.test/ghost/pick?slots=thor&mode=random&anon=${anon}`),
+    pickEnv(7),
+  );
+  const randomBody = await randomResponse.json();
+  assert.equal(randomBody.epoch, GHOST_SHARE_EPOCH);
+  assert.equal(randomBody.items[0].poolSize, 7);
+
+  const topResponse = await handleGhostRequest(
+    new Request(`https://example.test/ghost/pick?slots=thor&mode=top&anon=${anon}`),
+    pickEnv(10),
+  );
+  const topBody = await topResponse.json();
+  assert.equal(topBody.items[0].poolSize, 2); // ceil(10 × 上位20%)
 });

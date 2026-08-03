@@ -18,6 +18,8 @@ export type RemoteGhostCandidate = {
   source: 'random' | 'top';
   recordId: string;
   slot: string;
+  /** サーバ側でこの抽選に参加した実プレイヤー候補数。固定候補との人数比抽選に使う。 */
+  poolSize: number;
   profile: PlayerProfile;
 };
 
@@ -126,18 +128,21 @@ export const beginGhostOnlineRun = (skills: readonly SkillKey[], stageId: string
       const next = new Map<string, RemoteGhostCandidate>();
       for (const item of raw.items) {
         if (!item || typeof item !== 'object') continue;
-        const value = item as { slot?: unknown; recordId?: unknown; profile?: unknown };
+        const value = item as { slot?: unknown; recordId?: unknown; poolSize?: unknown; profile?: unknown };
         if (typeof value.slot !== 'string' || !slots.includes(value.slot) || typeof value.recordId !== 'string') continue;
         const profile = sanitizeSharedProfile(value.profile, value.slot) as PlayerProfile | null;
         if (!profile) continue;
-        next.set(value.slot, { source: mode, recordId: value.recordId, slot: value.slot, profile });
+        const poolSize = Number.isSafeInteger(value.poolSize) && Number(value.poolSize) >= 1
+          ? Number(value.poolSize)
+          : 1; // 旧Worker応答は「取得できた実候補1人」として互換維持。
+        next.set(value.slot, { source: mode, recordId: value.recordId, slot: value.slot, poolSize, profile });
       }
       if (generation !== runGeneration) return;
       runCandidates = next;
       try {
         localStorage.setItem(CACHE_KEY, JSON.stringify({ epoch: GHOST_SHARE_EPOCH, mode, slots: [...next.keys()] }));
       } catch { /* 実データはメモリだけに保持する */ }
-    } catch { /* オフラインは自分の霊へ黙ってフォールバック */ }
+    } catch { /* オフライン時の固定20人フォールバックは召喚側で行う */ }
     finally {
       if (generation === runGeneration) runPickPending = false;
     }

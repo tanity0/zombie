@@ -46,6 +46,7 @@ import { loadPlayerName, displayNameFrom } from './playerName'; // v0.25.2477: �
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
 import { isGhostOnlinePickPending, resolveRemoteGhost, selectedGhostMode } from './ghostOnline';
+import { pickFixedGuardianForGhostMode, shouldPickFixedGuardian } from '../data/fixedGuardians';
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
 import {
@@ -701,19 +702,27 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   if (!rising && !delayedSummon) return; // 通常は交戦の立ち上がりだけ。取得待ち時だけ後続tickを許す。
   if (delayedSummon && pickPending) return;
   pendingRemoteGhostSlot = null;
-  const remote = requestedMode === 'random' || requestedMode === 'top'
+  const remoteCandidate = requestedMode === 'random' || requestedMode === 'top'
     ? resolveRemoteGhost(localSlot)
     : null;
+  // 固定20人とオンライン実プレイヤーを候補人数比で同じ抽選母集団へ混ぜる。
+  // 助っ人=固定20人+実候補全員 / 討伐者=ボス別4人+実候補の上位20%。
+  const fixed = onlineMode && shouldPickFixedGuardian(requestedMode, remoteCandidate?.poolSize ?? 0)
+    ? pickFixedGuardianForGhostMode(localSlot, requestedMode)
+    : null;
+  const remote = fixed ? null : remoteCandidate;
   const loadedProfile = loadPlayerProfile();
   const profile = remote
     ? effectiveGhostProfile(remote.profile, remote.slot)
-    : loadedProfile
-      ? effectiveGhostProfile(loadedProfile, localSlot)
-      : defaultGhostProfile();
-  const ghostSource = remote?.source ?? 'own';
-  // 新オンラインスキルで取得できなかった時は「対価が来ていない」ためHPを増やさない。
-  // 自分の守護霊/デバッグ、またはオンライン霊が実際に解決できた時だけ、ボス個体ごとに1回×1.6。
-  const shouldBoostBoss = remote !== null || requestedMode === 'own' || ghostDebugEnabled;
+    : fixed
+      ? fixed.profile
+      : loadedProfile
+        ? effectiveGhostProfile(loadedProfile, localSlot)
+        : defaultGhostProfile();
+  const ghostSource = remote?.source ?? (fixed ? requestedMode : 'own');
+  // 自分の守護霊/デバッグ、オンライン実プレイヤー、固定の先人守護霊のいずれかが実際に来た時だけ、
+  // ボス個体ごとに1回×1.6。オンライン候補が無くても固定20人が来るため新2スキルも対価が成立する。
+  const shouldBoostBoss = remote !== null || fixed !== null || requestedMode === 'own' || ghostDebugEnabled;
   if (shouldBoostBoss && !boss.ghostHpBoosted) {
     useGameStore.setState(s => ({
       enemies: s.enemies.map(e => e.id === boss.id
