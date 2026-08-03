@@ -565,9 +565,9 @@ const createBaseSites = (): BaseSite[] => {
   return sites;
 };
 
-// 帰還フェーズ(フィナーレボス撃破/終了アイテム後): 即勝利せず帰還サークルへ誘導。3秒とどまると帰還完了=gameWon。
+// 帰還フェーズ: 通常ストーリーは地点内で離指確認、イベントは3秒滞在、洋館通路は5秒滞在で帰還完了。
 const RETURN_CIRCLE_RADIUS = 95;        // 帰還サークル半径(円コリジョン)
-export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(描画の進捗にも使用)
+export const RETURN_CIRCLE_HOLD_MS = 3000; // イベント帰還の滞在時間(描画の進捗にも使用)
 // ステージ6(洋館通路)のゴール(社長指示v0.25.2132): 4000px付近のハッチ床の上で5秒滞在=ゴール(例のサークル)。
 // 位置は床タイル境界(FLOOR_REPEAT=520)に揃えて8枚目[3640,4160)をハッチ床に差し替え→中心=3900
 // (=「4000px付近」。境界を520の倍数に置くと通常床と紋様が継ぎ目なく繋がる)。前進=負方向。
@@ -576,7 +576,7 @@ export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(�
 // 「ハッチが画面中央(プレイヤーの真下)に見える」のは d=focal*(1/s-1)≒513px 手前に立った時
 // (s=(0.5-horizonYr)/(footYr-horizonYr)≒0.45・corridorLayerのCFG連動)なので、円は 3900-513≒3390 に置く。
 export const CORRIDOR_GOAL_Y = -3390;        // ゴールサークル中心のworld y(到達時にハッチと重なる補正済み。x=通路中央0)
-export const CORRIDOR_RETURN_HOLD_MS = 5000; // 通路ゴールの滞在時間(社長指示「5秒停止」。他ステージの3秒は不変)
+export const CORRIDOR_RETURN_HOLD_MS = 5000; // 通路ゴールの滞在時間(社長指示「5秒停止」。イベント帰還の3秒は不変)
 // 通路ゴールの「近づくとフェードイン」(社長指示v0.25.2151「透明にしておいて床に近づくとフェードイン
 // 表示からのタイマー」): 存在(判定)は常時・表示は透明で、この距離まで近づくとrevealedAtを打刻。
 // 描画はrevealedAt起点でフェードイン(pixiScene)。滞在タイマーはフェード完了(FADE_MS)後にのみ進む。
@@ -3280,6 +3280,8 @@ interface GameState {
   gameWon: boolean;
   // フィナーレボス(giantbat)を倒した=終了条件を満たした(まだ勝利ではない)。useGameLoop が帰還サークルを出す。
   finaleDefeated: boolean;
+  // 通常ストーリーの帰還確認。帰還地点で操作を離した時だけ開く。
+  storyReturnPromptVisible: boolean;
   // 制圧イベント: 4拠点(東西南北)。suppressionActive 時のみ有効(ステージ1メインミッション等)。
   baseSites: BaseSite[];
   escorts: EscortSoldier[];      // 護衛軍人NPC(4人・東西南北担当)。HPなし・前進&射撃&10秒占拠で解放。
@@ -3805,7 +3807,9 @@ interface GameState {
   debugLoopError: string;                               // 診断: ゲームループ本体で投げられた例外の要約(?debug=1 表示)
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
   beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
-  updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: サークル内滞在を計測し3秒で gameWon
+  updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: 帰還地点への進入/滞在を更新
+  requestStoryReturnPrompt: () => boolean;              // 通常ストーリーの帰還地点内で操作を離したら確認を開く
+  answerStoryReturnPrompt: (confirmed: boolean) => void;
   updateSuppression: (deltaTime: number) => { x: number; y: number }[]; // 毎フレーム: 制圧イベント。返り値=このフレームに護衛NPCが発砲した位置(NPC銃声の距離減衰再生用)
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   setHasCardKey: (v: boolean) => void;
@@ -4057,6 +4061,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   vaccinePurchased: false,
   gameWon: false,
   finaleDefeated: false,
+  storyReturnPromptVisible: false,
   baseSites: createBaseSites(),
   escorts: [],
   suppressionActive: false,
@@ -11980,7 +11985,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  // 毎フレーム: 帰還サークル内の滞在時間を計測。離れるとリセット、RETURN_CIRCLE_HOLD_MS 連続で帰還完了=gameWon。
+  // 毎フレーム: 帰還サークル内への進入/滞在を更新。通常ストーリーは離指確認、その他は従来の滞在完了。
   updateReturnPhase: (deltaTime) => {
     set(state => {
       const rc = state.returnCircle;
@@ -11990,6 +11995,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       const py = p.y + p.height / 2;
       const dist = Math.hypot(rc.x - px, rc.y - py);
       const inside = dist <= rc.radius;
+      // 通常ストーリーは自動帰還しない。進入状態だけ保持し、実際の確認は離指入力で開く。
+      if (state.finaleDefeated && !state.corridorMode) {
+        const dwellMs = inside ? 1 : 0;
+        if (dwellMs === rc.dwellMs) return {};
+        const justEntered = inside && rc.dwellMs === 0;
+        return {
+          returnCircle: { ...rc, dwellMs },
+          ...(justEntered ? { projectiles: state.projectiles.filter(pr => !RETURN_CLEAR_WEAPON_TYPES.has(pr.weaponType)) } : {}),
+        };
+      }
       // 洋館通路のゴールは「近づくとフェードイン→表示が済んでからタイマー」(社長指示v0.25.2151)。
       // 表示前(未接近/フェード中)は滞在カウントを進めない。他ステージは従来どおり即カウント。
       if (state.corridorMode) {
@@ -12001,7 +12016,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (state.gameTime < rc.revealedAt + CORRIDOR_GOAL_FADE_MS) return {};
       }
       const dwellMs = inside ? rc.dwellMs + deltaTime * 1000 : 0;
-      // 洋館通路のゴールは5秒(社長指示v0.25.2132)。他ステージの3秒は不変。
+      // 洋館通路のゴールは5秒(社長指示v0.25.2132)。イベント帰還の3秒は不変。
       if (dwellMs >= (state.corridorMode ? CORRIDOR_RETURN_HOLD_MS : RETURN_CIRCLE_HOLD_MS)) {
         return { gameWon: true, returnCircle: null, eventBannerText: '帰還完了', eventBannerUntil: state.gameTime + 2000 };
       }
@@ -12013,6 +12028,39 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...(justEntered ? { projectiles: state.projectiles.filter(pr => !RETURN_CLEAR_WEAPON_TYPES.has(pr.weaponType)) } : {})
       };
     });
+  },
+
+  requestStoryReturnPrompt: () => {
+    const state = get();
+    if (
+      state.storyReturnPromptVisible || state.gameWon || !state.finaleDefeated ||
+      state.corridorMode || !isInReturnCircle(state.player, state.returnCircle)
+    ) return false;
+    set({
+      storyReturnPromptVisible: true,
+      isPaused: true,
+      touchActive: false,
+      swipeDirection: null,
+      swipeStrength: 1,
+    });
+    return true;
+  },
+
+  answerStoryReturnPrompt: (confirmed) => {
+    const state = get();
+    if (!state.storyReturnPromptVisible) return;
+    if (confirmed) {
+      set({
+        storyReturnPromptVisible: false,
+        isPaused: false,
+        gameWon: true,
+        returnCircle: null,
+        eventBannerText: '帰還完了',
+        eventBannerUntil: state.gameTime + 2000,
+      });
+      return;
+    }
+    set({ storyReturnPromptVisible: false, isPaused: false });
   },
 
   // 病院(社長指示v0.25.2331): サークル内滞在を計測。3秒でワクチン(死亡時に一度だけ復活)を1つ入手し、
@@ -13413,7 +13461,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 屋内は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は不在。
         // 城/死神/クエストの“発生”は useGameLoop 側で既に !indoor ゲート済み。商人は最初の部屋へ配置。
         // 洋館通路: 城なし(v0.25.2144・社長指示「城も出現しないで」)。遥か遠方に置く=描画カリング/
-        // 衝突/接近系が全て自然に無効。7分の城ボスはuseGameLoop側でcorridorModeゲート
+        // 衝突/接近系が全て自然に無効。5分の城ボスはuseGameLoop側でcorridorModeゲート
         // (bossSpawnedはfalseのまま=画面端マーカーも出ない)。
         castleEvent: corridorMode ? { x: 100000, y: 100000, bossSpawned: false } : createCastleEvent(),
         weaponMerchant: indoor
@@ -13454,6 +13502,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         vaccinePurchased: false,
         gameWon: false,
         finaleDefeated: false,
+        storyReturnPromptVisible: false,
         // 洋館通路は拠点なし(v0.25.2128)。**訓練(M0)も拠点なし**(社長報告v0.25.2313
         // 「チュートリアルステージに拠点サークルぽいのがある、削除」)。制圧イベント自体は
         // v0.25.1818で止めていたが、**サークルの実体(baseSites)は作られたままで描画されていた**。
@@ -13477,7 +13526,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         medicineUsedAt: 0,
         medicinePromptVisible: false,
         // チュートリアル: 帰還サークルを最初から右3000px地点に常設(社長指示v0.25.1829)。
-        // updateReturnPhaseは returnCircle があれば毎フレーム動く=3秒滞在で任務達成(既存経路)。
+        // updateReturnPhaseは returnCircle があれば毎フレーム動く=5秒滞在で任務達成(既存経路)。
         // 洋館通路(corridorMode)も同方式で常設(社長指示v0.25.2132): 4000px付近のハッチ床上・5秒滞在=ゴール。
         // 訓練(M0)のゴールサークルは**廃止**(社長指示v0.25.2302「チュートリアルのゴールが目的が
         // 変わって意味をなさないので削除」)。M0の終わりは終盤シーケンス(グレッグ死亡カットシーン →

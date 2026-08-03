@@ -130,7 +130,10 @@ const VirtualJoystick: React.FC = () => {
     // **死亡モーション中(health<=0)・アテンション演出中・帰還サークル内**では指離しの近接/カウンター/
     // 一閃/PHILL/ホーミングが全部通っていた(押下は isInputLocked で弾かれても、押しっぱなしからの
     // 指離しは素通りする=死ぬ瞬間に握っていると必ず暴発する)。
-    if (pointerId !== null && fireCounter && !isAttackLocked()) {
+    const returnPromptOpened = pointerId !== null && fireCounter
+      ? useGameStore.getState().requestStoryReturnPrompt()
+      : false;
+    if (pointerId !== null && fireCounter && !returnPromptOpened && !isAttackLocked()) {
       // 四神舞リズムモード中は、タップ/フリックをリズム入力へ振り分ける(カウンター/一閃は出さない)。
       // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
       if (useGameStore.getState().rhythm.active) {
@@ -169,7 +172,7 @@ const VirtualJoystick: React.FC = () => {
     // スケボー(新仕様): この接触が「タップ」(短く小移動)だったかを記録し、次回押下のダブルタップ判定に使う。
     // また、乗車中に指を離したら降車(=1秒以上乗っていれば進行方向へスケボーを投げてバッシュ)。dismountSkater は
     // 未装備/非乗車なら無害。カウンター(上の triggerCounter)は従来どおり出るので、両立する。
-    if (pointerId !== null) {
+    if (pointerId !== null && !returnPromptOpened) {
       // タップ記録(ダブルタップ判定用)は「本物の指離し」の時だけ更新する。強制/中断リリース(fireCounter=false)
       // で更新すると、多点タッチで先発ポインタが強制解放された際に偽のタップが記録されダブルタップが誤爆する。
       if (fireCounter) {
@@ -265,7 +268,7 @@ const VirtualJoystick: React.FC = () => {
   const handlePointerEnd = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (pointerIdRef.current !== e.pointerId) return;
-      release();
+      release(e.type === 'pointerup');
     },
     [release]
   );

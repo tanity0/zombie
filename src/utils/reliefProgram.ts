@@ -6,7 +6,7 @@
 // 実機確認③での社長決定:
 //  - HARVEST=雑魚無双(旧「パンプキン2体の狩猟」案は廃止)。
 //  - 講習は主役1体だけ(同時1・1フェーズ合計1体・キル後は再投入しない=呼び出し側のstateで管理)。
-//  - 終盤(城ボス時刻7:00以降)の緩は講習・純休憩を選ばず、既定=HARVEST無双。例外は成績最悪のみ。
+//  - ディレクター終盤(7:00以降)の緩は講習・純休憩を選ばず、既定=HARVEST無双。例外は成績最悪のみ。
 import type { EnemyType } from '../types/game';
 import type { SpawnScene } from './difficultyDirector';
 
@@ -47,8 +47,7 @@ export const recoveryProgram = (type: EnemyType): ReliefProgram => ({
   intervalMult: 1.0, rareMult: 0.3, featuredFloor: true, xpBoost: true, recoveryPrimary: type,
 });
 
-// 城ボス時刻(difficultyDirector.ts/useGameLoopのCASTLE_BOSS_MIN_TIME_MSと同じ7分)。
-// pure関数なので依存を持たずここに複製(値は実機調整前提で両者を揃えること)。
+// 難易度ディレクターの終盤しきい値。城ボスの出現時刻とは独立して7分を維持する。
 export const RELIEF_LATE_GAME_MS = 7 * 60 * 1000;
 const LESSON_WINDOW_MS = 4 * 60 * 1000;      // 講習は序盤(〜4分)だけ選ばれる
 const LESSON_EXPERIENCE_MAX = 3;             // 通算キル数がこれ未満なら「経験が少ない」

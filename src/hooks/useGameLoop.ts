@@ -105,6 +105,7 @@ import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPen
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
+import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
@@ -759,7 +760,7 @@ const DIRFX_ENABLED = evParam('dirfx') !== '0';
 // 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
 // gatePressureの問題児ブロック・憲法の数上限をすべて素通りし、序盤の理不尽(最初から弾+濁流)の
 // 主因だったため既定OFF。見せ場としての再設計はバッチ4/5の演目・台本メニューで行う。
-// ?setpiece=1 で従来台本に復帰(切り分け用)。城ボス(7分)は別経路なので影響なし。
+// ?setpiece=1 で従来台本に復帰(切り分け用)。城ボス(5分)は別経路なので影響なし。
 const SETPIECE_ENABLED = evParam('setpiece') === '1';
 // (DIRECTOR_NEAR_RADIUS は src/utils/directorTick.ts の runDirectorSignalStep へ移設)
 // ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
@@ -1041,7 +1042,6 @@ let loopErrLogged = false;                           // ループ本体例外の
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
-const CASTLE_BOSS_MIN_TIME_MS = 7 * 60 * 1000; // ただし出現は7分経過後のみ(社長指示で5→7分=難易度カーブ後ろ倒し)。接近＋時間の両方。?castlenow=1 は無視。
 // 研究所スキンの湧き敵の索敵範囲(px)。この距離内 かつ 壁越しでない(視界)ときに休眠から起床。
 // ラボ湧き敵の起床索敵範囲。150 では湧きリング(画面外~570-745px)より遥かに小さく休眠敵が永久に起きず
 // 「敵が一切出ない」状態に、逆に 700 では湧いた瞬間に約7割が即起床して「すぐ見つかる」状態だった(社長報告)。
@@ -2381,13 +2381,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         const castle = useGameStore.getState().castleEvent;
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
-        // 城は最初から固定設置。出現条件は「7分経過(時間)」のみ=その時刻に城の位置へ giantbat がポップ。
+        // 城は最初から固定設置。出現条件は「5分経過(時間)」のみ=その時刻に城の位置へ giantbat がポップ。
         // (社長指示: 接近不要。城マーカーはボス出現後に表示。?castlenow=1 は即時。)
         // 以前は制圧イベント中(ステージ1メイン)は出さない仕様だったが、社長指示で撤回=制圧中でも
         // 時間が来たら出現するように変更(拠点制圧の完了を待たない)。
         const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
         // 洋館通路(corridorMode)は城なし(v0.25.2144・社長指示「城も出現しないで。時間で出るのは死神だけ」)
-        // =7分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
+        // =5分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
         if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -3124,7 +3124,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // --- 帰還フェーズ ---
         // フィナーレボス(giantbat)撃破=finaleDefeated になったら、城跡付近に帰還サークルを出す(屋内/ラボの
-        // 終了アイテムは triggerEventVictory が直接サークルを出す)。サークル内に3秒とどまると帰還完了(gameWon)。
+        // 終了アイテムは triggerEventVictory が直接サークルを出す)。通常ストーリーは地点内で離指確認、イベントは3秒滞在で帰還完了。
         {
           const grs = useGameStore.getState();
           if (grs.finaleDefeated && !grs.returnCircle && !grs.gameWon) {
