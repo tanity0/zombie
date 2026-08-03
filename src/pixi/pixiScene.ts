@@ -1747,16 +1747,16 @@ const SHADOW_GLOW_MIN_DIST = tsNum('glowmindist', SHADOW_GLOW_MIN_DIST_PX);
 //  社長案=「**手前を実物どおりにして、奥を広げる**」。実際の影の出来方(点光源から離れるほど広がる)と同じで、
 //  底辺が必ず実物と一致するので**建物だけ特別扱いしなくてよくなる**。
 /** 手前(足元)の幅=実物の幅×これ。**1.0 で実物の底辺どおり**。 */
-const SHADOW_NEAR_FRAC = tsNum('shadownear', SHADOW_FOOT_NARROW);
+const SHADOW_NEAR_FRAC = tsNum('shadownear', 1);   // ★v0.25.2810: 0.34 → **1.0**(実物の底辺どおり)
 /** 奥(先端)の広がり=実物の幅×これ。1.0 が現状。 */
-const SHADOW_FAR_MULT = tsNum('shadowfar', 1);
+const SHADOW_FAR_MULT = tsNum('shadowfar', 1.8);   // ★v0.25.2810: 1 → **1.8**(手前を絞らない代わりに奥を広げる)
 /**
  * ★擬似遠近を奥側の広がりに効かせる量(0=効かせない=現状 / 1=フルに効かせる)。
  * このゲームは**手前ほど大きく奥ほど小さい**(`depthScale`)。影が手前(画面下)へ伸びる時は
  * **よけいに広げ**、奥(画面上)へ伸びる時は**ほとんど広げない**——でないと奥行きと食い違う(社長指摘)。
  * ★**キャラを大きくしているのと同じ `depthScale` を使う**(別の式を作ると絵と影がだんだんズレる)。
  */
-const SHADOW_PERSP = tsNum('shadowpersp', 0);
+const SHADOW_PERSP = tsNum('shadowpersp', 1);      // ★v0.25.2810: 0 → **1**(絵と同じ depthScale をフルに効かせる)
 /**
  * ★v0.25.2801 診断(社長「爆発もどんな光でも影は動いてない。画面が暗くなるだけ」):
  * `?glowshadowtest=1` で**プレイヤーの左上140pxに強glow相当の光を常時1つ**注入する(絵は出さない=影だけ)。
