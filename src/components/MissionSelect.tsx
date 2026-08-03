@@ -111,7 +111,7 @@ import { loadDuoAlbum } from '../utils/duoRecords';
 import type { GhostAllySnapshot } from '../utils/playerBuild';
 import { BossClearCardRow, GhostAllyCard } from './GhostRecordCards';
 import {
-  ghostNetworkSlotKey, isOnlineGhostSkill, loadGhostInbox,
+  ghostNetworkSlotKey, loadGhostInbox,
   requestGhostOnlineConsent, type GhostInboxItem,
 } from '../utils/ghostOnline';
 
@@ -875,7 +875,6 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       playSfx('ui-select');
       if (equippedSkills.includes(k)) { setPendingSkills(equippedSkills.filter(x => x !== k)); return; }
       if (equippedSkills.length >= MAX_EQUIPPED_SKILLS) return; // 最大2(満杯なら無視)
-      if (isOnlineGhostSkill(k) && !requestGhostOnlineConsent()) return;
       setPendingSkills([...equippedSkills, k]);
     };
     return (
@@ -1333,7 +1332,8 @@ const GraphicsSettings: React.FC = () => {
 
 // === プレイヤー名(守護霊の頭上に表示される名前・v0.25.2477) ==============================
 // 台帳は utils/playerName.ts(初期値=player+ランダム5桁を自動生成)。React再描画規律:
-// 入力値はローカルstate(store購読なし・毎フレーム再描画なし)。保存はblur/Enter確定時に
+// 入力値はローカルstate(store購読なし・毎フレーム再描画なし)。保存ボタン/Enterでのみ確定し、
+// 公開注意の確認を通してから保存する。blurだけでは保存しない。
 // normalizePlayerNameInput(★文字種フィルタ・trim・最大10文字へ切り詰め・空なら「名無し」
 // =§2.16 C-1の叩き台)を通してから savePlayerName し、正規化後の値へ戻す。
 // ★v0.25.2765: 不許可文字は**入力中は弾かず、確定時に黙って除去する**(IME変換の途中で
@@ -1344,23 +1344,38 @@ const PlayerNameSettings: React.FC = () => {
   const [name, setName] = useState(loadPlayerName); // マウント時に1回読む(無ければ生成・保存される)
   // 未変更なら保存しない: 初期ランダム名(player+5桁=11文字)は生成物なので、触らず確定した時に
   // 10文字へ切り詰めてしまわない(切り詰めは手入力に対する正規化)。
-  const commit = () => setName(prev => (prev === loadPlayerName() ? prev : savePlayerName(normalizePlayerNameInput(prev))));
+  const commit = () => {
+    if (!requestGhostOnlineConsent()) return;
+    setName(prev => (prev === loadPlayerName() ? prev : savePlayerName(normalizePlayerNameInput(prev))));
+  };
   return (
     <Section label="プレイヤー名">
-      <input
-        type="text"
-        value={name}
-        onChange={e => setName(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-        // ★v0.25.2766(品質監査E-1): HTMLの maxLength は**UTF-16コードユニット長**、こちらのロジックは
-        // **コードポイント単位**。同じ数を渡すと `𠮟`(U+20B9F・実在の姓に出る字)が半分しか打てない。
-        // 2倍を渡して入力欄では止めず、確定時の normalizePlayerNameInput でコードポイント単位に揃える
-        // (暴走ペースト防止の上限としてだけ効かせる)。
-        maxLength={PLAYER_NAME_MAX_LEN * 2}
-        aria-label="プレイヤー名"
-        className="w-full rounded-none border border-purple-400/20 bg-black/30 px-3 py-2 text-[14px] text-white/90 outline-none focus:border-purple-300/60"
-      />
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => {
+            if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            commit();
+          }}
+          // ★v0.25.2766(品質監査E-1): HTMLの maxLength は**UTF-16コードユニット長**、こちらのロジックは
+          // **コードポイント単位**。同じ数を渡すと `𠮟`(U+20B9F・実在の姓に出る字)が半分しか打てない。
+          // 2倍を渡して入力欄では止めず、確定時の normalizePlayerNameInput でコードポイント単位に揃える
+          // (暴走ペースト防止の上限としてだけ効かせる)。
+          maxLength={PLAYER_NAME_MAX_LEN * 2}
+          aria-label="プレイヤー名"
+          className="min-w-0 flex-1 rounded-none border border-purple-400/20 bg-black/30 px-3 py-2 text-[14px] text-white/90 outline-none focus:border-purple-300/60"
+        />
+        <button
+          type="button"
+          onClick={commit}
+          className="shrink-0 border border-purple-300/35 bg-purple-400/15 px-4 py-2 text-[13px] font-semibold text-purple-50 active:bg-purple-400/25"
+        >
+          保存
+        </button>
+      </div>
       <p className="text-[11px] leading-relaxed text-white/45">
         守護霊(スキル)の頭上に表示される名前。最大{PLAYER_NAME_MAX_LEN}文字。
         絵文字は使えません(記号は <span className="whitespace-nowrap">_ - . ・ ' ! ?</span> と空白のみ)。

@@ -31,7 +31,6 @@ export type GhostInboxItem = {
 const CONSENT_KEY = 'zombie-ghost-consent-v1';
 const CACHE_KEY = 'zombie-ghost-cache-v1';
 const INBOX_KEY = 'zombie-ghost-inbox-v1';
-const ONLINE_SKILLS = new Set<SkillKey>(['ghost-helper', 'ghost-slayer']);
 let runGeneration = 0;
 let runCandidates = new Map<string, RemoteGhostCandidate>();
 let runMode: 'random' | 'top' | null = null;
@@ -62,9 +61,8 @@ export const hasGhostOnlineConsent = (): boolean => {
 };
 
 export const requestGhostOnlineConsent = (): boolean => {
-  if (hasGhostOnlineConsent()) return true;
   const accepted = window.confirm(
-    'オンライン守護霊を使いますか？\n\nあなたのニックネームと戦い方の記録が、他のプレイヤーに表示されます。ニックネームは本名ではありません。\n\nあなたの記録は、守護霊を呼ばずに戦ったときだけ保存・共有されます',
+    'ニックネームは他の人に公開されます。\n個人情報は入れないようにご注意ください。',
   );
   if (!accepted) return false;
   try {
@@ -74,8 +72,6 @@ export const requestGhostOnlineConsent = (): boolean => {
     return false;
   }
 };
-
-export const isOnlineGhostSkill = (skill: SkillKey): boolean => ONLINE_SKILLS.has(skill);
 
 export const ghostNetworkSlotKey = (localSlot: string): string => localSlot.replace(/@/g, '-');
 

@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.2824 — ニックネーム公開確認を保存時へ移動【2026-08-03 22:45 JST】
+
+オンライン守護霊スキルの装備時に出ていた同意確認を削除した。守護霊ページでは名前入力欄の横に
+「保存」ボタンを追加し、ボタンまたはEnterで保存する直前に「ニックネームは他の人に公開されます。
+個人情報は入れないようにご注意ください。」と確認する。入力欄を離れただけでは保存しない。
+
+- 負荷: 1/10。名前保存時だけのDOM操作と確認ダイアログで、シミュレーション・描画・通信の常時負荷なし。
+- 変更: `src/components/MissionSelect.tsx`, `src/utils/ghostOnline.ts`, `BOT_AND_GHOST.md`,
+  `src/data/changelog.ts`, `package.json`。
+- 検証: `npm run lint` エラー0（既存warning 8件）、`npm run typecheck` 成功、
+  関連Vitest 637件成功・4件skip。
+- Push: 【2026-08-03 22:46 JST】
+
 ## v0.25.2823 — ステージ素材テストをPixi非依存化【2026-08-03 22:17 JST】
 
 G6以前からCIに残っていた `stageTextures.test.ts` の `navigator is not defined` を解消した。

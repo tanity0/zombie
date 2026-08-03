@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2824',
+    items: [
+      '守護霊ページの名前欄に保存ボタンを追加し、ニックネーム公開の注意を保存時に確認するようにしました。',
+      'オンライン守護霊スキルを装備した時には、同意確認が出ないようにしました。',
+    ],
+  },
+  {
     version: '0.25.2823',
     items: [
       'ゲーム内容の変更はありません（公開検査の実行環境を修正しました）。',
