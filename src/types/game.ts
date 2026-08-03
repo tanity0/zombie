@@ -247,6 +247,10 @@ export interface PlayerBuildSnapshot {
   equipBonus?: EquipBonus;
   /** レベルアップで積んだクリ率(武器・装備とは別枠の本体値)。 */
   critChance?: number;
+  /** レベルアップで積んだ全銃共通の装填数加算。 */
+  magBonus?: number;
+  /** レベルアップで積んだリロード時間倍率(<1ほど速い)。 */
+  reloadMult?: number;
   subWeapons?: SubWeaponKey[];
   subWeaponLevels?: Partial<Record<SubWeaponKey, number>>;
   /** 計測時のクラス(キャラ固有スキルの評価に使う。絵の選択は従来どおりPlayerProfile.srcClass)。 */
@@ -747,6 +751,11 @@ export interface Summon {
                                // 他人のゴーストが来たらfalse=頭上の「(自分)」添え字が消える前提の構造)。
   ghostFacing?: 1 | -1;        // 向き(描画の左右反転のみ・当たり判定は不変)。
   ghostLastShotAt?: number;    // 銃のクールダウンゲート(ms・Date.now基準)。
+  // v0.25.2830: 守護霊も独立した2人目のプレイヤーとして、プレイヤーと同じWeapon[]・リロード状態を
+  // 自前で持つ。リザーブ弾だけは従来の除外4どおり非消費(空マガジンは同じ時間を掛けて満タンへ戻る)。
+  ghostWeapons?: Weapon[];
+  ghostReloadEndsAt?: number;
+  ghostReloadingWeaponId?: string;
   ghostLastMeleeAt?: number;   // 近接のクールダウンゲート(ms・Date.now基準)。
   ghostCounterPendingAt?: number;    // カウンター相当の機会が開いた時刻(undefined=機会なし)。
   ghostCounterWillAttempt?: boolean; // その機会で抽選済みの「試みるか」。

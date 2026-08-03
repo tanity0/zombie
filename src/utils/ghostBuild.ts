@@ -48,7 +48,7 @@ export const resolveGhostBuild = (snap: PlayerBuildSnapshot | undefined, live: P
     melee,
     phillHeadshotRate: Math.max(0, Math.min(1, snap.phillHeadshotRate ?? 0)),
     // 疑似Playerの武器スロットもスナップショットのロードアウトに揃える(strikerMeleeMult等が
-    // getActiveGunを引くため。弾薬プールはゴーストに概念が無い=liveのまま=中立)。
+    // getActiveGunを引くため。実行中のマガジン/リロード状態はSummon側へ同じWeapon[]型で持つ)。
     player: { ...pseudo, weapons: melee ? [...guns, melee] : guns, activeWeaponId: gun?.id ?? pseudo.activeWeaponId },
   };
 };

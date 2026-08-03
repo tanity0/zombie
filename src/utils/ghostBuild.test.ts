@@ -30,6 +30,8 @@ const buildRun = (): Player => {
     skills: ['crit-up', 'berserker'],
     skillLevels: { 'crit-up': 3, berserker: 2 },
     critChance: 0.2,
+    magBonus: 4,
+    reloadMult: 0.7,
     equipBonus: { ...base.equipBonus, damageMult: 1.2, critBonus: 0.06 },
     health: 50, maxHealth: 100,
   };
@@ -48,6 +50,8 @@ describe('snapshotPlayerBuild: 計測時ビルドの写し(純粋コピー)', ()
     expect(snap.skills).toEqual(['crit-up', 'berserker']);
     expect(snap.skillLevels).toEqual({ 'crit-up': 3, berserker: 2 });
     expect(snap.critChance).toBe(0.2);
+    expect(snap.magBonus).toBe(4);
+    expect(snap.reloadMult).toBe(0.7);
     expect(snap.equipBonus?.damageMult).toBeCloseTo(1.2, 6);
     expect(snap.characterClass).toBe('warrior');
     expect(buildHasLoadout(snap)).toBe(true);
@@ -79,6 +83,8 @@ describe('buildPseudoPlayer: 既存の倍率関数へ渡す疑似Player', () => 
     const snap = snapshotPlayerBuild(buildRun());
     const pseudo = buildPseudoPlayer(snap, live);
     expect(pseudo.critChance).toBe(0.2);            // 計測時ビルドの値(本人の0.99ではない)
+    expect(pseudo.magBonus).toBe(4);
+    expect(pseudo.reloadMult).toBe(0.7);
     expect(pseudo.skills).toEqual(['crit-up', 'berserker']);
     expect(pseudo.quickMagCritUntil).toBe(0);       // 本人の瞬間バフは持ち込まない
     expect(pseudo.benkeiBuffUntil).toBe(0);

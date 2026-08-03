@@ -58,6 +58,26 @@ beforeEach(() => { useGameStore.getState().resetGame('warrior'); clearGhostBuild
 
 // ---------------------------------------------------------------------------
 describe('A: サブCD帳簿の分離(§2.11追補 帰結①)', () => {
+  it('疑似Playerは守護霊自前のWeapon[]/リロード状態を読む', () => {
+    place(snap([]));
+    const initial = combatActorPlayer(GID)!;
+    const active = initial.weapons.find(w => w.id === initial.activeWeaponId)!;
+    const runtime = initial.weapons.map(w => w.id === active.id ? { ...w, magazine: 0 } : w);
+    useGameStore.setState(s => ({
+      summons: s.summons.map(g => g.id === GID ? {
+        ...g,
+        ghostWeapons: runtime,
+        ghostReloadingWeaponId: active.id,
+        ghostReloadEndsAt: 9999,
+      } : g),
+    }));
+    const actor = combatActorPlayer(GID)!;
+    expect(actor.weapons.find(w => w.id === actor.activeWeaponId)?.magazine).toBe(0);
+    expect(actor.reloadingWeaponId).toBe(active.id);
+    expect(actor.reloadEndsAt).toBe(9999);
+    expect(useGameStore.getState().player.reloadingWeaponId).toBe('');
+  });
+
   it('疑似Playerが読むCD表は**ゴースト自前**(プレイヤーのCDは見ない)', () => {
     place(snap(['drone-boomerang']));
     // プレイヤー側だけCDを立てても、ゴーストは「明けている」ままでなければならない。

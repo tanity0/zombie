@@ -71,7 +71,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryUpgradableGunCategories } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryUpgradableGunCategories, beginWeaponReload, finishWeaponReload, refillWeaponMagazine } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -2477,6 +2477,12 @@ export const combatActorPlayer = (ghostId?: string): Player | null => {
   return {
     ...ghostActorPlayer(build, g),
     ...dashStateOf(g.ghostDash),
+    // v0.25.2830: 銃も「独立した2人目」の同じPlayer形へ重ねる。未発砲なら計測ビルドの満タン武器、
+    // 以後はSummonに持つ同じWeapon[]/リロード状態が正本になる。
+    weapons: g.ghostWeapons ?? build.player.weapons,
+    activeWeaponId: build.player.activeWeaponId,
+    reloadEndsAt: g.ghostReloadEndsAt ?? 0,
+    reloadingWeaponId: g.ghostReloadingWeaponId ?? '',
     subWeaponCooldowns: g.ghostSubWeaponCooldowns ?? EMPTY_SUB_COOLDOWNS,
     // GHOST-SUBS-FINAL(v0.25.2563): 守護霊が**自分で**投げたクイックマガジンを回収して得たクリ窓。
     // GHOST-BUILD-1では「本人のバフ窓を二重取りしない」ため0へ中立化していた枠で、いま守護霊自身が
@@ -11167,10 +11173,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           const active = getActiveGun(p);
           if (!active?.ammoType) return {};
           const field = AMMO_FIELD[active.ammoType];
-          const need = Math.max(0, effectiveMagSize(active, p) - (active.magazine ?? 0));
-          const moved = Math.min(need, p[field]);
-          movedAmount = moved;
-          if (moved <= 0) {
+          const filled = refillWeaponMagazine(active, p, p[field]);
+          movedAmount = filled.moved;
+          if (filled.moved <= 0) {
             return {
               player: {
                 ...p,
@@ -11182,9 +11187,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           return {
             player: {
               ...p,
-              [field]: p[field] - moved,
+              [field]: filled.reserve,
               weapons: p.weapons.map(w =>
-                w.id === active.id ? { ...w, magazine: (w.magazine ?? 0) + moved } : w
+                w.id === active.id ? filled.weapon : w
               ),
               quickMagCritUntil: state.gameTime + QUICK_MAG_CRIT_WINDOW_MS,
               reloadingWeaponId: '',
@@ -11588,15 +11593,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const p = state.player;
       const w = p.weapons.find(g => g.id === weaponId);
       if (!w || !w.ammoType) return {};
-      if (p.reloadingWeaponId === weaponId && Date.now() < p.reloadEndsAt) return {};
-      const need = effectiveMagSize(w, p) - (w.magazine ?? 0);
-      if (need <= 0) return {};
-      if (ammoPoolFor(p, w.ammoType) <= 0) return {}; // no reserve to load from
+      const reload = beginWeaponReload(w, p, ammoPoolFor(p, w.ammoType));
+      if (!reload) return {};
       return {
         player: {
           ...p,
-          reloadingWeaponId: weaponId,
-          reloadEndsAt: Date.now() + effectiveReloadMs(w, p)
+          ...reload,
         }
       };
     });
@@ -11613,17 +11615,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         return { player: { ...p, reloadingWeaponId: '', reloadEndsAt: 0 } };
       }
       const field = AMMO_FIELD[w.ammoType];
-      const need = Math.max(0, effectiveMagSize(w, p) - (w.magazine ?? 0));
-      const moved = Math.min(need, p[field]);
+      const reload = finishWeaponReload(w, p, p[field]);
+      if (!reload) return {};
       return {
         player: {
           ...p,
-          [field]: p[field] - moved,
+          [field]: reload.reserve,
           weapons: p.weapons.map(g =>
-            g.id === w.id ? { ...g, magazine: (g.magazine ?? 0) + moved } : g
+            g.id === w.id ? reload.weapon : g
           ),
-          reloadingWeaponId: '',
-          reloadEndsAt: 0
+          reloadingWeaponId: reload.reloadingWeaponId,
+          reloadEndsAt: reload.reloadEndsAt
         }
       };
     });

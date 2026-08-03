@@ -279,7 +279,7 @@ import {
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
-import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
@@ -6155,9 +6155,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (active?.ammoType && (active.magazine ?? 0) < maxMag && reserve > 0) {
             // 投げ先=敵が少ない方面へ(社長指示v0.25.1606)。マガジンは拾って回収するので、
             // 進行方向ではなく「敵の薄い側」へ投げて安全に取りに行けるようにする。
-            // G2.6: 入口はオーナー形だが、この種はプレイヤー固定(マガジンは「プレイヤーが拾いに行く」
-            // 前提の設計=ドッグにも拾わせない(v0.25.2409)ため、ゴースト位置から投げると取りに行けない
-            // 置き去りが起きる)。ゴースト対応は★未決の未対応リスト。
+            // G2.6: このブロックはプレイヤー本人分。守護霊は各自のマガジン不足時に自分で投げ、
+            // ghostDriverの回収目標へ割り込んで自分の物だけを拾う(下の守護霊ブロック)。
             const dir = safeThrowDirection(
               ownerCenterX(playerOwner),
               ownerCenterY(playerOwner),
@@ -7066,11 +7065,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ---- クイックマガジン(striker-quick-mag): 投げて**自分で**拾いに行く ----
           // 裁定「各自が投げて自分で拾いに行く/回収が行動に割り込むのは許容」。回収の移動目標は
           // ghostDriver(retrieveTarget)へ渡す。拾得は下のゴーストtickで自分の物だけを拾う。
-          // 弾薬の残量条件(マガジンに空きがある/リザーブが残っている)は**除外4(弾薬)**の系なので
-          // 守護霊には掛からない(守護霊は弾を消費しないため、掛けると永久に発動しない)。
+          // リザーブ残量だけは除外4(霊体は在庫非消費)。マガジンには同じ空き/リロード状態があるため、
+          // 回収時はプレイヤーと同じ共通装填式で即時装填する。
           {
             const { owner: qmOwner } = subSubject('striker-quick-mag');
-            if (qmOwner.kind === 'ghost-ally' && qmOwner.summonId === gSub.id && ghostOwnsSub('striker-quick-mag') && gActor) {
+            const qmGun = gActor ? getActiveGun(gActor) : undefined;
+            const qmNeedsRounds = gActor !== null && !!qmGun?.ammoType
+              && (qmGun.magazine ?? 0) < effectiveMagSize(qmGun, gActor);
+            if (qmOwner.kind === 'ghost-ally' && qmOwner.summonId === gSub.id && ghostOwnsSub('striker-quick-mag') && gActor && qmNeedsRounds) {
               const lvl = ghostSubLevel('striker-quick-mag');
               // 投げ先=敵が少ない方面(プレイヤーと同じ safeThrowDirection・同じ距離)。
               const dir = safeThrowDirection(gcx, gcy, useGameStore.getState().enemies, gOwner.facing ?? { x: 1, y: 0 });
@@ -7374,17 +7376,52 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // ロードアウト**(旧: 召喚時のプレイヤーの現在装備を借用=廃止)。ビルドが無い旧プロファイルの
               // 時だけ従来のフォールバック(今の装備)になる=resolveGhostBuild側で解決。
               const ghostBuild = ghostBuildFor(ghostNow, gsPlayer);
-              const gun = ghostBuild?.gun;
+              const nowMs = Date.now();
+              let ghostWeapons = ghostNow.ghostWeapons ?? ghostBuild?.player.weapons ?? [];
+              let gun = ghostBuild?.gun
+                ? ghostWeapons.find(w => w.id === ghostBuild.gun?.id) ?? ghostBuild.gun
+                : undefined;
               const meleeWeapon = ghostBuild?.melee;
-              // 倍率評価の主語(疑似Player)。位置/HPはゴースト実体の値=距離依存/失HP依存の倍率がゴースト基準。
-              const ghostOwner = ghostBuild ? ghostActorPlayer(ghostBuild, ghostNow) : gsPlayer;
+              // v0.25.2830: Weapon[]/reloadEndsAt/reloadingWeaponIdもプレイヤーと同じ型・共通純関数で進める。
+              // リザーブだけは従来の除外4(霊体の弾薬非消費)をInfinityで表現し、空マガジンは同じ容量・
+              // 同じリロード時間で満タンへ戻る。これでラストマガジン/ゴーストシューターも同じ残弾を読む。
+              const ghostOwnerWithWeaponState = (): Player => ghostBuild ? {
+                ...ghostActorPlayer(ghostBuild, ghostNow),
+                weapons: ghostWeapons,
+                activeWeaponId: gun?.id ?? ghostBuild.player.activeWeaponId,
+                reloadEndsAt: ghostNow.ghostReloadEndsAt ?? 0,
+                reloadingWeaponId: ghostNow.ghostReloadingWeaponId ?? '',
+                quickMagCritUntil: ghostNow.ghostQuickMagCritUntil ?? 0,
+              } : gsPlayer;
+              let ghostOwner = ghostOwnerWithWeaponState();
+              let ghostReloadEndsAt = ghostOwner.reloadEndsAt;
+              let ghostReloadingWeaponId = ghostOwner.reloadingWeaponId;
+              let reloadStarted = false;
+              if (gun) {
+                const finished = finishWeaponReload(gun, ghostOwner, Number.POSITIVE_INFINITY, nowMs);
+                if (finished) {
+                  gun = finished.weapon;
+                  ghostWeapons = ghostWeapons.map(w => w.id === gun?.id ? finished.weapon : w);
+                  ghostReloadEndsAt = finished.reloadEndsAt;
+                  ghostReloadingWeaponId = finished.reloadingWeaponId;
+                  ghostOwner = { ...ghostOwner, weapons: ghostWeapons, reloadEndsAt: 0, reloadingWeaponId: '' };
+                }
+                if ((gun.magazine ?? 0) <= 0 && !ghostReloadingWeaponId) {
+                  const started = beginWeaponReload(gun, ghostOwner, Number.POSITIVE_INFINITY, nowMs);
+                  if (started) {
+                    ghostReloadEndsAt = started.reloadEndsAt;
+                    ghostReloadingWeaponId = started.reloadingWeaponId;
+                    ghostOwner = { ...ghostOwner, ...started };
+                    reloadStarted = true;
+                  }
+                }
+              }
               // v0.25.2518(GHOST-KATANA-WIRE・裁定2 / 台帳§5): ビルド(計測時のsubWeapons)に katana または
               // murasame があれば、守護霊は**プレイヤーと同じ刀モード**で戦う。プレイヤーの刀モードは
               // 「銃の自動射撃とナイフ振りを封印し、オート斬撃(600ms)+一閃(フリック)で戦う」形なので、
               // その形をそのまま写す(判定・定数・式は共有関数側=ここに刀の数値は1つも書かない)。
               const ghostKatana = isKatanaMode(ghostOwner);
               const profile: GhostProfile = ghostProfileRef.current ?? defaultGhostProfile();
-              const nowMs = Date.now();
               // GHOST-SUBS-FINAL(v0.25.2563): 自分が投げたクイックマガジン(=自分の設置物。世界の
               // ドロップではないので§2.11追補3に抵触しない)。着地済みの物だけを回収目標にする。
               const ownMag = useGameStore.getState().pickups.find(p =>
@@ -7439,9 +7476,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 profile,
                 weapon: {
                   gunDamage: gun?.damage ?? 0,
-                  gunIntervalMs: Math.max(80, gun?.cooldown ?? 500),
+                  gunIntervalMs: gun ? effectiveFireCooldown(gun, ghostOwner) : 500,
                   // 刀モードは銃を撃たない(プレイヤーと同じ封印)ので射程0=意思決定側でも銃を選ばせない。
-                  gunRangePx: gun && !ghostKatana ? RANGE_BY_CATEGORY[gun.category ?? 'handgun'] : 0,
+                  gunRangePx: gun && !ghostKatana && !ghostReloadingWeaponId && (gun.magazine ?? 0) > 0
+                    ? RANGE_BY_CATEGORY[gun.category ?? 'handgun'] : 0,
                   meleeDamage: meleeWeapon?.damage ?? 6,
                 },
                 gameTime, nowMs,
@@ -7505,6 +7543,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 summons: st.summons.map(s => s.id === ghostNow.id ? {
                   ...s, x: resolved.x, y: resolved.y, ghostFacing: decision.facing,
                   ghostLastShotAt: decision.lastShotAt, ghostLastMeleeAt: decision.lastMeleeAt,
+                  ghostWeapons,
+                  ghostReloadEndsAt,
+                  ghostReloadingWeaponId,
                   ghostCounterPendingAt: decision.counterPendingAt, ghostCounterWillAttempt: decision.counterWillAttempt,
                   // G4b: 技への反応ロールを持ち越す(技の解決=decideGhostがundefinedを返したらクリア)。
                   ghostMoveRollKey: decision.moveRoll?.moveKey,
@@ -7530,14 +7571,36 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // GHOST-SUBS-FINAL: 自分が投げたクイックマガジンの回収(**自分の設置物だけ**。世界の
               // ドロップには触れない=§2.11追補3)。拾得判定はプレイヤーと同じ純関数
               // (checkPlayerPickupCollisions)へ、対象を自分のマガジン1個に絞って通す。
-              // 効果=プレイヤーの回収と同じ「クリ窓5秒」(即時リロードは弾薬=除外4で概念が無い)。
+              // 効果=プレイヤーと同じ「即時装填+リロード解除+装填できた時だけクリ窓5秒」。
               if (ownMag) {
                 const magBody = { ...ghostOwner, x: resolved.x, y: resolved.y, width: ghostNow.width, height: ghostNow.height };
                 if (checkPlayerPickupCollisions(magBody, [ownMag]).length > 0) {
+                  const filled = gun ? refillWeaponMagazine(gun, ghostOwner, Number.POSITIVE_INFINITY) : null;
+                  if (filled && gun) {
+                    gun = filled.weapon;
+                    ghostWeapons = ghostWeapons.map(w => w.id === gun?.id ? filled.weapon : w);
+                  }
+                  ghostReloadEndsAt = 0;
+                  ghostReloadingWeaponId = '';
+                  ghostOwner = {
+                    ...ghostOwner,
+                    weapons: ghostWeapons,
+                    reloadEndsAt: 0,
+                    reloadingWeaponId: '',
+                    ...(filled && filled.moved > 0 ? { quickMagCritUntil: gameTime + QUICK_MAG_CRIT_WINDOW_MS } : {}),
+                  };
                   useGameStore.setState(st => ({
                     pickups: st.pickups.filter(p => p.id !== ownMag.id),
                     summons: st.summons.map(s => s.id === ghostNow.id
-                      ? { ...s, ghostQuickMagCritUntil: st.gameTime + QUICK_MAG_CRIT_WINDOW_MS }
+                      ? {
+                          ...s,
+                          ghostWeapons,
+                          ghostReloadEndsAt: 0,
+                          ghostReloadingWeaponId: '',
+                          ...(filled && filled.moved > 0
+                            ? { ghostQuickMagCritUntil: st.gameTime + QUICK_MAG_CRIT_WINDOW_MS }
+                            : {}),
+                        }
                       : s),
                   }));
                   const magCx = resolved.x + ghostNow.width / 2, magCy = resolved.y + ghostNow.height / 2;
@@ -7555,6 +7618,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 音は小さく・画面外は無音。プレイヤー自身の攻撃音は従来どおり等倍で、この係数は使わない)。
               const gfxPcx = gsPlayer.x + gsPlayer.width / 2, gfxPcy = gsPlayer.y + gsPlayer.height / 2;
               const gfxCam = useGameStore.getState().camera, gfxGb = useGameStore.getState().gameBounds;
+              if (reloadStarted && gun && ghostOwner.reloadingWeaponId) {
+                const reloadGain = npcSfxDistGain(
+                  resolved.x + ghostNow.width / 2, resolved.y + ghostNow.height / 2,
+                  gfxPcx, gfxPcy, gfxCam, gfxGb,
+                );
+                if (reloadGain > 0) playSfx('reload', reloadGain, effectiveReloadMs(gun, ghostOwner));
+              }
               // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・発注A/C): ゴーストの近接スイング1回の共通後処理。
               //  ① 弾反射のカウンター窓を開く: プレイヤーのスイングが counterWindowEnd を開くのと
               //     **同じ定数(COUNTER_WINDOW)**で ghostCounterWindowEnd を打つ(反射の判定は
@@ -7579,8 +7649,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               };
               if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana) {
-                // 銃 = **計測時ビルドのアクティブ銃**のdamage/intervalで撃つ。弾薬はプレイヤーの残弾と
-                // 完全分離(消費しない=除外4)。
+                // 銃 = **計測時ビルドのアクティブ銃**。マガジン/発射間隔/リロードはプレイヤーと同じ、
+                // リザーブ弾だけはプレイヤーと完全分離して非消費(除外4)。
                 // GHOST-GUN-PARITY: 飛翔特性(count発/拡散/PROJECTILE_SPEED_MULT/projectileSize/
                 // passthrough・pierce)はプレイヤーのfireWeaponと同じ規則(buildGhostGunShots=共通ヘルパ)。
                 // v0.25.2514(§2.11訂正): ダメージ倍率(スカベンジャー/アタックシューター/装備火力/
@@ -7601,6 +7671,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   { player: ghostOwner, gameTime, headshot: ghostHeadshot },
                 );
                 for (const shot of ghostShots) addProjectile(shot);
+                const firedGun = weaponAfterGunShot(gun, ghostOwner, nowMs);
+                ghostWeapons = ghostWeapons.map(w => w.id === gun?.id ? firedGun : w);
+                gun = firedGun;
+                useGameStore.setState(st => ({
+                  summons: st.summons.map(s => s.id === ghostNow.id ? { ...s, ghostWeapons } : s),
+                }));
                 // 発砲SE: プレイヤーと同じ銃種別の音(v0.25.2479パリティ。旧: 常にhandgun-fire)を
                 // ゴースト位置で距離減衰。種別分岐はプレイヤー自動発砲(SMG/グレネードランチャー特例含む)と同一。
                 const gGain = npcSfxDistGain(gcx, gcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
