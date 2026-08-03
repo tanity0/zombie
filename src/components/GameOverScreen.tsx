@@ -26,7 +26,7 @@ import DirectorResult from './DirectorResult';
 import ResultReach from './ResultReach';
 import {
   endGhostOnlineRun, ghostGoldMultiplier, sendGhostFeedback, uploadGhostSlots,
-} from '../online/ghost';
+} from '../utils/ghostOnline';
 
 // PACING_PUZZLE.md §5.17 M14: 縦の深度メーターの表示スケール(深層域の余白込み)。表示専用の定数。
 const WALL_METER_SCALE_MAX = AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1] + 1000;

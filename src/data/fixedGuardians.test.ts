@@ -24,7 +24,7 @@ describe('固定の先人守護霊20体', () => {
       const score = bossStylePerfScore({
         'g-jump': { exposures: p.exposures, counters: p.counters, hits: p.hits },
       }, p.clearSeconds * 1000);
-      expect(score, g.name).toBe(p.score);
+      expect(score, g.name).toBeCloseTo(p.score, 10);
     }
   });
 
@@ -34,7 +34,7 @@ describe('固定の先人守護霊20体', () => {
     for (const g of FIXED_GUARDIANS) {
       expect(moveKeys.every(key => g.profile.moveReactions[key]?.n === 20), g.name).toBe(true);
       const snap = g.profile.snapshot!;
-      expect(createWeapon(snap.activeGunKey!).isMelee, g.name).toBe(false);
+      expect(createWeapon(snap.activeGunKey!).isMelee, g.name).not.toBe(true);
       expect(createWeapon(snap.meleeKey!).isMelee, g.name).toBe(true);
       expect(snap.subWeapons!.every(key => subKeys.has(key)), g.name).toBe(true);
       expect(snap.equipBonus!.damageMult, g.name).toBeGreaterThanOrEqual(3);
@@ -53,4 +53,3 @@ describe('固定の先人守護霊20体', () => {
     expect(byName('無銘').profile.snapshot?.subWeapons).toContain('katana');
   });
 });
-

@@ -1,9 +1,9 @@
 import type { SkillKey } from '../types/game';
-import type { PlayerProfile } from '../utils/playerTraits';
-import { bossStyleSlotKey } from '../utils/playerTraits';
-import { ENGAGEABLE_BOSS_TYPES } from '../utils/bossEngagement';
-import { getAnonymousId } from './id';
-import { displayNameFrom, loadPlayerName } from '../utils/playerName';
+import type { PlayerProfile } from './playerTraits';
+import { bossStyleSlotKey } from './ghostSlot';
+import { ENGAGEABLE_BOSS_TYPES } from './bossEngagement';
+import { getAnonymousId } from '../online/id';
+import { displayNameFrom, loadPlayerName } from './playerName';
 import {
   GHOST_KNOB_SET_V,
   GHOST_SHARE_EPOCH,

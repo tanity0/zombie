@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ghostGoldMultiplier, ghostNetworkSlotKey, selectedGhostMode } from './ghost';
+import { ghostGoldMultiplier, ghostNetworkSlotKey, selectedGhostMode } from './ghostOnline';
 import { sanitizeSharedProfile, GHOST_PROFILE_DEFAULTS, GHOST_KNOB_NAMES } from '../../shared/ghostSanitize.mjs';
 
 describe('G6 online guardian rules', () => {

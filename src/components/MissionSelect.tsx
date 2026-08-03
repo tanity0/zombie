@@ -113,7 +113,7 @@ import { BossClearCardRow, GhostAllyCard } from './GhostRecordCards';
 import {
   ghostNetworkSlotKey, isOnlineGhostSkill, loadGhostInbox,
   requestGhostOnlineConsent, type GhostInboxItem,
-} from '../online/ghost';
+} from '../utils/ghostOnline';
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {

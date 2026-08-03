@@ -437,6 +437,8 @@ describe('gacha excludes the reaper skill (死神は撃破でのみ習得)', () 
 describe('ensureDefaultOwnedSkills(守護霊の初期所持マイグレーション)', () => {
   it('DEFAULT_OWNED_SKILLS に guardian-spirit が入っている', () => {
     expect(DEFAULT_OWNED_SKILLS).toContain('guardian-spirit');
+    expect(DEFAULT_OWNED_SKILLS).toContain('ghost-helper');
+    expect(DEFAULT_OWNED_SKILLS).toContain('ghost-slayer');
   });
 
   it('新規セーブ(空配列)にも既定所持が入る', () => {
@@ -446,12 +448,12 @@ describe('ensureDefaultOwnedSkills(守護霊の初期所持マイグレーショ
   it('既存セーブ(欠けあり)には末尾へ補い、既存の並びは変えない', () => {
     const owned: SkillKey[] = ['runner', 'seeker'];
     const next = ensureDefaultOwnedSkills(owned);
-    expect(next).toEqual(['runner', 'seeker', 'guardian-spirit']);
+    expect(next).toEqual(['runner', 'seeker', 'guardian-spirit', 'ghost-helper', 'ghost-slayer']);
     expect(owned).toEqual(['runner', 'seeker']); // 引数は破壊しない(純関数)
   });
 
   it('既に持っていれば何も変えない(同一参照のまま)', () => {
-    const owned: SkillKey[] = ['guardian-spirit', 'runner'];
+    const owned: SkillKey[] = ['guardian-spirit', 'ghost-helper', 'ghost-slayer', 'runner'];
     expect(ensureDefaultOwnedSkills(owned)).toBe(owned);
   });
 });

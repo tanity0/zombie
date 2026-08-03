@@ -45,6 +45,8 @@ import {
 } from './punishWindow'; // GHOST-CMD-2A(§2.18追補): 隙(気絶/硬直/カウンター直後)の窓判定+票の共通部品
 import { loadPlayerName } from './playerName'; // v0.25.2477: 計測時のプレイヤー名(srcName)の出どころ
 import { GHOST_KNOB_SET_V, GHOST_PROFILE_DEFAULTS } from '../../shared/ghostSanitize.mjs';
+import { bossStyleSlotKey } from './ghostSlot';
+export { bossStyleSlotKey } from './ghostSlot';
 
 // ---- 保存フォーマット -------------------------------------------------------------------------
 /** G4a(§2.9(3)): サブウェポンの様式(第1弾はwire-anchor/shieldの2種)。nは計測に使った母数の累計。 */
@@ -180,9 +182,6 @@ export interface PlayerProfile {
  * 使う(ズレ防止)。stageIdは呼び出し側が `getSelectedStageId()`(src/data/progress.ts)で取得して渡す
  * (このファイルはstore/data非依存を保つため、ここではimportしない)。
  */
-export const bossStyleSlotKey = (type: EnemyType, stageId: string): string =>
-  type === 'giantbat' ? `giantbat@${stageId}` : type;
-
 const STORAGE_KEY = 'zombie-ghost-profile-v1';
 
 // 何もデータが無い状態から最初のEMAを起こす時の「種」の値(botSkillのcasual相当に寄せた叩き台)。
