@@ -90,6 +90,7 @@ import {
 } from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile } from '../utils/enemyUtils';
+import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, type HateSide } from '../utils/bossHate';
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
@@ -12214,59 +12215,79 @@ export const useGameStore = create<GameState>((set, get) => ({
       return shots.map(sh => ({ x: sh.x, y: sh.y }));
     }
     const state = get();
-    // 洋館通路(corridorMode・v0.25.2128): 拠点システムなし。護衛は入場時の横一列の隊形のまま
-    // プレイヤーと並走して上へ歩く。v0.25.2139(社長報告「付いてくるだけで攻撃しない」): 通常拠点護衛と
-    // 同じ射撃を追加=敵が検知半径内なら停止して発砲(同じ実弾/間隔/フェイザー2丁)、いなければ隊形へ追走。
+    // 洋館通路(corridorMode): 横一列の隊形へ進みつつ通常拠点護衛と同じ四方位索敵を使う。
+    // 前方=停止、左右=50%、後方=70%で全方位へ射撃。M0チュートリアルは上の別経路なので対象外。
     if (state.corridorMode) {
       const p = state.player;
       const pcx = p.x + p.width / 2;
       const pcy = p.y + p.height / 2;
       const now = state.gameTime;
-      const detect2 = (huntingMeleeRadius(p) * ESCORT_DETECT_MULT) ** 2;
+      const detectRadius = huntingMeleeRadius(p) * ESCORT_DETECT_MULT;
       const shots: { x: number; y: number; dx: number; dy: number; soldierIndex: number }[] = [];
+      const surroundEvents: { name: string; text: string }[] = [];
+      const rescuedEvents: { name: string; text: string }[] = [];
       let escChanged = false;
       const nextEsc = state.escorts.map((esc, i) => {
-        // 最寄り敵(通常護衛と同じ検知。空中=ジャンプ中は無敵なので狙わない)。
-        let nearest: Enemy | undefined; let nd2 = detect2;
-        for (const e of state.enemies) {
-          if (e.aiPhase === 'jump') continue;
-          const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-          const d2 = (ex - esc.x) * (ex - esc.x) + (ey - esc.y) * (ey - esc.y);
-          if (d2 < nd2) { nd2 = d2; nearest = e; }
-        }
-        if (nearest) {
-          // 停止して射撃(進まない)=通常護衛と同じ振る舞い。
-          let { fireAt, face } = esc;
-          if (now >= fireAt) {
-            fireAt = now + ESCORT_FIRE_INTERVAL_MS;
-            const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
-            let dx = tx - esc.x, dy = ty - esc.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-            if (esc.soldierIndex === PHASER_INDEX) {
-              const ox = -dy * PHASER_GUN_OFFSET, oy = dx * PHASER_GUN_OFFSET;
-              shots.push({ x: esc.x + ox, y: esc.y + oy, dx, dy, soldierIndex: esc.soldierIndex });
-              shots.push({ x: esc.x - ox, y: esc.y - oy, dx, dy, soldierIndex: esc.soldierIndex });
-            } else {
-              shots.push({ x: esc.x, y: esc.y, dx, dy, soldierIndex: esc.soldierIndex });
-            }
-            face = (dx < 0 ? -1 : 1) as 1 | -1;
-          }
-          if (fireAt !== esc.fireAt || face !== esc.face || esc.moving) escChanged = true;
-          return { ...esc, fireAt, face, moving: false };
-        }
         const targetX = pcx + (CORRIDOR_ESCORT_ROW_X[i % CORRIDOR_ESCORT_ROW_X.length] ?? 0);
         const targetY = pcy + 26; // プレイヤーのやや後ろの列
+        const advance = escortAdvance(esc, { x: targetX, y: targetY }, state.enemies, {
+          detectRadius,
+          surroundRadius: SURROUND_RADIUS,
+          surroundCount: SURROUND_COUNT,
+          rescuedFree: RESCUED_FREE,
+          strongNearEnter: MELEE_RADIUS * 1.5,
+          strongNearExit: 150,
+          now,
+        });
+        const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+        if (advance.surroundedNow) surroundEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
+        if (advance.rescuedNow) rescuedEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
+
         const dx = targetX - esc.x, dy = targetY - esc.y;
         const dist = Math.hypot(dx, dy);
-        if (dist < 3) { if (esc.moving) { escChanged = true; return { ...esc, moving: false }; } return esc; }
-        const k = Math.min(1, (ESCORT_SPEED * deltaTime) / dist);
-        escChanged = true;
-        return {
+        let x = esc.x, y = esc.y, face = esc.face, fireAt = esc.fireAt;
+        const moving = dist >= 3 && advance.speedMult > 0;
+        if (moving) {
+          const k = Math.min(1, (ESCORT_SPEED * advance.speedMult * deltaTime) / dist);
+          x += dx * k;
+          y += dy * k;
+          if (Math.abs(dx) > 6) face = dx < 0 ? -1 : 1;
+        }
+        // 射撃は全方位。移動後の位置から撃ち、顔向きは射撃方向を優先する。
+        if (advance.target && now >= fireAt) {
+          fireAt = now + ESCORT_FIRE_INTERVAL_MS;
+          const tx = advance.target.x + advance.target.width / 2, ty = advance.target.y + advance.target.height / 2;
+          let shotDx = tx - x, shotDy = ty - y; const dl = Math.hypot(shotDx, shotDy) || 1; shotDx /= dl; shotDy /= dl;
+          if (esc.soldierIndex === PHASER_INDEX) {
+            const ox = -shotDy * PHASER_GUN_OFFSET, oy = shotDx * PHASER_GUN_OFFSET;
+            shots.push({ x: x + ox, y: y + oy, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex });
+            shots.push({ x: x - ox, y: y - oy, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex });
+          } else {
+            shots.push({ x, y, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex });
+          }
+          face = shotDx < 0 ? -1 : 1;
+        }
+        const next = {
           ...esc,
-          x: esc.x + dx * k,
-          y: esc.y + dy * k,
-          face: (Math.abs(dx) > 6 ? (dx < 0 ? -1 : 1) : esc.face) as 1 | -1,
-          moving: true,
+          x, y, face, fireAt, moving,
+          advanceZone: advance.zone,
+          advanceDirX: advance.advanceDirX,
+          advanceDirY: advance.advanceDirY,
+          advanceSpeedMult: advance.speedMult,
+          advanceSpeedTarget: advance.speedTarget,
+          advanceRampFrom: advance.advanceRampFrom,
+          advanceRampAt: advance.advanceRampAt,
+          strongNear: advance.strongNear,
+          wasSurrounded: advance.wasSurrounded,
+          helpRequested: advance.helpRequested,
+          rescuedUntil: advance.rescuedUntil,
         };
+        if (x !== esc.x || y !== esc.y || face !== esc.face || fireAt !== esc.fireAt || moving !== (esc.moving ?? false) ||
+          advance.zone !== (esc.advanceZone ?? 'none') || advance.speedMult !== esc.advanceSpeedMult || advance.speedTarget !== esc.advanceSpeedTarget ||
+          advance.advanceDirX !== esc.advanceDirX || advance.advanceDirY !== esc.advanceDirY || advance.advanceRampFrom !== esc.advanceRampFrom || advance.advanceRampAt !== esc.advanceRampAt ||
+          advance.strongNear !== (esc.strongNear ?? false) || advance.wasSurrounded !== (esc.wasSurrounded ?? false) ||
+          advance.helpRequested !== (esc.helpRequested ?? false) || advance.rescuedUntil !== (esc.rescuedUntil ?? 0)) escChanged = true;
+        return next;
       });
       if (escChanged) set({ escorts: nextEsc });
       // 発砲=通常護衛と同一の実弾(handgun projectile・friendly)。SE減衰用に発射元を返す。
@@ -12280,6 +12301,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           duration: 1200, createdAt: Date.now(),
           passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
         });
+      }
+      for (const ev of surroundEvents) {
+        if (get().tryNpcLine(ev.name, 'surrounded', ev.text, SURROUND_CAT_CD_MS)) break;
+      }
+      for (const ev of rescuedEvents) {
+        if (get().tryNpcLine(ev.name, 'rescued', ev.text, RESCUED_CAT_CD_MS)) break;
       }
       return shots.map(s => ({ x: s.x, y: s.y }));
     }
@@ -12319,9 +12346,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     let captureCount = state.suppressionCaptureCount; // 制圧累計回数(SE検出用)。名簿indexはランダム割当に変更。
     let changed = false;
 
-    // ── 護衛軍人NPC(社長指示): 担当拠点へ前進→近くの敵に射撃(進まない)→サークル内10秒で解放。
+    // ── 護衛軍人NPC: 担当拠点へ四方位索敵しながら前進・射撃→サークル内10秒で解放。
     //    プレイヤーの画面外では前進停止・座標のみ保持。HPなし(被弾しても何も起きない=今回のコア)。
-    const detect2 = (huntingMeleeRadius(p) * ESCORT_DETECT_MULT) ** 2;
+    const detectRadius = huntingMeleeRadius(p) * ESCORT_DETECT_MULT;
     const escortCaptures = new Map<string, number>(); // baseId -> soldierIndex(このフレーム占拠完了)
     let escortsChanged = false;
     const nextEscorts: EscortSoldier[] = state.escorts.map(esc => {
@@ -12334,28 +12361,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         npcRetreatEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'pushback', sol.pushback) });
       }
       if (!onScreen(esc.x, esc.y)) return esc; // 画面外=前進停止(座標保持)
-      // 最寄り敵(プレイヤーと同じく全敵を見る)。空中(ジャンプ中)の敵は無敵なので狙わない。
-      // 併せて SURROUND_RADIUS 内の敵数を数え、囲まれ判定(セリフ用)に使う。
-      let nearest: Enemy | undefined; let nd2 = detect2;
-      let surround = 0; const sr2 = SURROUND_RADIUS * SURROUND_RADIUS;
-      for (const e of state.enemies) {
-        if (e.aiPhase === 'jump') continue;
-        const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-        const d2 = (ex - esc.x) * (ex - esc.x) + (ey - esc.y) * (ey - esc.y);
-        if (d2 < nd2) { nd2 = d2; nearest = e; }
-        if (d2 < sr2) surround++;
-      }
-      // 囲まれ→解放(助けられた)の遷移検知。wasSurrounded は護衛オブジェクトで保持。
       const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
-      let wasSurrounded = esc.wasSurrounded ?? false;
-      if (surround >= SURROUND_COUNT) {
-        if (!wasSurrounded) npcSurroundEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
-        wasSurrounded = true;
-      } else if (wasSurrounded && surround <= RESCUED_FREE) {
-        // 周囲の敵が減って進軍再開できる状態=助けられた。
-        npcRescuedEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
-        wasSurrounded = false;
-      }
+      // 制圧後は進軍目標がないため全方位を前方扱い。巡回中に背後だけ無視して進み続けない。
+      const goal = base.status === 'captured' ? { x: esc.x, y: esc.y } : { x: base.x, y: base.y };
+      const advance = escortAdvance(esc, goal, state.enemies, {
+        detectRadius,
+        surroundRadius: SURROUND_RADIUS,
+        surroundCount: SURROUND_COUNT,
+        rescuedFree: RESCUED_FREE,
+        strongNearEnter: MELEE_RADIUS * 1.5,
+        strongNearExit: 150,
+        now,
+      });
+      if (advance.surroundedNow) npcSurroundEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
+      if (advance.rescuedNow) npcRescuedEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
       // 拠点が見えてきた時: 未制圧の担当拠点中心へ近づいた(あと少し)。
       if (base.status === 'open' && Math.hypot(esc.x - base.x, esc.y - base.y) < NEAR_BASE_DIST) {
         npcBaseNearEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'baseNear', sol.baseNear) });
@@ -12372,41 +12391,37 @@ export const useGameStore = create<GameState>((set, get) => ({
         companionMs = 0; // 離れたらリセット(連続並走のみ)
       }
       let { x, y, fireAt, dwellMs, face } = esc;
-      if (nearest) {
-        // 停止して射撃(進まない)。射撃間隔でスロットル。弾はプレイヤーと同じ見た目の実弾(handgun projectile)。
-        // 護衛NPCは裏ボスを撃ってもよい(社長指示)。ただし発砲はこの護衛が画面内のとき(=上の onScreen ガードを
-        // 通過したとき)だけ=プレイヤーが離れてNPCが画面外になれば自動で撃たない。→ プレイヤー不在での“削り殺し”は起きない。
-        if (now >= fireAt) {
-          fireAt = now + ESCORT_FIRE_INTERVAL_MS;
-          const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
-          let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-          if (esc.soldierIndex === PHASER_INDEX) {
-            // 2丁拳銃: 進行方向に直交する向きへ±オフセットして2発(各通常ダメージ=合計2倍)。
-            const ox = -dy * PHASER_GUN_OFFSET, oy = dx * PHASER_GUN_OFFSET;
-            escortShots.push({ x: x + ox, y: y + oy, dx, dy, soldierIndex: esc.soldierIndex });
-            escortShots.push({ x: x - ox, y: y - oy, dx, dy, soldierIndex: esc.soldierIndex });
-          } else {
-            escortShots.push({ x, y, dx, dy, soldierIndex: esc.soldierIndex });
-          }
-          face = dx < 0 ? -1 : 1;
-        }
-      } else if (base.status === 'captured') {
+      if (base.status === 'captured') {
         // 制圧後: 円の縁を巡回(社長指示)。半径を patrolR へ寄せつつ角度を進める=滑らかに周回。
-        // 敵が居る間は上の射撃枝で停止するので、巡回は「敵が居ない時」だけ。
         const cx0 = x - base.x, cy0 = y - base.y;
         let ang = Math.atan2(cy0, cx0);
         if (!Number.isFinite(ang)) ang = 0;
         const patrolR = BASE_CAPTURE_RADIUS * ESCORT_PATROL_R;
         const curR = Math.hypot(cx0, cy0);
-        const newR = curR + Math.sign(patrolR - curR) * Math.min(Math.abs(patrolR - curR), ESCORT_SPEED * deltaTime);
-        ang += (ESCORT_SPEED / Math.max(1, patrolR)) * deltaTime; // 時計回りに周回
+        const step = ESCORT_SPEED * advance.speedMult * deltaTime;
+        const newR = curR + Math.sign(patrolR - curR) * Math.min(Math.abs(patrolR - curR), step);
+        ang += (ESCORT_SPEED * advance.speedMult / Math.max(1, patrolR)) * deltaTime; // 時計回りに周回
         const nx = base.x + Math.cos(ang) * newR, ny = base.y + Math.sin(ang) * newR;
-        face = (nx - x) < 0 ? -1 : 1;
+        if (advance.speedMult > 0) face = (nx - x) < 0 ? -1 : 1;
         x = nx; y = ny;
       } else {
-        // 制圧前: 担当拠点へ前進(近くに敵がいる間は↑で射撃して進まない)。
+        // 前方=停止、左右=50%、後方=70%。減速は即時、加速は1秒ランプ。
         const dx = base.x - x, dy = base.y - y; const d = Math.hypot(dx, dy);
-        if (d > 2) { const mv = Math.min(ESCORT_SPEED * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
+        if (d > 2 && advance.speedMult > 0) { const mv = Math.min(ESCORT_SPEED * advance.speedMult * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
+      }
+      // 射撃対象は全方位から最寄り。ジャンプ中だけ除外し、移動中も撃ち続ける。
+      if (advance.target && now >= fireAt) {
+        fireAt = now + ESCORT_FIRE_INTERVAL_MS;
+        const tx = advance.target.x + advance.target.width / 2, ty = advance.target.y + advance.target.height / 2;
+        let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+        if (esc.soldierIndex === PHASER_INDEX) {
+          const ox = -dy * PHASER_GUN_OFFSET, oy = dx * PHASER_GUN_OFFSET;
+          escortShots.push({ x: x + ox, y: y + oy, dx, dy, soldierIndex: esc.soldierIndex });
+          escortShots.push({ x: x - ox, y: y - oy, dx, dy, soldierIndex: esc.soldierIndex });
+        } else {
+          escortShots.push({ x, y, dx, dy, soldierIndex: esc.soldierIndex });
+        }
+        face = dx < 0 ? -1 : 1;
       }
       // (空に浮く件は位置を止めず、描画側で地平線フェード=透明化で対応。drawEscorts 参照)。
       // 滞在カウント/占拠は射撃・前進どちらの枝でも毎フレーム評価する(社長報告のバグ修正)。
@@ -12417,8 +12432,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (inC && dwellMs >= BASE_CAPTURE_HOLD_MS && base.status === 'open' && !escortCaptures.has(base.id)) {
         escortCaptures.set(base.id, esc.soldierIndex);
       }
-      if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face || wasSurrounded !== (esc.wasSurrounded ?? false) || companionMs !== (esc.companionMs ?? 0)) escortsChanged = true;
-      return { ...esc, x, y, fireAt, dwellMs, face, wasSurrounded, companionMs };
+      if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face || companionMs !== (esc.companionMs ?? 0) ||
+        advance.zone !== (esc.advanceZone ?? 'none') || advance.speedMult !== esc.advanceSpeedMult || advance.speedTarget !== esc.advanceSpeedTarget ||
+        advance.advanceDirX !== esc.advanceDirX || advance.advanceDirY !== esc.advanceDirY || advance.advanceRampFrom !== esc.advanceRampFrom || advance.advanceRampAt !== esc.advanceRampAt ||
+        advance.strongNear !== (esc.strongNear ?? false) || advance.wasSurrounded !== (esc.wasSurrounded ?? false) ||
+        advance.helpRequested !== (esc.helpRequested ?? false) || advance.rescuedUntil !== (esc.rescuedUntil ?? 0)) escortsChanged = true;
+      return {
+        ...esc, x, y, fireAt, dwellMs, face, companionMs,
+        advanceZone: advance.zone,
+        advanceDirX: advance.advanceDirX,
+        advanceDirY: advance.advanceDirY,
+        advanceSpeedMult: advance.speedMult,
+        advanceSpeedTarget: advance.speedTarget,
+        advanceRampFrom: advance.advanceRampFrom,
+        advanceRampAt: advance.advanceRampAt,
+        strongNear: advance.strongNear,
+        wasSurrounded: advance.wasSurrounded,
+        helpRequested: advance.helpRequested,
+        rescuedUntil: advance.rescuedUntil,
+      };
     });
 
     const next: BaseSite[] = state.baseSites.map(s => {

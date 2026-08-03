@@ -1023,6 +1023,16 @@ export interface EscortSoldier {
   wasSurrounded?: boolean; // 直近で「囲まれ」状態だったか(助けてもらった時セリフの遷移検知用)
   companionMs?: number;    // プレイヤーと近距離で並走している連続時間(並走時セリフ用)
   moving?: boolean;        // チュートリアル追従NPC用: false=静止(歩行アニメを止めて0コマ目)。未指定=常時行進(従来)
+  advanceZone?: 'none' | 'front' | 'side' | 'rear'; // 進軍方向基準の四方位。境界ヒステリシス用に保持。
+  advanceDirX?: number;    // 拠点到達時も使う最後の有効な進軍方向
+  advanceDirY?: number;
+  advanceSpeedMult?: number;  // 現在の進軍速度倍率(0/0.5/0.7/1の間を加速中なら補間)
+  advanceSpeedTarget?: number;
+  advanceRampFrom?: number;
+  advanceRampAt?: number;     // gameTime。加速はここから1秒。
+  strongNear?: boolean;       // 強敵接近の111px入/150px出ヒステリシス
+  helpRequested?: boolean;    // 実際に救援要請した後だけ5秒の進軍ボーナスを得る
+  rescuedUntil?: number;      // gameTime。救援成立後の通常速度ウィンドウ
 }
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
