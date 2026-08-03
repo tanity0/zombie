@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2827',
+    items: [
+      '守護霊の討伐記録に、固定AI20人からボスごとに割り当てた上位4人のアイコン・名前・評点を表示するようにしました。',
+      'ステージごとに上位AIの組が分かれ、特定の4人だけが並び続けないようにしました。',
+    ],
+  },
+  {
     version: '0.25.2826',
     items: [
       '城ボスが出現する時刻を、開始から5分に変更しました。',

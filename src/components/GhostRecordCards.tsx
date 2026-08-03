@@ -15,6 +15,7 @@ import { enemyDeathLabel, subWeaponDisplayName } from '../store/gameStore';
 import { weaponDisplayName } from '../utils/weaponUtils';
 import { equipmentById } from '../data/equipment';
 import { CHARACTER_CLASSES, SKILLS, getStage } from '../data/campaign';
+import { fixedGuardianLeadersForBoss } from '../data/fixedGuardians';
 import type { EquipSlot, SkillKey, SubWeaponKey } from '../types/game';
 
 // 良化/悪化の色と記号(色だけに依存しない=記号も併記する。STORY_UI_SPEC.mdの実装原則と同じ流儀)。
@@ -94,6 +95,33 @@ const AllyLine: React.FC<{
   );
 };
 
+/** 守護霊部屋専用: このボスへ割り当てた固定AI上位4人。固定データなのでstore購読・通信なし。 */
+const FixedAiLeaders: React.FC<{ slotKey: string }> = ({ slotKey }) => {
+  const leaders = fixedGuardianLeadersForBoss(slotKey);
+  return (
+    <div className="mt-2 border-t border-white/10 pt-2">
+      <div className="mb-1.5 text-[9px] font-semibold tracking-widest text-purple-200/55">AIデータ 上位4人</div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {leaders.map((guardian, index) => {
+          const character = CHARACTER_CLASSES.find(item => item.id === guardian.classId);
+          return (
+            <div key={guardian.id} className="min-w-0 bg-purple-400/[0.07] px-1 py-1.5 text-center">
+              <div className="relative mx-auto flex h-8 w-8 items-end justify-center overflow-hidden bg-black/20">
+                <span className="absolute left-0 top-0 z-10 bg-purple-300/20 px-1 text-[8px] font-bold text-purple-100">{index + 1}</span>
+                {character
+                  ? <img src={character.sprite} alt={guardian.name} draggable={false} className="max-h-7 object-contain" style={{ imageRendering: 'pixelated' }} />
+                  : <span className="pb-1 text-sm">◇</span>}
+              </div>
+              <div className="mt-1 truncate text-[9px] font-semibold text-white/80">{guardian.name}</div>
+              <div className="text-[9px] tabular-nums text-amber-200/90">評点 {Math.round(guardian.performance.score)}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 /**
  * 撃破1件のカード(年表の1コマ)。
  * - `checked` を渡した時だけ「守護霊へ採用」チェックを出す(リザルト・既定ONは呼び出し側)。
@@ -109,7 +137,8 @@ export const BossClearCardRow: React.FC<{
   onToggle?: (slotKey: string, next: boolean) => void;
   onAllyTap?: (ally: GhostAllySnapshot) => void;
   duo?: boolean;
-}> = ({ card, checked, onToggle, onAllyTap, duo }) => {
+  showFixedAiLeaders?: boolean;
+}> = ({ card, checked, onToggle, onAllyTap, duo, showFixedAiLeaders }) => {
   const icon = bossIconSrc(card.bossType, card.stageId);
   return (
     <div className="rounded-none bg-black/25 px-3 py-2.5">
@@ -146,6 +175,7 @@ export const BossClearCardRow: React.FC<{
           </label>
         )}
       </div>
+      {showFixedAiLeaders && <FixedAiLeaders slotKey={card.slotKey} />}
       <div className="mt-2 space-y-1 border-t border-white/10 pt-2">
         <MetricRow
           label="撃破タイム" value={formatClearTime(card.clearTimeMs)}

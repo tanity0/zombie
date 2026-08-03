@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { SUB_WEAPON_KEYS } from './campaign';
-import { FIXED_GUARDIANS } from './fixedGuardians';
+import {
+  FIXED_GUARDIANS,
+  FIXED_GUARDIAN_BOSS_SLOT_ORDER,
+  fixedGuardianLeadersForBoss,
+} from './fixedGuardians';
 import { sanitizePlayerName } from '../utils/playerName';
 import { bossStylePerfScore } from '../utils/playerTraits';
 import { BULLET_MOVE_KEYS, MOVE_REACTION_KEYS } from '../utils/moveReaction';
@@ -51,5 +55,24 @@ describe('固定の先人守護霊20体', () => {
     expect(byName('番匠').profile.subUsesPerMin).toBe(16);
     expect(byName('フィル').profile.snapshot?.phillHeadshotRate).toBe(1);
     expect(byName('無銘').profile.snapshot?.subWeapons).toContain('katana');
+  });
+
+  it('ステージ1〜5は上位4人が重複せず、20人全員へ分散する', () => {
+    const groups = [1, 2, 3, 4, 5].map(stage =>
+      fixedGuardianLeadersForBoss(`giantbat@stage-${stage}`));
+    expect(groups.every(group => group.length === 4)).toBe(true);
+    expect(new Set(groups.flat().map(guardian => guardian.id)).size).toBe(20);
+    expect(groups[0].map(guardian => guardian.name)).toEqual(['鴉', '黒鉄', 'ししまる', 'ユキ']);
+    expect(new Set(groups[1].map(guardian => guardian.name))).toEqual(new Set(['三日月', 'ナナシ', '岩本', 'どんこ']));
+  });
+
+  it('全ボススロットで4人と作成済み評点を安定して返す', () => {
+    for (const slotKey of FIXED_GUARDIAN_BOSS_SLOT_ORDER) {
+      const first = fixedGuardianLeadersForBoss(slotKey);
+      const second = fixedGuardianLeadersForBoss(slotKey);
+      expect(first).toHaveLength(4);
+      expect(second.map(guardian => guardian.id)).toEqual(first.map(guardian => guardian.id));
+      expect(first.every(guardian => Number.isFinite(guardian.performance.score))).toBe(true);
+    }
   });
 });

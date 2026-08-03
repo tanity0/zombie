@@ -26,6 +26,18 @@ export interface FixedGuardian {
   profile: PlayerProfile;
 }
 
+export const FIXED_GUARDIAN_LEADERS_PER_BOSS = 4;
+
+// 守護霊部屋で固定AIをボス別に4人ずつ散らす順序。
+// ステージ1〜5は20人を重複なく使い切り、以降は同じ5組を循環する。
+// giantbat以外はスロットがステージ非依存なので、ボス型の正本順で後ろへ並べる。
+export const FIXED_GUARDIAN_BOSS_SLOT_ORDER: readonly string[] = [
+  'giantbat@stage-1', 'giantbat@stage-2', 'giantbat@stage-3', 'giantbat@stage-4', 'giantbat@stage-5',
+  'giantbat@stage-6', 'giantbat@stage-7', 'giantbat@stage-ex1', 'giantbat@stage-ex2',
+  'mimir', 'jormungand', 'skadi', 'thor',
+  'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol',
+];
+
 interface GuardianSpec {
   id: string;
   name: string;
@@ -283,3 +295,21 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
   }),
 ];
 
+const stableSlotIndex = (slotKey: string): number => {
+  const known = FIXED_GUARDIAN_BOSS_SLOT_ORDER.indexOf(slotKey);
+  if (known >= 0) return known;
+  // 将来ボスのスロットでも表示を欠かさず、端末や実行ごとに組が変わらない軽量ハッシュ。
+  let hash = 0;
+  for (let i = 0; i < slotKey.length; i += 1) hash = (hash * 31 + slotKey.charCodeAt(i)) >>> 0;
+  return hash;
+};
+
+/** ボスごとの固定AI上位4人。5組を順番に循環し、ステージ1〜5では20人が重複しない。 */
+export const fixedGuardianLeadersForBoss = (slotKey: string): readonly FixedGuardian[] => {
+  const groupCount = Math.ceil(FIXED_GUARDIANS.length / FIXED_GUARDIAN_LEADERS_PER_BOSS);
+  const group = stableSlotIndex(slotKey) % groupCount;
+  const start = group * FIXED_GUARDIAN_LEADERS_PER_BOSS;
+  return FIXED_GUARDIANS
+    .slice(start, start + FIXED_GUARDIAN_LEADERS_PER_BOSS)
+    .sort((a, b) => b.performance.score - a.performance.score);
+};

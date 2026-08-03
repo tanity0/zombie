@@ -1175,7 +1175,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 const inbox = ghostInbox[ghostNetworkSlotKey(card.slotKey)];
                 return (
                   <div key={card.slotKey}>
-                    <BossClearCardRow card={card} onAllyTap={setOpenAlly} />
+                    <BossClearCardRow card={card} onAllyTap={setOpenAlly} showFixedAiLeaders />
                     {inbox && (
                       <p className="mt-1 px-1 text-[10px] text-sky-200/70">
                         他のプレイヤーに {inbox.used.toLocaleString()}回同行・いいね {inbox.likes.toLocaleString()}
@@ -1198,7 +1198,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           ) : (
             <div className="flex flex-col gap-2">
               {duoAlbum.map(card => (
-                <BossClearCardRow key={card.slotKey} card={card} duo onAllyTap={setOpenAlly} />
+                <BossClearCardRow key={card.slotKey} card={card} duo onAllyTap={setOpenAlly} showFixedAiLeaders />
               ))}
             </div>
           )}
