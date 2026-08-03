@@ -419,6 +419,20 @@ export const BossMakerPanel = () => {
   // タップで閉じた時に「直前の開き高さ」へ戻すための記憶(閉じている間は更新しない)。
   const lastOpenPxRef = useRef<number>(sheetPx > HANDLE_PX + 1 ? sheetPx : Math.round(window.innerHeight * SHEET_DEFAULT_FRAC));
 
+  // ---- §18 束(チップ) ---------------------------------------------------------------------------
+  // ★そのボスが持っていないパスを含む束は出さない(`setAtPath` は無い場所へ黙って false を返すので、
+  // 出すと「押しても効かず永久にカスタム表示」という無言の故障になる)。
+  const choices = useMemo(
+    () => (entry?.choices ?? []).filter(c => choiceApplicable(entry!.table, c)),
+    [entry],
+  );
+  // 簡易表示で隠すパス。★**束から派生させる**(手書きリストを別に持つと束を1つ足した日にズレる)。
+  // 詳細ONなら空=これまでどおり全部出る。束を宣言していないボスは何も隠さない。
+  const hidden = useMemo(
+    () => (detail || choices.length === 0 ? new Set<string>() : hiddenPaths(choices)),
+    [detail, choices],
+  );
+
   const toggleSec = useCallback((sec: string) => {
     setOpenSecs(prev => {
       const next = new Set(prev);
@@ -438,36 +452,33 @@ export const BossMakerPanel = () => {
     setOpenSecs(secs);
   }, [entry]);
 
+  /**
+   * ★**枠は「いま画面に出ているピン」で数える。**
+   * `pins` の生の数で数えると、簡易表示で隠れている欄のピン(端末に残った古いピン)が枠を食い、
+   * **ピン行は空なのに「ピンは3個まで」で新しく打てない**という詰みになる
+   * (解除ボタンは隠れた欄とピン行にしか無いので、簡易表示からは外せない)。
+   */
+  const visiblePinCount = useCallback((set: Set<string>): number => (
+    entry ? entry.fields.filter(f => set.has(f.path) && fieldVisible(entry.table, f) && !hidden.has(f.path)).length : set.size
+  ), [entry, hidden]);
+
   const togglePin = useCallback((path: string) => {
     setPins(prev => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
       else {
-        if (next.size >= MAX_PINS) { setNote(`ピンは${MAX_PINS}個まで`); return prev; }
+        if (visiblePinCount(prev) >= MAX_PINS) { setNote(`ピンは${MAX_PINS}個まで`); return prev; }
         next.add(path);
       }
       saveSet(PIN_KEY, bossType, next);
       return next;
     });
-  }, []);
+  }, [visiblePinCount]);
 
   const setTabSaved = useCallback((t: 'behavior' | 'move') => { saveStr(TAB_KEY, bossType, t); setTab(t); }, []);
   const setHelpSaved = useCallback((v: boolean) => { saveStr(HELP_KEY, bossType, v ? '1' : '0'); setHelp(v); }, []);
   const setDetailSaved = useCallback((v: boolean) => { saveStr(DETAIL_KEY, bossType, v ? '1' : '0'); setDetail(v); }, []);
 
-  // ---- §18 束(チップ) ---------------------------------------------------------------------------
-  // ★そのボスが持っていないパスを含む束は出さない(`setAtPath` は無い場所へ黙って false を返すので、
-  // 出すと「押しても効かず永久にカスタム表示」という無言の故障になる)。
-  const choices = useMemo(
-    () => (entry?.choices ?? []).filter(c => choiceApplicable(entry!.table, c)),
-    [entry],
-  );
-  // 簡易表示で隠すパス。★**束から派生させる**(手書きリストを別に持つと束を1つ足した日にズレる)。
-  // 詳細ONなら空=これまでどおり全部出る。束を宣言していないボスは何も隠さない。
-  const hidden = useMemo(
-    () => (detail || choices.length === 0 ? new Set<string>() : hiddenPaths(choices)),
-    [detail, choices],
-  );
 
   // ---- シートの高さの上限(社長実機報告v0.25.2655) ------------------------------------------------
   // **ツールバー(+出ていればピン行)の高さを実測**して引く。決め打ち定数にしないのは、safe-area・
@@ -511,24 +522,42 @@ export const BossMakerPanel = () => {
   // ---- 自動保存(社長要望v0.25.2631「毎回やり直すのは無理」) --------------------------------------
   // ★**適用は部屋の中だけ**。数値テーブルは本編と同じ実体なので、部屋を出る時は**必ず既定へ戻す**
   // (戻さないと調整値が本編のボスに乗る)。入る=適用 / 出る=リセット を対にして useEffect で持つ。
-  useEffect(() => {
-    if (!active || !entry) return;
-    applySavedTuning(entry);
-    bump(n => n + 1);
-    return () => { resetTuning(entry); };
-  }, [active, entry]);
-
   // 保存はまとめ書き(スクラブ中は毎フレーム値が動くので、止まってから1回だけ書く)。
+  // ★宣言はリセットの useEffect **より前**に置く。理由は下の flushSave のコメント。
   const saveTimer = useRef<number | null>(null);
   const saveSoon = useCallback(() => {
     if (!entry) return;
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => { saveTimer.current = null; saveTuning(entry); }, 400);
   }, [entry]);
+  /** 書き残しがあれば今すぐ書く(何も待っていなければ何もしない)。 */
+  const flushSave = useCallback(() => {
+    if (saveTimer.current === null || !entry) return;
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    saveTuning(entry);
+  }, [entry]);
+
+  useEffect(() => {
+    if (!active || !entry) return;
+    applySavedTuning(entry);
+    bump(n => n + 1);
+    return () => {
+      // ★**必ず「書き残しを流してから」既定へ戻す。** 逆順だと、既定へ戻した後に走る保存が
+      // 「差分ゼロ」を書くことになり、`saveTuning` が**保存キーごと削除**する(=それまでの調整が
+      // 全部消える)。旧実装はクリーンアップの宣言順の都合でこの逆順になっていた。
+      // まとめ書きは400msなので、**触った直後に部屋を出る**と必ず踏む。チップは1タップで決まる=
+      // 「押してすぐ出る」が普通の操作になるため、露出が桁違いに増える。
+      flushSave();
+      resetTuning(entry);
+    };
+  }, [active, entry, flushSave]);
+
   useEffect(() => () => {
     // 画面を閉じる瞬間に書き残しがあれば流し込む(まとめ書きの取りこぼし防止)。
-    if (saveTimer.current !== null && entry) { window.clearTimeout(saveTimer.current); saveTuning(entry); }
-  }, [entry]);
+    // 上のクリーンアップが先に走って既に流し終えていれば、ここは何もしない。
+    flushSave();
+  }, [flushSave]);
 
   const onChange = useCallback((path: string, v: number) => {
     if (!entry) return;
@@ -560,10 +589,13 @@ export const BossMakerPanel = () => {
       const f = byPath.get(path);
       setAtPath(entry.table, path, f ? clampField(f, v) : v);
     }
-    saveSoon();
+    // ★チップは**1タップで決まる**操作なので、まとめ書き(400ms)にしない。
+    // 「押してすぐ部屋を出る」が普通の導線なので、待つと保存の窓を毎回踏む。
+    if (saveTimer.current !== null) { window.clearTimeout(saveTimer.current); saveTimer.current = null; }
+    saveTuning(entry);
     setNote(`${field.label} = ${field.options.find(o => o.key === optionKey)?.label ?? optionKey}`);
     bump(n => n + 1);
-  }, [entry, saveSoon]);
+  }, [entry]);
 
   const onText = useCallback((path: string, v: string) => {
     if (!entry) return;

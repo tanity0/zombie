@@ -172,7 +172,19 @@ const shotTextFields = (): TuningTextField[] => IDOL_SHOT_SLOTS.map(m => ({
 }));
 
 // 距離帯の表示名。台本エディタと共用。
-const ZONE_LABEL: Record<string, string> = { melee: '密着(0〜140)', near: '主戦帯(140〜340)', mid: '遠(340〜700)', far: '超遠(700〜)' };
+// ★**px はテーブルから引く**(ベタ書きにしない)。§18 で間合いを束で切り替えられるようにしたので、
+// 固定文字列のままだと「密着(0〜140)」と書いてあるのに実際の境目は 100、という**嘘の見出し**になる
+// (BOSS_MAKER.md §9「描画用に同じ数字を書いておく、はテーブル化した瞬間に必ず嘘になる」の同型)。
+const zoneLabelOf = (z: string): string => {
+  const e = IDOL_TUNING.zoneEdges;
+  switch (z) {
+    case 'melee': return `密着(0〜${e.meleeMax})`;
+    case 'near': return `主戦帯(${e.meleeMax}〜${e.nearMax})`;
+    case 'mid': return `遠(${e.nearMax}〜${e.midMax})`;
+    case 'far': return `超遠(${e.midMax}〜)`;
+    default: return z;
+  }
+};
 
 // ★v0.25.2642: 台本の重みは**数値スキーマから外した**。旧実装は `strings.${i}.weight` と
 // **添字でパスを作っていた**ので、台本を足す/消すと**パスの指す先がズレる**(2本目を消すと
@@ -283,19 +295,25 @@ const moveLabelOf = (m: IdolMove): string =>
 export const IDOL_SCRIPT_API: BossScriptApi = {
   rows: () => IDOL_TUNING.strings.map(s => ({
     zone: s.zone,
-    zoneLabel: ZONE_LABEL[s.zone] ?? s.zone,
+    zoneLabel: zoneLabelOf(s.zone),
     weight: s.weight,
     off: !!s.off,
     moves: s.moves.map(m => ({ key: m, label: moveLabelOf(m) })),
   })),
   moveChoices: () => scriptMoveKeys().map(m => ({ key: m, label: moveLabelOf(m) })),
-  zoneChoices: () => SCRIPT_ZONES.map(z => ({ key: z, label: ZONE_LABEL[z] ?? z })),
+  zoneChoices: () => SCRIPT_ZONES.map(z => ({ key: z, label: zoneLabelOf(z) })),
   cutoff: () => stepCutoffIndex(IDOL_TUNING.stringLen.p1, IDOL_TUNING.stringLen.p2),
   warnings: () => [
     ...scriptWarnings(IDOL_TUNING.strings),
     // ★「手数=多」を選んでも P2 が台本の段数で切り詰められて**並と1ミリも変わらない**、という
     // 無言の空振りを気づける形にする(BOSS_MAKER.md §18-5)。段を足すのは社長が台本エディタでやる。
-    ...stringLenWarnings(IDOL_TUNING.stringLen, IDOL_TUNING.strings.filter(s2 => !s2.off).map(s2 => s2.moves.length)),
+    // ★距離帯ごとに・**抽選に出る台本だけ**(off / 重み0 は `pickStringScript` の pool から外れる)。
+    ...stringLenWarnings(
+      IDOL_TUNING.stringLen,
+      IDOL_TUNING.strings
+        .filter(s2 => !s2.off && s2.weight > 0 && s2.moves.length > 0)
+        .map(s2 => ({ zoneLabel: zoneLabelOf(s2.zone), len: s2.moves.length })),
+    ),
   ],
   edit: (op: BossScriptOp) => {
     const L = IDOL_TUNING.strings;

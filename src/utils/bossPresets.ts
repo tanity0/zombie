@@ -144,13 +144,24 @@ export const hiddenPaths = (fields: readonly TuningChoiceField[] = BEHAVIOR_CHOI
  */
 export const stringLenWarnings = (
   maxLen: { p1: number; p2: number },
-  moveCounts: readonly number[],
+  /**
+   * ★**距離帯ごとに・抽選に出る台本だけ**を渡すこと。
+   *  - 全ゾーンを1つの `Math.max` で見ると、**1本だけ5段に伸ばした瞬間に警告が消える**のに
+   *    他のゾーンは4段のまま切り詰められ続ける(=無言で効かない状態が残る)。
+   *  - `weight=0` / `off` の台本は `pickStringScript` の抽選対象から外れて**絶対に出ない**のに、
+   *    最長には数えられてしまう(=**出ない台本が警告を黙らせる**)。
+   */
+  live: readonly { zoneLabel: string; len: number }[],
 ): string[] => {
-  if (moveCounts.length === 0) return [];
-  const longest = Math.max(...moveCounts);
+  if (live.length === 0) return [];
+  const longestByZone = new Map<string, number>();
+  for (const s of live) longestByZone.set(s.zoneLabel, Math.max(longestByZone.get(s.zoneLabel) ?? 0, s.len));
   const out: string[] = [];
   for (const [phase, want] of [[1, maxLen.p1], [2, maxLen.p2]] as const) {
-    if (want > longest) out.push(`段数P${phase}=${want} に対し台本は最長${longest}段(${longest}段までしか出ません)`);
+    const short = [...longestByZone.entries()].filter(([, longest]) => want > longest);
+    if (short.length === 0) continue;
+    const detail = short.map(([zone, longest]) => `${zone}=${longest}段`).join(' / ');
+    out.push(`段数P${phase}=${want} に届かない距離帯があります(${detail})。そこでは段数までしか出ません`);
   }
   return out;
 };

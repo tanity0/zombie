@@ -8,7 +8,7 @@ import {
   BEHAVIOR_CHOICES, HIDDEN_SOLO_PATHS, hiddenPaths, stringLenWarnings,
 } from './bossPresets';
 import {
-  getAtPath, setAtPath, resetTuning, changedPaths, formatTuningText, getBossTuning,
+  getAtPath, setAtPath, resetTuning, changedPaths, formatTuningText, getBossTuning, clampField,
   choicePaths, choiceApplicable, matchedOption, matchedOptionLabel, choiceValues,
   type TuningChoiceField,
 } from './bossTuning';
@@ -238,20 +238,69 @@ describe('隠す欄の集合(§18-7-5: マスターから派生させる=二重�
 
 // ================================================================================================
 describe('段数の警告(§18-5:「多」を選んでも台本が短いと効かない)', () => {
+  /** 既定の台本(9本とも4段)を距離帯ごとの形へ。 */
+  const live = () => IDOL_TUNING_DEFAULTS.strings.map(s => ({ zoneLabel: s.zone, len: s.moves.length }));
+
   it('段数の上限が台本の最長段数を超えていたら警告を出す', () => {
-    // 既定の台本は9本とも4段。手数「多」= P1 4 / P2 5 は、P2 が 4 に切り詰められて並と同じになる。
-    const w = stringLenWarnings({ p1: 4, p2: 5 }, IDOL_TUNING_DEFAULTS.strings.map(s => s.moves.length));
+    // 手数「多」= P1 4 / P2 5。P2 は 4 に切り詰められて並と同じになる。
+    const w = stringLenWarnings({ p1: 4, p2: 5 }, live());
     expect(w.length).toBe(1);
     expect(w[0]).toContain('P2=5');
     expect(w[0]).toContain('4段');
   });
 
   it('収まっていれば何も言わない(既定=並では静か)', () => {
-    expect(stringLenWarnings({ p1: 3, p2: 4 }, IDOL_TUNING_DEFAULTS.strings.map(s => s.moves.length))).toEqual([]);
+    expect(stringLenWarnings({ p1: 3, p2: 4 }, live())).toEqual([]);
+  });
+
+  // ★1本だけ伸ばしても、他の距離帯は切り詰められたまま=**警告を消してはいけない**。
+  it('★1つの距離帯だけ伸ばしても、足りない距離帯があれば言い続ける', () => {
+    const rows = live();
+    const i = rows.findIndex(r => r.zoneLabel === 'melee');
+    rows[i] = { ...rows[i], len: 5 };
+    const w = stringLenWarnings({ p1: 4, p2: 5 }, rows);
+    expect(w.length).toBe(1);
+    expect(w[0]).toContain('near');   // 主戦帯はまだ4段
+    expect(w[0]).not.toContain('melee=');
+  });
+
+  it('★全距離帯が届いたら黙る', () => {
+    expect(stringLenWarnings({ p1: 4, p2: 5 }, live().map(r => ({ ...r, len: 5 })))).toEqual([]);
   });
 
   it('台本が無い時に落ちない', () => {
     expect(stringLenWarnings({ p1: 3, p2: 4 }, [])).toEqual([]);
+  });
+});
+
+// ================================================================================================
+describe('マスターの値が欄の範囲・刻みと噛み合っている(潜伏バグの予防)', () => {
+  // ★書き込みは `clampField` を通る。マスターの値が min/max の外なら**書いた値がズレて、
+  // そのチップが永久に点かない**(押しても「カスタム」のまま・エラーも出ない)。
+  // 裏マスターを触るのが今後の運用そのものなので、機械で固定しておく。
+  it('全ての値が欄の min/max の中にある(clampField で切られない)', () => {
+    const byPath = new Map(IDOL_TUNING_FIELDS.map(f => [f.path, f]));
+    for (const c of BEHAVIOR_CHOICES) {
+      for (const o of c.options) {
+        for (const [path, v] of Object.entries(o.values)) {
+          const f = byPath.get(path);
+          expect(f, `${c.label}/${o.label}: ${path}`).toBeDefined();
+          expect(clampField(f!, v), `${c.label}/${o.label}: ${path}`).toBe(v);
+        }
+      }
+    }
+  });
+
+  it('全ての値が欄の刻み(step)に乗っている(摘まんだ時に半端な値から始まらない)', () => {
+    const byPath = new Map(IDOL_TUNING_FIELDS.map(f => [f.path, f]));
+    for (const c of BEHAVIOR_CHOICES) {
+      for (const o of c.options) {
+        for (const [path, v] of Object.entries(o.values)) {
+          const step = byPath.get(path)!.step ?? 1;
+          expect(Math.abs(Math.round(v / step) * step - v), `${c.label}/${o.label}: ${path}`).toBeLessThan(1e-9);
+        }
+      }
+    }
   });
 });
 
@@ -267,6 +316,14 @@ describe('コピーの平文に選択名が出る(§18-7-2:「貼るだけで伝
   it('束を変えると平文の選択名も変わる', () => {
     for (const [p, v] of Object.entries(choiceValues(byKey('range'), 'far'))) setAtPath(IDOL_TUNING, p, v);
     expect(formatTuningText(getBossTuning('idol')!, 'test')).toContain('【間合い】= 遠');
+  });
+
+  // ★旧実装は「最後に開いた節」としか比べていなかったので、取りこぼし回収ループが
+  // 既に出した見出しを丸ごと開き直し、**節が二重に並んでいた**(既定でも4個重複していた)。
+  it('★見出し(### …)が二重に出ない', () => {
+    const txt = formatTuningText(getBossTuning('idol')!, 'test');
+    const heads = txt.split('\n').filter(l => l.startsWith('### '));
+    expect(heads.length).toBe(new Set(heads).size);
   });
 
   it('中間値なら「カスタム」と出る(何が起きているか貼る相手に伝わる)', () => {

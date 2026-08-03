@@ -481,10 +481,13 @@ export const formatTuningText = (entry: BossTuningEntry, version: string): strin
     const cs = (entry.choices ?? []).filter(c => c.group === group && choiceApplicable(entry.table, c));
     if (fs.length === 0 && ts.length === 0 && cs.length === 0) continue;
     lines.push('', group === 'behavior' ? '## 行動パターン' : '## 技');
-    let section = '';
+    // ★**一度開いた節は二度開かない。** 旧実装は「最後に開いた節」1つとしか比べていなかったので、
+    // 末尾の取りこぼし回収ループが**既に出した見出しを丸ごと開き直し、平文に節が二重に並んでいた**
+    // (射撃枠を足すと `### 射撃枠 s1` も重複していた。今回の束で常時4個の重複になり顕在化した)。
+    const opened = new Set<string>();
     const openSection = (sec: string): void => {
-      if (sec === section) return;
-      section = sec;
+      if (opened.has(sec)) return;
+      opened.add(sec);
       lines.push(`### ${labelOf(sec)}`);
       for (const c of cs.filter(c2 => c2.section === sec)) {
         lines.push(`  【${c.label}】= ${matchedOptionLabel(entry.table, c)}`);
