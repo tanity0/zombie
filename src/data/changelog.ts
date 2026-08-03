@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2818',
+    items: [
+      '守護霊の評点を、全技カウンターが3分短縮・全技被弾が2分加算に相当する配点へ調整しました。',
+      '黒鉄をはじめ、戦い方と装備に個性を持つ固定の先人守護霊20体のデータを追加しました。',
+    ],
+  },
+  {
     version: '0.25.2817',
     items: [
       '影の縁を、足元では硬く・先端へ行くほど滑らかに広がるようにしました(半影)。',
