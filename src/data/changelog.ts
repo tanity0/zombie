@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2813',
+    items: [
+      '影の足元が物体から離れて見える問題を直しました（影の根元が物体の底辺にぴったり付きます）。',
+    ],
+  },
+  {
     version: '0.25.2812',
     items: [
       'ゲーム内容の変更はありません（ビルドエラーの修正）。',

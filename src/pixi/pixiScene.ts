@@ -1759,7 +1759,19 @@ const SHADOW_FAR_MULT = tsNum('shadowfar', 1.8);   // ★v0.25.2810: 1 → **1.8
  * **よけいに広げ**、奥(画面上)へ伸びる時は**ほとんど広げない**——でないと奥行きと食い違う(社長指摘)。
  * ★**キャラを大きくしているのと同じ `depthScale` を使う**(別の式を作ると絵と影がだんだんズレる)。
  */
-const SHADOW_PERSP = tsNum('shadowpersp', 1);      // ★v0.25.2810: 0 → **1**(絵と同じ depthScale をフルに効かせる)
+const SHADOW_PERSP = tsNum('shadowpersp', 1);
+/**
+ * ★v0.25.2813(社長「やはり足元が離れちゃう。城に限らず木もその他オブジェクトも。花みたいに元が細いものは
+ * 気にならない」): **手前の辺を"光に垂直"ではなく"地面の横方向"に置く**。
+ *
+ * 旧: 手前の辺は光の向きに**垂直**だった。斜め光だと辺自体が斜めになり、
+ * **幅のあるものほど端が物体の底辺から外れる**(片側は物体の裏へ食い込み、片側は前へ出る)。
+ * `shadownear=1` で手前を実物幅にした結果、**その外れが幅ぶんそのまま出て「足元が離れる」**ようになった。
+ * 花のように細いものが平気だったのは、外れる量が幅に比例するため。
+ * 新: 手前の2点を **`footX ± 半幅`, `footY`** に固定する = **物体の底辺そのもの**。
+ * 社長が最初に言われた「底辺の二点は固定して台形に伸ばす」がこれ。`?shadowbase=0` で旧に戻せる。
+ */
+const SHADOW_BASE_HORIZONTAL = tsBool('shadowbase', true);      // ★v0.25.2810: 0 → **1**(絵と同じ depthScale をフルに効かせる)
 /**
  * ★v0.25.2801 診断(社長「爆発もどんな光でも影は動いてない。画面が暗くなるだけ」):
  * `?glowshadowtest=1` で**プレイヤーの左上140pxに強glow相当の光を常時1つ**注入する(絵は出さない=影だけ)。
@@ -9605,8 +9617,11 @@ export class PixiScene {
     const farCx = tipX + px * skewShift, farCy = tipY + py * skewShift;
     const c0 = this.shadowSnap(farCx + uSign * px * farHalf, farCy + uSign * py * farHalf);   // top-left (u0,v0)
     const c1 = this.shadowSnap(farCx - uSign * px * farHalf, farCy - uSign * py * farHalf);   // top-right (u1,v0)
-    const c2 = this.shadowSnap(footX - uSign * px * nearHalf, footY - uSign * py * nearHalf); // bottom-right (u1,v1)
-    const c3 = this.shadowSnap(footX + uSign * px * nearHalf, footY + uSign * py * nearHalf); // bottom-left (u0,v1)
+    // ★手前の2点=物体の底辺(横一直線)。旧実装は光に垂直だったので、幅のあるものほど足元から外れた。
+    const nx = SHADOW_BASE_HORIZONTAL ? 1 : px;
+    const ny = SHADOW_BASE_HORIZONTAL ? 0 : py;
+    const c2 = this.shadowSnap(footX - uSign * nx * nearHalf, footY - uSign * ny * nearHalf); // bottom-right (u1,v1)
+    const c3 = this.shadowSnap(footX + uSign * nx * nearHalf, footY + uSign * ny * nearHalf); // bottom-left (u0,v1)
     mesh.setCorners(c0.x, c0.y, c1.x, c1.y, c2.x, c2.y, c3.x, c3.y);
   }
 
