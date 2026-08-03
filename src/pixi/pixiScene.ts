@@ -768,6 +768,14 @@ const FOG_EDGE_COLORS = [0xff00ff, 0x00ffff, 0xffff00];
 // すぐ戻せる: ?pool=0 で無効化 / ?pool=濃さ / ?poolr=半径 で生調整。
 const LIGHT_POOL_ENABLED =
   typeof window === 'undefined' || new URLSearchParams(window.location.search).get('pool') !== '0';
+// ★§4 手順1(社長承認 v0.25.2805): **強glowが地面を明るくする**。
+// オクトラは暗部を思い切り沈めても影が読める——**影が落ちる地面を光が明るくしている**から。
+// 明るい床の上の黒い影は、暗部を沈めるほど**むしろくっきりする**。うちは光がキャラの周りに
+// 乗るだけで地面を照らしていなかったので、沈めると影も地面も一緒に黒へ行っていた。
+const GLOW_GROUND_POOL_ALPHA = Math.max(0, tsNum('glowpool', 0.55)); // 光だまりの濃さ(0で無効)
+const GLOW_GROUND_POOL_R_MULT = Math.max(0, tsNum('glowpoolr', 3.2)); // 半径 = glowの radius × これ
+const GLOW_GROUND_POOL_MAX = 8;         // 同時に敷く枚数の上限(強い順)
+const GLOW_GROUND_POOL_TINT = 0xffe2b0; // 温かい光(床が起きる色)
 const LIGHT_POOL_ALPHA = Math.max(0, tsNum('pool', 0.4));
 const LIGHT_POOL_RADIUS = Math.max(0, tsNum('poolr', 210));
 const LIGHT_POOL_TINT = 0xffe3a3; // 昼/日差し用の暖色(足元プール)
@@ -2612,6 +2620,9 @@ export class PixiScene {
   // αは触らない(LIGHT_CURVE_ALPHA_GAIN=1.0=ピーク保存)。**形だけが変わる。**塗り面積も不変。
   private playerLight = new Sprite(getSoftGlowTexture());
   private playerGroundPool = new Sprite(getSoftGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
+  /** ★§4手順1: 強glowが地面に落とす光だまり(加算・プール済み=作っては壊さない)。 */
+  private glowGroundLayer = new Container();
+  private glowGroundPool: Sprite[] = [];
   private playerKatanaBack = new Sprite();                 // 背負い刀(刀/小烏丸 装備中・プレイヤー背面)
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
   private playerSkateboard = new Sprite();                 // スケボー乗車中に足元へ敷く板(プレイヤー背面=足の下)
@@ -2794,8 +2805,15 @@ export class PixiScene {
     if (active) {
       if (!this.punchGrade) this.punchGrade = new ColorMatrixFilter();
       const k = this.punchStrength;
-      this.punchGrade.contrast(k * tsNum('punchcontrast', 1.2), false); // 影締まり+ハイライト飛び。最大値へ(社長v0.25.1977)。?punchcontrast=
-      this.punchGrade.brightness(1 + k * tsNum('punchbright', 0.22), true); // 全体を持ち上げ(?punchbright=)
+      // ★§4手順2(オクトラ2の実測に合わせた作り直し・社長承認 v0.25.2805):
+      //  実測(味方の技の発動前後)は **全体の平均が下がり**(52.3→44.0)、**暗部が2.4倍に増え**、
+      //  **肩(90〜95%)だけ +8〜+17**、**頂点(99%)は上げず**、**彩度が上がる**(0.709→0.775)。
+      //  ⇒ 旧実装の `brightness(1 + k×0.22)`(=全体を明るくする)は**方向が逆**なので既定0にした。
+      //  明るい側は「光そのもの」(§4手順1の光だまり+glow)が作る。ここは**階調と色**だけを担う。
+      this.punchGrade.contrast(k * tsNum('punchcontrast', 1.2), false); // 暗部を沈め、肩を持ち上げる
+      this.punchGrade.saturate(k * tsNum('punchsat', 0.35), true);      // ★彩度を上げる(暗部が黒潰れに見えにくくなる)
+      const pb = tsNum('punchbright', 0); // ★既定0=全体は明るくしない(?punchbright=0.22 で旧挙動)
+      if (pb !== 0) this.punchGrade.brightness(1 + k * pb, true);
       if (!this.punchInList) { this.punchInList = true; this.applyPunchFilter(); } // 立ち上がり時だけ付ける(昼コントラストと合成)
     } else if (this.punchInList) {
       this.punchStrength = 0; this.punchInList = false; this.applyPunchFilter(); // 減衰しきったら外す(昼コントラストは残る)
@@ -2812,6 +2830,41 @@ export class PixiScene {
    * ★どちらが安いかは実機ベンチで測る。**覆う範囲が違う**(worldGroup=地面含む画面全体 /
    *   filteredWorld=地面ベースを除く)ので、**見え方も変わる**。安さと見え方の両方を見て決める。
    */
+  /**
+   * ★§4手順1: 強glowの位置に**加算の光だまり**を敷いて、**影が乗る"明るい床"**を作る。
+   * これが無いと、暗部を沈めた瞬間に影も地面も一緒に黒へ行き、影が読めない
+   * (社長の実機報告「昼のステージ3だけ影が見える」= 地面が明るいステージだけ条件が揃っていた)。
+   * ★作り方は `playerGroundPool` と同じ=**焼いたテクスチャ+プール済みスプライトの加算1枚/光**。
+   * per-frame Graphics も投影影も増やさない(CLAUDE.md 実測「強glowの絵は無料/高いのは投影影」)。
+   */
+  private syncGlowGroundPools(reqs: { x: number; y: number; r: number; life: number }[]) {
+    if (GLOW_GROUND_POOL_ALPHA <= 0) {
+      for (const sp of this.glowGroundPool) sp.visible = false;
+      return;
+    }
+    // 強い順に上限枚数だけ敷く(切り落としても、弱いものほど元々見えない)。
+    reqs.sort((a, b) => b.life * b.r - a.life * a.r);
+    const n = Math.min(reqs.length, GLOW_GROUND_POOL_MAX);
+    for (let i = 0; i < n; i++) {
+      let sp = this.glowGroundPool[i];
+      if (!sp) {
+        sp = new Sprite(getSoftGlowTexture());
+        sp.anchor.set(0.5);
+        sp.blendMode = 'add';
+        sp.tint = GLOW_GROUND_POOL_TINT;
+        sp.eventMode = 'none';
+        this.glowGroundLayer.addChild(sp);
+        this.glowGroundPool[i] = sp;
+      }
+      const q = reqs[i];
+      sp.position.set(q.x, q.y);
+      sp.width = sp.height = q.r * GLOW_GROUND_POOL_R_MULT * 2;
+      sp.alpha = Math.min(1, GLOW_GROUND_POOL_ALPHA * q.life);
+      sp.visible = true;
+    }
+    for (let i = n; i < this.glowGroundPool.length; i++) this.glowGroundPool[i].visible = false;
+  }
+
   private applyPunchFilter() {
     if (PUNCH_ON_FILTERED_WORLD) this.rebuildWorldFilters();
     else this.syncWorldGroupFilters();
@@ -3277,6 +3330,7 @@ export class PixiScene {
       this.armoryGfx, // §6.24 M48: 武器庫サークル(地面・world座標。病院と同じ)
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
       this.pumpkinTelegraph,
+      this.glowGroundLayer, // ★§4手順1: 強glowの光だまり(プレイヤーの光だまりより下=先に敷く)
       this.playerGroundPool,
       this.playerLight,
       this.alchemyCircle,
@@ -5661,6 +5715,7 @@ export class PixiScene {
     this.syncFlash(s.effects, now);
     // ★v0.25.2782: 強glow(爆発など)を「世界の光」へ足し、プレイヤー足元の明るさを先に出す。
     // ここで出すのは、この値を**コントラストパンチと補助光の両方**が使うため(松明は syncBreakableProps で既に積み済み)。
+    const groundPoolReqs: { x: number; y: number; r: number; life: number }[] = [];
     for (const e of s.effects) {
       if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
       const glowLife = 1 - Math.min(1, (now - e.createdAt) / e.duration);
@@ -5668,7 +5723,9 @@ export class PixiScene {
       const gl = { x: e.x, y: e.y, reach: e.radius * GLOW_LIGHT_REACH_MULT, strength: glowLife * GLOW_LIGHT_GAIN };
       this.worldLights.push(gl);
       this.punchLights.push(gl); // 爆発は距離を変えない(社長「コントラスト上がった!いい感じ」)
+      groundPoolReqs.push({ x: e.x, y: e.y, r: e.radius, life: glowLife });
     }
+    this.syncGlowGroundPools(groundPoolReqs); // ★§4手順1: 強glowが地面を明るくする(影が乗る床を作る)
     const pfx = s.player.x + s.player.width / 2, pfy = s.player.y + s.player.height / 2;
     this.assistBrightnessNow = lightAt(pfx, pfy, this.worldLights);
     this.punchBrightnessNow = lightAt(pfx, pfy, this.punchLights);
