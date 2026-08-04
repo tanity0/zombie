@@ -6,10 +6,28 @@ const baseUrl = process.env.TEST_BASE_URL ?? 'http://127.0.0.1:5199/zombie/';
 const outputDir = process.env.TEST_OUTPUT_DIR ?? path.resolve('TEST_HANDOFF/results');
 const maxRealMs = Number(process.env.MAX_REAL_MS ?? 300_000);
 const allCases = [
-  { id: 'hayase', name: '早瀬', roll: 0.10 },
-  { id: 'bambi', name: 'ばんび', roll: 0.60 },
+  { id: 'kurogane', name: '黒鉄', roll: 0.025 },
+  { id: 'shishimaru', name: 'ししまる', roll: 0.075 },
+  { id: 'karasu', name: '鴉', roll: 0.125 },
+  { id: 'yuki', name: 'ユキ', roll: 0.175 },
+  { id: 'mikazuki', name: '三日月', roll: 0.225 },
+  { id: 'nanashi', name: 'ナナシ', roll: 0.275 },
+  { id: 'iwamoto', name: '岩本', roll: 0.325 },
+  { id: 'donko', name: 'どんこ', roll: 0.375 },
+  { id: 'chiyo', name: '千代', roll: 0.425 },
+  { id: 'tohmi', name: '遠見', roll: 0.475 },
+  { id: 'shizu', name: '静', roll: 0.525 },
+  { id: 'hatsune', name: 'ハツネ', roll: 0.575 },
+  { id: 'hayase', name: '早瀬', roll: 0.625 },
+  { id: 'bambi', name: 'ばんび', roll: 0.675 },
+  { id: 'chloe', name: 'クロエ', roll: 0.725 },
+  { id: 'bansho', name: '番匠', roll: 0.775 },
+  { id: 'akane', name: 'あかね', roll: 0.825 },
+  { id: 'ryoken', name: '猟犬', roll: 0.875 },
+  { id: 'phill', name: 'フィル', roll: 0.925 },
+  { id: 'mumei', name: '無銘', roll: 0.975 },
 ];
-const requestedTargets = new Set((process.env.TARGETS ?? 'hayase,bambi').split(',').map((value) => value.trim()).filter(Boolean));
+const requestedTargets = new Set((process.env.TARGETS ?? 'kurogane,shishimaru,karasu,yuki,mikazuki,nanashi,iwamoto,donko,chiyo,tohmi,shizu,hatsune,akane,ryoken,phill,mumei').split(',').map((value) => value.trim()).filter(Boolean));
 const cases = allCases.filter((testCase) => requestedTargets.has(testCase.id));
 if (cases.length === 0) throw new Error(`no valid TARGETS: ${[...requestedTargets].join(',')}`);
 
@@ -17,6 +35,7 @@ const pad = (value) => String(value).padStart(2, '0');
 const now = new Date();
 const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
 fs.mkdirSync(outputDir, { recursive: true });
+const outputPath = path.join(outputDir, `${stamp}-miguel-remaining16-solo-raw.json`);
 
 const browser = await chromium.launch({
   channel: 'chrome',
@@ -29,6 +48,11 @@ const browser = await chromium.launch({
 });
 
 const results = [];
+const writeCheckpoint = () => fs.writeFileSync(outputPath, JSON.stringify({
+  generatedAt: new Date().toISOString(), appVersion: '0.25.2841',
+  commit: '7224e182fe34a0b759d9e82675b32d4fa9bfdb6d', headless: false,
+  soloGuardian: true, browserChannel: 'chrome', baseUrl, requestedTargets: [...requestedTargets], results,
+}, null, 2));
 
 try {
   for (const testCase of cases) {
@@ -79,7 +103,7 @@ try {
 
     const query = new URLSearchParams({
       smoke: '1', stage: 'stage-1', gateboss: '1', autotut: '1', retry: '1',
-      ghost: '1', ghostmode: 'top', ghostlog: '1',
+      ghost: '1', ghostmode: 'random', ghostlog: '1',
     });
     const url = `${baseUrl}?${query.toString()}`;
     console.log(`[run] ミゲル vs ${testCase.name}: ${url}`);
@@ -270,6 +294,7 @@ try {
       ghostPickResponses, errors,
     };
     results.push(result);
+    writeCheckpoint();
     console.log(`[done] ミゲル vs ${testCase.name}: ${outcome}, real=${engagementRealSec}s, game=${engagementGameSec}s, bossHp=${finalState.boss?.health ?? 0}, fps=${fps.average?.toFixed(1)}`);
     await context.close();
   }
@@ -277,10 +302,5 @@ try {
   await browser.close();
 }
 
-const outputPath = path.join(outputDir, `${stamp}-miguel-unselected-solo-raw.json`);
-fs.writeFileSync(outputPath, JSON.stringify({
-  generatedAt: new Date().toISOString(), appVersion: '0.25.2841',
-  commit: '7cc84c149aa01f4593d111cf3524d9078c1335f5', headless: false,
-  soloGuardian: true, browserChannel: 'chrome', baseUrl, results,
-}, null, 2));
+writeCheckpoint();
 console.log(`[out] ${outputPath}`);
