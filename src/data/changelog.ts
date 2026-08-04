@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2843',
+    items: [
+      '無銘など刀を使う守護霊が、一閃の着地点に敵がいる場合は安全な方向へ斬り抜けるようになりました。安全な着地点がない時は一閃を見送ります。',
+    ],
+  },
+  {
     version: '0.25.2842',
     items: [
       '固定の先人守護霊20人を、個性を残した実現可能な最終ビルドへ再構成しました。Tier1銃を廃止し、全員の最大HPを240以上にしています。',

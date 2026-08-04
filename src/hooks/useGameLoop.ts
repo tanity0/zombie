@@ -21,6 +21,8 @@ import {
   subWeaponBlockedByKatana,
   katanaRange,
   KATANA_SLASH_INTERVAL_MS,
+  KATANA_DASH_DISTANCE,
+  KATANA_DASH_HIT_HALF_WIDTH,
   KATANA_DASH_SPEED,
   combatActorPlayer,
   setActorSubWeaponCooldown,
@@ -100,6 +102,7 @@ import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle'
 // v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀のオート斬撃の標的選択と、
 // 刀の一閃/ワイヤーのロコモーション上書き。どちらもプレイヤーと守護霊が同じ純関数を通る。
 import { pickKatanaSlashTarget } from '../utils/katanaAuto';
+import { pickSafeKatanaDashDirection } from '../utils/katanaLanding';
 import { dashModeAt, dashOverride, dashStateOf, dashStep } from '../utils/dashLocomotion';
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
 import { weaknessCritBonus } from '../utils/weaknessCrit';
@@ -122,6 +125,7 @@ import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey, Summon } from '../types/game';
 import {
   checkCollision,
+  enemyContactBox,
   checkProjectileEnemyCollisions,
   checkPlayerPickupCollisions,
   checkEnemySummonCollisions
@@ -7755,7 +7759,37 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const bccy = boundBoss.y + boundBoss.height / 2;
                 const gmcx = resolved.x + ghostNow.width / 2, gmcy = resolved.y + ghostNow.height / 2;
                 const wasCounterMelee = isBossCounterableNowApprox(boundBoss.aiPhase, boundBoss.bossState);
-                const dashed = useGameStore.getState().triggerKatanaDash(btcx - gmcx, bccy - gmcy, ghostNow.id);
+                const katanaState = useGameStore.getState();
+                const katanaArena = katanaState.activeEvent && katanaState.activeEvent.kind !== 'rescue'
+                  && katanaState.activeEvent.confinesPlayer !== false
+                  ? {
+                      x: katanaState.activeEvent.x,
+                      y: katanaState.activeEvent.y,
+                      radius: katanaState.activeEvent.radius,
+                    }
+                  : undefined;
+                // 一閃中は無敵でも着地後に200msの硬直がある。従来は常にボス中心へ突っ込み、巨体の
+                // 接触判定内へ着地して硬直中に自爆していた。斬撃が対象へ届く16方向を順に調べ、
+                // 実際の敵接触矩形から16px以上離れた着地点だけを採用する。円形アリーナでは移動側と
+                // 同じ円内クランプ後の地点で判定し、安全地点が無ければ今回は発動を見送る。
+                const safeKatanaDir = pickSafeKatanaDashDirection({
+                  startX: gmcx,
+                  startY: gmcy,
+                  actorWidth: ghostNow.width,
+                  actorHeight: ghostNow.height,
+                  dashDistance: KATANA_DASH_DISTANCE,
+                  hitHalfWidth: KATANA_DASH_HIT_HALF_WIDTH,
+                  target: {
+                    id: boundBoss.id,
+                    centerX: btcx,
+                    centerY: bccy,
+                    strikeWidth: boundBoss.width,
+                  },
+                  enemyRects: katanaState.enemies.map(enemy => ({ id: enemy.id, ...enemyContactBox(enemy) })),
+                  arena: katanaArena,
+                });
+                const dashed = safeKatanaDir !== null
+                  && katanaState.triggerKatanaDash(safeKatanaDir.x, safeKatanaDir.y, ghostNow.id);
                 if (dashed) {
                   // 一閃も「近接スイング」=弾反射の窓を開き、相乗り型サブの入口も通す(v0.25.2525)。
                   onGhostMeleeSwing(gmcx, gmcy);
