@@ -45,7 +45,10 @@ describe('固定の先人守護霊20体', () => {
     for (const g of FIXED_GUARDIANS) {
       expect(moveKeys.every(key => g.profile.moveReactions[key]?.n === 20), g.name).toBe(true);
       const snap = g.profile.snapshot!;
-      expect(createWeapon(snap.activeGunKey!).isMelee, g.name).not.toBe(true);
+      const gun = createWeapon(snap.activeGunKey!);
+      expect(gun.isMelee, g.name).not.toBe(true);
+      expect(gun.tier, `${g.name}:銃Tier`).toBeGreaterThanOrEqual(2);
+      expect(gun.key, g.name).not.toBe('phill-revolver');
       expect(createWeapon(snap.meleeKey!).isMelee, g.name).toBe(true);
       expect(snap.subWeapons!.every(key => subKeys.has(key)), g.name).toBe(true);
     }
@@ -65,6 +68,9 @@ describe('固定の先人守護霊20体', () => {
       expect(snap.critChance, g.name).toBe(0);
       expect(snap.magBonus, g.name).toBe(0);
       expect(snap.reloadMult, g.name).toBe(1);
+      expect(snap.maxHealth, `${g.name}:最大HP`).toBeGreaterThanOrEqual(240);
+      expect(equipment.arms, `${g.name}:腕`).toBe('arms-firepower-5');
+      expect(equipment.accessory, `${g.name}:アクセ`).toBe('accessory-crit-5');
 
       const skills = snap.skills ?? [];
       expect(skills.length, g.name).toBeLessThanOrEqual(MAX_EQUIPPED_SKILLS);
@@ -97,9 +103,11 @@ describe('固定の先人守護霊20体', () => {
     expect(byName('ユキ').profile.mobility).toBe(1);
     expect(byName('遠見').profile.preferredDist).toBe(420);
     expect(byName('早瀬').profile.snapshot?.equipBonus?.fireRateMult).toBe(1.1);
-    expect(byName('早瀬').profile.snapshot?.skills).toEqual(['attack-shooter', 'last-magazine']);
+    expect(byName('早瀬').profile.snapshot?.skills).toEqual(['attack-shooter', 'warm-up']);
+    expect(byName('早瀬').profile.snapshot?.skillLevels?.['warm-up']).toBe(1);
     expect(byName('番匠').profile.subUsesPerMin).toBe(16);
-    expect(byName('フィル').profile.snapshot?.phillHeadshotRate).toBe(1);
+    expect(byName('フィル').profile.snapshot?.activeGunKey).toBe('handgun-t3');
+    expect(byName('フィル').profile.snapshot?.phillHeadshotRate).toBeUndefined();
     expect(byName('無銘').profile.snapshot?.subWeapons).toEqual(['striker-quick-mag', 'murasame']);
     expect(byName('無銘').profile.snapshot?.subWeaponLevels?.murasame).toBe(3);
     expect(byName('黒鉄').profile.snapshot?.subWeapons).toEqual(['heavy-grenade', 'wire-anchor']);
@@ -109,6 +117,39 @@ describe('固定の先人守護霊20体', () => {
     expect(byName('早瀬').profile.snapshot?.subWeapons).toEqual(['striker-hunting', 'shadow-clone']);
     expect(byName('番匠').profile.snapshot?.subWeapons).toEqual(['heavy-grenade', 'turret']);
     expect(byName('あかね').profile.snapshot?.subWeapons).toEqual(['striker-quick-mag', 'shield']);
+  });
+
+  it('承認済みの20人分の主武器・近接・スキル構成を保持する', () => {
+    const expected: Record<string, [string, string, string, string]> = {
+      '黒鉄': ['shotgun-t3', 'anti-mutant-knife-t5', 'counter-master', 'knife-master'],
+      'ししまる': ['handgun-t2', 'anti-mutant-knife-t5', 'knight', 'counter-master'],
+      '鴉': ['handgun-t3', 'anti-mutant-knife-t5', 'bomb-counter', 'slasher'],
+      'ユキ': ['handgun-t2', 'machete-t3', 'time-keeper', 'attack-shooter'],
+      '三日月': ['rifle-t3', 'machete-t3', 'fire-shooter', 'exploder'],
+      'ナナシ': ['shotgun-t3', 'tactical-knife-t4', 'time-keeper', 'exploder'],
+      '岩本': ['shotgun-t3', 'anti-mutant-knife-t5', 'knight', 'reflex'],
+      'どんこ': ['rifle-t3', 'tactical-knife-t4', 'overclock', 'exploder'],
+      '千代': ['handgun-t3', 'tactical-knife-t4', 'time-keeper', 'overclock'],
+      '遠見': ['rifle-t2', 'machete-t3', 'sniper', 'attack-shooter'],
+      '静': ['rifle-t2', 'machete-t3', 'sniper', 'crit-up'],
+      'ハツネ': ['rifle-t3', 'machete-t3', 'bomber', 'exploder'],
+      '早瀬': ['handgun-t3', 'tactical-knife-t4', 'attack-shooter', 'warm-up'],
+      'ばんび': ['shotgun-t3', 'tactical-knife-t4', 'last-magazine', 'attack-shooter'],
+      'クロエ': ['handgun-t2', 'machete-t3', 'crit-up', 'attack-shooter'],
+      '番匠': ['rifle-t3', 'tactical-knife-t4', 'overclock', 'attack-shooter'],
+      'あかね': ['shotgun-t3', 'tactical-knife-t4', 'knight', 'attack-shooter'],
+      '猟犬': ['handgun-t3', 'anti-mutant-knife-t5', 'counter-master', 'exploder'],
+      'フィル': ['handgun-t3', 'machete-t3', 'crit-up', 'fire-shooter'],
+      '無銘': ['handgun-t2', 'anti-mutant-knife-t5', 'knife-master', 'combo-master'],
+    };
+    for (const guardian of FIXED_GUARDIANS) {
+      const snap = guardian.profile.snapshot!;
+      expect([
+        snap.activeGunKey,
+        snap.meleeKey,
+        ...(snap.skills ?? []),
+      ], guardian.name).toEqual(expected[guardian.name]);
+    }
   });
 
   it('ステージ1〜5は上位4人が重複せず、20人全員へ分散する', () => {

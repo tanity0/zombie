@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2842',
+    items: [
+      '固定の先人守護霊20人を、個性を残した実現可能な最終ビルドへ再構成しました。Tier1銃を廃止し、全員の最大HPを240以上にしています。',
+      'フィルのステージ2限定PHILL銃とヘッドショット率100%を廃止し、通常のマシンピストルを使うクリティカル射撃型へ変更しました。',
+    ],
+  },
+  {
     version: '0.25.2841',
     items: [
       '先人守護霊「無銘」の装備を、通常の刀から小烏丸へ変更しました。',
