@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2841',
+    items: [
+      '先人守護霊「無銘」の装備を、通常の刀から小烏丸へ変更しました。',
+    ],
+  },
+  {
     version: '0.25.2840',
     items: [
       'ボスがいないステージ6のHP設定を外し、HP6000をステージ7のラスボスへ適用しました。',

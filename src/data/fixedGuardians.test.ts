@@ -99,7 +99,8 @@ describe('固定の先人守護霊20体', () => {
     expect(byName('早瀬').profile.snapshot?.skills).toEqual(['attack-shooter', 'last-magazine']);
     expect(byName('番匠').profile.subUsesPerMin).toBe(16);
     expect(byName('フィル').profile.snapshot?.phillHeadshotRate).toBe(1);
-    expect(byName('無銘').profile.snapshot?.subWeapons).toContain('katana');
+    expect(byName('無銘').profile.snapshot?.subWeapons).toEqual(['striker-quick-mag', 'murasame']);
+    expect(byName('無銘').profile.snapshot?.subWeaponLevels?.murasame).toBe(3);
     expect(byName('黒鉄').profile.snapshot?.subWeapons).toEqual(['heavy-grenade', 'wire-anchor']);
     expect(byName('千代').profile.snapshot?.subWeapons).toEqual(['striker-quick-mag', 'sensor-mine']);
     expect(byName('静').profile.snapshot?.subWeapons).toEqual(['marksman-trap', 'turret']);

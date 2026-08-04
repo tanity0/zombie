@@ -362,7 +362,8 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
   }),
   fixedGuardian({
     id: 'mumei', name: '無銘', classId: 'necromancer', role: 'variant', reaction: 'slash',
-    gunKey: 'handgun-t1', meleeKey: 'anti-mutant-knife-t5', selectedSubWeapon: 'katana',
+    // 最強の刀使い枠。トール討伐後に解禁できる小烏丸を使う。
+    gunKey: 'handgun-t1', meleeKey: 'anti-mutant-knife-t5', selectedSubWeapon: 'murasame',
     clearSeconds: 70, score: 65, reactionMs: 105, counterChance: 0.85,
     preferredDist: 75, meleeBias: 0.9, mobility: 0.88, stationaryFrac: 0.05,
     approachPerMin: 10, subUsesPerMin: 10,
