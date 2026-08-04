@@ -41,6 +41,9 @@ export const ghostDeparturePoint = (
     return { x: fromX, y: fromY, done: false, crouching: true };
   }
   const t = clamp01((elapsedMs - crouchMs) / Math.max(1, flyoutMs));
+  if (t >= 1) {
+    return { x: toX, y: toY, done: true, crouching: false };
+  }
   const easeIn = t * t;
   return {
     x: fromX + (toX - fromX) * easeIn,

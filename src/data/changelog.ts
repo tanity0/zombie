@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2833',
+    items: [
+      'ゲーム内容の変更はありません（守護霊の帰還位置を終点へ正確に揃えました）。',
+    ],
+  },
+  {
     version: '0.25.2832',
     items: [
       '守護霊が背後から滑り込んで援護に入り、ボス撃破後はしゃがんでバックジャンプ帰還するようにしました。登場・帰還時は左上の通信に名前が表示されます。',
