@@ -1064,8 +1064,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   uri: 'CODE:URI',
   suriel: 'CODE:SURIEL',
   acrasiel: 'CODE:ACRASIEL',
-  // idol(stage-2隠しボス)は台詞・命名が物語(脚本)側の判断待ちのため、ここでは追加しない
-  // (§6.28-20「台詞・演出は本節では足さない=社長裁定待ち」)。デフォルトの'変異体'表示にフォールバックする。
+  idol: 'アイドル',
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
 };
