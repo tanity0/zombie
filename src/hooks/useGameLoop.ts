@@ -108,6 +108,7 @@ import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
+import { stageBossHealthFor } from '../config/bossHealth';
 import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
@@ -800,7 +801,7 @@ const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボス�
 // `?bosscounter=0` で統一前(裏ボス3体はカウンター不可)へ完全フォールバックできる。
 const BOSS_COUNTER_ENABLED = evParam('bosscounter') !== '0';
 // PACING_PUZZLE.md §5.21-追補8: テスト用の統一起動フラグ。ラン開始直後、そのステージのゲート2ボス型を
-// プレイヤー近くへ即force-spawnし、ゲート2と同じ初期化(bossState=chase/home=生成中心/×5/fromEvent)で
+// プレイヤー近くへ即force-spawnし、ゲート2と同じ初期化(bossState=chase/home=生成中心/fromEvent)で
 // すぐ戦えるようにする(拘束サークルは省略=テスト用途)。既定OFF=通常挙動不変。将来ステージが増えたら
 // このlookupに追加するだけで対応する(現状はstage-1=ミゲルのみ)。
 const FORCE_GATEBOSS = evParam('gateboss') === '1';
@@ -2404,6 +2405,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
+          // PHILLガンはstage-2限定・弾薬有限のため火力基準から除外。通常ビルド基準でstage進行ごとに上げる。
+          boss.health = boss.maxHealth = stageBossHealthFor(getSelectedStageId());
           // 出現直後は城で待機=プレイヤーが近づくまで向かってこない(社長指示)。aggroRange 内へ入ると起動。
           boss.dormant = true;
           boss.aggroRange = GIANT_AGGRO_RANGE;
@@ -2661,8 +2664,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // PACING_PUZZLE.md §5.21-追補8: 囲いゲート2(ハード=出られない)。ゲート2ボス=天使名の
             // 裏ボス勢1体目「ミゲル」(内部型'miguel')を配置する(旧: 城ボスgiantbatの仮流用。giantbatは
             // 城フィナーレボスとして別枠で存続=useGameLoop.ts:1638 の別スポーンは無変更)。confinesPlayer省略=既定true。
-            // 社長指示v0.25.1595「基本値の方にして」: ゲート2の×5(GATE2_BOSS_STRENGTH_MULT)は適用しない=
-            // ミゲルはENEMY_STATSの基本値(HP2000/与ダメ38)そのままで戦う(ミゲルは専用調整のボスなので旧giantbat枠の×5は不要)。
+            // ゲート2の×5(GATE2_BOSS_STRENGTH_MULT)は適用しない。ENEMY_STATSへ入れた
+            // bossHealth.tsのステージ別HPと与ダメ38を、そのまま実効値として使う。
             gate2PendingRef.current = false;
             const g2pcx = player.x + player.width / 2, g2pcy = player.y + player.height / 2;
             // 重要: beginArenaEvent は周辺の非固定敵を一掃するため、必ずボスを配置する前に呼ぶ
