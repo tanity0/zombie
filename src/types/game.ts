@@ -750,6 +750,18 @@ export interface Summon {
   ghostIsOwn?: boolean;        // v0.25.2477: 自分のプロファイル由来か(現状オフライン=常にtrue。将来オンラインで
                                // 他人のゴーストが来たらfalse=頭上の「(自分)」添え字が消える前提の構造)。
   ghostFacing?: 1 | -1;        // 向き(描画の左右反転のみ・当たり判定は不変)。
+  // 登場/通常帰還の短い移動演出(gameTime基準)。演出中は専用driverが戦闘を止め、座標だけ更新する。
+  // 帰還は救難信号と同じ「しゃがみ→バックジャンプ」。HP0消滅には使わない。
+  ghostArrivalStartedAt?: number;
+  ghostArrivalFromX?: number;
+  ghostArrivalFromY?: number;
+  ghostArrivalToX?: number;
+  ghostArrivalToY?: number;
+  ghostDepartureStartedAt?: number;
+  ghostDepartureFromX?: number;
+  ghostDepartureFromY?: number;
+  ghostDepartureToX?: number;
+  ghostDepartureToY?: number;
   ghostLastShotAt?: number;    // 銃のクールダウンゲート(ms・Date.now基準)。
   // v0.25.2830: 守護霊も独立した2人目のプレイヤーとして、プレイヤーと同じWeapon[]・リロード状態を
   // 自前で持つ。リザーブ弾だけは従来の除外4どおり非消費(空マガジンは同じ時間を掛けて満タンへ戻る)。

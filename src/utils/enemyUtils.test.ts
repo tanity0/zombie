@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile } from './enemyUtils';
-import type { Enemy, Player, Summon, GameBounds } from '../types/game';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath } from './enemyUtils';
+import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 
 const mkEnemy = (x: number, y: number): Enemy =>
   ({ x, y, width: 32, height: 32 } as unknown as Enemy);
@@ -235,6 +235,21 @@ describe('isBossType', () => {
     expect(isBossType('mimir')).toBe(true);
     expect(isBossType('jormungand')).toBe(true);
     expect(isBossType('thor')).toBe(true);
+  });
+});
+
+describe('boss defeat cinematic eligibility', () => {
+  it('routes every boss type through the shared crumble/attention death path', () => {
+    const bossTypes: EnemyType[] = [
+      'pumpkin', 'giantbat', 'reaper', 'lab-zombie-3',
+      'mimir', 'jormungand', 'skadi', 'thor',
+      'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
+      'idol', 'hunter',
+    ];
+    for (const type of bossTypes) {
+      expect(getsDramaticDeath({ type } as Enemy), type).toBe(true);
+    }
+    expect(getsDramaticDeath({ type: 'zombie' } as Enemy)).toBe(false);
   });
 });
 

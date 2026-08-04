@@ -1393,6 +1393,7 @@ export const RESCUE_ALLY_CROUCH_MS = 200;  // 少ししゃがみ込む(バック
 export const RESCUE_ALLY_FLYOUT_MS = 220;  // バックジャンプで背後へ離脱する時間
 export const RESCUE_ALLY_TOTAL_MS = RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS + RESCUE_ALLY_ATTACK_MS + RESCUE_ALLY_POST_HOLD_MS + RESCUE_ALLY_CROUCH_MS + RESCUE_ALLY_FLYOUT_MS; // 1500ms
 export const RESCUE_ALLY_SPAWN_DIST = 120; // 出現地点=プレイヤーの向きの逆(背後)へこの距離(px)
+export const RESCUE_ALLY_HOP_PX = 48;      // 飛来/離脱ジャンプ弧の頂点の高さ(px・守護霊の帰還も共有)
 // ズーム演出: 命中の瞬間に小さく寄る。CLAUDE.md方針によりスロー(timeSlow)/ヒットストップは使わない
 // (triggerHitImpactはtimeSlowを内包するため使用不可。triggerZoomを直接叩く)。
 export const RESCUE_SIGNAL_ZOOM_MAG = 0.28;
@@ -2354,8 +2355,8 @@ const spawnDeathPop = (get: () => GameState, ex: number, ey: number, fromX: numb
   get().spawnSpray(ex, ey, dx, dy, 4, ['#fef3c7', '#fde68a', '#e5e7eb']);
 };
 
-// 討伐で「FF風クランブル」統一演出(triggerDramaticDeath)を出す対象(getsDramaticDeath=ネームド/裏ボス/
-// giantbat/hunter)の、討伐後フェード表示の長さ(ms)。useGameLoop の BOSS_FADE_MS / pixiScene の
+// 討伐で「FF風クランブル」統一演出(triggerDramaticDeath)を出す対象(getsDramaticDeath=ボス系/ネームド/
+// クエスト対象)の、討伐後フェード表示の長さ(ms)。useGameLoop の BOSS_FADE_MS / pixiScene の
 // syncBossCorpse 内 FADE_MS と同じ値で必ず揃える(3箇所で複製・pixiScene側の既存コメントと同じ運用)。
 const DRAMATIC_DEATH_FADE_MS = 2600;
 
@@ -2367,8 +2368,8 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 };
 
-// 「flashy unified boss death」juice機能: ネームド/裏ボス(mimir/jormungand/skadi/thor)/giantbat/hunter の
-// 討伐に共通の「FF風クランブル」演出を出す(getsDramaticDeath で判定・呼び出し元でガード済み)。
+// 「flashy unified boss death」juice機能: ボス系/ネームド/クエスト対象の討伐に共通の
+// 「FF風クランブル」演出を出す(getsDramaticDeath で判定・呼び出し元でガード済み)。
 // 近接(grantMeleeKillRewards)・銃/接触/爆発(damageEnemy)の両キル経路から、対象を倒した時に1回だけ呼ぶ。
 // SFXは含まない(gameStoreはplaySfxをimportできないため。useGameLoopがbossCorpse.diedAtの変化を監視して
 // 'boss-death'を1回鳴らす)。HARD PERF CONSTRAINT: 強glow(spawnGlow大径)は使わない=pooled sprite
@@ -2416,8 +2417,13 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     if (muraUnlock) useGameStore.setState({ unlockedShopSkillCards: muraUnlock });
   }
   // 討伐後のフェードアウト(既存の裏ボス演出を流用・pixiScene.syncBossCorpseが描画)。
+  const bossDefeat = isBossType(enemy.type);
   useGameStore.setState({
     bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now() },
+    ...(bossDefeat ? {
+      eventBannerText: `${enemyDeathLabel(enemy.type)}を討伐`,
+      eventBannerUntil: get().gameTime + DRAMATIC_DEATH_FADE_MS,
+    } : {}),
   });
   const tint = hexToRgba(getEnemyColor(enemy.type), 0.8);
   get().spawnFlash('rgba(255,255,255,0.32)', 260);         // 白い閃光(瞬間)
@@ -2426,6 +2432,7 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   get().spawnBurst(x, y, getEnemyColor(enemy.type), 26);             // 崩れ散る残骸
   get().triggerShake(DRAMATIC_DEATH_FADE_MS, 6);            // 長く低いシェイク(旧・裏ボス限定=5 よりわずかに強め)
   get().triggerTimeSlow(0.35, 520, 90);                     // 決着の一瞬をスロー
+  if (bossDefeat) get().triggerAttention(x, y);              // ボスの崩壊中は世界を止め、既存attentionでカメラを向ける
 };
 
 // KILLパンチズームの寄り先(社長指示・v0.25.1498): キルされた対象の中心座標。複数いる場合は

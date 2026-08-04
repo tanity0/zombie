@@ -9,7 +9,7 @@
 // レンダラーに依存しない(PixiJSをimportしない)。store(useGameStore)・audioManager(playSfx)への
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
-import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED } from '../store/gameStore';
+import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED, RESCUE_ALLY_SPAWN_DIST } from '../store/gameStore';
 import { placeLabSpawn } from './labSpawn';
 import { OFFSCREEN_SPAWN_MARGIN } from './enemyUtils';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
@@ -675,9 +675,25 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     // 解散条件①: 紐付いたボスが居なくなった(撃破/画面外リサイクル等で enemies から消えた)。
     // 解散条件②(HP0)は damageSummon が既に summons から取り除いている=ここでは見なくてよい。
     const boundBossAlive = state.enemies.some(e => e.id === existingGhost.ghostBossId);
-    if (!boundBossAlive) {
-      useGameStore.setState(s => ({ summons: s.summons.filter(su => su.id !== existingGhost.id) }));
-      refs.ghostProfileRef.current = null;
+    if (!boundBossAlive && existingGhost.ghostDepartureStartedAt === undefined) {
+      const face = existingGhost.ghostFacing === -1 ? -1 : 1;
+      useGameStore.setState(s => ({
+        summons: s.summons.map(su => su.id === existingGhost.id ? {
+          ...su,
+          ghostDepartureStartedAt: gameTime,
+          ghostDepartureFromX: su.x,
+          ghostDepartureFromY: su.y,
+          ghostDepartureToX: su.x - face * RESCUE_ALLY_SPAWN_DIST,
+          ghostDepartureToY: su.y,
+          ghostLastShotAt: 0,
+          ghostLastMeleeAt: 0,
+          ghostCounterWindowEnd: 0,
+        } : su),
+      }));
+      useGameStore.getState().enqueueNpcDialogue([{
+        name: existingGhost.ghostName ?? '守護霊',
+        text: '帰還します。',
+      }]);
     }
     return; // 同時1体(既に居るなら新規召喚はしない)
   }
@@ -745,9 +761,18 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // ghostBuild としてSummonへ載せ、攻撃計算側(useGameLoop/gameStore)が ghostBuild.ts で復元する。
   // (profileはGhostProfile(既定値)かPlayerProfile(保存済み)の合成=前者にsnapshotは無いので絞る)
   const snap = (profile as { snapshot?: PlayerBuildSnapshot }).snapshot;
+  const arrivalToX = player.x - player.width - 16;
+  const arrivalToY = player.y;
+  const lastDir = player.lastDirection;
+  const lastDirLen = lastDir ? Math.hypot(lastDir.x, lastDir.y) : 0;
+  const arrivalDir = lastDirLen > 0.01
+    ? { x: lastDir!.x / lastDirLen, y: lastDir!.y / lastDirLen }
+    : { x: 0, y: 1 };
+  const arrivalFromX = pcx - arrivalDir.x * RESCUE_ALLY_SPAWN_DIST - player.width / 2;
+  const arrivalFromY = pcy - arrivalDir.y * RESCUE_ALLY_SPAWN_DIST - player.height / 2;
   const ghost: Summon = {
     id: `ghost-ally-${Date.now()}`,
-    x: player.x - player.width - 16, y: player.y, width: player.width, height: player.height,
+    x: arrivalFromX, y: arrivalFromY, width: player.width, height: player.height,
     speed: snap?.speed ?? player.speed,
     health: snap?.maxHealth ?? player.maxHealth,
     maxHealth: snap?.maxHealth ?? player.maxHealth,
@@ -776,7 +801,12 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     // v0.25.2477: 現状はローカル完結=常に自分のプロファイル。オンラインで他人のゴーストを迎える時に
     // false を渡す前提の構造(頭上ラベルの「(自分)」添え字がこのフラグで消える)。
     ghostIsOwn: ghostSource === 'own',
-    ghostFacing: 1,
+    ghostFacing: arrivalToX < arrivalFromX ? -1 : 1,
+    ghostArrivalStartedAt: gameTime,
+    ghostArrivalFromX: arrivalFromX,
+    ghostArrivalFromY: arrivalFromY,
+    ghostArrivalToX: arrivalToX,
+    ghostArrivalToY: arrivalToY,
     ghostLastShotAt: 0,
     ghostLastMeleeAt: 0,
   };
@@ -791,6 +821,10 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     ghostRecordIdThisRun: remote?.recordId ?? null,
     ghostAlly: ghostAllySnapshot(ghost),
   }));
+  useGameStore.getState().enqueueNpcDialogue([{
+    name: ghost.ghostName ?? '守護霊',
+    text: '援護に到着。',
+  }]);
 }
 
 // ============================================================================

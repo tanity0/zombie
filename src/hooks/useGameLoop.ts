@@ -67,7 +67,8 @@ import {
   M0_CONVO_ADVANCE_LIMIT_X,
   GIANT_SCRIPT_ENABLED,
   SPAWN_CLAMP_ENABLED,
-  SKATER_LOCK_ENABLED
+  SKATER_LOCK_ENABLED,
+  RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX,
 } from '../store/gameStore';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
@@ -95,6 +96,7 @@ import {
 // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 守護霊は「計測時ビルド」で戦う。ビルドの復元+倍率評価用の
 // 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
 import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
+import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle';
 // v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀のオート斬撃の標的選択と、
 // 刀の一閃/ワイヤーのロコモーション上書き。どちらもプレイヤーと守護霊が同じ純関数を通る。
 import { pickKatanaSlashTarget } from '../utils/katanaAuto';
@@ -1783,6 +1785,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // Hitstop: a melee finisher freezes the whole simulation for a beat. Keep
       // the time origin current so we don't get a giant delta when it lapses.
       const nowMs = Date.now();
+
+      // ボス死亡attentionはこの直後から早期returnするため、崩壊SEの立ち上がりだけは停止判定より前で拾う。
+      // 通常時は下のcorpse管理ブロックと同じrefで重複を防ぐ。
+      {
+        const corpse = useGameStore.getState().bossCorpse;
+        if (corpse && corpse.diedAt !== bossCorpseSfxRef.current) {
+          bossCorpseSfxRef.current = corpse.diedAt;
+          playSfx('boss-death');
+        }
+      }
 
       // --- アテンション・シネマティック(レスキュー/ジャイアント出現) ---
       // 現地へ高速パン→2-3秒ホールド→高速で戻る。その間は hitstop でシム/アニメ停止(時間停止)。
@@ -4221,7 +4233,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // juice(flashy unified boss death): getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)の
+        // juice(flashy unified boss death): getsDramaticDeath 対象(ボス系/ネームド/クエスト対象)の
         // 討伐 corpse/VFX は gameStore 側(triggerDramaticDeath)が共通に出す。SFXだけは gameStore が
         // playSfx を持てないため、ここで bossCorpse.diedAt の変化を監視して1回だけ鳴らす。corpse の
         // 片付け(フェード終了→null)も、裏ボス未設定ステージ(城単体/洋館ステージ等)で動くよう、下の
@@ -4297,7 +4309,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({
               bossChasing: false,
               hiddenBossDefeated: true,
-              eventBannerText: `${enemyDeathLabel(hiddenBoss)}討伐!`,
+              eventBannerText: `${enemyDeathLabel(hiddenBoss)}を討伐`,
               eventBannerUntil: newGameTime + 3600,
             });
             bs.bossId = null;
@@ -7339,6 +7351,49 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         {
           const ghostNow = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
           if (ghostNow) {
+            if (ghostNow.ghostArrivalStartedAt !== undefined) {
+              const pose = ghostArrivalPoint(
+                ghostNow.ghostArrivalFromX ?? ghostNow.x,
+                ghostNow.ghostArrivalFromY ?? ghostNow.y,
+                ghostNow.ghostArrivalToX ?? ghostNow.x,
+                ghostNow.ghostArrivalToY ?? ghostNow.y,
+                newGameTime - ghostNow.ghostArrivalStartedAt,
+                RESCUE_ALLY_FLYIN_MS,
+              );
+              useGameStore.setState(st => ({
+                summons: st.summons.map(s => s.id === ghostNow.id ? {
+                  ...s,
+                  x: pose.x,
+                  y: pose.y,
+                  ...(pose.done ? {
+                    ghostArrivalStartedAt: undefined,
+                    ghostArrivalFromX: undefined,
+                    ghostArrivalFromY: undefined,
+                    ghostArrivalToX: undefined,
+                    ghostArrivalToY: undefined,
+                  } : {}),
+                } : s),
+              }));
+            } else if (ghostNow.ghostDepartureStartedAt !== undefined) {
+              const pose = ghostDeparturePoint(
+                ghostNow.ghostDepartureFromX ?? ghostNow.x,
+                ghostNow.ghostDepartureFromY ?? ghostNow.y,
+                ghostNow.ghostDepartureToX ?? ghostNow.x,
+                ghostNow.ghostDepartureToY ?? ghostNow.y,
+                newGameTime - ghostNow.ghostDepartureStartedAt,
+                RESCUE_ALLY_CROUCH_MS,
+                RESCUE_ALLY_FLYOUT_MS,
+                RESCUE_ALLY_HOP_PX,
+              );
+              if (pose.done) {
+                useGameStore.setState(st => ({ summons: st.summons.filter(s => s.id !== ghostNow.id) }));
+                ghostProfileRef.current = null;
+              } else {
+                useGameStore.setState(st => ({
+                  summons: st.summons.map(s => s.id === ghostNow.id ? { ...s, x: pose.x, y: pose.y } : s),
+                }));
+              }
+            } else {
             // 被弾音(社長裁定v0.25.2480=v0.25.2479★未決2解消。G4bの掟「被弾音は付けない」
             // (v0.25.2459)は本裁定で上書き): 全被弾経路(ボス技/敵弾/汎用接触)は damageSummon の
             // lastHit 打刻に合流するので、そのエッジ検知1箇所で player-damage SE を距離減衰付きで
@@ -7843,6 +7898,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }));
                 }
               }
+            }
             }
           }
         }

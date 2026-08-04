@@ -143,10 +143,10 @@ export const isBossType = (t: EnemyType): boolean =>
   t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter';
 
 // 討伐(KILL)時に「FF風クランブル」統一演出(triggerDramaticDeath・gameStore.ts)を出す対象か。
-// ネームド/裏ボス4体/giantbat/hunter=劇的な討伐。パンプキン(および死神/lab-zombie-3)は対象外(社長指示)。
+// ボス系は全員対象。ネームド/クエスト対象も従来どおり劇的な討伐を維持する。
 // isNamed は型ではなく個体フラグなので Enemy を受け取る(isHiddenBoss/isBossTypeはEnemyType引数)。
 export const getsDramaticDeath = (enemy: Enemy): boolean =>
-  !!enemy.isNamed || !!enemy.questTarget || isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter';
+  !!enemy.isNamed || !!enemy.questTarget || isBossType(enemy.type);
 
 // Stage director: which enemy types are eligible at this gameTime, and how
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.
