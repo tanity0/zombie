@@ -40,7 +40,8 @@ describe('固定の先人守護霊20体', () => {
 
   it('全技に斬/舞/岩の反応データが入り、武器とサブウェポンが実在する', () => {
     const moveKeys = [...MOVE_REACTION_KEYS, ...BULLET_MOVE_KEYS];
-    const subKeys = new Set(SUB_WEAPON_KEYS);
+    // 小烏丸・賢者の石は通常の装備選択一覧には出ず、条件達成後に解禁される特別サブ。
+    const subKeys = new Set([...SUB_WEAPON_KEYS, 'murasame', 'sage-stone']);
     for (const g of FIXED_GUARDIANS) {
       expect(moveKeys.every(key => g.profile.moveReactions[key]?.n === 20), g.name).toBe(true);
       const snap = g.profile.snapshot!;
