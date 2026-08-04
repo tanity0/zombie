@@ -8,7 +8,8 @@ export const STAGE_BOSS_HEALTH_BY_STAGE: Readonly<Record<string, number>> = {
   'stage-3': 4500,
   'stage-4': 5000,
   'stage-5': 5500,
-  'stage-6': 6000,
+  // stage-6にはボスがいない。6000はstage-7のラスボス(グレン)へ適用する。
+  'stage-7': 6000,
 };
 
 // ゲート2は裏ボスへ向かう途中で必ず戦う中ボス。対応ステージの城ボスより強くしつつ、

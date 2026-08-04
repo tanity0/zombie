@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2840',
+    items: [
+      'ボスがいないステージ6のHP設定を外し、HP6000をステージ7のラスボスへ適用しました。',
+    ],
+  },
+  {
     version: '0.25.2839',
     items: [
       '裏ボスへ向かう途中のゲートボスを中ボスとして調整し、HPを5000〜10000へ下げました。各ステージの城ボスよりは強く、後半の城ボスは序盤のゲートボスより強くなります。',

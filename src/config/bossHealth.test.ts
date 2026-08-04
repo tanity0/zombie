@@ -9,8 +9,10 @@ import {
 
 describe('boss health progression', () => {
   it('raises the castle boss health by stage without using PHILL-specific firepower', () => {
-    const stages = ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-6'];
+    const stages = ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-7'];
     expect(stages.map(stageBossHealthFor)).toEqual([3500, 4000, 4500, 5000, 5500, 6000]);
+    expect(STAGE_BOSS_HEALTH_BY_STAGE).not.toHaveProperty('stage-6');
+    expect(STAGE_BOSS_HEALTH_BY_STAGE['stage-7']).toBe(6000);
     expect(Object.values(STAGE_BOSS_HEALTH_BY_STAGE).every((hp, i, all) => i === 0 || hp > all[i - 1])).toBe(true);
   });
 
@@ -23,7 +25,7 @@ describe('boss health progression', () => {
     expect(GATE_BOSS_HEALTH.jibril).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-3']);
     expect(GATE_BOSS_HEALTH.rafi).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-4']);
     expect(GATE_BOSS_HEALTH.uri).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-5']);
-    expect(GATE_BOSS_HEALTH.suriel).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-6']);
+    expect(GATE_BOSS_HEALTH.suriel).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-7']);
   });
 
   it('raises hidden bosses from stage 1 through stage 5', () => {
