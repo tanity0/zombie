@@ -37,8 +37,8 @@ describe('guardian arrival and departure comments', () => {
     });
   });
 
-  it('limits comments to 25 Unicode characters and removes control text', () => {
-    expect([...sanitizeGhostComment('あ'.repeat(30))]).toHaveLength(25);
+  it('limits comments to 30 Unicode characters and removes control text', () => {
+    expect([...sanitizeGhostComment('あ'.repeat(35))]).toHaveLength(30);
     expect(sanitizeGhostComment('援護\nします\u202e！')).toBe('援護 します ！');
   });
 });

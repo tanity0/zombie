@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2835',
+    items: [
+      '守護霊の登場コメント・退場コメントを、各30文字まで入力できるように変更しました。',
+    ],
+  },
+  {
     version: '0.25.2834',
     items: [
       '守護霊の部屋に「登場コメント」「退場コメント」の入力欄を追加しました。各25文字まで設定でき、登場・帰還時の通信に表示されます。',

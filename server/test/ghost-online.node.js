@@ -13,7 +13,7 @@ const profile = (slot = 'thor') => ({
   runs: 3,
   ...GHOST_PROFILE_DEFAULTS,
   srcName: '勇者\u202eBAD',
-  arrivalComment: `援護\u202e${'あ'.repeat(30)}`,
+  arrivalComment: `援護\u202e${'あ'.repeat(35)}`,
   departureComment: '帰還する！',
   moveReactions: { 'thor-issen': { n: 4, counterRate: 2, hitRate: -1 }, evil: { n: 9, counterRate: 1, hitRate: 0 } },
   subStyles: {},
@@ -45,7 +45,7 @@ test('shared profile sanitizer clamps hostile data and rejects slot mismatch', (
   assert.deepEqual(safe.bossStyles.thor.snapshot.gunKeys, ['rifle-t3']);
   assert.equal(safe.moveReactions['thor-issen'].counterRate, 1);
   assert.equal(safe.moveReactions.evil, undefined);
-  assert.equal([...safe.arrivalComment].length, 25);
+  assert.equal([...safe.arrivalComment].length, 30);
   assert.equal(safe.arrivalComment.includes('\u202e'), false);
   assert.equal(safe.departureComment, '帰還する！');
   assert.equal(sanitizeSharedProfile(profile('thor'), 'skadi'), null);

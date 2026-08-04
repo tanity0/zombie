@@ -18,7 +18,7 @@ export const GHOST_SLOT_RE = /^[a-z0-9-]{1,48}$/;
 export const GHOST_EPOCH_RE = /^[0-9]{1,6}$/;
 export const GHOST_MAX_RECORD_BYTES = 64 * 1024;
 export const GHOST_MAX_RESPONSE_BYTES = 256 * 1024;
-export const GHOST_COMMENT_MAX_LEN = 25;
+export const GHOST_COMMENT_MAX_LEN = 30;
 export const GHOST_ARRIVAL_COMMENT_DEFAULT = '援護します！';
 export const GHOST_DEPARTURE_COMMENT_DEFAULT = '帰還します！';
 
