@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CHARACTER_SUBWEAPON_KEYS, SUB_WEAPON_KEYS, classSubWeaponFor } from './campaign';
+import {
+  CHARACTER_SUBWEAPON_KEYS, MAX_EQUIPPED_SKILLS, SUB_WEAPON_KEYS, classSubWeaponFor, skillMaxLevel,
+} from './campaign';
 import {
   FIXED_GUARDIANS,
   FIXED_GUARDIAN_BOSS_SLOT_ORDER,
@@ -11,6 +13,8 @@ import { sanitizePlayerName } from '../utils/playerName';
 import { bossStylePerfScore } from '../utils/playerTraits';
 import { BULLET_MOVE_KEYS, MOVE_REACTION_KEYS } from '../utils/moveReaction';
 import { createWeapon } from '../utils/weaponUtils';
+import { aggregateEquipBonus, equipmentById, equipMaxHealthOf } from './equipment';
+import { PLAYER_BASE_HP, PLAYER_BASE_SPEED } from '../store/gameStore';
 
 describe('固定の先人守護霊20体', () => {
   it('20体のIDと日本語名が重複せず、名前は浄化しても変わらない', () => {
@@ -43,8 +47,34 @@ describe('固定の先人守護霊20体', () => {
       expect(createWeapon(snap.activeGunKey!).isMelee, g.name).not.toBe(true);
       expect(createWeapon(snap.meleeKey!).isMelee, g.name).toBe(true);
       expect(snap.subWeapons!.every(key => subKeys.has(key)), g.name).toBe(true);
-      expect(snap.equipBonus!.damageMult, g.name).toBeGreaterThanOrEqual(3);
-      expect(snap.equipBonus!.damageMult, g.name).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('全員が実在する装備3部位と最大2スキルだけで、全ステータスを再計算できる', () => {
+    for (const g of FIXED_GUARDIANS) {
+      const snap = g.profile.snapshot!;
+      const equipment = snap.equipment!;
+      for (const slot of ['body', 'arms', 'accessory'] as const) {
+        expect(equipment[slot], `${g.name}:${slot}`).not.toBeNull();
+        expect(equipmentById(equipment[slot])?.slot, `${g.name}:${slot}`).toBe(slot);
+      }
+      expect(snap.equipBonus, g.name).toEqual(aggregateEquipBonus(equipment));
+      expect(snap.maxHealth, g.name).toBe(PLAYER_BASE_HP + equipMaxHealthOf(equipment));
+      expect(snap.speed, g.name).toBe(PLAYER_BASE_SPEED);
+      expect(snap.critChance, g.name).toBe(0);
+      expect(snap.magBonus, g.name).toBe(0);
+      expect(snap.reloadMult, g.name).toBe(1);
+
+      const skills = snap.skills ?? [];
+      expect(skills.length, g.name).toBeLessThanOrEqual(MAX_EQUIPPED_SKILLS);
+      expect(new Set(skills).size, g.name).toBe(skills.length);
+      for (const skill of skills) {
+        const level = snap.skillLevels?.[skill] ?? 1;
+        expect(level, `${g.name}:${skill}`).toBeGreaterThanOrEqual(1);
+        expect(level, `${g.name}:${skill}`).toBeLessThanOrEqual(skillMaxLevel(skill));
+      }
+      expect(snap.equipBonus!.damageMult, g.name).toBeLessThanOrEqual(2);
+      expect(snap.equipBonus!.fireRateMult, g.name).toBeLessThanOrEqual(1.1);
     }
   });
 
@@ -62,10 +92,11 @@ describe('固定の先人守護霊20体', () => {
 
   it('個性の核になる特殊値を保持する', () => {
     const byName = (name: string) => FIXED_GUARDIANS.find(g => g.name === name)!;
-    expect(byName('黒鉄').profile.snapshot?.maxHealth).toBe(320);
+    expect(byName('黒鉄').profile.snapshot?.maxHealth).toBe(330);
     expect(byName('ユキ').profile.mobility).toBe(1);
     expect(byName('遠見').profile.preferredDist).toBe(420);
-    expect(byName('早瀬').profile.snapshot?.equipBonus?.fireRateMult).toBe(1.9);
+    expect(byName('早瀬').profile.snapshot?.equipBonus?.fireRateMult).toBe(1.1);
+    expect(byName('早瀬').profile.snapshot?.skills).toEqual(['attack-shooter', 'last-magazine']);
     expect(byName('番匠').profile.subUsesPerMin).toBe(16);
     expect(byName('フィル').profile.snapshot?.phillHeadshotRate).toBe(1);
     expect(byName('無銘').profile.snapshot?.subWeapons).toContain('katana');
