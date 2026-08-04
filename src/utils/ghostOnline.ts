@@ -4,6 +4,7 @@ import { bossStyleSlotKey } from './ghostSlot';
 import { ENGAGEABLE_BOSS_TYPES } from './bossEngagement';
 import { getAnonymousId } from '../online/id';
 import { displayNameFrom, loadPlayerName } from './playerName';
+import { loadGhostComments } from './ghostComment';
 import {
   GHOST_KNOB_SET_V,
   GHOST_SHARE_EPOCH,
@@ -65,7 +66,7 @@ export const hasGhostOnlineConsent = (): boolean => {
 
 export const requestGhostOnlineConsent = (): boolean => {
   const accepted = window.confirm(
-    'ニックネームは他の人に公開されます。\n個人情報は入れないようにご注意ください。',
+    'ニックネームと守護霊コメントは他の人に公開されます。\n個人情報は入れないようにご注意ください。',
   );
   if (!accepted) return false;
   try {
@@ -162,8 +163,10 @@ export const shareableProfile = (profile: PlayerProfile, localSlot: string): Pla
   const slot = profile.bossStyles?.[localSlot];
   if (!slot) return null;
   const networkSlot = ghostNetworkSlotKey(localSlot);
+  const comments = loadGhostComments();
   const raw = {
     ...profile,
+    ...comments,
     bossStyles: {
       [networkSlot]: {
         ...slot,

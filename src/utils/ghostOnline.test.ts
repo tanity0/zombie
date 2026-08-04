@@ -31,4 +31,17 @@ describe('G6 online guardian rules', () => {
     expect((safe as { reactionMs?: number } | null)?.reactionMs).toBe(GHOST_PROFILE_DEFAULTS.reactionMs);
     expect(sanitizeSharedProfile(raw, 'skadi')).toBeNull();
   });
+
+  it('sanitizes public guardian comments and keeps them within 25 characters', () => {
+    const raw = {
+      v: 1, runs: 1, moveReactions: {}, subStyles: {},
+      arrivalComment: `援護\u202e${'あ'.repeat(30)}`,
+      departureComment: 'またね！',
+      bossStyles: { thor: { ...GHOST_PROFILE_DEFAULTS, subStyles: {}, at: 1 } },
+    };
+    const safe = sanitizeSharedProfile(raw, 'thor') as { arrivalComment?: string; departureComment?: string } | null;
+    expect(safe?.arrivalComment).not.toContain('\u202e');
+    expect([...(safe?.arrivalComment ?? '')]).toHaveLength(25);
+    expect(safe?.departureComment).toBe('またね！');
+  });
 });

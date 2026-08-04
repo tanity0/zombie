@@ -747,6 +747,8 @@ export interface Summon {
   ghostBossId?: string;        // 紐付いているボスのenemy.id(そのボスが居なくなったら解散)。
   ghostClass?: CharacterClass; // v0.25.2467: 絵の選択用=プロファイル計測時のクラス(無ければwarrior=ヘビーガンナー)。
   ghostName?: string;          // v0.25.2477: 頭上に出すプレイヤー名(召喚時にプロファイルsrcName ?? 現在名を搭載)。
+  ghostArrivalComment?: string;   // 登場時の左上通信。召喚元プロフィールから浄化済みの文を搭載。
+  ghostDepartureComment?: string; // 帰還時の左上通信。同じ守護霊の持ち主が設定した文を使う。
   ghostIsOwn?: boolean;        // v0.25.2477: 自分のプロファイル由来か(現状オフライン=常にtrue。将来オンラインで
                                // 他人のゴーストが来たらfalse=頭上の「(自分)」添え字が消える前提の構造)。
   ghostFacing?: 1 | -1;        // 向き(描画の左右反転のみ・当たり判定は不変)。

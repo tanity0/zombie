@@ -168,6 +168,9 @@ export interface PlayerProfile {
    * 頭上表示はこの記録名を使う=将来オンラインで他人のゴーストが来た時に「その人の名前」が
    * 出る構造(§2.5 未決5=プロファイルは通信ペイロード)。 */
   srcName?: string;
+  /** 守護霊の登場・帰還時に左上通信へ表示する、持ち主が設定した公開コメント。旧データは欠損可。 */
+  arrivalComment?: string;
+  departureComment?: string;
   /**
    * G5(BOT_AND_GHOST.md §2.10 仕様1): ボス別攻略スタイル(軸2)。キー=bossStyleSlotKey()の戻り値。
    * 撃破が無いボス/計測不能な条件下では触らない=任意フィールド(後方互換=欠損可・v:1のまま)。

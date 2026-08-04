@@ -103,6 +103,9 @@ import { TUTORIALS, type TutorialId } from '../data/tutorials';
 import TutorialMedia from './TutorialMedia';
 import { loadSeenTutorials } from '../utils/tutorialArchive';
 import { loadPlayerName, savePlayerName, normalizePlayerNameInput, PLAYER_NAME_MAX_LEN, PLAYER_NAME_WHEN_BLANK } from '../utils/playerName';
+import {
+  GHOST_COMMENT_MAX_LEN, loadGhostComments, saveGhostComments,
+} from '../utils/ghostComment';
 // BOT_AND_GHOST.md §2.14/§2.16 C: 独立メニュー「守護霊」= 名前の決定 + 討伐の保持記録(G5アルバム)。
 // カードはリザルト年表と**同じ部品**を流用する(§2.16 B)。
 import { loadPlayerProfile } from '../utils/playerTraits';
@@ -1163,6 +1166,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <Header title="守護霊" subtitle="名前・討伐記録" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
       <div className="menu-stagger p-3 space-y-3">
         <PlayerNameSettings />
+        <GhostCommentSettings />
         {/* §2.17: 討伐記録の二枠化。ソロ枠=従来のG5アルバム(計測つき)/同行枠=同行撃破台帳(下)。 */}
         <Section label="討伐記録（ソロ）">
           {ghostAlbum.length === 0 ? (
@@ -1380,6 +1384,55 @@ const PlayerNameSettings: React.FC = () => {
         守護霊(スキル)の頭上に表示される名前。最大{PLAYER_NAME_MAX_LEN}文字。
         絵文字は使えません(記号は <span className="whitespace-nowrap">_ - . ・ ' ! ?</span> と空白のみ)。
         空のまま確定すると「{PLAYER_NAME_WHEN_BLANK}」になります。
+      </p>
+    </Section>
+  );
+};
+
+const GhostCommentSettings: React.FC = () => {
+  const initial = loadGhostComments();
+  const [arrivalComment, setArrivalComment] = useState(initial.arrivalComment);
+  const [departureComment, setDepartureComment] = useState(initial.departureComment);
+  const commit = () => {
+    if (!requestGhostOnlineConsent()) return;
+    const next = saveGhostComments({ arrivalComment, departureComment });
+    setArrivalComment(next.arrivalComment);
+    setDepartureComment(next.departureComment);
+  };
+  const fields = [
+    { label: '登場コメント', value: arrivalComment, setValue: setArrivalComment },
+    { label: '退場コメント', value: departureComment, setValue: setDepartureComment },
+  ];
+  return (
+    <Section label="守護霊コメント">
+      {fields.map(field => (
+        <label key={field.label} className="block">
+          <span className="mb-1 block text-[12px] text-white/70">{field.label}</span>
+          <input
+            type="text"
+            value={field.value}
+            onChange={e => field.setValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+              e.preventDefault();
+              commit();
+            }}
+            maxLength={GHOST_COMMENT_MAX_LEN}
+            aria-label={field.label}
+            className="w-full rounded-none border border-purple-400/20 bg-black/30 px-3 py-2 text-[14px] text-white/90 outline-none focus:border-purple-300/60"
+          />
+        </label>
+      ))}
+      <button
+        type="button"
+        onClick={commit}
+        className="w-full border border-purple-300/35 bg-purple-400/15 px-4 py-2 text-[13px] font-semibold text-purple-50 active:bg-purple-400/25"
+      >
+        保存
+      </button>
+      <p className="text-[11px] leading-relaxed text-white/45">
+        各{GHOST_COMMENT_MAX_LEN}文字まで。登場・帰還時の通信に表示され、他のプレイヤーにも公開されます。
+        空欄で保存すると既定文に戻ります。
       </p>
     </Section>
   );

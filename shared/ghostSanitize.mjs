@@ -18,6 +18,22 @@ export const GHOST_SLOT_RE = /^[a-z0-9-]{1,48}$/;
 export const GHOST_EPOCH_RE = /^[0-9]{1,6}$/;
 export const GHOST_MAX_RECORD_BYTES = 64 * 1024;
 export const GHOST_MAX_RESPONSE_BYTES = 256 * 1024;
+export const GHOST_COMMENT_MAX_LEN = 25;
+export const GHOST_ARRIVAL_COMMENT_DEFAULT = '援護します！';
+export const GHOST_DEPARTURE_COMMENT_DEFAULT = '帰還します！';
+
+/** 公開プロフィールとローカル保存で共用する、守護霊コメントの浄化。空文字は呼び出し側で既定文へ戻す。 */
+export const sanitizeGhostComment = (raw) => {
+  if (typeof raw !== 'string') return '';
+  const cleaned = raw
+    .normalize('NFC')
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return [...cleaned].slice(0, GHOST_COMMENT_MAX_LEN).join('');
+};
+
+export const displayGhostComment = (raw, fallback) => sanitizeGhostComment(raw) || fallback;
 
 const KNOB_RANGES = Object.freeze({
   reactionMs: [100, 800],
@@ -221,6 +237,10 @@ export const sanitizeSharedProfile = (raw, expectedSlot) => {
   if (punish) out.punish = punish;
   const srcName = displayNameFrom(raw.srcName);
   if (srcName) out.srcName = srcName;
+  const arrivalComment = sanitizeGhostComment(raw.arrivalComment);
+  if (arrivalComment) out.arrivalComment = arrivalComment;
+  const departureComment = sanitizeGhostComment(raw.departureComment);
+  if (departureComment) out.departureComment = departureComment;
   if (typeof raw.srcClass === 'string' && CLASSES.has(raw.srcClass)) out.srcClass = raw.srcClass;
   const snapshot = sanitizeSnapshot(raw.snapshot);
   if (snapshot) out.snapshot = snapshot;

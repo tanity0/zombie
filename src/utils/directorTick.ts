@@ -43,6 +43,9 @@ import {
 import { setDuoRunActive } from './duoRecords'; // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ(時計はbossClockへ移設)
 import { tickBossClocks } from './bossClock'; // v0.25.2577: 撃破タイムのボスごと交戦時計(ソロ/同行共有)
 import { loadPlayerName, displayNameFrom } from './playerName'; // v0.25.2477: 守護霊の頭上名(srcName未記録時のフォールバック)
+import {
+  displayGhostComment, GHOST_ARRIVAL_COMMENT_DEFAULT, GHOST_DEPARTURE_COMMENT_DEFAULT, loadGhostComments,
+} from './ghostComment';
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
 import { isGhostOnlinePickPending, resolveRemoteGhost, selectedGhostMode } from './ghostOnline';
@@ -692,7 +695,7 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       }));
       useGameStore.getState().enqueueNpcDialogue([{
         name: existingGhost.ghostName ?? '守護霊',
-        text: '帰還します。',
+        text: existingGhost.ghostDepartureComment ?? GHOST_DEPARTURE_COMMENT_DEFAULT,
       }]);
     }
     return; // 同時1体(既に居るなら新規召喚はしない)
@@ -736,6 +739,15 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
         ? effectiveGhostProfile(loadedProfile, localSlot)
         : defaultGhostProfile();
   const ghostSource = remote?.source ?? (fixed ? requestedMode : 'own');
+  const localComments = ghostSource === 'own' ? loadGhostComments() : null;
+  const arrivalComment = displayGhostComment(
+    localComments?.arrivalComment ?? (profile as { arrivalComment?: unknown }).arrivalComment,
+    GHOST_ARRIVAL_COMMENT_DEFAULT,
+  );
+  const departureComment = displayGhostComment(
+    localComments?.departureComment ?? (profile as { departureComment?: unknown }).departureComment,
+    GHOST_DEPARTURE_COMMENT_DEFAULT,
+  );
   // 自分の守護霊/デバッグ、オンライン実プレイヤー、固定の先人守護霊のいずれかが実際に来た時だけ、
   // ボス個体ごとに1回×1.6。オンライン候補が無くても固定20人が来るため新2スキルも対価が成立する。
   const shouldBoostBoss = remote !== null || fixed !== null || requestedMode === 'own' || ghostDebugEnabled;
@@ -798,6 +810,8 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     // `srcName ?? loadPlayerName()` は**左辺が無検査**で、フィルタ導入前に保存された絵文字入り/
     // 双方向制御文字入り/長すぎる srcName がそのまま頭上へ描かれていた(浄化されるのは右辺だけ)。
     ghostName: displayNameFrom((profile as { srcName?: unknown }).srcName) ?? loadPlayerName(),
+    ghostArrivalComment: arrivalComment,
+    ghostDepartureComment: departureComment,
     // v0.25.2477: 現状はローカル完結=常に自分のプロファイル。オンラインで他人のゴーストを迎える時に
     // false を渡す前提の構造(頭上ラベルの「(自分)」添え字がこのフラグで消える)。
     ghostIsOwn: ghostSource === 'own',
@@ -823,7 +837,7 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   }));
   useGameStore.getState().enqueueNpcDialogue([{
     name: ghost.ghostName ?? '守護霊',
-    text: '援護に到着。',
+    text: ghost.ghostArrivalComment ?? GHOST_ARRIVAL_COMMENT_DEFAULT,
   }]);
 }
 
