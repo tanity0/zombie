@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ghostGoldMultiplier, ghostNetworkSlotKey, selectedGhostMode } from './ghostOnline';
+import {
+  fixedGhostFeedbackTarget, fixedGhostStatKey, ghostGoldMultiplier, ghostNetworkSlotKey,
+  remoteGhostFeedbackTarget, selectedGhostMode,
+} from './ghostOnline';
 import { sanitizeSharedProfile, GHOST_PROFILE_DEFAULTS, GHOST_KNOB_NAMES } from '../../shared/ghostSanitize.mjs';
 
 describe('G6 online guardian rules', () => {
@@ -15,6 +18,16 @@ describe('G6 online guardian rules', () => {
 
   it('keeps network slots inside the server allow-list', () => {
     expect(ghostNetworkSlotKey('giantbat@stage-7')).toBe('giantbat-stage-7');
+  });
+
+  it('builds fixed and online feedback targets without mixing them', () => {
+    const fixed = fixedGhostFeedbackTarget('hatsune', 'giantbat@stage-2');
+    const remote = remoteGhostFeedbackTarget('record-1');
+    expect(fixed).toMatchObject({ kind: 'fixed', guardianId: 'hatsune', slot: 'giantbat-stage-2' });
+    expect(remote).toMatchObject({ kind: 'remote', recordId: 'record-1' });
+    expect(fixed.eventId).toBeTruthy();
+    expect(remote.eventId).toBeTruthy();
+    expect(fixedGhostStatKey('giantbat-stage-2', 'hatsune')).toBe('giantbat-stage-2:hatsune');
   });
 
   it('fills all nine knobs and rejects a mismatched boss slot', () => {

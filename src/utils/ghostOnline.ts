@@ -5,6 +5,7 @@ import { ENGAGEABLE_BOSS_TYPES } from './bossEngagement';
 import { getAnonymousId } from '../online/id';
 import { displayNameFrom, loadPlayerName } from './playerName';
 import { loadGhostComments } from './ghostComment';
+import { isFixedGuardianId } from '../../shared/fixedGuardianIds.mjs';
 import {
   GHOST_KNOB_SET_V,
   GHOST_SHARE_EPOCH,
@@ -15,6 +16,9 @@ import {
 } from '../../shared/ghostSanitize.mjs';
 
 export type GhostSource = 'own' | 'random' | 'top';
+export type GhostFeedbackTarget =
+  | { kind: 'remote'; recordId: string; eventId: string }
+  | { kind: 'fixed'; guardianId: string; slot: string; eventId: string };
 export type RemoteGhostCandidate = {
   source: 'random' | 'top';
   recordId: string;
@@ -28,12 +32,29 @@ export type GhostInboxItem = {
   slot: string;
   used: number;
   likes: number;
+  published: boolean;
   recent: { name: string; liked: boolean; at: number }[];
 };
 
+export type FixedGhostStat = {
+  guardianId: string;
+  slot: string;
+  used: number;
+  likes: number;
+};
+
+export type GhostInboxRefreshResult = {
+  inbox: Record<string, GhostInboxItem>;
+  fixedStats: Record<string, FixedGhostStat>;
+  cursor: number;
+  newUses: number;
+  newLikes: number;
+  updatedAt: number;
+};
+
 const CONSENT_KEY = 'zombie-ghost-consent-v1';
-const CACHE_KEY = 'zombie-ghost-cache-v1';
 const INBOX_KEY = 'zombie-ghost-inbox-v1';
+const FIXED_STATS_KEY = 'zombie-fixed-ghost-stats-v1';
 let runGeneration = 0;
 let runCandidates = new Map<string, RemoteGhostCandidate>();
 let runMode: 'random' | 'top' | null = null;
@@ -79,6 +100,24 @@ export const requestGhostOnlineConsent = (): boolean => {
 
 export const ghostNetworkSlotKey = (localSlot: string): string => localSlot.replace(/@/g, '-');
 
+export const fixedGhostStatKey = (slot: string, guardianId: string): string =>
+  `${ghostNetworkSlotKey(slot)}:${guardianId}`;
+
+const createFeedbackEventId = (): string => {
+  try {
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  } catch { /* WebView fallback below */ }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+};
+
+export const remoteGhostFeedbackTarget = (recordId: string): GhostFeedbackTarget => ({
+  kind: 'remote', recordId, eventId: createFeedbackEventId(),
+});
+
+export const fixedGhostFeedbackTarget = (guardianId: string, localSlot: string): GhostFeedbackTarget => ({
+  kind: 'fixed', guardianId, slot: ghostNetworkSlotKey(localSlot), eventId: createFeedbackEventId(),
+});
+
 export const selectedGhostMode = (skills: readonly SkillKey[]): 'own' | 'random' | 'top' | null => {
   if (skills.includes('guardian-spirit')) return 'own';
   if (skills.includes('ghost-slayer')) return 'top';
@@ -93,7 +132,6 @@ const clearRunCache = (): void => {
   runCandidates = new Map();
   runMode = null;
   runPickPending = false;
-  try { localStorage.removeItem(CACHE_KEY); } catch { /* メモリ上の破棄だけで十分 */ }
 };
 
 export const endGhostOnlineRun = (): void => {
@@ -140,9 +178,6 @@ export const beginGhostOnlineRun = (skills: readonly SkillKey[], stageId: string
       }
       if (generation !== runGeneration) return;
       runCandidates = next;
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ epoch: GHOST_SHARE_EPOCH, mode, slots: [...next.keys()] }));
-      } catch { /* 実データはメモリだけに保持する */ }
     } catch { /* オフライン時の固定20人フォールバックは召喚側で行う */ }
     finally {
       if (generation === runGeneration) runPickPending = false;
@@ -200,14 +235,24 @@ export const uploadGhostSlots = (profile: PlayerProfile | null, localSlots: read
   }
 };
 
-export const sendGhostFeedback = async (recordId: string, liked: boolean): Promise<void> => {
+export const sendGhostFeedback = async (target: GhostFeedbackTarget, liked: boolean): Promise<void> => {
   const base = apiBase();
   const anonId = getAnonymousId();
-  if (!base || !anonId || !hasGhostOnlineConsent()) return;
+  // 固定AIへのいいねは公開同意の対象外（名前・コメントを他人へ公開しない）。
+  // 実プレイヤー霊は受信自体が同意後だけなので、従来どおり同意を必須にする。
+  if (!base || !anonId || (target.kind === 'remote' && !hasGhostOnlineConsent())) return;
   const send = () => fetch(`${base}/ghost/feedback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Ghost-Anon': anonId },
-    body: JSON.stringify({ recordId, liked, anonId, name: loadPlayerName() }),
+    body: JSON.stringify({
+      ...(target.kind === 'remote'
+        ? { recordId: target.recordId }
+        : { fixedGuardianId: target.guardianId, slot: target.slot }),
+      eventId: target.eventId,
+      liked,
+      anonId,
+      name: loadPlayerName(),
+    }),
     signal: AbortSignal.timeout(5000),
   });
   try {
@@ -232,7 +277,20 @@ const sanitizeInboxItem = (raw: unknown): GhostInboxItem | null => {
     slot: value.slot,
     used: typeof value.used === 'number' && Number.isFinite(value.used) ? Math.max(0, Math.floor(value.used)) : 0,
     likes: typeof value.likes === 'number' && Number.isFinite(value.likes) ? Math.max(0, Math.floor(value.likes)) : 0,
+    published: value.published === true,
     recent,
+  };
+};
+
+const sanitizeFixedStat = (raw: unknown): FixedGhostStat | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Partial<FixedGhostStat>;
+  if (!isFixedGuardianId(value.guardianId) || typeof value.slot !== 'string' || !GHOST_SLOT_RE.test(value.slot)) return null;
+  return {
+    guardianId: String(value.guardianId),
+    slot: value.slot,
+    used: typeof value.used === 'number' && Number.isFinite(value.used) ? Math.max(0, Math.floor(value.used)) : 0,
+    likes: typeof value.likes === 'number' && Number.isFinite(value.likes) ? Math.max(0, Math.floor(value.likes)) : 0,
   };
 };
 
@@ -249,30 +307,77 @@ export const loadGhostInbox = (): Record<string, GhostInboxItem> => {
   } catch { return {}; }
 };
 
-export const refreshGhostInbox = async (): Promise<void> => {
+export const loadFixedGhostStats = (): Record<string, FixedGhostStat> => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FIXED_STATS_KEY) ?? '{}') as unknown;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const out: Record<string, FixedGhostStat> = {};
+    for (const value of Object.values(raw)) {
+      const item = sanitizeFixedStat(value);
+      if (item) out[fixedGhostStatKey(item.slot, item.guardianId)] = item;
+    }
+    return out;
+  } catch { return {}; }
+};
+
+export const refreshGhostInbox = async (): Promise<GhostInboxRefreshResult | null> => {
   const base = apiBase();
   const anonId = getAnonymousId();
-  if (!base || !anonId || !hasGhostOnlineConsent()) return;
+  if (!base || !anonId) return null;
   try {
     const url = new URL(`${base}/ghost/inbox`);
     url.searchParams.set('anon', anonId);
     const response = await fetch(url, { headers: { 'X-Ghost-Anon': anonId }, signal: AbortSignal.timeout(5000) });
-    if (!response.ok) return;
-    const raw = await safeJson(response) as { items?: unknown; cursor?: unknown } | null;
-    if (!raw || !Array.isArray(raw.items) || !Number.isSafeInteger(raw.cursor)) return;
+    if (!response.ok) return null;
+    const raw = await safeJson(response) as { items?: unknown; fixed?: unknown; cursor?: unknown } | null;
+    if (!raw || !Array.isArray(raw.items) || !Number.isSafeInteger(raw.cursor)) return null;
     const current = loadGhostInbox();
+    // 一度公開されたが期限切れになった「利用0回」の枠も、次回取得で公開中のまま残さない。
+    for (const item of Object.values(current)) item.published = false;
+    let newUses = 0;
+    let newLikes = 0;
     for (const item of raw.items) {
       if (!item || typeof item !== 'object') continue;
       const value = sanitizeInboxItem(item);
       if (!value) continue;
-      current[value.slot] = value;
+      newUses += value.recent.length;
+      newLikes += value.recent.filter(event => event.liked).length;
+      current[value.slot] = {
+        ...value,
+        // 新着が無い取得で「最近」の表示を消さない。次の新着が届いた時だけ差し替える。
+        recent: value.recent.length > 0 ? value.recent : (current[value.slot]?.recent ?? []),
+      };
     }
     localStorage.setItem(INBOX_KEY, JSON.stringify(current));
-    if ((raw.cursor as number) > 0) {
-      await fetch(`${base}/ghost/inbox/ack`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ghost-Anon': anonId },
-        body: JSON.stringify({ anonId, cursor: raw.cursor }), signal: AbortSignal.timeout(5000),
-      });
+    const fixedStats: Record<string, FixedGhostStat> = {};
+    if (Array.isArray(raw.fixed)) {
+      for (const item of raw.fixed) {
+        const value = sanitizeFixedStat(item);
+        if (value) fixedStats[fixedGhostStatKey(value.slot, value.guardianId)] = value;
+      }
     }
-  } catch { /* 通知取得はゲーム進行を止めない */ }
+    localStorage.setItem(FIXED_STATS_KEY, JSON.stringify(fixedStats));
+    return {
+      inbox: current,
+      fixedStats,
+      cursor: raw.cursor as number,
+      newUses,
+      newLikes,
+      updatedAt: Date.now(),
+    };
+  } catch { return null; /* 通知取得はゲーム進行を止めない */ }
+};
+
+/** 守護霊部屋へ新着を描画した後にだけ既読へする。 */
+export const acknowledgeGhostInbox = async (cursor: number): Promise<boolean> => {
+  const base = apiBase();
+  const anonId = getAnonymousId();
+  if (!base || !anonId || !Number.isSafeInteger(cursor) || cursor <= 0) return false;
+  try {
+    const response = await fetch(`${base}/ghost/inbox/ack`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ghost-Anon': anonId },
+      body: JSON.stringify({ anonId, cursor }), signal: AbortSignal.timeout(5000),
+    });
+    return response.ok;
+  } catch { return false; }
 };

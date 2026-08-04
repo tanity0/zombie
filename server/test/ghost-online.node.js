@@ -90,3 +90,91 @@ test('pick response reports the real-player pool size for fixed/real weighted mi
   const topBody = await topResponse.json();
   assert.equal(topBody.items[0].poolSize, 2); // ceil(10 × 上位20%)
 });
+
+const feedbackRequest = (eventId = 'event-fixed-00000001') => new Request('https://example.test/ghost/feedback', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Ghost-Anon': '11111111-1111-4111-8111-111111111111' },
+  body: JSON.stringify({
+    anonId: '11111111-1111-4111-8111-111111111111',
+    fixedGuardianId: 'hatsune',
+    slot: 'miguel',
+    liked: true,
+    eventId,
+  }),
+});
+
+const fixedFeedbackEnv = (duplicate = false) => {
+  const calls = [];
+  return {
+    calls,
+    env: {
+      GHOST_DB: {
+        prepare(sql) {
+          const statement = {
+            bind(...params) {
+              calls.push({ sql, params });
+              return statement;
+            },
+            async first() {
+              if (sql.includes('ghost_feedback_receipts')) {
+                return duplicate ? null : { client_event_id: 'event-fixed-00000001' };
+              }
+              return null;
+            },
+            async run() { return { success: true }; },
+          };
+          return statement;
+        },
+      },
+    },
+  };
+};
+
+test('fixed guardians accept idempotent per-boss feedback', async () => {
+  const first = fixedFeedbackEnv(false);
+  const response = await handleGhostRequest(feedbackRequest(), first.env);
+  assert.equal(response.status, 200);
+  assert.equal(first.calls.filter(call => call.sql.includes('fixed_ghost_stats')).length, 1);
+
+  const duplicate = fixedFeedbackEnv(true);
+  const duplicateResponse = await handleGhostRequest(feedbackRequest(), duplicate.env);
+  const duplicateBody = await duplicateResponse.json();
+  assert.equal(duplicateBody.duplicate, true);
+  assert.equal(duplicate.calls.filter(call => call.sql.includes('fixed_ghost_stats')).length, 0);
+});
+
+test('inbox returns own publish state and global fixed guardian counts', async () => {
+  const prepared = [];
+  const bound = [];
+  const env = {
+    GHOST_DB: {
+      prepare(sql) {
+        const statement = {
+          bind(...params) { prepared.push(sql); bound.push(params); return statement; },
+        };
+        return statement;
+      },
+      async batch() {
+        return [
+          { results: [{ slot: 'miguel', used: 3, likes: 2, published: 1 }] },
+          { results: [{ event_id: 4, slot: 'miguel', actor_name: 'Alice', liked: 1, created_at: 123 }] },
+          { results: [{ guardian_id: 'hatsune', slot: 'miguel', used: 5, likes: 4 }] },
+        ];
+      },
+    },
+  };
+  const response = await handleGhostRequest(
+    new Request('https://example.test/ghost/inbox?anon=11111111-1111-4111-8111-111111111111'),
+    env,
+  );
+  const body = await response.json();
+  assert.equal(prepared.length, 3);
+  assert.equal(prepared[0].includes('UNION'), true);
+  assert.equal(bound[0].length, 10);
+  assert.deepEqual(body.items[0], {
+    slot: 'miguel', used: 3, likes: 2, published: true,
+    recent: [{ name: 'Alice', liked: true, at: 123 }],
+  });
+  assert.deepEqual(body.fixed[0], { guardianId: 'hatsune', slot: 'miguel', used: 5, likes: 4 });
+  assert.equal(body.cursor, 4);
+});

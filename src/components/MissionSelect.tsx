@@ -114,8 +114,9 @@ import { loadDuoAlbum } from '../utils/duoRecords';
 import type { GhostAllySnapshot } from '../utils/playerBuild';
 import { BossClearCardRow, GhostAllyCard } from './GhostRecordCards';
 import {
-  ghostNetworkSlotKey, loadGhostInbox,
-  requestGhostOnlineConsent, type GhostInboxItem,
+  acknowledgeGhostInbox, ghostNetworkSlotKey, hasGhostOnlineConsent,
+  loadFixedGhostStats, loadGhostInbox, refreshGhostInbox,
+  requestGhostOnlineConsent, type FixedGhostStat, type GhostInboxItem,
 } from '../utils/ghostOnline';
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
@@ -411,14 +412,46 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // §2.17(GHOST-DUO-RECORDS): 同行撃破台帳(二枠のうちの同行枠)。ソロ台帳と同じく入った時に1回だけ読む。
   const [duoAlbum, setDuoAlbum] = useState<BossClearCard[]>([]);
   const [ghostInbox, setGhostInbox] = useState<Record<string, GhostInboxItem>>({});
+  const [fixedGhostStats, setFixedGhostStats] = useState<Record<string, FixedGhostStat>>({});
+  const [ghostSyncState, setGhostSyncState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [ghostSyncUpdatedAt, setGhostSyncUpdatedAt] = useState(0);
+  const [ghostNewSummary, setGhostNewSummary] = useState({ uses: 0, likes: 0 });
+  const [ghostInboxCursor, setGhostInboxCursor] = useState(0);
   const [openAlly, setOpenAlly] = useState<GhostAllySnapshot | null>(null);
   const goGhost = () => {
     playSfx('ui-select');
     setGhostAlbum(buildAlbumCards(loadPlayerProfile()));
     setDuoAlbum(buildDuoAlbumCards(loadDuoAlbum()));
     setGhostInbox(loadGhostInbox());
+    setFixedGhostStats(loadFixedGhostStats());
+    setGhostSyncState('loading');
+    setGhostNewSummary({ uses: 0, likes: 0 });
+    setGhostInboxCursor(0);
     setScreen({ name: 'ghost' });
+    void refreshGhostInbox().then(result => {
+      if (!result) {
+        setGhostSyncState('error');
+        return;
+      }
+      setGhostInbox(result.inbox);
+      setFixedGhostStats(result.fixedStats);
+      setGhostSyncUpdatedAt(result.updatedAt);
+      setGhostNewSummary({ uses: result.newUses, likes: result.newLikes });
+      setGhostInboxCursor(result.cursor);
+      setGhostSyncState('ready');
+    });
   };
+
+  // 新着は守護霊部屋へ反映された後にだけ既読にする。通信失敗時は次回入室で再取得できる。
+  useEffect(() => {
+    if (screen.name !== 'ghost' || ghostInboxCursor <= 0) return;
+    const timer = window.setTimeout(() => {
+      void acknowledgeGhostInbox(ghostInboxCursor).then(ok => {
+        if (ok) setGhostInboxCursor(0);
+      });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [screen.name, ghostInboxCursor]);
 
   // タイトル曲の自動再生制限対策(初回タップで確実に再生開始)。
   useEffect(() => {
@@ -1161,12 +1194,58 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // **アップロードボタンは置かない**(オンライン基盤と同時=死にボタン回避の裁定)。
   // 資料室は不変(操作記録専用)=ここへは何も移していない。文言/並びは叩き台。
   // ====================================================================
+  const publishedGhostCount = ghostAlbum.reduce((sum, card) =>
+    sum + (ghostInbox[ghostNetworkSlotKey(card.slotKey)]?.published ? 1 : 0), 0);
+  const ghostInboxTotals = ghostAlbum.reduce((totals, card) => {
+    const inbox = ghostInbox[ghostNetworkSlotKey(card.slotKey)];
+    return {
+      used: totals.used + (inbox?.used ?? 0),
+      likes: totals.likes + (inbox?.likes ?? 0),
+    };
+  }, { used: 0, likes: 0 });
+  const ghostSyncTimeLabel = ghostSyncUpdatedAt > 0
+    ? new Date(ghostSyncUpdatedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+    : '未取得';
+
   const renderGhost = () => (
     <>
       <Header title="守護霊" subtitle="名前・討伐記録" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
       <div className="menu-stagger p-3 space-y-3">
         <PlayerNameSettings />
         <GhostCommentSettings />
+        <Section label="オンライン共有">
+          <div className="flex items-center justify-between gap-2 text-[12px]">
+            <span className="text-white/65">共有状態</span>
+            <span className={`font-semibold ${publishedGhostCount > 0 ? 'text-emerald-200' : 'text-white/55'}`}>
+              {!hasGhostOnlineConsent()
+                ? '未設定'
+                : ghostSyncState === 'loading'
+                  ? '確認中…'
+                  : publishedGhostCount > 0
+                    ? `公開中 ${publishedGhostCount}体`
+                    : '未公開'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 bg-sky-400/[0.06] px-2.5 py-2 text-center tabular-nums">
+            <div>
+              <div className="text-[9px] text-white/40">他プレイヤーに同行</div>
+              <div className="text-[14px] font-semibold text-sky-100">{ghostInboxTotals.used.toLocaleString()}回</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-white/40">いいね</div>
+              <div className="text-[14px] font-semibold text-pink-100">♥ {ghostInboxTotals.likes.toLocaleString()}</div>
+            </div>
+          </div>
+          {ghostNewSummary.uses > 0 && (
+            <p className="bg-pink-400/10 px-2.5 py-1.5 text-[11px] font-semibold text-pink-100">
+              新着：{ghostNewSummary.uses.toLocaleString()}回同行・{ghostNewSummary.likes.toLocaleString()}いいね
+            </p>
+          )}
+          <div className="flex items-center justify-between text-[10px] text-white/40">
+            <span>{ghostSyncState === 'error' ? '通信できませんでした（保存済みの値を表示）' : 'ボスごとの内訳は下のカードに表示'}</span>
+            <span>最終更新 {ghostSyncTimeLabel}</span>
+          </div>
+        </Section>
         {/* §2.17: 討伐記録の二枠化。ソロ枠=従来のG5アルバム(計測つき)/同行枠=同行撃破台帳(下)。 */}
         <Section label="討伐記録（ソロ）">
           {ghostAlbum.length === 0 ? (
@@ -1177,15 +1256,26 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <div className="flex flex-col gap-2">
               {ghostAlbum.map(card => {
                 const inbox = ghostInbox[ghostNetworkSlotKey(card.slotKey)];
+                const recentLike = inbox?.recent.find(event => event.liked);
                 return (
                   <div key={card.slotKey}>
-                    <BossClearCardRow card={card} onAllyTap={setOpenAlly} showFixedAiLeaders />
-                    {inbox && (
-                      <p className="mt-1 px-1 text-[10px] text-sky-200/70">
-                        他のプレイヤーに {inbox.used.toLocaleString()}回同行・いいね {inbox.likes.toLocaleString()}
-                        {inbox.recent[0] ? ` ／ 最近: ${inbox.recent[0].name}` : ''}
-                      </p>
-                    )}
+                    <BossClearCardRow
+                      card={card}
+                      onAllyTap={setOpenAlly}
+                      showFixedAiLeaders
+                      fixedGhostStats={fixedGhostStats}
+                    />
+                    <div className="mt-1 flex items-center justify-between gap-2 bg-sky-400/[0.06] px-2 py-1.5 text-[10px]">
+                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 font-semibold ${
+                        inbox?.published ? 'bg-emerald-400/15 text-emerald-100' : 'bg-white/5 text-white/40'
+                      }`}>
+                        {inbox?.published ? '公開中' : '未公開'}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-right tabular-nums text-sky-100/75">
+                        同行 {(inbox?.used ?? 0).toLocaleString()}回 / ♥ {(inbox?.likes ?? 0).toLocaleString()}
+                        {recentLike ? ` ／ 最近のいいね: ${recentLike.name}` : ''}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
@@ -1202,7 +1292,14 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           ) : (
             <div className="flex flex-col gap-2">
               {duoAlbum.map(card => (
-                <BossClearCardRow key={card.slotKey} card={card} duo onAllyTap={setOpenAlly} showFixedAiLeaders />
+                <BossClearCardRow
+                  key={card.slotKey}
+                  card={card}
+                  duo
+                  onAllyTap={setOpenAlly}
+                  showFixedAiLeaders
+                  fixedGhostStats={fixedGhostStats}
+                />
               ))}
             </div>
           )}

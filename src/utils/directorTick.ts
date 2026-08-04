@@ -48,7 +48,10 @@ import {
 } from './ghostComment';
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
-import { isGhostOnlinePickPending, resolveRemoteGhost, selectedGhostMode } from './ghostOnline';
+import {
+  fixedGhostFeedbackTarget, isGhostOnlinePickPending, remoteGhostFeedbackTarget,
+  resolveRemoteGhost, selectedGhostMode,
+} from './ghostOnline';
 import { pickFixedGuardianForGhostMode, shouldPickFixedGuardian } from '../data/fixedGuardians';
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
@@ -832,7 +835,11 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     summons: [...s.summons, ghost],
     ghostSummonedThisRun: true,
     ghostSourceThisRun: ghostSource,
-    ghostRecordIdThisRun: remote?.recordId ?? null,
+    ghostFeedbackTargetThisRun: remote
+      ? remoteGhostFeedbackTarget(remote.recordId)
+      : fixed
+        ? fixedGhostFeedbackTarget(fixed.id, localSlot)
+        : null,
     ghostAlly: ghostAllySnapshot(ghost),
   }));
   useGameStore.getState().enqueueNpcDialogue([{

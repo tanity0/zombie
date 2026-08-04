@@ -221,7 +221,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const ghostAlly = useGameStore(s => s.ghostAlly);
   const ghostSummonedThisRun = useGameStore(s => s.ghostSummonedThisRun);
   const ghostSourceThisRun = useGameStore(s => s.ghostSourceThisRun);
-  const ghostRecordIdThisRun = useGameStore(s => s.ghostRecordIdThisRun);
+  const ghostFeedbackTargetThisRun = useGameStore(s => s.ghostFeedbackTargetThisRun);
   const [ghostLiked, setGhostLiked] = useState(false);
   const ghostFeedbackSentRef = useRef(false);
   // リザルトを閉じる3操作(OK/もう一度プレイ/メニューに戻る)の合流点=commit/破棄の唯一の分岐点。
@@ -235,9 +235,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     if (!traitOptOut && !ghostSummonedThisRun && adopted && adopted.length > 0) {
       uploadGhostSlots(loadPlayerProfile(), adopted);
     }
-    if (!ghostFeedbackSentRef.current && ghostRecordIdThisRun) {
+    if (!ghostFeedbackSentRef.current && ghostFeedbackTargetThisRun) {
       ghostFeedbackSentRef.current = true;
-      void sendGhostFeedback(ghostRecordIdThisRun, ghostLiked);
+      void sendGhostFeedback(ghostFeedbackTargetThisRun, ghostLiked);
     }
     endGhostOnlineRun();
     navigate();
@@ -517,11 +517,14 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   ) : null;
 
   // §2.15/§2.16 B: 同行守護霊のフルカード(持ち主名+ビルド+ステータス)。年表とは独立で、
-  // 守護霊が召喚されたランなら撃破の有無に関わらず出す。オンライン霊だけ1ラン1回のいいねを付ける。
+  // 守護霊が召喚されたランなら撃破の有無に関わらず出す。固定AI/オンライン霊に1ラン1回のいいねを付ける。
   const ghostAllySection = ghostAlly ? (
     <div className="mb-3">
-      <GhostAllyCard ally={ghostAlly} />
-      {ghostRecordIdThisRun && (
+      <GhostAllyCard
+        ally={ghostAlly}
+        sourceLabel={ghostFeedbackTargetThisRun?.kind === 'fixed' ? '先人AI' : ghostFeedbackTargetThisRun?.kind === 'remote' ? 'オンライン' : undefined}
+      />
+      {ghostFeedbackTargetThisRun && (
         <button
           type="button"
           disabled={ghostLiked}

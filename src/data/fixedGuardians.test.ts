@@ -15,6 +15,7 @@ import { BULLET_MOVE_KEYS, MOVE_REACTION_KEYS } from '../utils/moveReaction';
 import { createWeapon } from '../utils/weaponUtils';
 import { aggregateEquipBonus, equipmentById, equipMaxHealthOf } from './equipment';
 import { PLAYER_BASE_HP, PLAYER_BASE_SPEED } from '../store/gameStore';
+import { FIXED_GUARDIAN_IDS } from '../../shared/fixedGuardianIds.mjs';
 
 describe('固定の先人守護霊20体', () => {
   it('20体のIDと日本語名が重複せず、名前は浄化しても変わらない', () => {
@@ -190,5 +191,11 @@ describe('固定の先人守護霊20体', () => {
     // 討伐者は固定上位4 + 実プレイヤー側の上位候補4なら同じく50%。
     expect(shouldPickFixedGuardian('top', 4, () => 0.499)).toBe(true);
     expect(shouldPickFixedGuardian('top', 4, () => 0.5)).toBe(false);
+  });
+});
+
+describe('fixed guardian feedback contract', () => {
+  it('keeps the Worker allow-list aligned with the fixed guardian data', () => {
+    expect(new Set(FIXED_GUARDIAN_IDS)).toEqual(new Set(FIXED_GUARDIANS.map(guardian => guardian.id)));
   });
 });
