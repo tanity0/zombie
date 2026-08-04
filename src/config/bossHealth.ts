@@ -11,14 +11,15 @@ export const STAGE_BOSS_HEALTH_BY_STAGE: Readonly<Record<string, number>> = {
   'stage-6': 6000,
 };
 
-// ゲート2は実際に登場する順で8000から1000ずつ上げる。
+// ゲート2は裏ボスへ向かう途中で必ず戦う中ボス。対応ステージの城ボスより強くしつつ、
+// stage-1のミゲル(5000)はstage-5城ボス(5500)より下に置く。
 export const GATE_BOSS_HEALTH = {
-  miguel: 8000,
-  jibril: 9000,
-  rafi: 10000,
-  uri: 11000,
-  suriel: 12000,
-  acrasiel: 13000,
+  miguel: 5000,
+  jibril: 6000,
+  rafi: 7000,
+  uri: 8000,
+  suriel: 9000,
+  acrasiel: 10000,
 } as const satisfies Partial<Record<EnemyType, number>>;
 
 // 裏ボスはstage-1からstage-5まで2000ずつ上げる。

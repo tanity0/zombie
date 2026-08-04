@@ -16,8 +16,14 @@ describe('boss health progression', () => {
 
   it('raises gate bosses in encounter order', () => {
     const types = ['miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel'] as const;
-    expect(types.map(type => GATE_BOSS_HEALTH[type])).toEqual([8000, 9000, 10000, 11000, 12000, 13000]);
-    expect(types.map(type => spawnEnemyAt(type, 0, 0, 0).maxHealth)).toEqual([8000, 9000, 10000, 11000, 12000, 13000]);
+    expect(types.map(type => GATE_BOSS_HEALTH[type])).toEqual([5000, 6000, 7000, 8000, 9000, 10000]);
+    expect(types.map(type => spawnEnemyAt(type, 0, 0, 0).maxHealth)).toEqual([5000, 6000, 7000, 8000, 9000, 10000]);
+    expect(GATE_BOSS_HEALTH.miguel).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-1']);
+    expect(GATE_BOSS_HEALTH.miguel).toBeLessThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-5']);
+    expect(GATE_BOSS_HEALTH.jibril).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-3']);
+    expect(GATE_BOSS_HEALTH.rafi).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-4']);
+    expect(GATE_BOSS_HEALTH.uri).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-5']);
+    expect(GATE_BOSS_HEALTH.suriel).toBeGreaterThan(STAGE_BOSS_HEALTH_BY_STAGE['stage-6']);
   });
 
   it('raises hidden bosses from stage 1 through stage 5', () => {
