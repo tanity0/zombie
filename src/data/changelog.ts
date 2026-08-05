@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2882',
+    items: [
+      '叫喚型(周りの敵を強化してくる変異体)の見た目を新しい絵に変えました。',
+    ],
+  },
+  {
     version: '0.25.2881',
     items: [
       '緑の卵をばらまく変異体(抱卵型)の見た目を新しい絵に変えました。全ステージで同じ絵になります。',

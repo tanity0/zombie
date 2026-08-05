@@ -662,7 +662,8 @@ export const ensureTextures = (): Promise<void> => {
     regAspect('stage4:lich', 'stage4-enemies/lich');
     regAspect('stage5:lich', 'stage5-enemies/lich');
     regAspect('default:hunter', 'hunter'); // ハンター変異体(全ステージ共通の1枚絵)
-    regAspect('default:screamer', 'screamer'); // 変異体(叫喚型・全ステージ共通の1枚絵)
+    // ★screamer のアスペクトは ENEMY_VARIANT_SETS の一括登録(上)が入れる。ここで旧 `screamer`
+    // (紫背景・1254角=アスペクト1.0)を再登録すると新素材(縦長)の頭スナップがズレるので置かない。
     regAspect('default:lab-zombie-1', 'lab-zombie/lab-zombie-lv1-male');
     regAspect('default:lab-zombie-2', 'lab-zombie/lab-zombie-lv2-male');
     regAspect('default:lab-zombie-3', 'lab-zombie/lab-zombie-lv3');

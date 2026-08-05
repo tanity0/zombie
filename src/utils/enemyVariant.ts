@@ -29,6 +29,9 @@ export const ENEMY_VARIANT_SETS: Readonly<Record<string, readonly string[]>> = {
   zombie: ['zombie-common'],               // 1種のみ(v0.25.2877)。後で2種にするならここへ足す
   plant: ['plant-common'],                 // 1種のみ(v0.25.2880)
   ghost: ['ghost-common'],                 // 1種のみ(v0.25.2881)。内部名 ghost = 変異体(抱卵型)
+  // ★screamer(変異体・叫喚型)は旧素材 `screamer.png` が**紫背景の色キー抜き**(`loadKeyed`)だった。
+  // 新素材は最初から透過済みなので、色キーを通さない普通のロード経路に載せ替える意味も兼ねて表に入れる。
+  screamer: ['screamer-common'],           // 1種のみ(v0.25.2882)
 };
 
 /**

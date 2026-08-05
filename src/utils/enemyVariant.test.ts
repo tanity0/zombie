@@ -37,6 +37,7 @@ describe('variantTextureName', () => {
   it('★1種しか無い敵(zombie/plant/ghost)も同じ表で扱える。どのIDでも同じ1枚', () => {
     for (const [type, only] of [
       ['zombie', 'zombie-common'], ['plant', 'plant-common'], ['ghost', 'ghost-common'],
+      ['screamer', 'screamer-common'],
     ]) {
       const names = new Set(Array.from({ length: 200 }, (_, i) => variantTextureName(type, 'e' + i)));
       expect([...names], type).toEqual([only]);
