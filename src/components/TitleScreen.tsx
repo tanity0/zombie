@@ -8,7 +8,6 @@ import { loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data
 import { bossIconSrc } from '../utils/bossIcon';
 import { getLoadProgress, subscribeLoadProgress } from '../utils/loadProgress';
 import { normalizeNamedNamesInText } from '../utils/namedEnemy';
-import BossTestMenu from './BossTestMenu'; // ボス戦テストメニュー(社長依頼2026-07-31・開発チャネル用)
 import { parseBossTestMode, BOSS_TEST_ENTRIES } from '../utils/bossTest';
 import { enemyDeathLabel } from '../store/gameStore';
 
@@ -227,13 +226,14 @@ const ChronicleTimeline: React.FC = () => {
   );
 };
 
-// ボス戦テストメニューの入口(社長依頼2026-07-31)。開発チャネル(GitHub Pages)用。
-// アプリ配布(最終形)ではここを false にして入口ごと消す。
-const SHOW_BOSS_TEST = true;
+// ★ボス戦テストの入口はここから撤去した(社長指示v0.25.2862「ボスメーカーは完全に切り分けたので、
+// もうTOPにメニュー表示しないでください」「ボスメーカー側にメニューは移植してください」)。
+// 開発用の出撃メニューは **`bossmaker.html`(ボスメーカーのページ)** にある。
+// 残してあるのは下の「現在モード」表示だけ——**フラグが掛かっている時しか出ない**ようにしてある
+// (パラメータ残留事故 v0.25.2576 をその場で見抜くための安全表示なので、機能ごと消さない)。
 
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForAssets, onDone }) => {
   const [phase, setPhase] = useState<'notice' | 'title' | 'blackout' | 'loading'>('notice');
-  const [bossTestOpen, setBossTestOpen] = useState(false); // ボス戦テストメニュー(タイトル時のみ)
   const doneRef = useRef(false);
   // ローディング%表示(社長指示v0.25.1776)。購読は loading フェーズ中だけ(他フェーズを
   // バックグラウンド先読みの進捗で再描画しない)。更新はファイル完了ごと=毎フレームではない。
@@ -263,7 +263,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
 
   // STARTタップ → 先に本物ローディング(完了待ち) → 完了したら暗転
   const tapStart = () => {
-    if (phase !== 'title' || bossTestOpen) return; // テストメニュー表示中は全画面タップを無効化
+    if (phase !== 'title') return;
     playSfx('title-start');
     setPhase('loading');
     const startedAt = performance.now();
@@ -307,26 +307,18 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
         </span>
       )}
 
-      {/* ボス戦テストの入口(開発チャネル用・左下に控えめ)+現在モード表示(社長指示: 残留事故を
-          その場で見抜く)。全画面タップ(tapStart)に食われないようstopPropagation。 */}
-      {SHOW_BOSS_TEST && phase === 'title' && !bossTestOpen && (
-        <div className="absolute bottom-3 left-3 flex items-center gap-2">
-          <button
-            className="px-2 py-1 text-[10px] tracking-wider text-purple-200/50"
-            style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}
-            onClick={ev => { ev.stopPropagation(); playSfx('ui-select'); setBossTestOpen(true); }}
-          >
-            ボス戦テスト
-          </button>
+      {/* 現在モード表示(社長指示: パラメータ残留事故をその場で見抜く)。**掛かっている時だけ**出す
+          ——通常プレイでは何も出ない。開発用の出撃メニューは bossmaker.html へ移した(v0.25.2862)。 */}
+      {phase === 'title' && LOADED_MODE.active && (
+        <div className="absolute bottom-3 left-3">
           <span
-            className={`px-2 py-1 text-[10px] tracking-wider ${LOADED_MODE.active ? 'text-amber-300/90' : 'text-white/35'}`}
-            style={LOADED_MODE.active ? { background: 'rgba(120,53,15,0.35)', borderLeft: '2px solid rgba(251,191,36,0.7)' } : undefined}
+            className="px-2 py-1 text-[10px] tracking-wider text-amber-300/90"
+            style={{ background: 'rgba(120,53,15,0.35)', borderLeft: '2px solid rgba(251,191,36,0.7)' }}
           >
             {loadedModeLabel()}
           </span>
         </div>
       )}
-      {bossTestOpen && phase === 'title' && <BossTestMenu onClose={() => setBossTestOpen(false)} />}
 
       {/* 歴史年表(縦の時系列・各個人の軌跡)。ローディング中だけ全画面表示(社長指示v0.25.1653)。
           z-[35]=暗幕(z-30)より前面で白が沈まない / スピナー(z-40)は年表の更に前面に残す。 */}

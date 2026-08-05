@@ -18,14 +18,15 @@ import { preloadClassPortraits, preloadClassWalkSprites } from './data/portraits
 import { loadProgressBegin, loadProgressDone } from './utils/loadProgress';
 import {
   getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared, syncQuestStageClear,
-  getSelectedMission, getStoryFlags, updateStoryFlags, getClearedStages,
+  getSelectedMission, setSelectedMission, setSelectedFreeMode, getStoryFlags, updateStoryFlags, getClearedStages,
+  type SelectedMission,
 } from './data/progress';
 import { unlockRecordsForStage, unlockRecords, backfillStoryArchive, ENDING_RECORD_IDS } from './data/storyArchive';
 import { subsAllCompletedFromMeta, endingFollowup } from './utils/storyProgress';
 import { getEventQuestConfig } from './utils/eventQuest';
 import { getStage } from './data/campaign';
 import { isPixiRenderer } from './config/renderer';
-import { isPracticeRun } from './utils/bossPractice';
+import { isPracticeRun, beginPracticeRun, endPracticeRun, type PracticeSlot } from './utils/bossPractice';
 import PracticeResult from './components/PracticeResult';
 
 const LOADING_MIN_MS = 650;
@@ -253,10 +254,14 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
 
   // 練習リザルトの「ボスを選ぶ」の戻り先(v0.25.2861)。`?screen=<名前>` があればタイトルを飛ばして
   // メニューを開き、その画面から始める。素材ロードは出撃時の `startGame` が待つので先回り不要。
-  const initialMenuScreen = new URLSearchParams(window.location.search).get('screen');
+  const [menuScreen, setMenuScreen] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('screen')
+  );
   useEffect(() => {
-    if (initialMenuScreen) setGameState('menu');
-  }, [initialMenuScreen]);
+    if (menuScreen) setGameState('menu');
+    // 初回のみ(URL指定でメニューを開く用)。以降は練習からの戻りで setMenuScreen する。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // テスト用クイックスタート(§6-追補・M25)。`?smoke`があればタイトル/メニューを全スキップし
   // 直接startGameへ入る。完全にopt-in(無指定時は今まで通り)=描画スモークをヘッドレスで1コマンド到達可能に。
@@ -286,6 +291,36 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
    */
   const restartBareRoom = (): void => {
     void startGame(useGameStore.getState().characterClass, false, true);
+  };
+
+  /**
+   * ★練習出撃(ボスラッシュ)。**通常の出撃と同じ `startGame` を通す**ので、ページ再読込は起きない
+   * (社長指摘v0.25.2862「この導線おかしいでしょ。ゲームからそのままシームレスに戦闘に入らないと」)。
+   * 強制出現フラグは `bossPractice` の実行時状態へ移したので、URLを触る必要が無くなった。
+   *
+   * 選択ステージ/ミッション/フリーは**この場で書き換えて、練習を抜ける時に元へ戻す**
+   * (`revisit` が残っていると stage-6 の練習が洋館再訪ランに化けるため・BOSS_MAKER.md §20-7-a)。
+   */
+  const startPractice = (slot: PracticeSlot, characterClass: string): void => {
+    beginPracticeRun(slot, {
+      stageId: getSelectedStageId(), mission: getSelectedMission(), free: getSelectedFreeMode(),
+    });
+    setSelectedStageId(slot.stageId);
+    setSelectedMission('main');
+    setSelectedFreeMode(false);
+    void startGame(characterClass, false, true);
+  };
+
+  /** 練習を抜けてボス一覧へ戻る。プレイヤーの選択状態を元に戻す。 */
+  const leavePracticeToList = (): void => {
+    const restore = endPracticeRun();
+    if (restore) {
+      setSelectedStageId(restore.stageId);
+      setSelectedMission(restore.mission as SelectedMission);
+      setSelectedFreeMode(restore.free);
+    }
+    setMenuScreen('bossrush');
+    setGameState('menu');
   };
 
   const handleGameOver = () => {
@@ -387,7 +422,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
 
       {!bare && gameState === 'menu' && (
         <MissionSelect
-          initialScreen={initialMenuScreen}
+          initialScreen={menuScreen}
+          onStartPractice={startPractice}
           onStartGame={(characterClass) => startGame(characterClass, false)}
           onStartBenchmark={(characterClass) => startGame(characterClass, true)}
         />
@@ -420,7 +456,11 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
           既存のリザルトは報酬・ハイスコア・記録が並ぶが、練習ではそれらを全て封じてあるので
           **実際には何も増えていない**のに増えたように読めてしまう。 */}
       {!bare && isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
-        <PracticeResult won={gameState === 'victory'} />
+        <PracticeResult
+          won={gameState === 'victory'}
+          onRetry={() => { void startGame(useGameStore.getState().characterClass, false, true); }}
+          onBackToList={leavePracticeToList}
+        />
       )}
 
       {!bare && !isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (

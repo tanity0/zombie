@@ -26,14 +26,14 @@ const storage = makeStorage();
 (globalThis as unknown as { localStorage: Storage }).localStorage = storage;
 
 const { installPracticeGuard, PRACTICE_WRITE_ALLOWLIST } = await import('./practiceGuard');
-const { PRACTICE_RUN, PRACTICE_BOSS } = await import('./bossPractice');
+const { isPracticeRun, practiceBossType } = await import('./bossPractice');
 
 beforeEach(() => { store.clear(); });
 
 describe('練習ランの関所', () => {
-  it('?practice=1 と狙いのボスを読めている', () => {
-    expect(PRACTICE_RUN).toBe(true);
-    expect(PRACTICE_BOSS).toBe('thor');
+  it('?practice=1 と狙いのボスを読めている(直リンク経路)', () => {
+    expect(isPracticeRun()).toBe(true);
+    expect(practiceBossType()).toBe('thor');
   });
 
   it('関所を入れると、進行・記録の書き込みが1つも通らない', () => {

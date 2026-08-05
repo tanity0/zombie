@@ -17,7 +17,7 @@ import { bossHintsFor } from '../data/bossHints';
 import { loadEncounteredBosses } from '../utils/bossEncounter';
 import { GHOST_DOSSIER_CATEGORY_LABEL } from '../utils/ghostDossier';
 import { GHOST_DOSSIER_SLOTS } from '../utils/ghostDossier';
-import { PRACTICE_SLOTS, practiceBossHealth, practiceQuery, type PracticeSlot } from '../utils/bossPractice';
+import { PRACTICE_SLOTS, practiceBossHealth, type PracticeSlot } from '../utils/bossPractice';
 import type { CharacterClass } from '../types/game';
 
 const CATEGORY_OF = new Map(GHOST_DOSSIER_SLOTS.map(s => [s.slotKey, s.category]));
@@ -34,10 +34,11 @@ const Row: React.FC<{ icon: React.ReactNode; label: string; value: string }> = (
 interface Props {
   /** 討伐済みのスロットキー(守護霊メニューの討伐記録から。表示のみ)。 */
   clearedSlotKeys: ReadonlySet<string>;
-  onSortie: (search: string) => void;
+  /** ★出撃。ページ再読込はしない=通常の出撃と同じ経路でそのまま戦闘へ(社長指摘v0.25.2862)。 */
+  onStartPractice: (slot: PracticeSlot, characterClass: string) => void;
 }
 
-export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onSortie }) => {
+export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) => {
   // 遭遇記録は画面を開いた時に1回だけ読む(毎描画で localStorage を叩かない)。
   const encountered = useMemo(() => loadEncounteredBosses(), []);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -118,7 +119,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onSortie }) => {
 
         <button
           type="button"
-          onClick={() => onSortie(practiceQuery(open, cls))}
+          onClick={() => onStartPractice(open, cls)}
           className="w-full border border-emerald-400/50 bg-emerald-500/15 px-3 py-3 text-[14px] font-bold tracking-wide text-emerald-100 active:bg-emerald-500/30"
         >練習する</button>
       </div>

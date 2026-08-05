@@ -8,7 +8,7 @@
 // 出すのは「勝ったか」「誰と」「どれだけ掛かったか」の3つだけ。
 import React, { useState } from 'react';
 import { useGameStore, enemyDeathLabel } from '../store/gameStore';
-import { PRACTICE_BOSS } from '../utils/bossPractice';
+import { practiceBossType } from '../utils/bossPractice';
 import { bossIconSrc } from '../utils/bossIcon';
 import { getSelectedStageId } from '../data/progress';
 
@@ -17,13 +17,20 @@ const mmss = (ms: number): string => {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 };
 
-interface Props { won: boolean }
+interface Props {
+  won: boolean;
+  /** 同じボスと即再戦(★ページ再読込はしない=シームレス・社長指摘v0.25.2862)。 */
+  onRetry: () => void;
+  /** ボス一覧へ戻る(同上)。 */
+  onBackToList: () => void;
+}
 
-export const PracticeResult: React.FC<Props> = ({ won }) => {
+export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) => {
   // 決着時点の値を1回だけ拾う(毎フレーム購読しない=CLAUDE.md の再描画規律)。
   const [elapsed] = useState(() => useGameStore.getState().gameTime);
-  const bossName = PRACTICE_BOSS ? enemyDeathLabel(PRACTICE_BOSS) : 'ボス';
-  const icon = PRACTICE_BOSS ? bossIconSrc(PRACTICE_BOSS, getSelectedStageId()) : null;
+  const boss = practiceBossType();
+  const bossName = boss ? enemyDeathLabel(boss) : 'ボス';
+  const icon = boss ? bossIconSrc(boss, getSelectedStageId()) : null;
 
   return (
     <div className="absolute inset-0 z-[80] flex items-center justify-center bg-[rgba(6,7,13,0.92)] px-6">
@@ -59,12 +66,12 @@ export const PracticeResult: React.FC<Props> = ({ won }) => {
         <div className="mt-4 space-y-2">
           <button
             type="button"
-            onClick={() => { window.location.reload(); }}
+            onClick={onRetry}
             className="w-full border border-emerald-400/45 bg-emerald-500/15 py-2.5 text-[13px] font-bold text-emerald-100 active:bg-emerald-500/30"
           >もう一度</button>
           <button
             type="button"
-            onClick={() => { window.location.search = '?screen=bossrush'; }}
+            onClick={onBackToList}
             className="w-full border border-white/12 bg-white/[0.04] py-2.5 text-[13px] font-semibold text-white/75 active:bg-white/10"
           >ボスを選ぶ</button>
         </div>

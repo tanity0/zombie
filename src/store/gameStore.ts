@@ -135,7 +135,7 @@ import {
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { setFlowersDisabled } from '../world/forestDecor';
 import { bossTestGhostSkill, isBossMakerRun } from '../utils/bossTest';
-import { isPracticeRun, PRACTICE_BOSS } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c
+import { isPracticeRun, practiceBossType } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
@@ -2382,7 +2382,7 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   // ゲート2/裏ボスは倒してもクリアにならない(帰還サークルは城ボス撃破が条件)ため、放っておくと
   // 「倒したのに終われない」=練習で一番使う導線が無い状態になる。ここで勝ちにしてリザルトへ送る。
   // 進行の書き込みは practiceGuard(localStorage封じ)と App.handleVictory 側で止めてある。
-  if (isPracticeRun() && PRACTICE_BOSS && enemy.type === PRACTICE_BOSS) {
+  if (isPracticeRun() && enemy.type === practiceBossType()) {
     useGameStore.setState({ gameWon: true, returnCircle: null });
   }
   // 歴史年表(chronicle): 各種ボス/ハンターの初回討伐を即載せ(社長決定v0.25.1628)。近接/銃 両キル経路が
@@ -13319,7 +13319,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // v0.25.2589(社長指示「ボスモードではNPC出撃しないで」): ボス戦テスト出撃(強制出現フラグ付き)は
       // 護衛NPCを出さない。ボスと守護霊の挙動だけを見る場のため、NPCの射撃・セリフ・拠点占拠が混ざると
       // 観測が汚れる(storyBossステージが護衛を出さないのと同じ理由)。通常出撃には影響しない。
-      const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss || BOSS_TEST_RUN) ? []
+      const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss || BOSS_TEST_RUN || isPracticeRun()) ? []
         : farBackdrop === 'tutorial' ? makeTutorialCompanions(spawnTL.x, spawnTL.y)
         : makeEscorts(spawnTL.x, spawnTL.y, corridorMode);
       const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;

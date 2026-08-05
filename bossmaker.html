@@ -2,7 +2,7 @@
 <!--
   ボスメーカー(開発用ツール)のエントリ。BOSS_MAKER.md §19。
 
-  ★このファイルは `index.html` のコピーである(<title> と <script src> と下のインライン script だけが違う)。
+  ★このファイルは `index.html` のコピーである(<title> と <script src> だけが違う)。
     index.html は safe-area 変数・touch-action・スクロールバー抑止・--game-font・#root の 100% を
     **直書きの <style> で持っている**。これを共有CSSへ移すと本編の初期表示のタイミングが変わるため、
     あえてコピーにしてある = **二重管理**。index.html の <style> を直したら、ここにも同じ手を入れること。
@@ -22,35 +22,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="the ONE" />
     <title>ボスメーカー — the ONE</title>
-    <!-- ★起動クエリの注入(BOSS_MAKER.md §19-5-a)。**インライン classic script でなければならない。**
-         部屋の判定 `const BOSS_MAKER = evParam('bossmaker')==='1'`(useGameLoop.ts)は
-         **モジュールスコープ定数**なので、`src/tools/bossmaker/main.tsx` の中で history.replaceState
-         しても手遅れになる(ESMは静的importを全部評価してからモジュール本体が走る)。
-         `<script type="module">` は defer 相当 = このclassic scriptは必ずそれより先に走る。
-         症状(やってしまった場合): 木や松明は消えるのに雑魚が湧き続け、相手のボスが1体も出ない。
-         ※既に付いているクエリは**残してマージ**する(ゲームのメニューから ?class=… で飛べるように)。
-         ※この組は `src/utils/bossTest.ts` の `bossMakerQuery()` と同一。
-            ズレ検知は `src/tools/bossmaker/bossmakerEntry.test.ts` が機械的に見張っている。 -->
-    <script>
-      (function () {
-        var need = {
-          smoke: '1',
-          stage: 'stage-1',
-          nospawn: '1',
-          bossmaker: '1',
-          retry: '1',
-          class: 'warrior'
-        };
-        var p = new URLSearchParams(window.location.search);
-        var changed = false;
-        for (var k in need) {
-          if (!p.has(k)) { p.set(k, need[k]); changed = true; }
-        }
-        if (changed) {
-          window.history.replaceState(null, '', window.location.pathname + '?' + p.toString());
-        }
-      })();
-    </script>
     <style>
       :root {
         --safe-top: env(safe-area-inset-top, 0px);

@@ -1,49 +1,36 @@
-// 道具ページ(`bossmaker.html`)の起動クエリが、ゲーム側の `bossMakerQuery()` とズレていないか見張る。
-// BOSS_MAKER.md §19-5-a。
+// ボスメーカーのページ(`bossmaker.html`)の入口テスト。BOSS_MAKER.md §19 / §19-12。
 //
-// なぜテストが要るか: 注入は**インライン classic script**でやらなければならず(モジュールスコープ定数
-// `const BOSS_MAKER = evParam('bossmaker')==='1'` に間に合わせるため)、classic script からは
-// `bossMakerQuery` を import できない。よって**同じ組が2箇所に書かれる**。片方だけ直された時に
-// 静かに壊れる(症状: 木は消えるのに雑魚が湧き続け、相手のボスが1体も出ない)ので機械で見張る。
+// ★v0.25.2862: 起動クエリを注入していたインライン classic script は**廃止した**。
+// このページが**開発用の出撃メニューを持つ**ようになり(社長指示「ボスメーカー側にメニューは
+// 移植してください」)、出撃はメニューが `window.location.search` を差し替えて再読込する形になった。
+// = 読み込まれた時点で必ずURLにフラグが載っているので、注入する必要が無い。
+// (注入方式は「モジュールロード時定数に間に合わない」という地雷を抱えていたので、これで消滅した。)
 import { describe, it, expect } from 'vitest';
-// `?raw` で中身を文字列として取る(node:fs は tsconfig.app.json の型に無い=ブラウザ側の型定義のため)。
 import html from '../../../bossmaker.html?raw';
 import toolMain from './main.tsx?raw';
-import { bossMakerQuery } from '../../utils/bossTest';
 
-/** `bossmaker.html` のインライン script が持つ `need = {...}` を読み出す。 */
-const needFromHtml = (): Record<string, string> => {
-  const m = html.match(/var need = \{([\s\S]*?)\};/);
-  if (!m) throw new Error('bossmaker.html: インライン script の `var need = {...}` が見つからない');
-  const out: Record<string, string> = {};
-  for (const line of m[1].split(',')) {
-    const kv = line.match(/([A-Za-z]+)\s*:\s*'([^']*)'/);
-    if (kv) out[kv[1]] = kv[2];
-  }
-  return out;
-};
-
-describe('bossmaker.html の起動クエリ', () => {
-  it('bossMakerQuery() と同じキー・同じ値を注入する', () => {
-    const expected = Object.fromEntries(
-      new URLSearchParams(bossMakerQuery({ characterClass: 'warrior', ghostMode: null, ghostlog: false }))
-    );
-    expect(needFromHtml()).toEqual(expected);
+describe('bossmaker.html', () => {
+  it('ツール専用のエントリを読む(本編の main.tsx ではない)', () => {
+    expect(html).toContain('/src/tools/bossmaker/main.tsx');
+    expect(html).not.toContain('/src/main.tsx');
   });
 
-  it('注入はインライン classic script でやる(type="module" にしない)', () => {
-    // `type="module"` は defer 相当なので、モジュール評価より後になり**間に合わない**。
-    const idx = html.indexOf('var need = {');
-    expect(idx).toBeGreaterThan(0);
-    const openTag = html.lastIndexOf('<script', idx);
-    expect(html.slice(openTag, idx)).not.toContain('type="module"');
+  it('起動クエリを注入するインライン script を持たない(廃止済み)', () => {
+    expect(html).not.toContain('var need = {');
+    expect(html).not.toContain('replaceState');
   });
 
-  it('既に付いているクエリを消さない(?class=… で開けること)', () => {
-    expect(html).toContain('if (!p.has(k))');
-  });
-
-  it('道具側の main.tsx では replaceState しない(§19-5-a・ESMの評価順で手遅れになる)', () => {
+  it('入口側でも replaceState でクエリを作らない(ESMの評価順に間に合わないため)', () => {
     expect(toolMain).not.toContain('replaceState');
+  });
+
+  it('出撃フラグが無ければ出撃メニューを出す', () => {
+    expect(toolMain).toContain('BossTestMenu');
+    expect(toolMain).toContain('FORCE_PARAMS');
+  });
+
+  it('調整部屋のときだけ調整UIを重ねる', () => {
+    expect(toolMain).toContain("params.get('bossmaker') === '1'");
+    expect(toolMain).toContain('BossMakerPanel');
   });
 });

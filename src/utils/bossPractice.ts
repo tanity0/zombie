@@ -26,21 +26,64 @@ const param = (k: string): string | null =>
  * **強制出現パラメータ無しで出撃する**(storyBoss経路で勝手に出るため)ので、相乗りだと
  * **枠によって安全弁が効いたり効かなかったりする**。進行を止める判定は必ずこの1つで行う。
  */
-export const PRACTICE_RUN = param('practice') === '1';
-export const isPracticeRun = (): boolean => PRACTICE_RUN;
+// URL経由の練習(直リンク/テスト用)。**通常の導線はURLを使わない**(下記 beginPracticeRun)。
+export const PRACTICE_RUN_URL = param('practice') === '1';
+
+// ---------------------------------------------------------------------------------------------
+// ★実行中の練習ラン(v0.25.2862・社長指摘「この導線おかしいでしょ。ゲームからそのまま
+//   シームレスに戦闘に入らないと」)
+//
+// 旧実装は出撃を `window.location.search` の差し替え=**ページ再読込**で行っていた。
+// 強制出現フラグ(`?castlenow` 等)が useGameLoop の**モジュールロード時定数**だったため。
+// 結果、メニューから戦闘へ入るのに「全画面リロード → 起動ローディング」を挟んでいた。
+// ⇒ **練習ランの指定を実行時の状態に持ち替える**。通常の出撃(`startGame`)と同じ経路で入るので
+//   リロードは起きない。URL版(`?practice=1`)は直リンク用に残す。
+// ※ボスメーカー(別ページ)は引き続きURL方式(あちらは入口ごと分かれているので再読込で構わない)。
+let activeSlot: PracticeSlot | null = null;
+
+/** 練習ランに入る。`restore` は終了時に呼び出し側へ返す「元に戻すための値」。 */
+export const beginPracticeRun = (slot: PracticeSlot, restore: PracticeRestore): void => {
+  activeSlot = slot;
+  practiceRestore = restore;
+};
+/** 練習ランを抜ける。呼び出し側は返り値で選択状態を元に戻す。 */
+export const endPracticeRun = (): PracticeRestore | null => {
+  const r = practiceRestore;
+  activeSlot = null;
+  practiceRestore = null;
+  return r;
+};
+export interface PracticeRestore { stageId: string; mission: string; free: boolean }
+let practiceRestore: PracticeRestore | null = null;
+
+/** いま練習ラン中か(実行時の指定 or URL直リンク)。 */
+export const isPracticeRun = (): boolean => activeSlot !== null || PRACTICE_RUN_URL;
+/** 練習で戦っている枠(URL版は無し=型だけ分かる)。 */
+export const activePracticeSlot = (): PracticeSlot | null => activeSlot;
 
 /**
  * 練習で狙っているボスの型(`?practiceboss=`)。**「ラッシュは1体」(社長)の実現に使う。**
  * 練習ランは `?nospawn=1` を必ず付けて雑魚も他のボスも止めるが、**城ボス/ストーリーボスを
  * 練習する時だけは nospawn を上書きして出す**必要があるので、その判定にこれを使う。
  */
-export const PRACTICE_BOSS: EnemyType | null = (param('practiceboss') as EnemyType | null) || null;
+const PRACTICE_BOSS_URL: EnemyType | null = (param('practiceboss') as EnemyType | null) || null;
+/** 練習で狙っているボスの型。 */
+export const practiceBossType = (): EnemyType | null => activeSlot?.bossType ?? PRACTICE_BOSS_URL;
 /** 練習の狙いが城ボス(giantbat)か。城ボス/ストーリーボスの湧きを nospawn より優先させる。 */
-export const practiceWantsCastleBoss = (): boolean => PRACTICE_RUN && PRACTICE_BOSS === 'giantbat';
+export const practiceWantsCastleBoss = (): boolean => isPracticeRun() && practiceBossType() === 'giantbat';
+/**
+ * 練習が指定の強制出現パラメータを要求しているか。
+ * useGameLoop の各湧きゲートは `既存の?フラグ || practiceForces('...')` で読む
+ * (=**既存のURL経路は一切変えない**。練習はそこへ相乗りするだけ)。
+ */
+export const practiceForces = (p: Exclude<PracticeParam, null>): boolean => {
+  if (activeSlot) return activeSlot.param === p;
+  return PRACTICE_RUN_URL && param(p) === '1';
+};
 
 /** 練習 or 開発用ボス戦テスト(遭遇を記録してはいけないラン)。 */
 export const isBossTestOrPracticeRun = (): boolean =>
-  PRACTICE_RUN
+  isPracticeRun()
   || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker'].some(k => param(k) === '1');
 
 // ---------------------------------------------------------------------------------------------

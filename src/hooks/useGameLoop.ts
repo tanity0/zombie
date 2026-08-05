@@ -77,7 +77,7 @@ import {
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
-import { practiceWantsCastleBoss } from '../utils/bossPractice';
+import { practiceWantsCastleBoss, practiceForces, isPracticeRun } from '../utils/bossPractice';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
 import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
@@ -1287,7 +1287,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // ★`markTutorialSeen` より**前**で止めること: ここで既読にすると、本編で一度も見ていない
     //   チュートリアルがテスト出撃のせいで「見た」ことになり、二度と出なくなる。
     // 全チュートリアル(phill/scout/stage1-guide/move/M0の各拍)はこの1関数を通るので、ここが唯一の関所。
-    if (BOSS_TEST_RUN) return;
+    if (BOSS_TEST_RUN || isPracticeRun()) return;
     const entry = getTutorial(id);
     if (!entry) return;
     seenTutorials().add(id);
@@ -2093,7 +2093,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         //  湧きゲートはフレーム頭のスナップショットを見る。別名にして取り違えを防ぐ。)
         const runningIn = loopState.corridorRunInActive;
         // 以降の湧きゲートは NOSPAWN ではなく noSpawn を見る(?nospawn=1 と同じ止め方に相乗り)。
-        const noSpawn = NOSPAWN || runningIn;
+        // 練習ラン(ボスラッシュ)も湧きを全部止める=狙った1体だけ(社長「ラッシュは1体」)。
+        const noSpawn = NOSPAWN || runningIn || isPracticeRun();
 
         // PACING_PUZZLE.md §5.18 M17: 被ダメ5経路(src/utils/combatTick.ts)へ渡す演出コールバック+
         // チューニング値。値そのものは以下のローカル定数のまま(二重管理を避けるため引数化しただけ)。
@@ -2412,7 +2413,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (社長指示: 接近不要。城マーカーはボス出現後に表示。?castlenow=1 は即時。)
         // 以前は制圧イベント中(ステージ1メイン)は出さない仕様だったが、社長指示で撤回=制圧中でも
         // 時間が来たら出現するように変更(拠点制圧の完了を待たない)。
-        const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
+        const castleBossReady = FORCE_CASTLE_BOSS || practiceForces('castlenow') || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
         // 洋館通路(corridorMode)は城なし(v0.25.2144・社長指示「城も出現しないで。時間で出るのは死神だけ」)
         // =5分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
         if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady) {
@@ -4274,7 +4275,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 要点だけ: **洋館(ステージ6)の走り込み入場が終わるまで待つ**。走り込み中は入力が奪われており、
         // そこへ拘束サークル+ボスを出すと「強制的に上へ歩かされながら殴られ続ける」状態になっていた。
         if (canForceGateBossNow({
-          forceParamOn: FORCE_GATEBOSS,
+          forceParamOn: FORCE_GATEBOSS || practiceForces('gateboss'),
           alreadySpawned: gatebossForceRef.current,
           danceTest, indoor, labTheme,
           corridorRunInActive: useGameStore.getState().corridorRunInActive,
@@ -4337,11 +4338,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // テスト: ?bossnow=1 のときは巣に関係なく「プレイヤーの近く・画面外(進行方向)」へ即出現。
             const lair = bossLairPos(hiddenBoss);
             const nearLair = lair ? Math.hypot(pcx - lair.x, pcy - lair.y) <= BOSS_SPAWN_NEAR : depth >= BOSS_SPAWN_DEPTH;
-            if (!bs.spawned && (FORCE_HIDDEN_BOSS || nearLair) && !useGameStore.getState().attention && !isGameTimeStopped()
+            if (!bs.spawned && (FORCE_HIDDEN_BOSS || practiceForces('bossnow') || nearLair) && !useGameStore.getState().attention && !isGameTimeStopped()
                 && !useGameStore.getState().activeEvent) { // 囲い系イベント中は裏ボスを出さない(重なると逃走で詰み=終わらない・社長報告)
               const e = spawnEnemyAt(hiddenBoss, 0, 0, newGameTime);
               let cx: number, cy: number;
-              if (FORCE_HIDDEN_BOSS) {
+              if (FORCE_HIDDEN_BOSS || practiceForces('bossnow')) {
                 // 進行方向(なければ最後の向き/上)の画面外すぐ外へ。帰巣先もここにする。
                 let hx = player.vx ?? 0, hy = player.vy ?? 0;
                 if (Math.abs(hx) + Math.abs(hy) < 0.01 && player.lastDirection) { hx = player.lastDirection.x; hy = player.lastDirection.y; }
@@ -4375,7 +4376,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
             const M = BOSS_SCREEN_MARGIN;
             const onScreen = bcx >= cam.x - M && bcx <= cam.x + gb.width + M && bcy >= cam.y - M && bcy <= cam.y + gb.height + M;
-            const inDeep = FORCE_HIDDEN_BOSS || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
+            const inDeep = FORCE_HIDDEN_BOSS || practiceForces('bossnow') || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
             const speed = boss.speed * bossSlowMult(boss, newGameTime); // クリ半減(v0.25.2422)
             // 裏ボスは updateEnemies を素通りするため、移動テンポ(ゲームスピード1.2倍)がここには自動で乗らない。
             // 通常敵と揃えるため、移動の位置更新/慣性は bossMoveDt(= deltaTime × MOVE_SPEED_MULT)を使う(社長指示)。
@@ -5519,7 +5520,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (次に読む人が同じ回り道をしないための記録)。
         if (!danceTest && !useGameStore.getState().gameWon) {
          try {
-          if (FORCE_IDOL && !idolForceRef.current) {
+          if ((FORCE_IDOL || practiceForces('idolnow')) && !idolForceRef.current) {
             idolForceRef.current = true;
             const pcx0 = player.x + player.width / 2, pcy0 = player.y + player.height / 2;
             const spawnAng = Math.random() * Math.PI * 2;

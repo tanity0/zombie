@@ -140,10 +140,13 @@ import {
   getBgmVolume, getSfxVolume, isAudioMuted, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene, playSfx
 } from '../audio/audioManager';
 import BossRush from './BossRush'; // BOSS_MAKER.md §20: ボスラッシュ(練習モード)
+import type { PracticeSlot } from '../utils/bossPractice';
 
 interface MissionSelectProps {
   /** 開いた直後に表示する画面(`?screen=bossrush` 等)。未指定なら拠点。v0.25.2861。 */
   initialScreen?: string | null;
+  /** ボスラッシュの練習出撃。★ページ再読込せず通常の出撃と同じ経路で戦闘へ(v0.25.2862)。 */
+  onStartPractice: (slot: PracticeSlot, characterClass: string) => void;
   onStartGame: (characterClass: string) => void;
   onStartBenchmark: (characterClass: string) => void;
 }
@@ -348,7 +351,7 @@ const CharSelectParticles: React.FC = () => {
   );
 };
 
-const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen }) => {
+const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen, onStartPractice }) => {
   const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
   // 出撃素材の先読み(社長報告v0.25.2230「ステージ開始時に10秒くらい固まる」)。ミッション詳細/キャラ選択に
   // 入った時点で、そのステージのテクスチャをバックグラウンドで取り始める。滞在中(ブリーフィングを読む・
@@ -1250,15 +1253,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <Header title="ボスラッシュ" subtitle="練習 / 記録には残りません" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
       <BossRush
         clearedSlotKeys={new Set(ghostAlbum.map(card => card.slotKey))}
-        onSortie={(search) => {
-          // ★出撃前に「前回の選択」を打ち消す(BOSS_MAKER.md §20-7-a)。`selectedMission='revisit'`
-          // が端末に残っていると、stage-6 の練習が**洋館再訪ラン**に化ける(内容もクリア処理も別物)。
-          // フリー(周回)フラグも同じ。※ここはまだ練習ランではない(=書き込みが通る)ので、
-          // 練習ラン側の関所(practiceGuard)より先にこちらで寄せておく必要がある。
-          setSelectedMission('main');
-          setSelectedFreeMode(false);
-          window.location.search = search;
-        }}
+        onStartPractice={onStartPractice}
       />
     </>
   );

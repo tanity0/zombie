@@ -6,9 +6,9 @@ import React, { useState } from 'react';
 import {
   BOSS_TEST_ENTRIES, bossTestQuery, bossMakerQuery,
   type BossTestEntry, type BossTestGhostMode,
-} from '../utils/bossTest';
-import { enemyDeathLabel } from '../store/gameStore';
-import { getStage } from '../data/campaign';
+} from '../../utils/bossTest';
+import { enemyDeathLabel } from '../../store/gameStore';
+import { getStage } from '../../data/campaign';
 
 const CLASSES = [
   { key: 'warrior', label: 'ウォリアー' },
@@ -35,7 +35,7 @@ const GHOST_MODES: readonly { key: BossTestGhostMode | null; label: string; note
   { key: 'top', label: '討伐者の霊', note: '評点上位20%' },
 ];
 
-interface Props { onClose: () => void }
+interface Props { onClose?: () => void }
 
 const BossTestMenu: React.FC<Props> = ({ onClose }) => {
   const [cls, setCls] = useState<string>('warrior');
@@ -56,7 +56,8 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
           <h2 className="text-[13px] font-bold tracking-[0.18em] text-white" style={{ borderBottom: '1px solid rgba(168,85,247,0.6)' }}>
             ボス戦テスト
           </h2>
-          <button className="px-2 py-1 text-[12px] text-white/60" onClick={onClose}>閉じる</button>
+          {/* ツールページの根として出す時は閉じ先が無い(v0.25.2862)。 */}
+          {onClose && <button className="px-2 py-1 text-[12px] text-white/60" onClick={onClose}>閉じる</button>}
         </div>
         <div className="px-4 pb-2 text-[10px] leading-relaxed text-white/45">
           実ステージへ直行してボスが即出現します(環境・サークル・雑魚は本物)。選ぶと再読込して出撃。
@@ -68,9 +69,9 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
             // 別ページ(開発用ツール)へ飛ぶ。BOSS_MAKER.md §19-5-b。
             // `/zombie/` を直書きしない: pages.yml は `--base=/zombie/v2/` の v2 線も合成デプロイ
             // しているので、直書きすると v2 で 404 になる。
-            onClick={() => {
-              window.location.href = `${import.meta.env.BASE_URL}bossmaker.html${bossMakerQuery({ characterClass: cls, ghostMode: null, ghostlog: false })}`;
-            }}
+            // v0.25.2862: このメニュー自体がボスメーカーのページに載ったので、別ページへ飛ばず
+            // 同じページのクエリを差し替えるだけでよい(強制出現フラグは読込時定数=再読込は必要)。
+            onClick={() => { window.location.search = bossMakerQuery({ characterClass: cls, ghostMode: null, ghostlog: false }); }}
           >
             <div className="text-[12px] font-bold text-emerald-300">ボスメーカー(調整部屋)</div>
             <div className="text-[10px] text-white/50">
