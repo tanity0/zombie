@@ -22,17 +22,17 @@
 // ここが再描画されるのは「数値を触った時」「トグルを押した時」だけ。
 // **シートのドラッグ中は state を更新しない**(DOMのstyleを直接動かし、離した時に1回だけ確定する)。
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useGameStore } from '../store/gameStore';
-import type { Enemy } from '../types/game';
+import { useGameStore } from '../../store/gameStore';
+import type { Enemy } from '../../types/game';
 import {
   getBossTuning, getAtPath, setAtPath, clampField, changedPaths, resetTuning,
   formatTuningText, parseTuningText, saveTuning, applySavedTuning, clearSavedTuning,
   getTextAtPath, setTextAtPath, fieldVisible,
   choiceApplicable, matchedOption, matchedOptionLabel, choiceValues,
   UNIT_SUFFIX, type TuningField, type TuningTextField, type TuningChoiceField, type BossTuningEntry,
-} from '../utils/bossTuning';
-import { hiddenPaths } from '../utils/bossPresets';
-import { registerIdolTuning } from '../utils/idolTuning';
+} from './bossTuning';
+import { hiddenPaths } from './bossPresets';
+import { registerIdolTuning } from './idolTuning';
 import { BossMakerLive } from './BossMakerLive';
 import { BossScriptEditor } from './BossScriptEditor';
 

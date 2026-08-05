@@ -5,7 +5,7 @@ import {
   serializeScripts, parseScripts, replaceScripts, scriptWarnings,
   SCRIPT_MAX, SCRIPT_STEP_MAX,
 } from './bossScriptEdit';
-import type { StringScript } from './bossSkeleton';
+import type { StringScript } from '../../utils/bossSkeleton';
 
 type M = 'aim' | 'fan' | 'orb' | 'punch';
 const MOVES: M[] = ['aim', 'fan', 'orb', 'punch'];

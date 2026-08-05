@@ -1,5 +1,46 @@
 # Development Log
 
+## v0.25.2849 — ボスメーカーを本編から切り分けた(独立ツール化・BOSS_MAKER.md §19)【2026-08-05 14:13 JST】
+
+社長依頼「ボスメーカーを切り分けてゲーム専用ツールとして独立させたい/**まずは切り分けから**」の実装。
+**ゲームの挙動は1つも変えていない**(§19-2 の「ではない」条件どおり、UIも作り直していない)。
+
+**形**: 同一リポジトリの**マルチページビルド**。`index.html`(本編) / `bossmaker.html`(道具)。
+別リポジトリ化はしない——道具の価値は「戦いながら摘まむ」(社長v0.25.2621)であり、エンジンを
+共有しないと価値が消えるうえ、複製は二重管理で腐るため。`App.tsx` は `BossMakerPanel` の import を
+捨て `playingOverlay?: ReactNode` を1つ受けるだけにした(=本編のバンドルから道具が木ごと落ちる)。
+
+**変更ファイル**: `bossmaker.html`(新) / `src/tools/bossmaker/`(移設10本 + `main.tsx` +
+`bossmakerEntry.test.ts`) / `src/utils/deepClone.ts`(新) / `src/bootstrap.ts`(新) / `src/App.tsx` /
+`src/main.tsx` / `src/utils/idolScript.ts`(+`.test.ts`) / `src/components/BossTestMenu.tsx` /
+`vite.config.ts` / `BOSS_MAKER.md`(§19)。
+
+**検証**: `npm test` **2,755件 全通過・0失敗** / typecheck 0 / lint エラー0(warning 8=既存) /
+`npm run build` 成功。**本編のJSに道具が入っていないことを機械で確認**: `dist/index.html` から
+到達する9チャンクに `bossmaker.tuning.v1`(minifyで消えない文字列)は**無し**、`bossmaker.html` 側の
+`assets/bossmaker-*.js`(44.5kB)にのみ存在。※テスト/ビルドは通常は社長指示制だが、本件は
+**ビルド設定そのものの変更**(受け入れ条件②③はビルドしないと確認できない)かつ20ファイルの構造移動
+のため実行した(CLAUDE.md「Heavy checks — only on large refactors」)。
+
+**品質監査(CLAUDE.md 必須手順)**: 初稿に1回。**致命2・重要8・軽微4の計14件**を指摘され、
+**全件を実コードで裏取りしたうえで §19 に反映**(握り潰しゼロ・全て「設計の穴」でゲームの
+見え方/挙動/体験は不変のため社長裁定は不要と判断)。効いた2件:
+- **致命1**: 起動クエリを道具側 `main.tsx` で `replaceState` する初稿案は、**ESMの評価順で必ず
+  間に合わない**(`useGameLoop.ts:1028` の `const BOSS_MAKER` はモジュールスコープ定数、一方
+  store の `isBossMakerRun()` は実行時関数)。症状は「木は消えるのに雑魚が湧き続け、相手のボスが
+  1体も出ない」半端な部屋。⇒ **`bossmaker.html` のインライン classic script で注入**する形に変更し、
+  `bossmakerEntry.test.ts` で「main.tsx に `replaceState` が無い」「`type="module"` でない」
+  「`bossMakerQuery()` と同じ組」を機械で見張るようにした。
+- **致命2**: `registerEnemyFireProfile('idol', …)` は道具の `idolTuning.ts` 最上位の副作用で、
+  `App` がパネルを eager import していたおかげで**本編のロード時にも走っていた**。道具を落とすと
+  一緒に消える。今は登録値と `enemyUtils` の fallback がたまたま完全一致していて挙動が変わらない
+  だけ=**偶然に依存**していた。⇒ 登録を `utils/idolScript.ts`(ゲーム側)へ移した(循環なしを確認)。
+
+**次**: §20 ボスラッシュ(ゲーム内をシンプルなメニューに)/ §21 [本番化]。
+★未決(§19-9): **[本番化]の意味**は社長裁定待ち。(a)この端末のゲームに即効かせる/(b)リポジトリへ
+書き戻す/(c)平文を渡すだけ。実機(Pages)では(b)が原理的に不可能。(c)は実装済み、(a)は
+`localStorage` が origin 単位で2ページ共有なので**分離した時点で半分できている**。
+
 ## v0.25.2848 — ボスメーカーの切り分け設計(独立ツール化・§19)【2026-08-05 13:58 JST】
 
 社長依頼「ボスメーカーを切り分けてゲーム専用ツールとして独立させたい／ゲーム内はボスラッシュ化／

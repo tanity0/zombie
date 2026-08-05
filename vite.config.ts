@@ -57,6 +57,17 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
     __ASSET_HASHES__: JSON.stringify(assetHashes),
   },
+  // マルチページ(BOSS_MAKER.md §19-5): 本編 `index.html` と 開発用ツール `bossmaker.html` の2つ。
+  // ボスメーカーのUIは `App` に `playingOverlay` を渡す道具側エントリからしか到達できないので、
+  // **本編のバンドルからは木ごと落ちる**(=製品ビルドに開発用の約2,400行が載らない)。
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        bossmaker: fileURLToPath(new URL('./bossmaker.html', import.meta.url)),
+      },
+    },
+  },
   optimizeDeps: {
     exclude: ['lucide-react'],
   },

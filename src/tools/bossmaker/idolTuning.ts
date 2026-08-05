@@ -6,7 +6,6 @@
 // 主たる操作は**キーボードで打つことではなく「摘まむ」**(ドラッグでスクラブ / +− ボタン)。
 // よって **step(刻み幅)がスキーマの主役**になる。刻みが合っていないとスクラブが使い物にならない。
 // 叩き台の刻み: ms=50 / px=10 / 倍率=0.05 / 重み=5 / 個数=1。
-import { registerEnemyFireProfile } from './enemyUtils';
 import {
   registerBossTuning, type TuningField, type TuningTextField, type PlayableAction,
   type BossScriptApi, type BossScriptOp,
@@ -15,16 +14,16 @@ import {
   IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_ALL_MOVES, IDOL_SHOT_SLOTS,
   idolShotName, idolEnabledShots, isIdolShot,
   type IdolMove, type IdolCoreMove, type IdolShotSlot,
-} from './idolScript';
+} from '../../utils/idolScript';
 import {
   addScript, removeScript, setScriptZone, setScriptWeight, toggleScript,
   setStep, insertStep, removeStep, moveStep, stepCutoffIndex,
   serializeScripts, parseScripts, replaceScripts, scriptWarnings, SCRIPT_ZONES,
 } from './bossScriptEdit';
 import { BEHAVIOR_CHOICES, stringLenWarnings } from './bossPresets';
-import type { BossZone } from './bossSkeleton';
-import { requestIdolMovePlay, requestIdolVerbPlay, getIdolPlayback } from './idolTick';
-import type { NeutralVerb } from './bossSkeleton';
+import type { BossZone } from '../../utils/bossSkeleton';
+import { requestIdolMovePlay, requestIdolVerbPlay, getIdolPlayback } from '../../utils/idolTick';
+import type { NeutralVerb } from '../../utils/bossSkeleton';
 
 const MOVE_LABEL: Record<IdolCoreMove, string> = {
   aim: '狙い撃ち(aim)', fan: '連射扇(fan)', roll: '離脱ローリング(roll)',
@@ -355,11 +354,11 @@ export const IDOL_SCRIPT_API: BossScriptApi = {
 };
 
 export const registerIdolTuning = (): void => {
-  // 弾の性能を「11ボス共通の1行」から**このテーブル**へ差し替える。同じ参照を渡すので、
-  // メーカーで数字を変えるとその場で次の弾から反映される。
-  // ここに渡すのは**型の既定**(どの技でもない経路から撃たれた時の値)。実際の aim/fan/orb は
-  // 発射地点(idolTick)で技ごとの値を明示的に渡す(社長指示v0.25.2628「弾速度とか個別にしないと」)。
-  registerEnemyFireProfile('idol', IDOL_TUNING.bullet.aim);
+  // ※弾プロファイルの登録(`registerEnemyFireProfile('idol', …)`)は**ここには無い**。
+  // v0.25.2849 の切り分けで `utils/idolScript.ts` へ移した。理由(BOSS_MAKER.md §19-6-a):
+  // 旧はこのモジュールの最上位副作用として**本編のロード時にも走っていた**ので、道具を本編の
+  // バンドルから落とすと登録ごと消える。今は登録値と fallback がたまたま一致していて挙動は
+  // 変わらないが、**偶然に頼らない**ためにゲーム側へ移した。
   registerBossTuning({
     bossType: 'idol',
     label: 'アイドル',

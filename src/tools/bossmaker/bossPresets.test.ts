@@ -13,7 +13,7 @@ import {
   type TuningChoiceField,
 } from './bossTuning';
 import { registerIdolTuning, IDOL_TUNING_FIELDS } from './idolTuning';
-import { IDOL_TUNING, IDOL_TUNING_DEFAULTS } from './idolScript';
+import { IDOL_TUNING, IDOL_TUNING_DEFAULTS } from '../../utils/idolScript';
 
 /** 「まん中」= 既定であるべき選択(§18-5)。 */
 const MIDDLE: Record<string, string> = {

@@ -5,7 +5,7 @@
 // フォーム側は store を毎フレーム購読しない=数値を摘まんでいる間もカクつかない。
 // 手本: PerfOverlay.tsx / StatsHud.tsx。
 import { useEffect, useRef, useState } from 'react';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore } from '../../store/gameStore';
 
 interface Live { state: string; dist: number; elapsed: number; hp: number; maxHp: number; phase: number }
 

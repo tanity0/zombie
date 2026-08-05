@@ -176,16 +176,9 @@ export const UNIT_SUFFIX: Record<TuningKind, string> = {
   ms: 'ms', px: 'px', num: '', rate: '/s', deg: '°', frac: '', pxs: 'px/s',
 };
 
-/** 深いクローン(数値/文字列/真偽/配列/プレーンオブジェクトのみ。テーブルはこの範囲で作る)。 */
-export const deepCloneTuning = <T>(v: T): T => {
-  if (Array.isArray(v)) return v.map(deepCloneTuning) as unknown as T;
-  if (v !== null && typeof v === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = deepCloneTuning(val);
-    return out as T;
-  }
-  return v;
-};
+// 実体は `src/utils/deepClone.ts`(ゲーム側も使う共有部品・BOSS_MAKER.md §19-4)。
+// 道具側の使用箇所を壊さないよう、ここからも同じ物を再exportしておく。
+export { deepCloneTuning } from '../../utils/deepClone';
 
 export const registerBossTuning = (entry: BossTuningEntry): void => {
   REGISTRY.set(entry.bossType, entry);

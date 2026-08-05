@@ -14,7 +14,7 @@
 //
 // ★React再描画の規律(CLAUDE.md): store を購読しない。親が `bump` で再描画を促す。
 import { useState } from 'react';
-import type { BossScriptApi } from '../utils/bossTuning';
+import type { BossScriptApi } from './bossTuning';
 
 const chip = 'shrink-0 rounded px-2 py-1 text-[11px] leading-none';
 

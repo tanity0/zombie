@@ -10,7 +10,7 @@
 //
 // ★**その場で書き換える**(新しい配列を返さない)。テーブルはゲームが毎フレーム読んでいる実体で、
 // 参照を差し替えると読んでいる側(`idolStrings()` 経由の抽選)が古い配列を見続けるため。
-import type { BossZone, StringScript } from './bossSkeleton';
+import type { BossZone, StringScript } from '../../utils/bossSkeleton';
 
 /** 台本の本数の上限。多すぎると社長が一覧できない=道具として使えない。 */
 export const SCRIPT_MAX = 24;

@@ -18,7 +18,8 @@ import {
   type RestConfig, type PunishConfig, type MoveFairness, type BossZone,
 } from './bossSkeleton';
 import { PLAYER_WALK_PX_PER_SEC } from './bossTelegraph';
-import { deepCloneTuning } from './bossTuning';
+import { deepCloneTuning } from './deepClone';
+import { registerEnemyFireProfile } from './enemyUtils';
 
 // v0.25.2613: 狙撃線(snipe)と追尾弾(orb)を新設。既存4技は消さず条件を与え直す(社長方針)。
 export type IdolCoreMove = 'aim' | 'fan' | 'roll' | 'punch' | 'snipe' | 'orb';
@@ -425,3 +426,16 @@ export const idolMoveEligible = (move: IdolMove, distance: number): boolean => {
   const z = idolZone(distance);
   return idolStrings().some(s => s.zone === z && s.weight > 0 && s.moves.includes(move));
 };
+
+// ---- 弾プロファイルの登録(v0.25.2849・BOSS_MAKER.md §19-6-a) ----------------------------------
+// 弾の性能を「11ボス共通の1行」(`enemyUtils` の fallback)から**このテーブル**へ差し替える。
+// **同じ参照**を渡すので、ボスメーカーで数字を変えるとその場で次の弾から反映される。
+// 渡すのは**型の既定**(どの技でもない経路から撃たれた時の値)。実際の aim/fan/orb は
+// 発射地点(idolTick)で技ごとの値を明示的に渡す(社長指示v0.25.2628「弾速度とか個別にしないと」)。
+//
+// ★ここに置く理由: 旧はボスメーカーの `idolTuning.ts` 最上位で呼んでおり、`App.tsx` が
+// パネルを eager import していたおかげで**本編のロード時にも走っていた**。道具を切り分けて
+// バンドルから落とすと、この副作用も一緒に消える。今は登録値と fallback の数値が偶然一致して
+// いるので挙動は変わらないが、片方を触った瞬間に本編と道具が静かに食い違う。よってゲーム側へ移す。
+// (`enemyUtils` は `idolScript` を import していないので循環しない)
+registerEnemyFireProfile('idol', IDOL_TUNING.bullet.aim);

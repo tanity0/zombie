@@ -7,7 +7,7 @@ import {
   idolEnabledShots, idolStrings, idolMoveTiming, idolShotFireMs, idolShotName, idolFistReach,
   type IdolMove,
 } from './idolScript';
-import { deepCloneTuning } from './bossTuning';
+import { deepCloneTuning } from './deepClone';
 import { knockbackSpeedFor, PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS } from '../store/gameStore';
 import { fairnessViolations, classMix, pickStringScript, stringMaxLen, type BossZone } from './bossSkeleton';
 import { PLAYER_ATTACK_CYCLE_MS } from './bossTelegraph';

@@ -902,26 +902,41 @@ registerBossTuning('idol', IDOL_TUNING, IDOL_TUNING_DEFAULTS, SCHEMA);
 ### 19-3. 何が問題か(なぜ切り分けたいか、コード側の事実)
 ボスメーカーのUIは**ゲーム本体のバンドルに同梱**されている(`App.tsx` が `BossMakerPanel` を
 直接 import)。よって:
-- 製品ビルドに**開発用の道具1,060行が載る**(`BossMakerPanel` 845 + `Live` 59 + `ScriptEditor` 156)。
+- 製品ビルドに**開発用の道具が約2,400行載る**(パネル3本 1,060行 = `BossMakerPanel` 845 + `Live` 59
+  + `ScriptEditor` 156、加えて `bossTuning` 578 + `idolTuning` 387 + `bossScriptEdit` 219 + `bossPresets` 167)。
 - ゲームのメニュー(ボス戦テスト)から入る作りなので、**ゲームを触ると道具も動く**(逆も同じ)。
 - 道具を育てるほど本編のバンドルが太る、という**利害が逆向きの関係**になっている。
 
-### 19-4. 切る場所(調査で判明した実際の依存)
-`grep` で追った結果、**依存はすでにほぼ一方向**で、切り口はきれいだった。
+### 19-4. 切る場所(実コードで裏を取った依存)
 
-| モジュール | いま誰が読むか | 切り分け後 |
-|---|---|---|
-| `utils/bossTuning.ts`(欄の台帳・保存・平文) | **道具のみ**。ゲーム側は `deepCloneTuning`(汎用ディープコピー10行)**1つだけ** | **道具へ移す**。`deepCloneTuning` は `utils/deepClone.ts` へ切り出して共有 |
-| `utils/bossPresets.ts`(束マスター) | 道具のみ | 道具へ移す |
-| `utils/idolTuning.ts`(欄の登録) | 道具のみ | 道具へ移す |
-| `components/BossMakerPanel/Live/ScriptEditor.tsx` | 道具のみ | 道具へ移す |
-| `utils/idolScript.ts`(**数値テーブルの実体**) | **ゲームのボスが読む** | **ゲームに残す**(道具はこれを書き換える) |
-| `utils/bossScript.ts`(台本の実行器) | `useGameLoop` / `pixiScene` | ゲームに残す |
-| `store.bossMaker` / `?bossmaker=1` の部屋 | ゲームのエンジン | **ゲームに残す**(下記) |
+| モジュール | 行数 | いま誰が読むか | 切り分け後 |
+|---|---|---|---|
+| `components/BossMakerPanel.tsx` | 845 | 道具のみ | → `src/tools/bossmaker/BossMakerPanel.tsx` |
+| `components/BossMakerLive.tsx` | 59 | 道具のみ | → `src/tools/bossmaker/BossMakerLive.tsx` |
+| `components/BossScriptEditor.tsx` | 156 | 道具のみ | → `src/tools/bossmaker/BossScriptEditor.tsx` |
+| `utils/bossTuning.ts`(欄の台帳・保存・平文) | 578 | 下記3箇所 | → `src/tools/bossmaker/bossTuning.ts` |
+| `utils/bossPresets.ts`(束マスター) | 167 | 道具のみ | → `src/tools/bossmaker/bossPresets.ts` |
+| `utils/idolTuning.ts`(欄の登録) | 387 | 道具のみ | → `src/tools/bossmaker/idolTuning.ts` |
+| `utils/bossScriptEdit.ts`(台本の編集操作) | 219 | `idolTuning.ts` のみ | → `src/tools/bossmaker/bossScriptEdit.ts` |
+| **`utils/idolScript.ts`(数値テーブルの実体)** | — | **ゲームのボスが読む** | **ゲームに残す**(道具はこれを書き換える) |
+| **`utils/bossScript.ts`(台本の実行器)** | — | `useGameLoop` / `pixiScene` | **ゲームに残す** |
 
-**★ここが設計の肝**: 道具は「戦いながら摘まむ」物(社長v0.25.2621)なので、**エンジンを共有しなければ
-価値の大半が消える**。よって「別リポジトリ/別アプリ」にはしない——それはエンジンを丸ごと複製する
-ことになり、二重管理で必ず腐る。**同じリポジトリの中で、ビルドの入口だけを分ける**。
+移すテスト(道具専用): `bossTuning.test.ts` / `bossPresets.test.ts` / `bossScriptEdit.test.ts` を
+同じ `src/tools/bossmaker/` へ。**vitest の設定追加は不要**(`vitest.config.*` は存在せず default
+include が `**/*.test.*` なので `src/tools/` 配下もそのまま拾う)。`tsconfig.app.json` の
+`include: ["src"]` と eslint の ignore(`dist` のみ)も**変更不要**。
+
+**`bossTuning.ts` の実 import は3箇所**(「ゲーム側は `deepCloneTuning` だけ」を正確に言い直す):
+- `utils/idolScript.ts:21` — `deepCloneTuning`(**ゲーム側**)
+- `utils/idolScript.test.ts:10` — `deepCloneTuning`(**ゲーム側のテスト。ここも直す**)
+- `components/BossScriptEditor.tsx:17` — `type BossScriptApi`(道具側)
+
+⇒ `deepCloneTuning` を **`src/utils/deepClone.ts` へ切り出し**、上の2箇所をそこへ向ける。
+これで `bossTuning.ts` は100%道具側になる。
+
+**★設計の肝**: 道具は「戦いながら摘まむ」物(社長v0.25.2621)なので、**エンジンを共有しなければ
+価値の大半が消える**。よって別リポジトリ/別アプリにはしない——エンジンを丸ごと複製することになり、
+二重管理で必ず腐る。**同じリポジトリの中で、ビルドの入口だけを分ける**。
 
 ### 19-5. 形(マルチページビルド)
 ```
@@ -931,34 +946,129 @@ bossmaker.html  → src/tools/bossmaker/main.tsx  → <App playingOverlay={…} 
 ```
 - `App.tsx` から `BossMakerPanel` の import を**消す**。代わりに `playingOverlay?: ReactNode` を
   1つ受け、`gameState === 'playing'` の時に描くだけにする(**2行の口**)。
-  ⇒ ゲームのバンドルからボスメーカーが**木ごと落ちる**(Rollupが到達不能と判断する)。
-- 道具側の `main.tsx` は、マウント前に起動クエリ(`smoke=1&stage=…&nospawn=1&bossmaker=1&class=…&retry=1`)を
-  `history.replaceState` で入れてから `<App playingOverlay={<BossMakerPanel/>} />` を描く。
-  ⇒ **道具のURLにパラメータを打つ必要は無い**(社長「回りくどい」§2-4を守る)。
-- `vite.config.ts` に `build.rollupOptions.input = { main, bossmaker }` を足す。
-  配信先は `/zombie/bossmaker.html`(GitHub Pages にそのまま乗る)。
+  ⇒ ゲームのバンドルから道具が**木ごと落ちる**(他に import 元は無く、動的 import も barrel も無い
+  ことを確認済み)。※**CSSは落ちない** → §19-6-c。
+- `vite.config.ts` に `build.rollupOptions.input = { main: index.html, bossmaker: bossmaker.html }`。
+
+#### ★19-5-a. 起動クエリの注入は **`bossmaker.html` のインライン classic script でやる**(絶対)
+部屋の判定は**モジュールスコープ定数**である:
+- `hooks/useGameLoop.ts:1028` `const BOSS_MAKER = evParam('bossmaker') === '1';`
+- `hooks/useGameLoop.ts:638` `const NOSPAWN = evParam('nospawn') === '1';`
+
+一方 store 側(`gameStore.ts:13082` の `isBossMakerRun()`)は**実行時関数**。よって
+
+> **`src/tools/bossmaker/main.tsx` の中で `history.replaceState` してはいけない。**
+
+ESM は静的 import が全部評価されてからモジュール本体が走るので、その時点で `BOSS_MAKER` は
+既に `false` で焼き付いている。結果は「**木や松明は消えるのに雑魚が湧き続け、相手のボスが
+1体も出ない**」という半端な部屋(`useGameLoop.ts:5515` の分岐が一生 false)。
+
+**正しい形**: `bossmaker.html` の `<head>` に**インライン classic `<script>`**(`type="module"` を
+付けない)を置き、そこで query を注入する。`type="module"` は defer 相当なので、classic script は
+**必ず全モジュール評価より前に走る**。
+- 注入するのは `bossMakerQuery`(`utils/bossTest.ts:135`)と**同じ組**: `smoke=1 / stage / nospawn=1 /
+  bossmaker=1 / class / retry=1`。
+- **既に付いているクエリは残してマージする**(`?class=rogue` で開けるように・§19-5-b)。
+
+#### 19-5-b. 職の選び方(勝手に決めない)
+- ゲーム側のボス戦テストメニューのボタンは `bossmaker.html?class=<選んだ職>` へリンクする
+  (**今と同じく職を選んでから飛ぶ**=導線は不変)。
+- 道具ページを直接開いた場合の既定は **`warrior`**。
+- **道具ページ内に職の選択UIは作らない**(§19-2 の「UIに労力をかけない」)。
+- リンクの組み立ては **`import.meta.env.BASE_URL + 'bossmaker.html'`**。`/zombie/` 直書き禁止
+  ——`pages.yml` は `npm run build -- --base=/zombie/v2/` の**v2線も合成デプロイ**しており、
+  直書きすると v2 で 404 になる(前例: `OpeningScene.tsx:32` / `MissionSelect.tsx:210`)。
+
+#### 19-5-c. `bossmaker.html` と道具側 `main.tsx` の中身(未指定にしない)
+- **`bossmaker.html` は `index.html` をコピーし、`<title>` と `<script src>` だけ変える。**
+  index.html は safe-area 変数・`touch-action`・スクロールバー抑止・`--game-font`・`#root` の
+  100% を**約60行の直書き `<style>` で持っている**。これを共有CSSへ移す案は採らない
+  (本編の初期表示のタイミングを変える=受け入れ条件1に触る)。**二重管理になる旨をファイル冒頭に明記する。**
+- **`src/main.tsx` の起動処理は `src/bootstrap.ts` へ括り出し、両エントリが呼ぶ**
+  (`--game-font` 注入・contextmenu/gesture/ダブルタップ抑止・`document.fonts.load`)。
+  これを再現し損ねると**フォントが違う状態で PixiJS がダメージ数字アトラスを焼く**。
+  こちらはJSなので共有して安全(実行内容は不変=純粋な切り出し)。
 
 ### 19-6. ゲーム側に残る物(消さない)
 `store.bossMaker`(active/invincible/paused/showHitbox/hideHud)・`?bossmaker=1` の部屋作り
 (木/松明/地雷/花/NPCを消す・相手を1体出す)・無敵判定は**エンジンの機能**なので残す。
 道具ページがこれを起動する。**本編では `active=false` のまま**なので毎フレームの負荷は変わらない。
-- ボス戦テストメニューの「ボスメーカー(調整部屋)」ボタンは、**同じ画面から `bossmaker.html` へ飛ぶ
-  リンクに変える**(消さない)。§20 でボスラッシュへ差し替えるまでの繋ぎ。
 
-### 19-7. 受け入れ条件
-1. **ゲームの挙動が1つも変わらない**(既定値・部屋・ボスの動き)。`npm test` の既存テストが全て通る。
-2. `dist/` に `index.html` と `bossmaker.html` の**2つ**が出る。
-3. **ゲーム本体のJSに `BossMakerPanel` が含まれない**(バンドルを検索して確認する)。
-4. 道具ページを開くと、**今までと同じ調整部屋がそのまま出る**(UIの作り直しはしない)。
-5. 道具で数字を触るとボスに**即反映**される(§4-1 の維持)。保存・平文コピーも従来どおり動く。
-6. `npm run typecheck` / `npm run lint` エラー0。
+#### ★19-6-a. `registerEnemyFireProfile('idol', …)` をゲーム側へ移す(**致命の穴**)
+`BossMakerPanel.tsx:39` は**モジュール最上位**で `registerIdolTuning()` を呼んでおり、その中の
+`idolTuning.ts:362` が `registerEnemyFireProfile('idol', IDOL_TUNING.bullet.aim)` を実行している。
+**App がパネルを eager import しているため、この登録は今「本編のロード時に必ず走っている」。**
+パネルを落とすと**この副作用も一緒に消える**。
+
+現状は登録値と fallback(`enemyUtils.ts:635` の `{interval:99999, range:99999, speed:320, damage:20,
+size:16}`)が**たまたま完全一致**しているので挙動は変わらない。つまり受け入れ条件1は
+**偶然守られているだけ**で、どちらかの既定値を触った瞬間に本編と道具が静かに食い違う。
+
+⇒ **`registerEnemyFireProfile('idol', IDOL_TUNING.bullet.aim)` を `utils/idolScript.ts` へ移す**
+(本編でも必ず登録される)。`enemyUtils` は `idolScript` を import していないので**循環しない**(確認済み)。
+道具側の `registerIdolTuning()` からはこの1行を外す(欄の登録だけを残す)。
+
+#### 19-6-b. 道具ページの「メニューに戻る」= **部屋の入り直し**(仕様として決める)
+`App.tsx:288` は smoke セッションで `window.location.replace(window.location.pathname)` する。
+道具ページの pathname は `bossmaker.html` なので、リロード → インライン script が再注入 → **また部屋**。
+**これを「部屋のリセット」として正とする**(道具に「ゲームのメニュー」は要らない)。
+ゲームへ戻るのは `index.html` を開く。App 側は**改造しない**。
+
+#### 19-6-c. 落ちないもの・残るもの(把握しておく)
+- **CSSは落ちない**: `tailwind.config.js` の content が `./src/**/*` なので、道具のクラスは
+  本編のCSSに残る。「木ごと落ちる」のは**JSだけ**。数KBなので許容(§19-2)。
+- 分離後の本編 `index.html?bossmaker=1` は**部屋だけ立ってUIが無い**状態になる(`isBossMakerRun()` は
+  残るため)。害は無いが、見かけても事故ではない。
+- `localStorage` は origin 単位なので、`index.html` と `bossmaker.html` は
+  **`bossmaker.tuning.v1` を最初から共有する**。⇒ §19-9 の「(a) この端末のゲームに今すぐ効かせる」は
+  分離した時点で半分できている(§21 の判断材料。**この便では作らない**)。
+
+### 19-7. 受け入れ条件(機械的に判定できる形)
+1. **ゲームの挙動が1つも変わらない**。`npm test` の既存テストが全て通る(`npm run typecheck` /
+   `npm run lint` エラー0)。
+2. `dist/` に **`index.html` と `bossmaker.html` の2つ**が出る。
+3. **本編のJSに道具が含まれない**。判定は minify で消えない文字列で行う:
+   `dist/index.html` が読み込むチャンク群に **`bossmaker.tuning.v1`**(`bossTuning.ts:341` の
+   `SAVE_KEY`)が**含まれないこと**。※識別子 `BossMakerPanel` での検索は minify で消えるので**不可**。
+4. `bossmaker.html` を開くと**部屋が本当に立つ**: 木/松明/地雷/花が消え、**相手が1体だけ出て、
+   雑魚が湧かない**。⇒ §19-5-a の再発検知器。条件1〜3では絶対に捕まらない。**社長の実機確認**。
+5. 今までと同じ調整部屋がそのまま出る(UIの作り直しはしない)。数字を触るとボスに**即反映**され、
+   保存・平文コピー・貼り戻しが従来どおり動く。**社長の実機確認**。
+6. ゲーム側メニューのボタンから道具ページへ到達できる(**`npm run dev` と Pages の両方**)。
 
 ### 19-8. 負荷スコア **1/10**
-本編は**軽くなる**(道具1,060行+その依存がバンドルから落ちる)。増えるのは
-ビルド出力1ファイルだけ。**実行時のコストはゼロ**(import の付け替えと入口の追加のみ)。
-道具ページはゲーム1本と同じ重さで動くが、これは開発用なので対象外(§19-2)。
+本編は**軽くなる**。バンドルから落ちるのは
+パネル3本 1,060行 + `bossTuning` 578 + `bossPresets` 167 + `idolTuning` 387 + `bossScriptEdit` 219
+= **約2,400行**とその依存。増えるのはビルド出力1ファイルだけで、**実行時のコストはゼロ**
+(import の付け替えと入口の追加のみ)。道具ページはゲーム1本と同じ重さで動くが開発用なので対象外(§19-2)。
 
 ### 19-9. ★未決(社長裁定・§21で聞く)
 - **[本番化]の意味**: (a)この端末のゲームに今すぐ効かせる(localStorage・実機で完結)/
   (b)リポジトリのファイルに書き戻して恒久化(`npm run dev` 中のみ可能)/(c)平文を書き出して渡すだけ。
   ⇒ 実機(GitHub Pages)では (b) が原理的に不可能なので、**(a)+(c) の組み合わせが現実的**。
+  (c)は**すでに実装済み**(平文コピー/貼り戻し)、(a)は §19-6-c のとおり**分離した時点で半分できている**。
+
+### 19-9-b. 実装結果(v0.25.2849・**完了**)
+| 受け入れ条件 | 結果 |
+|---|---|
+| ① 挙動が1つも変わらない / typecheck・lint 0 | **`npm test` 2,755件 全通過・0失敗**。typecheck 0 / lint エラー0(warning 8=既存) |
+| ② `dist/` に2つのHTML | **達成**(`dist/index.html` + `dist/bossmaker.html`) |
+| ③ 本編のJSに道具が入らない | **達成**。`index.html` から到達する9チャンクに `bossmaker.tuning.v1` は**無し**。`bossmaker.html` 側の `assets/bossmaker-*.js`(44.5kB)にのみ存在 |
+| ④ 部屋が本当に立つ | **社長の実機確認待ち**(木/松明/地雷/花が消え、相手1体・雑魚なし) |
+| ⑤ 今までと同じ調整部屋・即反映・保存/コピー | **社長の実機確認待ち** |
+| ⑥ メニューのボタンから到達(dev と Pages 両方) | **社長の実機確認待ち** |
+
+実際に足した/動かした物: `bossmaker.html`(新) / `src/tools/bossmaker/`(移設10本+`main.tsx`+
+`bossmakerEntry.test.ts`) / `src/utils/deepClone.ts`(新) / `src/bootstrap.ts`(新) /
+`App.tsx`(`playingOverlay`) / `main.tsx`(スリム化) / `idolScript.ts`(弾プロファイル登録の移設) /
+`BossTestMenu.tsx`(別ページへのリンク) / `vite.config.ts`(マルチページ入力)。
+
+### 19-10. 品質監査の結果(v0.25.2848・CLAUDE.md 必須手順)
+初稿に監査を1回。**致命2件・重要8件・軽微4件**の指摘。全て実コードで裏を取り、**全件を上へ反映した**
+(握り潰した指摘は無い)。特に効いた2件:
+- **致命1**: 起動クエリを `main.tsx` で `replaceState` する初稿の案は、**ESMの評価順で必ず間に合わない**。
+  部屋が半分しか立たない(§19-5-a で「やってはいけない」と書き切った)。
+- **致命2**: `registerEnemyFireProfile('idol', …)` の**モジュール副作用が本編から消える**ことに
+  初稿は気づいていなかった。今は登録値と fallback が偶然一致して助かっているだけ(§19-6-a)。
+
+いずれも**設計の穴**であり、ゲームの見え方・挙動・体験は変えていない(=社長裁定は不要と判断)。

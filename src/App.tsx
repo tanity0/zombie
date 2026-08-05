@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Game from './components/Game';
-import { BossMakerPanel } from './components/BossMakerPanel';
 import MissionSelect from './components/MissionSelect';
 import TitleScreen from './components/TitleScreen';
 import GameOverScreen from './components/GameOverScreen';
@@ -42,7 +41,17 @@ function SortieLoadingOverlay() {
   );
 }
 
-function App() {
+/**
+ * ★`playingOverlay`(v0.25.2849・BOSS_MAKER.md §19-5): プレイ中だけ上に重ねる差し込み口。
+ * ボスメーカーのUIはここから入る。**ゲーム本編(`src/main.tsx`)はこれを渡さない**ので、
+ * 道具のコードはゲームのバンドルから木ごと落ちる(道具は `bossmaker.html` の別エントリ)。
+ * 本編では常に `undefined` = 描画も購読も一切増えない。
+ */
+interface AppProps {
+  playingOverlay?: ReactNode;
+}
+
+function App({ playingOverlay }: AppProps = {}) {
   const [gameState, setGameState] = useState<GameState>('title'); // 最初にタイトル(the ONE)を即表示
   // オープニングシーン(社長支給v0.25.2002): 当面 ?opening=1 でプレビュー再生(タイトルの上に全画面オーバーレイ)。
   // ?opening=2 は射撃シーンから開始(調整用ショートカット)。?opening=3 は蘇生処置パート(字幕)から開始。
@@ -350,9 +359,9 @@ function App() {
       {/* the ONE 通常エンディング(聴取記録→暗転→PHILL→スタッフロール)。終了でメニューへ。 */}
       {gameState === 'ending' && <EndingScreen onDone={finishEnding} />}
       
-      {/* ボスメーカー(BOSS_MAKER.md): 一騎打ちの調整部屋のUI。部屋の外(本編)では
-          bossMaker.active=false なので何も描かない=本編の負荷は変わらない。 */}
-      {gameState === 'playing' && <BossMakerPanel />}
+      {/* プレイ中の差し込み口(BOSS_MAKER.md §19-5)。道具ページだけがボスメーカーUIを渡す。
+          本編は undefined なので何も描かない=本編の負荷は変わらない。 */}
+      {gameState === 'playing' && playingOverlay}
 
       {gameState === 'playing' && (
         <Game

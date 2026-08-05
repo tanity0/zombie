@@ -10,10 +10,10 @@ import { registerIdolTuning, addIdolShot, IDOL_TUNING_FIELDS, IDOL_PLAYABLES, VE
 import {
   requestIdolMovePlay, requestIdolVerbPlay, idolPlaybackActive, getIdolPlayback, clearIdolPlayback,
   IDOL_WINDUP_STATES, IDOL_RECOVER_STATES,
-} from './idolTick';
-import { IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_SHOT_SLOTS, idolEnabledShots } from './idolScript';
-import { getEnemyFireProfile } from './enemyUtils';
-import type { Enemy } from '../types/game';
+} from '../../utils/idolTick';
+import { IDOL_TUNING, IDOL_TUNING_DEFAULTS, IDOL_SHOT_SLOTS, idolEnabledShots } from '../../utils/idolScript';
+import { getEnemyFireProfile } from '../../utils/enemyUtils';
+import type { Enemy } from '../../types/game';
 
 const FIELDS: TuningField[] = [
   { path: 'a.b', label: 'AB', group: 'behavior', section: 'S', kind: 'ms', min: 0, max: 1000, step: 50 },

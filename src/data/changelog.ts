@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2849',
+    items: [
+      'ゲーム内容の変更はありません（開発用ツール「ボスメーカー」をゲーム本体から切り分けました。製品ビルドが少し軽くなります）。',
+    ],
+  },
+  {
     version: '0.25.2848',
     items: [
       'ゲーム内容の変更はありません（開発用ツールを本編から切り分ける設計を書きました）。',

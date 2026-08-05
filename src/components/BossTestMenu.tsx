@@ -52,7 +52,12 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
         <div className="px-4 pb-3">
           <button
             className="w-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-2 text-left"
-            onClick={() => { window.location.search = bossMakerQuery({ characterClass: cls, ghost: false, ghostlog: false }); }}
+            // 別ページ(開発用ツール)へ飛ぶ。BOSS_MAKER.md §19-5-b。
+            // `/zombie/` を直書きしない: pages.yml は `--base=/zombie/v2/` の v2 線も合成デプロイ
+            // しているので、直書きすると v2 で 404 になる。
+            onClick={() => {
+              window.location.href = `${import.meta.env.BASE_URL}bossmaker.html${bossMakerQuery({ characterClass: cls, ghost: false, ghostlog: false })}`;
+            }}
           >
             <div className="text-[12px] font-bold text-emerald-300">ボスメーカー(調整部屋)</div>
             <div className="text-[10px] text-white/50">
