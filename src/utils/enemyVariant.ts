@@ -21,8 +21,11 @@ export const spriteVariantIndex = (id: string, count: number): number => {
  * 社長支給の新アート。中身(性能)は同じで絵だけが分かれる。
  */
 export const ENEMY_VARIANT_SETS: Readonly<Record<string, readonly string[]>> = {
-  bat: ['bat-a', 'bat-b'],             // 男女2種(v0.25.2872)
-  skeleton: ['skeleton-a', 'skeleton-b'], // 男女2種(v0.25.2873)
+  // ★並び順は「どの敵IDがどちらの絵になるか」を決めている(spriteVariantIndex が添字を返す)。
+  // 名前を変えても**順序は動かさない**こと——入れ替えると、いま出ている個体の男女が丸ごと入れ替わる。
+  // なので skeleton は女が先。見た目の揃いより、既に見えている絵を変えない方を取る。
+  bat: ['bat-male', 'bat-female'],         // 男女2種(v0.25.2872 / 女の絵は v0.25.2875 で差し替え)
+  skeleton: ['skeleton-female', 'skeleton-male'], // 男女2種(v0.25.2873)
 };
 
 /** 表に載っている type ならテクスチャ名を、載っていなければ null(=従来のステージ別解決へ落ちる)。 */

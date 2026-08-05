@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2876',
+    items: [
+      'ゲーム内容の変更はありません(素材ファイル名の整理)。',
+    ],
+  },
+  {
     version: '0.25.2875',
     items: [
       'コウモリの2種類のうち片方の絵を新しいものに差し替えました。',

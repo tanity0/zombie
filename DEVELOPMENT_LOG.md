@@ -1,5 +1,30 @@
 # Development Log
 
+## v0.25.2876 — bat / skeleton の素材名を男女へ改名【2026-08-05 21:32 JST】
+社長確認「skeleton は a が女」。実装上の `-a` / `-b` を男女の名前へ揃えた。
+
+- `bat-a` → **`bat-male`** / `bat-b` → **`bat-female`**(女は v0.25.2875 で差し替えたもの)
+- `skeleton-a` → **`skeleton-female`** / `skeleton-b` → **`skeleton-male`**
+- `git mv` で移動したのでファイルの履歴は追える。
+
+### ★配列の順序は動かしていない(ここが肝)
+`ENEMY_VARIANT_SETS` の並び順は「どの敵IDがどちらの絵になるか」を決めている
+(`spriteVariantIndex` が添字を返す)。**順序を入れ替えると、いま出ている個体の男女が丸ごと入れ替わる**。
+なので skeleton は **女が先**のまま(`['skeleton-female', 'skeleton-male']`)にした。
+表の見た目の揃い(male を先に置く)より、**既に見えている絵を変えない**方を取っている。
+アスペクト登録が使う `set[0]` も、bat=368×512 / skeleton=452×512 と改名前後で同じ。
+
+- コードで名前を持っているのは `src/utils/enemyVariant.ts` の表**1箇所だけ**なので、
+  ロード登録・アスペクト登録・解決チェーンは自動で追従した。旧名の残骸ゼロを grep で確認済み。
+- 当たり判定・サイズ・性能・絵そのものは一切変更していない。**見え方は1pxも変わらない。**
+
+**負荷 0/10**: ファイル名と表の文字列のみ。処理は増えない。
+
+憲法自己点検: 第4条・第5条に抵触しない。判定・スポーン・Director・HP/報酬に触れていない。
+
+検証: `npm run typecheck` OK / `npm run lint` エラー0(既存warning 8) /
+`src/utils/enemyVariant.test.ts` 9件通過 / 旧名(`bat-a` 等)の参照が src・public に残っていないことを grep で確認。
+
 ## v0.25.2875 — bat の女(bat-b)の絵を差し替え【2026-08-05 21:20 JST】
 社長支給素材の差し替え。`bat` の2種のうち **bat-b** を新しい絵にした。
 
