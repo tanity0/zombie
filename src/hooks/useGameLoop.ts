@@ -294,7 +294,8 @@ import {
 } from '../utils/eventQuest';
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
-import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
+import { contextZoomTarget, isLargeForZoom, ZOOM_MIN_ABS } from '../utils/cameraZoom';
+import { BOSS_ENGAGE_EXIT_PX, isEngageableBoss } from '../utils/bossEngagement';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
@@ -10479,8 +10480,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const spawnViewOffsetY = (labTheme || indoor) ? 0
           : gameBounds.height * (useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC);
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
-        // カメラと同じ target を読む(視覚専用のズーム値ではなく target=純関数)。屋内/ラボは対象外。
-        const czInvZoom = (labTheme || indoor) ? 1 : 1 / contextZoomTarget(nearEnemies.length, nearEnemies.some(e => isLargeForZoom(e.type)));
+        // ボス交戦域では距離によって最大0.58まで動くため最深値を安全側に採る。通常時は従来の純関数どおり。
+        const bossCameraRange2 = BOSS_ENGAGE_EXIT_PX * BOSS_ENGAGE_EXIT_PX;
+        const bossCameraMayPull = allEnemiesNow.some(e => {
+          if (!isEngageableBoss(e.type) || e.dormant === true) return false;
+          const dx = e.x + e.width / 2 - zpcx, dy = e.y + e.height / 2 - zpcy;
+          return dx * dx + dy * dy <= bossCameraRange2;
+        });
+        const spawnZoomTarget = bossCameraMayPull
+          ? ZOOM_MIN_ABS
+          : contextZoomTarget(nearEnemies.length, nearEnemies.some(e => isLargeForZoom(e.type)));
+        const czInvZoom = (labTheme || indoor) ? 1 : 1 / spawnZoomTarget;
         const spawnBounds = czInvZoom > 1.0001
           ? { width: gameBounds.width * czInvZoom, height: gameBounds.height * czInvZoom }
           : gameBounds;
