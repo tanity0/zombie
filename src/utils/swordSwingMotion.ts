@@ -10,12 +10,18 @@ export interface SwordSwingPose {
   scaleMult: number;
 }
 
+/** 剣の出現・退場だけを馴染ませる短い時間。攻撃モーションの尺には影響しない。 */
+export const SWORD_VISIBILITY_FADE_MS = 90;
+
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 const smooth = (v: number): number => {
   const t = clamp01(v);
   return t * t * (3 - 2 * t);
 };
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+export const swordFadeInAlpha = (elapsedMs: number): number => smooth(elapsedMs / SWORD_VISIBILITY_FADE_MS);
+export const swordFadeOutAlpha = (remainingMs: number): number => smooth(remainingMs / SWORD_VISIBILITY_FADE_MS);
 
 /**
  * wideは200度、overheadは160度、居合は190度を明確に振り切る。
@@ -37,4 +43,3 @@ export const swordSwingPose = (style: SwordSwingStyle, progress: number): SwordS
     scaleMult: 1 + Math.sin(Math.PI * t) * 0.08,
   };
 };
-

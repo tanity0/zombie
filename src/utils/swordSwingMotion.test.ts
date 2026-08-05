@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { swordSwingPose } from './swordSwingMotion';
+import { SWORD_VISIBILITY_FADE_MS, swordFadeInAlpha, swordFadeOutAlpha, swordSwingPose } from './swordSwingMotion';
 
 describe('swordSwingPose', () => {
   it('makes horizontal and overhead attacks visibly sweep through large arcs', () => {
@@ -19,5 +19,11 @@ describe('swordSwingPose', () => {
     expect(swordSwingPose('wide', -1)).toEqual(swordSwingPose('wide', 0));
     expect(swordSwingPose('wide', 2)).toEqual(swordSwingPose('wide', 1));
   });
-});
 
+  it('fades the weapon in and out over a short 90ms edge', () => {
+    expect(swordFadeInAlpha(0)).toBe(0);
+    expect(swordFadeInAlpha(SWORD_VISIBILITY_FADE_MS)).toBe(1);
+    expect(swordFadeOutAlpha(SWORD_VISIBILITY_FADE_MS)).toBe(1);
+    expect(swordFadeOutAlpha(0)).toBe(0);
+  });
+});

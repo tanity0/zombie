@@ -100,7 +100,7 @@ const MIGUEL_VOLLEY_CHANCE_LEGACY = 0.6; // 旧(?miguelscript=0)専用。新は 
 const MIGUEL_VOLLEY_WINDUP_MS = 450;
 const MIGUEL_VOLLEY_RECOVER_MS = withRecoverFloor(300);
 const MIGUEL_TATE_RECOVER_MS = withRecoverFloor(800);
-const MIGUEL_DASH_WINDUP_MS = 700;
+export const MIGUEL_DASH_WINDUP_MS = 700;
 export const MIGUEL_DASH_MOVE_MS = 230;         // 溜め後の斬り抜けは爆発的に。判定/補間/FXが同じ値を読む。
 export const MIGUEL_DASH_STRIKE_MS = MIGUEL_HARAI_ACTIVE_MS; // 「MIGUEL_HARAI_ACTIVE_MS相当の斬り抜け」(設計書指定どおり)
 const MIGUEL_DASH_RECOVER_MS = withRecoverFloor(800);
@@ -176,7 +176,7 @@ const URI_SWEEP_RECOVER_MS = withRecoverFloor(580);
 const URI_DOWNSLASH_WINDUP_MS = 1000;
 const URI_DOWNSLASH_ACTIVE_MS = 200;
 const URI_DOWNSLASH_RECOVER_MS = withRecoverFloor(900);
-const URI_THRUST_WINDUP_MS = 900;
+export const URI_THRUST_WINDUP_MS = 900;
 export const URI_THRUST_MOVE_MS = 230;           // ミゲル踏み込みと同値。溜め後の実行だけ高速化。
 export const URI_THRUST_STRIKE_MS = 220;
 const URI_THRUST_RECOVER_MS = withRecoverFloor(580);
