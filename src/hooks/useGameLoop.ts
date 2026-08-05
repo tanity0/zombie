@@ -71,6 +71,7 @@ import {
   SPAWN_CLAMP_ENABLED,
   SKATER_LOCK_ENABLED,
   RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX,
+  BOSS_TEST_RUN, // ボス戦テスト/ボスメーカー出撃か(チュートリアル抑止に使う)
 } from '../store/gameStore';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
@@ -1278,6 +1279,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const seenTutorials = useCallback((): Set<TutorialId> => (tutorialSeenRef.current ??= loadSeenForGate()), []);
   // 表示と同時に「見た」を確定させる共通処理(資料室の一覧はこの記録を引く)。
   const showTutorialOnce = useCallback((id: TutorialId) => {
+    // 社長報告v0.25.2852「(ボス戦モードで)チュートリアルとかも出てきちゃう」。
+    // ボス戦テスト/ボスメーカーは**ボスと戦う所だけ**を見る場なので、チュートリアルは一切出さない。
+    // ★`markTutorialSeen` より**前**で止めること: ここで既読にすると、本編で一度も見ていない
+    //   チュートリアルがテスト出撃のせいで「見た」ことになり、二度と出なくなる。
+    // 全チュートリアル(phill/scout/stage1-guide/move/M0の各拍)はこの1関数を通るので、ここが唯一の関所。
+    if (BOSS_TEST_RUN) return;
     const entry = getTutorial(id);
     if (!entry) return;
     seenTutorials().add(id);

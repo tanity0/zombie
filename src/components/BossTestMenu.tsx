@@ -25,7 +25,11 @@ const PARAM_NOTE: Record<BossTestEntry['param'], string> = {
   castlenow: '城へ即出現(移動あり)',
 };
 
-const GHOST_MODES: readonly { key: BossTestGhostMode; label: string; note: string }[] = [
+// 社長報告v0.25.2852「ボス戦モードが守護霊必須になっててソロで戦えない」: **なし(ソロ)を先頭に足す**。
+// `null` = 召喚しない。`bossTestQuery` は元から `ghostMode` が falsy なら ?ghost を付けない作りなので、
+// URL側の対応は不要(型が `BossTestGhostMode | null` を許している)。
+const GHOST_MODES: readonly { key: BossTestGhostMode | null; label: string; note: string }[] = [
+  { key: null, label: 'なし', note: 'ソロ' },
   { key: 'own', label: '守護霊', note: '自分' },
   { key: 'random', label: '助っ人の霊', note: 'ランダム' },
   { key: 'top', label: '討伐者の霊', note: '評点上位20%' },
@@ -35,7 +39,7 @@ interface Props { onClose: () => void }
 
 const BossTestMenu: React.FC<Props> = ({ onClose }) => {
   const [cls, setCls] = useState<string>('warrior');
-  const [ghostMode, setGhostMode] = useState<BossTestGhostMode>('own');
+  const [ghostMode, setGhostMode] = useState<BossTestGhostMode | null>('own');
   const [ghostlog, setGhostlog] = useState(false);
 
   const sortie = (e: BossTestEntry): void => {
@@ -85,11 +89,11 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
           ))}
         </div>
         <div className="px-4 pb-2">
-          <div className="mb-1 text-[10px] text-white/45">同行する霊（3択）</div>
-          <div className="grid grid-cols-3 gap-1">
+          <div className="mb-1 text-[10px] text-white/45">同行する霊</div>
+          <div className="grid grid-cols-4 gap-1">
             {GHOST_MODES.map(mode => (
               <button
-                key={mode.key}
+                key={mode.key ?? 'none'}
                 type="button"
                 className={`px-1 py-1.5 text-center ${ghostMode === mode.key ? 'bg-sky-500/35 text-white' : 'bg-white/5 text-white/50'}`}
                 onClick={() => setGhostMode(mode.key)}

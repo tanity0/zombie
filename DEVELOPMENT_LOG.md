@@ -1,5 +1,24 @@
 # Development Log
 
+## v0.25.2852 — ボス戦テスト: 霊「なし(ソロ)」を追加 / テスト中はチュートリアルを出さない【2026-08-05 14:47 JST】
+
+社長報告2件の修正。
+
+**① 守護霊必須でソロで戦えない** — `BossTestMenu` の「同行する霊」が3択(守護霊/助っ人/討伐者)しか
+無かった。**先頭に「なし(ソロ)」を追加**して4択に。`bossTestQuery` は元から `ghostMode` が falsy なら
+`?ghost` を付けない作り(型も `BossTestGhostMode | null` を許容)なので、URL側の変更は不要だった。
+ソロ時は `bossTestGhostSkill()` が null を返し、プレイヤーが実際に装備しているスキルがそのまま使われる。
+
+**② チュートリアルが出てきてしまう** — Codex の stage1-guide は `!bossMaker.active` で
+**ボスメーカーだけ**を除外しており、**ボス戦テスト(bossnow/idolnow/gateboss/castlenow)が漏れていた**。
+全チュートリアル(phill/scout/stage1-guide/move/M0の各拍)は `showTutorialOnce` の1関数を通るので、
+**そこを唯一の関所にして `BOSS_TEST_RUN` なら即return**。
+★`markTutorialSeen` より**前**で止めている: ここで既読にすると、本編で一度も見ていない
+チュートリアルがテスト出撃のせいで「見た」ことになり二度と出なくなるため。
+
+検証: typecheck 0 / lint エラー0(warning 8=既存)。
+ファイル: `src/components/BossTestMenu.tsx` / `src/hooks/useGameLoop.ts`。
+
 ## v0.25.2851 — ボスメーカーからゲーム側の画面を全部外した(`bare`)【2026-08-05 14:44 JST】
 
 社長指示「ボスメーカーからは余計なものを排除。タイトルや他の要素もいらない」。

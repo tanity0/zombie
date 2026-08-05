@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2852',
+    items: [
+      'ゲーム内容の変更はありません（ボス戦テストで霊を「なし（ソロ）」にできるようにし、ボス戦テスト中はチュートリアルが出ないようにしました）。',
+    ],
+  },
+  {
     version: '0.25.2851',
     items: [
       'ゲーム内容の変更はありません（開発用ツール「ボスメーカー」から、タイトル画面などゲーム側の画面を全て取り除きました）。',
