@@ -295,8 +295,13 @@ import {
 } from '../utils/eventQuest';
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
-import { contextZoomTarget, isLargeForZoom, ZOOM_MIN_ABS } from '../utils/cameraZoom';
-import { BOSS_ENGAGE_EXIT_PX, isEngageableBoss } from '../utils/bossEngagement';
+import {
+  aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
+  isPointInZoomedViewport, ZOOM_MIN_ABS,
+} from '../utils/cameraZoom';
+import {
+  advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss,
+} from '../utils/bossEngagement';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
@@ -838,10 +843,10 @@ const DANCE_BEAT_SCHEDULE_WINDOW_MS = 150; // 次の1拍をこの時間内に入
 // 深層域(原点から 7500 以上=area 4)の「指定エリア」に近づくと1回だけ出現する。
 const BOSS_SPAWN_DEPTH = evNum('bossdepth', 7800);   // この深度に到達で出現(area 4 の少し内側。巣が無いタイプ用の保険)
 const BOSS_SPAWN_NEAR = 1500;                        // 巣(固定)へこの距離まで近づくと出現(=指定エリアに近づくと出現)
-const BOSS_EXIT_DEPTH = 7300;                        // この深度を下回ると深層域を出た=帰巣して退場(ヒステリシス)
+const BOSS_EXIT_DEPTH = AREA_THRESHOLDS[3] - BOSS_SPAWN_NEAR; // 深層境界7500から1500px戻るまで戦闘継続(旧7300=余白200px)
 const BOSS_REGEN_PER_SEC = 10;                       // 画面外/帰巣中は毎秒この耐久値が回復(社長指示: 40→10)
 const BOSS_DASH_SPEED_MULT = 2;                      // ダッシュ時は2倍速で追跡
-const BOSS_SCREEN_MARGIN = 120;                      // 画面内判定のマージン(これより内なら on-screen 扱い)
+const BOSS_SCREEN_MARGIN = 120;                      // 画面上の余白px。world側ではズーム倍率で逆換算する
 // 攻撃状態機械のタイミング(gameTime ms)。
 const BOSS_ACTION_MIN_MS = 2600;                     // 次の特殊行動までの最短(追跡しながら待つ)
 const BOSS_ACTION_MAX_MS = 4600;                     // 同・最長
@@ -1391,8 +1396,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
   // thorPrevHealth/thorRangedHits: トール専用(ジャンプ攻撃のトリガー判定=遠距離からの連続被弾を数える)。
   // 他の裏ボス(mimir/jormungand/skadi)では未使用のまま(無害)。
-  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number }>(
-    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 }
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; disengageSince: number | undefined; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number }>(
+    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 }
   );
   // ?gateboss=1 診断: ラン開始後に1回だけそのステージのゲート2ボスをforce-spawnしたかどうか。
   const gatebossForceRef = useRef(false);
@@ -2344,7 +2349,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
-          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 };
+          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
@@ -4304,8 +4309,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // --- 裏ボス(深層域の隠しボス: ステージ1=ミーミル / ステージ3=ヨルムンガルド) ---
         // 仕様(社長指示): 深層域の指定エリアに近づくと1回だけ出現→「危険!直ちに避難を」。
-        //  追跡/攻撃(3連発・全方位16発・たまにダッシュ)。画面外は巣へ戻りつつ毎秒40回復。
-        //  深層域を出ると帰巣して退場。追いかけてくる間は他敵が一斉に逃げ、イベントも発生しない。
+        //  追跡/攻撃(3連発・全方位16発・たまにダッシュ)。ズーム後の画面外が3秒続くと巣へ戻りつつ回復。
+        //  拡張した深層戦闘域を3秒出ると帰巣して退場。追いかけてくる間は他敵が一斉に逃げる。
         //  討伐で「<名前>討伐!」+FF風フェードアウト。移動/攻撃はこのコントローラが座標を直接書き込む。
         const hiddenBoss = useGameStore.getState().hiddenBoss;
         if (hiddenBoss && !danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
@@ -4362,7 +4367,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               e.bossNextActionAt = newGameTime + 2000;
               e.homeX = e.x; e.homeY = e.y; // 巣=帰巣先(画面外/深層域離脱で戻る位置)
               addEnemy(e);
-              bs.spawned = true; bs.bossId = e.id; bs.retreating = false;
+              bs.spawned = true; bs.bossId = e.id; bs.retreating = false; bs.disengageSince = undefined;
               bs.homeX = e.x; bs.homeY = e.y; bs.lastX = e.x; bs.lastY = e.y; bs.w = e.width; bs.h = e.height;
               useGameStore.getState().triggerAttention(cx, cy);
               playSfx('boss-appear'); // 裏ボス出現アテンションSE(社長提供)
@@ -4375,9 +4380,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const cam = useGameStore.getState().camera;
             const gb = useGameStore.getState().gameBounds;
             const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
-            const M = BOSS_SCREEN_MARGIN;
-            const onScreen = bcx >= cam.x - M && bcx <= cam.x + gb.width + M && bcy >= cam.y - M && bcy <= cam.y + gb.height + M;
+            // ボス戦の実画角と同じ距離/体格プロファイルで可視矩形を拡張する。
+            // 旧判定はズーム前の固定矩形だったため、0.58まで引いた時に「まだ見えているのに画面外」になっていた。
+            const bossViewZoom = bossDistanceZoomTarget(
+              boss.type, aabbGapDistance(player, boss), boss.isStoryBoss === true,
+            );
+            const onScreen = isPointInZoomedViewport(bcx, bcy, cam, gb, bossViewZoom, BOSS_SCREEN_MARGIN);
             const inDeep = FORCE_HIDDEN_BOSS || practiceForces('bossnow') || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
+            const disengage = advanceBossDisengageGrace(!inDeep || !onScreen, bs.disengageSince, newGameTime);
+            bs.disengageSince = disengage.since;
+            if (disengage.started) {
+              useGameStore.setState({
+                eventBannerText: '危険：ボスが戦闘域を離れようとしている — 3秒',
+                eventBannerUntil: newGameTime + 3000,
+              });
+            }
             const speed = boss.speed * bossSlowMult(boss, newGameTime); // クリ半減(v0.25.2422)
             // 裏ボスは updateEnemies を素通りするため、移動テンポ(ゲームスピード1.2倍)がここには自動で乗らない。
             // 通常敵と揃えるため、移動の位置更新/慣性は bossMoveDt(= deltaTime × MOVE_SPEED_MULT)を使う(社長指示)。
@@ -4417,8 +4434,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               bs.thorPrevHealth = boss.health;
             }
 
-            if (!inDeep) {
-              // 深層域を出た → 巣へ帰り、着いたら退場(討伐扱いにしない)。帰巣中も回復する。
+            if (disengage.ready && !inDeep) {
+              // 拡張した深層戦闘域を3秒出た → 巣へ帰り、着いたら退場(討伐扱いにしない)。帰巣中も回復する。
               bs.vx = 0; bs.vy = 0; // 帰巣中は慣性リセット(復帰時にチェイスがぬるっと暴れないように)
               bs.retreating = true;
               const dhx = bs.homeX - boss.x, dhy = bs.homeY - boss.y;
@@ -4430,8 +4447,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.health = Math.min(boss.maxHealth, boss.health + BOSS_REGEN_PER_SEC * deltaTime);
                 patch.bossState = 'return';
               }
-            } else if (!onScreen) {
-              // 画面外: 巣(下の定位置)へ戻りつつ毎秒40回復。追跡状態ではない。
+            } else if (disengage.ready && !onScreen) {
+              // ズーム後の実画面外が3秒継続: 巣へ戻りつつ毎秒10回復。追跡状態ではない。
               bs.vx = 0; bs.vy = 0;
               bs.retreating = false;
               const dhx = bs.homeX - boss.x, dhy = bs.homeY - boss.y;
@@ -10504,11 +10521,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : gameBounds.height * (useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC);
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
         // ボス交戦域では距離によって最大0.58まで動くため最深値を安全側に採る。通常時は従来の純関数どおり。
-        const bossCameraRange2 = BOSS_ENGAGE_EXIT_PX * BOSS_ENGAGE_EXIT_PX;
         const bossCameraMayPull = allEnemiesNow.some(e => {
           if (!isEngageableBoss(e.type) || e.dormant === true) return false;
           const dx = e.x + e.width / 2 - zpcx, dy = e.y + e.height / 2 - zpcy;
-          return dx * dx + dy * dy <= bossCameraRange2;
+          const bossCameraRange = bossEngagementDistancePx(e.type, true, e.isStoryBoss === true);
+          return dx * dx + dy * dy <= bossCameraRange * bossCameraRange;
         });
         const spawnZoomTarget = bossCameraMayPull
           ? ZOOM_MIN_ABS

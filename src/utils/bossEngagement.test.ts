@@ -2,8 +2,9 @@
 // または「ボスが居ないのに常時リラックス=ペーシング設計が丸ごと死ぬ」のどちらかになる。
 import { describe, it, expect } from 'vitest';
 import {
-  bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_ENTER_PX, BOSS_ENGAGE_EXIT_PX,
-  isLeashableBoss, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC,
+  bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_EXIT_PX,
+  advanceBossDisengageGrace, bossEngagementDistancePx, bossLeashDistancePx,
+  isLeashableBoss, BOSS_DISENGAGE_GRACE_MS, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC,
 } from './bossEngagement';
 
 // 近く(プレイヤーは原点)に居るボスとして呼ぶ短縮形。距離のテストは最後の describe で別に行う。
@@ -44,15 +45,18 @@ describe('bossEngagement', () => {
 
   // ★社長指摘v0.25.2416: 距離を見ないと「起きたボスが遠くに取り残されて湧きが永久にリラックス」になる。
   it('遠くへ取り残されたボスは交戦中ではない(=雑魚の湧きが通常へ戻る)', () => {
-    const far = foe('giantbat', { x: BOSS_ENGAGE_ENTER_PX + 200, y: 0 });
+    const far = foe('giantbat', { x: bossEngagementDistancePx('giantbat', false) + 200, y: 0 });
     expect(bossEngagedNow([far], 0, 0, false)).toBe(false);
   });
 
   it('ヒステリシスがある(境界で毎フレーム反転しない)', () => {
-    const mid = foe('giantbat', { x: (BOSS_ENGAGE_ENTER_PX + BOSS_ENGAGE_EXIT_PX) / 2, y: 0 });
+    const mid = foe('giantbat', {
+      x: (bossEngagementDistancePx('giantbat', false) + bossEngagementDistancePx('giantbat', true)) / 2,
+      y: 0,
+    });
     expect(bossEngagedNow([mid], 0, 0, false)).toBe(false); // 交戦していない状態からは入らない
     expect(bossEngagedNow([mid], 0, 0, true)).toBe(true);   // 交戦中なら少し離れても続く
-    const veryFar = foe('giantbat', { x: BOSS_ENGAGE_EXIT_PX + 100, y: 0 });
+    const veryFar = foe('giantbat', { x: bossEngagementDistancePx('giantbat', true) + 100, y: 0 });
     expect(bossEngagedNow([veryFar], 0, 0, true)).toBe(false); // 離れ切れば解除
   });
 
@@ -78,9 +82,26 @@ describe('リーシュ', () => {
   // ★順序が逆だと「待機に戻ったのに交戦中のまま=湧きがリラックスのまま」が一瞬起きる。
   it('リーシュ距離は交戦解除距離より外(解除→待機、の順になる)', () => {
     expect(BOSS_LEASH_PX).toBeGreaterThan(BOSS_ENGAGE_EXIT_PX);
+    expect(bossLeashDistancePx('giantbat')).toBeGreaterThan(bossEngagementDistancePx('giantbat', true));
   });
 
   it('回復は裏ボスと同値(新しい数字を発明しない)', () => {
     expect(BOSS_LEASH_REGEN_PER_SEC).toBe(10); // useGameLoop の BOSS_REGEN_PER_SEC と同値
+  });
+});
+
+describe('ズーム連動と離脱予兆', () => {
+  it('引きが深い巨大ボスほど交戦・離脱のワールド範囲が広い', () => {
+    expect(bossEngagementDistancePx('jormungand', true)).toBeCloseTo(BOSS_ENGAGE_EXIT_PX / 0.58, 6);
+    expect(bossEngagementDistancePx('jormungand', true)).toBeGreaterThan(bossEngagementDistancePx('miguel', true));
+    expect(bossLeashDistancePx('giantbat')).toBeCloseTo(BOSS_LEASH_PX / 0.62, 6);
+  });
+
+  it('範囲外が3秒続いた時だけ離脱し、戻れば即キャンセルする', () => {
+    const start = advanceBossDisengageGrace(true, undefined, 1000);
+    expect(start).toEqual({ since: 1000, ready: false, started: true });
+    expect(advanceBossDisengageGrace(true, start.since, 1000 + BOSS_DISENGAGE_GRACE_MS - 1).ready).toBe(false);
+    expect(advanceBossDisengageGrace(true, start.since, 1000 + BOSS_DISENGAGE_GRACE_MS).ready).toBe(true);
+    expect(advanceBossDisengageGrace(false, start.since, 2000)).toEqual({ since: undefined, ready: false, started: false });
   });
 });

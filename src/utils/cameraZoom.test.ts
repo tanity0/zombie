@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   aabbGapDistance, bossDistanceZoomTarget, bossZoomClassFor, contextZoomTarget, isLargeForZoom,
-  zoomCompensatedWorldDistance,
+  isPointInZoomedViewport, zoomCompensatedWorldDistance, zoomedViewportBounds,
   BOSS_DISTANCE_ZOOM_FAR_PX, BOSS_DISTANCE_ZOOM_MIN, BOSS_DISTANCE_ZOOM_NEAR_PX,
   BOSS_ZOOM_PROFILES, CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN, ZOOM_MIN_ABS,
   CONTEXT_ZOOM_COUNT_FLOOR, CONTEXT_ZOOM_COUNT_CEIL,
@@ -80,6 +80,15 @@ describe('cameraZoom — context zoom target', () => {
     expect(zoomCompensatedWorldDistance(220, 0.58) * 0.58).toBeCloseTo(220, 6);
     expect(zoomCompensatedWorldDistance(70, 1.2)).toBe(70);
     expect(zoomCompensatedWorldDistance(70, 0)).toBe(70);
+  });
+
+  it('expands offscreen bounds by the same zoom ratio', () => {
+    const camera = { x: 100, y: 200 };
+    const viewport = { width: 400, height: 700 };
+    const b = zoomedViewportBounds(camera, viewport, 0.5, 50);
+    expect(b).toEqual({ left: -200, top: -250, right: 800, bottom: 1350 });
+    expect(isPointInZoomedViewport(790, 1340, camera, viewport, 0.5, 50)).toBe(true);
+    expect(isPointInZoomedViewport(801, 1340, camera, viewport, 0.5, 50)).toBe(false);
   });
 
   it('combines crowd, large-enemy and distance boss targets by deepest pull', () => {

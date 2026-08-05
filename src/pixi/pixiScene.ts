@@ -89,7 +89,7 @@ import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOA
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType } from '../utils/enemyUtils';
 import { isMarkedBoss, isEngagedBoss, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import {
-  BOSS_ENGAGE_ENTER_PX, BOSS_ENGAGE_EXIT_PX, isEngageableBoss,
+  bossEngagementDistancePx, isEngageableBoss,
 } from '../utils/bossEngagement';
 import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
 import {
@@ -5345,12 +5345,13 @@ export class PixiScene {
     this.seeThroughLerp = OBSTACLE_SEE_THROUGH_TAU > 0 ? 1 - Math.exp(-zdt / OBSTACLE_SEE_THROUGH_TAU) : 1;
     // ボス距離ズーム: ボス中心ではなく互いの当たり矩形の縁から距離を取る。ヨルムンガンドのような
     // 横長ボスへ接近した時、中心が遠いだけで「離れている」と誤判定しないため。
-    // 交戦の入口/出口はゲーム側の共通ヒステリシスと同じ900/1400pxを使い、dormantへ戻った瞬間も解除する。
+    // 交戦の入口/出口はゲーム側と同じ基準を、体格別の遠距離ズームでworld pxへ換算する。
+    // 引いて見えているのに旧固定距離だけでカメラが戻る、という不一致を起こさない。
     const zpx = s.player.x + s.player.width / 2, zpy = s.player.y + s.player.height / 2;
-    const bossEngageLimit = this.bossCameraEngaged ? BOSS_ENGAGE_EXIT_PX : BOSS_ENGAGE_ENTER_PX;
     let bossDistanceTarget: number | null = null;
     for (const e of s.enemies) {
       if (!isEngageableBoss(e.type) || e.dormant === true) continue;
+      const bossEngageLimit = bossEngagementDistancePx(e.type, this.bossCameraEngaged, e.isStoryBoss === true);
       const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
       if (dx * dx + dy * dy > bossEngageLimit * bossEngageLimit) continue;
       const bodyDistance = aabbGapDistance(s.player, e);

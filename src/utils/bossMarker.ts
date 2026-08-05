@@ -26,7 +26,7 @@ export const isMarkedBoss = (e: Pick<Enemy, 'type' | 'isStoryBoss'>): boolean =>
 
 /**
  * 殴り合いが途切れてから「交戦中」を保つ猶予(ms)。
- * ★これが要る理由: 裏ボスは**画面外へ出た瞬間に `bossState='return'`(帰巣)へ落ちる**。
+ * ★これが要る理由: 裏ボスは**ズーム後の画面外が3秒続くと `bossState='return'`(帰巣)へ落ちる**。
  * つまり「マークを出したい状況」と「帰巣状態」が完全に重なる。直近の殴り合いで繋がないと、
  * 画面外へ出た瞬間にマークまで消えて**役に立たない**。
  */
@@ -41,7 +41,7 @@ export const BOSS_ENGAGE_GRACE_MS = 6000;
  *  1. **帰巣/離脱中ではない**(`bossState !== 'return'`)= まだこちらを見ている。
  *     `'return'` を使うのは裏ボス4体のコントローラだけ(天使/idol/グレンは使わない=常に交戦中扱い。
  *     グレンはリーシュしない仕様なので正しい)。
- *  2. **直近 `BOSS_ENGAGE_GRACE_MS` 以内に殴った**(`lastHit`)= 画面外へ出た直後を拾う。
+ *  2. **直近 `BOSS_ENGAGE_GRACE_MS` 以内に殴った**(`lastHit`)= 画面外離脱の予兆〜帰巣直後を拾う。
  *
  * `now` と `lastHit` は**どちらも `Date.now()` 基準**(types/game.ts の注記どおり)。gameTime を渡さないこと。
  */

@@ -158,7 +158,10 @@ import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
-import { isLeashableBoss, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT } from '../utils/bossEngagement';
+import {
+  advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss,
+  BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
+} from '../utils/bossEngagement';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
@@ -8375,6 +8378,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
+    let bossLeashWarning = false;
     set(state => {
       // ★上の注記のとおり、**このフレームに他所から積まれた判定を先に引き継ぐ**。
       // set の中で読む=引き継ぎ元は必ず最新の state(get()のタイミングずれを作らない)。
@@ -8645,7 +8649,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             return { ...enemy, vx: 0, vy: 0 };
           }
-          return { ...enemy, dormant: false, vx: 0, vy: 0 };
+          return { ...enemy, dormant: false, vx: 0, vy: 0, bossLeashSince: undefined };
         }
 
         // ★リーシュ(社長裁定v0.25.2418): 起きている城ボスがプレイヤーから離れ切ったら、
@@ -8658,13 +8662,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ストーリーボス(stage-7グレン/ex1)は**リーシュしない**(社長指示v0.25.2420「実質逃げれない
         // ようにする」)。雑魚が出ないステージなので、待機に戻したら逃げ切りが成立してしまう。
         // 代わりに無限ジャンプ(giantScript.ts)で、どこまで逃げても飛んで追ってくる。
-        if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss && !enemy.aiPhase
-          && Math.hypot(pcx - (enemy.x + enemy.width / 2), pcy - (enemy.y + enemy.height / 2)) > BOSS_LEASH_PX) {
-          return {
-            ...enemy, dormant: true, vx: 0, vy: 0,
-            aiPhaseUntil: undefined, aiStartedAt: undefined,
-            aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-          };
+        if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss) {
+          const leashDistance = Math.hypot(pcx - (enemy.x + enemy.width / 2), pcy - (enemy.y + enemy.height / 2));
+          const leashLimit = bossLeashDistancePx(enemy.type, false);
+          const grace = advanceBossDisengageGrace(leashDistance > leashLimit, enemy.bossLeashSince, gameTime);
+          if (grace.started) bossLeashWarning = true;
+          if (grace.since !== enemy.bossLeashSince) enemy = { ...enemy, bossLeashSince: grace.since };
+          // 技の実行中は台本を完走。範囲外3秒が経過済みなら、終了直後に待機へ戻る。
+          if (grace.ready && !enemy.aiPhase) {
+            return {
+              ...enemy, dormant: true, vx: 0, vy: 0, bossLeashSince: undefined,
+              aiPhaseUntil: undefined, aiStartedAt: undefined,
+              aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+            };
+          }
         }
 
         // ステージ2(研究所)の索敵解除(社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175「横長廊下+視線切り
@@ -10303,6 +10314,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       return {
         enemies: finalEnemies, breakableProps: nextBreakables, pumpkinBlasts, shieldBlocks, skadiIceMarkers, skadiIceBlades,
+        ...(bossLeashWarning
+          ? { eventBannerText: '危険：ボスが戦闘域を離れようとしている — 3秒', eventBannerUntil: gameTime + 3000 }
+          : {}),
         // 叫喚発動: 画面内の通常敵を SCREAMER_BUFF_MS の間 強化する窓を張る。
         ...(screamerActivatedAt.length > 0 ? { screamerBuffUntil: gameTime + SCREAMER_BUFF_MS } : {}),
       };
