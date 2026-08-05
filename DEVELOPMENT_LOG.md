@@ -1,5 +1,29 @@
 # Development Log
 
+## v0.25.2879 — パンプキン討伐時のアテンションを削除【2026-08-05 22:15 JST】
+社長指示「パンプキン、倒した時のアテンションイベント削除」。
+
+- 判定を純関数へ切り出し: `getsDeathAttention(t) = isBossType(t) && t !== 'pumpkin'`
+  (`src/utils/enemyUtils.ts`)。`triggerDramaticDeath` の呼び出し側(`gameStore.ts` ~2434)は
+  `if (bossDefeat)` → `if (getsDeathAttention(enemy.type))` に変えただけ。
+  **アテンション(時間停止 + カメラ寄り戻り)の出どころはこの1本だけ**なので、ここを閉じれば漏れない。
+- **消したのはアテンションだけ。** バナー「パンプキンを討伐」・崩壊(クランブル)・白閃光・
+  衝撃波リング×2・破片バースト・シェイク・`triggerTimeSlow(0.35, 520, 90)`・死体フェードは全部残す。
+  討伐の手応えは維持したまま、**進行が止まる要素だけ**を外した(「Aを直せと言われたらAだけ」)。
+- なぜ pumpkin だけか: ボス系16種のうち pumpkin は**ウェーブで湧くエリート枠**で、
+  1ランに何度も倒す唯一の相手。そのたびに世界が止まってカメラが往復すると刈るテンポが切れる。
+  他の15種(giantbat/reaper/lab-zombie-3/隠しボス4/天使6/idol/hunter)は従来どおり。
+- `bossDefeat`(= `isBossType`)はバナー表示条件として引き続き使用。こちらは変えていない。
+
+**負荷 0/10**: 分岐1つ。むしろ pumpkin 討伐時に `attention` state 更新と hitstop が発生しなくなる分わずかに軽い。
+
+憲法自己点検: 第4条(初心者ゾーン)——pumpkin は初心者ゾーンの外。第5条(緩を荒らさない)——
+出現数・スポーン・Director・台本に触れていない。演出の追加も無く、既存演出を1つ止めるだけ。
+
+検証: `npm run typecheck` OK / `npm run lint` エラー0(既存warning 8)。
+`enemyUtils.test.ts` に `getsDeathAttention` の不変条件4件を追加(pumpkin除外 / 他ボス全通し /
+雑魚は元から対象外 / **崩壊演出は pumpkin でも残る**)。テスト実行は社長指示制のため未実行。
+
 ## v0.25.2878 — zombie も同じ分だけ大きく(当たり判定ごと)【2026-08-05 21:47 JST】
 社長指示「ゾンビも同じ分だけ大きくして」。v0.25.2874 の bat/skeleton と同じ幅で揃えた。
 

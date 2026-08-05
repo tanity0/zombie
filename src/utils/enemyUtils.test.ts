@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention } from './enemyUtils';
 import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
 
@@ -239,18 +239,42 @@ describe('isBossType', () => {
   });
 });
 
+const BOSS_TYPES: EnemyType[] = [
+  'pumpkin', 'giantbat', 'reaper', 'lab-zombie-3',
+  'mimir', 'jormungand', 'skadi', 'thor',
+  'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
+  'idol', 'hunter',
+];
+
 describe('boss defeat cinematic eligibility', () => {
-  it('routes every boss type through the shared crumble/attention death path', () => {
-    const bossTypes: EnemyType[] = [
-      'pumpkin', 'giantbat', 'reaper', 'lab-zombie-3',
-      'mimir', 'jormungand', 'skadi', 'thor',
-      'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
-      'idol', 'hunter',
-    ];
-    for (const type of bossTypes) {
+  it('routes every boss type through the shared crumble death path', () => {
+    for (const type of BOSS_TYPES) {
       expect(getsDramaticDeath({ type } as Enemy), type).toBe(true);
     }
     expect(getsDramaticDeath({ type: 'zombie' } as Enemy)).toBe(false);
+  });
+});
+
+describe('getsDeathAttention (討伐時の時間停止+カメラ寄り・社長指示v0.25.2879)', () => {
+  it('★pumpkin だけ出さない。ウェーブで何度も倒す相手なので毎回止めない', () => {
+    expect(getsDeathAttention('pumpkin')).toBe(false);
+  });
+
+  it('pumpkin 以外のボスは従来どおり全員出す', () => {
+    for (const type of BOSS_TYPES) {
+      if (type === 'pumpkin') continue;
+      expect(getsDeathAttention(type), type).toBe(true);
+    }
+  });
+
+  it('雑魚は元から対象外', () => {
+    for (const type of ['zombie', 'bat', 'skeleton', 'plant', 'ghost'] as EnemyType[]) {
+      expect(getsDeathAttention(type), type).toBe(false);
+    }
+  });
+
+  it('★崩壊演出(getsDramaticDeath)は pumpkin でも残る=手応えは維持したまま進行だけ止めない', () => {
+    expect(getsDramaticDeath({ type: 'pumpkin' } as Enemy)).toBe(true);
   });
 });
 

@@ -90,7 +90,7 @@ import {
   QUEST_NAMED_AGGRO_RANGE,
 } from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile } from '../utils/enemyUtils';
 import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
@@ -2431,7 +2431,9 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   get().spawnBurst(x, y, getEnemyColor(enemy.type), 26);             // 崩れ散る残骸
   get().triggerShake(DRAMATIC_DEATH_FADE_MS, 6);            // 長く低いシェイク(旧・裏ボス限定=5 よりわずかに強め)
   get().triggerTimeSlow(0.35, 520, 90);                     // 決着の一瞬をスロー
-  if (bossDefeat) get().triggerAttention(x, y);              // ボスの崩壊中は世界を止め、既存attentionでカメラを向ける
+  // ★アテンション(時間停止+カメラ寄り)は `getsDeathAttention` が唯一の出どころ。
+  // pumpkin は除外(v0.25.2879)——ウェーブで何度も倒す相手なので、毎回止まるとテンポが切れる。
+  if (getsDeathAttention(enemy.type)) get().triggerAttention(x, y);
 };
 
 // KILLパンチズームの寄り先(社長指示・v0.25.1498): キルされた対象の中心座標。複数いる場合は

@@ -138,6 +138,16 @@ export const isBossType = (t: EnemyType): boolean =>
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' ||
   t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter';
 
+/**
+ * 討伐時に「アテンション」(時間停止 + カメラが現地へ寄って戻る)を出す対象か。
+ *
+ * ★`pumpkin` は除外(社長指示v0.25.2879)。パンプキンは**ウェーブで湧くエリート枠**で、
+ * ボス系の中で唯一「1ランに何度も倒す」相手。そのたびに世界が止まってカメラが寄ると、
+ * 刈る手触り(§コアループ①秒)が毎回途切れる。**崩壊演出・バナー・スロー・シェイクは残す**ので、
+ * 討伐した手応えは維持したまま、進行を止める要素だけを外す。
+ */
+export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && t !== 'pumpkin';
+
 // 討伐(KILL)時に「FF風クランブル」統一演出(triggerDramaticDeath・gameStore.ts)を出す対象か。
 // ボス系は全員対象。ネームド/クエスト対象も従来どおり劇的な討伐を維持する。
 // isNamed は型ではなく個体フラグなので Enemy を受け取る(isHiddenBoss/isBossTypeはEnemyType引数)。
