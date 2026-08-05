@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.2881 — ghost(変異体・抱卵型)の絵を差し替え(全ステージ共通)【2026-08-06 00:16 JST】
+社長支給の新アート「卵産む敵の差し替え/ゴーストみたいなやつ」。**内部型名 `ghost` = 変異体(抱卵型)**
+(プレイヤーの周囲を半径220で周回しながら緑卵=mineを撒く敵。型名はゴーストのまま据え置かれている)。
+
+- `public/sprites/ghost-common.png`(360×500・右側に4pxだけ余白 bbox=356×500)。
+- `ENEMY_VARIANT_SETS.ghost = ['ghost-common']`(1種)。plant/zombie と同じく**全ステージ共通**。
+- 表へ1行足すだけでロード登録(`ALL_VARIANT_TEXTURES`)とアスペクト上書きが揃う(v0.25.2873の表駆動)。
+- **紛らわしい同名に注意**: `pixiScene.cloneSlots` の `'ghost'` は**プレイヤーの幽体分身**(味方)で
+  別物。敵テクスチャ経路を通らないので今回の変更の影響を受けない。
+- 判定・速度・HP・報酬・産卵挙動(`EGGCARRIER_*`)は**一切変えていない**。
+  `ENEMY_STATS.ghost = 24×24` / `ENEMY_VISUAL_SCALE.ghost = 2.0` も不変。
+
+**負荷 0/10**: 画像1枚の差し替え。
+
+検証: `npm run typecheck` OK / `npm run lint` エラー0(既存warning 8)。
+`enemyVariant.test.ts` の「1種しか無い敵」ケースを zombie/plant/ghost の3件へ拡張。実機確認は社長。
+
 ## v0.25.2880 — plant の絵を差し替え(全ステージ共通)【2026-08-05 23:12 JST】
 社長支給の新アート「プラント差し替え」。bat/skeleton/zombie と同じ作法で入れた。
 

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2881',
+    items: [
+      '緑の卵をばらまく変異体(抱卵型)の見た目を新しい絵に変えました。全ステージで同じ絵になります。',
+    ],
+  },
+  {
     version: '0.25.2880',
     items: [
       'プラントの見た目を新しい絵に変えました。全ステージで同じ絵になります。',

@@ -28,6 +28,7 @@ export const ENEMY_VARIANT_SETS: Readonly<Record<string, readonly string[]>> = {
   skeleton: ['skeleton-female', 'skeleton-male'], // 男女2種(v0.25.2873)
   zombie: ['zombie-common'],               // 1種のみ(v0.25.2877)。後で2種にするならここへ足す
   plant: ['plant-common'],                 // 1種のみ(v0.25.2880)
+  ghost: ['ghost-common'],                 // 1種のみ(v0.25.2881)。内部名 ghost = 変異体(抱卵型)
 };
 
 /**
