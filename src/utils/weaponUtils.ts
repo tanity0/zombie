@@ -213,9 +213,71 @@ export const effectiveReloadMs = (w: Weapon, p: Player): number =>
   // startReload/SE長/リロードバーの全呼び出しで自動的に同じ値になる)。
   Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult * (p.equipBonus?.reloadMult ?? 1) * skillWarmUpReloadMult(p, useGameStore.getState().gameTime));
 
+// 装備(腕)込みの実効発射間隔。プレイヤーと守護霊が同じ1本を使う。
+export const effectiveFireCooldown = (w: Weapon, p: Player): number =>
+  w.cooldown / (p.equipBonus?.fireRateMult ?? 1);
+
 // Is this specific gun currently mid-reload?
 export const isReloading = (p: Player, weaponId: string): boolean =>
   p.reloadingWeaponId === weaponId && Date.now() < p.reloadEndsAt;
+
+export interface MagazineRefillResult {
+  weapon: Weapon;
+  reserve: number;
+  moved: number;
+}
+
+/**
+ * リザーブからマガジンへ詰める純関数。通常リロードとクイックマガジンの唯一の装填式。
+ * 守護霊は除外4(リザーブ弾非消費)を `reserve=Infinity` で表し、容量/装填量は同じ式を通す。
+ */
+export const refillWeaponMagazine = (w: Weapon, p: Player, reserve: number): MagazineRefillResult => {
+  const need = Math.max(0, effectiveMagSize(w, p) - (w.magazine ?? 0));
+  const moved = Math.min(need, Math.max(0, reserve));
+  return {
+    weapon: moved > 0 ? { ...w, magazine: (w.magazine ?? 0) + moved } : w,
+    reserve: reserve - moved,
+    moved,
+  };
+};
+
+/** 満タン/リザーブ無し/同じ銃をリロード中ならnull。それ以外はプレイヤーと同じ終了時刻を返す。 */
+export const beginWeaponReload = (
+  w: Weapon,
+  p: Player,
+  reserve: number,
+  now = Date.now(),
+): Pick<Player, 'reloadEndsAt' | 'reloadingWeaponId'> | null => {
+  if (!w.ammoType || effectiveMagSize(w, p) - (w.magazine ?? 0) <= 0 || reserve <= 0) return null;
+  if (p.reloadingWeaponId === w.id && now < p.reloadEndsAt) return null;
+  return { reloadingWeaponId: w.id, reloadEndsAt: now + effectiveReloadMs(w, p) };
+};
+
+/** 終了したリロードを解決する純関数。まだ途中/対象銃違いならnull。 */
+export const finishWeaponReload = (
+  w: Weapon,
+  p: Player,
+  reserve: number,
+  now = Date.now(),
+): (MagazineRefillResult & Pick<Player, 'reloadEndsAt' | 'reloadingWeaponId'>) | null => {
+  if (p.reloadingWeaponId !== w.id || now < p.reloadEndsAt) return null;
+  return { ...refillWeaponMagazine(w, p, reserve), reloadingWeaponId: '', reloadEndsAt: 0 };
+};
+
+/**
+ * 1トリガー後の銃状態。ゴーストシューターの非消費抽選もプレイヤー/守護霊で共有する。
+ * ダメージ計算は発射前の残弾を使うため、必ず弾生成後に呼ぶ。
+ */
+export const weaponAfterGunShot = (
+  w: Weapon,
+  p: Player,
+  now = Date.now(),
+  rand: () => number = Math.random,
+): Weapon => {
+  const ghostLv = skillLevel(p, 'ghost-shooter');
+  const consume = ghostLv && rand() < [0, 0.10, 0.20, 0.30][ghostLv] ? 0 : 1;
+  return { ...w, lastFired: now, magazine: Math.max(0, (w.magazine ?? 0) - consume) };
+};
 
 // Starting loadout: one gun + one melee weapon from the class profile.
 export const getStartingWeapons = (characterClass: CharacterClass): Weapon[] => {
@@ -373,7 +435,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   const now = Date.now();
   if (weapon.isMelee || !weapon.ammoType) return [];
   // 装備(腕)の連射倍率で実効cooldownを短縮(中立=1)。fireRateMult>1 ほど間隔が縮む。
-  const effCooldown = weapon.cooldown / (player.equipBonus?.fireRateMult ?? 1);
+  const effCooldown = effectiveFireCooldown(weapon, player);
   if (now - weapon.lastFired < effCooldown) return [];
 
   // Can't fire while reloading, or with an empty magazine. Reloads are kicked
@@ -459,14 +521,12 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // for EVERY family, including the shotgun (a shell fires the whole pellet
   // spread for a single round).
   // スキル: ゴーストシューター = 10%/20%/30%(Lv)で弾を消費しない。
-  const ghostLv = skillLevel(player, 'ghost-shooter');
-  const consume = ghostLv && Math.random() < [0, 0.10, 0.20, 0.30][ghostLv] ? 0 : 1;
   useGameStore.setState(state => ({
     player: {
       ...state.player,
       weapons: state.player.weapons.map(w =>
         w.id === weapon.id
-          ? { ...w, lastFired: now, magazine: Math.max(0, (w.magazine ?? 0) - consume) }
+          ? weaponAfterGunShot(w, player, now)
           : w
       )
     }
@@ -574,7 +634,7 @@ export const buildJunkWeaponPellets = (
 // headshot=裁定4(PHILL): 発射時に確定ヘッドショットと決まった弾に印を付ける(着弾側がロールを飛ばす)。
 // 貫通はweapon自体のpassthrough/pierce(確定仕様)。
 // weaponKeyは'ghost-gun'固定(計測除外/ヘイト分離は呼び出し元=useGameLoopが別途行う=不変)。
-// 副作用なし(弾薬/クールダウンは呼び出し元がghostLastShotAt等で別管理・ここでは触らない)。
+// 副作用なし(マガジン/リロード/クールダウンは呼び出し元が共通ヘルパで進め、ここでは触らない)。
 export const buildGhostGunShots = (
   gun: Weapon,
   originX: number, originY: number,          // 発射点(ゴースト中心)

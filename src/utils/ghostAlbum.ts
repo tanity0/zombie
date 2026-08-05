@@ -15,6 +15,7 @@ import {
   type BossStyleSlot, type PendingBossClearView, type PlayerProfile,
 } from './playerTraits';
 import type { DuoAlbum, DuoRunClearView } from './duoRecords';
+import { GHOST_KNOB_SET_V } from '../../shared/ghostSanitize.mjs';
 
 /** 良化/悪化の向き。first=比較対象なし(初記録)。 */
 export type ClearTrend = 'first' | 'better' | 'worse' | 'same';
@@ -80,6 +81,8 @@ export interface BossClearCard {
   perfScore: number | null;
   /** 採用したら記録が上書きされるか(=「記録更新」表示)。既存記録が無ければtrue(初記録)。 */
   isRecordUpdate: boolean;
+  /** 新しいノブが未記録で既定値補完になる保存済みスロット。共有可否には影響しない。 */
+  isStale: boolean;
 }
 
 const slotBest = (slot: BossStyleSlot | undefined) => slot
@@ -110,6 +113,7 @@ export const buildRunTimeline = (
     best: slotBest(prev),
     // v0.25.2603(社長式): 判定基準を評点へ差し替え(旧: 被弾/分)。commit側と同じ純関数を使う。
     isRecordUpdate: isBetterBossStyleSample(prev?.perfScore, c.perfScore, prev !== undefined),
+    isStale: false,
   };
 });
 
@@ -134,6 +138,7 @@ export const buildAlbumCards = (profile: PlayerProfile | null): BossClearCard[] 
         ally: cleanAlly(slot.ally),
         best: null,
         isRecordUpdate: false,
+        isStale: (slot.knobsV ?? 0) < GHOST_KNOB_SET_V,
       };
     })
     .sort((a, b) => b.at - a.at);
@@ -161,6 +166,7 @@ export const buildDuoRunTimeline = (clears: readonly DuoRunClearView[]): BossCle
         ? { clearTimeMs: c.bestBefore, hitsPerMin: null, counterChance: null, perfScore: null }
         : null,
       isRecordUpdate: c.isRecordUpdate,
+      isStale: false,
     };
   });
 
@@ -184,6 +190,7 @@ export const buildDuoAlbumCards = (album: DuoAlbum | null): BossClearCard[] => {
         ally: cleanAlly(slot.ally),
         best: null,
         isRecordUpdate: false,
+        isStale: false,
       };
     })
     .sort((a, b) => b.at - a.at);

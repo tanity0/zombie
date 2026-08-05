@@ -1,7 +1,10 @@
 // ボス戦テストメニュー(bossTest.ts)のユニット。カタログの固定表が実設定(campaign.tsのhiddenBoss/
 // ENGAGEABLE_BOSS_TYPES)とズレたら落ちる突き合わせ+URL合成の検証。
 import { describe, it, expect } from 'vitest';
-import { BOSS_TEST_ENTRIES, bossTestQuery, parseBossTestMode, canForceGateBossNow, type GateBossGateState } from './bossTest';
+import {
+  BOSS_TEST_ENTRIES, bossTestQuery, bossTestGhostSkill, parseBossTestMode,
+  canForceGateBossNow, type GateBossGateState,
+} from './bossTest';
 import { ENGAGEABLE_BOSS_TYPES } from './bossEngagement';
 import { getStage } from '../data/campaign';
 
@@ -36,20 +39,30 @@ describe('bossTestQuery(URL合成)', () => {
   const entry = { boss: 'mimir', stageId: 'stage-1', param: 'bossnow' } as const;
 
   it('smoke/stage/強制フラグ/class/retryが常に入る', () => {
-    const q = new URLSearchParams(bossTestQuery(entry, { characterClass: 'rogue', ghost: false, ghostlog: false }));
+    const q = new URLSearchParams(bossTestQuery(entry, { characterClass: 'rogue', ghostMode: null, ghostlog: false }));
     expect(q.get('smoke')).toBe('1');
     expect(q.get('stage')).toBe('stage-1');
     expect(q.get('bossnow')).toBe('1');
     expect(q.get('class')).toBe('rogue');
     expect(q.get('retry')).toBe('1');
     expect(q.get('ghost')).toBeNull();
+    expect(q.get('ghostmode')).toBeNull();
     expect(q.get('ghostlog')).toBeNull();
   });
 
-  it('ghost/ghostlogはトグルONの時だけ付く', () => {
-    const q = new URLSearchParams(bossTestQuery(entry, { characterClass: 'warrior', ghost: true, ghostlog: true }));
+  it('守護霊3択とghostlogをURLへ載せる', () => {
+    const q = new URLSearchParams(bossTestQuery(entry, { characterClass: 'warrior', ghostMode: 'random', ghostlog: true }));
     expect(q.get('ghost')).toBe('1');
+    expect(q.get('ghostmode')).toBe('random');
     expect(q.get('ghostlog')).toBe('1');
+  });
+
+  it('3択を本番と同じスキルへ変換し、旧URLは守護霊へ戻す', () => {
+    expect(bossTestGhostSkill('?ghost=1&ghostmode=own')).toBe('guardian-spirit');
+    expect(bossTestGhostSkill('?ghost=1&ghostmode=random')).toBe('ghost-helper');
+    expect(bossTestGhostSkill('?ghost=1&ghostmode=top')).toBe('ghost-slayer');
+    expect(bossTestGhostSkill('?ghost=1')).toBe('guardian-spirit');
+    expect(bossTestGhostSkill('?ghostmode=top')).toBeNull();
   });
 });
 
@@ -61,12 +74,13 @@ describe('parseBossTestMode(現在モードの判定・社長指示「いまど�
   });
 
   it('テスト出撃のURL=activeで内訳(フラグ/ステージ/守護霊)が取れる', () => {
-    const q = bossTestQuery({ boss: 'mimir', stageId: 'stage-1', param: 'bossnow' }, { characterClass: 'warrior', ghost: true, ghostlog: false });
+    const q = bossTestQuery({ boss: 'mimir', stageId: 'stage-1', param: 'bossnow' }, { characterClass: 'warrior', ghostMode: 'top', ghostlog: false });
     const m = parseBossTestMode(q);
     expect(m.active).toBe(true);
     expect(m.params).toEqual(['bossnow']);
     expect(m.stageId).toBe('stage-1');
     expect(m.ghost).toBe(true);
+    expect(m.ghostMode).toBe('top');
   });
 
   it('?ghost=1単独の残留もactiveとして検出する', () => {

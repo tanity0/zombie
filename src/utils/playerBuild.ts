@@ -71,6 +71,8 @@ export const snapshotPlayerBuild = (
     equipment: { ...p.equipment },
     equipBonus: { ...p.equipBonus },
     critChance: p.critChance,
+    magBonus: p.magBonus,
+    reloadMult: p.reloadMult,
     subWeapons: [...p.subWeapons],
     subWeaponLevels: { ...p.subWeaponLevels },
     characterClass: p.characterClass,
@@ -111,6 +113,8 @@ export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: P
     equipment: snap.equipment ?? live.equipment,
     equipBonus: snap.equipBonus ?? live.equipBonus,
     critChance: snap.critChance ?? live.critChance,
+    magBonus: snap.magBonus ?? live.magBonus,
+    reloadMult: snap.reloadMult ?? live.reloadMult,
     subWeapons: snap.subWeapons ?? live.subWeapons,
     subWeaponLevels: snap.subWeaponLevels ?? live.subWeaponLevels,
     // 一時バフ窓の中立化(上のコメント参照)。

@@ -247,6 +247,10 @@ export interface PlayerBuildSnapshot {
   equipBonus?: EquipBonus;
   /** レベルアップで積んだクリ率(武器・装備とは別枠の本体値)。 */
   critChance?: number;
+  /** レベルアップで積んだ全銃共通の装填数加算。 */
+  magBonus?: number;
+  /** レベルアップで積んだリロード時間倍率(<1ほど速い)。 */
+  reloadMult?: number;
   subWeapons?: SubWeaponKey[];
   subWeaponLevels?: Partial<Record<SubWeaponKey, number>>;
   /** 計測時のクラス(キャラ固有スキルの評価に使う。絵の選択は従来どおりPlayerProfile.srcClass)。 */
@@ -743,10 +747,29 @@ export interface Summon {
   ghostBossId?: string;        // 紐付いているボスのenemy.id(そのボスが居なくなったら解散)。
   ghostClass?: CharacterClass; // v0.25.2467: 絵の選択用=プロファイル計測時のクラス(無ければwarrior=ヘビーガンナー)。
   ghostName?: string;          // v0.25.2477: 頭上に出すプレイヤー名(召喚時にプロファイルsrcName ?? 現在名を搭載)。
+  ghostArrivalComment?: string;   // 登場時の左上通信。召喚元プロフィールから浄化済みの文を搭載。
+  ghostDepartureComment?: string; // 帰還時の左上通信。同じ守護霊の持ち主が設定した文を使う。
   ghostIsOwn?: boolean;        // v0.25.2477: 自分のプロファイル由来か(現状オフライン=常にtrue。将来オンラインで
                                // 他人のゴーストが来たらfalse=頭上の「(自分)」添え字が消える前提の構造)。
   ghostFacing?: 1 | -1;        // 向き(描画の左右反転のみ・当たり判定は不変)。
+  // 登場/通常帰還の短い移動演出(gameTime基準)。演出中は専用driverが戦闘を止め、座標だけ更新する。
+  // 帰還は救難信号と同じ「しゃがみ→バックジャンプ」。HP0消滅には使わない。
+  ghostArrivalStartedAt?: number;
+  ghostArrivalFromX?: number;
+  ghostArrivalFromY?: number;
+  ghostArrivalToX?: number;
+  ghostArrivalToY?: number;
+  ghostDepartureStartedAt?: number;
+  ghostDepartureFromX?: number;
+  ghostDepartureFromY?: number;
+  ghostDepartureToX?: number;
+  ghostDepartureToY?: number;
   ghostLastShotAt?: number;    // 銃のクールダウンゲート(ms・Date.now基準)。
+  // v0.25.2830: 守護霊も独立した2人目のプレイヤーとして、プレイヤーと同じWeapon[]・リロード状態を
+  // 自前で持つ。リザーブ弾だけは従来の除外4どおり非消費(空マガジンは同じ時間を掛けて満タンへ戻る)。
+  ghostWeapons?: Weapon[];
+  ghostReloadEndsAt?: number;
+  ghostReloadingWeaponId?: string;
   ghostLastMeleeAt?: number;   // 近接のクールダウンゲート(ms・Date.now基準)。
   ghostCounterPendingAt?: number;    // カウンター相当の機会が開いた時刻(undefined=機会なし)。
   ghostCounterWillAttempt?: boolean; // その機会で抽選済みの「試みるか」。
@@ -1023,6 +1046,16 @@ export interface EscortSoldier {
   wasSurrounded?: boolean; // 直近で「囲まれ」状態だったか(助けてもらった時セリフの遷移検知用)
   companionMs?: number;    // プレイヤーと近距離で並走している連続時間(並走時セリフ用)
   moving?: boolean;        // チュートリアル追従NPC用: false=静止(歩行アニメを止めて0コマ目)。未指定=常時行進(従来)
+  advanceZone?: 'none' | 'front' | 'side' | 'rear'; // 進軍方向基準の四方位。境界ヒステリシス用に保持。
+  advanceDirX?: number;    // 拠点到達時も使う最後の有効な進軍方向
+  advanceDirY?: number;
+  advanceSpeedMult?: number;  // 現在の進軍速度倍率(0/0.5/0.7/1の間を加速中なら補間)
+  advanceSpeedTarget?: number;
+  advanceRampFrom?: number;
+  advanceRampAt?: number;     // gameTime。加速はここから1秒。
+  strongNear?: boolean;       // 強敵接近の111px入/150px出ヒステリシス
+  helpRequested?: boolean;    // 実際に救援要請した後だけ5秒の進軍ボーナスを得る
+  rescuedUntil?: number;      // gameTime。救援成立後の通常速度ウィンドウ
 }
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
@@ -1031,7 +1064,7 @@ export type SkillKey =
   // 超レア
   | 'reaper' | 'berserker' | 'skater' | 'overclock'
   // BOT_AND_GHOST.md G3: 守護霊(ゴースト助っ人)。ガチャからは出ない+最初から所持(社長指示)。
-  | 'guardian-spirit'
+  | 'guardian-spirit' | 'ghost-helper' | 'ghost-slayer'
   // レア
   | 'crit-up' | 'knight' | 'exploder' | 'sharpshooter' | 'sniper' | 'ricochet'
   | 'bomber' | 'fire-shooter' | 'bomb-counter' | 'punisher' | 'combo-master'

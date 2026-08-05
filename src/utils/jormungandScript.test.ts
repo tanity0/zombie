@@ -90,23 +90,23 @@ describe('pickJormungandMove', () => {
   });
 });
 
-describe('pickJormungandCombo — 受け入れ条件: Phase2のみ・確率50%・2組のみ(不変)', () => {
+describe('pickJormungandCombo — Phase2の最大4段連携', () => {
   it('phase1では連携しない', () => {
     expect(pickJormungandCombo('dash', 1, 100, () => 0)).toBeNull();
   });
 
-  it('許す組み合わせはdash→coil / burst→radialのみ', () => {
+  it('dash→coil→burst→radialだけを許す', () => {
     expect(pickJormungandCombo('radial', 2, 400, () => 0)).toBeNull();
-    expect(pickJormungandCombo('coil', 2, 100, () => 0)).toBeNull();
+    expect(pickJormungandCombo('coil', 2, 100, () => 0)).toBe('burst');
   });
 
   it('追撃技のゾーン重みが0ならnull', () => {
     expect(pickJormungandCombo('dash', 2, 900, () => 0)).toBeNull(); // coilは中/遠で重み0
   });
 
-  it('50%未満で発火・以上でnull', () => {
-    expect(pickJormungandCombo('dash', 2, 100, () => 0.49)).toBe('coil');
-    expect(pickJormungandCombo('dash', 2, 100, () => 0.51)).toBeNull();
+  it('60%未満で発火・以上でnull', () => {
+    expect(pickJormungandCombo('dash', 2, 100, () => 0.59)).toBe('coil');
+    expect(pickJormungandCombo('dash', 2, 100, () => 0.61)).toBeNull();
   });
 });
 

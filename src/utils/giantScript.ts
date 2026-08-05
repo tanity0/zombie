@@ -242,6 +242,11 @@ export const giantStageRangeMult = (stageId: string, enabled: boolean = true): n
   return GIANT_STAGE_RANGE_MULT[stageId] ?? 1; // 未知/未定義のステージIDは安全側の1.00
 };
 
+// 生値は gameStore の攻撃速度倍率1.2を通るため、1080msで実効900msになる。
+export const GIANT_REBUILD_REST_RAW_MS = 1080;
+export const giantRestRawMs = (stageId: string, rawMs: number): number =>
+  stageId === 'stage-1' ? rawMs : Math.max(rawMs, GIANT_REBUILD_REST_RAW_MS);
+
 // ============================================================================================
 // M66(社長指示・PACING_PUZZLE.md §6.26-11): 城ボスのステージ別「独自技」(Phase1から)+
 // 「大技」(Phase2=HP60%から)。stage-1/3/4/5にだけ1組ずつ足す(社長指示で明示された対象=城ボスが
@@ -283,20 +288,39 @@ export const giantStageMoveEligible = (move: GiantStageMoveId, distance: number)
   return distance >= r.min && distance <= r.max;
 };
 
-// ステージ技の混ぜ方(BOSS_RANGE_REWORK.md「ステージ独自技は今回触らない」の保存):
-// 旧仕様は「候補n+k件から等確率」=各ステージ技の当選率は 1/(n+k)。重み方式でも各ステージ技に
-// 「候補中の基本技の平均重み」を与えると当選率は厳密に 1/(n+k) のまま(基本技グループ:ステージ技
-// グループの取り分も n:k で従来と同一)=新しい数字を発明しない。基本技の候補が0件なら従来どおり
-// ステージ技だけの等確率(重み1)。pickGiantMoveWithGlenのグレン技も同じ規則。
+// ステージ技の混ぜ方の基準。stage-1だけは旧仕様の1/(n+k)を厳密に保存する。
+// 再構築対象(stage-3以降)はこの平均値へ個性倍率を掛け、固有技が飾りにならないようにする。
 const stageMixWeight = <T,>(basicEntries: GiantWeighted<T>[]): number =>
   basicEntries.length > 0
     ? basicEntries.reduce((sum, e) => sum + e.weight, 0) / basicEntries.length
     : 1;
 
+// 再構築: 通常5技は共通語彙として残し、各ステージの「顔」だけを明確に前へ出す。
+// stage-1は倍率1.0で従来の当選率を厳密に維持する。HP・判定・技の秒数には触れない。
+export const GIANT_STAGE_SPECIAL_WEIGHT_MULT: Partial<Record<string, Partial<Record<GiantStageMoveId, number>>>> = {
+  'stage-1': { bite: 1, slam: 1 },
+  'stage-3': { glide: 1.6, dive: 2.2 },
+  'stage-4': { quaddash: 1.8, nova: 2.1 },
+  'stage-5': { wing: 1.7, sweepbeam: 2.2 },
+};
+
+export const GIANT_STAGE_BASE_WEIGHT_MULT: Partial<Record<string, Record<GiantMove, number>>> = {
+  // stage-1は表に置かない=全て1.0。実機でちょうどよい現行抽選を完全に保持する。
+  'stage-3': { stomp: 0.6, sweep: 0.8, jump: 1.4, dash: 1.2, bolt: 0.8 },
+  'stage-4': { stomp: 1.2, sweep: 1.25, jump: 0.8, dash: 1.1, bolt: 0.6 },
+  'stage-5': { stomp: 0.7, sweep: 1.2, jump: 0.7, dash: 0.8, bolt: 1.4 },
+  'stage-ex1': { stomp: 1.1, sweep: 1.25, jump: 1.45, dash: 1.5, bolt: 1.25 },
+};
+
+export const giantStageBaseWeightMult = (stageId: string, move: GiantMove): number =>
+  GIANT_STAGE_BASE_WEIGHT_MULT[stageId]?.[move] ?? 1;
+
+export const giantStageSpecialWeightMult = (stageId: string, move: GiantStageMoveId): number =>
+  GIANT_STAGE_SPECIAL_WEIGHT_MULT[stageId]?.[move] ?? 1;
+
 // 5技(距離ゾーン別の重み付き抽選=BOSS_RANGE_REWORK.md)+ステージ固有の独自技(Phase1から)/
 // 大技(Phase2以上のみ)を対象にした統合抽選。ステージ技の範囲表(GIANT_STAGE_MOVE_RANGE)・CD・
-// フェーズゲートは不変で、混ぜ方は上のstageMixWeight(旧等確率の当選率を保存)。stageIdに技が
-// 定義されていなければ実質pickGiantMoveと同じ結果になる(=stage-6/7/ex1・未知ステージは基本5技のみ)。
+// フェーズゲートは不変。stageIdに固有技が無ければ基本5技だけだが、stage-ex1は追撃型の比重へ変わる。
 export const pickGiantMoveWithStage = (
   stageId: string,
   distance: number,
@@ -306,16 +330,19 @@ export const pickGiantMoveWithStage = (
   rand: () => number = Math.random,
 ): GiantMove | GiantStageMoveId | null => {
   const entries: GiantWeighted<GiantMove | GiantStageMoveId>[] = ALL_MOVES
-    .map(m => ({ move: m as GiantMove | GiantStageMoveId, weight: ready[m] ? giantMoveWeight(m, distance, phase) : 0 }))
+    .map(m => ({
+      move: m as GiantMove | GiantStageMoveId,
+      weight: ready[m] ? giantMoveWeight(m, distance, phase) * giantStageBaseWeightMult(stageId, m) : 0,
+    }))
     .filter(e => e.weight > 0);
   const extraWeight = stageMixWeight(entries);
   const uniqueMove = GIANT_STAGE_UNIQUE_MOVE[stageId];
   if (uniqueMove && (stageReady[uniqueMove] ?? false) && giantStageMoveEligible(uniqueMove, distance)) {
-    entries.push({ move: uniqueMove, weight: extraWeight });
+    entries.push({ move: uniqueMove, weight: extraWeight * giantStageSpecialWeightMult(stageId, uniqueMove) });
   }
   const ultMove = GIANT_STAGE_ULT_MOVE[stageId];
   if (ultMove && phase >= 2 && (stageReady[ultMove] ?? false) && giantStageMoveEligible(ultMove, distance)) {
-    entries.push({ move: ultMove, weight: extraWeight });
+    entries.push({ move: ultMove, weight: extraWeight * giantStageSpecialWeightMult(stageId, ultMove) });
   }
   return pickWeighted(entries, rand);
 };
@@ -389,6 +416,16 @@ export const glenMoveEligible = (move: GlenMoveId, distance: number): boolean =>
   return distance >= r.min && distance <= r.max;
 };
 
+// 最終戦では専用技が「たまに混ざる飾り」にならないよう、役割ごとに比重を持たせる。
+// 基本5技だけがreadyの時は従来抽選と完全一致する。
+export const GLEN_SPECIAL_WEIGHT_MULT: Record<GlenMoveId, number> = {
+  talon: 1.4,
+  boon: 1.25,
+  reach: 1.5,
+  nihil: 1.8,
+  trijump: 1.6,
+};
+
 // この個体が「グレン専用スクリプト」の対象かどうかの門番(社長指示「対象はstage-7のグレンだけ」)。
 // isStoryBoss/storyBossVariantはuseGameLoop.tsのstoryBossスポーン経路でのみ立つため、通常城ボス
 // (stage-1〜6)は常にisStoryBoss===undefinedでfalseを返す。stage-ex1(未確認変異体)も
@@ -422,7 +459,9 @@ export const pickGiantMoveWithGlen = (
   const extraWeight = stageMixWeight(entries);
   for (const move of GLEN_MOVES) {
     if (move === 'nihil' && phase < 2) continue;
-    if (glenReady[move] && glenMoveEligible(move, distance)) entries.push({ move, weight: extraWeight });
+    if (glenReady[move] && glenMoveEligible(move, distance)) {
+      entries.push({ move, weight: extraWeight * GLEN_SPECIAL_WEIGHT_MULT[move] });
+    }
   }
   return pickWeighted(entries, rand);
 };

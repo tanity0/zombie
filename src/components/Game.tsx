@@ -16,6 +16,7 @@ import WallBand from './WallBand';
 import WallInscription from './WallInscription';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
+import StoryReturnPrompt from './StoryReturnPrompt';
 import TutorialPopup from './TutorialPopup';
 import ShopMenu from './ShopMenu';
 import IntroDialogue from './IntroDialogue';
@@ -88,6 +89,7 @@ const Game: React.FC<GameProps> = ({
   const showUpgradeMenu = useGameStore(state => state.showUpgradeMenu);
   const showShopMenu = useGameStore(state => state.showShopMenu);
   const showEventQuestMenu = useGameStore(state => state.showEventQuestMenu);
+  const storyReturnPromptVisible = useGameStore(state => state.storyReturnPromptVisible);
   const [showUpgradeOverlay, setShowUpgradeOverlay] = useState(false);
   const gameWon = useGameStore(state => state.gameWon);
   const gameReturned = useGameStore(state => state.gameReturned);
@@ -173,7 +175,7 @@ const Game: React.FC<GameProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'p') {
-        if (!showUpgradeMenu && !showShopMenu && !showEventQuestMenu) {
+        if (!showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible) {
           setPaused(!isPaused);
         }
       }
@@ -181,7 +183,7 @@ const Game: React.FC<GameProps> = ({
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPaused, setPaused, showEventQuestMenu, showShopMenu, showUpgradeMenu]);
+  }, [isPaused, setPaused, showEventQuestMenu, showShopMenu, showUpgradeMenu, storyReturnPromptVisible]);
 
   useEffect(() => {
     if (!showUpgradeMenu) {
@@ -252,9 +254,11 @@ const Game: React.FC<GameProps> = ({
       
       {/* チュートリアルの操作説明ポップアップ(表示中はisPaused=trueだがPauseMenuは出さない=ポップアップ優先) */}
       <TutorialPopup />
-      {isPaused && !tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && (
+      {isPaused && !tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible && (
         <PauseMenu onResume={() => setPaused(false)} onQuit={onGameOver} />
       )}
+
+      <StoryReturnPrompt />
       
       {showUpgradeOverlay && (
         <UpgradeMenu />

@@ -46,12 +46,12 @@ const mixedRing = (
     return spawnEnemyAt(type, x, y, gameTime);
   });
 
-// (旧・FINALE_BOSS_TIME_MSはv0.25.1373で削除: 城ボス時刻の実体はuseGameLoop.tsの
-//  CASTLE_BOSS_MIN_TIME_MS(7:00)。未参照の重複定数を残すと「死んだ方を編集する」事故のもと。)
+// (旧・FINALE_BOSS_TIME_MSはv0.25.1373で削除: 城ボス時刻の実体はconfig/castleBoss.tsの
+//  CASTLE_BOSS_MIN_TIME_MS(5:00)。未参照の重複定数を残すと「死んだ方を編集する」事故のもと。)
 
-// ~7分アークのセットピース台本(社長指示で5分→7分へ再配置・×1.4ストレッチ)。緊張カーブは維持:
+// ~7分アークの旧セットピース台本(既定OFF)。城ボスの現行5分出現とは独立して旧時刻を維持する:
 // 静かな導入 → 初カウンター → 中ボススパイク → 立て直し → 7体オンスロート(ピーク) → 第二スパイク →
-// 最終育成 → 7:00 城ボス。武器箱は別スケジュール(useGameLoop)＋各中ボス撃破でドロップ。
+// 最終育成。武器箱は別スケジュール(useGameLoop)＋各中ボス撃破でドロップ。
 // (フェーズ状態機械/動的難易度は別ステップで載せる。本変更は既存イベントの時刻再配置のみ。)
 const WAVE_EVENTS: WaveEvent[] = [
   {
@@ -88,7 +88,7 @@ const WAVE_EVENTS: WaveEvent[] = [
     triggerAtMs: 295 * 1000,
     spawner: (player, _b, t) => ringAroundPlayer('pumpkin', 2, 320, player, t)
   }
-  // フィナーレ(giantbat)は stageDirector では出さない。城(固定設置)から7分で出現する城ボス経路に一本化(useGameLoop)。
+  // フィナーレ(giantbat)は stageDirector では出さない。城(固定設置)から5分で出現する城ボス経路に一本化(useGameLoop)。
 ];
 
 // Caller-managed consumption set. Reset on game restart.

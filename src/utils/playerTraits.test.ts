@@ -937,27 +937,26 @@ describe('playerTraits G5: 新規純関数(bossStyleSlotKey/ベスト保持判�
     expect(isBetterBossStyleSample(2.0, 2.0)).toBe(true);        // タイム不明=新しい方
   });
 
-  it('bossStylePerfScore: 60×(5×カウンター率 − 3×被弾率) − 秒数', () => {
+  it('bossStylePerfScore: 60×(3×カウンター率 − 2×被弾率) − 秒数', () => {
     const M = 60_000; // 1分
-    // 全部カウンター=基礎5点 → 60*5 − 60秒 = 240
-    expect(bossStylePerfScore({ 'g-jump': { exposures: 4, counters: 4, hits: 0 } }, M)).toBeCloseTo(240, 5);
+    // 全部カウンター=基礎3点 → 60*3 − 60秒 = 120
+    expect(bossStylePerfScore({ 'g-jump': { exposures: 4, counters: 4, hits: 0 } }, M)).toBeCloseTo(120, 5);
     // 全部避け(カウンターも被弾も0)=基礎0点 → 0 − 60秒 = −60。**避けは加点しない**(社長裁定)。
     expect(bossStylePerfScore({ 'g-jump': { exposures: 4, counters: 0, hits: 0 } }, M)).toBeCloseTo(-60, 5);
-    // 全部被弾=基礎−3点 → −180 − 60秒 = −240
-    expect(bossStylePerfScore({ 'g-jump': { exposures: 4, counters: 0, hits: 4 } }, M)).toBeCloseTo(-240, 5);
-    // 10技を8カウンター2回避・無傷 → 60*(5*0.8) − 60 = 240 − 60 = 180
-    expect(bossStylePerfScore({ 'g-jump': { exposures: 10, counters: 8, hits: 0 } }, M)).toBeCloseTo(180, 5);
-    // 弾を撃つ技(g-bolt)は避け/被弾を数えない=カウンターできた回だけ分子・分母に入る=基礎5点。
-    expect(bossStylePerfScore({ 'g-bolt': { exposures: 10, counters: 2, hits: 5 } }, M)).toBeCloseTo(240, 5);
+    // 全部被弾=基礎−2点 → −120 − 60秒 = −180
+    expect(bossStylePerfScore({ 'g-jump': { exposures: 4, counters: 0, hits: 4 } }, M)).toBeCloseTo(-180, 5);
+    // 10技を8カウンター2回避・無傷 → 60*(3*0.8) − 60 = 144 − 60 = 84
+    expect(bossStylePerfScore({ 'g-jump': { exposures: 10, counters: 8, hits: 0 } }, M)).toBeCloseTo(84, 5);
+    // 弾を撃つ技(g-bolt)は避け/被弾を数えない=カウンターできた回だけ分子・分母に入る=基礎3点。
+    expect(bossStylePerfScore({ 'g-bolt': { exposures: 10, counters: 2, hits: 5 } }, M)).toBeCloseTo(120, 5);
     // 技に一度も晒されていない=比較不能(null)。時間0も比較不能。
     expect(bossStylePerfScore({}, M)).toBeNull();
     expect(bossStylePerfScore({ 'g-bolt': { exposures: 6, counters: 0, hits: 3 } }, M)).toBeNull();
     expect(bossStylePerfScore({ 'g-jump': { exposures: 4, counters: 4, hits: 0 } }, 0)).toBeNull();
   });
 
-  // 社長が定めた「上手いの概念」の順位=カウンター > ミスが少ない > 速い。**この順位を機械化する**
-  // (v0.25.2604の検算で「/時間」や「×10」が順位を逆転させたため、回帰として固定する)。
-  it('評点は社長の順位どおりに並ぶ(カウンター > ミス少 > 速い)', () => {
+  // 社長裁定: 全技カウンターの価値は3分。カウンターを最重視しつつ、極端な長期戦は速攻に負ける。
+  it('評点はカウンター・ミス・速さを3分/2分の重みで比較する', () => {
     const run = (c: number, h: number, sec: number) => {
       const N = 20, counters = Math.round(N * c), hits = Math.round(N * h);
       return bossStylePerfScore({ 'g-jump': { exposures: N, counters, hits } }, sec * 1000)!;
@@ -968,8 +967,8 @@ describe('playerTraits G5: 新規純関数(bossStyleSlotKey/ベスト保持判�
     const brute = run(0.1, 0.4, 45);        // 力押し(被弾だらけ)
     // カウンターが一番強い: 完璧なランは、どんな速攻より上。
     expect(perfect).toBeGreaterThan(rush);
-    // 長期戦でも、腕が上なら速攻に勝つ(時間は最後の優先度)。
-    expect(perfectSlow).toBeGreaterThan(rush);
+    // 3分の重みに下げたため、極端な長期戦は速攻に負ける。
+    expect(perfectSlow).toBeLessThan(rush);
     // ミスの多い力押しは最下位。
     expect(brute).toBeLessThan(rush);
     // 同じ腕なら速い方が上(時間はちゃんと効く)。

@@ -44,6 +44,9 @@ import {
   type PunishEpisodeState, type PunishTally, type PunishProfile,
 } from './punishWindow'; // GHOST-CMD-2A(§2.18追補): 隙(気絶/硬直/カウンター直後)の窓判定+票の共通部品
 import { loadPlayerName } from './playerName'; // v0.25.2477: 計測時のプレイヤー名(srcName)の出どころ
+import { GHOST_KNOB_SET_V, GHOST_PROFILE_DEFAULTS } from '../../shared/ghostSanitize.mjs';
+import { bossStyleSlotKey } from './ghostSlot';
+export { bossStyleSlotKey } from './ghostSlot';
 
 // ---- 保存フォーマット -------------------------------------------------------------------------
 /** G4a(§2.9(3)): サブウェポンの様式(第1弾はwire-anchor/shieldの2種)。nは計測に使った母数の累計。 */
@@ -96,6 +99,8 @@ export interface BossStyleSlot {
   /** v0.25.2603(社長式・記録基準): 評点=(カウンター×3 + 避けた技 − 被弾した技)/分。
    * 旧レコードには無い=欠損可。欠損は「比較できない」扱いで新しい方を採用する(下の比較関数)。 */
   perfScore?: number;
+  /** 共有ノブ集合の版。欠損/小さい値は表示上「古い記録」になるが共有自体は可能。 */
+  knobsV?: number;
   /** 記録時刻(Date.now()・討伐記録一覧用)。 */
   at: number;
   /** v0.25.2493(社長採用「撃破タイム+カウンター成功率であれば採用」): 交戦開始→撃破までの時間(ms)。
@@ -163,6 +168,9 @@ export interface PlayerProfile {
    * 頭上表示はこの記録名を使う=将来オンラインで他人のゴーストが来た時に「その人の名前」が
    * 出る構造(§2.5 未決5=プロファイルは通信ペイロード)。 */
   srcName?: string;
+  /** 守護霊の登場・帰還時に左上通信へ表示する、持ち主が設定した公開コメント。旧データは欠損可。 */
+  arrivalComment?: string;
+  departureComment?: string;
   /**
    * G5(BOT_AND_GHOST.md §2.10 仕様1): ボス別攻略スタイル(軸2)。キー=bossStyleSlotKey()の戻り値。
    * 撃破が無いボス/計測不能な条件下では触らない=任意フィールド(後方互換=欠損可・v:1のまま)。
@@ -177,21 +185,13 @@ export interface PlayerProfile {
  * 使う(ズレ防止)。stageIdは呼び出し側が `getSelectedStageId()`(src/data/progress.ts)で取得して渡す
  * (このファイルはstore/data非依存を保つため、ここではimportしない)。
  */
-export const bossStyleSlotKey = (type: EnemyType, stageId: string): string =>
-  type === 'giantbat' ? `giantbat@${stageId}` : type;
-
 const STORAGE_KEY = 'zombie-ghost-profile-v1';
 
 // 何もデータが無い状態から最初のEMAを起こす時の「種」の値(botSkillのcasual相当に寄せた叩き台)。
 // ghostDriver.ts の defaultGhostProfile とは別に持つ(playerTraits はゴーストの既定値そのものには
 // 関与しない=循環import回避。数値がここと重複するのは意図的=どちらも「casual相当」の同じ目安のため)。
-const SEED_PROFILE: Omit<PlayerProfile, 'v' | 'runs' | 'moveReactions' | 'subStyles'> = {
-  reactionMs: 250, counterChance: 0.5, preferredDist: 180, meleeBias: 0.4, mobility: 0.6, hitsPerMin: 3,
-  // G2.6: 控えめな既定値(ghostDriver.DEFAULT_SUB_USES_PER_MINと同値=どちらも「casual相当」の目安。
-  // 重複は意図的=循環import回避、上のコメント参照)。旧フォーマット(このノブが無い保存)の欠損埋めにも使う。
-  subUsesPerMin: 2,
-  // G4a: 移動2ノブの種(casual相当の叩き台。G4bの消費側が入るまでは記録専用)。
-  stationaryFrac: 0.35, approachPerMin: 3,
+export const SEED_PROFILE: Omit<PlayerProfile, 'v' | 'runs' | 'moveReactions' | 'subStyles'> = {
+  ...GHOST_PROFILE_DEFAULTS,
 };
 
 // G4a: 表/様式の「データ無し」初期値。n=0が「まだ計測していない」の印(n<1=記録なしはG4b側で
@@ -961,10 +961,8 @@ export const applyPendingSubStyle = (prev: PlayerProfile, r: PendingSubStyleReco
  *
  * **分母が「時間」ではなく「技の回数」なのが要点**(社長式からの唯一の変更・v0.25.2603で検算):
  * 時間で割ると「早い」が全項目に掛かる支配項になり、社長が**最後**に置いた優先度が**最優先**に
- * 化ける。実例: 10技を8カウンター2回避・無傷/3分(=2.60点)が、技が3回しか来なかった
- * 1カウンター2回避/20秒(=1.67点)に、時間割りだと 8.67 対 15.00 で**負ける**。
- * 技の回数で割れば「来た技にどう応えたか」だけを測れる(全部カウンター=3.0 / 全部回避=1.0 /
- * 全部被弾=−1.0)。速さは別軸としてタイブレークで効かせる。
+ * 化ける。技の回数で割れば「来た技にどう応えたか」だけを率として測れる
+ * (全部カウンター=3.0 / 全部回避=0 / 全部被弾=−2.0)。速さは最後に秒数として引く。
  *
  * - **弾を撃つ技は「避けた/食らった」を数えない**(避けようが当たろうが弾は弾)。
  *   **ただしカウンター(反射)が成立した回だけは分子・分母とも数える**(社長の但し書き)。
@@ -975,37 +973,38 @@ export const applyPendingSubStyle = (prev: PlayerProfile, r: PendingSubStyleReco
  * **速く倒すほど不利**という直感に反する挙動だった(社長報告「上書きしたはずなのに前の守護霊が出る」)。
  */
 /**
- * v0.25.2604(社長式・確定): 記録の勝ち負けを決める**評点**。高いほど良い。
+ * v0.25.2818(社長式・確定): 記録の勝ち負けを決める**評点**。高いほど良い。
  *
- *   評点 = 60 × (5×カウンター率 − 3×被弾率) − かかった秒数
+ *   評点 = 60 × (3×カウンター率 − 2×被弾率) − かかった秒数
  *
- * 社長が定めた「上手いの概念」の順位=**カウンター > ミスが少ない > 速い**をそのまま表す。
+ * 全技カウンター=3分短縮、全技被弾=2分加算の価値として、腕と速さを同じ秒尺度で比べる。
  *
  * 設計の根拠(いずれも検算で確かめた。**むやみに項を足さないこと**):
  *  - **避けた数は入れない。** 1つの技は必ず カウンター/避け/被弾 のどれか1つに決まる(排他3分類・
  *    moveReaction.ts)ので、カウンター率と被弾率が決まれば避け率は自動的に決まる=独立した情報ではない。
  *    しかも避けに点を付けると重み比が勝手にズレる: 避け+1点にすると式は
- *    `1 + 4×カウンター率 − 4×被弾率` に化け、**カウンターとミスが同格**になる(5:3 → 4:4)。
+ *    `1 + 2×カウンター率 − 3×被弾率` に化け、確定した3:2とは別の評価になる。
  *  - **DPSは入れない。** ボスのHPは固定なので DPS = HP/交戦時間 = **1/時間そのもの**。
  *    時間と別に足すと同じものを2回数える(そもそもボス毎の与ダメージは計測していない)。
- *  - **時間は引き算・スケールは60。** 基礎点の幅は−3〜+5しかないのに秒数は20〜300あるため、
- *    素の秒数を引くと基礎点が誤差になり**時間だけの勝負**になる(被弾40%の力押し45秒が、
- *    カウンター90%無傷の70秒に勝ってしまう)。60を掛けると「基礎点1点=60秒」=1分で1点減点になり、
- *    社長の順位どおりに並ぶ。10だと1分6点減=速攻が完璧に勝つ(検算のうえ不採用)。
+ *  - **時間は引き算・スケールは60。** 基礎値1.0=60評点=60秒ぶん、実時間は1秒ごとに1評点を引く。
+ *    したがってカウンター重み3は3分、被弾重み2は2分にそのまま対応する。全技カウンターでも
+ *    極端に遅ければ、速く無傷で倒した記録が上回れる。
+ *  - **生の回数ではなく率で比べる。** 回数を足すと、同じ腕でも技を20回出された長期戦が10回の戦いの
+ *    2倍稼げてしまう。技数で割った率なら「来た技へどう応えたか」を戦闘時間と分離して比べられる。
  *
  * 旧基準(被弾/分)は**分あたり**だったため「1発20秒=3.0/分」が「3発3分=1.0/分」に負ける=
  * **速く倒すほど不利**という直感に反する挙動だった(社長報告「上書きしたはずなのに前の守護霊が出る」)。
  */
-export const MOVE_COUNTER_WEIGHT = 5;
+export const MOVE_COUNTER_WEIGHT = 3;
 /** 被弾(ミス)の重み(社長指定・**引く**側なので正の数で持つ)。 */
-export const MOVE_HIT_WEIGHT = 3;
-/** 基礎点1点が何秒ぶんの価値か。60=**1分かかるごとに1点減点**。 */
+export const MOVE_HIT_WEIGHT = 2;
+/** 基礎値1.0が何秒ぶんの価値か。60=基礎値1.0が60評点、実時間は1秒ごとに1評点減点。 */
 export const PERF_TIME_SCALE_SEC = 60;
 
 /**
  * 純関数: 技への反応表(1セッションぶんの生tally)と交戦時間から評点を出す。
  *
- *   評点 = 60 × (5×カウンター率 − 3×被弾率) − かかった秒数
+ *   評点 = 60 × (3×カウンター率 − 2×被弾率) − かかった秒数
  *
  * 技に一度も晒されていない(分母0)なら null=**比較不能**(比較側が扱いを決める)。
  *
@@ -1110,6 +1109,7 @@ export const applyPendingBossStyle = (
     mobility: r.mobilitySample,
     hitsPerMin: r.hitsPerMinSample,
     perfScore: r.perfScoreSample ?? undefined, // v0.25.2603: 記録の勝ち負けを決める評点(社長式)
+    knobsV: GHOST_KNOB_SET_V,
     subUsesPerMin: r.subUsesPerMinSample,
     stationaryFrac: r.stationarySample,
     approachPerMin: r.approachSample,

@@ -83,10 +83,12 @@ describe('pickUriMove', () => {
   });
 });
 
-describe('pickUriCombo(不変)', () => {
-  it('only follows sweep, at the configured chance', () => {
-    expect(pickUriCombo('downslash', () => 0)).toBeNull();
-    expect(pickUriCombo('sweep', () => 0.59)).toBe('downslash');
-    expect(pickUriCombo('sweep', () => 0.61)).toBeNull();
+describe('pickUriCombo — 大薙ぎ→振り下ろし→突き', () => {
+  it('最大3段で終わり、各リンクは65%で発火する', () => {
+    expect(pickUriCombo('sweep', 1, () => 0.64)).toBe('downslash');
+    expect(pickUriCombo('sweep', 1, () => 0.66)).toBeNull();
+    expect(pickUriCombo('downslash', 1, () => 0)).toBeNull();
+    expect(pickUriCombo('downslash', 2, () => 0)).toBe('thrust');
+    expect(pickUriCombo('thrust', 2, () => 0)).toBeNull();
   });
 });

@@ -22,7 +22,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS,
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
@@ -55,6 +55,7 @@ import {
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
 import { contentSpanFrac, needsContentTrim, contentTrimFrameY } from '../utils/shadowBake';
+import { horizontalShadowCorners } from '../utils/shadowProjection';
 import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
 import {
   idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING, IDOL_ORB_SPREAD_RAD, IDOL_MOVES_ALL,
@@ -1127,7 +1128,6 @@ const MELEE_POSE_PREFIX: Record<string, string> = {
   warrior: 'player-shotgun-melee',     // ヘビーガンナー(社長提供v0.25.1624)
   rogue: 'player-scavenger-melee',     // ストライカー(社長提供v0.25.1625)=4クラス完備
 };
-const RESCUE_ALLY_HOP_PX = 48;        // 救援アライの飛来ジャンプ弧の頂点の高さ(px・視覚のみ)。社長指示v0.25.1613
 const RESCUE_ALLY_FRONT_MARGIN = 14;  // 着地を敵の足元より何px手前(下=描画で前面)へ取るか。社長指示v0.25.1614
 const PLAYER_COUNTER_MS = 280;        // カウンター成立の決めポーズの長さ
 const PLAYER_COUNTER_POP = 0.13;      // 決めポーズの一瞬の膨らみ(縦横)
@@ -9852,23 +9852,21 @@ export class PixiScene {
 
 
   /**
-   * シルエット台形の4隅を計算してセットする。渡す dirX/dirY/length は★S-7で先端ベクトル補間済み
-   * (=既に「実際に描く」向き・長さ)。裁定H: PerspectiveMesh.setCorners(x0..x3) は
-   * (top-left=u0v0, top-right=u1v0, bottom-right=u1v1, bottom-left=u0v1)。焼いたテクスチャは
-   * v=0(上端)=絵の頭側=影の遠い側(先端)、v=1(下端)=絵の足元=影の近い側。よって top-*=先端(tip)、
-   * bottom-*=足元(near)。
+   * 案C「全部水平」: 根元と先端の幅方向をどちらも画面水平=素材の底辺と平行に固定する。
+   * 光に合わせて幅軸を回さず、dirX/dirY/length は先端中心の位置だけに使う。
+   * PerspectiveMesh のUV対応は従来どおり top=先端 / bottom=足元。
    */
   private setSilhouetteMeshCorners(
     mesh: PerspectiveMesh, footX: number, footY: number, dirX: number, dirY: number,
     length: number, nearHalf: number, farHalf: number, skewShift: number, uSign: number,
   ) {
-    const tipX = footX + dirX * length, tipY = footY + dirY * length;
-    const px = -dirY, py = dirX; // 光方向に直交(先端側のskewはこの軸へずらす)
-    const farCx = tipX + px * skewShift, farCy = tipY + py * skewShift;
-    const c0 = this.shadowSnap(farCx + uSign * px * farHalf, farCy + uSign * py * farHalf);   // top-left (u0,v0)
-    const c1 = this.shadowSnap(farCx - uSign * px * farHalf, farCy - uSign * py * farHalf);   // top-right (u1,v0)
-    const c2 = this.shadowSnap(footX - uSign * px * nearHalf, footY - uSign * py * nearHalf); // bottom-right (u1,v1)
-    const c3 = this.shadowSnap(footX + uSign * px * nearHalf, footY + uSign * py * nearHalf); // bottom-left (u0,v1)
+    const q = horizontalShadowCorners(
+      footX, footY, dirX, dirY, length, nearHalf, farHalf, skewShift, uSign,
+    );
+    const c0 = this.shadowSnap(q.c0.x, q.c0.y);
+    const c1 = this.shadowSnap(q.c1.x, q.c1.y);
+    const c2 = this.shadowSnap(q.c2.x, q.c2.y);
+    const c3 = this.shadowSnap(q.c3.x, q.c3.y);
     mesh.setCorners(c0.x, c0.y, c1.x, c1.y, c2.x, c2.y, c3.x, c3.y);
   }
 
@@ -10800,6 +10798,13 @@ export class PixiScene {
   // s.width/height は既にプレイヤーの実寸(directorTick.tsが召喚時にplayer.width/heightをコピー)なので、
   // サイズ/遠近はプレイヤーと同じ基準(playerBaseScale+depthScale+ピクセルスナップ)で描く。
   private drawGhostAlly(view: ActorView, s: Summon, now: number) {
+    const ghostGameTime = useGameStore.getState().gameTime;
+    const lifecycleActive = s.ghostArrivalStartedAt !== undefined || s.ghostDepartureStartedAt !== undefined;
+    const departureElapsed = s.ghostDepartureStartedAt === undefined ? -1 : ghostGameTime - s.ghostDepartureStartedAt;
+    const departureFlightT = departureElapsed < RESCUE_ALLY_CROUCH_MS
+      ? 0
+      : Math.max(0, Math.min(1, (departureElapsed - RESCUE_ALLY_CROUCH_MS) / RESCUE_ALLY_FLYOUT_MS));
+    const lifecycleAlpha = 1 - departureFlightT * 0.6;
     const footX = s.x + s.width / 2;
     const footY = s.y + s.height;
     const boxW = s.width * PLAYER_VISUAL_SCALE;
@@ -10808,7 +10813,7 @@ export class PixiScene {
     const faceSign = s.ghostFacing === -1 ? -1 : 1;
     view.light.visible = false;
     view.container.zIndex = footY; // 足元Yソート(プレイヤー/敵と同じ)
-    view.container.alpha = GHOST_ALLY_ALPHA;
+    view.container.alpha = GHOST_ALLY_ALPHA * lifecycleAlpha;
 
     // ① 歩き判定(store追加なしの最小実装): 前フレーム位置との差分。リーシュワープ(瞬間追いつき)は
     //   歩きにしない(上限しきい値)。simのtickと描画フレームのズレで差分0のフレームが混ざるため、
@@ -10821,7 +10826,7 @@ export class PixiScene {
       if (moved > GHOST_WALK_MIN_DELTA_PX && moved < GHOST_WALK_TELEPORT_PX) ga.movingUntil = now + GHOST_WALK_HOLD_MS;
       ga.prevX = s.x; ga.prevY = s.y;
     }
-    const walking = now < this.ghostAnim.movingUntil;
+    const walking = s.ghostDepartureStartedAt === undefined && now < this.ghostAnim.movingUntil;
 
     // ② テクスチャ選択はプレイヤー本体と同じ関数を共有(歩き中=クラス別歩きコマ/静止=クラス待機絵)。
     //   equipmentはALLY_PLAIN_EQUIP=武将装備の混入防止(救難信号アライの前例v0.25.1726)。
@@ -10841,12 +10846,16 @@ export class PixiScene {
     };
     const warlordFullGhost = hasFullWarlordSet(fakeGhost.equipment);
     const frame = playerWalkFrame(fakeGhost, now, walking, false);
-    const tex = getTexture(playerTextureName(fakeGhost, frame, walking, false))
+    let tex = getTexture(playerTextureName(fakeGhost, frame, walking, false))
       ?? getTexture(PLAYER_IDLE_SPRITE[gcls] ?? 'player-shotgun-idle') ?? getTexture('player');
+    if (departureElapsed >= 0 && departureElapsed < RESCUE_ALLY_CROUCH_MS) {
+      const crouchPrefix = MELEE_POSE_PREFIX[gcls];
+      if (crouchPrefix) tex = getTexture(`${crouchPrefix}-ready`) ?? tex;
+    }
 
     // ③ 発砲(ghostLastShotAt起点・視覚のみ): latch=発砲の瞬間に「実際に生まれた弾(ghost-gun)の射線」と
     //   銃口の世界座標を焼き付け、消えるまで場所固定(v0.25.2455の本体実装と同型)。
-    const lastShot = s.ghostLastShotAt ?? 0;
+    const lastShot = lifecycleActive ? 0 : (s.ghostLastShotAt ?? 0);
     const sinceFire = now - lastShot;
     if (lastShot > 0 && sinceFire >= 0 && sinceFire < MUZZLE_FLASH_MS) {
       if (lastShot !== this.ghostMuzzlePrevFired) {
@@ -10929,7 +10938,7 @@ export class PixiScene {
           this.snapToScreenPixel(footY, this.L.world.position.y) + actOffY - h * 0.55,
         );
         kb.zIndex = footY - 0.5; // 本体(zIndex=footY)のすぐ背面
-        kb.alpha = GHOST_ALLY_ALPHA;
+        kb.alpha = GHOST_ALLY_ALPHA * lifecycleAlpha;
         kb.visible = true;
       } else if (this.ghostKatanaBackSetup) {
         kb.visible = false;
@@ -10963,7 +10972,7 @@ export class PixiScene {
     // 見た目を一致させる。ビルド未記録=旧プロファイルの時だけ従来どおり本人の近接武器)。
     const meleeKey = s.ghostBuild?.meleeKey ?? player.weapons.find(w => w.isMelee)?.key;
     const wtex = meleeKey ? getTexture(`weapons/${meleeKey}`) : null;
-    const meleeAt = s.ghostLastMeleeAt ?? 0;
+    const meleeAt = lifecycleActive ? 0 : (s.ghostLastMeleeAt ?? 0);
     const mSince = now - meleeAt;
     if (this.ghostKnifeSetup && meleeAt > 0 && mSince >= 0 && mSince < PLAYER_MELEE_SWING_MS) {
       const kt = meleeSwingEase(mSince / PLAYER_MELEE_SWING_MS); // 本体/分身と同じイージング
@@ -11107,7 +11116,7 @@ export class PixiScene {
         Math.round(footY - boxH * dsc - GHOST_NAME_GAP_PX),
       );
       label.zIndex = footY; // 本体と同じ足元Yソート
-      label.alpha = GHOST_NAME_ALPHA;
+      label.alpha = GHOST_NAME_ALPHA * lifecycleAlpha;
       label.visible = true;
     } else if (this.ghostNameLabel) {
       this.ghostNameLabel.visible = false; // 名前が無い(想定外)フレームは出さない
@@ -11120,7 +11129,7 @@ export class PixiScene {
     // 距離アンカーと同じ既存慣例。刀ビルドのリーチ差は実機確認後に調整=叩き台)。
     // クレセント(狙い方向の刃)はゴーストでは省略しリングのみ。負荷: 1/10(単一プールsprite・140msのみ)。
     if (this.ghostCounterRing) this.ghostCounterRing.visible = false; // 既定OFF(下で出す時だけON)
-    const gWinEnd = s.ghostCounterWindowEnd ?? 0;
+    const gWinEnd = lifecycleActive ? 0 : (s.ghostCounterWindowEnd ?? 0);
     if (now <= gWinEnd) {
       const gOpenAt = gWinEnd - COUNTER_WINDOW;
       const gt = (now - gOpenAt) / 140;

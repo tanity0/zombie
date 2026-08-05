@@ -1,6 +1,7 @@
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
 import { projectileMoveKeyForEnemy } from './moveReaction'; // GHOST-BULLET-TECH: 弾へ載せる技キー(記録専用)
+import { GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
 
 // 固定ビュー矩形からの「画面外」バンド(px・社長指示Bで具体値決め直し)。全辺一律で「画面端から○px外」を意味する。
 // 固定ビューにしたので画面サイズ比ではなく固定px。SPAWN<RECYCLE のヒステリシスで湧いた敵が即リサイクルされない。実機で微調整可。
@@ -42,13 +43,8 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   pumpkin:   { width: 40, height: 40, speed: 55,  health: 150,  damage: 16,  experienceValue: 8 },
   // 新型(lich・ステージ4): 速度はゴースト(90)の1.2倍=108。旋回しながら詰めてくる(AIは store)。
   lich:      { width: 30, height: 30, speed: 108, health: 36,   damage: 12,  experienceValue: 4 },
-  // 城ボス(ジャイアント)。health は `CONSTANT_STRENGTH_TYPES` 経由で ×ENEMY_HP_MULT(5) = **実効2500**。
-  // 200→500 へ引き上げ(社長指示v0.25.2362「HP低いのでそこだけ調整」)。理由:
-  //  - 実測のプレイヤーDPSは60〜200なので、旧・実効1000では**5〜16秒で溶ける**。
-  //  - M51で入れたソウル式の予告(0.7〜1.0秒)+硬直(0.9秒)は、**何度も回って初めて機能する**。
-  //  - フェーズ2はHP60%から。旧値だと**薙ぎ払い(Phase2限定)を一度も見ずに終わるラン**が普通に起きた。
-  //  - 実効2500 なら 25〜40秒。裏ボス(600×5=3000)より下=**城ボス<裏ボスの序列は維持**。
-  // 調整はこの1数字だけでよい(ダメージ19・速度70は据え置き)。
+  // 城ボス(ジャイアント)。ここは生成時の互換値(×ENEMY_HP_MULT=実効2500)。通常の城ボスは
+  // useGameLoopでstage別HP(3500→6000)へ置換する。storyBossOnlyのgiantbatは個別仕様を守り互換値のまま。
   giantbat:  { width: 60, height: 60, speed: 70,  health: 500,  damage: 19,  experienceValue: 30 },
   reaper:    { width: 80, height: 80, speed: 130, health: 4000, damage: 999, experienceValue: 0 },
   // 研究所専用ゾンビ(通常敵データ参考)。Lv1=雑魚〜 / Lv2=変異(中) / Lv3=巨体(パンプキン相当)。動きは通常チェイス。
@@ -60,40 +56,36 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // 裏ボス(ステージ1=ミーミル / ステージ3=ヨルムンガルド)。仕様は共通(社長指示):
   //  ・大きさ=通常ジャイアント(giantbat 60)の約3倍 ・速度=ジャイアントと同じ(70)
   //  ・耐久=ジャイアントの3倍 ・攻撃力(接触)=ジャイアントの2倍。
-  // 耐久/攻撃は CONSTANT_STRENGTH_TYPES 経由で giantbat と同じ固定スケール(hpMult=ENEMY_HP_MULT, dmgMult=1)に乗る。
-  //  → health 600×5=3000(giant 200×5=1000 の3倍) / damage 38(giant 19 の2倍)。
+  // 攻撃は固定値。耐久はbossHealth.tsのステージ進行表をそのまま使う。
   // 裏ボスの width/height は「当たり判定の帯(足元の四角・社長指定)」。絵はこれより大きくフル表示する
   // (pixiScene の BOSS_SPRITE_FIT で帯=絵の下部に合わせて配置)。見た目=絵 / 判定=この帯、で分離。
   // 帯サイズは素材アスペクト×指定フレームから算出(BOSS_SPRITE_FIT と整合させること)。
   // 裏ボスは hpMult を掛けず health をそのまま maxHealth にする(buildEnemy 参照)。個別指定(社長指示)。
   // 帯(=当たり判定/見た目の基準)を ×1.5(社長指示「敵すべて1.5倍・ボスも」)。絵は BOSS_SPRITE_FIT で帯基準に追従。
-  mimir:      { width: 248, height: 138, speed: 90, health: 6666,  damage: 38, experienceValue: 0 },
-  jormungand: { width: 519, height: 90,  speed: 90, health: 7500,  damage: 38, experienceValue: 0 },
+  mimir:      { width: 248, height: 138, speed: 90, health: HIDDEN_BOSS_HEALTH.mimir,      damage: 38, experienceValue: 0 },
+  jormungand: { width: 519, height: 90,  speed: 90, health: HIDDEN_BOSS_HEALTH.jormungand, damage: 38, experienceValue: 0 },
   // 社長修正指示(v0.25.1321〜): スカジは帯を今の2/3スケールへ縮小(456×102→304×68)。
-  skadi:      { width: 304, height: 68,  speed: 90, health: 10000, damage: 38, experienceValue: 0 },
-  // 裏ボス(ステージ5=トール)。耐久は既存3体の上昇傾向(6666→7500→10000)を継続する暫定値
-  // (実機調整前提・社長要望あれば調整可)。
+  skadi:      { width: 304, height: 68,  speed: 90, health: HIDDEN_BOSS_HEALTH.skadi, damage: 38, experienceValue: 0 },
+  // 裏ボス(ステージ5=トール)。耐久はbossHealth.tsの段階表でトールが最上位。
   // 社長修正指示(v0.25.1321〜): 帯を半分スケールへ縮小(280×140→140×70。大きすぎるとの報告)。
   // 社長修正指示(通常移動速度): 最終速度(buildEnemyでENEMY_SPEED_MULT=2/3が掛かった後)を
   // PLAYER_BASE_SPEED(gameStore.ts=87)×5/4=108.75にしたいので、ここの生値は
   // 108.75÷(2/3)=163.125→163(他の裏ボス=speed90=仕様共通、という前提を崩す個別指定・社長明示)。
-  thor:       { width: 140, height: 70,  speed: 163, health: 11000, damage: 38, experienceValue: 0 },
+  thor:       { width: 140, height: 70,  speed: 163, health: HIDDEN_BOSS_HEALTH.thor, damage: 38, experienceValue: 0 },
   // PACING_PUZZLE.md §5.21-追補8: ゲート2ボス(天使名ボス1体目)=ミゲル。stageのhiddenBossではなく
-  // ゲート2(useGameLoop.ts)がfromEventでスポーンする。叩き台値(実機調整前提・社長決定v0.25.1587)。
-  // isHiddenBoss経由でhpMult=1固定。社長指示v0.25.1595「基本値の方にして」でゲート2の×5は適用しない=
-  // この基本値(HP2000/与ダメ38)がそのまま実効値になる。
+  // ゲート2(useGameLoop.ts)がfromEventでスポーンする。isHiddenBoss経由でhpMult=1固定。
+  // HPはbossHealth.tsの登場順カーブ、与ダメ38は従来どおり。
   // 社長指示v0.25.1594「天使系ボスの大きさ半分で」: 表示幅=width/BOSS_SPRITE_FIT.w なので当たり寸(帯)を
   // 半分にすると絵も当たりも一緒に半分になる(視覚と当たりがズレない)。width120→60・height60→30。
-  miguel:     { width: 60, height: 30, speed: 70, health: 2000, damage: 38, experienceValue: 0 },
-  jibril:     { width: 60, height: 30, speed: 70, health: 2000, damage: 38, experienceValue: 0 }, // ステージ3ゲート2ボス(一旦ミゲル同値=叩き台・社長指示v0.25.1661)
-  rafi:       { width: 60, height: 30, speed: 70, health: 2000, damage: 38, experienceValue: 0 }, // ステージ4ゲート2ボス(一旦ミゲル同値=叩き台・社長指示v0.25.1662)
-  // PACING_PUZZLE.md §6.28-17/6.28-18(バッチM52・確定値=天使family同値。「強さは数字で上げない」方針)。
-  uri:        { width: 60, height: 30, speed: 70, health: 2000, damage: 38, experienceValue: 0 }, // ステージ5ゲート2ボス
-  suriel:     { width: 60, height: 30, speed: 70, health: 2000, damage: 38, experienceValue: 0 }, // ステージ6ゲート2ボス
+  miguel:     { width: 60, height: 30, speed: 70, health: GATE_BOSS_HEALTH.miguel, damage: 38, experienceValue: 0 },
+  jibril:     { width: 60, height: 30, speed: 70, health: GATE_BOSS_HEALTH.jibril, damage: 38, experienceValue: 0 },
+  rafi:       { width: 60, height: 30, speed: 70, health: GATE_BOSS_HEALTH.rafi, damage: 38, experienceValue: 0 },
+  uri:        { width: 60, height: 30, speed: 70, health: GATE_BOSS_HEALTH.uri, damage: 38, experienceValue: 0 }, // ステージ5ゲート2ボス
+  suriel:     { width: 60, height: 30, speed: 70, health: GATE_BOSS_HEALTH.suriel, damage: 38, experienceValue: 0 }, // ステージ6ゲート2ボス
   // §6.28-19: アクラシエルは脚も顔も向きも無い結晶=歩かない(speed:0)。代わりに転移(台本はL2の担当)で動く。
-  acrasiel:   { width: 60, height: 30, speed: 0,  health: 2000, damage: 38, experienceValue: 0 }, // EXゲート2ボス
+  acrasiel:   { width: 60, height: 30, speed: 0,  health: GATE_BOSS_HEALTH.acrasiel, damage: 38, experienceValue: 0 }, // EXゲート2ボス
   // §6.28-20: stage-2隠しボス。天使系より一回り小さい判定+高速+高耐久(叩き台・実機調整前提)。
-  idol:       { width: 40, height: 20, speed: 150, health: 9000, damage: 30, experienceValue: 0 },
+  idol:       { width: 40, height: 20, speed: 150, health: HIDDEN_BOSS_HEALTH.idol, damage: 30, experienceValue: 0 },
   // ハンター変異体(イベント専用・通常プールには入れない)。強さは通常敵と同じ計算式に乗せる
   // (CONSTANT_STRENGTH_TYPES には入れない=エリア/距離・色でスケール)。社長指示の規定値:
   //  実効「耐久6000・攻撃40」スタート → 通常式 health×(ENEMY_HP_MULT=5)×areaDiff を踏まえ
@@ -143,10 +135,10 @@ export const isBossType = (t: EnemyType): boolean =>
   t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter';
 
 // 討伐(KILL)時に「FF風クランブル」統一演出(triggerDramaticDeath・gameStore.ts)を出す対象か。
-// ネームド/裏ボス4体/giantbat/hunter=劇的な討伐。パンプキン(および死神/lab-zombie-3)は対象外(社長指示)。
+// ボス系は全員対象。ネームド/クエスト対象も従来どおり劇的な討伐を維持する。
 // isNamed は型ではなく個体フラグなので Enemy を受け取る(isHiddenBoss/isBossTypeはEnemyType引数)。
 export const getsDramaticDeath = (enemy: Enemy): boolean =>
-  !!enemy.isNamed || !!enemy.questTarget || isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter';
+  !!enemy.isNamed || !!enemy.questTarget || isBossType(enemy.type);
 
 // Stage director: which enemy types are eligible at this gameTime, and how
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.

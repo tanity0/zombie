@@ -641,13 +641,13 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
   },
 ];
 
+/** プレイヤー・守護霊で共有する、職業ごとの固定サブウェポン。 */
+export const classSubWeaponFor = (characterClass: CharacterClass): SubWeaponKey =>
+  CHARACTER_CLASSES.find(character => character.id === characterClass)?.skillKey ?? 'heavy-grenade';
+
 // キャラ固有サブウェポン(各キャラの職スキル枠)。キャラ固有スキル化に伴い、ショップでは扱わない。
-export const CHARACTER_SUBWEAPON_KEYS: SubWeaponKey[] = [
-  'heavy-grenade',   // ヘビーガンナー
-  'marksman-trap',   // マークスマン
-  'striker-hunting', // ストライカー
-  'striker-quick-mag', // スカベンジャー
-];
+// CHARACTER_CLASSESのskillKeyから導出し、職業と除外リストの対応を二重管理しない。
+export const CHARACTER_SUBWEAPON_KEYS: SubWeaponKey[] = CHARACTER_CLASSES.map(character => character.skillKey);
 
 // 装備選択(サブウェポン)で選べる候補。スキルショップ(開発施設)の陳列とも共通。
 export const SUB_WEAPON_KEYS: SubWeaponKey[] = [
@@ -683,7 +683,7 @@ export const SKILL_KEYS: SkillKey[] = [
   'reaper', 'berserker', 'skater', 'overclock',
   // BOT_AND_GHOST.md G3: 守護霊。ガチャからは出ない(GACHA_EXCLUDED_SKILLS)+最初から所持
   // (社長指示v0.25.2452「守護霊スキルは最初から解禁しとこうか」→DEFAULT_OWNED_SKILLS)。
-  'guardian-spirit',
+  'guardian-spirit', 'ghost-helper', 'ghost-slayer',
   'crit-up', 'knight', 'exploder', 'sharpshooter', 'sniper', 'ricochet',
   'bomber', 'fire-shooter', 'bomb-counter', 'punisher', 'combo-master',
   'knife-master', 'benkei', 'reflex', 'rescue-signal',
@@ -700,7 +700,9 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'berserker':    { name: 'バーサーカー',   desc: '失ったHP%だけ全攻撃が増加。代償として被ダメージ+20%', rarity: 'super' },
   'skater':       { name: 'スケーター',     desc: '移動速度3倍。ただし慣性が強くなり操作が難しくなる', rarity: 'super' },
   'overclock':    { name: 'オーバークロック', desc: 'サブウェポン発動時、20%の確率でクールダウンを即リセット(Lvで25%/30%)', rarity: 'super' },
-  'guardian-spirit': { name: '守護霊',       desc: 'ボス戦が始まると、あなたの過去のプレイを写した守護霊が現れて共に戦う。ただしボスは強化され、守護霊が現れたランはスコアが半分になる', rarity: 'super' },
+  'guardian-spirit': { name: '守護霊',       desc: 'ボス戦が始まると、自分の過去のプレイを写した霊が現れる。ボスHP×1.6、獲得ゴールド×0.5', rarity: 'super' },
+  'ghost-helper':    { name: '助っ人の霊',   desc: 'ボス戦で他のプレイヤーの霊をランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.7', rarity: 'normal' },
+  'ghost-slayer':    { name: '討伐者の霊',   desc: 'ボス戦で評点上位20%の霊からランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.5', rarity: 'normal' },
   // レア
   'crit-up':      { name: 'クリティカルダメージ上昇', desc: 'クリティカルダメージ ×1.5→×2.0(ボス ×5→×5.5)', rarity: 'rare' },
   'knight':       { name: 'ナイト',         desc: '被ダメージ-20%。盾/召喚の最大HP+50%', rarity: 'rare' },
@@ -746,7 +748,9 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'skater':       { base: '移動速度3倍。ただし慣性が強く操作が難しくなる', lv: ['慣性 強', '慣性 中', '慣性 弱（最も扱いやすい）'] },
   'overclock':    { base: 'サブウェポン発動時、一定確率でクールダウンを即リセット', lv: ['発動20%', '25%', '30%'] },
   // BOT_AND_GHOST.md G3: Lv変化なし(Lv1固定。ガチャ重複によるLvアップ経路が無い)。数値は書かない(バランス調整で嘘にならないように)。
-  'guardian-spirit': { base: 'ボス戦が始まると、あなたの過去のプレイを写した守護霊が現れて共に戦う。ただしボスは強化され、守護霊が現れたランはスコアが半分になる' },
+  'guardian-spirit': { base: 'ボス戦で自分の過去のプレイを写した霊が現れる。ボスHP×1.6、獲得ゴールド×0.5' },
+  'ghost-helper':    { base: '他のプレイヤーの霊をランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.7' },
+  'ghost-slayer':    { base: '評点上位20%の霊からランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.5' },
   // レア
   'crit-up':      { base: 'クリティカルダメージが上昇（ボスにも適用）', lv: ['×1.5', '×1.75', '×2.0'] },
   'knight':       { base: '被ダメージ減少＋盾/召喚の最大HP増加', lv: ['被ダメ-20%／召喚HP+50%', '被ダメ-30%／召喚HP+75%', '被ダメ-40%／召喚HP+100%'] },
@@ -867,12 +871,12 @@ export const POLICE_REWARD_SKILLS: SkillKey[] = ['poi-bombing', 'poi-guard', 'po
 // ガチャ(強化訓練)からは出さないスキル。死神(reaper)は「死神を倒すと習得」専用(社長指示)。
 // 警察署アリーナ3種も同じ理由で除外(そこでしか手に入らないことが寄り道の存在理由・§6.24)。
 // 守護霊(guardian-spirit)は最初から全員所持(下のDEFAULT_OWNED_SKILLS)なのでガチャに出す意味が無い。
-export const GACHA_EXCLUDED_SKILLS: SkillKey[] = ['reaper', 'guardian-spirit', ...POLICE_REWARD_SKILLS];
+export const GACHA_EXCLUDED_SKILLS: SkillKey[] = ['reaper', 'guardian-spirit', 'ghost-helper', 'ghost-slayer', ...POLICE_REWARD_SKILLS];
 
 // BOT_AND_GHOST.md G3(社長指示v0.25.2452「守護霊スキルは最初から解禁しとこうか」):
 // 最初から所持済みのスキル。新規セーブ・既存セーブの両方で、ownedSkills 読み込み時に
 // 無ければ追加するマイグレーション(ensureDefaultOwnedSkills)をgameStoreの初期化が通す。
-export const DEFAULT_OWNED_SKILLS: SkillKey[] = ['guardian-spirit'];
+export const DEFAULT_OWNED_SKILLS: SkillKey[] = ['guardian-spirit', 'ghost-helper', 'ghost-slayer'];
 /** ownedSkills に既定所持スキルが欠けていれば末尾へ補って返す(純関数。欠けが無ければそのまま)。 */
 export const ensureDefaultOwnedSkills = (owned: SkillKey[]): SkillKey[] => {
   const missing = DEFAULT_OWNED_SKILLS.filter(k => !owned.includes(k));
@@ -899,7 +903,7 @@ export const gachaPityRemaining = (pity: number): number => Math.max(0, GACHA_PI
 
 // スキルの最大Lv。一部スキルはLv1固定(効果表でLv2/3が none のもの)。
 // guardian-spirit=Lvの概念なし(ガチャ重複によるLvアップ経路が無い=G3)。
-export const SKILL_MAX_LEVEL: Partial<Record<SkillKey, number>> = { reaper: 1, bomber: 1, 'warm-up': 1, 'guardian-spirit': 1 }; // warm-up=全Lv同値(固定)のためLv1止まり(§6.8 M31)
+export const SKILL_MAX_LEVEL: Partial<Record<SkillKey, number>> = { reaper: 1, bomber: 1, 'warm-up': 1, 'guardian-spirit': 1, 'ghost-helper': 1, 'ghost-slayer': 1 }; // warm-up=全Lv同値(固定)のためLv1止まり(§6.8 M31)
 export const skillMaxLevel = (key: SkillKey): number => SKILL_MAX_LEVEL[key] ?? 3;
 // Lv抽選: スキルごとの「被り回数(dupeCount)」とレア度で [Lv1,Lv2,Lv3] の重みを決める。
 // 0回=初取得。被るほど高Lvが出やすくなる(社長確定表)。

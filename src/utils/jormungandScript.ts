@@ -15,7 +15,7 @@ export type JormungandMove = 'radial' | 'burst' | 'dash' | 'coil';
 
 export const JORM_PHASE_HP_THRESHOLD = 0.6;
 export const jormungandPhaseForHealth = (healthFrac: number): 1 | 2 => phaseForHealth(healthFrac, [JORM_PHASE_HP_THRESHOLD]) as 1 | 2;
-export const JORM_COMBO_CHANCE = 0.5;
+export const JORM_COMBO_CHANCE = 0.6;
 
 // ==== 4技×距離ゾーンの重み表(v0.25.2609) ====================================================
 // 是正の狙い: 密着を coil100% → **coil55 / burst20 / radial25** の3本立てへ(coilのCD7秒の空白を埋める)。
@@ -57,6 +57,7 @@ export const pickJormungandMove = (
 // Phase2限定の2連携(§6.28-7): 突進→うねり(終点で密着した相手を薙ぐ) / 扇→螺旋(逃げた先へ弾幕)。
 export const JORM_COMBO_FOLLOWUP: Partial<Record<JormungandMove, JormungandMove>> = {
   dash: 'coil',
+  coil: 'burst',
   burst: 'radial',
 };
 

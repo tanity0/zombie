@@ -4,13 +4,9 @@
 
 import type { TutorialId } from '../data/tutorials';
 
-// ===== 一時措置(社長指示v0.25.2256)=====================================
-// 「チュートリアルは毎回見せて。できてるか見る手段がないから。完成したら一度見たら出ないに戻して」
-// **完成したらここを false に戻すだけ**で「1度だけ」に戻る(他は何も変えなくてよい)。
-// 記録(localStorage)自体は今まで通り残すので、**資料室の「操作記録」は正しく埋まっていく**。
-// 毎回出るのは「出撃ごとに1回」。同じランで何度も出ることはない(refで1回に絞っているため)。
-export const TUTORIAL_ALWAYS_SHOW = true;
-// =======================================================================
+// v0.25.2846(社長確定): 本編チュートリアルは端末で一度だけ。訓練(M0)だけは教習ステージのため、
+// useGameLoop側でこの既読ゲートを見ず毎出撃表示する別仕様を維持する。
+export const TUTORIAL_ALWAYS_SHOW = false;
 
 const KEY = 'zombie:tutorialsSeen';
 
@@ -47,7 +43,7 @@ export const loadSeenTutorials = (): Set<TutorialId> => {
 export const hasSeenTutorial = (id: TutorialId): boolean => loadSeenTutorials().has(id);
 
 // **ゲーム中に出す/出さないの判定はこちらを使う**(資料室は loadSeenTutorials の方を使う)。
-// TUTORIAL_ALWAYS_SHOW が true の間は常に空集合を返す=毎回出る。記録は消さないので資料室は埋まる。
+// 開発確認で一時的に true へ戻した場合だけ空集合を返す。製品設定は false=端末の既読を尊重する。
 export const loadSeenForGate = (): Set<TutorialId> =>
   TUTORIAL_ALWAYS_SHOW ? new Set<TutorialId>() : loadSeenTutorials();
 

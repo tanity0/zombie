@@ -481,4 +481,29 @@
   50% { opacity: 0.45; }
 }
 
+/* 守護霊部屋: ボスを切り替えた時だけ走る、軽量な記録解禁演出。 */
+@keyframes ghost-dossier-enter {
+  0% { opacity: 0; transform: translate3d(8px, 0, 0); filter: brightness(1.35); }
+  45% { opacity: 1; filter: brightness(1.08); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0); filter: brightness(1); }
+}
+.ghost-dossier-enter { animation: ghost-dossier-enter 260ms ease-out both; }
+
+/* 選択中のボス枠は常時アニメーションさせず、静的な多層光で視線を固定する。 */
+.ghost-boss-rail-selected::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  pointer-events: none;
+  border: 1px solid rgba(233, 213, 255, 0.16);
+}
+
+.ghost-boss-rail {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(216, 180, 254, 0.25) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost-dossier-enter { animation: none; }
+}
 

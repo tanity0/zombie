@@ -18,7 +18,7 @@ export const URI_PHASE_HP_THRESHOLD = 0.5; // §6.28-17: フェーズ2 = HP50%
 // §6.28-17 #1「大薙ぎの内径」: Phase1=140px / Phase2=90px(技は増やさず精度だけ上げる)。不変。
 export const uriSweepInnerRadius = (phase: 1 | 2): number => phase === 2 ? 90 : 140;
 
-export const URI_COMBO_CHANCE = 0.6; // ①大薙ぎ→②振り下ろし(不変)
+export const URI_COMBO_CHANCE = 0.65; // Phase2は大薙ぎ→振り下ろし→踏み込み突きの最大3段。
 
 // ==== 4技×距離ゾーンの重み表(v0.25.2609) ====================================================
 // 是正の狙い:
@@ -64,8 +64,11 @@ export const pickUriMove = (
 // bone→jumpと同じ理由=直後の間合いが必ずしも「中」帯に収まらないため)。
 export const pickUriCombo = (
   justFinished: UriMove,
+  phase: 1 | 2,
   rand: () => number = Math.random,
 ): UriMove | null => {
-  if (justFinished !== 'sweep') return null;
-  return rand() < URI_COMBO_CHANCE ? 'downslash' : null;
+  const followup: Partial<Record<UriMove, UriMove>> = { sweep: 'downslash', downslash: 'thrust' };
+  const move = followup[justFinished];
+  if (justFinished === 'downslash' && phase < 2) return null;
+  return move && rand() < URI_COMBO_CHANCE ? move : null;
 };

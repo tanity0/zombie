@@ -85,16 +85,16 @@ describe('pickRafiMove', () => {
   });
 });
 
-describe('pickRafiCombo (§6.28-8連携・不変)', () => {
+describe('pickRafiCombo — Phase2の骨刃→跳躍→薙ぎ', () => {
   it('only fires in Phase2', () => {
     expect(pickRafiCombo('bone', 1, () => 0)).toBeNull();
   });
   it('fires under the chance threshold regardless of post-bone distance', () => {
-    expect(pickRafiCombo('bone', 2, () => 0.49)).toBe('jump');
-    expect(pickRafiCombo('bone', 2, () => 0.51)).toBeNull();
+    expect(pickRafiCombo('bone', 2, () => 0.64)).toBe('jump');
+    expect(pickRafiCombo('bone', 2, () => 0.66)).toBeNull();
   });
-  it('no followup defined for jump/sweep', () => {
-    expect(pickRafiCombo('jump', 2, () => 0)).toBeNull();
+  it('jumpの後だけsweepへ伸び、sweepで必ず終わる', () => {
+    expect(pickRafiCombo('jump', 2, () => 0)).toBe('sweep');
     expect(pickRafiCombo('sweep', 2, () => 0)).toBeNull();
   });
 });

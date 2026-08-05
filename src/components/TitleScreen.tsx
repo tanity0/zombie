@@ -21,7 +21,10 @@ const loadedModeLabel = (): string => {
   const entry = BOSS_TEST_ENTRIES.find(e =>
     LOADED_MODE.params.includes(e.param) && (LOADED_MODE.stageId === null || e.stageId === LOADED_MODE.stageId));
   const boss = entry ? enemyDeathLabel(entry.boss) : LOADED_MODE.params.join('+') || 'クイックスタート';
-  return `モード: テスト(${boss}${LOADED_MODE.ghost ? '・守護霊ON' : ''})`;
+  const ghostLabel = LOADED_MODE.ghostMode === 'random' ? '助っ人の霊'
+    : LOADED_MODE.ghostMode === 'top' ? '討伐者の霊'
+      : LOADED_MODE.ghostMode === 'own' ? '守護霊' : null;
+  return `モード: テスト(${boss}${ghostLabel ? `・${ghostLabel}` : ''})`;
 };
 
 // 前回セッション末尾の状態(クラッシュ診断・社長報告のスマホ真っ白現象の手がかり用)。タイトル表示のたび

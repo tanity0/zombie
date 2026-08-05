@@ -20,6 +20,7 @@ import {
 import { PLAYER_WALK_PX_PER_SEC } from './bossTelegraph';
 import { deepCloneTuning } from './deepClone';
 import { registerEnemyFireProfile } from './enemyUtils';
+import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
 
 // v0.25.2613: 狙撃線(snipe)と追尾弾(orb)を新設。既存4技は消さず条件を与え直す(社長方針)。
 export type IdolCoreMove = 'aim' | 'fan' | 'roll' | 'punch' | 'snipe' | 'orb';
@@ -257,7 +258,7 @@ export const IDOL_TUNING: IdolTuning = {
   punish: { farMs: 2000, farMove: 'snipe', meleeMs: 3000, meleeMove: 'roll', sameAngleMs: 4000 },
   sameAngleDeg: 30,
   // 基礎値。既定は ENEMY_STATS.idol と同値(テストで突き合わせる)。
-  stats: { health: 9000, damage: 30, speed: 150 },
+  stats: { health: HIDDEN_BOSS_HEALTH.idol, damage: 30, speed: 150 },
   // 既定は従来の共通行と同値(speed320/damage20/size16)=**技ごとに分けても挙動は変わらない**。
   bullet: {
     aim: { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 },

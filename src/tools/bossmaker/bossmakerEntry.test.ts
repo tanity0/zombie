@@ -26,7 +26,7 @@ const needFromHtml = (): Record<string, string> => {
 describe('bossmaker.html の起動クエリ', () => {
   it('bossMakerQuery() と同じキー・同じ値を注入する', () => {
     const expected = Object.fromEntries(
-      new URLSearchParams(bossMakerQuery({ characterClass: 'warrior', ghost: false, ghostlog: false }))
+      new URLSearchParams(bossMakerQuery({ characterClass: 'warrior', ghostMode: null, ghostlog: false }))
     );
     expect(needFromHtml()).toEqual(expected);
   });

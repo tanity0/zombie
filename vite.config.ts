@@ -56,6 +56,8 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __ASSET_HASHES__: JSON.stringify(assetHashes),
+    // G6守護霊API。未指定は空=完全OFF。Pagesではworkflowから公開Worker URLを両系統へ渡す。
+    __GHOST_API_BASE__: JSON.stringify(process.env.GHOST_API_BASE ?? ''),
   },
   // マルチページ(BOSS_MAKER.md §19-5): 本編 `index.html` と 開発用ツール `bossmaker.html` の2つ。
   // ボスメーカーのUIは `App` に `playingOverlay` を渡す道具側エントリからしか到達できないので、

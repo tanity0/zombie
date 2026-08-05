@@ -15,7 +15,9 @@ import { enemyDeathLabel, subWeaponDisplayName } from '../store/gameStore';
 import { weaponDisplayName } from '../utils/weaponUtils';
 import { equipmentById } from '../data/equipment';
 import { CHARACTER_CLASSES, SKILLS, getStage } from '../data/campaign';
+import { fixedGuardianLeadersForBoss } from '../data/fixedGuardians';
 import type { EquipSlot, SkillKey, SubWeaponKey } from '../types/game';
+import { fixedGhostStatKey, type FixedGhostStat } from '../utils/ghostOnline';
 
 // 良化/悪化の色と記号(色だけに依存しない=記号も併記する。STORY_UI_SPEC.mdの実装原則と同じ流儀)。
 const TREND_STYLE: Record<ClearTrend, { cls: string; mark: string }> = {
@@ -94,6 +96,40 @@ const AllyLine: React.FC<{
   );
 };
 
+/** 守護霊部屋専用: このボスへ割り当てた固定AI上位4人。固定データなのでstore購読・通信なし。 */
+const FixedAiLeaders: React.FC<{
+  slotKey: string;
+  stats?: Record<string, FixedGhostStat>;
+}> = ({ slotKey, stats }) => {
+  const leaders = fixedGuardianLeadersForBoss(slotKey);
+  return (
+    <div className="mt-2 border-t border-white/10 pt-2">
+      <div className="mb-1.5 text-[9px] font-semibold tracking-widest text-purple-200/55">AIデータ 上位4人</div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {leaders.map((guardian, index) => {
+          const character = CHARACTER_CLASSES.find(item => item.id === guardian.classId);
+          const feedback = stats?.[fixedGhostStatKey(slotKey, guardian.id)];
+          return (
+            <div key={guardian.id} className="min-w-0 bg-purple-400/[0.07] px-1 py-1.5 text-center">
+              <div className="relative mx-auto flex h-8 w-8 items-end justify-center overflow-hidden bg-black/20">
+                <span className="absolute left-0 top-0 z-10 bg-purple-300/20 px-1 text-[8px] font-bold text-purple-100">{index + 1}</span>
+                {character
+                  ? <img src={character.sprite} alt={guardian.name} draggable={false} className="max-h-7 object-contain" style={{ imageRendering: 'pixelated' }} />
+                  : <span className="pb-1 text-sm">◇</span>}
+              </div>
+              <div className="mt-1 truncate text-[9px] font-semibold text-white/80">{guardian.name}</div>
+              <div className="text-[9px] tabular-nums text-amber-200/90">評点 {Math.round(guardian.performance.score)}</div>
+              <div className="mt-0.5 text-[8px] tabular-nums text-pink-100/65">
+                同行 {(feedback?.used ?? 0).toLocaleString()}・♥ {(feedback?.likes ?? 0).toLocaleString()}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 /**
  * 撃破1件のカード(年表の1コマ)。
  * - `checked` を渡した時だけ「守護霊へ採用」チェックを出す(リザルト・既定ONは呼び出し側)。
@@ -109,7 +145,9 @@ export const BossClearCardRow: React.FC<{
   onToggle?: (slotKey: string, next: boolean) => void;
   onAllyTap?: (ally: GhostAllySnapshot) => void;
   duo?: boolean;
-}> = ({ card, checked, onToggle, onAllyTap, duo }) => {
+  showFixedAiLeaders?: boolean;
+  fixedGhostStats?: Record<string, FixedGhostStat>;
+}> = ({ card, checked, onToggle, onAllyTap, duo, showFixedAiLeaders, fixedGhostStats }) => {
   const icon = bossIconSrc(card.bossType, card.stageId);
   return (
     <div className="rounded-none bg-black/25 px-3 py-2.5">
@@ -128,6 +166,9 @@ export const BossClearCardRow: React.FC<{
             {card.best === null && card.isRecordUpdate && (
               <span className="shrink-0 rounded-full bg-amber-400/25 px-1.5 py-0.5 text-[9px] font-bold tracking-widest text-amber-100">初記録</span>
             )}
+            {card.isStale && (
+              <span className="shrink-0 rounded-full bg-sky-400/20 px-1.5 py-0.5 text-[9px] font-bold text-sky-100">古い記録</span>
+            )}
           </div>
           <div className="text-[10px] text-white/40">討伐タイム {formatClearTime(card.clearTimeMs)}</div>
         </div>
@@ -143,6 +184,7 @@ export const BossClearCardRow: React.FC<{
           </label>
         )}
       </div>
+      {showFixedAiLeaders && <FixedAiLeaders slotKey={card.slotKey} stats={fixedGhostStats} />}
       <div className="mt-2 space-y-1 border-t border-white/10 pt-2">
         <MetricRow
           label="撃破タイム" value={formatClearTime(card.clearTimeMs)}
@@ -216,10 +258,10 @@ const TagList: React.FC<{ label: string; items: string[] }> = ({ label, items })
 
 /**
  * 同行守護霊のフルカード(§2.15): 持ち主の名前+ビルド(武器/サブ/スキル/装備)+ステータス。
- * **いいねボタンは置かない**(オンライン基盤と同時=死にボタン回避の裁定・§2.16 B)。
+ * いいね操作は結果画面側に置き、このカードは同行者の詳細表示だけを担当する。
  * ビルド写しが無い(旧プロファイル由来)場合は名前だけを出す。
  */
-export const GhostAllyCard: React.FC<{ ally: GhostAllySnapshot }> = ({ ally }) => {
+export const GhostAllyCard: React.FC<{ ally: GhostAllySnapshot; sourceLabel?: string }> = ({ ally, sourceLabel }) => {
   const b = ally.build;
   const className = CHARACTER_CLASSES.find(c => c.id === (b?.characterClass ?? ally.className))?.name;
   const skills = (b?.skills ?? []).map((k: SkillKey) => {
@@ -240,6 +282,9 @@ export const GhostAllyCard: React.FC<{ ally: GhostAllySnapshot }> = ({ ally }) =
       <div className="flex items-center gap-2">
         <span className="text-[10px] uppercase tracking-widest text-sky-200/70">同行した守護霊</span>
         {ally.isOwn && <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] text-white/60">自分</span>}
+        {!ally.isOwn && sourceLabel && (
+          <span className="rounded-full bg-sky-400/15 px-1.5 py-0.5 text-[9px] text-sky-100/80">{sourceLabel}</span>
+        )}
       </div>
       <div className="mt-0.5 text-[15px] font-semibold text-sky-100">{ally.name}</div>
       {className && <div className="text-[10px] text-white/45">{className}</div>}

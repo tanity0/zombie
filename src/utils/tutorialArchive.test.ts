@@ -81,22 +81,16 @@ describe('既読は保存直後から読める(初回ラン再表示バグの再
   });
 });
 
-// 一時措置(社長指示v0.25.2256「一旦、チュートリアルは毎回見せて」)。
-// 完成したら TUTORIAL_ALWAYS_SHOW を false に戻す。その時にこのテストが「戻し忘れ」を教える。
-describe('TUTORIAL_ALWAYS_SHOW(毎回見せる一時措置)', () => {
+describe('本編チュートリアルは端末で一度だけ', () => {
   beforeEach(() => { installStorage(); });
 
-  it('ONの間は、既読でもゲーム側の判定は「未読」になる=毎回出る', () => {
-    markTutorialSeen('phill');
-    markTutorialSeen('scout');
-    if (TUTORIAL_ALWAYS_SHOW) {
-      expect(loadSeenForGate().size).toBe(0);
-    } else {
-      expect(loadSeenForGate().has('phill')).toBe(true); // 戻した後はこちらが正
-    }
+  it('製品設定は毎回表示OFFで、既読をゲーム側の発火判定へ返す', () => {
+    expect(TUTORIAL_ALWAYS_SHOW).toBe(false);
+    markTutorialSeen('stage1-guide');
+    expect(loadSeenForGate().has('stage1-guide')).toBe(true);
   });
 
-  it('ONでも**記録自体は消えない**=資料室の「操作記録」は埋まる', () => {
+  it('記録は資料室の「操作記録」にも残る', () => {
     markTutorialSeen('phill');
     expect(loadSeenTutorials().has('phill')).toBe(true); // 資料室が引くのはこちら
     expect(hasSeenTutorial('phill')).toBe(true);

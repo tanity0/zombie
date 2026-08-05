@@ -103,13 +103,23 @@ import { TUTORIALS, type TutorialId } from '../data/tutorials';
 import TutorialMedia from './TutorialMedia';
 import { loadSeenTutorials } from '../utils/tutorialArchive';
 import { loadPlayerName, savePlayerName, normalizePlayerNameInput, PLAYER_NAME_MAX_LEN, PLAYER_NAME_WHEN_BLANK } from '../utils/playerName';
+import {
+  GHOST_COMMENT_MAX_LEN, loadGhostComments, saveGhostComments,
+} from '../utils/ghostComment';
 // BOT_AND_GHOST.md §2.14/§2.16 C: 独立メニュー「守護霊」= 名前の決定 + 討伐の保持記録(G5アルバム)。
 // カードはリザルト年表と**同じ部品**を流用する(§2.16 B)。
-import { loadPlayerProfile } from '../utils/playerTraits';
+import { loadPlayerProfile, type BossStyleSlot } from '../utils/playerTraits';
 import { buildAlbumCards, buildDuoAlbumCards, type BossClearCard } from '../utils/ghostAlbum';
 import { loadDuoAlbum } from '../utils/duoRecords';
 import type { GhostAllySnapshot } from '../utils/playerBuild';
-import { BossClearCardRow, GhostAllyCard } from './GhostRecordCards';
+import { GhostAllyCard } from './GhostRecordCards';
+import { GhostBossDossier } from './GhostBossDossier';
+import { GHOST_DOSSIER_SLOTS } from '../utils/ghostDossier';
+import {
+  acknowledgeGhostInbox, ghostNetworkSlotKey, hasGhostOnlineConsent,
+  loadFixedGhostStats, loadGhostInbox, refreshGhostInbox,
+  requestGhostOnlineConsent, type FixedGhostStat, type GhostInboxItem,
+} from '../utils/ghostOnline';
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
@@ -403,13 +413,53 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const [ghostAlbum, setGhostAlbum] = useState<BossClearCard[]>([]);
   // §2.17(GHOST-DUO-RECORDS): 同行撃破台帳(二枠のうちの同行枠)。ソロ台帳と同じく入った時に1回だけ読む。
   const [duoAlbum, setDuoAlbum] = useState<BossClearCard[]>([]);
+  const [ghostSlotRecords, setGhostSlotRecords] = useState<Record<string, BossStyleSlot>>({});
+  const [selectedGhostSlot, setSelectedGhostSlot] = useState(GHOST_DOSSIER_SLOTS[0].slotKey);
+  const [ghostInbox, setGhostInbox] = useState<Record<string, GhostInboxItem>>({});
+  const [fixedGhostStats, setFixedGhostStats] = useState<Record<string, FixedGhostStat>>({});
+  const [ghostSyncState, setGhostSyncState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [ghostSyncUpdatedAt, setGhostSyncUpdatedAt] = useState(0);
+  const [ghostNewSummary, setGhostNewSummary] = useState({ uses: 0, likes: 0 });
+  const [ghostInboxCursor, setGhostInboxCursor] = useState(0);
   const [openAlly, setOpenAlly] = useState<GhostAllySnapshot | null>(null);
   const goGhost = () => {
     playSfx('ui-select');
-    setGhostAlbum(buildAlbumCards(loadPlayerProfile()));
+    const profile = loadPlayerProfile();
+    const album = buildAlbumCards(profile);
+    setGhostAlbum(album);
+    setGhostSlotRecords(profile?.bossStyles ?? {});
+    setSelectedGhostSlot(album.find(card => GHOST_DOSSIER_SLOTS.some(slot => slot.slotKey === card.slotKey))?.slotKey ?? GHOST_DOSSIER_SLOTS[0].slotKey);
     setDuoAlbum(buildDuoAlbumCards(loadDuoAlbum()));
+    setGhostInbox(loadGhostInbox());
+    setFixedGhostStats(loadFixedGhostStats());
+    setGhostSyncState('loading');
+    setGhostNewSummary({ uses: 0, likes: 0 });
+    setGhostInboxCursor(0);
     setScreen({ name: 'ghost' });
+    void refreshGhostInbox().then(result => {
+      if (!result) {
+        setGhostSyncState('error');
+        return;
+      }
+      setGhostInbox(result.inbox);
+      setFixedGhostStats(result.fixedStats);
+      setGhostSyncUpdatedAt(result.updatedAt);
+      setGhostNewSummary({ uses: result.newUses, likes: result.newLikes });
+      setGhostInboxCursor(result.cursor);
+      setGhostSyncState('ready');
+    });
   };
+
+  // 新着は守護霊部屋へ反映された後にだけ既読にする。通信失敗時は次回入室で再取得できる。
+  useEffect(() => {
+    if (screen.name !== 'ghost' || ghostInboxCursor <= 0) return;
+    const timer = window.setTimeout(() => {
+      void acknowledgeGhostInbox(ghostInboxCursor).then(ok => {
+        if (ok) setGhostInboxCursor(0);
+      });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [screen.name, ghostInboxCursor]);
 
   // タイトル曲の自動再生制限対策(初回タップで確実に再生開始)。
   useEffect(() => {
@@ -1122,15 +1172,35 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 >
                   {openTutorial.title}
                 </h3>
-                {openTutorial.img && (
-                  <div className="relative mb-3 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
-                    {/* 手本の表示はゲーム中のポップアップと共用(mp4/GIF判定・読み込み中のスピナー込み)。 */}
-                    <TutorialMedia src={openTutorial.img} />
+                {openTutorial.slides?.length ? (
+                  <div className="space-y-5">
+                    {openTutorial.slides.map((slide, slideIndex) => (
+                      <section key={`${slide.title}:${slideIndex}`} className="border-t border-purple-200/10 pt-3 first:border-t-0 first:pt-0">
+                        <h4 className="mb-2 text-[14px] font-semibold tracking-wide text-purple-100/85">{slide.title}</h4>
+                        {slide.img && (
+                          <div className="relative mb-3 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
+                            <TutorialMedia src={slide.img} />
+                          </div>
+                        )}
+                        <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
+                          {slide.lines.map((line, lineIndex) => <p key={lineIndex}>{line}</p>)}
+                        </div>
+                      </section>
+                    ))}
                   </div>
+                ) : (
+                  <>
+                    {openTutorial.img && (
+                      <div className="relative mb-3 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
+                        {/* 手本の表示はゲーム中のポップアップと共用(mp4/GIF判定・読み込み中のスピナー込み)。 */}
+                        <TutorialMedia src={openTutorial.img} />
+                      </div>
+                    )}
+                    <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
+                      {openTutorial.lines.map((line, i) => <p key={i}>{line}</p>)}
+                    </div>
+                  </>
                 )}
-                <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
-                  {openTutorial.lines.map((line, i) => <p key={i}>{line}</p>)}
-                </div>
                 <button
                   type="button"
                   onClick={closeTutorial}
@@ -1152,40 +1222,69 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // **アップロードボタンは置かない**(オンライン基盤と同時=死にボタン回避の裁定)。
   // 資料室は不変(操作記録専用)=ここへは何も移していない。文言/並びは叩き台。
   // ====================================================================
+  const publishedGhostCount = ghostAlbum.reduce((sum, card) =>
+    sum + (ghostInbox[ghostNetworkSlotKey(card.slotKey)]?.published ? 1 : 0), 0);
+  const ghostInboxTotals = ghostAlbum.reduce((totals, card) => {
+    const inbox = ghostInbox[ghostNetworkSlotKey(card.slotKey)];
+    return {
+      used: totals.used + (inbox?.used ?? 0),
+      likes: totals.likes + (inbox?.likes ?? 0),
+    };
+  }, { used: 0, likes: 0 });
+  const ghostSyncTimeLabel = ghostSyncUpdatedAt > 0
+    ? new Date(ghostSyncUpdatedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+    : '未取得';
+
   const renderGhost = () => (
     <>
       <Header title="守護霊" subtitle="名前・討伐記録" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
       <div className="menu-stagger p-3 space-y-3">
+        <Section label="オンライン共有">
+          <div className="flex items-center justify-between gap-2 text-[12px]">
+            <span className="text-white/65">共有状態</span>
+            <span className={`font-semibold ${publishedGhostCount > 0 ? 'text-emerald-200' : 'text-white/55'}`}>
+              {!hasGhostOnlineConsent()
+                ? '未設定'
+                : ghostSyncState === 'loading'
+                  ? '確認中…'
+                  : publishedGhostCount > 0
+                    ? `公開中 ${publishedGhostCount}体`
+                    : '未公開'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 bg-sky-400/[0.06] px-2.5 py-2 text-center tabular-nums">
+            <div>
+              <div className="text-[9px] text-white/40">他プレイヤーに同行</div>
+              <div className="text-[14px] font-semibold text-sky-100">{ghostInboxTotals.used.toLocaleString()}回</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-white/40">いいね</div>
+              <div className="text-[14px] font-semibold text-pink-100">♥ {ghostInboxTotals.likes.toLocaleString()}</div>
+            </div>
+          </div>
+          {ghostNewSummary.uses > 0 && (
+            <p className="bg-pink-400/10 px-2.5 py-1.5 text-[11px] font-semibold text-pink-100">
+              新着：{ghostNewSummary.uses.toLocaleString()}回同行・{ghostNewSummary.likes.toLocaleString()}いいね
+            </p>
+          )}
+          <div className="flex items-center justify-between text-[10px] text-white/40">
+            <span>{ghostSyncState === 'error' ? '通信できませんでした（保存済みの値を表示）' : 'ボスごとの内訳は討伐記録に表示'}</span>
+            <span>最終更新 {ghostSyncTimeLabel}</span>
+          </div>
+        </Section>
+        <GhostBossDossier
+          selectedSlotKey={selectedGhostSlot}
+          onSelect={slotKey => { playSfx('ui-select'); setSelectedGhostSlot(slotKey); }}
+          cards={ghostAlbum}
+          duoCards={duoAlbum}
+          slotRecords={ghostSlotRecords}
+          inbox={ghostInbox}
+          fixedStats={fixedGhostStats}
+          networkSlotKey={ghostNetworkSlotKey}
+          onAllyTap={setOpenAlly}
+        />
         <PlayerNameSettings />
-        {/* §2.17: 討伐記録の二枠化。ソロ枠=従来のG5アルバム(計測つき)/同行枠=同行撃破台帳(下)。 */}
-        <Section label="討伐記録（ソロ）">
-          {ghostAlbum.length === 0 ? (
-            <p className="text-[11px] leading-relaxed text-white/45">
-              まだ討伐の記録がありません。ボスを倒してリザルトで「採用」すると、そのボスの戦い方がここに残ります。
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {ghostAlbum.map(card => (
-                <BossClearCardRow key={card.slotKey} card={card} onAllyTap={setOpenAlly} />
-              ))}
-            </div>
-          )}
-        </Section>
-        {/* §2.17 同行枠: 撃破タイム+同行者(名前+クラス絵)のみ(評価数値は計測しないので無い)。
-            同行者名タップ→ビルドのポップアップ(ソロ枠と同じ既存部品openAllyを流用)。文言は叩き台。 */}
-        <Section label="討伐記録（同行）">
-          {duoAlbum.length === 0 ? (
-            <p className="text-[11px] leading-relaxed text-white/45">
-              まだ同行討伐の記録がありません。守護霊と共にボスを倒すと、ベストタイムと同行者がここに残ります。
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {duoAlbum.map(card => (
-                <BossClearCardRow key={card.slotKey} card={card} duo onAllyTap={setOpenAlly} />
-              ))}
-            </div>
-          )}
-        </Section>
+        <GhostCommentSettings />
       </div>
       {/* §2.15 置き場所の訂正③: 同行者の名前タップ→ビルド/ステータスのポップアップ。
           他のモーダルと同じくbody直下へポータル(menu-stagger等のtransform祖先の影響を受けないため)。 */}
@@ -1315,7 +1414,8 @@ const GraphicsSettings: React.FC = () => {
 
 // === プレイヤー名(守護霊の頭上に表示される名前・v0.25.2477) ==============================
 // 台帳は utils/playerName.ts(初期値=player+ランダム5桁を自動生成)。React再描画規律:
-// 入力値はローカルstate(store購読なし・毎フレーム再描画なし)。保存はblur/Enter確定時に
+// 入力値はローカルstate(store購読なし・毎フレーム再描画なし)。保存ボタン/Enterでのみ確定し、
+// 公開注意の確認を通してから保存する。blurだけでは保存しない。
 // normalizePlayerNameInput(★文字種フィルタ・trim・最大10文字へ切り詰め・空なら「名無し」
 // =§2.16 C-1の叩き台)を通してから savePlayerName し、正規化後の値へ戻す。
 // ★v0.25.2765: 不許可文字は**入力中は弾かず、確定時に黙って除去する**(IME変換の途中で
@@ -1326,27 +1426,91 @@ const PlayerNameSettings: React.FC = () => {
   const [name, setName] = useState(loadPlayerName); // マウント時に1回読む(無ければ生成・保存される)
   // 未変更なら保存しない: 初期ランダム名(player+5桁=11文字)は生成物なので、触らず確定した時に
   // 10文字へ切り詰めてしまわない(切り詰めは手入力に対する正規化)。
-  const commit = () => setName(prev => (prev === loadPlayerName() ? prev : savePlayerName(normalizePlayerNameInput(prev))));
+  const commit = () => {
+    if (!requestGhostOnlineConsent()) return;
+    setName(prev => (prev === loadPlayerName() ? prev : savePlayerName(normalizePlayerNameInput(prev))));
+  };
   return (
     <Section label="プレイヤー名">
-      <input
-        type="text"
-        value={name}
-        onChange={e => setName(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-        // ★v0.25.2766(品質監査E-1): HTMLの maxLength は**UTF-16コードユニット長**、こちらのロジックは
-        // **コードポイント単位**。同じ数を渡すと `𠮟`(U+20B9F・実在の姓に出る字)が半分しか打てない。
-        // 2倍を渡して入力欄では止めず、確定時の normalizePlayerNameInput でコードポイント単位に揃える
-        // (暴走ペースト防止の上限としてだけ効かせる)。
-        maxLength={PLAYER_NAME_MAX_LEN * 2}
-        aria-label="プレイヤー名"
-        className="w-full rounded-none border border-purple-400/20 bg-black/30 px-3 py-2 text-[14px] text-white/90 outline-none focus:border-purple-300/60"
-      />
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => {
+            if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            commit();
+          }}
+          // ★v0.25.2766(品質監査E-1): HTMLの maxLength は**UTF-16コードユニット長**、こちらのロジックは
+          // **コードポイント単位**。同じ数を渡すと `𠮟`(U+20B9F・実在の姓に出る字)が半分しか打てない。
+          // 2倍を渡して入力欄では止めず、確定時の normalizePlayerNameInput でコードポイント単位に揃える
+          // (暴走ペースト防止の上限としてだけ効かせる)。
+          maxLength={PLAYER_NAME_MAX_LEN * 2}
+          aria-label="プレイヤー名"
+          className="min-w-0 flex-1 rounded-none border border-purple-400/20 bg-black/30 px-3 py-2 text-[14px] text-white/90 outline-none focus:border-purple-300/60"
+        />
+        <button
+          type="button"
+          onClick={commit}
+          className="shrink-0 border border-purple-300/35 bg-purple-400/15 px-4 py-2 text-[13px] font-semibold text-purple-50 active:bg-purple-400/25"
+        >
+          保存
+        </button>
+      </div>
       <p className="text-[11px] leading-relaxed text-white/45">
         守護霊(スキル)の頭上に表示される名前。最大{PLAYER_NAME_MAX_LEN}文字。
         絵文字は使えません(記号は <span className="whitespace-nowrap">_ - . ・ ' ! ?</span> と空白のみ)。
         空のまま確定すると「{PLAYER_NAME_WHEN_BLANK}」になります。
+      </p>
+    </Section>
+  );
+};
+
+const GhostCommentSettings: React.FC = () => {
+  const initial = loadGhostComments();
+  const [arrivalComment, setArrivalComment] = useState(initial.arrivalComment);
+  const [departureComment, setDepartureComment] = useState(initial.departureComment);
+  const commit = () => {
+    if (!requestGhostOnlineConsent()) return;
+    const next = saveGhostComments({ arrivalComment, departureComment });
+    setArrivalComment(next.arrivalComment);
+    setDepartureComment(next.departureComment);
+  };
+  const fields = [
+    { label: '登場コメント', value: arrivalComment, setValue: setArrivalComment },
+    { label: '退場コメント', value: departureComment, setValue: setDepartureComment },
+  ];
+  return (
+    <Section label="守護霊コメント">
+      {fields.map(field => (
+        <label key={field.label} className="block">
+          <span className="mb-1 block text-[12px] text-white/70">{field.label}</span>
+          <input
+            type="text"
+            value={field.value}
+            onChange={e => field.setValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+              e.preventDefault();
+              commit();
+            }}
+            maxLength={GHOST_COMMENT_MAX_LEN}
+            aria-label={field.label}
+            className="w-full rounded-none border border-purple-400/20 bg-black/30 px-3 py-2 text-[14px] text-white/90 outline-none focus:border-purple-300/60"
+          />
+        </label>
+      ))}
+      <button
+        type="button"
+        onClick={commit}
+        className="w-full border border-purple-300/35 bg-purple-400/15 px-4 py-2 text-[13px] font-semibold text-purple-50 active:bg-purple-400/25"
+      >
+        保存
+      </button>
+      <p className="text-[11px] leading-relaxed text-white/45">
+        各{GHOST_COMMENT_MAX_LEN}文字まで。登場・帰還時の通信に表示され、他のプレイヤーにも公開されます。
+        空欄で保存すると既定文に戻ります。
       </p>
     </Section>
   );

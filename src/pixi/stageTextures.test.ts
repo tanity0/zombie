@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { skinLayersExpectedFor } from './stageTextures';
+import { skinLayersExpectedFor } from './stageTextureSkin';
 
 // ステージ別素材が届くまで「森(=ステージ1)の下地」を見せないためのホールド対象レイヤー。
 // 社長報告v0.25.2279「たまにステージ1がチラッと映る」の対策。過剰に隠すと黒が出る/

@@ -1,7 +1,7 @@
 # 守護霊(ゴースト)完全パリティ 全数監査表(2026-07-30・走査サブエージェント)
 
 正本原則: `BOT_AND_GHOST.md` §2.11(訂正版・2026-07-30 commit `b2cb30f`)。
-**除外は2群のみ**: ①カメラズーム/時間停止/スローモーション演出 ②弾薬非消費/テレメトリ除外/SE距離減衰/スコア×0.5(運用系)。
+**除外は2群のみ**: ①カメラズーム/時間停止/スローモーション演出 ②リザーブ弾薬非消費/テレメトリ除外/SE距離減衰/スコア×0.5(運用系)。
 **それ以外の差は全て漏れ=バグ扱い**(スキル倍率・装備ボーナス・射撃クリティカルも再現対象。旧v0.25.2459「素の武器性能」「クリ無し」は廃止)。
 
 ## 読み方
@@ -22,7 +22,7 @@
 | 1-5 | 発射時crit抽選→着弾時ロール(critChance) | `weaponUtils.ts:376`(生成時critChance算出)+`useGameLoop.ts:8195-8207`(着弾時ロール) | **無し** | `buildGhostGunShots`(weaponUtils.ts:555)が`critChance: 0`固定。加えて`useGameLoop.ts:8219`(`isAllyOwnedShot`)がghost-gun弾を`isDirectGunWeaponKey`から除外し、trapCritBonus/weakCritのロール自体もスキップ(8178,8190)。§2.11訂正により**再現対象**(旧v0.25.2459方針は廃止済み)。 |
 | 1-6 | ダメージ=武器damage×scavMult×skillAttackShooterGunMult×equipBonus.damageMult×skillLastMagazineMult | `weaponUtils.ts:367` | **無し** | `buildGhostGunShots`は`damage: gun.damage`の素値のみ(weaponUtils.ts:544)。スカベンジャー/アタックシューター/装備火力/ラストマガジンが一切乗らない。 |
 | 1-7 | クリ倍率(skillCritMult)+クリ時skillOutgoingDamageMult/sniperGunMult/comboMasterMult | `useGameLoop.ts:8220-8234` | **明示的に除外** | `isAllyOwnedShot`(8219)がghost-gunをescortと同枠にし、`critMult`はスキル無視の固定倍率(8221-8223)、`dmg`計算も`skillOutgoingDamageMult`等を丸ごとスキップ(8232-8233)。コード内コメント(8215-8218)で「ビルド強化がゴーストに二重に乗らないよう安全側」と明記=**§10で訂正された旧方針そのもの**。統一修正が必要。 |
-| 1-8 | リロード/弾切れ/マガジンのリズム | `weaponUtils.ts:194,325-343` | 除外4(運用系) | ゴーストは弾薬消費しない=リロード概念が無い(正本除外②)。バグではない。 |
+| 1-8 | リロード/弾切れ/マガジンのリズム | `weaponUtils.ts`(共通の装填/リロード/発射後状態) | ✅**同一(v0.25.2830)** | 旧「リザーブ弾非消費=マガジン/リロードも無い」は解釈漏れ。Weapon[]・容量・装填数/時間補正・連射補正・ゴーストシューター・ラストマガジン・クイックマガジンをプレイヤーと同じ共通式へ接続。リザーブ在庫だけ除外4で非消費。 |
 | 1-9 | PHILL特殊(頭部命中確定クリ+2倍ノックバック) | `useGameLoop.ts`(PHILL専用ブロック・手動照準) | **概念不成立** | ゴーストは中心狙いのオート射撃(部位判定なし)。PHILLを装備中に召喚された場合の挙動は要検討(★未決候補)。 |
 | 1-10 | 射程ゲート(`RANGE_BY_CATEGORY`) | `weaponUtils.ts:220-225,340-343` | **同一** | `ghostDriver.ts`の`weapon.gunRangePx`に`RANGE_BY_CATEGORY[gun.category]`をそのまま渡す(`useGameLoop.ts:7174`)。 |
 | 1-11 | 標的選択(スタン敵は後回し) | `weaponUtils.ts:236-253`(`pickTarget`) | **不成立(仕様が違う)** | ゴーストは紐付きボス固定(`boundBossId`優先)。プレイヤーの「非スタン優先」ロジックはボス1体構造では出番がない=実害なし。 |
@@ -121,7 +121,7 @@ BOT_AND_GHOST.md §6(v0.25.2449)で既知の未対応として記録済み: 「k
 | shield | ✅ | ✅ | 設置+バッシュ含め動作(SubStyle計測対象)。 |
 | turret | ✅ | ✅ | 同上。青白tint済み。 |
 | fire-knife | ✅ | ✅ | 狙いを持つ2種の一つ(`pickSubAimTarget`)。 |
-| striker-quick-mag | ✅ | ✅**(v0.25.2563)** | GHOST-SUBS-FINAL: 投擲+**自分で回収**(回収の移動目標=`decideGhost.retrieveTarget`。間合い管理より優先・回避には譲る)。マガジンは`Pickup.ownerGhostId`付き=本人だけが拾う。弾薬の残量条件は除外4のため掛けない。 |
+| striker-quick-mag | ✅ | ✅**(v0.25.2563 / 即時装填v0.25.2830)** | GHOST-SUBS-FINAL: 投擲+**自分で回収**(回収の移動目標=`decideGhost.retrieveTarget`。間合い管理より優先・回避には譲る)。`Pickup.ownerGhostId`付き=本人だけが拾う。回収時はプレイヤーと同じ共通式で即時装填・リロード解除し、実際に装填できた時だけクリ窓を得る。リザーブ在庫だけ除外4で非消費。 |
 | dog | 未対応 | **無し(★未決6で停止)** | フェッチの成果物=**世界のドロップ**。§2.11追補3「霊体は世界の物に触れない/財布なし」と衝突するため GHOST-SUBS-FINAL では**この種だけ止めた**(★未決6の裁定待ち)。 |
 | katana / murasame | 未対応 | **無し** | §5参照(カウンター窓経済)。 |
 | whip | 未対応 | **無し** | §6参照(同上)。 |

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickThorCombo, thorComboChance, thorPhaseForHealth, pickThorPool, THOR_COMBO_NEAR_MAX } from './thorScript';
+import { pickThorCombo, pickThorMove, thorComboChance, thorPhaseForHealth, pickThorPool, THOR_COMBO_NEAR_MAX } from './thorScript';
 
 describe('thorPhaseForHealth — 3相(60%/40%・40%は既存THOR_LOWHP_FRAC流用)', () => {
   it('phase1 above 60%', () => {
@@ -63,6 +63,16 @@ describe('pickThorCombo — 受け入れ条件(§6.28-10「分岐する連携」
 
   it('境界値: distance===THOR_COMBO_NEAR_MAXは近扱い', () => {
     expect(pickThorCombo('harai', 2, THOR_COMBO_NEAR_MAX, () => 0)).toBe('harai');
+  });
+});
+
+describe('pickThorMove — 距離で刀の役割を変える', () => {
+  it('密着では払い、遠距離では一閃が候補になりやすい', () => {
+    const melee = Array.from({ length: 100 }, (_, i) => pickThorMove(60, 1, () => i / 100));
+    const far = Array.from({ length: 100 }, (_, i) => pickThorMove(900, 1, () => i / 100));
+    expect(melee).toContain('harai');
+    expect(far).not.toContain('harai');
+    expect(far.filter(m => m === 'issen').length).toBeGreaterThan(far.filter(m => m === 'tsuki').length);
   });
 });
 

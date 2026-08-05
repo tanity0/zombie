@@ -1,10 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
 import { RoomStore } from './room-store.js';
+import { handleGhostRequest, purgeExpiredGhosts } from './ghost-api.js';
+import { allowedGhostOriginValue } from './ghost-origin.js';
 
 const MAX_CONNECTIONS = 256;
 const MAX_MESSAGE_BYTES = 16_384;
 const MAX_REQUEST_ID_LENGTH = 64;
 const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+const GHOST_PATH_PREFIX = '/ghost';
 
 function allowedOrigin(request) {
   try {
@@ -15,6 +18,46 @@ function allowedOrigin(request) {
   } catch {
     return false;
   }
+}
+
+function allowedGhostOrigin(request) {
+  return allowedGhostOriginValue(request.headers.get('Origin'));
+}
+
+function corsHeaders(request) {
+  const origin = request.headers.get('Origin');
+  return {
+    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Ghost-Anon',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
+  };
+}
+
+function withCors(response, request) {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(corsHeaders(request))) headers.set(key, value);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+async function consumeRateLimit(env, key, limit) {
+  if (!key) return true;
+  const id = env.GHOST_RATE_LIMITER.idFromName(key);
+  const response = await env.GHOST_RATE_LIMITER.get(id).fetch('https://rate.local/', {
+    method: 'POST', body: JSON.stringify({ limit }),
+  });
+  return response.ok;
+}
+
+async function ghostRateAllowed(request, env) {
+  const anon = request.headers.get('X-Ghost-Anon') ?? new URL(request.url).searchParams.get('anon');
+  const ip = request.headers.get('CF-Connecting-IP');
+  const [anonOk, ipOk] = await Promise.all([
+    consumeRateLimit(env, anon ? `anon:${anon}` : '', 60),
+    consumeRateLimit(env, ip ? `ip:${ip}` : '', 300),
+  ]);
+  return anonOk && ipOk;
 }
 
 function requestIdOf(message) {
@@ -188,12 +231,40 @@ export class SignalingLobby extends DurableObject {
   }
 }
 
+export class GhostRateLimiter extends DurableObject {
+  async fetch(request) {
+    try {
+      const { limit } = await request.json();
+      const safeLimit = Math.max(1, Math.min(10_000, Math.floor(Number(limit) || 1)));
+      const hour = Math.floor(Date.now() / 3_600_000);
+      const key = `hour:${hour}`;
+      const count = Number(await this.ctx.storage.get(key) ?? 0);
+      if (count >= safeLimit) return new Response('Too many requests', { status: 429 });
+      await Promise.all([
+        this.ctx.storage.put(key, count + 1),
+        this.ctx.storage.delete(`hour:${hour - 2}`),
+      ]);
+      return new Response('ok');
+    } catch {
+      return new Response('Unavailable', { status: 503 });
+    }
+  }
+}
+
 export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
       if (request.method === 'GET' && url.pathname === '/health') {
         return Response.json({ status: 'ok' });
+      }
+      if (url.pathname.startsWith(GHOST_PATH_PREFIX)) {
+        if (!allowedGhostOrigin(request)) return withCors(new Response('Origin not allowed', { status: 403 }), request);
+        if (request.method === 'OPTIONS') return withCors(new Response(null, { status: 204 }), request);
+        if (!await ghostRateAllowed(request, env)) {
+          return withCors(Response.json({ error: 'Too many requests' }, { status: 429 }), request);
+        }
+        return withCors(await handleGhostRequest(request, env), request);
       }
       if (request.method !== 'GET' || url.pathname !== '/') return new Response('Not found', { status: 404 });
       if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
@@ -205,5 +276,8 @@ export default {
     } catch {
       return new Response('Unavailable', { status: 503 });
     }
+  },
+  async scheduled(_controller, env) {
+    await purgeExpiredGhosts(env);
   },
 };

@@ -175,6 +175,11 @@ export const rollGhostMoveReaction = (
 // ---- G3: 装備スキル「守護霊」(BOT_AND_GHOST.md §2.5 実装順3・社長指示「最初から解禁」) ----------
 /** 装備スキルキー(campaign.SKILLS の 'guardian-spirit')。 */
 export const GUARDIAN_SPIRIT_SKILL: SkillKey = 'guardian-spirit';
+export const GHOST_HELPER_SKILL: SkillKey = 'ghost-helper';
+export const GHOST_SLAYER_SKILL: SkillKey = 'ghost-slayer';
+export const GHOST_SKILLS: ReadonlySet<SkillKey> = new Set([
+  GUARDIAN_SPIRIT_SKILL, GHOST_HELPER_SKILL, GHOST_SLAYER_SKILL,
+]);
 
 /**
  * このランでゴースト系を有効にするか(召喚ゲート)。`?ghost=1`(開発用・従来どおり装備なしでも動く)
@@ -182,7 +187,7 @@ export const GUARDIAN_SPIRIT_SKILL: SkillKey = 'guardian-spirit';
  * =「ゴーストが出うるランは丸ごと測らない」(装備中のボス戦は必ず召喚が起きるので同値・§2.7)。
  */
 export const ghostRunEnabled = (ghostDebugEnabled: boolean, equippedSkills: readonly SkillKey[]): boolean =>
-  ghostDebugEnabled || equippedSkills.includes(GUARDIAN_SPIRIT_SKILL);
+  ghostDebugEnabled || equippedSkills.some(skill => GHOST_SKILLS.has(skill));
 
 // ---- G2.6: サブウェポン使用の予約(BOT_AND_GHOST.md §2.8) --------------------------------------
 // ゴーストはプレイヤーの装備サブウェポンを「自分をオーナーとして」使える。CDは既存の1本を共有

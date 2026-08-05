@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile } from './enemyUtils';
-import type { Enemy, Player, Summon, GameBounds } from '../types/game';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath } from './enemyUtils';
+import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
+import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
 
 const mkEnemy = (x: number, y: number): Enemy =>
   ({ x, y, width: 32, height: 32 } as unknown as Enemy);
@@ -238,6 +239,21 @@ describe('isBossType', () => {
   });
 });
 
+describe('boss defeat cinematic eligibility', () => {
+  it('routes every boss type through the shared crumble/attention death path', () => {
+    const bossTypes: EnemyType[] = [
+      'pumpkin', 'giantbat', 'reaper', 'lab-zombie-3',
+      'mimir', 'jormungand', 'skadi', 'thor',
+      'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
+      'idol', 'hunter',
+    ];
+    for (const type of bossTypes) {
+      expect(getsDramaticDeath({ type } as Enemy), type).toBe(true);
+    }
+    expect(getsDramaticDeath({ type: 'zombie' } as Enemy)).toBe(false);
+  });
+});
+
 describe('hidden boss (mimir/jormungand/skadi/thor) spec', () => {
   it('isHiddenBoss flags only the four hidden bosses', () => {
     expect(isHiddenBoss('mimir')).toBe(true);
@@ -254,10 +270,10 @@ describe('hidden boss (mimir/jormungand/skadi/thor) spec', () => {
     const jorm = spawnEnemyAt('jormungand', 0, 0, 0);
     const skadi = spawnEnemyAt('skadi', 0, 0, 0);
     const thor = spawnEnemyAt('thor', 0, 0, 0);
-    expect(mimir.maxHealth).toBe(6666);
-    expect(jorm.maxHealth).toBe(7500);
-    expect(skadi.maxHealth).toBe(10000);
-    expect(thor.maxHealth).toBe(11000);
+    expect(mimir.maxHealth).toBe(HIDDEN_BOSS_HEALTH.mimir);
+    expect(jorm.maxHealth).toBe(HIDDEN_BOSS_HEALTH.jormungand);
+    expect(skadi.maxHealth).toBe(HIDDEN_BOSS_HEALTH.skadi);
+    expect(thor.maxHealth).toBe(HIDDEN_BOSS_HEALTH.thor);
     // ダメージは giant の2倍据え置き。歩行速度は社長指示で少し上げた(70→90 base)=giant より速い。
     // mimir/jormungand/skadiは同速。トールだけ社長個別指示(通常速度=プレイヤーの5/4)で別値。
     expect(jorm.damage).toBe(giant.damage * 2);

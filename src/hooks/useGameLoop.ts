@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
-import { shouldShowDetourPoiTutorial } from '../utils/detourPoiTutorial';
+import { shouldShowStage1Guide } from '../utils/stage1GuideTutorial';
 // §6.24-UX(POI-UX): 寄り道POIの入手トースト/解放帯の文言(通信の文言は store 側が引く)。
 import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE, POI_LABEL } from '../utils/detourPoiUx';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
@@ -21,6 +21,8 @@ import {
   subWeaponBlockedByKatana,
   katanaRange,
   KATANA_SLASH_INTERVAL_MS,
+  KATANA_DASH_DISTANCE,
+  KATANA_DASH_HIT_HALF_WIDTH,
   KATANA_DASH_SPEED,
   combatActorPlayer,
   setActorSubWeaponCooldown,
@@ -67,7 +69,8 @@ import {
   M0_CONVO_ADVANCE_LIMIT_X,
   GIANT_SCRIPT_ENABLED,
   SPAWN_CLAMP_ENABLED,
-  SKATER_LOCK_ENABLED
+  SKATER_LOCK_ENABLED,
+  RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX,
 } from '../store/gameStore';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
@@ -95,9 +98,11 @@ import {
 // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 守護霊は「計測時ビルド」で戦う。ビルドの復元+倍率評価用の
 // 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
 import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
+import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle';
 // v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀のオート斬撃の標的選択と、
 // 刀の一閃/ワイヤーのロコモーション上書き。どちらもプレイヤーと守護霊が同じ純関数を通る。
 import { pickKatanaSlashTarget } from '../utils/katanaAuto';
+import { pickSafeKatanaDashDirection } from '../utils/katanaLanding';
 import { dashModeAt, dashOverride, dashStateOf, dashStep } from '../utils/dashLocomotion';
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
 import { weaknessCritBonus } from '../utils/weaknessCrit';
@@ -105,6 +110,8 @@ import { applyEnemyCritPenalty, projectileHitCritChance } from '../utils/critPen
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
+import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
+import { stageBossHealthFor } from '../config/bossHealth';
 import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
@@ -118,6 +125,7 @@ import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey, Summon } from '../types/game';
 import {
   checkCollision,
+  enemyContactBox,
   checkProjectileEnemyCollisions,
   checkPlayerPickupCollisions,
   checkEnemySummonCollisions
@@ -179,7 +187,8 @@ import {
 import {
   skadiPhaseForHealth, pickSkadiMove, pickSkadiCombo, type SkadiMove,
 } from '../utils/skadiScript';
-import { pickThorCombo, thorPhaseForHealth, pickThorPool } from '../utils/thorScript';
+import { pickThorCombo, pickThorMove, thorPhaseForHealth } from '../utils/thorScript';
+import { bossNeutralDelayMs, bossRebuildIdForEnemy } from '../utils/bossRebuild';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
@@ -197,7 +206,9 @@ import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/direct
 import { createPinchState, pityLevel } from '../utils/pityDirector';
 import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
 import { shouldFireBoredomArena, BOREDOM_ARENA_START_MS, BOREDOM_ARENA_CD_MS } from '../utils/boredomArena';
-import { shouldTriggerViciousHunter, pickViciousSpawnPoint, VICIOUS_REARM_MS } from '../utils/viciousHunter';
+import {
+  isHunterSafeBaseNearby, shouldTriggerViciousHunter, pickViciousSpawnPoint, VICIOUS_REARM_MS,
+} from '../utils/viciousHunter';
 import {
   eventGateOk, redNightPhaseGateOk, screamerPhaseGateOk, hunterBoredomReady, eventSizeMult,
 } from '../utils/eventProducer';
@@ -278,7 +289,7 @@ import {
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
-import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
@@ -544,7 +555,7 @@ const HUNTER_REINFORCE_1_MS = 20000;       // 追跡20秒で2体目
 const HUNTER_REINFORCE_2_MS = 40000;       // 追跡40秒で3体目
 const HUNTER_CHASE_MAX_MS = 60000;         // 追跡の上限(これを超えたら諦めて撤退=kiteで永久追跡＆他イベント停止を防ぐ)
 const HUNTER_MAX_ALIVE = 3;                // 同時最大3体
-const HUNTER_BASE_SAFE_RADIUS = 150;       // 制圧拠点へこの距離まで近づくと追跡相手が撤退
+const HUNTER_BASE_SAFE_RADIUS = 150;       // 開放前を含む拠点へこの距離まで近づくとハンターが撤退
 const HUNTER_FLEE_SPEED = 300;             // 撤退移動速度(px/s)
 const HUNTER_DESPAWN_DIST = 1500;          // 撤退でプレイヤーからこの距離離れたら消滅
 // 優勢判定(6項目中 HUNTER_FAV_SCORE_NEEDED 以上で成立)
@@ -759,7 +770,7 @@ const DIRFX_ENABLED = evParam('dirfx') !== '0';
 // 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
 // gatePressureの問題児ブロック・憲法の数上限をすべて素通りし、序盤の理不尽(最初から弾+濁流)の
 // 主因だったため既定OFF。見せ場としての再設計はバッチ4/5の演目・台本メニューで行う。
-// ?setpiece=1 で従来台本に復帰(切り分け用)。城ボス(7分)は別経路なので影響なし。
+// ?setpiece=1 で従来台本に復帰(切り分け用)。城ボス(5分)は別経路なので影響なし。
 const SETPIECE_ENABLED = evParam('setpiece') === '1';
 // (DIRECTOR_NEAR_RADIUS は src/utils/directorTick.ts の runDirectorSignalStep へ移設)
 // ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
@@ -797,7 +808,7 @@ const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボス�
 // `?bosscounter=0` で統一前(裏ボス3体はカウンター不可)へ完全フォールバックできる。
 const BOSS_COUNTER_ENABLED = evParam('bosscounter') !== '0';
 // PACING_PUZZLE.md §5.21-追補8: テスト用の統一起動フラグ。ラン開始直後、そのステージのゲート2ボス型を
-// プレイヤー近くへ即force-spawnし、ゲート2と同じ初期化(bossState=chase/home=生成中心/×5/fromEvent)で
+// プレイヤー近くへ即force-spawnし、ゲート2と同じ初期化(bossState=chase/home=生成中心/fromEvent)で
 // すぐ戦えるようにする(拘束サークルは省略=テスト用途)。既定OFF=通常挙動不変。将来ステージが増えたら
 // このlookupに追加するだけで対応する(現状はstage-1=ミゲルのみ)。
 const FORCE_GATEBOSS = evParam('gateboss') === '1';
@@ -911,10 +922,6 @@ const THOR_SLOWWALK_MS = 2000;               // 減速が続く時間
 const THOR_SLOWWALK_MULT = 0.5;              // 更なる減速倍率(「さらに1/2」)
 const THOR_SLOWWALK_MIN_INTERVAL_MS = 5000;  // 「たまに」の頻度(叩き台)
 const THOR_SLOWWALK_MAX_INTERVAL_MS = 9000;
-const THOR_ACTION_MIN_MS = 2200;             // 攻撃選択インターバル(最短・満タンHP)
-const THOR_ACTION_MAX_MS = 4200;             // 攻撃選択インターバル(最長・満タンHP)
-const THOR_LOWHP_FRAC = 0.4;                 // このHP割合以下で頻度アップ開始(社長指示)
-const THOR_LOWHP_INTERVAL_MULT = 0.55;       // 低HP時のインターバル倍率(短縮=高頻度化)
 
 const THOR_ISSEN_WINDUP_MS = 3000;           // 一閃: 3秒溜め・赤く点滅して静止(社長指示)
 const THOR_ISSEN_DASH_MS = 280;              // 高速移動そのものの所要時間
@@ -931,7 +938,6 @@ const THOR_TSUKI_TRACK_FRAC = 0.5;           // 突き溜め中の狙い追従�
 const THOR_TSUKI_HALF_WIDTH = 15;            // 社長指示v0.25.1622で突きの半幅を±15へ(30→15=細い突き)
 
 const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 溜め1秒(社長指示)
-const HARAI_TRIGGER_DIST = 250;              // 斬り系(トールharai / ミゲルharai・tate)を発動できるプレイヤーまでの最大距離(社長指示v0.25.1626)
 const THOR_HARAI_RANGE = 310;                // 社長指示v0.25.1622で横払いの長さを元へ戻す(160→310)。一閃/突きとは独立
 const THOR_HARAI_HALF_WIDTH = 40;            // 社長指示v0.25.1610: 中心から片側40px(旧TSUKI*1.5=45)。突き本体は無変更
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
@@ -1041,7 +1047,6 @@ let loopErrLogged = false;                           // ループ本体例外の
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
-const CASTLE_BOSS_MIN_TIME_MS = 7 * 60 * 1000; // ただし出現は7分経過後のみ(社長指示で5→7分=難易度カーブ後ろ倒し)。接近＋時間の両方。?castlenow=1 は無視。
 // 研究所スキンの湧き敵の索敵範囲(px)。この距離内 かつ 壁越しでない(視界)ときに休眠から起床。
 // ラボ湧き敵の起床索敵範囲。150 では湧きリング(画面外~570-745px)より遥かに小さく休眠敵が永久に起きず
 // 「敵が一切出ない」状態に、逆に 700 では湧いた瞬間に約7割が即起床して「すぐ見つかる」状態だった(社長報告)。
@@ -1278,7 +1283,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     seenTutorials().add(id);
     markTutorialSeen(id);
     useGameStore.getState().showTutorialPopup({
-      title: entry.title, lines: entry.lines, art: entry.art, img: entry.img,
+      title: entry.title, lines: entry.lines, art: entry.art, img: entry.img, slides: entry.slides,
     });
   }, [seenTutorials]);
   // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告(この先——{区域名})」を壁ごとにラン1回だけ出すためのフラグ。
@@ -1783,6 +1788,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // Hitstop: a melee finisher freezes the whole simulation for a beat. Keep
       // the time origin current so we don't get a giant delta when it lapses.
       const nowMs = Date.now();
+
+      // ボス死亡attentionはこの直後から早期returnするため、崩壊SEの立ち上がりだけは停止判定より前で拾う。
+      // 通常時は下のcorpse管理ブロックと同じrefで重複を防ぐ。
+      {
+        const corpse = useGameStore.getState().bossCorpse;
+        if (corpse && corpse.diedAt !== bossCorpseSfxRef.current) {
+          bossCorpseSfxRef.current = corpse.diedAt;
+          playSfx('boss-death');
+        }
+      }
 
       // --- アテンション・シネマティック(レスキュー/ジャイアント出現) ---
       // 現地へ高速パン→2-3秒ホールド→高速で戻る。その間は hitstop でシム/アニメ停止(時間停止)。
@@ -2381,17 +2396,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         const castle = useGameStore.getState().castleEvent;
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
-        // 城は最初から固定設置。出現条件は「7分経過(時間)」のみ=その時刻に城の位置へ giantbat がポップ。
+        // 城は最初から固定設置。出現条件は「5分経過(時間)」のみ=その時刻に城の位置へ giantbat がポップ。
         // (社長指示: 接近不要。城マーカーはボス出現後に表示。?castlenow=1 は即時。)
         // 以前は制圧イベント中(ステージ1メイン)は出さない仕様だったが、社長指示で撤回=制圧中でも
         // 時間が来たら出現するように変更(拠点制圧の完了を待たない)。
         const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
         // 洋館通路(corridorMode)は城なし(v0.25.2144・社長指示「城も出現しないで。時間で出るのは死神だけ」)
-        // =7分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
+        // =5分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
         if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
+          // PHILLガンはstage-2限定・弾薬有限のため火力基準から除外。通常ビルド基準でstage進行ごとに上げる。
+          boss.health = boss.maxHealth = stageBossHealthFor(getSelectedStageId());
           // 出現直後は城で待機=プレイヤーが近づくまで向かってこない(社長指示)。aggroRange 内へ入ると起動。
           boss.dormant = true;
           boss.aggroRange = GIANT_AGGRO_RANGE;
@@ -2649,8 +2666,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // PACING_PUZZLE.md §5.21-追補8: 囲いゲート2(ハード=出られない)。ゲート2ボス=天使名の
             // 裏ボス勢1体目「ミゲル」(内部型'miguel')を配置する(旧: 城ボスgiantbatの仮流用。giantbatは
             // 城フィナーレボスとして別枠で存続=useGameLoop.ts:1638 の別スポーンは無変更)。confinesPlayer省略=既定true。
-            // 社長指示v0.25.1595「基本値の方にして」: ゲート2の×5(GATE2_BOSS_STRENGTH_MULT)は適用しない=
-            // ミゲルはENEMY_STATSの基本値(HP2000/与ダメ38)そのままで戦う(ミゲルは専用調整のボスなので旧giantbat枠の×5は不要)。
+            // ゲート2の×5(GATE2_BOSS_STRENGTH_MULT)は適用しない。ENEMY_STATSへ入れた
+            // bossHealth.tsのステージ別HPと与ダメ38を、そのまま実効値として使う。
             gate2PendingRef.current = false;
             const g2pcx = player.x + player.width / 2, g2pcy = player.y + player.height / 2;
             // 重要: beginArenaEvent は周辺の非固定敵を一掃するため、必ずボスを配置する前に呼ぶ
@@ -3124,7 +3141,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // --- 帰還フェーズ ---
         // フィナーレボス(giantbat)撃破=finaleDefeated になったら、城跡付近に帰還サークルを出す(屋内/ラボの
-        // 終了アイテムは triggerEventVictory が直接サークルを出す)。サークル内に3秒とどまると帰還完了(gameWon)。
+        // 終了アイテムは triggerEventVictory が直接サークルを出す)。通常ストーリーは地点内で離指確認、イベントは3秒滞在で帰還完了。
         {
           const grs = useGameStore.getState();
           if (grs.finaleDefeated && !grs.returnCircle && !grs.gameWon) {
@@ -3261,6 +3278,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hs = useGameStore.getState();
           const hpx = hs.player.x + hs.player.width / 2;
           const hpy = hs.player.y + hs.player.height / 2;
+          const nearAnyBase = isHunterSafeBaseNearby(hpx, hpy, hs.baseSites, HUNTER_BASE_SAFE_RADIUS);
 
           // 優勢判定の履歴更新: 被弾検出(HP低下)と撃破数の時系列。
           if (hunterPrevHpRef.current < 0) hunterPrevHpRef.current = hs.player.health;
@@ -3282,7 +3300,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const cinematic = hs.bossChasing || !!hs.attention || hs.redNight?.phase === 'active' || giantOrReaper;
           // 撤退トリガ用は attention を除外(ハンター発見時に自分で出すアテンションで即撤退しないように)。
           const retreatCinematic = hs.bossChasing || hs.redNight?.phase === 'active' || giantOrReaper;
-          const spawnBlocked = cinematic || !!hs.activeEvent;
+          const spawnBlocked = cinematic || !!hs.activeEvent || nearAnyBase;
 
           // 画面外スポーン地点(プレイヤー近場の画面端〜外)。
           const offscreenSpawn = (): { x: number; y: number } => {
@@ -3381,7 +3399,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           } else if (H.phase === 'search') {
             const prim = hs.enemies.find(e => e.id === H.primaryId);
-            if (!prim || cinematic) {
+            if (!prim || cinematic || nearAnyBase) {
               clearAllHunters(); endHunterEvent(); // 撃破/演出割り込み=即座に立ち去る(フェード無し)
             } else if (prim.hunterLeavingAt !== undefined) {
               // フェードアウト中(索敵タイムアウト後): 経過を待って消滅させる。
@@ -3441,13 +3459,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnHunter(false); H.reinforced = 2;
                 useGameStore.setState({ eventBannerText: 'ハンターの増援', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               }
-              // 撤退トリガ: 制圧拠点へ逃げ込む / ボス・リーパー・演出が始まった / 追跡が上限を超えた(諦め)。
-              const nearBase = hs.baseSites.some(b => b.status === 'captured' && Math.hypot(hpx - b.x, hpy - b.y) <= HUNTER_BASE_SAFE_RADIUS);
+              // 撤退トリガ: 開放前を含む拠点へ逃げ込む / ボス・リーパー・演出が始まった / 追跡が上限を超えた(諦め)。
               const chasedOut = elapsed >= HUNTER_CHASE_MAX_MS; // kiteで永久追跡＆他イベント停止を防ぐ
               // M20追補(社長明確化v0.25.1534)「デンジャーを出る=手前へ戻る」: 凶悪ハンターはプレイヤーが
               // デンジャーより手前(area<2=r<3000)へ後退したら逃げ去る。前進(ゲート1方向)はゲート発生側で処理。
               const viciousRetreated = H.vicious && areaZoneIndexFor(Math.hypot(hpx, hpy)) < 2;
-              if (nearBase || retreatCinematic || chasedOut || viciousRetreated) {
+              if (nearAnyBase || retreatCinematic || chasedOut || viciousRetreated) {
                 useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterFleeing: true, dormant: false, aiPhase: undefined } : e) }));
                 H.phase = 'retreat';
                 useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -3541,28 +3558,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // 寄り道POIのチュートリアル1枚(§6.24-UX 裁定c): **M1の初出撃時に、端末で1度だけ**。
-        // 判定は純関数 `shouldShowDetourPoiTutorial`。まだ見ていない時しか評価しない(見た後は
-        // ref のキャッシュだけで弾ける=毎フレームの localStorage 読みも stage id 読みも起きない)。
-        // v0.25.2626(社長裁定「ださない」): ボスメーカーの部屋では出さない(上と同じ理由)。
-        // 部屋の土台が stage-1 なので、この「寄り道POI」が入室3秒ほどで割り込んでいた。
-        if (!indoor && !labTheme && !tutorialStage && !seenTutorials().has('detour-poi')
-            && !useGameStore.getState().bossMaker.active) {
+        // ステージ1の横スライド式フィールドガイド。新IDで旧「寄り道」既読とは分離し、全員へ新版を1度だけ出す。
+        // 出撃会話が終わった後の最初の安全な瞬間に表示し、ボスメーカーのstage-1土台では発火させない。
+        if (!seenTutorials().has('stage1-guide') && !useGameStore.getState().bossMaker.active) {
           const st = useGameStore.getState();
-          const poiPresent = !!(st.hospital || st.armory || st.police);
-          if (poiPresent) {
-            if (shouldShowDetourPoiTutorial({
-              stageId: (runStageIdRef.current ??= getSelectedStageId()),
-              poiPresent,
-              seen: false, // ここへ来る時点で未読(上の has('detour-poi') で弾いている)
-              popupOpen: st.tutorialPopup !== null,
-              menuOpen: st.showShopMenu || st.showUpgradeMenu,
-              // 出撃時の通信/会話が流れている間は割り込まない(流れ終わってから出す)。
-              dialogueActive: st.npcDialogue !== null || st.npcDialogueQueue.length > 0,
-              gameTimeMs: newGameTime,
-            })) {
-              showTutorialOnce('detour-poi');
-            }
+          if (shouldShowStage1Guide({
+            stageId: (runStageIdRef.current ??= getSelectedStageId()),
+            seen: false,
+            popupOpen: st.tutorialPopup !== null,
+            menuOpen: st.showShopMenu || st.showUpgradeMenu,
+            dialogueActive: st.npcDialogue !== null || st.npcDialogueQueue.length > 0,
+            gameTimeMs: newGameTime,
+          })) {
+            showTutorialOnce('stage1-guide');
           }
         }
 
@@ -4221,7 +4229,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // juice(flashy unified boss death): getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)の
+        // juice(flashy unified boss death): getsDramaticDeath 対象(ボス系/ネームド/クエスト対象)の
         // 討伐 corpse/VFX は gameStore 側(triggerDramaticDeath)が共通に出す。SFXだけは gameStore が
         // playSfx を持てないため、ここで bossCorpse.diedAt の変化を監視して1回だけ鳴らす。corpse の
         // 片付け(フェード終了→null)も、裏ボス未設定ステージ(城単体/洋館ステージ等)で動くよう、下の
@@ -4297,7 +4305,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({
               bossChasing: false,
               hiddenBossDefeated: true,
-              eventBannerText: `${enemyDeathLabel(hiddenBoss)}討伐!`,
+              eventBannerText: `${enemyDeathLabel(hiddenBoss)}を討伐`,
               eventBannerUntil: newGameTime + 3600,
             });
             bs.bossId = null;
@@ -4473,7 +4481,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 同フレームでこの関数を呼ぶ経路があるため、閉じ込めたstale boss(フレーム先頭のスナップ
               // ショット)ではなく、その時点の最新状態を読み直す(damageEnemyのcrit適用を取りこぼさない)。
               const freshBoss = () => useGameStore.getState().enemies.find(e => e.id === boss.id) ?? boss;
-              const nextActionDelay = () => newGameTime + (BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS)) * bossCritCdMult(freshBoss(), newGameTime);
+              const nextActionDelay = () => {
+                const profileId = bossRebuildIdForEnemy(boss.type);
+                const neutralMs = profileId
+                  ? bossNeutralDelayMs(profileId, boss.bossPhase ?? 1)
+                  : BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS);
+                return newGameTime + neutralMs * bossCritCdMult(freshBoss(), newGameTime);
+              };
               // --- トール(ステージ5)専用ヘルパー(社長指示・独自攻撃) ------------------------------
               // 旋回運動: 現在の相対位置から角度/半径を毎フレーム自己補正しながら回す(専用の角度状態を持たない)。
               // Y-down画面座標では atan2 の角度が増える向き=視覚的に時計回り(社長指示「時計回り」の既定 dir=1)。
@@ -4512,10 +4526,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               };
               // 次の攻撃選択までの間隔。HPが低いほど短く=高頻度化(社長指示)。
               const thorNextActionDelay = () => {
-                const hpFrac = boss.maxHealth > 0 ? boss.health / boss.maxHealth : 1;
-                const mult = hpFrac <= THOR_LOWHP_FRAC ? THOR_LOWHP_INTERVAL_MULT : 1;
-                // CRIT-UNIFY §9.2: クリ窓中は×2(freshBossの理由はnextActionDelayと同じ)。
-                return newGameTime + (THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS)) * mult * bossCritCdMult(freshBoss(), newGameTime);
+                // 低HPだけ急に0.55倍へ跳ぶ旧式をやめ、台帳の3フェーズで段階的に密度を上げる。
+                const neutralMs = bossNeutralDelayMs('thor', boss.bossPhase ?? 1);
+                return newGameTime + neutralMs * bossCritCdMult(freshBoss(), newGameTime);
               };
               // カウンター成立時の共通処理(社長指示: すべての攻撃がカウンター可能)。通常カウンターと同じ
               // 演出(Counter!/ヒットインパクト/クリ反撃)を行い、近接距離ギリギリ外まで高速後退させる。
@@ -4853,13 +4866,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   bs.vx = 0; bs.vy = 0;
                 } else if (boss.type === 'thor') {
                   if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
-                    // トール専用: 弾もダッシュも使わない独自3種(一閃/突き/払い)からランダムに選ぶ(社長指示)。
-                    // 払いはプレイヤーが HARAI_TRIGGER_DIST(250px)以内に居る時だけ候補に入れる(社長指示v0.25.1626)。
-                    // §6.28-10: プール構築そのものは純関数化しただけ(pickThorPool・値は不変)。
+                    // トール専用: 弾もダッシュも使わない刀3種を距離帯の役割から選ぶ。
+                    // 払いは250px以内、一閃は遠距離ほど重く、突きは中距離の主砲。
                     const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
-                    const canHarai = Math.hypot(dpx, dpy) <= HARAI_TRIGGER_DIST;
-                    const pool = pickThorPool(canHarai);
-                    const pick = pool[Math.floor(Math.random() * pool.length)];
+                    const distance = Math.hypot(dpx, dpy);
+                    const pick = pickThorMove(distance, (boss.bossPhase ?? 1) as 1 | 2 | 3);
                     // §6.28-10行1〜3「+SE【新設】」: 予告SEを新設(図形/リード/硬直=既存値は無改変)。
                     // windup開始のセットアップ(方向ロック等)はbeginThorMoveへ集約(値は不変・純関数化のみ)。
                     beginThorMove(pick);
@@ -6155,9 +6166,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (active?.ammoType && (active.magazine ?? 0) < maxMag && reserve > 0) {
             // 投げ先=敵が少ない方面へ(社長指示v0.25.1606)。マガジンは拾って回収するので、
             // 進行方向ではなく「敵の薄い側」へ投げて安全に取りに行けるようにする。
-            // G2.6: 入口はオーナー形だが、この種はプレイヤー固定(マガジンは「プレイヤーが拾いに行く」
-            // 前提の設計=ドッグにも拾わせない(v0.25.2409)ため、ゴースト位置から投げると取りに行けない
-            // 置き去りが起きる)。ゴースト対応は★未決の未対応リスト。
+            // G2.6: このブロックはプレイヤー本人分。守護霊は各自のマガジン不足時に自分で投げ、
+            // ghostDriverの回収目標へ割り込んで自分の物だけを拾う(下の守護霊ブロック)。
             const dir = safeThrowDirection(
               ownerCenterX(playerOwner),
               ownerCenterY(playerOwner),
@@ -7066,11 +7076,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ---- クイックマガジン(striker-quick-mag): 投げて**自分で**拾いに行く ----
           // 裁定「各自が投げて自分で拾いに行く/回収が行動に割り込むのは許容」。回収の移動目標は
           // ghostDriver(retrieveTarget)へ渡す。拾得は下のゴーストtickで自分の物だけを拾う。
-          // 弾薬の残量条件(マガジンに空きがある/リザーブが残っている)は**除外4(弾薬)**の系なので
-          // 守護霊には掛からない(守護霊は弾を消費しないため、掛けると永久に発動しない)。
+          // リザーブ残量だけは除外4(霊体は在庫非消費)。マガジンには同じ空き/リロード状態があるため、
+          // 回収時はプレイヤーと同じ共通装填式で即時装填する。
           {
             const { owner: qmOwner } = subSubject('striker-quick-mag');
-            if (qmOwner.kind === 'ghost-ally' && qmOwner.summonId === gSub.id && ghostOwnsSub('striker-quick-mag') && gActor) {
+            const qmGun = gActor ? getActiveGun(gActor) : undefined;
+            const qmNeedsRounds = gActor !== null && !!qmGun?.ammoType
+              && (qmGun.magazine ?? 0) < effectiveMagSize(qmGun, gActor);
+            if (qmOwner.kind === 'ghost-ally' && qmOwner.summonId === gSub.id && ghostOwnsSub('striker-quick-mag') && gActor && qmNeedsRounds) {
               const lvl = ghostSubLevel('striker-quick-mag');
               // 投げ先=敵が少ない方面(プレイヤーと同じ safeThrowDirection・同じ距離)。
               const dir = safeThrowDirection(gcx, gcy, useGameStore.getState().enemies, gOwner.facing ?? { x: 1, y: 0 });
@@ -7337,6 +7350,49 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         {
           const ghostNow = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
           if (ghostNow) {
+            if (ghostNow.ghostArrivalStartedAt !== undefined) {
+              const pose = ghostArrivalPoint(
+                ghostNow.ghostArrivalFromX ?? ghostNow.x,
+                ghostNow.ghostArrivalFromY ?? ghostNow.y,
+                ghostNow.ghostArrivalToX ?? ghostNow.x,
+                ghostNow.ghostArrivalToY ?? ghostNow.y,
+                newGameTime - ghostNow.ghostArrivalStartedAt,
+                RESCUE_ALLY_FLYIN_MS,
+              );
+              useGameStore.setState(st => ({
+                summons: st.summons.map(s => s.id === ghostNow.id ? {
+                  ...s,
+                  x: pose.x,
+                  y: pose.y,
+                  ...(pose.done ? {
+                    ghostArrivalStartedAt: undefined,
+                    ghostArrivalFromX: undefined,
+                    ghostArrivalFromY: undefined,
+                    ghostArrivalToX: undefined,
+                    ghostArrivalToY: undefined,
+                  } : {}),
+                } : s),
+              }));
+            } else if (ghostNow.ghostDepartureStartedAt !== undefined) {
+              const pose = ghostDeparturePoint(
+                ghostNow.ghostDepartureFromX ?? ghostNow.x,
+                ghostNow.ghostDepartureFromY ?? ghostNow.y,
+                ghostNow.ghostDepartureToX ?? ghostNow.x,
+                ghostNow.ghostDepartureToY ?? ghostNow.y,
+                newGameTime - ghostNow.ghostDepartureStartedAt,
+                RESCUE_ALLY_CROUCH_MS,
+                RESCUE_ALLY_FLYOUT_MS,
+                RESCUE_ALLY_HOP_PX,
+              );
+              if (pose.done) {
+                useGameStore.setState(st => ({ summons: st.summons.filter(s => s.id !== ghostNow.id) }));
+                ghostProfileRef.current = null;
+              } else {
+                useGameStore.setState(st => ({
+                  summons: st.summons.map(s => s.id === ghostNow.id ? { ...s, x: pose.x, y: pose.y } : s),
+                }));
+              }
+            } else {
             // 被弾音(社長裁定v0.25.2480=v0.25.2479★未決2解消。G4bの掟「被弾音は付けない」
             // (v0.25.2459)は本裁定で上書き): 全被弾経路(ボス技/敵弾/汎用接触)は damageSummon の
             // lastHit 打刻に合流するので、そのエッジ検知1箇所で player-damage SE を距離減衰付きで
@@ -7374,17 +7430,52 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // ロードアウト**(旧: 召喚時のプレイヤーの現在装備を借用=廃止)。ビルドが無い旧プロファイルの
               // 時だけ従来のフォールバック(今の装備)になる=resolveGhostBuild側で解決。
               const ghostBuild = ghostBuildFor(ghostNow, gsPlayer);
-              const gun = ghostBuild?.gun;
+              const nowMs = Date.now();
+              let ghostWeapons = ghostNow.ghostWeapons ?? ghostBuild?.player.weapons ?? [];
+              let gun = ghostBuild?.gun
+                ? ghostWeapons.find(w => w.id === ghostBuild.gun?.id) ?? ghostBuild.gun
+                : undefined;
               const meleeWeapon = ghostBuild?.melee;
-              // 倍率評価の主語(疑似Player)。位置/HPはゴースト実体の値=距離依存/失HP依存の倍率がゴースト基準。
-              const ghostOwner = ghostBuild ? ghostActorPlayer(ghostBuild, ghostNow) : gsPlayer;
+              // v0.25.2830: Weapon[]/reloadEndsAt/reloadingWeaponIdもプレイヤーと同じ型・共通純関数で進める。
+              // リザーブだけは従来の除外4(霊体の弾薬非消費)をInfinityで表現し、空マガジンは同じ容量・
+              // 同じリロード時間で満タンへ戻る。これでラストマガジン/ゴーストシューターも同じ残弾を読む。
+              const ghostOwnerWithWeaponState = (): Player => ghostBuild ? {
+                ...ghostActorPlayer(ghostBuild, ghostNow),
+                weapons: ghostWeapons,
+                activeWeaponId: gun?.id ?? ghostBuild.player.activeWeaponId,
+                reloadEndsAt: ghostNow.ghostReloadEndsAt ?? 0,
+                reloadingWeaponId: ghostNow.ghostReloadingWeaponId ?? '',
+                quickMagCritUntil: ghostNow.ghostQuickMagCritUntil ?? 0,
+              } : gsPlayer;
+              let ghostOwner = ghostOwnerWithWeaponState();
+              let ghostReloadEndsAt = ghostOwner.reloadEndsAt;
+              let ghostReloadingWeaponId = ghostOwner.reloadingWeaponId;
+              let reloadStarted = false;
+              if (gun) {
+                const finished = finishWeaponReload(gun, ghostOwner, Number.POSITIVE_INFINITY, nowMs);
+                if (finished) {
+                  gun = finished.weapon;
+                  ghostWeapons = ghostWeapons.map(w => w.id === gun?.id ? finished.weapon : w);
+                  ghostReloadEndsAt = finished.reloadEndsAt;
+                  ghostReloadingWeaponId = finished.reloadingWeaponId;
+                  ghostOwner = { ...ghostOwner, weapons: ghostWeapons, reloadEndsAt: 0, reloadingWeaponId: '' };
+                }
+                if ((gun.magazine ?? 0) <= 0 && !ghostReloadingWeaponId) {
+                  const started = beginWeaponReload(gun, ghostOwner, Number.POSITIVE_INFINITY, nowMs);
+                  if (started) {
+                    ghostReloadEndsAt = started.reloadEndsAt;
+                    ghostReloadingWeaponId = started.reloadingWeaponId;
+                    ghostOwner = { ...ghostOwner, ...started };
+                    reloadStarted = true;
+                  }
+                }
+              }
               // v0.25.2518(GHOST-KATANA-WIRE・裁定2 / 台帳§5): ビルド(計測時のsubWeapons)に katana または
               // murasame があれば、守護霊は**プレイヤーと同じ刀モード**で戦う。プレイヤーの刀モードは
               // 「銃の自動射撃とナイフ振りを封印し、オート斬撃(600ms)+一閃(フリック)で戦う」形なので、
               // その形をそのまま写す(判定・定数・式は共有関数側=ここに刀の数値は1つも書かない)。
               const ghostKatana = isKatanaMode(ghostOwner);
               const profile: GhostProfile = ghostProfileRef.current ?? defaultGhostProfile();
-              const nowMs = Date.now();
               // GHOST-SUBS-FINAL(v0.25.2563): 自分が投げたクイックマガジン(=自分の設置物。世界の
               // ドロップではないので§2.11追補3に抵触しない)。着地済みの物だけを回収目標にする。
               const ownMag = useGameStore.getState().pickups.find(p =>
@@ -7439,9 +7530,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 profile,
                 weapon: {
                   gunDamage: gun?.damage ?? 0,
-                  gunIntervalMs: Math.max(80, gun?.cooldown ?? 500),
+                  gunIntervalMs: gun ? effectiveFireCooldown(gun, ghostOwner) : 500,
                   // 刀モードは銃を撃たない(プレイヤーと同じ封印)ので射程0=意思決定側でも銃を選ばせない。
-                  gunRangePx: gun && !ghostKatana ? RANGE_BY_CATEGORY[gun.category ?? 'handgun'] : 0,
+                  gunRangePx: gun && !ghostKatana && !ghostReloadingWeaponId && (gun.magazine ?? 0) > 0
+                    ? RANGE_BY_CATEGORY[gun.category ?? 'handgun'] : 0,
                   meleeDamage: meleeWeapon?.damage ?? 6,
                 },
                 gameTime, nowMs,
@@ -7505,6 +7597,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 summons: st.summons.map(s => s.id === ghostNow.id ? {
                   ...s, x: resolved.x, y: resolved.y, ghostFacing: decision.facing,
                   ghostLastShotAt: decision.lastShotAt, ghostLastMeleeAt: decision.lastMeleeAt,
+                  ghostWeapons,
+                  ghostReloadEndsAt,
+                  ghostReloadingWeaponId,
                   ghostCounterPendingAt: decision.counterPendingAt, ghostCounterWillAttempt: decision.counterWillAttempt,
                   // G4b: 技への反応ロールを持ち越す(技の解決=decideGhostがundefinedを返したらクリア)。
                   ghostMoveRollKey: decision.moveRoll?.moveKey,
@@ -7530,14 +7625,36 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // GHOST-SUBS-FINAL: 自分が投げたクイックマガジンの回収(**自分の設置物だけ**。世界の
               // ドロップには触れない=§2.11追補3)。拾得判定はプレイヤーと同じ純関数
               // (checkPlayerPickupCollisions)へ、対象を自分のマガジン1個に絞って通す。
-              // 効果=プレイヤーの回収と同じ「クリ窓5秒」(即時リロードは弾薬=除外4で概念が無い)。
+              // 効果=プレイヤーと同じ「即時装填+リロード解除+装填できた時だけクリ窓5秒」。
               if (ownMag) {
                 const magBody = { ...ghostOwner, x: resolved.x, y: resolved.y, width: ghostNow.width, height: ghostNow.height };
                 if (checkPlayerPickupCollisions(magBody, [ownMag]).length > 0) {
+                  const filled = gun ? refillWeaponMagazine(gun, ghostOwner, Number.POSITIVE_INFINITY) : null;
+                  if (filled && gun) {
+                    gun = filled.weapon;
+                    ghostWeapons = ghostWeapons.map(w => w.id === gun?.id ? filled.weapon : w);
+                  }
+                  ghostReloadEndsAt = 0;
+                  ghostReloadingWeaponId = '';
+                  ghostOwner = {
+                    ...ghostOwner,
+                    weapons: ghostWeapons,
+                    reloadEndsAt: 0,
+                    reloadingWeaponId: '',
+                    ...(filled && filled.moved > 0 ? { quickMagCritUntil: gameTime + QUICK_MAG_CRIT_WINDOW_MS } : {}),
+                  };
                   useGameStore.setState(st => ({
                     pickups: st.pickups.filter(p => p.id !== ownMag.id),
                     summons: st.summons.map(s => s.id === ghostNow.id
-                      ? { ...s, ghostQuickMagCritUntil: st.gameTime + QUICK_MAG_CRIT_WINDOW_MS }
+                      ? {
+                          ...s,
+                          ghostWeapons,
+                          ghostReloadEndsAt: 0,
+                          ghostReloadingWeaponId: '',
+                          ...(filled && filled.moved > 0
+                            ? { ghostQuickMagCritUntil: st.gameTime + QUICK_MAG_CRIT_WINDOW_MS }
+                            : {}),
+                        }
                       : s),
                   }));
                   const magCx = resolved.x + ghostNow.width / 2, magCy = resolved.y + ghostNow.height / 2;
@@ -7555,6 +7672,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 音は小さく・画面外は無音。プレイヤー自身の攻撃音は従来どおり等倍で、この係数は使わない)。
               const gfxPcx = gsPlayer.x + gsPlayer.width / 2, gfxPcy = gsPlayer.y + gsPlayer.height / 2;
               const gfxCam = useGameStore.getState().camera, gfxGb = useGameStore.getState().gameBounds;
+              if (reloadStarted && gun && ghostOwner.reloadingWeaponId) {
+                const reloadGain = npcSfxDistGain(
+                  resolved.x + ghostNow.width / 2, resolved.y + ghostNow.height / 2,
+                  gfxPcx, gfxPcy, gfxCam, gfxGb,
+                );
+                if (reloadGain > 0) playSfx('reload', reloadGain, effectiveReloadMs(gun, ghostOwner));
+              }
               // v0.25.2525(GHOST-REFLECT-MELEE-SUBS・発注A/C): ゴーストの近接スイング1回の共通後処理。
               //  ① 弾反射のカウンター窓を開く: プレイヤーのスイングが counterWindowEnd を開くのと
               //     **同じ定数(COUNTER_WINDOW)**で ghostCounterWindowEnd を打つ(反射の判定は
@@ -7579,8 +7703,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               };
               if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana) {
-                // 銃 = **計測時ビルドのアクティブ銃**のdamage/intervalで撃つ。弾薬はプレイヤーの残弾と
-                // 完全分離(消費しない=除外4)。
+                // 銃 = **計測時ビルドのアクティブ銃**。マガジン/発射間隔/リロードはプレイヤーと同じ、
+                // リザーブ弾だけはプレイヤーと完全分離して非消費(除外4)。
                 // GHOST-GUN-PARITY: 飛翔特性(count発/拡散/PROJECTILE_SPEED_MULT/projectileSize/
                 // passthrough・pierce)はプレイヤーのfireWeaponと同じ規則(buildGhostGunShots=共通ヘルパ)。
                 // v0.25.2514(§2.11訂正): ダメージ倍率(スカベンジャー/アタックシューター/装備火力/
@@ -7601,6 +7725,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   { player: ghostOwner, gameTime, headshot: ghostHeadshot },
                 );
                 for (const shot of ghostShots) addProjectile(shot);
+                const firedGun = weaponAfterGunShot(gun, ghostOwner, nowMs);
+                ghostWeapons = ghostWeapons.map(w => w.id === gun?.id ? firedGun : w);
+                gun = firedGun;
+                useGameStore.setState(st => ({
+                  summons: st.summons.map(s => s.id === ghostNow.id ? { ...s, ghostWeapons } : s),
+                }));
                 // 発砲SE: プレイヤーと同じ銃種別の音(v0.25.2479パリティ。旧: 常にhandgun-fire)を
                 // ゴースト位置で距離減衰。種別分岐はプレイヤー自動発砲(SMG/グレネードランチャー特例含む)と同一。
                 const gGain = npcSfxDistGain(gcx, gcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
@@ -7621,7 +7751,37 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const bccy = boundBoss.y + boundBoss.height / 2;
                 const gmcx = resolved.x + ghostNow.width / 2, gmcy = resolved.y + ghostNow.height / 2;
                 const wasCounterMelee = isBossCounterableNowApprox(boundBoss.aiPhase, boundBoss.bossState);
-                const dashed = useGameStore.getState().triggerKatanaDash(btcx - gmcx, bccy - gmcy, ghostNow.id);
+                const katanaState = useGameStore.getState();
+                const katanaArena = katanaState.activeEvent && katanaState.activeEvent.kind !== 'rescue'
+                  && katanaState.activeEvent.confinesPlayer !== false
+                  ? {
+                      x: katanaState.activeEvent.x,
+                      y: katanaState.activeEvent.y,
+                      radius: katanaState.activeEvent.radius,
+                    }
+                  : undefined;
+                // 一閃中は無敵でも着地後に200msの硬直がある。従来は常にボス中心へ突っ込み、巨体の
+                // 接触判定内へ着地して硬直中に自爆していた。斬撃が対象へ届く16方向を順に調べ、
+                // 実際の敵接触矩形から16px以上離れた着地点だけを採用する。円形アリーナでは移動側と
+                // 同じ円内クランプ後の地点で判定し、安全地点が無ければ今回は発動を見送る。
+                const safeKatanaDir = pickSafeKatanaDashDirection({
+                  startX: gmcx,
+                  startY: gmcy,
+                  actorWidth: ghostNow.width,
+                  actorHeight: ghostNow.height,
+                  dashDistance: KATANA_DASH_DISTANCE,
+                  hitHalfWidth: KATANA_DASH_HIT_HALF_WIDTH,
+                  target: {
+                    id: boundBoss.id,
+                    centerX: btcx,
+                    centerY: bccy,
+                    strikeWidth: boundBoss.width,
+                  },
+                  enemyRects: katanaState.enemies.map(enemy => ({ id: enemy.id, ...enemyContactBox(enemy) })),
+                  arena: katanaArena,
+                });
+                const dashed = safeKatanaDir !== null
+                  && katanaState.triggerKatanaDash(safeKatanaDir.x, safeKatanaDir.y, ghostNow.id);
                 if (dashed) {
                   // 一閃も「近接スイング」=弾反射の窓を開き、相乗り型サブの入口も通す(v0.25.2525)。
                   onGhostMeleeSwing(gmcx, gmcy);
@@ -7767,6 +7927,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }));
                 }
               }
+            }
             }
           }
         }

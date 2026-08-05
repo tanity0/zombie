@@ -9,7 +9,7 @@
 // レンダラーに依存しない(PixiJSをimportしない)。store(useGameStore)・audioManager(playSfx)への
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
-import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED } from '../store/gameStore';
+import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED, RESCUE_ALLY_SPAWN_DIST } from '../store/gameStore';
 import { placeLabSpawn } from './labSpawn';
 import { OFFSCREEN_SPAWN_MARGIN } from './enemyUtils';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
@@ -43,8 +43,16 @@ import {
 import { setDuoRunActive } from './duoRecords'; // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ(時計はbossClockへ移設)
 import { tickBossClocks } from './bossClock'; // v0.25.2577: 撃破タイムのボスごと交戦時計(ソロ/同行共有)
 import { loadPlayerName, displayNameFrom } from './playerName'; // v0.25.2477: 守護霊の頭上名(srcName未記録時のフォールバック)
+import {
+  displayGhostComment, GHOST_ARRIVAL_COMMENT_DEFAULT, GHOST_DEPARTURE_COMMENT_DEFAULT, loadGhostComments,
+} from './ghostComment';
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
+import {
+  fixedGhostFeedbackTarget, isGhostOnlinePickPending, remoteGhostFeedbackTarget,
+  resolveRemoteGhost, selectedGhostMode,
+} from './ghostOnline';
+import { pickFixedGuardianForGhostMode, shouldPickFixedGuardian } from '../data/fixedGuardians';
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
 import {
@@ -596,6 +604,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
 // 完全に同じ純関数を再利用=新しい交戦判定は発明していない。ヒステリシスの前回値だけ
 // runKomaBoardMaintenance側のbossRelaxPrevとは別の変数で持つ=互いに干渉しない)。
 let ghostBossEngagePrev = false;
+// ボス戦テスト等で交戦開始がオンライン候補取得より早かった時だけ、同じ交戦の召喚を保留する。
+// 召喚後はnullへ戻すため、守護霊が倒れても同じボスへ再召喚しない。
+let pendingRemoteGhostSlot: string | null = null;
 // v0.25.2577: ボスごと交戦時計のヒステリシス用(前tickで交戦中だったスロットキー集合)。
 // ghostBossEngagePrevと同じくラン跨ぎの明示リセットは不要(敵が空の次tickで自然に空へ収束する)。
 let engagedSlotKeysPrev = new Set<string>();
@@ -620,6 +631,7 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   const engagedNow = BOSS_RELAX_ENABLED && bossEngagedNow(state.enemies, pcx, pcy, ghostBossEngagePrev);
   const rising = engagedNow && !ghostBossEngagePrev;
   ghostBossEngagePrev = engagedNow;
+  if (!engagedNow) pendingRemoteGhostSlot = null;
 
   const ghostActive = state.summons.some(s => s.kind === 'ghost-ally');
   // G3: このランでゴースト系を有効にするか = `?ghost=1`(開発用) OR 守護霊(guardian-spirit)装備。
@@ -669,37 +681,86 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     // 解散条件①: 紐付いたボスが居なくなった(撃破/画面外リサイクル等で enemies から消えた)。
     // 解散条件②(HP0)は damageSummon が既に summons から取り除いている=ここでは見なくてよい。
     const boundBossAlive = state.enemies.some(e => e.id === existingGhost.ghostBossId);
-    if (!boundBossAlive) {
-      useGameStore.setState(s => ({ summons: s.summons.filter(su => su.id !== existingGhost.id) }));
-      refs.ghostProfileRef.current = null;
+    if (!boundBossAlive && existingGhost.ghostDepartureStartedAt === undefined) {
+      const face = existingGhost.ghostFacing === -1 ? -1 : 1;
+      useGameStore.setState(s => ({
+        summons: s.summons.map(su => su.id === existingGhost.id ? {
+          ...su,
+          ghostDepartureStartedAt: gameTime,
+          ghostDepartureFromX: su.x,
+          ghostDepartureFromY: su.y,
+          ghostDepartureToX: su.x - face * RESCUE_ALLY_SPAWN_DIST,
+          ghostDepartureToY: su.y,
+          ghostLastShotAt: 0,
+          ghostLastMeleeAt: 0,
+          ghostCounterWindowEnd: 0,
+        } : su),
+      }));
+      useGameStore.getState().enqueueNpcDialogue([{
+        name: existingGhost.ghostName ?? '守護霊',
+        text: existingGhost.ghostDepartureComment ?? GHOST_DEPARTURE_COMMENT_DEFAULT,
+      }]);
     }
     return; // 同時1体(既に居るなら新規召喚はしない)
   }
-
-  if (!rising) return; // 召喚は交戦の立ち上がりの瞬間だけ
 
   const boss = state.enemies.find(e =>
     isEngageableBoss(e.type) && e.dormant !== true
     && Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy) <= BOSS_ENGAGE_ENTER_PX);
   if (!boss) return;
 
-  // BOT_AND_GHOST.md §3裁定: ボスHPを召喚成立の瞬間に1回だけ×1.6(割合保存・二重適用防止フラグ)。
-  // ゴーストが死んでも戻さない(戻り値の判定はしない=このif自体が「まだ適用していない時だけ」)。
-  if (!boss.ghostHpBoosted) {
+  // プロファイル未保存(初回)の場合は既定プロファイル(botSkillのcasual相当から変換)を使う。
+  // G5(BOT_AND_GHOST.md §2.10 仕様5): 軸1プロファイルが有れば、紐付くボスのスロット(bossStyles)を
+  // ノブ単位で優先合成する(effectiveGhostProfile。スロットが無い/そのノブがnullなら軸1へフォールバック)。
+  const localSlot = bossStyleSlotKey(boss.type, getSelectedStageId());
+  const requestedMode = selectedGhostMode(player.skills);
+  const onlineMode = requestedMode === 'random' || requestedMode === 'top';
+  const pickPending = onlineMode && isGhostOnlinePickPending();
+  if (rising && pickPending) {
+    pendingRemoteGhostSlot = localSlot;
+    return;
+  }
+  const delayedSummon = pendingRemoteGhostSlot === localSlot;
+  if (!rising && !delayedSummon) return; // 通常は交戦の立ち上がりだけ。取得待ち時だけ後続tickを許す。
+  if (delayedSummon && pickPending) return;
+  pendingRemoteGhostSlot = null;
+  const remoteCandidate = requestedMode === 'random' || requestedMode === 'top'
+    ? resolveRemoteGhost(localSlot)
+    : null;
+  // 固定20人とオンライン実プレイヤーを候補人数比で同じ抽選母集団へ混ぜる。
+  // 助っ人=固定20人+実候補全員 / 討伐者=ボス別4人+実候補の上位20%。
+  const fixed = onlineMode && shouldPickFixedGuardian(requestedMode, remoteCandidate?.poolSize ?? 0)
+    ? pickFixedGuardianForGhostMode(localSlot, requestedMode)
+    : null;
+  const remote = fixed ? null : remoteCandidate;
+  const loadedProfile = loadPlayerProfile();
+  const profile = remote
+    ? effectiveGhostProfile(remote.profile, remote.slot)
+    : fixed
+      ? fixed.profile
+      : loadedProfile
+        ? effectiveGhostProfile(loadedProfile, localSlot)
+        : defaultGhostProfile();
+  const ghostSource = remote?.source ?? (fixed ? requestedMode : 'own');
+  const localComments = ghostSource === 'own' ? loadGhostComments() : null;
+  const arrivalComment = displayGhostComment(
+    localComments?.arrivalComment ?? (profile as { arrivalComment?: unknown }).arrivalComment,
+    GHOST_ARRIVAL_COMMENT_DEFAULT,
+  );
+  const departureComment = displayGhostComment(
+    localComments?.departureComment ?? (profile as { departureComment?: unknown }).departureComment,
+    GHOST_DEPARTURE_COMMENT_DEFAULT,
+  );
+  // 自分の守護霊/デバッグ、オンライン実プレイヤー、固定の先人守護霊のいずれかが実際に来た時だけ、
+  // ボス個体ごとに1回×1.6。オンライン候補が無くても固定20人が来るため新2スキルも対価が成立する。
+  const shouldBoostBoss = remote !== null || fixed !== null || requestedMode === 'own' || ghostDebugEnabled;
+  if (shouldBoostBoss && !boss.ghostHpBoosted) {
     useGameStore.setState(s => ({
       enemies: s.enemies.map(e => e.id === boss.id
         ? { ...e, health: e.health * GHOST_BOSS_HP_MULT, maxHealth: e.maxHealth * GHOST_BOSS_HP_MULT, ghostHpBoosted: true }
         : e),
     }));
   }
-
-  // プロファイル未保存(初回)の場合は既定プロファイル(botSkillのcasual相当から変換)を使う。
-  // G5(BOT_AND_GHOST.md §2.10 仕様5): 軸1プロファイルが有れば、紐付くボスのスロット(bossStyles)を
-  // ノブ単位で優先合成する(effectiveGhostProfile。スロットが無い/そのノブがnullなら軸1へフォールバック)。
-  const loadedProfile = loadPlayerProfile();
-  const profile = loadedProfile
-    ? effectiveGhostProfile(loadedProfile, bossStyleSlotKey(boss.type, getSelectedStageId()))
-    : defaultGhostProfile();
   // GHOST-SUBS-FINAL(v0.25.2563): ホーミングの「押す時間」= G4a計測(subStyles.homing)の平均。
   // 計測なし(旧プロファイル/未使用)は undefined のまま=消費側が満タン発射へフォールバックする。
   const homingHoldMsAvg = subStyleHomingHoldMs((profile as { subStyles?: SubStyleProfile }).subStyles);
@@ -715,9 +776,18 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // ghostBuild としてSummonへ載せ、攻撃計算側(useGameLoop/gameStore)が ghostBuild.ts で復元する。
   // (profileはGhostProfile(既定値)かPlayerProfile(保存済み)の合成=前者にsnapshotは無いので絞る)
   const snap = (profile as { snapshot?: PlayerBuildSnapshot }).snapshot;
+  const arrivalToX = player.x - player.width - 16;
+  const arrivalToY = player.y;
+  const lastDir = player.lastDirection;
+  const lastDirLen = lastDir ? Math.hypot(lastDir.x, lastDir.y) : 0;
+  const arrivalDir = lastDirLen > 0.01
+    ? { x: lastDir!.x / lastDirLen, y: lastDir!.y / lastDirLen }
+    : { x: 0, y: 1 };
+  const arrivalFromX = pcx - arrivalDir.x * RESCUE_ALLY_SPAWN_DIST - player.width / 2;
+  const arrivalFromY = pcy - arrivalDir.y * RESCUE_ALLY_SPAWN_DIST - player.height / 2;
   const ghost: Summon = {
     id: `ghost-ally-${Date.now()}`,
-    x: player.x - player.width - 16, y: player.y, width: player.width, height: player.height,
+    x: arrivalFromX, y: arrivalFromY, width: player.width, height: player.height,
     speed: snap?.speed ?? player.speed,
     health: snap?.maxHealth ?? player.maxHealth,
     maxHealth: snap?.maxHealth ?? player.maxHealth,
@@ -743,10 +813,17 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     // `srcName ?? loadPlayerName()` は**左辺が無検査**で、フィルタ導入前に保存された絵文字入り/
     // 双方向制御文字入り/長すぎる srcName がそのまま頭上へ描かれていた(浄化されるのは右辺だけ)。
     ghostName: displayNameFrom((profile as { srcName?: unknown }).srcName) ?? loadPlayerName(),
+    ghostArrivalComment: arrivalComment,
+    ghostDepartureComment: departureComment,
     // v0.25.2477: 現状はローカル完結=常に自分のプロファイル。オンラインで他人のゴーストを迎える時に
     // false を渡す前提の構造(頭上ラベルの「(自分)」添え字がこのフラグで消える)。
-    ghostIsOwn: true,
-    ghostFacing: 1,
+    ghostIsOwn: ghostSource === 'own',
+    ghostFacing: arrivalToX < arrivalFromX ? -1 : 1,
+    ghostArrivalStartedAt: gameTime,
+    ghostArrivalFromX: arrivalFromX,
+    ghostArrivalFromY: arrivalFromY,
+    ghostArrivalToX: arrivalToX,
+    ghostArrivalToY: arrivalToY,
     ghostLastShotAt: 0,
     ghostLastMeleeAt: 0,
   };
@@ -755,8 +832,20 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // v0.25.2553(§2.15/§2.16 B): 同行守護霊のカード(持ち主名+ビルド)をラン単位で1回だけ控える。
   // リザルトが読むのはこの**不変の1枚**(summons配列を購読させない=React再描画規律)。
   useGameStore.setState(s => ({
-    summons: [...s.summons, ghost], ghostSummonedThisRun: true, ghostAlly: ghostAllySnapshot(ghost),
+    summons: [...s.summons, ghost],
+    ghostSummonedThisRun: true,
+    ghostSourceThisRun: ghostSource,
+    ghostFeedbackTargetThisRun: remote
+      ? remoteGhostFeedbackTarget(remote.recordId)
+      : fixed
+        ? fixedGhostFeedbackTarget(fixed.id, localSlot)
+        : null,
+    ghostAlly: ghostAllySnapshot(ghost),
   }));
+  useGameStore.getState().enqueueNpcDialogue([{
+    name: ghost.ghostName ?? '守護霊',
+    text: ghost.ghostArrivalComment ?? GHOST_ARRIVAL_COMMENT_DEFAULT,
+  }]);
 }
 
 // ============================================================================

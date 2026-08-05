@@ -41,7 +41,7 @@ describe('difficultyDirector — count axis (PACING_REDESIGN.md 憲法第1条: �
     expect(phaseAt(420_000).kind).toBe('boss');   // 7:00 城ボス(中間ライン)
     expect(phaseAt(600_000).kind).toBe('gate');   // 10:00 は延長の関所(急多め)
     expect(phaseAt(900_000).kind).toBe('gate');   // 14:00 以降=特定ボス無しのカオス継続
-    // 城ボス(7:00)が唯一のボス phase(14:00に終局ボスは無い)
+    // 難易度ディレクターのboss phase(7:00。14:00に終局ボスは無い)。城ボス出現は別の5:00。
     expect(PHASES.filter(p => p.kind === 'boss').length).toBe(1);
     // 7-14分は 0-7分より関所(gate)が密=“急”多め
     const gates0to7 = PHASES.filter(p => p.kind === 'gate' && p.endMs <= 420_000).length;

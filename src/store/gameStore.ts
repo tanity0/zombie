@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { TutorialSlide } from '../data/tutorials';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { generateEquipmentChoices } from '../utils/upgradeUtils';
 import {
@@ -46,6 +47,7 @@ import { resetModeBags } from '../utils/modeBag';
 // v0.25.2553(§2.16 A): 同行守護霊の写し(撃破記録へ添える持ち主名+ビルド)。同じく純関数。
 import { buildPseudoPlayer, findGhostAlly, ghostAllySnapshot, type GhostAllySnapshot } from '../utils/playerBuild';
 import { clearGhostBuildCache, ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild'; // ラン境界でビルドのメモ化を捨てる / 守護霊の疑似Player(裁定1)
+import { beginGhostOnlineRun, type GhostFeedbackTarget, type GhostSource } from '../utils/ghostOnline';
 // 刀の一閃 / ワイヤーのロコモーション上書き(プレイヤーと守護霊で共有する状態機械・裁定2)。
 import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/dashLocomotion';
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
@@ -70,7 +72,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryUpgradableGunCategories } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryUpgradableGunCategories, beginWeaponReload, finishWeaponReload, refillWeaponMagazine } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -89,6 +91,7 @@ import {
 } from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile } from '../utils/enemyUtils';
+import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, type HateSide } from '../utils/bossHate';
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
@@ -98,6 +101,7 @@ import {
   giantPhaseForHealth, giantPhaseJustChanged, pickGiantMove, pickGiantCombo, type GiantMove,
   giantPhaseForHealthStory, pickGiantStoryCombo, type GiantPhase,
   giantStageRangeMult,
+  giantRestRawMs,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の純関数。
   pickGiantMoveWithStage, type GiantStageMoveId,
   GIANT_STAGE_UNIQUE_MOVE, GIANT_STAGE_ULT_MOVE,
@@ -130,7 +134,7 @@ import {
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { setFlowersDisabled } from '../world/forestDecor';
-import { isBossMakerRun } from '../utils/bossTest';
+import { bossTestGhostSkill, isBossMakerRun } from '../utils/bossTest';
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
@@ -147,7 +151,7 @@ import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled }
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
+import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
@@ -563,9 +567,9 @@ const createBaseSites = (): BaseSite[] => {
   return sites;
 };
 
-// 帰還フェーズ(フィナーレボス撃破/終了アイテム後): 即勝利せず帰還サークルへ誘導。3秒とどまると帰還完了=gameWon。
+// 帰還フェーズ: 通常ストーリーは地点内で離指確認、イベントは3秒滞在、洋館通路は5秒滞在で帰還完了。
 const RETURN_CIRCLE_RADIUS = 95;        // 帰還サークル半径(円コリジョン)
-export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(描画の進捗にも使用)
+export const RETURN_CIRCLE_HOLD_MS = 3000; // イベント帰還の滞在時間(描画の進捗にも使用)
 // ステージ6(洋館通路)のゴール(社長指示v0.25.2132): 4000px付近のハッチ床の上で5秒滞在=ゴール(例のサークル)。
 // 位置は床タイル境界(FLOOR_REPEAT=520)に揃えて8枚目[3640,4160)をハッチ床に差し替え→中心=3900
 // (=「4000px付近」。境界を520の倍数に置くと通常床と紋様が継ぎ目なく繋がる)。前進=負方向。
@@ -574,7 +578,7 @@ export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(�
 // 「ハッチが画面中央(プレイヤーの真下)に見える」のは d=focal*(1/s-1)≒513px 手前に立った時
 // (s=(0.5-horizonYr)/(footYr-horizonYr)≒0.45・corridorLayerのCFG連動)なので、円は 3900-513≒3390 に置く。
 export const CORRIDOR_GOAL_Y = -3390;        // ゴールサークル中心のworld y(到達時にハッチと重なる補正済み。x=通路中央0)
-export const CORRIDOR_RETURN_HOLD_MS = 5000; // 通路ゴールの滞在時間(社長指示「5秒停止」。他ステージの3秒は不変)
+export const CORRIDOR_RETURN_HOLD_MS = 5000; // 通路ゴールの滞在時間(社長指示「5秒停止」。イベント帰還の3秒は不変)
 // 通路ゴールの「近づくとフェードイン」(社長指示v0.25.2151「透明にしておいて床に近づくとフェードイン
 // 表示からのタイマー」): 存在(判定)は常時・表示は透明で、この距離まで近づくとrevealedAtを打刻。
 // 描画はrevealedAt起点でフェードイン(pixiScene)。滞在タイマーはフェード完了(FADE_MS)後にのみ進む。
@@ -1062,8 +1066,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   uri: 'CODE:URI',
   suriel: 'CODE:SURIEL',
   acrasiel: 'CODE:ACRASIEL',
-  // idol(stage-2隠しボス)は台詞・命名が物語(脚本)側の判断待ちのため、ここでは追加しない
-  // (§6.28-20「台詞・演出は本節では足さない=社長裁定待ち」)。デフォルトの'変異体'表示にフォールバックする。
+  idol: 'アイドル',
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
 };
@@ -1391,6 +1394,7 @@ export const RESCUE_ALLY_CROUCH_MS = 200;  // 少ししゃがみ込む(バック
 export const RESCUE_ALLY_FLYOUT_MS = 220;  // バックジャンプで背後へ離脱する時間
 export const RESCUE_ALLY_TOTAL_MS = RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS + RESCUE_ALLY_ATTACK_MS + RESCUE_ALLY_POST_HOLD_MS + RESCUE_ALLY_CROUCH_MS + RESCUE_ALLY_FLYOUT_MS; // 1500ms
 export const RESCUE_ALLY_SPAWN_DIST = 120; // 出現地点=プレイヤーの向きの逆(背後)へこの距離(px)
+export const RESCUE_ALLY_HOP_PX = 48;      // 飛来/離脱ジャンプ弧の頂点の高さ(px・守護霊の帰還も共有)
 // ズーム演出: 命中の瞬間に小さく寄る。CLAUDE.md方針によりスロー(timeSlow)/ヒットストップは使わない
 // (triggerHitImpactはtimeSlowを内包するため使用不可。triggerZoomを直接叩く)。
 export const RESCUE_SIGNAL_ZOOM_MAG = 0.28;
@@ -2250,15 +2254,6 @@ const strapDropValues = (totalValue: number): number[] => {
     ...Array.from({ length: normalCount }, () => 1)
   ];
 };
-export const classSubWeaponFor = (characterClass: CharacterClass): SubWeaponKey => {
-  switch (characterClass) {
-    case 'warrior': return 'heavy-grenade';
-    case 'mage': return 'marksman-trap';
-    case 'rogue': return 'striker-hunting';
-    case 'necromancer': return 'striker-quick-mag';
-    default: return 'heavy-grenade';
-  }
-};
 export const subWeaponDisplayName = (key: SubWeaponKey): string => {
   switch (key) {
     case 'heavy-grenade': return '手榴弾';
@@ -2361,8 +2356,8 @@ const spawnDeathPop = (get: () => GameState, ex: number, ey: number, fromX: numb
   get().spawnSpray(ex, ey, dx, dy, 4, ['#fef3c7', '#fde68a', '#e5e7eb']);
 };
 
-// 討伐で「FF風クランブル」統一演出(triggerDramaticDeath)を出す対象(getsDramaticDeath=ネームド/裏ボス/
-// giantbat/hunter)の、討伐後フェード表示の長さ(ms)。useGameLoop の BOSS_FADE_MS / pixiScene の
+// 討伐で「FF風クランブル」統一演出(triggerDramaticDeath)を出す対象(getsDramaticDeath=ボス系/ネームド/
+// クエスト対象)の、討伐後フェード表示の長さ(ms)。useGameLoop の BOSS_FADE_MS / pixiScene の
 // syncBossCorpse 内 FADE_MS と同じ値で必ず揃える(3箇所で複製・pixiScene側の既存コメントと同じ運用)。
 const DRAMATIC_DEATH_FADE_MS = 2600;
 
@@ -2374,8 +2369,8 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 };
 
-// 「flashy unified boss death」juice機能: ネームド/裏ボス(mimir/jormungand/skadi/thor)/giantbat/hunter の
-// 討伐に共通の「FF風クランブル」演出を出す(getsDramaticDeath で判定・呼び出し元でガード済み)。
+// 「flashy unified boss death」juice機能: ボス系/ネームド/クエスト対象の討伐に共通の
+// 「FF風クランブル」演出を出す(getsDramaticDeath で判定・呼び出し元でガード済み)。
 // 近接(grantMeleeKillRewards)・銃/接触/爆発(damageEnemy)の両キル経路から、対象を倒した時に1回だけ呼ぶ。
 // SFXは含まない(gameStoreはplaySfxをimportできないため。useGameLoopがbossCorpse.diedAtの変化を監視して
 // 'boss-death'を1回鳴らす)。HARD PERF CONSTRAINT: 強glow(spawnGlow大径)は使わない=pooled sprite
@@ -2423,8 +2418,13 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     if (muraUnlock) useGameStore.setState({ unlockedShopSkillCards: muraUnlock });
   }
   // 討伐後のフェードアウト(既存の裏ボス演出を流用・pixiScene.syncBossCorpseが描画)。
+  const bossDefeat = isBossType(enemy.type);
   useGameStore.setState({
     bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now() },
+    ...(bossDefeat ? {
+      eventBannerText: `${enemyDeathLabel(enemy.type)}を討伐`,
+      eventBannerUntil: get().gameTime + DRAMATIC_DEATH_FADE_MS,
+    } : {}),
   });
   const tint = hexToRgba(getEnemyColor(enemy.type), 0.8);
   get().spawnFlash('rgba(255,255,255,0.32)', 260);         // 白い閃光(瞬間)
@@ -2433,6 +2433,7 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   get().spawnBurst(x, y, getEnemyColor(enemy.type), 26);             // 崩れ散る残骸
   get().triggerShake(DRAMATIC_DEATH_FADE_MS, 6);            // 長く低いシェイク(旧・裏ボス限定=5 よりわずかに強め)
   get().triggerTimeSlow(0.35, 520, 90);                     // 決着の一瞬をスロー
+  if (bossDefeat) get().triggerAttention(x, y);              // ボスの崩壊中は世界を止め、既存attentionでカメラを向ける
 };
 
 // KILLパンチズームの寄り先(社長指示・v0.25.1498): キルされた対象の中心座標。複数いる場合は
@@ -2475,6 +2476,12 @@ export const combatActorPlayer = (ghostId?: string): Player | null => {
   return {
     ...ghostActorPlayer(build, g),
     ...dashStateOf(g.ghostDash),
+    // v0.25.2830: 銃も「独立した2人目」の同じPlayer形へ重ねる。未発砲なら計測ビルドの満タン武器、
+    // 以後はSummonに持つ同じWeapon[]/リロード状態が正本になる。
+    weapons: g.ghostWeapons ?? build.player.weapons,
+    activeWeaponId: build.player.activeWeaponId,
+    reloadEndsAt: g.ghostReloadEndsAt ?? 0,
+    reloadingWeaponId: g.ghostReloadingWeaponId ?? '',
     subWeaponCooldowns: g.ghostSubWeaponCooldowns ?? EMPTY_SUB_COOLDOWNS,
     // GHOST-SUBS-FINAL(v0.25.2563): 守護霊が**自分で**投げたクイックマガジンを回収して得たクリ窓。
     // GHOST-BUILD-1では「本人のバフ窓を二重取りしない」ため0へ中立化していた枠で、いま守護霊自身が
@@ -3177,6 +3184,14 @@ export interface PumpkinBlast {
 export const knockbackSpeedFor = (distancePx: number, ms: number): number =>
   (Math.max(0, distancePx) * 2) / Math.max(0.001, ms / 1000);
 
+interface TutorialPopupPayload {
+  title: string;
+  lines: string[];
+  art?: 'move';
+  img?: string;
+  slides?: TutorialSlide[];
+}
+
 interface GameState {
   player: Player;
   enemies: Enemy[];
@@ -3278,6 +3293,8 @@ interface GameState {
   gameWon: boolean;
   // フィナーレボス(giantbat)を倒した=終了条件を満たした(まだ勝利ではない)。useGameLoop が帰還サークルを出す。
   finaleDefeated: boolean;
+  // 通常ストーリーの帰還確認。帰還地点で操作を離した時だけ開く。
+  storyReturnPromptVisible: boolean;
   // 制圧イベント: 4拠点(東西南北)。suppressionActive 時のみ有効(ステージ1メインミッション等)。
   baseSites: BaseSite[];
   escorts: EscortSoldier[];      // 護衛軍人NPC(4人・東西南北担当)。HPなし・前進&射撃&10秒占拠で解放。
@@ -3311,7 +3328,7 @@ interface GameState {
   // 表示中はisPaused=true(シーン停止・PauseMenuはGame側でポップアップ優先ゲート)。artは注釈の種類。
   // img=事前収録の手本アセットのパス(静止画/GIF)。社長決定v0.25.1839「やる前に手本を見せる」=
   // 挿絵は収録済み素材で統一(旧・表示直前ライブキャプチャ(shot)はv0.25.1839で廃止)。
-  tutorialPopup: { title: string; lines: string[]; art?: 'move'; img?: string } | null;
+  tutorialPopup: TutorialPopupPayload | null;
   tutorialPopupShown: boolean; // このランで表示済みか(resetGameでリセット)
   // 訓練(M0)の**封印**(社長指示v0.25.2293「チュートリアルで解禁されるまで近接等は封印。
   // クリティカル等も出ない」)。教わっていない要素が先に暴発すると、説明と体験の順序が崩れる。
@@ -3336,7 +3353,7 @@ interface GameState {
   // ライブ撮影を廃止)。手本GIF収録・デバッグ用ツールとして温存(ヘッドレス収録が st.captureFrame() を叩く)。
   captureFrame: (() => string | null) | null;
   setCaptureFrame: (fn: (() => string | null) | null) => void;
-  showTutorialPopup: (p: { title: string; lines: string[]; art?: 'move'; img?: string }) => void;
+  showTutorialPopup: (p: TutorialPopupPayload) => void;
   closeTutorialPopup: () => void;
   introDialogueActive: boolean;  // 登場セリフ表示中(時間停止)
   introDialogueStartedAt: number; // セリフ開始時刻(Date.now。オートタイプ基準)
@@ -3694,6 +3711,10 @@ interface GameState {
   // BOT_AND_GHOST.md §2.7 制約2(G3): このランで守護霊(ゴースト)が一度でも実際に召喚されたか。
   // ラン内限定(resetGameでリセット)。directorTickの召喚成立箇所が打刻し、リザルトのスコア×0.5が見る。
   ghostSummonedThisRun: boolean;
+  /** 実際に召喚された霊の出どころ。報酬倍率は装備ではなくこの値から決める。 */
+  ghostSourceThisRun: GhostSource | null;
+  /** オンライン霊または固定AIのいいね送信先。リザルト送信だけに使い、アルバムには保存しない。 */
+  ghostFeedbackTargetThisRun: GhostFeedbackTarget | null;
   // BOT_AND_GHOST.md §2.15/§2.16 B: このランに同行した守護霊(持ち主名+ビルド写し)。召喚の瞬間に
   // 1回だけ書き、以後は不変(=リザルトが購読しても毎フレーム再描画にならない)。ラン単位=resetGameでnull。
   // 守護霊が死んで場から消えても残す(「このランに同行してくれた人」の記録なので)。
@@ -3799,7 +3820,9 @@ interface GameState {
   debugLoopError: string;                               // 診断: ゲームループ本体で投げられた例外の要約(?debug=1 表示)
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
   beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
-  updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: サークル内滞在を計測し3秒で gameWon
+  updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: 帰還地点への進入/滞在を更新
+  requestStoryReturnPrompt: () => boolean;              // 通常ストーリーの帰還地点内で操作を離したら確認を開く
+  answerStoryReturnPrompt: (confirmed: boolean) => void;
   updateSuppression: (deltaTime: number) => { x: number; y: number }[]; // 毎フレーム: 制圧イベント。返り値=このフレームに護衛NPCが発砲した位置(NPC銃声の距離減衰再生用)
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   setHasCardKey: (v: boolean) => void;
@@ -4051,6 +4074,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   vaccinePurchased: false,
   gameWon: false,
   finaleDefeated: false,
+  storyReturnPromptVisible: false,
   baseSites: createBaseSites(),
   escorts: [],
   suppressionActive: false,
@@ -4088,6 +4112,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastDamagerType: null,
   lastDamagerWasNamed: false,
   ghostSummonedThisRun: false,
+  ghostSourceThisRun: null,
+  ghostFeedbackTargetThisRun: null,
   ghostAlly: null,
   wallMeta: getWallMeta(getSelectedStageId()), // 実際の再読込はresetGame開始時(ステージ切替に追従)
   wallBandText: '',
@@ -8714,13 +8740,6 @@ export const useGameStore = create<GameState>((set, get) => ({
             giantPhaseFlashUntil: giantPhaseJustChanged(enemy.giantPhase, phase) ? gameTime + GIANT_PHASE_FLASH_MS : enemy.giantPhaseFlashUntil,
             giantDelayedHits,
           };
-          // Phase3(storyBossのみ到達)は硬直500ms床(社長裁定6.28-21★2・§6.28-11 #5)。咆哮弾(小技)は
-          // 床の対象外=常にGIANT_BOLT_RECOVER_MSのまま(受け入れ条件11 ④の「小技は床の対象外」)。
-          const stompRecoverMs = phase === 3 ? GIANT_STOMP_RECOVER_PHASE3_MS : GIANT_STOMP_RECOVER_MS;
-          const sweepRecoverMs = phase === 3 ? GIANT_SWEEP_RECOVER_PHASE3_MS : GIANT_SWEEP_RECOVER_MS;
-          const dashRecoverMs = phase === 3 ? GIANT_DASH_RECOVER_PHASE3_MS : GIANT_DASH_RECOVER_MS;
-          const jumpRecoverMs = phase === 3 ? GIANT_JUMP_RECOVER_PHASE3_MS : GIANT_JUMP_RECOVER_MS;
-          const boltCdMs = phase === 3 ? GIANT_BOLT_CD_PHASE3_MS : phase === 2 ? GIANT_BOLT_CD_PHASE2_MS : GIANT_BOLT_CD_PHASE1_MS;
           // M65(社長指示): ステージ別の範囲/速度倍率。stage-1=1.00(実機合格済みの基準・不変)。
           // stage-7/stage-ex1はstoryBossだけが到達するため、ステージIDだけで既にstoryBoss込みの値になる
           // (giantScript.ts参照)。`?giantstage=0`でGIANT_STAGE_RANGE_ENABLED=falseになり常に1.00。
@@ -8728,6 +8747,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 新技には二重に効かせない=stageMultはM65の3値にしか掛けない・M66の新技へは掛けない)。
           const stageId = getSelectedStageId();
           const stageMult = giantStageRangeMult(stageId, GIANT_STAGE_RANGE_ENABLED);
+          const giantRestMs = (rawMs: number): number => giantRestRawMs(stageId, rawMs);
+          const stompRecoverMs = giantRestMs(phase === 3 ? GIANT_STOMP_RECOVER_PHASE3_MS : GIANT_STOMP_RECOVER_MS);
+          const sweepRecoverMs = giantRestMs(phase === 3 ? GIANT_SWEEP_RECOVER_PHASE3_MS : GIANT_SWEEP_RECOVER_MS);
+          const dashRecoverMs = giantRestMs(phase === 3 ? GIANT_DASH_RECOVER_PHASE3_MS : GIANT_DASH_RECOVER_MS);
+          const jumpRecoverMs = giantRestMs(phase === 3 ? GIANT_JUMP_RECOVER_PHASE3_MS : GIANT_JUMP_RECOVER_MS);
+          const boltRecoverMs = giantRestMs(GIANT_BOLT_RECOVER_MS);
+          const boltCdMs = phase === 3 ? GIANT_BOLT_CD_PHASE3_MS : phase === 2 ? GIANT_BOLT_CD_PHASE2_MS : GIANT_BOLT_CD_PHASE1_MS;
 
           // 技ごとの溜め開始パッチ(通常抽選/Phase2連携の両方から呼べる共通ヘルパ)。
           const beginGiantMove = (move: GiantMove): Partial<Enemy> => {
@@ -9129,7 +9155,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     gBoltShot: 1, aiPhaseUntil: atkUntil(GIANT_BOLT_BURST_GAP_MS), lastShot: now,
                   };
                 }
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-recover', aiPhaseUntil: atkUntil(GIANT_BOLT_RECOVER_MS), lastShot: now };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-recover', aiPhaseUntil: atkUntil(boltRecoverMs), lastShot: now };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9142,7 +9168,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 if (shot >= GIANT_BOLT_BURST_SHOTS) {
                   return {
                     ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-recover',
-                    aiPhaseUntil: atkUntil(GIANT_BOLT_RECOVER_MS), gBoltShot: undefined, lastShot: now,
+                    aiPhaseUntil: atkUntil(boltRecoverMs), gBoltShot: undefined, lastShot: now,
                   };
                 }
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, gBoltShot: shot, aiPhaseUntil: atkUntil(GIANT_BOLT_BURST_GAP_MS), lastShot: now };
@@ -9174,7 +9200,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   // 3発目の着地=最大の反撃窓へ。着地点の情報はここで捨てる(次の抽選に持ち越さない)。
                   return {
                     ...enemy, ...phaseFields, x: tx - enemy.width / 2, y: ty - enemy.height / 2, vx: 0, vy: 0,
-                    aiPhase: 'g-trijump-recover', aiPhaseUntil: atkUntil(GLEN_TRIJUMP_RECOVER_MS),
+                    aiPhase: 'g-trijump-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_TRIJUMP_RECOVER_MS)),
                     gTriJumpPts: undefined, gTriJumpIdx: undefined,
                   };
                 }
@@ -9265,7 +9291,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-bite-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-recover', aiPhaseUntil: atkUntil(GIANT_BITE_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_BITE_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9293,7 +9319,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             case 'g-slam-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 // 全技中で最大の反撃窓(1300ms)=大技の報酬(社長裁定を継承した設計原則)。
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-recover', aiPhaseUntil: atkUntil(GIANT_SLAM_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_SLAM_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9340,7 +9366,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const hitX = gtx + enemy.width / 2, hitY = gty + enemy.height / 2;
                 return {
                   ...enemy, ...phaseFields, x: gtx, y: gty, vx: 0, vy: 0,
-                  aiPhase: 'g-glide-recover', aiPhaseUntil: atkUntil(GIANT_GLIDE_RECOVER_MS),
+                  aiPhase: 'g-glide-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_GLIDE_RECOVER_MS)),
                   giantDelayedHits: [...(giantDelayedHits ?? []), { x: hitX, y: hitY, radius: GIANT_GLIDE_SECOND_HIT_RADIUS, bornAt: gameTime, fireAt: atkUntil(GIANT_GLIDE_SECOND_HIT_DELAY_MS), moveKey: 'g-glide' }],
                 };
               }
@@ -9361,7 +9387,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 const dtx = enemy.aiTargetX ?? enemy.x, dty = enemy.aiTargetY ?? enemy.y;
                 pumpkinBlasts.push({ x: dtx + enemy.width / 2, y: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-dive' });
-                return { ...enemy, ...phaseFields, x: dtx, y: dty, vx: 0, vy: 0, aiPhase: 'g-dive-recover', aiPhaseUntil: atkUntil(GIANT_DIVE_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, x: dtx, y: dty, vx: 0, vy: 0, aiPhase: 'g-dive-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_DIVE_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9470,7 +9496,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
-                  aiPhase: 'g-quad-recover', aiPhaseUntil: atkUntil(GIANT_QUAD_RECOVER_MS),
+                  aiPhase: 'g-quad-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_QUAD_RECOVER_MS)),
                   giantDelayedHits: [...(giantDelayedHits ?? []), ...newHits],
                   giantActiveHit: hitNow ? true : enemy.giantActiveHit,
                 };
@@ -9508,7 +9534,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
-                  aiPhase: 'g-nova-recover', aiPhaseUntil: atkUntil(GIANT_NOVA_RECOVER_MS),
+                  aiPhase: 'g-nova-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_NOVA_RECOVER_MS)),
                   giantActiveHit: hitNow ? true : enemy.giantActiveHit,
                 };
               }
@@ -9557,7 +9583,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-wing-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-wing-recover', aiPhaseUntil: atkUntil(GIANT_WING_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-wing-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_WING_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9599,7 +9625,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
-                  aiPhase: 'g-sweepbeam-recover', aiPhaseUntil: atkUntil(GIANT_SWEEPBEAM_RECOVER_MS),
+                  aiPhase: 'g-sweepbeam-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_SWEEPBEAM_RECOVER_MS)),
                   giantActiveHit: hitNow ? true : enemy.giantActiveHit,
                 };
               }
@@ -9617,7 +9643,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // ダメージは既にbeginGlenMoveがgiantDelayedHitsへ積み済み(置いた瞬間0ダメージ・固定900ms後
               // に自動で爆ぜる)。ここではwindup自体の終わりでrecoverへ直結するだけ(activeは無い)。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-talon-recover', aiPhaseUntil: atkUntil(GLEN_TALON_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-talon-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_TALON_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9633,7 +9659,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 5個のT5円は既にbeginGlenMoveがgiantDelayedHitsへ積み済み(固定700ms後に爆ぜ、その後
               // floorUntilまで床として残る)。ここもactiveは無くrecoverへ直結する。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-boon-recover', aiPhaseUntil: atkUntil(GLEN_BOON_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-boon-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_BOON_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9660,7 +9686,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-reach-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-recover', aiPhaseUntil: atkUntil(GLEN_REACH_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_REACH_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9688,7 +9714,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 3唱目終了=学習点④の本体。円自体はgiantDelayedHits側のfireAtが同じタイミングで独立に
               // 爆ぜる(このcaseはGlen自身のaiPhase遷移=recoverへ進むだけ)。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-recover', aiPhaseUntil: atkUntil(GLEN_NIHIL_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_NIHIL_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9734,6 +9760,12 @@ export const useGameStore = create<GameState>((set, get) => ({
                       ...enemy, ...phaseFields, vx: 0, vy: 0,
                       ...(isStageMove ? beginGiantStageMove(move as GiantStageMoveId) : beginGiantMove(move as GiantMove)),
                     };
+                  }
+                } else if (isStoryBoss && enemy.storyBossVariant === 'stage-ex1') {
+                  // 未確認変異体は固有技を増やさず、基本5技の比重だけを「追い続ける総合試験」へ組み直す。
+                  const move = pickGiantMoveWithStage('stage-ex1', dist, phase, ready, {});
+                  if (move) {
+                    return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...beginGiantMove(move as GiantMove) };
                   }
                 } else if (glenScriptApplies(enemy.isStoryBoss, enemy.storyBossVariant, GLEN_SCRIPT_ENABLED)) {
                   // M67(§6.26-12): stage-7のグレンだけ(glenScriptAppliesが門番=通常城ボス/ex1は
@@ -11154,10 +11186,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           const active = getActiveGun(p);
           if (!active?.ammoType) return {};
           const field = AMMO_FIELD[active.ammoType];
-          const need = Math.max(0, effectiveMagSize(active, p) - (active.magazine ?? 0));
-          const moved = Math.min(need, p[field]);
-          movedAmount = moved;
-          if (moved <= 0) {
+          const filled = refillWeaponMagazine(active, p, p[field]);
+          movedAmount = filled.moved;
+          if (filled.moved <= 0) {
             return {
               player: {
                 ...p,
@@ -11169,9 +11200,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           return {
             player: {
               ...p,
-              [field]: p[field] - moved,
+              [field]: filled.reserve,
               weapons: p.weapons.map(w =>
-                w.id === active.id ? { ...w, magazine: (w.magazine ?? 0) + moved } : w
+                w.id === active.id ? filled.weapon : w
               ),
               quickMagCritUntil: state.gameTime + QUICK_MAG_CRIT_WINDOW_MS,
               reloadingWeaponId: '',
@@ -11575,15 +11606,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const p = state.player;
       const w = p.weapons.find(g => g.id === weaponId);
       if (!w || !w.ammoType) return {};
-      if (p.reloadingWeaponId === weaponId && Date.now() < p.reloadEndsAt) return {};
-      const need = effectiveMagSize(w, p) - (w.magazine ?? 0);
-      if (need <= 0) return {};
-      if (ammoPoolFor(p, w.ammoType) <= 0) return {}; // no reserve to load from
+      const reload = beginWeaponReload(w, p, ammoPoolFor(p, w.ammoType));
+      if (!reload) return {};
       return {
         player: {
           ...p,
-          reloadingWeaponId: weaponId,
-          reloadEndsAt: Date.now() + effectiveReloadMs(w, p)
+          ...reload,
         }
       };
     });
@@ -11600,17 +11628,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         return { player: { ...p, reloadingWeaponId: '', reloadEndsAt: 0 } };
       }
       const field = AMMO_FIELD[w.ammoType];
-      const need = Math.max(0, effectiveMagSize(w, p) - (w.magazine ?? 0));
-      const moved = Math.min(need, p[field]);
+      const reload = finishWeaponReload(w, p, p[field]);
+      if (!reload) return {};
       return {
         player: {
           ...p,
-          [field]: p[field] - moved,
+          [field]: reload.reserve,
           weapons: p.weapons.map(g =>
-            g.id === w.id ? { ...g, magazine: (g.magazine ?? 0) + moved } : g
+            g.id === w.id ? reload.weapon : g
           ),
-          reloadingWeaponId: '',
-          reloadEndsAt: 0
+          reloadingWeaponId: reload.reloadingWeaponId,
+          reloadEndsAt: reload.reloadEndsAt
         }
       };
     });
@@ -11972,7 +12000,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  // 毎フレーム: 帰還サークル内の滞在時間を計測。離れるとリセット、RETURN_CIRCLE_HOLD_MS 連続で帰還完了=gameWon。
+  // 毎フレーム: 帰還サークル内への進入/滞在を更新。通常ストーリーは離指確認、その他は従来の滞在完了。
   updateReturnPhase: (deltaTime) => {
     set(state => {
       const rc = state.returnCircle;
@@ -11982,6 +12010,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       const py = p.y + p.height / 2;
       const dist = Math.hypot(rc.x - px, rc.y - py);
       const inside = dist <= rc.radius;
+      // 通常ストーリーは自動帰還しない。進入状態だけ保持し、実際の確認は離指入力で開く。
+      if (state.finaleDefeated && !state.corridorMode) {
+        const dwellMs = inside ? 1 : 0;
+        if (dwellMs === rc.dwellMs) return {};
+        const justEntered = inside && rc.dwellMs === 0;
+        return {
+          returnCircle: { ...rc, dwellMs },
+          ...(justEntered ? { projectiles: state.projectiles.filter(pr => !RETURN_CLEAR_WEAPON_TYPES.has(pr.weaponType)) } : {}),
+        };
+      }
       // 洋館通路のゴールは「近づくとフェードイン→表示が済んでからタイマー」(社長指示v0.25.2151)。
       // 表示前(未接近/フェード中)は滞在カウントを進めない。他ステージは従来どおり即カウント。
       if (state.corridorMode) {
@@ -11993,7 +12031,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (state.gameTime < rc.revealedAt + CORRIDOR_GOAL_FADE_MS) return {};
       }
       const dwellMs = inside ? rc.dwellMs + deltaTime * 1000 : 0;
-      // 洋館通路のゴールは5秒(社長指示v0.25.2132)。他ステージの3秒は不変。
+      // 洋館通路のゴールは5秒(社長指示v0.25.2132)。イベント帰還の3秒は不変。
       if (dwellMs >= (state.corridorMode ? CORRIDOR_RETURN_HOLD_MS : RETURN_CIRCLE_HOLD_MS)) {
         return { gameWon: true, returnCircle: null, eventBannerText: '帰還完了', eventBannerUntil: state.gameTime + 2000 };
       }
@@ -12005,6 +12043,39 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...(justEntered ? { projectiles: state.projectiles.filter(pr => !RETURN_CLEAR_WEAPON_TYPES.has(pr.weaponType)) } : {})
       };
     });
+  },
+
+  requestStoryReturnPrompt: () => {
+    const state = get();
+    if (
+      state.storyReturnPromptVisible || state.gameWon || !state.finaleDefeated ||
+      state.corridorMode || !isInReturnCircle(state.player, state.returnCircle)
+    ) return false;
+    set({
+      storyReturnPromptVisible: true,
+      isPaused: true,
+      touchActive: false,
+      swipeDirection: null,
+      swipeStrength: 1,
+    });
+    return true;
+  },
+
+  answerStoryReturnPrompt: (confirmed) => {
+    const state = get();
+    if (!state.storyReturnPromptVisible) return;
+    if (confirmed) {
+      set({
+        storyReturnPromptVisible: false,
+        isPaused: false,
+        gameWon: true,
+        returnCircle: null,
+        eventBannerText: '帰還完了',
+        eventBannerUntil: state.gameTime + 2000,
+      });
+      return;
+    }
+    set({ storyReturnPromptVisible: false, isPaused: false });
   },
 
   // 病院(社長指示v0.25.2331): サークル内滞在を計測。3秒でワクチン(死亡時に一度だけ復活)を1つ入手し、
@@ -12207,59 +12278,79 @@ export const useGameStore = create<GameState>((set, get) => ({
       return shots.map(sh => ({ x: sh.x, y: sh.y }));
     }
     const state = get();
-    // 洋館通路(corridorMode・v0.25.2128): 拠点システムなし。護衛は入場時の横一列の隊形のまま
-    // プレイヤーと並走して上へ歩く。v0.25.2139(社長報告「付いてくるだけで攻撃しない」): 通常拠点護衛と
-    // 同じ射撃を追加=敵が検知半径内なら停止して発砲(同じ実弾/間隔/フェイザー2丁)、いなければ隊形へ追走。
+    // 洋館通路(corridorMode): 横一列の隊形へ進みつつ通常拠点護衛と同じ四方位索敵を使う。
+    // 前方=停止、左右=50%、後方=70%で全方位へ射撃。M0チュートリアルは上の別経路なので対象外。
     if (state.corridorMode) {
       const p = state.player;
       const pcx = p.x + p.width / 2;
       const pcy = p.y + p.height / 2;
       const now = state.gameTime;
-      const detect2 = (huntingMeleeRadius(p) * ESCORT_DETECT_MULT) ** 2;
+      const detectRadius = huntingMeleeRadius(p) * ESCORT_DETECT_MULT;
       const shots: { x: number; y: number; dx: number; dy: number; soldierIndex: number }[] = [];
+      const surroundEvents: { name: string; text: string }[] = [];
+      const rescuedEvents: { name: string; text: string }[] = [];
       let escChanged = false;
       const nextEsc = state.escorts.map((esc, i) => {
-        // 最寄り敵(通常護衛と同じ検知。空中=ジャンプ中は無敵なので狙わない)。
-        let nearest: Enemy | undefined; let nd2 = detect2;
-        for (const e of state.enemies) {
-          if (e.aiPhase === 'jump') continue;
-          const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-          const d2 = (ex - esc.x) * (ex - esc.x) + (ey - esc.y) * (ey - esc.y);
-          if (d2 < nd2) { nd2 = d2; nearest = e; }
-        }
-        if (nearest) {
-          // 停止して射撃(進まない)=通常護衛と同じ振る舞い。
-          let { fireAt, face } = esc;
-          if (now >= fireAt) {
-            fireAt = now + ESCORT_FIRE_INTERVAL_MS;
-            const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
-            let dx = tx - esc.x, dy = ty - esc.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-            if (esc.soldierIndex === PHASER_INDEX) {
-              const ox = -dy * PHASER_GUN_OFFSET, oy = dx * PHASER_GUN_OFFSET;
-              shots.push({ x: esc.x + ox, y: esc.y + oy, dx, dy, soldierIndex: esc.soldierIndex });
-              shots.push({ x: esc.x - ox, y: esc.y - oy, dx, dy, soldierIndex: esc.soldierIndex });
-            } else {
-              shots.push({ x: esc.x, y: esc.y, dx, dy, soldierIndex: esc.soldierIndex });
-            }
-            face = (dx < 0 ? -1 : 1) as 1 | -1;
-          }
-          if (fireAt !== esc.fireAt || face !== esc.face || esc.moving) escChanged = true;
-          return { ...esc, fireAt, face, moving: false };
-        }
         const targetX = pcx + (CORRIDOR_ESCORT_ROW_X[i % CORRIDOR_ESCORT_ROW_X.length] ?? 0);
         const targetY = pcy + 26; // プレイヤーのやや後ろの列
+        const advance = escortAdvance(esc, { x: targetX, y: targetY }, state.enemies, {
+          detectRadius,
+          surroundRadius: SURROUND_RADIUS,
+          surroundCount: SURROUND_COUNT,
+          rescuedFree: RESCUED_FREE,
+          strongNearEnter: MELEE_RADIUS * 1.5,
+          strongNearExit: 150,
+          now,
+        });
+        const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+        if (advance.surroundedNow) surroundEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
+        if (advance.rescuedNow) rescuedEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
+
         const dx = targetX - esc.x, dy = targetY - esc.y;
         const dist = Math.hypot(dx, dy);
-        if (dist < 3) { if (esc.moving) { escChanged = true; return { ...esc, moving: false }; } return esc; }
-        const k = Math.min(1, (ESCORT_SPEED * deltaTime) / dist);
-        escChanged = true;
-        return {
+        let x = esc.x, y = esc.y, face = esc.face, fireAt = esc.fireAt;
+        const moving = dist >= 3 && advance.speedMult > 0;
+        if (moving) {
+          const k = Math.min(1, (ESCORT_SPEED * advance.speedMult * deltaTime) / dist);
+          x += dx * k;
+          y += dy * k;
+          if (Math.abs(dx) > 6) face = dx < 0 ? -1 : 1;
+        }
+        // 射撃は全方位。移動後の位置から撃ち、顔向きは射撃方向を優先する。
+        if (advance.target && now >= fireAt) {
+          fireAt = now + ESCORT_FIRE_INTERVAL_MS;
+          const tx = advance.target.x + advance.target.width / 2, ty = advance.target.y + advance.target.height / 2;
+          let shotDx = tx - x, shotDy = ty - y; const dl = Math.hypot(shotDx, shotDy) || 1; shotDx /= dl; shotDy /= dl;
+          if (esc.soldierIndex === PHASER_INDEX) {
+            const ox = -shotDy * PHASER_GUN_OFFSET, oy = shotDx * PHASER_GUN_OFFSET;
+            shots.push({ x: x + ox, y: y + oy, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex });
+            shots.push({ x: x - ox, y: y - oy, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex });
+          } else {
+            shots.push({ x, y, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex });
+          }
+          face = shotDx < 0 ? -1 : 1;
+        }
+        const next = {
           ...esc,
-          x: esc.x + dx * k,
-          y: esc.y + dy * k,
-          face: (Math.abs(dx) > 6 ? (dx < 0 ? -1 : 1) : esc.face) as 1 | -1,
-          moving: true,
+          x, y, face, fireAt, moving,
+          advanceZone: advance.zone,
+          advanceDirX: advance.advanceDirX,
+          advanceDirY: advance.advanceDirY,
+          advanceSpeedMult: advance.speedMult,
+          advanceSpeedTarget: advance.speedTarget,
+          advanceRampFrom: advance.advanceRampFrom,
+          advanceRampAt: advance.advanceRampAt,
+          strongNear: advance.strongNear,
+          wasSurrounded: advance.wasSurrounded,
+          helpRequested: advance.helpRequested,
+          rescuedUntil: advance.rescuedUntil,
         };
+        if (x !== esc.x || y !== esc.y || face !== esc.face || fireAt !== esc.fireAt || moving !== (esc.moving ?? false) ||
+          advance.zone !== (esc.advanceZone ?? 'none') || advance.speedMult !== esc.advanceSpeedMult || advance.speedTarget !== esc.advanceSpeedTarget ||
+          advance.advanceDirX !== esc.advanceDirX || advance.advanceDirY !== esc.advanceDirY || advance.advanceRampFrom !== esc.advanceRampFrom || advance.advanceRampAt !== esc.advanceRampAt ||
+          advance.strongNear !== (esc.strongNear ?? false) || advance.wasSurrounded !== (esc.wasSurrounded ?? false) ||
+          advance.helpRequested !== (esc.helpRequested ?? false) || advance.rescuedUntil !== (esc.rescuedUntil ?? 0)) escChanged = true;
+        return next;
       });
       if (escChanged) set({ escorts: nextEsc });
       // 発砲=通常護衛と同一の実弾(handgun projectile・friendly)。SE減衰用に発射元を返す。
@@ -12273,6 +12364,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           duration: 1200, createdAt: Date.now(),
           passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
         });
+      }
+      for (const ev of surroundEvents) {
+        if (get().tryNpcLine(ev.name, 'surrounded', ev.text, SURROUND_CAT_CD_MS)) break;
+      }
+      for (const ev of rescuedEvents) {
+        if (get().tryNpcLine(ev.name, 'rescued', ev.text, RESCUED_CAT_CD_MS)) break;
       }
       return shots.map(s => ({ x: s.x, y: s.y }));
     }
@@ -12312,9 +12409,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     let captureCount = state.suppressionCaptureCount; // 制圧累計回数(SE検出用)。名簿indexはランダム割当に変更。
     let changed = false;
 
-    // ── 護衛軍人NPC(社長指示): 担当拠点へ前進→近くの敵に射撃(進まない)→サークル内10秒で解放。
+    // ── 護衛軍人NPC: 担当拠点へ四方位索敵しながら前進・射撃→サークル内10秒で解放。
     //    プレイヤーの画面外では前進停止・座標のみ保持。HPなし(被弾しても何も起きない=今回のコア)。
-    const detect2 = (huntingMeleeRadius(p) * ESCORT_DETECT_MULT) ** 2;
+    const detectRadius = huntingMeleeRadius(p) * ESCORT_DETECT_MULT;
     const escortCaptures = new Map<string, number>(); // baseId -> soldierIndex(このフレーム占拠完了)
     let escortsChanged = false;
     const nextEscorts: EscortSoldier[] = state.escorts.map(esc => {
@@ -12327,28 +12424,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         npcRetreatEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'pushback', sol.pushback) });
       }
       if (!onScreen(esc.x, esc.y)) return esc; // 画面外=前進停止(座標保持)
-      // 最寄り敵(プレイヤーと同じく全敵を見る)。空中(ジャンプ中)の敵は無敵なので狙わない。
-      // 併せて SURROUND_RADIUS 内の敵数を数え、囲まれ判定(セリフ用)に使う。
-      let nearest: Enemy | undefined; let nd2 = detect2;
-      let surround = 0; const sr2 = SURROUND_RADIUS * SURROUND_RADIUS;
-      for (const e of state.enemies) {
-        if (e.aiPhase === 'jump') continue;
-        const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-        const d2 = (ex - esc.x) * (ex - esc.x) + (ey - esc.y) * (ey - esc.y);
-        if (d2 < nd2) { nd2 = d2; nearest = e; }
-        if (d2 < sr2) surround++;
-      }
-      // 囲まれ→解放(助けられた)の遷移検知。wasSurrounded は護衛オブジェクトで保持。
       const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
-      let wasSurrounded = esc.wasSurrounded ?? false;
-      if (surround >= SURROUND_COUNT) {
-        if (!wasSurrounded) npcSurroundEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
-        wasSurrounded = true;
-      } else if (wasSurrounded && surround <= RESCUED_FREE) {
-        // 周囲の敵が減って進軍再開できる状態=助けられた。
-        npcRescuedEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
-        wasSurrounded = false;
-      }
+      // 制圧後は進軍目標がないため全方位を前方扱い。巡回中に背後だけ無視して進み続けない。
+      const goal = base.status === 'captured' ? { x: esc.x, y: esc.y } : { x: base.x, y: base.y };
+      const advance = escortAdvance(esc, goal, state.enemies, {
+        detectRadius,
+        surroundRadius: SURROUND_RADIUS,
+        surroundCount: SURROUND_COUNT,
+        rescuedFree: RESCUED_FREE,
+        strongNearEnter: MELEE_RADIUS * 1.5,
+        strongNearExit: 150,
+        now,
+      });
+      if (advance.surroundedNow) npcSurroundEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
+      if (advance.rescuedNow) npcRescuedEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
       // 拠点が見えてきた時: 未制圧の担当拠点中心へ近づいた(あと少し)。
       if (base.status === 'open' && Math.hypot(esc.x - base.x, esc.y - base.y) < NEAR_BASE_DIST) {
         npcBaseNearEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'baseNear', sol.baseNear) });
@@ -12365,41 +12454,37 @@ export const useGameStore = create<GameState>((set, get) => ({
         companionMs = 0; // 離れたらリセット(連続並走のみ)
       }
       let { x, y, fireAt, dwellMs, face } = esc;
-      if (nearest) {
-        // 停止して射撃(進まない)。射撃間隔でスロットル。弾はプレイヤーと同じ見た目の実弾(handgun projectile)。
-        // 護衛NPCは裏ボスを撃ってもよい(社長指示)。ただし発砲はこの護衛が画面内のとき(=上の onScreen ガードを
-        // 通過したとき)だけ=プレイヤーが離れてNPCが画面外になれば自動で撃たない。→ プレイヤー不在での“削り殺し”は起きない。
-        if (now >= fireAt) {
-          fireAt = now + ESCORT_FIRE_INTERVAL_MS;
-          const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
-          let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-          if (esc.soldierIndex === PHASER_INDEX) {
-            // 2丁拳銃: 進行方向に直交する向きへ±オフセットして2発(各通常ダメージ=合計2倍)。
-            const ox = -dy * PHASER_GUN_OFFSET, oy = dx * PHASER_GUN_OFFSET;
-            escortShots.push({ x: x + ox, y: y + oy, dx, dy, soldierIndex: esc.soldierIndex });
-            escortShots.push({ x: x - ox, y: y - oy, dx, dy, soldierIndex: esc.soldierIndex });
-          } else {
-            escortShots.push({ x, y, dx, dy, soldierIndex: esc.soldierIndex });
-          }
-          face = dx < 0 ? -1 : 1;
-        }
-      } else if (base.status === 'captured') {
+      if (base.status === 'captured') {
         // 制圧後: 円の縁を巡回(社長指示)。半径を patrolR へ寄せつつ角度を進める=滑らかに周回。
-        // 敵が居る間は上の射撃枝で停止するので、巡回は「敵が居ない時」だけ。
         const cx0 = x - base.x, cy0 = y - base.y;
         let ang = Math.atan2(cy0, cx0);
         if (!Number.isFinite(ang)) ang = 0;
         const patrolR = BASE_CAPTURE_RADIUS * ESCORT_PATROL_R;
         const curR = Math.hypot(cx0, cy0);
-        const newR = curR + Math.sign(patrolR - curR) * Math.min(Math.abs(patrolR - curR), ESCORT_SPEED * deltaTime);
-        ang += (ESCORT_SPEED / Math.max(1, patrolR)) * deltaTime; // 時計回りに周回
+        const step = ESCORT_SPEED * advance.speedMult * deltaTime;
+        const newR = curR + Math.sign(patrolR - curR) * Math.min(Math.abs(patrolR - curR), step);
+        ang += (ESCORT_SPEED * advance.speedMult / Math.max(1, patrolR)) * deltaTime; // 時計回りに周回
         const nx = base.x + Math.cos(ang) * newR, ny = base.y + Math.sin(ang) * newR;
-        face = (nx - x) < 0 ? -1 : 1;
+        if (advance.speedMult > 0) face = (nx - x) < 0 ? -1 : 1;
         x = nx; y = ny;
       } else {
-        // 制圧前: 担当拠点へ前進(近くに敵がいる間は↑で射撃して進まない)。
+        // 前方=停止、左右=50%、後方=70%。減速は即時、加速は1秒ランプ。
         const dx = base.x - x, dy = base.y - y; const d = Math.hypot(dx, dy);
-        if (d > 2) { const mv = Math.min(ESCORT_SPEED * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
+        if (d > 2 && advance.speedMult > 0) { const mv = Math.min(ESCORT_SPEED * advance.speedMult * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
+      }
+      // 射撃対象は全方位から最寄り。ジャンプ中だけ除外し、移動中も撃ち続ける。
+      if (advance.target && now >= fireAt) {
+        fireAt = now + ESCORT_FIRE_INTERVAL_MS;
+        const tx = advance.target.x + advance.target.width / 2, ty = advance.target.y + advance.target.height / 2;
+        let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+        if (esc.soldierIndex === PHASER_INDEX) {
+          const ox = -dy * PHASER_GUN_OFFSET, oy = dx * PHASER_GUN_OFFSET;
+          escortShots.push({ x: x + ox, y: y + oy, dx, dy, soldierIndex: esc.soldierIndex });
+          escortShots.push({ x: x - ox, y: y - oy, dx, dy, soldierIndex: esc.soldierIndex });
+        } else {
+          escortShots.push({ x, y, dx, dy, soldierIndex: esc.soldierIndex });
+        }
+        face = dx < 0 ? -1 : 1;
       }
       // (空に浮く件は位置を止めず、描画側で地平線フェード=透明化で対応。drawEscorts 参照)。
       // 滞在カウント/占拠は射撃・前進どちらの枝でも毎フレーム評価する(社長報告のバグ修正)。
@@ -12410,8 +12495,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (inC && dwellMs >= BASE_CAPTURE_HOLD_MS && base.status === 'open' && !escortCaptures.has(base.id)) {
         escortCaptures.set(base.id, esc.soldierIndex);
       }
-      if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face || wasSurrounded !== (esc.wasSurrounded ?? false) || companionMs !== (esc.companionMs ?? 0)) escortsChanged = true;
-      return { ...esc, x, y, fireAt, dwellMs, face, wasSurrounded, companionMs };
+      if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face || companionMs !== (esc.companionMs ?? 0) ||
+        advance.zone !== (esc.advanceZone ?? 'none') || advance.speedMult !== esc.advanceSpeedMult || advance.speedTarget !== esc.advanceSpeedTarget ||
+        advance.advanceDirX !== esc.advanceDirX || advance.advanceDirY !== esc.advanceDirY || advance.advanceRampFrom !== esc.advanceRampFrom || advance.advanceRampAt !== esc.advanceRampAt ||
+        advance.strongNear !== (esc.strongNear ?? false) || advance.wasSurrounded !== (esc.wasSurrounded ?? false) ||
+        advance.helpRequested !== (esc.helpRequested ?? false) || advance.rescuedUntil !== (esc.rescuedUntil ?? 0)) escortsChanged = true;
+      return {
+        ...esc, x, y, fireAt, dwellMs, face, companionMs,
+        advanceZone: advance.zone,
+        advanceDirX: advance.advanceDirX,
+        advanceDirY: advance.advanceDirY,
+        advanceSpeedMult: advance.speedMult,
+        advanceSpeedTarget: advance.speedTarget,
+        advanceRampFrom: advance.advanceRampFrom,
+        advanceRampAt: advance.advanceRampAt,
+        strongNear: advance.strongNear,
+        wasSurrounded: advance.wasSurrounded,
+        helpRequested: advance.helpRequested,
+        rescuedUntil: advance.rescuedUntil,
+      };
     });
 
     const next: BaseSite[] = state.baseSites.map(s => {
@@ -12981,6 +13083,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetModeBags();
     // v0.25.2514(GHOST-BUILD-1): 前ランのゴーストビルド(メモ化1件)も持ち越さない。
     clearGhostBuildCache();
+    // G6: 1ランにつき1回だけ非同期取得。実プレイヤー候補が取れなければ召喚側で固定20人を使う。
+    const testGhostSkill = bossTestGhostSkill();
+    const selectedRunSkills = testGhostSkill ? [testGhostSkill] : state.pendingSkills;
+    beginGhostOnlineRun(selectedRunSkills, getSelectedStageId());
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
     // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。
@@ -12999,6 +13105,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastDamagerWasNamed: false,
       // BOT_AND_GHOST.md G3: 守護霊の発動フラグ(スコア×0.5の根拠)はラン単位でリセット。
       ghostSummonedThisRun: false,
+      ghostSourceThisRun: null,
+      ghostFeedbackTargetThisRun: null,
       // §2.16 B: 同行守護霊のカード(リザルト表示用)もラン単位。
       ghostAlly: null,
       // PACING_PUZZLE.md §5.17 M14: ステージが変わっている可能性があるので、選択中ステージの壁メタを
@@ -13050,7 +13158,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 装備スキル(別枠アクティブ・最大2)。出撃時に player.skills へ反映(効果は今後配線)。
       const runSkills: SkillKey[] = state.danceTestMode
         ? []
-        : Array.from(new Set<SkillKey>(state.pendingSkills)).slice(0, 2);
+        : Array.from(new Set<SkillKey>(selectedRunSkills)).slice(0, 2);
       // 装備スキルのLvは所持Lv(ownedSkillLevels)を反映(未設定=1、最大Lvでクランプ)。
       const runSkillLevels: Partial<Record<SkillKey, number>> = Object.fromEntries(
         runSkills.map(k => [k, Math.max(1, Math.min(skillMaxLevel(k), state.ownedSkillLevels[k] ?? 1))])
@@ -13370,7 +13478,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 屋内は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は不在。
         // 城/死神/クエストの“発生”は useGameLoop 側で既に !indoor ゲート済み。商人は最初の部屋へ配置。
         // 洋館通路: 城なし(v0.25.2144・社長指示「城も出現しないで」)。遥か遠方に置く=描画カリング/
-        // 衝突/接近系が全て自然に無効。7分の城ボスはuseGameLoop側でcorridorModeゲート
+        // 衝突/接近系が全て自然に無効。5分の城ボスはuseGameLoop側でcorridorModeゲート
         // (bossSpawnedはfalseのまま=画面端マーカーも出ない)。
         castleEvent: corridorMode ? { x: 100000, y: 100000, bossSpawned: false } : createCastleEvent(),
         weaponMerchant: indoor
@@ -13411,6 +13519,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         vaccinePurchased: false,
         gameWon: false,
         finaleDefeated: false,
+        storyReturnPromptVisible: false,
         // 洋館通路は拠点なし(v0.25.2128)。**訓練(M0)も拠点なし**(社長報告v0.25.2313
         // 「チュートリアルステージに拠点サークルぽいのがある、削除」)。制圧イベント自体は
         // v0.25.1818で止めていたが、**サークルの実体(baseSites)は作られたままで描画されていた**。
@@ -13434,7 +13543,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         medicineUsedAt: 0,
         medicinePromptVisible: false,
         // チュートリアル: 帰還サークルを最初から右3000px地点に常設(社長指示v0.25.1829)。
-        // updateReturnPhaseは returnCircle があれば毎フレーム動く=3秒滞在で任務達成(既存経路)。
+        // updateReturnPhaseは returnCircle があれば毎フレーム動く=5秒滞在で任務達成(既存経路)。
         // 洋館通路(corridorMode)も同方式で常設(社長指示v0.25.2132): 4000px付近のハッチ床上・5秒滞在=ゴール。
         // 訓練(M0)のゴールサークルは**廃止**(社長指示v0.25.2302「チュートリアルのゴールが目的が
         // 変わって意味をなさないので削除」)。M0の終わりは終盤シーケンス(グレッグ死亡カットシーン →

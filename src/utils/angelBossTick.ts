@@ -41,6 +41,7 @@ import {
   pickSpikeGapMask, isSpikeGapSector,
 } from './acrasielScript';
 import { resolveBossHateAim, type ResolvedHateAim } from './bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
+import { bossNeutralDelayMs, bossRebuildIdForEnemy } from './bossRebuild';
 // v0.25.2609(ボス動き横断監査・バッチ2): 硬直=パニッシュ窓の床。本作の「1発」=カウンター1サイクル
 // (COUNTER_WINDOW 400ms + COUNTER_COOLDOWN 420ms = 820ms)なので、硬直がそれ未満だと
 // 「硬直はあるがプレイヤーは1発も入れられない」=休符が存在しないのと同じ。監査で天使の硬直の
@@ -73,8 +74,6 @@ export const ACRASIEL_SCRIPT_ENABLED = scriptFlag('acrasielscript');
 // --- 定数(useGameLoop.tsから移設。トール側のレガシー定数と同値のものは同値コメントで同期義務) ---
 const GATE_ARENA_RADIUS = 300;          // ゲートアリーナ半径(useGameLoop.tsと同値)
 const BOSS_ACTION_MIN_MS = 2600;        // 完全気絶明けの次アクション先送り(同値)
-const ANGEL_ACTION_MIN_MS = 2200;       // 攻撃選択インターバル最短(=THOR_ACTION_MIN_MS)
-const ANGEL_ACTION_MAX_MS = 4200;       // 同・最長(=THOR_ACTION_MAX_MS)
 const ANGEL_COUNTER_LEAP_MS = 260;      // カウンター後退ジャンプ(=THOR_COUNTER_LEAP_MS)
 const ORBIT_RADIUS_CORRECT = 4;         // 半径補正の寄せ係数(=THOR_ORBIT_RADIUS_CORRECT)
 const BOSS_BURST_SHOTS = 3;             // 弾3連(同値)
@@ -342,8 +341,12 @@ const freshCritCdMult = (bossId: string, t: number): number => {
   return fresh ? bossCritCdMult(fresh, t) : 1;
 };
 // 呼び出し側は自分のboss個体を渡す(6体共通のこの1関数だけを直せば全員に効く)。
-const nextActionDelay = (t: number, boss: Enemy): number =>
-  t + (ANGEL_ACTION_MIN_MS + Math.random() * (ANGEL_ACTION_MAX_MS - ANGEL_ACTION_MIN_MS)) * freshCritCdMult(boss.id, t);
+const nextActionDelay = (t: number, boss: Enemy): number => {
+  const profileId = bossRebuildIdForEnemy(boss.type);
+  // このコントローラに来る6体は全て台帳に載る。未知型だけ安全側の0.9秒へ落とす。
+  const neutralMs = profileId ? bossNeutralDelayMs(profileId, boss.bossPhase ?? 1) : 900;
+  return t + neutralMs * freshCritCdMult(boss.id, t);
+};
 
 const applyPatch = (id: string, patch: Partial<Enemy>): void => {
   if (Object.keys(patch).length) {
@@ -1264,7 +1267,22 @@ export const runRafiTick = (
       rafiCounterHit(rcx, rcy);
       patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
     } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
+      const sweepReady = newGameTime >= (rafi.rSweepReadyAt ?? 0);
+      const combo = sweepReady ? pickRafiCombo('jump', phase) : null;
+      if (combo === 'sweep') {
+        sfx.alert();
+        patch.bossState = 'sweep-windup';
+        patch.bossStateUntil = newGameTime + RAFI_SWEEP_WINDUP_MS;
+        const sweepAim = resolveBossHateAim(rafi, { x: pcx, y: pcy }, store.summons, newGameTime);
+        patch.hateTarget = sweepAim.side;
+        const ddl = Math.hypot(sweepAim.x - rcx, sweepAim.y - rcy) || 1;
+        const dirx = (sweepAim.x - rcx) / ddl, diry = (sweepAim.y - rcy) / ddl;
+        patch.aiFromX = rcx; patch.aiFromY = rcy;
+        patch.aiTargetX = rcx + dirx * RAFI_SWEEP_RANGE_PX;
+        patch.aiTargetY = rcy + diry * RAFI_SWEEP_RANGE_PX;
+      } else {
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
+      }
     }
   } else if (st === 'sweep-windup') {
     const { overlap, counterActive } = bodyOverlapNow(rafi);
@@ -1543,7 +1561,7 @@ export const runUriTick = (
     if (overlap && counterActive) {
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
-      const combo = pickUriCombo('sweep');
+      const combo = pickUriCombo('sweep', phase);
       if (combo === 'downslash') {
         sfx.alert();
         patch.bossState = 'downslash-windup'; patch.bossStateUntil = newGameTime + URI_DOWNSLASH_WINDUP_MS;
@@ -1584,7 +1602,16 @@ export const runUriTick = (
     if (overlap && counterActive) {
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
+      const combo = pickUriCombo('downslash', phase);
+      if (combo === 'thrust') {
+        sfx.alert();
+        patch.bossState = 'thrust-windup'; patch.bossStateUntil = newGameTime + URI_THRUST_WINDUP_MS;
+        const thrustAim = resolveBossHateAim(uri, { x: pcx, y: pcy }, store.summons, newGameTime);
+        patch.aiFromX = ucx; patch.aiFromY = ucy;
+        patch.aiTargetX = thrustAim.x; patch.aiTargetY = thrustAim.y; patch.hateTarget = thrustAim.side;
+      } else {
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
+      }
     }
   } else if (st === 'thrust-windup') {
     const { overlap, counterActive } = bodyOverlapNow(uri);
@@ -1946,7 +1973,8 @@ export const runAcrasielTick = (
   } else if (st === 'chase') {
     // 動かない(speed:0)。技の抽選のみ行う。
     if (newGameTime >= (acrasiel.bossNextActionAt ?? 0)) {
-      const move = pickAcrasielMove();
+      const distance = Math.hypot(pcx - acx, pcy - acy);
+      const move = pickAcrasielMove(distance, phase);
       if (move) {
         sfx.alert();
         if (move === 'spike') {
@@ -2025,7 +2053,13 @@ export const runAcrasielTick = (
     if (overlap && counterActive) {
       acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
     } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
+      const combo = pickAcrasielCombo('spear', phase);
+      if (combo === 'warp') {
+        sfx.alert();
+        patch.bossState = 'warp-out'; patch.bossStateUntil = newGameTime + ACRASIEL_WARP_WINDUP_MS;
+      } else {
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
+      }
     }
   } else if (st === 'warp-out') {
     const { overlap, counterActive } = bodyOverlapNow(acrasiel);
