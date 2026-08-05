@@ -24,7 +24,7 @@ import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playable
 import { distToSegment } from './levelUpGate';
 import { isCounterablePhase, phaseJustChanged } from './bossScript';
 import { neutralVerb, pickStringScript, restMsFor, punishTrigger, type NeutralVerb } from './bossSkeleton';
-import { resolveBossHateAim } from './bossHate';
+import { resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from './bossHate';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { refundCounterCooldown } from './counterMaster';
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter';
@@ -55,7 +55,7 @@ export interface IdolTickState {
    * 誘導弾(毎フレーム旋回させる対象)。**旋回速度は毎フレーム引き直す**ので、
    * ここには「どの技から出た弾か」だけを持つ(メーカーで旋回速度を変えると飛行中の弾にも効く)。
    */
-  homing: { id: string; move: IdolMove }[];
+  homing: { id: string; move: IdolMove; side: HateSide }[];
   // ---- 射撃部品の連射(v0.25.2638) ----
   shotSlot: IdolShotSlot | null;  // いま撃っている枠
   shotWavesLeft: number;          // 残りの斉射数
@@ -216,6 +216,8 @@ export const runIdolTick = (
   const st = idol.bossState ?? 'chase';
   const fresh = (): Enemy => useGameStore.getState().enemies.find(e => e.id === idol.id) ?? idol;
   const hateAim = () => resolveBossHateAim(idol, { x: pcx, y: pcy }, useGameStore.getState().summons, newGameTime);
+  const lockedHateAim = (side: HateSide = patch.hateTarget ?? idol.hateTarget ?? 'player') =>
+    resolveBossLockedHateAim({ ...idol, hateTarget: side }, { x: pcx, y: pcy }, useGameStore.getState().summons);
 
   // ---- プレイヤーの速度(偏差撃ち aimMode=2 のため・v0.25.2638) --------------------------------
   // store はプレイヤー速度を持たないので、**前フレームとの差**から出す。dt=0のフレームでは更新しない
@@ -234,22 +236,26 @@ export const runIdolTick = (
     const live = new Set(useGameStore.getState().projectiles.map(p => p.id));
     s.homing = s.homing.filter(h => live.has(h.id));
     if (s.homing.length > 0) {
-      const rate = new Map<string, number>();
+      const rate = new Map<string, { turn: number; side: HateSide }>();
       for (const h of s.homing) {
-        rate.set(h.id, isIdolShot(h.move)
-          ? (idolShot(h.move).homingDeg * Math.PI) / 180
-          : IDOL_TUNING.shape.orbTurnRate);
+        rate.set(h.id, {
+          turn: isIdolShot(h.move)
+            ? (idolShot(h.move).homingDeg * Math.PI) / 180
+            : IDOL_TUNING.shape.orbTurnRate,
+          side: h.side,
+        });
       }
       useGameStore.setState(state => ({
         projectiles: state.projectiles.map(p => {
-          const turn = rate.get(p.id);
-          if (turn === undefined) return p;
+          const homing = rate.get(p.id);
+          if (homing === undefined) return p;
+          const target = lockedHateAim(homing.side);
           const cur = Math.atan2(p.direction.y, p.direction.x);
-          const want = Math.atan2(pcy - (p.y + p.height / 2), pcx - (p.x + p.width / 2));
+          const want = Math.atan2(target.y - (p.y + p.height / 2), target.x - (p.x + p.width / 2));
           let d = want - cur;
           while (d > Math.PI) d -= Math.PI * 2;
           while (d < -Math.PI) d += Math.PI * 2;
-          const step = Math.max(-turn * dt, Math.min(turn * dt, d));
+          const step = Math.max(-homing.turn * dt, Math.min(homing.turn * dt, d));
           const a = cur + step;
           return { ...p, direction: { x: Math.cos(a), y: Math.sin(a) } };
         }),
@@ -318,18 +324,18 @@ export const runIdolTick = (
     patch.bossState = windupState(m);
     patch.bossStateUntil = newGameTime + idolMoveTiming(m).windup;
     if (isIdolShot(m)) {
+      const aim = hateAim();
+      patch.hateTarget = aim.side;
       // 射撃部品(v0.25.2638)。狙いの決め方が「予告開始で固定」なら**ここで線をロック**する
       // =掟W4(テルを出したら必ずその向きへ撃つ)。描画側は同じ2点を読むので赤い線と一致する。
       const sp = idolShot(m);
       s.shotSlot = m;
       s.shotWaveIdx = 0;
       if (Math.round(sp.aimMode) === 1) {
-        const aim = hateAim();
         s.shotAngle = Math.atan2(aim.y - icy, aim.x - icx);
         patch.aiFromX = icx; patch.aiFromY = icy;
         patch.aiTargetX = icx + Math.cos(s.shotAngle) * SHOT_LOCK_VIS_RANGE;
         patch.aiTargetY = icy + Math.sin(s.shotAngle) * SHOT_LOCK_VIS_RANGE;
-        patch.hateTarget = aim.side;
       }
     } else if (m === 'snipe') {
       // 掟W4: 溜め開始で線をロック(テルを出したら必ず撃つ)。図形=判定=描画が同じ2点を読む。
@@ -393,9 +399,9 @@ export const runIdolTick = (
 
   /**
    * 射撃部品の狙う向き(rad)。**3つの決め方**(`aimMode`):
-   *  - 0 追従: 撃つ瞬間のプレイヤーへ(既存の aim/fan と同じ)
+   *  - 0 追従: 撃つ瞬間の固定ヘイト対象へ(技の途中で対象側は切り替えない)
    *  - 1 固定: 予告の開始でロック済み(`s.shotAngle`)=**歩いて避けられる**
-   *  - 2 偏差: プレイヤーの移動先を読む。弾の到達時間ぶんだけ先へ置く=**まっすぐ走り続けると当たる**
+   *  - 2 偏差: 固定ヘイト対象の移動先を読む。弾の到達時間ぶんだけ先へ置く=**まっすぐ走り続けると当たる**
    *
    * ★2は「読めなさ」ではなく「読み合い」を作るための物(社長方針: MAXは密度で作る)。
    * 止まる/曲がるで外れる=プレイヤー側に必ず答えがある。
@@ -403,15 +409,20 @@ export const runIdolTick = (
   const shotAimAngle = (sp: IdolShotSpec): number => {
     const mode = Math.round(sp.aimMode);
     if (mode === 1) return s.shotAngle;
-    const aim = hateAim();
+    const aim = lockedHateAim();
     if (mode !== 2) return Math.atan2(aim.y - icy, aim.x - icx);
     const spd = Math.max(1, sp.speed);
     let tx = aim.x, ty = aim.y;
+    const ghost = aim.side === 'ghost'
+      ? useGameStore.getState().summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === idol.id)
+      : undefined;
+    const targetVx = aim.side === 'ghost' ? (ghost?.vx ?? 0) : s.playerVx;
+    const targetVy = aim.side === 'ghost' ? (ghost?.vy ?? 0) : s.playerVy;
     // 到達時間→予測位置→到達時間、の2回で十分収束する(弾速がプレイヤー速度より十分速いため)。
     for (let i = 0; i < 2; i++) {
       const t = Math.hypot(tx - icx, ty - icy) / spd;
-      tx = aim.x + s.playerVx * t;
-      ty = aim.y + s.playerVy * t;
+      tx = aim.x + targetVx * t;
+      ty = aim.y + targetVy * t;
     }
     return Math.atan2(ty - icy, tx - icx);
   };
@@ -436,7 +447,7 @@ export const runIdolTick = (
       );
       if (homing) {
         p.id = `${SHOT_ID_PREFIX}${idol.id}-${slot}-${newGameTime}-${waveIdx}-${k}`;
-        s.homing.push({ id: p.id, move: slot });
+        s.homing.push({ id: p.id, move: slot, side: patch.hateTarget ?? idol.hateTarget ?? 'player' });
       }
       useGameStore.getState().addProjectile(p);
     }
@@ -591,7 +602,7 @@ export const runIdolTick = (
         useGameStore.getState().addProjectile(p);
         ids.push(p.id);
       }
-      for (const id of ids) s.homing.push({ id, move: 'orb' });
+      for (const id of ids) s.homing.push({ id, move: 'orb', side: aim.side });
       toRecover('orb');
     }
   } else if (st === 'idol-snipe-windup') {
@@ -639,7 +650,6 @@ export const runIdolTick = (
     // === 射撃部品の予告明け(v0.25.2638) ===
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       const slot = moveOfState(st, '-windup') as IdolShotSlot;
-      patch.hateTarget = hateAim().side;
       startShotFire(slot);
     }
   } else if (st.endsWith(FIRE_SUFFIX)) {

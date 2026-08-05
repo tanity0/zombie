@@ -93,7 +93,7 @@ import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile } from '../utils/enemyUtils';
 import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
-import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, type HateSide } from '../utils/bossHate';
+import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
 import { computeEnemySeparation } from '../utils/enemySeparation';
 // M51: 城ボス「ジャイアント」新スクリプトの純関数(間合い/CD/HP段階から次の技を選ぶ・PACING_PUZZLE.md §6.26)。
@@ -8715,6 +8715,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.type === 'giantbat' && GIANT_SCRIPT_ENABLED) {
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          // 連射/弱追尾中は技開始時に選んだ側だけを追う。ヘイト値の再評価は次の技開始まで行わない。
+          const lockedHateAim = () => resolveBossLockedHateAim(enemy, { x: pcx, y: pcy }, summons);
           const healthFrac = enemy.maxHealth > 0 ? enemy.health / enemy.maxHealth : 1;
           // M60(§6.28-11): isStoryBossはグレン(stage-7)/未確認変異体(stage-ex1)としてスポーンされた
           // 個体だけに立つ(useGameLoop.ts)。通常城ボスはfalseのまま=giantPhaseForHealth(無改変)しか
@@ -8815,7 +8817,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 };
               }
               case 'dash': {
-                // 狙い点=プレイヤーを挟んだ反対側(距離×2)。現行不変(6.26-6)。
+                // 狙い点=固定ヘイト対象を挟んだ反対側(距離×2)。距離式は現行不変(6.26-6)。
                 // BOT_AND_GHOST.md §2.8 G2.5: 狙い点はpcx/pcyの代わりにヘイト対象の中心を読む。
                 const aim = resolveBossHateAim(enemy, { x: pcx, y: pcy }, summons, gameTime);
                 return {
@@ -8826,14 +8828,17 @@ export const useGameStore = create<GameState>((set, get) => ({
                 };
               }
               case 'bolt':
-              default:
+              default: {
+                const aim = resolveBossHateAim(enemy, { x: pcx, y: pcy }, summons, gameTime);
                 return {
                   aiPhase: 'g-bolt-windup', aiPhaseUntil: atkUntil(GIANT_BOLT_WINDUP_MS),
                   aiFromX: enemy.x, aiFromY: enemy.y, aiStartedAt: gameTime,
                   // パターンは**溜め開始で抽選して固定**(掟W4=溜め中に中身が変わらない)。
                   gBoltPattern: Math.random() < 0.5 ? 'fan' : 'burst',
                   gBoltShot: undefined,
+                  hateTarget: aim.side,
                 };
+              }
             }
           };
 
@@ -8841,8 +8846,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           // stage-1/3/4/5だけが呼ぶ(pickGiantMoveWithStageがGIANT_STAGE_UNIQUE_MOVE/ULT_MOVEの表で
           // 既にゲート済みなので、default分岐からしか到達しない=beginGiantMoveと排他)。
 
-          // 三連突進(quaddash)の1回ぶんの溜め開始。狙い点=プレイヤーを挟んだ反対側(既存dashと同じ式・
-          // M65の速度倍率は掛けない=新技への非適用指示)。往復するたびプレイヤーの現在地を再サンプルする
+          // 三連突進(quaddash)の1回ぶんの溜め開始。狙い点=固定ヘイト対象を挟んだ反対側(既存dashと同じ式・
+          // M65の速度倍率は掛けない=新技への非適用指示)。往復するたび対象の現在地を再サンプルする
           // だけで「左右へ往復」を作る(固定の左右オフセットを発明しない=既存語彙の再利用)。
           // BOT_AND_GHOST.md §2.8 G2.5: 各leg(index)の開始=それぞれ独立した「狙いロック」なので、
           // legごとにヘイト対象を評価し直す(毎フレーム追尾ではなく、legの切り替わり=windup開始点のみ)。
@@ -9016,7 +9021,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 };
               case 'nihil':
               default:
-                // 虚無の三唱: 3唱固定(学習点④=数える)。狙い点(プレイヤーの足元)は1唱目の開始時に
+                // 虚無の三唱: 3唱固定(学習点④=数える)。狙い点(固定ヘイト対象の足元)は1唱目の開始時に
                 // ロックし、以後は動かさない(Mohgの「ニヒル」と同じ=3つの円は同じ場所に重なる)。
                 // T5大円(半径260)は1件だけ積み、fireAt=3唱ぶんの合計時間(chant3終了と同時)に自動的に
                 // 爆ぜる(床は残さない=nihilはfloorUntilを設定しない)。BOT_AND_GHOST.md §2.8 G2.5:
@@ -9094,7 +9099,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-dash-charge', aiPhaseUntil: atkUntil(WEREWOLF_CHARGE_MAX_MS) };
               }
               // 後退り(T8・既存と同じ式)。
-              const bdx = ecx - pcx, bdy = ecy - pcy;
+              const aim = lockedHateAim();
+              const bdx = ecx - aim.x, bdy = ecy - aim.y;
               const bl = Math.hypot(bdx, bdy) || 1;
               const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
               const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
@@ -9110,7 +9116,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-dash-recover', aiPhaseUntil: atkUntil(dashRecoverMs) };
               }
-              const hpx = pcx - ecx, hpy = pcy - ecy;
+              const aim = lockedHateAim();
+              const hpx = aim.x - ecx, hpy = aim.y - ecy;
               const hl = Math.hypot(hpx, hpy) || 1;
               let cdirx = cdx / cdist + (hpx / hl) * DASH_ATTACK_HOMING;
               let cdiry = cdy / cdist + (hpy / hl) * DASH_ATTACK_HOMING;
@@ -9355,7 +9362,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-glide-active', aiPhaseUntil: atkUntil(GIANT_GLIDE_ACTIVE_MS), aiStartedAt: gameTime };
               }
               // 後ろへ跳び退がって溜める(T8backstep・既存ダッシュ/三連突進と同じ式)。
-              const bdx = ecx - pcx, bdy = ecy - pcy;
+              const aim = lockedHateAim();
+              const bdx = ecx - aim.x, bdy = ecy - aim.y;
               const bl = Math.hypot(bdx, bdy) || 1;
               const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
               const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
@@ -9413,7 +9421,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-quad-charge', aiPhaseUntil: atkUntil(WEREWOLF_CHARGE_MAX_MS) };
               }
               // 後退り(T8・既存ダッシュと同じ式)。
-              const bdx = ecx - pcx, bdy = ecy - pcy;
+              const aim = lockedHateAim();
+              const bdx = ecx - aim.x, bdy = ecy - aim.y;
               const bl = Math.hypot(bdx, bdy) || 1;
               const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
               const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
@@ -9428,7 +9437,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const cdist = Math.hypot(cdx, cdy);
               const quadIndex = enemy.gQuadIndex ?? 0;
               // 3回目(index=2)を終えたら必ず静止して氷結の吐息へ(学習装置③=回数は常に3固定)。
-              // 3回目未満なら次の突進へ即つなぐ(狙い点はその時点のプレイヤー位置を再サンプル=
+              // 3回目未満なら次の突進へ即つなぐ(狙い点はその時点の固定ヘイト対象位置を再サンプル=
               // 既存dashと同じ式の反復。固定の左右オフセットは発明しない)。
               const onDashFinished = (): Partial<Enemy> => {
                 if (!giantQuadDashComplete(quadIndex)) return beginQuadDash(quadIndex + 1);
@@ -9447,7 +9456,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...onDashFinished() };
               }
-              const hpx = pcx - ecx, hpy = pcy - ecy;
+              const aim = lockedHateAim();
+              const hpx = aim.x - ecx, hpy = aim.y - ecy;
               const hl = Math.hypot(hpx, hpy) || 1;
               let cdirx = cdx / cdist + (hpx / hl) * DASH_ATTACK_HOMING;
               let cdiry = cdy / cdist + (hpy / hl) * DASH_ATTACK_HOMING;
@@ -10306,7 +10316,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       for (const ge of giantBoltFires) {
         const liveGe = get().enemies.find(e => e.id === ge.id) ?? ge;
         const hidden = isSeekerActive(bp, bGameTime) && !isBossType(liveGe.type); // giantbatはisBossType=true=常にfalse
-        const tgt = resolveEnemyTarget(liveGe, bp, bTargetSummons, ALCHEMY_AGGRO_RANGE, hidden, bGameTime); // v0.25.2490: 引数追加(giantbatはボス=ラッチ対象外・挙動不変)
+        // 通常召喚/フレアの既存挑発は維持し、どちらも選ばれなかった時だけG2.5の固定ヘイト側へ撃つ。
+        const utilityTargets = bTargetSummons.filter(s => s.kind !== 'ghost-ally');
+        const utilityTgt = resolveEnemyTarget(liveGe, bp, utilityTargets, ALCHEMY_AGGRO_RANGE, hidden, bGameTime);
+        const hateTgt = resolveBossLockedHateAim(
+          liveGe,
+          { x: bp.x + bp.width / 2, y: bp.y + bp.height / 2 },
+          get().summons,
+        );
+        const tgt = utilityTgt.isSummon ? utilityTgt : hateTgt;
         if ((liveGe.gBoltPattern ?? 'fan') === 'burst') {
           // B案: 同じ方向へ1発ずつ(この関数は連射の1発ごとに呼ばれる)。弾速は素のまま=数で圧をかける。
           get().addProjectile(createEnemyProjectile(liveGe, bp, tgt.x, tgt.y));

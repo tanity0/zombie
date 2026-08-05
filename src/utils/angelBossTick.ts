@@ -40,7 +40,7 @@ import {
   pickAcrasielMove, pickAcrasielCombo, acrasielPhaseForHealth, acrasielSpikeGapCount,
   pickSpikeGapMask, isSpikeGapSector,
 } from './acrasielScript';
-import { resolveBossHateAim, type ResolvedHateAim } from './bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
+import { resolveBossHateAim, resolveBossLockedHateAim, type ResolvedHateAim } from './bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
 import { bossNeutralDelayMs, bossRebuildIdForEnemy } from './bossRebuild';
 // v0.25.2609(ボス動き横断監査・バッチ2): 硬直=パニッシュ窓の床。本作の「1発」=カウンター1サイクル
 // (COUNTER_WINDOW 400ms + COUNTER_COOLDOWN 420ms = 820ms)なので、硬直がそれ未満だと
@@ -409,6 +409,7 @@ export const runMiguelTick = (
 
   // BOT_AND_GHOST.md §2.8 G2.5: windup開始点でだけ呼ぶ(毎フレーム評価しない)。
   const miguelHateAim = (): ResolvedHateAim => resolveBossHateAim(miguel, { x: pcx, y: pcy }, store.summons, newGameTime);
+  const miguelLockedAim = (): ResolvedHateAim => resolveBossLockedHateAim(miguel, { x: pcx, y: pcy }, store.summons);
 
   const lockHaraiLine = (): void => {
     const aim = miguelHateAim();
@@ -449,8 +450,10 @@ export const runMiguelTick = (
         patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
         lockHaraiLine();
       } else {
+        const volleyAim = miguelHateAim();
         patch.bossState = 'volley-windup';
         patch.bossStateUntil = newGameTime + MIGUEL_VOLLEY_WINDUP_MS;
+        patch.hateTarget = volleyAim.side;
       }
     }
   } else if (st === 'volley-windup') {
@@ -516,7 +519,8 @@ export const runMiguelTick = (
   } else if (st === 'volley') {
     miguelOrbitMove();
     if (s.miguelVolley.shots < BOSS_BURST_SHOTS && newGameTime >= s.miguelVolley.nextShotAt) {
-      useGameStore.getState().addProjectile(createEnemyProjectile(miguel, player));
+      const aim = miguelLockedAim();
+      useGameStore.getState().addProjectile(createEnemyProjectile(miguel, player, aim.x, aim.y));
       s.miguelVolley.shots += 1;
       s.miguelVolley.nextShotAt = newGameTime + BOSS_BURST_GAP_MS;
     }
@@ -772,6 +776,8 @@ export const runJibrilTick = (
   const st = jibril.bossState ?? 'chase';
   const patch: Partial<Enemy> = {};
   const jr = s.jibril;
+  const jibrilHateAim = (): ResolvedHateAim => resolveBossHateAim(jibril, { x: pcx, y: pcy }, store.summons, newGameTime);
+  const jibrilLockedAim = (): ResolvedHateAim => resolveBossLockedHateAim(jibril, { x: pcx, y: pcy }, store.summons);
 
   if (jibril.lastHit && jibril.lastHit !== jr.lastHitSeen) {
     jr.hits += 1;
@@ -870,12 +876,16 @@ export const runJibrilTick = (
         patch.bossState = 'consecrate-windup';
         patch.bossStateUntil = newGameTime + JIBRIL_CONSECRATE_WINDUP_MS;
       } else if (move === 'lantern') {
+        const aim = jibrilHateAim();
         patch.bossState = 'lantern-windup';
         patch.bossStateUntil = newGameTime + JIBRIL_LANTERN_WINDUP_MS;
+        patch.hateTarget = aim.side;
       } else {
+        const aim = jibrilHateAim();
         jr.volleyMode = jibrilVolleyMode(dist);
         patch.bossState = 'volley-windup';
         patch.bossStateUntil = newGameTime + JIBRIL_VOLLEY_WINDUP_MS;
+        patch.hateTarget = aim.side;
       }
     }
   } else if (st === 'volley-windup') {
@@ -897,7 +907,8 @@ export const runJibrilTick = (
     const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
     const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
     if (jr.shots < shots && newGameTime >= jr.nextShotAt) {
-      const proj = createEnemyProjectile(jibril, player);
+      const aim = jibrilLockedAim();
+      const proj = createEnemyProjectile(jibril, player, aim.x, aim.y);
       if (jr.volleyMode === 'snipe') proj.speed *= JIBRIL_SNIPE_SPEED_MULT;
       useGameStore.getState().addProjectile(proj);
       jr.shots += 1;
@@ -931,7 +942,11 @@ export const runJibrilTick = (
   } else if (st === 'lantern') {
     // §6.28-6「その後5000msの設置中も静止【変更: 現状は後退しながら】」= retreatMoveを呼ばない。
     if (newGameTime >= jr.nextFireAt) {
-      const fpx = pcx, fpy = player.y + player.height;
+      const aim = jibrilLockedAim();
+      const ghost = aim.side === 'ghost'
+        ? store.summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === jibril.id)
+        : undefined;
+      const fpx = aim.x, fpy = ghost ? ghost.y + ghost.height : player.y + player.height;
       useGameStore.getState().spawnBossFire(fpx, fpy, newGameTime, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS + JIBRIL_FIRE_LIFE_MS);
       jr.nextFireAt = newGameTime + JIBRIL_FIRE_GAP_MS;
     }
@@ -949,9 +964,11 @@ export const runJibrilTick = (
       const combo = pickJibrilCombo('lantern', phase);
       if (combo === 'volley') {
         sfx.alert();
+        const aim = jibrilHateAim();
         jr.volleyMode = 'snipe'; // 「ランタン→狙撃」= 火で足を止めた相手を狙撃で撃つ(設計書指定)。
         patch.bossState = 'volley-windup';
         patch.bossStateUntil = newGameTime + JIBRIL_VOLLEY_WINDUP_MS;
+        patch.hateTarget = aim.side;
       } else {
         patch.bossState = 'chase';
         patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
@@ -985,9 +1002,11 @@ export const runJibrilTick = (
       const combo = pickJibrilCombo('consecrate', phase);
       if (combo === 'volley') {
         sfx.alert();
+        const aim = jibrilHateAim();
         jr.volleyMode = 'close'; // 「聖別→近接射」(設計書指定)。
         patch.bossState = 'volley-windup';
         patch.bossStateUntil = newGameTime + JIBRIL_VOLLEY_WINDUP_MS;
+        patch.hateTarget = aim.side;
       } else {
         patch.bossState = 'chase';
         patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
@@ -1120,6 +1139,8 @@ export const runRafiTick = (
   const st = rafi.bossState ?? 'chase';
   const patch: Partial<Enemy> = {};
   const rr = s.rafi;
+  const rafiHateAim = (): ResolvedHateAim => resolveBossHateAim(rafi, { x: pcx, y: pcy }, store.summons, newGameTime);
+  const rafiLockedAim = (): ResolvedHateAim => resolveBossLockedHateAim(rafi, { x: pcx, y: pcy }, store.summons);
 
   const healthFrac = rafi.maxHealth > 0 ? rafi.health / rafi.maxHealth : 1;
   const phase = phaseForHealth(healthFrac, [RAFI_PHASE_HP_THRESHOLD]) as 1 | 2;
@@ -1185,8 +1206,10 @@ export const runRafiTick = (
           patch.aiFromX = rcx; patch.aiFromY = rcy;
           patch.aiTargetX = rcx + dirx * RAFI_SWEEP_RANGE_PX; patch.aiTargetY = rcy + diry * RAFI_SWEEP_RANGE_PX;
         } else if (move === 'bone') {
+          const aim = rafiHateAim();
           patch.bossState = 'bone-windup';
           patch.bossStateUntil = newGameTime + RAFI_BONE_WINDUP_MS;
+          patch.hateTarget = aim.side;
         } else {
           patch.bossState = 'jump-windup';
           patch.bossStateUntil = newGameTime + RAFI_JUMP_WINDUP_MS;
@@ -1203,10 +1226,11 @@ export const runRafiTick = (
     }
   } else if (st === 'bone') {
     if (rr.boneLeft > 0 && newGameTime >= rr.boneNextAt) {
+      const aimTgt = rafiLockedAim();
       const a0 = Math.random() * Math.PI * 2;
       const dist = SKADI_BLADE_RING_MIN + Math.random() * (SKADI_BLADE_RING_MAX - SKADI_BLADE_RING_MIN);
-      const sx = pcx + Math.cos(a0) * dist, sy = pcy + Math.sin(a0) * dist;
-      const aim = Math.atan2(pcy - sy, pcx - sx);
+      const sx = aimTgt.x + Math.cos(a0) * dist, sy = aimTgt.y + Math.sin(a0) * dist;
+      const aim = Math.atan2(aimTgt.y - sy, aimTgt.x - sx);
       useGameStore.getState().spawnSkadiBlade(sx, sy, aim, newGameTime + SKADI_BLADE_DELAY_MS, rafi.id, 'bone');
       rr.boneLeft -= 1;
       rr.boneNextAt = newGameTime + RAFI_BONE_GAP_MS;
@@ -1464,6 +1488,8 @@ export const runUriTick = (
   const maxR = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - uri.height / 2;
   const st = uri.bossState ?? 'chase';
   const patch: Partial<Enemy> = {};
+  const uriHateAim = (): ResolvedHateAim => resolveBossHateAim(uri, { x: pcx, y: pcy }, store.summons, newGameTime);
+  const uriLockedAim = (): ResolvedHateAim => resolveBossLockedHateAim(uri, { x: pcx, y: pcy }, store.summons);
 
   const healthFrac = uri.maxHealth > 0 ? uri.health / uri.maxHealth : 1;
   const phase = phaseForHealth(healthFrac, [URI_PHASE_HP_THRESHOLD]) as 1 | 2;
@@ -1529,7 +1555,9 @@ export const runUriTick = (
           patch.aiFromX = ucx; patch.aiFromY = ucy; patch.aiTargetX = thrustAim.x; patch.aiTargetY = thrustAim.y;
           patch.hateTarget = thrustAim.side;
         } else {
+          const aim = uriHateAim();
           patch.bossState = 'bolt-windup'; patch.bossStateUntil = newGameTime + URI_BOLT_WINDUP_MS;
+          patch.hateTarget = aim.side;
         }
       }
     }
@@ -1661,7 +1689,8 @@ export const runUriTick = (
     }
   } else if (st === 'bolt') {
     if (s.uri.shots < BOSS_BURST_SHOTS && newGameTime >= s.uri.nextShotAt) {
-      useGameStore.getState().addProjectile(createEnemyProjectile(uri, player));
+      const aim = uriLockedAim();
+      useGameStore.getState().addProjectile(createEnemyProjectile(uri, player, aim.x, aim.y));
       s.uri.shots += 1; s.uri.nextShotAt = newGameTime + BOSS_BURST_GAP_MS;
     }
     if (newGameTime >= (uri.bossStateUntil ?? 0)) {
