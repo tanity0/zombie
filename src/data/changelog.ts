@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2847',
+    items: [
+      '開発引き継ぎ情報を最新化しました。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.2846',
     items: [
       'ステージ1開始時のチュートリアルを、武器商人・拠点・目的の3ページへ刷新しました。横スライド、左右スワイプ、戻る・次へで切り替えられます。',
