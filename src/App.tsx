@@ -49,9 +49,18 @@ function SortieLoadingOverlay() {
  */
 interface AppProps {
   playingOverlay?: ReactNode;
+  /**
+   * ★`bare`(v0.25.2851・社長指示「ボスメーカーからは余計なものを排除。タイトルや他の要素もいらない」):
+   * **ゲームの画面を一切描かない**モード。道具ページ(`bossmaker.html`)だけが true を渡す。
+   * 消えるのは タイトル / ミッション選択 / 起動ローディング / エンディング / リザルト /
+   * オープニング / 洋館通路プレビュー。残すのは **ゲーム本体・差し込み口・出撃時の暗転・縦持ちガード**だけ。
+   *
+   * ゲーム本編は `undefined`(=false)なので、下の描画条件は今までと**完全に同一**に評価される。
+   */
+  bare?: boolean;
 }
 
-function App({ playingOverlay }: AppProps = {}) {
+function App({ playingOverlay, bare = false }: AppProps = {}) {
   const [gameState, setGameState] = useState<GameState>('title'); // 最初にタイトル(the ONE)を即表示
   // オープニングシーン(社長支給v0.25.2002): 当面 ?opening=1 でプレビュー再生(タイトルの上に全画面オーバーレイ)。
   // ?opening=2 は射撃シーンから開始(調整用ショートカット)。?opening=3 は蘇生処置パート(字幕)から開始。
@@ -259,16 +268,30 @@ function App({ playingOverlay }: AppProps = {}) {
     void startGame(params.get('class') ?? 'warrior', benchmark, params.get('retry') === '1');
   }, []);
 
+  /**
+   * bare(道具ページ)の決着処理(v0.25.2851)。リザルト画面を描かないので、そのままだと
+   * 部屋が固まる。**その場で部屋に入り直す**(調整中に死んでも戦い続けられる)。
+   * ★**ゲームの進行(クリア解放・スコア)には一切触らない。** 道具で城ボスを倒したせいで
+   * 本編のステージが解放される、といった副作用を作らないため。
+   */
+  const restartBareRoom = (): void => {
+    void startGame(useGameStore.getState().characterClass, false, true);
+  };
+
   const handleGameOver = () => {
+    if (bare) { restartBareRoom(); return; }
     setGameState('gameOver');
   };
 
   const handleReturn = () => {
+    if (bare) { restartBareRoom(); return; }
     // 商人「帰還」=任意撤収。進行(クリア解放)はさせず、スコア計上のリザルトへ。装備は持ち帰り可。
     setGameState('returned');
   };
 
   const handleVictory = () => {
+    // ★bare(道具ページ)は**進行に一切触らない**。下のクリア解放・エンディング予約を通さない。
+    if (bare) { restartBareRoom(); return; }
     // 勝利したら選択中ステージのメインミッションをクリア扱いにし、次ステージを解放する。
     // (ダンス練習/ベンチは選択ステージを空にしているのでここでは何も起きない)
     // フリー(周回)出撃は進行に影響させない=クリア扱いにしない。
@@ -334,7 +357,7 @@ function App({ playingOverlay }: AppProps = {}) {
 
   return (
     <div className="w-full h-full bg-gray-900 text-white">
-      {gameState === 'title' && (
+      {!bare && gameState === 'title' && (
         <TitleScreen
           onStart={() => { unlockDanceAudio(); setBgmScene('menu'); }} // タップ瞬間にBGM解禁
           // 更新情報OK直後にオープニングを再生(社長指示v0.25.2022)。音声はOKのジェスチャで解禁し、
@@ -347,17 +370,21 @@ function App({ playingOverlay }: AppProps = {}) {
         />
       )}
 
-      {gameState === 'menu' && (
+      {!bare && gameState === 'menu' && (
         <MissionSelect
           onStartGame={(characterClass) => startGame(characterClass, false)}
           onStartBenchmark={(characterClass) => startGame(characterClass, true)}
         />
       )}
 
-      {gameState === 'loading' && <LoadingScreen startup />}
+      {!bare && gameState === 'loading' && <LoadingScreen startup />}
+
+      {/* bare(道具ページ)の待ち: 素材ロード中の真っ黒を避ける最小限の合図だけ。
+          `compact` はスピナーと LOADING… のみでゲームタイトルを出さない。 */}
+      {bare && gameState !== 'playing' && <LoadingScreen compact />}
 
       {/* the ONE 通常エンディング(聴取記録→暗転→PHILL→スタッフロール)。終了でメニューへ。 */}
-      {gameState === 'ending' && <EndingScreen onDone={finishEnding} />}
+      {!bare && gameState === 'ending' && <EndingScreen onDone={finishEnding} />}
       
       {/* プレイ中の差し込み口(BOSS_MAKER.md §19-5)。道具ページだけがボスメーカーUIを渡す。
           本編は undefined なので何も描かない=本編の負荷は変わらない。 */}
@@ -373,7 +400,7 @@ function App({ playingOverlay }: AppProps = {}) {
         />
       )}
 
-      {(gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
+      {!bare && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
         <GameOverScreen
           won={gameState === 'victory'}
           withdraw={gameState === 'returned'}
@@ -395,10 +422,10 @@ function App({ playingOverlay }: AppProps = {}) {
       {/* オープニングシーン(?opening=1でプレビュー)。タイトルの上に全画面。暗転し切ったら onDone で外れる。 */}
       {/* BGMはオープニング完全終了(onDone=タイトルフェードイン明け)で開始(社長指示v0.25.2067
           「BGM流れるのは蘇生シーン終わってから」=フェードイン開始と同時のBGM開始を廃止)。 */}
-      {showOpening && <OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} />}
+      {!bare && showOpening && <OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} />}
 
       {/* ステージ6(洋館)通路プレビュー(?corridor=1)。タイトル等の上に全画面。 */}
-      {corridorPreview && <MansionCorridorPreview />}
+      {!bare && corridorPreview && <MansionCorridorPreview />}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}
       <OrientationGuard />

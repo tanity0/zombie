@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2851',
+    items: [
+      'ゲーム内容の変更はありません（開発用ツール「ボスメーカー」から、タイトル画面などゲーム側の画面を全て取り除きました）。',
+    ],
+  },
+  {
     version: '0.25.2850',
     items: [
       'ゲーム内容の変更はありません（開発用ツール「ボスメーカー」をゲーム本体から切り分け、別ページの独立ツールにしました。製品ビルドが少し軽くなります）。',

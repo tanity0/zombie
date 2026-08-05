@@ -18,6 +18,7 @@ bootstrapRuntime();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App playingOverlay={<BossMakerPanel />} />
+    {/* bare: ゲームの画面(タイトル/メニュー/リザルト/OP等)を一切描かない(社長指示v0.25.2851)。 */}
+    <App bare playingOverlay={<BossMakerPanel />} />
   </StrictMode>
 );
