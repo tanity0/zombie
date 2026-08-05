@@ -235,18 +235,19 @@ export const IDOL_TUNING: IdolTuning = {
   stringLen: { p1: 3, p2: 4 },
   strings: [
     // 密着(0〜140): 硬直の長い近距離技で「ここが安全」を体で教える。終端は必ず離脱か遠距離技。
-    { zone: 'melee', weight: 55, moves: ['punch', 'roll', 'fan', 'orb'] },
-    { zone: 'melee', weight: 45, moves: ['roll', 'fan', 'punch', 'orb'] },
+    // 拳で押し出した先へ狙撃線を通す。もう一方は離脱→射線で挟み、最後の拳から再び狙撃へ繋ぐ。
+    { zone: 'melee', weight: 55, moves: ['punch', 'snipe', 'roll', 'fan'] },
+    { zone: 'melee', weight: 45, moves: ['roll', 'fan', 'punch', 'snipe'] },
     // 主戦帯(140〜340): 連射で崩して終端に追尾弾=「離れても解決しない」を教える帯。
-    { zone: 'near', weight: 40, moves: ['fan', 'fan', 'orb', 'snipe'] },
-    { zone: 'near', weight: 35, moves: ['fan', 'snipe', 'orb', 'fan'] },
-    { zone: 'near', weight: 25, moves: ['orb', 'fan', 'punch', 'snipe'] },
+    { zone: 'near', weight: 40, moves: ['fan', 'roll', 'snipe', 'orb'] },
+    { zone: 'near', weight: 35, moves: ['orb', 'punch', 'snipe', 'fan'] },
+    { zone: 'near', weight: 25, moves: ['fan', 'orb', 'punch', 'snipe'] },
     // 遠(340〜700): 狙撃線が主。ここが一番危ない=「近づけ」の圧。
-    { zone: 'mid', weight: 50, moves: ['aim', 'aim', 'snipe', 'orb'] },
-    { zone: 'mid', weight: 50, moves: ['snipe', 'orb', 'aim', 'snipe'] },
+    { zone: 'mid', weight: 50, moves: ['aim', 'snipe', 'orb', 'roll'] },
+    { zone: 'mid', weight: 50, moves: ['orb', 'aim', 'snipe', 'fan'] },
     // 超遠(700+): 逃げ切れる距離を作らない(ER §1-4「遠距離に居させない設計」)。
-    { zone: 'far', weight: 45, moves: ['aim', 'snipe', 'orb', 'snipe'] },
-    { zone: 'far', weight: 55, moves: ['orb', 'orb', 'snipe', 'aim'] },
+    { zone: 'far', weight: 45, moves: ['aim', 'snipe', 'orb', 'roll'] },
+    { zone: 'far', weight: 55, moves: ['orb', 'snipe', 'aim', 'fan'] },
   ],
   // ④休符: P1/P2とも0.9秒。**0にはしない**(プレイヤーのターンが消えると理不尽)。
   // 0.9秒=カウンター1サイクル820msを上回る最小値。

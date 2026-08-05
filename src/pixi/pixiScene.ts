@@ -1909,7 +1909,8 @@ const DUST_MS = 700;
 // (社長指示v0.25.2412)。判定(active窓)そのものは1msも変えない=絵だけがゆっくり振り切る。
 // 攻撃ヴィジュアルの2分類では①(判定に揃える)側だが、社長方針「完璧でなくてよい・赤ラインが
 // 別に出ているなら良し」の範囲。赤い帯/線は従来どおり判定と厳密一致のまま出ている。
-const FX_SWING_LINGER = 1.35;
+// 攻撃判定より35%遅れて見えていたため、台本化に合わせて判定時間と同期する。
+const FX_SWING_LINGER = 1;
 // 衝撃波(社長支給素材・v0.25.2414)。**判定が直線の帯なのに絵が「振っただけ」で終わる技**へ、
 // 帯の上を始点→終点へ走らせて「どこまで届くか」を絵で伝える(社長指示「別途衝撃波の絵とか飛ばした方がいい」)。
 // 判定は1msも変えない=絵だけを足す。素材の進行方向は右(先端の散りが右端)。
@@ -12399,7 +12400,7 @@ export class PixiScene {
       {
         const bs = e.bossState;
         const swinging = bs === 'issen-dash' || bs === 'tsuki' || bs === 'harai';
-        // 絵だけ FX_SWING_LINGER 倍ゆっくり振り切る(社長指示v0.25.2412)。判定の窓(bossStateUntil)は不変。
+        // 判定の窓(bossStateUntil)と同じ時間で振り切り、次の技への繋ぎを視覚でも一致させる。
         const swingDur = (bs === 'issen-dash' ? THOR_ISSEN_DASH_MS : bs === 'tsuki' ? THOR_TSUKI_MS : THOR_HARAI_ACTIVE_MS) * FX_SWING_LINGER;
         const swL = this.latchFx(`${e.id}:thorswing`, swinging, swingDur, now, () => [
           e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy,
@@ -13030,7 +13031,7 @@ export class PixiScene {
       {
         const swWind = gph === 'g-sweep-windup';
         const swToImpact = swWind ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
-        const swActive = (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT) * FX_SWING_LINGER; // 絵だけ長く(判定は不変)
+        const swActive = (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT) * FX_SWING_LINGER;
         const swL = this.latchFx(`${e.id}:sweepslash`, swWind, swToImpact + swActive, now, () => {
           const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
           const stx = e.aiTargetX ?? cx, sty = e.aiTargetY ?? cy;

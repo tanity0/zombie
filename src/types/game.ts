@@ -658,6 +658,8 @@ export interface Enemy {
     | 'idol-rest';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
+  // 攻撃開始時に確定した短い連携台本の残り。各recoverで先頭を消費し、空になった時だけ通常硬直へ戻る。
+  bossScriptQueue?: string[];
   bossBurstLeft?: number;    // 3連発の残弾
   bossBurstNextAt?: number;  // 次の1発の gameTime(ms)
   // PACING_PUZZLE.md §6.28-21(バッチM53/M55/M57・ロットL2): ミゲル/ジブリル/ラフィへ追加した新技1つずつの
