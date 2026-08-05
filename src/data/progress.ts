@@ -521,12 +521,14 @@ export const markKogarasuUnlocked = (): boolean => {
 //   medicineOwned  = グレンの薬を所持(任意サブ3本完了でM7クリア→ED後に付与)
 //   medicineUsed   = 洋館再訪で薬を使用済み(=EX解放条件)
 //   revisitCleared = 洋館［SUB］再訪クリア
+//   glenIntroSeen  = M7戦闘前会話を一度表示済み(以後は会話を省略)
 export interface StoryFlags {
   endingSeen: boolean;
   hintShown: boolean;
   medicineOwned: boolean;
   medicineUsed: boolean;
   revisitCleared: boolean;
+  glenIntroSeen: boolean;
 }
 const STORY_FLAGS_KEY = 'zombie.progress.storyFlags';
 
@@ -536,6 +538,7 @@ export const emptyStoryFlags = (): StoryFlags => ({
   medicineOwned: false,
   medicineUsed: false,
   revisitCleared: false,
+  glenIntroSeen: false,
 });
 
 export const getStoryFlags = (): StoryFlags => {

@@ -6,6 +6,7 @@ import { shouldShowStage1Guide } from '../utils/stage1GuideTutorial';
 // §6.24-UX(POI-UX): 寄り道POIの入手トースト/解放帯の文言(通信の文言は store 側が引く)。
 import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE, POI_LABEL } from '../utils/detourPoiUx';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
+import { GLEN_FINAL_LINE, GLEN_ROAR_LINE, isGlenBossSpawnReady } from '../utils/glenIntro';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
@@ -280,7 +281,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, recordChronicleGlobalFirst, effectiveStartRank, stageInRunFloorRank, setStartRankFromFinal } from '../data/progress';
+import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, recordChronicleGlobalFirst, effectiveStartRank, stageInRunFloorRank, setStartRankFromFinal, updateStoryFlags } from '../data/progress';
 import { exposeKomaLog, logKomaSummary } from '../utils/komaLog';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
 import {
@@ -1426,7 +1427,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // the ONE ストーリーボス(M7/EX)の進行: 出現済みか / 終幕(勝利化)予定時刻(0=未予約)。
   const storyBossSpawnedRef = useRef(false);
   const storyBossWinAtRef = useRef(0);
-  const glenRoarQueuedRef = useRef(false); // M7: 咆哮「グガガガ」を積んだか(ボス出現は咆哮の表示時=v0.25.2076)
+  const glenRoarQueuedRef = useRef(false); // M7: 咆哮を会話キューへ積んだか
+  const glenRoarShownRef = useRef(false);  // M7: 咆哮が実際に表示されたか(表示終了後の出現ゲート)
   // 洋館再訪: 開始時に洋館(保存槽)へ一度だけカメラアテンションを出したか。
   const revisitAttnShownRef = useRef(false);
   // 拠点制圧カウントの直近値(増加検出で開放SEを鳴らす)。
@@ -2385,6 +2387,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           storyBossSpawnedRef.current = false; // the ONE ストーリーボス進行も新ランで再アーム
           storyBossWinAtRef.current = 0;
           glenRoarQueuedRef.current = false;
+          glenRoarShownRef.current = false;
           revisitAttnShownRef.current = false;
         }
         lastSeenGameTimeRef.current = newGameTime;
@@ -2448,25 +2451,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // giantbat(城ボス)を流用(新規アート禁止=指示書1)。勝利は帰還サークルを経由せず直接 gameWon。
         if (storyBoss && !danceTest) {
           const sbs = useGameStore.getState();
-          // 導入完了 = 登場演出(ヘリ=時間停止)が明けた瞬間(社長指示v0.25.1876で会話は非停止化したため、
-          // 会話の終了待ちはしない。会話は通常会話キューで並行再生され、ボスは登場後すぐ出現=M7=導入→会話+グレン戦)。
+          // 導入完了 = 登場演出(ヘリ=時間停止)が明けた瞬間。会話自体は通常会話キューで非停止再生する。
           const introDone = !isGameTimeStopped();
-          // M7の段取り(社長指示v0.25.2074→2076): 最終行「……終わらせてあげて！」が表示に入ったら
-          // 咆哮「グガガガガガガガガ！」を会話キューへ積み、ボス出現は【咆哮が表示された瞬間】
-          // (=咆哮と同時に巨大化)。文言不一致やキュー消失時は出現側へ倒れる=詰みは構造的に起きない。
-          // EX(stage-ex1)は会話なし=従来どおり即出現。
-          const GLEN_FINAL_LINE = '……終わらせてあげて！'; // campaign.ts M7 dialogue 最終行と一致させること
-          const GLEN_ROAR_LINE = 'グガガガガガガガガ！'; // 確定台詞(指示書4.7)
           const isM7 = getSelectedStageId() === 'stage-7';
-          if (isM7 && introDone && !glenRoarQueuedRef.current && !storyBossSpawnedRef.current
+          // M7初回: 最終行が表示に入ったら咆哮を末尾へ積む。既読後/リトライは会話データ自体が空なので省略する。
+          const introSkipped = isM7 && sbs.introDialogueLines.length === 0;
+          if (isM7 && !introSkipped && introDone && !glenRoarQueuedRef.current && !storyBossSpawnedRef.current
               && sbs.introDialogueShown && !sbs.npcDialogueQueue.some(l => l.text === GLEN_FINAL_LINE)) {
             glenRoarQueuedRef.current = true;
             // グレン巨大化の咆哮(確定台詞・指示書4.7)。立ち絵は変異後の頭部(社長指示v0.25.2073)。
             useGameStore.getState().enqueueNpcDialogue([{ name: 'グレン', text: GLEN_ROAR_LINE, portrait: 'グレン(変異)' }]);
           }
-          // 出現ゲート: M7=咆哮がキューを離れた(=いま表示中)瞬間 / EX=即。
-          const glenSpawnOk = !isM7
-            || (glenRoarQueuedRef.current && !sbs.npcDialogueQueue.some(l => l.text === GLEN_ROAR_LINE));
+          // enqueue後の最新状態を見る。咆哮が表示された瞬間に既読を保存し、表示が終わるまではボスを出さない。
+          const glenDialogue = useGameStore.getState();
+          if (isM7 && glenDialogue.npcDialogue?.text === GLEN_ROAR_LINE && !glenRoarShownRef.current) {
+            glenRoarShownRef.current = true;
+            updateStoryFlags({ glenIntroSeen: true });
+          }
+          // EXは即出現。M7既読後も会話を省略して即出現。M7初回だけ咆哮の表示終了を待つ。
+          const glenSpawnOk = !isM7 || isGlenBossSpawnReady({
+            introSkipped,
+            roarQueued: glenRoarQueuedRef.current,
+            roarShown: glenRoarShownRef.current,
+            currentText: glenDialogue.npcDialogue?.text ?? null,
+            roarPending: glenDialogue.npcDialogueQueue.some(line => line.text === GLEN_ROAR_LINE),
+          });
           // cine実験台(?cine=1 & stage-7)ではストーリーボス(グレン)を出さない=クリーンな映像確認(社長v0.25.1879)。
           // ?nospawn=1 でもストーリーボスを出さない(=イベント不発火。社長指示v0.25.1995・QAのクリーン撮影用)。
           const cineSuppress = CINE_TESTBED && getSelectedStageId() === 'stage-7';

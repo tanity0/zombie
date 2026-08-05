@@ -42,6 +42,11 @@ describe('旧セーブロード(移行)', () => {
     localStorage.setItem('zombie.progress.storyFlags', JSON.stringify({ endingSeen: true, unknown: 1 }));
     expect(getStoryFlags()).toEqual({ ...emptyStoryFlags(), endingSeen: true });
   });
+  it('M7戦闘前会話の既読を端末へ保存し、旧セーブでは未読として扱う', () => {
+    expect(getStoryFlags().glenIntroSeen).toBe(false);
+    updateStoryFlags({ glenIntroSeen: true });
+    expect(getStoryFlags().glenIntroSeen).toBe(true);
+  });
 });
 
 describe('サブ未完了一周(通常ED→ヒント1回→本文は共通)', () => {

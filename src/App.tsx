@@ -239,8 +239,9 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチ/再訪(通信なし)は空=会話なし。
     const free = getSelectedFreeMode();
     const selectedStage = (benchmark || free || revisitRun) ? undefined : stageForRun;
-    // リトライ(もう一度プレイ)は開始時の会話を丸ごと飛ばす(社長指示v0.25.2462)。
-    useGameStore.getState().setIntroDialogueLines((cineTestbed || retry) ? [] : (selectedStage?.main.dialogue ?? []));
+    // M7の戦闘前会話は端末で一度だけ。既読後とリトライ(もう一度プレイ)は会話を丸ごと飛ばす。
+    const skipSeenGlenIntro = selectedStage?.id === 'stage-7' && getStoryFlags().glenIntroSeen;
+    useGameStore.getState().setIntroDialogueLines((cineTestbed || retry || skipSeenGlenIntro) ? [] : (selectedStage?.main.dialogue ?? []));
     setBenchmarkMode(pendingBenchmarkRef.current);
     // 出撃ローディング%のウィンドウをここでリセット(v0.25.1829): オーバーレイの初期描画が
     // 前回ウィンドウの100%を一瞬見せないように(PixiStage側のリセットより先=マウント前に0%へ)。
