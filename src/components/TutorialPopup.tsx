@@ -2,8 +2,9 @@
 // 操作方法を説明してくれるやつ」の試作)。更新情報ダイアログと同じFF7R風パネル+Ff7rButton。
 // 挿絵(art)は現状インラインSVG('move'=ドラッグ移動の図解)。実スクショ画像に差し替える場合は
 // art部を <img> に置き換えるだけの構造にしてある。表示中はゲーム停止(showTutorialPopupがisPaused=true)。
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+import type { TutorialSlide } from '../data/tutorials';
 import TutorialMedia from './TutorialMedia';
 import { Ff7rButton } from './ff7r';
 
@@ -34,41 +35,122 @@ const MoveArt: React.FC<{ overlay?: boolean }> = ({ overlay }) => (
   </svg>
 );
 
+const SlideMedia: React.FC<{ slide: TutorialSlide }> = ({ slide }) => {
+  if (slide.img) {
+    return (
+      <div className="relative mt-4 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
+        <TutorialMedia src={slide.img} className="absolute inset-0 h-full w-full object-cover" />
+        {slide.art === 'move' && <MoveArt overlay />}
+      </div>
+    );
+  }
+  if (slide.art === 'move') return <div className="mt-4"><MoveArt /></div>;
+  if (!slide.mediaPending) return null;
+  return (
+    <div
+      className="relative mt-4 flex aspect-[16/10] w-full items-center justify-center overflow-hidden"
+      style={{
+        border: '1px solid rgba(168,85,247,0.28)',
+        background: 'radial-gradient(circle at 50% 45%, rgba(168,85,247,0.16), rgba(10,8,16,0.78) 65%)',
+      }}
+    >
+      <div className="absolute inset-x-[12%] top-1/2 h-px bg-purple-200/10" />
+      <div className="absolute inset-y-[18%] left-1/2 w-px bg-purple-200/10" />
+      <div className="relative text-center">
+        <div className="text-[9px] font-semibold tracking-[0.28em] text-purple-200/35">VIDEO GUIDE</div>
+        <div className="mt-1 text-[10px] text-white/30">映像素材 準備中</div>
+      </div>
+    </div>
+  );
+};
+
 const TutorialPopup: React.FC = () => {
   const popup = useGameStore(s => s.tutorialPopup); // ポップアップ本体のみ購読(開閉時だけ再描画)
   const close = useGameStore(s => s.closeTutorialPopup);
+  const [page, setPage] = useState(0);
+  const touchStartX = useRef<number | null>(null);
+
+  useEffect(() => { setPage(0); }, [popup]);
   if (!popup) return null;
+
+  const slides: TutorialSlide[] = popup.slides?.length
+    ? popup.slides
+    : [{ title: popup.title, lines: popup.lines, art: popup.art, img: popup.img }];
+  const multiple = slides.length > 1;
+  const last = page === slides.length - 1;
+  const go = (next: number) => setPage(Math.max(0, Math.min(slides.length - 1, next)));
+
+  const finishSwipe = (endX: number) => {
+    const startX = touchStartX.current;
+    touchStartX.current = null;
+    if (startX === null || Math.abs(endX - startX) < 42) return;
+    go(endX < startX ? page + 1 : page - 1);
+  };
+
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-6 py-8">
-      <div className="relative flex w-full max-w-sm flex-col overflow-hidden" style={PANEL_STYLE}>
-        <div className="px-5 pt-5 pb-3 text-white/85" style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}>
-          <h2 className="pb-1 text-[13px] font-bold tracking-[0.18em] text-white" style={{ borderBottom: '1px solid rgba(168,85,247,0.6)' }}>
-            {popup.title}
-          </h2>
-          {popup.img ? (
-            // 事前収録の手本アセット(静止画/GIFアニメ/**動画**・プレイヤー中心に切り出し済み)。
-            // 社長決定v0.25.1839「やる前に手本を見せる」=挿絵は収録素材で統一(ライブ撮影は廃止)。
-            // v0.25.2262: 長い手本(20秒級)はGIFだと数MBになるため mp4 も置けるようにした。
-            // 同じ尺ならGIFの半分以下で、しかも30fpsのまま出せる。拡張子で自動的に切り替わる。
-            <div className="relative mt-4 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
-              {/* 読み込み中はスピナーを重ねる(v0.25.2298)。表示規則は資料室と共用。 */}
-              <TutorialMedia src={popup.img} className="absolute inset-0 h-full w-full object-cover" />
-              {popup.art === 'move' && <MoveArt overlay />}
+      <div className="relative flex max-h-[calc(100svh-40px)] w-full max-w-sm flex-col overflow-hidden" style={PANEL_STYLE}>
+        <div className="px-5 pt-5 text-white/85" style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}>
+          {multiple && (
+            <div className="flex items-center justify-between border-b border-purple-300/35 pb-1.5">
+              <span className="text-[9px] font-semibold tracking-[0.22em] text-purple-200/55">{popup.title}</span>
+              <span className="text-[10px] tabular-nums text-white/35">{page + 1} / {slides.length}</span>
             </div>
-          ) : popup.art === 'move' ? (
-            <div className="mt-4">
-              <MoveArt />
-            </div>
-          ) : null}
-          <ul className="mt-4 space-y-2 text-[12.5px] leading-relaxed text-white/80">
-            {popup.lines.map((line, i) => (
-              <li key={i}>{line}</li>
-            ))}
-          </ul>
+          )}
         </div>
-        <div className="px-4 pb-4 pt-2">
-          <Ff7rButton onClick={close} className="w-full" ariaLabel="OK" emphasis>
-            OK
+
+        <div
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y"
+          onTouchStart={event => { touchStartX.current = event.touches[0]?.clientX ?? null; }}
+          onTouchEnd={event => finishSwipe(event.changedTouches[0]?.clientX ?? 0)}
+        >
+          <div
+            className="flex items-stretch transition-transform duration-300 ease-out"
+            style={{ transform: `translate3d(-${page * 100}%, 0, 0)` }}
+            aria-live="polite"
+          >
+            {slides.map((slide, index) => (
+              <article key={`${slide.title}:${index}`} className="min-w-full px-5 pb-3 pt-3">
+                <h2 className="text-[15px] font-bold tracking-[0.14em] text-white">
+                  {slide.title}
+                </h2>
+                <SlideMedia slide={slide} />
+                <div className="mt-4 space-y-2 text-[12.5px] leading-[1.75] text-white/80">
+                  {slide.lines.map((line, lineIndex) => <p key={lineIndex}>{line}</p>)}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        {multiple && (
+          <div className="flex items-center justify-center gap-2 px-4 pb-1 pt-2" aria-label="チュートリアルページ">
+            {slides.map((slide, index) => (
+              <button
+                type="button"
+                key={slide.title}
+                onClick={() => go(index)}
+                aria-label={`${index + 1}ページ目 ${slide.title}`}
+                aria-current={page === index ? 'step' : undefined}
+                className={`h-1.5 transition-[width,background-color] duration-200 ${page === index ? 'w-6 bg-purple-200/80' : 'w-2 bg-white/15'}`}
+              />
+            ))}
+          </div>
+        )}
+
+        <div className={`grid gap-2 px-4 pb-4 pt-2 ${multiple ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {multiple && (
+            page > 0
+              ? <Ff7rButton onClick={() => go(page - 1)} className="w-full" ariaLabel="前のページ">戻る</Ff7rButton>
+              : <div aria-hidden="true" />
+          )}
+          <Ff7rButton
+            onClick={() => { if (multiple && !last) go(page + 1); else close(); }}
+            className="w-full"
+            ariaLabel={multiple && !last ? '次のページ' : 'チュートリアルを閉じる'}
+            emphasis
+          >
+            {multiple && !last ? '次へ' : multiple ? 'はじめる' : 'OK'}
           </Ff7rButton>
         </div>
       </div>

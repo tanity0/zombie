@@ -1172,15 +1172,35 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 >
                   {openTutorial.title}
                 </h3>
-                {openTutorial.img && (
-                  <div className="relative mb-3 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
-                    {/* 手本の表示はゲーム中のポップアップと共用(mp4/GIF判定・読み込み中のスピナー込み)。 */}
-                    <TutorialMedia src={openTutorial.img} />
+                {openTutorial.slides?.length ? (
+                  <div className="space-y-5">
+                    {openTutorial.slides.map((slide, slideIndex) => (
+                      <section key={`${slide.title}:${slideIndex}`} className="border-t border-purple-200/10 pt-3 first:border-t-0 first:pt-0">
+                        <h4 className="mb-2 text-[14px] font-semibold tracking-wide text-purple-100/85">{slide.title}</h4>
+                        {slide.img && (
+                          <div className="relative mb-3 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
+                            <TutorialMedia src={slide.img} />
+                          </div>
+                        )}
+                        <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
+                          {slide.lines.map((line, lineIndex) => <p key={lineIndex}>{line}</p>)}
+                        </div>
+                      </section>
+                    ))}
                   </div>
+                ) : (
+                  <>
+                    {openTutorial.img && (
+                      <div className="relative mb-3 aspect-[16/10] w-full overflow-hidden" style={{ border: '1px solid rgba(168,85,247,0.4)' }}>
+                        {/* 手本の表示はゲーム中のポップアップと共用(mp4/GIF判定・読み込み中のスピナー込み)。 */}
+                        <TutorialMedia src={openTutorial.img} />
+                      </div>
+                    )}
+                    <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
+                      {openTutorial.lines.map((line, i) => <p key={i}>{line}</p>)}
+                    </div>
+                  </>
                 )}
-                <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
-                  {openTutorial.lines.map((line, i) => <p key={i}>{line}</p>)}
-                </div>
                 <button
                   type="button"
                   onClick={closeTutorial}

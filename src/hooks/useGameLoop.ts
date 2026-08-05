@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
-import { shouldShowDetourPoiTutorial } from '../utils/detourPoiTutorial';
+import { shouldShowStage1Guide } from '../utils/stage1GuideTutorial';
 // §6.24-UX(POI-UX): 寄り道POIの入手トースト/解放帯の文言(通信の文言は store 側が引く)。
 import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE, POI_LABEL } from '../utils/detourPoiUx';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
@@ -1287,7 +1287,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     seenTutorials().add(id);
     markTutorialSeen(id);
     useGameStore.getState().showTutorialPopup({
-      title: entry.title, lines: entry.lines, art: entry.art, img: entry.img,
+      title: entry.title, lines: entry.lines, art: entry.art, img: entry.img, slides: entry.slides,
     });
   }, [seenTutorials]);
   // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告(この先——{区域名})」を壁ごとにラン1回だけ出すためのフラグ。
@@ -3562,28 +3562,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // 寄り道POIのチュートリアル1枚(§6.24-UX 裁定c): **M1の初出撃時に、端末で1度だけ**。
-        // 判定は純関数 `shouldShowDetourPoiTutorial`。まだ見ていない時しか評価しない(見た後は
-        // ref のキャッシュだけで弾ける=毎フレームの localStorage 読みも stage id 読みも起きない)。
-        // v0.25.2626(社長裁定「ださない」): ボスメーカーの部屋では出さない(上と同じ理由)。
-        // 部屋の土台が stage-1 なので、この「寄り道POI」が入室3秒ほどで割り込んでいた。
-        if (!indoor && !labTheme && !tutorialStage && !seenTutorials().has('detour-poi')
-            && !useGameStore.getState().bossMaker.active) {
+        // ステージ1の横スライド式フィールドガイド。新IDで旧「寄り道」既読とは分離し、全員へ新版を1度だけ出す。
+        // 出撃会話が終わった後の最初の安全な瞬間に表示し、ボスメーカーのstage-1土台では発火させない。
+        if (!seenTutorials().has('stage1-guide') && !useGameStore.getState().bossMaker.active) {
           const st = useGameStore.getState();
-          const poiPresent = !!(st.hospital || st.armory || st.police);
-          if (poiPresent) {
-            if (shouldShowDetourPoiTutorial({
-              stageId: (runStageIdRef.current ??= getSelectedStageId()),
-              poiPresent,
-              seen: false, // ここへ来る時点で未読(上の has('detour-poi') で弾いている)
-              popupOpen: st.tutorialPopup !== null,
-              menuOpen: st.showShopMenu || st.showUpgradeMenu,
-              // 出撃時の通信/会話が流れている間は割り込まない(流れ終わってから出す)。
-              dialogueActive: st.npcDialogue !== null || st.npcDialogueQueue.length > 0,
-              gameTimeMs: newGameTime,
-            })) {
-              showTutorialOnce('detour-poi');
-            }
+          if (shouldShowStage1Guide({
+            stageId: (runStageIdRef.current ??= getSelectedStageId()),
+            seen: false,
+            popupOpen: st.tutorialPopup !== null,
+            menuOpen: st.showShopMenu || st.showUpgradeMenu,
+            dialogueActive: st.npcDialogue !== null || st.npcDialogueQueue.length > 0,
+            gameTimeMs: newGameTime,
+          })) {
+            showTutorialOnce('stage1-guide');
           }
         }
 

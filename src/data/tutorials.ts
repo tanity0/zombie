@@ -8,8 +8,19 @@ export type TutorialId =
   // 訓練(M0)の教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291)。
   | 'm0-shoot' | 'm0-melee' | 'm0-crit' | 'm0-finish' | 'm0-counter' | 'm0-levelup' | 'm0-area' | 'm0-hunter' | 'm0-ammo'
   | 'phill' | 'scout'
-  // 寄り道POI(§6.24-UX 裁定c)。M1の初出撃で1度だけ。発火は src/utils/detourPoiTutorial.ts。
+  // ステージ1開始時に一度だけ出す、横スライド式フィールドガイド。
+  | 'stage1-guide'
+  // 旧「寄り道」ガイド。既読者が資料室で読み返せるよう台帳だけを残す(ゲーム中の発火は新版へ移行)。
   | 'detour-poi';
+
+export interface TutorialSlide {
+  title: string;
+  lines: string[];
+  art?: 'move';
+  img?: string;
+  /** 後日動画へ差し替えるページに、空の映像枠を表示する。 */
+  mediaPending?: boolean;
+}
 
 export interface TutorialEntry {
   id: TutorialId;
@@ -17,8 +28,33 @@ export interface TutorialEntry {
   lines: string[];
   art?: 'move';      // インラインSVGの挿絵(TutorialPopup が解釈)
   img?: string;      // 事前収録の手本画像/GIF(public/ 以下の相対パス)
+  slides?: TutorialSlide[]; // 複数ページを横スライドで見せる場合だけ指定
   where: string;     // 資料室の一覧に出す出典(どこで出たか)
 }
+
+export const STAGE1_GUIDE_SLIDES: TutorialSlide[] = [
+  {
+    title: '武器商人',
+    lines: [
+      '一部を除くスタート地点に拠点を構える謎の多い商人。ここでは装備を1つ持って帰れる「帰還」ができる他、弾薬の購入、開放済みのサブウェポン強化、回復などを、松明などを壊すと手に入るスクラップで購入可能。',
+    ],
+    mediaPending: true,
+  },
+  {
+    title: '拠点',
+    lines: [
+      'ステージによっては4人の軍人が各拠点へ進軍を開始する。拠点はデンジャーゾーンにあり、確保できると中継地点として機能する。また、その地方に存在する隠れた要素が見えるようになる。方法は、担当軍人を連れて行くと開放してくれる。',
+    ],
+    mediaPending: true,
+  },
+  {
+    title: '目的',
+    lines: [
+      '各ステージにはメインとサブのミッションが存在するが、オープンフィールドとなっており、どう動くかは自由。ひたすら変異体を狩る、隠された拠点を探す、未知の敵の討伐など。ただし生き残るのは至難の業だ。まずは戦い方と、この世界の法則に慣れよう。',
+    ],
+    mediaPending: true,
+  },
+];
 
 export const TUTORIALS: TutorialEntry[] = [
   {
@@ -179,8 +215,17 @@ export const TUTORIALS: TutorialEntry[] = [
     where: '研究所',
   },
   {
+    id: 'stage1-guide',
+    title: 'フィールドガイド',
+    // 資料室の非スライド表示も同じ正本から組み立てる。本文を二重管理しない。
+    lines: STAGE1_GUIDE_SLIDES.flatMap(slide => [slide.title, ...slide.lines]),
+    slides: STAGE1_GUIDE_SLIDES,
+    where: '狂い咲きの森',
+  },
+  {
     id: 'detour-poi',
     title: '寄り道',
+    // v0.25.2846で開始時の3枚ガイドへ交代。旧版を見た端末の資料室から消さないため残置する。
     // §6.24-UX 裁定c: 3種が何をくれる場所かと、**矢印の色の意味**を伝える1枚。
     // **本文に数値を書かない**(滞在秒数/スクラップ額は後で調整されうる=CLAUDE.md「チュートリアルの作り方」)。
     // 具体的な取引内容(いくらで交換か)は現地で出る通信が言う担当なので、ここでは触れない。

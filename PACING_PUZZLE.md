@@ -5145,6 +5145,11 @@ windupを1000msへ伸ばす必要は無く、伸ばすと社長が実機で慣�
 | 3. 解放の到達帯 | ゾーン到達と同じ**帯(WallBand)**を流用(`triggerWallBand` / store内は同フィールドへ直書き)。文言「警察署 解放」「武器庫 解放」「病院 解放」・色=white(金は宿敵出現の予約色なので使わない)・2800ms。 |
 | 4(裁定c). チュートリアル1枚 | 台帳 `src/data/tutorials.ts` に `id:'detour-poi'`(題「寄り道」)。本文=3種が何をくれる場所か+**矢印の色の意味**(緑=病院/琥珀=武器庫/青=警察署/赤=裏ボス)。**本文に数値なし**(テストで機械化)。発火=純関数 `src/utils/detourPoiTutorial.ts`(**stage-1のみ・POIが立つ出撃のみ・端末で1度だけ(loadSeenForGate)・開幕の会話/他ポップアップ/メニューには割り込まない**)。**手本メディアは無し**(後日社長が実機収録)=`m0Tutorial.test.ts` の「全件に手本」不変条件は**手本待ちの明示列挙(AWAITING_SAMPLE)**に変更して穴を可視化。 |
 
+> **v0.25.2846で更新**: 上記4のゲーム中発火は、新ID `stage1-guide` の3枚式フィールドガイド
+> （武器商人／拠点／目的）へ置換した。ステージ1開始時、会話後に端末で一度だけ表示し、横スライド・
+> 左右スワイプ・戻る／次へで切り替える。旧 `detour-poi` は既読者の資料室用台帳としてのみ残す。
+> 発火正本は `src/utils/stage1GuideTutorial.ts`。動画はページ別 `img` の受領待ち。
+
 - 新規ファイル: `src/utils/detourPoiUx.ts`(通信文言/1ラン1回ゲート/話者選択/帯文言=純関数)+
   `src/utils/detourPoiTutorial.ts`(発火条件)。テスト `detourPoiUx.test.ts`(11)/`detourPoiTutorial.test.ts`(10)。
 - 変更ファイル: `gameStore.ts`(poiIntelShown/showPoiIntel/poiIntelPatch・updateHospital/updateArmory)、

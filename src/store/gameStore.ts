@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { TutorialSlide } from '../data/tutorials';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { generateEquipmentChoices } from '../utils/upgradeUtils';
 import {
@@ -3182,6 +3183,14 @@ export interface PumpkinBlast {
 export const knockbackSpeedFor = (distancePx: number, ms: number): number =>
   (Math.max(0, distancePx) * 2) / Math.max(0.001, ms / 1000);
 
+interface TutorialPopupPayload {
+  title: string;
+  lines: string[];
+  art?: 'move';
+  img?: string;
+  slides?: TutorialSlide[];
+}
+
 interface GameState {
   player: Player;
   enemies: Enemy[];
@@ -3318,7 +3327,7 @@ interface GameState {
   // 表示中はisPaused=true(シーン停止・PauseMenuはGame側でポップアップ優先ゲート)。artは注釈の種類。
   // img=事前収録の手本アセットのパス(静止画/GIF)。社長決定v0.25.1839「やる前に手本を見せる」=
   // 挿絵は収録済み素材で統一(旧・表示直前ライブキャプチャ(shot)はv0.25.1839で廃止)。
-  tutorialPopup: { title: string; lines: string[]; art?: 'move'; img?: string } | null;
+  tutorialPopup: TutorialPopupPayload | null;
   tutorialPopupShown: boolean; // このランで表示済みか(resetGameでリセット)
   // 訓練(M0)の**封印**(社長指示v0.25.2293「チュートリアルで解禁されるまで近接等は封印。
   // クリティカル等も出ない」)。教わっていない要素が先に暴発すると、説明と体験の順序が崩れる。
@@ -3343,7 +3352,7 @@ interface GameState {
   // ライブ撮影を廃止)。手本GIF収録・デバッグ用ツールとして温存(ヘッドレス収録が st.captureFrame() を叩く)。
   captureFrame: (() => string | null) | null;
   setCaptureFrame: (fn: (() => string | null) | null) => void;
-  showTutorialPopup: (p: { title: string; lines: string[]; art?: 'move'; img?: string }) => void;
+  showTutorialPopup: (p: TutorialPopupPayload) => void;
   closeTutorialPopup: () => void;
   introDialogueActive: boolean;  // 登場セリフ表示中(時間停止)
   introDialogueStartedAt: number; // セリフ開始時刻(Date.now。オートタイプ基準)

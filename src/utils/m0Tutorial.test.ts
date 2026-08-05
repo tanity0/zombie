@@ -49,7 +49,7 @@ describe('台帳の体裁(全チュートリアル共通)', () => {
   // 手本(img)は原則必須。**手本待ち**のものだけをここに明示列挙する(黙って抜けないように)。
   // 'detour-poi'(寄り道POI・§6.24-UX 裁定c): 実機収録は後日社長が用意する取り決めなので、
   // 当面はテキストのみで成立する構成。手本が入ったらこの配列から外すこと。
-  const AWAITING_SAMPLE: string[] = ['detour-poi'];
+  const AWAITING_SAMPLE: string[] = ['detour-poi', 'stage1-guide'];
   it('全件に手本(img)が付いている(手本待ちの明示列挙を除く)', () => {
     for (const t of TUTORIALS) {
       if (AWAITING_SAMPLE.includes(t.id)) continue;
