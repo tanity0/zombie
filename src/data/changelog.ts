@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2853',
+    items: [
+      'ゲーム内容の変更はありません（ボスラッシュ（練習モード）を作戦室に並べる設計を書きました）。',
+    ],
+  },
+  {
     version: '0.25.2852',
     items: [
       'ゲーム内容の変更はありません（ボス戦テストで霊を「なし（ソロ）」にできるようにし、ボス戦テスト中はチュートリアルが出ないようにしました）。',
