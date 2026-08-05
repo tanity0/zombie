@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2877',
+    items: [
+      'ゾンビの見た目を新しい絵に変えました。全ステージで同じ絵になります。',
+    ],
+  },
+  {
     version: '0.25.2876',
     items: [
       'ゲーム内容の変更はありません(素材ファイル名の整理)。',

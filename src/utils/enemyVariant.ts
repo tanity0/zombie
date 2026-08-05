@@ -26,9 +26,14 @@ export const ENEMY_VARIANT_SETS: Readonly<Record<string, readonly string[]>> = {
   // なので skeleton は女が先。見た目の揃いより、既に見えている絵を変えない方を取る。
   bat: ['bat-male', 'bat-female'],         // 男女2種(v0.25.2872 / 女の絵は v0.25.2875 で差し替え)
   skeleton: ['skeleton-female', 'skeleton-male'], // 男女2種(v0.25.2873)
+  zombie: ['zombie-common'],               // 1種のみ(v0.25.2877)。後で2種にするならここへ足す
 };
 
-/** 表に載っている type ならテクスチャ名を、載っていなければ null(=従来のステージ別解決へ落ちる)。 */
+/**
+ * 表に載っている type ならテクスチャ名を、載っていなければ null(=従来のステージ別解決へ落ちる)。
+ * ★**1要素でも成立する**(`spriteVariantIndex` は count<=1 で 0 を返す)。
+ * 「絵は1枚だけど全ステージ共通にしたい」敵も、同じ表で扱える。
+ */
 export const variantTextureName = (type: string, id: string): string | null => {
   const set = ENEMY_VARIANT_SETS[type];
   if (!set || set.length === 0) return null;
