@@ -54,6 +54,7 @@ import {
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
+import { batTextureName } from '../utils/enemyVariant';
 import { contentSpanFrac, needsContentTrim, contentTrimFrameY } from '../utils/shadowBake';
 import { horizontalShadowCorners } from '../utils/shadowProjection';
 import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
@@ -15129,6 +15130,9 @@ export class PixiScene {
     return (
       // M7ボス=stage-7のgiantbatだけグレンの新アートに差し替え(社長支給v0.25.1999)。
       ((this.currentFarKey === 'stage7' && type === 'giantbat') ? 'glen-boss' : null)
+      // ★bat は全ステージ共通の新アート2種(男女・社長支給v0.25.2872)。ステージ別の差し替えより
+      // **先に**返すので、stage3/4/5 でも同じ2種が出る。どちらになるかは敵IDで固定=個体はちらつかない。
+      ?? (type === 'bat' ? batTextureName(id) : null)
       ?? (this.daylight ? stage3EnemyTextureName(type) : null)
       ?? (this.snowStage ? stage4EnemyTextureName(type) : null)
       ?? (this.battlefieldStage ? stage5EnemyTextureName(type) : null)
