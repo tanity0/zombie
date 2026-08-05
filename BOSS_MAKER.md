@@ -1253,6 +1253,24 @@ GATE/DEEP のボスは**倒してもクリアにならない**(帰還サーク�
 7. 攻略ヒントの本文に**半角数字が入っていない**(テストで固定。全角数字・漢数字は対象外=文意で使う分には可)。
 8. `npm run typecheck` / `npm run lint` エラー0。React再描画の規律(CLAUDE.md)を守る。
 
+### 20-8-c. 実装結果(v0.25.2857〜2859・**完了**)
+| 受け入れ条件 | 結果 |
+|---|---|
+| ① 拠点に並び、遭遇済みだけ押せる | **達成**(未遭遇は錠前+「?」・`disabled`) |
+| ② 台帳が守護霊メニューと同じ1本 / 死神・ハンター不在 | **達成**(`bossPractice.test.ts` で固定) |
+| ③ 18枠の枠→出撃変換が表どおり | **達成**(実表と突き合わせ・lab/storyBossで castlenow を使わないことも固定) |
+| ④ 練習ラン前後の localStorage 差分ゼロ | **達成**(`practiceGuard.test.ts`・監査が挙げた実キー14本を1つも通さない) |
+| ⑤ 遭遇は `engagedBossSlotKeys` 経由のみ / 練習では付かない | **達成**(`bossEncounter.test.ts`) |
+| ⑥ 狙った1体以外が湧かない | **達成**(`?nospawn=1` + 城ボス/storyBossだけ上書き) |
+| ⑦ ヒント本文に半角数字なし | **達成**(`bossHints.test.ts`) |
+| ⑧ typecheck / lint 0 | **達成**(`npm test` 2,846件 全通過) |
+
+新規: `utils/bossEncounter.ts` / `utils/bossPractice.ts` / `utils/practiceGuard.ts` /
+`config/gateBoss.ts` / `data/bossHints.ts` / `components/BossRush.tsx`(+テスト4本)。
+改修: `directorTick`(遭遇の記録) / `gameStore`(BOSS_TEST_RUN・練習の決着) / `useGameLoop`(1体保証) /
+`App`(練習の勝利は進行に触らない) / `bootstrap`(関所の設置) / `ghostOnline`(送信停止) /
+`progress`(遭遇記録のリセット) / `MissionSelect`(入口・前回選択の打ち消し)。
+
 ### 20-9. 社長裁定(確定・v0.25.2854)
 1. **練習の勝利は「討伐記録」(守護霊メニューの図鑑)に残さない。**
    ⇒ 練習ランでは討伐記録の書き込み経路を1つも通さない(§20-6-3 は確定=★未決ではない)。

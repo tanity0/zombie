@@ -88,7 +88,7 @@ const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey
   );
 };
 import {
-  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Sparkles, Ghost
+  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Sparkles, Ghost, Skull
 } from 'lucide-react';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
@@ -139,6 +139,7 @@ import {
 import {
   getBgmVolume, getSfxVolume, isAudioMuted, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene, playSfx
 } from '../audio/audioManager';
+import BossRush from './BossRush'; // BOSS_MAKER.md §20: ボスラッシュ(練習モード)
 
 interface MissionSelectProps {
   onStartGame: (characterClass: string) => void;
@@ -208,6 +209,7 @@ type Screen =
   | { name: 'archive' }
   // BOT_AND_GHOST.md §2.14/§2.16 C: 独立メニュー「守護霊」(名前の決定+討伐の保持記録)。
   | { name: 'ghost' }
+  | { name: 'bossRush' }
   | { name: 'stageSelect' }
   | { name: 'missionDetail'; stageId: string; mission?: SelectedMission }
   | { name: 'characterSelect'; stageId: string; mission?: SelectedMission }
@@ -468,6 +470,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     return () => window.removeEventListener('pointerdown', kick);
   }, []);
   // ステージ選択へ入るたびにクリア状況を読み直す(ゲームから戻った直後の解放を反映)。
+  const goBossRush = () => { playSfx('ui-select'); setScreen({ name: 'bossRush' }); };
   const goStageSelect = () => { playSfx('ui-select'); setCleared(getClearedStages()); setScreen({ name: 'stageSelect' }); };
 
   // --- 開始処理 ---------------------------------------------------------
@@ -489,6 +492,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <Header title="拠点" />
       <div className="p-3 space-y-2">
         <HubButton icon={<Swords size={18} />} label="作戦準備" desc="作戦地域を選ぶ" onClick={goStageSelect} accent delay={0} />
+        {/* BOSS_MAKER.md §20(社長指示「ボスラッシュを正式にメニュー化。作戦室にならぶ形」)。
+            一度戦ったことのあるボスと何度でも練習できる。進行・記録・所持金には一切残らない。 */}
+        <HubButton icon={<Skull size={18} />} label="ボスラッシュ" desc="戦ったボスと練習する" onClick={goBossRush} delay={25} />
         <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン1 / スキル最大${MAX_EQUIPPED_SKILLS}`} onClick={() => setScreen({ name: 'loadout' })} delay={50} />
         <HubButton icon={<ShoppingBag size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={100} />
         <HubButton icon={<BookOpen size={18} />} label="資料室" desc="記録・変異体資料" onClick={goArchive} delay={150} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
@@ -1235,6 +1241,26 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     ? new Date(ghostSyncUpdatedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
     : '未取得';
 
+  // ボスラッシュ(練習モード)。出撃は location 差し替え=ページ再読込(強制出現フラグは
+  // useGameLoop のモジュールロード時定数なので React 遷移では効かない・BOSS_MAKER.md §20-7)。
+  const renderBossRush = () => (
+    <>
+      <Header title="ボスラッシュ" subtitle="練習 / 記録には残りません" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
+      <BossRush
+        clearedSlotKeys={new Set(ghostAlbum.map(card => card.slotKey))}
+        onSortie={(search) => {
+          // ★出撃前に「前回の選択」を打ち消す(BOSS_MAKER.md §20-7-a)。`selectedMission='revisit'`
+          // が端末に残っていると、stage-6 の練習が**洋館再訪ラン**に化ける(内容もクリア処理も別物)。
+          // フリー(周回)フラグも同じ。※ここはまだ練習ランではない(=書き込みが通る)ので、
+          // 練習ラン側の関所(practiceGuard)より先にこちらで寄せておく必要がある。
+          setSelectedMission('main');
+          setSelectedFreeMode(false);
+          window.location.search = search;
+        }}
+      />
+    </>
+  );
+
   const renderGhost = () => (
     <>
       <Header title="守護霊" subtitle="名前・討伐記録" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
@@ -1324,6 +1350,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       {screen.name === 'weaponDev' && renderWeaponDev()}
       {screen.name === 'archive' && renderArchive()}
       {screen.name === 'ghost' && renderGhost()}
+      {screen.name === 'bossRush' && renderBossRush()}
     </Shell>
   );
 };
