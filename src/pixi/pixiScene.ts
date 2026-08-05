@@ -65,6 +65,7 @@ import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
   URI_SCRIPT_ENABLED, SURIEL_SCRIPT_ENABLED, ACRASIEL_SCRIPT_ENABLED,
   ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS,
+  MIGUEL_DASH_MOVE_MS, MIGUEL_DASH_STRIKE_MS, URI_THRUST_MOVE_MS, URI_THRUST_STRIKE_MS,
 } from '../utils/angelBossTick';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -75,6 +76,7 @@ import {
 } from '../utils/supportSniper';
 import type { FlareGunFlare } from '../utils/flareGun';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
+import { swordSwingPose, type SwordSwingStyle } from '../utils/swordSwingMotion';
 import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1の可視化(フルランプ速度線)
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
@@ -1305,7 +1307,7 @@ const URI_SWORD_GRIP_FRAC = { x: 0.50, y: 0.12 };
 const URI_SWORD_TIP_FRAC = { x: 0.50, y: 0.97 };
 const URI_SWORD_INTRINSIC_ANGLE = Math.atan2(URI_SWORD_TIP_FRAC.y - URI_SWORD_GRIP_FRAC.y, URI_SWORD_TIP_FRAC.x - URI_SWORD_GRIP_FRAC.x);
 const URI_SWORD_BLADE_LEN_FRAC = Math.hypot(URI_SWORD_TIP_FRAC.x - URI_SWORD_GRIP_FRAC.x, URI_SWORD_TIP_FRAC.y - URI_SWORD_GRIP_FRAC.y);
-const URI_SWORD_LENGTH = 130; // 表示上の柄→切っ先の長さ(px・叩き台)。大薙ぎ/振り下ろしの判定線に沿わせる。
+const URI_SWORD_LENGTH = 85; // 社長確認「絵が大きすぎる」: 130→85px。判定・射程は変更しない。
 
 // ラフィの薙ぎ(Phase2新規)は既存の骨刃素材(rafi-blade.png)を「振る」用途でも流用する
 // (§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。katanaSlash系のグリップ扱いは新規(叩き台)。
@@ -12349,9 +12351,9 @@ export class PixiScene {
           if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hhw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse);
           else o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
           o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); // 薙ぎの軸(白芯)
-          // 社長指示: 刀を振るモーションの「最初の位置」に最初から構えておく。柄=トールの手元、刃先=薙ぎ
-          // 始めの点(fx,fy)。実行(harai)はこの構えから contact を tx,ty へ動かして薙ぐ=構え→振りが連続。
-          this.drawThorKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
+          // 柄を手元に置き、攻撃方向から140度引いた大薙ぎの開始姿勢へ構える。実行は同じ姿勢から
+          // 200度振り切るため、構え→振り→残心が連続する。
+          this.drawThorKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog, 'wide', 0);
           // §5.25 M24: ダメージ瞬間(windup終わり=sweep開始)の400ms前は鋭いフラッシュへ切替。
           const haraiFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
           if (haraiFlash !== null) view.sprite.tint = haraiFlash;
@@ -12411,9 +12413,9 @@ export class PixiScene {
         ]);
         if (swL) {
           const [sfx, sfy, stx, sty, hw, kind] = swL.d;
-          if (kind === 0) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, sfx, sfy);
-          else if (kind === 1) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true);
-          else this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          if (kind === 0) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, sfx, sfy, 'draw');
+          else if (kind === 1) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, undefined, undefined, 'thrust');
+          else this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         }
       }
     }
@@ -12631,6 +12633,7 @@ export class PixiScene {
       if (bs === 'harai-windup' || bs === 'harai' || bs === 'tate-windup' || bs === 'tate') {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const swingStyle: SwordSwingStyle = bs.startsWith('tate') ? 'overhead' : 'wide';
         if (bs === 'harai-windup' || bs === 'tate-windup') {
           // 放つ前=赤いダメージゾーンの予告。社長指示v0.25.1611「レッドライン=攻撃範囲にする」:
           // 当たり判定は中心線の両側±MIGUEL_HARAI_HALF_WIDTH のカプセルなので、予告も細い線1本ではなく
@@ -12639,24 +12642,31 @@ export class PixiScene {
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, prog, now);
           // 剣を振るモーションの「最初の位置」に最初から構えておく。柄=ミゲルの手元、刃先=薙ぎ始めの点。
           // 武器スプライトはミゲル専用(miguel-sword)。ジブリルは武器の使い方を受領後に別途追加(予告のみ)。
-          if (e.type === 'miguel') this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
+          if (e.type === 'miguel') this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog, swingStyle, 0);
         } else {
           // 払い/縦払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_ACTIVE_MS));
-          if (e.type === 'miguel') this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          if (e.type === 'miguel') this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, swingStyle);
         }
       }
       // ---- ミゲル(§6.28-4・M53新規): 踏み込み(dash)=T1赤ライン+終点リング ----
       else if (scriptActive && e.type === 'miguel' && (bs === 'mdash-windup' || bs === 'mdash-move')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         this.drawAngelDashLine(o, cx, cy, tx, ty, now);
-        if (bs === 'mdash-windup') this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.7);
-        else this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1);
+        const elapsed = gameTime - (e.aiStartedAt ?? gameTime);
+        if (bs === 'mdash-windup' || elapsed < MIGUEL_DASH_MOVE_MS) {
+          this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, bs === 'mdash-windup' ? 0.7 : 1, 'draw', 0);
+        } else {
+          const strikeProg = Math.max(0, Math.min(1, (elapsed - MIGUEL_DASH_MOVE_MS) / MIGUEL_DASH_STRIKE_MS));
+          this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'draw');
+        }
       }
       // ---- ミゲル: 硬直中も武器を消さない(掟W9)。振り切った姿勢のまま静止させる。 ----
       else if (scriptActive && e.type === 'miguel' && (bs === 'tate-recover' || bs === 'mdash-recover')) {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1);
+        const recoverStyle: SwordSwingStyle = bs === 'tate-recover' ? 'overhead' : 'draw';
+        this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1, recoverStyle, 1);
       }
       // ---- ジブリル(§6.28-16 ①): ランタンを常に手元に掲げる(windup/実行/硬直=消さない・掟W9) ----
       else if (e.type === 'jibril' && bs !== undefined && (
@@ -12675,13 +12685,13 @@ export class PixiScene {
         if (bs === 'sweep-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / RAFI_SWEEP_WINDUP_MS_VIS));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
-          this.drawRafiKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog);
+          this.drawRafiKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog, 'wide', 0);
         } else if (bs === 'sweep') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
-          this.drawRafiSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          this.drawRafiSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         } else {
           // 硬直中も武器を消さない(掟W9): 振り切った姿勢のまま静止。
-          this.drawRafiKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1);
+          this.drawRafiKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1, 'wide', 1);
         }
       }
       // ---- ラフィ(§6.28-8 #2・理不尽修正・CLAUDE.md「明確なバグ修正」の例外=?rafiscript=0でも
@@ -12707,12 +12717,12 @@ export class PixiScene {
         if (bs === 'sweep-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_WINDUP_MS_VIS));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog);
+          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog, 'wide', 0);
         } else if (bs === 'sweep') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_ACTIVE_MS));
-          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         } else {
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1); // 硬直中も武器を消さない(掟W9)
+          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1, 'wide', 1); // 硬直中も武器を消さない(掟W9)
         }
       }
       // ---- ウリ: 振り下ろし(縦・内径なし)=T3細帯+大剣。①との対比が読みの本体(§6.28-17) ----
@@ -12722,19 +12732,28 @@ export class PixiScene {
         if (bs === 'downslash-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_DOWNSLASH_WINDUP_MS_VIS));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, prog, now);
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog);
+          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog, 'overhead', 0);
         } else if (bs === 'downslash') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_DOWNSLASH_ACTIVE_MS));
-          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'overhead');
         } else {
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1); // 硬直中も武器を消さない(掟W9)
+          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1, 'overhead', 1); // 硬直中も武器を消さない(掟W9)
         }
       }
       // ---- ウリ: 踏み込み突き(遠帯)=T1赤ライン+大剣。ミゲル踏み込みと同じ意匠(§6.28-17) ----
       else if (scriptActive && e.type === 'uri' && (bs === 'thrust-windup' || bs === 'thrust' || bs === 'thrust-recover')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (bs !== 'thrust-recover') this.drawAngelDashLine(o, cx, cy, tx, ty, now);
-        this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, bs === 'thrust-windup' ? 0.7 : 1);
+        const elapsed = gameTime - (e.aiStartedAt ?? gameTime);
+        if (bs === 'thrust-windup' || (bs === 'thrust' && elapsed < URI_THRUST_MOVE_MS)) {
+          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, bs === 'thrust-windup' ? 0.7 : 1, 'thrust', 0);
+        } else if (bs === 'thrust') {
+          const strikeProg = Math.max(0, Math.min(1, (elapsed - URI_THRUST_MOVE_MS) / URI_THRUST_STRIKE_MS));
+          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'thrust');
+        } else {
+          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1, 'thrust', 1);
+        }
       }
       // ---- スリィエル(§6.28-18・M62新規): 環の射出(移動→T6線→発射)。環そのものはsyncSurielRingが
       // 常時描画するため、ここではビームのテレグラフ(T6)だけを足す。 ----
@@ -16768,19 +16787,19 @@ export class PixiScene {
     } else burst.visible = false;
   }
 
-  // トール/ミゲル(一閃/突き/払い)共通: drawSlashSprite と同じピクセル素材(fx/slash-streak-*,
+  // トール/ミゲル/ウリ/ラフィの剣・刃攻撃共通: drawSlashSprite と同じピクセル素材(fx/slash-streak-*,
   // fx/slash-burst-*)を、プレイヤーの斬撃のような固定斜め向きではなく、実際の当たり判定ライン
   // (fx,fy→tx,ty・半幅halfWidth)に合わせて回転・伸縮して表示する(社長指示: 一閃/突き/払いを
   // 斬撃ピクセルで当たり判定どおりにモーション)。ボス種ごとの差分(FXマップ/剣テクスチャ/柄フラク
   // 座標/柄→切っ先角度・長さ比・表示長)をパラメータ化し、drawThorSlash/drawMiguelSlash から呼ぶ
   // (§5.21-追補8: 剣の見た目だけ差し替えたいのでヘルパーを共通化・専用関数の重複を避ける)。
-  // t: 0(このステートの開始)→1(終了)の進行度。0-0.5でstreakが伸びる(溜め=予告)、0.5-1で縮む(実行=フェード)。
+  // t: 0(実行開始)→1(終了)の進行度。streakの伸縮と同時に、剣は技別の大きな弧を最後まで振り切る。
   // burst=trueの間だけ命中点(tx,ty)にバーストがポップ(実行中の手応え。溜め中は出さない)。
   private drawKatanaSlash(
     fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
     bladeLenFrac: number, katanaLength: number, katanaTexName: string,
     id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean,
-    showKatana = false, pivotX?: number, pivotY?: number
+    showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide'
   ) {
     let c = fxMap.get(id);
     if (!c) {
@@ -16832,22 +16851,17 @@ export class PixiScene {
       const kref = getTexture(katanaTexName);
       if (kref) {
         if (katana.texture !== kref) katana.texture = kref;
+        const pose = swordSwingPose(style, tt);
         const kscale = katanaLength / (bladeLenFrac * Math.max(1, kref.width));
-        katana.scale.set(kscale);
-        if (pivotX !== undefined && pivotY !== undefined) {
-          // 社長指示: 横払いは「本体を軸に刀を振る」。柄を本体の手元(pivot)へ固定し、刃先を
-          // 判定ライン上の現在位置(fx,fy→tx,ty を tt で補間)へ向ける=斬撃アニメと同期して薙ぐ。
-          const contactX = fx + (tx - fx) * tt;
-          const contactY = fy + (ty - fy) * tt;
-          // pivot と contact がほぼ一致する初期フレーム(一閃=pivotが始点)は角度が不定になるので、
-          // その時はライン方向(angle)へフォールバックして向きの暴れを防ぐ。
-          const pdx = contactX - pivotX, pdy = contactY - pivotY;
-          katana.rotation = (Math.hypot(pdx, pdy) < 1 ? angle : Math.atan2(pdy, pdx)) - intrinsicAngle;
-          katana.position.set(pivotX, pivotY);
-        } else {
-          katana.rotation = angle - intrinsicAngle;
-          katana.position.set(fx, fy);
-        }
+        katana.scale.set(kscale * pose.scaleMult);
+        // 旧方式は「判定線上の接触点へ剣先を向ける」だけで回転角が小さく、剣を運んでいるように
+        // 見えていた。柄は手元に固定し、攻撃方向を基準に160〜200度を明確に振り切る。
+        // 突きだけは角度を固定して、柄を後ろから前へ50px押し出す。
+        const ux = length > 0 ? (tx - fx) / length : Math.cos(angle);
+        const uy = length > 0 ? (ty - fy) / length : Math.sin(angle);
+        const px = pivotX ?? fx, py = pivotY ?? fy;
+        katana.rotation = angle + pose.angleOffset - intrinsicAngle;
+        katana.position.set(px + ux * pose.pushPx, py + uy * pose.pushPx);
         katana.alpha = streak.alpha;
         katana.visible = katana.alpha > 0.01;
       } else katana.visible = false;
@@ -16856,18 +16870,18 @@ export class PixiScene {
     }
   }
 
-  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
     this.drawKatanaSlash(
       this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE, THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style
     );
   }
 
   // ミゲル(ゲート2ボス)の横払い(狭)実行時の描画。drawThorSlashと同じ仕組みをmiguel-swordで流用。
-  private drawMiguelSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+  private drawMiguelSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
     this.drawKatanaSlash(
       this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE, MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style
     );
   }
 
@@ -16956,7 +16970,8 @@ export class PixiScene {
   private drawKatanaReady(
     fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
     bladeLenFrac: number, katanaLength: number, katanaTexName: string,
-    id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number
+    id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0
   ) {
     let c = fxMap.get(id);
     if (!c) {
@@ -16977,56 +16992,58 @@ export class PixiScene {
     streak.visible = false;
     burstSp.visible = false;
     const kscale = katanaLength / (bladeLenFrac * Math.max(1, kref.width));
-    katana.scale.set(kscale);
-    katana.rotation = Math.atan2(aimY - pivotY, aimX - pivotX) - intrinsicAngle;
-    katana.position.set(pivotX, pivotY);
+    const baseAngle = Math.atan2(aimY - pivotY, aimX - pivotX);
+    const pose = swordSwingPose(style, poseProgress);
+    katana.scale.set(kscale * pose.scaleMult);
+    katana.rotation = baseAngle + pose.angleOffset - intrinsicAngle;
+    katana.position.set(pivotX + Math.cos(baseAngle) * pose.pushPx, pivotY + Math.sin(baseAngle) * pose.pushPx);
     katana.tint = 0xffffff;
     katana.alpha = alpha;
     katana.visible = true;
   }
 
-  private drawThorKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+  private drawThorKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number, style: SwordSwingStyle = 'wide', poseProgress = 0) {
     this.drawKatanaReady(
       this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE, THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-      id, pivotX, pivotY, aimX, aimY, alpha
+      id, pivotX, pivotY, aimX, aimY, alpha, style, poseProgress
     );
   }
 
   // ミゲル(ゲート2ボス)の横払い(狭)溜め時の「構え」描画。drawThorKatanaReadyと同じ仕組みをmiguel-swordで流用。
-  private drawMiguelKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+  private drawMiguelKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number, style: SwordSwingStyle = 'wide', poseProgress = 0) {
     this.drawKatanaReady(
       this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE, MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-      id, pivotX, pivotY, aimX, aimY, alpha
+      id, pivotX, pivotY, aimX, aimY, alpha, style, poseProgress
     );
   }
 
   // PACING_PUZZLE.md §6.28-16(バッチM61): ウリの大薙ぎ/振り下ろし/踏み込み突き、実行時の描画。
   // drawMiguelSlashと全く同じ仕組みをuri-swordで流用(掟W9=構え+実行の両方に武器絵を出す)。
-  private drawUriSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+  private drawUriSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
     this.drawKatanaSlash(
       this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE, URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style
     );
   }
-  private drawUriKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+  private drawUriKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number, style: SwordSwingStyle = 'wide', poseProgress = 0) {
     this.drawKatanaReady(
       this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE, URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-      id, pivotX, pivotY, aimX, aimY, alpha
+      id, pivotX, pivotY, aimX, aimY, alpha, style, poseProgress
     );
   }
 
   // §6.28-16(バッチM57): ラフィの薙ぎ(Phase2新規)実行時の描画。骨刃(rafi-blade)を「振る」用途で
   // 流用(§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。
-  private drawRafiSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+  private drawRafiSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
     this.drawKatanaSlash(
       this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE, RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
-      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style
     );
   }
-  private drawRafiKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+  private drawRafiKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number, style: SwordSwingStyle = 'wide', poseProgress = 0) {
     this.drawKatanaReady(
       this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE, RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
-      id, pivotX, pivotY, aimX, aimY, alpha
+      id, pivotX, pivotY, aimX, aimY, alpha, style, poseProgress
     );
   }
 
