@@ -26,6 +26,7 @@ import { getEventQuestConfig } from './utils/eventQuest';
 import { getStage } from './data/campaign';
 import { isPixiRenderer } from './config/renderer';
 import { isPracticeRun } from './utils/bossPractice';
+import PracticeResult from './components/PracticeResult';
 
 const LOADING_MIN_MS = 650;
 
@@ -250,6 +251,13 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     setGameState('playing');
   };
 
+  // 練習リザルトの「ボスを選ぶ」の戻り先(v0.25.2861)。`?screen=<名前>` があればタイトルを飛ばして
+  // メニューを開き、その画面から始める。素材ロードは出撃時の `startGame` が待つので先回り不要。
+  const initialMenuScreen = new URLSearchParams(window.location.search).get('screen');
+  useEffect(() => {
+    if (initialMenuScreen) setGameState('menu');
+  }, [initialMenuScreen]);
+
   // テスト用クイックスタート(§6-追補・M25)。`?smoke`があればタイトル/メニューを全スキップし
   // 直接startGameへ入る。完全にopt-in(無指定時は今まで通り)=描画スモークをヘッドレスで1コマンド到達可能に。
   useEffect(() => {
@@ -379,6 +387,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
 
       {!bare && gameState === 'menu' && (
         <MissionSelect
+          initialScreen={initialMenuScreen}
           onStartGame={(characterClass) => startGame(characterClass, false)}
           onStartBenchmark={(characterClass) => startGame(characterClass, true)}
         />
@@ -407,7 +416,14 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
         />
       )}
 
-      {!bare && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
+      {/* 練習(ボスラッシュ)は専用の簡素なリザルト(社長指摘v0.25.2861「表示紛らわしい」)。
+          既存のリザルトは報酬・ハイスコア・記録が並ぶが、練習ではそれらを全て封じてあるので
+          **実際には何も増えていない**のに増えたように読めてしまう。 */}
+      {!bare && isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
+        <PracticeResult won={gameState === 'victory'} />
+      )}
+
+      {!bare && !isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
         <GameOverScreen
           won={gameState === 'victory'}
           withdraw={gameState === 'returned'}

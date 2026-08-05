@@ -142,6 +142,8 @@ import {
 import BossRush from './BossRush'; // BOSS_MAKER.md §20: ボスラッシュ(練習モード)
 
 interface MissionSelectProps {
+  /** 開いた直後に表示する画面(`?screen=bossrush` 等)。未指定なら拠点。v0.25.2861。 */
+  initialScreen?: string | null;
   onStartGame: (characterClass: string) => void;
   onStartBenchmark: (characterClass: string) => void;
 }
@@ -346,8 +348,8 @@ const CharSelectParticles: React.FC = () => {
   );
 };
 
-const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark }) => {
-  const [screen, setScreen] = useState<Screen>({ name: 'home' });
+const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen }) => {
+  const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
   // 出撃素材の先読み(社長報告v0.25.2230「ステージ開始時に10秒くらい固まる」)。ミッション詳細/キャラ選択に
   // 入った時点で、そのステージのテクスチャをバックグラウンドで取り始める。滞在中(ブリーフィングを読む・
   // キャラを選ぶ)に落とし終えれば出撃時の待ちがほぼ消える。キャッシュ済みなら即解決=無害。
@@ -1650,7 +1652,7 @@ const DevTools: React.FC<{
 
       {/* ステージ進行(導線テスト用) */}
       <div className="flex gap-2">
-        <button type="button" onClick={() => { unlockAllStages(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">全ステージ解放</button>
+        <button type="button" onClick={() => { unlockAllStages(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">全ステージ+ボス解放</button>
         <button type="button" onClick={() => { resetProgress(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">進行リセット</button>
       </div>
       {/* ガチャだけ初手へ戻す(進行リセットはガチャ状態を消さないので別ボタン)。

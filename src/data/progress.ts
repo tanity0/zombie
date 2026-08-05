@@ -4,7 +4,7 @@
 
 import { STAGES, getStage, type Stage } from './campaign';
 import { getEventQuestConfig } from '../utils/eventQuest';
-import { clearBossEncounters } from '../utils/bossEncounter';
+import { clearBossEncounters, unlockAllBossEncounters } from '../utils/bossEncounter';
 
 const CLEARED_KEY = 'zombie.progress.cleared';
 const SELECTED_KEY = 'zombie.progress.selectedStage';
@@ -703,7 +703,12 @@ export const recordChronicleGlobalFirst = (
 };
 
 // 開発用: 全ステージ解放 / 進行リセット。
-export const unlockAllStages = (): void => writeSet(new Set(STAGES.map(s => s.id)));
+// 開発用の全開放。社長指示v0.25.2861「ボスモード全開放も、ステージ解放と一緒にしちゃっていい」
+// ⇒ ボスラッシュ(練習モード)の解放もここに相乗りさせる。導線テストを1ボタンで整えるため。
+export const unlockAllStages = (): void => {
+  writeSet(new Set(STAGES.map(s => s.id)));
+  unlockAllBossEncounters();
+};
 export const resetProgress = (): void => {
   writeSet(new Set());
   writeMissionSet(new Set()); // M42のミッション単位クリア集合も進行リセットで消す(開発用)

@@ -13,7 +13,7 @@
 //
 // キーは `GHOST_DOSSIER_SLOTS.slotKey` / `bossStyleSlotKey()` と**同一形式**(城ボスは
 // `giantbat@stage-3` のようにステージ別、それ以外は型名そのもの)。
-import { isBossTestOrPracticeRun } from './bossPractice';
+import { isBossTestOrPracticeRun, PRACTICE_SLOTS } from './bossPractice';
 
 const KEY = 'boss.encountered.v1';
 
@@ -63,4 +63,16 @@ export const resetBossEncounterCache = (): void => { cache = null; };
 export const clearBossEncounters = (): void => {
   cache = new Set();
   try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+};
+
+/**
+ * 全ボスを遭遇済みにする(開発用)。社長指示v0.25.2861「オプションでボスモード全開放。
+ * ステージ解放と一緒にしちゃっていい」⇒ `unlockAllStages()` から呼ばれる。
+ * ★本編でまだ置かれていない3体(§20-10)も含めて開ける=**導線テストのための開放**なので、
+ *   「会えるかどうか」ではなく**台帳の全部**を入れる。
+ */
+export const unlockAllBossEncounters = (): void => {
+  const set = read();
+  for (const slot of PRACTICE_SLOTS) set.add(slot.slotKey);
+  try { localStorage.setItem(KEY, JSON.stringify([...set])); } catch { /* ignore */ }
 };

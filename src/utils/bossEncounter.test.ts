@@ -14,8 +14,9 @@ const store = new Map<string, string>();
 
 const {
   markBossesEncountered, hasEncounteredBoss, loadEncounteredBosses,
-  resetBossEncounterCache, clearBossEncounters,
+  resetBossEncounterCache, clearBossEncounters, unlockAllBossEncounters,
 } = await import('./bossEncounter');
+const { PRACTICE_SLOTS } = await import('./bossPractice');
 
 beforeEach(() => { store.clear(); resetBossEncounterCache(); });
 
@@ -58,5 +59,18 @@ describe('ボスの遭遇記録', () => {
     store.set('boss.encountered.v1', '{ not json');
     resetBossEncounterCache();
     expect(loadEncounteredBosses().size).toBe(0);
+  });
+});
+
+describe('全開放(開発用・オプションの「全ステージ+ボス解放」から)', () => {
+  // 社長指示v0.25.2861「ステージ解放と一緒にしちゃっていい」。導線テスト用なので、
+  // 本編でまだ置かれていない3体(BOSS_MAKER.md §20-10)も含めて**台帳の全部**を開ける。
+  it('台帳の全ボスが遭遇済みになる', () => {
+    unlockAllBossEncounters();
+    resetBossEncounterCache();
+    for (const slot of PRACTICE_SLOTS) {
+      expect(hasEncounteredBoss(slot.slotKey), slot.slotKey).toBe(true);
+    }
+    expect(loadEncounteredBosses().size).toBe(PRACTICE_SLOTS.length);
   });
 });
