@@ -14,7 +14,6 @@ const jumpingGiantAt = (x: number, y: number, landX: number, landY: number): Ene
   boss.aiTargetX = landX; boss.aiTargetY = landY;
   boss.gJumpRadius = GIANT_JUMP_RADIUS;
   boss.health = boss.maxHealth; // 反撃で倒れない
-  boss.bossCritCount = 0;
   return boss;
 };
 
@@ -53,14 +52,14 @@ describe('プレイヤーの空中パリィ: 着地円の中でだけ成立す�
     return useGameStore.getState().enemies.find(e => e.id === boss.id);
   };
 
-  it('着地点が自分の真上=円の中 → パリィ成立(確定クリ=bossCritCountが増える)', () => {
+  it('着地点が自分の真上=円の中 → パリィ成立(体勢を20%削る)', () => {
     const after = setup(0);
-    expect(after?.bossCritCount).toBe(1);
+    expect(after?.bossPosture).toBe(64);
   });
 
   it('着地点が遠く=円の外 → 体が重なっていてもパリィしない(赤くないのに弾ける、を潰す)', () => {
     const after = setup(1200);
-    expect(after?.bossCritCount ?? 0).toBe(0);
+    expect(after?.bossPosture).toBeUndefined();
     // 空中の相手からは被弾しない(この不変条件は据え置き=分岐①のreturnは変えていない)。
     expect(useGameStore.getState().player.health).toBe(useGameStore.getState().player.maxHealth);
   });

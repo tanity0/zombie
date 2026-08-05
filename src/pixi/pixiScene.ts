@@ -91,6 +91,7 @@ import { isMarkedBoss, isEngagedBoss, bossMarkFor, type MarkBox } from '../utils
 import {
   bossEngagementDistancePx, isEngageableBoss,
 } from '../utils/bossEngagement';
+import { bossPostureMax, bossPostureNow, isBossPostureBroken } from '../utils/bossPosture';
 import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
 import {
   HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
@@ -13413,7 +13414,7 @@ export class PixiScene {
     // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
     // なので従来どおりアクターの位置フェード(artFade)に従う。
     const ov = view.overlay;
-    this.drawHealthBar(ov, e, now);
+    this.drawHealthBar(ov, e, now, gameTime);
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(ov, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
     }
@@ -13461,8 +13462,11 @@ export class PixiScene {
     view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
   }
 
-  private drawHealthBar(g: Graphics, e: Enemy, now: number) {
-    if (e.health >= e.maxHealth) return;
+  private drawHealthBar(g: Graphics, e: Enemy, now: number, gameTime: number) {
+    const postureBoss = isEngageableBoss(e.type);
+    const postureMax = postureBoss ? bossPostureMax(e.type) : 0;
+    const posture = postureBoss ? bossPostureNow(e) : postureMax;
+    if (e.health >= e.maxHealth && (!postureBoss || posture >= postureMax)) return;
     const w = e.width;
     const h = 3;
     const x = e.x;
@@ -13500,6 +13504,20 @@ export class PixiScene {
       }
     }
     g.rect(x, y, w * pct, h).fill({ color: barColor });
+    // 体勢崩し中に取り切れる最大HP25%ぶんを、現在HPの内側へ紫の報酬領域として重ねる。
+    if (isBossPostureBroken(e, gameTime) && (e.bossBreakRewardRemaining ?? 0) > 0) {
+      const rewardFrac = Math.min(pct, (e.bossBreakRewardRemaining ?? 0) / e.maxHealth);
+      g.rect(x + w * (pct - rewardFrac), y, w * rewardFrac, h).fill({ color: 0xa855f7, alpha: 0.95 });
+    }
+    if (postureBoss) {
+      const py = y - 4;
+      const posturePct = postureMax > 0 ? posture / postureMax : 0;
+      g.rect(x, py, w, 2).fill({ color: 0x09090b, alpha: BAR_BG_ALPHA });
+      g.rect(x, py, w * posturePct, 2).fill({ color: isBossPostureBroken(e, gameTime) ? 0xd8b4fe : 0xf59e0b, alpha: 0.95 });
+      for (const mark of [0.25, 0.5, 0.75]) {
+        g.rect(x + w * mark, py, 1, 2).fill({ color: 0xfef3c7, alpha: 0.7 });
+      }
+    }
   }
 
   // §6.28共通(T3): 角ばった四角ゾーン(fx,fy)→(tx,ty)・半幅halfWidth。既存のトール/ミゲル/ジャイアント

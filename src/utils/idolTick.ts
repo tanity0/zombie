@@ -286,7 +286,7 @@ export const runIdolTick = (
         counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
       } }));
       const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT);
-      useGameStore.getState().damageEnemy(idol.id, dmg, false, true);
+      useGameStore.getState().damageEnemy(idol.id, dmg, false, true, false, 'other', 'player', 'counter');
       useGameStore.getState().spawnDamageNumber(icx, idol.y, dmg, true);
       sfx.reward();
       useGameStore.getState().spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);

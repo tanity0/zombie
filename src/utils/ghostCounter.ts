@@ -234,7 +234,7 @@ export const applyGhostCounterEffect = (
     }));
   }
   // 確定クリ(crit=true → bumpBossCrit)+金クリ層
-  st.damageEnemy(boss.id, fire.claim.dmg, false, true);
+  st.damageEnemy(boss.id, fire.claim.dmg, false, true, false, null, 'ghost', 'counter');
   st.spawnDamageNumber(bcx, boss.y, fire.claim.dmg, true);
   if (playSfxGain && fire.sfxGain > 0) playSfxGain('headshot', fire.sfxGain);
   st.spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);

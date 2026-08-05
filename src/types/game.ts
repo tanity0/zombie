@@ -574,9 +574,16 @@ export interface Enemy {
   eggBurstCount?: number;
   // 叫喚型(screamer): 次に叫喚(溜め開始)する gameTime(ms)。初回=出現3秒後、以降10秒間隔。
   screamNextAt?: number;
-  // 裏ボス専用: 被弾したクリティカルの累積回数。規定回数で「完全気絶(紫)」に移行しリセット。
+  // ボス共通の体勢値。未設定時はボス種別ごとの最大値として扱う。
+  bossPosture?: number;
+  bossPostureRecoveryCap?: number;
+  bossPostureLastDamageAt?: number;
+  bossPostureLockUntil?: number;
+  bossBreakRewardRemaining?: number;
+  bossBreakRewardMax?: number;
+  /** @deprecated v0.25.2867以降は体勢値を使用。旧保存データ読込専用。 */
   bossCritCount?: number;
-  // 裏ボス専用: 完全気絶(通常敵の気絶相当)の終了 gameTime(ms)。この間は攻撃でも起きず近接フィニッシュし放題。
+  // 体勢崩し(紫)の終了 gameTime(ms)。
   bossFullStunUntil?: number;
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
   homeX?: number;

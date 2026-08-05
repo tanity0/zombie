@@ -300,7 +300,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   } }));
   const counterBase = getActiveGun(cp)?.damage ?? 12;
   const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
-  useGameStore.getState().damageEnemy(boss.id, dmg, false, true);
+  useGameStore.getState().damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter');
   useGameStore.getState().spawnDamageNumber(bcx, boss.y, dmg, true);
   sfx.reward();
   useGameStore.getState().spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);

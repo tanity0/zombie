@@ -302,6 +302,7 @@ import {
 import {
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss,
 } from '../utils/bossEngagement';
+import { isBossPostureBroken } from '../utils/bossPosture';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
@@ -4613,7 +4614,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
                 // 社長指示: トールのカウンターは必ずクリティカル扱いにする(裏ボス完全気絶=bumpBossCritの
                 // カウントに乗せる。他の裏ボス共通のパリィ演出は非crit踏襲のままここだけ変更)。
-                damageEnemy(boss.id, dmg, false, true);
+                damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter');
                 spawnDamageNumber(bcx, boss.y, dmg, true);
                 playSfx('headshot');
                 // 社長指示: 「これは普通のクリティカルです」= 通常のクリ演出(金の衝撃波+火花+発光。
@@ -4673,7 +4674,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
-                damageEnemy(boss.id, dmg, false, true);
+                damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter');
                 spawnDamageNumber(bcx, boss.y, dmg, true);
                 playSfx('headshot');
                 spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
@@ -8945,7 +8946,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const shotOwner = ghostShotBuild
             ? (ghostAllyForShot ? ghostActorPlayer(ghostShotBuild, ghostAllyForShot) : ghostShotBuild.player)
             : skillPlayer;
-          const critMult = hitCrit
+          const directPlayerGun = !isGhostShot && !isEscortShot && isDirectGunWeaponKey(projectile?.weaponKey);
+          const brokenDirectGun = directPlayerGun && !!enemyForFx && isBossPostureBroken(enemyForFx, gameTime);
+          const critMult = hitCrit && !brokenDirectGun
             ? (isAllyOwnedShot
                 ? (isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT)
                 : skillCritMult(shotOwner, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT))
@@ -8969,7 +8972,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ('ghost-reflect'・v0.25.2525)だけヘイトの起因を'ghost'にする(escort等それ以外は既定
           // 'player'=「1つの財布」の側という扱い・本バッチのスコープ外)。
           const hateShotSource: HateSide = isGhostShot ? 'ghost' : 'player';
-          const enemyKilled = damageEnemy(enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource);
+          const enemyKilled = damageEnemy(
+            enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource,
+            directPlayerGun && hitCrit ? 'gun-crit' : null,
+          );
           // 護衛NPC/守護霊(ghost-gun・v0.25.2525で反射弾'ghost-reflect'も)の弾の被弾音も、発砲音と
           // 同じ距離減衰をかける(遠い味方の攻撃は被弾音も小さく/画面外は無音)。プレイヤー自身の弾は等倍(gain=1)。
           let hitSfxGain = 1;
@@ -9660,8 +9666,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const bdmg = Math.max(1, Math.round(meleeDmg * BOSS_MELEE_STUN_MULT));
                   // §5.21-追補4: フィニッシュ相当ダメージなのでviaMeleeFinish=true(finishKillOnlyボスの
                   // 通常許容と同じ。nonLethalBoss=trueで即死自体は元々しない)。
-                  useGameStore.getState().damageEnemy(tgt.id, bdmg, true, false, true, wireChannel, wireHate); // ボス非致死
-                  spawnDamageNumber(tcx, tgt.y, bdmg, true);
+                  const postureFatal = wireHate === 'player' && isBossPostureBroken(tgt, gameTime);
+                  const wireHitDamage = postureFatal ? meleeDmg : bdmg;
+                  useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, true, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null); // ボス非致死
+                  spawnDamageNumber(tcx, tgt.y, wireHitDamage, true);
                 } else {
                   useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1, false, false, true, wireChannel, wireHate); // 即死フィニッシュ
                 }

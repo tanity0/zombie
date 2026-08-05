@@ -162,6 +162,10 @@ import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss,
   BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
 } from '../utils/bossEngagement';
+import {
+  applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal, isBossPostureBroken,
+  tickBossPosture, type BossPostureImpact,
+} from '../utils/bossPosture';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
@@ -786,30 +790,9 @@ export const CRIT_DAMAGE_MULT = 1.5;
 // boss deals 5× melee damage (and shakes off the stun) instead of an instakill.
 export const BOSS_CRIT_DAMAGE_MULT = 5;
 export const BOSS_MELEE_STUN_MULT = 5;
-// 裏ボス(mimir/jormungand/skadi)専用: クリティカルを規定回数当てると「完全気絶(紫)」に移行。
-// 通常敵の気絶相当で、この間は攻撃を受けても起きず(stun 維持)、5× 近接をタイマー切れまで“し放題”。
-export const BOSS_FULLSTUN_CRITS = 5;    // 完全気絶に必要なクリ回数(社長指示)
-export const BOSS_FULLSTUN_MS = 3000;    // 完全気絶の持続(社長裁定v0.25.2491「紫気絶は3秒で」。旧5000)
 // v0.25.2490(社長裁定・雑魚ヘイト): ゴースト起因ダメージを受けた雑魚がゴーストへ向く時間(gameTime ms)。
 // 被弾のたびに更新。切れる/ゴースト消滅でプレイヤー狙いへ戻る(resolveEnemyTarget側)。実機調整前提の叩き台。
 export const GHOST_MOB_HATE_MS = 5000;
-// クリが裏ボスに入ったときのカウント更新。規定回数で完全気絶を発動。返り値=マージするEnemy差分＋発動フラグ。
-export const bumpBossCrit = (
-  enemy: Enemy,
-  gameTime: number
-): { patch: Partial<Enemy>; triggered: boolean } | null => {
-  // 社長指示v0.25.2422「5回痺れで紫痺れも共通で」: 裏ボス限定だった完全気絶を**全ボス共通**へ。
-  // これで「1クリ=半減 / 5クリ=紫の完全気絶(フィニッシュ受付)」がボス種別を問わず同じ作法になる。
-  if (!isBossType(enemy.type)) return null;
-  // すでに完全気絶中はカウントしない(気絶を延長/短縮しない)。
-  if (enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil) return null;
-  const c = (enemy.bossCritCount ?? 0) + 1;
-  if (c >= BOSS_FULLSTUN_CRITS) {
-    const until = gameTime + BOSS_FULLSTUN_MS;
-    return { patch: { bossCritCount: 0, bossFullStunUntil: until, stunUntil: until }, triggered: true };
-  }
-  return { patch: { bossCritCount: c }, triggered: false };
-};
 /**
  * v0.25.2607(社長裁定): その敵をノックバックで押してよいか。
  * **ボスは通常の殴り/弾では押されない。押し道具(鞭・シールドバッシュ)を当てた時だけ押される。**
@@ -2769,6 +2752,23 @@ const applyMeleeFinishSkillSpread = (
   }
 };
 
+// 体勢崩しへの致命は即死判定ではないが、手応えは既存KILLフィニッシュと完全に揃える。
+const showBossFatalPresentation = (get: () => GameState, x: number, y: number, labelY: number) => {
+  get().spawnBurst(x, y, '#dc2626', 30, 0, -1);
+  get().spawnBurst(x, y, '#7f1d1d', 14, 0, -1);
+  setTimeout(() => {
+    get().spawnBlood(x, y, -Math.PI / 2 - 0.16, 260);
+    get().spawnBlood(x, y, -Math.PI / 2 + 0.16, 260);
+  }, MELEE_FINISH_ZOOM_MS - MELEE_FINISH_ZOOM_HOLD_MS);
+  get().spawnRing(x, y, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
+  get().spawnRing(x, y, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
+  get().spawnRing(x, y, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
+  get().spawnGlow(x, y, GLOW_R_S, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS);
+  get().spawnCallout(x, labelY, 'Kill!', '#ffe4e6', {
+    bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS,
+  });
+};
+
 // スキル: カウンターマスター = カウンター成立スイングで、プレイヤー近傍(~MELEE_RADIUS*1.5)の敵を
 // 2× KNOCKBACK_SPEED で弾く。近傍だけ走査(有界)。
 const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, kbScale = 2) => {
@@ -3601,7 +3601,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide) => boolean; // nonLethalBoss=爆発系: ボス系にトドメを刺さない / crit=裏ボスの完全気絶カウント用 / viaMeleeFinish=近接フィニッシュ経由(§5.21-追補4 finishKillOnlyのトドメを許可) / damageChannel=§6.21 M46計測用(既定'other'。gun系projectile命中経路のみ'gun'を渡す。プレイヤー起因でない場合はnull) / hateSource=§2.8 G2.5ヘイト計測用(既定'player'。ゴースト起因のダメージだけ'ghost'を渡す)
+  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null) => boolean;
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -5052,6 +5052,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const survivors: Enemy[] = [];
     const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const bossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 近接クリで完全気絶が発動した位置(紫FX用)
+    const bossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const meleeHitEnemyIds: string[] = []; // スキル 救難信号: このスイングでヒットした敵ID(発動判定/対象選定用)
@@ -5200,7 +5201,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         bossFinishHit = true;
-        const dmg = stunnedHit.dmg;
+        const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeDamage, gameTime) : null;
+        const dmg = fatal?.damage ?? stunnedHit.dmg;
+        if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
         // そのもの(finisher:trueの即時処刑に相当)なのでfinishKillOnlyでも clamp しない。
@@ -5214,6 +5217,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             stunUntil: stunnedHit.kind === 'boss' && stunnedHit.keepStun ? enemy.stunUntil : undefined,
             lastHit: now,
             liftUntil: now + MELEE_STUN_LIFT_MS,
+            ...(fatal?.patch ?? {}),
           });
         }
         continue;
@@ -5238,7 +5242,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // GAME_AUDIT #17(社長承認): プレイヤーが直接出したクリはすべて裏ボスの完全気絶カウントに
       // 乗せる(銃と同じbumpBossCrit=挙動統一)。裏ボス以外はnullで素通り。
-      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
+      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime);
       if (bossBump?.triggered) bossFullStunHits.push({ x: ecx, y: ecy });
       // 社長指示: 近接クリでも銃・刀と同じくスタンさせる(倒せなかった時のみ=フィニッシュ受付の入口)。
       // 気絶時間アップ(パッシブ)も銃と同じくstunDurationMultを掛ける。
@@ -5432,7 +5436,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
-      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
+      get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
+    for (const p of bossFatalHits) {
+      showBossFatalPresentation(get, p.x, p.y, p.labelY);
     }
 
     // Per-kill rewards. Finishers grant bonus XP + gold VFX. EVERY melee kill
@@ -5440,7 +5447,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // main way to scavenge rounds, but you have to walk over the drop.
     grantMeleeKillRewards(get, killed, player, gun);
     if (finisherHit || bossFinishHit) {
-      const [ztx, zty] = finishZoomTargetOf(killed);
+      const [ztx, zty] = bossFatalHits[0]
+        ? [bossFatalHits[0].x, bossFatalHits[0].y]
+        : finishZoomTargetOf(killed);
       // M21(§5.22): フル演出(CD明け)の時だけ武器固有の黄フラッシュを重ねる。CD内は
       // triggerFinishImpact自身が出す最低保証フラッシュ(軽い白)だけになる=二重フラッシュを避ける。
       const fullCinematic = get().triggerFinishImpact(ztx, zty);
@@ -5523,7 +5532,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const cloneHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): このストライクでヒットした敵ID
-    const cloneBossFullStunHits: { x: number; y: number }[] = []; // CRIT-UNIFY §9.4: 分身のクリで完全気絶が発動した位置(紫FX用・現行漏れの解消)
     const cloneDealt = new Map<string, number>(); // 敵ID→この一撃で入れた生ダメージ(守護霊のヘイト計上用)
     let bossFinishHit = false;
 
@@ -5540,7 +5548,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (walls.length > 0 && segmentBlocked(ccx, ccy, ecx, ecy, walls)) { survivors.push(enemy); continue; }
       slashAt.push({ x: ecx, y: ecy });
       cloneHitEnemyIds.push(enemy.id); // スキル 救難信号(§6.10 M33⑦): 分身のヒット敵ID(発動判定/対象選定用)
-      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
+      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil
+        && !isBossPostureBroken(enemy, gameTime);
       if (stunned) {
         if (isBossType(enemy.type)) {
           bossFinishHit = true;
@@ -5576,8 +5585,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (nh <= 0) { killed.push({ enemy, finisher: false }); continue; }
       if (crit) critStunAt.push({ x: ecx, y: ecy });
       // CRIT-UNIFY §9.4(現行漏れの解消): 分身のクリも銃/ナイフ/刀と同じく裏ボスの完全気絶カウントに乗せる。
-      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
-      if (bossBump?.triggered) cloneBossFullStunHits.push({ x: ecx, y: ecy });
       const bossSlow = crit ? bossCritSlowPatch(enemy, gameTime) : null; // ボスは半減(v0.25.2422)
       const stunUntil = (crit && !bossSlow) ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
@@ -5589,10 +5596,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: (dx / norm) * speed, knockbackVy: (dy / norm) * speed,
           knockbackUntil: now + KNOCKBACK_DURATION, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
-          ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
         });
       } else {
-        survivors.push({ ...enemy, health: nh, lastHit: now, stunUntil, knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + 100, ...(bossSlow ?? {}), ...(bossBump?.patch ?? {}) });
+        survivors.push({ ...enemy, health: nh, lastHit: now, stunUntil, knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + 100, ...(bossSlow ?? {}) });
       }
     }
 
@@ -5645,12 +5651,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     // CRIT-UNIFY §9.4: 分身のクリで完全気絶が発動したら他の近接経路と同じ紫FX+STUN!コールアウト。
-    for (const p of cloneBossFullStunHits) {
-      get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
-      get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
-      get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
-      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
-    }
     grantMeleeKillRewards(get, killed, player, gun);
     get().spawnSlash(ccx, ccy, 'rgba(226,232,240,0.95)');
     get().spawnRing(ccx, ccy, 6, 40, 'rgba(203,213,225,0.7)', 3, 240);
@@ -5952,6 +5952,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slashAt: { x: number; y: number }[] = [];
     const critStunAt: { x: number; y: number }[] = [];
     const katanaBossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 刀クリで完全気絶が発動した位置
+    const katanaBossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const katanaHitEnemyIds: string[] = []; // スキル 救難信号: 一閃(allowFinisher時)でヒットした敵ID(発動判定/対象選定用)
 
     for (const enemy of enemies) {
@@ -5965,7 +5966,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ecy = enemy.y + enemy.height / 2;
       slashAt.push({ x: ecx, y: ecy });
       katanaHitEnemyIds.push(enemy.id);
-      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
+      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil
+        && !(isGhost && isBossPostureBroken(enemy, gameTime));
       // 近接フィニッシュ(スタン敵の即時処刑/ボス5×)は一閃ダッシュのみ。
       // オート斬撃(allowFinisher=false)はスタン敵にも通常ダメージだけ与え、
       // スタンは消さない(一閃で仕留める余地を残す)。
@@ -5973,9 +5975,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (isBossType(enemy.type)) {
           // Same boss rule as the knife: 5× damage, no execute。ただし裏ボスの完全気絶(紫)中は
           // 気絶を解除せずタイマー切れまで5×を“し放題”(社長指示)。通常の気絶は従来どおり1発で解除。
-          const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
+          const fatal = !isGhost ? applyBrokenMeleeFatal(enemy, baseDamage * damageMult, gameTime) : null;
           bossFinishHit = true;
-          const dmg = baseDamage * damageMult * BOSS_MELEE_STUN_MULT;
+          const dmg = fatal?.damage ?? baseDamage * damageMult * BOSS_MELEE_STUN_MULT;
+          if (fatal) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           // §5.21-追補4: スタン中ボスへの5×一閃=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -5985,9 +5988,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             survivors.push({
               ...enemy,
               health: newHealth,
-              stunUntil: bossFull ? enemy.stunUntil : undefined,
+              stunUntil: undefined,
               lastHit: now,
               liftUntil: now + 420,
+              ...(fatal?.patch ?? {}),
             });
           }
           continue;
@@ -6032,7 +6036,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const critStun = crit; // reaper は対象外(上で除外済み)
       if (critStun) critStunAt.push({ x: ecx, y: ecy });
       // GAME_AUDIT #17(社長承認): 刀のクリも銃と同じく裏ボスの完全気絶カウントに乗せる。
-      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
+      const bossBump = !isGhost ? applyBossPostureDamage(enemy, allowFinisher ? 'heavy' : 'melee', gameTime) : null;
       if (bossBump?.triggered) katanaBossFullStunHits.push({ x: ecx, y: ecy });
       const bossSlow = critStun ? bossCritSlowPatch(enemy, gameTime) : null; // ボスは半減(v0.25.2422)
       // CRIT-UNIFY §9.2同梱修正: 刀のクリ気絶にだけstunDurationMult(気絶時間アップパッシブ)が
@@ -6144,14 +6148,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
-      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
+      get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
+    for (const p of katanaBossFatalHits) {
+      showBossFatalPresentation(get, p.x, p.y, p.labelY);
     }
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
     grantMeleeKillRewards(get, killed, player, gun, true);
     // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも出す(?ghostzoom=0で従来=除外1へ)。
     if ((finisherHit || bossFinishHit) && (!isGhost || GHOST_ZOOM_TRIAL_ENABLED)) {
-      const [ztx, zty] = finishZoomTargetOf(killed);
+      const [ztx, zty] = katanaBossFatalHits[0]
+        ? [katanaBossFatalHits[0].x, katanaBossFatalHits[0].y]
+        : finishZoomTargetOf(killed);
       get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
     }
     // スキル: リーパー。刀の一閃フィニッシュ範囲(katanaRange)内の敵を全員フィニッシュ。
@@ -6197,6 +6206,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const whipBossFullStunHits: { x: number; y: number }[] = []; // §9.4(v0.25.2502): 鞭クリで完全気絶が発動した位置(紫FX用)
+    const whipBossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const whipHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): 鞭のヒット敵ID(発動判定/対象選定用)
     let hits = 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
@@ -6221,12 +6231,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 通常敵扱い=即時処刑」を上書き)。
         if (isBossType(enemy.type)) {
           bossFinishHit = true;
-          const dmg = meleeBase * whipMult * BOSS_MELEE_STUN_MULT;
+          const fatal = applyBrokenMeleeFatal(enemy, meleeBase * whipMult, gameTime);
+          const dmg = fatal?.damage ?? meleeBase * whipMult * BOSS_MELEE_STUN_MULT;
+          if (fatal) whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           // §5.21-追補4: スタン中ボスへの5×鞭打ち=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) killed.push({ enemy, finisher: false });
-          else survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
+          else survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420, ...(fatal?.patch ?? {}) });
           continue;
         }
         // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
@@ -6255,7 +6267,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (crit) critStunAt.push({ x: ecx, y: ecy });
       // §9.4(v0.25.2502・CRIT-UNIFY★未決2の解消): 鞭のクリも紫カウントへ(発生枠=近接系共通。
       // ナイフ4737/刀5479/分身5076と同じ作法=GAME_AUDIT #17「プレイヤーが直接出したクリは全部乗せる」)。
-      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
+      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime);
       if (bossBump?.triggered) whipBossFullStunHits.push({ x: ecx, y: ecy });
       // 大ノックバック(通常の約3倍): 鞭の線に直交する向きへ、敵がいる側へ強く弾く=避難路。
       // 鞭は「必ずノックバック」: ノックバック無敵窓(knockbackImmuneUntil)を無視して毎回弾く。
@@ -6320,7 +6332,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
-      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
+      get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
+    for (const p of whipBossFatalHits) {
+      showBossFatalPresentation(get, p.x, p.y, p.labelY);
     }
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
@@ -6328,7 +6343,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 鞭の通常打撃基準=meleeBase×WHIP_DAMAGE_MULT を素通し)。
     applyRescueSignalProc(get, player, meleeBase * WHIP_DAMAGE_MULT, whipHitEnemyIds, pcx, pcy);
     if (finisherHit || bossFinishHit) {
-      const [ztx, zty] = finishZoomTargetOf(killed);
+      const [ztx, zty] = whipBossFatalHits[0]
+        ? [whipBossFatalHits[0].x, whipBossFatalHits[0].y]
+        : finishZoomTargetOf(killed);
       get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
     }
     // スキル: リーパー。鞭フィニッシュ範囲(WHIP_LENGTH)内の敵を全員フィニッシュ。
@@ -8078,10 +8095,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player') => {
+  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null) => {
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
+    let bossFatalAt: { x: number; y: number; labelY: number } | null = null;
     let namedFoeKilled: Enemy | null = null; // §5.14 M13: 宿敵討伐(set後にREVENGE演出+報酬)
     let deathPopAt: { ex: number; ey: number; fromX: number; fromY: number } | null = null; // §5.23 M22 A3(set後に発火)
     let dramaticDeathAt: { enemy: Enemy; x: number; y: number } | null = null; // juice: FF風クランブル(set後に発火)
@@ -8099,8 +8117,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 溜め(crouch)・着地後(recover)は通常どおり被弾する(空中だけ無敵)。
       if (enemy.aiPhase === 'jump') return { enemies };
 
+      // 紫中の直接銃撃は通常クリ倍率と重ねず、この中央で×5相当まで報酬領域を消費する。
+      const gunReward = damageChannel === 'gun' && hateSource === 'player'
+        ? applyBrokenGunReward(enemy, amount, state.gameTime)
+        : null;
+      // ワイヤー等、中央経路へ来る直接近接フィニッシュも同じ致命裁定へ合流。
+      const meleeFatal = viaMeleeFinish && hateSource === 'player' && postureImpact === 'heavy'
+        ? applyBrokenMeleeFatal(enemy, amount, state.gameTime)
+        : null;
+      if (meleeFatal) bossFatalAt = {
+        x: enemy.x + enemy.width / 2,
+        y: enemy.y + enemy.height / 2,
+        labelY: enemy.y - 6,
+      };
+      const resolvedAmount = meleeFatal?.damage ?? gunReward?.damage ?? amount;
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
-      const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(amount / 2)) : amount;
+      const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
       appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)
       let newHealth = Math.max(0, enemy.health - eff);
       // nonLethalBoss: 廃止(v0.25.1571) 爆発もボスを倒せる。互換のため引数は残置
@@ -8108,7 +8140,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 経由(viaMeleeFinish)以外ではHPを0にできない(HP1で踏みとどまる)。
       newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, newHealth, viaMeleeFinish);
       // 裏ボス: クリを規定回数当てると完全気絶(紫)。倒しきれなかったクリのみカウント。
-      const critBump = (crit && newHealth > 0) ? bumpBossCrit(enemy, state.gameTime) : null;
+      const resolvedImpact = postureImpact ?? ((crit && damageChannel === 'gun' && hateSource === 'player') ? 'gun-crit' : null);
+      const critBump = (resolvedImpact && newHealth > 0) ? applyBossPostureDamage(enemy, resolvedImpact, state.gameTime) : null;
       if (critBump?.triggered) bossFullStunAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
       // CRIT-UNIFY §9.2(中央適用): クリがボスに入った時の移動半減(bossSlowUntil)をここで一括適用する。
       // 呼び出し元(銃弾/per-bossカウンター/ゴーストカウンター等)はcrit=trueを渡すだけでよく、個別に
@@ -8130,7 +8163,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? { ghostHateUntil: state.gameTime + GHOST_MOB_HATE_MS }
         : {};
       const updatedEnemies = enemies.map(e =>
-        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch } : e
+        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch } : e
       );
       
       // Check if enemy was killed
@@ -8209,7 +8242,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
-      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
+      get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
+    if (bossFatalAt) {
+      const p = bossFatalAt as { x: number; y: number; labelY: number };
+      showBossFatalPresentation(get, p.x, p.y, p.labelY);
+      get().triggerFinishImpact(p.x, p.y);
     }
 
     // 死神を倒したらスキル「死神」を習得(ガチャ非排出。撃破でのみ解禁)。未所持時のみ告知。
@@ -8421,7 +8459,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (移動/近接の視線判定は既に両方を含めている。視線だけ壁のみだった取りこぼしを統一)。
       const losWalls = indoor ? indoorWalls : (labTheme ? [...labWallRects, ...labPropRects] : labWallRects);
 
-      const updatedEnemies = enemies.map((enemy): Enemy => {
+      // 体勢回復/紫窓終了は専用AIから除外される裏ボスも含め、全ボスへ毎フレーム適用する。
+      const postureUpdatedEnemies = enemies.map(enemy => {
+        const patch = tickBossPosture(enemy, gameTime, deltaTime);
+        return patch ? { ...enemy, ...patch } : enemy;
+      });
+      const updatedEnemies = postureUpdatedEnemies.map((enemy): Enemy => {
         // 裏ボス(mimir/jormungand)は updateEnemies の追跡AIから除外。移動/攻撃/帰巣/再生は
         // useGameLoop の専用コントローラが座標を直接書き込む(死神と同じ方式)。
         if (isHiddenBoss(enemy.type)) return enemy;
