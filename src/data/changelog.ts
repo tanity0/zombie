@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2875',
+    items: [
+      'コウモリの2種類のうち片方の絵を新しいものに差し替えました。',
+    ],
+  },
+  {
     version: '0.25.2874',
     items: [
       'コウモリとスケルトンを少し大きくしました。見た目だけでなく当たり判定も一緒に大きくなっているので、攻撃が当たりやすくなり、相手の体も当たりやすくなります。',
