@@ -27,6 +27,7 @@ export const ENEMY_VARIANT_SETS: Readonly<Record<string, readonly string[]>> = {
   bat: ['bat-male', 'bat-female'],         // 男女2種(v0.25.2872 / 女の絵は v0.25.2875 で差し替え)
   skeleton: ['skeleton-female', 'skeleton-male'], // 男女2種(v0.25.2873)
   zombie: ['zombie-common'],               // 1種のみ(v0.25.2877)。後で2種にするならここへ足す
+  plant: ['plant-common'],                 // 1種のみ(v0.25.2880)
 };
 
 /**

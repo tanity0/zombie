@@ -29,14 +29,16 @@ describe('spriteVariantIndex — 同じ個体は生涯ずっと同じ絵', () =>
 
 describe('variantTextureName', () => {
   it('表に無い type は null(=従来のステージ別解決へ落ちる)', () => {
-    for (const t of ['plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']) {
+    for (const t of ['ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']) {
       expect(variantTextureName(t, 'e1')).toBeNull();
     }
   });
 
-  it('★1種しか無い敵(zombie)も同じ表で扱える。どのIDでも同じ1枚', () => {
-    const names = new Set(Array.from({ length: 200 }, (_, i) => variantTextureName('zombie', 'e' + i)));
-    expect([...names]).toEqual(['zombie-common']);
+  it('★1種しか無い敵(zombie/plant)も同じ表で扱える。どのIDでも同じ1枚', () => {
+    for (const [type, only] of [['zombie', 'zombie-common'], ['plant', 'plant-common']]) {
+      const names = new Set(Array.from({ length: 200 }, (_, i) => variantTextureName(type, 'e' + i)));
+      expect([...names], type).toEqual([only]);
+    }
   });
 
   it('返すのは登録済みの名前だけ', () => {

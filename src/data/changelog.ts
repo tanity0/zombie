@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2880',
+    items: [
+      'プラントの見た目を新しい絵に変えました。全ステージで同じ絵になります。',
+    ],
+  },
+  {
     version: '0.25.2879',
     items: [
       'パンプキンを倒した時に、時間が止まってカメラが寄る演出を出さないようにしました。崩れる演出や討伐表示はそのままです。',

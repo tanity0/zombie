@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.2880 — plant の絵を差し替え(全ステージ共通)【2026-08-05 23:12 JST】
+社長支給の新アート「プラント差し替え」。bat/skeleton/zombie と同じ作法で入れた。
+
+- `public/sprites/plant-common.png`(460×512・余白なし=bbox が画像全体)。
+- `ENEMY_VARIANT_SETS.plant = ['plant-common']`(1種)。`pixiScene.enemyTexKey` が
+  ステージ別解決より先にこの表を引くので、**default/stage3/stage4/stage5 の全ステージで同じ絵**になる。
+- ロード登録(`ALL_VARIANT_TEXTURES`)とアスペクト上書きは v0.25.2873 で表駆動にしてあるので、
+  **表へ1行足すだけで両方揃う**(取りこぼしが構造的に起きない)。今回コードの追加は実質この1行。
+- 当たり判定・速度・HP・報酬・弾(plant は唯一の射撃雑魚)は**一切変えていない**。
+  `ENEMY_STATS.plant = 28×28` / `ENEMY_VISUAL_SCALE.plant = 2.15` も不変。
+- テストは表の変更に追随させた:「表に無い type」リストから plant を外し、
+  「1種しか無い敵」ケースを zombie/plant の2件へ拡張。
+
+**負荷 0/10**: 画像1枚の差し替え。描画枚数・処理は増えない。アトラス側の旧 plant 絵は
+他ステージ解決経路が消えたぶん参照されなくなるだけ(zombie と同じ状態)。
+
+検証: `npm run typecheck` OK / `npm run lint` エラー0(既存warning 8)。実機確認は社長。
+
 ## v0.25.2879 — パンプキン討伐時のアテンションを削除【2026-08-05 22:15 JST】
 社長指示「パンプキン、倒した時のアテンションイベント削除」。
 
