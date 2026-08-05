@@ -5,8 +5,13 @@
 // アトラスを焼く**・ピンチ拡大が漏れる等の差が静かに出る。両エントリがこの1本を呼ぶ。
 // 中身は旧 `src/main.tsx` の内容そのまま(実行内容は不変=純粋な切り出し)。
 import { FONT_FAMILY, FONT_STACK } from './config/font';
+import { installPracticeGuard } from './utils/practiceGuard';
 
 export const bootstrapRuntime = (): void => {
+  // 練習ラン(ボスラッシュ)なら、ここから先の localStorage 書き込みを全て封じる
+  // (BOSS_MAKER.md §20-6 / utils/practiceGuard.ts)。React を描く前に必ず通る。
+  installPracticeGuard();
+
   // Apply the chosen game font (?font=) to the DOM via a CSS variable, and kick
   // off loading the woff2 immediately so it is ready before the first paint and,
   // crucially, before PixiJS bakes its damage-number atlas / draws text.

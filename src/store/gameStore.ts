@@ -135,6 +135,7 @@ import {
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { setFlowersDisabled } from '../world/forestDecor';
 import { bossTestGhostSkill, isBossMakerRun } from '../utils/bossTest';
+import { isPracticeRun, PRACTICE_BOSS } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
@@ -1934,7 +1935,8 @@ export const setGhostDeathPose = (p: GhostDeathPose): void => { ghostDeathPoseRe
 // メーカーの部屋には護衛NPCが出撃していた(§1-1「敵は選んだボス1体だけ」に反する)。
 export const BOSS_TEST_RUN =
   typeof window !== 'undefined'
-  && ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker']
+  // v0.25.2858: ボスラッシュの練習ラン(`?practice=1`)も同じ扱い=チュートリアルも護衛NPCも出さない。
+  && ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker', 'practice']
     .some(k => new URLSearchParams(window.location.search).get(k) === '1');
 export const LATE_COUNTER_ENABLED =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('lastcounter') === '1';
@@ -2376,6 +2378,13 @@ const hexToRgba = (hex: string, alpha: number): string => {
 // 'boss-death'を1回鳴らす)。HARD PERF CONSTRAINT: 強glow(spawnGlow大径)は使わない=pooled sprite
 // (spawnRing/spawnBurst)とscreen-space spawnFlash/triggerShake/triggerTimeSlowのみ。
 const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: number): void => {
+  // ★練習ラン(ボスラッシュ)は**狙った1体を倒したら終わり**(BOSS_MAKER.md §20-7-c)。
+  // ゲート2/裏ボスは倒してもクリアにならない(帰還サークルは城ボス撃破が条件)ため、放っておくと
+  // 「倒したのに終われない」=練習で一番使う導線が無い状態になる。ここで勝ちにしてリザルトへ送る。
+  // 進行の書き込みは practiceGuard(localStorage封じ)と App.handleVictory 側で止めてある。
+  if (isPracticeRun() && PRACTICE_BOSS && enemy.type === PRACTICE_BOSS) {
+    useGameStore.setState({ gameWon: true, returnCircle: null });
+  }
   // 歴史年表(chronicle): 各種ボス/ハンターの初回討伐を即載せ(社長決定v0.25.1628)。近接/銃 両キル経路が
   // この関数を通るのでここ1箇所で拾える。宿敵(isNamedのみ)はボス扱いにしない=年表に載せない。
   if (isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter') {

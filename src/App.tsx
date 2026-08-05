@@ -25,6 +25,7 @@ import { subsAllCompletedFromMeta, endingFollowup } from './utils/storyProgress'
 import { getEventQuestConfig } from './utils/eventQuest';
 import { getStage } from './data/campaign';
 import { isPixiRenderer } from './config/renderer';
+import { isPracticeRun } from './utils/bossPractice';
 
 const LOADING_MIN_MS = 650;
 
@@ -293,6 +294,11 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   const handleVictory = () => {
     // ★bare(道具ページ)は**進行に一切触らない**。下のクリア解放・エンディング予約を通さない。
     if (bare) { restartBareRoom(); return; }
+    // ★練習ラン(ボスラッシュ)も進行に触らない(BOSS_MAKER.md §20-6)。リザルトは出すが、
+    // クリア解放もエンディング予約もしない。永続化は practiceGuard が別途封じている
+    // (=ここを1つ通してしまっても保存はされない)が、**エンディングが再生される**のは
+    // 保存の問題ではないのでここで止める。
+    if (isPracticeRun()) { setGameState('victory'); return; }
     // 勝利したら選択中ステージのメインミッションをクリア扱いにし、次ステージを解放する。
     // (ダンス練習/ベンチは選択ステージを空にしているのでここでは何も起きない)
     // フリー(周回)出撃は進行に影響させない=クリア扱いにしない。

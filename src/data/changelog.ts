@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2858',
+    items: [
+      'ゲーム内容の変更はありません（ボスラッシュの練習ランが、本編の進行・記録・所持金・解放を一切変えない仕組みを入れました。画面はまだ出ません）。',
+    ],
+  },
+  {
     version: '0.25.2857',
     items: [
       'ゲーム内容の変更はありません（ボスラッシュの土台として、ボスと実際に交戦した記録を残すようにしました。画面はまだ出ません）。',

@@ -75,6 +75,9 @@ import {
   BOSS_TEST_RUN, // ボス戦テスト/ボスメーカー出撃か(チュートリアル抑止に使う)
 } from '../store/gameStore';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
+// BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
+// 狙っている時だけこの判定が nospawn を上書きする。
+import { practiceWantsCastleBoss } from '../utils/bossPractice';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
 import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
@@ -2411,7 +2414,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
         // 洋館通路(corridorMode)は城なし(v0.25.2144・社長指示「城も出現しないで。時間で出るのは死神だけ」)
         // =5分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && !noSpawn && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
@@ -2477,7 +2480,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // cine実験台(?cine=1 & stage-7)ではストーリーボス(グレン)を出さない=クリーンな映像確認(社長v0.25.1879)。
           // ?nospawn=1 でもストーリーボスを出さない(=イベント不発火。社長指示v0.25.1995・QAのクリーン撮影用)。
           const cineSuppress = CINE_TESTBED && getSelectedStageId() === 'stage-7';
-          if (!storyBossSpawnedRef.current && introDone && glenSpawnOk && !cineSuppress && !noSpawn) {
+          if (!storyBossSpawnedRef.current && introDone && glenSpawnOk && !cineSuppress && (!noSpawn || practiceWantsCastleBoss())) {
             storyBossSpawnedRef.current = true;
             const scx = player.x + player.width / 2;
             const scy = player.y + player.height / 2 - STORY_BOSS_SPAWN_DIST;

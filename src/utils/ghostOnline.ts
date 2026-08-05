@@ -6,6 +6,7 @@ import { getAnonymousId } from '../online/id';
 import { displayNameFrom, loadPlayerName } from './playerName';
 import { loadGhostComments } from './ghostComment';
 import { isFixedGuardianId } from '../../shared/fixedGuardianIds.mjs';
+import { isPracticeRun } from './bossPractice'; // BOSS_MAKER.md §20-6: 練習ランは送信しない
 import {
   GHOST_KNOB_SET_V,
   GHOST_SHARE_EPOCH,
@@ -214,6 +215,9 @@ export const shareableProfile = (profile: PlayerProfile, localSlot: string): Pla
 };
 
 export const uploadGhostSlots = (profile: PlayerProfile | null, localSlots: readonly string[]): void => {
+  // 練習ラン(ボスラッシュ)の戦い方は自分の霊にしない=送らない(BOSS_MAKER.md §20-6)。
+  // localStorage 側は practiceGuard が封じているが、**送信はネットワークなので別に止める**。
+  if (isPracticeRun()) return;
   if (!profile || !hasGhostOnlineConsent()) return;
   const base = apiBase();
   const anonId = getAnonymousId();
@@ -236,6 +240,7 @@ export const uploadGhostSlots = (profile: PlayerProfile | null, localSlots: read
 };
 
 export const sendGhostFeedback = async (target: GhostFeedbackTarget, liked: boolean): Promise<void> => {
+  if (isPracticeRun()) return; // 練習ランからは送らない(BOSS_MAKER.md §20-6)
   const base = apiBase();
   const anonId = getAnonymousId();
   // 固定AIへのいいねは公開同意の対象外（名前・コメントを他人へ公開しない）。
