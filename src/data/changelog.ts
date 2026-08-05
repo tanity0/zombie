@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2863',
+    items: [
+      'カメラが引いたボス戦でも、巨大ボスの裏側へ回った時の透け方が画面上で同じ距離感になるよう調整しました。',
+    ],
+  },
+  {
     version: '0.25.2862',
     items: [
       'ボスラッシュの練習が、通常の出撃と同じようにその場で戦闘へ入るようになりました。読み込み直しを挟みません。リザルトの「もう一度」「ボスを選ぶ」も同様です。',

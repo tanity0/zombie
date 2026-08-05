@@ -80,7 +80,7 @@ import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
-  BOSS_DISTANCE_ZOOM_RETURN_TAU, BOSS_DISTANCE_ZOOM_TAU, ZOOM_MIN_ABS,
+  BOSS_DISTANCE_ZOOM_RETURN_TAU, BOSS_DISTANCE_ZOOM_TAU, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
 // 文脈ズームで最大まで引いた時(worldGroup.scale=ZOOM_MIN_ABS)でも画面を覆えるよう、worldGroup内の
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
@@ -2076,8 +2076,9 @@ const HIT_SHAKE_PX = 4;
 // プレイヤーが裏ボスの当たり判定(帯)より奥=裏に回り込んだとき、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
 const BOSS_BEHIND_ALPHA = 0.5;
 // #2(社長指示): 裏に回って 0.5 まで薄くなった後、さらに奥(=手前へ遠ざかる)へ離れたら、
-// この距離(behindDist=70→FAR)でさらに薄くする。#1(0.5まで)の数値・カーブは不変。
-const BOSS_BEHIND_FAR_PX = 220;
+// 画面上のこの距離でさらに薄くする。カメラを引いた時はワールド距離を1/zoom倍へ広げ、見た目を保つ。
+const BOSS_BEHIND_NEAR_SCREEN_PX = 70;
+const BOSS_BEHIND_FAR_SCREEN_PX = 220;
 // v0.25.2622(社長裁定「0.15で」): #2の行き先を **0(完全透明)→0.15** へ。
 //
 // なぜ変えたか: 0まで落ちると**当たり判定はあるのに1ピクセルも見えない**状態になり、
@@ -12007,13 +12008,16 @@ export class PixiScene {
       if (!inHoriz || behindDist <= 0) {
         behindTarget = 1;
       } else {
-        // #1(変更なし): 0→70px で 1.0→0.5(二乗カーブ。裏に回ると薄く残る)。
-        const t = Math.min(1, behindDist / 70);
+        // #1: 画面上0→70pxで1.0→0.5。ズーム引き中はワールド側の距離を比例して広げる。
+        const behindDistanceScale = zoomCompensatedWorldDistance(1, this.contextZoom);
+        const behindNearPx = BOSS_BEHIND_NEAR_SCREEN_PX * behindDistanceScale;
+        const behindFarPx = BOSS_BEHIND_FAR_SCREEN_PX * behindDistanceScale;
+        const t = Math.min(1, behindDist / behindNearPx);
         let a = 1 - t * t * (1 - BOSS_BEHIND_ALPHA);
-        // #2(追加): さらに奥(70px超=手前へ遠ざかる)へ離れたら 0.5→0(完全透明)へ続ける。
-        if (behindDist > 70) {
+        // #2: さらに奥へ離れたら0.5→0.15。画面上の終点はズームに関係なく220px。
+        if (behindDist > behindNearPx) {
           // v0.25.2622(社長裁定「0.15で」): 0ではなく BOSS_BEHIND_FAR_ALPHA まで。
-          const t2 = Math.min(1, (behindDist - 70) / (BOSS_BEHIND_FAR_PX - 70));
+          const t2 = Math.min(1, (behindDist - behindNearPx) / (behindFarPx - behindNearPx));
           a = BOSS_BEHIND_ALPHA + (BOSS_BEHIND_FAR_ALPHA - BOSS_BEHIND_ALPHA) * t2;
         }
         behindTarget = a;

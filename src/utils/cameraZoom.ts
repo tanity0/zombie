@@ -73,6 +73,12 @@ export const aabbGapDistance = (a: Aabb, b: Aabb): number => {
   return Math.hypot(dx, dy);
 };
 
+/** ズーム後も画面上の距離を一定に保つため、画面pxをワールドpxへ戻す。寄り方向では拡縮しない。 */
+export const zoomCompensatedWorldDistance = (screenPx: number, zoom: number): number => {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? Math.min(1, zoom) : 1;
+  return screenPx / safeZoom;
+};
+
 // ★**安全マージンの基準はこの絶対最小値**(v0.25.2412)。
 // 背景のオーバースキャン(ZOOM_OVERSCAN)・敵の回収/湧き距離・カリングは「**一番引いた時でも
 // 破綻しない**」ことが条件なので、`CONTEXT_ZOOM_MIN` ではなく必ずこちらを見ること。
