@@ -42,9 +42,13 @@ describe('pickSpikeGapMask / isSpikeGapSector', () => {
 });
 
 describe('pickAcrasielMove', () => {
-  it('always returns one of the 5 moves (no distance gate)', () => {
-    expect(pickAcrasielMove(() => 0)).toBe('spike');
-    expect(pickAcrasielMove(() => 0.999)).toBe('gaze');
+  it('距離帯の重みから5技を選び、密着ではburst、遠距離ではspearを生かす', () => {
+    expect(pickAcrasielMove(60, 1, () => 0)).toBe('spike');
+    expect(pickAcrasielMove(60, 1, () => 0.99)).toBe('gaze');
+    const nearPicks = Array.from({ length: 100 }, (_, i) => pickAcrasielMove(60, 1, () => i / 100));
+    const farPicks = Array.from({ length: 100 }, (_, i) => pickAcrasielMove(900, 1, () => i / 100));
+    expect(nearPicks).toContain('burst');
+    expect(farPicks).toContain('spear');
   });
 });
 
@@ -55,6 +59,7 @@ describe('pickAcrasielCombo (§6.28-19 Phase3: spike→spear同時)', () => {
   });
   it('fires deterministically (100%) in phase 3', () => {
     expect(pickAcrasielCombo('spike', 3, () => 0.999)).toBe('spear');
+    expect(pickAcrasielCombo('spear', 3, () => 0.999)).toBe('warp');
   });
   it('no followup defined for other moves', () => {
     expect(pickAcrasielCombo('gaze', 3, () => 0)).toBeNull();

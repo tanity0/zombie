@@ -103,14 +103,14 @@ describe('pickMimirMove', () => {
   });
 });
 
-describe('pickMimirCombo — 受け入れ条件(§6.28-5): Phase2のみ・確率40%・2組のみ(不変)', () => {
+describe('pickMimirCombo — Phase2の最大3段連携', () => {
   it('phase1では連携しない', () => {
     expect(pickMimirCombo('dash', 1, 100, () => 0)).toBeNull();
     expect(pickMimirCombo('radial', 1, 400, () => 0)).toBeNull();
   });
 
-  it('許す組み合わせは dash→bite / radial→laser の2組のみ', () => {
-    expect(pickMimirCombo('bite', 2, 100, () => 0)).toBeNull();
+  it('dash→bite→burst と radial→laser だけを許す', () => {
+    expect(pickMimirCombo('bite', 2, 100, () => 0)).toBe('burst');
     expect(pickMimirCombo('burst', 2, 400, () => 0)).toBeNull();
     expect(pickMimirCombo('laser', 2, 800, () => 0)).toBeNull();
   });
@@ -119,9 +119,9 @@ describe('pickMimirCombo — 受け入れ条件(§6.28-5): Phase2のみ・確率
     expect(pickMimirCombo('dash', 2, 900, () => 0)).toBeNull(); // biteは中/遠で重み0
   });
 
-  it('40%未満で発火・以上でnull', () => {
-    expect(pickMimirCombo('dash', 2, 100, () => 0.39)).toBe('bite');
-    expect(pickMimirCombo('dash', 2, 100, () => 0.41)).toBeNull();
-    expect(pickMimirCombo('radial', 2, 400, () => 0.39)).toBe('laser');
+  it('55%未満で発火・以上でnull', () => {
+    expect(pickMimirCombo('dash', 2, 100, () => 0.54)).toBe('bite');
+    expect(pickMimirCombo('dash', 2, 100, () => 0.56)).toBeNull();
+    expect(pickMimirCombo('radial', 2, 400, () => 0.54)).toBe('laser');
   });
 });

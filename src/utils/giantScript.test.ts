@@ -9,6 +9,8 @@ import {
   GIANT_RANGE, type GiantMove, glenTriJumpPoints, GLEN_TRIJUMP_COUNT,
   GIANT_STAGE_UNIQUE_MOVE, GIANT_STAGE_ULT_MOVE, GIANT_STAGE_MOVE_RANGE,
   giantStageMoveEligible, pickGiantMoveWithStage,
+  giantStageBaseWeightMult, giantStageSpecialWeightMult, GLEN_SPECIAL_WEIGHT_MULT,
+  giantRestRawMs,
   GIANT_QUAD_DASH_COUNT, giantQuadDashComplete, GIANT_QUAD_ICE_COUNT,
   type GiantStageMoveId,
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用の新技4つ。
@@ -435,8 +437,23 @@ describe('giantStageMoveEligible — 表どおりの間合い', () => {
 });
 
 describe('pickGiantMoveWithStage — 受け入れ条件: ステージごとに正しい技が選ばれる', () => {
-  it('stage-6/7/ex1・未知ステージは既存5技のみ(pickGiantMoveと同じ結果になる)', () => {
-    for (const stageId of ['stage-6', 'stage-7', 'stage-ex1', 'nonexistent-stage']) {
+  it('stage-1の硬直は無変更、再構築対象は実効900msのREST床を持つ', () => {
+    expect(giantRestRawMs('stage-1', 360)).toBe(360);
+    expect(giantRestRawMs('stage-3', 360)).toBe(1080);
+    expect(giantRestRawMs('stage-7', 1680)).toBe(1680);
+  });
+  it('stage-1の倍率は1のまま、後半ステージほど固有技を前へ出す', () => {
+    expect(giantStageBaseWeightMult('stage-1', 'jump')).toBe(1);
+    expect(giantStageBaseWeightMult('stage-3', 'jump')).toBeGreaterThan(1);
+    expect(giantStageBaseWeightMult('stage-ex1', 'dash')).toBeGreaterThan(1);
+    expect(giantStageSpecialWeightMult('stage-1', 'bite')).toBe(1);
+    expect(giantStageSpecialWeightMult('stage-3', 'dive')).toBeGreaterThan(1);
+    expect(giantStageSpecialWeightMult('stage-4', 'nova')).toBeGreaterThan(1);
+    expect(giantStageSpecialWeightMult('stage-5', 'sweepbeam')).toBeGreaterThan(1);
+    expect(GLEN_SPECIAL_WEIGHT_MULT.nihil).toBeGreaterThan(GLEN_SPECIAL_WEIGHT_MULT.boon);
+  });
+  it('stage-6/7・未知ステージは既存5技のみ(pickGiantMoveと同じ結果になる)', () => {
+    for (const stageId of ['stage-6', 'stage-7', 'nonexistent-stage']) {
       const withStage = pickGiantMoveWithStage(stageId, 70, 2, allReady(), stageAllReady(), () => 0);
       const legacy = pickGiantMove(70, 2, allReady(), () => 0);
       expect(withStage).toBe(legacy);

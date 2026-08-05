@@ -4,7 +4,7 @@
 // 注意: §6.28-18の技表には「帯」列が無い(ジャイアント/ウリと違い距離での出し分けを明示していない)。
 // 「近接拒否」(②)「環が離れている間だけ使う」(③)という備考だけが根拠なので、それぞれを既存語彙
 // (密着帯=140px・§6.26-6のGIANT_RANGE.MELEE_MAXと同値)で具体化した(★未決事項に記録)。
-import { pickEligibleMove } from './bossScript';
+import { bossZoneForDistance, pickWeightedMove, type BossMoveWeights } from './bossScript';
 
 export type SurielMove = 'ringshot' | 'ringspin' | 'sweep' | 'gaze';
 
@@ -25,13 +25,31 @@ export const surielMoveEligible = (move: SurielMove, distance: number, ringDeplo
   }
 };
 
+export const SURIEL_MOVE_WEIGHTS: BossMoveWeights<SurielMove> = {
+  // 環の射出は中遠距離、本体薙ぎは環が離れた近中距離、回転は密着拒否という役割を固定する。
+  ringshot: { melee: 10, near: 30, mid: 50, far: 55 },
+  ringspin: { melee: 55, near: 20, mid: 0, far: 0 },
+  sweep:    { melee: 15, near: 35, mid: 35, far: 20 },
+  gaze:     { melee: 20, near: 15, mid: 15, far: 25 },
+};
+
 const ALL_MOVES: SurielMove[] = ['ringshot', 'ringspin', 'sweep', 'gaze'];
 
 export const pickSurielMove = (
   distance: number,
   ringDeployed: boolean,
   rand: () => number = Math.random,
-): SurielMove | null => pickEligibleMove(ALL_MOVES, m => surielMoveEligible(m, distance, ringDeployed), rand);
+): SurielMove | null => pickWeightedMove(
+  ALL_MOVES,
+  m => SURIEL_MOVE_WEIGHTS[m][bossZoneForDistance(distance)],
+  {
+    ringshot: true,
+    ringspin: surielMoveEligible('ringspin', distance, ringDeployed),
+    sweep: surielMoveEligible('sweep', distance, ringDeployed),
+    gaze: true,
+  },
+  rand,
+);
 
 // §6.28-18 連携: ①環の射出→③本体の薙ぎ(70%)。射出直後は環が必ず離れているため、通常の
 // surielMoveEligible('sweep', ..., ringDeployed=true) がそのまま満たされる(rafi/uriと違い

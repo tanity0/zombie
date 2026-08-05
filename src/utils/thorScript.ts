@@ -7,6 +7,8 @@
 // **1つも変えない。** ここが足すのは「硬直後に連携するかどうか・どちらへ分岐するか」の判断だけ。
 //
 // 単位: 「壁時計系」(§6.28-1-0)。ここに書くmsは実効msそのもの。
+import { bossZoneForDistance, pickWeightedMove, type BossMoveWeights } from './bossScript';
+
 export type ThorMove = 'issen' | 'tsuki' | 'harai';
 
 // §6.28-10「分岐する連携」の本体: 硬直明けに確率(Phase2=50%/Phase3=70%)で2発目。
@@ -49,4 +51,31 @@ export const pickThorPool = (canHarai: boolean): ThorMove[] => {
   const pool: ThorMove[] = ['issen', 'tsuki'];
   if (canHarai) pool.push('harai');
   return pool;
+};
+
+export const THOR_MOVE_WEIGHTS: BossMoveWeights<ThorMove> = {
+  // 一閃=遠くから間合いを切る、突き=中距離の主砲、払い=近距離の読み合い。
+  issen: { melee: 15, near: 30, mid: 55, far: 70 },
+  tsuki: { melee: 25, near: 40, mid: 45, far: 30 },
+  harai: { melee: 60, near: 50, mid: 0, far: 0 },
+};
+
+export const pickThorMove = (
+  distance: number,
+  phase: 1 | 2 | 3,
+  rand: () => number = Math.random,
+): ThorMove => {
+  const canHarai = distance <= THOR_COMBO_NEAR_MAX;
+  const ready = { issen: true, tsuki: true, harai: canHarai };
+  const picked = pickWeightedMove(
+    ['issen', 'tsuki', 'harai'] as const,
+    m => {
+      const base = THOR_MOVE_WEIGHTS[m][bossZoneForDistance(distance)];
+      // Phase3は新しい技を消さず、決闘の看板である刀技の圧だけを少し足す。
+      return phase >= 3 && (m === 'issen' || m === 'harai') ? base * 1.2 : base;
+    },
+    ready,
+    rand,
+  );
+  return picked ?? 'tsuki';
 };

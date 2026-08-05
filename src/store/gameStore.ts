@@ -101,6 +101,7 @@ import {
   giantPhaseForHealth, giantPhaseJustChanged, pickGiantMove, pickGiantCombo, type GiantMove,
   giantPhaseForHealthStory, pickGiantStoryCombo, type GiantPhase,
   giantStageRangeMult,
+  giantRestRawMs,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の純関数。
   pickGiantMoveWithStage, type GiantStageMoveId,
   GIANT_STAGE_UNIQUE_MOVE, GIANT_STAGE_ULT_MOVE,
@@ -8739,13 +8740,6 @@ export const useGameStore = create<GameState>((set, get) => ({
             giantPhaseFlashUntil: giantPhaseJustChanged(enemy.giantPhase, phase) ? gameTime + GIANT_PHASE_FLASH_MS : enemy.giantPhaseFlashUntil,
             giantDelayedHits,
           };
-          // Phase3(storyBossのみ到達)は硬直500ms床(社長裁定6.28-21★2・§6.28-11 #5)。咆哮弾(小技)は
-          // 床の対象外=常にGIANT_BOLT_RECOVER_MSのまま(受け入れ条件11 ④の「小技は床の対象外」)。
-          const stompRecoverMs = phase === 3 ? GIANT_STOMP_RECOVER_PHASE3_MS : GIANT_STOMP_RECOVER_MS;
-          const sweepRecoverMs = phase === 3 ? GIANT_SWEEP_RECOVER_PHASE3_MS : GIANT_SWEEP_RECOVER_MS;
-          const dashRecoverMs = phase === 3 ? GIANT_DASH_RECOVER_PHASE3_MS : GIANT_DASH_RECOVER_MS;
-          const jumpRecoverMs = phase === 3 ? GIANT_JUMP_RECOVER_PHASE3_MS : GIANT_JUMP_RECOVER_MS;
-          const boltCdMs = phase === 3 ? GIANT_BOLT_CD_PHASE3_MS : phase === 2 ? GIANT_BOLT_CD_PHASE2_MS : GIANT_BOLT_CD_PHASE1_MS;
           // M65(社長指示): ステージ別の範囲/速度倍率。stage-1=1.00(実機合格済みの基準・不変)。
           // stage-7/stage-ex1はstoryBossだけが到達するため、ステージIDだけで既にstoryBoss込みの値になる
           // (giantScript.ts参照)。`?giantstage=0`でGIANT_STAGE_RANGE_ENABLED=falseになり常に1.00。
@@ -8753,6 +8747,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 新技には二重に効かせない=stageMultはM65の3値にしか掛けない・M66の新技へは掛けない)。
           const stageId = getSelectedStageId();
           const stageMult = giantStageRangeMult(stageId, GIANT_STAGE_RANGE_ENABLED);
+          const giantRestMs = (rawMs: number): number => giantRestRawMs(stageId, rawMs);
+          const stompRecoverMs = giantRestMs(phase === 3 ? GIANT_STOMP_RECOVER_PHASE3_MS : GIANT_STOMP_RECOVER_MS);
+          const sweepRecoverMs = giantRestMs(phase === 3 ? GIANT_SWEEP_RECOVER_PHASE3_MS : GIANT_SWEEP_RECOVER_MS);
+          const dashRecoverMs = giantRestMs(phase === 3 ? GIANT_DASH_RECOVER_PHASE3_MS : GIANT_DASH_RECOVER_MS);
+          const jumpRecoverMs = giantRestMs(phase === 3 ? GIANT_JUMP_RECOVER_PHASE3_MS : GIANT_JUMP_RECOVER_MS);
+          const boltRecoverMs = giantRestMs(GIANT_BOLT_RECOVER_MS);
+          const boltCdMs = phase === 3 ? GIANT_BOLT_CD_PHASE3_MS : phase === 2 ? GIANT_BOLT_CD_PHASE2_MS : GIANT_BOLT_CD_PHASE1_MS;
 
           // 技ごとの溜め開始パッチ(通常抽選/Phase2連携の両方から呼べる共通ヘルパ)。
           const beginGiantMove = (move: GiantMove): Partial<Enemy> => {
@@ -9154,7 +9155,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     gBoltShot: 1, aiPhaseUntil: atkUntil(GIANT_BOLT_BURST_GAP_MS), lastShot: now,
                   };
                 }
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-recover', aiPhaseUntil: atkUntil(GIANT_BOLT_RECOVER_MS), lastShot: now };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-recover', aiPhaseUntil: atkUntil(boltRecoverMs), lastShot: now };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9167,7 +9168,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 if (shot >= GIANT_BOLT_BURST_SHOTS) {
                   return {
                     ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-recover',
-                    aiPhaseUntil: atkUntil(GIANT_BOLT_RECOVER_MS), gBoltShot: undefined, lastShot: now,
+                    aiPhaseUntil: atkUntil(boltRecoverMs), gBoltShot: undefined, lastShot: now,
                   };
                 }
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, gBoltShot: shot, aiPhaseUntil: atkUntil(GIANT_BOLT_BURST_GAP_MS), lastShot: now };
@@ -9199,7 +9200,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   // 3発目の着地=最大の反撃窓へ。着地点の情報はここで捨てる(次の抽選に持ち越さない)。
                   return {
                     ...enemy, ...phaseFields, x: tx - enemy.width / 2, y: ty - enemy.height / 2, vx: 0, vy: 0,
-                    aiPhase: 'g-trijump-recover', aiPhaseUntil: atkUntil(GLEN_TRIJUMP_RECOVER_MS),
+                    aiPhase: 'g-trijump-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_TRIJUMP_RECOVER_MS)),
                     gTriJumpPts: undefined, gTriJumpIdx: undefined,
                   };
                 }
@@ -9290,7 +9291,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-bite-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-recover', aiPhaseUntil: atkUntil(GIANT_BITE_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_BITE_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9318,7 +9319,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             case 'g-slam-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 // 全技中で最大の反撃窓(1300ms)=大技の報酬(社長裁定を継承した設計原則)。
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-recover', aiPhaseUntil: atkUntil(GIANT_SLAM_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_SLAM_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9365,7 +9366,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const hitX = gtx + enemy.width / 2, hitY = gty + enemy.height / 2;
                 return {
                   ...enemy, ...phaseFields, x: gtx, y: gty, vx: 0, vy: 0,
-                  aiPhase: 'g-glide-recover', aiPhaseUntil: atkUntil(GIANT_GLIDE_RECOVER_MS),
+                  aiPhase: 'g-glide-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_GLIDE_RECOVER_MS)),
                   giantDelayedHits: [...(giantDelayedHits ?? []), { x: hitX, y: hitY, radius: GIANT_GLIDE_SECOND_HIT_RADIUS, bornAt: gameTime, fireAt: atkUntil(GIANT_GLIDE_SECOND_HIT_DELAY_MS), moveKey: 'g-glide' }],
                 };
               }
@@ -9386,7 +9387,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 const dtx = enemy.aiTargetX ?? enemy.x, dty = enemy.aiTargetY ?? enemy.y;
                 pumpkinBlasts.push({ x: dtx + enemy.width / 2, y: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-dive' });
-                return { ...enemy, ...phaseFields, x: dtx, y: dty, vx: 0, vy: 0, aiPhase: 'g-dive-recover', aiPhaseUntil: atkUntil(GIANT_DIVE_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, x: dtx, y: dty, vx: 0, vy: 0, aiPhase: 'g-dive-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_DIVE_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9495,7 +9496,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
-                  aiPhase: 'g-quad-recover', aiPhaseUntil: atkUntil(GIANT_QUAD_RECOVER_MS),
+                  aiPhase: 'g-quad-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_QUAD_RECOVER_MS)),
                   giantDelayedHits: [...(giantDelayedHits ?? []), ...newHits],
                   giantActiveHit: hitNow ? true : enemy.giantActiveHit,
                 };
@@ -9533,7 +9534,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
-                  aiPhase: 'g-nova-recover', aiPhaseUntil: atkUntil(GIANT_NOVA_RECOVER_MS),
+                  aiPhase: 'g-nova-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_NOVA_RECOVER_MS)),
                   giantActiveHit: hitNow ? true : enemy.giantActiveHit,
                 };
               }
@@ -9582,7 +9583,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-wing-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-wing-recover', aiPhaseUntil: atkUntil(GIANT_WING_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-wing-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_WING_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9624,7 +9625,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
-                  aiPhase: 'g-sweepbeam-recover', aiPhaseUntil: atkUntil(GIANT_SWEEPBEAM_RECOVER_MS),
+                  aiPhase: 'g-sweepbeam-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_SWEEPBEAM_RECOVER_MS)),
                   giantActiveHit: hitNow ? true : enemy.giantActiveHit,
                 };
               }
@@ -9642,7 +9643,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // ダメージは既にbeginGlenMoveがgiantDelayedHitsへ積み済み(置いた瞬間0ダメージ・固定900ms後
               // に自動で爆ぜる)。ここではwindup自体の終わりでrecoverへ直結するだけ(activeは無い)。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-talon-recover', aiPhaseUntil: atkUntil(GLEN_TALON_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-talon-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_TALON_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9658,7 +9659,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 5個のT5円は既にbeginGlenMoveがgiantDelayedHitsへ積み済み(固定700ms後に爆ぜ、その後
               // floorUntilまで床として残る)。ここもactiveは無くrecoverへ直結する。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-boon-recover', aiPhaseUntil: atkUntil(GLEN_BOON_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-boon-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_BOON_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9685,7 +9686,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-reach-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-recover', aiPhaseUntil: atkUntil(GLEN_REACH_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_REACH_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9713,7 +9714,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 3唱目終了=学習点④の本体。円自体はgiantDelayedHits側のfireAtが同じタイミングで独立に
               // 爆ぜる(このcaseはGlen自身のaiPhase遷移=recoverへ進むだけ)。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-recover', aiPhaseUntil: atkUntil(GLEN_NIHIL_RECOVER_MS) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_NIHIL_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9759,6 +9760,12 @@ export const useGameStore = create<GameState>((set, get) => ({
                       ...enemy, ...phaseFields, vx: 0, vy: 0,
                       ...(isStageMove ? beginGiantStageMove(move as GiantStageMoveId) : beginGiantMove(move as GiantMove)),
                     };
+                  }
+                } else if (isStoryBoss && enemy.storyBossVariant === 'stage-ex1') {
+                  // 未確認変異体は固有技を増やさず、基本5技の比重だけを「追い続ける総合試験」へ組み直す。
+                  const move = pickGiantMoveWithStage('stage-ex1', dist, phase, ready, {});
+                  if (move) {
+                    return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...beginGiantMove(move as GiantMove) };
                   }
                 } else if (glenScriptApplies(enemy.isStoryBoss, enemy.storyBossVariant, GLEN_SCRIPT_ENABLED)) {
                   // M67(§6.26-12): stage-7のグレンだけ(glenScriptAppliesが門番=通常城ボス/ex1は

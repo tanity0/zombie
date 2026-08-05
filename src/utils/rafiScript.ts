@@ -13,7 +13,7 @@ import { pickComboFollowup, pickWeightedMove, bossZoneForDistance, type BossMove
 export type RafiMove = 'bone' | 'jump' | 'sweep';
 
 export const RAFI_PHASE_HP_THRESHOLD = 0.6;
-export const RAFI_COMBO_CHANCE = 0.5;  // 骨刃→飛び掛かり(Phase2)・不変
+export const RAFI_COMBO_CHANCE = 0.65; // Phase2は骨刃→跳躍→薙ぎの最大3段。各段で抽選する。
 
 // ==== 3技×距離ゾーンの重み表(v0.25.2609) ====================================================
 // 是正の狙い:
@@ -63,8 +63,8 @@ export const pickRafiMove = (
   rand,
 );
 
-// §6.28-8 連携(Phase2・確率50%): 骨刃→飛び掛かり(「二正面」の本体)。
-export const RAFI_COMBO_FOLLOWUP: Partial<Record<RafiMove, RafiMove>> = { bone: 'jump' };
+// 再構築: Phase2は骨刃→飛び掛かり→薙ぎの最大3段。各リンク65%で、薙ぎ後は必ず終わる。
+export const RAFI_COMBO_FOLLOWUP: Partial<Record<RafiMove, RafiMove>> = { bone: 'jump', jump: 'sweep' };
 
 // 連携時の飛び掛かりは、通常抽選の間合いゲート(>300px)を適用しない(★未決事項に記録)。
 // 骨刃は≤300pxで発生するため、通常ゲートのままだと「骨刃の直後に距離が開いていない限り連携が

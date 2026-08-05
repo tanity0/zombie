@@ -187,7 +187,8 @@ import {
 import {
   skadiPhaseForHealth, pickSkadiMove, pickSkadiCombo, type SkadiMove,
 } from '../utils/skadiScript';
-import { pickThorCombo, thorPhaseForHealth, pickThorPool } from '../utils/thorScript';
+import { pickThorCombo, pickThorMove, thorPhaseForHealth } from '../utils/thorScript';
+import { bossNeutralDelayMs, bossRebuildIdForEnemy } from '../utils/bossRebuild';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
@@ -921,10 +922,6 @@ const THOR_SLOWWALK_MS = 2000;               // 減速が続く時間
 const THOR_SLOWWALK_MULT = 0.5;              // 更なる減速倍率(「さらに1/2」)
 const THOR_SLOWWALK_MIN_INTERVAL_MS = 5000;  // 「たまに」の頻度(叩き台)
 const THOR_SLOWWALK_MAX_INTERVAL_MS = 9000;
-const THOR_ACTION_MIN_MS = 2200;             // 攻撃選択インターバル(最短・満タンHP)
-const THOR_ACTION_MAX_MS = 4200;             // 攻撃選択インターバル(最長・満タンHP)
-const THOR_LOWHP_FRAC = 0.4;                 // このHP割合以下で頻度アップ開始(社長指示)
-const THOR_LOWHP_INTERVAL_MULT = 0.55;       // 低HP時のインターバル倍率(短縮=高頻度化)
 
 const THOR_ISSEN_WINDUP_MS = 3000;           // 一閃: 3秒溜め・赤く点滅して静止(社長指示)
 const THOR_ISSEN_DASH_MS = 280;              // 高速移動そのものの所要時間
@@ -941,7 +938,6 @@ const THOR_TSUKI_TRACK_FRAC = 0.5;           // 突き溜め中の狙い追従�
 const THOR_TSUKI_HALF_WIDTH = 15;            // 社長指示v0.25.1622で突きの半幅を±15へ(30→15=細い突き)
 
 const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 溜め1秒(社長指示)
-const HARAI_TRIGGER_DIST = 250;              // 斬り系(トールharai / ミゲルharai・tate)を発動できるプレイヤーまでの最大距離(社長指示v0.25.1626)
 const THOR_HARAI_RANGE = 310;                // 社長指示v0.25.1622で横払いの長さを元へ戻す(160→310)。一閃/突きとは独立
 const THOR_HARAI_HALF_WIDTH = 40;            // 社長指示v0.25.1610: 中心から片側40px(旧TSUKI*1.5=45)。突き本体は無変更
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
@@ -4485,7 +4481,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 同フレームでこの関数を呼ぶ経路があるため、閉じ込めたstale boss(フレーム先頭のスナップ
               // ショット)ではなく、その時点の最新状態を読み直す(damageEnemyのcrit適用を取りこぼさない)。
               const freshBoss = () => useGameStore.getState().enemies.find(e => e.id === boss.id) ?? boss;
-              const nextActionDelay = () => newGameTime + (BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS)) * bossCritCdMult(freshBoss(), newGameTime);
+              const nextActionDelay = () => {
+                const profileId = bossRebuildIdForEnemy(boss.type);
+                const neutralMs = profileId
+                  ? bossNeutralDelayMs(profileId, boss.bossPhase ?? 1)
+                  : BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS);
+                return newGameTime + neutralMs * bossCritCdMult(freshBoss(), newGameTime);
+              };
               // --- トール(ステージ5)専用ヘルパー(社長指示・独自攻撃) ------------------------------
               // 旋回運動: 現在の相対位置から角度/半径を毎フレーム自己補正しながら回す(専用の角度状態を持たない)。
               // Y-down画面座標では atan2 の角度が増える向き=視覚的に時計回り(社長指示「時計回り」の既定 dir=1)。
@@ -4524,10 +4526,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               };
               // 次の攻撃選択までの間隔。HPが低いほど短く=高頻度化(社長指示)。
               const thorNextActionDelay = () => {
-                const hpFrac = boss.maxHealth > 0 ? boss.health / boss.maxHealth : 1;
-                const mult = hpFrac <= THOR_LOWHP_FRAC ? THOR_LOWHP_INTERVAL_MULT : 1;
-                // CRIT-UNIFY §9.2: クリ窓中は×2(freshBossの理由はnextActionDelayと同じ)。
-                return newGameTime + (THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS)) * mult * bossCritCdMult(freshBoss(), newGameTime);
+                // 低HPだけ急に0.55倍へ跳ぶ旧式をやめ、台帳の3フェーズで段階的に密度を上げる。
+                const neutralMs = bossNeutralDelayMs('thor', boss.bossPhase ?? 1);
+                return newGameTime + neutralMs * bossCritCdMult(freshBoss(), newGameTime);
               };
               // カウンター成立時の共通処理(社長指示: すべての攻撃がカウンター可能)。通常カウンターと同じ
               // 演出(Counter!/ヒットインパクト/クリ反撃)を行い、近接距離ギリギリ外まで高速後退させる。
@@ -4865,13 +4866,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   bs.vx = 0; bs.vy = 0;
                 } else if (boss.type === 'thor') {
                   if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
-                    // トール専用: 弾もダッシュも使わない独自3種(一閃/突き/払い)からランダムに選ぶ(社長指示)。
-                    // 払いはプレイヤーが HARAI_TRIGGER_DIST(250px)以内に居る時だけ候補に入れる(社長指示v0.25.1626)。
-                    // §6.28-10: プール構築そのものは純関数化しただけ(pickThorPool・値は不変)。
+                    // トール専用: 弾もダッシュも使わない刀3種を距離帯の役割から選ぶ。
+                    // 払いは250px以内、一閃は遠距離ほど重く、突きは中距離の主砲。
                     const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
-                    const canHarai = Math.hypot(dpx, dpy) <= HARAI_TRIGGER_DIST;
-                    const pool = pickThorPool(canHarai);
-                    const pick = pool[Math.floor(Math.random() * pool.length)];
+                    const distance = Math.hypot(dpx, dpy);
+                    const pick = pickThorMove(distance, (boss.bossPhase ?? 1) as 1 | 2 | 3);
                     // §6.28-10行1〜3「+SE【新設】」: 予告SEを新設(図形/リード/硬直=既存値は無改変)。
                     // windup開始のセットアップ(方向ロック等)はbeginThorMoveへ集約(値は不変・純関数化のみ)。
                     beginThorMove(pick);

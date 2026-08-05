@@ -78,9 +78,10 @@ export const pickMimirMove = (
 // giant(6.26-9 #8)と同じ作法=「まだその技の間合いに居るなら」を距離の再チェックで表現する。
 export const MIMIR_COMBO_FOLLOWUP: Partial<Record<MimirMove, MimirMove>> = {
   dash: 'bite',
+  bite: 'burst',
   radial: 'laser',
 };
-export const MIMIR_COMBO_CHANCE = 0.4;
+export const MIMIR_COMBO_CHANCE = 0.55;
 
 export const pickMimirCombo = (
   justFinished: MimirMove,
