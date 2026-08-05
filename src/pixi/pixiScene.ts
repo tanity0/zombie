@@ -78,13 +78,19 @@ import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../util
 import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1の可視化(フルランプ速度線)
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
-import { contextZoomTarget, isLargeForZoom, ZOOM_MIN_ABS } from '../utils/cameraZoom';
-// 文脈ズームで最大まで引いた時(worldGroup.scale=CONTEXT_ZOOM_MIN)でも画面を覆えるよう、worldGroup内の
+import {
+  aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
+  BOSS_DISTANCE_ZOOM_RETURN_TAU, BOSS_DISTANCE_ZOOM_TAU, ZOOM_MIN_ABS,
+} from '../utils/cameraZoom';
+// 文脈ズームで最大まで引いた時(worldGroup.scale=ZOOM_MIN_ABS)でも画面を覆えるよう、worldGroup内の
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
-const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(ボス戦=BOSS_ZOOM_MIN)を基準にする
+const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(巨大ボス遠距離を含む)を基準にする
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType } from '../utils/enemyUtils';
 import { isMarkedBoss, isEngagedBoss, bossMarkFor, type MarkBox } from '../utils/bossMarker';
+import {
+  BOSS_ENGAGE_ENTER_PX, BOSS_ENGAGE_EXIT_PX, isEngageableBoss,
+} from '../utils/bossEngagement';
 import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
 import {
   HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
@@ -3212,6 +3218,8 @@ export class PixiScene {
   private cameraY = 0;
   private zoomApplied = false; // ズーム(待機/パンチ)を worldGroup に適用中か(終了時に1度だけ戻す)
   private contextZoom = 1;     // 文脈ズーム(敵数/大型で少し引く・視覚専用)。目標へイージング追従。
+  private bossCameraEngaged = false; // 距離ヒステリシス込みのボス交戦カメラ状態
+  private bossCameraReturning = false; // 敵視解除後だけ、通常画角へゆっくり戻す
   private labGfx: Graphics | null = null; // 屋内ステージのマーカー(ボタン/ゴール)(world座標・遅延生成)
   private labFloor: TilingSprite | null = null; // 屋内ステージの床タイル(world座標・遅延生成)
   private labVoid: TilingSprite | null = null;  // 背景の天井/void プレート(外周マージンに敷く・低速パララックス)
@@ -4344,7 +4352,7 @@ export class PixiScene {
 
     // 文脈ズームで引くと可視域(画面に映る world 範囲)が画面より広がる。マスクは worldGroup の子で
     // 一緒に縮むため、画面ちょうど(w×h)のままだと引き時に左右/下の world が固定枠で切り取られてしまう
-    // (社長報告「バツっと切れる」)。そこで最大引き(CONTEXT_ZOOM_MIN)でも覆えるよう、中央から
+    // (社長報告「バツっと切れる」)。そこで絶対最大引き(ZOOM_MIN_ABS)でも覆えるよう、中央から
     // ZOOM_OVERSCAN 倍に広げて敷く。地平フェードの位置(zeroY/fullY=画面Y)は据え置き=見た目不変。
     const maskW = w * ZOOM_OVERSCAN;
     const maskH = h * ZOOM_OVERSCAN;
@@ -5333,6 +5341,24 @@ export class PixiScene {
     this.lastZoomNow = now;
     // 透け(裏回り)フェードのlerp係数(時定数=OBSTACLE_SEE_THROUGH_TAU)。木/壁/プロップの alpha 更新で使う。
     this.seeThroughLerp = OBSTACLE_SEE_THROUGH_TAU > 0 ? 1 - Math.exp(-zdt / OBSTACLE_SEE_THROUGH_TAU) : 1;
+    // ボス距離ズーム: ボス中心ではなく互いの当たり矩形の縁から距離を取る。ヨルムンガンドのような
+    // 横長ボスへ接近した時、中心が遠いだけで「離れている」と誤判定しないため。
+    // 交戦の入口/出口はゲーム側の共通ヒステリシスと同じ900/1400pxを使い、dormantへ戻った瞬間も解除する。
+    const zpx = s.player.x + s.player.width / 2, zpy = s.player.y + s.player.height / 2;
+    const bossEngageLimit = this.bossCameraEngaged ? BOSS_ENGAGE_EXIT_PX : BOSS_ENGAGE_ENTER_PX;
+    let bossDistanceTarget: number | null = null;
+    for (const e of s.enemies) {
+      if (!isEngageableBoss(e.type) || e.dormant === true) continue;
+      const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
+      if (dx * dx + dy * dy > bossEngageLimit * bossEngageLimit) continue;
+      const bodyDistance = aabbGapDistance(s.player, e);
+      const target = bossDistanceZoomTarget(e.type, bodyDistance, e.isStoryBoss === true);
+      bossDistanceTarget = bossDistanceTarget == null ? target : Math.min(bossDistanceTarget, target);
+    }
+    const bossCameraActive = bossDistanceTarget != null;
+    if (bossCameraActive) this.bossCameraReturning = false;
+    else if (this.bossCameraEngaged) this.bossCameraReturning = true;
+    this.bossCameraEngaged = bossCameraActive;
     // 持続ズーム:
     //  ・登場(ヘリ)中: 高いヘリを収めるため引きから開始 → キャラの降下に同期して既定へ(playerIntroDescent)。
     //  ・移動中: 少し引く(CAMERA_MOVE_ZOOM_MAG=負)。
@@ -5346,7 +5372,9 @@ export class PixiScene {
     } else {
       let zoomTarget = 1;
       if (!s.rhythm.active) {
-        if (s.player.isMoving) zoomTarget = 1 + CAMERA_MOVE_ZOOM_MAG;       // 移動中だけ引き
+        // 交戦中は待機+5%を重ねない。距離プロファイルの値をそのまま画角として見せる。
+        if (this.bossCameraEngaged) zoomTarget = 1;
+        else if (s.player.isMoving) zoomTarget = 1 + CAMERA_MOVE_ZOOM_MAG;       // 移動中だけ引き
         else if (!s.touchActive) zoomTarget = 1 + CAMERA_IDLE_ZOOM_MAG;     // 手放し静止で待機ズーム
       }
       // 引き(さらに広がる方向)は慣性でじわっと=長い時定数。戻り(寄り/等倍へ)は従来の戻り時定数。
@@ -5362,21 +5390,29 @@ export class PixiScene {
       ? 1 - computeTimeSlowScale(now, s.zoomStart, s.zoomUntil, 0, s.zoomHoldMs)
       : 0;
     const punch = 1 + s.zoomMag * zoomDecay;
-    // 文脈ズーム: 敵数が多い/大型がいるほど少し引く(視覚専用)。イージング追従＋不感帯でパカパカ防止。
-    // 引き(target<現在)は長い時定数でじわっと、戻りは待機と同じ時定数。
-    // プレイヤー近く(画面内相当の半径)にいる敵だけ数える。遠くの大型/多数では引かない(社長指示)。
+    // 文脈ズーム: 通常敵は従来どおり画面内相当の数/大型で判定。正規ボスだけは交戦中の距離で判定。
+    // ボスは0.45秒時定数で距離へ追従し、敵視解除後は1.0秒時定数で通常画角へ戻す。
     const zNearR2 = Math.pow(Math.max(this.screenW, this.screenH) * 0.6, 2);
-    const zpx = s.player.x + s.player.width / 2, zpy = s.player.y + s.player.height / 2;
     let hasLargeForZoom = false, nearCount = 0;
     for (const e of s.enemies) {
+      // 正規ボスは上の交戦判定だけで扱う。dormant中の存在をカメラで先に漏らさず、敵視解除後も
+      // 旧「大型1体=.70固定」が残って通常画角への復帰を邪魔しないようにする。
+      if (isEngageableBoss(e.type)) continue;
       const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
       if (dx * dx + dy * dy > zNearR2) continue; // 遠い敵は無視
       nearCount++;
       if (isLargeForZoom(e.type)) hasLargeForZoom = true;
     }
-    const czTarget = contextZoomTarget(nearCount, hasLargeForZoom);
-    const czTau = czTarget < this.contextZoom - 0.0001 ? CAMERA_MOVE_ZOOM_TAU : CAMERA_IDLE_ZOOM_TAU;
+    const czTarget = contextZoomTarget(nearCount, hasLargeForZoom, bossDistanceTarget);
+    const czTau = this.bossCameraEngaged
+      ? BOSS_DISTANCE_ZOOM_TAU
+      : this.bossCameraReturning
+        ? BOSS_DISTANCE_ZOOM_RETURN_TAU
+        : czTarget < this.contextZoom - 0.0001 ? CAMERA_MOVE_ZOOM_TAU : CAMERA_IDLE_ZOOM_TAU;
     this.contextZoom += (czTarget - this.contextZoom) * (1 - Math.exp(-zdt / Math.max(0.001, czTau)));
+    if (this.bossCameraReturning && Math.abs(czTarget - this.contextZoom) < 0.002) {
+      this.bossCameraReturning = false;
+    }
     const zoom = this.idleZoom * this.contextZoom * punch;
     // 寄り先(社長指示・v0.25.1498): KILLはキルされた対象(zoomTargetX/Y・世界座標)を画面中央の
     // 代わりに寄りの軸にする(zoomDecay>0=パンチ演出中のみ・カウンター等は指定なしで従来どおり中央)。
@@ -17909,8 +17945,8 @@ export class PixiScene {
     let distSlot = 0;
     if (playerCenter && bossMark.targets.length > 0) {
       const box: MarkBox = { w: this.screenW, h: this.screenH, marginX, marginTop, marginBottom };
-      // ★ワールド→画面は **Pixi の実値から**組む(式を2箇所に持たない)。ボス戦は常時 BOSS_ZOOM_MIN
-      // まで引く=可視域が画面の1/zoom倍あるので、`world - camera` を画面座標にすると「まだ見えている
+      // ★ワールド→画面は **Pixi の実値から**組む(式を2箇所に持たない)。ボス戦は距離ズームで
+      // 最大0.58まで引く=可視域が画面の1/zoom倍あるので、`world - camera` を画面座標にすると「まだ見えている
       // のにマークが出る」。カメラシェイク/ズーム時の寄せもこの1本に乗る(CLAUDE.md ズーム引き考慮)。
       const wz = this.L.worldGroup.scale.x || 1;
       const view = {

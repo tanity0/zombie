@@ -67,8 +67,8 @@ export interface BossMark {
 /**
  * ワールド→画面の写像。`screen = origin + world × zoom`。
  *
- * ★**ズーム引き考慮(CLAUDE.md 必須項目)**: ボス戦は常時 `BOSS_ZOOM_MIN`(既定0.7)まで引くので、
- * 可視域は画面の 1/0.7 ≒ 1.43倍ある。`world - camera` を画面座標として扱うと、ボスがまだ
+ * ★**ズーム引き考慮(CLAUDE.md 必須項目)**: ボス戦は距離と体格により最大0.58まで引くので、
+ * 可視域は画面の約1.72倍まで広がる。`world - camera` を画面座標として扱うと、ボスがまだ
  * はっきり見えている位置で「画面外」と判定してマークが出てしまう。よってズームを必ず通す。
  * 呼ぶ側は Pixi の実値(`worldGroup.scale` / `worldGroup.position` / `world.position`)から作ること
  * ——**式を2箇所に持たない**(カメラシェイクやズーム時の寄せも自動で乗る)。

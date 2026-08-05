@@ -897,7 +897,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
   // 文脈カメラズーム引き(contextZoom<1)中は可視域が gameBounds を超えるため、固定矩形のままだと
   // 画面内に見えている敵を回収してしまう(社長報告: ズーム引きで敵が端で消える。トールが
   // 大型=常時最大引き対象になって露見)。レンダラ側カリング(v0.25.1253 zoomViewportOverscan)
-  // と同思想で、最大引き(CONTEXT_ZOOM_MIN)でも覆える倍率だけ常に外へ広げる(安全側=消えなくなるだけ)。
+  // と同思想で、絶対最大引き(ZOOM_MIN_ABS)でも覆える倍率だけ常に外へ広げる(安全側=消えなくなるだけ)。
   const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / ZOOM_MIN_ABS; // ★一番引いた時を基準に(v0.25.2412)
   const recycleHalfW = (gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
   const recycleHalfH = (gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;

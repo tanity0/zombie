@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  contextZoomTarget, isLargeForZoom,
-  CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN, ZOOM_MIN_ABS, CONTEXT_ZOOM_COUNT_FLOOR, CONTEXT_ZOOM_COUNT_CEIL,
+  aabbGapDistance, bossDistanceZoomTarget, bossZoomClassFor, contextZoomTarget, isLargeForZoom,
+  BOSS_DISTANCE_ZOOM_FAR_PX, BOSS_DISTANCE_ZOOM_MIN, BOSS_DISTANCE_ZOOM_NEAR_PX,
+  BOSS_ZOOM_PROFILES, CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN, ZOOM_MIN_ABS,
+  CONTEXT_ZOOM_COUNT_FLOOR, CONTEXT_ZOOM_COUNT_CEIL,
 } from './cameraZoom';
 
 describe('cameraZoom — context zoom target', () => {
@@ -29,11 +31,51 @@ describe('cameraZoom — context zoom target', () => {
     expect(contextZoomTarget(0, true)).toBe(BOSS_ZOOM_MIN);
     expect(BOSS_ZOOM_MIN).toBeLessThan(CONTEXT_ZOOM_MIN);
     // 安全マージンの基準は「一番引いた時」でなければならない(背景の隙間/敵の消失を防ぐ)。
-    expect(ZOOM_MIN_ABS).toBe(Math.min(CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN));
+    expect(ZOOM_MIN_ABS).toBe(Math.min(CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN, BOSS_DISTANCE_ZOOM_MIN));
   });
 
   it('large-type set = reaper/giantbat/hidden bosses/hunter (not pumpkin/screamer)', () => {
     for (const t of ['reaper', 'giantbat', 'mimir', 'jormungand', 'skadi', 'hunter']) expect(isLargeForZoom(t)).toBe(true);
     for (const t of ['pumpkin', 'screamer', 'zombie', 'bat', 'plant']) expect(isLargeForZoom(t)).toBe(false);
+  });
+
+  it('uses size classes and treats story giantbats as giant bosses', () => {
+    expect(BOSS_ZOOM_PROFILES).toEqual({
+      compact: { near: 0.72, far: 0.66 },
+      standard: { near: 0.70, far: 0.62 },
+      giant: { near: 0.70, far: 0.58 },
+    });
+    expect(bossZoomClassFor('idol')).toBe('compact');
+    expect(bossZoomClassFor('miguel')).toBe('compact');
+    expect(bossZoomClassFor('thor')).toBe('standard');
+    expect(bossZoomClassFor('giantbat')).toBe('standard');
+    expect(bossZoomClassFor('giantbat', true)).toBe('giant');
+    expect(bossZoomClassFor('jormungand')).toBe('giant');
+  });
+
+  it('keeps close boss presence and smoothly pulls farther away', () => {
+    const profile = BOSS_ZOOM_PROFILES.giant;
+    expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_NEAR_PX)).toBe(profile.near);
+    expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_FAR_PX)).toBe(profile.far);
+    const mid = bossDistanceZoomTarget(
+      'jormungand', (BOSS_DISTANCE_ZOOM_NEAR_PX + BOSS_DISTANCE_ZOOM_FAR_PX) / 2,
+    );
+    expect(mid).toBeCloseTo((profile.near + profile.far) / 2, 6);
+    expect(bossDistanceZoomTarget('jormungand', 400)).toBeLessThan(
+      bossDistanceZoomTarget('jormungand', 300),
+    );
+  });
+
+  it('uses body-edge distance for wide bosses', () => {
+    const player = { x: 100, y: 100, width: 20, height: 20 };
+    expect(aabbGapDistance(player, { x: 120, y: 90, width: 500, height: 80 })).toBe(0);
+    expect(aabbGapDistance(player, { x: 170, y: 100, width: 500, height: 80 })).toBe(50);
+    expect(aabbGapDistance(player, { x: 150, y: 150, width: 500, height: 80 })).toBeCloseTo(Math.hypot(30, 30));
+  });
+
+  it('combines crowd, large-enemy and distance boss targets by deepest pull', () => {
+    expect(contextZoomTarget(0, false, 0.66)).toBe(0.66);
+    expect(contextZoomTarget(0, true, 0.62)).toBe(0.62);
+    expect(contextZoomTarget(CONTEXT_ZOOM_COUNT_CEIL, false, 0.9)).toBe(CONTEXT_ZOOM_MIN);
   });
 });
