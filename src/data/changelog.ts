@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2878',
+    items: [
+      'ゾンビもコウモリ・スケルトンと同じだけ大きくしました。当たり判定も一緒に大きくなっています。',
+    ],
+  },
+  {
     version: '0.25.2877',
     items: [
       'ゾンビの見た目を新しい絵に変えました。全ステージで同じ絵になります。',

@@ -38,7 +38,8 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   bat:       { width: 26, height: 26, speed: 75,  health: 8,    damage: 6,   experienceValue: 1 },
   // v0.25.2874(同上): 26→31。
   skeleton:  { width: 31, height: 31, speed: 60,  health: 18,   damage: 8,   experienceValue: 1 },
-  zombie:    { width: 30, height: 30, speed: 42,  health: 40,   damage: 10,  experienceValue: 2 },
+  // v0.25.2878(社長指示「ゾンビも同じ分だけ大きくして」): 30→36。bat(+18.2%)/skeleton(+19.2%)と同幅。
+  zombie:    { width: 36, height: 36, speed: 42,  health: 40,   damage: 10,  experienceValue: 2 },
   plant:     { width: 28, height: 28, speed: 8,   health: 25,   damage: 0,   experienceValue: 2 },
   // 変異体(抱卵型・旧ghost): 直進せずプレイヤーの周囲を周回し、1秒ごとに緑卵(mine)を撒く(AIは store)。internal idは'ghost'のまま。
   ghost:     { width: 24, height: 24, speed: 48,  health: 26,   damage: 6,   experienceValue: 3 },
