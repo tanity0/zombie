@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2884',
+    items: [
+      '叫喚型の絵を、口を開けて絶叫している絵に差し替えました。',
+    ],
+  },
+  {
     version: '0.25.2883',
     items: [
       '使わなくなった古い叫喚型の絵(2.1MB)を削除して、起動時の読み込みを少し軽くしました。',
