@@ -36,6 +36,7 @@ import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
 import { bossEngagedNow, engagedBossSlotKeys, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
+import { markBossesEncountered } from './bossEncounter'; // BOSS_MAKER.md §20-5: ボスラッシュの解放記録
 import {
   tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey,
   subStyleHomingHoldMs, type SubStyleProfile,
@@ -669,6 +670,12 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       state.enemies, pcx, pcy, engagedSlotKeysPrev, t => bossStyleSlotKey(t, stageIdNow),
     );
     tickBossClocks(engagedSlotKeysPrev, gameTime);
+    // ボスラッシュの解放記録(BOSS_MAKER.md §20-5・社長仕様「一度ステージで出会ったことがあれば解放」)。
+    // ★ここが**全ボスを1箇所で拾える唯一の合流点**。`engagedBossSlotKeys` は休眠(dormant)を除外し
+    // 距離のヒステリシス付きなので、「盤上に居た」ではなく**実際に近づいて戦い始めた**時だけ入る
+    // (出現で記録すると、開始時点で盤上に居る idol が出撃しただけで解放されてしまう)。
+    // 練習ラン/ボス戦テストでは記録しない・既に持っているキーだけなら書き込まない(関数側で判定)。
+    markBossesEncountered(engagedSlotKeysPrev);
   }
   // §2.17(GHOST-DUO-RECORDS): 同行台帳側は「同行ランか」のフラグだけ預かる(時計は上の共有時計)。
   setDuoRunActive(ghostRunActive);

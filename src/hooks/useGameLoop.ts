@@ -74,6 +74,7 @@ import {
   RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX,
   BOSS_TEST_RUN, // ボス戦テスト/ボスメーカー出撃か(チュートリアル抑止に使う)
 } from '../store/gameStore';
+import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
 import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
@@ -821,10 +822,7 @@ const FORCE_GATEBOSS = evParam('gateboss') === '1';
 // 発火しない(`gateFireOk`が`!storyBoss`を要求)。よってこのマッピング自体は正しいが、通常のゲート2
 // 経路からは当面到達できない(`?gateboss=1`のforce-spawn経路でのみ確認できる)。仕様判断(storyBossOnly
 // を変えるか等)はPACING_PUZZLE.mdの★未決事項へ記録し、ここでは配線のみ行う。
-const GATE2_BOSS_TYPE_BY_STAGE: Partial<Record<string, EnemyType>> = {
-  'stage-1': 'miguel', 'stage-3': 'jibril', 'stage-4': 'rafi',
-  'stage-5': 'uri', 'stage-6': 'suriel', 'stage-ex1': 'acrasiel',
-};
+// 表の正本は `src/config/gateBoss.ts`(v0.25.2857・ボスラッシュと共有するため切り出した)。
 // (WAVE_GRACE_MS は src/utils/directorTick.ts へ移設)
 // ダンスビートB方式(社長決定 v0.25.1339・仕様はHANDOFF_DANCE_AUDIO.md末尾)。?beat=0で従来の
 // (メトロノーム無し+曲への自動アンカー同期)挙動へ完全復帰(切り分け用)。

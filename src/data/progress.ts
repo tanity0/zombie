@@ -4,6 +4,7 @@
 
 import { STAGES, getStage, type Stage } from './campaign';
 import { getEventQuestConfig } from '../utils/eventQuest';
+import { clearBossEncounters } from '../utils/bossEncounter';
 
 const CLEARED_KEY = 'zombie.progress.cleared';
 const SELECTED_KEY = 'zombie.progress.selectedStage';
@@ -719,6 +720,7 @@ export const resetProgress = (): void => {
   writeRunCores({}); // 掘削記録(リザルト断面の過去ラン)も進行リセットで消す(開発用)
   try { localStorage.removeItem(CHRONICLE_START_KEY); } catch { /* ignore */ } // 初ミッション日付も消す(開発用)
   setStoryFlags(emptyStoryFlags()); // the ONE ストーリー分岐フラグも進行リセットで消す(開発用)
+  clearBossEncounters(); // ボスラッシュの遭遇記録も進行リセットで消す(開発用・BOSS_MAKER.md §20-5)
   setSelectedMission('main');
 };
 
