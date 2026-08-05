@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2855',
+    items: [
+      'ゲーム内容の変更はありません（ボスラッシュの設計を、品質監査の指摘にもとづいて作り直しました）。',
+    ],
+  },
+  {
     version: '0.25.2854',
     items: [
       'ゲーム内容の変更はありません（ボスラッシュの仕様を確定しました。練習の勝利は討伐記録に残さない／死神とハンターはボスに含めない／ステージボスは全員並べる）。',
