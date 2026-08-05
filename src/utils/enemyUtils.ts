@@ -33,8 +33,11 @@ interface EnemyStats {
 }
 
 export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
-  bat:       { width: 22, height: 22, speed: 75,  health: 8,    damage: 6,   experienceValue: 1 },
-  skeleton:  { width: 26, height: 26, speed: 60,  health: 18,   damage: 8,   experienceValue: 1 },
+  // v0.25.2874(社長指示「bat skeleton両方少し大きく、当たり判定も合わせて」): 22→26。
+  // 描画枠は width×ENEMY_VISUAL_SCALE なので、判定を上げると絵も同じ比率で大きくなる。
+  bat:       { width: 26, height: 26, speed: 75,  health: 8,    damage: 6,   experienceValue: 1 },
+  // v0.25.2874(同上): 26→31。
+  skeleton:  { width: 31, height: 31, speed: 60,  health: 18,   damage: 8,   experienceValue: 1 },
   zombie:    { width: 30, height: 30, speed: 42,  health: 40,   damage: 10,  experienceValue: 2 },
   plant:     { width: 28, height: 28, speed: 8,   health: 25,   damage: 0,   experienceValue: 2 },
   // 変異体(抱卵型・旧ghost): 直進せずプレイヤーの周囲を周回し、1秒ごとに緑卵(mine)を撒く(AIは store)。internal idは'ghost'のまま。
