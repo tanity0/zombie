@@ -205,7 +205,9 @@ import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/direct
 import { createPinchState, pityLevel } from '../utils/pityDirector';
 import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
 import { shouldFireBoredomArena, BOREDOM_ARENA_START_MS, BOREDOM_ARENA_CD_MS } from '../utils/boredomArena';
-import { shouldTriggerViciousHunter, pickViciousSpawnPoint, VICIOUS_REARM_MS } from '../utils/viciousHunter';
+import {
+  isHunterSafeBaseNearby, shouldTriggerViciousHunter, pickViciousSpawnPoint, VICIOUS_REARM_MS,
+} from '../utils/viciousHunter';
 import {
   eventGateOk, redNightPhaseGateOk, screamerPhaseGateOk, hunterBoredomReady, eventSizeMult,
 } from '../utils/eventProducer';
@@ -552,7 +554,7 @@ const HUNTER_REINFORCE_1_MS = 20000;       // 追跡20秒で2体目
 const HUNTER_REINFORCE_2_MS = 40000;       // 追跡40秒で3体目
 const HUNTER_CHASE_MAX_MS = 60000;         // 追跡の上限(これを超えたら諦めて撤退=kiteで永久追跡＆他イベント停止を防ぐ)
 const HUNTER_MAX_ALIVE = 3;                // 同時最大3体
-const HUNTER_BASE_SAFE_RADIUS = 150;       // 制圧拠点へこの距離まで近づくと追跡相手が撤退
+const HUNTER_BASE_SAFE_RADIUS = 150;       // 開放前を含む拠点へこの距離まで近づくとハンターが撤退
 const HUNTER_FLEE_SPEED = 300;             // 撤退移動速度(px/s)
 const HUNTER_DESPAWN_DIST = 1500;          // 撤退でプレイヤーからこの距離離れたら消滅
 // 優勢判定(6項目中 HUNTER_FAV_SCORE_NEEDED 以上で成立)
@@ -3280,6 +3282,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hs = useGameStore.getState();
           const hpx = hs.player.x + hs.player.width / 2;
           const hpy = hs.player.y + hs.player.height / 2;
+          const nearAnyBase = isHunterSafeBaseNearby(hpx, hpy, hs.baseSites, HUNTER_BASE_SAFE_RADIUS);
 
           // 優勢判定の履歴更新: 被弾検出(HP低下)と撃破数の時系列。
           if (hunterPrevHpRef.current < 0) hunterPrevHpRef.current = hs.player.health;
@@ -3301,7 +3304,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const cinematic = hs.bossChasing || !!hs.attention || hs.redNight?.phase === 'active' || giantOrReaper;
           // 撤退トリガ用は attention を除外(ハンター発見時に自分で出すアテンションで即撤退しないように)。
           const retreatCinematic = hs.bossChasing || hs.redNight?.phase === 'active' || giantOrReaper;
-          const spawnBlocked = cinematic || !!hs.activeEvent;
+          const spawnBlocked = cinematic || !!hs.activeEvent || nearAnyBase;
 
           // 画面外スポーン地点(プレイヤー近場の画面端〜外)。
           const offscreenSpawn = (): { x: number; y: number } => {
@@ -3400,7 +3403,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           } else if (H.phase === 'search') {
             const prim = hs.enemies.find(e => e.id === H.primaryId);
-            if (!prim || cinematic) {
+            if (!prim || cinematic || nearAnyBase) {
               clearAllHunters(); endHunterEvent(); // 撃破/演出割り込み=即座に立ち去る(フェード無し)
             } else if (prim.hunterLeavingAt !== undefined) {
               // フェードアウト中(索敵タイムアウト後): 経過を待って消滅させる。
@@ -3460,13 +3463,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnHunter(false); H.reinforced = 2;
                 useGameStore.setState({ eventBannerText: 'ハンターの増援', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               }
-              // 撤退トリガ: 制圧拠点へ逃げ込む / ボス・リーパー・演出が始まった / 追跡が上限を超えた(諦め)。
-              const nearBase = hs.baseSites.some(b => b.status === 'captured' && Math.hypot(hpx - b.x, hpy - b.y) <= HUNTER_BASE_SAFE_RADIUS);
+              // 撤退トリガ: 開放前を含む拠点へ逃げ込む / ボス・リーパー・演出が始まった / 追跡が上限を超えた(諦め)。
               const chasedOut = elapsed >= HUNTER_CHASE_MAX_MS; // kiteで永久追跡＆他イベント停止を防ぐ
               // M20追補(社長明確化v0.25.1534)「デンジャーを出る=手前へ戻る」: 凶悪ハンターはプレイヤーが
               // デンジャーより手前(area<2=r<3000)へ後退したら逃げ去る。前進(ゲート1方向)はゲート発生側で処理。
               const viciousRetreated = H.vicious && areaZoneIndexFor(Math.hypot(hpx, hpy)) < 2;
-              if (nearBase || retreatCinematic || chasedOut || viciousRetreated) {
+              if (nearAnyBase || retreatCinematic || chasedOut || viciousRetreated) {
                 useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterFleeing: true, dormant: false, aiPhase: undefined } : e) }));
                 H.phase = 'retreat';
                 useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });

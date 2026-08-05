@@ -108,11 +108,13 @@ import {
 } from '../utils/ghostComment';
 // BOT_AND_GHOST.md §2.14/§2.16 C: 独立メニュー「守護霊」= 名前の決定 + 討伐の保持記録(G5アルバム)。
 // カードはリザルト年表と**同じ部品**を流用する(§2.16 B)。
-import { loadPlayerProfile } from '../utils/playerTraits';
+import { loadPlayerProfile, type BossStyleSlot } from '../utils/playerTraits';
 import { buildAlbumCards, buildDuoAlbumCards, type BossClearCard } from '../utils/ghostAlbum';
 import { loadDuoAlbum } from '../utils/duoRecords';
 import type { GhostAllySnapshot } from '../utils/playerBuild';
-import { BossClearCardRow, GhostAllyCard } from './GhostRecordCards';
+import { GhostAllyCard } from './GhostRecordCards';
+import { GhostBossDossier } from './GhostBossDossier';
+import { GHOST_DOSSIER_SLOTS } from '../utils/ghostDossier';
 import {
   acknowledgeGhostInbox, ghostNetworkSlotKey, hasGhostOnlineConsent,
   loadFixedGhostStats, loadGhostInbox, refreshGhostInbox,
@@ -411,6 +413,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const [ghostAlbum, setGhostAlbum] = useState<BossClearCard[]>([]);
   // §2.17(GHOST-DUO-RECORDS): 同行撃破台帳(二枠のうちの同行枠)。ソロ台帳と同じく入った時に1回だけ読む。
   const [duoAlbum, setDuoAlbum] = useState<BossClearCard[]>([]);
+  const [ghostSlotRecords, setGhostSlotRecords] = useState<Record<string, BossStyleSlot>>({});
+  const [selectedGhostSlot, setSelectedGhostSlot] = useState(GHOST_DOSSIER_SLOTS[0].slotKey);
   const [ghostInbox, setGhostInbox] = useState<Record<string, GhostInboxItem>>({});
   const [fixedGhostStats, setFixedGhostStats] = useState<Record<string, FixedGhostStat>>({});
   const [ghostSyncState, setGhostSyncState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -420,7 +424,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const [openAlly, setOpenAlly] = useState<GhostAllySnapshot | null>(null);
   const goGhost = () => {
     playSfx('ui-select');
-    setGhostAlbum(buildAlbumCards(loadPlayerProfile()));
+    const profile = loadPlayerProfile();
+    const album = buildAlbumCards(profile);
+    setGhostAlbum(album);
+    setGhostSlotRecords(profile?.bossStyles ?? {});
+    setSelectedGhostSlot(album.find(card => GHOST_DOSSIER_SLOTS.some(slot => slot.slotKey === card.slotKey))?.slotKey ?? GHOST_DOSSIER_SLOTS[0].slotKey);
     setDuoAlbum(buildDuoAlbumCards(loadDuoAlbum()));
     setGhostInbox(loadGhostInbox());
     setFixedGhostStats(loadFixedGhostStats());
@@ -1211,8 +1219,6 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     <>
       <Header title="守護霊" subtitle="名前・討伐記録" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
       <div className="menu-stagger p-3 space-y-3">
-        <PlayerNameSettings />
-        <GhostCommentSettings />
         <Section label="オンライン共有">
           <div className="flex items-center justify-between gap-2 text-[12px]">
             <span className="text-white/65">共有状態</span>
@@ -1242,68 +1248,23 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </p>
           )}
           <div className="flex items-center justify-between text-[10px] text-white/40">
-            <span>{ghostSyncState === 'error' ? '通信できませんでした（保存済みの値を表示）' : 'ボスごとの内訳は下のカードに表示'}</span>
+            <span>{ghostSyncState === 'error' ? '通信できませんでした（保存済みの値を表示）' : 'ボスごとの内訳は討伐記録に表示'}</span>
             <span>最終更新 {ghostSyncTimeLabel}</span>
           </div>
         </Section>
-        {/* §2.17: 討伐記録の二枠化。ソロ枠=従来のG5アルバム(計測つき)/同行枠=同行撃破台帳(下)。 */}
-        <Section label="討伐記録（ソロ）">
-          {ghostAlbum.length === 0 ? (
-            <p className="text-[11px] leading-relaxed text-white/45">
-              まだ討伐の記録がありません。ボスを倒してリザルトで「採用」すると、そのボスの戦い方がここに残ります。
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {ghostAlbum.map(card => {
-                const inbox = ghostInbox[ghostNetworkSlotKey(card.slotKey)];
-                const recentLike = inbox?.recent.find(event => event.liked);
-                return (
-                  <div key={card.slotKey}>
-                    <BossClearCardRow
-                      card={card}
-                      onAllyTap={setOpenAlly}
-                      showFixedAiLeaders
-                      fixedGhostStats={fixedGhostStats}
-                    />
-                    <div className="mt-1 flex items-center justify-between gap-2 bg-sky-400/[0.06] px-2 py-1.5 text-[10px]">
-                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 font-semibold ${
-                        inbox?.published ? 'bg-emerald-400/15 text-emerald-100' : 'bg-white/5 text-white/40'
-                      }`}>
-                        {inbox?.published ? '公開中' : '未公開'}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-right tabular-nums text-sky-100/75">
-                        同行 {(inbox?.used ?? 0).toLocaleString()}回 / ♥ {(inbox?.likes ?? 0).toLocaleString()}
-                        {recentLike ? ` ／ 最近のいいね: ${recentLike.name}` : ''}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Section>
-        {/* §2.17 同行枠: 撃破タイム+同行者(名前+クラス絵)のみ(評価数値は計測しないので無い)。
-            同行者名タップ→ビルドのポップアップ(ソロ枠と同じ既存部品openAllyを流用)。文言は叩き台。 */}
-        <Section label="討伐記録（同行）">
-          {duoAlbum.length === 0 ? (
-            <p className="text-[11px] leading-relaxed text-white/45">
-              まだ同行討伐の記録がありません。守護霊と共にボスを倒すと、ベストタイムと同行者がここに残ります。
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {duoAlbum.map(card => (
-                <BossClearCardRow
-                  key={card.slotKey}
-                  card={card}
-                  duo
-                  onAllyTap={setOpenAlly}
-                  showFixedAiLeaders
-                  fixedGhostStats={fixedGhostStats}
-                />
-              ))}
-            </div>
-          )}
-        </Section>
+        <GhostBossDossier
+          selectedSlotKey={selectedGhostSlot}
+          onSelect={slotKey => { playSfx('ui-select'); setSelectedGhostSlot(slotKey); }}
+          cards={ghostAlbum}
+          duoCards={duoAlbum}
+          slotRecords={ghostSlotRecords}
+          inbox={ghostInbox}
+          fixedStats={fixedGhostStats}
+          networkSlotKey={ghostNetworkSlotKey}
+          onAllyTap={setOpenAlly}
+        />
+        <PlayerNameSettings />
+        <GhostCommentSettings />
       </div>
       {/* §2.15 置き場所の訂正③: 同行者の名前タップ→ビルド/ステータスのポップアップ。
           他のモーダルと同じくbody直下へポータル(menu-stagger等のtransform祖先の影響を受けないため)。 */}

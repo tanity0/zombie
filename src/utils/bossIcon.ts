@@ -13,6 +13,7 @@ const BOSS_ICON: Record<string, string> = {
   uri: 'uri', suriel: 'suriel', acrasiel: 'acrasiel',
   giantbat: 'atlas-px2/giantbat',
   mimir: 'mimir', jormungand: 'jormungand', skadi: 'skadi', thor: 'thor',
+  idol: 'idol',
 };
 
 // 城ボス(giantbat)だけは**全ステージに出る同じ敵**で、絵はステージごとに差し替わる

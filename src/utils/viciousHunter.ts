@@ -3,6 +3,14 @@
 // ための判定/位置決め純関数(実装精度の規律4: 配線ロジックは純関数へ切り出す)。
 export const VICIOUS_REARM_MS = 3000; // 撃破直後の一瞬の猶予(即座の入れ替わりを避ける・「優勢ゲート無視」とは別軸)
 
+/** 開放状態に関係なく、いずれかの拠点内ならハンターに対する安全地帯とする。 */
+export const isHunterSafeBaseNearby = (
+  pcx: number,
+  pcy: number,
+  bases: readonly { x: number; y: number }[],
+  safeRadius: number,
+): boolean => bases.some(base => Math.hypot(pcx - base.x, pcy - base.y) <= safeRadius);
+
 export interface ViciousHunterTriggerInput {
   gameTime: number;
   hunterStartMs: number;      // = useGameLoop.ts の HUNTER_START_MS(3分)。既存定数をそのまま渡す。

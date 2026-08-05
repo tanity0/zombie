@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldTriggerViciousHunter, pickViciousSpawnPoint } from './viciousHunter';
+import { isHunterSafeBaseNearby, shouldTriggerViciousHunter, pickViciousSpawnPoint } from './viciousHunter';
 
 const baseTrigger = {
   gameTime: 180000,
@@ -67,5 +67,21 @@ describe('pickViciousSpawnPoint', () => {
     const a = pickViciousSpawnPoint(0, 0, 500, () => 0);
     const b = pickViciousSpawnPoint(0, 0, 500, () => 0.5);
     expect(a.x === b.x && a.y === b.y).toBe(false);
+  });
+});
+
+describe('isHunterSafeBaseNearby', () => {
+  const bases = [
+    { x: 100, y: 200, status: 'open' },
+    { x: 500, y: 600, status: 'captured' },
+  ];
+
+  it('treats an unopened base as safe too', () => {
+    expect(isHunterSafeBaseNearby(100, 200, bases, 150)).toBe(true);
+  });
+
+  it('keeps captured bases safe and rejects positions outside every base', () => {
+    expect(isHunterSafeBaseNearby(500, 600, bases, 150)).toBe(true);
+    expect(isHunterSafeBaseNearby(900, 900, bases, 150)).toBe(false);
   });
 });
