@@ -2,6 +2,7 @@
  * ボスの攻撃を単発抽選ではなく、前の技が次の技を成立させる短い台本へ変換する。
  * 先頭は抽選済みの始動技。Phase1は学習しやすい2手、後半は3手を基本にする。
  */
+import { BOSS_STRING_REST_MS } from './bossTelegraph';
 export type ChoreographyBoss =
   | 'giant' | 'glen' | 'mimir' | 'jormungand' | 'skadi' | 'thor'
   | 'miguel' | 'jibril' | 'rafi' | 'uri' | 'suriel' | 'acrasiel';
@@ -74,6 +75,10 @@ export const planBossChoreography = (boss: ChoreographyBoss, opening: string, ph
   return trimForPhase(table[opening] ?? [opening], phase);
 };
 
-/** 台本途中だけ硬直を詰め、締めの反撃時間は各技の既存値を保つ。 */
+/**
+ * 台本途中は一息で次へつなぎ、締めだけ必ず2発ぶんの反撃時間を残す。
+ * 「連携の圧」と「小休止」を同じ関数から全ボスへ配るため、個別コントローラ側で
+ * 900/1700msを複製しない。
+ */
 export const choreographyRecoverMs = (normalRecoverMs: number, hasFollowup: boolean): number =>
-  hasFollowup ? Math.min(normalRecoverMs, 380) : normalRecoverMs;
+  hasFollowup ? Math.min(normalRecoverMs, 300) : Math.max(normalRecoverMs, BOSS_STRING_REST_MS);

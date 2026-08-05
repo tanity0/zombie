@@ -212,7 +212,7 @@ export const IDOL_TUNING: IdolTuning = {
   timing: {
     aim:   { windup: 700,  active: 0,   recover: 900 },
     fan:   { windup: 900,  active: 0,   recover: 900 },
-    roll:  { windup: 400,  active: 300, recover: 900 },
+    roll:  { windup: 400,  active: 180, recover: 900 },
     punch: { windup: 600,  active: 0,   recover: 900 },
     snipe: { windup: 1100, active: 200, recover: 900 },
     orb:   { windup: 800,  active: 0,   recover: 900 },
@@ -249,9 +249,9 @@ export const IDOL_TUNING: IdolTuning = {
     { zone: 'far', weight: 45, moves: ['aim', 'snipe', 'orb', 'roll'] },
     { zone: 'far', weight: 55, moves: ['orb', 'snipe', 'aim', 'fan'] },
   ],
-  // ④休符: P1/P2とも0.9秒。**0にはしない**(プレイヤーのターンが消えると理不尽)。
-  // 0.9秒=カウンター1サイクル820msを上回る最小値。
-  rest: { p1: 900, p2: 900 },
+  // ④休符: P1/P2とも1.7秒。連段中は圧を掛け、終端だけ2発ぶんの小休止を保証する。
+  // カウンター1サイクル820ms×2を上回るため、回避後に明確な「こちらのターン」が来る。
+  rest: { p1: 1700, p2: 1700 },
   // 中立の滞在(休符明け〜次のストリングまで)。ER原則③「主戦帯で横に回りながら出入りする」。
   // ここが0だとボスは一切移動しない(初回計測で移動tick0.5〜5.5%だった原因)。
   neutral: { minMs: 700, maxMs: 1300 },

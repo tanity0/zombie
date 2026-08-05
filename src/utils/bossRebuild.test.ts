@@ -11,7 +11,7 @@ describe('boss rebuild contract', () => {
 
   it('全員に反撃時間と連段上限を保証する', () => {
     for (const profile of Object.values(BOSS_COMBAT_PROFILES)) {
-      expect(profile.mandatoryRestMs).toBeGreaterThanOrEqual(900);
+      expect(profile.mandatoryRestMs).toBeGreaterThanOrEqual(1700);
       expect(profile.maxConcurrentC).toBeLessThanOrEqual(1);
       expect(profile.maxString.every(n => n >= 2 && n <= 5)).toBe(true);
       expect(profile.maxString.every((n, i, a) => i === 0 || n >= a[i - 1])).toBe(true);

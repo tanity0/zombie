@@ -1553,6 +1553,8 @@ export const HUNTER_LEAVE_FADE_MS = 900;
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
 export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
 export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン予告→直線突進。社長指示で2→3)
+/** 城ボス専用。雑魚犬の速度を変えず、巨体の「溜め→爆発的な突進」だけを強める。 */
+export const GIANT_CHARGE_SPEED_MULT = 4.4;
 // ★ハンターの再設計(社長裁定v0.25.2429)「歩く距離を半分にして、ダッシュとジャンプの速度を上げる。
 // つまり**技が出ると脅威だが、その前に逃げ切れる**」。
 //
@@ -1646,7 +1648,7 @@ export const GIANT_JUMP_WINDUP_MS = 1200;    // 実効1000ms(旧crouch2500msか�
 // 定数を城ボス専用に新設しているのは、`PUMPKIN_EXPLOSION_RADIUS`/`PUMPKIN_JUMP_MS` が
 // **雑魚のパンプキンと共用**だから(そのまま触ると雑魚まで強化されてしまう)。
 export const GIANT_JUMP_RADIUS = 100;        // 着地AoE半径(旧: PUMPKIN_EXPLOSION_RADIUS=54 の流用)
-export const GIANT_JUMP_AIR_MS = 600;        // 実効500ms(旧: PUMPKIN_JUMP_MS=1000=実効833msの流用)
+export const GIANT_JUMP_AIR_MS = 384;        // 実効320ms。溜め後は巨体が一気に着地する。
 // 飛び掛かりだけステージ倍率に上限を掛ける(社長裁定「(b) 1.30で頭打ち」)。
 // stage-7/ex1 の 1.50 だと 必要163px vs 使える156px = **歩きでは逃げ切れない**ため。
 export const GIANT_JUMP_STAGE_MULT_CAP = 1.30;
@@ -1723,7 +1725,7 @@ export const GIANT_SLAM_HALF_WIDTH = 90;
 
 // --- stage-3: 滑空薙ぎ(glide・独自技・トレース元=カラミートの飛び上がり→地面を放射状のブレス) ---
 export const GIANT_GLIDE_WINDUP_MS = 1200;        // 実効1000ms・後ろへ跳び退がって溜める(T8backstep相当)
-export const GIANT_GLIDE_ACTIVE_MS = 360;         // 実効300ms・本体が通過して薙ぐ(T3長い帯)
+export const GIANT_GLIDE_ACTIVE_MS = 228;         // 実効190ms・本体が高速で通過して薙ぐ(T3長い帯)
 export const GIANT_GLIDE_SECOND_HIT_DELAY_MS = 300; // 実効250ms(固定)・滑空終了から二撃目まで=回避狩り
 export const GIANT_GLIDE_RECOVER_MS = 840;        // 実効700ms
 export const GIANT_GLIDE_CD_MS = 10800;           // 実効9.0s
@@ -1828,7 +1830,7 @@ export const GLEN_NIHIL_RADIUS = 260;               // 設計書どおり(半径
 // = 追ってくるのではなく「見て全部避けるパズル」(§6.28-3「何が・どこには嘘をつかない」の遵守)。
 // 回数は**3固定**(乱数にしない)=学習装置③「回数で読ませる」。三連突進/虚無の三唱と同じ一族。
 export const GLEN_TRIJUMP_WINDUP_MS = 1200;   // 実効1000ms(大技のリード床)。ここで3円を出し切る
-export const GLEN_TRIJUMP_AIR_MS = 540;       // 実効450ms/1跳び。着地したら「すぐ」次へ(間を空けない)
+export const GLEN_TRIJUMP_AIR_MS = 336;       // 実効280ms/1跳び。着地したら「すぐ」次へ。
 export const GLEN_TRIJUMP_RECOVER_MS = 1800;  // 実効1500ms=全技中で最大の反撃窓(虚無の三唱1400msより長い)
 export const GLEN_TRIJUMP_CD_MS = 18000;      // 実効15.0s
 export const GLEN_TRIJUMP_RADIUS = 110;       // 1跳びの着地AoE半径(城ボスの飛び掛かり100より少し大きい)
@@ -9182,7 +9184,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const dashBase = getEnemyBaseSpeed('werewolf'); // 現行不変(6.26-6): giantbatの突進速度は犬と同じ基準
               // M65: ステージ別倍率は速度にだけ掛ける(WEREWOLF_CHARGE_SPEED_MULT自体は書き換えない=
               // werewolf/hunter/lab-zombie-2と共有している定数のため。狙い点・最大時間・CDは無改変)。
-              const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT * stageMult;
+              const cs = dashBase * GIANT_CHARGE_SPEED_MULT * stageMult;
               const cvx = cdirx * cs, cvy = cdiry * cs;
               const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
               const cmoved = resolveMove(rawX, rawY);
@@ -9201,7 +9203,9 @@ export const useGameStore = create<GameState>((set, get) => ({
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
             case 'g-jump-air': {
-              const jt = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT)));
+              // 州の終了時刻と同じ城ボス専用値で補間する。旧実装はPUMPKIN_JUMP_MS(833ms実効)を
+              // 読んでおり、aiPhaseUntil(500ms実効)と絵/移動が不一致で、飛び掛かりがもっさりしていた。
+              const jt = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (GIANT_JUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT)));
               const jfx = enemy.aiFromX ?? enemy.x, jfy = enemy.aiFromY ?? enemy.y;
               const jtx = enemy.aiTargetX ?? enemy.x, jty = enemy.aiTargetY ?? enemy.y;
               const jnx = jfx + (jtx - jfx) * jt, jny = jfy + (jty - jfy) * jt;
@@ -9507,7 +9511,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const cdl = Math.hypot(cdirx, cdiry) || 1;
               cdirx /= cdl; cdiry /= cdl;
               const dashBase = getEnemyBaseSpeed('werewolf'); // 現行不変(基準は犬と同じ)。M65の倍率は新技には掛けない。
-              const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT;
+              const cs = dashBase * GIANT_CHARGE_SPEED_MULT;
               const cvx = cdirx * cs, cvy = cdiry * cs;
               const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
               const cmoved = resolveMove(rawX, rawY);

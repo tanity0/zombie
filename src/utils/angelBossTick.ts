@@ -101,7 +101,7 @@ const MIGUEL_VOLLEY_WINDUP_MS = 450;
 const MIGUEL_VOLLEY_RECOVER_MS = withRecoverFloor(300);
 const MIGUEL_TATE_RECOVER_MS = withRecoverFloor(800);
 const MIGUEL_DASH_WINDUP_MS = 700;
-const MIGUEL_DASH_MOVE_MS = 400;         // ★未決事項(§6.28-14に追記): 移動そのものの所要時間は設計書に無い叩き台。
+const MIGUEL_DASH_MOVE_MS = 230;         // 溜め後の斬り抜けは爆発的に。判定/補間/FXが同じ州を読む。
 const MIGUEL_DASH_STRIKE_MS = MIGUEL_HARAI_ACTIVE_MS; // 「MIGUEL_HARAI_ACTIVE_MS相当の斬り抜け」(設計書指定どおり)
 const MIGUEL_DASH_RECOVER_MS = withRecoverFloor(800);
 const MIGUEL_DASH_CD_MS = 6000;
@@ -151,7 +151,7 @@ const RAFI_BONE_COUNT = 7;
 const RAFI_BONE_GAP_MS = 600;
 const RAFI_JUMP_MAX_REJUMPS = 2;
 const RAFI_JUMP_WINDUP_MS = 700;        // =THOR_JUMP_WINDUP_MS(同値)
-const RAFI_JUMP_MS = 620;               // =THOR_JUMP_MS(同値)
+const RAFI_JUMP_MS = 360;               // =THOR_JUMP_MS(同値)。予告は残し、飛び込みだけ高速化。
 const RAFI_JUMP_RADIUS = 70;            // =THOR_JUMP_RADIUS(同値)
 const RAFI_JUMP_RECOVER_MS = 900;       // =THOR_JUMP_RECOVER_MS(同値)
 const SKADI_BLADE_RING_MIN = 100;       // 骨刃の設置リング(スカジと同値)
@@ -177,7 +177,7 @@ const URI_DOWNSLASH_WINDUP_MS = 1000;
 const URI_DOWNSLASH_ACTIVE_MS = 200;
 const URI_DOWNSLASH_RECOVER_MS = withRecoverFloor(900);
 const URI_THRUST_WINDUP_MS = 900;
-const URI_THRUST_MOVE_MS = 400;           // ★未決事項: 踏み込み突きの移動所要時間は設計書に無い叩き台(ミゲル踏み込みと同値)。
+const URI_THRUST_MOVE_MS = 230;           // ミゲル踏み込みと同値。溜め後の実行だけ高速化。
 const URI_THRUST_STRIKE_MS = 220;
 const URI_THRUST_RECOVER_MS = withRecoverFloor(580);
 const URI_BOLT_WINDUP_MS = 450;

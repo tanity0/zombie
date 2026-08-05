@@ -846,7 +846,7 @@ const BOSS_SPAWN_DEPTH = evNum('bossdepth', 7800);   // この深度に到達で
 const BOSS_SPAWN_NEAR = 1500;                        // 巣(固定)へこの距離まで近づくと出現(=指定エリアに近づくと出現)
 const BOSS_EXIT_DEPTH = AREA_THRESHOLDS[3] - BOSS_SPAWN_NEAR; // 深層境界7500から1500px戻るまで戦闘継続(旧7300=余白200px)
 const BOSS_REGEN_PER_SEC = 10;                       // 画面外/帰巣中は毎秒この耐久値が回復(社長指示: 40→10)
-const BOSS_DASH_SPEED_MULT = 2;                      // ダッシュ時は2倍速で追跡
+const BOSS_DASH_SPEED_MULT = 4.4;                    // 溜め後は歩行の4.4倍で一気に間合いを横断
 const BOSS_SCREEN_MARGIN = 120;                      // 画面上の余白px。world側ではズーム倍率で逆換算する
 // 攻撃状態機械のタイミング(gameTime ms)。
 const BOSS_ACTION_MIN_MS = 2600;                     // 次の特殊行動までの最短(追跡しながら待つ)
@@ -873,8 +873,8 @@ const SKADI_BLADE_GAP_MS = 400;      // 0.4秒おきに設置(社長指示で0.2
 const SKADI_BLADE_DELAY_MS = 1000;   // 設置1秒後に発射
 const SKADI_BLADE_RING_MIN = 100;    // 固定ヘイト対象周辺の設置リング内半径(社長指示でもう少し近く)
 const SKADI_BLADE_RING_MAX = 180;    // 同・外半径
-const BOSS_DASH_WINDUP_MS = 3000;                    // たまに3秒立ち止まり(社長指示)
-const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒追跡(社長指示)
+const BOSS_DASH_WINDUP_MS = 1000;                    // 読める溜めは残すが、待たせ過ぎない
+const BOSS_DASH_MS = 700;                            // 実行は短く爆発的。判定/移動/残像はこの州で同期
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
 // ミーミル専用: 射撃方向に赤いラインを2秒溜め→その方向へ太いレーザーを発射(社長指示)。
 const MIMIR_LASER_CHANCE = 0.34;                     // chase からの行動抽選でレーザーを選ぶ確率(ミーミルのみ)
@@ -965,7 +965,7 @@ const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
 const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
 const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
 const THOR_JUMP_WINDUP_MS = 700;             // ジャンプ前の溜め(pumpkinのcrouchより短め=間合いを詰める性質上)
-const THOR_JUMP_MS = 620;                    // 滞空時間(ハンターの速いジャンプ感を踏襲)
+const THOR_JUMP_MS = 360;                    // 溜め後は一気に着地。着地点の予告時間はwindup込みで確保
 const THOR_JUMP_RADIUS = 70;                 // 着地爆風半径(pumpkinの54よりやや広め=ボス級)
 const THOR_JUMP_RECOVER_MS = withRecoverFloor(900);            // 着地後の硬直
 

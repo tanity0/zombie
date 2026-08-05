@@ -80,10 +80,10 @@ export const AOE_TELEGRAPH_AUDIT: readonly AoeTelegraphEntry[] = [
   // --- 合格しているもの(回帰防止のために載せる) ---
   // angelBossTick.ts: ACRASIEL_SPEAR_DETONATE_MS=2000 / ACRASIEL_SPEAR_RADIUS=92
   { name: 'acrasiel-spear(結晶の槍・遅延起爆)', escapeMs: 2000, radiusPx: 92 },
-  // useGameLoop.ts: THOR_JUMP_WINDUP_MS=700 + THOR_JUMP_MS=620(着地円は溜め開始から出る) / THOR_JUMP_RADIUS=70
-  { name: 'thor-jump(着地爆風)', escapeMs: 1320, radiusPx: 70 },
-  // angelBossTick.ts: RAFI_JUMP_WINDUP_MS=700 + RAFI_JUMP_MS=620 / RAFI_JUMP_RADIUS=70
-  { name: 'rafi-jump(着地爆風)', escapeMs: 1320, radiusPx: 70 },
+  // useGameLoop.ts: THOR_JUMP_WINDUP_MS=700 + THOR_JUMP_MS=360(着地円は溜め開始から出る) / THOR_JUMP_RADIUS=70
+  { name: 'thor-jump(着地爆風)', escapeMs: 1060, radiusPx: 70 },
+  // angelBossTick.ts: RAFI_JUMP_WINDUP_MS=700 + RAFI_JUMP_MS=360 / RAFI_JUMP_RADIUS=70
+  { name: 'rafi-jump(着地爆風)', escapeMs: 1060, radiusPx: 70 },
   // angelBossTick.ts: ACRASIEL_WARP_TELEGRAPH_MS(v0.25.2609で800→1000へ是正) / ACRASIEL_WARP_IMPACT_RADIUS=92
   // 旧800msでは83.5pxしか歩けず半径92pxから**構造的に**出られなかった(監査で発見・換算式②違反)。
   { name: 'acrasiel-warp(転移衝撃)', escapeMs: 1000, radiusPx: 92 },

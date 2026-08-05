@@ -33,8 +33,9 @@ describe('planBossChoreography', () => {
 });
 
 describe('choreographyRecoverMs', () => {
-  it('shortens only links inside a script', () => {
-    expect(choreographyRecoverMs(900, true)).toBe(380);
-    expect(choreographyRecoverMs(900, false)).toBe(900);
+  it('compresses links and guarantees a two-hit rest after the string', () => {
+    expect(choreographyRecoverMs(900, true)).toBe(300);
+    expect(choreographyRecoverMs(900, false)).toBe(1700);
+    expect(choreographyRecoverMs(2200, false)).toBe(2200);
   });
 });

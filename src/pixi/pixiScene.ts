@@ -12847,6 +12847,31 @@ export class PixiScene {
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
       if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), this.dustAlpha(stopL.t), stopL.t0);
       if (dashing) this.dashWasOn.add(e.id); else this.dashWasOn.delete(e.id);
+
+      // v0.25.2868: 溜めの後に本体が高速でコミットする州だけ、進行方向と逆へ短い速度線を引く。
+      // 州名は移動/判定の状態機械そのものを読むため、active秒数を変えてもFXだけ遅れて残らない。
+      // ジャンプ/滑空も同じ「溜め→高速移動」なので横展開し、サイズに比例させて巨体の重量感を残す。
+      const airborneCommit = e.aiPhase === 'g-jump-air' || e.aiPhase === 'g-trijump-air'
+        || e.aiPhase === 'g-glide-active' || e.bossState === 'jump-attack';
+      if (dashing || airborneCommit) {
+        let mdx = e.vx ?? 0, mdy = e.vy ?? 0;
+        if (Math.hypot(mdx, mdy) < 1) {
+          mdx = (e.aiTargetX ?? fb.footX) - (e.aiFromX ?? fb.footX);
+          mdy = (e.aiTargetY ?? fb.footY) - (e.aiFromY ?? fb.footY);
+        }
+        const ml = Math.hypot(mdx, mdy) || 1;
+        const ux = mdx / ml, uy = mdy / ml, px = -uy, py = ux;
+        const tail = Math.max(24, Math.min(150, Math.max(e.width, e.height) * 1.25));
+        const spread = Math.max(5, Math.min(18, Math.min(e.width, e.height) * 0.18));
+        for (const off of [-spread, 0, spread]) {
+          const sx = fb.footX + px * off, sy = fb.footY + py * off;
+          o.moveTo(sx, sy).lineTo(sx - ux * tail, sy - uy * tail).stroke({
+            width: off === 0 ? 3 : 1.5,
+            color: this.dustTintForStage(),
+            alpha: off === 0 ? 0.55 : 0.3,
+          });
+        }
+      }
     }
     // 汎用ジャンプ着地の砂埃(社長指摘v0.25.2426「パンプキンなどのジャンプにも砂埃ちゃんと出てる?」)。
     // → **出ていなかった**。v0.25.2404で砂埃を入れた時、城ボスの新スクリプト(g-*)のブロックの中にだけ
