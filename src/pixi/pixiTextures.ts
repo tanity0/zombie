@@ -10,6 +10,7 @@
 // the Canvas2D path's `imageSmoothingEnabled = false`.
 
 import { Assets, Rectangle, Texture } from 'pixi.js';
+import { ALL_VARIANT_TEXTURES, ENEMY_VARIANT_SETS } from '../utils/enemyVariant';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
@@ -454,10 +455,10 @@ export const ensureTextures = (): Promise<void> => {
       // stage-2隠しボス「idol」(§6.28-20)。ドット絵タッチの素材なのでhunter/thorと同じnearest
       // (武器=ハンドガンは本体絵に描き込み済みなので別武器スプライトは無い)。
       { name: 'idol', scaleMode: 'nearest' as const },
-      // batの新アート2種(男女・社長支給v0.25.2872)。**全ステージ共通**なので stage3/4/5 の
-      // ステージ別 bat.png より優先される(解決は pixiScene.enemyTexKey)。中身(性能)は同じで絵だけ2種。
-      { name: 'bat-a', scaleMode: 'nearest' as const },
-      { name: 'bat-b', scaleMode: 'nearest' as const },
+      // 見た目2種以上を持つ敵の新アート(bat/skeleton…社長支給)。**全ステージ共通**なので
+      // stage3/4/5 のステージ別 <type>.png より優先される(解決は pixiScene.enemyTexKey)。
+      // 表は `utils/enemyVariant.ts` の1箇所。ここは取りこぼさないよう表から生成する。
+      ...ALL_VARIANT_TEXTURES.map((name) => ({ name, scaleMode: 'nearest' as const })),
     ];
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)のドット絵上書き名。後段で使うが、
@@ -649,9 +650,11 @@ export const ensureTextures = (): Promise<void> => {
       regAspect(`stage4:${ty}`, `stage4-enemies/${ty}`); // 雪原(ステージ4)の敵絵
       regAspect(`stage5:${ty}`, `stage5-enemies/${ty}`); // 戦場(ステージ5)の敵絵
     }
-    // ★bat は全ステージ共通の新アート(男女2種)へ差し替えたので、アスペクトも全キーを上書きする
-    // (旧ステージ別 bat.png の縦横比が残っていると、頭スナップが実際の描画とズレる)。
-    for (const k of ['default:bat', 'stage3:bat', 'stage4:bat', 'stage5:bat']) regAspect(k, 'bat-a');
+    // ★全ステージ共通へ差し替えた敵は、アスペクトも全ステージ分のキーを上書きする
+    // (旧ステージ別 <type>.png の縦横比が残っていると、頭スナップが実際の描画とズレる)。
+    for (const [ty, set] of Object.entries(ENEMY_VARIANT_SETS)) {
+      for (const pre of ['default', 'stage3', 'stage4', 'stage5']) regAspect(`${pre}:${ty}`, set[0]);
+    }
     // 新型 lich はステージ4専用。既定キー 'lich' にも同じ絵を割り当てて drawEnemy のフォールバックを成立させる。
     const lichTex = textures.get('stage4-enemies/lich');
     if (lichTex) { textures.set('lich', lichTex); }

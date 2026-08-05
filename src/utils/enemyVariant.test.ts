@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { spriteVariantIndex, batTextureName, BAT_VARIANTS } from './enemyVariant';
+import {
+  spriteVariantIndex, variantTextureName, ENEMY_VARIANT_SETS, ALL_VARIANT_TEXTURES,
+} from './enemyVariant';
 
 describe('spriteVariantIndex — 同じ個体は生涯ずっと同じ絵', () => {
   it('同じIDなら何度呼んでも同じ', () => {
@@ -23,27 +25,49 @@ describe('spriteVariantIndex — 同じ個体は生涯ずっと同じ絵', () =>
     expect(spriteVariantIndex('x', 0)).toBe(0);
     expect(spriteVariantIndex('x', NaN)).toBe(0);
   });
-
-  it('★片方に寄り切らない(500体で両方が出る)', () => {
-    const seen = new Set<number>();
-    for (let i = 0; i < 500; i++) seen.add(spriteVariantIndex('enemy-' + i, 2));
-    expect(seen.size).toBe(2);
-  });
 });
 
-describe('batTextureName', () => {
-  it('返すのは登録済みの2種だけ', () => {
-    for (let i = 0; i < 200; i++) {
-      expect(BAT_VARIANTS).toContain(batTextureName('bat-' + i));
+describe('variantTextureName', () => {
+  it('表に無い type は null(=従来のステージ別解決へ落ちる)', () => {
+    for (const t of ['zombie', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']) {
+      expect(variantTextureName(t, 'e1')).toBeNull();
+    }
+  });
+
+  it('返すのは登録済みの名前だけ', () => {
+    for (const [type, set] of Object.entries(ENEMY_VARIANT_SETS)) {
+      for (let i = 0; i < 200; i++) {
+        expect(set).toContain(variantTextureName(type, type + '-' + i));
+      }
     }
   });
 
   it('同じIDなら同じ絵', () => {
-    expect(batTextureName('e77')).toBe(batTextureName('e77'));
+    expect(variantTextureName('bat', 'e77')).toBe(variantTextureName('bat', 'e77'));
+    expect(variantTextureName('skeleton', 'e77')).toBe(variantTextureName('skeleton', 'e77'));
   });
 
-  it('★500体で男女とも出る(片方だけにならない)', () => {
-    const seen = new Set(Array.from({ length: 500 }, (_, i) => batTextureName('e' + i)));
-    expect(seen.size).toBe(2);
+  it('★500体で全バリアントが出る(片方だけにならない)', () => {
+    for (const [type, set] of Object.entries(ENEMY_VARIANT_SETS)) {
+      const seen = new Set(Array.from({ length: 500 }, (_, i) => variantTextureName(type, 'e' + i)));
+      expect(seen.size).toBe(set.length);
+    }
+  });
+
+  it('★同じIDでも type が違えば別々に決まる(bat と skeleton が連動しない)', () => {
+    // 片方だけを見て「常に同じ組み合わせ」になっていないこと=表ごとに独立していること。
+    const pairs = new Set(
+      Array.from({ length: 200 }, (_, i) =>
+        `${variantTextureName('bat', 'e' + i)}|${variantTextureName('skeleton', 'e' + i)}`),
+    );
+    expect(pairs.size).toBeGreaterThan(1);
+  });
+});
+
+describe('ALL_VARIANT_TEXTURES — ロード/アスペクト登録の取りこぼし防止', () => {
+  it('全バリアントを重複なく列挙する', () => {
+    const flat = Object.values(ENEMY_VARIANT_SETS).flatMap((v) => [...v]);
+    expect([...ALL_VARIANT_TEXTURES].sort()).toEqual([...flat].sort());
+    expect(new Set(ALL_VARIANT_TEXTURES).size).toBe(ALL_VARIANT_TEXTURES.length);
   });
 });

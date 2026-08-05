@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2873',
+    items: [
+      'スケルトンの見た目も新しい2種類の絵に変えました。コウモリと同じく、個体ごとにどちらが出るか決まっていて、全ステージで同じ絵が出ます。',
+    ],
+  },
+  {
     version: '0.25.2872',
     items: [
       'コウモリの見た目を新しい2種類の絵に変えました。どちらが出るかは個体ごとに決まっていて、全ステージで同じ絵が出ます。',
