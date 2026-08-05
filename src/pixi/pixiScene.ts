@@ -77,7 +77,10 @@ import {
 } from '../utils/supportSniper';
 import type { FlareGunFlare } from '../utils/flareGun';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
-import { swordFadeInAlpha, swordFadeOutAlpha, swordSwingPose, type SwordSwingStyle } from '../utils/swordSwingMotion';
+import {
+  SWORD_VISIBILITY_FADE_MS, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha, swordSwingPose,
+  type SwordSwingStyle,
+} from '../utils/swordSwingMotion';
 import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1の可視化(フルランプ速度線)
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
@@ -1340,7 +1343,12 @@ const URI_DOWNSLASH_WINDUP_MS_VIS = 1000;
 const URI_DOWNSLASH_ACTIVE_MS = 200;
 const SURIEL_SWEEP_WINDUP_MS_VIS = 800;
 const SURIEL_RINGSHOT_BEAM_WINDUP_MS_VIS = 700;
+const SURIEL_RINGSHOT_ACTIVE_MS_VIS = 220;
+const SURIEL_RINGSPIN_ACTIVE_MS_VIS = 600;
+const SURIEL_SWEEP_ACTIVE_MS_VIS = 220;
 const ACRASIEL_SPIKE_WINDUP_MS_VIS = 1100;
+const ACRASIEL_SPIKE_ACTIVE_MS_VIS = 240;
+const ACRASIEL_BURST_ACTIVE_MS_VIS = 300;
 const ACRASIEL_SPIKE_RANGE_VIS = 310; // =THOR_HARAI_RANGE相当(流用)。放射棘8方向の描画長。
 const ACRASIEL_SPEAR_WINDUP_MS_VIS = 700;
 const ACRASIEL_GAZE_WINDUP_MS_VIS = 450;
@@ -1915,6 +1923,8 @@ const DUST_MS = 700;
 // 別に出ているなら良し」の範囲。赤い帯/線は従来どおり判定と厳密一致のまま出ている。
 // 攻撃判定より35%遅れて見えていたため、台本化に合わせて判定時間と同期する。
 const FX_SWING_LINGER = 1;
+const FX_IMPACT_TOLERANCE_MS = 34; // gameTime/描画時計の1〜2フレーム差で実行FXを誤キャンセルしない
+const SWORD_STYLE_CODES: readonly SwordSwingStyle[] = ['wide', 'overhead', 'draw', 'thrust'];
 // 衝撃波(社長支給素材・v0.25.2414)。**判定が直線の帯なのに絵が「振っただけ」で終わる技**へ、
 // 帯の上を始点→終点へ走らせて「どこまで届くか」を絵で伝える(社長指示「別途衝撃波の絵とか飛ばした方がいい」)。
 // 判定は1msも変えない=絵だけを足す。素材の進行方向は右(先端の散りが右端)。
@@ -4238,6 +4248,68 @@ export class PixiScene {
     if (t >= 1) { if (!L.armed) this.fxLatches.delete(key); return null; }
     // t0=焼き付けた時刻。V1(4)の砂埃ジッター等「出現ごとに固定・フレーム間で不変」の種に使える。
     return { t: Math.max(0, t), d: L.d, t0: L.t0 };
+  }
+
+  /**
+   * 剣の所有AI州がカウンターで消えた時だけ、焼き付けた構え→振り→短い退場を描き切る。
+   * 通常進行中は既存の技別描画へ譲るため、構えやrecoverの専用演出を上書きしない。
+   */
+  private latchSwordCompletion(
+    key: string, armed: boolean, relatedState: boolean, toImpactMs: number, swingMs: number, now: number,
+    fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
+    bladeLenFrac: number, katanaLength: number, katanaTexName: string,
+    id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
+    pivotX: number, pivotY: number, style: SwordSwingStyle,
+  ): void {
+    const styleCode = Math.max(0, SWORD_STYLE_CODES.indexOf(style));
+    const L = this.latchFx(
+      key,
+      armed,
+      Math.max(0, toImpactMs) + Math.max(1, swingMs) + SWORD_VISIBILITY_FADE_MS,
+      now,
+      () => [toImpactMs, swingMs, fx, fy, tx, ty, halfWidth, pivotX, pivotY, styleCode],
+    );
+    if (!L || relatedState) return;
+    const frame = swordCompletionFrame(now - L.t0, L.d[0], L.d[1]);
+    if (frame.phase === 'done') return;
+    const latchedStyle = SWORD_STYLE_CODES[L.d[9]] ?? 'wide';
+    if (frame.phase === 'swing') {
+      this.drawKatanaSlash(
+        fxMap, gripFrac, intrinsicAngle, bladeLenFrac, katanaLength, katanaTexName,
+        id, L.d[2], L.d[3], L.d[4], L.d[5], L.d[6], frame.progress, true, true,
+        L.d[7], L.d[8], latchedStyle,
+      );
+      return;
+    }
+    this.drawKatanaReady(
+      fxMap, gripFrac, intrinsicAngle, bladeLenFrac, katanaLength, katanaTexName,
+      id, L.d[7], L.d[8], L.d[4], L.d[5], frame.alpha, latchedStyle,
+      frame.phase === 'fade' ? 1 : 0,
+    );
+  }
+
+  /** recover中にカウンターされた場合も、残心を元の終了時刻まで保持してから消す。 */
+  private latchSwordRecovery(
+    key: string, recovering: boolean, remainingMs: number, now: number,
+    fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
+    bladeLenFrac: number, katanaLength: number, katanaTexName: string,
+    id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, style: SwordSwingStyle,
+  ): void {
+    const styleCode = Math.max(0, SWORD_STYLE_CODES.indexOf(style));
+    const L = this.latchFx(
+      key,
+      recovering,
+      Math.max(1, remainingMs),
+      now,
+      () => [Math.max(1, remainingMs), pivotX, pivotY, aimX, aimY, styleCode],
+    );
+    if (!L || recovering) return;
+    const remain = Math.max(0, L.d[0] - (now - L.t0));
+    const latchedStyle = SWORD_STYLE_CODES[L.d[5]] ?? 'wide';
+    this.drawKatanaReady(
+      fxMap, gripFrac, intrinsicAngle, bladeLenFrac, katanaLength, katanaTexName,
+      id, L.d[1], L.d[2], L.d[3], L.d[4], swordFadeOutAlpha(remain), latchedStyle, 1,
+    );
   }
   // 敵が消えた時の後始末(残っていると Map が育つ)。enemyビューの破棄と同じ場所から呼ぶ。
   private clearFxLatches(idPrefix: string) {
@@ -12429,6 +12501,60 @@ export class PixiScene {
           else this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         }
       }
+      // active州へ入る前にカウンターされても、構えていた刀だけは本来の時刻まで振り切る。
+      // 既存thorswingはactive中断を担当し、こちらはwindup中断も含む全経路の保険。
+      {
+        const bs = e.bossState;
+        const remain = Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime);
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const handX = fb.footX, handY = fb.footY - fb.boxH * 0.5;
+        const issenWind = bs === 'issen-windup', issenActive = bs === 'issen-dash';
+        this.latchSwordCompletion(
+          `${e.id}:thor-issen-complete`, issenWind || issenActive,
+          issenWind || issenActive || bs === 'issen-recover', issenWind ? remain : 0,
+          issenWind ? THOR_ISSEN_DASH_MS : issenActive ? remain : THOR_ISSEN_DASH_MS, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, fx, fy, 'draw',
+        );
+        const tsukiWind = bs === 'tsuki-windup', tsukiActive = bs === 'tsuki';
+        this.latchSwordCompletion(
+          `${e.id}:thor-tsuki-complete`, tsukiWind || tsukiActive,
+          tsukiWind || tsukiActive || bs === 'tsuki-recover', tsukiWind ? remain : 0,
+          tsukiWind ? THOR_TSUKI_MS : tsukiActive ? remain : THOR_TSUKI_MS, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, fx, fy, 'thrust',
+        );
+        const haraiWind = bs === 'harai-windup', haraiActive = bs === 'harai';
+        this.latchSwordCompletion(
+          `${e.id}:thor-harai-complete`, haraiWind || haraiActive,
+          haraiWind || haraiActive || bs === 'harai-recover', haraiWind ? remain : 0,
+          haraiWind ? THOR_HARAI_ACTIVE_MS : haraiActive ? remain : THOR_HARAI_ACTIVE_MS, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, handX, handY, 'wide',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:thor-issen-recover-complete`, bs === 'issen-recover', remain, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, handX, handY, tx, ty, 'draw',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:thor-tsuki-recover-complete`, bs === 'tsuki-recover', remain, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, handX, handY, tx, ty, 'thrust',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:thor-harai-recover-complete`, bs === 'harai-recover', remain, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, handX, handY, tx, ty, 'wide',
+        );
+      }
     }
     // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58): 裏ボス3体(mimir/jormungand/skadi)共通の
     // 硬直tint(青白・W6)+T4赤フラッシュ(末尾400ms)+新規テレグラフ(T1突進線/T2噛みつき円/T3うねり帯)。
@@ -12872,6 +12998,241 @@ export class PixiScene {
       }
       // ---- スリィエル: 単眼の凝視(小技)=T4のみ(図形なし・tintは上で設定済み) ----
       // ---- 上記いずれにも該当しない状態(chase/volley/bolt-windup/counter-leap等)は図形なし ----
+
+      // 剣・骨刃はAI州とは別の時計にも焼き付ける。通常中は上の技別描画へ譲り、カウンターで
+      // chase/counter-leapへ飛んだ時だけ、残っている構え→振り→90ms退場をこちらが完走させる。
+      const swordRemain = Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime);
+      const swordFx = e.aiFromX ?? cx, swordFy = e.aiFromY ?? cy;
+      const swordTx = e.aiTargetX ?? cx, swordTy = e.aiTargetY ?? cy;
+      const swordHandX = fb.footX, swordHandY = fb.footY - fb.boxH * 0.5;
+      if (e.type === 'miguel') {
+        const haraiWind = bs === 'harai-windup', haraiActive = bs === 'harai';
+        this.latchSwordCompletion(
+          `${e.id}:miguel-harai-complete`, haraiWind || haraiActive,
+          haraiWind || haraiActive || bs === 'harai-recover', haraiWind ? swordRemain : 0,
+          haraiWind ? MIGUEL_HARAI_ACTIVE_MS : haraiActive ? swordRemain : MIGUEL_HARAI_ACTIVE_MS, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, MIGUEL_HARAI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'wide',
+        );
+        const tateWind = bs === 'tate-windup', tateActive = bs === 'tate';
+        this.latchSwordCompletion(
+          `${e.id}:miguel-tate-complete`, tateWind || tateActive,
+          tateWind || tateActive || bs === 'tate-recover', tateWind ? swordRemain : 0,
+          tateWind ? MIGUEL_HARAI_ACTIVE_MS : tateActive ? swordRemain : MIGUEL_HARAI_ACTIVE_MS, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, MIGUEL_HARAI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'overhead',
+        );
+        const dashWind = bs === 'mdash-windup', dashActive = bs === 'mdash-move';
+        const dashElapsed = dashActive ? Math.max(0, gameTime - (e.aiStartedAt ?? gameTime)) : 0;
+        const dashToStrike = dashWind
+          ? swordRemain + MIGUEL_DASH_MOVE_MS
+          : dashActive ? Math.max(0, MIGUEL_DASH_MOVE_MS - dashElapsed) : 0;
+        const dashSwingRemain = dashWind
+          ? MIGUEL_DASH_STRIKE_MS
+          : dashActive ? Math.max(1, swordRemain - dashToStrike) : MIGUEL_DASH_STRIKE_MS;
+        this.latchSwordCompletion(
+          `${e.id}:miguel-dash-complete`, dashWind || dashActive,
+          dashWind || dashActive || bs === 'mdash-recover', dashToStrike, dashSwingRemain, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, MIGUEL_HARAI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'draw',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:miguel-harai-recover-complete`, bs === 'harai-recover', swordRemain, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordHandX, swordHandY, swordTx, swordTy, 'wide',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:miguel-tate-recover-complete`, bs === 'tate-recover', swordRemain, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordHandX, swordHandY, swordTx, swordTy, 'overhead',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:miguel-dash-recover-complete`, bs === 'mdash-recover', swordRemain, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordHandX, swordHandY, swordTx, swordTy, 'draw',
+        );
+      } else if (e.type === 'rafi') {
+        const sweepWind = bs === 'sweep-windup', sweepActive = bs === 'sweep';
+        this.latchSwordCompletion(
+          `${e.id}:rafi-sweep-complete`, sweepWind || sweepActive,
+          sweepWind || sweepActive || bs === 'sweep-recover', sweepWind ? swordRemain : 0,
+          sweepWind ? THOR_HARAI_ACTIVE_MS : sweepActive ? swordRemain : THOR_HARAI_ACTIVE_MS, now,
+          this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE,
+          RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
+          e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'wide',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:rafi-sweep-recover-complete`, bs === 'sweep-recover', swordRemain, now,
+          this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE,
+          RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
+          e.id, swordHandX, swordHandY, swordTx, swordTy, 'wide',
+        );
+      } else if (e.type === 'uri') {
+        const sweepWind = bs === 'sweep-windup', sweepActive = bs === 'sweep';
+        this.latchSwordCompletion(
+          `${e.id}:uri-sweep-complete`, sweepWind || sweepActive,
+          sweepWind || sweepActive || bs === 'sweep-recover', sweepWind ? swordRemain : 0,
+          sweepWind ? URI_SWEEP_ACTIVE_MS : sweepActive ? swordRemain : URI_SWEEP_ACTIVE_MS, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'wide',
+        );
+        const downWind = bs === 'downslash-windup', downActive = bs === 'downslash';
+        this.latchSwordCompletion(
+          `${e.id}:uri-downslash-complete`, downWind || downActive,
+          downWind || downActive || bs === 'downslash-recover', downWind ? swordRemain : 0,
+          downWind ? URI_DOWNSLASH_ACTIVE_MS : downActive ? swordRemain : URI_DOWNSLASH_ACTIVE_MS, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, THOR_TSUKI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'overhead',
+        );
+        const thrustWind = bs === 'thrust-windup', thrustActive = bs === 'thrust';
+        const thrustElapsed = thrustActive ? Math.max(0, gameTime - (e.aiStartedAt ?? gameTime)) : 0;
+        const thrustToStrike = thrustWind
+          ? swordRemain + URI_THRUST_MOVE_MS
+          : thrustActive ? Math.max(0, URI_THRUST_MOVE_MS - thrustElapsed) : 0;
+        const thrustSwingRemain = thrustWind
+          ? URI_THRUST_STRIKE_MS
+          : thrustActive ? Math.max(1, swordRemain - thrustToStrike) : URI_THRUST_STRIKE_MS;
+        this.latchSwordCompletion(
+          `${e.id}:uri-thrust-complete`, thrustWind || thrustActive,
+          thrustWind || thrustActive || bs === 'thrust-recover', thrustToStrike, thrustSwingRemain, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, THOR_TSUKI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'thrust',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:uri-sweep-recover-complete`, bs === 'sweep-recover', swordRemain, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordHandX, swordHandY, swordTx, swordTy, 'wide',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:uri-downslash-recover-complete`, bs === 'downslash-recover', swordRemain, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordHandX, swordHandY, swordTx, swordTy, 'overhead',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:uri-thrust-recover-complete`, bs === 'thrust-recover', swordRemain, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordHandX, swordHandY, swordTx, swordTy, 'thrust',
+        );
+      }
+
+      // 武器以外でAI州へ直結していた実行FXも同じ作法へ統一。既存の牙・爪・翼・拳・衝撃波・
+      // 土煙・地割れは既にlatch済みなので、ここでは未配線だった天使の線/円/帯だけを補う。
+      if (e.type === 'suriel') {
+        const beamWind = bs === 'ring-beam-windup', beamActive = bs === 'ring-active';
+        let bdx = swordTx - swordFx, bdy = swordTy - swordFy;
+        const bdl = Math.hypot(bdx, bdy) || 1; bdx /= bdl; bdy /= bdl;
+        const beamEx = swordFx + bdx * MIMIR_LASER_VIS_RANGE, beamEy = swordFy + bdy * MIMIR_LASER_VIS_RANGE;
+        const beamL = this.latchFx(
+          `${e.id}:suriel-beam-complete`, beamWind || beamActive,
+          (beamWind ? swordRemain : 0) + (beamWind ? SURIEL_RINGSHOT_ACTIVE_MS_VIS : beamActive ? swordRemain : SURIEL_RINGSHOT_ACTIVE_MS_VIS),
+          now,
+          () => [beamWind ? swordRemain : 0, beamWind ? SURIEL_RINGSHOT_ACTIVE_MS_VIS : Math.max(1, swordRemain), swordFx, swordFy, beamEx, beamEy],
+        );
+        if (beamL && !(beamWind || beamActive || bs === 'ring-recover')) {
+          const elapsed = now - beamL.t0, impactAt = beamL.d[0], activeMs = Math.max(1, beamL.d[1]);
+          if (elapsed + FX_IMPACT_TOLERANCE_MS < impactAt) {
+            // 溜め中のカウンターは予告ごとキャンセル。まだ発生していない攻撃を見た目だけ撃たせない。
+            this.fxLatches.delete(`${e.id}:suriel-beam-complete`);
+          } else if (elapsed < impactAt + activeMs) {
+            this.drawAngelBeamLine(o, beamL.d[2], beamL.d[3], beamL.d[4], beamL.d[5], THIN_BEAM_VIS_HALFWIDTH, 1, now);
+          }
+        }
+
+        const spinWind = bs === 'ring-spin-windup', spinActive = bs === 'ring-spin';
+        const spinL = this.latchFx(
+          `${e.id}:suriel-spin-complete`, spinWind || spinActive,
+          (spinWind ? swordRemain : 0) + (spinWind ? SURIEL_RINGSPIN_ACTIVE_MS_VIS : spinActive ? swordRemain : SURIEL_RINGSPIN_ACTIVE_MS_VIS),
+          now,
+          () => [spinWind ? swordRemain : 0, spinWind ? SURIEL_RINGSPIN_ACTIVE_MS_VIS : Math.max(1, swordRemain), cx, cy],
+        );
+        if (spinL && !(spinWind || spinActive || bs === 'ring-spin-recover')) {
+          const elapsed = now - spinL.t0;
+          if (elapsed + FX_IMPACT_TOLERANCE_MS < spinL.d[0]) {
+            this.fxLatches.delete(`${e.id}:suriel-spin-complete`);
+          } else if (elapsed < spinL.d[0] + spinL.d[1]) {
+            const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+            o.ellipse(spinL.d[2], spinL.d[3], SURIEL_RINGSPIN_RADIUS, SURIEL_RINGSPIN_RADIUS).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
+            if (FX_RING_ENABLED) this.drawTelegraphRing(view, spinL.d[2], spinL.d[3], SURIEL_RINGSPIN_RADIUS, 0xff3b3b, 0.45 + 0.3 * pulse);
+            else o.ellipse(spinL.d[2], spinL.d[3], SURIEL_RINGSPIN_RADIUS, SURIEL_RINGSPIN_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+          }
+        }
+
+        const sweepWind = bs === 'sweep-windup', sweepActive = bs === 'sweep';
+        const sweepL = this.latchFx(
+          `${e.id}:suriel-sweep-complete`, sweepWind || sweepActive,
+          (sweepWind ? swordRemain : 0) + (sweepWind ? SURIEL_SWEEP_ACTIVE_MS_VIS : sweepActive ? swordRemain : SURIEL_SWEEP_ACTIVE_MS_VIS),
+          now,
+          () => [sweepWind ? swordRemain : 0, sweepWind ? SURIEL_SWEEP_ACTIVE_MS_VIS : Math.max(1, swordRemain), swordFx, swordFy, swordTx, swordTy],
+        );
+        if (sweepL && !(sweepWind || sweepActive || bs === 'sweep-recover')) {
+          const elapsed = now - sweepL.t0;
+          if (elapsed + FX_IMPACT_TOLERANCE_MS < sweepL.d[0]) {
+            this.fxLatches.delete(`${e.id}:suriel-sweep-complete`);
+          } else if (elapsed < sweepL.d[0] + sweepL.d[1]) {
+            this.drawAngelZoneCapsule(view, o, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], THOR_HARAI_VIS_HALFWIDTH, 1, now);
+          }
+        }
+      } else if (e.type === 'acrasiel') {
+        const spikeWind = bs === 'spike-windup', spikeActive = bs === 'spike';
+        const spikeL = this.latchFx(
+          `${e.id}:acrasiel-spike-complete`, spikeWind || spikeActive,
+          (spikeWind ? swordRemain : 0) + (spikeWind ? ACRASIEL_SPIKE_ACTIVE_MS_VIS : spikeActive ? swordRemain : ACRASIEL_SPIKE_ACTIVE_MS_VIS),
+          now,
+          () => [spikeWind ? swordRemain : 0, spikeWind ? ACRASIEL_SPIKE_ACTIVE_MS_VIS : Math.max(1, swordRemain), cx, cy, e.spikeGapMask ?? 0],
+        );
+        if (spikeL && !(spikeWind || spikeActive || bs === 'spike-recover')) {
+          const elapsed = now - spikeL.t0;
+          if (elapsed + FX_IMPACT_TOLERANCE_MS < spikeL.d[0]) {
+            this.fxLatches.delete(`${e.id}:acrasiel-spike-complete`);
+          } else if (elapsed < spikeL.d[0] + spikeL.d[1]) {
+            for (let sector = 0; sector < 8; sector++) {
+              if ((spikeL.d[4] & (1 << sector)) !== 0) continue;
+              const ang = sector * (Math.PI / 4);
+              const ex = spikeL.d[2] + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS;
+              const ey = spikeL.d[3] + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS;
+              this.drawAngelZoneCapsule(view, o, spikeL.d[2], spikeL.d[3], ex, ey, THOR_HARAI_VIS_HALFWIDTH, 1, now, sector);
+            }
+          }
+        }
+
+        const burstWind = bs === 'burst-windup', burstActive = bs === 'burst';
+        const burstL = this.latchFx(
+          `${e.id}:acrasiel-burst-complete`, burstWind || burstActive,
+          (burstWind ? swordRemain : 0) + (burstWind ? ACRASIEL_BURST_ACTIVE_MS_VIS : burstActive ? swordRemain : ACRASIEL_BURST_ACTIVE_MS_VIS),
+          now,
+          () => [burstWind ? swordRemain : 0, burstWind ? ACRASIEL_BURST_ACTIVE_MS_VIS : Math.max(1, swordRemain), cx, cy],
+        );
+        if (burstL && !(burstWind || burstActive || bs === 'burst-recover')) {
+          const elapsed = now - burstL.t0;
+          if (elapsed + FX_IMPACT_TOLERANCE_MS < burstL.d[0]) {
+            this.fxLatches.delete(`${e.id}:acrasiel-burst-complete`);
+          } else if (elapsed < burstL.d[0] + burstL.d[1]) {
+            const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+            o.ellipse(burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).fill({ color: 0xff2a2a, alpha: 0.18 + 0.12 * pulse });
+            if (FX_RING_ENABLED) this.drawTelegraphRing(view, burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, 0xff3b3b, 0.5 + 0.3 * pulse);
+            else o.ellipse(burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
+          }
+        }
+      }
     }
     // 突進の土煙(社長裁定v0.25.2427「全部入れたい」)。**蹴り出し**と**止まった瞬間**の2発。
     // 対象は「突進という動作を持つ全員」で洗う(v0.25.2426の教訓): 汎用 `charge`(犬/lab-zombie-2/

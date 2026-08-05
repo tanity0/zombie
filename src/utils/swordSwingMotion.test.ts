@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { SWORD_VISIBILITY_FADE_MS, swordFadeInAlpha, swordFadeOutAlpha, swordSwingPose } from './swordSwingMotion';
+import {
+  SWORD_VISIBILITY_FADE_MS, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha, swordSwingPose,
+} from './swordSwingMotion';
 
 describe('swordSwingPose', () => {
   it('makes horizontal and overhead attacks visibly sweep through large arcs', () => {
@@ -25,5 +27,13 @@ describe('swordSwingPose', () => {
     expect(swordFadeInAlpha(SWORD_VISIBILITY_FADE_MS)).toBe(1);
     expect(swordFadeOutAlpha(SWORD_VISIBILITY_FADE_MS)).toBe(1);
     expect(swordFadeOutAlpha(0)).toBe(0);
+  });
+
+  it('finishes ready, swing and fade phases after the owning AI state is cancelled', () => {
+    expect(swordCompletionFrame(50, 100, 200).phase).toBe('ready');
+    expect(swordCompletionFrame(100, 100, 200)).toMatchObject({ phase: 'swing', progress: 0, alpha: 1 });
+    expect(swordCompletionFrame(200, 100, 200)).toMatchObject({ phase: 'swing', progress: 0.5, alpha: 1 });
+    expect(swordCompletionFrame(300, 100, 200)).toMatchObject({ phase: 'fade', progress: 1, alpha: 1 });
+    expect(swordCompletionFrame(390, 100, 200)).toMatchObject({ phase: 'done', progress: 1, alpha: 0 });
   });
 });

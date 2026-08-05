@@ -23,6 +23,34 @@ const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 export const swordFadeInAlpha = (elapsedMs: number): number => smooth(elapsedMs / SWORD_VISIBILITY_FADE_MS);
 export const swordFadeOutAlpha = (remainingMs: number): number => smooth(remainingMs / SWORD_VISIBILITY_FADE_MS);
 
+export type SwordCompletionPhase = 'ready' | 'swing' | 'fade' | 'done';
+
+/** カウンターでAI州が消えても、焼き付けた剣アニメだけを最後まで進めるための純粋な時計。 */
+export const swordCompletionFrame = (
+  elapsedMs: number,
+  toImpactMs: number,
+  swingMs: number,
+): { phase: SwordCompletionPhase; progress: number; alpha: number } => {
+  const elapsed = Math.max(0, elapsedMs);
+  const ready = Math.max(0, toImpactMs);
+  const swing = Math.max(1, swingMs);
+  if (elapsed < ready) {
+    return { phase: 'ready', progress: ready > 0 ? clamp01(elapsed / ready) : 1, alpha: swordFadeInAlpha(elapsed) };
+  }
+  if (elapsed < ready + swing) {
+    return { phase: 'swing', progress: clamp01((elapsed - ready) / swing), alpha: 1 };
+  }
+  const fadeElapsed = elapsed - ready - swing;
+  if (fadeElapsed < SWORD_VISIBILITY_FADE_MS) {
+    return {
+      phase: 'fade',
+      progress: 1,
+      alpha: swordFadeOutAlpha(SWORD_VISIBILITY_FADE_MS - fadeElapsed),
+    };
+  }
+  return { phase: 'done', progress: 1, alpha: 0 };
+};
+
 /**
  * wideは200度、overheadは160度、居合は190度を明確に振り切る。
  * thrustだけは角度を固定し、引いた柄を50px押し出す。
