@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.2883 — 旧 screamer.png(2.1MB/1254角)を削除【2026-08-06 01:48 JST】
+社長指示「消して」(v0.25.2882 の未処理として上げていた件)。
+
+- `public/sprites/screamer.png`(**2,188,744 byte / 1254×1254**)を削除。
+- `loadKeyed('screamer')` を色キーロードの並びから外した(残り: turret-fixed / turret-omni /
+  skateboard / thor-katana)。**起動時に2.1MB・1254角のデコードとテクスチャ確保が丸ごと消える。**
+- 参照の全走査で確認: `screamer` という**テクスチャ名**を引いていたのは
+  `loadKeyed('screamer')` の1箇所だけだった。他の大量の `screamer` ヒットは全て
+  **EnemyType名 / state名 / SE名(`screamer-cry`) / ディレクター変数**で、テクスチャとは無関係。
+  `enemyTexKey` は変異体テーブルが先に `screamer-common` を返すので型名フォールバックには落ちない。
+- `atlasPxNames`(ステージ1ドット絵の上書き)にも screamer は入っていない=そちらの経路も無関係。
+
+**負荷 -1/10(軽くなる方向)**: 起動時のデコード1枚減・VRAM 1254×1254×4B ≈ **6.3MB 解放**。
+実行時の描画枚数・処理は不変。
+
+検証: `npm run typecheck` OK / `npm run lint` エラー0(既存warning 8)。
+
 ## v0.25.2882 — screamer(変異体・叫喚型)の絵を差し替え【2026-08-06 01:29 JST】
 社長支給の新アート「叫喚型」。
 

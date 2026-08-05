@@ -612,10 +612,12 @@ export const ensureTextures = (): Promise<void> => {
       }),
     ]);
 
-    // 自動タレット(紫背景未透過)を色キーで透過して登録。叫喚型(screamer)も紫背景なので同様に色キー透過。
+    // 自動タレット(紫背景未透過)を色キーで透過して登録。
     // スケボー(投擲用)も白背景未透過なので同じ色キー透過(左上=白を抜く。黒デッキ/黄ホイールは残る)。
     // トールの刀(横払い/突き用・社長提供)も紫背景なので同様に色キー透過。詳細イラスト調なのでlinear。
-    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni'), loadKeyed('screamer'), loadKeyed('skateboard'), loadKeyed('thor-katana', 'linear')]);
+    // ※叫喚型(screamer)はここに居たが、新素材が透過済みになったので変異体テーブル経由の
+    //   通常ロードへ移した(v0.25.2882)。旧 screamer.png(2.1MB/1254角)は v0.25.2883 で削除済み。
+    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni'), loadKeyed('skateboard'), loadKeyed('thor-katana', 'linear')]);
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)をドット絵で上書き(社長指示)。
     // atlas 切り出しの後に textures.set で確実に置換。ドット絵なので nearest。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2883',
+    items: [
+      '使わなくなった古い叫喚型の絵(2.1MB)を削除して、起動時の読み込みを少し軽くしました。',
+    ],
+  },
+  {
     version: '0.25.2882',
     items: [
       '叫喚型(周りの敵を強化してくる変異体)の見た目を新しい絵に変えました。',
