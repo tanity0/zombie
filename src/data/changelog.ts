@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2907',
+    items: [
+      '自転車の敵の上下のガタガタを強くしました。',
+    ],
+  },
+  {
     version: '0.25.2906',
     items: [
       'ステージ1の城ボスの見た目を新しい絵(2体が繋がった馬ぐるま体勢)に変えました。動きも腕で這う重い匍匐になります。',
