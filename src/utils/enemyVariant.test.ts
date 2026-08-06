@@ -29,7 +29,7 @@ describe('spriteVariantIndex — 同じ個体は生涯ずっと同じ絵', () =>
 
 describe('variantTextureName', () => {
   it('表に無い type は null(=従来のステージ別解決へ落ちる)', () => {
-    for (const t of ['werewolf', 'pumpkin', 'giantbat', 'reaper']) {
+    for (const t of ['pumpkin', 'giantbat']) {
       expect(variantTextureName(t, 'e1')).toBeNull();
     }
   });
@@ -38,6 +38,7 @@ describe('variantTextureName', () => {
     for (const [type, only] of [
       ['zombie', 'zombie-common'], ['plant', 'plant-common'], ['ghost', 'ghost-common'],
       ['screamer', 'screamer-common'], ['lich', 'lich-common'],
+      ['werewolf', 'werewolf-common'], ['reaper', 'reaper-common'],
     ]) {
       const names = new Set(Array.from({ length: 200 }, (_, i) => variantTextureName(type, 'e' + i)));
       expect([...names], type).toEqual([only]);

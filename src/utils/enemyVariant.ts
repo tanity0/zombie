@@ -33,6 +33,8 @@ export const ENEMY_VARIANT_SETS: Readonly<Record<string, readonly string[]>> = {
   // ★screamer(変異体・叫喚型)は旧素材 `screamer.png` が**紫背景の色キー抜き**(`loadKeyed`)だった。
   // 新素材は最初から透過済みなので、色キーを通さない普通のロード経路に載せ替える意味も兼ねて表に入れる。
   screamer: ['screamer-common'],           // 1種のみ(v0.25.2882)
+  werewolf: ['werewolf-common'],           // 1種のみ(v0.25.2901)。見た目=自転車に跨がる死体
+  reaper: ['reaper-common'],               // 1種のみ(v0.25.2901)。見た目=チェーンソーを掲げた襤褸外套
 };
 
 /**

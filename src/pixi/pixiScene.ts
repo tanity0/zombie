@@ -1178,6 +1178,7 @@ interface EnemyMotionSpec {
   strideHz: number;  // 全速時の歩調(Hz)
   uneven: number;    // 0=規則正しい行進 / 1=千鳥足(副周期を混ぜて規則性を崩す)
   faceMove: boolean; // 移動X方向へ左右ミラーするか。**絵が明確に横向きの個体だけ** true
+  faceRight?: boolean; // 素材が**右向き**の個体は true(既定は左向き)。ミラーの向きが反転する
 }
 const MOT_NONE: EnemyMotionSpec = { kind: 'none', bobPx: 0, rockRad: 0, sqAmp: 0, strideHz: 0, uneven: 0, faceMove: false };
 // bat枝1=男(茨の光輪の徘徊者・直立ゆったり) / 枝2=女(鳥頭骨・猫背のよろめき)。
@@ -1188,9 +1189,9 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   skeleton: { kind: 'crawl', bobPx: 1.8, rockRad: 0.050, sqAmp: 0.045, strideHz: 3.0, uneven: 0.35, faceMove: true },
   // zombie=ナックルウォークの巨躯(絵は左向き)。重く遅い左右ロール。
   zombie: { kind: 'heavy', bobPx: 2.2, rockRad: 0.048, sqAmp: 0.050, strideHz: 1.3, uneven: 0.45, faceMove: true },
-  // werewolf=本物の四足狼。疾走ピッチング。★faceMoveはfalse(ステージ別の絵が残っており向きが
-  // 揃っている保証が無い。全ステージ共通化されたら true にする)。
-  werewolf: { kind: 'crawl', bobPx: 1.6, rockRad: 0.055, sqAmp: 0.040, strideHz: 3.4, uneven: 0.20, faceMove: false },
+  // werewolf=**自転車に跨がる死体**(v0.25.2901で全ステージ共通の新絵へ)。車輪で滑走するので
+  // bobは殆ど無し、不安定なふらつき(rock)だけ。絵はハンドルが右=右向きなので faceRight。
+  werewolf: { kind: 'walk', bobPx: 0.6, rockRad: 0.035, sqAmp: 0.010, strideHz: 1.3, uneven: 0.50, faceMove: true, faceRight: true },
   // pumpkin=樽腹の巨漢(正面絵)。どすどす。
   pumpkin: { kind: 'heavy', bobPx: 2.0, rockRad: 0.042, sqAmp: 0.050, strideHz: 1.5, uneven: 0.30, faceMove: false },
   // ghost=卵を抱いた花嫁。歩かず滑る=浮遊ゆらぎ(常時)。
@@ -1204,7 +1205,9 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   // hunter=棺桶担ぎの巨人。重い踏みしめ(ジャンプ等は既存aiSqが担当・歩行のみ)。
   hunter: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.2, uneven: 0.20, faceMove: false },
   giantbat: { kind: 'heavy', bobPx: 1.4, rockRad: 0.022, sqAmp: 0.030, strideHz: 1.1, uneven: 0.20, faceMove: false },
-  reaper: { kind: 'hover', bobPx: 2.0, rockRad: 0.012, sqAmp: 0, strideHz: 0.5, uneven: 0, faceMove: false },
+  // reaper=**チェーンソーを掲げた襤褸外套**(v0.25.2901で全ステージ共通の新絵へ)。浮遊ではなく
+  // 裾を引きずって歩く=重い踏みしめ(正面絵なのでミラーなし)。
+  reaper: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.1, uneven: 0.20, faceMove: false },
   'lab-zombie-1': { kind: 'walk', bobPx: 1.2, rockRad: 0.045, sqAmp: 0.028, strideHz: 1.8, uneven: 0.55, faceMove: false },
   'lab-zombie-2': { kind: 'walk', bobPx: 1.3, rockRad: 0.050, sqAmp: 0.030, strideHz: 2.0, uneven: 0.65, faceMove: false },
   'lab-zombie-3': { kind: 'heavy', bobPx: 1.8, rockRad: 0.040, sqAmp: 0.045, strideHz: 1.4, uneven: 0.30, faceMove: false },
@@ -1975,7 +1978,8 @@ const labEnemyTextureName = (type: string, id: string): string | null => {
 // 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='city' のみ。
 // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・enemyTexKeyの解決順で
 // variantTextureName(ENEMY_VARIANT_SETS)が先に引かれるためstage3絵は表示不能だった。素材は削除済み)。
-const STAGE3_ENEMY_TYPES = new Set(['werewolf', 'pumpkin', 'giantbat', 'reaper']);
+// ★werewolf/reaper は外した(v0.25.2901・全ステージ共通の新絵へ移行・旧素材は削除済み)。
+const STAGE3_ENEMY_TYPES = new Set(['pumpkin', 'giantbat']);
 const stage3EnemyTextureName = (type: string): string | null =>
   STAGE3_ENEMY_TYPES.has(type) ? `stage3-enemies/${type}` : null;
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
@@ -2220,17 +2224,16 @@ const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社
 // ★bat/ghost/plant/skeleton/zombie はここから外した(バッチ4・v0.25.2898・下のSTAGE4_ENEMY_TYPES
 // から外れたため出番なし=variantTextureNameが先に引かれてstage4絵は表示不能だった)。
 const STAGE4_FOOT_FRAC_X: Record<string, number> = {
+  // ★werewolf/reaper の補正は外した(v0.25.2901・全ステージ共通の新絵へ移行=旧絵実測の補正値は無効)。
   giantbat: 0.471,
   pumpkin: 0.503,
-  reaper: 0.596,
-  werewolf: 0.441,
 };
 
 // ステージ4(雪原)専用の敵絵。既存9種を見た目で1:1差し替え＋新型 lich(社長提供シート)。
 // 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='snow' のみ。
 // ★lich は外した(v0.25.2897・全ステージ共通 `lich-common` へ移行、旧stage4/5素材は削除済み)。
 // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE3コメント参照)。
-const STAGE4_ENEMY_TYPES = new Set(['werewolf', 'pumpkin', 'giantbat', 'reaper']);
+const STAGE4_ENEMY_TYPES = new Set(['pumpkin', 'giantbat']);
 const stage4EnemyTextureName = (type: string): string | null =>
   STAGE4_ENEMY_TYPES.has(type) ? `stage4-enemies/${type}` : null;
 
@@ -2239,7 +2242,7 @@ const stage4EnemyTextureName = (type: string): string | null =>
 // =ステージ4と同じ扱いでステージ5にもlichを出す)。当たり判定/サイズは不変。farBackdrop==='stage5' のみ。
 // ★lich は同上で共通絵へ移行済み。
 // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE3コメント参照)。
-const STAGE5_ENEMY_TYPES = new Set(['werewolf', 'pumpkin', 'giantbat', 'reaper']);
+const STAGE5_ENEMY_TYPES = new Set(['pumpkin', 'giantbat']);
 const stage5EnemyTextureName = (type: string): string | null =>
   STAGE5_ENEMY_TYPES.has(type) ? `stage5-enemies/${type}` : null;
 // ステージ5の足元ズレ補正(STAGE4_FOOT_FRAC_Xと同方式: 下端12%帯のα重心x比率を実測)。
@@ -12266,7 +12269,9 @@ export class PixiScene {
         // 弾かれた方向は「本人の意思の移動」ではないので、押されて後ずさっただけで背を向けるのは変。
         // 180msは平滑済みmotVxからノックバック成分が抜けるまでの猶予(平滑k=dt/130の減衰時間)。
         const kbFacingLock = e.knockbackUntil !== undefined && now < e.knockbackUntil + 180;
-        const want = kbFacingLock ? cur : vx > 25 ? -1 : vx < -25 ? 1 : cur;
+        // 素材の素の向き(既定=左向き)。右向き素材(faceRight)はミラーの向きが反転する。
+        const toRight = spec.faceRight ? 1 : -1;
+        const want = kbFacingLock ? cur : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
         if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
         const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;
         const from = view.motFaceFrom ?? (view.motFace ?? 1);
