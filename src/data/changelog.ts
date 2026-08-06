@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2934',
+    items: [
+      '隠しボス「ミーミル」の見た目を新しいドット絵に変えました。',
+    ],
+  },
+  {
     version: '0.25.2933',
     items: [
       '植物の敵が吐く種弾の絵を、元の種の絵に戻しました。',
