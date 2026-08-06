@@ -156,13 +156,7 @@ export const BOSS_MAKER_STAGE = 'stage-1'; // 森(平地)。広さ無限・木�
  */
 export const isBossMakerRun = (): boolean =>
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bossmaker') === '1';
-/**
- * 敵モーション動物園(`?zoo=1`・v0.25.2902)。ボスメーカーと同じ「何もない部屋」
- * (木/松明/地雷/花なし・クエスト/裏ボス/寄り道なし)を使って敵だけを並べる鑑賞モード。
- * resetGame(store)と useGameLoop の両方から要るのでここに1本(isBossMakerRunと同じ理由)。
- */
-export const isZooRun = (): boolean =>
-  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('zoo') === '1';
+
 export const bossMakerQuery = (opts: BossTestOptions): string => {
   const p = new URLSearchParams();
   p.set('smoke', '1');

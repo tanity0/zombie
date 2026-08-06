@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2903',
+    items: [
+      'ゲーム内容の変更はありません(開発用の敵モーション確認をゲーム外の専用ページへ移しました)。',
+    ],
+  },
+  {
     version: '0.25.2902',
     items: [
       'ゲーム内容の変更はありません(開発用の敵モーション確認モードの改善)。',

@@ -135,7 +135,7 @@ import {
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { setFlowersDisabled } from '../world/forestDecor';
-import { bossTestGhostSkill, isBossMakerRun, isZooRun } from '../utils/bossTest';
+import { bossTestGhostSkill, isBossMakerRun } from '../utils/bossTest';
 import { isPracticeRun, practiceBossType } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
@@ -13069,10 +13069,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 洋館通路も木/トーチ/緑卵を出さない(社長指示)。
       // ボスメーカーの部屋(BOSS_MAKER.md §1-1)は**壁なし・障害物なし・ボス1体だけ**。木が残っていると
       // 弾が木に当たって消える/ボスが引っかかる/方眼が読めない、で数字を詰める邪魔になる(社長指示v0.25.2628)。
-      // 敵モーション動物園(?zoo=1)もボスメーカーと同じ「何もない部屋」に相乗りする(v0.25.2902・
-      // 社長指示「専用の何もないステージに切り出して」)。以降の bossMakerRoom 分岐が全部効く
-      // (木/松明/地雷/花なし・裏ボス/寄り道/クエストなし)。
-      const bossMakerRoom = (isBossMakerRun() || isZooRun()) && !state.danceTestMode;
+      const bossMakerRoom = isBossMakerRun() && !state.danceTestMode;
       setTreesDisabled(farBackdrop === 'stage5' || farBackdrop === 'tutorial' || corridorMode || bossMakerRoom);
       // チュートリアル: 松明(破壊可能プロップ=資材ドロップ源)も出さない(社長指示v0.25.1818
       // 「アイテムも通常NPCも何もかも無し。全てイベントで特別仕様のみ」)。
