@@ -36,7 +36,8 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // 保持(hold)の長さを判定と同じ定数から読む(絵のためのコピー定数を作らない)。
   GIANT_BITE_HOLD_MS,
   // 同: 爪の一振り(g-talon)を3本の爪痕と同じ扇の中で振らせるための開き角。
-  GLEN_TALON_SPREAD_RAD,
+  // WINDUP は「爪痕が手前から奥へ刻まれる」ワイプの尺にも使う(爪の振りと同じ尺で揃える・v0.25.2889)。
+  GLEN_TALON_SPREAD_RAD, GLEN_TALON_WINDUP_MS,
   GIANT_SWEEPBEAM_WINDUP_MS, GIANT_SWEEPBEAM_ACTIVE_MS, GIANT_SWEEPBEAM_LENGTH, GIANT_SWEEPBEAM_HALF_WIDTH, GIANT_SWEEPBEAM_INNER_RADIUS, GIANT_SWEEPBEAM_SWEEP_RAD,
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
@@ -2243,6 +2244,9 @@ interface ActorView {
   slash?: Sprite;
   // 爪痕(社長支給素材 D-2・v0.25.2402)。**判定1つにつき1枚**貼るので配列(グレンの血の爪痕は同時3本)。
   clawMarks?: Sprite[];
+  // 爪痕の「手前から奥へ刻まれる」ワイプ用に、素材の左からの一部だけを指すサブテクスチャ
+  // (v0.25.2889)。**伸縮させないため**にスプライトを縮めるのではなく素材を切って出す。
+  clawMarkTex?: Texture[];
   // 衝撃波(社長支給素材・v0.25.2414)。**判定の帯1本につき1枚**(翼撃は左右2本同時)。
   shockwaves?: Sprite[];
   // バッチFX-V3V4: 「物理の絵」(牙/爪/翼/触手/拳)。ATK_ART_* の固定スロットで持つ配列。
@@ -13849,7 +13853,16 @@ export class PixiScene {
           o.poly(pts).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.5 * t + 0.12 * gPulse });
           // 爪痕(D-2)を判定の矩形へ重ねる。氷(スカジ/城ボスstage-4)は爪ではないので付けない。
           // 濃さは既存のフェードイン(t)に合わせる=「n秒後に爆ぜる」という既存の語彙(§6.28-3)のまま。
-          if (!h.ice) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t);
+          //
+          // ★グレンの血の爪痕(g-talon)だけ、**爪が振り抜ける間に手前から奥へ刻まれていく**
+          // (社長指示v0.25.2889「最初からパっと表示されてるのが変」)。爪の絵は windup の間に
+          // 扇を振り切るので、**同じ windup を尺に使って**爪と痕を合わせる。
+          // 刻み終わった後は 1 で据え置き=そこから先は従来どおり爆ぜるまで濃くなるだけ。
+          // g-talon 以外(将来の帯型の遅延判定)は従来どおり最初から全長で出す。
+          const carve = h.moveKey === 'g-talon'
+            ? Math.max(0, Math.min(1, (gameTime - h.bornAt) / (GLEN_TALON_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
+            : 1;
+          if (!h.ice) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t, carve);
         } else {
           o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: 0.05 + 0.18 * t + 0.06 * gPulse });
           o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.45 * t + 0.12 * gPulse });
@@ -15361,9 +15374,16 @@ export class PixiScene {
    * ★この素材だけ**暗い**(輝度中央値65。他は234〜238)。tint は掛け算なので明るくできないが、
    * **爪痕は「地面の傷」なので暗いのが正しい**。危険の表示は下に敷いてある赤い面が担い、
    * この絵は傷の意匠だけを足す(= tint は白=素材そのままの濃さで出す)。
+   *
+   * ★`reveal`(0..1・社長指示v0.25.2889「最初からパっと出てるのが変」): 爪痕を**グレン側(fx)から
+   * 奥(tx)へ向かって刻まれていく**ように出す。1 なら従来どおり全長。
+   * **伸縮させない**のが要件なので、スプライトを縮めるのではなく**素材を左から切って**出す
+   * (= 見えている部分の絵は最終形と1:1のまま、切り口が奥へ進む「ズサッ」になる)。
+   * マスク(Graphics+ステンシル)でも同じ絵は作れるが、こちらはステンシル1枚も増えないので選んだ。
    */
   private drawClawMark(
     view: ActorView, idx: number, fx: number, fy: number, tx: number, ty: number, halfWidth: number, alpha: number,
+    reveal = 1,
   ): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;
     const tex = getTexture('fx/claw-mark');
@@ -15372,6 +15392,9 @@ export class PixiScene {
     let sp = view.clawMarks[idx];
     if (!sp) {
       sp = new Sprite(tex);
+      // ★アンカーは中央(0.5)のまま。ワイプは「置く位置を**見えている部分の中心**へ寄せる」ことで
+      // 出す(アンカーを端へ動かすと `telegraphFade` の span() が sp.y を中心と見なす前提を崩し、
+      // 透過フェードの帯が半分ズレる)。
       sp.anchor.set(0.5, 0.5);
       // 予告レイヤー(tele=赤い塗り)の**直上**へ入れる(社長報告v0.25.2411「全部当たり判定に隠れて
       // 赤い影っぽくしか見えない」)。旧: index 0=コンテナ最下層に入れていたため、上に重なる
@@ -15380,13 +15403,39 @@ export class PixiScene {
       view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
       view.clawMarks[idx] = sp;
     }
-    if (sp.texture !== tex) sp.texture = tex;
+    const p = Math.max(0, Math.min(1, reveal));
+    if (p <= 0.001) { sp.visible = false; return; }
+    // 素材を左から p だけ切ったサブテクスチャ(スロットごとに1枚だけ作って使い回す)。
+    if (!view.clawMarkTex) view.clawMarkTex = [];
+    let ct = view.clawMarkTex[idx];
+    if (!ct || ct.source !== tex.source) {
+      ct = new Texture({
+        source: tex.source,
+        frame: new Rectangle(tex.frame.x, tex.frame.y, tex.frame.width, tex.frame.height),
+        // 毎フレーム frame を書き換えるので dynamic=true(スプライト側にUV変更を追従させる)。
+        dynamic: true,
+      });
+      view.clawMarkTex[idx] = ct;
+    }
+    // ★`orig` を渡していないので Pixi 内部で `orig === frame`(同じRectangleの参照)になる。
+    // よって frame.width を縮めると orig.width も縮み、下の `sp.width` の拡大率計算
+    // (value / orig.width)が **p に依らず一定**になる=絵が伸び縮みしない。ここが仕掛けの肝。
+    const cutW = Math.max(1, tex.frame.width * p);
+    if (ct.frame.width !== cutW) { ct.frame.width = cutW; ct.updateUvs(); }
+    if (sp.texture !== ct) sp.texture = ct;
     const ddx = tx - fx, ddy = ty - fy;
     const len = Math.hypot(ddx, ddy) || 1;
+    const ux = ddx / len, uy = ddy / len;
     sp.rotation = Math.atan2(ddy, ddx);
-    sp.width = len + halfWidth * 2; // 判定の矩形(前後へhalfWidthぶん伸ばした形)と同一
+    // 全長=判定の矩形(前後へhalfWidthぶん伸ばした形)と同一。見えている長さはその p 倍。
+    // ★素材も長さも同じ p 倍にしているので**拡大率は p に依らず一定**=絵は伸び縮みしない。
+    const full = len + halfWidth * 2;
+    const shown = full * p;
+    sp.width = shown;
     sp.height = halfWidth * 2;
-    sp.position.set((fx + tx) / 2, (fy + ty) / 2);
+    // 置くのは**見えている部分の中心**(手前の端から shown/2 だけ奥)。p=1 で従来どおり矩形の中心に戻る。
+    const startX = fx - ux * halfWidth, startY = fy - uy * halfWidth;
+    sp.position.set(startX + ux * shown * 0.5, startY + uy * shown * 0.5);
     sp.alpha = alpha;
     sp.visible = true;
   }

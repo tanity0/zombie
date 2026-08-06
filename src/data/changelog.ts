@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2889',
+    items: [
+      'ステージ7ボスの爪痕が、最初から全部見えているのをやめました。爪を振り抜く動きに合わせて、ボスの手前から奥へ向かってズサッと刻まれていきます。',
+    ],
+  },
+  {
     version: '0.25.2888',
     items: [
       'ミゲルとウリの剣の振りが2倍速くなりました。斬撃が鋭くなった分、当たり判定が出ている時間も短くなります。',
