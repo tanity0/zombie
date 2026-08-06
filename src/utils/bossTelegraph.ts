@@ -89,9 +89,11 @@ export const AOE_TELEGRAPH_AUDIT: readonly AoeTelegraphEntry[] = [
   { name: 'acrasiel-warp(転移衝撃)', escapeMs: 1000, radiusPx: 92 },
 
   // --- 下限未満だが「意図」として据え置くもの(v0.25.2609では直さず記録に留める) ---
-  // useGameLoop.ts: MIMIR_BITE_WINDUP_MS=700 / MIMIR_BITE_RADIUS=GRENADE_BLAST_RADIUS=92 → 必要881ms
+  // useGameLoop.ts: MIMIR_BITE_WINDUP_MS=700 / bodyCenteredAoe.MIMIR_BITE_RADIUS=216(v0.25.2612で
+  // 92→216) → 必要約2069ms。★v0.25.2893: この行の 92 が是正に取り残されており、監査が旧値を
+  // 検査していた(=不足81msに見えていたが実際は不足1369ms)。「密着への懲罰」という役目は不変。
   {
-    name: 'mimir-bite(群体の噛みつき)', escapeMs: 700, radiusPx: 92,
+    name: 'mimir-bite(群体の噛みつき)', escapeMs: 700, radiusPx: 216,
     intentionallyUnavoidable: '密着帯(<=200px)専用の懲罰技=「張り付き続けたら噛まれる」を教える技。'
       + '城ボスの踏み鳴らし(密着でstomp重み50)と同じ思想。範囲外へ歩くのではなく間合いを空ける動機付けが役目。',
   },

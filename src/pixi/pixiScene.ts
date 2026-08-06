@@ -56,6 +56,7 @@ import {
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
+import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 import { contentSpanFrac, needsContentTrim, contentTrimFrameY } from '../utils/shadowBake';
 import { horizontalShadowCorners } from '../utils/shadowProjection';
 import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
@@ -65,8 +66,7 @@ import {
 } from '../utils/idolScript';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
-  URI_SCRIPT_ENABLED, SURIEL_SCRIPT_ENABLED, ACRASIEL_SCRIPT_ENABLED,
-  ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS,
+  ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS, ACRASIEL_WARP_TELEGRAPH_MS,
   MIGUEL_DASH_WINDUP_MS, MIGUEL_DASH_MOVE_MS, MIGUEL_DASH_STRIKE_MS,
   URI_THRUST_WINDUP_MS, URI_THRUST_MOVE_MS, URI_THRUST_STRIKE_MS,
 } from '../utils/angelBossTick';
@@ -1238,7 +1238,9 @@ const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半�
 // PACING_PUZZLE.md §6.28-5/7(バッチM54/M56): ミーミル「群体の噛みつき」/ヨルムンガルド「うねり」の
 // 描画用(視覚・useGameLoop のゲームプレイ値と一致させること)。
 const MIMIR_BITE_WINDUP_MS_VIS = 700;   // 噛みつきのwindup時間(useGameLoop MIMIR_BITE_WINDUP_MSと一致)
-const MIMIR_BITE_RADIUS_VIS = 92;       // = GRENADE_BLAST_RADIUS(useGameLoop MIMIR_BITE_RADIUSと一致)
+// ★importへ移行(v0.25.2893)。旧: ここに 92 を手写ししており、v0.25.2612の判定是正(92→216)が
+// 描画に届かず、**赤円92pxの外・216pxの内側で「赤くないのに当たる」**が常時発生していた(実バグ)。
+const MIMIR_BITE_RADIUS_VIS = MIMIR_BITE_RADIUS;
 const JORM_COIL_WINDUP_MS_VIS = 700;    // うねりのwindup時間(useGameLoop JORM_COIL_WINDUP_MSと一致)
 // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)の描画用(useGameLoop のゲームプレイ値と一致させること)。
 // ★予告の描画は**数値テーブルを直接読む**(社長指示v0.25.2631・共有値の洗い出しで発見)。
@@ -1355,7 +1357,9 @@ const ACRASIEL_BURST_ACTIVE_MS_VIS = 300;
 const ACRASIEL_SPIKE_RANGE_VIS = 310; // =THOR_HARAI_RANGE相当(流用)。放射棘8方向の描画長。
 const ACRASIEL_SPEAR_WINDUP_MS_VIS = 700;
 const ACRASIEL_GAZE_WINDUP_MS_VIS = 450;
-const ACRASIEL_WARP_TELEGRAPH_MS_VIS = 800;
+// ★ACRASIEL_WARP_TELEGRAPH_MS はimportへ移行(v0.25.2893)。旧: ここに 800 を手写ししており、
+// v0.25.2609の是正(800→1000・800msでは構造的に円から出られない)が判定側にしか届いていなかった
+// =予告円が実際より2割速く「満ちて」見えていた。
 const ACRASIEL_BURST_RADIUS_VIS = 140; // ★未決事項(angelBossTick.tsと同じ叩き台値)。
 const THIN_BEAM_VIS_HALFWIDTH = 20; // スリィエル環の射出/アクラシエル単眼レーザー(T6細ビーム)の描画半太さ
 
@@ -2082,9 +2086,12 @@ const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
 // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): ゲート2ボスごとのフォールバック
 // (`?<boss>script=0`)。無効時は新規stateが一切発火しないため(angelBossTick.tsのLegacy実装が
 // 旧state名しか使わない)、新規の予告描画/tint(下記ANGEL_T4_*判定)も自動的に出ない=安全。
+// ★uri/suriel/acrasiel は常に true(v0.25.2893)。この3体はLegacy実装が存在せず、旧
+// `?uriscript=0` 等はスクリプトを止めるだけ=**ボスが凍結して倒せなくなる**footgunだったので
+// フラグごと撤去した。miguel/jibril/rafi はLegacyが実在するためフォールバックを維持。
 const ANGEL_NEW_SCRIPT_ACTIVE: Partial<Record<string, boolean>> = {
   miguel: MIGUEL_SCRIPT_ENABLED, jibril: JIBRIL_SCRIPT_ENABLED, rafi: RAFI_SCRIPT_ENABLED,
-  uri: URI_SCRIPT_ENABLED, suriel: SURIEL_SCRIPT_ENABLED, acrasiel: ACRASIEL_SCRIPT_ENABLED,
+  uri: true, suriel: true, acrasiel: true,
 };
 // T4赤フラッシュ/青白硬直の対象になる状態の判定(§6.28-3 W6/共通言語)。全ボス共通で「-windup」
 // 「-recover」接尾辞に統一してある(ミゲル踏み込み/ウリ突きだけ移動を挟むため例外3つを追加)。
@@ -12633,7 +12640,7 @@ export class PixiScene {
       // FX-V3V4(V3-1): 噛みつきの牙。**「噛みつき」という動作の実装経路は2つ**あり、こちらが
       // 裏ボス側(mimir の bossState 経路)。もう1つは城ボスの g-bite(下の giantbat ブロック)。
       // 片方だけに付けると必ず取りこぼす(v0.25.2426の教訓)ので必ず両方に置くこと。
-      // 判定は**足元の円**(MIMIR_BITE_RADIUS=92・向きが無い技)なので、顎は画面水平(angle=0)で
+      // 判定は**足元の円**(MIMIR_BITE_RADIUS・向きが無い技)なので、顎は画面水平(angle=0)で
       // 円の直径いっぱいに開き、**windupが終わる瞬間=ダメージが出る瞬間**に閉じ切る。
       if (e.type === 'mimir') {
         const biteWind = bs === 'bite-windup';
@@ -13032,7 +13039,7 @@ export class PixiScene {
       // ---- アクラシエル: 転移(出現先)=T5円フェードイン(0.8秒)。転移元(消失)はtintのT4フラッシュのみ。 ----
       else if (scriptActive && e.type === 'acrasiel' && bs === 'warp-in') {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const total = ACRASIEL_WARP_TELEGRAPH_MS_VIS;
+        const total = ACRASIEL_WARP_TELEGRAPH_MS;
         const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / total));
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         o.ellipse(tx, ty, ACRASIEL_SPEAR_RADIUS, ACRASIEL_SPEAR_RADIUS).fill({ color: 0xff2a2a, alpha: 0.05 + 0.18 * t + 0.06 * pulse });

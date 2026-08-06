@@ -7,14 +7,10 @@ import { FONT_STACK } from '../config/font';
 
 // Kick off image loads as soon as the renderer module is imported. The
 // names map 1:1 to PNG filenames under `public/sprites/`.
-preloadSprites([
-  'player',
-  'bat', 'skeleton', 'zombie', 'plant', 'ghost', 'werewolf',
-  'pumpkin', 'giantbat', 'reaper',
-  'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red',
-  'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest',
-  'tree'
-]);
+// ★v0.25.2893: 旧リストの17件(bat/skeleton/…/pickup-*/tree)は**単体PNGが存在しない**
+// (atlas.png の中にしか無い)ため、**毎起動17回の404**を出すだけだった。しかもこのモジュールは
+// GameHUD が formatTime を import するので **Pixi描画でも必ず評価される**。実在する player だけ残す。
+preloadSprites(['player']);
 
 // Counter ring visualization. Visible only while the counter window is open
 // after a finger release; a successful reflect adds a brief gold flash.

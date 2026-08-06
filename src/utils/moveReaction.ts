@@ -92,7 +92,7 @@ export const MOVE_REACTION_LINGER_MS = 2000;
 // 自己中心技(狙いロックを持たない)の危険域判定用の複製値。store非依存を保つためgameStore.tsからは
 // importせず同じ値を複製する(playerTraits.tsのMELEE_RADIUS_MIRRORと同じ確立済みの作法)。
 // g-stompは溜め開始時にステージ倍率込みの実半径が enemy.gStompRadius へ確定するのでそちらを優先。
-const GIANT_STOMP_RADIUS_MIRROR = 92;   // = gameStore.GIANT_STOMP_RADIUS
+const GIANT_STOMP_RADIUS_MIRROR = 130;  // = gameStore.GIANT_STOMP_RADIUS(★v0.25.2893: 旧92が130への変更に取り残されていた。gStompRadius欠落時のフォールバックのみで使用)
 const GIANT_NOVA_RADIUS_END_MIRROR = 400; // = gameStore.GIANT_NOVA_RADIUS_END(輪の最大半径)
 
 // 判定に必要な最小限のEnemyフィールド(テストを軽くするためのPick)。

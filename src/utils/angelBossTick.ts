@@ -68,9 +68,8 @@ const scriptFlag = (name: string): boolean =>
 export const MIGUEL_SCRIPT_ENABLED = scriptFlag('miguelscript');
 export const JIBRIL_SCRIPT_ENABLED = scriptFlag('jibrilscript');
 export const RAFI_SCRIPT_ENABLED = scriptFlag('rafiscript');
-export const URI_SCRIPT_ENABLED = scriptFlag('uriscript');
-export const SURIEL_SCRIPT_ENABLED = scriptFlag('surielscript');
-export const ACRASIEL_SCRIPT_ENABLED = scriptFlag('acrasielscript');
+// ★uri/suriel/acrasiel のフラグは撤去(v0.25.2893)。この3体はLegacy実装が無く、`?uriscript=0` は
+// 「旧実装へ戻す」ではなく**tickを丸ごと止める=ボスが凍結して倒せなくなる**footgunだった。
 
 // --- 定数(useGameLoop.tsから移設。トール側のレガシー定数と同値のものは同値コメントで同期義務) ---
 const GATE_ARENA_RADIUS = 300;          // ゲートアリーナ半径(useGameLoop.tsと同値)
@@ -239,7 +238,7 @@ const ACRASIEL_WARP_WINDUP_MS = 800;
 // ⇒ **見てから歩いても構造的に円から出られない**(=避けようが無い)状態だった。
 // minWindupMs(92)=881ms が必要下限。反応の余裕を見て 1000ms(=104.4px)にする。
 // 判定半径(ACRASIEL_WARP_IMPACT_RADIUS)と赤円の描画は同じ定数を読むので図形と判定は一致したまま。
-const ACRASIEL_WARP_TELEGRAPH_MS = 1000;
+export const ACRASIEL_WARP_TELEGRAPH_MS = 1000; // export=描画(pixiScene)が同じ値を読む(v0.25.2893で二重管理を廃止)
 const ACRASIEL_WARP_RECOVER_MS = withRecoverFloor(600);
 const ACRASIEL_WARP_IMPACT_RADIUS = 92;   // ★未決事項: 「衝撃」の半径は設計書に無い(GRENADE_BLAST_RADIUS流用)。
 const ACRASIEL_BURST_WINDUP_MS = 1200;
@@ -2135,11 +2134,11 @@ export const runAngelBossTick = (
   } else if (angel.type === 'rafi') {
     if (RAFI_SCRIPT_ENABLED) runRafiTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx);
     else runRafiTickLegacy(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx);
-  } else if (angel.type === 'uri' && URI_SCRIPT_ENABLED) {
+  } else if (angel.type === 'uri') {
     runUriTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx, onPlayerDeath);
-  } else if (angel.type === 'suriel' && SURIEL_SCRIPT_ENABLED) {
+  } else if (angel.type === 'suriel') {
     runSurielTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx, onPlayerDeath);
-  } else if (angel.type === 'acrasiel' && ACRASIEL_SCRIPT_ENABLED) {
+  } else if (angel.type === 'acrasiel') {
     runAcrasielTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx, onPlayerDeath);
   }
 };
