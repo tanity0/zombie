@@ -355,8 +355,6 @@ const SMALL_GLOW_MIN_DURATION_MS = 80;
 // damage landed on a stunned boss (drives the kill.mp3 sound).
 // `killed` = how many enemies the swing killed (drives the zombie death grunt).
 export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number };
-export const clampDropPct = (n: number): number =>
-  Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
 
 // 制圧イベント(ステージ1メインミッション等のサブクエスト時のみ有効・通常は無効)。
 // 原点中心・半径3200の円周に4か所(90度刻み=東西南北)固定。サークル内10秒で制圧→武器商人がそこへ移動(=安全地帯)。
@@ -2019,7 +2017,6 @@ export const CHARACTER_CLASS_NAMES: Record<CharacterClass, string> = {
 export const INTRO_DIALOGUE_CHAR_MS = 55;        // 1文字の表示間隔(オートタイプ速度)
 export const INTRO_DIALOGUE_LINE_HOLD_MS = 950;  // 各行を打ち終えた後の保持(+0.2s 延長)
 export const INTRO_DIALOGUE_READ_MS = 26;        // 文字数に応じた追加の読む間(社長指示=次へ行く長さを少し長く・文字数で変動)
-export const INTRO_DIALOGUE_END_HOLD_MS = 550;   // 最終行後の保持(この後ゲーム開始)
 // 1行の所要時間(オートタイプ+保持)。holdMs 指定行(無線の「間」等)はそれをそのまま使う。
 // 表示側(IntroDialogue)と終了判定(useGameLoop)で必ず同じ値を使うため共通化する。
 export const introLineMs = (l: IntroLine): number =>

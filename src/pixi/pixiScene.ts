@@ -1910,7 +1910,9 @@ const labEnemyTextureName = (type: string, id: string): string | null => {
 
 // ステージ3(廃都)専用の敵絵。stage1のアトラス敵を見た目で1:1差し替え(社長提供シート)。
 // 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='city' のみ。
-const STAGE3_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']);
+// ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・enemyTexKeyの解決順で
+// variantTextureName(ENEMY_VARIANT_SETS)が先に引かれるためstage3絵は表示不能だった。素材は削除済み)。
+const STAGE3_ENEMY_TYPES = new Set(['werewolf', 'pumpkin', 'giantbat', 'reaper']);
 const stage3EnemyTextureName = (type: string): string | null =>
   STAGE3_ENEMY_TYPES.has(type) ? `stage3-enemies/${type}` : null;
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
@@ -2152,22 +2154,20 @@ const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社
 // ステージ4の敵絵は接地点(足元)が画像の水平中心からずれている個体がある(切り出し由来)。
 // 足元の接地帯(下端12%)のα重心を測った水平位置(テクスチャ幅に対する比率)。0.5=中央。
 // drawEnemy で「重心が footX に乗る」ように水平オフセットを掛けて補正する(視覚のみ=hitbox不変)。
+// ★bat/ghost/plant/skeleton/zombie はここから外した(バッチ4・v0.25.2898・下のSTAGE4_ENEMY_TYPES
+// から外れたため出番なし=variantTextureNameが先に引かれてstage4絵は表示不能だった)。
 const STAGE4_FOOT_FRAC_X: Record<string, number> = {
-  bat: 0.367,
-  ghost: 0.535,
   giantbat: 0.471,
-  plant: 0.501,
   pumpkin: 0.503,
   reaper: 0.596,
-  skeleton: 0.411,
   werewolf: 0.441,
-  zombie: 0.428,
 };
 
 // ステージ4(雪原)専用の敵絵。既存9種を見た目で1:1差し替え＋新型 lich(社長提供シート)。
 // 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='snow' のみ。
 // ★lich は外した(v0.25.2897・全ステージ共通 `lich-common` へ移行、旧stage4/5素材は削除済み)。
-const STAGE4_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']);
+// ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE3コメント参照)。
+const STAGE4_ENEMY_TYPES = new Set(['werewolf', 'pumpkin', 'giantbat', 'reaper']);
 const stage4EnemyTextureName = (type: string): string | null =>
   STAGE4_ENEMY_TYPES.has(type) ? `stage4-enemies/${type}` : null;
 
@@ -2175,16 +2175,13 @@ const stage4EnemyTextureName = (type: string): string | null =>
 // 9種を1:1差し替え+シート10体目(フード付き亡霊)=lich(社長裁定2026-07-17「一旦リッチと同じでいい」
 // =ステージ4と同じ扱いでステージ5にもlichを出す)。当たり判定/サイズは不変。farBackdrop==='stage5' のみ。
 // ★lich は同上で共通絵へ移行済み。
-const STAGE5_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']);
+// ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE3コメント参照)。
+const STAGE5_ENEMY_TYPES = new Set(['werewolf', 'pumpkin', 'giantbat', 'reaper']);
 const stage5EnemyTextureName = (type: string): string | null =>
   STAGE5_ENEMY_TYPES.has(type) ? `stage5-enemies/${type}` : null;
 // ステージ5の足元ズレ補正(STAGE4_FOOT_FRAC_Xと同方式: 下端12%帯のα重心x比率を実測)。
+// ★bat/ghost/plant/skeleton/zombie はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE4_FOOT_FRAC_X参照)。
 const STAGE5_FOOT_FRAC_X: Record<string, number> = {
-  zombie: 0.460,
-  bat: 0.515,
-  skeleton: 0.468,
-  plant: 0.486,
-  ghost: 0.469,
   werewolf: 0.521,
   pumpkin: 0.477,
   giantbat: 0.485,

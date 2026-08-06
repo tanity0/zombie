@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2898',
+    items: [
+      '使わなくなった古い画像を整理してアプリを軽くしました。',
+    ],
+  },
+  {
     version: '0.25.2897',
     items: [
       'リッチの見た目を新しい絵に変えました。全ステージで同じ絵になります。',

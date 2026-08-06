@@ -1,5 +1,51 @@
 # Development Log
 
+## v0.25.2898 — バッチ4: 死蔵アセットの削除(約15MB)【2026-08-06 17:03 JST】
+音楽ファイル(`public/audio/*.mp3`)は1つも触っていない(社長裁定「曲以外は削除」)。
+各削除の前に対象パスを `grep -rn` で `src/` 全域(+`index.html`, `scripts/`)から検索し
+参照ゼロを再確認してから削除した(テンプレートリテラル構築の箇所は生成元のループ/配列を確認)。
+
+### 削除結果
+- **削除ファイル数: 141 / 合計 15.38 MB(16,122,258 bytes)**
+
+### 分類別内訳
+1. **変異体テーブルで表示不能になった敵絵(20枚)**: `stage3/4/5-enemies/{zombie,bat,skeleton,plant,ghost}.png`
+   (15枚)+`atlas-px2/{zombie,bat,skeleton,plant,ghost}.png`(5枚)。`pixiScene.enemyTexKey` が
+   `ENEMY_VARIANT_SETS`(この5 typeは全て登録済み)を stage3/4/5・atlas-px2上書きより**先に**引くため
+   表示不能だった(フォールバック経路なし・確認済み)。`pixiTextures.ts` のstage3/4/5ロードリスト・
+   `atlasPxNames`・アスペクト登録ループ、`pixiScene.ts` の `STAGE3/4/5_ENEMY_TYPES` セット・
+   `STAGE4/5_FOOT_FRAC_X` 表から5種を外した(werewolf/pumpkin/giantbat/reaperは残置。STAGE3側に
+   FOOT_FRAC_X表は存在しなかった=grep確認済み)。
+2. **参照ゼロのファイル(106枚)**: `atlas-px/`丸ごと(17)/ `fx/{roar-cone,sonic-bolt,bite-jaws-closed,
+   light-bolt,claw-marks}.png`(5・`fx/claw-mark`単数は使用中のため保持)/ `lab/lab-floor-ground.png`
+   (`lab-floor/`側と内容同一の重複・1)/ `props/prop-r*-c*.png` 旧シート(33・`prop2-*`は使用中で保持)/
+   `props/{prop2-r0-c0,prop2-r0-c2}.png`(2・prop2のうち表に無い分)/ `lab-props/lab-prop-r*-c*.png`
+   旧12枚(`lab-prop2-*`は使用中で保持)/ `lab-floor/lab-floor-r*-c*.png` r1-c1以外(25・r1-c1は
+   `lab-floor-ground`/`lab-floor-stage2`/`lab-floor-clean`に次ぐフォールバックとして使用中。r5-c1は
+   ロードのみで未描画=下記3と併せて削除)/ `fog.png`(1・`fog-alpha`のみ使用)/
+   `{medic-mutant,phill-cryopod}.png`(2)/ `{tree-new,tree-new-b,tree-new-bush}.png`(3・tree-new2/
+   tree-snowは使用中で保持)/ `stage3-enemies/{e3,e10}.png`(2)/ `npc/medic-fall-{0,1,2}.png`(3)。
+3. **ロードされるが一度も描画されないテクスチャ(15枚・ロード登録+ファイル)**: `lab/lab-wall-open-
+   {top,mid,bottom}` / `lab/lab-wall-closed-{top,mid,bottom}` / `lab/lab-wall-side-long` /
+   `lab/lab-wall-side-block{1,2,3}` / `lab/lab-wall-obj-v` / `lab/lab-wall2-beam` /
+   `lab/lab-ceiling-band` / `lab-floor/lab-floor-persp`(`-persp-plate`は使用中=区別して保持)/
+   `knife-item`(「互換のため残置」コメント付きだったが参照ゼロ確認済み)。`pixiTextures.ts` の
+   ロードリストから各名前を外し、ファイルも削除。`lab-floor/lab-floor-r5-c1` は分類2の一括削除に
+   含めたのでファイルは既に無し・ロード行のみここで削除。
+4. **バッチ3の積み残し(コードのみ・2件)**: `src/store/gameStore.ts` の `clampDropPct`
+   (`DEFAULT_MELEE_DROP_PCT` 定数自体は他所で使用中なので残置)と `INTRO_DIALOGUE_END_HOLD_MS`
+   (`INTRO_DIALOGUE_{CHAR,LINE_HOLD,READ}_MS` は使用中で残置)を削除。
+
+### スキップした項目
+なし(依頼された全項目を参照ゼロ確認の上で削除できた)。
+
+### 禁止事項の遵守確認
+- `public/audio/` は未変更(`git status` で確認)。
+- `public/sprites/atlas.png` は削除していない(werewolf等+旧Canvas2Dレンダラーが使用するため)。
+
+検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(既存warning 8、変化なし) /
+`npx vitest run src/utils/enemyVariant.test.ts` 10件パス。**コミット・pushは行っていない。**
+
 ## v0.25.2897 — lich の絵を差し替え(全ステージ共通)+旧アセット削除【2026-08-06 16:53 JST】
 社長支給の新アート「リッチの差し替え」+「旧リッチのアセットも削除」。
 

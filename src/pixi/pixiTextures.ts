@@ -177,7 +177,7 @@ export const ensureTextures = (): Promise<void> => {
     const standalone: { name: string; scaleMode?: 'nearest' | 'linear' }[] = [
       { name: 'player', scaleMode: 'nearest' },
       { name: 'katana-item', scaleMode: 'nearest' }, // 背負い刀(刀/小烏丸 装備中にプレイヤー背面へ表示)
-      { name: 'knife-item', scaleMode: 'nearest' },  // (旧)近接ナイフ実画像。互換のため残置
+      // ★knife-item はここから外した(バッチ4・v0.25.2898・(旧)近接ナイフ実画像。参照ゼロ確認済み・素材は削除済み)。
       { name: 'knife-swing-1', scaleMode: 'nearest' }, // 近接スイング1枚目(青ダガー)
       { name: 'knife-swing-2', scaleMode: 'nearest' }, // 近接スイング2枚目(青ダガー+青スラッシュ)
       { name: 'knife-swing-3', scaleMode: 'nearest' }, // 近接スイング3枚目(弧の残光・社長提供3コマ化)
@@ -260,18 +260,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'helicopter', scaleMode: 'nearest' }, // ぼかさない(平滑化なし=くっきり)
       { name: 'fog-alpha', scaleMode: 'linear' },     // 森下の霧素材(アルファ透過版=通常合成で重ねる)
       // 研究施設(屋内)アセット。サブディレクトリ込みの名前で登録(spritePath が sprites/<name>.png)。
-      { name: 'lab/lab-wall-open-top', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-open-mid', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-open-bottom', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-closed-top', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-closed-mid', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-closed-bottom', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-side-long', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-side-block1', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-side-block2', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-side-block3', scaleMode: 'nearest' },
+      // ★lab-wall-open-*/lab-wall-closed-*/lab-wall-side-long/lab-wall-side-block{1,2,3} はバッチ4
+      // (v0.25.2898)で外した。ロードされていたが一度も描画されていなかった(参照ゼロ確認済み・素材は削除済み)。
       { name: 'lab-floor/lab-floor-r1-c1', scaleMode: 'nearest' },
-      { name: 'lab-floor/lab-floor-r5-c1', scaleMode: 'nearest' },
+      // ★lab-floor-r5-c1 はここから外した(バッチ4・v0.25.2898・ロードされるが描画されない。素材は削除済み)。
       { name: 'lab-floor/lab-floor-ground', scaleMode: 'nearest' }, // シームレス床(ステージ1風)
       { name: 'lab-floor/lab-floor-stage2', scaleMode: 'nearest' }, // stage-2 屋外ラボ床(社長提供の最新タイル。専用名でキャッシュ確実更新)
       // 新ドット絵タイル(64²・シームレス・16色)。床ベース＝clean、変種＝blood/grime/crack/scorch、隅AO。
@@ -281,21 +273,22 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab-floor/lab-floor-crack', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-scorch', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-ao', scaleMode: 'nearest' },
-      { name: 'lab-floor/lab-floor-persp', scaleMode: 'nearest' }, // 遠近床用 強グリッド(?labpersp)
+      // ★lab-floor-persp はここから外した(バッチ4・v0.25.2898・ロードされるが描画されない。素材は削除済み。
+      // persp-plate は使用中なので残す)。
       { name: 'lab-floor/lab-floor-persp-plate', scaleMode: 'nearest' }, // 焼き込み遠近プレート(?labpersp 一枚絵床)
       // 無地壁スライス(前面=左右シームレス / 上端キャップ)＋装飾壁(ガラス窓パネル/横ビーム)。
       { name: 'lab/lab-wall-front', scaleMode: 'nearest' },
       { name: 'lab/lab-wall-top', scaleMode: 'nearest' },
       { name: 'lab/lab-wall2-panel', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall2-beam', scaleMode: 'nearest' },
+      // ★lab-wall2-beam はここから外した(バッチ4・v0.25.2898・ロードされるが描画されない。素材は削除済み)。
       // 手置き壁オブジェクト(横/縦の一枚絵ビルボード。足元アンカーで配置・遮蔽物)。
       { name: 'lab/lab-wall-obj-h', scaleMode: 'nearest' },
-      { name: 'lab/lab-wall-obj-v', scaleMode: 'nearest' },
+      // ★lab-wall-obj-v はここから外した(バッチ4・v0.25.2898・同上)。
       // 研究所スキンの背景3層(屋外テーマ時に森レイヤーを差し替える。レイヤー構造は不変)。
       { name: 'lab/lab-far-backdrop' },  // 遠景パノラマ(不透明)
       { name: 'lab/lab-horizon-band' },  // 地平の機械帯(紫=透過)
       { name: 'lab/lab-front-band' },    // 手前のボヤけ機械帯(紫=透過。ブラーは既存フィルタで継続)
-      { name: 'lab/lab-ceiling-band' },  // 最前面の天井ケーブル帯(紫=透過・上寄せ・半透明オーバーレイ)
+      // ★lab-ceiling-band はここから外した(バッチ4・v0.25.2898・ロードされるが描画されない。素材は削除済み)。
       { name: 'tutorial-ceiling-band' }, // チュートリアル(洞窟)の鍾乳石帯(lab-ceiling-bandと同仕様・上寄せループ)
       // 背景の天井/void プレート(外周マージンに低速パララックスで敷く・縦横シームレス)。
       { name: 'lab/lab-bg-void', scaleMode: 'nearest' },
@@ -364,15 +357,20 @@ export const ensureTextures = (): Promise<void> => {
       // ステージ別(廃都/雪原)の散布オブジェクト。詳細イラスト調なので linear で滑らかに縮小。
       ...Object.values(STAGE_PROPS).flat().map((p) => ({ name: p.tex, scaleMode: 'linear' as const })),
       // ステージ3(廃都)専用の敵絵(アトラス敵を見た目で差し替え)。アトラス敵と同じピクセル調=nearest。
-      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
+      // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898)。
+      // ENEMY_VARIANT_SETS(utils/enemyVariant.ts)が enemyTexKey で stage3/4/5 より先に引かれるため、
+      // この5種のステージ別絵は表示不能だった(検証済み・旧素材は削除済み)。
+      ...['werewolf', 'pumpkin', 'giantbat', 'reaper']
         .map((t) => ({ name: `stage3-enemies/${t}`, scaleMode: 'nearest' as const })),
       // ステージ4(雪原)専用の敵絵(既存9種の差し替え)。詳細イラスト調なので linear で滑らかに縮小。
       // ★lich はここから外した(v0.25.2897・全ステージ共通の新絵 `lich-common` へ移行。旧素材は削除済み)。
-      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
+      // ★zombie/bat/skeleton/plant/ghost も外した(バッチ4・v0.25.2898・理由は上のstage3コメント参照)。
+      ...['werewolf', 'pumpkin', 'giantbat', 'reaper']
         .map((t) => ({ name: `stage4-enemies/${t}`, scaleMode: 'linear' as const })),
       // ステージ5(対変異体防衛本部)専用の敵絵(社長提供シート2026-07-16・ステージ1と同配置の9種)。
       // ピクセルアート調なのでアトラス敵/stage3と同じ nearest。lich は同上で共通絵へ移行。
-      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
+      // ★zombie/bat/skeleton/plant/ghost も外した(バッチ4・v0.25.2898・理由は上のstage3コメント参照)。
+      ...['werewolf', 'pumpkin', 'giantbat', 'reaper']
         .map((t) => ({ name: `stage5-enemies/${t}`, scaleMode: 'nearest' as const })),
 
       // M8改(§5.9): ソフト系3クラスは linear(+下のローダでmipmapON)。それ以外は従来nearest。
@@ -464,7 +462,9 @@ export const ensureTextures = (): Promise<void> => {
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)のドット絵上書き名。後段で使うが、
     // ローディング%の総数登録(下の loadProgressBegin)に個数が要るためここで定義。
-    const atlasPxNames = ['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'tree',
+    // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・stage3/4/5と同じ理由=
+    // ENEMY_VARIANT_SETSがenemyTexKeyで先に引かれるため表示不能。旧atlas-px2素材は削除済み)。
+    const atlasPxNames = ['werewolf', 'pumpkin', 'giantbat', 'reaper', 'tree',
       'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red', 'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest'];
 
     // ローディング%(社長指示v0.25.1776): このローダが読むファイル総数を先に一括登録する
@@ -647,7 +647,10 @@ export const ensureTextures = (): Promise<void> => {
       const t = textures.get(texName);
       if (t && t.width > 0) setEnemyArtAspect(key, t.height / t.width);
     };
-    for (const ty of ['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']) {
+    // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898)。この5種は
+    // ENEMY_VARIANT_SETS に載っており、下の一括登録ループが default/stage3/stage4/stage5 の
+    // 4キー全てを variant 絵で上書きするため、ここでの登録は不要(旧ステージ別素材も削除済み)。
+    for (const ty of ['werewolf', 'pumpkin', 'giantbat', 'reaper']) {
       regAspect(`default:${ty}`, ty);                 // アトラス(森系)の敵絵
       regAspect(`stage3:${ty}`, `stage3-enemies/${ty}`); // 廃都(ステージ3)の敵絵
       regAspect(`stage4:${ty}`, `stage4-enemies/${ty}`); // 雪原(ステージ4)の敵絵
