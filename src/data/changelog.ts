@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2927',
+    items: [
+      '種を飛ばす敵(プラント)の見た目を、大きな口の食人植物のドット絵に変えました。',
+    ],
+  },
+  {
     version: '0.25.2926',
     items: [
       'アクラシエルの見た目を新しいドット絵に変えました。これで天使6体すべてが新しい絵になりました。',

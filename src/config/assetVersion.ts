@@ -120,4 +120,5 @@
 // v54: 護衛NPCエドガー(npc/edgar-0..2)を社長支給の新3コマ(透過シート)で同名差し替え。
 //      ネイティブ解像度保存(264x293)・頭中心x合わせ・足元下端(頭揺れ0px)。npc/*はspriteLoaderの
 //      ?v=管轄内なのでバンプ必須(背景類とは違い本当に必要な方)。
-export const ASSET_VERSION = '61';
+// v62: プラント(plant-common)を社長支給の食人植物(大口)ドット絵で同名差し替え(旧・玉座の花女は廃止)。
+export const ASSET_VERSION = '62';

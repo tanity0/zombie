@@ -61,11 +61,10 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   lich: { kind: 'hover', bobPx: 1.2, rockRad: 0.008, sqAmp: 0, strideHz: 0.8, uneven: 0, faceMove: true },
   // screamer=スーツの絶叫男。痙攣風(unevenほぼ最大)の小刻み。
   screamer: { kind: 'walk', bobPx: 1.0, rockRad: 0.030, sqAmp: 0.020, strideHz: 2.0, uneven: 0.90, faceMove: false },
-  // plant=玉座の花女(speed8のほぼ固定砲台)。社長指示v0.25.2904「花びらが動いてる感じ」→
-  // 「百合は上に向かって咲いているので**開いたり閉じたり**に見えるのが理想」。
-  // 左右の首振り(rock)はほぼ無しにして、**ゆっくり大きめのスカッシュ脈動**を主役にする:
-  // sqXが広がる(=花弁が開く)+sqYがわずかに縮む → 戻る、の呼吸。足元アンカーの横スケールは
-  // 最も幅の広い花冠が一番大きく動いて見える。hover=移動量に関係なく常時。bob=0で根は接地したまま。
+  // plant=食人植物(speed8のほぼ固定砲台・v0.25.2927で大口の新絵へ差し替え)。旧・花女時代の
+  // 「開いたり閉じたり」のスカッシュ脈動をそのまま流用——新絵では**大口が開閉して呼吸している**
+  // ように読める(sqXが広がる=口が開く+sqYがわずかに縮む→戻る)。値は据え置きで様子見(社長指示)。
+  // hover=移動量に関係なく常時。bob=0で根は接地したまま。
   plant: { kind: 'hover', bobPx: 0, rockRad: 0.008, sqAmp: 0.045, strideHz: 0.25, uneven: 0.3, faceMove: false },
   // hunter=棺桶担ぎの巨人。重い踏みしめ(ジャンプ等は既存aiSqが担当・歩行のみ)。
   hunter: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.2, uneven: 0.20, faceMove: false },

@@ -42,7 +42,7 @@ const ZAKO: CastEntry[] = [
   { type: 'skeleton', variantIdx: 0, tex: 'skeleton-female', label: '四つ這いの獣 (skeleton・女)' },
   { type: 'skeleton', variantIdx: 1, tex: 'skeleton-male', label: '四つ這いの獣 (skeleton・男)' },
   { type: 'zombie', tex: 'zombie-common', label: '巨躯 (zombie)' },
-  { type: 'plant', tex: 'plant-common', label: '花の玉座 (plant)' },
+  { type: 'plant', tex: 'plant-common', label: '食人植物 (plant)' },
   { type: 'ghost', tex: 'ghost-common', label: '卵の花嫁 (ghost)' },
   { type: 'werewolf', tex: 'werewolf-common', label: '自転車 (werewolf)' },
   { type: 'pumpkin', tex: 'pumpkin-common', label: '蜘蛛の機械足 (pumpkin)' },
