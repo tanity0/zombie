@@ -321,8 +321,7 @@ export const ensureTextures = (): Promise<void> => {
       // 研究所ゾンビ(Lv1/2 は男女、Lv3 は巨体1種)。
       { name: 'lab-zombie/lab-zombie-lv1-male', scaleMode: 'nearest' },
       { name: 'lab-zombie/lab-zombie-lv1-female', scaleMode: 'nearest' },
-      { name: 'lab-zombie/lab-zombie-lv2-male', scaleMode: 'nearest' },
-      { name: 'lab-zombie/lab-zombie-lv2-female', scaleMode: 'nearest' },
+      { name: 'lab-zombie/lab-zombie-lv2', scaleMode: 'nearest' }, // v0.25.2914: 男女廃止・1種へ(社長指示)
       { name: 'lab-zombie/lab-zombie-lv3', scaleMode: 'nearest' },
       // 進軍用NPC(護衛軍人)のユニーク立ち絵(2コマ歩行・透過済み)。soldierIndex で出し分け。
       { name: 'npc/edgar-0', scaleMode: 'nearest' },
@@ -670,7 +669,7 @@ export const ensureTextures = (): Promise<void> => {
     // ★screamer のアスペクトは ENEMY_VARIANT_SETS の一括登録(上)が入れる。ここで旧 `screamer`
     // (紫背景・1254角=アスペクト1.0)を再登録すると新素材(縦長)の頭スナップがズレるので置かない。
     regAspect('default:lab-zombie-1', 'lab-zombie/lab-zombie-lv1-male');
-    regAspect('default:lab-zombie-2', 'lab-zombie/lab-zombie-lv2-male');
+    regAspect('default:lab-zombie-2', 'lab-zombie/lab-zombie-lv2');
     regAspect('default:lab-zombie-3', 'lab-zombie/lab-zombie-lv3');
 
     ready = true; // 一部失敗しても描画は継続(真っ暗を防ぐ)。

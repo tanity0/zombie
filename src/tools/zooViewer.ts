@@ -51,7 +51,7 @@ const ZAKO: CastEntry[] = [
   { type: 'hunter', tex: 'hunter', label: '棺桶巨人 (hunter)' },
   { type: 'reaper', tex: 'reaper-common', label: '襤褸外套 (reaper)' },
   { type: 'lab-zombie-1', tex: 'lab-zombie/lab-zombie-lv1-male', label: '研究所Lv1' },
-  { type: 'lab-zombie-2', tex: 'lab-zombie/lab-zombie-lv2-male', label: '研究所Lv2' },
+  { type: 'lab-zombie-2', tex: 'lab-zombie/lab-zombie-lv2', label: '研究所Lv2' },
   { type: 'lab-zombie-3', tex: 'lab-zombie/lab-zombie-lv3', label: '研究所Lv3' },
 ];
 

@@ -1903,14 +1903,15 @@ const SHADOW_MESH_GC_MS = 4000;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure', 'lab-clear-item']);
 
-// 研究所ゾンビのテクスチャ名(Lv1/2 は敵idで男女を固定振り分け、Lv3 は1種)。lab以外は null。
+// 研究所ゾンビのテクスチャ名(Lv1 は敵idで男女を固定振り分け、Lv2/Lv3 は1種)。lab以外は null。
+// ★Lv2 は v0.25.2914 で男女を廃止して1種へ(社長指示「男女の区別は無くして一種類」・新アート)。
 const labEnemyTextureName = (type: string, id: string): string | null => {
   if (type === 'lab-zombie-3') return 'lab-zombie/lab-zombie-lv3';
-  if (type === 'lab-zombie-1' || type === 'lab-zombie-2') {
-    const lvl = type === 'lab-zombie-2' ? 'lv2' : 'lv1';
+  if (type === 'lab-zombie-2') return 'lab-zombie/lab-zombie-lv2';
+  if (type === 'lab-zombie-1') {
     let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
     const sex = (h & 1) === 0 ? 'male' : 'female';
-    return `lab-zombie/lab-zombie-${lvl}-${sex}`;
+    return `lab-zombie/lab-zombie-lv1-${sex}`;
   }
   return null;
 };

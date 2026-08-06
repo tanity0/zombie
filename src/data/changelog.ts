@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2914',
+    items: [
+      '研究所の敵レベル2の見た目を新しい絵に変えました。男女の区別は無くなり1種類になります。',
+    ],
+  },
+  {
     version: '0.25.2913',
     items: [
       'ステージ5の城ボスの見た目を新しい絵(銃を構えた兵士の融合体)に変えました。動きは重い二足の踏みしめです。',
