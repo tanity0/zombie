@@ -366,12 +366,13 @@ export const ensureTextures = (): Promise<void> => {
       // ステージ3(廃都)専用の敵絵(アトラス敵を見た目で差し替え)。アトラス敵と同じピクセル調=nearest。
       ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
         .map((t) => ({ name: `stage3-enemies/${t}`, scaleMode: 'nearest' as const })),
-      // ステージ4(雪原)専用の敵絵(既存9種の差し替え＋新型 lich)。詳細イラスト調なので linear で滑らかに縮小。
-      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']
+      // ステージ4(雪原)専用の敵絵(既存9種の差し替え)。詳細イラスト調なので linear で滑らかに縮小。
+      // ★lich はここから外した(v0.25.2897・全ステージ共通の新絵 `lich-common` へ移行。旧素材は削除済み)。
+      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
         .map((t) => ({ name: `stage4-enemies/${t}`, scaleMode: 'linear' as const })),
-      // ステージ5(対変異体防衛本部)専用の敵絵(社長提供シート2026-07-16・ステージ1と同配置の9種+
-      // 10体目のフード亡霊=lich・社長裁定2026-07-17)。ピクセルアート調なのでアトラス敵/stage3と同じ nearest。
-      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']
+      // ステージ5(対変異体防衛本部)専用の敵絵(社長提供シート2026-07-16・ステージ1と同配置の9種)。
+      // ピクセルアート調なのでアトラス敵/stage3と同じ nearest。lich は同上で共通絵へ移行。
+      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
         .map((t) => ({ name: `stage5-enemies/${t}`, scaleMode: 'nearest' as const })),
 
       // M8改(§5.9): ソフト系3クラスは linear(+下のローダでmipmapON)。それ以外は従来nearest。
@@ -657,12 +658,10 @@ export const ensureTextures = (): Promise<void> => {
     for (const [ty, set] of Object.entries(ENEMY_VARIANT_SETS)) {
       for (const pre of ['default', 'stage3', 'stage4', 'stage5']) regAspect(`${pre}:${ty}`, set[0]);
     }
-    // 新型 lich はステージ4専用。既定キー 'lich' にも同じ絵を割り当てて drawEnemy のフォールバックを成立させる。
-    const lichTex = textures.get('stage4-enemies/lich');
-    if (lichTex) { textures.set('lich', lichTex); }
-    regAspect('default:lich', 'stage4-enemies/lich');
-    regAspect('stage4:lich', 'stage4-enemies/lich');
-    regAspect('stage5:lich', 'stage5-enemies/lich');
+    // ★lich の専用フォールバック/アスペクト再登録は削除(v0.25.2897)。変異体テーブル
+    // (ENEMY_VARIANT_SETS)が全ステージ分のテクスチャ名とアスペクトを供給する。ここに旧
+    // regAspect を残すと**変異体テーブルの一括登録より後に旧絵の縦横比で上書きし返す**
+    // (screamer v0.25.2882 で踏んだ順序事故と同型)ため、行ごと消すのが正。
     regAspect('default:hunter', 'hunter'); // ハンター変異体(全ステージ共通の1枚絵)
     // ★screamer のアスペクトは ENEMY_VARIANT_SETS の一括登録(上)が入れる。ここで旧 `screamer`
     // (紫背景・1254角=アスペクト1.0)を再登録すると新素材(縦長)の頭スナップがズレるので置かない。

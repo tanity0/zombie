@@ -2156,7 +2156,6 @@ const STAGE4_FOOT_FRAC_X: Record<string, number> = {
   bat: 0.367,
   ghost: 0.535,
   giantbat: 0.471,
-  lich: 0.505,
   plant: 0.501,
   pumpkin: 0.503,
   reaper: 0.596,
@@ -2167,14 +2166,16 @@ const STAGE4_FOOT_FRAC_X: Record<string, number> = {
 
 // ステージ4(雪原)専用の敵絵。既存9種を見た目で1:1差し替え＋新型 lich(社長提供シート)。
 // 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='snow' のみ。
-const STAGE4_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']);
+// ★lich は外した(v0.25.2897・全ステージ共通 `lich-common` へ移行、旧stage4/5素材は削除済み)。
+const STAGE4_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']);
 const stage4EnemyTextureName = (type: string): string | null =>
   STAGE4_ENEMY_TYPES.has(type) ? `stage4-enemies/${type}` : null;
 
 // ステージ5(対変異体防衛本部)専用の敵絵。ステージ1と同配置のシート(社長提供・2026-07-16)から
 // 9種を1:1差し替え+シート10体目(フード付き亡霊)=lich(社長裁定2026-07-17「一旦リッチと同じでいい」
 // =ステージ4と同じ扱いでステージ5にもlichを出す)。当たり判定/サイズは不変。farBackdrop==='stage5' のみ。
-const STAGE5_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']);
+// ★lich は同上で共通絵へ移行済み。
+const STAGE5_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']);
 const stage5EnemyTextureName = (type: string): string | null =>
   STAGE5_ENEMY_TYPES.has(type) ? `stage5-enemies/${type}` : null;
 // ステージ5の足元ズレ補正(STAGE4_FOOT_FRAC_Xと同方式: 下端12%帯のα重心x比率を実測)。
@@ -2188,7 +2189,6 @@ const STAGE5_FOOT_FRAC_X: Record<string, number> = {
   pumpkin: 0.477,
   giantbat: 0.485,
   reaper: 0.517,
-  lich: 0.561,
 };
 
 const AMMO_INDICATOR_COLOR: Record<string, string> = {

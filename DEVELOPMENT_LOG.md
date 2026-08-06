@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.2897 — lich の絵を差し替え(全ステージ共通)+旧アセット削除【2026-08-06 16:53 JST】
+社長支給の新アート「リッチの差し替え」+「旧リッチのアセットも削除」。
+
+- `public/sprites/lich-common.png`(600×512・横長=ワイヤー腕が左右へ広がる絵)。
+  `ENEMY_VARIANT_SETS.lich = ['lich-common']` で**全ステージ共通**(旧はstage4/5で別絵)。
+- **旧アセット2枚を削除**: `stage4-enemies/lich.png`(76KB) / `stage5-enemies/lich.png`(75KB)。
+  ロード登録(stage4/5リストのlich)も外した=起動時の読み込み2枚減。
+- **screamer型の順序地雷を今回も除去**: 変異体テーブルの一括アスペクト登録より**後**にあった
+  lich専用の `regAspect`(旧絵の縦横比で上書きし返す)と `textures.set('lich', …)` フォールバックを
+  行ごと削除。STAGE4/5_ENEMY_TYPES と FOOT_FRAC_X 表からも lich を外した(削除済み素材への参照を残さない)。
+- 判定30×30・速度108・HP36・報酬は**不変**。新絵は横長(アスペクト0.85)なので、containScaleにより
+  見え方は「縦に低く・横に広く」変わる(絵の性質どおり)。
+- `enemyVariant.test.ts` を表に追随(「表に無いtype」からlichを外し、1種ケースへ追加)。10件パス。
+
+**負荷 -0/10**(軽くなる方向): 画像1枚追加・2枚削除。実行時処理は不変。
+
+検証: `npm run typecheck` OK / `npm run lint` エラー0(既存warning 8)。実機確認は社長。
+
 ## v0.25.2896 — ソース棚卸しバッチ3: 死んだコードの安全削除【2026-08-06 16:46 JST】
 挙動変化ゼロ厳守。削除前に対象すべてを再度 `grep -rn`(テスト・server/・shared/・scripts/・
 index.html込み)で参照ゼロ再確認してから削除した。`npm run typecheck`/`npm run lint`は毎回0を確認。
