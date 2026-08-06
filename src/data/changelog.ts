@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2893',
+    items: [
+      'ステージ4の開始時に雪が縦一列へ固まることがある問題を修正し、最初から画面全体へ散った状態で降るようにしました。',
+    ],
+  },
+  {
     version: '0.25.2892',
     items: [
       'アイドルだけ、紫の完全気絶(体勢崩し)中も弾を撃ったり動いたりしていた不具合を直しました。ほかのボスと同じく、紫の間は完全に止まります。',

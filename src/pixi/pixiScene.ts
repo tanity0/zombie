@@ -3225,6 +3225,8 @@ export class PixiScene {
 
   private fireflies: Firefly[] = [];
   private firefliesPlaced = false;
+  private fireflyCameraX = NaN;
+  private fireflyCameraY = NaN;
   private fxPrevNow = 0;
 
   // スモッグ(各層1枚をゆらゆら)。
@@ -3433,6 +3435,9 @@ export class PixiScene {
         sprite.anchor.set(0.5);
         sprite.tint = FIREFLY_TINT;
         sprite.blendMode = 'add';
+        // 初回sync前は全粒が既定座標(0,0)に重なる。描画されると開始直後だけ列/塊に見えるため、
+        // 可視範囲へ散らし終わるまで隠す。
+        sprite.visible = false;
         this.L.uiLayer.addChild(sprite);
         this.fireflies.push({
           sprite, x: 0, y: 0, vx: 0, vy: 0,
@@ -6359,6 +6364,8 @@ export class PixiScene {
     const minY = camera.y - FIREFLY_MARGIN;
     const maxX = camera.x + this.screenW + FIREFLY_MARGIN;
     const maxY = camera.y + this.screenH + FIREFLY_MARGIN;
+    const snow = this.snowStage;
+    const snowState = snow ? useGameStore.getState() : null;
 
     if (!this.firefliesPlaced) {
       for (const f of this.fireflies) {
@@ -6368,13 +6375,28 @@ export class PixiScene {
         const s = 5 + Math.random() * 10;
         f.vx = Math.cos(a) * s;
         f.vy = Math.sin(a) * s;
+        f.sprite.visible = true;
       }
       this.firefliesPlaced = true;
+    } else if (
+      snowState && (snowState.introUntil === -1 || now < snowState.introUntil)
+      && Number.isFinite(this.fireflyCameraX) && Number.isFinite(this.fireflyCameraY)
+    ) {
+      // 開始ヘリ演出はカメラがフィールドを高速横断する。world座標の雪を置き去りにすると、全粒が
+      // 同じ画面端へ一斉ラップして縦一列になる。演出中だけカメラ差分を雪にも足し、現在の画面内で
+      // 初期の散らばりを保つ。通常プレイへ入った後の移動連動・吹雪速度は従来どおり。
+      const cameraDx = camera.x - this.fireflyCameraX;
+      const cameraDy = camera.y - this.fireflyCameraY;
+      for (const f of this.fireflies) {
+        f.x += cameraDx;
+        f.y += cameraDy;
+      }
     }
+    this.fireflyCameraX = camera.x;
+    this.fireflyCameraY = camera.y;
 
     const sec = dt / 1000;
     // ステージ4は蛍をやめて雪に置き換え(社長指示)。雪は落下＋進行方向(プレイヤー速度)連動で流れる。
-    const snow = this.snowStage;
     const ember = this.stage5Stage; // ステージ5(戦場)=火の粉(暖色・ゆらめき上昇・明滅)
     let windX = 0, windY = 0;
     // 吹雪: 定常の強い横風(立ち止まっていても駆け抜ける)+落下加速(社長指示v0.25.1979「もっと吹雪かせたい」)。?snowwind= /?snowfall= で調整。
@@ -6383,8 +6405,8 @@ export class PixiScene {
     // 火の粉: 上昇速度と横ゆらぎ振幅。?emberrise= / ?embersway= で調整。
     const emberRise = ember ? tsNum('emberrise', 34) : 0;
     const emberSway = ember ? tsNum('embersway', 26) : 0;
-    if (snow) {
-      const p = useGameStore.getState().player;
+    if (snowState) {
+      const p = snowState.player;
       windX = -(p.vx ?? 0) * SNOW_WIND_FACTOR; // 進む方向と逆へ雪が流れる=移動連動
       windY = -(p.vy ?? 0) * SNOW_WIND_FACTOR;
     }
