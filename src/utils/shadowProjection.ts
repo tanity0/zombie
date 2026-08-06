@@ -33,10 +33,11 @@ export const horizontalShadowCorners = (
   const tipX = footX + dirX * length + skewShift;
   const tipY = footY + dirY * length;
   return {
-    c0: { x: tipX + uSign * farHalf, y: tipY },
-    c1: { x: tipX - uSign * farHalf, y: tipY },
-    c2: { x: footX - uSign * nearHalf, y: footY },
-    c3: { x: footX + uSign * nearHalf, y: footY },
+    // PerspectiveMesh.setCorners is UV-ordered: top-left, top-right,
+    // bottom-right, bottom-left. uSign=1 must keep that native order.
+    c0: { x: tipX - uSign * farHalf, y: tipY },
+    c1: { x: tipX + uSign * farHalf, y: tipY },
+    c2: { x: footX + uSign * nearHalf, y: footY },
+    c3: { x: footX - uSign * nearHalf, y: footY },
   };
 };
-
