@@ -55,7 +55,7 @@ import {
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
-import { variantTextureName } from '../utils/enemyVariant';
+import { variantTextureName, spriteVariantIndex } from '../utils/enemyVariant';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 import { contentSpanFrac, needsContentTrim, contentTrimFrameY } from '../utils/shadowBake';
 import { horizontalShadowCorners } from '../utils/shadowProjection';
@@ -1157,6 +1157,64 @@ const ENEMY_BREATH_ENABLED = true;
 const ENEMY_BREATH_SCALE_X = 0.016;
 const ENEMY_BREATH_SCALE_Y = 0.024;
 const ENEMY_BREATH_MS = 1500;
+
+// ---- 敵の歩行二次モーション(社長承認①〜③・v0.25.2899) -----------------------------------------
+// 絵は1枚のまま、**実移動量と同期**した bob/足元支点の揺れ/歩幅スカッシュを重ねて「歩いている」ように
+// 見せる。プレイヤーの二次モーション(PLAYER_MOTION_FX)と同じ考え方で、v0.25.1771 の実機確定
+// 「動作中の変形はドット崩れとして知覚されない」に乗る。**視覚のみ=判定・座標(store)は不変**。
+// `?emotion=0` で一括OFF(剛体スプライト化・診断用)。
+//
+// ★分類は**内部ID名ではなく現在の絵の見た目**で行う(社長指示v0.25.2899「ID名は旧世代の名残で
+// 絵と一致していない」)。実際: bat=徘徊者(男)/鳥頭骨のよろめき(女)でコウモリではない、
+// skeleton=四つ這いの獣で骸骨ではない、zombie=ナックルウォークの巨躯。
+const ENEMY_MOTION_FX = typeof window === 'undefined'
+  || new URLSearchParams(window.location.search).get('emotion') !== '0';
+interface EnemyMotionSpec {
+  /** walk=直立歩行 / crawl=四足(前後ピッチング) / heavy=巨躯(左右ロール) / hover=浮遊 / none=固定砲台 */
+  kind: 'walk' | 'crawl' | 'heavy' | 'hover' | 'none';
+  bobPx: number;     // 上下の揺れ幅(px)
+  rockRad: number;   // 足元支点の回転揺れ(rad)。アンカーが足元(0.5,1)なので回転=体の傾ぎに見える
+  sqAmp: number;     // 歩幅スカッシュ振幅(1歩2拍)
+  strideHz: number;  // 全速時の歩調(Hz)
+  uneven: number;    // 0=規則正しい行進 / 1=千鳥足(副周期を混ぜて規則性を崩す)
+  faceMove: boolean; // 移動X方向へ左右ミラーするか。**絵が明確に横向きの個体だけ** true
+}
+const MOT_NONE: EnemyMotionSpec = { kind: 'none', bobPx: 0, rockRad: 0, sqAmp: 0, strideHz: 0, uneven: 0, faceMove: false };
+// bat枝1=男(茨の光輪の徘徊者・直立ゆったり) / 枝2=女(鳥頭骨・猫背のよろめき)。
+const MOT_HOBBLER: EnemyMotionSpec = { kind: 'walk', bobPx: 1.1, rockRad: 0.040, sqAmp: 0.028, strideHz: 1.9, uneven: 0.25, faceMove: false };
+const MOT_STAGGER: EnemyMotionSpec = { kind: 'walk', bobPx: 1.4, rockRad: 0.055, sqAmp: 0.030, strideHz: 2.2, uneven: 0.80, faceMove: false };
+const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
+  // skeleton=包帯頭+点滴の**四つ這いの獣**(絵は左向き)。獣の駆け足=速い小刻みピッチング。
+  skeleton: { kind: 'crawl', bobPx: 1.8, rockRad: 0.050, sqAmp: 0.045, strideHz: 3.0, uneven: 0.35, faceMove: true },
+  // zombie=ナックルウォークの巨躯(絵は左向き)。重く遅い左右ロール。
+  zombie: { kind: 'heavy', bobPx: 2.2, rockRad: 0.048, sqAmp: 0.050, strideHz: 1.3, uneven: 0.45, faceMove: true },
+  // werewolf=本物の四足狼。疾走ピッチング。★faceMoveはfalse(ステージ別の絵が残っており向きが
+  // 揃っている保証が無い。全ステージ共通化されたら true にする)。
+  werewolf: { kind: 'crawl', bobPx: 1.6, rockRad: 0.055, sqAmp: 0.040, strideHz: 3.4, uneven: 0.20, faceMove: false },
+  // pumpkin=樽腹の巨漢(正面絵)。どすどす。
+  pumpkin: { kind: 'heavy', bobPx: 2.0, rockRad: 0.042, sqAmp: 0.050, strideHz: 1.5, uneven: 0.30, faceMove: false },
+  // ghost=卵を抱いた花嫁。歩かず滑る=浮遊ゆらぎ(常時)。
+  ghost: { kind: 'hover', bobPx: 2.6, rockRad: 0.018, sqAmp: 0, strideHz: 0.55, uneven: 0, faceMove: false },
+  // lich=針金ワイヤーの機械死体(絵は左向き)。無機質に滑走=揺れ最小のホバー。
+  lich: { kind: 'hover', bobPx: 1.2, rockRad: 0.008, sqAmp: 0, strideHz: 0.8, uneven: 0, faceMove: true },
+  // screamer=スーツの絶叫男。痙攣風(unevenほぼ最大)の小刻み。
+  screamer: { kind: 'walk', bobPx: 1.0, rockRad: 0.030, sqAmp: 0.020, strideHz: 2.0, uneven: 0.90, faceMove: false },
+  // plant=玉座の花女(speed8のほぼ固定砲台)。歩行モーションは付けない(既存の呼吸だけ)。
+  plant: { ...MOT_NONE },
+  // hunter=棺桶担ぎの巨人。重い踏みしめ(ジャンプ等は既存aiSqが担当・歩行のみ)。
+  hunter: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.2, uneven: 0.20, faceMove: false },
+  giantbat: { kind: 'heavy', bobPx: 1.4, rockRad: 0.022, sqAmp: 0.030, strideHz: 1.1, uneven: 0.20, faceMove: false },
+  reaper: { kind: 'hover', bobPx: 2.0, rockRad: 0.012, sqAmp: 0, strideHz: 0.5, uneven: 0, faceMove: false },
+  'lab-zombie-1': { kind: 'walk', bobPx: 1.2, rockRad: 0.045, sqAmp: 0.028, strideHz: 1.8, uneven: 0.55, faceMove: false },
+  'lab-zombie-2': { kind: 'walk', bobPx: 1.3, rockRad: 0.050, sqAmp: 0.030, strideHz: 2.0, uneven: 0.65, faceMove: false },
+  'lab-zombie-3': { kind: 'heavy', bobPx: 1.8, rockRad: 0.040, sqAmp: 0.045, strideHz: 1.4, uneven: 0.30, faceMove: false },
+};
+const enemyMotionSpec = (type: string, id: string): EnemyMotionSpec => {
+  if (type === 'bat') return spriteVariantIndex(id, 2) === 0 ? MOT_HOBBLER : MOT_STAGGER;
+  return ENEMY_MOTION_TABLE[type] ?? MOT_HOBBLER; // 未登録の雑魚は控えめな直立歩行
+};
+/** ③振り向き: 左右ミラーの切替をこのmsかけて scale.x を 旧→0→新 で潰す(=体を捻って向き直る)。 */
+const ENEMY_TURN_MS = 120;
 const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   zombie: 0x7de28a,
   bat: 0x9aa6ff,
@@ -2250,6 +2308,13 @@ interface ActorView {
   // 「振った瞬間」の斬撃の弧(社長支給素材 D-1・v0.25.2400)。予告(ring/band)とは役割が別で、
   // **実行の一瞬だけ**出る。同時に2つ振るボス(翼撃)が出てきたら2枚目を足す。
   slash?: Sprite;
+  // 歩行二次モーション(v0.25.2899)の個体状態。実移動速度は**論理座標の前フレーム差分**から推定する
+  // (storeのvx/vyはAI経路によって埋まらないため、描画側で位置差分から出すのが唯一確実で、
+  // 気絶/拘束/紫/休眠で動きが止まれば揺れも勝手に静まる=状態を個別に見なくてよい)。
+  motPrevX?: number; motPrevY?: number; motPrevAt?: number;
+  motSpeed?: number; motVx?: number;
+  // ③振り向き: 現在の表示向き(+1=素の向き/-1=ミラー)と遷移の開始値・開始時刻。
+  motFace?: number; motFaceFrom?: number; motFaceAt?: number;
   // 爪痕(社長支給素材 D-2・v0.25.2402)。**判定1つにつき1枚**貼るので配列(グレンの血の爪痕は同時3本)。
   clawMarks?: Sprite[];
   // 爪痕の「手前から奥へ刻まれる」ワイプ用に、素材の左からの一部だけを指すサブテクスチャ
@@ -12054,6 +12119,7 @@ export class PixiScene {
       const fit = BOSS_SPRITE_FIT[e.type] ?? BOSS_FIT_DEFAULT;
       view.sprite.texture = tex;
       view.sprite.anchor.set(0.5, 0.5);
+      view.sprite.rotation = 0; // ビューはプール再利用されるため、雑魚時代の歩行モーション回転を持ち越さない
       // 帯幅→絵の実寸(縦横同率=歪まない)。さらに他敵と同じ擬似遠近スケールを掛ける(画面の前後で大小・視覚のみ)。
       // 当たり判定の帯(e.width×e.height)は不変=絵だけが前で大きく/奥で小さくなる(社長指示)。
       const scale = ((e.width / fit.w) / tex.width) * this.depthScaleEnemy(fb.footY);
@@ -12155,7 +12221,52 @@ export class PixiScene {
       }
     } else {
     view.sprite.anchor.set(0.5, 1);
-    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop - kbHop));
+    // ---- 歩行二次モーション(①②③・v0.25.2899・視覚のみ) ----------------------------------------
+    // 実移動速度を論理座標の差分から推定(指数平滑)。移動と同期して揺れるので、止まっている敵
+    // (気絶/拘束/紫/休眠/壁ハマり)は自然に静止する=状態フラグを個別に見る必要が無い。
+    let motRot = 0, motBob = 0, motSqX = 1, motSqY = 1, faceMul = 1;
+    if (ENEMY_MOTION_FX && !isHiddenBoss(e.type) && !e.dormant) {
+      const spec = enemyMotionSpec(e.type, e.id);
+      const dtMs = view.motPrevAt !== undefined ? now - view.motPrevAt : 0;
+      if (dtMs > 0 && dtMs < 400) {
+        const k = Math.min(1, dtMs / 130);
+        const instS = Math.hypot(e.x - (view.motPrevX ?? e.x), e.y - (view.motPrevY ?? e.y)) / dtMs * 1000;
+        const instVx = (e.x - (view.motPrevX ?? e.x)) / dtMs * 1000;
+        view.motSpeed = (view.motSpeed ?? 0) + (instS - (view.motSpeed ?? 0)) * k;
+        view.motVx = (view.motVx ?? 0) + (instVx - (view.motVx ?? 0)) * k;
+      }
+      view.motPrevX = e.x; view.motPrevY = e.y; view.motPrevAt = now;
+      if (spec.kind !== 'none') {
+        // hover(浮遊)は移動に関係なく常にゆらぐ。それ以外は全速=1として実速度に比例。
+        const walk = spec.kind === 'hover' ? 1 : Math.min(1.25, (view.motSpeed ?? 0) / Math.max(20, e.speed));
+        // 技のモーション中(aiPhase=しゃがみ/ジャンプ/突進/g-*)は既存のaiSq系に譲って歩行は消す。
+        if (walk > 0.02 && e.aiPhase === undefined) {
+          const ph = now / 1000 * spec.strideHz * Math.PI * 2 + stablePhase(e.id);
+          // 千鳥足: 無関係な副周期を混ぜて規則性を崩す(uneven=混合率)。個体位相はIDハッシュ
+          // (stablePhase)なので群れが同期行進しない。
+          const wave = Math.sin(ph) * (1 - spec.uneven * 0.5) + Math.sin(ph * 0.63 + 1.7) * spec.uneven * 0.7;
+          motRot = spec.rockRad * wave * walk;                    // 足元支点: walk=リーン/crawl=ピッチ/heavy=ロール
+          motBob = Math.abs(Math.sin(ph)) * spec.bobPx * walk;    // 1歩=1山の接地リズム
+          const sq = Math.sin(ph * 2) * spec.sqAmp * walk;        // 歩幅スカッシュ(1歩2拍)
+          motSqX = 1 + sq; motSqY = 1 - sq * 0.7;
+        }
+      }
+      // ③振り向き: 絵が明確に横向きの個体だけ、移動Xの向きへミラー。素材は左向き=+1が素。
+      // 反転はENEMY_TURN_MSかけて 旧→0→新 とscale.xを潰す=「体を捻って向き直る」。
+      // しきい値25px/sのヒステリシス(currを既定にする)で、その場の揺れではパタパタしない。
+      if (spec.faceMove) {
+        const cur = view.motFace ?? 1;
+        const vx = view.motVx ?? 0;
+        const want = vx > 25 ? -1 : vx < -25 ? 1 : cur;
+        if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
+        const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;
+        const from = view.motFaceFrom ?? (view.motFace ?? 1);
+        faceMul = from + ((view.motFace ?? 1) - from) * t;
+        if (faceMul === 0) faceMul = 0.02; // scale.x=0の完全消失フレームを作らない
+      }
+    }
+    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop - kbHop - motBob));
+    view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
 
     if (tex) {
@@ -12194,8 +12305,9 @@ export class PixiScene {
       // 「素のscale」(sc)を使う。持ち上げ系(liftHop/aiHop/kbHop/lungeOffY)は heightPx 相当として渡す。
       view.shadowScale = sc;
       view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY;
-      const scaleX = sc * breath.x * aiSqX * lungeSqX;
-      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY);
+      // faceMul(③振り向き)は符号を持つ=ミラー。歩幅スカッシュ(motSqX/Y)は他の変形と同じ掛け算合成。
+      const scaleX = sc * breath.x * aiSqX * lungeSqX * motSqX * faceMul;
+      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY * motSqY);
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
       // 中心からずれた個体は横に流れて見える。重心が footX に乗るよう x を寄せる(視覚のみ)。
       if (this.snowStage || this.battlefieldStage) {
