@@ -804,6 +804,9 @@ export const GHOST_MOB_HATE_MS = 5000;
  *     ガードが外れ、押しが通っていた)。
  *  ② 天使がイベントのサークルから押し出され、次フレームの閉じ込めクランプに引き戻される綱引き
  *     =「押される→すぐ戻る」。押す力を消せば綱引き自体が起きない。
+ *
+ * v0.25.2895: isHiddenBossの早期returnをknockback適用の後ろへ移し、11体(裏ボス4/天使6/idol)にも
+ * 押し道具が届くようになった(②の「天使が…」は元々ここに到達できず絵に描いた餅だった)。
  */
 export const canShoveEnemy = (
   enemy: Pick<Enemy, 'type' | 'knockbackShoveUntil'>,
@@ -8479,9 +8482,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         return patch ? { ...enemy, ...patch } : enemy;
       });
       const updatedEnemies = postureUpdatedEnemies.map((enemy): Enemy => {
-        // 裏ボス(mimir/jormungand)は updateEnemies の追跡AIから除外。移動/攻撃/帰巣/再生は
-        // useGameLoop の専用コントローラが座標を直接書き込む(死神と同じ方式)。
-        if (isHiddenBoss(enemy.type)) return enemy;
+        // 裏ボス4体/天使6体/アイドル(=isHiddenBoss)は updateEnemies の追跡AIから除外。移動/攻撃/
+        // 帰巣/再生は専用コントローラ(useGameLoop/angelBossTick/idolTick)が座標を直接書き込む
+        // (死神と同じ方式)。v0.25.2895: 早期returnはノックバック適用ブロックの直後(liftUntilの
+        // 手前)へ移動した。ここに置いたままだと押し道具(鞭・シールドバッシュ)がknockbackShoveUntil
+        // を立てても、その先のノックバック適用ブロックへ一度も到達できず11体に1pxも効かなかった。
         // ハンター変異体・撤退中は通常追跡AIから除外。専用イベントコントローラ(useGameLoop)が
         // プレイヤーから離れる方向へ移動させ画面外で消す。索敵中(dormant)は下の dormant ブロックで静止。
         if (enemy.type === 'hunter' && enemy.hunterFleeing) return enemy;
@@ -8619,6 +8624,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           const clampedCenterY = Math.max(pcy - (recycleHalfH - bufferY), Math.min(pcy + (recycleHalfH - bufferY), kbCenterY));
           return { ...enemy, x: clampedCenterX - enemy.width / 2, y: clampedCenterY - enemy.height / 2 };
         }
+
+        // v0.25.2895: 裏ボス4体/天使6体/アイドル(=isHiddenBoss)はここで抜ける。上のノックバック
+        // 適用ブロックはbossShoveOk(canShoveEnemyのガード=押し道具だけ)を通ってから来るので、
+        // ここより手前で抜けると押し道具が11体に永遠に届かない(直った不具合)。以降(liftUntil等の
+        // 通常追跡AI)は従来どおり専用コントローラに任せて抜ける。
+        // 注意: inAttackMotion は aiPhase 基準なので、bossState系(裏ボス/天使/idol)の攻撃中は
+        // このガードに掛からず、押し道具が攻撃中でも通る。押し道具は単発の意図的な技のため仕様として許容する。
+        if (isHiddenBoss(enemy.type)) return enemy;
 
         // Bosses pop up briefly when they take melee finisher-grade damage;
         // while airborne they should read as caught, not still advancing.

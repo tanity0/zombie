@@ -1,5 +1,63 @@
 # Development Log
 
+## v0.25.2895 — ソース棚卸しバッチ2: ボス制御経路間の整合性修正【2026-08-06 16:22 JST】
+ボスの状態機械は4経路(gameStore汎用tick(G)/useGameLoop裏ボスブロック(H)/angelBossTick天使6体(A)/
+idolTickアイドル(I))に分かれている。v0.25.2892(紫の完全気絶をアイドルだけ無視していた)の続きで、
+共有メカニクスが一部経路にだけ実装されている穴を機械的に洗って塞いだ(設計確定済み・指定範囲のみ)。
+
+### B1: アイドルがトラップ拘束(rootUntil)を無視していた
+`idolTick.ts` に rootUntil の判定が1つも無かった。angelBossTick.ts(社長裁定v0.25.1690「トラップ中は
+他のボスと揃えて停止」)と同じ掟で、`fullStun` 分岐の直後に `else if (rooted && st === 'chase')` を追加。
+攻撃の実行中(chase以外)は完走させ、chase(移動/次攻撃の起点)だけ凍結する。s.seqのリセットは無し
+(fullStunと違い連射持ち越しの暴発経路が無いため)。
+
+### B2: アイドルにクリ黄色窓の移動半減(bossSlowMult)が効いていなかった
+`idolTick.ts` のchase移動 `spd` に `bossSlowMult(idol, newGameTime)` を掛けた。CD×2(bossCritCdMult)
+は実装済みのため未変更。離脱ローリング(roll)は技の実行なので対象外(移動語彙のみ)。
+
+### B3: 天使3体の移動にbossSlowMultが漏れていた
+rafi/uri/surielのchaseMoveは適用済みだったが、以下5箇所が漏れていた: ミゲルの旋回(本体+legacy)、
+ジブリルの後退(本体+legacy)、ラフィの横ステップ(本体+legacy)。acrasielは speed 0 のため対象外。
+
+### B4: 押し道具(鞭・シールドバッシュ)が裏ボス4/天使6/アイドルに完全無効だった
+`gameStore.ts` の `if (isHiddenBoss(enemy.type)) return enemy;` が、ノックバック適用ブロック
+(`canShoveEnemy` ゲート済み・v0.25.2607の裁定「ボスは押し道具でだけ押される」)より**手前**にあり、
+11体は1pxも動かなかった。早期returnを、ノックバック適用ブロックの直後・liftUntilブロックの手前へ
+移動。間にあるコード(screamSpeedMult/passThrough/resolveMove定義/committed/inAttackMotion/
+atkCdUntil/critFlinchPatch/bossShoveOk)は全てconst定義のみで副作用なしを確認済み(移動前に停止条件
+に該当する行は無かった)。`canShoveEnemy` のdocstringにも1行追記。inAttackMotionはaiPhase基準の
+ため、bossState系ボスの攻撃中もshoveは通る(仕様として許容・コメントに明記)。
+
+### B5: 天使がclampRectToPlayableAreaを通っていなかった
+`angelBossTick.ts` の共通ヘルパー `applyPatch`(6体全tickが最終的にここを通る)で、
+`patch.x`/`patch.y` がある時に idolTick.ts と同じ形でクランプするよう変更。CLAUDE.md「アクターを
+動かす時は必ずclampRectToPlayableAreaを通す」(v0.25.2615-2617の3連続事故の再発防止)。
+
+### B6: 死コードの掃除(裏ボスの気絶歩行半減)
+`useGameLoop.ts` の `walkMult`(`BOSS_STUN_SPEED_MULT`)は発動不能だった: 通常気絶(stunUntil)が
+ボスに入る経路は既に`bossSlowUntil`へ置換済みで、唯一stunUntilを立てていた紫は手前の`frozen`で
+先に全停止するため、walkMultは常に1。全使用箇所(THOR_RETREAT_SPEED/角速度/moveToward呼び出し
+2箇所)を確認した上で、定数・変数・掛け算を削除(挙動不変)。
+
+### テスト
+`bossFullStunCoverage.test.ts` に3つのdescribeを追加(rootUntil判定の4ファイル横断走査/
+bossSlowMult呼び出し数の4ファイル横断走査/clampRectToPlayableAreaの2ファイル横断走査)。
+`idolTick.test.ts` にB1(rooted中は座標不変・新規攻撃なし/root明けで再開)2件、B2
+(bossSlowUntil中の移動距離が半分)1件を追加。
+
+**負荷 0/10**: 既存の移動計算に定数倍率を1つ掛ける・早期returnの位置を動かす・共通ヘルパーに
+分岐を1つ足すだけ。新しいループ・per-frame処理・重い判定は追加していない。
+
+### ★バランスへの影響
+トラップ・クリ黄色窓の移動半減・押し道具がボス11体(裏ボス4/天使6/アイドル)に効くようになる=
+**易しくなる方向**(社長承認済み・推薦どおり)。数値・カーブ・閾値そのものは一切変更していない
+(既存の仕組みが本来届くはずだった相手に届くようになっただけ)。
+
+検証: `npm run typecheck` エラー0 / `npm run lint` エラー0(既存warning 8) /
+`bossFullStunCoverage.test.ts`(15件)・`idolTick.test.ts`(30件)・`ghostTelegraph.test.ts`(14件)・
+`angelSwordSync.test.ts`(39件)全パス。社長指示によりローカルbuild/フルtestは未実行。
+コミット/pushはせず、ワーキングツリーに変更を残した(社長確認待ち)。
+
 ## v0.25.2894 — ソース棚卸しバッチ1: 実バグ6件(表示と判定の不一致系)【2026-08-06 16:07 JST】
 社長指示「一度、現状までのソースを綺麗にしたい」→ 4系統の並列走査(不要コード/孤児アセット/
 二重定数/経路間整合性)→ 棚卸しリスト提示 → 社長「実バグまず、最適に直して」「全部直そう」。

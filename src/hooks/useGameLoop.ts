@@ -894,7 +894,6 @@ const BOSS_CRUSH_SHAKE_MAG = 3;                      // 弱め(死神召喚な�
 const BOSS_SUMMON_AGGRO = 2000;                      // 裏ボスが召喚へ「吸い付く」最大距離(画面内の召喚は基本対象に)
 const BOSS_COUNTER_WARP_DIST = 320;                  // カウンター被弾時、プレイヤーの反対側へワープする距離(中心間px・社長指示。50は近すぎ→320へ)
 const BOSS_WARP_FADE_MS = 500;                       // ワープ先での 0.5秒フェードインの長さ
-const BOSS_STUN_SPEED_MULT = 0.5;                    // 気絶中は止まらず歩き続けるが速度は半分(社長指示)
 const BOSS_TURN_RESPONSE = 3.2;                      // 移動の慣性。目標速度へ寄せる係数(小さいほど慣性大=ぬるっと曲がる)
 const BOSS_DASH_HOMING = 0.05;                       // ダッシュ中の弱いホーミング量/frame(基本は直進・少しだけ固定ヘイト対象へ寄せる)
 const BOSS_DASH_BACKSTEP_MULT = 0.4;                 // 突進溜め中、ゆっくり後退り(ターゲットから離れる)する速度倍率(社長指示)
@@ -4469,15 +4468,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.reaperWarpAlpha = 1; // フェード完了→完全表示へ戻す
               }
               // トラップ(root)/ワープ中は移動も攻撃も止める=トラップが効く。
-              // 気絶(stun)は止めない: 攻撃も中断せず通常の状態機械を回し、歩行(チェイス)だけ半速にする(社長指示)。
               // ボスは updateEnemies を早期returnで素通りするため、ここで明示的に判定する。
               // 裏ボスの完全気絶(紫・5クリ)中は攻撃も移動も完全停止(通常の気絶=歩行半速のみ とは別・社長指示)。
               const bossFullStun = boss.bossFullStunUntil !== undefined && newGameTime < boss.bossFullStunUntil;
               const frozen = warping
                 || (boss.rootUntil !== undefined && newGameTime < boss.rootUntil)
                 || bossFullStun;
-              const stunned = boss.stunUntil !== undefined && newGameTime < boss.stunUntil;
-              const walkMult = stunned ? BOSS_STUN_SPEED_MULT : 1; // 気絶中は歩行のみ半速(攻撃は通常)
+              // v0.25.2895: 気絶中の歩行半減(旧walkMult/BOSS_STUN_SPEED_MULT)は死コードだったため削除。
+              // 通常気絶(stunUntil)がボスに入る経路は既にbossSlowUntilへ置き換え済みで、唯一stunUntilを
+              // 立てていた紫(完全気絶)はこの上のfrozenで先に全停止する——結果walkMultは常に1で、
+              // 掛けても何も変わらない式だった(挙動不変)。
               // 追跡先=プレイヤー/召喚の「近い方」(社長指示)。通常敵と同じ resolveEnemyTarget で吸い付く。
               // フレアガン(§6.6 M29): 着弾中のフレアも疑似召喚として合流=ボスは既存の召喚ヘイト規則
               // (BOSS_SUMMON_AGGRO)のままフレアに吸い付く(新しい強制は足さない)。
@@ -4552,13 +4552,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (curDist < THOR_ORBIT_DIST) {
                   // 社長指示②: 旋回距離より近づかれたら、旋回せずプレイヤーの1/2速度で真っ直ぐ後ずさる。
                   const ux = relX / curDist, uy = relY / curDist; // 相手から離れる向き
-                  patch.x = boss.x + ux * THOR_RETREAT_SPEED * walkMult * slowMult * bossMoveDt;
-                  patch.y = boss.y + uy * THOR_RETREAT_SPEED * walkMult * slowMult * bossMoveDt;
+                  patch.x = boss.x + ux * THOR_RETREAT_SPEED * slowMult * bossMoveDt;
+                  patch.y = boss.y + uy * THOR_RETREAT_SPEED * slowMult * bossMoveDt;
                   bs.vx = 0; bs.vy = 0;
                   return;
                 }
                 const curAngle = Math.atan2(relY, relX);
-                const angularSpeed = (speed * THOR_ORBIT_SPEED_MULT * walkMult * slowMult) / THOR_ORBIT_DIST;
+                const angularSpeed = (speed * THOR_ORBIT_SPEED_MULT * slowMult) / THOR_ORBIT_DIST;
                 const newAngle = curAngle + dir * angularSpeed * bossMoveDt;
                 const correctedDist = curDist + (THOR_ORBIT_DIST - curDist) * Math.min(1, THOR_ORBIT_RADIUS_CORRECT * bossMoveDt);
                 const ncx = chaseTgt.x + Math.cos(newAngle) * correctedDist;
@@ -4571,7 +4571,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
                 const dist = Math.hypot(dpx, dpy) || 1;
                 // 社長指示①: 旋回間合いに入るまでの接近速度はプレイヤーの1/2(自身のspeedではなくTHOR_APPROACH_SPEED)。
-                if (dist > THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK) moveToward(walkMult, THOR_APPROACH_SPEED * thorSlowMult());
+                if (dist > THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK) moveToward(1, THOR_APPROACH_SPEED * thorSlowMult());
                 else thorOrbitMove();
               };
               // 次の攻撃選択までの間隔。HPが低いほど短く=高頻度化(社長指示)。
@@ -4883,7 +4883,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                   thorMove();
                 } else {
-                  moveToward(walkMult); // 気絶中は半速、通常は等速
+                  moveToward(1);
                 }
                 const thorDistToTgt = boss.type === 'thor' ? Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy) : 0;
                 if (boss.type === 'thor' && bs.thorRangedHits.length >= THOR_JUMP_TRIGGER_HITS) {

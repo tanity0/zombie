@@ -395,3 +395,73 @@ describe('フェーズの扱い(報告事項)', () => {
     expect(g.st.wavePending).toBe(true);
   });
 });
+
+// v0.25.2895(バッチ2 B1): 他のボス(裏ボス/天使)と同じ掟でトラップ拘束(rootUntil)を止める。
+// chase(移動/次攻撃の起点)のみ凍結し、攻撃の実行中は完走させる(angelBossTick.tsと同じ形)。
+describe('B1: トラップ拘束(rootUntil)中はchaseの移動も新規攻撃も止まる', () => {
+  beforeEach(() => { clearIdolPlayback(); });
+
+  it('rooted中(chase)は移動語彙を維持していても座標が動かない・新規攻撃も始まらない', () => {
+    const g = setup(250);
+    g.step();
+    requestIdolVerbPlay('close'); // 動きの語彙を固定(乱数を排除)
+    g.step();
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(e => ({ ...e, rootUntil: g.now() + 5000 })),
+    }));
+    const before = g.pos();
+    for (let i = 0; i < 60; i++) g.step();
+    const after = g.pos();
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
+    expect(g.state()).toBe('chase'); // 新規攻撃(windup)へ遷移していない
+  });
+
+  it('rootUntilを過ぎれば移動が再開する(置き去りにしない)', () => {
+    const g = setup(250);
+    g.step();
+    requestIdolVerbPlay('close');
+    g.step();
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(e => ({ ...e, rootUntil: g.now() + 100 })),
+    }));
+    for (let i = 0; i < 10; i++) g.step(20); // root解除(100ms)を跨ぐまで進める
+    const after = g.pos();
+    for (let i = 0; i < 30; i++) g.step(20);
+    const after2 = g.pos();
+    expect(after2).not.toEqual(after); // root明け後は普通に動ける
+  });
+});
+
+// v0.25.2895(バッチ2 B2): 他の移動語彙(裏ボス/天使のchaseMove)と同じく、クリ黄色窓
+// (bossSlowUntil)中はchase移動の速度が半分になる。CD×2(bossCritCdMult)は既存で別経路。
+describe('B2: クリ黄色窓(bossSlowUntil)中はchaseの移動が半分になる', () => {
+  beforeEach(() => { clearIdolPlayback(); });
+
+  it('bossSlowUntil中の移動距離は通常の半分', () => {
+    const g1 = setup(250);
+    g1.step();
+    requestIdolVerbPlay('close');
+    g1.step();
+    const before1 = g1.pos();
+    for (let i = 0; i < 30; i++) g1.step();
+    const after1 = g1.pos();
+    const normalDist = Math.hypot(after1.x - before1.x, after1.y - before1.y);
+
+    clearIdolPlayback();
+    const g2 = setup(250);
+    g2.step();
+    useGameStore.setState(s => ({
+      enemies: s.enemies.map(e => ({ ...e, bossSlowUntil: g2.now() + 100000 })),
+    }));
+    requestIdolVerbPlay('close');
+    g2.step();
+    const before2 = g2.pos();
+    for (let i = 0; i < 30; i++) g2.step();
+    const after2 = g2.pos();
+    const slowDist = Math.hypot(after2.x - before2.x, after2.y - before2.y);
+
+    expect(normalDist).toBeGreaterThan(0); // 前提: 通常時はちゃんと動いている
+    expect(slowDist).toBeCloseTo(normalDist / 2, 1);
+  });
+});

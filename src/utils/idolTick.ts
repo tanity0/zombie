@@ -11,7 +11,7 @@ import { GLOW_R_L } from './glowTiers';
 import {
   useGameStore, counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
-  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossCritCdMult, enemyDeathLabel,
+  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossCritCdMult, bossSlowMult, enemyDeathLabel,
   knockbackSpeedFor,
 } from '../store/gameStore';
 import { getActiveGun } from './weaponUtils';
@@ -226,6 +226,14 @@ export const runIdolTick = (
    * `bossFullStunUntil` は gameStore の紫発火が `stunUntil` と同時に打つ単一の出どころ。
    */
   const fullStun = idol.bossFullStunUntil !== undefined && newGameTime < idol.bossFullStunUntil;
+  /**
+   * トラップ拘束(rootUntil)中か。angelBossTick.ts(社長裁定v0.25.1690「トラップ中は他のボスと
+   * 揃えて停止」・v0.25.1688の移動半減から改訂)と同じ掟: **攻撃の実行中(chase以外)は完走させ、
+   * chase(移動/次攻撃の起点)だけを凍結する**——tickを丸ごと止めると時計だけ先へ進み、
+   * root明けにツイーンが瞬間完了=テレポートに見えるため。他のボスは全員これを見ているのに、
+   * アイドルだけ抜けていた(fullStunと同じ経緯・v0.25.2895)。
+   */
+  const rooted = idol.rootUntil !== undefined && newGameTime < idol.rootUntil;
   const fresh = (): Enemy => useGameStore.getState().enemies.find(e => e.id === idol.id) ?? idol;
   const hateAim = () => resolveBossHateAim(idol, { x: pcx, y: pcy }, useGameStore.getState().summons, newGameTime);
   const lockedHateAim = (side: HateSide = patch.hateTarget ?? idol.hateTarget ?? 'player') =>
@@ -542,6 +550,10 @@ export const runIdolTick = (
     patch.bossNextActionAt = newGameTime + IDOL_TUNING.neutral.minMs;
     s.seq = []; s.step = 0; s.wavePending = false;
     s.shotWavesLeft = 0; s.shotSlot = null;
+  } else if (rooted && st === 'chase') {
+    // トラップ拘束中(chaseのみ凍結): 移動も新規攻撃も出さない。patchには何も積まず、
+    // そのまま末尾のクランプ/setStateへ抜ける。fullStunと違い連射持ち越しの暴発経路は無いので
+    // (rootは移動と新規攻撃を止めるだけ)、s.seq等のリセットは不要。
   } else if (forcedThisFrame) {
     // ボスメーカーの強制発動フレーム: 上で patch を組み終えているので通常遷移はスキップ。
   } else if (countered) {
@@ -550,7 +562,9 @@ export const runIdolTick = (
     // === NEUTRAL: 主戦帯を維持する(監査レポート§2-5の移動語彙4つ) ===
     // ボスメーカーで語彙を維持中はそれを使う(通常は距離から判断)。
     const verb: NeutralVerb = verbHold ?? neutralVerb(dist, IDOL_NEUTRAL_BAND, false);
-    const spd = idol.speed * IDOL_VERB_SPEED_MULT[verb] * dt;
+    // ボスのクリ半減(社長指示v0.25.2422)。裏ボス/天使は移動の入口で掛けているのに、
+    // アイドルだけ抜けていた(v0.25.2895)。CD×2(bossCritCdMult)は別経路で既に効いている。
+    const spd = idol.speed * IDOL_VERB_SPEED_MULT[verb] * dt * bossSlowMult(idol, newGameTime);
     const ux = dist > 0.001 ? (pcx - icx) / dist : 0, uy = dist > 0.001 ? (pcy - icy) / dist : 0;
     if (verb === 'close') { patch.x = idol.x + ux * spd; patch.y = idol.y + uy * spd; }
     else if (verb === 'retreat') { patch.x = idol.x - ux * spd; patch.y = idol.y - uy * spd; }

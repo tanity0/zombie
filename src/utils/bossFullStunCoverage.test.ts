@@ -50,6 +50,45 @@ describe('紫(完全気絶)を全てのボス制御経路が見ていること',
   });
 });
 
+// v0.25.2895(バッチ2「ボス制御経路間の整合性修正」): 紫(bossFullStunUntil)と同じ形で、
+// 共有メカニクス(トラップ拘束/クリ黄色窓の移動半減/行ける帯クランプ)が一部経路にだけ実装されて
+// いない穴を塞いだ。紫の時と同じくソース走査で機械化する(実装精度の規律6「教訓は即機械化」)。
+describe('トラップ拘束(rootUntil)を全てのボス制御経路が見ていること', () => {
+  const FILES = ['gameStore.ts', 'useGameLoop.ts', 'angelBossTick.ts', 'idolTick.ts'];
+
+  it.each(FILES)('%s に rootUntil の判定がある', (file) => {
+    const src = srcOf(file);
+    const hits = src.match(/rootUntil !== undefined/g)?.length ?? 0;
+    expect(hits, `${file} に rootUntil の判定が無い=そのボスはトラップ中でも動く/攻撃する`)
+      .toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('クリ黄色窓の移動半減(bossSlowMult)を全てのボス制御経路が使っていること', () => {
+  const ROUTES: [string, number][] = [
+    ['gameStore.ts', 1],
+    ['useGameLoop.ts', 1],
+    ['angelBossTick.ts', 6],
+    ['idolTick.ts', 1],
+  ];
+
+  it.each(ROUTES)('%s に bossSlowMult の呼び出しが%d件以上ある', (file, minCalls) => {
+    const src = srcOf(file);
+    const hits = src.match(/bossSlowMult\(/g)?.length ?? 0;
+    expect(hits, `${file} の移動速度にbossSlowMultが掛かっていない=クリ黄色窓中の移動半減が効かない`)
+      .toBeGreaterThanOrEqual(minCalls);
+  });
+});
+
+describe('「行ける帯」のクランプ(clampRectToPlayableArea)を天使/アイドルが通っていること', () => {
+  it.each(['idolTick.ts', 'angelBossTick.ts'])('%s が clampRectToPlayableArea を呼んでいる', (file) => {
+    const src = srcOf(file);
+    const hits = src.match(/clampRectToPlayableArea\(/g)?.length ?? 0;
+    expect(hits, `${file} がclampRectToPlayableAreaを通っていない=プレイヤーの行けない場所へボスが出る`)
+      .toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe('紫の発火は stunUntil も同時に立てる(城ボス系が止まる前提)', () => {
   it('applyBossPostureDamage が bossFullStunUntil と stunUntil を同じ値で打つ', () => {
     // 城ボス/グレンは汎用tickの `stunUntil` ゲートで止まるので、**この同時発火が唯一の担保**。

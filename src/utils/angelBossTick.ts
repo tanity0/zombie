@@ -49,6 +49,11 @@ import { bossNeutralDelayMs, bossRebuildIdForEnemy } from './bossRebuild';
 // 履歴として残したまま床を1箇所で保証する(呼び出し箇所は一切変えない)。
 import { withRecoverFloor } from './bossTelegraph';
 import { choreographyRecoverMs, planBossChoreography, type ChoreographyBoss } from './bossChoreography';
+// v0.25.2617(idolTick.tsと同じ理由): プレイヤーの移動クランプと**同じ純関数**を使う。
+// `playableArea.ts` は「行ける帯」の唯一の出どころ。天使はここ(applyPatch)を通っていなかった
+// (CLAUDE.md「アクターを動かす時は必ずclampRectToPlayableAreaを通す」・v0.25.2615-2617の
+// 3連続事故の再発防止・v0.25.2895)。
+import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 
 // --- 音の注入(ヘッドレスはNOOP) -------------------------------------------
 export interface AngelSfx {
@@ -368,9 +373,26 @@ const scriptOrNeutralAt = (t: number, boss: Enemy): number =>
   (boss.bossScriptQueue?.length ?? 0) > 0 ? t : nextActionDelay(t, boss);
 
 const applyPatch = (id: string, patch: Partial<Enemy>): void => {
-  if (Object.keys(patch).length) {
-    useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === id ? { ...e, ...patch } : e) }));
+  if (Object.keys(patch).length === 0) return;
+  // v0.25.2617と同じ理由: **プレイヤーが行けない場所へボスを出さない**(idolTick.tsのクランプと
+  // 同じ純関数を同じように通す=「行ける帯」の定義が1本のまま)。6体分のtickが全てここを通るので、
+  // 共通ヘルパー1箇所で足りる。
+  if (patch.x !== undefined || patch.y !== undefined) {
+    const st0 = useGameStore.getState();
+    const boss = st0.enemies.find(e => e.id === id);
+    if (boss) {
+      const ctx: PlayableAreaCtx = {
+        farBackdrop: st0.farBackdrop,
+        labTheme: st0.stageTheme === 'lab' && !st0.indoorMode,
+        corridorMode: st0.corridorMode,
+        m0AdvanceLimitX: st0.m0AdvanceLimitX,
+        corridorRunInActive: st0.corridorRunInActive,
+      };
+      const c = clampRectToPlayableArea(patch.x ?? boss.x, patch.y ?? boss.y, boss.width, boss.height, ctx);
+      patch.x = c.x; patch.y = c.y;
+    }
   }
+  useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === id ? { ...e, ...patch } : e) }));
 };
 
 // ============================================================================================
@@ -408,7 +430,9 @@ export const runMiguelTick = (
     const relX = mcx - mHomeX, relY = mcy - mHomeY;
     const curDist = Math.hypot(relX, relY) || 1;
     const curAngle = Math.atan2(relY, relX);
-    const angularSpeed = (MIGUEL_ORBIT_SPEED * orbitSpeedMult) / orbitRadius;
+    // ボスのクリ半減(社長指示v0.25.2422)。他の移動語彙は移動の入口で掛けているのに、
+    // ミゲルの旋回だけ抜けていた(v0.25.2895)。
+    const angularSpeed = (MIGUEL_ORBIT_SPEED * orbitSpeedMult * bossSlowMult(miguel, newGameTime)) / orbitRadius;
     const newAngle = curAngle - angularSpeed * bossMoveDt; // CCW=角度を減らす向き(Y-down)
     const correctedDist = curDist + (orbitRadius - curDist) * Math.min(1, ORBIT_RADIUS_CORRECT * bossMoveDt);
     patch.x = mHomeX + Math.cos(newAngle) * correctedDist - miguel.width / 2;
@@ -656,7 +680,9 @@ export const runMiguelTickLegacy = (
     const relX = mcx - mHomeX, relY = mcy - mHomeY;
     const curDist = Math.hypot(relX, relY) || 1;
     const curAngle = Math.atan2(relY, relX);
-    const angularSpeed = (MIGUEL_ORBIT_SPEED * orbitSpeedMult) / orbitRadius;
+    // ボスのクリ半減(社長指示v0.25.2422)。他の移動語彙は移動の入口で掛けているのに、
+    // ミゲルの旋回だけ抜けていた(v0.25.2895)。
+    const angularSpeed = (MIGUEL_ORBIT_SPEED * orbitSpeedMult * bossSlowMult(miguel, newGameTime)) / orbitRadius;
     const newAngle = curAngle - angularSpeed * bossMoveDt;
     const correctedDist = curDist + (orbitRadius - curDist) * Math.min(1, ORBIT_RADIUS_CORRECT * bossMoveDt);
     patch.x = mHomeX + Math.cos(newAngle) * correctedDist - miguel.width / 2;
@@ -800,7 +826,9 @@ export const runJibrilTick = (
   const retreatMove = (): void => {
     const ax = jcx - pcx, ay = jcy - pcy;
     const al = Math.hypot(ax, ay) || 1;
-    const spd = JIBRIL_RETREAT_SPEED * (jr.hits >= JIBRIL_HITS_FASTER ? JIBRIL_RETREAT_FAST_MULT : 1);
+    // ボスのクリ半減(社長指示v0.25.2422)。他の移動語彙は移動の入口で掛けているのに、
+    // ジブリルの後退だけ抜けていた(v0.25.2895)。
+    const spd = JIBRIL_RETREAT_SPEED * (jr.hits >= JIBRIL_HITS_FASTER ? JIBRIL_RETREAT_FAST_MULT : 1) * bossSlowMult(jibril, newGameTime);
     let nx = jcx + (ax / al) * spd * bossMoveDt;
     let ny = jcy + (ay / al) * spd * bossMoveDt;
     const rx = nx - jHomeX, ry = ny - jHomeY;
@@ -1044,7 +1072,9 @@ export const runJibrilTickLegacy = (
   const retreatMove = (): void => {
     const ax = jcx - pcx, ay = jcy - pcy;
     const al = Math.hypot(ax, ay) || 1;
-    const spd = JIBRIL_RETREAT_SPEED * (jr.hits >= JIBRIL_HITS_FASTER ? JIBRIL_RETREAT_FAST_MULT : 1);
+    // ボスのクリ半減(社長指示v0.25.2422)。他の移動語彙は移動の入口で掛けているのに、
+    // ジブリルの後退だけ抜けていた(v0.25.2895)。
+    const spd = JIBRIL_RETREAT_SPEED * (jr.hits >= JIBRIL_HITS_FASTER ? JIBRIL_RETREAT_FAST_MULT : 1) * bossSlowMult(jibril, newGameTime);
     let nx = jcx + (ax / al) * spd * bossMoveDt;
     let ny = jcy + (ay / al) * spd * bossMoveDt;
     const rx = nx - jHomeX, ry = ny - jHomeY;
@@ -1176,7 +1206,10 @@ export const runRafiTick = (
     const stepMinGap = phase === 2 ? RAFI_STEP_MIN_GAP_MS_P2 : RAFI_STEP_MIN_GAP_MS;
     const stepMaxGap = phase === 2 ? RAFI_STEP_MAX_GAP_MS_P2 : RAFI_STEP_MAX_GAP_MS;
     if (newGameTime < rr.stepUntil) {
-      const c = clampArena(rcx + rr.stepDx * RAFI_STEP_SPEED * bossMoveDt, rcy + rr.stepDy * RAFI_STEP_SPEED * bossMoveDt);
+      // ボスのクリ半減(社長指示v0.25.2422)。chaseMoveには掛かっているのに、
+      // 横ステップだけ抜けていた(v0.25.2895)。
+      const stepSpd = RAFI_STEP_SPEED * bossSlowMult(rafi, newGameTime);
+      const c = clampArena(rcx + rr.stepDx * stepSpd * bossMoveDt, rcy + rr.stepDy * stepSpd * bossMoveDt);
       patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
     } else if (rr.nextStepAt !== 0 && newGameTime >= rr.nextStepAt) {
       const dx = pcx - rcx, dy = pcy - rcy; const dl = Math.hypot(dx, dy) || 1;
@@ -1371,7 +1404,10 @@ export const runRafiTickLegacy = (
     patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
   } else if (st === 'chase') {
     if (newGameTime < rr.stepUntil) {
-      const c = clampArena(rcx + rr.stepDx * RAFI_STEP_SPEED * bossMoveDt, rcy + rr.stepDy * RAFI_STEP_SPEED * bossMoveDt);
+      // ボスのクリ半減(社長指示v0.25.2422)。chaseMoveには掛かっているのに、
+      // 横ステップだけ抜けていた(v0.25.2895)。
+      const stepSpd = RAFI_STEP_SPEED * bossSlowMult(rafi, newGameTime);
+      const c = clampArena(rcx + rr.stepDx * stepSpd * bossMoveDt, rcy + rr.stepDy * stepSpd * bossMoveDt);
       patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
     } else if (rr.nextStepAt !== 0 && newGameTime >= rr.nextStepAt) {
       const dx = pcx - rcx, dy = pcy - rcy; const dl = Math.hypot(dx, dy) || 1;
