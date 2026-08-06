@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2911',
+    items: [
+      'ゲーム内容の変更はありません(開発用の敵モーション確認ページにボス閲覧タブを追加)。',
+    ],
+  },
+  {
     version: '0.25.2910',
     items: [
       '自転車の敵の上下のガタガタを遅くして、1回1回の揺れが見えるようにしました。',
