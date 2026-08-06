@@ -1215,6 +1215,11 @@ const enemyMotionSpec = (type: string, id: string): EnemyMotionSpec => {
 };
 /** ③振り向き: 左右ミラーの切替をこのmsかけて scale.x を 旧→0→新 で潰す(=体を捻って向き直る)。 */
 const ENEMY_TURN_MS = 120;
+/**
+ * 歩調の全体倍率(社長指示v0.25.2900「もう少しゆっくり動いてほしい」)。
+ * 型ごとの strideHz の**比率は保ったまま**全体のテンポだけ落とす1つまみ。速さの再調整はまずここ。
+ */
+const ENEMY_MOTION_TEMPO = 0.7;
 const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   zombie: 0x7de28a,
   bat: 0x9aa6ff,
@@ -12241,7 +12246,7 @@ export class PixiScene {
         const walk = spec.kind === 'hover' ? 1 : Math.min(1.25, (view.motSpeed ?? 0) / Math.max(20, e.speed));
         // 技のモーション中(aiPhase=しゃがみ/ジャンプ/突進/g-*)は既存のaiSq系に譲って歩行は消す。
         if (walk > 0.02 && e.aiPhase === undefined) {
-          const ph = now / 1000 * spec.strideHz * Math.PI * 2 + stablePhase(e.id);
+          const ph = now / 1000 * spec.strideHz * ENEMY_MOTION_TEMPO * Math.PI * 2 + stablePhase(e.id);
           // 千鳥足: 無関係な副周期を混ぜて規則性を崩す(uneven=混合率)。個体位相はIDハッシュ
           // (stablePhase)なので群れが同期行進しない。
           const wave = Math.sin(ph) * (1 - spec.uneven * 0.5) + Math.sin(ph * 0.63 + 1.7) * spec.uneven * 0.7;
@@ -12257,7 +12262,11 @@ export class PixiScene {
       if (spec.faceMove) {
         const cur = view.motFace ?? 1;
         const vx = view.motVx ?? 0;
-        const want = vx > 25 ? -1 : vx < -25 ? 1 : cur;
+        // ★ノックバック中+直後180msは向きを変えない(社長指示v0.25.2900「ノックバックで振り向くのやめたい」)。
+        // 弾かれた方向は「本人の意思の移動」ではないので、押されて後ずさっただけで背を向けるのは変。
+        // 180msは平滑済みmotVxからノックバック成分が抜けるまでの猶予(平滑k=dt/130の減衰時間)。
+        const kbFacingLock = e.knockbackUntil !== undefined && now < e.knockbackUntil + 180;
+        const want = kbFacingLock ? cur : vx > 25 ? -1 : vx < -25 ? 1 : cur;
         if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
         const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;
         const from = view.motFaceFrom ?? (view.motFace ?? 1);

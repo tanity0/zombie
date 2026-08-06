@@ -179,6 +179,7 @@ import {
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN
 } from '../utils/enemyUtils';
+import { spriteVariantIndex, ENEMY_VARIANT_SETS } from '../utils/enemyVariant';
 import {
   isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
@@ -1042,6 +1043,11 @@ const FORCE_IDOL = evParam('idolnow') === '1';
 // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋。`?nospawn=1` と併用して湧きを止める。
 // **数値の受け渡しにURLは使わない**(社長明示「?パラメータは回りくどい」)。この1個は部屋への入口だけ。
 const BOSS_MAKER = evParam('bossmaker') === '1';
+// 敵モーション動物園(?zoo=1・社長要望v0.25.2900「全部の敵の実際の動きを一覧で見れる方法」):
+// 全雑魚+ハンター+城ボスを格子に並べ、各自の**実際の移動速度**で左右パトロールさせる開発用ビュー。
+// 歩行二次モーション(v0.25.2899)は実移動量と同期しているので、これで全型の動きが本物のまま見える
+// (左右折り返しで③振り向きも見える)。湧きは自動で全停止(noSpawnに相乗り)、接触ダメージは0にする。
+const ZOO_MODE = evParam('zoo') === '1';
 // idolのステータス(width/height/speed/health/damage)はenemyUtils.tsのENEMY_STATS.idolを唯一の出所とする
 // (ここでは複製しない)。以下は台本(帯/技)のms・半径のみ。
 // ★叩き台(設計書に実行秒数の列が無い・§6.28-14と同型の未決): ローリングの実行(移動)所要時間と距離。
@@ -1410,6 +1416,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ミゲル専用「たまにゆっくり歩く」タイマー(社長指示・トールのthorNextSlowWalkAt/thorSlowWalkUntil相当)。
   // ミゲルは bossRef を使わない独立ブロックのため専用の小さな ref を持つ。
   const bossMakerReadyRef = useRef(false); // ボスメーカーの相手を1回だけ出す
+  const zooReadyRef = useRef(false); // 敵モーション動物園(?zoo=1)の面々を1回だけ出す
   const idolStateRef = useRef(createIdolTickState()); // idol(stage-2隠しボス)のラン内状態(バッチ3でidolTick.tsへ抽出)
   const angelStateRef = useRef(createAngelBossState()); // 天使(ゲート2ボス)3体のラン内状態(M26 Step3でangelBossTick.tsへ抽出)
   // ゲート戦闘中フラグ(activeGateRef)のstore反映用・直前値(変化時だけsetして毎フレームchurnを避ける)。
@@ -2100,7 +2107,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const runningIn = loopState.corridorRunInActive;
         // 以降の湧きゲートは NOSPAWN ではなく noSpawn を見る(?nospawn=1 と同じ止め方に相乗り)。
         // 練習ラン(ボスラッシュ)も湧きを全部止める=狙った1体だけ(社長「ラッシュは1体」)。
-        const noSpawn = NOSPAWN || runningIn || isPracticeRun();
+        const noSpawn = NOSPAWN || runningIn || isPracticeRun() || ZOO_MODE;
 
         // PACING_PUZZLE.md §5.18 M17: 被ダメ5経路(src/utils/combatTick.ts)へ渡す演出コールバック+
         // チューニング値。値そのものは以下のローカル定数のまま(二重管理を避けるため引数化しただけ)。
@@ -2354,6 +2361,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
           bossMakerReadyRef.current = false;
+          zooReadyRef.current = false; // 敵モーション動物園も新ランで再スポーン
           idolStateRef.current = createIdolTickState(); // idolのストリング/懲罰タイマも新ランでリセット
           clearIdolPlayback(); // ボスメーカーの個別再生も新ランで解除(createIdolTickStateに副作用を持たせない=v0.25.2625の教訓)
           angelStateRef.current = createAngelBossState(); // 天使(ゲート2ボス)状態も新ランでリセット(M26 Step3)
@@ -7291,6 +7299,56 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Update enemies
         // 敵の移動のみ MOVE_SPEED_MULT 倍速(攻撃タイマー等はtimestamp基準で影響なし)。
         updateEnemies(deltaTime * MOVE_SPEED_MULT);
+
+        // ---- 敵モーション動物園(?zoo=1・開発用・v0.25.2900) ----------------------------------------
+        // 全雑魚+ハンター+城ボスを格子に並べ、各自の**本来のspeed**で左右パトロールさせる鑑賞モード。
+        // 歩行二次モーション(pixiScene・v0.25.2899)は実移動量と同期しているので実物の動きが見え、
+        // 折り返しで③振り向きも見える。座標はAI(updateEnemies)の後から上書き(裏ボスコントローラと
+        // 同じ作法)。湧きはnoSpawnで全停止済み。鑑賞用にdamage=0で出す。
+        if (ZOO_MODE) {
+          if (!zooReadyRef.current) {
+            zooReadyRef.current = true;
+            const zx = player.x + player.width / 2, zy = player.y + player.height / 2;
+            // reaper(終焉体)と裏ボス/天使/idol(専用コントローラ持ち)は対象外。bat/skeletonは男女2枝を両方。
+            const cast: [EnemyType, number][] = [
+              ['bat', 0], ['bat', 1], ['skeleton', 0], ['skeleton', 1],
+              ['zombie', 0], ['plant', 0], ['ghost', 0], ['werewolf', 0],
+              ['pumpkin', 0], ['lich', 0], ['screamer', 0], ['hunter', 0],
+              ['lab-zombie-1', 0], ['lab-zombie-2', 0], ['lab-zombie-3', 0], ['giantbat', 0],
+            ];
+            // 欲しいバリアント枝(男女)になるIDを引き当てる(絵の選択と同じspriteVariantIndexを使う)。
+            const zooIdFor = (ty: EnemyType, wantIdx: number, n: number): string => {
+              const count = ENEMY_VARIANT_SETS[ty]?.length ?? 1;
+              for (let s = 0; s < 60; s++) {
+                const id = `zoo-${ty}-${n}-${s}`;
+                if (spriteVariantIndex(id, count) === wantIdx) return id;
+              }
+              return `zoo-${ty}-${n}`;
+            };
+            cast.forEach(([ty, wantIdx], i) => {
+              const col = i % 4, row = Math.floor(i / 4);
+              const hx = zx + (col - 1.5) * 250, hy = zy - 300 - row * 220;
+              const ze = spawnEnemyAt(ty, hx, hy, newGameTime);
+              ze.id = zooIdFor(ty, wantIdx, i);
+              ze.fixed = true;   // 画面外リサイクル対象外=観察中に消えない
+              ze.damage = 0;     // 触れても痛くない(敵弾のダメージもenemy.damage由来なので0になる)
+              ze.homeX = hx; ze.homeY = hy;
+              addEnemy(ze);
+            });
+          }
+          const ZOO_R = 110; // 折り返し半幅(px)
+          useGameStore.setState(st => ({
+            enemies: st.enemies.map(e => {
+              if (!e.id.startsWith('zoo-') || e.homeX === undefined || e.homeY === undefined) return e;
+              const spd = Math.max(12, e.speed);
+              // 三角波=等速の左右往復。位相はhome座標でずらして全員が同時に折り返さないように。
+              const phase = (newGameTime / 1000 * spd + Math.abs(e.homeX + e.homeY * 7)) % (4 * ZOO_R);
+              const off = phase < 2 * ZOO_R ? phase - ZOO_R : 3 * ZOO_R - phase;
+              // aiPhaseは毎フレーム潰す(werewolf突進/pumpkinジャンプがパトロール上書きと喧嘩しないように)。
+              return { ...e, x: e.homeX + off - e.width / 2, y: e.homeY - e.height / 2, aiPhase: undefined, aiPhaseUntil: undefined };
+            }),
+          }));
+        }
 
         // 敵のジャンプ攻撃(aiPhase 'jump')/ダッシュ攻撃(aiPhase 'charge')でも障害物を破壊(裏ボスと同仕様)。
         // 手続き生成なので破壊キーSetに入れるだけ=描画/判定とも同時に消える(軽い)。FXはスロットルで間引く。
