@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2908',
+    items: [
+      'ステージ3の城ボスの見た目を新しい絵(根に編み込まれた群体の四足獣)に変えました。',
+    ],
+  },
+  {
     version: '0.25.2907',
     items: [
       '自転車の敵の上下のガタガタを強くしました。',
