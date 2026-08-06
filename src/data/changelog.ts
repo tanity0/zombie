@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2917',
+    items: [
+      'ゲーム内容の変更はありません(配信の再トリガー)。',
+    ],
+  },
+  {
     version: '0.25.2916',
     items: [
       'ラスボス(グレン)の見た目を新しい絵(血の茨の巨腕で襲いかかる姿)に変えました。',
