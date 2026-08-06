@@ -21,6 +21,13 @@ export interface EnemyMotionSpec {
   uneven: number;    // 0=規則正しい行進 / 1=千鳥足(副周期を混ぜて規則性を崩す)
   faceMove: boolean; // 移動X方向へ左右ミラーするか。**絵が明確に横向きの個体だけ** true
   faceRight?: boolean; // 素材が**右向き**の個体は true(既定は左向き)。ミラーの向きが反転する
+  /**
+   * 路面振動(社長指示v0.25.2904「自転車、動いてる時は小刻みに上下ガタガタ」)。歩幅のbobとは別に、
+   * 高周波の細かい上下ジッタを移動量に比例して足す。2つの無関係な周波数を混ぜて「ガタガタ」の
+   * 不規則さを出す(単一sinだと機械的なバイブレーションに見える)。
+   */
+  rattlePx?: number;  // 振動の振幅(px)
+  rattleHz?: number;  // 振動の基本周波数(Hz・TEMPO適用前)
 }
 
 /** ③振り向き: 左右ミラーの切替をこのmsかけて scale.x を 旧→0→新 で潰す(=体を捻って向き直る)。 */
@@ -31,7 +38,6 @@ export const ENEMY_TURN_MS = 120;
  */
 export const ENEMY_MOTION_TEMPO = 0.7;
 
-const MOT_NONE: EnemyMotionSpec = { kind: 'none', bobPx: 0, rockRad: 0, sqAmp: 0, strideHz: 0, uneven: 0, faceMove: false };
 // bat枝1=男(茨の光輪の徘徊者・直立ゆったり) / 枝2=女(鳥頭骨・猫背のよろめき)。
 const MOT_HOBBLER: EnemyMotionSpec = { kind: 'walk', bobPx: 1.1, rockRad: 0.040, sqAmp: 0.028, strideHz: 1.9, uneven: 0.25, faceMove: false };
 const MOT_STAGGER: EnemyMotionSpec = { kind: 'walk', bobPx: 1.4, rockRad: 0.055, sqAmp: 0.030, strideHz: 2.2, uneven: 0.80, faceMove: false };
@@ -40,9 +46,10 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   skeleton: { kind: 'crawl', bobPx: 1.8, rockRad: 0.050, sqAmp: 0.045, strideHz: 3.0, uneven: 0.35, faceMove: true },
   // zombie=ナックルウォークの巨躯(絵は左向き)。重く遅い左右ロール。
   zombie: { kind: 'heavy', bobPx: 2.2, rockRad: 0.048, sqAmp: 0.050, strideHz: 1.3, uneven: 0.45, faceMove: true },
-  // werewolf=**自転車に跨がる死体**(v0.25.2901)。車輪で滑走するのでbobは殆ど無し、
-  // 不安定なふらつき(rock)だけ。絵はハンドルが右=右向きなので faceRight。
-  werewolf: { kind: 'walk', bobPx: 0.6, rockRad: 0.035, sqAmp: 0.010, strideHz: 1.3, uneven: 0.50, faceMove: true, faceRight: true },
+  // werewolf=**自転車に跨がる死体**(v0.25.2901)。歩幅のbobは無し(車輪は跳ねない)、代わりに
+  // 移動中だけ**路面振動のガタガタ**(rattle・v0.25.2904)+不安定なふらつき(rock)。
+  // 絵はハンドルが右=右向きなので faceRight。
+  werewolf: { kind: 'walk', bobPx: 0, rockRad: 0.035, sqAmp: 0.010, strideHz: 1.3, uneven: 0.50, faceMove: true, faceRight: true, rattlePx: 1.5, rattleHz: 13 },
   // pumpkin=樽腹の巨漢(正面絵)。どすどす。
   pumpkin: { kind: 'heavy', bobPx: 2.0, rockRad: 0.042, sqAmp: 0.050, strideHz: 1.5, uneven: 0.30, faceMove: false },
   // ghost=卵を抱いた花嫁。歩かず滑る=浮遊ゆらぎ(常時)。
@@ -51,8 +58,12 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   lich: { kind: 'hover', bobPx: 1.2, rockRad: 0.008, sqAmp: 0, strideHz: 0.8, uneven: 0, faceMove: true },
   // screamer=スーツの絶叫男。痙攣風(unevenほぼ最大)の小刻み。
   screamer: { kind: 'walk', bobPx: 1.0, rockRad: 0.030, sqAmp: 0.020, strideHz: 2.0, uneven: 0.90, faceMove: false },
-  // plant=玉座の花女(speed8のほぼ固定砲台)。歩行モーションは付けない(既存の呼吸だけ)。
-  plant: { ...MOT_NONE },
+  // plant=玉座の花女(speed8のほぼ固定砲台)。社長指示v0.25.2904「花びらが動いてる感じ」→
+  // 「百合は上に向かって咲いているので**開いたり閉じたり**に見えるのが理想」。
+  // 左右の首振り(rock)はほぼ無しにして、**ゆっくり大きめのスカッシュ脈動**を主役にする:
+  // sqXが広がる(=花弁が開く)+sqYがわずかに縮む → 戻る、の呼吸。足元アンカーの横スケールは
+  // 最も幅の広い花冠が一番大きく動いて見える。hover=移動量に関係なく常時。bob=0で根は接地したまま。
+  plant: { kind: 'hover', bobPx: 0, rockRad: 0.008, sqAmp: 0.045, strideHz: 0.25, uneven: 0.3, faceMove: false },
   // hunter=棺桶担ぎの巨人。重い踏みしめ(ジャンプ等は既存aiSqが担当・歩行のみ)。
   hunter: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.2, uneven: 0.20, faceMove: false },
   giantbat: { kind: 'heavy', bobPx: 1.4, rockRad: 0.022, sqAmp: 0.030, strideHz: 1.1, uneven: 0.20, faceMove: false },
@@ -87,9 +98,15 @@ export const enemyMotionPose = (
   // 千鳥足: 無関係な副周期を混ぜて規則性を崩す(uneven=混合率)。
   const wave = Math.sin(ph) * (1 - spec.uneven * 0.5) + Math.sin(ph * 0.63 + 1.7) * spec.uneven * 0.7;
   const sq = Math.sin(ph * 2) * spec.sqAmp * walk;       // 歩幅スカッシュ(1歩2拍)
+  // 路面振動(rattle): 歩幅とは無関係の高周波を2本混ぜた不規則な上下ジッタ。移動量に比例。
+  let rattle = 0;
+  if (spec.rattlePx) {
+    const phr = nowMs / 1000 * (spec.rattleHz ?? 12) * ENEMY_MOTION_TEMPO * Math.PI * 2 + phaseSeed * 3.1;
+    rattle = (Math.abs(Math.sin(phr)) * 0.7 + Math.abs(Math.sin(phr * 1.37 + 1.3)) * 0.3) * spec.rattlePx * walk;
+  }
   return {
     rot: spec.rockRad * wave * walk,                     // 足元支点: walk=リーン/crawl=ピッチ/heavy=ロール
-    bob: Math.abs(Math.sin(ph)) * spec.bobPx * walk,     // 1歩=1山の接地リズム
+    bob: Math.abs(Math.sin(ph)) * spec.bobPx * walk + rattle, // 1歩=1山の接地リズム+路面振動
     sqX: 1 + sq, sqY: 1 - sq * 0.7,
   };
 };

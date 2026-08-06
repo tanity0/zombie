@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2904',
+    items: [
+      'プラント(花の玉座)の百合が、ゆっくり開いたり閉じたりするように脈動します。',
+      '自転車の敵が、移動中だけ路面のガタガタで小刻みに上下へ振動するようになりました。',
+    ],
+  },
+  {
     version: '0.25.2903',
     items: [
       'ゲーム内容の変更はありません(開発用の敵モーション確認をゲーム外の専用ページへ移しました)。',
