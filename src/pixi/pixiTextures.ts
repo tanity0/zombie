@@ -417,7 +417,7 @@ export const ensureTextures = (): Promise<void> => {
       // 斬撃の弧(社長支給素材 D-1・v0.25.2400)。「振った瞬間」の絵。tintで着色・伸縮して使う=linear。
       { name: 'fx/slash-arc', scaleMode: 'linear' as const },
       // 銃口フラッシュ(社長支給素材 C-1・v0.25.2401)。発砲の一瞬だけ出す。tint着色・縮小=linear。
-      { name: 'fx/muzzle-flash', scaleMode: 'linear' as const },
+      { name: 'fx/muzzle-flash', scaleMode: 'nearest' as const }, // v0.25.2928 ドット版(黄色の閃光・左右反転して根元=左端に統一)
       // 爪痕(社長支給素材 D-2・v0.25.2402)。claw-mark=中央の1本を切り出したもの(判定1つに1枚貼る用)。
       // claw-marks=3本まとめ(1振りぶんの爪跡。今は未使用だが将来の「爪の弧」用に登録だけしておく)。
       { name: 'fx/claw-mark', scaleMode: 'linear' as const },

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2928',
+    items: [
+      '銃を撃ったときの銃口の閃光を、新しいドット絵に変えました。',
+    ],
+  },
+  {
     version: '0.25.2927',
     items: [
       '種を飛ばす敵(プラント)の見た目を、大きな口の食人植物のドット絵に変えました。',
