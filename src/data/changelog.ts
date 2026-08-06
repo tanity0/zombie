@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2919',
+    items: [
+      'ゲーム内容の変更はありません(配信の再トリガー)。',
+    ],
+  },
+  {
     version: '0.25.2918',
     items: [
       'ラスボスに第二形態が付きました。HPが6割を切ると姿が変わり、後ろに機械のパーツが3つ連なります。ダメージを与えると真ん中のパーツから欠けていき、残りHPのめやすになります。',
