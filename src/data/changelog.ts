@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2916',
+    items: [
+      'ラスボス(グレン)の見た目を新しい絵(血の茨の巨腕で襲いかかる姿)に変えました。',
+    ],
+  },
+  {
     version: '0.25.2915',
     items: [
       '自転車の敵のガタガタをさらに遅く・上下の振れを大きくしました。',
