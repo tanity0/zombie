@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2910',
+    items: [
+      '自転車の敵の上下のガタガタを遅くして、1回1回の揺れが見えるようにしました。',
+    ],
+  },
+  {
     version: '0.25.2909',
     items: [
       'ステージ4の城ボスの見た目を新しい絵(凍てついた巨躯・まだ人間味のある姿)に変えました。',
