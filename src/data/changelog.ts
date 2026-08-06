@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2933',
+    items: [
+      '植物の敵が吐く種弾の絵を、元の種の絵に戻しました。',
+    ],
+  },
+  {
     version: '0.25.2932',
     items: [
       '植物の敵が吐く種弾の絵を、赤く光るイガ状のドット絵に変えました。',
