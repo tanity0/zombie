@@ -1324,8 +1324,8 @@ const THOR_KATANA_LENGTH = 220; // 表示上の柄→切っ先の長さ(px・ト
 // PACING_PUZZLE.md §5.21-追補8: ミゲルの剣(社長提供・miguel-sword.png=805×3437・透過済み。
 // 縦長で柄が上・切っ先が下)。thor-katanaと同じ「柄フラクション座標を回転軸にして当たり判定
 // ライン方向へ向ける」方式を流用。叩き台(実機調整前提)。
-const MIGUEL_SWORD_GRIP_FRAC = { x: 0.51, y: 0.14 };  // 柄(握り位置)の画像内フラクション座標
-const MIGUEL_SWORD_TIP_FRAC = { x: 0.47, y: 1.00 };   // 切っ先の画像内フラクション座標
+const MIGUEL_SWORD_GRIP_FRAC = { x: 0.51, y: 0.12 };  // 柄(握り位置)の画像内フラクション座標(v0.25.2922 ドット版実測)
+const MIGUEL_SWORD_TIP_FRAC = { x: 0.46, y: 1.00 };   // 切っ先の画像内フラクション座標(同)
 const MIGUEL_SWORD_INTRINSIC_ANGLE = Math.atan2(
   MIGUEL_SWORD_TIP_FRAC.y - MIGUEL_SWORD_GRIP_FRAC.y,
   MIGUEL_SWORD_TIP_FRAC.x - MIGUEL_SWORD_GRIP_FRAC.x,
