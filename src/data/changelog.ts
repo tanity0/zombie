@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2915',
+    items: [
+      '自転車の敵のガタガタをさらに遅く・上下の振れを大きくしました。',
+    ],
+  },
+  {
     version: '0.25.2914',
     items: [
       '研究所の敵レベル2の見た目を新しい絵に変えました。男女の区別は無くなり1種類になります。',
