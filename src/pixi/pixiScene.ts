@@ -1991,6 +1991,10 @@ const BOLT_FX_MAX = 48;       // 安全弁(リセット等で全弾が同時消�
 // 尺はどれも**判定の窓とは独立**(絵だけの時間)=ゲームロジックには一切触れていない。
 const BITE_SNAP_MS = 220;      // 顎が閉じ切ってから消えるまで
 const CLAW_LINGER_MS = 240;    // 爪を振り抜いた後の余韻
+// 爪痕(g-talon)が手前から奥へ刻まれる時間(社長指示v0.25.2891「爪がシュッてした後、すぐに
+// 当たり判定発生と同時にズバッと」)。**振りの最中は出さず、振り終わりからこの尺で一気に**刻む。
+// 短いほど「ズバッ」。他のグレン定数と同じくENEMY_ATTACK_SPEED_MULTで割って使う。
+const CLAW_CARVE_MS = 130;
 const WING_SWING_MS = 300;     // 翼を薙いだ絵の尺(判定のactive窓とは独立)
 const REACH_HOLD_MS = 340;     // 触手が伸び切ってから引っ込むまで
 // 拳が当たってから消えるまでは `IDOL_TUNING.fx.punchFistHoldMs`(メーカーで触れる・v0.25.2651)。
@@ -13854,13 +13858,16 @@ export class PixiScene {
           // 爪痕(D-2)を判定の矩形へ重ねる。氷(スカジ/城ボスstage-4)は爪ではないので付けない。
           // 濃さは既存のフェードイン(t)に合わせる=「n秒後に爆ぜる」という既存の語彙(§6.28-3)のまま。
           //
-          // ★グレンの血の爪痕(g-talon)だけ、**爪が振り抜ける間に手前から奥へ刻まれていく**
-          // (社長指示v0.25.2889「最初からパっと表示されてるのが変」)。爪の絵は windup の間に
-          // 扇を振り切るので、**同じ windup を尺に使って**爪と痕を合わせる。
-          // 刻み終わった後は 1 で据え置き=そこから先は従来どおり爆ぜるまで濃くなるだけ。
+          // ★グレンの血の爪痕(g-talon)だけ、**爪が振り抜けた後にズバッと手前から奥へ刻まれる**
+          // (社長指示v0.25.2891「爪がシュッてした後、すぐに当たり判定発生と同時にズバッと」)。
+          // 振っている最中は痕を出さない(=windup終わりまで carve は 0)。爪の絵が振り切る瞬間から
+          // CLAW_CARVE_MS で一気に刻み、以降は 1 で据え置き=従来どおり爆ぜるまで濃くなるだけ。
+          // 危険の告知は下に敷いてある赤い帯が最初から全長で出しているので、痕が遅れて出ても
+          // 「赤いのに当たらない/赤くないのに当たる」にはならない。
           // g-talon 以外(将来の帯型の遅延判定)は従来どおり最初から全長で出す。
+          const carveFrom = h.bornAt + GLEN_TALON_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
           const carve = h.moveKey === 'g-talon'
-            ? Math.max(0, Math.min(1, (gameTime - h.bornAt) / (GLEN_TALON_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
+            ? Math.max(0, Math.min(1, (gameTime - carveFrom) / (CLAW_CARVE_MS / ENEMY_ATTACK_SPEED_MULT)))
             : 1;
           if (!h.ice) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t, carve);
         } else {
@@ -15421,8 +15428,12 @@ export class PixiScene {
     // よって frame.width を縮めると orig.width も縮み、下の `sp.width` の拡大率計算
     // (value / orig.width)が **p に依らず一定**になる=絵が伸び縮みしない。ここが仕掛けの肝。
     const cutW = Math.max(1, tex.frame.width * p);
-    if (ct.frame.width !== cutW) { ct.frame.width = cutW; ct.updateUvs(); }
     if (sp.texture !== ct) sp.texture = ct;
+    // ★`updateUvs()` **だけでは絵が出ない**(v0.25.2889の実バグ)。あれはUVを計算し直すだけで
+    // "update" を発火しないので、スプライト側の `updateBounds`(orig から矩形を作り直す)が
+    // 走らず、**最初のフレームの幅(=ほぼ0)のまま固まる**。`update()` は updateUvs + emit なので、
+    // dynamic:true で張った購読が onViewUpdate を呼び、矩形が毎フレーム作り直される。
+    if (ct.frame.width !== cutW) { ct.frame.width = cutW; ct.update(); }
     const ddx = tx - fx, ddy = ty - fy;
     const len = Math.hypot(ddx, ddy) || 1;
     const ux = ddx / len, uy = ddy / len;

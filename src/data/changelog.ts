@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2891',
+    items: [
+      'ステージ7ボスの爪痕が表示されなくなっていた不具合を直しました。爪を振り抜いた直後に、手前から奥へズバッと一気に刻まれます。',
+    ],
+  },
+  {
     version: '0.25.2890',
     items: [
       'ハンター変異体の見た目を新しい絵に変えました。',
