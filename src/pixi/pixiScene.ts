@@ -11362,7 +11362,7 @@ export class PixiScene {
       this.ghostMuzzle = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
-    const scl = len / 256; // 素材の可視長(ドット版=全幅256px)を狙いの長さへ(本体drawMuzzleFlashと同じ)
+    const scl = len / 172; // 素材の可視長(ドット版_70=全幅172px)を狙いの長さへ(本体drawMuzzleFlashと同じ)
     sp.scale.set(scl, scl);
     sp.rotation = angle;
     sp.position.set(x, y);
@@ -15482,7 +15482,7 @@ export class PixiScene {
       this.muzzleSprite = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
-    const s = len / 256; // 素材の可視長(ドット版=全幅256px・v0.25.2928)を狙いの長さへ合わせる
+    const s = len / 172; // 素材の可視長(ドット版_70=全幅172px・v0.25.2931)を狙いの長さへ合わせる
     sp.scale.set(s, s);
     sp.rotation = angle;
     sp.position.set(x, y);

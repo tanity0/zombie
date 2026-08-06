@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2931',
+    items: [
+      '銃口の閃光と、強い衝撃で床に走る地割れの絵を、新しいドット絵に変えました。',
+    ],
+  },
+  {
     version: '0.25.2930',
     items: [
       '銃弾が当たったときの火の破裂を、新しいドット絵に変えました。',
