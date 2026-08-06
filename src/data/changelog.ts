@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2906',
+    items: [
+      'ステージ1の城ボスの見た目を新しい絵(2体が繋がった馬ぐるま体勢)に変えました。動きも腕で這う重い匍匐になります。',
+    ],
+  },
+  {
     version: '0.25.2905',
     items: [
       'パンプキンの見た目を新しい絵(蜘蛛の機械足)に変えました。全ステージで同じ絵になります。',

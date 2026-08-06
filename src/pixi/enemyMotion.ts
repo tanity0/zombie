@@ -67,7 +67,11 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   plant: { kind: 'hover', bobPx: 0, rockRad: 0.008, sqAmp: 0.045, strideHz: 0.25, uneven: 0.3, faceMove: false },
   // hunter=棺桶担ぎの巨人。重い踏みしめ(ジャンプ等は既存aiSqが担当・歩行のみ)。
   hunter: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.2, uneven: 0.20, faceMove: false },
-  giantbat: { kind: 'heavy', bobPx: 1.4, rockRad: 0.022, sqAmp: 0.030, strideHz: 1.1, uneven: 0.20, faceMove: false },
+  // giantbat=ステージ1の新絵は**2体が繋がった馬ぐるま体勢**(v0.25.2906)。腕で這う重い匍匐=
+  // 遅めのピッチング+2体の呼吸が揃わない乱れ(uneven高め)。
+  // ※城ボスはステージ別絵が残る唯一の型(stage3/4/5)。動きはtype単位なので全ステージ共通で
+  //   この這いになる——他ステージの絵で違和感が出たら per-stage 分岐を検討(実機確認待ち)。
+  giantbat: { kind: 'crawl', bobPx: 1.6, rockRad: 0.035, sqAmp: 0.035, strideHz: 1.8, uneven: 0.55, faceMove: false },
   // reaper=チェーンソーを掲げた襤褸外套(v0.25.2901)。裾を引きずって歩く=重い踏みしめ(正面絵)。
   reaper: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.1, uneven: 0.20, faceMove: false },
   'lab-zombie-1': { kind: 'walk', bobPx: 1.2, rockRad: 0.045, sqAmp: 0.028, strideHz: 1.8, uneven: 0.55, faceMove: false },

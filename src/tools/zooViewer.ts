@@ -29,7 +29,7 @@ const CAST: { type: EnemyType; variantIdx: number; tex: string; label: string }[
   { type: 'screamer', variantIdx: 0, tex: 'screamer-common', label: '絶叫 (screamer)' },
   { type: 'hunter', variantIdx: 0, tex: 'hunter', label: '棺桶巨人 (hunter)' },
   { type: 'reaper', variantIdx: 0, tex: 'reaper-common', label: '襤褸外套 (reaper)' },
-  { type: 'giantbat', variantIdx: 0, tex: 'atlas-px2/giantbat', label: '城ボス (giantbat)' },
+  { type: 'giantbat', variantIdx: 0, tex: 'atlas-px2/giantbat', label: '馬ぐるま (giantbat・ステージ1城ボス)' },
   { type: 'lab-zombie-1', variantIdx: 0, tex: 'lab-zombie/lab-zombie-lv1-male', label: '研究所Lv1' },
   { type: 'lab-zombie-2', variantIdx: 0, tex: 'lab-zombie/lab-zombie-lv2-male', label: '研究所Lv2' },
   { type: 'lab-zombie-3', variantIdx: 0, tex: 'lab-zombie/lab-zombie-lv3', label: '研究所Lv3' },
