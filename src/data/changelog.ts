@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2920',
+    items: [
+      'アイドル(ステージ2の隠しボス)の見た目を新しい絵に変えました。',
+    ],
+  },
+  {
     version: '0.25.2919',
     items: [
       'ゲーム内容の変更はありません(配信の再トリガー)。',
