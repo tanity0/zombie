@@ -24,7 +24,7 @@ const CAST: { type: EnemyType; variantIdx: number; tex: string; label: string }[
   { type: 'plant', variantIdx: 0, tex: 'plant-common', label: '花の玉座 (plant)' },
   { type: 'ghost', variantIdx: 0, tex: 'ghost-common', label: '卵の花嫁 (ghost)' },
   { type: 'werewolf', variantIdx: 0, tex: 'werewolf-common', label: '自転車 (werewolf)' },
-  { type: 'pumpkin', variantIdx: 0, tex: 'atlas-px2/pumpkin', label: '樽腹 (pumpkin)' },
+  { type: 'pumpkin', variantIdx: 0, tex: 'pumpkin-common', label: '蜘蛛の機械足 (pumpkin)' },
   { type: 'lich', variantIdx: 0, tex: 'lich-common', label: '機械死体 (lich)' },
   { type: 'screamer', variantIdx: 0, tex: 'screamer-common', label: '絶叫 (screamer)' },
   { type: 'hunter', variantIdx: 0, tex: 'hunter', label: '棺桶巨人 (hunter)' },

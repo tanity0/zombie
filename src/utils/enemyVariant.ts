@@ -35,6 +35,7 @@ export const ENEMY_VARIANT_SETS: Readonly<Record<string, readonly string[]>> = {
   screamer: ['screamer-common'],           // 1種のみ(v0.25.2882)
   werewolf: ['werewolf-common'],           // 1種のみ(v0.25.2901)。見た目=自転車に跨がる死体
   reaper: ['reaper-common'],               // 1種のみ(v0.25.2901)。見た目=チェーンソーを掲げた襤褸外套
+  pumpkin: ['pumpkin-common'],             // 1種のみ(v0.25.2905)。見た目=蜘蛛の機械足の襤褸
 };
 
 /**

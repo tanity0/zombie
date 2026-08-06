@@ -1920,7 +1920,7 @@ const labEnemyTextureName = (type: string, id: string): string | null => {
 // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・enemyTexKeyの解決順で
 // variantTextureName(ENEMY_VARIANT_SETS)が先に引かれるためstage3絵は表示不能だった。素材は削除済み)。
 // ★werewolf/reaper は外した(v0.25.2901・全ステージ共通の新絵へ移行・旧素材は削除済み)。
-const STAGE3_ENEMY_TYPES = new Set(['pumpkin', 'giantbat']);
+const STAGE3_ENEMY_TYPES = new Set(['giantbat']);
 const stage3EnemyTextureName = (type: string): string | null =>
   STAGE3_ENEMY_TYPES.has(type) ? `stage3-enemies/${type}` : null;
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
@@ -2165,16 +2165,15 @@ const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社
 // ★bat/ghost/plant/skeleton/zombie はここから外した(バッチ4・v0.25.2898・下のSTAGE4_ENEMY_TYPES
 // から外れたため出番なし=variantTextureNameが先に引かれてstage4絵は表示不能だった)。
 const STAGE4_FOOT_FRAC_X: Record<string, number> = {
-  // ★werewolf/reaper の補正は外した(v0.25.2901・全ステージ共通の新絵へ移行=旧絵実測の補正値は無効)。
+  // ★werewolf/reaper(v0.25.2901)・pumpkin(v0.25.2905)の補正は外した(全ステージ共通の新絵へ移行)。
   giantbat: 0.471,
-  pumpkin: 0.503,
 };
 
 // ステージ4(雪原)専用の敵絵。既存9種を見た目で1:1差し替え＋新型 lich(社長提供シート)。
 // 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='snow' のみ。
 // ★lich は外した(v0.25.2897・全ステージ共通 `lich-common` へ移行、旧stage4/5素材は削除済み)。
 // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE3コメント参照)。
-const STAGE4_ENEMY_TYPES = new Set(['pumpkin', 'giantbat']);
+const STAGE4_ENEMY_TYPES = new Set(['giantbat']);
 const stage4EnemyTextureName = (type: string): string | null =>
   STAGE4_ENEMY_TYPES.has(type) ? `stage4-enemies/${type}` : null;
 
@@ -2183,16 +2182,15 @@ const stage4EnemyTextureName = (type: string): string | null =>
 // =ステージ4と同じ扱いでステージ5にもlichを出す)。当たり判定/サイズは不変。farBackdrop==='stage5' のみ。
 // ★lich は同上で共通絵へ移行済み。
 // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE3コメント参照)。
-const STAGE5_ENEMY_TYPES = new Set(['pumpkin', 'giantbat']);
+const STAGE5_ENEMY_TYPES = new Set(['giantbat']);
 const stage5EnemyTextureName = (type: string): string | null =>
   STAGE5_ENEMY_TYPES.has(type) ? `stage5-enemies/${type}` : null;
 // ステージ5の足元ズレ補正(STAGE4_FOOT_FRAC_Xと同方式: 下端12%帯のα重心x比率を実測)。
 // ★bat/ghost/plant/skeleton/zombie はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE4_FOOT_FRAC_X参照)。
 const STAGE5_FOOT_FRAC_X: Record<string, number> = {
-  werewolf: 0.521,
-  pumpkin: 0.477,
+  // ★werewolf/reaper/pumpkin の補正は外した(v0.25.2905)。v0.25.2901で共通絵へ移行した際、
+  // この表だけ旧絵実測の値が残っており、**新絵に旧絵の足元補正が掛かる**取り残しだった。
   giantbat: 0.485,
-  reaper: 0.517,
 };
 
 const AMMO_INDICATOR_COLOR: Record<string, string> = {

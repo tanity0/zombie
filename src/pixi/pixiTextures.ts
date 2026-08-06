@@ -361,17 +361,17 @@ export const ensureTextures = (): Promise<void> => {
       // ENEMY_VARIANT_SETS(utils/enemyVariant.ts)が enemyTexKey で stage3/4/5 より先に引かれるため、
       // この5種のステージ別絵は表示不能だった(検証済み・旧素材は削除済み)。
       // ★werewolf/reaper も外した(v0.25.2901・全ステージ共通 `werewolf-common`/`reaper-common` へ移行)。
-      ...['pumpkin', 'giantbat']
+      ...['giantbat']
         .map((t) => ({ name: `stage3-enemies/${t}`, scaleMode: 'nearest' as const })),
       // ステージ4(雪原)専用の敵絵(既存9種の差し替え)。詳細イラスト調なので linear で滑らかに縮小。
       // ★lich はここから外した(v0.25.2897・全ステージ共通の新絵 `lich-common` へ移行。旧素材は削除済み)。
       // ★zombie/bat/skeleton/plant/ghost も外した(バッチ4・v0.25.2898・理由は上のstage3コメント参照)。
-      ...['pumpkin', 'giantbat']
+      ...['giantbat']
         .map((t) => ({ name: `stage4-enemies/${t}`, scaleMode: 'linear' as const })),
       // ステージ5(対変異体防衛本部)専用の敵絵(社長提供シート2026-07-16・ステージ1と同配置の9種)。
       // ピクセルアート調なのでアトラス敵/stage3と同じ nearest。lich は同上で共通絵へ移行。
       // ★zombie/bat/skeleton/plant/ghost も外した(バッチ4・v0.25.2898・理由は上のstage3コメント参照)。
-      ...['pumpkin', 'giantbat']
+      ...['giantbat']
         .map((t) => ({ name: `stage5-enemies/${t}`, scaleMode: 'nearest' as const })),
 
       // M8改(§5.9): ソフト系3クラスは linear(+下のローダでmipmapON)。それ以外は従来nearest。
@@ -465,7 +465,7 @@ export const ensureTextures = (): Promise<void> => {
     // ローディング%の総数登録(下の loadProgressBegin)に個数が要るためここで定義。
     // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・stage3/4/5と同じ理由=
     // ENEMY_VARIANT_SETSがenemyTexKeyで先に引かれるため表示不能。旧atlas-px2素材は削除済み)。
-    const atlasPxNames = ['pumpkin', 'giantbat', 'tree',
+    const atlasPxNames = ['giantbat', 'tree',
       'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red', 'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest'];
 
     // ローディング%(社長指示v0.25.1776): このローダが読むファイル総数を先に一括登録する
@@ -651,7 +651,7 @@ export const ensureTextures = (): Promise<void> => {
     // ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898)。この5種は
     // ENEMY_VARIANT_SETS に載っており、下の一括登録ループが default/stage3/stage4/stage5 の
     // 4キー全てを variant 絵で上書きするため、ここでの登録は不要(旧ステージ別素材も削除済み)。
-    for (const ty of ['pumpkin', 'giantbat']) {
+    for (const ty of ['giantbat']) {
       regAspect(`default:${ty}`, ty);                 // アトラス(森系)の敵絵
       regAspect(`stage3:${ty}`, `stage3-enemies/${ty}`); // 廃都(ステージ3)の敵絵
       regAspect(`stage4:${ty}`, `stage4-enemies/${ty}`); // 雪原(ステージ4)の敵絵

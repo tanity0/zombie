@@ -50,8 +50,9 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   // 移動中だけ**路面振動のガタガタ**(rattle・v0.25.2904)+不安定なふらつき(rock)。
   // 絵はハンドルが右=右向きなので faceRight。
   werewolf: { kind: 'walk', bobPx: 0, rockRad: 0.035, sqAmp: 0.010, strideHz: 1.3, uneven: 0.50, faceMove: true, faceRight: true, rattlePx: 1.5, rattleHz: 13 },
-  // pumpkin=樽腹の巨漢(正面絵)。どすどす。
-  pumpkin: { kind: 'heavy', bobPx: 2.0, rockRad: 0.042, sqAmp: 0.050, strideHz: 1.5, uneven: 0.30, faceMove: false },
+  // pumpkin=**蜘蛛の機械足の襤褸**(v0.25.2905・旧: 樽腹の巨漢)。多脚が細かく脚を運ぶスキッター
+  // =左右ロールをやめて小さめの速いピッチ+機械脚のカタカタ(rattle小)。正面絵なのでミラーなし。
+  pumpkin: { kind: 'crawl', bobPx: 0.8, rockRad: 0.018, sqAmp: 0.020, strideHz: 2.6, uneven: 0.25, faceMove: false, rattlePx: 0.9, rattleHz: 11 },
   // ghost=卵を抱いた花嫁。歩かず滑る=浮遊ゆらぎ(常時)。
   ghost: { kind: 'hover', bobPx: 2.6, rockRad: 0.018, sqAmp: 0, strideHz: 0.55, uneven: 0, faceMove: false },
   // lich=針金ワイヤーの機械死体(絵は左向き)。無機質に滑走=揺れ最小のホバー。
