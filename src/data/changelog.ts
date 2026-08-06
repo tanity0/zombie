@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2896',
+    items: [
+      'ゲーム内容の変更はありません(内部の不要コード整理)。',
+    ],
+  },
+  {
     version: '0.25.2895',
     items: [
       '鞭・シールドバッシュなどの「押し道具」が、裏ボス4体・天使6体・アイドルにも効くようになりました(今までは11体とも1pxも押されませんでした)。',

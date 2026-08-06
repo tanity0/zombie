@@ -58,8 +58,6 @@ let practiceRestore: PracticeRestore | null = null;
 
 /** いま練習ラン中か(実行時の指定 or URL直リンク)。 */
 export const isPracticeRun = (): boolean => activeSlot !== null || PRACTICE_RUN_URL;
-/** 練習で戦っている枠(URL版は無し=型だけ分かる)。 */
-export const activePracticeSlot = (): PracticeSlot | null => activeSlot;
 
 /**
  * 練習で狙っているボスの型(`?practiceboss=`)。**「ラッシュは1体」(社長)の実現に使う。**
@@ -165,31 +163,4 @@ export const practiceBossHealth = (slot: PracticeSlot): number | null => {
   if (gate != null) return gate;
   const hidden = (HIDDEN_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];
   return hidden ?? null;
-};
-
-// ---------------------------------------------------------------------------------------------
-// 出撃URL(BOSS_MAKER.md §20-7)
-// ---------------------------------------------------------------------------------------------
-/**
- * 練習出撃のクエリを作る。**強制出現フラグはモジュールロード時定数**なので、遷移は
- * `window.location.search` の差し替え(ページ再読込)で行う(React遷移では効かない)。
- *
- * ★`?nospawn=1` を必ず付ける = 雑魚も他のボスも湧かない(社長「ラッシュは1体」)。
- *   5分で湧く城ボスや、ex1で同時に湧くストーリーボスもこれで止まる。
- *   城ボス自身を練習する時だけ `practiceboss=giantbat` が nospawn を上書きする(useGameLoop側)。
- * ★`mission=main` / `free=0` を明示する: `selectedMission='revisit'` が端末に残っていると
- *   stage-6 の練習が**洋館再訪ラン**に化ける(内容もクリア処理も別物)。
- * ★守護霊は選ばせない(社長指示v0.25.2857「スキル装備していけばいいだけ」)= `?ghost` は付けない。
- */
-export const practiceQuery = (slot: PracticeSlot, characterClass: string): string => {
-  const p = new URLSearchParams();
-  p.set('smoke', '1');
-  p.set('stage', slot.stageId);
-  p.set('practice', '1');
-  p.set('practiceboss', slot.bossType);
-  p.set('nospawn', '1');
-  if (slot.param) p.set(slot.param, '1');
-  p.set('class', characterClass);
-  p.set('retry', '1'); // 開始時会話をスキップ
-  return `?${p.toString()}`;
 };

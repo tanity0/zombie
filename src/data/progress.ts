@@ -367,12 +367,6 @@ type GateMetaMap = Record<string, GateMeta>;
 
 export const emptyGateMeta = (): GateMeta => ({ gate1Cleared: false, gate2Cleared: false });
 
-const isValidGateMeta = (v: unknown): v is GateMeta => {
-  if (!v || typeof v !== 'object') return false;
-  const m = v as Partial<GateMeta>;
-  return typeof m.gate1Cleared === 'boolean' && typeof m.gate2Cleared === 'boolean';
-};
-
 const loadGateMetaMap = (): GateMetaMap => {
   if (typeof localStorage === 'undefined') return {};
   try {
@@ -387,11 +381,6 @@ const loadGateMetaMap = (): GateMetaMap => {
 const saveGateMetaMap = (m: GateMetaMap): void => {
   if (typeof localStorage === 'undefined') return;
   try { localStorage.setItem(GATE_META_KEY, JSON.stringify(m)); } catch { /* ignore */ }
-};
-
-export const getGateMeta = (stageId: string, m: GateMetaMap = loadGateMetaMap()): GateMeta => {
-  const v = m[stageId];
-  return isValidGateMeta(v) ? { ...v } : emptyGateMeta();
 };
 
 export const setGateMeta = (stageId: string, meta: GateMeta): void => {

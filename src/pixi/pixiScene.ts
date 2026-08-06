@@ -2346,9 +2346,6 @@ interface ShadowCasterReq {
 /** ベイク済みシルエットテクスチャ+その幾何メタ(裁定F: pad補正に使う)。 */
 interface SilhouetteBake {
   texture: Texture;
-  pad: number;     // ベイク時に追加した余白(px、原寸=resolution1)
-  srcW: number;    // 元テクスチャの幅(px)
-  srcH: number;    // 元テクスチャの高さ(px。★D-2: 切り詰め後=絵のある範囲の高さ)
   bytes: number;   // 常駐バイト数の見積り(width×height×4)
   contentFrac: number; // ★D-2: 焼いた時に使った「絵の実体が縦に占める割合」(空白の無い素材は1)
 }
@@ -9474,7 +9471,7 @@ export class PixiScene {
       }
       gradTex.destroy(true);
 
-      return { texture: rt, pad, srcW, srcH, bytes: paddedW * paddedH * 4, contentFrac };
+      return { texture: rt, bytes: paddedW * paddedH * 4, contentFrac };
     } catch (err) {
       console.error('[shadow-v9] bakeSilhouette failed (suppressed):', err);
       // ★半影の合成中に落ちたなら、以後は旧経路(1パスぼかし)へ落とす。そうしないと
@@ -11941,7 +11938,7 @@ export class PixiScene {
   }
 
   // 刀サブウェポン: キャラ中央付近・背面に背負った刀のドット絵。専用テクスチャ
-  // を増やさず、`katanaShape` の共有ドット配置を軽量Graphicsで描く(HUDアイコン
+  // を増やさず、共有ドット配置を軽量Graphicsで描く(HUDアイコン
   // と同じデザイン)。赤い鞘・少し反り・縦やや斜め。村雨は刀身シルバー。
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {

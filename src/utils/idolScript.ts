@@ -317,8 +317,6 @@ export const idolShot = (m: IdolShotSlot): IdolShotSpec => IDOL_TUNING.shots[m];
 /** 表示名。空なら `射撃1` のような既定名(枠を足しただけで名無しにならない)。 */
 export const idolShotName = (m: IdolShotSlot): string =>
   IDOL_TUNING.shotLabels[m]?.trim() || `射撃${IDOL_SHOT_SLOTS.indexOf(m) + 1}`;
-/** 技の表示名(中核も射撃も1つの関数で引ける)。 */
-export const idolMoveName = (m: IdolMove): string => (isIdolShot(m) ? idolShotName(m) : m);
 /** 有効な枠(社長が足した射撃技)。 */
 export const idolEnabledShots = (): IdolShotSlot[] =>
   IDOL_SHOT_SLOTS.filter(s => IDOL_TUNING.shots[s].enabled >= 0.5);

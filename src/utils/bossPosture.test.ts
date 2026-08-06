@@ -44,7 +44,6 @@ describe('boss posture', () => {
       bossPosture: 0,
       bossFullStunUntil: now + BOSS_POSTURE_BREAK_MS,
       bossBreakRewardRemaining: 30,
-      bossBreakRewardMax: 250,
     });
     const gun = applyBrokenGunReward(e, 10, now)!;
     expect(gun.damage).toBe(40);

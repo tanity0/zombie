@@ -60,7 +60,6 @@ export const applyBossPostureDamage = (
       bossFullStunUntil: until,
       stunUntil: until,
       bossPostureLockUntil: until + BOSS_POSTURE_REBREAK_LOCK_MS,
-      bossBreakRewardMax: enemy.maxHealth * BOSS_BREAK_REWARD_HP_RATIO,
       bossBreakRewardRemaining: enemy.maxHealth * BOSS_BREAK_REWARD_HP_RATIO,
     },
     triggered: true,
@@ -77,7 +76,6 @@ export const tickBossPosture = (enemy: Enemy, gameTime: number, deltaTime: numbe
       bossPostureRecoveryCap: max,
       bossFullStunUntil: undefined,
       bossBreakRewardRemaining: undefined,
-      bossBreakRewardMax: undefined,
       stunUntil: enemy.stunUntil === enemy.bossFullStunUntil ? undefined : enemy.stunUntil,
     };
   }
@@ -108,7 +106,6 @@ export const applyBrokenMeleeFatal = (
       bossPostureRecoveryCap: bossPostureMax(enemy.type),
       bossFullStunUntil: undefined,
       bossBreakRewardRemaining: undefined,
-      bossBreakRewardMax: undefined,
       stunUntil: undefined,
       bossPostureLockUntil: gameTime + BOSS_POSTURE_REBREAK_LOCK_MS,
     },

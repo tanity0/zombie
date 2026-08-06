@@ -9979,7 +9979,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   spawnFlash('rgba(56,189,248,0.28)', 240);
                   spawnRing(pk.x + 8, pk.y + 8, 6, 60, 'rgba(56,189,248,0.9)', 4, 380);
                   spawnBurst(pk.x + 8, pk.y + 8, '#67e8f9', 16);
-                  useGameStore.getState().setHasCardKey(true);
                   useGameStore.getState().openLabDoor('goal');
                   useGameStore.setState({ lastWeaponGet: { name: 'カードキー', at: Date.now(), color: '#67e8f9', kind: 'weapon' } });
                   break;

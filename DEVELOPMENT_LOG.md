@@ -1,5 +1,64 @@
 # Development Log
 
+## v0.25.2896 — ソース棚卸しバッチ3: 死んだコードの安全削除【2026-08-06 16:46 JST】
+挙動変化ゼロ厳守。削除前に対象すべてを再度 `grep -rn`(テスト・server/・shared/・scripts/・
+index.html込み)で参照ゼロ再確認してから削除した。`npm run typecheck`/`npm run lint`は毎回0を確認。
+
+### 削除した物(分類別件数)
+- **丸ごと削除したファイル: 3本** — `src/utils/katanaShape.ts` / `src/config/ff7r.ts`
+  (`src/components/ff7r.tsx` の `Ff7rButton` とは別物・混同なし確認済み) / `src/pixi/forestTile.ts`。
+  `src/pixi/pixiScene.ts` の katanaShape 言及コメント(~11944行)も実体の無い参照だったので外した
+  (コードは無改変)。
+- **書くだけで読まれないフィールド: 5件** — `Enemy.bossCritCount`(@deprecated済み) /
+  `Enemy.bossBreakRewardMax`(宣言+`bossPosture.ts`の書き込み3箇所+テストフィクスチャ。兄弟の
+  `bossBreakRewardRemaining`は無改変) / `GameState.eventQuestReopenAt`(宣言+init+書き込み全箇所) /
+  `hasCardKey`一式(フィールド+`setHasCardKey`宣言/実装+init/reset+`useGameLoop.ts`の呼び出し1行。
+  周辺のカードキー取得演出・`openLabDoor('goal')`は無改変) / `SilhouetteBake`の`pad`/`srcW`/`srcH`
+  (interfaceとreturnから除去。ローカル変数は関数内で使用中のため残置。`bytes`/`contentFrac`は無改変)。
+- **呼ばれないstoreアクション: 9本**(interface宣言+実装を両方削除) — `triggerSkaterBash` /
+  `learnSubWeapon` / `openShop` / `openEventQuest` / `declineEventQuest` / `setMeleeAmmoDropPercent` /
+  `startIntroDialogue` / `grantSkillLevel` / `equipItem`。現行スケボー系(`mountSkater`/`dismountSkater`/
+  `skaterBoardHit`/`skaterRiding`/`skaterRideStartAt`)・拠点襲撃系・legacy A/Bフォールバックは無改変。
+- **ゼロ参照export: 32件** — `preloadSfx` / `ACTIVE_FONT`(+`FontKind`型) / `RHYTHM_JUST_WINDOW_MS` /
+  `RHYTHM_PROMPT_LEN` / `RHYTHM_JUST_HIT_COLOR` / `RHYTHM_JUST_FIRE_COLOR` /
+  `GACHA_BASE_RARITY_WEIGHTS` / `EQUIP_SLOT_LABEL` / `EQUIP_LINE_LABEL` / `getGateMeta` /
+  `getRedVignetteTexture` / `getFogBankTexture` / `texturesReady` / `enemyVisualRect` / `enemyShadow` /
+  `REFLEX_BLAST_RADIUS` / `REFLEX_BLAST_DAMAGE` / `KATANA_DOUBLE_TAP_MS` / `hasAlchemy` /
+  `hasRareSummon` / `PLAYER_INTRO_ARC_H` / `introDialogueTotalMs` / `listBossTuning` /
+  `activePracticeSlot` / `practiceQuery` / `BossPhaseKind`型 / `ObjectiveKind`型 / `idolMoveName` /
+  `SOFTEN_CD_MULT` / `FrozenGeom`型 / `sectorForAngle` / `STAGE2_DOCUMENT`。
+
+### 連鎖削除(指示リストに無いが、上の削除で参照ゼロになったため一緒に削除したもの)
+指示は「triggerSkaterBash削除でSKATER_BASH_*/skaterStopUntil・skaterBashCdUntilが参照ゼロになれば
+連鎖削除してよい」と明記していたので、その条項の範囲で以下も削除:
+- `SKATER_BASH_RUN_MS`/`RANGE`/`ARC_DOT`/`REVERSE_DOT`/`STOP_MS`/`CD_MS`/`RESIDUAL`(7定数、
+  triggerSkaterBash削除で唯一の読者を失った)。
+- `skaterBashCdUntil`フィールド(宣言+init+reset。読者が triggerSkaterBash内の1箇所のみだったため
+  参照ゼロ化)。**`skaterStopUntil`は`movePlayer`本体(4373行付近)で今も読まれているため残置**
+  (指示の「skaterStopUntil/skaterBashCdUntilどちらも」を再grepで確認し、前者は生存と判定)。
+- `EVENT_NPC_REOPEN_DELAY_MS`(eventQuestReopenAt/declineEventQuest削除で唯一の読者を失い、
+  typecheckのnoUnusedLocalsで検出→削除。着地条件「typecheckエラー0」を満たすための必須対応)。
+- `isValidGateMeta`(`getGateMeta`削除で唯一の呼び出し元を失った非exportヘルパー。同じくtypecheckで検出)。
+- `src/world/detourPoi.ts`の未使用importになった`sectorIndexForAngle`(`sectorForAngle`削除に伴う)。
+
+### スキップ(削除しなかった物)
+指示リストに含まれていなかったため対象外とした、副次的に見つかった同種のゼロ参照export:
+- `src/store/gameStore.ts` `clampDropPct`(`setMeleeAmmoDropPercent`削除で外部呼び出し元を失ったが
+  exportのためtypecheckは通る=連鎖対象外)。
+- `src/store/gameStore.ts` `INTRO_DIALOGUE_END_HOLD_MS`(`introDialogueTotalMs`削除で唯一の内部
+  使用元を失ったが export のため typecheck は通る=連鎖対象外)。
+どちらも「参照ゼロ」だが指示のリストに無く、typecheck/lintも通るため今回は手を付けていない
+(次バッチの走査候補として記録のみ)。
+
+### 検証
+`npm run typecheck` エラー0(連鎖修正込みで2回で収束) / `npm run lint` エラー0(既存warning 8のまま) /
+削除で触ったテストのみ `npx vitest run`: `bossPosture.test.ts`(3) / `detourPoi.test.ts`(7) /
+`pois.test.ts`(9) / `fixedGuardians.test.ts`(12) / `skills.test.ts`(54) / `sim.test.ts`(29、
+skaterStopUntil周辺の回帰確認として追加実行)全パス。`npm test`/ボット/buildは社長指示が無いため未実行。
+
+**削除規模**: 29ファイル変更・削除3本・+15/−653行(`git diff --stat`)。
+コミット/pushはせず、ワーキングツリーに変更を残した(社長確認待ち)。
+
 ## v0.25.2895 — ソース棚卸しバッチ2: ボス制御経路間の整合性修正【2026-08-06 16:22 JST】
 ボスの状態機械は4経路(gameStore汎用tick(G)/useGameLoop裏ボスブロック(H)/angelBossTick天使6体(A)/
 idolTickアイドル(I))に分かれている。v0.25.2892(紫の完全気絶をアイドルだけ無視していた)の続きで、

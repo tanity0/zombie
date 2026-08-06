@@ -199,11 +199,9 @@ export interface Player extends DashLocomotionState {
   shijinSlideUntil: number;
   shijinSlideDirX: number;
   shijinSlideDirY: number;
-  // スケーター: 1秒以上走行後に進行方向と逆へスティックを倒すと、進行方向へ短距離衝撃波
-  // (バッシュ効果)を出して急停止する。skaterStopUntil が未来の間は入力を無視して残速度を
-  // 素早く減衰させる(ほんの少し慣性のある急停止)。skaterBashCdUntil=次に出せる gameTime。
+  // スケーター: skaterStopUntil が未来の間は入力を無視して残速度を
+  // 素早く減衰させる(ほんの少し慣性のある急停止)。
   skaterStopUntil: number;
-  skaterBashCdUntil: number;
   // スケーター新仕様(社長指示): ダブルタップで「乗車」。乗車中だけ移動3倍＋強慣性。指離しで降車し、
   // 1秒以上乗っていれば進行方向へスケボーを投擲(当たると前方バッシュ=衝撃波+強制ノックバック)。1秒未満は消えるだけ。
   skaterRiding: boolean;     // 乗車中か(=3倍/強慣性を適用)。
@@ -580,9 +578,6 @@ export interface Enemy {
   bossPostureLastDamageAt?: number;
   bossPostureLockUntil?: number;
   bossBreakRewardRemaining?: number;
-  bossBreakRewardMax?: number;
-  /** @deprecated v0.25.2867以降は体勢値を使用。旧保存データ読込専用。 */
-  bossCritCount?: number;
   // 体勢崩し(紫)の終了 gameTime(ms)。
   bossFullStunUntil?: number;
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。

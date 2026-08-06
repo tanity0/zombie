@@ -174,7 +174,6 @@ export const SOFTEN_HP_FRAC = 0.3;
 export const SOFTEN_RELEASE_NO_HIT_MS = 10000;
 export const SOFTEN_TARGET_MULT = 0.8;
 export const SOFTEN_TARGET_MIN = 3;
-export const SOFTEN_CD_MULT = 1.5;
 
 const SOFTEN_BUCKETS = 10;
 

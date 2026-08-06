@@ -32,8 +32,6 @@ export type BotObjective =
   /** 拠点をn個解放する(サブクエ検証用)。 */
   | { kind: 'bases'; count: number };
 
-export type ObjectiveKind = BotObjective['kind'];
-
 /** 目的を決めるために必要な世界の状態(呼び出し側が store から詰める)。 */
 export interface ObjectiveWorld {
   px: number;              // プレイヤー中心X

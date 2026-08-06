@@ -326,7 +326,6 @@ export const MERCHANT_TALK_DWELL_MS = 3000;
 const EVENT_NPC_MIN_DISTANCE = 460;
 const EVENT_NPC_MAX_DISTANCE = 950;
 const EVENT_NPC_INTERACT_RADIUS = 64;
-const EVENT_NPC_REOPEN_DELAY_MS = 1500;
 export const SHOP_AMMO_COST = 10;
 // 商人の弾薬販売量(v0.25.2168・社長指示「商人のライフルは15発に。ハンドガンは25発に」):
 // ドロップ箱の取得量(ammoPickupAmounts: handgun40/rifle20等)とは別建てで、商人だけ少なめ。
@@ -736,8 +735,8 @@ const saveCarriedEquip = (defId: string | null): void => {
 export const getCarriedEquipId = (): string | null => loadCarriedEquip();
 
 // 装備を該当スロットへ装着した新 Player を返す純関数(同スロットは置換=破棄)。最大体力の増減は
-// player.maxHealth へベイクし、増分ぶんだけ現HPも底上げ(減少時は上限へクランプ)。equipItem と
-// selectUpgrade(装備取得)の双方から使う。
+// player.maxHealth へベイクし、増分ぶんだけ現HPも底上げ(減少時は上限へクランプ)。
+// selectUpgrade(装備取得)から使う。
 const equipDefOnPlayer = (player: Player, defId: string): Player => {
   const def = equipmentById(defId);
   if (!def) return player;
@@ -931,15 +930,6 @@ const SHIELD_BASH_DAMAGE_MULT = 3;
 const SHIELD_BASH_SHOVE_DISTANCE = 80;        // バッシュの飛び出し距離(社長指示: 100→80 で気持ち短く。ノックバックは据え置き)
 const SHIELD_BASH_DURABILITY_COST = 5;        // バッシュ1回で減る耐久(0以下で破壊)
 const SHIELD_BASH_KNOCKBACK_SPEED = 4800; // バッシュのノックバック距離(社長指示で倍: 2400→4800)。距離∝速度。
-// スケーター急停止バッシュ(社長指示): skater で1秒以上走行後、進行方向と逆へスティックを倒すと
-// 進行方向へ短距離衝撃波(バッシュ=近接×SHIELD_BASH_DAMAGE_MULT＋ノックバック)を出して急停止。
-const SKATER_BASH_RUN_MS = 1000;       // 発動に必要な連続走行時間(1秒)
-const SKATER_BASH_RANGE = 120;          // 衝撃波の射程(短距離・前方)
-const SKATER_BASH_ARC_DOT = 0.5;        // 前方扇(heading との dot がこの値以上=±60°)
-const SKATER_BASH_REVERSE_DOT = -0.5;   // 入力が進行方向と逆(dot がこの値以下=120°以上反対)
-const SKATER_BASH_STOP_MS = 150;        // 急停止の入力ロック窓(この間に残速度を素早く減衰)
-const SKATER_BASH_CD_MS = 600;          // 連射防止クールダウン(gameTime)
-const SKATER_BASH_RESIDUAL = 0.18;      // 急停止直後に残す速度割合(ほんの少し慣性)
 // スケボー新仕様(社長指示): ダブルタップ乗車→指離しで投擲。1秒以上乗車で発動、未満は消えるだけ。
 const SKATER_RIDE_MIN_MS = 1000;        // 投擲発動に必要な最低乗車時間(1秒)
 const SKATEBOARD_SPEED = 900;           // 投擲したスケボーの飛翔速度(px/s・私案)
@@ -951,9 +941,6 @@ const SKATEBOARD_BASH_RANGE = 140;      // ヒット時バッシュの範囲(半
 export const KNOCKBACK_IMMUNE_MS = 1750;
 export const REFLECT_DAMAGE_MULTIPLIER = 10.0; // countered/reflected bullets hit 10× harder(社長指示で60→10)
 export const REFLECT_SPEED_MULTIPLIER = 2.0; // カウンター反射弾の速度倍率(社長指示v0.25.1731で1.8→2.0)
-// スキル: 反射神経の反撃爆発。ランチャー相当の半径・ダメージ(useGameLoop GRENADE_* に準拠の仮値)。
-export const REFLEX_BLAST_RADIUS = 92;  // = GRENADE_BLAST_RADIUS
-export const REFLEX_BLAST_DAMAGE = 60;  // ランチャー級の反撃(要実機調整)
 
 // ---------------------------------------------------------------------------
 // Katana (刀) sub-weapon. Owning the card switches the player to katana mode:
@@ -989,8 +976,6 @@ export const KATANA_DASH_SPEED = KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000);
 export const KATANA_DASH_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
 // 着地後の硬直(後隙)。刀・村雨共通。着地から この時間 は移動も次の一閃も不可。
 export const KATANA_DASH_RECOVERY_MS = 200;
-// TODO(刀): 仮値。PC二連打の受付時間。既存の操作感を見て調整可能にしてある。
-export const KATANA_DOUBLE_TAP_MS = 260;
 // TODO(刀): 仮値。フリック判定しきい値(直近サンプル窓・最低距離・最低速度)。
 // 通常のジョイスティックドラッグは低速なのでフリック扱いにならない。
 export const KATANA_FLICK_WINDOW_MS = 120;
@@ -1127,10 +1112,8 @@ export const whipChargeThreshold = (player: Player): number =>
   WHIP_CHARGE_HITS_BY_LEVEL[whipLevel(player)];
 
 // 錬金術ヘルパー。
-export const hasAlchemy = (player: Player): boolean => player.subWeapons.includes('alchemy');
 export const alchemyLevel = (player: Player): number =>
   Math.max(1, Math.min(3, player.subWeaponLevels['alchemy'] ?? 1));
-export const hasRareSummon = (summons: Summon[]): boolean => summons.some(s => s.kind === 'rare');
 // 特殊枠サブ「賢者の石」(錬金術Lv3で武器商人に並ぶ。錬金術と同居の排他枠)。
 export const hasSageStone = (player: Player): boolean => player.subWeapons.includes('sage-stone');
 // 村雨が刀Lv3で商人に並ぶのと同じ仕組み: 錬金術がLv3に達したら賢者の石を商人在庫(Lv1陳列)へ解禁。
@@ -1965,7 +1948,6 @@ export const PLAYER_INTRO_FLY_X = 0;        // (フェーズB)人間の飛び降
                                             // 横移動はすべてヘリの飛来(FAR_X)で確保し、飛び降りは前進せず垂直落下。
                                             // v0.25.411: 900→450 / v0.25.413: 450→225 / v0.25.450: 225→0(前進やめ)。
 export const PLAYER_INTRO_LOW_Y = 28;       // (フェーズB)開始のわずかな高さ
-export const PLAYER_INTRO_ARC_H = 110;      // (フェーズB)飛行アーチ高
 export const PLAYER_INTRO_HELI_FAR_X = 4500; // (フェーズA)飛来開始の遠方X(world px。もっと左の遠くから)
 export const PLAYER_INTRO_HELI_HIGH_Y = 420; // (フェーズA)飛来開始の高度(画面上方 px)。v0.25.413: 300→420(もう少し上空から)
 export const PLAYER_INTRO_HELI_START_SCALE = 0.22; // (フェーズA)飛来開始の見た目縮尺(遠さの主表現)
@@ -2042,9 +2024,6 @@ export const INTRO_DIALOGUE_END_HOLD_MS = 550;   // 最終行後の保持(この
 // 表示側(IntroDialogue)と終了判定(useGameLoop)で必ず同じ値を使うため共通化する。
 export const introLineMs = (l: IntroLine): number =>
   l.holdMs ?? (l.text.length * (INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_READ_MS) + INTRO_DIALOGUE_LINE_HOLD_MS);
-// 会話全体の所要時間(useGameLoop が終了判定に使用)。行配列から算出。空なら 0。
-export const introDialogueTotalMs = (lines: IntroLine[]): number =>
-  lines.length === 0 ? 0 : lines.reduce((sum, l) => sum + introLineMs(l), 0) + INTRO_DIALOGUE_END_HOLD_MS;
 // セリフを出す登場進行 t。ヘリが低ホバーまで降りてきた頃(フェーズA内 a≈0.82。降下0.5〜飛び降り0.85の終盤)。
 export const INTRO_DIALOGUE_TRIGGER_T = PLAYER_INTRO_HELI_FRAC * 0.82;
 
@@ -3316,7 +3295,6 @@ interface GameState {
   showShopMenu: boolean;
   showEventQuestMenu: boolean;
   shopReopenAt: number;
-  eventQuestReopenAt: number;
   vaccinePurchased: boolean;
   // Flipped true only when the player completes the return circle (帰還完了) — the run is won.
   gameWon: boolean;
@@ -3536,8 +3514,6 @@ interface GameState {
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
-  // スケーター: 1秒以上走行後に進行方向と逆へスティックで急停止＋前方短距離バッシュ衝撃波。
-  triggerSkaterBash: () => void;
   // スケボー(新仕様): ダブルタップで乗車 / 指離しで降車(+1秒以上乗車なら進行方向へ投擲)。
   mountSkater: () => void;
   dismountSkater: () => void;
@@ -3600,18 +3576,14 @@ interface GameState {
   fireWeapons: (currentTime: number) => void;
   firePhillShot: () => void; // PHILL銃: 指離しで狙いサークル方向へ1発(手動)。
   selectUpgrade: (upgrade: UpgradeOption) => void;
-  learnSubWeapon: (key: SubWeaponKey) => void;
   setSubWeaponCooldown: (key: SubWeaponKey, readyAt: number) => void;
   updateHuntingCharge: (startedAt: number, charged: boolean) => void;
   buyShopItem: (key: ShopItemKey, ammoType?: AmmoType) => boolean;
   buySkillCardFromShop: (key: SubWeaponKey) => boolean;
   sellSubWeapon: (key: SubWeaponKey) => boolean;
-  openShop: () => void;
   closeShop: () => void;
   returnToBase: () => void;                              // 商人「帰還」=任意撤収(スコア計上・進行なし・装備持ち帰り)
-  openEventQuest: () => void;
   acceptEventQuest: () => void;
-  declineEventQuest: () => void;
   completeEventQuest: () => void;
   
   // Enemy actions
@@ -3703,14 +3675,12 @@ interface GameState {
   setGameTime: (time: number, realTime?: number) => void;
   setBackgrounded: (v: boolean) => void; // タブ/アプリが裏かを設定(進行停止用)。visibility/ネイティブpauseから呼ぶ。
   setPaused: (paused: boolean) => void;
-  setMeleeAmmoDropPercent: (pct: number) => void;
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   setStartWithTestStraps: (enabled: boolean) => void;
   setShowStatsOverlay: (enabled: boolean) => void;
   stampPlayerIntro: () => void; // 登場演出の開始(初フレームで終了時刻を確定)
   setRendererReady: (ready: boolean) => void; // レンダラ初フレーム表示の通知(PixiStage が初 render 後に true)
-  startIntroDialogue: () => void; // 登場セリフ開始(時間停止)
   setIntroDialogueLines: (lines: IntroLine[]) => void; // 出撃ごとの会話を設定(選択ミッション/フリー)
   pendingLoadout: SubWeaponKey[];                       // 装備メニューで選んだサブ(出撃時に resetGame が所持へ反映・永続)
   setPendingLoadout: (keys: SubWeaponKey[]) => void;
@@ -3723,7 +3693,6 @@ interface GameState {
   gachaPullsTotal: number;                              // これまでに引いた累計回数(階段式価格の段・永続)
   grantSkill: (key: SkillKey) => void;                  // ガチャ当選で所持解禁(重複は無視)
   resetGachaProgress: () => void;                       // 開発用: ガチャ状態(所持/Lv/被り/pity/累計/金)を初手へ
-  grantSkillLevel: (key: SkillKey, level: number) => boolean; // 解禁＋Lv上書き(既存より高ければ)。上がれば true
   pullGacha: () => GachaPullResult | null;              // 強化訓練を1回引く(レア度pity→Lv抽選→付与/返金。逐次状態更新)
   goldBalance: number;                                  // 永続ゴールド残高(ガチャ通貨。in-run strap とは別)
   addGold: (amount: number) => void;                    // ラン結果のゴールドを加算(永続)
@@ -3787,7 +3756,6 @@ interface GameState {
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
   labButtons: LabButton[];                              // ボタン(押下状態)
   labProps: LabProp[];                                  // 障害物プロップ(木の代わり・当たり判定あり)
-  hasCardKey: boolean;                                  // カードキー取得済みか
   goalReachedAt: number;                                // ゴール到達時刻(0=未到達)。演出後に勝利
   pendingIndoor: boolean;                               // 出撃が屋内ステージか(startMission→resetGame で受け渡し)
   setPendingIndoor: (indoor: boolean) => void;
@@ -3854,7 +3822,6 @@ interface GameState {
   answerStoryReturnPrompt: (confirmed: boolean) => void;
   updateSuppression: (deltaTime: number) => { x: number; y: number }[]; // 毎フレーム: 制圧イベント。返り値=このフレームに護衛NPCが発砲した位置(NPC銃声の距離減衰再生用)
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
-  setHasCardKey: (v: boolean) => void;
   pressLabButton: (id: string) => void;                 // ボタン押下→対応ドア解錠
   endIntroDialogue: () => void;   // 登場セリフ終了(ゲーム開始へ)
   setDanceTestMode: (enabled: boolean) => void;
@@ -3864,8 +3831,6 @@ interface GameState {
   setDanceForceJust: (enabled: boolean) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   // 装備システム(裏側): 装備の着脱と持ち帰り。レベルアップ時の選択UIは別途接続する。
-  // equipItem: defId の装備を該当部位へ装着(同部位は置換)。最大体力は加算ベイクし現HPも増分だけ底上げ。
-  equipItem: (defId: string) => void;
   // takeHomeEquipment: 現在装備中の1点を次run へ持ち帰り(null=持ち帰らない)。商人帰還/クリア時に呼ぶ。
   takeHomeEquipment: (defId: string | null) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
@@ -4026,7 +3991,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     shijinSlideDirX: 0,
     shijinSlideDirY: 0,
     skaterStopUntil: 0,
-    skaterBashCdUntil: 0,
     skaterRiding: false,
     skaterRideStartAt: 0,
     straps: 0,
@@ -4100,7 +4064,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   showShopMenu: false,
   showEventQuestMenu: false,
   shopReopenAt: 0,
-  eventQuestReopenAt: 0,
   vaccinePurchased: false,
   gameWon: false,
   finaleDefeated: false,
@@ -4160,7 +4123,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   labDoors: [],
   labButtons: [],
   labProps: [],
-  hasCardKey: false,
   goalReachedAt: 0,
   lastDamageSource: '',
   pendingIndoor: false,
@@ -4573,119 +4535,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
-  },
-
-  // スケーター急停止バッシュ(社長指示): skater で1秒以上走行後、進行方向と逆へスティックを
-  // 倒すと、進行方向へ短距離衝撃波(バッシュ=近接×SHIELD_BASH_DAMAGE_MULT＋ノックバック)を
-  // 出して急停止する。条件は全てここで自己判定。useGameLoop が movePlayer 直後に毎フレーム呼ぶ。
-  triggerSkaterBash: () => {
-    const st = get();
-    const { player, gameTime, swipeDirection, swipeStrength, inputState } = st;
-    if (!hasSkill(player, 'skater')) return;
-    const nowMs = Date.now();
-    // 特殊ロコモーション中(一閃ダッシュ/ワイヤー/四神スライド/着地後隙/急停止中)は発動しない。
-    if (nowMs < player.katanaDashUntil || nowMs < player.wireDashUntil || nowMs < player.shijinSlideUntil ||
-        nowMs < player.katanaRecoveryUntil || nowMs < player.skaterStopUntil) return;
-    if (gameTime < player.skaterBashCdUntil) return;            // 連射防止CD
-    if (!player.isMoving) return;                                // 走行中のみ
-    if (player.marksmanMovingSince <= 0 || gameTime - player.marksmanMovingSince < SKATER_BASH_RUN_MS) return; // 1秒以上走行
-    // 進行方向(走っていた方角)。
-    const hd = player.lastDirection ?? { x: 0, y: 0 };
-    const hl = Math.hypot(hd.x, hd.y);
-    if (hl < 0.01) return;
-    const hx = hd.x / hl, hy = hd.y / hl;
-    // 入力方向(スティック or キー)。
-    let ix = 0, iy = 0;
-    if (swipeDirection) {
-      if (swipeStrength < 0.4) return; // 弱い傾きは誤爆防止
-      ix = swipeDirection.x; iy = swipeDirection.y;
-    } else {
-      if (inputState.up) iy -= 1;
-      if (inputState.down) iy += 1;
-      if (inputState.left) ix -= 1;
-      if (inputState.right) ix += 1;
-    }
-    const il = Math.hypot(ix, iy);
-    if (il < 0.01) return;
-    ix /= il; iy /= il;
-    if (hx * ix + hy * iy > SKATER_BASH_REVERSE_DOT) return;    // 進行方向と逆(120°以上)でなければ不発
-
-    // --- 発動: 前方扇 SKATER_BASH_RANGE 内の敵にバッシュ効果 ---
-    const pcx = player.x + player.width / 2;
-    const pcy = player.y + player.height / 2;
-    const melee = player.weapons.find(w => w.isMelee);
-    const meleeDamage = meleeSwingBaseDamage(melee, player);
-    const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
-    const now = Date.now();
-    const r2 = SKATER_BASH_RANGE * SKATER_BASH_RANGE;
-    const killedList: { enemy: Enemy; finisher: boolean }[] = [];
-    const hitAt: { x: number; y: number }[] = [];
-    const runSpeed = Math.hypot(player.vx, player.vy);
-
-    set(state => {
-      const out: Enemy[] = [];
-      for (const enemy of state.enemies) {
-        if (enemy.aiPhase === 'jump') { out.push(enemy); continue; } // 空中は無敵(既存仕様)
-        if (enemy.type === 'reaper' && !enemy.reaperChaser) { out.push(enemy); continue; } // 死神本体は対象外
-        const ecx = enemy.x + enemy.width / 2;
-        const ecy = enemy.y + enemy.height / 2;
-        const dxr = ecx - pcx, dyr = ecy - pcy;
-        const d2 = dxr * dxr + dyr * dyr;
-        if (d2 > r2) { out.push(enemy); continue; }
-        const dl = Math.sqrt(d2) || 1;
-        if ((dxr / dl) * hx + (dyr / dl) * hy < SKATER_BASH_ARC_DOT) { out.push(enemy); continue; } // 前方扇の外
-        hitAt.push({ x: ecx, y: enemy.y });
-        // §5.21-追補4: バッシュはフィニッシュではない。finishKillOnly個体はHP1で踏みとどまる。
-        const newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
-        if (newHealth <= 0) { killedList.push({ enemy, finisher: false }); continue; } // 死亡=out から除外
-        out.push({
-          ...enemy,
-          health: newHealth,
-          lastHit: now,
-          meleeAggro: true,
-          knockbackVx: hx * SHIELD_BASH_KNOCKBACK_SPEED, // 進行方向へノックバック(バッシュ同等・距離2倍)
-          knockbackVy: hy * SHIELD_BASH_KNOCKBACK_SPEED,
-          knockbackUntil: now + KNOCKBACK_DURATION,
-          knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
-          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
-        });
-      }
-      const bossKilled = killedList.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
-      return {
-        enemies: out,
-        gameStats: {
-          ...state.gameStats,
-          enemiesKilled: state.gameStats.enemiesKilled + killedList.length,
-          eliteKills: state.gameStats.eliteKills + killedList.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
-          bossKills: state.gameStats.bossKills + killedList.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
-          damageDealt: state.gameStats.damageDealt + dmg * hitAt.length,
-        },
-        finaleDefeated: state.finaleDefeated || bossKilled,
-        player: {
-          ...state.player,
-          // 急停止: 進行方向への残速度を少しだけ残し(ほんの少し慣性)、入力ロック窓へ。
-          vx: hx * runSpeed * SKATER_BASH_RESIDUAL,
-          vy: hy * runSpeed * SKATER_BASH_RESIDUAL,
-          skaterStopUntil: now + SKATER_BASH_STOP_MS,
-          skaterBashCdUntil: gameTime + SKATER_BASH_CD_MS,
-        },
-      };
-    });
-    // §6.21 M46: スキル(スケーターバッシュ)によるダメージ計測。channel='other'(近接カウンター振りではない)。
-    if (hitAt.length > 0) recordDamageDealt('other', dmg * hitAt.length);
-
-    // 撃破報酬(XP/通貨/弾薬)はバッシュと同じく grantMeleeKillRewards で。
-    if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
-
-    // 演出: 前方の衝撃波リング＋命中スラッシュ＋バースト＋ヒットストップ＋命中SE(バッシュ同等)。
-    const fcx = pcx + hx * 26, fcy = pcy + hy * 26; // プレイヤーの少し前方を中心に
-    get().spawnRing(fcx, fcy, 8, SKATER_BASH_RANGE, 'rgba(190,242,100,0.62)', 4, 240);
-    get().spawnBurst(fcx, fcy, '#bef264', 12);
-    for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
-    if (hitAt.length > 0) {
-      get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0);
-      set({ bashHitFxAt: Date.now() }); // 命中SE(heavy-impact)。useGameLoop が検出して再生。
-    }
   },
 
   // スケボー(新仕様): ダブルタップで乗車。skater 未装備/既に乗車中は無視。
@@ -7617,21 +7466,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  learnSubWeapon: (key) => {
-    set(state => ({
-      player: {
-        ...state.player,
-        subWeapons: state.player.subWeapons.includes(key)
-          ? state.player.subWeapons
-          : [...state.player.subWeapons, key],
-        subWeaponLevels: {
-          ...state.player.subWeaponLevels,
-          [key]: Math.max(1, state.player.subWeaponLevels[key] ?? 0)
-        }
-      }
-    }));
-  },
-
   setSubWeaponCooldown: (key, readyAt) => {
     // M35(§6.12): ボット計測=サブウェポン発動回数(合流点)。overclock成立でCDが付かない場合も
     // 「発動」として数える=proc判定より前に記録。計測のみ=挙動不変。
@@ -7915,16 +7749,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     return sold;
   },
 
-  openShop: () => {
-    set({
-      showShopMenu: true,
-      isPaused: true,
-      touchActive: false,
-      swipeDirection: null,
-      swipeStrength: 1
-    });
-  },
-
   // 武器商人: サークルに3秒連続滞在で話しかける(社長指示v0.25.1842・旧スイング開店を置換)。
   // useGameLoopがsim毎フレーム呼ぶ。紅き夜中は「やり過ごした」(旧スイング時の挙動を移植)。
   updateMerchantDwell: (deltaMs) => {
@@ -7981,16 +7805,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ gameReturned: true, showShopMenu: false, isPaused: false });
   },
 
-  openEventQuest: () => {
-    set({
-      showEventQuestMenu: true,
-      isPaused: true,
-      touchActive: false,
-      swipeDirection: null,
-      swipeStrength: 1
-    });
-  },
-
   acceptEventQuest: () => {
     // 受領(EVENT_QUEST_DESIGN.md): 強制が未納品(ステージ1のみ課される)なら強制、
     // 納品済み(または最初からクリア済み扱い=3/4)ならサブを受ける。
@@ -8032,16 +7846,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       eventQuestActive: forcedPending ? 'forced' : 'sub',
       eventQuestKills: 0,
       eventQuestGoalCount: forcedPending ? 1 : cfg.sub.count,
-      eventQuestGoalTier: forcedPending ? null : cfg.sub.tier,
-      eventQuestReopenAt: state.gameTime + EVENT_NPC_REOPEN_DELAY_MS
-    }));
-  },
-
-  declineEventQuest: () => {
-    set(state => ({
-      showEventQuestMenu: false,
-      isPaused: false,
-      eventQuestReopenAt: state.gameTime + EVENT_NPC_REOPEN_DELAY_MS
+      eventQuestGoalTier: forcedPending ? null : cfg.sub.tier
     }));
   },
 
@@ -11793,13 +11598,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ isPaused: paused });
   },
 
-  // v0.25.2152(社長指示): オプションUIから弾ドロップ率の項目を撤去=値はコード既定
-  // (DEFAULT_MELEE_DROP_PCT)で管理する。localStorageへの保存もやめる(UIが無いのに端末に残った
-  // 旧設定値が見えないまま効き続ける事故を防ぐ)。setterはテスト/開発用に残す(永続なし)。
-  setMeleeAmmoDropPercent: (pct) => {
-    set({ meleeAmmoDropPercent: clampDropPct(pct) });
-  },
-
   setAmmoPickupAmount: (type, amount) => {
     const clamped = clampAmmoPickupAmount(amount);
     set(state => {
@@ -11856,10 +11654,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ rendererReady: ready });
   },
 
-  startIntroDialogue: () => {
-    set({ introDialogueActive: true, introDialogueStartedAt: Date.now(), introDialogueShown: true });
-  },
-
   setIntroDialogueLines: (lines) => {
     set({ introDialogueLines: lines });
   },
@@ -11897,21 +11691,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       ownedSkills: ensureDefaultOwnedSkills([]), ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
       gachaPullsTotal: 0, goldBalance: 0, pendingSkills: [],
     });
-  },
-  // ガチャ: 解禁＋Lv反映。所持していなければ追加、Lv は max(既存, rolled) を最大Lvでクランプ。
-  // 既存Lv以上に上がった(=新規 or レベルアップ)場合のみ true(=返金しない)。
-  grantSkillLevel: (key, level) => {
-    const lv = Math.max(1, Math.min(skillMaxLevel(key), Math.floor(level)));
-    const owned = get().ownedSkills;
-    const levels = get().ownedSkillLevels;
-    const cur = owned.includes(key) ? (levels[key] ?? 1) : 0;
-    if (cur >= lv) return false; // 既存Lv以上は出なかった=重複扱い(返金)
-    const nextOwned = owned.includes(key) ? owned : [...owned, key];
-    const nextLevels = { ...levels, [key]: lv };
-    saveStringArray(OWNED_SKILLS_KEY, nextOwned);
-    saveSkillLevels(nextLevels);
-    set({ ownedSkills: nextOwned, ownedSkillLevels: nextLevels });
-    return true;
   },
   // 強化訓練を1回引く(逐次)。レア度をpityから抽選→pity更新(super=リセット/他=+1)→
   // スキル別の被り回数でLv抽選→初取得は付与・既存超えで昇格・それ以外は返金→被り回数を更新。
@@ -12857,10 +12636,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({ labDoors: state.labDoors.map(d => d.id === id ? { ...d, open: true } : d) }));
   },
 
-  setHasCardKey: (v) => {
-    set({ hasCardKey: v });
-  },
-
   pressLabButton: (id) => {
     set(state => {
       const btn = state.labButtons.find(b => b.id === id);
@@ -12914,12 +12689,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
-  },
-
-  // 装備を該当部位へ装着(同部位は置換)。最大体力の増減は player.maxHealth へベイクし、増分だけ現HPも上げる。
-  equipItem: (defId) => {
-    if (!equipmentById(defId)) return;
-    set(state => ({ player: equipDefOnPlayer(state.player, defId) }));
   },
 
   // 現在装備中の1点を次run へ持ち帰り(localStorage)。null または未装備IDなら持ち帰り無し。
@@ -13462,7 +13231,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         labDoors: runDoors,
         labButtons: runButtons,
         labProps: runProps,
-        hasCardKey: false,
         goalReachedAt: 0,
         lastDamageSource: '',
         // SE発火トリガ(Date.now時刻)を0へ戻す。これを残すと、リトライ直後の最初のフレームで
@@ -13540,7 +13308,6 @@ export const useGameStore = create<GameState>((set, get) => ({
           shijinSlideDirX: 0,
           shijinSlideDirY: 0,
           skaterStopUntil: 0,
-          skaterBashCdUntil: 0,
           skaterRiding: false,
           skaterRideStartAt: 0,
           straps: (state.startWithTestStraps ? 1000 : 0) + scrapBuilderBonus,
@@ -13631,7 +13398,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         showEventQuestMenu: false,
         shopReopenAt: 0,
         merchantDwellMs: 0,
-        eventQuestReopenAt: 0,
         vaccinePurchased: false,
         gameWon: false,
         finaleDefeated: false,

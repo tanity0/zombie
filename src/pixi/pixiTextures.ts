@@ -675,8 +675,6 @@ export const ensureTextures = (): Promise<void> => {
   return loading;
 };
 
-export const texturesReady = (): boolean => ready;
-
 // 背景パノラマ/床/地平帯はマニフェスト外で URL 直読みする(PixiStage が Assets.load)。
 // v0.25.2166(社長指示「ステージ特有のリソースはそのステージのローディング中に」): 起動時の先読みは
 // 【全ステージ共通のコア4枚だけ】に削減。旧: ステージ固有21枚も全部先読み=タイトル画面の時点で

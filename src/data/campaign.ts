@@ -798,7 +798,6 @@ export const MAX_EQUIPPED_SKILLS = 2;
 // ガチャのレア度抽選: 基本 normal70 / rare25 / super5。super が出ない pull ごとに
 // normal −5 / rare +4 / super +1 を蓄積(ソフト天井)。normal が 0 になる14pullで打ち止め
 // (super19 / rare81 / normal0)。super が出たら基本へリセット。ハード天井(確定枠)なし。
-export const GACHA_BASE_RARITY_WEIGHTS: Record<SkillRarity, number> = { normal: 70, rare: 25, super: 5 };
 export const GACHA_PITY_MAX = 14; // normal が 0 になる pull 数(= super 19% で打ち止め)
 // 「直近 super からの pull 数」pity からレア度重みを算出(純粋関数)。
 export const rarityWeightsForPity = (pity: number): Record<SkillRarity, number> => {
