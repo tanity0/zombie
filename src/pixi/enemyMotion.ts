@@ -76,7 +76,8 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   reaper: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.1, uneven: 0.20, faceMove: false },
   'lab-zombie-1': { kind: 'walk', bobPx: 1.2, rockRad: 0.045, sqAmp: 0.028, strideHz: 1.8, uneven: 0.55, faceMove: false },
   'lab-zombie-2': { kind: 'walk', bobPx: 1.3, rockRad: 0.050, sqAmp: 0.030, strideHz: 2.0, uneven: 0.65, faceMove: false },
-  'lab-zombie-3': { kind: 'heavy', bobPx: 1.8, rockRad: 0.040, sqAmp: 0.045, strideHz: 1.4, uneven: 0.30, faceMove: false },
+  // lab-zombie-3=**四つ這いの巨獣**(v0.25.2923で新絵・骨の尾)。heavy→crawlへ(見た目で判断)。
+  'lab-zombie-3': { kind: 'crawl', bobPx: 1.8, rockRad: 0.040, sqAmp: 0.040, strideHz: 2.0, uneven: 0.35, faceMove: false },
 };
 
 /**

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2923',
+    items: [
+      '研究所の敵レベル3(巨体)の見た目を新しい絵に変えました。四つ這いの獣の動きになります。',
+    ],
+  },
+  {
     version: '0.25.2922',
     items: [
       'ミゲルの剣をドット絵バージョンに差し替えました。',
