@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2935',
+    items: [
+      '偶像ボスの拳攻撃の絵を、新しいドット絵に変えました。',
+    ],
+  },
+  {
     version: '0.25.2934',
     items: [
       '隠しボス「ミーミル」の見た目を新しいドット絵に変えました。',
