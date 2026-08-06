@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2912',
+    items: [
+      '研究所の敵レベル1(男女)の見た目を新しい絵に変えました。',
+    ],
+  },
+  {
     version: '0.25.2911',
     items: [
       'ゲーム内容の変更はありません(開発用の敵モーション確認ページにボス閲覧タブを追加)。',
