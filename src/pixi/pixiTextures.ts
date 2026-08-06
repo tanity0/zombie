@@ -445,7 +445,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/tentacle-reach', scaleMode: 'linear' as const }, // 伸びる触手(根元が左端・先端が右端)
       { name: 'fx/idol-fist', scaleMode: 'linear' as const },      // 偶像の拳(ナックルが下端=突く向き)
       { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)
-      { name: 'fx/plant-seed', scaleMode: 'linear' as const },     // 種そのもの(植物の敵弾スプライト)
+      { name: 'fx/plant-seed', scaleMode: 'linear' as const },     // 種そのもの(植物の敵弾・v0.25.2932でドット版=赤いイガ球へ。判定幅まで大縮小するのでlinear維持)
       { name: 'fx/dust-puff', scaleMode: 'linear' as const },      // 砂埃バリエーションA(もこもこの塊)
       { name: 'fx/dust-ring', scaleMode: 'linear' as const },      // 砂埃バリエーションB(放射状のリング)
       { name: 'fx/ground-crack', scaleMode: 'linear' as const },   // 地割れ(着地衝撃の床。分類②)
