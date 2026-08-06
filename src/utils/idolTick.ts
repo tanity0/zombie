@@ -214,6 +214,18 @@ export const runIdolTick = (
   if (phaseJustChanged(idol.bossPhase, phase)) patch.bossPhaseFlashUntil = newGameTime + 1200;
   patch.bossPhase = phase;
   const st = idol.bossState ?? 'chase';
+  /**
+   * ★紫の完全気絶(ポスチャーブレイク)中か。**攻撃も移動も完全停止**する(社長指示v0.25.2892)。
+   *
+   * 他のボスは全員これを見ているのに、アイドルだけ抜けていた(v0.25.2613で状態機械を
+   * useGameLoop からこのファイルへ移設した時に落ちた)。結果、**リティクルは紫になるのに
+   * 弾を撃ち続ける**状態だった。出どころを揃える:
+   *   ・裏ボス4体 = useGameLoop の `frozen`(bossFullStun 込み)で状態機械ごとスキップ
+   *   ・天使6体   = angelBossTick の各tick先頭で `chase` へ戻す
+   *   ・アイドル  = ここ(同じ形)
+   * `bossFullStunUntil` は gameStore の紫発火が `stunUntil` と同時に打つ単一の出どころ。
+   */
+  const fullStun = idol.bossFullStunUntil !== undefined && newGameTime < idol.bossFullStunUntil;
   const fresh = (): Enemy => useGameStore.getState().enemies.find(e => e.id === idol.id) ?? idol;
   const hateAim = () => resolveBossHateAim(idol, { x: pcx, y: pcy }, useGameStore.getState().summons, newGameTime);
   const lockedHateAim = (side: HateSide = patch.hateTarget ?? idol.hateTarget ?? 'player') =>
@@ -299,7 +311,9 @@ export const runIdolTick = (
     patch.bossStateUntil = newGameTime + restMsFor(phase, IDOL_REST) * bossCritCdMult(fresh(), newGameTime);
   };
 
-  const counterableNow = counterEnabled
+  // 紫中はカウンターも取らない(裏ボス=frozen / 天使=fullStun分岐 と同じ。止まっている相手に
+  // カウンターは成立しない=紫はフィニッシュを入れる時間)。
+  const counterableNow = counterEnabled && !fullStun
     && (isCounterablePhase(st, WINDUP_STATES, RECOVER_STATES) || st === IDOL_REST_STATE);
   let countered = false;
   if (counterableNow) {
@@ -517,7 +531,18 @@ export const runIdolTick = (
     }
   }
 
-  if (forcedThisFrame) {
+  if (fullStun) {
+    // ★紫の完全気絶: 状態機械を丸ごとスキップ=技も弾も出ない・座標も書かない(=移動しない)。
+    // 解除後はチェイスから再開する。**持ち越しを全部捨てる**のは裏ボスが `bossBurstLeft` を
+    // クリアしているのと同じ理由——残しておくと、解除直後に「止まっていた分の連射/次の段」が
+    // まとめて暴発する(s.shotNextAt は既に過去になっている)。
+    // ★`s.homing`(発射済みの誘導弾の旋回)は消さない。既に飛んでいる弾は他のボスでも飛び続ける
+    // =「撃った後の弾」は気絶で消える物ではない。
+    patch.bossState = 'chase';
+    patch.bossNextActionAt = newGameTime + IDOL_TUNING.neutral.minMs;
+    s.seq = []; s.step = 0; s.wavePending = false;
+    s.shotWavesLeft = 0; s.shotSlot = null;
+  } else if (forcedThisFrame) {
     // ボスメーカーの強制発動フレーム: 上で patch を組み終えているので通常遷移はスキップ。
   } else if (countered) {
     // カウンター成立フレームは遷移をスキップ(counterHitが休符まで設定済み)。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2892',
+    items: [
+      'アイドルだけ、紫の完全気絶(体勢崩し)中も弾を撃ったり動いたりしていた不具合を直しました。ほかのボスと同じく、紫の間は完全に止まります。',
+    ],
+  },
+  {
     version: '0.25.2891',
     items: [
       'ステージ7ボスの爪痕が表示されなくなっていた不具合を直しました。爪を振り抜いた直後に、手前から奥へズバッと一気に刻まれます。',
