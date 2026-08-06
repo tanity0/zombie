@@ -86,7 +86,9 @@ const ANGEL_PHASE_FLASH_MS = 1200;
 const MIGUEL_HARAI_WINDUP_MS = 1000;
 const MIGUEL_HARAI_RANGE = 190;
 const MIGUEL_HARAI_HALF_WIDTH = 40;
-const MIGUEL_HARAI_ACTIVE_MS = 220;
+// ★振り速度2倍(社長指示v0.25.2885): 220→110。判定の持続窓も半分になる=技そのものが速い。
+// **pixiScene.ts の同名定数と必ず同値に保つこと**(手写しの重複。ズレると剣が固まる/先に振り終わる)。
+const MIGUEL_HARAI_ACTIVE_MS = 110;
 const MIGUEL_ORBIT_MARGIN = 20;
 const MIGUEL_ORBIT_SPEED = 70;
 const MIGUEL_MELEE_DASH_MS = 1000;
@@ -171,10 +173,10 @@ const RAFI_STEP_MAX_GAP_MS_P2 = 2800;
 
 // --- ウリ(§6.28-17・バッチM61・新規) ---------------------------------------------------------
 const URI_SWEEP_WINDUP_MS = 1100;
-const URI_SWEEP_ACTIVE_MS = 260;
+const URI_SWEEP_ACTIVE_MS = 130;          // ★振り速度2倍(社長指示v0.25.2885): 260→130。pixiScene.tsの同名と同値必須
 const URI_SWEEP_RECOVER_MS = withRecoverFloor(580);
 const URI_DOWNSLASH_WINDUP_MS = 1000;
-const URI_DOWNSLASH_ACTIVE_MS = 200;
+const URI_DOWNSLASH_ACTIVE_MS = 100;      // ★振り速度2倍(社長指示v0.25.2885): 200→100。pixiScene.tsの同名と同値必須
 const URI_DOWNSLASH_RECOVER_MS = withRecoverFloor(900);
 export const URI_THRUST_WINDUP_MS = 900;
 export const URI_THRUST_MOVE_MS = 230;           // ミゲル踏み込みと同値。溜め後の実行だけ高速化。

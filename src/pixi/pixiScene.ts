@@ -1227,7 +1227,7 @@ const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
 const THOR_HARAI_VIS_HALFWIDTH = 40;    // 払いの描画半太さ(当たり判定THOR_HARAI_HALF_WIDTH=40と一致・社長指示v0.25.1610)
 // ミゲル(ゲート2ボス)の横払い(狭)描画用(視覚・useGameLoop のゲームプレイ値と一致させること)。
 const MIGUEL_HARAI_WINDUP_MS = 1000;    // 払いの予告時間(useGameLoop と一致)
-const MIGUEL_HARAI_ACTIVE_MS = 220;     // 払いの実行(判定持続)時間(useGameLoop と一致)
+const MIGUEL_HARAI_ACTIVE_MS = 110;     // 払いの実行(判定持続)時間(angelBossTick.ts の同名と一致・振り速度2倍 v0.25.2885)
 const MIGUEL_HARAI_VIS_HALFWIDTH = 40;  // 払いの描画半太さ(当たり判定MIGUEL_HARAI_HALF_WIDTH=40と一致・社長指示v0.25.1610)
 const THOR_TSUKI_WINDUP_MS = 1000;      // 突きの溜め時間(useGameLoop と一致・溜め演出の進行度算出用)
 const TSUKI_DRAW_BACK_PX = 20;          // 突き溜め: 手元を狙い線の後方へ引く量(社長指示「少しだけ」ゆっくり)
@@ -1340,9 +1340,9 @@ const SURIEL_RING_VIS_D = 54; // 画面上の直径(px・叩き台)
 // (「一致」コメント義務=既存のMIGUEL_HARAI_WINDUP_MS等と同じ流儀)。
 const RAFI_SWEEP_WINDUP_MS_VIS = 700;
 const URI_SWEEP_WINDUP_MS_VIS = 1100;
-const URI_SWEEP_ACTIVE_MS = 260;
+const URI_SWEEP_ACTIVE_MS = 130;          // 振り速度2倍(v0.25.2885)。angelBossTick.tsの同名と一致
 const URI_DOWNSLASH_WINDUP_MS_VIS = 1000;
-const URI_DOWNSLASH_ACTIVE_MS = 200;
+const URI_DOWNSLASH_ACTIVE_MS = 100;      // 振り速度2倍(v0.25.2885)。angelBossTick.tsの同名と一致
 const SURIEL_SWEEP_WINDUP_MS_VIS = 800;
 const SURIEL_RINGSHOT_BEAM_WINDUP_MS_VIS = 700;
 const SURIEL_RINGSHOT_ACTIVE_MS_VIS = 220;

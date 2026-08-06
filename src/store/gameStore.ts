@@ -1792,7 +1792,11 @@ export const GIANT_SWEEPBEAM_SWEEP_RAD = (2 * Math.PI) / 3; // 120°
 export const GLEN_SCRIPT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('glenscript') !== '0';
 
 // --- 血の爪痕(talon・Phase1〜・トレース元=Mohgの Bloodflame Talons) ---
-export const GLEN_TALON_WINDUP_MS = 1080;           // 実効900ms・静止(3本の爪痕の狙いをロック)
+// ★爪の振り速度2倍(社長指示v0.25.2885): 1080→540(実効900→450ms)。
+// この定数は**爪が振り抜けるまでの時間そのもの**(絵は aiPhaseUntil を読んで扇45°をこの間に振り切る)
+// なので、半分にすると振りが2倍速になる。予告の猶予も同じだけ短くなる=技全体が速い。
+// **爆ぜるまでの遅延(GLEN_TALON_DETONATE_DELAY_MS)は別定数なので触っていない**(学習点①の間は保持)。
+export const GLEN_TALON_WINDUP_MS = 540;            // 実効450ms・静止(3本の爪痕の狙いをロック)
 export const GLEN_TALON_DETONATE_DELAY_MS = 1080;   // 実効900ms(固定)・置いた痕が爆ぜるまでの遅延(学習点①)
 export const GLEN_TALON_RECOVER_MS = 960;           // 実効800ms
 export const GLEN_TALON_CD_MS = 10800;              // 実効9.0s
@@ -1812,7 +1816,12 @@ export const GLEN_BOON_ARC_RADIUS = 500;            // 叩き台。中〜遠帯(
 export const GLEN_BOON_ARC_SPREAD_RAD = Math.PI / 3; // 叩き台(60°)。5個を並べる弧の開き角
 
 // --- 伸びる触手(reach・Phase1〜・社長裁定「見た目の間合いより遥かに遠くまで届く」) ---
-export const GLEN_REACH_WINDUP_MS = 960;            // 実効800ms・静止
+// ★触手が伸びる速度3倍(社長指示v0.25.2885): 960→320(実効800→267ms)。
+// 触手の伸長速度は `GLEN_REACH_LENGTH / (この値/ENEMY_ATTACK_SPEED_MULT)` で決まる(専用の速度定数は無い)。
+// 900px を 267ms で伸び切る=約3375px/s。**当たり判定は伸び切った瞬間に全長900pxで1回出る**ので、
+// 判定の出るタイミングもこの値と一致したまま3倍速くなる(絵と判定はズレない)。予告帯は従来どおり
+// 1フレーム目から全長900pxで出るが、**見えてから当たるまでが1/3**になる。
+export const GLEN_REACH_WINDUP_MS = 320;            // 実効267ms・静止
 export const GLEN_REACH_ACTIVE_MS = GIANT_SWEEP_ACTIVE_MS; // 叩き台=既存sweepの実行時間を流用(設計書に明記なし)
 export const GLEN_REACH_RECOVER_MS = 840;           // 実効700ms
 export const GLEN_REACH_CD_MS = 9600;               // 実効8.0s
