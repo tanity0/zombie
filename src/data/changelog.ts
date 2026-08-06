@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2926',
+    items: [
+      'アクラシエルの見た目を新しいドット絵に変えました。これで天使6体すべてが新しい絵になりました。',
+    ],
+  },
+  {
     version: '0.25.2925',
     items: [
       'ゲーム内容の変更はありません(ラスボス第二形態の技セット設計書を追加)。',

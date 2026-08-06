@@ -405,7 +405,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'uri-sword', scaleMode: 'linear' as const },
       { name: 'suriel', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
       { name: 'suriel-ring', scaleMode: 'linear' as const },
-      { name: 'acrasiel', scaleMode: 'linear' as const },
+      { name: 'acrasiel', scaleMode: 'nearest' as const } /* v0.25.2926 ドット化 */,
       { name: 'acrasiel-spear', scaleMode: 'linear' as const },
       // 予告円の「輪」(社長支給素材 A-1・v0.25.2395)。グレースケール+透過で、ゲーム側が tint で
       // 赤(危険)/青白(硬直)に染める。全ボスの円テレグラフで使い回す共通部品なので `fx/` 配下に置く。
