@@ -67,16 +67,26 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   plant: { kind: 'hover', bobPx: 0, rockRad: 0.008, sqAmp: 0.045, strideHz: 0.25, uneven: 0.3, faceMove: false },
   // hunter=棺桶担ぎの巨人。重い踏みしめ(ジャンプ等は既存aiSqが担当・歩行のみ)。
   hunter: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.2, uneven: 0.20, faceMove: false },
-  // giantbat=ステージ1の新絵は**2体が繋がった馬ぐるま体勢**(v0.25.2906)。腕で這う重い匍匐=
-  // 遅めのピッチング+2体の呼吸が揃わない乱れ(uneven高め)。
-  // ※城ボスはステージ別絵が残る唯一の型(stage3/4/5)。動きはtype単位なので全ステージ共通で
-  //   この這いになる——他ステージの絵で違和感が出たら per-stage 分岐を検討(実機確認待ち)。
+  // giantbat=城ボス。**唯一ステージ別絵が残る型**なので動きもステージ別(下の
+  // GIANTBAT_MOTION_BY_BACKDROP)。この行は既定=ステージ1(馬ぐるま)/3(四足獣)の這い。
   giantbat: { kind: 'crawl', bobPx: 1.6, rockRad: 0.035, sqAmp: 0.035, strideHz: 1.8, uneven: 0.55, faceMove: false },
   // reaper=チェーンソーを掲げた襤褸外套(v0.25.2901)。裾を引きずって歩く=重い踏みしめ(正面絵)。
   reaper: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.1, uneven: 0.20, faceMove: false },
   'lab-zombie-1': { kind: 'walk', bobPx: 1.2, rockRad: 0.045, sqAmp: 0.028, strideHz: 1.8, uneven: 0.55, faceMove: false },
   'lab-zombie-2': { kind: 'walk', bobPx: 1.3, rockRad: 0.050, sqAmp: 0.030, strideHz: 2.0, uneven: 0.65, faceMove: false },
   'lab-zombie-3': { kind: 'heavy', bobPx: 1.8, rockRad: 0.040, sqAmp: 0.045, strideHz: 1.4, uneven: 0.30, faceMove: false },
+};
+
+/**
+ * 城ボス(giantbat)のステージ別モーション(v0.25.2909)。絵がステージごとに別物のため動きも分岐する:
+ *  - 既定(ステージ1=馬ぐるま/ステージ3=四足獣) → 這い(上の表の giantbat 行)
+ *  - snow(ステージ4) = **まだ人間味のある巨躯の二足**(社長評) → 重い踏みしめ
+ *  - stage7(グレン) = 人型巨躯 → 同じく重い踏みしめ
+ * 描画側(pixiScene)が farBackdrop キーで引く。載っていないキーは既定の這いに落ちる。
+ */
+export const GIANTBAT_MOTION_BY_BACKDROP: Partial<Record<string, EnemyMotionSpec>> = {
+  snow: { kind: 'heavy', bobPx: 1.8, rockRad: 0.034, sqAmp: 0.040, strideHz: 1.2, uneven: 0.35, faceMove: false },
+  stage7: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.1, uneven: 0.25, faceMove: false },
 };
 
 /** バリアント枝ごとの型(添字指定)。動物園ビューアのように枝を直接選ぶ側はこちら。 */

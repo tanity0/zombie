@@ -57,7 +57,7 @@ import {
 import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
-import { enemyMotionSpec, enemyMotionPose, ENEMY_TURN_MS } from './enemyMotion';
+import { enemyMotionSpec, enemyMotionPose, ENEMY_TURN_MS, GIANTBAT_MOTION_BY_BACKDROP } from './enemyMotion';
 import { contentSpanFrac, needsContentTrim, contentTrimFrameY } from '../utils/shadowBake';
 import { horizontalShadowCorners } from '../utils/shadowProjection';
 import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
@@ -12173,7 +12173,10 @@ export class PixiScene {
     // (気絶/拘束/紫/休眠/壁ハマり)は自然に静止する=状態フラグを個別に見る必要が無い。
     let motRot = 0, motBob = 0, motSqX = 1, motSqY = 1, faceMul = 1;
     if (ENEMY_MOTION_FX && !isHiddenBoss(e.type) && !e.dormant) {
-      const spec = enemyMotionSpec(e.type, e.id);
+      // 城ボスだけステージ別絵に合わせて動きも分岐(v0.25.2909・enemyMotion.tsの表を参照)。
+      const spec = e.type === 'giantbat'
+        ? (GIANTBAT_MOTION_BY_BACKDROP[this.currentFarKey ?? ''] ?? enemyMotionSpec(e.type, e.id))
+        : enemyMotionSpec(e.type, e.id);
       const dtMs = view.motPrevAt !== undefined ? now - view.motPrevAt : 0;
       if (dtMs > 0 && dtMs < 400) {
         const k = Math.min(1, dtMs / 130);
