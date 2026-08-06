@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2921',
+    items: [
+      'ラスボス第二形態の連結を「胴体5個+最後尾に尻尾」の6連結にしました。ダメージで真ん中から欠けていき、尻尾は最後まで残ります。',
+    ],
+  },
+  {
     version: '0.25.2920',
     items: [
       'アイドル(ステージ2の隠しボス)の見た目を新しい絵に変えました。',

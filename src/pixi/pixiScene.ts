@@ -1167,11 +1167,23 @@ const ENEMY_MOTION_FX = typeof window === 'undefined'
 
 // ラスボス第二形態(v0.25.2918)。HP60%以下で変身(叩き台=城ボスの既存フェーズ閾値60%に揃えた)。
 const GLEN_P2_HP_FRAC = 0.6;
-/** 第二形態内のHP残量→連結パーツ数(3→2→1→0)。欠ける順は「真ん中→砲身→尾」(syncGlenPartsのORDER)。 */
-const glenPartCount = (hpFrac: number): number => {
-  const p = hpFrac / GLEN_P2_HP_FRAC; // 第二形態区間を1→0へ正規化
-  return p > 0.75 ? 3 : p > 0.5 ? 2 : p > 0.25 ? 1 : 0;
-};
+// 連結の構成(社長指示v0.25.2921「胴体を5個、尻尾を1つ最後尾に」): スロット0..5の順に並べる。
+// 胴体はシートの砲身(0)と箱(1)を交互に使って単調さを消し、尾(2)は必ず最後尾。
+const GLEN_CHAIN: readonly number[] = [0, 1, 0, 1, 0, 2];
+// 「真ん中のパーツから減っていく」のスロット除去順。中央(2,3)→内側(1,4)→根本(0)→尾(5)の順で欠け、
+// **尾は最後まで残る**(末端が残ってブンと揺れている方が「まだ生きている」が伝わる)。
+const GLEN_REMOVAL: readonly number[] = [2, 3, 1, 4, 0, 5];
+const GLEN_VISIBLE_BY_COUNT: readonly (readonly number[])[] = (() => {
+  const out: number[][] = [];
+  for (let count = 0; count <= 6; count++) {
+    const removed = new Set(GLEN_REMOVAL.slice(0, 6 - count));
+    out.push([0, 1, 2, 3, 4, 5].filter((s) => !removed.has(s)));
+  }
+  return out;
+})();
+/** 第二形態内のHP残量→連結スロット数(6→0・区間を6等分)。 */
+const glenPartCount = (hpFrac: number): number =>
+  Math.max(0, Math.min(6, Math.ceil((hpFrac / GLEN_P2_HP_FRAC) * 6)));
 const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   zombie: 0x7de28a,
   bat: 0x9aa6ff,
@@ -15483,10 +15495,13 @@ export class PixiScene {
   private hideMuzzleFlash(): void { if (this.muzzleSprite) this.muzzleSprite.visible = false; }
 
   /**
-   * ラスボス第二形態の連結パーツ(v0.25.2918・社長指示「3つのパーツが本体に並べて連なる。
-   * HPが減ると真ん中のパーツから減っていく」)。本体の右肩口から3つを少し重ねて数珠つなぎに置き、
-   * HP帯で 3→2→1→0 個へ欠けていく(欠けた分は詰めて連なりを保つ)。各パーツは位相ずらしの
-   * 上下ゆらぎ+微小な傾ぎで「生きた連結」に見せる。**視覚のみ・判定なし**。本体より後ろに描く。
+   * ラスボス第二形態の連結パーツ(v0.25.2918/構成改訂v0.25.2921・社長指示「胴体を5個、尻尾を
+   * 1つ最後尾に。HPが減ると真ん中のパーツから減っていく」)。本体の右肩口から GLEN_CHAIN の
+   * 6スロット(胴体5=砲身/箱の交互+尾)を少し重ねて数珠つなぎに置き、HP帯で 6→0 個へ欠けていく
+   * (欠けた分は詰めて連なりを保つ・除去順は GLEN_REMOVAL=真ん中から・尾は最後まで残る)。
+   * 各パーツは位相ずらしの上下ゆらぎ+微小な傾ぎで「生きた連結」に見せる。
+   * **視覚のみ・判定なし**。本体より後ろに描く。スプライトのプール添字は**スロット番号**
+   * (同じ絵を複数スロットが使うためパーツ番号では持てない)。
    */
   private syncGlenParts(
     view: ActorView, visibleCount: number,
@@ -15496,32 +15511,32 @@ export class PixiScene {
     if (!view.glenParts) view.glenParts = [];
     for (const s of view.glenParts) if (s) s.visible = false;
     if (visibleCount <= 0) return;
-    // 欠ける順=真ん中(1)→砲身(0)→尾(2)。残りは前から詰めて並べる。
-    const ORDER: Record<number, number[]> = { 3: [0, 1, 2], 2: [0, 2], 1: [2] };
-    const show = ORDER[Math.min(3, visibleCount)] ?? [];
+    const show = GLEN_VISIBLE_BY_COUNT[Math.min(6, visibleCount)];
     let x = footX + bodyHalfW * 0.55; // 本体の右肩口から連なる(叩き台)
-    show.forEach((partIdx, slot) => {
-      const tex = getTexture(`glen-boss2-part-${partIdx}`);
-      if (!tex) return;
-      let sp = view.glenParts![partIdx];
+    let first = true;
+    for (const slot of show) {
+      const tex = getTexture(`glen-boss2-part-${GLEN_CHAIN[slot]}`);
+      if (!tex) continue;
+      let sp = view.glenParts[slot];
       if (!sp) {
         sp = new Sprite(tex);
         sp.anchor.set(0.5, 1); // 足元アンカー(シートは3つとも下端揃え=実測)
         // 本体スプライトの後ろ(コンテナ内で手前に挿す=描画順が先)へ。
         view.container.addChildAt(sp, view.container.getChildIndex(view.sprite));
-        view.glenParts![partIdx] = sp;
+        view.glenParts[slot] = sp;
       }
       if (sp.texture !== tex) sp.texture = tex;
       const w = tex.width * sc;
-      x += w / 2 - (slot === 0 ? 0 : 10); // 前のパーツと少し重ねて「連結」に見せる
-      const bob = Math.sin(now / 520 + partIdx * 1.7) * 3;
+      x += w / 2 - (first ? 0 : 10); // 前のパーツと少し重ねて「連結」に見せる
+      first = false;
+      const bob = Math.sin(now / 520 + slot * 1.7) * 3;
       sp.scale.set(sc, sc);
-      sp.rotation = Math.sin(now / 700 + partIdx * 2.1) * 0.03;
+      sp.rotation = Math.sin(now / 700 + slot * 2.1) * 0.03;
       sp.position.set(Math.round(x), Math.round(footY - bob));
       sp.alpha = alpha;
       sp.visible = true;
       x += w / 2;
-    });
+    }
   }
 
   /**
