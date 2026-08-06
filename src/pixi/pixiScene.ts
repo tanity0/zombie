@@ -1164,6 +1164,14 @@ const ENEMY_BREATH_MS = 1500;
 // ここに残るのは kill スイッチと、ビュー(個体)状態を使う配線だけ。`?emotion=0` で一括OFF。
 const ENEMY_MOTION_FX = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('emotion') !== '0';
+
+// ラスボス第二形態(v0.25.2918)。HP60%以下で変身(叩き台=城ボスの既存フェーズ閾値60%に揃えた)。
+const GLEN_P2_HP_FRAC = 0.6;
+/** 第二形態内のHP残量→連結パーツ数(3→2→1→0)。欠ける順は「真ん中→砲身→尾」(syncGlenPartsのORDER)。 */
+const glenPartCount = (hpFrac: number): number => {
+  const p = hpFrac / GLEN_P2_HP_FRAC; // 第二形態区間を1→0へ正規化
+  return p > 0.75 ? 3 : p > 0.5 ? 2 : p > 0.25 ? 1 : 0;
+};
 const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   zombie: 0x7de28a,
   bat: 0x9aa6ff,
@@ -2263,6 +2271,8 @@ interface ActorView {
   motSpeed?: number; motVx?: number;
   // ③振り向き: 現在の表示向き(+1=素の向き/-1=ミラー)と遷移の開始値・開始時刻。
   motFace?: number; motFaceFrom?: number; motFaceAt?: number;
+  // ラスボス第二形態の連結パーツ(v0.25.2918)。添字=パーツ番号(0砲身/1中間/2尾)で固定。
+  glenParts?: Sprite[];
   // 爪痕(社長支給素材 D-2・v0.25.2402)。**判定1つにつき1枚**貼るので配列(グレンの血の爪痕は同時3本)。
   clawMarks?: Sprite[];
   // 爪痕の「手前から奥へ刻まれる」ワイプ用に、素材の左からの一部だけを指すサブテクスチャ
@@ -11956,7 +11966,14 @@ export class PixiScene {
     // ステージ3(daylight=farBackdrop'city')は廃都セット、ステージ4(snowStage='snow')は雪原セットに敵絵を
     // 差し替え。次にlab、無ければ既定アトラス。
     // 解決チェーンの本体は enemyTexKey(生体と死体の唯一の出どころ。v0.25.2383で共有化)。
-    const tex = getTexture(this.enemyTexKey(e.type, e.id));
+    // ラスボス第二形態(v0.25.2918・社長指示「3つのパーツが本体に連なり、HPが減ると真ん中から欠ける」):
+    // HPが GLEN_P2_HP_FRAC を切ったら本体絵を glen-boss2 へ差し替え、連結パーツを後ろに並べる。
+    // **視覚のみ**=判定・AI・技・HPは一切不変(CLAUDE.md「Visual vs. hitbox」)。
+    const glenP2 = this.currentFarKey === 'stage7' && e.type === 'giantbat'
+      && e.maxHealth > 0 && e.health / e.maxHealth <= GLEN_P2_HP_FRAC;
+    const tex = glenP2
+      ? (getTexture('glen-boss2') ?? getTexture(this.enemyTexKey(e.type, e.id)))
+      : getTexture(this.enemyTexKey(e.type, e.id));
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
 
@@ -12274,6 +12291,9 @@ export class PixiScene {
         view.sprite.position.y += lungeOffY;
       }
       view.sprite.visible = true;
+      // ラスボス第二形態の連結パーツ(HPで真ん中から欠ける)。第二形態でない時は隠すだけ。
+      this.syncGlenParts(view, glenP2 ? glenPartCount(e.health / e.maxHealth) : 0,
+        fb.footX, fb.footY, Math.abs(scaleX) * tex.width / 2, sc, artFade, now);
       // PACING_PUZZLE.md §5.15 M15: レア(色付き)個体は本体を専用色でtint(サイズ拡大はネームド専売
       // なのでここでは触らない)。抽選なし/フラグ無効時は明示的に等倍(0xffffff)へ戻す
       // (敵の描画ビューはid単位でプール再利用されるため、リセットしないと別個体へtintが残る)。
@@ -12403,6 +12423,7 @@ export class PixiScene {
     if (view.bands) for (const s of view.bands) s.visible = false;
     if (view.slash) view.slash.visible = false;
     if (view.clawMarks) for (const s of view.clawMarks) s.visible = false;
+    if (view.glenParts) for (const s of view.glenParts) s.visible = false;
     if (view.shockwaves) for (const s of view.shockwaves) s.visible = false;
     // FX-V3V4: 物理の攻撃絵(牙/爪/翼/触手/拳)も同じ作法で既定OFF。点けるのは各技の分岐だけ。
     if (view.atkArt) for (const s of view.atkArt) if (s) s.visible = false;
@@ -15460,6 +15481,48 @@ export class PixiScene {
     sp.visible = true;
   }
   private hideMuzzleFlash(): void { if (this.muzzleSprite) this.muzzleSprite.visible = false; }
+
+  /**
+   * ラスボス第二形態の連結パーツ(v0.25.2918・社長指示「3つのパーツが本体に並べて連なる。
+   * HPが減ると真ん中のパーツから減っていく」)。本体の右肩口から3つを少し重ねて数珠つなぎに置き、
+   * HP帯で 3→2→1→0 個へ欠けていく(欠けた分は詰めて連なりを保つ)。各パーツは位相ずらしの
+   * 上下ゆらぎ+微小な傾ぎで「生きた連結」に見せる。**視覚のみ・判定なし**。本体より後ろに描く。
+   */
+  private syncGlenParts(
+    view: ActorView, visibleCount: number,
+    footX: number, footY: number, bodyHalfW: number, sc: number, alpha: number, now: number,
+  ): void {
+    if (!view.glenParts && visibleCount <= 0) return; // 一度も出していなければ何もしない(全敵毎フレームの無駄を避ける)
+    if (!view.glenParts) view.glenParts = [];
+    for (const s of view.glenParts) if (s) s.visible = false;
+    if (visibleCount <= 0) return;
+    // 欠ける順=真ん中(1)→砲身(0)→尾(2)。残りは前から詰めて並べる。
+    const ORDER: Record<number, number[]> = { 3: [0, 1, 2], 2: [0, 2], 1: [2] };
+    const show = ORDER[Math.min(3, visibleCount)] ?? [];
+    let x = footX + bodyHalfW * 0.55; // 本体の右肩口から連なる(叩き台)
+    show.forEach((partIdx, slot) => {
+      const tex = getTexture(`glen-boss2-part-${partIdx}`);
+      if (!tex) return;
+      let sp = view.glenParts![partIdx];
+      if (!sp) {
+        sp = new Sprite(tex);
+        sp.anchor.set(0.5, 1); // 足元アンカー(シートは3つとも下端揃え=実測)
+        // 本体スプライトの後ろ(コンテナ内で手前に挿す=描画順が先)へ。
+        view.container.addChildAt(sp, view.container.getChildIndex(view.sprite));
+        view.glenParts![partIdx] = sp;
+      }
+      if (sp.texture !== tex) sp.texture = tex;
+      const w = tex.width * sc;
+      x += w / 2 - (slot === 0 ? 0 : 10); // 前のパーツと少し重ねて「連結」に見せる
+      const bob = Math.sin(now / 520 + partIdx * 1.7) * 3;
+      sp.scale.set(sc, sc);
+      sp.rotation = Math.sin(now / 700 + partIdx * 2.1) * 0.03;
+      sp.position.set(Math.round(x), Math.round(footY - bob));
+      sp.alpha = alpha;
+      sp.visible = true;
+      x += w / 2;
+    });
+  }
 
   /**
    * 爪痕(社長支給素材 D-2・v0.25.2402)。**遅延ダメージの判定1つにつき1枚**を、

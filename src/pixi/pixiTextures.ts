@@ -470,7 +470,7 @@ export const ensureTextures = (): Promise<void> => {
     // ローディング%(社長指示v0.25.1776): このローダが読むファイル総数を先に一括登録する
     // (atlas 1 + standalone + 色キー5 + atlas-px上書き + 単発3=tree-new2/tree-snow/castle-church)。
     // 完了カウントは loadOne / loadKeyed の finally が1ずつ進める。
-    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 4); // +4=tree-new2/tree-snow/castle-church/glen-boss
+    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 6); // +6=tree-new2/tree-snow/castle-church/glen-boss/glen-boss2/glen-boss2-parts
 
     // 1アセットのロード失敗が全体を巻き込まないよう個別に握りつぶす。失敗した絵は
     // 未登録(getTexture=null)になり、その描画だけスキップ/手続き描画にフォールバック。
@@ -641,6 +641,23 @@ export const ensureTextures = (): Promise<void> => {
     // 詳細イラスト調なので linear(トールの刀と同方針)。
     const glenBoss = await loadOne('glen-boss');
     if (glenBoss) { glenBoss.source.scaleMode = 'linear'; textures.set('glen-boss', glenBoss); }
+    // ラスボス第二形態(社長支給v0.25.2918)。本体1枚+連結パーツ3つ(1シート)。
+    // 支給ファイルは加工せず、枠指定のサブテクスチャで切る(炎シートと同じ作法=追加デコード無し)。
+    // 枠は透過アルファの実測(列の連結成分)。3つとも下端揃え=足元アンカーで置ける。
+    const glenBoss2 = await loadOne('glen-boss2');
+    if (glenBoss2) { glenBoss2.source.scaleMode = 'linear'; textures.set('glen-boss2', glenBoss2); }
+    const glenParts = await loadOne('glen-boss2-parts');
+    if (glenParts) {
+      glenParts.source.scaleMode = 'linear';
+      const frames: [number, number, number, number][] = [
+        [8, 8, 244, 256],     // part0: 砲身(いちばん大きい)
+        [292, 44, 208, 220],  // part1: 中間の箱(=「真ん中」・最初に欠ける)
+        [568, 116, 184, 148], // part2: 尾の鉤爪(末端)
+      ];
+      frames.forEach(([x, y, w2, h2], i) => {
+        textures.set(`glen-boss2-part-${i}`, new Texture({ source: glenParts.source, frame: new Rectangle(x, y, w2, h2) }));
+      });
+    }
 
     // 敵スプライトのアスペクト(texH/texW)を登録(PHILLサークルの頭スナップを実描画に合わせる)。
     const regAspect = (key: string, texName: string) => {
