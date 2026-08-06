@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2887',
+    items: [
+      'ボスへの「致命の一撃」は、直前にほかの演出が発生していても、必ず対象へ最大までズームするようにしました。',
+    ],
+  },
+  {
     version: '0.25.2886',
     items: [
       'キャラクターや建物などの伸びる影が、本体と左右逆になっていた問題を全体で修正しました。左右を向くキャラクターの影も本体と同じ向きになります。',

@@ -3881,8 +3881,9 @@ interface GameState {
   triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number, targetX?: number, targetY?: number) => void; // ストップ→(後で)揺れ+寄り。ダンス中はストップ無しで即時
   // targetX/Y省略時は画面中央基準(カウンター等・従来どおり)。指定時はその世界座標点へ寄る(社長指示: KILLはキルされた対象へ)。
   // 近接フィニッシュ: ストップ+ズーム+スローを1拍エンベロープで発火(CD明けのみ・CD内は最低保証フラッシュのみ)。
+  // forceMaximumZoom=true は致命の一撃専用。CDと進行中ズームを無視し、対象へ最大ズームを掛け直す。
   // 戻り値=そのキルでフル演出(CD明け)が出たか(呼び出し元が武器固有フラッシュを出すかの判断に使う)。
-  triggerFinishImpact: (targetX?: number, targetY?: number) => boolean;
+  triggerFinishImpact: (targetX?: number, targetY?: number, forceMaximumZoom?: boolean) => boolean;
   triggerZoom: (mag: number, durationMs: number, holdMs?: number, targetX?: number, targetY?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
   // dirX/dirY(§5.23 M22 C1・任意・未正規化でよい): 指定時はシェイクをその方向へ寄せる。
   // 未指定/{0,0}/`?dirfx=0`は従来どおり等方のランダム揺れ。
@@ -5456,7 +5457,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : finishZoomTargetOf(killed);
       // M21(§5.22): フル演出(CD明け)の時だけ武器固有の黄フラッシュを重ねる。CD内は
       // triggerFinishImpact自身が出す最低保証フラッシュ(軽い白)だけになる=二重フラッシュを避ける。
-      const fullCinematic = get().triggerFinishImpact(ztx, zty);
+      const fullCinematic = get().triggerFinishImpact(ztx, zty, bossFatalHits.length > 0);
       if (fullCinematic && killed.some(k => k.finisher)) {
         get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
       }
@@ -6165,7 +6166,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const [ztx, zty] = katanaBossFatalHits[0]
         ? [katanaBossFatalHits[0].x, katanaBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
-      get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
+      get().triggerFinishImpact(ztx, zty, katanaBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
     }
     // スキル: リーパー。刀の一閃フィニッシュ範囲(katanaRange)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, katanaRange(player), baseDamage * damageMult);
@@ -6350,7 +6351,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const [ztx, zty] = whipBossFatalHits[0]
         ? [whipBossFatalHits[0].x, whipBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
-      get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
+      get().triggerFinishImpact(ztx, zty, whipBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
     }
     // スキル: リーパー。鞭フィニッシュ範囲(WHIP_LENGTH)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, WHIP_LENGTH_BY_LEVEL[1], meleeBase);
@@ -8251,7 +8252,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (bossFatalAt) {
       const p = bossFatalAt as { x: number; y: number; labelY: number };
       showBossFatalPresentation(get, p.x, p.y, p.labelY);
-      get().triggerFinishImpact(p.x, p.y);
+      get().triggerFinishImpact(p.x, p.y, true); // ワイヤー等の致命もCDを無視して必ず最大ズーム
     }
 
     // 死神を倒したらスキル「死神」を習得(ガチャ非排出。撃破でのみ解禁)。未所持時のみ告知。
@@ -13771,12 +13772,24 @@ export const useGameStore = create<GameState>((set, get) => ({
     setTimeout(() => get().triggerShake(shakeMs, shakeMag), Math.max(0, stopMs));
   },
 
-  triggerFinishImpact: (targetX, targetY) => {
+  triggerFinishImpact: (targetX, targetY, forceMaximumZoom = false) => {
     const now = Date.now();
+    // 致命の一撃は通常KILLの10秒CDや、直前のズームの残り具合に左右されない。
+    // 一度ズーム包絡を切ってから最大倍率を対象中心へ掛け直し、必ず「最大まで寄る1イベント」にする。
+    const triggerMaximumZoom = (durationMs: number, holdMs: number) => {
+      if (forceMaximumZoom) {
+        set({
+          zoomUntil: 0, zoomMag: 0, zoomStart: 0, zoomHoldMs: 0,
+          zoomHasTarget: false, zoomTargetX: 0, zoomTargetY: 0,
+        });
+      }
+      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, durationMs, holdMs, targetX, targetY);
+    };
     if (!JUICE_ENABLED) {
       // ?juice=0: このバッチ以前の演出へ完全復帰(A/B比較用)。ズームだけCD、スロー/揺れは毎回。
-      if (now - get().lastKillZoomAt >= MELEE_FINISH_ZOOM_CD_MS) {
-        get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS, targetX, targetY);
+      // ただし致命の一撃だけは比較モードでも確定仕様を優先し、必ず最大ズームを出す。
+      if (forceMaximumZoom || now - get().lastKillZoomAt >= MELEE_FINISH_ZOOM_CD_MS) {
+        triggerMaximumZoom(MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS);
         set({ lastKillZoomAt: now });
       }
       get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
@@ -13787,18 +13800,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 同時にピークする1拍エンベロープへ統一。全演出をJUICE_CD_MS(=現行のCD値のまま)で一括律速し、
     // CD明けの1キルだけフル(フリーズ→ズーム/スローが同じ長さ・同じholdで一緒に戻る)。
     // CD内のキルは最低保証の軽いフラッシュのみ(酔い/うざさ防止・社長実測v0.25.1523-1524)。
-    const cdReady = shouldFireFullJuiceCinematic(now, get().lastKillZoomAt, JUICE_CD_MS);
-    if (cdReady) {
+    const fullCinematic = forceMaximumZoom || shouldFireFullJuiceCinematic(now, get().lastKillZoomAt, JUICE_CD_MS);
+    if (fullCinematic) {
       set({ lastKillZoomAt: now });
       get().triggerHitstop(HITSTOP_MS); // KILLにもカウンターと同じフリーズを追加(旧仕様は素通りだった)
       // ズームをスローと同じ長さ/holdへ統一(旧仕様の専用MELEE_FINISH_ZOOM_MS/HOLD_MSは使わない)。
-      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, targetX, targetY);
+      triggerMaximumZoom(MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
       get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
       setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
     } else if (JUICE_MIN_FLASH_ENABLED) {
       get().spawnFlash('rgba(255,255,255,0.22)', JUICE_MIN_FLASH_MS);
     }
-    return cdReady;
+    return fullCinematic;
   },
 
   triggerZoom: (mag, durationMs, holdMs = 0, targetX, targetY) => {
