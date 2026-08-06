@@ -386,24 +386,24 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'thor', scaleMode: 'nearest' as const },
       // ゲート2ボス(§5.21-追補8): ミゲル(大天使)。詳細イラスト調なので他の裏ボス(mimir等)と同じ
       // linear で滑らかに縮小。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
-      { name: 'miguel', scaleMode: 'linear' as const },
+      { name: 'miguel', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
       // ミゲルの剣(横払い用ビジュアル)。miguel-sword.png は既に透過済み(色キー不要・
       // thor-katanaと違いloadKeyedを使わない・通常のstandalone読み込みでOK)。詳細イラスト調なのでlinear。
       { name: 'miguel-sword', scaleMode: 'linear' as const },
       // ゲート2ボス(ステージ3): ジブリル(天使)。ミゲルと同じ扱い(詳細イラスト調=linear・名前=EnemyType一致)。
-      { name: 'jibril', scaleMode: 'linear' as const },
+      { name: 'jibril', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
       // ジブリルの武器=ランタン(ミゲルのmiguel-swordに相当する別武器スプライト・透過済み・linear)。
       { name: 'jibril-lantern', scaleMode: 'linear' as const },
       // ゲート2ボス(ステージ4): ラフィ(天使)。ミゲル/ジブリルと同じ扱い(linear・名前=EnemyType一致)。
-      { name: 'rafi', scaleMode: 'linear' as const },
+      { name: 'rafi', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
       // ラフィの武器=骨刃(別武器スプライト・透過済み・linear)。振り演出は武器の使い方受領後に追加。
       { name: 'rafi-blade', scaleMode: 'linear' as const },
       // PACING_PUZZLE.md §6.28-0★/§6.28-16/§6.28-17〜19(バッチM52・ロットL1): 天使ボス4〜6体目
       // (ウリ/スリィエル/アクラシエル)+専用武器絵。ミゲル/ジブリル/ラフィと同じ扱い(詳細イラスト調=
       // linear・名前=EnemyType一致=drawEnemyのgetTexture(e.type)で解決)。振り演出はL2の担当。
-      { name: 'uri', scaleMode: 'linear' as const },
+      { name: 'uri', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
       { name: 'uri-sword', scaleMode: 'linear' as const },
-      { name: 'suriel', scaleMode: 'linear' as const },
+      { name: 'suriel', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
       { name: 'suriel-ring', scaleMode: 'linear' as const },
       { name: 'acrasiel', scaleMode: 'linear' as const },
       { name: 'acrasiel-spear', scaleMode: 'linear' as const },
