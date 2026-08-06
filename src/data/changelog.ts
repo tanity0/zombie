@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2902',
+    items: [
+      'ゲーム内容の変更はありません(開発用の敵モーション確認モードの改善)。',
+    ],
+  },
+  {
     version: '0.25.2901',
     items: [
       '死神と狼の見た目を新しい絵に変えました(チェーンソーを掲げた襤褸外套と、自転車に跨がる死体)。全ステージで同じ絵になります。',

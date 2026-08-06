@@ -6016,7 +6016,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // v0.25.2589(社長指示): 死亡モーション中・アテンション演出中は攻撃しない(共通ゲート)。
         const attackLocked = isAttackLocked();
         // PHILL銃は自動射撃しない(指離しの手動発砲のみ=firePhillShot)。
-        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && activeGun.category !== 'phill') {
+        // 動物園(?zoo=1)は鑑賞モードなので銃オートも止める(社長指示v0.25.2902「攻撃しないで」)。
+        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !ZOO_MODE && activeGun.category !== 'phill') {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             // handgun系のうちマシンピストル(=サブマシンガン, handgun-t3)だけ専用音、それ以外(ハンドガン/二丁)はhandgun-fire。
@@ -6041,7 +6042,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // nearest non-stunned enemy first (stunned fallback = finisher chance),
         // Hunting-Lv3-equivalent reach, one cut per interval. Guns and the
         // release knife sweep are disabled while the katana is owned.
-        if (katanaActive && !attackLocked) { // v0.25.2589: オート斬撃も死亡/アテンション中は止める
+        if (katanaActive && !attackLocked && !ZOO_MODE) { // v0.25.2589: オート斬撃も死亡/アテンション中は止める。動物園も止める(v0.25.2902)
           if (gameTime < lastKatanaSlashRef.current) lastKatanaSlashRef.current = 0; // new run
           if (gameTime - lastKatanaSlashRef.current >= KATANA_SLASH_INTERVAL_MS) {
             const kp = useGameStore.getState().player;
@@ -6072,7 +6073,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // dog/decoy/shield/turret/molotov/support-sniper/first-aid-kit/fire-knife/homingロック取得が
         // 共通でこの1変数のnot判定を通る=「サブ発動入口」を1箇所で塞ぐ)。`?skaterlock=0`で復帰。
         const inReturnCircle = isInReturnCircle(subWeaponPlayer, useGameStore.getState().returnCircle) ||
-          (SKATER_LOCK_ENABLED && subWeaponPlayer.skaterRiding);
+          (SKATER_LOCK_ENABLED && subWeaponPlayer.skaterRiding) ||
+          ZOO_MODE; // 動物園は全サブウェポンも封印(「サブ発動入口」の1箇所ゲートに相乗り・v0.25.2902)
 
         // G2.6(BOT_AND_GHOST.md §2.8): サブウェポン発動の入口はオーナー(座標・向き・受け手)に対して
         // 解決する。既定オーナー=プレイヤー(この場合、従来の挙動と1bitも変わらない)。ゴースト
@@ -7345,7 +7347,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const phase = (newGameTime / 1000 * spd + Math.abs(e.homeX + e.homeY * 7)) % (4 * ZOO_R);
               const off = phase < 2 * ZOO_R ? phase - ZOO_R : 3 * ZOO_R - phase;
               // aiPhaseは毎フレーム潰す(werewolf突進/pumpkinジャンプがパトロール上書きと喧嘩しないように)。
-              return { ...e, x: e.homeX + off - e.width / 2, y: e.homeY - e.height / 2, aiPhase: undefined, aiPhaseUntil: undefined };
+              // health=maxHealth も毎フレーム戻す=不死(社長指示v0.25.2902「敵を自動で倒しちゃって死んじゃう」
+              // 対策の保険。攻撃系は全部止めてあるが、流れ弾や手動カウンターでも死なないように)。
+              return { ...e, x: e.homeX + off - e.width / 2, y: e.homeY - e.height / 2, health: e.maxHealth, aiPhase: undefined, aiPhaseUntil: undefined };
             }),
           }));
         }
