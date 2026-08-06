@@ -61,7 +61,7 @@ const STAGE_BOSSES: CastEntry[] = [
   { tex: 'atlas-px2/giantbat', label: '馬ぐるま (ステージ1)', spec: giantbatDefault, targetH: 300, speed: 55 },
   { tex: 'stage3-enemies/giantbat', label: '群体の四足獣 (ステージ3)', spec: giantbatDefault, targetH: 300, speed: 55 },
   { tex: 'stage4-enemies/giantbat', label: '凍てつく巨躯 (ステージ4)', spec: GIANTBAT_MOTION_BY_BACKDROP.snow, targetH: 300, speed: 55 },
-  { tex: 'stage5-enemies/giantbat', label: '城ボス (ステージ5・旧絵)', spec: B_HEAVY, targetH: 300, speed: 55 },
+  { tex: 'stage5-enemies/giantbat', label: '兵士の融合体 (ステージ5)', spec: GIANTBAT_MOTION_BY_BACKDROP.stage5, targetH: 320, speed: 55 },
   { tex: 'glen-boss', label: 'グレン (ステージ7)', spec: GIANTBAT_MOTION_BY_BACKDROP.stage7, targetH: 340, speed: 50 },
 ];
 

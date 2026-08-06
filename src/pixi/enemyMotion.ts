@@ -87,6 +87,9 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
  */
 export const GIANTBAT_MOTION_BY_BACKDROP: Partial<Record<string, EnemyMotionSpec>> = {
   snow: { kind: 'heavy', bobPx: 1.8, rockRad: 0.034, sqAmp: 0.040, strideHz: 1.2, uneven: 0.35, faceMove: false },
+  // stage5=**銃を構えた兵士の融合体**(v0.25.2913)。二足で仁王立ち=重い踏みしめ。背中の群体が
+  // ばらばらに蠢く感じを uneven 高めで出す。
+  stage5: { kind: 'heavy', bobPx: 1.7, rockRad: 0.032, sqAmp: 0.038, strideHz: 1.2, uneven: 0.55, faceMove: false },
   stage7: { kind: 'heavy', bobPx: 1.6, rockRad: 0.030, sqAmp: 0.035, strideHz: 1.1, uneven: 0.25, faceMove: false },
 };
 
