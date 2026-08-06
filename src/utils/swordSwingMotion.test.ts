@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  SWORD_VISIBILITY_FADE_MS, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha, swordSwingPose,
+  SWORD_VISIBILITY_FADE_MS, swordAttackAngle, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha,
+  swordSwingPose,
 } from './swordSwingMotion';
 
 describe('swordSwingPose', () => {
@@ -35,5 +36,12 @@ describe('swordSwingPose', () => {
     expect(swordCompletionFrame(200, 100, 200)).toMatchObject({ phase: 'swing', progress: 0.5, alpha: 1 });
     expect(swordCompletionFrame(300, 100, 200)).toMatchObject({ phase: 'fade', progress: 1, alpha: 1 });
     expect(swordCompletionFrame(390, 100, 200)).toMatchObject({ phase: 'done', progress: 1, alpha: 0 });
+  });
+
+  it('keeps the sword aligned to the locked attack line regardless of hand position', () => {
+    const lockedAngle = swordAttackAngle(120, 80, 220, 180);
+    expect(lockedAngle).toBeCloseTo(Math.PI / 4);
+    expect(lockedAngle).toBe(swordAttackAngle(-500, 300, -400, 400));
+    expect(swordAttackAngle(10, 10, 10, 10, 1.25)).toBe(1.25);
   });
 });

@@ -79,7 +79,8 @@ import {
 import type { FlareGunFlare } from '../utils/flareGun';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import {
-  SWORD_VISIBILITY_FADE_MS, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha, swordSwingPose,
+  SWORD_VISIBILITY_FADE_MS, swordAttackAngle, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha,
+  swordSwingPose,
   type SwordSwingStyle,
 } from '../utils/swordSwingMotion';
 import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1の可視化(フルランプ速度線)
@@ -4284,7 +4285,7 @@ export class PixiScene {
     }
     this.drawKatanaReady(
       fxMap, gripFrac, intrinsicAngle, bladeLenFrac, katanaLength, katanaTexName,
-      id, L.d[7], L.d[8], L.d[4], L.d[5], frame.alpha, latchedStyle,
+      id, L.d[7], L.d[8], L.d[2], L.d[3], L.d[4], L.d[5], frame.alpha, latchedStyle,
       frame.phase === 'fade' ? 1 : 0,
     );
   }
@@ -4294,7 +4295,9 @@ export class PixiScene {
     key: string, recovering: boolean, remainingMs: number, now: number,
     fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
     bladeLenFrac: number, katanaLength: number, katanaTexName: string,
-    id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, style: SwordSwingStyle,
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number,
+    style: SwordSwingStyle,
   ): void {
     const styleCode = Math.max(0, SWORD_STYLE_CODES.indexOf(style));
     const L = this.latchFx(
@@ -4302,14 +4305,14 @@ export class PixiScene {
       recovering,
       Math.max(1, remainingMs),
       now,
-      () => [Math.max(1, remainingMs), pivotX, pivotY, aimX, aimY, styleCode],
+      () => [Math.max(1, remainingMs), pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, styleCode],
     );
     if (!L || recovering) return;
     const remain = Math.max(0, L.d[0] - (now - L.t0));
-    const latchedStyle = SWORD_STYLE_CODES[L.d[5]] ?? 'wide';
+    const latchedStyle = SWORD_STYLE_CODES[L.d[7]] ?? 'wide';
     this.drawKatanaReady(
       fxMap, gripFrac, intrinsicAngle, bladeLenFrac, katanaLength, katanaTexName,
-      id, L.d[1], L.d[2], L.d[3], L.d[4], swordFadeOutAlpha(remain), latchedStyle, 1,
+      id, L.d[1], L.d[2], L.d[3], L.d[4], L.d[5], L.d[6], swordFadeOutAlpha(remain), latchedStyle, 1,
     );
   }
   // 敵が消えた時の後始末(残っていると Map が育つ)。enemyビューの破棄と同じ場所から呼ぶ。
@@ -12428,7 +12431,9 @@ export class PixiScene {
           // 柄を手元に置き、攻撃方向から140度引いた大薙ぎの開始姿勢へ構える。実行は同じ姿勢から
           // 200度振り切るため、構え→振り→残心が連続する。
           const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * THOR_HARAI_WINDUP_MS);
-          this.drawThorKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, swordAlpha, 'wide', 0);
+          this.drawThorKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 0,
+          );
           // §5.25 M24: ダメージ瞬間(windup終わり=sweep開始)の400ms前は鋭いフラッシュへ切替。
           const haraiFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
           if (haraiFlash !== null) view.sprite.tint = haraiFlash;
@@ -12468,11 +12473,12 @@ export class PixiScene {
         // 長さ・カウンター可否は何も変えない=表示だけの追補)。
         view.sprite.tint = BOSS_RECOVER_TINT;
         if (e.bossState !== 'jump-recover') {
+          const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
           const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
           const recoverStyle: SwordSwingStyle = e.bossState === 'issen-recover'
             ? 'draw' : e.bossState === 'tsuki-recover' ? 'thrust' : 'wide';
           this.drawThorKatanaReady(
-            e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty,
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty,
             swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime), recoverStyle, 1,
           );
         }
@@ -12541,19 +12547,19 @@ export class PixiScene {
           `${e.id}:thor-issen-recover-complete`, bs === 'issen-recover', remain, now,
           this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
           THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-          e.id, handX, handY, tx, ty, 'draw',
+          e.id, handX, handY, fx, fy, tx, ty, 'draw',
         );
         this.latchSwordRecovery(
           `${e.id}:thor-tsuki-recover-complete`, bs === 'tsuki-recover', remain, now,
           this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
           THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-          e.id, handX, handY, tx, ty, 'thrust',
+          e.id, handX, handY, fx, fy, tx, ty, 'thrust',
         );
         this.latchSwordRecovery(
           `${e.id}:thor-harai-recover-complete`, bs === 'harai-recover', remain, now,
           this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
           THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-          e.id, handX, handY, tx, ty, 'wide',
+          e.id, handX, handY, fx, fy, tx, ty, 'wide',
         );
       }
     }
@@ -12782,7 +12788,9 @@ export class PixiScene {
           // 武器スプライトはミゲル専用(miguel-sword)。ジブリルは武器の使い方を受領後に別途追加(予告のみ)。
           if (e.type === 'miguel') {
             const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * MIGUEL_HARAI_WINDUP_MS);
-            this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, swingStyle, 0);
+            this.drawMiguelKatanaReady(
+              e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, swingStyle, 0,
+            );
           }
         } else {
           // 払い/縦払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
@@ -12801,7 +12809,9 @@ export class PixiScene {
           const swordAlpha = bs === 'mdash-windup'
             ? 0.7 * swordFadeInAlpha(MIGUEL_DASH_WINDUP_MS - remaining)
             : 1;
-          this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, 'draw', 0);
+          this.drawMiguelKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'draw', 0,
+          );
         } else {
           const strikeProg = Math.max(0, Math.min(1, (elapsed - MIGUEL_DASH_MOVE_MS) / MIGUEL_DASH_STRIKE_MS));
           this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'draw');
@@ -12812,7 +12822,10 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const recoverStyle: SwordSwingStyle = bs === 'tate-recover' ? 'overhead' : 'draw';
         const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
-        this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, recoverStyle, 1);
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        this.drawMiguelKatanaReady(
+          e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, recoverStyle, 1,
+        );
       }
       // ---- ジブリル(§6.28-16 ①): ランタンを常に手元に掲げる(windup/実行/硬直=消さない・掟W9) ----
       else if (e.type === 'jibril' && bs !== undefined && (
@@ -12832,14 +12845,18 @@ export class PixiScene {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / RAFI_SWEEP_WINDUP_MS_VIS));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
           const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * RAFI_SWEEP_WINDUP_MS_VIS);
-          this.drawRafiKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, 'wide', 0);
+          this.drawRafiKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 0,
+          );
         } else if (bs === 'sweep') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
           this.drawRafiSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         } else {
           // 硬直中も武器を消さない(掟W9): 振り切った姿勢のまま静止。
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
-          this.drawRafiKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, 'wide', 1);
+          this.drawRafiKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 1,
+          );
         }
       }
       // ---- ラフィ(§6.28-8 #2・理不尽修正・CLAUDE.md「明確なバグ修正」の例外=?rafiscript=0でも
@@ -12866,13 +12883,17 @@ export class PixiScene {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_WINDUP_MS_VIS));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
           const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * URI_SWEEP_WINDUP_MS_VIS);
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, 'wide', 0);
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 0,
+          );
         } else if (bs === 'sweep') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_ACTIVE_MS));
           this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         } else {
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, 'wide', 1); // 硬直中も武器を消さない(掟W9)
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 1,
+          ); // 硬直中も武器を消さない(掟W9)
         }
       }
       // ---- ウリ: 振り下ろし(縦・内径なし)=T3細帯+大剣。①との対比が読みの本体(§6.28-17) ----
@@ -12883,13 +12904,17 @@ export class PixiScene {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_DOWNSLASH_WINDUP_MS_VIS));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, prog, now);
           const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * URI_DOWNSLASH_WINDUP_MS_VIS);
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, 'overhead', 0);
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'overhead', 0,
+          );
         } else if (bs === 'downslash') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_DOWNSLASH_ACTIVE_MS));
           this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'overhead');
         } else {
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, 'overhead', 1); // 硬直中も武器を消さない(掟W9)
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'overhead', 1,
+          ); // 硬直中も武器を消さない(掟W9)
         }
       }
       // ---- ウリ: 踏み込み突き(遠帯)=T1赤ライン+大剣。ミゲル踏み込みと同じ意匠(§6.28-17) ----
@@ -12903,13 +12928,17 @@ export class PixiScene {
           const swordAlpha = bs === 'thrust-windup'
             ? 0.7 * swordFadeInAlpha(URI_THRUST_WINDUP_MS - remaining)
             : 1;
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, 'thrust', 0);
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'thrust', 0,
+          );
         } else if (bs === 'thrust') {
           const strikeProg = Math.max(0, Math.min(1, (elapsed - URI_THRUST_MOVE_MS) / URI_THRUST_STRIKE_MS));
           this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'thrust');
         } else {
           const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, swordAlpha, 'thrust', 1);
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'thrust', 1,
+          );
         }
       }
       // ---- スリィエル(§6.28-18・M62新規): 環の射出(移動→T6線→発射)。環そのものはsyncSurielRingが
@@ -13047,19 +13076,19 @@ export class PixiScene {
           `${e.id}:miguel-harai-recover-complete`, bs === 'harai-recover', swordRemain, now,
           this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
           MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-          e.id, swordHandX, swordHandY, swordTx, swordTy, 'wide',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'wide',
         );
         this.latchSwordRecovery(
           `${e.id}:miguel-tate-recover-complete`, bs === 'tate-recover', swordRemain, now,
           this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
           MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-          e.id, swordHandX, swordHandY, swordTx, swordTy, 'overhead',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'overhead',
         );
         this.latchSwordRecovery(
           `${e.id}:miguel-dash-recover-complete`, bs === 'mdash-recover', swordRemain, now,
           this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
           MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-          e.id, swordHandX, swordHandY, swordTx, swordTy, 'draw',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'draw',
         );
       } else if (e.type === 'rafi') {
         const sweepWind = bs === 'sweep-windup', sweepActive = bs === 'sweep';
@@ -13076,7 +13105,7 @@ export class PixiScene {
           `${e.id}:rafi-sweep-recover-complete`, bs === 'sweep-recover', swordRemain, now,
           this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE,
           RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
-          e.id, swordHandX, swordHandY, swordTx, swordTy, 'wide',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'wide',
         );
       } else if (e.type === 'uri') {
         const sweepWind = bs === 'sweep-windup', sweepActive = bs === 'sweep';
@@ -13119,19 +13148,19 @@ export class PixiScene {
           `${e.id}:uri-sweep-recover-complete`, bs === 'sweep-recover', swordRemain, now,
           this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
           URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-          e.id, swordHandX, swordHandY, swordTx, swordTy, 'wide',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'wide',
         );
         this.latchSwordRecovery(
           `${e.id}:uri-downslash-recover-complete`, bs === 'downslash-recover', swordRemain, now,
           this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
           URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-          e.id, swordHandX, swordHandY, swordTx, swordTy, 'overhead',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'overhead',
         );
         this.latchSwordRecovery(
           `${e.id}:uri-thrust-recover-complete`, bs === 'thrust-recover', swordRemain, now,
           this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
           URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-          e.id, swordHandX, swordHandY, swordTx, swordTy, 'thrust',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'thrust',
         );
       }
 
@@ -17214,7 +17243,7 @@ export class PixiScene {
     if (!ref) { c.visible = false; return; }
     c.visible = true;
     const length = Math.hypot(tx - fx, ty - fy);
-    const angle = Math.atan2(ty - fy, tx - fx);
+    const angle = swordAttackAngle(fx, fy, tx, ty);
     const sc = length / Math.max(1, ref.width);
     const vsc = (halfWidth * 2) / Math.max(1, ref.height);
     const tt = Math.max(0, Math.min(1, t));
@@ -17361,14 +17390,15 @@ export class PixiScene {
     katana.visible = true;
   }
 
-  // 横払いの構え(社長指示): 溜め(harai-windup)の間、刀を「振るモーションの最初の位置」に最初から構えて
-  // 置いておく。柄=本体の手元(pivot)、刃先=薙ぎ始めの点(aim=判定ライン始点 fx,fy)へ向ける。streak/burstは
-  // 出さない(溜め中は判定なし)。実行(harai)でこの位置から薙ぎ始める=構え→振りが連続する。
+  // 剣の構え/残心。柄は本体の手元(pivot)へ置くが、角度は手元→現在の標的ではなく、攻撃開始時に
+  // 固定した判定ライン(attackFrom→attackTo)から決める。これでプレイヤー位置や内径の有無に左右されず、
+  // 構え→実行→残心が同じ基準角のまま連続する。streak/burstは出さない。
   // トール/ミゲル共通(§5.21-追補8: 剣の見た目だけ差し替えるためパラメータ化)。
   private drawKatanaReady(
     fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
     bladeLenFrac: number, katanaLength: number, katanaTexName: string,
-    id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number,
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
     style: SwordSwingStyle = 'wide', poseProgress = 0
   ) {
     let c = fxMap.get(id);
@@ -17390,7 +17420,7 @@ export class PixiScene {
     streak.visible = false;
     burstSp.visible = false;
     const kscale = katanaLength / (bladeLenFrac * Math.max(1, kref.width));
-    const baseAngle = Math.atan2(aimY - pivotY, aimX - pivotX);
+    const baseAngle = swordAttackAngle(attackFromX, attackFromY, attackToX, attackToY);
     const pose = swordSwingPose(style, poseProgress);
     katana.scale.set(kscale * pose.scaleMult);
     katana.rotation = baseAngle + pose.angleOffset - intrinsicAngle;
@@ -17400,18 +17430,26 @@ export class PixiScene {
     katana.visible = true;
   }
 
-  private drawThorKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number, style: SwordSwingStyle = 'wide', poseProgress = 0) {
+  private drawThorKatanaReady(
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0,
+  ) {
     this.drawKatanaReady(
       this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE, THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-      id, pivotX, pivotY, aimX, aimY, alpha, style, poseProgress
+      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress,
     );
   }
 
   // ミゲル(ゲート2ボス)の横払い(狭)溜め時の「構え」描画。drawThorKatanaReadyと同じ仕組みをmiguel-swordで流用。
-  private drawMiguelKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number, style: SwordSwingStyle = 'wide', poseProgress = 0) {
+  private drawMiguelKatanaReady(
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0,
+  ) {
     this.drawKatanaReady(
       this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE, MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-      id, pivotX, pivotY, aimX, aimY, alpha, style, poseProgress
+      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress,
     );
   }
 
@@ -17423,10 +17461,14 @@ export class PixiScene {
       id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style
     );
   }
-  private drawUriKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number, style: SwordSwingStyle = 'wide', poseProgress = 0) {
+  private drawUriKatanaReady(
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0,
+  ) {
     this.drawKatanaReady(
       this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE, URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-      id, pivotX, pivotY, aimX, aimY, alpha, style, poseProgress
+      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress,
     );
   }
 
@@ -17438,10 +17480,14 @@ export class PixiScene {
       id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style
     );
   }
-  private drawRafiKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number, style: SwordSwingStyle = 'wide', poseProgress = 0) {
+  private drawRafiKatanaReady(
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0,
+  ) {
     this.drawKatanaReady(
       this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE, RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
-      id, pivotX, pivotY, aimX, aimY, alpha, style, poseProgress
+      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress,
     );
   }
 

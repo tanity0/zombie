@@ -23,6 +23,22 @@ const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 export const swordFadeInAlpha = (elapsedMs: number): number => smooth(elapsedMs / SWORD_VISIBILITY_FADE_MS);
 export const swordFadeOutAlpha = (remainingMs: number): number => smooth(remainingMs / SWORD_VISIBILITY_FADE_MS);
 
+/**
+ * 攻撃判定として固定された始点→終点から、剣の基準角を決める。
+ * 手元や現在の標的位置を混ぜないことで、構え・実行・残心を同じ向きへ揃える。
+ */
+export const swordAttackAngle = (
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  fallbackAngle = 0,
+): number => {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  return Math.hypot(dx, dy) > 0.001 ? Math.atan2(dy, dx) : fallbackAngle;
+};
+
 export type SwordCompletionPhase = 'ready' | 'swing' | 'fade' | 'done';
 
 /** カウンターでAI州が消えても、焼き付けた剣アニメだけを最後まで進めるための純粋な時計。 */

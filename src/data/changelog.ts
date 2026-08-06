@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2885',
+    items: [
+      '敵の剣がプレイヤーの位置によって不自然な向きへずれることがある問題を修正しました。構え・振り・残心が、実際の攻撃判定と同じ方向へ揃います。',
+    ],
+  },
+  {
     version: '0.25.2884',
     items: [
       '叫喚型の絵を、口を開けて絶叫している絵に差し替えました。',
