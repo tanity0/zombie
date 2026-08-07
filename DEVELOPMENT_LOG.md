@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.2982 — angelSwordSync定数一致テストを§6.33移設に追従(CI赤の解消)【2026-08-07 21:12 JST】
+MIMIR_LASER_WINDUP_MSの正本が§6.33でmimirLaserTrack.tsへ移設されて以降、useGameLoop.tsを見ていた
+一致テストが失敗し続けていた(V2bバッチの報告で発覚)。ソース表にmimirLaserTrackを追加して追従。39件緑。
+V2bのnihilパルス色判断(赤→金: 判定なしリングに赤を使うと色文法違反のため)は設計として妥当・採用。
+
 ## v0.25.2981 — FX-V2b実装: アクラシエルspike/burst/warp繋ぎ+グレンnihil強化【2026-08-07 20:18 JST】
 research/FX_GAP_LEDGER.md「発注仕様: バッチ FX-V2b」どおりSonnetサブエージェントが実装(`src/pixi/pixiScene.ts`のみ)。
 - **spike(放射棘)**: `bs==='spike'`(判定活性化と同じ窓=ACRASIEL_SPIKE_ACTIVE_MS_VIS)の間、

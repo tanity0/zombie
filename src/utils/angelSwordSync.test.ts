@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import angelBossTickSrc from './angelBossTick.ts?raw';
 import pixiSceneSrc from '../pixi/pixiScene.ts?raw';
 import useGameLoopSrc from '../hooks/useGameLoop.ts?raw';
+import mimirLaserTrackSrc from './mimirLaserTrack.ts?raw';
 
 // ボスの技タイミング/寸法は、**判定側と描画側で同名(または_VIS付き)の定数が手写しで二重管理**
 // されている(該当箇所に「一致」コメントの掟あり)。
@@ -26,6 +27,7 @@ const constValue = (src: string, name: string): number | null => {
 const SOURCES = {
   angelBossTick: angelBossTickSrc,
   useGameLoop: useGameLoopSrc,
+  mimirLaserTrack: mimirLaserTrackSrc, // §6.33でレーザー定数の正本がここへ移動(v0.25.2982でテスト追従)
 } as const;
 
 // [ロジック側ファイル, ロジック側の定数名, 描画側(pixiScene)の定数名]
@@ -54,7 +56,7 @@ const PAIRS: [keyof typeof SOURCES, string, string][] = [
   ['angelBossTick', 'ACRASIEL_SPEAR_WINDUP_MS', 'ACRASIEL_SPEAR_WINDUP_MS_VIS'],
   ['angelBossTick', 'ACRASIEL_GAZE_WINDUP_MS', 'ACRASIEL_GAZE_WINDUP_MS_VIS'],
   // --- 裏ボス: ミーミル/トール/ヨルムンガルド(useGameLoop側・v0.25.2893で拡張) ---
-  ['useGameLoop', 'MIMIR_LASER_WINDUP_MS', 'MIMIR_LASER_WINDUP_MS'],
+  ['mimirLaserTrack', 'MIMIR_LASER_WINDUP_MS', 'MIMIR_LASER_WINDUP_MS'],
   ['useGameLoop', 'MIMIR_LASER_FIRE_MS', 'MIMIR_LASER_FIRE_MS'],
   ['useGameLoop', 'MIMIR_LASER_RANGE', 'MIMIR_LASER_VIS_RANGE'],
   ['useGameLoop', 'MIMIR_LASER_HALF_WIDTH', 'MIMIR_LASER_VIS_HALFWIDTH'],
