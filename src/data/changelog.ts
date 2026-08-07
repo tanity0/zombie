@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2986',
+    items: [
+      'ゲーム内容の変更はありません(§6.37 v4仕様=遠景・近景の完全固定化とステージ2/6の除外を確定)。',
+    ],
+  },
+  {
     version: '0.25.2985',
     items: [
       '裏ボスの突進に風圧のエフェクトが付きました。',
