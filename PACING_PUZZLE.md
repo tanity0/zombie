@@ -5602,6 +5602,53 @@ post-zoom換算は `src/pixi/renderSpec.ts` に純関数で置く(例: `postZoom
    フェードイン/アウトするのは**許容**(帯が広がる=奥まで見える、の自然な帰結)。zoom<1では
    手前フェード帯(画面下端110px)にアクターが届かなくなる=手前フェードが効かないのも許容。
 
+### 実装結果(v0.25.2980・Sonnetサブエージェント)
+- **§1(床の縦延長)**: `src/pixi/layers.ts`の`groundStrips`を72→180本へ(`GROUND_STRIP_COUNT`)。
+  `src/pixi/renderSpec.ts`に`computeGroundBandLayout`/`groundStripT`/`GROUND_STRIP_REF_COUNT`を
+  純関数として新設(恒等=overscan=1で旧来値と一致・overscan=1/ZOOM_MIN_ABSで180本)。
+  `src/pixi/pixiScene.ts`の`updatePerspectiveGround`をこれらを呼ぶ形へ書き換え。**延長は下方向のみ**
+  (上端=farHは不変)——理由は下記★未決1。近景/遠景ブラー帯(`nearGroundStripCount`/`farGroundStripCount`)
+  が`groundStrips.length`比で旧来の物理位置とズレる副作用を発見・`GROUND_STRIP_REF_COUNT`基準へ修正済み。
+- **§2(上接合)**: `syncFarBackdropZoomExtension`(毎フレーム・`sync()`内)を新設。farBackdropの描画高を
+  `postZoomScreenY(farH, zoom, worldGroup.position.y)`まで下延長(下限=farHでクランプ=寄せズームで縮まない)。
+  `s7farext`固定倍率は撤去(resize/layoutFarBackdropの基準値計算からも削除=二重適用防止)。
+- **§3(フェードのpost-zoom化)**: `renderSpec.ts`に`postZoomScreenY`/`postZoomLocalY`/`postZoomFadeAlpha`を
+  新設。`horizonActorAlpha`/`foregroundActorAlpha`/`lightDefocus01`の内部だけを書き換え(呼び出し側50箇所超は
+  無変更)。恒等条件(zoom=1・position=(0,0))で旧来式と厳密一致をテストで確認。
+- **§4(worldFadeMask)**: テクスチャは resize 時のみ焼く(再生成なし)。`syncWorldFadeMaskZoom`(毎フレーム)が
+  基準ジオメトリ(zoom=1相当のposition.y/height)を`postZoomLocalY`で逆算し、position.y/heightだけ付け替え。
+  stage5WarMaskのcutoffも同様に`postZoomLocalY`で毎フレーム逆算(既存の毎フレーム呼び出し内)。
+- **§5(レイヤー表)**: cloudShadow/horizonForestFadeMask/frontForestFadeMask/danceUiLayer/tutorialMist/
+  makerGridは確認のみ(コード変更なし=既存で満たしている、または対象外)。
+- **§6(テスト)**: `src/pixi/renderSpec.test.ts`に16件追加(post-zoom恒等・zoom=ZOOM_MIN_ABSでの1/zoom幅拡大・
+  帯上部代表点のalpha=1.0とマスク境界外・床帯の恒等/180本化/t連続性)。`npx vitest run src/pixi/renderSpec.test.ts`
+  全16件green。
+- **ゲート**: typecheck 0 / lint エラー0(warning 8件は既存・無関係)。ゲーム側(store/utils/world/
+  useGameLoop)・cameraZoom.tsへの差分ゼロ(`git diff --stat`で確認=`src/pixi/`4ファイルのみ)。
+- **負荷**: 4/10(想定どおり)。床の塗り面積が縦2.5倍(横は既存で2.5倍=最大6.25倍)。§6.35の同種拡張が前例。
+  farBackdrop/worldFadeMask/stage5WarMaskの毎フレーム処理は座標計算のみ(canvas再生成なし)=無視できるコスト
+  (`farBackdropDrawH`の差分チェックで無変化フレームは再設定もスキップ)。
+- **実機確認(?zoomlock=0.4での帯割れ・M0〜M7の監査チェック表)は未実施**——CLAUDE.md/本ファイルの運用どおり
+  実機確認は社長が行う(検証は社長指示制)。
+
+### ★未決事項(実装時に生じた判断・社長確認をお願いしたい点)
+1. **床の延長方向=上下ではなく「下のみ」にした**。仕様1の文面は「上下へ帯を延長する」だが、機械的に
+   symmetric(画面中心基準で上下均等)に延長すると、**恒等(zoom=1)でもgroundStripsの一部がfarHより上
+   (=本来farBackdropだけの領域)まで物理的に存在し、groundBaseがworldGroupの子としてfarBackdropより
+   手前に描かれるため、通常プレイでも空が床に隠れる**という重大な退行を実装前に発見した(zoomGroup変換の
+   数式で検算済み)。そこで**上端(t=0・farHの位置)は不動のまま、増えた108本は全て下方向(近景側)へ
+   積み増す**構成にした——上の隙間は仕様2(farBackdropの毎フレーム下延長)が既に単独で埋める設計になって
+   いるため、床側が上へ伸びる必要が無いという結論に至った。数式・検算はENGINEERING_NOTES.mdへは未記載
+   (本ファイルのこのセクションに残す)。**この解釈が仕様意図と一致しているか確認をお願いしたい。**
+2. **cover(等倍/横基準)遠景ステージの下延長は「タイルのedge-clamp延長」(M7/labのような縦ストレッチでは
+   ない)**。M7/lab(`isHeightFit`)はfarScaleをfarDrawH基準で再計算=絵が縦へストレッチされる(仕様2の
+   記述どおり)。それ以外(forest/city/snow/tutorial等のcoverモード)はfarScaleをfarH基準のまま固定し、
+   高さだけ延長した——結果、延長分は**テクスチャの縦addressMode=clamp-to-edgeにより「画像の最下段の色が
+   そのまま伸びる」帯**になる(ストレッチではなく単色に近い帯)。仕様2はM7の一般化としか書いておらず、
+   coverモードでの延長の絵作りまでは指定が無かったための解釈。実機で見え方が気になる場合、
+   「coverモードもstretch化する」か「専用の高さ延長素材を後日差し替える」の二択になる(仕様2本文が
+   既に後者を許容している)。**現状は自動延長(edge-clamp)のままで着地。実機確認後に要否判断をお願いしたい。**
+
 ## §6.36 ボス出現カットイン「BOSS-INTRO-CUTIN」(社長発案2026-08-07・監査反映v2)
 
 ### 0. ゴール(社長の言葉)

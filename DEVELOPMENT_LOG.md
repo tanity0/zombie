@@ -1,5 +1,28 @@
 # Development Log
 
+## v0.25.2980 — §6.37 FIELD-WIDE-ZOOM実装(床の縦延長+遠景下延長+フェード/マスクのpost-zoom化)【2026-08-07 20:20 JST】
+PACING_PUZZLE.md §6.37(確定仕様・監査反映v2)をSonnetサブエージェントが実装。
+- **床の縦延長**(`src/pixi/layers.ts`): groundStrips 72→180本。`src/pixi/renderSpec.ts`に
+  `computeGroundBandLayout`/`groundStripT`/`GROUND_STRIP_REF_COUNT`を純関数として新設(恒等=旧来値と
+  一致)。`pixiScene.ts`の`updatePerspectiveGround`を書き換え。**延長は下方向のみ**(上端=farHは不動。
+  上の隙間はfarBackdropの下延長が単独で埋める設計と判断=★未決1、詳細はPACING_PUZZLE.md §6.37末尾)。
+  近景/遠景ブラー帯の比率計算が延長分を巻き込む副作用も発見・修正(GROUND_STRIP_REF_COUNT基準化)。
+- **遠景の下延長**(`pixiScene.ts`): `syncFarBackdropZoomExtension`を新設(毎フレーム)。farBackdropの
+  描画高を「床のローカル上端の今のzoomでの画面Y」まで下延長。M7専用だった`s7farext`固定倍率は撤去
+  (二重適用防止)。
+- **フェードのpost-zoom化**: `renderSpec.ts`に`postZoomScreenY`/`postZoomLocalY`/`postZoomFadeAlpha`を
+  新設。`horizonActorAlpha`/`foregroundActorAlpha`/`lightDefocus01`の内部だけ書き換え(呼び出し側50箇所超は無変更)。
+- **worldFadeMask/stage5WarMask**: テクスチャ再生成なし。`syncWorldFadeMaskZoom`(毎フレーム)が
+  position.y/heightだけpost-zoom値へ付け替え。stage5WarMaskのcutoffも同様に毎フレーム逆算。
+- **テスト**: `src/pixi/renderSpec.test.ts`に16件追加(post-zoom恒等・zoom=ZOOM_MIN_ABSでの1/zoom幅拡大・
+  帯上部代表点のalpha=1.0とマスク境界外・床帯の恒等/180本化)。全16件green。
+- **検証**: typecheck 0 / lint エラー0。ゲーム側(store/utils/world/useGameLoop)・cameraZoom.tsへの差分ゼロ
+  (`src/pixi/`4ファイルのみの変更)。実機確認(`?zoomlock=0.4`の帯割れ・監査チェック表)は社長へ持ち越し。
+- **負荷**: 4/10(想定どおり。床の塗り面積が縦2.5倍・横は既存で2.5倍=最大6.25倍。毎フレーム処理は
+  座標計算のみでcanvas再生成なし)。
+- **★未決2件**(PACING_PUZZLE.md §6.37末尾に詳細): ①床の延長を上下ではなく下のみにした判断の是非
+  ②coverモード遠景(M7/lab以外)の下延長がedge-clamp帯になる(ストレッチではない)ことの是非。
+
 ## v0.25.2979 — FX-V2b発注仕様(アクラシエルspike/burst/warp繋ぎ+グレンnihil強化)【2026-08-07 20:15 JST】
 社長GO「Aは一旦実装してみて判断しよう」。武器主役(結晶の槍)+素材不要の範囲で実装し実機判断。
 §6.37バッチ(pixiScene編集中)の着地後に投入する(直列運用)。

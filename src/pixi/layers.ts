@@ -59,8 +59,12 @@ export const buildLayers = (
   const nearHorizon = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
   nearHorizon.visible = false;
   const groundBase = new Container();
+  // §6.37 床の縦延長(「本数追加」方式・PACING_PUZZLE.md §6.37-1): 72 → 72×1/ZOOM_MIN_ABS(=180)。
+  // stripH/t の定義は不変のまま、増えた分は下方向(近景側)へだけ積み増す
+  // (src/pixi/pixiScene.ts の computeGroundBandLayout/groundStripT・updatePerspectiveGround)。
+  const GROUND_STRIP_COUNT = 180;
   const groundStrips = Array.from(
-    { length: 72 },
+    { length: GROUND_STRIP_COUNT },
     () => new TilingSprite({ texture: forestTexture, width: 1, height: 1 })
   );
   groundBase.addChild(...groundStrips);

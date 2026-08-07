@@ -170,3 +170,94 @@ export const BOSS_BEHIND_MIN_SPRITE_W_MULT = 7;
 /** その絵に「裏回り透け」を掛けてよいか(=自機を隠しうる大きさか)。描画のみ・判定には無関係。 */
 export const bossBehindFadeApplies = (spriteW: number, playerW: number): boolean =>
   spriteW >= playerW * BOSS_BEHIND_MIN_SPRITE_W_MULT;
+
+// ---------------------------------------------------------------------------
+// §6.37 FIELD-WIDE-ZOOM: post-zoom 変換の純関数(PACING_PUZZLE.md §6.37)。
+//
+// 前提: worldGroup(床/森/アクターを含む世界)は「画面中央を基準に scale=zoom で拡縮 + position で
+// 平行移動」される(pixiScene.sync のズーム適用)。worldGroup の子である何か(アクターの足元Yなど)の
+// 「ローカルY」(=worldGroup変換を適用する前のY。zoom=1・position=(0,0)なら screenY と一致する)を、
+// 実際に画面へ描かれる位置(post-zoom screenY)へ変換するのがこの1本の式。
+//
+// 恒等条件(PACING_PUZZLE.md §6.37 受け入れ条件1): zoom=1 かつ offsetY=0(worldGroupの変換が恒等)の
+// とき、postZoomScreenY(L, 1, 0) === L となり、旧来の「ローカルY=スクリーンY」前提の式と厳密一致する。
+export const postZoomScreenY = (localY: number, zoom: number, offsetY: number): number =>
+  localY * zoom + offsetY;
+
+// 逆変換: 「画面上でこの screenY に見せたい」という**固定のスクリーンY**を、現在の zoom/offsetY のもとで
+// worldGroup のローカル座標に置くには何ローカルYに置けばよいか。worldFadeMask/stage5WarMask のように
+// 「worldGroup の子として一緒にズームされるが、その境界線自体は画面上の固定位置を保ちたい」ものに使う
+// (マスクだけ別変換にしない=対象と同じ順で forward 変換すれば元の screenY に戻る、という設計)。
+export const postZoomLocalY = (screenY: number, zoom: number, offsetY: number): number =>
+  zoom === 0 ? screenY - offsetY : (screenY - offsetY) / zoom;
+
+/**
+ * 「地平線フェード」「手前フェード」等、共通フォーマットの帯フェードの post-zoom 版。
+ * `thresholdScreenY`(帯の開始=固定スクリーンY)・`fadePx`(帯幅=固定スクリーンpx)は
+ * **旧来どおり画面px基準の定数のまま**(post-zoom化しない)。actor 側だけ postZoomScreenY で
+ * 実際の画面Yへ変換してから比較する。これにより、zoom<1(引き)では同じ帯幅(screen px)に到達するのに
+ * より広いワールドY(1/zoom倍)が必要になる=「引くほど帯が広がる」が自動的に成立する
+ * (PACING_PUZZLE.md §6.37 受け入れ条件3: zoom=ZOOM_MIN_ABSで帯が1/ZOOM_MIN_ABS倍)。
+ *
+ * 恒等条件: zoom=1・offsetY=0 なら screenY=localY となり、旧来の
+ * `clamp((localY - thresholdScreenY) / fadePx, 0, 1)` と厳密一致する。
+ */
+export const postZoomFadeAlpha = (
+  localY: number,
+  zoom: number,
+  offsetY: number,
+  thresholdScreenY: number,
+  fadePx: number,
+): number => {
+  const screenY = postZoomScreenY(localY, zoom, offsetY);
+  if (fadePx <= 0) return screenY >= thresholdScreenY ? 1 : 0;
+  return Math.max(0, Math.min(1, (screenY - thresholdScreenY) / fadePx));
+};
+
+// ---------------------------------------------------------------------------
+// §6.37 床の縦延長(「本数追加」方式・PACING_PUZZLE.md §6.37-1)。
+//
+// stripH・t の**定義そのもの(=72本基準の式)は変えない**。ストリップの本数だけを
+// `refStripCount × overscan` へ増やし、追加分は**下方向へ**(=t を1超へ延長して)積み増す。
+// 上端(t=0・farHの位置)は一切動かさない——「床を地平線より上まで描くと不自然」(§6.37-2)なので、
+// 上の隙間は床でなく farBackdrop 側の下延長で埋める(postZoomScreenY 経由・pixiScene 側)。
+export const GROUND_STRIP_REF_COUNT = 72;
+
+export interface GroundBandLayout {
+  /** 帯の上端(ローカルY)。常に farH のまま(不変)。 */
+  top: number;
+  /** 帯の下端(ローカルY)。overscan=1 なら screenH 相当・overscan>1 ならその分下へ延長。 */
+  bottom: number;
+  /** ストリップ総本数。overscan=1 なら refStripCount(=72)。 */
+  stripCount: number;
+  /** 1本の高さ(ローカルpx)。overscan に関わらず値は不変(=定義域不変)。 */
+  stripH: number;
+}
+
+/**
+ * 床帯の上下端・本数・stripH を算出する。
+ * 恒等(overscan=1): top=farH, bottom=screenH相当(=farH+groundH), stripCount=refStripCount,
+ * stripH=groundH/refStripCount ——旧来の 72本ぶんの値と厳密一致(受け入れ条件1)。
+ * overscan=1/ZOOM_MIN_ABS(=2.5)なら stripCount=180(=72×2.5)で、下端が groundH×2.5 ぶん延長される。
+ */
+export const computeGroundBandLayout = (
+  farH: number,
+  screenH: number,
+  overscan: number,
+  refStripCount: number = GROUND_STRIP_REF_COUNT,
+): GroundBandLayout => {
+  const groundH = Math.max(1, screenH - farH);
+  const stripH = groundH / refStripCount;
+  const stripCount = Math.max(1, Math.round(refStripCount * Math.max(1, overscan)));
+  const bottom = farH + stripCount * stripH;
+  return { top: farH, bottom, stripCount, stripH };
+};
+
+/**
+ * ストリップ i の遠近進行度 t。**旧来と同じ式**(refStripCount−1 で正規化)を i が旧来の範囲
+ * (0..refStripCount-1)を超えても延長するだけ——旧72本の可視範囲では旧来と1ビットも変わらない。
+ * i が refStripCount-1 を超えると t は 1 を超えて伸び続ける(=手前の延長ぶん。負にはならないので
+ * Math.pow(t, curve) は常に安全)。
+ */
+export const groundStripT = (i: number, refStripCount: number = GROUND_STRIP_REF_COUNT): number =>
+  refStripCount <= 1 ? 1 : i / (refStripCount - 1);
