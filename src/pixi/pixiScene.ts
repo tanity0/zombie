@@ -12500,8 +12500,10 @@ export class PixiScene {
           ? (Math.sin((now / blinkPeriod) * Math.PI * 2) >= 0 ? 1 : 0.45)
           : 1;
         const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse) * blink, cap: 'round' });
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: (0.45 + 0.45 * prog) * blink, cap: 'round' });
+        // v0.25.2961(社長決定): レーザーは**カウンター不可**なので危険色を赤ではなく**紫**で塗る
+        // (紫=カウンターできない攻撃、の新しい読み分け。判定と線の一致=掟はそのまま)。
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xa855f7, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse) * blink, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xf3e8ff, alpha: (0.45 + 0.45 * prog) * blink, cap: 'round' });
         // §6.33(v0.25.2951 社長指示): カラオケの物差し=**プレイヤーの足元まで**。
         // 「どこで満杯か分かりづらい」の答え: 塗りの先端(白い印付き)が root→自分へ向かって伸び、
         // **先端が自分の足元に触れた瞬間=発射**(満杯位置=自分自身なので見失わない)。
@@ -12514,7 +12516,7 @@ export class PixiScene {
           const plyK = useGameStore.getState().player;
           const pDist = Math.min(Math.hypot(plyK.x + plyK.width / 2 - cx, plyK.y + plyK.height / 2 - cy), MIMIR_LASER_VIS_RANGE);
           const fx2 = cx + ux * pDist * fill, fy2 = cy + uy * pDist * fill;
-          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 8, color: 0xff6a6a, alpha: 0.9 * blink, cap: 'round' });
+          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 8, color: 0xc084fc, alpha: 0.9 * blink, cap: 'round' });
           o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 3, color: 0xffffff, alpha: 0.95 * blink, cap: 'round' });
           o.circle(fx2, fy2, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
           if (lwRemain <= LASER_TRACK_LOCK_MS) {
@@ -12534,8 +12536,9 @@ export class PixiScene {
         const fade = Math.min(1, life / 0.25); // 発射中はほぼ全開、最後の25%で消える
         const flick = 0.9 + 0.1 * Math.sin(now / 40); // エネルギーのちらつき
         const w = MIMIR_LASER_VIS_HALFWIDTH * 2 * flick;
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w, color: 0xff2020, alpha: 0.45 * fade, cap: 'round' });
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w * 0.5, color: 0xff6060, alpha: 0.85 * fade, cap: 'round' });
+        // v0.25.2961: ビーム本体も紫系(紫=カウンター不可)。芯の白は維持=エネルギー感は落とさない。
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w, color: 0x9333ea, alpha: 0.45 * fade, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w * 0.5, color: 0xc084fc, alpha: 0.85 * fade, cap: 'round' });
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round' });
       }
     }
