@@ -2941,6 +2941,8 @@ export class PixiScene {
   private frontForestFadeMask = new Sprite(Texture.WHITE);
   private frontForestFadeMaskTexture: Texture | null = null;
   private nearGroundBlurLayers: Container[] = [];
+  // §6.37 v5: 引きに応じて弱める近景ブラー帯(near 3段+延長帯)。base=等倍時の設計強度。
+  private nearBlurZoomFade: { layer: Container; filter: BlurFilter; base: number }[] = [];
   // 深層域グレーディング(退色セピア・描画のみ)。stageルートに ColorMatrixFilter を1枚、alpha でフェード。
   private deepGradeFilter: ColorMatrixFilter | null = null;
   private deepGradeAmount = 0;       // 0..1 現在のかかり具合(1秒フェード)
@@ -3422,6 +3424,10 @@ export class PixiScene {
   private bossBehindAlpha = 1; // 裏ボスの「裏回り透け」alpha を滑らかに追従させる実値(スナップ回避)
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
+  // §6.37 v5(社長指示2026-08-07「遠景と近景はほぼ動かさない」): 遠景森1/森2と地平の付帯層
+  // (戦火グロー/雪霧/境界霧)をまとめる画面固定コンテナ。worldGroupの子だが、引き(zoom<1)の間は
+  // 毎フレームzoomを打ち消して farBackdrop/frontForest と同格の「動かない遠景」にする(syncの適用部参照)。
+  private hzFixed = new Container();
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
   constructor(layers: SceneLayers) {
@@ -3468,6 +3474,14 @@ export class PixiScene {
       this.stageLightShaftGfx.filters = [new BlurFilter({ strength: SHAFT_BLUR, quality: 1 })];
     }
 
+    // §6.37 v5: 森1/森2を hzFixed(画面固定コンテナ)へ移設。worldGroup内の元のz順(groundBaseの上・
+    // filteredWorldの下)は hzFixed 自身が同じ位置に入ることで保たれる。地平の付帯層(戦火グロー/雪霧/
+    // 境界霧/岩間霧)も以後 hzFixed に入れる=森と同じ「画面固定」で一体に動く(剥がれない)。
+    {
+      const wg = this.L.worldGroup;
+      wg.addChildAt(this.hzFixed, wg.getChildIndex(this.L.horizonForest));
+      this.hzFixed.addChild(this.L.horizonForest, this.L.nearHorizon);
+    }
     this.L.filteredWorld.mask = this.worldFadeMask;
     this.L.worldGroup.addChild(this.worldFadeMask);
     this.L.horizonForest.mask = this.horizonForestFadeMask;
@@ -3495,6 +3509,7 @@ export class PixiScene {
       layer.addChild(...bandStrips);
       this.nearGroundBlurLayers.push(layer);
       this.nearGroundBlurFilters.push(filter);
+      this.nearBlurZoomFade.push({ layer, filter, base: filter.strength }); // §6.37 v5: 引きで減衰する対象
       this.L.groundBase.addChild(layer);
     }
     // 社長裁定①(監査指摘4「継ぎ足して」): 延長ストリップ(72本目以降=旧来の可視域より下の余剰帯)にも、
@@ -3513,6 +3528,7 @@ export class PixiScene {
         layer.addChild(...extStrips);
         this.nearGroundBlurLayers.push(layer);
         this.nearGroundBlurFilters.push(filter);
+        this.nearBlurZoomFade.push({ layer, filter, base: filter.strength }); // §6.37 v5: 引きで減衰する対象
         this.L.groundBase.addChild(layer);
       }
     }
@@ -3843,7 +3859,7 @@ export class PixiScene {
     // ステージ5の戦争照明(炎のゆらめき+爆発フラッシュ)。遠景森2(nearHorizon)の裏へ=森2のシルエットが手前に立つ「遠くの戦火」感(社長指示v0.25.1981)。worldGroup内・加算。
     // グループ化してマスク(上部のみ)=森2の下(地平)を貫通しない(社長指示v0.25.1984)。
     {
-      const nhIdx = () => this.L.worldGroup.getChildIndex(this.L.nearHorizon);
+      const nhIdx = () => this.hzFixed.getChildIndex(this.L.nearHorizon); // §6.37 v5: 森2は hzFixed 内
       this.stage5FireGlow.anchor.set(0.5);
       this.stage5FireGlow.blendMode = 'add';
       this.stage5FireGlow.eventMode = 'none';
@@ -3862,8 +3878,10 @@ export class PixiScene {
       }
       this.stage5WarGroup.visible = false;
       this.stage5WarGroup.mask = this.stage5WarMask;
-      this.L.worldGroup.addChildAt(this.stage5WarGroup, nhIdx());
-      this.L.worldGroup.addChildAt(this.stage5WarMask, nhIdx()); // マスクも表示ツリーに置く(描画はされない)
+      // §6.37 v5: 戦火グローも森2と同じ hzFixed(画面固定)へ=中身がscreen w/h基準の実装(下記コメント)と
+      // 引きズームでも厳密に一致する(旧: worldGroup直下=引きで森2から剥がれてズレる)。
+      this.hzFixed.addChildAt(this.stage5WarGroup, nhIdx());
+      this.hzFixed.addChildAt(this.stage5WarMask, nhIdx()); // マスクも表示ツリーに置く(描画はされない)
     }
 
     // ステージ4: 遠景森の前(森2=nearHorizonの手前)の霧。snowのみ。地平帯に横長のscreen霧を雪と同じ向きへ流す(社長指示v0.25.1984)。
@@ -3871,7 +3889,7 @@ export class PixiScene {
     this.snowHorizonFog.tint = 0xdfe8f5; // 寒色寄りの白
     this.snowHorizonFog.eventMode = 'none';
     this.snowHorizonFog.visible = false;
-    this.L.worldGroup.addChildAt(this.snowHorizonFog, this.L.worldGroup.getChildIndex(this.L.nearHorizon) + 1); // 森2の手前
+    this.hzFixed.addChildAt(this.snowHorizonFog, this.hzFixed.getChildIndex(this.L.nearHorizon) + 1); // 森2の手前(§6.37 v5: hzFixed内=画面固定)
 
     // フィールドの動く雲影(社長指示v0.25.1974)。地面(groundBase)の直上・森/アクターの下(worldGroup内)。multiply。屋外のみ・毎フレームdrift。
     this.cloudShadow.blendMode = 'multiply';
@@ -5214,8 +5232,7 @@ export class PixiScene {
       if (TUTORIAL_FRONT_FOG_BLUR > 0) sp.filters = [new BlurFilter({ strength: TUTORIAL_FRONT_FOG_BLUR, quality: 2 })]; // 少しぼかす(社長指示v0.25.1895)
       this.tutorialMist = sp;
     }
-    const wg = this.L.worldGroup;
-    wg.addChildAt(this.tutorialMist, wg.getChildIndex(this.L.nearHorizon)); // 岩帯1の上・岩帯2の下
+    this.hzFixed.addChildAt(this.tutorialMist, this.hzFixed.getChildIndex(this.L.nearHorizon)); // 岩帯1の上・岩帯2の下(§6.37 v5: hzFixed内=画面固定)
     this.tutorialMist.visible = true;
   }
 
@@ -5576,8 +5593,9 @@ export class PixiScene {
     if (!this.worldGapBand && this.worldGapTex) {
       const sp = new Sprite(this.worldGapTex);
       sp.eventMode = 'none';
-      // 森帯(horizonForest)の直後ろ=挿入位置はhorizonForestの現在indexへ(既存の子が1つ後ろへずれる)。
-      this.L.worldGroup.addChildAt(sp, this.L.worldGroup.getChildIndex(this.L.horizonForest));
+      // 森帯(hzFixed=森1/森2の画面固定コンテナ)の直後ろ=挿入位置はhzFixedの現在indexへ。
+      // 帯自身はworldGroupの子のまま(ズーム対象)=下端(farHローカル)が床上端と同じ変換で動き、継ぎ目なし。
+      this.L.worldGroup.addChildAt(sp, this.L.worldGroup.getChildIndex(this.hzFixed));
       this.worldGapBand = sp;
     }
     if (!this.worldGapMask) {
@@ -5940,13 +5958,11 @@ export class PixiScene {
       // アテンション(出現/討伐シネマ)中はカメラ自体がボスへパン済み=寄せを重ねるとフレーミングが
       // ずれるので、バイアスは0へ戻す(シネマ優先)。
       const biasActive = bossBiasD2 !== Infinity && !s.attention;
-      // v0.25.2992(社長報告「ズームが動く度に遠景がずれる」): **縦の寄せは廃止(0固定)**。
-      // 地平線支点(v0.25.2991)で森は遠景に貼り付いたが、縦の寄せは世界全体を平行移動するため
-      // 貼り付けた森ごと上下にスライドさせてしまう(=遠景がずれて見える正体)。縦の視野は
-      // 支点固定+下方向の拡がり+可視帯のズーム連動が担うので、縦バイアスは役目を終えた。横は0.5のまま。
+      // v0.25.2993(§6.37 v5): 縦の寄せを復活(v0.25.2965設計)。v0.25.2992で廃止した理由=
+      // 「寄せが貼り付けた森ごとスライドさせる」は、森1/森2がhzFixed(画面固定=バイアスも打ち消す)に
+      // なったことで消滅した。ボスが上下に居る時の「見えない」を再び中間寄せで補う。
       const wantX = biasActive ? Math.max(-slackWX, Math.min(slackWX, bossBiasDx * 0.5)) : 0;
-      const wantY = 0;
-      void slackWY; void bossBiasDy; // 縦は使わない(貼り付き維持)。将来復活させる時はこの2値を再利用
+      const wantY = biasActive ? Math.max(-slackWY, Math.min(slackWY, bossBiasDy * 0.5)) : 0;
       const biasTau = biasActive ? 0.5 : 1.0;
       const bk = 1 - Math.exp(-zdt / biasTau);
       this.bossViewBiasX += (wantX - this.bossViewBiasX) * bk;
@@ -5958,19 +5974,50 @@ export class PixiScene {
     const totalPanY = panY + bossPanY;
     if (Math.abs(zoom - 1) > 0.0005 || totalPanX !== 0 || totalPanY !== 0) {
       this.L.worldGroup.scale.set(zoom);
-      // v0.25.2991(社長指摘「遠景森が上に貼り付いてない。遠景の部分が下に伸びてるだけ」):
-      // **引き(zoom<1)の縦の支点=地平線(遠景下端farH)**。森1の上端(ローカルfarH)は
-      // farH*z + farH*(1-z) = farH に固定=引いても森は遠景のすぐ下に貼り付いたまま、
-      // 広がるのは下(フィールド側)だけになる。寄り(zoom>=1・待機/パンチ)は従来どおり画面中央支点
-      // (v0.25.2586のKILL寄せ設計を不変に保つ)。zoom=1でどちらも位置0=連続。
-      // 下方向の可視超過(最深で回収マージン240pxに対し+75px)は前景霧の裏に収まり許容(DEVLOG記録)。
-      const pivotY = zoom < 1 ? this.farBackdropHeight() : centerY;
-      this.L.worldGroup.position.set(centerX * (1 - zoom) - totalPanX, pivotY * (1 - zoom) - totalPanY);
+      // v0.25.2993(§6.37 v5・社長報告「下に広がるだけで上に広がってない」): 縦の支点を画面中央へ戻す
+      // =引きで視界が**上下対称**に広がる(v0.25.2991の地平線支点は撤回)。森の貼り付きは支点ではなく
+      // hzFixed(森1/森2の画面固定)が担い、地平〜床上端の間に開く隙間は隙間埋め帯(worldGapBand・
+      // 中央支点前提の設計=worldGapBandHeight)が埋める。可視域も中央支点=回収マージン240pxの
+      // 監査済み体制(v2991以前)に戻る(+75px超過の許容リスクは消滅)。
+      this.L.worldGroup.position.set(centerX * (1 - zoom) - totalPanX, centerY * (1 - zoom) - totalPanY);
       this.zoomApplied = true;
     } else if (this.zoomApplied) {
       this.L.worldGroup.scale.set(1);
       this.L.worldGroup.position.set(0, 0);
       this.zoomApplied = false;
+    }
+    // §6.37 v5: hzFixed(遠景森1/森2+地平付帯層)の画面固定。引き(zoom<1)ではworldGroupのズームを
+    // 完全に打ち消して「動かない遠景」(farBackdrop/frontForestと同格)、寄り(zoom>=1=KILL/待機パンチ)は
+    // 従来どおり世界と一緒に寄る(v0.25.2586のKILL寄せ設計を不変に保つ)。ボス寄せバイアス(bossPan)だけは
+    // どのズームでも打ち消す=遠景はカメラ寄せでスライドしない。p=max(1,zoom)なのでzoom=1境界で連続、
+    // 恒等(zoom=1・バイアス0)では scale=1・pos=(0,0)=従来と1msも変わらない。
+    if (this.zoomApplied) {
+      const p = Math.max(1, zoom);
+      const inv = 1 / Math.max(0.001, zoom);
+      this.hzFixed.scale.set(p * inv); // = 1/min(1,zoom)
+      this.hzFixed.position.set(
+        (centerX * (zoom - p) + bossPanX) * inv,
+        (centerY * (zoom - p) + bossPanY) * inv,
+      );
+    } else {
+      this.hzFixed.scale.set(1);
+      this.hzFixed.position.set(0, 0);
+    }
+    // §6.37 v5(社長報告「下の方地面切れてる3本レイヤー」=近景ブラー帯境界の3本線): 近景の帯ブラー
+    // (ストリップ束のBlurFilter)はストリップ番号=ワールド固定なので、引くと帯が画面中央へ上がって
+    // ピント帯に入るのにボケたまま+帯境界の継ぎ目(フィルタ矩形の縁)が露出する。引きに比例して強度を
+    // 落とし、ほぼ0でフィルタパス自体を外す(=継ぎ目も消える)。恒等(zoom>=1)では係数1=従来と不変。
+    {
+      const dofK = Math.max(0, Math.min(1, (zoom - ZOOM_MIN_ABS) / (1 - ZOOM_MIN_ABS)));
+      for (const e of this.nearBlurZoomFade) {
+        const st = e.base * dofK;
+        if (st < 0.05) {
+          if (e.layer.filters && e.layer.filters.length > 0) e.layer.filters = [];
+        } else {
+          if (!e.layer.filters || e.layer.filters.length === 0) e.layer.filters = [e.filter];
+          e.filter.strength = st;
+        }
+      }
     }
     // 被写界深度(tilt-shift)/ブルームの filterArea 追従: Pixi v8 の filterArea はコンテナの
     // ローカル座標で解釈され worldTransform で画面へ写像される。resize時の静的(0,0,w,h)のままだと
@@ -6044,12 +6091,14 @@ export class PixiScene {
         const mx = (this.screenW - w) / 2;
         const my = this.farBackdropHeight() - TUTORIAL_FRONT_FOG_CENTER_UP_PX - h / 2
           + Math.sin(now * 0.0004 * FOG_SPEED + 0.7) * 9;
-        // ズーム打ち消し: worldGroup変換の逆を座標/スケールに織り込む(スプライト単体なのでここで完結)。
-        mist.scale.set(1 / wz);
-        mist.position.set(
-          (mx - this.L.worldGroup.position.x) / wz,
-          (my - this.L.worldGroup.position.y) / wz
-        );
+        // ズーム打ち消し: §6.37 v5でhzFixed(画面固定コンテナ)の子になったので、打ち消すのは
+        // 「worldGroup×hzFixed」の合成変換。zoom<1ではhzFixedが既に恒等化済み(合成=単位)なので
+        // そのまま(mx,my)、zoom>=1(待機ズーム等)では旧来どおり実効ズーム分を打ち消して画面に固定する。
+        const hzB = wz * (this.hzFixed.scale.x || 1); // hzFixed子の実効スケール(zoom<1では1)
+        const hzAx = this.L.worldGroup.position.x + wz * this.hzFixed.position.x;
+        const hzAy = this.L.worldGroup.position.y + wz * this.hzFixed.position.y;
+        mist.scale.set(1 / hzB);
+        mist.position.set((mx - hzAx) / hzB, (my - hzAy) / hzB);
         mist.tilePosition.set(mistT, 0);
       }
     }
@@ -6062,8 +6111,7 @@ export class PixiScene {
         const sp = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
         sp.tint = FOG_TINT; sp.blendMode = 'normal'; sp.eventMode = 'none';
         this.nearHorizonMist = sp;
-        const wg = this.L.worldGroup;
-        wg.addChildAt(sp, wg.getChildIndex(this.L.nearHorizon) + 1); // 森2の「手前」(上に重ねる)・gameplayの後ろ
+        this.hzFixed.addChildAt(sp, this.hzFixed.getChildIndex(this.L.nearHorizon) + 1); // 森2の「手前」(上に重ねる)・gameplayの後ろ(§6.37 v5: hzFixed内=画面固定)
       }
       const nm = this.nearHorizonMist;
       if (nm) {
@@ -6226,9 +6274,11 @@ export class PixiScene {
     if (this.L.nearHorizon.visible) {
       this.L.nearHorizon.tilePosition.set(-s.camera.x * NEAR_HORIZON_PARALLAX_X, 0);
     }
-    // 遠景森1/2(と森2境界霧)は worldGroup の子として床と一緒に文脈ズームでスケール/移動する。
-    // 床と同一グループ=相対関係がズーム不変なので、引き(裏ボス等)でも森1が床の境界から剥がれず
-    // 「地面の切れ目」が出ない(v0.25.1880〜1882の画面固定ピンは森1を床から剥がして切れ目を生んだため撤回=v0.25.1883)。
+    // §6.37 v5(v0.25.2993): 遠景森1/2(と付帯霧)は hzFixed の子=引き(zoom<1)では**画面固定**。
+    // v0.25.1880〜1882の画面固定ピンが「床から剥がれて切れ目」で撤回された経緯(v0.25.1883)とは違い、
+    // 今回は床上端〜地平の間に開く隙間を隙間埋め帯(worldGapBand・中央支点前提の設計)が埋めるので
+    // 切れ目は出ない。ここの position/tilePosition は従来どおり「等倍の画面座標」で書けばよい
+    // (hzFixed内ではローカル=画面座標)。
     // 洋館通路: 森レイヤー由来の境界(非表示でもレイアウト値が残り画面中央に居座る)を使わず、
     // 画面上部の固定ライン+狭めのフェード幅に差し替え(v0.25.2149・詳細は定数コメント)。
     this.updateMakerGrid(s);
@@ -19735,6 +19785,7 @@ export class PixiScene {
     for (const layer of this.nearGroundBlurLayers) layer.filters = [];
     for (const filter of this.nearGroundBlurFilters) filter.destroy();
     this.nearGroundBlurFilters = [];
+    this.nearBlurZoomFade = []; // §6.37 v5: 破棄済みfilterへ触らないよう空に
     this.L.groundBase.destroy({ children: true });
     this.L.horizonForest.destroy();
     this.horizonForestFadeMask.destroy();
