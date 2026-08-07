@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2973',
+    items: [
+      'ゲーム内容の変更はありません(§6.37設計書を監査指摘17件で全面改訂・再監査中)。',
+    ],
+  },
+  {
     version: '0.25.2972',
     items: [
       'ゲーム内容の変更はありません(ズーム連動フィールド拡張 §6.37 の設計書を追加。着手前監査中)。',
