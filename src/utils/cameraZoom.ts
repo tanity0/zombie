@@ -79,10 +79,12 @@ export const BOSS_FRAME_EDGE_MARGIN_PX = 56; // 被写体中心を画面端か�
 export const bossFramingZoom = (
   dxCenter: number, dyCenter: number, viewport: { width: number; height: number },
 ): number => {
-  // 軸ごとに「中心がマージン内に映る」最大ズームを求め、厳しい方(小さい方)を返す。
-  const needX = (viewport.width / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dxCenter));
-  const needY = (viewport.height / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dyCenter));
-  return Math.min(needX, needY);
+  // v0.25.2964(社長報告「ズームがまだぎこちない」): 要求ズームは**等方向(距離ベース)**で出す。
+  // 旧実装の縦横別(min(needX, needY))は、同じ距離でもボスの周りを回り込むと(縦成分⇔横成分の入れ替わりで)
+  // 要求が揺れ、TAU追従が往復して**カメラがポンピング**していた。距離が変わらなければ要求も変わらない
+  // 等方向なら回り込みで揺れない。基準は狭い方の半径(縦)=どの向きでも必ず映る安全側。
+  const dist = Math.max(1, Math.hypot(dxCenter, dyCenter));
+  return (Math.min(viewport.width, viewport.height) / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / dist;
 };
 
 export interface BossFramingInput { dxCenter: number; dyCenter: number; viewport: { width: number; height: number } }
@@ -108,9 +110,14 @@ export const bossDistanceZoomTarget = (
   if (!framing) return anchor;
   // 足元(NEAR以内)は等倍のまま(社長裁定v0.25.2947「足元では等倍」不変)。それより外では
   // アンカー曲線とフレーミング要求の**引きが強い方**を採る(=見えなくなるより早めに引く)。床はfar。
+  // v0.25.2964: フレーミング項はNEAR→MIDの間で滑らかに効かせる(旧: NEAR境界の外側で即フル適用=
+  // 境界をまたぐたびに目標が段差で飛び、ぎこちなさの一因だった)。
   if (bodyDistancePx <= BOSS_DISTANCE_ZOOM_NEAR_PX) return anchor;
   const frame = bossFramingZoom(framing.dxCenter, framing.dyCenter, framing.viewport);
-  return Math.max(profile.far, Math.min(anchor, frame));
+  const w = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
+    / (BOSS_DISTANCE_ZOOM_MID_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
+  const blended = anchor + (Math.min(anchor, frame) - anchor) * w; // frameが強い分だけwで効かせる
+  return Math.max(profile.far, blended);
 };
 
 export interface Aabb { x: number; y: number; width: number; height: number }

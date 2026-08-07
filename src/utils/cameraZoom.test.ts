@@ -114,23 +114,29 @@ import { bossFramingZoom, BOSS_FRAME_EDGE_MARGIN_PX, BOSS_ZOOM_PROFILES as PROFI
 
 describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () => {
   const vp = { width: 800, height: 600 };
-  it('縦に遠いほど強い引きを要求する(縦が横より厳しい)', () => {
+  it('等方向(距離ベース)=回り込みで要求が揺れない(v0.25.2964・ぎこちなさ対策)', () => {
     expect(bossFramingZoom(0, 500, vp)).toBeCloseTo((300 - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
-    expect(bossFramingZoom(500, 0, vp)).toBeCloseTo((400 - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
-    expect(bossFramingZoom(500, 500, vp)).toBeCloseTo((300 - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
+    expect(bossFramingZoom(500, 0, vp)).toBeCloseTo((300 - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
+    // 同じ距離なら向きに依らず同じ要求(回り込みポンピングの根絶)
+    const d = Math.hypot(400, 300);
+    expect(bossFramingZoom(400, 300, vp)).toBeCloseTo(bossFramingZoom(0, d, vp), 6);
   });
   it('近距離では1以上=引きを要求しない', () => {
     expect(bossFramingZoom(0, 100, vp)).toBeGreaterThan(1);
   });
   it('bossDistanceZoomTargetはフレーミング要求とアンカーの引きが強い方を採り、床(far)を割らない', () => {
     const far = PROFILES2.giant.far;
-    // 縦600離れ(gap500相当): アンカー(mid=0.588)よりフレーミング((300-56)/600=0.4067)が強い→そちら
+    // 縦600離れ(gap500相当・w=1): アンカー(mid=0.588)よりフレーミング((300-56)/600=0.4067)が強い→そちら
     const pulled = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 0, dyCenter: 600, viewport: vp });
     expect(pulled).toBeCloseTo(Math.max(far, (300 - BOSS_FRAME_EDGE_MARGIN_PX) / 600), 6);
     // 超遠距離でも床=farで止まる
     expect(bossDistanceZoomTarget('mimir', 2000, false, { dxCenter: 0, dyCenter: 2200, viewport: vp })).toBe(far);
     // 足元(NEAR以内)は等倍のまま(社長裁定v0.25.2947不変)
     expect(bossDistanceZoomTarget('mimir', 100, false, { dxCenter: 0, dyCenter: 400, viewport: vp })).toBe(1.0);
+    // v0.25.2964: NEAR境界のすぐ外ではフレーミング項がほぼ効かない=境界の段差が無い(連続)
+    const nearEdge = bossDistanceZoomTarget('mimir', 181, false, { dxCenter: 0, dyCenter: 480, viewport: vp });
+    const anchorOnly = bossDistanceZoomTarget('mimir', 181);
+    expect(Math.abs(nearEdge - anchorOnly)).toBeLessThan(0.01);
     // framing無し(従来呼び出し)は従来曲線のまま
     expect(bossDistanceZoomTarget('mimir', 500)).toBeCloseTo(PROFILES2.giant.mid, 6);
   });
