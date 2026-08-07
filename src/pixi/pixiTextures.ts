@@ -455,6 +455,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/dust-puff', scaleMode: 'linear' as const },      // 砂埃バリエーションA(もこもこの塊)
       { name: 'fx/dust-ring', scaleMode: 'linear' as const },      // 砂埃バリエーションB(放射状のリング)
       { name: 'fx/ground-crack', scaleMode: 'linear' as const },   // 地割れ(着地衝撃の床。分類②)
+      // FX-V2c(裏ボス便2・v0.25.2985): 突進の風圧。ドット絵だが向きに合わせて連続回転+伸縮するため、
+      // idol-fist/boss-gun-*と同じ理由でlinear(nearestだと回転・伸縮のたびに拾う画素が変わりチラつく)。
+      { name: 'fx/dash-wind', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

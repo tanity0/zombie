@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2985',
+    items: [
+      '裏ボスの突進に風圧のエフェクトが付きました。',
+    ],
+  },
+  {
     version: '0.25.2984',
     items: [
       'ゲーム内容の変更はありません(突進の風圧素材を取り込み。表示は次のバッチで入ります)。',

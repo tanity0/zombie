@@ -2021,6 +2021,11 @@ const DUST_SCALE = 1.9;   // 着地(飛び掛かり)/のしかかり
 const DUST_STOMP_SCALE = 2.2;
 // 突進の土煙(v0.25.2427)。敵の大きさに対する広がり。蹴り出し/停止の一瞬なので大きめでよい。
 const DASH_DUST_SCALE = 1.6;
+// FX-V2c(発注仕様research/FX_GAP_LEDGER.md「裏ボス便2」): 突進の風圧(dash-wind)。②派手さの絵
+// =判定ゼロなので、本体幅より大きく出してよい(社長方針v0.25.2410「迷ったら派手側」)。1.2〜1.6の中間。
+const DASH_WIND_SCALE = 1.4;
+// 突進終了(bossState 'dash' が明ける)から風圧が消えるまでの減衰時間。
+const DASH_WIND_FADE_MS = 200;
 // V1(3)(FX_GAP_LEDGER.md・社長指示): 敵が接触ダメージを「与えた」瞬間の前のめり変形。
 // 被弾しなり(ENEMY_HIT_FLINCH_*)の**逆位相**=同じ線形減衰の包絡線で、向きだけプレイヤー側。
 // 「強めに」の指示なのでskewは被弾(0.42)より強く、前方オフセット+軽いスカッシュも重ねる。視覚のみ。
@@ -2353,6 +2358,9 @@ interface ActorView {
   // FX-V2b: アクラシエルの収縮→爆発(burst)の瞬間に放射する槍の断片(acrasiel-spearを小さく
   // 流用)。同時に最大 ACRASIEL_BURST_FRAG_COUNT 枚。
   burstFrag?: Sprite[];
+  // FX-V2c: 突進の風圧(dash-wind)。裏ボス3体(mimir/jormungand/skadi)の bossState 'dash' 中、
+  // 本体1体につき1枚(同時に1体しか突進しない)。
+  dashWind?: Sprite;
   // バッチFX-V3V4: 「物理の絵」(牙/爪/翼/触手/拳)。ATK_ART_* の固定スロットで持つ配列。
   // 生成は遅延(その技を使うボスだけ)。使わないフレームは visible=false にするだけ=draw callは増えない。
   atkArt?: Sprite[];
@@ -4426,6 +4434,10 @@ export class PixiScene {
   private warpOutWasOn = new Set<string>();
   private warpInWasOn = new Set<string>();
   private acrasielWarpOutPos = new Map<string, { x: number; y: number }>();
+  // FX-V2c: 突進の風圧の向き+減衰締切。突進中は毎フレーム向きを撮り直し(endAtも押し戻す)、
+  // 突進が明けたら最後の向きのまま endAt までの残り時間で減衰させる(dashWasOnと同じ「立ち下がり
+  // 後も自前の時計で出し切る」作法。gaze-flash等と違い毎フレーム位置が変わるので latchFx は使わない)。
+  private dashWindDir = new Map<string, { ux: number; uy: number; endAt: number }>();
   private latchFx(key: string, active: boolean, durMs: number, now: number, data: () => number[]):
     { t: number; d: number[]; t0: number } | null {
     let L = this.fxLatches.get(key);
@@ -4544,6 +4556,7 @@ export class PixiScene {
     if (view.shockwaves) for (const s of view.shockwaves) span(s);
     if (view.spikeThrust) for (const s of view.spikeThrust) span(s);
     if (view.burstFrag) for (const s of view.burstFrag) span(s);
+    span(view.dashWind);
     if (minY > maxY) return 1; // このフレームは何も描いていない
     const y = Math.max(minY, Math.min(this.seeThroughPlayer.footY, maxY));
     return this.horizonActorAlpha(y) * this.foregroundActorAlpha(y);
@@ -10435,6 +10448,7 @@ export class PixiScene {
         this.warpOutWasOn.delete(id);
         this.warpInWasOn.delete(id);
         this.acrasielWarpOutPos.delete(id);
+        this.dashWindDir.delete(id);
         this.enemies.delete(id);
         this.enemyJumpHop.delete(id);
         this.enemyBlockFall.delete(id);
@@ -12741,6 +12755,8 @@ export class PixiScene {
     // FX-V2b: アクラシエルの棘の突き上げ/爆ぜの破片も同じ作法で既定OFF。
     if (view.spikeThrust) for (const s of view.spikeThrust) if (s) s.visible = false;
     if (view.burstFrag) for (const s of view.burstFrag) if (s) s.visible = false;
+    // FX-V2c: 突進の風圧も同じ作法で既定OFF。点けるのは下のdrawDashWind呼び出しのみ。
+    if (view.dashWind) view.dashWind.visible = false;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       // §6.33(監査指摘7): 新挙動では線の向きを判定と同じ式(aiTarget−現在のボス中心)で引く。
@@ -13873,6 +13889,28 @@ export class PixiScene {
         }
       }
     }
+    // FX-V2c(発注仕様research/FX_GAP_LEDGER.md「裏ボス便2」): 突進の風圧。上の砂埃ラッチと同じ発火点
+    // (bossState 'dash')だが、対象は裏ボス3体(mimir/jormungand/skadi)限定(汎用charge/城ボス/
+    // トール/ミゲル/ウリ/idol等は対象外=発注仕様どおり)。分類②「派手さの絵」=判定ゼロ。
+    {
+      const hiddenDashOn = (e.type === 'mimir' || e.type === 'jormungand' || e.type === 'skadi') && e.bossState === 'dash';
+      if (hiddenDashOn) {
+        // 向きは上の速度線と同じ式(vx/vy→無ければ aiFrom→aiTarget)。突進中は毎フレーム撮り直し、
+        // 明けた後の200ms減衰は最後に撮った向きのまま(dashWasOnと同じ立ち下がり作法)。
+        let wdx = e.vx ?? 0, wdy = e.vy ?? 0;
+        if (Math.hypot(wdx, wdy) < 1) {
+          wdx = (e.aiTargetX ?? fb.footX) - (e.aiFromX ?? fb.footX);
+          wdy = (e.aiTargetY ?? fb.footY) - (e.aiFromY ?? fb.footY);
+        }
+        const wl = Math.hypot(wdx, wdy) || 1;
+        this.dashWindDir.set(e.id, { ux: wdx / wl, uy: wdy / wl, endAt: now + DASH_WIND_FADE_MS });
+      }
+      const dw = this.dashWindDir.get(e.id);
+      if (dw) {
+        const fadeT = hiddenDashOn ? 1 : Math.max(0, (dw.endAt - now) / DASH_WIND_FADE_MS);
+        this.drawDashWind(view, fb.footX, fb.footY, dw.ux, dw.uy, Math.max(e.width, e.height) * DASH_WIND_SCALE, fadeT);
+      }
+    }
     // 汎用ジャンプ着地の砂埃(社長指摘v0.25.2426「パンプキンなどのジャンプにも砂埃ちゃんと出てる?」)。
     // → **出ていなかった**。v0.25.2404で砂埃を入れた時、城ボスの新スクリプト(g-*)のブロックの中にだけ
     // 書いていたため、**同じ「飛び上がって着地する」技なのにパンプキン系だけ土煙が立たない**状態だった。
@@ -14530,6 +14568,7 @@ export class PixiScene {
       if (view.shockwaves) for (const s of view.shockwaves) if (s.visible) s.alpha *= teleFade;
       if (view.spikeThrust) for (const s of view.spikeThrust) if (s.visible) s.alpha *= teleFade;
       if (view.burstFrag) for (const s of view.burstFrag) if (s.visible) s.alpha *= teleFade;
+      if (view.dashWind?.visible) view.dashWind.alpha *= teleFade;
     }
 
     // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
@@ -16057,6 +16096,28 @@ export class PixiScene {
     sp.height = reach * 2;
     sp.position.set(cx, cy);
     sp.tint = tint;
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
+  // FX-V2c(発注仕様research/FX_GAP_LEDGER.md「裏ボス便2」): 突進の風圧本体。素材(fx/dash-wind)は
+  // 尖った先端が-x側(進行方向の頭)なので、drawSlashArcと同じ規約(素材の-x側を狙う方向=angle+PI)
+  // で向ける。anchor(0,0.5)=先端を本体の足元位置に置くことで、フレイした帯は自動的に逆方向
+  // (=進行方向の後ろ)へ伸びる。判定なし=②派手さの絵。tint無し(素材の色をそのまま使う)。
+  private drawDashWind(view: ActorView, ox: number, oy: number, ux: number, uy: number, len: number, alpha: number): void {
+    const tex = getTexture('fx/dash-wind');
+    if (!tex || alpha <= 0.01) { if (view.dashWind) view.dashWind.visible = false; return; }
+    let sp = view.dashWind;
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(0, 0.5);
+      view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
+      view.dashWind = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    sp.scale.set(len / Math.max(1, tex.width)); // 縦横同倍率=素材の扇の比率を保つ
+    sp.rotation = Math.atan2(uy, ux) + Math.PI;
+    sp.position.set(ox, oy);
     sp.alpha = alpha;
     sp.visible = true;
   }

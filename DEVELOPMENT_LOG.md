@@ -1,5 +1,30 @@
 # Development Log
 
+## v0.25.2985 — FX-V2c: 突進の風圧の配線【2026-08-07 20:50 JST】
+裏ボス3体(mimir/jormungand/skadi)の bossState 'dash' に、進行方向へ回転させた風圧スプライト
+(fx/dash-wind)を配線。分類②「派手さの絵」=判定ゼロ。既存のdash砂埃ラッチ(V1・useGameLoop.ts
+`patch.bossState = 'dash'`/pixiScene.tsの `dashBoss` 判定=`e.bossState === 'dash'`)と同じ発火点。
+- **向きの合わせ方**: 素材は尖った先端(進行方向の頭)が-x側。既存のdrawSlashArcと同じ規約
+  (`sp.rotation = angle + Math.PI`)で、進行方向ベクトル(e.vx/vy→無ければ e.aiTargetX/Y − e.aiFromX/Y
+  の差分。速度線=airborneCommit区画と同じフォールバック式)から角度を出して回転のみで合わせた。
+  画像が上下ほぼ対称な扇形のため、反転(mirror)は不要と判断(drawSlashArcも回転のみで反転なし)。
+  anchor(0, 0.5)=先端を本体の足元位置(fb.footX/footY)に置くことで、フレイした帯が自動的に
+  進行方向の逆(=本体の後方)へ伸びる。
+- サイズは本体幅/高さの大きい方 × 1.4(1.2〜1.6の中間・`DASH_WIND_SCALE`)。突進終了(bossState 'dash'
+  が明ける)から `DASH_WIND_FADE_MS`=200ms 掛けて alpha を減衰させ消す(`dashWindDir` Map・
+  dashWasOnと同じ「立ち下がり後も自前の時計で出し切る」作法。位置は毎フレーム変わるので latchFx は
+  不使用)。
+- pooled Sprite(view.dashWind・1体につき1枚)。telegraphFadeのbounds走査(`span(view.dashWind)`)・
+  毎フレームリセット(reset区画で`visible=false`既定)・teleFade乗算・view.container.destroyへの
+  自動destroy登録(既存のenemies destroyループでMapエントリのみ追加削除)の4点を実装。
+  テクスチラ登録: pixiTextures.ts standalone配列に `fx/dash-wind`(linear・回転/伸縮するためidol-fist等
+  と同じ理由)を追加。
+- **ゲート**: `npm run typecheck` 0件 / `npm run lint` エラー0(warning8件=既存・無関係)。
+- **未決事項なし**。判定・タイミング・ゲームロジックには一切触れていない(描画のみ)。
+- 負荷スコア **1/10**: 1体につき1枚のpooled Sprite・強glowではない(投影影を落とさない)・毎フレーム
+  position/rotation/alphaの更新のみ(新規Graphics描画/フィルタ無し)。同時に突進できるのは1ボスのみ
+  なので最大でも同時1枚。
+
 ## v0.25.2984 — 素材受領: 突進の風圧(dash-wind.png)【2026-08-07 21:05 JST】
 社長支給(裏ボス便2)。public/sprites/fx/dash-wind.png へ取り込み・台帳記録。先端が左向き=実装時に回転で
 進行方向へ合わせる。裏ボス3体のdash共通(分類②)。配線はFX-V2c。
