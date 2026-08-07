@@ -184,28 +184,46 @@ describe('zoomCameraDownFrac — 引きで上下の地面幅を揃えるカメ�
   });
 });
 
-// §6.37 v7(v0.25.2995): 縦のボスカメラ先読み(社長指示「左右みたいに上下もカメラを寄せて」)。
-import { bossCameraLeadY, BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC } from './cameraZoom';
+// §6.37 v7→v0.25.3002: 縦のボスカメラ先読み。北=「ボスを目標画面高さへ引き込む」方式
+// (社長報告「まだボスが上の被写体深度の中にいるのが基準になっちゃってる」対応)。南=中間寄せ+上限。
+import {
+  bossCameraLeadY, BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC, BOSS_LEAD_TARGET_SCREEN_FRAC,
+  BOSS_LEAD_PLAYER_MAX_FRAC,
+} from './cameraZoom';
 
-describe('bossCameraLeadY — ボス方向への縦カメラ先読み', () => {
+describe('bossCameraLeadY — ボス方向への縦カメラ先読み(北=目標ライン方式)', () => {
   const H = 800;
-  it('ボスが北(dy<0)なら正=カメラを北へ、南なら負(符号が向きに一致)', () => {
-    expect(bossCameraLeadY(-200, H, 1)).toBeGreaterThan(0);
-    expect(bossCameraLeadY(200, H, 1)).toBeLessThan(0);
-    expect(bossCameraLeadY(0, H, 1)).toBeCloseTo(0, 9); // -0許容
+  const pBal = (1 + CAMERA_HORIZON_FRAC) / 2;
+  it('南(dy>0)は中間寄せ+上限で負、dy=0は0', () => {
+    expect(bossCameraLeadY(200, H, 1)).toBeCloseTo(-100, 6);
+    const cap = BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC * H;
+    expect(bossCameraLeadY(100000, H, 1)).toBeCloseTo(-cap, 6);
+    expect(bossCameraLeadY(0, H, 1)).toBeCloseTo(0, 9);
   });
-  it('近距離では中心差の半分(横のbossViewBiasXと同じ狙い)', () => {
-    expect(bossCameraLeadY(-100, H, 1)).toBeCloseTo(50, 6);
+  it('北でもボスが既に目標ラインより下に映る近さなら寄せない(0)', () => {
+    // dy·z が目標ラインとの差より小さい: bossBase = pBal·H + dy·z > T·H → S<0 → 0
+    const dySmall = -((pBal - BOSS_LEAD_TARGET_SCREEN_FRAC) * H) * 0.5; // 必要距離の半分
+    expect(bossCameraLeadY(dySmall, H, 1)).toBe(0);
   });
-  it('プレイヤーの画面ずれが上限(画面高比×1/zoom)でクランプされる', () => {
-    const capAt1 = BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC * H;
-    expect(bossCameraLeadY(-100000, H, 1)).toBeCloseTo(capAt1, 6);
-    // 引くほど世界px上限は1/zで増える=画面上のずれは常に同じ比率
-    expect(bossCameraLeadY(-100000, H, 0.5)).toBeCloseTo(capAt1 / 0.5, 6);
-    expect(bossCameraLeadY(-100000, H, ZOOM_MIN_ABS)).toBeCloseTo(capAt1 / ZOOM_MIN_ABS, 6);
+  it('北の中距離ではボスがちょうど目標画面高さに来るシフトを返す', () => {
+    for (const z of [1, 0.7, ZOOM_MIN_ABS]) {
+      const dy = -(0.5 * H) / z; // 画面0.5H分の北距離(クランプ内に収まる範囲)
+      const lead = bossCameraLeadY(dy, H, z);
+      const bossScreen = pBal * H + dy * z + lead * z;
+      // クランプに掛からなければ厳密に目標ライン
+      const maxShift = (BOSS_LEAD_PLAYER_MAX_FRAC - pBal) * H;
+      const want = BOSS_LEAD_TARGET_SCREEN_FRAC * H - (pBal * H + dy * z);
+      if (want <= maxShift) expect(bossScreen).toBeCloseTo(BOSS_LEAD_TARGET_SCREEN_FRAC * H, 4);
+    }
   });
-  it('最深より深いzoomでも頭打ち(1/ZOOM_MIN_ABS倍まで)', () => {
+  it('北の超遠距離はプレイヤー下限(画面高比)でクランプされる', () => {
+    for (const z of [1, ZOOM_MIN_ABS]) {
+      const maxShift = (BOSS_LEAD_PLAYER_MAX_FRAC - pBal) * H;
+      expect(bossCameraLeadY(-100000, H, z)).toBeCloseTo(maxShift / z, 4);
+    }
+  });
+  it('最深より深いzoomを渡してもZOOM_MIN_ABSで頭打ち', () => {
     expect(bossCameraLeadY(-100000, H, 0.1)).toBeCloseTo(
-      BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC * H / ZOOM_MIN_ABS, 6);
+      bossCameraLeadY(-100000, H, ZOOM_MIN_ABS), 6);
   });
 });

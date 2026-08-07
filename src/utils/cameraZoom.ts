@@ -229,18 +229,33 @@ export const zoomCameraDownFrac = (baseFrac: number, zoom: number): number => {
 };
 
 // §6.37 v7(社長指示2026-08-08「左右みたいに、上下もカメラをそちらに寄せれないの？」):
-// ボス方向への**縦のカメラ先読み(store側)**。横(描画側のbossViewBiasX)と同じ「中心差の半分」を
-// 狙うが、縦は描画側のパン(worldGroupずらし)だと床の上端が地平線から剥がれて「上の地面切れ」が
-// 再発するため、**カメラ本体を寄せる**(床帯はカメラ非追従=地平線に貼り付いたまま。スポーン/回収/
-// フェードは全部カメラ基準なので自動で一貫)。
-// 返り値は「カメラをボス側へ寄せる世界px」(正=北/上へ寄せる)。画面上のプレイヤーずれが
-// LEAD_MAX_SCREEN_FRAC(画面高比)を超えないよう、現在ズームで換算してクランプする。
-export const BOSS_CAMERA_LEAD_FRAC = 0.5;             // 横の寄せ(bossBiasDx*0.5)と同じ「中間寄せ」
-// プレイヤーの画面ずれ上限(画面高比)。0.12→0.18(社長指示v0.25.2997「ボスが消える所が基準に
-// なっちゃってる。もう少しボスが下に映り込む様に」=上限を上げてボスをより画面内へ引き込む)。
-export const BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC = 0.18;
+// ボス方向への**縦のカメラ先読み(store側)**。縦は描画側のパン(worldGroupずらし)だと床の上端が
+// 地平線から剥がれて「上の地面切れ」が再発するため、**カメラ本体を寄せる**(床帯はカメラ非追従=
+// 地平線に貼り付いたまま。スポーン/回収/フェードは全部カメラ基準なので自動で一貫)。
+// 返り値は「カメラをボス側へ寄せる世界px」(正=北/上へ寄せる)。
+//
+// v0.25.3002(社長報告「まだボスが上の被写体深度の中にいるのが基準になっちゃってる」):
+// 北のボスは「中心差の半分・上限クランプ」(v2995〜)をやめ、**「ボスを目標の画面高さ
+// (BOSS_LEAD_TARGET_SCREEN_FRAC=上のボケ/フェード帯の下)まで引き込む」を直接解く**。
+// 旧方式は遠いボスで必ず上限に張り付き、毎回同じ高さ(=ボケ帯の中)に収束していた(報告の正体)。
+// プレイヤーは BOSS_LEAD_PLAYER_MAX_FRAC までしか下げない(そこまで寄せても届かない超遠距離は
+// 素直に諦める=画面外/上帯のまま)。南のボスは従来どおり中間寄せ+上限(下側にボケ帯問題は無い)。
+export const BOSS_CAMERA_LEAD_FRAC = 0.5;             // 南側: 横の寄せ(bossBiasDx*0.5)と同じ「中間寄せ」
+export const BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC = 0.18; // 南側: プレイヤーの画面ずれ上限(画面高比)
+export const BOSS_LEAD_TARGET_SCREEN_FRAC = 0.36;     // 北側: ボスをこの画面高さまで引き込む(ボケ帯の下)
+export const BOSS_LEAD_PLAYER_MAX_FRAC = 0.84;        // 北側: プレイヤーをこの画面高さまでしか下げない
 export const bossCameraLeadY = (dyCenter: number, viewH: number, zoom: number): number => {
   const z = Math.max(ZOOM_MIN_ABS, Math.min(1, zoom));
-  const cap = (BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC * viewH) / z;
-  return Math.max(-cap, Math.min(cap, -dyCenter * BOSS_CAMERA_LEAD_FRAC));
+  if (dyCenter >= 0) {
+    // 南(ボスが下): 中間寄せ+上限(従来)。負=カメラを南へ。
+    const cap = (BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC * viewH) / z;
+    return Math.max(-cap, Math.min(0, -dyCenter * BOSS_CAMERA_LEAD_FRAC));
+  }
+  // 北(ボスが上): 均衡構図(プレイヤー画面比=(1+f)/2)を基準に、ボスが目標ラインへ来る
+  // 画面下方向シフトSを解き、プレイヤー下限までの余地でクランプする。
+  const pBal = (1 + CAMERA_HORIZON_FRAC) / 2;           // 均衡構図のプレイヤー画面比(≈0.63)
+  const bossBasePx = pBal * viewH + dyCenter * z;       // 先読み無しのボス画面Y(近似)
+  const wantShiftPx = BOSS_LEAD_TARGET_SCREEN_FRAC * viewH - bossBasePx;
+  const maxShiftPx = (BOSS_LEAD_PLAYER_MAX_FRAC - pBal) * viewH; // ≈0.21H
+  return Math.max(0, Math.min(maxShiftPx, wantShiftPx)) / z;
 };
