@@ -8,7 +8,12 @@ export const npcSfxDistGain = (
   hx: number, hy: number, ppx: number, ppy: number,
   cam: { x: number; y: number }, gb: { width: number; height: number },
 ): number => {
-  if (hx < cam.x || hx > cam.x + gb.width || hy < cam.y || hy > cam.y + gb.height) return 0;
+  // 監査v0.25.3008: 旧実装の「カメラ矩形=画面」判定は等倍・カメラ≒プレイヤー中心の前提。
+  // ズーム連動カメラ下げ+縦先読み(v2994〜)でカメラがプレイヤーの北を向くと、プレイヤー周辺
+  // (画面のど真ん中)が矩形外=カウンター/天使/偶像のSEが無音になっていた。プレイヤー中心の
+  // 同寸矩形で判定する(プレイヤーは常に画面内なのでどの構図でも破綻しない)。減衰式は不変。
+  void cam;
+  if (Math.abs(hx - ppx) > gb.width / 2 || Math.abs(hy - ppy) > gb.height / 2) return 0;
   const maxDist = 0.5 * Math.hypot(gb.width, gb.height);
   const tt = Math.min(1, Math.hypot(hx - ppx, hy - ppy) / maxDist);
   return Math.max(0.08, Math.pow(1 - tt, 1.9));

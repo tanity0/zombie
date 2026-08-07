@@ -10797,8 +10797,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const currentTime = Date.now();
 
     set(state => {
-      const { projectiles, player, gameBounds, breakableProps, castleEvent, camera, enemies } = state;
-      const cullRadius = Math.max(gameBounds.width, gameBounds.height);
+      const { projectiles, player, gameBounds, breakableProps, castleEvent, enemies } = state;
+      // 監査v0.25.3008: 弾のカリング半径は「一番引いた時(ZOOM_MIN_ABS)の可視域」を覆う値にする。
+      // 旧値 max(W,H) は等倍前提で、ボス戦の最大引き(2.5倍)では画面内を飛ぶ弾が途中で消えていた
+      // (CLAUDE.mdズーム掟のマージン基準に合わせる。弾数は有限で回転も速いため負荷影響は僅少)。
+      const cullRadius = Math.max(gameBounds.width, gameBounds.height) / ZOOM_MIN_ABS;
       const playerCX = player.x + player.width / 2;
       const playerCY = player.y + player.height / 2;
       const indoor = state.indoorMode;
@@ -10891,8 +10894,13 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (bwalls.some(w => rectsOverlap({ x: nx, y: ny, width: p.width, height: p.height }, w))) {
                 return { ...p, boomPhase: 'return' as const, hitEnemies: [] };
               }
-              // 画面外に出たらすぐ戻り動作へ切替(停止せず帰還)。可視範囲=カメラ+画面サイズ。
-              const offScreen = ncx < camera.x || ncx > camera.x + gameBounds.width || ncy < camera.y || ncy > camera.y + gameBounds.height;
+              // 画面外に出たらすぐ戻り動作へ切替(停止せず帰還)。
+              // 監査v0.25.3008: 旧「カメラ矩形」はズーム連動カメラ下げ(v2994〜)でカメラがプレイヤーの
+              // 北を向くと発射地点(プレイヤー周辺)すら矩形外になり、投げた瞬間に帰還していた。
+              // プレイヤー中心の同寸矩形で判定する(意図=「画面から出たら帰還」は保たれる)。
+              const bpcx = state.player.x + state.player.width / 2;
+              const bpcy = state.player.y + state.player.height / 2;
+              const offScreen = Math.abs(ncx - bpcx) > gameBounds.width / 2 || Math.abs(ncy - bpcy) > gameBounds.height / 2;
               const traveled = Math.hypot(ncx - (p.boomOriginX ?? ncx), ncy - (p.boomOriginY ?? ncy));
               if (offScreen) {
                 return { ...p, x: nx, y: ny, boomPhase: 'return' as const, hitEnemies: [] };

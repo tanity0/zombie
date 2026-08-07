@@ -1752,13 +1752,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // 四神技4回成功 → 画面内の敵に全体フィニッシュ(雑魚=処刑/ボス=大ダメージ)。一度だけ実行。
     const shijinWholeScreenFinish = () => {
       const st = useGameStore.getState();
-      const cam = st.camera;
       const b = st.gameBounds;
       const m = SHIJIN_FINISH_SCREEN_MARGIN;
+      // 監査v0.25.3008: カメラ矩形→プレイヤー中心の同寸矩形へ。ズーム連動カメラ下げ(v2994〜)で
+      // カメラが北を向くと、プレイヤーの足元〜南側の敵がフィニッシュ対象から漏れていた。
+      const fpx = st.player.x + st.player.width / 2, fpy = st.player.y + st.player.height / 2;
       const onScreen = st.enemies.filter(e => {
         const ex = e.x + e.width / 2;
         const ey = e.y + e.height / 2;
-        return ex >= cam.x - m && ex <= cam.x + b.width + m && ey >= cam.y - m && ey <= cam.y + b.height + m;
+        return Math.abs(ex - fpx) <= b.width / 2 + m && Math.abs(ey - fpy) <= b.height / 2 + m;
       });
       spawnFlash('rgba(255,255,255,0.5)', 200);
       for (const e of onScreen) {
@@ -3457,11 +3459,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (newGameTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && newGameTime >= H.nextEligibleAt && !spawnBlocked) {
               // 旧・優勢判定(6項目中4つ以上)。バッチ7で既定は退屈シグナルへ統合するが、?events=0の
               // 従来復帰用にロジック自体は残す。
-              const cam = hs.camera;
+              // 監査v0.25.3008: カメラ矩形→プレイヤー中心(ズーム連動カメラ下げで南側が漏れて過少カウントに)。
+              const hpcx = hs.player.x + hs.player.width / 2, hpcy = hs.player.y + hs.player.height / 2;
               const onscreen = hs.enemies.reduce((n, e) => {
                 if (isBossType(e.type) || e.type === 'hunter') return n;
                 const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-                return (ex >= cam.x && ex <= cam.x + gameBounds.width && ey >= cam.y && ey <= cam.y + gameBounds.height) ? n + 1 : n;
+                return (Math.abs(ex - hpcx) <= gameBounds.width / 2 && Math.abs(ey - hpcy) <= gameBounds.height / 2) ? n + 1 : n;
               }, 0);
               const captured = hs.baseSites.filter(b => b.status === 'captured').length;
               const gun = getActiveGun(hs.player);
@@ -6188,7 +6191,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           camY = Math.max(LAB_OUTER_BOUNDS.y, Math.min(maxCamY, camY));
         }
         setCameraPosition(camX, camY);
-        syncBreakableProps({ x: baseCamX, y: baseCamY }, gameBounds);
+        // 監査v0.25.3008: 松明/地雷の生成リージョンは**構図オフセット抜き**のプレイヤー中心カメラで渡す。
+        // baseCamY はズーム連動カメラ下げ+縦先読み(最大~1000px)込みのため、そのまま渡すとリージョン
+        // 南端がプレイヤーの手前まで縮み、足元の松明/緑卵が配列から落ちて消えることがあった。
+        syncBreakableProps({ x: baseCamX, y: pcCamY - gameBounds.height / 2 }, gameBounds);
         
         // Complete any finished reload, then ensure the active gun is
         // shootable (reload it / swap off a fully-dry gun), then fire it.
@@ -6910,12 +6916,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().setSupportSniperCd(ssCdNext);
           }
           if (ssTick.fire && ssTarget && !ssState.supportSniperNpc) {
-            const ssCam = ssState.camera;
+            // 監査v0.25.3008: カメラ矩形→プレイヤー中心の同寸矩形(ズーム連動カメラ下げで入場位置が北へずれるのを防ぐ)。
             const ssGb = ssState.gameBounds;
             const entry = computeSupportSniperEntry(
               ssTarget.x + ssTarget.width / 2, ssTarget.y + ssTarget.height / 2,
               ssPcx, ssPcy,
-              { left: ssCam.x, top: ssCam.y, right: ssCam.x + ssGb.width, bottom: ssCam.y + ssGb.height },
+              { left: ssPcx - ssGb.width / 2, top: ssPcy - ssGb.height / 2, right: ssPcx + ssGb.width / 2, bottom: ssPcy + ssGb.height / 2 },
               (Math.random() - 0.5) * 0.24, // ±少しランダム(叩き台: 約±7°)
             );
             if (entry) {
@@ -7015,10 +7021,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // Lv3の爆弾条件でしか使わない値なので、該当しない時は画面内敵数の走査自体をしない。
           let onScreenEnemyCount = 0;
           if (level >= 3 && !kitStateNow.bombDispensed) {
-            const cam = useGameStore.getState().camera;
+            // 監査v0.25.3008: カメラ矩形→プレイヤー中心(ズーム連動カメラ下げで南側が漏れて過少カウントに)。
+            const kpl = useGameStore.getState().player;
+            const kpx = kpl.x + kpl.width / 2, kpy = kpl.y + kpl.height / 2;
             onScreenEnemyCount = useGameStore.getState().enemies.reduce((n, e) => {
               const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-              return (ex >= cam.x && ex <= cam.x + gameBounds.width && ey >= cam.y && ey <= cam.y + gameBounds.height) ? n + 1 : n;
+              return (Math.abs(ex - kpx) <= gameBounds.width / 2 && Math.abs(ey - kpy) <= gameBounds.height / 2) ? n + 1 : n;
             }, 0);
           }
 
@@ -7256,11 +7264,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             if (next !== (gSub.ghostSupportSniperCdMs ?? cdMs)) patchGhost({ ghostSupportSniperCdMs: next });
             if (tick.fire && target && !ssState.supportSniperNpc) {
-              const cam = ssState.camera;
+              // 監査v0.25.3008: カメラ矩形→プレイヤー中心の同寸矩形(上と同じ理由)。
+              const spcl = ssState.player;
+              const spcx = spcl.x + spcl.width / 2, spcy = spcl.y + spcl.height / 2;
               const entry = computeSupportSniperEntry(
                 target.x + target.width / 2, target.y + target.height / 2,
                 gcx, gcy,
-                { left: cam.x, top: cam.y, right: cam.x + gameBounds.width, bottom: cam.y + gameBounds.height },
+                { left: spcx - gameBounds.width / 2, top: spcy - gameBounds.height / 2, right: spcx + gameBounds.width / 2, bottom: spcy + gameBounds.height / 2 },
                 (Math.random() - 0.5) * 0.24,
               );
               if (entry) {
@@ -7420,12 +7430,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         {
           const runCloneTick = (clone: ShadowCloneState | null | undefined, ghostId?: string) => {
             if (!clone) return;
-            const { camera, gameBounds } = useGameStore.getState();
+            // 監査v0.25.3008: 旧「カメラ矩形」判定は、ズーム連動カメラ下げ(v2994〜)でカメラが
+            // プレイヤーの北を向くと**プレイヤー位置すら矩形外**になり、分身が出した瞬間に消えていた。
+            // プレイヤー中心の同寸矩形で判定する(意図=「画面から完全に出たら消す」は保たれる)。
+            const { player: pl, gameBounds } = useGameStore.getState();
+            const plcx = pl.x + pl.width / 2, plcy = pl.y + pl.height / 2;
             const fullyOff =
-              clone.x + clone.width < camera.x ||
-              clone.x > camera.x + gameBounds.width ||
-              clone.y + clone.height < camera.y ||
-              clone.y > camera.y + gameBounds.height;
+              clone.x + clone.width < plcx - gameBounds.width / 2 ||
+              clone.x > plcx + gameBounds.width / 2 ||
+              clone.y + clone.height < plcy - gameBounds.height / 2 ||
+              clone.y > plcy + gameBounds.height / 2;
             if (fullyOff) useGameStore.getState().expireShadowClone(ghostId);
             else useGameStore.getState().tickShadowClone(ghostId);
           };
@@ -10695,11 +10709,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 洋館通路はカメラ側の増量(CORRIDOR_CAMERA_DOWN_FRAC)と同値で連動(v0.25.2148・ズレると上端で湧きが見える)。
         // §6.37 v6/v7: 引き連動の増量分+縦のボス先読み(camBossLeadYRef)もカメラと**同じ値**で連動させる
         // (v2148の教訓のズーム版。カメラより多くずらすと下端で、少なくずらすと上端で、湧きが画面内に見える)。
-        const spawnViewOffsetY = (labTheme || indoor) ? 0
+        // 監査v0.25.3008: カメラ側(camDownOff)と**完全に同じ式**にする。旧実装は括弧の位置が違い、
+        // lab/屋内では先読み項(camBossLeadYRef・屋内遷移後1〜2秒は減衰中で非0)が湧き帯に乗らず、
+        // カメラだけずれる=v2148型の「上端で湧きが見える」が遷移直後に再現していた。
+        const spawnViewOffsetY = ((labTheme || indoor) ? 0
           : gameBounds.height * zoomCameraDownFrac(
               useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC,
-              camBossZoomRef.current.z)
-            + camBossLeadYRef.current;
+              camBossZoomRef.current.z))
+          + camBossLeadYRef.current;
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
         // ボス交戦域では距離によって最大0.58まで動くため最深値を安全側に採る。通常時は従来の純関数どおり。
         const bossCameraMayPull = allEnemiesNow.some(e => {

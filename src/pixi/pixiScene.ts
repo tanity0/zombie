@@ -22,7 +22,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
@@ -3281,7 +3281,7 @@ export class PixiScene {
     this.stage5Afterglow.height = h + 2;
     this.stage5Afterglow.alpha = tsNum('s5afterglow', 0.16);
     // マスク: 地平(森2の下端あたり)より上のみ描く=フラッシュ/火が森2を貫通して手前(フィールド)へ漏れない(社長指示v0.25.1984)。
-    // stage5WarGroup/stage5WarMaskはどちらもworldGroupの子だが、中身(stage5FireGlow/stage5Afterglow)は
+    // stage5WarGroup/stage5WarMaskはどちらもhzFixedの子(§6.37 v6・同一変換空間)だが、中身(stage5FireGlow/stage5Afterglow)は
     // screen w/hをそのままローカル座標として使う=post-zoom変換を掛けない前提の実装。マスクだけpost-zoom化すると
     // 対象と変換基準がズレるため、cutoffはローカル基準のまま(=cutoffScreenYをそのまま使う。旧式)。
     const cutoffScreenY = this.farBackdropHeight() + h * tsNum('s5warmask', 0.05) - tsNum('s5warup', 20); // 切り目を20px上へ(社長指示v0.25.1987)
@@ -3944,7 +3944,7 @@ export class PixiScene {
     this.snowHorizonFog.tint = 0xdfe8f5; // 寒色寄りの白
     this.snowHorizonFog.eventMode = 'none';
     this.snowHorizonFog.visible = false;
-    this.hzFixed.addChildAt(this.snowHorizonFog, this.hzFixed.getChildIndex(this.L.nearHorizon) + 1); // 森2の手前(§6.37 v5: hzFixed内=画面固定)
+    this.hzFixed.addChildAt(this.snowHorizonFog, this.hzFixed.getChildIndex(this.L.nearHorizon) + 1); // 森2の手前(§6.37 v6: hzFixed内=バイアス打ち消しのみ)
 
     // フィールドの動く雲影(社長指示v0.25.1974)。地面(groundBase)の直上・森/アクターの下(worldGroup内)。multiply。屋外のみ・毎フレームdrift。
     this.cloudShadow.blendMode = 'multiply';
@@ -4501,9 +4501,17 @@ export class PixiScene {
 
   private horizonActorAlpha(footWorldY: number) {
     const localY = footWorldY - this.cameraY;
-    // horizonForestFootWorldY = camera.y + (固定スクリーンY基準のしきい値) なので、-cameraY で
-    // その「固定スクリーンY」だけを取り出す(旧来どおりcamera.y分は毎フレーム打ち消される)。
-    const thresholdScreenY = this.horizonForestFootWorldY - this.cameraY;
+    // horizonForestFootWorldY = camera.y + (森1の足元由来のしきい値) なので、-cameraY でローカルYへ。
+    // ★監査v0.25.3008(A-2): このしきい値は森1(hzFixed=worldGroupと一緒に縮む)のレイアウト値=
+    // **pre-zoomのローカルY**であり、画面固定の定数ではない。旧実装はこれをスクリーンY扱いで
+    // postZoomFadeAlphaに渡していたため、引き中はフェード線が森の実際の足元より下(最深で画面高の
+    // 約1割)に居残り、北側の見えている地面の上で敵が薄くなる+目標ラインまで引き込んだボスが
+    // フェード帯に掛かっていた。しきい値も同じpost-zoom変換で実画面Yへ写してから比較する
+    // (フェード帯の幅 horizonActorFadePx は従来どおり画面px=「引くほど帯が広がる」の受け入れ条件不変。
+    // 廊下(corridorMode)のしきい値は真の画面定数だが、廊下はズーム対象外=恒等なので同式でよい。
+    // 影の先端詰め(SHADOW_HORIZON_TRIM)は「ローカル同士」の比較で元から整合しており対象外)。
+    const thresholdLocalY = this.horizonForestFootWorldY - this.cameraY;
+    const thresholdScreenY = postZoomScreenY(thresholdLocalY, this.wgZoom(), this.wgOffsetY());
     return postZoomFadeAlpha(localY, this.wgZoom(), this.wgOffsetY(), thresholdScreenY, this.horizonActorFadePx);
   }
 
@@ -5113,7 +5121,9 @@ export class PixiScene {
     const sp = this.labFloorPlate;
     sp.visible = true;
     sp.tint = LAB_ENV_TINT;
-    const over = 1.10; // 少し大きめに敷き、弱パララックスでも端が出ないようにする
+    // ★監査v0.25.3008(A-4): worldGroupの子=ズームで縮むのに1.10しか敷いておらず、群衆ズーム(0.8)でも
+    // カバー率0.88=端が露出していた。他のworldGroup直下の全画面物と同じくZOOM_OVERSCAN(=1/ZOOM_MIN_ABS)で敷く。
+    const over = ZOOM_OVERSCAN;
     sp.width = this.screenW * over;
     sp.height = this.screenH * over;
     const cam = useGameStore.getState().camera;
@@ -5304,7 +5314,7 @@ export class PixiScene {
       if (TUTORIAL_FRONT_FOG_BLUR > 0) sp.filters = [new BlurFilter({ strength: TUTORIAL_FRONT_FOG_BLUR, quality: 2 })]; // 少しぼかす(社長指示v0.25.1895)
       this.tutorialMist = sp;
     }
-    this.hzFixed.addChildAt(this.tutorialMist, this.hzFixed.getChildIndex(this.L.nearHorizon)); // 岩帯1の上・岩帯2の下(§6.37 v5: hzFixed内=画面固定)
+    this.hzFixed.addChildAt(this.tutorialMist, this.hzFixed.getChildIndex(this.L.nearHorizon)); // 岩帯1の上・岩帯2の下(§6.37 v6: hzFixed内=バイアス打ち消しのみ)
     this.tutorialMist.visible = true;
   }
 
@@ -5472,9 +5482,15 @@ export class PixiScene {
   private applyHideLayers() {
     if (HIDE_LAYERS.size === 0) return;
     if (HIDE_LAYERS.has('far')) this.L.farBackdrop.visible = false;
-    if (HIDE_LAYERS.has('hz')) this.L.horizonForest.visible = false;
+    if (HIDE_LAYERS.has('hz')) {
+      this.L.horizonForest.visible = false;
+      for (const sp of this.horizonRidgeCopies) sp.visible = false; // コピーも一緒に消す(監査v0.25.3008)
+    }
     if (HIDE_LAYERS.has('nh')) this.L.nearHorizon.visible = false;
-    if (HIDE_LAYERS.has('ff')) this.L.frontForest.visible = false;
+    if (HIDE_LAYERS.has('ff')) {
+      this.L.frontForest.visible = false;
+      if (this.frontRidgeCopy) this.frontRidgeCopy.visible = false; // コピーも一緒に消す(監査v0.25.3008)
+    }
     // ★v0.25.2789: `fog` は**霧を全部**落とす(社長の示唆「霧っぽいのがあやしい」)。
     // v0.25.2788 までは snowHorizonFog(ステージ4の遠景森前)1枚しか消しておらず、
     // **森下/森上/奥のスモッグ3層・森2境界霧・M0岩間霧は残ったまま**だった=切り分けになっていない。
@@ -6183,9 +6199,9 @@ export class PixiScene {
         const mx = (this.screenW - w) / 2;
         const my = this.farBackdropHeight() - TUTORIAL_FRONT_FOG_CENTER_UP_PX - h / 2
           + Math.sin(now * 0.0004 * FOG_SPEED + 0.7) * 9;
-        // ズーム打ち消し: §6.37 v5でhzFixed(画面固定コンテナ)の子になったので、打ち消すのは
-        // 「worldGroup×hzFixed」の合成変換。zoom<1ではhzFixedが既に恒等化済み(合成=単位)なので
-        // そのまま(mx,my)、zoom>=1(待機ズーム等)では旧来どおり実効ズーム分を打ち消して画面に固定する。
+        // ズーム打ち消し(旧来からの仕様=岩間霧は常に画面固定): hzFixedの子になったので、打ち消すのは
+        // 「worldGroup×hzFixed」の合成変換。v6ではhzFixed.scale=1(バイアス打ち消しのみ)なので
+        // 実効スケール=worldGroupのzoomそのもの=旧来(worldGroup直下時代)と同じ打ち消し結果になる。
         const hzB = wz * (this.hzFixed.scale.x || 1); // hzFixed子の実効スケール(zoom<1では1)
         const hzAx = this.L.worldGroup.position.x + wz * this.hzFixed.position.x;
         const hzAy = this.L.worldGroup.position.y + wz * this.hzFixed.position.y;
@@ -6203,7 +6219,7 @@ export class PixiScene {
         const sp = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
         sp.tint = FOG_TINT; sp.blendMode = 'normal'; sp.eventMode = 'none';
         this.nearHorizonMist = sp;
-        this.hzFixed.addChildAt(sp, this.hzFixed.getChildIndex(this.L.nearHorizon) + 1); // 森2の「手前」(上に重ねる)・gameplayの後ろ(§6.37 v5: hzFixed内=画面固定)
+        this.hzFixed.addChildAt(sp, this.hzFixed.getChildIndex(this.L.nearHorizon) + 1); // 森2の「手前」(上に重ねる)・gameplayの後ろ(§6.37 v6: hzFixed内=バイアス打ち消しのみ)
       }
       const nm = this.nearHorizonMist;
       if (nm) {
@@ -6296,7 +6312,17 @@ export class PixiScene {
       : labThemeFog ? GRADE_ALPHA * 0.45 : (this.daylight ? DAY_GRADE_ALPHA : GRADE_ALPHA);
 
     // 死神の横切り演出(store.reaperCross から駆動)。world内レイヤーを画面へピン留め(被写界深度が乗る)。
-    this.reaperCrossLayer.position.set(s.camera.x - sx, s.camera.y - sy);
+    // ★監査v0.25.3008(A-3): worldGroupのズーム(引き)も打ち消す(bgCloudLayerと同じcounter-scale)。
+    // 旧実装はカメラしか打ち消しておらず、引き中は横切りが画面中央上へ寄り0.4倍まで縮んでいた
+    // (§6.37指摘6のスモッグと同型の漏れ)。
+    {
+      const rwz = this.wgZoom();
+      this.reaperCrossLayer.scale.set(1 / rwz);
+      this.reaperCrossLayer.position.set(
+        (s.camera.x - sx) - this.L.worldGroup.position.x / rwz,
+        (s.camera.y - sy) - this.L.worldGroup.position.y / rwz
+      );
+    }
     const rc = s.reaperCross;
     const rsp = this.reaperCrossSprite;
     if (rc && now - rc.startedAt >= 0 && now - rc.startedAt < rc.durationMs) {
@@ -6377,7 +6403,11 @@ export class PixiScene {
     {
       const hf = this.L.horizonForest;
       const wzr = this.wgZoom();
-      const pull01 = Math.max(0, Math.min(1, (1 - wzr) / (1 - ZOOM_MIN_ABS)));
+      // 監査v0.25.3008: lab(研究所)/洋館(corridor)/洞窟(tutorial)は§6.37の引き対象外だが、
+      // 群衆ズーム(最大0.8)はこれらのステージでも掛かるため、リッジがうっすら出てしまっていた。
+      // 専用背景のステージにコピー森は出さない(通常フィールドの群衆ズームでは従来どおり出る=仕様)。
+      const ridgeAllowed = !this.isLabStage && !s.corridorMode && this.currentFarKey !== 'tutorial';
+      const pull01 = ridgeAllowed ? Math.max(0, Math.min(1, (1 - wzr) / (1 - ZOOM_MIN_ABS))) : 0;
       // 上ずらし量=森2と森1の距離(社長指示v0.25.2995・それ以上はズレる)。両帯とも底=地平基準なので
       // 底エッジ同士の差で測る(上端は素材の透明部があり視覚のリッジ線と一致しない)。森2が未レイアウト
       // (テクスチャ未着)の時は標準式(底=farH+screenH×NEAR_HORIZON_BOTTOM_RATIO)で代用。
@@ -6451,7 +6481,10 @@ export class PixiScene {
       if (fr) {
         const ff = this.L.frontForest;
         const wzf = this.wgZoom();
-        const pullF = Math.max(0, Math.min(1, (1 - wzf) / (1 - ZOOM_MIN_ABS)));
+        // 監査v0.25.3008: リッジと同じくlab/洋館/洞窟では出さない(群衆ズームのうっすら発現を封じる。
+        // labの暗幕退避リスト(setLabSceneryAboveVeil)にコピーが無い問題もこれで実質回避)。
+        const frontAllowed = !this.isLabStage && !s.corridorMode && this.currentFarKey !== 'tutorial';
+        const pullF = frontAllowed ? Math.max(0, Math.min(1, (1 - wzf) / (1 - ZOOM_MIN_ABS))) : 0;
         const a = Math.max(0, Math.min(1, (pullF - FRONT_RIDGE_FADE_START) / FRONT_RIDGE_FADE_WIDTH)) * FRONT_RIDGE_ALPHA;
         if (a <= 0.01 || !ff.visible) { fr.visible = false; }
         else {
@@ -19375,7 +19408,8 @@ export class PixiScene {
     pickups: Pickup[],
     castle: CastleEvent,
     merchant: WeaponMerchant,
-    camera: { x: number; y: number },
+    // 監査v0.25.3008(A-1): post-zoom化で未使用(座標はPixiの実値から組む)。呼び出し互換のため残置。
+    _camera: { x: number; y: number },
     castleVisible: boolean,
     event: ActiveEvent | null,
     pois: { x: number; y: number; kind: 'boss' | 'cave' | 'hospital' | 'armory' | 'police' }[] = [],
@@ -19391,6 +19425,14 @@ export class PixiScene {
   ) {
     const g = this.arrowGfx;
     g.clear();
+    // 監査v0.25.3008(A-1): 等倍前提の `world - camera` 画面座標を廃止し、ボスマークと同じ
+    // post-zoom 実画面座標(Pixiの実値)へ統一。引きズーム中の「見えているのに矢印が出る」/
+    // 方向・縁位置のズレを防ぐ(CLAUDE.md ズーム引き考慮)。
+    const wz = this.L.worldGroup.scale.x || 1;
+    const originX = this.L.world.position.x * wz + this.L.worldGroup.position.x;
+    const originY = this.L.world.position.y * wz + this.L.worldGroup.position.y;
+    const toScreenX = (x: number) => originX + x * wz; // ワールドX→実画面X
+    const toScreenY = (y: number) => originY + y * wz; // ワールドY→実画面Y
     const ARROW_NEAR_RADIUS = 500; // 「近く」の方向矢印を出す半径(弾/拠点。社長指示)
     const marginX = 26;
     // Keep upward arrows below the iOS status bar and the top HUD. The icon
@@ -19398,16 +19440,19 @@ export class PixiScene {
     // needs to be materially lower than the visible HUD edge.
     const marginTop = Math.min(Math.max(154, this.screenH * 0.17), this.screenH - 96);
     const marginBottom = 30;
-    // リング中心はプレイヤーの画面位置に合わせる(camdown でプレイヤーが中央より下=その分だけ下げる)。ラボは中央。
-    const cxC = this.screenW / 2;
-    const cyC = this.screenH / 2 + (this.isLabStage ? 0 : this.screenH * CAMERA_DOWN_OFFSET_FRAC);
+    // 監査v0.25.3008(A-1): リング中心=プレイヤー中心の**実画面位置**(post-zoom)。固定camdown近似を
+    // やめ、動的カメラ下げ(ボス戦)にも追従する。画面外へ出ないよう矢印マージン矩形へクランプ。
+    const st = useGameStore.getState();
+    const pC = playerCenter ?? { x: st.player.x + st.player.width / 2, y: st.player.y + st.player.height / 2 };
+    const cxC = Math.min(Math.max(toScreenX(pC.x), marginX), this.screenW - marginX);
+    const cyC = Math.min(Math.max(toScreenY(pC.y), marginTop), this.screenH - marginBottom);
     const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 220);
     for (const p of pickups) {
       if (!p.worldDrop) continue;
       const colorStr = AMMO_INDICATOR_COLOR[p.type];
       if (!colorStr) continue;
-      const tx = p.x + 8 - camera.x;
-      const ty = p.y + 8 - camera.y;
+      const tx = toScreenX(p.x + 8); // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScreenY(p.y + 8);
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;
       if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue; // 弾は近く(500px以内)のものだけ矢印表示(社長指示)
       const angle = Math.atan2(ty - cyC, tx - cxC);
@@ -19435,8 +19480,8 @@ export class PixiScene {
       g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
     }
 
-    const castleX = castle.x - camera.x;
-    const castleY = castle.y + 40 - camera.y;
+    const castleX = toScreenX(castle.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
+    const castleY = toScreenY(castle.y + 40);
     // 城マーカーは城が実在するステージ(屋外・非ラボ)でのみ表示。
     // ステージ2(ラボ/屋内)は城を描かないので、位置マーカーも出さない。
     // さらにボス出現まで(bossSpawned)はマーカー非表示(社長指示)。洋館再訪(the ONE)は目的地=洋館
@@ -19473,8 +19518,8 @@ export class PixiScene {
       }
     }
 
-    const merchantX = merchant.x - camera.x;
-    const merchantY = merchant.y - 28 - camera.y;
+    const merchantX = toScreenX(merchant.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
+    const merchantY = toScreenY(merchant.y - 28);
     // radius<=0 は「商人不在」(チュートリアル=到達不能座標へ退避・v0.25.1820)。誘導マーカーも出さない。
     if (merchant.radius > 0 && (merchantX < 0 || merchantX > this.screenW || merchantY < 0 || merchantY > this.screenH)) {
       const angle = Math.atan2(merchantY - cyC, merchantX - cxC);
@@ -19509,9 +19554,9 @@ export class PixiScene {
     // 画面外のときだけ画面端に緑の二重円+矢印。チュートリアルの常設ゴールに限らず、フィナーレの
     // 帰還サークルにも同じ誘導が付く(従来は城マーカー頼みだった)。
     {
-      const rc = useGameStore.getState().returnCircle;
+      const rc = st.returnCircle; // 冒頭で読んだstateを再利用
       if (rc) {
-        const rx = rc.x - camera.x, ry = rc.y - camera.y;
+        const rx = toScreenX(rc.x), ry = toScreenY(rc.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
         if (rx < 0 || rx > this.screenW || ry < 0 || ry > this.screenH) {
           const angle = Math.atan2(ry - cyC, rx - cxC);
           const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -19544,7 +19589,7 @@ export class PixiScene {
       // 位置(baseId)で実体を引く(soldierIndex は素性=見た目/セリフ用で sector とは別)。
       const npc = escorts.find(e => e.baseId === `base-${sector}`);
       if (npc) {
-        const nx = npc.x - camera.x, ny = npc.y - camera.y;
+        const nx = toScreenX(npc.x), ny = toScreenY(npc.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
         if (nx < 0 || nx > this.screenW || ny < 0 || ny > this.screenH) {
           const angle = Math.atan2(ny - cyC, nx - cxC);
           const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -19572,8 +19617,8 @@ export class PixiScene {
     // ハンター変異体の方角矢印(社長指示): 視界に入った(=検知された)ハンターを赤い矢印で示す。
     // 画面外のときだけ画面端に表示(画面内=直接見えるので不要)。撤退中は出さない(呼び出し側でフィルタ済み)。
     for (const ht of hunters) {
-      const tx = ht.x - camera.x;
-      const ty = ht.y - camera.y;
+      const tx = toScreenX(ht.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScreenY(ht.y);
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -19603,8 +19648,8 @@ export class PixiScene {
     // 変異体(叫喚型・screamer)の方角矢印(社長指示): 画面外に居る間は常に位置を示す(優先処理対象=
     // 叫ぶ前に見つけて倒してほしいため、ハンターと違い「検知」条件なしで常時表示)。
     for (const sc of screamers) {
-      const tx = sc.x - camera.x;
-      const ty = sc.y - camera.y;
+      const tx = toScreenX(sc.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScreenY(sc.y);
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -19639,7 +19684,7 @@ export class PixiScene {
 
     // イベント(囲い/救助)の場所マーカー。画面外のとき必ず位置を示す(社長指示=各イベントは常にマップ表示)。
     if (event) {
-      const exC = event.x - camera.x, eyC = event.y - camera.y;
+      const exC = toScreenX(event.x), eyC = toScreenY(event.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (exC < 0 || exC > this.screenW || eyC < 0 || eyC > this.screenH) {
         const angle = Math.atan2(eyC - cyC, exC - cxC);
         const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -19668,8 +19713,8 @@ export class PixiScene {
     // 研究所クリアアイテム(重要データ)の場所マーカー。画面外のとき画面端に書類アイコン+矢印で誘導。
     for (const p of pickups) {
       if (p.type !== 'lab-clear-item') continue;
-      const tx = p.x + 8 - camera.x;
-      const ty = p.y + 8 - camera.y;
+      const tx = toScreenX(p.x + 8); // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScreenY(p.y + 8);
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -19701,8 +19746,8 @@ export class PixiScene {
     // 探索の道標(POI): 拠点を解放した方角の洞窟/裏ボスを画面端の方向矢印で示す(社長指示)。
     // 距離は出さない=矢印のみ。画面内に入っているPOIは出さない。boss=赤 / cave=琥珀。
     for (const poi of pois) {
-      const tx = poi.x - camera.x;
-      const ty = poi.y - camera.y;
+      const tx = toScreenX(poi.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScreenY(poi.y);
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -19761,7 +19806,7 @@ export class PixiScene {
     // 拠点(未制圧)の方向矢印: 近く(500px以内)で画面外のものだけ示す(社長指示=拠点の表示は半径500)。
     for (const b of baseSites) {
       if (b.status === 'captured') continue; // 制圧済みは出さない(未制圧だけ誘導)
-      const tx = b.x - camera.x, ty = b.y - camera.y;
+      const tx = toScreenX(b.x), ty = toScreenY(b.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内は地面サークルで見える
       if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
       const angle = Math.atan2(ty - cyC, tx - cxC);
@@ -19788,7 +19833,7 @@ export class PixiScene {
     // 注意誘導はせず「近づいたらマーク表示」)。近く(500px以内)かつ画面外の時だけ縁矢印。
     // 画面内は本体(金tint+名前)がそのままマーク。
     for (const qt of questTargets) {
-      const tx = qt.x - camera.x, ty = qt.y - camera.y;
+      const tx = toScreenX(qt.x), ty = toScreenY(qt.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;
       if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
       const angle = Math.atan2(ty - cyC, tx - cxC);
@@ -19822,17 +19867,12 @@ export class PixiScene {
       // ★ワールド→画面は **Pixi の実値から**組む(式を2箇所に持たない)。ボス戦は距離ズームで
       // 最大0.58まで引く=可視域が画面の1/zoom倍あるので、`world - camera` を画面座標にすると「まだ見えている
       // のにマークが出る」。カメラシェイク/ズーム時の寄せもこの1本に乗る(CLAUDE.md ズーム引き考慮)。
-      const wz = this.L.worldGroup.scale.x || 1;
-      const view = {
-        zoom: wz,
-        originX: this.L.world.position.x * wz + this.L.worldGroup.position.x,
-        originY: this.L.world.position.y * wz + this.L.worldGroup.position.y,
-      };
-      // 矢印の起点=プレイヤーの**実際の画面位置**(同じ写像で出す)。既存マークが使う cxC/cyC は
-      // 等倍前提の近似(camdown を画面比で足したもの)なので、引いている間だけ数十px ずれる。
+      // 監査v0.25.3008(A-1): wz/originX/originY は関数冒頭の post-zoom 写像を再利用(重複計算の1本化)。
+      const view = { zoom: wz, originX, originY };
+      // 矢印の起点=プレイヤーの**実際の画面位置**(同じ写像で出す)。クランプ無し=bossMarkFor に生の位置を渡す。
       const centerScreen = {
-        x: view.originX + playerCenter.x * wz,
-        y: view.originY + playerCenter.y * wz,
+        x: toScreenX(playerCenter.x),
+        y: toScreenY(playerCenter.y),
       };
       for (const b of bossMark.targets) {
         const m = bossMarkFor({ boss: b, playerCenter, view, center: centerScreen, box });

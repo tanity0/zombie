@@ -939,9 +939,13 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     if (enemy.aiPhase === 'g-dive-windup') return enemy;
     const enemyCenterX = enemy.x + enemy.width / 2;
     const enemyCenterY = enemy.y + enemy.height / 2;
-    // 矩形(プレイヤー中心)で「画面外送り」判定。半径ではなく辺基準で一律。
+    // 矩形で「画面外送り」判定。半径ではなく辺基準で一律。
+    // ★監査v0.25.3008(重大): 縦中心は**湧き帯と同じだけ北へずらす**(playerCenterY − spawnViewOffsetY)。
+    // v2994〜のズーム連動カメラ下げ+縦先読みで湧き帯が最大~1000px北へ動くのに、回収窓が
+    // プレイヤー中心のままだと、上辺に湧いた敵が次フレームで窓外=即回収の無限チャーン+
+    // 画面上部に見えている敵が毎フレーム回収(HP新品でワープ)されていた。湧き窓⊆回収窓を復元する。
     const offRect = Math.abs(enemyCenterX - playerCenterX) > recycleHalfW
-      || Math.abs(enemyCenterY - playerCenterY) > recycleHalfH;
+      || Math.abs(enemyCenterY - (playerCenterY - spawnViewOffsetY)) > recycleHalfH;
     const waveProtected = enemy.isWave && gameTime - (enemy.spawnedAt ?? 0) < WAVE_GRACE_MS;
     // 固定敵(屋内の配置敵)は距離リサイクル対象外=常駐。ただし「画面外に出たら最初の
     // 定位置へ戻して再休眠」する(社長指示)。プレイヤーは常に画面中心なので、画面の半分+
@@ -1074,7 +1078,8 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     const cullable = selectCullCandidates(
       currentEnemiesForCap,
       isProtected,
-      { centerX: playerCenterX, centerY: playerCenterY, halfW: recycleHalfW, halfH: recycleHalfH },
+      // 監査v0.25.3008: リサイクル矩形と同じく縦中心を湧き帯ぶん北へ(可視域の実態に合わせる)。
+      { centerX: playerCenterX, centerY: playerCenterY - spawnViewOffsetY, halfW: recycleHalfW, halfH: recycleHalfH },
       puzzleActiveNow
     );
 
