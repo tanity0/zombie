@@ -22,6 +22,7 @@
 //   uiLayer        – screen-space world effects (flash, off-screen arrows)
 
 import { Container, TilingSprite, Texture } from 'pixi.js';
+import { GROUND_STRIP_COUNT } from './renderSpec';
 
 export interface SceneLayers {
   stage: Container;        // ルート(全画面グレーディング等のフィルタ適用先)
@@ -62,7 +63,7 @@ export const buildLayers = (
   // §6.37 床の縦延長(「本数追加」方式・PACING_PUZZLE.md §6.37-1): 72 → 72×1/ZOOM_MIN_ABS(=180)。
   // stripH/t の定義は不変のまま、増えた分は下方向(近景側)へだけ積み増す
   // (src/pixi/pixiScene.ts の computeGroundBandLayout/groundStripT・updatePerspectiveGround)。
-  const GROUND_STRIP_COUNT = 180;
+  // 本数(GROUND_STRIP_COUNT)は renderSpec.ts で ZOOM_MIN_ABS から導出(ハードコード禁止・指摘4)。
   const groundStrips = Array.from(
     { length: GROUND_STRIP_COUNT },
     () => new TilingSprite({ texture: forestTexture, width: 1, height: 1 })

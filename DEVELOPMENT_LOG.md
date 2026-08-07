@@ -1,5 +1,44 @@
 # Development Log
 
+## v0.25.2983 — §6.37品質監査対応(裁定不要10件+社長実機報告1件+社長裁定1件=13件)【2026-08-07 20:36 JST】
+コミット93c935a1(§6.37 FIELD-WIDE-ZOOM実装)への品質監査指摘のうち裁定不要の指摘+社長追加分をSonnet
+サブエージェントが修正。詳細・各項目の設計背景はPACING_PUZZLE.md §6.37「品質監査(v0.25.2980・コミット
+93c935a1)対応」節に記録済み(以下は要約)。
+- 【致命】stage5WarMaskのpost-zoom方向が逆だった: 対象(stage5FireGlow/Afterglow)がpost-zoom補正なしの
+  実装だったため、マスクだけ`postZoomLocalY`変換すると基準がズレていた。旧式(`cutoff=cutoffScreenY`)へ戻した。
+- 【致命】`farBackdropDrawH`キャッシュに無効化が無く、resize/layoutFarBackdropの基準値張り直し後も
+  `syncFarBackdropZoomExtension`のdirtyチェックが古い値を見ることがあった。両代入直後に0リセットを追加。
+- 【重】lab窓下辺/窓外ゾンビ足元線/lab什器接地の3箇所が、毎フレーム動く`farBackdrop.height`を地平線の
+  基準に使っていた。`farBackdropHeight()`(基準値)参照へ変更。
+- 【重】`layers.ts`の床ストリップ本数180のハードコードを、`renderSpec.ts`の
+  `GROUND_STRIP_COUNT = round(GROUND_STRIP_REF_COUNT / ZOOM_MIN_ABS)`から導出する形に変更。
+  `renderSpec.test.ts`に一致確認+ZOOM_MIN_ABS低下で本数が増える逆比例のテストを追加。
+- 【重】床の下接合(`bottom*z + centerY*(1-z) >= screenH`)の不変条件を、farHの4実値×z=ZOOM_MIN_ABSで
+  `renderSpec.test.ts`に固定。
+- 【中】bgCloudLayer(全画面スモッグ)に`tutorialMist`と同じ1/wz counter-scale補正を追加(設計時点で
+  「例外的に可」と決めていたが実装が漏れていた)。
+- 【中】M0の川のきらめきが引きズームの延長帯に付いてこなかったため、`syncFarBackdropZoomExtension`から
+  `layoutRiverFlow`を呼ぶよう追加。
+- 【中】`layoutFarBackdrop`末尾で`clampTilingV`を呼び、非同期差し替え遠景のaddressModeV未clamp(v0.25.2783
+  と同型の継ぎ目)を対策。
+- 【中】`renderSpec.test.ts`にzoom>1(待機ズーム=z=1.05・offsetY=-20)側のフェード/マスク境界テストを追加。
+- 【中・負荷】`updatePerspectiveGround`が常に180本ぶんtransformを更新していたのを、今のzoomから逆算した
+  必要本数(下限=旧来72本)にmin。zoom=1では約75本のみ更新。`syncWorldFilterArea`を拡張し、worldGroup
+  自身のフィルタ(dayContrast/punchGrade)にもfilterAreaを明示して毎フレームの全走査バウンディングを回避。
+  負荷スコア2/10(定数計算/参照追加のみ・削減方向)。
+- 【社長実機報告・実バグ】「離脱してるっぽいのにズームが戻らない」: `bossDistanceTarget`計算ループが
+  `e.dormant`しか除外しておらず、帰巣中(`e.bossState==='return'`)のボスが交戦画角を保持し続けていた。
+  除外条件に`|| e.bossState === 'return'`を追加。
+- 【社長裁定】近景床ブラー帯より下の延長ストリップ(72本目以降)にも近景ブラー最終段と同じ強度を継ぎ足し
+  (「画面下30%でボケが横一直線に消える」段差を解消)。監査指摘5(延長床のタイル倍率発散)・指摘11
+  (引き時に敵が森の上に見える帯)は社長裁定により容認・変更なし。
+- **ゲート**: `npm run typecheck` 0件 / `npm run lint` エラー0(warning8件=既存・無関係) /
+  `npx vitest run src/pixi/renderSpec.test.ts src/utils/angelSwordSync.test.ts` 全62件green
+  (renderSpec.test.tsは12→23件に増加)。
+- **未決事項なし**。仕様変更(ゲームの見え方・挙動・バランス・演出の意図)に触れる指摘は無かった
+  (すべて描画の実装バグ修正/取りこぼしの是正/社長裁定範囲内)。実機での`?zoomlock=0.4`見た目確認は
+  社長運用どおり未実施。
+
 ## v0.25.2982 — angelSwordSync定数一致テストを§6.33移設に追従(CI赤の解消)【2026-08-07 21:12 JST】
 MIMIR_LASER_WINDUP_MSの正本が§6.33でmimirLaserTrack.tsへ移設されて以降、useGameLoop.tsを見ていた
 一致テストが失敗し続けていた(V2bバッチの報告で発覚)。ソース表にmimirLaserTrackを追加して追従。39件緑。

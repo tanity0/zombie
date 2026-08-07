@@ -3215,11 +3215,11 @@ export class PixiScene {
     this.stage5Afterglow.height = h + 2;
     this.stage5Afterglow.alpha = tsNum('s5afterglow', 0.16);
     // マスク: 地平(森2の下端あたり)より上のみ描く=フラッシュ/火が森2を貫通して手前(フィールド)へ漏れない(社長指示v0.25.1984)。
-    // §6.37: cutoffは「固定スクリーンY基準」の値(式は不変)。stage5WarMaskはworldGroupの子(=対象の
-    // stage5WarGroupと同変換)なので、postZoomLocalYで今のzoomのローカルYへ逆算してから使う
-    // (マスクは対象と同変換=v0.25.1882の教訓。恒等ではcutoffScreenYと一致=旧来と同じ)。
+    // stage5WarGroup/stage5WarMaskはどちらもworldGroupの子だが、中身(stage5FireGlow/stage5Afterglow)は
+    // screen w/hをそのままローカル座標として使う=post-zoom変換を掛けない前提の実装。マスクだけpost-zoom化すると
+    // 対象と変換基準がズレるため、cutoffはローカル基準のまま(=cutoffScreenYをそのまま使う。旧式)。
     const cutoffScreenY = this.farBackdropHeight() + h * tsNum('s5warmask', 0.05) - tsNum('s5warup', 20); // 切り目を20px上へ(社長指示v0.25.1987)
-    const cutoff = postZoomLocalY(cutoffScreenY, this.wgZoom(), this.wgOffsetY());
+    const cutoff = cutoffScreenY;
     this.stage5WarMask.clear();
     this.stage5WarMask.rect(-w, -h * 2, w * 3, cutoff + h * 2).fill(0xffffff);
     // 炎のゆらめき照明: 地平上に横長の暖色グロー。複数sinで不規則に揺らぐが、激しすぎないよう振幅を抑える(社長指示v0.25.1984)。
@@ -3462,6 +3462,25 @@ export class PixiScene {
       this.nearGroundBlurLayers.push(layer);
       this.nearGroundBlurFilters.push(filter);
       this.L.groundBase.addChild(layer);
+    }
+    // 社長裁定①(監査指摘4「継ぎ足して」): 延長ストリップ(72本目以降=旧来の可視域より下の余剰帯)にも、
+    // 近景ブラーの最終段(最も強い段=NEAR_GROUND_BLUR_STRENGTHSの末尾)と同じ強度を継ぎ足す。これが無いと
+    // 引いた時、画面下30%あたりでボケが横一直線に突然ゼロへ落ちる段差が見えていた。恒等(zoom=1)では
+    // 延長分が画面外(=描画されない)なので見た目は不変。
+    {
+      const extStrips = this.L.groundStrips.slice(GROUND_STRIP_REF_COUNT);
+      if (extStrips.length > 0) {
+        const layer = new Container();
+        const filter = new BlurFilter({
+          strength: NEAR_GROUND_BLUR_STRENGTHS[NEAR_GROUND_BLUR_STRENGTHS.length - 1],
+          quality: 2,
+        });
+        layer.filters = [filter];
+        layer.addChild(...extStrips);
+        this.nearGroundBlurLayers.push(layer);
+        this.nearGroundBlurFilters.push(filter);
+        this.L.groundBase.addChild(layer);
+      }
     }
 
     // 奥(far)側の地面ストリップも帯状ブラー(最遠ほど強く)。near と同じ仕組み・同じ片付け配列を再利用。
@@ -3878,6 +3897,7 @@ export class PixiScene {
     this.L.farBackdrop.position.set(0, 0);
     this.L.farBackdrop.width = w;
     this.L.farBackdrop.height = farDrawH;
+    this.farBackdropDrawH = 0; // resizeで基準値(zoom=1相当)に張り直したので、syncFarBackdropZoomExtensionのdirtyキャッシュを無効化(次フレーム必ず再計算)
     this.L.farBackdrop.tileScale.set(farScale);
     this.clampTilingV(this.L.farBackdrop); // ★縦の継ぎ目対策(上の clampTilingV 参照)
     this.L.farBackdrop.alpha = 1;
@@ -3964,18 +3984,35 @@ export class PixiScene {
   // Pixi v8 は filterArea をローカル座標として worldTransform で変換するため、ズーム
   // (worldGroup.scale/position)中も枠が画面ぴったりを保つにはこの追従が必要(毎フレーム・スカラー演算のみ)。
   private syncWorldFilterArea() {
-    if (!this.tiltShift && !this.bloom) return;
+    const hasFilteredWorld = !!this.tiltShift || !!this.bloom;
+    // 指摘10: worldGroup自身のフィルタ(dayContrast/punchGrade)は filterArea 未指定のままだと、Pixiが
+    // 毎フレーム worldGroup 配下(地面+森+アクター+効果=画面全体)の実バウンディングボックスを走査して
+    // 求める重い経路に落ちる。filteredWorldと同じ式(worldGroup自身のworldTransformの逆変換)で
+    // 明示すれば、その走査を毎フレーム払わずに済む。
+    const hasWorldGroupFilters = !!(this.L.worldGroup.filters as Filter[] | null)?.length;
+    if (!hasFilteredWorld && !hasWorldGroupFilters) return;
     // 実際に worldGroup へ適用済みの値を読む(zoom≈1で未適用の時は scale=1/pos=0 が入っている)。
     const z = this.L.worldGroup.scale.x || 1;
     const tx = this.L.worldGroup.position.x;
     const ty = this.L.worldGroup.position.y;
-    const fa = this.L.filteredWorld.filterArea as Rectangle | undefined;
-    const rect = fa ?? new Rectangle();
-    rect.x = -tx / z;
-    rect.y = -ty / z;
-    rect.width = this.screenW / z;
-    rect.height = this.screenH / z;
-    if (!fa) this.L.filteredWorld.filterArea = rect;
+    const rectX = -tx / z;
+    const rectY = -ty / z;
+    const rectW = this.screenW / z;
+    const rectH = this.screenH / z;
+    if (hasFilteredWorld) {
+      const fa = this.L.filteredWorld.filterArea as Rectangle | undefined;
+      const rect = fa ?? new Rectangle();
+      rect.x = rectX; rect.y = rectY; rect.width = rectW; rect.height = rectH;
+      if (!fa) this.L.filteredWorld.filterArea = rect;
+    }
+    if (hasWorldGroupFilters) {
+      // worldGroup自身の filterArea も「filteredWorldと同じ画面矩形」(=worldGroup自身のローカル座標も
+      // worldGroup自身のworldTransformで写像されるため、式は同一)。
+      const fa2 = this.L.worldGroup.filterArea as Rectangle | undefined;
+      const rect2 = fa2 ?? new Rectangle();
+      rect2.x = rectX; rect2.y = rectY; rect2.width = rectW; rect2.height = rectH;
+      if (!fa2) this.L.worldGroup.filterArea = rect2;
+    }
   }
 
   private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
@@ -5403,8 +5440,10 @@ export class PixiScene {
       : Math.max(this.screenW / tex.width, farH / tex.height);
     this.L.farBackdrop.width = this.screenW;
     this.L.farBackdrop.height = farDrawH;
+    this.farBackdropDrawH = 0; // 基準値に張り直したので、syncFarBackdropZoomExtensionのdirtyキャッシュを無効化(次フレーム必ず再計算)
     this.L.farBackdrop.tileScale.set(farScale);
     this.layoutRiverFlow(farH, farScale);
+    this.clampTilingV(this.L.farBackdrop); // ★非同期差し替え遠景のaddressModeV未clamp対策(v0.25.2783の継ぎ目の再発防止・指摘8)
   }
 
   /**
@@ -5433,6 +5472,9 @@ export class PixiScene {
       ? farDrawH / tex.height
       : Math.max(this.screenW / tex.width, farH / tex.height); // cover: スケールはfarH基準のまま不変
     this.L.farBackdrop.tileScale.set(farScale);
+    // §6.37指摘7: M0の川のきらめきも遠景と同ジオメトリで重なる素材なので、延長分の farDrawH/farScale で
+    // 一緒に張り直す(layoutFarBackdrop側だけだと、引きズームで延長された帯に川が付いてこなかった)。
+    this.layoutRiverFlow(farDrawH, farScale);
   }
   // 川の流れレイヤー(チュートリアルのみ): 遠景と同ジオメトリで重ねる(素材3枚が同寸=位置合わせ不要)。
   private layoutRiverFlow(farH: number, farScale: number) {
@@ -5524,7 +5566,20 @@ export class PixiScene {
     const marginX = (overW - this.screenW) / 2;
     this.L.groundBase.position.set(shakeX - marginX, farH + shakeY);
 
-    const stripCount = Math.min(strips.length, band.stripCount);
+    // 指摘10(負荷): band.stripCount は「一番引いた時(ZOOM_MIN_ABS)」を基準にした固定の最大本数(180)。
+    // 今のzoomがそこまで引いていなければ、画面下に来ない延長ストリップまで毎フレーム transform
+    // (position/tileScale/tilePosition)を更新するのは無駄(zoom=1なら本来72本で足りる)。今のzoom/offsetY
+    // から「画面下端+マージンに届く本数」を逆算し、それを超える分は before と同じ visible=false のまま
+    // transform も更新しない(定義域=stripH/tは不変。可視本数だけ今のzoomに合わせて絞る)。
+    const zoomNow = this.wgZoom();
+    const offsetYNow = this.wgOffsetY();
+    const marginPx = stripH * 2; // シェイク/端数保険ぶんの余白(既存の height=Math.ceil(stripH)+2 と同系)
+    const neededBottomLocal = postZoomLocalY(this.screenH + marginPx, zoomNow, offsetYNow);
+    const neededStripCount = Math.max(
+      GROUND_STRIP_REF_COUNT, // 旧来の72本を下限に(zoom>1で必要数が減っても薄くしすぎない)
+      Math.ceil((neededBottomLocal - farH) / Math.max(0.001, stripH)) + 1
+    );
+    const stripCount = Math.min(strips.length, band.stripCount, neededStripCount);
     for (let i = 0; i < stripCount; i++) {
       const strip = strips[i];
       const y = i * stripH;
@@ -5550,8 +5605,8 @@ export class PixiScene {
       strip.visible = true;
       sourceY += stripH / Math.max(0.001, scaleY);
     }
-    // 端数保険: band.stripCount が strips.length(=layers.tsで確保した本数)と食い違った場合、
-    // 余った分は隠す(黒帯より安全側=消えるだけ)。通常は72×ZOOM_OVERSCAN=180で厳密一致する。
+    // 端数保険+指摘10: band.stripCount(最大180)と実際に必要な本数(neededStripCount)のどちらか小さい方が
+    // stripCount なので、今のzoomで画面下に来ない延長分もここで隠れる(=transformも更新していないので二重に安全)。
     for (let i = stripCount; i < strips.length; i++) strips[i].visible = false;
   }
 
@@ -5644,7 +5699,10 @@ export class PixiScene {
     let bossDistanceTarget: number | null = null;
     let bossBiasDx = 0, bossBiasDy = 0, bossBiasD2 = Infinity; // 最も近い交戦ボスへの中心差(カメラ寄せ用)
     for (const e of s.enemies) {
-      if (!isEngageableBoss(e.type) || e.dormant === true) continue;
+      // 指摘12: 帰巣中(bossState==='return')のボスは交戦していないので除外する。dormantしか見ていないと
+      // 「離脱してるっぽいのにズームが戻らない」(帰巣中も交戦画角を保持し続ける)。視点バイアス
+      // (bossBiasD2/最近ボス選定)も同じループなので一緒に外れる。
+      if (!isEngageableBoss(e.type) || e.dormant === true || e.bossState === 'return') continue;
       const bossEngageLimit = bossEngagementDistancePx(e.type, this.bossCameraEngaged, e.isStoryBoss === true);
       const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
       if (dx * dx + dy * dy > bossEngageLimit * bossEngageLimit) continue;
@@ -5816,7 +5874,18 @@ export class PixiScene {
     }
     // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。
-    this.bgCloudLayer.position.set(s.camera.x - sx, s.camera.y - sy);
+    // §6.37指摘6: worldGroupのズーム(引き)は打ち消していなかったため、引いた時に全画面スモッグが
+    // 画面中央へ縮んで隙間が出ていた。tutorialMist/labOutDimと同じ counter-scale(1/wz)を追加し、
+    // 「S = wg.pos + wg.scale*(world.pos + bgCloudLayer.pos)」が常に恒等(=元のscreen座標)になるよう
+    // bgCloudLayer.pos = -world.pos - wg.pos/wz を解いて足す(camera打ち消し分はそのまま=旧来と同じ式)。
+    {
+      const wz = this.wgZoom();
+      this.bgCloudLayer.scale.set(1 / wz);
+      this.bgCloudLayer.position.set(
+        (s.camera.x - sx) - this.L.worldGroup.position.x / wz,
+        (s.camera.y - sy) - this.L.worldGroup.position.y / wz
+      );
+    }
     if (this.fogT0 === 0) this.fogT0 = now;
     // チュートリアル専用の岩間霧(手前霧とは独立の1枚)。ズーム(待機/文脈)につられないよう、
     // worldGroupのズーム変換を毎フレーム打ち消す(S=L×z+p → scale=1/z・position補正で恒等)。
@@ -7297,7 +7366,9 @@ export class PixiScene {
     // 下辺=遠景backdropの実描画下辺に合わせる(社長指示v0.25.2203「遠景の下辺に高さを合わせて」)。
     // farBackdropは lab では [0, farH] に高さフィット=下辺は position.y + height。床が被る場合は
     // LAB_FAR_WINDOW_BOTTOM_UP(?labfwup=)ぶん上へ持ち上げる。
-    const bottom = this.L.farBackdrop.position.y + this.L.farBackdrop.height - LAB_FAR_WINDOW_BOTTOM_UP;
+    // §6.37: farBackdrop.height は syncFarBackdropZoomExtension が毎フレーム動かす値(post-zoom延長込み)
+    // なので地平の基準にはしない。基準値(zoom=1相当)の farBackdropHeight() を使う(指摘3)。
+    const bottom = this.L.farBackdrop.position.y + this.farBackdropHeight() - LAB_FAR_WINDOW_BOTTOM_UP;
     const layoutOne = (sp: TilingSprite, tex: Texture) => {
       const h = this.screenW * (tex.height / tex.width) * LAB_FAR_WINDOW_SCALE; // アスペクト維持
       sp.width = this.screenW;
@@ -7395,7 +7466,8 @@ export class PixiScene {
     const w = this.screenW;
     // 立ち位置=「遠景の下辺」と「窓ガラスの下辺」のちょうど中間(社長指示v0.25.2212)。両辺から毎フレーム
     // 導くので、窓を上下しても・遠景の帯高が変わっても自動追従する。
-    const farBottom = this.L.farBackdrop.position.y + this.L.farBackdrop.height;
+    // §6.37: farBackdrop.height は毎フレーム動く post-zoom 延長込みの値なので基準にしない(指摘3)。
+    const farBottom = this.L.farBackdrop.position.y + this.farBackdropHeight();
     const glassBottom = glass.position.y + glass.height;
     const footLine = (farBottom + glassBottom) / 2 + LAB_FAR_WINDOW_ZOMBIE_FOOT;
     for (let i = 0; i < LAB_FAR_WINDOW_ZOMBIES; i++) {
@@ -7525,9 +7597,10 @@ export class PixiScene {
     // (=境界線)に置いていたが、窓は LAB_FAR_WINDOW_BOTTOM_UP ぶん下へずらしてあるため、什器だけが
     // 窓の足元より浮いて見えていた。素材はどれも下の透明余白が0〜1pxなので、矩形の下辺を合わせれば
     // 見た目の下辺が揃う。窓がまだ無い場合だけ従来どおり境界線を使う。
+    // §6.37: farBackdrop.height は毎フレーム動く post-zoom 延長込みの値なので基準にしない(指摘3)。
     const frameBottom = this.labFarFrame
       ? this.labFarFrame.position.y + this.labFarFrame.height
-      : this.L.farBackdrop.position.y + this.L.farBackdrop.height;
+      : this.L.farBackdrop.position.y + this.farBackdropHeight();
     const bottom = frameBottom - LAB_FAR_FRONT_UP_PX;
     sp.width = this.screenW;
     sp.height = h;

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   bossBehindFadeApplies, BOSS_BEHIND_MIN_SPRITE_W_MULT,
   postZoomScreenY, postZoomLocalY, postZoomFadeAlpha,
-  computeGroundBandLayout, groundStripT, GROUND_STRIP_REF_COUNT,
+  computeGroundBandLayout, groundStripT, GROUND_STRIP_REF_COUNT, GROUND_STRIP_COUNT,
 } from './renderSpec';
 import { ENEMY_STATS } from '../utils/enemyUtils';
 import { PLAYER_HITBOX } from '../store/gameStore';
@@ -76,7 +76,7 @@ describe('postZoomScreenY / postZoomLocalY — post-zoom 変換の恒等・往�
 
   it('往復が恒等: postZoomLocalY(postZoomScreenY(L,z,o),z,o) === L (任意のzoom/offset)', () => {
     for (const zoom of [1, 0.7, ZOOM_MIN_ABS, 1.05]) {
-      for (const offsetY of [0, 240, -50]) {
+      for (const offsetY of [0, 240, -50, -20]) {
         for (const L of [-600, 0, 90, 800]) {
           const s = postZoomScreenY(L, zoom, offsetY);
           expect(postZoomLocalY(s, zoom, offsetY)).toBeCloseTo(L, 9);
@@ -142,6 +142,33 @@ describe('postZoomFadeAlpha — 地平線/手前フェードの post-zoom 化', 
     // かつ alpha も 1.0(前のテストと同じ式で再確認=alphaとマスクが同じ結論になっている)。
     expect(postZoomFadeAlpha(representative, ZOOM_MIN_ABS, offsetAtMin, threshold, fadePx)).toBe(1);
   });
+
+  // 指摘9: これまでの段はすべて zoom<=1(寄せなし〜最大引き)。待機ズーム(punch/idle)は zoom>1 かつ
+  // centerY*(1-zoom) が負(worldGroupが画面中央より上へ寄る)になる唯一の段なので、符号違いの回帰を検査する。
+  it('【指摘9】zoom=1.05(待機ズーム)・offsetY=-20(=centerY*(1-z)が負)でもフェード/マスクが破綻しない', () => {
+    const zoom = 1.05;
+    const offsetY = -20;
+    // 往復恒等(この段固有の値でも成り立つ)。
+    for (const L of [-600, 0, 90, 800]) {
+      const s = postZoomScreenY(L, zoom, offsetY);
+      expect(postZoomLocalY(s, zoom, offsetY)).toBeCloseTo(L, 9);
+    }
+    // フェードは単調(0→1)で [0,1] の範囲に収まる(符号反転で逆走したり範囲外に出たりしない)。
+    let prevAlpha = -1;
+    for (const L of [-400, -100, 0, 90, 150, 210, 400, 5000]) {
+      const a = postZoomFadeAlpha(L, zoom, offsetY, threshold, fadePx);
+      expect(a).toBeGreaterThanOrEqual(0);
+      expect(a).toBeLessThanOrEqual(1);
+      expect(a).toBeGreaterThanOrEqual(prevAlpha);
+      prevAlpha = a;
+    }
+    // マスク境界(postZoomLocalYで同じzoom/offsetYへ追従させた場合)の外側は alpha=1 で一致する
+    // (=マスクと alpha が同じ結論になる。v0.25.1882の教訓の zoom>1 側の裏付け)。
+    const fullYScreen = threshold + fadePx;
+    const maskFullLocalY = postZoomLocalY(fullYScreen, zoom, offsetY);
+    const representative = maskFullLocalY + 50;
+    expect(postZoomFadeAlpha(representative, zoom, offsetY, threshold, fadePx)).toBe(1);
+  });
 });
 
 describe('computeGroundBandLayout / groundStripT — 床の縦延長(「本数追加」方式)', () => {
@@ -184,5 +211,41 @@ describe('computeGroundBandLayout / groundStripT — 床の縦延長(「本数�
       expect(t).toBeGreaterThan(prev);
       prev = t;
     }
+  });
+});
+
+// ==== §6.37 監査指摘4: layers.ts のストリップ本数ハードコード(180)を renderSpec の導出定数へ ====
+// layers.ts は GROUND_STRIP_COUNT を renderSpec.ts から import するだけ(=一致は import 時点で構造的に
+// 保証される)。ここでは①現在のZOOM_MIN_ABSでの実値が意図どおり180であること、②式が
+// 「ZOOM_MIN_ABSを下げる(=より引く)ほど本数が増える」逆比例の関係になっていることを固定する。
+describe('GROUND_STRIP_COUNT — 床ストリップ本数の導出(ZOOM_MIN_ABSからの一括算出・指摘4)', () => {
+  it('GROUND_STRIP_COUNT = round(GROUND_STRIP_REF_COUNT / ZOOM_MIN_ABS) と厳密一致(現在値=180)', () => {
+    expect(GROUND_STRIP_COUNT).toBe(Math.round(GROUND_STRIP_REF_COUNT / ZOOM_MIN_ABS));
+    expect(GROUND_STRIP_COUNT).toBe(180);
+  });
+
+  it('ZOOM_MIN_ABSを下げる(より強く引く)ほど本数は増える(逆比例)', () => {
+    const countFor = (zoomMinAbs: number) => Math.round(GROUND_STRIP_REF_COUNT / zoomMinAbs);
+    expect(countFor(0.3)).toBeGreaterThan(countFor(0.4));
+    expect(countFor(0.2)).toBeGreaterThan(countFor(0.3));
+  });
+});
+
+// ==== §6.37 監査指摘5: 床の下接合の不変条件 ====
+// 「床帯の下端は、post-zoom変換後、常に画面下端(screenH)以上まで届く」ことを、farHの取りうる全実値
+// (M0=0.26h 〜 M2/lab=0.415h 相当。ステージごとの farBackdropHeight() の実比率)× z=ZOOM_MIN_ABS(絶対
+// 最大引き)で固定する。破れると「引いた時に床と遠景の間に隙間(黒帯)が見える」バグになる。
+describe('床の下接合(bottom*z + centerY*(1-z) >= screenH)— farHの全実値 × z=ZOOM_MIN_ABS(指摘5)', () => {
+  const screenH = 876; // 論理画面高(縦持ち基準)
+  const centerY = screenH / 2; // worldGroupのpivotは画面中央(zoom時の平行移動=centerY*(1-z)相当)
+  const farHFracs = [0.26, 0.30, 0.38, 0.415]; // 実ステージの farBackdropHeight() 比率(M0/中間/最大級)
+
+  it.each(farHFracs)('farH = %s × screenH で、bottom*z + centerY*(1-z) >= screenH が成り立つ', (frac) => {
+    const farH = screenH * frac;
+    const overscan = 1 / ZOOM_MIN_ABS;
+    const layout = computeGroundBandLayout(farH, screenH, overscan);
+    const z = ZOOM_MIN_ABS;
+    const screenBottom = layout.bottom * z + centerY * (1 - z);
+    expect(screenBottom).toBeGreaterThanOrEqual(screenH - 1e-6);
   });
 });

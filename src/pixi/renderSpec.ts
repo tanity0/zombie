@@ -7,6 +7,7 @@
 // for Y-sorting. Swap real sprites in later by changing only these numbers.
 
 import type { Enemy, Player, Summon } from '../types/game';
+import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
 
 // The sprites read as chunky pixel art by drawing larger than their gameplay
 // hitboxes. Feet stay anchored to the hitbox bottom; the extra height rises
@@ -222,6 +223,11 @@ export const postZoomFadeAlpha = (
 // 上端(t=0・farHの位置)は一切動かさない——「床を地平線より上まで描くと不自然」(§6.37-2)なので、
 // 上の隙間は床でなく farBackdrop 側の下延長で埋める(postZoomScreenY 経由・pixiScene 側)。
 export const GROUND_STRIP_REF_COUNT = 72;
+
+// layers.ts が組む床ストリップの実本数(=72 → 72×1/ZOOM_MIN_ABS へ延長・§6.37-1)。ZOOM_MIN_ABS を
+// 直接ここから導くことで、絶対最大引きの値が変わっても本数が自動で追従する(ハードコード180の一致は
+// renderSpec.test.ts で固定・指摘4)。
+export const GROUND_STRIP_COUNT = Math.round(GROUND_STRIP_REF_COUNT / ZOOM_MIN_ABS);
 
 export interface GroundBandLayout {
   /** 帯の上端(ローカルY)。常に farH のまま(不変)。 */

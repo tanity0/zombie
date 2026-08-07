@@ -5649,6 +5649,81 @@ post-zoom換算は `src/pixi/renderSpec.ts` に純関数で置く(例: `postZoom
    「coverモードもstretch化する」か「専用の高さ延長素材を後日差し替える」の二択になる(仕様2本文が
    既に後者を許容している)。**現状は自動延長(edge-clamp)のままで着地。実機確認後に要否判断をお願いしたい。**
 
+### 品質監査(v0.25.2980・コミット93c935a1)対応(裁定不要10件+社長実機報告1件+社長裁定1件=13件・Sonnetサブエージェント)
+
+1.【致命】**stage5WarMaskのpost-zoom化が逆方向だった**: `updateStage5War`が`cutoff`をpostZoomLocalYで
+   逆算していたが、対象(`stage5FireGlow`/`stage5Afterglow`)はscreen w/hをそのままローカル座標として
+   使う実装(post-zoom補正を一切していない)。マスクだけpost-zoom化すると対象と変換基準がズレるため、
+   `postZoomLocalY`変換を撤回し`cutoff = cutoffScreenY`(旧式)へ戻した。
+2.【致命】**farBackdropDrawHキャッシュに無効化が無かった**: `resize()`と`layoutFarBackdrop()`が
+   `farBackdrop.height`を基準値(zoom=1相当)へ張り直しても`this.farBackdropDrawH`(前フレーム値)が
+   残ったままで、`syncFarBackdropZoomExtension`のdirtyチェック(`farDrawH === this.farBackdropDrawH`)が
+   誤って早期returnし得た。両代入直後に`this.farBackdropDrawH = 0`を追加。
+3.【重】**farBackdrop.heightを地平線として読む3箇所を基準値参照へ**: lab窓の下辺
+   (`this.labFarFrame`周辺)・窓外ゾンビの足元線・lab什器の接地(フレーム未生成時のフォールバック)が、
+   毎フレーム動く`farBackdrop.height`(post-zoom延長込み)を直接読んでいた。`farBackdropHeight()`
+   (基準farH)参照へ変更。
+4.【重】**layers.tsの180ハードコードをrenderSpec.tsの導出定数へ**: `renderSpec.ts`に
+   `export const GROUND_STRIP_COUNT = Math.round(GROUND_STRIP_REF_COUNT / ZOOM_MIN_ABS)`を新設し、
+   `layers.ts`はこれをimportするだけに変更(ローカル`const GROUND_STRIP_COUNT = 180`を削除)。
+   `renderSpec.test.ts`に、現在値(180)との一致と「ZOOM_MIN_ABSを下げるほど本数が増える」逆比例の
+   関係を固定するテストを追加。
+5.【重】**下接合の不変条件テストを追加**: farHの全実値(0.26h/0.30h/0.38h/0.415h)× z=ZOOM_MIN_ABSで
+   `bottom*z + centerY*(1-z) >= screenH`が成り立つことを`renderSpec.test.ts`に固定(`it.each`)。
+6.【中】**bgCloudLayerに1/wz補正を追加**: §1-2表で「counter-scale例外可」と明記していたが、
+   `実装結果(v0.25.2980)`の§5チェックリストに記載が無く実装が漏れていた。`sync()`内で
+   `tutorialMist`/`labOutDim`と同じ式(`S = wg.pos + wg.scale*(world.pos + local)`が恒等になるよう
+   `bgCloudLayer.scale=1/wz`・`position = (camera.x-sx, camera.y-sy) - worldGroup.position/wz`)を追加し、
+   引きズーム中も全画面スモッグが画面中央へ縮まないようにした。
+7.【中】**M0の川のきらめきが延長帯に付いてこなかった**: `syncFarBackdropZoomExtension`は
+   `farBackdrop.height`/`tileScale`だけ延長し`layoutRiverFlow`を呼んでいなかったため、引いた時の
+   延長分に川レイヤーが追従しなかった。`syncFarBackdropZoomExtension`末尾で
+   `this.layoutRiverFlow(farDrawH, farScale)`を呼ぶよう追加。
+8.【中】**layoutFarBackdrop末尾でclampTilingV追加**: 非同期差し替え遠景がaddressModeV未clampのまま
+   残るケース(v0.25.2783の継ぎ目バグと同型)への対策として、`layoutFarBackdrop()`末尾で
+   `this.clampTilingV(this.L.farBackdrop)`を呼ぶよう追加(`resize()`側は既にあり)。
+9.【中】**テスト境界の穴を追加**: `renderSpec.test.ts`にz=1.05(待機ズーム=zoom>1)・offsetY=-20
+   (=centerY*(1-z)が負になる側)の段を追加し、フェード単調性・マスク境界外の一致を確認。往復恒等の
+   offsetYリストにも-20を追加。
+10.【中・負荷】**updatePerspectiveGroundが常に180本ぶんtransformを更新していた問題**: `band.stripCount`
+    (最大180=ZOOM_MIN_ABS基準の固定値)を、今のzoom/offsetYから逆算した`neededStripCount`
+    (画面下端+マージンに届く本数。下限=旧来の72本)とのminへ変更。zoom=1では約75本のみ更新(旧来は常に
+    180本)。超過分は既存の`visible=false`ループがそのまま隠す(transform自体を払わないので二重に安全)。
+    また`syncWorldFilterArea`を拡張し、worldGroup自身のフィルタ(dayContrast/punchGrade)にも
+    `filteredWorld`と同じ式(worldGroup自身のworldTransformの逆変換)で`filterArea`を明示し、
+    Pixiが毎フレーム配下全体(地面+森+アクター+効果)を走査してバウンディングを求める重い経路を回避。
+    **負荷スコア: 2/10(rendering)。理由: どちらも定数計算/参照の追加のみで新規描画パスは無く、
+    削減方向の変更(むしろ従来より軽くなる)。安全策=neededStripCountの下限を旧来の72本に固定し、
+    band.stripCount/strips.lengthとのminを取るため過剰に隠すことは無い。**
+12.【社長実機報告・重・実バグ】**「離脱してるっぽいのにズームが戻らない」**: `bossDistanceTarget`を
+    計算するループ(`for (const e of s.enemies)`)が`e.dormant === true`しか除外しておらず、帰巣中
+    (`e.bossState === 'return'`)のボスが交戦画角を保持し続けていた。除外条件に
+    `|| e.bossState === 'return'`を追加(視点バイアス用の最近ボス選定=`bossBiasD2`も同じループなので
+    一緒に外れる)。描画のみ・判定不変。
+13.【社長裁定・3件】
+    - **①「継ぎ足して」(監査指摘4のボケ段差)=実施**: 近景床ブラー帯(`NEAR_GROUND_BLUR_STRIP_RATIO`・
+      `GROUND_STRIP_REF_COUNT`基準の47〜71本目相当)より下の延長ストリップ(72本目以降=旧来の可視域外の
+      余剰帯)にも、近景ブラーの最終段(最も強い段=`NEAR_GROUND_BLUR_STRENGTHS`の末尾=2.05)と同じ強度を
+      1グループとして継ぎ足した(`constructor`内、近景ブラー帯構築の直後)。恒等(zoom=1)では延長分が
+      画面外なので見た目不変。引いた時に画面下30%あたりでボケが横一直線に突然ゼロへ落ちる段差を解消。
+    - **②監査指摘5(延長床のタイル倍率の発散)=容認・変更しない**(社長裁定「そこまで気にならない」)。
+    - **③監査指摘11(引き時に敵が森の上に見える帯)=容認・変更しない**。実機確認事項として記録
+      (社長運用どおり実機確認は社長が行う)。
+
+**検査不能/実機確認事項(★未決ではないが監査時点で機械検査できなかった点)**:
+- **恒等性の呼び出し側**: `renderSpec.test.ts`が機械検査しているのは`postZoomScreenY`等の純関数の
+  恒等性のみ。`pixiScene.ts`側の各呼び出し箇所(`updateStage5War`/`layoutFarBackdrop`/
+  `updatePerspectiveGround`等)がzoom=1で実際に旧来と同じ値を渡しているかはコードレビューで確認した
+  範囲に留まり、自動テストの対象外(PixiJS描画コードは方針上ユニットテストしない)。
+- **`?zoomlock=0.4`での帯割れ・継ぎ目・bgCloudLayerの見た目**(指摘6のcounter-scale式)は数式検算のみ。
+  実機確認は社長運用どおり社長が行う(検証は社長指示制)。
+- **bgCloudLayerの扱い**: 仕様書§1-2表(既存の設計時点)では「counter-scale例外可」と明記済みだった
+  ものの、v0.25.2980の実装結果§5には反映漏れがあった。今回の監査でその漏れが発覚し、指摘6として
+  追加実装した(仕様自体の変更ではなく実装の取りこぼしの是正)。
+
+**ゲート**: typecheck 0 / lint エラー0 / `npx vitest run src/pixi/renderSpec.test.ts src/utils/angelSwordSync.test.ts`
+全緑(実施結果は本ファイルpushと同時のDEVELOPMENT_LOGエントリを参照)。
+
 ## §6.36 ボス出現カットイン「BOSS-INTRO-CUTIN」(社長発案2026-08-07・監査反映v2)
 
 ### 0. ゴール(社長の言葉)
