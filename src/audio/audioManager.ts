@@ -107,6 +107,7 @@ export type SfxKey =
   | 'dance-kick'
   | 'dance-kick-just' // JUST成功音(dance-kickのピッチ上げ。B方式のメトロノームと聞き分ける)
   | 'heavy-impact'
+  | 'boss-intro'
   | 'skadi-ice'
   | 'heli-intro'
   | 'whip-hit'
@@ -345,6 +346,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'dance-kick-just': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60, playbackRate: 1.3 },
   // 盾バッシュ命中 / ジャンプ攻撃の着地(社長提供SE)。音が小さめなのでゲインで増幅(0.9→1.8)。
   'heavy-impact': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.8, minIntervalMs: 60 },
+  // ボス紹介カットインの表示SE(社長支給v0.25.2959)。鳴らすのはBossCutin.tsxの1箇所のみ。
+  'boss-intro': { src: `${import.meta.env.BASE_URL}audio/sfx/boss-intro.mp3`, volume: 1.0, minIntervalMs: 200 },
   // スカジ氷塊破裂/氷刃命中のSE(社長提供)。
   'skadi-ice': { src: `${import.meta.env.BASE_URL}audio/sfx/skadi-ice.mp3`, volume: 1.0, minIntervalMs: 60 },
   // トール(ステージ5裏ボス)の払い/突きSE(社長提供)。攻撃実行タイミングで1回。

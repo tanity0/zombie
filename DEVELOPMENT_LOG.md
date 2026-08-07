@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.2959 — ボス紹介カットインSEを社長支給の専用音へ差し替え【2026-08-07 17:00 JST】
+支給mp3を public/audio/sfx/boss-intro.mp3 へ取り込み、audioManagerに 'boss-intro'(volume 1.0・
+minInterval 200ms)を登録。BossCutin.tsx の紹介表示SEを heavy-impact流用→boss-intro へ差し替え。
+音量が実機で小さ過ぎ/大き過ぎならvolumeの1ノブで調整可。検証: typecheck OK / lint エラー0。
+
 ## v0.25.2958 — 予告線点滅の強化(矩形波)+カットインをhold後の型へ復帰(社長指示)【2026-08-07 16:55 JST】
 - **点滅が見当たらない(社長報告)**: v0.25.2954のサイン波(振幅35%)は、上に重なる点滅しないカラオケ塗り
   (白α0.95が根元〜自分の区間を覆う)に埋もれていた。矩形波(濃さ45%⇔100%)へ強化し、カラオケ塗りにも

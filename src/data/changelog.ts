@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2959',
+    items: [
+      'ボス紹介カットインの表示音を専用SEに差し替えました。',
+    ],
+  },
+  {
     version: '0.25.2958',
     items: [
       'ミーミルのレーザー予告線の点滅を、パキパキした明滅(濃さ45%⇔100%の矩形波)に強化しました。カラオケ塗りも一緒に明滅します(白い先端の印は常時表示)。サイン波の控えめな明滅では塗りに埋もれて見えていませんでした。',

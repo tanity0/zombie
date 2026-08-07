@@ -35,7 +35,7 @@ const BossCutin: React.FC = () => {
     let hideTimer: ReturnType<typeof setTimeout> | undefined;
     const show = () => {
       setVisible(true);
-      playSfx('heavy-impact'); // 紹介SE(暫定=heavy-impact流用。社長支給SEが届いたらキー差し替え)
+      playSfx('boss-intro'); // 紹介SE(社長支給v0.25.2959)
       hideTimer = setTimeout(() => setVisible(false), Math.max(0, hideAt - Date.now()));
     };
     let showTimer: ReturnType<typeof setTimeout> | undefined;
