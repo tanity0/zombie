@@ -75,18 +75,26 @@ const smooth01 = (raw: number): number => {
 //    そのまま使える(床を下げると全レイヤー再監査=CLAUDE.mdズーム掟)。
 //  - 床0.40で縦に捉えられる限界=中心距離 (H/2−マージン)/0.40(800×600なら約610wpx)。横は約860wpx。
 //    それより遠い被写体は物理的に映せない(=そこは交戦域の広さ側で扱う)。
-export const BOSS_FRAME_EDGE_MARGIN_PX = 56; // 被写体中心を画面端からこの画面px内側に保つ
+export const BOSS_FRAME_EDGE_MARGIN_PX = 40; // 被写体中心を可視窓の端からこの画面px内側に保つ
+// v0.25.2969(Sonnetのヘッドレス実写で確定): 実機は**縦持ち(例390×844)**で、アクターが実際に見えるのは
+// 画面全体ではなく**中央の帯**(上≈1/3は遠景アート・下≈1/4は前景の霧)。フレーミングの縦基準を
+// 画面全高にすると「縦は余裕」と誤認して引かず(社長報告「上下がボス見えない」)、横は幅が狭いので
+// 過剰に引く(「豆粒」)。縦の基準は**帯の高さ=画面高×この係数**で測る。
+export const BOSS_FRAME_BAND_H_FRAC = 0.45;
 export const bossFramingZoom = (
   dxCenter: number, dyCenter: number, viewport: { width: number; height: number },
 ): number => {
-  // v0.25.2967(社長スクショ2枚から確定した役割分担):
-  // ・**横=寄せ担当**: 横の画面半径は広い。要求は中心差の半分(寄せ50%が残りを負担)=引き過ぎない
-  //   (v0.25.2966・「横の戦いで世界が豆粒」の是正のまま)。
-  // ・**縦=ズーム担当**: 上下に逃げられた時は素直に引いてボスを小さく映す(社長スクショ2「ボスも
-  //   大きくなっちゃってて引きの意味がない」)。縦の寄せは遠景の無い領域が映るため弱くしてある
-  //   (pixiScene側0.25)ので、要求は全量で測る。
-  const needX = (viewport.width / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dxCenter) / 2);
-  const needY = (viewport.height / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dyCenter));
+  // 役割分担(社長スクショ3枚+実写から):
+  // ・**縦=ズーム担当**: 帯の半径で全量を測る=上下に離れたら素直に引いてボスを小さく映す。
+  // ・**横=寄せ担当**: 要求は中心差の半分(寄せ50%が負担)。さらに**床=BOSS_ZOOM_MID(1.7倍引き)**を
+  //   割らない=横のためにそれ以上は引かない(縦持ちの狭い幅で豆粒化するくらいなら、画面外は
+  //   オフスクリーン矢印+即帰巣リーシュ(v0.25.2968)に任せる)。
+  const bandHalfY = (viewport.height * BOSS_FRAME_BAND_H_FRAC) / 2;
+  const needY = Math.max(0.01, bandHalfY - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dyCenter));
+  const needX = Math.max(
+    BOSS_ZOOM_MID,
+    (viewport.width / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dxCenter) / 2),
+  );
   return Math.min(needX, needY);
 };
 

@@ -114,22 +114,27 @@ import { bossFramingZoom, BOSS_FRAME_EDGE_MARGIN_PX, BOSS_ZOOM_PROFILES as PROFI
 
 describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () => {
   const vp = { width: 800, height: 600 };
-  it('横=寄せ担当(半分)/縦=ズーム担当(全量)の軸別要求(v0.25.2967・社長スクショ2枚の役割分担)', () => {
-    // 縦は全量で測る=上下に逃げられたら素直に引く(ボスが小さくなる)
-    expect(bossFramingZoom(0, 500, vp)).toBeCloseTo((300 - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
-    // 横は半分で測る=寄せ(50%)が残りを負担。横500pxなら引き不要
-    expect(bossFramingZoom(500, 0, vp)).toBeCloseTo((400 - BOSS_FRAME_EDGE_MARGIN_PX) / 250, 6);
+  it('縦=帯基準で全量/横=半分+MID床の軸別要求(v0.25.2969・縦持ち実写から)', () => {
+    // 縦は「見える帯(画面高×0.45)」の半径で全量を測る=上下に逃げられたら素直に引く
+    const bandHalf = (vp.height * 0.45) / 2;
+    expect(bossFramingZoom(0, 500, vp)).toBeCloseTo((bandHalf - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
+    // 横は半分で測り、床=BOSS_ZOOM_MID(1.7倍引き)を割らない=横のために豆粒化しない
+    expect(bossFramingZoom(2000, 0, vp)).toBeCloseTo(1 / 1.7, 6);
+    // 横500pxなら引き不要(寄せが半分担う)
     expect(bossFramingZoom(500, 0, vp)).toBeGreaterThan(1);
   });
-  it('近距離では1以上=引きを要求しない', () => {
-    expect(bossFramingZoom(0, 100, vp)).toBeGreaterThan(1);
+  it('近距離(足元の等倍帯)ではフレーミング項が効かない=等倍のまま', () => {
+    // 直接のbossFramingZoomは帯基準で1未満になり得るが、bossDistanceZoomTargetのNEAR帯+ブレンドが守る
+    expect(bossDistanceZoomTarget('mimir', 100, false, { dxCenter: 0, dyCenter: 120, viewport: vp })).toBe(1.0);
   });
   it('bossDistanceZoomTargetはフレーミング要求とアンカーの引きが強い方を採り、床(far)を割らない', () => {
     const far = PROFILES2.giant.far;
-    // 縦600離れ(gap500相当・w=1): 縦は全量要求(244/600=0.4067)がアンカー(mid=0.588)より強い→そちら
+    // 縦600離れ(gap500相当・w=1): 帯基準の全量要求((135-40)/600? → (270-40)/600=0.383)が
+    // アンカー(mid=0.588)より強い→そちら(床farでクランプ)
+    const bandHalf2 = (vp.height * 0.45) / 2;
     const pulled = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 0, dyCenter: 600, viewport: vp });
-    expect(pulled).toBeCloseTo(Math.max(far, (300 - BOSS_FRAME_EDGE_MARGIN_PX) / 600), 6);
-    // 横600離れ: 横は半分要求(344/300=1.15)=引き不要→アンカーのまま
+    expect(pulled).toBeCloseTo(Math.max(far, (bandHalf2 - BOSS_FRAME_EDGE_MARGIN_PX) / 600), 6);
+    // 横600離れ: 横は半分要求=引き不要→アンカーのまま
     const pulledX = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 600, dyCenter: 0, viewport: vp });
     expect(pulledX).toBeCloseTo(PROFILES2.giant.mid, 6);
     // 超遠距離でも床=farで止まる
