@@ -6393,6 +6393,11 @@ export class PixiScene {
           * (HORIZON_RIDGE_ALPHA[k] ?? 0.8);
         if (a <= 0.01 || !hf.visible) { sp.visible = false; continue; }
         sp.visible = true;
+        // ボケ規格の継承(監査v0.25.3007): 森1にはDoFボケ(horizonForestBlur)が掛かっている。コピーは
+        // より奥のリッジなのに未適用だとコピーの方がシャープ=遠近の嘘になる。同じフィルタ実体を共有
+        // (コピー可視中のみ+2パス・cine時は森1同様に外す)。
+        const wantHzBlur = !this.cineEnabled && this.horizonForestBlur ? [this.horizonForestBlur] : [];
+        if ((sp.filters?.length ?? 0) !== wantHzBlur.length) sp.filters = wantHzBlur;
         if (sp.texture !== hf.texture) sp.texture = hf.texture;
         sp.width = hf.width;
         sp.height = hf.height;
@@ -6451,6 +6456,10 @@ export class PixiScene {
         if (a <= 0.01 || !ff.visible) { fr.visible = false; }
         else {
           fr.visible = true;
+          // ボケ規格の継承(監査v0.25.3007): 実近景のDoFボケ(frontForestBlur)をコピーにも共有する
+          // (未適用だと奥に居るコピーの方がシャープ=遠近の嘘)。可視中のみ+1パス。
+          const wantFfBlur = this.frontForestBlur ? [this.frontForestBlur] : [];
+          if ((fr.filters?.length ?? 0) !== wantFfBlur.length) fr.filters = wantFfBlur;
           if (fr.texture !== ff.texture) fr.texture = ff.texture;
           fr.width = ff.width;
           fr.height = ff.height;
