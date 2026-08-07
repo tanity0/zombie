@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2960 — 紹介カットインを「1秒フェードイン→1秒ストップ→1秒フェードアウト」へ(社長指示)【2026-08-07 17:10 JST】
+凍結中に出す部分=フェードイン1000+ストップ1000(BOSS_CUTIN_MS=2000へ・カメラ静止/hitstopも自動追随)。
+フェードアウト1000はDOMだけの後奏で、カメラ戻り(360ms)〜時間再開の上に重なって消える
+(社長指示「時間は動き始めてるところに」)。SEは表示開始の瞬間に1回。ルートopacityのtransitionで実装、
+白フラッシュはフェードイン下では実質不可視=自然消滅(フェード演出と両立しないため意図どおり)。
+検証: typecheck OK / lint エラー0 / attentionCutinテスト全緑。
+
 ## v0.25.2959 — ボス紹介カットインSEを社長支給の専用音へ差し替え【2026-08-07 17:00 JST】
 支給mp3を public/audio/sfx/boss-intro.mp3 へ取り込み、audioManagerに 'boss-intro'(volume 1.0・
 minInterval 200ms)を登録。BossCutin.tsx の紹介表示SEを heavy-impact流用→boss-intro へ差し替え。

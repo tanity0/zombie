@@ -2,19 +2,21 @@
 // 社長裁定(2026-08-07): 画面全体に被写体+名前をバン!と出す。ぼかしは使わない(上下がぼけるのはNG)。
 // 絵はボス絵台帳 bossIconSrc(ステージ別城ボス/グレン専用アート込み)をそのまま大写しする。
 //
-// タイミング(v0.25.2958・社長指示「やはり前のバージョンに戻して」): in(360)→hold(1900)→
-// ★cutin(1100・カメラ静止のまま)→out(360)。紹介表示の瞬間にSEを鳴らす(現状はheavy-impact流用。
-// **社長支給の紹介専用SEが届いたらここのキーだけ差し替える**)。ゲームは凍結中(hitstop延長済み)。
+// タイミング(v0.25.2960・社長指示): in(360)→hold(1900)→★cutin=フェードイン1000+ストップ1000
+// (カメラ静止・凍結のまま)→out(360)と時間再開の上に**フェードアウト1000**が重なって消えていく。
+// SEは表示(フェードイン開始)の瞬間に1回。
 //
 // React再レンダー規律: attentionスライスだけ購読。attentionは発火/解除時にしか参照が変わらない
 // (毎フレーム書き換えられない)ので、このコンポーネントが毎フレーム再レンダーすることはない。
 import React, { useEffect, useState } from 'react';
 import { useGameStore, ATTENTION_IN_MS, ATTENTION_HOLD_MS } from '../store/gameStore';
+import { BOSS_CUTIN_FADEIN_MS, BOSS_CUTIN_FADEOUT_MS } from '../utils/attentionCutin';
 import { playSfx } from '../audio/audioManager';
 
 const BossCutin: React.FC = () => {
   const attention = useGameStore(s => s.attention);
   const [visible, setVisible] = useState(false);
+  const [opacity, setOpacity] = useState(0); // 1秒フェードイン→1(ストップ)→0(1秒フェードアウト)
 
   const cutin = attention?.cutin ?? null;
   const startReal = attention?.startReal ?? 0;
@@ -27,27 +29,35 @@ const BossCutin: React.FC = () => {
   }, [cutin]);
 
   useEffect(() => {
-    if (!cutin || cutinMs <= 0) { setVisible(false); return; }
+    if (!cutin || cutinMs <= 0) { setVisible(false); setOpacity(0); return; }
     const showAt = startReal + ATTENTION_IN_MS + ATTENTION_HOLD_MS;
-    const hideAt = showAt + cutinMs;
+    const fadeOutAt = showAt + cutinMs;                       // ストップ表示の終わり=フェードアウト開始
+    const hideAt = fadeOutAt + BOSS_CUTIN_FADEOUT_MS;         // 完全に消える(時間は既に動いている)
     const now = Date.now();
-    if (now >= hideAt) { setVisible(false); return; }
-    let hideTimer: ReturnType<typeof setTimeout> | undefined;
-    const show = () => {
-      setVisible(true);
-      playSfx('boss-intro'); // 紹介SE(社長支給v0.25.2959)
-      hideTimer = setTimeout(() => setVisible(false), Math.max(0, hideAt - Date.now()));
+    if (now >= hideAt) { setVisible(false); setOpacity(0); return; }
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const at = (t: number, fn: () => void) => {
+      if (Date.now() >= t) fn();
+      else timers.push(setTimeout(fn, t - Date.now()));
     };
-    let showTimer: ReturnType<typeof setTimeout> | undefined;
-    if (now >= showAt) show();
-    else showTimer = setTimeout(show, showAt - now);
-    return () => { clearTimeout(showTimer); clearTimeout(hideTimer); setVisible(false); };
+    at(showAt, () => {
+      setVisible(true);
+      setOpacity(0);
+      playSfx('boss-intro'); // 紹介SE(社長支給v0.25.2959)
+      requestAnimationFrame(() => requestAnimationFrame(() => setOpacity(1))); // transitionでフェードイン
+    });
+    at(fadeOutAt, () => setOpacity(0));
+    at(hideAt, () => setVisible(false));
+    return () => { timers.forEach(clearTimeout); setVisible(false); setOpacity(0); };
   }, [cutin, startReal, cutinMs]);
 
   if (!visible || !cutin) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[95] overflow-hidden">
+    <div
+      className="pointer-events-none fixed inset-0 z-[95] overflow-hidden"
+      style={{ opacity, transition: `opacity ${opacity > 0 ? BOSS_CUTIN_FADEIN_MS : BOSS_CUTIN_FADEOUT_MS}ms ease-out` }}
+    >
       <style>{`
         @keyframes bossCutinBackdrop { from { opacity: 0; } to { opacity: 1; } }
         @keyframes bossCutinArt {
@@ -65,10 +75,7 @@ const BossCutin: React.FC = () => {
         @keyframes bossCutinRule { 0% { transform: scaleX(0); } 100% { transform: scaleX(1); } }
       `}</style>
       {/* 暗幕(ぼかし無し=社長裁定「上下がぼけるのは避けたい」)。凍結中の実画面の上に敷く。 */}
-      <div
-        className="absolute inset-0"
-        style={{ background: 'rgba(2,2,8,0.72)', animation: 'bossCutinBackdrop 130ms ease-out both' }}
-      />
+      <div className="absolute inset-0" style={{ background: 'rgba(2,2,8,0.72)' }} />
       {/* 被写体=ボス絵台帳の絵を画面全体に(contain)。ドット絵なのでpixelatedで拡大する。 */}
       {cutin.art && (
         <div className="absolute inset-0 flex items-center justify-center">

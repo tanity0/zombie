@@ -11,8 +11,13 @@ export interface AttentionCutin {
   art: string | null;
 }
 
-/** カットインの尺(§6.36: 1.1秒・毎回出す=社長裁定2026-08-07)。 */
-export const BOSS_CUTIN_MS = 1100;
+/** カットインの尺(v0.25.2960・社長指示「1秒フェードインで表示、1秒ストップ表示のあとフェードアウト」):
+ * 凍結中に出す部分=フェードイン1000+ストップ表示1000。フェードアウト1000はDOMだけの後奏で、
+ * カメラ戻り〜時間再開の上に重なって消えていく(attentionの尺には含めない)。毎回出す。 */
+export const BOSS_CUTIN_FADEIN_MS = 1000;
+export const BOSS_CUTIN_HOLD_MS = 1000;
+export const BOSS_CUTIN_FADEOUT_MS = 1000;
+export const BOSS_CUTIN_MS = BOSS_CUTIN_FADEIN_MS + BOSS_CUTIN_HOLD_MS;
 
 /**
  * 出現カットインのペイロード。台帳(bossCutin.ts)に名前が無いボス=実装してないボスは

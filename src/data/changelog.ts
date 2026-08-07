@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2960',
+    items: [
+      'ボス紹介カットインの出方を変更: 1秒かけてフェードインし、1秒止まって見せた後、1秒かけて消えます。消えていく1秒はカメラの戻り〜戦闘再開に重なるので、動き出した画面の上でスッと消えます。',
+    ],
+  },
+  {
     version: '0.25.2959',
     items: [
       'ボス紹介カットインの表示音を専用SEに差し替えました。',
