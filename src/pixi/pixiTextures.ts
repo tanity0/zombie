@@ -259,6 +259,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'mirror-ball', scaleMode: 'linear' },
       { name: 'helicopter', scaleMode: 'nearest' }, // ぼかさない(平滑化なし=くっきり)
       { name: 'fog-alpha', scaleMode: 'linear' },     // 森下の霧素材(アルファ透過版=通常合成で重ねる)
+      { name: 'zoom-cloud', scaleMode: 'linear' },    // 引き雲(社長支給v0.25.3010・深い引きの時だけ最前面に流す。背景抜き済み)
       // 研究施設(屋内)アセット。サブディレクトリ込みの名前で登録(spritePath が sprites/<name>.png)。
       // ★lab-wall-open-*/lab-wall-closed-*/lab-wall-side-long/lab-wall-side-block{1,2,3} はバッチ4
       // (v0.25.2898)で外した。ロードされていたが一度も描画されていなかった(参照ゼロ確認済み・素材は削除済み)。
