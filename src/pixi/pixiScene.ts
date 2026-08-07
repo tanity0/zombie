@@ -146,6 +146,7 @@ import { FONT_STACK } from '../config/font';
 import {
   enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX, bossBehindFadeApplies,
   postZoomScreenY, postZoomLocalY, postZoomFadeAlpha, computeGroundBandLayout, groundStripT, GROUND_STRIP_REF_COUNT,
+  worldGapBandHeight,
 } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
@@ -288,6 +289,11 @@ const RIVER_FLOW_ALPHA = [0.3, 0.22];     // 基本アルファ(加算合成・v
 const RIVER_FLOW_WOBBLE = [0.08, 0.06];   // アルファの揺らぎ振幅
 const RIVER_FLOW_WOBBLE_MS = [1400, 2300];// 揺らぎ周期
 const FAR_BACKDROP_BLUR = 1.1;
+// §6.37 v4 上接合(隙間埋め帯・PACING_PUZZLE.md §6.37-2 v4)。★未決: 森1(horizonForest)のシルエット色を
+// テクスチャから拾う案もあったが、判断保留のため暗紺〜黒の単色グラデで仮置き(社長確認待ち・実装結果に記載)。
+const WORLD_GAP_BAND_TOP_COLOR = 0x05070c;    // 帯の上端(farBackdrop側へ溶ける・より暗い)
+const WORLD_GAP_BAND_BOTTOM_COLOR = 0x161c28; // 帯の下端(森1の上端に接する側・やや明るい暗紺)
+const WORLD_GAP_MASK_MARGIN_PX = 64;          // マスク矩形の静的な安全マージン(zoom>1のクランプ余裕)
 const HORIZON_FOREST_PARALLAX_X = 0.16;
 const HORIZON_FOREST_BLUR = 0.8; // 地平の森(遠景森)を少しだけぼかす(0=なし)。0.65→0.8(社長指示v0.25.1988)
 const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
@@ -2940,6 +2946,15 @@ export class PixiScene {
   private punchInList = false;                           // punchGrade が worldGroup.filters(地面含む画面全体)に入っているか(付け外し=イベント時のみ)
   private dayContrast: ColorMatrixFilter | null = null;  // 昼(city)の明暗差を広げる常時コントラスト(worldGroup・day限定・オクトラ風。社長指示v0.25.1982)
   private cloudShadow = new TilingSprite({ texture: getCloudShadowTexture(), width: 1, height: 1 }); // フィールドの動く雲影(multiply・地面の上・屋外のみ)
+  // §6.37 v4 上接合(隙間埋め帯・PACING_PUZZLE.md §6.37-2 v4): 森帯(horizonForest)の直上に敷く
+  // 「森シルエット色の暗グラデ帯」。worldGroupの子=森と同じズーム変換を受ける(counter-scale禁止の
+  // 原則どおり同一スケール)。静的サイズ(resize/farH変更時のみ再計算)+マスクのY位置だけ毎フレーム
+  // post-zoom追従(worldFadeMaskと同じ確立済みパターン)。
+  private worldGapBand: Sprite | null = null;
+  private worldGapMask: Sprite | null = null;
+  private worldGapTex: Texture | null = null;
+  private worldGapBandTop = 0;    // 帯のローカル上端(=farH - H。静的・resize時のみ更新)
+  private worldGapMaskH = 0;      // マスク矩形の静的な高さ(帯の高さ+余白)
   private bloomActive = true; // 現在ブルームをフィルタ配列に入れているか(オプション反映用)
   private farBackdropBlur: BlurFilter | null = null;
   // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
@@ -3894,8 +3909,9 @@ export class PixiScene {
     const farH = this.farBackdropHeight();
     // M7(星雲)は高さで合わせる=画像の縦全体を帯に収める(横はタイルでループ)。cover(Math.max)だと
     // 横基準で拡大され下側が切れて地平線が黒い中域で終わっていた(社長指示v0.25.1947「横幅ではなく高さで合わせて夜景」)。
-    // §6.37: 引きズームでの地平黒帯対策は「s7farext固定倍率」から「毎フレームpost-zoom延長」へ統合
-    // (syncFarBackdropZoomExtension・二重適用防止=PACING_PUZZLE.md §6.37-1)。ここでは基準値(zoom=1相当)を張るだけ。
+    // §6.37 v4: 引きズームでの遠景ストレッチ延長(syncFarBackdropZoomExtension)は撤回(社長指示
+    // 2026-08-07「遠景と近景はほぼ動かさない広げ方にしてほしい」)。farBackdropは常にこの等倍時の
+    // 静的な高さ(farH)のまま=毎フレームの伸縮を一切しない(PACING_PUZZLE.md §6.37-2 v4)。
     const isM7far = this.currentFarKey === 'stage7';
     const farDrawH = farH;
     // lab(M2)もM7と同じ「高さフィット」=絵の縦全体を境界までの帯にスケールで収める(v0.25.2190)。
@@ -3905,7 +3921,6 @@ export class PixiScene {
     this.L.farBackdrop.position.set(0, 0);
     this.L.farBackdrop.width = w;
     this.L.farBackdrop.height = farDrawH;
-    this.farBackdropDrawH = 0; // resizeで基準値(zoom=1相当)に張り直したので、syncFarBackdropZoomExtensionのdirtyキャッシュを無効化(次フレーム必ず再計算)
     this.L.farBackdrop.tileScale.set(farScale);
     this.clampTilingV(this.L.farBackdrop); // ★縦の継ぎ目対策(上の clampTilingV 参照)
     this.L.farBackdrop.alpha = 1;
@@ -3919,6 +3934,7 @@ export class PixiScene {
     this.L.horizonForest.tileScale.set(horizonH / this.L.horizonForest.texture.height);
     this.clampTilingV(this.L.horizonForest); // ★縦の継ぎ目対策
     this.L.horizonForest.position.set(-horizonMarginX, this.horizonForestY(farH, horizonH));
+    this.layoutWorldGapBand(farH); // §6.37 v4 上接合: 隙間埋め帯の静的サイズをresize時に確定
     this.layoutNearHorizon(); // 遠景手前森の寸法/位置も追従
     this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
@@ -5038,9 +5054,6 @@ export class PixiScene {
   private farBackdropOverrides: Record<string, Texture | null> = {};
   // いま遠景に張っている種別。'forest'(既定)/'lab'/差し替えキー。差分があるときだけ張り替える。
   private currentFarKey = 'forest';
-  // §6.37: syncFarBackdropZoomExtension が直近フレームで設定した farBackdrop.height。
-  // 同値なら再設定をスキップする(dirty回避=無駄な再レイアウトコストを避ける)。
-  private farBackdropDrawH = 0;
   setFarBackdropTexture(key: string, t: Texture | null) {
     if (!t) return;
     this.applyBgMipmap(t); // 遠景バンドも縮小敷き=mipmapでモアレ回避(社長指示v0.25.1869)
@@ -5441,8 +5454,8 @@ export class PixiScene {
     if (!tex || tex.width <= 0 || tex.height <= 0) return;
     const farH = this.farBackdropHeight();
     // M7(星雲)は高さで合わせる(横はタイルでループ)。社長指示v0.25.1947。
-    // §6.37: 引きズームの地平黒帯対策は syncFarBackdropZoomExtension(毎フレーム)へ統合。ここは
-    // 基準値(zoom=1相当)を張るだけ(二重適用防止=PACING_PUZZLE.md §6.37-1)。
+    // §6.37 v4: 遠景のzoom連動下延長(syncFarBackdropZoomExtension)は撤回済み。farBackdropは常に
+    // この等倍時の静的な高さ(farH)のまま(PACING_PUZZLE.md §6.37-2 v4)。
     const isM7far = this.currentFarKey === 'stage7';
     // lab(M2)もM7と同じ「高さフィット」=絵の縦全体を帯に収める(handleResize と一致・v0.25.2190の意図)。
     // cover(Math.max)だと幅基準で拡大され縦がはみ出て上が切れる(社長報告v0.25.2206)。横はタイルでループ。
@@ -5453,41 +5466,10 @@ export class PixiScene {
       : Math.max(this.screenW / tex.width, farH / tex.height);
     this.L.farBackdrop.width = this.screenW;
     this.L.farBackdrop.height = farDrawH;
-    this.farBackdropDrawH = 0; // 基準値に張り直したので、syncFarBackdropZoomExtensionのdirtyキャッシュを無効化(次フレーム必ず再計算)
     this.L.farBackdrop.tileScale.set(farScale);
     this.layoutRiverFlow(farH, farScale);
     this.clampTilingV(this.L.farBackdrop); // ★非同期差し替え遠景のaddressModeV未clamp対策(v0.25.2783の継ぎ目の再発防止・指摘8)
-  }
-
-  /**
-   * §6.37 上接合(PACING_PUZZLE.md §6.37-2): farBackdrop(画面固定=stage直下)の描画高を毎フレーム
-   * 「床のローカル上端(=farH。§6.37-1で不変と決めた)の、今のzoomでの画面Y」まで下延長する。
-   * 床を地平線より上まで描くのは不自然なので、隙間はここ(遠景側)で埋める。
-   * 恒等(zoom=1・offsetY=0)では postZoomScreenY(farH,1,0)=farH=旧来の静的値と一致(二重適用防止で
-   * s7farext固定倍率は廃止済み)。M7/labの「高さフィット」(絵を縦へストレッチ)はそのまま踏襲、
-   * それ以外(cover)は farScale を変えずタイル(edge-clamp)を下へ伸ばすだけ=通常時の見た目は不変。
-   */
-  private syncFarBackdropZoomExtension() {
-    const tex = this.L.farBackdrop.texture;
-    if (!tex || tex.width <= 0 || tex.height <= 0) return;
-    const farH = this.farBackdropHeight();
-    const zoom = this.wgZoom();
-    const offsetY = this.wgOffsetY();
-    // 床のローカル上端(farH)が今の画面のどこに来るか。zoom>1(寄せ)ではfarHより手前に来てしまうので、
-    // farBackdropが不要に縮まないようfarHを下限にクランプ(通常時=zoom<=1相当を一切変えない)。
-    const farDrawH = Math.max(farH, postZoomScreenY(farH, zoom, offsetY));
-    if (farDrawH === this.farBackdropDrawH) return; // 変化なしなら再設定しない(無駄なdirty回避)
-    this.farBackdropDrawH = farDrawH;
-    this.L.farBackdrop.height = farDrawH;
-    const isM7far = this.currentFarKey === 'stage7';
-    const isHeightFit = isM7far || this.currentFarKey === 'lab';
-    const farScale = isHeightFit
-      ? farDrawH / tex.height
-      : Math.max(this.screenW / tex.width, farH / tex.height); // cover: スケールはfarH基準のまま不変
-    this.L.farBackdrop.tileScale.set(farScale);
-    // §6.37指摘7: M0の川のきらめきも遠景と同ジオメトリで重なる素材なので、延長分の farDrawH/farScale で
-    // 一緒に張り直す(layoutFarBackdrop側だけだと、引きズームで延長された帯に川が付いてこなかった)。
-    this.layoutRiverFlow(farDrawH, farScale);
+    this.layoutWorldGapBand(farH); // §6.37 v4 上接合: 森帯の直後ろに敷く隙間埋め帯の静的サイズをfarH変更時に更新
   }
   // 川の流れレイヤー(チュートリアルのみ): 遠景と同ジオメトリで重ねる(素材3枚が同寸=位置合わせ不要)。
   private layoutRiverFlow(farH: number, farScale: number) {
@@ -5513,6 +5495,75 @@ export class PixiScene {
       // tint無し(白)=明るい筋のままbloomに拾わせる(遠景本体のENV_TINTは掛けない)。
     }
   }
+
+  /**
+   * §6.37 v4 上接合(隙間埋め帯・PACING_PUZZLE.md §6.37-2 v4)。worldGroup内・horizonForestの直上
+   * (直後ろ=描画順で前)に、森と同じズーム変換を受ける暗グラデ帯を敷き、farHとの間の隙間を埋める。
+   * サイズは静的(resize/farH変更時のみ再計算=毎フレームの再パラメータ化はしない)。
+   * 恒等性: 帯の上側([top,farH))はfarBackdropの描画範囲([0,farH))と等倍で重なるが、帯はfarBackdrop
+   * より描画順で後ろ(worldGroupはfarBackdropより後に描かれるため、そのままでは前面に出てしまう)ので、
+   * マスク(syncWorldGapBand)がpost-zoomで画面Y=farHより上を毎フレーム隠す=等倍では帯が丸ごと隠れる。
+   */
+  private layoutWorldGapBand(farH: number) {
+    if (!this.worldGapTex) {
+      // グラデーションテクスチャは初回1回のみ生成(以後は使い回し・pooled)。
+      const canvas = document.createElement('canvas');
+      canvas.width = 4;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        grad.addColorStop(0, `#${WORLD_GAP_BAND_TOP_COLOR.toString(16).padStart(6, '0')}`);
+        grad.addColorStop(1, `#${WORLD_GAP_BAND_BOTTOM_COLOR.toString(16).padStart(6, '0')}`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        this.worldGapTex = Texture.from(canvas);
+      }
+    }
+    if (!this.worldGapBand && this.worldGapTex) {
+      const sp = new Sprite(this.worldGapTex);
+      sp.eventMode = 'none';
+      // 森帯(horizonForest)の直後ろ=挿入位置はhorizonForestの現在indexへ(既存の子が1つ後ろへずれる)。
+      this.L.worldGroup.addChildAt(sp, this.L.worldGroup.getChildIndex(this.L.horizonForest));
+      this.worldGapBand = sp;
+    }
+    if (!this.worldGapMask) {
+      // worldFadeMaskと同じ「Sprite(白) をmaskに使う」確立済みパターン(Graphics scissorマスクは
+      // 使わない=同じ型で挙動を揃える)。
+      const sp = new Sprite(Texture.WHITE);
+      sp.eventMode = 'none';
+      this.L.worldGroup.addChild(sp); // worldGroupの子=帯と同じズーム変換(マスクは対象と同変換=v0.25.1882の教訓)
+      this.worldGapMask = sp;
+    }
+    const band = this.worldGapBand, mask = this.worldGapMask;
+    if (!band || !mask) return;
+    const H = worldGapBandHeight(farH, this.screenH, ZOOM_MIN_ABS);
+    const overW = this.screenW * ZOOM_OVERSCAN;
+    const marginX = (overW - this.screenW) / 2;
+    this.worldGapBandTop = farH - H;
+    band.position.set(-marginX, this.worldGapBandTop);
+    band.width = overW;
+    band.height = Math.max(1, H);
+    band.mask = mask;
+    this.worldGapMaskH = H + WORLD_GAP_MASK_MARGIN_PX;
+    mask.width = overW;
+    mask.height = this.worldGapMaskH;
+    mask.position.x = -marginX; // Xは静的(帯と同じオーバースキャン中央寄せ)。Yは毎フレームsyncWorldGapBandが追従。
+  }
+
+  /**
+   * §6.37 v4: worldGapMaskのY位置だけ毎フレームpost-zoomで追従(worldFadeMaskと同じ確立済みパターン・
+   * position付け替えのみ=再描画なし)。恒等(zoom=1・offsetY=0)ではマスク上端がfarHに一致=帯が
+   * 丸ごと隠れる(farHより上は常にfarBackdropの範囲=帯を見せない)。
+   */
+  private syncWorldGapBand() {
+    if (!this.worldGapMask) return;
+    const farH = this.farBackdropHeight();
+    const zoom = this.wgZoom();
+    const offsetY = this.wgOffsetY();
+    this.worldGapMask.position.y = postZoomLocalY(farH, zoom, offsetY);
+  }
+
   private applyOutdoorGroundTheme(theme: StageTheme, farKey = '') {
     const strips = this.L.groundStrips;
     this.applyFarBackdrop(theme, farKey);
@@ -5709,13 +5760,18 @@ export class PixiScene {
     // 交戦の入口/出口はゲーム側と同じ基準を、体格別の遠距離ズームでworld pxへ換算する。
     // 引いて見えているのに旧固定距離だけでカメラが戻る、という不一致を起こさない。
     const zpx = s.player.x + s.player.width / 2, zpy = s.player.y + s.player.height / 2;
+    // §6.37 v4-3(PACING_PUZZLE.md §6.37-3・社長指示): stage-2(labテーマ)/stage-6(洋館・corridorMode)は
+    // ボス距離ズームの対象外(専用背景構造と深い引きの相性問題を根から断つ)。従来の文脈ズームのみへ
+    // 戻す=このループでボスを一切拾わない(bossDistanceTarget/カメラ寄せとも不変のまま)。
+    // useGameLoopのbossViewZoom算出(離脱判定)も同一条件でゲートする(判定と絵の不一致を作らない)。
+    const bossZoomExcluded = s.stageTheme === 'lab' || s.corridorMode;
     let bossDistanceTarget: number | null = null;
     let bossBiasDx = 0, bossBiasDy = 0, bossBiasD2 = Infinity; // 最も近い交戦ボスへの中心差(カメラ寄せ用)
     for (const e of s.enemies) {
       // 指摘12: 帰巣中(bossState==='return')のボスは交戦していないので除外する。dormantしか見ていないと
       // 「離脱してるっぽいのにズームが戻らない」(帰巣中も交戦画角を保持し続ける)。視点バイアス
       // (bossBiasD2/最近ボス選定)も同じループなので一緒に外れる。
-      if (!isEngageableBoss(e.type) || e.dormant === true || e.bossState === 'return') continue;
+      if (bossZoomExcluded || !isEngageableBoss(e.type) || e.dormant === true || e.bossState === 'return') continue;
       const bossEngageLimit = bossEngagementDistancePx(e.type, this.bossCameraEngaged, e.isStoryBoss === true);
       const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
       if (dx * dx + dy * dy > bossEngageLimit * bossEngageLimit) continue;
@@ -5854,10 +5910,10 @@ export class PixiScene {
     // worldGroupの現在値で逆変換してローカルに張り直す=フィルタ枠は常に画面ぴったり・
     // tiltShift.start/end(画面px)はそのままで正しくなる。zoom=1でも同式で(0,0,w,h)に一致。
     this.syncWorldFilterArea();
-    // §6.37 上接合(遠景の下延長): 床のローカル上端(farH・不変)が「今のzoomで画面上のどこに来るか」を
-    // 毎フレーム計算し、farBackdrop(画面固定)の描画高をそこまで下延長する。zoom=1では farH と一致
-    // (=旧来と同じ)。worldFadeMask/stage5WarMaskの post-zoom 追従もここで一緒に行う。
-    this.syncFarBackdropZoomExtension();
+    // §6.37 v4: farBackdropの毎フレーム下延長(旧syncFarBackdropZoomExtension)は撤回済み
+    // (farBackdropは常に等倍時と同一)。上接合は隙間埋め帯(syncWorldGapBand)が担う。
+    // worldFadeMask/stage5WarMaskの post-zoom 追従はここで行う。
+    this.syncWorldGapBand();
     this.syncWorldFadeMaskZoom();
     // 被写界深度(tilt-shift)のシャープ帯をプレイヤーの画面Yへ毎フレーム追従(社長指示v0.25.1758
     // 「(ドット絵の滲みの正体=チルトシフト)プレイヤーは外して」)。帯が固定比率(0.54)だと立ち位置
@@ -7379,8 +7435,7 @@ export class PixiScene {
     // 下辺=遠景backdropの実描画下辺に合わせる(社長指示v0.25.2203「遠景の下辺に高さを合わせて」)。
     // farBackdropは lab では [0, farH] に高さフィット=下辺は position.y + height。床が被る場合は
     // LAB_FAR_WINDOW_BOTTOM_UP(?labfwup=)ぶん上へ持ち上げる。
-    // §6.37: farBackdrop.height は syncFarBackdropZoomExtension が毎フレーム動かす値(post-zoom延長込み)
-    // なので地平の基準にはしない。基準値(zoom=1相当)の farBackdropHeight() を使う(指摘3)。
+    // §6.37 v4: farBackdrop.height は常に farBackdropHeight() の静的値(毎フレームの伸縮なし)。
     const bottom = this.L.farBackdrop.position.y + this.farBackdropHeight() - LAB_FAR_WINDOW_BOTTOM_UP;
     const layoutOne = (sp: TilingSprite, tex: Texture) => {
       const h = this.screenW * (tex.height / tex.width) * LAB_FAR_WINDOW_SCALE; // アスペクト維持
@@ -9783,6 +9838,19 @@ export class PixiScene {
         wrap.addChild(hardSp, grad);
         this.renderer.render({ container: wrap, target: rt, clear: true });
         hardSp.filters = []; // 使い回すフィルタなので参照を切ってから破棄する
+        // ★shadow-v9根本原因(TEST_HANDOFF 20260807-1857-fieldwide.md「bakeSilhouette failed
+        // (suppressed): TypeError: Cannot read properties of null (reading '0')」at BindGroup.getResource):
+        // penumbraFilter(=this.penumbraFilter)は使い回しの単一インスタンス。resources.uSoftTexture/
+        // uSoftSamplerに`softRT.source`を代入すると、Pixiの内部BindGroupがそのTextureSourceへ
+        // 'change'/'destroy'リスナーを張る。直後に`softRT.destroy(true)`でそのTextureSourceを破棄すると、
+        // リスナーが即座に発火して**BindGroup自身が`this.resources=null`で永久に壊れる**(BindGroup.destroy()
+        // の実装)。壊れたBindGroupは復旧しないため、次回のベイクで同じfilterを再利用し
+        // `resources.uSoftTexture=新しいsoftRT.source`を代入/参照した瞬間に`null`を読みに行き例外になる。
+        // ⇒ 修正: softRT/hardRTを破棄する**前**に、filterの参照を破棄されない安全な既定
+        // (Texture.WHITE=construction時の初期値と同じ)へ必ず戻す。これでリスナーがsoftRTから外れ、
+        // 破棄イベントがBindGroupへ伝播しなくなる(次回ベイクは新しいsoftRTへ正常に張り替わる)。
+        penumbra.resources.uSoftTexture = Texture.WHITE.source;
+        penumbra.resources.uSoftSampler = Texture.WHITE.source.style;
         wrap.destroy({ children: true });
         silo.destroy({ children: true });
         hardRT.destroy(true);
@@ -19554,6 +19622,11 @@ export class PixiScene {
     this.worldFadeMask.destroy();
     this.worldFadeMaskTexture?.destroy(true);
     this.worldFadeMaskTexture = null;
+    if (this.worldGapBand) { this.worldGapBand.mask = null; this.worldGapBand.destroy(); this.worldGapBand = null; }
+    this.worldGapMask?.destroy();
+    this.worldGapMask = null;
+    this.worldGapTex?.destroy(true);
+    this.worldGapTex = null;
     this.L.frontForest.destroy();
     this.gradeSprite.destroy();
     this.playerLight.destroy();

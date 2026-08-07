@@ -3,6 +3,7 @@ import {
   bossBehindFadeApplies, BOSS_BEHIND_MIN_SPRITE_W_MULT,
   postZoomScreenY, postZoomLocalY, postZoomFadeAlpha,
   computeGroundBandLayout, groundStripT, GROUND_STRIP_REF_COUNT, GROUND_STRIP_COUNT,
+  worldGapBandHeight,
 } from './renderSpec';
 import { ENEMY_STATS } from '../utils/enemyUtils';
 import { PLAYER_HITBOX } from '../store/gameStore';
@@ -247,5 +248,42 @@ describe('床の下接合(bottom*z + centerY*(1-z) >= screenH)— farHの全実�
     const z = ZOOM_MIN_ABS;
     const screenBottom = layout.bottom * z + centerY * (1 - z);
     expect(screenBottom).toBeGreaterThanOrEqual(screenH - 1e-6);
+  });
+});
+
+// ==== §6.37 v4 上接合「隙間埋め帯」(PACING_PUZZLE.md §6.37-2 v4) ====
+// worldGapBandHeight: 森帯の直上に静的に確保する帯の高さ。恒等(minZoom=1)では0(隙間が無い=帯不要)、
+// 最深ズーム(ZOOM_MIN_ABS)では「帯の上端のpost-zoomスクリーンYがちょうどfarHへ届く」ことを検査する
+// (床の下接合テストと対になる、上接合の不変条件)。
+describe('worldGapBandHeight — 隙間埋め帯の静的な高さ(上接合・§6.37 v4)', () => {
+  const screenH = 876;
+  const centerY = screenH / 2;
+  const farHFracs = [0.26, 0.30, 0.38, 0.415];
+
+  it('恒等(minZoom=1)では高さ0(等倍では隙間そのものが無い=帯は不要)', () => {
+    for (const frac of farHFracs) {
+      expect(worldGapBandHeight(screenH * frac, screenH, 1)).toBe(0);
+    }
+  });
+
+  it.each(farHFracs)('farH = %s × screenH で、最深ズーム(ZOOM_MIN_ABS)で帯上端のpost-zoom screenYがfarHにちょうど届く(上接合)', (frac) => {
+    const farH = screenH * frac;
+    const H = worldGapBandHeight(farH, screenH, ZOOM_MIN_ABS);
+    const top = farH - H;
+    const z = ZOOM_MIN_ABS;
+    const offsetY = centerY * (1 - z);
+    const screenTop = postZoomScreenY(top, z, offsetY);
+    expect(screenTop).toBeCloseTo(farH, 6);
+  });
+
+  it('ZOOM_MIN_ABSを下げる(より強く引く)ほど帯の高さは大きくなる(引きが深いほど隙間が広がる)', () => {
+    const farH = screenH * 0.3;
+    const hAt04 = worldGapBandHeight(farH, screenH, 0.4);
+    const hAt03 = worldGapBandHeight(farH, screenH, 0.3);
+    expect(hAt03).toBeGreaterThan(hAt04);
+  });
+
+  it('高さは常に非負(farHがcenterYを超える異常系でも0クランプ)', () => {
+    expect(worldGapBandHeight(screenH * 0.9, screenH, ZOOM_MIN_ABS)).toBeGreaterThanOrEqual(0);
   });
 });

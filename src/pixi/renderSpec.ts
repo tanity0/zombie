@@ -267,3 +267,30 @@ export const computeGroundBandLayout = (
  */
 export const groundStripT = (i: number, refStripCount: number = GROUND_STRIP_REF_COUNT): number =>
   refStripCount <= 1 ? 1 : i / (refStripCount - 1);
+
+// ---------------------------------------------------------------------------
+// §6.37 v4 上接合「隙間埋め帯」(PACING_PUZZLE.md §6.37-2 v4・社長指示2026-08-07で遠景ストレッチから
+// 全面差し替え)。farBackdrop(画面固定・常に静的なfarH)はもう毎フレーム動かさない。代わりに
+// worldGroup内・森帯(horizonForest)の直上に、森と同じズーム変換を受ける「暗グラデ帯」を敷いて隙間を
+// 埋める。帯の**下端はfarH固定**(=horizonForestの上端と常に一致・継ぎ目なし)、**上端は最深ズーム
+// (ZOOM_MIN_ABS)で必要な分だけ静的に確保**(毎フレームの再パラメータ化はしない=床と同じ「本数追加」
+// 方式の精神)。
+//
+// 等倍(zoom=1)では帯の上側([farH-H, farH))が farBackdrop 自身の描画範囲([0, farH))と重なるため、
+// 帯は farBackdrop の裏側(zより手前=描画順で下)に置いて隠す(pixiScene側の配置・恒等性の担保)。
+// この関数が返すのは「その隠れる/現れるちょうど境界」を毎フレーム画面固定(screenY=farH)に保つための
+// **ローカルYカットオフ**(postZoomLocalYそのもの・別関数は不要)。
+
+/**
+ * 隙間埋め帯の静的な高さ(ワールドローカルpx)。下端=farH(不動)から上へこの分だけ確保しておけば、
+ * 最深ズーム(minZoom=ZOOM_MIN_ABS)でも上接合が破綻しない。
+ * 導出: 「farHのpost-zoomスクリーンY」が最深ズームでちょうどfarHへ届く高さ
+ *   postZoomScreenY(farH - H, minZoom, centerY*(1-minZoom)) === farH を H について解くと
+ *   H = (1 - minZoom) / minZoom * (centerY - farH)。
+ * 恒等条件: minZoom=1 なら H=0(等倍では隙間そのものが存在しない=帯不要)。
+ */
+export const worldGapBandHeight = (farH: number, screenH: number, minZoom: number = ZOOM_MIN_ABS): number => {
+  const centerY = screenH / 2;
+  const safeMinZoom = Math.max(0.001, Math.min(1, minZoom));
+  return Math.max(0, (1 - safeMinZoom) / safeMinZoom * (centerY - farH));
+};

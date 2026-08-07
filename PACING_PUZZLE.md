@@ -5731,6 +5731,64 @@ post-zoom換算は `src/pixi/renderSpec.ts` に純関数で置く(例: `postZoom
 **ゲート**: typecheck 0 / lint エラー0 / `npx vitest run src/pixi/renderSpec.test.ts src/utils/angelSwordSync.test.ts`
 全緑(実施結果は本ファイルpushと同時のDEVELOPMENT_LOGエントリを参照)。
 
+### 実装結果(v4・v0.25.2988・Sonnetサブエージェント)
+上の §1-2(v4)・§1-3(ステージ除外)を実装。§1-1(床の縦延長・180本化)は無変更のまま維持。
+
+- **§1-2 v4(遠景ストレッチ撤回+隙間埋め帯)**: `syncFarBackdropZoomExtension`/`farBackdropDrawH` を
+  `src/pixi/pixiScene.ts` から削除。`farBackdrop` は resize/テーマ変更時に一度基準値(zoom=1相当)を
+  張るだけで、以後毎フレーム一切書き換わらない(等倍時と完全同一)。M7の `s7farext` は前バッチで既に
+  廃止済みのため復活対象なし。lab窓等の `farBackdropHeight()` 参照化(前バッチ修正3)はそのまま維持。
+  - 隙間埋め帯: `src/pixi/renderSpec.ts` に純関数 `worldGapBandHeight(farH, screenH, minZoom)` を新設
+    (帯の静的高さ=最深ズームで上接合がちょうど届く値。恒等でminZoom=1なら0)。`pixiScene.ts` に
+    `layoutWorldGapBand()`(静的・resize/farH変更時のみ)と `syncWorldGapBand()`(毎フレーム・
+    マスクのposition.yだけ`postZoomLocalY`で追従)を新設。帯本体=`Sprite`(初回1回だけ焼くグラデ
+    テクスチャ・pooled)を`worldGroup`内・`horizonForest`の直前(直後ろ)へ挿入。マスクは
+    `worldFadeMask`と同じ確立済み型(`Sprite(Texture.WHITE)`)を流用。
+  - 恒等性: マスクの可視域下端が常にfarHのpost-zoom位置と一致するため、zoom=1では帯の可視範囲が
+    ちょうど0(森とfarBackdropの継ぎ目の1本の線に潰れる)=1pxも見えない。`renderSpec.test.ts`に
+    「minZoom=1で高さ0」「最深ズームで帯上端のpost-zoom screenYがfarHへちょうど届く」
+    「ZOOM_MIN_ABSが下がるほど高さが増える」「非負クランプ」の4件を追加、全緑。
+  - ★未決1: 帯の色はテクスチャから拾わず暗紺〜黒の単色グラデ(`WORLD_GAP_BAND_TOP/BOTTOM_COLOR`)で
+    仮置き。実機で見え方が気になる場合、森1テクスチャの上端色を拾う/ステージテーマ別定数化のどちらかへ
+    差し替え可能(構造は変更不要・定数2つの置き換えのみ)。
+- **§1-3(ステージ除外)**: `pixiScene.ts`のボスカメラループ(`bossDistanceTarget`算出)の`continue`条件に
+  `stageTheme==='lab' || corridorMode`を追加(該当ステージではボスを一切拾わない=contextZoomTargetが
+  従来の文脈ズームのみへ自然に戻る)。`useGameLoop.ts`の`bossViewZoom`(帰巣onScreen判定)にも同一条件で
+  ズーム値を1に固定するゲートを追加(判定式=`isPointInZoomedViewport`自体は無改変。現状stage-2/6は
+  `hiddenBoss`未設定のためこの分岐は実質未到達だが、判定と絵の不一致を作らない仕様どおり明示ゲートを
+  入れた)。`cameraZoom.ts`は無改変。`git diff --stat`でゲーム側(store/utils/world)への差分ゼロを確認。
+- **§1-4(stage-4継ぎ目調査)**: 実機未確認(社長運用どおり検証は社長指示制)でのコード読解のみ。
+  farBackdrop/groundStripsにstage-4固有分岐は無く、`horizonForestHeight()`の
+  `NORTH_FAR_FOREST_EXTRA_SCALE`(森1拡大)だけがstage-4固有の幾何変更。`tileScale.set(v)`が単一値=
+  縦横一律拡大のため、横タイル反復回数が他ステージより少ない。
+  - ★未決2(仮説・未確定): 「縦の継ぎ目2本」= 森1テクスチャの左右端が完全シームレスでなく、通常段は
+    反復数が多くて目立たないが、stage-4だけ反復が減り単発の継ぎ目が孤立して見える(仮説)。
+    「地面中央の横線」= 近景ブラー帯(`NEAR_GROUND_BLUR_STRENGTHS`)の段差は全ステージ共通の仕組みで
+    存在するが、stage-4の高輝度な雪景色でコントラストが強く出て見えやすい可能性(仮説)。
+    どちらも確定特定に至らず、修正には①`NORTH_FAR_FOREST_EXTRA_SCALE`(意図値=無断変更禁止)を
+    下げてタイル反復を増やす、②ブラー段差を離散段から補間カーブへ変える、のいずれも仕様・演出意図に
+    触れる変更のため実装チャットの裁量では実施していない。実機確認後、必要なら社長裁定へ。
+- **B(shadow-v9根本原因・修正)**: `bakeSilhouette`の半影パスは使い回しの単一Filter
+  (`this.penumbraFilter`)の`resources.uSoftTexture/uSoftSampler`へ毎ベイク`softRT.source`を代入し、
+  直後に`softRT.destroy(true)`していた。Pixi内部の`BindGroup`はリソースへ'change'リスナーを張っており、
+  破棄イベントで**BindGroup自身が`resources=null`のまま永久に壊れる**(`BindGroup.destroy()`の実装)。
+  次回ベイクで同filterを再利用し新しい`softRT.source`を代入/参照した瞬間、壊れたBindGroupの
+  `resources[0]`を読みに行き`TypeError: Cannot read properties of null (reading '0')`
+  (報告のスタック`at BindGroup.getResource`と一致)。修正=`softRT`/`hardRT`を破棄する前に、filterの
+  参照を破棄されない安全な既定(`Texture.WHITE`=construction時の初期値)へ戻す2行を追加。
+  「1ランに1回」という発生パターン(初回破壊後は`penumbraFilterFailed=true`で以後フォールバックへ
+  固定)とも整合する。
+- **ゲート**: typecheck 0 / lint エラー0(warning8件=既存・無関係) /
+  `npx vitest run src/pixi/renderSpec.test.ts` 30件全緑(新規4件)。
+- **負荷**: A全体1/10(rendering)。farBackdropの毎フレーム処理を丸ごと削除(旧来より軽い)。隙間埋め帯は
+  resize時のみサイズ確定・毎フレームはマスクposition.y代入1個(worldFadeMaskと同型)。強glow・新規
+  per-frame Graphics再構築なし。Bは代入2行追加のみ(0/10)。ステージ除外は条件式1個追加(0/10)。
+
+### ★未決事項(v4追加分)
+1. 隙間埋め帯の色(暗紺〜黒の単色グラデ仮置き。上記★未決1参照)。
+2. stage-4継ぎ目の根本原因が未確定(仮説2つ・上記★未決2参照)。修正には演出意図に触れる値変更が
+   伴うため、実機確認後に社長裁定をお願いしたい。
+
 ## §6.36 ボス出現カットイン「BOSS-INTRO-CUTIN」(社長発案2026-08-07・監査反映v2)
 
 ### 0. ゴール(社長の言葉)

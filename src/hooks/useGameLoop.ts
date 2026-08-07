@@ -4443,7 +4443,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
             // ボス戦の実画角と同じ距離/体格プロファイルで可視矩形を拡張する。
             // 旧判定はズーム前の固定矩形だったため、0.58まで引いた時に「まだ見えているのに画面外」になっていた。
-            const bossViewZoom = bossDistanceZoomTarget(
+            // §6.37 v4-3(PACING_PUZZLE.md §6.37-3): stage-2(lab)/stage-6(洋館)はボス距離ズーム対象外。
+            // pixiSceneのボスカメラループと同一条件でゲートする(判定と絵の不一致を作らない)。
+            // 算出条件のみの変更=isPointInZoomedViewportの判定式そのものは不変(掟)。
+            const bossZoomExcluded = labTheme || useGameStore.getState().corridorMode;
+            const bossViewZoom = bossZoomExcluded ? 1 : bossDistanceZoomTarget(
               boss.type, aabbGapDistance(player, boss), boss.isStoryBoss === true,
               { dxCenter: bcx - (player.x + player.width / 2), dyCenter: bcy - (player.y + player.height / 2), viewport: gb },
             );

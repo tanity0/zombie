@@ -1,5 +1,72 @@
 # Development Log
 
+## v0.25.2988 — §6.37 v4実装(遠景・近景固定+隙間埋め帯/ステージ2・6除外)+shadow-v9修正【2026-08-07 22:16 JST】
+実装チャット(Sonnetサブエージェント)。PACING_PUZZLE.md §6.37 の §1-2(v4)・§1-3(ステージ除外)を実装、
+テスト#9(20260807-1857-fieldwide.md)で見つかった shadow-v9 例外・stage-4継ぎ目を調査。
+
+**A-1(遠景ストレッチ撤回)**: `pixiScene.ts` の `syncFarBackdropZoomExtension`(毎フレーム下延長)・
+`farBackdropDrawH`(dirtyキャッシュ)を削除。`resize()`/`layoutFarBackdrop()` は基準値(zoom=1相当)を
+一度張るだけに戻り、`farBackdrop.height` は以後一切書き換わらない(等倍時と完全同一・毎フレームコスト0)。
+`layoutRiverFlow` 呼び出しは維持(M0の川)。lab窓等の `farBackdropHeight()` 参照化(前バッチ修正3)はそのまま残した。
+
+**A-2(隙間埋め帯・新設)**: `src/pixi/renderSpec.ts` に純関数 `worldGapBandHeight(farH, screenH, minZoom)` を
+新設(恒等: minZoom=1で0。最深ズームで「帯上端のpost-zoom screenYがfarHにちょうど届く」ことをテストで固定)。
+`pixiScene.ts` に `layoutWorldGapBand()`(resize/farH変更時のみ・静的サイズ確定)と `syncWorldGapBand()`
+(毎フレーム・position.yのみ付け替え)を新設。実装:
+- 帯本体は `Sprite`(森1の上端色→暗いグラデ・初回1回だけcanvasで焼く。pooled)。worldGroupの子として
+  `horizonForest` の直前(描画順で後ろ)へ挿入=床/森と同一のズーム変換を受ける(counter-scale不使用)。
+  下端=farH固定(horizonForestの上端と常に一致・継ぎ目なし)、上端=最深ズーム(ZOOM_MIN_ABS)で必要な分だけ
+  静的に確保(毎フレーム再パラメータ化しない)。
+- マスクは `worldFadeMask` と同じ確立済みパターン(`Sprite(Texture.WHITE)` をmaskに使う・position.yだけ
+  `postZoomLocalY(farH, zoom, offsetY)` で毎フレーム追従)。等倍(zoom=1)ではマスクの可視域が
+  ちょうど帯の下端(farH)から始まるため、帯は**1pxも見えない**(=恒等性。renderSpec.test.tsで機械検査)。
+  最深ズームではマスクが帯全体を覆い、床側の隙間([farH, 森の新しい上端])とちょうど一致して見える。
+- ★未決: 帯の色(WORLD_GAP_BAND_TOP/BOTTOM_COLOR)は森1テクスチャから拾わず暗紺〜黒の単色グラデで仮置き
+  (社長確認待ち・PACING_PUZZLE.md §6.37の★未決に記載)。
+
+**A-3(ステージ除外)**: `pixiScene.ts` のボスカメラループ(bossDistanceTarget算出)と `useGameLoop.ts` の
+`bossViewZoom`(帰巣判定のonScreen計算)の両方に `stageTheme==='lab' || corridorMode` を同一条件で追加。
+pixiScene側はループの `continue` 条件に足し(該当ステージではボスを一切拾わずcontextZoomTargetがnullを
+受け取る=従来の文脈ズームのみへ自然に戻る)。useGameLoop側は算出したズーム値をisPointInZoomedViewportに
+渡す直前だけ1に固定(掟どおり判定式=ゲームロジックは無改変。現状stage-2/6はhiddenBoss未設定のため
+この分岐は実質到達しないが、仕様どおり明示ゲートを入れて将来の取りこぼしを防いだ)。cameraZoom.tsは無改変。
+
+**B(shadow-v9根本原因・修正)**: `bakeSilhouette`(半影パス)は使い回しの単一Filterインスタンス
+(`this.penumbraFilter`)の `resources.uSoftTexture/uSoftSampler` へ毎ベイク `softRT.source` を代入していたが、
+直後に `softRT.destroy(true)` でそのTextureSourceを破棄していた。Pixiの内部BindGroupはリソースへ
+'change'リスナーを張っており、破棄イベントが発火すると **BindGroup自身が`resources=null`で永久に壊れる**
+(`BindGroup.destroy()`の実装)。次回ベイクで同じfilterを再利用し新しい`softRT.source`を代入/参照した瞬間、
+壊れたBindGroupの`resources[0]`を読みに行き `TypeError: Cannot read properties of null (reading '0')`
+(=報告のスタック `at BindGroup.getResource`)。**修正**: `softRT`/`hardRT` を破棄する前に、filterの
+`uSoftTexture`/`uSoftSampler` を破棄されない安全な既定(`Texture.WHITE`=construction時の初期値)へ
+必ず戻すよう1行ずつ追加。これでBindGroupのリスナーがsoftRTから外れ、破棄イベントが伝播しなくなり、
+次回ベイクは正常に新しいsoftRTへ張り替わる。「1ランに1回」だった発生パターン(初回破壊後は
+`penumbraFilterFailed=true`で以後フォールバック経路に固定されていた)とも整合。
+
+**stage-4継ぎ目(調査・未確定=★未決に記載)**: コード読解のみ(実機未確認・社長運用どおり)。
+farBackdrop/groundStrips自体はstage-4専用分岐が無く('snow'テーマはfarBackdropテクスチャの差し替えのみ)、
+唯一のstage-4固有の幾何変更は `horizonForestHeight()` の `NORTH_FAR_FOREST_EXTRA_SCALE`(森1を拡大)。
+`tileScale.set(horizonH/texH)` は単一値=縦横ともに一律で拡大されるため、横方向のタイル反復回数が
+他ステージより少なくなる。仮説: 森1テクスチャの左右端が完全シームレスではなく、通常ステージでは
+反復数が多く分散して目立たないが、stage-4だけ反復数が減ることで単発の継ぎ目が孤立して見える
+(=「縦の継ぎ目2本」)。地面中央の「横線」は近景ブラー帯(NEAR_GROUND_BLUR_STRENGTHS)の段差が
+全ステージ共通の仕組みとして存在し、stage-4の高輝度な雪景色でコントラストが強く出て見えやすい可能性。
+どちらも確定した原因特定・修正には至らず(NORTH_FAR_FOREST_EXTRA_SCALEは意図値=CLAUDE.md「仕様変更の
+ルール」により無断変更禁止、ブラー段差の平滑化は別件のカーブ変更になるため)。PACING_PUZZLE.md §6.37の
+★未決へ仮説と選択肢を記載。
+
+**ゲート**: `npm run typecheck` 0件 / `npm run lint` エラー0(warning 8件=既存・無関係)/
+`npx vitest run src/pixi/renderSpec.test.ts` 30件全緑(新規4件=worldGapBandHeightの恒等・上接合・
+逆比例・非負クランプ)。
+
+**負荷スコア**: A全体 **1/10**(rendering)。理由: farBackdropの毎フレーム処理を丸ごと削除(旧来より軽い)。
+隙間埋め帯はresize/farH変更時のみサイズ確定(静的)、毎フレームはマスクのposition.y代入1個のみ
+(worldFadeMaskと同型・実測不要なレベルの軽さ)。強glow・新規per-frame Graphics再構築なし。
+Bのshadow-v9修正は代入2行の追加のみ(0/10)。ステージ除外ゲートはループ内の条件式1個追加(0/10)。
+
+**未決事項**: ①隙間埋め帯の色(暗紺〜黒の単色グラデ仮置き) ②stage-4継ぎ目の根本原因(2つの仮説を提示・
+社長判断待ち)。PACING_PUZZLE.md §6.37「★未決事項」に追記。
+
 ## v0.25.2987 — 素材受領: ヨルムンガンドの胴体(jorm-coil-body.png)【2026-08-07 21:50 JST】
 社長支給(裏ボス便3)。coil(横薙ぎ帯)の実行の瞬間に帯の線分へ沿って走り抜けさせる用。配線はFX-V2d
 (§6.37 v4バッチ着地後に投入)。
