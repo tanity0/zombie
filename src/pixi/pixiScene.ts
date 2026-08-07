@@ -31,7 +31,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   GIANT_DIVE_WINDUP_MS, GIANT_DIVE_RADIUS,
   GIANT_QUAD_BREATH_WINDUP_MS, GIANT_QUAD_BREATH_ACTIVE_MS, GIANT_QUAD_BREATH_LENGTH, GIANT_QUAD_BREATH_HALF_WIDTH, GIANT_QUAD_BREATH_SWEEP_RAD,
   GIANT_NOVA_WINDUP_MS, GIANT_NOVA_ACTIVE_MS, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_END, GIANT_NOVA_BAND_THICKNESS,
-  GIANT_WING_WINDUP_MS, GIANT_WING_HALF_WIDTH, GIANT_WING_LENGTH, GIANT_WING_SPREAD_RAD,
+  GIANT_WING_WINDUP_MS, GIANT_WING_ACTIVE_MS, GIANT_WING_RADIUS,
   // バッチFX-V3V4: 噛みつきの牙(上下顎)を「閉じ切る瞬間=判定が出る瞬間」に合わせるため、
   // 保持(hold)の長さを判定と同じ定数から読む(絵のためのコピー定数を作らない)。
   GIANT_BITE_HOLD_MS,
@@ -1973,7 +1973,7 @@ const BOLT_FX_MAX = 48;       // 安全弁(リセット等で全弾が同時消�
 // 尺はどれも**判定の窓とは独立**(絵だけの時間)=ゲームロジックには一切触れていない。
 const BITE_SNAP_MS = 220;      // 顎が閉じ切ってから消えるまで
 const CLAW_LINGER_MS = 240;    // 爪を振り抜いた後の余韻
-const WING_SWING_MS = 300;     // 翼を薙いだ絵の尺(判定のactive窓とは独立)
+// (WING_SWING_MS は撤去: 翼撃は判定の active 窓そのもので一周するようになった・v0.25.2863)
 const REACH_HOLD_MS = 340;     // 触手が伸び切ってから引っ込むまで
 // 拳が当たってから消えるまでは `IDOL_TUNING.fx.punchFistHoldMs`(メーカーで触れる・v0.25.2651)。
 // ここに定数を置くと**メーカーで変えても効かない**ので置かない(v0.25.2631の教訓と同じ形)。
@@ -13092,30 +13092,35 @@ export class PixiScene {
           this.drawClawSwipe(view, clL.d[0], clL.d[1], ang, clL.d[3], artFade * fade);
         }
       }
-      // (3) 翼の薙ぎ(g-wing)。左右2枚の帯=左右2枚の翼(判定1本につき絵1枚)。左右の終点は
-      // gameStore の g-wing-windup と**同じ式**で出す(角度の二重定義を作らない)。
+      // (3) 翼撃(g-wing)= ステージ1の大技(v0.25.2863・社長指示「片手が翼になっている的なので、
+      //     羽を頭上に広げて、それを素早く360度範囲内ぶん回して攻撃 って感じに見せて」)。
+      //     溜め: 翼を**頭上へ立てて広げる**(上向き・長さが伸びる=「広げる」)。
+      //     発生: そこから**一気に一周**する(短い活性時間ぶんで360度)。
+      //     分類②(派手さの絵)ではなく**①(危険を伝える絵)**なので、回転半径は判定の円と同じ
+      //     GIANT_WING_RADIUS に揃える(赤い円の縁を翼の先端がなぞる)。
       {
         const wingWind = gph === 'g-wing-windup';
-        const wingTo = wingWind ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
-        const wingTotal = wingTo + WING_SWING_MS;
-        const wgL = this.latchFx(`${e.id}:wingart`, wingWind, wingTotal, now, () => {
-          const wfx2 = e.aiFromX ?? cx, wfy2 = e.aiFromY ?? cy;
-          const wtx2 = e.aiTargetX ?? cx, wty2 = e.aiTargetY ?? cy;
-          const wl = Math.hypot(wtx2 - wfx2, wty2 - wfy2) || 1;
-          const ux = (wtx2 - wfx2) / wl, uy = (wty2 - wfy2) / wl;
-          const cS = Math.cos(GIANT_WING_SPREAD_RAD), sS = Math.sin(GIANT_WING_SPREAD_RAD);
-          const lX = ux * cS - uy * sS, lY = ux * sS + uy * cS;
-          const rX = ux * cS + uy * sS, rY = -ux * sS + uy * cS;
-          return [wfx2, wfy2,
-            wfx2 + lX * GIANT_WING_LENGTH, wfy2 + lY * GIANT_WING_LENGTH,
-            wfx2 + rX * GIANT_WING_LENGTH, wfy2 + rY * GIANT_WING_LENGTH,
-            wingTotal > 0 ? wingTo / wingTotal : 0];
-        });
-        if (wgL && wgL.t >= wgL.d[6]) {
-          const wp = wgL.d[6] < 1 ? (wgL.t - wgL.d[6]) / (1 - wgL.d[6]) : 0;
-          const wa = artFade * this.fxHoldFade(wp);
-          this.drawWingSwipe(view, ATK_ART_WING_L, wgL.d[0], wgL.d[1], wgL.d[2], wgL.d[3], wa, true);
-          this.drawWingSwipe(view, ATK_ART_WING_R, wgL.d[0], wgL.d[1], wgL.d[4], wgL.d[5], wa, false);
+        const wingAct = gph === 'g-wing-active';
+        if (wingWind || wingAct) {
+          const wcx2 = e.aiFromX ?? cx, wcy2 = e.aiFromY ?? cy;
+          if (wingWind) {
+            // 頭上へ広げる。上向き(-Y)に、溜めの進行で 0 → 半径 まで伸ばす。
+            const wp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_WING_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+            const len = GIANT_WING_RADIUS * (0.25 + 0.75 * wp);
+            this.drawWingSwipe(view, ATK_ART_WING_L, wcx2, wcy2, wcx2, wcy2 - len, artFade * (0.5 + 0.5 * wp), true);
+          } else {
+            // 素早く一周。活性の進行 t を角度へ写す(上向きから時計回りに360度)。
+            const t = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_WING_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT)));
+            const ang = -Math.PI / 2 + Math.PI * 2 * t;
+            const tx = wcx2 + Math.cos(ang) * GIANT_WING_RADIUS;
+            const ty = wcy2 + Math.sin(ang) * GIANT_WING_RADIUS;
+            this.drawWingSwipe(view, ATK_ART_WING_L, wcx2, wcy2, tx, ty, artFade, true);
+            // 残像1枚(少し前の角度)。1枚だと"回っている"に見えないため(判定は増えない=絵だけ)。
+            const angPrev = ang - Math.PI / 3;
+            this.drawWingSwipe(view, ATK_ART_WING_R, wcx2, wcy2,
+              wcx2 + Math.cos(angPrev) * GIANT_WING_RADIUS, wcy2 + Math.sin(angPrev) * GIANT_WING_RADIUS,
+              artFade * 0.45, true);
+          }
         }
       }
       // (4) 伸びる触手(g-reach)。**カプセル判定に沿って回転・伸長**(台帳の指定)。溜めの進行に
@@ -13277,24 +13282,17 @@ export class PixiScene {
         o.ellipse(cx, cy, curR, curR).stroke({ width: GIANT_NOVA_BAND_THICKNESS * 2, color: 0xff2a2a, alpha: 0.5 });
         o.ellipse(cx, cy, curR, curR).stroke({ width: 2, color: 0xffe0e0, alpha: 0.8 });
       } else if (gph === 'g-wing-windup' || gph === 'g-wing-active') {
-        // M66 stage-5「翼撃」: 左右2枚のT3帯(同時)。三拍目(中央)はgiantDelayedHits経由で下の
-        // 汎用ループが描く(この技のwindupで正面方向を溜め開始からロック済み)。
-        const wfx = e.aiFromX ?? cx, wfy = e.aiFromY ?? cy;
-        const wtx = e.aiTargetX ?? cx, wty = e.aiTargetY ?? cy;
-        const wdl = Math.hypot(wtx - wfx, wty - wfy) || 1;
-        const wux = (wtx - wfx) / wdl, wuy = (wty - wfy) / wdl;
-        const cosS = Math.cos(GIANT_WING_SPREAD_RAD), sinS = Math.sin(GIANT_WING_SPREAD_RAD);
-        const leftX = wux * cosS - wuy * sinS, leftY = wux * sinS + wuy * cosS;
-        const rightX = wux * cosS + wuy * sinS, rightY = -wux * sinS + wuy * cosS;
-        const leftTx = wfx + leftX * GIANT_WING_LENGTH, leftTy = wfy + leftY * GIANT_WING_LENGTH;
-        const rightTx = wfx + rightX * GIANT_WING_LENGTH, rightTy = wfy + rightY * GIANT_WING_LENGTH;
+        // 翼撃(ステージ1の大技・v0.25.2863): 羽を頭上に広げて**素早く360度ぶん回す**。
+        // ⇒ 危険を伝える絵は判定に揃える(CLAUDE.md)。判定は円1つなので**予告も円**にする。
+        // 中心は溜め開始時の自分の位置(aiFromX/Y)=判定と同じ値を読む(図形の二重定義を作らない)。
+        const wcx = e.aiFromX ?? cx, wcy = e.aiFromY ?? cy;
         const wprog = gph === 'g-wing-windup'
           ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_WING_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
           : 1;
-        const wFill = gph === 'g-wing-active' ? 0.3 : (0.12 + 0.22 * wprog) + 0.08 * gPulse;
-        const wStroke = (0.32 + 0.4 * wprog) + 0.15 * gPulse;
-        drawGiantCapsuleZone(wfx, wfy, leftTx, leftTy, GIANT_WING_HALF_WIDTH, wFill, wStroke);
-        drawGiantCapsuleZone(wfx, wfy, rightTx, rightTy, GIANT_WING_HALF_WIDTH, wFill, wStroke);
+        const wFill = gph === 'g-wing-active' ? 0.3 : (0.12 + 0.16 * wprog) + 0.08 * gPulse;
+        o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).fill({ color: 0xff2a2a, alpha: wFill });
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, wcx, wcy, GIANT_WING_RADIUS, 0xff3b3b, (0.42 + 0.38 * wprog) + 0.15 * gPulse);
+        else o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: (0.35 + 0.3 * wprog) + 0.12 * gPulse });
       } else if (gph === 'g-sweepbeam-windup' || gph === 'g-sweepbeam-active') {
         // M66 stage-5「掃射」(大技): 細いT3帯(半幅30)が120°を回転する。懐(回転の中心付近)が
         // 安全=帯の始点を中心からGIANT_SWEEPBEAM_INNER_RADIUSぶん前へ出した扇/カプセル(ドーナツの

@@ -391,15 +391,24 @@ const stageAllReady = (): Record<GiantStageMoveId, boolean> => ({
 });
 
 describe('GIANT_STAGE_UNIQUE_MOVE / GIANT_STAGE_ULT_MOVE — 対象は城ボスが実際に出る4ステージのみ', () => {
-  it('defines exactly one unique move and one ult move for stage-1/3/4/5', () => {
+  // v0.25.2863(社長裁定): 翼撃を **stage-5 の固有技 → stage-1 の大技** へ移した。
+  // stage-5 の固有技は**別途相談**なので、いまは意図的に空(大技の掃射のみ)。
+  it('defines the stage moves as assigned (v0.25.2863)', () => {
     expect(GIANT_STAGE_UNIQUE_MOVE['stage-1']).toBe('bite');
     expect(GIANT_STAGE_UNIQUE_MOVE['stage-3']).toBe('glide');
     expect(GIANT_STAGE_UNIQUE_MOVE['stage-4']).toBe('quaddash');
-    expect(GIANT_STAGE_UNIQUE_MOVE['stage-5']).toBe('wing');
-    expect(GIANT_STAGE_ULT_MOVE['stage-1']).toBe('slam');
+    expect(GIANT_STAGE_UNIQUE_MOVE['stage-5']).toBeUndefined(); // ★翼を外した(別途相談)
+    expect(GIANT_STAGE_ULT_MOVE['stage-1']).toBe('wing');       // ★叩きつけ→翼撃
     expect(GIANT_STAGE_ULT_MOVE['stage-3']).toBe('dive');
     expect(GIANT_STAGE_ULT_MOVE['stage-4']).toBe('nova');
     expect(GIANT_STAGE_ULT_MOVE['stage-5']).toBe('sweepbeam');
+  });
+
+  // 叩きつけ(slam)は実装ごと残してあるが、どのステージにも割り当てていない。
+  // 「使わなくなった」ことを明示的に固定しておく(黙って消えたのではない)。
+  it('叩きつけ(slam)はいまどのステージにも割り当てられていない(実装は残置)', () => {
+    const assigned = [...Object.values(GIANT_STAGE_UNIQUE_MOVE), ...Object.values(GIANT_STAGE_ULT_MOVE)];
+    expect(assigned).not.toContain('slam');
   });
 
   it('does NOT define anything for stage-6/7/ex1(社長指示: この3ステージには足さない)', () => {
@@ -428,11 +437,20 @@ describe('giantStageMoveEligible — 表どおりの間合い', () => {
     expect(giantStageMoveEligible('glide', 900)).toBe(true);
     expect(giantStageMoveEligible('glide', 901)).toBe(false);
   });
-  it('大技3種+quaddash/wingは全帯(設計書に間合いの明記が無いための叩き台)', () => {
-    for (const m of ['dive', 'quaddash', 'nova', 'wing', 'sweepbeam'] as GiantStageMoveId[]) {
+  it('大技3種+quaddashは全帯(設計書に間合いの明記が無いための叩き台)', () => {
+    for (const m of ['dive', 'quaddash', 'nova', 'sweepbeam'] as GiantStageMoveId[]) {
       expect(giantStageMoveEligible(m, 0)).toBe(true);
       expect(giantStageMoveEligible(m, 5000)).toBe(true);
     }
+  });
+
+  // v0.25.2863: 翼撃は**ボス中心の半径380の円**になったので全帯ではない。
+  // 届かない距離で撃たないよう、抽選の間合いも実際の届く範囲(=判定の半径)に揃えてある。
+  it('翼撃は届く範囲(半径380)でだけ選ばれる=見た目・判定・抽選が一致する', () => {
+    expect(giantStageMoveEligible('wing', 0)).toBe(true);
+    expect(giantStageMoveEligible('wing', 380)).toBe(true);
+    expect(giantStageMoveEligible('wing', 381)).toBe(false);
+    expect(GIANT_STAGE_MOVE_RANGE.wing.max).toBe(380);
   });
 });
 
@@ -489,12 +507,19 @@ describe('pickGiantMoveWithStage — 受け入れ条件: ステージごとに�
     }
   });
 
-  it('Phase2になるとslamが候補に入る(距離230・stage-1)', () => {
+  // v0.25.2863: stage-1 の大技は 叩きつけ(slam) → 翼撃(wing)。
+  it('Phase2になると大技(翼撃)が候補に入る(距離230・stage-1)', () => {
     const ready = allReady();
     const stageReady = stageAllReady();
-    // rand=0.999 → 候補末尾(slamが最後に push される)を引く。
-    // 基本技候補=stomp15/sweep35/jump30/bolt20(合計100・平均25)、slam=25。
-    expect(pickGiantMoveWithStage('stage-1', 230, 2, ready, stageReady, () => 0.999)).toBe('slam');
+    // rand=0.999 → 候補末尾(大技が最後に push される)を引く。
+    expect(pickGiantMoveWithStage('stage-1', 230, 2, ready, stageReady, () => 0.999)).toBe('wing');
+  });
+
+  // 翼撃は半径380の円=届かない所では候補に入らない(全帯の大技とはここが違う)。
+  it('翼撃は届く範囲の外(距離500)では大技として出ない', () => {
+    const ready = allReady();
+    const stageReady = stageAllReady();
+    expect(pickGiantMoveWithStage('stage-1', 500, 2, ready, stageReady, () => 0.999)).not.toBe('wing');
   });
 
   it('stage-4・全帯対応のquaddash/novaはPhase/距離を問わず候補に入る(CD明けなら)', () => {
@@ -530,14 +555,16 @@ describe('pickGiantMoveWithStage — 受け入れ条件: ステージごとに�
     }
   });
 
-  it('全ステージ技(8種)が定義どおりの間合い/フェーズで一意に取り出せる(網羅チェック)', () => {
+  // 割り当ての健全性: 表に書かれた技は必ず実在し、同じステージで固有技と大技が被らないこと。
+  // ※v0.25.2863 以降、stage-5 の固有技は**未割り当て**(別途相談)なので、空を許す。
+  it('表に書かれたステージ技は実在し、同じステージで固有技と大技が被らない', () => {
     expect(ALL_STAGE_MOVES.length).toBe(8);
     for (const stageId of ['stage-1', 'stage-3', 'stage-4', 'stage-5']) {
-      const unique = GIANT_STAGE_UNIQUE_MOVE[stageId] as GiantStageMoveId;
-      const ult = GIANT_STAGE_ULT_MOVE[stageId] as GiantStageMoveId;
-      expect(ALL_STAGE_MOVES).toContain(unique);
-      expect(ALL_STAGE_MOVES).toContain(ult);
-      expect(unique).not.toBe(ult);
+      const unique = GIANT_STAGE_UNIQUE_MOVE[stageId];
+      const ult = GIANT_STAGE_ULT_MOVE[stageId];
+      if (unique) expect(ALL_STAGE_MOVES).toContain(unique);
+      if (ult) expect(ALL_STAGE_MOVES).toContain(ult);
+      if (unique && ult) expect(unique).not.toBe(ult);
     }
   });
 });

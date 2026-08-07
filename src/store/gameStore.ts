@@ -1773,14 +1773,18 @@ export const GIANT_NOVA_RADIUS_END = 400;
 export const GIANT_NOVA_BAND_THICKNESS = GIANT_SWEEP_HALF_WIDTH; // 輪の判定幅(叩き台=sweepの半幅を流用)
 
 // --- stage-5: 翼撃(wing・独自技・左右同時+固定遅延の三拍目=回避狩り) ---
-export const GIANT_WING_WINDUP_MS = 1200;       // 実効1000ms
-export const GIANT_WING_ACTIVE_MS = GIANT_SWEEP_ACTIVE_MS; // 実効220ms(叩き台=sweepの活性時間を流用)
-export const GIANT_WING_THIRD_DELAY_MS = 480;   // 実効400ms(固定)・実行から三拍目まで=回避狩り
-export const GIANT_WING_RECOVER_MS = 960;       // 実効800ms
-export const GIANT_WING_CD_MS = 10800;          // 実効9.0s
-export const GIANT_WING_LENGTH = 320;
-export const GIANT_WING_HALF_WIDTH = 50;
-export const GIANT_WING_SPREAD_RAD = Math.PI / 5; // 左右の帯の開き角(36°・叩き台=設計書に角度の明記なし)
+// ★翼撃(wing)を**ステージ1の大技**へ作り替えた(社長指示v0.25.2863)。
+// 旧: stage-5の固有技。前方に左右2枚の帯(開き36°)+一拍おいて中央の三拍目=**横回避を狩る**技。
+// 新: 「片手が翼になっている」という設定に合わせ、**羽を頭上に広げて素早く360度ぶん回す**。
+//     ⇒ 判定は**ボスを中心とした円**(社長裁定: 半径380=旧・叩きつけと同じ間合い)。
+//     よけ方が「横へ回る」から「**範囲の外へ出る**」に変わるので、溜め・硬直・CDは
+//     大技(旧・叩きつけ)の値をそのまま引き継ぐ=**避けきった見返りが全技中で最長**のまま。
+// ※CLAUDE.md「危険を伝える絵は判定に揃える」: 見た目が360度なら判定も円にする(見た目だけ回さない)。
+export const GIANT_WING_WINDUP_MS = 1440;       // 実効1200ms・羽を頭上に広げて静止
+export const GIANT_WING_ACTIVE_MS = 312;        // 実効260ms・素早くぶん回す
+export const GIANT_WING_RECOVER_MS = 1560;      // 実効1300ms・全技中で最大の反撃窓=大技の報酬
+export const GIANT_WING_CD_MS = 13200;          // 実効11.0s
+export const GIANT_WING_RADIUS = 380;           // 360度の当たる範囲(社長裁定=旧・叩きつけと同じ長さ)
 
 // --- stage-5: 掃射(sweepbeam・大技・トレース元=ダークイーター・ミディールのビーム薙ぎ) ---
 export const GIANT_SWEEPBEAM_WINDUP_MS = 1560;  // 実効1300ms・頭を上げて溜める
@@ -8913,12 +8917,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiFromX: ecx, aiFromY: ecy, aiStartedAt: gameTime,
                 };
               case 'wing':
-                // 全帯。正面方向を溜め開始でロック(左右2枚+三拍目の中央、全て溜め開始時の向きを共有)。
+                // 360度なので**向きを持たない**(溜め開始時の自分の位置だけ固定する=novaと同じ扱い)。
+                // hateTarget は書かない=直前の値(最後に狙いを判断した側)を維持する。
                 return {
                   aiPhase: 'g-wing-windup', aiPhaseUntil: atkUntil(GIANT_WING_WINDUP_MS),
-                  aiFromX: ecx, aiFromY: ecy,
-                  aiTargetX: ecx + lockDirX * GIANT_WING_LENGTH, aiTargetY: ecy + lockDirY * GIANT_WING_LENGTH,
-                  aiStartedAt: gameTime, hateTarget: aim.side,
+                  aiFromX: ecx, aiFromY: ecy, aiStartedAt: gameTime,
                 };
               case 'sweepbeam':
               default:
@@ -9556,36 +9559,19 @@ export const useGameStore = create<GameState>((set, get) => ({
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
 
-            // ==== M66: stage-5 翼撃(wing・独自技) ====
+            // ==== 翼撃(wing・ステージ1の大技・v0.25.2863) ====
             case 'g-wing-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                const wfx = enemy.aiFromX ?? ecx, wfy = enemy.aiFromY ?? ecy;
-                const wtx = enemy.aiTargetX ?? ecx, wty = enemy.aiTargetY ?? ecy;
-                const wdl = Math.hypot(wtx - wfx, wty - wfy) || 1;
-                const wux = (wtx - wfx) / wdl, wuy = (wty - wfy) / wdl;
-                const cosS = Math.cos(GIANT_WING_SPREAD_RAD), sinS = Math.sin(GIANT_WING_SPREAD_RAD);
-                // 正面(wux,wuy)を左右対称に±開いた2方向(=「横」の2枚)。三拍目(中央)は正面のまま。
-                const leftX = wux * cosS - wuy * sinS, leftY = wux * sinS + wuy * cosS;
-                const rightX = wux * cosS + wuy * sinS, rightY = -wux * sinS + wuy * cosS;
-                const leftTx = wfx + leftX * GIANT_WING_LENGTH, leftTy = wfy + leftY * GIANT_WING_LENGTH;
-                const rightTx = wfx + rightX * GIANT_WING_LENGTH, rightTy = wfy + rightY * GIANT_WING_LENGTH;
+                // 羽を頭上に広げ切った瞬間に**素早く一周**する。判定は溜め開始位置を中心にした
+                // 円1つ(=予告の赤い円とまったく同じ図形)。回転の途中経過は判定に出さない
+                // ——「素早く」なので、途中で背後へ回り込んで避ける遊びは作らない(見た目と食い違う)。
                 pumpkinBlasts.push({
-                  x: (wfx + leftTx) / 2, y: (wfy + leftTy) / 2, radius: GIANT_WING_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-wing',
-                  capsule: { fx: wfx, fy: wfy, tx: leftTx, ty: leftTy, halfWidth: GIANT_WING_HALF_WIDTH },
-                });
-                pumpkinBlasts.push({
-                  x: (wfx + rightTx) / 2, y: (wfy + rightTy) / 2, radius: GIANT_WING_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-wing',
-                  capsule: { fx: wfx, fy: wfy, tx: rightTx, ty: rightTy, halfWidth: GIANT_WING_HALF_WIDTH },
+                  x: enemy.aiFromX ?? ecx, y: enemy.aiFromY ?? ecy,
+                  radius: GIANT_WING_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-wing',
                 });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
                   aiPhase: 'g-wing-active', aiPhaseUntil: atkUntil(GIANT_WING_ACTIVE_MS),
-                  // 三拍目(中央=正面)は実行から400ms(固定)後=回避狩り。横がだめなら中央で逃げた先を取る。
-                  giantDelayedHits: [...(giantDelayedHits ?? []), {
-                    x: (wfx + wtx) / 2, y: (wfy + wty) / 2, radius: GIANT_WING_HALF_WIDTH, bornAt: gameTime, fireAt: atkUntil(GIANT_WING_THIRD_DELAY_MS),
-                    capsule: { fx: wfx, fy: wfy, tx: wtx, ty: wty, halfWidth: GIANT_WING_HALF_WIDTH },
-                    moveKey: 'g-wing', // G4a計測タグ(記録専用)
-                  }],
                 };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };

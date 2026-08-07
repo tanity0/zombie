@@ -261,12 +261,16 @@ export const giantRestRawMs = (stageId: string, rawMs: number): number =>
 export type GiantStageMoveId = 'bite' | 'slam' | 'glide' | 'dive' | 'quaddash' | 'nova' | 'wing' | 'sweepbeam';
 
 // ステージ→独自技(Phase1から)。表に無いステージ(stage-6/7/ex1・未知ID)はundefined=追加なし。
+// ★v0.25.2863(社長裁定): **stage-5 から翼を外した**。翼は stage-1 の大技へ移した(下の ULT 表)。
+// stage-5 の固有技を何にするかは**別途相談**なので、いまは空(=固有技なし・大技の掃射のみ)。
 export const GIANT_STAGE_UNIQUE_MOVE: Partial<Record<string, GiantStageMoveId>> = {
-  'stage-1': 'bite', 'stage-3': 'glide', 'stage-4': 'quaddash', 'stage-5': 'wing',
+  'stage-1': 'bite', 'stage-3': 'glide', 'stage-4': 'quaddash',
 };
 // ステージ→大技(Phase2=HP60%からのみ解禁)。
+// ★v0.25.2863(社長裁定「叩きつけにしよう」): stage-1 の大技を **叩きつけ(slam) → 翼撃(wing)** へ。
+// slam の実装は残してある(どこにも割り当てていないだけ)ので、別ステージへ回すのは表の1行で済む。
 export const GIANT_STAGE_ULT_MOVE: Partial<Record<string, GiantStageMoveId>> = {
-  'stage-1': 'slam', 'stage-3': 'dive', 'stage-4': 'nova', 'stage-5': 'sweepbeam',
+  'stage-1': 'wing', 'stage-3': 'dive', 'stage-4': 'nova', 'stage-5': 'sweepbeam',
 };
 
 // 間合い(px・中心間距離)。bite/slam/glideは設計書の明記どおり。dive/quaddash/nova/wing/sweepbeamは
@@ -279,7 +283,9 @@ export const GIANT_STAGE_MOVE_RANGE: Record<GiantStageMoveId, { min: number; max
   dive: { min: 0, max: Infinity },
   quaddash: { min: 0, max: Infinity },
   nova: { min: 0, max: Infinity },
-  wing: { min: 0, max: Infinity },
+  // 翼撃は**ボスを中心とした半径380の円**になった(v0.25.2863)。届かない距離で撃たないよう、
+  // 選ばれる間合いも実際の届く範囲に揃える(見た目・判定・抽選の3つを一致させる)。
+  wing: { min: 0, max: 380 },
   sweepbeam: { min: 0, max: Infinity },
 };
 
@@ -298,10 +304,10 @@ const stageMixWeight = <T,>(basicEntries: GiantWeighted<T>[]): number =>
 // 再構築: 通常5技は共通語彙として残し、各ステージの「顔」だけを明確に前へ出す。
 // stage-1は倍率1.0で従来の当選率を厳密に維持する。HP・判定・技の秒数には触れない。
 export const GIANT_STAGE_SPECIAL_WEIGHT_MULT: Partial<Record<string, Partial<Record<GiantStageMoveId, number>>>> = {
-  'stage-1': { bite: 1, slam: 1 },
+  'stage-1': { bite: 1, wing: 1 },
   'stage-3': { glide: 1.6, dive: 2.2 },
   'stage-4': { quaddash: 1.8, nova: 2.1 },
-  'stage-5': { wing: 1.7, sweepbeam: 2.2 },
+  'stage-5': { sweepbeam: 2.2 },
 };
 
 export const GIANT_STAGE_BASE_WEIGHT_MULT: Partial<Record<string, Record<GiantMove, number>>> = {
