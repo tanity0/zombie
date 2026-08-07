@@ -4883,10 +4883,26 @@ export class PixiScene {
 
   // Visual-only depth scale for an object given its foot world-Y. >1 in front
   // of the player, <1 behind. Never affects gameplay (hitboxes/ranges).
+  /**
+   * §6.37 v8(社長報告「オブジェクトのバランスおかしくなっちゃった」): 深度スケール用の**実画面Y**。
+   * 旧来の footWorldY - cameraY は「等倍の画面」前提で、引き(zoom<1)中は画面下端の物が
+   * 「画面2.5枚ぶん手前」と誤認され最大側へ張り付く(花・木が巨大化、上端は極小化)。
+   * worldGroupの実変換(S=L*z+offset)で換算し、「画面に映っている位置」で遠近を決める=
+   * 引いても画面内のスケールレンジは等倍時と同一。zoom>=1(等倍/パンチ/待機)は旧式のまま不変。
+   */
+  private depthScreenY(footWorldY: number): number {
+    const sy = footWorldY - this.cameraY;
+    const z = this.wgZoom();
+    return z < 1 ? sy * z + this.wgOffsetY() : sy;
+  }
+
   private depthScaleWith(footWorldY: number, k: number, min: number, max: number): number {
     if (!DEPTH_SCALE_ENABLED) return 1;
     if (DEPTH_POS_MAP) return this.depthScaleMapped(footWorldY, min, max);
-    const relative = 1 + (footWorldY - this.depthRefY) * k;
+    // 旧方式(?depthmap=0)もズーム整合: 引き中は「同じ画面位置なら同じスケール」になるよう
+    // 世界px勾配kをzoomで縮める(v8)。等倍は従来どおり。
+    const kz = k * Math.min(1, this.wgZoom());
+    const relative = 1 + (footWorldY - this.depthRefY) * kz;
     // 物/敵専用の遠近カーブで地面相対比を取る(床の gcurve/gfar とは独立=地面の見た目は不変)。
     const groundRatio = this.groundRelativeScale(footWorldY, OBJECT_PERSP_FAR, GROUND_TILE_SCALE_Y_NEAR, OBJECT_PERSP_CURVE);
     const groundBlend = Math.exp(Math.log(groundRatio) * OBJECT_GROUND_RELATIVE_WEIGHT);
@@ -4899,10 +4915,11 @@ export class PixiScene {
   //  端を越えても(背の高い物の頭が見える間)は min/max を越えて伸び続け、平坦になるのは
   //  画面外 ±DEPTH_EDGE_MARGIN を超えた所だけ。歪み(無制限)は最終クランプで防止。
   private depthScaleMapped(footWorldY: number, min: number, max: number): number {
-    const refScreenY = this.depthRefY - this.cameraY;       // プレイヤー足元の画面Y(≈中央)
+    // §6.37 v8: 実画面Y基準(depthScreenY)。引き中も「画面下端=max/上端=min」が画面どおりに効く。
+    const refScreenY = this.depthScreenY(this.depthRefY);   // プレイヤー足元の実画面Y
     const M = DEPTH_EDGE_MARGIN;
     // 足元の画面Y。画面外±Mで頭打ち(=ここで初めて拡縮が止まる=可視範囲では止まらない)。
-    const footScreenY = Math.max(-M, Math.min(this.screenH + M, footWorldY - this.cameraY));
+    const footScreenY = Math.max(-M, Math.min(this.screenH + M, this.depthScreenY(footWorldY)));
     let s: number;
     if (footScreenY <= refScreenY) {
       // 上側: ref→1.0, 画面上端(0)で t=1=min。さらに上(−M)では t>1 で min を下回り続ける。
@@ -4929,7 +4946,7 @@ export class PixiScene {
     // 延長し、画面端で t が 0/1 に飽和する(=拡縮が止まって見える)のを防ぐ。pad=0 で従来どおり。
     const top = farH - OBJECT_PERSP_PAD;
     const groundH = Math.max(1, (this.screenH + OBJECT_PERSP_PAD) - top);
-    const screenY = footWorldY - this.cameraY;
+    const screenY = this.depthScreenY(footWorldY); // §6.37 v8: 実画面Y基準(引き中も画面どおりの遠近)
     const t = Math.max(0, Math.min(1, (screenY - top) / groundH));
     const perspective = Math.pow(t, curve);
     return far + (near - far) * perspective;
