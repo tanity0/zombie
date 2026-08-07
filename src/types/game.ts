@@ -633,7 +633,7 @@ export interface Enemy {
   //  idol-fan-windup/idol-fan/idol-fan-recover = 連射(中・Phase2で扇3→5本)。
   //  idol-roll-windup/idol-roll/idol-roll-recover = 離脱ローリング(近・無敵なし)。
   //  idol-punch-windup/idol-punch/idol-punch-recover = 至近の殴り(近)。
-  bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'radial' | 'skadi-ice' | 'skadi-blade' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire'
+  bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'radial' | 'skadi-ice' | 'skadi-blade' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire' | 'laser-broken'
     | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'tate-windup' | 'tate' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step' | 'volley' | 'lantern' | 'bone'
     | 'volley-windup' | 'volley-recover' | 'tate-recover' | 'mdash-windup' | 'mdash-move' | 'mdash-recover'
     | 'lantern-windup' | 'lantern-recover' | 'consecrate' | 'consecrate-windup' | 'consecrate-recover' | 'warp-windup'
@@ -675,6 +675,9 @@ export interface Enemy {
   // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58・ロットL3): 裏ボス3体の新技1つずつの専用CD
   // (ジャイアントのgStompReadyAt等と同じ作法。既存のBOSS_ACTION系一般ゲートとは別枠)。
   mimirBiteReadyAt?: number;    // ミーミル 群体の噛みつき専用CD(6000ms)
+  // PACING_PUZZLE.md §6.33(LASER-TRACK): 弱点窓で中断された時だけ課すレーザーCD(8000ms)。
+  // 通常成功時は従来どおりCDなし(=このフィールドは中断時のみ前へ進む)。
+  mimirLaserReadyAt?: number;
   jormCoilReadyAt?: number;     // ヨルムンガルド うねり専用CD(7000ms・Phase2)
   skadiCageReadyAt?: number;    // スカジ 氷結の檻専用CD(12000ms・Phase3)
   // §6.28(バッチM55/M58/M61-63): フェーズを持つ新規ボス(ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)

@@ -57,6 +57,12 @@ import {
 import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
+// PACING_PUZZLE.md §6.33(LASER-TRACK): カラオケ塗り/ロック/弱点窓の進行は純関数から引く(判定と同じ式)。
+import {
+  mimirLaserFill01,
+  MIMIR_LASER_LOCK_MS as LASER_TRACK_LOCK_MS,
+  MIMIR_LASER_WEAK_MS as LASER_TRACK_WEAK_MS,
+} from '../utils/mimirLaserTrack';
 import { enemyMotionSpec, enemyMotionPose, ENEMY_TURN_MS, GIANTBAT_MOTION_BY_BACKDROP } from './enemyMotion';
 import { contentSpanFrac, needsContentTrim, contentTrimFrameY } from '../utils/shadowBake';
 import { horizontalShadowCorners } from '../utils/shadowProjection';
@@ -1244,7 +1250,11 @@ const BOSS_SHADOW_TINT = 0x9a0000; // 暗赤(0x5a0000)→より赤く
 // ミーミルのレーザー描画(視覚・useGameLoop のゲームプレイ値と揃える)。
 const MIMIR_LASER_VIS_RANGE = 2600;     // 描画上のビーム長(px)
 const MIMIR_LASER_VIS_HALFWIDTH = 34;   // 描画上のビーム半太さ(当たり判定と同じ)
-const MIMIR_LASER_WINDUP_MS = 3000;     // 溜め時間(進行度の算出用・useGameLoop と一致)
+const MIMIR_LASER_WINDUP_MS = 3000;     // 溜め時間(進行度の算出用・mimirLaserTrack.ts と一致)
+// §6.33(LASER-TRACK)の描画ゲート。useGameLoop の MIMIR_TRACK_ENABLED と同じフラグを見る
+// (?mimirtrack=0 で旧描画=塗り/ロック/弱点発光なし へ完全復帰)。
+const MIMIR_TRACK_VIS_ENABLED = typeof window === 'undefined'
+  || new URLSearchParams(window.location.search).get('mimirtrack') !== '0';
 const MIMIR_LASER_FIRE_MS = 1500;       // 発射本体の表示時間(フェード用・useGameLoop と一致)
 // トール(ステージ5裏ボス)の独自攻撃の描画(視覚・useGameLoop のゲームプレイ値と揃える)。
 const THOR_ISSEN_WINDUP_MS = 3000;      // 一閃の溜め時間(進行度の算出用)
@@ -12451,6 +12461,27 @@ export class PixiScene {
         const pulse = 0.55 + 0.45 * Math.sin(now / 80);
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+        // §6.33(LASER-TRACK): ①カラオケ塗り=明るい赤が根元→先端(塗り完了の瞬間=発射の瞬間)。
+        // ②ロック段(残り≤300ms)=ライン全体が白赤フラッシュ(以後この線から動かない合図)。
+        // ③弱点窓(残り≤900ms)=本体の弱点発光(判定を持つ表示=窓とぴったり同期・眼を最も明るく)。
+        if (MIMIR_TRACK_VIS_ENABLED) {
+          const lwRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+          const fill = mimirLaserFill01(gameTime, e.bossStateUntil);
+          const fx2 = cx + ux * MIMIR_LASER_VIS_RANGE * fill, fy2 = cy + uy * MIMIR_LASER_VIS_RANGE * fill;
+          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 6, color: 0xff8a8a, alpha: 0.85, cap: 'round' });
+          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 2.5, color: 0xffffff, alpha: 0.9, cap: 'round' });
+          if (lwRemain <= LASER_TRACK_LOCK_MS) {
+            const flick = 0.5 + 0.5 * Math.sin(now / 45);
+            o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * flick, cap: 'round' });
+          }
+          if (lwRemain <= LASER_TRACK_WEAK_MS && lwRemain > 0) {
+            // 弱点発光は普通の Graphics 塗り(投影影を落とす強glow光源にはしない=CLAUDE.md計測結論)。
+            const wPulse = 0.6 + 0.4 * Math.sin(now / 110);
+            const eyeY = cy - e.height * 0.5; // 眼のあたり(叩き台。実機でズレたら微調整)
+            o.circle(cx, eyeY, e.width * 0.62).fill({ color: 0x7dd3fc, alpha: 0.22 * wPulse });
+            o.circle(cx, eyeY, e.width * 0.34).fill({ color: 0xe0f7ff, alpha: 0.38 * wPulse });
+          }
+        }
       } else {
         const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / MIMIR_LASER_FIRE_MS));
         const fade = Math.min(1, life / 0.25); // 発射中はほぼ全開、最後の25%で消える
@@ -12699,6 +12730,7 @@ export class PixiScene {
       const HIDDEN_BOSS_RECOVER_STATES: string[] = [
         'burst-recover', 'radial-recover', 'dash-recover', 'laser-recover',
         'skadi-ice-recover', 'skadi-blade-recover', 'bite-recover', 'coil-recover', 'cage-recover',
+        'laser-broken', // §6.33: レーザー中断のパニッシュ窓=硬直色(青白)で「好機」を示す
       ];
       const HIDDEN_BOSS_FLASH_TAIL_STATES: string[] = [
         'aim-burst', 'aim-radial', 'dash-windup', 'laser-windup', 'bite-windup', 'coil-windup', 'cage-windup',
@@ -12709,7 +12741,11 @@ export class PixiScene {
       } else if (bs && HIDDEN_BOSS_FLASH_TAIL_STATES.includes(bs)) {
         const remain = (e.bossStateUntil ?? gameTime) - gameTime;
         const flash = thorFlashTint(remain, now);
-        view.sprite.tint = flash !== null ? flash : 0xffffff;
+        // §6.33: ミーミルのレーザー弱点窓(発射前900ms)は全身を青白く=「今殴れば止められる」。
+        // T4赤フラッシュ(末尾400ms)は「来る」の合図としてその上から点滅で勝つ(両方の情報を出す)。
+        const laserWeakBase = (MIMIR_TRACK_VIS_ENABLED && e.type === 'mimir' && bs === 'laser-windup'
+          && remain <= LASER_TRACK_WEAK_MS && remain > 0) ? 0xbfefff : 0xffffff;
+        view.sprite.tint = flash !== null ? flash : laserWeakBase;
       } else {
         view.sprite.tint = 0xffffff;
       }

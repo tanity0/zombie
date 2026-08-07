@@ -166,6 +166,8 @@ import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal, isBossPostureBroken,
   tickBossPosture, type BossPostureImpact,
 } from '../utils/bossPosture';
+// PACING_PUZZLE.md §6.33(LASER-TRACK): ミーミルのレーザー弱点窓=近接ヒットで中断(近接3経路が呼ぶ)。
+import { mimirLaserBreakOnMeleeHit } from '../utils/mimirLaserTrack';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
@@ -4915,6 +4917,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const survivors: Enemy[] = [];
     const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const bossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 近接クリで完全気絶が発動した位置(紫FX用)
+    const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー弱点窓を近接で中断した位置(カウンター成立FX用)
     const bossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
@@ -5107,6 +5110,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 乗せる(銃と同じbumpBossCrit=挙動統一)。裏ボス以外はnullで素通り。
       const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime);
       if (bossBump?.triggered) bossFullStunHits.push({ x: ecx, y: ecy });
+      // §6.33(LASER-TRACK): レーザー弱点窓の中断。'melee'体幹パッチを合成してから判定(二重取り防止)。
+      const laserBreak = mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime);
+      if (laserBreak) mimirLaserBreakHits.push({ x: ecx, y: ecy });
+      if (laserBreak?.postureTriggered) bossFullStunHits.push({ x: ecx, y: ecy });
       // 社長指示: 近接クリでも銃・刀と同じくスタンさせる(倒せなかった時のみ=フィニッシュ受付の入口)。
       // 気絶時間アップ(パッシブ)も銃と同じくstunDurationMultを掛ける。
       if (crit) critStunAt.push({ x: ecx, y: ecy });
@@ -5132,6 +5139,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
+          ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断(laser-broken遷移+中断CD+体幹'counter')
         });
       } else {
         // Knockback is on cooldown for this enemy (recently shoved): don't shove
@@ -5148,6 +5156,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + 100,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: 同上
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
+          ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
         });
       }
     }
@@ -5300,6 +5309,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
       get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
+    // §6.33: レーザー中断=カウンター成立扱いの演出(hiddenBossCounterHitの意匠を踏襲。SEはuseGameLoopが
+    // laser-broken遷移を検知して鳴らす=gameStoreはplaySfxを持てない)。
+    for (const p of mimirLaserBreakHits) {
+      get().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+      get().spawnGlow(p.x, p.y, GLOW_R_L, 'rgba(56,189,248,', 360);
+      get().spawnRing(p.x, p.y, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+      get().spawnBurst(p.x, p.y, '#38bdf8', 14);
+      get().spawnCallout(p.x, p.y - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
     }
     for (const p of bossFatalHits) {
       showBossFatalPresentation(get, p.x, p.y, p.labelY);
@@ -5815,6 +5833,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slashAt: { x: number; y: number }[] = [];
     const critStunAt: { x: number; y: number }[] = [];
     const katanaBossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 刀クリで完全気絶が発動した位置
+    const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー中断位置(カウンター成立FX用)
     const katanaBossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const katanaHitEnemyIds: string[] = []; // スキル 救難信号: 一閃(allowFinisher時)でヒットした敵ID(発動判定/対象選定用)
 
@@ -5901,6 +5920,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // GAME_AUDIT #17(社長承認): 刀のクリも銃と同じく裏ボスの完全気絶カウントに乗せる。
       const bossBump = !isGhost ? applyBossPostureDamage(enemy, allowFinisher ? 'heavy' : 'melee', gameTime) : null;
       if (bossBump?.triggered) katanaBossFullStunHits.push({ x: ecx, y: ecy });
+      // §6.33(LASER-TRACK): レーザー弱点窓の中断(プレイヤーの刀のみ=分身/守護霊は対象外)。
+      const laserBreak = !isGhost ? mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime) : null;
+      if (laserBreak) mimirLaserBreakHits.push({ x: ecx, y: ecy });
+      if (laserBreak?.postureTriggered) katanaBossFullStunHits.push({ x: ecx, y: ecy });
       const bossSlow = critStun ? bossCritSlowPatch(enemy, gameTime) : null; // ボスは半減(v0.25.2422)
       // CRIT-UNIFY §9.2同梱修正: 刀のクリ気絶にだけstunDurationMult(気絶時間アップパッシブ)が
       // 乗っていなかった実装漏れを修正(ナイフ/鞭/分身は既に乗っている・銃も乗っている)。
@@ -5922,6 +5945,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
+          ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
         });
       } else {
         survivors.push({
@@ -5934,6 +5958,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + 100,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: 同上
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
+          ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
         });
       }
     }
@@ -6013,6 +6038,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
       get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
     }
+    // §6.33: レーザー中断=カウンター成立扱いの演出(ナイフ経路と同じ意匠。SEはuseGameLoop側)。
+    for (const p of mimirLaserBreakHits) {
+      get().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+      get().spawnGlow(p.x, p.y, GLOW_R_L, 'rgba(56,189,248,', 360);
+      get().spawnRing(p.x, p.y, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+      get().spawnBurst(p.x, p.y, '#38bdf8', 14);
+      get().spawnCallout(p.x, p.y - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
+    }
     for (const p of katanaBossFatalHits) {
       showBossFatalPresentation(get, p.x, p.y, p.labelY);
     }
@@ -6069,6 +6102,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const whipBossFullStunHits: { x: number; y: number }[] = []; // §9.4(v0.25.2502): 鞭クリで完全気絶が発動した位置(紫FX用)
+    const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー中断位置(カウンター成立FX用)
     const whipBossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const whipHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): 鞭のヒット敵ID(発動判定/対象選定用)
     let hits = 0;
@@ -6132,6 +6166,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ナイフ4737/刀5479/分身5076と同じ作法=GAME_AUDIT #17「プレイヤーが直接出したクリは全部乗せる」)。
       const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime);
       if (bossBump?.triggered) whipBossFullStunHits.push({ x: ecx, y: ecy });
+      // §6.33(LASER-TRACK): レーザー弱点窓の中断(鞭もプレイヤーの近接=対象)。
+      const laserBreak = mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime);
+      if (laserBreak) mimirLaserBreakHits.push({ x: ecx, y: ecy });
+      if (laserBreak?.postureTriggered) whipBossFullStunHits.push({ x: ecx, y: ecy });
       // 大ノックバック(通常の約3倍): 鞭の線に直交する向きへ、敵がいる側へ強く弾く=避難路。
       // 鞭は「必ずノックバック」: ノックバック無敵窓(knockbackImmuneUntil)を無視して毎回弾く。
       const side = ((ecx - pcx) * nx + (ecy - pcy) * ny) >= 0 ? 1 : -1;
@@ -6147,6 +6185,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
         knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
         ...(bossBump?.patch ?? {}), // 紫カウント/発動を反映(最後に展開して優先=刀5490と同じ作法)
+        ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
       });
     }
 
@@ -6196,6 +6235,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
       get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
+    // §6.33: レーザー中断=カウンター成立扱いの演出(ナイフ経路と同じ意匠。SEはuseGameLoop側)。
+    for (const p of mimirLaserBreakHits) {
+      get().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+      get().spawnGlow(p.x, p.y, GLOW_R_L, 'rgba(56,189,248,', 360);
+      get().spawnRing(p.x, p.y, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+      get().spawnBurst(p.x, p.y, '#38bdf8', 14);
+      get().spawnCallout(p.x, p.y - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
     }
     for (const p of whipBossFatalHits) {
       showBossFatalPresentation(get, p.x, p.y, p.labelY);
