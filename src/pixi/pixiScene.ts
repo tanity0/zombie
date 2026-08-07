@@ -5955,7 +5955,14 @@ export class PixiScene {
     const totalPanY = panY + bossPanY;
     if (Math.abs(zoom - 1) > 0.0005 || totalPanX !== 0 || totalPanY !== 0) {
       this.L.worldGroup.scale.set(zoom);
-      this.L.worldGroup.position.set(centerX * (1 - zoom) - totalPanX, centerY * (1 - zoom) - totalPanY);
+      // v0.25.2991(社長指摘「遠景森が上に貼り付いてない。遠景の部分が下に伸びてるだけ」):
+      // **引き(zoom<1)の縦の支点=地平線(遠景下端farH)**。森1の上端(ローカルfarH)は
+      // farH*z + farH*(1-z) = farH に固定=引いても森は遠景のすぐ下に貼り付いたまま、
+      // 広がるのは下(フィールド側)だけになる。寄り(zoom>=1・待機/パンチ)は従来どおり画面中央支点
+      // (v0.25.2586のKILL寄せ設計を不変に保つ)。zoom=1でどちらも位置0=連続。
+      // 下方向の可視超過(最深で回収マージン240pxに対し+75px)は前景霧の裏に収まり許容(DEVLOG記録)。
+      const pivotY = zoom < 1 ? this.farBackdropHeight() : centerY;
+      this.L.worldGroup.position.set(centerX * (1 - zoom) - totalPanX, pivotY * (1 - zoom) - totalPanY);
       this.zoomApplied = true;
     } else if (this.zoomApplied) {
       this.L.worldGroup.scale.set(1);
