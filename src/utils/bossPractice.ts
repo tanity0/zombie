@@ -12,6 +12,7 @@ import { getStage, STAGES } from '../data/campaign';
 import {
   STAGE_BOSS_HEALTH_BY_STAGE, GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH,
 } from '../config/bossHealth';
+import { GIANT_PHASE_HP_THRESHOLD } from './giantScript';
 
 // ---------------------------------------------------------------------------------------------
 // 出撃の種類(ランのフラグ)
@@ -67,6 +68,11 @@ export const isPracticeRun = (): boolean => activeSlot !== null || PRACTICE_RUN_
 const PRACTICE_BOSS_URL: EnemyType | null = (param('practiceboss') as EnemyType | null) || null;
 /** 練習で狙っているボスの型。 */
 export const practiceBossType = (): EnemyType | null => activeSlot?.bossType ?? PRACTICE_BOSS_URL;
+/** 現在選択中の練習枠。リザルトの形態名・専用アイコンにも同じ指定を渡す。 */
+export const practiceActiveSlot = (): PracticeSlot | null => activeSlot;
+/** 第二形態から始める枠の開始HP割合。通常枠は null=満タンのまま。 */
+export const practiceStartHealthFraction = (): number | null =>
+  activeSlot?.startHealthFraction ?? (PRACTICE_RUN_URL && param('practicephase') === '2' ? GIANT_PHASE_HP_THRESHOLD : null);
 /** 練習の狙いが城ボス(giantbat)か。城ボス/ストーリーボスの湧きを nospawn より優先させる。 */
 export const practiceWantsCastleBoss = (): boolean => isPracticeRun() && practiceBossType() === 'giantbat';
 /**
@@ -85,16 +91,22 @@ export const isBossTestOrPracticeRun = (): boolean =>
   || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker'].some(k => param(k) === '1');
 
 // ---------------------------------------------------------------------------------------------
-// 台帳: 守護霊メニューと**同じ1本**(GHOST_DOSSIER_SLOTS)を使う
+// 台帳: 守護霊メニューと同じ基礎台帳(GHOST_DOSSIER_SLOTS)+形態別の派生枠
 // ---------------------------------------------------------------------------------------------
 /** 出撃のさせ方。`param=null` = 強制出現パラメータ不要(ステージへ出撃すれば勝手に出る)。 */
 export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | null;
 
 export interface PracticeSlot {
-  slotKey: string;              // GHOST_DOSSIER_SLOTS.slotKey と同一
+  slotKey: string;              // 基本はGHOST_DOSSIER_SLOTS.slotKeyと同一。形態別掲載だけ固有キー。
+  /** 遭遇解放に使う本編側の枠。形態別の掲載枠は第一形態と同じ遭遇記録を共有する。 */
+  encounterSlotKey: string;
   bossType: EnemyType;
   stageId: string;              // 出撃先
   param: PracticeParam;
+  /** 一覧・リザルトだけで使う固有名。未指定なら従来の enemyDeathLabel。 */
+  label?: string;
+  /** 形態から直接始める時のHP割合。未指定なら満タン。 */
+  startHealthFraction?: number;
   /** 本編で遭遇し得るか。false = 現状どこにも置かれていない(社長裁定§20-10: 「?」のまま並べる)。 */
   reachable: boolean;
 }
@@ -118,10 +130,13 @@ const toPracticeSlot = (slot: GhostDossierSlot): PracticeSlot => {
   if (slot.bossType === 'giantbat') {
     const stageId = slot.stageId ?? 'stage-1';
     const { param: p, reachable } = castleSortie(stageId);
-    return { slotKey: slot.slotKey, bossType: 'giantbat', stageId, param: p, reachable };
+    return {
+      slotKey: slot.slotKey, encounterSlotKey: slot.slotKey, bossType: 'giantbat', stageId, param: p, reachable,
+      ...(stageId === 'stage-7' ? { label: 'グレン' } : {}),
+    };
   }
   if (slot.bossType === 'idol') {
-    return { slotKey: slot.slotKey, bossType: 'idol', stageId: 'stage-2', param: 'idolnow', reachable: true };
+    return { slotKey: slot.slotKey, encounterSlotKey: slot.slotKey, bossType: 'idol', stageId: 'stage-2', param: 'idolnow', reachable: true };
   }
   const gateStage = stageIdForGateBoss(slot.bossType);
   if (gateStage) {
@@ -129,18 +144,33 @@ const toPracticeSlot = (slot: GhostDossierSlot): PracticeSlot => {
     // よってスリィエル(stage-6)とアクラシエル(stage-ex1)は**本編では遭遇できない**。
     const st = getStage(gateStage);
     const reachable = !st?.storyBossOnly && gateStage !== 'stage-6';
-    return { slotKey: slot.slotKey, bossType: slot.bossType, stageId: gateStage, param: 'gateboss', reachable };
+    return { slotKey: slot.slotKey, encounterSlotKey: slot.slotKey, bossType: slot.bossType, stageId: gateStage, param: 'gateboss', reachable };
   }
   const hiddenStage = stageIdForHiddenBoss(slot.bossType);
   if (hiddenStage) {
-    return { slotKey: slot.slotKey, bossType: slot.bossType, stageId: hiddenStage, param: 'bossnow', reachable: true };
+    return { slotKey: slot.slotKey, encounterSlotKey: slot.slotKey, bossType: slot.bossType, stageId: hiddenStage, param: 'bossnow', reachable: true };
   }
   // 台帳に載っているのに出撃先が引けない = 表のズレ。テストで落とす(黙って既定に寄せない)。
   throw new Error(`bossPractice: 出撃先を解決できない枠 "${slot.slotKey}"`);
 };
 
-/** ボスラッシュに並ぶ枠。守護霊メニューと同じ順・同じ粒度。 */
-export const PRACTICE_SLOTS: readonly PracticeSlot[] = GHOST_DOSSIER_SLOTS.map(toPracticeSlot);
+/**
+ * ボスラッシュに並ぶ枠。基本は守護霊メニューと同じ順・粒度だが、姿と技が明確に変わる
+ * グレン第二形態だけは第一形態の直後へ独立掲載する。解放条件は同じ本編遭遇キーを共有する。
+ */
+const BASE_PRACTICE_SLOTS = GHOST_DOSSIER_SLOTS.map(toPracticeSlot);
+export const GLEN_PHASE2_SLOT_KEY = 'giantbat@stage-7:phase2';
+export const PRACTICE_SLOTS: readonly PracticeSlot[] = BASE_PRACTICE_SLOTS.flatMap(slot =>
+  slot.slotKey === 'giantbat@stage-7'
+    ? [slot, {
+        ...slot,
+        slotKey: GLEN_PHASE2_SLOT_KEY,
+        encounterSlotKey: slot.slotKey,
+        label: 'グレン 第二形態',
+        startHealthFraction: GIANT_PHASE_HP_THRESHOLD,
+      }]
+    : [slot],
+);
 
 export const practiceSlotByKey = (slotKey: string): PracticeSlot | undefined =>
   PRACTICE_SLOTS.find(s => s.slotKey === slotKey);

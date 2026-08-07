@@ -77,7 +77,7 @@ import {
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
-import { practiceWantsCastleBoss, practiceForces, isPracticeRun } from '../utils/bossPractice';
+import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceStartHealthFraction } from '../utils/bossPractice';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
 import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
@@ -2513,6 +2513,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const storyStageId = getSelectedStageId();
             boss.isStoryBoss = true;
             boss.storyBossVariant = storyStageId === 'stage-7' ? 'stage-7' : 'stage-ex1';
+            // ボスモードの「グレン 第二形態」は、第一形態と別枠で選び、変身しきい値のHPから始める。
+            // maxHealthは変えないので、描画・AIとも本編と同じ health/maxHealth 判定で即座に第二形態になる。
+            const practiceHealthFrac = practiceStartHealthFraction();
+            if (storyStageId === 'stage-7' && practiceHealthFrac != null) {
+              boss.health = boss.maxHealth * practiceHealthFrac;
+            }
             // M7(stage-7=グレン)のボスだけ当たり判定込みで2倍(社長指示v0.25.2000)。width/height=当たり判定なので
             // 2倍で見た目(=箱にcontainスケール)も当たり判定も同時に2倍。増分の半分だけ左上へ寄せて中心を維持。
             // EXボスは対象外(グレンのみ)。

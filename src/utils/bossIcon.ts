@@ -31,8 +31,9 @@ const GIANTBAT_ICON_BY_BACKDROP: Record<string, string> = {
  * ボス型(+giantbatならステージID)からアイコンURLを返す。対応表に無い型は null
  * (呼び出し側は絵無しで文字だけ出す)。
  */
-export const bossIconSrc = (bossType: string, stageId?: string | null): string | null => {
+export const bossIconSrc = (bossType: string, stageId?: string | null, variant?: 'phase2'): string | null => {
   if (bossType === 'giantbat') {
+    if (stageId === 'stage-7' && variant === 'phase2') return spritePath('glen-boss2');
     const backdrop = getStage(stageId ?? '')?.farBackdrop ?? '';
     return spritePath(GIANTBAT_ICON_BY_BACKDROP[backdrop] ?? BOSS_ICON.giantbat);
   }

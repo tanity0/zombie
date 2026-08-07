@@ -6,8 +6,8 @@
 // 「守護霊は選べなくていい。スキル装備していけばいいだけ」
 //
 // ★見た目は守護霊メニュー(GhostBossDossier)のトーンに揃える。開発用の道具ではなくプレイヤー画面。
-// ★出撃は `window.location.search` の差し替え(ページ再読込)。強制出現フラグは useGameLoop の
-//   モジュールロード時定数なので、React の遷移では効かない(BOSS_MAKER.md §20-7)。
+// ★出撃は通常のstartGameと同じシームレス経路。選択枠はbossPracticeの実行時状態で湧きゲートへ渡す
+//   (社長指摘v0.25.2862・BOSS_MAKER.md §20-8-e)。
 import React, { useMemo, useState } from 'react';
 import { Lock, Swords, Heart, MapPin } from 'lucide-react';
 import { CHARACTER_CLASSES, getStage } from '../data/campaign';
@@ -21,8 +21,11 @@ import { PRACTICE_SLOTS, practiceBossHealth, type PracticeSlot } from '../utils/
 import type { CharacterClass } from '../types/game';
 
 const CATEGORY_OF = new Map(GHOST_DOSSIER_SLOTS.map(s => [s.slotKey, s.category]));
+const categoryOf = (slot: PracticeSlot) => CATEGORY_OF.get(slot.encounterSlotKey) ?? 'story';
 
-const bossName = (slot: PracticeSlot): string => enemyDeathLabel(slot.bossType);
+const bossName = (slot: PracticeSlot): string => slot.label ?? enemyDeathLabel(slot.bossType);
+const bossIcon = (slot: PracticeSlot): string | null =>
+  bossIconSrc(slot.bossType, slot.stageId, slot.startHealthFraction != null ? 'phase2' : undefined);
 
 const Row: React.FC<{ icon: React.ReactNode; label: string; value: string }> = ({ icon, label, value }) => (
   <div className="min-w-0 border border-white/[0.07] bg-black/20 px-2 py-2">
@@ -45,14 +48,14 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
   const [cls, setCls] = useState<CharacterClass>('warrior');
 
   const open = openKey ? PRACTICE_SLOTS.find(s => s.slotKey === openKey) ?? null : null;
-  const unlockedCount = PRACTICE_SLOTS.filter(s => encountered.has(s.slotKey)).length;
+  const unlockedCount = PRACTICE_SLOTS.filter(s => encountered.has(s.encounterSlotKey)).length;
 
   // ---- 詳細 ----------------------------------------------------------------------------------
   if (open) {
     const stage = getStage(open.stageId);
     const hp = practiceBossHealth(open);
     const hints = bossHintsFor(open.bossType);
-    const icon = bossIconSrc(open.bossType, open.stageId);
+    const icon = bossIcon(open);
     return (
       <div className="p-3 space-y-3">
         <button
@@ -68,11 +71,11 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
             </div>
             <div className="min-w-0">
               <div className="text-[9px] font-semibold tracking-[0.24em] text-purple-200/60">
-                {GHOST_DOSSIER_CATEGORY_LABEL[CATEGORY_OF.get(open.slotKey) ?? 'story']}
+                {GHOST_DOSSIER_CATEGORY_LABEL[categoryOf(open)]}
               </div>
               <div className="truncate text-[17px] font-semibold text-white">{bossName(open)}</div>
               <div className="mt-0.5 text-[10px] text-white/40">
-                {clearedSlotKeys.has(open.slotKey) ? '討伐記録あり' : '未討伐'}
+                {clearedSlotKeys.has(open.encounterSlotKey) ? '討伐記録あり' : '未討伐'}
               </div>
             </div>
           </div>
@@ -137,7 +140,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
       </div>
 
       {(['story', 'gate', 'hidden'] as const).map(cat => {
-        const slots = PRACTICE_SLOTS.filter(s => CATEGORY_OF.get(s.slotKey) === cat);
+        const slots = PRACTICE_SLOTS.filter(s => categoryOf(s) === cat);
         if (slots.length === 0) return null;
         return (
           <section key={cat}>
@@ -146,8 +149,8 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
             </div>
             <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
               {slots.map(slot => {
-                const unlocked = encountered.has(slot.slotKey);
-                const icon = unlocked ? bossIconSrc(slot.bossType, slot.stageId) : null;
+                const unlocked = encountered.has(slot.encounterSlotKey);
+                const icon = unlocked ? bossIcon(slot) : null;
                 return (
                   <button
                     key={slot.slotKey}

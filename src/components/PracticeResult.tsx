@@ -8,7 +8,7 @@
 // 出すのは「勝ったか」「誰と」「どれだけ掛かったか」の3つだけ。
 import React, { useState } from 'react';
 import { useGameStore, enemyDeathLabel } from '../store/gameStore';
-import { practiceBossType } from '../utils/bossPractice';
+import { practiceActiveSlot, practiceBossType } from '../utils/bossPractice';
 import { bossIconSrc } from '../utils/bossIcon';
 import { getSelectedStageId } from '../data/progress';
 
@@ -29,8 +29,9 @@ export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) 
   // 決着時点の値を1回だけ拾う(毎フレーム購読しない=CLAUDE.md の再描画規律)。
   const [elapsed] = useState(() => useGameStore.getState().gameTime);
   const boss = practiceBossType();
-  const bossName = boss ? enemyDeathLabel(boss) : 'ボス';
-  const icon = boss ? bossIconSrc(boss, getSelectedStageId()) : null;
+  const slot = practiceActiveSlot();
+  const bossName = slot?.label ?? (boss ? enemyDeathLabel(boss) : 'ボス');
+  const icon = boss ? bossIconSrc(boss, getSelectedStageId(), slot?.startHealthFraction != null ? 'phase2' : undefined) : null;
 
   return (
     <div className="absolute inset-0 z-[80] flex items-center justify-center bg-[rgba(6,7,13,0.92)] px-6">

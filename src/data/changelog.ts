@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2951',
+    items: [
+      'ボスモードで、グレンの第一形態と第二形態を別々に掲載しました。第二形態を選ぶと、変身後の姿とHPからすぐ練習できます。',
+    ],
+  },
+  {
     version: '0.25.2950',
     items: [
       'ゲーム内容の変更はありません(ボス出現カットイン演出の設計書を追加)。',

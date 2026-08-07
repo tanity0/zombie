@@ -1,13 +1,24 @@
 // ボスラッシュ(練習モード)の台帳テスト。BOSS_MAKER.md §20-8-b の受け入れ条件を機械化する。
 import { describe, it, expect } from 'vitest';
-import { PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth } from './bossPractice';
+import { GLEN_PHASE2_SLOT_KEY, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth } from './bossPractice';
 import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 import { STAGES, getStage } from '../data/campaign';
 
 describe('ボスラッシュの台帳', () => {
-  it('守護霊メニューと同じ1本の台帳を使う(枠数・キーが一致)', () => {
-    expect(PRACTICE_SLOTS.map(s => s.slotKey)).toEqual(GHOST_DOSSIER_SLOTS.map(s => s.slotKey));
+  it('守護霊メニューと同じ台帳を基礎にし、グレン第二形態だけ独立掲載する', () => {
+    const phaseSlots = PRACTICE_SLOTS.filter(s => s.slotKey !== GLEN_PHASE2_SLOT_KEY);
+    expect(phaseSlots.map(s => s.slotKey)).toEqual(GHOST_DOSSIER_SLOTS.map(s => s.slotKey));
+    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length + 1);
+  });
+
+  it('グレン第二形態は第一形態の遭遇を共有し、HP60%から始まる', () => {
+    const first = practiceSlotByKey('giantbat@stage-7')!;
+    const second = practiceSlotByKey(GLEN_PHASE2_SLOT_KEY)!;
+    expect(second.encounterSlotKey).toBe(first.slotKey);
+    expect(second.stageId).toBe('stage-7');
+    expect(second.label).toBe('グレン 第二形態');
+    expect(second.startHealthFraction).toBe(0.6);
   });
 
   // 社長裁定 §20-9-2。台帳は守護霊メニューと共用なので、あちらに足された瞬間ここにも出てしまう。
@@ -67,7 +78,7 @@ describe('ボスラッシュの台帳', () => {
   it('本編で遭遇できない枠はちょうど3つ(台帳からは外さない)', () => {
     const unreachable = PRACTICE_SLOTS.filter(s => !s.reachable).map(s => s.slotKey).sort();
     expect(unreachable).toEqual(['acrasiel', 'giantbat@stage-2', 'suriel'].sort());
-    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length); // 外していない
+    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length + 1); // 既存枠を外さず第二形態だけ追加
   });
 });
 
