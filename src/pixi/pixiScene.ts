@@ -2090,6 +2090,9 @@ const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
 
 const STAGE3_BOSS_VISUAL_SCALE = 1.2;
+// ステージ5(戦場)の城ボスも一回り拡大(社長指示v0.25.2945「ステージ5のボスもう一回り大きくして」)。
+// ステージ3と同じ仕組み=視覚のみ・判定/攻撃範囲は不変。
+const STAGE5_BOSS_VISUAL_SCALE = 1.2;
 
 // ★確認用: 全敵の当たり判定「帯」をうっすら色付きで描くデバッグ表示。社長確認OK=通常時OFF(裏ボスの帯は別途常時表示)。
 const SHOW_HITBOX_STRIP = false;
@@ -15439,7 +15442,8 @@ export class PixiScene {
   private stageEnemyVisualMul(type: string): number {
     const stage3BossMul = (this.daylight && type === 'giantbat') ? STAGE3_BOSS_VISUAL_SCALE : 1;
     const stage4VisMul = (this.snowStage && STAGE4_ENEMY_TYPES.has(type)) ? STAGE4_ENEMY_VISUAL_SCALE : 1;
-    return stage3BossMul * stage4VisMul;
+    const stage5BossMul = (this.battlefieldStage && type === 'giantbat') ? STAGE5_BOSS_VISUAL_SCALE : 1;
+    return stage3BossMul * stage4VisMul * stage5BossMul;
   }
 
   /**

@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.2945 — ステージ5の城ボスを視覚1.2倍へ(社長指示)【2026-08-07 13:46 JST】
+社長指示「ステージ5のボスもう一回り大きくして」(AskUserQuestionで対象=城ボスと確認)。
+ステージ3の前例(`STAGE3_BOSS_VISUAL_SCALE=1.2`・視覚のみ)と同じ仕組みで
+`STAGE5_BOSS_VISUAL_SCALE=1.2` を新設し、`stageEnemyVisualMul` に battlefieldStage×giantbat の枝を追加。
+判定・攻撃範囲・弾は不変(CLAUDE.md「Visual vs. hitbox」)。死体スプライトも同関数経由で自動追随。
+負荷1/10(既存倍率の掛け算1個)。監査対象外(数値1個の枠内変更)。typecheck+lint のみで着地。
+
 ## v0.25.2944 — 裏ボス「ヨルムンガルド」をドット版へ差し替え+ナメクジ蠕動【2026-08-07 13:42 JST】
 社長支給のドット版(1024×508・平たい横長の巨蛇)で `public/sprites/jormungand.png` を同名差し替え
 (旧1280×960)。読み込みを linear→nearest へ(mimir/thorと同じドット扱い)。**ASSET_VERSIONはバンプしない**

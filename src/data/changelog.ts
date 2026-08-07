@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2945',
+    items: [
+      'ステージ5の城ボスの見た目を一回り(1.2倍)大きくしました(当たり判定は変わりません)。',
+    ],
+  },
+  {
     version: '0.25.2944',
     items: [
       '裏ボス「ヨルムンガルド」の絵を新しいドット絵に変え、動きをナメクジのような蠕動(ゆっくり伸びて素早く縮む)にしました。',
