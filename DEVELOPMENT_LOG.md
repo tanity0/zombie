@@ -1,6 +1,6 @@
 # Development Log
 
-## v0.25.2937 — 翼撃をステージ1の大技へ移し、360度ぶん回しに作り替え【2026-08-07 11:44 JST】
+## v0.25.2938 — 翼撃をステージ1の大技へ移し、360度ぶん回しに作り替え【2026-08-07 11:44 JST】
 
 社長裁定: **stage-1 の大技を 叩きつけ(slam) → 翼撃(wing)** / **stage-5 からは翼を外す**(代替は別途相談) /
 **半径380**(旧・叩きつけと同じ間合い) / 演出は「片手が翼になっている的なので、羽を頭上に広げて、
@@ -28,6 +28,29 @@
 typecheck 0 / lint エラー0(warning 8=既存)。
 
 **★社長判断待ち**: stage-5 の固有技(いま空。大技の掃射のみ)。slam をそこへ回すのが素直だが未決。
+## v0.25.2937 — 実装: LASER-TRACK=ミーミル追尾予告レーザー(§6.33 案D・社長GO済み)【2026-08-07 11:44 JST】
+§6.33 の推薦パッケージ「案D」を社長GO(AskUserQuestion)を得て実装(設計チャットFableの直接実装。
+天秤: 調査で状態機械/近接3経路/描画の正確な行位置まで積んだ後で、Sonnetへの仕様書化+再調査より直接の方が安い)。
+
+- **新規** `src/utils/mimirLaserTrack.ts`+`mimirLaserTrack.test.ts`(15件):
+  物理追尾 seek+arrive(最高速104.4=歩速ミラー・加速度104.4px/s²=立ち上がり1秒・デッドゾーン6px)/
+  ロック300ms/弱点窓900ms/カラオケ塗り(telegraphProgress01配線=bossTelegraph★未決の解消)/
+  中断パッチ(laser-broken 1700ms+連携クリア+中断時のみCD8000ms+体幹'counter'0.20委譲)。
+  **ゴール検証シミュレーション**: 静止=被弾/開始から走行=回避/ロック後反応=被弾/発射800ms前の
+  振り切り=回避/±20px微動=被弾 を機械検査(監査指摘12の是正)。
+- `types/game.ts`: bossState`'laser-broken'`+`mimirLaserReadyAt`。
+- `useGameLoop.ts`: laser-windup=追尾+ロックSE(BOSS_ALERT)/laser-fire=ロック線固定(旧lerp追尾は
+  ?mimirtrack=0専用へ)/laser-broken州(counter SE・時間切れでchase)/技抽選と連携追撃(radial→laser)の
+  中断CDゲート/W7体当てカウンター一覧へlaser-broken追加(硬直=好機の一貫)。
+- `gameStore.ts`: 近接3経路(ナイフ/刀/鞭)へ中断フック(刀の分身/守護霊は対象外)。
+  カウンター成立演出(hitstop+青glow/ring/burst+Counter!)。'melee'体幹パッチ合成後に判定=二重取り防止。
+- `pixiScene.ts`: カラオケ塗り(塗り完了=発射)/ロックの白フラッシュ/弱点窓=全身青白tint+眼の発光
+  (Graphics塗り=投影影ゼロ)/laser-brokenは硬直色(青白)。`?mimirtrack=0`で描画も旧型へ。
+- **負荷 1/10**(1体限定の毎tick照準更新+ストローク2本+塗り円2個。イベント光源なし)。
+- 検証: typecheck OK / lint エラー0 / 新規15+関連55テスト全green。実機確認(社長): 追尾の手触り・
+  `?zoomlock=0.58` で塗り/発光の視認・弱点窓の中断の取りやすさ。
+- 納品監査(Opus)は実行中=指摘があれば次pushで反映(push先行はstop hookの指示)。
+
 ## v0.25.2936 — 設計書のみ: 追尾予告型レーザー「LASER-TRACK」§6.33(ミーミル試験導入・実装は社長GO待ち)【2026-08-07 11:11 JST】
 社長発案(2026-08-07チャット)の新ボス攻撃文法を PACING_PUZZLE.md **§6.33** に仕様化。
 ゲーム内容の変更はなし(設計書+版バンプのみ)。

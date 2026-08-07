@@ -187,6 +187,10 @@ import {
 import {
   mimirPhaseForHealth, pickMimirMove, type MimirMove,
 } from '../utils/mimirScript';
+// PACING_PUZZLE.md §6.33(LASER-TRACK): 追尾予告レーザーの純関数群+定数の正本。
+import {
+  MIMIR_LASER_WINDUP_MS, mimirLaserPhase, stepLaserAim,
+} from '../utils/mimirLaserTrack';
 import {
   jormungandPhaseForHealth, pickJormungandMove, jormRadialSpinAngle, type JormungandMove,
 } from '../utils/jormungandScript';
@@ -821,6 +825,9 @@ const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボス�
 // (カウンターは5倍クリ+完全気絶カウントに乗る=bumpBossCrit相当)なので、
 // `?bosscounter=0` で統一前(裏ボス3体はカウンター不可)へ完全フォールバックできる。
 const BOSS_COUNTER_ENABLED = evParam('bosscounter') !== '0';
+// PACING_PUZZLE.md §6.33(LASER-TRACK): 追尾予告レーザー(ミーミル試験導入)。`?mimirtrack=0` で
+// v0.25.2935 の旧挙動(溜め開始で方向ロック・塗りなし・弱点なし・発射中lerp追尾)へ完全復帰。
+const MIMIR_TRACK_ENABLED = evParam('mimirtrack') !== '0';
 // PACING_PUZZLE.md §5.21-追補8: テスト用の統一起動フラグ。ラン開始直後、そのステージのゲート2ボス型を
 // プレイヤー近くへ即force-spawnし、ゲート2と同じ初期化(bossState=chase/home=生成中心/fromEvent)で
 // すぐ戦えるようにする(拘束サークルは省略=テスト用途)。既定OFF=通常挙動不変。将来ステージが増えたら
@@ -878,8 +885,9 @@ const BOSS_DASH_MS = 700;                            // 実行は短く爆発的
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
 // ミーミル専用: 射撃方向に赤いラインを2秒溜め→その方向へ太いレーザーを発射(社長指示)。
 const MIMIR_LASER_CHANCE = 0.34;                     // chase からの行動抽選でレーザーを選ぶ確率(ミーミルのみ)
-const MIMIR_LASER_WINDUP_MS = 3000;                  // 赤ライン予告の溜め時間(3秒・社長指示)。溜め中は方向ロック。
-const MIMIR_LASER_AIM_TRACK = 1.5;                   // 発射中の照準追尾レート(小さいほど遅い=避けやすい・社長指示で追尾は発射中に)
+// §6.33(LASER-TRACK・v0.25.2937): 溜め時間の正本は mimirLaserTrack.ts(3000ms)。溜め中の挙動は
+// MIMIR_TRACK_ENABLED で分岐: 新=前段2700msが物理追尾+終段300msロック / 旧=開始時ロック(方向固定)。
+const MIMIR_LASER_AIM_TRACK = 1.5;                   // 【旧挙動?mimirtrack=0専用】発射中の照準追尾レート(小さいほど遅い)
 const MIMIR_LASER_FIRE_MS = 1500;                    // レーザー本体の表示/判定時間(この間ゆっくり追尾しながら揺れる)
 const MIMIR_LASER_SHAKE_MAG = 5;                     // 発射中の画面シェイク振幅(社長指示)
 const MIMIR_LASER_RANGE = 2600;                      // レーザーの長さ(px)
@@ -1398,8 +1406,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
   // thorPrevHealth/thorRangedHits: トール専用(ジャンプ攻撃のトリガー判定=遠距離からの連続被弾を数える)。
   // 他の裏ボス(mimir/jormungand/skadi)では未使用のまま(無害)。
-  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; disengageSince: number | undefined; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number }>(
-    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 }
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; disengageSince: number | undefined; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number; mimirAimVX: number; mimirAimVY: number; mimirLockSfxUntil: number; mimirBrokenSfxUntil: number }>(
+    // mimirAimVX/VY=§6.33追尾照準の速度(dashDirX/Yと同じ「コントローラ内スクラッチ」扱い=storeへは
+    // 位置aiTargetX/Yのみ書く)。mimirLockSfxUntil/mimirBrokenSfxUntil=ロックSE/中断SEの重複再生防止打刻。
+    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0, mimirAimVX: 0, mimirAimVY: 0, mimirLockSfxUntil: 0, mimirBrokenSfxUntil: 0 }
   );
   // ?gateboss=1 診断: ラン開始後に1回だけそのステージのゲート2ボスをforce-spawnしたかどうか。
   const gatebossForceRef = useRef(false);
@@ -2351,7 +2361,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
-          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 };
+          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0, mimirAimVX: 0, mimirAimVY: 0, mimirLockSfxUntil: 0, mimirBrokenSfxUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
@@ -4719,6 +4729,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossStateUntil = newGameTime + MIMIR_LASER_WINDUP_MS;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
                   patch.aiTargetX = aim.x; patch.aiTargetY = aim.y;
+                  // §6.33: 追尾照準の初期状態=対象位置・速度0(立ち上がりの慣性はここから始まる)。
+                  bs.mimirAimVX = 0; bs.mimirAimVY = 0;
                 } else if (move === 'dash') {
                   beginHiddenDash();
                 } else if (move === 'burst') {
@@ -4784,7 +4796,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hiddenRecoverAdvance = (_justFinished: string) => {
                 const [next, ...rest] = boss.bossScriptQueue ?? [];
                 patch.bossScriptQueue = rest;
-                if (next && boss.type === 'mimir') beginMimirMove(next as MimirMove);
+                // §6.33-2-4: 中断CD中のレーザーは連携追撃(radial→laser)でも撃てない=不発でchaseへ。
+                const laserOnCd = next === 'laser' && boss.type === 'mimir'
+                  && newGameTime < (boss.mimirLaserReadyAt ?? 0);
+                if (laserOnCd) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                else if (next && boss.type === 'mimir') beginMimirMove(next as MimirMove);
                 else if (next && boss.type === 'jormungand') beginJormungandMove(next as JormungandMove);
                 else if (next && boss.type === 'skadi') beginSkadiMove(next as SkadiMove);
                 else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
@@ -4834,6 +4850,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const HIDDEN_BOSS_COUNTER_RECOVERS = [
                 'burst-recover', 'radial-recover', 'dash-recover', 'laser-recover',
                 'skadi-ice-recover', 'skadi-blade-recover', 'bite-recover', 'coil-recover', 'cage-recover',
+                'laser-broken', // §6.33: 中断硬直も硬直の一種=W7どおり体当てカウンター可(成立時は従来どおりchaseへ)
               ];
               const hiddenBossCounterableNow = BOSS_COUNTER_ENABLED && boss.type !== 'thor'
                 && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, HIDDEN_BOSS_COUNTER_RECOVERS) || st === 'dash');
@@ -4955,7 +4972,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (boss.type === 'mimir' && MIMIR_SCRIPT_ENABLED) {
                     const phase = (boss.bossPhase ?? 1) as 1 | 2;
                     const ready: Record<MimirMove, boolean> = {
-                      bite: newGameTime >= (boss.mimirBiteReadyAt ?? 0), laser: true, dash: true, burst: true, radial: true,
+                      bite: newGameTime >= (boss.mimirBiteReadyAt ?? 0),
+                      // §6.33-2-4: 弱点窓で中断された時だけ8秒CD(通常成功時はreadyAt未設定=常にtrue)。
+                      laser: newGameTime >= (boss.mimirLaserReadyAt ?? 0),
+                      dash: true, burst: true, radial: true,
                     };
                     const move = pickMimirMove(dist, phase, ready);
                     if (move) {
@@ -4990,6 +5010,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     patch.bossStateUntil = newGameTime + MIMIR_LASER_WINDUP_MS;
                     patch.aiFromX = bcx; patch.aiFromY = bcy;       // ビーム原点(ロック)
                     patch.aiTargetX = aim.x; patch.aiTargetY = aim.y; // 射撃方向(ロック=溜め開始時のヘイト対象)
+                    bs.mimirAimVX = 0; bs.mimirAimVY = 0;           // §6.33: 追尾照準の初期速度(スクリプト無効時も追尾は有効)
                   } else if (boss.type === 'skadi' && Math.random() < SKADI_ATTACK_CHANCE) {
                     // 旧挙動(?skadiscript=0)。スカジ専用の氷攻撃を「追加」抽選(氷塊バースト or 氷の刃)。
                     lockAttackAim();
@@ -5120,21 +5141,54 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
               } else if (st === 'laser-windup') {
-                // ミーミル: 3秒溜め(静止)。方向はロック(追尾しない)。赤ライン予告は描画側が bossState で出す。
-                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                // §6.33(LASER-TRACK): 溜め3秒(静止)。新挙動=前段2700msは照準が物理追尾(同速104.4+
+                // 加速度上限=立ち上がり1秒)・終段300msはロック(完全固定+フラッシュSE)。
+                // 旧挙動(?mimirtrack=0)=開始時に方向ロックしたまま待つだけ(v0.25.2935と同一)。
+                const lwUntil = boss.bossStateUntil ?? 0;
+                if (MIMIR_TRACK_ENABLED) {
+                  if (mimirLaserPhase(newGameTime, lwUntil) === 'track') {
+                    const aimTgt = lockedAttackAim();
+                    const stepped = stepLaserAim(
+                      { x: boss.aiTargetX ?? aimTgt.x, y: boss.aiTargetY ?? aimTgt.y, vx: bs.mimirAimVX, vy: bs.mimirAimVY },
+                      aimTgt.x, aimTgt.y, deltaTime,
+                    );
+                    patch.aiTargetX = stepped.x; patch.aiTargetY = stepped.y;
+                    bs.mimirAimVX = stepped.vx; bs.mimirAimVY = stepped.vy;
+                  } else if (bs.mimirLockSfxUntil !== lwUntil) {
+                    // ロックの瞬間(1回だけ): 「今から動かない」の合図。描画側は残り時間で同じ瞬間を検出する。
+                    bs.mimirLockSfxUntil = lwUntil;
+                    playSfx(BOSS_ALERT_SFX_KEY);
+                  }
+                }
+                if (newGameTime >= lwUntil) {
                   patch.bossState = 'laser-fire';
                   patch.bossStateUntil = newGameTime + MIMIR_LASER_FIRE_MS;
                   playSfx('heavy-impact'); // レーザー発射音(使い回し)
                   useGameStore.getState().triggerShake(MIMIR_LASER_FIRE_MS, MIMIR_LASER_SHAKE_MAG); // 発射中ずっと揺れる
                 }
+              } else if (st === 'laser-broken') {
+                // §6.33-2-2: 弱点窓で近接中断された(gameStore側でlaser-brokenへ遷移済み)。1700msの
+                // パニッシュ窓=無行動。SEはここで1回だけ(gameStoreはplaySfxを持てないため)。
+                if (bs.mimirBrokenSfxUntil !== (boss.bossStateUntil ?? 0)) {
+                  bs.mimirBrokenSfxUntil = boss.bossStateUntil ?? 0;
+                  playSfx('counter');
+                }
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'chase';
+                  patch.bossNextActionAt = nextActionDelay();
+                }
               } else if (st === 'laser-fire') {
-                // 発射中: ビームが固定ヘイト対象をゆっくり追尾(注視点 aiTarget を現在位置へ低速 lerp=避けられる)。
+                // 発射中: 新挙動=ロックした線のまま固定発射(§6.33 掟「ロック後は動かさない」を発射まで貫く)。
+                // 旧挙動(?mimirtrack=0)=固定ヘイト対象をゆっくり追尾(注視点 aiTarget を低速 lerp)。
                 // ビーム帯(線分±半太さ)に居れば継続ダメージ(damagePlayer が i-frame で間引く)。
                 const aimTgt = lockedAttackAim();
-                const k = Math.min(1, MIMIR_LASER_AIM_TRACK * deltaTime);
-                const nax = (boss.aiTargetX ?? aimTgt.x) + (aimTgt.x - (boss.aiTargetX ?? aimTgt.x)) * k;
-                const nay = (boss.aiTargetY ?? aimTgt.y) + (aimTgt.y - (boss.aiTargetY ?? aimTgt.y)) * k;
-                patch.aiTargetX = nax; patch.aiTargetY = nay;
+                let nax = boss.aiTargetX ?? aimTgt.x, nay = boss.aiTargetY ?? aimTgt.y;
+                if (!MIMIR_TRACK_ENABLED) {
+                  const k = Math.min(1, MIMIR_LASER_AIM_TRACK * deltaTime);
+                  nax = nax + (aimTgt.x - nax) * k;
+                  nay = nay + (aimTgt.y - nay) * k;
+                  patch.aiTargetX = nax; patch.aiTargetY = nay;
+                }
                 let ux = nax - bcx, uy = nay - bcy;
                 const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
                 const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
