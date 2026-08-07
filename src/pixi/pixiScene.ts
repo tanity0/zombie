@@ -1789,6 +1789,13 @@ const OBJECT_SHADOW_MAX = 7;
 /** `?silshadow=0`: 新シルエット影を無効化し、旧実装(§3-9-A以前)へ完全に戻す(A/B比較用)。 */
 const SILHOUETTE_SHADOWS_DISABLED = DZ_PARAMS?.get('silshadow') === '0';
 
+// 等角(クォータービュー)建物の影の上寄せ(社長指示v0.25.3003「拠点の絵が斜めクォータービューのせいで
+// 影がダイヤ型に下に浮く。応急処置として真ん中に寄せちゃう」)。武器庫/警察署の素材は接地面が
+// ダイヤ型で、絵の最下端=ダイヤの下の頂点。影をそこに置くと建物から下へ浮いて見えるため、
+// **影のアンカーだけ**を絵の高さ×この比率だけ上(≒ダイヤ足場の中心)へ寄せる。絵・当たり・zIndexは不変。
+// ?isoshadowup= で調整可。
+const ISO_BUILDING_SHADOW_UP_FRAC = tsNum('isoshadowup', 0.2);
+
 // ---- 伸び(絵の高さ×比率。旧shadowLength 36/32/52の比を保存。§3-9-B確定値) -------------------
 const SHADOW_LEN_RATIO_DAY = 0.85;
 const SHADOW_LEN_RATIO_NIGHT = 0.76;
@@ -15968,7 +15975,8 @@ export class PixiScene {
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は shadowFade へ分離。
     // ★検収差し戻し(F-1の横展開): armorySprite は applyObstacleAlpha(horizon×foreground)。
     this.armoryShadow = {
-      x: pos.x, y: footY,
+      // 等角絵の影上寄せ(ISO_BUILDING_SHADOW_UP_FRAC参照): アンカーをダイヤ足場の中心相当へ。
+      x: pos.x, y: footY - tex.height * sc * ISO_BUILDING_SHADOW_UP_FRAC,
       legacyW: Math.min(180 * d, tex.width * sc * 0.42),
       rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
       alpha: horizonAlpha * 0.8 * this.foregroundActorAlpha(footY), shadowFade: fade,
@@ -16038,7 +16046,8 @@ export class PixiScene {
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は shadowFade へ分離。
     // ★検収差し戻し(F-1の横展開): policeSprite は applyObstacleAlpha(horizon×foreground)。
     this.policeShadow = {
-      x: pos.x, y: footY,
+      // 等角絵の影上寄せ(ISO_BUILDING_SHADOW_UP_FRAC参照): アンカーをダイヤ足場の中心相当へ。
+      x: pos.x, y: footY - tex.height * sc * ISO_BUILDING_SHADOW_UP_FRAC,
       legacyW: Math.min(180 * d, tex.width * sc * 0.42),
       rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
       alpha: horizonAlpha * 0.8 * this.foregroundActorAlpha(footY), shadowFade: fade,
