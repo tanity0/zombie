@@ -12479,32 +12479,29 @@ export class PixiScene {
       const ex2 = cx + ux * MIMIR_LASER_VIS_RANGE, ey2 = cy + uy * MIMIR_LASER_VIS_RANGE;
       if (e.bossState === 'laser-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIMIR_LASER_WINDUP_MS));
-        if (!MIMIR_TRACK_VIS_ENABLED) {
-          // 旧挙動(?mimirtrack=0): v0.25.2935の見た目そのまま(細い二重線+脈動)。
-          const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
-          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
-        }
-        // §6.33(v0.25.2949 社長実機指示で全面改訂):
-        // ①予告本体=**赤一色のベタ半透明・判定と同幅(半太さ34×2)**。「レーザーっぽい見た目」を
-        //   やめ、他の予告と同じ「赤い危険帯」の文法へ(脈動・白芯なし)。
-        // ②カラオケ塗り=明るい赤が根元→**照準点(≒プレイヤー)まで**を同幅でなぞる。
-        //   旧実装は全長2600pxに対して塗っていたため、自機位置(数百px)は序盤に通過してしまい
-        //   「カラオケラインが見当たらない」(社長報告)=時計として機能していなかった。
-        //   **塗りの先端が自分に届いた瞬間=発射**、に読み替える(到達=発射フレームと機械的に一致)。
-        // ③ロック段=ライン全体が白フラッシュ(以後この線から動かない合図)。
-        // ④弱点窓(残り≤900ms)=本体の弱点発光(判定を持つ表示=窓とぴったり同期)。
+        // 予告線=従来の二重線+脈動(v0.25.2951: 社長指示「予告帯、やはり見た目戻して」で
+        // v0.25.2949の赤ベタ帯を撤回・全長のまま=判定と厳密一致を維持)。
+        const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+        // §6.33(v0.25.2951 社長指示): カラオケの物差し=**プレイヤーの足元まで**。
+        // 「どこで満杯か分かりづらい」の答え: 塗りの先端(白い印付き)が root→自分へ向かって伸び、
+        // **先端が自分の足元に触れた瞬間=発射**(満杯位置=自分自身なので見失わない)。
+        // 線そのものは全長のまま(プレイヤー位置で切ると、その先が「赤くないのに当たる」になり
+        // 掟違反のため。塗り=表示だけの時計・判定は不変)。
+        // ロック段=ライン全体が白フラッシュ/弱点窓=本体の弱点発光(従来どおり)。
         if (MIMIR_TRACK_VIS_ENABLED) {
           const lwRemain = (e.bossStateUntil ?? gameTime) - gameTime;
           const fill = mimirLaserFill01(gameTime, e.bossStateUntil);
-          const bandW = MIMIR_LASER_VIS_HALFWIDTH * 2;
-          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: bandW, color: 0xff2020, alpha: 0.22 + 0.10 * prog, cap: 'butt' });
-          const aimDist = Math.min(al, MIMIR_LASER_VIS_RANGE);
-          const fx2 = cx + ux * aimDist * fill, fy2 = cy + uy * aimDist * fill;
-          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: bandW, color: 0xff5555, alpha: 0.55, cap: 'butt' });
+          const plyK = useGameStore.getState().player;
+          const pDist = Math.min(Math.hypot(plyK.x + plyK.width / 2 - cx, plyK.y + plyK.height / 2 - cy), MIMIR_LASER_VIS_RANGE);
+          const fx2 = cx + ux * pDist * fill, fy2 = cy + uy * pDist * fill;
+          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 8, color: 0xff6a6a, alpha: 0.9, cap: 'round' });
+          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 3, color: 0xffffff, alpha: 0.95, cap: 'round' });
+          o.circle(fx2, fy2, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
           if (lwRemain <= LASER_TRACK_LOCK_MS) {
             const flick = 0.5 + 0.5 * Math.sin(now / 45);
-            o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: bandW, color: 0xffffff, alpha: 0.18 + 0.30 * flick, cap: 'butt' });
+            o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * flick, cap: 'round' });
           }
           if (lwRemain <= LASER_TRACK_WEAK_MS && lwRemain > 0) {
             // 弱点発光は普通の Graphics 塗り(投影影を落とす強glow光源にはしない=CLAUDE.md計測結論)。
