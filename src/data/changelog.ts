@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2974',
+    items: [
+      'ゲーム内容の変更はありません(§6.37設計書v3・スリィエルの技エフェクト発注仕様の更新)。',
+    ],
+  },
+  {
     version: '0.25.2973',
     items: [
       'ゲーム内容の変更はありません(§6.37設計書を監査指摘17件で全面改訂・再監査中)。',
