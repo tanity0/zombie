@@ -24,22 +24,28 @@ const BOSS_ZOOM_OVERRIDE: number | null = (() => {
 })();
 export const BOSS_ZOOM_MIN = BOSS_ZOOM_OVERRIDE ?? 0.7;
 
-// Boss camera v2: preserve the close-up scale, then reveal more of the arena as
-// the player opens distance. Distances are AABB-edge gaps, not centre-to-centre,
+// Boss camera v3(社長指示v0.25.2947「ボスの足元では等倍。そこからの引き倍率」):
+// 近(足元)=**等倍1.0** → 中距離=**1.7倍引き(1/1.7≈0.59)** → 遠距離(離脱帯まで)=**2.5倍引き(0.40)**。
+// 3倍引き(0.33)は保留: 新ドット素材(1ドット≈2.24ワールドpx)が1画面px を割って間引きチラつきが
+// 出る領域のため、まず2.5倍で実機確認(社長)。Distances are AABB-edge gaps, not centre-to-centre,
 // so a very wide boss does not zoom out merely because its centre is far away.
-export const BOSS_DISTANCE_ZOOM_NEAR_PX = 180;
-export const BOSS_DISTANCE_ZOOM_FAR_PX = 500;
-export const BOSS_DISTANCE_ZOOM_MIN = BOSS_ZOOM_OVERRIDE ?? 0.58;
+export const BOSS_DISTANCE_ZOOM_NEAR_PX = 180;   // ここまで=足元(等倍)
+export const BOSS_DISTANCE_ZOOM_MID_PX = 500;    // 中距離アンカー(旧FAR)
+export const BOSS_DISTANCE_ZOOM_FAR_PX = 1200;   // 遠距離アンカー(以遠は張り付き。離脱判定は画面px基準で別途換算)
+export const BOSS_ZOOM_NEAR = 1.0;               // 足元=等倍(社長指示)
+export const BOSS_ZOOM_MID = 1 / 1.7;            // ≈0.588=「中距離で1.7倍引き」
+export const BOSS_DISTANCE_ZOOM_MIN = BOSS_ZOOM_OVERRIDE ?? 0.40;
 export const BOSS_DISTANCE_ZOOM_TAU = 0.45;
 export const BOSS_DISTANCE_ZOOM_RETURN_TAU = 1.0;
 
 export type BossZoomClass = 'compact' | 'standard' | 'giant';
-export interface BossZoomProfile { near: number; far: number }
+export interface BossZoomProfile { near: number; mid: number; far: number }
 
+// far のみ体格で差を付ける(人型ボスまで2.5倍で引くと絵が米粒になるため浅め)。near/mid は全級共通。
 export const BOSS_ZOOM_PROFILES: Record<BossZoomClass, BossZoomProfile> = {
-  compact: { near: 0.72, far: 0.66 },
-  standard: { near: 0.70, far: 0.62 },
-  giant: { near: 0.70, far: 0.58 },
+  compact: { near: BOSS_ZOOM_NEAR, mid: BOSS_ZOOM_MID, far: 0.48 },
+  standard: { near: BOSS_ZOOM_NEAR, mid: BOSS_ZOOM_MID, far: 0.44 },
+  giant: { near: BOSS_ZOOM_NEAR, mid: BOSS_ZOOM_MID, far: 0.40 },
 };
 
 const COMPACT_BOSS_TYPES = new Set<EnemyType>([
@@ -54,16 +60,26 @@ export const bossZoomClassFor = (type: EnemyType, isStoryBoss = false): BossZoom
   return 'standard';
 };
 
+const smooth01 = (raw: number): number => {
+  const t = Math.max(0, Math.min(1, raw));
+  return t * t * (3 - 2 * t);
+};
+
 export const bossDistanceZoomTarget = (
   type: EnemyType, bodyDistancePx: number, isStoryBoss = false,
 ): number => {
   if (BOSS_ZOOM_OVERRIDE != null) return BOSS_ZOOM_OVERRIDE;
   const profile = BOSS_ZOOM_PROFILES[bossZoomClassFor(type, isStoryBoss)];
-  const rawT = (bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
-    / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_NEAR_PX);
-  const t = Math.max(0, Math.min(1, rawT));
-  const smoothT = t * t * (3 - 2 * t);
-  return profile.near + (profile.far - profile.near) * smoothT;
+  // 2段スムーズステップ: 足元(等倍)→中(1.7倍引き)→遠(体格別の最深)。境界で傾きは不連続だが
+  // 実カメラはTAUの指数イージング追従なので実機では滑らか(従来と同じ作法)。
+  if (bodyDistancePx <= BOSS_DISTANCE_ZOOM_MID_PX) {
+    const s = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
+      / (BOSS_DISTANCE_ZOOM_MID_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
+    return profile.near + (profile.mid - profile.near) * s;
+  }
+  const s = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_MID_PX)
+    / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_MID_PX));
+  return profile.mid + (profile.far - profile.mid) * s;
 };
 
 export interface Aabb { x: number; y: number; width: number; height: number }

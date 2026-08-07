@@ -92,9 +92,10 @@ describe('リーシュ', () => {
 
 describe('ズーム連動と離脱予兆', () => {
   it('引きが深い巨大ボスほど交戦・離脱のワールド範囲が広い', () => {
-    expect(bossEngagementDistancePx('jormungand', true)).toBeCloseTo(BOSS_ENGAGE_EXIT_PX / 0.58, 6);
+    // v0.25.2947: 遠距離ズームの深化(giant 0.58→0.40 / standard 0.62→0.44)に画面px基準で追随する。
+    expect(bossEngagementDistancePx('jormungand', true)).toBeCloseTo(BOSS_ENGAGE_EXIT_PX / 0.40, 6);
     expect(bossEngagementDistancePx('jormungand', true)).toBeGreaterThan(bossEngagementDistancePx('miguel', true));
-    expect(bossLeashDistancePx('giantbat')).toBeCloseTo(BOSS_LEASH_PX / 0.62, 6);
+    expect(bossLeashDistancePx('giantbat')).toBeCloseTo(BOSS_LEASH_PX / 0.44, 6);
   });
 
   it('範囲外が3秒続いた時だけ離脱し、戻れば即キャンセルする', () => {

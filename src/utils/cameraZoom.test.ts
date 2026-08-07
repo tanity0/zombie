@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   aabbGapDistance, bossDistanceZoomTarget, bossZoomClassFor, contextZoomTarget, isLargeForZoom,
   isPointInZoomedViewport, zoomCompensatedWorldDistance, zoomedViewportBounds,
-  BOSS_DISTANCE_ZOOM_FAR_PX, BOSS_DISTANCE_ZOOM_MIN, BOSS_DISTANCE_ZOOM_NEAR_PX,
-  BOSS_ZOOM_PROFILES, CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN, ZOOM_MIN_ABS,
+  BOSS_DISTANCE_ZOOM_FAR_PX, BOSS_DISTANCE_ZOOM_MID_PX, BOSS_DISTANCE_ZOOM_MIN, BOSS_DISTANCE_ZOOM_NEAR_PX,
+  BOSS_ZOOM_PROFILES, BOSS_ZOOM_NEAR, BOSS_ZOOM_MID, CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN, ZOOM_MIN_ABS,
   CONTEXT_ZOOM_COUNT_FLOOR, CONTEXT_ZOOM_COUNT_CEIL,
 } from './cameraZoom';
 
@@ -41,10 +41,13 @@ describe('cameraZoom — context zoom target', () => {
   });
 
   it('uses size classes and treats story giantbats as giant bosses', () => {
+    // v0.25.2947(社長指示): 足元=等倍1.0 / 中=1.7倍引き / 遠=体格別(giant 0.40=2.5倍引き)。
+    expect(BOSS_ZOOM_NEAR).toBe(1.0);
+    expect(BOSS_ZOOM_MID).toBeCloseTo(1 / 1.7, 6);
     expect(BOSS_ZOOM_PROFILES).toEqual({
-      compact: { near: 0.72, far: 0.66 },
-      standard: { near: 0.70, far: 0.62 },
-      giant: { near: 0.70, far: 0.58 },
+      compact: { near: BOSS_ZOOM_NEAR, mid: BOSS_ZOOM_MID, far: 0.48 },
+      standard: { near: BOSS_ZOOM_NEAR, mid: BOSS_ZOOM_MID, far: 0.44 },
+      giant: { near: BOSS_ZOOM_NEAR, mid: BOSS_ZOOM_MID, far: 0.40 },
     });
     expect(bossZoomClassFor('idol')).toBe('compact');
     expect(bossZoomClassFor('miguel')).toBe('compact');
@@ -54,17 +57,25 @@ describe('cameraZoom — context zoom target', () => {
     expect(bossZoomClassFor('jormungand')).toBe('giant');
   });
 
-  it('keeps close boss presence and smoothly pulls farther away', () => {
+  it('足元=等倍→中=1.7倍引き→遠=最深、の3アンカーを単調に繋ぐ', () => {
     const profile = BOSS_ZOOM_PROFILES.giant;
-    expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_NEAR_PX)).toBe(profile.near);
-    expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_FAR_PX)).toBe(profile.far);
-    const mid = bossDistanceZoomTarget(
-      'jormungand', (BOSS_DISTANCE_ZOOM_NEAR_PX + BOSS_DISTANCE_ZOOM_FAR_PX) / 2,
-    );
-    expect(mid).toBeCloseTo((profile.near + profile.far) / 2, 6);
-    expect(bossDistanceZoomTarget('jormungand', 400)).toBeLessThan(
-      bossDistanceZoomTarget('jormungand', 300),
-    );
+    expect(bossDistanceZoomTarget('jormungand', 0)).toBe(BOSS_ZOOM_NEAR);
+    expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_NEAR_PX)).toBe(BOSS_ZOOM_NEAR);
+    expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_MID_PX)).toBeCloseTo(BOSS_ZOOM_MID, 6);
+    expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_FAR_PX)).toBeCloseTo(profile.far, 6);
+    expect(bossDistanceZoomTarget('jormungand', 99999)).toBeCloseTo(profile.far, 6);
+    // 各区間の中点=スムーズステップの中央値(=両端の平均)
+    expect(bossDistanceZoomTarget('jormungand', (BOSS_DISTANCE_ZOOM_NEAR_PX + BOSS_DISTANCE_ZOOM_MID_PX) / 2))
+      .toBeCloseTo((BOSS_ZOOM_NEAR + BOSS_ZOOM_MID) / 2, 6);
+    expect(bossDistanceZoomTarget('jormungand', (BOSS_DISTANCE_ZOOM_MID_PX + BOSS_DISTANCE_ZOOM_FAR_PX) / 2))
+      .toBeCloseTo((BOSS_ZOOM_MID + profile.far) / 2, 6);
+    // 全域で単調(引きは増える一方)
+    let prev = bossDistanceZoomTarget('jormungand', 0);
+    for (let d = 50; d <= 1400; d += 50) {
+      const z = bossDistanceZoomTarget('jormungand', d);
+      expect(z).toBeLessThanOrEqual(prev + 1e-9);
+      prev = z;
+    }
   });
 
   it('uses body-edge distance for wide bosses', () => {

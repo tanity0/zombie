@@ -52,7 +52,7 @@ Unless a task says otherwise, follow the convention in `src/world/obstacles.ts`:
   movement distances, etc. stay as the store defines them.
 - **ズーム引き考慮(必須)**: 新しい描画レイヤー・マスク・フィルタ・画面境界の判定(カリング/
   回収/湧き)を追加する時は、全ズーム系の絶対最大引き(`ZOOM_MIN_ABS`、現在は巨大ボス遠距離の
-  0.58、可視域=画面の1/ZOOM_MIN_ABS倍)でも破綻しないこと。`?zoomlock=0.58`で固定して実機確認する
+  0.40=2.5倍引き・v0.25.2947、可視域=画面の1/ZOOM_MIN_ABS倍)でも破綻しないこと。`?zoomlock=0.4`で固定して実機確認する
   (ズーム対応はレイヤーごとに漏れて潜伏する — v0.25.1324/1325の教訓)。
 
 - **Y方向(上下)に何かを動かす時の必須チェック(社長指摘v0.25.2618「毎回この手の描写でバグってる」)**:
