@@ -57,18 +57,22 @@ describe('cameraZoom — context zoom target', () => {
     expect(bossZoomClassFor('jormungand')).toBe('giant');
   });
 
-  it('足元=等倍→中=1.7倍引き→遠=最深、の3アンカーを単調に繋ぐ', () => {
+  it('足元=等倍、そこから最深まで距離に比例した一直線(v0.25.3013・社長指示「常に一定に離れていく」)', () => {
     const profile = BOSS_ZOOM_PROFILES.giant;
+    const lin = (d: number) => BOSS_ZOOM_NEAR + (profile.far - BOSS_ZOOM_NEAR)
+      * Math.min(1, (d - BOSS_DISTANCE_ZOOM_NEAR_PX) / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
     expect(bossDistanceZoomTarget('jormungand', 0)).toBe(BOSS_ZOOM_NEAR);
     expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_NEAR_PX)).toBe(BOSS_ZOOM_NEAR);
-    expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_MID_PX)).toBeCloseTo(BOSS_ZOOM_MID, 6);
+    expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_MID_PX)).toBeCloseTo(lin(BOSS_DISTANCE_ZOOM_MID_PX), 6);
     expect(bossDistanceZoomTarget('jormungand', BOSS_DISTANCE_ZOOM_FAR_PX)).toBeCloseTo(profile.far, 6);
     expect(bossDistanceZoomTarget('jormungand', 99999)).toBeCloseTo(profile.far, 6);
-    // 各区間の中点=スムーズステップの中央値(=両端の平均)
-    expect(bossDistanceZoomTarget('jormungand', (BOSS_DISTANCE_ZOOM_NEAR_PX + BOSS_DISTANCE_ZOOM_MID_PX) / 2))
-      .toBeCloseTo((BOSS_ZOOM_NEAR + BOSS_ZOOM_MID) / 2, 6);
-    expect(bossDistanceZoomTarget('jormungand', (BOSS_DISTANCE_ZOOM_MID_PX + BOSS_DISTANCE_ZOOM_FAR_PX) / 2))
-      .toBeCloseTo((BOSS_ZOOM_MID + profile.far) / 2, 6);
+    // ★勾配が一定(=「グイッ」が無い): NEAR〜FARの等間隔サンプルの差分が全て等しい
+    const step = 100;
+    const d0 = bossDistanceZoomTarget('jormungand', 300) - bossDistanceZoomTarget('jormungand', 300 + step);
+    for (let d = 300; d + step <= BOSS_DISTANCE_ZOOM_FAR_PX; d += step) {
+      const diff = bossDistanceZoomTarget('jormungand', d) - bossDistanceZoomTarget('jormungand', d + step);
+      expect(diff).toBeCloseTo(d0, 9);
+    }
     // 全域で単調(引きは増える一方)
     let prev = bossDistanceZoomTarget('jormungand', 0);
     for (let d = 50; d <= 1400; d += 50) {
@@ -134,9 +138,11 @@ describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () =
     const bandHalf2 = (vp.height * 0.45) / 2;
     const pulled = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 0, dyCenter: 600, viewport: vp });
     expect(pulled).toBeCloseTo(Math.max(far, (bandHalf2 - BOSS_FRAME_EDGE_MARGIN_PX) / 600), 6);
-    // 横600離れ: 横は半分要求=引き不要→アンカーのまま
+    // 横600離れ: 横は半分要求=引き不要→アンカー(直線カーブ・v0.25.3013)のまま
+    const linMid = 1 + (PROFILES2.giant.far - 1)
+      * ((500 - BOSS_DISTANCE_ZOOM_NEAR_PX) / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
     const pulledX = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 600, dyCenter: 0, viewport: vp });
-    expect(pulledX).toBeCloseTo(PROFILES2.giant.mid, 6);
+    expect(pulledX).toBeCloseTo(linMid, 6);
     // 超遠距離でも床=farで止まる
     expect(bossDistanceZoomTarget('mimir', 2000, false, { dxCenter: 0, dyCenter: 2200, viewport: vp })).toBe(far);
     // 足元(NEAR以内)は等倍のまま(社長裁定v0.25.2947不変)
@@ -145,8 +151,8 @@ describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () =
     const nearEdge = bossDistanceZoomTarget('mimir', 181, false, { dxCenter: 0, dyCenter: 480, viewport: vp });
     const anchorOnly = bossDistanceZoomTarget('mimir', 181);
     expect(Math.abs(nearEdge - anchorOnly)).toBeLessThan(0.01);
-    // framing無し(従来呼び出し)は従来曲線のまま
-    expect(bossDistanceZoomTarget('mimir', 500)).toBeCloseTo(PROFILES2.giant.mid, 6);
+    // framing無し(従来呼び出し)も同じ直線カーブ(v0.25.3013)
+    expect(bossDistanceZoomTarget('mimir', 500)).toBeCloseTo(linMid, 6);
   });
 });
 

@@ -106,18 +106,16 @@ export const bossDistanceZoomTarget = (
 ): number => {
   if (BOSS_ZOOM_OVERRIDE != null) return BOSS_ZOOM_OVERRIDE;
   const profile = BOSS_ZOOM_PROFILES[bossZoomClassFor(type, isStoryBoss)];
-  // 2段スムーズステップ: 足元(等倍)→中(1.7倍引き)→遠(体格別の最深)。境界で傾きは不連続だが
-  // 実カメラはTAUの指数イージング追従なので実機では滑らか(従来と同じ作法)。
-  const anchor = (() => {
-    if (bodyDistancePx <= BOSS_DISTANCE_ZOOM_MID_PX) {
-      const s = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
-        / (BOSS_DISTANCE_ZOOM_MID_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
-      return profile.near + (profile.mid - profile.near) * s;
-    }
-    const s = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_MID_PX)
-      / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_MID_PX));
-    return profile.mid + (profile.far - profile.mid) * s;
-  })();
+  // v0.25.3013(社長指示「一定の距離を越えると一気にグイッとカーブがかかる。そうではなく常に一定に
+  // 離れていくように」): 旧「2段スムーズステップ(足元→中1.7倍引き→遠)」は、足元の平坦帯を抜けた
+  // 直後の区間(NEAR→MID)だけ勾配が急=「グイッ」の正体だった。**足元(NEAR以内)=等倍(v2947不変)、
+  // そこから最深(FAR)まで距離に比例した一直線**へ変更=どの距離でも同じ割合で引けていく。
+  // 中間アンカー(BOSS_ZOOM_MID)は距離カーブからは撤去(フレーミングの横床としては存続)。
+  const anchor = bodyDistancePx <= BOSS_DISTANCE_ZOOM_NEAR_PX
+    ? profile.near
+    : profile.near + (profile.far - profile.near) * Math.min(1,
+        (bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
+        / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
   if (!framing) return anchor;
   // 足元(NEAR以内)は等倍のまま(社長裁定v0.25.2947「足元では等倍」不変)。それより外では
   // アンカー曲線とフレーミング要求の**引きが強い方**を採る(=見えなくなるより早めに引く)。床はfar。
