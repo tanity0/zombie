@@ -4449,7 +4449,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             );
             const onScreen = isPointInZoomedViewport(bcx, bcy, cam, gb, bossViewZoom, BOSS_SCREEN_MARGIN);
             const inDeep = FORCE_HIDDEN_BOSS || practiceForces('bossnow') || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
-            const disengage = advanceBossDisengageGrace(!inDeep || !onScreen, bs.disengageSince, newGameTime);
+            // v0.25.2962(社長報告「一瞬いなくなって出てくる技の時、ボスが逃げようとしているって警告出ちゃう」):
+            // 技の実行中(bossState が chase/return 以外)は離脱の時計を進めない。踏みつけ/ジャンプ/潜り系の
+            // 技は実行中に本体が画面外相当の位置へ動くため、リーシュが「離脱の予兆」と誤認して
+            // 3秒警告を出していた。技が終わって chase に戻れば従来どおり判定する(リーシュの意図=
+            // 「プレイヤーが離れて逃げ撃ちする」対策、は技実行中には当てはまらない)。
+            const bossInTechnique = boss.bossState !== undefined && boss.bossState !== 'chase' && boss.bossState !== 'return';
+            const disengage = advanceBossDisengageGrace((!inDeep || !onScreen) && !bossInTechnique, bs.disengageSince, newGameTime);
             bs.disengageSince = disengage.since;
             if (disengage.started) {
               useGameStore.setState({
