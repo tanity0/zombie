@@ -12465,7 +12465,11 @@ export class PixiScene {
     if (view.bands) for (const s of view.bands) s.visible = false;
     if (view.slash) view.slash.visible = false;
     if (view.clawMarks) for (const s of view.clawMarks) s.visible = false;
-    if (view.glenParts) for (const s of view.glenParts) s.visible = false;
+    // ★glenParts(ラスボス第二形態の連結パーツ)はここで消さない(v0.25.2955・社長報告「パーツが
+    // くっついてない。本体しかいない」の実バグ)。パーツは攻撃予告ではなく**本体の一部**で、
+    // syncGlenParts(この関数より前に実行)が表示した直後にこの行が毎フレーム非表示へ戻していた=
+    // 導入(v0.25.2918)から一度も画面に出ていなかった。既定OFFの役目は syncGlenParts 自身の先頭で
+    // 果たしている(count=0で全消し)ので、ここから外して重複させない。
     if (view.shockwaves) for (const s of view.shockwaves) s.visible = false;
     // FX-V3V4: 物理の攻撃絵(牙/爪/翼/触手/拳)も同じ作法で既定OFF。点けるのは各技の分岐だけ。
     if (view.atkArt) for (const s of view.atkArt) if (s) s.visible = false;
@@ -16085,7 +16089,7 @@ export class PixiScene {
     }
   }
 
-  private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number } | null, now: number) {
+  private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number } | null, now: number) {
     const sp = this.bossCorpseSprite;
     if (!corpse) { if (sp.visible) sp.visible = false; return; }
     // 絵の選択は生体と同じチェーン(enemyTexKey)。ここを2段しか見ていなかったのが
@@ -16093,7 +16097,9 @@ export class PixiScene {
     const tex = getTexture(this.enemyTexKey(corpse.type, ''));
     if (!tex) { sp.visible = false; return; }
     const FADE_MS = 2600; // useGameLoop の BOSS_FADE_MS と一致(超過後は store 側が corpse を消す)
-    const t = Math.max(0, Math.min(1, (Date.now() - corpse.diedAt) / FADE_MS));
+    // v0.25.2955: holdMs(死亡アテンションの尺)の間は t=0=無傷で見せ、その後に実時間で崩す
+    // (社長指示「ストップとフラッシュが終わってから、時間停止のままゆっくり崩れ去る」)。
+    const t = Math.max(0, Math.min(1, (Date.now() - corpse.diedAt - (corpse.holdMs ?? 0)) / FADE_MS));
     const flicker = 1 - t * (0.5 + 0.5 * Math.sin(now / 45)); // 終盤ほど深く明滅
     sp.visible = true;
     sp.texture = tex;

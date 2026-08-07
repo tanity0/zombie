@@ -1459,6 +1459,9 @@ export const ATTENTION_IN_MS = 360;   // 現地への高速パン(in)
 export const ATTENTION_HOLD_MS = 1900; // 現地ホールド(社長指示で0.5秒短縮: 2400→1900)
 export const ATTENTION_OUT_MS = 360;  // プレイヤーへ高速で戻る(out)
 export const ATTENTION_TOTAL_MS = ATTENTION_IN_MS + ATTENTION_HOLD_MS + ATTENTION_OUT_MS;
+// v0.25.2955: ボス討伐の崩壊尺(死亡アテンション後、時間停止のまま実時間でゆっくり崩す)。
+// pixiScene.syncBossCorpse / useGameLoop の死体クリーンアップと同じ1本。
+export const BOSS_CORPSE_CRUMBLE_MS = 2600;
 // 手を離して待機している間だけ少しズーム(描画のみ)。正=寄る / 負=引く。操作再開で1.0へ戻る。
 export const CAMERA_IDLE_ZOOM_MAG = camNum('camidle', 0.05);      // 待機ズーム量(+5%)。?camidle で調整(負で引き)
 export const CAMERA_IDLE_ZOOM_TAU = camNum('camidletau', 0.3);    // 待機ズームの寄り/戻りの時定数(秒)
@@ -2428,9 +2431,15 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     if (muraUnlock) useGameStore.setState({ unlockedShopSkillCards: muraUnlock });
   }
   // 討伐後のフェードアウト(既存の裏ボス演出を流用・pixiScene.syncBossCorpseが描画)。
+  // v0.25.2955(社長指示「崩れていくのがストップと画面エフェクトで全然見えない。カメラワークと
+  // ストップとフラッシュが終わってから、ゲーム時間は止めたままゆっくり崩れ去っていく形にして」):
+  // 死亡アテンションが付くボスは、アテンションの尺(in+hold+out)だけ死体を**無傷のまま保持**(holdMs)し、
+  // カメラが戻った後に実時間でゆっくり崩す。その間 hitstop を崩壊時間ぶん延長=時間停止のまま見せる。
+  // アテンションの無い相手(pumpkin/ネームド/クエスト対象)は従来どおり即崩壊(holdMs=0)。
   const bossDefeat = isBossType(enemy.type);
+  const corpseHoldMs = getsDeathAttention(enemy.type) ? ATTENTION_TOTAL_MS : 0;
   useGameStore.setState({
-    bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now() },
+    bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now(), holdMs: corpseHoldMs },
     ...(bossDefeat ? {
       eventBannerText: `${enemyDeathLabel(enemy.type)}を討伐`,
       eventBannerUntil: get().gameTime + DRAMATIC_DEATH_FADE_MS,
@@ -2445,7 +2454,11 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   get().triggerTimeSlow(0.35, 520, 90);                     // 決着の一瞬をスロー
   // ★アテンション(時間停止+カメラ寄り)は `getsDeathAttention` が唯一の出どころ。
   // pumpkin は除外(v0.25.2879)——ウェーブで何度も倒す相手なので、毎回止まるとテンポが切れる。
-  if (getsDeathAttention(enemy.type)) get().triggerAttention(x, y);
+  if (getsDeathAttention(enemy.type)) {
+    get().triggerAttention(x, y);
+    // v0.25.2955: 崩壊もアテンションの続きとして時間停止のまま見せる(上のholdMsと同じ設計)。
+    useGameStore.setState(st => ({ hitstopUntil: Math.max(st.hitstopUntil, Date.now() + ATTENTION_TOTAL_MS + BOSS_CORPSE_CRUMBLE_MS) }));
+  }
 };
 
 // KILLパンチズームの寄り先(社長指示・v0.25.1498): キルされた対象の中心座標。複数いる場合は
@@ -3815,7 +3828,7 @@ interface GameState {
   setPendingHiddenBoss: (t: EnemyType | null) => void;
   hiddenBoss: EnemyType | null;                         // この出撃の裏ボス種別(useGameLoop の専用コントローラが参照)
   bossChasing: boolean;                                 // 裏ボスが「追いかけてきている」状態(=他敵が逃げる/イベント抑制。コントローラが毎フレ更新)
-  bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number } | null; // 討伐後のフェードアウト演出(描画のみが参照)
+  bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number } | null; // 討伐後のフェードアウト演出(描画のみが参照)。holdMs=無傷で保持する尺(死亡アテンション付きボスのみ>0)
   hiddenBossDefeated: boolean;                          // 裏ボスを討伐済みか(方角矢印の表示打ち切り等に使用)
   // 病院(社長指示v0.25.2331): 通常ステージに1つ。未確認汚染の中間・裏ボスの反対方角。
   // 拠点を解放するとその方角の矢印が出る(裏ボスと同じ POI 仕組み)。3秒とどまるとワクチンを入手。

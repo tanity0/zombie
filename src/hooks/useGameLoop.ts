@@ -1851,7 +1851,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 最低1.2秒は崩壊の絵を見せる(打刻は撃破の瞬間=gameStoreのdamage経路)。
         {
           const pw = useGameStore.getState().practiceWinPendingSince;
-          if (pw !== null && !att && nowMs >= pw + 1200 && !useGameStore.getState().gameWon) {
+          // v0.25.2955: 崩壊(bossCorpse)が消えるまで待つ=「ボス消えるまでは終わらない」を崩壊延長後も維持。
+          if (pw !== null && !att && !useGameStore.getState().bossCorpse
+            && nowMs >= pw + 1200 && !useGameStore.getState().gameWon) {
             useGameStore.setState({ gameWon: true, practiceWinPendingSince: null });
           }
         }
@@ -4325,7 +4327,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               bossCorpseSfxRef.current = corpse.diedAt;
               playSfx('boss-death'); // 討伐(消滅)SE。長尺なのでフェードアウト付き(社長提供)
             }
-            if (Date.now() - corpse.diedAt >= BOSS_FADE_MS) useGameStore.setState({ bossCorpse: null });
+            if (Date.now() - corpse.diedAt >= (corpse.holdMs ?? 0) + BOSS_FADE_MS) useGameStore.setState({ bossCorpse: null }); // v0.25.2955: hold(無傷保持)の尺を足す
           }
         }
 
