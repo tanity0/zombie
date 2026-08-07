@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2944',
+    items: [
+      '裏ボス「ヨルムンガルド」の絵を新しいドット絵に変え、動きをナメクジのような蠕動(ゆっくり伸びて素早く縮む)にしました。',
+    ],
+  },
+  {
     version: '0.25.2943',
     items: [
       'プラントの絵を元の花のアートに戻しました(先日の食人植物への差し替えを撤回)。',

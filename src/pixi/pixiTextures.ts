@@ -379,7 +379,7 @@ export const ensureTextures = (): Promise<void> => {
       // 裏ボス(深層域の隠しボス)。詳細イラスト調なので linear で滑らかに縮小。
       // 名前=EnemyType と一致させ、drawEnemy の getTexture(e.type) で解決する。
       { name: 'mimir', scaleMode: 'nearest' as const }, // v0.25.2934 ドット版(回転しない本体はnearestが正・天使6体と同じ扱い)
-      { name: 'jormungand', scaleMode: 'linear' as const },
+      { name: 'jormungand', scaleMode: 'nearest' as const }, // v0.25.2944 ドット版(mimir/thorと同じ扱い)
       { name: 'skadi', scaleMode: 'linear' as const },
       // トール(ステージ5)はドット絵タッチの素材なので、他の裏ボス(linear)と違い nearest で
       // ピクセルの輪郭を保つ(hunterと同じ扱い)。

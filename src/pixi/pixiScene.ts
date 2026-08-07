@@ -1166,6 +1166,12 @@ const ENEMY_BREATH_ENABLED = true;
 const ENEMY_BREATH_SCALE_X = 0.016;
 const ENEMY_BREATH_SCALE_Y = 0.024;
 const ENEMY_BREATH_MS = 1500;
+// ヨルムンガルド専用の蠕動(社長指示v0.25.2944「動きはナメクジっぽくして」)。通常の呼吸の代わりに
+// 「ぬめっと伸びる(横に長く・低く)→きゅっと縮む(短く・盛り上がる)」を、呼吸よりゆっくり大きく回す。
+// 波形は伸び6:縮み4の非対称=等速サインだと機械的な脈動に見える。視覚のみ(判定・移動速度は不変)。
+const JORM_SLUG_MS = 2600;      // 蠕動1周期(呼吸1500msよりゆっくり)
+const JORM_SLUG_SQX = 0.050;    // 横の伸縮幅(±5%。横長の体は横が主役)
+const JORM_SLUG_SQY = 0.035;    // 縦の連動(伸びた時に低くなる)
 
 // ---- 敵の歩行二次モーション(社長承認①〜③) -----------------------------------------------------
 // 表・式の正本は src/pixi/enemyMotion.ts(v0.25.2903で切り出し=動物園ビューア zoo.html と共有)。
@@ -2119,7 +2125,7 @@ const BOSS_HITBOX_HINT_FILL_ALPHA = 0.08; // 最大時の面の濃さ(枠の中�
 // これで scale=(帯幅/fit.w)/texW から絵の実寸が決まり、帯=AABBの上に絵が正しく乗る。素材の額装が変わったら再計測。
 const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: number }> = {
   mimir:      { w: 0.55, h: 0.24, cx: 0.48, cy: 0.84 }, // 眼(縦長・v0.25.2934ドット版804×1024=旧849×1080とほぼ同アスペクト)。帯=絵の一番下のピクセル寄り(社長指示)。値は据え置き・実機でズレたら微調整。
-  jormungand: { w: 0.91, h: 0.21, cx: 0.50, cy: 0.72 }, // 巨蛇(横長 1280×960)。帯=とぐろの下端。
+  jormungand: { w: 0.91, h: 0.21, cx: 0.50, cy: 0.72 }, // 巨蛇(v0.25.2944ドット版1024×508=旧1280×960より平たい横長)。帯=とぐろの下端。値は据え置き・実機でズレたら微調整。
   skadi:      { w: 0.92, h: 0.19, cx: 0.49, cy: 0.88 }, // 氷の王(1151×1243)。帯=足元。
   thor:       { w: 0.50, h: 0.20, cx: 0.52, cy: 0.93 }, // 鬼刀の武人(v0.25.2942ドット版1024×960=旧1132×1147とほぼ同アスペクト)。帯=両足の実測位置。値は据え置き・実機でズレたら微調整。
   miguel:     { w: 0.50, h: 0.20, cx: 0.35, cy: 0.99 }, // 大天使ミゲル(797×1187)。thor流用+足元実測の叩き台(実機微調整前提)。
@@ -14142,6 +14148,14 @@ export class PixiScene {
 
   private enemyBreath(e: Enemy, now: number) {
     if (!ENEMY_BREATH_ENABLED) return { x: 1, y: 1 };
+    if (e.type === 'jormungand') {
+      // ナメクジの蠕動(定数コメント参照)。位相はIDハッシュ=複数体でも同期しない(通常呼吸と同じ作法)。
+      const t = (now / JORM_SLUG_MS + stablePhase(e.id) / (Math.PI * 2)) % 1;
+      // 0→1をゆっくり(60%の時間)、1→0を速く(40%)戻る非対称波。-1..1へ写す。
+      const w01 = t < 0.6 ? Math.sin((t / 0.6) * Math.PI / 2) : Math.cos(((t - 0.6) / 0.4) * Math.PI / 2);
+      const w = w01 * 2 - 1;
+      return { x: 1 + JORM_SLUG_SQX * w, y: 1 - JORM_SLUG_SQY * w };
+    }
     const heavy = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper' || e.type === 'hunter' || isHiddenBoss(e.type);
     const amp = heavy ? 0.65 : 1;
     const phase = now / ENEMY_BREATH_MS * Math.PI * 2 + stablePhase(e.id);
