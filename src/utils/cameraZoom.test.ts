@@ -183,3 +183,29 @@ describe('zoomCameraDownFrac — 引きで上下の地面幅を揃えるカメ�
     expect(zoomCameraDownFrac(0.08, 0.1)).toBeCloseTo(zoomCameraDownFrac(0.08, ZOOM_MIN_ABS), 9);
   });
 });
+
+// §6.37 v7(v0.25.2995): 縦のボスカメラ先読み(社長指示「左右みたいに上下もカメラを寄せて」)。
+import { bossCameraLeadY, BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC } from './cameraZoom';
+
+describe('bossCameraLeadY — ボス方向への縦カメラ先読み', () => {
+  const H = 800;
+  it('ボスが北(dy<0)なら正=カメラを北へ、南なら負(符号が向きに一致)', () => {
+    expect(bossCameraLeadY(-200, H, 1)).toBeGreaterThan(0);
+    expect(bossCameraLeadY(200, H, 1)).toBeLessThan(0);
+    expect(bossCameraLeadY(0, H, 1)).toBeCloseTo(0, 9); // -0許容
+  });
+  it('近距離では中心差の半分(横のbossViewBiasXと同じ狙い)', () => {
+    expect(bossCameraLeadY(-100, H, 1)).toBeCloseTo(50, 6);
+  });
+  it('プレイヤーの画面ずれが上限(画面高比×1/zoom)でクランプされる', () => {
+    const capAt1 = BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC * H;
+    expect(bossCameraLeadY(-100000, H, 1)).toBeCloseTo(capAt1, 6);
+    // 引くほど世界px上限は1/zで増える=画面上のずれは常に同じ比率
+    expect(bossCameraLeadY(-100000, H, 0.5)).toBeCloseTo(capAt1 / 0.5, 6);
+    expect(bossCameraLeadY(-100000, H, ZOOM_MIN_ABS)).toBeCloseTo(capAt1 / ZOOM_MIN_ABS, 6);
+  });
+  it('最深より深いzoomでも頭打ち(1/ZOOM_MIN_ABS倍まで)', () => {
+    expect(bossCameraLeadY(-100000, H, 0.1)).toBeCloseTo(
+      BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC * H / ZOOM_MIN_ABS, 6);
+  });
+});

@@ -227,3 +227,18 @@ export const zoomCameraDownFrac = (baseFrac: number, zoom: number): number => {
   const eq = (0.5 * (1 - z) - CAMERA_HORIZON_FRAC * (0.5 - z)) / z;
   return Math.max(baseFrac, eq);
 };
+
+// §6.37 v7(社長指示2026-08-08「左右みたいに、上下もカメラをそちらに寄せれないの？」):
+// ボス方向への**縦のカメラ先読み(store側)**。横(描画側のbossViewBiasX)と同じ「中心差の半分」を
+// 狙うが、縦は描画側のパン(worldGroupずらし)だと床の上端が地平線から剥がれて「上の地面切れ」が
+// 再発するため、**カメラ本体を寄せる**(床帯はカメラ非追従=地平線に貼り付いたまま。スポーン/回収/
+// フェードは全部カメラ基準なので自動で一貫)。
+// 返り値は「カメラをボス側へ寄せる世界px」(正=北/上へ寄せる)。画面上のプレイヤーずれが
+// LEAD_MAX_SCREEN_FRAC(画面高比)を超えないよう、現在ズームで換算してクランプする。
+export const BOSS_CAMERA_LEAD_FRAC = 0.5;             // 横の寄せ(bossBiasDx*0.5)と同じ「中間寄せ」
+export const BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC = 0.12; // プレイヤーの画面ずれ上限(画面高比)
+export const bossCameraLeadY = (dyCenter: number, viewH: number, zoom: number): number => {
+  const z = Math.max(ZOOM_MIN_ABS, Math.min(1, zoom));
+  const cap = (BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC * viewH) / z;
+  return Math.max(-cap, Math.min(cap, -dyCenter * BOSS_CAMERA_LEAD_FRAC));
+};
