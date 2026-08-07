@@ -32,8 +32,9 @@ export const MIMIR_LASER_TRACK_ACCEL = 313.2;
 /** 照準が対象に重なった時の保持デッドゾーン(px)。到着後の微振動(オーバーシュート往復)止め。 */
 export const MIMIR_LASER_AIM_DEADZONE_PX = 6;
 /** ロック段の長さ(ms)。< 脱出必要460ms((半太さ34+自機半径14)/104.4)=見てからでは間に合わない。
- * v0.25.2946: 300→250(慣性強化で増えた追尾の遅れ分、ロック中の無料移動を削って総合バランスを保つ)。 */
-export const MIMIR_LASER_LOCK_MS = 250;
+ * v0.25.2946: 300→250。v0.25.2949: 250→**150**(社長実機報告「発射前の硬直があるから歩いて避けられる」
+ * =ロック中の無料移動をさらに削る。速度ビルドのプレイヤーでも歩き逃げが成立しない水準)。 */
+export const MIMIR_LASER_LOCK_MS = 150;
 /** 弱点露出窓(発射前ms)。≥ 近接1サイクル820ms(COUNTER_WINDOW+COUNTER_COOLDOWN)=必ず1振り入る。 */
 export const MIMIR_LASER_WEAK_MS = 900;
 /** 中断硬直(ms)。= BOSS_STRING_REST_MS(連携終端の休符=2発ぶんのパニッシュ窓)。 */
@@ -59,24 +60,38 @@ export interface MimirLaserAim { x: number; y: number; vx: number; vy: number }
  * 速度を持つ=方向転換に慣性ぶんの遅れが出る(プレイヤーの切り返しで振り切れる=§6.33-1-2 答え2)。
  * 乱数なし=決定的。dtSec は秒。
  */
-export const stepLaserAim = (aim: MimirLaserAim, tgtX: number, tgtY: number, dtSec: number): MimirLaserAim => {
+export const stepLaserAim = (
+  aim: MimirLaserAim, tgtX: number, tgtY: number, dtSec: number,
+  maxPxS: number = MIMIR_LASER_TRACK_MAX_PX_S, accel: number = MIMIR_LASER_TRACK_ACCEL,
+): MimirLaserAim => {
   const dx = tgtX - aim.x, dy = tgtY - aim.y;
   const dist = Math.hypot(dx, dy);
   const speed = Math.hypot(aim.vx, aim.vy);
   // 到着済み(デッドゾーン内・ほぼ静止)なら保持=対象が動き出すまで静かに張り付く。
-  if (dist <= MIMIR_LASER_AIM_DEADZONE_PX && speed <= MIMIR_LASER_TRACK_ACCEL * dtSec) {
+  if (dist <= MIMIR_LASER_AIM_DEADZONE_PX && speed <= accel * dtSec) {
     return { x: aim.x, y: aim.y, vx: 0, vy: 0 };
   }
-  const desiredSpeed = Math.min(MIMIR_LASER_TRACK_MAX_PX_S, Math.sqrt(2 * MIMIR_LASER_TRACK_ACCEL * dist));
+  const desiredSpeed = Math.min(maxPxS, Math.sqrt(2 * accel * dist));
   const inv = dist > 1e-6 ? 1 / dist : 0;
   const dvx = dx * inv * desiredSpeed - aim.vx;
   const dvy = dy * inv * desiredSpeed - aim.vy;
   const dvl = Math.hypot(dvx, dvy);
-  const maxDv = MIMIR_LASER_TRACK_ACCEL * dtSec;
+  const maxDv = accel * dtSec;
   const k = dvl > maxDv ? maxDv / dvl : 1;
   const vx = aim.vx + dvx * k;
   const vy = aim.vy + dvy * k;
   return { x: aim.x + vx * dtSec, y: aim.y + vy * dtSec, vx, vy };
+};
+
+/**
+ * 追尾キャップのプレイヤー速度スケール(v0.25.2949)。基準系(歩速104.4)より速いビルド(ランナー等)は
+ * 素の定数だと「走るだけで振り切れて」しまう(社長実機報告「全然歩いてて避けられちゃう」の一因)。
+ * 実効歩速に**同じ比率**(最高速×1.5/加速×3)を掛けて追尾を追随させる=どのビルドでも
+ * 「走り続けは捕まる・反転だけが振り切れる」の文法を保つ。基準速以下では素の定数のまま。
+ */
+export const mimirLaserTrackCaps = (playerEffSpeedPxS: number): { maxPxS: number; accel: number } => {
+  const v = Math.max(104.4, Number.isFinite(playerEffSpeedPxS) ? playerEffSpeedPxS : 104.4);
+  return { maxPxS: v * 1.5, accel: v * 3 };
 };
 
 /** 中断可能か=laser-windup中かつ発射前WEAK_MS以内(弱点露出窓)。窓外・発射後はfalse。 */

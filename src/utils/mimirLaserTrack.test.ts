@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MIMIR_LASER_WINDUP_MS, MIMIR_LASER_TRACK_MAX_PX_S, MIMIR_LASER_TRACK_ACCEL,
   MIMIR_LASER_LOCK_MS, MIMIR_LASER_WEAK_MS, MIMIR_LASER_BROKEN_MS, MIMIR_LASER_INTERRUPTED_CD_MS,
-  mimirLaserPhase, mimirLaserFill01, stepLaserAim, canInterruptMimirLaser, mimirLaserBreakOnMeleeHit,
+  mimirLaserPhase, mimirLaserFill01, stepLaserAim, canInterruptMimirLaser, mimirLaserBreakOnMeleeHit, mimirLaserTrackCaps,
   type MimirLaserAim,
 } from './mimirLaserTrack';
 import { PLAYER_WALK_PX_PER_SEC, PLAYER_ATTACK_CYCLE_MS, minWindupMs } from './bossTelegraph';
@@ -106,15 +106,23 @@ describe('mimirLaserTrack: ゴール検証シミュレーション(§6.33-3・�
     const start = MIMIR_LASER_WINDUP_MS - MIMIR_LASER_LOCK_MS;
     expect(fireDistance(t => ({ x: 600, y: t > start ? WALK * (t - start) : 0 }))).toBeLessThan(ESCAPE_PX);
   });
-  it('(iv) 反転(発射700〜1600ms前)は慣性で振り切れてビーム外(=マタドール成立・v0.25.2946で窓拡大)', () => {
-    for (const pre of [700, 900, 1100, 1400, 1600]) {
+  it('(iv) 反転(発射600〜1100ms前)は慣性で振り切れてビーム外(=マタドール成立・v0.25.2949 LOCK150実測)', () => {
+    for (const pre of [600, 700, 900, 1100]) {
       expect(fireDistance(runThenReverse(pre)), `reversal ${pre}ms pre-fire`).toBeGreaterThan(ESCAPE_PX);
     }
   });
-  it('(v) 早すぎる反転(2200ms前〜)は再捕捉されてビーム内・遅すぎる反転(400ms前)も間に合わない', () => {
-    expect(fireDistance(runThenReverse(2200)), 'too early').toBeLessThan(ESCAPE_PX);
-    expect(fireDistance(runThenReverse(2400)), 'too early').toBeLessThan(ESCAPE_PX);
+  it('(v) 早すぎる反転(1600ms前〜)は再捕捉されてビーム内・遅すぎる反転(400ms前)も間に合わない', () => {
+    expect(fireDistance(runThenReverse(1600)), 'too early').toBeLessThan(ESCAPE_PX);
+    expect(fireDistance(runThenReverse(2000)), 'too early').toBeLessThan(ESCAPE_PX);
     expect(fireDistance(runThenReverse(400)), 'too late').toBeLessThan(ESCAPE_PX);
+  });
+  it('(vii) 追尾キャップは対象の実効速度へ比例スケール・基準速未満では素の定数(v0.25.2949)', () => {
+    expect(mimirLaserTrackCaps(104.4).maxPxS).toBeCloseTo(MIMIR_LASER_TRACK_MAX_PX_S, 6);
+    expect(mimirLaserTrackCaps(104.4).accel).toBeCloseTo(MIMIR_LASER_TRACK_ACCEL, 6);
+    expect(mimirLaserTrackCaps(80).maxPxS).toBeCloseTo(MIMIR_LASER_TRACK_MAX_PX_S, 6);
+    const fast = mimirLaserTrackCaps(135);
+    expect(fast.maxPxS).toBeCloseTo(135 * 1.5, 6);
+    expect(fast.accel).toBeCloseTo(135 * 3, 6);
   });
   it('(iv-b) ジグザグ(0.8秒ごとの反転往復)は慣性が均されてビーム内(=連打では避けられない)', () => {
     const period = 800;

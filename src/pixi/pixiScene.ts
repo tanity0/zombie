@@ -12479,21 +12479,32 @@ export class PixiScene {
       const ex2 = cx + ux * MIMIR_LASER_VIS_RANGE, ey2 = cy + uy * MIMIR_LASER_VIS_RANGE;
       if (e.bossState === 'laser-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIMIR_LASER_WINDUP_MS));
-        const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
-        // §6.33(LASER-TRACK): ①カラオケ塗り=明るい赤が根元→先端(塗り完了の瞬間=発射の瞬間)。
-        // ②ロック段(残り≤300ms)=ライン全体が白赤フラッシュ(以後この線から動かない合図)。
-        // ③弱点窓(残り≤900ms)=本体の弱点発光(判定を持つ表示=窓とぴったり同期・眼を最も明るく)。
+        if (!MIMIR_TRACK_VIS_ENABLED) {
+          // 旧挙動(?mimirtrack=0): v0.25.2935の見た目そのまま(細い二重線+脈動)。
+          const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
+          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+        }
+        // §6.33(v0.25.2949 社長実機指示で全面改訂):
+        // ①予告本体=**赤一色のベタ半透明・判定と同幅(半太さ34×2)**。「レーザーっぽい見た目」を
+        //   やめ、他の予告と同じ「赤い危険帯」の文法へ(脈動・白芯なし)。
+        // ②カラオケ塗り=明るい赤が根元→**照準点(≒プレイヤー)まで**を同幅でなぞる。
+        //   旧実装は全長2600pxに対して塗っていたため、自機位置(数百px)は序盤に通過してしまい
+        //   「カラオケラインが見当たらない」(社長報告)=時計として機能していなかった。
+        //   **塗りの先端が自分に届いた瞬間=発射**、に読み替える(到達=発射フレームと機械的に一致)。
+        // ③ロック段=ライン全体が白フラッシュ(以後この線から動かない合図)。
+        // ④弱点窓(残り≤900ms)=本体の弱点発光(判定を持つ表示=窓とぴったり同期)。
         if (MIMIR_TRACK_VIS_ENABLED) {
           const lwRemain = (e.bossStateUntil ?? gameTime) - gameTime;
           const fill = mimirLaserFill01(gameTime, e.bossStateUntil);
-          const fx2 = cx + ux * MIMIR_LASER_VIS_RANGE * fill, fy2 = cy + uy * MIMIR_LASER_VIS_RANGE * fill;
-          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 6, color: 0xff8a8a, alpha: 0.85, cap: 'round' });
-          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 2.5, color: 0xffffff, alpha: 0.9, cap: 'round' });
+          const bandW = MIMIR_LASER_VIS_HALFWIDTH * 2;
+          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: bandW, color: 0xff2020, alpha: 0.22 + 0.10 * prog, cap: 'butt' });
+          const aimDist = Math.min(al, MIMIR_LASER_VIS_RANGE);
+          const fx2 = cx + ux * aimDist * fill, fy2 = cy + uy * aimDist * fill;
+          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: bandW, color: 0xff5555, alpha: 0.55, cap: 'butt' });
           if (lwRemain <= LASER_TRACK_LOCK_MS) {
             const flick = 0.5 + 0.5 * Math.sin(now / 45);
-            o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * flick, cap: 'round' });
+            o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: bandW, color: 0xffffff, alpha: 0.18 + 0.30 * flick, cap: 'butt' });
           }
           if (lwRemain <= LASER_TRACK_WEAK_MS && lwRemain > 0) {
             // 弱点発光は普通の Graphics 塗り(投影影を落とす強glow光源にはしない=CLAUDE.md計測結論)。

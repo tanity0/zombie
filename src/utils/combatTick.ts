@@ -59,6 +59,12 @@ import { applyBossPostureDamage } from './bossPosture'; // v0.25.2946: 裏ボス
 // `?bossparry=0` で無効(従来=カウンター窓中でも接触ダメージ素通し)へ完全復帰。
 const BOSS_CONTACT_PARRY_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('bossparry') !== '0';
+// v0.25.2949(社長実機報告「カウンターしてもすぐ食らって死ぬ。もう少しボス硬直した方がいい。逃げられない」):
+// 受け流し成立でボスを rootUntil で900ms拘束(=BOSS_RECOVER_FLOOR_MSと同じ「1発ぶんの休符」)。
+// rootUntil は3実装経路(useGameLoop裏ボス/angelBossTick/idolTick)全てが移動停止として見る既製の場
+// (トラップ拘束と同じ)なので、経路の取りこぼしが構造的に起きない。i-frame(700ms)+拘束900msで
+// 張り付きから確実に離脱できる。拘束中は既存仕様どおり銃クリ率+10%(トラップと同じ扱い)。
+const BOSS_CONTACT_PARRY_ROOT_MS = 900;
 
 // 演出・音・死亡演出のコールバック注入(ヘッドレスではno-op)。判定条件自体はこのファイル内に残る。
 export interface CombatEffects {
@@ -917,7 +923,8 @@ export const applyContactDamage = (
       enemies: st.enemies.map(e => {
         if (!bossContactParries.includes(e.id)) return e;
         const bump = applyBossPostureDamage(e, 'heavy', gameTime);
-        return bump ? { ...e, ...bump.patch } : e;
+        // 体幹削り+拘束900ms(v0.25.2949)。vx/vyも止める(トラップのroot付与と同じ作法)。
+        return { ...e, ...(bump?.patch ?? {}), rootUntil: gameTime + BOSS_CONTACT_PARRY_ROOT_MS, vx: 0, vy: 0 };
       }),
       player: { ...st.player, invulnerable: true, invulnerableTime: parryNow },
     }));

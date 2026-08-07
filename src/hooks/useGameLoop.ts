@@ -190,7 +190,7 @@ import {
 // PACING_PUZZLE.md §6.33(LASER-TRACK): 追尾予告レーザーの純関数群+定数の正本。
 import {
   MIMIR_LASER_WINDUP_MS, MIMIR_LASER_BROKEN_MS, MIMIR_LASER_INTERRUPTED_CD_MS,
-  mimirLaserPhase, stepLaserAim, mimirTrackEnabled, canInterruptMimirLaser,
+  mimirLaserPhase, stepLaserAim, mimirTrackEnabled, canInterruptMimirLaser, mimirLaserTrackCaps,
 } from '../utils/mimirLaserTrack';
 import {
   jormungandPhaseForHealth, pickJormungandMove, jormRadialSpinAngle, type JormungandMove,
@@ -5166,9 +5166,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (MIMIR_TRACK_ENABLED) {
                   if (mimirLaserPhase(newGameTime, lwUntil) === 'track') {
                     const aimTgt = lockedAttackAim();
+                    // v0.25.2949: 速度ビルド(ランナー等)でも「走るだけで振り切れる」が起きないよう、
+                    // 追尾キャップを対象の実効速度(player.speed×GAME_SPEED)へ比例スケールする。
+                    const caps = mimirLaserTrackCaps((player.speed ?? 87) * GAME_SPEED);
                     const stepped = stepLaserAim(
                       { x: boss.aiTargetX ?? aimTgt.x, y: boss.aiTargetY ?? aimTgt.y, vx: bs.mimirAimVX, vy: bs.mimirAimVY },
-                      aimTgt.x, aimTgt.y, deltaTime,
+                      aimTgt.x, aimTgt.y, deltaTime, caps.maxPxS, caps.accel,
                     );
                     patch.aiTargetX = stepped.x; patch.aiTargetY = stepped.y;
                     bs.mimirAimVX = stepped.vx; bs.mimirAimVY = stepped.vy;
