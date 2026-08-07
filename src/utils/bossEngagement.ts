@@ -35,11 +35,11 @@ export const isEngageableBoss = (type: EnemyType): boolean => ENGAGEABLE_BOSS_TY
 // 交戦とみなす距離(社長質問v0.25.2416「ボスの画面外判定はハンターくらい広めならOK?」→ ハンター基準)。
 // 基準値は旧ハンター相当。実ワールド距離はボス戦の引きズームに合わせて拡張する。
 // **ヒステリシス必須**: 単一しきい値だと境界上で毎フレーム反転し、湧きの設定が振動する。
-// v0.25.2954(社長指示「ボスが画面外認定されるのが近すぎる。ズームを引きにしてフィールドを広げたの
-// だから、戦闘域も2倍はあってもいい」): 交戦の入口/出口と離脱リーシュを**2倍**へ(900/1400/1500→
-// 1800/2800/3000)。画面px基準+遠距離ズーム換算の仕組みは従来のまま=値だけ2倍。
-export const BOSS_ENGAGE_ENTER_PX = 1800; // 等倍画面での基準。実ワールド距離はボスの遠距離ズームで換算する
-export const BOSS_ENGAGE_EXIT_PX = 2800;  // 同上。これより画面上で離れたら交戦解除=**湧きが通常へ戻る**
+// v0.25.2968(社長スクショ3+指示「結構延々と遠くまで逃れちゃって、そのぶん引きになってるからやばい。
+// 画面外でたらすぐ戻す」): v0.25.2954の2倍化(1800/2800/3000)を撤回し従来値へ戻す。広げた戦闘域は
+// 「延々と引き離しながらカメラが引きっぱなし」を生んだ(実機で構図崩壊)。狭いバブル+即帰巣で締める。
+export const BOSS_ENGAGE_ENTER_PX = 900;  // 等倍画面での基準。実ワールド距離はボスの遠距離ズームで換算する
+export const BOSS_ENGAGE_EXIT_PX = 1400;  // 同上。これより画面上で離れたら交戦解除=**湧きが通常へ戻る**
 
 /** ボス体格別の遠距離ズームと同率で、交戦の入口/出口をワールド距離へ広げる。 */
 export const bossEngagementDistancePx = (
@@ -106,14 +106,15 @@ export const engagedBossSlotKeys = (
 // なぜ単純に「ワープを止める」だけでは駄目か: ボスの接近手段(突進/飛び掛かり/滑空)は全てCD付きなので、
 // 離れて撃つだけで一方的に削れる=ハメが成立する。**待機に戻す**なら、離れている間は削れないので
 // ハメにならない。かつテレポートも無くなる。
-export const BOSS_LEASH_PX = 3000; // 等倍画面での基準(v0.25.2954: 戦闘域2倍=1500→3000)。実ワールド距離はボスの遠距離ズームで換算する
+export const BOSS_LEASH_PX = 1500; // 等倍画面での基準(v0.25.2968: 2倍化を撤回し従来値へ)。実ワールド距離はボスの遠距離ズームで換算する
 
 export const bossLeashDistancePx = (type: EnemyType, isStoryBoss = false): number => {
   const farZoom = BOSS_ZOOM_PROFILES[bossZoomClassFor(type, isStoryBoss)].far;
   return zoomCompensatedWorldDistance(BOSS_LEASH_PX, farZoom);
 };
 
-export const BOSS_DISENGAGE_GRACE_MS = 3000;
+// v0.25.2968(社長指示「画面外でたらすぐ戻す」): 3000→1200ms。画面外/深層外が1.2秒続いたら帰巣開始。
+export const BOSS_DISENGAGE_GRACE_MS = 1200;
 
 /** 範囲外が連続3秒続いた時だけ離脱。1フレームでも戻れば予兆を取り消す。 */
 export const advanceBossDisengageGrace = (

@@ -4459,8 +4459,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             bs.disengageSince = disengage.since;
             if (disengage.started) {
               useGameStore.setState({
-                eventBannerText: '危険：ボスが戦闘域を離れようとしている — 3秒',
-                eventBannerUntil: newGameTime + 3000,
+                eventBannerText: '危険：ボスが戦闘域を離れようとしている',
+                eventBannerUntil: newGameTime + 2000,
               });
             }
             const speed = boss.speed * bossSlowMult(boss, newGameTime); // クリ半減(v0.25.2422)
