@@ -53,6 +53,12 @@ import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被�
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出
 import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
+import { applyBossPostureDamage } from './bossPosture'; // v0.25.2946: 裏ボス体当たりの受け流し(体幹削り)
+
+// v0.25.2946(社長裁定「体勢値は削ってあげたら?」): 裏ボス系の**追跡中の体当たり**への受け流し。
+// `?bossparry=0` で無効(従来=カウンター窓中でも接触ダメージ素通し)へ完全復帰。
+const BOSS_CONTACT_PARRY_ENABLED = typeof window === 'undefined'
+  || new URLSearchParams(window.location.search).get('bossparry') !== '0';
 
 // 演出・音・死亡演出のコールバック注入(ヘッドレスではno-op)。判定条件自体はこのファイル内に残る。
 export interface CombatEffects {
@@ -818,6 +824,7 @@ export const applyContactDamage = (
   // ここが接触ダメージの唯一の合流点(checkPlayerEnemyCollisionsの使用箇所はここだけ)なので、
   // 通常敵・ボスを問わず「接触ダメージを持つ全員」が1箇所で対象になる。
   const contactLunges: { id: string; ang: number }[] = [];
+  const bossContactParries: string[] = [];
 
   playerEnemyCollisions.forEach(enemy => {
     if (wireDashingNow) return;
@@ -861,6 +868,16 @@ export const applyContactDamage = (
       if (counterActiveNow) dashParried.push(enemy.id);
       return;
     }
+    // v0.25.2946(社長裁定「体勢値は削ってあげたら?」): 裏ボス系(裏4体/天使6体/idol=体幹持ち)の
+    // **追跡中の体当たり**は、カウンター窓中なら「受け流し」= 無傷+体幹を'heavy'(最大値の0.10)削る。
+    // フルカウンター報酬(5倍クリ反撃・攻撃技への成立扱い)は付けない=攻撃ではなく防御の動詞。
+    // 削り続ければ体幹ブレイク(紫)で完全に「止まる」= 社長報告「カウンターしても止まらないので食らう」への答え。
+    // 連発防止: 被弾と同じi-frame作法(無敵中は成立しない+成立時に無敵を開く)=最短INVULN_MS間隔。
+    // W7(溜め/硬直/突進中の体当てカウンター=フル報酬)には触れない(あちらはbossState側の経路)。
+    if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !collPlayer.invulnerable && isHiddenBoss(enemy.type)) {
+      bossContactParries.push(enemy.id);
+      return;
+    }
     const damageWasApplied = !collPlayer.invulnerable;
     const rnMelee = redNightActive ? 2 : 1;
     // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の接触ダメージも×SCREAMER_BUFF_MULT。
@@ -893,6 +910,23 @@ export const applyContactDamage = (
       );
     }
   });
+  // v0.25.2946: 受け流しの反映=体幹削り+プレイヤーi-frame+軽い成立FX(重い演出は使わない=負荷方針)。
+  if (bossContactParries.length > 0) {
+    const parryNow = Date.now();
+    useGameStore.setState(st => ({
+      enemies: st.enemies.map(e => {
+        if (!bossContactParries.includes(e.id)) return e;
+        const bump = applyBossPostureDamage(e, 'heavy', gameTime);
+        return bump ? { ...e, ...bump.patch } : e;
+      }),
+      player: { ...st.player, invulnerable: true, invulnerableTime: parryNow },
+    }));
+    const pp = useGameStore.getState().player;
+    const ppx = pp.x + pp.width / 2, ppy = pp.y + pp.height / 2;
+    fx.playSfx('counter');
+    fx.spawnRing(ppx, ppy, 10, 60, 'rgba(56,189,248,0.85)', 3, 260);
+    fx.spawnBurst(ppx, ppy, '#38bdf8', 8);
+  }
   // V1(3): 打刻の反映(視覚専用フィールドのみ更新・判定/ダメージ/移動は1bitも変えない)。
   // i-frameで接触ダメージは高々1回/無敵窓なので、このsetStateはダメージが入ったtickにしか走らない。
   if (contactLunges.length > 0) {
