@@ -4449,15 +4449,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             );
             const onScreen = isPointInZoomedViewport(bcx, bcy, cam, gb, bossViewZoom, BOSS_SCREEN_MARGIN);
             const inDeep = FORCE_HIDDEN_BOSS || practiceForces('bossnow') || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
-            // v0.25.2962(社長報告「一瞬いなくなって出てくる技の時、ボスが逃げようとしているって警告出ちゃう」):
-            // 技の実行中(bossState が chase/return 以外)は離脱の時計を進めない。踏みつけ/ジャンプ/潜り系の
-            // 技は実行中に本体が画面外相当の位置へ動くため、リーシュが「離脱の予兆」と誤認して
-            // 3秒警告を出していた。技が終わって chase に戻れば従来どおり判定する(リーシュの意図=
-            // 「プレイヤーが離れて逃げ撃ちする」対策、は技実行中には当てはまらない)。
+            // v0.25.2971(社長裁定・案A/テストチャット診断): 技の実行中も**離脱の時計は進める**。
+            // v0.25.2962の「技中は時計停止」はボスが時間の6〜8割を技で過ごすため時計が実質永久停止し、
+            // どれだけ逃げても帰巣しない真因になっていた(実測: 猶予1200msに対し最大到達567ms)。
+            // v0.25.2962の本来の目的(消える技での誤警告)は**警告バナーの抑制だけ**で守る。
+            // 誤帰巣の心配は実質ない: 帰巣には「画面外に1.2秒居続ける」が必要で、技の大半は
+            // プレイヤーへ向かう=画面内に戻るため、成立するのは本当に逃げ切った時だけ。
             const bossInTechnique = boss.bossState !== undefined && boss.bossState !== 'chase' && boss.bossState !== 'return';
-            const disengage = advanceBossDisengageGrace((!inDeep || !onScreen) && !bossInTechnique, bs.disengageSince, newGameTime);
+            const disengage = advanceBossDisengageGrace(!inDeep || !onScreen, bs.disengageSince, newGameTime);
             bs.disengageSince = disengage.since;
-            if (disengage.started) {
+            if (disengage.started && !bossInTechnique) {
               useGameStore.setState({
                 eventBannerText: '危険：ボスが戦闘域を離れようとしている',
                 eventBannerUntil: newGameTime + 2000,
