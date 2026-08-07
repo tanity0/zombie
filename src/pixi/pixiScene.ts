@@ -295,7 +295,10 @@ const WORLD_GAP_FEATHER_PX = 16; // 隙間帯を遠景下端に重ねるフェ�
 // §6.37 v6(社長発案2026-08-07「遠景森1のコピーが1の裏に距離に応じてフェードして現れる」=リッジ3本):
 // 引きで森1が縮んで遠景との間に開く隙間を、森1のコピー(奥の山並み)を上へずらして重ねて埋める。
 const HORIZON_RIDGE_COUNT = 2;                // コピー枚数(森1と合わせて3本)
-const HORIZON_RIDGE_UP_FRAC = 0.5;            // 1枚ごとの上ずらし量(森1の高さ比)
+// 上ずらし量=**森2と森1の実距離**(社長指示v0.25.2995「コピーしたら、遠景森2と1の距離を調べて、
+// それと同じpxだけ上にして。それ以上はズレるので」)。両帯とも底が地平(farH)基準の帯なので、
+// 「距離」は底エッジ同士の差で測る(上端は素材の透明部で信用できない)。syncで毎フレーム算出。
+const HORIZON_RIDGE_STEP_MIN_PX = 12;         // 距離が取れない/小さすぎる時の下限
 const HORIZON_RIDGE_ALPHA = [0.9, 0.78];      // [手前コピー, 奥コピー]の最大alpha(奥ほど薄く=遠さの霞)
 const HORIZON_RIDGE_FADE_START = [0.1, 0.4];  // 引き量pull01がこの値から現れ始める(奥ほど深い引きで)
 const HORIZON_RIDGE_FADE_WIDTH = 0.3;         // フェード幅(pull01)
@@ -6305,6 +6308,14 @@ export class PixiScene {
       const hf = this.L.horizonForest;
       const wzr = this.wgZoom();
       const pull01 = Math.max(0, Math.min(1, (1 - wzr) / (1 - ZOOM_MIN_ABS)));
+      // 上ずらし量=森2と森1の距離(社長指示v0.25.2995・それ以上はズレる)。両帯とも底=地平基準なので
+      // 底エッジ同士の差で測る(上端は素材の透明部があり視覚のリッジ線と一致しない)。森2が未レイアウト
+      // (テクスチャ未着)の時は標準式(底=farH+screenH×NEAR_HORIZON_BOTTOM_RATIO)で代用。
+      const nh = this.L.nearHorizon;
+      const nhBottom = (nh.visible && nh.texture && nh.texture.width > 1)
+        ? nh.position.y + nh.height
+        : farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
+      const ridgeStep = Math.max(HORIZON_RIDGE_STEP_MIN_PX, nhBottom - (hf.position.y + hf.height));
       for (let k = 0; k < this.horizonRidgeCopies.length; k++) {
         const sp = this.horizonRidgeCopies[k];
         const a = Math.max(0, Math.min(1, (pull01 - HORIZON_RIDGE_FADE_START[k]) / HORIZON_RIDGE_FADE_WIDTH))
@@ -6317,7 +6328,7 @@ export class PixiScene {
         sp.tileScale.set(hf.tileScale.x, hf.tileScale.y);
         sp.tint = hf.tint;
         sp.alpha = a;
-        sp.position.set(hf.position.x, hf.position.y - horizonH * HORIZON_RIDGE_UP_FRAC * (k + 1));
+        sp.position.set(hf.position.x, hf.position.y - ridgeStep * (k + 1));
         // 奥ほど横パララックスを遅く+柄を横へずらす(同じ絵の三連コピーに見せない)。
         sp.tilePosition.set(
           hf.tilePosition.x * (HORIZON_RIDGE_PARA_MULT[k] ?? 0.5) + HORIZON_RIDGE_TILE_STAGGER * (k + 1),
