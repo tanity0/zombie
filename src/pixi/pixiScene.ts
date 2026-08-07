@@ -54,6 +54,8 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」#4): グレン虚無の三唱(nihil)の詠唱1回ぶんの
   // 長さ。3唱パルスの進行度を判定と同じ値で計算するため import(手写しリテラルを増やさない)。
   GLEN_NIHIL_CHANT_MS,
+  // B-1(社長裁定v0.25.3002→3003): アテンション中だけ被写界深度の勾配を広げる位相計算に使う。
+  ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS,
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -6114,9 +6116,24 @@ export class PixiScene {
         : (s.zoomHasTarget && zoomDecay > 0) ? s.zoomTargetY
         : zpy;
       const bandY = ((this.L.world.position.y + bandFocalY) * tz + this.L.worldGroup.position.y) * vpScale;
+      // B-1(社長裁定2026-08-08): **アテンション中だけ**ボケの勾配幅を広げる。出現アテンションは
+      // ズームが引く前(等倍)に巨大ボスを大写しするため、固定の勾配(440px)を1体で跨ぎ切り
+      // 「頭だけ最大ボケで切れる」(社長報告)。勾配を2.5倍へ広げてボス全身を緩やかなシャープ帯に
+      // 収める。in(360ms)で広げ、out(360ms)で戻すエンベロープ=切り替えは知覚されない。
+      // 通常プレイ(アテンション外)は従来値のまま1ビットも変わらない。?tsattgrad=で倍率調整。
+      let gradNow = TILT_SHIFT_GRADIENT;
+      if (s.attention) {
+        const attEl = realNow - s.attention.startReal;
+        const attHold = s.attention.holdMs ?? ATTENTION_HOLD_MS;
+        const outStart = ATTENTION_IN_MS + attHold + (s.attention.cutinMs ?? 0);
+        const inT = Math.max(0, Math.min(1, attEl / ATTENTION_IN_MS));
+        const outT = attEl > outStart ? Math.max(0, Math.min(1, (attEl - outStart) / ATTENTION_OUT_MS)) : 0;
+        const k = inT * (1 - outT);
+        gradNow = TILT_SHIFT_GRADIENT * (1 + (tsNum('tsattgrad', 2.5) - 1) * k);
+      }
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: this.screenW * vpScale, y: bandY };
-      this.tiltShift.gradientBlur = TILT_SHIFT_GRADIENT * vpScale;
+      this.tiltShift.gradientBlur = gradNow * vpScale;
       this.tiltShift.blur = TILT_SHIFT_BLUR * vpScale;
     }
     // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
