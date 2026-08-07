@@ -108,3 +108,30 @@ describe('cameraZoom — context zoom target', () => {
     expect(contextZoomTarget(CONTEXT_ZOOM_COUNT_CEIL, false, 0.9)).toBe(CONTEXT_ZOOM_MIN);
   });
 });
+
+// v0.25.2954: フレーミング項(社長指示「早めに引き判定に入り、できるだけ被写体を捉え続ける」)。
+import { bossFramingZoom, BOSS_FRAME_EDGE_MARGIN_PX, BOSS_ZOOM_PROFILES as PROFILES2 } from './cameraZoom';
+
+describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () => {
+  const vp = { width: 800, height: 600 };
+  it('縦に遠いほど強い引きを要求する(縦が横より厳しい)', () => {
+    expect(bossFramingZoom(0, 500, vp)).toBeCloseTo((300 - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
+    expect(bossFramingZoom(500, 0, vp)).toBeCloseTo((400 - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
+    expect(bossFramingZoom(500, 500, vp)).toBeCloseTo((300 - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
+  });
+  it('近距離では1以上=引きを要求しない', () => {
+    expect(bossFramingZoom(0, 100, vp)).toBeGreaterThan(1);
+  });
+  it('bossDistanceZoomTargetはフレーミング要求とアンカーの引きが強い方を採り、床(far)を割らない', () => {
+    const far = PROFILES2.giant.far;
+    // 縦600離れ(gap500相当): アンカー(mid=0.588)よりフレーミング((300-56)/600=0.4067)が強い→そちら
+    const pulled = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 0, dyCenter: 600, viewport: vp });
+    expect(pulled).toBeCloseTo(Math.max(far, (300 - BOSS_FRAME_EDGE_MARGIN_PX) / 600), 6);
+    // 超遠距離でも床=farで止まる
+    expect(bossDistanceZoomTarget('mimir', 2000, false, { dxCenter: 0, dyCenter: 2200, viewport: vp })).toBe(far);
+    // 足元(NEAR以内)は等倍のまま(社長裁定v0.25.2947不変)
+    expect(bossDistanceZoomTarget('mimir', 100, false, { dxCenter: 0, dyCenter: 400, viewport: vp })).toBe(1.0);
+    // framing無し(従来呼び出し)は従来曲線のまま
+    expect(bossDistanceZoomTarget('mimir', 500)).toBeCloseTo(PROFILES2.giant.mid, 6);
+  });
+});

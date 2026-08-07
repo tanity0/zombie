@@ -5512,7 +5512,9 @@ export class PixiScene {
       const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
       if (dx * dx + dy * dy > bossEngageLimit * bossEngageLimit) continue;
       const bodyDistance = aabbGapDistance(s.player, e);
-      const target = bossDistanceZoomTarget(e.type, bodyDistance, e.isStoryBoss === true);
+      // v0.25.2954: フレーミング項(被写体が画面端に迫ったら早めに引く)。dx/dyは上の交戦判定と同じ中心差。
+      const target = bossDistanceZoomTarget(e.type, bodyDistance, e.isStoryBoss === true,
+        { dxCenter: dx, dyCenter: dy, viewport: s.gameBounds });
       bossDistanceTarget = bossDistanceTarget == null ? target : Math.min(bossDistanceTarget, target);
     }
     const bossCameraActive = bossDistanceTarget != null;
@@ -12481,9 +12483,16 @@ export class PixiScene {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIMIR_LASER_WINDUP_MS));
         // 予告線=従来の二重線+脈動(v0.25.2951: 社長指示「予告帯、やはり見た目戻して」で
         // v0.25.2949の赤ベタ帯を撤回・全長のまま=判定と厳密一致を維持)。
+        // v0.25.2954(社長指示): 発動3秒前から線の**小点滅**。線は消さず「濃さの範囲」だけで明滅し、
+        // 残り3〜2秒/2〜1秒/1〜0秒の3段階で1秒ごとに点滅が早くなる(周期 400→250→140ms)。
+        const remainMs = Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime);
+        const blinkPeriod = remainMs > 2000 ? 400 : remainMs > 1000 ? 250 : 140;
+        const blink = remainMs <= 3000
+          ? 0.65 + 0.35 * (0.5 + 0.5 * Math.sin((now / blinkPeriod) * Math.PI * 2))
+          : 1;
         const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse) * blink, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: (0.45 + 0.45 * prog) * blink, cap: 'round' });
         // §6.33(v0.25.2951 社長指示): カラオケの物差し=**プレイヤーの足元まで**。
         // 「どこで満杯か分かりづらい」の答え: 塗りの先端(白い印付き)が root→自分へ向かって伸び、
         // **先端が自分の足元に触れた瞬間=発射**(満杯位置=自分自身なので見失わない)。

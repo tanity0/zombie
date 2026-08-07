@@ -65,21 +65,52 @@ const smooth01 = (raw: number): number => {
   return t * t * (3 - 2 * t);
 };
 
+// v0.25.2954(社長指示「引きになる位置が遅い。ボスが見えない位置で引きになってる」): フレーミング項。
+// 被写体(ボス中心)が画面端に近づいたら、距離アンカー曲線を待たずに「映るのに必要なズーム」まで先に引く。
+//
+// ★何倍まで引けるかの算定(社長依頼の答え):
+//  - 床は現行の**2.5倍引き(0.40)が上限**。根拠1: 新ドット素材は1ドット≈2.24wpx で、0.40だと
+//    1ドット≈0.90画面px。これ未満(3倍引き0.33≈0.75px)は間引きチラつき領域(v0.25.2947で3倍引きを
+//    保留したのと同じ根拠)。根拠2: ZOOM_MIN_ABS=0.40 で監査済みのオーバースキャン/湧き/回収/マスク系を
+//    そのまま使える(床を下げると全レイヤー再監査=CLAUDE.mdズーム掟)。
+//  - 床0.40で縦に捉えられる限界=中心距離 (H/2−マージン)/0.40(800×600なら約610wpx)。横は約860wpx。
+//    それより遠い被写体は物理的に映せない(=そこは交戦域の広さ側で扱う)。
+export const BOSS_FRAME_EDGE_MARGIN_PX = 56; // 被写体中心を画面端からこの画面px内側に保つ
+export const bossFramingZoom = (
+  dxCenter: number, dyCenter: number, viewport: { width: number; height: number },
+): number => {
+  // 軸ごとに「中心がマージン内に映る」最大ズームを求め、厳しい方(小さい方)を返す。
+  const needX = (viewport.width / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dxCenter));
+  const needY = (viewport.height / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dyCenter));
+  return Math.min(needX, needY);
+};
+
+export interface BossFramingInput { dxCenter: number; dyCenter: number; viewport: { width: number; height: number } }
+
 export const bossDistanceZoomTarget = (
   type: EnemyType, bodyDistancePx: number, isStoryBoss = false,
+  framing?: BossFramingInput,
 ): number => {
   if (BOSS_ZOOM_OVERRIDE != null) return BOSS_ZOOM_OVERRIDE;
   const profile = BOSS_ZOOM_PROFILES[bossZoomClassFor(type, isStoryBoss)];
   // 2段スムーズステップ: 足元(等倍)→中(1.7倍引き)→遠(体格別の最深)。境界で傾きは不連続だが
   // 実カメラはTAUの指数イージング追従なので実機では滑らか(従来と同じ作法)。
-  if (bodyDistancePx <= BOSS_DISTANCE_ZOOM_MID_PX) {
-    const s = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
-      / (BOSS_DISTANCE_ZOOM_MID_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
-    return profile.near + (profile.mid - profile.near) * s;
-  }
-  const s = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_MID_PX)
-    / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_MID_PX));
-  return profile.mid + (profile.far - profile.mid) * s;
+  const anchor = (() => {
+    if (bodyDistancePx <= BOSS_DISTANCE_ZOOM_MID_PX) {
+      const s = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
+        / (BOSS_DISTANCE_ZOOM_MID_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
+      return profile.near + (profile.mid - profile.near) * s;
+    }
+    const s = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_MID_PX)
+      / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_MID_PX));
+    return profile.mid + (profile.far - profile.mid) * s;
+  })();
+  if (!framing) return anchor;
+  // 足元(NEAR以内)は等倍のまま(社長裁定v0.25.2947「足元では等倍」不変)。それより外では
+  // アンカー曲線とフレーミング要求の**引きが強い方**を採る(=見えなくなるより早めに引く)。床はfar。
+  if (bodyDistancePx <= BOSS_DISTANCE_ZOOM_NEAR_PX) return anchor;
+  const frame = bossFramingZoom(framing.dxCenter, framing.dyCenter, framing.viewport);
+  return Math.max(profile.far, Math.min(anchor, frame));
 };
 
 export interface Aabb { x: number; y: number; width: number; height: number }
