@@ -54,7 +54,7 @@ import {
   skillMagnetAmmoRangeMult, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isGameTimeStopped, enemyMeleeDist,
   isAttackLocked, // v0.25.2589: 死亡モーション中/アテンション演出中は自動攻撃を止める共通ゲート
-  ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
+  ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
@@ -1867,7 +1867,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // §6.36(v0.25.2958・社長指示で復帰): cutin付きattentionは hold と out の間に cutinMs
           // (カメラは注目点に静止のまま)を挟む。素のattention(cutinMs=0)は式が従来と完全一致。
           const cutinMs = att.cutinMs ?? 0;
-          if (el >= ATTENTION_TOTAL_MS + cutinMs) {
+          const attHoldMs = att.holdMs ?? ATTENTION_HOLD_MS; // cutin付きは半分(v0.25.2999・社長指示)
+          if (el >= ATTENTION_IN_MS + attHoldMs + ATTENTION_OUT_MS + cutinMs) {
             useGameStore.getState().clearAttention();
           } else {
             const gb = useGameStore.getState().gameBounds;
@@ -1879,10 +1880,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const t = smooth(el / ATTENTION_IN_MS);
               cx = att.fromCamX + (focusX - att.fromCamX) * t;
               cy = att.fromCamY + (focusY - att.fromCamY) * t;
-            } else if (el < ATTENTION_IN_MS + ATTENTION_HOLD_MS + cutinMs) {
+            } else if (el < ATTENTION_IN_MS + attHoldMs + cutinMs) {
               cx = focusX; cy = focusY;
             } else {
-              const t = smooth((el - ATTENTION_IN_MS - ATTENTION_HOLD_MS - cutinMs) / ATTENTION_OUT_MS);
+              const t = smooth((el - ATTENTION_IN_MS - attHoldMs - cutinMs) / ATTENTION_OUT_MS);
               cx = focusX + (att.fromCamX - focusX) * t;
               cy = focusY + (att.fromCamY - focusY) * t;
             }

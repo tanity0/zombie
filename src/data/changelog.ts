@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2999',
+    items: [
+      'ボス出現時のカメラ静止(紹介カットインの前の止まり)を半分(1.9秒→0.95秒)に短縮しました。救援イベントやボス討伐シネマの尺は変わりません。',
+    ],
+  },
+  {
     version: '0.25.2998',
     items: [
       'ボス方向への上下カメラ寄せを強化しました(ボスが画面の消え際ではなく、もう少し画面内に映り込むように)。',

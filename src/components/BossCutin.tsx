@@ -21,6 +21,7 @@ const BossCutin: React.FC = () => {
   const cutin = attention?.cutin ?? null;
   const startReal = attention?.startReal ?? 0;
   const cutinMs = attention?.cutinMs ?? 0;
+  const holdMs = attention?.holdMs ?? ATTENTION_HOLD_MS; // cutin付きは半分(v0.25.2999・社長指示)
 
   // 監査指摘6: 絵はカットイン表示の約2.3秒前(attention発火時)に先読みしてデコードを済ませる。
   // 1.1秒の窓の先頭を「読み込み中の空白」で空振りしない(「絵が出ていない事故」の再発防止)。
@@ -30,7 +31,7 @@ const BossCutin: React.FC = () => {
 
   useEffect(() => {
     if (!cutin || cutinMs <= 0) { setVisible(false); setOpacity(0); return; }
-    const showAt = startReal + ATTENTION_IN_MS + ATTENTION_HOLD_MS;
+    const showAt = startReal + ATTENTION_IN_MS + holdMs;
     const fadeOutAt = showAt + cutinMs;                       // ストップ表示の終わり=フェードアウト開始
     const hideAt = fadeOutAt + BOSS_CUTIN_FADEOUT_MS;         // 完全に消える(時間は既に動いている)
     const now = Date.now();
@@ -49,7 +50,7 @@ const BossCutin: React.FC = () => {
     at(fadeOutAt, () => setOpacity(0));
     at(hideAt, () => setVisible(false));
     return () => { timers.forEach(clearTimeout); setVisible(false); setOpacity(0); };
-  }, [cutin, startReal, cutinMs]);
+  }, [cutin, startReal, cutinMs, holdMs]);
 
   if (!visible || !cutin) return null;
 

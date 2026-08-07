@@ -3449,6 +3449,9 @@ interface GameState {
     x: number; y: number; startReal: number; fromCamX: number; fromCamY: number;
     /** §6.36 ボス出現カットイン。cutin有り=hold後にcutinMsだけカメラ静止のまま名前+絵をDOMで出す。 */
     cutin?: AttentionCutin; cutinMs?: number;
+    /** このアテンションのホールド尺。未指定=ATTENTION_HOLD_MS。cutin付き(ボス紹介)は半分
+     * (社長指示v0.25.2998「紹介の前の止まり、半分にして」)。 */
+    holdMs?: number;
   } | null;
   // 練習ラン: 対象ボス撃破の実時刻(Date.now)。死亡アテンションを見せ終えてから useGameLoop が
   // gameWon を立てる(v0.25.2953)。null=保留なし。
@@ -13644,9 +13647,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.2958(社長指示「やはり前のバージョンに戻して」): カットインは hold の後に cutinMs(1100)を
     // 挟む=in→hold→cutin→out。hitstop も延長する(v0.25.2956の「開始と同時」は撤回)。
     const cutinMs = cutin ? BOSS_CUTIN_MS : 0;
+    // 社長指示(v0.25.2998→2999)「ボス出現アテンションの紹介前の止まり、半分にして」:
+    // cutin付き(=ボス紹介)だけホールドを半分(1900→950ms)。素のattention(救援/討伐シネマ)は従来尺。
+    const holdMs = cutin ? Math.round(ATTENTION_HOLD_MS / 2) : ATTENTION_HOLD_MS;
     set({
-      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, ...(cutin ? { cutin, cutinMs } : {}) },
-      hitstopUntil: Date.now() + ATTENTION_TOTAL_MS + cutinMs,
+      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}) },
+      hitstopUntil: Date.now() + ATTENTION_IN_MS + holdMs + ATTENTION_OUT_MS + cutinMs,
     });
   },
   clearAttention: () => set({ attention: null }),
