@@ -114,23 +114,24 @@ import { bossFramingZoom, BOSS_FRAME_EDGE_MARGIN_PX, BOSS_ZOOM_PROFILES as PROFI
 
 describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () => {
   const vp = { width: 800, height: 600 };
-  it('軸別+中間寄せ前提=要求は中心差の半分で測る(v0.25.2966・社長指示「寄せで対応」)', () => {
-    expect(bossFramingZoom(0, 500, vp)).toBeCloseTo((300 - BOSS_FRAME_EDGE_MARGIN_PX) / 250, 6);
-    // 横は横の広い半径で測る=横の戦いに縦基準の強い引きを要求しない(v0.25.2964の豆粒化の是正)
+  it('横=寄せ担当(半分)/縦=ズーム担当(全量)の軸別要求(v0.25.2967・社長スクショ2枚の役割分担)', () => {
+    // 縦は全量で測る=上下に逃げられたら素直に引く(ボスが小さくなる)
+    expect(bossFramingZoom(0, 500, vp)).toBeCloseTo((300 - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
+    // 横は半分で測る=寄せ(50%)が残りを負担。横500pxなら引き不要
     expect(bossFramingZoom(500, 0, vp)).toBeCloseTo((400 - BOSS_FRAME_EDGE_MARGIN_PX) / 250, 6);
-    expect(bossFramingZoom(500, 0, vp)).toBeGreaterThan(1); // 横500pxなら引き不要(寄せが半分担う)
+    expect(bossFramingZoom(500, 0, vp)).toBeGreaterThan(1);
   });
   it('近距離では1以上=引きを要求しない', () => {
     expect(bossFramingZoom(0, 100, vp)).toBeGreaterThan(1);
   });
   it('bossDistanceZoomTargetはフレーミング要求とアンカーの引きが強い方を採り、床(far)を割らない', () => {
     const far = PROFILES2.giant.far;
-    // 縦600離れ(gap500相当・w=1): 中間寄せ前提の要求(244/300=0.813)はアンカー(mid=0.588)より緩い→アンカー
+    // 縦600離れ(gap500相当・w=1): 縦は全量要求(244/600=0.4067)がアンカー(mid=0.588)より強い→そちら
     const pulled = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 0, dyCenter: 600, viewport: vp });
-    expect(pulled).toBeCloseTo(PROFILES2.giant.mid, 6);
-    // 縦900離れ: 要求(244/450=0.542)がアンカーより強い→そちらへ早めに引く
-    const pulled9 = bossDistanceZoomTarget('mimir', 700, false, { dxCenter: 0, dyCenter: 900, viewport: vp });
-    expect(pulled9).toBeLessThan(bossDistanceZoomTarget('mimir', 700));
+    expect(pulled).toBeCloseTo(Math.max(far, (300 - BOSS_FRAME_EDGE_MARGIN_PX) / 600), 6);
+    // 横600離れ: 横は半分要求(344/300=1.15)=引き不要→アンカーのまま
+    const pulledX = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 600, dyCenter: 0, viewport: vp });
+    expect(pulledX).toBeCloseTo(PROFILES2.giant.mid, 6);
     // 超遠距離でも床=farで止まる
     expect(bossDistanceZoomTarget('mimir', 2000, false, { dxCenter: 0, dyCenter: 2200, viewport: vp })).toBe(far);
     // 足元(NEAR以内)は等倍のまま(社長裁定v0.25.2947不変)

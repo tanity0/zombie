@@ -79,15 +79,14 @@ export const BOSS_FRAME_EDGE_MARGIN_PX = 56; // 被写体中心を画面端か�
 export const bossFramingZoom = (
   dxCenter: number, dyCenter: number, viewport: { width: number; height: number },
 ): number => {
-  // v0.25.2966(社長スクショ+指示「この場合はカメラを右に寄せるなりして対応した方がいい」):
-  // 前提=交戦中はカメラがプレイヤーとボスの**中間まで寄る**(pixiSceneの視点バイアスv0.25.2965)。
-  // だからズームに要るのは「中心差の**半分**」を軸別の画面半径に収めることだけ。
-  // ・軸別に戻す: v0.25.2964の等方向(狭い縦半径を全方向に適用)は、横の戦いにまで縦基準の
-  //   強い引きを要求し、世界が豆粒になっていた(社長スクショの正体)。横は横の半径で測る。
-  // ・/2: 寄せが半分を負担するぶん要求が半減=引き過ぎない。縦の実到達も中間寄せ込みで
-  //   中心差~900px(旧: 487px)まで映る。
+  // v0.25.2967(社長スクショ2枚から確定した役割分担):
+  // ・**横=寄せ担当**: 横の画面半径は広い。要求は中心差の半分(寄せ50%が残りを負担)=引き過ぎない
+  //   (v0.25.2966・「横の戦いで世界が豆粒」の是正のまま)。
+  // ・**縦=ズーム担当**: 上下に逃げられた時は素直に引いてボスを小さく映す(社長スクショ2「ボスも
+  //   大きくなっちゃってて引きの意味がない」)。縦の寄せは遠景の無い領域が映るため弱くしてある
+  //   (pixiScene側0.25)ので、要求は全量で測る。
   const needX = (viewport.width / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dxCenter) / 2);
-  const needY = (viewport.height / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dyCenter) / 2);
+  const needY = (viewport.height / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dyCenter));
   return Math.min(needX, needY);
 };
 

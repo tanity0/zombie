@@ -5625,8 +5625,10 @@ export class PixiScene {
       // アテンション(出現/討伐シネマ)中はカメラ自体がボスへパン済み=寄せを重ねるとフレーミングが
       // ずれるので、バイアスは0へ戻す(シネマ優先)。
       const biasActive = bossBiasD2 !== Infinity && !s.attention;
+      // v0.25.2967: 縦の寄せは0.25へ弱める(社長スクショ2「めっちゃ遠景足りてない」——縦に寄せ過ぎると
+      // 遠景素材の無い領域が映る。縦のフレーミングはズーム側が全量担当する)。横は0.5のまま。
       const wantX = biasActive ? Math.max(-slackWX, Math.min(slackWX, bossBiasDx * 0.5)) : 0;
-      const wantY = biasActive ? Math.max(-slackWY, Math.min(slackWY, bossBiasDy * 0.5)) : 0;
+      const wantY = biasActive ? Math.max(-slackWY, Math.min(slackWY, bossBiasDy * 0.25)) : 0;
       const biasTau = biasActive ? 0.5 : 1.0;
       const bk = 1 - Math.exp(-zdt / biasTau);
       this.bossViewBiasX += (wantX - this.bossViewBiasX) * bk;
