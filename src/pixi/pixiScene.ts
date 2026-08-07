@@ -304,8 +304,15 @@ const HORIZON_RIDGE_FADE_START = [0.1, 0.4];  // 引き量pull01がこの値か�
 const HORIZON_RIDGE_FADE_WIDTH = 0.3;         // フェード幅(pull01)
 const HORIZON_RIDGE_PARA_MULT = [0.75, 0.5];  // 横パララックス減速(奥ほど遅い)
 const HORIZON_RIDGE_TILE_STAGGER = 220;       // 柄の横ずらし(同じ絵の三連コピーに見せない)
-// (v0.25.2998の「近景コピー(下部レイヤー)」は社長指摘「間違えて近景森も増えちゃってる」=
-//  廃都で壁が二重に浮く、によりv0.25.3000で撤去。下部の伸びた床の対処は別途社長裁定。)
+// 近景コピー(下部レイヤー・社長裁定v0.25.3000「近景森のコピー増やすか。その代わり遠景森と同じく
+// px気にしないと浮いちゃう」): 上ずらし量は**遠景リッジと同じ実測px**(森2⇔森1の底距離=
+// horizonRidgeStepPx)を使う。v2998の「近景高さ×0.55」は廃都で壁が浮いた(高さ比だと素材次第で
+// 巨大化する)ため、画面リズムの実測値で統一する。引きに応じてフェードイン・等倍は不可視(恒等)。
+const FRONT_RIDGE_ALPHA = 0.92;               // 最大alpha
+const FRONT_RIDGE_FADE_START = 0.15;          // pull01がこの値から現れる
+const FRONT_RIDGE_FADE_WIDTH = 0.3;           // フェード幅(pull01)
+const FRONT_RIDGE_PARA_MULT = 0.85;           // 実近景より少し遅いパララックス(=少し奥)
+const FRONT_RIDGE_TILE_STAGGER = 260;         // 柄の横ずらし(実近景と同じ絵の二連に見せない)
 const WORLD_GAP_BAND_TOP_COLOR = 0x05070c;    // 帯の上端(サンプリング失敗時のフォールバック)
 const WORLD_GAP_BAND_BOTTOM_COLOR = 0x161c28; // 帯の下端(森1の上端に接する側・やや明るい暗紺)
 const WORLD_GAP_MASK_MARGIN_PX = 64;          // マスク矩形の静的な安全マージン(zoom>1のクランプ余裕)
@@ -3444,6 +3451,10 @@ export class PixiScene {
   private hzFixed = new Container();
   // §6.37 v6: 引きで現れる遠景森1のコピー(奥のリッジ)。[0]=手前コピー, [1]=奥コピー。
   private horizonRidgeCopies: TilingSprite[] = [];
+  // リッジの上ずらし実測px(森2⇔森1の底距離)。毎フレームsyncの遠景リッジ節が更新し、近景コピーも同じ値を使う。
+  private horizonRidgeStepPx = 40;
+  // 近景コピー(下部レイヤー・社長裁定v0.25.3000で復活)。実近景の直後ろ・上ずらしはhorizonRidgeStepPx。
+  private frontRidgeCopy: TilingSprite | null = null;
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
   constructor(layers: SceneLayers) {
@@ -3505,6 +3516,16 @@ export class PixiScene {
         sp.visible = false;
         this.hzFixed.addChildAt(sp, this.hzFixed.getChildIndex(this.L.horizonForest) - k);
         this.horizonRidgeCopies.push(sp);
+      }
+      // 近景コピー(下部レイヤー): 実近景(frontForest)の直後ろ=stage直下(画面固定)。
+      // worldGroup(伸びた床)より手前・実近景より奥に挟まる。
+      {
+        const sp = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
+        sp.eventMode = 'none';
+        sp.visible = false;
+        const fp = this.L.frontForest.parent!;
+        fp.addChildAt(sp, fp.getChildIndex(this.L.frontForest));
+        this.frontRidgeCopy = sp;
       }
     }
     this.L.filteredWorld.mask = this.worldFadeMask;
@@ -6335,6 +6356,7 @@ export class PixiScene {
         ? nh.position.y + nh.height
         : farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
       const ridgeStep = Math.max(HORIZON_RIDGE_STEP_MIN_PX, nhBottom - (hf.position.y + hf.height));
+      this.horizonRidgeStepPx = ridgeStep; // 近景コピー(下部レイヤー)も同じ実測pxを使う(社長裁定v0.25.3000)
       for (let k = 0; k < this.horizonRidgeCopies.length; k++) {
         const sp = this.horizonRidgeCopies[k];
         const a = Math.max(0, Math.min(1, (pull01 - HORIZON_RIDGE_FADE_START[k]) / HORIZON_RIDGE_FADE_WIDTH))
@@ -6385,6 +6407,32 @@ export class PixiScene {
       0
     );
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
+    // 近景コピー(下部レイヤー・社長裁定v0.25.3000で復活): 実近景の少し上に引きの深さでフェードイン。
+    // 上ずらしは**遠景リッジと同じ実測px(horizonRidgeStepPx)**——近景高さ比(v2998)は廃都で壁が
+    // 浮いたため廃止。実近景と必ず重なる小さな刻みなので、間に地面が見えて浮くことは起きない。
+    // テクスチャ/寸法/tint/alphaは毎フレーム実近景から写す(ステージ差し替えに自動追従)。等倍は不可視。
+    {
+      const fr = this.frontRidgeCopy;
+      if (fr) {
+        const ff = this.L.frontForest;
+        const wzf = this.wgZoom();
+        const pullF = Math.max(0, Math.min(1, (1 - wzf) / (1 - ZOOM_MIN_ABS)));
+        const a = Math.max(0, Math.min(1, (pullF - FRONT_RIDGE_FADE_START) / FRONT_RIDGE_FADE_WIDTH)) * FRONT_RIDGE_ALPHA;
+        if (a <= 0.01 || !ff.visible) { fr.visible = false; }
+        else {
+          fr.visible = true;
+          if (fr.texture !== ff.texture) fr.texture = ff.texture;
+          fr.width = ff.width;
+          fr.height = ff.height;
+          fr.tileScale.set(ff.tileScale.x, ff.tileScale.y);
+          fr.tint = ff.tint;
+          fr.alpha = a * ff.alpha; // 実近景のステージ別alphaにも追従
+          fr.position.set(ff.position.x, ff.position.y - this.horizonRidgeStepPx);
+          // 実近景より少し遅いパララックス+柄の横ずらし(同じ絵の二連に見せない)。
+          fr.tilePosition.set(ff.tilePosition.x * FRONT_RIDGE_PARA_MULT + FRONT_RIDGE_TILE_STAGGER, 0);
+        }
+      }
+    }
 
     // ---- 風(v0.25.2648・社長指示「世界で揃えたい」) --------------------------------------------
     // ★**毎フレーム1回だけ引いて、全部の揺れ物で使い回す**。炎・花・木がそれぞれ別に引くと、
@@ -19870,6 +19918,8 @@ export class PixiScene {
     this.horizonForestFadeMaskTexture?.destroy(true);
     this.horizonForestFadeMaskTexture = null;
     this.L.frontForest.mask = null;
+    this.frontRidgeCopy?.destroy(); // 近景コピー(下部レイヤー)
+    this.frontRidgeCopy = null;
     this.frontForestFadeMask.destroy();
     this.frontForestFadeMaskTexture?.destroy(true);
     this.frontForestFadeMaskTexture = null;
