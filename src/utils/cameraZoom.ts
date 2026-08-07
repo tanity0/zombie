@@ -236,7 +236,9 @@ export const zoomCameraDownFrac = (baseFrac: number, zoom: number): number => {
 // 返り値は「カメラをボス側へ寄せる世界px」(正=北/上へ寄せる)。画面上のプレイヤーずれが
 // LEAD_MAX_SCREEN_FRAC(画面高比)を超えないよう、現在ズームで換算してクランプする。
 export const BOSS_CAMERA_LEAD_FRAC = 0.5;             // 横の寄せ(bossBiasDx*0.5)と同じ「中間寄せ」
-export const BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC = 0.12; // プレイヤーの画面ずれ上限(画面高比)
+// プレイヤーの画面ずれ上限(画面高比)。0.12→0.18(社長指示v0.25.2997「ボスが消える所が基準に
+// なっちゃってる。もう少しボスが下に映り込む様に」=上限を上げてボスをより画面内へ引き込む)。
+export const BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC = 0.18;
 export const bossCameraLeadY = (dyCenter: number, viewH: number, zoom: number): number => {
   const z = Math.max(ZOOM_MIN_ABS, Math.min(1, zoom));
   const cap = (BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC * viewH) / z;

@@ -304,6 +304,15 @@ const HORIZON_RIDGE_FADE_START = [0.1, 0.4];  // 引き量pull01がこの値か�
 const HORIZON_RIDGE_FADE_WIDTH = 0.3;         // フェード幅(pull01)
 const HORIZON_RIDGE_PARA_MULT = [0.75, 0.5];  // 横パララックス減速(奥ほど遅い)
 const HORIZON_RIDGE_TILE_STAGGER = 220;       // 柄の横ずらし(同じ絵の三連コピーに見せない)
+// §6.37 v8(社長指示「下部の地面が伸びてるのが気になる。レイヤーを足して」): 近景(frontForest)の
+// コピー1枚を、引きに応じて実近景の少し上にフェードインさせ、引き時だけ画面下部に露出する
+// 延長ストリップ(t>1の伸びた床)を手前の茂みで隠す。等倍ではalpha0=不可視(恒等)。
+const FRONT_RIDGE_UP_FRAC = 0.55;             // 実近景からの上ずらし(近景高さ比)
+const FRONT_RIDGE_ALPHA = 0.92;               // 最大alpha
+const FRONT_RIDGE_FADE_START = 0.15;          // pull01がこの値から現れる
+const FRONT_RIDGE_FADE_WIDTH = 0.3;           // フェード幅(pull01)
+const FRONT_RIDGE_PARA_MULT = 0.85;           // 実近景より少し遅いパララックス(=少し奥)
+const FRONT_RIDGE_TILE_STAGGER = 260;         // 柄の横ずらし(実近景と同じ絵の二連に見せない)
 const WORLD_GAP_BAND_TOP_COLOR = 0x05070c;    // 帯の上端(サンプリング失敗時のフォールバック)
 const WORLD_GAP_BAND_BOTTOM_COLOR = 0x161c28; // 帯の下端(森1の上端に接する側・やや明るい暗紺)
 const WORLD_GAP_MASK_MARGIN_PX = 64;          // マスク矩形の静的な安全マージン(zoom>1のクランプ余裕)
@@ -3442,6 +3451,8 @@ export class PixiScene {
   private hzFixed = new Container();
   // §6.37 v6: 引きで現れる遠景森1のコピー(奥のリッジ)。[0]=手前コピー, [1]=奥コピー。
   private horizonRidgeCopies: TilingSprite[] = [];
+  // §6.37 v8: 引きで現れる近景(frontForest)のコピー(下部の伸びた床を隠す手前レイヤー)。
+  private frontRidgeCopy: TilingSprite | null = null;
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
   constructor(layers: SceneLayers) {
@@ -3503,6 +3514,16 @@ export class PixiScene {
         sp.visible = false;
         this.hzFixed.addChildAt(sp, this.hzFixed.getChildIndex(this.L.horizonForest) - k);
         this.horizonRidgeCopies.push(sp);
+      }
+      // §6.37 v8: 近景コピー(下部レイヤー)。実近景(frontForest)の直後ろ=stage直下(画面固定)。
+      // worldGroup(伸びた床)より手前・実近景より奥に挟まり、引き時の下部を茂みで隠す。
+      {
+        const sp = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
+        sp.eventMode = 'none';
+        sp.visible = false;
+        const fp = this.L.frontForest.parent!;
+        fp.addChildAt(sp, fp.getChildIndex(this.L.frontForest));
+        this.frontRidgeCopy = sp;
       }
     }
     this.L.filteredWorld.mask = this.worldFadeMask;
@@ -6383,6 +6404,32 @@ export class PixiScene {
       0
     );
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
+    // §6.37 v8(社長指示「下部の地面が伸びてるのが気になる。レイヤーを足して」): 近景コピー1枚を
+    // 実近景の少し上に、引きの深さに応じてフェードイン=引き時だけ露出する延長ストリップ
+    // (t>1の伸びた床)を手前の茂みで隠す。テクスチャ/寸法/tintは毎フレーム実近景から写す
+    // (ステージ差し替え・雪の2/3高にも自動追従)。等倍はalpha0=不可視(恒等)。
+    {
+      const fr = this.frontRidgeCopy;
+      if (fr) {
+        const ff = this.L.frontForest;
+        const wzf = this.wgZoom();
+        const pullF = Math.max(0, Math.min(1, (1 - wzf) / (1 - ZOOM_MIN_ABS)));
+        const a = Math.max(0, Math.min(1, (pullF - FRONT_RIDGE_FADE_START) / FRONT_RIDGE_FADE_WIDTH)) * FRONT_RIDGE_ALPHA;
+        if (a <= 0.01 || !ff.visible) { fr.visible = false; }
+        else {
+          fr.visible = true;
+          if (fr.texture !== ff.texture) fr.texture = ff.texture;
+          fr.width = ff.width;
+          fr.height = ff.height;
+          fr.tileScale.set(ff.tileScale.x, ff.tileScale.y);
+          fr.tint = ff.tint;
+          fr.alpha = a * ff.alpha; // 実近景のステージ別alphaにも追従
+          fr.position.set(ff.position.x, ff.position.y - frontH * FRONT_RIDGE_UP_FRAC);
+          // 実近景より少し遅いパララックス+柄の横ずらし(同じ絵の二連に見せない)。
+          fr.tilePosition.set(ff.tilePosition.x * FRONT_RIDGE_PARA_MULT + FRONT_RIDGE_TILE_STAGGER, 0);
+        }
+      }
+    }
 
     // ---- 風(v0.25.2648・社長指示「世界で揃えたい」) --------------------------------------------
     // ★**毎フレーム1回だけ引いて、全部の揺れ物で使い回す**。炎・花・木がそれぞれ別に引くと、
@@ -19868,6 +19915,8 @@ export class PixiScene {
     this.horizonForestFadeMaskTexture?.destroy(true);
     this.horizonForestFadeMaskTexture = null;
     this.L.frontForest.mask = null;
+    this.frontRidgeCopy?.destroy(); // §6.37 v8: 近景コピー(下部レイヤー)
+    this.frontRidgeCopy = null;
     this.frontForestFadeMask.destroy();
     this.frontForestFadeMaskTexture?.destroy(true);
     this.frontForestFadeMaskTexture = null;
