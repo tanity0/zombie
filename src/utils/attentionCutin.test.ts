@@ -20,16 +20,18 @@ describe('shouldIgnoreAttention (first-wins)', () => {
   });
 });
 
-describe('isCutinWindow (attention開始と同時に出す・v0.25.2956)', () => {
-  it('素のattention(cutinMs=0)では常にfalse', () => {
-    for (const el of [0, 100, 2000, 3000]) {
-      expect(isCutinWindow(el, 0)).toBe(false);
+describe('isCutinWindow (in→hold→cutin→outの順序・v0.25.2958で復帰)', () => {
+  const IN = 360, HOLD = 1900;
+  it('素のattention(cutinMs=0)では常にfalse=1msも変わらない', () => {
+    for (const el of [0, IN, IN + HOLD, IN + HOLD + 1, IN + HOLD + 500]) {
+      expect(isCutinWindow(el, IN, HOLD, 0)).toBe(false);
     }
   });
-  it('cutin窓はattention開始(0)から始まり、cutinMsで閉じる', () => {
-    expect(isCutinWindow(0, BOSS_CUTIN_MS)).toBe(true);
-    expect(isCutinWindow(BOSS_CUTIN_MS - 1, BOSS_CUTIN_MS)).toBe(true);
-    expect(isCutinWindow(BOSS_CUTIN_MS, BOSS_CUTIN_MS)).toBe(false);
+  it('cutin窓はhold終了ちょうどから始まり、cutinMsで閉じる(outはその後)', () => {
+    expect(isCutinWindow(IN + HOLD - 1, IN, HOLD, BOSS_CUTIN_MS)).toBe(false);
+    expect(isCutinWindow(IN + HOLD, IN, HOLD, BOSS_CUTIN_MS)).toBe(true);
+    expect(isCutinWindow(IN + HOLD + BOSS_CUTIN_MS - 1, IN, HOLD, BOSS_CUTIN_MS)).toBe(true);
+    expect(isCutinWindow(IN + HOLD + BOSS_CUTIN_MS, IN, HOLD, BOSS_CUTIN_MS)).toBe(false);
   });
 });
 

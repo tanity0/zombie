@@ -13641,11 +13641,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const prev = get().attention;
     if (shouldIgnoreAttention(prev !== null, !!prev?.cutin, !!cutin)) return;
     const cam = get().camera;
-    // v0.25.2956(社長指示): カットインはattention開始と同時に出す(ダン!SEと同期)。
-    // cutinMs は表示尺のみで、attentionの尺・hitstopは素のattentionと同一=延長しない。
+    // v0.25.2958(社長指示「やはり前のバージョンに戻して」): カットインは hold の後に cutinMs(1100)を
+    // 挟む=in→hold→cutin→out。hitstop も延長する(v0.25.2956の「開始と同時」は撤回)。
+    const cutinMs = cutin ? BOSS_CUTIN_MS : 0;
     set({
-      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, ...(cutin ? { cutin, cutinMs: BOSS_CUTIN_MS } : {}) },
-      hitstopUntil: Date.now() + ATTENTION_TOTAL_MS,
+      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, ...(cutin ? { cutin, cutinMs } : {}) },
+      hitstopUntil: Date.now() + ATTENTION_TOTAL_MS + cutinMs,
     });
   },
   clearAttention: () => set({ attention: null }),

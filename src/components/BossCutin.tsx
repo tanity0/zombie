@@ -2,15 +2,15 @@
 // 社長裁定(2026-08-07): 画面全体に被写体+名前をバン!と出す。ぼかしは使わない(上下がぼけるのはNG)。
 // 絵はボス絵台帳 bossIconSrc(ステージ別城ボス/グレン専用アート込み)をそのまま大写しする。
 //
-// タイミング(社長指示v0.25.2956「アテンションしたときの、ダン!ってSEと同時に紹介表示に変更」):
-// attention発火の瞬間(=ダン!SE・boss-appear)と同時に表示し、cutinMs(1.1秒)で消える。カメラの
-// in→hold は暗幕の裏で進み、カード が消えると実物のボスがホールドで映っている、という順番。
-// attentionの尺・hitstopは素のattentionと同一(延長なし)。ゲームは凍結中なので負荷は演出のみ。
+// タイミング(v0.25.2958・社長指示「やはり前のバージョンに戻して」): in(360)→hold(1900)→
+// ★cutin(1100・カメラ静止のまま)→out(360)。紹介表示の瞬間にSEを鳴らす(現状はheavy-impact流用。
+// **社長支給の紹介専用SEが届いたらここのキーだけ差し替える**)。ゲームは凍結中(hitstop延長済み)。
 //
 // React再レンダー規律: attentionスライスだけ購読。attentionは発火/解除時にしか参照が変わらない
 // (毎フレーム書き換えられない)ので、このコンポーネントが毎フレーム再レンダーすることはない。
 import React, { useEffect, useState } from 'react';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, ATTENTION_IN_MS, ATTENTION_HOLD_MS } from '../store/gameStore';
+import { playSfx } from '../audio/audioManager';
 
 const BossCutin: React.FC = () => {
   const attention = useGameStore(s => s.attention);
@@ -28,14 +28,20 @@ const BossCutin: React.FC = () => {
 
   useEffect(() => {
     if (!cutin || cutinMs <= 0) { setVisible(false); return; }
-    // 表示はattention開始と同時(ダン!SE=boss-appearと同期・社長指示)。専用SEはもう鳴らさない
-    // (開始SEと重ねると濁るため heavy-impact は廃止)。
-    const hideAt = startReal + cutinMs;
+    const showAt = startReal + ATTENTION_IN_MS + ATTENTION_HOLD_MS;
+    const hideAt = showAt + cutinMs;
     const now = Date.now();
     if (now >= hideAt) { setVisible(false); return; }
-    setVisible(true);
-    const hideTimer = setTimeout(() => setVisible(false), hideAt - now);
-    return () => { clearTimeout(hideTimer); setVisible(false); };
+    let hideTimer: ReturnType<typeof setTimeout> | undefined;
+    const show = () => {
+      setVisible(true);
+      playSfx('heavy-impact'); // 紹介SE(暫定=heavy-impact流用。社長支給SEが届いたらキー差し替え)
+      hideTimer = setTimeout(() => setVisible(false), Math.max(0, hideAt - Date.now()));
+    };
+    let showTimer: ReturnType<typeof setTimeout> | undefined;
+    if (now >= showAt) show();
+    else showTimer = setTimeout(show, showAt - now);
+    return () => { clearTimeout(showTimer); clearTimeout(hideTimer); setVisible(false); };
   }, [cutin, startReal, cutinMs]);
 
   if (!visible || !cutin) return null;

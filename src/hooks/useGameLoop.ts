@@ -1857,9 +1857,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         if (att) {
           const el = nowMs - att.startReal;
-          // §6.36(v0.25.2956): カットインはattention開始と同時にDOM側(BossCutin)が出す。カメラ位相は
-          // 素のattentionと完全に同一=cutinの有無で1msも変わらない。
-          if (el >= ATTENTION_TOTAL_MS) {
+          // §6.36(v0.25.2958・社長指示で復帰): cutin付きattentionは hold と out の間に cutinMs
+          // (カメラは注目点に静止のまま)を挟む。素のattention(cutinMs=0)は式が従来と完全一致。
+          const cutinMs = att.cutinMs ?? 0;
+          if (el >= ATTENTION_TOTAL_MS + cutinMs) {
             useGameStore.getState().clearAttention();
           } else {
             const gb = useGameStore.getState().gameBounds;
@@ -1871,10 +1872,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const t = smooth(el / ATTENTION_IN_MS);
               cx = att.fromCamX + (focusX - att.fromCamX) * t;
               cy = att.fromCamY + (focusY - att.fromCamY) * t;
-            } else if (el < ATTENTION_IN_MS + ATTENTION_HOLD_MS) {
+            } else if (el < ATTENTION_IN_MS + ATTENTION_HOLD_MS + cutinMs) {
               cx = focusX; cy = focusY;
             } else {
-              const t = smooth((el - ATTENTION_IN_MS - ATTENTION_HOLD_MS) / ATTENTION_OUT_MS);
+              const t = smooth((el - ATTENTION_IN_MS - ATTENTION_HOLD_MS - cutinMs) / ATTENTION_OUT_MS);
               cx = focusX + (att.fromCamX - focusX) * t;
               cy = focusY + (att.fromCamY - focusY) * t;
             }

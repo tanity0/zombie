@@ -12491,10 +12491,13 @@ export class PixiScene {
         // v0.25.2949の赤ベタ帯を撤回・全長のまま=判定と厳密一致を維持)。
         // v0.25.2954(社長指示): 発動3秒前から線の**小点滅**。線は消さず「濃さの範囲」だけで明滅し、
         // 残り3〜2秒/2〜1秒/1〜0秒の3段階で1秒ごとに点滅が早くなる(周期 400→250→140ms)。
+        // v0.25.2958(社長報告「点滅が見当たらない」): サイン波の振幅35%では、上に重なるカラオケ塗り
+        // (点滅しない白α0.95が根元〜自分の区間を覆う)に埋もれて見えなかった。**矩形波のパキパキ点滅**
+        // (濃さ45%⇔100%)へ強化し、カラオケ塗りにも同じ明滅を掛ける(白い先端の印だけ常時=時計の針)。
         const remainMs = Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime);
         const blinkPeriod = remainMs > 2000 ? 400 : remainMs > 1000 ? 250 : 140;
         const blink = remainMs <= 3000
-          ? 0.65 + 0.35 * (0.5 + 0.5 * Math.sin((now / blinkPeriod) * Math.PI * 2))
+          ? (Math.sin((now / blinkPeriod) * Math.PI * 2) >= 0 ? 1 : 0.45)
           : 1;
         const pulse = 0.55 + 0.45 * Math.sin(now / 80);
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse) * blink, cap: 'round' });
@@ -12511,8 +12514,8 @@ export class PixiScene {
           const plyK = useGameStore.getState().player;
           const pDist = Math.min(Math.hypot(plyK.x + plyK.width / 2 - cx, plyK.y + plyK.height / 2 - cy), MIMIR_LASER_VIS_RANGE);
           const fx2 = cx + ux * pDist * fill, fy2 = cy + uy * pDist * fill;
-          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 8, color: 0xff6a6a, alpha: 0.9, cap: 'round' });
-          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 3, color: 0xffffff, alpha: 0.95, cap: 'round' });
+          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 8, color: 0xff6a6a, alpha: 0.9 * blink, cap: 'round' });
+          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 3, color: 0xffffff, alpha: 0.95 * blink, cap: 'round' });
           o.circle(fx2, fy2, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
           if (lwRemain <= LASER_TRACK_LOCK_MS) {
             const flick = 0.5 + 0.5 * Math.sin(now / 45);
