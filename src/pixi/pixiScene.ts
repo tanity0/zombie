@@ -3314,6 +3314,11 @@ export class PixiScene {
   private contextZoom = 1;     // 文脈ズーム(敵数/大型で少し引く・視覚専用)。目標へイージング追従。
   private bossCameraEngaged = false; // 距離ヒステリシス込みのボス交戦カメラ状態
   private bossCameraReturning = false; // 敵視解除後だけ、通常画角へゆっくり戻す
+  // v0.25.2965(社長報告「横は悪くないけど、上下がボス見えない」): 交戦中のボス方向カメラ寄せ(world px)。
+  // 縦の画面半径(≈195px)は横(≈420px)の半分以下で、最大2.5倍引きでも縦±487pxまでしか映せない。
+  // ズームでは物理的に足りないぶんを、カメラをプレイヤーとボスの中間寄りへずらして補う。
+  private bossViewBiasX = 0;
+  private bossViewBiasY = 0;
   private labGfx: Graphics | null = null; // 屋内ステージのマーカー(ボタン/ゴール)(world座標・遅延生成)
   private labFloor: TilingSprite | null = null; // 屋内ステージの床タイル(world座標・遅延生成)
   private labVoid: TilingSprite | null = null;  // 背景の天井/void プレート(外周マージンに敷く・低速パララックス)
@@ -5508,11 +5513,14 @@ export class PixiScene {
     // 引いて見えているのに旧固定距離だけでカメラが戻る、という不一致を起こさない。
     const zpx = s.player.x + s.player.width / 2, zpy = s.player.y + s.player.height / 2;
     let bossDistanceTarget: number | null = null;
+    let bossBiasDx = 0, bossBiasDy = 0, bossBiasD2 = Infinity; // 最も近い交戦ボスへの中心差(カメラ寄せ用)
     for (const e of s.enemies) {
       if (!isEngageableBoss(e.type) || e.dormant === true) continue;
       const bossEngageLimit = bossEngagementDistancePx(e.type, this.bossCameraEngaged, e.isStoryBoss === true);
       const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
       if (dx * dx + dy * dy > bossEngageLimit * bossEngageLimit) continue;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bossBiasD2) { bossBiasD2 = d2; bossBiasDx = dx; bossBiasDy = dy; }
       const bodyDistance = aabbGapDistance(s.player, e);
       // v0.25.2954: フレーミング項(被写体が画面端に迫ったら早めに引く)。dx/dyは上の交戦判定と同じ中心差。
       const target = bossDistanceZoomTarget(e.type, bodyDistance, e.isStoryBoss === true,
@@ -5603,9 +5611,34 @@ export class PixiScene {
     const panRawY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecay * ZOOM_TARGET_CENTER_FRAC : 0;
     const panX = Math.max(-panLimitX, Math.min(panLimitX, panRawX));
     const panY = Math.max(-panLimitY, Math.min(panLimitY, panRawY));
-    if (Math.abs(zoom - 1) > 0.0005 || panX !== 0 || panY !== 0) {
+    // v0.25.2965: ボス方向へのカメラ寄せ(社長報告「上下がボス見えない」)。
+    //  ・狙い=プレイヤーとボスの中間(中心差の1/2)へ視点を寄せ、縦の狭い画面半径を補う。
+    //  ・★安全上限: 寄せはオーバースキャン予算の余り (1/ZOOM_MIN_ABS − 1/zoom)×画面半径 以内に
+    //    必ずクランプする=「一番引いた時」の監査済み可視域の内側しか絶対に映さない
+    //    (CLAUDE.mdズーム掟: カリング/湧き/背景はZOOM_MIN_ABS基準で監査済み。その外へ出ない)。
+    //  ・交戦が無い時は0へ滑らかに戻す。時定数はボスズームと同系(入り0.5s/戻り1.0s)。
+    {
+      const invMin = 1 / ZOOM_MIN_ABS;
+      const invZoom = 1 / Math.max(0.001, zoom);
+      const slackWX = Math.max(0, (invMin - invZoom) * centerX); // 横の寄せ予算(world px)
+      const slackWY = Math.max(0, (invMin - invZoom) * centerY); // 縦の寄せ予算(world px)
+      // アテンション(出現/討伐シネマ)中はカメラ自体がボスへパン済み=寄せを重ねるとフレーミングが
+      // ずれるので、バイアスは0へ戻す(シネマ優先)。
+      const biasActive = bossBiasD2 !== Infinity && !s.attention;
+      const wantX = biasActive ? Math.max(-slackWX, Math.min(slackWX, bossBiasDx * 0.5)) : 0;
+      const wantY = biasActive ? Math.max(-slackWY, Math.min(slackWY, bossBiasDy * 0.5)) : 0;
+      const biasTau = biasActive ? 0.5 : 1.0;
+      const bk = 1 - Math.exp(-zdt / biasTau);
+      this.bossViewBiasX += (wantX - this.bossViewBiasX) * bk;
+      this.bossViewBiasY += (wantY - this.bossViewBiasY) * bk;
+    }
+    const bossPanX = this.bossViewBiasX * zoom;
+    const bossPanY = this.bossViewBiasY * zoom;
+    const totalPanX = panX + bossPanX;
+    const totalPanY = panY + bossPanY;
+    if (Math.abs(zoom - 1) > 0.0005 || totalPanX !== 0 || totalPanY !== 0) {
       this.L.worldGroup.scale.set(zoom);
-      this.L.worldGroup.position.set(centerX * (1 - zoom) - panX, centerY * (1 - zoom) - panY);
+      this.L.worldGroup.position.set(centerX * (1 - zoom) - totalPanX, centerY * (1 - zoom) - totalPanY);
       this.zoomApplied = true;
     } else if (this.zoomApplied) {
       this.L.worldGroup.scale.set(1);
