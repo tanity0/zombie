@@ -5940,10 +5940,13 @@ export class PixiScene {
       // アテンション(出現/討伐シネマ)中はカメラ自体がボスへパン済み=寄せを重ねるとフレーミングが
       // ずれるので、バイアスは0へ戻す(シネマ優先)。
       const biasActive = bossBiasD2 !== Infinity && !s.attention;
-      // v0.25.2967: 縦の寄せは0.25へ弱める(社長スクショ2「めっちゃ遠景足りてない」——縦に寄せ過ぎると
-      // 遠景素材の無い領域が映る。縦のフレーミングはズーム側が全量担当する)。横は0.5のまま。
+      // v0.25.2992(社長報告「ズームが動く度に遠景がずれる」): **縦の寄せは廃止(0固定)**。
+      // 地平線支点(v0.25.2991)で森は遠景に貼り付いたが、縦の寄せは世界全体を平行移動するため
+      // 貼り付けた森ごと上下にスライドさせてしまう(=遠景がずれて見える正体)。縦の視野は
+      // 支点固定+下方向の拡がり+可視帯のズーム連動が担うので、縦バイアスは役目を終えた。横は0.5のまま。
       const wantX = biasActive ? Math.max(-slackWX, Math.min(slackWX, bossBiasDx * 0.5)) : 0;
-      const wantY = biasActive ? Math.max(-slackWY, Math.min(slackWY, bossBiasDy * 0.25)) : 0;
+      const wantY = 0;
+      void slackWY; void bossBiasDy; // 縦は使わない(貼り付き維持)。将来復活させる時はこの2値を再利用
       const biasTau = biasActive ? 0.5 : 1.0;
       const bk = 1 - Math.exp(-zdt / biasTau);
       this.bossViewBiasX += (wantX - this.bossViewBiasX) * bk;
