@@ -385,9 +385,9 @@ describe('giantStageRangeMult(M65・社長指示: ステージ別の踏み鳴ら
 // =既存5技の不変性の担保はそのまま生きている(受け入れ条件「stage-1の既存挙動が変わらない」)。
 // ====================================================================================
 
-const ALL_STAGE_MOVES: GiantStageMoveId[] = ['bite', 'slam', 'glide', 'dive', 'quaddash', 'nova', 'wing', 'sweepbeam'];
+const ALL_STAGE_MOVES: GiantStageMoveId[] = ['bite', 'slam', 'glide', 'dive', 'quaddash', 'nova', 'wing', 'sweepbeam', 'trishot'];
 const stageAllReady = (): Record<GiantStageMoveId, boolean> => ({
-  bite: true, slam: true, glide: true, dive: true, quaddash: true, nova: true, wing: true, sweepbeam: true,
+  bite: true, slam: true, glide: true, dive: true, quaddash: true, nova: true, wing: true, sweepbeam: true, trishot: true,
 });
 
 describe('GIANT_STAGE_UNIQUE_MOVE / GIANT_STAGE_ULT_MOVE — 対象は城ボスが実際に出る4ステージのみ', () => {
@@ -397,7 +397,7 @@ describe('GIANT_STAGE_UNIQUE_MOVE / GIANT_STAGE_ULT_MOVE — 対象は城ボス�
     expect(GIANT_STAGE_UNIQUE_MOVE['stage-1']).toBe('bite');
     expect(GIANT_STAGE_UNIQUE_MOVE['stage-3']).toBe('glide');
     expect(GIANT_STAGE_UNIQUE_MOVE['stage-4']).toBe('quaddash');
-    expect(GIANT_STAGE_UNIQUE_MOVE['stage-5']).toBeUndefined(); // ★翼を外した(別途相談)
+    expect(GIANT_STAGE_UNIQUE_MOVE['stage-5']).toBe('trishot'); // ★翼の替わり(v0.25.2939)
     expect(GIANT_STAGE_ULT_MOVE['stage-1']).toBe('wing');       // ★叩きつけ→翼撃
     expect(GIANT_STAGE_ULT_MOVE['stage-3']).toBe('dive');
     expect(GIANT_STAGE_ULT_MOVE['stage-4']).toBe('nova');
@@ -558,7 +558,7 @@ describe('pickGiantMoveWithStage — 受け入れ条件: ステージごとに�
   // 割り当ての健全性: 表に書かれた技は必ず実在し、同じステージで固有技と大技が被らないこと。
   // ※v0.25.2863 以降、stage-5 の固有技は**未割り当て**(別途相談)なので、空を許す。
   it('表に書かれたステージ技は実在し、同じステージで固有技と大技が被らない', () => {
-    expect(ALL_STAGE_MOVES.length).toBe(8);
+    expect(ALL_STAGE_MOVES.length).toBe(9);
     for (const stageId of ['stage-1', 'stage-3', 'stage-4', 'stage-5']) {
       const unique = GIANT_STAGE_UNIQUE_MOVE[stageId];
       const ult = GIANT_STAGE_ULT_MOVE[stageId];

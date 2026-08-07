@@ -46,6 +46,7 @@ export const GIANT_IMPACT_AT_WINDUP_END: readonly string[] = [
   'g-glide-windup',   // 滑空の一撃目
   'g-dive-windup',    // 急降下
   'g-wing-windup',    // 翼撃
+  'g-trishot-windup', // 三連射(stage-5)
   'g-reach-windup',   // 伸びる触手(グレン)
 ];
 

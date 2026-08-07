@@ -456,6 +456,8 @@ export interface Enemy {
     | 'g-quad-windup' | 'g-quad-charge' | 'g-quad-breath-windup' | 'g-quad-breath-active' | 'g-quad-recover'
     | 'g-nova-windup' | 'g-nova-active' | 'g-nova-recover'
     | 'g-wing-windup' | 'g-wing-active' | 'g-wing-recover'
+    // 三連射(stage-5の固有技・v0.25.2939)。判定は旧・翼撃と同一で、絵だけが3挺の銃になっている。
+    | 'g-trishot-windup' | 'g-trishot-active' | 'g-trishot-recover'
     | 'g-sweepbeam-windup' | 'g-sweepbeam-active' | 'g-sweepbeam-recover'
     | 'g-talon-windup' | 'g-talon-recover'
     | 'g-boon-windup' | 'g-boon-recover'

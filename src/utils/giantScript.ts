@@ -258,13 +258,16 @@ export const giantRestRawMs = (stageId: string, rawMs: number): number =>
 // トレース元(ソウルシリーズ)・学習装置①②③の割当・裁定はPACING_PUZZLE.md §6.26-11参照。
 // ============================================================================================
 
-export type GiantStageMoveId = 'bite' | 'slam' | 'glide' | 'dive' | 'quaddash' | 'nova' | 'wing' | 'sweepbeam';
+export type GiantStageMoveId = 'bite' | 'slam' | 'glide' | 'dive' | 'quaddash' | 'nova' | 'wing' | 'sweepbeam' | 'trishot';
 
 // ステージ→独自技(Phase1から)。表に無いステージ(stage-6/7/ex1・未知ID)はundefined=追加なし。
-// ★v0.25.2863(社長裁定): **stage-5 から翼を外した**。翼は stage-1 の大技へ移した(下の ULT 表)。
-// stage-5 の固有技を何にするかは**別途相談**なので、いまは空(=固有技なし・大技の掃射のみ)。
+// ★v0.25.2863(社長裁定): stage-5 から翼を外し、翼は stage-1 の大技へ移した(下の ULT 表)。
+// ★v0.25.2939(社長支給素材): stage-5 の固有技は **三連射(trishot)**。
+//   **判定・秒数は旧・翼撃と同一**(社長「内容は変わらず」)=左右2枚の帯が同時+一拍おいて中央の
+//   三拍目(回避狩り)。変わったのは**絵だけ**で、3方向それぞれに対応した銃が
+//   「ボスからシュッとフェードイン → バンと撃つ → 反動で後ろへ下がってフェードアウト」×3。
 export const GIANT_STAGE_UNIQUE_MOVE: Partial<Record<string, GiantStageMoveId>> = {
-  'stage-1': 'bite', 'stage-3': 'glide', 'stage-4': 'quaddash',
+  'stage-1': 'bite', 'stage-3': 'glide', 'stage-4': 'quaddash', 'stage-5': 'trishot',
 };
 // ステージ→大技(Phase2=HP60%からのみ解禁)。
 // ★v0.25.2863(社長裁定「叩きつけにしよう」): stage-1 の大技を **叩きつけ(slam) → 翼撃(wing)** へ。
@@ -286,6 +289,8 @@ export const GIANT_STAGE_MOVE_RANGE: Record<GiantStageMoveId, { min: number; max
   // 翼撃は**ボスを中心とした半径380の円**になった(v0.25.2863)。届かない距離で撃たないよう、
   // 選ばれる間合いも実際の届く範囲に揃える(見た目・判定・抽選の3つを一致させる)。
   wing: { min: 0, max: 380 },
+  // 三連射は旧・翼撃の判定をそのまま引き継ぐので、間合いも旧・翼撃と同じ「全帯」。
+  trishot: { min: 0, max: Infinity },
   sweepbeam: { min: 0, max: Infinity },
 };
 
@@ -307,7 +312,7 @@ export const GIANT_STAGE_SPECIAL_WEIGHT_MULT: Partial<Record<string, Partial<Rec
   'stage-1': { bite: 1, wing: 1 },
   'stage-3': { glide: 1.6, dive: 2.2 },
   'stage-4': { quaddash: 1.8, nova: 2.1 },
-  'stage-5': { sweepbeam: 2.2 },
+  'stage-5': { trishot: 1.7, sweepbeam: 2.2 },
 };
 
 export const GIANT_STAGE_BASE_WEIGHT_MULT: Partial<Record<string, Record<GiantMove, number>>> = {

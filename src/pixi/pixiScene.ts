@@ -32,6 +32,8 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   GIANT_QUAD_BREATH_WINDUP_MS, GIANT_QUAD_BREATH_ACTIVE_MS, GIANT_QUAD_BREATH_LENGTH, GIANT_QUAD_BREATH_HALF_WIDTH, GIANT_QUAD_BREATH_SWEEP_RAD,
   GIANT_NOVA_WINDUP_MS, GIANT_NOVA_ACTIVE_MS, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_END, GIANT_NOVA_BAND_THICKNESS,
   GIANT_WING_WINDUP_MS, GIANT_WING_ACTIVE_MS, GIANT_WING_RADIUS,
+  GIANT_TRISHOT_WINDUP_MS, GIANT_TRISHOT_THIRD_DELAY_MS, GIANT_TRISHOT_LENGTH,
+  GIANT_TRISHOT_HALF_WIDTH, GIANT_TRISHOT_SPREAD_RAD,
   // バッチFX-V3V4: 噛みつきの牙(上下顎)を「閉じ切る瞬間=判定が出る瞬間」に合わせるため、
   // 保持(hold)の長さを判定と同じ定数から読む(絵のためのコピー定数を作らない)。
   GIANT_BITE_HOLD_MS,
@@ -2071,6 +2073,15 @@ const ATK_ART_WING_L = 3;
 const ATK_ART_WING_R = 4;
 const ATK_ART_TENTACLE = 5;
 const ATK_ART_FIST = 6;
+const ATK_ART_GUN_L = 7;   // 三連射: 左(短い銃)
+const ATK_ART_GUN_R = 8;   // 三連射: 右(中くらい)
+const ATK_ART_GUN_C = 9;   // 三連射: 中央=三拍目(長い銃)
+// 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
+// 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
+const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
+const GUN_RECOIL_MS = 300;    // 撃った後に後ろへ下がりながら消える時間
+const GUN_OUT_PX = 74;        // 構え切った時の、ボス中心からの前進量
+const GUN_RECOIL_PX = 58;     // 反動で後ろへ下がる量
 const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
 
@@ -13585,7 +13596,7 @@ export class PixiScene {
       const gFlashRemain =
         (gph === 'g-stomp-windup' || gph === 'g-sweep-windup' || gph === 'g-dash-windup' || gph === 'g-bolt-windup' || gph === 'g-jump-air'
           || gph === 'g-bite-windup' || gph === 'g-bite-hold' || gph === 'g-slam-windup' || gph === 'g-glide-windup'
-          || gph === 'g-quad-windup' || gph === 'g-quad-breath-windup' || gph === 'g-nova-windup' || gph === 'g-wing-windup' || gph === 'g-sweepbeam-windup'
+          || gph === 'g-quad-windup' || gph === 'g-quad-breath-windup' || gph === 'g-nova-windup' || gph === 'g-wing-windup' || gph === 'g-trishot-windup' || gph === 'g-sweepbeam-windup'
           || gph === 'g-talon-windup' || gph === 'g-boon-windup' || gph === 'g-reach-windup' || gph === 'g-trijump-air'
           || gph === 'g-nihil-chant1' || gph === 'g-nihil-chant2' || gph === 'g-nihil-chant3')
           ? (e.aiPhaseUntil ?? gameTime) - gameTime : null;
@@ -13594,7 +13605,7 @@ export class PixiScene {
         view.sprite.tint = gFlash;
       } else if (gph === 'g-stomp-recover' || gph === 'g-sweep-recover' || gph === 'g-dash-recover' || gph === 'g-jump-recover' || gph === 'g-bolt-recover'
         || gph === 'g-bite-recover' || gph === 'g-slam-recover' || gph === 'g-glide-recover' || gph === 'g-dive-recover'
-        || gph === 'g-quad-recover' || gph === 'g-nova-recover' || gph === 'g-wing-recover' || gph === 'g-sweepbeam-recover'
+        || gph === 'g-quad-recover' || gph === 'g-nova-recover' || gph === 'g-wing-recover' || gph === 'g-trishot-recover' || gph === 'g-sweepbeam-recover'
         || gph === 'g-talon-recover' || gph === 'g-boon-recover' || gph === 'g-reach-recover' || gph === 'g-nihil-recover'
         || gph === 'g-trijump-recover') {
         // 硬直=反撃窓(翻訳規則(d)): 赤ではない色(青白)=「今なら殴れる」の合図。
@@ -13759,6 +13770,49 @@ export class PixiScene {
           }
         }
       }
+      // (3b) 三連射の銃(g-trishot)= stage-5 の固有技(v0.25.2939・社長支給素材)。
+      //      社長の指示: 「ボスからシュッとフェードインしてきてバン!っと撃つと反動で後ろに
+      //      ノックバックしてフェードアウト。×3」「それぞれに対応した銃で撃たれるイメージ」。
+      //      ⇒ 3挺が**それぞれ自分の発射時刻に合わせて**この一連を行う(左右は同時・中央は一拍おいて)。
+      //      分類①(武器の絵)だが、赤い帯の予告が別に出ているので長さを判定に揃え切らなくてよい
+      //      (CLAUDE.md「赤ラインが別に出ているなら武器が多少ズレていても良し」)。
+      {
+        const tsWind = gph === 'g-trishot-windup';
+        const tsAct = gph === 'g-trishot-active' || gph === 'g-trishot-recover';
+        if (tsWind || tsAct) {
+          const gfx0 = e.aiFromX ?? cx, gfy0 = e.aiFromY ?? cy;
+          const gtx0 = e.aiTargetX ?? cx, gty0 = e.aiTargetY ?? cy;
+          const gl0 = Math.hypot(gtx0 - gfx0, gty0 - gfy0) || 1;
+          const gux = (gtx0 - gfx0) / gl0, guy = (gty0 - gfy0) / gl0;
+          const cS = Math.cos(GIANT_TRISHOT_SPREAD_RAD), sS = Math.sin(GIANT_TRISHOT_SPREAD_RAD);
+          // 発射時刻(絶対): 左右=溜め明け / 中央=そこから三拍目のディレイ後。判定側と同じ式。
+          const fireSide = (e.aiStartedAt ?? gameTime) + GIANT_TRISHOT_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+          const fireCenter = fireSide + GIANT_TRISHOT_THIRD_DELAY_MS / ENEMY_ATTACK_SPEED_MULT;
+          const drawGun = (idx: number, texName: string, dirX: number, dirY: number, fireAt: number, artLen: number) => {
+            const dt = gameTime - fireAt;
+            if (dt < -GUN_FADE_IN_MS || dt > GUN_RECOIL_MS) return; // 出番の外
+            let alpha: number, out: number;
+            if (dt < 0) {
+              const u = 1 + dt / GUN_FADE_IN_MS;            // 0→1(シュッと出てくる)
+              alpha = u; out = 10 + (GUN_OUT_PX - 10) * u;
+            } else {
+              const v = dt / GUN_RECOIL_MS;                  // 0→1(反動で下がって消える)
+              alpha = 1 - v; out = GUN_OUT_PX - GUN_RECOIL_PX * v;
+            }
+            const sp = this.atkArtSprite(view, idx, texName);
+            if (!sp) return;
+            sp.anchor.set(1, 0.5);                           // 銃口(右端)を狙う向きの先端に置く
+            const sc = artLen / (sp.texture.width || 1);
+            sp.scale.set(sc, sc);
+            sp.rotation = Math.atan2(dirY, dirX);
+            sp.position.set(gfx0 + dirX * out, gfy0 + dirY * out);
+            sp.alpha = artFade * Math.max(0, Math.min(1, alpha));
+          };
+          drawGun(ATK_ART_GUN_L, 'fx/boss-gun-1', gux * cS - guy * sS, gux * sS + guy * cS, fireSide, 100);
+          drawGun(ATK_ART_GUN_R, 'fx/boss-gun-2', gux * cS + guy * sS, -gux * sS + guy * cS, fireSide, 120);
+          drawGun(ATK_ART_GUN_C, 'fx/boss-gun-3', gux, guy, fireCenter, 150);
+        }
+      }
       // (4) 伸びる触手(g-reach)。**カプセル判定に沿って回転・伸長**(台帳の指定)。溜めの進行に
       // 合わせて根元から先端へ伸び、溜め終わり(=判定が出る瞬間)にちょうど帯の全長へ届く。
       {
@@ -13917,6 +13971,23 @@ export class PixiScene {
         const curR = GIANT_NOVA_RADIUS_START + (GIANT_NOVA_RADIUS_END - GIANT_NOVA_RADIUS_START) * nt;
         o.ellipse(cx, cy, curR, curR).stroke({ width: GIANT_NOVA_BAND_THICKNESS * 2, color: 0xff2a2a, alpha: 0.5 });
         o.ellipse(cx, cy, curR, curR).stroke({ width: 2, color: 0xffe0e0, alpha: 0.8 });
+      } else if (gph === 'g-trishot-windup' || gph === 'g-trishot-active') {
+        // 三連射(stage-5固有技): 左右2枚のT3帯(同時)。**判定は旧・翼撃と同一**(社長「内容は変わらず」)。
+        // 三拍目(中央)は giantDelayedHits 経由で下の汎用ループが描く。
+        const tfx = e.aiFromX ?? cx, tfy = e.aiFromY ?? cy;
+        const ttx = e.aiTargetX ?? cx, tty = e.aiTargetY ?? cy;
+        const tdl = Math.hypot(ttx - tfx, tty - tfy) || 1;
+        const tux = (ttx - tfx) / tdl, tuy = (tty - tfy) / tdl;
+        const cosS = Math.cos(GIANT_TRISHOT_SPREAD_RAD), sinS = Math.sin(GIANT_TRISHOT_SPREAD_RAD);
+        const leftX = tux * cosS - tuy * sinS, leftY = tux * sinS + tuy * cosS;
+        const rightX = tux * cosS + tuy * sinS, rightY = -tux * sinS + tuy * cosS;
+        const tprog = gph === 'g-trishot-windup'
+          ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_TRISHOT_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
+          : 1;
+        const tFill = gph === 'g-trishot-active' ? 0.3 : (0.12 + 0.22 * tprog) + 0.08 * gPulse;
+        const tStroke = (0.32 + 0.4 * tprog) + 0.15 * gPulse;
+        drawGiantCapsuleZone(tfx, tfy, tfx + leftX * GIANT_TRISHOT_LENGTH, tfy + leftY * GIANT_TRISHOT_LENGTH, GIANT_TRISHOT_HALF_WIDTH, tFill, tStroke);
+        drawGiantCapsuleZone(tfx, tfy, tfx + rightX * GIANT_TRISHOT_LENGTH, tfy + rightY * GIANT_TRISHOT_LENGTH, GIANT_TRISHOT_HALF_WIDTH, tFill, tStroke);
       } else if (gph === 'g-wing-windup' || gph === 'g-wing-active') {
         // 翼撃(ステージ1の大技・v0.25.2863): 羽を頭上に広げて**素早く360度ぶん回す**。
         // ⇒ 危険を伝える絵は判定に揃える(CLAUDE.md)。判定は円1つなので**予告も円**にする。

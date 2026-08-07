@@ -442,6 +442,12 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/bite-jaw-lower', scaleMode: 'linear' as const }, // 噛みつき: 下顎(歯先が上端)
       { name: 'fx/claw-swipe', scaleMode: 'linear' as const },     // 爪の一振り(残像付き・爪先が右端)
       { name: 'fx/wing-swipe', scaleMode: 'linear' as const },     // 翼の薙ぎ(付け根が左寄り)
+      // 三連射(stage-5固有技・v0.25.2939社長支給)。3方向それぞれに対応した銃。銃口が右端。
+      // 撃つ向きへ**回転する**ので、偶像の拳(ドット版)と同じく linear を使う
+      // (nearest だと回転のたびに拾う画素が変わってチラつく)。
+      { name: 'fx/boss-gun-1', scaleMode: 'linear' as const },     // 左(短い銃)
+      { name: 'fx/boss-gun-2', scaleMode: 'linear' as const },     // 右(中くらい)
+      { name: 'fx/boss-gun-3', scaleMode: 'linear' as const },     // 中央=三拍目(長い銃)
       { name: 'fx/tentacle-reach', scaleMode: 'linear' as const }, // 伸びる触手(根元が左端・先端が右端)
       { name: 'fx/idol-fist', scaleMode: 'linear' as const },      // 偶像の拳(ナックルが下端=突く向き)。v0.25.2935ドット版・回転するのでlinear維持
       { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)

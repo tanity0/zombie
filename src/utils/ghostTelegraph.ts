@@ -102,6 +102,7 @@ put(LEDGER, [
   'g-bite-windup', 'g-bite-active', 'g-slam-windup', 'g-slam-active',
   'g-glide-windup', 'g-glide-active', 'g-quad-windup', 'g-quad-charge',
   'g-quad-breath-windup', 'g-quad-breath-active', 'g-wing-windup', 'g-wing-active',
+  'g-trishot-windup', 'g-trishot-active',
   'g-sweepbeam-windup', 'g-sweepbeam-active', 'g-talon-windup', 'g-boon-windup',
   'g-reach-windup', 'g-reach-active',
   // bossState 系(トール/天使/裏ボス/idol): 語尾 '-windup' を既存表が帯として拾う。
@@ -181,7 +182,7 @@ put(LEDGER, ['g-dive-windup'], {
 put(LEDGER, [
   'g-stomp-recover', 'g-sweep-recover', 'g-jump-recover', 'g-dash-recover', 'g-bolt-recover',
   'g-bite-recover', 'g-slam-recover', 'g-glide-recover', 'g-dive-recover', 'g-quad-recover',
-  'g-nova-recover', 'g-wing-recover', 'g-sweepbeam-recover', 'g-talon-recover', 'g-boon-recover',
+  'g-nova-recover', 'g-wing-recover', 'g-trishot-recover', 'g-sweepbeam-recover', 'g-talon-recover', 'g-boon-recover',
   'g-reach-recover', 'g-trijump-recover', 'g-nihil-recover',
   'bite-recover', 'bolt-recover', 'bone-recover', 'burst-recover', 'cage-recover', 'coil-recover',
   'consecrate-recover', 'dash-recover', 'downslash-recover', 'gaze-recover', 'harai-recover',

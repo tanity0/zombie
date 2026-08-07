@@ -1759,7 +1759,21 @@ export const GIANT_WING_WINDUP_MS = 1440;       // 実効1200ms・羽を頭上�
 export const GIANT_WING_ACTIVE_MS = 312;        // 実効260ms・素早くぶん回す
 export const GIANT_WING_RECOVER_MS = 1560;      // 実効1300ms・全技中で最大の反撃窓=大技の報酬
 export const GIANT_WING_CD_MS = 13200;          // 実効11.0s
-export const GIANT_WING_RADIUS = 380;           // 360度の当たる範囲(社長裁定=旧・叩きつけと同じ長さ)
+export const GIANT_WING_RADIUS = 380;
+
+// ★三連射(trishot)= stage-5 の固有技(v0.25.2939・社長支給素材)。
+// **判定と秒数は旧・翼撃(v0.25.2862以前)と同一**(社長「内容は変わらず」)。
+// 左右2枚の帯が同時 → 一拍おいて中央の三拍目=**横へよけた先を狩る**。変わったのは絵だけで、
+// 3方向それぞれに対応した銃が「シュッとフェードイン → バンと撃つ → 反動で後ろへ下がって
+// フェードアウト」を各自のタイミングで行う(描画は pixiScene・判定はここ)。
+export const GIANT_TRISHOT_WINDUP_MS = 1200;       // 実効1000ms
+export const GIANT_TRISHOT_ACTIVE_MS = 264;        // 実効220ms
+export const GIANT_TRISHOT_THIRD_DELAY_MS = 480;   // 実効400ms(固定)・実行から三拍目まで=回避狩り
+export const GIANT_TRISHOT_RECOVER_MS = 960;       // 実効800ms
+export const GIANT_TRISHOT_CD_MS = 10800;          // 実効9.0s
+export const GIANT_TRISHOT_LENGTH = 320;
+export const GIANT_TRISHOT_HALF_WIDTH = 50;
+export const GIANT_TRISHOT_SPREAD_RAD = Math.PI / 5; // 左右の帯の開き角(36°)           // 360度の当たる範囲(社長裁定=旧・叩きつけと同じ長さ)
 
 // --- stage-5: 掃射(sweepbeam・大技・トレース元=ダークイーター・ミディールのビーム薙ぎ) ---
 export const GIANT_SWEEPBEAM_WINDUP_MS = 1560;  // 実効1300ms・頭を上げて溜める
@@ -8853,6 +8867,14 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiPhase: 'g-nova-windup', aiPhaseUntil: atkUntil(GIANT_NOVA_WINDUP_MS),
                   aiFromX: ecx, aiFromY: ecy, aiStartedAt: gameTime,
                 };
+              case 'trishot':
+                // 3方向。正面方向を溜め開始でロック(左右2枚+三拍目の中央、全て溜め開始時の向きを共有)。
+                return {
+                  aiPhase: 'g-trishot-windup', aiPhaseUntil: atkUntil(GIANT_TRISHOT_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + lockDirX * GIANT_TRISHOT_LENGTH, aiTargetY: ecy + lockDirY * GIANT_TRISHOT_LENGTH,
+                  aiStartedAt: gameTime, hateTarget: aim.side,
+                };
               case 'wing':
                 // 360度なので**向きを持たない**(溜め開始時の自分の位置だけ固定する=novaと同じ扱い)。
                 // hateTarget は書かない=直前の値(最後に狙いを判断した側)を維持する。
@@ -9490,6 +9512,52 @@ export const useGameStore = create<GameState>((set, get) => ({
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
 
+            // ==== 三連射(trishot・ステージ5の固有技・v0.25.2939) ====
+            // 判定は旧・翼撃と同一: 左右2枚の帯を同時に出し、三拍目(中央)を一拍おいて出す。
+            case 'g-trishot-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                const tfx = enemy.aiFromX ?? ecx, tfy = enemy.aiFromY ?? ecy;
+                const ttx = enemy.aiTargetX ?? ecx, tty = enemy.aiTargetY ?? ecy;
+                const tdl = Math.hypot(ttx - tfx, tty - tfy) || 1;
+                const tux = (ttx - tfx) / tdl, tuy = (tty - tfy) / tdl;
+                const cosS = Math.cos(GIANT_TRISHOT_SPREAD_RAD), sinS = Math.sin(GIANT_TRISHOT_SPREAD_RAD);
+                const leftX = tux * cosS - tuy * sinS, leftY = tux * sinS + tuy * cosS;
+                const rightX = tux * cosS + tuy * sinS, rightY = -tux * sinS + tuy * cosS;
+                const leftTx = tfx + leftX * GIANT_TRISHOT_LENGTH, leftTy = tfy + leftY * GIANT_TRISHOT_LENGTH;
+                const rightTx = tfx + rightX * GIANT_TRISHOT_LENGTH, rightTy = tfy + rightY * GIANT_TRISHOT_LENGTH;
+                pumpkinBlasts.push({
+                  x: (tfx + leftTx) / 2, y: (tfy + leftTy) / 2, radius: GIANT_TRISHOT_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-trishot',
+                  capsule: { fx: tfx, fy: tfy, tx: leftTx, ty: leftTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
+                });
+                pumpkinBlasts.push({
+                  x: (tfx + rightTx) / 2, y: (tfy + rightTy) / 2, radius: GIANT_TRISHOT_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-trishot',
+                  capsule: { fx: tfx, fy: tfy, tx: rightTx, ty: rightTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
+                });
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-trishot-active', aiPhaseUntil: atkUntil(GIANT_TRISHOT_ACTIVE_MS),
+                  // 三拍目(中央=正面)は実行から400ms(固定)後=回避狩り。横がだめなら中央で逃げた先を取る。
+                  giantDelayedHits: [...(giantDelayedHits ?? []), {
+                    x: (tfx + ttx) / 2, y: (tfy + tty) / 2, radius: GIANT_TRISHOT_HALF_WIDTH, bornAt: gameTime, fireAt: atkUntil(GIANT_TRISHOT_THIRD_DELAY_MS),
+                    capsule: { fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
+                    moveKey: 'g-trishot',
+                  }],
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-trishot-active': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-trishot-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_TRISHOT_RECOVER_MS)) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-trishot-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGiantStageMove('trishot', GIANT_TRISHOT_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
             // ==== 翼撃(wing・ステージ1の大技・v0.25.2863) ====
             case 'g-wing-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
