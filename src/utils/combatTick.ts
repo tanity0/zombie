@@ -41,7 +41,7 @@ import {
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
   COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
-  KNOCKBACK_DURATION, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
+  KNOCKBACK_DURATION, KNOCKBACK_SPEED, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, STUN_DURATION_MS,
   GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS,
@@ -830,7 +830,7 @@ export const applyContactDamage = (
   // ここが接触ダメージの唯一の合流点(checkPlayerEnemyCollisionsの使用箇所はここだけ)なので、
   // 通常敵・ボスを問わず「接触ダメージを持つ全員」が1箇所で対象になる。
   const contactLunges: { id: string; ang: number }[] = [];
-  const bossContactParries: string[] = [];
+  const bossContactParries: { id: string; ux: number; uy: number }[] = [];
 
   playerEnemyCollisions.forEach(enemy => {
     if (wireDashingNow) return;
@@ -881,7 +881,14 @@ export const applyContactDamage = (
     // 連発防止: 被弾と同じi-frame作法(無敵中は成立しない+成立時に無敵を開く)=最短INVULN_MS間隔。
     // W7(溜め/硬直/突進中の体当てカウンター=フル報酬)には触れない(あちらはbossState側の経路)。
     if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !collPlayer.invulnerable && isHiddenBoss(enemy.type)) {
-      bossContactParries.push(enemy.id);
+      // v0.25.2954(社長指示「体当たりカウンターしたら少しノックバックしてから硬直にして」):
+      // 押す向き=プレイヤー→ボス(離れる方向)。ゼロ距離の退避は上向き。
+      const pdx = (enemy.x + enemy.width / 2) - (collPlayer.x + collPlayer.width / 2);
+      const pdy = (enemy.y + enemy.height / 2) - (collPlayer.y + collPlayer.height / 2);
+      const plen = Math.hypot(pdx, pdy);
+      bossContactParries.push(plen > 0.001
+        ? { id: enemy.id, ux: pdx / plen, uy: pdy / plen }
+        : { id: enemy.id, ux: 0, uy: -1 });
       return;
     }
     const damageWasApplied = !collPlayer.invulnerable;
@@ -921,10 +928,21 @@ export const applyContactDamage = (
     const parryNow = Date.now();
     useGameStore.setState(st => ({
       enemies: st.enemies.map(e => {
-        if (!bossContactParries.includes(e.id)) return e;
+        const parry = bossContactParries.find(c => c.id === e.id);
+        if (!parry) return e;
         const bump = applyBossPostureDamage(e, 'heavy', gameTime);
         // 体幹削り+拘束900ms(v0.25.2949)。vx/vyも止める(トラップのroot付与と同じ作法)。
-        return { ...e, ...(bump?.patch ?? {}), rootUntil: gameTime + BOSS_CONTACT_PARRY_ROOT_MS, vx: 0, vy: 0 };
+        // v0.25.2954: 拘束の前に**少しノックバック**(社長指示)。近接カウンターの押し(KNOCKBACK_SPEED
+        // 133px/s・280ms減衰)と同じ量。isHiddenBoss はupdateEnemiesのノックバック適用が
+        // knockbackShoveUntil(押し道具ガード)を要求するので同期限で開ける。位置スライドは
+        // updateEnemies側・拘束(rootUntil)は3コントローラ側=同時に効いて「押されてから固まる」になる。
+        return {
+          ...e, ...(bump?.patch ?? {}),
+          rootUntil: gameTime + BOSS_CONTACT_PARRY_ROOT_MS, vx: 0, vy: 0,
+          knockbackVx: parry.ux * KNOCKBACK_SPEED, knockbackVy: parry.uy * KNOCKBACK_SPEED,
+          knockbackUntil: parryNow + KNOCKBACK_DURATION,
+          knockbackShoveUntil: parryNow + KNOCKBACK_DURATION,
+        };
       }),
       player: { ...st.player, invulnerable: true, invulnerableTime: parryNow },
     }));
