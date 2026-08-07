@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2943',
+    items: [
+      'プラントの絵を元の花のアートに戻しました(先日の食人植物への差し替えを撤回)。',
+    ],
+  },
+  {
     version: '0.25.2942',
     items: [
       '裏ボス「トール」の絵を、新しいドット絵に変えました。',
