@@ -12,9 +12,10 @@ import { formatClearTime, formatPerMin, formatPerfScore, formatRatePercent, tren
 import type { GhostAllySnapshot } from '../utils/playerBuild';
 import { bossIconSrc } from '../utils/bossIcon';
 import { enemyDeathLabel, subWeaponDisplayName } from '../store/gameStore';
+import { bossCutinName } from '../data/bossCutin';
 import { weaponDisplayName } from '../utils/weaponUtils';
 import { equipmentById } from '../data/equipment';
-import { CHARACTER_CLASSES, SKILLS, getStage } from '../data/campaign';
+import { CHARACTER_CLASSES, SKILLS } from '../data/campaign';
 import { fixedGuardianLeadersForBoss } from '../data/fixedGuardians';
 import type { EquipSlot, SkillKey, SubWeaponKey } from '../types/game';
 import { fixedGhostStatKey, type FixedGhostStat } from '../utils/ghostOnline';
@@ -30,7 +31,8 @@ const TREND_STYLE: Record<ClearTrend, { cls: string; mark: string }> = {
 /** カードの見出し(ボスの呼び名)。giantbatはステージ別スロットなので場所名で見分ける。 */
 const bossCardLabel = (card: Pick<BossClearCard, 'bossType' | 'stageId'>): string => {
   if (card.bossType === 'giantbat') {
-    return getStage(card.stageId ?? '')?.locationTitle ?? 'ストーリーボス';
+    // 監査指摘5: 城ボスの呼び名はカットイン/ボスモードと同じ台帳を第一候補に。台帳に無い枠は「?」。
+    return bossCutinName('giantbat', card.stageId) ?? '?';
   }
   return enemyDeathLabel(card.bossType);
 };

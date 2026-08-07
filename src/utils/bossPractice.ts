@@ -6,6 +6,7 @@
 // ★このモジュールが持つのは**台帳と判定だけ**。UIは components/BossRush.tsx、
 //   遭遇の記録は utils/bossEncounter.ts。ボスの挙動・HP・技には一切触らない。
 import type { EnemyType } from '../types/game';
+import { bossCutinName } from '../data/bossCutin';
 import { GHOST_DOSSIER_SLOTS, type GhostDossierSlot } from './ghostDossier';
 import { stageIdForGateBoss } from '../config/gateBoss';
 import { getStage, STAGES } from '../data/campaign';
@@ -130,9 +131,12 @@ const toPracticeSlot = (slot: GhostDossierSlot): PracticeSlot => {
   if (slot.bossType === 'giantbat') {
     const stageId = slot.stageId ?? 'stage-1';
     const { param: p, reachable } = castleSortie(stageId);
+    // 表示名はカットインと同じ台帳(src/data/bossCutin.ts)を引く。台帳に無いステージの城ボス=
+    // 実装してないボスなので「?」(社長指示2026-08-07「実装してないボスは、ボスモードでもどこでも?に
+    // しといて」)。該当: stage-2(城ボス不在)/ stage-ex1(未確認変異体=名を出さない)。
     return {
       slotKey: slot.slotKey, encounterSlotKey: slot.slotKey, bossType: 'giantbat', stageId, param: p, reachable,
-      ...(stageId === 'stage-7' ? { label: 'グレン' } : {}),
+      label: bossCutinName('giantbat', stageId) ?? '?',
     };
   }
   if (slot.bossType === 'idol') {

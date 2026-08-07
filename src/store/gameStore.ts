@@ -137,6 +137,7 @@ import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from
 import { setFlowersDisabled } from '../world/forestDecor';
 import { bossTestGhostSkill, isBossMakerRun } from '../utils/bossTest';
 import { isPracticeRun, practiceBossType } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c
+import { BOSS_CUTIN_MS, shouldIgnoreAttention, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
@@ -3431,7 +3432,11 @@ interface GameState {
   hitstopUntil: number;
   // アテンション・シネマティック(レスキュー/ジャイアント出現): 現地へカメラパン→ホールド→戻る。
   // 駆動は実時間(startReal)。fromCam=開始時のカメラ(=戻り先)。null=非実行。
-  attention: { x: number; y: number; startReal: number; fromCamX: number; fromCamY: number } | null;
+  attention: {
+    x: number; y: number; startReal: number; fromCamX: number; fromCamY: number;
+    /** §6.36 ボス出現カットイン。cutin有り=hold後にcutinMsだけカメラ静止のまま名前+絵をDOMで出す。 */
+    cutin?: AttentionCutin; cutinMs?: number;
+  } | null;
   // 練習ラン: 対象ボス撃破の実時刻(Date.now)。死亡アテンションを見せ終えてから useGameLoop が
   // gameWon を立てる(v0.25.2953)。null=保留なし。
   practiceWinPendingSince: number | null;
@@ -3871,7 +3876,7 @@ interface GameState {
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
-  triggerAttention: (x: number, y: number) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)
+  triggerAttention: (x: number, y: number, cutin?: AttentionCutin) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き
   clearAttention: () => void;
   triggerTimeSlow: (scale: number, durationMs: number, holdMs?: number) => void; // holdMs=最も遅い倍率を保持する時間(既定0)
   triggerHitstop: (durationMs: number) => void; // 全停止の瞬間ストップ(カウンター/近接フィニッシュの衝撃)
@@ -13616,11 +13621,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // 現地へカメラアテンション(時間停止)。fromCam=開始時カメラ(戻り先)。hitstop で全体凍結し、カメラだけ loop が動かす。
-  triggerAttention: (x, y) => {
+  // §6.36: cutin付きは hold の後に cutinMs(1100)だけカメラ静止のまま延長し、DOM(BossCutin.tsx)が
+  // 名前+絵を出す。first-wins: attention生存中に新旧どちらかがcutin持ちなら後着を無視(純関数で判定)。
+  // 素のattention同士は従来どおり上書き=挙動不変。
+  triggerAttention: (x, y, cutin) => {
+    const prev = get().attention;
+    if (shouldIgnoreAttention(prev !== null, !!prev?.cutin, !!cutin)) return;
     const cam = get().camera;
+    const cutinMs = cutin ? BOSS_CUTIN_MS : 0;
     set({
-      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y },
-      hitstopUntil: Date.now() + ATTENTION_TOTAL_MS,
+      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, ...(cutin ? { cutin, cutinMs } : {}) },
+      hitstopUntil: Date.now() + ATTENTION_TOTAL_MS + cutinMs,
     });
   },
   clearAttention: () => set({ attention: null }),

@@ -78,6 +78,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceStartHealthFraction } from '../utils/bossPractice';
+import { bossCutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
 import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
@@ -1446,6 +1447,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
   const castleAttnRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
+  // §6.36(監査指摘1): カットイン付きattentionの保留箱。素のattention(ハンター/救援/死神等)が
+  // 生きている間にボスが出ると、first-winsで後着のカットインが丸ごと消える(=「毎回出す」違反+
+  // 出現アテンション自体の退行)。attention生存中は発火せずここへ置き、空いた最初のフレームで撃つ。
+  const pendingCutinAttnRef = useRef<{ x: number; y: number; cutin: NonNullable<ReturnType<typeof bossCutinPayload>> } | null>(null);
   // the ONE ストーリーボス(M7/EX)の進行: 出現済みか / 終幕(勝利化)予定時刻(0=未予約)。
   const storyBossSpawnedRef = useRef(false);
   const storyBossWinAtRef = useRef(0);
@@ -1834,6 +1839,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // 現地へ高速パン→2-3秒ホールド→高速で戻る。その間は hitstop でシム/アニメ停止(時間停止)。
       // ここ(hitstop早期returnの前)でカメラだけ毎フレーム動かす。終了で解除し通常進行へ。
       {
+        // §6.36(監査指摘1): 保留中のカットイン付きattentionを、attentionが空いた最初のフレームで撃つ。
+        if (pendingCutinAttnRef.current && !useGameStore.getState().attention) {
+          const p = pendingCutinAttnRef.current;
+          pendingCutinAttnRef.current = null;
+          useGameStore.getState().triggerAttention(p.x, p.y, p.cutin);
+        }
         const att = useGameStore.getState().attention;
         // v0.25.2953(社長指示「ボスモードもボス消えるまでは終わらないで」): 練習ランの勝利は
         // **死亡アテンション(ストップ+崩壊)を見せ終えてから**確定する。attention が無い場合でも
@@ -1846,7 +1857,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         if (att) {
           const el = nowMs - att.startReal;
-          if (el >= ATTENTION_TOTAL_MS) {
+          // §6.36: cutin付きattentionは hold と out の間に cutinMs(カメラは注目点に静止のまま)を挟む。
+          // 素のattention(cutinMs=0)は式が従来と完全一致=1msも変わらない。
+          const cutinMs = att.cutinMs ?? 0;
+          if (el >= ATTENTION_TOTAL_MS + cutinMs) {
             useGameStore.getState().clearAttention();
           } else {
             const gb = useGameStore.getState().gameBounds;
@@ -1858,10 +1872,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const t = smooth(el / ATTENTION_IN_MS);
               cx = att.fromCamX + (focusX - att.fromCamX) * t;
               cy = att.fromCamY + (focusY - att.fromCamY) * t;
-            } else if (el < ATTENTION_IN_MS + ATTENTION_HOLD_MS) {
+            } else if (el < ATTENTION_IN_MS + ATTENTION_HOLD_MS + cutinMs) {
               cx = focusX; cy = focusY;
             } else {
-              const t = smooth((el - ATTENTION_IN_MS - ATTENTION_HOLD_MS) / ATTENTION_OUT_MS);
+              const t = smooth((el - ATTENTION_IN_MS - ATTENTION_HOLD_MS - cutinMs) / ATTENTION_OUT_MS);
               cx = focusX + (att.fromCamX - focusX) * t;
               cy = focusY + (att.fromCamY - focusY) * t;
             }
@@ -2473,7 +2487,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (castleAttnRef.current.at > 0 && newGameTime >= castleAttnRef.current.at && !useGameStore.getState().attention) {
           const { x, y } = castleAttnRef.current;
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
-          useGameStore.getState().triggerAttention(x, y);
+          // §6.36: 城ボス出現カットイン。名前はステージ別台帳(bossCutin.ts)。台帳に無いステージ
+          // (=実装してないボス)は undefined でカットイン無し=従来のattentionのみ。
+          useGameStore.getState().triggerAttention(x, y, bossCutinPayload('giantbat', getSelectedStageId()));
           playSfx('boss-appear');
         }
 
@@ -2546,7 +2562,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnRing(scx, scy, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
             useGameStore.getState().spawnGlow(scx, scy, GLOW_R_XXL, 'rgba(239,68,68,', 900);
             spawnBurst(scx, scy + 20, '#7f1d1d', 28);
-            useGameStore.getState().triggerAttention(scx, scy);
+            // §6.36: グレン(stage-7)は出現カットイン付き。EX(stage-ex1)は「未確認変異体」=名を
+            // 出さない方針(統合正本10.3)なので台帳に無い=カットイン無し(従来のattentionのみ)。
+            // 監査指摘1: attention生存中は保留箱へ(捨てない=「毎回出す」)。
+            {
+              const glenCutin = bossCutinPayload('giantbat', storyStageId);
+              if (glenCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: scx, y: scy, cutin: glenCutin };
+              else useGameStore.getState().triggerAttention(scx, scy, glenCutin);
+            }
             playSfx('boss-appear');
             if (getSelectedStageId() !== 'stage-7') {
               // EX: ボス表示は「未確認変異体」のみ(PHILL/フィルの名は出さない=統合正本10.3・
@@ -2740,6 +2763,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             boss.bossNextActionAt = newGameTime + 2000;
             boss.homeX = g2pcx; boss.homeY = g2pcy; // 周回の中心=ゲート中心
             addEnemy(boss);
+            // §6.36: 天使ゲート2の出現カットイン(このattention自体が新設=約3.7秒の凍結演出が増える。
+            // 社長報告に明記済み・不要なら外せる)。監査指摘1: attention生存中は保留箱へ。
+            {
+              const g2Cutin = bossCutinPayload(gate2BossType);
+              if (g2Cutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: bx, y: by, cutin: g2Cutin };
+              else useGameStore.getState().triggerAttention(bx, by, g2Cutin);
+            }
             activeGateRef.current = 2;
             useGameStore.setState({ eventBannerText: '深層への扉が閉ざされた', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             playSfx('event-start');
@@ -4332,6 +4362,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             gboss.bossNextActionAt = newGameTime + 2000;
             gboss.homeX = gcx; gboss.homeY = gcy; // 周回の中心=ゲート中心
             addEnemy(gboss);
+            // §6.36 監査指摘7: 練習/デバッグの強制ゲートボスも実ゲート2と同じ出現カットイン(体験を揃える)。
+            useGameStore.getState().triggerAttention(gbx, gby, bossCutinPayload(gbType));
             activeGateRef.current = 2; // 実ゲート2相当(エリア判定OFF等)。テスト用途。
           }
         }
@@ -4398,7 +4430,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               addEnemy(e);
               bs.spawned = true; bs.bossId = e.id; bs.retreating = false; bs.disengageSince = undefined;
               bs.homeX = e.x; bs.homeY = e.y; bs.lastX = e.x; bs.lastY = e.y; bs.w = e.width; bs.h = e.height;
-              useGameStore.getState().triggerAttention(cx, cy);
+              useGameStore.getState().triggerAttention(cx, cy, bossCutinPayload(e.type)); // §6.36 出現カットイン付き
               playSfx('boss-appear'); // 裏ボス出現アテンションSE(社長提供)
               useGameStore.setState({ eventBannerText: '危険!直ちに避難を', eventBannerUntil: newGameTime + 3000 });
               useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
@@ -4413,6 +4445,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 旧判定はズーム前の固定矩形だったため、0.58まで引いた時に「まだ見えているのに画面外」になっていた。
             const bossViewZoom = bossDistanceZoomTarget(
               boss.type, aabbGapDistance(player, boss), boss.isStoryBoss === true,
+              { dxCenter: bcx - (player.x + player.width / 2), dyCenter: bcy - (player.y + player.height / 2), viewport: gb },
             );
             const onScreen = isPointInZoomedViewport(bcx, bcy, cam, gb, bossViewZoom, BOSS_SCREEN_MARGIN);
             const inDeep = FORCE_HIDDEN_BOSS || practiceForces('bossnow') || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
@@ -5671,7 +5704,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // コントローラが遠くの休眠個体だけを拾って**近くの1体が誰にも動かされない**(pickActiveIdolの注記)。
             useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.type !== 'idol') }));
             addEnemy(idolE);
-            useGameStore.getState().triggerAttention(ix, iy);
+            useGameStore.getState().triggerAttention(ix, iy, bossCutinPayload('idol')); // §6.36 監査指摘7: 練習出撃も実戦と同じカットイン
           }
           // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋を立てて相手を1体だけ出す。休眠は使わない(即戦闘)。
           if (BOSS_MAKER && !bossMakerReadyRef.current) {
@@ -5718,6 +5751,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     ? { ...e, dormant: false, bossNextActionAt: newGameTime + IDOL_ACTION_MIN_MS }
                     : e),
                 }));
+                // §6.36: idol実戦出現(起床)カットイン(このattention自体が新設・社長報告に明記済み)。
+                // 被弾起床(idolTick側)はカットイン無し=起床演出は「見つけた」側だけ(★設計書に明記・裁定待ち)。
+                // 監査指摘1: attention生存中は保留箱へ。
+                {
+                  const idolCutin = bossCutinPayload('idol');
+                  if (idolCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: icx, y: icy, cutin: idolCutin };
+                  else useGameStore.getState().triggerAttention(icx, icy, idolCutin);
+                }
               }
             } else {
               // 監査レポート§2(バッチ3・v0.25.2613): 状態機械は src/utils/idolTick.ts の純関数へ移設した

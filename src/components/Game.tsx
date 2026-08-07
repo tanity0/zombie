@@ -18,6 +18,7 @@ import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
 import StoryReturnPrompt from './StoryReturnPrompt';
 import TutorialPopup from './TutorialPopup';
+import BossCutin from './BossCutin';
 import ShopMenu from './ShopMenu';
 import IntroDialogue from './IntroDialogue';
 import MobileControls from './MobileControls';
@@ -252,6 +253,9 @@ const Game: React.FC<GameProps> = ({
       )}
       {isTouch && !makerHideHud && <MobileControls />}
       
+      {/* §6.36 ボス出現カットイン(HUDより最前面・cutin窓の1.1秒だけ) */}
+      <BossCutin />
+
       {/* チュートリアルの操作説明ポップアップ(表示中はisPaused=trueだがPauseMenuは出さない=ポップアップ優先) */}
       <TutorialPopup />
       {isPaused && !tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible && (

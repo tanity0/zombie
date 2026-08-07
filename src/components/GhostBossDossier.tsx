@@ -1,9 +1,10 @@
 import React from 'react';
 import { Heart, Users, Clock3, Activity, ChevronRight, Sparkles } from 'lucide-react';
-import { CHARACTER_CLASSES, SKILLS, getStage } from '../data/campaign';
+import { CHARACTER_CLASSES, SKILLS } from '../data/campaign';
 import { equipmentById } from '../data/equipment';
 import { fixedGuardianLeadersForBoss } from '../data/fixedGuardians';
 import { enemyDeathLabel, subWeaponDisplayName } from '../store/gameStore';
+import { bossCutinName } from '../data/bossCutin';
 import type { BossClearCard } from '../utils/ghostAlbum';
 import { formatClearTime, formatPerMin, formatPerfScore, formatRatePercent } from '../utils/ghostAlbum';
 import {
@@ -22,8 +23,10 @@ const CATEGORY_ACCENT: Record<GhostDossierCategory, string> = {
   hidden: 'rgba(216, 180, 254, 0.85)',
 };
 
+// 城ボスの呼び名はカットイン/ボスモードと同じ台帳(bossCutin.ts)を第一候補に(監査指摘5: 名前の正本は
+// 1箇所)。台帳に無い枠=実装してないボスは「?」(社長指示「ボスモードでもどこでも?にしといて」)。
 const bossLabel = (item: GhostDossierSlot): string => item.bossType === 'giantbat'
-  ? (getStage(item.stageId ?? '')?.locationTitle ?? 'ストーリーボス')
+  ? (bossCutinName('giantbat', item.stageId) ?? '?')
   : enemyDeathLabel(item.bossType);
 
 const BuildTags: React.FC<{ label: string; values: string[]; accent?: boolean }> = ({ label, values, accent }) => (
