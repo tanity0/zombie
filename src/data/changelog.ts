@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2976',
+    items: [
+      'ゲーム内容の変更はありません(ミーミルの魔弾素材を取り込み。表示は次のバッチで入ります)。',
+    ],
+  },
+  {
     version: '0.25.2975',
     items: [
       'スリィエルの薙ぎ(sweep)実行中、武器である環が振り抜かれる演出を追加。',
