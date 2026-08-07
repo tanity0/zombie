@@ -9,6 +9,14 @@ import type { Enemy } from '../types/game';
 import { applyBossPostureDamage } from './bossPosture';
 import { telegraphProgress01 } from './bossTelegraph';
 
+/**
+ * §6.33のキルスイッチ(?mimirtrack=0)の唯一の出どころ。useGameLoop/pixiScene/中断判定が全員これを見る
+ * (監査指摘1: 中断だけゲート漏れで「光っていないのに中断が起きる」半端状態になっていた)。
+ * headless(テスト/ボット)では window が無い=既定ON。
+ */
+export const mimirTrackEnabled = (): boolean =>
+  typeof window === 'undefined' || new URLSearchParams(window.location.search).get('mimirtrack') !== '0';
+
 /** レーザー溜め時間(ms)。useGameLoop.ts の状態機械もこの値を使う(単位は実効ms=壁時計系)。 */
 export const MIMIR_LASER_WINDUP_MS = 3000;
 /** 照準の最高速(px/s)。= PLAYER_WALK_PX_PER_SEC(104.4)と同速(社長改案)。一致はテストで検査。 */
@@ -89,6 +97,7 @@ export const mimirLaserBreakOnMeleeHit = (
   enemy: Enemy,
   gameTime: number,
 ): { patch: Partial<Enemy>; postureTriggered: boolean } | null => {
+  if (!mimirTrackEnabled()) return null; // ?mimirtrack=0: 弱点窓ごと無効=v0.25.2935へ完全復帰
   if (!canInterruptMimirLaser(enemy.type, enemy.bossState, gameTime, enemy.bossStateUntil)) return null;
   const posture = applyBossPostureDamage(enemy, 'counter', gameTime);
   return {

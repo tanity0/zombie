@@ -106,6 +106,32 @@ describe('mimirLaserTrack: ゴール検証シミュレーション(§6.33-3 (i)�
   });
 });
 
+describe('mimirLaserTrack: ゾーンごとの答えの実測(§6.33-1-2)', () => {
+  it('密着(120px)では走っても線外に出られない=密着の答えは「中断」(意図の固定)', () => {
+    // 至近距離のビームは幾何的に走って抜けられない。§6.32の距離帯役割どおり
+    // 「密着=弱点窓で殴って止める(答え3)」が主答えであることをここで固定する。
+    const near = (t: number) => ({ x: 120, y: WALK * t });
+    expect(fireDistance(near)).toBeLessThan(ESCAPE_PX);
+  });
+});
+
+// 監査指摘9(v0.25.2938): 「プレイヤーの近接3経路(ナイフ/刀/鞭)すべてに中断フックが対で付いている」
+// をソース走査で機械化(bossFullStunCoverage.test.ts と同じ流儀=?raw)。4本目の近接経路が増えた時に
+// 無言で漏れるのを防ぐ。プレイヤー直接の melee 体幹サイト数が増えたらこの期待値も見直すこと。
+const SOURCES = import.meta.glob<string>(
+  ['../store/gameStore.ts'],
+  { query: '?raw', import: 'default', eager: true },
+);
+describe('mimirLaserTrack: 近接経路の網羅(ソース走査)', () => {
+  it('gameStore の中断フックは3箇所(ナイフ/刀/鞭)で、体幹パッチ合成の作法で呼ばれている', () => {
+    const key = Object.keys(SOURCES).find(k => k.endsWith('gameStore.ts'));
+    expect(key).toBeTruthy();
+    const src = SOURCES[key!];
+    const hooks = src.match(/mimirLaserBreakOnMeleeHit\(\{ \.\.\.enemy, \.\.\.\(bossBump\?\.patch \?\? \{\}\) \}, gameTime\)/g) ?? [];
+    expect(hooks.length).toBe(3);
+  });
+});
+
 describe('mimirLaserTrack: 中断(弱点窓)', () => {
   const mkMimir = (overrides: Partial<Enemy> = {}): Enemy => ({
     id: 'm1', type: 'mimir', x: 0, y: 0, width: 60, height: 60, health: 500, maxHealth: 500,

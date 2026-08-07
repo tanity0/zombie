@@ -134,6 +134,7 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
   mimir: {
     'bite-windup': 'mimir-bite', 'bite-recover': 'mimir-bite',
     'laser-windup': 'mimir-laser', 'laser-fire': 'mimir-laser', 'laser-recover': 'mimir-laser',
+    'laser-broken': 'mimir-laser', // §6.33: 中断硬直もレーザーの一フェーズ(掟: 全フェーズを同じキーへ)
     'dash-windup': 'mimir-dash', dash: 'mimir-dash', 'dash-recover': 'mimir-dash',
   },
   jormungand: {

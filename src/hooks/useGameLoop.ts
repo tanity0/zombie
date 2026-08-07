@@ -189,7 +189,7 @@ import {
 } from '../utils/mimirScript';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): 追尾予告レーザーの純関数群+定数の正本。
 import {
-  MIMIR_LASER_WINDUP_MS, mimirLaserPhase, stepLaserAim,
+  MIMIR_LASER_WINDUP_MS, mimirLaserPhase, stepLaserAim, mimirTrackEnabled,
 } from '../utils/mimirLaserTrack';
 import {
   jormungandPhaseForHealth, pickJormungandMove, jormRadialSpinAngle, type JormungandMove,
@@ -826,8 +826,9 @@ const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボス�
 // `?bosscounter=0` で統一前(裏ボス3体はカウンター不可)へ完全フォールバックできる。
 const BOSS_COUNTER_ENABLED = evParam('bosscounter') !== '0';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): 追尾予告レーザー(ミーミル試験導入)。`?mimirtrack=0` で
-// v0.25.2935 の旧挙動(溜め開始で方向ロック・塗りなし・弱点なし・発射中lerp追尾)へ完全復帰。
-const MIMIR_TRACK_ENABLED = evParam('mimirtrack') !== '0';
+// v0.25.2935 の旧挙動(溜め開始で方向ロック・塗りなし・弱点なし・中断なし・発射中lerp追尾)へ完全復帰。
+// フラグの正本は mimirLaserTrack.ts(中断判定・描画と同じ1本を見る=監査指摘1の是正)。
+const MIMIR_TRACK_ENABLED = mimirTrackEnabled();
 // PACING_PUZZLE.md §5.21-追補8: テスト用の統一起動フラグ。ラン開始直後、そのステージのゲート2ボス型を
 // プレイヤー近くへ即force-spawnし、ゲート2と同じ初期化(bossState=chase/home=生成中心/fromEvent)で
 // すぐ戦えるようにする(拘束サークルは省略=テスト用途)。既定OFF=通常挙動不変。将来ステージが増えたら
@@ -4799,7 +4800,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // §6.33-2-4: 中断CD中のレーザーは連携追撃(radial→laser)でも撃てない=不発でchaseへ。
                 const laserOnCd = next === 'laser' && boss.type === 'mimir'
                   && newGameTime < (boss.mimirLaserReadyAt ?? 0);
-                if (laserOnCd) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                if (laserOnCd) { patch.bossScriptQueue = []; patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); } // 残りの連携ごと潰す(監査指摘11)
                 else if (next && boss.type === 'mimir') beginMimirMove(next as MimirMove);
                 else if (next && boss.type === 'jormungand') beginJormungandMove(next as JormungandMove);
                 else if (next && boss.type === 'skadi') beginSkadiMove(next as SkadiMove);
@@ -4850,7 +4851,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const HIDDEN_BOSS_COUNTER_RECOVERS = [
                 'burst-recover', 'radial-recover', 'dash-recover', 'laser-recover',
                 'skadi-ice-recover', 'skadi-blade-recover', 'bite-recover', 'coil-recover', 'cage-recover',
-                'laser-broken', // §6.33: 中断硬直も硬直の一種=W7どおり体当てカウンター可(成立時は従来どおりchaseへ)
+                // §6.33: 'laser-broken' は載せない(監査指摘6)。中断の報酬(カウンター成立扱い)は既に
+                // 支払い済みで、ここに載せると1本のレーザーからカウンター報酬が2回出る+1700msの
+                // パニッシュ窓が体当てで短縮される。laser-broken中は普通に殴る(それが報酬)。
               ];
               const hiddenBossCounterableNow = BOSS_COUNTER_ENABLED && boss.type !== 'thor'
                 && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, HIDDEN_BOSS_COUNTER_RECOVERS) || st === 'dash');
@@ -5003,7 +5006,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       patch.bossScriptQueue = planBossChoreography('skadi', move, phase).slice(1);
                       beginSkadiMove(move);
                     }
-                  } else if (boss.type === 'mimir' && Math.random() < MIMIR_LASER_CHANCE) {
+                  } else if (boss.type === 'mimir' && Math.random() < MIMIR_LASER_CHANCE
+                      && newGameTime >= (boss.mimirLaserReadyAt ?? 0)) { // §6.33-2-4: 中断CDはこの旧抽選経路にも効かせる(監査指摘10)
                     // 旧挙動(?mimirscript=0)。
                     const aim = lockAttackAim();
                     patch.bossState = 'laser-windup';

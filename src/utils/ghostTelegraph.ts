@@ -188,7 +188,7 @@ put(LEDGER, [
   'consecrate-recover', 'dash-recover', 'downslash-recover', 'gaze-recover', 'harai-recover',
   'idol-aim-recover', 'idol-fan-recover', 'idol-punch-recover', 'idol-roll-recover',
   'idol-snipe-recover', 'idol-orb-recover',
-  'issen-recover', 'jump-recover', 'lantern-recover', 'laser-recover', 'mdash-recover',
+  'issen-recover', 'jump-recover', 'lantern-recover', 'laser-recover', 'laser-broken', 'mdash-recover',
   'radial-recover', 'ring-recover', 'ring-spin-recover', 'skadi-blade-recover', 'skadi-ice-recover',
   'spear-recover', 'spike-recover', 'sweep-recover', 'tate-recover', 'thrust-recover',
   'tsuki-recover', 'volley-recover', 'warp-recover',
