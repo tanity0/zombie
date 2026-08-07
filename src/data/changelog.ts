@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2950',
+    items: [
+      'ゲーム内容の変更はありません(ボス出現カットイン演出の設計書を追加)。',
+    ],
+  },
+  {
     version: '0.25.2949',
     items: [
       'ボスの体当たりを受け流した時、ボスが0.9秒動きを止めるようになりました(張り付かれても離脱できます)。',
