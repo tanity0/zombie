@@ -304,6 +304,7 @@ import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   isPointInZoomedViewport, ZOOM_MIN_ABS,
   BOSS_DISTANCE_ZOOM_TAU, BOSS_DISTANCE_ZOOM_RETURN_TAU, zoomCameraDownFrac, bossCameraLeadY,
+  bossOffscreenExtraMarginX, bossOffscreenExtraMarginY,
 } from '../utils/cameraZoom';
 import {
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss,
@@ -4459,7 +4460,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               boss.type, aabbGapDistance(player, boss), boss.isStoryBoss === true,
               { dxCenter: bcx - (player.x + player.width / 2), dyCenter: bcy - (player.y + player.height / 2), viewport: gb },
             );
-            const onScreen = isPointInZoomedViewport(bcx, bcy, cam, gb, bossViewZoom, BOSS_SCREEN_MARGIN);
+            // v0.25.3005(社長指摘「左右だけズーム射程と撤退ラインが短くない?」): 画面外判定は
+            // 長方形のビューポートだと縦長画面で左右が半分以下の距離で発火する。短辺側に不足分を
+            // 足した**正方形(長辺基準)の判定窓**にし、上下左右で同じワールド距離まで粘る
+            // (交戦の円/リーシュの円と整合)。判定式そのものは不変(掟)・横長画面では従来どおり。
+            const onScreen = isPointInZoomedViewport(
+              bcx, bcy, cam, gb, bossViewZoom,
+              BOSS_SCREEN_MARGIN + bossOffscreenExtraMarginY(gb),
+              BOSS_SCREEN_MARGIN + bossOffscreenExtraMarginX(gb),
+            );
             const inDeep = FORCE_HIDDEN_BOSS || practiceForces('bossnow') || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
             // v0.25.2971(社長裁定・案A/テストチャット診断): 技の実行中も**離脱の時計は進める**。
             // v0.25.2962の「技中は時計停止」はボスが時間の6〜8割を技で過ごすため時計が実質永久停止し、

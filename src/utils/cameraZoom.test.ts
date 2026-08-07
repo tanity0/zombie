@@ -227,3 +227,27 @@ describe('bossCameraLeadY — ボス方向への縦カメラ先読み(北=目標
       bossCameraLeadY(-100000, H, ZOOM_MIN_ABS), 6);
   });
 });
+
+// v0.25.3005: ボス画面外判定の正方形化(社長指摘「左右だけズーム射程と撤退ラインが短くない?」)。
+import { bossOffscreenExtraMarginX, bossOffscreenExtraMarginY } from './cameraZoom';
+
+describe('bossOffscreenExtraMargin — 画面外判定の正方形化(短辺側に不足分を足す)', () => {
+  it('縦長画面: 左右に(高さ-幅)/2を足すと判定窓が正方形になる', () => {
+    const vp = { width: 430, height: 930 };
+    expect(bossOffscreenExtraMarginX(vp)).toBe(250);
+    expect(bossOffscreenExtraMarginY(vp)).toBe(0);
+    const cam = { x: 0, y: 0 };
+    const b = zoomedViewportBounds(cam, vp, 1, 0 + bossOffscreenExtraMarginY(vp), 0 + bossOffscreenExtraMarginX(vp));
+    expect(b.right - b.left).toBeCloseTo(b.bottom - b.top, 6); // 正方形
+  });
+  it('横長画面: 上下に(幅-高さ)/2を足す(左右は0)', () => {
+    const vp = { width: 930, height: 430 };
+    expect(bossOffscreenExtraMarginX(vp)).toBe(0);
+    expect(bossOffscreenExtraMarginY(vp)).toBe(250);
+  });
+  it('ズーム引きでも正方形が保たれる(余白は1/zで換算される)', () => {
+    const vp = { width: 400, height: 800 };
+    const b = zoomedViewportBounds({ x: 0, y: 0 }, vp, 0.5, bossOffscreenExtraMarginY(vp), bossOffscreenExtraMarginX(vp));
+    expect(b.right - b.left).toBeCloseTo(b.bottom - b.top, 6);
+  });
+});

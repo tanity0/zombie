@@ -146,33 +146,48 @@ export const zoomCompensatedWorldDistance = (screenPx: number, zoom: number): nu
 
 export interface ZoomedViewportBounds { left: number; top: number; right: number; bottom: number }
 
-/** 引きズーム後に実際に見えるワールド矩形。余白は画面pxの見た目を保ったまま換算する。 */
+/** 引きズーム後に実際に見えるワールド矩形。余白は画面pxの見た目を保ったまま換算する。
+ * marginXScreenPx(省略時=marginScreenPx)で左右だけ余白を変えられる(v0.25.3005・社長指摘
+ * 「左右だけズーム射程と撤退ラインが短くない?」対応: 縦長画面の左右不足分を呼び出し側が足す)。 */
 export const zoomedViewportBounds = (
   camera: { x: number; y: number }, viewport: { width: number; height: number },
-  zoom: number, marginScreenPx = 0,
+  zoom: number, marginScreenPx = 0, marginXScreenPx = marginScreenPx,
 ): ZoomedViewportBounds => {
   const safeZoom = Number.isFinite(zoom) && zoom > 0 ? Math.min(1, zoom) : 1;
   const visibleW = viewport.width / safeZoom;
   const visibleH = viewport.height / safeZoom;
   const extraX = (visibleW - viewport.width) / 2;
   const extraY = (visibleH - viewport.height) / 2;
-  const marginWorld = marginScreenPx / safeZoom;
+  const marginWorldY = marginScreenPx / safeZoom;
+  const marginWorldX = marginXScreenPx / safeZoom;
   return {
-    left: camera.x - extraX - marginWorld,
-    top: camera.y - extraY - marginWorld,
-    right: camera.x + viewport.width + extraX + marginWorld,
-    bottom: camera.y + viewport.height + extraY + marginWorld,
+    left: camera.x - extraX - marginWorldX,
+    top: camera.y - extraY - marginWorldY,
+    right: camera.x + viewport.width + extraX + marginWorldX,
+    bottom: camera.y + viewport.height + extraY + marginWorldY,
   };
 };
 
 export const isPointInZoomedViewport = (
   x: number, y: number,
   camera: { x: number; y: number }, viewport: { width: number; height: number },
-  zoom: number, marginScreenPx = 0,
+  zoom: number, marginScreenPx = 0, marginXScreenPx = marginScreenPx,
 ): boolean => {
-  const b = zoomedViewportBounds(camera, viewport, zoom, marginScreenPx);
+  const b = zoomedViewportBounds(camera, viewport, zoom, marginScreenPx, marginXScreenPx);
   return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
 };
+
+/**
+ * ボスの「画面外(帰巣/カメラ戻し)判定」用の左右追加余白(画面px)。
+ * 交戦の入口/出口/リーシュは円(縦横同じワールド距離)なのに、画面外判定だけ長方形のビューポートを
+ * 使うと、縦長画面では左右が半分以下の距離で発火して「左右だけ射程と撤退ラインが短い」体感になる
+ * (社長指摘v0.25.3004)。短辺側に不足分を足して**正方形(長辺基準)の判定窓**にする。
+ * 横長画面では0(縦側は isPointInZoomedViewport の marginScreenPx に足す)。
+ */
+export const bossOffscreenExtraMarginX = (viewport: { width: number; height: number }): number =>
+  Math.max(0, (viewport.height - viewport.width) / 2);
+export const bossOffscreenExtraMarginY = (viewport: { width: number; height: number }): number =>
+  Math.max(0, (viewport.width - viewport.height) / 2);
 
 // ★**安全マージンの基準はこの絶対最小値**(v0.25.2412)。
 // 背景のオーバースキャン(ZOOM_OVERSCAN)・敵の回収/湧き距離・カリングは「**一番引いた時でも
