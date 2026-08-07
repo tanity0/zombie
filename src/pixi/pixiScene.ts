@@ -292,6 +292,15 @@ const FAR_BACKDROP_BLUR = 1.1;
 // §6.37 v4 上接合(隙間埋め帯・PACING_PUZZLE.md §6.37-2 v4)。★未決: 森1(horizonForest)のシルエット色を
 // テクスチャから拾う案もあったが、判断保留のため暗紺〜黒の単色グラデで仮置き(社長確認待ち・実装結果に記載)。
 const WORLD_GAP_FEATHER_PX = 16; // 隙間帯を遠景下端に重ねるフェザー量(画面px・引き最大時。等倍では0)
+// §6.37 v6(社長発案2026-08-07「遠景森1のコピーが1の裏に距離に応じてフェードして現れる」=リッジ3本):
+// 引きで森1が縮んで遠景との間に開く隙間を、森1のコピー(奥の山並み)を上へずらして重ねて埋める。
+const HORIZON_RIDGE_COUNT = 2;                // コピー枚数(森1と合わせて3本)
+const HORIZON_RIDGE_UP_FRAC = 0.5;            // 1枚ごとの上ずらし量(森1の高さ比)
+const HORIZON_RIDGE_ALPHA = [0.9, 0.78];      // [手前コピー, 奥コピー]の最大alpha(奥ほど薄く=遠さの霞)
+const HORIZON_RIDGE_FADE_START = [0.1, 0.4];  // 引き量pull01がこの値から現れ始める(奥ほど深い引きで)
+const HORIZON_RIDGE_FADE_WIDTH = 0.3;         // フェード幅(pull01)
+const HORIZON_RIDGE_PARA_MULT = [0.75, 0.5];  // 横パララックス減速(奥ほど遅い)
+const HORIZON_RIDGE_TILE_STAGGER = 220;       // 柄の横ずらし(同じ絵の三連コピーに見せない)
 const WORLD_GAP_BAND_TOP_COLOR = 0x05070c;    // 帯の上端(サンプリング失敗時のフォールバック)
 const WORLD_GAP_BAND_BOTTOM_COLOR = 0x161c28; // 帯の下端(森1の上端に接する側・やや明るい暗紺)
 const WORLD_GAP_MASK_MARGIN_PX = 64;          // マスク矩形の静的な安全マージン(zoom>1のクランプ余裕)
@@ -3424,10 +3433,12 @@ export class PixiScene {
   private bossBehindAlpha = 1; // 裏ボスの「裏回り透け」alpha を滑らかに追従させる実値(スナップ回避)
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
-  // §6.37 v5(社長指示2026-08-07「遠景と近景はほぼ動かさない」): 遠景森1/森2と地平の付帯層
-  // (戦火グロー/雪霧/境界霧)をまとめる画面固定コンテナ。worldGroupの子だが、引き(zoom<1)の間は
-  // 毎フレームzoomを打ち消して farBackdrop/frontForest と同格の「動かない遠景」にする(syncの適用部参照)。
+  // §6.37 v6: 遠景森1/森2と地平の付帯層(戦火グロー/雪霧/境界霧)をまとめるコンテナ。worldGroupの子で
+  // ズームは素通しだが、**ボス寄せバイアス(bossPan)だけ毎フレーム打ち消す**=カメラ寄せで遠景が
+  // スライドして見えない(v2992の教訓の恒久対策。syncの適用部参照)。
   private hzFixed = new Container();
+  // §6.37 v6: 引きで現れる遠景森1のコピー(奥のリッジ)。[0]=手前コピー, [1]=奥コピー。
+  private horizonRidgeCopies: TilingSprite[] = [];
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
   constructor(layers: SceneLayers) {
@@ -3474,13 +3485,22 @@ export class PixiScene {
       this.stageLightShaftGfx.filters = [new BlurFilter({ strength: SHAFT_BLUR, quality: 1 })];
     }
 
-    // §6.37 v5: 森1/森2を hzFixed(画面固定コンテナ)へ移設。worldGroup内の元のz順(groundBaseの上・
-    // filteredWorldの下)は hzFixed 自身が同じ位置に入ることで保たれる。地平の付帯層(戦火グロー/雪霧/
-    // 境界霧/岩間霧)も以後 hzFixed に入れる=森と同じ「画面固定」で一体に動く(剥がれない)。
+    // §6.37 v5→v6: 森1/森2を hzFixed(バイアス打ち消しコンテナ)へ移設。worldGroup内の元のz順
+    // (groundBaseの上・filteredWorldの下)は hzFixed 自身が同じ位置に入ることで保たれる。地平の付帯層
+    // (戦火グロー/雪霧/境界霧/岩間霧)も以後 hzFixed に入れる=森と一体に動く(剥がれない)。
     {
       const wg = this.L.worldGroup;
       wg.addChildAt(this.hzFixed, wg.getChildIndex(this.L.horizonForest));
       this.hzFixed.addChild(this.L.horizonForest, this.L.nearHorizon);
+      // §6.37 v6: 森1のコピー(リッジ)。森1の裏(奥)へ挿入=[奥コピー, 手前コピー, 森1]の順。
+      // 配列は [0]=手前コピー, [1]=奥コピー。等倍では不可視(syncでalpha0)。
+      for (let k = 0; k < HORIZON_RIDGE_COUNT; k++) {
+        const sp = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
+        sp.eventMode = 'none';
+        sp.visible = false;
+        this.hzFixed.addChildAt(sp, this.hzFixed.getChildIndex(this.L.horizonForest) - k);
+        this.horizonRidgeCopies.push(sp);
+      }
     }
     this.L.filteredWorld.mask = this.worldFadeMask;
     this.L.worldGroup.addChild(this.worldFadeMask);
@@ -5958,11 +5978,12 @@ export class PixiScene {
       // アテンション(出現/討伐シネマ)中はカメラ自体がボスへパン済み=寄せを重ねるとフレーミングが
       // ずれるので、バイアスは0へ戻す(シネマ優先)。
       const biasActive = bossBiasD2 !== Infinity && !s.attention;
-      // v0.25.2993(§6.37 v5): 縦の寄せを復活(v0.25.2965設計)。v0.25.2992で廃止した理由=
-      // 「寄せが貼り付けた森ごとスライドさせる」は、森1/森2がhzFixed(画面固定=バイアスも打ち消す)に
-      // なったことで消滅した。ボスが上下に居る時の「見えない」を再び中間寄せで補う。
+      // v0.25.2994(§6.37 v6): 縦の寄せは再び0固定。縦の視界は「引き連動のカメラ下げ」
+      // (useGameLoop・zoomCameraDownFrac=プレイヤーを地平線と下端の中間へ)が担う(社長指示
+      // 「引きになったら上下の幅を揃える」)。ボス方向の縦寄せを重ねると揃えた構図が崩れる。横は0.5のまま。
       const wantX = biasActive ? Math.max(-slackWX, Math.min(slackWX, bossBiasDx * 0.5)) : 0;
-      const wantY = biasActive ? Math.max(-slackWY, Math.min(slackWY, bossBiasDy * 0.5)) : 0;
+      const wantY = 0;
+      void slackWY; void bossBiasDy; // 縦は使わない(構図はカメラ下げが決める)。復活時はこの2値を再利用
       const biasTau = biasActive ? 0.5 : 1.0;
       const bk = 1 - Math.exp(-zdt / biasTau);
       this.bossViewBiasX += (wantX - this.bossViewBiasX) * bk;
@@ -5974,31 +5995,29 @@ export class PixiScene {
     const totalPanY = panY + bossPanY;
     if (Math.abs(zoom - 1) > 0.0005 || totalPanX !== 0 || totalPanY !== 0) {
       this.L.worldGroup.scale.set(zoom);
-      // v0.25.2993(§6.37 v5・社長報告「下に広がるだけで上に広がってない」): 縦の支点を画面中央へ戻す
-      // =引きで視界が**上下対称**に広がる(v0.25.2991の地平線支点は撤回)。森の貼り付きは支点ではなく
-      // hzFixed(森1/森2の画面固定)が担い、地平〜床上端の間に開く隙間は隙間埋め帯(worldGapBand・
-      // 中央支点前提の設計=worldGapBandHeight)が埋める。可視域も中央支点=回収マージン240pxの
-      // 監査済み体制(v2991以前)に戻る(+75px超過の許容リスクは消滅)。
-      this.L.worldGroup.position.set(centerX * (1 - zoom) - totalPanX, centerY * (1 - zoom) - totalPanY);
+      // v0.25.2994(§6.37 v6): 引き(zoom<1)の縦支点=**地平線(farH)**へ復帰(v2991と同じ式)。
+      // v2993の中央支点は「上に広がった分」が床の無い隙間帯(デッドスペース)にしかならず撤回。
+      // farH支点なら床の上端が常に地平線に貼り付く=画面上部まで**実際の地面**が届く。北方向の視界は
+      // 「引き連動のカメラ下げ」(useGameLoop・プレイヤーを地平線と下端の中間へ)が増やす(社長指示
+      // 「上下の幅を揃える」)。寄り(zoom>=1・待機/パンチ)は従来どおり画面中央支点(v0.25.2586不変)。
+      // 下方向の可視超過(最深で回収マージン240pxに対し+75px)は前景霧の裏に収まり許容(v2991のDEVLOG)。
+      const pivotY = zoom < 1 ? this.farBackdropHeight() : centerY;
+      this.L.worldGroup.position.set(centerX * (1 - zoom) - totalPanX, pivotY * (1 - zoom) - totalPanY);
       this.zoomApplied = true;
     } else if (this.zoomApplied) {
       this.L.worldGroup.scale.set(1);
       this.L.worldGroup.position.set(0, 0);
       this.zoomApplied = false;
     }
-    // §6.37 v5: hzFixed(遠景森1/森2+地平付帯層)の画面固定。引き(zoom<1)ではworldGroupのズームを
-    // 完全に打ち消して「動かない遠景」(farBackdrop/frontForestと同格)、寄り(zoom>=1=KILL/待機パンチ)は
-    // 従来どおり世界と一緒に寄る(v0.25.2586のKILL寄せ設計を不変に保つ)。ボス寄せバイアス(bossPan)だけは
-    // どのズームでも打ち消す=遠景はカメラ寄せでスライドしない。p=max(1,zoom)なのでzoom=1境界で連続、
-    // 恒等(zoom=1・バイアス0)では scale=1・pos=(0,0)=従来と1msも変わらない。
+    // §6.37 v6: hzFixed(遠景森1/森2+地平付帯層)は**ボス寄せバイアス(bossPan)だけ**打ち消す。
+    // v2993の「引き中は完全画面固定」は撤回——社長裁定(2026-08-07)は「森は世界と一緒に縮んでよい。
+    // 縮みで出る切れ目はコピー森(リッジ3本・下のsyncで管理)で誤魔化す」。バイアス打ち消しは
+    // v2992の教訓(「カメラ寄せで遠景がスライドして見える」)の恒久対策として残す。
+    // 恒等(zoom=1・バイアス0)では scale=1・pos=(0,0)=従来と1ビットも変わらない。
     if (this.zoomApplied) {
-      const p = Math.max(1, zoom);
       const inv = 1 / Math.max(0.001, zoom);
-      this.hzFixed.scale.set(p * inv); // = 1/min(1,zoom)
-      this.hzFixed.position.set(
-        (centerX * (zoom - p) + bossPanX) * inv,
-        (centerY * (zoom - p) + bossPanY) * inv,
-      );
+      this.hzFixed.scale.set(1);
+      this.hzFixed.position.set(bossPanX * inv, bossPanY * inv);
     } else {
       this.hzFixed.scale.set(1);
       this.hzFixed.position.set(0, 0);
@@ -6274,11 +6293,38 @@ export class PixiScene {
     if (this.L.nearHorizon.visible) {
       this.L.nearHorizon.tilePosition.set(-s.camera.x * NEAR_HORIZON_PARALLAX_X, 0);
     }
-    // §6.37 v5(v0.25.2993): 遠景森1/2(と付帯霧)は hzFixed の子=引き(zoom<1)では**画面固定**。
-    // v0.25.1880〜1882の画面固定ピンが「床から剥がれて切れ目」で撤回された経緯(v0.25.1883)とは違い、
-    // 今回は床上端〜地平の間に開く隙間を隙間埋め帯(worldGapBand・中央支点前提の設計)が埋めるので
-    // 切れ目は出ない。ここの position/tilePosition は従来どおり「等倍の画面座標」で書けばよい
-    // (hzFixed内ではローカル=画面座標)。
+    // §6.37 v6: 遠景森1/2(と付帯霧)は hzFixed の子。hzFixedはボス寄せバイアスだけを打ち消す
+    // (ズームはそのまま通す=森は世界と一緒に縮む・社長裁定2026-08-07)。縮みで遠景との間に開く
+    // 切れ目は下のリッジ(コピー森)が埋める。position/tilePosition は従来どおり等倍の画面座標で書く。
+    // §6.37 v6(社長発案「遠景森1のコピーが1の裏に距離に応じてフェードして現れる」): 引きの深さ
+    // pull01 に応じて、森1のコピー2枚(計3本の山並み)を上へずらした位置にフェードインさせ、
+    // 森1が縮んで遠景(画面固定)との間に開く隙間を埋める。等倍ではalpha0=不可視(恒等)。
+    // テクスチャ/寸法/タイル/tintは毎フレーム森1から写す=ステージ差し替え・北部拡大に自動追従。
+    // 負荷: TilingSprite2枚のtransform/alpha代入のみ(引いていない間はvisible=false)=1/10未満。
+    {
+      const hf = this.L.horizonForest;
+      const wzr = this.wgZoom();
+      const pull01 = Math.max(0, Math.min(1, (1 - wzr) / (1 - ZOOM_MIN_ABS)));
+      for (let k = 0; k < this.horizonRidgeCopies.length; k++) {
+        const sp = this.horizonRidgeCopies[k];
+        const a = Math.max(0, Math.min(1, (pull01 - HORIZON_RIDGE_FADE_START[k]) / HORIZON_RIDGE_FADE_WIDTH))
+          * (HORIZON_RIDGE_ALPHA[k] ?? 0.8);
+        if (a <= 0.01 || !hf.visible) { sp.visible = false; continue; }
+        sp.visible = true;
+        if (sp.texture !== hf.texture) sp.texture = hf.texture;
+        sp.width = hf.width;
+        sp.height = hf.height;
+        sp.tileScale.set(hf.tileScale.x, hf.tileScale.y);
+        sp.tint = hf.tint;
+        sp.alpha = a;
+        sp.position.set(hf.position.x, hf.position.y - horizonH * HORIZON_RIDGE_UP_FRAC * (k + 1));
+        // 奥ほど横パララックスを遅く+柄を横へずらす(同じ絵の三連コピーに見せない)。
+        sp.tilePosition.set(
+          hf.tilePosition.x * (HORIZON_RIDGE_PARA_MULT[k] ?? 0.5) + HORIZON_RIDGE_TILE_STAGGER * (k + 1),
+          0
+        );
+      }
+    }
     // 洋館通路: 森レイヤー由来の境界(非表示でもレイアウト値が残り画面中央に居座る)を使わず、
     // 画面上部の固定ライン+狭めのフェード幅に差し替え(v0.25.2149・詳細は定数コメント)。
     this.updateMakerGrid(s);
@@ -19787,6 +19833,8 @@ export class PixiScene {
     this.nearGroundBlurFilters = [];
     this.nearBlurZoomFade = []; // §6.37 v5: 破棄済みfilterへ触らないよう空に
     this.L.groundBase.destroy({ children: true });
+    for (const sp of this.horizonRidgeCopies) sp.destroy(); // §6.37 v6: リッジ(コピー森)
+    this.horizonRidgeCopies = [];
     this.L.horizonForest.destroy();
     this.horizonForestFadeMask.destroy();
     this.horizonForestFadeMaskTexture?.destroy(true);

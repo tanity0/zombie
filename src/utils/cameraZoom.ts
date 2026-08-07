@@ -209,3 +209,21 @@ export const contextZoomTarget = (
     : 1 + (CONTEXT_ZOOM_MIN - 1) * t;
   return Math.min(crowdTarget, hasLarge ? BOSS_ZOOM_MIN : 1, engagedBossTarget ?? 1);
 };
+
+// §6.37 v6(社長指示2026-08-07「ズームが引になったら上下の幅を揃える方向に調整」):
+// ボス交戦の引きズームに応じてカメラの下げ量(camdown)を増やし、プレイヤーの画面位置を
+// 「地平線と画面下端のちょうど中間」へ寄せる=プレイヤーから上(地平線まで)と下(画面下端まで)の
+// 地面の幅が等しくなる。
+// 導出: 引きの縦支点=地平線(farH)のとき プレイヤー画面比 p(z) = (0.5+off)·z + f·(1-z)
+// (f=地平線の画面比)。これを p = (1+f)/2(=地平線と下端の中間)に置くと off = [0.5(1-z) - f(0.5-z)] / z。
+// z=1 では off=f/2 < 従来カメラ下げの想定域 → max() で従来値がそのまま勝つ(等倍の構図は不変)。
+// CAMERA_HORIZON_FRAC は描画側 FAR_BACKDROP_HEIGHT_RATIO(pixiScene・0.26)の写し(clamp前の近似)。
+// 値を変える時は両方を揃えること。スポーン帯(spawnViewOffsetY)もカメラと同じこの値を読むこと
+// (v0.25.2148の教訓: カメラとズレると上端で湧きが見える)。
+export const CAMERA_HORIZON_FRAC = 0.26;
+export const zoomCameraDownFrac = (baseFrac: number, zoom: number): number => {
+  if (zoom >= 1) return baseFrac;
+  const z = Math.max(ZOOM_MIN_ABS, zoom);
+  const eq = (0.5 * (1 - z) - CAMERA_HORIZON_FRAC * (0.5 - z)) / z;
+  return Math.max(baseFrac, eq);
+};

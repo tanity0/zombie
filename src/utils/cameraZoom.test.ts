@@ -149,3 +149,37 @@ describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () =
     expect(bossDistanceZoomTarget('mimir', 500)).toBeCloseTo(PROFILES2.giant.mid, 6);
   });
 });
+
+// §6.37 v6(v0.25.2994): 引き連動のカメラ下げ(上下の地面幅を揃える・社長指示2026-08-07)。
+import { zoomCameraDownFrac, CAMERA_HORIZON_FRAC } from './cameraZoom';
+
+describe('zoomCameraDownFrac — 引きで上下の地面幅を揃えるカメラ下げ', () => {
+  it('等倍(zoom>=1)では従来の下げ量そのまま=構図不変(恒等)', () => {
+    expect(zoomCameraDownFrac(0.08, 1)).toBe(0.08);
+    expect(zoomCameraDownFrac(0.16, 1.2)).toBe(0.16);
+  });
+  it('従来値を下回らない(max合成)=浅い引きで急に構図が変わらない', () => {
+    for (const z of [0.99, 0.9, 0.8, 0.6, ZOOM_MIN_ABS]) {
+      expect(zoomCameraDownFrac(0.16, z)).toBeGreaterThanOrEqual(0.16);
+    }
+  });
+  it('引きが深いほど単調に増える', () => {
+    let prev = 0;
+    for (const z of [0.9, 0.8, 0.7, 0.6, 0.5, ZOOM_MIN_ABS]) {
+      const v = zoomCameraDownFrac(0.08, z);
+      expect(v).toBeGreaterThanOrEqual(prev);
+      prev = v;
+    }
+  });
+  it('等式: 地平線支点でプレイヤー画面比が(地平線+下端)/2に一致する下げ量になっている', () => {
+    // p(z) = (0.5+off)·z + f·(1-z) が (1+f)/2 に一致(off=均衡項が勝つ深さで)。
+    for (const z of [0.6, 0.5, ZOOM_MIN_ABS]) {
+      const off = zoomCameraDownFrac(0, z); // base=0で均衡項そのもの
+      const p = (0.5 + off) * z + CAMERA_HORIZON_FRAC * (1 - z);
+      expect(p).toBeCloseTo((1 + CAMERA_HORIZON_FRAC) / 2, 6);
+    }
+  });
+  it('最深(ZOOM_MIN_ABS)より深い値を渡してもそこで頭打ち', () => {
+    expect(zoomCameraDownFrac(0.08, 0.1)).toBeCloseTo(zoomCameraDownFrac(0.08, ZOOM_MIN_ABS), 9);
+  });
+});

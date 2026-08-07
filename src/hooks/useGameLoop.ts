@@ -303,6 +303,7 @@ import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   isPointInZoomedViewport, ZOOM_MIN_ABS,
+  BOSS_DISTANCE_ZOOM_TAU, BOSS_DISTANCE_ZOOM_RETURN_TAU, zoomCameraDownFrac,
 } from '../utils/cameraZoom';
 import {
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss,
@@ -1392,6 +1393,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const danceBeatScheduledIndexRef = useRef<number>(-1);
   // 追尾カメラの進行方向先読みオフセット(px、描画のみ。フレーム間で保持)。
   const camLookAheadRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // §6.37 v6: ボス交戦ズームのstore側推定(カメラ下げ連動用)。描画側(pixiScene)と同じ純関数
+  // (bossDistanceZoomTarget/交戦半径)+同じ時定数で追従した推定値。描画はstoreを読むだけ=逆流なし。
+  // engaged はヒステリシス用(交戦中は離脱半径で判定=pixiの bossCameraEngaged と同じ作法)。
+  const camBossZoomRef = useRef<{ z: number; engaged: boolean }>({ z: 1, engaged: false });
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // ステージ2(屋外ラボ廊下)BGMクロスフェード: 直前フレームがlab対象コマだったか。falseへ落ちた
@@ -6070,10 +6075,36 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const pcCamX = player.x + player.width / 2;
         const pcCamY = player.y + player.height / 2;
         const baseCamX = pcCamX - gameBounds.width / 2;  // プレイヤーをちょうど中央に置くカメラ(先読み無し)
+        // §6.37 v6(社長指示「ズームが引になったら上下の幅を揃える」): ボス交戦の引きズームをstore側でも
+        // 推定し(描画と同じ純関数・同じ時定数)、下のカメラ下げ量をズームに連動して増やす。
+        // 対象はボス交戦の引きのみ(群衆ズームには掛けない=通常戦闘の構図は従来どおり)。
+        {
+          const est = camBossZoomRef.current;
+          let bossTargetNow: number | null = null;
+          if (!indoor && !labTheme && !useGameStore.getState().corridorMode) {
+            for (const e of enemies) {
+              if (!isEngageableBoss(e.type) || e.dormant === true || e.bossState === 'return') continue;
+              const limit = bossEngagementDistancePx(e.type, est.engaged, e.isStoryBoss === true);
+              const dx = e.x + e.width / 2 - pcCamX, dy = e.y + e.height / 2 - pcCamY;
+              if (dx * dx + dy * dy > limit * limit) continue;
+              const t = bossDistanceZoomTarget(e.type, aabbGapDistance(player, e), e.isStoryBoss === true);
+              bossTargetNow = bossTargetNow == null ? t : Math.min(bossTargetNow, t);
+            }
+          }
+          est.engaged = bossTargetNow != null;
+          // contextZoomTargetで包む(敵数0=群衆項1)=?zoomlock固定も描画と一貫する。
+          const camZoomTarget = contextZoomTarget(0, false, bossTargetNow);
+          const czTau = camZoomTarget < est.z - 0.0001 ? BOSS_DISTANCE_ZOOM_TAU : BOSS_DISTANCE_ZOOM_RETURN_TAU;
+          est.z += (camZoomTarget - est.z) * (1 - Math.exp(-baseDeltaTime / Math.max(0.001, czTau)));
+        }
         // プレイヤーを中央より下へ(屋内/ラボは中央維持=スポーン補正と一致)。上(進行先)の視界を広げる。
         // 洋館通路は下げ量を増やす(v0.25.2148・社長指示「敵が出てきて見える位置をもう少し上に」)。
+        // 引き(ボス交戦)中は zoomCameraDownFrac がさらに下げ、プレイヤーを「地平線と画面下端の中間」へ
+        // 寄せる=上下の地面幅が揃う(§6.37 v6)。スポーン帯(spawnViewOffsetY)も同じ値を読む。
         const camDownOff = (indoor || labTheme) ? 0
-          : gameBounds.height * (useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC);
+          : gameBounds.height * zoomCameraDownFrac(
+              useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC,
+              camBossZoomRef.current.z);
         const baseCamY = pcCamY - gameBounds.height / 2 - camDownOff;
         // 危険時(敵が近い): 追従をタイトにし先読みを切ってプレイヤーを中心寄りに(接近戦で安定)。
         const dangerR2 = CAMERA_DANGER_RADIUS * CAMERA_DANGER_RADIUS;
@@ -10638,8 +10669,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : undefined;
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         // 洋館通路はカメラ側の増量(CORRIDOR_CAMERA_DOWN_FRAC)と同値で連動(v0.25.2148・ズレると上端で湧きが見える)。
+        // §6.37 v6: 引き連動の増量分もカメラと**同じ推定値(camBossZoomRef)**で連動させる(v2148の教訓の
+        // ズーム版。カメラより多くずらすと下端で、少なくずらすと上端で、湧きが画面内に見える)。
         const spawnViewOffsetY = (labTheme || indoor) ? 0
-          : gameBounds.height * (useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC);
+          : gameBounds.height * zoomCameraDownFrac(
+              useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC,
+              camBossZoomRef.current.z);
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
         // ボス交戦域では距離によって最大0.58まで動くため最深値を安全側に採る。通常時は従来の純関数どおり。
         const bossCameraMayPull = allEnemiesNow.some(e => {
