@@ -1859,10 +1859,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         if (att) {
           const el = nowMs - att.startReal;
-          // §6.36: cutin付きattentionは hold と out の間に cutinMs(カメラは注目点に静止のまま)を挟む。
-          // 素のattention(cutinMs=0)は式が従来と完全一致=1msも変わらない。
-          const cutinMs = att.cutinMs ?? 0;
-          if (el >= ATTENTION_TOTAL_MS + cutinMs) {
+          // §6.36(v0.25.2956): カットインはattention開始と同時にDOM側(BossCutin)が出す。カメラ位相は
+          // 素のattentionと完全に同一=cutinの有無で1msも変わらない。
+          if (el >= ATTENTION_TOTAL_MS) {
             useGameStore.getState().clearAttention();
           } else {
             const gb = useGameStore.getState().gameBounds;
@@ -1874,10 +1873,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const t = smooth(el / ATTENTION_IN_MS);
               cx = att.fromCamX + (focusX - att.fromCamX) * t;
               cy = att.fromCamY + (focusY - att.fromCamY) * t;
-            } else if (el < ATTENTION_IN_MS + ATTENTION_HOLD_MS + cutinMs) {
+            } else if (el < ATTENTION_IN_MS + ATTENTION_HOLD_MS) {
               cx = focusX; cy = focusY;
             } else {
-              const t = smooth((el - ATTENTION_IN_MS - ATTENTION_HOLD_MS - cutinMs) / ATTENTION_OUT_MS);
+              const t = smooth((el - ATTENTION_IN_MS - ATTENTION_HOLD_MS) / ATTENTION_OUT_MS);
               cx = focusX + (att.fromCamX - focusX) * t;
               cy = focusY + (att.fromCamY - focusY) * t;
             }
@@ -5219,9 +5218,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // v0.25.2949: 速度ビルド(ランナー等)でも「走るだけで振り切れる」が起きないよう、
                     // 追尾キャップを対象の実効速度(player.speed×GAME_SPEED)へ比例スケールする。
                     const caps = mimirLaserTrackCaps((player.speed ?? 87) * GAME_SPEED);
+                    // v0.25.2956: 進行度を渡す=じわじわ加速→進行30%で追い越し速度+振り切り往復→
+                    // 残り600msで収束(mimirLaserTrack.tsの3ノブ)。
+                    const lwProgress = Math.max(0, Math.min(1, 1 - (lwUntil - newGameTime) / MIMIR_LASER_WINDUP_MS));
                     const stepped = stepLaserAim(
                       { x: boss.aiTargetX ?? aimTgt.x, y: boss.aiTargetY ?? aimTgt.y, vx: bs.mimirAimVX, vy: bs.mimirAimVY },
-                      aimTgt.x, aimTgt.y, deltaTime, caps.maxPxS, caps.accel,
+                      aimTgt.x, aimTgt.y, deltaTime, caps.maxPxS, caps.accel, lwProgress,
                     );
                     patch.aiTargetX = stepped.x; patch.aiTargetY = stepped.y;
                     bs.mimirAimVX = stepped.vx; bs.mimirAimVY = stepped.vy;

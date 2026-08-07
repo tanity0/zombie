@@ -4,7 +4,7 @@
 // 早すぎる反転は再捕捉・ロック後は間に合わない」を機械検査する。
 import { describe, expect, it } from 'vitest';
 import {
-  MIMIR_LASER_WINDUP_MS, MIMIR_LASER_TRACK_MAX_PX_S, MIMIR_LASER_TRACK_ACCEL,
+  MIMIR_LASER_WINDUP_MS, MIMIR_LASER_RAMP_MAX, MIMIR_LASER_TRACK_MAX_PX_S, MIMIR_LASER_TRACK_ACCEL,
   MIMIR_LASER_LOCK_MS, MIMIR_LASER_WEAK_MS, MIMIR_LASER_BROKEN_MS, MIMIR_LASER_INTERRUPTED_CD_MS,
   mimirLaserPhase, mimirLaserFill01, stepLaserAim, canInterruptMimirLaser, mimirLaserBreakOnMeleeHit, mimirLaserTrackCaps,
   type MimirLaserAim,
@@ -49,8 +49,9 @@ describe('mimirLaserTrack: 不変条件(§6.33-3 ①〜⑥)', () => {
       const next = stepLaserAim(aim, tx, ty, dt);
       const speed = Math.hypot(next.vx, next.vy);
       const dv = Math.hypot(next.vx - aim.vx, next.vy - aim.vy);
-      expect(speed).toBeLessThanOrEqual(MIMIR_LASER_TRACK_MAX_PX_S + 1e-6);
-      expect(dv).toBeLessThanOrEqual(MIMIR_LASER_TRACK_ACCEL * dt + 1e-6);
+      // v0.25.2956: 進行ランプ(最大×MIMIR_LASER_RAMP_MAX)を含めた実効上限で検査する。
+      expect(speed).toBeLessThanOrEqual(MIMIR_LASER_TRACK_MAX_PX_S * MIMIR_LASER_RAMP_MAX + 1e-6);
+      expect(dv).toBeLessThanOrEqual(MIMIR_LASER_TRACK_ACCEL * MIMIR_LASER_RAMP_MAX * dt + 1e-6);
       aim = next;
     }
   });
@@ -73,7 +74,8 @@ const fireDistance = (playerAt: (tMs: number) => { x: number; y: number }): numb
   for (let t = 0; t < until; t += 16) {
     if (mimirLaserPhase(t, until) === 'track') {
       const p = playerAt(t);
-      aim = stepLaserAim(aim, p.x, p.y, 0.016);
+      // v0.25.2956: 実機と同じく進行度を渡す(じわじわ加速→振り切り→収束のフルスケジュールで検証)。
+      aim = stepLaserAim(aim, p.x, p.y, 0.016, undefined, undefined, t / MIMIR_LASER_WINDUP_MS);
     } else if (lockX === null) {
       lockX = aim.x; lockY = aim.y;
     }
@@ -106,14 +108,15 @@ describe('mimirLaserTrack: ゴール検証シミュレーション(§6.33-3・�
     const start = MIMIR_LASER_WINDUP_MS - MIMIR_LASER_LOCK_MS;
     expect(fireDistance(t => ({ x: 600, y: t > start ? WALK * (t - start) : 0 }))).toBeLessThan(ESCAPE_PX);
   });
-  it('(iv) 反転(発射600〜1100ms前)は慣性で振り切れてビーム外(=マタドール成立・v0.25.2949 LOCK150実測)', () => {
-    for (const pre of [600, 700, 900, 1100]) {
+  it('(iv) 反転(発射600〜700ms前)は慣性で振り切れてビーム外(=マタドール成立・v0.25.2956実測: じわじわ加速+振り切りスパイク導入で窓は600〜700msへ狭まった=より「ギリギリ」)', () => {
+    for (const pre of [600, 700]) {
       expect(fireDistance(runThenReverse(pre)), `reversal ${pre}ms pre-fire`).toBeGreaterThan(ESCAPE_PX);
     }
   });
-  it('(v) 早すぎる反転(1600ms前〜)は再捕捉されてビーム内・遅すぎる反転(400ms前)も間に合わない', () => {
-    expect(fireDistance(runThenReverse(1600)), 'too early').toBeLessThan(ESCAPE_PX);
-    expect(fireDistance(runThenReverse(2000)), 'too early').toBeLessThan(ESCAPE_PX);
+  it('(v) 早すぎる反転(900ms前〜)は再捕捉されてビーム内・遅すぎる反転(400ms前)も間に合わない(v0.25.2956実測)', () => {
+    for (const pre of [900, 1100, 1600, 2000]) {
+      expect(fireDistance(runThenReverse(pre)), `too early ${pre}`).toBeLessThan(ESCAPE_PX);
+    }
     expect(fireDistance(runThenReverse(400)), 'too late').toBeLessThan(ESCAPE_PX);
   });
   it('(vii) 追尾キャップは対象の実効速度へ比例スケール・基準速未満では素の定数(v0.25.2949)', () => {

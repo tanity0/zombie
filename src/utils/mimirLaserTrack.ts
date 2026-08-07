@@ -60,23 +60,56 @@ export interface MimirLaserAim { x: number; y: number; vx: number; vy: number }
  * 速度を持つ=方向転換に慣性ぶんの遅れが出る(プレイヤーの切り返しで振り切れる=§6.33-1-2 答え2)。
  * 乱数なし=決定的。dtSec は秒。
  */
+// v0.25.2956(社長指示「じわじわ加速して、残り7割を切ったあたりでプレイヤーを追い越す速度で一瞬
+// 通り過ぎ、慣性を体験させておきたい。車のメーターみたいに振り切ってる感じ。ギリギリで切り返すと
+// 避けれる塩梅」)の3ノブ:
+/** じわじわ加速: 進行0→この進行までに最高速が RAMP_MIN×→RAMP_MAX× へ立ち上がる。 */
+export const MIMIR_LASER_RAMP_END_PROGRESS = 0.3;
+export const MIMIR_LASER_RAMP_MIN = 0.45;  // 開始時: 歩速の約0.7倍=明確に「じわじわ」
+export const MIMIR_LASER_RAMP_MAX = 1.2;   // 進行30%以降: 素の最高速×1.2=歩速の1.8倍で「追い越す」
+/** 振り切り窓(進行)。この間は到着減速を切り、針が対象を通り過ぎて往復する(メーターの振り切れ)。
+ * 窓の終わり(残り600ms)からは減速を戻して収束=「走り続けは捕まる」の憲法を守る。
+ * ギリギリの切り返し(発射600〜1800ms前の反転)は従来どおり慣性で振り切れる。 */
+export const MIMIR_LASER_OVERSHOOT_FROM = 0.3;
+export const MIMIR_LASER_OVERSHOOT_TO = 0.5;
+
 export const stepLaserAim = (
   aim: MimirLaserAim, tgtX: number, tgtY: number, dtSec: number,
   maxPxS: number = MIMIR_LASER_TRACK_MAX_PX_S, accel: number = MIMIR_LASER_TRACK_ACCEL,
+  progress01 = 1,
 ): MimirLaserAim => {
   const dx = tgtX - aim.x, dy = tgtY - aim.y;
   const dist = Math.hypot(dx, dy);
   const speed = Math.hypot(aim.vx, aim.vy);
+  // じわじわ加速: 進行で最高速の係数を立ち上げる。
+  const ramp = MIMIR_LASER_RAMP_MIN
+    + (MIMIR_LASER_RAMP_MAX - MIMIR_LASER_RAMP_MIN) * Math.min(1, Math.max(0, progress01) / MIMIR_LASER_RAMP_END_PROGRESS);
+  const maxEff = maxPxS * ramp;
+  // 加速度にも同じランプを掛ける: 最高速だけ上げると慣性エネルギー(v²/2a)が増え、中間の反転まで
+  // 振り切れて「早すぎる反転は再捕捉」の憲法が壊れる(実測掃引: 1600/2000ms前が75/57px逃げ)。
+  // 速度と旋回力を同率で上げれば旋回時間が保存され、逃げ窓はギリギリ(終盤)だけに残る。
+  const accelEff = accel * ramp;
+  const overshoot = progress01 >= MIMIR_LASER_OVERSHOOT_FROM && progress01 < MIMIR_LASER_OVERSHOOT_TO;
   // 到着済み(デッドゾーン内・ほぼ静止)なら保持=対象が動き出すまで静かに張り付く。
-  if (dist <= MIMIR_LASER_AIM_DEADZONE_PX && speed <= accel * dtSec) {
+  // 振り切り窓中は保持しない(通り過ぎるのが仕様)。
+  if (!overshoot && dist <= MIMIR_LASER_AIM_DEADZONE_PX && speed <= accelEff * dtSec) {
     return { x: aim.x, y: aim.y, vx: 0, vy: 0 };
   }
-  const desiredSpeed = Math.min(maxPxS, Math.sqrt(2 * accel * dist));
+  // 振り切り窓: **対象へ向かっている間だけ**到着減速(√2ad)を切る=全速で突っ込み慣性で一瞬
+  // 通り過ぎる(社長指示「追い越す速度で一瞬通り過ぎ」)。通り過ぎて遠ざかり始めたら通常の減速で
+  // 戻る(=針は一往復して収束。無限往復にしない——うろつき/中間反転で永遠に暴れて
+  // 「ちょっと動いたぐらいじゃ当たる」の憲法が壊れるのを防ぐ・実測掃引で確認)。
+  const closing = (aim.vx * dx + aim.vy * dy) >= 0;
+  // 振り切り中の突っ込み速度は最高速の75%を床にする(完全ノーブレーキだと、スパイク中の反転まで
+  // 振り切れて逃げ穴になる。75%でも針は対象を約25px通り過ぎ=「一瞬追い越す」は見える)。
+  const desiredSpeed = overshoot && closing
+    ? Math.min(maxEff, Math.max(maxEff * 0.75, Math.sqrt(2 * accelEff * dist)))
+    : Math.min(maxEff, Math.sqrt(2 * accelEff * dist));
   const inv = dist > 1e-6 ? 1 / dist : 0;
   const dvx = dx * inv * desiredSpeed - aim.vx;
   const dvy = dy * inv * desiredSpeed - aim.vy;
   const dvl = Math.hypot(dvx, dvy);
-  const maxDv = accel * dtSec;
+  const maxDv = accelEff * dtSec;
   const k = dvl > maxDv ? maxDv / dvl : 1;
   const vx = aim.vx + dvx * k;
   const vy = aim.vy + dvy * k;
