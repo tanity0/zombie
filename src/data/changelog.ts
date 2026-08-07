@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2989',
+    items: [
+      'ヨルムンガンドの薙ぎ払いで大蛇の胴体が走り抜けるようになりました。',
+    ],
+  },
+  {
     version: '0.25.2988',
     items: [
       '引いて見た時、遠景が伸びなくなりました(かわりに森の上に隙間を埋める暗い帯を敷きます)。',

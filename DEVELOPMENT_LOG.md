@@ -1,5 +1,39 @@
 # Development Log
 
+## v0.25.2989 — FX-V2d: ヨルムンガンド coil の胴体配線【2026-08-07 22:27 JST】
+実装チャット(Sonnetサブエージェント)。research/FX_GAP_LEDGER.md「裏ボス便3」の配線バッチ。素材
+`public/sprites/fx/jorm-coil-body.png`(1024×128・両端が画像端まで届く胴体)を、bossState 'coil'
+(220ms=JORM_COIL_ACTIVE_MS、useGameLoop.tsではTHOR_HARAI_ACTIVE_MSのエイリアス)実行中に
+予告帯(aiFromX/Y→aiTargetX/Y・coil-windupで設定・'coil'中も座標不変)へ沿わせて描画。
+
+**実装**: `src/pixi/pixiScene.ts`
+- `ActorView.coilBody?: Sprite`(V2c dashWindと同じ1体1枚pooled sprite)。
+- `coilBodyState: Map<id, {fx,fy,tx,ty,endAt}>`。bossState==='coil'中は帯座標を撮り直し、
+  明けたら最後の帯のまま`JORM_COIL_BODY_FADE_MS=150`で減衰(dashWindDirと同じ立ち下がり作法)。
+  カウンター等で'coil'が中断されても出し切りは不要(帯攻撃=予告と同じ扱い、発注仕様どおり)。
+- `drawJormCoilBody()`: 帯の軸へ回転を合わせ、長さ=帯長×`JORM_COIL_BODY_LEN_SCALE(1.3)`・
+  太さ=`THOR_HARAI_VIS_HALFWIDTH×2`(判定幅と一致)へ非一様スケール。進行度t(0→1、gameTime基準の
+  220ms)で中心を「頭がfxに来る位置」→「尾がtxを越えて逃げる位置」へスライドさせ、薙ぎ方向へ
+  走り抜ける絵にする(明け後の減衰はt=1で位置固定・alphaのみ減衰)。
+- 既定OFFリセット・`telegraphFade`のbounds走査(`span(view.coilBody)`)・`teleFade`乗算・enemy削除時の
+  `coilBodyState.delete(id)`の4点はV2a/V2b/V2cと同じ作法で配線。
+- `src/pixi/pixiTextures.ts`: standaloneに`fx/jorm-coil-body`(linear)を追加。
+
+**発火根拠**: `bossState === 'coil'`(pixiScene.ts、jormungand専用)。判定側は`useGameLoop.ts`の
+`st === 'coil-windup'`終了時に積む`pumpkinBlasts`のcapsule(既存・無改変)。今回は描画のみで判定・
+タイミングは一切変更していない。強glowは未使用。
+
+**負荷スコア: 1/10**。jormungand専用・同時最大1体・1体につきpooled sprite1枚(V2cのdashWindと
+同一パターン)。per-frameで新規Graphics/フィルタは無し、既存の`telegraphFade`/`teleFade`走査に
+1スプライト分の分岐が増えるのみ。
+
+**検証**: `npm run typecheck`(0)・`npm run lint`(0 errors, 既存warning 8件のみ=無関係)。
+テスト・ビルド・実機確認は社長指示が無いため未実施(方針どおり)。
+
+**★未決事項: なし。**
+
+次handoff: なし(このバッチで完結)。
+
 ## v0.25.2988 — §6.37 v4実装(遠景・近景固定+隙間埋め帯/ステージ2・6除外)+shadow-v9修正【2026-08-07 22:16 JST】
 実装チャット(Sonnetサブエージェント)。PACING_PUZZLE.md §6.37 の §1-2(v4)・§1-3(ステージ除外)を実装、
 テスト#9(20260807-1857-fieldwide.md)で見つかった shadow-v9 例外・stage-4継ぎ目を調査。

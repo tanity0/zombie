@@ -1297,6 +1297,12 @@ const MIMIR_BITE_WINDUP_MS_VIS = 700;   // 噛みつきのwindup時間(useGameLo
 // 描画に届かず、**赤円92pxの外・216pxの内側で「赤くないのに当たる」**が常時発生していた(実バグ)。
 const MIMIR_BITE_RADIUS_VIS = MIMIR_BITE_RADIUS;
 const JORM_COIL_WINDUP_MS_VIS = 700;    // うねりのwindup時間(useGameLoop JORM_COIL_WINDUP_MSと一致)
+// FX-V2d(発注仕様research/FX_GAP_LEDGER.md「裏ボス便3」): coil(実行)の胴体スプライト。
+// useGameLoop側の JORM_COIL_ACTIVE_MS は THOR_HARAI_ACTIVE_MS のエイリアスなのでそのまま流用
+// (JORM_COIL_RANGE=THOR_HARAI_RANGE / JORM_COIL_HALF_WIDTH=THOR_HARAI_HALF_WIDTHと同じ作法)。
+const JORM_COIL_ACTIVE_MS_VIS = THOR_HARAI_ACTIVE_MS;
+const JORM_COIL_BODY_FADE_MS = 150;     // coil明け後、胴体が消えるまでの減衰時間(dash-windと同じ作法)
+const JORM_COIL_BODY_LEN_SCALE = 1.3;   // 帯の長さ(JORM_COIL_RANGE)に対する胴体スプライトの長さ倍率
 // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)の描画用(useGameLoop のゲームプレイ値と一致させること)。
 // ★予告の描画は**数値テーブルを直接読む**(社長指示v0.25.2631・共有値の洗い出しで発見)。
 // 旧はここに 700/900/600/90/30 と**同じ数字を手で写していた**ため、ボスメーカーで判定側を変えると
@@ -2367,6 +2373,9 @@ interface ActorView {
   // FX-V2c: 突進の風圧(dash-wind)。裏ボス3体(mimir/jormungand/skadi)の bossState 'dash' 中、
   // 本体1体につき1枚(同時に1体しか突進しない)。
   dashWind?: Sprite;
+  // FX-V2d: ヨルムンガンド coil(うねり薙ぎ)実行中、予告帯に沿って走り抜ける胴体スプライト。
+  // jormungand専用・本体1体につき1枚。
+  coilBody?: Sprite;
   // バッチFX-V3V4: 「物理の絵」(牙/爪/翼/触手/拳)。ATK_ART_* の固定スロットで持つ配列。
   // 生成は遅延(その技を使うボスだけ)。使わないフレームは visible=false にするだけ=draw callは増えない。
   atkArt?: Sprite[];
@@ -4454,6 +4463,10 @@ export class PixiScene {
   // 突進が明けたら最後の向きのまま endAt までの残り時間で減衰させる(dashWasOnと同じ「立ち下がり
   // 後も自前の時計で出し切る」作法。gaze-flash等と違い毎フレーム位置が変わるので latchFx は使わない)。
   private dashWindDir = new Map<string, { ux: number; uy: number; endAt: number }>();
+  // FX-V2d: ヨルムンガンド coil の胴体。予告帯(aiFrom→aiTarget)は 'coil' 実行中も座標が動かない
+  // (useGameLoop がwindup時に一度設定して以降触らない)ので、dashWindDirと違い毎フレーム
+  // fx/fy/tx/tyを撮り直す必要は無い=coil中は据え置き、明けたら最後の帯のまま endAt まで減衰。
+  private coilBodyState = new Map<string, { fx: number; fy: number; tx: number; ty: number; endAt: number }>();
   private latchFx(key: string, active: boolean, durMs: number, now: number, data: () => number[]):
     { t: number; d: number[]; t0: number } | null {
     let L = this.fxLatches.get(key);
@@ -4573,6 +4586,7 @@ export class PixiScene {
     if (view.spikeThrust) for (const s of view.spikeThrust) span(s);
     if (view.burstFrag) for (const s of view.burstFrag) span(s);
     span(view.dashWind);
+    span(view.coilBody);
     if (minY > maxY) return 1; // このフレームは何も描いていない
     const y = Math.max(minY, Math.min(this.seeThroughPlayer.footY, maxY));
     return this.horizonActorAlpha(y) * this.foregroundActorAlpha(y);
@@ -10517,6 +10531,7 @@ export class PixiScene {
         this.warpInWasOn.delete(id);
         this.acrasielWarpOutPos.delete(id);
         this.dashWindDir.delete(id);
+        this.coilBodyState.delete(id);
         this.enemies.delete(id);
         this.enemyJumpHop.delete(id);
         this.enemyBlockFall.delete(id);
@@ -12825,6 +12840,8 @@ export class PixiScene {
     if (view.burstFrag) for (const s of view.burstFrag) if (s) s.visible = false;
     // FX-V2c: 突進の風圧も同じ作法で既定OFF。点けるのは下のdrawDashWind呼び出しのみ。
     if (view.dashWind) view.dashWind.visible = false;
+    // FX-V2d: coilの胴体も同じ作法で既定OFF。点けるのは下のdrawJormCoilBody呼び出しのみ。
+    if (view.coilBody) view.coilBody.visible = false;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       // §6.33(監査指摘7): 新挙動では線の向きを判定と同じ式(aiTarget−現在のボス中心)で引く。
@@ -13979,6 +13996,29 @@ export class PixiScene {
         this.drawDashWind(view, fb.footX, fb.footY, dw.ux, dw.uy, Math.max(e.width, e.height) * DASH_WIND_SCALE, fadeT);
       }
     }
+    // FX-V2d(発注仕様research/FX_GAP_LEDGER.md「裏ボス便3」): coil(ヨルムンガンドのうねり薙ぎ)実行中、
+    // 予告帯(aiFrom→aiTarget・useGameLoop coil-windupで設定・'coil'実行中も座標は動かない)に沿って
+    // 胴体スプライトを走らせる。分類①寄り=帯に揃える(判定不変・描画のみ)。カウンター等で'coil'が
+    // 中断されても出し切る必要は無い(帯攻撃は中断されたら消えるのが正しい=予告と同じ扱い、社長指示)
+    // なので dashWindDir と同じ「立ち下がり後もJORM_COIL_BODY_FADE_MSだけ最後の帯で減衰」作法のみ。
+    {
+      const coilActive = e.type === 'jormungand' && e.bossState === 'coil';
+      if (coilActive) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        this.coilBodyState.set(e.id, { fx, fy, tx, ty, endAt: now + JORM_COIL_BODY_FADE_MS });
+      }
+      const cb = this.coilBodyState.get(e.id);
+      if (cb) {
+        // 帯に沿ってスライドする進行度。実行中はgameTime基準(=シミュ時計。他のwindup progと同じ式)で
+        // 220msぶん進め、明けた後(減衰中)は末尾(t=1=帯を通過し切った位置)で固定して減衰だけ進める。
+        const prog = coilActive
+          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JORM_COIL_ACTIVE_MS_VIS))
+          : 1;
+        const fadeT = coilActive ? 1 : Math.max(0, (cb.endAt - now) / JORM_COIL_BODY_FADE_MS);
+        this.drawJormCoilBody(view, cb.fx, cb.fy, cb.tx, cb.ty, prog, fadeT);
+      }
+    }
     // 汎用ジャンプ着地の砂埃(社長指摘v0.25.2426「パンプキンなどのジャンプにも砂埃ちゃんと出てる?」)。
     // → **出ていなかった**。v0.25.2404で砂埃を入れた時、城ボスの新スクリプト(g-*)のブロックの中にだけ
     // 書いていたため、**同じ「飛び上がって着地する」技なのにパンプキン系だけ土煙が立たない**状態だった。
@@ -14637,6 +14677,7 @@ export class PixiScene {
       if (view.spikeThrust) for (const s of view.spikeThrust) if (s.visible) s.alpha *= teleFade;
       if (view.burstFrag) for (const s of view.burstFrag) if (s.visible) s.alpha *= teleFade;
       if (view.dashWind?.visible) view.dashWind.alpha *= teleFade;
+      if (view.coilBody?.visible) view.coilBody.alpha *= teleFade;
     }
 
     // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
@@ -16186,6 +16227,44 @@ export class PixiScene {
     sp.scale.set(len / Math.max(1, tex.width)); // 縦横同倍率=素材の扇の比率を保つ
     sp.rotation = Math.atan2(uy, ux) + Math.PI;
     sp.position.set(ox, oy);
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
+  // FX-V2d(発注仕様research/FX_GAP_LEDGER.md「裏ボス便3」): coilの胴体本体。素材(fx/jorm-coil-body)は
+  // 横一直線にうねる大蛇の胴で両端が画像端まで届く(=切れ目なく伸縮できる)。anchor(0.5,0.5)で帯の
+  // 中心に置き、帯の軸(fx,fy→tx,ty)へ回転を合わせる。長さはJORM_COIL_BODY_LEN_SCALE倍(帯より長く
+  // 両端が帯の外へ逃げる)・太さは帯の半幅(halfWidth)の2倍にリサイズ(判定=帯とは別レイヤーなので
+  // 非一様スケールで長さと太さを独立指定=発注仕様どおり)。
+  // スライド: 実行progress(t=0→1・220ms)で中心を「尾がfxに来る位置」→「頭がtxを越えて逃げる位置」へ
+  // 動かし、薙ぎ方向へ走り抜ける絵にする(t=1到達後は明けた後の減衰でも位置を据え置く=呼び出し側で
+  // t=1固定を渡す)。分類①寄り=帯に揃える絵なので tint 無し(素材の色をそのまま使う)。
+  private drawJormCoilBody(
+    view: ActorView, fx: number, fy: number, tx: number, ty: number, t: number, alpha: number,
+  ): void {
+    const tex = getTexture('fx/jorm-coil-body');
+    if (!tex || alpha <= 0.01) { if (view.coilBody) view.coilBody.visible = false; return; }
+    let sp = view.coilBody;
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(0.5, 0.5);
+      view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
+      view.coilBody = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    const dx = tx - fx, dy = ty - fy;
+    const bandLen = Math.hypot(dx, dy) || 1;
+    const ux = dx / bandLen, uy = dy / bandLen;
+    const bodyLen = bandLen * JORM_COIL_BODY_LEN_SCALE;
+    const halfLen = bodyLen / 2;
+    const halfWidth = THOR_HARAI_VIS_HALFWIDTH; // 帯幅(THOR_HARAI_VIS_HALFWIDTH×2)に合わせる=発注仕様
+    // 開始(t=0): 頭(進行方向側の先端)がfxに来る位置。終了(t=1): 尾(後方の先端)がtxを越えて逃げる位置。
+    const startCx = fx - ux * halfLen, startCy = fy - uy * halfLen;
+    const endCx = tx + ux * halfLen, endCy = ty + uy * halfLen;
+    const cx = startCx + (endCx - startCx) * t, cy = startCy + (endCy - startCy) * t;
+    sp.scale.set(bodyLen / Math.max(1, tex.width), (halfWidth * 2) / Math.max(1, tex.height));
+    sp.rotation = Math.atan2(uy, ux);
+    sp.position.set(cx, cy);
     sp.alpha = alpha;
     sp.visible = true;
   }
