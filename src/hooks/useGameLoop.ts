@@ -1835,6 +1835,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // ここ(hitstop早期returnの前)でカメラだけ毎フレーム動かす。終了で解除し通常進行へ。
       {
         const att = useGameStore.getState().attention;
+        // v0.25.2953(社長指示「ボスモードもボス消えるまでは終わらないで」): 練習ランの勝利は
+        // **死亡アテンション(ストップ+崩壊)を見せ終えてから**確定する。attention が無い場合でも
+        // 最低1.2秒は崩壊の絵を見せる(打刻は撃破の瞬間=gameStoreのdamage経路)。
+        {
+          const pw = useGameStore.getState().practiceWinPendingSince;
+          if (pw !== null && !att && nowMs >= pw + 1200 && !useGameStore.getState().gameWon) {
+            useGameStore.setState({ gameWon: true, practiceWinPendingSince: null });
+          }
+        }
         if (att) {
           const el = nowMs - att.startReal;
           if (el >= ATTENTION_TOTAL_MS) {

@@ -2377,10 +2377,13 @@ const hexToRgba = (hex: string, alpha: number): string => {
 const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: number): void => {
   // ★練習ラン(ボスラッシュ)は**狙った1体を倒したら終わり**(BOSS_MAKER.md §20-7-c)。
   // ゲート2/裏ボスは倒してもクリアにならない(帰還サークルは城ボス撃破が条件)ため、放っておくと
-  // 「倒したのに終われない」=練習で一番使う導線が無い状態になる。ここで勝ちにしてリザルトへ送る。
+  // 「倒したのに終われない」=練習で一番使う導線が無い状態になる。勝ちにしてリザルトへ送る。
   // 進行の書き込みは practiceGuard(localStorage封じ)と App.handleVictory 側で止めてある。
+  // v0.25.2953(社長指示「ボスモードも通常モードみたいにボス消えるまでは終わらないで」):
+  // **即 gameWon にしない**。撃破の瞬間はここで実時刻を打刻するだけにして、useGameLoop が
+  // 「死亡アテンション(ストップ+崩壊を見せる演出)が終わってから」gameWon を立てる。
   if (isPracticeRun() && enemy.type === practiceBossType()) {
-    useGameStore.setState({ gameWon: true, returnCircle: null });
+    useGameStore.setState({ practiceWinPendingSince: Date.now(), returnCircle: null });
   }
   // 歴史年表(chronicle): 各種ボス/ハンターの初回討伐を即載せ(社長決定v0.25.1628)。近接/銃 両キル経路が
   // この関数を通るのでここ1箇所で拾える。宿敵(isNamedのみ)はボス扱いにしない=年表に載せない。
@@ -3429,6 +3432,9 @@ interface GameState {
   // アテンション・シネマティック(レスキュー/ジャイアント出現): 現地へカメラパン→ホールド→戻る。
   // 駆動は実時間(startReal)。fromCam=開始時のカメラ(=戻り先)。null=非実行。
   attention: { x: number; y: number; startReal: number; fromCamX: number; fromCamY: number } | null;
+  // 練習ラン: 対象ボス撃破の実時刻(Date.now)。死亡アテンションを見せ終えてから useGameLoop が
+  // gameWon を立てる(v0.25.2953)。null=保留なし。
+  practiceWinPendingSince: number | null;
   // Strong-event slow motion. Rendering/audio continue; simulation delta is
   // multiplied by timeSlowScale until this timestamp.
   timeSlowUntil: number;
@@ -4228,6 +4234,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastWeaponGet: null,
   hitstopUntil: 0,
   attention: null,
+  practiceWinPendingSince: null,
   timeSlowUntil: 0,
   timeSlowScale: 1,
   timeSlowStart: 0,
@@ -13578,6 +13585,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastWeaponGet: null,
         hitstopUntil: 0,
   attention: null,
+  practiceWinPendingSince: null,
         timeSlowUntil: 0,
         timeSlowScale: 1,
         timeSlowStart: 0,
