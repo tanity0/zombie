@@ -880,7 +880,15 @@ export const applyContactDamage = (
     // 削り続ければ体幹ブレイク(紫)で完全に「止まる」= 社長報告「カウンターしても止まらないので食らう」への答え。
     // 連発防止: 被弾と同じi-frame作法(無敵中は成立しない+成立時に無敵を開く)=最短INVULN_MS間隔。
     // W7(溜め/硬直/突進中の体当てカウンター=フル報酬)には触れない(あちらはbossState側の経路)。
-    if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !collPlayer.invulnerable && isHiddenBoss(enemy.type)) {
+    // v0.25.2956(社長報告「ミーミルの体当たりが止まらない。一瞬も止まらない。はじかれもしてない」):
+    // 旧条件の連発防止=「プレイヤー無敵中は不成立」は、巨体と重なり続ける状況で受け流しを事実上
+    // 不能にしていた——接触被弾のi-frame(700ms)の中にカウンター窓(400ms)が必ず収まるため、
+    // **反応でカウンターしても常に無敵中=不成立**(先読みで当てる以外に道がない)。
+    // 連発防止はボス側の拘束(rootUntil=900ms)基準へ付け替える: 拘束中の再受け流しだけを禁じ、
+    // 被弾直後(無敵中)のカウンターでも受け流しが立つようにする。体幹削りの頻度上限は
+    // 旧i-frame基準(700ms)→root基準(900ms)でむしろ厳しくなる=インフレしない。
+    const bossParryRooted = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil;
+    if (BOSS_CONTACT_PARRY_ENABLED && counterActiveNow && !bossParryRooted && isHiddenBoss(enemy.type)) {
       // v0.25.2954(社長指示「体当たりカウンターしたら少しノックバックしてから硬直にして」):
       // 押す向き=プレイヤー→ボス(離れる方向)。ゼロ距離の退避は上向き。
       const pdx = (enemy.x + enemy.width / 2) - (collPlayer.x + collPlayer.width / 2);
