@@ -291,7 +291,8 @@ const RIVER_FLOW_WOBBLE_MS = [1400, 2300];// 揺らぎ周期
 const FAR_BACKDROP_BLUR = 1.1;
 // §6.37 v4 上接合(隙間埋め帯・PACING_PUZZLE.md §6.37-2 v4)。★未決: 森1(horizonForest)のシルエット色を
 // テクスチャから拾う案もあったが、判断保留のため暗紺〜黒の単色グラデで仮置き(社長確認待ち・実装結果に記載)。
-const WORLD_GAP_BAND_TOP_COLOR = 0x05070c;    // 帯の上端(farBackdrop側へ溶ける・より暗い)
+const WORLD_GAP_FEATHER_PX = 16; // 隙間帯を遠景下端に重ねるフェザー量(画面px・引き最大時。等倍では0)
+const WORLD_GAP_BAND_TOP_COLOR = 0x05070c;    // 帯の上端(サンプリング失敗時のフォールバック)
 const WORLD_GAP_BAND_BOTTOM_COLOR = 0x161c28; // 帯の下端(森1の上端に接する側・やや明るい暗紺)
 const WORLD_GAP_MASK_MARGIN_PX = 64;          // マスク矩形の静的な安全マージン(zoom>1のクランプ余裕)
 const HORIZON_FOREST_PARALLAX_X = 0.16;
@@ -2960,6 +2961,7 @@ export class PixiScene {
   // 原則どおり同一スケール)。静的サイズ(resize/farH変更時のみ再計算)+マスクのY位置だけ毎フレーム
   // post-zoom追従(worldFadeMaskと同じ確立済みパターン)。
   private worldGapBand: Sprite | null = null;
+  private worldGapColorKey = ''; // どの遠景キーの色でグラデを焼いたか(差し替え検知・v0.25.2990ずれ修正)
   private worldGapMask: Sprite | null = null;
   private worldGapTex: Texture | null = null;
   private worldGapBandTop = 0;    // 帯のローカル上端(=farH - H。静的・resize時のみ更新)
@@ -5367,6 +5369,8 @@ export class PixiScene {
       // tileScale は resize() でしか計算されないため、差し替えテクスチャの寸法が違うと
       // 旧テクスチャ基準のスケールのまま=見た目が変わらない/崩れる。ここで再レイアウトする。
       this.layoutFarBackdrop();
+      // v0.25.2990: 遠景が替わったら隙間帯の色も焼き直す(下端色サンプリング=境界の段差を消す)。
+      this.layoutWorldGapBand(this.farBackdropHeight());
     }
   }
   /**
@@ -5518,20 +5522,55 @@ export class PixiScene {
    * より描画順で後ろ(worldGroupはfarBackdropより後に描かれるため、そのままでは前面に出てしまう)ので、
    * マスク(syncWorldGapBand)がpost-zoomで画面Y=farHより上を毎フレーム隠す=等倍では帯が丸ごと隠れる。
    */
+  /**
+   * v0.25.2990(社長スクショ「ずれてるよ」): 隙間帯の色を**遠景テクスチャの下端8行の平均色**から焼く。
+   * 境界(画面farH)で遠景の絵と帯の色が厳密に繋がる=「明るい遠景→暗紺の帯」の一直線の段差を消す。
+   * サンプリングに失敗した場合(リソース未取得等)は従来のプレースホルダ色で焼く(帯が無いよりまし)。
+   */
+  private sampleFarBottomColor(): { top: number; bottom: number } | null {
+    try {
+      const res = (this.L.farBackdrop.texture.source as unknown as { resource?: CanvasImageSource & { width?: number; height?: number } }).resource;
+      if (!res || !res.width || !res.height) return null;
+      const c = document.createElement('canvas');
+      c.width = 32; c.height = 4;
+      const cx = c.getContext('2d');
+      if (!cx) return null;
+      cx.drawImage(res, 0, Math.max(0, (res.height as number) - 8), res.width as number, 8, 0, 0, 32, 4);
+      const d = cx.getImageData(0, 0, 32, 4).data;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+      r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+      // tint(ENV_TINT等)が乗る分を近似で織り込む(遠景スプライトのtintと同じ係数を掛ける)。
+      const tint = this.L.farBackdrop.tint as number;
+      const tr = (tint >> 16) & 0xff, tg = (tint >> 8) & 0xff, tb = tint & 0xff;
+      const top = ((Math.round(r * tr / 255) << 16) | (Math.round(g * tg / 255) << 8) | Math.round(b * tb / 255));
+      const dark = (v: number) => Math.round(v * 0.45);
+      const bottom = ((dark((top >> 16) & 0xff) << 16) | (dark((top >> 8) & 0xff) << 8) | dark(top & 0xff));
+      return { top, bottom };
+    } catch { return null; }
+  }
+
   private layoutWorldGapBand(farH: number) {
-    if (!this.worldGapTex) {
-      // グラデーションテクスチャは初回1回のみ生成(以後は使い回し・pooled)。
+    const colorKey = this.currentFarKey || 'default';
+    if (!this.worldGapTex || this.worldGapColorKey !== colorKey) {
+      const sampled = this.sampleFarBottomColor();
+      const topColor = sampled?.top ?? WORLD_GAP_BAND_TOP_COLOR;
+      const bottomColor = sampled?.bottom ?? WORLD_GAP_BAND_BOTTOM_COLOR;
       const canvas = document.createElement('canvas');
       canvas.width = 4;
       canvas.height = 128;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        grad.addColorStop(0, `#${WORLD_GAP_BAND_TOP_COLOR.toString(16).padStart(6, '0')}`);
-        grad.addColorStop(1, `#${WORLD_GAP_BAND_BOTTOM_COLOR.toString(16).padStart(6, '0')}`);
+        grad.addColorStop(0, `#${topColor.toString(16).padStart(6, '0')}`);
+        grad.addColorStop(1, `#${bottomColor.toString(16).padStart(6, '0')}`);
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const old = this.worldGapTex;
         this.worldGapTex = Texture.from(canvas);
+        if (this.worldGapBand) this.worldGapBand.texture = this.worldGapTex;
+        if (old) old.destroy(true);
+        this.worldGapColorKey = colorKey;
       }
     }
     if (!this.worldGapBand && this.worldGapTex) {
@@ -5575,7 +5614,13 @@ export class PixiScene {
     const farH = this.farBackdropHeight();
     const zoom = this.wgZoom();
     const offsetY = this.wgOffsetY();
-    this.worldGapMask.position.y = postZoomLocalY(farH, zoom, offsetY);
+    // v0.25.2990: 境界フェザー。引いている時だけ帯の上端を遠景の下端に最大16px重ね、
+    // 一直線の継ぎ目を隠す(色はサンプリング済みなので重なりは目立たない)。
+    // 等倍(zoom>=1)では0px=帯は完全に隠れたまま(恒等性テストと両立)。
+    const featherPx = zoom < 1
+      ? WORLD_GAP_FEATHER_PX * Math.min(1, (1 - zoom) / (1 - ZOOM_MIN_ABS))
+      : 0;
+    this.worldGapMask.position.y = postZoomLocalY(farH - featherPx, zoom, offsetY);
   }
 
   private applyOutdoorGroundTheme(theme: StageTheme, farKey = '') {

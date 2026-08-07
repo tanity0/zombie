@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2990',
+    items: [
+      'ズームを引いた時の「遠景と地面の間の境界線のずれ(色の段差)」を修正: 隙間を埋める帯の色を遠景の絵の下端から自動で合わせ、境界に重なりのぼかしを付けました(等倍時の見た目は不変)。',
+    ],
+  },
+  {
     version: '0.25.2989',
     items: [
       'ヨルムンガンドの薙ぎ払いで大蛇の胴体が走り抜けるようになりました。',
