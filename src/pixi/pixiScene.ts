@@ -5797,7 +5797,13 @@ export class PixiScene {
       const strip = strips[i];
       const y = i * stripH;
       const t = groundStripT(i); // 旧来と同じ式(GROUND_STRIP_REF_COUNT−1基準)。i>71では1を超えて延長。
-      const perspective = Math.pow(t, curve);
+      // 案1(社長裁定v0.25.3005「オブジェクト速度は案1でやってみて」): 延長ストリップ(t>1)の遠近項は
+      // **等倍時の画面最下段(t=1)で頭打ち**。タイル拡大は流速も比例して上げる仕掛けのため、伸ばし続けると
+      // 引き時の下部だけ「地面は疾走・物はゆっくり」の乖離が出ていた(ついでに「地面が伸びてる」の正体)。
+      // 頭打ちで下部の拡大率・流速は等倍時の最下段と同じ水準に揃う。t=1で連続=境界に継ぎ目なし。
+      // 等倍(可視は t<=1 のみ)では1ビットも変わらない。
+      const tc = Math.min(1, t);
+      const perspective = Math.pow(tc, curve);
       const scaleY = farScale + (nearScale - farScale) * perspective;
 
       strip.position.set(0, y);
@@ -5806,7 +5812,7 @@ export class PixiScene {
       // 台形化: 横倍率は行位置tに対して**直線**(奥=GROUND_TRAPEZOID_FAR → 手前=1)。tは画面yに比例するので
       // これが「地平線からの距離に比例」=教科書どおりの遠近になる。縦(scaleY)は従来のまま一切いじらない。
       // GROUND_TRAPEZOID=0 なら conv=1 で従来と完全一致(復帰)。
-      const convLine = GROUND_TRAPEZOID_FAR + (1 - GROUND_TRAPEZOID_FAR) * Math.pow(t, GROUND_TRAPEZOID_CURVE);
+      const convLine = GROUND_TRAPEZOID_FAR + (1 - GROUND_TRAPEZOID_FAR) * Math.pow(tc, GROUND_TRAPEZOID_CURVE);
       const conv = 1 + (convLine - 1) * GROUND_TRAPEZOID;
       const tsx = GROUND_TILE_SCALE_X * Math.max(0.02, conv);
       strip.tileScale.set(tsx, scaleY);
