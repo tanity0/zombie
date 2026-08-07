@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2978',
+    items: [
+      'ゲーム内容の変更はありません(視覚文法の明文化: 赤=カウンター対象/紫=カウンター不可/弾は共通の見た目)。',
+    ],
+  },
+  {
     version: '0.25.2977',
     items: [
       'ゲーム内容の変更はありません(方針決定: 敵の弾はボスごとの専用絵にせず、全ボス共通の見た目を維持します=一目で弾と分かる読みやすさを優先)。',
