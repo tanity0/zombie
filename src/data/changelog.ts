@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3012',
+    items: [
+      '引き雲を2層構成にしました(手前=大きく半透明でぼかした雲が速く、奥=小さめのくっきりした雲がゆっくり。霧と同じように速度差をつけて流れます)。',
+    ],
+  },
+  {
     version: '0.25.3011',
     items: [
       '引き雲の素材をドット絵の透過版に差し替えました(輪郭がくっきりしたピクセル調の雲になります)。',

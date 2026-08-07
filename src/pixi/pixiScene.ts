@@ -320,11 +320,12 @@ const FRONT_RIDGE_TILE_STAGGER = 260;         // 柄の横ずらし(実近景と
 // 「高くから見ている」感を出す。等倍・浅い引き(群衆ズーム0.8)では出ない。
 const ZOOM_CLOUD_START = 0.5;                  // pull01がこの値から現れ始める(=zoom≈0.7以深)
 const ZOOM_CLOUD_FADE_W = 0.35;                // フェード幅(pull01)
-const ZOOM_CLOUD_ALPHA = 0.82;                 // 最大alpha(叩き台)
-const ZOOM_CLOUD_HEIGHT_FRAC = 0.5;            // 帯の高さ(画面高比)
-const ZOOM_CLOUD_BOTTOM_FRAC = 1.08;           // 帯の下端(画面高比・少し画面外まで)=下半分に敷く
-const ZOOM_CLOUD_PARALLAX_X = 1.15;            // 実近景(0.68〜0.75)より速い=一番手前の層
-const ZOOM_CLOUD_DRIFT_PX_S = 14;              // 自走ドリフト(px/s・左へ)
+// 2層構成(社長指示2026-08-08): 「1枚目=一番手前に半透明で大きくぼかして/2枚目=その裏に少し
+// 小さめでぼかさず/速度をずらして霧と同じく流れる」。[0]=奥(シャープ)・[1]=手前(ぼかし)。
+const ZOOM_CLOUD_LAYERS = [
+  { heightFrac: 0.46, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
+  { heightFrac: 0.62, bottomFrac: 1.10, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
+] as const;
 const WORLD_GAP_BAND_TOP_COLOR = 0x05070c;    // 帯の上端(サンプリング失敗時のフォールバック)
 const WORLD_GAP_BAND_BOTTOM_COLOR = 0x161c28; // 帯の下端(森1の上端に接する側・やや明るい暗紺)
 const WORLD_GAP_MASK_MARGIN_PX = 64;          // マスク矩形の静的な安全マージン(zoom>1のクランプ余裕)
@@ -3475,7 +3476,8 @@ export class PixiScene {
   // 近景コピー(下部レイヤー・社長裁定v0.25.3000で復活)。実近景の直後ろ・上ずらしはhorizonRidgeStepPx。
   private frontRidgeCopy: TilingSprite | null = null;
   // 引き雲(uiLayer直下=最前面。深い引きの時だけ表示・社長支給素材2026-08-08)。
-  private zoomCloudFront: TilingSprite | null = null;
+  // [0]=奥(シャープ・遅い) / [1]=手前(大きい・半透明・ぼかし・速い)。ZOOM_CLOUD_LAYERSと同順。
+  private zoomClouds: TilingSprite[] = [];
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
   constructor(layers: SceneLayers) {
@@ -6525,38 +6527,42 @@ export class PixiScene {
       const wzc = this.wgZoom();
       const cloudAllowed = !this.isLabStage && !s.corridorMode && this.currentFarKey !== 'tutorial';
       const pullC = cloudAllowed ? Math.max(0, Math.min(1, (1 - wzc) / (1 - ZOOM_MIN_ABS))) : 0;
-      const aC = Math.max(0, Math.min(1, (pullC - ZOOM_CLOUD_START) / ZOOM_CLOUD_FADE_W)) * ZOOM_CLOUD_ALPHA;
-      if (!this.zoomCloudFront && aC > 0.01) {
+      const fadeC = Math.max(0, Math.min(1, (pullC - ZOOM_CLOUD_START) / ZOOM_CLOUD_FADE_W));
+      if (this.zoomClouds.length === 0 && fadeC > 0.01) {
         const ctex = getTexture('zoom-cloud');
         if (ctex) {
-          const sp = new TilingSprite({ texture: ctex, width: 1, height: 1 });
-          sp.eventMode = 'none';
-          sp.visible = false;
           const st = this.L.uiLayer.parent!;
-          st.addChildAt(sp, st.getChildIndex(this.L.uiLayer)); // 最前面(HUDの下・近景森より手前)
-          this.zoomCloudFront = sp;
+          for (const cfg of ZOOM_CLOUD_LAYERS) {
+            const sp = new TilingSprite({ texture: ctex, width: 1, height: 1 });
+            sp.eventMode = 'none';
+            sp.visible = false;
+            // 手前層(ぼかし>0)だけBlurFilter(非表示中はレンダされない=コスト0)。
+            if (cfg.blur > 0) sp.filters = [new BlurFilter({ strength: cfg.blur, quality: 2 })];
+            st.addChildAt(sp, st.getChildIndex(this.L.uiLayer)); // 逐次挿入=後の層(手前)が上に載る
+            this.zoomClouds.push(sp);
+          }
         }
       }
-      const zc = this.zoomCloudFront;
-      if (zc) {
-        if (aC <= 0.01) { zc.visible = false; }
-        else {
-          zc.visible = true;
-          const ch = this.screenH * ZOOM_CLOUD_HEIGHT_FRAC;
-          const cw = this.screenW * 1.06; // 端の揺れ/ドリフトで縁が出ないよう少し広く
-          zc.width = cw;
-          zc.height = ch;
-          zc.tileScale.set(ch / Math.max(1, zc.texture.height));
-          this.clampTilingV(zc); // ★縦の継ぎ目対策(縦はちょうど1枚)
-          zc.alpha = aC;
-          zc.tint = this.envTintNow();
-          const bob = Math.sin(now * 0.00035 + 1.3) * 8;
-          zc.position.set(-this.screenW * 0.03, this.screenH * ZOOM_CLOUD_BOTTOM_FRAC - ch + bob);
-          if (this.fogT0 === 0) this.fogT0 = now;
-          const periodC = Math.max(1, zc.texture.width * zc.tileScale.x);
-          const driftC = ((now - this.fogT0) / 1000) * ZOOM_CLOUD_DRIFT_PX_S;
-          zc.tilePosition.set((-s.camera.x * ZOOM_CLOUD_PARALLAX_X - driftC) % periodC, 0);
-        }
+      if (this.fogT0 === 0) this.fogT0 = now;
+      for (let ci = 0; ci < this.zoomClouds.length; ci++) {
+        const zc = this.zoomClouds[ci];
+        const cfg = ZOOM_CLOUD_LAYERS[ci];
+        const aC = fadeC * cfg.alpha;
+        if (aC <= 0.01) { zc.visible = false; continue; }
+        zc.visible = true;
+        const ch = this.screenH * cfg.heightFrac;
+        zc.width = this.screenW * 1.06; // 端の揺れ/ドリフトで縁が出ないよう少し広く
+        zc.height = ch;
+        zc.tileScale.set(ch / Math.max(1, zc.texture.height));
+        this.clampTilingV(zc); // ★縦の継ぎ目対策(縦はちょうど1枚)
+        zc.alpha = aC;
+        zc.tint = this.envTintNow();
+        const bob = Math.sin(now * 0.00035 + cfg.bobPhase) * cfg.bobAmp;
+        zc.position.set(-this.screenW * 0.03, this.screenH * cfg.bottomFrac - ch + bob);
+        // 霧と同じく流れる: 自走ドリフト(層ごとに速度差)+カメラパララックス(手前ほど速い)。
+        const periodC = Math.max(1, zc.texture.width * zc.tileScale.x);
+        const driftC = ((now - this.fogT0) / 1000) * cfg.driftPxS;
+        zc.tilePosition.set((-s.camera.x * cfg.paraX - driftC - cfg.tileOfs) % periodC, 0);
       }
     }
 
@@ -20055,8 +20061,8 @@ export class PixiScene {
     this.L.frontForest.mask = null;
     this.frontRidgeCopy?.destroy(); // 近景コピー(下部レイヤー)
     this.frontRidgeCopy = null;
-    this.zoomCloudFront?.destroy(); // 引き雲
-    this.zoomCloudFront = null;
+    for (const zc of this.zoomClouds) { zc.filters = []; zc.destroy(); } // 引き雲(2層)
+    this.zoomClouds = [];
     this.frontForestFadeMask.destroy();
     this.frontForestFadeMaskTexture?.destroy(true);
     this.frontForestFadeMaskTexture = null;
