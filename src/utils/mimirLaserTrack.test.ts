@@ -1,7 +1,7 @@
 // PACING_PUZZLE.md §6.33-3: LASER-TRACKの不変条件+ゴール検証(シミュレーション)。
-// 不変条件①〜⑥は基準系(bossTelegraph.ts)との整合を、ゴール検証(i)〜(v)は
-// 「静止=当たる/走り続け=避けられる/フラッシュ見てから=間に合わない/直前振り切り=避けられる」
-// という設計の芯そのものを機械検査する(監査指摘12の是正)。
+// 不変条件①〜⑥は基準系(bossTelegraph.ts)との整合を、ゴール検証は社長裁定=案F(v0.25.2941)の芯
+// 「静止=当たる/走り続け=追いつかれて当たる/直前(発射550〜1100ms前)の反転だけが振り切れる/
+// 早すぎる反転は再捕捉・ロック後は間に合わない」を機械検査する。
 import { describe, expect, it } from 'vitest';
 import {
   MIMIR_LASER_WINDUP_MS, MIMIR_LASER_TRACK_MAX_PX_S, MIMIR_LASER_TRACK_ACCEL,
@@ -17,8 +17,9 @@ import type { Enemy } from '../types/game';
 const ESCAPE_PX = 34 + 14;
 
 describe('mimirLaserTrack: 不変条件(§6.33-3 ①〜⑥)', () => {
-  it('① 照準の最高速はプレイヤー歩速と同速(ミラー一致)', () => {
-    expect(MIMIR_LASER_TRACK_MAX_PX_S).toBe(PLAYER_WALK_PX_PER_SEC);
+  it('① 照準の最高速は歩速の1.3倍(案F=走り続けるだけでは逃げ切れない)・加速は歩速×5', () => {
+    expect(MIMIR_LASER_TRACK_MAX_PX_S).toBeCloseTo(PLAYER_WALK_PX_PER_SEC * 1.3, 6);
+    expect(MIMIR_LASER_TRACK_ACCEL).toBeCloseTo(PLAYER_WALK_PX_PER_SEC * 5, 6);
   });
   it('② ロック段は脱出必要時間より短い(=フラッシュを見てからでは構造的に間に合わない)', () => {
     expect(MIMIR_LASER_LOCK_MS).toBeLessThan(minWindupMs(ESCAPE_PX));
@@ -86,22 +87,36 @@ const fireDistance = (playerAt: (tMs: number) => { x: number; y: number }): numb
 };
 const WALK = PLAYER_WALK_PX_PER_SEC / 1000; // px/ms
 
-describe('mimirLaserTrack: ゴール検証シミュレーション(§6.33-3 (i)〜(v))', () => {
+// 「windup開始から+y方向へ走り続け、発射atMs前に反転(-y)する」プレイヤー(マタドール検証用)。
+const runThenReverse = (atMsBeforeFire: number) => {
+  const s = MIMIR_LASER_WINDUP_MS - atMsBeforeFire;
+  return (t: number) => ({ x: 600, y: t <= s ? WALK * t : WALK * s - WALK * (t - s) });
+};
+
+describe('mimirLaserTrack: ゴール検証シミュレーション(§6.33-3・案F)', () => {
   it('(i) 静止プレイヤーは発射時にビーム内(=当たる)', () => {
     expect(fireDistance(() => ({ x: 600, y: 0 }))).toBeLessThan(ESCAPE_PX);
   });
-  it('(ii) windup開始から横へ走り続けたプレイヤーはビーム外(=早逃げ成立)', () => {
-    expect(fireDistance(t => ({ x: 600, y: WALK * t }))).toBeGreaterThan(ESCAPE_PX);
+  it('(ii) 横へ走り続けるだけのプレイヤーは追いつかれてビーム内(=案Fの芯・距離によらない)', () => {
+    for (const x of [300, 600, 1000]) {
+      expect(fireDistance(t => ({ x, y: WALK * t })), `distance=${x}`).toBeLessThan(ESCAPE_PX);
+    }
   });
   it('(iii) ロックのフラッシュを見てから走り出したプレイヤーはビーム内(=見てからでは間に合わない)', () => {
     const start = MIMIR_LASER_WINDUP_MS - MIMIR_LASER_LOCK_MS;
     expect(fireDistance(t => ({ x: 600, y: t > start ? WALK * (t - start) : 0 }))).toBeLessThan(ESCAPE_PX);
   });
-  it('(iv) 発射800ms前の「直前振り切り」はビーム外(=張り付かれてからの答えが存在する)', () => {
-    const start = MIMIR_LASER_WINDUP_MS - 800;
-    expect(fireDistance(t => ({ x: 600, y: t > start ? WALK * (t - start) : 0 }))).toBeGreaterThan(ESCAPE_PX);
+  it('(iv) 直前の反転(発射600〜1000ms前)は慣性で振り切れてビーム外(=マタドール成立)', () => {
+    for (const pre of [600, 700, 800, 900, 1000]) {
+      expect(fireDistance(runThenReverse(pre)), `reversal ${pre}ms pre-fire`).toBeGreaterThan(ESCAPE_PX);
+    }
   });
-  it('(v) その場の微動(±20pxのうろつき)はビーム内(=「ちょっと動いたぐらいじゃ当たる」)', () => {
+  it('(v) 早すぎる反転(1500ms前〜)は再捕捉されてビーム内・遅すぎる反転(400ms前)も間に合わない', () => {
+    expect(fireDistance(runThenReverse(1500)), 'too early').toBeLessThan(ESCAPE_PX);
+    expect(fireDistance(runThenReverse(1800)), 'too early').toBeLessThan(ESCAPE_PX);
+    expect(fireDistance(runThenReverse(400)), 'too late').toBeLessThan(ESCAPE_PX);
+  });
+  it('(vi) その場の微動(±20pxのうろつき)はビーム内(=「ちょっと動いたぐらいじゃ当たる」)', () => {
     expect(fireDistance(t => ({ x: 600, y: 20 * Math.sin((2 * Math.PI * t) / 2000) }))).toBeLessThan(ESCAPE_PX);
   });
 });

@@ -189,7 +189,8 @@ import {
 } from '../utils/mimirScript';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): 追尾予告レーザーの純関数群+定数の正本。
 import {
-  MIMIR_LASER_WINDUP_MS, mimirLaserPhase, stepLaserAim, mimirTrackEnabled,
+  MIMIR_LASER_WINDUP_MS, MIMIR_LASER_BROKEN_MS, MIMIR_LASER_INTERRUPTED_CD_MS,
+  mimirLaserPhase, stepLaserAim, mimirTrackEnabled, canInterruptMimirLaser,
 } from '../utils/mimirLaserTrack';
 import {
   jormungandPhaseForHealth, pickJormungandMove, jormRadialSpinAngle, type JormungandMove,
@@ -4694,8 +4695,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnBurst(hitX, hitY, '#fde047', 10);
                 useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
                 }
-                patch.bossState = 'chase';
-                patch.bossNextActionAt = nextActionDelay();
+                // §6.33 案G(社長裁定): 新挙動のレーザー溜め中の体当てカウンター成立は、chaseではなく
+                // 中断の正規フロー(laser-broken+中断CD)へ合流させる=近接ヒット中断と同じ扱い。
+                // 「発射直前だけ阻止できる」の約束と農場防止(8000ms CD)がW7経由でも貫通する。
+                if (MIMIR_TRACK_ENABLED && boss.type === 'mimir' && st === 'laser-windup') {
+                  patch.bossState = 'laser-broken';
+                  patch.bossStateUntil = newGameTime + MIMIR_LASER_BROKEN_MS;
+                  patch.mimirLaserReadyAt = newGameTime + MIMIR_LASER_INTERRUPTED_CD_MS;
+                } else {
+                  patch.bossState = 'chase';
+                  patch.bossNextActionAt = nextActionDelay();
+                }
                 patch.bossBurstLeft = 0;
               };
               // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58): このボスのスクリプトが有効か
@@ -4856,7 +4866,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // パニッシュ窓が体当てで短縮される。laser-broken中は普通に殴る(それが報酬)。
               ];
               const hiddenBossCounterableNow = BOSS_COUNTER_ENABLED && boss.type !== 'thor'
-                && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, HIDDEN_BOSS_COUNTER_RECOVERS) || st === 'dash');
+                && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, HIDDEN_BOSS_COUNTER_RECOVERS) || st === 'dash')
+                // §6.33 案G(社長裁定): 新挙動のレーザー溜めは弱点窓(発射前900ms)の間だけ体当て
+                // カウンター可(窓外3000ms全域で潰せた既存W7の穴を塞ぐ)。旧挙動(?mimirtrack=0)は従来どおり。
+                && !(MIMIR_TRACK_ENABLED && boss.type === 'mimir' && st === 'laser-windup'
+                  && !canInterruptMimirLaser(boss.type, st, newGameTime, boss.bossStateUntil));
               let hiddenBossCountered = false;
               if (hiddenBossCounterableNow) {
                 const { overlap, counterActive } = thorBodyOverlapNow();

@@ -2,9 +2,11 @@
 // レンダラ非依存・store非依存(useGameLoop.ts / gameStore.ts / pixiScene.ts から import される)。
 // 数値の根拠は §6.33-2(基準系=bossTelegraph.ts からの導出)を参照。
 //
-// 型の要旨(§6.33-1): windup 3000ms のうち前段2700msは照準が「速度・加速度を持つ物理追尾」で
-// ヘイト対象を追う(最高速=プレイヤー歩速と同速・立ち上がり1秒=社長改案)。終段300msでロック
-// (以後発射終了まで固定)。発射前900msは弱点露出=プレイヤーの近接ヒットで中断できる。
+// 型の要旨(§6.33-1・社長裁定=案F v0.25.2941): windup 3000ms のうち前段2700msは照準が
+// 「速度・加速度を持つ物理追尾」でヘイト対象を追う(最高速=プレイヤー歩速の1.3倍=走り続けても
+// 追いつかれる)。ただし加速度上限による慣性があり、**発射550〜1100ms前の反転(切り返し)だけが
+// 照準を振り切れる**(実測: 早すぎる反転は再捕捉され、遅すぎる反転は間に合わない=マタドール)。
+// 終段300msでロック(以後発射終了まで固定)。発射前900msは弱点露出=近接ヒットで中断できる。
 import type { Enemy } from '../types/game';
 import { applyBossPostureDamage } from './bossPosture';
 import { telegraphProgress01 } from './bossTelegraph';
@@ -19,10 +21,11 @@ export const mimirTrackEnabled = (): boolean =>
 
 /** レーザー溜め時間(ms)。useGameLoop.ts の状態機械もこの値を使う(単位は実効ms=壁時計系)。 */
 export const MIMIR_LASER_WINDUP_MS = 3000;
-/** 照準の最高速(px/s)。= PLAYER_WALK_PX_PER_SEC(104.4)と同速(社長改案)。一致はテストで検査。 */
-export const MIMIR_LASER_TRACK_MAX_PX_S = 104.4;
-/** 照準の加速度上限(px/s^2)。静止→最高速に1.0秒=「立ち上がりの慣性」(社長改案)。 */
-export const MIMIR_LASER_TRACK_ACCEL = 104.4;
+/** 照準の最高速(px/s)。= 歩速104.4×1.3(社長裁定=案F)。走り続けるだけでは追いつかれる。 */
+export const MIMIR_LASER_TRACK_MAX_PX_S = 135.72;
+/** 照準の加速度上限(px/s^2)。= 歩速×5。全反転に0.52秒=この慣性が「直前の切り返し」を成立させる
+ * (実測掃引v0.25.2941: 反転が効く窓=発射550〜1100ms前。早い反転は再捕捉・遅い反転は間に合わない)。 */
+export const MIMIR_LASER_TRACK_ACCEL = 522;
 /** 照準が対象に重なった時の保持デッドゾーン(px)。到着後の微振動(オーバーシュート往復)止め。 */
 export const MIMIR_LASER_AIM_DEADZONE_PX = 6;
 /** ロック段の長さ(ms)。< 脱出必要460ms((半太さ34+自機半径14)/104.4)=見てからでは間に合わない。 */
