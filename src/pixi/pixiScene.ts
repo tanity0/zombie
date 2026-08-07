@@ -2313,6 +2313,8 @@ interface ActorView {
   motFace?: number; motFaceFrom?: number; motFaceAt?: number;
   // ラスボス第二形態の連結パーツ(v0.25.2918)。添字=パーツ番号(0砲身/1中間/2尾)で固定。
   glenParts?: Sprite[];
+  /** v0.25.2956: 蛇式追従(DQ隊列)用の足元軌跡。本体が動いた分だけ足し、パーツは軌跡上を遅れて辿る。 */
+  glenTrail?: { x: number; y: number }[];
   // 爪痕(社長支給素材 D-2・v0.25.2402)。**判定1つにつき1枚**貼るので配列(グレンの血の爪痕は同時3本)。
   clawMarks?: Sprite[];
   // 爪痕の「手前から奥へ刻まれる」ワイプ用に、素材の左からの一部だけを指すサブテクスチャ
@@ -15658,7 +15660,35 @@ export class PixiScene {
     for (const s of view.glenParts) if (s) s.visible = false;
     if (visibleCount <= 0) return;
     const show = GLEN_VISIBLE_BY_COUNT[Math.min(6, visibleCount)];
-    let x = footX + bodyHalfW * 0.55; // 本体の右肩口から連なる(叩き台)
+    // v0.25.2956(社長指示): ①付け根はもっと本体に被せてつなぎ目を隠す ②追従は「蛇みたいに遅れて
+    // ついてくる」(昔のDQのパーティー隊列)。本体の足元軌跡(glenTrail)を毎フレーム記録し、各パーツは
+    // **軌跡上を距離ぶんだけ遡った位置**に置く=本体が曲がるとパーツが同じ道を遅れてなぞる。
+    const trail = view.glenTrail ?? (view.glenTrail = []);
+    const lastPt = trail[trail.length - 1];
+    if (!lastPt || Math.hypot(footX - lastPt.x, footY - lastPt.y) >= 2) {
+      trail.push({ x: footX, y: footY });
+      if (trail.length > 240) trail.splice(0, trail.length - 240);
+    }
+    // 軌跡を現在位置から距離dだけ遡った点。軌跡が足りない分は最古の向き(無ければ右)へ直線延長=
+    // 出現直後でも「本体の背後に一列」の絵が崩れない。
+    const sampleBehind = (d: number): { x: number; y: number } => {
+      let px = footX, py = footY, remain = d;
+      for (let i = trail.length - 1; i >= 0; i--) {
+        const q = trail[i];
+        const segLen = Math.hypot(px - q.x, py - q.y);
+        if (segLen >= remain) {
+          const k = segLen > 0 ? remain / segLen : 0;
+          return { x: px + (q.x - px) * k, y: py + (q.y - py) * k };
+        }
+        remain -= segLen; px = q.x; py = q.y;
+      }
+      const a = trail.length >= 2 ? trail[0] : null, b = trail.length >= 2 ? trail[1] : null;
+      let dx = 1, dy = 0;
+      if (a && b) { const l = Math.hypot(b.x - a.x, b.y - a.y); if (l > 0.5) { dx = (a.x - b.x) / l; dy = (a.y - b.y) / l; } }
+      return { x: px + dx * remain, y: py + dy * remain };
+    };
+    let dist = bodyHalfW * 0.15; // 付け根=本体にほぼ隠れる距離から始める(旧: 右肩口0.55で露出していた)
+    let prevHalfW = 0;
     let first = true;
     for (const slot of show) {
       const tex = getTexture(`glen-boss2-part-${GLEN_CHAIN[slot]}`);
@@ -15673,15 +15703,17 @@ export class PixiScene {
       }
       if (sp.texture !== tex) sp.texture = tex;
       const w = tex.width * sc;
-      x += w / 2 - (first ? 0 : 10); // 前のパーツと少し重ねて「連結」に見せる
+      // 隣と深めに重ねてつなぎ目を隠す(重なり=幅の40%)。付け根は本体との被りを優先。
+      dist += first ? w * 0.5 * 0.4 : (prevHalfW + w / 2 - Math.min(prevHalfW * 2, w) * 0.4);
+      const pt = sampleBehind(dist);
       first = false;
+      prevHalfW = w / 2;
       const bob = Math.sin(now / 520 + slot * 1.7) * 3;
       sp.scale.set(sc, sc);
       sp.rotation = Math.sin(now / 700 + slot * 2.1) * 0.03;
-      sp.position.set(Math.round(x), Math.round(footY - bob));
+      sp.position.set(Math.round(pt.x), Math.round(pt.y - bob));
       sp.alpha = alpha;
       sp.visible = true;
-      x += w / 2;
     }
   }
 

@@ -36,13 +36,11 @@ export const shouldIgnoreAttention = (
 ): boolean => existingAlive && (existingHasCutin || incomingHasCutin);
 
 /**
- * カットイン窓(hold終了〜out開始の間)か。in→hold→cutin→out の順序(§6.36 不変条件:
- * カメラはカットイン中もhold位置に静止し、outはカットイン後に始まる)。
- * cutinMs=0(素のattention)は常にfalse=従来と1msも変わらない。
+ * カットイン窓か(v0.25.2956・社長指示「ダン!SEと同時に紹介表示」): attention開始と同時に出し、
+ * cutinMsで消える=窓は[0, cutinMs)。attentionの尺・カメラ位相には一切影響しない。
+ * cutinMs=0(素のattention)は常にfalse。
  */
 export const isCutinWindow = (
   elapsedMs: number,
-  inMs: number,
-  holdMs: number,
   cutinMs: number,
-): boolean => cutinMs > 0 && elapsedMs >= inMs + holdMs && elapsedMs < inMs + holdMs + cutinMs;
+): boolean => cutinMs > 0 && elapsedMs >= 0 && elapsedMs < cutinMs;

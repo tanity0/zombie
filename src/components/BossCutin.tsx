@@ -2,14 +2,15 @@
 // 社長裁定(2026-08-07): 画面全体に被写体+名前をバン!と出す。ぼかしは使わない(上下がぼけるのはNG)。
 // 絵はボス絵台帳 bossIconSrc(ステージ別城ボス/グレン専用アート込み)をそのまま大写しする。
 //
-// タイミングはattentionレコード基準: in(360)→hold(1900)→★cutin(1100・カメラ静止のまま)→out(360)。
-// このコンポーネントはcutin窓の間だけ表示する。ゲームは凍結中(hitstop延長済み)なので負荷は演出のみ。
+// タイミング(社長指示v0.25.2956「アテンションしたときの、ダン!ってSEと同時に紹介表示に変更」):
+// attention発火の瞬間(=ダン!SE・boss-appear)と同時に表示し、cutinMs(1.1秒)で消える。カメラの
+// in→hold は暗幕の裏で進み、カード が消えると実物のボスがホールドで映っている、という順番。
+// attentionの尺・hitstopは素のattentionと同一(延長なし)。ゲームは凍結中なので負荷は演出のみ。
 //
 // React再レンダー規律: attentionスライスだけ購読。attentionは発火/解除時にしか参照が変わらない
 // (毎フレーム書き換えられない)ので、このコンポーネントが毎フレーム再レンダーすることはない。
 import React, { useEffect, useState } from 'react';
-import { useGameStore, ATTENTION_IN_MS, ATTENTION_HOLD_MS } from '../store/gameStore';
-import { playSfx } from '../audio/audioManager';
+import { useGameStore } from '../store/gameStore';
 
 const BossCutin: React.FC = () => {
   const attention = useGameStore(s => s.attention);
@@ -27,20 +28,14 @@ const BossCutin: React.FC = () => {
 
   useEffect(() => {
     if (!cutin || cutinMs <= 0) { setVisible(false); return; }
-    const showAt = startReal + ATTENTION_IN_MS + ATTENTION_HOLD_MS;
-    const hideAt = showAt + cutinMs;
+    // 表示はattention開始と同時(ダン!SE=boss-appearと同期・社長指示)。専用SEはもう鳴らさない
+    // (開始SEと重ねると濁るため heavy-impact は廃止)。
+    const hideAt = startReal + cutinMs;
     const now = Date.now();
     if (now >= hideAt) { setVisible(false); return; }
-    let hideTimer: ReturnType<typeof setTimeout> | undefined;
-    const show = () => {
-      setVisible(true);
-      playSfx('heavy-impact'); // 名前の突き付けSE(§6.36: heavy-impact流用)
-      hideTimer = setTimeout(() => setVisible(false), Math.max(0, hideAt - Date.now()));
-    };
-    let showTimer: ReturnType<typeof setTimeout> | undefined;
-    if (now >= showAt) show();
-    else showTimer = setTimeout(show, showAt - now);
-    return () => { clearTimeout(showTimer); clearTimeout(hideTimer); setVisible(false); };
+    setVisible(true);
+    const hideTimer = setTimeout(() => setVisible(false), hideAt - now);
+    return () => { clearTimeout(hideTimer); setVisible(false); };
   }, [cutin, startReal, cutinMs]);
 
   if (!visible || !cutin) return null;
@@ -87,8 +82,10 @@ const BossCutin: React.FC = () => {
           style={{ animation: 'bossCutinRule 220ms ease-out both' }}
         />
         <div
-          className="px-4 text-center font-black text-white"
+          className="px-4 text-center font-bold text-white"
           style={{
+            // 書体はエリア/地名系と同じ明朝スタック(社長指示「ボス名前の表示はエリアとかと同じ文字で」)。
+            fontFamily: 'Georgia, "Hiragino Mincho ProN", serif',
             fontSize: 'clamp(28px, 7.5vw, 64px)',
             letterSpacing: '0.14em',
             textShadow: '0 0 18px rgba(239,68,68,0.85), 0 2px 0 rgba(127,29,29,0.9), 0 0 46px rgba(239,68,68,0.4)',
