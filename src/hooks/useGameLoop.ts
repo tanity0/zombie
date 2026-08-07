@@ -170,7 +170,6 @@ import {
   getEnemySpawnInterval,
   isBossType,
   isHiddenBoss,
-  isGate2AngelBoss,
   spawnEnemyAt,
   spawnEnemyAtWithTier,
   selectLabEnemyType,
@@ -903,8 +902,7 @@ const BOSS_CRUSH_FX_MS = 130;                        // 爆破FX/SE/シェイク
 const BOSS_CRUSH_SHAKE_MS = 130;                     // 「少し揺れる」程度の短い画面シェイク
 const BOSS_CRUSH_SHAKE_MAG = 3;                      // 弱め(死神召喚などより控えめ)
 const BOSS_SUMMON_AGGRO = 2000;                      // 裏ボスが召喚へ「吸い付く」最大距離(画面内の召喚は基本対象に)
-const BOSS_COUNTER_WARP_DIST = 320;                  // カウンター被弾時、プレイヤーの反対側へワープする距離(中心間px・社長指示。50は近すぎ→320へ)
-const BOSS_WARP_FADE_MS = 500;                       // ワープ先での 0.5秒フェードインの長さ
+const BOSS_WARP_FADE_MS = 500;                       // ワープ先での 0.5秒フェードインの長さ(発火経路はv0.25.2957で撤廃済み。コントローラ側のフェード復帰だけ残置)
 const BOSS_TURN_RESPONSE = 3.2;                      // 移動の慣性。目標速度へ寄せる係数(小さいほど慣性大=ぬるっと曲がる)
 const BOSS_DASH_HOMING = 0.05;                       // ダッシュ中の弱いホーミング量/frame(基本は直進・少しだけ固定ヘイト対象へ寄せる)
 const BOSS_DASH_BACKSTEP_MULT = 0.4;                 // 突進溜め中、ゆっくり後退り(ターゲットから離れる)する速度倍率(社長指示)
@@ -9157,45 +9155,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           }
 
-          // 裏ボス: カウンター弾(反射弾)を食らうと、プレイヤーの反対側 BOSS_COUNTER_WARP_DIST へワープ(社長指示)。
-          // ワープ先でフラッシュ＋0.5秒フェードイン(reaperWarpAlpha を boss controller が駆動)。即死(ワーム)時は除外。
-          // ★ミゲル(ゲート2ボス)は除外(社長報告v0.25.1619「反射弾を当てると絵が消える」修正): ミゲルは
-          //   ワープせず定位置を周回する設計。かつ専用コントローラで動くため汎用ボスの reaperWarpAlpha フェードイン
-          //   復帰(useGameLoop 3009付近)を通らず、reaperWarpAlpha=0 のまま固定=絵が消えたままになっていた。
-          //   ワープ対象から外し、反射弾のダメージだけ通す(=消えない)。
-          // ★v0.25.2624(社長報告「反撃してワープするとかならず消える」): **アイドルも除外**。
-          // ミゲルと**全く同じ原因**——アイドルは専用コントローラ(`runIdolTick`)で動くため、
-          // 汎用ボスコントローラの `reaperWarpAlpha` フェードイン復帰(本ファイル4400付近)を通らない。
-          // よってワープで 0 にした alpha を**誰も1へ戻さず、絵が消えたまま固定**される
-          // (当たり判定・影・攻撃は生きているので「見えないのに殴られる」)。
-          // 加えて設計上も、アイドルは**自前の離脱(roll)と主戦帯200-340pxの間合い管理**を持つので、
-          // 汎用の強制ワープはその設計を壊す(§6.28-20「近づくほど安全」の距離設計)。
-          // **掟: 専用コントローラで動くボスは、汎用ボスの alpha を触る演出の対象にしない。**
-          if (projectile?.reflected && enemyForFx && isHiddenBoss(enemyForFx.type)
-              && !isGate2AngelBoss(enemyForFx.type) && enemyForFx.type !== 'idol' && !enemyKilled
-              && Date.now() >= bossRef.current.warpUntil) {
-            const wpl = useGameStore.getState().player;
-            const wpcx = wpl.x + wpl.width / 2, wpcy = wpl.y + wpl.height / 2;
-            const bcx0 = enemyForFx.x + enemyForFx.width / 2, bcy0 = enemyForFx.y + enemyForFx.height / 2;
-            let ux = bcx0 - wpcx, uy = bcy0 - wpcy;
-            const um = Math.hypot(ux, uy) || 1;
-            ux /= um; uy /= um; // プレイヤー→ボス現在地の向き
-            // 反対側 = プレイヤーから -向き へ DIST。新しい中心→左上に変換。
-            const ncx = wpcx - ux * BOSS_COUNTER_WARP_DIST, ncy = wpcy - uy * BOSS_COUNTER_WARP_DIST;
-            const nx = ncx - enemyForFx.width / 2, ny = ncy - enemyForFx.height / 2;
-            bossRef.current.warpUntil = Date.now() + BOSS_WARP_FADE_MS;
-            bossRef.current.lastX = nx; bossRef.current.lastY = ny;
-            useGameStore.setState(st => ({
-              enemies: st.enemies.map(en => en.id === enemyForFx.id
-                ? { ...en, x: nx, y: ny, reaperWarpAlpha: 0, knockbackUntil: 0 } : en),
-            }));
-            // ワープ先のフラッシュ演出。
-            spawnFlash('rgba(199,210,254,0.18)', 160);
-            useGameStore.getState().spawnGlow(ncx, ncy, 64, 'rgba(165,180,252,', 360);
-            spawnRing(ncx, ncy, 8, 70, 'rgba(199,210,254,0.95)', 4, 320);
-            spawnBurst(ncx, ncy, '#c7d2fe', 14);
-            playSfx('counter');
-          }
+          // v0.25.2957(社長指示「裏ボスのカウンター弾当たるとワープする仕様撤廃。もはや裏ボスにとって
+          // カウンター弾は脅威ではない気がするので」): 反射弾ヒット時のワープ(プレイヤー反対側へ320px+
+          // 0.5秒フェードイン)を撤去した。反射弾のダメージ自体は従来どおり通る。ワープの残骸として
+          // bossRef.warpUntil / reaperWarpAlpha のフェード復帰(4520付近)は残っているが、この撤去で
+          // warpUntil を立てる者が居なくなった=常に非ワープ。過去の除外(ミゲル/idolの絵消えバグ)ごと不要になった。
 
           if (enemyForFx) {
             const hitX = enemyForFx.x + enemyForFx.width / 2;
