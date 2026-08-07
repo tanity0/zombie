@@ -212,7 +212,7 @@ export const IDOL_TUNING: IdolTuning = {
   timing: {
     aim:   { windup: 700,  active: 0,   recover: 900 },
     fan:   { windup: 900,  active: 0,   recover: 900 },
-    roll:  { windup: 400,  active: 300, recover: 900 },
+    roll:  { windup: 400,  active: 180, recover: 900 },
     punch: { windup: 600,  active: 0,   recover: 900 },
     snipe: { windup: 1100, active: 200, recover: 900 },
     orb:   { windup: 800,  active: 0,   recover: 900 },
@@ -235,22 +235,23 @@ export const IDOL_TUNING: IdolTuning = {
   stringLen: { p1: 3, p2: 4 },
   strings: [
     // 密着(0〜140): 硬直の長い近距離技で「ここが安全」を体で教える。終端は必ず離脱か遠距離技。
-    { zone: 'melee', weight: 55, moves: ['punch', 'roll', 'fan', 'orb'] },
-    { zone: 'melee', weight: 45, moves: ['roll', 'fan', 'punch', 'orb'] },
+    // 拳で押し出した先へ狙撃線を通す。もう一方は離脱→射線で挟み、最後の拳から再び狙撃へ繋ぐ。
+    { zone: 'melee', weight: 55, moves: ['punch', 'snipe', 'roll', 'fan'] },
+    { zone: 'melee', weight: 45, moves: ['roll', 'fan', 'punch', 'snipe'] },
     // 主戦帯(140〜340): 連射で崩して終端に追尾弾=「離れても解決しない」を教える帯。
-    { zone: 'near', weight: 40, moves: ['fan', 'fan', 'orb', 'snipe'] },
-    { zone: 'near', weight: 35, moves: ['fan', 'snipe', 'orb', 'fan'] },
-    { zone: 'near', weight: 25, moves: ['orb', 'fan', 'punch', 'snipe'] },
+    { zone: 'near', weight: 40, moves: ['fan', 'roll', 'snipe', 'orb'] },
+    { zone: 'near', weight: 35, moves: ['orb', 'punch', 'snipe', 'fan'] },
+    { zone: 'near', weight: 25, moves: ['fan', 'orb', 'punch', 'snipe'] },
     // 遠(340〜700): 狙撃線が主。ここが一番危ない=「近づけ」の圧。
-    { zone: 'mid', weight: 50, moves: ['aim', 'aim', 'snipe', 'orb'] },
-    { zone: 'mid', weight: 50, moves: ['snipe', 'orb', 'aim', 'snipe'] },
+    { zone: 'mid', weight: 50, moves: ['aim', 'snipe', 'orb', 'roll'] },
+    { zone: 'mid', weight: 50, moves: ['orb', 'aim', 'snipe', 'fan'] },
     // 超遠(700+): 逃げ切れる距離を作らない(ER §1-4「遠距離に居させない設計」)。
-    { zone: 'far', weight: 45, moves: ['aim', 'snipe', 'orb', 'snipe'] },
-    { zone: 'far', weight: 55, moves: ['orb', 'orb', 'snipe', 'aim'] },
+    { zone: 'far', weight: 45, moves: ['aim', 'snipe', 'orb', 'roll'] },
+    { zone: 'far', weight: 55, moves: ['orb', 'snipe', 'aim', 'fan'] },
   ],
-  // ④休符: P1/P2とも0.9秒。**0にはしない**(プレイヤーのターンが消えると理不尽)。
-  // 0.9秒=カウンター1サイクル820msを上回る最小値。
-  rest: { p1: 900, p2: 900 },
+  // ④休符: P1/P2とも1.7秒。連段中は圧を掛け、終端だけ2発ぶんの小休止を保証する。
+  // カウンター1サイクル820ms×2を上回るため、回避後に明確な「こちらのターン」が来る。
+  rest: { p1: 1700, p2: 1700 },
   // 中立の滞在(休符明け〜次のストリングまで)。ER原則③「主戦帯で横に回りながら出入りする」。
   // ここが0だとボスは一切移動しない(初回計測で移動tick0.5〜5.5%だった原因)。
   neutral: { minMs: 700, maxMs: 1300 },
@@ -316,8 +317,6 @@ export const idolShot = (m: IdolShotSlot): IdolShotSpec => IDOL_TUNING.shots[m];
 /** 表示名。空なら `射撃1` のような既定名(枠を足しただけで名無しにならない)。 */
 export const idolShotName = (m: IdolShotSlot): string =>
   IDOL_TUNING.shotLabels[m]?.trim() || `射撃${IDOL_SHOT_SLOTS.indexOf(m) + 1}`;
-/** 技の表示名(中核も射撃も1つの関数で引ける)。 */
-export const idolMoveName = (m: IdolMove): string => (isIdolShot(m) ? idolShotName(m) : m);
 /** 有効な枠(社長が足した射撃技)。 */
 export const idolEnabledShots = (): IdolShotSlot[] =>
   IDOL_SHOT_SLOTS.filter(s => IDOL_TUNING.shots[s].enabled >= 0.5);

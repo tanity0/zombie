@@ -184,7 +184,6 @@ export const registerBossTuning = (entry: BossTuningEntry): void => {
   REGISTRY.set(entry.bossType, entry);
 };
 export const getBossTuning = (bossType: string): BossTuningEntry | undefined => REGISTRY.get(bossType);
-export const listBossTuning = (): BossTuningEntry[] => [...REGISTRY.values()];
 
 // ---- パス読み書き ------------------------------------------------------------------------------
 export const getAtPath = (obj: unknown, path: string): number | undefined => {

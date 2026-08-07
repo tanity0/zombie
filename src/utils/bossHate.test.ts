@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  addHateDamage, hateTotal, pickHateSide, resolveHateAimTarget, resolveBossHateAim,
+  addHateDamage, hateTotal, pickHateSide, resolveHateAimTarget, resolveBossHateAim, resolveBossLockedHateAim,
   isHateTrackedBossType, HATE_WINDOW_MS, HATE_BUCKETS, HATE_BUCKET_MS, HATE_STICKY_MULT,
   type HateBucket, type PickHateSideInput,
 } from './bossHate';
@@ -12,14 +12,15 @@ describe('bossHate 定数(BOT_AND_GHOST.md §2.8 G2.5)', () => {
     expect(HATE_BUCKET_MS).toBe(1000);
   });
 
-  it('isHateTrackedBossType: giantbat/idol/天使6体だけtrue', () => {
+  it('isHateTrackedBossType: 守護霊と共闘できる全ボスだけtrue', () => {
     expect(isHateTrackedBossType('giantbat')).toBe(true);
     expect(isHateTrackedBossType('idol')).toBe(true);
     for (const t of ['miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel']) {
       expect(isHateTrackedBossType(t)).toBe(true);
     }
-    // トール/通常敵は resolveEnemyTarget が既にゴーストを見るので対象外(仕様どおり不変)。
-    expect(isHateTrackedBossType('thor')).toBe(false);
+    for (const t of ['mimir', 'jormungand', 'skadi', 'thor']) {
+      expect(isHateTrackedBossType(t)).toBe(true);
+    }
     expect(isHateTrackedBossType('zombie')).toBe(false);
   });
 });
@@ -157,5 +158,14 @@ describe('resolveBossHateAim(ボス側の呼び出しヘルパ)', () => {
     expect(aim.side).toBe('ghost');
     expect(aim.x).toBe(110); // 100 + 20/2
     expect(aim.y).toBe(210); // 200 + 20/2
+  });
+
+  it('resolveBossLockedHateAimは技途中でヘイトを再評価せず、固定した側だけを追う', () => {
+    const ghostAlly = { x: 100, y: 200, width: 20, height: 20, kind: 'ghost-ally', ghostBossId: 'boss-1' };
+    const locked = resolveBossLockedHateAim({ ...enemy, hateTarget: 'ghost' }, { x: 300, y: 0 }, [ghostAlly]);
+    expect(locked).toEqual({ x: 110, y: 210, side: 'ghost' });
+
+    const fallback = resolveBossLockedHateAim({ ...enemy, hateTarget: 'ghost' }, { x: 300, y: 0 }, []);
+    expect(fallback).toEqual({ x: 300, y: 0, side: 'player' });
   });
 });

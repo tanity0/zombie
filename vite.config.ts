@@ -67,6 +67,8 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         bossmaker: fileURLToPath(new URL('./bossmaker.html', import.meta.url)),
+        // 敵モーション動物園(開発用ビューア・v0.25.2903)。本編バンドルには載らない(独立エントリ)。
+        zoo: fileURLToPath(new URL('./zoo.html', import.meta.url)),
       },
     },
   },

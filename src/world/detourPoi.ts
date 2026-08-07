@@ -11,7 +11,7 @@
 // ここの位置計算だけを共有し、各々の当たり判定/滞在判定/アリーナ判定は個別に持つ
 // (循環import回避: ここは pois.ts に依存するが、pois.ts はここに依存しない)。
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
-import { POI_SECTORS, sectorIndexForAngle } from './pois';
+import { POI_SECTORS } from './pois';
 
 export type DetourKind = 'police' | 'armory' | 'hospital';
 
@@ -67,6 +67,3 @@ export const assignDetourSectors = (
   return { police, armory, hospital };
 };
 
-// 角度(rad)から、それが担当するセクターへ丸める(pois.ts の sectorIndexForAngle を再エクスポート
-// せず薄く経由させる=呼び出し側は detourPoi.ts だけを見ればよい)。
-export const sectorForAngle = (angle: number): number => sectorIndexForAngle(angle);

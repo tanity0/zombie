@@ -11,7 +11,7 @@ import { GLOW_R_L } from './glowTiers';
 import {
   useGameStore, counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
-  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossCritCdMult, enemyDeathLabel,
+  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossCritCdMult, bossSlowMult, enemyDeathLabel,
   knockbackSpeedFor,
 } from '../store/gameStore';
 import { getActiveGun } from './weaponUtils';
@@ -24,7 +24,7 @@ import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playable
 import { distToSegment } from './levelUpGate';
 import { isCounterablePhase, phaseJustChanged } from './bossScript';
 import { neutralVerb, pickStringScript, restMsFor, punishTrigger, type NeutralVerb } from './bossSkeleton';
-import { resolveBossHateAim } from './bossHate';
+import { resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from './bossHate';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { refundCounterCooldown } from './counterMaster';
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter';
@@ -55,7 +55,7 @@ export interface IdolTickState {
    * 誘導弾(毎フレーム旋回させる対象)。**旋回速度は毎フレーム引き直す**ので、
    * ここには「どの技から出た弾か」だけを持つ(メーカーで旋回速度を変えると飛行中の弾にも効く)。
    */
-  homing: { id: string; move: IdolMove }[];
+  homing: { id: string; move: IdolMove; side: HateSide }[];
   // ---- 射撃部品の連射(v0.25.2638) ----
   shotSlot: IdolShotSlot | null;  // いま撃っている枠
   shotWavesLeft: number;          // 残りの斉射数
@@ -214,8 +214,30 @@ export const runIdolTick = (
   if (phaseJustChanged(idol.bossPhase, phase)) patch.bossPhaseFlashUntil = newGameTime + 1200;
   patch.bossPhase = phase;
   const st = idol.bossState ?? 'chase';
+  /**
+   * ★紫の完全気絶(ポスチャーブレイク)中か。**攻撃も移動も完全停止**する(社長指示v0.25.2892)。
+   *
+   * 他のボスは全員これを見ているのに、アイドルだけ抜けていた(v0.25.2613で状態機械を
+   * useGameLoop からこのファイルへ移設した時に落ちた)。結果、**リティクルは紫になるのに
+   * 弾を撃ち続ける**状態だった。出どころを揃える:
+   *   ・裏ボス4体 = useGameLoop の `frozen`(bossFullStun 込み)で状態機械ごとスキップ
+   *   ・天使6体   = angelBossTick の各tick先頭で `chase` へ戻す
+   *   ・アイドル  = ここ(同じ形)
+   * `bossFullStunUntil` は gameStore の紫発火が `stunUntil` と同時に打つ単一の出どころ。
+   */
+  const fullStun = idol.bossFullStunUntil !== undefined && newGameTime < idol.bossFullStunUntil;
+  /**
+   * トラップ拘束(rootUntil)中か。angelBossTick.ts(社長裁定v0.25.1690「トラップ中は他のボスと
+   * 揃えて停止」・v0.25.1688の移動半減から改訂)と同じ掟: **攻撃の実行中(chase以外)は完走させ、
+   * chase(移動/次攻撃の起点)だけを凍結する**——tickを丸ごと止めると時計だけ先へ進み、
+   * root明けにツイーンが瞬間完了=テレポートに見えるため。他のボスは全員これを見ているのに、
+   * アイドルだけ抜けていた(fullStunと同じ経緯・v0.25.2895)。
+   */
+  const rooted = idol.rootUntil !== undefined && newGameTime < idol.rootUntil;
   const fresh = (): Enemy => useGameStore.getState().enemies.find(e => e.id === idol.id) ?? idol;
   const hateAim = () => resolveBossHateAim(idol, { x: pcx, y: pcy }, useGameStore.getState().summons, newGameTime);
+  const lockedHateAim = (side: HateSide = patch.hateTarget ?? idol.hateTarget ?? 'player') =>
+    resolveBossLockedHateAim({ ...idol, hateTarget: side }, { x: pcx, y: pcy }, useGameStore.getState().summons);
 
   // ---- プレイヤーの速度(偏差撃ち aimMode=2 のため・v0.25.2638) --------------------------------
   // store はプレイヤー速度を持たないので、**前フレームとの差**から出す。dt=0のフレームでは更新しない
@@ -234,22 +256,26 @@ export const runIdolTick = (
     const live = new Set(useGameStore.getState().projectiles.map(p => p.id));
     s.homing = s.homing.filter(h => live.has(h.id));
     if (s.homing.length > 0) {
-      const rate = new Map<string, number>();
+      const rate = new Map<string, { turn: number; side: HateSide }>();
       for (const h of s.homing) {
-        rate.set(h.id, isIdolShot(h.move)
-          ? (idolShot(h.move).homingDeg * Math.PI) / 180
-          : IDOL_TUNING.shape.orbTurnRate);
+        rate.set(h.id, {
+          turn: isIdolShot(h.move)
+            ? (idolShot(h.move).homingDeg * Math.PI) / 180
+            : IDOL_TUNING.shape.orbTurnRate,
+          side: h.side,
+        });
       }
       useGameStore.setState(state => ({
         projectiles: state.projectiles.map(p => {
-          const turn = rate.get(p.id);
-          if (turn === undefined) return p;
+          const homing = rate.get(p.id);
+          if (homing === undefined) return p;
+          const target = lockedHateAim(homing.side);
           const cur = Math.atan2(p.direction.y, p.direction.x);
-          const want = Math.atan2(pcy - (p.y + p.height / 2), pcx - (p.x + p.width / 2));
+          const want = Math.atan2(target.y - (p.y + p.height / 2), target.x - (p.x + p.width / 2));
           let d = want - cur;
           while (d > Math.PI) d -= Math.PI * 2;
           while (d < -Math.PI) d += Math.PI * 2;
-          const step = Math.max(-turn * dt, Math.min(turn * dt, d));
+          const step = Math.max(-homing.turn * dt, Math.min(homing.turn * dt, d));
           const a = cur + step;
           return { ...p, direction: { x: Math.cos(a), y: Math.sin(a) } };
         }),
@@ -280,7 +306,7 @@ export const runIdolTick = (
         counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
       } }));
       const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT);
-      useGameStore.getState().damageEnemy(idol.id, dmg, false, true);
+      useGameStore.getState().damageEnemy(idol.id, dmg, false, true, false, 'other', 'player', 'counter');
       useGameStore.getState().spawnDamageNumber(icx, idol.y, dmg, true);
       sfx.reward();
       useGameStore.getState().spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
@@ -293,7 +319,9 @@ export const runIdolTick = (
     patch.bossStateUntil = newGameTime + restMsFor(phase, IDOL_REST) * bossCritCdMult(fresh(), newGameTime);
   };
 
-  const counterableNow = counterEnabled
+  // 紫中はカウンターも取らない(裏ボス=frozen / 天使=fullStun分岐 と同じ。止まっている相手に
+  // カウンターは成立しない=紫はフィニッシュを入れる時間)。
+  const counterableNow = counterEnabled && !fullStun
     && (isCounterablePhase(st, WINDUP_STATES, RECOVER_STATES) || st === IDOL_REST_STATE);
   let countered = false;
   if (counterableNow) {
@@ -318,18 +346,18 @@ export const runIdolTick = (
     patch.bossState = windupState(m);
     patch.bossStateUntil = newGameTime + idolMoveTiming(m).windup;
     if (isIdolShot(m)) {
+      const aim = hateAim();
+      patch.hateTarget = aim.side;
       // 射撃部品(v0.25.2638)。狙いの決め方が「予告開始で固定」なら**ここで線をロック**する
       // =掟W4(テルを出したら必ずその向きへ撃つ)。描画側は同じ2点を読むので赤い線と一致する。
       const sp = idolShot(m);
       s.shotSlot = m;
       s.shotWaveIdx = 0;
       if (Math.round(sp.aimMode) === 1) {
-        const aim = hateAim();
         s.shotAngle = Math.atan2(aim.y - icy, aim.x - icx);
         patch.aiFromX = icx; patch.aiFromY = icy;
         patch.aiTargetX = icx + Math.cos(s.shotAngle) * SHOT_LOCK_VIS_RANGE;
         patch.aiTargetY = icy + Math.sin(s.shotAngle) * SHOT_LOCK_VIS_RANGE;
-        patch.hateTarget = aim.side;
       }
     } else if (m === 'snipe') {
       // 掟W4: 溜め開始で線をロック(テルを出したら必ず撃つ)。図形=判定=描画が同じ2点を読む。
@@ -393,9 +421,9 @@ export const runIdolTick = (
 
   /**
    * 射撃部品の狙う向き(rad)。**3つの決め方**(`aimMode`):
-   *  - 0 追従: 撃つ瞬間のプレイヤーへ(既存の aim/fan と同じ)
+   *  - 0 追従: 撃つ瞬間の固定ヘイト対象へ(技の途中で対象側は切り替えない)
    *  - 1 固定: 予告の開始でロック済み(`s.shotAngle`)=**歩いて避けられる**
-   *  - 2 偏差: プレイヤーの移動先を読む。弾の到達時間ぶんだけ先へ置く=**まっすぐ走り続けると当たる**
+   *  - 2 偏差: 固定ヘイト対象の移動先を読む。弾の到達時間ぶんだけ先へ置く=**まっすぐ走り続けると当たる**
    *
    * ★2は「読めなさ」ではなく「読み合い」を作るための物(社長方針: MAXは密度で作る)。
    * 止まる/曲がるで外れる=プレイヤー側に必ず答えがある。
@@ -403,15 +431,20 @@ export const runIdolTick = (
   const shotAimAngle = (sp: IdolShotSpec): number => {
     const mode = Math.round(sp.aimMode);
     if (mode === 1) return s.shotAngle;
-    const aim = hateAim();
+    const aim = lockedHateAim();
     if (mode !== 2) return Math.atan2(aim.y - icy, aim.x - icx);
     const spd = Math.max(1, sp.speed);
     let tx = aim.x, ty = aim.y;
+    const ghost = aim.side === 'ghost'
+      ? useGameStore.getState().summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === idol.id)
+      : undefined;
+    const targetVx = aim.side === 'ghost' ? (ghost?.vx ?? 0) : s.playerVx;
+    const targetVy = aim.side === 'ghost' ? (ghost?.vy ?? 0) : s.playerVy;
     // 到達時間→予測位置→到達時間、の2回で十分収束する(弾速がプレイヤー速度より十分速いため)。
     for (let i = 0; i < 2; i++) {
       const t = Math.hypot(tx - icx, ty - icy) / spd;
-      tx = aim.x + s.playerVx * t;
-      ty = aim.y + s.playerVy * t;
+      tx = aim.x + targetVx * t;
+      ty = aim.y + targetVy * t;
     }
     return Math.atan2(ty - icy, tx - icx);
   };
@@ -436,7 +469,7 @@ export const runIdolTick = (
       );
       if (homing) {
         p.id = `${SHOT_ID_PREFIX}${idol.id}-${slot}-${newGameTime}-${waveIdx}-${k}`;
-        s.homing.push({ id: p.id, move: slot });
+        s.homing.push({ id: p.id, move: slot, side: patch.hateTarget ?? idol.hateTarget ?? 'player' });
       }
       useGameStore.getState().addProjectile(p);
     }
@@ -506,7 +539,22 @@ export const runIdolTick = (
     }
   }
 
-  if (forcedThisFrame) {
+  if (fullStun) {
+    // ★紫の完全気絶: 状態機械を丸ごとスキップ=技も弾も出ない・座標も書かない(=移動しない)。
+    // 解除後はチェイスから再開する。**持ち越しを全部捨てる**のは裏ボスが `bossBurstLeft` を
+    // クリアしているのと同じ理由——残しておくと、解除直後に「止まっていた分の連射/次の段」が
+    // まとめて暴発する(s.shotNextAt は既に過去になっている)。
+    // ★`s.homing`(発射済みの誘導弾の旋回)は消さない。既に飛んでいる弾は他のボスでも飛び続ける
+    // =「撃った後の弾」は気絶で消える物ではない。
+    patch.bossState = 'chase';
+    patch.bossNextActionAt = newGameTime + IDOL_TUNING.neutral.minMs;
+    s.seq = []; s.step = 0; s.wavePending = false;
+    s.shotWavesLeft = 0; s.shotSlot = null;
+  } else if (rooted && st === 'chase') {
+    // トラップ拘束中(chaseのみ凍結): 移動も新規攻撃も出さない。patchには何も積まず、
+    // そのまま末尾のクランプ/setStateへ抜ける。fullStunと違い連射持ち越しの暴発経路は無いので
+    // (rootは移動と新規攻撃を止めるだけ)、s.seq等のリセットは不要。
+  } else if (forcedThisFrame) {
     // ボスメーカーの強制発動フレーム: 上で patch を組み終えているので通常遷移はスキップ。
   } else if (countered) {
     // カウンター成立フレームは遷移をスキップ(counterHitが休符まで設定済み)。
@@ -514,7 +562,9 @@ export const runIdolTick = (
     // === NEUTRAL: 主戦帯を維持する(監査レポート§2-5の移動語彙4つ) ===
     // ボスメーカーで語彙を維持中はそれを使う(通常は距離から判断)。
     const verb: NeutralVerb = verbHold ?? neutralVerb(dist, IDOL_NEUTRAL_BAND, false);
-    const spd = idol.speed * IDOL_VERB_SPEED_MULT[verb] * dt;
+    // ボスのクリ半減(社長指示v0.25.2422)。裏ボス/天使は移動の入口で掛けているのに、
+    // アイドルだけ抜けていた(v0.25.2895)。CD×2(bossCritCdMult)は別経路で既に効いている。
+    const spd = idol.speed * IDOL_VERB_SPEED_MULT[verb] * dt * bossSlowMult(idol, newGameTime);
     const ux = dist > 0.001 ? (pcx - icx) / dist : 0, uy = dist > 0.001 ? (pcy - icy) / dist : 0;
     if (verb === 'close') { patch.x = idol.x + ux * spd; patch.y = idol.y + uy * spd; }
     else if (verb === 'retreat') { patch.x = idol.x - ux * spd; patch.y = idol.y - uy * spd; }
@@ -591,7 +641,7 @@ export const runIdolTick = (
         useGameStore.getState().addProjectile(p);
         ids.push(p.id);
       }
-      for (const id of ids) s.homing.push({ id, move: 'orb' });
+      for (const id of ids) s.homing.push({ id, move: 'orb', side: aim.side });
       toRecover('orb');
     }
   } else if (st === 'idol-snipe-windup') {
@@ -639,7 +689,6 @@ export const runIdolTick = (
     // === 射撃部品の予告明け(v0.25.2638) ===
     if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       const slot = moveOfState(st, '-windup') as IdolShotSlot;
-      patch.hateTarget = hateAim().side;
       startShotFire(slot);
     }
   } else if (st.endsWith(FIRE_SUFFIX)) {

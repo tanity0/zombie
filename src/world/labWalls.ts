@@ -208,6 +208,3 @@ export const labUvBarsInRegion = (minX: number, minY: number, maxX: number, maxY
 export const labZoneKey = (x: number, y: number): string =>
   `${Math.floor(x / LAB_ZONE)}_${Math.floor(y / LAB_ZONE)}`;
 
-// クリア条件の「書類(重要データ)」。通常帯の探索域に手置き(原点から少し離れた位置)。拾うと勝利。
-// type は既存の 'lab-clear-item'(拾うとクリア・取得表示=「重要データ」)を流用。
-export const STAGE2_DOCUMENT: { x: number; y: number } = { x: 720, y: -470 };

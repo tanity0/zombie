@@ -27,11 +27,11 @@ export interface HateBucket {
 export const BOSS_HATE_ENABLED =
   typeof window === 'undefined' || new URLSearchParams(window.location.search).get('bosshate') !== '0';
 
-/** 対象ボス(giantbat/idol/天使6体)かどうか。damageEnemy側のヘイト集計をこの型だけに限定するための
- * ゲート(全敵にバケツ配列を持たせて無駄なメモリ/計算を払わない)。トール/通常敵は既存の
- * resolveEnemyTarget が既にゴーストを見るのでここには含めない(仕様どおり不変)。 */
+/** 守護霊と共闘できる全ボスかどうか。damageEnemy側のヘイト集計をこの型だけに限定するための
+ * ゲート(全敵にバケツ配列を持たせて無駄なメモリ/計算を払わない)。 */
 const HATE_TRACKED_BOSS_TYPES = new Set<string>([
   'giantbat', 'idol', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
+  'mimir', 'jormungand', 'skadi', 'thor',
 ]);
 export const isHateTrackedBossType = (t: string): boolean => HATE_TRACKED_BOSS_TYPES.has(t);
 
@@ -155,4 +155,25 @@ export const resolveBossHateAim = (
     playerHateBuckets: enemy.hatePlayerBuckets, ghostHateBuckets: enemy.hateGhostBuckets,
     gameTime, currentTarget: enemy.hateTarget,
   });
+};
+
+/**
+ * 技開始時に確定した `hateTarget` の相手を、技の途中でも同じ側のまま追うためのヘルパ。
+ * ヘイト値は再評価しないので、連射・足元設置・弱追尾の途中で狙いが左右へ揺れない。
+ * 守護霊が帰還/死亡して消えた場合だけプレイヤーへ安全に戻す。
+ */
+export const resolveBossLockedHateAim = (
+  enemy: BossHateEnemyLike,
+  player: HatePoint,
+  summons: readonly BossHateGhostLike[],
+): ResolvedHateAim => {
+  const boundGhost = summons.find(s => s.kind === 'ghost-ally' && s.ghostBossId === enemy.id);
+  if (enemy.hateTarget === 'ghost' && boundGhost) {
+    return {
+      x: boundGhost.x + boundGhost.width / 2,
+      y: boundGhost.y + boundGhost.height / 2,
+      side: 'ghost',
+    };
+  }
+  return { x: player.x, y: player.y, side: 'player' };
 };

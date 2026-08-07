@@ -154,11 +154,6 @@ export const rankFade = (rank: number, budget: number, fadeFrac: number = SHADOW
   return Math.max(0, 1 - (rank - solid) / span);
 };
 
-/** 圏外へ出た光の幾何(凍結して以後これを使う)。★圏内へ戻っても解除しない=幾何が飛ばない。 */
-export interface FrozenGeom {
-  dirX: number; dirY: number; lenMult: number; falloff: number;
-}
-
 /**
  * 幾何を更新するか、凍結済みのものをそのまま使うかを決める。
  * - まだ凍結していなくて `dist <= reach` なら**毎フレーム再計算**

@@ -25,7 +25,7 @@ const P = (
   identity: string,
   maxString: readonly number[],
   neutralMs: readonly { min: number; max: number }[],
-): BossCombatProfile => ({ identity, maxString, neutralMs, mandatoryRestMs: 900, maxConcurrentC: 1 });
+): BossCombatProfile => ({ identity, maxString, neutralMs, mandatoryRestMs: 1700, maxConcurrentC: 1 });
 
 /**
  * 「距離帯で選ぶ / 予告位置を固定 / 連段後は必ず休む / フェーズは足し算」を全員に適用する台帳。

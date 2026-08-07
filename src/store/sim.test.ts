@@ -6,7 +6,7 @@
 // see CLAUDE.md Testing policy.
 import { describe, it, expect, vi } from 'vitest';
 import {
-  useGameStore, bumpBossCrit, BOSS_FULLSTUN_CRITS, BOSS_FULLSTUN_MS, PUMPKIN_JUMP_MAX_DIST,
+  useGameStore, PUMPKIN_JUMP_MAX_DIST,
   bossCritCdMult, BOSS_CRIT_CD_MULT, STUN_DURATION_MS, canShoveEnemy,
 } from './gameStore';
 import type { Enemy } from '../types/game';
@@ -15,6 +15,7 @@ import type { Enemy } from '../types/game';
 // pulling in @types/node (the value is read only under the nightly cron).
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 import { spawnEnemyAt } from '../utils/enemyUtils';
+import { applyBossPostureDamage, BOSS_POSTURE_BREAK_MS } from '../utils/bossPosture';
 import type { InputState, Projectile, EnemyType } from '../types/game';
 
 const finite = (n: number | undefined) => n === undefined || Number.isFinite(n);
@@ -204,25 +205,23 @@ describe('headless simulation invariants', () => {
     expect(useGameStore.getState().screamerBuffUntil).toBeLessThanOrEqual(useGameStore.getState().gameTime);
   });
 
-  it('hidden boss enters full stun (purple) after N crits, then ignores further counting', () => {
+  it('hidden boss enters posture break after five counters, then ignores further posture damage', () => {
     const t = 10_000;
     let e = spawnEnemyAt('mimir', 0, 0, 0);
-    for (let i = 0; i < BOSS_FULLSTUN_CRITS - 1; i++) {
-      const r = bumpBossCrit(e, t);
+    for (let i = 0; i < 4; i++) {
+      const r = applyBossPostureDamage(e, 'counter', t);
       expect(r).not.toBeNull();
       expect(r!.triggered).toBe(false);
       e = { ...e, ...r!.patch };
     }
-    const last = bumpBossCrit(e, t);
+    const last = applyBossPostureDamage(e, 'counter', t);
     expect(last!.triggered).toBe(true);
-    expect(last!.patch.bossFullStunUntil).toBe(t + BOSS_FULLSTUN_MS);
-    expect(last!.patch.stunUntil).toBe(t + BOSS_FULLSTUN_MS);
-    expect(last!.patch.bossCritCount).toBe(0); // counter resets after triggering
+    expect(last!.patch.bossFullStunUntil).toBe(t + BOSS_POSTURE_BREAK_MS);
+    expect(last!.patch.stunUntil).toBe(t + BOSS_POSTURE_BREAK_MS);
+    expect(last!.patch.bossPosture).toBe(0);
     e = { ...e, ...last!.patch };
-    // while fully stunned, further crits don't re-count / extend
-    expect(bumpBossCrit(e, t + 100)).toBeNull();
-    // non-hidden-boss enemies are never affected
-    expect(bumpBossCrit(spawnEnemyAt('zombie', 0, 0, 0), t)).toBeNull();
+    expect(applyBossPostureDamage(e, 'counter', t + 100)).toBeNull();
+    expect(applyBossPostureDamage(spawnEnemyAt('zombie', 0, 0, 0), 'counter', t)).toBeNull();
   });
 
   it('CRIT-UNIFY §9.2: bossCritCdMult=クリ窓中のボスは次行動CDに×2、窓外・非ボスは×1', () => {
@@ -267,12 +266,11 @@ describe('headless simulation invariants', () => {
     randomSpy.mockRestore();
   });
 
-  it('CRIT-UNIFY §9.4(現行漏れの解消): 分身(shadow clone)のクリもbumpBossCritへ正しく乗る', () => {
+  it('体勢値: 自動分身のクリティカルはボス体勢を削らない', () => {
     useGameStore.getState().resetGame('warrior');
     const player = useGameStore.getState().player;
     const boss = spawnEnemyAt('giantbat', player.x, player.y, useGameStore.getState().gameTime);
     boss.health = boss.maxHealth;
-    boss.bossCritCount = 0;
     useGameStore.setState({ enemies: [boss], effects: [] });
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0); // 常にクリティカル
     useGameStore.setState(s => ({ player: { ...s.player, critChance: 1 } }));
@@ -286,8 +284,7 @@ describe('headless simulation invariants', () => {
 
     const after = useGameStore.getState().enemies.find(e => e.id === boss.id);
     expect(after).toBeTruthy();
-    // 修正前は分身のクリがbumpBossCritを一切呼んでおらず、常に0のままだった。
-    expect(after!.bossCritCount).toBe(1);
+    expect(after!.bossPosture).toBeUndefined();
     expect(after!.bossSlowUntil).toBeGreaterThan(useGameStore.getState().gameTime);
 
     randomSpy.mockRestore();

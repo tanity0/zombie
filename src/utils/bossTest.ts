@@ -156,6 +156,7 @@ export const BOSS_MAKER_STAGE = 'stage-1'; // 森(平地)。広さ無限・木�
  */
 export const isBossMakerRun = (): boolean =>
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bossmaker') === '1';
+
 export const bossMakerQuery = (opts: BossTestOptions): string => {
   const p = new URLSearchParams();
   p.set('smoke', '1');

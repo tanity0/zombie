@@ -36,7 +36,8 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // 保持(hold)の長さを判定と同じ定数から読む(絵のためのコピー定数を作らない)。
   GIANT_BITE_HOLD_MS,
   // 同: 爪の一振り(g-talon)を3本の爪痕と同じ扇の中で振らせるための開き角。
-  GLEN_TALON_SPREAD_RAD,
+  // WINDUP は「爪痕が手前から奥へ刻まれる」ワイプの尺にも使う(爪の振りと同じ尺で揃える・v0.25.2889)。
+  GLEN_TALON_SPREAD_RAD, GLEN_TALON_WINDUP_MS,
   GIANT_SWEEPBEAM_WINDUP_MS, GIANT_SWEEPBEAM_ACTIVE_MS, GIANT_SWEEPBEAM_LENGTH, GIANT_SWEEPBEAM_HALF_WIDTH, GIANT_SWEEPBEAM_INNER_RADIUS, GIANT_SWEEPBEAM_SWEEP_RAD,
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
@@ -54,6 +55,9 @@ import {
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
+import { variantTextureName } from '../utils/enemyVariant';
+import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
+import { enemyMotionSpec, enemyMotionPose, ENEMY_TURN_MS, GIANTBAT_MOTION_BY_BACKDROP } from './enemyMotion';
 import { contentSpanFrac, needsContentTrim, contentTrimFrameY } from '../utils/shadowBake';
 import { horizontalShadowCorners } from '../utils/shadowProjection';
 import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
@@ -63,8 +67,9 @@ import {
 } from '../utils/idolScript';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
-  URI_SCRIPT_ENABLED, SURIEL_SCRIPT_ENABLED, ACRASIEL_SCRIPT_ENABLED,
-  ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS,
+  ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS, ACRASIEL_WARP_TELEGRAPH_MS,
+  MIGUEL_DASH_WINDUP_MS, MIGUEL_DASH_MOVE_MS, MIGUEL_DASH_STRIKE_MS,
+  URI_THRUST_WINDUP_MS, URI_THRUST_MOVE_MS, URI_THRUST_STRIKE_MS,
 } from '../utils/angelBossTick';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -75,12 +80,17 @@ import {
 } from '../utils/supportSniper';
 import type { FlareGunFlare } from '../utils/flareGun';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
+import {
+  SWORD_VISIBILITY_FADE_MS, swordAttackAngle, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha,
+  swordSwingPose,
+  type SwordSwingStyle,
+} from '../utils/swordSwingMotion';
 import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1の可視化(フルランプ速度線)
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
-  BOSS_DISTANCE_ZOOM_RETURN_TAU, BOSS_DISTANCE_ZOOM_TAU, ZOOM_MIN_ABS,
+  BOSS_DISTANCE_ZOOM_RETURN_TAU, BOSS_DISTANCE_ZOOM_TAU, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
 // 文脈ズームで最大まで引いた時(worldGroup.scale=ZOOM_MIN_ABS)でも画面を覆えるよう、worldGroup内の
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
@@ -89,8 +99,9 @@ import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOA
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType } from '../utils/enemyUtils';
 import { isMarkedBoss, isEngagedBoss, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import {
-  BOSS_ENGAGE_ENTER_PX, BOSS_ENGAGE_EXIT_PX, isEngageableBoss,
+  bossEngagementDistancePx, isEngageableBoss,
 } from '../utils/bossEngagement';
+import { bossPostureMax, bossPostureNow, isBossPostureBroken } from '../utils/bossPosture';
 import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
 import {
   HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
@@ -1147,6 +1158,32 @@ const ENEMY_BREATH_ENABLED = true;
 const ENEMY_BREATH_SCALE_X = 0.016;
 const ENEMY_BREATH_SCALE_Y = 0.024;
 const ENEMY_BREATH_MS = 1500;
+
+// ---- 敵の歩行二次モーション(社長承認①〜③) -----------------------------------------------------
+// 表・式の正本は src/pixi/enemyMotion.ts(v0.25.2903で切り出し=動物園ビューア zoo.html と共有)。
+// ここに残るのは kill スイッチと、ビュー(個体)状態を使う配線だけ。`?emotion=0` で一括OFF。
+const ENEMY_MOTION_FX = typeof window === 'undefined'
+  || new URLSearchParams(window.location.search).get('emotion') !== '0';
+
+// ラスボス第二形態(v0.25.2918)。HP60%以下で変身(叩き台=城ボスの既存フェーズ閾値60%に揃えた)。
+const GLEN_P2_HP_FRAC = 0.6;
+// 連結の構成(社長指示v0.25.2921「胴体を5個、尻尾を1つ最後尾に」): スロット0..5の順に並べる。
+// 胴体はシートの砲身(0)と箱(1)を交互に使って単調さを消し、尾(2)は必ず最後尾。
+const GLEN_CHAIN: readonly number[] = [0, 1, 0, 1, 0, 2];
+// 「真ん中のパーツから減っていく」のスロット除去順。中央(2,3)→内側(1,4)→根本(0)→尾(5)の順で欠け、
+// **尾は最後まで残る**(末端が残ってブンと揺れている方が「まだ生きている」が伝わる)。
+const GLEN_REMOVAL: readonly number[] = [2, 3, 1, 4, 0, 5];
+const GLEN_VISIBLE_BY_COUNT: readonly (readonly number[])[] = (() => {
+  const out: number[][] = [];
+  for (let count = 0; count <= 6; count++) {
+    const removed = new Set(GLEN_REMOVAL.slice(0, 6 - count));
+    out.push([0, 1, 2, 3, 4, 5].filter((s) => !removed.has(s)));
+  }
+  return out;
+})();
+/** 第二形態内のHP残量→連結スロット数(6→0・区間を6等分)。 */
+const glenPartCount = (hpFrac: number): number =>
+  Math.max(0, Math.min(6, Math.ceil((hpFrac / GLEN_P2_HP_FRAC) * 6)));
 const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   zombie: 0x7de28a,
   bat: 0x9aa6ff,
@@ -1218,7 +1255,7 @@ const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
 const THOR_HARAI_VIS_HALFWIDTH = 40;    // 払いの描画半太さ(当たり判定THOR_HARAI_HALF_WIDTH=40と一致・社長指示v0.25.1610)
 // ミゲル(ゲート2ボス)の横払い(狭)描画用(視覚・useGameLoop のゲームプレイ値と一致させること)。
 const MIGUEL_HARAI_WINDUP_MS = 1000;    // 払いの予告時間(useGameLoop と一致)
-const MIGUEL_HARAI_ACTIVE_MS = 220;     // 払いの実行(判定持続)時間(useGameLoop と一致)
+const MIGUEL_HARAI_ACTIVE_MS = 110;     // 払いの実行(判定持続)時間(angelBossTick.ts の同名と一致・振り速度2倍 v0.25.2885)
 const MIGUEL_HARAI_VIS_HALFWIDTH = 40;  // 払いの描画半太さ(当たり判定MIGUEL_HARAI_HALF_WIDTH=40と一致・社長指示v0.25.1610)
 const THOR_TSUKI_WINDUP_MS = 1000;      // 突きの溜め時間(useGameLoop と一致・溜め演出の進行度算出用)
 const TSUKI_DRAW_BACK_PX = 20;          // 突き溜め: 手元を狙い線の後方へ引く量(社長指示「少しだけ」ゆっくり)
@@ -1228,7 +1265,9 @@ const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半�
 // PACING_PUZZLE.md §6.28-5/7(バッチM54/M56): ミーミル「群体の噛みつき」/ヨルムンガルド「うねり」の
 // 描画用(視覚・useGameLoop のゲームプレイ値と一致させること)。
 const MIMIR_BITE_WINDUP_MS_VIS = 700;   // 噛みつきのwindup時間(useGameLoop MIMIR_BITE_WINDUP_MSと一致)
-const MIMIR_BITE_RADIUS_VIS = 92;       // = GRENADE_BLAST_RADIUS(useGameLoop MIMIR_BITE_RADIUSと一致)
+// ★importへ移行(v0.25.2893)。旧: ここに 92 を手写ししており、v0.25.2612の判定是正(92→216)が
+// 描画に届かず、**赤円92pxの外・216pxの内側で「赤くないのに当たる」**が常時発生していた(実バグ)。
+const MIMIR_BITE_RADIUS_VIS = MIMIR_BITE_RADIUS;
 const JORM_COIL_WINDUP_MS_VIS = 700;    // うねりのwindup時間(useGameLoop JORM_COIL_WINDUP_MSと一致)
 // PACING_PUZZLE.md §6.28-20(バッチM64): idol(stage-2隠しボス)の描画用(useGameLoop のゲームプレイ値と一致させること)。
 // ★予告の描画は**数値テーブルを直接読む**(社長指示v0.25.2631・共有値の洗い出しで発見)。
@@ -1285,8 +1324,8 @@ const THOR_KATANA_LENGTH = 220; // 表示上の柄→切っ先の長さ(px・ト
 // PACING_PUZZLE.md §5.21-追補8: ミゲルの剣(社長提供・miguel-sword.png=805×3437・透過済み。
 // 縦長で柄が上・切っ先が下)。thor-katanaと同じ「柄フラクション座標を回転軸にして当たり判定
 // ライン方向へ向ける」方式を流用。叩き台(実機調整前提)。
-const MIGUEL_SWORD_GRIP_FRAC = { x: 0.51, y: 0.14 };  // 柄(握り位置)の画像内フラクション座標
-const MIGUEL_SWORD_TIP_FRAC = { x: 0.47, y: 1.00 };   // 切っ先の画像内フラクション座標
+const MIGUEL_SWORD_GRIP_FRAC = { x: 0.51, y: 0.12 };  // 柄(握り位置)の画像内フラクション座標(v0.25.2922 ドット版実測)
+const MIGUEL_SWORD_TIP_FRAC = { x: 0.46, y: 1.00 };   // 切っ先の画像内フラクション座標(同)
 const MIGUEL_SWORD_INTRINSIC_ANGLE = Math.atan2(
   MIGUEL_SWORD_TIP_FRAC.y - MIGUEL_SWORD_GRIP_FRAC.y,
   MIGUEL_SWORD_TIP_FRAC.x - MIGUEL_SWORD_GRIP_FRAC.x,
@@ -1304,7 +1343,7 @@ const URI_SWORD_GRIP_FRAC = { x: 0.50, y: 0.12 };
 const URI_SWORD_TIP_FRAC = { x: 0.50, y: 0.97 };
 const URI_SWORD_INTRINSIC_ANGLE = Math.atan2(URI_SWORD_TIP_FRAC.y - URI_SWORD_GRIP_FRAC.y, URI_SWORD_TIP_FRAC.x - URI_SWORD_GRIP_FRAC.x);
 const URI_SWORD_BLADE_LEN_FRAC = Math.hypot(URI_SWORD_TIP_FRAC.x - URI_SWORD_GRIP_FRAC.x, URI_SWORD_TIP_FRAC.y - URI_SWORD_GRIP_FRAC.y);
-const URI_SWORD_LENGTH = 130; // 表示上の柄→切っ先の長さ(px・叩き台)。大薙ぎ/振り下ろしの判定線に沿わせる。
+const URI_SWORD_LENGTH = 85; // 社長確認「絵が大きすぎる」: 130→85px。判定・射程は変更しない。
 
 // ラフィの薙ぎ(Phase2新規)は既存の骨刃素材(rafi-blade.png)を「振る」用途でも流用する
 // (§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。katanaSlash系のグリップ扱いは新規(叩き台)。
@@ -1331,16 +1370,23 @@ const SURIEL_RING_VIS_D = 54; // 画面上の直径(px・叩き台)
 // (「一致」コメント義務=既存のMIGUEL_HARAI_WINDUP_MS等と同じ流儀)。
 const RAFI_SWEEP_WINDUP_MS_VIS = 700;
 const URI_SWEEP_WINDUP_MS_VIS = 1100;
-const URI_SWEEP_ACTIVE_MS = 260;
+const URI_SWEEP_ACTIVE_MS = 130;          // 振り速度2倍(v0.25.2885)。angelBossTick.tsの同名と一致
 const URI_DOWNSLASH_WINDUP_MS_VIS = 1000;
-const URI_DOWNSLASH_ACTIVE_MS = 200;
+const URI_DOWNSLASH_ACTIVE_MS = 100;      // 振り速度2倍(v0.25.2885)。angelBossTick.tsの同名と一致
 const SURIEL_SWEEP_WINDUP_MS_VIS = 800;
 const SURIEL_RINGSHOT_BEAM_WINDUP_MS_VIS = 700;
+const SURIEL_RINGSHOT_ACTIVE_MS_VIS = 220;
+const SURIEL_RINGSPIN_ACTIVE_MS_VIS = 600;
+const SURIEL_SWEEP_ACTIVE_MS_VIS = 220;
 const ACRASIEL_SPIKE_WINDUP_MS_VIS = 1100;
+const ACRASIEL_SPIKE_ACTIVE_MS_VIS = 240;
+const ACRASIEL_BURST_ACTIVE_MS_VIS = 300;
 const ACRASIEL_SPIKE_RANGE_VIS = 310; // =THOR_HARAI_RANGE相当(流用)。放射棘8方向の描画長。
 const ACRASIEL_SPEAR_WINDUP_MS_VIS = 700;
 const ACRASIEL_GAZE_WINDUP_MS_VIS = 450;
-const ACRASIEL_WARP_TELEGRAPH_MS_VIS = 800;
+// ★ACRASIEL_WARP_TELEGRAPH_MS はimportへ移行(v0.25.2893)。旧: ここに 800 を手写ししており、
+// v0.25.2609の是正(800→1000・800msでは構造的に円から出られない)が判定側にしか届いていなかった
+// =予告円が実際より2割速く「満ちて」見えていた。
 const ACRASIEL_BURST_RADIUS_VIS = 140; // ★未決事項(angelBossTick.tsと同じ叩き台値)。
 const THIN_BEAM_VIS_HALFWIDTH = 20; // スリィエル環の射出/アクラシエル単眼レーザー(T6細ビーム)の描画半太さ
 
@@ -1877,21 +1923,25 @@ const SHADOW_MESH_GC_MS = 4000;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure', 'lab-clear-item']);
 
-// 研究所ゾンビのテクスチャ名(Lv1/2 は敵idで男女を固定振り分け、Lv3 は1種)。lab以外は null。
+// 研究所ゾンビのテクスチャ名(Lv1 は敵idで男女を固定振り分け、Lv2/Lv3 は1種)。lab以外は null。
+// ★Lv2 は v0.25.2914 で男女を廃止して1種へ(社長指示「男女の区別は無くして一種類」・新アート)。
 const labEnemyTextureName = (type: string, id: string): string | null => {
   if (type === 'lab-zombie-3') return 'lab-zombie/lab-zombie-lv3';
-  if (type === 'lab-zombie-1' || type === 'lab-zombie-2') {
-    const lvl = type === 'lab-zombie-2' ? 'lv2' : 'lv1';
+  if (type === 'lab-zombie-2') return 'lab-zombie/lab-zombie-lv2';
+  if (type === 'lab-zombie-1') {
     let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
     const sex = (h & 1) === 0 ? 'male' : 'female';
-    return `lab-zombie/lab-zombie-${lvl}-${sex}`;
+    return `lab-zombie/lab-zombie-lv1-${sex}`;
   }
   return null;
 };
 
 // ステージ3(廃都)専用の敵絵。stage1のアトラス敵を見た目で1:1差し替え(社長提供シート)。
 // 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='city' のみ。
-const STAGE3_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']);
+// ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・enemyTexKeyの解決順で
+// variantTextureName(ENEMY_VARIANT_SETS)が先に引かれるためstage3絵は表示不能だった。素材は削除済み)。
+// ★werewolf/reaper は外した(v0.25.2901・全ステージ共通の新絵へ移行・旧素材は削除済み)。
+const STAGE3_ENEMY_TYPES = new Set(['giantbat']);
 const stage3EnemyTextureName = (type: string): string | null =>
   STAGE3_ENEMY_TYPES.has(type) ? `stage3-enemies/${type}` : null;
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
@@ -1909,7 +1959,10 @@ const DUST_MS = 700;
 // (社長指示v0.25.2412)。判定(active窓)そのものは1msも変えない=絵だけがゆっくり振り切る。
 // 攻撃ヴィジュアルの2分類では①(判定に揃える)側だが、社長方針「完璧でなくてよい・赤ラインが
 // 別に出ているなら良し」の範囲。赤い帯/線は従来どおり判定と厳密一致のまま出ている。
-const FX_SWING_LINGER = 1.35;
+// 攻撃判定より35%遅れて見えていたため、台本化に合わせて判定時間と同期する。
+const FX_SWING_LINGER = 1;
+const FX_IMPACT_TOLERANCE_MS = 34; // gameTime/描画時計の1〜2フレーム差で実行FXを誤キャンセルしない
+const SWORD_STYLE_CODES: readonly SwordSwingStyle[] = ['wide', 'overhead', 'draw', 'thrust'];
 // 衝撃波(社長支給素材・v0.25.2414)。**判定が直線の帯なのに絵が「振っただけ」で終わる技**へ、
 // 帯の上を始点→終点へ走らせて「どこまで届くか」を絵で伝える(社長指示「別途衝撃波の絵とか飛ばした方がいい」)。
 // 判定は1msも変えない=絵だけを足す。素材の進行方向は右(先端の散りが右端)。
@@ -1917,7 +1970,7 @@ const SHOCKWAVE_MS = 260;          // 走り切るまで。判定のactive窓と
 const SHOCKWAVE_LEN_MAX = 260;     // 波1つの見た目の長さ(px)。帯が短ければ帯長に合わせる
 const SHOCKWAVE_TINT = 0xffe4e4;   // ほんのり赤み(赤い帯と同じ攻撃の絵だと分かる程度。純白だと浮く)
 // 素材の中身は x[39..992]/1024 に収まっている。先端(散り)が右端なので、走る位置に**先端**を合わせる。
-const SHOCKWAVE_ANCHOR_X = 992 / 1024;
+const SHOCKWAVE_ANCHOR_X = 412 / 416; // ドット版(v0.25.2929)の先端x。旧1024px版は 992/1024
 // 砂埃は CLAUDE.md「攻撃ヴィジュアルの2分類」の**②派手さの絵**(判定ゼロ・当たっても痛くないと
 // 見て分かる)。社長方針v0.25.2410「オーバーに見せた方がいい」に従い、判定より大きく外へ出す。
 // v0.25.2408では踏み鳴らしだけ 2.2 にしたが、着地/のしかかりが 1.25 のまま取り残されていた
@@ -1973,6 +2026,10 @@ const BOLT_FX_MAX = 48;       // 安全弁(リセット等で全弾が同時消�
 // 尺はどれも**判定の窓とは独立**(絵だけの時間)=ゲームロジックには一切触れていない。
 const BITE_SNAP_MS = 220;      // 顎が閉じ切ってから消えるまで
 const CLAW_LINGER_MS = 240;    // 爪を振り抜いた後の余韻
+// 爪痕(g-talon)が手前から奥へ刻まれる時間(社長指示v0.25.2891「爪がシュッてした後、すぐに
+// 当たり判定発生と同時にズバッと」)。**振りの最中は出さず、振り終わりからこの尺で一気に**刻む。
+// 短いほど「ズバッ」。他のグレン定数と同じくENEMY_ATTACK_SPEED_MULTで割って使う。
+const CLAW_CARVE_MS = 130;
 // (WING_SWING_MS は撤去: 翼撃は判定の active 窓そのもので一周するようになった・v0.25.2863)
 const REACH_HOLD_MS = 340;     // 触手が伸び切ってから引っ込むまで
 // 拳が当たってから消えるまでは `IDOL_TUNING.fx.punchFistHoldMs`(メーカーで触れる・v0.25.2651)。
@@ -2042,7 +2099,7 @@ const BOSS_HITBOX_HINT_FILL_ALPHA = 0.08; // 最大時の面の濃さ(枠の中�
 // fit = 絵の中での帯の位置・大きさ(0..1 の割合): w/h=帯が絵に占める幅/高さ, cx/cy=帯中心の絵内座標(左上原点)。
 // これで scale=(帯幅/fit.w)/texW から絵の実寸が決まり、帯=AABBの上に絵が正しく乗る。素材の額装が変わったら再計測。
 const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: number }> = {
-  mimir:      { w: 0.55, h: 0.24, cx: 0.48, cy: 0.84 }, // 眼(縦長 849×1080)。帯=絵の一番下のピクセル寄り(社長指示)。
+  mimir:      { w: 0.55, h: 0.24, cx: 0.48, cy: 0.84 }, // 眼(縦長・v0.25.2934ドット版804×1024=旧849×1080とほぼ同アスペクト)。帯=絵の一番下のピクセル寄り(社長指示)。値は据え置き・実機でズレたら微調整。
   jormungand: { w: 0.91, h: 0.21, cx: 0.50, cy: 0.72 }, // 巨蛇(横長 1280×960)。帯=とぐろの下端。
   skadi:      { w: 0.92, h: 0.19, cx: 0.49, cy: 0.88 }, // 氷の王(1151×1243)。帯=足元。
   thor:       { w: 0.50, h: 0.20, cx: 0.52, cy: 0.93 }, // 鬼刀の武人(1132×1147)。帯=両足の実測位置。
@@ -2060,9 +2117,12 @@ const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
 // PACING_PUZZLE.md §6.28(バッチM53/M55/M57/M61/M62/M63): ゲート2ボスごとのフォールバック
 // (`?<boss>script=0`)。無効時は新規stateが一切発火しないため(angelBossTick.tsのLegacy実装が
 // 旧state名しか使わない)、新規の予告描画/tint(下記ANGEL_T4_*判定)も自動的に出ない=安全。
+// ★uri/suriel/acrasiel は常に true(v0.25.2893)。この3体はLegacy実装が存在せず、旧
+// `?uriscript=0` 等はスクリプトを止めるだけ=**ボスが凍結して倒せなくなる**footgunだったので
+// フラグごと撤去した。miguel/jibril/rafi はLegacyが実在するためフォールバックを維持。
 const ANGEL_NEW_SCRIPT_ACTIVE: Partial<Record<string, boolean>> = {
   miguel: MIGUEL_SCRIPT_ENABLED, jibril: JIBRIL_SCRIPT_ENABLED, rafi: RAFI_SCRIPT_ENABLED,
-  uri: URI_SCRIPT_ENABLED, suriel: SURIEL_SCRIPT_ENABLED, acrasiel: ACRASIEL_SCRIPT_ENABLED,
+  uri: true, suriel: true, acrasiel: true,
 };
 // T4赤フラッシュ/青白硬直の対象になる状態の判定(§6.28-3 W6/共通言語)。全ボス共通で「-windup」
 // 「-recover」接尾辞に統一してある(ミゲル踏み込み/ウリ突きだけ移動を挟むため例外3つを追加)。
@@ -2076,8 +2136,9 @@ const HIT_SHAKE_PX = 4;
 // プレイヤーが裏ボスの当たり判定(帯)より奥=裏に回り込んだとき、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
 const BOSS_BEHIND_ALPHA = 0.5;
 // #2(社長指示): 裏に回って 0.5 まで薄くなった後、さらに奥(=手前へ遠ざかる)へ離れたら、
-// この距離(behindDist=70→FAR)でさらに薄くする。#1(0.5まで)の数値・カーブは不変。
-const BOSS_BEHIND_FAR_PX = 220;
+// 画面上のこの距離でさらに薄くする。カメラを引いた時はワールド距離を1/zoom倍へ広げ、見た目を保つ。
+const BOSS_BEHIND_NEAR_SCREEN_PX = 70;
+const BOSS_BEHIND_FAR_SCREEN_PX = 220;
 // v0.25.2622(社長裁定「0.15で」): #2の行き先を **0(完全透明)→0.15** へ。
 //
 // なぜ変えたか: 0まで落ちると**当たり判定はあるのに1ピクセルも見えない**状態になり、
@@ -2122,43 +2183,35 @@ const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社
 // ステージ4の敵絵は接地点(足元)が画像の水平中心からずれている個体がある(切り出し由来)。
 // 足元の接地帯(下端12%)のα重心を測った水平位置(テクスチャ幅に対する比率)。0.5=中央。
 // drawEnemy で「重心が footX に乗る」ように水平オフセットを掛けて補正する(視覚のみ=hitbox不変)。
+// ★bat/ghost/plant/skeleton/zombie はここから外した(バッチ4・v0.25.2898・下のSTAGE4_ENEMY_TYPES
+// から外れたため出番なし=variantTextureNameが先に引かれてstage4絵は表示不能だった)。
 const STAGE4_FOOT_FRAC_X: Record<string, number> = {
-  bat: 0.367,
-  ghost: 0.535,
+  // ★werewolf/reaper(v0.25.2901)・pumpkin(v0.25.2905)の補正は外した(全ステージ共通の新絵へ移行)。
   giantbat: 0.471,
-  lich: 0.505,
-  plant: 0.501,
-  pumpkin: 0.503,
-  reaper: 0.596,
-  skeleton: 0.411,
-  werewolf: 0.441,
-  zombie: 0.428,
 };
 
 // ステージ4(雪原)専用の敵絵。既存9種を見た目で1:1差し替え＋新型 lich(社長提供シート)。
 // 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='snow' のみ。
-const STAGE4_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']);
+// ★lich は外した(v0.25.2897・全ステージ共通 `lich-common` へ移行、旧stage4/5素材は削除済み)。
+// ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE3コメント参照)。
+const STAGE4_ENEMY_TYPES = new Set(['giantbat']);
 const stage4EnemyTextureName = (type: string): string | null =>
   STAGE4_ENEMY_TYPES.has(type) ? `stage4-enemies/${type}` : null;
 
 // ステージ5(対変異体防衛本部)専用の敵絵。ステージ1と同配置のシート(社長提供・2026-07-16)から
 // 9種を1:1差し替え+シート10体目(フード付き亡霊)=lich(社長裁定2026-07-17「一旦リッチと同じでいい」
 // =ステージ4と同じ扱いでステージ5にもlichを出す)。当たり判定/サイズは不変。farBackdrop==='stage5' のみ。
-const STAGE5_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']);
+// ★lich は同上で共通絵へ移行済み。
+// ★zombie/bat/skeleton/plant/ghost はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE3コメント参照)。
+const STAGE5_ENEMY_TYPES = new Set(['giantbat']);
 const stage5EnemyTextureName = (type: string): string | null =>
   STAGE5_ENEMY_TYPES.has(type) ? `stage5-enemies/${type}` : null;
 // ステージ5の足元ズレ補正(STAGE4_FOOT_FRAC_Xと同方式: 下端12%帯のα重心x比率を実測)。
+// ★bat/ghost/plant/skeleton/zombie はここから外した(バッチ4・v0.25.2898・理由は上のSTAGE4_FOOT_FRAC_X参照)。
 const STAGE5_FOOT_FRAC_X: Record<string, number> = {
-  zombie: 0.460,
-  bat: 0.515,
-  skeleton: 0.468,
-  plant: 0.486,
-  ghost: 0.469,
-  werewolf: 0.521,
-  pumpkin: 0.477,
+  // ★werewolf/reaper/pumpkin の補正は外した(v0.25.2905)。v0.25.2901で共通絵へ移行した際、
+  // この表だけ旧絵実測の値が残っており、**新絵に旧絵の足元補正が掛かる**取り残しだった。
   giantbat: 0.485,
-  reaper: 0.517,
-  lich: 0.561,
 };
 
 const AMMO_INDICATOR_COLOR: Record<string, string> = {
@@ -2223,8 +2276,20 @@ interface ActorView {
   // 「振った瞬間」の斬撃の弧(社長支給素材 D-1・v0.25.2400)。予告(ring/band)とは役割が別で、
   // **実行の一瞬だけ**出る。同時に2つ振るボス(翼撃)が出てきたら2枚目を足す。
   slash?: Sprite;
+  // 歩行二次モーション(v0.25.2899)の個体状態。実移動速度は**論理座標の前フレーム差分**から推定する
+  // (storeのvx/vyはAI経路によって埋まらないため、描画側で位置差分から出すのが唯一確実で、
+  // 気絶/拘束/紫/休眠で動きが止まれば揺れも勝手に静まる=状態を個別に見なくてよい)。
+  motPrevX?: number; motPrevY?: number; motPrevAt?: number;
+  motSpeed?: number; motVx?: number;
+  // ③振り向き: 現在の表示向き(+1=素の向き/-1=ミラー)と遷移の開始値・開始時刻。
+  motFace?: number; motFaceFrom?: number; motFaceAt?: number;
+  // ラスボス第二形態の連結パーツ(v0.25.2918)。添字=パーツ番号(0砲身/1中間/2尾)で固定。
+  glenParts?: Sprite[];
   // 爪痕(社長支給素材 D-2・v0.25.2402)。**判定1つにつき1枚**貼るので配列(グレンの血の爪痕は同時3本)。
   clawMarks?: Sprite[];
+  // 爪痕の「手前から奥へ刻まれる」ワイプ用に、素材の左からの一部だけを指すサブテクスチャ
+  // (v0.25.2889)。**伸縮させないため**にスプライトを縮めるのではなく素材を切って出す。
+  clawMarkTex?: Texture[];
   // 衝撃波(社長支給素材・v0.25.2414)。**判定の帯1本につき1枚**(翼撃は左右2本同時)。
   shockwaves?: Sprite[];
   // バッチFX-V3V4: 「物理の絵」(牙/爪/翼/触手/拳)。ATK_ART_* の固定スロットで持つ配列。
@@ -2313,9 +2378,6 @@ interface ShadowCasterReq {
 /** ベイク済みシルエットテクスチャ+その幾何メタ(裁定F: pad補正に使う)。 */
 interface SilhouetteBake {
   texture: Texture;
-  pad: number;     // ベイク時に追加した余白(px、原寸=resolution1)
-  srcW: number;    // 元テクスチャの幅(px)
-  srcH: number;    // 元テクスチャの高さ(px。★D-2: 切り詰め後=絵のある範囲の高さ)
   bytes: number;   // 常駐バイト数の見積り(width×height×4)
   contentFrac: number; // ★D-2: 焼いた時に使った「絵の実体が縦に占める割合」(空白の無い素材は1)
 }
@@ -3199,6 +3261,8 @@ export class PixiScene {
 
   private fireflies: Firefly[] = [];
   private firefliesPlaced = false;
+  private fireflyCameraX = NaN;
+  private fireflyCameraY = NaN;
   private fxPrevNow = 0;
 
   // スモッグ(各層1枚をゆらゆら)。
@@ -3407,6 +3471,9 @@ export class PixiScene {
         sprite.anchor.set(0.5);
         sprite.tint = FIREFLY_TINT;
         sprite.blendMode = 'add';
+        // 初回sync前は全粒が既定座標(0,0)に重なる。描画されると開始直後だけ列/塊に見えるため、
+        // 可視範囲へ散らし終わるまで隠す。
+        sprite.visible = false;
         this.L.uiLayer.addChild(sprite);
         this.fireflies.push({
           sprite, x: 0, y: 0, vx: 0, vy: 0,
@@ -4232,6 +4299,70 @@ export class PixiScene {
     if (t >= 1) { if (!L.armed) this.fxLatches.delete(key); return null; }
     // t0=焼き付けた時刻。V1(4)の砂埃ジッター等「出現ごとに固定・フレーム間で不変」の種に使える。
     return { t: Math.max(0, t), d: L.d, t0: L.t0 };
+  }
+
+  /**
+   * 剣の所有AI州がカウンターで消えた時だけ、焼き付けた構え→振り→短い退場を描き切る。
+   * 通常進行中は既存の技別描画へ譲るため、構えやrecoverの専用演出を上書きしない。
+   */
+  private latchSwordCompletion(
+    key: string, armed: boolean, relatedState: boolean, toImpactMs: number, swingMs: number, now: number,
+    fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
+    bladeLenFrac: number, katanaLength: number, katanaTexName: string,
+    id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
+    pivotX: number, pivotY: number, style: SwordSwingStyle,
+  ): void {
+    const styleCode = Math.max(0, SWORD_STYLE_CODES.indexOf(style));
+    const L = this.latchFx(
+      key,
+      armed,
+      Math.max(0, toImpactMs) + Math.max(1, swingMs) + SWORD_VISIBILITY_FADE_MS,
+      now,
+      () => [toImpactMs, swingMs, fx, fy, tx, ty, halfWidth, pivotX, pivotY, styleCode],
+    );
+    if (!L || relatedState) return;
+    const frame = swordCompletionFrame(now - L.t0, L.d[0], L.d[1]);
+    if (frame.phase === 'done') return;
+    const latchedStyle = SWORD_STYLE_CODES[L.d[9]] ?? 'wide';
+    if (frame.phase === 'swing') {
+      this.drawKatanaSlash(
+        fxMap, gripFrac, intrinsicAngle, bladeLenFrac, katanaLength, katanaTexName,
+        id, L.d[2], L.d[3], L.d[4], L.d[5], L.d[6], frame.progress, true, true,
+        L.d[7], L.d[8], latchedStyle,
+      );
+      return;
+    }
+    this.drawKatanaReady(
+      fxMap, gripFrac, intrinsicAngle, bladeLenFrac, katanaLength, katanaTexName,
+      id, L.d[7], L.d[8], L.d[2], L.d[3], L.d[4], L.d[5], frame.alpha, latchedStyle,
+      frame.phase === 'fade' ? 1 : 0,
+    );
+  }
+
+  /** recover中にカウンターされた場合も、残心を元の終了時刻まで保持してから消す。 */
+  private latchSwordRecovery(
+    key: string, recovering: boolean, remainingMs: number, now: number,
+    fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
+    bladeLenFrac: number, katanaLength: number, katanaTexName: string,
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number,
+    style: SwordSwingStyle,
+  ): void {
+    const styleCode = Math.max(0, SWORD_STYLE_CODES.indexOf(style));
+    const L = this.latchFx(
+      key,
+      recovering,
+      Math.max(1, remainingMs),
+      now,
+      () => [Math.max(1, remainingMs), pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, styleCode],
+    );
+    if (!L || recovering) return;
+    const remain = Math.max(0, L.d[0] - (now - L.t0));
+    const latchedStyle = SWORD_STYLE_CODES[L.d[7]] ?? 'wide';
+    this.drawKatanaReady(
+      fxMap, gripFrac, intrinsicAngle, bladeLenFrac, katanaLength, katanaTexName,
+      id, L.d[1], L.d[2], L.d[3], L.d[4], L.d[5], L.d[6], swordFadeOutAlpha(remain), latchedStyle, 1,
+    );
   }
   // 敵が消えた時の後始末(残っていると Map が育つ)。enemyビューの破棄と同じ場所から呼ぶ。
   private clearFxLatches(idPrefix: string) {
@@ -5343,12 +5474,13 @@ export class PixiScene {
     this.seeThroughLerp = OBSTACLE_SEE_THROUGH_TAU > 0 ? 1 - Math.exp(-zdt / OBSTACLE_SEE_THROUGH_TAU) : 1;
     // ボス距離ズーム: ボス中心ではなく互いの当たり矩形の縁から距離を取る。ヨルムンガンドのような
     // 横長ボスへ接近した時、中心が遠いだけで「離れている」と誤判定しないため。
-    // 交戦の入口/出口はゲーム側の共通ヒステリシスと同じ900/1400pxを使い、dormantへ戻った瞬間も解除する。
+    // 交戦の入口/出口はゲーム側と同じ基準を、体格別の遠距離ズームでworld pxへ換算する。
+    // 引いて見えているのに旧固定距離だけでカメラが戻る、という不一致を起こさない。
     const zpx = s.player.x + s.player.width / 2, zpy = s.player.y + s.player.height / 2;
-    const bossEngageLimit = this.bossCameraEngaged ? BOSS_ENGAGE_EXIT_PX : BOSS_ENGAGE_ENTER_PX;
     let bossDistanceTarget: number | null = null;
     for (const e of s.enemies) {
       if (!isEngageableBoss(e.type) || e.dormant === true) continue;
+      const bossEngageLimit = bossEngagementDistancePx(e.type, this.bossCameraEngaged, e.isStoryBoss === true);
       const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
       if (dx * dx + dy * dy > bossEngageLimit * bossEngageLimit) continue;
       const bodyDistance = aabbGapDistance(s.player, e);
@@ -6268,6 +6400,8 @@ export class PixiScene {
     const minY = camera.y - FIREFLY_MARGIN;
     const maxX = camera.x + this.screenW + FIREFLY_MARGIN;
     const maxY = camera.y + this.screenH + FIREFLY_MARGIN;
+    const snow = this.snowStage;
+    const snowState = snow ? useGameStore.getState() : null;
 
     if (!this.firefliesPlaced) {
       for (const f of this.fireflies) {
@@ -6277,13 +6411,28 @@ export class PixiScene {
         const s = 5 + Math.random() * 10;
         f.vx = Math.cos(a) * s;
         f.vy = Math.sin(a) * s;
+        f.sprite.visible = true;
       }
       this.firefliesPlaced = true;
+    } else if (
+      snowState && (snowState.introUntil === -1 || now < snowState.introUntil)
+      && Number.isFinite(this.fireflyCameraX) && Number.isFinite(this.fireflyCameraY)
+    ) {
+      // 開始ヘリ演出はカメラがフィールドを高速横断する。world座標の雪を置き去りにすると、全粒が
+      // 同じ画面端へ一斉ラップして縦一列になる。演出中だけカメラ差分を雪にも足し、現在の画面内で
+      // 初期の散らばりを保つ。通常プレイへ入った後の移動連動・吹雪速度は従来どおり。
+      const cameraDx = camera.x - this.fireflyCameraX;
+      const cameraDy = camera.y - this.fireflyCameraY;
+      for (const f of this.fireflies) {
+        f.x += cameraDx;
+        f.y += cameraDy;
+      }
     }
+    this.fireflyCameraX = camera.x;
+    this.fireflyCameraY = camera.y;
 
     const sec = dt / 1000;
     // ステージ4は蛍をやめて雪に置き換え(社長指示)。雪は落下＋進行方向(プレイヤー速度)連動で流れる。
-    const snow = this.snowStage;
     const ember = this.stage5Stage; // ステージ5(戦場)=火の粉(暖色・ゆらめき上昇・明滅)
     let windX = 0, windY = 0;
     // 吹雪: 定常の強い横風(立ち止まっていても駆け抜ける)+落下加速(社長指示v0.25.1979「もっと吹雪かせたい」)。?snowwind= /?snowfall= で調整。
@@ -6292,8 +6441,8 @@ export class PixiScene {
     // 火の粉: 上昇速度と横ゆらぎ振幅。?emberrise= / ?embersway= で調整。
     const emberRise = ember ? tsNum('emberrise', 34) : 0;
     const emberSway = ember ? tsNum('embersway', 26) : 0;
-    if (snow) {
-      const p = useGameStore.getState().player;
+    if (snowState) {
+      const p = snowState.player;
       windX = -(p.vx ?? 0) * SNOW_WIND_FACTOR; // 進む方向と逆へ雪が流れる=移動連動
       windY = -(p.vy ?? 0) * SNOW_WIND_FACTOR;
     }
@@ -9354,7 +9503,7 @@ export class PixiScene {
       }
       gradTex.destroy(true);
 
-      return { texture: rt, pad, srcW, srcH, bytes: paddedW * paddedH * 4, contentFrac };
+      return { texture: rt, bytes: paddedW * paddedH * 4, contentFrac };
     } catch (err) {
       console.error('[shadow-v9] bakeSilhouette failed (suppressed):', err);
       // ★半影の合成中に落ちたなら、以後は旧経路(1パスぼかし)へ落とす。そうしないと
@@ -11213,7 +11362,7 @@ export class PixiScene {
       this.ghostMuzzle = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
-    const scl = len / 215; // 素材の可視長(215px)を狙いの長さへ(本体drawMuzzleFlashと同じ)
+    const scl = len / 172; // 素材の可視長(ドット版_70=全幅172px)を狙いの長さへ(本体drawMuzzleFlashと同じ)
     sp.scale.set(scl, scl);
     sp.rotation = angle;
     sp.position.set(x, y);
@@ -11821,7 +11970,7 @@ export class PixiScene {
   }
 
   // 刀サブウェポン: キャラ中央付近・背面に背負った刀のドット絵。専用テクスチャ
-  // を増やさず、`katanaShape` の共有ドット配置を軽量Graphicsで描く(HUDアイコン
+  // を増やさず、共有ドット配置を軽量Graphicsで描く(HUDアイコン
   // と同じデザイン)。赤い鞘・少し反り・縦やや斜め。村雨は刀身シルバー。
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
@@ -11829,7 +11978,14 @@ export class PixiScene {
     // ステージ3(daylight=farBackdrop'city')は廃都セット、ステージ4(snowStage='snow')は雪原セットに敵絵を
     // 差し替え。次にlab、無ければ既定アトラス。
     // 解決チェーンの本体は enemyTexKey(生体と死体の唯一の出どころ。v0.25.2383で共有化)。
-    const tex = getTexture(this.enemyTexKey(e.type, e.id));
+    // ラスボス第二形態(v0.25.2918・社長指示「3つのパーツが本体に連なり、HPが減ると真ん中から欠ける」):
+    // HPが GLEN_P2_HP_FRAC を切ったら本体絵を glen-boss2 へ差し替え、連結パーツを後ろに並べる。
+    // **視覚のみ**=判定・AI・技・HPは一切不変(CLAUDE.md「Visual vs. hitbox」)。
+    const glenP2 = this.currentFarKey === 'stage7' && e.type === 'giantbat'
+      && e.maxHealth > 0 && e.health / e.maxHealth <= GLEN_P2_HP_FRAC;
+    const tex = glenP2
+      ? (getTexture('glen-boss2') ?? getTexture(this.enemyTexKey(e.type, e.id)))
+      : getTexture(this.enemyTexKey(e.type, e.id));
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
 
@@ -11940,6 +12096,7 @@ export class PixiScene {
       const fit = BOSS_SPRITE_FIT[e.type] ?? BOSS_FIT_DEFAULT;
       view.sprite.texture = tex;
       view.sprite.anchor.set(0.5, 0.5);
+      view.sprite.rotation = 0; // ビューはプール再利用されるため、雑魚時代の歩行モーション回転を持ち越さない
       // 帯幅→絵の実寸(縦横同率=歪まない)。さらに他敵と同じ擬似遠近スケールを掛ける(画面の前後で大小・視覚のみ)。
       // 当たり判定の帯(e.width×e.height)は不変=絵だけが前で大きく/奥で小さくなる(社長指示)。
       const scale = ((e.width / fit.w) / tex.width) * this.depthScaleEnemy(fb.footY);
@@ -12007,13 +12164,16 @@ export class PixiScene {
       if (!inHoriz || behindDist <= 0) {
         behindTarget = 1;
       } else {
-        // #1(変更なし): 0→70px で 1.0→0.5(二乗カーブ。裏に回ると薄く残る)。
-        const t = Math.min(1, behindDist / 70);
+        // #1: 画面上0→70pxで1.0→0.5。ズーム引き中はワールド側の距離を比例して広げる。
+        const behindDistanceScale = zoomCompensatedWorldDistance(1, this.contextZoom);
+        const behindNearPx = BOSS_BEHIND_NEAR_SCREEN_PX * behindDistanceScale;
+        const behindFarPx = BOSS_BEHIND_FAR_SCREEN_PX * behindDistanceScale;
+        const t = Math.min(1, behindDist / behindNearPx);
         let a = 1 - t * t * (1 - BOSS_BEHIND_ALPHA);
-        // #2(追加): さらに奥(70px超=手前へ遠ざかる)へ離れたら 0.5→0(完全透明)へ続ける。
-        if (behindDist > 70) {
+        // #2: さらに奥へ離れたら0.5→0.15。画面上の終点はズームに関係なく220px。
+        if (behindDist > behindNearPx) {
           // v0.25.2622(社長裁定「0.15で」): 0ではなく BOSS_BEHIND_FAR_ALPHA まで。
-          const t2 = Math.min(1, (behindDist - 70) / (BOSS_BEHIND_FAR_PX - 70));
+          const t2 = Math.min(1, (behindDist - behindNearPx) / (behindFarPx - behindNearPx));
           a = BOSS_BEHIND_ALPHA + (BOSS_BEHIND_FAR_ALPHA - BOSS_BEHIND_ALPHA) * t2;
         }
         behindTarget = a;
@@ -12038,7 +12198,56 @@ export class PixiScene {
       }
     } else {
     view.sprite.anchor.set(0.5, 1);
-    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop - kbHop));
+    // ---- 歩行二次モーション(①②③・v0.25.2899・視覚のみ) ----------------------------------------
+    // 実移動速度を論理座標の差分から推定(指数平滑)。移動と同期して揺れるので、止まっている敵
+    // (気絶/拘束/紫/休眠/壁ハマり)は自然に静止する=状態フラグを個別に見る必要が無い。
+    let motRot = 0, motBob = 0, motSqX = 1, motSqY = 1, faceMul = 1;
+    if (ENEMY_MOTION_FX && !isHiddenBoss(e.type) && !e.dormant) {
+      // 城ボスだけステージ別絵に合わせて動きも分岐(v0.25.2909・enemyMotion.tsの表を参照)。
+      const spec = e.type === 'giantbat'
+        ? (GIANTBAT_MOTION_BY_BACKDROP[this.currentFarKey ?? ''] ?? enemyMotionSpec(e.type, e.id))
+        : enemyMotionSpec(e.type, e.id);
+      const dtMs = view.motPrevAt !== undefined ? now - view.motPrevAt : 0;
+      if (dtMs > 0 && dtMs < 400) {
+        const k = Math.min(1, dtMs / 130);
+        const instS = Math.hypot(e.x - (view.motPrevX ?? e.x), e.y - (view.motPrevY ?? e.y)) / dtMs * 1000;
+        const instVx = (e.x - (view.motPrevX ?? e.x)) / dtMs * 1000;
+        view.motSpeed = (view.motSpeed ?? 0) + (instS - (view.motSpeed ?? 0)) * k;
+        view.motVx = (view.motVx ?? 0) + (instVx - (view.motVx ?? 0)) * k;
+      }
+      view.motPrevX = e.x; view.motPrevY = e.y; view.motPrevAt = now;
+      if (spec.kind !== 'none') {
+        // hover(浮遊)は移動に関係なく常にゆらぐ。それ以外は全速=1として実速度に比例。
+        const walk = spec.kind === 'hover' ? 1 : Math.min(1.25, (view.motSpeed ?? 0) / Math.max(20, e.speed));
+        // 技のモーション中(aiPhase=しゃがみ/ジャンプ/突進/g-*)は既存のaiSq系に譲って歩行は消す。
+        // 式は enemyMotion.ts の共有関数。個体位相はIDハッシュ(stablePhase)=群れが同期行進しない。
+        if (e.aiPhase === undefined) {
+          const pose = enemyMotionPose(spec, stablePhase(e.id), now, walk);
+          motRot = pose.rot; motBob = pose.bob; motSqX = pose.sqX; motSqY = pose.sqY;
+        }
+      }
+      // ③振り向き: 絵が明確に横向きの個体だけ、移動Xの向きへミラー。素材は左向き=+1が素。
+      // 反転はENEMY_TURN_MSかけて 旧→0→新 とscale.xを潰す=「体を捻って向き直る」。
+      // しきい値25px/sのヒステリシス(currを既定にする)で、その場の揺れではパタパタしない。
+      if (spec.faceMove) {
+        const cur = view.motFace ?? 1;
+        const vx = view.motVx ?? 0;
+        // ★ノックバック中+直後180msは向きを変えない(社長指示v0.25.2900「ノックバックで振り向くのやめたい」)。
+        // 弾かれた方向は「本人の意思の移動」ではないので、押されて後ずさっただけで背を向けるのは変。
+        // 180msは平滑済みmotVxからノックバック成分が抜けるまでの猶予(平滑k=dt/130の減衰時間)。
+        const kbFacingLock = e.knockbackUntil !== undefined && now < e.knockbackUntil + 180;
+        // 素材の素の向き(既定=左向き)。右向き素材(faceRight)はミラーの向きが反転する。
+        const toRight = spec.faceRight ? 1 : -1;
+        const want = kbFacingLock ? cur : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
+        if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
+        const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;
+        const from = view.motFaceFrom ?? (view.motFace ?? 1);
+        faceMul = from + ((view.motFace ?? 1) - from) * t;
+        if (faceMul === 0) faceMul = 0.02; // scale.x=0の完全消失フレームを作らない
+      }
+    }
+    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop - kbHop - motBob));
+    view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
 
     if (tex) {
@@ -12077,8 +12286,9 @@ export class PixiScene {
       // 「素のscale」(sc)を使う。持ち上げ系(liftHop/aiHop/kbHop/lungeOffY)は heightPx 相当として渡す。
       view.shadowScale = sc;
       view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY;
-      const scaleX = sc * breath.x * aiSqX * lungeSqX;
-      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY);
+      // faceMul(③振り向き)は符号を持つ=ミラー。歩幅スカッシュ(motSqX/Y)は他の変形と同じ掛け算合成。
+      const scaleX = sc * breath.x * aiSqX * lungeSqX * motSqX * faceMul;
+      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY * motSqY);
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
       // 中心からずれた個体は横に流れて見える。重心が footX に乗るよう x を寄せる(視覚のみ)。
       if (this.snowStage || this.battlefieldStage) {
@@ -12093,6 +12303,9 @@ export class PixiScene {
         view.sprite.position.y += lungeOffY;
       }
       view.sprite.visible = true;
+      // ラスボス第二形態の連結パーツ(HPで真ん中から欠ける)。第二形態でない時は隠すだけ。
+      this.syncGlenParts(view, glenP2 ? glenPartCount(e.health / e.maxHealth) : 0,
+        fb.footX, fb.footY, Math.abs(scaleX) * tex.width / 2, sc, artFade, now);
       // PACING_PUZZLE.md §5.15 M15: レア(色付き)個体は本体を専用色でtint(サイズ拡大はネームド専売
       // なのでここでは触らない)。抽選なし/フラグ無効時は明示的に等倍(0xffffff)へ戻す
       // (敵の描画ビューはid単位でプール再利用されるため、リセットしないと別個体へtintが残る)。
@@ -12222,6 +12435,7 @@ export class PixiScene {
     if (view.bands) for (const s of view.bands) s.visible = false;
     if (view.slash) view.slash.visible = false;
     if (view.clawMarks) for (const s of view.clawMarks) s.visible = false;
+    if (view.glenParts) for (const s of view.glenParts) s.visible = false;
     if (view.shockwaves) for (const s of view.shockwaves) s.visible = false;
     // FX-V3V4: 物理の攻撃絵(牙/爪/翼/触手/拳)も同じ作法で既定OFF。点けるのは各技の分岐だけ。
     if (view.atkArt) for (const s of view.atkArt) if (s) s.visible = false;
@@ -12342,9 +12556,12 @@ export class PixiScene {
           if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hhw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse);
           else o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
           o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); // 薙ぎの軸(白芯)
-          // 社長指示: 刀を振るモーションの「最初の位置」に最初から構えておく。柄=トールの手元、刃先=薙ぎ
-          // 始めの点(fx,fy)。実行(harai)はこの構えから contact を tx,ty へ動かして薙ぐ=構え→振りが連続。
-          this.drawThorKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
+          // 柄を手元に置き、攻撃方向から140度引いた大薙ぎの開始姿勢へ構える。実行は同じ姿勢から
+          // 200度振り切るため、構え→振り→残心が連続する。
+          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * THOR_HARAI_WINDUP_MS);
+          this.drawThorKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 0,
+          );
           // §5.25 M24: ダメージ瞬間(windup終わり=sweep開始)の400ms前は鋭いフラッシュへ切替。
           const haraiFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
           if (haraiFlash !== null) view.sprite.tint = haraiFlash;
@@ -12383,6 +12600,16 @@ export class PixiScene {
         // 既存(900ms・無改変)だが、青白tintの配線が未実装だったのでここで一緒に揃える(硬直の存在自体・
         // 長さ・カウンター可否は何も変えない=表示だけの追補)。
         view.sprite.tint = BOSS_RECOVER_TINT;
+        if (e.bossState !== 'jump-recover') {
+          const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+          const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+          const recoverStyle: SwordSwingStyle = e.bossState === 'issen-recover'
+            ? 'draw' : e.bossState === 'tsuki-recover' ? 'thrust' : 'wide';
+          this.drawThorKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty,
+            swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime), recoverStyle, 1,
+          );
+        }
       } else {
         view.sprite.tint = 0xffffff;
       }
@@ -12395,7 +12622,7 @@ export class PixiScene {
       {
         const bs = e.bossState;
         const swinging = bs === 'issen-dash' || bs === 'tsuki' || bs === 'harai';
-        // 絵だけ FX_SWING_LINGER 倍ゆっくり振り切る(社長指示v0.25.2412)。判定の窓(bossStateUntil)は不変。
+        // 判定の窓(bossStateUntil)と同じ時間で振り切り、次の技への繋ぎを視覚でも一致させる。
         const swingDur = (bs === 'issen-dash' ? THOR_ISSEN_DASH_MS : bs === 'tsuki' ? THOR_TSUKI_MS : THOR_HARAI_ACTIVE_MS) * FX_SWING_LINGER;
         const swL = this.latchFx(`${e.id}:thorswing`, swinging, swingDur, now, () => [
           e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy,
@@ -12404,10 +12631,64 @@ export class PixiScene {
         ]);
         if (swL) {
           const [sfx, sfy, stx, sty, hw, kind] = swL.d;
-          if (kind === 0) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, sfx, sfy);
-          else if (kind === 1) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true);
-          else this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          if (kind === 0) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, sfx, sfy, 'draw');
+          else if (kind === 1) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, undefined, undefined, 'thrust');
+          else this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         }
+      }
+      // active州へ入る前にカウンターされても、構えていた刀だけは本来の時刻まで振り切る。
+      // 既存thorswingはactive中断を担当し、こちらはwindup中断も含む全経路の保険。
+      {
+        const bs = e.bossState;
+        const remain = Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime);
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const handX = fb.footX, handY = fb.footY - fb.boxH * 0.5;
+        const issenWind = bs === 'issen-windup', issenActive = bs === 'issen-dash';
+        this.latchSwordCompletion(
+          `${e.id}:thor-issen-complete`, issenWind || issenActive,
+          issenWind || issenActive || bs === 'issen-recover', issenWind ? remain : 0,
+          issenWind ? THOR_ISSEN_DASH_MS : issenActive ? remain : THOR_ISSEN_DASH_MS, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, fx, fy, 'draw',
+        );
+        const tsukiWind = bs === 'tsuki-windup', tsukiActive = bs === 'tsuki';
+        this.latchSwordCompletion(
+          `${e.id}:thor-tsuki-complete`, tsukiWind || tsukiActive,
+          tsukiWind || tsukiActive || bs === 'tsuki-recover', tsukiWind ? remain : 0,
+          tsukiWind ? THOR_TSUKI_MS : tsukiActive ? remain : THOR_TSUKI_MS, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, fx, fy, 'thrust',
+        );
+        const haraiWind = bs === 'harai-windup', haraiActive = bs === 'harai';
+        this.latchSwordCompletion(
+          `${e.id}:thor-harai-complete`, haraiWind || haraiActive,
+          haraiWind || haraiActive || bs === 'harai-recover', haraiWind ? remain : 0,
+          haraiWind ? THOR_HARAI_ACTIVE_MS : haraiActive ? remain : THOR_HARAI_ACTIVE_MS, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, handX, handY, 'wide',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:thor-issen-recover-complete`, bs === 'issen-recover', remain, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, handX, handY, fx, fy, tx, ty, 'draw',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:thor-tsuki-recover-complete`, bs === 'tsuki-recover', remain, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, handX, handY, fx, fy, tx, ty, 'thrust',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:thor-harai-recover-complete`, bs === 'harai-recover', remain, now,
+          this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE,
+          THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+          e.id, handX, handY, fx, fy, tx, ty, 'wide',
+        );
       }
     }
     // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58): 裏ボス3体(mimir/jormungand/skadi)共通の
@@ -12450,7 +12731,7 @@ export class PixiScene {
       // FX-V3V4(V3-1): 噛みつきの牙。**「噛みつき」という動作の実装経路は2つ**あり、こちらが
       // 裏ボス側(mimir の bossState 経路)。もう1つは城ボスの g-bite(下の giantbat ブロック)。
       // 片方だけに付けると必ず取りこぼす(v0.25.2426の教訓)ので必ず両方に置くこと。
-      // 判定は**足元の円**(MIMIR_BITE_RADIUS=92・向きが無い技)なので、顎は画面水平(angle=0)で
+      // 判定は**足元の円**(MIMIR_BITE_RADIUS・向きが無い技)なので、顎は画面水平(angle=0)で
       // 円の直径いっぱいに開き、**windupが終わる瞬間=ダメージが出る瞬間**に閉じ切る。
       if (e.type === 'mimir') {
         const biteWind = bs === 'bite-windup';
@@ -12624,6 +12905,7 @@ export class PixiScene {
       if (bs === 'harai-windup' || bs === 'harai' || bs === 'tate-windup' || bs === 'tate') {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const swingStyle: SwordSwingStyle = bs.startsWith('tate') ? 'overhead' : 'wide';
         if (bs === 'harai-windup' || bs === 'tate-windup') {
           // 放つ前=赤いダメージゾーンの予告。社長指示v0.25.1611「レッドライン=攻撃範囲にする」:
           // 当たり判定は中心線の両側±MIGUEL_HARAI_HALF_WIDTH のカプセルなので、予告も細い線1本ではなく
@@ -12632,24 +12914,46 @@ export class PixiScene {
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, prog, now);
           // 剣を振るモーションの「最初の位置」に最初から構えておく。柄=ミゲルの手元、刃先=薙ぎ始めの点。
           // 武器スプライトはミゲル専用(miguel-sword)。ジブリルは武器の使い方を受領後に別途追加(予告のみ)。
-          if (e.type === 'miguel') this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
+          if (e.type === 'miguel') {
+            const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * MIGUEL_HARAI_WINDUP_MS);
+            this.drawMiguelKatanaReady(
+              e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, swingStyle, 0,
+            );
+          }
         } else {
           // 払い/縦払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_ACTIVE_MS));
-          if (e.type === 'miguel') this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          if (e.type === 'miguel') this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, swingStyle);
         }
       }
       // ---- ミゲル(§6.28-4・M53新規): 踏み込み(dash)=T1赤ライン+終点リング ----
       else if (scriptActive && e.type === 'miguel' && (bs === 'mdash-windup' || bs === 'mdash-move')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         this.drawAngelDashLine(o, cx, cy, tx, ty, now);
-        if (bs === 'mdash-windup') this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.7);
-        else this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1);
+        const elapsed = gameTime - (e.aiStartedAt ?? gameTime);
+        if (bs === 'mdash-windup' || elapsed < MIGUEL_DASH_MOVE_MS) {
+          const remaining = (e.bossStateUntil ?? gameTime) - gameTime;
+          const swordAlpha = bs === 'mdash-windup'
+            ? 0.7 * swordFadeInAlpha(MIGUEL_DASH_WINDUP_MS - remaining)
+            : 1;
+          this.drawMiguelKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'draw', 0,
+          );
+        } else {
+          const strikeProg = Math.max(0, Math.min(1, (elapsed - MIGUEL_DASH_MOVE_MS) / MIGUEL_DASH_STRIKE_MS));
+          this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'draw');
+        }
       }
       // ---- ミゲル: 硬直中も武器を消さない(掟W9)。振り切った姿勢のまま静止させる。 ----
       else if (scriptActive && e.type === 'miguel' && (bs === 'tate-recover' || bs === 'mdash-recover')) {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1);
+        const recoverStyle: SwordSwingStyle = bs === 'tate-recover' ? 'overhead' : 'draw';
+        const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        this.drawMiguelKatanaReady(
+          e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, recoverStyle, 1,
+        );
       }
       // ---- ジブリル(§6.28-16 ①): ランタンを常に手元に掲げる(windup/実行/硬直=消さない・掟W9) ----
       else if (e.type === 'jibril' && bs !== undefined && (
@@ -12668,13 +12972,19 @@ export class PixiScene {
         if (bs === 'sweep-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / RAFI_SWEEP_WINDUP_MS_VIS));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
-          this.drawRafiKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog);
+          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * RAFI_SWEEP_WINDUP_MS_VIS);
+          this.drawRafiKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 0,
+          );
         } else if (bs === 'sweep') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
-          this.drawRafiSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          this.drawRafiSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         } else {
           // 硬直中も武器を消さない(掟W9): 振り切った姿勢のまま静止。
-          this.drawRafiKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1);
+          const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
+          this.drawRafiKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 1,
+          );
         }
       }
       // ---- ラフィ(§6.28-8 #2・理不尽修正・CLAUDE.md「明確なバグ修正」の例外=?rafiscript=0でも
@@ -12700,12 +13010,18 @@ export class PixiScene {
         if (bs === 'sweep-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_WINDUP_MS_VIS));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, prog, now);
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog);
+          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * URI_SWEEP_WINDUP_MS_VIS);
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 0,
+          );
         } else if (bs === 'sweep') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_SWEEP_ACTIVE_MS));
-          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'wide');
         } else {
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1); // 硬直中も武器を消さない(掟W9)
+          const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'wide', 1,
+          ); // 硬直中も武器を消さない(掟W9)
         }
       }
       // ---- ウリ: 振り下ろし(縦・内径なし)=T3細帯+大剣。①との対比が読みの本体(§6.28-17) ----
@@ -12715,19 +13031,43 @@ export class PixiScene {
         if (bs === 'downslash-windup') {
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_DOWNSLASH_WINDUP_MS_VIS));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, prog, now);
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 0.45 + 0.4 * prog);
+          const swordAlpha = (0.45 + 0.4 * prog) * swordFadeInAlpha(prog * URI_DOWNSLASH_WINDUP_MS_VIS);
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'overhead', 0,
+          );
         } else if (bs === 'downslash') {
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_DOWNSLASH_ACTIVE_MS));
-          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'overhead');
         } else {
-          this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, 1); // 硬直中も武器を消さない(掟W9)
+          const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'overhead', 1,
+          ); // 硬直中も武器を消さない(掟W9)
         }
       }
       // ---- ウリ: 踏み込み突き(遠帯)=T1赤ライン+大剣。ミゲル踏み込みと同じ意匠(§6.28-17) ----
       else if (scriptActive && e.type === 'uri' && (bs === 'thrust-windup' || bs === 'thrust' || bs === 'thrust-recover')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (bs !== 'thrust-recover') this.drawAngelDashLine(o, cx, cy, tx, ty, now);
-        this.drawUriKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, tx, ty, bs === 'thrust-windup' ? 0.7 : 1);
+        const elapsed = gameTime - (e.aiStartedAt ?? gameTime);
+        if (bs === 'thrust-windup' || (bs === 'thrust' && elapsed < URI_THRUST_MOVE_MS)) {
+          const remaining = (e.bossStateUntil ?? gameTime) - gameTime;
+          const swordAlpha = bs === 'thrust-windup'
+            ? 0.7 * swordFadeInAlpha(URI_THRUST_WINDUP_MS - remaining)
+            : 1;
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'thrust', 0,
+          );
+        } else if (bs === 'thrust') {
+          const strikeProg = Math.max(0, Math.min(1, (elapsed - URI_THRUST_MOVE_MS) / URI_THRUST_STRIKE_MS));
+          this.drawUriSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, strikeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5, 'thrust');
+        } else {
+          const swordAlpha = swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
+          this.drawUriKatanaReady(
+            e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, 'thrust', 1,
+          );
+        }
       }
       // ---- スリィエル(§6.28-18・M62新規): 環の射出(移動→T6線→発射)。環そのものはsyncSurielRingが
       // 常時描画するため、ここではビームのテレグラフ(T6)だけを足す。 ----
@@ -12790,7 +13130,7 @@ export class PixiScene {
       // ---- アクラシエル: 転移(出現先)=T5円フェードイン(0.8秒)。転移元(消失)はtintのT4フラッシュのみ。 ----
       else if (scriptActive && e.type === 'acrasiel' && bs === 'warp-in') {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const total = ACRASIEL_WARP_TELEGRAPH_MS_VIS;
+        const total = ACRASIEL_WARP_TELEGRAPH_MS;
         const t = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / total));
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         o.ellipse(tx, ty, ACRASIEL_SPEAR_RADIUS, ACRASIEL_SPEAR_RADIUS).fill({ color: 0xff2a2a, alpha: 0.05 + 0.18 * t + 0.06 * pulse });
@@ -12816,6 +13156,241 @@ export class PixiScene {
       }
       // ---- スリィエル: 単眼の凝視(小技)=T4のみ(図形なし・tintは上で設定済み) ----
       // ---- 上記いずれにも該当しない状態(chase/volley/bolt-windup/counter-leap等)は図形なし ----
+
+      // 剣・骨刃はAI州とは別の時計にも焼き付ける。通常中は上の技別描画へ譲り、カウンターで
+      // chase/counter-leapへ飛んだ時だけ、残っている構え→振り→90ms退場をこちらが完走させる。
+      const swordRemain = Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime);
+      const swordFx = e.aiFromX ?? cx, swordFy = e.aiFromY ?? cy;
+      const swordTx = e.aiTargetX ?? cx, swordTy = e.aiTargetY ?? cy;
+      const swordHandX = fb.footX, swordHandY = fb.footY - fb.boxH * 0.5;
+      if (e.type === 'miguel') {
+        const haraiWind = bs === 'harai-windup', haraiActive = bs === 'harai';
+        this.latchSwordCompletion(
+          `${e.id}:miguel-harai-complete`, haraiWind || haraiActive,
+          haraiWind || haraiActive || bs === 'harai-recover', haraiWind ? swordRemain : 0,
+          haraiWind ? MIGUEL_HARAI_ACTIVE_MS : haraiActive ? swordRemain : MIGUEL_HARAI_ACTIVE_MS, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, MIGUEL_HARAI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'wide',
+        );
+        const tateWind = bs === 'tate-windup', tateActive = bs === 'tate';
+        this.latchSwordCompletion(
+          `${e.id}:miguel-tate-complete`, tateWind || tateActive,
+          tateWind || tateActive || bs === 'tate-recover', tateWind ? swordRemain : 0,
+          tateWind ? MIGUEL_HARAI_ACTIVE_MS : tateActive ? swordRemain : MIGUEL_HARAI_ACTIVE_MS, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, MIGUEL_HARAI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'overhead',
+        );
+        const dashWind = bs === 'mdash-windup', dashActive = bs === 'mdash-move';
+        const dashElapsed = dashActive ? Math.max(0, gameTime - (e.aiStartedAt ?? gameTime)) : 0;
+        const dashToStrike = dashWind
+          ? swordRemain + MIGUEL_DASH_MOVE_MS
+          : dashActive ? Math.max(0, MIGUEL_DASH_MOVE_MS - dashElapsed) : 0;
+        const dashSwingRemain = dashWind
+          ? MIGUEL_DASH_STRIKE_MS
+          : dashActive ? Math.max(1, swordRemain - dashToStrike) : MIGUEL_DASH_STRIKE_MS;
+        this.latchSwordCompletion(
+          `${e.id}:miguel-dash-complete`, dashWind || dashActive,
+          dashWind || dashActive || bs === 'mdash-recover', dashToStrike, dashSwingRemain, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, MIGUEL_HARAI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'draw',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:miguel-harai-recover-complete`, bs === 'harai-recover', swordRemain, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'wide',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:miguel-tate-recover-complete`, bs === 'tate-recover', swordRemain, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'overhead',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:miguel-dash-recover-complete`, bs === 'mdash-recover', swordRemain, now,
+          this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE,
+          MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'draw',
+        );
+      } else if (e.type === 'rafi') {
+        const sweepWind = bs === 'sweep-windup', sweepActive = bs === 'sweep';
+        this.latchSwordCompletion(
+          `${e.id}:rafi-sweep-complete`, sweepWind || sweepActive,
+          sweepWind || sweepActive || bs === 'sweep-recover', sweepWind ? swordRemain : 0,
+          sweepWind ? THOR_HARAI_ACTIVE_MS : sweepActive ? swordRemain : THOR_HARAI_ACTIVE_MS, now,
+          this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE,
+          RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
+          e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'wide',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:rafi-sweep-recover-complete`, bs === 'sweep-recover', swordRemain, now,
+          this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE,
+          RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'wide',
+        );
+      } else if (e.type === 'uri') {
+        const sweepWind = bs === 'sweep-windup', sweepActive = bs === 'sweep';
+        this.latchSwordCompletion(
+          `${e.id}:uri-sweep-complete`, sweepWind || sweepActive,
+          sweepWind || sweepActive || bs === 'sweep-recover', sweepWind ? swordRemain : 0,
+          sweepWind ? URI_SWEEP_ACTIVE_MS : sweepActive ? swordRemain : URI_SWEEP_ACTIVE_MS, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'wide',
+        );
+        const downWind = bs === 'downslash-windup', downActive = bs === 'downslash';
+        this.latchSwordCompletion(
+          `${e.id}:uri-downslash-complete`, downWind || downActive,
+          downWind || downActive || bs === 'downslash-recover', downWind ? swordRemain : 0,
+          downWind ? URI_DOWNSLASH_ACTIVE_MS : downActive ? swordRemain : URI_DOWNSLASH_ACTIVE_MS, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, THOR_TSUKI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'overhead',
+        );
+        const thrustWind = bs === 'thrust-windup', thrustActive = bs === 'thrust';
+        const thrustElapsed = thrustActive ? Math.max(0, gameTime - (e.aiStartedAt ?? gameTime)) : 0;
+        const thrustToStrike = thrustWind
+          ? swordRemain + URI_THRUST_MOVE_MS
+          : thrustActive ? Math.max(0, URI_THRUST_MOVE_MS - thrustElapsed) : 0;
+        const thrustSwingRemain = thrustWind
+          ? URI_THRUST_STRIKE_MS
+          : thrustActive ? Math.max(1, swordRemain - thrustToStrike) : URI_THRUST_STRIKE_MS;
+        this.latchSwordCompletion(
+          `${e.id}:uri-thrust-complete`, thrustWind || thrustActive,
+          thrustWind || thrustActive || bs === 'thrust-recover', thrustToStrike, thrustSwingRemain, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordFx, swordFy, swordTx, swordTy, THOR_TSUKI_VIS_HALFWIDTH,
+          swordHandX, swordHandY, 'thrust',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:uri-sweep-recover-complete`, bs === 'sweep-recover', swordRemain, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'wide',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:uri-downslash-recover-complete`, bs === 'downslash-recover', swordRemain, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'overhead',
+        );
+        this.latchSwordRecovery(
+          `${e.id}:uri-thrust-recover-complete`, bs === 'thrust-recover', swordRemain, now,
+          this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE,
+          URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
+          e.id, swordHandX, swordHandY, swordFx, swordFy, swordTx, swordTy, 'thrust',
+        );
+      }
+
+      // 武器以外でAI州へ直結していた実行FXも同じ作法へ統一。既存の牙・爪・翼・拳・衝撃波・
+      // 土煙・地割れは既にlatch済みなので、ここでは未配線だった天使の線/円/帯だけを補う。
+      if (e.type === 'suriel') {
+        const beamWind = bs === 'ring-beam-windup', beamActive = bs === 'ring-active';
+        let bdx = swordTx - swordFx, bdy = swordTy - swordFy;
+        const bdl = Math.hypot(bdx, bdy) || 1; bdx /= bdl; bdy /= bdl;
+        const beamEx = swordFx + bdx * MIMIR_LASER_VIS_RANGE, beamEy = swordFy + bdy * MIMIR_LASER_VIS_RANGE;
+        const beamL = this.latchFx(
+          `${e.id}:suriel-beam-complete`, beamWind || beamActive,
+          (beamWind ? swordRemain : 0) + (beamWind ? SURIEL_RINGSHOT_ACTIVE_MS_VIS : beamActive ? swordRemain : SURIEL_RINGSHOT_ACTIVE_MS_VIS),
+          now,
+          () => [beamWind ? swordRemain : 0, beamWind ? SURIEL_RINGSHOT_ACTIVE_MS_VIS : Math.max(1, swordRemain), swordFx, swordFy, beamEx, beamEy],
+        );
+        if (beamL && !(beamWind || beamActive || bs === 'ring-recover')) {
+          const elapsed = now - beamL.t0, impactAt = beamL.d[0], activeMs = Math.max(1, beamL.d[1]);
+          if (elapsed + FX_IMPACT_TOLERANCE_MS < impactAt) {
+            // 溜め中のカウンターは予告ごとキャンセル。まだ発生していない攻撃を見た目だけ撃たせない。
+            this.fxLatches.delete(`${e.id}:suriel-beam-complete`);
+          } else if (elapsed < impactAt + activeMs) {
+            this.drawAngelBeamLine(o, beamL.d[2], beamL.d[3], beamL.d[4], beamL.d[5], THIN_BEAM_VIS_HALFWIDTH, 1, now);
+          }
+        }
+
+        const spinWind = bs === 'ring-spin-windup', spinActive = bs === 'ring-spin';
+        const spinL = this.latchFx(
+          `${e.id}:suriel-spin-complete`, spinWind || spinActive,
+          (spinWind ? swordRemain : 0) + (spinWind ? SURIEL_RINGSPIN_ACTIVE_MS_VIS : spinActive ? swordRemain : SURIEL_RINGSPIN_ACTIVE_MS_VIS),
+          now,
+          () => [spinWind ? swordRemain : 0, spinWind ? SURIEL_RINGSPIN_ACTIVE_MS_VIS : Math.max(1, swordRemain), cx, cy],
+        );
+        if (spinL && !(spinWind || spinActive || bs === 'ring-spin-recover')) {
+          const elapsed = now - spinL.t0;
+          if (elapsed + FX_IMPACT_TOLERANCE_MS < spinL.d[0]) {
+            this.fxLatches.delete(`${e.id}:suriel-spin-complete`);
+          } else if (elapsed < spinL.d[0] + spinL.d[1]) {
+            const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+            o.ellipse(spinL.d[2], spinL.d[3], SURIEL_RINGSPIN_RADIUS, SURIEL_RINGSPIN_RADIUS).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
+            if (FX_RING_ENABLED) this.drawTelegraphRing(view, spinL.d[2], spinL.d[3], SURIEL_RINGSPIN_RADIUS, 0xff3b3b, 0.45 + 0.3 * pulse);
+            else o.ellipse(spinL.d[2], spinL.d[3], SURIEL_RINGSPIN_RADIUS, SURIEL_RINGSPIN_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+          }
+        }
+
+        const sweepWind = bs === 'sweep-windup', sweepActive = bs === 'sweep';
+        const sweepL = this.latchFx(
+          `${e.id}:suriel-sweep-complete`, sweepWind || sweepActive,
+          (sweepWind ? swordRemain : 0) + (sweepWind ? SURIEL_SWEEP_ACTIVE_MS_VIS : sweepActive ? swordRemain : SURIEL_SWEEP_ACTIVE_MS_VIS),
+          now,
+          () => [sweepWind ? swordRemain : 0, sweepWind ? SURIEL_SWEEP_ACTIVE_MS_VIS : Math.max(1, swordRemain), swordFx, swordFy, swordTx, swordTy],
+        );
+        if (sweepL && !(sweepWind || sweepActive || bs === 'sweep-recover')) {
+          const elapsed = now - sweepL.t0;
+          if (elapsed + FX_IMPACT_TOLERANCE_MS < sweepL.d[0]) {
+            this.fxLatches.delete(`${e.id}:suriel-sweep-complete`);
+          } else if (elapsed < sweepL.d[0] + sweepL.d[1]) {
+            this.drawAngelZoneCapsule(view, o, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], THOR_HARAI_VIS_HALFWIDTH, 1, now);
+          }
+        }
+      } else if (e.type === 'acrasiel') {
+        const spikeWind = bs === 'spike-windup', spikeActive = bs === 'spike';
+        const spikeL = this.latchFx(
+          `${e.id}:acrasiel-spike-complete`, spikeWind || spikeActive,
+          (spikeWind ? swordRemain : 0) + (spikeWind ? ACRASIEL_SPIKE_ACTIVE_MS_VIS : spikeActive ? swordRemain : ACRASIEL_SPIKE_ACTIVE_MS_VIS),
+          now,
+          () => [spikeWind ? swordRemain : 0, spikeWind ? ACRASIEL_SPIKE_ACTIVE_MS_VIS : Math.max(1, swordRemain), cx, cy, e.spikeGapMask ?? 0],
+        );
+        if (spikeL && !(spikeWind || spikeActive || bs === 'spike-recover')) {
+          const elapsed = now - spikeL.t0;
+          if (elapsed + FX_IMPACT_TOLERANCE_MS < spikeL.d[0]) {
+            this.fxLatches.delete(`${e.id}:acrasiel-spike-complete`);
+          } else if (elapsed < spikeL.d[0] + spikeL.d[1]) {
+            for (let sector = 0; sector < 8; sector++) {
+              if ((spikeL.d[4] & (1 << sector)) !== 0) continue;
+              const ang = sector * (Math.PI / 4);
+              const ex = spikeL.d[2] + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS;
+              const ey = spikeL.d[3] + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS;
+              this.drawAngelZoneCapsule(view, o, spikeL.d[2], spikeL.d[3], ex, ey, THOR_HARAI_VIS_HALFWIDTH, 1, now, sector);
+            }
+          }
+        }
+
+        const burstWind = bs === 'burst-windup', burstActive = bs === 'burst';
+        const burstL = this.latchFx(
+          `${e.id}:acrasiel-burst-complete`, burstWind || burstActive,
+          (burstWind ? swordRemain : 0) + (burstWind ? ACRASIEL_BURST_ACTIVE_MS_VIS : burstActive ? swordRemain : ACRASIEL_BURST_ACTIVE_MS_VIS),
+          now,
+          () => [burstWind ? swordRemain : 0, burstWind ? ACRASIEL_BURST_ACTIVE_MS_VIS : Math.max(1, swordRemain), cx, cy],
+        );
+        if (burstL && !(burstWind || burstActive || bs === 'burst-recover')) {
+          const elapsed = now - burstL.t0;
+          if (elapsed + FX_IMPACT_TOLERANCE_MS < burstL.d[0]) {
+            this.fxLatches.delete(`${e.id}:acrasiel-burst-complete`);
+          } else if (elapsed < burstL.d[0] + burstL.d[1]) {
+            const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+            o.ellipse(burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).fill({ color: 0xff2a2a, alpha: 0.18 + 0.12 * pulse });
+            if (FX_RING_ENABLED) this.drawTelegraphRing(view, burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, 0xff3b3b, 0.5 + 0.3 * pulse);
+            else o.ellipse(burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
+          }
+        }
+      }
     }
     // 突進の土煙(社長裁定v0.25.2427「全部入れたい」)。**蹴り出し**と**止まった瞬間**の2発。
     // 対象は「突進という動作を持つ全員」で洗う(v0.25.2426の教訓): 汎用 `charge`(犬/lab-zombie-2/
@@ -12840,6 +13415,31 @@ export class PixiScene {
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
       if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), this.dustAlpha(stopL.t), stopL.t0);
       if (dashing) this.dashWasOn.add(e.id); else this.dashWasOn.delete(e.id);
+
+      // v0.25.2868: 溜めの後に本体が高速でコミットする州だけ、進行方向と逆へ短い速度線を引く。
+      // 州名は移動/判定の状態機械そのものを読むため、active秒数を変えてもFXだけ遅れて残らない。
+      // ジャンプ/滑空も同じ「溜め→高速移動」なので横展開し、サイズに比例させて巨体の重量感を残す。
+      const airborneCommit = e.aiPhase === 'g-jump-air' || e.aiPhase === 'g-trijump-air'
+        || e.aiPhase === 'g-glide-active' || e.bossState === 'jump-attack';
+      if (dashing || airborneCommit) {
+        let mdx = e.vx ?? 0, mdy = e.vy ?? 0;
+        if (Math.hypot(mdx, mdy) < 1) {
+          mdx = (e.aiTargetX ?? fb.footX) - (e.aiFromX ?? fb.footX);
+          mdy = (e.aiTargetY ?? fb.footY) - (e.aiFromY ?? fb.footY);
+        }
+        const ml = Math.hypot(mdx, mdy) || 1;
+        const ux = mdx / ml, uy = mdy / ml, px = -uy, py = ux;
+        const tail = Math.max(24, Math.min(150, Math.max(e.width, e.height) * 1.25));
+        const spread = Math.max(5, Math.min(18, Math.min(e.width, e.height) * 0.18));
+        for (const off of [-spread, 0, spread]) {
+          const sx = fb.footX + px * off, sy = fb.footY + py * off;
+          o.moveTo(sx, sy).lineTo(sx - ux * tail, sy - uy * tail).stroke({
+            width: off === 0 ? 3 : 1.5,
+            color: this.dustTintForStage(),
+            alpha: off === 0 ? 0.55 : 0.3,
+          });
+        }
+      }
     }
     // 汎用ジャンプ着地の砂埃(社長指摘v0.25.2426「パンプキンなどのジャンプにも砂埃ちゃんと出てる?」)。
     // → **出ていなかった**。v0.25.2404で砂埃を入れた時、城ボスの新スクリプト(g-*)のブロックの中にだけ
@@ -13026,7 +13626,7 @@ export class PixiScene {
       {
         const swWind = gph === 'g-sweep-windup';
         const swToImpact = swWind ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
-        const swActive = (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT) * FX_SWING_LINGER; // 絵だけ長く(判定は不変)
+        const swActive = (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT) * FX_SWING_LINGER;
         const swL = this.latchFx(`${e.id}:sweepslash`, swWind, swToImpact + swActive, now, () => {
           const sfx = e.aiFromX ?? cx, sfy = e.aiFromY ?? cy;
           const stx = e.aiTargetX ?? cx, sty = e.aiTargetY ?? cy;
@@ -13375,7 +13975,19 @@ export class PixiScene {
           o.poly(pts).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.5 * t + 0.12 * gPulse });
           // 爪痕(D-2)を判定の矩形へ重ねる。氷(スカジ/城ボスstage-4)は爪ではないので付けない。
           // 濃さは既存のフェードイン(t)に合わせる=「n秒後に爆ぜる」という既存の語彙(§6.28-3)のまま。
-          if (!h.ice) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t);
+          //
+          // ★グレンの血の爪痕(g-talon)だけ、**爪が振り抜けた後にズバッと手前から奥へ刻まれる**
+          // (社長指示v0.25.2891「爪がシュッてした後、すぐに当たり判定発生と同時にズバッと」)。
+          // 振っている最中は痕を出さない(=windup終わりまで carve は 0)。爪の絵が振り切る瞬間から
+          // CLAW_CARVE_MS で一気に刻み、以降は 1 で据え置き=従来どおり爆ぜるまで濃くなるだけ。
+          // 危険の告知は下に敷いてある赤い帯が最初から全長で出しているので、痕が遅れて出ても
+          // 「赤いのに当たらない/赤くないのに当たる」にはならない。
+          // g-talon 以外(将来の帯型の遅延判定)は従来どおり最初から全長で出す。
+          const carveFrom = h.bornAt + GLEN_TALON_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+          const carve = h.moveKey === 'g-talon'
+            ? Math.max(0, Math.min(1, (gameTime - carveFrom) / (CLAW_CARVE_MS / ENEMY_ATTACK_SPEED_MULT)))
+            : 1;
+          if (!h.ice) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t, carve);
         } else {
           o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: 0.05 + 0.18 * t + 0.06 * gPulse });
           o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.45 * t + 0.12 * gPulse });
@@ -13405,7 +14017,7 @@ export class PixiScene {
     // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
     // なので従来どおりアクターの位置フェード(artFade)に従う。
     const ov = view.overlay;
-    this.drawHealthBar(ov, e, now);
+    this.drawHealthBar(ov, e, now, gameTime);
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(ov, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
     }
@@ -13453,8 +14065,11 @@ export class PixiScene {
     view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
   }
 
-  private drawHealthBar(g: Graphics, e: Enemy, now: number) {
-    if (e.health >= e.maxHealth) return;
+  private drawHealthBar(g: Graphics, e: Enemy, now: number, gameTime: number) {
+    const postureBoss = isEngageableBoss(e.type);
+    const postureMax = postureBoss ? bossPostureMax(e.type) : 0;
+    const posture = postureBoss ? bossPostureNow(e) : postureMax;
+    if (e.health >= e.maxHealth && (!postureBoss || posture >= postureMax)) return;
     const w = e.width;
     const h = 3;
     const x = e.x;
@@ -13492,6 +14107,20 @@ export class PixiScene {
       }
     }
     g.rect(x, y, w * pct, h).fill({ color: barColor });
+    // 体勢崩し中に取り切れる最大HP25%ぶんを、現在HPの内側へ紫の報酬領域として重ねる。
+    if (isBossPostureBroken(e, gameTime) && (e.bossBreakRewardRemaining ?? 0) > 0) {
+      const rewardFrac = Math.min(pct, (e.bossBreakRewardRemaining ?? 0) / e.maxHealth);
+      g.rect(x + w * (pct - rewardFrac), y, w * rewardFrac, h).fill({ color: 0xa855f7, alpha: 0.95 });
+    }
+    if (postureBoss) {
+      const py = y - 4;
+      const posturePct = postureMax > 0 ? posture / postureMax : 0;
+      g.rect(x, py, w, 2).fill({ color: 0x09090b, alpha: BAR_BG_ALPHA });
+      g.rect(x, py, w * posturePct, 2).fill({ color: isBossPostureBroken(e, gameTime) ? 0xd8b4fe : 0xf59e0b, alpha: 0.95 });
+      for (const mark of [0.25, 0.5, 0.75]) {
+        g.rect(x + w * mark, py, 1, 2).fill({ color: 0xfef3c7, alpha: 0.7 });
+      }
+    }
   }
 
   // §6.28共通(T3): 角ばった四角ゾーン(fx,fy)→(tx,ty)・半幅halfWidth。既存のトール/ミゲル/ジャイアント
@@ -14668,6 +15297,10 @@ export class PixiScene {
     return (
       // M7ボス=stage-7のgiantbatだけグレンの新アートに差し替え(社長支給v0.25.1999)。
       ((this.currentFarKey === 'stage7' && type === 'giantbat') ? 'glen-boss' : null)
+      // ★見た目2種以上を持つ敵(bat/skeleton…社長支給の新アート)は**全ステージ共通**。
+      // ステージ別の差し替えより**先に**返すので、stage3/4/5 でも同じ絵が出る。
+      // どれになるかは敵IDで固定=個体はちらつかない。表は `utils/enemyVariant.ts`。
+      ?? variantTextureName(type, id)
       ?? (this.daylight ? stage3EnemyTextureName(type) : null)
       ?? (this.snowStage ? stage4EnemyTextureName(type) : null)
       ?? (this.battlefieldStage ? stage5EnemyTextureName(type) : null)
@@ -14847,7 +15480,7 @@ export class PixiScene {
       this.muzzleSprite = sp;
     }
     if (sp.texture !== tex) sp.texture = tex;
-    const s = len / 215; // 素材の可視長(215px)を狙いの長さへ合わせる
+    const s = len / 172; // 素材の可視長(ドット版_70=全幅172px・v0.25.2931)を狙いの長さへ合わせる
     sp.scale.set(s, s);
     sp.rotation = angle;
     sp.position.set(x, y);
@@ -14860,15 +15493,67 @@ export class PixiScene {
   private hideMuzzleFlash(): void { if (this.muzzleSprite) this.muzzleSprite.visible = false; }
 
   /**
+   * ラスボス第二形態の連結パーツ(v0.25.2918/構成改訂v0.25.2921・社長指示「胴体を5個、尻尾を
+   * 1つ最後尾に。HPが減ると真ん中のパーツから減っていく」)。本体の右肩口から GLEN_CHAIN の
+   * 6スロット(胴体5=砲身/箱の交互+尾)を少し重ねて数珠つなぎに置き、HP帯で 6→0 個へ欠けていく
+   * (欠けた分は詰めて連なりを保つ・除去順は GLEN_REMOVAL=真ん中から・尾は最後まで残る)。
+   * 各パーツは位相ずらしの上下ゆらぎ+微小な傾ぎで「生きた連結」に見せる。
+   * **視覚のみ・判定なし**。本体より後ろに描く。スプライトのプール添字は**スロット番号**
+   * (同じ絵を複数スロットが使うためパーツ番号では持てない)。
+   */
+  private syncGlenParts(
+    view: ActorView, visibleCount: number,
+    footX: number, footY: number, bodyHalfW: number, sc: number, alpha: number, now: number,
+  ): void {
+    if (!view.glenParts && visibleCount <= 0) return; // 一度も出していなければ何もしない(全敵毎フレームの無駄を避ける)
+    if (!view.glenParts) view.glenParts = [];
+    for (const s of view.glenParts) if (s) s.visible = false;
+    if (visibleCount <= 0) return;
+    const show = GLEN_VISIBLE_BY_COUNT[Math.min(6, visibleCount)];
+    let x = footX + bodyHalfW * 0.55; // 本体の右肩口から連なる(叩き台)
+    let first = true;
+    for (const slot of show) {
+      const tex = getTexture(`glen-boss2-part-${GLEN_CHAIN[slot]}`);
+      if (!tex) continue;
+      let sp = view.glenParts[slot];
+      if (!sp) {
+        sp = new Sprite(tex);
+        sp.anchor.set(0.5, 1); // 足元アンカー(シートは3つとも下端揃え=実測)
+        // 本体スプライトの後ろ(コンテナ内で手前に挿す=描画順が先)へ。
+        view.container.addChildAt(sp, view.container.getChildIndex(view.sprite));
+        view.glenParts[slot] = sp;
+      }
+      if (sp.texture !== tex) sp.texture = tex;
+      const w = tex.width * sc;
+      x += w / 2 - (first ? 0 : 10); // 前のパーツと少し重ねて「連結」に見せる
+      first = false;
+      const bob = Math.sin(now / 520 + slot * 1.7) * 3;
+      sp.scale.set(sc, sc);
+      sp.rotation = Math.sin(now / 700 + slot * 2.1) * 0.03;
+      sp.position.set(Math.round(x), Math.round(footY - bob));
+      sp.alpha = alpha;
+      sp.visible = true;
+      x += w / 2;
+    }
+  }
+
+  /**
    * 爪痕(社長支給素材 D-2・v0.25.2402)。**遅延ダメージの判定1つにつき1枚**を、
    * その判定の矩形にぴったり重ねて置く(グレンの血の爪痕は同時に3本出るので配列で持つ)。
    *
    * ★この素材だけ**暗い**(輝度中央値65。他は234〜238)。tint は掛け算なので明るくできないが、
    * **爪痕は「地面の傷」なので暗いのが正しい**。危険の表示は下に敷いてある赤い面が担い、
    * この絵は傷の意匠だけを足す(= tint は白=素材そのままの濃さで出す)。
+   *
+   * ★`reveal`(0..1・社長指示v0.25.2889「最初からパっと出てるのが変」): 爪痕を**グレン側(fx)から
+   * 奥(tx)へ向かって刻まれていく**ように出す。1 なら従来どおり全長。
+   * **伸縮させない**のが要件なので、スプライトを縮めるのではなく**素材を左から切って**出す
+   * (= 見えている部分の絵は最終形と1:1のまま、切り口が奥へ進む「ズサッ」になる)。
+   * マスク(Graphics+ステンシル)でも同じ絵は作れるが、こちらはステンシル1枚も増えないので選んだ。
    */
   private drawClawMark(
     view: ActorView, idx: number, fx: number, fy: number, tx: number, ty: number, halfWidth: number, alpha: number,
+    reveal = 1,
   ): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;
     const tex = getTexture('fx/claw-mark');
@@ -14877,6 +15562,9 @@ export class PixiScene {
     let sp = view.clawMarks[idx];
     if (!sp) {
       sp = new Sprite(tex);
+      // ★アンカーは中央(0.5)のまま。ワイプは「置く位置を**見えている部分の中心**へ寄せる」ことで
+      // 出す(アンカーを端へ動かすと `telegraphFade` の span() が sp.y を中心と見なす前提を崩し、
+      // 透過フェードの帯が半分ズレる)。
       sp.anchor.set(0.5, 0.5);
       // 予告レイヤー(tele=赤い塗り)の**直上**へ入れる(社長報告v0.25.2411「全部当たり判定に隠れて
       // 赤い影っぽくしか見えない」)。旧: index 0=コンテナ最下層に入れていたため、上に重なる
@@ -14885,13 +15573,43 @@ export class PixiScene {
       view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
       view.clawMarks[idx] = sp;
     }
-    if (sp.texture !== tex) sp.texture = tex;
+    const p = Math.max(0, Math.min(1, reveal));
+    if (p <= 0.001) { sp.visible = false; return; }
+    // 素材を左から p だけ切ったサブテクスチャ(スロットごとに1枚だけ作って使い回す)。
+    if (!view.clawMarkTex) view.clawMarkTex = [];
+    let ct = view.clawMarkTex[idx];
+    if (!ct || ct.source !== tex.source) {
+      ct = new Texture({
+        source: tex.source,
+        frame: new Rectangle(tex.frame.x, tex.frame.y, tex.frame.width, tex.frame.height),
+        // 毎フレーム frame を書き換えるので dynamic=true(スプライト側にUV変更を追従させる)。
+        dynamic: true,
+      });
+      view.clawMarkTex[idx] = ct;
+    }
+    // ★`orig` を渡していないので Pixi 内部で `orig === frame`(同じRectangleの参照)になる。
+    // よって frame.width を縮めると orig.width も縮み、下の `sp.width` の拡大率計算
+    // (value / orig.width)が **p に依らず一定**になる=絵が伸び縮みしない。ここが仕掛けの肝。
+    const cutW = Math.max(1, tex.frame.width * p);
+    if (sp.texture !== ct) sp.texture = ct;
+    // ★`updateUvs()` **だけでは絵が出ない**(v0.25.2889の実バグ)。あれはUVを計算し直すだけで
+    // "update" を発火しないので、スプライト側の `updateBounds`(orig から矩形を作り直す)が
+    // 走らず、**最初のフレームの幅(=ほぼ0)のまま固まる**。`update()` は updateUvs + emit なので、
+    // dynamic:true で張った購読が onViewUpdate を呼び、矩形が毎フレーム作り直される。
+    if (ct.frame.width !== cutW) { ct.frame.width = cutW; ct.update(); }
     const ddx = tx - fx, ddy = ty - fy;
     const len = Math.hypot(ddx, ddy) || 1;
+    const ux = ddx / len, uy = ddy / len;
     sp.rotation = Math.atan2(ddy, ddx);
-    sp.width = len + halfWidth * 2; // 判定の矩形(前後へhalfWidthぶん伸ばした形)と同一
+    // 全長=判定の矩形(前後へhalfWidthぶん伸ばした形)と同一。見えている長さはその p 倍。
+    // ★素材も長さも同じ p 倍にしているので**拡大率は p に依らず一定**=絵は伸び縮みしない。
+    const full = len + halfWidth * 2;
+    const shown = full * p;
+    sp.width = shown;
     sp.height = halfWidth * 2;
-    sp.position.set((fx + tx) / 2, (fy + ty) / 2);
+    // 置くのは**見えている部分の中心**(手前の端から shown/2 だけ奥)。p=1 で従来どおり矩形の中心に戻る。
+    const startX = fx - ux * halfWidth, startY = fy - uy * halfWidth;
+    sp.position.set(startX + ux * shown * 0.5, startY + uy * shown * 0.5);
     sp.alpha = alpha;
     sp.visible = true;
   }
@@ -16717,19 +17435,19 @@ export class PixiScene {
     } else burst.visible = false;
   }
 
-  // トール/ミゲル(一閃/突き/払い)共通: drawSlashSprite と同じピクセル素材(fx/slash-streak-*,
+  // トール/ミゲル/ウリ/ラフィの剣・刃攻撃共通: drawSlashSprite と同じピクセル素材(fx/slash-streak-*,
   // fx/slash-burst-*)を、プレイヤーの斬撃のような固定斜め向きではなく、実際の当たり判定ライン
   // (fx,fy→tx,ty・半幅halfWidth)に合わせて回転・伸縮して表示する(社長指示: 一閃/突き/払いを
   // 斬撃ピクセルで当たり判定どおりにモーション)。ボス種ごとの差分(FXマップ/剣テクスチャ/柄フラク
   // 座標/柄→切っ先角度・長さ比・表示長)をパラメータ化し、drawThorSlash/drawMiguelSlash から呼ぶ
   // (§5.21-追補8: 剣の見た目だけ差し替えたいのでヘルパーを共通化・専用関数の重複を避ける)。
-  // t: 0(このステートの開始)→1(終了)の進行度。0-0.5でstreakが伸びる(溜め=予告)、0.5-1で縮む(実行=フェード)。
+  // t: 0(実行開始)→1(終了)の進行度。streakの伸縮と同時に、剣は技別の大きな弧を最後まで振り切る。
   // burst=trueの間だけ命中点(tx,ty)にバーストがポップ(実行中の手応え。溜め中は出さない)。
   private drawKatanaSlash(
     fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
     bladeLenFrac: number, katanaLength: number, katanaTexName: string,
     id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean,
-    showKatana = false, pivotX?: number, pivotY?: number
+    showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide'
   ) {
     let c = fxMap.get(id);
     if (!c) {
@@ -16748,7 +17466,7 @@ export class PixiScene {
     if (!ref) { c.visible = false; return; }
     c.visible = true;
     const length = Math.hypot(tx - fx, ty - fy);
-    const angle = Math.atan2(ty - fy, tx - fx);
+    const angle = swordAttackAngle(fx, fy, tx, ty);
     const sc = length / Math.max(1, ref.width);
     const vsc = (halfWidth * 2) / Math.max(1, ref.height);
     const tt = Math.max(0, Math.min(1, t));
@@ -16781,23 +17499,20 @@ export class PixiScene {
       const kref = getTexture(katanaTexName);
       if (kref) {
         if (katana.texture !== kref) katana.texture = kref;
+        const pose = swordSwingPose(style, tt);
         const kscale = katanaLength / (bladeLenFrac * Math.max(1, kref.width));
-        katana.scale.set(kscale);
-        if (pivotX !== undefined && pivotY !== undefined) {
-          // 社長指示: 横払いは「本体を軸に刀を振る」。柄を本体の手元(pivot)へ固定し、刃先を
-          // 判定ライン上の現在位置(fx,fy→tx,ty を tt で補間)へ向ける=斬撃アニメと同期して薙ぐ。
-          const contactX = fx + (tx - fx) * tt;
-          const contactY = fy + (ty - fy) * tt;
-          // pivot と contact がほぼ一致する初期フレーム(一閃=pivotが始点)は角度が不定になるので、
-          // その時はライン方向(angle)へフォールバックして向きの暴れを防ぐ。
-          const pdx = contactX - pivotX, pdy = contactY - pivotY;
-          katana.rotation = (Math.hypot(pdx, pdy) < 1 ? angle : Math.atan2(pdy, pdx)) - intrinsicAngle;
-          katana.position.set(pivotX, pivotY);
-        } else {
-          katana.rotation = angle - intrinsicAngle;
-          katana.position.set(fx, fy);
-        }
-        katana.alpha = streak.alpha;
+        katana.scale.set(kscale * pose.scaleMult);
+        // 旧方式は「判定線上の接触点へ剣先を向ける」だけで回転角が小さく、剣を運んでいるように
+        // 見えていた。柄は手元に固定し、攻撃方向を基準に160〜200度を明確に振り切る。
+        // 突きだけは角度を固定して、柄を後ろから前へ50px押し出す。
+        const ux = length > 0 ? (tx - fx) / length : Math.cos(angle);
+        const uy = length > 0 ? (ty - fy) / length : Math.sin(angle);
+        const px = pivotX ?? fx, py = pivotY ?? fy;
+        katana.rotation = angle + pose.angleOffset - intrinsicAngle;
+        katana.position.set(px + ux * pose.pushPx, py + uy * pose.pushPx);
+        // 剣は斬撃ストリークより先に消さない。実行後はrecover姿勢へ同じ不透明度で繋ぎ、
+        // recover末尾の90msだけを呼び出し側でフェードアウトする。
+        katana.alpha = 1;
         katana.visible = katana.alpha > 0.01;
       } else katana.visible = false;
     } else {
@@ -16805,18 +17520,18 @@ export class PixiScene {
     }
   }
 
-  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
     this.drawKatanaSlash(
       this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE, THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style
     );
   }
 
   // ミゲル(ゲート2ボス)の横払い(狭)実行時の描画。drawThorSlashと同じ仕組みをmiguel-swordで流用。
-  private drawMiguelSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+  private drawMiguelSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
     this.drawKatanaSlash(
       this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE, MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style
     );
   }
 
@@ -16857,7 +17572,7 @@ export class PixiScene {
     katana.rotation = aimAngle - THOR_KATANA_INTRINSIC_ANGLE;   // 先端=突く方向
     katana.position.set(pivotX - ux * draw + (-uy) * shake, pivotY - uy * draw + ux * shake);
     katana.tint = 0xffffff;
-    katana.alpha = 0.55 + 0.45 * prog;
+    katana.alpha = (0.55 + 0.45 * prog) * swordFadeInAlpha(prog * THOR_TSUKI_WINDUP_MS);
     katana.visible = true;
   }
 
@@ -16894,18 +17609,20 @@ export class PixiScene {
     // 柄を腰(hip)に置き、溜めで斬る方向と逆へゆっくり引く。震えは斬る線に直交方向へ。
     katana.position.set(hipX - ux * draw + (-uy) * tremor, hipY - uy * draw + ux * tremor);
     katana.tint = 0xffffff;
-    katana.alpha = 0.5 + 0.5 * prog;
+    katana.alpha = (0.5 + 0.5 * prog) * swordFadeInAlpha(prog * THOR_ISSEN_WINDUP_MS);
     katana.visible = true;
   }
 
-  // 横払いの構え(社長指示): 溜め(harai-windup)の間、刀を「振るモーションの最初の位置」に最初から構えて
-  // 置いておく。柄=本体の手元(pivot)、刃先=薙ぎ始めの点(aim=判定ライン始点 fx,fy)へ向ける。streak/burstは
-  // 出さない(溜め中は判定なし)。実行(harai)でこの位置から薙ぎ始める=構え→振りが連続する。
+  // 剣の構え/残心。柄は本体の手元(pivot)へ置くが、角度は手元→現在の標的ではなく、攻撃開始時に
+  // 固定した判定ライン(attackFrom→attackTo)から決める。これでプレイヤー位置や内径の有無に左右されず、
+  // 構え→実行→残心が同じ基準角のまま連続する。streak/burstは出さない。
   // トール/ミゲル共通(§5.21-追補8: 剣の見た目だけ差し替えるためパラメータ化)。
   private drawKatanaReady(
     fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
     bladeLenFrac: number, katanaLength: number, katanaTexName: string,
-    id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0
   ) {
     let c = fxMap.get(id);
     if (!c) {
@@ -16926,56 +17643,74 @@ export class PixiScene {
     streak.visible = false;
     burstSp.visible = false;
     const kscale = katanaLength / (bladeLenFrac * Math.max(1, kref.width));
-    katana.scale.set(kscale);
-    katana.rotation = Math.atan2(aimY - pivotY, aimX - pivotX) - intrinsicAngle;
-    katana.position.set(pivotX, pivotY);
+    const baseAngle = swordAttackAngle(attackFromX, attackFromY, attackToX, attackToY);
+    const pose = swordSwingPose(style, poseProgress);
+    katana.scale.set(kscale * pose.scaleMult);
+    katana.rotation = baseAngle + pose.angleOffset - intrinsicAngle;
+    katana.position.set(pivotX + Math.cos(baseAngle) * pose.pushPx, pivotY + Math.sin(baseAngle) * pose.pushPx);
     katana.tint = 0xffffff;
     katana.alpha = alpha;
     katana.visible = true;
   }
 
-  private drawThorKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+  private drawThorKatanaReady(
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0,
+  ) {
     this.drawKatanaReady(
       this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE, THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
-      id, pivotX, pivotY, aimX, aimY, alpha
+      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress,
     );
   }
 
   // ミゲル(ゲート2ボス)の横払い(狭)溜め時の「構え」描画。drawThorKatanaReadyと同じ仕組みをmiguel-swordで流用。
-  private drawMiguelKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+  private drawMiguelKatanaReady(
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0,
+  ) {
     this.drawKatanaReady(
       this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE, MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
-      id, pivotX, pivotY, aimX, aimY, alpha
+      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress,
     );
   }
 
   // PACING_PUZZLE.md §6.28-16(バッチM61): ウリの大薙ぎ/振り下ろし/踏み込み突き、実行時の描画。
   // drawMiguelSlashと全く同じ仕組みをuri-swordで流用(掟W9=構え+実行の両方に武器絵を出す)。
-  private drawUriSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+  private drawUriSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
     this.drawKatanaSlash(
       this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE, URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style
     );
   }
-  private drawUriKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+  private drawUriKatanaReady(
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0,
+  ) {
     this.drawKatanaReady(
       this.uriSlashFx, URI_SWORD_GRIP_FRAC, URI_SWORD_INTRINSIC_ANGLE, URI_SWORD_BLADE_LEN_FRAC, URI_SWORD_LENGTH, 'uri-sword',
-      id, pivotX, pivotY, aimX, aimY, alpha
+      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress,
     );
   }
 
   // §6.28-16(バッチM57): ラフィの薙ぎ(Phase2新規)実行時の描画。骨刃(rafi-blade)を「振る」用途で
   // 流用(§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。
-  private drawRafiSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+  private drawRafiSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
     this.drawKatanaSlash(
       this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE, RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
-      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY, style
     );
   }
-  private drawRafiKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+  private drawRafiKatanaReady(
+    id: string, pivotX: number, pivotY: number,
+    attackFromX: number, attackFromY: number, attackToX: number, attackToY: number, alpha: number,
+    style: SwordSwingStyle = 'wide', poseProgress = 0,
+  ) {
     this.drawKatanaReady(
       this.rafiSlashFx, RAFI_BLADE_GRIP_FRAC, RAFI_BLADE_INTRINSIC_ANGLE, RAFI_BLADE_SLASH_LEN_FRAC, RAFI_BLADE_SLASH_LENGTH, 'rafi-blade',
-      id, pivotX, pivotY, aimX, aimY, alpha
+      id, pivotX, pivotY, attackFromX, attackFromY, attackToX, attackToY, alpha, style, poseProgress,
     );
   }
 

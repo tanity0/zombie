@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   aabbGapDistance, bossDistanceZoomTarget, bossZoomClassFor, contextZoomTarget, isLargeForZoom,
+  isPointInZoomedViewport, zoomCompensatedWorldDistance, zoomedViewportBounds,
   BOSS_DISTANCE_ZOOM_FAR_PX, BOSS_DISTANCE_ZOOM_MIN, BOSS_DISTANCE_ZOOM_NEAR_PX,
   BOSS_ZOOM_PROFILES, CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN, ZOOM_MIN_ABS,
   CONTEXT_ZOOM_COUNT_FLOOR, CONTEXT_ZOOM_COUNT_CEIL,
@@ -71,6 +72,23 @@ describe('cameraZoom — context zoom target', () => {
     expect(aabbGapDistance(player, { x: 120, y: 90, width: 500, height: 80 })).toBe(0);
     expect(aabbGapDistance(player, { x: 170, y: 100, width: 500, height: 80 })).toBe(50);
     expect(aabbGapDistance(player, { x: 150, y: 150, width: 500, height: 80 })).toBeCloseTo(Math.hypot(30, 30));
+  });
+
+  it('expands visual world distances so zoomed screen distances stay constant', () => {
+    expect(zoomCompensatedWorldDistance(70, 1)).toBe(70);
+    expect(zoomCompensatedWorldDistance(70, 0.7)).toBe(100);
+    expect(zoomCompensatedWorldDistance(220, 0.58) * 0.58).toBeCloseTo(220, 6);
+    expect(zoomCompensatedWorldDistance(70, 1.2)).toBe(70);
+    expect(zoomCompensatedWorldDistance(70, 0)).toBe(70);
+  });
+
+  it('expands offscreen bounds by the same zoom ratio', () => {
+    const camera = { x: 100, y: 200 };
+    const viewport = { width: 400, height: 700 };
+    const b = zoomedViewportBounds(camera, viewport, 0.5, 50);
+    expect(b).toEqual({ left: -200, top: -250, right: 800, bottom: 1350 });
+    expect(isPointInZoomedViewport(790, 1340, camera, viewport, 0.5, 50)).toBe(true);
+    expect(isPointInZoomedViewport(801, 1340, camera, viewport, 0.5, 50)).toBe(false);
   });
 
   it('combines crowd, large-enemy and distance boss targets by deepest pull', () => {

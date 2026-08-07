@@ -90,16 +90,16 @@ import {
   QUEST_NAMED_AGGRO_RANGE,
 } from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile } from '../utils/enemyUtils';
 import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
-import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, type HateSide } from '../utils/bossHate';
+import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
 import { computeEnemySeparation } from '../utils/enemySeparation';
 // M51: 城ボス「ジャイアント」新スクリプトの純関数(間合い/CD/HP段階から次の技を選ぶ・PACING_PUZZLE.md §6.26)。
 import {
-  giantPhaseForHealth, giantPhaseJustChanged, pickGiantMove, pickGiantCombo, type GiantMove,
-  giantPhaseForHealthStory, pickGiantStoryCombo, type GiantPhase,
+  giantPhaseForHealth, giantPhaseJustChanged, pickGiantMove, type GiantMove,
+  giantPhaseForHealthStory, type GiantPhase,
   giantStageRangeMult,
   giantRestRawMs,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の純関数。
@@ -110,6 +110,7 @@ import {
   pickGiantMoveWithGlen, glenScriptApplies, type GlenMoveId, GLEN_NIHIL_CHANT_COUNT,
   GIANT_PHASE_HP_THRESHOLD, glenTriJumpPoints, GLEN_TRIJUMP_COUNT,
 } from '../utils/giantScript';
+import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
@@ -157,7 +158,14 @@ import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
-import { isLeashableBoss, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT } from '../utils/bossEngagement';
+import {
+  advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss,
+  BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
+} from '../utils/bossEngagement';
+import {
+  applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal, isBossPostureBroken,
+  tickBossPosture, type BossPostureImpact,
+} from '../utils/bossPosture';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
@@ -318,7 +326,6 @@ export const MERCHANT_TALK_DWELL_MS = 3000;
 const EVENT_NPC_MIN_DISTANCE = 460;
 const EVENT_NPC_MAX_DISTANCE = 950;
 const EVENT_NPC_INTERACT_RADIUS = 64;
-const EVENT_NPC_REOPEN_DELAY_MS = 1500;
 export const SHOP_AMMO_COST = 10;
 // 商人の弾薬販売量(v0.25.2168・社長指示「商人のライフルは15発に。ハンドガンは25発に」):
 // ドロップ箱の取得量(ammoPickupAmounts: handgun40/rifle20等)とは別建てで、商人だけ少なめ。
@@ -348,8 +355,6 @@ const SMALL_GLOW_MIN_DURATION_MS = 80;
 // damage landed on a stunned boss (drives the kill.mp3 sound).
 // `killed` = how many enemies the swing killed (drives the zombie death grunt).
 export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number };
-export const clampDropPct = (n: number): number =>
-  Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
 
 // 制圧イベント(ステージ1メインミッション等のサブクエスト時のみ有効・通常は無効)。
 // 原点中心・半径3200の円周に4か所(90度刻み=東西南北)固定。サークル内10秒で制圧→武器商人がそこへ移動(=安全地帯)。
@@ -728,8 +733,8 @@ const saveCarriedEquip = (defId: string | null): void => {
 export const getCarriedEquipId = (): string | null => loadCarriedEquip();
 
 // 装備を該当スロットへ装着した新 Player を返す純関数(同スロットは置換=破棄)。最大体力の増減は
-// player.maxHealth へベイクし、増分ぶんだけ現HPも底上げ(減少時は上限へクランプ)。equipItem と
-// selectUpgrade(装備取得)の双方から使う。
+// player.maxHealth へベイクし、増分ぶんだけ現HPも底上げ(減少時は上限へクランプ)。
+// selectUpgrade(装備取得)から使う。
 const equipDefOnPlayer = (player: Player, defId: string): Player => {
   const def = equipmentById(defId);
   if (!def) return player;
@@ -782,30 +787,9 @@ export const CRIT_DAMAGE_MULT = 1.5;
 // boss deals 5× melee damage (and shakes off the stun) instead of an instakill.
 export const BOSS_CRIT_DAMAGE_MULT = 5;
 export const BOSS_MELEE_STUN_MULT = 5;
-// 裏ボス(mimir/jormungand/skadi)専用: クリティカルを規定回数当てると「完全気絶(紫)」に移行。
-// 通常敵の気絶相当で、この間は攻撃を受けても起きず(stun 維持)、5× 近接をタイマー切れまで“し放題”。
-export const BOSS_FULLSTUN_CRITS = 5;    // 完全気絶に必要なクリ回数(社長指示)
-export const BOSS_FULLSTUN_MS = 3000;    // 完全気絶の持続(社長裁定v0.25.2491「紫気絶は3秒で」。旧5000)
 // v0.25.2490(社長裁定・雑魚ヘイト): ゴースト起因ダメージを受けた雑魚がゴーストへ向く時間(gameTime ms)。
 // 被弾のたびに更新。切れる/ゴースト消滅でプレイヤー狙いへ戻る(resolveEnemyTarget側)。実機調整前提の叩き台。
 export const GHOST_MOB_HATE_MS = 5000;
-// クリが裏ボスに入ったときのカウント更新。規定回数で完全気絶を発動。返り値=マージするEnemy差分＋発動フラグ。
-export const bumpBossCrit = (
-  enemy: Enemy,
-  gameTime: number
-): { patch: Partial<Enemy>; triggered: boolean } | null => {
-  // 社長指示v0.25.2422「5回痺れで紫痺れも共通で」: 裏ボス限定だった完全気絶を**全ボス共通**へ。
-  // これで「1クリ=半減 / 5クリ=紫の完全気絶(フィニッシュ受付)」がボス種別を問わず同じ作法になる。
-  if (!isBossType(enemy.type)) return null;
-  // すでに完全気絶中はカウントしない(気絶を延長/短縮しない)。
-  if (enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil) return null;
-  const c = (enemy.bossCritCount ?? 0) + 1;
-  if (c >= BOSS_FULLSTUN_CRITS) {
-    const until = gameTime + BOSS_FULLSTUN_MS;
-    return { patch: { bossCritCount: 0, bossFullStunUntil: until, stunUntil: until }, triggered: true };
-  }
-  return { patch: { bossCritCount: c }, triggered: false };
-};
 /**
  * v0.25.2607(社長裁定): その敵をノックバックで押してよいか。
  * **ボスは通常の殴り/弾では押されない。押し道具(鞭・シールドバッシュ)を当てた時だけ押される。**
@@ -817,6 +801,9 @@ export const bumpBossCrit = (
  *     ガードが外れ、押しが通っていた)。
  *  ② 天使がイベントのサークルから押し出され、次フレームの閉じ込めクランプに引き戻される綱引き
  *     =「押される→すぐ戻る」。押す力を消せば綱引き自体が起きない。
+ *
+ * v0.25.2895: isHiddenBossの早期returnをknockback適用の後ろへ移し、11体(裏ボス4/天使6/idol)にも
+ * 押し道具が届くようになった(②の「天使が…」は元々ここに到達できず絵に描いた餅だった)。
  */
 export const canShoveEnemy = (
   enemy: Pick<Enemy, 'type' | 'knockbackShoveUntil'>,
@@ -941,15 +928,6 @@ const SHIELD_BASH_DAMAGE_MULT = 3;
 const SHIELD_BASH_SHOVE_DISTANCE = 80;        // バッシュの飛び出し距離(社長指示: 100→80 で気持ち短く。ノックバックは据え置き)
 const SHIELD_BASH_DURABILITY_COST = 5;        // バッシュ1回で減る耐久(0以下で破壊)
 const SHIELD_BASH_KNOCKBACK_SPEED = 4800; // バッシュのノックバック距離(社長指示で倍: 2400→4800)。距離∝速度。
-// スケーター急停止バッシュ(社長指示): skater で1秒以上走行後、進行方向と逆へスティックを倒すと
-// 進行方向へ短距離衝撃波(バッシュ=近接×SHIELD_BASH_DAMAGE_MULT＋ノックバック)を出して急停止。
-const SKATER_BASH_RUN_MS = 1000;       // 発動に必要な連続走行時間(1秒)
-const SKATER_BASH_RANGE = 120;          // 衝撃波の射程(短距離・前方)
-const SKATER_BASH_ARC_DOT = 0.5;        // 前方扇(heading との dot がこの値以上=±60°)
-const SKATER_BASH_REVERSE_DOT = -0.5;   // 入力が進行方向と逆(dot がこの値以下=120°以上反対)
-const SKATER_BASH_STOP_MS = 150;        // 急停止の入力ロック窓(この間に残速度を素早く減衰)
-const SKATER_BASH_CD_MS = 600;          // 連射防止クールダウン(gameTime)
-const SKATER_BASH_RESIDUAL = 0.18;      // 急停止直後に残す速度割合(ほんの少し慣性)
 // スケボー新仕様(社長指示): ダブルタップ乗車→指離しで投擲。1秒以上乗車で発動、未満は消えるだけ。
 const SKATER_RIDE_MIN_MS = 1000;        // 投擲発動に必要な最低乗車時間(1秒)
 const SKATEBOARD_SPEED = 900;           // 投擲したスケボーの飛翔速度(px/s・私案)
@@ -961,9 +939,6 @@ const SKATEBOARD_BASH_RANGE = 140;      // ヒット時バッシュの範囲(半
 export const KNOCKBACK_IMMUNE_MS = 1750;
 export const REFLECT_DAMAGE_MULTIPLIER = 10.0; // countered/reflected bullets hit 10× harder(社長指示で60→10)
 export const REFLECT_SPEED_MULTIPLIER = 2.0; // カウンター反射弾の速度倍率(社長指示v0.25.1731で1.8→2.0)
-// スキル: 反射神経の反撃爆発。ランチャー相当の半径・ダメージ(useGameLoop GRENADE_* に準拠の仮値)。
-export const REFLEX_BLAST_RADIUS = 92;  // = GRENADE_BLAST_RADIUS
-export const REFLEX_BLAST_DAMAGE = 60;  // ランチャー級の反撃(要実機調整)
 
 // ---------------------------------------------------------------------------
 // Katana (刀) sub-weapon. Owning the card switches the player to katana mode:
@@ -999,8 +974,6 @@ export const KATANA_DASH_SPEED = KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000);
 export const KATANA_DASH_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
 // 着地後の硬直(後隙)。刀・村雨共通。着地から この時間 は移動も次の一閃も不可。
 export const KATANA_DASH_RECOVERY_MS = 200;
-// TODO(刀): 仮値。PC二連打の受付時間。既存の操作感を見て調整可能にしてある。
-export const KATANA_DOUBLE_TAP_MS = 260;
 // TODO(刀): 仮値。フリック判定しきい値(直近サンプル窓・最低距離・最低速度)。
 // 通常のジョイスティックドラッグは低速なのでフリック扱いにならない。
 export const KATANA_FLICK_WINDOW_MS = 120;
@@ -1137,10 +1110,8 @@ export const whipChargeThreshold = (player: Player): number =>
   WHIP_CHARGE_HITS_BY_LEVEL[whipLevel(player)];
 
 // 錬金術ヘルパー。
-export const hasAlchemy = (player: Player): boolean => player.subWeapons.includes('alchemy');
 export const alchemyLevel = (player: Player): number =>
   Math.max(1, Math.min(3, player.subWeaponLevels['alchemy'] ?? 1));
-export const hasRareSummon = (summons: Summon[]): boolean => summons.some(s => s.kind === 'rare');
 // 特殊枠サブ「賢者の石」(錬金術Lv3で武器商人に並ぶ。錬金術と同居の排他枠)。
 export const hasSageStone = (player: Player): boolean => player.subWeapons.includes('sage-stone');
 // 村雨が刀Lv3で商人に並ぶのと同じ仕組み: 錬金術がLv3に達したら賢者の石を商人在庫(Lv1陳列)へ解禁。
@@ -1566,6 +1537,8 @@ export const HUNTER_LEAVE_FADE_MS = 900;
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
 export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
 export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン予告→直線突進。社長指示で2→3)
+/** 城ボス専用。雑魚犬の速度を変えず、巨体の「溜め→爆発的な突進」だけを強める。 */
+export const GIANT_CHARGE_SPEED_MULT = 4.4;
 // ★ハンターの再設計(社長裁定v0.25.2429)「歩く距離を半分にして、ダッシュとジャンプの速度を上げる。
 // つまり**技が出ると脅威だが、その前に逃げ切れる**」。
 //
@@ -1659,7 +1632,7 @@ export const GIANT_JUMP_WINDUP_MS = 1200;    // 実効1000ms(旧crouch2500msか�
 // 定数を城ボス専用に新設しているのは、`PUMPKIN_EXPLOSION_RADIUS`/`PUMPKIN_JUMP_MS` が
 // **雑魚のパンプキンと共用**だから(そのまま触ると雑魚まで強化されてしまう)。
 export const GIANT_JUMP_RADIUS = 100;        // 着地AoE半径(旧: PUMPKIN_EXPLOSION_RADIUS=54 の流用)
-export const GIANT_JUMP_AIR_MS = 600;        // 実効500ms(旧: PUMPKIN_JUMP_MS=1000=実効833msの流用)
+export const GIANT_JUMP_AIR_MS = 384;        // 実効320ms。溜め後は巨体が一気に着地する。
 // 飛び掛かりだけステージ倍率に上限を掛ける(社長裁定「(b) 1.30で頭打ち」)。
 // stage-7/ex1 の 1.50 だと 必要163px vs 使える156px = **歩きでは逃げ切れない**ため。
 export const GIANT_JUMP_STAGE_MULT_CAP = 1.30;
@@ -1736,7 +1709,7 @@ export const GIANT_SLAM_HALF_WIDTH = 90;
 
 // --- stage-3: 滑空薙ぎ(glide・独自技・トレース元=カラミートの飛び上がり→地面を放射状のブレス) ---
 export const GIANT_GLIDE_WINDUP_MS = 1200;        // 実効1000ms・後ろへ跳び退がって溜める(T8backstep相当)
-export const GIANT_GLIDE_ACTIVE_MS = 360;         // 実効300ms・本体が通過して薙ぐ(T3長い帯)
+export const GIANT_GLIDE_ACTIVE_MS = 228;         // 実効190ms・本体が高速で通過して薙ぐ(T3長い帯)
 export const GIANT_GLIDE_SECOND_HIT_DELAY_MS = 300; // 実効250ms(固定)・滑空終了から二撃目まで=回避狩り
 export const GIANT_GLIDE_RECOVER_MS = 840;        // 実効700ms
 export const GIANT_GLIDE_CD_MS = 10800;           // 実効9.0s
@@ -1807,7 +1780,11 @@ export const GIANT_SWEEPBEAM_SWEEP_RAD = (2 * Math.PI) / 3; // 120°
 export const GLEN_SCRIPT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('glenscript') !== '0';
 
 // --- 血の爪痕(talon・Phase1〜・トレース元=Mohgの Bloodflame Talons) ---
-export const GLEN_TALON_WINDUP_MS = 1080;           // 実効900ms・静止(3本の爪痕の狙いをロック)
+// ★爪の振り速度2倍(社長指示v0.25.2885): 1080→540(実効900→450ms)。
+// この定数は**爪が振り抜けるまでの時間そのもの**(絵は aiPhaseUntil を読んで扇45°をこの間に振り切る)
+// なので、半分にすると振りが2倍速になる。予告の猶予も同じだけ短くなる=技全体が速い。
+// **爆ぜるまでの遅延(GLEN_TALON_DETONATE_DELAY_MS)は別定数なので触っていない**(学習点①の間は保持)。
+export const GLEN_TALON_WINDUP_MS = 540;            // 実効450ms・静止(3本の爪痕の狙いをロック)
 export const GLEN_TALON_DETONATE_DELAY_MS = 1080;   // 実効900ms(固定)・置いた痕が爆ぜるまでの遅延(学習点①)
 export const GLEN_TALON_RECOVER_MS = 960;           // 実効800ms
 export const GLEN_TALON_CD_MS = 10800;              // 実効9.0s
@@ -1827,7 +1804,12 @@ export const GLEN_BOON_ARC_RADIUS = 500;            // 叩き台。中〜遠帯(
 export const GLEN_BOON_ARC_SPREAD_RAD = Math.PI / 3; // 叩き台(60°)。5個を並べる弧の開き角
 
 // --- 伸びる触手(reach・Phase1〜・社長裁定「見た目の間合いより遥かに遠くまで届く」) ---
-export const GLEN_REACH_WINDUP_MS = 960;            // 実効800ms・静止
+// ★触手が伸びる速度3倍(社長指示v0.25.2885): 960→320(実効800→267ms)。
+// 触手の伸長速度は `GLEN_REACH_LENGTH / (この値/ENEMY_ATTACK_SPEED_MULT)` で決まる(専用の速度定数は無い)。
+// 900px を 267ms で伸び切る=約3375px/s。**当たり判定は伸び切った瞬間に全長900pxで1回出る**ので、
+// 判定の出るタイミングもこの値と一致したまま3倍速くなる(絵と判定はズレない)。予告帯は従来どおり
+// 1フレーム目から全長900pxで出るが、**見えてから当たるまでが1/3**になる。
+export const GLEN_REACH_WINDUP_MS = 320;            // 実効267ms・静止
 export const GLEN_REACH_ACTIVE_MS = GIANT_SWEEP_ACTIVE_MS; // 叩き台=既存sweepの実行時間を流用(設計書に明記なし)
 export const GLEN_REACH_RECOVER_MS = 840;           // 実効700ms
 export const GLEN_REACH_CD_MS = 9600;               // 実効8.0s
@@ -1845,7 +1827,7 @@ export const GLEN_NIHIL_RADIUS = 260;               // 設計書どおり(半径
 // = 追ってくるのではなく「見て全部避けるパズル」(§6.28-3「何が・どこには嘘をつかない」の遵守)。
 // 回数は**3固定**(乱数にしない)=学習装置③「回数で読ませる」。三連突進/虚無の三唱と同じ一族。
 export const GLEN_TRIJUMP_WINDUP_MS = 1200;   // 実効1000ms(大技のリード床)。ここで3円を出し切る
-export const GLEN_TRIJUMP_AIR_MS = 540;       // 実効450ms/1跳び。着地したら「すぐ」次へ(間を空けない)
+export const GLEN_TRIJUMP_AIR_MS = 336;       // 実効280ms/1跳び。着地したら「すぐ」次へ。
 export const GLEN_TRIJUMP_RECOVER_MS = 1800;  // 実効1500ms=全技中で最大の反撃窓(虚無の三唱1400msより長い)
 export const GLEN_TRIJUMP_CD_MS = 18000;      // 実効15.0s
 export const GLEN_TRIJUMP_RADIUS = 110;       // 1跳びの着地AoE半径(城ボスの飛び掛かり100より少し大きい)
@@ -1968,7 +1950,6 @@ export const PLAYER_INTRO_FLY_X = 0;        // (フェーズB)人間の飛び降
                                             // 横移動はすべてヘリの飛来(FAR_X)で確保し、飛び降りは前進せず垂直落下。
                                             // v0.25.411: 900→450 / v0.25.413: 450→225 / v0.25.450: 225→0(前進やめ)。
 export const PLAYER_INTRO_LOW_Y = 28;       // (フェーズB)開始のわずかな高さ
-export const PLAYER_INTRO_ARC_H = 110;      // (フェーズB)飛行アーチ高
 export const PLAYER_INTRO_HELI_FAR_X = 4500; // (フェーズA)飛来開始の遠方X(world px。もっと左の遠くから)
 export const PLAYER_INTRO_HELI_HIGH_Y = 420; // (フェーズA)飛来開始の高度(画面上方 px)。v0.25.413: 300→420(もう少し上空から)
 export const PLAYER_INTRO_HELI_START_SCALE = 0.22; // (フェーズA)飛来開始の見た目縮尺(遠さの主表現)
@@ -2040,14 +2021,10 @@ export const CHARACTER_CLASS_NAMES: Record<CharacterClass, string> = {
 export const INTRO_DIALOGUE_CHAR_MS = 55;        // 1文字の表示間隔(オートタイプ速度)
 export const INTRO_DIALOGUE_LINE_HOLD_MS = 950;  // 各行を打ち終えた後の保持(+0.2s 延長)
 export const INTRO_DIALOGUE_READ_MS = 26;        // 文字数に応じた追加の読む間(社長指示=次へ行く長さを少し長く・文字数で変動)
-export const INTRO_DIALOGUE_END_HOLD_MS = 550;   // 最終行後の保持(この後ゲーム開始)
 // 1行の所要時間(オートタイプ+保持)。holdMs 指定行(無線の「間」等)はそれをそのまま使う。
 // 表示側(IntroDialogue)と終了判定(useGameLoop)で必ず同じ値を使うため共通化する。
 export const introLineMs = (l: IntroLine): number =>
   l.holdMs ?? (l.text.length * (INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_READ_MS) + INTRO_DIALOGUE_LINE_HOLD_MS);
-// 会話全体の所要時間(useGameLoop が終了判定に使用)。行配列から算出。空なら 0。
-export const introDialogueTotalMs = (lines: IntroLine[]): number =>
-  lines.length === 0 ? 0 : lines.reduce((sum, l) => sum + introLineMs(l), 0) + INTRO_DIALOGUE_END_HOLD_MS;
 // セリフを出す登場進行 t。ヘリが低ホバーまで降りてきた頃(フェーズA内 a≈0.82。降下0.5〜飛び降り0.85の終盤)。
 export const INTRO_DIALOGUE_TRIGGER_T = PLAYER_INTRO_HELI_FRAC * 0.82;
 
@@ -2446,7 +2423,9 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   get().spawnBurst(x, y, getEnemyColor(enemy.type), 26);             // 崩れ散る残骸
   get().triggerShake(DRAMATIC_DEATH_FADE_MS, 6);            // 長く低いシェイク(旧・裏ボス限定=5 よりわずかに強め)
   get().triggerTimeSlow(0.35, 520, 90);                     // 決着の一瞬をスロー
-  if (bossDefeat) get().triggerAttention(x, y);              // ボスの崩壊中は世界を止め、既存attentionでカメラを向ける
+  // ★アテンション(時間停止+カメラ寄り)は `getsDeathAttention` が唯一の出どころ。
+  // pumpkin は除外(v0.25.2879)——ウェーブで何度も倒す相手なので、毎回止まるとテンポが切れる。
+  if (getsDeathAttention(enemy.type)) get().triggerAttention(x, y);
 };
 
 // KILLパンチズームの寄り先(社長指示・v0.25.1498): キルされた対象の中心座標。複数いる場合は
@@ -2767,6 +2746,23 @@ const applyMeleeFinishSkillSpread = (
       }
     }
   }
+};
+
+// 体勢崩しへの致命は即死判定ではないが、手応えは既存KILLフィニッシュと完全に揃える。
+const showBossFatalPresentation = (get: () => GameState, x: number, y: number, labelY: number) => {
+  get().spawnBurst(x, y, '#dc2626', 30, 0, -1);
+  get().spawnBurst(x, y, '#7f1d1d', 14, 0, -1);
+  setTimeout(() => {
+    get().spawnBlood(x, y, -Math.PI / 2 - 0.16, 260);
+    get().spawnBlood(x, y, -Math.PI / 2 + 0.16, 260);
+  }, MELEE_FINISH_ZOOM_MS - MELEE_FINISH_ZOOM_HOLD_MS);
+  get().spawnRing(x, y, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
+  get().spawnRing(x, y, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
+  get().spawnRing(x, y, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
+  get().spawnGlow(x, y, GLOW_R_S, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS);
+  get().spawnCallout(x, labelY, 'Kill!', '#ffe4e6', {
+    bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS,
+  });
 };
 
 // スキル: カウンターマスター = カウンター成立スイングで、プレイヤー近傍(~MELEE_RADIUS*1.5)の敵を
@@ -3300,7 +3296,6 @@ interface GameState {
   showShopMenu: boolean;
   showEventQuestMenu: boolean;
   shopReopenAt: number;
-  eventQuestReopenAt: number;
   vaccinePurchased: boolean;
   // Flipped true only when the player completes the return circle (帰還完了) — the run is won.
   gameWon: boolean;
@@ -3520,8 +3515,6 @@ interface GameState {
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
-  // スケーター: 1秒以上走行後に進行方向と逆へスティックで急停止＋前方短距離バッシュ衝撃波。
-  triggerSkaterBash: () => void;
   // スケボー(新仕様): ダブルタップで乗車 / 指離しで降車(+1秒以上乗車なら進行方向へ投擲)。
   mountSkater: () => void;
   dismountSkater: () => void;
@@ -3584,24 +3577,20 @@ interface GameState {
   fireWeapons: (currentTime: number) => void;
   firePhillShot: () => void; // PHILL銃: 指離しで狙いサークル方向へ1発(手動)。
   selectUpgrade: (upgrade: UpgradeOption) => void;
-  learnSubWeapon: (key: SubWeaponKey) => void;
   setSubWeaponCooldown: (key: SubWeaponKey, readyAt: number) => void;
   updateHuntingCharge: (startedAt: number, charged: boolean) => void;
   buyShopItem: (key: ShopItemKey, ammoType?: AmmoType) => boolean;
   buySkillCardFromShop: (key: SubWeaponKey) => boolean;
   sellSubWeapon: (key: SubWeaponKey) => boolean;
-  openShop: () => void;
   closeShop: () => void;
   returnToBase: () => void;                              // 商人「帰還」=任意撤収(スコア計上・進行なし・装備持ち帰り)
-  openEventQuest: () => void;
   acceptEventQuest: () => void;
-  declineEventQuest: () => void;
   completeEventQuest: () => void;
   
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide) => boolean; // nonLethalBoss=爆発系: ボス系にトドメを刺さない / crit=裏ボスの完全気絶カウント用 / viaMeleeFinish=近接フィニッシュ経由(§5.21-追補4 finishKillOnlyのトドメを許可) / damageChannel=§6.21 M46計測用(既定'other'。gun系projectile命中経路のみ'gun'を渡す。プレイヤー起因でない場合はnull) / hateSource=§2.8 G2.5ヘイト計測用(既定'player'。ゴースト起因のダメージだけ'ghost'を渡す)
+  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null) => boolean;
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -3687,14 +3676,12 @@ interface GameState {
   setGameTime: (time: number, realTime?: number) => void;
   setBackgrounded: (v: boolean) => void; // タブ/アプリが裏かを設定(進行停止用)。visibility/ネイティブpauseから呼ぶ。
   setPaused: (paused: boolean) => void;
-  setMeleeAmmoDropPercent: (pct: number) => void;
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   setStartWithTestStraps: (enabled: boolean) => void;
   setShowStatsOverlay: (enabled: boolean) => void;
   stampPlayerIntro: () => void; // 登場演出の開始(初フレームで終了時刻を確定)
   setRendererReady: (ready: boolean) => void; // レンダラ初フレーム表示の通知(PixiStage が初 render 後に true)
-  startIntroDialogue: () => void; // 登場セリフ開始(時間停止)
   setIntroDialogueLines: (lines: IntroLine[]) => void; // 出撃ごとの会話を設定(選択ミッション/フリー)
   pendingLoadout: SubWeaponKey[];                       // 装備メニューで選んだサブ(出撃時に resetGame が所持へ反映・永続)
   setPendingLoadout: (keys: SubWeaponKey[]) => void;
@@ -3707,7 +3694,6 @@ interface GameState {
   gachaPullsTotal: number;                              // これまでに引いた累計回数(階段式価格の段・永続)
   grantSkill: (key: SkillKey) => void;                  // ガチャ当選で所持解禁(重複は無視)
   resetGachaProgress: () => void;                       // 開発用: ガチャ状態(所持/Lv/被り/pity/累計/金)を初手へ
-  grantSkillLevel: (key: SkillKey, level: number) => boolean; // 解禁＋Lv上書き(既存より高ければ)。上がれば true
   pullGacha: () => GachaPullResult | null;              // 強化訓練を1回引く(レア度pity→Lv抽選→付与/返金。逐次状態更新)
   goldBalance: number;                                  // 永続ゴールド残高(ガチャ通貨。in-run strap とは別)
   addGold: (amount: number) => void;                    // ラン結果のゴールドを加算(永続)
@@ -3771,7 +3757,6 @@ interface GameState {
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
   labButtons: LabButton[];                              // ボタン(押下状態)
   labProps: LabProp[];                                  // 障害物プロップ(木の代わり・当たり判定あり)
-  hasCardKey: boolean;                                  // カードキー取得済みか
   goalReachedAt: number;                                // ゴール到達時刻(0=未到達)。演出後に勝利
   pendingIndoor: boolean;                               // 出撃が屋内ステージか(startMission→resetGame で受け渡し)
   setPendingIndoor: (indoor: boolean) => void;
@@ -3838,7 +3823,6 @@ interface GameState {
   answerStoryReturnPrompt: (confirmed: boolean) => void;
   updateSuppression: (deltaTime: number) => { x: number; y: number }[]; // 毎フレーム: 制圧イベント。返り値=このフレームに護衛NPCが発砲した位置(NPC銃声の距離減衰再生用)
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
-  setHasCardKey: (v: boolean) => void;
   pressLabButton: (id: string) => void;                 // ボタン押下→対応ドア解錠
   endIntroDialogue: () => void;   // 登場セリフ終了(ゲーム開始へ)
   setDanceTestMode: (enabled: boolean) => void;
@@ -3848,8 +3832,6 @@ interface GameState {
   setDanceForceJust: (enabled: boolean) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   // 装備システム(裏側): 装備の着脱と持ち帰り。レベルアップ時の選択UIは別途接続する。
-  // equipItem: defId の装備を該当部位へ装着(同部位は置換)。最大体力は加算ベイクし現HPも増分だけ底上げ。
-  equipItem: (defId: string) => void;
   // takeHomeEquipment: 現在装備中の1点を次run へ持ち帰り(null=持ち帰らない)。商人帰還/クリア時に呼ぶ。
   takeHomeEquipment: (defId: string | null) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
@@ -3877,8 +3859,9 @@ interface GameState {
   triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number, targetX?: number, targetY?: number) => void; // ストップ→(後で)揺れ+寄り。ダンス中はストップ無しで即時
   // targetX/Y省略時は画面中央基準(カウンター等・従来どおり)。指定時はその世界座標点へ寄る(社長指示: KILLはキルされた対象へ)。
   // 近接フィニッシュ: ストップ+ズーム+スローを1拍エンベロープで発火(CD明けのみ・CD内は最低保証フラッシュのみ)。
+  // forceMaximumZoom=true は致命の一撃専用。CDと進行中ズームを無視し、対象へ最大ズームを掛け直す。
   // 戻り値=そのキルでフル演出(CD明け)が出たか(呼び出し元が武器固有フラッシュを出すかの判断に使う)。
-  triggerFinishImpact: (targetX?: number, targetY?: number) => boolean;
+  triggerFinishImpact: (targetX?: number, targetY?: number, forceMaximumZoom?: boolean) => boolean;
   triggerZoom: (mag: number, durationMs: number, holdMs?: number, targetX?: number, targetY?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
   // dirX/dirY(§5.23 M22 C1・任意・未正規化でよい): 指定時はシェイクをその方向へ寄せる。
   // 未指定/{0,0}/`?dirfx=0`は従来どおり等方のランダム揺れ。
@@ -4009,7 +3992,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     shijinSlideDirX: 0,
     shijinSlideDirY: 0,
     skaterStopUntil: 0,
-    skaterBashCdUntil: 0,
     skaterRiding: false,
     skaterRideStartAt: 0,
     straps: 0,
@@ -4083,7 +4065,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   showShopMenu: false,
   showEventQuestMenu: false,
   shopReopenAt: 0,
-  eventQuestReopenAt: 0,
   vaccinePurchased: false,
   gameWon: false,
   finaleDefeated: false,
@@ -4143,7 +4124,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   labDoors: [],
   labButtons: [],
   labProps: [],
-  hasCardKey: false,
   goalReachedAt: 0,
   lastDamageSource: '',
   pendingIndoor: false,
@@ -4558,119 +4538,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  // スケーター急停止バッシュ(社長指示): skater で1秒以上走行後、進行方向と逆へスティックを
-  // 倒すと、進行方向へ短距離衝撃波(バッシュ=近接×SHIELD_BASH_DAMAGE_MULT＋ノックバック)を
-  // 出して急停止する。条件は全てここで自己判定。useGameLoop が movePlayer 直後に毎フレーム呼ぶ。
-  triggerSkaterBash: () => {
-    const st = get();
-    const { player, gameTime, swipeDirection, swipeStrength, inputState } = st;
-    if (!hasSkill(player, 'skater')) return;
-    const nowMs = Date.now();
-    // 特殊ロコモーション中(一閃ダッシュ/ワイヤー/四神スライド/着地後隙/急停止中)は発動しない。
-    if (nowMs < player.katanaDashUntil || nowMs < player.wireDashUntil || nowMs < player.shijinSlideUntil ||
-        nowMs < player.katanaRecoveryUntil || nowMs < player.skaterStopUntil) return;
-    if (gameTime < player.skaterBashCdUntil) return;            // 連射防止CD
-    if (!player.isMoving) return;                                // 走行中のみ
-    if (player.marksmanMovingSince <= 0 || gameTime - player.marksmanMovingSince < SKATER_BASH_RUN_MS) return; // 1秒以上走行
-    // 進行方向(走っていた方角)。
-    const hd = player.lastDirection ?? { x: 0, y: 0 };
-    const hl = Math.hypot(hd.x, hd.y);
-    if (hl < 0.01) return;
-    const hx = hd.x / hl, hy = hd.y / hl;
-    // 入力方向(スティック or キー)。
-    let ix = 0, iy = 0;
-    if (swipeDirection) {
-      if (swipeStrength < 0.4) return; // 弱い傾きは誤爆防止
-      ix = swipeDirection.x; iy = swipeDirection.y;
-    } else {
-      if (inputState.up) iy -= 1;
-      if (inputState.down) iy += 1;
-      if (inputState.left) ix -= 1;
-      if (inputState.right) ix += 1;
-    }
-    const il = Math.hypot(ix, iy);
-    if (il < 0.01) return;
-    ix /= il; iy /= il;
-    if (hx * ix + hy * iy > SKATER_BASH_REVERSE_DOT) return;    // 進行方向と逆(120°以上)でなければ不発
-
-    // --- 発動: 前方扇 SKATER_BASH_RANGE 内の敵にバッシュ効果 ---
-    const pcx = player.x + player.width / 2;
-    const pcy = player.y + player.height / 2;
-    const melee = player.weapons.find(w => w.isMelee);
-    const meleeDamage = meleeSwingBaseDamage(melee, player);
-    const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
-    const now = Date.now();
-    const r2 = SKATER_BASH_RANGE * SKATER_BASH_RANGE;
-    const killedList: { enemy: Enemy; finisher: boolean }[] = [];
-    const hitAt: { x: number; y: number }[] = [];
-    const runSpeed = Math.hypot(player.vx, player.vy);
-
-    set(state => {
-      const out: Enemy[] = [];
-      for (const enemy of state.enemies) {
-        if (enemy.aiPhase === 'jump') { out.push(enemy); continue; } // 空中は無敵(既存仕様)
-        if (enemy.type === 'reaper' && !enemy.reaperChaser) { out.push(enemy); continue; } // 死神本体は対象外
-        const ecx = enemy.x + enemy.width / 2;
-        const ecy = enemy.y + enemy.height / 2;
-        const dxr = ecx - pcx, dyr = ecy - pcy;
-        const d2 = dxr * dxr + dyr * dyr;
-        if (d2 > r2) { out.push(enemy); continue; }
-        const dl = Math.sqrt(d2) || 1;
-        if ((dxr / dl) * hx + (dyr / dl) * hy < SKATER_BASH_ARC_DOT) { out.push(enemy); continue; } // 前方扇の外
-        hitAt.push({ x: ecx, y: enemy.y });
-        // §5.21-追補4: バッシュはフィニッシュではない。finishKillOnly個体はHP1で踏みとどまる。
-        const newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
-        if (newHealth <= 0) { killedList.push({ enemy, finisher: false }); continue; } // 死亡=out から除外
-        out.push({
-          ...enemy,
-          health: newHealth,
-          lastHit: now,
-          meleeAggro: true,
-          knockbackVx: hx * SHIELD_BASH_KNOCKBACK_SPEED, // 進行方向へノックバック(バッシュ同等・距離2倍)
-          knockbackVy: hy * SHIELD_BASH_KNOCKBACK_SPEED,
-          knockbackUntil: now + KNOCKBACK_DURATION,
-          knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
-          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
-        });
-      }
-      const bossKilled = killedList.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
-      return {
-        enemies: out,
-        gameStats: {
-          ...state.gameStats,
-          enemiesKilled: state.gameStats.enemiesKilled + killedList.length,
-          eliteKills: state.gameStats.eliteKills + killedList.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
-          bossKills: state.gameStats.bossKills + killedList.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
-          damageDealt: state.gameStats.damageDealt + dmg * hitAt.length,
-        },
-        finaleDefeated: state.finaleDefeated || bossKilled,
-        player: {
-          ...state.player,
-          // 急停止: 進行方向への残速度を少しだけ残し(ほんの少し慣性)、入力ロック窓へ。
-          vx: hx * runSpeed * SKATER_BASH_RESIDUAL,
-          vy: hy * runSpeed * SKATER_BASH_RESIDUAL,
-          skaterStopUntil: now + SKATER_BASH_STOP_MS,
-          skaterBashCdUntil: gameTime + SKATER_BASH_CD_MS,
-        },
-      };
-    });
-    // §6.21 M46: スキル(スケーターバッシュ)によるダメージ計測。channel='other'(近接カウンター振りではない)。
-    if (hitAt.length > 0) recordDamageDealt('other', dmg * hitAt.length);
-
-    // 撃破報酬(XP/通貨/弾薬)はバッシュと同じく grantMeleeKillRewards で。
-    if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
-
-    // 演出: 前方の衝撃波リング＋命中スラッシュ＋バースト＋ヒットストップ＋命中SE(バッシュ同等)。
-    const fcx = pcx + hx * 26, fcy = pcy + hy * 26; // プレイヤーの少し前方を中心に
-    get().spawnRing(fcx, fcy, 8, SKATER_BASH_RANGE, 'rgba(190,242,100,0.62)', 4, 240);
-    get().spawnBurst(fcx, fcy, '#bef264', 12);
-    for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
-    if (hitAt.length > 0) {
-      get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0);
-      set({ bashHitFxAt: Date.now() }); // 命中SE(heavy-impact)。useGameLoop が検出して再生。
-    }
-  },
-
   // スケボー(新仕様): ダブルタップで乗車。skater 未装備/既に乗車中は無視。
   mountSkater: () => {
     const { player, gameTime } = get();
@@ -5052,6 +4919,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const survivors: Enemy[] = [];
     const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const bossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 近接クリで完全気絶が発動した位置(紫FX用)
+    const bossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const meleeHitEnemyIds: string[] = []; // スキル 救難信号: このスイングでヒットした敵ID(発動判定/対象選定用)
@@ -5200,7 +5068,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           continue;
         }
         bossFinishHit = true;
-        const dmg = stunnedHit.dmg;
+        const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeDamage, gameTime) : null;
+        const dmg = fatal?.damage ?? stunnedHit.dmg;
+        if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
         // そのもの(finisher:trueの即時処刑に相当)なのでfinishKillOnlyでも clamp しない。
@@ -5214,6 +5084,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             stunUntil: stunnedHit.kind === 'boss' && stunnedHit.keepStun ? enemy.stunUntil : undefined,
             lastHit: now,
             liftUntil: now + MELEE_STUN_LIFT_MS,
+            ...(fatal?.patch ?? {}),
           });
         }
         continue;
@@ -5238,7 +5109,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // GAME_AUDIT #17(社長承認): プレイヤーが直接出したクリはすべて裏ボスの完全気絶カウントに
       // 乗せる(銃と同じbumpBossCrit=挙動統一)。裏ボス以外はnullで素通り。
-      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
+      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime);
       if (bossBump?.triggered) bossFullStunHits.push({ x: ecx, y: ecy });
       // 社長指示: 近接クリでも銃・刀と同じくスタンさせる(倒せなかった時のみ=フィニッシュ受付の入口)。
       // 気絶時間アップ(パッシブ)も銃と同じくstunDurationMultを掛ける。
@@ -5432,7 +5303,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
-      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
+      get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
+    for (const p of bossFatalHits) {
+      showBossFatalPresentation(get, p.x, p.y, p.labelY);
     }
 
     // Per-kill rewards. Finishers grant bonus XP + gold VFX. EVERY melee kill
@@ -5440,10 +5314,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // main way to scavenge rounds, but you have to walk over the drop.
     grantMeleeKillRewards(get, killed, player, gun);
     if (finisherHit || bossFinishHit) {
-      const [ztx, zty] = finishZoomTargetOf(killed);
+      const [ztx, zty] = bossFatalHits[0]
+        ? [bossFatalHits[0].x, bossFatalHits[0].y]
+        : finishZoomTargetOf(killed);
       // M21(§5.22): フル演出(CD明け)の時だけ武器固有の黄フラッシュを重ねる。CD内は
       // triggerFinishImpact自身が出す最低保証フラッシュ(軽い白)だけになる=二重フラッシュを避ける。
-      const fullCinematic = get().triggerFinishImpact(ztx, zty);
+      const fullCinematic = get().triggerFinishImpact(ztx, zty, bossFatalHits.length > 0);
       if (fullCinematic && killed.some(k => k.finisher)) {
         get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
       }
@@ -5523,7 +5399,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const cloneHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): このストライクでヒットした敵ID
-    const cloneBossFullStunHits: { x: number; y: number }[] = []; // CRIT-UNIFY §9.4: 分身のクリで完全気絶が発動した位置(紫FX用・現行漏れの解消)
     const cloneDealt = new Map<string, number>(); // 敵ID→この一撃で入れた生ダメージ(守護霊のヘイト計上用)
     let bossFinishHit = false;
 
@@ -5540,7 +5415,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (walls.length > 0 && segmentBlocked(ccx, ccy, ecx, ecy, walls)) { survivors.push(enemy); continue; }
       slashAt.push({ x: ecx, y: ecy });
       cloneHitEnemyIds.push(enemy.id); // スキル 救難信号(§6.10 M33⑦): 分身のヒット敵ID(発動判定/対象選定用)
-      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
+      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil
+        && !isBossPostureBroken(enemy, gameTime);
       if (stunned) {
         if (isBossType(enemy.type)) {
           bossFinishHit = true;
@@ -5576,8 +5452,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (nh <= 0) { killed.push({ enemy, finisher: false }); continue; }
       if (crit) critStunAt.push({ x: ecx, y: ecy });
       // CRIT-UNIFY §9.4(現行漏れの解消): 分身のクリも銃/ナイフ/刀と同じく裏ボスの完全気絶カウントに乗せる。
-      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
-      if (bossBump?.triggered) cloneBossFullStunHits.push({ x: ecx, y: ecy });
       const bossSlow = crit ? bossCritSlowPatch(enemy, gameTime) : null; // ボスは半減(v0.25.2422)
       const stunUntil = (crit && !bossSlow) ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
@@ -5589,10 +5463,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: (dx / norm) * speed, knockbackVy: (dy / norm) * speed,
           knockbackUntil: now + KNOCKBACK_DURATION, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
-          ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
         });
       } else {
-        survivors.push({ ...enemy, health: nh, lastHit: now, stunUntil, knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + 100, ...(bossSlow ?? {}), ...(bossBump?.patch ?? {}) });
+        survivors.push({ ...enemy, health: nh, lastHit: now, stunUntil, knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + 100, ...(bossSlow ?? {}) });
       }
     }
 
@@ -5645,12 +5518,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     // CRIT-UNIFY §9.4: 分身のクリで完全気絶が発動したら他の近接経路と同じ紫FX+STUN!コールアウト。
-    for (const p of cloneBossFullStunHits) {
-      get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
-      get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
-      get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
-      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
-    }
     grantMeleeKillRewards(get, killed, player, gun);
     get().spawnSlash(ccx, ccy, 'rgba(226,232,240,0.95)');
     get().spawnRing(ccx, ccy, 6, 40, 'rgba(203,213,225,0.7)', 3, 240);
@@ -5952,6 +5819,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slashAt: { x: number; y: number }[] = [];
     const critStunAt: { x: number; y: number }[] = [];
     const katanaBossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 刀クリで完全気絶が発動した位置
+    const katanaBossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const katanaHitEnemyIds: string[] = []; // スキル 救難信号: 一閃(allowFinisher時)でヒットした敵ID(発動判定/対象選定用)
 
     for (const enemy of enemies) {
@@ -5965,7 +5833,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ecy = enemy.y + enemy.height / 2;
       slashAt.push({ x: ecx, y: ecy });
       katanaHitEnemyIds.push(enemy.id);
-      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
+      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil
+        && !(isGhost && isBossPostureBroken(enemy, gameTime));
       // 近接フィニッシュ(スタン敵の即時処刑/ボス5×)は一閃ダッシュのみ。
       // オート斬撃(allowFinisher=false)はスタン敵にも通常ダメージだけ与え、
       // スタンは消さない(一閃で仕留める余地を残す)。
@@ -5973,9 +5842,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (isBossType(enemy.type)) {
           // Same boss rule as the knife: 5× damage, no execute。ただし裏ボスの完全気絶(紫)中は
           // 気絶を解除せずタイマー切れまで5×を“し放題”(社長指示)。通常の気絶は従来どおり1発で解除。
-          const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
+          const fatal = !isGhost ? applyBrokenMeleeFatal(enemy, baseDamage * damageMult, gameTime) : null;
           bossFinishHit = true;
-          const dmg = baseDamage * damageMult * BOSS_MELEE_STUN_MULT;
+          const dmg = fatal?.damage ?? baseDamage * damageMult * BOSS_MELEE_STUN_MULT;
+          if (fatal) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           // §5.21-追補4: スタン中ボスへの5×一閃=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -5985,9 +5855,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             survivors.push({
               ...enemy,
               health: newHealth,
-              stunUntil: bossFull ? enemy.stunUntil : undefined,
+              stunUntil: undefined,
               lastHit: now,
               liftUntil: now + 420,
+              ...(fatal?.patch ?? {}),
             });
           }
           continue;
@@ -6032,7 +5903,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const critStun = crit; // reaper は対象外(上で除外済み)
       if (critStun) critStunAt.push({ x: ecx, y: ecy });
       // GAME_AUDIT #17(社長承認): 刀のクリも銃と同じく裏ボスの完全気絶カウントに乗せる。
-      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
+      const bossBump = !isGhost ? applyBossPostureDamage(enemy, allowFinisher ? 'heavy' : 'melee', gameTime) : null;
       if (bossBump?.triggered) katanaBossFullStunHits.push({ x: ecx, y: ecy });
       const bossSlow = critStun ? bossCritSlowPatch(enemy, gameTime) : null; // ボスは半減(v0.25.2422)
       // CRIT-UNIFY §9.2同梱修正: 刀のクリ気絶にだけstunDurationMult(気絶時間アップパッシブ)が
@@ -6144,15 +6015,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
-      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
+      get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
+    for (const p of katanaBossFatalHits) {
+      showBossFatalPresentation(get, p.x, p.y, p.labelY);
     }
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
     grantMeleeKillRewards(get, killed, player, gun, true);
     // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも出す(?ghostzoom=0で従来=除外1へ)。
     if ((finisherHit || bossFinishHit) && (!isGhost || GHOST_ZOOM_TRIAL_ENABLED)) {
-      const [ztx, zty] = finishZoomTargetOf(killed);
-      get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
+      const [ztx, zty] = katanaBossFatalHits[0]
+        ? [katanaBossFatalHits[0].x, katanaBossFatalHits[0].y]
+        : finishZoomTargetOf(killed);
+      get().triggerFinishImpact(ztx, zty, katanaBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
     }
     // スキル: リーパー。刀の一閃フィニッシュ範囲(katanaRange)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, katanaRange(player), baseDamage * damageMult);
@@ -6197,6 +6073,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const whipBossFullStunHits: { x: number; y: number }[] = []; // §9.4(v0.25.2502): 鞭クリで完全気絶が発動した位置(紫FX用)
+    const whipBossFatalHits: { x: number; y: number; labelY: number }[] = [];
     const whipHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): 鞭のヒット敵ID(発動判定/対象選定用)
     let hits = 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
@@ -6221,12 +6098,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 通常敵扱い=即時処刑」を上書き)。
         if (isBossType(enemy.type)) {
           bossFinishHit = true;
-          const dmg = meleeBase * whipMult * BOSS_MELEE_STUN_MULT;
+          const fatal = applyBrokenMeleeFatal(enemy, meleeBase * whipMult, gameTime);
+          const dmg = fatal?.damage ?? meleeBase * whipMult * BOSS_MELEE_STUN_MULT;
+          if (fatal) whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           // §5.21-追補4: スタン中ボスへの5×鞭打ち=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) killed.push({ enemy, finisher: false });
-          else survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
+          else survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420, ...(fatal?.patch ?? {}) });
           continue;
         }
         // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
@@ -6255,7 +6134,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (crit) critStunAt.push({ x: ecx, y: ecy });
       // §9.4(v0.25.2502・CRIT-UNIFY★未決2の解消): 鞭のクリも紫カウントへ(発生枠=近接系共通。
       // ナイフ4737/刀5479/分身5076と同じ作法=GAME_AUDIT #17「プレイヤーが直接出したクリは全部乗せる」)。
-      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
+      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime);
       if (bossBump?.triggered) whipBossFullStunHits.push({ x: ecx, y: ecy });
       // 大ノックバック(通常の約3倍): 鞭の線に直交する向きへ、敵がいる側へ強く弾く=避難路。
       // 鞭は「必ずノックバック」: ノックバック無敵窓(knockbackImmuneUntil)を無視して毎回弾く。
@@ -6320,7 +6199,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
-      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
+      get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
+    for (const p of whipBossFatalHits) {
+      showBossFatalPresentation(get, p.x, p.y, p.labelY);
     }
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
@@ -6328,8 +6210,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 鞭の通常打撃基準=meleeBase×WHIP_DAMAGE_MULT を素通し)。
     applyRescueSignalProc(get, player, meleeBase * WHIP_DAMAGE_MULT, whipHitEnemyIds, pcx, pcy);
     if (finisherHit || bossFinishHit) {
-      const [ztx, zty] = finishZoomTargetOf(killed);
-      get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
+      const [ztx, zty] = whipBossFatalHits[0]
+        ? [whipBossFatalHits[0].x, whipBossFatalHits[0].y]
+        : finishZoomTargetOf(killed);
+      get().triggerFinishImpact(ztx, zty, whipBossFatalHits.length > 0); // 致命はCDを無視して必ず最大ズーム
     }
     // スキル: リーパー。鞭フィニッシュ範囲(WHIP_LENGTH)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, WHIP_LENGTH_BY_LEVEL[1], meleeBase);
@@ -7583,21 +7467,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  learnSubWeapon: (key) => {
-    set(state => ({
-      player: {
-        ...state.player,
-        subWeapons: state.player.subWeapons.includes(key)
-          ? state.player.subWeapons
-          : [...state.player.subWeapons, key],
-        subWeaponLevels: {
-          ...state.player.subWeaponLevels,
-          [key]: Math.max(1, state.player.subWeaponLevels[key] ?? 0)
-        }
-      }
-    }));
-  },
-
   setSubWeaponCooldown: (key, readyAt) => {
     // M35(§6.12): ボット計測=サブウェポン発動回数(合流点)。overclock成立でCDが付かない場合も
     // 「発動」として数える=proc判定より前に記録。計測のみ=挙動不変。
@@ -7881,16 +7750,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     return sold;
   },
 
-  openShop: () => {
-    set({
-      showShopMenu: true,
-      isPaused: true,
-      touchActive: false,
-      swipeDirection: null,
-      swipeStrength: 1
-    });
-  },
-
   // 武器商人: サークルに3秒連続滞在で話しかける(社長指示v0.25.1842・旧スイング開店を置換)。
   // useGameLoopがsim毎フレーム呼ぶ。紅き夜中は「やり過ごした」(旧スイング時の挙動を移植)。
   updateMerchantDwell: (deltaMs) => {
@@ -7947,16 +7806,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ gameReturned: true, showShopMenu: false, isPaused: false });
   },
 
-  openEventQuest: () => {
-    set({
-      showEventQuestMenu: true,
-      isPaused: true,
-      touchActive: false,
-      swipeDirection: null,
-      swipeStrength: 1
-    });
-  },
-
   acceptEventQuest: () => {
     // 受領(EVENT_QUEST_DESIGN.md): 強制が未納品(ステージ1のみ課される)なら強制、
     // 納品済み(または最初からクリア済み扱い=3/4)ならサブを受ける。
@@ -7998,16 +7847,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       eventQuestActive: forcedPending ? 'forced' : 'sub',
       eventQuestKills: 0,
       eventQuestGoalCount: forcedPending ? 1 : cfg.sub.count,
-      eventQuestGoalTier: forcedPending ? null : cfg.sub.tier,
-      eventQuestReopenAt: state.gameTime + EVENT_NPC_REOPEN_DELAY_MS
-    }));
-  },
-
-  declineEventQuest: () => {
-    set(state => ({
-      showEventQuestMenu: false,
-      isPaused: false,
-      eventQuestReopenAt: state.gameTime + EVENT_NPC_REOPEN_DELAY_MS
+      eventQuestGoalTier: forcedPending ? null : cfg.sub.tier
     }));
   },
 
@@ -8078,10 +7918,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player') => {
+  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null) => {
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
+    let bossFatalAt: { x: number; y: number; labelY: number } | null = null;
     let namedFoeKilled: Enemy | null = null; // §5.14 M13: 宿敵討伐(set後にREVENGE演出+報酬)
     let deathPopAt: { ex: number; ey: number; fromX: number; fromY: number } | null = null; // §5.23 M22 A3(set後に発火)
     let dramaticDeathAt: { enemy: Enemy; x: number; y: number } | null = null; // juice: FF風クランブル(set後に発火)
@@ -8099,8 +7940,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 溜め(crouch)・着地後(recover)は通常どおり被弾する(空中だけ無敵)。
       if (enemy.aiPhase === 'jump') return { enemies };
 
+      // 紫中の直接銃撃は通常クリ倍率と重ねず、この中央で×5相当まで報酬領域を消費する。
+      const gunReward = damageChannel === 'gun' && hateSource === 'player'
+        ? applyBrokenGunReward(enemy, amount, state.gameTime)
+        : null;
+      // ワイヤー等、中央経路へ来る直接近接フィニッシュも同じ致命裁定へ合流。
+      const meleeFatal = viaMeleeFinish && hateSource === 'player' && postureImpact === 'heavy'
+        ? applyBrokenMeleeFatal(enemy, amount, state.gameTime)
+        : null;
+      if (meleeFatal) bossFatalAt = {
+        x: enemy.x + enemy.width / 2,
+        y: enemy.y + enemy.height / 2,
+        labelY: enemy.y - 6,
+      };
+      const resolvedAmount = meleeFatal?.damage ?? gunReward?.damage ?? amount;
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
-      const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(amount / 2)) : amount;
+      const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
       appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)
       let newHealth = Math.max(0, enemy.health - eff);
       // nonLethalBoss: 廃止(v0.25.1571) 爆発もボスを倒せる。互換のため引数は残置
@@ -8108,7 +7963,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 経由(viaMeleeFinish)以外ではHPを0にできない(HP1で踏みとどまる)。
       newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, newHealth, viaMeleeFinish);
       // 裏ボス: クリを規定回数当てると完全気絶(紫)。倒しきれなかったクリのみカウント。
-      const critBump = (crit && newHealth > 0) ? bumpBossCrit(enemy, state.gameTime) : null;
+      const resolvedImpact = postureImpact ?? ((crit && damageChannel === 'gun' && hateSource === 'player') ? 'gun-crit' : null);
+      const critBump = (resolvedImpact && newHealth > 0) ? applyBossPostureDamage(enemy, resolvedImpact, state.gameTime) : null;
       if (critBump?.triggered) bossFullStunAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
       // CRIT-UNIFY §9.2(中央適用): クリがボスに入った時の移動半減(bossSlowUntil)をここで一括適用する。
       // 呼び出し元(銃弾/per-bossカウンター/ゴーストカウンター等)はcrit=trueを渡すだけでよく、個別に
@@ -8130,7 +7986,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? { ghostHateUntil: state.gameTime + GHOST_MOB_HATE_MS }
         : {};
       const updatedEnemies = enemies.map(e =>
-        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch } : e
+        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch } : e
       );
       
       // Check if enemy was killed
@@ -8209,7 +8065,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
       get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
       get().spawnGlow(p.x, p.y, GLOW_R_XL, 'rgba(168,85,247,', 620);
-      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
+      get().spawnCallout(p.x, p.y - 24, 'BREAK!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
+    if (bossFatalAt) {
+      const p = bossFatalAt as { x: number; y: number; labelY: number };
+      showBossFatalPresentation(get, p.x, p.y, p.labelY);
+      get().triggerFinishImpact(p.x, p.y, true); // ワイヤー等の致命もCDを無視して必ず最大ズーム
     }
 
     // 死神を倒したらスキル「死神」を習得(ガチャ非排出。撃破でのみ解禁)。未所持時のみ告知。
@@ -8378,6 +8239,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
+    let bossLeashWarning = false;
     set(state => {
       // ★上の注記のとおり、**このフレームに他所から積まれた判定を先に引き継ぐ**。
       // set の中で読む=引き継ぎ元は必ず最新の state(get()のタイミングずれを作らない)。
@@ -8420,10 +8282,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (移動/近接の視線判定は既に両方を含めている。視線だけ壁のみだった取りこぼしを統一)。
       const losWalls = indoor ? indoorWalls : (labTheme ? [...labWallRects, ...labPropRects] : labWallRects);
 
-      const updatedEnemies = enemies.map((enemy): Enemy => {
-        // 裏ボス(mimir/jormungand)は updateEnemies の追跡AIから除外。移動/攻撃/帰巣/再生は
-        // useGameLoop の専用コントローラが座標を直接書き込む(死神と同じ方式)。
-        if (isHiddenBoss(enemy.type)) return enemy;
+      // 体勢回復/紫窓終了は専用AIから除外される裏ボスも含め、全ボスへ毎フレーム適用する。
+      const postureUpdatedEnemies = enemies.map(enemy => {
+        const patch = tickBossPosture(enemy, gameTime, deltaTime);
+        return patch ? { ...enemy, ...patch } : enemy;
+      });
+      const updatedEnemies = postureUpdatedEnemies.map((enemy): Enemy => {
+        // 裏ボス4体/天使6体/アイドル(=isHiddenBoss)は updateEnemies の追跡AIから除外。移動/攻撃/
+        // 帰巣/再生は専用コントローラ(useGameLoop/angelBossTick/idolTick)が座標を直接書き込む
+        // (死神と同じ方式)。v0.25.2895: 早期returnはノックバック適用ブロックの直後(liftUntilの
+        // 手前)へ移動した。ここに置いたままだと押し道具(鞭・シールドバッシュ)がknockbackShoveUntil
+        // を立てても、その先のノックバック適用ブロックへ一度も到達できず11体に1pxも効かなかった。
         // ハンター変異体・撤退中は通常追跡AIから除外。専用イベントコントローラ(useGameLoop)が
         // プレイヤーから離れる方向へ移動させ画面外で消す。索敵中(dormant)は下の dormant ブロックで静止。
         if (enemy.type === 'hunter' && enemy.hunterFleeing) return enemy;
@@ -8562,6 +8431,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, x: clampedCenterX - enemy.width / 2, y: clampedCenterY - enemy.height / 2 };
         }
 
+        // v0.25.2895: 裏ボス4体/天使6体/アイドル(=isHiddenBoss)はここで抜ける。上のノックバック
+        // 適用ブロックはbossShoveOk(canShoveEnemyのガード=押し道具だけ)を通ってから来るので、
+        // ここより手前で抜けると押し道具が11体に永遠に届かない(直った不具合)。以降(liftUntil等の
+        // 通常追跡AI)は従来どおり専用コントローラに任せて抜ける。
+        // 注意: inAttackMotion は aiPhase 基準なので、bossState系(裏ボス/天使/idol)の攻撃中は
+        // このガードに掛からず、押し道具が攻撃中でも通る。押し道具は単発の意図的な技のため仕様として許容する。
+        if (isHiddenBoss(enemy.type)) return enemy;
+
         // Bosses pop up briefly when they take melee finisher-grade damage;
         // while airborne they should read as caught, not still advancing.
         if (!committed && enemy.liftUntil !== undefined && now < enemy.liftUntil) {
@@ -8648,7 +8525,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             return { ...enemy, vx: 0, vy: 0 };
           }
-          return { ...enemy, dormant: false, vx: 0, vy: 0 };
+          return { ...enemy, dormant: false, vx: 0, vy: 0, bossLeashSince: undefined };
         }
 
         // ★リーシュ(社長裁定v0.25.2418): 起きている城ボスがプレイヤーから離れ切ったら、
@@ -8661,13 +8538,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ストーリーボス(stage-7グレン/ex1)は**リーシュしない**(社長指示v0.25.2420「実質逃げれない
         // ようにする」)。雑魚が出ないステージなので、待機に戻したら逃げ切りが成立してしまう。
         // 代わりに無限ジャンプ(giantScript.ts)で、どこまで逃げても飛んで追ってくる。
-        if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss && !enemy.aiPhase
-          && Math.hypot(pcx - (enemy.x + enemy.width / 2), pcy - (enemy.y + enemy.height / 2)) > BOSS_LEASH_PX) {
-          return {
-            ...enemy, dormant: true, vx: 0, vy: 0,
-            aiPhaseUntil: undefined, aiStartedAt: undefined,
-            aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-          };
+        if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss) {
+          const leashDistance = Math.hypot(pcx - (enemy.x + enemy.width / 2), pcy - (enemy.y + enemy.height / 2));
+          const leashLimit = bossLeashDistancePx(enemy.type, false);
+          const grace = advanceBossDisengageGrace(leashDistance > leashLimit, enemy.bossLeashSince, gameTime);
+          if (grace.started) bossLeashWarning = true;
+          if (grace.since !== enemy.bossLeashSince) enemy = { ...enemy, bossLeashSince: grace.since };
+          // 技の実行中は台本を完走。範囲外3秒が経過済みなら、終了直後に待機へ戻る。
+          if (grace.ready && !enemy.aiPhase) {
+            return {
+              ...enemy, dormant: true, vx: 0, vy: 0, bossLeashSince: undefined,
+              aiPhaseUntil: undefined, aiStartedAt: undefined,
+              aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+            };
+          }
         }
 
         // ステージ2(研究所)の索敵解除(社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175「横長廊下+視線切り
@@ -8719,6 +8603,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.type === 'giantbat' && GIANT_SCRIPT_ENABLED) {
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          // 連射/弱追尾中は技開始時に選んだ側だけを追う。ヘイト値の再評価は次の技開始まで行わない。
+          const lockedHateAim = () => resolveBossLockedHateAim(enemy, { x: pcx, y: pcy }, summons);
           const healthFrac = enemy.maxHealth > 0 ? enemy.health / enemy.maxHealth : 1;
           // M60(§6.28-11): isStoryBossはグレン(stage-7)/未確認変異体(stage-ex1)としてスポーンされた
           // 個体だけに立つ(useGameLoop.ts)。通常城ボスはfalseのまま=giantPhaseForHealth(無改変)しか
@@ -8761,11 +8647,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           const stageId = getSelectedStageId();
           const stageMult = giantStageRangeMult(stageId, GIANT_STAGE_RANGE_ENABLED);
           const giantRestMs = (rawMs: number): number => giantRestRawMs(stageId, rawMs);
-          const stompRecoverMs = giantRestMs(phase === 3 ? GIANT_STOMP_RECOVER_PHASE3_MS : GIANT_STOMP_RECOVER_MS);
-          const sweepRecoverMs = giantRestMs(phase === 3 ? GIANT_SWEEP_RECOVER_PHASE3_MS : GIANT_SWEEP_RECOVER_MS);
-          const dashRecoverMs = giantRestMs(phase === 3 ? GIANT_DASH_RECOVER_PHASE3_MS : GIANT_DASH_RECOVER_MS);
-          const jumpRecoverMs = giantRestMs(phase === 3 ? GIANT_JUMP_RECOVER_PHASE3_MS : GIANT_JUMP_RECOVER_MS);
-          const boltRecoverMs = giantRestMs(GIANT_BOLT_RECOVER_MS);
+          const scriptRestMs = (rawMs: number): number => choreographyRecoverMs(giantRestMs(rawMs), (enemy.bossScriptQueue?.length ?? 0) > 0);
+          const stompRecoverMs = scriptRestMs(phase === 3 ? GIANT_STOMP_RECOVER_PHASE3_MS : GIANT_STOMP_RECOVER_MS);
+          const sweepRecoverMs = scriptRestMs(phase === 3 ? GIANT_SWEEP_RECOVER_PHASE3_MS : GIANT_SWEEP_RECOVER_MS);
+          const dashRecoverMs = scriptRestMs(phase === 3 ? GIANT_DASH_RECOVER_PHASE3_MS : GIANT_DASH_RECOVER_MS);
+          const jumpRecoverMs = scriptRestMs(phase === 3 ? GIANT_JUMP_RECOVER_PHASE3_MS : GIANT_JUMP_RECOVER_MS);
+          const boltRecoverMs = scriptRestMs(GIANT_BOLT_RECOVER_MS);
           const boltCdMs = phase === 3 ? GIANT_BOLT_CD_PHASE3_MS : phase === 2 ? GIANT_BOLT_CD_PHASE2_MS : GIANT_BOLT_CD_PHASE1_MS;
 
           // 技ごとの溜め開始パッチ(通常抽選/Phase2連携の両方から呼べる共通ヘルパ)。
@@ -8819,7 +8706,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 };
               }
               case 'dash': {
-                // 狙い点=プレイヤーを挟んだ反対側(距離×2)。現行不変(6.26-6)。
+                // 狙い点=固定ヘイト対象を挟んだ反対側(距離×2)。距離式は現行不変(6.26-6)。
                 // BOT_AND_GHOST.md §2.8 G2.5: 狙い点はpcx/pcyの代わりにヘイト対象の中心を読む。
                 const aim = resolveBossHateAim(enemy, { x: pcx, y: pcy }, summons, gameTime);
                 return {
@@ -8830,14 +8717,17 @@ export const useGameStore = create<GameState>((set, get) => ({
                 };
               }
               case 'bolt':
-              default:
+              default: {
+                const aim = resolveBossHateAim(enemy, { x: pcx, y: pcy }, summons, gameTime);
                 return {
                   aiPhase: 'g-bolt-windup', aiPhaseUntil: atkUntil(GIANT_BOLT_WINDUP_MS),
                   aiFromX: enemy.x, aiFromY: enemy.y, aiStartedAt: gameTime,
                   // パターンは**溜め開始で抽選して固定**(掟W4=溜め中に中身が変わらない)。
                   gBoltPattern: Math.random() < 0.5 ? 'fan' : 'burst',
                   gBoltShot: undefined,
+                  hateTarget: aim.side,
                 };
+              }
             }
           };
 
@@ -8845,8 +8735,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           // stage-1/3/4/5だけが呼ぶ(pickGiantMoveWithStageがGIANT_STAGE_UNIQUE_MOVE/ULT_MOVEの表で
           // 既にゲート済みなので、default分岐からしか到達しない=beginGiantMoveと排他)。
 
-          // 三連突進(quaddash)の1回ぶんの溜め開始。狙い点=プレイヤーを挟んだ反対側(既存dashと同じ式・
-          // M65の速度倍率は掛けない=新技への非適用指示)。往復するたびプレイヤーの現在地を再サンプルする
+          // 三連突進(quaddash)の1回ぶんの溜め開始。狙い点=固定ヘイト対象を挟んだ反対側(既存dashと同じ式・
+          // M65の速度倍率は掛けない=新技への非適用指示)。往復するたび対象の現在地を再サンプルする
           // だけで「左右へ往復」を作る(固定の左右オフセットを発明しない=既存語彙の再利用)。
           // BOT_AND_GHOST.md §2.8 G2.5: 各leg(index)の開始=それぞれ独立した「狙いロック」なので、
           // legごとにヘイト対象を評価し直す(毎フレーム追尾ではなく、legの切り替わり=windup開始点のみ)。
@@ -9019,7 +8909,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 };
               case 'nihil':
               default:
-                // 虚無の三唱: 3唱固定(学習点④=数える)。狙い点(プレイヤーの足元)は1唱目の開始時に
+                // 虚無の三唱: 3唱固定(学習点④=数える)。狙い点(固定ヘイト対象の足元)は1唱目の開始時に
                 // ロックし、以後は動かさない(Mohgの「ニヒル」と同じ=3つの円は同じ場所に重なる)。
                 // T5大円(半径260)は1件だけ積み、fireAt=3唱ぶんの合計時間(chant3終了と同時)に自動的に
                 // 爆ぜる(床は残さない=nihilはfloorUntilを設定しない)。BOT_AND_GHOST.md §2.8 G2.5:
@@ -9097,7 +8987,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-dash-charge', aiPhaseUntil: atkUntil(WEREWOLF_CHARGE_MAX_MS) };
               }
               // 後退り(T8・既存と同じ式)。
-              const bdx = ecx - pcx, bdy = ecy - pcy;
+              const aim = lockedHateAim();
+              const bdx = ecx - aim.x, bdy = ecy - aim.y;
               const bl = Math.hypot(bdx, bdy) || 1;
               const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
               const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
@@ -9113,7 +9004,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-dash-recover', aiPhaseUntil: atkUntil(dashRecoverMs) };
               }
-              const hpx = pcx - ecx, hpy = pcy - ecy;
+              const aim = lockedHateAim();
+              const hpx = aim.x - ecx, hpy = aim.y - ecy;
               const hl = Math.hypot(hpx, hpy) || 1;
               let cdirx = cdx / cdist + (hpx / hl) * DASH_ATTACK_HOMING;
               let cdiry = cdy / cdist + (hpy / hl) * DASH_ATTACK_HOMING;
@@ -9122,7 +9014,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const dashBase = getEnemyBaseSpeed('werewolf'); // 現行不変(6.26-6): giantbatの突進速度は犬と同じ基準
               // M65: ステージ別倍率は速度にだけ掛ける(WEREWOLF_CHARGE_SPEED_MULT自体は書き換えない=
               // werewolf/hunter/lab-zombie-2と共有している定数のため。狙い点・最大時間・CDは無改変)。
-              const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT * stageMult;
+              const cs = dashBase * GIANT_CHARGE_SPEED_MULT * stageMult;
               const cvx = cdirx * cs, cvy = cdiry * cs;
               const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
               const cmoved = resolveMove(rawX, rawY);
@@ -9141,7 +9033,9 @@ export const useGameStore = create<GameState>((set, get) => ({
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
             case 'g-jump-air': {
-              const jt = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT)));
+              // 州の終了時刻と同じ城ボス専用値で補間する。旧実装はPUMPKIN_JUMP_MS(833ms実効)を
+              // 読んでおり、aiPhaseUntil(500ms実効)と絵/移動が不一致で、飛び掛かりがもっさりしていた。
+              const jt = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (GIANT_JUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT)));
               const jfx = enemy.aiFromX ?? enemy.x, jfy = enemy.aiFromY ?? enemy.y;
               const jtx = enemy.aiTargetX ?? enemy.x, jty = enemy.aiTargetY ?? enemy.y;
               const jnx = jfx + (jtx - jfx) * jt, jny = jfy + (jty - jfy) * jt;
@@ -9212,7 +9106,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   // 3発目の着地=最大の反撃窓へ。着地点の情報はここで捨てる(次の抽選に持ち越さない)。
                   return {
                     ...enemy, ...phaseFields, x: tx - enemy.width / 2, y: ty - enemy.height / 2, vx: 0, vy: 0,
-                    aiPhase: 'g-trijump-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_TRIJUMP_RECOVER_MS)),
+                    aiPhase: 'g-trijump-recover', aiPhaseUntil: atkUntil(scriptRestMs(GLEN_TRIJUMP_RECOVER_MS)),
                     gTriJumpPts: undefined, gTriJumpIdx: undefined,
                   };
                 }
@@ -9256,19 +9150,6 @@ export const useGameStore = create<GameState>((set, get) => ({
                     { gBoltReadyAt: atkCdUntil(boltCdMs) }),
                   ...critFlinchPatch(finishedCdMs), // クリ窓中だけ「技の間」を伸ばす(窓外は空=無改変)
                 };
-                // Phase2: 確率40%・許す組み合わせは2つのみ(giantScript.ts・社長裁定6.26-9 #8・無改変)。
-                // Phase3(storyBossのみ到達): 確率60%(EXのみ70%)・3発目(踏み鳴らし→突進)も解禁
-                // (社長裁定6.28-11 #2/#3)。既存pickGiantComboはphase!==2を弾く専用実装のため、
-                // Phase3はgiantScript.ts側の別関数(pickGiantStoryCombo)を使う=Phase1/2の経路は無改変。
-                let combo: GiantMove | null;
-                if (phase === 3) {
-                  combo = pickGiantStoryCombo(justFinished, dist, enemy.storyBossVariant === 'stage-ex1');
-                } else {
-                  combo = pickGiantCombo(justFinished, phase, dist);
-                }
-                if (combo) {
-                  return { ...enemy, ...phaseFields, ...readyPatch, vx: 0, vy: 0, ...beginGiantMove(combo) };
-                }
                 return {
                   ...enemy, ...phaseFields, ...readyPatch, vx: 0, vy: 0,
                   aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
@@ -9303,7 +9184,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-bite-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_BITE_RECOVER_MS)) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_BITE_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9331,7 +9212,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             case 'g-slam-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 // 全技中で最大の反撃窓(1300ms)=大技の報酬(社長裁定を継承した設計原則)。
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_SLAM_RECOVER_MS)) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-slam-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_SLAM_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9358,7 +9239,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-glide-active', aiPhaseUntil: atkUntil(GIANT_GLIDE_ACTIVE_MS), aiStartedAt: gameTime };
               }
               // 後ろへ跳び退がって溜める(T8backstep・既存ダッシュ/三連突進と同じ式)。
-              const bdx = ecx - pcx, bdy = ecy - pcy;
+              const aim = lockedHateAim();
+              const bdx = ecx - aim.x, bdy = ecy - aim.y;
               const bl = Math.hypot(bdx, bdy) || 1;
               const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
               const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
@@ -9378,7 +9260,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const hitX = gtx + enemy.width / 2, hitY = gty + enemy.height / 2;
                 return {
                   ...enemy, ...phaseFields, x: gtx, y: gty, vx: 0, vy: 0,
-                  aiPhase: 'g-glide-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_GLIDE_RECOVER_MS)),
+                  aiPhase: 'g-glide-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_GLIDE_RECOVER_MS)),
                   giantDelayedHits: [...(giantDelayedHits ?? []), { x: hitX, y: hitY, radius: GIANT_GLIDE_SECOND_HIT_RADIUS, bornAt: gameTime, fireAt: atkUntil(GIANT_GLIDE_SECOND_HIT_DELAY_MS), moveKey: 'g-glide' }],
                 };
               }
@@ -9399,7 +9281,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 const dtx = enemy.aiTargetX ?? enemy.x, dty = enemy.aiTargetY ?? enemy.y;
                 pumpkinBlasts.push({ x: dtx + enemy.width / 2, y: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-dive' });
-                return { ...enemy, ...phaseFields, x: dtx, y: dty, vx: 0, vy: 0, aiPhase: 'g-dive-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_DIVE_RECOVER_MS)) };
+                return { ...enemy, ...phaseFields, x: dtx, y: dty, vx: 0, vy: 0, aiPhase: 'g-dive-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_DIVE_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9416,7 +9298,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-quad-charge', aiPhaseUntil: atkUntil(WEREWOLF_CHARGE_MAX_MS) };
               }
               // 後退り(T8・既存ダッシュと同じ式)。
-              const bdx = ecx - pcx, bdy = ecy - pcy;
+              const aim = lockedHateAim();
+              const bdx = ecx - aim.x, bdy = ecy - aim.y;
               const bl = Math.hypot(bdx, bdy) || 1;
               const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
               const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
@@ -9431,7 +9314,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const cdist = Math.hypot(cdx, cdy);
               const quadIndex = enemy.gQuadIndex ?? 0;
               // 3回目(index=2)を終えたら必ず静止して氷結の吐息へ(学習装置③=回数は常に3固定)。
-              // 3回目未満なら次の突進へ即つなぐ(狙い点はその時点のプレイヤー位置を再サンプル=
+              // 3回目未満なら次の突進へ即つなぐ(狙い点はその時点の固定ヘイト対象位置を再サンプル=
               // 既存dashと同じ式の反復。固定の左右オフセットは発明しない)。
               const onDashFinished = (): Partial<Enemy> => {
                 if (!giantQuadDashComplete(quadIndex)) return beginQuadDash(quadIndex + 1);
@@ -9450,14 +9333,15 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...onDashFinished() };
               }
-              const hpx = pcx - ecx, hpy = pcy - ecy;
+              const aim = lockedHateAim();
+              const hpx = aim.x - ecx, hpy = aim.y - ecy;
               const hl = Math.hypot(hpx, hpy) || 1;
               let cdirx = cdx / cdist + (hpx / hl) * DASH_ATTACK_HOMING;
               let cdiry = cdy / cdist + (hpy / hl) * DASH_ATTACK_HOMING;
               const cdl = Math.hypot(cdirx, cdiry) || 1;
               cdirx /= cdl; cdiry /= cdl;
               const dashBase = getEnemyBaseSpeed('werewolf'); // 現行不変(基準は犬と同じ)。M65の倍率は新技には掛けない。
-              const cs = dashBase * WEREWOLF_CHARGE_SPEED_MULT;
+              const cs = dashBase * GIANT_CHARGE_SPEED_MULT;
               const cvx = cdirx * cs, cvy = cdiry * cs;
               const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
               const cmoved = resolveMove(rawX, rawY);
@@ -9508,7 +9392,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 });
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
-                  aiPhase: 'g-quad-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_QUAD_RECOVER_MS)),
+                  aiPhase: 'g-quad-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_QUAD_RECOVER_MS)),
                   giantDelayedHits: [...(giantDelayedHits ?? []), ...newHits],
                   giantActiveHit: hitNow ? true : enemy.giantActiveHit,
                 };
@@ -9546,7 +9430,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
-                  aiPhase: 'g-nova-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_NOVA_RECOVER_MS)),
+                  aiPhase: 'g-nova-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_NOVA_RECOVER_MS)),
                   giantActiveHit: hitNow ? true : enemy.giantActiveHit,
                 };
               }
@@ -9578,7 +9462,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-wing-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-wing-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_WING_RECOVER_MS)) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-wing-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_WING_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9620,7 +9504,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
-                  aiPhase: 'g-sweepbeam-recover', aiPhaseUntil: atkUntil(giantRestMs(GIANT_SWEEPBEAM_RECOVER_MS)),
+                  aiPhase: 'g-sweepbeam-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_SWEEPBEAM_RECOVER_MS)),
                   giantActiveHit: hitNow ? true : enemy.giantActiveHit,
                 };
               }
@@ -9638,7 +9522,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // ダメージは既にbeginGlenMoveがgiantDelayedHitsへ積み済み(置いた瞬間0ダメージ・固定900ms後
               // に自動で爆ぜる)。ここではwindup自体の終わりでrecoverへ直結するだけ(activeは無い)。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-talon-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_TALON_RECOVER_MS)) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-talon-recover', aiPhaseUntil: atkUntil(scriptRestMs(GLEN_TALON_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9654,7 +9538,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 5個のT5円は既にbeginGlenMoveがgiantDelayedHitsへ積み済み(固定700ms後に爆ぜ、その後
               // floorUntilまで床として残る)。ここもactiveは無くrecoverへ直結する。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-boon-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_BOON_RECOVER_MS)) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-boon-recover', aiPhaseUntil: atkUntil(scriptRestMs(GLEN_BOON_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9681,7 +9565,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-reach-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_REACH_RECOVER_MS)) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-recover', aiPhaseUntil: atkUntil(scriptRestMs(GLEN_REACH_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9709,7 +9593,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 3唱目終了=学習点④の本体。円自体はgiantDelayedHits側のfireAtが同じタイミングで独立に
               // 爆ぜる(このcaseはGlen自身のaiPhase遷移=recoverへ進むだけ)。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-recover', aiPhaseUntil: atkUntil(giantRestMs(GLEN_NIHIL_RECOVER_MS)) };
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-recover', aiPhaseUntil: atkUntil(scriptRestMs(GLEN_NIHIL_RECOVER_MS)) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -9748,19 +9632,26 @@ export const useGameStore = create<GameState>((set, get) => ({
                     wing: gameTime >= (enemy.gStageReadyAt?.wing ?? 0),
                     sweepbeam: gameTime >= (enemy.gStageReadyAt?.sweepbeam ?? 0),
                   };
-                  const move = pickGiantMoveWithStage(stageId, dist, phase, ready, stageReady);
+                  const queued = enemy.bossScriptQueue?.[0];
+                  const move = (queued as GiantMove | GiantStageMoveId | undefined) ?? pickGiantMoveWithStage(stageId, dist, phase, ready, stageReady);
                   if (move) {
                     const isStageMove = GIANT_STAGE_UNIQUE_MOVE[stageId] === move || GIANT_STAGE_ULT_MOVE[stageId] === move;
                     return {
                       ...enemy, ...phaseFields, vx: 0, vy: 0,
+                      bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('giant', move, phase).slice(1),
                       ...(isStageMove ? beginGiantStageMove(move as GiantStageMoveId) : beginGiantMove(move as GiantMove)),
                     };
                   }
                 } else if (isStoryBoss && enemy.storyBossVariant === 'stage-ex1') {
                   // 未確認変異体は固有技を増やさず、基本5技の比重だけを「追い続ける総合試験」へ組み直す。
-                  const move = pickGiantMoveWithStage('stage-ex1', dist, phase, ready, {});
+                  const queued = enemy.bossScriptQueue?.[0];
+                  const move = (queued as GiantMove | undefined) ?? pickGiantMoveWithStage('stage-ex1', dist, phase, ready, {});
                   if (move) {
-                    return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...beginGiantMove(move as GiantMove) };
+                    return {
+                      ...enemy, ...phaseFields, vx: 0, vy: 0,
+                      bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('giant', move, phase).slice(1),
+                      ...beginGiantMove(move as GiantMove),
+                    };
                   }
                 } else if (glenScriptApplies(enemy.isStoryBoss, enemy.storyBossVariant, GLEN_SCRIPT_ENABLED)) {
                   // M67(§6.26-12): stage-7のグレンだけ(glenScriptAppliesが門番=通常城ボス/ex1は
@@ -9772,18 +9663,25 @@ export const useGameStore = create<GameState>((set, get) => ({
                     nihil: gameTime >= (enemy.gGlenReadyAt?.nihil ?? 0),
                     trijump: gameTime >= (enemy.gGlenReadyAt?.trijump ?? 0),
                   };
-                  const move = pickGiantMoveWithGlen(dist, phase, ready, glenReady);
+                  const queued = enemy.bossScriptQueue?.[0];
+                  const move = (queued as GiantMove | GlenMoveId | undefined) ?? pickGiantMoveWithGlen(dist, phase, ready, glenReady);
                   if (move) {
                     const isGlenMove = move === 'talon' || move === 'boon' || move === 'reach' || move === 'nihil' || move === 'trijump';
                     return {
                       ...enemy, ...phaseFields, vx: 0, vy: 0,
+                      bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('glen', move, phase).slice(1),
                       ...(isGlenMove ? beginGlenMove(move as GlenMoveId) : beginGiantMove(move as GiantMove)),
                     };
                   }
                 } else {
-                  const move = pickGiantMove(dist, phase, ready);
+                  const queued = enemy.bossScriptQueue?.[0];
+                  const move = (queued as GiantMove | undefined) ?? pickGiantMove(dist, phase, ready);
                   if (move) {
-                    return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...beginGiantMove(move) };
+                    return {
+                      ...enemy, ...phaseFields, vx: 0, vy: 0,
+                      bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('giant', move, phase).slice(1),
+                      ...beginGiantMove(move),
+                    };
                   }
                 }
               }
@@ -10276,6 +10174,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       return {
         enemies: finalEnemies, breakableProps: nextBreakables, pumpkinBlasts, shieldBlocks, skadiIceMarkers, skadiIceBlades,
+        ...(bossLeashWarning
+          ? { eventBannerText: '危険：ボスが戦闘域を離れようとしている — 3秒', eventBannerUntil: gameTime + 3000 }
+          : {}),
         // 叫喚発動: 画面内の通常敵を SCREAMER_BUFF_MS の間 強化する窓を張る。
         ...(screamerActivatedAt.length > 0 ? { screamerBuffUntil: gameTime + SCREAMER_BUFF_MS } : {}),
       };
@@ -10292,7 +10193,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       for (const ge of giantBoltFires) {
         const liveGe = get().enemies.find(e => e.id === ge.id) ?? ge;
         const hidden = isSeekerActive(bp, bGameTime) && !isBossType(liveGe.type); // giantbatはisBossType=true=常にfalse
-        const tgt = resolveEnemyTarget(liveGe, bp, bTargetSummons, ALCHEMY_AGGRO_RANGE, hidden, bGameTime); // v0.25.2490: 引数追加(giantbatはボス=ラッチ対象外・挙動不変)
+        // 通常召喚/フレアの既存挑発は維持し、どちらも選ばれなかった時だけG2.5の固定ヘイト側へ撃つ。
+        const utilityTargets = bTargetSummons.filter(s => s.kind !== 'ghost-ally');
+        const utilityTgt = resolveEnemyTarget(liveGe, bp, utilityTargets, ALCHEMY_AGGRO_RANGE, hidden, bGameTime);
+        const hateTgt = resolveBossLockedHateAim(
+          liveGe,
+          { x: bp.x + bp.width / 2, y: bp.y + bp.height / 2 },
+          get().summons,
+        );
+        const tgt = utilityTgt.isSummon ? utilityTgt : hateTgt;
         if ((liveGe.gBoltPattern ?? 'fan') === 'burst') {
           // B案: 同じ方向へ1発ずつ(この関数は連射の1発ごとに呼ばれる)。弾速は素のまま=数で圧をかける。
           get().addProjectile(createEnemyProjectile(liveGe, bp, tgt.x, tgt.y));
@@ -11672,13 +11581,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ isPaused: paused });
   },
 
-  // v0.25.2152(社長指示): オプションUIから弾ドロップ率の項目を撤去=値はコード既定
-  // (DEFAULT_MELEE_DROP_PCT)で管理する。localStorageへの保存もやめる(UIが無いのに端末に残った
-  // 旧設定値が見えないまま効き続ける事故を防ぐ)。setterはテスト/開発用に残す(永続なし)。
-  setMeleeAmmoDropPercent: (pct) => {
-    set({ meleeAmmoDropPercent: clampDropPct(pct) });
-  },
-
   setAmmoPickupAmount: (type, amount) => {
     const clamped = clampAmmoPickupAmount(amount);
     set(state => {
@@ -11735,10 +11637,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ rendererReady: ready });
   },
 
-  startIntroDialogue: () => {
-    set({ introDialogueActive: true, introDialogueStartedAt: Date.now(), introDialogueShown: true });
-  },
-
   setIntroDialogueLines: (lines) => {
     set({ introDialogueLines: lines });
   },
@@ -11776,21 +11674,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       ownedSkills: ensureDefaultOwnedSkills([]), ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
       gachaPullsTotal: 0, goldBalance: 0, pendingSkills: [],
     });
-  },
-  // ガチャ: 解禁＋Lv反映。所持していなければ追加、Lv は max(既存, rolled) を最大Lvでクランプ。
-  // 既存Lv以上に上がった(=新規 or レベルアップ)場合のみ true(=返金しない)。
-  grantSkillLevel: (key, level) => {
-    const lv = Math.max(1, Math.min(skillMaxLevel(key), Math.floor(level)));
-    const owned = get().ownedSkills;
-    const levels = get().ownedSkillLevels;
-    const cur = owned.includes(key) ? (levels[key] ?? 1) : 0;
-    if (cur >= lv) return false; // 既存Lv以上は出なかった=重複扱い(返金)
-    const nextOwned = owned.includes(key) ? owned : [...owned, key];
-    const nextLevels = { ...levels, [key]: lv };
-    saveStringArray(OWNED_SKILLS_KEY, nextOwned);
-    saveSkillLevels(nextLevels);
-    set({ ownedSkills: nextOwned, ownedSkillLevels: nextLevels });
-    return true;
   },
   // 強化訓練を1回引く(逐次)。レア度をpityから抽選→pity更新(super=リセット/他=+1)→
   // スキル別の被り回数でLv抽選→初取得は付与・既存超えで昇格・それ以外は返金→被り回数を更新。
@@ -12736,10 +12619,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({ labDoors: state.labDoors.map(d => d.id === id ? { ...d, open: true } : d) }));
   },
 
-  setHasCardKey: (v) => {
-    set({ hasCardKey: v });
-  },
-
   pressLabButton: (id) => {
     set(state => {
       const btn = state.labButtons.find(b => b.id === id);
@@ -12793,12 +12672,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
-  },
-
-  // 装備を該当部位へ装着(同部位は置換)。最大体力の増減は player.maxHealth へベイクし、増分だけ現HPも上げる。
-  equipItem: (defId) => {
-    if (!equipmentById(defId)) return;
-    set(state => ({ player: equipDefOnPlayer(state.player, defId) }));
   },
 
   // 現在装備中の1点を次run へ持ち帰り(localStorage)。null または未装備IDなら持ち帰り無し。
@@ -13341,7 +13214,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         labDoors: runDoors,
         labButtons: runButtons,
         labProps: runProps,
-        hasCardKey: false,
         goalReachedAt: 0,
         lastDamageSource: '',
         // SE発火トリガ(Date.now時刻)を0へ戻す。これを残すと、リトライ直後の最初のフレームで
@@ -13419,7 +13291,6 @@ export const useGameStore = create<GameState>((set, get) => ({
           shijinSlideDirX: 0,
           shijinSlideDirY: 0,
           skaterStopUntil: 0,
-          skaterBashCdUntil: 0,
           skaterRiding: false,
           skaterRideStartAt: 0,
           straps: (state.startWithTestStraps ? 1000 : 0) + scrapBuilderBonus,
@@ -13510,7 +13381,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         showEventQuestMenu: false,
         shopReopenAt: 0,
         merchantDwellMs: 0,
-        eventQuestReopenAt: 0,
         vaccinePurchased: false,
         gameWon: false,
         finaleDefeated: false,
@@ -13673,12 +13543,24 @@ export const useGameStore = create<GameState>((set, get) => ({
     setTimeout(() => get().triggerShake(shakeMs, shakeMag), Math.max(0, stopMs));
   },
 
-  triggerFinishImpact: (targetX, targetY) => {
+  triggerFinishImpact: (targetX, targetY, forceMaximumZoom = false) => {
     const now = Date.now();
+    // 致命の一撃は通常KILLの10秒CDや、直前のズームの残り具合に左右されない。
+    // 一度ズーム包絡を切ってから最大倍率を対象中心へ掛け直し、必ず「最大まで寄る1イベント」にする。
+    const triggerMaximumZoom = (durationMs: number, holdMs: number) => {
+      if (forceMaximumZoom) {
+        set({
+          zoomUntil: 0, zoomMag: 0, zoomStart: 0, zoomHoldMs: 0,
+          zoomHasTarget: false, zoomTargetX: 0, zoomTargetY: 0,
+        });
+      }
+      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, durationMs, holdMs, targetX, targetY);
+    };
     if (!JUICE_ENABLED) {
       // ?juice=0: このバッチ以前の演出へ完全復帰(A/B比較用)。ズームだけCD、スロー/揺れは毎回。
-      if (now - get().lastKillZoomAt >= MELEE_FINISH_ZOOM_CD_MS) {
-        get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS, targetX, targetY);
+      // ただし致命の一撃だけは比較モードでも確定仕様を優先し、必ず最大ズームを出す。
+      if (forceMaximumZoom || now - get().lastKillZoomAt >= MELEE_FINISH_ZOOM_CD_MS) {
+        triggerMaximumZoom(MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS);
         set({ lastKillZoomAt: now });
       }
       get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
@@ -13689,18 +13571,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 同時にピークする1拍エンベロープへ統一。全演出をJUICE_CD_MS(=現行のCD値のまま)で一括律速し、
     // CD明けの1キルだけフル(フリーズ→ズーム/スローが同じ長さ・同じholdで一緒に戻る)。
     // CD内のキルは最低保証の軽いフラッシュのみ(酔い/うざさ防止・社長実測v0.25.1523-1524)。
-    const cdReady = shouldFireFullJuiceCinematic(now, get().lastKillZoomAt, JUICE_CD_MS);
-    if (cdReady) {
+    const fullCinematic = forceMaximumZoom || shouldFireFullJuiceCinematic(now, get().lastKillZoomAt, JUICE_CD_MS);
+    if (fullCinematic) {
       set({ lastKillZoomAt: now });
       get().triggerHitstop(HITSTOP_MS); // KILLにもカウンターと同じフリーズを追加(旧仕様は素通りだった)
       // ズームをスローと同じ長さ/holdへ統一(旧仕様の専用MELEE_FINISH_ZOOM_MS/HOLD_MSは使わない)。
-      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, targetX, targetY);
+      triggerMaximumZoom(MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
       get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
       setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
     } else if (JUICE_MIN_FLASH_ENABLED) {
       get().spawnFlash('rgba(255,255,255,0.22)', JUICE_MIN_FLASH_MS);
     }
-    return cdReady;
+    return fullCinematic;
   },
 
   triggerZoom: (mag, durationMs, holdMs = 0, targetX, targetY) => {

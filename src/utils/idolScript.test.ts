@@ -84,11 +84,11 @@ describe('MAX枠の水準', () => {
       expect(pickStringScript(IDOL_STRINGS, z, 2, IDOL_STRING_LEN, allReady())).toHaveLength(4);
     }
   });
-  it('休符は 0.9秒 で、プレイヤーの1攻撃サイクル(820ms)を必ず上回る=最低1発は入る', () => {
-    expect(IDOL_REST.p1).toBe(900);
-    expect(IDOL_REST.p2).toBe(900);
-    expect(IDOL_REST.p1).toBeGreaterThan(PLAYER_ATTACK_CYCLE_MS);
-    expect(IDOL_REST.p2).toBeGreaterThan(PLAYER_ATTACK_CYCLE_MS);
+  it('連段後は1.7秒休み、プレイヤーの2攻撃サイクルぶんを保証する', () => {
+    expect(IDOL_REST.p1).toBe(1700);
+    expect(IDOL_REST.p2).toBe(1700);
+    expect(IDOL_REST.p1).toBeGreaterThan(PLAYER_ATTACK_CYCLE_MS * 2);
+    expect(IDOL_REST.p2).toBeGreaterThan(PLAYER_ATTACK_CYCLE_MS * 2);
   });
   it('第二波は遠距離3技だけに付く(近距離技には付けない=「近づくほど安全」の強化)', () => {
     expect([...IDOL_WAVE_MOVES].sort()).toEqual(['aim', 'fan', 'snipe']);
@@ -168,7 +168,7 @@ describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変
     expect(IDOL_TUNING_DEFAULTS.timing).toEqual({
       aim:   { windup: 700,  active: 0,   recover: 900 },
       fan:   { windup: 900,  active: 0,   recover: 900 },
-      roll:  { windup: 400,  active: 300, recover: 900 },
+      roll:  { windup: 400,  active: 180, recover: 900 },
       punch: { windup: 600,  active: 0,   recover: 900 },
       snipe: { windup: 1100, active: 200, recover: 900 },
       orb:   { windup: 800,  active: 0,   recover: 900 },
@@ -184,7 +184,7 @@ describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変
   it('第二波・ストリング・休符・中立・懲罰', () => {
     expect(IDOL_TUNING_DEFAULTS.waveDelayMs).toBe(650);
     expect(IDOL_TUNING_DEFAULTS.stringLen).toEqual({ p1: 3, p2: 4 });
-    expect(IDOL_TUNING_DEFAULTS.rest).toEqual({ p1: 900, p2: 900 });
+    expect(IDOL_TUNING_DEFAULTS.rest).toEqual({ p1: 1700, p2: 1700 });
     expect(IDOL_TUNING_DEFAULTS.neutral).toEqual({ minMs: 700, maxMs: 1300 });
     expect(IDOL_TUNING_DEFAULTS.punish).toEqual({
       farMs: 2000, farMove: 'snipe', meleeMs: 3000, meleeMove: 'roll', sameAngleMs: 4000,

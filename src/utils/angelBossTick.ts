@@ -31,16 +31,16 @@ import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND
 import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの合流
 import { npcSfxDistGain } from './npcSfx'; // v0.25.2480: 守護霊カウンターSEの距離減衰
-import { pickMiguelMove, miguelDashFollowupEligible } from './miguelScript';
-import { pickJibrilMove, pickJibrilCombo, jibrilVolleyMode, JIBRIL_PHASE_HP_THRESHOLD, JIBRIL_EDGE_STICK_MS } from './jibrilScript';
-import { pickRafiMove, pickRafiCombo, RAFI_PHASE_HP_THRESHOLD } from './rafiScript';
-import { pickUriMove, pickUriCombo, uriSweepInnerRadius, URI_PHASE_HP_THRESHOLD } from './uriScript';
-import { pickSurielMove, pickSurielCombo, surielRingCount, SURIEL_PHASE_HP_THRESHOLD } from './surielScript';
+import { pickMiguelMove } from './miguelScript';
+import { pickJibrilMove, jibrilVolleyMode, JIBRIL_PHASE_HP_THRESHOLD, JIBRIL_EDGE_STICK_MS } from './jibrilScript';
+import { pickRafiMove, RAFI_PHASE_HP_THRESHOLD } from './rafiScript';
+import { pickUriMove, uriSweepInnerRadius, URI_PHASE_HP_THRESHOLD } from './uriScript';
+import { pickSurielMove, surielRingCount, SURIEL_PHASE_HP_THRESHOLD } from './surielScript';
 import {
-  pickAcrasielMove, pickAcrasielCombo, acrasielPhaseForHealth, acrasielSpikeGapCount,
+  pickAcrasielMove, acrasielPhaseForHealth, acrasielSpikeGapCount,
   pickSpikeGapMask, isSpikeGapSector,
 } from './acrasielScript';
-import { resolveBossHateAim, type ResolvedHateAim } from './bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
+import { resolveBossHateAim, resolveBossLockedHateAim, type ResolvedHateAim } from './bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
 import { bossNeutralDelayMs, bossRebuildIdForEnemy } from './bossRebuild';
 // v0.25.2609(ボス動き横断監査・バッチ2): 硬直=パニッシュ窓の床。本作の「1発」=カウンター1サイクル
 // (COUNTER_WINDOW 400ms + COUNTER_COOLDOWN 420ms = 820ms)なので、硬直がそれ未満だと
@@ -48,6 +48,12 @@ import { bossNeutralDelayMs, bossRebuildIdForEnemy } from './bossRebuild';
 // 大半(300〜750ms)が該当した。**定数の宣言側を withRecoverFloor で包む**ことで、元の数字を
 // 履歴として残したまま床を1箇所で保証する(呼び出し箇所は一切変えない)。
 import { withRecoverFloor } from './bossTelegraph';
+import { choreographyRecoverMs, planBossChoreography, type ChoreographyBoss } from './bossChoreography';
+// v0.25.2617(idolTick.tsと同じ理由): プレイヤーの移動クランプと**同じ純関数**を使う。
+// `playableArea.ts` は「行ける帯」の唯一の出どころ。天使はここ(applyPatch)を通っていなかった
+// (CLAUDE.md「アクターを動かす時は必ずclampRectToPlayableAreaを通す」・v0.25.2615-2617の
+// 3連続事故の再発防止・v0.25.2895)。
+import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 
 // --- 音の注入(ヘッドレスはNOOP) -------------------------------------------
 export interface AngelSfx {
@@ -67,9 +73,8 @@ const scriptFlag = (name: string): boolean =>
 export const MIGUEL_SCRIPT_ENABLED = scriptFlag('miguelscript');
 export const JIBRIL_SCRIPT_ENABLED = scriptFlag('jibrilscript');
 export const RAFI_SCRIPT_ENABLED = scriptFlag('rafiscript');
-export const URI_SCRIPT_ENABLED = scriptFlag('uriscript');
-export const SURIEL_SCRIPT_ENABLED = scriptFlag('surielscript');
-export const ACRASIEL_SCRIPT_ENABLED = scriptFlag('acrasielscript');
+// ★uri/suriel/acrasiel のフラグは撤去(v0.25.2893)。この3体はLegacy実装が無く、`?uriscript=0` は
+// 「旧実装へ戻す」ではなく**tickを丸ごと止める=ボスが凍結して倒せなくなる**footgunだった。
 
 // --- 定数(useGameLoop.tsから移設。トール側のレガシー定数と同値のものは同値コメントで同期義務) ---
 const GATE_ARENA_RADIUS = 300;          // ゲートアリーナ半径(useGameLoop.tsと同値)
@@ -85,7 +90,9 @@ const ANGEL_PHASE_FLASH_MS = 1200;
 const MIGUEL_HARAI_WINDUP_MS = 1000;
 const MIGUEL_HARAI_RANGE = 190;
 const MIGUEL_HARAI_HALF_WIDTH = 40;
-const MIGUEL_HARAI_ACTIVE_MS = 220;
+// ★振り速度2倍(社長指示v0.25.2885): 220→110。判定の持続窓も半分になる=技そのものが速い。
+// **pixiScene.ts の同名定数と必ず同値に保つこと**(手写しの重複。ズレると剣が固まる/先に振り終わる)。
+const MIGUEL_HARAI_ACTIVE_MS = 110;
 const MIGUEL_ORBIT_MARGIN = 20;
 const MIGUEL_ORBIT_SPEED = 70;
 const MIGUEL_MELEE_DASH_MS = 1000;
@@ -99,9 +106,9 @@ const MIGUEL_VOLLEY_CHANCE_LEGACY = 0.6; // 旧(?miguelscript=0)専用。新は 
 const MIGUEL_VOLLEY_WINDUP_MS = 450;
 const MIGUEL_VOLLEY_RECOVER_MS = withRecoverFloor(300);
 const MIGUEL_TATE_RECOVER_MS = withRecoverFloor(800);
-const MIGUEL_DASH_WINDUP_MS = 700;
-const MIGUEL_DASH_MOVE_MS = 400;         // ★未決事項(§6.28-14に追記): 移動そのものの所要時間は設計書に無い叩き台。
-const MIGUEL_DASH_STRIKE_MS = MIGUEL_HARAI_ACTIVE_MS; // 「MIGUEL_HARAI_ACTIVE_MS相当の斬り抜け」(設計書指定どおり)
+export const MIGUEL_DASH_WINDUP_MS = 700;
+export const MIGUEL_DASH_MOVE_MS = 230;         // 溜め後の斬り抜けは爆発的に。判定/補間/FXが同じ値を読む。
+export const MIGUEL_DASH_STRIKE_MS = MIGUEL_HARAI_ACTIVE_MS; // 「MIGUEL_HARAI_ACTIVE_MS相当の斬り抜け」(設計書指定どおり)
 const MIGUEL_DASH_RECOVER_MS = withRecoverFloor(800);
 const MIGUEL_DASH_CD_MS = 6000;
 // ジブリル(社長指示v0.25.1663)
@@ -150,7 +157,7 @@ const RAFI_BONE_COUNT = 7;
 const RAFI_BONE_GAP_MS = 600;
 const RAFI_JUMP_MAX_REJUMPS = 2;
 const RAFI_JUMP_WINDUP_MS = 700;        // =THOR_JUMP_WINDUP_MS(同値)
-const RAFI_JUMP_MS = 620;               // =THOR_JUMP_MS(同値)
+const RAFI_JUMP_MS = 360;               // =THOR_JUMP_MS(同値)。予告は残し、飛び込みだけ高速化。
 const RAFI_JUMP_RADIUS = 70;            // =THOR_JUMP_RADIUS(同値)
 const RAFI_JUMP_RECOVER_MS = 900;       // =THOR_JUMP_RECOVER_MS(同値)
 const SKADI_BLADE_RING_MIN = 100;       // 骨刃の設置リング(スカジと同値)
@@ -170,14 +177,14 @@ const RAFI_STEP_MAX_GAP_MS_P2 = 2800;
 
 // --- ウリ(§6.28-17・バッチM61・新規) ---------------------------------------------------------
 const URI_SWEEP_WINDUP_MS = 1100;
-const URI_SWEEP_ACTIVE_MS = 260;
+const URI_SWEEP_ACTIVE_MS = 130;          // ★振り速度2倍(社長指示v0.25.2885): 260→130。pixiScene.tsの同名と同値必須
 const URI_SWEEP_RECOVER_MS = withRecoverFloor(580);
 const URI_DOWNSLASH_WINDUP_MS = 1000;
-const URI_DOWNSLASH_ACTIVE_MS = 200;
+const URI_DOWNSLASH_ACTIVE_MS = 100;      // ★振り速度2倍(社長指示v0.25.2885): 200→100。pixiScene.tsの同名と同値必須
 const URI_DOWNSLASH_RECOVER_MS = withRecoverFloor(900);
-const URI_THRUST_WINDUP_MS = 900;
-const URI_THRUST_MOVE_MS = 400;           // ★未決事項: 踏み込み突きの移動所要時間は設計書に無い叩き台(ミゲル踏み込みと同値)。
-const URI_THRUST_STRIKE_MS = 220;
+export const URI_THRUST_WINDUP_MS = 900;
+export const URI_THRUST_MOVE_MS = 230;           // ミゲル踏み込みと同値。溜め後の実行だけ高速化。
+export const URI_THRUST_STRIKE_MS = 220;
 const URI_THRUST_RECOVER_MS = withRecoverFloor(580);
 const URI_BOLT_WINDUP_MS = 450;
 const URI_BOLT_RECOVER_MS = withRecoverFloor(500);
@@ -236,7 +243,7 @@ const ACRASIEL_WARP_WINDUP_MS = 800;
 // ⇒ **見てから歩いても構造的に円から出られない**(=避けようが無い)状態だった。
 // minWindupMs(92)=881ms が必要下限。反応の余裕を見て 1000ms(=104.4px)にする。
 // 判定半径(ACRASIEL_WARP_IMPACT_RADIUS)と赤円の描画は同じ定数を読むので図形と判定は一致したまま。
-const ACRASIEL_WARP_TELEGRAPH_MS = 1000;
+export const ACRASIEL_WARP_TELEGRAPH_MS = 1000; // export=描画(pixiScene)が同じ値を読む(v0.25.2893で二重管理を廃止)
 const ACRASIEL_WARP_RECOVER_MS = withRecoverFloor(600);
 const ACRASIEL_WARP_IMPACT_RADIUS = 92;   // ★未決事項: 「衝撃」の半径は設計書に無い(GRENADE_BLAST_RADIUS流用)。
 const ACRASIEL_BURST_WINDUP_MS = 1200;
@@ -250,7 +257,7 @@ const ACRASIEL_GAZE_RECOVER_MS = withRecoverFloor(500);
 export interface AngelBossState {
   miguelSlow: { slowUntil: number; nextAt: number };
   miguelVolley: { nextShotAt: number; shots: number };
-  jibril: { hits: number; lastHitSeen: number; lastWarpHits: number; volleyMode: 'snipe' | 'close'; shots: number; nextShotAt: number; nextFireAt: number; edgeSince: number | undefined };
+  jibril: { hits: number; lastHitSeen: number; lastWarpHits: number; volleyMode: 'snipe' | 'close'; lastScriptMove: 'lantern' | 'consecrate' | 'volley' | undefined; shots: number; nextShotAt: number; nextFireAt: number; edgeSince: number | undefined };
   rafi: { rejumps: number; boneLeft: number; boneNextAt: number; nextStepAt: number; stepUntil: number; stepDx: number; stepDy: number };
   uri: { shots: number; nextShotAt: number };
   suriel: Record<string, never>; // (環の位置はEnemy側のringX/Y等に永続化=専用のラン内状態は不要)
@@ -258,7 +265,7 @@ export interface AngelBossState {
 export const createAngelBossState = (): AngelBossState => ({
   miguelSlow: { slowUntil: 0, nextAt: 0 },
   miguelVolley: { nextShotAt: 0, shots: 0 },
-  jibril: { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', shots: 0, nextShotAt: 0, nextFireAt: 0, edgeSince: undefined },
+  jibril: { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', lastScriptMove: undefined, shots: 0, nextShotAt: 0, nextFireAt: 0, edgeSince: undefined },
   rafi: { rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 },
   uri: { shots: 0, nextShotAt: 0 },
   suriel: {},
@@ -271,6 +278,8 @@ export const createAngelBossState = (): AngelBossState => ({
 // markMeleeSwingFx・強glow95)をスキップし、共通ヘルパで確定クリ+青/金FX+SE距離減衰だけを出す。
 // ボスの状態遷移(chase復帰/counter-leap)は呼び出し側の従来patch=プレイヤー成立と同一。
 const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, sfx: AngelSfx, ghost?: GhostCounterFire): void => {
+  // カウンターは台本の割り込み成功。残り手を破棄し、次は新しい始動から組み直す。
+  useGameStore.setState(st => ({ enemies: st.enemies.map(e => e.id === boss.id ? { ...e, bossScriptQueue: [] } : e) }));
   if (ghost) {
     applyGhostCounterEffect(boss, hitX, hitY, ghost, (key, gain) => (key === 'counter' ? sfx.counter(gain) : sfx.reward(gain)));
     return;
@@ -297,7 +306,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   } }));
   const counterBase = getActiveGun(cp)?.damage ?? 12;
   const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
-  useGameStore.getState().damageEnemy(boss.id, dmg, false, true);
+  useGameStore.getState().damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter');
   useGameStore.getState().spawnDamageNumber(bcx, boss.y, dmg, true);
   sfx.reward();
   useGameStore.getState().spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
@@ -348,10 +357,42 @@ const nextActionDelay = (t: number, boss: Enemy): number => {
   return t + neutralMs * freshCritCdMult(boss.id, t);
 };
 
+const chooseScriptMove = <T extends string>(
+  boss: Enemy,
+  bossId: ChoreographyBoss,
+  phase: number,
+  fallback: () => T | null,
+): { move: T | null; remaining: string[] } => {
+  const [queued, ...rest] = boss.bossScriptQueue ?? [];
+  if (queued) return { move: queued as T, remaining: rest };
+  const move = fallback();
+  return { move, remaining: move ? planBossChoreography(bossId, move, phase).slice(1) : [] };
+};
+
+const scriptOrNeutralAt = (t: number, boss: Enemy): number =>
+  (boss.bossScriptQueue?.length ?? 0) > 0 ? t : nextActionDelay(t, boss);
+
 const applyPatch = (id: string, patch: Partial<Enemy>): void => {
-  if (Object.keys(patch).length) {
-    useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === id ? { ...e, ...patch } : e) }));
+  if (Object.keys(patch).length === 0) return;
+  // v0.25.2617と同じ理由: **プレイヤーが行けない場所へボスを出さない**(idolTick.tsのクランプと
+  // 同じ純関数を同じように通す=「行ける帯」の定義が1本のまま)。6体分のtickが全てここを通るので、
+  // 共通ヘルパー1箇所で足りる。
+  if (patch.x !== undefined || patch.y !== undefined) {
+    const st0 = useGameStore.getState();
+    const boss = st0.enemies.find(e => e.id === id);
+    if (boss) {
+      const ctx: PlayableAreaCtx = {
+        farBackdrop: st0.farBackdrop,
+        labTheme: st0.stageTheme === 'lab' && !st0.indoorMode,
+        corridorMode: st0.corridorMode,
+        m0AdvanceLimitX: st0.m0AdvanceLimitX,
+        corridorRunInActive: st0.corridorRunInActive,
+      };
+      const c = clampRectToPlayableArea(patch.x ?? boss.x, patch.y ?? boss.y, boss.width, boss.height, ctx);
+      patch.x = c.x; patch.y = c.y;
+    }
   }
+  useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === id ? { ...e, ...patch } : e) }));
 };
 
 // ============================================================================================
@@ -389,7 +430,9 @@ export const runMiguelTick = (
     const relX = mcx - mHomeX, relY = mcy - mHomeY;
     const curDist = Math.hypot(relX, relY) || 1;
     const curAngle = Math.atan2(relY, relX);
-    const angularSpeed = (MIGUEL_ORBIT_SPEED * orbitSpeedMult) / orbitRadius;
+    // ボスのクリ半減(社長指示v0.25.2422)。他の移動語彙は移動の入口で掛けているのに、
+    // ミゲルの旋回だけ抜けていた(v0.25.2895)。
+    const angularSpeed = (MIGUEL_ORBIT_SPEED * orbitSpeedMult * bossSlowMult(miguel, newGameTime)) / orbitRadius;
     const newAngle = curAngle - angularSpeed * bossMoveDt; // CCW=角度を減らす向き(Y-down)
     const correctedDist = curDist + (orbitRadius - curDist) * Math.min(1, ORBIT_RADIUS_CORRECT * bossMoveDt);
     patch.x = mHomeX + Math.cos(newAngle) * correctedDist - miguel.width / 2;
@@ -409,6 +452,7 @@ export const runMiguelTick = (
 
   // BOT_AND_GHOST.md §2.8 G2.5: windup開始点でだけ呼ぶ(毎フレーム評価しない)。
   const miguelHateAim = (): ResolvedHateAim => resolveBossHateAim(miguel, { x: pcx, y: pcy }, store.summons, newGameTime);
+  const miguelLockedAim = (): ResolvedHateAim => resolveBossLockedHateAim(miguel, { x: pcx, y: pcy }, store.summons);
 
   const lockHaraiLine = (): void => {
     const aim = miguelHateAim();
@@ -435,7 +479,10 @@ export const runMiguelTick = (
     if (newGameTime >= (miguel.bossNextActionAt ?? 0)) {
       const dist = Math.hypot(pcx - mcx, pcy - mcy);
       const dashReady = newGameTime >= (miguel.mDashReadyAt ?? 0);
-      const move = pickMiguelMove(dist, dashReady);
+      const scripted = chooseScriptMove(miguel, 'miguel', 2, () => pickMiguelMove(dist, dashReady));
+      const move = scripted.move;
+      patch.bossScriptQueue = scripted.remaining;
+      if (!move) { applyPatch(miguel.id, patch); return; }
       sfx.alert();
       if (move === 'dash') {
         patch.bossState = 'mdash-windup';
@@ -449,8 +496,10 @@ export const runMiguelTick = (
         patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
         lockHaraiLine();
       } else {
+        const volleyAim = miguelHateAim();
         patch.bossState = 'volley-windup';
         patch.bossStateUntil = newGameTime + MIGUEL_VOLLEY_WINDUP_MS;
+        patch.hateTarget = volleyAim.side;
       }
     }
   } else if (st === 'volley-windup') {
@@ -502,7 +551,7 @@ export const runMiguelTick = (
         patch.hateTarget = tateAim.side;
       } else {
         patch.bossState = 'tate-recover';
-        patch.bossStateUntil = newGameTime + MIGUEL_TATE_RECOVER_MS;
+        patch.bossStateUntil = newGameTime + choreographyRecoverMs(MIGUEL_TATE_RECOVER_MS, (miguel.bossScriptQueue?.length ?? 0) > 0);
       }
     }
   } else if (st === 'tate-recover') {
@@ -511,18 +560,19 @@ export const runMiguelTick = (
       miguelCounterHit(mcx, mcy);
     } else if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
       patch.bossState = 'chase';
-      patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
+      patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, miguel);
     }
   } else if (st === 'volley') {
     miguelOrbitMove();
     if (s.miguelVolley.shots < BOSS_BURST_SHOTS && newGameTime >= s.miguelVolley.nextShotAt) {
-      useGameStore.getState().addProjectile(createEnemyProjectile(miguel, player));
+      const aim = miguelLockedAim();
+      useGameStore.getState().addProjectile(createEnemyProjectile(miguel, player, aim.x, aim.y));
       s.miguelVolley.shots += 1;
       s.miguelVolley.nextShotAt = newGameTime + BOSS_BURST_GAP_MS;
     }
     if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
       patch.bossState = 'volley-recover';
-      patch.bossStateUntil = newGameTime + MIGUEL_VOLLEY_RECOVER_MS;
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(MIGUEL_VOLLEY_RECOVER_MS, (miguel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'volley-recover') {
     const { overlap, counterActive } = bodyOverlapNow(miguel);
@@ -530,7 +580,7 @@ export const runMiguelTick = (
       miguelCounterHit(mcx, mcy);
     } else if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
       patch.bossState = 'chase';
-      patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
+      patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, miguel);
     }
   } else if (st === 'mdash-windup') {
     const { overlap, counterActive } = bodyOverlapNow(miguel);
@@ -569,7 +619,7 @@ export const runMiguelTick = (
     }
     if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
       patch.bossState = 'mdash-recover';
-      patch.bossStateUntil = newGameTime + MIGUEL_DASH_RECOVER_MS;
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(MIGUEL_DASH_RECOVER_MS, (miguel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'mdash-recover') {
     const { overlap, counterActive } = bodyOverlapNow(miguel);
@@ -578,16 +628,8 @@ export const runMiguelTick = (
       patch.mDashReadyAt = newGameTime + MIGUEL_DASH_CD_MS * freshCritCdMult(miguel.id, newGameTime);
     } else if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
       patch.mDashReadyAt = newGameTime + MIGUEL_DASH_CD_MS * freshCritCdMult(miguel.id, newGameTime);
-      const distNow = Math.hypot(pcx - mcx, pcy - mcy);
-      if (miguelDashFollowupEligible(distNow)) {
-        sfx.alert();
-        patch.bossState = 'harai-windup';
-        patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
-        lockHaraiLine();
-      } else {
-        patch.bossState = 'chase';
-        patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
-      }
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, miguel);
     }
   } else if (st === 'counter-leap') {
     const fx0 = miguel.aiFromX ?? mcx, fy0 = miguel.aiFromY ?? mcy;
@@ -638,7 +680,9 @@ export const runMiguelTickLegacy = (
     const relX = mcx - mHomeX, relY = mcy - mHomeY;
     const curDist = Math.hypot(relX, relY) || 1;
     const curAngle = Math.atan2(relY, relX);
-    const angularSpeed = (MIGUEL_ORBIT_SPEED * orbitSpeedMult) / orbitRadius;
+    // ボスのクリ半減(社長指示v0.25.2422)。他の移動語彙は移動の入口で掛けているのに、
+    // ミゲルの旋回だけ抜けていた(v0.25.2895)。
+    const angularSpeed = (MIGUEL_ORBIT_SPEED * orbitSpeedMult * bossSlowMult(miguel, newGameTime)) / orbitRadius;
     const newAngle = curAngle - angularSpeed * bossMoveDt;
     const correctedDist = curDist + (orbitRadius - curDist) * Math.min(1, ORBIT_RADIUS_CORRECT * bossMoveDt);
     patch.x = mHomeX + Math.cos(newAngle) * correctedDist - miguel.width / 2;
@@ -772,6 +816,8 @@ export const runJibrilTick = (
   const st = jibril.bossState ?? 'chase';
   const patch: Partial<Enemy> = {};
   const jr = s.jibril;
+  const jibrilHateAim = (): ResolvedHateAim => resolveBossHateAim(jibril, { x: pcx, y: pcy }, store.summons, newGameTime);
+  const jibrilLockedAim = (): ResolvedHateAim => resolveBossLockedHateAim(jibril, { x: pcx, y: pcy }, store.summons);
 
   if (jibril.lastHit && jibril.lastHit !== jr.lastHitSeen) {
     jr.hits += 1;
@@ -780,7 +826,9 @@ export const runJibrilTick = (
   const retreatMove = (): void => {
     const ax = jcx - pcx, ay = jcy - pcy;
     const al = Math.hypot(ax, ay) || 1;
-    const spd = JIBRIL_RETREAT_SPEED * (jr.hits >= JIBRIL_HITS_FASTER ? JIBRIL_RETREAT_FAST_MULT : 1);
+    // ボスのクリ半減(社長指示v0.25.2422)。他の移動語彙は移動の入口で掛けているのに、
+    // ジブリルの後退だけ抜けていた(v0.25.2895)。
+    const spd = JIBRIL_RETREAT_SPEED * (jr.hits >= JIBRIL_HITS_FASTER ? JIBRIL_RETREAT_FAST_MULT : 1) * bossSlowMult(jibril, newGameTime);
     let nx = jcx + (ax / al) * spd * bossMoveDt;
     let ny = jcy + (ay / al) * spd * bossMoveDt;
     const rx = nx - jHomeX, ry = ny - jHomeY;
@@ -864,18 +912,28 @@ export const runJibrilTick = (
     if (newGameTime >= (jibril.bossNextActionAt ?? 0)) {
       const dist = Math.hypot(pcx - jcx, pcy - jcy);
       const consecrateReady = phase === 2 && newGameTime >= (jibril.jConsecrateReadyAt ?? 0);
-      const move = pickJibrilMove(phase, dist, consecrateReady);
+      const previousMove = (jibril.bossScriptQueue?.length ?? 0) > 0 ? jr.lastScriptMove : undefined;
+      const scripted = chooseScriptMove(jibril, 'jibril', phase, () => pickJibrilMove(phase, dist, consecrateReady));
+      const move = scripted.move;
+      patch.bossScriptQueue = scripted.remaining;
+      if (!move) { applyPatch(jibril.id, patch); return; }
+      jr.lastScriptMove = move;
       sfx.alert();
       if (move === 'consecrate') {
         patch.bossState = 'consecrate-windup';
         patch.bossStateUntil = newGameTime + JIBRIL_CONSECRATE_WINDUP_MS;
       } else if (move === 'lantern') {
+        const aim = jibrilHateAim();
         patch.bossState = 'lantern-windup';
         patch.bossStateUntil = newGameTime + JIBRIL_LANTERN_WINDUP_MS;
+        patch.hateTarget = aim.side;
       } else {
-        jr.volleyMode = jibrilVolleyMode(dist);
+        const aim = jibrilHateAim();
+        // 灯籠で足場を縛った後は遠距離狙撃、聖別で接近を強いた後は近距離連射へつなぐ。
+        jr.volleyMode = previousMove === 'lantern' ? 'snipe' : previousMove === 'consecrate' ? 'close' : jibrilVolleyMode(dist);
         patch.bossState = 'volley-windup';
         patch.bossStateUntil = newGameTime + JIBRIL_VOLLEY_WINDUP_MS;
+        patch.hateTarget = aim.side;
       }
     }
   } else if (st === 'volley-windup') {
@@ -897,7 +955,8 @@ export const runJibrilTick = (
     const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
     const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
     if (jr.shots < shots && newGameTime >= jr.nextShotAt) {
-      const proj = createEnemyProjectile(jibril, player);
+      const aim = jibrilLockedAim();
+      const proj = createEnemyProjectile(jibril, player, aim.x, aim.y);
       if (jr.volleyMode === 'snipe') proj.speed *= JIBRIL_SNIPE_SPEED_MULT;
       useGameStore.getState().addProjectile(proj);
       jr.shots += 1;
@@ -905,7 +964,7 @@ export const runJibrilTick = (
     }
     if (jr.shots >= shots && newGameTime >= (jibril.bossStateUntil ?? 0)) {
       patch.bossState = 'volley-recover';
-      patch.bossStateUntil = newGameTime + JIBRIL_VOLLEY_RECOVER_MS;
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_VOLLEY_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'volley-recover') {
     const { overlap, counterActive } = bodyOverlapNow(jibril);
@@ -915,7 +974,7 @@ export const runJibrilTick = (
       patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
     } else if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
       patch.bossState = 'chase';
-      patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
+      patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, jibril);
     }
   } else if (st === 'lantern-windup') {
     const { overlap, counterActive } = bodyOverlapNow(jibril);
@@ -931,13 +990,17 @@ export const runJibrilTick = (
   } else if (st === 'lantern') {
     // §6.28-6「その後5000msの設置中も静止【変更: 現状は後退しながら】」= retreatMoveを呼ばない。
     if (newGameTime >= jr.nextFireAt) {
-      const fpx = pcx, fpy = player.y + player.height;
+      const aim = jibrilLockedAim();
+      const ghost = aim.side === 'ghost'
+        ? store.summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === jibril.id)
+        : undefined;
+      const fpx = aim.x, fpy = ghost ? ghost.y + ghost.height : player.y + player.height;
       useGameStore.getState().spawnBossFire(fpx, fpy, newGameTime, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS + JIBRIL_FIRE_LIFE_MS);
       jr.nextFireAt = newGameTime + JIBRIL_FIRE_GAP_MS;
     }
     if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
       patch.bossState = 'lantern-recover';
-      patch.bossStateUntil = newGameTime + JIBRIL_LANTERN_RECOVER_MS;
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_LANTERN_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'lantern-recover') {
     const { overlap, counterActive } = bodyOverlapNow(jibril);
@@ -946,16 +1009,8 @@ export const runJibrilTick = (
       patch.bossState = 'chase';
       patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
     } else if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
-      const combo = pickJibrilCombo('lantern', phase);
-      if (combo === 'volley') {
-        sfx.alert();
-        jr.volleyMode = 'snipe'; // 「ランタン→狙撃」= 火で足を止めた相手を狙撃で撃つ(設計書指定)。
-        patch.bossState = 'volley-windup';
-        patch.bossStateUntil = newGameTime + JIBRIL_VOLLEY_WINDUP_MS;
-      } else {
-        patch.bossState = 'chase';
-        patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
-      }
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, jibril);
     }
   } else if (st === 'consecrate-windup') {
     const { overlap, counterActive } = bodyOverlapNow(jibril);
@@ -973,7 +1028,7 @@ export const runJibrilTick = (
       }
       patch.jConsecrateReadyAt = newGameTime + JIBRIL_CONSECRATE_CD_MS * freshCritCdMult(jibril.id, newGameTime);
       patch.bossState = 'consecrate-recover';
-      patch.bossStateUntil = newGameTime + JIBRIL_CONSECRATE_RECOVER_MS;
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_CONSECRATE_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'consecrate-recover') {
     const { overlap, counterActive } = bodyOverlapNow(jibril);
@@ -982,16 +1037,8 @@ export const runJibrilTick = (
       patch.bossState = 'chase';
       patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
     } else if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
-      const combo = pickJibrilCombo('consecrate', phase);
-      if (combo === 'volley') {
-        sfx.alert();
-        jr.volleyMode = 'close'; // 「聖別→近接射」(設計書指定)。
-        patch.bossState = 'volley-windup';
-        patch.bossStateUntil = newGameTime + JIBRIL_VOLLEY_WINDUP_MS;
-      } else {
-        patch.bossState = 'chase';
-        patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
-      }
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, jibril);
     }
   } else {
     patch.bossState = 'chase';
@@ -1025,7 +1072,9 @@ export const runJibrilTickLegacy = (
   const retreatMove = (): void => {
     const ax = jcx - pcx, ay = jcy - pcy;
     const al = Math.hypot(ax, ay) || 1;
-    const spd = JIBRIL_RETREAT_SPEED * (jr.hits >= JIBRIL_HITS_FASTER ? JIBRIL_RETREAT_FAST_MULT : 1);
+    // ボスのクリ半減(社長指示v0.25.2422)。他の移動語彙は移動の入口で掛けているのに、
+    // ジブリルの後退だけ抜けていた(v0.25.2895)。
+    const spd = JIBRIL_RETREAT_SPEED * (jr.hits >= JIBRIL_HITS_FASTER ? JIBRIL_RETREAT_FAST_MULT : 1) * bossSlowMult(jibril, newGameTime);
     let nx = jcx + (ax / al) * spd * bossMoveDt;
     let ny = jcy + (ay / al) * spd * bossMoveDt;
     const rx = nx - jHomeX, ry = ny - jHomeY;
@@ -1120,6 +1169,8 @@ export const runRafiTick = (
   const st = rafi.bossState ?? 'chase';
   const patch: Partial<Enemy> = {};
   const rr = s.rafi;
+  const rafiHateAim = (): ResolvedHateAim => resolveBossHateAim(rafi, { x: pcx, y: pcy }, store.summons, newGameTime);
+  const rafiLockedAim = (): ResolvedHateAim => resolveBossLockedHateAim(rafi, { x: pcx, y: pcy }, store.summons);
 
   const healthFrac = rafi.maxHealth > 0 ? rafi.health / rafi.maxHealth : 1;
   const phase = phaseForHealth(healthFrac, [RAFI_PHASE_HP_THRESHOLD]) as 1 | 2;
@@ -1155,7 +1206,10 @@ export const runRafiTick = (
     const stepMinGap = phase === 2 ? RAFI_STEP_MIN_GAP_MS_P2 : RAFI_STEP_MIN_GAP_MS;
     const stepMaxGap = phase === 2 ? RAFI_STEP_MAX_GAP_MS_P2 : RAFI_STEP_MAX_GAP_MS;
     if (newGameTime < rr.stepUntil) {
-      const c = clampArena(rcx + rr.stepDx * RAFI_STEP_SPEED * bossMoveDt, rcy + rr.stepDy * RAFI_STEP_SPEED * bossMoveDt);
+      // ボスのクリ半減(社長指示v0.25.2422)。chaseMoveには掛かっているのに、
+      // 横ステップだけ抜けていた(v0.25.2895)。
+      const stepSpd = RAFI_STEP_SPEED * bossSlowMult(rafi, newGameTime);
+      const c = clampArena(rcx + rr.stepDx * stepSpd * bossMoveDt, rcy + rr.stepDy * stepSpd * bossMoveDt);
       patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
     } else if (rr.nextStepAt !== 0 && newGameTime >= rr.nextStepAt) {
       const dx = pcx - rcx, dy = pcy - rcy; const dl = Math.hypot(dx, dy) || 1;
@@ -1170,7 +1224,9 @@ export const runRafiTick = (
     if (newGameTime >= rr.stepUntil && newGameTime >= (rafi.bossNextActionAt ?? 0)) {
       const dist = Math.hypot(pcx - rcx, pcy - rcy);
       const sweepReady = newGameTime >= (rafi.rSweepReadyAt ?? 0);
-      const move = pickRafiMove(dist, phase, sweepReady);
+      const scripted = chooseScriptMove(rafi, 'rafi', phase, () => pickRafiMove(dist, phase, sweepReady));
+      const move = scripted.move;
+      patch.bossScriptQueue = scripted.remaining;
       if (move) {
         sfx.alert();
         rr.rejumps = 0;
@@ -1185,8 +1241,10 @@ export const runRafiTick = (
           patch.aiFromX = rcx; patch.aiFromY = rcy;
           patch.aiTargetX = rcx + dirx * RAFI_SWEEP_RANGE_PX; patch.aiTargetY = rcy + diry * RAFI_SWEEP_RANGE_PX;
         } else if (move === 'bone') {
+          const aim = rafiHateAim();
           patch.bossState = 'bone-windup';
           patch.bossStateUntil = newGameTime + RAFI_BONE_WINDUP_MS;
+          patch.hateTarget = aim.side;
         } else {
           patch.bossState = 'jump-windup';
           patch.bossStateUntil = newGameTime + RAFI_JUMP_WINDUP_MS;
@@ -1203,16 +1261,17 @@ export const runRafiTick = (
     }
   } else if (st === 'bone') {
     if (rr.boneLeft > 0 && newGameTime >= rr.boneNextAt) {
+      const aimTgt = rafiLockedAim();
       const a0 = Math.random() * Math.PI * 2;
       const dist = SKADI_BLADE_RING_MIN + Math.random() * (SKADI_BLADE_RING_MAX - SKADI_BLADE_RING_MIN);
-      const sx = pcx + Math.cos(a0) * dist, sy = pcy + Math.sin(a0) * dist;
-      const aim = Math.atan2(pcy - sy, pcx - sx);
+      const sx = aimTgt.x + Math.cos(a0) * dist, sy = aimTgt.y + Math.sin(a0) * dist;
+      const aim = Math.atan2(aimTgt.y - sy, aimTgt.x - sx);
       useGameStore.getState().spawnSkadiBlade(sx, sy, aim, newGameTime + SKADI_BLADE_DELAY_MS, rafi.id, 'bone');
       rr.boneLeft -= 1;
       rr.boneNextAt = newGameTime + RAFI_BONE_GAP_MS;
     }
     if (rr.boneLeft <= 0) {
-      patch.bossState = 'bone-recover'; patch.bossStateUntil = newGameTime + RAFI_BONE_RECOVER_MS;
+      patch.bossState = 'bone-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(RAFI_BONE_RECOVER_MS, (rafi.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'bone-recover') {
     const { overlap, counterActive } = bodyOverlapNow(rafi);
@@ -1220,14 +1279,7 @@ export const runRafiTick = (
       rafiCounterHit(rcx, rcy);
       patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
     } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
-      const combo = pickRafiCombo('bone', phase);
-      if (combo === 'jump') {
-        sfx.alert();
-        patch.bossState = 'jump-windup';
-        patch.bossStateUntil = newGameTime + RAFI_JUMP_WINDUP_MS;
-      } else {
-        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
-      }
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, rafi);
     }
   } else if (st === 'jump-windup') {
     const { overlap, counterActive } = bodyOverlapNow(rafi);
@@ -1259,7 +1311,7 @@ export const runRafiTick = (
         pumpkinBlasts: [...state.pumpkinBlasts, { x: tx0, y: ty0, radius: RAFI_JUMP_RADIUS, damage: rafi.damage, enemyId: rafi.id }],
       }));
       patch.bossState = 'jump-recover';
-      patch.bossStateUntil = newGameTime + RAFI_JUMP_RECOVER_MS;
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(RAFI_JUMP_RECOVER_MS, (rafi.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'jump-recover') {
     const { overlap, counterActive } = bodyOverlapNow(rafi);
@@ -1267,22 +1319,7 @@ export const runRafiTick = (
       rafiCounterHit(rcx, rcy);
       patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
     } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
-      const sweepReady = newGameTime >= (rafi.rSweepReadyAt ?? 0);
-      const combo = sweepReady ? pickRafiCombo('jump', phase) : null;
-      if (combo === 'sweep') {
-        sfx.alert();
-        patch.bossState = 'sweep-windup';
-        patch.bossStateUntil = newGameTime + RAFI_SWEEP_WINDUP_MS;
-        const sweepAim = resolveBossHateAim(rafi, { x: pcx, y: pcy }, store.summons, newGameTime);
-        patch.hateTarget = sweepAim.side;
-        const ddl = Math.hypot(sweepAim.x - rcx, sweepAim.y - rcy) || 1;
-        const dirx = (sweepAim.x - rcx) / ddl, diry = (sweepAim.y - rcy) / ddl;
-        patch.aiFromX = rcx; patch.aiFromY = rcy;
-        patch.aiTargetX = rcx + dirx * RAFI_SWEEP_RANGE_PX;
-        patch.aiTargetY = rcy + diry * RAFI_SWEEP_RANGE_PX;
-      } else {
-        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
-      }
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, rafi);
     }
   } else if (st === 'sweep-windup') {
     const { overlap, counterActive } = bodyOverlapNow(rafi);
@@ -1304,7 +1341,7 @@ export const runRafiTick = (
   } else if (st === 'sweep') {
     if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
       patch.bossState = 'sweep-recover';
-      patch.bossStateUntil = newGameTime + RAFI_SWEEP_RECOVER_MS;
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(RAFI_SWEEP_RECOVER_MS, (rafi.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'sweep-recover') {
     const { overlap, counterActive } = bodyOverlapNow(rafi);
@@ -1314,7 +1351,7 @@ export const runRafiTick = (
       patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
     } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
       patch.rSweepReadyAt = newGameTime + RAFI_SWEEP_CD_MS * freshCritCdMult(rafi.id, newGameTime);
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, rafi);
     }
   } else {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
@@ -1367,7 +1404,10 @@ export const runRafiTickLegacy = (
     patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
   } else if (st === 'chase') {
     if (newGameTime < rr.stepUntil) {
-      const c = clampArena(rcx + rr.stepDx * RAFI_STEP_SPEED * bossMoveDt, rcy + rr.stepDy * RAFI_STEP_SPEED * bossMoveDt);
+      // ボスのクリ半減(社長指示v0.25.2422)。chaseMoveには掛かっているのに、
+      // 横ステップだけ抜けていた(v0.25.2895)。
+      const stepSpd = RAFI_STEP_SPEED * bossSlowMult(rafi, newGameTime);
+      const c = clampArena(rcx + rr.stepDx * stepSpd * bossMoveDt, rcy + rr.stepDy * stepSpd * bossMoveDt);
       patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
     } else if (rr.nextStepAt !== 0 && newGameTime >= rr.nextStepAt) {
       const dx = pcx - rcx, dy = pcy - rcy; const dl = Math.hypot(dx, dy) || 1;
@@ -1464,6 +1504,8 @@ export const runUriTick = (
   const maxR = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - uri.height / 2;
   const st = uri.bossState ?? 'chase';
   const patch: Partial<Enemy> = {};
+  const uriHateAim = (): ResolvedHateAim => resolveBossHateAim(uri, { x: pcx, y: pcy }, store.summons, newGameTime);
+  const uriLockedAim = (): ResolvedHateAim => resolveBossLockedHateAim(uri, { x: pcx, y: pcy }, store.summons);
 
   const healthFrac = uri.maxHealth > 0 ? uri.health / uri.maxHealth : 1;
   const phase = phaseForHealth(healthFrac, [URI_PHASE_HP_THRESHOLD]) as 1 | 2;
@@ -1499,7 +1541,9 @@ export const runUriTick = (
     chaseMove(uri.speed);
     if (newGameTime >= (uri.bossNextActionAt ?? 0)) {
       const dist = Math.hypot(pcx - ucx, pcy - ucy);
-      const move = pickUriMove(dist);
+      const scripted = chooseScriptMove(uri, 'uri', phase, () => pickUriMove(dist));
+      const move = scripted.move;
+      patch.bossScriptQueue = scripted.remaining;
       if (move) {
         sfx.alert();
         if (move === 'sweep') {
@@ -1529,7 +1573,9 @@ export const runUriTick = (
           patch.aiFromX = ucx; patch.aiFromY = ucy; patch.aiTargetX = thrustAim.x; patch.aiTargetY = thrustAim.y;
           patch.hateTarget = thrustAim.side;
         } else {
+          const aim = uriHateAim();
           patch.bossState = 'bolt-windup'; patch.bossStateUntil = newGameTime + URI_BOLT_WINDUP_MS;
+          patch.hateTarget = aim.side;
         }
       }
     }
@@ -1554,26 +1600,14 @@ export const runUriTick = (
       }
     }
     if (!countered && newGameTime >= (uri.bossStateUntil ?? 0)) {
-      patch.bossState = 'sweep-recover'; patch.bossStateUntil = newGameTime + URI_SWEEP_RECOVER_MS;
+      patch.bossState = 'sweep-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(URI_SWEEP_RECOVER_MS, (uri.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'sweep-recover') {
     const { overlap, counterActive } = bodyOverlapNow(uri);
     if (overlap && counterActive) {
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
-      const combo = pickUriCombo('sweep', phase);
-      if (combo === 'downslash') {
-        sfx.alert();
-        patch.bossState = 'downslash-windup'; patch.bossStateUntil = newGameTime + URI_DOWNSLASH_WINDUP_MS;
-        // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(pcx/pcyの代わりにヘイト対象の中心)。
-        const dsAim = resolveBossHateAim(uri, { x: pcx, y: pcy }, store.summons, newGameTime);
-        patch.hateTarget = dsAim.side;
-        const ddl = Math.hypot(dsAim.x - ucx, dsAim.y - ucy) || 1; const dirx = (dsAim.x - ucx) / ddl, diry = (dsAim.y - ucy) / ddl;
-        patch.aiFromX = ucx; patch.aiFromY = ucy;
-        patch.aiTargetX = ucx + dirx * URI_DOWNSLASH_RANGE_PX; patch.aiTargetY = ucy + diry * URI_DOWNSLASH_RANGE_PX;
-      } else {
-        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
-      }
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, uri);
     }
   } else if (st === 'downslash-windup') {
     const { overlap, counterActive } = bodyOverlapNow(uri);
@@ -1595,23 +1629,14 @@ export const runUriTick = (
       }
     }
     if (!countered && newGameTime >= (uri.bossStateUntil ?? 0)) {
-      patch.bossState = 'downslash-recover'; patch.bossStateUntil = newGameTime + URI_DOWNSLASH_RECOVER_MS;
+      patch.bossState = 'downslash-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(URI_DOWNSLASH_RECOVER_MS, (uri.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'downslash-recover') {
     const { overlap, counterActive } = bodyOverlapNow(uri);
     if (overlap && counterActive) {
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
-      const combo = pickUriCombo('downslash', phase);
-      if (combo === 'thrust') {
-        sfx.alert();
-        patch.bossState = 'thrust-windup'; patch.bossStateUntil = newGameTime + URI_THRUST_WINDUP_MS;
-        const thrustAim = resolveBossHateAim(uri, { x: pcx, y: pcy }, store.summons, newGameTime);
-        patch.aiFromX = ucx; patch.aiFromY = ucy;
-        patch.aiTargetX = thrustAim.x; patch.aiTargetY = thrustAim.y; patch.hateTarget = thrustAim.side;
-      } else {
-        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
-      }
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, uri);
     }
   } else if (st === 'thrust-windup') {
     const { overlap, counterActive } = bodyOverlapNow(uri);
@@ -1642,14 +1667,14 @@ export const runUriTick = (
       }
     }
     if (!countered && newGameTime >= (uri.bossStateUntil ?? 0)) {
-      patch.bossState = 'thrust-recover'; patch.bossStateUntil = newGameTime + URI_THRUST_RECOVER_MS;
+      patch.bossState = 'thrust-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(URI_THRUST_RECOVER_MS, (uri.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'thrust-recover') {
     const { overlap, counterActive } = bodyOverlapNow(uri);
     if (overlap && counterActive) {
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, uri);
     }
   } else if (st === 'bolt-windup') {
     const { overlap, counterActive } = bodyOverlapNow(uri);
@@ -1661,18 +1686,19 @@ export const runUriTick = (
     }
   } else if (st === 'bolt') {
     if (s.uri.shots < BOSS_BURST_SHOTS && newGameTime >= s.uri.nextShotAt) {
-      useGameStore.getState().addProjectile(createEnemyProjectile(uri, player));
+      const aim = uriLockedAim();
+      useGameStore.getState().addProjectile(createEnemyProjectile(uri, player, aim.x, aim.y));
       s.uri.shots += 1; s.uri.nextShotAt = newGameTime + BOSS_BURST_GAP_MS;
     }
     if (newGameTime >= (uri.bossStateUntil ?? 0)) {
-      patch.bossState = 'bolt-recover'; patch.bossStateUntil = newGameTime + URI_BOLT_RECOVER_MS;
+      patch.bossState = 'bolt-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(URI_BOLT_RECOVER_MS, (uri.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'bolt-recover') {
     const { overlap, counterActive } = bodyOverlapNow(uri);
     if (overlap && counterActive) {
       uriCounterHit(ucx, ucy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
     } else if (newGameTime >= (uri.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, uri);
     }
   } else {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
@@ -1754,7 +1780,9 @@ export const runSurielTick = (
     }
     if (newGameTime >= (suriel.bossNextActionAt ?? 0)) {
       const dist = Math.hypot(pcx - scx, pcy - scy);
-      const move = pickSurielMove(dist, deployed);
+      const scripted = chooseScriptMove(suriel, 'suriel', phase, () => pickSurielMove(dist, deployed));
+      const move = scripted.move;
+      patch.bossScriptQueue = scripted.remaining;
       if (move) {
         sfx.alert();
         if (move === 'ringshot') {
@@ -1821,26 +1849,14 @@ export const runSurielTick = (
       }
     }
     if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
-      patch.bossState = 'ring-recover'; patch.bossStateUntil = newGameTime + SURIEL_RINGSHOT_RECOVER_MS;
+      patch.bossState = 'ring-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SURIEL_RINGSHOT_RECOVER_MS, (suriel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'ring-recover') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
     if (overlap && counterActive) {
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
-      const combo = pickSurielCombo('ringshot');
-      if (combo === 'sweep') {
-        sfx.alert();
-        patch.bossState = 'sweep-windup'; patch.bossStateUntil = newGameTime + SURIEL_SWEEP_WINDUP_MS;
-        // BOT_AND_GHOST.md §2.8 G2.5: 狙いロック(pcx/pcyの代わりにヘイト対象の中心)。
-        const sweepAim = resolveBossHateAim(suriel, { x: pcx, y: pcy }, store.summons, newGameTime);
-        patch.hateTarget = sweepAim.side;
-        const ddl = Math.hypot(sweepAim.x - scx, sweepAim.y - scy) || 1; const dirx = (sweepAim.x - scx) / ddl, diry = (sweepAim.y - scy) / ddl;
-        patch.aiFromX = scx; patch.aiFromY = scy;
-        patch.aiTargetX = scx + dirx * SURIEL_SWEEP_RANGE_PX; patch.aiTargetY = scy + diry * SURIEL_SWEEP_RANGE_PX;
-      } else {
-        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
-      }
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, suriel);
     }
   } else if (st === 'ring-spin-windup') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
@@ -1865,14 +1881,14 @@ export const runSurielTick = (
       }
     }
     if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
-      patch.bossState = 'ring-spin-recover'; patch.bossStateUntil = newGameTime + SURIEL_RINGSPIN_RECOVER_MS;
+      patch.bossState = 'ring-spin-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SURIEL_RINGSPIN_RECOVER_MS, (suriel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'ring-spin-recover') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
     if (overlap && counterActive) {
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, suriel);
     }
   } else if (st === 'sweep-windup') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
@@ -1894,14 +1910,14 @@ export const runSurielTick = (
       }
     }
     if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
-      patch.bossState = 'sweep-recover'; patch.bossStateUntil = newGameTime + SURIEL_SWEEP_RECOVER_MS;
+      patch.bossState = 'sweep-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SURIEL_SWEEP_RECOVER_MS, (suriel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'sweep-recover') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
     if (overlap && counterActive) {
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, suriel);
     }
   } else if (st === 'gaze-windup') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
@@ -1909,14 +1925,14 @@ export const runSurielTick = (
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
       useGameStore.getState().addProjectile(createEnemyProjectile(suriel, player, suriel.aiTargetX, suriel.aiTargetY));
-      patch.bossState = 'gaze-recover'; patch.bossStateUntil = newGameTime + SURIEL_GAZE_RECOVER_MS;
+      patch.bossState = 'gaze-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SURIEL_GAZE_RECOVER_MS, (suriel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'gaze-recover') {
     const { overlap, counterActive } = bodyOverlapNow(suriel);
     if (overlap && counterActive) {
       surielCounterHit(scx, scy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
     } else if (newGameTime >= (suriel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, suriel);
     }
   } else {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
@@ -1974,7 +1990,9 @@ export const runAcrasielTick = (
     // 動かない(speed:0)。技の抽選のみ行う。
     if (newGameTime >= (acrasiel.bossNextActionAt ?? 0)) {
       const distance = Math.hypot(pcx - acx, pcy - acy);
-      const move = pickAcrasielMove(distance, phase);
+      const scripted = chooseScriptMove(acrasiel, 'acrasiel', phase, () => pickAcrasielMove(distance, phase));
+      const move = scripted.move;
+      patch.bossScriptQueue = scripted.remaining;
       if (move) {
         sfx.alert();
         if (move === 'spike') {
@@ -2021,20 +2039,14 @@ export const runAcrasielTick = (
       }
     }
     if (!countered && newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'spike-recover'; patch.bossStateUntil = newGameTime + ACRASIEL_SPIKE_RECOVER_MS;
+      patch.bossState = 'spike-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(ACRASIEL_SPIKE_RECOVER_MS, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'spike-recover') {
     const { overlap, counterActive } = bodyOverlapNow(acrasiel);
     if (overlap && counterActive) {
       acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
     } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      const combo = pickAcrasielCombo('spike', phase);
-      if (combo === 'spear') {
-        sfx.alert();
-        patch.bossState = 'spear-windup'; patch.bossStateUntil = newGameTime + ACRASIEL_SPEAR_WINDUP_MS;
-      } else {
-        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-      }
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, acrasiel);
     }
   } else if (st === 'spear-windup') {
     const { overlap, counterActive } = bodyOverlapNow(acrasiel);
@@ -2046,20 +2058,14 @@ export const runAcrasielTick = (
         const lx = acx + Math.cos(ang) * ACRASIEL_SPEAR_RANGE_PX, ly = acy + Math.sin(ang) * ACRASIEL_SPEAR_RANGE_PX;
         useGameStore.getState().spawnAcrasielSpear(lx, ly, ang, newGameTime, newGameTime + ACRASIEL_SPEAR_DETONATE_MS, acrasiel.damage, acrasiel.id);
       }
-      patch.bossState = 'spear-recover'; patch.bossStateUntil = newGameTime + ACRASIEL_SPEAR_RECOVER_MS;
+      patch.bossState = 'spear-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(ACRASIEL_SPEAR_RECOVER_MS, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'spear-recover') {
     const { overlap, counterActive } = bodyOverlapNow(acrasiel);
     if (overlap && counterActive) {
       acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
     } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      const combo = pickAcrasielCombo('spear', phase);
-      if (combo === 'warp') {
-        sfx.alert();
-        patch.bossState = 'warp-out'; patch.bossStateUntil = newGameTime + ACRASIEL_WARP_WINDUP_MS;
-      } else {
-        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
-      }
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, acrasiel);
     }
   } else if (st === 'warp-out') {
     const { overlap, counterActive } = bodyOverlapNow(acrasiel);
@@ -2082,14 +2088,14 @@ export const runAcrasielTick = (
         const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の転移衝撃`, tx, ty);
         if (died) onPlayerDeath(tx, ty);
       }
-      patch.bossState = 'warp-recover'; patch.bossStateUntil = newGameTime + ACRASIEL_WARP_RECOVER_MS;
+      patch.bossState = 'warp-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(ACRASIEL_WARP_RECOVER_MS, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'warp-recover') {
     const { overlap, counterActive } = bodyOverlapNow(acrasiel);
     if (overlap && counterActive) {
       acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
     } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, acrasiel);
     }
   } else if (st === 'burst-windup') {
     const { overlap, counterActive } = bodyOverlapNow(acrasiel);
@@ -2110,14 +2116,14 @@ export const runAcrasielTick = (
       }
     }
     if (!countered && newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'burst-recover'; patch.bossStateUntil = newGameTime + ACRASIEL_BURST_RECOVER_MS;
+      patch.bossState = 'burst-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(ACRASIEL_BURST_RECOVER_MS, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'burst-recover') {
     const { overlap, counterActive } = bodyOverlapNow(acrasiel);
     if (overlap && counterActive) {
       acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
     } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, acrasiel);
     }
   } else if (st === 'gaze-windup') {
     const { overlap, counterActive } = bodyOverlapNow(acrasiel);
@@ -2125,14 +2131,14 @@ export const runAcrasielTick = (
       acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
     } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
       useGameStore.getState().addProjectile(createEnemyProjectile(acrasiel, player, acrasiel.aiTargetX, acrasiel.aiTargetY));
-      patch.bossState = 'gaze-recover'; patch.bossStateUntil = newGameTime + ACRASIEL_GAZE_RECOVER_MS;
+      patch.bossState = 'gaze-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(ACRASIEL_GAZE_RECOVER_MS, (acrasiel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'gaze-recover') {
     const { overlap, counterActive } = bodyOverlapNow(acrasiel);
     if (overlap && counterActive) {
       acrasielCounterHit(acx, acy); patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
     } else if (newGameTime >= (acrasiel.bossStateUntil ?? 0)) {
-      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel);
+      patch.bossState = 'chase'; patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, acrasiel);
     }
   } else {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
@@ -2164,11 +2170,11 @@ export const runAngelBossTick = (
   } else if (angel.type === 'rafi') {
     if (RAFI_SCRIPT_ENABLED) runRafiTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx);
     else runRafiTickLegacy(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx);
-  } else if (angel.type === 'uri' && URI_SCRIPT_ENABLED) {
+  } else if (angel.type === 'uri') {
     runUriTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx, onPlayerDeath);
-  } else if (angel.type === 'suriel' && SURIEL_SCRIPT_ENABLED) {
+  } else if (angel.type === 'suriel') {
     runSurielTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx, onPlayerDeath);
-  } else if (angel.type === 'acrasiel' && ACRASIEL_SCRIPT_ENABLED) {
+  } else if (angel.type === 'acrasiel') {
     runAcrasielTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx, onPlayerDeath);
   }
 };

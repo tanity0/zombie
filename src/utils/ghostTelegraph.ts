@@ -22,6 +22,7 @@
 import type { Enemy } from '../types/game';
 import { bandThreat, circleThreat, DODGE_BAND_HALF_WIDTH, type DodgeThreat } from './botSkill';
 import { IDOL_SHOT_SLOTS } from './idolScript';
+import { MIMIR_BITE_RADIUS } from './bodyCenteredAoe';
 
 /**
  * GHOST-CMD-1B(§2.18-2/-3): この台帳が返す脅威。`shape: 'circle'` = 円形の危険域
@@ -39,7 +40,10 @@ const tagCircle = (t: DodgeThreat | null): GhostDodgeThreat | null =>
 // ---- ボス側の実寸の複製値(叩き台ではなく**実装の複製**。元の定数が動いたらここも合わせる) ----
 const NOVA_RADIUS_END_MIRROR = 400;      // = gameStore.GIANT_NOVA_RADIUS_END(輪の最大半径)
 const DIVE_RADIUS_MIRROR = 220;          // = gameStore.GIANT_DIVE_RADIUS(急降下の着弾円)
-const MIMIR_BITE_RADIUS_MIRROR = 92;     // = useGameLoop.MIMIR_BITE_RADIUS(群体の噛みつき円)
+// ★複製をやめてimport(v0.25.2893)。旧: 92 の手写しが v0.25.2612 の判定是正(92→216)に取り残され、
+// 守護霊が実際の半分以下の円で回避していた(=噛まれる)。bodyCenteredAoe は純関数モジュールなので
+// store/hook非依存の掟は破らない。
+const MIMIR_BITE_RADIUS_MIRROR = MIMIR_BITE_RADIUS; // = bodyCenteredAoe.MIMIR_BITE_RADIUS(群体の噛みつき円)
 const SURIEL_RINGSPIN_RADIUS_MIRROR = 92;// = angelBossTick.SURIEL_RINGSPIN_RADIUS(回転斬りの円)
 const SURIEL_BEAM_RANGE_MIRROR = 2600;   // = angelBossTick.SURIEL_BEAM_RANGE(環ビームの射程)
 const ACRASIEL_SPIKE_RANGE_MIRROR = 310; // = angelBossTick.ACRASIEL_SPIKE_RANGE_PX(放射8本の長さ)

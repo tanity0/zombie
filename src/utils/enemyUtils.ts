@@ -33,9 +33,13 @@ interface EnemyStats {
 }
 
 export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
-  bat:       { width: 22, height: 22, speed: 75,  health: 8,    damage: 6,   experienceValue: 1 },
-  skeleton:  { width: 26, height: 26, speed: 60,  health: 18,   damage: 8,   experienceValue: 1 },
-  zombie:    { width: 30, height: 30, speed: 42,  health: 40,   damage: 10,  experienceValue: 2 },
+  // v0.25.2874(社長指示「bat skeleton両方少し大きく、当たり判定も合わせて」): 22→26。
+  // 描画枠は width×ENEMY_VISUAL_SCALE なので、判定を上げると絵も同じ比率で大きくなる。
+  bat:       { width: 26, height: 26, speed: 75,  health: 8,    damage: 6,   experienceValue: 1 },
+  // v0.25.2874(同上): 26→31。
+  skeleton:  { width: 31, height: 31, speed: 60,  health: 18,   damage: 8,   experienceValue: 1 },
+  // v0.25.2878(社長指示「ゾンビも同じ分だけ大きくして」): 30→36。bat(+18.2%)/skeleton(+19.2%)と同幅。
+  zombie:    { width: 36, height: 36, speed: 42,  health: 40,   damage: 10,  experienceValue: 2 },
   plant:     { width: 28, height: 28, speed: 8,   health: 25,   damage: 0,   experienceValue: 2 },
   // 変異体(抱卵型・旧ghost): 直進せずプレイヤーの周囲を周回し、1秒ごとに緑卵(mine)を撒く(AIは store)。internal idは'ghost'のまま。
   ghost:     { width: 24, height: 24, speed: 48,  health: 26,   damage: 6,   experienceValue: 3 },
@@ -133,6 +137,16 @@ export const isBossType = (t: EnemyType): boolean =>
   t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' ||
   t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter';
+
+/**
+ * 討伐時に「アテンション」(時間停止 + カメラが現地へ寄って戻る)を出す対象か。
+ *
+ * ★`pumpkin` は除外(社長指示v0.25.2879)。パンプキンは**ウェーブで湧くエリート枠**で、
+ * ボス系の中で唯一「1ランに何度も倒す」相手。そのたびに世界が止まってカメラが寄ると、
+ * 刈る手触り(§コアループ①秒)が毎回途切れる。**崩壊演出・バナー・スロー・シェイクは残す**ので、
+ * 討伐した手応えは維持したまま、進行を止める要素だけを外す。
+ */
+export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && t !== 'pumpkin';
 
 // 討伐(KILL)時に「FF風クランブル」統一演出(triggerDramaticDeath・gameStore.ts)を出す対象か。
 // ボス系は全員対象。ネームド/クエスト対象も従来どおり劇的な討伐を維持する。

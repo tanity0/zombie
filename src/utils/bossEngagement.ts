@@ -10,6 +10,7 @@
 //
 // 掟: **ここは判定するだけの純関数**。どう使うか(湧きを落とす/コマ時計を止める)は directorTick 側。
 import type { Enemy, EnemyType } from '../types/game';
+import { BOSS_ZOOM_PROFILES, bossZoomClassFor, zoomCompensatedWorldDistance } from './cameraZoom';
 
 /**
  * 「交戦中」として扱うボスの型。
@@ -32,10 +33,18 @@ export const ENGAGEABLE_BOSS_TYPES = new Set<EnemyType>([
 export const isEngageableBoss = (type: EnemyType): boolean => ENGAGEABLE_BOSS_TYPES.has(type);
 
 // 交戦とみなす距離(社長質問v0.25.2416「ボスの画面外判定はハンターくらい広めならOK?」→ ハンター基準)。
-// ハンターの参考値: `HUNTER_DESPAWN_DIST = 1500`(撤退で消える距離)。それより内側に収める。
+// 基準値は旧ハンター相当。実ワールド距離はボス戦の引きズームに合わせて拡張する。
 // **ヒステリシス必須**: 単一しきい値だと境界上で毎フレーム反転し、湧きの設定が振動する。
-export const BOSS_ENGAGE_ENTER_PX = 900;  // これより近ければ「交戦中」(最大引きの画面より十分外)
-export const BOSS_ENGAGE_EXIT_PX = 1400;  // これより離れたら交戦解除=**湧きが通常へ戻る**
+export const BOSS_ENGAGE_ENTER_PX = 900;  // 等倍画面での基準。実ワールド距離はボスの遠距離ズームで換算する
+export const BOSS_ENGAGE_EXIT_PX = 1400;  // 同上。これより画面上で離れたら交戦解除=**湧きが通常へ戻る**
+
+/** ボス体格別の遠距離ズームと同率で、交戦の入口/出口をワールド距離へ広げる。 */
+export const bossEngagementDistancePx = (
+  type: EnemyType, engaged: boolean, isStoryBoss = false,
+): number => {
+  const farZoom = BOSS_ZOOM_PROFILES[bossZoomClassFor(type, isStoryBoss)].far;
+  return zoomCompensatedWorldDistance(engaged ? BOSS_ENGAGE_EXIT_PX : BOSS_ENGAGE_ENTER_PX, farZoom);
+};
 
 /**
  * いま「ボスと交戦中」か。
@@ -53,9 +62,9 @@ export const BOSS_ENGAGE_EXIT_PX = 1400;  // これより離れたら交戦解�
 export const bossEngagedNow = (
   enemies: readonly Enemy[], playerCx: number, playerCy: number, prev: boolean,
 ): boolean => {
-  const limit = prev ? BOSS_ENGAGE_EXIT_PX : BOSS_ENGAGE_ENTER_PX;
   return enemies.some(e => {
     if (!isEngageableBoss(e.type) || e.dormant === true) return false;
+    const limit = bossEngagementDistancePx(e.type, prev, e.isStoryBoss === true);
     const d = Math.hypot((e.x + e.width / 2) - playerCx, (e.y + e.height / 2) - playerCy);
     return d <= limit;
   });
@@ -77,7 +86,7 @@ export const engagedBossSlotKeys = (
     if (!isEngageableBoss(e.type) || e.dormant === true) continue;
     const key = slotKeyOf(e.type);
     if (keys.has(key)) continue;
-    const limit = prevKeys.has(key) ? BOSS_ENGAGE_EXIT_PX : BOSS_ENGAGE_ENTER_PX;
+    const limit = bossEngagementDistancePx(e.type, prevKeys.has(key), e.isStoryBoss === true);
     const d = Math.hypot((e.x + e.width / 2) - playerCx, (e.y + e.height / 2) - playerCy);
     if (d <= limit) keys.add(key);
   }
@@ -94,7 +103,24 @@ export const engagedBossSlotKeys = (
 // なぜ単純に「ワープを止める」だけでは駄目か: ボスの接近手段(突進/飛び掛かり/滑空)は全てCD付きなので、
 // 離れて撃つだけで一方的に削れる=ハメが成立する。**待機に戻す**なら、離れている間は削れないので
 // ハメにならない。かつテレポートも無くなる。
-export const BOSS_LEASH_PX = 1500; // 交戦解除(EXIT=1400)より少し外=解除してから待機へ、の順になる
+export const BOSS_LEASH_PX = 1500; // 等倍画面での基準。実ワールド距離はボスの遠距離ズームで換算する
+
+export const bossLeashDistancePx = (type: EnemyType, isStoryBoss = false): number => {
+  const farZoom = BOSS_ZOOM_PROFILES[bossZoomClassFor(type, isStoryBoss)].far;
+  return zoomCompensatedWorldDistance(BOSS_LEASH_PX, farZoom);
+};
+
+export const BOSS_DISENGAGE_GRACE_MS = 3000;
+
+/** 範囲外が連続3秒続いた時だけ離脱。1フレームでも戻れば予兆を取り消す。 */
+export const advanceBossDisengageGrace = (
+  outside: boolean, since: number | undefined, now: number,
+): { since: number | undefined; ready: boolean; started: boolean } => {
+  if (!outside) return { since: undefined, ready: false, started: false };
+  const started = since === undefined;
+  const nextSince = since ?? now;
+  return { since: nextSince, ready: now - nextSince >= BOSS_DISENGAGE_GRACE_MS, started };
+};
 
 /**
  * 待機へ戻す(リーシュする)ボス。**フィールドに出る城ボス系だけ**。
@@ -121,7 +147,7 @@ export const BOSS_LEASH_REGEN_PER_SEC = 10;
  * (社長指示v0.25.2419「城にゆっくり戻ってほしい」)。
  *
  * 追跡時の速度そのままだと「猛然と帰っていく」絵になって、戦意を失って引き上げる感じが出ない。
- * 半分にすると giantbat(speed=70)で 35px/s = リーシュ距離1500pxからだと約43秒かけて戻る。
+ * 半分にすると giantbat(speed=70)で 35px/s。ズーム換算後のリーシュ位置からゆっくり城へ戻る。
  * 帰巣中も回復する(裏ボスの帰巣と同じ扱い)ので、**完全に振り切ると進捗はほぼ戻る**=
  * 消耗戦は成立しない、という設計意図もこの速度で成立している。
  */

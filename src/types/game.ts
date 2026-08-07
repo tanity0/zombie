@@ -199,11 +199,9 @@ export interface Player extends DashLocomotionState {
   shijinSlideUntil: number;
   shijinSlideDirX: number;
   shijinSlideDirY: number;
-  // スケーター: 1秒以上走行後に進行方向と逆へスティックを倒すと、進行方向へ短距離衝撃波
-  // (バッシュ効果)を出して急停止する。skaterStopUntil が未来の間は入力を無視して残速度を
-  // 素早く減衰させる(ほんの少し慣性のある急停止)。skaterBashCdUntil=次に出せる gameTime。
+  // スケーター: skaterStopUntil が未来の間は入力を無視して残速度を
+  // 素早く減衰させる(ほんの少し慣性のある急停止)。
   skaterStopUntil: number;
-  skaterBashCdUntil: number;
   // スケーター新仕様(社長指示): ダブルタップで「乗車」。乗車中だけ移動3倍＋強慣性。指離しで降車し、
   // 1秒以上乗っていれば進行方向へスケボーを投擲(当たると前方バッシュ=衝撃波+強制ノックバック)。1秒未満は消えるだけ。
   skaterRiding: boolean;     // 乗車中か(=3倍/強慣性を適用)。
@@ -574,9 +572,13 @@ export interface Enemy {
   eggBurstCount?: number;
   // 叫喚型(screamer): 次に叫喚(溜め開始)する gameTime(ms)。初回=出現3秒後、以降10秒間隔。
   screamNextAt?: number;
-  // 裏ボス専用: 被弾したクリティカルの累積回数。規定回数で「完全気絶(紫)」に移行しリセット。
-  bossCritCount?: number;
-  // 裏ボス専用: 完全気絶(通常敵の気絶相当)の終了 gameTime(ms)。この間は攻撃でも起きず近接フィニッシュし放題。
+  // ボス共通の体勢値。未設定時はボス種別ごとの最大値として扱う。
+  bossPosture?: number;
+  bossPostureRecoveryCap?: number;
+  bossPostureLastDamageAt?: number;
+  bossPostureLockUntil?: number;
+  bossBreakRewardRemaining?: number;
+  // 体勢崩し(紫)の終了 gameTime(ms)。
   bossFullStunUntil?: number;
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
   homeX?: number;
@@ -658,6 +660,9 @@ export interface Enemy {
     | 'idol-rest';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
+  // 攻撃開始時に確定した短い連携台本の残り。各recoverで先頭を消費し、空になった時だけ通常硬直へ戻る。
+  bossScriptQueue?: string[];
+  bossLeashSince?: number;  // フィールドボスが離脱距離の外に出続けた起点(gameTime)。3秒予兆用
   bossBurstLeft?: number;    // 3連発の残弾
   bossBurstNextAt?: number;  // 次の1発の gameTime(ms)
   // PACING_PUZZLE.md §6.28-21(バッチM53/M55/M57・ロットL2): ミゲル/ジブリル/ラフィへ追加した新技1つずつの

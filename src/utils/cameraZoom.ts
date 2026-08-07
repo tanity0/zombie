@@ -1,8 +1,8 @@
 import type { EnemyType } from '../types/game';
 
-// 文脈カメラズーム(視覚専用): 敵が多い/大型がいるほど「少し」引く。ゲーム判定(当たり/射程)には
-// 一切影響しない。ただしスポーン距離だけは、引いた分の可視域拡大に合わせて広げる(=同じ target を
-// ゲームロジックも読む)ので、この純関数を pixiScene(カメラ)と useGameLoop(湧き)の両方から使う。
+// 文脈カメラズーム: 敵が多い/大型がいるほど「少し」引く。当たり/射程は変えないが、スポーンと
+// ボスの交戦・離脱・画面外判定は、引いた分の実可視域に合わせる(=同じ target をゲームロジックも読む)。
+// この純関数を pixiScene(カメラ)と useGameLoop/store(判定)の両方から使う。
 //
 // 社長指示の効き幅(私案・実機調整前提):
 //  ・引きは「一回り」= 最大 CONTEXT_ZOOM_MIN(0.9)。
@@ -71,6 +71,42 @@ export const aabbGapDistance = (a: Aabb, b: Aabb): number => {
   const dx = Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width), 0);
   const dy = Math.max(b.y - (a.y + a.height), a.y - (b.y + b.height), 0);
   return Math.hypot(dx, dy);
+};
+
+/** ズーム後も画面上の距離を一定に保つため、画面pxをワールドpxへ戻す。寄り方向では拡縮しない。 */
+export const zoomCompensatedWorldDistance = (screenPx: number, zoom: number): number => {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? Math.min(1, zoom) : 1;
+  return screenPx / safeZoom;
+};
+
+export interface ZoomedViewportBounds { left: number; top: number; right: number; bottom: number }
+
+/** 引きズーム後に実際に見えるワールド矩形。余白は画面pxの見た目を保ったまま換算する。 */
+export const zoomedViewportBounds = (
+  camera: { x: number; y: number }, viewport: { width: number; height: number },
+  zoom: number, marginScreenPx = 0,
+): ZoomedViewportBounds => {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? Math.min(1, zoom) : 1;
+  const visibleW = viewport.width / safeZoom;
+  const visibleH = viewport.height / safeZoom;
+  const extraX = (visibleW - viewport.width) / 2;
+  const extraY = (visibleH - viewport.height) / 2;
+  const marginWorld = marginScreenPx / safeZoom;
+  return {
+    left: camera.x - extraX - marginWorld,
+    top: camera.y - extraY - marginWorld,
+    right: camera.x + viewport.width + extraX + marginWorld,
+    bottom: camera.y + viewport.height + extraY + marginWorld,
+  };
+};
+
+export const isPointInZoomedViewport = (
+  x: number, y: number,
+  camera: { x: number; y: number }, viewport: { width: number; height: number },
+  zoom: number, marginScreenPx = 0,
+): boolean => {
+  const b = zoomedViewportBounds(camera, viewport, zoom, marginScreenPx);
+  return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
 };
 
 // ★**安全マージンの基準はこの絶対最小値**(v0.25.2412)。

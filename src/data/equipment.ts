@@ -24,22 +24,6 @@ export const EQUIP_LINES_BY_SLOT: Record<EquipSlot, [EquipLine, EquipLine]> = {
   accessory: ['crit', 'ammo']
 };
 
-export const EQUIP_SLOT_LABEL: Record<EquipSlot, string> = {
-  body: '体',
-  arms: '腕',
-  accessory: 'アクセ'
-};
-
-export const EQUIP_LINE_LABEL: Record<EquipLine, string> = {
-  protection: '防護系',
-  mobility: '機動系',
-  firepower: '火力系',
-  handling: '取り回し系',
-  crit: 'クリ系',
-  ammo: '弾薬系',
-  special: '特殊'
-};
-
 const s = (key: EquipStat['key'], value: number): EquipStat => ({ key, value });
 
 // 通常装備テーブル(系統ごとに段階1..5)。値の単位は EquipStat 参照(reload は短縮量=正の割合)。

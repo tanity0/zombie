@@ -2,7 +2,7 @@
 // ボスごと交戦時計。起点=交戦開始(定義は従来どおり)・時計だけスロット単位。
 import { describe, it, expect, beforeEach } from 'vitest';
 import { tickBossClocks, bossClockDurationMs, closeBossClock, resetBossClocks } from './bossClock';
-import { engagedBossSlotKeys, BOSS_ENGAGE_ENTER_PX, BOSS_ENGAGE_EXIT_PX } from './bossEngagement';
+import { bossEngagementDistancePx, engagedBossSlotKeys } from './bossEngagement';
 import type { Enemy, EnemyType } from '../types/game';
 
 beforeEach(() => resetBossClocks());
@@ -58,16 +58,16 @@ const mkBoss = (type: EnemyType, x: number, over: Partial<Enemy> = {}): Enemy =>
 const slotKeyOf = (t: EnemyType): string => String(t);
 
 describe('engagedBossSlotKeys: ボスごとENTER/EXITヒステリシス', () => {
-  it('ENTER(900)以内で交戦・以遠は非交戦', () => {
-    const near = mkBoss('thor', BOSS_ENGAGE_ENTER_PX - 100);
-    const far = mkBoss('mimir', BOSS_ENGAGE_ENTER_PX + 200);
+  it('ズーム換算後のENTER以内で交戦・以遠は非交戦', () => {
+    const near = mkBoss('thor', bossEngagementDistancePx('thor', false) - 100);
+    const far = mkBoss('mimir', bossEngagementDistancePx('mimir', false) + 200);
     const got = engagedBossSlotKeys([near, far], 0, 20, new Set(), slotKeyOf);
     expect(got.has('thor')).toBe(true);
     expect(got.has('mimir')).toBe(false);
   });
 
-  it('ヒステリシス: 交戦中(prevに在る)のボスだけEXIT(1400)まで交戦が続く', () => {
-    const between = mkBoss('thor', (BOSS_ENGAGE_ENTER_PX + BOSS_ENGAGE_EXIT_PX) / 2); // 900〜1400の間
+  it('ヒステリシス: 交戦中(prevに在る)のボスだけズーム換算後のEXITまで交戦が続く', () => {
+    const between = mkBoss('thor', (bossEngagementDistancePx('thor', false) + bossEngagementDistancePx('thor', true)) / 2);
     expect(engagedBossSlotKeys([between], 0, 20, new Set(), slotKeyOf).has('thor')).toBe(false);
     expect(engagedBossSlotKeys([between], 0, 20, new Set(['thor']), slotKeyOf).has('thor')).toBe(true);
   });

@@ -24,8 +24,8 @@ describe('案C: シルエット影の根元と先端を全部水平にする', (
   it('真横の光では伸び影が水平線へ潰れ、接地点はずれない', () => {
     const q = horizontalShadowCorners(100, 200, 1, 0, 80, 20, 30, 0, 1);
     expect([q.c0.y, q.c1.y, q.c2.y, q.c3.y]).toEqual([200, 200, 200, 200]);
-    expect(q.c2).toEqual({ x: 80, y: 200 });
-    expect(q.c3).toEqual({ x: 120, y: 200 });
+    expect(q.c2).toEqual({ x: 120, y: 200 });
+    expect(q.c3).toEqual({ x: 80, y: 200 });
   });
 
   it('素材の反転はUVの左右だけを交換し、水平骨格は変えない', () => {
@@ -36,5 +36,10 @@ describe('案C: シルエット影の根元と先端を全部水平にする', (
     expect(flipped.c2).toEqual(normal.c3);
     expect(flipped.c3).toEqual(normal.c2);
   });
-});
 
+  it('反転なしはPerspectiveMeshのUV順を保つ', () => {
+    const q = horizontalShadowCorners(100, 200, 0.5, -0.5, 40, 10, 15, 0, 1);
+    expect(q.c0.x).toBeLessThan(q.c1.x); // top-left, top-right
+    expect(q.c3.x).toBeLessThan(q.c2.x); // bottom-left, bottom-right
+  });
+});

@@ -63,14 +63,6 @@ export const enemyFootBox = (e: Enemy): FootBox => {
   };
 };
 
-// 【現在未使用】足元アンカーで描いた描画ボックスそのもの(footX中心・footYが底)のAABB。かつて「見た目=当たり判定」
-// 実験で当たり判定に使っていたが、社長指示で当たり判定を裏ボスと同じ「帯」方式(生の矩形)へ戻したため今は呼ばれない。
-// 「見た目=判定」へ再度切り替える場合の参照用に残す。
-export const enemyVisualRect = (e: Enemy): { x: number; y: number; width: number; height: number } => {
-  const fb = enemyFootBox(e);
-  return { x: fb.footX - fb.boxW / 2, y: fb.footY - fb.boxH, width: fb.boxW, height: fb.boxH };
-};
-
 // 敵スプライト素材の縦横比(texH/texW)を type×バリアント(default/stage3)別に登録する小さなレジストリ。
 // 描画は containScale で枠(boxW×boxH)に内接させるため、横長素材は実描画が枠より低くなる=頭の位置が
 // 素材ごとに変わる。PHILLサークルの「頭スナップ」を実描画に合わせるためのデータ橋渡し(描画→ロジック)。
@@ -118,13 +110,6 @@ export const summonFootBox = (s: Summon): FootBox => {
     boxW: s.width * scale,
     boxH: s.height * scale,
   };
-};
-
-// Ground-shadow width per enemy (heavy bosses get a wider, darker pool). Mirror
-// of the Canvas2D `drawGroundShadow` calls.
-export const enemyShadow = (e: Enemy): { width: number; alpha: number } => {
-  const heavy = e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || e.type === 'hunter';
-  return { width: e.width * (heavy ? 1.15 : 1), alpha: heavy ? 0.56 : 0.46 };
 };
 
 // ---------------------------------------------------------------------------

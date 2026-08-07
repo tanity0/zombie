@@ -11,10 +11,6 @@
 // This drives BOTH the DOM HUD (via the --game-font CSS variable set in
 // main.tsx) and the PixiJS text / damage-number atlas (FONT_STACK).
 
-export type FontKind = 'orbitron';
-
-export const ACTIVE_FONT: FontKind = 'orbitron';
-
 // Primary @font-face family name (declared in index.css).
 export const FONT_FAMILY = 'Orbitron';
 

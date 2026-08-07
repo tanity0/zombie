@@ -35,7 +35,7 @@ import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDir
 import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
-import { bossEngagedNow, engagedBossSlotKeys, isEngageableBoss, BOSS_ENGAGE_ENTER_PX } from './bossEngagement';
+import { bossEngagedNow, bossEngagementDistancePx, engagedBossSlotKeys, isEngageableBoss } from './bossEngagement';
 import { markBossesEncountered } from './bossEncounter'; // BOSS_MAKER.md §20-5: ボスラッシュの解放記録
 import {
   tickPlayerTraits, loadPlayerProfile, effectiveGhostProfile, bossStyleSlotKey,
@@ -713,7 +713,8 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
 
   const boss = state.enemies.find(e =>
     isEngageableBoss(e.type) && e.dormant !== true
-    && Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy) <= BOSS_ENGAGE_ENTER_PX);
+    && Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy)
+      <= bossEngagementDistancePx(e.type, false, e.isStoryBoss === true));
   if (!boss) return;
 
   // プロファイル未保存(初回)の場合は既定プロファイル(botSkillのcasual相当から変換)を使う。

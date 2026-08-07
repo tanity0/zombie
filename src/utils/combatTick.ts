@@ -319,7 +319,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       // CRIT-UNIFY §9.3(社長裁定F): パリィ反撃は確定クリ。ボスは①の効果(半減+CD2倍+紫蓄積)が
       // damageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
-      const parryKilled = useGameStore.getState().damageEnemy(hit.id, dmg, false, true);
+      const parryKilled = useGameStore.getState().damageEnemy(hit.id, dmg, false, true, false, 'other', 'player', 'counter');
       if (!parryKilled && !boss) {
         const stunMs = STUN_DURATION_MS * (bp.stunDurationMult ?? 1);
         useGameStore.getState().stunEnemy(hit.id, useGameStore.getState().gameTime + stunMs);
@@ -942,7 +942,7 @@ export const applyContactDamage = (
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       // CRIT-UNIFY §9.3(社長裁定F): 突進/気絶パリィの反撃も確定クリ。ボスは①の効果(半減+CD2倍+
       // 紫蓄積)がdamageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
-      const dashParryKilled = useGameStore.getState().damageEnemy(eid, dmg, false, true);
+      const dashParryKilled = useGameStore.getState().damageEnemy(eid, dmg, false, true, false, 'other', 'player', 'counter');
       counterKill = dashParryKilled || counterKill;
       if (!dashParryKilled && !boss) {
         const stunMs = STUN_DURATION_MS * (collPlayer.stunDurationMult ?? 1);
