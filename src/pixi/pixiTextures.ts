@@ -380,7 +380,7 @@ export const ensureTextures = (): Promise<void> => {
       // 名前=EnemyType と一致させ、drawEnemy の getTexture(e.type) で解決する。
       { name: 'mimir', scaleMode: 'nearest' as const }, // v0.25.2934 ドット版(回転しない本体はnearestが正・天使6体と同じ扱い)
       { name: 'jormungand', scaleMode: 'nearest' as const }, // v0.25.2944 ドット版(mimir/thorと同じ扱い)
-      { name: 'skadi', scaleMode: 'linear' as const },
+      { name: 'skadi', scaleMode: 'nearest' as const }, // v0.25.2948 ドット版(mimir/jormungand/thorと同じ扱い)
       // トール(ステージ5)はドット絵タッチの素材なので、他の裏ボス(linear)と違い nearest で
       // ピクセルの輪郭を保つ(hunterと同じ扱い)。
       { name: 'thor', scaleMode: 'nearest' as const },

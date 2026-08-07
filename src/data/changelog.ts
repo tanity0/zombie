@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2948',
+    items: [
+      '裏ボス「スカジ」の絵を、新しいドット絵に変えました。',
+    ],
+  },
+  {
     version: '0.25.2947',
     items: [
       'ボス戦のカメラを一新: ボスの足元では等倍まで寄り、離れるほど引いていきます(中距離で1.7倍引き、遠距離で最大2.5倍引き)。近接の迫力と、離れた時の戦場の見通しが両立します。',
