@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3011',
+    items: [
+      '引き雲の素材をドット絵の透過版に差し替えました(輪郭がくっきりしたピクセル調の雲になります)。',
+    ],
+  },
+  {
     version: '0.25.3010',
     items: [
       'ズームが深く引いた時(ボス戦の引きなど)、画面手前を雲がゆっくり流れるようになりました(新規支給素材。高所から見下ろしている空気感の演出。夜は環境色に沈みます)。',
