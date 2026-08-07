@@ -1,5 +1,39 @@
 # Development Log
 
+## v0.25.2981 — FX-V2b実装: アクラシエルspike/burst/warp繋ぎ+グレンnihil強化【2026-08-07 20:18 JST】
+research/FX_GAP_LEDGER.md「発注仕様: バッチ FX-V2b」どおりSonnetサブエージェントが実装(`src/pixi/pixiScene.ts`のみ)。
+- **spike(放射棘)**: `bs==='spike'`(判定活性化と同じ窓=ACRASIEL_SPIKE_ACTIVE_MS_VIS)の間、
+  空きセクター以外の各方向へ既存の結晶の槍(acrasiel-spear.png・acrasielSpearPoolと同じ素材/縮尺)を
+  非uniformスケール(Yだけ0→1→0.78)で「地面から突き上げ→軽く引き戻し」。判定(drawAngelZoneCapsule)
+  は無改変。新規プール`view.spikeThrust`(セクター0〜7・8枠)。カウンター等で状態が飛んでも
+  既存の`spikeL`latch継続ブロックと歩調を揃えて完走させる。
+- **burst(爆ぜ)**: `bs==='burst'`の間、断片5枚(ACRASIEL_BURST_FRAG_COUNT)が槍素材を縮小・回転させて
+  放射(判定半径ACRASIEL_BURST_RADIUS_VISの1.3倍まで=②「派手さの絵」ではみ出し許容)。既存リングに
+  添える形。新規プール`view.burstFrag`。
+- **warp(転移)の繋ぎ**: `warp-out→warp-in`切替の瞬間(消失)と`warp-in`開始の瞬間(出現)に金色フラッシュ+
+  収束/拡散リング(`drawWarpFlash`・380ms・判定なし)。消失位置はwarp-out中の現在地を毎フレーム
+  焼き直して立ち下がりエッジで読む(teleportでx/yが即書き換わるため)。dashWasOn/gazeWindupWasOnと
+  同じ「立ち上がり/立ち下がりの1フレーム記憶」方式(新規Set×2+Map×1)。
+- **グレンnihil(虚無の三唱)**: `g-nihil-chant1/2/3`の間、本体中心にリング(半径・濃さが1<2<3で増加)を
+  追加。3唱目だけ内→外に抜けるリングを追加して発射直前を強調。**色は赤ではなく金**(gaze-flash/
+  warp-flashと同系統)——判定(汎用windupのボディ接触カウンター/後段のgiantDelayedHits爆発円)と
+  半径が一致しないため、CLAUDE.mdの新色文法(赤=カウンター対象・判定と厳密一致)に抵触しない
+  よう①には分類せず金にした(設計判断・台帳に記録)。
+- 掟遵守: 既存素材のみ(acrasiel-spear.pngのみ・新規テクスチャなし)/強glowなし/新規Graphics無し
+  (既存の共有per-frame Graphics `o` への追記のみ、または既存のプール方式に倣った新規Sprite配列)/
+  判定・タイミング不変(すべて既存の`bossStateUntil`/`ACRASIEL_*_ACTIVE_MS_VIS`/`GLEN_NIHIL_CHANT_MS`
+  (importで単一ソース)から算出。新しい判定タイミング定数は追加していない)。
+- 新規プール配列(spikeThrust/burstFrag)は`telegraphFade`のbounds走査・毎フレームリセット・
+  teleFade乗算・`view.container.destroy({children:true})`の4箇所すべてに登録(既存のrings/bands/
+  shockwavesと同じ扱いに揃える=地平線フェード等5つの副作用の抜け漏れ防止)。
+- **検証**: typecheck 0 / lint エラー0(社長指示により今回はビルド/テストは回さず)。
+- **負荷スコア: 1/10**。理由: 強glowなし(投影影を落とす光源を増やしていない=CLAUDE.mdの実測律速に
+  該当しない)。追加分は per-frame Graphics への描画コマンド数枚(nihil/warp)と、pooled Sprite
+  最大13枚(spike8+burst5、同時に両方は発生しない)のtransformのみ。新規テクスチャ読込・新規
+  RenderTexture・新規Filterなし。
+- **★未決事項なし**。設計判断が要った箇所(nihilパルスの色を赤ではなく金にした理由)は上記に明記し、
+  台帳(FX_GAP_LEDGER.md)にも同じ理由を残した。
+
 ## v0.25.2980 — §6.37 FIELD-WIDE-ZOOM実装(床の縦延長+遠景下延長+フェード/マスクのpost-zoom化)【2026-08-07 20:20 JST】
 PACING_PUZZLE.md §6.37(確定仕様・監査反映v2)をSonnetサブエージェントが実装。
 - **床の縦延長**(`src/pixi/layers.ts`): groundStrips 72→180本。`src/pixi/renderSpec.ts`に

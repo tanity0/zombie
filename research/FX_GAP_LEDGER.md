@@ -51,6 +51,18 @@
 - 掟: V2aと同じ(既存素材のみ/強glow禁止/pooled/判定・タイミング不変/全配線の発火確認)。
   **弾の視覚文法(CLAUDE.md・赤=対象/紫=不可/弾は共通絵)に抵触しないこと**。負荷目安1〜2/10。
 - ゲート/版管理: V2aと同じ。
+- [x] **実装完了(v0.25.2981・Sonnet実装・社長の実機確認待ち)**: spike=`bs==='spike'`(判定と同じ
+  ACRASIEL_SPIKE_ACTIVE_MS_VIS窓)で空きセクター以外へ`drawAcrasielSpikeThrust`(acrasiel-spear.png・
+  Yのみ非uniformスケールで突き上げ→軽く引き戻し)/burst=`bs==='burst'`で断片5枚
+  `drawAcrasielBurstFragment`(判定半径の1.3倍まではみ出し許容)/warp=`warp-out→warp-in`切替の瞬間と
+  `warp-in`開始の瞬間に`drawWarpFlash`(金色フラッシュ+収束/拡散リング・380ms・判定なし)/
+  nihil=`g-nihil-chant1/2/3`で本体中心のリングを唱ごとに濃く・大きく、3唱目に発射直前リングを追加。
+  **★設計判断(自己解決・仕様変更なし)**: nihilパルスの色は**赤ではなく金**にした。理由=このリングの
+  半径は判定(汎用windupのボディ接触カウンター/後段のgiantDelayedHits爆発円)のどれとも一致せず、
+  赤にするとCLAUDE.mdの新色文法(赤=カウンター対象・判定と厳密一致)に反して「赤いのに当たらない」と
+  誤読させるおそれがあったため。gaze-flash/warp-flashと同じ「判定なし=金」の系統に揃えた。
+  詳細・発火根拠(状態名と行番号)はDEVELOPMENT_LOG.md v0.25.2981参照。typecheck 0/lint 0。
+  ★未決事項なし。
 
 #### 発注仕様: バッチ FX-V2a「スリィエルの sweep / gaze」(社長指示2026-08-07・v0.25.2974発注)
 **社長の言葉**: 「(スリィエルは)武器の絵があるはずだけど、それと一緒に使う斬撃ってこと?」

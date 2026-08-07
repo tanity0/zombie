@@ -51,6 +51,9 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   WIRE_HOP_MS,
   // v0.25.2599: 守護霊の倒れ絵(描画専用の控え。実体が消えた後もしゃがみ絵を出すため)。
   ghostDeathPose, type GhostDeathPose,
+  // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」#4): グレン虚無の三唱(nihil)の詠唱1回ぶんの
+  // 長さ。3唱パルスの進行度を判定と同じ値で計算するため import(手写しリテラルを増やさない)。
+  GLEN_NIHIL_CHANT_MS,
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -1407,6 +1410,22 @@ const ACRASIEL_GAZE_WINDUP_MS_VIS = 450;
 // v0.25.2609の是正(800→1000・800msでは構造的に円から出られない)が判定側にしか届いていなかった
 // =予告円が実際より2割速く「満ちて」見えていた。
 const ACRASIEL_BURST_RADIUS_VIS = 140; // ★未決事項(angelBossTick.tsと同じ叩き台値)。
+
+// FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」・武器主役)。掟どおり既存素材
+// (acrasiel-spear.png)のみ・タイミングは既存の ACRASIEL_SPIKE_ACTIVE_MS_VIS / ACRASIEL_BURST_ACTIVE_MS_VIS
+// の内側で完結させる(新しい判定タイミングは作らない=②「派手さの絵」の追加でしかない)。
+// spike: 突き上げ(下→上)の伸び方。t∈[0,1]=spike active窓の経過率。前半で伸び切り、後半でわずかに
+// 沈む(=「突き出し+引き戻し」・判定は不変=capsuleのタイミングのまま)。
+const acrasielSpikeThrustRise = (t: number): number => {
+  const c = Math.max(0, Math.min(1, t));
+  return c < 0.4 ? c / 0.4 : 1 - 0.22 * ((c - 0.4) / 0.6);
+};
+const ACRASIEL_BURST_FRAG_COUNT = 5; // 4〜6片の中央値(発注仕様どおり)
+// burst: 判定より外へはみ出してよい(分類②)。破片は判定半径の1.3倍まで飛ばす。
+const ACRASIEL_BURST_FRAG_REACH = ACRASIEL_BURST_RADIUS_VIS * 1.3;
+// warp: 消失/出現の繋ぎ(魔法陣素材が来たら差し替え前提の軽い実装)。判定を持たない純粋な
+// 演出なので独自の短い尺(既存の判定タイミングとは無関係)。
+const ACRASIEL_WARP_FLASH_MS_VIS = 380;
 const THIN_BEAM_VIS_HALFWIDTH = 20; // スリィエル環の射出/アクラシエル単眼レーザー(T6細ビーム)の描画半太さ
 // FX-V2a(発注仕様v0.25.2974): gaze-windup終了エッジ(発射の瞬間)に一瞬走らせる金色の視線閃光。
 // 判定は既存のenemy_bolt(弾)がそのまま持つ=これは②「派手さの絵」(減衰のみ・軌跡長=環/本体→aiTarget)。
@@ -2328,6 +2347,12 @@ interface ActorView {
   clawMarkTex?: Texture[];
   // 衝撃波(社長支給素材・v0.25.2414)。**判定の帯1本につき1枚**(翼撃は左右2本同時)。
   shockwaves?: Sprite[];
+  // FX-V2b: アクラシエルの放射棘(spike)実行中、結晶の槍(acrasiel-spearを流用)が地面から
+  // 突き上がる絵。rings/bandsと同じ「セクター(0〜7)ごとに1枚」の配列プール。
+  spikeThrust?: Sprite[];
+  // FX-V2b: アクラシエルの収縮→爆発(burst)の瞬間に放射する槍の断片(acrasiel-spearを小さく
+  // 流用)。同時に最大 ACRASIEL_BURST_FRAG_COUNT 枚。
+  burstFrag?: Sprite[];
   // バッチFX-V3V4: 「物理の絵」(牙/爪/翼/触手/拳)。ATK_ART_* の固定スロットで持つ配列。
   // 生成は遅延(その技を使うボスだけ)。使わないフレームは visible=false にするだけ=draw callは増えない。
   atkArt?: Sprite[];
@@ -4358,6 +4383,12 @@ export class PixiScene {
   // FX-V2a: 「直前フレームにgaze-windup中だった」敵のid(windup終了エッジ=発射の瞬間を捉える
   // ための1フレーム記憶。dashWasOnと同じ作法)。
   private gazeWindupWasOn = new Set<string>();
+  // FX-V2b: アクラシエルの warp-out/warp-in 立ち上がり・立ち下がりエッジ検出(dashWasOnと同じ作法)。
+  // 消失位置(warp-out中の現在地)はteleportで上書きされる前に毎フレーム焼き直す必要があるため、
+  // 専用のMapで保持する(gazeWindupWasOnのSetだけでは元位置が拾えない)。
+  private warpOutWasOn = new Set<string>();
+  private warpInWasOn = new Set<string>();
+  private acrasielWarpOutPos = new Map<string, { x: number; y: number }>();
   private latchFx(key: string, active: boolean, durMs: number, now: number, data: () => number[]):
     { t: number; d: number[]; t0: number } | null {
     let L = this.fxLatches.get(key);
@@ -4474,6 +4505,8 @@ export class PixiScene {
     span(view.slash);
     if (view.clawMarks) for (const s of view.clawMarks) span(s);
     if (view.shockwaves) for (const s of view.shockwaves) span(s);
+    if (view.spikeThrust) for (const s of view.spikeThrust) span(s);
+    if (view.burstFrag) for (const s of view.burstFrag) span(s);
     if (minY > maxY) return 1; // このフレームは何も描いていない
     const y = Math.max(minY, Math.min(this.seeThroughPlayer.footY, maxY));
     return this.horizonActorAlpha(y) * this.foregroundActorAlpha(y);
@@ -10326,6 +10359,9 @@ export class PixiScene {
         this.clearFxLatches(`${id}:`); // 出し切り待ちのエフェクト記録も片付ける(v0.25.2408)
         this.dashWasOn.delete(id);
         this.gazeWindupWasOn.delete(id);
+        this.warpOutWasOn.delete(id);
+        this.warpInWasOn.delete(id);
+        this.acrasielWarpOutPos.delete(id);
         this.enemies.delete(id);
         this.enemyJumpHop.delete(id);
         this.enemyBlockFall.delete(id);
@@ -12629,6 +12665,9 @@ export class PixiScene {
     if (view.shockwaves) for (const s of view.shockwaves) s.visible = false;
     // FX-V3V4: 物理の攻撃絵(牙/爪/翼/触手/拳)も同じ作法で既定OFF。点けるのは各技の分岐だけ。
     if (view.atkArt) for (const s of view.atkArt) if (s) s.visible = false;
+    // FX-V2b: アクラシエルの棘の突き上げ/爆ぜの破片も同じ作法で既定OFF。
+    if (view.spikeThrust) for (const s of view.spikeThrust) if (s) s.visible = false;
+    if (view.burstFrag) for (const s of view.burstFrag) if (s) s.visible = false;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       // §6.33(監査指摘7): 新挙動では線の向きを判定と同じ式(aiTarget−現在のボス中心)で引く。
@@ -13352,6 +13391,10 @@ export class PixiScene {
         const prog = bs === 'spike-windup'
           ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_SPIKE_WINDUP_MS_VIS))
           : 1;
+        // FX-V2b #1: 実行中(spike active)だけ、結晶の槍が地面から突き上がる(判定=帯は不変・添え絵)。
+        const spikeActiveT = bs === 'spike'
+          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_SPIKE_ACTIVE_MS_VIS))
+          : 0;
         for (let sector = 0; sector < 8; sector++) {
           if ((mask & (1 << sector)) !== 0) continue; // 空きセクター=描かない(判定と一致)
           const ang = sector * (Math.PI / 4);
@@ -13359,6 +13402,10 @@ export class PixiScene {
           // idx=sector: 同フレームに最大8本まで同時に生きるので、rings(連続ジャンプ)と同じ
           // idx方式でview.bandsのスロットを分ける(1本しか持たないと最後のセクターしか素材が出ない)。
           this.drawAngelZoneCapsule(view, o, cx, cy, ex, ey, THOR_HARAI_VIS_HALFWIDTH, prog, now, sector);
+          if (bs === 'spike') {
+            this.drawAcrasielSpikeThrust(view, sector, cx + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS * 0.55,
+              cy + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS * 0.55, ang, spikeActiveT);
+          }
         }
       }
       // ---- アクラシエル: 結晶の槍(設置・§6.28-19)。溜め中だけ本体前方に1本「構え」表示(掟W9)。
@@ -13386,6 +13433,12 @@ export class PixiScene {
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, ACRASIEL_BURST_RADIUS_VIS, 0xff3b3b, 0.5 + 0.3 * pulse);
         else o.ellipse(cx, cy, ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
+        // FX-V2b #2: 結晶の槍の断片が4〜6片(ACRASIEL_BURST_FRAG_COUNT)放射する(既存リングに添える・②)。
+        const burstActiveT = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_BURST_ACTIVE_MS_VIS));
+        for (let i = 0; i < ACRASIEL_BURST_FRAG_COUNT; i++) {
+          const fragAng = (Math.PI * 2 / ACRASIEL_BURST_FRAG_COUNT) * i;
+          this.drawAcrasielBurstFragment(view, i, cx, cy, fragAng, burstActiveT);
+        }
       }
       // ---- アクラシエル: 単眼レーザー(小技)=T6線。唯一「図形を出す」小技(§6.28-19「向きが無い」の例外) ----
       else if (scriptActive && e.type === 'acrasiel' && bs === 'gaze-windup') {
@@ -13614,12 +13667,17 @@ export class PixiScene {
           if (elapsed + FX_IMPACT_TOLERANCE_MS < spikeL.d[0]) {
             this.fxLatches.delete(`${e.id}:acrasiel-spike-complete`);
           } else if (elapsed < spikeL.d[0] + spikeL.d[1]) {
+            // FX-V2b #1: 生きているブロック(bs==='spike')と同じ突き上げをここでも継続描画する
+            // (カウンター等でstateが先へ進んでも、焼き付けた尺(d[1])ぶんは完走させる=既存の掟)。
+            const spikeTailT = Math.max(0, Math.min(1, (elapsed - spikeL.d[0]) / Math.max(1, spikeL.d[1])));
             for (let sector = 0; sector < 8; sector++) {
               if ((spikeL.d[4] & (1 << sector)) !== 0) continue;
               const ang = sector * (Math.PI / 4);
               const ex = spikeL.d[2] + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS;
               const ey = spikeL.d[3] + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS;
               this.drawAngelZoneCapsule(view, o, spikeL.d[2], spikeL.d[3], ex, ey, THOR_HARAI_VIS_HALFWIDTH, 1, now, sector);
+              this.drawAcrasielSpikeThrust(view, sector, spikeL.d[2] + Math.cos(ang) * ACRASIEL_SPIKE_RANGE_VIS * 0.55,
+                spikeL.d[3] + Math.sin(ang) * ACRASIEL_SPIKE_RANGE_VIS * 0.55, ang, spikeTailT);
             }
           }
         }
@@ -13640,6 +13698,12 @@ export class PixiScene {
             o.ellipse(burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).fill({ color: 0xff2a2a, alpha: 0.18 + 0.12 * pulse });
             if (FX_RING_ENABLED) this.drawTelegraphRing(view, burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, 0xff3b3b, 0.5 + 0.3 * pulse);
             else o.ellipse(burstL.d[2], burstL.d[3], ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
+            // FX-V2b #2: 生きているブロックと同じ断片放射をここでも完走させる(既存の掟)。
+            const burstTailT = Math.max(0, Math.min(1, (elapsed - burstL.d[0]) / Math.max(1, burstL.d[1])));
+            for (let i = 0; i < ACRASIEL_BURST_FRAG_COUNT; i++) {
+              const fragAng = (Math.PI * 2 / ACRASIEL_BURST_FRAG_COUNT) * i;
+              this.drawAcrasielBurstFragment(view, i, burstL.d[2], burstL.d[3], fragAng, burstTailT);
+            }
           }
         }
       }
@@ -13660,6 +13724,32 @@ export class PixiScene {
       );
       if (flashL) this.drawGazeFlash(o, flashL.d[0], flashL.d[1], flashL.d[2], flashL.d[3], flashL.t);
       if (gazeWindupOn) this.gazeWindupWasOn.add(e.id); else this.gazeWindupWasOn.delete(e.id);
+    }
+    // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」#3): アクラシエルの転移(warp)の繋ぎ。
+    // 消失(warp-out→warp-in切替の瞬間)と出現(warp-in開始の瞬間)に金色フラッシュ+短いリングを
+    // 一瞬だけ出す(判定なし=②。魔法陣素材が来たら差し替え前提の軽い実装)。
+    // 消失位置はwarp-out中の現在地(=元の立ち位置)。angelBossTick.tsのwarp-out終了処理はpatch.x/y
+    // をteleport先へ即書き換えるため、bs==='warp-in'の時点では元位置がcx/cyから取れない。
+    // よってwarp-out中に毎フレーム焼き直しておき、立ち下がりエッジで最後の値を読む
+    // (gazeWindupWasOnと同じ「立ち上がり/立ち下がりの1フレーム記憶」の作法)。
+    if (e.type === 'acrasiel') {
+      const warpOutOn = e.bossState === 'warp-out';
+      if (warpOutOn) this.acrasielWarpOutPos.set(e.id, { x: cx, y: cy });
+      const vanishPos = this.acrasielWarpOutPos.get(e.id) ?? { x: cx, y: cy };
+      const vanishL = this.latchFx(
+        `${e.id}:warp-vanish`, !warpOutOn && this.warpOutWasOn.has(e.id) && e.bossState === 'warp-in', ACRASIEL_WARP_FLASH_MS_VIS, now,
+        () => [vanishPos.x, vanishPos.y],
+      );
+      if (vanishL) this.drawWarpFlash(o, vanishL.d[0], vanishL.d[1], vanishL.t, 'in');
+      if (warpOutOn) this.warpOutWasOn.add(e.id); else this.warpOutWasOn.delete(e.id);
+
+      const warpInOn = e.bossState === 'warp-in';
+      const appearL = this.latchFx(
+        `${e.id}:warp-appear`, warpInOn && !this.warpInWasOn.has(e.id), ACRASIEL_WARP_FLASH_MS_VIS, now,
+        () => [cx, cy],
+      );
+      if (appearL) this.drawWarpFlash(o, appearL.d[0], appearL.d[1], appearL.t, 'out');
+      if (warpInOn) this.warpInWasOn.add(e.id); else this.warpInWasOn.delete(e.id);
     }
     // 突進の土煙(社長裁定v0.25.2427「全部入れたい」)。**蹴り出し**と**止まった瞬間**の2発。
     // 対象は「突進という動作を持つ全員」で洗う(v0.25.2426の教訓): 汎用 `charge`(犬/lab-zombie-2/
@@ -13834,6 +13924,30 @@ export class PixiScene {
         view.sprite.tint = 0xbfe8ff;
       } else {
         view.sprite.tint = 0xffffff;
+      }
+      // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」#4): 虚無の三唱(nihil)を唱ごとに濃く・
+      // 大きく(1<2<3)。3唱目は発射予兆として明確に強くする(学習点④「数える」の視覚化の強化)。
+      // 図形のみ・新素材なし。判定は不変(汎用windupのカウンター/giantDelayedHitsの爆発円がそのまま
+      // 持つ)=これは②「派手さの絵」の追加。
+      // 色は赤ではなく金(drawGazeFlash/drawWarpFlashと同じ「判定を持たない魔力の高まり」トーン)に
+      // 揃える(社長決定2026-08-07の色文法: 赤=カウンター対象・判定と厳密一致)。このリングの半径は
+      // 判定(汎用windupのボディ接触カウンター/後段のgiantDelayedHits爆発円)のどれとも一致しないため、
+      // 赤にすると「赤いのに当たらない/この範囲が危険」と誤読させる恐れがある=①には分類しない。
+      if (gph === 'g-nihil-chant1' || gph === 'g-nihil-chant2' || gph === 'g-nihil-chant3') {
+        const chantIdx = gph === 'g-nihil-chant1' ? 1 : gph === 'g-nihil-chant2' ? 2 : 3;
+        const chantRemain = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+        const chantT = Math.max(0, Math.min(1, 1 - chantRemain / GLEN_NIHIL_CHANT_MS));
+        const pulse = 0.5 + 0.5 * Math.sin(now / 90);
+        const strength = chantIdx / 3; // 1唱=0.33 / 2唱=0.66 / 3唱=1.0(濃く)
+        const ringR = Math.max(e.width, e.height) * (0.42 + 0.08 * chantIdx) * (0.9 + 0.12 * chantT); // 大きく(1<2<3)
+        o.ellipse(cx, cy, ringR, ringR).fill({ color: 0xffcf5c, alpha: (0.04 + 0.08 * strength) + 0.05 * strength * pulse });
+        o.ellipse(cx, cy, ringR, ringR).stroke({ width: 2 + 2 * strength, color: 0xffe0a0, alpha: (0.22 + 0.35 * strength) + 0.15 * strength * pulse });
+        if (chantIdx === 3) {
+          // 3唱目だけ: 内から外へ抜けるリングを追加し、「もうすぐ来る」をひときわ強く伝える。
+          const burstT = (now / 260) % 1;
+          const outR = ringR * (1 + 0.7 * burstT);
+          o.ellipse(cx, cy, outR, outR).stroke({ width: 3, color: 0xfff3d0, alpha: 0.55 * (1 - burstT) });
+        }
       }
       // 砂埃(B-0)は**着弾イベント**に紐づける(社長報告v0.25.2412「まだカウンターすると砂埃が出ない」)。
       //
@@ -14341,6 +14455,8 @@ export class PixiScene {
       if (view.slash?.visible) view.slash.alpha *= teleFade;
       if (view.clawMarks) for (const s of view.clawMarks) if (s.visible) s.alpha *= teleFade;
       if (view.shockwaves) for (const s of view.shockwaves) if (s.visible) s.alpha *= teleFade;
+      if (view.spikeThrust) for (const s of view.spikeThrust) if (s.visible) s.alpha *= teleFade;
+      if (view.burstFrag) for (const s of view.burstFrag) if (s.visible) s.alpha *= teleFade;
     }
 
     // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
@@ -14516,6 +14632,72 @@ export class PixiScene {
     if (decay <= 0.01) return;
     o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2 + 6 * decay, color: 0xffcb5c, alpha: 0.75 * decay, cap: 'round' });
     o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * decay, color: 0xfff6d8, alpha: decay, cap: 'round' });
+  }
+
+  // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」#1): アクラシエルの放射棘(spike)実行中、
+  // 結晶の槍(acrasielSpearPool/drawAcrasielSpearReadyと同じ acrasiel-spear.png・同じ表示長
+  // ACRASIEL_SPEAR_VIS_LEN)がセクター方向へ地面から突き上がる。①「危険を伝える絵」=判定
+  // (drawAngelZoneCapsuleの帯)と同じ中心・同じ方向・同じ「空きセクターには出さない」ルールで
+  // 揃える。sprite自体は判定を持たない添え物なので、伸び(scale.y)だけをtで変化させ、
+  // 判定(capsuleのfill/stroke)には一切触らない。
+  private drawAcrasielSpikeThrust(view: ActorView, idx: number, originX: number, originY: number, angle: number, t: number): void {
+    const tex = getTexture('acrasiel-spear');
+    if (!tex || t <= 0) { const sp = view.spikeThrust?.[idx]; if (sp) sp.visible = false; return; }
+    if (!view.spikeThrust) view.spikeThrust = [];
+    let sp = view.spikeThrust[idx];
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(0.5, 0.85); // acrasielSpearPoolと同じアンカー(地面に刺さる根元)
+      view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
+      view.spikeThrust[idx] = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    const rise = Math.max(0.05, acrasielSpikeThrustRise(t));
+    const baseScale = ACRASIEL_SPEAR_VIS_LEN / Math.max(1, tex.height);
+    sp.rotation = angle + Math.PI / 2; // drawAcrasielSpearReady/acrasielSpearPoolと同じ向きの規約
+    sp.scale.set(baseScale, baseScale * rise); // Yだけ伸ばす=根元(anchor)から生えてくる見え方
+    sp.position.set(originX, originY);
+    sp.alpha = Math.min(1, t / 0.2);
+    sp.visible = true;
+  }
+
+  // FX-V2b #2: 収縮→爆発(burst)の瞬間に飛び散る槍(結晶)の断片。判定はACRASIEL_BURST_RADIUS_VIS
+  // の円(既存・不変)のみが持つ。断片は②「派手さの絵」なので判定より外(ACRASIEL_BURST_FRAG_REACH)
+  // まで飛ばし、既存のリングに添える(掟「迷ったら派手側に倒す」)。
+  private drawAcrasielBurstFragment(view: ActorView, idx: number, originX: number, originY: number, angle: number, t: number): void {
+    const tex = getTexture('acrasiel-spear');
+    if (!tex || t <= 0 || t >= 1) { const sp = view.burstFrag?.[idx]; if (sp) sp.visible = false; return; }
+    if (!view.burstFrag) view.burstFrag = [];
+    let sp = view.burstFrag[idx];
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(0.5, 0.5); // 破片=中心基準(根元アンカーの「設置物」ではない)
+      view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
+      view.burstFrag[idx] = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    const dist = t * ACRASIEL_BURST_FRAG_REACH;
+    const fx = originX + Math.cos(angle) * dist, fy = originY + Math.sin(angle) * dist;
+    const baseScale = (ACRASIEL_SPEAR_VIS_LEN * 0.32) / Math.max(1, tex.height); // 全長の1/3程度=「割れた破片」
+    sp.rotation = angle + Math.PI / 2 + t * 2.4; // 飛びながら回転(判定なしなので自由に演出してよい)
+    sp.scale.set(baseScale * (1 - 0.35 * t));
+    sp.position.set(fx, fy);
+    sp.alpha = 1 - t;
+    sp.visible = true;
+  }
+
+  // FX-V2b #3: warp-out→warp-in(消失)/warp-in開始(出現)の瞬間だけ光る金色フラッシュ+短いリング
+  // (魔法陣素材が来るまでの軽い繋ぎ)。判定を一切持たない②「派手さの絵」。mode='in'=収束(消える)/
+  // 'out'=拡散(現れる)。既存の共有per-frame Graphics(o)に相乗り=新規オブジェクトを増やさない。
+  private drawWarpFlash(o: Graphics, x: number, y: number, t: number, mode: 'in' | 'out'): void {
+    const decay = Math.max(0, 1 - t);
+    if (decay <= 0.01) return;
+    const spread = mode === 'in' ? decay : Math.min(1, t); // 収束=時間とともに縮む/拡散=時間とともに広がる
+    const r1 = 16 + 50 * spread;
+    const r2 = 8 + 26 * spread;
+    o.circle(x, y, r1).stroke({ width: 3, color: 0xffcf5c, alpha: 0.6 * decay });
+    o.circle(x, y, r2).stroke({ width: 2, color: 0xfff3d0, alpha: 0.75 * decay });
+    o.circle(x, y, 12 * decay).fill({ color: 0xfff3d0, alpha: 0.55 * decay });
   }
 
   private drawStunReticle(g: Graphics, cx: number, cy: number, size: number, now: number, color = 0xfacc15) {
