@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2963',
+    items: [
+      'ボスモードの出撃ボタンの文言を「練習する」から「演習する」に変更しました。',
+    ],
+  },
+  {
     version: '0.25.2962',
     items: [
       'ボスが踏みつけ・ジャンプ・潜りなど「一瞬いなくなる技」を使っている最中に、「ボスが戦闘域を離れようとしている」の警告が誤って出る問題を修正しました(技の実行中は離脱判定を止めます)。',

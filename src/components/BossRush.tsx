@@ -124,7 +124,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
           type="button"
           onClick={() => onStartPractice(open, cls)}
           className="w-full border border-emerald-400/50 bg-emerald-500/15 px-3 py-3 text-[14px] font-bold tracking-wide text-emerald-100 active:bg-emerald-500/30"
-        >練習する</button>
+        >演習する</button>
       </div>
     );
   }
