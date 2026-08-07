@@ -1,5 +1,26 @@
 # Development Log
 
+## v0.25.2975 — FX-V2a実装: スリィエルのsweep(環の振り抜き)/gaze(視線閃光)【2026-08-07 19:20 JST】
+research/FX_GAP_LEDGER.md「発注仕様: バッチFX-V2a」を実装(社長方針2026-08-07更新版=環が薙ぎの
+主役)。
+- **sweep**: `syncSurielRing`が`bossState==='sweep'`(SURIEL_SWEEP_ACTIVE_MS=220ms)の間だけ、
+  常設の環スプライト(ring1)をaiFrom→aiTargetへ位置補間+swordSwingPose('wide')のscaleMultで振り
+  抜く(浮遊位置ringX/Yは参照せず同じring1を動かすだけなので二重表示なし)。既存のfx/slash-streak-*
+  を軌跡の添え物として1枚(`drawSurielSweepStreak`・新規pooled Sprite・enemy.id keyed)。赤ゾーン
+  (drawAngelZoneCapsule)は既存のまま不変。
+- **gaze**: gaze-windup終了エッジ(dashWasOnと同じ「1フレーム記憶で立ち下がりを検出」の作法=
+  新設の`gazeWindupWasOn`)でfxLatchesへ1回だけ焼き付け、金色の閃光(`drawGazeFlash`・~200ms減衰・
+  既存の共有per-frame Graphicsへ相乗り)。起点はsuriel=環の位置(ringX/Y)、acrasiel=本体中心
+  (環を持たないため)。同じ動作として両ボスへ配線(掟)。判定は既存enemy_bolt弾のまま不変。
+- 発火確認: sweepは`e.bossState`直読み(angelBossTick.tsの'sweep'と1:1)。gazeは
+  angelBossTick.ts 1806/1922(suriel)・2008/2128(acrasiel)のgaze-windup→gaze-recover遷移エッジで
+  必ず1回armする(dashkick/dashstopと同型のfalling-edge latch)。
+- 負荷: 1/10(pooled Sprite1枚+per-frame共有Graphicsへの追加ストローク2本のみ・強glowなし・新規
+  オブジェクト増なし)。
+- 検証: typecheck 0 / lint エラー0。実機確認は社長。
+- ★未決事項: なし(専用の斬撃絵の要否は判断保留せず既存streak流用で着地。必要なら社長の実機確認後に
+  素材リクエストとして別途)。
+
 ## v0.25.2974 — §6.37設計書v3(再監査11件反映)+FX-V2a発注(武器主役方針)【2026-08-07 19:08 JST】
 - §6.37再監査(Opus)11件を反映: 床は「stripH/t固定+本数72→180」の延長方式(床の見た目不変・
   画面スロット吸着案(a)は演出変更のため不採用)/上接合はfarBackdropのzoom連動下延長(s7farext一般化・

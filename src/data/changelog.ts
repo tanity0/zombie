@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.2975',
+    items: [
+      'スリィエルの薙ぎ(sweep)実行中、武器である環が振り抜かれる演出を追加。',
+      'スリィエル/アクラシエルの視線攻撃(gaze)発射の瞬間に、金色の閃光を追加。',
+    ],
+  },
+  {
     version: '0.25.2974',
     items: [
       'ゲーム内容の変更はありません(§6.37設計書v3・スリィエルの技エフェクト発注仕様の更新)。',

@@ -52,6 +52,13 @@
 - 掟: 既存素材のみ・強glow禁止・pooled sprite/Graphics・判定/タイミング不変・全て発火することを
   コード上で確認(発火しない配線の前科v0.25.2417)。負荷目安1/10。
 - ゲート: typecheck 0 + lint エラー0。版管理: bump+changelog+DEVELOPMENT_LOG(JST=date実測)+本台帳更新。
+- [x] **実装完了(v0.25.2975・Sonnet実装・社長の実機確認待ち)**: sweep=`syncSurielRing`が
+  `bossState==='sweep'`の間だけring1をaiFrom→aiTargetへ振り抜き(swordSwingPose流用)、
+  `drawSurielSweepStreak`で既存slash-streak-*を軌跡に1枚添え。gaze=`gazeWindupWasOn`
+  (dashWasOnと同型のfalling-edge検出)でgaze-windup→gaze-recover遷移エッジを捉え、
+  `drawGazeFlash`(金色・~200ms減衰)をsuriel(環位置)/acrasiel(本体中心)の両方へ配線。
+  専用の斬撃絵は不要と判断(既存streakで着地・★未決事項なし)。typecheck 0/lint 0。
+  詳細はDEVELOPMENT_LOG.md v0.25.2975参照。
 
 ### V3: 新素材が要る=社長支給待ちリスト(物理の絵)
 | 素材 | 使う技 |

@@ -1405,6 +1405,9 @@ const ACRASIEL_GAZE_WINDUP_MS_VIS = 450;
 // =予告円が実際より2割速く「満ちて」見えていた。
 const ACRASIEL_BURST_RADIUS_VIS = 140; // ★未決事項(angelBossTick.tsと同じ叩き台値)。
 const THIN_BEAM_VIS_HALFWIDTH = 20; // スリィエル環の射出/アクラシエル単眼レーザー(T6細ビーム)の描画半太さ
+// FX-V2a(発注仕様v0.25.2974): gaze-windup終了エッジ(発射の瞬間)に一瞬走らせる金色の視線閃光。
+// 判定は既存のenemy_bolt(弾)がそのまま持つ=これは②「派手さの絵」(減衰のみ・軌跡長=環/本体→aiTarget)。
+const GAZE_FLASH_MS_VIS = 200;
 
 // ★v0.25.2719(社長決定「レアは本体に色ついてれば影は他と一緒でいい。どちらにしても見分けられなかった
 // 名残りなので」): 色付き個体の影の色分け(青/紫/赤 tint + 濃さ×2.1〜2.3)を**廃止**し、
@@ -2652,6 +2655,10 @@ export class PixiScene {
   // §6.28-18(バッチM62): スリィエルの環(suriel-ring)。待機中も頭上に浮遊描画するため、boss.idごとに
   // 環1本目/2本目(Phase2)の2枚のSpriteを持つ(常時表示=Container不要・単純な位置更新のみ)。
   private surielRingSprites = new Map<string, { ring1: Sprite; ring2: Sprite }>();
+  // FX-V2a(発注仕様v0.25.2974・社長方針2026-08-07更新): 薙ぎ(sweep)実行中だけ環の軌跡に添える
+  // 斬撃ストリーク1枚(既存fx/slash-streak-*流用)。単純な1枚Sprite=thorSlashFx等のContainer3枚
+  // 構成(streak+burst+katana)は要らない(武器絵は環そのものが担うため)。
+  private surielSweepStreakFx = new Map<string, Sprite>();
   // §6.28-19(バッチM63): アクラシエルの結晶の槍(acrasielSpears)。設置中の槍スプライト+T5円テレグラフ
   // (ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
   private acrasielSpearGfx = new Graphics();
@@ -4320,6 +4327,9 @@ export class PixiScene {
   private fxLatches = new Map<string, { t0: number; dur: number; armed: boolean; d: number[] }>();
   // 「直前フレームに突進していた」敵のid(突進が明けた瞬間の土煙を出すための1フレーム記憶)。
   private dashWasOn = new Set<string>();
+  // FX-V2a: 「直前フレームにgaze-windup中だった」敵のid(windup終了エッジ=発射の瞬間を捉える
+  // ための1フレーム記憶。dashWasOnと同じ作法)。
+  private gazeWindupWasOn = new Set<string>();
   private latchFx(key: string, active: boolean, durMs: number, now: number, data: () => number[]):
     { t: number; d: number[]; t0: number } | null {
     let L = this.fxLatches.get(key);
@@ -5986,7 +5996,7 @@ export class PixiScene {
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncSlasherRing(s.player, s.realGameTime);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
-    this.syncSurielRing(s.enemies, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
+    this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
@@ -10224,6 +10234,7 @@ export class PixiScene {
         view.container.destroy({ children: true });
         this.clearFxLatches(`${id}:`); // 出し切り待ちのエフェクト記録も片付ける(v0.25.2408)
         this.dashWasOn.delete(id);
+        this.gazeWindupWasOn.delete(id);
         this.enemies.delete(id);
         this.enemyJumpHop.delete(id);
         this.enemyBlockFall.delete(id);
@@ -10241,6 +10252,8 @@ export class PixiScene {
         if (spearReadySp) { spearReadySp.destroy(); this.acrasielSpearReadySprites.delete(id); }
         const ringSp = this.surielRingSprites.get(id);
         if (ringSp) { ringSp.ring1.destroy(); ringSp.ring2.destroy(); this.surielRingSprites.delete(id); }
+        const sweepStreakSp = this.surielSweepStreakFx.get(id);
+        if (sweepStreakSp) { sweepStreakSp.destroy(); this.surielSweepStreakFx.delete(id); }
         const nameLabel = this.namedFoeLabels.get(id);
         if (nameLabel) { nameLabel.destroy(); this.namedFoeLabels.delete(id); }
       }
@@ -10418,7 +10431,7 @@ export class PixiScene {
   // PACING_PUZZLE.md §6.28-18(バッチM62): スリィエルの環(suriel-ring)。ringX/Y(+Phase2のring2X/Y)は
   // angelBossTick.tsが計算済み(store)なので、ここは読んで位置を反映するだけ(CLAUDE.md「Pixiは描画専門」)。
   // 待機中も頭上に浮遊描画=常時表示(社長指示「武器絵が読みの主役になる唯一のボス」)。
-  private syncSurielRing(enemies: Enemy[], now: number) {
+  private syncSurielRing(enemies: Enemy[], gameTime: number, now: number) {
     const seen = new Set<string>();
     const tex = getTexture('suriel-ring');
     if (tex) {
@@ -10435,8 +10448,23 @@ export class PixiScene {
         }
         const spin = now / 260;
         const sc = SURIEL_RING_VIS_D / Math.max(1, tex.width);
-        views.ring1.position.set(e.ringX, e.ringY);
-        views.ring1.scale.set(sc);
+        // FX-V2a(社長方針2026-08-07): 薙ぎ(sweep)実行中だけ、環そのものを薙ぎの線分
+        // (aiFrom→aiTarget)に沿って振り抜く。浮遊位置(ringX/Y)は使わず同じring1を動かすだけ
+        // なので二重表示にはならない(掟「振っている間は浮遊側を消す」=ここでは浮遊位置を単に
+        // 参照しないことで満たす)。判定/タイミングはangelBossTick.ts(SURIEL_SWEEP_ACTIVE_MS)の
+        // ままで描画は読むだけ。
+        if (e.bossState === 'sweep') {
+          const remain = Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime);
+          const t = Math.max(0, Math.min(1, 1 - remain / SURIEL_SWEEP_ACTIVE_MS_VIS));
+          const fx = e.aiFromX ?? e.ringX, fy = e.aiFromY ?? e.ringY;
+          const tx = e.aiTargetX ?? fx, ty = e.aiTargetY ?? fy;
+          const pose = swordSwingPose('wide', t);
+          views.ring1.position.set(fx + (tx - fx) * t, fy + (ty - fy) * t);
+          views.ring1.scale.set(sc * pose.scaleMult);
+        } else {
+          views.ring1.position.set(e.ringX, e.ringY);
+          views.ring1.scale.set(sc);
+        }
         views.ring1.rotation = spin;
         views.ring1.visible = true;
         if (e.ring2X !== undefined && e.ring2Y !== undefined) {
@@ -13417,6 +13445,10 @@ export class PixiScene {
       // 武器以外でAI州へ直結していた実行FXも同じ作法へ統一。既存の牙・爪・翼・拳・衝撃波・
       // 土煙・地割れは既にlatch済みなので、ここでは未配線だった天使の線/円/帯だけを補う。
       if (e.type === 'suriel') {
+        // FX-V2a: 薙ぎ(sweep)実行中だけ環の軌跡に添えるストリーク。既定で非表示にし、実行状態の
+        // 間だけ下で表示する(thorSlashFxと同じ「既定オフ→実行時だけオン」の作法)。
+        const sweepStreakSp = this.surielSweepStreakFx.get(e.id);
+        if (sweepStreakSp) sweepStreakSp.visible = false;
         const beamWind = bs === 'ring-beam-windup', beamActive = bs === 'ring-active';
         let bdx = swordTx - swordFx, bdy = swordTy - swordFy;
         const bdl = Math.hypot(bdx, bdy) || 1; bdx /= bdl; bdy /= bdl;
@@ -13471,6 +13503,13 @@ export class PixiScene {
             this.drawAngelZoneCapsule(view, o, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], THOR_HARAI_VIS_HALFWIDTH, 1, now);
           }
         }
+        // FX-V2a(社長方針2026-08-07): 実行の瞬間(sweep)だけ、環の振り(syncSurielRing)に添えて
+        // 斬撃ストリークを1枚出す。進行度はsyncSurielRing側の環の振りと同じ式(swordRemain基準)で
+        // 揃える=絵がズレない。
+        if (sweepActive) {
+          const sweepT = Math.max(0, Math.min(1, 1 - swordRemain / SURIEL_SWEEP_ACTIVE_MS_VIS));
+          this.drawSurielSweepStreak(e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH, sweepT);
+        }
       } else if (e.type === 'acrasiel') {
         const spikeWind = bs === 'spike-windup', spikeActive = bs === 'spike';
         const spikeL = this.latchFx(
@@ -13513,6 +13552,23 @@ export class PixiScene {
           }
         }
       }
+    }
+    // FX-V2a(発注仕様v0.25.2974): gaze(視線)発射の瞬間=gaze-windup終了エッジに、金色の視線閃光を
+    // 一瞬走らせる(判定はenemy_bolt弾がそのまま持つ=②「派手さの絵」)。「同じ動作を持つ全員に」
+    // (掟)= suriel(環の位置から)/acrasiel(本体中心から。環を持たないボスのため)の両方へ同じ動作
+    // として配線する。dashWasOn(§突進の土煙)と全く同じ「立ち上がり/立ち下がりの1フレーム記憶」の
+    // 作法でwindup終了エッジを検出する。
+    if (e.type === 'suriel' || e.type === 'acrasiel') {
+      const gazeWindupOn = e.bossState === 'gaze-windup';
+      const gox = e.type === 'suriel' ? (e.ringX ?? cx) : cx;
+      const goy = e.type === 'suriel' ? (e.ringY ?? cy) : cy;
+      const gtx = e.aiTargetX ?? gox, gty = e.aiTargetY ?? goy;
+      const flashL = this.latchFx(
+        `${e.id}:gaze-flash`, !gazeWindupOn && this.gazeWindupWasOn.has(e.id), GAZE_FLASH_MS_VIS, now,
+        () => [gox, goy, gtx, gty],
+      );
+      if (flashL) this.drawGazeFlash(o, flashL.d[0], flashL.d[1], flashL.d[2], flashL.d[3], flashL.t);
+      if (gazeWindupOn) this.gazeWindupWasOn.add(e.id); else this.gazeWindupWasOn.delete(e.id);
     }
     // 突進の土煙(社長裁定v0.25.2427「全部入れたい」)。**蹴り出し**と**止まった瞬間**の2発。
     // 対象は「突進という動作を持つ全員」で洗う(v0.25.2426の教訓): 汎用 `charge`(犬/lab-zombie-2/
@@ -14358,6 +14414,17 @@ export class PixiScene {
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
     o.moveTo(fx, fy).lineTo(ex, ey).stroke({ width: 2 + (halfWidth - 2) * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse) });
     o.moveTo(fx, fy).lineTo(ex, ey).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+  }
+
+  // FX-V2a(発注仕様v0.25.2974): gaze-windup終了エッジ(発射の瞬間)に一瞬走る金色の視線閃光。
+  // drawAngelBeamLine(赤=判定を伝える絵①)とは別物: これは判定を持たない②「派手さの絵」なので
+  // 色を金に変え、判定より寿命の短い減衰(~200ms)だけで消える。既存の共有per-frame Graphics(o)
+  // に相乗りする=新規オブジェクトを増やさない(pooled)。
+  private drawGazeFlash(o: Graphics, fx: number, fy: number, tx: number, ty: number, t: number) {
+    const decay = Math.max(0, 1 - t);
+    if (decay <= 0.01) return;
+    o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2 + 6 * decay, color: 0xffcb5c, alpha: 0.75 * decay, cap: 'round' });
+    o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * decay, color: 0xfff6d8, alpha: decay, cap: 'round' });
   }
 
   private drawStunReticle(g: Graphics, cx: number, cy: number, size: number, now: number, color = 0xfacc15) {
@@ -17743,6 +17810,33 @@ export class PixiScene {
     }
   }
 
+  // FX-V2a(発注仕様v0.25.2974・社長方針2026-08-07): スリィエルの薙ぎ(sweep)実行中、環そのものの
+  // 振り(syncSurielRing側)に添える斬撃ストリーク1枚。武器絵の主役は環なので、drawKatanaSlashの
+  // burst/katanaパーツは使わず streak だけを単純な1枚Spriteで出す(pooled・enemy.id keyed)。
+  private drawSurielSweepStreak(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number) {
+    let sp = this.surielSweepStreakFx.get(id);
+    if (!sp) {
+      sp = new Sprite(); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
+      this.L.effectLayer.addChild(sp);
+      this.surielSweepStreakFx.set(id, sp);
+    }
+    const ref = getTexture('fx/slash-streak-4');
+    if (!ref) { sp.visible = false; return; }
+    const length = Math.hypot(tx - fx, ty - fy);
+    const angle = swordAttackAngle(fx, fy, tx, ty);
+    const sc = length / Math.max(1, ref.width);
+    const vsc = (halfWidth * 2) / Math.max(1, ref.height);
+    const tt = Math.max(0, Math.min(1, t));
+    const idx = tt < 0.5 ? Math.min(4, Math.floor((tt / 0.5) * 5)) : Math.max(0, 4 - Math.floor(((tt - 0.5) / 0.5) * 5));
+    const stex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
+    if (sp.texture !== stex) sp.texture = stex;
+    sp.position.set((fx + tx) / 2, (fy + ty) / 2);
+    sp.rotation = angle;
+    sp.scale.set(sc, vsc);
+    sp.alpha = tt < 0.5 ? (0.35 + 0.5 * (tt / 0.5)) : (1 - Math.max(0, (tt - 0.85) / 0.15));
+    sp.visible = true;
+  }
+
   private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number, style: SwordSwingStyle = 'wide') {
     this.drawKatanaSlash(
       this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE, THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
@@ -19015,6 +19109,7 @@ export class PixiScene {
     for (const o of this.jibrilLanternFirePool.values()) o.destroy();
     for (const o of this.acrasielSpearReadySprites.values()) o.destroy();
     for (const o of this.surielRingSprites.values()) { o.ring1.destroy(); o.ring2.destroy(); }
+    for (const o of this.surielSweepStreakFx.values()) o.destroy();
     for (const o of this.acrasielSpearPool.values()) o.destroy();
     this.acrasielSpearGfx.destroy();
     // 影は shadowContainer + プール済みスプライトで管理(旧 shadowGfx は存在しない孤児参照だった)。
