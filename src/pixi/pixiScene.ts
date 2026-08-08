@@ -1017,6 +1017,13 @@ const ENEMY_HIT_FLASH_MS = 170;        // 被弾フラッシュ(絵を加算で�
 const ENEMY_HIT_FLASH_STRENGTH = 1.0;  // 加算オーバーレイの最大alpha(=光る強さ。社長指示で強化: 0.95→1.0=全面白)
 const BOSS_FINISH_LIFT_MS = 420;
 const BOSS_FINISH_LIFT_PX = 18;
+// v0.25.3072(社長指示「討伐時の消えるモーションに、ff6のボスを倒した時の様な揺れて崩れる を追加」):
+// 討伐後の死体(syncBossCorpse)に**揺れ→崩れ**の2拍を足す。従来は明滅しながら消えるだけだった。
+// 絵だけの変更=判定・報酬・尺(BOSS_CORPSE_CRUMBLE_MS/FADE_MS)には一切触れない。
+const BOSS_CORPSE_SHAKE_PX = 7;         // 揺れの最大振幅(横)。縦はこの0.3倍で「地響き」ぶん。
+const BOSS_CORPSE_CRUMBLE_FROM = 0.35;  // 崩れ始め。まず揺れだけを見せてから崩す=「揺れて崩れる」の順
+const BOSS_CORPSE_SQUASH = 0.55;        // 崩れ切った時の縦の潰れ(足元は地面に残す)
+const BOSS_CORPSE_SPREAD = 0.18;        // 崩れる時の横の広がり(瓦礫が積もる感じ)
 const PLAYER_WALK_CYCLE_MS = 460;
 const PLAYER_CLASS_MENU_SPRITE_WIDTH = 86;
 // 背負い刀の大きさ倍率(中心固定で縮小)。
@@ -17485,15 +17492,40 @@ export class PixiScene {
     }
     scale *= this.stageEnemyVisualMul(corpse.type); // ステージ4の1.5倍/ステージ3の1.2倍(視覚のみ)
     const spriteW = scale * tex.width, spriteH = scale * tex.height;
-    sp.scale.set(scale, scale);
-    if (fit) {
-      sp.position.set(Math.round(stripCx + (0.5 - fit.cx) * spriteW), Math.round(stripCy + (0.5 - fit.cy) * spriteH));
-    } else {
-      // 通常経路の敵は足元アンカー(0.5,1)で描かれているので、中心アンカーに合わせて半分持ち上げる。
-      sp.position.set(Math.round(stripCx), Math.round(corpse.y + corpse.h - spriteH / 2));
-    }
+    // v0.25.3072(社長指示「ff6のボスを倒した時の様な揺れて崩れる」)。
+    // ①揺れ: 2周波数を混ぜた横揺れ(単一sinだと「揺れ」ではなく「往復」に見える)。立ち上がり25%で
+    //   最大まで、最後の15%で収まる。縦にも0.3倍の地響きを混ぜる。
+    // ②崩れ: BOSS_CORPSE_CRUMBLE_FROM を過ぎてから**加速しながら**縦に潰れて横へ広がる。
+    //   潰れは中心アンカーなので、そのままだと宙で縮む=**足元を地面に残す**ぶんだけ下へ沈める。
+    // 揺れだけを先に見せてから崩し始めるので「揺れて → 崩れる」の順に読める。
+    const shakeEnv = t < 0.25 ? t / 0.25 : t > 0.85 ? Math.max(0, (1 - t) / 0.15) : 1;
+    const shakeX = (Math.sin(now / 21) * 0.62 + Math.sin(now / 9) * 0.38) * BOSS_CORPSE_SHAKE_PX * shakeEnv;
+    const shakeY = Math.sin(now / 13) * BOSS_CORPSE_SHAKE_PX * 0.3 * shakeEnv;
+    const crumble = Math.max(0, (t - BOSS_CORPSE_CRUMBLE_FROM) / Math.max(0.001, 1 - BOSS_CORPSE_CRUMBLE_FROM));
+    const ce = crumble * crumble;                 // 支えを失って落ちる=加速する
+    const sqY = 1 - BOSS_CORPSE_SQUASH * ce;
+    const sqX = 1 + BOSS_CORPSE_SPREAD * ce;
+    const sinkY = (spriteH * (1 - sqY)) / 2;      // 足元を地面に残したまま潰すための沈み込み
+    sp.scale.set(scale * sqX, scale * sqY);
+    const baseX = fit ? stripCx + (0.5 - fit.cx) * spriteW : stripCx;
+    // 通常経路の敵は足元アンカー(0.5,1)で描かれているので、中心アンカーに合わせて半分持ち上げる。
+    const baseY = fit ? stripCy + (0.5 - fit.cy) * spriteH : corpse.y + corpse.h - spriteH / 2;
+    sp.position.set(Math.round(baseX + shakeX), Math.round(baseY + shakeY + sinkY));
     sp.zIndex = corpse.y + corpse.h + 1; // アクターと同じ y-sort 帯
     sp.alpha = Math.max(0, (1 - t) * flicker);
+    // ③崩れている間は足元から瓦礫の砂埃。既存のプール済み drawDust をそのまま使う
+    //   (このフレームの使用ぶんは resetBloodPools が毎フレーム先頭で回収する=消し忘れが起きない)。
+    if (ce > 0 && sp.alpha > 0.02) {
+      const footY = corpse.y + corpse.h;
+      const dr = Math.max(40, spriteW * 0.42);
+      for (let i = 0; i < 3; i++) {
+        this.drawDust(
+          stripCx + (i - 1) * spriteW * 0.3, footY, dr,
+          Math.min(1, crumble * (1 + i * 0.12)), this.dustTintForStage(),
+          this.dustAlpha(crumble) * 0.9, corpse.diedAt + i * 97,
+        );
+      }
+    }
   }
 
   // 深層域グレーディング: 深層域(eligible かつ原点距離>=D)の間だけ stage ルートへ退色セピアの
