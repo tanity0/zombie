@@ -449,6 +449,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/boss-gun-1', scaleMode: 'linear' as const },     // 左(短い銃)
       { name: 'fx/boss-gun-2', scaleMode: 'linear' as const },     // 右(中くらい)
       { name: 'fx/boss-gun-3', scaleMode: 'linear' as const },     // 中央=三拍目(長い銃)
+      { name: 'fx/breath-sparkle', scaleMode: 'nearest' as const },// v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給・回転しないのでnearest)
       { name: 'fx/tentacle-reach', scaleMode: 'linear' as const }, // 伸びる触手(根元が左端・先端が右端)
       { name: 'fx/idol-fist', scaleMode: 'linear' as const },      // 偶像の拳(ナックルが下端=突く向き)。v0.25.2935ドット版・回転するのでlinear維持
       { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)

@@ -1873,6 +1873,7 @@ let acrasielSpearSeq = 0; // §6.28-19: アクラシエルの結晶の槍の一�
 // v0.25.3027: グレン第二形態の胴体弾用・sim側の足元軌跡(描画のview.glenTrailとは別台帳。
 // 監査指摘どおりresetGameで明示クリアし、個体idが変われば作り直す。ストーリーボスは同時1体)。
 let glenSimTrail: { id: string; trail: GlenTrailPoint[] } | null = null;
+let quadSparkleLastAt = 0; // v0.25.3042: 冷気ブレスのキラキラの間引き時計(gameTime・同時1体で十分)
 /** v0.25.3028: パーツ破壊爆発(useGameLoop側でFX/SE)用の読み取り専用アクセサ。書き込みは不可。 */
 export const getGlenSimTrail = (): { id: string; trail: readonly GlenTrailPoint[] } | null => glenSimTrail;
 let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
@@ -8366,6 +8367,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
+    const quadBreathSparkles: { x: number; y: number }[] = [];   // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給素材・set後にspawnEffect)。
     let bossLeashWarning = false;
     set(state => {
       // ★上の注記のとおり、**このフレームに他所から積まれた判定を先に引き継ぐ**。
@@ -9536,6 +9538,17 @@ export const useGameStore = create<GameState>((set, get) => ({
               const bt = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / durEff));
               const curAngle = baseAngle - GIANT_QUAD_BREATH_SWEEP_RAD / 2 + GIANT_QUAD_BREATH_SWEEP_RAD * bt;
               const farX = bfx + Math.cos(curAngle) * GIANT_QUAD_BREATH_LENGTH, farY = bfy + Math.sin(curAngle) * GIANT_QUAD_BREATH_LENGTH;
+              // v0.25.3042(社長支給素材・指示「ブレスを追いかけるキラキラ空気。幾つか同時に表示させて、
+              // 粉雪がぶわー!っと舞ってる演出に使う」): 薙ぎの現在角の少し後ろへ間引きながら散らす。
+              // 判定ゼロの派手枠(分類②)=帯の判定・秒数は不変。発火はset後(quadBreathSparkles)。
+              if (gameTime - quadSparkleLastAt >= 60) {
+                quadSparkleLastAt = gameTime;
+                for (let qi = 0; qi < 2; qi++) {
+                  const qa = curAngle - Math.random() * 0.3; // 少し遅れて追いかける
+                  const qr = 70 + Math.random() * (GIANT_QUAD_BREATH_LENGTH - 70);
+                  quadBreathSparkles.push({ x: bfx + Math.cos(qa) * qr, y: bfy + Math.sin(qa) * qr });
+                }
+              }
               const playerR = Math.max(player.width, player.height) / 2;
               const hitNow = !enemy.giantActiveHit &&
                 distToSegment({ x: pcx, y: pcy }, { x: bfx, y: bfy }, { x: farX, y: farY }) <= GIANT_QUAD_BREATH_HALF_WIDTH + playerR;
@@ -10454,6 +10467,18 @@ export const useGameStore = create<GameState>((set, get) => ({
           proj.srcMoveKey = 'g-parts';
           get().addProjectile(proj);
         }
+      }
+    }
+    // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給 fx/breath-sparkle)。複数同時に散らして
+    // 「ぶわー!」を作る。imageエフェクト=pop-in→保持→フェード(実時間・v3038で停止中も流れる)。
+    if (quadBreathSparkles.length > 0) {
+      const qNow = Date.now();
+      for (const p of quadBreathSparkles) {
+        get().spawnEffect({
+          kind: 'image', id: `qbs-${qNow}-${(Math.random() * 1e6) | 0}`,
+          x: p.x, y: p.y, createdAt: qNow, duration: 520 + Math.random() * 300,
+          texture: 'fx/breath-sparkle', scale: 0.55 + Math.random() * 0.45,
+        });
       }
     }
     // 叫喚型の予兆(溜め開始): 2秒かけて広がるリング＋発光(優先処理を促すテレグラフ)。
