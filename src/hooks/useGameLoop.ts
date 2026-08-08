@@ -311,6 +311,7 @@ import {
 import {
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, bossRetreatKeepRadiusPx,
   facilitiesLocked, // v0.25.3054: ボス戦中の施設ロック(発火ゲート)
+  BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
@@ -4565,7 +4566,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 誤帰巣の心配は実質ない: 帰巣には「画面外に1.2秒居続ける」が必要で、技の大半は
             // プレイヤーへ向かう=画面内に戻るため、成立するのは本当に逃げ切った時だけ。
             const bossInTechnique = boss.bossState !== undefined && boss.bossState !== 'chase' && boss.bossState !== 'return';
-            const disengage = advanceBossDisengageGrace(!inDeep || !onScreen, bs.disengageSince, newGameTime);
+            // v0.25.3057(社長裁定「全ボス共通。ゲートは関係無いかもだが」): 城ボスと同じ
+            // **実距離1500px(BOSS_LEASH_PX)**の離脱条件を裏ボス4体+トールにも追加(OR条件)。
+            // 既存の「深層外へ出た/画面外に出た」も従来どおり生かす。ゲートボス(天使)・偶像は
+            // 囲い/ラボ内の戦闘=1500pxが開かないため対象外(社長の言葉どおり)。
+            const farFromPlayer = Math.hypot(bcx - kpcx, bcy - kpcy) > BOSS_LEASH_PX;
+            const disengage = advanceBossDisengageGrace(!inDeep || !onScreen || farFromPlayer, bs.disengageSince, newGameTime);
             bs.disengageSince = disengage.since;
             if (disengage.started && !bossInTechnique) {
               useGameStore.setState({
