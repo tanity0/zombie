@@ -632,7 +632,43 @@ export const ensureTextures = (): Promise<void> => {
     // トールの刀(横払い/突き用・社長提供)も紫背景なので同様に色キー透過。詳細イラスト調なのでlinear。
     // ※叫喚型(screamer)はここに居たが、新素材が透過済みになったので変異体テーブル経由の
     //   通常ロードへ移した(v0.25.2882)。旧 screamer.png(2.1MB/1254角)は v0.25.2883 で削除済み。
-    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni'), loadKeyed('skateboard'), loadKeyed('thor-katana', 'linear')]);
+    // 引き雲(遠景層)用の上端フェード版(社長報告v0.25.3020「遠景近くに変な線」対策)。
+    // 素材は最上段(row0)まで雲ドットがある(実測: 全168行中、透明なのは下端4行だけ)。遠景層は
+    // 帯の上端が空の途中に見えるため、そこで雲がスパッと切れ、ぼかし(v0.25.3018)が乗ると
+    // 横一直線のスジになる。**支給PNGは加工しない**(この節の作法)——読み込み時に上から35%を
+    // 線形αフェードした別名テクスチャを焼いて登録する。front層(上端=texの透明側が画面内、
+    // 下端は画面外)は元素材のままで線は出ない。
+    const loadTopFadedCloud = async () => {
+      try {
+        const img = new Image();
+        await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = spritePath('zoom-cloud'); });
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return;
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const im = ctx.getImageData(0, 0, w, h);
+        const d = im.data;
+        const fadeRows = Math.max(1, Math.round(h * 0.35));
+        for (let y = 0; y < fadeRows; y++) {
+          const k = y / fadeRows;
+          for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4 + 3;
+            d[i] = Math.round(d[i] * k);
+          }
+        }
+        ctx.putImageData(im, 0, 0);
+        const tex = Texture.from(cv);
+        tex.source.scaleMode = 'nearest';
+        textures.set('zoom-cloud-topfade', tex);
+      } catch (e) {
+        console.warn('[pixiTextures] failed to top-fade "zoom-cloud":', e);
+      }
+    };
+
+    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni'), loadKeyed('skateboard'), loadKeyed('thor-katana', 'linear'), loadTopFadedCloud()]);
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)をドット絵で上書き(社長指示)。
     // atlas 切り出しの後に textures.set で確実に置換。ドット絵なので nearest。

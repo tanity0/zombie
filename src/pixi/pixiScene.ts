@@ -6551,7 +6551,9 @@ export class PixiScene {
         if (ctex) {
           const st = this.L.uiLayer.parent!;
           for (const cfg of ZOOM_CLOUD_LAYERS) {
-            const sp = new TilingSprite({ texture: ctex, width: 1, height: 1 });
+            // 遠景層は上端フェード焼き込み版(v0.25.3020・上端の切れ目スジ対策。pixiTextures参照)。
+            const tex = cfg.place === 'far' ? (getTexture('zoom-cloud-topfade') ?? ctex) : ctex;
+            const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
             sp.eventMode = 'none';
             sp.visible = false;
             // ぼかし>0の層だけBlurFilter(非表示中はレンダされない=コスト0)。
