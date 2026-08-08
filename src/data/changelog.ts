@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3067',
+    items: [
+      '横に離れたボスがまだ画面外に残る問題を修正しました(必要な引きが途中で薄まっていたのをやめ、画面内に収まる引きをそのまま適用します)。',
+    ],
+  },
+  {
     version: '0.25.3066',
     items: [
       '横に離れたボスをズームが捉えきれず画面外に残る問題を修正しました(横も縦と同じ深さまで引いてボスを映します)。',

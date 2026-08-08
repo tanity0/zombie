@@ -124,11 +124,26 @@ export const bossFramingZoom = (
   //   (最終床は縦と同じく bossDistanceZoomTarget の profile.far=縦横で引ける深さを揃える)。
   const bandHalfY = (viewport.height * BOSS_FRAME_BAND_H_FRAC) / 2;
   const needY = Math.max(0.01, bandHalfY - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dyCenter));
-  const needX = Math.max(0.01,
-    (1 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewport.width - BOSS_FRAME_EDGE_MARGIN_PX,
-  ) / Math.max(1, Math.abs(dxCenter));
-  return Math.min(needX, needY);
+  return Math.min(bossVisibilityZoomX(dxCenter, viewport.width), needY);
 };
+
+// v0.25.3067(社長報告2回目「まだ捉えきれてない。城ボス程度だとまったく画面内に入ってない」):
+// **横の可視条件だけを切り出した硬い上限**。これを bossDistanceZoomTarget で「薄めずに」掛ける。
+//
+// v3066で可視条件そのものは正しくしたが、bossDistanceZoomTarget 側がフレーミング要求を
+// 重み w(NEAR→MIDの滑らかな立ち上がり・v2964)で**薄めて**混ぜていたため、中距離では必要な引きの
+// 6〜7割しか出ていなかった(例: 横400px・W390 で 必要0.60 に対し実際0.67=ボスは画面外)。
+// さらに w の物差しが **AABBの隙間距離** なので、**体が大きいボスほど隙間が小さく=薄まったまま
+// 飽和しない**(城ボス/ミーミルで症状が強く出た理由。中心距離500pxでも隙間は380px程度)。
+// ⇒ 「見えるか見えないか」は構図の好みではなく可視の必要条件なので、重みで薄めてはいけない。
+//
+// 連続性: この上限は |dx| の連続関数(近いほど1を超えて効かない)なので、NEAR帯にそのまま掛けても
+// 段差が出ない=足元の等倍(社長裁定v2947)も、上限が1を超えている限り従来どおり保たれる。
+// 縦(needY)は「見える帯0.45H に収める」という**構図の好み**なので従来どおり w で薄めて混ぜる
+// (社長が何度も調整した縦の絵作りには触れない)。
+export const bossVisibilityZoomX = (dxCenter: number, viewW: number): number => Math.max(0.01,
+  (1 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewW - BOSS_FRAME_EDGE_MARGIN_PX,
+) / Math.max(1, Math.abs(dxCenter));
 
 export interface BossFramingInput { dxCenter: number; dyCenter: number; viewport: { width: number; height: number } }
 
@@ -149,16 +164,20 @@ export const bossDistanceZoomTarget = (
         (bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
         / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
   if (!framing) return anchor;
+  // v0.25.3067: 横の可視条件は**薄めずに**掛ける硬い上限(bossVisibilityZoomX の説明を参照)。
+  // |dx|の連続関数なので NEAR帯へそのまま掛けても段差は出ない(近ければ1を超えて効かない=
+  // 足元の等倍はそのまま)。床(profile.far)は従来どおりこれより優先=引きすぎない。
+  const hardX = bossVisibilityZoomX(framing.dxCenter, framing.viewport.width);
   // 足元(NEAR以内)は等倍のまま(社長裁定v0.25.2947「足元では等倍」不変)。それより外では
   // アンカー曲線とフレーミング要求の**引きが強い方**を採る(=見えなくなるより早めに引く)。床はfar。
-  // v0.25.2964: フレーミング項はNEAR→MIDの間で滑らかに効かせる(旧: NEAR境界の外側で即フル適用=
+  // v0.25.2964: 縦のフレーミング項はNEAR→MIDの間で滑らかに効かせる(旧: NEAR境界の外側で即フル適用=
   // 境界をまたぐたびに目標が段差で飛び、ぎこちなさの一因だった)。
-  if (bodyDistancePx <= BOSS_DISTANCE_ZOOM_NEAR_PX) return anchor;
+  if (bodyDistancePx <= BOSS_DISTANCE_ZOOM_NEAR_PX) return Math.max(profile.far, Math.min(anchor, hardX));
   const frame = bossFramingZoom(framing.dxCenter, framing.dyCenter, framing.viewport);
   const w = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
     / (BOSS_DISTANCE_ZOOM_MID_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
   const blended = anchor + (Math.min(anchor, frame) - anchor) * w; // frameが強い分だけwで効かせる
-  return Math.max(profile.far, blended);
+  return Math.max(profile.far, Math.min(blended, hardX));
 };
 
 export interface Aabb { x: number; y: number; width: number; height: number }

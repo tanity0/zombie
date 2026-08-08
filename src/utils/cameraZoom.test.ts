@@ -115,7 +115,9 @@ describe('cameraZoom — context zoom target', () => {
 });
 
 // v0.25.2954: フレーミング項(社長指示「早めに引き判定に入り、できるだけ被写体を捉え続ける」)。
-import { bossFramingZoom, BOSS_FRAME_EDGE_MARGIN_PX, BOSS_ZOOM_PROFILES as PROFILES2 } from './cameraZoom';
+import {
+  bossFramingZoom, bossVisibilityZoomX, BOSS_FRAME_EDGE_MARGIN_PX, BOSS_ZOOM_PROFILES as PROFILES2,
+} from './cameraZoom';
 
 describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () => {
   const vp = { width: 800, height: 600 };
@@ -129,6 +131,29 @@ describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () =
     expect(bossFramingZoom(2000, 0, vp)).toBeCloseTo(xBudget / 2000, 6);
     // 横500pxなら引き不要(寄せ(bossCameraLeadX)が担う)
     expect(bossFramingZoom(500, 0, vp)).toBeGreaterThan(1);
+  });
+  it('横の可視条件は重みで薄めない=中距離でもボスが画面内に残る(v0.25.3067回帰)', () => {
+    // 社長報告2回目「城ボス程度だとまったく画面内に入ってない」の再現条件。
+    // 縦持ち390×844・横400px離れ・体の大きいボス(=AABBの隙間384pxで重みwが飽和しない)。
+    const phone = { width: 390, height: 844 };
+    const need = bossVisibilityZoomX(400, phone.width);
+    const z = bossDistanceZoomTarget('mimir', 384, false, { dxCenter: 400, dyCenter: 0, viewport: phone });
+    expect(z).toBeCloseTo(need, 6);
+    // ★不変条件: この目標ズームでボスの中心が画面内(右余白の内側)に居る。
+    // ボス画面X = プレイヤー位置(0.28W) + dx·z ≤ W − 余白。
+    const bossScreenX = BOSS_LEAD_X_PLAYER_EDGE_FRAC * phone.width + 400 * z;
+    expect(bossScreenX).toBeLessThanOrEqual(phone.width - BOSS_FRAME_EDGE_MARGIN_PX + 1e-6);
+  });
+  it('横の硬い上限はNEAR境界をまたいでも段差にならない(|dx|の連続関数)', () => {
+    // NEAR帯にも同じ上限を掛けるので、境界の内外で目標が飛ばない(=ズームのポンピングが出ない)。
+    const phone = { width: 390, height: 844 };
+    const inside = bossDistanceZoomTarget('mimir', 180, false, { dxCenter: 420, dyCenter: 0, viewport: phone });
+    const outside = bossDistanceZoomTarget('mimir', 181, false, { dxCenter: 420, dyCenter: 0, viewport: phone });
+    expect(Math.abs(inside - outside)).toBeLessThan(0.01);
+  });
+  it('足元で真横に居ない限り上限は効かない=「足元では等倍」(社長裁定v2947)は不変', () => {
+    const phone = { width: 390, height: 844 };
+    expect(bossDistanceZoomTarget('mimir', 100, false, { dxCenter: 120, dyCenter: 0, viewport: phone })).toBe(1.0);
   });
   it('横に離れたボスも縦と同じ深さ(profile.far)まで引いて捉える(v0.25.3066回帰)', () => {
     // 縦持ち実機相当(390×844)・横800px離れ: 旧MID床(0.588)ではボスが画面外だった。
