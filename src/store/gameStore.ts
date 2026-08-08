@@ -9225,9 +9225,16 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const shot = (enemy.gBoltShot ?? 1) + 1;
                 giantBoltFires.push(enemy);
                 if (shot >= GIANT_BOLT_BURST_SHOTS) {
+                  // v0.25.3033(社長指示「通常弾の3連発の後にのみ触手攻撃の台本で」): グレンは
+                  // 3連発の締めで触手(reach)を台本キューの先頭へ予約=次の行動が必ず触手になる。
+                  // 抽選プール・連携表からは除外済みなので、発動経路はここだけ。
+                  const glenReachNext = glenScriptApplies(enemy.isStoryBoss, enemy.storyBossVariant, GLEN_SCRIPT_ENABLED)
+                    ? { bossScriptQueue: ['reach', ...(enemy.bossScriptQueue ?? [])] }
+                    : {};
                   return {
                     ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bolt-recover',
                     aiPhaseUntil: atkUntil(boltRecoverMs), gBoltShot: undefined, lastShot: now,
+                    ...glenReachNext,
                   };
                 }
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, gBoltShot: shot, aiPhaseUntil: atkUntil(GIANT_BOLT_BURST_GAP_MS), lastShot: now };
@@ -9862,7 +9869,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                   const glenReady: Record<GlenMoveId, boolean> = {
                     talon: gameTime >= (enemy.gGlenReadyAt?.talon ?? 0),
                     boon: gameTime >= (enemy.gGlenReadyAt?.boon ?? 0),
-                    reach: gameTime >= (enemy.gGlenReadyAt?.reach ?? 0),
+                    // v0.25.3033(社長指示「通常弾の3連発の後にのみ触手攻撃。それ以外では出さない」):
+                    // reach(触手)は抽選プールから恒久除外。発動経路はg-bolt-burst終端の台本予約のみ。
+                    reach: false,
                     nihil: glenBigMoves && gameTime >= (enemy.gGlenReadyAt?.nihil ?? 0),
                     trijump: glenBigMoves && gameTime >= (enemy.gGlenReadyAt?.trijump ?? 0),
                   };
@@ -9872,7 +9881,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     const isGlenMove = move === 'talon' || move === 'boon' || move === 'reach' || move === 'nihil' || move === 'trijump';
                     return {
                       ...enemy, ...phaseFields, vx: 0, vy: 0,
-                      bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('glen', move, phase).slice(1),
+                      bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('glen', move, phase, { glenBigMoves }).slice(1),
                       ...(isGlenMove ? beginGlenMove(move as GlenMoveId) : beginGiantMove(move as GiantMove)),
                     };
                   }

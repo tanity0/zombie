@@ -70,9 +70,20 @@ const SCRIPTS: Record<Exclude<ChoreographyBoss, 'giant' | 'glen'>, Record<string
   },
 };
 
-export const planBossChoreography = (boss: ChoreographyBoss, opening: string, phase: number): string[] => {
+export const planBossChoreography = (
+  boss: ChoreographyBoss, opening: string, phase: number,
+  // v0.25.3033(glen専用・社長裁定): 台本(キュー)は抽選のreadyゲートを通らないため、ここで濾さないと
+  // 禁止技が連携経由で漏れる。①reach(触手)は「通常弾3連発の直後のみ」(g-bolt-burst終端の専用予約)
+  // =**連携表からは常に除外** ②nihil/trijumpは第二形態専属(裁定1い)=glenBigMoves=falseなら除外。
+  opts?: { glenBigMoves?: boolean },
+): string[] => {
   const table = boss === 'giant' ? GIANT : boss === 'glen' ? GLEN : SCRIPTS[boss];
-  return trimForPhase(table[opening] ?? [opening], phase);
+  let moves: readonly string[] = table[opening] ?? [opening];
+  if (boss === 'glen') {
+    moves = moves.filter((m, i) => i === 0
+      || (m !== 'reach' && (opts?.glenBigMoves === true || (m !== 'nihil' && m !== 'trijump'))));
+  }
+  return trimForPhase(moves, phase);
 };
 
 /**
