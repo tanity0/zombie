@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3024',
+    items: [
+      '深い引きの遠景の雲2本を少し濃くしました(薄すぎて見えにくかったため)。',
+    ],
+  },
+  {
     version: '0.25.3023',
     items: [
       '深い引きの遠景の雲を少し上へ移し、半透明にしました。さらにその裏へもう1本、少し上にずらした雲の帯を追加しました(奥の雲ほどゆっくり流れます)。',

@@ -330,8 +330,9 @@ const ZOOM_CLOUD_LAYERS = [
   // v0.25.3023(社長指示「遠景の雲、もう少し上に、半透明で。さらにもう一本裏にも。少しだけ上に
   // ずらして」): far層を上へ(bottomFrac 0.06→0.00)+半透明化(0.7→0.45)し、その裏(配列先頭=
   // 一番奥)へ2本目を追加(さらに0.05上・薄め・遅め=奥の雲ほどゆっくり)。
-  { place: 'far', heightFrac: 0.16, bottomFrac: -0.05, alpha: 0.40, driftPxS: 3, paraX: 0.10, blur: 4, bobAmp: 2, bobPhase: 5.0, tileOfs: 300 },
-  { place: 'far', heightFrac: 0.16, bottomFrac: 0.00, alpha: 0.45, driftPxS: 5, paraX: 0.15, blur: 4, bobAmp: 3, bobPhase: 3.1, tileOfs: 700 },
+  // alpha 0.40/0.45→0.55/0.60(社長指示v0.25.3024「透明度少し下げて(見える様に)」)。
+  { place: 'far', heightFrac: 0.16, bottomFrac: -0.05, alpha: 0.55, driftPxS: 3, paraX: 0.10, blur: 4, bobAmp: 2, bobPhase: 5.0, tileOfs: 300 },
+  { place: 'far', heightFrac: 0.16, bottomFrac: 0.00, alpha: 0.60, driftPxS: 5, paraX: 0.15, blur: 4, bobAmp: 3, bobPhase: 3.1, tileOfs: 700 },
   { place: 'front', heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
   { place: 'front', heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
 ] as const;
