@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { TutorialSlide } from '../data/tutorials';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { generateEquipmentChoices } from '../utils/upgradeUtils';
+import { shouldEmitThrottled } from '../utils/emitThrottle';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
@@ -1882,7 +1883,11 @@ let acrasielSpearSeq = 0; // §6.28-19: アクラシエルの結晶の槍の一�
 // v0.25.3027: グレン第二形態の胴体弾用・sim側の足元軌跡(描画のview.glenTrailとは別台帳。
 // 監査指摘どおりresetGameで明示クリアし、個体idが変われば作り直す。ストーリーボスは同時1体)。
 let glenSimTrail: { id: string; trail: GlenTrailPoint[] } | null = null;
-let quadSparkleLastAt = 0; // v0.25.3042: 冷気ブレスのキラキラの間引き時計(gameTime・同時1体で十分)
+// v0.25.3042: 冷気ブレスのキラキラの間引き時計(gameTime・同時1体で十分)。
+// ★gameTimeは出撃ごとに0へ戻るので、**resetGameでこれも0へ戻す**(v0.25.3070の事故: 戻していなかった
+// ため2回目以降の出撃でキラキラが1粒も出なかった)。判定自体も shouldEmitThrottled で巻き戻りに強くしてある。
+let quadSparkleLastAt = 0;
+const QUAD_SPARKLE_INTERVAL_MS = 60;
 /** v0.25.3028: パーツ破壊爆発(useGameLoop側でFX/SE)用の読み取り専用アクセサ。書き込みは不可。 */
 export const getGlenSimTrail = (): { id: string; trail: readonly GlenTrailPoint[] } | null => glenSimTrail;
 let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
@@ -9565,7 +9570,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // v0.25.3049(社長指示「氷の三連突進はブレスと同じくキラキラのエフェクト付けて」):
               // 突進の軌跡の少し後ろへ粉雪のキラキラを間引きながら撒く(冷気ブレスv0.25.3042と同じ
               // 素材・同じ籠=判定ゼロの派手枠②。ブレスと突進は同時に走らないので時計も共用)。
-              if (gameTime - quadSparkleLastAt >= 60) {
+              if (shouldEmitThrottled(gameTime, quadSparkleLastAt, QUAD_SPARKLE_INTERVAL_MS)) {
                 quadSparkleLastAt = gameTime;
                 for (let qi = 0; qi < 2; qi++) {
                   const qBack = Math.random() * 70;
@@ -9607,7 +9612,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // v0.25.3042(社長支給素材・指示「ブレスを追いかけるキラキラ空気。幾つか同時に表示させて、
               // 粉雪がぶわー!っと舞ってる演出に使う」): 薙ぎの現在角の少し後ろへ間引きながら散らす。
               // 判定ゼロの派手枠(分類②)=帯の判定・秒数は不変。発火はset後(quadBreathSparkles)。
-              if (gameTime - quadSparkleLastAt >= 60) {
+              if (shouldEmitThrottled(gameTime, quadSparkleLastAt, QUAD_SPARKLE_INTERVAL_MS)) {
                 quadSparkleLastAt = gameTime;
                 for (let qi = 0; qi < 2; qi++) {
                   const qa = curAngle - Math.random() * 0.3; // 少し遅れて追いかける
@@ -13305,6 +13310,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetGhostDamageLog(); // v0.25.2591: 被弾ログ(?ghostlog=1の画面表示)は1ランごとに読めればよい
     resetGhostDeathPose(); // v0.25.2599: 前ランの倒れ絵を持ち越さない(描画専用の控え)
     glenSimTrail = null;   // v0.25.3027: グレン胴体弾の軌跡を持ち越さない(監査指摘)
+    quadSparkleLastAt = 0; // v0.25.3070: キラキラの間引き時計もラン間で持ち越さない(社長報告「キラキラが消えた」)
     // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ+ラン内打刻ビューも持ち越さない
     // (台帳=localStorageは打刻の瞬間に確定済みなので触らない)。
     resetDuoRunRecords();
