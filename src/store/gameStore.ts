@@ -2437,7 +2437,12 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   // カメラが戻った後に実時間でゆっくり崩す。その間 hitstop を崩壊時間ぶん延長=時間停止のまま見せる。
   // アテンションの無い相手(pumpkin/ネームド/クエスト対象)は従来どおり即崩壊(holdMs=0)。
   const bossDefeat = isBossType(enemy.type);
-  const corpseHoldMs = getsDeathAttention(enemy.type) ? ATTENTION_TOTAL_MS : 0;
+  // v0.25.3026(社長報告「フラッシュとか終わった後に崩れていって何も見えない」): 旧v2955は
+  // カメラがプレイヤーへ戻ってから崩壊が始まる並びで、ズーム改修後は遠距離撃破が増えて
+  // **戻った後のカメラから死体が画面外**=崩壊が見えなかった。崩壊は「パン到着+通常ホールド後」に
+  // 開始し、アテンションのホールドを崩壊終了まで延長=**カメラが崩壊を見届けてから戻る**。
+  // 総尺(時間停止)は従来と同じ IN+HOLD+CRUMBLE+OUT=約5.2秒。
+  const corpseHoldMs = getsDeathAttention(enemy.type) ? ATTENTION_IN_MS + ATTENTION_HOLD_MS : 0;
   useGameStore.setState({
     bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now(), holdMs: corpseHoldMs },
     ...(bossDefeat ? {
@@ -2455,9 +2460,9 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   // ★アテンション(時間停止+カメラ寄り)は `getsDeathAttention` が唯一の出どころ。
   // pumpkin は除外(v0.25.2879)——ウェーブで何度も倒す相手なので、毎回止まるとテンポが切れる。
   if (getsDeathAttention(enemy.type)) {
-    get().triggerAttention(x, y);
-    // v0.25.2955: 崩壊もアテンションの続きとして時間停止のまま見せる(上のholdMsと同じ設計)。
-    useGameStore.setState(st => ({ hitstopUntil: Math.max(st.hitstopUntil, Date.now() + ATTENTION_TOTAL_MS + BOSS_CORPSE_CRUMBLE_MS) }));
+    // v0.25.3026: ホールドを崩壊時間ぶん延長して渡す=hitstopもtriggerAttention側で同尺になる
+    // (旧v2955の「別途hitstopだけ延長」は廃止。カメラと時間停止の尺が1本化される)。
+    get().triggerAttention(x, y, undefined, BOSS_CORPSE_CRUMBLE_MS);
   }
 };
 
@@ -3892,7 +3897,7 @@ interface GameState {
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
-  triggerAttention: (x: number, y: number, cutin?: AttentionCutin) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き
+  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
   clearAttention: () => void;
   triggerTimeSlow: (scale: number, durationMs: number, holdMs?: number) => void; // holdMs=最も遅い倍率を保持する時間(既定0)
   triggerHitstop: (durationMs: number) => void; // 全停止の瞬間ストップ(カウンター/近接フィニッシュの衝撃)
@@ -13648,7 +13653,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // §6.36: cutin付きは hold の後に cutinMs(1100)だけカメラ静止のまま延長し、DOM(BossCutin.tsx)が
   // 名前+絵を出す。first-wins: attention生存中に新旧どちらかがcutin持ちなら後着を無視(純関数で判定)。
   // 素のattention同士は従来どおり上書き=挙動不変。
-  triggerAttention: (x, y, cutin) => {
+  triggerAttention: (x, y, cutin, extraHoldMs = 0) => {
     const prev = get().attention;
     if (shouldIgnoreAttention(prev !== null, !!prev?.cutin, !!cutin)) return;
     const cam = get().camera;
@@ -13657,7 +13662,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const cutinMs = cutin ? BOSS_CUTIN_MS : 0;
     // 社長指示(v0.25.2998→2999)「ボス出現アテンションの紹介前の止まり、半分にして」:
     // cutin付き(=ボス紹介)だけホールドを半分(1900→950ms)。素のattention(救援/討伐シネマ)は従来尺。
-    const holdMs = cutin ? Math.round(ATTENTION_HOLD_MS / 2) : ATTENTION_HOLD_MS;
+    // extraHoldMs(v0.25.3026): 討伐シネマが崩壊を見届けるための延長ぶん(下のdramaticDeath参照)。
+    const holdMs = (cutin ? Math.round(ATTENTION_HOLD_MS / 2) : ATTENTION_HOLD_MS) + extraHoldMs;
     set({
       attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}) },
       hitstopUntil: Date.now() + ATTENTION_IN_MS + holdMs + ATTENTION_OUT_MS + cutinMs,
