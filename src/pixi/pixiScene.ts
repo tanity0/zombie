@@ -6779,7 +6779,8 @@ export class PixiScene {
     const pfx = s.player.x + s.player.width / 2, pfy = s.player.y + s.player.height / 2;
     this.assistBrightnessNow = lightAt(pfx, pfy, this.worldLights);
     this.punchBrightnessNow = lightAt(pfx, pfy, this.punchLights);
-    this.updatePunchGrade(s.effects, now); // 攻撃/爆発の光でコントラストパンチ(?punchgrade=1・既定OFF)
+    // v0.25.3040(社長報告「光は止まらなくなったけどコントラストは止まってる」): パンチも光系=実時間(fxNow)。
+    this.updatePunchGrade(s.effects, fxNow); // 攻撃/爆発の光でコントラストパンチ
     this.updateCloudShadow(now, s.camera.x, s.camera.y, s.indoorMode); // フィールドの動く雲影(屋外のみ・?cloudshadow=0で無効)
     this.updateSnowAir(now); // ステージ4の冷たい空気(寒色グレード)+遠景森前の霧(snowのみ)
     this.updateStage5War(now); // ステージ5の戦争照明(炎ゆらめき+爆発フラッシュ・stage5のみ)
