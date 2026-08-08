@@ -323,8 +323,9 @@ const ZOOM_CLOUD_FADE_W = 0.35;                // フェード幅(pull01)
 // 2層構成(社長指示2026-08-08): 「1枚目=一番手前に半透明で大きくぼかして/2枚目=その裏に少し
 // 小さめでぼかさず/速度をずらして霧と同じく流れる」。[0]=奥(シャープ)・[1]=手前(ぼかし)。
 const ZOOM_CLOUD_LAYERS = [
-  { heightFrac: 0.46, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
-  { heightFrac: 0.62, bottomFrac: 1.10, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
+  // 高さ: 手前30%/奥20%(社長指示v0.25.3013「30% 20%にして」。旧62%/46%は大きすぎ)。
+  { heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
+  { heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
 ] as const;
 const WORLD_GAP_BAND_TOP_COLOR = 0x05070c;    // 帯の上端(サンプリング失敗時のフォールバック)
 const WORLD_GAP_BAND_BOTTOM_COLOR = 0x161c28; // 帯の下端(森1の上端に接する側・やや明るい暗紺)
