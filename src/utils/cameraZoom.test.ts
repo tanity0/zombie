@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  bossCameraLeadX, BOSS_LEAD_X_TARGET_SCREEN_FRAC, BOSS_LEAD_X_PLAYER_EDGE_FRAC,
   aabbGapDistance, bossDistanceZoomTarget, bossZoomClassFor, contextZoomTarget, isLargeForZoom,
   isPointInZoomedViewport, zoomCompensatedWorldDistance, zoomedViewportBounds,
   BOSS_DISTANCE_ZOOM_FAR_PX, BOSS_DISTANCE_ZOOM_MID_PX, BOSS_DISTANCE_ZOOM_MIN, BOSS_DISTANCE_ZOOM_NEAR_PX,
@@ -305,5 +306,26 @@ describe('springSmoothZoom — 距離ズームの臨界減衰バネ追従(案2+�
     const r = springSmoothZoom(1.0, 5.0, 0.4, 10);
     expect(r.z).toBeCloseTo(0.4, 6);
     expect(Math.abs(r.v)).toBeLessThan(1e-6);
+  });
+});
+
+// v0.25.3063(社長裁定「2をまず揃えるべきでは?」): 横のボス先読み=縦と同じ目標ライン式・左右対称。
+describe('bossCameraLeadX(横のボス先読み・目標ライン式)', () => {
+  const W = 390;
+  it('目標ライン(0.76W)より内側のボスには寄せない=0', () => {
+    expect(bossCameraLeadX(50, W, 1)).toBe(0); // ボス画面X=245 < 296.4
+  });
+  it('目標ラインの外のボスはラインまで引き込む東シフト(正)を返す(ズーム1)', () => {
+    // dx=150: ボス画面X=345 → 目標296.4 → シフト=48.6(クランプ85.8未満)
+    expect(bossCameraLeadX(150, W, 1)).toBeCloseTo((0.5 * W + 150) - BOSS_LEAD_X_TARGET_SCREEN_FRAC * W, 6);
+  });
+  it('超遠距離はプレイヤー端クランプ(0.5-0.28=0.22W)で頭打ち・ズームで実距離換算(/z)', () => {
+    const capPx = (0.5 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * W;
+    expect(bossCameraLeadX(10_000, W, 1)).toBeCloseTo(capPx, 6);
+    expect(bossCameraLeadX(10_000, W, 0.5)).toBeCloseTo(capPx / 0.5, 6);
+  });
+  it('左右対称(鏡映)', () => {
+    expect(bossCameraLeadX(-150, W, 1)).toBeCloseTo(-bossCameraLeadX(150, W, 1), 6);
+    expect(bossCameraLeadX(-10_000, W, 0.5)).toBeCloseTo(-bossCameraLeadX(10_000, W, 0.5), 6);
   });
 });

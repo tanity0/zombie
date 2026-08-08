@@ -6094,10 +6094,14 @@ export class PixiScene {
       const biasActive = bossBiasD2 !== Infinity && !s.attention;
       // v0.25.2994(§6.37 v6): 縦の寄せは再び0固定。縦の視界は「引き連動のカメラ下げ」
       // (useGameLoop・zoomCameraDownFrac=プレイヤーを地平線と下端の中間へ)が担う(社長指示
-      // 「引きになったら上下の幅を揃える」)。ボス方向の縦寄せを重ねると揃えた構図が崩れる。横は0.5のまま。
-      const wantX = biasActive ? Math.max(-slackWX, Math.min(slackWX, bossBiasDx * 0.5)) : 0;
+      // 「引きになったら上下の幅を揃える」)。ボス方向の縦寄せを重ねると揃えた構図が崩れる。
+      // v0.25.3063(社長裁定「2をまず揃えるべきでは?」): **横の寄せも0固定=退役**。横の先読みは
+      // 縦と同じ目標ライン式のカメラ先読み(useGameLoop・bossCameraLeadX)へ一本化した。旧・描画側パンは
+      // 寄せ予算が(1/ZOOM_MIN_ABS−1/zoom)比例=深い引きほど0に潰れ、縦横の体感差の真因だった。
+      // 二重に掛けると先読みが過剰になるためここは完全に0(機構は将来の演出用に残置)。
+      const wantX = 0;
       const wantY = 0;
-      void slackWY; void bossBiasDy; // 縦は使わない(構図はカメラ下げが決める)。復活時はこの2値を再利用
+      void slackWY; void bossBiasDy; void bossBiasDx; void biasActive; // 復活時はこれらを再利用
       const biasTau = biasActive ? 0.5 : 1.0;
       const bk = 1 - Math.exp(-zdt / biasTau);
       this.bossViewBiasX += (wantX - this.bossViewBiasX) * bk;

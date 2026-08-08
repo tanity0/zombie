@@ -288,6 +288,30 @@ export const BOSS_LEAD_PLAYER_MIN_FRAC = 0.40;          // 南側: プレイヤ�
 // 下限を少し上へ(0.84→0.78)。
 export const BOSS_LEAD_TARGET_SCREEN_FRAC = 0.50;     // 北側: ボスをこの画面高さまで引き込む(0.36→0.44→0.50・社長指示「上の位置だけさらに下げたい」)
 export const BOSS_LEAD_PLAYER_MAX_FRAC = 0.78;        // 北側: プレイヤーをこの画面高さまでしか下げない
+// v0.25.3063(社長裁定「2をまず揃えるべきでは?」): **横のボス先読み**を縦と同じ目標ライン式で新設。
+// 従来の横は描画側パン(bossViewBiasX=中心差の半分)だったが、寄せ予算が (1/ZOOM_MIN_ABS − 1/zoom) に
+// 比例=**引きが深いほど0に潰れる**ため、ボス戦の深い引きで横だけ先読みが消えていた(縦横の体感差の真因②)。
+// 縦と同じくカメラ本体で寄せる。左右対称: ボスが居る側の画面幅比 BOSS_LEAD_X_TARGET_SCREEN_FRAC の
+// ラインへボスを引き込み、プレイヤーは反対側 BOSS_LEAD_X_PLAYER_EDGE_FRAC までしか寄せない。
+export const BOSS_LEAD_X_TARGET_SCREEN_FRAC = 0.76; // ボス側の目標ライン(縦の南0.76と同値)
+export const BOSS_LEAD_X_PLAYER_EDGE_FRAC = 0.28;   // プレイヤーを画面端からこの幅比より外に出さない
+export const bossCameraLeadX = (dxCenter: number, viewW: number, zoom: number): number => {
+  const z = Math.max(ZOOM_MIN_ABS, Math.min(1, zoom));
+  const bossBasePx = 0.5 * viewW + dxCenter * z;      // 先読み無しのボス画面X(プレイヤー=中央)
+  // カメラを東(正)へSだけ寄せると、ボスの画面Xは bossBasePx − S·z へ動く(縦とは向きが逆なことに注意)。
+  if (dxCenter >= 0) {
+    // ボスが右: ボスを右目標ライン(0.76W)まで引き込む東シフト(正)。プレイヤーは左端0.28Wまで。
+    // 目標ラインより内側に居るボスには寄せない(want<0→0)。
+    const wantShiftPx = bossBasePx - BOSS_LEAD_X_TARGET_SCREEN_FRAC * viewW;
+    const maxShiftPx = (0.5 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewW;
+    return Math.max(0, Math.min(maxShiftPx, wantShiftPx)) / z;
+  }
+  // ボスが左: 鏡映(左目標ライン=(1−0.76)W。西シフト=負)。
+  const wantShiftPx = bossBasePx - (1 - BOSS_LEAD_X_TARGET_SCREEN_FRAC) * viewW;
+  const minShiftPx = -(0.5 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewW;
+  return Math.max(minShiftPx, Math.min(0, wantShiftPx)) / z;
+};
+
 export const bossCameraLeadY = (dyCenter: number, viewH: number, zoom: number): number => {
   const z = Math.max(ZOOM_MIN_ABS, Math.min(1, zoom));
   const pBal = (1 + CAMERA_HORIZON_FRAC) / 2;           // 均衡構図のプレイヤー画面比(≈0.63)

@@ -308,6 +308,7 @@ import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   ZOOM_MIN_ABS,
   springSmoothZoom, BOSS_DISTANCE_ZOOM_RETURN_TAU, zoomCameraDownFrac, bossCameraLeadY,
+  bossCameraLeadX, // v0.25.3063: 横のボス先読み(社長裁定「2をまず揃える」)
 } from '../utils/cameraZoom';
 import {
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, bossRetreatKeepRadiusPx,
@@ -1421,6 +1422,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const camBossZoomRef = useRef<{ z: number; v: number; engaged: boolean }>({ z: 1, v: 0, engaged: false });
   // §6.37 v7: ボス方向への縦カメラ先読み(世界px・正=北)。イージング済みの現在値をフレーム間で保持。
   const camBossLeadYRef = useRef<number>(0);
+  // v0.25.3063: 横のボス先読み(世界px・正=東)。縦と同じ目標ライン式・同じ時定数(社長裁定「2をまず揃える」)。
+  const camBossLeadXRef = useRef<number>(0);
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // ステージ2(屋外ラボ廊下)BGMクロスフェード: 直前フレームがlab対象コマだったか。falseへ落ちた
@@ -6187,6 +6190,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 判定/スポーン/プロップ生成は実プレイヤー基準(baseCam)のまま=ゲーム性に影響なし。
         const pcCamX = player.x + player.width / 2;
         const pcCamY = player.y + player.height / 2;
+        // v0.25.3063: +横のボス先読み(camBossLeadXRef)。値の適用は下(estimatorブロックの後)で行うが、
+        // baseCamX自体は先読み無しの基準として残す(危険時の追従等は従来どおりこの基準系)。
         const baseCamX = pcCamX - gameBounds.width / 2;  // プレイヤーをちょうど中央に置くカメラ(先読み無し)
         // §6.37 v6(社長指示「ズームが引になったら上下の幅を揃える」): ボス交戦の引きズームをstore側でも
         // 推定し(描画と同じ純関数・同じ時定数)、下のカメラ下げ量をズームに連動して増やす。
@@ -6195,6 +6200,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const est = camBossZoomRef.current;
           let bossTargetNow: number | null = null;
           let bossNearD2 = Infinity, bossNearDy = 0; // §6.37 v7: 最近接ボスの縦中心差(縦カメラ先読み用)
+          let bossNearDx = 0; // v0.25.3063: 横中心差(横カメラ先読み用・社長裁定「2をまず揃える」)
           if (!indoor && !labTheme && !useGameStore.getState().corridorMode) {
             for (const e of enemies) {
               if (!isEngageableBoss(e.type) || e.dormant === true || e.bossState === 'return') continue;
@@ -6202,7 +6208,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const dx = e.x + e.width / 2 - pcCamX, dy = e.y + e.height / 2 - pcCamY;
               const d2 = dx * dx + dy * dy;
               if (d2 > limit * limit) continue;
-              if (d2 < bossNearD2) { bossNearD2 = d2; bossNearDy = dy; }
+              if (d2 < bossNearD2) { bossNearD2 = d2; bossNearDy = dy; bossNearDx = dx; }
               // v0.25.3021(社長スクショ「ボスが上に居るのにプレイヤー中心・下の余白が無駄」の真因):
               // 描画(pixiScene)と同じく**フレーミング項込み**で目標ズームを出す。ボスが画面端の外に
               // 遠い時は距離カーブでなくフレーミング項が実ズームを決めるため、ここに無いと推定だけ
@@ -6232,6 +6238,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const wantLead = est.engaged ? bossCameraLeadY(bossNearDy, gameBounds.height, est.z) : 0;
           const lk = 1 - Math.exp(-baseDeltaTime / (est.engaged ? 0.5 : 1.0));
           camBossLeadYRef.current += (wantLead - camBossLeadYRef.current) * lk;
+          // v0.25.3063(社長裁定「2をまず揃えるべきでは?」): 横のボス先読みも縦と同じ目標ライン式・
+          // 同じ時定数でカメラ本体に掛ける(旧・描画側の横パンは退役=機構を1本化)。
+          const wantLeadX = est.engaged ? bossCameraLeadX(bossNearDx, gameBounds.width, est.z) : 0;
+          camBossLeadXRef.current += (wantLeadX - camBossLeadXRef.current) * lk;
         }
         // プレイヤーを中央より下へ(屋内/ラボは中央維持=スポーン補正と一致)。上(進行先)の視界を広げる。
         // 洋館通路は下げ量を増やす(v0.25.2148・社長指示「敵が出てきて見える位置をもう少し上に」)。
@@ -6263,7 +6273,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const look = camLookAheadRef.current;
         look.x += (offTx - look.x) * ok;
         look.y += (offTy - look.y) * ok;
-        const targetCameraX = baseCamX + look.x;
+        const targetCameraX = baseCamX + look.x + camBossLeadXRef.current; // v0.25.3063: 横のボス先読み
         const targetCameraY = baseCamY + look.y;
         // 指数追従(危険時はタイトな τ)。
         const followTau = Math.max(0.001, danger ? CAMERA_DANGER_TAU : CAMERA_FOLLOW_TAU);
