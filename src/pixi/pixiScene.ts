@@ -23,7 +23,8 @@ import type {
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
 import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
-  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
+  GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
+  GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
   GIANT_SLAM_WINDUP_MS, GIANT_SLAM_HALF_WIDTH,
@@ -12866,6 +12867,7 @@ export class PixiScene {
 
     // パンプキン特殊AI演出(描画のみ): 縮み(しゃがみ)/ジャンプのアーク/着地スカッシュ。Lv3・ジャイアントバットも同様。
     let aiSqX = 1, aiSqY = 1, aiHop = 0;
+    let aiShake = 0; // v0.25.3069: 溜め中の震え(横揺れ・下の liftShake に合流させて位置へ反映)
     if (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat' || e.type === 'hunter') {
       if (e.aiPhase === 'crouch') {
         const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (PUMPKIN_CROUCH_MS / ENEMY_ATTACK_SPEED_MULT)));
@@ -12908,8 +12910,38 @@ export class PixiScene {
     // 補う(他タイプは一切対象外・?giantscript=0時は上のブロックがそのまま効く=無改変)。
     if (e.type === 'giantbat' && GIANT_SCRIPT_ENABLED) {
       if (e.aiPhase === 'g-stomp-windup') {
-        const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_STOMP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
-        aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり(T7・パンプキンcrouchと同じ式)
+        // v0.25.3069(社長指示): 踏み鳴らしを「震えながらしゃがんで溜める → 発動の瞬間に素早く小ジャンプ
+        // して踏みつける」の2拍にする。**溜めの最後のHOP_MSだけ**を小ジャンプに使い、**着地=溜め終わり=
+        // 判定が出る瞬間**に一致させる(絵と判定の瞬間を1つにする。砂埃/地割れ/T4フラッシュも同じ瞬間)。
+        // フェーズ駆動なので、溜め中にカウンターされたらその場で止まる(latchで焼くと踏みつけだけ
+        // 続いて「殴ったのに踏まれた」ように見えるため、ここは意図的にフェーズ駆動)。
+        const total = GIANT_STOMP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+        const hopMs = Math.min(GIANT_STOMP_HOP_MS / ENEMY_ATTACK_SPEED_MULT, total);
+        const remain = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+        if (remain > hopMs) {
+          // ① 溜め: しゃがみが深くなる(従来の式のまま)+ 震えが強くなる。
+          const p = Math.max(0, Math.min(1, 1 - (remain - hopMs) / Math.max(1, total - hopMs)));
+          aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり(T7・パンプキンcrouchと同じ式)
+          // 2つの周波数を混ぜる(単一sinだと「揺れ」に見えて「震え」にならない)。
+          aiShake = (Math.sin(now / 23) * 0.6 + Math.sin(now / 11) * 0.4) * GIANT_STOMP_SHAKE_PX * p;
+        } else {
+          // ② 発動: 踏み切り(t=0)→ 最高到達 → 加速して落下 → 着地(t=1・ここが判定の瞬間)。
+          // 上がりより落ちが速い=「踏みつけ」に見える。着地の瞬間に一番潰れた姿勢になる。
+          const t = Math.max(0, Math.min(1, 1 - remain / Math.max(1, hopMs)));
+          const RISE = 0.55;
+          if (t < RISE) {
+            const u = t / RISE;
+            aiHop = GIANT_STOMP_HOP_PX * Math.sin(u * Math.PI / 2); // 伸び上がり(頂点で緩む)
+            aiSqY = 0.58 + (1.10 - 0.58) * u; // しゃがみ切り→空中で縦伸び
+            aiSqX = 1.14 + (0.92 - 1.14) * u;
+          } else {
+            const v = (t - RISE) / (1 - RISE);
+            aiHop = GIANT_STOMP_HOP_PX * (1 - v * v);  // 加速しながら落ちる
+            const k = v * v;                            // 潰れは着地の直前で一気に
+            aiSqY = 1.10 + (0.70 - 1.10) * k;
+            aiSqX = 0.92 + (1.20 - 0.92) * k;
+          }
+        }
       } else if (e.aiPhase === 'g-jump-windup') {
         const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_JUMP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
         aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p;
@@ -12923,7 +12955,10 @@ export class PixiScene {
 
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
-    const liftShake = liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0;
+    // v0.25.3069: 踏み鳴らしの震え(aiShake)もここへ合流させる。liftShake は下の位置決めと
+    // ステージ4/5の足元ズレ補正の**両方**で使われる唯一の横オフセットなので、別変数を足すと
+    // 雪原/戦場だけ震えが消える(同じ値を2箇所で管理しない)。
+    const liftShake = (liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0) + aiShake;
     // ノックバック中の小さな跳ね(社長指示): 被弾(lastHit)を起点に sin の1山ぶんポンと跳ねる。
     // バグ修正(社長報告v0.25.1476): ノックバックCD中(knockbackImmuneUntil)は0速度のまま
     // knockbackUntilだけ再利用してその場に凍結させる経路があり(gameStore.ts)、速度チェック無しだと

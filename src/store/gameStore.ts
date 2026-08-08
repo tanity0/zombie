@@ -1621,6 +1621,13 @@ export const GIANT_STOMP_REACH_PX = 92;
 // フォールバック(gStompRadius未確定の描画/レベルアップ保留の近似用): giantbat標準体格での実効値
 // (帯半幅≈38+届き92≈130)。実判定は常にgStompRadius側。
 export const GIANT_STOMP_RADIUS = 130;
+// v0.25.3069(社長指示「震えながらしゃがみ込んで溜めて、発動の時に素早く小ジャンプして踏みつける」):
+// 踏み鳴らしの**絵だけ**の3値(描画のみ・PUMPKIN_JUMP_HEIGHTと同じ扱い)。判定・半径・秒数・CDは不変。
+// 溜め(GIANT_STOMP_WINDUP_MS)の**最後のGIANT_STOMP_HOP_MSだけ**を踏み切り〜着地に使い、
+// **着地の瞬間 = 溜め終わり = 判定が出る瞬間**に揃える(絵と判定の瞬間を1つにする)。
+export const GIANT_STOMP_HOP_MS = 216;       // 実効180ms・小ジャンプ(踏み切り→着地)の尺
+export const GIANT_STOMP_HOP_PX = 34;        // 小ジャンプの見た目の高さ(飛び掛かりの90より明確に低い)
+export const GIANT_STOMP_SHAKE_PX = 5;       // 溜め中の震え(横揺れ)の最大振幅。溜めが進むほど強くなる
 // 薙ぎ払い(sweep・近140〜320・Phase2限定=新規解禁)。
 export const GIANT_SWEEP_WINDUP_MS = 840;    // 実効700ms(T3+T4)
 export const GIANT_SWEEP_ACTIVE_MS = 264;    // 実効220ms(THOR_HARAI_ACTIVE_MS相当)
