@@ -1477,6 +1477,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const pendingCutinAttnRef = useRef<{ x: number; y: number; cutin: NonNullable<ReturnType<typeof bossCutinPayload>> } | null>(null);
   // v0.25.3028: グレン連結パーツの前フレーム本数(減少検知でパーツ破壊爆発を出す)。count=null は第一形態(パーツ未表示)。
   const glenPartsPrevRef = useRef<{ id: string; count: number | null } | null>(null);
+  // v0.25.3038: ヒットストップ中のエフェクト実時間tick用の前フレーム時刻(0=非停止中)。
+  const hitstopFxLastRef = useRef(0);
   // the ONE ストーリーボス(M7/EX)の進行: 出現済みか / 終幕(勝利化)予定時刻(0=未予約)。
   const storyBossSpawnedRef = useRef(false);
   const storyBossWinAtRef = useRef(0);
@@ -1918,9 +1920,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       }
 
       if (nowMs < useGameStore.getState().hitstopUntil) {
+        // v0.25.3038(社長指示「消えていく時のエフェクトが止まったまま。光系のエフェクトは止めないで」):
+        // 時間停止(討伐シネマ/アテンション/カウンター)中も視覚エフェクト(リング/グロー/フラッシュ/
+        // 粒子)だけは実時間で進める=描画専用のstate(effects)のみ更新・シミュレーションは凍結のまま。
+        const lastFx = hitstopFxLastRef.current || nowMs;
+        hitstopFxLastRef.current = nowMs;
+        updateEffects(Math.max(0, Math.min(0.05, (nowMs - lastFx) / 1000)));
         frameRef.current = requestAnimationFrame(gameLoop);
         return;
       }
+      hitstopFxLastRef.current = 0;
 
       // ハリケーン鳴動「ゴゴゴゴ」: 鞭ハリケーン発動中、または錬金術レア(死神)の吸引中だけループ。
       // どちらも「中心へ敵を吸い寄せる渦」なので同じ鳴動を流用。毎フレーム現状態で駆動し、

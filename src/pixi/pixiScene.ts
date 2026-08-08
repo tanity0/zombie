@@ -5898,6 +5898,10 @@ export class PixiScene {
       this.hitstopFreezeNow = 0;
     }
     const now = this.hitstopFreezeNow || realNow;
+    // v0.25.3038(社長指示「光系のエフェクトは止めないで」): エフェクト(リング/グロー/フラッシュ/
+    // 粒子/ダメージ数字=消えていく系)だけはヒットストップ中も実時間で進める専用時計。
+    // 世界の「ストップ感」(歩き/揺らぎ/明滅の凍結)は従来どおり now(凍結時計)が担う。
+    const fxNow = realNow;
     this.cameraY = s.camera.y;
     // 登場演出の状態を反映(drawPlayer の飛び込みオフセット / 影スキップ / ヘリに使う)。
     this.introUntil = s.introUntil;
@@ -6703,8 +6707,8 @@ export class PixiScene {
     this.syncSkateboards(s.projectiles, now);
     this.syncDroneBoomerangs(s.projectiles, now);
     this.syncSummons(s.summons, now);
-    this.syncEventBloom(s.effects, now);
-    this.syncEffects(s.effects, s.camera, now);
+    this.syncEventBloom(s.effects, fxNow);
+    this.syncEffects(s.effects, s.camera, fxNow); // v0.25.3038: 光系は停止中も進む
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, s.camera, now);
     this.syncLocalEventLighting(
       s.effects,
@@ -6758,13 +6762,13 @@ export class PixiScene {
       // マーク(方角)だけ。道具としての計測値をゲーム画面へ持ち込まない。
       showDistance: s.bossMaker.active,
     });
-    this.syncFlash(s.effects, now);
+    this.syncFlash(s.effects, fxNow); // v0.25.3038: フラッシュも停止中に進む
     // ★v0.25.2782: 強glow(爆発など)を「世界の光」へ足し、プレイヤー足元の明るさを先に出す。
     // ここで出すのは、この値を**コントラストパンチと補助光の両方**が使うため(松明は syncBreakableProps で既に積み済み)。
     const groundPoolReqs: { x: number; y: number; r: number; life: number }[] = [];
     for (const e of s.effects) {
       if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
-      const glowLife = 1 - Math.min(1, (now - e.createdAt) / e.duration);
+      const glowLife = 1 - Math.min(1, (fxNow - e.createdAt) / e.duration);
       if (glowLife <= 0) continue;
       const gl = { x: e.x, y: e.y, reach: e.radius * GLOW_LIGHT_REACH_MULT, strength: glowLife * GLOW_LIGHT_GAIN };
       this.worldLights.push(gl);
