@@ -302,12 +302,11 @@ import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
-  isPointInZoomedViewport, ZOOM_MIN_ABS,
+  ZOOM_MIN_ABS,
   BOSS_DISTANCE_ZOOM_TAU, BOSS_DISTANCE_ZOOM_RETURN_TAU, zoomCameraDownFrac, bossCameraLeadY,
-  bossOffscreenExtraMarginX, bossOffscreenExtraMarginY,
 } from '../utils/cameraZoom';
 import {
-  advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss,
+  advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, bossRetreatKeepRadiusPx,
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
@@ -4450,7 +4449,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           } else if (boss) {
             bs.lastX = boss.x; bs.lastY = boss.y; bs.w = boss.width; bs.h = boss.height;
-            const cam = useGameStore.getState().camera;
             const gb = useGameStore.getState().gameBounds;
             const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
             // ボス戦の実画角と同じ距離/体格プロファイルで可視矩形を拡張する。
@@ -4463,15 +4461,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               boss.type, aabbGapDistance(player, boss), boss.isStoryBoss === true,
               { dxCenter: bcx - (player.x + player.width / 2), dyCenter: bcy - (player.y + player.height / 2), viewport: gb },
             );
-            // v0.25.3005(社長指摘「左右だけズーム射程と撤退ラインが短くない?」): 画面外判定は
-            // 長方形のビューポートだと縦長画面で左右が半分以下の距離で発火する。短辺側に不足分を
-            // 足した**正方形(長辺基準)の判定窓**にし、上下左右で同じワールド距離まで粘る
-            // (交戦の円/リーシュの円と整合)。判定式そのものは不変(掟)・横長画面では従来どおり。
-            const onScreen = isPointInZoomedViewport(
-              bcx, bcy, cam, gb, bossViewZoom,
-              BOSS_SCREEN_MARGIN + bossOffscreenExtraMarginY(gb),
-              BOSS_SCREEN_MARGIN + bossOffscreenExtraMarginX(gb),
-            );
+            // v0.25.3018(社長裁定・案A): 帰巣の圏内判定は**プレイヤー中心の一律距離**(正方形・
+            // 半径=画面長辺の半分+余白・引きズームで1/z拡大)。旧カメラ窓基準(v3005の正方形化を含む)は、
+            // カメラが北を向く構図(v2994〜)で北≈2400/横≈1400/南≈700pxと方向で距離感が激変していた
+            // (社長報告「縦と横で戦線離脱の距離感全然違う」)。縦横南北すべて同じ距離で粘る。
+            const keepR = bossRetreatKeepRadiusPx(gb, bossViewZoom);
+            const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
+            const onScreen = Math.abs(bcx - kpcx) <= keepR && Math.abs(bcy - kpcy) <= keepR;
             const inDeep = FORCE_HIDDEN_BOSS || practiceForces('bossnow') || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
             // v0.25.2971(社長裁定・案A/テストチャット診断): 技の実行中も**離脱の時計は進める**。
             // v0.25.2962の「技中は時計停止」はボスが時間の6〜8割を技で過ごすため時計が実質永久停止し、

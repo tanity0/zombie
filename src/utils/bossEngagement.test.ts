@@ -106,3 +106,24 @@ describe('ズーム連動と離脱予兆', () => {
     expect(advanceBossDisengageGrace(false, start.since, 2000)).toEqual({ since: undefined, ready: false, started: false });
   });
 });
+
+// v0.25.3018(社長裁定・案A): 帰巣の圏内判定=プレイヤー中心の一律距離。
+import { bossRetreatKeepRadiusPx, BOSS_RETREAT_KEEP_MARGIN_PX } from './bossEngagement';
+import { ZOOM_MIN_ABS } from './cameraZoom';
+
+describe('bossRetreatKeepRadiusPx — プレイヤー中心の一律撤退距離(案A)', () => {
+  const vp = { width: 430, height: 930 };
+  it('等倍: 画面長辺の半分+余白', () => {
+    expect(bossRetreatKeepRadiusPx(vp, 1)).toBeCloseTo(930 / 2 + BOSS_RETREAT_KEEP_MARGIN_PX, 6);
+  });
+  it('引きズームで1/z拡大・最深(ZOOM_MIN_ABS)で頭打ち', () => {
+    const base = 930 / 2 + BOSS_RETREAT_KEEP_MARGIN_PX;
+    expect(bossRetreatKeepRadiusPx(vp, 0.5)).toBeCloseTo(base / 0.5, 6);
+    expect(bossRetreatKeepRadiusPx(vp, 0.1)).toBeCloseTo(base / ZOOM_MIN_ABS, 6);
+    expect(bossRetreatKeepRadiusPx(vp, 1.4)).toBeCloseTo(base, 6); // 寄りでは縮めない
+  });
+  it('横長画面でも長辺基準(縦横で距離感が変わらない)', () => {
+    expect(bossRetreatKeepRadiusPx({ width: 930, height: 430 }, 1))
+      .toBeCloseTo(bossRetreatKeepRadiusPx(vp, 1), 6);
+  });
+});

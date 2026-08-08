@@ -175,17 +175,8 @@ export const isPointInZoomedViewport = (
   return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
 };
 
-/**
- * ボスの「画面外(帰巣/カメラ戻し)判定」用の左右追加余白(画面px)。
- * 交戦の入口/出口/リーシュは円(縦横同じワールド距離)なのに、画面外判定だけ長方形のビューポートを
- * 使うと、縦長画面では左右が半分以下の距離で発火して「左右だけ射程と撤退ラインが短い」体感になる
- * (社長指摘v0.25.3004)。短辺側に不足分を足して**正方形(長辺基準)の判定窓**にする。
- * 横長画面では0(縦側は isPointInZoomedViewport の marginScreenPx に足す)。
- */
-export const bossOffscreenExtraMarginX = (viewport: { width: number; height: number }): number =>
-  Math.max(0, (viewport.height - viewport.width) / 2);
-export const bossOffscreenExtraMarginY = (viewport: { width: number; height: number }): number =>
-  Math.max(0, (viewport.width - viewport.height) / 2);
+// (v3005の bossOffscreenExtraMarginX/Y は v0.25.3018 の案A「プレイヤー中心の一律距離」
+//  (bossEngagement.ts の bossRetreatKeepRadiusPx)への置き換えで撤去。)
 
 // ★**安全マージンの基準はこの絶対最小値**(v0.25.2412)。
 // 背景のオーバースキャン(ZOOM_OVERSCAN)・敵の回収/湧き距離・カリングは「**一番引いた時でも

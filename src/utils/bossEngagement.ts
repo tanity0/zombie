@@ -10,7 +10,7 @@
 //
 // 掟: **ここは判定するだけの純関数**。どう使うか(湧きを落とす/コマ時計を止める)は directorTick 側。
 import type { Enemy, EnemyType } from '../types/game';
-import { BOSS_ZOOM_PROFILES, bossZoomClassFor, zoomCompensatedWorldDistance } from './cameraZoom';
+import { BOSS_ZOOM_PROFILES, bossZoomClassFor, zoomCompensatedWorldDistance, ZOOM_MIN_ABS } from './cameraZoom';
 
 /**
  * 「交戦中」として扱うボスの型。
@@ -115,6 +115,19 @@ export const bossLeashDistancePx = (type: EnemyType, isStoryBoss = false): numbe
 
 // v0.25.2968(社長指示「画面外でたらすぐ戻す」): 3000→1200ms。画面外/深層外が1.2秒続いたら帰巣開始。
 export const BOSS_DISENGAGE_GRACE_MS = 1200;
+
+// v0.25.3018(社長裁定・案A「プレイヤー中心の一律距離に統一」): 帰巣の圏内判定は、カメラ窓ではなく
+// **プレイヤー中心の正方形(半径=画面長辺の半分+余白、引きズームで1/z拡大)**で行う。
+// 旧カメラ窓基準は、カメラが北を向く構図(v2994〜のカメラ下げ+縦先読み)で「北≈2400/横≈1400/南≈700px」
+// と方向で距離感が激変していた(社長報告「縦と横で戦線離脱の距離感全然違う」)。縦横南北すべて同じ距離で
+// 粘る。従来どおり1.2秒猶予+交戦EXIT円が外側の上限として効く。
+export const BOSS_RETREAT_KEEP_MARGIN_PX = 120; // 画面px余白(旧BOSS_SCREEN_MARGINと同値)
+export const bossRetreatKeepRadiusPx = (
+  viewport: { width: number; height: number }, zoom: number,
+): number => {
+  const z = Math.max(ZOOM_MIN_ABS, Math.min(1, Number.isFinite(zoom) && zoom > 0 ? zoom : 1));
+  return (Math.max(viewport.width, viewport.height) / 2 + BOSS_RETREAT_KEEP_MARGIN_PX) / z;
+};
 
 /** 範囲外が連続3秒続いた時だけ離脱。1フレームでも戻れば予兆を取り消す。 */
 export const advanceBossDisengageGrace = (
