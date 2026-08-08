@@ -1,5 +1,31 @@
 # Development Log
 
+## v0.25.3029 — ラスボス二体構成(形態1討伐→アテンション→形態2フルHPスポーン・社長裁定)【2026-08-08 18:44 JST】
+社長指示「第1形態倒したら、一度倒したアテンションイベントを挟んで。その後、新たに第二形態を
+スポーンして。つまりHPはどっちも100-0まで戦う 二体ってこと」+追裁定「1い(大技=nihil/trijumpは
+第二形態専属) 2い(出現カットイン=glen-boss2の絵) 3あ(撃破ボーナス8000は2体分のまま)」。
+- **Enemy.glenForm(1|2)**: stage-7のstoryBossスポーンのみ付与。旧「HP60%で変身」を全廃し、
+  変身後の見た目/連結パーツ/胴体弾/大技は glenForm===2 ゲートへ(pixiScene/gameStore)。
+  パーツ・胴体弾の欠けは形態2のフルバー9等分(glenPartCountFull・旧glenPartCount削除=1本化)。
+- **形態1の死で進行を確定させない(監査の致命1〜5対応)**: `isFinalBossKill`(enemyUtils・純関数)に
+  finaleDefeated/bossKilled×4/クリアフラグ(markCastleBossCleared+syncQuestStageClear)/年表を集約。
+  ゴースト記録(notifyBossClear/recordDuoBossClear・melee/damageEnemyの両経路)も形態1では通知しない。
+  終幕の生存ベース検知(useGameLoop)は「形態2予約中=戦闘継続」を追加(EX/イベント産は不変)。
+- **形態2スポーン**: 討伐アテンション総尺(IN+HOLD+CRUMBLE+OUT≈5.2s)後に同位置へフルHPで湧く
+  (store予約 glenForm2SpawnAt・実時刻・resetGameでクリア・未予約時のみ張る=二重発火防止・
+  練習ランは張らない)。M7の2倍化・playableAreaクランプ・胴体弾種付け・出現カットイン
+  (glenForm2CutinPayload=「グレン 第二形態」+glen-boss2絵)+SE/リング/フラッシュ。
+  消費条件: 時刻到達+attention不在+プレイヤー生存+未クリア。死体絵: 形態2はglen-boss2で崩壊
+  (bossCorpse.glenBoss2)。
+- **ボスモード**: 「グレン 第二形態」枠は最初から形態2をフルHPでスポーン(practiceWantsGlenForm2。
+  旧startHealthFraction廃止・アイコンのphase2判定はglenForm2フラグへ)。第一形態枠は形態1だけで勝ち。
+- テスト: isFinalBossKill 5件追加・glenChain/bossPractice系を新写像へ更新(67件緑)。監査指摘は
+  全件反映(不採用なし)。負荷1/10。
+- **既知**: `npx vitest run src/utils` で bodyCenteredAoe/idolScript/npcSfx の3テストが**本変更と
+  無関係にHEADで既に失敗**(CI赤の可能性)。別途診断が必要(次の指示で対応可)。
+検証: typecheck OK / lint エラー0 / glenChain+bossPractice+enemyUtils 67件緑。
+実機確認: 形態1討伐→崩壊→形態2出現の流れ・形態1で大技が出ないか・クリアが形態2討伐のみか。
+
 ## v0.25.3028 — ボス障害物破壊の爆発強化+連結パーツ破壊爆発(社長指示)【2026-08-08 18:25 JST】
 ①障害物破壊: 共通ヘルパ spawnBossCrushExplosionFx(useGameLoop)に集約。破片24+12/白リング120px+
 橙リング190px/GLOW_R_M/揺れ260ms・mag8(旧: 破片6・リング40px・GLOW_XS・揺れ130ms/mag3)。

@@ -25,7 +25,7 @@ const categoryOf = (slot: PracticeSlot) => CATEGORY_OF.get(slot.encounterSlotKey
 
 const bossName = (slot: PracticeSlot): string => slot.label ?? enemyDeathLabel(slot.bossType);
 const bossIcon = (slot: PracticeSlot): string | null =>
-  bossIconSrc(slot.bossType, slot.stageId, slot.startHealthFraction != null ? 'phase2' : undefined);
+  bossIconSrc(slot.bossType, slot.stageId, slot.glenForm2 ? 'phase2' : undefined);
 
 const Row: React.FC<{ icon: React.ReactNode; label: string; value: string }> = ({ icon, label, value }) => (
   <div className="min-w-0 border border-white/[0.07] bg-black/20 px-2 py-2">

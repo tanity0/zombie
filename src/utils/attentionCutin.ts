@@ -29,6 +29,13 @@ export const bossCutinPayload = (bossType: EnemyType, stageId?: string | null): 
   return { name, art: bossIconSrc(bossType, stageId) };
 };
 
+/** グレン第二形態の出現カットイン(v0.25.3029・社長裁定2い: 絵は変身後=glen-boss2。新素材は作らない)。
+ * 名前はボスモードの枠表記(bossPractice.ts)と同じ「グレン 第二形態」。 */
+export const glenForm2CutinPayload = (): AttentionCutin => ({
+  name: 'グレン 第二形態',
+  art: bossIconSrc('giantbat', 'stage-7', 'phase2'), // = glen-boss2(ボスモードのアイコンと同じ出所)
+});
+
 /**
  * 後着の triggerAttention を無視すべきか(§6.36 first-wins)。
  * attention が生きている間、新旧どちらかが cutin 持ちなら後着を無視する。

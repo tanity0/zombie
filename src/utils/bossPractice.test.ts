@@ -18,7 +18,7 @@ describe('ボスラッシュの台帳', () => {
     expect(second.encounterSlotKey).toBe(first.slotKey);
     expect(second.stageId).toBe('stage-7');
     expect(second.label).toBe('グレン 第二形態');
-    expect(second.startHealthFraction).toBe(0.6);
+    expect(second.glenForm2).toBe(true);
   });
 
   // 社長裁定 §20-9-2。台帳は守護霊メニューと共用なので、あちらに足された瞬間ここにも出てしまう。

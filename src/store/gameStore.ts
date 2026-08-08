@@ -90,7 +90,7 @@ import {
   QUEST_NAMED_AGGRO_RANGE,
 } from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, isHiddenBoss, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill } from '../utils/enemyUtils';
 import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
@@ -2400,7 +2400,10 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   }
   // 歴史年表(chronicle): 各種ボス/ハンターの初回討伐を即載せ(社長決定v0.25.1628)。近接/銃 両キル経路が
   // この関数を通るのでここ1箇所で拾える。宿敵(isNamedのみ)はボス扱いにしない=年表に載せない。
-  if (isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter') {
+  // v0.25.3029(社長裁定「二体」): グレン形態1の死は進行を確定させない(年表・クリアフラグとも
+  // 形態2の討伐=isFinalBossKillでのみ書く)。
+  const glenForm1Kill = enemy.type === 'giantbat' && enemy.glenForm === 1;
+  if (!glenForm1Kill && (isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter')) {
     // 年表フレーズ(社長指示v0.25.1658→1659で動詞は「討伐」に統一):
     //  ・城ボス(giantbat=各ステージのストーリーボス・固有名なし)→「ストーリーボスを討伐」。
     //  ・固有名持ち(天使/裏ボス)は「CODE:◯◯を討伐」(§6.20 M45)。「天使」等の種族接頭辞は
@@ -2424,7 +2427,7 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     // 城ボスクリアフラグ(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686 #4): 討伐の瞬間に永続記録し、
     // 「城ボスフラグ && 強制クエストフラグ」が揃えばそのステージをクリア扱い=次ステージ解放。
     // イベント産のgiantbat(fromEvent)はストーリーボスではないので除外(finaleDefeatedと同じ扱い)。
-    if (enemy.type === 'giantbat' && !enemy.fromEvent) {
+    if (isFinalBossKill(enemy)) {
       const qStageId = getSelectedStageId();
       markCastleBossCleared(qStageId);
       syncQuestStageClear(qStageId);
@@ -2453,7 +2456,8 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   // 総尺(時間停止)は従来と同じ IN+HOLD+CRUMBLE+OUT=約5.2秒。
   const corpseHoldMs = getsDeathAttention(enemy.type) ? ATTENTION_IN_MS + ATTENTION_HOLD_MS : 0;
   useGameStore.setState({
-    bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now(), holdMs: corpseHoldMs },
+    // glenBoss2(v0.25.3029): 形態2の死体は変身後の絵で崩す(syncBossCorpseが読む)。
+    bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now(), holdMs: corpseHoldMs, glenBoss2: enemy.type === 'giantbat' && enemy.glenForm === 2 },
     ...(bossDefeat ? {
       eventBannerText: `${enemyDeathLabel(enemy.type)}を討伐`,
       eventBannerUntil: get().gameTime + DRAMATIC_DEATH_FADE_MS,
@@ -2472,6 +2476,19 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     // v0.25.3026: ホールドを崩壊時間ぶん延長して渡す=hitstopもtriggerAttention側で同尺になる
     // (旧v2955の「別途hitstopだけ延長」は廃止。カメラと時間停止の尺が1本化される)。
     get().triggerAttention(x, y, undefined, BOSS_CORPSE_CRUMBLE_MS);
+  }
+  // v0.25.3029(社長裁定「二体」): 形態1の討伐では、討伐アテンション(パン→ホールド→崩壊→戻り)が
+  // 終わった時刻に**形態2を同位置へ湧かせる予約**を張る(消費はuseGameLoop)。
+  // 練習ランは枠ごとに独立(第一形態枠は形態1だけで勝ち)なので張らない(監査指摘・致命4)。
+  // 二重呼び出し(近接/銃の両キル経路)対策で未予約の時だけ(監査指摘・致命5)。
+  if (glenForm1Kill && !enemy.fromEvent && !isPracticeRun() && get().glenForm2SpawnAt == null) {
+    useGameStore.setState({
+      glenForm2SpawnAt: {
+        at: Date.now() + ATTENTION_IN_MS + ATTENTION_HOLD_MS + BOSS_CORPSE_CRUMBLE_MS + ATTENTION_OUT_MS,
+        x: enemy.x + enemy.width / 2,
+        y: enemy.y + enemy.height / 2,
+      },
+    });
   }
 };
 
@@ -2606,7 +2623,9 @@ const grantMeleeKillRewards = (
     // v0.25.2553(§2.16 A): 撃破の瞬間に召喚中の同行守護霊(居なければnull)を添えて記録する。
     // §2.17(GHOST-DUO-RECORDS): 同行枠の台帳へも同じ写しで打刻する。二枠は構造的に排他=
     // 同行ランはnotifyBossClearがno-op(session=null)/ソロランはrecordDuoBossClearがno-op(時計なし)。
-    {
+    // v0.25.3029: グレン形態1の死は記録しない(giantbat@stage-7の撃破記録=形態2の討伐。
+    // first-winsの台帳が形態1のタイムで確定してしまうのを防ぐ・監査指摘・致命3)。
+    if (!(enemy.type === 'giantbat' && enemy.glenForm === 1)) {
       const allySnap = ghostAllySnapshot(findGhostAlly(get().summons));
       notifyBossClear(enemy.type, getSelectedStageId(), allySnap);
       recordDuoBossClear(enemy.type, getSelectedStageId(), allySnap);
@@ -3845,7 +3864,9 @@ interface GameState {
   setPendingHiddenBoss: (t: EnemyType | null) => void;
   hiddenBoss: EnemyType | null;                         // この出撃の裏ボス種別(useGameLoop の専用コントローラが参照)
   bossChasing: boolean;                                 // 裏ボスが「追いかけてきている」状態(=他敵が逃げる/イベント抑制。コントローラが毎フレ更新)
-  bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number } | null; // 討伐後のフェードアウト演出(描画のみが参照)。holdMs=無傷で保持する尺(死亡アテンション付きボスのみ>0)
+  bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean } | null; // 討伐後のフェードアウト演出(描画のみが参照)。holdMs=無傷で保持する尺(死亡アテンション付きボスのみ>0)。glenBoss2=変身後の絵で崩す(v0.25.3029)
+  // v0.25.3029(社長裁定「二体」): グレン形態1討伐後の形態2スポーン予約(at=実時刻・x/y=世界座標の中心)。
+  glenForm2SpawnAt: { at: number; x: number; y: number } | null;
   hiddenBossDefeated: boolean;                          // 裏ボスを討伐済みか(方角矢印の表示打ち切り等に使用)
   // 病院(社長指示v0.25.2331): 通常ステージに1つ。未確認汚染の中間・裏ボスの反対方角。
   // 拠点を解放するとその方角の矢印が出る(裏ボスと同じ POI 仕組み)。3秒とどまるとワクチンを入手。
@@ -4196,6 +4217,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   hiddenBoss: null,
   bossChasing: false,
   bossCorpse: null,
+  glenForm2SpawnAt: null,
   hiddenBossDefeated: false,
   hospital: null,
   hospitalDwellMs: 0,
@@ -4655,7 +4677,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
         });
       }
-      const bossKilled = killedList.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
+      const bossKilled = killedList.some(k => isFinalBossKill(k.enemy));
       return {
         enemies: out,
         gameStats: {
@@ -5224,7 +5246,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // A melee finisher (instant execute) triggers a brief full-game hitstop.
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
-    const bossKilled = killed.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
+    const bossKilled = killed.some(k => isFinalBossKill(k.enemy));
     // スキル: ナイフマスターの近接コンボ加算(近接ダメージが当たったスイングで +1)。
     const meleeHitLanded = slashAt.length > 0;
     const knifeCombo = computeKnifeCombo(player, gameTime, meleeHitLanded);
@@ -6027,7 +6049,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 1回だけ発火する。一閃で複数敵を同時フィニッシュしても多重発火しない。
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
-    const bossKilled = killed.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
+    const bossKilled = killed.some(k => isFinalBossKill(k.enemy));
     const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
     const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
     // §6.21 M46: 近接カウンター振り(刀のオート斬撃/一閃)の計測。channel='melee'。1呼び出し=1回(hitCount=命中数)。
@@ -6251,7 +6273,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
-    const bossKilled = killed.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
+    const bossKilled = killed.some(k => isFinalBossKill(k.enemy));
     const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
     const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
     // §6.21 M46: 近接カウンター振り(鞭)の計測。channel='melee'。1振り=1回(hitCount=命中数)。
@@ -8095,7 +8117,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Check if enemy was killed
       if (newHealth === 0) {
         killed = true;
-        bossClearedType = enemy.type; // BOT_AND_GHOST.md §2.10 G5: 撃破通知用(set後にnotifyBossClear。非対象typeはnotifyBossClear内で無視)
+        // v0.25.3029: グレン形態1は撃破記録に通知しない(melee経路と同じゲート・監査指摘)。
+        bossClearedType = (enemy.type === 'giantbat' && enemy.glenForm === 1) ? null : enemy.type; // BOT_AND_GHOST.md §2.10 G5: 撃破通知用(set後にnotifyBossClear。非対象typeはnotifyBossClear内で無視)
         if (enemy.type === 'reaper') reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
         if (enemy.isNamed) namedFoeKilled = enemy; // §5.14 M13: 宿敵討伐
         // §6.24 M48「使役」: 通常敵(ボス/裏ボス/ネームド/エリートは対象外=D1)を倒した時だけ候補にする。
@@ -8131,7 +8154,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(questKillNext !== null ? { eventQuestKills: questKillNext } : {}),
           // The giantbat is the run's finale boss — defeating it triggers the return phase.
           // ただし囲い系イベントのミニボス(fromEvent)は finale ではないので除外。即勝利せず帰還サークルへ。
-          finaleDefeated: state.finaleDefeated || (enemy.type === 'giantbat' && !enemy.fromEvent),
+          finaleDefeated: state.finaleDefeated || isFinalBossKill(enemy),
           // 叫喚型(screamer)を倒したら強化バフを即座に打ち切る(社長指示)。残り時間を待たず即失効。
           ...screamerBuffCutOnKillPatch([enemy.type], state.screamerBuffUntil, state.gameTime),
         };
@@ -8743,7 +8766,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 発射予約(裁定3「予告中は撃たない」)。発射はpost-set(giantBoltFiresと同じ作法)。
           // 変身直後は種付けのみ=初回はCD後(監査指摘: 変身フラッシュと16発の同時発火を避ける)。
           const glenVolley: { glenVolleyAt?: number } = {};
-          if (glenScriptApplies(enemy.isStoryBoss, enemy.storyBossVariant, GLEN_SCRIPT_ENABLED) && phase >= 2) {
+          // v0.25.3029(二体構成): 胴体弾はglenForm===2の個体だけ(旧: 同一個体のHP60%以下)。
+          if (glenScriptApplies(enemy.isStoryBoss, enemy.storyBossVariant, GLEN_SCRIPT_ENABLED) && enemy.glenForm === 2) {
             if (glenSimTrail?.id !== enemy.id) glenSimTrail = { id: enemy.id, trail: [] };
             pushGlenTrail(glenSimTrail.trail, enemy.x + enemy.width / 2, enemy.y + enemy.height);
             if (enemy.glenVolleyAt == null) {
@@ -9831,12 +9855,16 @@ export const useGameStore = create<GameState>((set, get) => ({
                 } else if (glenScriptApplies(enemy.isStoryBoss, enemy.storyBossVariant, GLEN_SCRIPT_ENABLED)) {
                   // M67(§6.26-12): stage-7のグレンだけ(glenScriptAppliesが門番=通常城ボス/ex1は
                   // 絶対にここへ来ない)。既存5技(pickGiantMove/beginGiantMove)+専用4技の統合抽選。
+                  // v0.25.3029(社長裁定1い): グレン専用の大技(虚無の三唱nihil/三連跳びtrijump)は
+                  // **第二形態(glenForm===2)専属**。形態1は城ボス標準技+爪痕系(talon/boon/reach)まで
+                  // =ready恒偽で抽選候補から外す(抽選ロジック自体は不変)。
+                  const glenBigMoves = enemy.glenForm === 2;
                   const glenReady: Record<GlenMoveId, boolean> = {
                     talon: gameTime >= (enemy.gGlenReadyAt?.talon ?? 0),
                     boon: gameTime >= (enemy.gGlenReadyAt?.boon ?? 0),
                     reach: gameTime >= (enemy.gGlenReadyAt?.reach ?? 0),
-                    nihil: gameTime >= (enemy.gGlenReadyAt?.nihil ?? 0),
-                    trijump: gameTime >= (enemy.gGlenReadyAt?.trijump ?? 0),
+                    nihil: glenBigMoves && gameTime >= (enemy.gGlenReadyAt?.nihil ?? 0),
+                    trijump: glenBigMoves && gameTime >= (enemy.gGlenReadyAt?.trijump ?? 0),
                   };
                   const queued = enemy.bossScriptQueue?.[0];
                   const move = (queued as GiantMove | GlenMoveId | undefined) ?? pickGiantMoveWithGlen(dist, phase, ready, glenReady);
@@ -13396,6 +13424,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         hiddenBoss,
         bossChasing: false,
         bossCorpse: null,
+        glenForm2SpawnAt: null,
         hiddenBossDefeated: false,
         // 病院/武器庫/警察署は通常ステージ(屋外・森スキン・通路/ダンステストでない)にだけ立つ。
         // §6.24 M48: 位置はこのランで確定した detourSectors(裏ボスのセクターを避けた3割り当て)を使う。

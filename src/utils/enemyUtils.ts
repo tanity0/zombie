@@ -140,6 +140,13 @@ export const isBossType = (t: EnemyType): boolean =>
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' ||
   t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter';
 
+/** 「最終ボスを討伐した」扱いにしてよいキルか(v0.25.3029・社長裁定「二体」)。
+ * グレン形態1(glenForm===1)の死はミッション進行を確定させない(討伐アテンションの後に形態2が湧く)。
+ * 従来の散在パターン(type==='giantbat' && !fromEvent)の**唯一の後継**——finaleDefeated/bossKilled/
+ * クリアフラグ/年表の判定は必ずこれを通す(監査指摘: 写し漏れ防止)。 */
+export const isFinalBossKill = (e: Pick<Enemy, 'type' | 'fromEvent' | 'glenForm'>): boolean =>
+  e.type === 'giantbat' && !e.fromEvent && e.glenForm !== 1;
+
 /**
  * 討伐時に「アテンション」(時間停止 + カメラが現地へ寄って戻る)を出す対象か。
  *

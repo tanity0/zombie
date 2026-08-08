@@ -106,7 +106,7 @@ import {
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
 import {
-  GLEN_P2_HP_FRAC, GLEN_CHAIN, GLEN_SLOT_COUNT, GLEN_VISIBLE_BY_COUNT, glenPartCount,
+  GLEN_CHAIN, GLEN_SLOT_COUNT, GLEN_VISIBLE_BY_COUNT, glenPartCountFull,
   pushGlenTrail, sampleGlenTrail, glenChainDistances,
 } from '../utils/glenChain';
 // 文脈ズームで最大まで引いた時(worldGroup.scale=ZOOM_MIN_ABS)でも画面を覆えるよう、worldGroup内の
@@ -12752,8 +12752,8 @@ export class PixiScene {
     // ラスボス第二形態(v0.25.2918・社長指示「3つのパーツが本体に連なり、HPが減ると真ん中から欠ける」):
     // HPが GLEN_P2_HP_FRAC を切ったら本体絵を glen-boss2 へ差し替え、連結パーツを後ろに並べる。
     // **視覚のみ**=判定・AI・技・HPは一切不変(CLAUDE.md「Visual vs. hitbox」)。
-    const glenP2 = this.currentFarKey === 'stage7' && e.type === 'giantbat'
-      && e.maxHealth > 0 && e.health / e.maxHealth <= GLEN_P2_HP_FRAC;
+    // v0.25.3029(社長裁定「二体」): 第二形態は glenForm===2 の**別個体**(旧「HP60%で変身」は廃止)。
+    const glenP2 = this.currentFarKey === 'stage7' && e.type === 'giantbat' && e.glenForm === 2;
     const tex = glenP2
       ? (getTexture('glen-boss2') ?? getTexture(this.enemyTexKey(e.type, e.id)))
       : getTexture(this.enemyTexKey(e.type, e.id));
@@ -13075,7 +13075,7 @@ export class PixiScene {
       }
       view.sprite.visible = true;
       // ラスボス第二形態の連結パーツ(HPで真ん中から欠ける)。第二形態でない時は隠すだけ。
-      this.syncGlenParts(view, glenP2 ? glenPartCount(e.health / e.maxHealth) : 0,
+      this.syncGlenParts(view, glenP2 ? glenPartCountFull(e.maxHealth > 0 ? e.health / e.maxHealth : 1) : 0,
         fb.footX, fb.footY, Math.abs(scaleX) * tex.width / 2, sc, artFade, now);
       // PACING_PUZZLE.md §5.15 M15: レア(色付き)個体は本体を専用色でtint(サイズ拡大はネームド専売
       // なのでここでは触らない)。抽選なし/フラグ無効時は明示的に等倍(0xffffff)へ戻す
@@ -17140,12 +17140,15 @@ export class PixiScene {
     }
   }
 
-  private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number } | null, now: number) {
+  private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean } | null, now: number) {
     const sp = this.bossCorpseSprite;
     if (!corpse) { if (sp.visible) sp.visible = false; return; }
     // 絵の選択は生体と同じチェーン(enemyTexKey)。ここを2段しか見ていなかったのが
     // 「ステージ4で倒すとステージ1の見た目になる」の原因(社長報告・v0.25.2383で修正)。
-    const tex = getTexture(this.enemyTexKey(corpse.type, ''));
+    // glenBoss2(v0.25.3029): グレン第二形態の死体は変身後の絵で崩す(生体と同じglen-boss2)。
+    const tex = corpse.glenBoss2
+      ? (getTexture('glen-boss2') ?? getTexture(this.enemyTexKey(corpse.type, '')))
+      : getTexture(this.enemyTexKey(corpse.type, ''));
     if (!tex) { sp.visible = false; return; }
     const FADE_MS = 2600; // useGameLoop の BOSS_FADE_MS と一致(超過後は store 側が corpse を消す)
     // v0.25.2955: holdMs(死亡アテンションの尺)の間は t=0=無傷で見せ、その後に実時間で崩す

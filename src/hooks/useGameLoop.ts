@@ -76,12 +76,12 @@ import {
   BOSS_TEST_RUN, // ボス戦テスト/ボスメーカー出撃か(チュートリアル抑止に使う)
 } from '../store/gameStore';
 import { glenScriptApplies } from '../utils/giantScript';
-import { glenPartCount, GLEN_P2_HP_FRAC, glenRemovedPartAnchors } from '../utils/glenChain';
+import { glenPartCountFull, glenRemovedPartAnchors } from '../utils/glenChain';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
-import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceStartHealthFraction } from '../utils/bossPractice';
-import { bossCutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
+import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2 } from '../utils/bossPractice';
+import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
 import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
@@ -2569,11 +2569,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const storyStageId = getSelectedStageId();
             boss.isStoryBoss = true;
             boss.storyBossVariant = storyStageId === 'stage-7' ? 'stage-7' : 'stage-ex1';
-            // ボスモードの「グレン 第二形態」は、第一形態と別枠で選び、変身しきい値のHPから始める。
-            // maxHealthは変えないので、描画・AIとも本編と同じ health/maxHealth 判定で即座に第二形態になる。
-            const practiceHealthFrac = practiceStartHealthFraction();
-            if (storyStageId === 'stage-7' && practiceHealthFrac != null) {
-              boss.health = boss.maxHealth * practiceHealthFrac;
+            // v0.25.3029(社長裁定「二体」): stage-7のグレンは形態フラグを持つ。通常は形態1から。
+            // ボスモードの「グレン 第二形態」枠は**最初から形態2の個体**をフルHPでスポーン
+            // (旧「HP60%から開始」は二体構成化で廃止)。
+            if (storyStageId === 'stage-7') {
+              boss.glenForm = practiceWantsGlenForm2() ? 2 : 1;
             }
             // M7(stage-7=グレン)のボスだけ当たり判定込みで2倍(社長指示v0.25.2000)。width/height=当たり判定なので
             // 2倍で見た目(=箱にcontainスケール)も当たり判定も同時に2倍。増分の半分だけ左上へ寄せて中心を維持。
@@ -2611,7 +2611,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           } else if (storyBossSpawnedRef.current && storyBossWinAtRef.current === 0) {
             // 撃破検知: 場から giantbat が消えたら終幕へ(storyBossランには他の giantbat 供給経路がない)。
             // 画面揺れ+背景で崩れる演出は triggerDramaticDeath(既存)が担う。
-            const alive = sbs.enemies.some(e => e.type === 'giantbat');
+            // v0.25.3029(監査指摘・致命1): 形態2のスポーン予約中は「まだ戦闘中」=終幕にしない
+            // (形態1討伐〜形態2出現の約5.2秒は盤上のgiantbatが0になるため)。EX(予約を張らない)は不変。
+            const alive = sbs.enemies.some(e => e.type === 'giantbat') || sbs.glenForm2SpawnAt != null;
             if (!alive) {
               if (getSelectedStageId() === 'stage-7') {
                 // 撃破後・共通/サブ3本完了分岐(統合正本M7撃破後・指示書4.8)。グレン「……」は削除しない。
@@ -2625,6 +2627,45 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // EX: 台詞・通信・正体表示なし、そのままクリア(統合正本10.4)。崩壊演出の余韻だけ置く。
                 storyBossWinAtRef.current = newGameTime + 2600;
               }
+            }
+          }
+          // v0.25.3029(社長裁定「二体」): 形態1の討伐アテンションが終わったら、同位置に第二形態を
+          // フルHPの**新しい個体**としてスポーン(出現カットイン=変身後の絵・裁定2い)。
+          // 先に予約をnullへ=同フレーム二重発火防止(監査指摘・致命5)。gameOver/gameWon中は湧かせない。
+          {
+            const pend = useGameStore.getState().glenForm2SpawnAt;
+            if (pend && Date.now() >= pend.at && !useGameStore.getState().attention
+                && useGameStore.getState().player.health > 0 && !useGameStore.getState().gameWon) {
+              useGameStore.setState({ glenForm2SpawnAt: null });
+              const e2 = spawnEnemyAt('giantbat', pend.x, pend.y, newGameTime);
+              e2.isStoryBoss = true;
+              e2.storyBossVariant = 'stage-7';
+              e2.glenForm = 2;
+              // 形態1と同じM7の2倍化(当たり判定込み・中心維持)。
+              const ow2 = e2.width, oh2 = e2.height;
+              e2.width = ow2 * 2; e2.height = oh2 * 2;
+              e2.x = pend.x - e2.width / 2; e2.y = pend.y - e2.height / 2;
+              // 移動可能帯へクランプ(CLAUDE.md必須・帯の端で死んだ場合に形態2が帯外=追えない、を防ぐ)。
+              const placed2 = clampRectToPlayableArea(e2.x, e2.y, e2.width, e2.height, {
+                farBackdrop: useGameStore.getState().farBackdrop,
+                labTheme,
+                corridorMode: useGameStore.getState().corridorMode,
+                m0AdvanceLimitX: null,
+                corridorRunInActive: false,
+              });
+              e2.x = placed2.x; e2.y = placed2.y;
+              e2.vx = 0; e2.vy = 0;
+              e2.bossNextActionAt = newGameTime + 2000;
+              e2.glenVolleyAt = newGameTime; // 胴体弾の種付け(初弾はCD後・監査指摘)
+              addEnemy(e2);
+              const c2x = e2.x + e2.width / 2, c2y = e2.y + e2.height / 2;
+              useGameStore.getState().triggerAttention(c2x, c2y, glenForm2CutinPayload());
+              playSfx('boss-appear');
+              spawnFlash('rgba(127,29,29,0.28)', 420);
+              spawnRing(c2x, c2y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
+              spawnRing(c2x, c2y, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
+              useGameStore.getState().spawnGlow(c2x, c2y, GLOW_R_XXL, 'rgba(239,68,68,', 900);
+              spawnBurst(c2x, c2y + 20, '#7f1d1d', 28);
             }
           }
           // 終幕の間が明けたら勝利(帰還サークルなしの直接クリア)。
@@ -7573,7 +7614,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (e.type !== 'giantbat' || !glenScriptApplies(e.isStoryBoss, e.storyBossVariant, GLEN_SCRIPT_ENABLED)) continue;
             glenSeen = true;
             const hpFrac = e.maxHealth > 0 ? e.health / e.maxHealth : 1;
-            const count = hpFrac <= GLEN_P2_HP_FRAC ? glenPartCount(hpFrac) : null;
+            const count = e.glenForm === 2 ? glenPartCountFull(hpFrac) : null; // v0.25.3029: 二体構成でパーツは形態2のフルバー
             if (prevGp && prevGp.id === e.id && prevGp.count != null && count != null && count < prevGp.count) {
               const simTrail = getGlenSimTrail();
               const anchors = glenRemovedPartAnchors(

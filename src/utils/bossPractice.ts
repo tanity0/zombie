@@ -13,7 +13,6 @@ import { getStage, STAGES } from '../data/campaign';
 import {
   STAGE_BOSS_HEALTH_BY_STAGE, GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH,
 } from '../config/bossHealth';
-import { GIANT_PHASE_HP_THRESHOLD } from './giantScript';
 
 // ---------------------------------------------------------------------------------------------
 // 出撃の種類(ランのフラグ)
@@ -71,9 +70,10 @@ const PRACTICE_BOSS_URL: EnemyType | null = (param('practiceboss') as EnemyType 
 export const practiceBossType = (): EnemyType | null => activeSlot?.bossType ?? PRACTICE_BOSS_URL;
 /** 現在選択中の練習枠。リザルトの形態名・専用アイコンにも同じ指定を渡す。 */
 export const practiceActiveSlot = (): PracticeSlot | null => activeSlot;
-/** 第二形態から始める枠の開始HP割合。通常枠は null=満タンのまま。 */
-export const practiceStartHealthFraction = (): number | null =>
-  activeSlot?.startHealthFraction ?? (PRACTICE_RUN_URL && param('practicephase') === '2' ? GIANT_PHASE_HP_THRESHOLD : null);
+/** グレン第二形態枠か(v0.25.3029・二体構成): trueなら最初から glenForm===2 の個体をフルHPでスポーン。
+ * 旧 practiceStartHealthFraction(HP60%開始)はこの判定に置き換え。`?practicephase=2` も同じ扱い。 */
+export const practiceWantsGlenForm2 = (): boolean =>
+  activeSlot?.glenForm2 === true || (PRACTICE_RUN_URL && param('practicephase') === '2');
 /** 練習の狙いが城ボス(giantbat)か。城ボス/ストーリーボスの湧きを nospawn より優先させる。 */
 export const practiceWantsCastleBoss = (): boolean => isPracticeRun() && practiceBossType() === 'giantbat';
 /**
@@ -106,8 +106,9 @@ export interface PracticeSlot {
   param: PracticeParam;
   /** 一覧・リザルトだけで使う固有名。未指定なら従来の enemyDeathLabel。 */
   label?: string;
-  /** 形態から直接始める時のHP割合。未指定なら満タン。 */
-  startHealthFraction?: number;
+  /** グレン第二形態枠(v0.25.3029・社長裁定「二体」): trueなら最初から第二形態の**別個体**を
+   * フルHPでスポーンする(旧「HP60%から開始」は二体構成化で廃止)。 */
+  glenForm2?: boolean;
   /** 本編で遭遇し得るか。false = 現状どこにも置かれていない(社長裁定§20-10: 「?」のまま並べる)。 */
   reachable: boolean;
 }
@@ -171,7 +172,7 @@ export const PRACTICE_SLOTS: readonly PracticeSlot[] = BASE_PRACTICE_SLOTS.flatM
         slotKey: GLEN_PHASE2_SLOT_KEY,
         encounterSlotKey: slot.slotKey,
         label: 'グレン 第二形態',
-        startHealthFraction: GIANT_PHASE_HP_THRESHOLD,
+        glenForm2: true,
       }]
     : [slot],
 );

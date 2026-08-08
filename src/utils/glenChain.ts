@@ -10,9 +10,8 @@
 import type { Enemy } from '../types/game';
 import { enemyFootBox } from '../pixi/renderSpec';
 
-// 第二形態しきい値(HP60%以下で変身)。城ボスの既存フェーズ閾値60%(GIANT_PHASE_HP_THRESHOLD)と
-// 意図的に同値(v0.25.2918の叩き台裁定)。ここが正本で、pixiScene はこれを import する。
-export const GLEN_P2_HP_FRAC = 0.6;
+// ※旧「HP60%で変身」(GLEN_P2_HP_FRAC)は v0.25.3029(社長裁定「二体」)で廃止。第二形態は
+// glenForm===2 の**別個体**としてスポーンし、パーツは自分のフルバー(1.0→0)で欠けていく。
 // 連結の構成(社長指示v0.25.2921「胴体5+尾」→v0.25.3025「胴体パーツ3つ増やして」=胴体8+尾)。
 // 胴体はシートの砲身(0)と箱(1)を交互に使って単調さを消し、尾(2)は必ず最後尾。
 export const GLEN_CHAIN: readonly number[] = [0, 1, 0, 1, 0, 1, 0, 1, 2];
@@ -29,9 +28,11 @@ export const GLEN_VISIBLE_BY_COUNT: readonly (readonly number[])[] = (() => {
   }
   return out;
 })();
-/** 第二形態内のHP残量→連結スロット数(9→0・区間を9等分)。 */
-export const glenPartCount = (hpFrac: number): number =>
-  Math.max(0, Math.min(GLEN_SLOT_COUNT, Math.ceil((hpFrac / GLEN_P2_HP_FRAC) * GLEN_SLOT_COUNT)));
+/** 第二形態(glenForm===2の個体)のHP残量→連結スロット数(9→0・フルバーを9等分)。
+ * v0.25.3029: 二体構成化に伴い、旧glenPartCount(0.6を分母にする版)をこの1本に統一(監査指摘L)。
+ * 読み手は描画(pixiScene.syncGlenParts)・胴体弾(glenVolleyShots)・パーツ破壊爆発(useGameLoop)の3つ。 */
+export const glenPartCountFull = (hpFrac: number): number =>
+  Math.max(0, Math.min(GLEN_SLOT_COUNT, Math.ceil(hpFrac * GLEN_SLOT_COUNT)));
 
 // ---- 蛇式軌跡(DQ隊列・v0.25.2956) ------------------------------------------------------------
 export interface GlenTrailPoint { x: number; y: number }
@@ -135,7 +136,7 @@ export const glenVolleyShots = (
   boss: Enemy, trail: readonly GlenTrailPoint[], playerCx: number, playerCy: number,
 ): GlenVolleyShot[] => {
   const hpFrac = boss.maxHealth > 0 ? boss.health / boss.maxHealth : 1;
-  const show = GLEN_VISIBLE_BY_COUNT[Math.min(GLEN_SLOT_COUNT, glenPartCount(hpFrac))];
+  const show = GLEN_VISIBLE_BY_COUNT[Math.min(GLEN_SLOT_COUNT, glenPartCountFull(hpFrac))];
   const fb = enemyFootBox(boss);
   const sc = Math.min(fb.boxW / GLEN_BODY_TEX_W, fb.boxH / GLEN_BODY_TEX_H); // 描画containScaleと同式
   const bodyHalfW = (GLEN_BODY_TEX_W * sc) / 2;

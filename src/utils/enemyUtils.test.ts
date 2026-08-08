@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill } from './enemyUtils';
 import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
 
@@ -366,5 +366,15 @@ describe('generateEnemy chaff mix (PACING_REDESIGN.mdバッチ3.5-A)', () => {
     }
     expect(counts.bat / N).toBeGreaterThan(0.55); // 統計的なブレを見込んだ緩い下限(狙いは0.70)
     expect(counts.zombie / N).toBeLessThan(0.15);
+  });
+});
+
+describe('isFinalBossKill — 二体構成(v0.25.3029)の最終ボス討伐判定', () => {
+  it('グレン形態1の死では立たない・形態2/従来個体では立つ・イベント産は除外', () => {
+    expect(isFinalBossKill({ type: 'giantbat', fromEvent: undefined, glenForm: 1 })).toBe(false);
+    expect(isFinalBossKill({ type: 'giantbat', fromEvent: undefined, glenForm: 2 })).toBe(true);
+    expect(isFinalBossKill({ type: 'giantbat', fromEvent: undefined, glenForm: undefined })).toBe(true); // EX/通常城ボス
+    expect(isFinalBossKill({ type: 'giantbat', fromEvent: true, glenForm: undefined })).toBe(false);
+    expect(isFinalBossKill({ type: 'zombie', fromEvent: undefined, glenForm: undefined })).toBe(false);
   });
 });

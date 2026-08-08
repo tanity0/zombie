@@ -31,7 +31,7 @@ export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) 
   const boss = practiceBossType();
   const slot = practiceActiveSlot();
   const bossName = slot?.label ?? (boss ? enemyDeathLabel(boss) : 'ボス');
-  const icon = boss ? bossIconSrc(boss, getSelectedStageId(), slot?.startHealthFraction != null ? 'phase2' : undefined) : null;
+  const icon = boss ? bossIconSrc(boss, getSelectedStageId(), slot?.glenForm2 ? 'phase2' : undefined) : null;
 
   return (
     <div className="absolute inset-0 z-[80] flex items-center justify-center bg-[rgba(6,7,13,0.92)] px-6">

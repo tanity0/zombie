@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   GLEN_CHAIN, GLEN_SLOT_COUNT, GLEN_TAIL_SLOT, GLEN_REMOVAL, GLEN_VISIBLE_BY_COUNT,
-  glenPartCount, GLEN_P2_HP_FRAC,
+  glenPartCountFull,
   pushGlenTrail, sampleGlenTrail, glenChainDistances, GLEN_TRAIL_MAX,
   shouldGlenVolley, glenVolleyShots, GLEN_VOLLEY_SAFE_PX, glenRemovedPartAnchors,
   type GlenTrailPoint,
@@ -19,9 +19,10 @@ describe('glenChain — 台帳の不変条件', () => {
       if (c >= 1) expect(GLEN_VISIBLE_BY_COUNT[c]).toContain(GLEN_TAIL_SLOT);
     }
   });
-  it('glenPartCount: 第二形態しきい値で9、0で0', () => {
-    expect(glenPartCount(GLEN_P2_HP_FRAC)).toBe(GLEN_SLOT_COUNT);
-    expect(glenPartCount(0)).toBe(0);
+  it('glenPartCountFull: フルHPで9、0で0(第二形態は自分のバー全体で欠ける・v0.25.3029)', () => {
+    expect(glenPartCountFull(1)).toBe(GLEN_SLOT_COUNT);
+    expect(glenPartCountFull(0)).toBe(0);
+    expect(glenPartCountFull(0.5)).toBe(5); // ceil(4.5)
   });
 });
 
@@ -93,20 +94,20 @@ describe('glenChain — 胴体弾(社長裁定 1a/安全半径/技中は撃た�
   });
 
   it('可視の胴体パーツ×2発。尾からは撃たない', () => {
-    const boss = mkGlen({ health: 60 }); // hpFrac=0.6 → 9スロット全可視(胴体8+尾)
+    const boss = mkGlen({ health: 100 }); // フルHP → 9スロット全可視(胴体8+尾)
     const shots = glenVolleyShots(boss, straightTrail(), 100000, 100000);
     expect(shots).toHaveLength(8 * 2);
   });
 
   it('HPが減るとパーツと同じだけ弾も減り、尾だけの区間は0発', () => {
-    const boss1 = mkGlen({ health: 19 }); // hpFrac 0.19 → count=3 → 胴体2+尾(hp20はfloat丸めでcount4になる)
+    const boss1 = mkGlen({ health: 30 }); // hpFrac 0.3 → count=ceil(2.7)=3 → 胴体2+尾
     expect(glenVolleyShots(boss1, straightTrail(), 100000, 100000)).toHaveLength(2 * 2);
-    const boss2 = mkGlen({ health: 5 }); // hpFrac 0.05 → count=1 → 尾のみ
+    const boss2 = mkGlen({ health: 10 }); // hpFrac 0.1 → count=1 → 尾のみ
     expect(glenVolleyShots(boss2, straightTrail(), 100000, 100000)).toHaveLength(0);
   });
 
   it('プレイヤーに近すぎるパーツ(80px未満)は撃たない(背後湧き対策)', () => {
-    const boss = mkGlen({ health: 60 });
+    const boss = mkGlen({ health: 100 });
     const trail = straightTrail();
     const far = glenVolleyShots(boss, trail, 100000, 100000);
     // 列の直上(本体の少し後ろ)にプレイヤーを置くと、その近傍のパーツぶんだけ減る。
@@ -118,7 +119,7 @@ describe('glenChain — 胴体弾(社長裁定 1a/安全半径/技中は撃た�
   });
 
   it('弾の方向は有限値(NaN無し)で、進行方向に対して左右対称のV字', () => {
-    const boss = mkGlen({ health: 60 });
+    const boss = mkGlen({ health: 100 });
     const shots = glenVolleyShots(boss, straightTrail(), 100000, 100000);
     for (const s of shots) {
       expect(Number.isFinite(s.tx)).toBe(true);
@@ -135,7 +136,7 @@ describe('glenChain — 胴体弾(社長裁定 1a/安全半径/技中は撃た�
   });
 
   it('glenRemovedPartAnchors: 減った数だけ位置を返し、値は有限。9→8の初回は中央スロット', () => {
-    const boss = mkGlen({ health: 60 });
+    const boss = mkGlen({ health: 100 });
     const trail = straightTrail();
     const one = glenRemovedPartAnchors(boss, trail, 9, 8);
     expect(one).toHaveLength(1);
@@ -152,7 +153,7 @@ describe('glenChain — 胴体弾(社長裁定 1a/安全半径/技中は撃た�
   });
 
   it('軌跡が空でも発射できる(直線延長フォールバック・NaN無し)', () => {
-    const boss = mkGlen({ health: 60 });
+    const boss = mkGlen({ health: 100 });
     const shots = glenVolleyShots(boss, [], 100000, 100000);
     expect(shots.length).toBeGreaterThan(0);
     for (const s of shots) {
