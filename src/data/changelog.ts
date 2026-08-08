@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3017',
+    items: [
+      '上に居るボスへのカメラ寄せの目標位置を、さらに下(画面の50%)へ調整しました。',
+    ],
+  },
+  {
     version: '0.25.3016',
     items: [
       'ボスが画面の横に居る時、ズームの変化中に画面の左右端へ黒い帯が出ることがあるバグを修正しました(カメラの横寄せ量が引きの進行に追いつかず安全範囲を一瞬はみ出していました)。',
