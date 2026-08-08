@@ -14771,8 +14771,10 @@ export class PixiScene {
           drawGun(ATK_ART_GUN_C, 'fx/boss-gun-3', gux, guy, fireCenter, 150);
         }
       }
-      // (3c) 掃射の銃(g-sweepbeam)= v0.25.3034(社長指示「掃射、絵がないよね?銃のサブマシンガン
-      //      使って」)。SMG(=handgun-t3・マシンピストル)がビームの回転に合わせて薙ぎながら連射する。
+      // (3c) 掃射の銃(g-sweepbeam)= v0.25.3034で仮にSMG(handgun-t3)を使ったが、
+      //      v0.25.3048(社長報告「扇形のライン攻撃の銃がtir3のサブマシンガンになっちゃってる」)で
+      //      支給の3挺のうち**長い銃(fx/boss-gun-3)**へ差し替え(薙ぎ続けるビームの大技=長物が合う。
+      //      プレイヤー武器の絵をボスに使わない)。ビームの回転に合わせて薙ぎながら連射する。
       //      分類①(武器の絵)だが赤帯が別に出ているので長さは判定に揃え切らなくてよい(トライショットと同じ掟)。
       {
         const sbW2 = gph === 'g-sweepbeam-windup', sbA2 = gph === 'g-sweepbeam-active', sbR2 = gph === 'g-sweepbeam-recover';
@@ -14805,10 +14807,10 @@ export class PixiScene {
             out2 = GUN_OUT_PX - GUN_RECOIL_PX * v2;
           }
           if (alpha2 > 0.01) {
-            const sp2 = this.atkArtSprite(view, ATK_ART_GUN_C, 'weapons/handgun-t3');
+            const sp2 = this.atkArtSprite(view, ATK_ART_GUN_C, 'fx/boss-gun-3');
             if (sp2) {
               sp2.anchor.set(1, 0.5);
-              const sc2 = 110 / (sp2.texture.width || 1);
+              const sc2 = 150 / (sp2.texture.width || 1);
               sp2.scale.set(sc2, sc2);
               sp2.rotation = ang2;
               sp2.position.set(gfx0 + Math.cos(ang2) * out2, gfy0 + Math.sin(ang2) * out2);
