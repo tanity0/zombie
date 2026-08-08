@@ -1,5 +1,39 @@
 # Development Log
 
+## v0.25.3063 — campaign の拠点解放を「護衛NPCに随伴」へ修正+package.jsonのBOM除去【2026-08-09 01:25 JST】
+実機の通しプレイ(stage-1)で campaign を実走させて判明した2件を修正。コードは先行コミットに入っている。
+
+### ★修正1: 拠点はプレイヤーが円内に立っても制圧されない(v0.25.3058の設計ミス)
+実走ログ: 拠点まで 2133→673→85→**44px** と寄り、**19秒間その場に静止(hold は正しく効いていた)**のに
+`dwellMs` は **0ms のまま**だった。制圧の主体を取り違えていた。
+- **制圧するのは護衛軍人NPC(escort)**であってプレイヤーではない(`gameStore.updateBaseSites`:
+  「担当拠点へ前進・射撃→サークル内10秒で解放」)。
+- しかも **escort は画面内でしか前進しない**(画面外=座標保持)。
+→ 正しい行動は **「担当 escort に随伴して画面内に入れ続け、護衛する」**。`ObjectiveWorld.escorts` を追加し
+  campaign の拠点分岐を escort 追従へ変更(hold は出さない)。escort が居ない/未提供なら従来どおり
+  拠点そのものを目的地にする(後方互換)。
+- **hold 自体は残す**: POI(病院/武器庫)は `isInHospitalCircle(state.player, ...)` のとおり
+  **プレイヤーの滞在**が条件なので、そちらでは引き続き必要。
+
+### ★修正2: package.json に BOM が入りビルドが壊れていた(私の事故)
+v0.25.3058 のバージョン更新を PowerShell の `Set-Content -Encoding utf8` で行ったところ **BOM が付与**され、
+`vite.config.ts` の `JSON.parse(readFileSync('package.json'))` が `SyntaxError: Unexpected token '﻿'` で
+失敗するようになっていた(dev サーバは起動済みだったため気づかず、vitest の設定読み込みで露見)。
+BOM を除去し、**追跡ファイル全件を走査して他に無いことを確認**した。
+→ 以後バージョン更新は `UTF8Encoding($false)` で書く(**PowerShell 5.1 の `-Encoding utf8` はBOM付き**)。
+
+### ★未修正の発見(社長判断待ち): 目的地へ移動中は地雷回避が効かない
+入力合成の優先順位が `ワープ回避 > 通常回避 > hold > 目的地ステア > 従来の合成入力` で、
+**地雷回避(`adjustBotForMines`)は最下段の「従来の合成入力」にしか掛かっていない**。
+目的地ステアが出ている間は一度も評価されないため、**地雷原(stage-1)を直進して踏み抜く**。
+実走2本とも死因は「地雷」(gameTime 151s / 240s)。
+- campaign 導入前からある構造だが、campaign は常に遠い目的地へ歩き続けるので露見しやすい。
+- 直すなら「目的地ステアの結果を `adjustBotForMines` に通す」だけで済むが、
+  **`clear`/`score` など既存の目的の挙動も変わる**ため、実装せず社長判断を仰ぐ。
+
+### 検証
+`botObjective.test.ts` **50件 green** / typecheck OK / lint エラー0(warning 8は既存)。
+
 ## v0.25.3062 — 離脱距離1500→1000(社長指示)【2026-08-09 00:51 JST】
 BOSS_LEASH_PX 1500→1000(城ボスのリーシュ+裏ボス/トールの共通離脱条件が同じ定数を参照=一括反映)。
 テストの直値も同コミットで更新(v3030の教訓)。

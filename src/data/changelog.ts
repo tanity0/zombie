@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3063',
+    items: [
+      'ゲーム内容の変更はありません(開発用オートプレイの拠点解放の手順を、実際の仕様=護衛NPCに随伴する形へ直しました)。',
+    ],
+  },
+  {
     version: '0.25.3062',
     items: [
       'ボスの離脱距離を1500pxから1000pxに調整しました(より短い距離で追跡をやめて帰巣します)。',
