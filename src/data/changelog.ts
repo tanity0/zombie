@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3030',
+    items: [
+      'ゲーム内容の変更はありません(古くなっていた自動テスト3件を現行の仕様に合わせて更新)。',
+    ],
+  },
+  {
     version: '0.25.3029',
     items: [
       'ラスボス戦が二段階になりました。第一形態を倒し切る(HP100→0)と討伐演出を挟み、同じ場所に第二形態が満タンのHPで出現します(出現カットインは変身後の姿)。第二形態を倒すとクリアです。',

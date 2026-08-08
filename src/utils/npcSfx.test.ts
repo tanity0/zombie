@@ -16,8 +16,11 @@ describe('npcSfxDistGain: 画面外=0 / 近=1 / 遠いほど減衰(床0.08)', ()
     expect(npcSfxDistGain(400, 300, 400, 300, cam, gb)).toBe(1);
   });
   it('遠いほど小さく、画面内なら床0.08を下回らない', () => {
+    // v0.25.3030: 判定は監査v0.25.3008で「カメラ矩形」→「プレイヤー中心の同寸矩形」へ変更済み
+    // (ズーム連動カメラ下げでプレイヤー周辺が矩形外=無音になる不具合の修正)。遠点はプレイヤー
+    // (400,300)中心の矩形内に置く(旧: プレイヤー(0,0)から(790,590)=矩形外で0になっていた)。
     const near = npcSfxDistGain(450, 300, 400, 300, cam, gb);
-    const far = npcSfxDistGain(790, 590, 0, 0, cam, gb);
+    const far = npcSfxDistGain(790, 590, 400, 300, cam, gb);
     expect(near).toBeGreaterThan(far);
     expect(far).toBeGreaterThanOrEqual(0.08);
     expect(near).toBeLessThan(1);

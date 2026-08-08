@@ -192,16 +192,18 @@ describe('IDOL_TUNING の既定値 = テーブル化前の実装値(挙動不変
     expect(IDOL_TUNING_DEFAULTS.sameAngleDeg).toBe(30);
   });
   it('台本(ゾーン・重み・並び)', () => {
+    // v0.25.3030: 期待値を「技の因果連鎖化」コミット(fde7b2ea・2026-08-05)後の実装値へ更新。
+    // 同コミットが台本を並べ替えた際にこの直値が未追従でCIが赤のままだった(実装が正)。
     expect(IDOL_TUNING_DEFAULTS.strings).toEqual([
-      { zone: 'melee', weight: 55, moves: ['punch', 'roll', 'fan', 'orb'] },
-      { zone: 'melee', weight: 45, moves: ['roll', 'fan', 'punch', 'orb'] },
-      { zone: 'near', weight: 40, moves: ['fan', 'fan', 'orb', 'snipe'] },
-      { zone: 'near', weight: 35, moves: ['fan', 'snipe', 'orb', 'fan'] },
-      { zone: 'near', weight: 25, moves: ['orb', 'fan', 'punch', 'snipe'] },
-      { zone: 'mid', weight: 50, moves: ['aim', 'aim', 'snipe', 'orb'] },
-      { zone: 'mid', weight: 50, moves: ['snipe', 'orb', 'aim', 'snipe'] },
-      { zone: 'far', weight: 45, moves: ['aim', 'snipe', 'orb', 'snipe'] },
-      { zone: 'far', weight: 55, moves: ['orb', 'orb', 'snipe', 'aim'] },
+      { zone: 'melee', weight: 55, moves: ['punch', 'snipe', 'roll', 'fan'] },
+      { zone: 'melee', weight: 45, moves: ['roll', 'fan', 'punch', 'snipe'] },
+      { zone: 'near', weight: 40, moves: ['fan', 'roll', 'snipe', 'orb'] },
+      { zone: 'near', weight: 35, moves: ['orb', 'punch', 'snipe', 'fan'] },
+      { zone: 'near', weight: 25, moves: ['fan', 'orb', 'punch', 'snipe'] },
+      { zone: 'mid', weight: 50, moves: ['aim', 'snipe', 'orb', 'roll'] },
+      { zone: 'mid', weight: 50, moves: ['orb', 'aim', 'snipe', 'fan'] },
+      { zone: 'far', weight: 45, moves: ['aim', 'snipe', 'orb', 'roll'] },
+      { zone: 'far', weight: 55, moves: ['orb', 'snipe', 'aim', 'fan'] },
     ]);
   });
   it('基礎値は ENEMY_STATS.idol と同値(2箇所に違う数字を持たない)', () => {

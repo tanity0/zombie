@@ -54,9 +54,9 @@ describe('憲法: 足元の円AoEは体の外へ届く', () => {
 
 describe('bodyAoeReachPx: 純関数', () => {
   it('体の長い方の半分を基準にする(どの向きから挑んでも届くことを保証するため)', () => {
-    // mimir 248×138 → 基準は 248/2 = 124(高さ側の69ではない)。
-    expect(bodyAoeReachPx('mimir', 124)).toBe(0);
-    expect(bodyAoeReachPx('mimir', 224)).toBe(100);
+    // mimir 223×124(v0.25.3022・社長指示で1割縮小)→ 基準は 223/2 = 111.5(高さ側の62ではない)。
+    expect(bodyAoeReachPx('mimir', 111.5)).toBe(0);
+    expect(bodyAoeReachPx('mimir', 211.5)).toBe(100);
   });
 
   it('未知の型は検算対象外(半径をそのまま返す)', () => {
