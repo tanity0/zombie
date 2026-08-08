@@ -6440,7 +6440,12 @@ export class PixiScene {
       // 監査v0.25.3008: lab(研究所)/洋館(corridor)/洞窟(tutorial)は§6.37の引き対象外だが、
       // 群衆ズーム(最大0.8)はこれらのステージでも掛かるため、リッジがうっすら出てしまっていた。
       // 専用背景のステージにコピー森は出さない(通常フィールドの群衆ズームでは従来どおり出る=仕様)。
-      const ridgeAllowed = !this.isLabStage && !s.corridorMode && this.currentFarKey !== 'tutorial';
+      // v0.25.3047(社長報告「引きで上の遠景森が増えると線が出る。ステージ5も同じ」): 壁型の地平帯
+      // (snow=氷壁帯/stage5=城塞の壁)は上端輪郭がほぼ水平(実測: 氷壁は高さ821px中ブレ±19px)なため、
+      // コピーが「奥の山並み」ではなく「横一線」に見える。森/廃都のような不規則シルエット専用の演出
+      // として、壁型ステージでは出さない(隙間自体は§6.37 v4の隙間埋め帯が塞いでいる=穴は開かない)。
+      const ridgeAllowed = !this.isLabStage && !s.corridorMode && this.currentFarKey !== 'tutorial'
+        && this.currentFarKey !== 'snow' && this.currentFarKey !== 'stage5';
       const pull01 = ridgeAllowed ? Math.max(0, Math.min(1, (1 - wzr) / (1 - ZOOM_MIN_ABS))) : 0;
       // 上ずらし量=森2と森1の距離(社長指示v0.25.2995・それ以上はズレる)。両帯とも底=地平基準なので
       // 底エッジ同士の差で測る(上端は素材の透明部があり視覚のリッジ線と一致しない)。森2が未レイアウト
