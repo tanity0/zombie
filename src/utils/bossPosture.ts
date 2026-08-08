@@ -61,6 +61,12 @@ export const applyBossPostureDamage = (
       stunUntil: until,
       bossPostureLockUntil: until + BOSS_POSTURE_REBREAK_LOCK_MS,
       bossBreakRewardRemaining: enemy.maxHealth * BOSS_BREAK_REWARD_HP_RATIO,
+      // v0.25.3037(社長裁定・案1「紫になったら全技キャンセル」): 未起爆の遅延ヒット(滑空二撃目/
+      // 三連突進の氷/翼撃三拍目/血の弧の未着弾ぶん)は紫の瞬間に破棄する。既に起爆済みで床として
+      // 残っている物(burst=true・血溜まり等)は「もう世界に出た危険物」なので残す(裁定=B現状維持)。
+      ...(enemy.giantDelayedHits !== undefined
+        ? { giantDelayedHits: enemy.giantDelayedHits.filter(h => h.burst === true) }
+        : {}),
     },
     triggered: true,
   };

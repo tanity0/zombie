@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.3037 — 紫で全技キャンセル(社長裁定・案1)【2026-08-08 19:39 JST】
+Sonnet走査(★8件)から裁定「案1=技そのものはキャンセル・世界に出た危険物(床/氷/槍/火/弾)は残す」。
+①committed(空中ジャンプ/突進の実行中)も**紫なら**中断してその場に着地(updateEnemiesのstun早期
+returnを `(!committed || purpleNow)` へ。黄=通常スタンは従来どおりcommittedを完遂=挙動不変。
+既定のg-台本フェーズ(g-jump-air等)は元からcommitted非該当=スタンで中断済みだったので、実質は
+旧経路'jump'/'charge'の穴埋め)。
+②未起爆の遅延ヒット(giantDelayedHits: 滑空二撃目/三連突進の氷/翼撃三拍目/血の弧の未着弾ぶん)は
+**紫の発火時に破棄**(applyBossPostureDamageのtriggeredパッチでburst=true以外をfilter)。起爆済みの
+血溜まり床(burst+floorUntil)は残る=裁定どおり。裏4体/天使/idolは元から紫で即中断(走査で確認済み)
+のため変更なし。
+テスト: bossPosture 5件緑(破棄/床残しの1件追加)。
+検証: typecheck OK / lint エラー0。実機確認: 紫発動時に予約攻撃(氷・二撃目)が消えるか。
+
 ## v0.25.3036 — 紫(体勢ブレイク)を5秒へ延長(社長指示)【2026-08-08 19:28 JST】
 BOSS_POSTURE_BREAK_MS 2200→5000。数値のみ(発火条件・報酬プール・再ブレイクロック等は不変)。
 ※同指示の前半「紫になったら全技キャンセル。意図的にしてない技一覧を出して」はSonnetで

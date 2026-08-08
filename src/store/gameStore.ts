@@ -8574,7 +8574,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         // Stun (from a crit) freezes the enemy in place — it's a sitting duck
         // for a melee finisher. gameTime-based so pauses don't cheat the timer.
-        if (!committed && enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) {
+        // v0.25.3037(社長裁定・案1「紫になったら全技キャンセル」): 紫(完全気絶)は committed
+        // (空中ジャンプ/突進の実行中)でも中断してその場に着地させる。黄(通常スタン)は従来どおり
+        // committed を完遂させる(挙動不変)。
+        const purpleNow = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
+        if ((!committed || purpleNow) && enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) {
           // 気絶したら、突進/ジャンプ等の特殊挙動(aiPhase)を必ずリセットして「着地・静止」させる。
           // パンプキンのジャンプ準備/ジャンプ中、werewolf の溜め/突進、今後の特殊敵も aiPhase 基準で同様にキャンセル。
           if (enemy.aiPhase !== undefined) {

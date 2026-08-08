@@ -69,4 +69,19 @@ describe('boss posture', () => {
     // 紫(bossFullStunUntil)は消える=停止中にもう一度致命が連鎖することはない。
     expect(fatal.patch.bossFullStunUntil).toBeUndefined();
   });
+
+  it('紫の発火で未起爆の遅延ヒットは破棄・起爆済みの床(burst)は残す(v0.25.3037・裁定案1)', () => {
+    const now = 500;
+    const e = boss('giantbat', {
+      bossPosture: 1,
+      giantDelayedHits: [
+        { x: 0, y: 0, radius: 40, fireAt: now + 800 },                                  // 未起爆→破棄
+        { x: 1, y: 1, radius: 40, fireAt: now - 200, burst: true, floorUntil: now + 4000 }, // 血溜まり床→残す
+      ] as Enemy['giantDelayedHits'],
+    });
+    const r = applyBossPostureDamage(e, 'counter', now)!;
+    expect(r.triggered).toBe(true);
+    expect(r.patch.giantDelayedHits).toHaveLength(1);
+    expect(r.patch.giantDelayedHits![0].burst).toBe(true);
+  });
 });
