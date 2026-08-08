@@ -129,12 +129,16 @@ describe('clampCastleFightCrossing(城ボス戦の移動制限)', () => {
   it('内側の移動は素通し', () => {
     expect(clampCastleFightCrossing(0, 0, 100, 200)).toEqual({ x: 100, y: 200 });
   });
-  it('内→外へ跨ぐ移動は制限ラインへクランプ(方向は保存)', () => {
+  it('内→外へ跨ぐ移動は制限ラインの厳密内側(limit-1)へクランプ(方向は保存)', () => {
     const c = clampCastleFightCrossing(2990, 0, 3100, 0);
-    expect(Math.hypot(c.x, c.y)).toBeCloseTo(CASTLE_FIGHT_MAX_DIST, 6);
+    expect(Math.hypot(c.x, c.y)).toBeCloseTo(CASTLE_FIGHT_MAX_DIST - 1, 6);
     expect(c.y).toBeCloseTo(0, 6);
   });
-  it('既に外に居る場合はスナップさせない(交戦開始時点で外だった時の瞬間移動を作らない)', () => {
+  it('境界ちょうど(浮動小数点で僅かに外)からの外向き移動も引き戻す(v0.25.3058の穴ふさぎ)', () => {
+    const c = clampCastleFightCrossing(CASTLE_FIGHT_MAX_DIST + 0.0001, 0, CASTLE_FIGHT_MAX_DIST + 5, 0);
+    expect(Math.hypot(c.x, c.y)).toBeCloseTo(CASTLE_FIGHT_MAX_DIST - 1, 6);
+  });
+  it('既に大きく外に居る場合はスナップさせない(交戦開始時点で外だった時の瞬間移動を作らない)', () => {
     expect(clampCastleFightCrossing(3500, 0, 3400, 0)).toEqual({ x: 3400, y: 0 });
   });
 });

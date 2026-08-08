@@ -88,13 +88,18 @@ export const CASTLE_FIGHT_MAX_DIST = 3000; // enemyUtils.AREA_THRESHOLDS[1]と�
  * ★スナップ防止: 既に制限の外に居る場合(交戦開始時点で外だった等)は動きを止めない=
  * 「線を外向きに跨ぐ移動」だけをクランプする。内側へ戻る移動は常に自由。
  */
+// 境界ジッタの許容幅(px)。v0.25.3058(社長報告「赤い線は表示されてるけど、行けちゃう」):
+// 旧実装はクランプ結果が境界ちょうど(浮動小数点で3000.0001等)に載ると、次フレームの
+// oldDist > limit 判定で「既に外に居る」と誤認して素通しした。境界+この幅までは
+// 「内側に居た」とみなして引き戻す=押し続けても越えられない。
+export const CASTLE_FIGHT_EDGE_EPS = 40;
 export const clampCastleFightCrossing = (
   oldCx: number, oldCy: number, newCx: number, newCy: number, limit: number = CASTLE_FIGHT_MAX_DIST,
 ): { x: number; y: number } => {
   const newDist = Math.hypot(newCx, newCy);
   if (newDist <= limit) return { x: newCx, y: newCy };
   const oldDist = Math.hypot(oldCx, oldCy);
-  if (oldDist > limit) return { x: newCx, y: newCy }; // 既に外(スナップさせない)
-  const k = limit / (newDist || 1);
+  if (oldDist > limit + CASTLE_FIGHT_EDGE_EPS) return { x: newCx, y: newCy }; // 本当に外(交戦開始時点で外だった等)だけスナップさせない
+  const k = (limit - 1) / (newDist || 1); // 厳密に内側へ着地させる(境界ちょうどに載せない)
   return { x: newCx * k, y: newCy * k };
 };

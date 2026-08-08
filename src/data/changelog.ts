@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3059',
+    items: [
+      '城ボス戦の移動制限ラインを、押し続けると越えられてしまう穴を塞ぎました(赤い線が出ているのにデンジャーゾーンへ入れていた問題)。',
+    ],
+  },
+  {
     version: '0.25.3058',
     items: [
       'ゲーム内容の変更はありません(開発用のオートプレイに、拠点→寄り道→城ボスの順で通しプレイする目的を追加しました)。',
