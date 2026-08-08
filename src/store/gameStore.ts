@@ -1749,6 +1749,14 @@ export const GIANT_QUAD_DASH_WINDUP_MS = 840;    // 実効700ms/回(T1線+終点
 export const GIANT_QUAD_BREATH_WINDUP_MS = 1080; // 実効900ms・3回目の直後に必ず静止して溜める
 export const GIANT_QUAD_BREATH_ACTIVE_MS = 840;  // 実効700ms・120°を回転して薙ぐ(T3帯)
 export const GIANT_QUAD_RECOVER_MS = 1080;       // 実効900ms
+// v0.25.3073(社長指示「城ボス4の避けれないダッシュに慣性を追加。滑ってる感じにしたい。(避けれる方はいらない)」):
+// **三連突進(g-quad-*)だけ**、速度が目標速度へ即座に切り替わらず一次遅れで追従する=氷上を滑る挙動。
+// カウンター可能な通常突進(g-dash-*)は**完全に据え置き**(社長の「避けれる方はいらない」)。
+// 効き方: ①突進の出だしが「グッと乗ってから滑り出す」 ②追尾(DASH_ATTACK_HOMING)の曲がりが外へ膨らむ
+// ③突進の終わりで急停止せず、次の溜めの後退りへ**流れながら**入る(=滑って止まる)。
+// 最高速(GIANT_CHARGE_SPEED_MULT)・突進回数(3)・溜め/硬直/CD・当たり判定は一切不変。
+// 3回目の後の「氷結の吐息」だけは仕様どおり完全静止させる(学習装置=必ず静止して溜める)。
+export const GIANT_QUAD_INERTIA_TAU = 0.14; // 秒。大きいほどよく滑る(0=従来の即時追従)
 export const GIANT_QUAD_CD_MS = 14400;           // 実効12.0s
 export const GIANT_QUAD_BREATH_LENGTH = GIANT_SWEEP_RANGE;     // 帯の寸法はsweepの流用(叩き台=設計書に寸法の明記なし)
 export const GIANT_QUAD_BREATH_HALF_WIDTH = GIANT_SWEEP_HALF_WIDTH;
@@ -9533,15 +9541,17 @@ export const useGameStore = create<GameState>((set, get) => ({
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-quad-charge', aiPhaseUntil: atkUntil(WEREWOLF_CHARGE_MAX_MS) };
               }
               // 後退り(T8・既存ダッシュと同じ式)。
+              // v0.25.3073: ここも一次遅れにする。前の突進の勢いが残ったまま溜めへ入るので、
+              // **前へ流れながら向きを変えて後退りに移る**=「滑って止まる」が出る(通常突進は無改変)。
               const aim = lockedHateAim();
               const bdx = ecx - aim.x, bdy = ecy - aim.y;
               const bl = Math.hypot(bdx, bdy) || 1;
-              const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
-              const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
-              return {
-                ...enemy, ...phaseFields, x: bmoved.x, y: bmoved.y,
-                vx: (bdx / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT, vy: (bdy / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT,
-              };
+              const backSpeed = enemy.speed * DASH_WINDUP_BACKSTEP_MULT;
+              const bk = 1 - Math.exp(-deltaTime / GIANT_QUAD_INERTIA_TAU);
+              const bvx = (enemy.vx ?? 0) + ((bdx / bl) * backSpeed - (enemy.vx ?? 0)) * bk;
+              const bvy = (enemy.vy ?? 0) + ((bdy / bl) * backSpeed - (enemy.vy ?? 0)) * bk;
+              const bmoved = resolveMove(enemy.x + bvx * deltaTime, enemy.y + bvy * deltaTime);
+              return { ...enemy, ...phaseFields, x: bmoved.x, y: bmoved.y, vx: bvx, vy: bvy };
             }
             case 'g-quad-charge': {
               const tx = enemy.aiTargetX ?? pcx, ty = enemy.aiTargetY ?? pcy;
@@ -9566,7 +9576,13 @@ export const useGameStore = create<GameState>((set, get) => ({
                 };
               };
               if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...onDashFinished() };
+                // v0.25.3073(慣性): 次の突進へつなぐ時は**速度を殺さない**=勢いを持ったまま次の溜めへ
+                // 流れ込む(これが「滑ってる感じ」の主役)。3回目の後の氷結の吐息だけは仕様どおり
+                // 完全静止させる(「3回目の直後に必ず静止して溜める」=学習装置)。
+                const finish = onDashFinished();
+                return finish.aiPhase === 'g-quad-breath-windup'
+                  ? { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finish }
+                  : { ...enemy, ...phaseFields, ...finish };
               }
               const aim = lockedHateAim();
               const hpx = aim.x - ecx, hpy = aim.y - ecy;
@@ -9577,7 +9593,14 @@ export const useGameStore = create<GameState>((set, get) => ({
               cdirx /= cdl; cdiry /= cdl;
               const dashBase = getEnemyBaseSpeed('werewolf'); // 現行不変(基準は犬と同じ)。M65の倍率は新技には掛けない。
               const cs = dashBase * GIANT_CHARGE_SPEED_MULT;
-              const cvx = cdirx * cs, cvy = cdiry * cs;
+              // v0.25.3073(社長指示「慣性を追加。滑ってる感じに」): 目標速度へ**一次遅れで追従**する。
+              // 最高速(cs)は不変=遅くならない。出だしで乗るまでの間と、追尾で曲がる時に外へ膨らむ。
+              const ck = 1 - Math.exp(-deltaTime / GIANT_QUAD_INERTIA_TAU);
+              const cvx = (enemy.vx ?? 0) + (cdirx * cs - (enemy.vx ?? 0)) * ck;
+              const cvy = (enemy.vy ?? 0) + (cdiry * cs - (enemy.vy ?? 0)) * ck;
+              // キラキラの軌跡は**実際に滑っている向き**の後ろへ置く(狙いの向きではなく速度の向き)。
+              const cvl = Math.hypot(cvx, cvy) || 1;
+              const trailX = cvx / cvl, trailY = cvy / cvl;
               // v0.25.3049(社長指示「氷の三連突進はブレスと同じくキラキラのエフェクト付けて」):
               // 突進の軌跡の少し後ろへ粉雪のキラキラを間引きながら撒く(冷気ブレスv0.25.3042と同じ
               // 素材・同じ籠=判定ゼロの派手枠②。ブレスと突進は同時に走らないので時計も共用)。
@@ -9586,8 +9609,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 for (let qi = 0; qi < 2; qi++) {
                   const qBack = Math.random() * 70;
                   quadBreathSparkles.push({
-                    x: ecx - cdirx * qBack + (Math.random() - 0.5) * 44,
-                    y: ecy - cdiry * qBack + (Math.random() - 0.5) * 44,
+                    x: ecx - trailX * qBack + (Math.random() - 0.5) * 44,
+                    y: ecy - trailY * qBack + (Math.random() - 0.5) * 44,
                   });
                 }
               }
