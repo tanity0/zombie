@@ -6101,7 +6101,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const d2 = dx * dx + dy * dy;
               if (d2 > limit * limit) continue;
               if (d2 < bossNearD2) { bossNearD2 = d2; bossNearDy = dy; }
-              const t = bossDistanceZoomTarget(e.type, aabbGapDistance(player, e), e.isStoryBoss === true);
+              // v0.25.3021(社長スクショ「ボスが上に居るのにプレイヤー中心・下の余白が無駄」の真因):
+              // 描画(pixiScene)と同じく**フレーミング項込み**で目標ズームを出す。ボスが画面端の外に
+              // 遠い時は距離カーブでなくフレーミング項が実ズームを決めるため、ここに無いと推定だけ
+              // 浅くなり、カメラ下げ(均衡)も北先読みも実画角に対して大幅に不足していた。
+              const t = bossDistanceZoomTarget(e.type, aabbGapDistance(player, e), e.isStoryBoss === true,
+                { dxCenter: dx, dyCenter: dy, viewport: gameBounds });
               bossTargetNow = bossTargetNow == null ? t : Math.min(bossTargetNow, t);
             }
           }
