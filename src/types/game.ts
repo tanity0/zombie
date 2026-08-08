@@ -534,7 +534,7 @@ export interface Enemy {
   gQuadIndex?: number;
   // ステージ固有技(独自技/大技)ごとの個別クールダウン(gStomp/gSweepReadyAt等と同じ作法。
   // 1フィールドへ集約=8個別フィールドを増やさない)。
-  gStageReadyAt?: Partial<Record<'bite' | 'slam' | 'glide' | 'dive' | 'quaddash' | 'nova' | 'wing' | 'sweepbeam', number>>;
+  gStageReadyAt?: Partial<Record<'bite' | 'slam' | 'glide' | 'dive' | 'quaddash' | 'nova' | 'wing' | 'sweepbeam' | 'trishot', number>>;  // trishot: v0.25.3046(v2939の改名時にキー追加漏れ=三連射が一度も抽選されなかった真因)
   // M67(PACING_PUZZLE.md §6.26-12・stage-7のグレン限定)専用: 血の爪痕/血の弧/伸びる触手/虚無の三唱の
   // 個別クールダウン(gStageReadyAtと同じ作法で別フィールドに分離=通常城ボスのgStageReadyAtには
   // 一切書き込まない=互いに独立)。

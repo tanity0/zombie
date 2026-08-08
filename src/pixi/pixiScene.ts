@@ -41,7 +41,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // WINDUP は「爪痕が手前から奥へ刻まれる」ワイプの尺にも使う(爪の振りと同じ尺で揃える・v0.25.2889)。
   GLEN_TALON_SPREAD_RAD, GLEN_TALON_WINDUP_MS,
   GIANT_SWEEPBEAM_WINDUP_MS, GIANT_SWEEPBEAM_ACTIVE_MS, GIANT_SWEEPBEAM_LENGTH, GIANT_SWEEPBEAM_HALF_WIDTH, GIANT_SWEEPBEAM_INNER_RADIUS, GIANT_SWEEPBEAM_SWEEP_RAD,
-  GIANT_SWEEPBEAM_RECOVER_MS, GIANT_BOLT_WINDUP_MS, GIANT_BOLT_BURST_GAP_MS, // v0.25.3034: 掃射SMG/咆哮弾の銃の絵
+  GIANT_SWEEPBEAM_RECOVER_MS, GIANT_BOLT_WINDUP_MS, GIANT_BOLT_BURST_GAP_MS, GIANT_BOLT_FAN_STEP_RAD, // v0.25.3034/3046: 掃射SMG/咆哮弾の銃の絵
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
   GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH,
@@ -14860,11 +14860,10 @@ export class PixiScene {
           }
         }
       }
-      // (3d) 咆哮弾の銃(g-bolt)= v0.25.3034(社長指示「boltも銃のどれかの絵を使って」)。
-      //      扇(fan)=ショットガン / 3連発(burst)=ライフル。プレイヤー方向へ構え、発射時刻ごとに反動。
-      //      弾そのもの(赤二重丸)が危険の表示なので、銃は装飾=分類②(トライショットと同じ演出文法)。
-      //      v0.25.3039(社長裁定「ステージ5だけだよ」): 銃の絵は軍隊テーマのstage-5ボス限定。
-      //      咆哮弾の技自体は全城ボス共通のまま(他ステージは従来どおり絵なし)。
+      // (3d) 咆哮弾の銃(g-bolt・stage-5限定)= v0.25.3046(社長指示「三連射用に渡した3種類の銃の絵に
+      //      してください」): 武器絵(shotgun/rifle)をやめ、支給の3挺(fx/boss-gun-1/2/3)を使う。
+      //      3連発(burst)=1発ごとに別の銃で「バンバンバン」/ 扇(fan)=3挺が同時に開いて一斉射
+      //      (トライショットと同じフェードイン→発射→反動の型)。弾(赤二重丸)が危険表示・銃は装飾=分類②。
       {
         const boltArt = this.currentFarKey === 'stage5'
           && (gph === 'g-bolt-windup' || gph === 'g-bolt-burst' || gph === 'g-bolt-recover');
@@ -14872,36 +14871,42 @@ export class PixiScene {
           const mult = ENEMY_ATTACK_SPEED_MULT;
           const burst2 = (e.gBoltPattern ?? 'fan') === 'burst';
           const fireBase = (e.aiStartedAt ?? gameTime) + GIANT_BOLT_WINDUP_MS / mult;
-          const lastFire = burst2 ? fireBase + 2 * (GIANT_BOLT_BURST_GAP_MS / mult) : fireBase;
-          const dtIn = gameTime - fireBase;
-          const dtOut = gameTime - lastFire;
-          if (dtIn >= -GUN_FADE_IN_MS && dtOut <= GUN_RECOIL_MS) {
-            let alpha3: number, out3: number;
-            if (dtIn < 0) {
-              const u3 = 1 + dtIn / GUN_FADE_IN_MS;
-              alpha3 = u3; out3 = 10 + (GUN_OUT_PX - 10) * u3;
-            } else if (dtOut > 0) {
-              const v3 = dtOut / GUN_RECOIL_MS;
-              alpha3 = 1 - v3; out3 = GUN_OUT_PX - GUN_RECOIL_PX * v3;
+          const bp3 = useGameStore.getState().player;
+          const bdx3 = bp3.x + bp3.width / 2 - cx, bdy3 = bp3.y + bp3.height / 2 - cy;
+          const bl3 = Math.hypot(bdx3, bdy3) || 1;
+          const ux3 = bdx3 / bl3, uy3 = bdy3 / bl3;
+          const drawBoltGun = (idx: number, texName: string, dirX: number, dirY: number, fireAt: number, artLen: number) => {
+            const dt = gameTime - fireAt;
+            if (dt < -GUN_FADE_IN_MS || dt > GUN_RECOIL_MS) return; // 出番の外(トライショットと同じ窓)
+            let alpha: number, out: number;
+            if (dt < 0) {
+              const u = 1 + dt / GUN_FADE_IN_MS;
+              alpha = u; out = 10 + (GUN_OUT_PX - 10) * u;
             } else {
-              // 連射の合間: 直近の発射からの反動キック(すっと戻る)。
-              const sinceShot = burst2 ? (dtIn % (GIANT_BOLT_BURST_GAP_MS / mult)) : dtIn;
-              const kick = GUN_RECOIL_PX * 0.35 * Math.max(0, 1 - sinceShot / 140);
-              alpha3 = 1; out3 = GUN_OUT_PX - kick;
+              const v = dt / GUN_RECOIL_MS;
+              alpha = 1 - v; out = GUN_OUT_PX - GUN_RECOIL_PX * v;
             }
-            const bp3 = useGameStore.getState().player;
-            const bdx3 = bp3.x + bp3.width / 2 - cx, bdy3 = bp3.y + bp3.height / 2 - cy;
-            const bl3 = Math.hypot(bdx3, bdy3) || 1;
-            const ang3 = Math.atan2(bdy3 / bl3, bdx3 / bl3);
-            const sp3 = this.atkArtSprite(view, ATK_ART_GUN_C, burst2 ? 'weapons/rifle-t3' : 'weapons/shotgun-t3');
-            if (sp3) {
-              sp3.anchor.set(1, 0.5);
-              const sc3 = 110 / (sp3.texture.width || 1);
-              sp3.scale.set(sc3, sc3);
-              sp3.rotation = ang3;
-              sp3.position.set(cx + Math.cos(ang3) * out3, cy + Math.sin(ang3) * out3);
-              sp3.alpha = artFade * Math.max(0, Math.min(1, alpha3));
-            }
+            const sp = this.atkArtSprite(view, idx, texName);
+            if (!sp) return;
+            sp.anchor.set(1, 0.5);
+            const sc = artLen / (sp.texture.width || 1);
+            sp.scale.set(sc, sc);
+            sp.rotation = Math.atan2(dirY, dirX);
+            sp.position.set(cx + dirX * out, cy + dirY * out);
+            sp.alpha = artFade * Math.max(0, Math.min(1, alpha));
+          };
+          if (burst2) {
+            // 3連発: 1発ごとに別の銃(短→中→長)が入れ替わりで「バンバンバン」。
+            const gap3 = GIANT_BOLT_BURST_GAP_MS / mult;
+            drawBoltGun(ATK_ART_GUN_L, 'fx/boss-gun-1', ux3, uy3, fireBase, 100);
+            drawBoltGun(ATK_ART_GUN_R, 'fx/boss-gun-2', ux3, uy3, fireBase + gap3, 120);
+            drawBoltGun(ATK_ART_GUN_C, 'fx/boss-gun-3', ux3, uy3, fireBase + gap3 * 2, 150);
+          } else {
+            // 扇: 3挺が弾の扇角(12°)どおりに開いて同時発射。
+            const cF = Math.cos(GIANT_BOLT_FAN_STEP_RAD), sF = Math.sin(GIANT_BOLT_FAN_STEP_RAD);
+            drawBoltGun(ATK_ART_GUN_L, 'fx/boss-gun-1', ux3 * cF - uy3 * sF, ux3 * sF + uy3 * cF, fireBase, 100);
+            drawBoltGun(ATK_ART_GUN_R, 'fx/boss-gun-2', ux3 * cF + uy3 * sF, -ux3 * sF + uy3 * cF, fireBase, 120);
+            drawBoltGun(ATK_ART_GUN_C, 'fx/boss-gun-3', ux3, uy3, fireBase, 150);
           }
         }
       }

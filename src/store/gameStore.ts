@@ -9845,7 +9845,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                 // isStoryBoss個体は、既存のpickGiantMoveをそのまま呼ぶ経路にして今日までの挙動を
                 // 1バイトも変えない(受け入れ条件=フォールバック)。
                 if (GIANT_UNIQUE_ENABLED && !isStoryBoss) {
-                  const stageReady: Partial<Record<GiantStageMoveId, boolean>> = {
+                  // v0.25.3046: Partial→全キー必須へ(trishot追加漏れで三連射が一度も出なかった再発防止。
+                  // 今後GiantStageMoveIdへ技を足すと、ここに書くまで型エラーで止まる=機械化)。
+                  const stageReady: Record<GiantStageMoveId, boolean> = {
                     bite: gameTime >= (enemy.gStageReadyAt?.bite ?? 0),
                     slam: gameTime >= (enemy.gStageReadyAt?.slam ?? 0),
                     glide: gameTime >= (enemy.gStageReadyAt?.glide ?? 0),
@@ -9854,6 +9856,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                     nova: gameTime >= (enemy.gStageReadyAt?.nova ?? 0),
                     wing: gameTime >= (enemy.gStageReadyAt?.wing ?? 0),
                     sweepbeam: gameTime >= (enemy.gStageReadyAt?.sweepbeam ?? 0),
+                    // v0.25.3046(社長報告「バンバンバンってなる技、出ないんだけど?」の真因): v2939で
+                    // stage-5固有技を wing→trishot に改名した際、このready表へキーを足し忘れていた。
+                    // stageReady['trishot']がundefined→`?? false`で**恒久的に候補落ち**=一度も出ていなかった。
+                    trishot: gameTime >= (enemy.gStageReadyAt?.trishot ?? 0),
                   };
                   const queued = enemy.bossScriptQueue?.[0];
                   const move = (queued as GiantMove | GiantStageMoveId | undefined) ?? pickGiantMoveWithStage(stageId, dist, phase, ready, stageReady);
