@@ -8674,7 +8674,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss) {
           const leashDistance = Math.hypot(pcx - (enemy.x + enemy.width / 2), pcy - (enemy.y + enemy.height / 2));
           const leashLimit = bossLeashDistancePx(enemy.type, false);
-          const grace = advanceBossDisengageGrace(leashDistance > leashLimit, enemy.bossLeashSince, gameTime);
+          // v0.25.3052(社長報告「滑空系でまだ『離脱しようとしている』が出るやつある」): 急降下
+          // (g-dive-windup)は**技の仕様としてボス自身が場外へ退避する**ため、プレイヤーが逃げていなくても
+          // 距離がリーシュ限界を超え、毎回「危険:ボスが戦闘域を離れようとしている」を誤発報していた。
+          // ボスが自分の技で離れている間は離脱判定の対象外にする(範囲内扱い=予兆もリセット)。
+          // 着地後(recover)は判定終点=プレイヤー近くに戻っているので対象はwindupだけでよい。
+          const leashSelfExiled = enemy.aiPhase === 'g-dive-windup';
+          const grace = advanceBossDisengageGrace(!leashSelfExiled && leashDistance > leashLimit, enemy.bossLeashSince, gameTime);
           if (grace.started) bossLeashWarning = true;
           if (grace.since !== enemy.bossLeashSince) enemy = { ...enemy, bossLeashSince: grace.since };
           // 技の実行中は台本を完走。範囲外3秒が経過済みなら、終了直後に待機へ戻る。

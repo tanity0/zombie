@@ -34,6 +34,10 @@ describe('isDashParryCounterPhase: プレイヤーのdashParried対象フェー�
     expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: 'g-trijump-air' })).toBe(true);
     expect(isDashParryCounterPhase({ type: 'pumpkin', aiPhase: 'g-trijump-air' })).toBe(false);
   });
+  it('滑空(g-glide-active)はgiantbatで空中族=パリィ対象(帯内条件は呼び出し側・v0.25.3052案う)', () => {
+    expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: 'g-glide-active' })).toBe(true);
+    expect(isDashParryCounterPhase({ type: 'pumpkin', aiPhase: 'g-glide-active' })).toBe(false);
+  });
   it('giantbatのwindupは対象外(W4「予告を出したら必ず実行させる」を守護霊も破らない)', () => {
     for (const ph of ['g-stomp-windup', 'g-sweep-windup', 'g-dash-windup', 'g-jump-windup', 'g-bolt-windup'] as Enemy['aiPhase'][]) {
       expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: ph })).toBe(false);

@@ -3,8 +3,8 @@
 // (CLAUDE.md 攻撃ヴィジュアルの分類①「赤いのに当たらない/赤くないのに当たるは絶対にやらない」の
 //  カウンター版=「赤い円の外に居るのに弾ける」を潰す)。
 import { describe, it, expect } from 'vitest';
-import { useGameStore, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS } from '../store/gameStore';
-import { applyContactDamage, inGiantJumpLandingZone, inGlenTriJumpLandingZone, NOOP_COMBAT_EFFECTS } from './combatTick';
+import { useGameStore, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_GLIDE_HALF_WIDTH } from '../store/gameStore';
+import { applyContactDamage, inGiantJumpLandingZone, inGlenTriJumpLandingZone, inGiantGlideBand, NOOP_COMBAT_EFFECTS } from './combatTick';
 import { spawnEnemyAt } from './enemyUtils';
 import type { Enemy } from '../types/game';
 
@@ -55,6 +55,27 @@ describe('inGlenTriJumpLandingZone: 幾何は三連跳びの着地爆風判定�
   });
   it('着地点が未確定なら従来どおり通す(inGiantJumpLandingZoneと同じフェイルオープン)', () => {
     expect(inGlenTriJumpLandingZone(0, 0, 16, { gTriJumpPts: undefined, gTriJumpIdx: 0 })).toBe(true);
+  });
+});
+
+// v0.25.3052(社長裁定「滑空の案はうで」): 滑空(g-glide-active)は空中族=通過中の体当たりは被弾せず、
+// カウンターは「赤い帯の中」でだけ成立する。帯の幾何=カプセル爆発判定と同一(半幅40+相手半径)。
+describe('inGiantGlideBand: 幾何は滑空の帯(カプセル爆発)判定と同一', () => {
+  // aiFrom/aiTargetは左上基準・中心=+半身(幅80/高さ80)。帯=(140,100)→(740,100)の横線。
+  const boss = { aiFromX: 100, aiFromY: 60, aiTargetX: 700, aiTargetY: 60, width: 80, height: 80 };
+
+  it('帯の中心線上は成立する', () => {
+    expect(inGiantGlideBand(400, 100, 16, boss)).toBe(true);
+  });
+  it('縁ちょうど(半幅+自分の当たり半径)は成立する=爆発と同じ境界', () => {
+    expect(inGiantGlideBand(400, 100 + GIANT_GLIDE_HALF_WIDTH + 16, 16, boss)).toBe(true);
+    expect(inGiantGlideBand(400, 100 + GIANT_GLIDE_HALF_WIDTH + 16 + 0.5, 16, boss)).toBe(false);
+  });
+  it('帯の外は成立しない(巨体の端に触れても「赤くないのに弾ける/当たる」を作らない)', () => {
+    expect(inGiantGlideBand(400, 300, 16, boss)).toBe(false);
+  });
+  it('端点が未確定なら従来どおり通す(他の空中族と同じフェイルオープン)', () => {
+    expect(inGiantGlideBand(0, 0, 16, { ...boss, aiTargetX: undefined })).toBe(true);
   });
 });
 

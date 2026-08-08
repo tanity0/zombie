@@ -44,7 +44,7 @@ import {
   KNOCKBACK_DURATION, KNOCKBACK_SPEED, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, STUN_DURATION_MS,
-  GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS,
+  GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_GLIDE_HALF_WIDTH,
   bossCritCdMult,
 } from '../store/gameStore';
 import { distToSegment } from './levelUpGate';
@@ -741,11 +741,33 @@ export const inGlenTriJumpLandingZone = (
   return Math.hypot(actorCx - lx, actorCy - ly) <= GLEN_TRIJUMP_RADIUS + actorRadius;
 };
 
+/**
+ * v0.25.3052(社長裁定「滑空の案はうで」): 滑空(g-glide-active)も空中族に——**通過中の体当たりは
+ * 被弾しない**(ダメージは赤い帯のカプセル爆発+終点の二撃目だけ=図形と判定の厳密一致)。
+ * カウンターは**赤い帯の中**に居て触れた時だけ成立(帯の外で巨体の端に触れても弾けない=
+ * 「赤い円の中=弾ける」のv2601と同じ考え方の帯版)。幾何は帯の爆発判定と同一:
+ * 線分=aiFrom中心→aiTarget中心、半幅=GIANT_GLIDE_HALF_WIDTH+相手の当たり半径。
+ * 端点未確定(旧データ等)はフェイルオープン(他の着地円と同じ)。
+ */
+export const inGiantGlideBand = (
+  actorCx: number, actorCy: number, actorRadius: number,
+  enemy: Pick<Enemy, 'aiFromX' | 'aiFromY' | 'aiTargetX' | 'aiTargetY' | 'width' | 'height'>,
+): boolean => {
+  if (enemy.aiFromX === undefined || enemy.aiFromY === undefined
+    || enemy.aiTargetX === undefined || enemy.aiTargetY === undefined) return true;
+  return distToSegment(
+    { x: actorCx, y: actorCy },
+    { x: enemy.aiFromX + enemy.width / 2, y: enemy.aiFromY + enemy.height / 2 },
+    { x: enemy.aiTargetX + enemy.width / 2, y: enemy.aiTargetY + enemy.height / 2 },
+  ) <= GIANT_GLIDE_HALF_WIDTH + actorRadius;
+};
+
 /** ※ v0.25.2601: `g-jump-air` はこの述語を通ったうえで **inGiantJumpLandingZone** も要る
  *   (位置条件はこの述語に持たせない=主語の座標を受け取らない純粋なフェーズ判定のまま保つ)。 */
 export const isDashParryCounterPhase = (enemy: Pick<Enemy, 'type' | 'aiPhase'>): boolean =>
   enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air'
   || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-trijump-air') // v0.25.3050: 三連跳びも空中族(着地円条件は呼び出し側=g-jump-airと同じ作法)
+  || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-glide-active') // v0.25.3052(案う): 滑空も空中族(帯内条件は呼び出し側)
   || enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch'
   || (enemy.type === 'giantbat' && enemy.aiPhase !== undefined && GIANT_PARRYABLE_PHASES.includes(enemy.aiPhase));
 
@@ -812,14 +834,17 @@ export const applyGhostBossParry = (
   // (プレイヤー側 applyContactDamage の同じ条件と対。幾何は着地の爆風判定と同一)。
   // ここは**消費せずに帰る**=円の外なら請求は残し、着地の爆風側(inBlastGhost経路)の判定に回す
   // (円の外なら爆風にも当たらないので実質は流れるだけ。同フレームの正当な弾きを潰さないため)。
-  if (boss.aiPhase === 'g-jump-air' || boss.aiPhase === 'g-trijump-air') {
+  if (boss.aiPhase === 'g-jump-air' || boss.aiPhase === 'g-trijump-air' || boss.aiPhase === 'g-glide-active') {
     const g = state.summons.find(s => s.kind === 'ghost-ally');
     if (!g) return;
     const gcx = g.x + g.width / 2, gcy = g.y + g.height / 2, gr = Math.max(g.width, g.height) / 2;
     // v0.25.3050: 三連跳びはプレイヤー経路と同じく「今の跳びの着地円」で判定(g-jump-airと同じ作法)。
+    // v0.25.3052(案う): 滑空は「赤い帯の中」で判定(同じくプレイヤー経路と対)。
     const inZone = boss.aiPhase === 'g-jump-air'
       ? inGiantJumpLandingZone(gcx, gcy, gr, boss)
-      : inGlenTriJumpLandingZone(gcx, gcy, gr, boss);
+      : boss.aiPhase === 'g-trijump-air'
+        ? inGlenTriJumpLandingZone(gcx, gcy, gr, boss)
+        : inGiantGlideBand(gcx, gcy, gr, boss);
     if (!inZone) return;
   }
   if (consumeGhostCounterClaim(boss.id, nowMs) === null) return;
@@ -877,7 +902,10 @@ export const applyContactDamage = (
     // M51: ジャイアント新スクリプトの飛び掛かり滞空(g-jump-air)も同じ扱い(既存'jump'と同義)。
     // v0.25.3050(社長指示①): グレンの三連跳び(g-trijump-air)も空中族に追加——空中は被弾しない+
     // カウンターは今の跳びの着地円の中でだけ(単発の飛び掛かりg-jump-airと同じ扱い。監査v3049の発見(a))。
-    if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air' || enemy.aiPhase === 'g-trijump-air') {
+    // v0.25.3052(社長裁定「滑空の案はうで」): 滑空(g-glide-active)も空中族——通過中の体当たりは
+    // 被弾しない(ダメージ=赤い帯のカプセル爆発+終点二撃目のみ)。カウンターは赤い帯の中でだけ。
+    if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air' || enemy.aiPhase === 'g-trijump-air'
+      || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-glide-active')) {
       // v0.25.2601(社長裁定・第三案): 城ボスの飛び掛かりは**着地したら当たる位置**でだけ弾ける
       // (赤い着地円=カウンターできる範囲、を一致させる)。空中で被弾しないこと自体は不変。
       // 旧 'jump'(パンプキン等の非ボス)は対象外=従来どおり触れていれば弾ける。
@@ -888,7 +916,9 @@ export const applyContactDamage = (
         ? inGiantJumpLandingZone(pCx, pCy, pRad, enemy)
         : enemy.aiPhase === 'g-trijump-air'
           ? inGlenTriJumpLandingZone(pCx, pCy, pRad, enemy)
-          : true;
+          : enemy.aiPhase === 'g-glide-active'
+            ? inGiantGlideBand(pCx, pCy, pRad, enemy)
+            : true;
       if (counterActiveNow && jumpZoneOk) dashParried.push(enemy.id);
       return;
     }
@@ -942,8 +972,9 @@ export const applyContactDamage = (
     const rnMelee = redNightActive ? 2 : 1;
     // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の接触ダメージも×SCREAMER_BUFF_MULT。
     const scMelee = (screamerBuffUntil > gameTime && enemy.type !== 'screamer' && !isBossType(enemy.type)) ? SCREAMER_BUFF_MULT : 1;
-    // G4a(§2.9・記録専用): 体当たりそのものが技のダメージであるフェーズ(g-dash-charge/g-quad-charge/
-    // g-glide-active)だけ技キーを付ける(純関数contactDamageMoveKey)。それ以外の接触は従来どおりタグ無し。
+    // G4a(§2.9・記録専用): 体当たりそのものが技のダメージであるフェーズ(g-dash-charge/g-quad-charge)
+    // だけ技キーを付ける(純関数contactDamageMoveKey)。それ以外の接触は従来どおりタグ無し。
+    // ※g-glide-activeはv0.25.3052(案う)で空中族へ移動=ここへは到達しない(タグ表は記録専用なので残置)。
     const playerDied = useGameStore.getState().damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, undefined, undefined, contactDamageMoveKey(enemy));
     if (damageWasApplied) {
       fx.playSfx('player-damage');
