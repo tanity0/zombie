@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   clampRectToPlayableArea, isRectInPlayableArea,
+  clampCastleFightCrossing, CASTLE_FIGHT_MAX_DIST,
   TUTORIAL_MOVE_Y_LIMIT_PX, TUTORIAL_MOVE_X_MIN_PX, CORRIDOR_BOTTOM_LIMIT,
   type PlayableAreaCtx,
 } from './playableArea';
@@ -116,5 +117,24 @@ describe('clampRectToPlayableArea(ステージ6/corridorMode)', () => {
     const runIn: PlayableAreaCtx = { ...ctx, corridorRunInActive: true };
     const r = clampRectToPlayableArea(0, 99999, w, h, runIn);
     expect(r.y).toBe(99999); // 下限を適用しない
+  });
+});
+
+// v0.25.3055(社長指示): 城ボス戦中はデンジャーゾーンに入れない(研究対象の外縁=3000でクランプ)。
+import { AREA_THRESHOLDS } from '../utils/enemyUtils';
+describe('clampCastleFightCrossing(城ボス戦の移動制限)', () => {
+  it('上限は研究対象区域の外縁(AREA_THRESHOLDS[1])と同値', () => {
+    expect(CASTLE_FIGHT_MAX_DIST).toBe(AREA_THRESHOLDS[1]);
+  });
+  it('内側の移動は素通し', () => {
+    expect(clampCastleFightCrossing(0, 0, 100, 200)).toEqual({ x: 100, y: 200 });
+  });
+  it('内→外へ跨ぐ移動は制限ラインへクランプ(方向は保存)', () => {
+    const c = clampCastleFightCrossing(2990, 0, 3100, 0);
+    expect(Math.hypot(c.x, c.y)).toBeCloseTo(CASTLE_FIGHT_MAX_DIST, 6);
+    expect(c.y).toBeCloseTo(0, 6);
+  });
+  it('既に外に居る場合はスナップさせない(交戦開始時点で外だった時の瞬間移動を作らない)', () => {
+    expect(clampCastleFightCrossing(3500, 0, 3400, 0)).toEqual({ x: 3400, y: 0 });
   });
 });

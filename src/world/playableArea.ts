@@ -76,3 +76,25 @@ export const isRectInPlayableArea = (
   const c = clampRectToPlayableArea(x, y, w, h, ctx);
   return c.x === x && c.y === y;
 };
+
+// ---------------------------------------------------------------------------------------------
+// 城ボス戦の移動制限(社長指示v0.25.3055「城ボス戦の時は移動できる距離を制限する。
+// 城ボス:研究対象まで(デンジャーには入れない)。裏ボス:全域ok。ゲートボス:そもそもゲート内」)
+// ---------------------------------------------------------------------------------------------
+// 上限=研究対象区域の外縁(AREA_THRESHOLDS[1]=3000px・原点からの距離)。デンジャーゾーンに入れない。
+export const CASTLE_FIGHT_MAX_DIST = 3000; // enemyUtils.AREA_THRESHOLDS[1]と同値(constitution的な二重定義を避けるためテストで一致を固定)
+/**
+ * 城ボス交戦中の「外へ出る移動」だけを制限ラインで止める(中心座標基準の円クランプ)。
+ * ★スナップ防止: 既に制限の外に居る場合(交戦開始時点で外だった等)は動きを止めない=
+ * 「線を外向きに跨ぐ移動」だけをクランプする。内側へ戻る移動は常に自由。
+ */
+export const clampCastleFightCrossing = (
+  oldCx: number, oldCy: number, newCx: number, newCy: number, limit: number = CASTLE_FIGHT_MAX_DIST,
+): { x: number; y: number } => {
+  const newDist = Math.hypot(newCx, newCy);
+  if (newDist <= limit) return { x: newCx, y: newCy };
+  const oldDist = Math.hypot(oldCx, oldCy);
+  if (oldDist > limit) return { x: newCx, y: newCy }; // 既に外(スナップさせない)
+  const k = limit / (newDist || 1);
+  return { x: newCx * k, y: newCy * k };
+};

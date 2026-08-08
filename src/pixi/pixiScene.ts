@@ -116,6 +116,7 @@ const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(巨大ボス遠
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType } from '../utils/enemyUtils';
 import { isMarkedBoss, isEngagedBoss, bossMarkFor, type MarkBox } from '../utils/bossMarker';
+import { CASTLE_FIGHT_MAX_DIST } from '../world/playableArea'; // v0.25.3055: 城ボス戦の移動制限ライン(描画は読むだけ)
 import {
   bossEngagementDistancePx, isEngageableBoss,
 } from '../utils/bossEngagement';
@@ -3488,6 +3489,9 @@ export class PixiScene {
   // v0.25.3054: ボス戦中の施設フェード(1=通常/0=非表示)。storeのbossFightNowへ補間で追従。
   private facilityFade = 1;
   private facilityFadeLastNow = 0;
+  // v0.25.3055: 城ボス戦の移動制限ライン(研究対象の外縁・原点中心の円)。線のみ・中は塗らない(社長指示)。
+  private castleFightRingGfx = new Graphics();
+  private castleRingAlpha = 0;
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
   constructor(layers: SceneLayers) {
@@ -3767,6 +3771,7 @@ export class PixiScene {
       this.arenaGfx, // 囲い系イベントの柵リング(地面・アクターの下・world座標)
       this.returnGfx, // 帰還サークル(地面・world座標)
       this.baseSitesGfx, // 拠点候補地サークル(地面・world座標)
+      this.castleFightRingGfx, // v0.25.3055: 城ボス戦の移動制限ライン(地面・world座標・線のみ)
       this.hospitalGfx, // 病院サークル(地面・world座標)
       this.armoryGfx, // §6.24 M48: 武器庫サークル(地面・world座標。病院と同じ)
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
@@ -6720,6 +6725,18 @@ export class PixiScene {
     this.syncArmory(now); // §6.24 M48: 武器庫(同上)
     this.syncPolice(now); // §6.24 M48: 警察署(同上)
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
+    // v0.25.3055(社長指示「城ボス戦の時は移動できる距離を制限。制限ラインを薄く表示するのはいいが、
+    // 中は塗るな。景観を損ねるので」): 研究対象の外縁(原点から3000px)に細い二重ストロークだけ描く。
+    {
+      const g = this.castleFightRingGfx;
+      g.clear();
+      this.castleRingAlpha += ((s.castleFightNow ? 1 : 0) - this.castleRingAlpha) * 0.08;
+      if (this.castleRingAlpha > 0.02 && !s.indoorMode && !this.isLabStage) {
+        const rPulse = 0.5 + 0.5 * Math.sin(now / 300);
+        g.circle(0, 0, CASTLE_FIGHT_MAX_DIST).stroke({ width: 4, color: 0xf87171, alpha: this.castleRingAlpha * (0.16 + 0.08 * rPulse) });
+        g.circle(0, 0, CASTLE_FIGHT_MAX_DIST - 6).stroke({ width: 1.5, color: 0xfecaca, alpha: this.castleRingAlpha * (0.26 + 0.10 * rPulse) });
+      }
+    }
     // v0.25.3054: 施設フェードの適用(POI建物3種+サークル+拠点サークル+影リクエスト)。
     this.hospitalSprite.alpha *= facFade;
     this.armorySprite.alpha *= facFade;

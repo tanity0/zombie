@@ -178,6 +178,7 @@ import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
   clampRectToPlayableArea,
+  clampCastleFightCrossing, // v0.25.3055: 城ボス戦の移動半径制限(研究対象の外縁まで)
   type PlayableAreaCtx,
   TUTORIAL_MOVE_Y_LIMIT_PX as TUTORIAL_MOVE_Y_LIMIT_PX_FROM_WORLD,
   TUTORIAL_MOVE_X_MIN_PX as TUTORIAL_MOVE_X_MIN_PX_FROM_WORLD,
@@ -3871,6 +3872,10 @@ interface GameState {
   // 施設(病院/武器庫/警察署/拠点/商人/城)の発火・滞在・当たり判定のゲートと、描画のフェードが読む。
   bossFightNow: boolean;
   bossFightLastTrueAt: number;                          // 最後に交戦中だったgameTime(解除後の復帰猶予=facilitiesLocked用)
+  // v0.25.3055(社長指示「城ボス戦の時は移動できる距離を制限する。研究対象まで(デンジャーには
+  // 入れない)。裏ボス:全域ok。ゲートボス:そもそもゲート内」): 城ボス(giantbat・非ストーリー)との
+  // 交戦フラグ。プレイヤー移動の半径クランプ(clampCastleFightCrossing)と制限ラインの描画が読む。
+  castleFightNow: boolean;
   bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean } | null; // 討伐後のフェードアウト演出(描画のみが参照)。holdMs=無傷で保持する尺(死亡アテンション付きボスのみ>0)。glenBoss2=変身後の絵で崩す(v0.25.3029)
   // v0.25.3029(社長裁定「二体」): グレン形態1討伐後の形態2スポーン予約(at=実時刻・x/y=世界座標の中心)。
   glenForm2SpawnAt: { at: number; x: number; y: number } | null;
@@ -4230,6 +4235,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   bossChasing: false,
   bossFightNow: false,
   bossFightLastTrueAt: 0,
+  castleFightNow: false,
   bossCorpse: null,
   glenForm2SpawnAt: null,
   hiddenBossDefeated: false,
@@ -4499,6 +4505,15 @@ export const useGameStore = create<GameState>((set, get) => ({
           newX = clamped.x;
           newY = clamped.y;
         }
+      }
+      // v0.25.3055(社長指示): 城ボス戦中はデンジャーゾーンに入れない(研究対象の外縁=原点から
+      // 3000pxの円で「外向きに跨ぐ移動」だけを止める。既に外に居る場合はスナップさせない)。
+      // 制限ラインの表示は描画側(pixiScene・線のみ/中は塗らない=社長指示)。
+      if (state.castleFightNow) {
+        const cOld = { x: player.x + player.width / 2, y: player.y + player.height / 2 };
+        const cNew = clampCastleFightCrossing(cOld.x, cOld.y, newX + player.width / 2, newY + player.height / 2);
+        newX = cNew.x - player.width / 2;
+        newY = cNew.y - player.height / 2;
       }
       // 囲い系イベント中はプレイヤーを円(囲い)の内側へ拘束(円コリジョン)。壁解決の後に最終クランプ。
       // ただし救助(rescue)イベントと、confinesPlayer=false を明示するイベントはプレイヤーを閉じ込めない
@@ -10454,10 +10469,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // v0.25.3054: ボス交戦フラグ(施設ロック/描画フェードの正本)。ヒステリシスは
       // bossEngagedNow(ENTER900/EXIT1400)が持つ=前回値を渡すだけ。
       const bossFightNowNext = bossEngagedNow(finalEnemies, pcx, pcy, state.bossFightNow);
+      // v0.25.3055: 城ボス(giantbat・非ストーリー)だけの交戦フラグ(移動半径の制限用)。
+      // ストーリーボス(stage-7グレン等)は専用ステージで区域構造が無いため対象外。
+      const castleFightNowNext = bossEngagedNow(
+        finalEnemies.filter(e => e.type === 'giantbat' && !e.isStoryBoss), pcx, pcy, state.castleFightNow);
       return {
         enemies: finalEnemies, breakableProps: nextBreakables, pumpkinBlasts, shieldBlocks, skadiIceMarkers, skadiIceBlades,
         bossFightNow: bossFightNowNext,
         bossFightLastTrueAt: bossFightNowNext ? gameTime : state.bossFightLastTrueAt,
+        castleFightNow: castleFightNowNext,
         // v0.25.3053(社長指示「警告バグ他でも出ないか洗って」で発見): v0.25.2968で猶予を3000→1200msに
         // 短縮した際、バナーの「— 3秒」が置き去りになっていた(表示が嘘)。秒数は定数から導出=再ドリフト防止。
         ...(bossLeashWarning
@@ -13533,6 +13553,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossChasing: false,
         bossFightNow: false,
         bossFightLastTrueAt: 0,
+        castleFightNow: false,
         bossCorpse: null,
         glenForm2SpawnAt: null,
         hiddenBossDefeated: false,
