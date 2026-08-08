@@ -2587,6 +2587,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             boss.vx = 0;
             boss.vy = 0; // dormantにしない=出現した瞬間から戦闘(即戦闘・統合正本10.2)
+            // v0.25.3032(社長報告「登場アテンション中にボスが技を発動しちゃってる」): 城ボスの
+            // 技抽選ゲートは aiReadyAt(gameStore 9810)で、bossNextActionAt は裏ボス用=読まれない。
+            // スポーンと同フレームに技を抽選→凍結で「予告を出したまま登場シーン」になっていた。
+            // 抽選をアテンション明け+2秒(ゲーム時間)まで封じる。
+            boss.aiReadyAt = newGameTime + 2000;
             addEnemy(boss);
             spawnFlash('rgba(127,29,29,0.28)', 420);
             spawnRing(scx, scy, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
@@ -2655,7 +2660,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               });
               e2.x = placed2.x; e2.y = placed2.y;
               e2.vx = 0; e2.vy = 0;
-              e2.bossNextActionAt = newGameTime + 2000;
+              // v0.25.3032: 技抽選ゲートは aiReadyAt(bossNextActionAtは城ボスでは読まれない)。
+              // 出現アテンション中に技の予告が出るのを防ぐ(形態1スポーンと同じ直し)。
+              e2.aiReadyAt = newGameTime + 2000;
               e2.glenVolleyAt = newGameTime; // 胴体弾の種付け(初弾はCD後・監査指摘)
               addEnemy(e2);
               const c2x = e2.x + e2.width / 2, c2y = e2.y + e2.height / 2;

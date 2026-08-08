@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3032',
+    items: [
+      'ラスボスの登場シーン(カットイン)中に、ボスが技の予告を出したまま止まっていることがあったのを修正しました(登場後2秒間は技を出しません)。',
+    ],
+  },
+  {
     version: '0.25.3031',
     items: [
       'ラスボス第二形態の戦闘中は、遠景の雲が2倍の速さで流れるようになりました(空気が変わる演出)。',
