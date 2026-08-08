@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3062',
+    items: [
+      'ボスの離脱距離を1500pxから1000pxに調整しました(より短い距離で追跡をやめて帰巣します)。',
+    ],
+  },
+  {
     version: '0.25.3061',
     items: [
       'ゲーム内容の変更はありません(配信の修復: v0.25.3058以降デプロイが失敗して実機にv3057までしか届いていなかった問題を修正しました。v3058〜3060の修正はこの版でまとめて反映されます)。',

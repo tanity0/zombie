@@ -83,9 +83,9 @@ describe('リーシュ', () => {
   // v0.25.3056(社長裁定「距離を縮める。1500にする」): リーシュは実距離1500px固定=交戦解除距離
   // (ズーム換算≈3181px)より内側で先に発火する。順序が逆でも問題ないのは、待機(dormant)を
   // bossEngagedNowが即座に非交戦扱いにするから(=「待機なのに交戦中のまま」は構造的に起きない)。
-  it('リーシュ距離は実距離1500px固定(ズーム換算しない・社長裁定v0.25.3056)', () => {
+  it('リーシュ距離は実距離1000px固定(ズーム換算しない・社長裁定v0.25.3056→v0.25.3062で1000へ)', () => {
     expect(bossLeashDistancePx('giantbat')).toBe(BOSS_LEASH_PX);
-    expect(BOSS_LEASH_PX).toBe(1500);
+    expect(BOSS_LEASH_PX).toBe(1000);
     expect(engaged([foe('giantbat', { dormant: true })])).toBe(false); // 待機=即・非交戦(順序の安全弁)
   });
 
