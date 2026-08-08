@@ -92,9 +92,12 @@ const REST_CHOICE: TuningChoiceField = {
   section: 'ストリングと休符',
   hint: 'ストリングの後に必ず入る休み。ここがプレイヤーの攻撃チャンス。短いほど厳しい。',
   options: [
-    { key: 'short', label: '短', values: { 'rest.p1': 600, 'rest.p2': 600, waveDelayMs: 500 } },
-    { key: 'normal', label: '並', values: { 'rest.p1': 900, 'rest.p2': 900, waveDelayMs: 650 } },
-    { key: 'long', label: '長', values: { 'rest.p1': 1300, 'rest.p2': 1300, waveDelayMs: 850 } },
+    // v0.25.3061: 休符の既定900→1700(実装側の変更)にプリセット表が未追従でCIが赤くなっていた
+    // (v3030の教訓「数値を変えるコミットは同名テストの直値まで同コミットで直す」の同型)。
+    // 並=現行実装値。短/長は序列(短<並<長)を保つ開発ツール上の目安値。
+    { key: 'short', label: '短', values: { 'rest.p1': 1000, 'rest.p2': 1000, waveDelayMs: 500 } },
+    { key: 'normal', label: '並', values: { 'rest.p1': 1700, 'rest.p2': 1700, waveDelayMs: 650 } },
+    { key: 'long', label: '長', values: { 'rest.p1': 2400, 'rest.p2': 2400, waveDelayMs: 850 } },
   ],
 };
 
