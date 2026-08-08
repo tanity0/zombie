@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3043',
+    items: [
+      'ステージ4ボスの冷気ブレスに本体の絵が付きました(口元から凍気の奔流が吹き付け、薙ぎに合わせて回ります。粉雪のキラキラと二層構成)。',
+    ],
+  },
+  {
     version: '0.25.3042',
     items: [
       'ステージ4ボスの冷気ブレス(三連突進の締めの薙ぎ)に、粉雪のキラキラが舞う演出が付きました(薙ぎを追いかけて複数同時に散ります)。',

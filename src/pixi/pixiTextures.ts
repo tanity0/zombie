@@ -710,6 +710,15 @@ export const ensureTextures = (): Promise<void> => {
       });
     }
 
+    // v0.25.3043: 冷気ブレス本体(社長支給2枚目・指示「透明の余計な要素が多いのでトリミングして使って」)。
+    // 支給PNGは加工せず、αの実測境界(x0〜664, y316〜388・左=根元)に2pxの余裕を足した枠で切って登録
+    // (アトラス/グレンパーツと同じ作法=追加デコード無し)。
+    const breathStream = await loadOne('fx/breath-stream');
+    if (breathStream) {
+      breathStream.source.scaleMode = 'nearest';
+      textures.set('fx/breath-stream-trim', new Texture({ source: breathStream.source, frame: new Rectangle(0, 314, 666, 76) }));
+    }
+
     // 敵スプライトのアスペクト(texH/texW)を登録(PHILLサークルの頭スナップを実描画に合わせる)。
     const regAspect = (key: string, texName: string) => {
       const t = textures.get(texName);

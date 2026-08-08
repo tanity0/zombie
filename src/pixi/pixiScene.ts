@@ -2162,6 +2162,7 @@ const ATK_ART_FIST = 6;
 const ATK_ART_GUN_L = 7;   // 三連射: 左(短い銃)
 const ATK_ART_GUN_R = 8;   // 三連射: 右(中くらい)
 const ATK_ART_GUN_C = 9;   // 三連射: 中央=三拍目(長い銃)
+const ATK_ART_BREATH = 10; // v0.25.3043: 冷気ブレス本体(stage-4・薙ぎに追従する吹き付け)
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -14807,6 +14808,31 @@ export class PixiScene {
               sp2.position.set(gfx0 + Math.cos(ang2) * out2, gfy0 + Math.sin(ang2) * out2);
               sp2.alpha = artFade * Math.max(0, Math.min(1, alpha2));
             }
+          }
+        }
+      }
+      // (3e) 冷気ブレス本体(g-quad-breath-active・stage-4)= v0.25.3043(社長支給素材2枚目)。
+      //      薙ぎの現在角(判定と同じ式)に沿って口元から吹き付ける。出だしで根元→先端へ一気に伸び、
+      //      終わり際にフェード。太さは帯の判定より大きめ=派手枠(赤帯が判定を示す・分類②の掟)。
+      {
+        if (gph === 'g-quad-breath-active') {
+          const bfx0 = e.aiFromX ?? cx, bfy0 = e.aiFromY ?? cy;
+          const btx0 = e.aiTargetX ?? cx, bty0 = e.aiTargetY ?? cy;
+          const bBase = Math.atan2(bty0 - bfy0, btx0 - bfx0);
+          const bDurEff = GIANT_QUAD_BREATH_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+          const bT = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / bDurEff));
+          const bAng = bBase - GIANT_QUAD_BREATH_SWEEP_RAD / 2 + GIANT_QUAD_BREATH_SWEEP_RAD * bT;
+          const spB = this.atkArtSprite(view, ATK_ART_BREATH, 'fx/breath-stream-trim');
+          if (spB) {
+            spB.anchor.set(0, 0.5); // 素材は左=根元(雲の塊)→右=先細り
+            const grow = Math.min(1, bT * 8);                       // 出だし約85msで全長へ
+            const fade = bT > 0.85 ? Math.max(0, (1 - bT) / 0.15) : 1; // 終わり際にすっと消える
+            const lenB = GIANT_QUAD_BREATH_LENGTH * 1.08 * grow;    // 判定より少しはみ出す(派手側)
+            const hB = GIANT_QUAD_BREATH_HALF_WIDTH * 4 * (1 + 0.08 * Math.sin(now / 45)); // 太さ=判定の2倍+ゆらぎ
+            spB.scale.set(lenB / (spB.texture.width || 1), hB / (spB.texture.height || 1));
+            spB.rotation = bAng;
+            spB.position.set(bfx0, bfy0);
+            spB.alpha = artFade * 0.92 * fade;
           }
         }
       }
