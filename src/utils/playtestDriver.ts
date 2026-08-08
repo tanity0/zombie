@@ -418,6 +418,7 @@ const buildObjectiveWorld = (_obj: BotObjective): ObjectiveWorld => {
     pois: botObjectivePois(s),
     scrap: p.straps,
     baseCaptureRadius: BASE_CAPTURE_RADIUS,
+    escorts: s.escorts, // ★拠点を制圧するのは escort(付き添わないと前進しない)
   };
 };
 

@@ -71,8 +71,17 @@ export interface ObjectiveWorld {
   pois?: readonly { kind: 'armory' | 'hospital' | 'police'; x: number; y: number; taken: boolean; radius: number; cost?: number }[];
   /** 所持スクラップ(武器庫の費用判定に使う)。省略=費用チェックをしない。 */
   scrap?: number;
-  /** 拠点制圧サークルの半径(この内側に留まると滞在が貯まる)。省略=hold を出さない。 */
+  /** 拠点制圧サークルの半径。省略=距離判定をしない。 */
   baseCaptureRadius?: number;
+  /**
+   * 護衛軍人NPC(担当拠点へ前進して制圧する主体)。**campaign だけが読む**。
+   *
+   * ★重要(v0.25.3059で実走から判明): **拠点はプレイヤーが円内に立っても制圧されない。**
+   * 制圧するのは escort であり(`gameStore.updateBaseSites`)、しかも escort は
+   * **画面内に居る間しか前進しない**(画面外=座標保持)。したがってボットの正しい行動は
+   * 「拠点の中心へ行って留まる」ではなく **「担当 escort に付き添って画面内に入れ続ける」**。
+   */
+  escorts?: readonly { baseId: string; x: number; y: number }[];
 }
 
 /** 目的が出す指示。 */
@@ -185,6 +194,24 @@ export const nearestUncapturedBase = (w: ObjectiveWorld): BaseSite | null => {
 };
 
 /**
+ * その拠点を担当する護衛NPCのうち最寄りのもの。
+ * ★拠点を制圧するのは escort であってプレイヤーではない(gameStore.updateBaseSites)。
+ *   しかも escort は画面外では前進しないので、ボットは escort に付き添う必要がある。
+ */
+export const nearestEscortFor = (
+  w: ObjectiveWorld, baseId: string,
+): { baseId: string; x: number; y: number } | null => {
+  if (!w.escorts) return null;
+  let best: { baseId: string; x: number; y: number } | null = null, bestD = Infinity;
+  for (const e of w.escorts) {
+    if (e.baseId !== baseId) continue;
+    const d = dist2(w.px, w.py, e.x, e.y);
+    if (d < bestD) { bestD = d; best = e; }
+  }
+  return best;
+};
+
+/**
  * 最寄りの未開放POI。**費用が足りないものは除く**(武器庫はスクラップが要る)。
  * `pois` 未指定のステージ/呼び出しでは常に null = 従来どおり。
  */
@@ -275,16 +302,24 @@ export const planObjective = (obj: BotObjective, w: ObjectiveWorld): ObjectivePl
           return { destination: c, focus: castleBoss, travel: false, pressAttack: true, done: false, note: '城ボスが至近=交戦' };
         }
       }
-      // ③ 未制圧の拠点 → 最寄りへ。円内に入ったら**留まる**(10秒の滞在で制圧)。
+      // ③ 未制圧の拠点 → **担当の護衛NPCに付き添う**(拠点の中心へ立っても制圧されない)。
+      //    escort は画面内でしか前進しないので、ボットの仕事は「escortを画面内に入れ続けて護衛する」。
+      //    escort が居ない/未提供の場合だけ、従来どおり拠点そのものを目的地にする。
       const base = nearestUncapturedBase(w);
       if (base) {
-        const inCircle = w.baseCaptureRadius != null
-          && dist2(w.px, w.py, base.x, base.y) <= w.baseCaptureRadius ** 2;
         const captured = w.baseSites.filter(b => b.status === 'captured').length;
+        const escort = nearestEscortFor(w, base.id);
+        if (escort) {
+          return {
+            destination: { x: escort.x, y: escort.y }, focus: null, travel: true, pressAttack: false,
+            done: false, // hold は出さない=付いて行きながら普段どおり戦う(escortを守るのが仕事)
+            note: `護衛NPCに随伴して拠点へ(${captured}/${w.baseSites.length})`,
+          };
+        }
         return {
-          destination: { x: base.x, y: base.y }, focus: null, travel: !inCircle, pressAttack: false,
-          done: false, hold: inCircle,
-          note: inCircle ? `拠点を制圧中(${captured}/${w.baseSites.length})` : `拠点へ(${captured}/${w.baseSites.length})`,
+          destination: { x: base.x, y: base.y }, focus: null, travel: true, pressAttack: false,
+          done: false,
+          note: `拠点へ(${captured}/${w.baseSites.length})`,
         };
       }
       // ④ 未開放のPOI → 最寄りへ。円内に入ったら**留まる**(3秒の滞在)。

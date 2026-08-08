@@ -42,12 +42,31 @@ describe('campaign(通し)', () => {
     expect(p.note).toContain('拠点');
   });
 
-  it('★拠点のサークル内に入ったら hold=true(留まらないと制圧できない)', () => {
+  // ★v0.25.3059 実走で判明: 拠点を制圧するのは護衛NPC(escort)であってプレイヤーではない。
+  //   しかも escort は画面外では前進しない。よって正解は「拠点中心に留まる」ではなく「escortに随伴」。
+  //   (旧実装は拠点中心で hold していたため、44pxまで寄って19秒静止しても滞在0msのままだった)
+  it('★担当の護衛NPCが居れば、拠点中心ではなく escort へ随伴する(hold しない)', () => {
+    const p = planObjective({ kind: 'campaign' }, world({
+      baseSites: [base('a', 3000, 0)], baseCaptureRadius: 130,
+      escorts: [{ baseId: 'a', x: 500, y: 0 }, { baseId: 'other', x: 10, y: 0 }],
+    }));
+    expect(p.destination).toEqual({ x: 500, y: 0 });   // escortの位置(担当違いは無視)
+    expect(p.hold).toBeFalsy();                        // 付いて行きながら普段どおり戦う
+    expect(p.note).toContain('護衛');
+  });
+
+  it('★拠点の円内に居ても hold は出さない(プレイヤーが立っても制圧されないため)', () => {
     const p = planObjective({ kind: 'campaign' }, world({
       px: 50, py: 0, baseSites: [base('a', 0, 0)], baseCaptureRadius: 130,
     }));
-    expect(p.hold).toBe(true);
-    expect(p.travel).toBe(false);        // 進むのではなく留まる
+    expect(p.hold).toBeFalsy();
+  });
+
+  it('escort が未提供/不在なら従来どおり拠点そのものを目的地にする', () => {
+    const p = planObjective({ kind: 'campaign' }, world({
+      baseSites: [base('a', 800, 0)], baseCaptureRadius: 130, escorts: [],
+    }));
+    expect(p.destination).toEqual({ x: 800, y: 0 });
   });
 
   it('拠点を全部取ったらPOIへ。POIの円内でも hold=true', () => {
