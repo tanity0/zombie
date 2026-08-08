@@ -3,6 +3,7 @@ import type { Enemy, EnemyType } from '../types/game';
 import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal,
   bossPostureMax, tickBossPosture, BOSS_POSTURE_BREAK_MS, BOSS_POSTURE_REBREAK_LOCK_MS,
+  BOSS_FATAL_DAZE_MS,
 } from './bossPosture';
 
 const boss = (type: EnemyType = 'giantbat', over: Partial<Enemy> = {}): Enemy => ({
@@ -52,5 +53,20 @@ describe('boss posture', () => {
     expect(fatal.damage).toBe(90);
     expect(fatal.patch.bossFullStunUntil).toBeUndefined();
     expect(fatal.patch.bossPostureLockUntil).toBe(now + BOSS_POSTURE_REBREAK_LOCK_MS);
+  });
+
+  it('致命(紫kill)後は2秒停止してから活動再開(v0.25.3035・社長指示)', () => {
+    const now = 500;
+    const e = boss('giantbat', {
+      bossPosture: 0,
+      bossFullStunUntil: now + BOSS_POSTURE_BREAK_MS,
+      bossBreakRewardRemaining: 30,
+    });
+    const fatal = applyBrokenMeleeFatal(e, 12, now)!;
+    // 停止はstunUntil(全ボスの制御器が既に尊重する汎用フリーズ)で2秒。
+    expect(fatal.patch.stunUntil).toBe(now + BOSS_FATAL_DAZE_MS);
+    expect(BOSS_FATAL_DAZE_MS).toBe(2000);
+    // 紫(bossFullStunUntil)は消える=停止中にもう一度致命が連鎖することはない。
+    expect(fatal.patch.bossFullStunUntil).toBeUndefined();
   });
 });

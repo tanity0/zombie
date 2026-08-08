@@ -95,6 +95,11 @@ export const applyBrokenGunReward = (
   return { damage: baseDamage + bonus, patch: { bossBreakRewardRemaining: remaining - bonus } };
 };
 
+// v0.25.3035(社長指示「全ボス、紫killを食らった直後は2秒停止してから活動再開(動きも技も)」):
+// 致命の一撃の後、ボスはこの時間だけその場で停止する(stunUntilで表現=全ボスのコントローラが
+// 既に尊重している唯一の汎用フリーズ。新フィールドだと4系統の制御器へ個別配線が要る)。
+export const BOSS_FATAL_DAZE_MS = 2000;
+
 export const applyBrokenMeleeFatal = (
   enemy: Enemy, baseDamage: number, gameTime: number,
 ): { damage: number; patch: Partial<Enemy> } | null => {
@@ -106,7 +111,9 @@ export const applyBrokenMeleeFatal = (
       bossPostureRecoveryCap: bossPostureMax(enemy.type),
       bossFullStunUntil: undefined,
       bossBreakRewardRemaining: undefined,
-      stunUntil: undefined,
+      // 旧: undefined(=命中と同時に再開)。v0.25.3035で致命後の停止(2秒)に変更。
+      // 紫(bossFullStunUntil)は消えるので致命の連鎖はしない(applyBrokenMeleeFatalは紫中のみ発火)。
+      stunUntil: gameTime + BOSS_FATAL_DAZE_MS,
       bossPostureLockUntil: gameTime + BOSS_POSTURE_REBREAK_LOCK_MS,
     },
   };

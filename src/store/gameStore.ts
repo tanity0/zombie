@@ -1833,7 +1833,7 @@ export const GLEN_BOON_ARC_SPREAD_RAD = Math.PI / 3; // 叩き台(60°)。5個�
 // 900px を 267ms で伸び切る=約3375px/s。**当たり判定は伸び切った瞬間に全長900pxで1回出る**ので、
 // 判定の出るタイミングもこの値と一致したまま3倍速くなる(絵と判定はズレない)。予告帯は従来どおり
 // 1フレーム目から全長900pxで出るが、**見えてから当たるまでが1/3**になる。
-export const GLEN_REACH_WINDUP_MS = 320;            // 実効267ms・静止
+export const GLEN_REACH_WINDUP_MS = 360;            // 実効300ms・静止(社長指示v0.25.3035「予告さ300msで」)
 export const GLEN_REACH_ACTIVE_MS = GIANT_SWEEP_ACTIVE_MS; // 叩き台=既存sweepの実行時間を流用(設計書に明記なし)
 export const GLEN_REACH_RECOVER_MS = 840;           // 実効700ms
 export const GLEN_REACH_CD_MS = 9600;               // 実効8.0s
