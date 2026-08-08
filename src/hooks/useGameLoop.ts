@@ -69,11 +69,14 @@ import {
   M0_FORCED_CRIT_AT_HIT,
   M0_CONVO_ADVANCE_LIMIT_X,
   GIANT_SCRIPT_ENABLED,
+  GLEN_SCRIPT_ENABLED, getGlenSimTrail, // v0.25.3028: パーツ破壊爆発(門番+sim軌跡の読み取り)
   SPAWN_CLAMP_ENABLED,
   SKATER_LOCK_ENABLED,
   RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX,
   BOSS_TEST_RUN, // ボス戦テスト/ボスメーカー出撃か(チュートリアル抑止に使う)
 } from '../store/gameStore';
+import { glenScriptApplies } from '../utils/giantScript';
+import { glenPartCount, GLEN_P2_HP_FRAC, glenRemovedPartAnchors } from '../utils/glenChain';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
@@ -900,8 +903,24 @@ const BOSS_FADE_MS = 2600;                           // 討伐時のFF風フェ�
 // 裏ボスが障害物を踏み潰した時の爆破FX/SE/シェイク。森を突っ切ると同時破壊が多発しうるので「スロットル」で
 // 一定間隔に1回だけ発火=per-frame Graphics(リング/バースト)を積み上げない安全弁(負荷の主因は数×描画法)。
 const BOSS_CRUSH_FX_MS = 130;                        // 爆破FX/SE/シェイクの最短間隔(=最大~7回/秒)
-const BOSS_CRUSH_SHAKE_MS = 130;                     // 「少し揺れる」程度の短い画面シェイク
-const BOSS_CRUSH_SHAKE_MAG = 3;                      // 弱め(死神召喚などより控えめ)
+// v0.25.3028(社長指示「ボスが障害物破壊した時、大きめに爆発、画面揺れして欲しい」):
+// 130ms/mag3の「少し揺れる」から一撃系(パンプキン着地mag9/盾バッシュmag10)に並ぶ強さへ。
+const BOSS_CRUSH_SHAKE_MS = 260;
+const BOSS_CRUSH_SHAKE_MAG = 8;
+/** ボスの障害物破壊/連結パーツ破壊の共通爆発(2経路+パーツ破壊で同じ絵=取りこぼし防止)。
+ * 判定ゼロの「派手さの絵」なので大きめに出す(CLAUDE.md「迷ったら派手側」)。 */
+const spawnBossCrushExplosionFx = (x: number, y: number, primary = true): void => {
+  const st = useGameStore.getState();
+  st.spawnBurst(x, y, '#fbbf24', 24);                              // 破片(黄)
+  st.spawnBurst(x, y, '#f97316', 12);                              // 破片(橙)
+  st.spawnRing(x, y, 8, 120, 'rgba(255,255,255,0.9)', 4, 320);     // 衝撃リング(白・速い)
+  st.spawnRing(x, y, 10, 190, 'rgba(251,146,60,0.8)', 4, 480);     // 衝撃リング(橙・大きく遅い)
+  st.spawnGlow(x, y, GLOW_R_M, 'rgba(251,146,60,', 420);           // 火光(プール済み=軽い)
+  if (primary) {                                                   // 同フレーム複数爆発時は揺れ/SEを1回に間引く
+    st.triggerShake(BOSS_CRUSH_SHAKE_MS, BOSS_CRUSH_SHAKE_MAG);
+    playSfx('bomb');
+  }
+};
 const BOSS_SUMMON_AGGRO = 2000;                      // 裏ボスが召喚へ「吸い付く」最大距離(画面内の召喚は基本対象に)
 const BOSS_WARP_FADE_MS = 500;                       // ワープ先での 0.5秒フェードインの長さ(発火経路はv0.25.2957で撤廃済み。コントローラ側のフェード復帰だけ残置)
 const BOSS_TURN_RESPONSE = 3.2;                      // 移動の慣性。目標速度へ寄せる係数(小さいほど慣性大=ぬるっと曲がる)
@@ -1456,6 +1475,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 生きている間にボスが出ると、first-winsで後着のカットインが丸ごと消える(=「毎回出す」違反+
   // 出現アテンション自体の退行)。attention生存中は発火せずここへ置き、空いた最初のフレームで撃つ。
   const pendingCutinAttnRef = useRef<{ x: number; y: number; cutin: NonNullable<ReturnType<typeof bossCutinPayload>> } | null>(null);
+  // v0.25.3028: グレン連結パーツの前フレーム本数(減少検知でパーツ破壊爆発を出す)。count=null は第一形態(パーツ未表示)。
+  const glenPartsPrevRef = useRef<{ id: string; count: number | null } | null>(null);
   // the ONE ストーリーボス(M7/EX)の進行: 出現済みか / 終幕(勝利化)予定時刻(0=未予約)。
   const storyBossSpawnedRef = useRef(false);
   const storyBossWinAtRef = useRef(0);
@@ -5671,11 +5692,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               if (crushed && newGameTime - bs.lastCrushFxAt >= BOSS_CRUSH_FX_MS) {
                 bs.lastCrushFxAt = newGameTime;
-                spawnBurst(cxFx, cyFx, '#fbbf24', 6);                                   // 木片/破片(使い回し)
-                spawnRing(cxFx, cyFx, 6, 40, 'rgba(251,146,60,0.86)', 3, 300);          // 衝撃リング(使い回し)
-                useGameStore.getState().spawnGlow(cxFx, cyFx, GLOW_R_XS, 'rgba(251,146,60,', 340); // 火光(プール済みスプライト=軽い)
-                playSfx('bomb');                                                        // 爆破SE(使い回し)
-                useGameStore.getState().triggerShake(BOSS_CRUSH_SHAKE_MS, BOSS_CRUSH_SHAKE_MAG); // 少し揺れる
+                spawnBossCrushExplosionFx(cxFx, cyFx); // v0.25.3028: 大きめの爆発+強い揺れ(社長指示)
               }
             }
 
@@ -7541,11 +7558,32 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           if (crushedAny && newGameTime - enemyCrushFxRef.current >= BOSS_CRUSH_FX_MS) {
             enemyCrushFxRef.current = newGameTime;
-            spawnBurst(crushedX, crushedY, '#fbbf24', 6);
-            spawnRing(crushedX, crushedY, 6, 40, 'rgba(251,146,60,0.86)', 3, 300);
-            useGameStore.getState().spawnGlow(crushedX, crushedY, GLOW_R_XS, 'rgba(251,146,60,', 340);
-            playSfx('bomb');
+            // v0.25.3028: 大きめの爆発+強い揺れ(社長指示)。旧: この経路だけ揺れ無しだった=統一。
+            spawnBossCrushExplosionFx(crushedX, crushedY);
           }
+        }
+
+        // v0.25.3028(社長指示「第二形態のパーツ壊れた時も同じく(大きめに爆発+画面揺れ)」):
+        // 連結パーツの本数が減った瞬間、消えたパーツの位置(胴体弾と同じsim側軌跡の近似)で爆発。
+        // 複数同時に欠けた場合も爆発は各位置に出し、揺れ/SEは1フレーム1回に間引く。
+        {
+          const prevGp = glenPartsPrevRef.current;
+          let glenSeen = false;
+          for (const e of useGameStore.getState().enemies) {
+            if (e.type !== 'giantbat' || !glenScriptApplies(e.isStoryBoss, e.storyBossVariant, GLEN_SCRIPT_ENABLED)) continue;
+            glenSeen = true;
+            const hpFrac = e.maxHealth > 0 ? e.health / e.maxHealth : 1;
+            const count = hpFrac <= GLEN_P2_HP_FRAC ? glenPartCount(hpFrac) : null;
+            if (prevGp && prevGp.id === e.id && prevGp.count != null && count != null && count < prevGp.count) {
+              const simTrail = getGlenSimTrail();
+              const anchors = glenRemovedPartAnchors(
+                e, simTrail && simTrail.id === e.id ? simTrail.trail : [], prevGp.count, count);
+              anchors.forEach((a, i) => spawnBossCrushExplosionFx(a.x, a.y, i === 0));
+            }
+            glenPartsPrevRef.current = { id: e.id, count };
+            break; // ストーリーボスは同時1体
+          }
+          if (!glenSeen && prevGp) glenPartsPrevRef.current = null;
         }
 
         // PACING_PUZZLE.md §5.18 M17: ⑤ジャンプ落下攻撃の爆風(pumpkinBlasts消化)。

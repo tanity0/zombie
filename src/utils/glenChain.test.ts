@@ -3,7 +3,7 @@ import {
   GLEN_CHAIN, GLEN_SLOT_COUNT, GLEN_TAIL_SLOT, GLEN_REMOVAL, GLEN_VISIBLE_BY_COUNT,
   glenPartCount, GLEN_P2_HP_FRAC,
   pushGlenTrail, sampleGlenTrail, glenChainDistances, GLEN_TRAIL_MAX,
-  shouldGlenVolley, glenVolleyShots, GLEN_VOLLEY_SAFE_PX,
+  shouldGlenVolley, glenVolleyShots, GLEN_VOLLEY_SAFE_PX, glenRemovedPartAnchors,
   type GlenTrailPoint,
 } from './glenChain';
 import type { Enemy } from '../types/game';
@@ -132,6 +132,23 @@ describe('glenChain — 胴体弾(社長裁定 1a/安全半径/技中は撃た�
     // 左右1発ずつ=+yと−yが同数。
     const up = shots.filter(s => s.ty < s.oy).length;
     expect(up).toBe(shots.length / 2);
+  });
+
+  it('glenRemovedPartAnchors: 減った数だけ位置を返し、値は有限。9→8の初回は中央スロット', () => {
+    const boss = mkGlen({ health: 60 });
+    const trail = straightTrail();
+    const one = glenRemovedPartAnchors(boss, trail, 9, 8);
+    expect(one).toHaveLength(1);
+    const three = glenRemovedPartAnchors(boss, trail, 9, 6);
+    expect(three).toHaveLength(3);
+    for (const a of [...one, ...three]) {
+      expect(Number.isFinite(a.x) && Number.isFinite(a.y)).toBe(true);
+    }
+    // 初回に消えるのは GLEN_REMOVAL[0](=胴体中央)。その位置は付け根(先頭パーツ)より後方=x小。
+    const first = glenRemovedPartAnchors(boss, trail, 9, 8)[0];
+    const rootDist = glenRemovedPartAnchors(boss, trail, 9 - 7, 9 - 8); // 根本(0)が消える段
+    expect(rootDist).toHaveLength(1);
+    expect(first.x).toBeLessThan(60); // 東進の列なので後方=西側
   });
 
   it('軌跡が空でも発射できる(直線延長フォールバック・NaN無し)', () => {

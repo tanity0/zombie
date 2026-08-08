@@ -106,6 +106,27 @@ export const shouldGlenVolley = (
 ): boolean =>
   secondForm && aiPhase == null && lastAt != null && gameTime - lastAt >= cdEffMs;
 
+/** パーツ数が fromCount→toCount へ減る時に消えるパーツの位置(消える直前の可視列で計算)。
+ * v0.25.3028(社長指示「第二形態のパーツ壊れた時も大きめに爆発+画面揺れ」)の爆発位置用。
+ * 位置は胴体弾と同じ世界座標の近似(裁定1a)=判定なしの派手さの絵なのでズレは許容。 */
+export const glenRemovedPartAnchors = (
+  boss: Enemy, trail: readonly GlenTrailPoint[], fromCount: number, toCount: number,
+): GlenTrailPoint[] => {
+  const out: GlenTrailPoint[] = [];
+  const fb = enemyFootBox(boss);
+  const sc = Math.min(fb.boxW / GLEN_BODY_TEX_W, fb.boxH / GLEN_BODY_TEX_H);
+  const bodyHalfW = (GLEN_BODY_TEX_W * sc) / 2;
+  for (let c = Math.min(GLEN_SLOT_COUNT, fromCount); c > Math.max(0, toCount); c--) {
+    const slot = GLEN_REMOVAL[GLEN_SLOT_COUNT - c]; // count が c→c-1 になる時に消えるスロット
+    const show = GLEN_VISIBLE_BY_COUNT[c];
+    const idx = show.indexOf(slot);
+    if (idx < 0) continue;
+    const dists = glenChainDistances(bodyHalfW, show, (s) => GLEN_PART_TEX_W[GLEN_CHAIN[s]] * sc);
+    out.push(sampleGlenTrail(trail, fb.footX, fb.footY, dists[idx]));
+  }
+  return out;
+};
+
 export interface GlenVolleyShot { ox: number; oy: number; tx: number; ty: number }
 
 /** 1斉射ぶんの弾(発射点+到達点)。可視の胴体パーツ(尾を除く)×2発(進行方向±45°)。

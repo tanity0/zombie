@@ -1873,6 +1873,8 @@ let acrasielSpearSeq = 0; // §6.28-19: アクラシエルの結晶の槍の一�
 // v0.25.3027: グレン第二形態の胴体弾用・sim側の足元軌跡(描画のview.glenTrailとは別台帳。
 // 監査指摘どおりresetGameで明示クリアし、個体idが変われば作り直す。ストーリーボスは同時1体)。
 let glenSimTrail: { id: string; trail: GlenTrailPoint[] } | null = null;
+/** v0.25.3028: パーツ破壊爆発(useGameLoop側でFX/SE)用の読み取り専用アクセサ。書き込みは不可。 */
+export const getGlenSimTrail = (): { id: string; trail: readonly GlenTrailPoint[] } | null => glenSimTrail;
 let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
 let thrownBagSeq = 0;   // 救急鞄の空鞄投擲の一意id採番(プール/差分の安定キー)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
