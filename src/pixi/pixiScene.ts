@@ -3476,6 +3476,10 @@ export class PixiScene {
   // 引き雲(uiLayer直下=最前面。深い引きの時だけ表示・社長支給素材2026-08-08)。
   // ZOOM_CLOUD_LAYERSと同順(配列先頭=一番奥)。far×2(空)+front×2(最前面)。
   private zoomClouds: TilingSprite[] = [];
+  // v0.25.3031(社長指示「第二形態になったら遠景の雲の流れを2倍に」): ドリフトは蓄積式で持つ
+  // (レート切替の瞬間に雲が跳ばない)。層ごとの累積px+前フレーム時刻。
+  private zoomCloudDriftAcc: number[] = [];
+  private zoomCloudLastNow = 0;
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
   constructor(layers: SceneLayers) {
@@ -6558,9 +6562,16 @@ export class PixiScene {
         }
       }
       if (this.fogT0 === 0) this.fogT0 = now;
+      // v0.25.3031(社長指示): グレン第二形態が場に居る間、遠景(far)層のドリフトだけ2倍速。
+      // 蓄積式(dt×レートを毎フレーム加算)なので切替の瞬間に雲は跳ばない。
+      const cloudDt = this.zoomCloudLastNow > 0 ? Math.min(0.1, (now - this.zoomCloudLastNow) / 1000) : 0;
+      this.zoomCloudLastNow = now;
+      const glenP2Cloud = s.enemies.some(e => e.type === 'giantbat' && e.glenForm === 2);
       for (let ci = 0; ci < this.zoomClouds.length; ci++) {
         const zc = this.zoomClouds[ci];
         const cfg = ZOOM_CLOUD_LAYERS[ci];
+        this.zoomCloudDriftAcc[ci] = (this.zoomCloudDriftAcc[ci] ?? 0)
+          + cloudDt * cfg.driftPxS * (cfg.place === 'far' && glenP2Cloud ? 2 : 1);
         const aC = fadeC * cfg.alpha;
         if (aC <= 0.01) { zc.visible = false; continue; }
         zc.visible = true;
@@ -6577,9 +6588,9 @@ export class PixiScene {
           ? this.farBackdropHeight() + this.screenH * cfg.bottomFrac
           : this.screenH * cfg.bottomFrac;
         zc.position.set(-this.screenW * 0.03, cloudBottom - ch + bob);
-        // 霧と同じく流れる: 自走ドリフト(層ごとに速度差)+カメラパララックス(手前ほど速い)。
+        // 霧と同じく流れる: 自走ドリフト(層ごとに速度差・蓄積式)+カメラパララックス(手前ほど速い)。
         const periodC = Math.max(1, zc.texture.width * zc.tileScale.x);
-        const driftC = ((now - this.fogT0) / 1000) * cfg.driftPxS;
+        const driftC = this.zoomCloudDriftAcc[ci];
         zc.tilePosition.set((-s.camera.x * cfg.paraX - driftC - cfg.tileOfs) % periodC, 0);
       }
     }

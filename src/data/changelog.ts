@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3031',
+    items: [
+      'ラスボス第二形態の戦闘中は、遠景の雲が2倍の速さで流れるようになりました(空気が変わる演出)。',
+    ],
+  },
+  {
     version: '0.25.3030',
     items: [
       'ゲーム内容の変更はありません(古くなっていた自動テスト3件を現行の仕様に合わせて更新)。',
