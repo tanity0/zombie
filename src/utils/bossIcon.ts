@@ -5,6 +5,7 @@
 // 掟: ここは**絵の場所を答えるだけ**の純関数。ゲーム挙動・判定には一切関与しない。
 import { spritePath } from './spriteLoader';
 import { getStage } from '../data/campaign';
+import { bossCutinName } from '../data/bossCutin';
 
 // 固有名を持つボス(天使6体・裏ボス4体)+城ボスの既定絵。キー=EnemyType。
 const BOSS_ICON: Record<string, string> = {
@@ -33,6 +34,10 @@ const GIANTBAT_ICON_BY_BACKDROP: Record<string, string> = {
  */
 export const bossIconSrc = (bossType: string, stageId?: string | null, variant?: 'phase2'): string | null => {
   if (bossType === 'giantbat') {
+    // v0.25.3041(社長指示「?のボスの絵も?にしておいて」): 名前台帳に無い城ボス(=一覧で「?」表示。
+    // stage-2の城ボス不在枠 / stage-ex1の未確認変異体)は絵も出さない(null)。呼び出し側は
+    // 「?」プレースホルダ(ボスモード)か絵なしで出す。名前と絵の出どころが同じ台帳に揃う。
+    if (bossCutinName('giantbat', stageId) == null) return null;
     if (stageId === 'stage-7' && variant === 'phase2') return spritePath('glen-boss2');
     const backdrop = getStage(stageId ?? '')?.farBackdrop ?? '';
     return spritePath(GIANTBAT_ICON_BY_BACKDROP[backdrop] ?? BOSS_ICON.giantbat);

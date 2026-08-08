@@ -67,7 +67,9 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
         <section className="overflow-hidden border border-purple-200/10 bg-[#090b13]/80">
           <div className="flex items-center gap-3 border-b border-white/[0.06] bg-white/[0.025] px-3 py-3">
             <div className="flex h-20 w-20 shrink-0 items-end justify-center overflow-hidden bg-black/30">
-              {icon && <img src={icon} alt="" draggable={false} className="max-h-[76px] object-contain" style={{ imageRendering: 'pixelated' }} />}
+              {icon
+                ? <img src={icon} alt="" draggable={false} className="max-h-[76px] object-contain" style={{ imageRendering: 'pixelated' }} />
+                : <span className="flex h-full w-full items-center justify-center text-3xl font-bold text-white/40">?</span>}
             </div>
             <div className="min-w-0">
               <div className="text-[9px] font-semibold tracking-[0.24em] text-purple-200/60">
@@ -164,7 +166,10 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
                     <div className="mx-auto flex h-12 w-12 items-end justify-center overflow-hidden bg-black/25">
                       {icon
                         ? <img src={icon} alt="" draggable={false} className="max-h-11 object-contain" style={{ imageRendering: 'pixelated' }} />
-                        : <span className="flex h-full w-full items-center justify-center text-white/20"><Lock size={14} /></span>}
+                        : unlocked
+                          // v0.25.3041(社長指示): 「?」表示のボス(名前台帳に無い=絵もnull)はアイコンも「?」。
+                          ? <span className="flex h-full w-full items-center justify-center text-lg font-bold text-white/40">?</span>
+                          : <span className="flex h-full w-full items-center justify-center text-white/20"><Lock size={14} /></span>}
                     </div>
                     <div className="mt-1 truncate text-[10px] font-semibold text-white/80">
                       {unlocked ? bossName(slot) : '?'}
