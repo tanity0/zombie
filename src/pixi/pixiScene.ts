@@ -1238,23 +1238,25 @@ const ENEMY_MOTION_FX = typeof window === 'undefined'
 
 // ラスボス第二形態(v0.25.2918)。HP60%以下で変身(叩き台=城ボスの既存フェーズ閾値60%に揃えた)。
 const GLEN_P2_HP_FRAC = 0.6;
-// 連結の構成(社長指示v0.25.2921「胴体を5個、尻尾を1つ最後尾に」): スロット0..5の順に並べる。
+// 連結の構成(社長指示v0.25.2921「胴体を5個、尻尾を1つ最後尾に」→v0.25.3025「胴体パーツ3つ増やして」
+// =胴体8個+尾): スロット0..8の順に並べる。
 // 胴体はシートの砲身(0)と箱(1)を交互に使って単調さを消し、尾(2)は必ず最後尾。
-const GLEN_CHAIN: readonly number[] = [0, 1, 0, 1, 0, 2];
-// 「真ん中のパーツから減っていく」のスロット除去順。中央(2,3)→内側(1,4)→根本(0)→尾(5)の順で欠け、
-// **尾は最後まで残る**(末端が残ってブンと揺れている方が「まだ生きている」が伝わる)。
-const GLEN_REMOVAL: readonly number[] = [2, 3, 1, 4, 0, 5];
+const GLEN_CHAIN: readonly number[] = [0, 1, 0, 1, 0, 1, 0, 1, 2];
+const GLEN_SLOT_COUNT = GLEN_CHAIN.length; // 9
+// 「真ん中のパーツから減っていく」のスロット除去順。胴体の中央から外へ交互に欠け、根本(0)は
+// 胴体の最後、**尾(8)は最後まで残る**(末端が残ってブンと揺れている方が「まだ生きている」が伝わる)。
+const GLEN_REMOVAL: readonly number[] = [4, 3, 5, 2, 6, 1, 7, 0, 8];
 const GLEN_VISIBLE_BY_COUNT: readonly (readonly number[])[] = (() => {
   const out: number[][] = [];
-  for (let count = 0; count <= 6; count++) {
-    const removed = new Set(GLEN_REMOVAL.slice(0, 6 - count));
-    out.push([0, 1, 2, 3, 4, 5].filter((s) => !removed.has(s)));
+  for (let count = 0; count <= GLEN_SLOT_COUNT; count++) {
+    const removed = new Set(GLEN_REMOVAL.slice(0, GLEN_SLOT_COUNT - count));
+    out.push(GLEN_CHAIN.map((_, s) => s).filter((s) => !removed.has(s)));
   }
   return out;
 })();
-/** 第二形態内のHP残量→連結スロット数(6→0・区間を6等分)。 */
+/** 第二形態内のHP残量→連結スロット数(9→0・区間を9等分)。 */
 const glenPartCount = (hpFrac: number): number =>
-  Math.max(0, Math.min(6, Math.ceil((hpFrac / GLEN_P2_HP_FRAC) * 6)));
+  Math.max(0, Math.min(GLEN_SLOT_COUNT, Math.ceil((hpFrac / GLEN_P2_HP_FRAC) * GLEN_SLOT_COUNT)));
 const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   zombie: 0x7de28a,
   bat: 0x9aa6ff,
@@ -16715,7 +16717,7 @@ export class PixiScene {
     if (!view.glenParts) view.glenParts = [];
     for (const s of view.glenParts) if (s) s.visible = false;
     if (visibleCount <= 0) return;
-    const show = GLEN_VISIBLE_BY_COUNT[Math.min(6, visibleCount)];
+    const show = GLEN_VISIBLE_BY_COUNT[Math.min(GLEN_SLOT_COUNT, visibleCount)];
     // v0.25.2956(社長指示): ①付け根はもっと本体に被せてつなぎ目を隠す ②追従は「蛇みたいに遅れて
     // ついてくる」(昔のDQのパーティー隊列)。本体の足元軌跡(glenTrail)を毎フレーム記録し、各パーツは
     // **軌跡上を距離ぶんだけ遡った位置**に置く=本体が曲がるとパーツが同じ道を遅れてなぞる。
@@ -16723,7 +16725,8 @@ export class PixiScene {
     const lastPt = trail[trail.length - 1];
     if (!lastPt || Math.hypot(footX - lastPt.x, footY - lastPt.y) >= 2) {
       trail.push({ x: footX, y: footY });
-      if (trail.length > 240) trail.splice(0, trail.length - 240);
+      // 9連結(v0.25.3025・胴体+3)で列が伸びたぶん、遡り用の軌跡も長めに保持する(240→360点)。
+      if (trail.length > 360) trail.splice(0, trail.length - 360);
     }
     // 軌跡を現在位置から距離dだけ遡った点。軌跡が足りない分は最古の向き(無ければ右)へ直線延長=
     // 出現直後でも「本体の背後に一列」の絵が崩れない。

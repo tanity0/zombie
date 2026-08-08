@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3025',
+    items: [
+      'ラスボス第二形態の連結を「胴体8個+最後尾に尻尾」の9連結にしました(胴体+3)。これまでどおりダメージで真ん中から欠けていき、尻尾は最後まで残ります。',
+    ],
+  },
+  {
     version: '0.25.3024',
     items: [
       '深い引きの遠景の雲2本を少し濃くしました(薄すぎて見えにくかったため)。',
