@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3065',
+    items: [
+      'ボスの離脱距離を1000pxから700pxに調整しました。',
+    ],
+  },
+  {
     version: '0.25.3064',
     items: [
       'ボス戦カメラの横方向にも、縦と同じ「ボスを画面に残す先読み」が効くようになりました(従来は横だけ引きが深いほど先読みが消え、横に逃げるとボスがすぐ見切れて縦横で離脱の体感距離が違っていました)。',
