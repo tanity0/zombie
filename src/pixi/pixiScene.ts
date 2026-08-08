@@ -322,10 +322,13 @@ const ZOOM_CLOUD_START = 0.5;                  // pull01がこの値から現れ
 const ZOOM_CLOUD_FADE_W = 0.35;                // フェード幅(pull01)
 // 2層構成(社長指示2026-08-08): 「1枚目=一番手前に半透明で大きくぼかして/2枚目=その裏に少し
 // 小さめでぼかさず/速度をずらして霧と同じく流れる」。[0]=奥(シャープ)・[1]=手前(ぼかし)。
+// place: 'far'=遠景パノラマの手前・森/世界の裏(bottomFracは地平線farHからの下がり比・v0.25.3016
+//        社長指示「遠景側にも表示したい」) / 'front'=最前面・uiLayerの直下(bottomFracは画面高比)。
 const ZOOM_CLOUD_LAYERS = [
-  // 高さ: 手前30%/奥20%(社長指示v0.25.3013「30% 20%にして」。旧62%/46%は大きすぎ)。
-  { heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
-  { heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
+  // 高さ: 手前30%/奥20%(社長指示v0.25.3013「30% 20%にして」。旧62%/46%は大きすぎ)。遠景=16%。
+  { place: 'far', heightFrac: 0.16, bottomFrac: 0.06, alpha: 0.7, driftPxS: 5, paraX: 0.15, blur: 0, bobAmp: 3, bobPhase: 3.1, tileOfs: 700 },
+  { place: 'front', heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
+  { place: 'front', heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
 ] as const;
 const WORLD_GAP_BAND_TOP_COLOR = 0x05070c;    // 帯の上端(サンプリング失敗時のフォールバック)
 const WORLD_GAP_BAND_BOTTOM_COLOR = 0x161c28; // 帯の下端(森1の上端に接する側・やや明るい暗紺)
@@ -6076,6 +6079,11 @@ export class PixiScene {
       const bk = 1 - Math.exp(-zdt / biasTau);
       this.bossViewBiasX += (wantX - this.bossViewBiasX) * bk;
       this.bossViewBiasY += (wantY - this.bossViewBiasY) * bk;
+      // ★v0.25.3016(社長報告「画面の左端に黒い帯」): クランプは目標(wantX)だけでなく**イージング済みの
+      // 実値にも毎フレーム**掛ける。ズームが引いていく途中は slack が縮むのに、実値の減衰(τ=0.5〜1.0s)が
+      // 追いつかず一時的に上限を超え、背景の敷き幅(ZOOM_OVERSCAN=slackの根拠)の外=黒が端に露出していた。
+      this.bossViewBiasX = Math.max(-slackWX, Math.min(slackWX, this.bossViewBiasX));
+      this.bossViewBiasY = Math.max(-slackWY, Math.min(slackWY, this.bossViewBiasY));
     }
     const bossPanX = this.bossViewBiasX * zoom;
     const bossPanY = this.bossViewBiasY * zoom;
@@ -6539,7 +6547,9 @@ export class PixiScene {
             sp.visible = false;
             // 手前層(ぼかし>0)だけBlurFilter(非表示中はレンダされない=コスト0)。
             if (cfg.blur > 0) sp.filters = [new BlurFilter({ strength: cfg.blur, quality: 2 })];
-            st.addChildAt(sp, st.getChildIndex(this.L.uiLayer)); // 逐次挿入=後の層(手前)が上に載る
+            // far=遠景パノラマとworldGroupの間(森/世界の裏=地平線の彼方) / front=uiLayer直下(最前面)。
+            const idx = cfg.place === 'far' ? st.getChildIndex(this.L.worldGroup) : st.getChildIndex(this.L.uiLayer);
+            st.addChildAt(sp, idx); // 逐次挿入=front同士は後の層(手前)が上に載る
             this.zoomClouds.push(sp);
           }
         }
@@ -6559,7 +6569,11 @@ export class PixiScene {
         zc.alpha = aC;
         zc.tint = this.envTintNow();
         const bob = Math.sin(now * 0.00035 + cfg.bobPhase) * cfg.bobAmp;
-        zc.position.set(-this.screenW * 0.03, this.screenH * cfg.bottomFrac - ch + bob);
+        // far層は地平線(farH)基準=遠景の下端に少し掛かる高さで、森/世界の裏に流れる。front層は画面下部。
+        const cloudBottom = cfg.place === 'far'
+          ? this.farBackdropHeight() + this.screenH * cfg.bottomFrac
+          : this.screenH * cfg.bottomFrac;
+        zc.position.set(-this.screenW * 0.03, cloudBottom - ch + bob);
         // 霧と同じく流れる: 自走ドリフト(層ごとに速度差)+カメラパララックス(手前ほど速い)。
         const periodC = Math.max(1, zc.texture.width * zc.tileScale.x);
         const driftC = ((now - this.fogT0) / 1000) * cfg.driftPxS;
