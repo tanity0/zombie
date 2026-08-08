@@ -1874,6 +1874,17 @@ export const SKADI_BLADE_SPEED = 700;  // 氷刃の発射速度(px/s・通常弾
 export const SKADI_BLADE_DAMAGE = 20;  // 氷刃の命中ダメージ(ボス弾相当)
 export const SKADI_BLADE_HIT = 18;     // 氷刃の命中半径(px)
 export const SKADI_BLADE_LIFE_MS = 2500; // 発射後の寿命(ms)。これを過ぎると消滅
+// v0.25.3071(社長指示「スカジの技にもこのキラキラを利用したい」): 城ボスの冷気ブレス/氷の三連突進と
+// **同じ素材・同じ籠**(fx/breath-sparkle・quadBreathSparkles)を、スカジの氷技へ横展開する。
+// 全て**判定ゼロの派手枠(分類②)**=氷塊のAoE半径・氷刃の当たり半径・秒数・ダメージは一切不変。
+// 撒く数は上限で縛る(氷檻=8個同時起爆が最大のケース: 8×BURST_N)。
+const SKADI_SPARKLE_BLADE_MS = 60;        // 氷刃の軌跡の間引き(ブレスと同値)
+const SKADI_SPARKLE_BLADE_BACK_PX = 34;   // 刃の少し後ろへ置く(進行方向の逆)
+const SKADI_SPARKLE_ICE_MS = 180;         // 氷塊テレグラフ中の「冷気が集まる」の間引き
+const SKADI_SPARKLE_ICE_FROM = 0.4;       // テレグラフのこの割合を過ぎてから撒き始める(近づくほど濃く見せる)
+const SKADI_SPARKLE_BURST_N = 4;          // 氷塊が砕ける瞬間に散らす数(1個あたり)
+// gameTime基準の間引き時計。**resetGameで戻す**(v0.25.3070の「キラキラが消えた」と同型の事故を作らない)。
+const skadiSparkleClock = { blade: 0, ice: 0 };
 let skadiHazardSeq = 0; // スカジ氷ハザードの一意id採番(プール/差分の安定キー)
 let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(プール/差分の安定キー)
 let sensorMineSeq = 0;  // センサー地雷(sensor-mine)の一意id採番(プール/差分の安定キー)
@@ -8416,7 +8427,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
-    const quadBreathSparkles: { x: number; y: number }[] = [];   // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給素材・set後にspawnEffect)。v0.25.3049: 三連突進の軌跡も同じ籠で撒く。
+    const quadBreathSparkles: { x: number; y: number }[] = [];   // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給素材・set後にspawnEffect)。v0.25.3049: 三連突進の軌跡も同じ籠で撒く。v0.25.3071: スカジの氷技(氷刃の軌跡/氷塊の冷気と砕け)も同じ籠。
     let bossLeashWarning = false;
     set(state => {
       // ★上の注記のとおり、**このフレームに他所から積まれた判定を先に引き継ぐ**。
@@ -10426,10 +10437,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       // スカジ討伐(消滅)後は設置済みマーカー/飛行中の刃を消す(死んだボスの攻撃で被弾しない・社長指示)。
       const skadiAlive = state.enemies.some(e => e.type === 'skadi');
       // 氷塊マーカー: テレグラフ2秒経過(gameTime>=fireAt)で起爆=爆発処理へ ice:true で積む。
+      // v0.25.3071(社長指示): 氷塊にもキラキラ(冷気)。テレグラフ後半で「冷気が集まり」、砕ける瞬間に散る。
+      // 判定ゼロの派手枠②=半径・秒数・ダメージは不変。氷檻(cage)も同じspawnSkadiIce経由なので自動で乗る。
+      const iceSparkleTick = shouldEmitThrottled(gameTime, skadiSparkleClock.ice, SKADI_SPARKLE_ICE_MS);
+      if (iceSparkleTick) skadiSparkleClock.ice = gameTime;
       const skadiIceMarkers = !skadiAlive ? [] : state.skadiIceMarkers.filter(m => {
         if (gameTime >= m.fireAt) {
           pumpkinBlasts.push({ x: m.x, y: m.y, radius: SKADI_ICE_RADIUS, damage: SKADI_ICE_DAMAGE, enemyId: m.enemyId, ice: true });
+          for (let i = 0; i < SKADI_SPARKLE_BURST_N; i++) {
+            const sa = Math.random() * Math.PI * 2, sr = Math.random() * SKADI_ICE_RADIUS;
+            quadBreathSparkles.push({ x: m.x + Math.cos(sa) * sr, y: m.y + Math.sin(sa) * sr });
+          }
           return false;
+        }
+        if (iceSparkleTick) {
+          const it = (gameTime - m.bornAt) / Math.max(1, m.fireAt - m.bornAt);
+          if (it >= SKADI_SPARKLE_ICE_FROM) {
+            const sa = Math.random() * Math.PI * 2, sr = SKADI_ICE_RADIUS * (0.35 + Math.random() * 0.65);
+            quadBreathSparkles.push({ x: m.x + Math.cos(sa) * sr, y: m.y + Math.sin(sa) * sr });
+          }
         }
         return true;
       });
@@ -10468,6 +10494,20 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           return true;
         });
+      // v0.25.3071(社長指示): 氷刃の軌跡にもキラキラ。**飛行中の刃の少し後ろ**へ間引きながら撒く
+      // (冷気ブレス/三連突進の軌跡と同じ作法)。★ラフィの骨刃(visual:'bone')は同じ配列を共用しているが
+      // 氷ではないので除外する(配列の共用に気づかず全部に撒くと、骨刃から粉雪が出る)。
+      if (shouldEmitThrottled(gameTime, skadiSparkleClock.blade, SKADI_SPARKLE_BLADE_MS)) {
+        skadiSparkleClock.blade = gameTime;
+        for (const b of skadiIceBlades) {
+          if (!b.launched || b.visual === 'bone') continue;
+          const bl = Math.hypot(b.vx, b.vy) || 1;
+          quadBreathSparkles.push({
+            x: b.x - (b.vx / bl) * SKADI_SPARKLE_BLADE_BACK_PX + (Math.random() - 0.5) * 26,
+            y: b.y - (b.vy / bl) * SKADI_SPARKLE_BLADE_BACK_PX + (Math.random() - 0.5) * 26,
+          });
+        }
+      }
 
       // 抱卵型(旧ghost)が撒いた緑卵を breakableProps へ追加。同時上限 EGGCARRIER_MAX_EGGS(超過は古い順に破棄)。
       // 画面外の卵は syncBreakableProps のカメラ領域カリングで別途自然消滅する。
@@ -13311,6 +13351,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetGhostDeathPose(); // v0.25.2599: 前ランの倒れ絵を持ち越さない(描画専用の控え)
     glenSimTrail = null;   // v0.25.3027: グレン胴体弾の軌跡を持ち越さない(監査指摘)
     quadSparkleLastAt = 0; // v0.25.3070: キラキラの間引き時計もラン間で持ち越さない(社長報告「キラキラが消えた」)
+    skadiSparkleClock.blade = 0; skadiSparkleClock.ice = 0; // v0.25.3071: スカジ側の同型時計も同じ理由で戻す
     // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ+ラン内打刻ビューも持ち越さない
     // (台帳=localStorageは打刻の瞬間に確定済みなので触らない)。
     resetDuoRunRecords();
