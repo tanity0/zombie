@@ -106,12 +106,13 @@ export const engagedBossSlotKeys = (
 // なぜ単純に「ワープを止める」だけでは駄目か: ボスの接近手段(突進/飛び掛かり/滑空)は全てCD付きなので、
 // 離れて撃つだけで一方的に削れる=ハメが成立する。**待機に戻す**なら、離れている間は削れないので
 // ハメにならない。かつテレポートも無くなる。
-export const BOSS_LEASH_PX = 1500; // 等倍画面での基準(v0.25.2968: 2倍化を撤回し従来値へ)。実ワールド距離はボスの遠距離ズームで換算する
-
-export const bossLeashDistancePx = (type: EnemyType, isStoryBoss = false): number => {
-  const farZoom = BOSS_ZOOM_PROFILES[bossZoomClassFor(type, isStoryBoss)].far;
-  return zoomCompensatedWorldDistance(BOSS_LEASH_PX, farZoom);
-};
+export const BOSS_LEASH_PX = 1500; // 等倍画面での基準(v0.25.2968: 2倍化を撤回し従来値へ)。
+// v0.25.3056(社長裁定「距離を縮める。1500にする」): ズーム換算(1500/0.44≈3409px)を撤回し
+// **実距離1500px固定**へ。旧値はボス速度70 vs プレイヤー87(差17px/s)+ジャンプ詰めで事実上
+// 到達不能=「交戦が終わらない」の真因だった(v0.25.3055報告)。1500に縮めたことでリーシュ(待機)が
+// 交戦解除距離(EXIT換算≈3181px)より**内側**で先に発火するが、待機(dormant)はbossEngagedNowが
+// 即座に非交戦扱いにするため「待機なのに交戦中のまま」は起きない(テストも新不変条件へ更新済み)。
+export const bossLeashDistancePx = (_type: EnemyType, _isStoryBoss = false): number => BOSS_LEASH_PX;
 
 // v0.25.2968(社長指示「画面外でたらすぐ戻す」): 3000→1200ms。画面外/深層外が1.2秒続いたら帰巣開始。
 export const BOSS_DISENGAGE_GRACE_MS = 1200;

@@ -80,10 +80,13 @@ describe('リーシュ', () => {
     }
   });
 
-  // ★順序が逆だと「待機に戻ったのに交戦中のまま=湧きがリラックスのまま」が一瞬起きる。
-  it('リーシュ距離は交戦解除距離より外(解除→待機、の順になる)', () => {
-    expect(BOSS_LEASH_PX).toBeGreaterThan(BOSS_ENGAGE_EXIT_PX);
-    expect(bossLeashDistancePx('giantbat')).toBeGreaterThan(bossEngagementDistancePx('giantbat', true));
+  // v0.25.3056(社長裁定「距離を縮める。1500にする」): リーシュは実距離1500px固定=交戦解除距離
+  // (ズーム換算≈3181px)より内側で先に発火する。順序が逆でも問題ないのは、待機(dormant)を
+  // bossEngagedNowが即座に非交戦扱いにするから(=「待機なのに交戦中のまま」は構造的に起きない)。
+  it('リーシュ距離は実距離1500px固定(ズーム換算しない・社長裁定v0.25.3056)', () => {
+    expect(bossLeashDistancePx('giantbat')).toBe(BOSS_LEASH_PX);
+    expect(BOSS_LEASH_PX).toBe(1500);
+    expect(engaged([foe('giantbat', { dormant: true })])).toBe(false); // 待機=即・非交戦(順序の安全弁)
   });
 
   it('回復は裏ボスと同値(新しい数字を発明しない)', () => {
@@ -96,7 +99,6 @@ describe('ズーム連動と離脱予兆', () => {
     // v0.25.2947: 遠距離ズームの深化(giant 0.58→0.40 / standard 0.62→0.44)に画面px基準で追随する。
     expect(bossEngagementDistancePx('jormungand', true)).toBeCloseTo(BOSS_ENGAGE_EXIT_PX / 0.40, 6);
     expect(bossEngagementDistancePx('jormungand', true)).toBeGreaterThan(bossEngagementDistancePx('miguel', true));
-    expect(bossLeashDistancePx('giantbat')).toBeCloseTo(BOSS_LEASH_PX / 0.44, 6);
   });
 
   it('範囲外が猶予(BOSS_DISENGAGE_GRACE_MS)続いた時だけ離脱し、戻れば即キャンセルする', () => {
