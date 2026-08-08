@@ -2174,6 +2174,18 @@ const GUN_RECOIL_PX = 58;     // 反動で後ろへ下がる量
 const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
 
+// v0.25.3068(社長指示「全敵の予告帯(線ではない)を少し薄くしたい」): 予告の**帯(角ばった四角=
+// カプセル型)の面の塗り**にだけ掛ける減光。**縁取り(A-2素材)・中心の白芯・赤い予告線・円/扇の予告は
+// 対象外**(社長の言う「線ではない」=面だけ薄くする、を守る)。
+// 掟の確認(CLAUDE.md「攻撃ヴィジュアルの2分類」): 帯は①危険を伝える絵=判定と一致させる側なので、
+// **形・大きさ・タイミング・判定は一切変えない**。変えるのは面の濃さだけ=「赤いのに当たらない/
+// 赤くないのに当たる」は発生しない(縁取りと白芯は従来の濃さのまま残るので、帯の存在自体は消えない)。
+// 対象は全敵の帯を描く5経路(トール一閃/トール薙ぎ払い/城ボス共通カプセル/城ボス薙ぎ払い/
+// 六ボス共通カプセル)+遅延起爆の帯。`?bandfill=1` で従来の濃さに戻せる(実機比較用)。
+const TELEGRAPH_BAND_FILL_MULT = typeof window === 'undefined'
+  ? 0.75
+  : Number(new URLSearchParams(window.location.search).get('bandfill') ?? 0.75) || 0.75;
+
 const STAGE3_BOSS_VISUAL_SCALE = 1.2;
 // ステージ5(戦場)の城ボスも一回り拡大(社長指示v0.25.2945「ステージ5のボスもう一回り大きくして」)。
 // ステージ3と同じ仕組み=視覚のみ・判定/攻撃範囲は不変。
@@ -13416,7 +13428,7 @@ export class PixiScene {
           tx + ux * hw - nx * hw, ty + uy * hw - ny * hw,
           fx - ux * hw - nx * hw, fy - uy * hw - ny * hw,
         ];
-        o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill });
+        o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_BAND_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse);
         else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
@@ -13470,7 +13482,7 @@ export class PixiScene {
             tx + hux * hhw - hnx * hhw, ty + huy * hhw - hny * hhw,
             fx - hux * hhw - hnx * hhw, fy - huy * hhw - hny * hhw,
           ];
-          o.poly(hpts).fill({ color: 0xff2a2a, alpha: hFill });
+          o.poly(hpts).fill({ color: 0xff2a2a, alpha: hFill * TELEGRAPH_BAND_FILL_MULT });
           // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
           if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hhw, 0xff3b3b, (0.32 + 0.4 * prog) + 0.15 * pulse);
           else o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
@@ -14559,7 +14571,7 @@ export class PixiScene {
         ];
         // 面(どこが危ないか)は据え置き。縁取りだけを素材A-2へ差し替える(円=A-1と同じ考え方)。
         // 素材は上の pts と同じ矩形にぴったり重なる(drawTelegraphBand が同じ式で寸法を出す)。
-        o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA });
+        o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA * TELEGRAPH_BAND_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, Math.min(1, strokeA + 0.2));
         else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
       };
@@ -15032,7 +15044,7 @@ export class PixiScene {
           gfx - gux * ghw - gnx * ghw, gfy - guy * ghw - gny * ghw,
         ];
         bandsThisFrame.push([gfx, gfy, gtx, gty, ghw]); // 薙ぎ払いも「判定=直線の帯・絵=弧」=衝撃波の対象
-        o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill });
+        o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_BAND_FILL_MULT });
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, Math.min(1, (0.32 + 0.4 * gprog) + 0.15 * gPulse + 0.2));
         else o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
         o.moveTo(gfx, gfy).lineTo(gtx, gty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
@@ -15253,7 +15265,7 @@ export class PixiScene {
             h.capsule.tx + ux * hw - nx * hw, h.capsule.ty + uy * hw - ny * hw,
             h.capsule.fx - ux * hw - nx * hw, h.capsule.fy - uy * hw - ny * hw,
           ];
-          o.poly(pts).fill({ color: col, alpha: 0.05 + 0.22 * t + 0.06 * gPulse });
+          o.poly(pts).fill({ color: col, alpha: (0.05 + 0.22 * t + 0.06 * gPulse) * TELEGRAPH_BAND_FILL_MULT });
           o.poly(pts).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.5 * t + 0.12 * gPulse });
           // 爪痕(D-2)を判定の矩形へ重ねる。氷(スカジ/城ボスstage-4)は爪ではないので付けない。
           // 濃さは既存のフェードイン(t)に合わせる=「n秒後に爆ぜる」という既存の語彙(§6.28-3)のまま。
@@ -15460,7 +15472,7 @@ export class PixiScene {
       fx - ux * halfWidth - nx * halfWidth, fy - uy * halfWidth - ny * halfWidth,
     ];
     const strokeA = (0.32 + 0.4 * prog) + 0.15 * pulse;
-    o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill });
+    o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_BAND_FILL_MULT });
     // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436・城ボスと同じ意匠を残りのボスへ横展開)。
     // fill/判定/タイミングは無改変・alpha計算式もstroke分岐と同一(strokeA)のまま渡すだけ。
     if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, strokeA, idx);
