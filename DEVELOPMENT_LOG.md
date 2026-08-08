@@ -1,5 +1,40 @@
 # Development Log
 
+## v0.25.3058 — ボットの目的に campaign(通し)を追加+★留まる(hold)の新設【2026-08-09 00:25 JST】
+社長指示「通しでプレイテストが必ず必要になる。キャンペーンを足して、最善の計画を立てて」。
+
+### ★実装の肝: `hold`(留まる)が無いと拠点もPOIも永久に取れない
+`steerTo` は目的地の **ARRIVE_DIST=70px 以内で null を返し**、通常の徘徊入力へ落ちる。一方
+**拠点の制圧は円内に10秒・POIは3秒の連続滞在**が条件。つまり**着いた瞬間に歩き去るので滞在が貯まらない**。
+依頼#6で「ボットは円の中に留まらないため dwell が0のまま」と報告した現象の正体はこれだった。
+→ `ObjectivePlan.hold?: boolean` を新設し、合成側の優先度を **ワープ回避 > 通常回避 > ★hold > 目的地ステア**
+  とした(生存を犠牲にしてまで留まらない)。**実機(useGameLoop)とヘッドレス(playtestDriver)の両方**に
+  同じ枝を入れてある(片側だけ直す事故の防止)。
+
+### `{ kind: 'campaign'; minLevel? }` の分岐(社長のシナリオ順)
+① 囲いイベント(既存の全目的共通の割り込み)→ ② 帰還サークル → ③ **城ボスが至近(900px)なら交戦** →
+④ 未制圧の拠点(円内で hold)→ ⑤ 未開放POI(円内で hold・警察署だけは hold せず戦う)→
+⑥ Lv上げ(既定Lv10)→ ⑦ 城へ → ⑧ 進行待ち。
+- **③は社長のシナリオから意図的に外した唯一の点**: 城ボスは5分経過で自動出現して追ってくるため、
+  拠点/POIを優先して無視し続けると詰む。**至近の時だけ**先に戦う。
+- 武器庫は `ARMORY_SCRAP_COST=100` を払えるまで後回し(「買い物も必要ならする」への対応)。
+- 警察署は囲いイベントが発火するので「留まる」ではなく戦う(その後は①が引き取る)。
+
+### 変更ファイル
+- `src/utils/botObjective.ts`: `campaign` 追加 / `ObjectivePlan.hold?` / `ObjectiveWorld.pois,scrap,baseCaptureRadius`(すべて任意=既存の目的は1ビットも変わらない)/ `nearestUnopenedPoi` / `HOLD_INPUT` / `CAMPAIGN_MIN_LEVEL=10` / `CAMPAIGN_BOSS_ENGAGE_PX=900` / `parseBotObjective` に `campaign`・`campaign:LV`
+- `src/utils/botObjectivePois.ts`(新規): POIの詰め替えを実機/ヘッドレスで共有する薄い橋渡し
+- `src/hooks/useGameLoop.ts` / `src/utils/playtestDriver.ts`: `hold` の枝と POI の受け渡し
+- `src/utils/botObjective.test.ts`: campaign の不変条件13件(hold・POI費用・警察署の例外・至近ボス・後方互換)
+
+### 検証
+`npx vitest run src/utils/botObjective.test.ts` = **48件 green** / `npm run typecheck` OK / `npm run lint` **エラー0**(warning 8は既存)。
+実機の通しプレイ(stage-1〜5)はこの後に実施し、結果を `TEST_HANDOFF/results/` に残す。
+
+### ★テスト手順の教訓(25分を空転させた)
+**`?smoke=1` を外すとタイトル画面のまま `gameTime` が1秒も進まない**(`App.tsx:271` がこれを見て
+`startGame` を呼ぶ)。オートプレイのURLからこれを落として25分を無駄にした。
+以後ハーネスには「90秒たっても gameTime<5秒なら即中断」のガードを入れてある。
+
 ## v0.25.3057 — 離脱1500pxを全ボス共通へ(社長裁定「全ボス共通。ゲートは関係無いかもだが」)【2026-08-09 00:16 JST】
 裏ボス4体(mimir/jormungand/skadi)+トールの離脱条件に、城ボス(v3056)と同じ**実距離1500px
 (BOSS_LEASH_PX)**をOR条件で追加(useGameLoopの裏ボスコントローラ・advanceBossDisengageGraceの入力)。
