@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.3050 — 監査発見①②の修正: 三連跳びの空中扱い+全技の硬直をパリィ表へ(社長指示)【2026-08-08 22:58 JST】
+v3049監査の未裁定2件を社長指示「①と②直して」で実装。
+①三連跳び(g-trijump-air)を単発の飛び掛かり(g-jump-air)と同じ空中族に: **空中の体当たりは被弾しない**+
+カウンターは**今の跳びの着地円の中でだけ**成立(幾何=着地爆風と同一: gTriJumpPts[今のidx]中心・
+半径GLEN_TRIJUMP_RADIUS+相手半径)。純関数inGlenTriJumpLandingZone新設(規律4)、プレイヤー経路
+(applyContactDamage分岐①)と守護霊経路(applyGhostBossParry)の両方へ配線(v2601の作法を踏襲)。
+②GIANT_PARRYABLE_PHASESへ後発技の硬直14種を追加(M65: bite/slam/wing、M66: glide/dive/quad/nova/
+trishot/sweepbeam、M67: trijump/talon/boon/reach/nihil の各-recover)=W7「硬直中の接触=カウンター可」
+(§6.28-3)の反撃報酬を単発ダッシュ等と統一。実行中(active/charge)は増やさない——g-quad-chargeの
+カウンター不可(社長裁定v3049・紫線)は不変。
+テスト: ghostBossParry(硬直21種+trijump-air)/giantJumpParryZone(トリジャンプ着地円の幾何4件)を同コミット更新。
+検証: typecheck OK / lint エラー0 / 両テストファイル緑。実機確認: 三連跳びの通り道で被弾しないこと・着地円でのカウンター・新技硬直での弾き。
+
 ## v0.25.3049 — 横一線の真因=遠景の雲(社長特定)+三連突進キラキラ/紫線化+赤線監査+三連射の爪痕除去【2026-08-08 22:45 JST】
 ①**横一線の真因(社長特定「これ全ステージだ。遠景の雲が犯人です」)**: 引き雲の遠景層(far×2)は
 帯の下端が地平線(farH)ちょうどに来るが、v3020のフェード焼き込みは**上端のみ**だった。素材下端の

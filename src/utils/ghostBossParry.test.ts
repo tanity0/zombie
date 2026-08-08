@@ -19,10 +19,20 @@ describe('isDashParryCounterPhase: プレイヤーのdashParried対象フェー�
       expect(isDashParryCounterPhase({ type: 'pumpkin', aiPhase: ph })).toBe(true);
     }
   });
-  it('giantbat固有は実行中2種+硬直5種のみ(M51受け入れ条件5)', () => {
-    for (const ph of ['g-dash-charge', 'g-sweep-active', 'g-stomp-recover', 'g-sweep-recover', 'g-dash-recover', 'g-jump-recover', 'g-bolt-recover'] as Enemy['aiPhase'][]) {
+  it('giantbat固有は実行中2種+全技の硬直(M51受け入れ条件5+v0.25.3050で後発技の硬直を追補)', () => {
+    for (const ph of [
+      'g-dash-charge', 'g-sweep-active',
+      'g-stomp-recover', 'g-sweep-recover', 'g-dash-recover', 'g-jump-recover', 'g-bolt-recover',
+      'g-bite-recover', 'g-slam-recover', 'g-wing-recover', 'g-glide-recover', 'g-dive-recover',
+      'g-quad-recover', 'g-nova-recover', 'g-trishot-recover', 'g-sweepbeam-recover',
+      'g-trijump-recover', 'g-talon-recover', 'g-boon-recover', 'g-reach-recover', 'g-nihil-recover',
+    ] as Enemy['aiPhase'][]) {
       expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: ph })).toBe(true);
     }
+  });
+  it('三連跳びの空中(g-trijump-air)はgiantbatで空中族=パリィ対象(着地円条件は呼び出し側・v0.25.3050)', () => {
+    expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: 'g-trijump-air' })).toBe(true);
+    expect(isDashParryCounterPhase({ type: 'pumpkin', aiPhase: 'g-trijump-air' })).toBe(false);
   });
   it('giantbatのwindupは対象外(W4「予告を出したら必ず実行させる」を守護霊も破らない)', () => {
     for (const ph of ['g-stomp-windup', 'g-sweep-windup', 'g-dash-windup', 'g-jump-windup', 'g-bolt-windup'] as Enemy['aiPhase'][]) {

@@ -3,8 +3,8 @@
 // (CLAUDE.md 攻撃ヴィジュアルの分類①「赤いのに当たらない/赤くないのに当たるは絶対にやらない」の
 //  カウンター版=「赤い円の外に居るのに弾ける」を潰す)。
 import { describe, it, expect } from 'vitest';
-import { useGameStore, GIANT_JUMP_RADIUS } from '../store/gameStore';
-import { applyContactDamage, inGiantJumpLandingZone, NOOP_COMBAT_EFFECTS } from './combatTick';
+import { useGameStore, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS } from '../store/gameStore';
+import { applyContactDamage, inGiantJumpLandingZone, inGlenTriJumpLandingZone, NOOP_COMBAT_EFFECTS } from './combatTick';
 import { spawnEnemyAt } from './enemyUtils';
 import type { Enemy } from '../types/game';
 
@@ -34,6 +34,27 @@ describe('inGiantJumpLandingZone: 幾何は着地の爆風判定と同一', () =
   it('着地点が未確定(旧セーブ等)は従来どおり通す=厳しくするのは外だと確認できた時だけ', () => {
     expect(inGiantJumpLandingZone(0, 0, 16, { ...boss, aiTargetX: undefined })).toBe(true);
     expect(inGiantJumpLandingZone(0, 0, 16, { ...boss, aiTargetY: undefined })).toBe(true);
+  });
+});
+
+// v0.25.3050(社長指示①): 三連跳び(g-trijump-air)の空中扱いも単発の飛び掛かりと同じ不変条件に固定する。
+describe('inGlenTriJumpLandingZone: 幾何は三連跳びの着地爆風判定と同一(今の跳びの着地円)', () => {
+  // gTriJumpPts は中心座標の平たい配列 [x0,y0, x1,y1, x2,y2]。idx=1 の跳び中なら (500,500) が今の着地円。
+  const boss = { gTriJumpPts: [100, 100, 500, 500, 900, 900], gTriJumpIdx: 1 };
+
+  it('今の跳びの着地円の中(中心)は成立する', () => {
+    expect(inGlenTriJumpLandingZone(500, 500, 16, boss)).toBe(true);
+  });
+  it('縁ちょうど(半径+自分の当たり半径)は成立する=着地爆風と同じ境界', () => {
+    expect(inGlenTriJumpLandingZone(500 + GLEN_TRIJUMP_RADIUS + 16, 500, 16, boss)).toBe(true);
+    expect(inGlenTriJumpLandingZone(500 + GLEN_TRIJUMP_RADIUS + 16 + 0.5, 500, 16, boss)).toBe(false);
+  });
+  it('別の跳びの着地円(過去/未来のidx)では成立しない=「今」の円だけ', () => {
+    expect(inGlenTriJumpLandingZone(100, 100, 16, boss)).toBe(false);
+    expect(inGlenTriJumpLandingZone(900, 900, 16, boss)).toBe(false);
+  });
+  it('着地点が未確定なら従来どおり通す(inGiantJumpLandingZoneと同じフェイルオープン)', () => {
+    expect(inGlenTriJumpLandingZone(0, 0, 16, { gTriJumpPts: undefined, gTriJumpIdx: 0 })).toBe(true);
   });
 });
 

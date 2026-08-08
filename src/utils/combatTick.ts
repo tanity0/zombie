@@ -44,7 +44,7 @@ import {
   KNOCKBACK_DURATION, KNOCKBACK_SPEED, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, STUN_DURATION_MS,
-  GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS,
+  GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS,
   bossCritCdMult,
 } from '../store/gameStore';
 import { distToSegment } from './levelUpGate';
@@ -675,10 +675,22 @@ export const applyMineDamage = (fx: CombatEffects): void => {
 // 同じ中断/ノックバック変換を、守護霊のカウンター請求(ghostCounter.ts)にも適用する。
 
 /** giantbat専用のパリィ可能フェーズ(M51受け入れ条件5=W4「予告を出したら必ず実行させる」= windupは
- * 含めない。実行中2種+硬直5種のみ)。applyContactDamage内のdashParried判定と共有する正本リスト。 */
+ * 含めない)。applyContactDamage内のdashParried判定と共有する正本リスト。
+ * v0.25.3050(社長指示「②直して」): M51期の5技の後に足された技(M65/M66/M67のステージ固有技・大技・
+ * グレン専用技)の**硬直(recover)**が取りこぼされていた=W7「硬直中の接触=カウンター可」(§6.28-3)の
+ * 反撃報酬が単発ダッシュ等と不揃いだった。全g-*-recoverを追加(硬直はダメージを持たない=報酬窓のみ)。
+ * 実行中(active/charge)は従来どおり増やさない——g-quad-chargeは社長裁定v0.25.3049で**カウンター不可**
+ * (紫線)として確定済み=ここに加えないこと(ghostBossParry.testで機械化済み)。 */
 const GIANT_PARRYABLE_PHASES: readonly string[] = [
   'g-dash-charge', 'g-sweep-active',
   'g-stomp-recover', 'g-sweep-recover', 'g-dash-recover', 'g-jump-recover', 'g-bolt-recover',
+  // M65(stage-1固有技/大技)・M66(stage-3〜5固有技/大技)の硬直(v0.25.3050)
+  'g-bite-recover', 'g-slam-recover', 'g-wing-recover',
+  'g-glide-recover', 'g-dive-recover',
+  'g-quad-recover', 'g-nova-recover',
+  'g-trishot-recover', 'g-sweepbeam-recover',
+  // M67(グレン専用技)の硬直(v0.25.3050)
+  'g-trijump-recover', 'g-talon-recover', 'g-boon-recover', 'g-reach-recover', 'g-nihil-recover',
 ];
 
 /** プレイヤーの接触パリィ(dashParried)が成立しうるフェーズか。applyContactDamage内の3分岐
@@ -710,10 +722,30 @@ export const inGiantJumpLandingZone = (
   return Math.hypot(actorCx - lx, actorCy - ly) <= r + actorRadius;
 };
 
+/**
+ * v0.25.3050(社長指示「①直して」): グレンの三連跳び(g-trijump-air)を単発の飛び掛かり(g-jump-air)と
+ * 同じ扱いにする——**空中の体当たりは被弾しない**+カウンターは**今の跳びの着地円の中**でだけ成立。
+ * 従来は g-trijump-air が空中特例のリストに無く、通り道に触れると生の接触ダメージを受けていた
+ * (v0.25.3049監査の発見(a))。幾何は着地の爆風判定と同一: 中心=gTriJumpPts[今のidx](中心座標)、
+ * 半径=GLEN_TRIJUMP_RADIUS+相手の当たり半径。着地点が未確定(旧データ等)の時は従来どおり通す
+ * (inGiantJumpLandingZoneと同じフェイルオープン)。
+ */
+export const inGlenTriJumpLandingZone = (
+  actorCx: number, actorCy: number, actorRadius: number,
+  enemy: Pick<Enemy, 'gTriJumpPts' | 'gTriJumpIdx'>,
+): boolean => {
+  const idx = enemy.gTriJumpIdx ?? 0;
+  const lx = enemy.gTriJumpPts?.[idx * 2];
+  const ly = enemy.gTriJumpPts?.[idx * 2 + 1];
+  if (lx === undefined || ly === undefined) return true;
+  return Math.hypot(actorCx - lx, actorCy - ly) <= GLEN_TRIJUMP_RADIUS + actorRadius;
+};
+
 /** ※ v0.25.2601: `g-jump-air` はこの述語を通ったうえで **inGiantJumpLandingZone** も要る
  *   (位置条件はこの述語に持たせない=主語の座標を受け取らない純粋なフェーズ判定のまま保つ)。 */
 export const isDashParryCounterPhase = (enemy: Pick<Enemy, 'type' | 'aiPhase'>): boolean =>
   enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air'
+  || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-trijump-air') // v0.25.3050: 三連跳びも空中族(着地円条件は呼び出し側=g-jump-airと同じ作法)
   || enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch'
   || (enemy.type === 'giantbat' && enemy.aiPhase !== undefined && GIANT_PARRYABLE_PHASES.includes(enemy.aiPhase));
 
@@ -780,12 +812,14 @@ export const applyGhostBossParry = (
   // (プレイヤー側 applyContactDamage の同じ条件と対。幾何は着地の爆風判定と同一)。
   // ここは**消費せずに帰る**=円の外なら請求は残し、着地の爆風側(inBlastGhost経路)の判定に回す
   // (円の外なら爆風にも当たらないので実質は流れるだけ。同フレームの正当な弾きを潰さないため)。
-  if (boss.aiPhase === 'g-jump-air') {
+  if (boss.aiPhase === 'g-jump-air' || boss.aiPhase === 'g-trijump-air') {
     const g = state.summons.find(s => s.kind === 'ghost-ally');
     if (!g) return;
-    const inZone = inGiantJumpLandingZone(
-      g.x + g.width / 2, g.y + g.height / 2, Math.max(g.width, g.height) / 2, boss,
-    );
+    const gcx = g.x + g.width / 2, gcy = g.y + g.height / 2, gr = Math.max(g.width, g.height) / 2;
+    // v0.25.3050: 三連跳びはプレイヤー経路と同じく「今の跳びの着地円」で判定(g-jump-airと同じ作法)。
+    const inZone = boss.aiPhase === 'g-jump-air'
+      ? inGiantJumpLandingZone(gcx, gcy, gr, boss)
+      : inGlenTriJumpLandingZone(gcx, gcy, gr, boss);
     if (!inZone) return;
   }
   if (consumeGhostCounterClaim(boss.id, nowMs) === null) return;
@@ -841,15 +875,20 @@ export const applyContactDamage = (
     // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間はプレイヤーは被弾しない。
     // カウンター窓中ならカウンター成立=クリティカル反撃(ヘッドショット)を返す。
     // M51: ジャイアント新スクリプトの飛び掛かり滞空(g-jump-air)も同じ扱い(既存'jump'と同義)。
-    if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air') {
+    // v0.25.3050(社長指示①): グレンの三連跳び(g-trijump-air)も空中族に追加——空中は被弾しない+
+    // カウンターは今の跳びの着地円の中でだけ(単発の飛び掛かりg-jump-airと同じ扱い。監査v3049の発見(a))。
+    if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air' || enemy.aiPhase === 'g-trijump-air') {
       // v0.25.2601(社長裁定・第三案): 城ボスの飛び掛かりは**着地したら当たる位置**でだけ弾ける
       // (赤い着地円=カウンターできる範囲、を一致させる)。空中で被弾しないこと自体は不変。
       // 旧 'jump'(パンプキン等の非ボス)は対象外=従来どおり触れていれば弾ける。
-      const jumpZoneOk = enemy.aiPhase !== 'g-jump-air'
-        || inGiantJumpLandingZone(
-          collPlayer.x + collPlayer.width / 2, collPlayer.y + collPlayer.height / 2,
-          Math.max(collPlayer.width, collPlayer.height) / 2, enemy,
-        );
+      const pCx = collPlayer.x + collPlayer.width / 2;
+      const pCy = collPlayer.y + collPlayer.height / 2;
+      const pRad = Math.max(collPlayer.width, collPlayer.height) / 2;
+      const jumpZoneOk = enemy.aiPhase === 'g-jump-air'
+        ? inGiantJumpLandingZone(pCx, pCy, pRad, enemy)
+        : enemy.aiPhase === 'g-trijump-air'
+          ? inGlenTriJumpLandingZone(pCx, pCy, pRad, enemy)
+          : true;
       if (counterActiveNow && jumpZoneOk) dashParried.push(enemy.id);
       return;
     }
