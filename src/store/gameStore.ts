@@ -1762,6 +1762,13 @@ export const GIANT_QUAD_BREATH_LENGTH = GIANT_SWEEP_RANGE;     // 帯の寸法�
 export const GIANT_QUAD_BREATH_HALF_WIDTH = GIANT_SWEEP_HALF_WIDTH;
 export const GIANT_QUAD_ICE_RADIUS = 90;                       // = SKADI_ICE_RADIUS(専用定数として新設・共有定数は書き換えない。SKADI_ICE_RADIUSは本ファイル後方で定義のため値のみ複製)
 export const GIANT_QUAD_ICE_DELAY_MS = 2400;                   // 実効2.0s(スカジの氷テレグラフ=SKADI_ICE_TELEGRAPH_MSと同じ長さの叩き台)
+// v0.25.3074(社長指示「サークル状に散らばってるキラキラが中心に凝縮されてキラキラ粉塵爆発!」):
+// 遅延起爆の氷は**赤い予告円**(色の文法どおり)に戻し、氷らしさ=キラキラの動きで見せる。
+// 予告の間はキラキラを**円周から中心へ半径を詰めながら**撒き(=凝縮して見える)、起爆の瞬間に散らす。
+// キラキラは判定ゼロの派手枠②=円の半径・2秒・ダメージには一切触れない。
+const QUAD_ICE_GATHER_MS = 110;   // 凝縮キラキラの間引き
+const QUAD_ICE_GATHER_N = 3;      // 1回あたりの粒(氷1つあたり)
+const QUAD_ICE_BURST_N = 16;      // 粉塵爆発の粒(氷1つあたり)
 export const GIANT_QUAD_BREATH_SWEEP_RAD = (2 * Math.PI) / 3;  // 120°(sweepbeamと同値・独立定数として新設)
 
 // --- stage-4: 氷結波(nova・大技・トレース元=フリーデ/ヴォルドの氷の波。内側が安全=逆張り) ---
@@ -1892,7 +1899,9 @@ const SKADI_SPARKLE_ICE_MS = 180;         // 氷塊テレグラフ中の「冷�
 const SKADI_SPARKLE_ICE_FROM = 0.4;       // テレグラフのこの割合を過ぎてから撒き始める(近づくほど濃く見せる)
 const SKADI_SPARKLE_BURST_N = 4;          // 氷塊が砕ける瞬間に散らす数(1個あたり)
 // gameTime基準の間引き時計。**resetGameで戻す**(v0.25.3070の「キラキラが消えた」と同型の事故を作らない)。
-const skadiSparkleClock = { blade: 0, ice: 0 };
+// blade/ice=スカジ用。gather=城ボスの氷塊が「中心へ凝縮する」キラキラ用(v0.25.3074)。
+// 氷のキラキラの時計は**この1オブジェクトに集約**する(散らばらせるとリセット漏れが必ず出る)。
+const iceSparkleClock = { blade: 0, ice: 0, gather: 0 };
 let skadiHazardSeq = 0; // スカジ氷ハザードの一意id採番(プール/差分の安定キー)
 let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(プール/差分の安定キー)
 let sensorMineSeq = 0;  // センサー地雷(sensor-mine)の一意id採番(プール/差分の安定キー)
@@ -8838,6 +8847,31 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (dueHits.length > 0) {
               for (const h of dueHits) {
                 pumpkinBlasts.push({ x: h.x, y: h.y, radius: h.radius, damage: enemy.damage, enemyId: enemy.id, ice: h.ice, capsule: h.capsule, moveKey: h.moveKey });
+                // v0.25.3074(社長指示「キラキラ粉塵爆発!」): 氷が砕ける瞬間、凝縮しきったキラキラが
+                // 一気に外へ散る。√乱数で円内に均等分布させる(中心に固まらない)。
+                if (h.ice) {
+                  for (let bi = 0; bi < QUAD_ICE_BURST_N; bi++) {
+                    const ba = Math.random() * Math.PI * 2;
+                    const br = h.radius * Math.sqrt(Math.random()) * 0.95;
+                    quadBreathSparkles.push({ x: h.x + Math.cos(ba) * br, y: h.y + Math.sin(ba) * br });
+                  }
+                }
+              }
+            }
+            // v0.25.3074(社長指示「サークル状に散らばってるキラキラが中心に凝縮され」): 予告の間、
+            // **撒く半径を円周から中心へ詰めていく**(残り時間に比例)。キラキラ自体は動かせないので、
+            // 「出る位置がだんだん内側へ寄る」ことで凝縮に見せる。起爆の瞬間には半径ほぼ0=中心へ集まりきる。
+            if (shouldEmitThrottled(gameTime, iceSparkleClock.gather, QUAD_ICE_GATHER_MS)) {
+              iceSparkleClock.gather = gameTime;
+              for (const h of giantDelayedHits) {
+                if (!h.ice || h.burst) continue;
+                const gt = Math.max(0, Math.min(1, (gameTime - h.bornAt) / Math.max(1, h.fireAt - h.bornAt)));
+                const ring = h.radius * (1 - gt); // 1→0 へ詰まる輪
+                for (let gi = 0; gi < QUAD_ICE_GATHER_N; gi++) {
+                  const ga = Math.random() * Math.PI * 2;
+                  const gr = ring * (0.8 + Math.random() * 0.35);
+                  quadBreathSparkles.push({ x: h.x + Math.cos(ga) * gr, y: h.y + Math.sin(ga) * gr });
+                }
               }
             }
             giantDelayedHits = giantDelayedHits
@@ -10462,8 +10496,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 氷塊マーカー: テレグラフ2秒経過(gameTime>=fireAt)で起爆=爆発処理へ ice:true で積む。
       // v0.25.3071(社長指示): 氷塊にもキラキラ(冷気)。テレグラフ後半で「冷気が集まり」、砕ける瞬間に散る。
       // 判定ゼロの派手枠②=半径・秒数・ダメージは不変。氷檻(cage)も同じspawnSkadiIce経由なので自動で乗る。
-      const iceSparkleTick = shouldEmitThrottled(gameTime, skadiSparkleClock.ice, SKADI_SPARKLE_ICE_MS);
-      if (iceSparkleTick) skadiSparkleClock.ice = gameTime;
+      const iceSparkleTick = shouldEmitThrottled(gameTime, iceSparkleClock.ice, SKADI_SPARKLE_ICE_MS);
+      if (iceSparkleTick) iceSparkleClock.ice = gameTime;
       const skadiIceMarkers = !skadiAlive ? [] : state.skadiIceMarkers.filter(m => {
         if (gameTime >= m.fireAt) {
           pumpkinBlasts.push({ x: m.x, y: m.y, radius: SKADI_ICE_RADIUS, damage: SKADI_ICE_DAMAGE, enemyId: m.enemyId, ice: true });
@@ -10520,8 +10554,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // v0.25.3071(社長指示): 氷刃の軌跡にもキラキラ。**飛行中の刃の少し後ろ**へ間引きながら撒く
       // (冷気ブレス/三連突進の軌跡と同じ作法)。★ラフィの骨刃(visual:'bone')は同じ配列を共用しているが
       // 氷ではないので除外する(配列の共用に気づかず全部に撒くと、骨刃から粉雪が出る)。
-      if (shouldEmitThrottled(gameTime, skadiSparkleClock.blade, SKADI_SPARKLE_BLADE_MS)) {
-        skadiSparkleClock.blade = gameTime;
+      if (shouldEmitThrottled(gameTime, iceSparkleClock.blade, SKADI_SPARKLE_BLADE_MS)) {
+        iceSparkleClock.blade = gameTime;
         for (const b of skadiIceBlades) {
           if (!b.launched || b.visual === 'bone') continue;
           const bl = Math.hypot(b.vx, b.vy) || 1;
@@ -13374,7 +13408,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetGhostDeathPose(); // v0.25.2599: 前ランの倒れ絵を持ち越さない(描画専用の控え)
     glenSimTrail = null;   // v0.25.3027: グレン胴体弾の軌跡を持ち越さない(監査指摘)
     quadSparkleLastAt = 0; // v0.25.3070: キラキラの間引き時計もラン間で持ち越さない(社長報告「キラキラが消えた」)
-    skadiSparkleClock.blade = 0; skadiSparkleClock.ice = 0; // v0.25.3071: スカジ側の同型時計も同じ理由で戻す
+    iceSparkleClock.blade = 0; iceSparkleClock.ice = 0; iceSparkleClock.gather = 0; // v0.25.3071/3074: 氷のキラキラの時計も同じ理由で戻す
     // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ+ラン内打刻ビューも持ち越さない
     // (台帳=localStorageは打刻の瞬間に確定済みなので触らない)。
     resetDuoRunRecords();

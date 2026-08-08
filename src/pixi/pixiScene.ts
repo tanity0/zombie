@@ -15293,8 +15293,13 @@ export class PixiScene {
       for (const h of e.giantDelayedHits ?? []) {
         const total = Math.max(1, h.fireAt - h.bornAt);
         const t = Math.max(0, Math.min(1, (gameTime - h.bornAt) / total));
-        const col = h.ice ? 0x4fb4ff : 0xff2a2a;
-        const strokeCol = h.ice ? 0x7cd0ff : 0xff3b3b;
+        // v0.25.3074(社長指示「赤サークルに直し」): 氷でも**赤い予告円**に統一する。
+        // 経緯: 氷=青はスカジより前の名残で、当のスカジは**赤い円+氷塊の絵**で「氷であること」を
+        // 色ではなく絵で伝えていた。色の文法(赤=カウンター/回避の対象で判定と厳密一致)を優先し、
+        // 氷らしさは下の「中心へ凝縮するキラキラ→粉塵爆発」(gameStore側)が担う。
+        // ※ h.ice 自体は残す(下の爪痕を氷に付けないための分岐で今も使う)。
+        const col = 0xff2a2a;
+        const strokeCol = 0xff3b3b;
         if (h.capsule) {
           const ddx = h.capsule.tx - h.capsule.fx, ddy = h.capsule.ty - h.capsule.fy;
           const ddl = Math.hypot(ddx, ddy) || 1;
