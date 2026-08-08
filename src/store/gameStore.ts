@@ -165,6 +165,7 @@ import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
+  bossEngagedNow, facilitiesLocked,
   BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
 } from '../utils/bossEngagement';
 import {
@@ -3865,6 +3866,11 @@ interface GameState {
   setPendingHiddenBoss: (t: EnemyType | null) => void;
   hiddenBoss: EnemyType | null;                         // この出撃の裏ボス種別(useGameLoop の専用コントローラが参照)
   bossChasing: boolean;                                 // 裏ボスが「追いかけてきている」状態(=他敵が逃げる/イベント抑制。コントローラが毎フレ更新)
+  // v0.25.3054(社長指示「ボス戦中は拠点とか城とか全部非表示。全て。解除でフェードイン」):
+  // ボス交戦フラグ(bossEngagedNowのENTER900/EXIT1400ヒステリシス・updateEnemiesが毎tick更新)。
+  // 施設(病院/武器庫/警察署/拠点/商人/城)の発火・滞在・当たり判定のゲートと、描画のフェードが読む。
+  bossFightNow: boolean;
+  bossFightLastTrueAt: number;                          // 最後に交戦中だったgameTime(解除後の復帰猶予=facilitiesLocked用)
   bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean } | null; // 討伐後のフェードアウト演出(描画のみが参照)。holdMs=無傷で保持する尺(死亡アテンション付きボスのみ>0)。glenBoss2=変身後の絵で崩す(v0.25.3029)
   // v0.25.3029(社長裁定「二体」): グレン形態1討伐後の形態2スポーン予約(at=実時刻・x/y=世界座標の中心)。
   glenForm2SpawnAt: { at: number; x: number; y: number } | null;
@@ -3985,22 +3991,27 @@ const resolveOutOfSolids = (
     hospital: GameState['hospital']; hospitalTaken: boolean;
     armory: GameState['armory']; armoryTaken: boolean;
     police: GameState['police']; policeTaken: boolean;
+    // v0.25.3054(社長指示・監査指摘「絵だけ消すと見えない壁になる」): ボス戦中は施設(城/病院/
+    // 武器庫/警察署)の当たり判定も消す=絵と判定を常に一致させる。木/松明/街プロップは施設では
+    // ないので残す(消えるのは「ボス戦中に非表示になる施設」だけ)。
+    facilitiesHidden?: boolean;
   },
 ): { x: number; y: number } => {
   const { labTheme } = ctx;
+  const noFac = ctx.facilitiesHidden === true;
   const w = rect.width, h = rect.height;
   const treeResolved = labTheme ? { x: rect.x, y: rect.y } : resolveTreeCollision(rect);
   const torchResolved = resolveTorchCollision({ x: treeResolved.x, y: treeResolved.y, width: w, height: h }, ctx.solidProps);
-  const castleResolved = (labTheme || ctx.farBackdrop === 'tutorial') ? torchResolved
+  const castleResolved = (labTheme || ctx.farBackdrop === 'tutorial' || noFac) ? torchResolved
     : resolveCastleCollision({ x: torchResolved.x, y: torchResolved.y, width: w, height: h }, ctx.castleEvent);
   const cityPropResolved = !labTheme
     ? resolveCityPropCollision(ctx.farBackdrop, { x: castleResolved.x, y: castleResolved.y, width: w, height: h })
     : castleResolved;
-  const hospitalResolved = resolveHospitalCollision(
+  const hospitalResolved = noFac ? cityPropResolved : resolveHospitalCollision(
     { x: cityPropResolved.x, y: cityPropResolved.y, width: w, height: h }, ctx.hospital, ctx.hospitalTaken);
-  const armoryResolved = resolveArmoryCollision(
+  const armoryResolved = noFac ? hospitalResolved : resolveArmoryCollision(
     { x: hospitalResolved.x, y: hospitalResolved.y, width: w, height: h }, ctx.armory, ctx.armoryTaken);
-  const cityResolved = resolvePoliceCollision(
+  const cityResolved = noFac ? armoryResolved : resolvePoliceCollision(
     { x: armoryResolved.x, y: armoryResolved.y, width: w, height: h }, ctx.police, ctx.policeTaken);
   if (!labTheme) return cityResolved;
   // 研究所スキン: 壁オブジェクト+遮蔽プロップ。近傍区画のみ問い合わせる(全区画走査を避ける)。
@@ -4217,6 +4228,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   pendingHiddenBoss: null,
   hiddenBoss: null,
   bossChasing: false,
+  bossFightNow: false,
+  bossFightLastTrueAt: 0,
   bossCorpse: null,
   glenForm2SpawnAt: null,
   hiddenBossDefeated: false,
@@ -4466,6 +4479,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           hospital: state.hospital, hospitalTaken: state.hospitalTaken,
           armory: state.armory, armoryTaken: state.armoryTaken,
           police: state.police, policeTaken: state.policeTaken,
+          facilitiesHidden: facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime), // v0.25.3054
         });
         newX = solidResolved.x;
         newY = solidResolved.y;
@@ -4838,7 +4852,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // 武器庫(制圧拠点中央の小サークル)で指を離す = 遠隔で武器商人を利用(社長指示)。矢印は出さない。
     // 紅き夜中は開かない(拠点近接の「やり過ごし」が別途処理)。
-    if (!showShopMenu && !showUpgradeMenu && gameTime >= shopReopenAt && get().redNight?.phase !== 'active') {
+    // v0.25.3054(社長指示・監査指摘): ボス戦中(+復帰猶予)は開かない——ボス戦中は指を離し続ける
+    // ため、拠点の近くで戦うと必ず踏んでいた(「閉じ込められて何もできず」の最有力経路)。
+    if (!showShopMenu && !showUpgradeMenu && gameTime >= shopReopenAt && get().redNight?.phase !== 'active'
+      && !facilitiesLocked(get().bossFightNow, get().bossFightLastTrueAt, gameTime)) {
       for (const b of get().baseSites) {
         if (b.status !== 'captured') continue;
         const adx = b.x - pcx, ady = b.y - pcy;
@@ -7880,6 +7897,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   // useGameLoopがsim毎フレーム呼ぶ。紅き夜中は「やり過ごした」(旧スイング時の挙動を移植)。
   updateMerchantDwell: (deltaMs) => {
     const s = get();
+    // v0.25.3054(社長指示): ボス戦中(+復帰猶予)は商人ロック=滞在が進まずショップが開かない。
+    if (facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime)) {
+      if (s.merchantDwellMs !== 0) set({ merchantDwellMs: 0 });
+      return;
+    }
     const { weaponMerchant, player } = s;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
@@ -8444,7 +8466,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             const tr = labTheme ? { x: nx, y: ny } : resolveTreeCollision({ x: nx, y: ny, width: enemy.width, height: enemy.height });
             const torchR = resolveTorchCollision({ x: tr.x, y: tr.y, width: enemy.width, height: enemy.height }, solidProps);
             // 城(屋外・非ラボ)も敵にブロック(プレイヤーと同じ。従来は敵だけすり抜けていた)。
-            const castleR = (labTheme || state.farBackdrop === 'tutorial') ? torchR : resolveCastleCollision({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, state.castleEvent);
+            // v0.25.3054: ボス戦中は城の判定も消す(プレイヤー側resolveOutOfSolidsと同じ・見えない壁を作らない)。
+            const castleR = (labTheme || state.farBackdrop === 'tutorial'
+              || facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, gameTime))
+              ? torchR : resolveCastleCollision({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, state.castleEvent);
             // ラボ壁＋ラボプロップ(研究所スキン)。labProps も敵に当たり判定(従来は壁のみ=プロップすり抜け)。
             const labRects = labTheme ? [...labWallRects, ...labPropRects] : labWallRects;
             const wallR = labRects.length
@@ -10426,8 +10451,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         const capped = carriers.length > EGGCARRIER_MAX_EGGS ? carriers.slice(carriers.length - EGGCARRIER_MAX_EGGS) : carriers;
         nextBreakables = [...others, ...capped];
       }
+      // v0.25.3054: ボス交戦フラグ(施設ロック/描画フェードの正本)。ヒステリシスは
+      // bossEngagedNow(ENTER900/EXIT1400)が持つ=前回値を渡すだけ。
+      const bossFightNowNext = bossEngagedNow(finalEnemies, pcx, pcy, state.bossFightNow);
       return {
         enemies: finalEnemies, breakableProps: nextBreakables, pumpkinBlasts, shieldBlocks, skadiIceMarkers, skadiIceBlades,
+        bossFightNow: bossFightNowNext,
+        bossFightLastTrueAt: bossFightNowNext ? gameTime : state.bossFightLastTrueAt,
         // v0.25.3053(社長指示「警告バグ他でも出ないか洗って」で発見): v0.25.2968で猶予を3000→1200msに
         // 短縮した際、バナーの「— 3秒」が置き去りになっていた(表示が嘘)。秒数は定数から導出=再ドリフト防止。
         ...(bossLeashWarning
@@ -10967,7 +10997,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         const torches = breakableProps
           .filter(prop => prop.type === 'torch' && prop.health > 0)
           .map(torchRect);
-        return [...trunks, ...torches, castleRect(castleEvent)];
+        // v0.25.3054: ボス戦中は城の判定を弾も素通し(絵と判定の一致・見えない壁を作らない)。
+        return facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)
+          ? [...trunks, ...torches]
+          : [...trunks, ...torches, castleRect(castleEvent)];
       };
       // 弾が壁に当たったら消す(貫通させない)。全ステージ共通(屋内=lab壁 / 屋外=木/トーチ/城)。
       // 対象: 銃弾/敵弾 + 飛行中の発火ナイフ(刺さった後は除外)。grenade はバウンド、ブーメランは戻る(各々別処理)。
@@ -12260,6 +12293,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (localStorage副作用をset内へ入れない=updateArmoryのgrantGunKeyと同じ持ち出しパターン)。
     let unlocked = false;
     set(state => {
+      // v0.25.3054(社長指示): ボス戦中(+復帰猶予)は施設ロック=滞在も通信ポップも進めない。
+      if (facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) return {};
       const pos = state.hospital;
       if (!pos || state.hospitalTaken || state.gameWon) return {};
       const inside = isInHospitalCircle(state.player, pos);
@@ -12305,6 +12340,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 歴史年表(社長裁定2026-07-31): POI開放は種別ごとゲーム全体で初回のみ(返金決着も「開放」に数える)。
     let unlocked = false;
     set(state => {
+      // v0.25.3054(社長指示): ボス戦中(+復帰猶予)は施設ロック=滞在も通信ポップも進めない。
+      if (facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) return {};
       const pos = state.armory;
       if (!pos || state.armoryTaken || state.gameWon) return {};
       const inside = isInArmoryCircle(state.player, pos);
@@ -12666,8 +12703,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 仕様「拠点内に10秒留まったら解放」: 敵を撃ちながらでも円内に留まっていればカウントを進める。
       // 円の外(まだ到達前/押し出された)では0にリセット。
       const inC = Math.hypot(x - base.x, y - base.y) <= BASE_CAPTURE_RADIUS;
-      dwellMs = inC ? dwellMs + deltaTime * 1000 : 0;
-      if (inC && dwellMs >= BASE_CAPTURE_HOLD_MS && base.status === 'open' && !escortCaptures.has(base.id)) {
+      // v0.25.3054(社長指示・監査指摘): ボス戦中(+復帰猶予)は拠点確保を凍結——確保完了の
+      // バナー/SE/商人移動/拠点ショップ有効化がボス戦の最中に発生しない(進捗は保持し、解除後に再開)。
+      const capFrozen = facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime);
+      dwellMs = inC ? (capFrozen ? dwellMs : dwellMs + deltaTime * 1000) : 0;
+      if (!capFrozen && inC && dwellMs >= BASE_CAPTURE_HOLD_MS && base.status === 'open' && !escortCaptures.has(base.id)) {
         escortCaptures.set(base.id, esc.soldierIndex);
       }
       if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face || companionMs !== (esc.companionMs ?? 0) ||
@@ -13491,6 +13531,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         nearHorizon,
         hiddenBoss,
         bossChasing: false,
+        bossFightNow: false,
+        bossFightLastTrueAt: 0,
         bossCorpse: null,
         glenForm2SpawnAt: null,
         hiddenBossDefeated: false,

@@ -2062,8 +2062,10 @@ const SWORD_STYLE_CODES: readonly SwordSwingStyle[] = ['wide', 'overhead', 'draw
 const SHOCKWAVE_MS = 260;          // 走り切るまで。判定のactive窓とは独立(絵だけの尺)
 const SHOCKWAVE_LEN_MAX = 260;     // 波1つの見た目の長さ(px)。帯が短ければ帯長に合わせる
 const SHOCKWAVE_TINT = 0xffe4e4;   // ほんのり赤み(赤い帯と同じ攻撃の絵だと分かる程度。純白だと浮く)
-// 素材の中身は x[39..992]/1024 に収まっている。先端(散り)が右端なので、走る位置に**先端**を合わせる。
-const SHOCKWAVE_ANCHOR_X = 412 / 416; // ドット版(v0.25.2929)の先端x。旧1024px版は 992/1024
+// 素材=「太い側へ膨らむ同心弧が細い一点に収束するコーン」(左=太い裾/右=細い尖り)。
+// v0.25.3054(社長裁定・案A「太い方に統一」): **太い方が前**(輪が広がりながら進む物理読み)。
+// 走る位置には太い側の縁を合わせ、細い尖りを発生源側へ引きずる。全技この1関数で統一。
+const SHOCKWAVE_ANCHOR_X = 10 / 416; // 太い側(左)の中身の始まりx。旧「尖り前」時代は 412/416
 // 砂埃は CLAUDE.md「攻撃ヴィジュアルの2分類」の**②派手さの絵**(判定ゼロ・当たっても痛くないと
 // 見て分かる)。社長方針v0.25.2410「オーバーに見せた方がいい」に従い、判定より大きく外へ出す。
 // v0.25.2408では踏み鳴らしだけ 2.2 にしたが、着地/のしかかりが 1.25 のまま取り残されていた
@@ -3483,6 +3485,9 @@ export class PixiScene {
   // (レート切替の瞬間に雲が跳ばない)。層ごとの累積px+前フレーム時刻。
   private zoomCloudDriftAcc: number[] = [];
   private zoomCloudLastNow = 0;
+  // v0.25.3054: ボス戦中の施設フェード(1=通常/0=非表示)。storeのbossFightNowへ補間で追従。
+  private facilityFade = 1;
+  private facilityFadeLastNow = 0;
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
   constructor(layers: SceneLayers) {
@@ -6655,6 +6660,20 @@ export class PixiScene {
     ); // 窓の手前の「遠くの什器」(距離に合わせて縮小)
     // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
     this.revisitMarker = s.revisitMode === true;
+    // v0.25.3054(社長指示「ボス戦中は拠点とか城とか全部非表示。商人と拠点も。全て。解除でフェードイン」):
+    // 施設フェード(0..1)。ボス交戦中(store.bossFightNow)は0へ(約250msで消える)、解除で1へ
+    // (約700msのフェードイン=施設ロックfacilitiesLockedの復帰猶予と同じ長さ)。描画は読むだけ=
+    // 発火・滞在・当たり判定のゲートはstore/useGameLoop側(施設ロック)が持つ。
+    {
+      const dtF = this.facilityFadeLastNow > 0 ? Math.min(0.1, (now - this.facilityFadeLastNow) / 1000) : 0;
+      this.facilityFadeLastNow = now;
+      const targetF = s.bossFightNow ? 0 : 1;
+      const stepF = targetF < this.facilityFade ? dtF / 0.25 : dtF / 0.7;
+      this.facilityFade = Math.max(0, Math.min(1,
+        this.facilityFade + Math.sign(targetF - this.facilityFade) * stepF));
+      if (Math.abs(targetF - this.facilityFade) < 0.02) this.facilityFade = targetF;
+    }
+    const facFade = this.facilityFade;
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
     if (s.indoorMode || s.stageTheme === 'lab') {
       // 屋内 / 研究所スキンは城(建物)を描かない。※ giantbat ボスは城座標に出る(クリア条件)ので湧き自体は維持。
@@ -6665,6 +6684,13 @@ export class PixiScene {
       this.syncEventQuestNpc(s.eventQuestNpc, s.player, now);
     }
     this.syncMerchant(s.weaponMerchant, s.player, now, s.merchantDwellMs); // 商人は屋内でも(最初の部屋に)出す
+    // v0.25.3054: 施設フェードの適用(コンテナ/影リクエストに外から乗算=各syncの内部alphaと独立)。
+    this.castleView.alpha = facFade;
+    if (this.castleShadow) this.castleShadow.alpha *= facFade;
+    this.castleSummonCircle.alpha *= facFade;
+    this.merchantView.alpha = facFade;
+    if (this.merchantShadow) this.merchantShadow.alpha *= facFade;
+    if (facFade <= 0.01) { this.castleView.visible = false; this.merchantView.visible = false; }
     this.syncBreakableProps(s.breakableProps, now);
     this.syncPickups(s.pickups, now);
     this.syncPumpkinTelegraph(s.enemies, now); // ジャンプ攻撃の着地予告(赤い影)
@@ -6694,6 +6720,21 @@ export class PixiScene {
     this.syncArmory(now); // §6.24 M48: 武器庫(同上)
     this.syncPolice(now); // §6.24 M48: 警察署(同上)
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
+    // v0.25.3054: 施設フェードの適用(POI建物3種+サークル+拠点サークル+影リクエスト)。
+    this.hospitalSprite.alpha *= facFade;
+    this.armorySprite.alpha *= facFade;
+    this.policeSprite.alpha *= facFade;
+    this.hospitalGfx.alpha = facFade;
+    this.armoryGfx.alpha = facFade;
+    this.baseSitesGfx.alpha = facFade;
+    if (this.hospitalShadow) this.hospitalShadow.alpha *= facFade;
+    if (this.armoryShadow) this.armoryShadow.alpha *= facFade;
+    if (this.policeShadow) this.policeShadow.alpha *= facFade;
+    if (facFade <= 0.01) {
+      this.hospitalSprite.visible = false;
+      this.armorySprite.visible = false;
+      this.policeSprite.visible = false;
+    }
     this.resetBloodPools(); // 血溜まり(E-5): 前フレームで使った枚数を超えたぶんを消す(消し忘れ防止)
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
@@ -6723,8 +6764,10 @@ export class PixiScene {
       s.player,
       s.enemies,
       s.breakableProps,
-      s.castleEvent,
-      s.weaponMerchant,
+      // v0.25.3054(監査指摘「消した建物が投影影を落とし続ける」): 施設フェード中は城/商人を
+      // 遠方座標に差し替えて強glowの投影影スキャンから外す(距離カリングで自然に落ちる)。
+      facFade < 0.5 ? { ...s.castleEvent, x: 1e9, y: 1e9 } : s.castleEvent,
+      facFade < 0.5 ? { ...s.weaponMerchant, x: 1e9, y: 1e9 } : s.weaponMerchant,
       s.eventQuestNpc,
       s.camera,
       now,
@@ -6764,7 +6807,10 @@ export class PixiScene {
     const questTargets = s.enemies.filter(e => e.questTarget).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
     // 叫喚型(screamer)は同時1体だけ(ディレクター管理)なので検知条件なしで常に方角を示す(優先処理対象)。
     const liveScreamers = s.enemies.filter(e => e.type === 'screamer').map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
-    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, {
+    // v0.25.3054: 施設フェード中は施設系の矢印/マーカーも出さない(城=castleVisible、商人=radius0で
+    // 縁矢印を殺す、POI/拠点=空配列)。ボスマーク・アイテム・ハンター等の非施設マーカーは従来どおり。
+    const facHidden = facFade < 0.5;
+    this.syncArrows(s.pickups, s.castleEvent, facHidden ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, {
       targets: markedBosses,
       // 距離は**ボスメーカーの部屋の中だけ常時**表示(社長指示v0.25.2657)。本編は数字を出さない=
       // マーク(方角)だけ。道具としての計測値をゲーム画面へ持ち込まない。
@@ -16746,7 +16792,7 @@ export class PixiScene {
     let sp = view.shockwaves[idx];
     if (!sp) {
       sp = new Sprite(tex);
-      sp.anchor.set(SHOCKWAVE_ANCHOR_X, 0.5); // 先端(散り)を進行位置に合わせる
+      sp.anchor.set(SHOCKWAVE_ANCHOR_X, 0.5); // 太い側の縁を進行位置に合わせる(v0.25.3054・案A)
       // 予告レイヤー(tele)の直上=赤い塗りの上(v0.25.2411の重ね順と同じ考え方)。
       view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
       view.shockwaves[idx] = sp;
@@ -16757,7 +16803,9 @@ export class PixiScene {
     sp.texture = tex;
     sp.width = Math.min(SHOCKWAVE_LEN_MAX, len);
     sp.height = halfWidth * 2; // 帯の太さに揃える(はみ出させない=判定の外を危険に見せない)
-    sp.rotation = Math.atan2(dy, dx);
+    // v0.25.3054(案A): +πして素材の左(太い裾)を進行方向へ向ける=「輪が広がりながら進む」。
+    // 素材は上下対称なので180°回しても破綻しない。細い尖りは発生源側へ尾を引く。
+    sp.rotation = Math.atan2(dy, dx) + Math.PI;
     sp.position.set(headX, headY);
     sp.tint = SHOCKWAVE_TINT;
     sp.alpha = alpha;

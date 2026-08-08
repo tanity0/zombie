@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
   bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_EXIT_PX,
   advanceBossDisengageGrace, bossEngagementDistancePx, bossLeashDistancePx,
+  facilitiesLocked, FACILITY_REENABLE_MS,
   isLeashableBoss, BOSS_DISENGAGE_GRACE_MS, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC,
 } from './bossEngagement';
 
@@ -125,5 +126,19 @@ describe('bossRetreatKeepRadiusPx — プレイヤー中心の一律撤退距離
   it('横長画面でも長辺基準(縦横で距離感が変わらない)', () => {
     expect(bossRetreatKeepRadiusPx({ width: 930, height: 430 }, 1))
       .toBeCloseTo(bossRetreatKeepRadiusPx(vp, 1), 6);
+  });
+});
+
+// v0.25.3054(社長指示「ボス戦中は拠点とか城とか全部非表示。解除でフェードイン」)
+describe('facilitiesLocked: ボス交戦中+復帰猶予の施設ロック', () => {
+  it('交戦中はロック', () => {
+    expect(facilitiesLocked(true, 0, 1000)).toBe(true);
+  });
+  it('解除後もFACILITY_REENABLE_MS(フェードイン完了)まではロック=薄い絵の施設が発火しない(監査指摘)', () => {
+    expect(facilitiesLocked(false, 10_000, 10_000 + FACILITY_REENABLE_MS - 1)).toBe(true);
+    expect(facilitiesLocked(false, 10_000, 10_000 + FACILITY_REENABLE_MS)).toBe(false);
+  });
+  it('一度も交戦していなければロックしない', () => {
+    expect(facilitiesLocked(false, 0, 999_999)).toBe(false);
   });
 });

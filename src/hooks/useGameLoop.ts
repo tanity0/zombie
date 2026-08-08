@@ -310,6 +310,7 @@ import {
 } from '../utils/cameraZoom';
 import {
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, bossRetreatKeepRadiusPx,
+  facilitiesLocked, // v0.25.3054: ボス戦中の施設ロック(発火ゲート)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
@@ -2499,7 +2500,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const castleBossReady = FORCE_CASTLE_BOSS || practiceForces('castlenow') || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
         // 洋館通路(corridorMode)は城なし(v0.25.2144・社長指示「城も出現しないで。時間で出るのは死神だけ」)
         // =5分の城ボス(giantbat)+バナーを出さない(城の実体もresetGameで遥か遠方に置いている)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady) {
+        // v0.25.3054: 別ボスと交戦中は城ボスの時間出現を先送り(出現アテンション/魔法陣がボス戦へ
+        // 割り込まない)。時間条件は満ちたままなので、交戦解除(+復帰猶予)の直後に出現する。
+        const castleSpawnLocked = (() => {
+          const cgs = useGameStore.getState();
+          return facilitiesLocked(cgs.bossFightNow, cgs.bossFightLastTrueAt, newGameTime);
+        })();
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !tutorialStage && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady && !castleSpawnLocked) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
@@ -3353,10 +3360,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 「報酬を取り上げる」のではなく「一度出るまで掴まない」形にして無限ループだけを断つ。
             if (!policeArmedRef.current && isPoliceRearmed(player, ppos)) policeArmedRef.current = true;
             const hiddenBossAlivePolice = pgs.enemies.some(e => isHiddenBoss(e.type));
+            // v0.25.3054(社長報告「ボス戦中に拠点発見すると閉じ込められて…ボスは去っていきバグる」):
+            // 既存の除外は裏ボス(bossChasing/hiddenBossAlive)だけで、**城ボス等との交戦中が素通り**だった。
+            // ボス交戦中(+復帰猶予)は発火させない(施設ロックfacilitiesLocked=商人/POIと同じ関所)。
             if (
               policeArmedRef.current &&
               isNearPolice(player, ppos) &&
-              !pgs.bossChasing && !hiddenBossAlivePolice && hunterRef.current.phase === 'idle'
+              !pgs.bossChasing && !hiddenBossAlivePolice && hunterRef.current.phase === 'idle' &&
+              !facilitiesLocked(pgs.bossFightNow, pgs.bossFightLastTrueAt, newGameTime)
             ) {
               const peEvent = {
                 kind: 'horde' as const, x: ppos.x, y: ppos.y, radius: POLICE_ARENA_RADIUS,

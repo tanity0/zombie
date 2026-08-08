@@ -129,6 +129,20 @@ export const bossRetreatKeepRadiusPx = (
   return (Math.max(viewport.width, viewport.height) / 2 + BOSS_RETREAT_KEEP_MARGIN_PX) / z;
 };
 
+// ---------------------------------------------------------------------------------------------
+// 施設ロック(社長指示v0.25.3054「ボス戦中は拠点とか城とか全部非表示。商人と拠点も。全て。
+// 戦闘解除されるとフェードインで復活」)
+// ---------------------------------------------------------------------------------------------
+// ボス交戦中(bossFightNow)+解除後の復帰猶予(=描画のフェードイン完了まで)の間、施設
+// (病院/武器庫/警察署/拠点/武器商人/城)の発火・サークル滞在・当たり判定を止める。
+// 猶予を置く理由(監査指摘): 解除の瞬間にゲートだけ先に開くと、まだ絵が薄い(alpha0.2)警察署から
+// アリーナが発生する——「見えないのに発火する」を作らないため、絵が戻り切るまでロックを保持する。
+export const FACILITY_REENABLE_MS = 700;
+export const facilitiesLocked = (
+  bossFightNow: boolean, bossFightLastTrueAt: number, now: number,
+): boolean =>
+  bossFightNow || (bossFightLastTrueAt > 0 && now - bossFightLastTrueAt < FACILITY_REENABLE_MS);
+
 /** 範囲外が連続BOSS_DISENGAGE_GRACE_MS(現行1.2秒)続いた時だけ離脱。1フレームでも戻れば予兆を取り消す。 */
 export const advanceBossDisengageGrace = (
   outside: boolean, since: number | undefined, now: number,
