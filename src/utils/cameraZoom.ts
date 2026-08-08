@@ -255,8 +255,11 @@ export const zoomCameraDownFrac = (baseFrac: number, zoom: number): number => {
 // 素直に諦める=画面外/上帯のまま)。南のボスは従来どおり中間寄せ+上限(下側にボケ帯問題は無い)。
 export const BOSS_CAMERA_LEAD_FRAC = 0.5;             // 南側: 横の寄せ(bossBiasDx*0.5)と同じ「中間寄せ」
 export const BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC = 0.18; // 南側: プレイヤーの画面ずれ上限(画面高比)
-export const BOSS_LEAD_TARGET_SCREEN_FRAC = 0.36;     // 北側: ボスをこの画面高さまで引き込む(ボケ帯の下)
-export const BOSS_LEAD_PLAYER_MAX_FRAC = 0.84;        // 北側: プレイヤーをこの画面高さまでしか下げない
+// v0.25.3015(社長指示): ①ターゲットは寄り引きに関わらず遠景・被写界深度に掛からない位置へ
+// (0.36=ギリギリ掛かる→0.44へ下げ) ②かなり引いた時のプレイヤーが近景(手前の茂み)に隠れるため、
+// 下限を少し上へ(0.84→0.78)。
+export const BOSS_LEAD_TARGET_SCREEN_FRAC = 0.44;     // 北側: ボスをこの画面高さまで引き込む(遠景/ボケ帯の下)
+export const BOSS_LEAD_PLAYER_MAX_FRAC = 0.78;        // 北側: プレイヤーをこの画面高さまでしか下げない
 export const bossCameraLeadY = (dyCenter: number, viewH: number, zoom: number): number => {
   const z = Math.max(ZOOM_MIN_ABS, Math.min(1, zoom));
   if (dyCenter >= 0) {
