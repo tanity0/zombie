@@ -303,7 +303,7 @@ import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   ZOOM_MIN_ABS,
-  BOSS_DISTANCE_ZOOM_TAU, BOSS_DISTANCE_ZOOM_RETURN_TAU, zoomCameraDownFrac, bossCameraLeadY,
+  springSmoothZoom, BOSS_DISTANCE_ZOOM_RETURN_TAU, zoomCameraDownFrac, bossCameraLeadY,
 } from '../utils/cameraZoom';
 import {
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, bossRetreatKeepRadiusPx,
@@ -1394,9 +1394,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 追尾カメラの進行方向先読みオフセット(px、描画のみ。フレーム間で保持)。
   const camLookAheadRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   // §6.37 v6: ボス交戦ズームのstore側推定(カメラ下げ連動用)。描画側(pixiScene)と同じ純関数
-  // (bossDistanceZoomTarget/交戦半径)+同じ時定数で追従した推定値。描画はstoreを読むだけ=逆流なし。
+  // (bossDistanceZoomTarget/交戦半径)+同じバネ/時定数で追従した推定値。描画はstoreを読むだけ=逆流なし。
   // engaged はヒステリシス用(交戦中は離脱半径で判定=pixiの bossCameraEngaged と同じ作法)。
-  const camBossZoomRef = useRef<{ z: number; engaged: boolean }>({ z: 1, engaged: false });
+  const camBossZoomRef = useRef<{ z: number; v: number; engaged: boolean }>({ z: 1, v: 0, engaged: false });
   // §6.37 v7: ボス方向への縦カメラ先読み(世界px・正=北)。イージング済みの現在値をフレーム間で保持。
   const camBossLeadYRef = useRef<number>(0);
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
@@ -6108,8 +6108,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           est.engaged = bossTargetNow != null;
           // contextZoomTargetで包む(敵数0=群衆項1)=?zoomlock固定も描画と一貫する。
           const camZoomTarget = contextZoomTarget(0, false, bossTargetNow);
-          const czTau = camZoomTarget < est.z - 0.0001 ? BOSS_DISTANCE_ZOOM_TAU : BOSS_DISTANCE_ZOOM_RETURN_TAU;
-          est.z += (camZoomTarget - est.z) * (1 - Math.exp(-baseDeltaTime / Math.max(0.001, czTau)));
+          // v0.25.3019(社長裁定「案2で少し慣性を入れたら?」): 交戦中は描画側と同じ臨界減衰バネで
+          // 距離に直結+慣性。解除後の戻りは従来の1次(RETURN_TAU)のまま。速度は解除時に捨てる。
+          if (est.engaged) {
+            const sp = springSmoothZoom(est.z, est.v, camZoomTarget, baseDeltaTime);
+            est.z = sp.z;
+            est.v = sp.v;
+          } else {
+            est.z += (camZoomTarget - est.z)
+              * (1 - Math.exp(-baseDeltaTime / BOSS_DISTANCE_ZOOM_RETURN_TAU));
+            est.v = 0;
+          }
           // §6.37 v7(社長指示「左右みたいに上下もカメラを寄せて」): 縦のボス先読み。横(描画側の
           // bossViewBiasX=中心差の半分)と同じ狙いを、縦は**カメラ本体**で寄せる(描画側のパンだと
           // 床上端が地平線から剥がれて「上の地面切れ」が再発するため)。入り0.5s/戻り1.0s=横と同系。

@@ -103,7 +103,7 @@ import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
-  BOSS_DISTANCE_ZOOM_RETURN_TAU, BOSS_DISTANCE_ZOOM_TAU, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
+  BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
 // 文脈ズームで最大まで引いた時(worldGroup.scale=ZOOM_MIN_ABS)でも画面を覆えるよう、worldGroup内の
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
@@ -3439,6 +3439,7 @@ export class PixiScene {
   private cameraY = 0;
   private zoomApplied = false; // ズーム(待機/パンチ)を worldGroup に適用中か(終了時に1度だけ戻す)
   private contextZoom = 1;     // 文脈ズーム(敵数/大型で少し引く・視覚専用)。目標へイージング追従。
+  private contextZoomVel = 0;  // v0.25.3019: 交戦中の距離ズームはバネ追従(慣性)。その速度(1/s)。
   private bossCameraEngaged = false; // 距離ヒステリシス込みのボス交戦カメラ状態
   private bossCameraReturning = false; // 敵視解除後だけ、通常画角へゆっくり戻す
   // v0.25.2965(社長報告「横は悪くないけど、上下がボス見えない」): 交戦中のボス方向カメラ寄せ(world px)。
@@ -6021,12 +6022,19 @@ export class PixiScene {
       if (isLargeForZoom(e.type)) hasLargeForZoom = true;
     }
     const czTarget = contextZoomTarget(nearCount, hasLargeForZoom, bossDistanceTarget);
-    const czTau = this.bossCameraEngaged
-      ? BOSS_DISTANCE_ZOOM_TAU
-      : this.bossCameraReturning
+    // v0.25.3019(社長裁定「案2で少し慣性を入れたら?」): 交戦中は臨界減衰バネで距離に直結+慣性。
+    // 非交戦(戻り/群衆)は従来の1次イージングのまま。切替時は速度を捨てて次の交戦を素の状態で始める。
+    if (this.bossCameraEngaged) {
+      const sp = springSmoothZoom(this.contextZoom, this.contextZoomVel, czTarget, zdt);
+      this.contextZoom = sp.z;
+      this.contextZoomVel = sp.v;
+    } else {
+      const czTau = this.bossCameraReturning
         ? BOSS_DISTANCE_ZOOM_RETURN_TAU
         : czTarget < this.contextZoom - 0.0001 ? CAMERA_MOVE_ZOOM_TAU : CAMERA_IDLE_ZOOM_TAU;
-    this.contextZoom += (czTarget - this.contextZoom) * (1 - Math.exp(-zdt / Math.max(0.001, czTau)));
+      this.contextZoom += (czTarget - this.contextZoom) * (1 - Math.exp(-zdt / Math.max(0.001, czTau)));
+      this.contextZoomVel = 0;
+    }
     if (this.bossCameraReturning && Math.abs(czTarget - this.contextZoom) < 0.002) {
       this.bossCameraReturning = false;
     }

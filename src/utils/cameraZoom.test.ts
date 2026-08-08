@@ -233,3 +233,59 @@ describe('bossCameraLeadY — ボス方向への縦カメラ先読み(北=目標
       bossCameraLeadY(-100000, H, ZOOM_MIN_ABS), 6);
   });
 });
+
+import { springSmoothZoom, BOSS_DISTANCE_ZOOM_TAU, BOSS_ZOOM_SPRING_OMEGA } from './cameraZoom';
+
+describe('springSmoothZoom — 距離ズームの臨界減衰バネ追従(案2+慣性・v0.25.3019)', () => {
+  const stepMany = (z0: number, target: number, seconds: number, dt = 1 / 60) => {
+    let z = z0, v = 0;
+    for (let t = 0; t < seconds; t += dt) {
+      const r = springSmoothZoom(z, v, target, dt);
+      z = r.z; v = r.v;
+    }
+    return { z, v };
+  };
+
+  it('静止目標へ収束する', () => {
+    const r = stepMany(1.0, 0.4, 2.0);
+    expect(r.z).toBeCloseTo(0.4, 3);
+    expect(Math.abs(r.v)).toBeLessThan(0.01);
+  });
+
+  it('臨界減衰=静止状態からのステップでオーバーシュートしない', () => {
+    let z = 1.0, v = 0;
+    for (let i = 0; i < 300; i++) {
+      const r = springSmoothZoom(z, v, 0.4, 1 / 60);
+      z = r.z; v = r.v;
+      expect(z).toBeGreaterThanOrEqual(0.4 - 1e-9);
+    }
+  });
+
+  it('等速で動く目標への定常遅れが1次イージング(τ=0.45s)より小さい=直結寄り', () => {
+    // 目標がボス後退相当で毎秒0.2ずつ引き方向へ動くとき、2秒後の追従遅れを比較する。
+    const rate = -0.2, dt = 1 / 60;
+    let sz = 1.0, sv = 0, fz = 1.0, target = 1.0;
+    for (let t = 0; t < 2.0; t += dt) {
+      target += rate * dt;
+      const r = springSmoothZoom(sz, sv, target, dt);
+      sz = r.z; sv = r.v;
+      fz += (target - fz) * (1 - Math.exp(-dt / BOSS_DISTANCE_ZOOM_TAU));
+    }
+    const springLag = Math.abs(sz - target);
+    const firstOrderLag = Math.abs(fz - target);
+    expect(springLag).toBeLessThan(firstOrderLag * 0.5);
+    // 理論値: バネの定常遅れ=2|rate|/ω、1次=τ|rate|。
+    expect(springLag).toBeCloseTo(2 * Math.abs(rate) / BOSS_ZOOM_SPRING_OMEGA, 2);
+  });
+
+  it('dt=0/不正dtは現状維持', () => {
+    expect(springSmoothZoom(0.7, -0.1, 0.4, 0)).toEqual({ z: 0.7, v: -0.1 });
+    expect(springSmoothZoom(0.7, -0.1, 0.4, Number.NaN)).toEqual({ z: 0.7, v: -0.1 });
+  });
+
+  it('巨大dtでも発散せず目標へ張り付く(厳密解)', () => {
+    const r = springSmoothZoom(1.0, 5.0, 0.4, 10);
+    expect(r.z).toBeCloseTo(0.4, 6);
+    expect(Math.abs(r.v)).toBeLessThan(1e-6);
+  });
+});

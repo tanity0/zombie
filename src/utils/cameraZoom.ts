@@ -38,6 +38,37 @@ export const BOSS_DISTANCE_ZOOM_MIN = BOSS_ZOOM_OVERRIDE ?? 0.40;
 export const BOSS_DISTANCE_ZOOM_TAU = 0.45;
 export const BOSS_DISTANCE_ZOOM_RETURN_TAU = 1.0;
 
+// v0.25.3019(社長裁定「案2で少し慣性を入れたら?」): 交戦中の距離ズーム追従を1次イージング
+// (τ=0.45s・目標変化に常にワンテンポ遅れる)から**臨界減衰バネ(2次・慣性つき)**へ変更。
+// バネは速度を持つので、連続的な距離変化(ボスが離れていく等)にはほぼ直結で張り付き、
+// ノックバック等の瞬間的な距離ノイズだけを慣性で吸収する(オーバーシュートは臨界減衰で出ない)。
+// 敵視解除後の「通常画角へ戻る」側は従来の1次(RETURN_TAU=1.0s)のまま。
+// デバッグ: ?zoomspring=8 等でωを上書き(大=直結寄り・小=慣性強め)。
+const ZOOM_SPRING_OVERRIDE: number | null = (() => {
+  if (typeof window === 'undefined') return null;
+  const v = new URLSearchParams(window.location.search).get('zoomspring');
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+})();
+export const BOSS_ZOOM_SPRING_OMEGA = ZOOM_SPRING_OVERRIDE ?? 12; // rad/s。整定≈4.7/ω≈0.4s
+
+/** 臨界減衰バネの1ステップ(厳密解=どんなdtでも発散しない)。zは現在値、vは現在速度(1/s)。 */
+export const springSmoothZoom = (
+  current: number, velocity: number, target: number, dtSec: number,
+  omega: number = BOSS_ZOOM_SPRING_OMEGA,
+): { z: number; v: number } => {
+  const dt = Number.isFinite(dtSec) && dtSec > 0 ? dtSec : 0;
+  if (dt === 0) return { z: current, v: velocity };
+  const e = Math.exp(-omega * dt);
+  const a = current - target;
+  const b = velocity + omega * a;
+  return {
+    z: target + (a + b * dt) * e,
+    v: (b - omega * (a + b * dt)) * e,
+  };
+};
+
 export type BossZoomClass = 'compact' | 'standard' | 'giant';
 export interface BossZoomProfile { near: number; mid: number; far: number }
 
