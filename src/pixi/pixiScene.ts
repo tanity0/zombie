@@ -327,7 +327,11 @@ const ZOOM_CLOUD_FADE_W = 0.35;                // フェード幅(pull01)
 //        'front'=最前面・uiLayerの直下(bottomFracは画面高比)。
 const ZOOM_CLOUD_LAYERS = [
   // 高さ: 手前30%/奥20%(社長指示v0.25.3013「30% 20%にして」。旧62%/46%は大きすぎ)。遠景=16%。
-  { place: 'far', heightFrac: 0.16, bottomFrac: 0.06, alpha: 0.7, driftPxS: 5, paraX: 0.15, blur: 4, bobAmp: 3, bobPhase: 3.1, tileOfs: 700 },
+  // v0.25.3023(社長指示「遠景の雲、もう少し上に、半透明で。さらにもう一本裏にも。少しだけ上に
+  // ずらして」): far層を上へ(bottomFrac 0.06→0.00)+半透明化(0.7→0.45)し、その裏(配列先頭=
+  // 一番奥)へ2本目を追加(さらに0.05上・薄め・遅め=奥の雲ほどゆっくり)。
+  { place: 'far', heightFrac: 0.16, bottomFrac: -0.05, alpha: 0.40, driftPxS: 3, paraX: 0.10, blur: 4, bobAmp: 2, bobPhase: 5.0, tileOfs: 300 },
+  { place: 'far', heightFrac: 0.16, bottomFrac: 0.00, alpha: 0.45, driftPxS: 5, paraX: 0.15, blur: 4, bobAmp: 3, bobPhase: 3.1, tileOfs: 700 },
   { place: 'front', heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
   { place: 'front', heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
 ] as const;
@@ -3482,7 +3486,7 @@ export class PixiScene {
   // 近景コピー(下部レイヤー・社長裁定v0.25.3000で復活)。実近景の直後ろ・上ずらしはhorizonRidgeStepPx。
   private frontRidgeCopy: TilingSprite | null = null;
   // 引き雲(uiLayer直下=最前面。深い引きの時だけ表示・社長支給素材2026-08-08)。
-  // [0]=奥(シャープ・遅い) / [1]=手前(大きい・半透明・ぼかし・速い)。ZOOM_CLOUD_LAYERSと同順。
+  // ZOOM_CLOUD_LAYERSと同順(配列先頭=一番奥)。far×2(空)+front×2(最前面)。
   private zoomClouds: TilingSprite[] = [];
   private makerGrid: Graphics | null = null; // ボスメーカーの方眼(部屋に居る時だけ生成/描画)
 
