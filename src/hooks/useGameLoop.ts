@@ -256,7 +256,8 @@ import {
   parseBotSkill, botSkillProfile, dodgeVector, dodgeToInput, dodgeOverridesAttack,
   createWarpTrackState, warpDodge, type BotSkill,
 } from '../utils/botSkill';
-import { parseBotObjective, planObjective, steerTo, type BotObjective } from '../utils/botObjective';
+import { parseBotObjective, planObjective, steerTo, HOLD_INPUT, type BotObjective } from '../utils/botObjective';
+import { botObjectivePois } from '../utils/botObjectivePois'; // v0.25.3052 campaign: 寄り道POIの詰め替え(実機/ヘッドレス共有)
 import {
   tickEngagementPhase, createEngagementTrackState, advanceOptionDetour,
 } from '../utils/botEngagement';
@@ -2066,6 +2067,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               activeEvent: loopState.activeEvent
                 ? { kind: loopState.activeEvent.kind, x: loopState.activeEvent.x, y: loopState.activeEvent.y, radius: loopState.activeEvent.radius }
                 : null,
+              // v0.25.3052 campaign: 寄り道POIと制圧サークル半径(campaign 以外の目的は読まない)。
+              pois: botObjectivePois(loopState),
+              scrap: player.straps,
+              baseCaptureRadius: BASE_CAPTURE_RADIUS,
             })
           : null;
         const botGunForRange = BOT_PERSONA ? getActiveGun(player) : undefined;
@@ -2147,8 +2152,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 : null)
               ?? steerTo(player.x + player.width / 2, player.y + player.height / 2, botGoalPlan.destination))
           : null;
+        // v0.25.3052 campaign: 目的が「留まれ」と言っている間は移動入力を0にする。
+        // 拠点(10秒)/POI(3秒)の滞在は「サークル内に居続ける」ことが条件だが、steerTo は到着圏内で
+        // null を返し通常の徘徊入力へ落ちるため、これが無いと滞在が永久に貯まらない(依頼#6で実測)。
+        // **回避より下**に置く=生存を犠牲にしてまで留まらない。hold 未指定の目的では完全な no-op。
         const inputState = botWarpVec ? dodgeToInput(botWarpVec)
           : botDodge ? dodgeToInput(botDodge)
+          : (botGoalPlan && botGoalPlan.hold) ? HOLD_INPUT
           : botObjSteer ? dodgeToInput(botObjSteer, 0.3)
           : (botMineAdj ? botMineAdj.input : touchInputState);
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない

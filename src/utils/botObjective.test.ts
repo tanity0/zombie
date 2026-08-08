@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
   planObjective, parseBotObjective, steerTo, outwardPoint, nearestOfType, nearestUncapturedBase,
   ARRIVE_DIST, HIDDEN_BOSS_MIN_LEVEL, FARM_RADIUS, arenaPlan, nearestEventEnemy,
+  nearestUnopenedPoi, CAMPAIGN_MIN_LEVEL, CAMPAIGN_BOSS_ENGAGE_PX, HOLD_INPUT,
   type ObjectiveWorld,
 } from './botObjective';
 import type { Enemy, EnemyType, BaseSite, Pickup } from '../types/game';
@@ -21,6 +22,110 @@ const world = (over: Partial<ObjectiveWorld> = {}): ObjectiveWorld => ({
   hiddenBoss: null, hiddenBossLair: null, hiddenBossDefeated: false,
   baseSites: [], enemiesKilled: 0, gameWon: false, activeEvent: null,
   ...over,
+});
+
+// v0.25.3052 campaign: 通し(拠点→POI→城ボス)。
+// ★この目的の肝は **hold**(サークル内に留まる)。これが無いと steerTo が到着圏内で null を返して
+//   通常の徘徊入力へ落ち、拠点(10秒)/POI(3秒)の滞在が永久に貯まらない(依頼#6で実測した実バグ)。
+describe('campaign(通し)', () => {
+  const poi = (kind: 'armory' | 'hospital' | 'police', x: number, y: number, over: Record<string, unknown> = {}) =>
+    ({ kind, x, y, taken: false, radius: 95, ...over }) as NonNullable<ObjectiveWorld['pois']>[number];
+
+  it('未制圧の拠点があれば、城より先に拠点へ向かう', () => {
+    const p = planObjective({ kind: 'campaign' }, world({
+      baseSites: [base('a', 800, 0)],
+      castleEvent: { x: 5000, y: 0 } as unknown as ObjectiveWorld['castleEvent'],
+      baseCaptureRadius: 130,
+    }));
+    expect(p.destination).toEqual({ x: 800, y: 0 });
+    expect(p.hold).toBeFalsy();          // まだ遠い=歩く
+    expect(p.note).toContain('拠点');
+  });
+
+  it('★拠点のサークル内に入ったら hold=true(留まらないと制圧できない)', () => {
+    const p = planObjective({ kind: 'campaign' }, world({
+      px: 50, py: 0, baseSites: [base('a', 0, 0)], baseCaptureRadius: 130,
+    }));
+    expect(p.hold).toBe(true);
+    expect(p.travel).toBe(false);        // 進むのではなく留まる
+  });
+
+  it('拠点を全部取ったらPOIへ。POIの円内でも hold=true', () => {
+    const w = world({
+      baseSites: [base('a', 0, 0, 'captured')],
+      pois: [poi('hospital', 600, 0)], baseCaptureRadius: 130,
+    });
+    expect(planObjective({ kind: 'campaign' }, w).destination).toEqual({ x: 600, y: 0 });
+    const inside = planObjective({ kind: 'campaign' }, { ...w, px: 620, py: 0 });
+    expect(inside.hold).toBe(true);
+  });
+
+  it('警察署は「留まる」ではなく戦う=hold を出さない(囲いイベントが起きるため)', () => {
+    const p = planObjective({ kind: 'campaign' }, world({
+      px: 10, py: 0, pois: [poi('police', 0, 0, { radius: 240 })], baseCaptureRadius: 130,
+    }));
+    expect(p.hold).toBeFalsy();
+  });
+
+  it('武器庫はスクラップが足りない間スキップする(足りたら向かう)', () => {
+    const w = world({ pois: [poi('armory', 500, 0, { cost: 100 })], scrap: 30, baseCaptureRadius: 130 });
+    expect(nearestUnopenedPoi(w)).toBeNull();
+    expect(nearestUnopenedPoi({ ...w, scrap: 150 })?.kind).toBe('armory');
+  });
+
+  it('取得済みPOIは対象にしない', () => {
+    const w = world({ pois: [poi('hospital', 500, 0, { taken: true })] });
+    expect(nearestUnopenedPoi(w)).toBeNull();
+  });
+
+  it('拠点もPOIも片付いたら、レベルが足りなければLv上げ→足りれば城へ', () => {
+    const w = world({ castleEvent: { x: 5000, y: 0 } as unknown as ObjectiveWorld['castleEvent'] });
+    expect(planObjective({ kind: 'campaign' }, { ...w, level: 1 }).note).toContain('Lv上げ');
+    expect(planObjective({ kind: 'campaign' }, { ...w, level: CAMPAIGN_MIN_LEVEL }).destination).toEqual({ x: 5000, y: 0 });
+  });
+
+  it('★城ボスが至近なら、拠点が残っていても先に戦う(逃げ続けると詰むため)', () => {
+    const boss = enemy('giantbat', 100, 0);
+    const w = world({ enemies: [boss], baseSites: [base('a', 800, 0)], baseCaptureRadius: 130 });
+    expect(planObjective({ kind: 'campaign' }, w).focus).toBe(boss);
+    // 遠い城ボスは無視して拠点を優先する
+    const far = world({
+      enemies: [enemy('giantbat', CAMPAIGN_BOSS_ENGAGE_PX + 500, 0)],
+      baseSites: [base('a', 800, 0)], baseCaptureRadius: 130,
+    });
+    expect(planObjective({ kind: 'campaign' }, far).note).toContain('拠点');
+  });
+
+  it('帰還サークルが出たら最優先。勝利したら done', () => {
+    expect(planObjective({ kind: 'campaign' }, world({
+      returnCircle: { x: 9, y: 9, radius: 100 }, baseSites: [base('a', 800, 0)],
+    })).destination).toEqual({ x: 9, y: 9 });
+    expect(planObjective({ kind: 'campaign' }, world({ gameWon: true })).done).toBe(true);
+  });
+
+  it('囲いイベントは campaign より優先される(既存の掟を壊さない)', () => {
+    const p = planObjective({ kind: 'campaign' }, world({
+      activeEvent: { kind: 'horde', x: 300, y: 0, radius: 200 },
+      baseSites: [base('a', 800, 0)], baseCaptureRadius: 130,
+    }));
+    expect(p.pressAttack).toBe(true);
+    expect(p.note).toContain('囲い');
+  });
+
+  it('パラメータを解釈する(campaign / campaign:LV)', () => {
+    expect(parseBotObjective('campaign')).toEqual({ kind: 'campaign' });
+    expect(parseBotObjective('campaign:15')).toEqual({ kind: 'campaign', minLevel: 15 });
+  });
+
+  it('POI/半径を渡さない既存の呼び出しでも壊れない(後方互換)', () => {
+    const p = planObjective({ kind: 'campaign' }, world({ baseSites: [base('a', 800, 0)] }));
+    expect(p.hold).toBeFalsy();     // baseCaptureRadius 未指定 = hold を出さない
+    expect(p.destination).toEqual({ x: 800, y: 0 });
+  });
+
+  it('HOLD_INPUT は「どこにも動かない」', () => {
+    expect(HOLD_INPUT).toEqual({ up: false, down: false, left: false, right: false });
+  });
 });
 
 describe('none(既定)', () => {

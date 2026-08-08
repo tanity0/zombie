@@ -21,7 +21,7 @@ import {
   useGameStore, isKatanaMode, hasSkill, AMMO_MAX,
   skillCritMult, skillOutgoingDamageMult, skillComboMasterMult, sniperGunMult,
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, PUMPKIN_EXPLOSION_RADIUS, HUNTER_VISION_RANGE,
-  GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH,
+  GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH, BASE_CAPTURE_RADIUS,
 } from '../store/gameStore';
 import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey } from './weaponUtils';
 import { pickAmmoDropType } from './ammoDrop';
@@ -53,7 +53,8 @@ import {
   botSkillProfile, dodgeVector, dodgeToInput, dodgeOverridesAttack,
   createWarpTrackState, warpDodge, type BotSkill, type WarpTrackState,
 } from './botSkill';
-import { planObjective, steerTo, type BotObjective, type ObjectiveWorld, type ObjectivePlan } from './botObjective';
+import { planObjective, steerTo, HOLD_INPUT, type BotObjective, type ObjectiveWorld, type ObjectivePlan } from './botObjective';
+import { botObjectivePois } from './botObjectivePois'; // v0.25.3052 campaign: 寄り道POIの詰め替え(実機/ヘッドレス共有)
 import {
   tickEngagementPhase, createEngagementTrackState, advanceOptionDetour, type EngagementTrackState,
 } from './botEngagement';
@@ -413,6 +414,10 @@ const buildObjectiveWorld = (_obj: BotObjective): ObjectiveWorld => {
     activeEvent: s.activeEvent
       ? { kind: s.activeEvent.kind, x: s.activeEvent.x, y: s.activeEvent.y, radius: s.activeEvent.radius }
       : null,
+    // v0.25.3052 campaign: 寄り道POIと制圧サークル半径(useGameLoop 側と同じ共有関数で詰める)。
+    pois: botObjectivePois(s),
+    scrap: p.straps,
+    baseCaptureRadius: BASE_CAPTURE_RADIUS,
   };
 };
 
@@ -522,8 +527,11 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
           : null)
         ?? steerTo(player.x + player.width / 2, player.y + player.height / 2, objPlan.destination))
     : null;
+  // v0.25.3052 campaign: 目的が「留まれ」と言っている間は移動入力を0にする(useGameLoop側と同じ枝)。
+  // 拠点(10秒)/POI(3秒)の滞在は「サークル内に居続ける」ことが条件。**回避より下**=生存優先は崩さない。
   const finalInput = warpVec ? dodgeToInput(warpVec)
     : dodge ? dodgeToInput(dodge)
+    : (objPlan && objPlan.hold) ? HOLD_INPUT
     : objSteer ? dodgeToInput(objSteer, 0.3)
     : mineAdj.input;
   useGameStore.getState().movePlayer(finalInput, dt);
