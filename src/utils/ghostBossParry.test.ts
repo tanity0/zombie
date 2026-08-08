@@ -33,6 +33,9 @@ describe('isDashParryCounterPhase: プレイヤーのdashParried対象フェー�
     expect(isDashParryCounterPhase({ type: 'pumpkin', aiPhase: 'g-dash-charge' })).toBe(false);
     expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: undefined })).toBe(false);
   });
+  it('三連突進(g-quad-charge)はカウンター不可の技(社長裁定v0.25.3049・予告は紫)——表に加えない', () => {
+    expect(isDashParryCounterPhase({ type: 'giantbat', aiPhase: 'g-quad-charge' })).toBe(false);
+  });
 });
 
 describe('dashParriedEnemyPatch: 技の中断+攻め手から弾き飛ばす変換', () => {

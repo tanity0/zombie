@@ -8367,7 +8367,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
-    const quadBreathSparkles: { x: number; y: number }[] = [];   // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給素材・set後にspawnEffect)。
+    const quadBreathSparkles: { x: number; y: number }[] = [];   // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給素材・set後にspawnEffect)。v0.25.3049: 三連突進の軌跡も同じ籠で撒く。
     let bossLeashWarning = false;
     set(state => {
       // ★上の注記のとおり、**このフレームに他所から積まれた判定を先に引き継ぐ**。
@@ -9509,6 +9509,19 @@ export const useGameStore = create<GameState>((set, get) => ({
               const dashBase = getEnemyBaseSpeed('werewolf'); // 現行不変(基準は犬と同じ)。M65の倍率は新技には掛けない。
               const cs = dashBase * GIANT_CHARGE_SPEED_MULT;
               const cvx = cdirx * cs, cvy = cdiry * cs;
+              // v0.25.3049(社長指示「氷の三連突進はブレスと同じくキラキラのエフェクト付けて」):
+              // 突進の軌跡の少し後ろへ粉雪のキラキラを間引きながら撒く(冷気ブレスv0.25.3042と同じ
+              // 素材・同じ籠=判定ゼロの派手枠②。ブレスと突進は同時に走らないので時計も共用)。
+              if (gameTime - quadSparkleLastAt >= 60) {
+                quadSparkleLastAt = gameTime;
+                for (let qi = 0; qi < 2; qi++) {
+                  const qBack = Math.random() * 70;
+                  quadBreathSparkles.push({
+                    x: ecx - cdirx * qBack + (Math.random() - 0.5) * 44,
+                    y: ecy - cdiry * qBack + (Math.random() - 0.5) * 44,
+                  });
+                }
+              }
               const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
               const cmoved = resolveMove(rawX, rawY);
               const hitShield = shieldRects.length > 0 && shieldRects.some(s => rectsOverlap({ x: cmoved.x, y: cmoved.y, width: enemy.width, height: enemy.height }, s));

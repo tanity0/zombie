@@ -5529,6 +5529,7 @@ export class PixiScene {
     hideFog(2, 'fogtop');   // 森上(最下部)
     if (HIDE_LAYERS.has('nhmist') && this.nearHorizonMist) this.nearHorizonMist.visible = false;   // 森2の底=森と地面の境界
     if (HIDE_LAYERS.has('ground')) this.L.groundBase.visible = false;
+    if (HIDE_LAYERS.has('gapband') && this.worldGapBand) this.worldGapBand.visible = false; // §6.37 v4隙間帯(v0.25.3049切り分け用)
     // ★v0.25.2786: 遠景の層を全部消しても線が残ったので、**上に被せている幕**も落とせるようにした。
     if (HIDE_LAYERS.has('grade')) this.gradeSprite.visible = false;
     if (HIDE_LAYERS.has('vig')) this.vignette.visible = false;
@@ -15039,12 +15040,15 @@ export class PixiScene {
         o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).fill({ color: 0xff2a2a, alpha: 0.05 + 0.18 * dt + 0.06 * gPulse });
         o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * dt + 0.12 * gPulse });
       } else if (gph === 'g-quad-windup') {
-        // M66 stage-4「三連突進」の各回: T1赤ライン+終点リング(既存dashと同じ意匠)。
+        // M66 stage-4「三連突進」の各回: T1ライン+終点リング(既存dashと同じ意匠)。
+        // v0.25.3049(社長裁定「カウンター不能技に。紫線に変更で」): 突進の体当たりはパリィ表外=
+        // カウンター不可の技として確定。色の文法②(紫=カウンターできない攻撃・ミーミルのレーザーと
+        // 同じ読み分け)に従い、予告を赤→紫にする(判定と線の一致=掟はそのまま)。
         const qtx = e.aiTargetX ?? cx, qty = e.aiTargetY ?? cy;
         const qa = 0.45 + 0.4 * gPulse;
-        o.moveTo(cx, cy).lineTo(qtx, qty).stroke({ width: 6, color: 0xff2a2a, alpha: qa * 0.4, cap: 'round' });
-        o.moveTo(cx, cy).lineTo(qtx, qty).stroke({ width: 2, color: 0xff5a5a, alpha: qa, cap: 'round' });
-        o.circle(qtx, qty, 9 + 3 * gPulse).stroke({ width: 2, color: 0xff5a5a, alpha: qa });
+        o.moveTo(cx, cy).lineTo(qtx, qty).stroke({ width: 6, color: 0xa855f7, alpha: qa * 0.4, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(qtx, qty).stroke({ width: 2, color: 0xc084fc, alpha: qa, cap: 'round' });
+        o.circle(qtx, qty, 9 + 3 * gPulse).stroke({ width: 2, color: 0xc084fc, alpha: qa });
       } else if (gph === 'g-quad-breath-windup' || gph === 'g-quad-breath-active') {
         // M66 stage-4「氷の横薙ぎ」: T3扇(帯が回転)。windupは最終的に薙ぐ全域(120°)を薄く先出し
         // (掟W1)、activeは「その瞬間」の細い帯だけを判定と同寸で描く(図形=判定の一致)。
@@ -15198,7 +15202,10 @@ export class PixiScene {
           const carve = h.moveKey === 'g-talon'
             ? Math.max(0, Math.min(1, (gameTime - carveFrom) / (CLAW_CARVE_MS / ENEMY_ATTACK_SPEED_MULT)))
             : 1;
-          if (!h.ice) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t, carve);
+          // v0.25.3049(社長指示「三連射の最後の真ん中だけが爪痕みたいの合ってないから揃えて」):
+          // 三連射(g-trishot)の三拍目は旧・翼撃から判定を引き継いだ際に爪痕(D-2)も付いてきていた。
+          // 今の絵は「3挺の銃」なので爪は場違い=左右の帯と同じ素の帯に揃える(爪はグレンtalon等のまま)。
+          if (!h.ice && h.moveKey !== 'g-trishot') this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t, carve);
         } else {
           o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: 0.05 + 0.18 * t + 0.06 * gPulse });
           o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.45 * t + 0.12 * gPulse });
