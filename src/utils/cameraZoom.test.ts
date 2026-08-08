@@ -119,14 +119,23 @@ import { bossFramingZoom, BOSS_FRAME_EDGE_MARGIN_PX, BOSS_ZOOM_PROFILES as PROFI
 
 describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () => {
   const vp = { width: 800, height: 600 };
-  it('縦=帯基準で全量/横=半分+MID床の軸別要求(v0.25.2969・縦持ち実写から)', () => {
+  it('縦=帯基準で全量/横=先読み予算込みの要求(v0.25.3066・社長報告「横が画面外」対応)', () => {
     // 縦は「見える帯(画面高×0.45)」の半径で全量を測る=上下に逃げられたら素直に引く
     const bandHalf = (vp.height * 0.45) / 2;
     expect(bossFramingZoom(0, 500, vp)).toBeCloseTo((bandHalf - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
-    // 横は半分で測り、床=BOSS_ZOOM_MID(1.7倍引き)を割らない=横のために豆粒化しない
-    expect(bossFramingZoom(2000, 0, vp)).toBeCloseTo(1 / 1.7, 6);
-    // 横500pxなら引き不要(寄せが半分担う)
+    // 横は可視条件 |dx|·z ≤ (1−PLAYER_EDGE)·W − margin をそのまま要求にする。
+    // 旧「半分+MID床」は退役済みパン(bossViewBiasX)前提で、横に離れるとボスが画面外に残った。
+    const xBudget = (1 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * vp.width - BOSS_FRAME_EDGE_MARGIN_PX;
+    expect(bossFramingZoom(2000, 0, vp)).toBeCloseTo(xBudget / 2000, 6);
+    // 横500pxなら引き不要(寄せ(bossCameraLeadX)が担う)
     expect(bossFramingZoom(500, 0, vp)).toBeGreaterThan(1);
+  });
+  it('横に離れたボスも縦と同じ深さ(profile.far)まで引いて捉える(v0.25.3066回帰)', () => {
+    // 縦持ち実機相当(390×844)・横800px離れ: 旧MID床(0.588)ではボスが画面外だった。
+    // 新式では要求(≈0.30)が床farでクランプされ、far=0.40まで引く(=縦と同じ深さ)。
+    const phone = { width: 390, height: 844 };
+    const deep = bossDistanceZoomTarget('mimir', 700, false, { dxCenter: 800, dyCenter: 0, viewport: phone });
+    expect(deep).toBeCloseTo(PROFILES2.giant.far, 6);
   });
   it('近距離(足元の等倍帯)ではフレーミング項が効かない=等倍のまま', () => {
     // 直接のbossFramingZoomは帯基準で1未満になり得るが、bossDistanceZoomTargetのNEAR帯+ブレンドが守る
@@ -139,7 +148,7 @@ describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () =
     const bandHalf2 = (vp.height * 0.45) / 2;
     const pulled = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 0, dyCenter: 600, viewport: vp });
     expect(pulled).toBeCloseTo(Math.max(far, (bandHalf2 - BOSS_FRAME_EDGE_MARGIN_PX) / 600), 6);
-    // 横600離れ: 横は半分要求=引き不要→アンカー(直線カーブ・v0.25.3013)のまま
+    // 横600離れ: 横の要求(予算536/600≈0.89)はアンカーより弱い→アンカー(直線カーブ・v0.25.3013)のまま
     const linMid = 1 + (PROFILES2.giant.far - 1)
       * ((500 - BOSS_DISTANCE_ZOOM_NEAR_PX) / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
     const pulledX = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 600, dyCenter: 0, viewport: vp });

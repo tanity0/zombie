@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.3066 — 横フレーミングの旧パン前提を撤去(社長報告「横のズーム引きがボスを捉えきれてない。画面外にいる」)【2026-08-09 02:09 JST】
+真因: bossFramingZoom の横要求(needX)が v3064 で退役させた描画パン(bossViewBiasX=中心差の
+50%負担)を前提の「|dx|/2 で測る+床BOSS_ZOOM_MID(1.7倍引りまで)」のままだった。現行の横先読み
+(bossCameraLeadX)の寄せ上限は画面幅の(0.5−0.28)=0.22Wしかないため、縦持ちの狭い幅では
+|dx|≈460wpx以遠でボスが画面外に残っていた。
+実装: needX を可視条件そのもの「|dx|·z ≤ (1−PLAYER_EDGE)·W − margin」に変更し、MID床を撤去
+(最終床は従来どおり bossDistanceZoomTarget の profile.far=縦と同じ深さまで引ける)。
+cameraZoom.ts の1関数のみ・描画(pixiScene)とstore推定(useGameLoop)は同じ純関数を読むため両対応。
+テスト: 新needX直値+回帰1件(縦持ち390×844・横800px離れで far=0.40 まで引く。旧式はMID床0.588で
+画面外だった)。自己点検: 湧き/判定の式は不変(ズーム目標の算出のみ)。憲法抵触なし。
+検証: typecheck OK / lint エラー0 / cameraZoom 35件緑。実機確認: 横に離れた時ズームが縦と同様に
+深くなりボスが画面内に残ること(捕捉限界は縦持ちで|dx|≈600wpx・それ以遠は矢印+リーシュ700が拾う)。
+
 ## v0.25.3065 — 離脱距離1000→700(社長指示)【2026-08-09 01:47 JST】
 BOSS_LEASH_PX 1000→700(城ボス+裏ボス/トール共通)。テスト直値も同コミット更新。
 検証: typecheck OK / lint エラー0 / bossEngagement 19件緑。

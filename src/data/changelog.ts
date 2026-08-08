@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3066',
+    items: [
+      '横に離れたボスをズームが捉えきれず画面外に残る問題を修正しました(横も縦と同じ深さまで引いてボスを映します)。',
+    ],
+  },
+  {
     version: '0.25.3065',
     items: [
       'ボスの離脱距離を1000pxから700pxに調整しました。',

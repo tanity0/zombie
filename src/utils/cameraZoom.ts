@@ -117,15 +117,16 @@ export const bossFramingZoom = (
 ): number => {
   // 役割分担(社長スクショ3枚+実写から):
   // ・**縦=ズーム担当**: 帯の半径で全量を測る=上下に離れたら素直に引いてボスを小さく映す。
-  // ・**横=寄せ担当**: 要求は中心差の半分(寄せ50%が負担)。さらに**床=BOSS_ZOOM_MID(1.7倍引き)**を
-  //   割らない=横のためにそれ以上は引かない(縦持ちの狭い幅で豆粒化するくらいなら、画面外は
-  //   オフスクリーン矢印+即帰巣リーシュ(v0.25.2968)に任せる)。
+  // ・**横=寄せ+ズーム**(v0.25.3066・社長報告「横のズーム引きがボスを捉えきれてない。画面外にいる」):
+  //   旧needX(中心差の半分+MID床)は退役済みの描画側パン(bossViewBiasX=寄せ50%負担)前提だった。
+  //   現行の横先読み(bossCameraLeadX)の寄せは画面幅の(0.5−PLAYER_EDGE)=0.22Wが上限なので、
+  //   可視条件は |dx|·z ≤ (1−PLAYER_EDGE)·W − margin。これをそのまま要求にし、MID床は撤去
+  //   (最終床は縦と同じく bossDistanceZoomTarget の profile.far=縦横で引ける深さを揃える)。
   const bandHalfY = (viewport.height * BOSS_FRAME_BAND_H_FRAC) / 2;
   const needY = Math.max(0.01, bandHalfY - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dyCenter));
-  const needX = Math.max(
-    BOSS_ZOOM_MID,
-    (viewport.width / 2 - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dxCenter) / 2),
-  );
+  const needX = Math.max(0.01,
+    (1 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewport.width - BOSS_FRAME_EDGE_MARGIN_PX,
+  ) / Math.max(1, Math.abs(dxCenter));
   return Math.min(needX, needY);
 };
 
