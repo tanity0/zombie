@@ -14812,8 +14812,11 @@ export class PixiScene {
       // (3d) 咆哮弾の銃(g-bolt)= v0.25.3034(社長指示「boltも銃のどれかの絵を使って」)。
       //      扇(fan)=ショットガン / 3連発(burst)=ライフル。プレイヤー方向へ構え、発射時刻ごとに反動。
       //      弾そのもの(赤二重丸)が危険の表示なので、銃は装飾=分類②(トライショットと同じ演出文法)。
+      //      v0.25.3039(社長裁定「ステージ5だけだよ」): 銃の絵は軍隊テーマのstage-5ボス限定。
+      //      咆哮弾の技自体は全城ボス共通のまま(他ステージは従来どおり絵なし)。
       {
-        const boltArt = gph === 'g-bolt-windup' || gph === 'g-bolt-burst' || gph === 'g-bolt-recover';
+        const boltArt = this.currentFarKey === 'stage5'
+          && (gph === 'g-bolt-windup' || gph === 'g-bolt-burst' || gph === 'g-bolt-recover');
         if (boltArt) {
           const mult = ENEMY_ATTACK_SPEED_MULT;
           const burst2 = (e.gBoltPattern ?? 'fan') === 'burst';
