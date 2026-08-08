@@ -69,6 +69,10 @@ export const BULLET_MOVE_KEYS = [
   'thor-burst', 'thor-radial',
   'miguel-volley', 'jibril-volley', 'uri-bolt', 'suriel-gaze', 'acrasiel-gaze',
   'idol-aim', 'idol-fan', 'idol-orb',
+  // v0.25.3027(社長裁定): グレン第二形態の胴体弾(連結パーツからのV字斉射・gameStore.ts)。
+  // 専用aiPhaseを持たない周期斉射のため状態表(BULLET_STATE_TO_MOVE)からは引けず、
+  // 発射側が生成後に srcMoveKey を直接付ける(監査指摘対応)。
+  'g-parts',
   // 射撃部品(v0.25.2638・BOSS_MAKER.md): 社長がメーカーで足す弾撃ち技の8枠。
   // **技キーは枠の記号(s1〜s8)で固定**する——社長が付けた名前(「ジャブ」等)は実行中に変わるので、
   // 記録のキーに使うと**同じ技の記録が名前を変えた瞬間に分断される**。表示名は引く側で解決する。

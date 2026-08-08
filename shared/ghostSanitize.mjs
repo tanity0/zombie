@@ -73,7 +73,7 @@ const MOVE_KEYS = new Set([
   'g-stomp','g-sweep','g-jump','g-dash','g-bolt','g-trijump','g-bite','g-slam','g-glide','g-dive','g-quad','g-nova','g-wing','g-sweepbeam','g-talon','g-boon','g-reach','g-nihil',
   'thor-issen','thor-tsuki','thor-harai','thor-jump','mimir-bite','mimir-laser','mimir-dash','jormungand-coil','jormungand-dash','skadi-ice','skadi-blade','skadi-cage','skadi-dash',
   'miguel-mdash','miguel-tate','miguel-harai','jibril-consecrate','jibril-lantern','rafi-bone','rafi-jump','rafi-sweep','uri-downslash','uri-sweep','uri-thrust','suriel-ring','suriel-sweep','acrasiel-burst','acrasiel-spear','acrasiel-spike','idol-roll','idol-punch','idol-snipe',
-  'mimir-burst','mimir-radial','jormungand-burst','jormungand-radial','skadi-burst','skadi-radial','thor-burst','thor-radial','miguel-volley','jibril-volley','uri-bolt','suriel-gaze','acrasiel-gaze','idol-aim','idol-fan','idol-orb',
+  'mimir-burst','mimir-radial','jormungand-burst','jormungand-radial','skadi-burst','skadi-radial','thor-burst','thor-radial','miguel-volley','jibril-volley','uri-bolt','suriel-gaze','acrasiel-gaze','idol-aim','idol-fan','idol-orb','g-parts',
   'idol-s1','idol-s2','idol-s3','idol-s4','idol-s5','idol-s6','idol-s7','idol-s8',
 ]);
 

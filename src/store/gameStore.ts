@@ -110,6 +110,10 @@ import {
   pickGiantMoveWithGlen, glenScriptApplies, type GlenMoveId, GLEN_NIHIL_CHANT_COUNT,
   GIANT_PHASE_HP_THRESHOLD, glenTriJumpPoints, GLEN_TRIJUMP_COUNT,
 } from '../utils/giantScript';
+// v0.25.3027: グレン第二形態の胴体弾(連結パーツからのV字斉射・社長裁定)。台帳と式は描画と共有。
+import {
+  pushGlenTrail, shouldGlenVolley, glenVolleyShots, GLEN_VOLLEY_CD_MS, type GlenTrailPoint,
+} from '../utils/glenChain';
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -1866,6 +1870,9 @@ let sensorMineSeq = 0;  // センサー地雷(sensor-mine)の一意id採番(プ�
 let flareGunSeq = 0;    // フレアガン(flare-gun)のフレアの一意id採番(プール/差分の安定キー)
 let bossFireSeq = 0;    // ジブリルのランタン火の一意id採番(プール/差分の安定キー)
 let acrasielSpearSeq = 0; // §6.28-19: アクラシエルの結晶の槍の一意id採番(プール/差分の安定キー)
+// v0.25.3027: グレン第二形態の胴体弾用・sim側の足元軌跡(描画のview.glenTrailとは別台帳。
+// 監査指摘どおりresetGameで明示クリアし、個体idが変われば作り直す。ストーリーボスは同時1体)。
+let glenSimTrail: { id: string; trail: GlenTrailPoint[] } | null = null;
 let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
 let thrownBagSeq = 0;   // 救急鞄の空鞄投擲の一意id採番(プール/差分の安定キー)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
@@ -8327,6 +8334,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     //  全件処理して空にする。updateEnemies と消費の間に脱出経路は無い=useGameLoop 7209→7240。)
     const pumpkinBlasts: PumpkinBlast[] = [];
     const giantBoltFires: Enemy[] = []; // M51: ジャイアント新スクリプトの咆哮弾。set() 後に post-set で addProjectile する。
+    const glenVolleyFires: string[] = []; // v0.25.3027: グレン第二形態の胴体弾(パーツV字斉射)。post-set で発射。
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
@@ -8728,10 +8736,27 @@ export const useGameStore = create<GameState>((set, get) => ({
               .map(h => (dueHits.includes(h) ? { ...h, burst: true } : h))
               .filter(h => gameTime < (h.floorUntil ?? h.fireAt));
           }
+          // v0.25.3027(社長裁定「体パーツから弾を両サイドに発射」): グレン第二形態の胴体弾。
+          // 軌跡は第二形態中に毎tick記録し、**技の合間(aiPhase無し=追跡/歩行中)だけ**CDが満ちたら
+          // 発射予約(裁定3「予告中は撃たない」)。発射はpost-set(giantBoltFiresと同じ作法)。
+          // 変身直後は種付けのみ=初回はCD後(監査指摘: 変身フラッシュと16発の同時発火を避ける)。
+          const glenVolley: { glenVolleyAt?: number } = {};
+          if (glenScriptApplies(enemy.isStoryBoss, enemy.storyBossVariant, GLEN_SCRIPT_ENABLED) && phase >= 2) {
+            if (glenSimTrail?.id !== enemy.id) glenSimTrail = { id: enemy.id, trail: [] };
+            pushGlenTrail(glenSimTrail.trail, enemy.x + enemy.width / 2, enemy.y + enemy.height);
+            if (enemy.glenVolleyAt == null) {
+              glenVolley.glenVolleyAt = gameTime;
+            } else if (shouldGlenVolley(true, enemy.aiPhase, enemy.glenVolleyAt, gameTime,
+                GLEN_VOLLEY_CD_MS / ENEMY_ATTACK_SPEED_MULT)) {
+              glenVolley.glenVolleyAt = gameTime;
+              glenVolleyFires.push(enemy.id);
+            }
+          }
           const phaseFields = {
             giantPhase: phase,
             giantPhaseFlashUntil: giantPhaseJustChanged(enemy.giantPhase, phase) ? gameTime + GIANT_PHASE_FLASH_MS : enemy.giantPhaseFlashUntil,
             giantDelayedHits,
+            ...glenVolley,
           };
           // M65(社長指示): ステージ別の範囲/速度倍率。stage-1=1.00(実機合格済みの基準・不変)。
           // stage-7/stage-ex1はstoryBossだけが到達するため、ステージIDだけで既にstoryBoss込みの値になる
@@ -10367,6 +10392,24 @@ export const useGameStore = create<GameState>((set, get) => ({
             proj.speed = GIANT_BOLT_FAN_SPEED;
             get().addProjectile(proj);
           }
+        }
+      }
+    }
+    // v0.25.3027(社長裁定): グレン第二形態の胴体弾。可視の胴体パーツ(尾を除く)から、列の進行方向
+    // ±45°のV字へ各2発。無照準・通常弾(giantbat既定プロファイル=赤い二重丸・打ち返し可)。
+    // 位置は世界座標の近似(裁定1a)・プレイヤー80px未満のパーツは撃たない(裁定2)。
+    if (glenVolleyFires.length > 0 && glenSimTrail) {
+      const bp = get().player;
+      const bpx = bp.x + bp.width / 2, bpy = bp.y + bp.height / 2;
+      for (const gid of glenVolleyFires) {
+        if (glenSimTrail.id !== gid) continue;
+        const boss = get().enemies.find(e => e.id === gid);
+        if (!boss) continue;
+        for (const shot of glenVolleyShots(boss, glenSimTrail.trail, bpx, bpy)) {
+          const proj = createEnemyProjectile(boss, bp, shot.tx, shot.ty, shot.ox, shot.oy);
+          // 専用aiPhaseを持たない周期斉射のため生成時に技キーが付かない(監査指摘)。記録専用の後付け。
+          proj.srcMoveKey = 'g-parts';
+          get().addProjectile(proj);
         }
       }
     }
@@ -13096,6 +13139,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetPlayerTraits();
     resetGhostDamageLog(); // v0.25.2591: 被弾ログ(?ghostlog=1の画面表示)は1ランごとに読めればよい
     resetGhostDeathPose(); // v0.25.2599: 前ランの倒れ絵を持ち越さない(描画専用の控え)
+    glenSimTrail = null;   // v0.25.3027: グレン胴体弾の軌跡を持ち越さない(監査指摘)
     // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ+ラン内打刻ビューも持ち越さない
     // (台帳=localStorageは打刻の瞬間に確定済みなので触らない)。
     resetDuoRunRecords();

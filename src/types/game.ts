@@ -539,6 +539,9 @@ export interface Enemy {
   // 個別クールダウン(gStageReadyAtと同じ作法で別フィールドに分離=通常城ボスのgStageReadyAtには
   // 一切書き込まない=互いに独立)。
   gGlenReadyAt?: Partial<Record<'talon' | 'boon' | 'reach' | 'nihil' | 'trijump', number>>;
+  // v0.25.3027(社長裁定): グレン第二形態の胴体弾(連結パーツから±45°のV字斉射)の最終発射時刻
+  // (gameTime基準)。変身直後に種付けして初回はCD後(監査指摘=変身フラッシュと16発の同時発火防止)。
+  glenVolleyAt?: number;
   // 遅延起爆の待ち行列(固定遅延=学習装置①。乱数にしない)。滑空の二撃目(1件)/三連突進が残す氷
   // (3件)/翼撃の三拍目(1件)で共用する汎用キュー。ice=trueなら着弾FXが青版(既存pumpkinBlastsの
   // ice:trueをそのまま流用)。capsuleがあれば帯(翼撃三拍目)、無ければ円(それ以外)として起爆する。

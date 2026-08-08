@@ -105,6 +105,10 @@ import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
+import {
+  GLEN_P2_HP_FRAC, GLEN_CHAIN, GLEN_SLOT_COUNT, GLEN_VISIBLE_BY_COUNT, glenPartCount,
+  pushGlenTrail, sampleGlenTrail, glenChainDistances,
+} from '../utils/glenChain';
 // 文脈ズームで最大まで引いた時(worldGroup.scale=ZOOM_MIN_ABS)でも画面を覆えるよう、worldGroup内の
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
 const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(巨大ボス遠距離を含む)を基準にする
@@ -1236,27 +1240,8 @@ const JORM_SLUG_SQY = 0.035;    // 縦の連動(伸びた時に低くなる)
 const ENEMY_MOTION_FX = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('emotion') !== '0';
 
-// ラスボス第二形態(v0.25.2918)。HP60%以下で変身(叩き台=城ボスの既存フェーズ閾値60%に揃えた)。
-const GLEN_P2_HP_FRAC = 0.6;
-// 連結の構成(社長指示v0.25.2921「胴体を5個、尻尾を1つ最後尾に」→v0.25.3025「胴体パーツ3つ増やして」
-// =胴体8個+尾): スロット0..8の順に並べる。
-// 胴体はシートの砲身(0)と箱(1)を交互に使って単調さを消し、尾(2)は必ず最後尾。
-const GLEN_CHAIN: readonly number[] = [0, 1, 0, 1, 0, 1, 0, 1, 2];
-const GLEN_SLOT_COUNT = GLEN_CHAIN.length; // 9
-// 「真ん中のパーツから減っていく」のスロット除去順。胴体の中央から外へ交互に欠け、根本(0)は
-// 胴体の最後、**尾(8)は最後まで残る**(末端が残ってブンと揺れている方が「まだ生きている」が伝わる)。
-const GLEN_REMOVAL: readonly number[] = [4, 3, 5, 2, 6, 1, 7, 0, 8];
-const GLEN_VISIBLE_BY_COUNT: readonly (readonly number[])[] = (() => {
-  const out: number[][] = [];
-  for (let count = 0; count <= GLEN_SLOT_COUNT; count++) {
-    const removed = new Set(GLEN_REMOVAL.slice(0, GLEN_SLOT_COUNT - count));
-    out.push(GLEN_CHAIN.map((_, s) => s).filter((s) => !removed.has(s)));
-  }
-  return out;
-})();
-/** 第二形態内のHP残量→連結スロット数(9→0・区間を9等分)。 */
-const glenPartCount = (hpFrac: number): number =>
-  Math.max(0, Math.min(GLEN_SLOT_COUNT, Math.ceil((hpFrac / GLEN_P2_HP_FRAC) * GLEN_SLOT_COUNT)));
+// ラスボス第二形態(v0.25.2918)。台帳・蛇式軌跡の式は v0.25.3027 で utils/glenChain.ts へ移設
+// (胴体弾=gameStore側の発射と同じ台帳・同じ式を読むため)。ここは import して描くだけ。
 const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   zombie: 0x7de28a,
   bat: 0x9aa6ff,
@@ -16721,35 +16706,15 @@ export class PixiScene {
     // v0.25.2956(社長指示): ①付け根はもっと本体に被せてつなぎ目を隠す ②追従は「蛇みたいに遅れて
     // ついてくる」(昔のDQのパーティー隊列)。本体の足元軌跡(glenTrail)を毎フレーム記録し、各パーツは
     // **軌跡上を距離ぶんだけ遡った位置**に置く=本体が曲がるとパーツが同じ道を遅れてなぞる。
+    // v0.25.3027: 軌跡・間隔の式は utils/glenChain.ts へ移設(胴体弾の発射位置と同じ式を共有)。
     const trail = view.glenTrail ?? (view.glenTrail = []);
-    const lastPt = trail[trail.length - 1];
-    if (!lastPt || Math.hypot(footX - lastPt.x, footY - lastPt.y) >= 2) {
-      trail.push({ x: footX, y: footY });
-      // 9連結(v0.25.3025・胴体+3)で列が伸びたぶん、遡り用の軌跡も長めに保持する(240→360点)。
-      if (trail.length > 360) trail.splice(0, trail.length - 360);
-    }
-    // 軌跡を現在位置から距離dだけ遡った点。軌跡が足りない分は最古の向き(無ければ右)へ直線延長=
-    // 出現直後でも「本体の背後に一列」の絵が崩れない。
-    const sampleBehind = (d: number): { x: number; y: number } => {
-      let px = footX, py = footY, remain = d;
-      for (let i = trail.length - 1; i >= 0; i--) {
-        const q = trail[i];
-        const segLen = Math.hypot(px - q.x, py - q.y);
-        if (segLen >= remain) {
-          const k = segLen > 0 ? remain / segLen : 0;
-          return { x: px + (q.x - px) * k, y: py + (q.y - py) * k };
-        }
-        remain -= segLen; px = q.x; py = q.y;
-      }
-      const a = trail.length >= 2 ? trail[0] : null, b = trail.length >= 2 ? trail[1] : null;
-      let dx = 1, dy = 0;
-      if (a && b) { const l = Math.hypot(b.x - a.x, b.y - a.y); if (l > 0.5) { dx = (a.x - b.x) / l; dy = (a.y - b.y) / l; } }
-      return { x: px + dx * remain, y: py + dy * remain };
-    };
-    let dist = bodyHalfW * 0.15; // 付け根=本体にほぼ隠れる距離から始める(旧: 右肩口0.55で露出していた)
-    let prevHalfW = 0;
-    let first = true;
-    for (const slot of show) {
+    pushGlenTrail(trail, footX, footY);
+    const dists = glenChainDistances(bodyHalfW, show, (slot) => {
+      const t = getTexture(`glen-boss2-part-${GLEN_CHAIN[slot]}`);
+      return (t?.width ?? 0) * sc;
+    });
+    for (let i = 0; i < show.length; i++) {
+      const slot = show[i];
       const tex = getTexture(`glen-boss2-part-${GLEN_CHAIN[slot]}`);
       if (!tex) continue;
       let sp = view.glenParts[slot];
@@ -16761,12 +16726,7 @@ export class PixiScene {
         view.glenParts[slot] = sp;
       }
       if (sp.texture !== tex) sp.texture = tex;
-      const w = tex.width * sc;
-      // 隣と深めに重ねてつなぎ目を隠す(重なり=幅の40%)。付け根は本体との被りを優先。
-      dist += first ? w * 0.5 * 0.4 : (prevHalfW + w / 2 - Math.min(prevHalfW * 2, w) * 0.4);
-      const pt = sampleBehind(dist);
-      first = false;
-      prevHalfW = w / 2;
+      const pt = sampleGlenTrail(trail, footX, footY, dists[i]);
       const bob = Math.sin(now / 520 + slot * 1.7) * 3;
       sp.scale.set(sc, sc);
       sp.rotation = Math.sin(now / 700 + slot * 2.1) * 0.03;

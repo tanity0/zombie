@@ -1,5 +1,27 @@
 # Development Log
 
+## v0.25.3027 — グレン第二形態の胴体弾(V字斉射・社長裁定)【2026-08-08 18:15 JST】
+社長裁定「1:一斉に(胴体パーツだけ) 2:予告なし、通常弾。狙わずに、両サイドから斜め前にv字
+3:通常弾なので当然カウンターできる」+追裁定「1:a(世界座標の近似) 2:安全半径入れる 3:技中は撃たない」。
+- **新規 src/utils/glenChain.ts**: 連結台帳(GLEN_CHAIN/REMOVAL/VISIBLE/glenPartCount/P2しきい値)と
+  蛇式軌跡の式(pushGlenTrail/sampleGlenTrail/glenChainDistances)を pixiScene から移設し、
+  描画と発射が同じ台帳・同じ式を読む形に。胴体弾の純関数 shouldGlenVolley/glenVolleyShots を追加。
+- **発射(gameStore)**: giantbatコントローラで第二形態中に足元軌跡を毎tick記録(sim側台帳・
+  resetGameでクリア)。技の合間(aiPhase無し)にCD(生3600ms=実効3.0s)が満ちたら予約し、post-setで
+  可視の胴体パーツ(尾を除く・最大8)から進行方向±45°へ各2発(=最大16発)。無照準。弾はgiantbat既定
+  プロファイル(赤い二重丸・打ち返し可)。プレイヤー80px未満のパーツは撃たない。変身直後は種付けのみ
+  =初回はCD後。位置は裁定1aどおり contain式+視覚倍率2.325込みの世界近似(カメラ依存の深度スケールは
+  含めない=描画とのズレは許容)。
+- **記録**: 弾キー 'g-parts' を BULLET_MOVE_KEYS と shared/ghostSanitize.mjs へ追加。専用aiPhaseが
+  無いため生成後に srcMoveKey を後付け(監査指摘)。moveReaction.test の発射箇所数 14→15 に更新。
+- **監査(Opus・v0.25.3026で実施)の反映**: 上記の裁定3件のほか、時計=gameTime・実効CD明記・
+  種付け・moveKey・型フィールド(Enemy.glenVolleyAt)・門番=glenScriptApplies(ex1対象外)・
+  ゴールデン値テスト・純関数化・trailのresetGameクリアを全て採用。不採用: なし。
+- テスト: glenChain.test.ts 14件(台帳不変条件/軌跡/間隔ゴールデン値/斉射の全裁定)+関連208件緑。
+検証: typecheck OK / lint エラー0。実機確認: 斉射の見た目(パーツ位置とのズレ感・V字の向き・頻度)。
+負荷: 1〜2/10(最大16発/3秒・実測では弾70でも60fps)。
+※`?glenscript=0`時はグレン専用技ごと胴体弾も止まる(門番共有)。canvasレンダラは対象外。
+
 ## v0.25.3026 — 討伐崩壊が見えないバグ修正(カメラが見届けてから戻る)+胴体弾監査結果【2026-08-08 17:59 JST】
 ①社長報告「ボス倒した時、フラッシュとか終わった後に崩れていって何も見えない」: 旧v2955の並びは
 「パン→ホールド1.9s→**戻る**→(戻った後に)崩壊2.6s」。ズーム改修後は遠距離撃破が増え、戻った後の
