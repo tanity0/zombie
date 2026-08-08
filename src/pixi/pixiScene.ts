@@ -15219,6 +15219,24 @@ export class PixiScene {
           }
         }
       }
+      // v0.25.3051(社長報告「三連銃、真ん中だけ赤い衝撃出てない?」): 三連射の三拍目(中央)は
+      // 遅延起爆キュー経由で、左右の帯のような溜め帯(bandsThisFrame)を通らない=衝撃波の対象から
+      // 漏れていた。左右と同じ素材の衝撃波を中央の帯にも走らせる。遅延起爆エントリは起爆の瞬間に
+      // 台帳から消えるため、待ち中にlatchへ実寸を焼き、起爆時刻から走らせる(帯のwindup衝撃波と
+      // 同じ作法・v0.25.2412)。スプライト枠は左右(0/1)と被らないidx=2。
+      {
+        const h3 = (e.giantDelayedHits ?? []).find(h => h.moveKey === 'g-trishot' && h.capsule !== undefined);
+        const toFire3 = h3 ? Math.max(0, h3.fireAt - gameTime) : 0;
+        const sh3 = this.latchFx(`${e.id}:shock3`, h3 !== undefined, toFire3 + SHOCKWAVE_MS, now, () => [
+          (toFire3 + SHOCKWAVE_MS) > 0 ? toFire3 / (toFire3 + SHOCKWAVE_MS) : 0,
+          h3!.capsule!.fx, h3!.capsule!.fy, h3!.capsule!.tx, h3!.capsule!.ty, h3!.capsule!.halfWidth,
+        ]);
+        if (sh3 && sh3.t >= sh3.d[0]) {
+          const prog3 = sh3.d[0] < 1 ? (sh3.t - sh3.d[0]) / (1 - sh3.d[0]) : 1;
+          this.drawShockwave(view, 2, sh3.d[1], sh3.d[2], sh3.d[3], sh3.d[4], sh3.d[5],
+            prog3, Math.min(1, (1 - prog3) / 0.2));
+        }
+      }
     }
     // ★予告レイヤーの alpha を「予告図形自身の位置」で決める(社長指示v0.25.2405)。
     // 予告スプライト(A-1輪/A-2帯/D-1斬撃/D-2爪痕)も同じ値を掛けて、線と意匠がズレないようにする。

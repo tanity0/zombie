@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3051',
+    items: [
+      'ステージ5の三連射で、三拍目(中央)にも左右と同じ赤い衝撃波が走るようになりました(中央だけ衝撃波が出ていなかったのを修正)。',
+    ],
+  },
+  {
     version: '0.25.3050',
     items: [
       'ラスボスの三連跳び中(空中)の体当たりで被弾しなくなりました(単発の飛び掛かりと同じ扱い。カウンターは着地する円の中でだけ成立します)。',
