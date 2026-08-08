@@ -41,6 +41,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // WINDUP は「爪痕が手前から奥へ刻まれる」ワイプの尺にも使う(爪の振りと同じ尺で揃える・v0.25.2889)。
   GLEN_TALON_SPREAD_RAD, GLEN_TALON_WINDUP_MS,
   GIANT_SWEEPBEAM_WINDUP_MS, GIANT_SWEEPBEAM_ACTIVE_MS, GIANT_SWEEPBEAM_LENGTH, GIANT_SWEEPBEAM_HALF_WIDTH, GIANT_SWEEPBEAM_INNER_RADIUS, GIANT_SWEEPBEAM_SWEEP_RAD,
+  GIANT_SWEEPBEAM_RECOVER_MS, GIANT_BOLT_WINDUP_MS, GIANT_BOLT_BURST_GAP_MS, // v0.25.3034: 掃射SMG/咆哮弾の銃の絵
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
   GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH,
@@ -14756,6 +14757,94 @@ export class PixiScene {
           drawGun(ATK_ART_GUN_L, 'fx/boss-gun-1', gux * cS - guy * sS, gux * sS + guy * cS, fireSide, 100);
           drawGun(ATK_ART_GUN_R, 'fx/boss-gun-2', gux * cS + guy * sS, -gux * sS + guy * cS, fireSide, 120);
           drawGun(ATK_ART_GUN_C, 'fx/boss-gun-3', gux, guy, fireCenter, 150);
+        }
+      }
+      // (3c) 掃射の銃(g-sweepbeam)= v0.25.3034(社長指示「掃射、絵がないよね?銃のサブマシンガン
+      //      使って」)。SMG(=handgun-t3・マシンピストル)がビームの回転に合わせて薙ぎながら連射する。
+      //      分類①(武器の絵)だが赤帯が別に出ているので長さは判定に揃え切らなくてよい(トライショットと同じ掟)。
+      {
+        const sbW2 = gph === 'g-sweepbeam-windup', sbA2 = gph === 'g-sweepbeam-active', sbR2 = gph === 'g-sweepbeam-recover';
+        if (sbW2 || sbA2 || sbR2) {
+          const gfx0 = e.aiFromX ?? cx, gfy0 = e.aiFromY ?? cy;
+          const gtx0 = e.aiTargetX ?? cx, gty0 = e.aiTargetY ?? cy;
+          const base2 = Math.atan2(gty0 - gfy0, gtx0 - gfx0);
+          let ang2: number, alpha2: number, out2 = GUN_OUT_PX;
+          if (sbW2) {
+            // 溜め: 開始からGUN_FADE_IN_MSでシュッと出て、開始角(左端)で構える。
+            const windEff = GIANT_SWEEPBEAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+            const elapsed = windEff - Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+            ang2 = base2 - GIANT_SWEEPBEAM_SWEEP_RAD / 2;
+            alpha2 = Math.max(0, Math.min(1, elapsed / GUN_FADE_IN_MS));
+            out2 = 10 + (GUN_OUT_PX - 10) * alpha2;
+          } else if (sbA2) {
+            // 発射中: ビームの現在角(判定と同じ式)へ追従+細かい反動の揺れ=連射感。
+            const actEff = GIANT_SWEEPBEAM_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+            const t2 = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / actEff));
+            ang2 = base2 - GIANT_SWEEPBEAM_SWEEP_RAD / 2 + GIANT_SWEEPBEAM_SWEEP_RAD * t2;
+            alpha2 = 1;
+            out2 = GUN_OUT_PX - 4 * (0.5 + 0.5 * Math.sin(now / 12));
+          } else {
+            // 硬直: 終了角のまま反動で下がりつつ消える。
+            const recEff = GIANT_SWEEPBEAM_RECOVER_MS / ENEMY_ATTACK_SPEED_MULT;
+            const dt2 = recEff - Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+            if (dt2 > GUN_RECOIL_MS) { alpha2 = 0; } else { alpha2 = 1 - dt2 / GUN_RECOIL_MS; }
+            const v2 = Math.min(1, dt2 / GUN_RECOIL_MS);
+            ang2 = base2 + GIANT_SWEEPBEAM_SWEEP_RAD / 2;
+            out2 = GUN_OUT_PX - GUN_RECOIL_PX * v2;
+          }
+          if (alpha2 > 0.01) {
+            const sp2 = this.atkArtSprite(view, ATK_ART_GUN_C, 'weapons/handgun-t3');
+            if (sp2) {
+              sp2.anchor.set(1, 0.5);
+              const sc2 = 110 / (sp2.texture.width || 1);
+              sp2.scale.set(sc2, sc2);
+              sp2.rotation = ang2;
+              sp2.position.set(gfx0 + Math.cos(ang2) * out2, gfy0 + Math.sin(ang2) * out2);
+              sp2.alpha = artFade * Math.max(0, Math.min(1, alpha2));
+            }
+          }
+        }
+      }
+      // (3d) 咆哮弾の銃(g-bolt)= v0.25.3034(社長指示「boltも銃のどれかの絵を使って」)。
+      //      扇(fan)=ショットガン / 3連発(burst)=ライフル。プレイヤー方向へ構え、発射時刻ごとに反動。
+      //      弾そのもの(赤二重丸)が危険の表示なので、銃は装飾=分類②(トライショットと同じ演出文法)。
+      {
+        const boltArt = gph === 'g-bolt-windup' || gph === 'g-bolt-burst' || gph === 'g-bolt-recover';
+        if (boltArt) {
+          const mult = ENEMY_ATTACK_SPEED_MULT;
+          const burst2 = (e.gBoltPattern ?? 'fan') === 'burst';
+          const fireBase = (e.aiStartedAt ?? gameTime) + GIANT_BOLT_WINDUP_MS / mult;
+          const lastFire = burst2 ? fireBase + 2 * (GIANT_BOLT_BURST_GAP_MS / mult) : fireBase;
+          const dtIn = gameTime - fireBase;
+          const dtOut = gameTime - lastFire;
+          if (dtIn >= -GUN_FADE_IN_MS && dtOut <= GUN_RECOIL_MS) {
+            let alpha3: number, out3: number;
+            if (dtIn < 0) {
+              const u3 = 1 + dtIn / GUN_FADE_IN_MS;
+              alpha3 = u3; out3 = 10 + (GUN_OUT_PX - 10) * u3;
+            } else if (dtOut > 0) {
+              const v3 = dtOut / GUN_RECOIL_MS;
+              alpha3 = 1 - v3; out3 = GUN_OUT_PX - GUN_RECOIL_PX * v3;
+            } else {
+              // 連射の合間: 直近の発射からの反動キック(すっと戻る)。
+              const sinceShot = burst2 ? (dtIn % (GIANT_BOLT_BURST_GAP_MS / mult)) : dtIn;
+              const kick = GUN_RECOIL_PX * 0.35 * Math.max(0, 1 - sinceShot / 140);
+              alpha3 = 1; out3 = GUN_OUT_PX - kick;
+            }
+            const bp3 = useGameStore.getState().player;
+            const bdx3 = bp3.x + bp3.width / 2 - cx, bdy3 = bp3.y + bp3.height / 2 - cy;
+            const bl3 = Math.hypot(bdx3, bdy3) || 1;
+            const ang3 = Math.atan2(bdy3 / bl3, bdx3 / bl3);
+            const sp3 = this.atkArtSprite(view, ATK_ART_GUN_C, burst2 ? 'weapons/rifle-t3' : 'weapons/shotgun-t3');
+            if (sp3) {
+              sp3.anchor.set(1, 0.5);
+              const sc3 = 110 / (sp3.texture.width || 1);
+              sp3.scale.set(sc3, sc3);
+              sp3.rotation = ang3;
+              sp3.position.set(cx + Math.cos(ang3) * out3, cy + Math.sin(ang3) * out3);
+              sp3.alpha = artFade * Math.max(0, Math.min(1, alpha3));
+            }
+          }
         }
       }
       // (4) 伸びる触手(g-reach)。**カプセル判定に沿って回転・伸長**(台帳の指定)。溜めの進行に
