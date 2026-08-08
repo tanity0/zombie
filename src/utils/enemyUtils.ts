@@ -66,7 +66,9 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // 帯サイズは素材アスペクト×指定フレームから算出(BOSS_SPRITE_FIT と整合させること)。
   // 裏ボスは hpMult を掛けず health をそのまま maxHealth にする(buildEnemy 参照)。個別指定(社長指示)。
   // 帯(=当たり判定/見た目の基準)を ×1.5(社長指示「敵すべて1.5倍・ボスも」)。絵は BOSS_SPRITE_FIT で帯基準に追従。
-  mimir:      { width: 248, height: 138, speed: 90, health: HIDDEN_BOSS_HEALTH.mimir,      damage: 38, experienceValue: 0 },
+  // v0.25.3022(社長指示「ミーミルの大きさ少しだけ小さくして」): 248×138→223×124(-10%)。
+  // 絵は帯幅から導出(BOSS_SPRITE_FIT)なので判定と同率で縮む=見た目と判定の整合は不変。
+  mimir:      { width: 223, height: 124, speed: 90, health: HIDDEN_BOSS_HEALTH.mimir,      damage: 38, experienceValue: 0 },
   jormungand: { width: 519, height: 90,  speed: 90, health: HIDDEN_BOSS_HEALTH.jormungand, damage: 38, experienceValue: 0 },
   // 社長修正指示(v0.25.1321〜): スカジは帯を今の2/3スケールへ縮小(456×102→304×68)。
   skadi:      { width: 304, height: 68,  speed: 90, health: HIDDEN_BOSS_HEALTH.skadi, damage: 38, experienceValue: 0 },

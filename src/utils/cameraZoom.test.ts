@@ -191,20 +191,38 @@ describe('zoomCameraDownFrac — 引きで上下の地面幅を揃えるカメ�
 });
 
 // §6.37 v7→v0.25.3002: 縦のボスカメラ先読み。北=「ボスを目標画面高さへ引き込む」方式
-// (社長報告「まだボスが上の被写体深度の中にいるのが基準になっちゃってる」対応)。南=中間寄せ+上限。
+// (社長報告「まだボスが上の被写体深度の中にいるのが基準になっちゃってる」対応)。
+// v0.25.3022(社長裁定「1」): 南も北と対称の目標ライン方式へ。
 import {
-  bossCameraLeadY, BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC, BOSS_LEAD_TARGET_SCREEN_FRAC,
-  BOSS_LEAD_PLAYER_MAX_FRAC,
+  bossCameraLeadY, BOSS_LEAD_TARGET_SCREEN_FRAC,
+  BOSS_LEAD_PLAYER_MAX_FRAC, BOSS_LEAD_SOUTH_TARGET_SCREEN_FRAC, BOSS_LEAD_PLAYER_MIN_FRAC,
 } from './cameraZoom';
 
-describe('bossCameraLeadY — ボス方向への縦カメラ先読み(北=目標ライン方式)', () => {
+describe('bossCameraLeadY — ボス方向への縦カメラ先読み(南北とも目標ライン方式)', () => {
   const H = 800;
   const pBal = (1 + CAMERA_HORIZON_FRAC) / 2;
-  it('南(dy>0)は中間寄せ+上限で負、dy=0は0', () => {
-    expect(bossCameraLeadY(200, H, 1)).toBeCloseTo(-100, 6);
-    const cap = BOSS_CAMERA_LEAD_MAX_SCREEN_FRAC * H;
-    expect(bossCameraLeadY(100000, H, 1)).toBeCloseTo(-cap, 6);
+  it('南でもボスが既に目標ラインより上に映る近さなら寄せない(0)、dy=0も0', () => {
+    // bossBase = pBal·H + dy·z < 南目標ライン → wantShift>0 → 0にクランプ
+    const dySmall = ((BOSS_LEAD_SOUTH_TARGET_SCREEN_FRAC - pBal) * H) * 0.5; // 必要距離の半分
+    expect(bossCameraLeadY(dySmall, H, 1)).toBe(0);
     expect(bossCameraLeadY(0, H, 1)).toBeCloseTo(0, 9);
+  });
+  it('南の中距離ではボスがちょうど南目標ラインに来る負のシフトを返す', () => {
+    for (const z of [1, 0.7, ZOOM_MIN_ABS]) {
+      const dy = ((BOSS_LEAD_SOUTH_TARGET_SCREEN_FRAC - pBal) * H) * 1.6 / z; // 上限内に収まる遠さ
+      const shift = bossCameraLeadY(dy, H, z);
+      expect(shift).toBeLessThan(0);
+      const bossScreen = pBal * H + dy * z + shift * z;
+      const minShift = (BOSS_LEAD_PLAYER_MIN_FRAC - pBal) * H;
+      const want = BOSS_LEAD_SOUTH_TARGET_SCREEN_FRAC * H - (pBal * H + dy * z);
+      if (want >= minShift) expect(bossScreen).toBeCloseTo(BOSS_LEAD_SOUTH_TARGET_SCREEN_FRAC * H, 4);
+    }
+  });
+  it('南の超遠距離はプレイヤー上限(画面比0.50)でクランプされる', () => {
+    for (const z of [1, ZOOM_MIN_ABS]) {
+      const minShift = (BOSS_LEAD_PLAYER_MIN_FRAC - pBal) * H; // 負
+      expect(bossCameraLeadY(100000, H, z)).toBeCloseTo(minShift / z, 4);
+    }
   });
   it('北でもボスが既に目標ラインより下に映る近さなら寄せない(0)', () => {
     // dy·z が目標ラインとの差より小さい: bossBase = pBal·H + dy·z > T·H → S<0 → 0
