@@ -3,7 +3,7 @@ import { isEngageableBoss } from './bossEngagement';
 
 export type BossPostureImpact = 'counter' | 'melee' | 'heavy' | 'gun-crit';
 
-export const BOSS_POSTURE_BREAK_MS = 2200;
+export const BOSS_POSTURE_BREAK_MS = 5000; // v0.25.3036(社長指示「紫は5秒に延長」・旧2200)
 export const BOSS_POSTURE_RECOVERY_DELAY_MS = 8000;
 export const BOSS_POSTURE_RECOVERY_PER_SEC = 0.03;
 export const BOSS_POSTURE_REBREAK_LOCK_MS = 6000;

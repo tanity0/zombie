@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3036',
+    items: [
+      '体勢ブレイク(紫の完全気絶)の時間を2.2秒→5秒に延長しました。',
+    ],
+  },
+  {
     version: '0.25.3035',
     items: [
       '全ボス共通: 体勢ブレイク(紫)中に致命の一撃を決めた後、ボスが2秒間その場で停止してから動き出すようになりました(これまでは命中と同時に動き出していました)。',
