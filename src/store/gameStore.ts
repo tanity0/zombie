@@ -164,7 +164,7 @@ import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutra
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
-  advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss,
+  advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
   BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
 } from '../utils/bossEngagement';
 import {
@@ -10428,8 +10428,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       return {
         enemies: finalEnemies, breakableProps: nextBreakables, pumpkinBlasts, shieldBlocks, skadiIceMarkers, skadiIceBlades,
+        // v0.25.3053(社長指示「警告バグ他でも出ないか洗って」で発見): v0.25.2968で猶予を3000→1200msに
+        // 短縮した際、バナーの「— 3秒」が置き去りになっていた(表示が嘘)。秒数は定数から導出=再ドリフト防止。
         ...(bossLeashWarning
-          ? { eventBannerText: '危険：ボスが戦闘域を離れようとしている — 3秒', eventBannerUntil: gameTime + 3000 }
+          ? {
+            eventBannerText: `危険：ボスが戦闘域を離れようとしている — ${BOSS_DISENGAGE_GRACE_MS / 1000}秒`,
+            eventBannerUntil: gameTime + BOSS_DISENGAGE_GRACE_MS,
+          }
           : {}),
         // 叫喚発動: 画面内の通常敵を SCREAMER_BUFF_MS の間 強化する窓を張る。
         ...(screamerActivatedAt.length > 0 ? { screamerBuffUntil: gameTime + SCREAMER_BUFF_MS } : {}),

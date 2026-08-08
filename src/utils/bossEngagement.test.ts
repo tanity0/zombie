@@ -98,7 +98,7 @@ describe('ズーム連動と離脱予兆', () => {
     expect(bossLeashDistancePx('giantbat')).toBeCloseTo(BOSS_LEASH_PX / 0.44, 6);
   });
 
-  it('範囲外が3秒続いた時だけ離脱し、戻れば即キャンセルする', () => {
+  it('範囲外が猶予(BOSS_DISENGAGE_GRACE_MS)続いた時だけ離脱し、戻れば即キャンセルする', () => {
     const start = advanceBossDisengageGrace(true, undefined, 1000);
     expect(start).toEqual({ since: 1000, ready: false, started: true });
     expect(advanceBossDisengageGrace(true, start.since, 1000 + BOSS_DISENGAGE_GRACE_MS - 1).ready).toBe(false);

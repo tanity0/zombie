@@ -129,7 +129,7 @@ export const bossRetreatKeepRadiusPx = (
   return (Math.max(viewport.width, viewport.height) / 2 + BOSS_RETREAT_KEEP_MARGIN_PX) / z;
 };
 
-/** 範囲外が連続3秒続いた時だけ離脱。1フレームでも戻れば予兆を取り消す。 */
+/** 範囲外が連続BOSS_DISENGAGE_GRACE_MS(現行1.2秒)続いた時だけ離脱。1フレームでも戻れば予兆を取り消す。 */
 export const advanceBossDisengageGrace = (
   outside: boolean, since: number | undefined, now: number,
 ): { since: number | undefined; ready: boolean; started: boolean } => {
