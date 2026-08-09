@@ -530,14 +530,23 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     : null;
   // v0.25.3052 campaign: 目的が「留まれ」と言っている間は移動入力を0にする(useGameLoop側と同じ枝)。
   // 拠点(10秒)/POI(3秒)の滞在は「サークル内に居続ける」ことが条件。**回避より下**=生存優先は崩さない。
+  // v0.25.3064(社長承認): 目的地ステアにも地雷回避を掛ける(useGameLoop側と同じ)。
+  // 旧構成では adjustBotForMines が最下段にしか掛かっておらず、目的地ステア中は評価されなかった。
+  const objSteerAdj = objSteer
+    ? adjustBotForMines(
+        dodgeToInput(objSteer, 0.3), false,
+        player.x + player.width / 2, player.y + player.height / 2,
+        useGameStore.getState().breakableProps.filter(p => p.type === 'mine'))
+    : null;
   const finalInput = warpVec ? dodgeToInput(warpVec)
     : dodge ? dodgeToInput(dodge)
     : (objPlan && objPlan.hold) ? HOLD_INPUT
-    : objSteer ? dodgeToInput(objSteer, 0.3)
+    : objSteerAdj ? objSteerAdj.input
     : mineAdj.input;
   useGameStore.getState().movePlayer(finalInput, dt);
   autoFireGun();
-  if ((mineAdj.wantsMelee || wantsCounterReaction) && !attackSuppressedByDodge) useGameStore.getState().triggerCounter();
+  // v0.25.3064: 目的地ステア中に見つけた卵も叩く(useGameLoop側と同じ)。
+  if ((mineAdj.wantsMelee || objSteerAdj?.wantsMelee || wantsCounterReaction) && !attackSuppressedByDodge) useGameStore.getState().triggerCounter();
   if (decision.wantsWeaponSwitch) cycleActiveGun();
 
   useGameStore.getState().updateEnemies(dt);

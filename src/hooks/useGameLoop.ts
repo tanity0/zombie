@@ -2161,9 +2161,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 拠点(10秒)/POI(3秒)の滞在は「サークル内に居続ける」ことが条件だが、steerTo は到着圏内で
         // null を返し通常の徘徊入力へ落ちるため、これが無いと滞在が永久に貯まらない(依頼#6で実測)。
         // **回避より下**に置く=生存を犠牲にしてまで留まらない。hold 未指定の目的では完全な no-op。
+        // v0.25.3064(社長承認): **目的地ステアにも地雷回避を掛ける**。
+        // 旧構成では adjustBotForMines が最下段の「従来の合成入力」にしか掛かっておらず、
+        // 目的地ステアが出ている間は一度も評価されなかった。地雷は80px以内で起爆準備→1.5秒後に
+        // 半径80pxで爆発する(world/mines.ts)ので、**止まらず抜ければ当たらない**が、ボットは戦闘と
+        // 回避で減速・停止する(実測 0〜87px/s。53px/s未満だと抜けきれない)ため踏み抜いていた。
+        // 速度を上げるのではなく**そもそも起爆させない**方が確実なので、避け/叩きをここでも通す。
+        const botObjSteerAdj = (botObjSteer && botMineAdj)
+          ? adjustBotForMines(
+              dodgeToInput(botObjSteer, 0.3), false,
+              player.x + player.width / 2, player.y + player.height / 2,
+              loopState.breakableProps.filter(p => p.type === 'mine'))
+          : null;
         const inputState = botWarpVec ? dodgeToInput(botWarpVec)
           : botDodge ? dodgeToInput(botDodge)
           : (botGoalPlan && botGoalPlan.hold) ? HOLD_INPUT
+          : botObjSteerAdj ? botObjSteerAdj.input
           : botObjSteer ? dodgeToInput(botObjSteer, 0.3)
           : (botMineAdj ? botMineAdj.input : touchInputState);
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
@@ -5959,7 +5972,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // M26-L(§6.3): ボットの近接(指離しカウンター)/武器切替。ヘッドレス(playtestDriver)と同じ操作を実機で行う。
         // §6.25改訂: dodgeVsAttackが回避優先と判定した時は攻撃を抑制する(dodge='none'のnovice/casualは
         // botAttackSuppressedByDodgeが常にfalse=不変)。
-        if ((botMineAdj?.wantsMelee || botWantsCounterReaction) && !botAttackSuppressedByDodge) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
+        // v0.25.3064: 目的地ステア中に見つけた卵も叩く(botObjSteerAdj)。移動入力だけ差し替えて
+        // 叩きを繋がないと、避けきれない至近の卵を割れないまま素通りして起爆させてしまう。
+        if ((botMineAdj?.wantsMelee || botObjSteerAdj?.wantsMelee || botWantsCounterReaction) && !botAttackSuppressedByDodge) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
         if (botDecision?.wantsWeaponSwitch) {
           const botPlayer = useGameStore.getState().player;
           const botGuns = getGuns(botPlayer);
