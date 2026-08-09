@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3079',
+    items: [
+      'ゲーム内容の変更はありません(開発用オートプレイが、目的地へ移動している間も地雷を避けるようになりました)。',
+    ],
+  },
+  {
     version: '0.25.3078',
     items: [
       'ラフィの骨刃とスカジの氷刃に予兆が付きました。撃ち始めに、これから飛ぶ本数と同じ数の刃が本体から全方位へ飛び散ります。',
