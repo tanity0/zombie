@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3085',
+    items: [
+      'ゲーム内容の変更はありません(2回目以降の出撃で演出が出なくなる種類の不具合を、構造的に起こさないための土台を入れました)。',
+    ],
+  },
+  {
     version: '0.25.3084',
     items: [
       'ゲーム内容の変更はありません(開発用オートプレイが、狙う拠点を途中で乗り換えないようになりました)。',
