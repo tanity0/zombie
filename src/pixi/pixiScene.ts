@@ -2197,6 +2197,14 @@ const TELEGRAPH_BAND_FILL_MULT = typeof window === 'undefined'
   ? 0.75
   : Number(new URLSearchParams(window.location.search).get('bandfill') ?? 0.75) || 0.75;
 
+// v0.25.3083(社長指示「マシンガンみたいに銃口から速射して流れ撃ってくエフェクト」・掃射=stage-5の大技):
+// 絵だけの値。判定・秒数・角度には一切関わらない。
+const SWEEPBEAM_SHOT_MS = 55;          // 1発の間隔(約18発/秒=マシンガンのテンポ)
+const SWEEPBEAM_FLASH_R = 14;          // 銃口フラッシュの基準半径(発ごとに0.75〜1.25倍で揺れる)
+const SWEEPBEAM_TRACER_N = 5;          // 同時に流れている曳光弾の本数
+const SWEEPBEAM_TRACER_LEN = 84;       // 曳光弾1本の長さ(px)
+const SWEEPBEAM_TRACER_SPEED = 2600;   // 曳光弾が流れる速さ(px/秒)
+
 const STAGE3_BOSS_VISUAL_SCALE = 1.2;
 // ステージ5(戦場)の城ボスも一回り拡大(社長指示v0.25.2945「ステージ5のボスもう一回り大きくして」)。
 // ステージ3と同じ仕組み=視覚のみ・判定/攻撃範囲は不変。
@@ -14956,6 +14964,41 @@ export class PixiScene {
               sp2.rotation = ang2;
               sp2.position.set(gfx0 + Math.cos(ang2) * out2, gfy0 + Math.sin(ang2) * out2);
               sp2.alpha = artFade * Math.max(0, Math.min(1, alpha2));
+            }
+          }
+          // v0.25.3083(社長指示「マシンガンみたいに銃口から速射して流れ撃ってくエフェクト」):
+          // **当たり判定・秒数・角度は一切不変**(社長「当たり判定そのままでいいので」)。足すのは絵だけ。
+          // ①銃口フラッシュ: SWEEPBEAM_SHOT_MS ごとに明滅(発ごとに大きさが揺れる=連射のばらつき)。
+          // ②曳光弾: 銃口→ビーム先端へ短い光の筋が**流れていく**(これが「流れ撃ってく」の主役)。
+          // 色は赤ではなく銃火の白〜黄(色の文法: 赤は判定と厳密一致の予告のみ。危険範囲は既に赤帯が出している)。
+          if (sbA2) {
+            const mx = gfx0 + Math.cos(ang2) * out2, my = gfy0 + Math.sin(ang2) * out2;
+            const ux2 = Math.cos(ang2), uy2 = Math.sin(ang2);
+            const nx2 = -uy2, ny2 = ux2;
+            const shotIdx = Math.floor(now / SWEEPBEAM_SHOT_MS);
+            // 発ごとの決定的なゆらぎ(乱数だとフレーム間でチラつくので使わない)。
+            const jit = ((shotIdx * 2654435761) % 1024) / 1024;
+            if ((now % SWEEPBEAM_SHOT_MS) < SWEEPBEAM_SHOT_MS * 0.5) {
+              const fr = SWEEPBEAM_FLASH_R * (0.75 + 0.5 * jit);
+              o.ellipse(mx, my, fr, fr).fill({ color: 0xffe9a8, alpha: 0.8 });
+              o.ellipse(mx, my, fr * 0.45, fr * 0.45).fill({ color: 0xffffff, alpha: 0.95 });
+              // 銃口から前へ抜ける短い炎(横に潰した三角)。
+              o.poly([
+                mx + ux2 * fr * 2.4, my + uy2 * fr * 2.4,
+                mx + nx2 * fr * 0.8, my + ny2 * fr * 0.8,
+                mx - nx2 * fr * 0.8, my - ny2 * fr * 0.8,
+              ]).fill({ color: 0xfff0c0, alpha: 0.7 });
+            }
+            // 曳光弾。銃口から帯の先端までを一定速度で流れ、端まで行ったら次が出る。
+            const beamEnd = GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH;
+            const span = Math.max(1, beamEnd - out2);
+            for (let i = 0; i < SWEEPBEAM_TRACER_N; i++) {
+              const d = ((now * SWEEPBEAM_TRACER_SPEED) / 1000 + (i * span) / SWEEPBEAM_TRACER_N) % span;
+              const x0 = mx + ux2 * d, y0 = my + uy2 * d;
+              const x1 = mx + ux2 * (d + SWEEPBEAM_TRACER_LEN), y1 = my + uy2 * (d + SWEEPBEAM_TRACER_LEN);
+              const fade = 1 - d / span; // 遠くほど薄い(奥行き)
+              o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 5, color: 0xffe9a8, alpha: 0.45 * fade, cap: 'round' });
+              o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 2, color: 0xffffff, alpha: 0.9 * fade, cap: 'round' });
             }
           }
         }
