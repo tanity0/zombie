@@ -1791,6 +1791,16 @@ const QUAD_ICE_GATHER_TIGHT_N = 3;// 終盤(玉になる所)だけ増やして�
 // ②玉の大きさを**半径比ではなく絶対px**で縛る(半径比だと氷が大きいほど玉も大きく=固まって見えない)。
 const QUAD_ICE_TIGHT_FROM = 0.5;  // この進行度から「玉」段階
 const QUAD_ICE_BALL_PX = 12;      // 玉の最大半径(px)。ここまで小さく纏めてから爆発させる
+// v0.25.3079(社長指示「絵もギュッと」「爆発の一瞬前にピカッ!」):
+const QUAD_ICE_SPARK_SCALE_MAX = 0.85; // 撒き始めの粒の大きさ
+const QUAD_ICE_SPARK_SCALE_MIN = 0.28; // 凝縮しきった時の粒の大きさ
+const QUAD_ICE_FLASH_LEAD_MS = 130;    // 爆発の何ms前に光らせるか
+const QUAD_ICE_FLASH_R = 92;           // ピカッの光の半径
+// 氷結波(大技)の予兆: キラキラが全方位からボスへ集まる(社長指示v0.25.3079)。
+const NOVA_GATHER_MS = 70;             // 予兆キラキラの間引き(短く挟むので密度を出す)
+const NOVA_GATHER_N = 3;               // 1回あたりの粒
+const NOVA_GATHER_LEAD_MS = 620;       // 発動の何ms前から集め始めるか(=「短めに挟む」)
+const NOVA_GATHER_R = 420;             // 集まり始める外周の半径
 const QUAD_ICE_BURST_N = 10;      // 粉塵爆発の粒(氷1つあたり・旧16)
 const QUAD_ICE_BURST_INNER = 0.55;// 爆発の粒を撒く輪の内側(半径比)
 const QUAD_ICE_BURST_OUTER = 1.25;// 同・外側(判定より外へ出る=分類②の派手枠)
@@ -1926,7 +1936,7 @@ const SKADI_SPARKLE_BURST_N = 4;          // 氷塊が砕ける瞬間に散ら�
 // gameTime基準の間引き時計。**resetGameで戻す**(v0.25.3070の「キラキラが消えた」と同型の事故を作らない)。
 // blade/ice=スカジ用。gather=城ボスの氷塊が「中心へ凝縮する」キラキラ用(v0.25.3074)。
 // 氷のキラキラの時計は**この1オブジェクトに集約**する(散らばらせるとリセット漏れが必ず出る)。
-const iceSparkleClock = { blade: 0, ice: 0, gather: 0 };
+const iceSparkleClock = { blade: 0, ice: 0, gather: 0, nova: 0, novaFlash: 0 };
 let skadiHazardSeq = 0; // スカジ氷ハザードの一意id採番(プール/差分の安定キー)
 let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(プール/差分の安定キー)
 let sensorMineSeq = 0;  // センサー地雷(sensor-mine)の一意id採番(プール/差分の安定キー)
@@ -8473,7 +8483,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
-    const quadBreathSparkles: { x: number; y: number }[] = [];   // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給素材・set後にspawnEffect)。v0.25.3049: 三連突進の軌跡も同じ籠で撒く。v0.25.3071: スカジの氷技(氷刃の軌跡/氷塊の冷気と砕け)も同じ籠。
+    const quadBreathSparkles: { x: number; y: number; scale?: number; life?: number }[] = [];
+    // v0.25.3079: 爆発直前の「ピカッ」を出す位置(set後にspawnGlow。判定ゼロの派手枠)。
+    const iceFlashAt: { x: number; y: number }[] = [];   // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給素材・set後にspawnEffect)。v0.25.3049: 三連突進の軌跡も同じ籠で撒く。v0.25.3071: スカジの氷技(氷刃の軌跡/氷塊の冷気と砕け)も同じ籠。
     let bossLeashWarning = false;
     set(state => {
       // ★上の注記のとおり、**このフレームに他所から積まれた判定を先に引き継ぐ**。
@@ -8906,15 +8918,32 @@ export const useGameStore = create<GameState>((set, get) => ({
                   ? Math.min(QUAD_ICE_BALL_PX, h.radius * shrink)
                   : h.radius * shrink;
                 const n = tight ? QUAD_ICE_GATHER_TIGHT_N : QUAD_ICE_GATHER_N;
+                // v0.25.3079(社長指示「絵もギュッとしてほしい。丸く小さくまとまる様に」):
+                // 粒**そのもの**も凝縮に合わせて小さくする(位置だけ寄せても、大きい粒のままだと
+                // 「小さく纏まった」に見えない)。玉の段階では寿命も短くして塊の輪郭を締める。
+                const gScale = QUAD_ICE_SPARK_SCALE_MAX
+                  + (QUAD_ICE_SPARK_SCALE_MIN - QUAD_ICE_SPARK_SCALE_MAX) * gt;
                 for (let gi = 0; gi < n; gi++) {
                   const ga = Math.random() * Math.PI * 2;
-                  const gr = ring * (tight ? Math.random() : 0.8 + Math.random() * 0.35);
-                  quadBreathSparkles.push({ x: h.x + Math.cos(ga) * gr, y: h.y + Math.sin(ga) * gr });
+                  // 玉の段階は面積で均す(√)=中心に偏らず**丸い塊**に見える。
+                  const gr = tight ? ring * Math.sqrt(Math.random()) : ring * (0.8 + Math.random() * 0.35);
+                  quadBreathSparkles.push({
+                    x: h.x + Math.cos(ga) * gr, y: h.y + Math.sin(ga) * gr,
+                    scale: gScale, life: tight ? 260 + Math.random() * 120 : undefined,
+                  });
                 }
               }
             }
+            // ★爆発の一瞬前の「ピカッ」(社長指示v0.25.3079)。**毎フレーム**判定する
+            // (キラキラの間引きの中に入れると、間引き間隔と前倒し時間の噛み合わせ次第で1度も
+            //  発火しない=v0.25.3070「キラキラが消えた」と同型の取りこぼしになる)。
+            // 1回だけ出す印(flashed)は、下の map で**新しいオブジェクトとして**立てる
+            // (前フレームのstateを直接書き換えない=このプロジェクトの不変の作法)。
+            const flashHits = giantDelayedHits.filter(h =>
+              h.ice && !h.burst && !h.flashed && gameTime >= h.fireAt - QUAD_ICE_FLASH_LEAD_MS);
+            for (const h of flashHits) iceFlashAt.push({ x: h.x, y: h.y });
             giantDelayedHits = giantDelayedHits
-              .map(h => (dueHits.includes(h) ? { ...h, burst: true } : h))
+              .map(h => (dueHits.includes(h) ? { ...h, burst: true } : flashHits.includes(h) ? { ...h, flashed: true } : h))
               .filter(h => gameTime < (h.floorUntil ?? h.fireAt));
           }
           // v0.25.3027(社長裁定「体パーツから弾を両サイドに発射」): グレン第二形態の胴体弾。
@@ -9804,6 +9833,35 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiPhase: 'g-nova-active', aiPhaseUntil: atkUntil(GIANT_NOVA_ACTIVE_MS),
                   aiStartedAt: gameTime, giantActiveHit: false,
                 };
+              }
+              // v0.25.3079(社長指示「城4の大技(全方位)、予兆が欲しいので、キラキラが全方位から
+              // ボスに集まる表現を短めに挟みたい」): 発動の NOVA_GATHER_LEAD_MS 前から、外周から
+              // ボス本体へ**寄ってくる**キラキラを撒く。粒も寄るほど小さくする(氷塊の凝縮と同じ作法)。
+              // 判定ゼロの派手枠②=氷結波の輪の半径・秒数・ダメージには一切触れない。
+              {
+                const nRemain = Math.max(0, (enemy.aiPhaseUntil ?? gameTime) - gameTime);
+                if (nRemain <= NOVA_GATHER_LEAD_MS
+                  && shouldEmitThrottled(gameTime, iceSparkleClock.nova, NOVA_GATHER_MS)) {
+                  iceSparkleClock.nova = gameTime;
+                  const nt = 1 - nRemain / NOVA_GATHER_LEAD_MS; // 0=集め始め 1=発動直前
+                  const nRing = NOVA_GATHER_R * (1 - nt) * (1 - nt) + 18; // 外周→本体へ加速して寄る
+                  for (let ni = 0; ni < NOVA_GATHER_N; ni++) {
+                    const na = Math.random() * Math.PI * 2; // 全方位から
+                    quadBreathSparkles.push({
+                      x: ecx + Math.cos(na) * nRing, y: ecy + Math.sin(na) * nRing,
+                      scale: QUAD_ICE_SPARK_SCALE_MAX
+                        + (QUAD_ICE_SPARK_SCALE_MIN - QUAD_ICE_SPARK_SCALE_MAX) * nt,
+                      life: 240 + Math.random() * 120, // 短命=「集まってきた」線が締まる
+                    });
+                  }
+                }
+                // 発動の一瞬前に「ピカッ」(社長指示「(上も)」)。**毎フレーム判定**し、専用の時計で
+                // 1回だけに絞る(間引きの中に入れると発火し損ねる。上の氷塊と同じ理由)。
+                if (nRemain <= QUAD_ICE_FLASH_LEAD_MS
+                  && shouldEmitThrottled(gameTime, iceSparkleClock.novaFlash, GIANT_NOVA_WINDUP_MS / 2)) {
+                  iceSparkleClock.novaFlash = gameTime;
+                  iceFlashAt.push({ x: ecx, y: ecy });
+                }
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
@@ -10737,13 +10795,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給 fx/breath-sparkle)。複数同時に散らして
     // 「ぶわー!」を作る。imageエフェクト=pop-in→保持→フェード(実時間・v3038で停止中も流れる)。
+    // v0.25.3079(社長指示「爆発の一瞬前にピカッ!と光らせて」): 凝縮しきった一点/ボス本体で
+    // 短く強く光らせる。判定ゼロ。画面全体のフラッシュは使わない(大技の閃光と紛れるため)。
+    for (const f of iceFlashAt) {
+      get().spawnGlow(f.x, f.y, QUAD_ICE_FLASH_R, 'rgba(224,247,255,', 180);
+      get().spawnRing(f.x, f.y, 6, QUAD_ICE_FLASH_R * 0.7, 'rgba(255,255,255,0.95)', 3, 200);
+    }
     if (quadBreathSparkles.length > 0) {
       const qNow = Date.now();
       for (const p of quadBreathSparkles) {
         get().spawnEffect({
           kind: 'image', id: `qbs-${qNow}-${(Math.random() * 1e6) | 0}`,
-          x: p.x, y: p.y, createdAt: qNow, duration: 520 + Math.random() * 300,
-          texture: 'fx/breath-sparkle', scale: 0.55 + Math.random() * 0.45,
+          x: p.x, y: p.y, createdAt: qNow, duration: p.life ?? (520 + Math.random() * 300),
+          // v0.25.3079(社長指示「絵もギュッとしてほしい」): 粒ごとの大きさを撒く側で指定できる。
+          // 未指定なら従来どおり(0.55〜1.0のランダム)。
+          texture: 'fx/breath-sparkle', scale: p.scale ?? (0.55 + Math.random() * 0.45),
         });
       }
     }
@@ -13485,7 +13551,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetGhostDeathPose(); // v0.25.2599: 前ランの倒れ絵を持ち越さない(描画専用の控え)
     glenSimTrail = null;   // v0.25.3027: グレン胴体弾の軌跡を持ち越さない(監査指摘)
     quadSparkleLastAt = 0; // v0.25.3070: キラキラの間引き時計もラン間で持ち越さない(社長報告「キラキラが消えた」)
-    iceSparkleClock.blade = 0; iceSparkleClock.ice = 0; iceSparkleClock.gather = 0; // v0.25.3071/3074: 氷のキラキラの時計も同じ理由で戻す
+    iceSparkleClock.blade = 0; iceSparkleClock.ice = 0; iceSparkleClock.gather = 0; iceSparkleClock.nova = 0; iceSparkleClock.novaFlash = 0; // v0.25.3071/3074: 氷のキラキラの時計も同じ理由で戻す
     // §2.17(GHOST-DUO-RECORDS): 同行ランのフラグ+ラン内打刻ビューも持ち越さない
     // (台帳=localStorageは打刻の瞬間に確定済みなので触らない)。
     resetDuoRunRecords();

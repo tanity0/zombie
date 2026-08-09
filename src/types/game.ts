@@ -563,7 +563,9 @@ export interface Enemy {
   // 渡すだけ。未設定=従来どおり)。
   giantDelayedHits?: { x: number; y: number; radius: number; bornAt: number; fireAt: number; ice?: boolean;
     capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number };
-    burst?: boolean; floorUntil?: number; moveKey?: string }[];
+    burst?: boolean; floorUntil?: number; moveKey?: string;
+    // v0.25.3079: 爆発の一瞬前の「ピカッ」を1回だけ出すための印(社長指示)。
+    flashed?: boolean }[];
   // 継続判定技(氷結波の輪/三連突進の吐息/掃射)が「このactiveフェーズで既に1回命中させたか」。
   // 回転/拡大する図形は毎フレーム自己検出するため、多重ヒットを防ぐ1回きりフラグ(windup開始でfalseへ)。
   giantActiveHit?: boolean;
