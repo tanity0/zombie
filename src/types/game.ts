@@ -532,6 +532,12 @@ export interface Enemy {
   // M66(PACING_PUZZLE.md §6.26-11・stage-1/3/4/5限定)。
   // 三連突進(quaddash)の何回目か(0始まり・固定3回で終了=giantQuadDashComplete)。
   gQuadIndex?: number;
+  // v0.25.3075: 滑空(glide)の**実際の飛び出し位置**(実行に入った瞬間の座標)。
+  // aiFromX/Y は溜め開始でロックした「予告の線の始点」で、溜め中の後退りぶんズレる。
+  // 移動をaiFromから始めると飛び出しの瞬間に前へワープする(=カクつきの主因)ため、
+  // 見た目の移動だけこの実位置から始める(予告の線・当たり判定のカプセルはaiFromのまま=不変)。
+  gGlideFromX?: number;
+  gGlideFromY?: number;
   // ステージ固有技(独自技/大技)ごとの個別クールダウン(gStomp/gSweepReadyAt等と同じ作法。
   // 1フィールドへ集約=8個別フィールドを増やさない)。
   gStageReadyAt?: Partial<Record<'bite' | 'slam' | 'glide' | 'dive' | 'quaddash' | 'nova' | 'wing' | 'sweepbeam' | 'trishot', number>>;  // trishot: v0.25.3046(v2939の改名時にキー追加漏れ=三連射が一度も抽選されなかった真因)

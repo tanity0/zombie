@@ -1729,9 +1729,19 @@ export const GIANT_SLAM_HALF_WIDTH = 90;
 
 // --- stage-3: 滑空薙ぎ(glide・独自技・トレース元=カラミートの飛び上がり→地面を放射状のブレス) ---
 export const GIANT_GLIDE_WINDUP_MS = 1200;        // 実効1000ms・後ろへ跳び退がって溜める(T8backstep相当)
-export const GIANT_GLIDE_ACTIVE_MS = 228;         // 実効190ms・本体が高速で通過して薙ぐ(T3長い帯)
+export const GIANT_GLIDE_ACTIVE_MS = 396;         // 実効330ms・本体が通過して薙ぐ(T3長い帯)。v0.25.3075: 旧228=190ms(速すぎて瞬間移動に見えた)
 export const GIANT_GLIDE_SECOND_HIT_DELAY_MS = 300; // 実効250ms(固定)・滑空終了から二撃目まで=回避狩り
-export const GIANT_GLIDE_RECOVER_MS = 840;        // 実効700ms
+// v0.25.3075(社長指示「滑空はとにかくカクカクした動きを無くしたい。慣性の時間分、しゃがみや硬直時間を
+// 減らしてもいい」): カクつきの原因は3つあった。①溜め中の後退りぶん下がった位置から、実行の瞬間に
+// **予告線の始点へ前ワープ**していた ②移動が線形補間(等速)で、出だしと着地で速度が段差になっていた
+// ③600pxを実効190msで飛ぶ=60fpsで約53px/フレームしか刻まれず「瞬間移動」に見えていた。
+// ⇒ ①実位置から飛び出す(gGlideFromX/Y) ②両端で速度も加速度も0になる曲線(smootherstep)
+//   ③実行時間を延ばす。延ばしたぶんは**硬直から差し引いて技全体の長さを据え置く**(社長許可)。
+// ★当たり判定は不変: 滑空のダメージは溜め終わりに**カプセル1発**として確定済みで、飛んでいる間の
+//   移動は完全に見た目だけ。だから移動を自由に変えても判定・予告線とはズレない。
+export const GIANT_GLIDE_RECOVER_MS = 672;        // 実効560ms(旧840=700ms。実行を+140ms延ばしたぶんを硬直から返す)
+export const GIANT_GLIDE_INERTIA_TAU = 0.28;      // 溜めの後退りの慣性(三連突進と同値=同じ「重さ」に揃える)
+export const GIANT_GLIDE_SETTLE_FRAC = 0.3;       // 溜めの最後のこの割合で後退りを0へ収める(反転の角を消す)
 export const GIANT_GLIDE_CD_MS = 10800;           // 実効9.0s
 export const GIANT_GLIDE_LENGTH = 600;            // 長い帯(本体が通過する距離)
 export const GIANT_GLIDE_HALF_WIDTH = 40;
@@ -1756,7 +1766,7 @@ export const GIANT_QUAD_RECOVER_MS = 1080;       // 実効900ms
 // ③突進の終わりで急停止せず、次の溜めの後退りへ**流れながら**入る(=滑って止まる)。
 // 最高速(GIANT_CHARGE_SPEED_MULT)・突進回数(3)・溜め/硬直/CD・当たり判定は一切不変。
 // 3回目の後の「氷結の吐息」だけは仕様どおり完全静止させる(学習装置=必ず静止して溜める)。
-export const GIANT_QUAD_INERTIA_TAU = 0.14; // 秒。大きいほどよく滑る(0=従来の即時追従)
+export const GIANT_QUAD_INERTIA_TAU = 0.28; // 秒。大きいほどよく滑る(0=従来の即時追従)。v0.25.3075: 社長指示で0.14→倍
 export const GIANT_QUAD_CD_MS = 14400;           // 実効12.0s
 export const GIANT_QUAD_BREATH_LENGTH = GIANT_SWEEP_RANGE;     // 帯の寸法はsweepの流用(叩き台=設計書に寸法の明記なし)
 export const GIANT_QUAD_BREATH_HALF_WIDTH = GIANT_SWEEP_HALF_WIDTH;
@@ -9513,18 +9523,29 @@ export const useGameStore = create<GameState>((set, get) => ({
                     tx: gtx + enemy.width / 2, ty: gty + enemy.height / 2, halfWidth: GIANT_GLIDE_HALF_WIDTH,
                   },
                 });
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-glide-active', aiPhaseUntil: atkUntil(GIANT_GLIDE_ACTIVE_MS), aiStartedAt: gameTime };
+                // v0.25.3075: **実際に飛び出す位置**を焼く(予告線の始点aiFromではなく現在地)。
+                // これが無いと、後退りぶん下がった位置から予告線の始点へ前ワープする=カクつきの主因。
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-glide-active', aiPhaseUntil: atkUntil(GIANT_GLIDE_ACTIVE_MS), aiStartedAt: gameTime,
+                  gGlideFromX: enemy.x, gGlideFromY: enemy.y,
+                };
               }
-              // 後ろへ跳び退がって溜める(T8backstep・既存ダッシュ/三連突進と同じ式)。
+              // 後ろへ跳び退がって溜める(T8backstep)。
+              // v0.25.3075: 三連突進と同じ一次遅れ(慣性)にし、さらに**溜めの終盤で後退りを0へ収める**。
+              // 等速で下がったまま実行へ移ると、その瞬間に速度が反転して角が立つ(カクつきの一因)。
               const aim = lockedHateAim();
               const bdx = ecx - aim.x, bdy = ecy - aim.y;
               const bl = Math.hypot(bdx, bdy) || 1;
-              const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
-              const bmoved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
-              return {
-                ...enemy, ...phaseFields, x: bmoved.x, y: bmoved.y,
-                vx: (bdx / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT, vy: (bdy / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT,
-              };
+              const wTotal = GIANT_GLIDE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+              const wRemain = Math.max(0, (enemy.aiPhaseUntil ?? gameTime) - gameTime);
+              const settle = Math.max(0, Math.min(1, wRemain / Math.max(1, wTotal * GIANT_GLIDE_SETTLE_FRAC)));
+              const backSpeed = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * settle;
+              const gk = 1 - Math.exp(-deltaTime / GIANT_GLIDE_INERTIA_TAU);
+              const gbvx = (enemy.vx ?? 0) + ((bdx / bl) * backSpeed - (enemy.vx ?? 0)) * gk;
+              const gbvy = (enemy.vy ?? 0) + ((bdy / bl) * backSpeed - (enemy.vy ?? 0)) * gk;
+              const bmoved = resolveMove(enemy.x + gbvx * deltaTime, enemy.y + gbvy * deltaTime);
+              return { ...enemy, ...phaseFields, x: bmoved.x, y: bmoved.y, vx: gbvx, vy: gbvy };
             }
             case 'g-glide-active': {
               // 本体が通過して薙ぐ(判定は既にwindup終わりで確定済みのカプセル1件・ここは移動のみ)。
@@ -9541,8 +9562,19 @@ export const useGameStore = create<GameState>((set, get) => ({
                   giantDelayedHits: [...(giantDelayedHits ?? []), { x: hitX, y: hitY, radius: GIANT_GLIDE_SECOND_HIT_RADIUS, bornAt: gameTime, fireAt: atkUntil(GIANT_GLIDE_SECOND_HIT_DELAY_MS), moveKey: 'g-glide' }],
                 };
               }
-              const gnx = gfx + (gtx - gfx) * gt, gny = gfy + (gty - gfy) * gt;
-              return { ...enemy, ...phaseFields, x: gnx, y: gny, vx: 0, vy: 0 };
+              // v0.25.3075: ①出発点は**実際に飛び出した位置**(gGlideFrom。無ければ従来どおりaiFrom)
+              // ②等速の線形補間をやめ、**両端で速度も加速度も0になる曲線(smootherstep)**で運ぶ
+              // =出だしと着地の角が消える。判定は溜め終わりに確定済みのカプセル1発なので影響なし。
+              const sfx = enemy.gGlideFromX ?? gfx, sfy = enemy.gGlideFromY ?? gfy;
+              const es = gt * gt * gt * (gt * (gt * 6 - 15) + 10);
+              const gnx = sfx + (gtx - sfx) * es, gny = sfy + (gty - sfy) * es;
+              // 速度も実際の移動に合わせて入れる(従来は0固定で、飛んでいる間ボスが進行方向を向かなかった)。
+              const dEs = 30 * gt * gt * (1 - gt) * (1 - gt);   // smootherstepの微分
+              const durSec = Math.max(0.001, durEff / 1000);
+              return {
+                ...enemy, ...phaseFields, x: gnx, y: gny,
+                vx: ((gtx - sfx) * dEs) / durSec, vy: ((gty - sfy) * dEs) / durSec,
+              };
             }
             case 'g-glide-recover': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
