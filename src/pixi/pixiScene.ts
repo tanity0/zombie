@@ -22,8 +22,8 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
-  GIANT_JUMP_AIR_MS, GLEN_TRIJUMP_AIR_MS,
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+  airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
@@ -12895,11 +12895,13 @@ export class PixiScene {
         aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり
       } else if (e.aiPhase === 'jump') {
         // 滞空時間はストアと同じ実効値(攻撃倍速＋ハンターは更に×2)に合わせて着地と同期させる。
-        const jumpDur = PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT / (e.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1);
+        // v0.25.3086: 滞空時間と高さは**跳ぶ技の台帳**(gameStore.AIR_MOVES)から引く=判定と同じ出どころ。
+        const spec = airMoveFor('jump')!;
+        const jumpDur = spec.airMsRaw / ENEMY_ATTACK_SPEED_MULT / (e.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1);
         const t = Math.max(0, Math.min(1, (gameTime - (e.aiStartedAt ?? gameTime)) / jumpDur));
         // v0.25.3077(社長指示「フワッ……ダン!」): 左右対称のsin山をやめ、早く上がって頂点に留まり
         // 加速して落ちる曲線へ(飛んでいることが読める。着地と同期する点は従来どおり)。
-        aiHop = airHopHeight01(t) * PUMPKIN_JUMP_HEIGHT;
+        aiHop = airHopHeight01(t) * spec.hopPx;
         aiSqY = 1.08; aiSqX = 0.94;                          // 空中は少し縦伸び
         this.enemyJumpHop.set(e.id, aiHop);                  // 盾ブロック時の落下起点として最新ホップ高を退避
         this.enemyBlockFall.delete(e.id);
@@ -12973,16 +12975,18 @@ export class PixiScene {
         // 実際の滞空は GIANT_JUMP_AIR_MS(実効320ms)しかなかった。つまり**まだ空中高くに居るのに
         // 着地する**=「ストンと消えて地面に現れる」状態で、これが飛び掛かりの最大のカクつきだった
         // (移動側は v0.25.2xxx で城ボス専用値へ直されたが、絵はPUMPKIN側のまま取り残されていた)。
-        const jumpDur = GIANT_JUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT;
+        const spec = airMoveFor('g-jump-air')!;
+        const jumpDur = spec.airMsRaw / ENEMY_ATTACK_SPEED_MULT;
         const t = Math.max(0, Math.min(1, (gameTime - (e.aiStartedAt ?? gameTime)) / jumpDur));
-        aiHop = airHopHeight01(t) * PUMPKIN_JUMP_HEIGHT;
+        aiHop = airHopHeight01(t) * spec.hopPx;
         aiSqY = 1.08; aiSqX = 0.94;
       } else if (e.aiPhase === 'g-trijump-air') {
         // v0.25.3077(社長指示「全てのジャンプ」): グレンの連続ジャンプは**そもそも浮いていなかった**
         // (高さの計算が無く、地面を滑って移動していた)。他のジャンプと同じ曲線で浮かせる。
-        const jumpDur = GLEN_TRIJUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT;
+        const spec = airMoveFor('g-trijump-air')!;
+        const jumpDur = spec.airMsRaw / ENEMY_ATTACK_SPEED_MULT;
         const t = Math.max(0, Math.min(1, (gameTime - (e.aiStartedAt ?? gameTime)) / jumpDur));
-        aiHop = airHopHeight01(t) * PUMPKIN_JUMP_HEIGHT;
+        aiHop = airHopHeight01(t) * spec.hopPx;
         aiSqY = 1.08; aiSqX = 0.94;
       }
     }

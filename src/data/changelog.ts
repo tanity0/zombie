@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3086',
+    items: [
+      'ゲーム内容の変更はありません(過去に実際に起きた3種類の不具合を、二度と起こさないための検査を追加しました)。',
+    ],
+  },
+  {
     version: '0.25.3085',
     items: [
       'ゲーム内容の変更はありません(2回目以降の出撃で演出が出なくなる種類の不具合を、構造的に起こさないための土台を入れました)。',

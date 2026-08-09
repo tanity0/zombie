@@ -1891,6 +1891,7 @@ export const GLEN_BOON_RADIUS = 70;                 // 叩き台(設計書に寸
 export const GLEN_BOON_ARC_RADIUS = 500;            // 叩き台。中〜遠帯(320〜900)の中間あたり
 export const GLEN_BOON_ARC_SPREAD_RAD = Math.PI / 3; // 叩き台(60°)。5個を並べる弧の開き角
 
+
 // --- 伸びる触手(reach・Phase1〜・社長裁定「見た目の間合いより遥かに遠くまで届く」) ---
 // ★触手が伸びる速度3倍(社長指示v0.25.2885): 960→320(実効800→267ms)。
 // 触手の伸長速度は `GLEN_REACH_LENGTH / (この値/ENEMY_ATTACK_SPEED_MULT)` で決まる(専用の速度定数は無い)。
@@ -1917,6 +1918,37 @@ export const GLEN_NIHIL_RADIUS = 260;               // 設計書どおり(半径
 export const GLEN_TRIJUMP_WINDUP_MS = 1200;   // 実効1000ms(大技のリード床)。ここで3円を出し切る
 export const GLEN_TRIJUMP_AIR_MS = 336;       // 実効280ms/1跳び。着地したら「すぐ」次へ。
 export const GLEN_TRIJUMP_RECOVER_MS = 1800;  // 実効1500ms=全技中で最大の反撃窓(虚無の三唱1400msより長い)
+// ============================================================================================
+// 跳ぶ技の台帳(v0.25.3086・TEST_DESIGN.md 型C「付け忘れ」+ 型A「値の二重管理」への対策)
+// --------------------------------------------------------------------------------------------
+// ★なぜ台帳にするか(実際の事故から):
+//  ・型A: 城ボスの飛び掛かりは**滞空の絵だけ**別の定数(PUMPKIN_JUMP_MS=実効833ms)を読み、
+//    実際の滞空は GIANT_JUMP_AIR_MS(実効320ms)だった。**まだ空中高くに居るのに着地**していた(v3077)。
+//    「同じ意味の値(=この技の滞空時間)」が2箇所にあり、片方だけ直されたのが原因。
+//  ・型C: グレンの連続ジャンプだけ**そもそも高さの計算が無く**、地面を滑っていた(v3077)。
+//    「跳ぶ技の一覧」がどこにも無く、付け忘れても誰も気づけなかった。
+// ⇒ **滞空時間と浮きの高さの出どころをこの表1つに集約**し、描画(pixiScene)はここから引く。
+//    新しい跳ぶ技を足す時は**この表に1行足すだけ**で絵が付く=付け忘れが構造的に起きない。
+//    テスト(airMoveLedger.test.ts)が表の自己整合と、事故そのものの回帰を見張る。
+// ============================================================================================
+export interface AirMoveSpec {
+  /** 空中に居る間の aiPhase(この間だけ浮く)。 */
+  phase: string;
+  /** 滞空時間の生値(実効 = これ / ENEMY_ATTACK_SPEED_MULT)。**判定側と同じ定数を指す**こと。 */
+  airMsRaw: number;
+  /** 浮きの見た目の高さ(px)。 */
+  hopPx: number;
+  /** 事故調査で読む用の表示名。 */
+  label: string;
+}
+export const AIR_MOVES: readonly AirMoveSpec[] = [
+  { phase: 'jump', airMsRaw: PUMPKIN_JUMP_MS, hopPx: PUMPKIN_JUMP_HEIGHT, label: '汎用の飛び掛かり(パンプキン/ハンター/ラボゾンビ3)' },
+  { phase: 'g-jump-air', airMsRaw: GIANT_JUMP_AIR_MS, hopPx: PUMPKIN_JUMP_HEIGHT, label: '城ボスの飛び掛かり' },
+  { phase: 'g-trijump-air', airMsRaw: GLEN_TRIJUMP_AIR_MS, hopPx: PUMPKIN_JUMP_HEIGHT, label: 'グレンの連続ジャンプ' },
+];
+/** aiPhase から跳ぶ技を引く。表に無い=その技は跳んでいない(浮かせない)。 */
+export const airMoveFor = (phase: string | undefined): AirMoveSpec | undefined =>
+  phase === undefined ? undefined : AIR_MOVES.find(m => m.phase === phase);
 export const GLEN_TRIJUMP_CD_MS = 18000;      // 実効15.0s
 export const GLEN_TRIJUMP_RADIUS = 110;       // 1跳びの着地AoE半径(城ボスの飛び掛かり100より少し大きい)
 

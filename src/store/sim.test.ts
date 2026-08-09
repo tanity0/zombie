@@ -15,6 +15,7 @@ import type { Enemy } from '../types/game';
 // pulling in @types/node (the value is read only under the nightly cron).
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 import { spawnEnemyAt } from '../utils/enemyUtils';
+import { runClocks } from '../utils/runClocks';
 import { applyBossPostureDamage, BOSS_POSTURE_BREAK_MS } from '../utils/bossPosture';
 import type { InputState, Projectile, EnemyType } from '../types/game';
 
@@ -92,6 +93,44 @@ const roamingInput = (i: number): InputState => {
   const phase = Math.floor(i / 45) % 4;
   return { up: phase === 0, right: phase === 1, down: phase === 2, left: phase === 3 };
 };
+
+// TEST_DESIGN.md 型B「ラン間で状態が持ち越される」の網(v0.25.3086)。
+// 事故(v0.25.3070): gameTimeは出撃ごとに0へ戻るのに、モジュール変数の時計だけが持ち越され、
+// **2回目以降の出撃で演出が丸ごと出なくなった**。まっさらから1ランしか回さない従来のテストでは
+// 構造的に踏めない型なので、**同じ手順を2回**回して2本目が劣化しないことを見る。
+describe('憲法: 2連続ラン(出撃し直しても2本目が1本目と同じように動く)', () => {
+  const runOnce = () => {
+    useGameStore.getState().resetGame('warrior');
+    seedField();
+    runSim(300, roamingInput);
+    const s = useGameStore.getState();
+    return {
+      gameTime: s.gameTime,
+      enemies: s.enemies.length,
+      playerMoved: Math.hypot(s.player.x, s.player.y),
+      clocks: { ...runClocks },
+    };
+  };
+
+  it('★2本目が「何も起きない」状態にならない(1本目で動いた観測値が2本目でも動く)', () => {
+    const run1 = runOnce();
+    const run2 = runOnce();
+    // 値の一致は求めない(乱数があるため)。**0に落ちていないこと**だけを見る。
+    expect(run1.gameTime).toBeGreaterThan(0);
+    expect(run2.gameTime, '2本目でゲーム内時間が進んでいない').toBeGreaterThan(0);
+    expect(run2.enemies, '2本目で敵が居ない').toBeGreaterThan(0);
+    expect(run1.playerMoved).toBeGreaterThan(0);
+    expect(run2.playerMoved, '2本目でプレイヤーが動いていない').toBeGreaterThan(0);
+  });
+
+  it('★出撃のたびにラン内の時計が0から始まる(持ち越すと2本目の演出が全て死ぬ)', () => {
+    runOnce();
+    useGameStore.getState().resetGame('warrior');
+    for (const [k, v] of Object.entries(runClocks)) {
+      expect(v, `runClocks.${k} が出撃時にリセットされていない`).toBe(0);
+    }
+  });
+});
 
 describe('headless simulation invariants', () => {
   it('runs ~10s with a full enemy/projectile field without NaN or crash', () => {
