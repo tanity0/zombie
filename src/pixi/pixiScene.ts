@@ -2205,6 +2205,14 @@ const SWEEPBEAM_TRACER_N = 5;          // 同時に流れている曳光弾の�
 const SWEEPBEAM_TRACER_LEN = 84;       // 曳光弾1本の長さ(px)
 const SWEEPBEAM_TRACER_SPEED = 2600;   // 曳光弾が流れる速さ(px/秒)
 
+// v0.25.3087(社長指示・急降下の「空へ飛び去る/空から降ってくる」): 拡大+透明で高さを表現する。
+// 斜め見下ろしの画面では「大きくなる=カメラに近づく=空へ上がった」と読める(上下に跳ねさせるより高く見える)。
+const DIVE_UP_MS = 300;        // 実効250ms・飛び去りの尺
+const DIVE_DOWN_MS = 420;      // 実効350ms・落下の尺(着地の瞬間に等身大・不透明へ揃う)
+const DIVE_ZOOM_MAX = 2.4;     // 空に居る時の倍率(=カメラにこれだけ近い)
+const DIVE_UP_SLIDE_PX = 40;   // 飛び去りで上へずらす量(社長「多少上ズレ飛び」)
+const DIVE_DOWN_SLIDE_PX = 60; // 落下の開始位置を着地点より上へずらす量(社長「下ズレ着地」)
+
 const STAGE3_BOSS_VISUAL_SCALE = 1.2;
 // ステージ5(戦場)の城ボスも一回り拡大(社長指示v0.25.2945「ステージ5のボスもう一回り大きくして」)。
 // ステージ3と同じ仕組み=視覚のみ・判定/攻撃範囲は不変。
@@ -2902,6 +2910,7 @@ export class PixiScene {
   private policeShadow: BuildingShadowReq | null = null;
   private hunterVisionGfx = new Graphics(); // ハンターの視界(索敵)範囲=薄い紫サークル(地面・world座標)
   private bossCorpseSprite = new Sprite(); // 裏ボス討伐時のフェードアウト演出(頭基準・world座標。store.bossCorpse を参照)
+  private diveSprite = new Sprite();       // v0.25.3087: 急降下の「空へ飛び去る/空から降ってくる」専用の1枚
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
   private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
   private baseSoldierSprites = new Map<string, Sprite>(); // 拠点駐留兵士の立ち絵(救助NPCと同じ shooter 素材・足元アンカー・y-sort)
@@ -3818,6 +3827,9 @@ export class PixiScene {
     this.shadowContainer.addChild(this.shadowGroundLayer, this.shadowMeshLayer);
     this.bossCorpseSprite.visible = false;
     this.L.actorLayer.addChild(this.bossCorpseSprite); // 裏ボス討伐フェード(アクター層・y-sort)
+    this.diveSprite.visible = false;
+    this.diveSprite.anchor.set(0.5, 1); // 足元アンカー=拡大しても足が地面に残る
+    this.L.actorLayer.addChild(this.diveSprite); // 急降下の飛び去り/落下(アクター層・y-sort)
     this.arenaGfx.blendMode = 'add'; // 半透明の光る柵(加算で発光感)
     this.returnGfx.blendMode = 'add'; // 帰還サークルも加算で発光
     this.baseSitesGfx.blendMode = 'add'; // 拠点候補地サークルも加算で発光
@@ -6795,6 +6807,7 @@ export class PixiScene {
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
     this.drawSupportSniper(s.supportSniperNpc, s.gameTime); // 援護射撃NPC(非出撃の軍人立ち絵・画面縁のスライドイン→発射→後退)
     this.syncBossCorpse(s.bossCorpse, now);
+    this.syncGiantDive(s.enemies, s.gameTime);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
     this.syncDeepZoneGrade(
       !s.indoorMode && s.stageTheme !== 'lab' && !s.rhythm.active,
@@ -17527,6 +17540,65 @@ export class PixiScene {
       const p = L.d[3] < 1 ? (L.t - L.d[3]) / (1 - L.d[3]) : 0;
       this.drawGroundCrack(L.d[0], L.d[1], L.d[2], p, L.t0);
     }
+  }
+
+  // ══ 急降下(g-dive・stage-3の大技)の「空へ飛び去る/空から降ってくる」(v0.25.3087・社長指示) ══
+  // 社長「消える系は画面に敵が拡大ズームして透明になっていくジャンプ演出から、逆に拡大ズーム透明から
+  // 等身大にズームインして落ちてくる演出。上下ジャンプではなく、絵をズーム+透明で空に飛んで行ってる感じ。
+  // (多少上ズレ飛び、下ズレ着地た方がリアルかも)」
+  //
+  // ★斜め見下ろしの画面では「大きくなる=カメラに近づく=空へ上がった」と読める。上下に跳ねさせるより
+  // 高く飛んだ感じが出るので、**拡大+透明**で高さを表現する。
+  // ★なぜ専用の1枚か: この技の間、本体は**場外へ退避**している(仕様=「無敵ではなく居ない」)ため、
+  // 通常の敵の描画経路では画面外として省かれる。そこで飛び去り/落下だけをここで描く
+  // (討伐時の崩れる絵=bossCorpseSprite と同じ作り)。位置の基準は store が残している
+  // aiFromX/Y(飛び去る前)と aiTargetX/Y(着地点)。**判定は着地の瞬間の1発のまま=絵だけ**。
+  private syncGiantDive(enemies: Enemy[], gameTime: number) {
+    const sp = this.diveSprite;
+    const e = enemies.find(x => x.type === 'giantbat' && x.aiPhase === 'g-dive-windup');
+    if (!e) { if (sp.visible) sp.visible = false; return; }
+    const tex = getTexture(this.enemyTexKey(e.type, e.id));
+    if (!tex) { sp.visible = false; return; }
+    const totalMs = GIANT_DIVE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+    const remain = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+    const elapsed = Math.max(0, totalMs - remain);
+    // 溜めが短くされても飛び去りと落下が重ならないよう、尺に上限を掛ける(0.35+0.45<1)。
+    // 「別の場所の値が変わって片方が消える」型の事故(TEST_DESIGN.md 型A)への保険。
+    const upMs = Math.min(DIVE_UP_MS / ENEMY_ATTACK_SPEED_MULT, totalMs * 0.35);
+    const downMs = Math.min(DIVE_DOWN_MS / ENEMY_ATTACK_SPEED_MULT, totalMs * 0.45);
+
+    let baseX: number, footY: number, zoom: number, alpha: number, slide: number;
+    if (elapsed < upMs) {
+      // ①飛び去り: その場から**拡大しながら透明に**なって空へ。少し上へずれる(社長「多少上ズレ飛び」)。
+      const u = elapsed / upMs;
+      const ease = 1 - (1 - u) * (1 - u); // 勢いよく出て遠ざかる(減速)
+      baseX = (e.aiFromX ?? e.x) + e.width / 2;
+      footY = (e.aiFromY ?? e.y) + e.height;
+      zoom = 1 + (DIVE_ZOOM_MAX - 1) * ease;
+      alpha = 1 - ease;
+      slide = -DIVE_UP_SLIDE_PX * ease;
+    } else if (remain <= downMs) {
+      // ②落下: 着地点の上空から**縮みながら不透明に**なって降りてくる。上から下へずれて着地点に収まる。
+      const d = 1 - remain / downMs;          // 0=落ち始め 1=着地
+      const acc = d * d;                      // 加速しながら落ちる=着地の瞬間が一番速い
+      baseX = (e.aiTargetX ?? e.x) + e.width / 2;
+      footY = (e.aiTargetY ?? e.y) + e.height;
+      zoom = DIVE_ZOOM_MAX + (1 - DIVE_ZOOM_MAX) * acc;
+      alpha = Math.min(1, d * 2.2);           // 早めに実体化して「来る」と分からせる
+      slide = -DIVE_DOWN_SLIDE_PX * (1 - acc);
+    } else {
+      sp.visible = false; return;             // ③不在(この間だけ本当に居ない)
+    }
+    if (alpha <= 0.01) { sp.visible = false; return; }
+    const fb = enemyFootBox({ x: e.x, y: e.y, width: e.width, height: e.height, type: e.type } as Enemy);
+    const scale = containScale(fb.boxW, fb.boxH, tex.width, tex.height)
+      * this.depthScaleEnemy(footY) * this.stageEnemyVisualMul(e.type) * zoom;
+    sp.visible = true;
+    sp.texture = tex;
+    sp.scale.set(scale, scale);
+    sp.position.set(Math.round(baseX), Math.round(footY + slide));
+    sp.alpha = alpha;
+    sp.zIndex = footY + 1; // アクターと同じ y-sort 帯
   }
 
   private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean } | null, now: number) {
