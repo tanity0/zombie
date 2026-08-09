@@ -4972,6 +4972,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   lockAttackAim();
                   patch.bossState = 'skadi-blade-windup';
                   patch.bossStateUntil = newGameTime + SKADI_PRE_WINDUP_MS;
+                  // v0.25.3078(社長指示): 溜めの頭で「これから飛ぶ本数」の氷刃が全方位へドバッと出る予兆。
+                  useGameStore.getState().spawnFanBurst(bcx, bcy, 'skadi-ice-blade', SKADI_BLADE_COUNT);
                 } else if (move === 'cage') {
                   lockAttackAim();
                   patch.bossState = 'cage-windup';

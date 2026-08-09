@@ -1785,8 +1785,12 @@ export const GIANT_QUAD_ICE_DELAY_MS = 2400;                   // 実効2.0s(ス
 // ③爆発は円の内側を埋めるのではなく、**外へ飛び散る**(縁の外側までのリング状に散らす)。
 const QUAD_ICE_GATHER_MS = 150;   // 凝縮キラキラの間引き(旧110)
 const QUAD_ICE_GATHER_N = 1;      // 通常時の粒(氷1つあたり・旧3)
-const QUAD_ICE_GATHER_TIGHT_N = 2;// 終盤(玉になる所)だけ増やして密度を出す
-const QUAD_ICE_TIGHT_FROM = 0.72; // この進行度から「玉」段階
+const QUAD_ICE_GATHER_TIGHT_N = 3;// 終盤(玉になる所)だけ増やして密度を出す
+// v0.25.3078(社長指示「凝縮感が足りない。もっともっと小さく纏まってから爆発」):
+// ①玉の段階を早める(0.72→0.5=残り半分は「もう固まっている」状態を見せる)
+// ②玉の大きさを**半径比ではなく絶対px**で縛る(半径比だと氷が大きいほど玉も大きく=固まって見えない)。
+const QUAD_ICE_TIGHT_FROM = 0.5;  // この進行度から「玉」段階
+const QUAD_ICE_BALL_PX = 12;      // 玉の最大半径(px)。ここまで小さく纏めてから爆発させる
 const QUAD_ICE_BURST_N = 10;      // 粉塵爆発の粒(氷1つあたり・旧16)
 const QUAD_ICE_BURST_INNER = 0.55;// 爆発の粒を撒く輪の内側(半径比)
 const QUAD_ICE_BURST_OUTER = 1.25;// 同・外側(判定より外へ出る=分類②の派手枠)
@@ -4020,6 +4024,10 @@ interface GameState {
 
   // Visual effects (renderer-only; no gameplay impact)
   spawnEffect: (effect: VisualEffect) => void;
+  /** v0.25.3078: 本体から扇状(全方位)へ絵を撒き散らす予兆モーション。判定ゼロの派手枠②。 */
+  spawnFanBurst: (x: number, y: number, texture: string, count: number, opts?: {
+    speed?: number; scale?: number; durationMs?: number; spreadRad?: number; baseAngle?: number;
+  }) => void;
   // dirX/dirY(§5.23 M22 C1・任意): 指定時(かつ非ゼロ)は全方位ではなく、その方向を中心にした
   // 円錐(spawnSprayと同じ角度)へ絞って噴く。未指定/{0,0}/`?dirfx=0`は従来どおり全方位。
   spawnBurst: (x: number, y: number, color: string, count?: number, dirX?: number, dirY?: number) => void;
@@ -8890,13 +8898,17 @@ export const useGameStore = create<GameState>((set, get) => ({
                 if (!h.ice || h.burst) continue;
                 const gt = Math.max(0, Math.min(1, (gameTime - h.bornAt) / Math.max(1, h.fireAt - h.bornAt)));
                 // 半径の詰まり方を二乗にして、**終盤で一気に一点へ集まる**(=爆弾の玉になる)。
-                const ring = h.radius * (1 - gt) * (1 - gt);
+                // 三乗で詰めて**一気に一点へ**寄せる(社長「もっともっと小さく纏まってから爆発」)。
+                const shrink = (1 - gt) * (1 - gt) * (1 - gt);
                 const tight = gt >= QUAD_ICE_TIGHT_FROM;
+                // 玉の段階は**絶対pxで**縛る=どの氷でも同じ小ささの塊になる。
+                const ring = tight
+                  ? Math.min(QUAD_ICE_BALL_PX, h.radius * shrink)
+                  : h.radius * shrink;
                 const n = tight ? QUAD_ICE_GATHER_TIGHT_N : QUAD_ICE_GATHER_N;
                 for (let gi = 0; gi < n; gi++) {
                   const ga = Math.random() * Math.PI * 2;
-                  // 玉の段階では散らばりも締める(輪ではなく塊に見せる)。
-                  const gr = tight ? ring * Math.random() * 0.6 : ring * (0.8 + Math.random() * 0.35);
+                  const gr = ring * (tight ? Math.random() : 0.8 + Math.random() * 0.35);
                   quadBreathSparkles.push({ x: h.x + Math.cos(ga) * gr, y: h.y + Math.sin(ga) * gr });
                 }
               }
@@ -14180,6 +14192,28 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  // v0.25.3078(社長指示「ラフィみたいな骨とか氷とか飛んでくるやつ、予兆が少し欲しいので、本体から
+  // それらが扇状にドバッ!と全方位に(飛ぶ本数)飛んでいくモーション追加したい」):
+  // **これから飛ぶ本数と同じ数**の絵を本体から全方位へ撒く。判定ゼロ(分類②の派手枠)=
+  // 実際の攻撃の本数・向き・タイミング・ダメージには一切触れない「見せるだけ」の予兆。
+  spawnFanBurst: (x, y, texture, count, opts) => {
+    const n = Math.max(1, Math.floor(count));
+    const speed = opts?.speed ?? 420;
+    const spread = opts?.spreadRad ?? Math.PI * 2;   // 既定=全方位
+    const base = opts?.baseAngle ?? 0;
+    const now = Date.now();
+    for (let i = 0; i < n; i++) {
+      // 均等割り+わずかなゆらぎ(完全な等間隔は機械的に見える)。全方位のときは端を重ねない。
+      const a = base + (spread >= Math.PI * 2 ? (i / n) * spread : (i / Math.max(1, n - 1) - 0.5) * spread)
+        + (Math.random() - 0.5) * 0.18;
+      get().spawnEffect({
+        kind: 'image', id: `fanb-${now}-${i}-${(Math.random() * 1e6) | 0}`,
+        x, y, createdAt: now, duration: opts?.durationMs ?? 380,
+        texture, scale: opts?.scale ?? 0.5,
+        rot: a, driftX: Math.cos(a) * speed, driftY: Math.sin(a) * speed,
+      });
+    }
+  },
   spawnEffect: (effect) => {
     // Cap the effect pool so a stray bug can't degrade the framerate.
     set(state => {

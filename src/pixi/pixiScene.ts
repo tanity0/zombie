@@ -19584,7 +19584,10 @@ export class PixiScene {
     spr.visible = true;
     spr.texture = tex;
     spr.scale.set((targetH / tex.height) * pop);
-    spr.position.set(e.x, e.y);
+    // v0.25.3078: 向き+外へ流れる動き(未指定なら従来どおり回転0・その場)。
+    spr.rotation = e.rot ?? 0;
+    const driftSec = (now - e.createdAt) / 1000;
+    spr.position.set(e.x + (e.driftX ?? 0) * driftSec, e.y + (e.driftY ?? 0) * driftSec);
     spr.alpha = t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3); // 後半でフェード
   }
 

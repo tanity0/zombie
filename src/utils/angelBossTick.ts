@@ -1259,6 +1259,8 @@ export const runRafiTick = (
       patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
     } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
       patch.bossState = 'bone'; rr.boneLeft = RAFI_BONE_COUNT; rr.boneNextAt = newGameTime;
+      // v0.25.3078(社長指示): 撃ち始めに「これから飛ぶ本数」の骨刃が全方位へドバッと出る予兆。
+      store.spawnFanBurst(rcx, rcy, 'rafi-blade', RAFI_BONE_COUNT);
     }
   } else if (st === 'bone') {
     if (rr.boneLeft > 0 && newGameTime >= rr.boneNextAt) {

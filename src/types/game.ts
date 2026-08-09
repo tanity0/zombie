@@ -1497,6 +1497,11 @@ export type VisualEffect =
       texture: string;     // pixiTextures の論理名
       scale?: number;      // 表示スケール基準
       color?: string;      // 任意tint(未指定=素のまま)
+      // v0.25.3078(社長指示「本体からそれらが扇状にドバッ!と全方位に飛んでいくモーション」):
+      // 静止画エフェクトに**向き**と**外へ流れる速度**を持たせる。未指定なら従来どおり(回転0・静止)。
+      rot?: number;        // ラジアン(絵の向き)
+      driftX?: number;     // world px/秒(生成位置からの流れ)
+      driftY?: number;
     }
   | {
       kind: 'ring';
