@@ -233,6 +233,32 @@ import {
   BOSS_LEAD_PLAYER_MAX_FRAC, BOSS_LEAD_SOUTH_TARGET_SCREEN_FRAC, BOSS_LEAD_PLAYER_MIN_FRAC,
 } from './cameraZoom';
 
+// v0.25.3081(社長指示「この飛んでくる刃は画面内に収めたいので、この技の時は距離に関わらず引きにして」)
+import { bossWideShotZoom, BOSS_WIDE_SHOT_ZOOM } from './cameraZoom';
+
+describe('bossWideShotZoom — 技で決まる引き(距離に関わらず)', () => {
+  it('刃を撒く技の間だけ引く(スカジの氷刃は溜めから・ラフィの骨刃)', () => {
+    expect(bossWideShotZoom('skadi', 'skadi-blade-windup')).toBe(BOSS_WIDE_SHOT_ZOOM);
+    expect(bossWideShotZoom('skadi', 'skadi-blade')).toBe(BOSS_WIDE_SHOT_ZOOM);
+    expect(bossWideShotZoom('rafi', 'bone')).toBe(BOSS_WIDE_SHOT_ZOOM);
+  });
+  it('それ以外の技/状態では効かない(通常の距離カーブのまま)', () => {
+    expect(bossWideShotZoom('skadi', 'skadi-ice')).toBeNull();
+    expect(bossWideShotZoom('skadi', 'chase')).toBeNull();
+    expect(bossWideShotZoom('rafi', 'jump-attack')).toBeNull();
+    expect(bossWideShotZoom('skadi', undefined)).toBeNull();
+  });
+  it('★型は違うが同名の状態を持つボスに漏れない(ボスの種類でも絞っている)', () => {
+    // 'bone' はラフィ専用の状態名。将来ほかのボスが同名を使っても巻き込まれない。
+    expect(bossWideShotZoom('thor', 'bone')).toBeNull();
+    expect(bossWideShotZoom('mimir', 'skadi-blade')).toBeNull();
+  });
+  it('距離カーブより深い引き(=近くても引く)であること', () => {
+    expect(BOSS_WIDE_SHOT_ZOOM).toBeLessThan(1);
+    expect(BOSS_WIDE_SHOT_ZOOM).toBeGreaterThanOrEqual(ZOOM_MIN_ABS); // 監査済みの床は割らない
+  });
+});
+
 describe('bossCameraLeadY — ボス方向への縦カメラ先読み(南北とも目標ライン方式)', () => {
   const H = 800;
   const pBal = (1 + CAMERA_HORIZON_FRAC) / 2;

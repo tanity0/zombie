@@ -309,6 +309,7 @@ import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   ZOOM_MIN_ABS,
   springSmoothZoom, BOSS_DISTANCE_ZOOM_RETURN_TAU, zoomCameraDownFrac, bossCameraLeadY,
+  bossWideShotZoom,
   bossCameraLeadX, // v0.25.3063: 横のボス先読み(社長裁定「2をまず揃える」)
 } from '../utils/cameraZoom';
 import {
@@ -6234,8 +6235,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 描画(pixiScene)と同じく**フレーミング項込み**で目標ズームを出す。ボスが画面端の外に
               // 遠い時は距離カーブでなくフレーミング項が実ズームを決めるため、ここに無いと推定だけ
               // 浅くなり、カメラ下げ(均衡)も北先読みも実画角に対して大幅に不足していた。
-              const t = bossDistanceZoomTarget(e.type, aabbGapDistance(player, e), e.isStoryBoss === true,
+              const tDist = bossDistanceZoomTarget(e.type, aabbGapDistance(player, e), e.isStoryBoss === true,
                 { dxCenter: dx, dyCenter: dy, viewport: gameBounds });
+              // v0.25.3081: 描画側(pixiScene)と**同じ式**で技ドリブンの引きを掛ける(推定と実画角を割らない)。
+              const tWide = bossWideShotZoom(e.type, e.bossState);
+              const t = tWide != null ? Math.min(tDist, tWide) : tDist;
               bossTargetNow = bossTargetNow == null ? t : Math.min(bossTargetNow, t);
             }
           }

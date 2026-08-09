@@ -109,6 +109,8 @@ import {
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
 import { airHopHeight01 } from '../utils/airHop';
+import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE } from '../utils/bladeArt';
+import { bossWideShotZoom } from '../utils/cameraZoom';
 import {
   GLEN_CHAIN, GLEN_SLOT_COUNT, GLEN_VISIBLE_BY_COUNT, glenPartCountFull,
   pushGlenTrail, sampleGlenTrail, glenChainDistances,
@@ -1785,9 +1787,8 @@ const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
 // 投影影の大きさ倍率(長さ・幅・接地楕円をまとめて拡縮)。v0.25.1077で社長指示により2倍にしたが、
 // v0.25.1435で「1058の頃の影に戻す」の一環として1倍(v1077以前の見た目)へ戻した(社長指示)。
 const LOCAL_EVENT_SHADOW_SIZE_MULT = 1;
-// スカジの氷刃テクスチャの刃先方向(実測: hilt→tip ≈ -62.8°)。発射方向 angle に合わせ rotation=angle-この値。
-const SKADI_BLADE_NATIVE_ANGLE = -62.8 * Math.PI / 180;
-const RAFI_BLADE_NATIVE_ANGLE = -90 * Math.PI / 180; // 骨刃(rafi-blade)の素材内の刃先向き(叩き台=実機で微調整)
+// v0.25.3081: 刃先の向きの値は src/utils/bladeArt.ts へ移した(予兆バーストと**同じ値**を使うため。
+// 2箇所で持つと片方だけズレる=社長報告「予兆が横向きで飛ぶ」の再発源になる)。
 // 発火ナイフ投擲物テクスチャの刃先方向(実測: 柄→刃先 ≈ -52.6°)。進行方向 direction に合わせ rotation=angle-この値。
 const FIRE_KNIFE_NATIVE_ANGLE = -52.6 * Math.PI / 180;
 const FIRE_KNIFE_DISPLAY_LEN = 22; // 画面上の全長(px)。当たり判定(14x14)より少し大きく見せて視認性を確保(見た目のみ・当たり判定は不変)。
@@ -6005,8 +6006,11 @@ export class PixiScene {
       if (d2 < bossBiasD2) { bossBiasD2 = d2; bossBiasDx = dx; bossBiasDy = dy; }
       const bodyDistance = aabbGapDistance(s.player, e);
       // v0.25.2954: フレーミング項(被写体が画面端に迫ったら早めに引く)。dx/dyは上の交戦判定と同じ中心差。
-      const target = bossDistanceZoomTarget(e.type, bodyDistance, e.isStoryBoss === true,
+      const distTarget = bossDistanceZoomTarget(e.type, bodyDistance, e.isStoryBoss === true,
         { dxCenter: dx, dyCenter: dy, viewport: s.gameBounds });
+      // v0.25.3081(社長指示): 刃を撒く技の間は**距離に関わらず引く**(飛んでくる刃を画面内に収める)。
+      const wide = bossWideShotZoom(e.type, e.bossState);
+      const target = wide != null ? Math.min(distTarget, wide) : distTarget;
       bossDistanceTarget = bossDistanceTarget == null ? target : Math.min(bossDistanceTarget, target);
     }
     const bossCameraActive = bossDistanceTarget != null;

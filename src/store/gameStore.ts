@@ -4,6 +4,7 @@ import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLO
 import { generateEquipmentChoices } from '../utils/upgradeUtils';
 import { shouldEmitThrottled } from '../utils/emitThrottle';
 import { airHopEase01, airHopEaseD01 } from '../utils/airHop';
+import { bladeNativeAngle } from '../utils/bladeArt';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
@@ -14276,7 +14277,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         kind: 'image', id: `fanb-${now}-${i}-${(Math.random() * 1e6) | 0}`,
         x, y, createdAt: now, duration: opts?.durationMs ?? 380,
         texture, scale: opts?.scale ?? 0.5,
-        rot: a, driftX: Math.cos(a) * speed, driftY: Math.sin(a) * speed,
+        // v0.25.3081(社長報告「横向きで飛んだりしてる」): 刃の絵は素材ごとに刃先の向きが違う。
+        // 本物の刃と**同じ補正**を引いて、刃先を必ず進行方向へ向ける(値の出どころは bladeArt.ts 1箇所)。
+        rot: a - bladeNativeAngle(texture),
+        driftX: Math.cos(a) * speed, driftY: Math.sin(a) * speed,
       });
     }
   },

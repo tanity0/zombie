@@ -180,6 +180,19 @@ export const bossDistanceZoomTarget = (
   return Math.max(profile.far, Math.min(blended, hardX));
 };
 
+// v0.25.3081(社長指示「この飛んでくる刃は画面内に収めたいので、この技の時は距離に関わらず引きにして」):
+// **技で決まる引き**。距離カーブ(bossDistanceZoomTarget)より優先して上限を掛ける=近くても引く。
+// 対象は「本体から離れた場所へ長く飛ぶ刃」を撒く技だけ:
+//   スカジの氷刃(溜め skadi-blade-windup / 発射 skadi-blade)・ラフィの骨刃(bone)。
+// ※氷塊/氷檻(地面に置く)や、他の突進・薙ぎ払いは対象外(画面内に収める必要が無い)。
+export const BOSS_WIDE_SHOT_ZOOM = 0.55; // この技の間はここまで引く(1.8倍引き)
+export const bossWideShotZoom = (type: EnemyType, bossState?: string): number | null => {
+  if (bossState === undefined) return null;
+  if (type === 'skadi' && (bossState === 'skadi-blade' || bossState === 'skadi-blade-windup')) return BOSS_WIDE_SHOT_ZOOM;
+  if (type === 'rafi' && bossState === 'bone') return BOSS_WIDE_SHOT_ZOOM;
+  return null;
+};
+
 export interface Aabb { x: number; y: number; width: number; height: number }
 export const aabbGapDistance = (a: Aabb, b: Aabb): number => {
   const dx = Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width), 0);
