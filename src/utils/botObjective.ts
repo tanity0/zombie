@@ -194,6 +194,31 @@ export const nearestUncapturedBase = (w: ObjectiveWorld): BaseSite | null => {
 };
 
 /**
+ * campaign が狙う拠点を1つ選ぶ。**「最寄り」ではなく「護衛NPCが自分の拠点に最も近い拠点」**。
+ *
+ * ★なぜ最寄りにしないか(v0.25.3083・実走で判明した実バグ):
+ * 護衛NPCは拠点から2500〜2800px離れた地点から出発し、**画面内に居る間しか前進しない**。
+ * 目標を「プレイヤーから最寄りの未制圧拠点」にすると、**プレイヤーが動くたびに目標が変わる**
+ * (実測: 29s→base-2 / 49s→base-3 / 249s→base-1 / 290s→base-2)。結果4体の護衛の間を
+ * 行き来し続け、**どの1体にも付き添い切れず15分で拠点0個**だった。
+ * 「完成に一番近い拠点」を選べば**捕獲されるまで目標が変わらない**(状態を持たずに安定する)。
+ */
+export const campaignTargetBase = (w: ObjectiveWorld): BaseSite | null => {
+  const open = w.baseSites.filter(b => b.status !== 'captured');
+  if (open.length === 0) return null;
+  if (!w.escorts || w.escorts.length === 0) return nearestUncapturedBase(w);
+  let best: BaseSite | null = null, bestD = Infinity;
+  for (const b of open) {
+    for (const e of w.escorts) {
+      if (e.baseId !== b.id) continue;
+      const d = dist2(e.x, e.y, b.x, b.y);   // 護衛→自分の拠点の残り距離
+      if (d < bestD) { bestD = d; best = b; }
+    }
+  }
+  return best ?? nearestUncapturedBase(w);
+};
+
+/**
  * その拠点を担当する護衛NPCのうち最寄りのもの。
  * ★拠点を制圧するのは escort であってプレイヤーではない(gameStore.updateBaseSites)。
  *   しかも escort は画面外では前進しないので、ボットは escort に付き添う必要がある。
@@ -305,7 +330,7 @@ export const planObjective = (obj: BotObjective, w: ObjectiveWorld): ObjectivePl
       // ③ 未制圧の拠点 → **担当の護衛NPCに付き添う**(拠点の中心へ立っても制圧されない)。
       //    escort は画面内でしか前進しないので、ボットの仕事は「escortを画面内に入れ続けて護衛する」。
       //    escort が居ない/未提供の場合だけ、従来どおり拠点そのものを目的地にする。
-      const base = nearestUncapturedBase(w);
+      const base = campaignTargetBase(w);
       if (base) {
         const captured = w.baseSites.filter(b => b.status === 'captured').length;
         const escort = nearestEscortFor(w, base.id);

@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
   planObjective, parseBotObjective, steerTo, outwardPoint, nearestOfType, nearestUncapturedBase,
   ARRIVE_DIST, HIDDEN_BOSS_MIN_LEVEL, FARM_RADIUS, arenaPlan, nearestEventEnemy,
-  nearestUnopenedPoi, CAMPAIGN_MIN_LEVEL, CAMPAIGN_BOSS_ENGAGE_PX, HOLD_INPUT,
+  nearestUnopenedPoi, CAMPAIGN_MIN_LEVEL, CAMPAIGN_BOSS_ENGAGE_PX, HOLD_INPUT, campaignTargetBase,
   type ObjectiveWorld,
 } from './botObjective';
 import type { Enemy, EnemyType, BaseSite, Pickup } from '../types/game';
@@ -60,6 +60,39 @@ describe('campaign(通し)', () => {
       px: 50, py: 0, baseSites: [base('a', 0, 0)], baseCaptureRadius: 130,
     }));
     expect(p.hold).toBeFalsy();
+  });
+
+  // ★v0.25.3083 実走で判明した実バグ: 「最寄りの未制圧拠点」だとプレイヤーが動くたびに目標が変わり、
+  //   4体の護衛の間を行き来して15分で拠点0個だった。「護衛が自分の拠点に最も近い拠点」を選べば
+  //   捕獲されるまで目標が変わらない(状態を持たずに安定する)。
+  it('★狙う拠点は「最寄り」ではなく「護衛が完成に一番近い拠点」(目標が揺れない)', () => {
+    const w = world({
+      px: 0, py: 0,
+      baseSites: [base('near', 500, 0), base('far', 5000, 0)],
+      escorts: [
+        { baseId: 'near', x: 0, y: 0 },      // 担当拠点まで 500px
+        { baseId: 'far', x: 4900, y: 0 },    // 担当拠点まで 100px ← こちらが完成に近い
+      ],
+      baseCaptureRadius: 130,
+    });
+    expect(campaignTargetBase(w)?.id).toBe('far');
+    // プレイヤーが動いても目標は変わらない(ここが「揺れない」の肝)
+    expect(campaignTargetBase({ ...w, px: 4000, py: 0 })?.id).toBe('far');
+    expect(campaignTargetBase({ ...w, px: -3000, py: 0 })?.id).toBe('far');
+  });
+
+  it('制圧済みの拠点は狙わない / 全部済んだら null', () => {
+    const w = world({
+      baseSites: [base('a', 500, 0, 'captured'), base('b', 900, 0)],
+      escorts: [{ baseId: 'a', x: 500, y: 0 }, { baseId: 'b', x: 800, y: 0 }],
+    });
+    expect(campaignTargetBase(w)?.id).toBe('b');
+    expect(campaignTargetBase(world({ baseSites: [base('a', 5, 0, 'captured')] }))).toBeNull();
+  });
+
+  it('escort が未提供なら「最寄り」へフォールバックする', () => {
+    const w = world({ px: 0, py: 0, baseSites: [base('near', 500, 0), base('far', 5000, 0)] });
+    expect(campaignTargetBase(w)?.id).toBe('near');
   });
 
   it('escort が未提供/不在なら従来どおり拠点そのものを目的地にする', () => {
