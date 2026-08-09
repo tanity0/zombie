@@ -5,6 +5,8 @@ import { generateEquipmentChoices } from '../utils/upgradeUtils';
 import { shouldEmitThrottled } from '../utils/emitThrottle';
 import { airHopEase01, airHopEaseD01 } from '../utils/airHop';
 import { bladeNativeAngle } from '../utils/bladeArt';
+import { applyGhostBuildToPlayer, soloGhostRequested } from '../utils/soloGhost';
+import { loadPlayerProfile } from '../utils/playerTraits';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
@@ -13845,7 +13847,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         boomerangThrowFxAt: 0,
         junkShotFxAt: 0,
         summonFxAt: 0,
-        player: {
+        // v0.25.3082(社長指示「実機テストに、守護霊をソロで出撃させたい(強さをコピーして出撃)」):
+        // ?sologhost=1 の時だけ、保存済みの守護霊ビルドを**そのまま**プレイヤーへ被せる。
+        // 守護霊は召喚しない=「守護霊ではないけど同じ強さ」。未計測の端末は素通し(通常出撃)。
+        player: applyGhostBuildToPlayer({
           x: spawnTL.x,
           y: spawnTL.y,
           vx: 0,
@@ -13914,7 +13919,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           vaccineRevives: 0,
           equipment: runLoadout,
           equipBonus: runEquipBonus
-        },
+        }, soloGhostRequested() ? loadPlayerProfile()?.snapshot : undefined),
         // 登場演出をアーム(初フレームで終了時刻確定)。練習モードは演出なし。
         // チュートリアル(地下洞窟)もヘリ降下演出なし(社長指示v0.25.1818「何もかも無し。全てイベントで特別仕様のみ」)。
         // 洋館(corridorMode)はヘリ登場なし=走り込み入場(v0.25.2110・社長指示)。

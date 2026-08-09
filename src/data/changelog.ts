@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3082',
+    items: [
+      'ゲーム内容の変更はありません(実機テスト用に、守護霊と同じ強さでソロ出撃できる開発用スイッチを追加しました)。',
+    ],
+  },
+  {
     version: '0.25.3081',
     items: [
       'スカジの氷刃・ラフィの骨刃の予兆が、刃先を進行方向へ向けて針のように飛ぶようになりました(横向きに飛んでいた不具合の修正)。',
