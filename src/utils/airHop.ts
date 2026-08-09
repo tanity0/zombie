@@ -20,3 +20,30 @@ export const airHopEaseD01 = (t: number): number => {
   const x = t <= 0 ? 0 : t >= 1 ? 1 : t;
   return 30 * x * x * (1 - x) * (1 - x);
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// 高さ(浮き)の曲線(v0.25.3077)。社長指示:
+//   「飛んでることが読める様に、滞空時間を設けたい意図があるよ。
+//     フワッ……ダン! っていうリズム。飛び上がりは早く、滞空がフワッとある」
+// 旧実装は sin(t·π) の**左右対称**な山だった。対称だと上りと下りが同じ速さで、
+// 頂点に留まる時間がゼロ=「フワッ」が存在せず、ただ通過するだけに見える。
+// ここは3拍に分ける:
+//   ①飛び上がり(〜RISE): 速く上がって頂点で緩む(sinの立ち上がりを使う)
+//   ②滞空(RISE〜FALL): **頂点に留まる**。これが「フワッ」。ごく浅く上下させて生きた浮遊にする
+//   ③落下(FALL〜1): 加速しながら落ちる(自由落下=u²)。着地の瞬間が一番速い=「ダン!」
+// 端の値は必ず h(0)=0 / h(1)=0(=接地)。着地時刻・着地点・判定はこの関数と無関係(呼び出し側)。
+export const AIR_HOP_RISE_END = 0.26;  // ここまでで頂点へ(=飛び上がりは早く)
+export const AIR_HOP_FALL_START = 0.68; // ここから落下(=滞空はこの区間ぶん)
+export const airHopHeight01 = (t: number): number => {
+  const x = t <= 0 ? 0 : t >= 1 ? 1 : t;
+  if (x < AIR_HOP_RISE_END) {
+    return Math.sin((x / AIR_HOP_RISE_END) * (Math.PI / 2)); // 0→1(頂点で速度が緩む)
+  }
+  if (x < AIR_HOP_FALL_START) {
+    // 滞空: 頂点付近を漂う。完全に平らだと止まって見えるので、ごく浅い山を1つ描く。
+    const u = (x - AIR_HOP_RISE_END) / (AIR_HOP_FALL_START - AIR_HOP_RISE_END);
+    return 1 - 0.06 * (1 - Math.cos(u * Math.PI * 2)) / 2;
+  }
+  const u = (x - AIR_HOP_FALL_START) / (1 - AIR_HOP_FALL_START);
+  return Math.max(0, 1 - u * u); // 加速しながら落ちて、ちょうど接地
+};

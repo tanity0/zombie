@@ -1777,9 +1777,19 @@ export const GIANT_QUAD_ICE_DELAY_MS = 2400;                   // 実効2.0s(ス
 // 遅延起爆の氷は**赤い予告円**(色の文法どおり)に戻し、氷らしさ=キラキラの動きで見せる。
 // 予告の間はキラキラを**円周から中心へ半径を詰めながら**撒き(=凝縮して見える)、起爆の瞬間に散らす。
 // キラキラは判定ゼロの派手枠②=円の半径・2秒・ダメージには一切触れない。
-const QUAD_ICE_GATHER_MS = 110;   // 凝縮キラキラの間引き
-const QUAD_ICE_GATHER_N = 3;      // 1回あたりの粒(氷1つあたり)
-const QUAD_ICE_BURST_N = 16;      // 粉塵爆発の粒(氷1つあたり)
+// v0.25.3077(社長指示「粉塵爆発わけわからん。キラキラしすぎ。ちゃんと分かる程度のキラキラで、
+// 圧縮される時はキラキラが爆弾みたいに小さく凝縮され、爆発は飛び散る感じで」):
+// ①量を大幅に減らす(旧: 110msごとに3粒×3氷=画面がキラキラで埋まっていた)。
+// ②凝縮は**最後に一点へ集まって「爆弾」の玉になる**よう、半径の詰まり方を加速させる(二乗)。
+//   終盤だけ粒を増やして密度を上げる=小さく固まって見える。
+// ③爆発は円の内側を埋めるのではなく、**外へ飛び散る**(縁の外側までのリング状に散らす)。
+const QUAD_ICE_GATHER_MS = 150;   // 凝縮キラキラの間引き(旧110)
+const QUAD_ICE_GATHER_N = 1;      // 通常時の粒(氷1つあたり・旧3)
+const QUAD_ICE_GATHER_TIGHT_N = 2;// 終盤(玉になる所)だけ増やして密度を出す
+const QUAD_ICE_TIGHT_FROM = 0.72; // この進行度から「玉」段階
+const QUAD_ICE_BURST_N = 10;      // 粉塵爆発の粒(氷1つあたり・旧16)
+const QUAD_ICE_BURST_INNER = 0.55;// 爆発の粒を撒く輪の内側(半径比)
+const QUAD_ICE_BURST_OUTER = 1.25;// 同・外側(判定より外へ出る=分類②の派手枠)
 export const GIANT_QUAD_BREATH_SWEEP_RAD = (2 * Math.PI) / 3;  // 120°(sweepbeamと同値・独立定数として新設)
 
 // --- stage-4: 氷結波(nova・大技・トレース元=フリーデ/ヴォルドの氷の波。内側が安全=逆張り) ---
@@ -8861,9 +8871,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                 // v0.25.3074(社長指示「キラキラ粉塵爆発!」): 氷が砕ける瞬間、凝縮しきったキラキラが
                 // 一気に外へ散る。√乱数で円内に均等分布させる(中心に固まらない)。
                 if (h.ice) {
+                  // 「飛び散る」= 中を埋めるのではなく**外向きのリング**に置く(内側は空ける)。
                   for (let bi = 0; bi < QUAD_ICE_BURST_N; bi++) {
-                    const ba = Math.random() * Math.PI * 2;
-                    const br = h.radius * Math.sqrt(Math.random()) * 0.95;
+                    const ba = (bi / QUAD_ICE_BURST_N) * Math.PI * 2 + Math.random() * 0.5; // 均等+ゆらぎ
+                    const br = h.radius * (QUAD_ICE_BURST_INNER
+                      + (QUAD_ICE_BURST_OUTER - QUAD_ICE_BURST_INNER) * Math.random());
                     quadBreathSparkles.push({ x: h.x + Math.cos(ba) * br, y: h.y + Math.sin(ba) * br });
                   }
                 }
@@ -8877,10 +8889,14 @@ export const useGameStore = create<GameState>((set, get) => ({
               for (const h of giantDelayedHits) {
                 if (!h.ice || h.burst) continue;
                 const gt = Math.max(0, Math.min(1, (gameTime - h.bornAt) / Math.max(1, h.fireAt - h.bornAt)));
-                const ring = h.radius * (1 - gt); // 1→0 へ詰まる輪
-                for (let gi = 0; gi < QUAD_ICE_GATHER_N; gi++) {
+                // 半径の詰まり方を二乗にして、**終盤で一気に一点へ集まる**(=爆弾の玉になる)。
+                const ring = h.radius * (1 - gt) * (1 - gt);
+                const tight = gt >= QUAD_ICE_TIGHT_FROM;
+                const n = tight ? QUAD_ICE_GATHER_TIGHT_N : QUAD_ICE_GATHER_N;
+                for (let gi = 0; gi < n; gi++) {
                   const ga = Math.random() * Math.PI * 2;
-                  const gr = ring * (0.8 + Math.random() * 0.35);
+                  // 玉の段階では散らばりも締める(輪ではなく塊に見せる)。
+                  const gr = tight ? ring * Math.random() * 0.6 : ring * (0.8 + Math.random() * 0.35);
                   quadBreathSparkles.push({ x: h.x + Math.cos(ga) * gr, y: h.y + Math.sin(ga) * gr });
                 }
               }
