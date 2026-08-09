@@ -303,6 +303,7 @@ import {
   eventQuestSubAcceptLines, eventQuestSubCompleteLines,
 } from '../utils/eventQuest';
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
+import { airHopEase01 } from '../utils/airHop';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
@@ -5703,8 +5704,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
                 const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
                 const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_JUMP_MS));
-                patch.x = (fx + (tx - fx) * t) - boss.width / 2;
-                patch.y = (fy + (ty - fy) * t) - boss.height / 2;
+                // v0.25.3076(社長指示「滑空って全てのジャンプね」): 等速の線形補間をやめ、両端で
+                // 速度も加速度も0になる曲線で運ぶ(着地時刻・着地点・着地爆発はすべて不変)。
+                const tEs = airHopEase01(t);
+                patch.x = (fx + (tx - fx) * tEs) - boss.width / 2;
+                patch.y = (fy + (ty - fy) * tEs) - boss.height / 2;
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   // 着地: 既存のpumpkinBlasts(着地爆発)パイプラインへ積む=カウンター/被弾処理を丸ごと再利用。
                   useGameStore.setState(state => ({

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3076',
+    items: [
+      '跳ぶ技すべて(通常の敵の飛び掛かり・城ボスの飛び掛かり・グレンの連続ジャンプ・トール/ラフィの飛び掛かり)のカクついた動きを解消しました。飛び出しと着地がなめらかにつながります。着地の時刻・場所・当たり判定は変わりません。',
+    ],
+  },
+  {
     version: '0.25.3075',
     items: [
       '氷の三連突進の滑りが倍になりました。',

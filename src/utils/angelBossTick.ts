@@ -25,6 +25,7 @@ import {
 import { getActiveGun } from './weaponUtils';
 import { createEnemyProjectile, isGate2AngelBoss } from './enemyUtils';
 import { rectsOverlap } from '../world/obstacles';
+import { airHopEase01 } from './airHop';
 import { distToSegment } from './levelUpGate';
 import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY, isBossCounterableNowApprox } from './bossScript';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
@@ -1304,8 +1305,11 @@ export const runRafiTick = (
     const fx0 = rafi.aiFromX ?? rcx, fy0 = rafi.aiFromY ?? rcy;
     const tx0 = rafi.aiTargetX ?? rcx, ty0 = rafi.aiTargetY ?? rcy;
     const t = Math.max(0, Math.min(1, 1 - ((rafi.bossStateUntil ?? newGameTime) - newGameTime) / RAFI_JUMP_MS));
-    patch.x = (fx0 + (tx0 - fx0) * t) - rafi.width / 2;
-    patch.y = (fy0 + (ty0 - fy0) * t) - rafi.height / 2;
+    // v0.25.3076(社長指示「滑空って全てのジャンプね」): 等速の線形補間をやめ、両端で速度も
+    // 加速度も0になる曲線で運ぶ(着地時刻・着地点・着地爆発はすべて不変)。
+    const tEs = airHopEase01(t);
+    patch.x = (fx0 + (tx0 - fx0) * tEs) - rafi.width / 2;
+    patch.y = (fy0 + (ty0 - fy0) * tEs) - rafi.height / 2;
     if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
       useGameStore.setState(state => ({
         pumpkinBlasts: [...state.pumpkinBlasts, { x: tx0, y: ty0, radius: RAFI_JUMP_RADIUS, damage: rafi.damage, enemyId: rafi.id }],
@@ -1464,8 +1468,11 @@ export const runRafiTickLegacy = (
     const fx0 = rafi.aiFromX ?? rcx, fy0 = rafi.aiFromY ?? rcy;
     const tx0 = rafi.aiTargetX ?? rcx, ty0 = rafi.aiTargetY ?? rcy;
     const t = Math.max(0, Math.min(1, 1 - ((rafi.bossStateUntil ?? newGameTime) - newGameTime) / RAFI_JUMP_MS));
-    patch.x = (fx0 + (tx0 - fx0) * t) - rafi.width / 2;
-    patch.y = (fy0 + (ty0 - fy0) * t) - rafi.height / 2;
+    // v0.25.3076(社長指示「滑空って全てのジャンプね」): 等速の線形補間をやめ、両端で速度も
+    // 加速度も0になる曲線で運ぶ(着地時刻・着地点・着地爆発はすべて不変)。
+    const tEs = airHopEase01(t);
+    patch.x = (fx0 + (tx0 - fx0) * tEs) - rafi.width / 2;
+    patch.y = (fy0 + (ty0 - fy0) * tEs) - rafi.height / 2;
     if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
       useGameStore.setState(state => ({
         pumpkinBlasts: [...state.pumpkinBlasts, { x: tx0, y: ty0, radius: RAFI_JUMP_RADIUS, damage: rafi.damage, enemyId: rafi.id }],

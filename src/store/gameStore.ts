@@ -3,6 +3,7 @@ import type { TutorialSlide } from '../data/tutorials';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { generateEquipmentChoices } from '../utils/upgradeUtils';
 import { shouldEmitThrottled } from '../utils/emitThrottle';
+import { airHopEase01, airHopEaseD01 } from '../utils/airHop';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
@@ -9318,7 +9319,13 @@ export const useGameStore = create<GameState>((set, get) => ({
               const jt = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (GIANT_JUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT)));
               const jfx = enemy.aiFromX ?? enemy.x, jfy = enemy.aiFromY ?? enemy.y;
               const jtx = enemy.aiTargetX ?? enemy.x, jty = enemy.aiTargetY ?? enemy.y;
-              const jnx = jfx + (jtx - jfx) * jt, jny = jfy + (jty - jfy) * jt;
+              // v0.25.3076(社長指示「滑空って全てのジャンプね」): 等速の線形補間をやめ、
+              // 両端で速度も加速度も0になる曲線で運ぶ(着地点・滞空時間・判定は不変)。
+              const jEs = airHopEase01(jt);
+              const jnx = jfx + (jtx - jfx) * jEs, jny = jfy + (jty - jfy) * jEs;
+              const jDur = Math.max(0.001, GIANT_JUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT / 1000);
+              const jDs = airHopEaseD01(jt);
+              const jvx = ((jtx - jfx) * jDs) / jDur, jvy = ((jty - jfy) * jDs) / jDur;
               if (shieldRects.length > 0 && shieldRects.some(s => rectsOverlap({ x: jnx, y: jny, width: enemy.width, height: enemy.height }, s))) {
                 shieldBlocks.push({ x: jnx + enemy.width / 2, y: jny + enemy.height / 2, kind: 'jump' });
                 return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(jumpRecoverMs) };
@@ -9329,7 +9336,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: enemy.gJumpRadius ?? GIANT_JUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-jump' });
                 return { ...enemy, ...phaseFields, x: jtx, y: jty, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiPhaseUntil: atkUntil(jumpRecoverMs) };
               }
-              return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0 };
+              return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: jvx, vy: jvy };
             }
             case 'g-bolt-windup': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
@@ -9383,8 +9390,12 @@ export const useGameStore = create<GameState>((set, get) => ({
               const ty = pts[idx * 2 + 1] ?? (enemy.y + enemy.height / 2);
               const fx0 = enemy.aiFromX ?? enemy.x, fy0 = enemy.aiFromY ?? enemy.y;
               const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (GLEN_TRIJUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT)));
-              const curX = fx0 + ((tx - enemy.width / 2) - fx0) * t;
-              const curY = fy0 + ((ty - enemy.height / 2) - fy0) * t;
+              // v0.25.3076: 連続ジャンプ3発も同じ曲線で運ぶ(着地点・回数・判定は不変)。
+              const tEs = airHopEase01(t);
+              const curX = fx0 + ((tx - enemy.width / 2) - fx0) * tEs;
+              const curY = fy0 + ((ty - enemy.height / 2) - fy0) * tEs;
+              const tDur = Math.max(0.001, GLEN_TRIJUMP_AIR_MS / ENEMY_ATTACK_SPEED_MULT / 1000);
+              const tDs = airHopEaseD01(t);
               if (t >= 1) {
                 pumpkinLanded = true;
                 pumpkinBlasts.push({ x: tx, y: ty, radius: GLEN_TRIJUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-trijump' });
@@ -9404,7 +9415,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiStartedAt: gameTime, aiPhaseUntil: atkUntil(GLEN_TRIJUMP_AIR_MS), gTriJumpIdx: next,
                 };
               }
-              return { ...enemy, ...phaseFields, x: curX, y: curY, vx: 0, vy: 0 };
+              return {
+                ...enemy, ...phaseFields, x: curX, y: curY,
+                vx: (((tx - enemy.width / 2) - fx0) * tDs) / tDur, vy: (((ty - enemy.height / 2) - fy0) * tDs) / tDur,
+              };
             }
             case 'g-trijump-recover': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
@@ -9566,10 +9580,10 @@ export const useGameStore = create<GameState>((set, get) => ({
               // ②等速の線形補間をやめ、**両端で速度も加速度も0になる曲線(smootherstep)**で運ぶ
               // =出だしと着地の角が消える。判定は溜め終わりに確定済みのカプセル1発なので影響なし。
               const sfx = enemy.gGlideFromX ?? gfx, sfy = enemy.gGlideFromY ?? gfy;
-              const es = gt * gt * gt * (gt * (gt * 6 - 15) + 10);
+              const es = airHopEase01(gt);
               const gnx = sfx + (gtx - sfx) * es, gny = sfy + (gty - sfy) * es;
               // 速度も実際の移動に合わせて入れる(従来は0固定で、飛んでいる間ボスが進行方向を向かなかった)。
-              const dEs = 30 * gt * gt * (1 - gt) * (1 - gt);   // smootherstepの微分
+              const dEs = airHopEaseD01(gt);
               const durSec = Math.max(0.001, durEff / 1000);
               return {
                 ...enemy, ...phaseFields, x: gnx, y: gny,
@@ -10201,8 +10215,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT / (enemy.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1))));
             const fx = enemy.aiFromX ?? enemy.x, fy = enemy.aiFromY ?? enemy.y;
             const tx = enemy.aiTargetX ?? enemy.x, ty = enemy.aiTargetY ?? enemy.y;
-            const nx = fx + (tx - fx) * t;
-            const ny = fy + (ty - fy) * t;
+            // v0.25.3076(社長指示「滑空って全てのジャンプね」): 汎用ジャンプ(パンプキン/ハンター/
+            // ラボゾンビ3)も同じ曲線で運ぶ。着地時刻・着地点・爆発判定はすべて不変。
+            const gEs = airHopEase01(t);
+            const nx = fx + (tx - fx) * gEs;
+            const ny = fy + (ty - fy) * gEs;
             // 盾にぶつかったらジャンプ攻撃をキャンセルして、その場に落ちるだけ(爆発なし)。
             // 接触点を shieldBlocks に積んで、useGameLoop 側で衝突FX+SE を出す。描画は drawEnemy が
             // 空中→着地のホップ高を滑らかに 0 まで補間して「シームレスに落ちる」よう見せる(描画のみ)。
