@@ -2102,6 +2102,9 @@ const SHOCKWAVE_MS = 260;          // 走り切るまで。判定のactive窓と
 const SHOCKWAVE_TAIL_MS = 260;
 // 武器の絵(蔓/翼)を硬直へ持ち越して消す時間。振り切った姿勢がふっと残る=「ぱつっと」感が消える。
 const SWEEP_AFTERGLOW_MS = 460;
+// 虚無の三唱(グレン)を唱い切った後の消え際(v0.25.3118・社長裁定「虚無の三唱も出し切る」)。
+// 薙ぎ払いの余韻(460ms)より短いのは、唱は「次の唱へ渡す」節目であって振り抜きではないため。
+const NIHIL_TAIL_MS = 260;
 // v0.25.3091(鞭のモデル): 溜め中に構える長さ(帯の全長に対する割合)。全コマ共通=絵を潰さない。
 const VINE_COIL_LEN_FRAC = 0.62; // v0.25.3092: 溜めの構えも一回り大きく
 // クラックの追い越し量。鞭は伸び切りを一瞬追い越してから戻る(先端が最速になる瞬間)。
@@ -14864,20 +14867,43 @@ export class PixiScene {
       // 揃える(社長決定2026-08-07の色文法: 赤=カウンター対象・判定と厳密一致)。このリングの半径は
       // 判定(汎用windupのボディ接触カウンター/後段のgiantDelayedHits爆発円)のどれとも一致しないため、
       // 赤にすると「赤いのに当たらない/この範囲が危険」と誤読させる恐れがある=①には分類しない。
-      if (gph === 'g-nihil-chant1' || gph === 'g-nihil-chant2' || gph === 'g-nihil-chant3') {
-        const chantIdx = gph === 'g-nihil-chant1' ? 1 : gph === 'g-nihil-chant2' ? 2 : 3;
-        const chantRemain = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
-        const chantT = Math.max(0, Math.min(1, 1 - chantRemain / GLEN_NIHIL_CHANT_MS));
-        const pulse = 0.5 + 0.5 * Math.sin(now / 90);
-        const strength = chantIdx / 3; // 1唱=0.33 / 2唱=0.66 / 3唱=1.0(濃く)
-        const ringR = Math.max(e.width, e.height) * (0.42 + 0.08 * chantIdx) * (0.9 + 0.12 * chantT); // 大きく(1<2<3)
-        o.ellipse(cx, cy, ringR, ringR).fill({ color: 0xffcf5c, alpha: (0.04 + 0.08 * strength) + 0.05 * strength * pulse });
-        o.ellipse(cx, cy, ringR, ringR).stroke({ width: 2 + 2 * strength, color: 0xffe0a0, alpha: (0.22 + 0.35 * strength) + 0.15 * strength * pulse });
-        if (chantIdx === 3) {
-          // 3唱目だけ: 内から外へ抜けるリングを追加し、「もうすぐ来る」をひときわ強く伝える。
-          const burstT = (now / 260) % 1;
-          const outR = ringR * (1 + 0.7 * burstT);
-          o.ellipse(cx, cy, outR, outR).stroke({ width: 3, color: 0xfff3d0, alpha: 0.55 * (1 - burstT) });
+      // ★v0.25.3118(社長裁定「虚無の三唱も出し切る」): 唱の途中でカウンター/気絶が入って aiPhase が
+      // 消えても、**その唱は最後まで唱い切って**から消える(薙ぎ払いと同じ約束)。
+      // 唱ごとに別キーでlatchを焼く(1本の共通キーだと唱1→唱2で焼き直されず途中で切れる)。
+      // 出し切るのは**中断された唱1つぶん**で、唱っていない先の唱は作らない(唱1で止められたのに
+      // 3唱目まで見せると「詠唱が完成した」という嘘になる)。
+      {
+        const livePhase = gph === 'g-nihil-chant1' ? 1 : gph === 'g-nihil-chant2' ? 2 : gph === 'g-nihil-chant3' ? 3 : 0;
+        const chantEff = GLEN_NIHIL_CHANT_MS / ENEMY_ATTACK_SPEED_MULT;
+        let chantIdx = 0, chantT = 0, chantFade = 1;
+        for (let ci = 1; ci <= 3; ci++) {
+          const L = this.latchFx(`${e.id}:nihil${ci}`, livePhase === ci, chantEff + NIHIL_TAIL_MS, now, () => []);
+          if (livePhase === ci) {
+            // 通常進行: 従来どおりフェーズの残り時間で進める(絵は1msも変わらない)。
+            const chantRemain = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+            chantIdx = ci;
+            chantT = Math.max(0, Math.min(1, 1 - chantRemain / GLEN_NIHIL_CHANT_MS));
+            chantFade = 1;
+          } else if (L && livePhase === 0) {
+            // 中断(または唱い終わり)後: 自前時計で残りを唱い切り、最後に尾を引いて消える。
+            const el = L.t * (chantEff + NIHIL_TAIL_MS);
+            chantIdx = ci; // 後の唱ほど優先=最後に唱っていた唱を描く
+            chantT = Math.min(1, el / chantEff);
+            chantFade = el <= chantEff ? 1 : Math.max(0, 1 - (el - chantEff) / NIHIL_TAIL_MS);
+          }
+        }
+        if (chantIdx > 0 && chantFade > 0.01) {
+          const pulse = 0.5 + 0.5 * Math.sin(now / 90);
+          const strength = chantIdx / 3; // 1唱=0.33 / 2唱=0.66 / 3唱=1.0(濃く)
+          const ringR = Math.max(e.width, e.height) * (0.42 + 0.08 * chantIdx) * (0.9 + 0.12 * chantT); // 大きく(1<2<3)
+          o.ellipse(cx, cy, ringR, ringR).fill({ color: 0xffcf5c, alpha: ((0.04 + 0.08 * strength) + 0.05 * strength * pulse) * chantFade });
+          o.ellipse(cx, cy, ringR, ringR).stroke({ width: 2 + 2 * strength, color: 0xffe0a0, alpha: ((0.22 + 0.35 * strength) + 0.15 * strength * pulse) * chantFade });
+          if (chantIdx === 3) {
+            // 3唱目だけ: 内から外へ抜けるリングを追加し、「もうすぐ来る」をひときわ強く伝える。
+            const burstT = (now / 260) % 1;
+            const outR = ringR * (1 + 0.7 * burstT);
+            o.ellipse(cx, cy, outR, outR).stroke({ width: 3, color: 0xfff3d0, alpha: 0.55 * (1 - burstT) * chantFade });
+          }
         }
       }
       // 砂埃(B-0)は**着弾イベント**に紐づける(社長報告v0.25.2412「まだカウンターすると砂埃が出ない」)。

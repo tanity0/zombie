@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3118',
+    items: [
+      'グレンの虚無の三唱が、詠唱を止めても唱いかけの1唱を最後まで見せてから消えるようになりました。',
+    ],
+  },
+  {
     version: '0.25.3117',
     items: [
       'ステージ3の雲の位置を、遠くの森を基準にして手前へ離しました。',
