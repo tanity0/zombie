@@ -1903,6 +1903,12 @@ export const GLEN_REACH_WINDUP_MS = 360;            // 実効300ms・静止(社�
 export const GLEN_REACH_ACTIVE_MS = GIANT_SWEEP_ACTIVE_MS; // 叩き台=既存sweepの実行時間を流用(設計書に明記なし)
 export const GLEN_REACH_RECOVER_MS = 840;           // 実効700ms
 export const GLEN_REACH_CD_MS = 9600;               // 実効8.0s
+// ★社長指示v0.25.3126「触手は**1秒置きにターゲティングしなおして発動3連発**」。
+// 1周期を**きっちり実効1.0秒**に割る: 溜め300ms(予告) + 実行220ms + 間480ms = 1000ms。
+// **予告の300msは1msも変えない**(社長がv0.25.3035で決めた値)。伸ばした尺は「間」に置く=
+// 間は硬直と同じ扱い(赤い帯を出さない)ので「赤いのに当たらない」を作らない。
+export const GLEN_REACH_SHOTS = 3;                  // 何発撃つか(固定3=数えられる)
+export const GLEN_REACH_GAP_MS = 576;               // 実効480ms(= 1000 − 溜め300 − 実行220)
 export const GLEN_REACH_LENGTH = 900;               // 設計書どおり(長さ900)
 export const GLEN_REACH_HALF_WIDTH = 28;            // 設計書どおり(半幅28)
 
@@ -1911,6 +1917,9 @@ export const GLEN_NIHIL_CHANT_MS = 960;             // 実効800ms/唱×3(学習
 export const GLEN_NIHIL_RECOVER_MS = 1680;          // 実効1400ms(全技中最大)
 export const GLEN_NIHIL_CD_MS = 19200;              // 実効16.0s
 export const GLEN_NIHIL_RADIUS = 260;               // 設計書どおり(半径260)
+// 社長指示v0.25.3126「三唱のダメージを100に」。他の技(enemy.damage)より明確に重い=
+// 「3回数えて逃げる」を守らなかった時の代償を大きくする(避け方は円の外へ出るだけ)。
+export const GLEN_NIHIL_DAMAGE = 100;
 // v0.25.3122(社長指示「赤い当たり判定全体に画像を三段階で表現。その度に画面大きく揺れる」):
 // 1唱ごとの画面揺れ。**全技中で最大級**(飛び降り着地の15に並ぶ)=「数える3回」を体で分からせる。
 export const GLEN_NIHIL_SHAKE_MS = 300;
@@ -8927,7 +8936,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             const dueHits = giantDelayedHits.filter(h => gameTime >= h.fireAt && !h.burst);
             if (dueHits.length > 0) {
               for (const h of dueHits) {
-                pumpkinBlasts.push({ x: h.x, y: h.y, radius: h.radius, damage: enemy.damage, enemyId: enemy.id, ice: h.ice, capsule: h.capsule, moveKey: h.moveKey });
+                // v0.25.3126: 遅延起爆ごとのダメージ上書き(未設定=従来どおり enemy.damage)。
+                pumpkinBlasts.push({ x: h.x, y: h.y, radius: h.radius, damage: h.damage ?? enemy.damage, enemyId: enemy.id, ice: h.ice, capsule: h.capsule, moveKey: h.moveKey });
                 // v0.25.3074(社長指示「キラキラ粉塵爆発!」): 氷が砕ける瞬間、凝縮しきったキラキラが
                 // 一気に外へ散る。√乱数で円内に均等分布させる(中心に固まらない)。
                 if (h.ice) {
@@ -9284,6 +9294,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiFromX: ecx, aiFromY: ecy,
                   aiTargetX: ecx + lockDirX * GLEN_REACH_LENGTH, aiTargetY: ecy + lockDirY * GLEN_REACH_LENGTH,
                   aiStartedAt: gameTime, hateTarget: aim.side,
+                  gReachIndex: 0, // 3連発の1発目(社長指示v0.25.3126)
                 };
               case 'nihil':
               default:
@@ -9301,6 +9312,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     x: aim.x, y: aim.y, radius: GLEN_NIHIL_RADIUS, bornAt: gameTime,
                     fireAt: atkUntil(GLEN_NIHIL_CHANT_MS * GLEN_NIHIL_CHANT_COUNT),
                     moveKey: 'g-nihil', // G4a計測タグ(記録専用)
+                    damage: GLEN_NIHIL_DAMAGE, // 社長指示v0.25.3126「三唱のダメージを100に」
                   }],
                 };
               case 'trijump': {
@@ -10107,13 +10119,35 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             case 'g-reach-active': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-recover', aiPhaseUntil: atkUntil(scriptRestMs(GLEN_REACH_RECOVER_MS)) };
+                // v0.25.3126: まだ撃つ弾が残っていれば**短い「間」**へ(次の溜めまでの待ち)。
+                // 最後の1発だけ本来の硬直=反撃窓へ入る。
+                const rMore = (enemy.gReachIndex ?? 0) + 1 < GLEN_REACH_SHOTS;
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-recover',
+                  aiPhaseUntil: atkUntil(rMore ? GLEN_REACH_GAP_MS : scriptRestMs(GLEN_REACH_RECOVER_MS)),
+                };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
             case 'g-reach-recover': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGlenMove('reach', GLEN_REACH_CD_MS) };
+                const rIdx = enemy.gReachIndex ?? 0;
+                if (rIdx + 1 < GLEN_REACH_SHOTS) {
+                  // ★**ここで狙いを取り直す**(社長指示「1秒置きにターゲティングしなおして」)。
+                  // 毎フレーム追尾ではなく、**次の溜めが始まる瞬間に1回だけ**評価する
+                  // (掟W4=テルを出したら向きは変えない。三連突進のlegごとの再評価と同じ作法)。
+                  const rAim = resolveBossHateAim(enemy, { x: pcx, y: pcy }, summons, gameTime);
+                  const rdl = Math.hypot(rAim.x - ecx, rAim.y - ecy) || 1;
+                  const rdx = (rAim.x - ecx) / rdl, rdy = (rAim.y - ecy) / rdl;
+                  return {
+                    ...enemy, ...phaseFields, vx: 0, vy: 0,
+                    aiPhase: 'g-reach-windup', aiPhaseUntil: atkUntil(GLEN_REACH_WINDUP_MS),
+                    aiFromX: ecx, aiFromY: ecy,
+                    aiTargetX: ecx + rdx * GLEN_REACH_LENGTH, aiTargetY: ecy + rdy * GLEN_REACH_LENGTH,
+                    aiStartedAt: gameTime, hateTarget: rAim.side, gReachIndex: rIdx + 1,
+                  };
+                }
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, gReachIndex: undefined, ...finishGlenMove('reach', GLEN_REACH_CD_MS) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }

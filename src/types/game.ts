@@ -532,6 +532,9 @@ export interface Enemy {
   // M66(PACING_PUZZLE.md §6.26-11・stage-1/3/4/5限定)。
   // 三連突進(quaddash)の何回目か(0始まり・固定3回で終了=giantQuadDashComplete)。
   gQuadIndex?: number;
+  // v0.25.3126(社長指示「触手は1秒置きにターゲティングしなおして発動3連発」): 触手の何発目か(0始まり)。
+  // 三連突進(gQuadIndex)と同じ作法=1つの技の中で反復する回数を敵が持ち回る。
+  gReachIndex?: number;
   // v0.25.3075: 滑空(glide)の**実際の飛び出し位置**(実行に入った瞬間の座標)。
   // aiFromX/Y は溜め開始でロックした「予告の線の始点」で、溜め中の後退りぶんズレる。
   // 移動をaiFromから始めると飛び出しの瞬間に前へワープする(=カクつきの主因)ため、
@@ -564,6 +567,9 @@ export interface Enemy {
   giantDelayedHits?: { x: number; y: number; radius: number; bornAt: number; fireAt: number; ice?: boolean;
     capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number };
     burst?: boolean; floorUntil?: number; moveKey?: string;
+    // v0.25.3126(社長指示「三唱のダメージを100に」): この遅延起爆だけダメージを上書きする。
+    // 未設定=従来どおり enemy.damage(=技ごとに変えていなかった旧仕様)。
+    damage?: number;
     // v0.25.3079: 爆発の一瞬前の「ピカッ」を1回だけ出すための印(社長指示)。
     flashed?: boolean }[];
   // 継続判定技(氷結波の輪/三連突進の吐息/掃射)が「このactiveフェーズで既に1回命中させたか」。
