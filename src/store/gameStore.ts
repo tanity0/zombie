@@ -1911,6 +1911,10 @@ export const GLEN_NIHIL_CHANT_MS = 960;             // 実効800ms/唱×3(学習
 export const GLEN_NIHIL_RECOVER_MS = 1680;          // 実効1400ms(全技中最大)
 export const GLEN_NIHIL_CD_MS = 19200;              // 実効16.0s
 export const GLEN_NIHIL_RADIUS = 260;               // 設計書どおり(半径260)
+// v0.25.3122(社長指示「赤い当たり判定全体に画像を三段階で表現。その度に画面大きく揺れる」):
+// 1唱ごとの画面揺れ。**全技中で最大級**(飛び降り着地の15に並ぶ)=「数える3回」を体で分からせる。
+export const GLEN_NIHIL_SHAKE_MS = 300;
+export const GLEN_NIHIL_SHAKE_MAG = 15;
 
 // --- 連続ジャンプ(trijump・社長指示v0.25.2430「着地後すぐに次のジャンプを3回連続」) ---
 // 設計(社長裁定「おすすめで」): **3点まとめて溜め開始でロック**して3つの赤い円を最初から全部見せる。
@@ -8497,6 +8501,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
+    // v0.25.3122(社長指示「三唱のエフェクト変更…その度に画面大きく揺れる」): 唱が1つ進んだ瞬間を
+    // 拾って set 後に大きく揺らす(set内でのネスト発火回避=pumpkinLandedと同じ作法)。
+    // **絵の切り替えと同じ瞬間**に揺らすため、判定/演出の起点は唱の遷移そのものに置く。
+    let glenNihilChanted = false;
     // 着地爆発イベント(ice=スカジ氷=青FX・capsule=M51薙ぎ払い)。
     // ★**空から作らない**(v0.25.2629・社長報告「殴り、狙撃線は何も食らってない」の原因):
     // このローカル配列は最後に `return { ..., pumpkinBlasts }` で **state を丸ごと差し替える**。
@@ -9284,6 +9292,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 // T5大円(半径260)は1件だけ積み、fireAt=3唱ぶんの合計時間(chant3終了と同時)に自動的に
                 // 爆ぜる(床は残さない=nihilはfloorUntilを設定しない)。BOT_AND_GHOST.md §2.8 G2.5:
                 // 狙い点=pcx/pcyの代わりにヘイト対象の中心(上のaim)。
+                glenNihilChanted = true; // 1唱目=絵が出る瞬間
                 return {
                   aiPhase: 'g-nihil-chant1', aiPhaseUntil: atkUntil(GLEN_NIHIL_CHANT_MS),
                   aiFromX: ecx, aiFromY: ecy, aiTargetX: aim.x, aiTargetY: aim.y, aiStartedAt: gameTime,
@@ -10112,12 +10121,14 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ==== M67: stage-7限定「虚無の三唱」(nihil・大技) ====
             case 'g-nihil-chant1': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                glenNihilChanted = true; // 2唱目へ=絵が切り替わる瞬間(set後に画面を揺らす)
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-chant2', aiPhaseUntil: atkUntil(GLEN_NIHIL_CHANT_MS) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
             case 'g-nihil-chant2': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                glenNihilChanted = true; // 3唱目へ=絵が切り替わる瞬間
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-nihil-chant3', aiPhaseUntil: atkUntil(GLEN_NIHIL_CHANT_MS) };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
@@ -10774,6 +10785,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
+    // 虚無の三唱: 1唱ごとに**大きく**揺らす(社長指示v0.25.3122)。全技中で最大級の振幅=
+    // 「数える3回」を体で分からせる合図。判定・秒数・ダメージには一切関与しない(描画のみ)。
+    if (glenNihilChanted) get().triggerShake(GLEN_NIHIL_SHAKE_MS, GLEN_NIHIL_SHAKE_MAG);
     // M51: ジャイアント新スクリプトの咆哮弾(set() 内は再入set禁止のため post-set で発射)。
     // 弾自体の性能(速度/サイズ/ダメージ)は getEnemyFireProfile('giantbat') のプロファイルを
     // createEnemyProjectile が使う=現行不変(6.26-6)。錬金術の召喚ターゲットも既存どおり考慮する。

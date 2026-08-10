@@ -56,7 +56,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   ghostDeathPose, type GhostDeathPose,
   // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」#4): グレン虚無の三唱(nihil)の詠唱1回ぶんの
   // 長さ。3唱パルスの進行度を判定と同じ値で計算するため import(手写しリテラルを増やさない)。
-  GLEN_NIHIL_CHANT_MS,
+  GLEN_NIHIL_CHANT_MS, GLEN_NIHIL_RADIUS,
   // B-1(社長裁定v0.25.3002→3003): アテンション中だけ被写界深度の勾配を広げる位相計算に使う。
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS,
 } from '../store/gameStore';
@@ -2285,6 +2285,12 @@ const ATK_ART_ICE_END_SPARK_0 = ATK_ART_ICE_SPARK_0 + SWEEP_ICE_N * SWEEP_ICE_SP
 // 同居するので、出し切りlatchで余韻が伸びると 7/8/9 を奪い合って「銃が1挺消える」事故になる。
 const ATK_ART_BOLT_GUN_0 = ATK_ART_ICE_END_SPARK_0 + SWEEP_ICE_END_SPARK_N;          // 咆哮弾: 3挺
 const ATK_ART_SWEEPBEAM_GUN = ATK_ART_BOLT_GUN_0 + 3;                                // 掃射: 1挺
+const ATK_ART_NIHIL = ATK_ART_SWEEPBEAM_GUN + 1;                                     // 虚無の三唱: 円1枚
+// 虚無の三唱の円形素材(社長支給待ち・v0.25.3122)。唱1/2/3で `fx/nihil-1` `-2` `-3` を差し替える。
+// **素材が無い間は何も描かない**(getTextureがnullを返す)=置いた瞬間に出る。
+const NIHIL_ART_PREFIX = 'fx/nihil-';
+const NIHIL_ART_PUNCH = 0.10;      // 唱の切り替わりで**内側へ**踏み込む量(判定より大きくしない)
+const NIHIL_ART_PUNCH_FRAC = 0.18; // 踏み込みが戻るまでの割合(唱の頭18%)
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -14937,50 +14943,49 @@ export class PixiScene {
       } else {
         view.sprite.tint = 0xffffff;
       }
-      // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」#4): 虚無の三唱(nihil)を唱ごとに濃く・
-      // 大きく(1<2<3)。3唱目は発射予兆として明確に強くする(学習点④「数える」の視覚化の強化)。
-      // 図形のみ・新素材なし。判定は不変(汎用windupのカウンター/giantDelayedHitsの爆発円がそのまま
-      // 持つ)=これは②「派手さの絵」の追加。
-      // 色は赤ではなく金(drawGazeFlash/drawWarpFlashと同じ「判定を持たない魔力の高まり」トーン)に
-      // 揃える(社長決定2026-08-07の色文法: 赤=カウンター対象・判定と厳密一致)。このリングの半径は
-      // 判定(汎用windupのボディ接触カウンター/後段のgiantDelayedHits爆発円)のどれとも一致しないため、
-      // 赤にすると「赤いのに当たらない/この範囲が危険」と誤読させる恐れがある=①には分類しない。
-      // ★v0.25.3118(社長裁定「虚無の三唱も出し切る」): 唱の途中でカウンター/気絶が入って aiPhase が
-      // 消えても、**その唱は最後まで唱い切って**から消える(薙ぎ払いと同じ約束)。
-      // 唱ごとに別キーでlatchを焼く(1本の共通キーだと唱1→唱2で焼き直されず途中で切れる)。
-      // 出し切るのは**中断された唱1つぶん**で、唱っていない先の唱は作らない(唱1で止められたのに
-      // 3唱目まで見せると「詠唱が完成した」という嘘になる)。
+      // ★虚無の三唱(nihil)の絵(社長指示v0.25.3122「三唱のエフェクト変更。**金リングは廃止**。
+      // **赤い当たり判定全体に画像を三段階で表現**。その度に画面大きく揺れる。画像は後で渡します
+      // (円形の一枚絵を切り替えていくイメージ)」)。
+      // ⇒ ①金リング(v3095系)は撤去 ②唱ごとに1枚の円形素材を差し替え ③**大きさは判定の円そのもの**
+      //   (中心=狙い点・直径=GLEN_NIHIL_RADIUS×2)。判定と絵が同寸=分類①の作法。
+      // 画面揺れは**store側**(updateEnemiesの唱遷移)で出す=描画は状態を書かない掟のまま。
+      // ★素材が未支給の間は何も描かない(getTextureがnull)。差し替えは fx/nihil-1..3 を置くだけ。
+      // v0.25.3118の「出し切る」約束はそのまま=唱ごとの別キーlatchで、中断されてもその唱は唱い切る。
       {
         const livePhase = gph === 'g-nihil-chant1' ? 1 : gph === 'g-nihil-chant2' ? 2 : gph === 'g-nihil-chant3' ? 3 : 0;
         const chantEff = GLEN_NIHIL_CHANT_MS / ENEMY_ATTACK_SPEED_MULT;
         let chantIdx = 0, chantT = 0, chantFade = 1;
+        let nfx = e.aiTargetX ?? cx, nfy = e.aiTargetY ?? cy; // 円の中心=狙い点(ボスの位置ではない)
         for (let ci = 1; ci <= 3; ci++) {
-          const L = this.latchFx(`${e.id}:nihil${ci}`, livePhase === ci, chantEff + NIHIL_TAIL_MS, now, () => []);
+          // 中心も焼き付ける(中断で aiTarget が undefined 化しても円が本体へ寄らない)。
+          const L = this.latchFx(`${e.id}:nihil${ci}`, livePhase === ci, chantEff + NIHIL_TAIL_MS, now,
+            () => [e.aiTargetX ?? cx, e.aiTargetY ?? cy]);
           if (livePhase === ci) {
-            // 通常進行: 従来どおりフェーズの残り時間で進める(絵は1msも変わらない)。
             const chantRemain = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
             chantIdx = ci;
             chantT = Math.max(0, Math.min(1, 1 - chantRemain / GLEN_NIHIL_CHANT_MS));
             chantFade = 1;
+            if (L) { nfx = L.d[0]; nfy = L.d[1]; }
           } else if (L && livePhase === 0) {
             // 中断(または唱い終わり)後: 自前時計で残りを唱い切り、最後に尾を引いて消える。
             const el = L.t * (chantEff + NIHIL_TAIL_MS);
             chantIdx = ci; // 後の唱ほど優先=最後に唱っていた唱を描く
             chantT = Math.min(1, el / chantEff);
             chantFade = el <= chantEff ? 1 : Math.max(0, 1 - (el - chantEff) / NIHIL_TAIL_MS);
+            nfx = L.d[0]; nfy = L.d[1];
           }
         }
         if (chantIdx > 0 && chantFade > 0.01) {
-          const pulse = 0.5 + 0.5 * Math.sin(now / 90);
-          const strength = chantIdx / 3; // 1唱=0.33 / 2唱=0.66 / 3唱=1.0(濃く)
-          const ringR = Math.max(e.width, e.height) * (0.42 + 0.08 * chantIdx) * (0.9 + 0.12 * chantT); // 大きく(1<2<3)
-          o.ellipse(cx, cy, ringR, ringR).fill({ color: 0xffcf5c, alpha: ((0.04 + 0.08 * strength) + 0.05 * strength * pulse) * chantFade });
-          o.ellipse(cx, cy, ringR, ringR).stroke({ width: 2 + 2 * strength, color: 0xffe0a0, alpha: ((0.22 + 0.35 * strength) + 0.15 * strength * pulse) * chantFade });
-          if (chantIdx === 3) {
-            // 3唱目だけ: 内から外へ抜けるリングを追加し、「もうすぐ来る」をひときわ強く伝える。
-            const burstT = (now / 260) % 1;
-            const outR = ringR * (1 + 0.7 * burstT);
-            o.ellipse(cx, cy, outR, outR).stroke({ width: 3, color: 0xfff3d0, alpha: 0.55 * (1 - burstT) * chantFade });
+          const sp = this.atkArtSprite(view, ATK_ART_NIHIL, `${NIHIL_ART_PREFIX}${chantIdx}`);
+          if (sp) {
+            sp.anchor.set(0.5, 0.5);
+            // 唱が切り替わった瞬間だけ小さく踏み込む(揺れと同じ拍で"ドン"と入る)。判定より大きくはしない。
+            const punch = 1 - NIHIL_ART_PUNCH * Math.max(0, 1 - chantT / NIHIL_ART_PUNCH_FRAC);
+            const d = GLEN_NIHIL_RADIUS * 2 * punch;
+            sp.scale.set(d / Math.max(1, sp.texture.width), d / Math.max(1, sp.texture.height));
+            sp.rotation = 0;
+            sp.position.set(nfx, nfy);
+            sp.alpha = artFade * chantFade;
           }
         }
       }

@@ -456,6 +456,13 @@ export const ensureTextures = (): Promise<void> => {
       // v0.25.3119(社長支給): グレン(stage-7)の薙ぎ払い=地面から生える赤い結晶。氷塊(skadi-ice-block)と
       // **同じ使い方**(帯に沿って小→大に並べる)なので、scaleMode も氷塊に揃える(ほぼ回さない絵)。
       { name: 'fx/glen-crystal', scaleMode: 'nearest' as const },
+      // v0.25.3122(社長指示・**素材は後で支給**): 虚無の三唱の3コマ。赤い判定円(直径520px)いっぱいに
+      // 貼るので、縮小のチラつきを避けて linear。**口だけ先に開けておく**=ファイルを
+      // `public/sprites/fx/nihil-1.png`(〜3)へ置いた瞬間に出る。未配置の間はロードに失敗して
+      // getTexture=null → 描画を丸ごとスキップする(ローダは1枚ずつ失敗を握りつぶす設計)。
+      { name: 'fx/nihil-1', scaleMode: 'linear' as const },
+      { name: 'fx/nihil-2', scaleMode: 'linear' as const },
+      { name: 'fx/nihil-3', scaleMode: 'linear' as const },
       { name: 'fx/vine-whip-0', scaleMode: 'nearest' as const },       // v0.25.3088: 樹木管理員の蔓ムチ(溜め5コマ)
       { name: 'fx/vine-whip-1', scaleMode: 'nearest' as const },
       { name: 'fx/vine-whip-2', scaleMode: 'nearest' as const },

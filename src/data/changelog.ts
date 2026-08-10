@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3122',
+    items: [
+      '虚無の三唱の演出を作り替えました。金色の輪をやめ、赤い範囲いっぱいの絵が唱ごとに切り替わり、そのたび画面が大きく揺れます(絵は差し替え待ち)。',
+    ],
+  },
+  {
     version: '0.25.3121',
     items: [
       'グレンの血の弧が、ボコボコと湧き続けるようになりました。爆ぜる直前ほど激しく脈打ちます。',
