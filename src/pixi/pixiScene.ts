@@ -15227,19 +15227,24 @@ export class PixiScene {
             for (let bi = 0; bi < bn; bi++) {
               const bf = (bi + 0.5) / bn;                        // 帯の上の位置(根元→先端)
               // 先の方ほど遅れて出る(根元から順に道が伸びる)。
-              const stagger = Math.max(0, Math.min(1, (bAlpha * 1.6) - bf * 0.7));
+              // v0.25.3105(社長「一本ずつにして(地面から棘みたいに生えてる感じ)。クロスしてるのやめて」):
+              // ①**帯の向きへ寝かせない**(これがクロスの原因だった)。地面から**まっすぐ立てる**。
+              // ②**根元(下端)を接地**させ、**下から伸び上がる**ように生やす。
+              // ③手前から**1本ずつ順番に**生える(道が伸びていくのが読める)。
+              const stagger = Math.max(0, Math.min(1, (bAlpha * 2.2 - bf * 1.5) / 0.35));
               if (stagger <= 0.02) continue;
               const bs = this.atkArtSprite(view, ATK_ART_GLIDE_BRANCH + bi, 'fx/glide-branch');
               if (!bs) continue;
-              bs.anchor.set(0.5, 0.5);
+              bs.anchor.set(0.5, 1);                              // 下端=地面に刺さる根元
               const bsz = GLIDE_BRANCH_PX * bGrow;
               const bsc = bsz / Math.max(1, bs.texture.height);
-              // 1枚ごとに向きを少しずらす=同じ絵の繰り返しに見せない。
-              const jitter = ((bi * 2654435761) % 1000 / 1000 - 0.5) * 0.5;
-              bs.scale.set(bsc, bsc * (bi % 2 === 0 ? 1 : -1)); // 1つ置きに上下反転=単調さの解消
-              bs.rotation = bAng + bWobble + jitter;
+              // 1本ごとにわずかに傾ける(±0.12rad)。**寝かせない**のでクロスしない。
+              const tilt = (((bi * 2654435761) % 1000) / 1000 - 0.5) * 0.24;
+              // 生え際: 下から伸び上がる(縦だけ0→1)。横幅は最初から出す=細い棘に見える。
+              bs.scale.set(bsc, bsc * Math.min(1, stagger));
+              bs.rotation = tilt + bWobble * 0.5;                 // 揺れは控えめに残す(葉が騒ぐ)
               bs.position.set(bfx0 + Math.cos(bAng) * bLen * bf, bfy0 + Math.sin(bAng) * bLen * bf);
-              bs.alpha = artFade * bAlpha * Math.min(1, stagger);
+              bs.alpha = artFade * bAlpha * Math.min(1, stagger * 1.6);
             }
           }
         }

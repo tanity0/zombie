@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3105',
+    items: [
+      '滑空の溜めの枝が、地面から棘のように1本ずつ生えるようになりました。手前から順に伸び上がり、枝どうしが重なって寝ることもなくなりました。',
+    ],
+  },
+  {
     version: '0.25.3104',
     items: [
       '氷の衝撃波の終端でもキラキラが弾けるようになりました。波が端まで届いたのが分かります。',
