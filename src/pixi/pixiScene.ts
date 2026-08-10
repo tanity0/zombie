@@ -2286,11 +2286,14 @@ const ATK_ART_ICE_END_SPARK_0 = ATK_ART_ICE_SPARK_0 + SWEEP_ICE_N * SWEEP_ICE_SP
 const ATK_ART_BOLT_GUN_0 = ATK_ART_ICE_END_SPARK_0 + SWEEP_ICE_END_SPARK_N;          // 咆哮弾: 3挺
 const ATK_ART_SWEEPBEAM_GUN = ATK_ART_BOLT_GUN_0 + 3;                                // 掃射: 1挺
 const ATK_ART_NIHIL = ATK_ART_SWEEPBEAM_GUN + 1;                                     // 虚無の三唱: 円1枚
-// 虚無の三唱の円形素材(社長支給待ち・v0.25.3122)。唱1/2/3で `fx/nihil-1` `-2` `-3` を差し替える。
-// **素材が無い間は何も描かない**(getTextureがnullを返す)=置いた瞬間に出る。
+// 虚無の三唱の円形素材(社長支給v0.25.3123)。唱1/2/3で `fx/nihil-1` `-2` `-3` を差し替える。
+// **絵そのものが寄っていく**(1=広い墓地を遠くから → 2=近づいて大きくなる → 3=同じ構図が血で染まる)。
+// 社長「段々寄っていく感じ / どん!どん!どん!って」= 寄りは絵が担い、衝撃は下の踏み込み+画面揺れが担う。
 const NIHIL_ART_PREFIX = 'fx/nihil-';
-const NIHIL_ART_PUNCH = 0.10;      // 唱の切り替わりで**内側へ**踏み込む量(判定より大きくしない)
-const NIHIL_ART_PUNCH_FRAC = 0.18; // 踏み込みが戻るまでの割合(唱の頭18%)
+// 「どん!」の踏み込み: 唱の頭で**小さく入って**一気に判定円の大きさへ張る=迫ってくる衝撃。
+// **外へは絶対に出さない**(判定より大きい絵は「赤いのに当たらない」を生む)。
+const NIHIL_ART_PUNCH = 0.16;      // 唱の頭で内側へ縮む量
+const NIHIL_ART_PUNCH_FRAC = 0.16; // 張り切るまでの割合(唱の頭16%≒130ms=揺れと同じ拍)
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -14980,7 +14983,9 @@ export class PixiScene {
           if (sp) {
             sp.anchor.set(0.5, 0.5);
             // 唱が切り替わった瞬間だけ小さく踏み込む(揺れと同じ拍で"ドン"と入る)。判定より大きくはしない。
-            const punch = 1 - NIHIL_ART_PUNCH * Math.max(0, 1 - chantT / NIHIL_ART_PUNCH_FRAC);
+            // 出だしを一番速く(三乗のease-out)=「どん!」と張って止まる。線形だとぬるっと広がる。
+            const pk = Math.min(1, chantT / NIHIL_ART_PUNCH_FRAC);
+            const punch = 1 - NIHIL_ART_PUNCH * Math.pow(1 - pk, 3);
             const d = GLEN_NIHIL_RADIUS * 2 * punch;
             sp.scale.set(d / Math.max(1, sp.texture.width), d / Math.max(1, sp.texture.height));
             sp.rotation = 0;

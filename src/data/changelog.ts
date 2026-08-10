@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3123',
+    items: [
+      '虚無の三唱に墓地の絵が入りました。唱うたびに墓地が寄ってきて血に染まり、そのたび画面が大きく揺れます。',
+    ],
+  },
+  {
     version: '0.25.3122',
     items: [
       '虚無の三唱の演出を作り替えました。金色の輪をやめ、赤い範囲いっぱいの絵が唱ごとに切り替わり、そのたび画面が大きく揺れます(絵は差し替え待ち)。',
