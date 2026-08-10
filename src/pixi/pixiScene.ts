@@ -2176,6 +2176,7 @@ const ATK_ART_FIST = 6;
 const ATK_ART_GUN_L = 7;   // 三連射: 左(短い銃)
 const ATK_ART_GUN_R = 8;   // 三連射: 右(中くらい)
 const ATK_ART_GUN_C = 9;   // 三連射: 中央=三拍目(長い銃)
+const ATK_ART_VINE = 10;   // v0.25.3088: 樹木管理員の蔓ムチ(薙ぎ払い)
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -14935,6 +14936,50 @@ export class PixiScene {
           drawGun(ATK_ART_GUN_L, 'fx/boss-gun-1', gux * cS - guy * sS, gux * sS + guy * cS, fireSide, 100);
           drawGun(ATK_ART_GUN_R, 'fx/boss-gun-2', gux * cS + guy * sS, -gux * sS + guy * cS, fireSide, 120);
           drawGun(ATK_ART_GUN_C, 'fx/boss-gun-3', gux, guy, fireCenter, 150);
+        }
+      }
+      // (3f) 蔓のムチ(g-sweep)= 樹木管理員(stage-3)の薙ぎ払い。社長支給素材v0.25.3088。
+      //      社長「一番上の長いのが伸び切った時。その下の5個が伸びる前の溜め。左から右に表示。
+      //      緩急をつけて欲しくて、ムチを溜めてパン!と打つ感じ」。
+      //      ⇒ 溜め(g-sweep-windup)で5コマを**加速しながら**送る(=じわ…じわ…っと巻いて最後に一気)。
+      //        判定が出る瞬間(g-sweep-active)に**伸び切りの1枚**へ切り替え、赤い帯と同じ向き・同じ長さで
+      //        走らせる=「パン!」。分類①(武器の絵)だが赤帯が別に出ているので厳密一致は不要(掟どおり)。
+      //      樹木管理員だけの絵なので stage-3 に限定する(他の城ボスの薙ぎ払いは従来どおり)。
+      {
+        const vineOk = this.currentFarKey === 'stage3';
+        const vW = gph === 'g-sweep-windup', vA = gph === 'g-sweep-active';
+        if (vineOk && (vW || vA)) {
+          const vfx = e.aiFromX ?? cx, vfy = e.aiFromY ?? cy;
+          const vtx = e.aiTargetX ?? cx, vty = e.aiTargetY ?? cy;
+          const vAng = Math.atan2(vty - vfy, vtx - vfx);
+          const vLen = Math.hypot(vtx - vfx, vty - vfy) || 1;
+          let texName: string, vAlpha: number, vScaleLen: number;
+          if (vW) {
+            const wEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+            const wp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEff));
+            // 緩急: 序盤はゆっくり、終盤で一気にコマが進む(wp^2.2)。最後のコマ=一番縮んだ姿。
+            const fi = Math.min(4, Math.floor(Math.pow(wp, 2.2) * 5));
+            texName = `fx/vine-whip-${fi}`;
+            vAlpha = Math.min(1, 0.35 + wp * 0.9);
+            vScaleLen = vLen * (0.42 + 0.16 * wp); // 巻いている間は短く構える
+          } else {
+            const aEff = (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT) * FX_SWING_LINGER;
+            const ap = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aEff));
+            texName = 'fx/vine-whip-full';
+            vAlpha = 1 - ap * ap;      // 打った直後が一番濃く、すっと引く
+            vScaleLen = vLen;          // 伸び切り=帯の全長
+          }
+          if (vAlpha > 0.01) {
+            const vs = this.atkArtSprite(view, ATK_ART_VINE, texName);
+            if (vs) {
+              vs.anchor.set(0, 0.5);   // 根元(左端)をボス側に置く=素材の並びどおり
+              const sc = vScaleLen / (vs.texture.width || 1);
+              vs.scale.set(sc, sc);
+              vs.rotation = vAng;
+              vs.position.set(vfx, vfy);
+              vs.alpha = artFade * vAlpha;
+            }
+          }
         }
       }
       // (3c) 掃射の銃(g-sweepbeam)= v0.25.3034で仮にSMG(handgun-t3)を使ったが、

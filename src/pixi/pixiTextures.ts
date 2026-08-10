@@ -450,6 +450,12 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/boss-gun-2', scaleMode: 'linear' as const },     // 右(中くらい)
       { name: 'fx/boss-gun-3', scaleMode: 'linear' as const },     // 中央=三拍目(長い銃)
       { name: 'fx/breath-sparkle', scaleMode: 'nearest' as const },// v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給・回転しないのでnearest)
+      { name: 'fx/vine-whip-0', scaleMode: 'nearest' as const },       // v0.25.3088: 樹木管理員の蔓ムチ(溜め5コマ)
+      { name: 'fx/vine-whip-1', scaleMode: 'nearest' as const },
+      { name: 'fx/vine-whip-2', scaleMode: 'nearest' as const },
+      { name: 'fx/vine-whip-3', scaleMode: 'nearest' as const },
+      { name: 'fx/vine-whip-4', scaleMode: 'nearest' as const },
+      { name: 'fx/vine-whip-full', scaleMode: 'nearest' as const },   // v0.25.3088: 同・伸び切り1枚
       { name: 'fx/tentacle-reach', scaleMode: 'linear' as const }, // 伸びる触手(根元が左端・先端が右端)
       { name: 'fx/idol-fist', scaleMode: 'linear' as const },      // 偶像の拳(ナックルが下端=突く向き)。v0.25.2935ドット版・回転するのでlinear維持
       { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)
