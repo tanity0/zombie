@@ -2207,6 +2207,8 @@ const SWEEP_ICE_MIN_PX = 34;
 const SWEEP_ICE_MAX_PX = 96;
 // この進行度までは全部出したまま残し、以降で6個そろって消える(社長「さいごにフェードアウトで合わせる」)。
 const SWEEP_ICE_FADE_FROM = 0.78;
+// 消え際に氷塊のまわりで瞬く粒の数(1個あたり)。
+const SWEEP_ICE_TWINKLE_N = 4;
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -15144,6 +15146,24 @@ export class PixiScene {
             // (旧: 55%から個別に薄れ始めていたので、先に出た氷から順に消えてバラけていた)。
             const fadeOut = iA ? Math.max(0, 1 - Math.max(0, run - SWEEP_ICE_FADE_FROM) / (1 - SWEEP_ICE_FADE_FROM)) : 1;
             sp.alpha = artFade * Math.min(1, grow) * (iW ? 0.55 + 0.45 * wpI : 1) * fadeOut;
+            // v0.25.3100(社長「最後少しキラキラして消えて」): 消え際だけ、氷塊のまわりで細かく瞬く。
+            // 描画側のGraphicsで完結(storeへは書かない=描画は読むだけの掟)。判定ゼロ。
+            if (iA && fadeOut < 1 && fadeOut > 0.02) {
+              const twinkle = 1 - fadeOut;               // 消えるほど強く瞬く
+              const bx = sp.position.x, by = sp.position.y;
+              for (let k = 0; k < SWEEP_ICE_TWINKLE_N; k++) {
+                // 位置は決定的(乱数だとフレームごとに飛び回る)。氷ごと・粒ごとに散らす。
+                const h = (i * 7 + k * 13) * 2654435761 % 1000 / 1000;
+                const ang = h * Math.PI * 2;
+                const rad = size * (0.25 + h * 0.5);
+                const ph = Math.sin(now / (70 + h * 60) + h * 9);
+                const a = Math.max(0, ph) * twinkle * 0.9;
+                if (a <= 0.02) continue;
+                const r = 2.2 + h * 2.6;
+                o.ellipse(bx + Math.cos(ang) * rad, by - size * 0.45 + Math.sin(ang) * rad * 0.6, r, r)
+                  .fill({ color: 0xe8f8ff, alpha: a });
+              }
+            }
           }
         }
       }

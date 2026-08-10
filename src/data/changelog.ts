@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3100',
+    items: [
+      '氷の衝撃波が消える時、氷塊のまわりが細かくキラキラ瞬くようになりました。',
+    ],
+  },
+  {
     version: '0.25.3099',
     items: [
       'ステージ3の城ボスの滑空に溜めの絵が付きました。突っ込む前に、薙ぎ払われた枝と舞う葉がじわっと浮かび上がります。',
