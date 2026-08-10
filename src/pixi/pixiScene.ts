@@ -14946,7 +14946,11 @@ export class PixiScene {
       //        走らせる=「パン!」。分類①(武器の絵)だが赤帯が別に出ているので厳密一致は不要(掟どおり)。
       //      樹木管理員だけの絵なので stage-3 に限定する(他の城ボスの薙ぎ払いは従来どおり)。
       {
-        const vineOk = this.currentFarKey === 'stage3';
+        // ★v0.25.3089でバグ修正: 旧 `currentFarKey === 'stage3'` は**存在しないキー**(currentFarKeyは
+        // 遠景の種類='forest'/'lab'/'city'…で、ステージIDではない)。ステージ3の判定は既に
+        // `daylight`(昼のステージ)として同ファイル内にあり、敵の拡大倍率もそれを使っている。
+        // 同じ意味の判定を2通り書いた事故(TEST_DESIGN.md 型A)=蔓が一度も出ていなかった。
+        const vineOk = this.daylight;
         const vW = gph === 'g-sweep-windup', vA = gph === 'g-sweep-active';
         if (vineOk && (vW || vA)) {
           const vfx = e.aiFromX ?? cx, vfy = e.aiFromY ?? cy;
@@ -14978,6 +14982,47 @@ export class PixiScene {
               vs.rotation = vAng;
               vs.position.set(vfx, vfy);
               vs.alpha = artFade * vAlpha;
+            }
+          }
+        }
+      }
+      // (3g) コウモリの翼(g-sweep)= 搬送体(stage-1)の薙ぎ払い。社長指示v0.25.3089
+      //      「すでに渡してるコウモリの羽を使って。**画像を縮めることで羽を立ててる風に見せて**、
+      //        伸ばし戻してバサーー!っと衝撃波を飛ばす」。
+      //      ⇒ 溜めは進行方向の長さだけを潰す(縦はそのまま)=**羽を畳んで立てた**ように見える。
+      //        判定が出る瞬間に**元の長さへ伸ばし戻す**=「バサーー!」。既存素材 fx/wing-swipe を流用。
+      //      ステージ1限定(遠景も昼(stage-3)も雪(4)も戦場(5)も洋館でもない=既定の森)。
+      {
+        const wingOk = !this.daylight && !this.snowStage && !this.battlefieldStage
+          && this.currentFarKey !== 'lab' && this.currentFarKey !== 'mansion';
+        const wW = gph === 'g-sweep-windup', wA = gph === 'g-sweep-active';
+        if (wingOk && (wW || wA)) {
+          const wfx = e.aiFromX ?? cx, wfy = e.aiFromY ?? cy;
+          const wtx = e.aiTargetX ?? cx, wty = e.aiTargetY ?? cy;
+          const wAng = Math.atan2(wty - wfy, wtx - wfx);
+          const wLen = Math.hypot(wtx - wfx, wty - wfy) || 1;
+          let squash: number, wAlpha: number;
+          if (wW) {
+            const wEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+            const wp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEff));
+            // 溜めほど潰す(1.0→0.18)。終盤で一気に畳む(wp^1.8)=タメが効く。
+            squash = 1 - 0.82 * Math.pow(wp, 1.8);
+            wAlpha = Math.min(1, 0.4 + wp * 0.9);
+          } else {
+            const aEff = (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT) * FX_SWING_LINGER;
+            const ap = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aEff));
+            squash = 1;            // 伸ばし戻す=全長
+            wAlpha = 1 - ap * ap;  // 振り抜いた直後が濃く、すっと引く
+          }
+          if (wAlpha > 0.01) {
+            const ws = this.atkArtSprite(view, ATK_ART_VINE, 'fx/wing-swipe');
+            if (ws) {
+              ws.anchor.set(0, 0.5); // 付け根をボス側へ
+              const base = wLen / (ws.texture.width || 1);
+              ws.scale.set(base * squash, base); // ★横(進行方向)だけ潰す=羽を立てて見せる
+              ws.rotation = wAng;
+              ws.position.set(wfx, wfy);
+              ws.alpha = artFade * wAlpha;
             }
           }
         }
