@@ -95,7 +95,8 @@ import {
   getEventQuestConfig, questNamedSpawnPos, pickQuestNamedType, questKillProgress,
   QUEST_NAMED_AGGRO_RANGE,
 } from '../utils/eventQuest';
-import { openCrate } from '../utils/weaponDrop';
+import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
+import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { isBossType, isHiddenBoss, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill } from '../utils/enemyUtils';
 import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
@@ -312,6 +313,10 @@ const buildBloodBurst = (x: number, y: number, angle: number, count: number, now
 };
 // 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
 export const XP_GAIN_MULT = 1 / 3;
+// ステージ7の開幕宝箱で与えるレベルアップ回数(社長指示v0.25.3137「3レベルアップ」)。
+export const BOSS_START_CHEST_LEVELS = 3;
+// 同・宝箱をプレイヤーの何px「目の前」に置くか(上=画面の奥方向。開幕でカメラ中央のすぐ上に見える)。
+export const BOSS_START_CHEST_AHEAD_PX = 96;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
 export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 60, shotgun: 18, rifle: 24, phill: 24 };
 // How much a world/melee ammo pickup grants for each family (enemy drops, air
@@ -7482,8 +7487,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // VS-style ramp: cheap levels early so the upgrade menu shows up often,
       // then progressively steeper. +2 per level for levels 1-9, then a
       // smaller multiplier afterward.
-      const stepLinear = newLevel < 10 ? 2 : 0;
-      const newExpToNextLevel = Math.floor(player.experienceToNextLevel * (newLevel < 10 ? 1.1 : 1.18) + stepLinear);
+      // v0.25.3137: 式は utils/levelCurve.ts へ移した(宝箱の「3レベルアップ」が同じ式を要るため。
+      // 同じ値を2箇所に持たない=TEST_DESIGN.md 型Aの予防)。値・挙動は1ビットも変えていない。
+      const newExpToNextLevel = nextLevelThreshold(newLevel, player.experienceToNextLevel);
       
       // Generate upgrade options when leveling up
       const upgradeOptions = generateEquipmentChoices(player);
@@ -11686,6 +11692,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         break;
       }
       case 'chest': {
+        // ★v0.25.3137(社長指示): ステージ7の開幕宝箱は中身が違う=**tier2-3の銃1丁 + 3レベルアップ**。
+        // 「3レベルアップ」は**レベルを直接3上げる**のではなく、**3回ぶんの経験値を足す**。
+        // 理由: このゲームのレベルアップは「しきい値超え→1回上がる→メニューで1つ選ぶ→余剰は繰り越す」で
+        // 回っており、levelUp() を3連打するとメニューの選択肢が上書きされて**選ばせるのが1回だけ**になる。
+        // 経験値で押すと既存の流れがそのまま3回走る=**3回選べる**(社長の「3レベルアップ」の意味どおり)。
+        if (pickup.chestKind === 'boss-start') {
+          get().grantWeapon(rollTier23Gun());
+          const bp = get().player;
+          const add = expNeededForLevels(bp.experience, bp.experienceToNextLevel, bp.level, BOSS_START_CHEST_LEVELS);
+          if (add > 0) get().gainExperience(add / XP_GAIN_MULT); // gainExperience 側の倍率を打ち消して実量で渡す
+          break;
+        }
         // Boss-drop treasure chest. Behaves like a level-up's upgrade menu
         // but without bumping the level or resetting XP. Player just gets
         // a free pick.
@@ -13868,6 +13886,21 @@ export const useGameStore = create<GameState>((set, get) => ({
               }),
             ]
           : [];
+      // ★v0.25.3137(社長指示「ステージ7(ボスモードも)は、最初に宝箱が目の前に初期設置」):
+      // ステージ7の出撃だけ、開幕でプレイヤーのすぐ前に宝箱を1個置く。
+      // **ボスモード(練習ラン)も自動で入る**——練習の出撃も「stage-7へ出撃する」形で走るので、
+      // ステージIDで判定すれば1つの条件で両方を満たす(練習かどうかを別途見に行かない=分岐を増やさない)。
+      // 中身は宝箱の受け取り側(case 'chest')が持つ: tier2-3の銃1丁 + 3レベルアップ。
+      if (getSelectedStageId() === 'stage-7') {
+        runPickups.push({
+          id: 'stage7-start-chest',
+          x: spawnTL.x,
+          y: spawnTL.y - BOSS_START_CHEST_AHEAD_PX,
+          type: 'chest',
+          value: 1,
+          chestKind: 'boss-start',
+        });
+      }
 
       // 壁/UVバーは区画ごとに手続き生成(labWallsInRegion/labUvBarsInRegion)するので reset では持たない。
       // World is infinite; player starts at the origin and the camera

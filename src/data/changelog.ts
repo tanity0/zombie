@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3137',
+    items: [
+      'ステージ7(ボスモードを含む)は、開幕で目の前に宝箱が置かれるようになりました。中身は強めの銃1丁と、レベルアップ3回ぶんです。',
+    ],
+  },
+  {
     version: '0.25.3136',
     items: [
       'グレンの血溜まりが、置かれた瞬間から紫になりました。紫は「カウンターできない=避けるしかない」の合図です。',

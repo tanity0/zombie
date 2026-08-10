@@ -44,6 +44,17 @@ export const rollWeaponKey = (area: number): string => {
   return keys[idx];
 };
 
+// ステージ7の初期宝箱(社長指示v0.25.3137「内容はtier2-3の武器ランダム」)。
+// **銃だけ・Tier2か3だけ**を等確率で引く(area=距離によるTier率は使わない=開幕の1個なので
+// 「弱いのを引いて終わり」を作らない)。近接は混ぜない(crateと同じ理由=火力の報酬として読ませる)。
+// 純関数(乱数は注入可)。GUN_KEYS_BY_CATEGORY の並びは [t1, t2, t3]。
+export const rollTier23Gun = (rand: () => number = Math.random): string => {
+  const category = CATEGORIES[Math.floor(rand() * CATEGORIES.length)];
+  const keys = GUN_KEYS_BY_CATEGORY[category];
+  const idx = Math.min(keys.length - 1, 1 + Math.floor(rand() * 2)); // 1=t2 / 2=t3
+  return keys[idx];
+};
+
 // A crate always yields a gun (the melee path is reserved for rarer world
 // drops) so opening one feels like a firepower reward. `area` = 0..4。
 export const openCrate = (area: number): string => {
