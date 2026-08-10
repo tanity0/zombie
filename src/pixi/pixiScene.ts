@@ -2201,6 +2201,8 @@ const ATK_ART_ICE_0 = 11;  // v0.25.3095: 衛生兵の氷の衝撃波(薙ぎ払�
 const SWEEP_ICE_N = 6;
 const SWEEP_ICE_MIN_PX = 34;
 const SWEEP_ICE_MAX_PX = 96;
+// この進行度までは全部出したまま残し、以降で6個そろって消える(社長「さいごにフェードアウトで合わせる」)。
+const SWEEP_ICE_FADE_FROM = 0.78;
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -15120,7 +15122,9 @@ export class PixiScene {
           for (let i = 0; i < SWEEP_ICE_N; i++) {
             const f = (i + 1) / SWEEP_ICE_N;            // 根元→先端
             // 走る波: 自分の位置を波が通り過ぎたら生える。通過後はゆっくり薄れる。
-            const passed = iA ? Math.max(0, Math.min(1, (run * 1.35 - f * 0.9) / 0.28)) : 0;
+            // v0.25.3098(社長「もっと早く表示。最後まで塊は残る。さいごにフェードアウトで合わせる」):
+            // 波を**速く**走らせて全6個を早く出し切る(旧1.35倍速→3.2倍速・立ち上がりも0.28→0.14へ)。
+            const passed = iA ? Math.max(0, Math.min(1, (run * 3.2 - f * 0.9) / 0.14)) : 0;
             const grow = iW ? Math.max(0, wpI * 1.2 - f) : passed; // 溜めは根元側だけ先に育つ
             if (grow <= 0.02) continue;
             const sp = this.atkArtSprite(view, ATK_ART_ICE_0 + i, 'skadi-ice-block');
@@ -15132,7 +15136,9 @@ export class PixiScene {
             sp.scale.set(sc, sc);
             sp.rotation = 0;                            // 氷塊は立てたまま(回さない)
             sp.position.set(ifx + Math.cos(iAng) * iLen * f, ify + Math.sin(iAng) * iLen * f);
-            const fadeOut = iA ? Math.max(0, 1 - Math.max(0, run - 0.55) / 0.45) : 1;
+            // 生えた氷は**最後まで残す**。消えるのは終わり際だけで、**6個そろって**同時にフェードする
+            // (旧: 55%から個別に薄れ始めていたので、先に出た氷から順に消えてバラけていた)。
+            const fadeOut = iA ? Math.max(0, 1 - Math.max(0, run - SWEEP_ICE_FADE_FROM) / (1 - SWEEP_ICE_FADE_FROM)) : 1;
             sp.alpha = artFade * Math.min(1, grow) * (iW ? 0.55 + 0.45 * wpI : 1) * fadeOut;
           }
         }
