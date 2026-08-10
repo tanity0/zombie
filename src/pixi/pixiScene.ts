@@ -348,7 +348,9 @@ const ZOOM_CLOUD_LAYERS = [
   // ステージ1で森1の目の前にあるのは**奥霧**(yFrac=0.16・遠景〜地面に被る背の高い層)。
   // その距離感に合わせた雲を1本足す=画面高さの16%あたりを、遠景より手前・アクターより奥で流す。
   // place:'near' は新設(far=空/near=遠景の手前/front=最前面)。視差は奥霧寄りの控えめな値。
-  { place: 'near', heightFrac: 0.18, bottomFrac: 0.25, alpha: 0.5, driftPxS: 7, paraX: 0.35, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
+  // v0.25.3115(社長指示「一度透明度を0にして」): 濃さだけ0にして**寝かせる**。層・親・高さ・流れは
+  // そのまま残すので、戻す時はこの alpha を1値変えるだけ(0.5が直前の値)。
+  { place: 'near', heightFrac: 0.18, bottomFrac: 0.25, alpha: 0, driftPxS: 7, paraX: 0.35, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
   { place: 'front', heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
   { place: 'front', heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
 ] as const;
@@ -4712,6 +4714,42 @@ export class PixiScene {
     if (t >= 1) { if (!L.armed) this.fxLatches.delete(key); return null; }
     // t0=焼き付けた時刻。V1(4)の砂埃ジッター等「出現ごとに固定・フレーム間で不変」の種に使える。
     return { t: Math.max(0, t), d: L.d, t0: L.t0 };
+  }
+
+  /**
+   * 薙ぎ払い(g-sweep)の絵の**共通時計**。社長指摘v0.25.3115「薙払い系はカウンターでエフェクトが
+   * 止まってる。**出し切る約束**だよね?」への回答=剣の latchSwordCompletion と同じ約束を、
+   * ステージ別の薙ぎ払いの絵(蔓ムチ/コウモリの羽/氷の衝撃波/大砲)にも1本化して持たせる。
+   *
+   * 事故の型: フェーズ(`gph === 'g-sweep-*'`)で描いていると、**カウンターが刺さった瞬間に
+   * aiPhase が技から外れて絵が消える**。溜めで斬られた場合は実行のlatchすら焼かれないので丸ごと消える。
+   * ⇒ ①実行の頭で焼く「振り抜き〜余韻」latch と ②**溜めの頭で焼く「完了保険」latch** の2本を持ち、
+   *   フェーズが消えても②が残りを最後まで走らせる。**カウンターされなければ①だけで従来と同じ絵**。
+   *
+   * 返り値: wp=溜めの進行度(null=溜めは終わっている) / ap=振り抜き〜余韻の進行度(0..1) /
+   *         fx,fy,tx,ty=帯の座標(焼き付け済み=カウンター後に上書きされてもズレない)。
+   */
+  private sweepArtClock(
+    e: Enemy, gph: Enemy['aiPhase'], gameTime: number, now: number, cx: number, cy: number, postMs: number,
+  ): { wp: number | null; ap: number; fx: number; fy: number; tx: number; ty: number } | null {
+    const windEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+    const bake = (): number[] => [e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy];
+    const post = this.latchFx(`${e.id}:sweepart`, gph === 'g-sweep-active', postMs, now, bake);
+    const cmp = this.latchFx(`${e.id}:sweepcmp`, gph === 'g-sweep-windup', windEff + postMs, now, bake);
+    const at = (d: number[]) => ({ fx: d[0], fy: d[1], tx: d[2], ty: d[3] });
+    if (gph === 'g-sweep-windup') {
+      // 溜め中は**フェーズの残り時間**で進める(sim側の実長と1msもズレない)。座標は焼き付けを優先。
+      const wp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / windEff));
+      return { wp, ap: 0, ...(cmp ? at(cmp.d) : { fx: e.aiFromX ?? cx, fy: e.aiFromY ?? cy, tx: e.aiTargetX ?? cx, ty: e.aiTargetY ?? cy }) };
+    }
+    if (post) return { wp: null, ap: post.t, ...at(post.d) };
+    if (cmp) {
+      // ここに来る=**カウンターで溜めごと技が消えた**。残りを完了保険の時計で描き切る。
+      const el = cmp.t * (windEff + postMs);
+      if (el < windEff) return { wp: el / windEff, ap: 0, ...at(cmp.d) };
+      return { wp: null, ap: (el - windEff) / postMs, ...at(cmp.d) };
+    }
+    return null;
   }
 
   /**
@@ -15039,20 +15077,20 @@ export class PixiScene {
         // `daylight`(昼のステージ)として同ファイル内にあり、敵の拡大倍率もそれを使っている。
         // 同じ意味の判定を2通り書いた事故(TEST_DESIGN.md 型A)=蔓が一度も出ていなかった。
         const vineOk = this.daylight;
-        const vW = gph === 'g-sweep-windup', vA = gph === 'g-sweep-active' || gph === 'g-sweep-recover';
-        if (vineOk && (vW || vA)) {
-          const vfx = e.aiFromX ?? cx, vfy = e.aiFromY ?? cy;
-          const vtx = e.aiTargetX ?? cx, vty = e.aiTargetY ?? cy;
+        // ★v0.25.3115: 共通時計へ移した(カウンターで消えても出し切る)。溜め=wp / 振り抜き〜余韻=ap。
+        const vClk = vineOk
+          ? this.sweepArtClock(e, gph, gameTime, now, cx, cy,
+            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS)
+          : null;
+        if (vClk) {
+          const vfx = vClk.fx, vfy = vClk.fy, vtx = vClk.tx, vty = vClk.ty;
           const vAng = Math.atan2(vty - vfy, vtx - vfx);
           const vLen = Math.hypot(vtx - vfx, vty - vfy) || 1;
-          // 振り抜き〜余韻の自前時計(実行の頭で焼き、硬直を跨いで走る)。
-          const vLatch = this.latchFx(`${e.id}:sweepart`, gph === 'g-sweep-active',
-            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS, now, () => []);
+          const vPostMs = GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS;
           let texName: string, vAlpha: number, vScaleLen: number;
           let vSpin = 0; // 溜め中の回転(根元支点)。実行では0=帯の向きへ揃える。
-          if (vW) {
-            const wEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-            const wp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEff));
+          if (vClk.wp !== null) {
+            const wp = vClk.wp;
             // v0.25.3091(社長「鞭の動きが想定と違う」): 実物の鞭(ブルウィップ)の動きに寄せる。
             // 鞭は**全体が伸び縮みしない**。手元に作ったたるんだ輪が、根元から先端へ**走っていく**
             // (先細りなので進むほど速い)。旧実装は絵ごと長さ方向に伸縮させていたので
@@ -15080,7 +15118,7 @@ export class PixiScene {
           } else {
             // v0.25.3090: 実行(220ms)で切らず、**硬直へ持ち越して**ゆっくり消す(社長「余韻がほしい」)。
             // 尺は latchFx が自前時計で回す(硬直の実長を推測しない=v3077型の事故を作らない)。
-            const ap = vLatch ? vLatch.t : 1;
+            const ap = vClk.ap;
             texName = 'fx/vine-whip-full';
             vAlpha = 1 - ap * ap;      // 打った直後が一番濃く、尾を引いて消える
             // ③クラック: 先端は**伸び切りを一瞬追い越してから**戻る(鞭が鳴る瞬間の挙動)。
@@ -15099,7 +15137,7 @@ export class PixiScene {
               // 「コマ幅で割る」と**同じ蔓なのに線の太さが変わって**しまっていた。
               // ⇒ **伸び切りの素材を基準にした1つの画素スケール**を溜めにも使う=太さが揃う。
               const fullW = getTexture('fx/vine-whip-full')?.width || 1012;
-              const sc = vW ? (vLen / fullW) : (vScaleLen / (vs.texture.width || 1));
+              const sc = vClk.wp !== null ? (vLen / fullW) : (vScaleLen / (vs.texture.width || 1));
               // 長さ(x)は帯どおり、**太さ(y)だけ**盛る=赤帯とズレずに存在感だけ上げる。
               vs.scale.set(sc, sc * VINE_THICK_MULT);
               vs.rotation = vAng + vSpin;
@@ -15107,11 +15145,9 @@ export class PixiScene {
               vs.alpha = artFade * vAlpha;
               // ★打った瞬間、**先端で光る**(鞭が鳴る瞬間=先端が最速になる所)。
               // 赤ではなく白〜若葉色にする(赤は判定と厳密一致の予告の色なので混ぜない)。
-              if (!vW && vLatch && vLatch.t * (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT
-                + SWEEP_AFTERGLOW_MS) < VINE_CRACK_FLASH_MS) {
+              if (vClk.wp === null && vClk.ap * vPostMs < VINE_CRACK_FLASH_MS) {
                 const tipX = vfx + Math.cos(vAng) * vScaleLen, tipY = vfy + Math.sin(vAng) * vScaleLen;
-                const fp = 1 - (vLatch.t * (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT
-                  + SWEEP_AFTERGLOW_MS)) / VINE_CRACK_FLASH_MS;
+                const fp = 1 - (vClk.ap * vPostMs) / VINE_CRACK_FLASH_MS;
                 const fr = VINE_CRACK_FLASH_R * (0.6 + 0.6 * fp);
                 o.ellipse(tipX, tipY, fr, fr).fill({ color: 0xe8ffd0, alpha: 0.55 * fp });
                 o.ellipse(tipX, tipY, fr * 0.45, fr * 0.45).fill({ color: 0xffffff, alpha: 0.9 * fp });
@@ -15129,24 +15165,24 @@ export class PixiScene {
       {
         const wingOk = !this.daylight && !this.snowStage && !this.battlefieldStage
           && this.currentFarKey !== 'lab' && this.currentFarKey !== 'mansion';
-        const wW = gph === 'g-sweep-windup', wA = gph === 'g-sweep-active' || gph === 'g-sweep-recover';
-        if (wingOk && (wW || wA)) {
-          const wfx = e.aiFromX ?? cx, wfy = e.aiFromY ?? cy;
-          const wtx = e.aiTargetX ?? cx, wty = e.aiTargetY ?? cy;
+        // ★v0.25.3115(蔓ムチと同じ直し): 共通時計へ移す=カウンターで消えても最後まで描き切る。
+        const wClk = wingOk
+          ? this.sweepArtClock(e, gph, gameTime, now, cx, cy,
+            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS)
+          : null;
+        if (wClk) {
+          const wfx = wClk.fx, wfy = wClk.fy, wtx = wClk.tx, wty = wClk.ty;
           const wAng = Math.atan2(wty - wfy, wtx - wfx);
           const wLen = Math.hypot(wtx - wfx, wty - wfy) || 1;
-          const wLatch = this.latchFx(`${e.id}:sweepart`, gph === 'g-sweep-active',
-            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS, now, () => []);
           let squash: number, wAlpha: number;
-          if (wW) {
-            const wEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-            const wp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEff));
+          if (wClk.wp !== null) {
+            const wp = wClk.wp;
             // 溜めほど潰す(1.0→0.18)。終盤で一気に畳む(wp^1.8)=タメが効く。
             squash = 1 - 0.82 * Math.pow(wp, 1.8);
             wAlpha = Math.min(1, 0.4 + wp * 0.9);
           } else {
             // v0.25.3090: 実行で切らず硬直へ持ち越す(社長「余韻がほしい」)。
-            const ap = wLatch ? wLatch.t : 1;
+            const ap = wClk.ap;
             squash = 1 + 0.06 * ap; // 伸ばし戻した後もわずかに開き続ける=バサッの余韻
             wAlpha = 1 - ap * ap;   // 振り抜いた直後が濃く、尾を引いて消える
           }
@@ -15169,26 +15205,20 @@ export class PixiScene {
       //        せり上がって(=波が走って)いく。素材はスカジの氷塊(skadi-ice-block)を流用=新規素材なし。
       //      ステージ4限定(雪原)。判定・射程・秒数は不変=分類②の派手枠。
       {
-        const iceOk = this.snowStage;
-        const iW = gph === 'g-sweep-windup';
         // v0.25.3110: 余韻(1.1s)は**硬直(実効700ms)より長い**ので、フェーズで描くと途中で切れる。
-        // ⇒ latch が生きている間は**フェーズを問わず**描く(latchFx はそのための道具)。
-        //   帯の座標も arm 時に焼き付ける(次の技で aiFrom/aiTarget が上書きされても余韻がズレない)。
+        // v0.25.3115: さらに**カウンターで消える**問題も同じ形なので、共通時計(sweepArtClock)へ移した
+        //   =溜めで斬られても最後まで描き切る。氷だけ「残る時間」があるので post の長さが他と違う。
         const iTotal = GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT
           + SWEEP_ICE_HOLD_MS + SWEEP_ICE_AFTERGLOW_MS;
-        const iLatch = this.latchFx(`${e.id}:sweepice`, gph === 'g-sweep-active', iTotal, now,
-          () => [e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy]);
-        if (iceOk && (iW || iLatch)) {
-          const ifx = iLatch ? iLatch.d[0] : (e.aiFromX ?? cx);
-          const ify = iLatch ? iLatch.d[1] : (e.aiFromY ?? cy);
-          const itx = iLatch ? iLatch.d[2] : (e.aiTargetX ?? cx);
-          const ity = iLatch ? iLatch.d[3] : (e.aiTargetY ?? cy);
+        const iClk = this.snowStage ? this.sweepArtClock(e, gph, gameTime, now, cx, cy, iTotal) : null;
+        if (iClk) {
+          const ifx = iClk.fx, ify = iClk.fy, itx = iClk.tx, ity = iClk.ty;
           const iAng = Math.atan2(ity - ify, itx - ifx);
           const iLen = Math.hypot(itx - ifx, ity - ify) || 1;
-          const wEffI = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-          const wpI = iW && !iLatch ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEffI)) : 1;
+          const iLatch = iClk.wp === null; // true=実行以降(波→残る→余韻)
+          const wpI = iClk.wp ?? 1;
           // 実行開始からの経過ms。3区間(波→残る→余韻)を**絶対msで**切り分ける。
-          const el = iLatch ? iLatch.t * iTotal : 0;
+          const el = iClk.ap * iTotal;
           const glowFrom = GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_ICE_HOLD_MS;
           // ★ag = 余韻の進行度 0→1。**ここだけ**がキラキラする区間(社長指示「余韻だけ」)。
           const ag = iLatch ? Math.max(0, Math.min(1, (el - glowFrom) / SWEEP_ICE_AFTERGLOW_MS)) : 0;
@@ -15284,28 +15314,25 @@ export class PixiScene {
       //      分類①(武器の絵)だが赤帯が別に出ているので長さを判定に揃え切らなくてよい(銃と同じ掟)。
       //      ステージ5限定。素材が左向きなので回転に SWEEP_CANNON_NATIVE_ANGLE(π)を足す。
       {
-        const cnW = gph === 'g-sweep-windup';
-        // 余韻は硬直へ持ち越すので、帯の座標を arm 時に焼き付ける(次の技で上書きされてもズレない)。
-        const cnLatch = this.latchFx(`${e.id}:sweepcannon`, gph === 'g-sweep-active',
-          GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS, now,
-          () => [e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy]);
-        if (this.battlefieldStage && (cnW || cnLatch)) {
-          const cnfx = cnLatch ? cnLatch.d[0] : (e.aiFromX ?? cx);
-          const cnfy = cnLatch ? cnLatch.d[1] : (e.aiFromY ?? cy);
-          const cntx = cnLatch ? cnLatch.d[2] : (e.aiTargetX ?? cx);
-          const cnty = cnLatch ? cnLatch.d[3] : (e.aiTargetY ?? cy);
+        // v0.25.3115: 共通時計(sweepArtClock)。カウンターで aiPhase が消えても最後まで撃ち切る。
+        const cnClk = this.battlefieldStage
+          ? this.sweepArtClock(e, gph, gameTime, now, cx, cy,
+            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS)
+          : null;
+        if (cnClk) {
+          const cnfx = cnClk.fx, cnfy = cnClk.fy, cntx = cnClk.tx, cnty = cnClk.ty;
           const cnAng = Math.atan2(cnty - cnfy, cntx - cnfx);
           const cux = Math.cos(cnAng), cuy = Math.sin(cnAng);
           let cnBack: number;   // 後ろ(帯と逆向き)へ下がっている量
           let cnAlpha: number;
-          const cnT = cnLatch ? cnLatch.t : 0; // 0→1(発砲〜余韻)
+          const cnLatch = cnClk.wp === null; // true=発砲以降
+          const cnT = cnClk.ap;              // 0→1(発砲〜余韻)
           if (cnLatch) {
             // 発砲: 一瞬で後ろへ蹴られ、じわっと据わり直す。余韻の後半でフェードアウト。
             cnBack = SWEEP_CANNON_RECOIL_PX * Math.max(0, 1 - cnT / 0.45);
             cnAlpha = 1 - Math.pow(Math.max(0, (cnT - 0.5) / 0.5), 1.5);
           } else {
-            const cnEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-            const cnp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / cnEff));
+            const cnp = cnClk.wp ?? 1;
             cnBack = SWEEP_CANNON_BRACE_PX * Math.pow(cnp, 1.6); // 終盤で一気に踏ん張る=タメ
             cnAlpha = Math.min(1, cnp * 3);                      // 据えるところをシュッと見せる
           }
