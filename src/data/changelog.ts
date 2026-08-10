@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3124',
+    items: [
+      'グレンの爪痕が、3連斬りのあと当たり判定が出る瞬間にズシャッと刻まれるようになりました。',
+    ],
+  },
+  {
     version: '0.25.3123',
     items: [
       '虚無の三唱に墓地の絵が入りました。唱うたびに墓地が寄ってきて血に染まり、そのたび画面が大きく揺れます。',

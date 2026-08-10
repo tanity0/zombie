@@ -41,7 +41,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   GIANT_BITE_HOLD_MS,
   // 同: 爪の一振り(g-talon)を3本の爪痕と同じ扇の中で振らせるための開き角。
   // WINDUP は「爪痕が手前から奥へ刻まれる」ワイプの尺にも使う(爪の振りと同じ尺で揃える・v0.25.2889)。
-  GLEN_TALON_SPREAD_RAD, GLEN_TALON_WINDUP_MS,
+  GLEN_TALON_SPREAD_RAD,
   GIANT_SWEEPBEAM_WINDUP_MS, GIANT_SWEEPBEAM_ACTIVE_MS, GIANT_SWEEPBEAM_LENGTH, GIANT_SWEEPBEAM_HALF_WIDTH, GIANT_SWEEPBEAM_INNER_RADIUS, GIANT_SWEEPBEAM_SWEEP_RAD,
   GIANT_BOLT_WINDUP_MS, GIANT_BOLT_BURST_GAP_MS, GIANT_BOLT_FAN_STEP_RAD, // v0.25.3034/3046: 掃射SMG/咆哮弾の銃の絵
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
@@ -2199,10 +2199,14 @@ const CLAW_LINGER_MS = 240;    // 爪を振り抜いた後の余韻
 const TALON_SLASH_ORDER: readonly number[] = [1, -1, 0];
 const TALON_SLASH_ARC = 0.55;  // 1振りで横切る角度(rad)。小さすぎると「切った」に見えない
 const TALON_SLASH_DUTY = 0.5;  // 1拍のうち振っている割合。残りは**間**=「シャ!シャ!」の切れ味
-// 爪痕(g-talon)が手前から奥へ刻まれる時間(社長指示v0.25.2891「爪がシュッてした後、すぐに
-// 当たり判定発生と同時にズバッと」)。**振りの最中は出さず、振り終わりからこの尺で一気に**刻む。
-// 短いほど「ズバッ」。他のグレン定数と同じくENEMY_ATTACK_SPEED_MULTで割って使う。
-const CLAW_CARVE_MS = 130;
+// ★v0.25.3124(社長指示「爪痕の3連後に、**当たり判定と同時に**爪痕がをズシャ!っと表示で」):
+// 痕の出るタイミングを**振り終わり → 起爆の瞬間(=判定が出る瞬間)**へ移す。
+// 遅延起爆エントリは起爆の瞬間に台帳から消えるので、待ちの間に実寸を焼いて起爆時刻から自前で走らせる
+// (三連射の衝撃波 `:shock3` と同じ作法)。危険の告知は赤い帯が最初から全長で出しているので、
+// 痕が起爆まで出なくても「赤いのに当たらない」にはならない。
+const CLAW_SLASH_IN_MS = 90;    // 「ズシャ!」= 3本が一気に刻まれる時間(短いほど鋭い)
+const CLAW_SLASH_HOLD_MS = 620; // 刻まれた痕が濃いまま残る時間
+const CLAW_SLASH_OUT_MS = 380;  // そこから薄れて消えるまで
 // (WING_SWING_MS は撤去: 翼撃は判定の active 窓そのもので一周するようになった・v0.25.2863)
 const REACH_HOLD_MS = 340;     // 触手が伸び切ってから引っ込むまで
 // 拳が当たってから消えるまでは `IDOL_TUNING.fx.punchFistHoldMs`(メーカーで触れる・v0.25.2651)。
@@ -16136,14 +16140,13 @@ export class PixiScene {
           // 危険の告知は下に敷いてある赤い帯が最初から全長で出しているので、痕が遅れて出ても
           // 「赤いのに当たらない/赤くないのに当たる」にはならない。
           // g-talon 以外(将来の帯型の遅延判定)は従来どおり最初から全長で出す。
-          const carveFrom = h.bornAt + GLEN_TALON_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-          const carve = h.moveKey === 'g-talon'
-            ? Math.max(0, Math.min(1, (gameTime - carveFrom) / (CLAW_CARVE_MS / ENEMY_ATTACK_SPEED_MULT)))
-            : 1;
+          // v0.25.3124(社長指示): 爪痕は**起爆と同時**に出す。よって待ちの間は一切描かない
+          // (旧: 振り終わりから CLAW_CARVE_MS で刻んでいた)。起爆後の描画は下の `:talonmark` が担う。
+          const carve = h.moveKey === 'g-talon' ? 0 : 1;
           // v0.25.3049(社長指示「三連射の最後の真ん中だけが爪痕みたいの合ってないから揃えて」):
           // 三連射(g-trishot)の三拍目は旧・翼撃から判定を引き継いだ際に爪痕(D-2)も付いてきていた。
           // 今の絵は「3挺の銃」なので爪は場違い=左右の帯と同じ素の帯に揃える(爪はグレンtalon等のまま)。
-          if (!h.ice && h.moveKey !== 'g-trishot') this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t, carve);
+          if (!h.ice && h.moveKey !== 'g-trishot' && carve > 0) this.drawClawMark(view, clawIdx++, h.capsule.fx, h.capsule.fy, h.capsule.tx, h.capsule.ty, hw, 0.25 + 0.75 * t, carve);
         } else {
           o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: 0.05 + 0.18 * t + 0.06 * gPulse });
           o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: 0.2 + 0.45 * t + 0.12 * gPulse });
@@ -16178,6 +16181,33 @@ export class PixiScene {
       // 漏れていた。左右と同じ素材の衝撃波を中央の帯にも走らせる。遅延起爆エントリは起爆の瞬間に
       // 台帳から消えるため、待ち中にlatchへ実寸を焼き、起爆時刻から走らせる(帯のwindup衝撃波と
       // 同じ作法・v0.25.2412)。スプライト枠は左右(0/1)と被らないidx=2。
+      // ★爪痕(g-talon)を**起爆と同時にズシャ!と刻む**(社長指示v0.25.3124)。
+      // 遅延起爆エントリは起爆の瞬間に台帳から消えるので、**待ちの間に3本ぶんの実寸を焼き**、
+      // 起爆時刻から自前時計で刻む→残す→薄れる、を走らせる(`:shock3` と同じ作法)。
+      // カウンター/気絶で技が消えても、焼いてあるので**痕は出る**(v3115の「出し切る」約束と同じ考え)。
+      {
+        const tHits = (e.giantDelayedHits ?? []).filter(h => h.moveKey === 'g-talon' && h.capsule !== undefined);
+        const toFireT = tHits.length > 0 ? Math.max(0, tHits[0].fireAt - gameTime) : 0;
+        const postMs = CLAW_SLASH_IN_MS + CLAW_SLASH_HOLD_MS + CLAW_SLASH_OUT_MS;
+        const totalT = toFireT + postMs;
+        const tl = this.latchFx(`${e.id}:talonmark`, tHits.length > 0, totalT, now, () => {
+          const d: number[] = [totalT > 0 ? toFireT / totalT : 0, tHits.length];
+          for (const h of tHits) d.push(h.capsule!.fx, h.capsule!.fy, h.capsule!.tx, h.capsule!.ty, h.capsule!.halfWidth);
+          return d;
+        });
+        if (tl && tl.t >= tl.d[0]) {
+          // 起爆からの経過ms。焼いた時の残り時間(d[0])を基準に、後半の尺(postMs=定数)へ写す。
+          const el = (tl.d[0] < 1 ? (tl.t - tl.d[0]) / (1 - tl.d[0]) : 1) * postMs;
+          const carveNow = Math.min(1, el / CLAW_SLASH_IN_MS);        // 一気に刻む
+          const fadeNow = el < CLAW_SLASH_IN_MS + CLAW_SLASH_HOLD_MS
+            ? 1
+            : Math.max(0, 1 - (el - CLAW_SLASH_IN_MS - CLAW_SLASH_HOLD_MS) / CLAW_SLASH_OUT_MS);
+          for (let i = 0; i < tl.d[1]; i++) {
+            const b = 2 + i * 5;
+            this.drawClawMark(view, clawIdx++, tl.d[b], tl.d[b + 1], tl.d[b + 2], tl.d[b + 3], tl.d[b + 4], fadeNow, carveNow);
+          }
+        }
+      }
       {
         const h3 = (e.giantDelayedHits ?? []).find(h => h.moveKey === 'g-trishot' && h.capsule !== undefined);
         const toFire3 = h3 ? Math.max(0, h3.fireAt - gameTime) : 0;
