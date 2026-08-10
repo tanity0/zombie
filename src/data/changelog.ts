@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3111',
+    items: [
+      '氷の衝撃波の余韻のキラキラを、冷気ブレスやスカジの氷技と同じキラキラの絵に揃えました。',
+    ],
+  },
+  {
     version: '0.25.3110',
     items: [
       '氷の衝撃波の余韻を長くしました。立った氷が砕け、細かい破片が飛び散りながら長くキラキラします。',

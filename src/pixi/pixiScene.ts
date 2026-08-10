@@ -2222,13 +2222,18 @@ const SWEEP_ICE_HOLD_MS = 560;       // 立った氷が残る時間(旧の実効
 const SWEEP_ICE_AFTERGLOW_MS = 1100; // ★余韻。旧は約340ms=短すぎた。3倍強に伸ばす(社長「もっと長く」)
 // 氷塊が砕けきるまで(余韻に対する割合)。破片が飛び出した後も**破片だけ**が長く残る=「余韻だけ」。
 const SWEEP_ICE_BREAK_FRAC = 0.3;
-// 割れた破片の数(氷1個あたり)と、帯の終端で弾ける数。丸い粒ではなく**尖った破片**で描く。
-const SWEEP_ICE_SHARD_N = 10;
-const SWEEP_ICE_END_SHARD_N = 16;
-// 破片1枚の形(単位三角形・わざと不揃い)。回転+拡縮してそのまま多角形で塗る。
-const SWEEP_ICE_SHARD_PTS: ReadonlyArray<readonly [number, number]> = [
-  [0, -1], [0.62, 0.34], [-0.52, 0.78],
-];
+// ★キラキラは**社長支給の素材** `fx/breath-sparkle` を使う(社長指示v0.25.3111「素材すでにあるじゃん。
+// それ使って」)。冷気ブレス(v3042)・氷の三連突進(v3049)・スカジの氷技(v3071)と**同じ絵**で世界を揃える。
+// 自前のGraphics(丸い粒/三角の破片)は描かない。
+const SWEEP_ICE_SPARK_TEX = 'fx/breath-sparkle';
+const SWEEP_ICE_SPARK_N = 6;      // 氷1個あたりの粒(素材が大きいので数は控えめ)
+const SWEEP_ICE_END_SPARK_N = 12; // 帯の終端で弾ける粒
+// 粒の表示高さ(px)。氷塊の大きさ(34〜96px)に対する割合で決める+終端用の固定値。
+const SWEEP_ICE_SPARK_H_FRAC = 0.55;
+const SWEEP_ICE_END_SPARK_H = 46;
+// atkArtのスロット(氷11..16 / 滑空の枝17..36 と重ならない位置から取る)。
+const ATK_ART_ICE_SPARK_0 = 40;      // 40..75(6個×6粒)
+const ATK_ART_ICE_END_SPARK_0 = 80;  // 80..91(12粒)
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -15160,33 +15165,38 @@ export class PixiScene {
           const glowFrom = GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_ICE_HOLD_MS;
           // ★ag = 余韻の進行度 0→1。**ここだけ**がキラキラする区間(社長指示「余韻だけ」)。
           const ag = iLatch ? Math.max(0, Math.min(1, (el - glowFrom) / SWEEP_ICE_AFTERGLOW_MS)) : 0;
-          // 破片の共通の見え方: 出た直後に一瞬で立ち上がり、最後にゆっくり消えながらチカチカする。
-          const shardAlpha = (h: number) =>
+          // 粒の共通の見え方: 出た直後に一瞬で立ち上がり、最後にゆっくり消えながらチカチカする。
+          const sparkAlpha = (h: number) =>
             Math.min(1, ag * 12) * Math.min(1, (1 - ag) * 2.6)
             * (0.45 + 0.55 * Math.abs(Math.sin(now / (62 + h * 70) + h * 9)));
-          // 破片1枚を描く(尖った三角形を回して置く=丸い粒ではなく「割れた」形)。
-          const drawShard = (px: number, py: number, rot: number, r: number, a: number, color: number) => {
-            const c = Math.cos(rot), s = Math.sin(rot);
-            const pts: number[] = [];
-            for (const [ox, oy] of SWEEP_ICE_SHARD_PTS) {
-              pts.push(px + (ox * c - oy * s) * r, py + (ox * s + oy * c) * r * 0.86);
-            }
-            o.poly(pts).fill({ color, alpha: a });
+          // ★支給素材のキラキラを1粒置く。スロットは粒ごとに固定=プールが安定する(毎フレーム同じ絵)。
+          // 素材は nearest フィルタ(回転前提でない)なので**回さず**、左右反転だけで向きを散らす。
+          const putSpark = (slot: number, px: number, py: number, h: number, a: number, flip: boolean) => {
+            const sp = this.atkArtSprite(view, slot, SWEEP_ICE_SPARK_TEX);
+            if (!sp) return;
+            sp.anchor.set(0.5, 0.5);
+            const sc = h / Math.max(1, sp.texture.height);
+            sp.scale.set(flip ? -sc : sc, sc);
+            sp.rotation = 0;
+            sp.position.set(px, py);
+            sp.alpha = artFade * a;
           };
           // v0.25.3104(社長「赤い真っ直ぐラインの氷塊衝撃波の終わりにもキラキラ追加」):
           // 個々の氷のまわりに加えて、**帯の終端**でもまとめて弾ける。波が端まで届いた合図。
-          // v0.25.3110: これも丸い粒→**破片**に。余韻いっぱいをかけて外へ飛び散る。
+          // v0.25.3111: 支給素材のキラキラで、余韻いっぱいをかけて外へ飛び散る。
           if (ag > 0) {
             const tipX = ifx + Math.cos(iAng) * iLen, tipY = ify + Math.sin(iAng) * iLen;
             const spread = 1 - (1 - ag) * (1 - ag); // 最初が速く、だんだん止まる
-            for (let k = 0; k < SWEEP_ICE_END_SHARD_N; k++) {
+            for (let k = 0; k < SWEEP_ICE_END_SPARK_N; k++) {
               const h = ((k * 2654435761) % 1000) / 1000;
               const ang = h * Math.PI * 2;
               const rad = SWEEP_ICE_MAX_PX * (1.15 + h * 1.2) * spread;
-              const a = shardAlpha(h);
+              const a = sparkAlpha(h);
               if (a <= 0.02) continue;
-              drawShard(tipX + Math.cos(ang) * rad, tipY + Math.sin(ang) * rad * 0.6 + SWEEP_ICE_MAX_PX * 0.7 * ag * ag,
-                h * 6.283 + ag * (2.2 + h * 3.4), 4.2 + h * 5.0, a, 0xf0fbff);
+              putSpark(ATK_ART_ICE_END_SPARK_0 + k,
+                tipX + Math.cos(ang) * rad,
+                tipY + Math.sin(ang) * rad * 0.6 + SWEEP_ICE_MAX_PX * 0.7 * ag * ag,
+                SWEEP_ICE_END_SPARK_H * (0.7 + h * 0.6), a, h > 0.5);
             }
           }
           for (let i = 0; i < SWEEP_ICE_N; i++) {
@@ -15216,20 +15226,24 @@ export class PixiScene {
                   * Math.max(0, 1 - brk * brk);        // 砕けきる直前に一気に消える
               }
             } // brk>=1 は氷塊を**要求しない**=毎フレーム頭の一括非表示(13463)でそのまま消える
-            // ★余韻の破片(社長指示v0.25.3110「もっと長くキラキラ。余韻だけ。割れた感じに」)。
-            // 描画側のGraphicsで完結(storeへは書かない=描画は読むだけの掟)。判定ゼロ=分類②。
+            // ★余韻のキラキラ(社長指示v0.25.3110「もっと長くキラキラ。余韻だけ。割れた感じに」
+            // + v0.25.3111「素材すでにあるじゃん。それ使って」=`fx/breath-sparkle`)。
+            // 「割れた感じ」は**絵ではなく動き**で出す: 砕けた氷から外へ弾け、跳ね上がって落ちる。
+            // 描画側で完結(storeへは書かない=描画は読むだけの掟)。判定ゼロ=分類②。
             if (ag > 0) {
               const spread = 1 - (1 - ag) * (1 - ag);
-              for (let k = 0; k < SWEEP_ICE_SHARD_N; k++) {
-                // 位置は決定的(乱数だとフレームごとに飛び回る)。氷ごと・破片ごとに散らす。
+              for (let k = 0; k < SWEEP_ICE_SPARK_N; k++) {
+                // 位置は決定的(乱数だとフレームごとに飛び回る)。氷ごと・粒ごとに散らす。
                 const h = (i * 7 + k * 13) * 2654435761 % 1000 / 1000;
                 const ang = h * Math.PI * 2;
                 const dist = size * (0.5 + h * 1.5) * spread;         // 外へ弾ける
                 const up = -size * (0.5 + h * 0.55) * ag + size * 1.5 * ag * ag; // 跳ね上がって落ちる
-                const a = shardAlpha(h);
+                const a = sparkAlpha(h);
                 if (a <= 0.02) continue;
-                drawShard(bx + Math.cos(ang) * dist, by - size * 0.4 + Math.sin(ang) * dist * 0.6 + up,
-                  h * 6.283 + ag * (2.6 + h * 4.0), 3.6 + h * 4.4, a, 0xe8f8ff);
+                putSpark(ATK_ART_ICE_SPARK_0 + i * SWEEP_ICE_SPARK_N + k,
+                  bx + Math.cos(ang) * dist,
+                  by - size * 0.4 + Math.sin(ang) * dist * 0.6 + up,
+                  size * SWEEP_ICE_SPARK_H_FRAC * (0.75 + h * 0.5), a, h > 0.5);
               }
             }
           }
