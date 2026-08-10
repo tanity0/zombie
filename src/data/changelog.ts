@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3121',
+    items: [
+      'グレンの血の弧が、ボコボコと湧き続けるようになりました。爆ぜる直前ほど激しく脈打ちます。',
+    ],
+  },
+  {
     version: '0.25.3120',
     items: [
       'グレンの爪痕が、シャッ・シャッ・シャッと右・左・正面へ3回続けて振られるようになりました。',

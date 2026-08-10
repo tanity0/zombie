@@ -2078,6 +2078,16 @@ const stage3EnemyTextureName = (type: string): string | null =>
 // `?fxring=0` で従来の Graphics stroke(細い赤線)へ戻して見比べられる(v0.25.2395)。
 // 血溜まり(E-5)の「乾いて縮む」コマへ切り替える残り時間。床の寿命(4秒)の終わり際だけ4コマ目にする。
 const BLOOD_DRY_MS = 900;
+// グレンの「血の弧」(boon)を**ボコボコ湧かせる**(社長指示v0.25.3121)。素材は4コマ
+// (0=小さい飛沫 / 1=大きく広がる / 2=波紋つき / 3=乾いて崩れる)。旧実装は
+// 「待ち=前半0・後半1 / 床=2 / 終わり=3」の**3回しかコマが変わらない**=ほぼ静止画だった。
+// ⇒ 待ちは 0↔1 を**だんだん速く**、床は 1↔2 を一定で入れ替え続ける=湧き続けているように見せる。
+const BOON_BOIL_SLOW_MS = 260;   // 湧き始めのコマ替え間隔
+const BOON_BOIL_FAST_MS = 90;    // 爆ぜる直前(せわしなくなる=もうすぐ来る)
+const BOON_FLOOR_BOIL_MS = 190;  // 床になった後のコマ替え間隔
+// ★膨らみは**内側にだけ**振る(1.0を超えない)。血溜まりは**判定を持つ床**なので分類①=
+// 判定より大きく見せてはいけない(CLAUDE.md「名前で判断せず判定コードを確認してから分類する」)。
+const BOON_BOIL_SHRINK = 0.09;
 // 砂埃(B-0)。**短く出して即消す**——硬直(=反撃してよい時間)と重なるので、長く残ると
 // 「まだ危ない」と誤読されて反撃窓が使われなくなる。全て実機調整前提の叩き台。
 // 4コマを出し切るまで。420→700(社長指示v0.25.2412「エフェクト系が一瞬すぎるので、もう少しだけ
@@ -16132,8 +16142,24 @@ export class PixiScene {
           if (h.floorUntil !== undefined) {
             const burst = h.burst === true;
             const dry = burst && h.floorUntil - gameTime < BLOOD_DRY_MS; // 床の終わり際
-            const frame = !burst ? (t < 0.5 ? 0 : 1) : (dry ? 3 : 2);
-            this.drawBloodPool(h.x, h.y, h.radius, frame, burst ? 1 : 0.35 + 0.65 * t);
+            // 5個が**揃って脈打たない**よう、位置から決定的な位相を作る(乱数はフレーム間で飛ぶ)。
+            const bph = ((Math.abs(Math.round(h.x * 7 + h.y * 13)) * 2654435761) % 1000) / 1000;
+            let frame: number, boil: number;
+            if (!burst) {
+              // 湧いてくる: 0↔1 を**だんだん速く**入れ替える(爆ぜる直前が一番せわしない)。
+              const per = BOON_BOIL_SLOW_MS + (BOON_BOIL_FAST_MS - BOON_BOIL_SLOW_MS) * t;
+              boil = (now / Math.max(1, per) + bph * 2) % 2;
+              frame = boil < 1 ? 0 : 1;
+            } else if (dry) {
+              frame = 3; boil = 0;                        // 乾いて崩れる(終わりは静かに)
+            } else {
+              // 床: 1↔2(広がる↔波紋)で沸き続ける=「まだ生きている床」だと分かる。
+              boil = (now / BOON_FLOOR_BOIL_MS + bph * 2) % 2;
+              frame = boil < 1 ? 1 : 2;
+            }
+            // コマ替えに合わせて脈打つ。**内側にだけ**縮む(判定より大きくしない=分類①)。
+            const bs = 1 - BOON_BOIL_SHRINK * (0.5 - 0.5 * Math.cos(Math.PI * boil));
+            this.drawBloodPool(h.x, h.y, h.radius * bs, frame, burst ? 1 : 0.35 + 0.65 * t);
           }
         }
       }
