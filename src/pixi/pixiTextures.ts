@@ -450,6 +450,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/boss-gun-2', scaleMode: 'linear' as const },     // 右(中くらい)
       { name: 'fx/boss-gun-3', scaleMode: 'linear' as const },     // 中央=三拍目(長い銃)
       { name: 'fx/breath-sparkle', scaleMode: 'nearest' as const },// v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給・回転しないのでnearest)
+      // v0.25.3114(社長支給): 軍隊(変異・stage-5)の薙ぎ払い=牽引式の大砲。**素材は左向き**(砲口が左端)。
+      // 撃つ向きへ回転するので銃と同じく linear(nearest だと回転のたびに拾う画素が変わってチラつく)。
+      { name: 'fx/boss-cannon', scaleMode: 'linear' as const },
       { name: 'fx/vine-whip-0', scaleMode: 'nearest' as const },       // v0.25.3088: 樹木管理員の蔓ムチ(溜め5コマ)
       { name: 'fx/vine-whip-1', scaleMode: 'nearest' as const },
       { name: 'fx/vine-whip-2', scaleMode: 'nearest' as const },

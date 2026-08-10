@@ -2240,6 +2240,15 @@ const SWEEP_ICE_END_SPARK_N = 12; // 帯の終端で弾ける粒
 // 粒の表示高さ(px)。氷塊の大きさ(34〜96px)に対する割合で決める+終端用の固定値。
 const SWEEP_ICE_SPARK_H_FRAC = 0.55;
 const SWEEP_ICE_END_SPARK_H = 46;
+// ★大砲(社長支給素材v0.25.3114「なぎばらい素材 これで。s5の / これは左向き」)= 軍隊(変異・stage-5)の
+// 薙ぎ払い。**素材は左向き**(砲口が-X)なので、向ける角度に π を足して補正する。
+const SWEEP_CANNON_NATIVE_ANGLE = Math.PI;
+const SWEEP_CANNON_LEN_PX = 220;    // 砲の全長(帯310に対して約7割=砲口が帯の先端手前まで届く)
+const SWEEP_CANNON_OUT_PX = 40;     // 尾栓(後ろ端)をボス中心からどれだけ前に置くか
+const SWEEP_CANNON_BRACE_PX = 20;   // 溜めで後ろへ踏ん張る量(タメ)
+const SWEEP_CANNON_RECOIL_PX = 46;  // 発砲の反動で後ろへ蹴られる量
+const SWEEP_CANNON_FLASH_R = 30;    // 砲口炎の半径
+const SWEEP_CANNON_SMOKE_N = 8;     // 余韻の砲煙の数
 // atkArtのスロット(氷11..16 / 滑空の枝17..36 と重ならない位置から取る)。
 const ATK_ART_ICE_SPARK_0 = 40;      // 40..75(6個×6粒)
 const ATK_ART_ICE_END_SPARK_0 = 80;  // 80..91(12粒)
@@ -15262,6 +15271,83 @@ export class PixiScene {
                   bx + Math.cos(ang) * dist,
                   by - size * 0.4 + Math.sin(ang) * dist * 0.6 + up,
                   size * SWEEP_ICE_SPARK_H_FRAC * (0.75 + h * 0.5), a, h > 0.5);
+              }
+            }
+          }
+        }
+      }
+      // (3j) 大砲(g-sweep)= 軍隊(変異・stage-5)の薙ぎ払い。社長支給素材v0.25.3114
+      //      「なぎばらい素材 これで。s5の / これは左向き」。⇒ 牽引式の大砲が帯の向きへ据えられ、
+      //      溜めで後ろへ踏ん張り、**判定が出る瞬間に発砲**して反動で蹴られる。硬直の間は砲煙が残る
+      //      (v0.25.3090「発動後に少し停止時間設けて、その間もエフェクトの余韻がほしい」と同じ尺
+      //       =SWEEP_AFTERGLOW_MS。蔓ムチ/コウモリの羽と揃える)。
+      //      分類①(武器の絵)だが赤帯が別に出ているので長さを判定に揃え切らなくてよい(銃と同じ掟)。
+      //      ステージ5限定。素材が左向きなので回転に SWEEP_CANNON_NATIVE_ANGLE(π)を足す。
+      {
+        const cnW = gph === 'g-sweep-windup';
+        // 余韻は硬直へ持ち越すので、帯の座標を arm 時に焼き付ける(次の技で上書きされてもズレない)。
+        const cnLatch = this.latchFx(`${e.id}:sweepcannon`, gph === 'g-sweep-active',
+          GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS, now,
+          () => [e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy]);
+        if (this.battlefieldStage && (cnW || cnLatch)) {
+          const cnfx = cnLatch ? cnLatch.d[0] : (e.aiFromX ?? cx);
+          const cnfy = cnLatch ? cnLatch.d[1] : (e.aiFromY ?? cy);
+          const cntx = cnLatch ? cnLatch.d[2] : (e.aiTargetX ?? cx);
+          const cnty = cnLatch ? cnLatch.d[3] : (e.aiTargetY ?? cy);
+          const cnAng = Math.atan2(cnty - cnfy, cntx - cnfx);
+          const cux = Math.cos(cnAng), cuy = Math.sin(cnAng);
+          let cnBack: number;   // 後ろ(帯と逆向き)へ下がっている量
+          let cnAlpha: number;
+          const cnT = cnLatch ? cnLatch.t : 0; // 0→1(発砲〜余韻)
+          if (cnLatch) {
+            // 発砲: 一瞬で後ろへ蹴られ、じわっと据わり直す。余韻の後半でフェードアウト。
+            cnBack = SWEEP_CANNON_RECOIL_PX * Math.max(0, 1 - cnT / 0.45);
+            cnAlpha = 1 - Math.pow(Math.max(0, (cnT - 0.5) / 0.5), 1.5);
+          } else {
+            const cnEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+            const cnp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / cnEff));
+            cnBack = SWEEP_CANNON_BRACE_PX * Math.pow(cnp, 1.6); // 終盤で一気に踏ん張る=タメ
+            cnAlpha = Math.min(1, cnp * 3);                      // 据えるところをシュッと見せる
+          }
+          if (cnAlpha > 0.01) {
+            const breechX = cnfx + cux * (SWEEP_CANNON_OUT_PX - cnBack);
+            const breechY = cnfy + cuy * (SWEEP_CANNON_OUT_PX - cnBack);
+            const sp = this.atkArtSprite(view, ATK_ART_VINE, 'fx/boss-cannon');
+            if (sp) {
+              // anchor=右端(尾栓)。素材は左向きなので rotation に π を足すと、本体が帯の向きへ伸びる。
+              sp.anchor.set(1, 0.5);
+              const csc = SWEEP_CANNON_LEN_PX / (sp.texture.width || 1);
+              sp.scale.set(csc, csc);
+              sp.rotation = cnAng + SWEEP_CANNON_NATIVE_ANGLE;
+              sp.position.set(breechX, breechY);
+              sp.alpha = artFade * cnAlpha;
+            }
+            // 砲口の位置(絵の左端=砲口が帯の向きの先にある)。発砲の炎と煙はここから出す。
+            const mzX = breechX + cux * SWEEP_CANNON_LEN_PX, mzY = breechY + cuy * SWEEP_CANNON_LEN_PX;
+            if (cnLatch) {
+              // ①砲口炎: 撃った直後だけ。白熱の芯+外炎+前へ抜ける三角(掃射の銃火と同じ語彙)。
+              const fp = Math.max(0, 1 - cnT / 0.3);
+              if (fp > 0.02) {
+                const fr = SWEEP_CANNON_FLASH_R * (0.7 + 0.6 * fp);
+                const nx = -cuy, ny = cux;
+                o.poly([
+                  mzX + cux * fr * 3.0, mzY + cuy * fr * 3.0,
+                  mzX + nx * fr * 1.1, mzY + ny * fr * 1.1,
+                  mzX - nx * fr * 1.1, mzY - ny * fr * 1.1,
+                ]).fill({ color: 0xfff0c0, alpha: 0.75 * fp });
+                o.ellipse(mzX, mzY, fr, fr).fill({ color: 0xffe9a8, alpha: 0.85 * fp });
+                o.ellipse(mzX, mzY, fr * 0.45, fr * 0.45).fill({ color: 0xffffff, alpha: 0.95 * fp });
+              }
+              // ②砲煙: 余韻いっぱい残る(社長「ぱつっと感が嫌」)。前へ膨らみながら薄れる。
+              for (let k = 0; k < SWEEP_CANNON_SMOKE_N; k++) {
+                const h = ((k * 2654435761) % 1000) / 1000;
+                const sp2 = cnT * (0.5 + h * 0.9);                     // 前へ流れる進み具合
+                const px = mzX + cux * SWEEP_CANNON_LEN_PX * 0.45 * sp2 + (-cuy) * (h - 0.5) * 46 * cnT;
+                const py = mzY + cuy * SWEEP_CANNON_LEN_PX * 0.45 * sp2 + cux * (h - 0.5) * 46 * cnT;
+                const r = (10 + h * 16) * (0.5 + 1.3 * cnT);
+                const a = 0.42 * (1 - cnT) * (0.6 + 0.4 * h);
+                if (a <= 0.02) continue;
+                o.ellipse(px, py, r, r * 0.8).fill({ color: 0xd8d6cc, alpha: a });
               }
             }
           }

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3114',
+    items: [
+      'ステージ5の城ボスの薙ぎ払いに大砲が付きました。溜めで踏ん張り、発動の瞬間に発砲して反動で下がり、砲煙が残ります。',
+    ],
+  },
+  {
     version: '0.25.3113',
     items: [
       '引きの時に画面下部へ薄く出ていた、地面の黒い横線3本を消しました。',
