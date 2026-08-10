@@ -353,11 +353,11 @@ const ZOOM_CLOUD_LAYERS = [
   // 森1がステージ/ズームで動いても**森1との距離が保たれる**(画面基準だと森1から離れたり被ったりする)。
   // bottomFrac は farH からの**下がり**(画面高比)=大きいほど森1から手前(下)へ離れる。
   // 実機で詰めるツマミ: `?s3cloud=`(濃さ) `?s3cloudy=`(森1からの距離) `?s3cloudh=`(高さ)。
-  // v0.25.3129/3130(社長指示「境界線から10px下」「大きさを2/3」): near層だけ **bottomFrac を使わない**。
+  // v0.25.3129〜3132(社長指示「境界線から0px」「大きさを2/3」「透明度50%」): near層だけ **bottomFrac を使わない**。
   // 縦位置は `S3_CLOUD_TOP_PX`(境界線=farH からの**絶対px**)で置く=画面サイズや機種で動かない。
   // heightFrac は帯の高さ=そのままタイルの拡大率になるので、**下げると雲そのものが小さくなる**
   // (0.14 → 0.0933 = 2/3)。横幅は画面いっぱいのままで、雲の粒が小さく密に流れる。
-  { place: 'near', heightFrac: 0.0933, bottomFrac: 0, alpha: 1, driftPxS: 7, paraX: 0.35, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
+  { place: 'near', heightFrac: 0.0933, bottomFrac: 0, alpha: 0.5, driftPxS: 7, paraX: 0.35, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
   { place: 'front', heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
   { place: 'front', heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
 ] as const;
@@ -397,7 +397,7 @@ const tsNum = (key: string, def: number): number => {
 const S3_CLOUD_ALPHA_OVERRIDE = tsNum('s3cloud', NaN);
 // ★縦位置は「境界線(farH=遠景の下端=森1の足元)から下へ何px」で置く(社長指示v0.25.3129「境界線から20px下」)。
 // 画面高の比ではなく**絶対px**にしたのは、指示が px で来ているから=どの機種でも同じ見え方になる。
-const S3_CLOUD_TOP_PX = tsNum('s3cloudy', 10); // 雲の**上端**を境界線から何px下げるか(?s3cloudy=で調整)
+const S3_CLOUD_TOP_PX = tsNum('s3cloudy', 0); // 雲の**上端**を境界線から何px下げるか(?s3cloudy=で調整)
 const S3_CLOUD_HEIGHT_OVERRIDE = tsNum('s3cloudh', NaN); // 帯の高さ・画面高比
 /**
  * ★v0.25.2785(社長報告「ステージ1の遠景に1pxの切れ目」・v2631時点で既に発生): 遠景の層を1枚ずつ隠す診断ツマミ。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3132',
+    items: [
+      'ステージ3の雲を境界線に接する位置へ下ろし、濃さを半分にしました。',
+    ],
+  },
+  {
     version: '0.25.3131',
     items: [
       'ジブリルのランタン設置中と連射中にも、体当たりカウンターが効くようになりました。決めれば技を止められます。',
