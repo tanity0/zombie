@@ -2072,6 +2072,12 @@ const SWORD_STYLE_CODES: readonly SwordSwingStyle[] = ['wide', 'overhead', 'draw
 // 帯の上を始点→終点へ走らせて「どこまで届くか」を絵で伝える(社長指示「別途衝撃波の絵とか飛ばした方がいい」)。
 // 判定は1msも変えない=絵だけを足す。素材の進行方向は右(先端の散りが右端)。
 const SHOCKWAVE_MS = 260;          // 走り切るまで。判定のactive窓とは独立(絵だけの尺)
+// v0.25.3090(社長指示「発動後に少し停止時間設けて、その間もエフェクトの余韻がほしい。ぱつっと感が嫌だ」):
+// 走り切った後、その場で**尾を引いて消える**時間。走る速さ(SHOCKWAVE_MS)は変えないので、
+// 「速く飛んでいって、余韻だけ残る」になる。判定は既に終わっているので絵だけの追加。
+const SHOCKWAVE_TAIL_MS = 260;
+// 武器の絵(蔓/翼)を硬直へ持ち越して消す時間。振り切った姿勢がふっと残る=「ぱつっと」感が消える。
+const SWEEP_AFTERGLOW_MS = 460;
 const SHOCKWAVE_LEN_MAX = 260;     // 波1つの見た目の長さ(px)。帯が短ければ帯長に合わせる
 const SHOCKWAVE_TINT = 0xffe4e4;   // ほんのり赤み(赤い帯と同じ攻撃の絵だと分かる程度。純白だと浮く)
 // 素材=「太い側へ膨らむ同心弧が細い一点に収束するコーン」(左=太い裾/右=細い尖り)。
@@ -14951,12 +14957,15 @@ export class PixiScene {
         // `daylight`(昼のステージ)として同ファイル内にあり、敵の拡大倍率もそれを使っている。
         // 同じ意味の判定を2通り書いた事故(TEST_DESIGN.md 型A)=蔓が一度も出ていなかった。
         const vineOk = this.daylight;
-        const vW = gph === 'g-sweep-windup', vA = gph === 'g-sweep-active';
+        const vW = gph === 'g-sweep-windup', vA = gph === 'g-sweep-active' || gph === 'g-sweep-recover';
         if (vineOk && (vW || vA)) {
           const vfx = e.aiFromX ?? cx, vfy = e.aiFromY ?? cy;
           const vtx = e.aiTargetX ?? cx, vty = e.aiTargetY ?? cy;
           const vAng = Math.atan2(vty - vfy, vtx - vfx);
           const vLen = Math.hypot(vtx - vfx, vty - vfy) || 1;
+          // 振り抜き〜余韻の自前時計(実行の頭で焼き、硬直を跨いで走る)。
+          const vLatch = this.latchFx(`${e.id}:sweepart`, gph === 'g-sweep-active',
+            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS, now, () => []);
           let texName: string, vAlpha: number, vScaleLen: number;
           if (vW) {
             const wEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
@@ -14967,11 +14976,12 @@ export class PixiScene {
             vAlpha = Math.min(1, 0.35 + wp * 0.9);
             vScaleLen = vLen * (0.42 + 0.16 * wp); // 巻いている間は短く構える
           } else {
-            const aEff = (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT) * FX_SWING_LINGER;
-            const ap = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aEff));
+            // v0.25.3090: 実行(220ms)で切らず、**硬直へ持ち越して**ゆっくり消す(社長「余韻がほしい」)。
+            // 尺は latchFx が自前時計で回す(硬直の実長を推測しない=v3077型の事故を作らない)。
+            const ap = vLatch ? vLatch.t : 1;
             texName = 'fx/vine-whip-full';
-            vAlpha = 1 - ap * ap;      // 打った直後が一番濃く、すっと引く
-            vScaleLen = vLen;          // 伸び切り=帯の全長
+            vAlpha = 1 - ap * ap;      // 打った直後が一番濃く、尾を引いて消える
+            vScaleLen = vLen * (1 + 0.06 * ap); // ほんの少し伸び続ける=振り抜いた余韻
           }
           if (vAlpha > 0.01) {
             const vs = this.atkArtSprite(view, ATK_ART_VINE, texName);
@@ -14995,12 +15005,14 @@ export class PixiScene {
       {
         const wingOk = !this.daylight && !this.snowStage && !this.battlefieldStage
           && this.currentFarKey !== 'lab' && this.currentFarKey !== 'mansion';
-        const wW = gph === 'g-sweep-windup', wA = gph === 'g-sweep-active';
+        const wW = gph === 'g-sweep-windup', wA = gph === 'g-sweep-active' || gph === 'g-sweep-recover';
         if (wingOk && (wW || wA)) {
           const wfx = e.aiFromX ?? cx, wfy = e.aiFromY ?? cy;
           const wtx = e.aiTargetX ?? cx, wty = e.aiTargetY ?? cy;
           const wAng = Math.atan2(wty - wfy, wtx - wfx);
           const wLen = Math.hypot(wtx - wfx, wty - wfy) || 1;
+          const wLatch = this.latchFx(`${e.id}:sweepart`, gph === 'g-sweep-active',
+            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS, now, () => []);
           let squash: number, wAlpha: number;
           if (wW) {
             const wEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
@@ -15009,10 +15021,10 @@ export class PixiScene {
             squash = 1 - 0.82 * Math.pow(wp, 1.8);
             wAlpha = Math.min(1, 0.4 + wp * 0.9);
           } else {
-            const aEff = (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT) * FX_SWING_LINGER;
-            const ap = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aEff));
-            squash = 1;            // 伸ばし戻す=全長
-            wAlpha = 1 - ap * ap;  // 振り抜いた直後が濃く、すっと引く
+            // v0.25.3090: 実行で切らず硬直へ持ち越す(社長「余韻がほしい」)。
+            const ap = wLatch ? wLatch.t : 1;
+            squash = 1 + 0.06 * ap; // 伸ばし戻した後もわずかに開き続ける=バサッの余韻
+            wAlpha = 1 - ap * ap;   // 振り抜いた直後が濃く、尾を引いて消える
           }
           if (wAlpha > 0.01) {
             const ws = this.atkArtSprite(view, ATK_ART_VINE, 'fx/wing-swipe');
@@ -15439,8 +15451,8 @@ export class PixiScene {
       {
         const bandWindup = gph !== undefined && gph.endsWith('-windup') && bandsThisFrame.length > 0;
         const toImpact = bandWindup ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
-        const shL = this.latchFx(`${e.id}:shock`, bandWindup, toImpact + SHOCKWAVE_MS, now, () => {
-          const frac = (toImpact + SHOCKWAVE_MS) > 0 ? toImpact / (toImpact + SHOCKWAVE_MS) : 0;
+        const shL = this.latchFx(`${e.id}:shock`, bandWindup, toImpact + SHOCKWAVE_MS + SHOCKWAVE_TAIL_MS, now, () => {
+          const frac = (toImpact + SHOCKWAVE_MS + SHOCKWAVE_TAIL_MS) > 0 ? toImpact / (toImpact + SHOCKWAVE_MS + SHOCKWAVE_TAIL_MS) : 0;
           // [frac, 本数, 帯1(5値), 帯2(5値)...] の平たい配列(latchFx の payload は number[])。
           return [frac, bandsThisFrame.length, ...bandsThisFrame.flat()];
         });
@@ -15449,9 +15461,15 @@ export class PixiScene {
           const count = shL.d[1];
           for (let i = 0; i < count; i++) {
             const b = 2 + i * 5;
-            // 走り終わりの2割で薄れて消える(唐突に消さない)。それまでは完全不透明(v0.25.2458)。
+            // v0.25.3090(社長「ぱつっと感が嫌だ」): 走り切った後も**先端で尾を引いて**消える。
+            // 走る速さ(SHOCKWAVE_MS)は不変=「速く飛んで、余韻だけ残る」。判定は既に終わっている。
+            const runP = Math.min(1, prog * (1 + SHOCKWAVE_TAIL_MS / SHOCKWAVE_MS));
+            const fade = prog < 1 / (1 + SHOCKWAVE_TAIL_MS / SHOCKWAVE_MS)
+              ? 1
+              : Math.max(0, 1 - (prog - 1 / (1 + SHOCKWAVE_TAIL_MS / SHOCKWAVE_MS))
+                / Math.max(0.001, 1 - 1 / (1 + SHOCKWAVE_TAIL_MS / SHOCKWAVE_MS)));
             this.drawShockwave(view, i, shL.d[b], shL.d[b + 1], shL.d[b + 2], shL.d[b + 3], shL.d[b + 4],
-              prog, Math.min(1, (1 - prog) / 0.2));
+              runP, fade);
           }
         }
       }
