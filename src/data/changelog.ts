@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3134',
+    items: [
+      'グレンの血溜まりが、床として残っている間は紫の円になりました(紫=カウンターできない)。技そのものの予告は赤のままです。',
+    ],
+  },
+  {
     version: '0.25.3133',
     items: [
       'ステージ3の雲が、引きの時に景色に対してずれて流れていたのを直しました。他ステージの霧と同じ流れ方になります。',

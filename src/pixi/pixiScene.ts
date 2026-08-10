@@ -16149,8 +16149,17 @@ export class PixiScene {
         // 色ではなく絵で伝えていた。色の文法(赤=カウンター/回避の対象で判定と厳密一致)を優先し、
         // 氷らしさは下の「中心へ凝縮するキラキラ→粉塵爆発」(gameStore側)が担う。
         // ※ h.ice 自体は残す(下の爪痕を氷に付けないための分岐で今も使う)。
-        const col = 0xff2a2a;
-        const strokeCol = 0xff3b3b;
+        //
+        // ★v0.25.3134(社長裁定「カウンターできる技なら全体通して赤でいい。しかし血溜まりは実質
+        // カウンター不可能では?」): 赤/紫は**技**単位で決める。血の弧(boon)は硬直をカウンターできるので
+        // **技としては赤で正しい**。ただし**爆ぜた後に4秒残る床**は、その時点で技が終わっている=
+        // **カウンターのしようが無い**のに赤い円を描き続けていた(=「赤いのにカウンターできない」)。
+        // ⇒ 床になった瞬間(burst)から**紫**へ。色の文法②(紫=カウンターできない攻撃)に揃える。
+        // 判定・半径・秒数・ダメージは不変=色だけ。対象は floorUntil を持つ床(=血の弧)だけで、
+        // 他の遅延起爆(爪痕/三唱/氷/滑空/三連射)は起爆と同時に消えるので従来どおり赤のまま。
+        const liveFloor = h.floorUntil !== undefined && h.burst === true;
+        const col = liveFloor ? 0xa855f7 : 0xff2a2a;
+        const strokeCol = liveFloor ? 0xc084fc : 0xff3b3b;
         if (h.capsule) {
           const ddx = h.capsule.tx - h.capsule.fx, ddy = h.capsule.ty - h.capsule.fy;
           const ddl = Math.hypot(ddx, ddy) || 1;
