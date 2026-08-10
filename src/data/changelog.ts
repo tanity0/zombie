@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3136',
+    items: [
+      'グレンの血溜まりが、置かれた瞬間から紫になりました。紫は「カウンターできない=避けるしかない」の合図です。',
+    ],
+  },
+  {
     version: '0.25.3135',
     items: [
       'ステージ7の地平の残照が、ボスや木より奥に回りました。キャラクターに赤い被りが乗らなくなります。',
