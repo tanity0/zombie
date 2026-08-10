@@ -43,7 +43,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // WINDUP は「爪痕が手前から奥へ刻まれる」ワイプの尺にも使う(爪の振りと同じ尺で揃える・v0.25.2889)。
   GLEN_TALON_SPREAD_RAD, GLEN_TALON_WINDUP_MS,
   GIANT_SWEEPBEAM_WINDUP_MS, GIANT_SWEEPBEAM_ACTIVE_MS, GIANT_SWEEPBEAM_LENGTH, GIANT_SWEEPBEAM_HALF_WIDTH, GIANT_SWEEPBEAM_INNER_RADIUS, GIANT_SWEEPBEAM_SWEEP_RAD,
-  GIANT_SWEEPBEAM_RECOVER_MS, GIANT_BOLT_WINDUP_MS, GIANT_BOLT_BURST_GAP_MS, GIANT_BOLT_FAN_STEP_RAD, // v0.25.3034/3046: 掃射SMG/咆哮弾の銃の絵
+  GIANT_BOLT_WINDUP_MS, GIANT_BOLT_BURST_GAP_MS, GIANT_BOLT_FAN_STEP_RAD, // v0.25.3034/3046: 掃射SMG/咆哮弾の銃の絵
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
   GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH,
@@ -2184,6 +2184,11 @@ const BOLT_FX_MAX = 48;       // 安全弁(リセット等で全弾が同時消�
 // 尺はどれも**判定の窓とは独立**(絵だけの時間)=ゲームロジックには一切触れていない。
 const BITE_SNAP_MS = 220;      // 顎が閉じ切ってから消えるまで
 const CLAW_LINGER_MS = 240;    // 爪を振り抜いた後の余韻
+// 爪の一振り(g-talon)を**3回に割る**(社長指示v0.25.3120「シャ!シャ!シャ!と3回素早く右左前と切って」)。
+// 値は「扇の開き(GLEN_TALON_SPREAD_RAD)に対する倍率」。+1=右 / -1=左 / 0=正面。3本の爪痕と1対1。
+const TALON_SLASH_ORDER: readonly number[] = [1, -1, 0];
+const TALON_SLASH_ARC = 0.55;  // 1振りで横切る角度(rad)。小さすぎると「切った」に見えない
+const TALON_SLASH_DUTY = 0.5;  // 1拍のうち振っている割合。残りは**間**=「シャ!シャ!」の切れ味
 // 爪痕(g-talon)が手前から奥へ刻まれる時間(社長指示v0.25.2891「爪がシュッてした後、すぐに
 // 当たり判定発生と同時にズバッと」)。**振りの最中は出さず、振り終わりからこの尺で一気に**刻む。
 // 短いほど「ズバッ」。他のグレン定数と同じくENEMY_ATTACK_SPEED_MULTで割って使う。
@@ -2262,9 +2267,14 @@ const SWEEP_CANNON_BRACE_PX = 20;   // 溜めで後ろへ踏ん張る量(タメ)
 const SWEEP_CANNON_RECOIL_PX = 46;  // 発砲の反動で後ろへ蹴られる量
 const SWEEP_CANNON_FLASH_R = 30;    // 砲口炎の半径
 const SWEEP_CANNON_SMOKE_N = 8;     // 余韻の砲煙の数
-// atkArtのスロット(氷11..16 / 滑空の枝17..36 と重ならない位置から取る)。
-const ATK_ART_ICE_SPARK_0 = 40;      // 40..75(6個×6粒)
-const ATK_ART_ICE_END_SPARK_0 = 80;  // 80..91(12粒)
+// atkArtのスロット。**式で導出して重なりを構造的に潰す**(v0.25.3120・監査Dの指摘
+// 「GLIDE_BRANCH_MAX を増やすと氷のキラキラに食い込むのに、注意書きしか無い」への対応)。
+const ATK_ART_ICE_SPARK_0 = ATK_ART_GLIDE_BRANCH + GLIDE_BRANCH_MAX;                 // 滑空の枝の直後
+const ATK_ART_ICE_END_SPARK_0 = ATK_ART_ICE_SPARK_0 + SWEEP_ICE_N * SWEEP_ICE_SPARK_N;
+// ★銃のスロットを技ごとに分ける(v0.25.3120・監査D)。3技(三連射/咆哮弾/掃射)は**同じボス(stage-5)**に
+// 同居するので、出し切りlatchで余韻が伸びると 7/8/9 を奪い合って「銃が1挺消える」事故になる。
+const ATK_ART_BOLT_GUN_0 = ATK_ART_ICE_END_SPARK_0 + SWEEP_ICE_END_SPARK_N;          // 咆哮弾: 3挺
+const ATK_ART_SWEEPBEAM_GUN = ATK_ART_BOLT_GUN_0 + 3;                                // 掃射: 1挺
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -2553,6 +2563,11 @@ interface ActorView {
   // idol の殴りの向き。**予告の赤帯は毎フレームのプレイヤー方向で描かれる**(判定側 idolHateAim も
   // windup終わりに評価する)ので、拳の絵も同じ値を追い続け、着弾後はその最後の値で固まる。
   punchAim?: number;
+  // v0.25.3120(監査B): 拳の**根元**。溜め中だけ更新し、殴った後は据え置く。これが無いと
+  // 余韻(punchFistHoldMs)の間もボス中心を毎フレーム読むので、**カウンターのノックバックで
+  // ボスが吹き飛ぶと拳が一緒に飛んでいく**。
+  punchAnchorX?: number;
+  punchAnchorY?: number;
   // v0.25.3044: 冷気ブレス本体の曲線ロープ(stage-4城ボスのみ生成・薙ぎ中だけ表示)。
   breathRope?: { rope: MeshRope; pts: Point[] };
   // ★§3-9-B v9: 影用の"退場・死亡由来のみ"のフェード係数(既定1)。地平線フェード/裏回り透け/
@@ -4747,19 +4762,37 @@ export class PixiScene {
   private sweepArtClock(
     e: Enemy, gph: Enemy['aiPhase'], gameTime: number, now: number, cx: number, cy: number, postMs: number,
   ): { wp: number | null; ap: number; fx: number; fy: number; tx: number; ty: number } | null {
-    const windEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-    const bake = (): number[] => [e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy];
-    const post = this.latchFx(`${e.id}:sweepart`, gph === 'g-sweep-active', postMs, now, bake);
-    const cmp = this.latchFx(`${e.id}:sweepcmp`, gph === 'g-sweep-windup', windEff + postMs, now, bake);
-    const at = (d: number[]) => ({ fx: d[0], fy: d[1], tx: d[2], ty: d[3] });
-    if (gph === 'g-sweep-windup') {
+    return this.moveArtClock(
+      e, gameTime, now, cx, cy, 'sweep',
+      gph === 'g-sweep-windup', gph === 'g-sweep-active',
+      GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT, postMs,
+    );
+  }
+
+  /**
+   * ★sweepArtClock の一般形(v0.25.3120・監査Aの一括対応)。溜め/実行が **aiPhase で消えても**
+   * 絵を最後まで描き切るための2本latch(①実行の頭 ②溜めの頭=完了保険)。
+   * `armWindup`/`armPost` はそのフレームが溜め/実行かどうか。`extra` は座標以外に焼きたい値
+   * (発射時刻・パターン等)で、返り値の `d` から読める。
+   */
+  private moveArtClock(
+    e: Enemy, gameTime: number, now: number, cx: number, cy: number, key: string,
+    armWindup: boolean, armPost: boolean, windEff: number, postMs: number,
+    extra: () => number[] = () => [],
+  ): { wp: number | null; ap: number; fx: number; fy: number; tx: number; ty: number; d: number[] } | null {
+    const bake = (): number[] => [e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy, ...extra()];
+    const post = this.latchFx(`${e.id}:${key}art`, armPost, postMs, now, bake);
+    const cmp = this.latchFx(`${e.id}:${key}cmp`, armWindup, windEff + postMs, now, bake);
+    const at = (d: number[]) => ({ fx: d[0], fy: d[1], tx: d[2], ty: d[3], d });
+    if (armWindup) {
       // 溜め中は**フェーズの残り時間**で進める(sim側の実長と1msもズレない)。座標は焼き付けを優先。
       const wp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / windEff));
-      return { wp, ap: 0, ...(cmp ? at(cmp.d) : { fx: e.aiFromX ?? cx, fy: e.aiFromY ?? cy, tx: e.aiTargetX ?? cx, ty: e.aiTargetY ?? cy }) };
+      if (cmp) return { wp, ap: 0, ...at(cmp.d) };
+      return { wp, ap: 0, fx: e.aiFromX ?? cx, fy: e.aiFromY ?? cy, tx: e.aiTargetX ?? cx, ty: e.aiTargetY ?? cy, d: bake() };
     }
     if (post) return { wp: null, ap: post.t, ...at(post.d) };
     if (cmp) {
-      // ここに来る=**カウンターで溜めごと技が消えた**。残りを完了保険の時計で描き切る。
+      // ここに来る=**カウンター/気絶で溜めごと技が消えた**。残りを完了保険の時計で描き切る。
       const el = cmp.t * (windEff + postMs);
       if (el < windEff) return { wp: el / windEff, ap: 0, ...at(cmp.d) };
       return { wp: null, ap: (el - windEff) / postMs, ...at(cmp.d) };
@@ -14020,6 +14053,8 @@ export class PixiScene {
         // FX-V3V4(V3-5): 拳の向きは**赤帯と同じ「毎フレームのプレイヤー方向」**を追う(判定側の
         // idolHateAim も windup 終わりに評価するので、最後のフレームの値が実際に殴る向きになる)。
         view.punchAim = ang;
+        // v0.25.3120(監査B): 根元も溜め中だけ更新して焼き付ける(下の余韻はこれを読む)。
+        view.punchAnchorX = cx; view.punchAnchorY = cy;
       }
       // FX-V3V4(V3-5): 偶像の拳。溜めの進行に合わせて足元から突き出し(=拡大しながら迫る)、
       // 判定(短い帯 idolPunchRangeVis())の先端で当たる。当たった後は FIST_HOLD_MS で消える
@@ -14040,7 +14075,9 @@ export class PixiScene {
           const fade = fistL.t < hitF ? 1 : Math.max(0, 1 - (fistL.t - hitF) / (1 - hitF));
           const ang = view.punchAim;
           const dist = idolPunchRangeVis() * reach;
-          this.drawIdolFist(view, cx + Math.cos(ang) * dist, cy + Math.sin(ang) * dist, ang,
+          // 根元は**溜め中に焼いた位置**(監査B)。ボスが吹き飛んでも拳は殴った場所に残る。
+          const pax = view.punchAnchorX ?? cx, pay = view.punchAnchorY ?? cy;
+          this.drawIdolFist(view, pax + Math.cos(ang) * dist, pay + Math.sin(ang) * dist, ang,
             idolPunchHalfWidthVis() * 2 * (0.70 + 0.55 * reach), artFade * fade);
         }
       }
@@ -14074,6 +14111,38 @@ export class PixiScene {
       if (lanternSp) lanternSp.visible = false;
       const spearReadySp = this.acrasielSpearReadySprites.get(e.id);
       if (spearReadySp) spearReadySp.visible = false;
+
+      // ★v0.25.3120(監査A): 手持ちの武器絵2つを**else-ifの技チェーンの外**へ出す。
+      // チェーンの中だと「今どの技か」に絵の生死が縛られ、カウンターで州が飛んだ瞬間に消えていた。
+      // ①ジブリルのランタン: §6.28-16①の仕様は「振らずに**常に**手元へ掲げたまま」。
+      //   状態の列挙で出していたのが誤りで、列挙漏れの州(chase等)で消えていた。常時表示にする。
+      if (e.type === 'jibril') {
+        const pl = useGameStore.getState().player;
+        this.drawJibrilLantern(e.id, fb.footX, fb.footY - fb.boxH * 0.55, pl.x + pl.width / 2, pl.y + pl.height / 2);
+      }
+      // ②アクラシエルの槍の「構え」: 溜め州の直読みだったので中断で構えごと消えていた。
+      //   溜めの頭で焼いて**残りを構え切ってから**消す(実行まで行けば本物の槍=syncAcrasielSpearsへ渡す)。
+      if (scriptActive && e.type === 'acrasiel') {
+        const spearWind = bs === 'spear-windup';
+        const spearRemain = spearWind ? Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime) : 0;
+        const spL = this.latchFx(`${e.id}:acrasiel-spear-ready`, spearWind,
+          Math.max(1, spearRemain), now, () => {
+            const pl0 = useGameStore.getState().player;
+            return [cx, cy - e.height * 0.3, pl0.x + pl0.width / 2, pl0.y + pl0.height / 2];
+          });
+        // 実行(spear/spear-recover)まで進んだら構えは畳む=本物の槍と二重に出さない。
+        if (spL && bs !== 'spear-recover') {
+          const prog = spearWind
+            ? Math.max(0, Math.min(1, 1 - spearRemain / ACRASIEL_SPEAR_WINDUP_MS_VIS))
+            : spL.t;
+          const pl = useGameStore.getState().player;
+          // 溜め中は狙いを追い、中断後は焼き付けた狙いのまま構え切る。
+          const aimX = spearWind ? pl.x + pl.width / 2 : spL.d[2];
+          const aimY = spearWind ? pl.y + pl.height / 2 : spL.d[3];
+          this.drawAcrasielSpearReady(e.id, spearWind ? cx : spL.d[0], spearWind ? cy - e.height * 0.3 : spL.d[1],
+            aimX, aimY, 0.5 + 0.4 * prog);
+        }
+      }
 
       // ---- ミゲル/ジブリル/ラフィ共通: 横払い→縦払い(harai/tate・既存=無改変) ----
       if (bs === 'harai-windup' || bs === 'harai' || bs === 'tate-windup' || bs === 'tate') {
@@ -14130,15 +14199,6 @@ export class PixiScene {
         );
       }
       // ---- ジブリル(§6.28-16 ①): ランタンを常に手元に掲げる(windup/実行/硬直=消さない・掟W9) ----
-      else if (e.type === 'jibril' && bs !== undefined && (
-        bs === 'lantern-windup' || bs === 'lantern' || bs === 'lantern-recover' ||
-        bs === 'consecrate-windup' || bs === 'consecrate-recover' ||
-        bs === 'volley-windup' || bs === 'volley' || bs === 'volley-recover' ||
-        bs === 'warp-windup' || bs === 'warp-recover'
-      )) {
-        const pl = useGameStore.getState().player;
-        this.drawJibrilLantern(e.id, fb.footX, fb.footY - fb.boxH * 0.55, pl.x + pl.width / 2, pl.y + pl.height / 2);
-      }
       // ---- ラフィ(§6.28-8・M57新規): 薙ぎ(Phase2)=T3帯+骨刃を振る絵 ----
       else if (scriptActive && e.type === 'rafi' && (bs === 'sweep-windup' || bs === 'sweep' || bs === 'sweep-recover')) {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
@@ -14304,11 +14364,6 @@ export class PixiScene {
       }
       // ---- アクラシエル: 結晶の槍(設置・§6.28-19)。溜め中だけ本体前方に1本「構え」表示(掟W9)。
       // 実行後の槍そのものはsyncAcrasielSpears(常設)が描く。 ----
-      else if (scriptActive && e.type === 'acrasiel' && bs === 'spear-windup') {
-        const pl = useGameStore.getState().player;
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_SPEAR_WINDUP_MS_VIS));
-        this.drawAcrasielSpearReady(e.id, cx, cy - e.height * 0.3, pl.x + pl.width / 2, pl.y + pl.height / 2, 0.5 + 0.4 * prog);
-      }
       // ---- アクラシエル: 転移(出現先)=T5円フェードイン(0.8秒)。転移元(消失)はtintのT4フラッシュのみ。 ----
       else if (scriptActive && e.type === 'acrasiel' && bs === 'warp-in') {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
@@ -14547,6 +14602,14 @@ export class PixiScene {
         if (sweepActive) {
           const sweepT = Math.max(0, Math.min(1, 1 - swordRemain / SURIEL_SWEEP_ACTIVE_MS_VIS));
           this.drawSurielSweepStreak(e.id, swordFx, swordFy, swordTx, swordTy, THOR_HARAI_VIS_HALFWIDTH, sweepT);
+        } else if (sweepL && !(sweepWind || bs === 'sweep-recover')) {
+          // ★v0.25.3120(監査A): 帯(sweepL)は出し切るのに**添えのストリークだけ実行州直読み**で、
+          // カウンターすると帯だけ残ってストリークが消える片手落ちだった。帯と同じ焼き付けから描く。
+          const elapsed = now - sweepL.t0;
+          if (elapsed >= sweepL.d[0] && elapsed < sweepL.d[0] + sweepL.d[1]) {
+            const sweepT = Math.max(0, Math.min(1, (elapsed - sweepL.d[0]) / Math.max(1, sweepL.d[1])));
+            this.drawSurielSweepStreak(e.id, sweepL.d[2], sweepL.d[3], sweepL.d[4], sweepL.d[5], THOR_HARAI_VIS_HALFWIDTH, sweepT);
+          }
         }
       } else if (e.type === 'acrasiel') {
         const spikeWind = bs === 'spike-windup', spikeActive = bs === 'spike';
@@ -15031,10 +15094,28 @@ export class PixiScene {
         });
         if (clL) {
           const swingF = clL.d[4];
-          const swing = swingF > 0 ? Math.min(1, clL.t / swingF) : 1;
-          const ang = clL.d[2] - GLEN_TALON_SPREAD_RAD + 2 * GLEN_TALON_SPREAD_RAD * swing;
           const fade = clL.t < swingF ? 1 : Math.max(0, 1 - (clL.t - swingF) / (1 - swingF));
-          this.drawClawSwipe(view, clL.d[0], clL.d[1], ang, clL.d[3], artFade * fade);
+          // ★v0.25.3120(社長指示「爪振りエフェクトは**シャ!シャ!シャ!**と3回素早く**右左前**と切って」):
+          // 1本を扇の端から端へ流す旧演出をやめ、**3拍に割って1拍1振り**にする。
+          // 3本の爪痕(D-2)と1対1で対応させ、順番は右→左→前(前=正面が締め)。
+          // 判定は不変(痕は溜め開始で全部置かれている)=これは②「派手さの絵」の作り直し。
+          let ang: number, beatA: number;
+          if (swingF > 0 && clL.t < swingF) {
+            const tt = clL.t / swingF;                        // 溜めの進行 0→1
+            const bi = Math.min(TALON_SLASH_ORDER.length - 1, Math.floor(tt * TALON_SLASH_ORDER.length));
+            const bt = tt * TALON_SLASH_ORDER.length - bi;    // その拍の中の進行 0→1
+            // 「シャ!」=出だしが最速で、すぐ止まる(ease-out)。残りは間(=切れ味)。
+            const p = 1 - Math.pow(1 - Math.min(1, bt / TALON_SLASH_DUTY), 3);
+            const center = clL.d[2] + TALON_SLASH_ORDER[bi] * GLEN_TALON_SPREAD_RAD;
+            ang = center - TALON_SLASH_ARC / 2 + TALON_SLASH_ARC * p;
+            // 振っている間だけ見せ、拍の後半は素早く消す=3回に見える(出っぱなしだと1本に見える)。
+            beatA = bt < TALON_SLASH_DUTY ? 1 : Math.max(0, 1 - (bt - TALON_SLASH_DUTY) / (1 - TALON_SLASH_DUTY) * 2.2);
+          } else {
+            // 余韻: 最後の一振り(前)の位置で薄れて消える。
+            ang = clL.d[2] + TALON_SLASH_ARC / 2;
+            beatA = 1;
+          }
+          if (beatA > 0.01) this.drawClawSwipe(view, clL.d[0], clL.d[1], ang, clL.d[3], artFade * fade * beatA);
         }
       }
       // (3) 翼撃(g-wing)= ステージ1の大技(v0.25.2863・社長指示「片手が翼になっている的なので、
@@ -15044,18 +15125,25 @@ export class PixiScene {
       //     分類②(派手さの絵)ではなく**①(危険を伝える絵)**なので、回転半径は判定の円と同じ
       //     GIANT_WING_RADIUS に揃える(赤い円の縁を翼の先端がなぞる)。
       {
-        const wingWind = gph === 'g-wing-windup';
-        const wingAct = gph === 'g-wing-active';
-        if (wingWind || wingAct) {
-          const wcx2 = e.aiFromX ?? cx, wcy2 = e.aiFromY ?? cy;
+        // ★v0.25.3120(監査A): 溜め/実行を aiPhase 直読みしていたので、カウンター・気絶で**羽が消えて
+        // いた**(しかも溜めで潰されると実行のlatchすら焼かれないので一度も出ない)。共通の完了時計へ。
+        const wgClk = this.moveArtClock(
+          e, gameTime, now, cx, cy, 'wing',
+          gph === 'g-wing-windup', gph === 'g-wing-active',
+          GIANT_WING_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT,
+          GIANT_WING_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT,
+        );
+        if (wgClk) {
+          const wingWind = wgClk.wp !== null;
+          const wcx2 = wgClk.fx, wcy2 = wgClk.fy;
           if (wingWind) {
             // 頭上へ広げる。上向き(-Y)に、溜めの進行で 0 → 半径 まで伸ばす。
-            const wp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_WING_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
+            const wp = wgClk.wp ?? 1;
             const len = GIANT_WING_RADIUS * (0.25 + 0.75 * wp);
             this.drawWingSwipe(view, ATK_ART_WING_L, wcx2, wcy2, wcx2, wcy2 - len, artFade * (0.5 + 0.5 * wp), true);
           } else {
             // 素早く一周。活性の進行 t を角度へ写す(上向きから時計回りに360度)。
-            const t = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_WING_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT)));
+            const t = Math.max(0, Math.min(1, wgClk.ap));
             const ang = -Math.PI / 2 + Math.PI * 2 * t;
             const tx = wcx2 + Math.cos(ang) * GIANT_WING_RADIUS;
             const ty = wcy2 + Math.sin(ang) * GIANT_WING_RADIUS;
@@ -15075,16 +15163,24 @@ export class PixiScene {
       //      分類①(武器の絵)だが、赤い帯の予告が別に出ているので長さを判定に揃え切らなくてよい
       //      (CLAUDE.md「赤ラインが別に出ているなら武器が多少ズレていても良し」)。
       {
-        const tsWind = gph === 'g-trishot-windup';
-        const tsAct = gph === 'g-trishot-active' || gph === 'g-trishot-recover';
-        if (tsWind || tsAct) {
-          const gfx0 = e.aiFromX ?? cx, gfy0 = e.aiFromY ?? cy;
-          const gtx0 = e.aiTargetX ?? cx, gty0 = e.aiTargetY ?? cy;
+        // ★v0.25.3120(監査A): 硬直(g-trishot-recover)は**パリィ対象**なので、三拍目の銃が反動の
+        // 途中で消えていた。溜めで潰された場合も丸ごと消える。共通の完了時計へ移し、
+        // **発射時刻(aiStartedAt)も焼き付ける**(中断時は aiStartedAt/aiFrom/aiTarget が undefined 化する)。
+        const tsClk = this.moveArtClock(
+          e, gameTime, now, cx, cy, 'trishot',
+          gph === 'g-trishot-windup', gph === 'g-trishot-active',
+          GIANT_TRISHOT_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT,
+          GIANT_TRISHOT_THIRD_DELAY_MS / ENEMY_ATTACK_SPEED_MULT + GUN_RECOIL_MS + 60,
+          () => [e.aiStartedAt ?? gameTime],
+        );
+        if (tsClk) {
+          const gfx0 = tsClk.fx, gfy0 = tsClk.fy;
+          const gtx0 = tsClk.tx, gty0 = tsClk.ty;
           const gl0 = Math.hypot(gtx0 - gfx0, gty0 - gfy0) || 1;
           const gux = (gtx0 - gfx0) / gl0, guy = (gty0 - gfy0) / gl0;
           const cS = Math.cos(GIANT_TRISHOT_SPREAD_RAD), sS = Math.sin(GIANT_TRISHOT_SPREAD_RAD);
           // 発射時刻(絶対): 左右=溜め明け / 中央=そこから三拍目のディレイ後。判定側と同じ式。
-          const fireSide = (e.aiStartedAt ?? gameTime) + GIANT_TRISHOT_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+          const fireSide = tsClk.d[4] + GIANT_TRISHOT_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
           const fireCenter = fireSide + GIANT_TRISHOT_THIRD_DELAY_MS / ENEMY_ATTACK_SPEED_MULT;
           const drawGun = (idx: number, texName: string, dirX: number, dirY: number, fireAt: number, artLen: number) => {
             const dt = gameTime - fireAt;
@@ -15210,10 +15306,14 @@ export class PixiScene {
       //        判定が出る瞬間に**元の長さへ伸ばし戻す**=「バサーー!」。既存素材 fx/wing-swipe を流用。
       //      ステージ1限定(遠景も昼(stage-3)も雪(4)も戦場(5)も洋館でもない=既定の森)。
       {
-        // v0.25.3119: ステージ7(グレン)は赤い結晶の薙ぎ払いを持ったので、羽の catch-all から外す
-        // (監査で挙がった「stage-7/ex1へ羽が漏れていた」の stage-7 分。ex1は素材未支給のため据え置き)。
+        // v0.25.3119: ステージ7(グレン)は赤い結晶の薙ぎ払いを持ったので、羽の catch-all から外す。
+        // v0.25.3120(監査C): `currentFarKey !== 'mansion'` は**死んだ比較**だった。'mansion' を
+        // setFarBackdropTexture へ渡す経路が無く、洋館は必ず 'forest' へフォールバックするので、
+        // **洋館でも羽が出ていた**(旧 'stage3' と同型)。洋館の正しい判定は `corridorMode` 直参照
+        // (同ファイル3373のcloud shadowが既にこの作法。v0.25.2126で確立済み)。
+        // 併せて ex1(未確認変異体・farBackdrop='')も除外=**「森の城ボス=stage-1」だけ**に絞る。
         const wingOk = !this.daylight && !this.snowStage && !this.battlefieldStage && !this.glenStage
-          && this.currentFarKey !== 'lab' && this.currentFarKey !== 'mansion';
+          && !useGameStore.getState().corridorMode && !e.isStoryBoss && this.currentFarKey !== 'lab';
         // ★v0.25.3115(蔓ムチと同じ直し): 共通時計へ移す=カウンターで消えても最後まで描き切る。
         const wClk = wingOk
           ? this.sweepArtClock(e, gph, gameTime, now, cx, cy,
@@ -15439,23 +15539,34 @@ export class PixiScene {
       //      実行(本体が飛ぶ)に入ったら素早く引く=本体の絵と喧嘩させない。
       //      分類②(判定ゼロの派手枠)=帯の判定・射程・秒数は不変。
       {
-        const gbW = gph === 'g-glide-windup', gbA = gph === 'g-glide-active';
-        if (gbW || gbA) {
-          const bfx0 = (e.aiFromX ?? e.x) + e.width / 2, bfy0 = (e.aiFromY ?? e.y) + e.height / 2;
-          const btx0 = (e.aiTargetX ?? e.x) + e.width / 2, bty0 = (e.aiTargetY ?? e.y) + e.height / 2;
+        // ★v0.25.3120(監査A/C): 溜め/実行のフェーズ直読みだったので、中断で**並べた枝が一斉に消えて**
+        // いた(硬直もパリィ対象)。完了時計へ。ステージゲートが無かった点も明示(いまは stage-3 専用技だが、
+        // 台本経由や将来の技配布で他ステージへ即漏れる形だった=監査Cの指摘)。
+        const gbClk = this.daylight
+          ? this.moveArtClock(
+            e, gameTime, now, cx, cy, 'glidebranch',
+            gph === 'g-glide-windup', gph === 'g-glide-active',
+            GIANT_GLIDE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT,
+            GIANT_GLIDE_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT,
+            () => [(e.aiFromX ?? e.x) + e.width / 2, (e.aiFromY ?? e.y) + e.height / 2,
+              (e.aiTargetX ?? e.x) + e.width / 2, (e.aiTargetY ?? e.y) + e.height / 2],
+          )
+          : null;
+        if (gbClk) {
+          // 座標は「左上+半分」で焼くので extra 側を使う(moveArtClock既定の中心座標とは別物)。
+          const bfx0 = gbClk.d[4], bfy0 = gbClk.d[5];
+          const btx0 = gbClk.d[6], bty0 = gbClk.d[7];
           const bAng = Math.atan2(bty0 - bfy0, btx0 - bfx0);
           let bAlpha: number;
           let bWobble = 0; // 溜め中の揺れ(実行では0)
-          if (gbW) {
-            const bEff = GIANT_GLIDE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-            const bp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / bEff));
+          if (gbClk.wp !== null) {
+            const bp = gbClk.wp;
             // v0.25.3101(社長「もっと目立たせて」): 早く濃く出して、育ちも大きくする。
             bAlpha = Math.min(1, bp * 2.4);       // 序盤で一気に出す(見逃させない)
             // 葉が騒ぐ揺れ。溜めが進むほど強く=「今にも飛び出す」の予兆。
             bWobble = Math.sin(now / 46) * GLIDE_BRANCH_WOBBLE_RAD * bp;
           } else {
-            const aEff = GIANT_GLIDE_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
-            const ap = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aEff));
+            const ap = Math.max(0, Math.min(1, gbClk.ap));
             bAlpha = Math.max(0, 1 - ap * 2.2);   // 飛び出したら素早く引く
           }
           if (bAlpha > 0.01) {
@@ -15492,7 +15603,7 @@ export class PixiScene {
               // 揺れるのは**生えている最中だけ**。生え切ったらその姿勢で静止する。
               bs.rotation = tilt + (sprout < 1 ? bWobble * 0.5 * (1 - sprout) : 0);
               bs.position.set(bfx0 + Math.cos(bAng) * bLen * bf, bfy0 + Math.sin(bAng) * bLen * bf);
-              bs.alpha = artFade * Math.min(1, sprout * 1.6) * (gbW ? 1 : bAlpha);
+              bs.alpha = artFade * Math.min(1, sprout * 1.6) * (gbClk.wp !== null ? 1 : bAlpha);
             }
           }
         }
@@ -15503,37 +15614,45 @@ export class PixiScene {
       //      プレイヤー武器の絵をボスに使わない)。ビームの回転に合わせて薙ぎながら連射する。
       //      分類①(武器の絵)だが赤帯が別に出ているので長さは判定に揃え切らなくてよい(トライショットと同じ掟)。
       {
-        const sbW2 = gph === 'g-sweepbeam-windup', sbA2 = gph === 'g-sweepbeam-active', sbR2 = gph === 'g-sweepbeam-recover';
-        if (sbW2 || sbA2 || sbR2) {
-          const gfx0 = e.aiFromX ?? cx, gfy0 = e.aiFromY ?? cy;
-          const gtx0 = e.aiTargetX ?? cx, gty0 = e.aiTargetY ?? cy;
+        // ★v0.25.3120(監査A): 硬直(g-sweepbeam-recover)も**パリィ対象**なので、殴った瞬間に銃・銃口炎・
+        // 曳光弾が同時に消えていた。溜め/実行が気絶で消えると一度も出ない。共通の完了時計へ。
+        const sbActEff = GIANT_SWEEPBEAM_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+        const sbWindEff = GIANT_SWEEPBEAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+        const sbPostMs = sbActEff + GUN_RECOIL_MS;
+        const sbClk = this.moveArtClock(
+          e, gameTime, now, cx, cy, 'sweepbeam',
+          gph === 'g-sweepbeam-windup', gph === 'g-sweepbeam-active', sbWindEff, sbPostMs,
+        );
+        if (sbClk) {
+          const gfx0 = sbClk.fx, gfy0 = sbClk.fy;
+          const gtx0 = sbClk.tx, gty0 = sbClk.ty;
           const base2 = Math.atan2(gty0 - gfy0, gtx0 - gfx0);
+          const sbW2 = sbClk.wp !== null;
+          const sbPost = sbClk.ap * sbPostMs;              // 実行開始からの経過ms
+          const sbA2 = !sbW2 && sbPost < sbActEff;         // 薙いでいる最中
           let ang2: number, alpha2: number, out2 = GUN_OUT_PX;
           if (sbW2) {
             // 溜め: 開始からGUN_FADE_IN_MSでシュッと出て、開始角(左端)で構える。
-            const windEff = GIANT_SWEEPBEAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-            const elapsed = windEff - Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+            const elapsed = (sbClk.wp ?? 1) * sbWindEff;
             ang2 = base2 - GIANT_SWEEPBEAM_SWEEP_RAD / 2;
             alpha2 = Math.max(0, Math.min(1, elapsed / GUN_FADE_IN_MS));
             out2 = 10 + (GUN_OUT_PX - 10) * alpha2;
           } else if (sbA2) {
             // 発射中: ビームの現在角(判定と同じ式)へ追従+細かい反動の揺れ=連射感。
-            const actEff = GIANT_SWEEPBEAM_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
-            const t2 = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / actEff));
+            const t2 = Math.max(0, Math.min(1, sbPost / sbActEff));
             ang2 = base2 - GIANT_SWEEPBEAM_SWEEP_RAD / 2 + GIANT_SWEEPBEAM_SWEEP_RAD * t2;
             alpha2 = 1;
             out2 = GUN_OUT_PX - 4 * (0.5 + 0.5 * Math.sin(now / 12));
           } else {
             // 硬直: 終了角のまま反動で下がりつつ消える。
-            const recEff = GIANT_SWEEPBEAM_RECOVER_MS / ENEMY_ATTACK_SPEED_MULT;
-            const dt2 = recEff - Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
-            if (dt2 > GUN_RECOIL_MS) { alpha2 = 0; } else { alpha2 = 1 - dt2 / GUN_RECOIL_MS; }
+            const dt2 = sbPost - sbActEff;
+            alpha2 = Math.max(0, 1 - dt2 / GUN_RECOIL_MS);
             const v2 = Math.min(1, dt2 / GUN_RECOIL_MS);
             ang2 = base2 + GIANT_SWEEPBEAM_SWEEP_RAD / 2;
             out2 = GUN_OUT_PX - GUN_RECOIL_PX * v2;
           }
           if (alpha2 > 0.01) {
-            const sp2 = this.atkArtSprite(view, ATK_ART_GUN_C, 'fx/boss-gun-3');
+            const sp2 = this.atkArtSprite(view, ATK_ART_SWEEPBEAM_GUN, 'fx/boss-gun-3');
             if (sp2) {
               sp2.anchor.set(1, 0.5);
               const sc2 = 150 / (sp2.texture.width || 1);
@@ -15585,7 +15704,15 @@ export class PixiScene {
       //      1枚絵の回転→**曲線ロープ(MeshRope)**へ。根元=口元、帯の現在角(判定と同じ式)に沿い、
       //      中間点が薙ぎの進行方向へ弧を描く(sin(πt)の横オフセット)。派手枠=判定の帯は不変。
       {
-        const qbActive2 = gph === 'g-quad-breath-active';
+        // ★v0.25.3120(監査A): 実行フェーズ直読みだったので、中断(カウンター/気絶)で**口元の炎が
+        // 瞬間消滅**していた(フェードすら無い)。完了時計に載せて最後まで薙ぎ切る。
+        const qbClk = this.moveArtClock(
+          e, gameTime, now, cx, cy, 'quadbreath',
+          gph === 'g-quad-breath-windup', gph === 'g-quad-breath-active',
+          GIANT_QUAD_BREATH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT,
+          GIANT_QUAD_BREATH_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT,
+        );
+        const qbActive2 = qbClk !== null && qbClk.wp === null; // 溜め中は出さない(従来どおり)
         if (qbActive2 && !view.breathRope) {
           const texB = getTexture('fx/breath-stream-trim');
           if (texB) {
@@ -15601,11 +15728,10 @@ export class PixiScene {
           if (!qbActive2) {
             br.rope.visible = false;
           } else {
-            const bfx0 = e.aiFromX ?? cx, bfy0 = e.aiFromY ?? cy;
-            const btx0 = e.aiTargetX ?? cx, bty0 = e.aiTargetY ?? cy;
+            const bfx0 = qbClk!.fx, bfy0 = qbClk!.fy;
+            const btx0 = qbClk!.tx, bty0 = qbClk!.ty;
             const bBase = Math.atan2(bty0 - bfy0, btx0 - bfx0);
-            const bDurEff = GIANT_QUAD_BREATH_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
-            const bT = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / bDurEff));
+            const bT = Math.max(0, Math.min(1, qbClk!.ap));
             const bAng = bBase - GIANT_QUAD_BREATH_SWEEP_RAD / 2 + GIANT_QUAD_BREATH_SWEEP_RAD * bT;
             const grow = Math.min(1, bT * 8);                          // 出だし約85msで全長へ
             const fade = bT > 0.85 ? Math.max(0, (1 - bT) / 0.15) : 1; // 終わり際にすっと消える
@@ -15633,16 +15759,37 @@ export class PixiScene {
       //      3連発(burst)=1発ごとに別の銃で「バンバンバン」/ 扇(fan)=3挺が同時に開いて一斉射
       //      (トライショットと同じフェードイン→発射→反動の型)。弾(赤二重丸)が危険表示・銃は装飾=分類②。
       {
-        const boltArt = this.currentFarKey === 'stage5'
-          && (gph === 'g-bolt-windup' || gph === 'g-bolt-burst' || gph === 'g-bolt-recover');
-        if (boltArt) {
+        // v0.25.3120(監査C): 判定源を **store の farBackdrop 由来(battlefieldStage)** に統一した。
+        // 旧 `currentFarKey === 'stage5'` は**適用済みの遠景キー**で、遠景テクスチャの注入前や欠落時は
+        // 'forest' のままになる=**大砲は出るのに銃だけ出ない**窓があった(同じ意味の判定が2通り)。
+        // 監査A: 硬直(g-bolt-recover)もパリィ対象=3挺目が反動の途中で消えていたので完了時計へ。
+        // 狙いの向きは**発砲後は焼き付けた向き**を使う(中断で aiStartedAt/座標が undefined 化するため)。
+        const blClk = this.battlefieldStage
+          ? this.moveArtClock(
+            e, gameTime, now, cx, cy, 'boltgun',
+            gph === 'g-bolt-windup', gph === 'g-bolt-burst',
+            GIANT_BOLT_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT,
+            (GIANT_BOLT_BURST_GAP_MS / ENEMY_ATTACK_SPEED_MULT) * 2 + GUN_RECOIL_MS + 60,
+            () => {
+              const p0 = useGameStore.getState().player;
+              const dx0 = p0.x + p0.width / 2 - cx, dy0 = p0.y + p0.height / 2 - cy;
+              const l0 = Math.hypot(dx0, dy0) || 1;
+              return [e.aiStartedAt ?? gameTime, (e.gBoltPattern ?? 'fan') === 'burst' ? 1 : 0, dx0 / l0, dy0 / l0];
+            },
+          )
+          : null;
+        if (blClk) {
           const mult = ENEMY_ATTACK_SPEED_MULT;
-          const burst2 = (e.gBoltPattern ?? 'fan') === 'burst';
-          const fireBase = (e.aiStartedAt ?? gameTime) + GIANT_BOLT_WINDUP_MS / mult;
-          const bp3 = useGameStore.getState().player;
-          const bdx3 = bp3.x + bp3.width / 2 - cx, bdy3 = bp3.y + bp3.height / 2 - cy;
-          const bl3 = Math.hypot(bdx3, bdy3) || 1;
-          const ux3 = bdx3 / bl3, uy3 = bdy3 / bl3;
+          const burst2 = blClk.d[5] === 1;
+          const fireBase = blClk.d[4] + GIANT_BOLT_WINDUP_MS / mult;
+          // 溜め中は従来どおりプレイヤーを追って構える。撃った後は焼き付けた向きのまま(弾はもう出ている)。
+          let ux3 = blClk.d[6], uy3 = blClk.d[7];
+          if (gph === 'g-bolt-windup') {
+            const bp3 = useGameStore.getState().player;
+            const bdx3 = bp3.x + bp3.width / 2 - cx, bdy3 = bp3.y + bp3.height / 2 - cy;
+            const bl3 = Math.hypot(bdx3, bdy3) || 1;
+            ux3 = bdx3 / bl3; uy3 = bdy3 / bl3;
+          }
           const drawBoltGun = (idx: number, texName: string, dirX: number, dirY: number, fireAt: number, artLen: number) => {
             const dt = gameTime - fireAt;
             if (dt < -GUN_FADE_IN_MS || dt > GUN_RECOIL_MS) return; // 出番の外(トライショットと同じ窓)
@@ -15666,15 +15813,15 @@ export class PixiScene {
           if (burst2) {
             // 3連発: 1発ごとに別の銃(短→中→長)が入れ替わりで「バンバンバン」。
             const gap3 = GIANT_BOLT_BURST_GAP_MS / mult;
-            drawBoltGun(ATK_ART_GUN_L, 'fx/boss-gun-1', ux3, uy3, fireBase, 100);
-            drawBoltGun(ATK_ART_GUN_R, 'fx/boss-gun-2', ux3, uy3, fireBase + gap3, 120);
-            drawBoltGun(ATK_ART_GUN_C, 'fx/boss-gun-3', ux3, uy3, fireBase + gap3 * 2, 150);
+            drawBoltGun(ATK_ART_BOLT_GUN_0, 'fx/boss-gun-1', ux3, uy3, fireBase, 100);
+            drawBoltGun(ATK_ART_BOLT_GUN_0 + 1, 'fx/boss-gun-2', ux3, uy3, fireBase + gap3, 120);
+            drawBoltGun(ATK_ART_BOLT_GUN_0 + 2, 'fx/boss-gun-3', ux3, uy3, fireBase + gap3 * 2, 150);
           } else {
             // 扇: 3挺が弾の扇角(12°)どおりに開いて同時発射。
             const cF = Math.cos(GIANT_BOLT_FAN_STEP_RAD), sF = Math.sin(GIANT_BOLT_FAN_STEP_RAD);
-            drawBoltGun(ATK_ART_GUN_L, 'fx/boss-gun-1', ux3 * cF - uy3 * sF, ux3 * sF + uy3 * cF, fireBase, 100);
-            drawBoltGun(ATK_ART_GUN_R, 'fx/boss-gun-2', ux3 * cF + uy3 * sF, -ux3 * sF + uy3 * cF, fireBase, 120);
-            drawBoltGun(ATK_ART_GUN_C, 'fx/boss-gun-3', ux3, uy3, fireBase, 150);
+            drawBoltGun(ATK_ART_BOLT_GUN_0, 'fx/boss-gun-1', ux3 * cF - uy3 * sF, ux3 * sF + uy3 * cF, fireBase, 100);
+            drawBoltGun(ATK_ART_BOLT_GUN_0 + 1, 'fx/boss-gun-2', ux3 * cF + uy3 * sF, -ux3 * sF + uy3 * cF, fireBase, 120);
+            drawBoltGun(ATK_ART_BOLT_GUN_0 + 2, 'fx/boss-gun-3', ux3, uy3, fireBase, 150);
           }
         }
       }
