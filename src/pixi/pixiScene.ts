@@ -22,7 +22,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
@@ -2209,6 +2209,10 @@ const CLAW_SLASH_HOLD_MS = 620; // 刻まれた痕が濃いまま残る時間
 const CLAW_SLASH_OUT_MS = 380;  // そこから薄れて消えるまで
 // (WING_SWING_MS は撤去: 翼撃は判定の active 窓そのもので一周するようになった・v0.25.2863)
 const REACH_HOLD_MS = 340;     // 触手が伸び切ってから引っ込むまで
+// 討伐の崩壊中に出し続ける画面揺れの振幅(社長指示v0.25.3125「消え切るまで画面揺れで」)。
+// 一撃の揺れ(討伐の瞬間=6 / 大技=15)と違い**2.6秒鳴り続ける**ので、強すぎると画面が読めなくなる。
+// 崩れが進むほど強くする(×0.7→×1.3)=最後にひときわ大きく揺れて、消えると同時に止む。
+const CORPSE_SHAKE_MAG = 6;
 // 拳が当たってから消えるまでは `IDOL_TUNING.fx.punchFistHoldMs`(メーカーで触れる・v0.25.2651)。
 // ここに定数を置くと**メーカーで変えても効かない**ので置かない(v0.25.2631の教訓と同じ形)。
 const PLANT_SPIT_MS = 300;     // 種を吐く反動(口の絵)の尺
@@ -6178,6 +6182,21 @@ export class PixiScene {
       } else {
         sx = (Math.random() * 2 - 1) * mag;
         sy = (Math.random() * 2 - 1) * mag;
+      }
+    }
+    // ★討伐の崩壊中は**消え切るまで揺らし続ける**(社長指示v0.25.3125)。
+    // なぜ専用にするか: 上の通常シェイクは **ヒットストップ中は描かない**(社長指示・ストップと
+    // 揺れを重ねない)。ところが崩壊は**時間停止のまま**見せる演出(v2955/v3026)なので、
+    // 通常の経路に足しても**必ず消される**。よって「崩壊の間だけストップを跨ぐ」別チャンネルにする。
+    // 時計も `Date.now()`(実時間)=syncBossCorpseの崩壊と同じ基準にする(`now`は停止中は凍る)。
+    // 揺れは崩れが進むほど強くなり、**死体が消えた瞬間にぴたりと止む**。判定・尺には一切関与しない。
+    if (s.bossCorpse) {
+      const cel = realNow - s.bossCorpse.diedAt - (s.bossCorpse.holdMs ?? 0);
+      if (cel >= 0 && cel < BOSS_CORPSE_CRUMBLE_MS) {
+        const ct = cel / BOSS_CORPSE_CRUMBLE_MS;
+        const cmag = CORPSE_SHAKE_MAG * (0.7 + 0.6 * ct) * SHAKE_GLOBAL_MULT;
+        sx += (Math.random() * 2 - 1) * cmag;
+        sy += (Math.random() * 2 - 1) * cmag;
       }
     }
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);

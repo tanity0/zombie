@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3125',
+    items: [
+      'ボス討伐の崩れ落ちる間、消え切るまで画面が揺れ続けるようになりました(崩れが進むほど強く揺れます)。',
+    ],
+  },
+  {
     version: '0.25.3124',
     items: [
       'グレンの爪痕が、3連斬りのあと当たり判定が出る瞬間にズシャッと刻まれるようになりました。',
