@@ -2198,8 +2198,9 @@ const ATK_ART_GUN_C = 9;   // 三連射: 中央=三拍目(長い銃)
 const ATK_ART_VINE = 10;   // v0.25.3088: 樹木管理員の蔓ムチ(薙ぎ払い)
 const ATK_ART_GLIDE_BRANCH = 17; // v0.25.3099: 滑空の溜めの枝(1枚)
 // 枝1枚の表示サイズ(px)と、帯に沿って並べる枚数。
-const GLIDE_BRANCH_PX = 210;   // v0.25.3102: 帯に沿って並べる形になったので1枚あたりは戻す
-const GLIDE_BRANCH_N = 4;      // 帯に沿って何枚並べるか
+const GLIDE_BRANCH_PX = 165;         // v0.25.3103: たくさん並べるので1枚は小さめ
+const GLIDE_BRANCH_SPACING_PX = 48;  // 帯に沿って並べる間隔(枚数は帯の長さから決まる)
+const GLIDE_BRANCH_MAX = 16;         // 上限(長い帯でも増やしすぎない)
 const GLIDE_BRANCH_WOBBLE_RAD = 0.09; // 溜め中の揺れ幅(rad)
 const ATK_ART_ICE_0 = 11;  // v0.25.3095: 衛生兵の氷の衝撃波(薙ぎ払い)。11..16 の6枠
 // 氷塊を帯に何個並べるか/根元と先端の大きさ(px)。**小から大へのグラデーション**(社長指示)。
@@ -15200,8 +15201,12 @@ export class PixiScene {
             // **滑空の帯(aiFrom→aiTarget)に沿って並べる**=これから薙ぐ道筋そのものが見える。
             // 根元から先端へ少しずつ遅れて出す(道が伸びていくように読める)。
             const bLen = Math.hypot(btx0 - bfx0, bty0 - bfy0) || 1;
-            for (let bi = 0; bi < GLIDE_BRANCH_N; bi++) {
-              const bf = (bi + 0.5) / GLIDE_BRANCH_N;            // 帯の上の位置(根元→先端)
+            // v0.25.3103(社長「4枚じゃ足りない。かなりの長さのラインにたくさん並ぶはず」):
+            // 枚数は**帯の長さから決める**(固定数だと技の射程が変わった時に密度が破綻する)。
+            // 滑空は600pxなので、間隔48pxなら12枚前後が並んで**道筋が緑で埋まる**。
+            const bn = Math.max(2, Math.min(GLIDE_BRANCH_MAX, Math.round(bLen / GLIDE_BRANCH_SPACING_PX)));
+            for (let bi = 0; bi < bn; bi++) {
+              const bf = (bi + 0.5) / bn;                        // 帯の上の位置(根元→先端)
               // 先の方ほど遅れて出る(根元から順に道が伸びる)。
               const stagger = Math.max(0, Math.min(1, (bAlpha * 1.6) - bf * 0.7));
               if (stagger <= 0.02) continue;
