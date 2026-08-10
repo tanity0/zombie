@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3128',
+    items: [
+      '天使ボスの攻撃をカウンターした時に、1回で何度もカウンターが成立してしまうのを直しました。カウンターは技を止め、1回で1成立になります。',
+    ],
+  },
+  {
     version: '0.25.3127',
     items: [
       '紫の完全気絶中にカウンターを決めると、気絶が黄色に格下げされてしまうのを直しました。紫のまま続きます。',

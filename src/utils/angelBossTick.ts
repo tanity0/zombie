@@ -278,6 +278,17 @@ export const createAngelBossState = (): AngelBossState => ({
 // (G1/G4a計測notify・コンボ・無敵/CDリファンド/lastCounterSuccessTime・triggerHitImpact(停止+ズーム)・
 // markMeleeSwingFx・強glow95)をスキップし、共通ヘルパで確定クリ+青/金FX+SE距離減衰だけを出す。
 // ボスの状態遷移(chase復帰/counter-leap)は呼び出し側の従来patch=プレイヤー成立と同一。
+/**
+ * ★カウンター成立の共通処理。**この関数には多重発火の防止が無い**(コンボ+1・SE・ヒットストップ・
+ * CD返還・反撃ダメージ・体幹削りが呼ぶたびに全部走る)ので、**呼ぶ側が「1回だけ」を保証すること**。
+ *
+ * v0.25.3128(社長報告「スリィエルのカウンターすると多段カウンターするけどなぜ?」)の再発防止メモ:
+ * 判定が出続ける技(環の射出/回転斬/大薙ぎ/払い/棘/爆発…)は**毎フレーム**範囲内かを見る。
+ * 旧実装は成立時に `countered = true` を立てるだけで、**技の状態もカウンター窓も変えていなかった**
+ * ため、窓が閉じるまで毎フレーム成立し続けていた(体幹が一瞬で削れて紫になる副作用つき)。
+ * ⇒ 今は成立と同時に `bossState='chase'` で**技を中断**する(溜め/硬直のカウンターと同じ扱い)。
+ * **判定が出続ける技をこの先足す時も、成立したら必ず状態を進めること。**
+ */
 const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, sfx: AngelSfx, ghost?: GhostCounterFire): void => {
   // カウンターは台本の割り込み成功。残り手を破棄し、次は新しい始動から組み直す。
   useGameStore.setState(st => ({ enemies: st.enemies.map(e => e.id === boss.id ? { ...e, bossScriptQueue: [] } : e) }));
@@ -533,6 +544,8 @@ export const runMiguelTick = (
       if (Date.now() <= cp.counterWindowEnd) {
         miguelCounterHit((fx0 + tx0) / 2, (fy0 + ty0) / 2);
         countered = true;
+        // v0.25.3128(案A): 技を中断=カウンター1回につき1成立に揃える。
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
       } else {
         const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の${st === 'harai' ? '払い' : '縦払い'}`, pcx, pcy);
         if (died) onPlayerDeath(pcx, pcy);
@@ -612,6 +625,8 @@ export const runMiguelTick = (
         if (Date.now() <= cp.counterWindowEnd) {
           miguelCounterHit((sx + ex) / 2, (sy + ey) / 2);
           countered = true;
+          // v0.25.3128(案A): 技を中断=カウンター1回につき1成立に揃える。
+          patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
         } else {
           const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の踏み込み`, pcx, pcy);
           if (died) onPlayerDeath(pcx, pcy);
@@ -753,6 +768,8 @@ export const runMiguelTickLegacy = (
       if (Date.now() <= cp.counterWindowEnd) {
         miguelCounterHit(cxp, cyp);
         countered = true;
+        // v0.25.3128(案A): 技を中断=カウンター1回につき1成立に揃える。
+        patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
       } else {
         const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の${st === 'harai' ? '払い' : '縦払い'}`, cxp, cyp);
         if (died) onPlayerDeath(pcx, pcy);
@@ -1602,7 +1619,7 @@ export const runUriTick = (
     let countered = false;
     if (distToSegment({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= URI_SWEEP_HALF_WIDTH_PX + pr) {
       const cp = useGameStore.getState().player;
-      if (Date.now() <= cp.counterWindowEnd) { uriCounterHit(pcx, pcy); countered = true; }
+      if (Date.now() <= cp.counterWindowEnd) { uriCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri); }
       else {
         const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の大薙ぎ`, pcx, pcy);
         if (died) onPlayerDeath(pcx, pcy);
@@ -1631,7 +1648,7 @@ export const runUriTick = (
     let countered = false;
     if (distToSegment({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= URI_DOWNSLASH_HALF_WIDTH_PX + pr) {
       const cp = useGameStore.getState().player;
-      if (Date.now() <= cp.counterWindowEnd) { uriCounterHit(pcx, pcy); countered = true; }
+      if (Date.now() <= cp.counterWindowEnd) { uriCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri); }
       else {
         const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の振り下ろし`, pcx, pcy);
         if (died) onPlayerDeath(pcx, pcy);
@@ -1668,7 +1685,11 @@ export const runUriTick = (
       const pr = Math.max(player.width, player.height) / 2;
       if (distToSegment({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }) <= URI_THRUST_HALF_WIDTH_PX + pr) {
         const cp = useGameStore.getState().player;
-        if (Date.now() <= cp.counterWindowEnd) { uriCounterHit((sx + ex) / 2, (sy + ey) / 2); countered = true; }
+        if (Date.now() <= cp.counterWindowEnd) {
+          uriCounterHit((sx + ex) / 2, (sy + ey) / 2); countered = true;
+          // v0.25.3128(案A): 技を中断=カウンター1回につき1成立に揃える。
+          patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
+        }
         else {
           const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の踏み込み突き`, pcx, pcy);
           if (died) onPlayerDeath(pcx, pcy);
@@ -1851,7 +1872,7 @@ export const runSurielTick = (
     let countered = false;
     if (distToSegment({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: ex, y: ey }) <= SURIEL_BEAM_HALF_WIDTH + pr) {
       const cp = useGameStore.getState().player;
-      if (Date.now() <= cp.counterWindowEnd) { surielCounterHit(pcx, pcy); countered = true; }
+      if (Date.now() <= cp.counterWindowEnd) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
         const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy);
         if (died) onPlayerDeath(pcx, pcy);
@@ -1883,7 +1904,7 @@ export const runSurielTick = (
     let countered = false;
     if (Math.hypot(pcx - scx, pcy - scy) <= SURIEL_RINGSPIN_RADIUS + pr) {
       const cp = useGameStore.getState().player;
-      if (Date.now() <= cp.counterWindowEnd) { surielCounterHit(pcx, pcy); countered = true; }
+      if (Date.now() <= cp.counterWindowEnd) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
         const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の回転斬`, pcx, pcy);
         if (died) onPlayerDeath(pcx, pcy);
@@ -1912,7 +1933,7 @@ export const runSurielTick = (
     let countered = false;
     if (distToSegment({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= SURIEL_SWEEP_HALF_WIDTH_PX + pr) {
       const cp = useGameStore.getState().player;
-      if (Date.now() <= cp.counterWindowEnd) { surielCounterHit(pcx, pcy); countered = true; }
+      if (Date.now() <= cp.counterWindowEnd) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
         const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の本体の薙ぎ`, pcx, pcy);
         if (died) onPlayerDeath(pcx, pcy);
@@ -2041,7 +2062,7 @@ export const runAcrasielTick = (
     let countered = false;
     if (hit) {
       const cp = useGameStore.getState().player;
-      if (Date.now() <= cp.counterWindowEnd) { acrasielCounterHit(pcx, pcy); countered = true; }
+      if (Date.now() <= cp.counterWindowEnd) { acrasielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel); }
       else {
         const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の放射棘`, pcx, pcy);
         if (died) onPlayerDeath(pcx, pcy);
@@ -2118,7 +2139,7 @@ export const runAcrasielTick = (
     let countered = false;
     if (Math.hypot(pcx - acx, pcy - acy) <= ACRASIEL_BURST_RADIUS + pr) {
       const cp = useGameStore.getState().player;
-      if (Date.now() <= cp.counterWindowEnd) { acrasielCounterHit(pcx, pcy); countered = true; }
+      if (Date.now() <= cp.counterWindowEnd) { acrasielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, acrasiel); }
       else {
         const died = useGameStore.getState().damagePlayer(acrasiel.damage, `${enemyDeathLabel(acrasiel.type)}の爆発`, pcx, pcy);
         if (died) onPlayerDeath(pcx, pcy);
