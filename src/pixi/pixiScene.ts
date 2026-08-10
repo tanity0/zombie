@@ -344,6 +344,11 @@ const ZOOM_CLOUD_LAYERS = [
   // alpha 0.40/0.45→0.55/0.60(社長指示v0.25.3024「透明度少し下げて(見える様に)」)。
   { place: 'far', heightFrac: 0.16, bottomFrac: -0.05, alpha: 0.55, driftPxS: 3, paraX: 0.10, blur: 4, bobAmp: 2, bobPhase: 5.0, tileOfs: 300 },
   { place: 'far', heightFrac: 0.16, bottomFrac: 0.00, alpha: 0.60, driftPxS: 5, paraX: 0.15, blur: 4, bobAmp: 3, bobPhase: 3.1, tileOfs: 700 },
+  // v0.25.3109(社長指示「ステージ3の遠景森1の目の前に(ステージ1と同じ距離感に)引き雲を追加」):
+  // ステージ1で森1の目の前にあるのは**奥霧**(yFrac=0.16・遠景〜地面に被る背の高い層)。
+  // その距離感に合わせた雲を1本足す=画面高さの16%あたりを、遠景より手前・アクターより奥で流す。
+  // place:'near' は新設(far=空/near=遠景の手前/front=最前面)。視差は奥霧寄りの控えめな値。
+  { place: 'near', heightFrac: 0.18, bottomFrac: 0.25, alpha: 0.5, driftPxS: 7, paraX: 0.35, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
   { place: 'front', heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
   { place: 'front', heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
 ] as const;
@@ -6671,7 +6676,10 @@ export class PixiScene {
             if (cfg.blur > 0) sp.filters = [new BlurFilter({ strength: cfg.blur, quality: 2 })];
             // v0.25.3018(社長指示「遠景の雲はレイヤー一番上に(空の上なので)」): far層も含めて全層
             // uiLayer直下へ逐次挿入=配列順(far→front奥→front手前)がそのまま奥→手前の描画順になる。
-            st.addChildAt(sp, st.getChildIndex(this.L.uiLayer));
+            // near層は**奥霧と同じ親**(bgCloudLayer=アクターの後ろ・遠景の手前)へ入れる。
+            // ここがステージ1で森1の目の前にある霧と同じ「距離」。far/front は従来どおり最前面へ。
+            if (cfg.place === 'near') this.bgCloudLayer.addChild(sp);
+            else st.addChildAt(sp, st.getChildIndex(this.L.uiLayer));
             this.zoomClouds.push(sp);
           }
         }
@@ -6687,7 +6695,8 @@ export class PixiScene {
         const cfg = ZOOM_CLOUD_LAYERS[ci];
         this.zoomCloudDriftAcc[ci] = (this.zoomCloudDriftAcc[ci] ?? 0)
           + cloudDt * cfg.driftPxS * (cfg.place === 'far' && glenP2Cloud ? 2 : 1);
-        const aC = fadeC * cfg.alpha;
+        // near層(v0.25.3109)はステージ3だけ(社長指示)。他ステージの見た目は一切変えない。
+        const aC = fadeC * cfg.alpha * (cfg.place === 'near' ? (this.daylight ? 1 : 0) : 1);
         if (aC <= 0.01) { zc.visible = false; continue; }
         zc.visible = true;
         const ch = this.screenH * cfg.heightFrac;

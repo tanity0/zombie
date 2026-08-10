@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3109',
+    items: [
+      'ステージ3で引きの時、遠くの森の手前にも雲が流れるようになりました(ステージ1の霧と同じ距離感)。',
+    ],
+  },
+  {
     version: '0.25.3108',
     items: [
       '氷の衝撃波の順番を直しました。氷が立ち上がってしばらく残り、そのあとキラキラしながら消えていきます。',
