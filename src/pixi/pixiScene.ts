@@ -2198,7 +2198,8 @@ const ATK_ART_GUN_C = 9;   // 三連射: 中央=三拍目(長い銃)
 const ATK_ART_VINE = 10;   // v0.25.3088: 樹木管理員の蔓ムチ(薙ぎ払い)
 const ATK_ART_GLIDE_BRANCH = 17; // v0.25.3099: 滑空の溜めの枝(1枚)
 // 枝の表示サイズ(px)と、本体からどれだけ前へ置くか。
-const GLIDE_BRANCH_PX = 210;
+const GLIDE_BRANCH_PX = 340;   // v0.25.3101: 210→340(社長「もっと目立たせて」)
+const GLIDE_BRANCH_WOBBLE_RAD = 0.09; // 溜め中の揺れ幅(rad)
 const GLIDE_BRANCH_AHEAD_PX = 96;
 const ATK_ART_ICE_0 = 11;  // v0.25.3095: 衛生兵の氷の衝撃波(薙ぎ払い)。11..16 の6枠
 // 氷塊を帯に何個並べるか/根元と先端の大きさ(px)。**小から大へのグラデーション**(社長指示)。
@@ -15179,11 +15180,15 @@ export class PixiScene {
           const btx0 = (e.aiTargetX ?? e.x) + e.width / 2, bty0 = (e.aiTargetY ?? e.y) + e.height / 2;
           const bAng = Math.atan2(bty0 - bfy0, btx0 - bfx0);
           let bAlpha: number, bGrow: number;
+          let bWobble = 0; // 溜め中の揺れ(実行では0)
           if (gbW) {
             const bEff = GIANT_GLIDE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
             const bp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / bEff));
-            bAlpha = Math.min(1, bp * 1.4);       // じわっとフェードイン
-            bGrow = 0.72 + 0.28 * bp;             // ほんの少し育つ=溜まっていく感じ
+            // v0.25.3101(社長「もっと目立たせて」): 早く濃く出して、育ちも大きくする。
+            bAlpha = Math.min(1, bp * 2.4);       // 序盤で一気に出す(見逃させない)
+            bGrow = 0.62 + 0.62 * bp;             // 小さく現れて**大きく育つ**=溜まっていくのが分かる
+            // 葉が騒ぐ揺れ。溜めが進むほど強く=「今にも飛び出す」の予兆。
+            bWobble = Math.sin(now / 46) * GLIDE_BRANCH_WOBBLE_RAD * bp;
           } else {
             const aEff = GIANT_GLIDE_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
             const ap = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aEff));
@@ -15197,7 +15202,7 @@ export class PixiScene {
               const bsz = GLIDE_BRANCH_PX * bGrow;
               const bsc = bsz / Math.max(1, bs.texture.height);
               bs.scale.set(bsc, bsc);
-              bs.rotation = bAng;                 // 滑空の向きへ寝かせる
+              bs.rotation = bAng + bWobble;       // 滑空の向きへ寝かせる(+溜めの揺れ)
               // 本体の少し前(これから薙ぐ方向)へ置く=進行方向が読める。
               bs.position.set(bfx0 + Math.cos(bAng) * GLIDE_BRANCH_AHEAD_PX,
                 bfy0 + Math.sin(bAng) * GLIDE_BRANCH_AHEAD_PX);
