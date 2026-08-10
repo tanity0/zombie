@@ -1801,9 +1801,10 @@ const QUAD_ICE_SPARK_SCALE_MIN = 0.28; // 凝縮しきった時の粒の大き�
 const QUAD_ICE_FLASH_LEAD_MS = 130;    // 爆発の何ms前に光らせるか
 const QUAD_ICE_FLASH_R = 92;           // ピカッの光の半径
 // 氷結波(大技)の予兆: キラキラが全方位からボスへ集まる(社長指示v0.25.3079)。
-const NOVA_GATHER_MS = 70;             // 予兆キラキラの間引き(短く挟むので密度を出す)
-const NOVA_GATHER_N = 3;               // 1回あたりの粒
-const NOVA_GATHER_LEAD_MS = 620;       // 発動の何ms前から集め始めるか(=「短めに挟む」)
+const NOVA_GATHER_MS = 55;             // 予兆キラキラの間引き(密度を出す)
+const NOVA_GATHER_N = 4;               // 1回あたりの粒
+const NOVA_MOTE_LIFE_MS = 420;         // 粒が外周から本体へ届くまでの時間(=飛ぶ速さを決める)
+const NOVA_GATHER_LEAD_MS = 900;       // 発動の何ms前から集め始めるか(飛んで来る時間ぶん早める)
 const NOVA_GATHER_R = 420;             // 集まり始める外周の半径
 const QUAD_ICE_BURST_N = 10;      // 粉塵爆発の粒(氷1つあたり・旧16)
 const QUAD_ICE_BURST_INNER = 0.55;// 爆発の粒を撒く輪の内側(半径比)
@@ -8514,7 +8515,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
-    const quadBreathSparkles: { x: number; y: number; scale?: number; life?: number }[] = [];
+    const quadBreathSparkles: { x: number; y: number; scale?: number; life?: number; driftX?: number; driftY?: number; rot?: number }[] = [];
     // v0.25.3079: 爆発直前の「ピカッ」を出す位置(set後にspawnGlow。判定ゼロの派手枠)。
     const iceFlashAt: { x: number; y: number }[] = [];   // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給素材・set後にspawnEffect)。v0.25.3049: 三連突進の軌跡も同じ籠で撒く。v0.25.3071: スカジの氷技(氷刃の軌跡/氷塊の冷気と砕け)も同じ籠。
     let bossLeashWarning = false;
@@ -9875,14 +9876,21 @@ export const useGameStore = create<GameState>((set, get) => ({
                   && shouldEmitThrottled(gameTime, runClocks.novaGather, NOVA_GATHER_MS)) {
                   runClocks.novaGather = gameTime;
                   const nt = 1 - nRemain / NOVA_GATHER_LEAD_MS; // 0=集め始め 1=発動直前
-                  const nRing = NOVA_GATHER_R * (1 - nt) * (1 - nt) + 18; // 外周→本体へ加速して寄る
+                  // v0.25.3096(社長「もっと分かりやすく」): 出る位置を寄せるだけでは「集まる」が
+                  // 読めなかった(粒はその場で消えるため)。**実際にボスへ向かって飛ばす**。
+                  // 発生は常に外周(遠くから来る)にし、寿命の間にちょうど本体へ届く速さを与える。
                   for (let ni = 0; ni < NOVA_GATHER_N; ni++) {
-                    const na = Math.random() * Math.PI * 2; // 全方位から
+                    const na = Math.random() * Math.PI * 2;                 // 全方位から
+                    const r0 = NOVA_GATHER_R * (0.75 + Math.random() * 0.3); // 発生半径(遠く)
+                    const lifeMs = NOVA_MOTE_LIFE_MS;
+                    const sp = (r0 / lifeMs) * 1000;                        // 寿命でちょうど中心へ届く
                     quadBreathSparkles.push({
-                      x: ecx + Math.cos(na) * nRing, y: ecy + Math.sin(na) * nRing,
+                      x: ecx + Math.cos(na) * r0, y: ecy + Math.sin(na) * r0,
+                      // 内向き(ボスの方)へ飛ぶ。絵の向きも進行方向へ揃える=線に見えて追いやすい。
+                      driftX: -Math.cos(na) * sp, driftY: -Math.sin(na) * sp, rot: na + Math.PI,
                       scale: QUAD_ICE_SPARK_SCALE_MAX
                         + (QUAD_ICE_SPARK_SCALE_MIN - QUAD_ICE_SPARK_SCALE_MAX) * nt,
-                      life: 240 + Math.random() * 120, // 短命=「集まってきた」線が締まる
+                      life: lifeMs,
                     });
                   }
                 }
@@ -10841,6 +10849,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           // v0.25.3079(社長指示「絵もギュッとしてほしい」): 粒ごとの大きさを撒く側で指定できる。
           // 未指定なら従来どおり(0.55〜1.0のランダム)。
           texture: 'fx/breath-sparkle', scale: p.scale ?? (0.55 + Math.random() * 0.45),
+          // v0.25.3096: 粒ごとに**流れる向きと速さ**を持てる(未指定なら従来どおりその場)。
+          rot: p.rot, driftX: p.driftX, driftY: p.driftY,
         });
       }
     }
