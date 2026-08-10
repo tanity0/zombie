@@ -2078,6 +2078,10 @@ const SHOCKWAVE_MS = 260;          // 走り切るまで。判定のactive窓と
 const SHOCKWAVE_TAIL_MS = 260;
 // 武器の絵(蔓/翼)を硬直へ持ち越して消す時間。振り切った姿勢がふっと残る=「ぱつっと」感が消える。
 const SWEEP_AFTERGLOW_MS = 460;
+// v0.25.3091(鞭のモデル): 溜め中に構える長さ(帯の全長に対する割合)。全コマ共通=絵を潰さない。
+const VINE_COIL_LEN_FRAC = 0.55;
+// クラックの追い越し量。鞭は伸び切りを一瞬追い越してから戻る(先端が最速になる瞬間)。
+const VINE_CRACK_OVERSHOOT = 1.12;
 const SHOCKWAVE_LEN_MAX = 260;     // 波1つの見た目の長さ(px)。帯が短ければ帯長に合わせる
 const SHOCKWAVE_TINT = 0xffe4e4;   // ほんのり赤み(赤い帯と同じ攻撃の絵だと分かる程度。純白だと浮く)
 // 素材=「太い側へ膨らむ同心弧が細い一点に収束するコーン」(左=太い裾/右=細い尖り)。
@@ -14970,18 +14974,28 @@ export class PixiScene {
           if (vW) {
             const wEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
             const wp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEff));
-            // 緩急: 序盤はゆっくり、終盤で一気にコマが進む(wp^2.2)。最後のコマ=一番縮んだ姿。
-            const fi = Math.min(4, Math.floor(Math.pow(wp, 2.2) * 5));
+            // v0.25.3091(社長「鞭の動きが想定と違う」): 実物の鞭(ブルウィップ)の動きに寄せる。
+            // 鞭は**全体が伸び縮みしない**。手元に作ったたるんだ輪が、根元から先端へ**走っていく**
+            // (先細りなので進むほど速い)。旧実装は絵ごと長さ方向に伸縮させていたので
+            // 「ゴムが伸びる」ように見えていた=これが違和感の正体。
+            // ⇒ ①コマの大きさは**固定**(絵を潰さない=輪の形の変化だけで見せる)
+            //   ②序盤は溜め(コマ0でじっと待つ)、**最後の25%で4コマを一気に走らせる**(wp^4)
+            const fi = Math.min(4, Math.floor(Math.pow(wp, 4) * 5));
             texName = `fx/vine-whip-${fi}`;
-            vAlpha = Math.min(1, 0.35 + wp * 0.9);
-            vScaleLen = vLen * (0.42 + 0.16 * wp); // 巻いている間は短く構える
+            vAlpha = Math.min(1, 0.5 + wp * 0.8);
+            vScaleLen = vLen * VINE_COIL_LEN_FRAC; // 全コマ同じ寸法=絵を潰さない
           } else {
             // v0.25.3090: 実行(220ms)で切らず、**硬直へ持ち越して**ゆっくり消す(社長「余韻がほしい」)。
             // 尺は latchFx が自前時計で回す(硬直の実長を推測しない=v3077型の事故を作らない)。
             const ap = vLatch ? vLatch.t : 1;
             texName = 'fx/vine-whip-full';
             vAlpha = 1 - ap * ap;      // 打った直後が一番濃く、尾を引いて消える
-            vScaleLen = vLen * (1 + 0.06 * ap); // ほんの少し伸び続ける=振り抜いた余韻
+            // ③クラック: 先端は**伸び切りを一瞬追い越してから**戻る(鞭が鳴る瞬間の挙動)。
+            // 立ち上がり15%でVINE_CRACK_OVERSHOOT倍まで伸び、その後ゆっくり全長へ落ち着く。
+            const over = ap < 0.15
+              ? 1 + (VINE_CRACK_OVERSHOOT - 1) * (ap / 0.15)
+              : VINE_CRACK_OVERSHOOT + (1 - VINE_CRACK_OVERSHOOT) * ((ap - 0.15) / 0.85);
+            vScaleLen = vLen * over;
           }
           if (vAlpha > 0.01) {
             const vs = this.atkArtSprite(view, ATK_ART_VINE, texName);
