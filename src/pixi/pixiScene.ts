@@ -2212,17 +2212,23 @@ const ATK_ART_ICE_0 = 11;  // v0.25.3095: 衛生兵の氷の衝撃波(薙ぎ払�
 const SWEEP_ICE_N = 6;
 const SWEEP_ICE_MIN_PX = 34;
 const SWEEP_ICE_MAX_PX = 96;
-// この進行度までは全部出したまま残し、以降で6個そろって消える(社長「さいごにフェードアウトで合わせる」)。
-// 氷が立ってから消え始めるまでの尻尾(鞭の余韻とは別の時計)。長くしたぶん、消え際のキラキラが見える。
-const SWEEP_ICE_TAIL_MS = 900;
-// 進行度のこれ以降が「消えていく」区間。実効で約340ms=キラキラが十分見える長さ。
-const SWEEP_ICE_FADE_FROM = 0.7;
-// 消え際に氷塊のまわりで瞬く粒の数(1個あたり)。
-const SWEEP_ICE_TWINKLE_N = 6;
-// キラキラを始める進行度(氷が出そろった直後)。旧: 消え際だけ=約0.15秒しかなく見えなかった。
-const SWEEP_ICE_TWINKLE_FROM = SWEEP_ICE_FADE_FROM; // 消え始めと同時=「この後」に出す(社長指示v3108)
-// 帯の終端で弾けるキラキラの数(波が端まで届いた合図)。
-const SWEEP_ICE_END_TWINKLE_N = 14;
+// ★氷の衝撃波の時計(v0.25.3110・社長指示「この技のキラキラもっと長くキラキラさせて。余韻だけ。割れた感じに」)。
+// 旧実装は「窓全体に対する進行度(0.7以降が消え際)」で組んでいたため、**長くすると始まりも動いてしまう**。
+// ⇒ 3区間を**絶対msで分ける**。こうすると「余韻だけ」を伸ばしても、波が走る時間と氷が残る時間は1msも動かない。
+//   ①波が走る(SWEEP_ICE_WAVE_MS) → ②氷が立ったまま残る(SWEEP_ICE_HOLD_MS・ここは光らせない)
+//   → ③★余韻(SWEEP_ICE_AFTERGLOW_MS): 氷が**砕けて**破片が散りながら長くキラキラする。
+const SWEEP_ICE_WAVE_MS = 350;       // 根元→先端に波が抜ける時間(旧の実効値をそのまま移植=見た目不変)
+const SWEEP_ICE_HOLD_MS = 560;       // 立った氷が残る時間(旧の実効値と同じ。ここではキラキラしない)
+const SWEEP_ICE_AFTERGLOW_MS = 1100; // ★余韻。旧は約340ms=短すぎた。3倍強に伸ばす(社長「もっと長く」)
+// 氷塊が砕けきるまで(余韻に対する割合)。破片が飛び出した後も**破片だけ**が長く残る=「余韻だけ」。
+const SWEEP_ICE_BREAK_FRAC = 0.3;
+// 割れた破片の数(氷1個あたり)と、帯の終端で弾ける数。丸い粒ではなく**尖った破片**で描く。
+const SWEEP_ICE_SHARD_N = 10;
+const SWEEP_ICE_END_SHARD_N = 16;
+// 破片1枚の形(単位三角形・わざと不揃い)。回転+拡縮してそのまま多角形で塗る。
+const SWEEP_ICE_SHARD_PTS: ReadonlyArray<readonly [number, number]> = [
+  [0, -1], [0.62, 0.34], [-0.52, 0.78],
+];
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -15132,79 +15138,98 @@ export class PixiScene {
       //      ステージ4限定(雪原)。判定・射程・秒数は不変=分類②の派手枠。
       {
         const iceOk = this.snowStage;
-        const iW = gph === 'g-sweep-windup', iA = gph === 'g-sweep-active' || gph === 'g-sweep-recover';
-        if (iceOk && (iW || iA)) {
-          const ifx = e.aiFromX ?? cx, ify = e.aiFromY ?? cy;
-          const itx = e.aiTargetX ?? cx, ity = e.aiTargetY ?? cy;
+        const iW = gph === 'g-sweep-windup';
+        // v0.25.3110: 余韻(1.1s)は**硬直(実効700ms)より長い**ので、フェーズで描くと途中で切れる。
+        // ⇒ latch が生きている間は**フェーズを問わず**描く(latchFx はそのための道具)。
+        //   帯の座標も arm 時に焼き付ける(次の技で aiFrom/aiTarget が上書きされても余韻がズレない)。
+        const iTotal = GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT
+          + SWEEP_ICE_HOLD_MS + SWEEP_ICE_AFTERGLOW_MS;
+        const iLatch = this.latchFx(`${e.id}:sweepice`, gph === 'g-sweep-active', iTotal, now,
+          () => [e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy]);
+        if (iceOk && (iW || iLatch)) {
+          const ifx = iLatch ? iLatch.d[0] : (e.aiFromX ?? cx);
+          const ify = iLatch ? iLatch.d[1] : (e.aiFromY ?? cy);
+          const itx = iLatch ? iLatch.d[2] : (e.aiTargetX ?? cx);
+          const ity = iLatch ? iLatch.d[3] : (e.aiTargetY ?? cy);
           const iAng = Math.atan2(ity - ify, itx - ifx);
           const iLen = Math.hypot(itx - ifx, ity - ify) || 1;
-          // v0.25.3108(社長「キラキラつけるのこの後だよ?」): 氷は**専用の長い尻尾**を持つ。
-          // v3106で「見えないから開始を早める」方向へ直したのは誤りで、正しくは**窓を長くする**。
-          // これで「氷が立つ → しばらく残る → **その後**キラキラしながら消える」の順になる。
-          const iLatch = this.latchFx(`${e.id}:sweepice`, gph === 'g-sweep-active',
-            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_ICE_TAIL_MS, now, () => []);
           const wEffI = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-          const wpI = iW ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEffI)) : 1;
-          const run = iA ? (iLatch ? iLatch.t : 1) : 0; // 0=まだ走っていない 1=走り切り
+          const wpI = iW && !iLatch ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEffI)) : 1;
+          // 実行開始からの経過ms。3区間(波→残る→余韻)を**絶対msで**切り分ける。
+          const el = iLatch ? iLatch.t * iTotal : 0;
+          const glowFrom = GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_ICE_HOLD_MS;
+          // ★ag = 余韻の進行度 0→1。**ここだけ**がキラキラする区間(社長指示「余韻だけ」)。
+          const ag = iLatch ? Math.max(0, Math.min(1, (el - glowFrom) / SWEEP_ICE_AFTERGLOW_MS)) : 0;
+          // 破片の共通の見え方: 出た直後に一瞬で立ち上がり、最後にゆっくり消えながらチカチカする。
+          const shardAlpha = (h: number) =>
+            Math.min(1, ag * 12) * Math.min(1, (1 - ag) * 2.6)
+            * (0.45 + 0.55 * Math.abs(Math.sin(now / (62 + h * 70) + h * 9)));
+          // 破片1枚を描く(尖った三角形を回して置く=丸い粒ではなく「割れた」形)。
+          const drawShard = (px: number, py: number, rot: number, r: number, a: number, color: number) => {
+            const c = Math.cos(rot), s = Math.sin(rot);
+            const pts: number[] = [];
+            for (const [ox, oy] of SWEEP_ICE_SHARD_PTS) {
+              pts.push(px + (ox * c - oy * s) * r, py + (ox * s + oy * c) * r * 0.86);
+            }
+            o.poly(pts).fill({ color, alpha: a });
+          };
           // v0.25.3104(社長「赤い真っ直ぐラインの氷塊衝撃波の終わりにもキラキラ追加」):
-          // 個々の氷のまわり(v3100)に加えて、**帯の終端**でもまとめて弾ける。波が端まで届いた合図。
-          if (iA && run > SWEEP_ICE_TWINKLE_FROM) {
-            const endT = (run - SWEEP_ICE_TWINKLE_FROM) / (1 - SWEEP_ICE_TWINKLE_FROM); // 0→1
+          // 個々の氷のまわりに加えて、**帯の終端**でもまとめて弾ける。波が端まで届いた合図。
+          // v0.25.3110: これも丸い粒→**破片**に。余韻いっぱいをかけて外へ飛び散る。
+          if (ag > 0) {
             const tipX = ifx + Math.cos(iAng) * iLen, tipY = ify + Math.sin(iAng) * iLen;
-            for (let k = 0; k < SWEEP_ICE_END_TWINKLE_N; k++) {
+            const spread = 1 - (1 - ag) * (1 - ag); // 最初が速く、だんだん止まる
+            for (let k = 0; k < SWEEP_ICE_END_SHARD_N; k++) {
               const h = ((k * 2654435761) % 1000) / 1000;
               const ang = h * Math.PI * 2;
-              // 終端から外へ広がりながら薄れる=「弾けて散った」に見せる。
-              const rad = SWEEP_ICE_MAX_PX * (0.25 + 0.9 * endT) * (0.4 + h * 0.8);
-              const a = Math.sin(Math.PI * Math.min(1, endT * 1.1)) * (0.6 + 0.4 * Math.abs(Math.sin(now / (60 + h * 70) + h * 7)));
+              const rad = SWEEP_ICE_MAX_PX * (1.15 + h * 1.2) * spread;
+              const a = shardAlpha(h);
               if (a <= 0.02) continue;
-              const r = 3.6 + h * 4.2;
-              o.ellipse(tipX + Math.cos(ang) * rad, tipY + Math.sin(ang) * rad * 0.6, r, r)
-                .fill({ color: 0xf0fbff, alpha: a });
+              drawShard(tipX + Math.cos(ang) * rad, tipY + Math.sin(ang) * rad * 0.6 + SWEEP_ICE_MAX_PX * 0.7 * ag * ag,
+                h * 6.283 + ag * (2.2 + h * 3.4), 4.2 + h * 5.0, a, 0xf0fbff);
             }
           }
           for (let i = 0; i < SWEEP_ICE_N; i++) {
             const f = (i + 1) / SWEEP_ICE_N;            // 根元→先端
-            // 走る波: 自分の位置を波が通り過ぎたら生える。通過後はゆっくり薄れる。
-            // v0.25.3098(社長「もっと早く表示。最後まで塊は残る。さいごにフェードアウトで合わせる」):
-            // 波を**速く**走らせて全6個を早く出し切る(旧1.35倍速→3.2倍速・立ち上がりも0.28→0.14へ)。
-            const passed = iA ? Math.max(0, Math.min(1, (run * 3.2 - f * 0.9) / 0.14)) : 0;
-            const grow = iW ? Math.max(0, wpI * 1.2 - f) : passed; // 溜めは根元側だけ先に育つ
+            // 走る波: 自分の位置を波が通り過ぎたら生える。
+            // v0.25.3098(社長「もっと早く表示。最後まで塊は残る。さいごにフェードアウトで合わせる」)。
+            // v0.25.3110: 割合ではなく**絶対ms**で走らせる(余韻を伸ばしても波の速さが変わらない)。
+            const passed = iLatch ? Math.max(0, Math.min(1, (el / SWEEP_ICE_WAVE_MS - f * 0.9) / 0.14)) : 0;
+            const grow = iLatch ? passed : Math.max(0, wpI * 1.2 - f); // 溜めは根元側だけ先に育つ
             if (grow <= 0.02) continue;
-            const sp = this.atkArtSprite(view, ATK_ART_ICE_0 + i, 'skadi-ice-block');
-            if (!sp) continue;
-            sp.anchor.set(0.5, 0.92);                  // 氷塊は下端が接地(スカジ側と同じ作法)
-            // ★小から大へのグラデーション: 先端ほど大きい。
             const size = SWEEP_ICE_MIN_PX + (SWEEP_ICE_MAX_PX - SWEEP_ICE_MIN_PX) * f;
-            const sc = (size / Math.max(1, sp.texture.height)) * Math.min(1, 0.35 + grow * 0.85);
-            sp.scale.set(sc, sc);
-            sp.rotation = 0;                            // 氷塊は立てたまま(回さない)
-            sp.position.set(ifx + Math.cos(iAng) * iLen * f, ify + Math.sin(iAng) * iLen * f);
-            // 生えた氷は**最後まで残す**。消えるのは終わり際だけで、**6個そろって**同時にフェードする
-            // (旧: 55%から個別に薄れ始めていたので、先に出た氷から順に消えてバラけていた)。
-            const fadeOut = iA ? Math.max(0, 1 - Math.max(0, run - SWEEP_ICE_FADE_FROM) / (1 - SWEEP_ICE_FADE_FROM)) : 1;
-            sp.alpha = artFade * Math.min(1, grow) * (iW ? 0.55 + 0.45 * wpI : 1) * fadeOut;
-            // v0.25.3100(社長「最後少しキラキラして消えて」): 消え際だけ、氷塊のまわりで細かく瞬く。
-            // 描画側のGraphicsで完結(storeへは書かない=描画は読むだけの掟)。判定ゼロ。
-            // v0.25.3106(社長「氷ラインの後キラキラしてないか、みえない」): 旧実装は**消え際の
-            // 約0.15秒だけ**、しかも sin の正の半周期しか光らない計算で、実質見えていなかった。
-            // ⇒ ①窓を大幅に広げる(進行度0.45から=氷が出そろった直後から) ②常に下限の明るさを持たせる
-            //   ③粒を大きく・数を増やす。
-            if (iA && run > SWEEP_ICE_TWINKLE_FROM) {
-              const tw = (run - SWEEP_ICE_TWINKLE_FROM) / (1 - SWEEP_ICE_TWINKLE_FROM); // 0→1
-              const twinkle = Math.sin(Math.PI * Math.min(1, tw * 1.15)); // 中盤が一番強い山
-              const bx = sp.position.x, by = sp.position.y;
-              for (let k = 0; k < SWEEP_ICE_TWINKLE_N; k++) {
-                // 位置は決定的(乱数だとフレームごとに飛び回る)。氷ごと・粒ごとに散らす。
+            const bx = ifx + Math.cos(iAng) * iLen * f, by = ify + Math.sin(iAng) * iLen * f;
+            const hb = ((i * 2654435761) % 1000) / 1000; // 氷ごとの決定的な種(崩れ方の個体差)
+            // ★氷塊そのものは余韻の頭(SWEEP_ICE_BREAK_FRAC)で**砕けて消える**。以降は破片だけが残る
+            //   =社長指示「余韻だけ」。旧は余韻いっぱいをかけてただ薄くなるだけだった。
+            const brk = Math.max(0, Math.min(1, ag / SWEEP_ICE_BREAK_FRAC)); // 0=無傷 1=砕けきった
+            if (brk < 1) {
+              const sp = this.atkArtSprite(view, ATK_ART_ICE_0 + i, 'skadi-ice-block');
+              if (sp) {
+                sp.anchor.set(0.5, 0.92);              // 氷塊は下端が接地(スカジ側と同じ作法)
+                // ★小から大へのグラデーション: 先端ほど大きい。砕ける間は少し縦に潰れる。
+                const sc = (size / Math.max(1, sp.texture.height)) * Math.min(1, 0.35 + grow * 0.85);
+                sp.scale.set(sc * (1 + brk * 0.10), sc * (1 - brk * 0.22));
+                sp.rotation = brk * (hb - 0.5) * 0.34;  // 崩れる時だけ左右へ傾ぐ
+                sp.position.set(bx, by);
+                sp.alpha = artFade * Math.min(1, grow) * (iLatch ? 1 : 0.55 + 0.45 * wpI)
+                  * Math.max(0, 1 - brk * brk);        // 砕けきる直前に一気に消える
+              }
+            } // brk>=1 は氷塊を**要求しない**=毎フレーム頭の一括非表示(13463)でそのまま消える
+            // ★余韻の破片(社長指示v0.25.3110「もっと長くキラキラ。余韻だけ。割れた感じに」)。
+            // 描画側のGraphicsで完結(storeへは書かない=描画は読むだけの掟)。判定ゼロ=分類②。
+            if (ag > 0) {
+              const spread = 1 - (1 - ag) * (1 - ag);
+              for (let k = 0; k < SWEEP_ICE_SHARD_N; k++) {
+                // 位置は決定的(乱数だとフレームごとに飛び回る)。氷ごと・破片ごとに散らす。
                 const h = (i * 7 + k * 13) * 2654435761 % 1000 / 1000;
                 const ang = h * Math.PI * 2;
-                const rad = size * (0.25 + h * 0.5);
-                const ph = Math.sin(now / (70 + h * 60) + h * 9);
-                const a = (0.45 + 0.55 * Math.abs(ph)) * twinkle; // 消灯させない(常に見える)
-                if (a <= 0.03) continue;
-                const r = 3.4 + h * 3.8;
-                o.ellipse(bx + Math.cos(ang) * rad, by - size * 0.45 + Math.sin(ang) * rad * 0.6, r, r)
-                  .fill({ color: 0xe8f8ff, alpha: a });
+                const dist = size * (0.5 + h * 1.5) * spread;         // 外へ弾ける
+                const up = -size * (0.5 + h * 0.55) * ag + size * 1.5 * ag * ag; // 跳ね上がって落ちる
+                const a = shardAlpha(h);
+                if (a <= 0.02) continue;
+                drawShard(bx + Math.cos(ang) * dist, by - size * 0.4 + Math.sin(ang) * dist * 0.6 + up,
+                  h * 6.283 + ag * (2.6 + h * 4.0), 3.6 + h * 4.4, a, 0xe8f8ff);
               }
             }
           }

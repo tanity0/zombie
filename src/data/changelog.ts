@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3110',
+    items: [
+      '氷の衝撃波の余韻を長くしました。立った氷が砕け、細かい破片が飛び散りながら長くキラキラします。',
+    ],
+  },
+  {
     version: '0.25.3109',
     items: [
       'ステージ3で引きの時、遠くの森の手前にも雲が流れるようになりました(ステージ1の霧と同じ距離感)。',
