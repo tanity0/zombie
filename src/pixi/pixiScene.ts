@@ -2079,9 +2079,14 @@ const SHOCKWAVE_TAIL_MS = 260;
 // 武器の絵(蔓/翼)を硬直へ持ち越して消す時間。振り切った姿勢がふっと残る=「ぱつっと」感が消える。
 const SWEEP_AFTERGLOW_MS = 460;
 // v0.25.3091(鞭のモデル): 溜め中に構える長さ(帯の全長に対する割合)。全コマ共通=絵を潰さない。
-const VINE_COIL_LEN_FRAC = 0.55;
+const VINE_COIL_LEN_FRAC = 0.62; // v0.25.3092: 溜めの構えも一回り大きく
 // クラックの追い越し量。鞭は伸び切りを一瞬追い越してから戻る(先端が最速になる瞬間)。
 const VINE_CRACK_OVERSHOOT = 1.12;
+// v0.25.3092(社長「鞭をもっと目立たせたい」・CLAUDE.md「迷ったら派手側に倒す」):
+// 長さは帯に合わせたまま**太さだけ**increaseする(長さを伸ばすと赤帯とズレて見えるため)。
+const VINE_THICK_MULT = 1.75;   // 進行方向と直交する側の太さ倍率
+const VINE_CRACK_FLASH_MS = 140; // 打った瞬間、先端で光る時間
+const VINE_CRACK_FLASH_R = 26;   // その光の半径
 const SHOCKWAVE_LEN_MAX = 260;     // 波1つの見た目の長さ(px)。帯が短ければ帯長に合わせる
 const SHOCKWAVE_TINT = 0xffe4e4;   // ほんのり赤み(赤い帯と同じ攻撃の絵だと分かる程度。純白だと浮く)
 // 素材=「太い側へ膨らむ同心弧が細い一点に収束するコーン」(左=太い裾/右=細い尖り)。
@@ -14982,7 +14987,7 @@ export class PixiScene {
             //   ②序盤は溜め(コマ0でじっと待つ)、**最後の25%で4コマを一気に走らせる**(wp^4)
             const fi = Math.min(4, Math.floor(Math.pow(wp, 4) * 5));
             texName = `fx/vine-whip-${fi}`;
-            vAlpha = Math.min(1, 0.5 + wp * 0.8);
+            vAlpha = Math.min(1, 0.78 + wp * 0.4); // 溜めから濃く出す(存在感)
             vScaleLen = vLen * VINE_COIL_LEN_FRAC; // 全コマ同じ寸法=絵を潰さない
           } else {
             // v0.25.3090: 実行(220ms)で切らず、**硬直へ持ち越して**ゆっくり消す(社長「余韻がほしい」)。
@@ -15002,10 +15007,22 @@ export class PixiScene {
             if (vs) {
               vs.anchor.set(0, 0.5);   // 根元(左端)をボス側に置く=素材の並びどおり
               const sc = vScaleLen / (vs.texture.width || 1);
-              vs.scale.set(sc, sc);
+              // 長さ(x)は帯どおり、**太さ(y)だけ**盛る=赤帯とズレずに存在感だけ上げる。
+              vs.scale.set(sc, sc * VINE_THICK_MULT);
               vs.rotation = vAng;
               vs.position.set(vfx, vfy);
               vs.alpha = artFade * vAlpha;
+              // ★打った瞬間、**先端で光る**(鞭が鳴る瞬間=先端が最速になる所)。
+              // 赤ではなく白〜若葉色にする(赤は判定と厳密一致の予告の色なので混ぜない)。
+              if (!vW && vLatch && vLatch.t * (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT
+                + SWEEP_AFTERGLOW_MS) < VINE_CRACK_FLASH_MS) {
+                const tipX = vfx + Math.cos(vAng) * vScaleLen, tipY = vfy + Math.sin(vAng) * vScaleLen;
+                const fp = 1 - (vLatch.t * (GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT
+                  + SWEEP_AFTERGLOW_MS)) / VINE_CRACK_FLASH_MS;
+                const fr = VINE_CRACK_FLASH_R * (0.6 + 0.6 * fp);
+                o.ellipse(tipX, tipY, fr, fr).fill({ color: 0xe8ffd0, alpha: 0.55 * fp });
+                o.ellipse(tipX, tipY, fr * 0.45, fr * 0.45).fill({ color: 0xffffff, alpha: 0.9 * fp });
+              }
             }
           }
         }
