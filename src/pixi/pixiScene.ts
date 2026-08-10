@@ -2194,6 +2194,11 @@ const ATK_ART_GUN_L = 7;   // 三連射: 左(短い銃)
 const ATK_ART_GUN_R = 8;   // 三連射: 右(中くらい)
 const ATK_ART_GUN_C = 9;   // 三連射: 中央=三拍目(長い銃)
 const ATK_ART_VINE = 10;   // v0.25.3088: 樹木管理員の蔓ムチ(薙ぎ払い)
+const ATK_ART_ICE_0 = 11;  // v0.25.3095: 衛生兵の氷の衝撃波(薙ぎ払い)。11..16 の6枠
+// 氷塊を帯に何個並べるか/根元と先端の大きさ(px)。**小から大へのグラデーション**(社長指示)。
+const SWEEP_ICE_N = 6;
+const SWEEP_ICE_MIN_PX = 34;
+const SWEEP_ICE_MAX_PX = 96;
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -15075,6 +15080,44 @@ export class PixiScene {
               ws.position.set(wfx, wfy);
               ws.alpha = artFade * wAlpha;
             }
+          }
+        }
+      }
+      // (3h) 氷の衝撃波(g-sweep)= 衛生兵(stage-4)の薙ぎ払い。社長指示v0.25.3095
+      //      「スカジの時の氷の塊を小から大へグラデーションに配置するアニメーションで氷の衝撃波風に」。
+      //      ⇒ 帯に沿って氷塊を並べ、**根元は小さく先端ほど大きく**する。実行の瞬間に根元から順に
+      //        せり上がって(=波が走って)いく。素材はスカジの氷塊(skadi-ice-block)を流用=新規素材なし。
+      //      ステージ4限定(雪原)。判定・射程・秒数は不変=分類②の派手枠。
+      {
+        const iceOk = this.snowStage;
+        const iW = gph === 'g-sweep-windup', iA = gph === 'g-sweep-active' || gph === 'g-sweep-recover';
+        if (iceOk && (iW || iA)) {
+          const ifx = e.aiFromX ?? cx, ify = e.aiFromY ?? cy;
+          const itx = e.aiTargetX ?? cx, ity = e.aiTargetY ?? cy;
+          const iAng = Math.atan2(ity - ify, itx - ifx);
+          const iLen = Math.hypot(itx - ifx, ity - ify) || 1;
+          const iLatch = this.latchFx(`${e.id}:sweepice`, gph === 'g-sweep-active',
+            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS, now, () => []);
+          const wEffI = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+          const wpI = iW ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEffI)) : 1;
+          const run = iA ? (iLatch ? iLatch.t : 1) : 0; // 0=まだ走っていない 1=走り切り
+          for (let i = 0; i < SWEEP_ICE_N; i++) {
+            const f = (i + 1) / SWEEP_ICE_N;            // 根元→先端
+            // 走る波: 自分の位置を波が通り過ぎたら生える。通過後はゆっくり薄れる。
+            const passed = iA ? Math.max(0, Math.min(1, (run * 1.35 - f * 0.9) / 0.28)) : 0;
+            const grow = iW ? Math.max(0, wpI * 1.2 - f) : passed; // 溜めは根元側だけ先に育つ
+            if (grow <= 0.02) continue;
+            const sp = this.atkArtSprite(view, ATK_ART_ICE_0 + i, 'skadi-ice-block');
+            if (!sp) continue;
+            sp.anchor.set(0.5, 0.92);                  // 氷塊は下端が接地(スカジ側と同じ作法)
+            // ★小から大へのグラデーション: 先端ほど大きい。
+            const size = SWEEP_ICE_MIN_PX + (SWEEP_ICE_MAX_PX - SWEEP_ICE_MIN_PX) * f;
+            const sc = (size / Math.max(1, sp.texture.height)) * Math.min(1, 0.35 + grow * 0.85);
+            sp.scale.set(sc, sc);
+            sp.rotation = 0;                            // 氷塊は立てたまま(回さない)
+            sp.position.set(ifx + Math.cos(iAng) * iLen * f, ify + Math.sin(iAng) * iLen * f);
+            const fadeOut = iA ? Math.max(0, 1 - Math.max(0, run - 0.55) / 0.45) : 1;
+            sp.alpha = artFade * Math.min(1, grow) * (iW ? 0.55 + 0.45 * wpI : 1) * fadeOut;
           }
         }
       }
