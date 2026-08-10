@@ -108,7 +108,7 @@ import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
-import { airHopHeight01 } from '../utils/airHop';
+import { airHopHeight01, airHopEase01 } from '../utils/airHop';
 import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE } from '../utils/bladeArt';
 import { bossWideShotZoom } from '../utils/cameraZoom';
 import {
@@ -2087,6 +2087,8 @@ const VINE_CRACK_OVERSHOOT = 1.12;
 const VINE_THICK_MULT = 1.75;   // 進行方向と直交する側の太さ倍率
 const VINE_CRACK_FLASH_MS = 140; // 打った瞬間、先端で光る時間
 const VINE_CRACK_FLASH_R = 26;   // その光の半径
+// v0.25.3094: 溜めの何割で1回転を終えるか。残り(1-この値)は**静止して溜める**間になる。
+const VINE_SPIN_END = 0.82;
 const SHOCKWAVE_LEN_MAX = 260;     // 波1つの見た目の長さ(px)。帯が短ければ帯長に合わせる
 const SHOCKWAVE_TINT = 0xffe4e4;   // ほんのり赤み(赤い帯と同じ攻撃の絵だと分かる程度。純白だと浮く)
 // 素材=「太い側へ膨らむ同心弧が細い一点に収束するコーン」(左=太い裾/右=細い尖り)。
@@ -14976,6 +14978,7 @@ export class PixiScene {
           const vLatch = this.latchFx(`${e.id}:sweepart`, gph === 'g-sweep-active',
             GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS, now, () => []);
           let texName: string, vAlpha: number, vScaleLen: number;
+          let vSpin = 0; // 溜め中の回転(根元支点)。実行では0=帯の向きへ揃える。
           if (vW) {
             const wEff = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
             const wp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEff));
@@ -14985,10 +14988,15 @@ export class PixiScene {
             // 「ゴムが伸びる」ように見えていた=これが違和感の正体。
             // ⇒ ①コマの大きさは**固定**(絵を潰さない=輪の形の変化だけで見せる)
             //   ②序盤は溜め(コマ0でじっと待つ)、**最後の25%で4コマを一気に走らせる**(wp^4)
-            const fi = Math.min(4, Math.floor(Math.pow(wp, 4) * 5));
-            texName = `fx/vine-whip-${fi}`;
+            // v0.25.3094(社長指示「しなりアニメーションの1コマ目を360度回転させた後に発動。
+            // 回転は慣性を持たせて最後少し溜めてから伸ばす」):
+            // コマ送りをやめ、**1コマ目を根元支点で1回転**させる。回転は慣性(ゆっくり動き出して
+            // 中盤で速く、終わりで減速)=smootherstep。**1周し切った後は静止して溜める**。
+            const spinT = Math.min(1, wp / VINE_SPIN_END);   // ここまでで1周
+            vSpin = Math.PI * 2 * airHopEase01(spinT);       // 慣性つきの回転
+            texName = 'fx/vine-whip-0';
             vAlpha = Math.min(1, 0.78 + wp * 0.4); // 溜めから濃く出す(存在感)
-            vScaleLen = vLen * VINE_COIL_LEN_FRAC; // 全コマ同じ寸法=絵を潰さない
+            vScaleLen = vLen * VINE_COIL_LEN_FRAC; // 寸法は一定=絵を潰さない
           } else {
             // v0.25.3090: 実行(220ms)で切らず、**硬直へ持ち越して**ゆっくり消す(社長「余韻がほしい」)。
             // 尺は latchFx が自前時計で回す(硬直の実長を推測しない=v3077型の事故を作らない)。
@@ -15009,7 +15017,7 @@ export class PixiScene {
               const sc = vScaleLen / (vs.texture.width || 1);
               // 長さ(x)は帯どおり、**太さ(y)だけ**盛る=赤帯とズレずに存在感だけ上げる。
               vs.scale.set(sc, sc * VINE_THICK_MULT);
-              vs.rotation = vAng;
+              vs.rotation = vAng + vSpin;
               vs.position.set(vfx, vfy);
               vs.alpha = artFade * vAlpha;
               // ★打った瞬間、**先端で光る**(鞭が鳴る瞬間=先端が最速になる所)。
