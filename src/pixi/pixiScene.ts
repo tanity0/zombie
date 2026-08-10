@@ -1594,6 +1594,15 @@ const GROUND_TRAPEZOID_FAR = Math.max(0.05, Math.min(1, tsNum('g3dfar', 0.10)));
 const GROUND_TRAPEZOID_CURVE = Math.max(0.2, Math.min(3, tsNum('g3dc', 1)));     // 1=直線(既定)。?g3dc=
 const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
+// ★引いた時に画面下部へ出る「薄い黒線3本」対策(社長報告v0.25.3113。v3006の強度減衰だけでは
+// **中途半端な引き**で強度が残るため線が消えなかった)。
+// 正体: 帯ブラーは帯ごとに別Containerで、フィルタは**中身の外を透明として畳み込む**。よって
+// 帯の下端は透明へ、次の帯の上端も透明から立ち上がり、境界で合成アルファが 1-(1-a)(1-b) <1 に
+// なって背景の黒が透ける=線。境界は band0/1・band1/2・band2/延長帯 の**ちょうど3本**で報告と一致。
+// 直し方: 帯の下端を次の帯へ**重ねる**(重なりの中はどちらかが不透明=合成が必ず1になる)。
+// 既存の重なりは +2px(ローカル)しかなく、引くと画面上では 2×zoom px まで縮んでブラー半径に負ける。
+// ⇒ **画面px基準で一定になるよう 1/zoom で伸ばす**。zoom>=1 では0=等倍の見た目は1ビットも変えない。
+const GROUND_SEAM_PAD_PX = 12;
 // 遠景(奥)側の地面も被写界深度で少しぼかす。最上(最遠)ほど強く。中央は合焦=鮮明のまま。
 const FAR_GROUND_BLUR_STRIP_RATIO = 0.28;
 const FAR_GROUND_BLUR_STRENGTHS = [0.65, 0.35]; // [最遠, やや遠]。ピークを遠景森(0.65)と同程度に
@@ -5940,6 +5949,10 @@ export class PixiScene {
       Math.ceil((neededBottomLocal - farH) / Math.max(0.001, stripH)) + 1
     );
     const stripCount = Math.min(strips.length, band.stripCount, neededStripCount);
+    // v0.25.3113: 帯ブラーの境界に出る黒線を塞ぐための**下方向の重ね代**(描画のみ・位置は不変)。
+    // 各ストリップを次の行へ少しはみ出して描く=帯の境界でも必ずどちらかが不透明になる。
+    // ローカルpxで持つと引いた時に画面上で縮むので 1/zoom で伸ばす。zoom>=1 は0(等倍は従来と同一)。
+    const seamPad = Math.ceil(GROUND_SEAM_PAD_PX * Math.max(0, 1 / Math.max(ZOOM_MIN_ABS, zoomNow) - 1));
     for (let i = 0; i < stripCount; i++) {
       const strip = strips[i];
       const y = i * stripH;
@@ -5954,7 +5967,7 @@ export class PixiScene {
 
       strip.position.set(0, y);
       strip.width = overW;
-      strip.height = Math.ceil(stripH) + 2;
+      strip.height = Math.ceil(stripH) + 2 + seamPad; // +2=従来の端数保険 / seamPad=帯境界の黒線対策
       // 台形化: 横倍率は行位置tに対して**直線**(奥=GROUND_TRAPEZOID_FAR → 手前=1)。tは画面yに比例するので
       // これが「地平線からの距離に比例」=教科書どおりの遠近になる。縦(scaleY)は従来のまま一切いじらない。
       // GROUND_TRAPEZOID=0 なら conv=1 で従来と完全一致(復帰)。

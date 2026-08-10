@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3113',
+    items: [
+      '引きの時に画面下部へ薄く出ていた、地面の黒い横線3本を消しました。',
+    ],
+  },
+  {
     version: '0.25.3112',
     items: [
       'ステージ3の遠くの森の手前の雲を、引きの時だけでなく常に流れるようにしました。',
