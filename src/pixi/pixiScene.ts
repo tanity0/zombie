@@ -2208,11 +2208,14 @@ const SWEEP_ICE_N = 6;
 const SWEEP_ICE_MIN_PX = 34;
 const SWEEP_ICE_MAX_PX = 96;
 // この進行度までは全部出したまま残し、以降で6個そろって消える(社長「さいごにフェードアウトで合わせる」)。
-const SWEEP_ICE_FADE_FROM = 0.78;
+// 氷が立ってから消え始めるまでの尻尾(鞭の余韻とは別の時計)。長くしたぶん、消え際のキラキラが見える。
+const SWEEP_ICE_TAIL_MS = 900;
+// 進行度のこれ以降が「消えていく」区間。実効で約340ms=キラキラが十分見える長さ。
+const SWEEP_ICE_FADE_FROM = 0.7;
 // 消え際に氷塊のまわりで瞬く粒の数(1個あたり)。
 const SWEEP_ICE_TWINKLE_N = 6;
 // キラキラを始める進行度(氷が出そろった直後)。旧: 消え際だけ=約0.15秒しかなく見えなかった。
-const SWEEP_ICE_TWINKLE_FROM = 0.45;
+const SWEEP_ICE_TWINKLE_FROM = SWEEP_ICE_FADE_FROM; // 消え始めと同時=「この後」に出す(社長指示v3108)
 // 帯の終端で弾けるキラキラの数(波が端まで届いた合図)。
 const SWEEP_ICE_END_TWINKLE_N = 14;
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
@@ -15126,8 +15129,11 @@ export class PixiScene {
           const itx = e.aiTargetX ?? cx, ity = e.aiTargetY ?? cy;
           const iAng = Math.atan2(ity - ify, itx - ifx);
           const iLen = Math.hypot(itx - ifx, ity - ify) || 1;
+          // v0.25.3108(社長「キラキラつけるのこの後だよ?」): 氷は**専用の長い尻尾**を持つ。
+          // v3106で「見えないから開始を早める」方向へ直したのは誤りで、正しくは**窓を長くする**。
+          // これで「氷が立つ → しばらく残る → **その後**キラキラしながら消える」の順になる。
           const iLatch = this.latchFx(`${e.id}:sweepice`, gph === 'g-sweep-active',
-            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_AFTERGLOW_MS, now, () => []);
+            GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT + SWEEP_ICE_TAIL_MS, now, () => []);
           const wEffI = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
           const wpI = iW ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEffI)) : 1;
           const run = iA ? (iLatch ? iLatch.t : 1) : 0; // 0=まだ走っていない 1=走り切り
