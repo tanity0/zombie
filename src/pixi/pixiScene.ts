@@ -348,10 +348,12 @@ const ZOOM_CLOUD_LAYERS = [
   // ステージ1で森1の目の前にあるのは**奥霧**(yFrac=0.16・遠景〜地面に被る背の高い層)。
   // その距離感に合わせた雲を1本足す=画面高さの16%あたりを、遠景より手前・アクターより奥で流す。
   // place:'near' は新設(far=空/near=遠景の手前/front=最前面)。視差は奥霧寄りの控えめな値。
-  // v0.25.3116(社長「透明度を0にして」=**不透明**の意=alpha 1.0。v3115でこれを「見えなくする」と
-  // 取り違えて alpha 0 にしたのが、直後の「表示されていません」の直接原因)。存在確認のため最大濃度で出す。
-  // 濃さは `?s3cloud=0.5` のようにURLで上書きできる(S3_CLOUD_ALPHA_OVERRIDE)=毎回ビルドせずに詰められる。
-  { place: 'near', heightFrac: 0.18, bottomFrac: 0.25, alpha: 1, driftPxS: 7, paraX: 0.35, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
+  // v0.25.3117(社長「雲の位置が合ってない。**遠景森1(一番手前)から相対的に距離をはなして**」):
+  // 縦の基準を**画面**から**地平線(farH=遠景森1の足元)**へ変更した。far層と同じ farH 基準にすることで、
+  // 森1がステージ/ズームで動いても**森1との距離が保たれる**(画面基準だと森1から離れたり被ったりする)。
+  // bottomFrac は farH からの**下がり**(画面高比)=大きいほど森1から手前(下)へ離れる。
+  // 実機で詰めるツマミ: `?s3cloud=`(濃さ) `?s3cloudy=`(森1からの距離) `?s3cloudh=`(高さ)。
+  { place: 'near', heightFrac: 0.14, bottomFrac: 0.20, alpha: 1, driftPxS: 7, paraX: 0.35, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
   { place: 'front', heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
   { place: 'front', heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
 ] as const;
@@ -386,9 +388,11 @@ const tsNum = (key: string, def: number): number => {
   const n = v == null ? NaN : Number(v);
   return Number.isFinite(n) ? n : def;
 };
-// ステージ3の追加雲(near層)の濃さを実機で詰めるツマミ(v0.25.3116)。負=未指定(表の値を使う)。
-// 表示されない/濃すぎるの切り分けを**ビルドし直さずに**その場でやるための道具(遠景の層隠しツマミと同趣旨)。
-const S3_CLOUD_ALPHA_OVERRIDE = tsNum('s3cloud', -1);
+// ステージ3の追加雲(near層)を実機で詰めるツマミ(v0.25.3116/3117)。NaN=未指定(表の値を使う)。
+// **ビルドし直さずに**濃さ・森1からの距離・高さを詰めるための道具(遠景の層隠しツマミと同趣旨)。
+const S3_CLOUD_ALPHA_OVERRIDE = tsNum('s3cloud', NaN);
+const S3_CLOUD_BOTTOM_OVERRIDE = tsNum('s3cloudy', NaN); // farH(森1の足元)からの下がり・画面高比
+const S3_CLOUD_HEIGHT_OVERRIDE = tsNum('s3cloudh', NaN); // 帯の高さ・画面高比
 /**
  * ★v0.25.2785(社長報告「ステージ1の遠景に1pxの切れ目」・v2631時点で既に発生): 遠景の層を1枚ずつ隠す診断ツマミ。
  * 設計チャットが層を推測で当てにいって2回外したので、**現物で1枚ずつ消して特定する**道具に切り替えた。
@@ -6776,11 +6780,13 @@ export class PixiScene {
           + cloudDt * cfg.driftPxS * (cfg.place === 'far' && glenP2Cloud ? 2 : 1);
         // near層(v0.25.3109)はステージ3だけ(社長指示)。他ステージの見た目は一切変えない。
         // v0.25.3112: near層だけ**引きのフェード(fadeC)を掛けない**=常時表示。far/frontは従来どおり。
-        const nearAlpha = S3_CLOUD_ALPHA_OVERRIDE >= 0 ? S3_CLOUD_ALPHA_OVERRIDE : cfg.alpha;
-        const aC = cfg.place === 'near' ? (nearAlways ? nearAlpha : 0) : fadeC * cfg.alpha;
+        const isNear = cfg.place === 'near';
+        const nearAlpha = isNear && Number.isFinite(S3_CLOUD_ALPHA_OVERRIDE) ? S3_CLOUD_ALPHA_OVERRIDE : cfg.alpha;
+        const aC = isNear ? (nearAlways ? nearAlpha : 0) : fadeC * cfg.alpha;
         if (aC <= 0.01) { zc.visible = false; continue; }
         zc.visible = true;
-        const ch = this.screenH * cfg.heightFrac;
+        const hFrac = isNear && Number.isFinite(S3_CLOUD_HEIGHT_OVERRIDE) ? S3_CLOUD_HEIGHT_OVERRIDE : cfg.heightFrac;
+        const ch = this.screenH * hFrac;
         zc.width = this.screenW * 1.06; // 端の揺れ/ドリフトで縁が出ないよう少し広く
         zc.height = ch;
         zc.tileScale.set(ch / Math.max(1, zc.texture.height));
@@ -6789,9 +6795,14 @@ export class PixiScene {
         zc.tint = this.envTintNow();
         const bob = Math.sin(now * 0.00035 + cfg.bobPhase) * cfg.bobAmp;
         // far層は地平線(farH)基準=遠景の下端に少し掛かる高さで、森/世界の裏に流れる。front層は画面下部。
+        // v0.25.3117: near層も**farH基準**にした(社長「遠景森1から相対的に距離をはなして」)。
+        // farH=遠景森1の足元なので、bottomFrac ぶん下げる=**森1から手前へ一定距離**を保てる。
+        const nearBFrac = Number.isFinite(S3_CLOUD_BOTTOM_OVERRIDE) ? S3_CLOUD_BOTTOM_OVERRIDE : cfg.bottomFrac;
         const cloudBottom = cfg.place === 'far'
           ? this.farBackdropHeight() + this.screenH * cfg.bottomFrac
-          : this.screenH * cfg.bottomFrac;
+          : isNear
+            ? this.farBackdropHeight() + this.screenH * nearBFrac
+            : this.screenH * cfg.bottomFrac;
         zc.position.set(-this.screenW * 0.03, cloudBottom - ch + bob);
         // 霧と同じく流れる: 自走ドリフト(層ごとに速度差・蓄積式)+カメラパララックス(手前ほど速い)。
         const periodC = Math.max(1, zc.texture.width * zc.tileScale.x);
