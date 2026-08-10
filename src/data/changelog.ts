@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3130',
+    items: [
+      'ステージ3の雲を、境界線のすぐ下(10px)へ寄せ、大きさを2/3にしました。',
+    ],
+  },
+  {
     version: '0.25.3129',
     items: [
       'ステージ3の雲の位置を、遠景の境界線のすぐ下へ寄せました。',
