@@ -6673,7 +6673,11 @@ export class PixiScene {
       const cloudAllowed = !this.isLabStage && !s.corridorMode && this.currentFarKey !== 'tutorial';
       const pullC = cloudAllowed ? Math.max(0, Math.min(1, (1 - wzc) / (1 - ZOOM_MIN_ABS))) : 0;
       const fadeC = Math.max(0, Math.min(1, (pullC - ZOOM_CLOUD_START) / ZOOM_CLOUD_FADE_W));
-      if (this.zoomClouds.length === 0 && fadeC > 0.01) {
+      // v0.25.3112(社長指摘「ステージ3の雲、常時表示だよ? ズームは他のステージと同じだよいじらないで」):
+      // near層は**引きに関係なく常に出す**(=ステージ1の奥霧と同じ扱い。霧は引きで出たり消えたりしない)。
+      // よって near層があるステージでは fadeC を待たずに作る。ズーム側の値・条件は一切触っていない。
+      const nearAlways = this.daylight;
+      if (this.zoomClouds.length === 0 && (fadeC > 0.01 || nearAlways)) {
         const ctex = getTexture('zoom-cloud');
         if (ctex) {
           const st = this.L.uiLayer.parent!;
@@ -6707,7 +6711,8 @@ export class PixiScene {
         this.zoomCloudDriftAcc[ci] = (this.zoomCloudDriftAcc[ci] ?? 0)
           + cloudDt * cfg.driftPxS * (cfg.place === 'far' && glenP2Cloud ? 2 : 1);
         // near層(v0.25.3109)はステージ3だけ(社長指示)。他ステージの見た目は一切変えない。
-        const aC = fadeC * cfg.alpha * (cfg.place === 'near' ? (this.daylight ? 1 : 0) : 1);
+        // v0.25.3112: near層だけ**引きのフェード(fadeC)を掛けない**=常時表示。far/frontは従来どおり。
+        const aC = cfg.place === 'near' ? (nearAlways ? cfg.alpha : 0) : fadeC * cfg.alpha;
         if (aC <= 0.01) { zc.visible = false; continue; }
         zc.visible = true;
         const ch = this.screenH * cfg.heightFrac;

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3112',
+    items: [
+      'ステージ3の遠くの森の手前の雲を、引きの時だけでなく常に流れるようにしました。',
+    ],
+  },
+  {
     version: '0.25.3111',
     items: [
       '氷の衝撃波の余韻のキラキラを、冷気ブレスやスカジの氷技と同じキラキラの絵に揃えました。',
