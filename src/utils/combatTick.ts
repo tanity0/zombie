@@ -313,7 +313,16 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
           y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
           vx: 0, vy: 0,
-          stunUntil: undefined, liftUntil: undefined, rootUntil: undefined,
+          // ★v0.25.3127(社長報告「紫ぴより中に、さらにカウンター決めると、黄色に戻っちゃう」):
+          // 紫(完全気絶)は `stunUntil` と `bossFullStunUntil` を**同時に**打って成立している。
+          // ここで凍結系を一律に解除すると **stunUntil だけ消えて紫の輪が消え**、直後にカウンターが
+          // 立てた半減窓(黄)の輪が出るので「格下げされた」ように見えていた(体幹ブレイク自体は
+          // 生きていて `bossFullStunUntil` は残る=表示と状態が食い違う)。
+          // ⇒ **紫の最中は stunUntil を解除しない**。位置の弾き(COUNTER_KNOCKBACK_LAUNCH)は
+          //   この直後に即時で効くので手応えは残り、速度スライドが止まるのは「完全気絶」と整合する。
+          stunUntil: (e.bossFullStunUntil !== undefined && st.gameTime < e.bossFullStunUntil)
+            ? e.stunUntil : undefined,
+          liftUntil: undefined, rootUntil: undefined,
           knockbackImmuneUntil: 0,
           knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
           knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,
@@ -799,7 +808,10 @@ export const dashParriedEnemyPatch = (
     x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
     y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
     vx: 0, vy: 0,
-    stunUntil: undefined, liftUntil: undefined, rootUntil: undefined,
+    // v0.25.3127: 紫(完全気絶)中は解除しない(上のジャンプ経路と同じ理由・同じ扱い)。
+    stunUntil: (e.bossFullStunUntil !== undefined && gameTimeNow < e.bossFullStunUntil)
+      ? e.stunUntil : undefined,
+    liftUntil: undefined, rootUntil: undefined,
     knockbackImmuneUntil: 0,
     knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
     knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,

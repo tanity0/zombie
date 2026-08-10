@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3127',
+    items: [
+      '紫の完全気絶中にカウンターを決めると、気絶が黄色に格下げされてしまうのを直しました。紫のまま続きます。',
+      '虚無の三唱のダメージを99にしました。',
+    ],
+  },
+  {
     version: '0.25.3126',
     items: [
       'グレンの虚無の三唱のダメージが大幅に上がりました。円の外へ逃げてください。',

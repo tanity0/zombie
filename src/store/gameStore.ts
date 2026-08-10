@@ -1917,9 +1917,9 @@ export const GLEN_NIHIL_CHANT_MS = 960;             // 実効800ms/唱×3(学習
 export const GLEN_NIHIL_RECOVER_MS = 1680;          // 実効1400ms(全技中最大)
 export const GLEN_NIHIL_CD_MS = 19200;              // 実効16.0s
 export const GLEN_NIHIL_RADIUS = 260;               // 設計書どおり(半径260)
-// 社長指示v0.25.3126「三唱のダメージを100に」。他の技(enemy.damage)より明確に重い=
-// 「3回数えて逃げる」を守らなかった時の代償を大きくする(避け方は円の外へ出るだけ)。
-export const GLEN_NIHIL_DAMAGE = 100;
+// 社長指示v0.25.3126「三唱のダメージを100に」→ v0.25.3127「99で」(即死ではなく**瀕死**にする値)。
+// 他の技(enemy.damage)より明確に重い=「3回数えて逃げる」を守らなかった時の代償(避け方は円の外へ出るだけ)。
+export const GLEN_NIHIL_DAMAGE = 99;
 // v0.25.3122(社長指示「赤い当たり判定全体に画像を三段階で表現。その度に画面大きく揺れる」):
 // 1唱ごとの画面揺れ。**全技中で最大級**(飛び降り着地の15に並ぶ)=「数える3回」を体で分からせる。
 export const GLEN_NIHIL_SHAKE_MS = 300;
