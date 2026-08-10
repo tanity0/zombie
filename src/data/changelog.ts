@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3099',
+    items: [
+      'ステージ3の城ボスの滑空に溜めの絵が付きました。突っ込む前に、薙ぎ払われた枝と舞う葉がじわっと浮かび上がります。',
+    ],
+  },
+  {
     version: '0.25.3098',
     items: [
       '氷の衝撃波が素早く出るようになりました。氷塊は根元から先端まで一気にせり上がってそのまま残り、最後に6つそろって消えます。',

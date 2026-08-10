@@ -456,6 +456,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/vine-whip-3', scaleMode: 'nearest' as const },
       { name: 'fx/vine-whip-4', scaleMode: 'nearest' as const },
       { name: 'fx/vine-whip-full', scaleMode: 'nearest' as const },   // v0.25.3088: 同・伸び切り1枚
+      { name: 'fx/glide-branch', scaleMode: 'nearest' as const },     // v0.25.3099: 滑空の溜め(枝+舞う葉・社長支給)
       { name: 'fx/tentacle-reach', scaleMode: 'linear' as const }, // 伸びる触手(根元が左端・先端が右端)
       { name: 'fx/idol-fist', scaleMode: 'linear' as const },      // 偶像の拳(ナックルが下端=突く向き)。v0.25.2935ドット版・回転するのでlinear維持
       { name: 'fx/plant-spit', scaleMode: 'linear' as const },     // 食人植物の種吐き(口が右向き)

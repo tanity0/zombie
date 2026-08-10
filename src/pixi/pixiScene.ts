@@ -29,7 +29,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
   GIANT_SLAM_WINDUP_MS, GIANT_SLAM_HALF_WIDTH,
-  GIANT_GLIDE_WINDUP_MS, GIANT_GLIDE_HALF_WIDTH,
+  GIANT_GLIDE_WINDUP_MS, GIANT_GLIDE_ACTIVE_MS, GIANT_GLIDE_HALF_WIDTH,
   GIANT_DIVE_WINDUP_MS, GIANT_DIVE_RADIUS,
   GIANT_QUAD_BREATH_WINDUP_MS, GIANT_QUAD_BREATH_ACTIVE_MS, GIANT_QUAD_BREATH_LENGTH, GIANT_QUAD_BREATH_HALF_WIDTH, GIANT_QUAD_BREATH_SWEEP_RAD,
   GIANT_NOVA_WINDUP_MS, GIANT_NOVA_ACTIVE_MS, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_END, GIANT_NOVA_BAND_THICKNESS,
@@ -2196,6 +2196,10 @@ const ATK_ART_GUN_L = 7;   // 三連射: 左(短い銃)
 const ATK_ART_GUN_R = 8;   // 三連射: 右(中くらい)
 const ATK_ART_GUN_C = 9;   // 三連射: 中央=三拍目(長い銃)
 const ATK_ART_VINE = 10;   // v0.25.3088: 樹木管理員の蔓ムチ(薙ぎ払い)
+const ATK_ART_GLIDE_BRANCH = 17; // v0.25.3099: 滑空の溜めの枝(1枚)
+// 枝の表示サイズ(px)と、本体からどれだけ前へ置くか。
+const GLIDE_BRANCH_PX = 210;
+const GLIDE_BRANCH_AHEAD_PX = 96;
 const ATK_ART_ICE_0 = 11;  // v0.25.3095: 衛生兵の氷の衝撃波(薙ぎ払い)。11..16 の6枠
 // 氷塊を帯に何個並べるか/根元と先端の大きさ(px)。**小から大へのグラデーション**(社長指示)。
 const SWEEP_ICE_N = 6;
@@ -15140,6 +15144,45 @@ export class PixiScene {
             // (旧: 55%から個別に薄れ始めていたので、先に出た氷から順に消えてバラけていた)。
             const fadeOut = iA ? Math.max(0, 1 - Math.max(0, run - SWEEP_ICE_FADE_FROM) / (1 - SWEEP_ICE_FADE_FROM)) : 1;
             sp.alpha = artFade * Math.min(1, grow) * (iW ? 0.55 + 0.45 * wpI : 1) * fadeOut;
+          }
+        }
+      }
+      // (3i) 滑空の溜め(g-glide-windup)= 樹木管理員(stage-3)。社長支給素材v0.25.3099
+      //      「滑空の溜めの時に、これをフェードイン」。枝が薙ぎ払われて葉が舞う1枚。
+      //      溜めの間に**じわっと現れて濃くなる**=「今から突っ込んでくる」の予兆。
+      //      実行(本体が飛ぶ)に入ったら素早く引く=本体の絵と喧嘩させない。
+      //      分類②(判定ゼロの派手枠)=帯の判定・射程・秒数は不変。
+      {
+        const gbW = gph === 'g-glide-windup', gbA = gph === 'g-glide-active';
+        if (gbW || gbA) {
+          const bfx0 = (e.aiFromX ?? e.x) + e.width / 2, bfy0 = (e.aiFromY ?? e.y) + e.height / 2;
+          const btx0 = (e.aiTargetX ?? e.x) + e.width / 2, bty0 = (e.aiTargetY ?? e.y) + e.height / 2;
+          const bAng = Math.atan2(bty0 - bfy0, btx0 - bfx0);
+          let bAlpha: number, bGrow: number;
+          if (gbW) {
+            const bEff = GIANT_GLIDE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+            const bp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / bEff));
+            bAlpha = Math.min(1, bp * 1.4);       // じわっとフェードイン
+            bGrow = 0.72 + 0.28 * bp;             // ほんの少し育つ=溜まっていく感じ
+          } else {
+            const aEff = GIANT_GLIDE_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+            const ap = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aEff));
+            bAlpha = Math.max(0, 1 - ap * 2.2);   // 飛び出したら素早く引く
+            bGrow = 1;
+          }
+          if (bAlpha > 0.01) {
+            const bs = this.atkArtSprite(view, ATK_ART_GLIDE_BRANCH, 'fx/glide-branch');
+            if (bs) {
+              bs.anchor.set(0.5, 0.5);
+              const bsz = GLIDE_BRANCH_PX * bGrow;
+              const bsc = bsz / Math.max(1, bs.texture.height);
+              bs.scale.set(bsc, bsc);
+              bs.rotation = bAng;                 // 滑空の向きへ寝かせる
+              // 本体の少し前(これから薙ぐ方向)へ置く=進行方向が読める。
+              bs.position.set(bfx0 + Math.cos(bAng) * GLIDE_BRANCH_AHEAD_PX,
+                bfy0 + Math.sin(bAng) * GLIDE_BRANCH_AHEAD_PX);
+              bs.alpha = artFade * bAlpha;
+            }
           }
         }
       }
