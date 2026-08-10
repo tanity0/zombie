@@ -2211,6 +2211,8 @@ const SWEEP_ICE_MAX_PX = 96;
 const SWEEP_ICE_FADE_FROM = 0.78;
 // 消え際に氷塊のまわりで瞬く粒の数(1個あたり)。
 const SWEEP_ICE_TWINKLE_N = 4;
+// 帯の終端で弾けるキラキラの数(波が端まで届いた合図)。
+const SWEEP_ICE_END_TWINKLE_N = 14;
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
 // 反動で後ろにノックバックしてフェードアウト」)。判定には一切関与しない=絵だけの尺。
 const GUN_FADE_IN_MS = 260;   // 出てくる時間(撃つ瞬間に間に合うよう、発射時刻から逆算して出す)
@@ -15127,6 +15129,23 @@ export class PixiScene {
           const wEffI = GIANT_SWEEP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
           const wpI = iW ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / wEffI)) : 1;
           const run = iA ? (iLatch ? iLatch.t : 1) : 0; // 0=まだ走っていない 1=走り切り
+          // v0.25.3104(社長「赤い真っ直ぐラインの氷塊衝撃波の終わりにもキラキラ追加」):
+          // 個々の氷のまわり(v3100)に加えて、**帯の終端**でもまとめて弾ける。波が端まで届いた合図。
+          if (iA && run > SWEEP_ICE_FADE_FROM) {
+            const endT = (run - SWEEP_ICE_FADE_FROM) / (1 - SWEEP_ICE_FADE_FROM); // 0→1
+            const tipX = ifx + Math.cos(iAng) * iLen, tipY = ify + Math.sin(iAng) * iLen;
+            for (let k = 0; k < SWEEP_ICE_END_TWINKLE_N; k++) {
+              const h = ((k * 2654435761) % 1000) / 1000;
+              const ang = h * Math.PI * 2;
+              // 終端から外へ広がりながら薄れる=「弾けて散った」に見せる。
+              const rad = SWEEP_ICE_MAX_PX * (0.25 + 0.9 * endT) * (0.4 + h * 0.8);
+              const a = Math.max(0, 1 - endT) * (0.55 + 0.45 * Math.sin(now / (60 + h * 70) + h * 7));
+              if (a <= 0.02) continue;
+              const r = 2.6 + h * 3.2;
+              o.ellipse(tipX + Math.cos(ang) * rad, tipY + Math.sin(ang) * rad * 0.6, r, r)
+                .fill({ color: 0xf0fbff, alpha: a });
+            }
+          }
           for (let i = 0; i < SWEEP_ICE_N; i++) {
             const f = (i + 1) / SWEEP_ICE_N;            // 根元→先端
             // 走る波: 自分の位置を波が通り過ぎたら生える。通過後はゆっくり薄れる。

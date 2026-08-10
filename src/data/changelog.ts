@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3104',
+    items: [
+      '氷の衝撃波の終端でもキラキラが弾けるようになりました。波が端まで届いたのが分かります。',
+    ],
+  },
+  {
     version: '0.25.3103',
     items: [
       '滑空の溜めの枝が道筋いっぱいに並ぶようになりました(12枚前後)。手前から順に浮かび上がり、通り道が緑で埋まります。',
