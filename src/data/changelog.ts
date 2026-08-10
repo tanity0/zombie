@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3135',
+    items: [
+      'ステージ7の地平の残照が、ボスや木より奥に回りました。キャラクターに赤い被りが乗らなくなります。',
+    ],
+  },
+  {
     version: '0.25.3134',
     items: [
       'グレンの血溜まりが、床として残っている間は紫の円になりました(紫=カウンターできない)。技そのものの予告は赤のままです。',

@@ -4117,7 +4117,7 @@ export class PixiScene {
       this.gradeSprite, // cineSun(M7の太陽)は遠景森1の裏へ移設=下のstageCへ(社長指示v0.25.1970)。光の線(cineCloudLayers)も同様に森の裏。
       this.snowAir, // ステージ4の冷たい空気(寒色グレード・snowのみ)
       this.stage5Afterglow, // ステージ5の残照(暖色グレード・stage5のみ)
-      this.cineWarm, this.stage1CoolBand, this.cineDust, this.vignette,
+      this.stage1CoolBand, this.cineDust, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
     // 光の線(cineClouds)と雲は worldGroup(森1/2・地面・gameplay)の後ろ・farBackdrop(銀河)の手前へ。画面固定の空。
@@ -4176,6 +4176,14 @@ export class PixiScene {
     // --- スモッグ。奥/森下(やまぎり)/森上 の3層を各1枚で揺らす ---
     // 奥=world内 actorLayer直前(キャラの後ろ)。森下=stageのfrontForest直前(=森の後ろ。森が手前で隠す)。森上=uiLayer最前面。
     this.L.world.addChildAt(this.bgCloudLayer, this.L.world.getChildIndex(this.L.actorLayer));
+    // ★v0.25.3135(社長裁定・案A「境界付近の赤いグラデをボスより下に」): シネマ残照(cineWarm)を
+    // uiLayer(最前面)から **bgCloudLayer** へ移す。bgCloudLayer は「world内・actorLayerの直前」=
+    // **地面と遠景の上/ボス・木・プロップの下**という、まさに欲しかった段。
+    // しかも**カメラとズームを打ち消して画面座標で置く**コンテナなので、cineWarm 側の実装
+    // (position(-1,-1)/width=w+2 の全画面スプライト)を1行も変えずにそのまま使える。
+    // 注意: この段は filteredWorld の中=地平マスク(worldFadeMask)と tilt-shift が掛かる。
+    // 残照は0.25より上が透明・芯が0.33〜0.51なので、マスクに食われるのは上端の淡い立ち上がりだけ。
+    this.bgCloudLayer.addChild(this.cineWarm);
     const fogStage = this.L.uiLayer.parent;
     if (fogStage) fogStage.addChildAt(this.forestUnderLayer, fogStage.getChildIndex(this.L.frontForest));
     else this.L.uiLayer.addChildAt(this.forestUnderLayer, 0);
