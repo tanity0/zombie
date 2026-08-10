@@ -2198,9 +2198,9 @@ const ATK_ART_GUN_C = 9;   // 三連射: 中央=三拍目(長い銃)
 const ATK_ART_VINE = 10;   // v0.25.3088: 樹木管理員の蔓ムチ(薙ぎ払い)
 const ATK_ART_GLIDE_BRANCH = 17; // v0.25.3099: 滑空の溜めの枝(1枚)
 // 枝1枚の表示サイズ(px)と、帯に沿って並べる枚数。
-const GLIDE_BRANCH_PX = 165;         // v0.25.3103: たくさん並べるので1枚は小さめ
-const GLIDE_BRANCH_SPACING_PX = 48;  // 帯に沿って並べる間隔(枚数は帯の長さから決まる)
-const GLIDE_BRANCH_MAX = 16;         // 上限(長い帯でも増やしすぎない)
+const GLIDE_BRANCH_PX = 118;         // v0.25.3107: 社長「もう少し小さく並べて」(165→118)
+const GLIDE_BRANCH_SPACING_PX = 34;  // v0.25.3107: 小さくしたぶん詰めて並べる(48→34)
+const GLIDE_BRANCH_MAX = 20;         // 上限(長い帯でも増やしすぎない)
 const GLIDE_BRANCH_WOBBLE_RAD = 0.09; // 溜め中の揺れ幅(rad)
 const ATK_ART_ICE_0 = 11;  // v0.25.3095: 衛生兵の氷の衝撃波(薙ぎ払い)。11..16 の6枠
 // 氷塊を帯に何個並べるか/根元と先端の大きさ(px)。**小から大へのグラデーション**(社長指示)。
@@ -15206,21 +15206,19 @@ export class PixiScene {
           const bfx0 = (e.aiFromX ?? e.x) + e.width / 2, bfy0 = (e.aiFromY ?? e.y) + e.height / 2;
           const btx0 = (e.aiTargetX ?? e.x) + e.width / 2, bty0 = (e.aiTargetY ?? e.y) + e.height / 2;
           const bAng = Math.atan2(bty0 - bfy0, btx0 - bfx0);
-          let bAlpha: number, bGrow: number;
+          let bAlpha: number;
           let bWobble = 0; // 溜め中の揺れ(実行では0)
           if (gbW) {
             const bEff = GIANT_GLIDE_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
             const bp = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / bEff));
             // v0.25.3101(社長「もっと目立たせて」): 早く濃く出して、育ちも大きくする。
             bAlpha = Math.min(1, bp * 2.4);       // 序盤で一気に出す(見逃させない)
-            bGrow = 0.62 + 0.62 * bp;             // 小さく現れて**大きく育つ**=溜まっていくのが分かる
             // 葉が騒ぐ揺れ。溜めが進むほど強く=「今にも飛び出す」の予兆。
             bWobble = Math.sin(now / 46) * GLIDE_BRANCH_WOBBLE_RAD * bp;
           } else {
             const aEff = GIANT_GLIDE_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
             const ap = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / aEff));
             bAlpha = Math.max(0, 1 - ap * 2.2);   // 飛び出したら素早く引く
-            bGrow = 1;
           }
           if (bAlpha > 0.01) {
             // v0.25.3102(社長「ラインに沿って並べるんだよ」): 1枚を前に置くのではなく、
@@ -15243,15 +15241,20 @@ export class PixiScene {
               const bs = this.atkArtSprite(view, ATK_ART_GLIDE_BRANCH + bi, 'fx/glide-branch');
               if (!bs) continue;
               bs.anchor.set(0.5, 1);                              // 下端=地面に刺さる根元
-              const bsz = GLIDE_BRANCH_PX * bGrow;
-              const bsc = bsz / Math.max(1, bs.texture.height);
+              // v0.25.3107(社長「生えたら止まって。植物としておかしい」):
+              // 旧実装は**全体の成長(bGrow)と揺れ(bWobble)を生え終わった株にも掛け続けていた**ため、
+              // 既に生えた枝がいつまでも大きくなり、揺れ続けていた=植物として不自然。
+              // ⇒ **1本ごとに「生え切ったら固定」**する。動くのは生えている最中だけ。
+              const sprout = Math.min(1, stagger);                // 0=まだ地中 1=生え切り
+              const bsc = GLIDE_BRANCH_PX / Math.max(1, bs.texture.height); // 大きさは一定(育て続けない)
               // 1本ごとにわずかに傾ける(±0.12rad)。**寝かせない**のでクロスしない。
               const tilt = (((bi * 2654435761) % 1000) / 1000 - 0.5) * 0.24;
               // 生え際: 下から伸び上がる(縦だけ0→1)。横幅は最初から出す=細い棘に見える。
-              bs.scale.set(bsc, bsc * Math.min(1, stagger));
-              bs.rotation = tilt + bWobble * 0.5;                 // 揺れは控えめに残す(葉が騒ぐ)
+              bs.scale.set(bsc, bsc * sprout);
+              // 揺れるのは**生えている最中だけ**。生え切ったらその姿勢で静止する。
+              bs.rotation = tilt + (sprout < 1 ? bWobble * 0.5 * (1 - sprout) : 0);
               bs.position.set(bfx0 + Math.cos(bAng) * bLen * bf, bfy0 + Math.sin(bAng) * bLen * bf);
-              bs.alpha = artFade * bAlpha * Math.min(1, stagger * 1.6);
+              bs.alpha = artFade * Math.min(1, sprout * 1.6) * (gbW ? 1 : bAlpha);
             }
           }
         }
