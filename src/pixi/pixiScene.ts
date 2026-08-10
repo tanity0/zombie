@@ -108,7 +108,7 @@ import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, zoomCompensatedWorldDistance, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
-import { airHopHeight01, airHopEase01 } from '../utils/airHop';
+import { airHopHeight01 } from '../utils/airHop';
 import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE } from '../utils/bladeArt';
 import { bossWideShotZoom } from '../utils/cameraZoom';
 import {
@@ -2089,6 +2089,8 @@ const VINE_CRACK_FLASH_MS = 140; // 打った瞬間、先端で光る時間
 const VINE_CRACK_FLASH_R = 26;   // その光の半径
 // v0.25.3094: 溜めの何割で1回転を終えるか。残り(1-この値)は**静止して溜める**間になる。
 const VINE_SPIN_END = 0.82;
+// 回し切りで行き過ぎる量(1周に対する割合)。慣性で勢い余る感じ。
+const VINE_SPIN_OVERSHOOT = 0.06;
 const SHOCKWAVE_LEN_MAX = 260;     // 波1つの見た目の長さ(px)。帯が短ければ帯長に合わせる
 const SHOCKWAVE_TINT = 0xffe4e4;   // ほんのり赤み(赤い帯と同じ攻撃の絵だと分かる程度。純白だと浮く)
 // 素材=「太い側へ膨らむ同心弧が細い一点に収束するコーン」(左=太い裾/右=細い尖り)。
@@ -14998,10 +15000,19 @@ export class PixiScene {
             // コマ送りをやめ、**1コマ目を根元支点で1回転**させる。回転は慣性(ゆっくり動き出して
             // 中盤で速く、終わりで減速)=smootherstep。**1周し切った後は静止して溜める**。
             const spinT = Math.min(1, wp / VINE_SPIN_END);   // ここまでで1周
-            vSpin = Math.PI * 2 * airHopEase01(spinT);       // 慣性つきの回転
+            // v0.25.3097(社長「もっと慣性を持たせて!機械的にしないで」): smootherstepは左右対称で
+            // 「機械が等速で回している」ように見えた。実物の振り回しに寄せて2段に分ける:
+            //  ①重い物を引きずり出す=**ゆっくり始まって加速**(p²)。ここで6割強を回す。
+            //  ②手首を止める=**減速しながら、勢い余って少し行き過ぎてから**戻って収まる(sinの山)。
+            const sp1 = 0.62, sw = 0.55;
+            const spinFrac = spinT < sw
+              ? sp1 * (spinT / sw) * (spinT / sw)
+              : sp1 + (1 - sp1) * (1 - Math.pow(1 - (spinT - sw) / (1 - sw), 3))
+                + VINE_SPIN_OVERSHOOT * Math.sin(Math.PI * ((spinT - sw) / (1 - sw)));
+            vSpin = Math.PI * 2 * spinFrac;
             texName = 'fx/vine-whip-0';
             vAlpha = Math.min(1, 0.78 + wp * 0.4); // 溜めから濃く出す(存在感)
-            vScaleLen = vLen * VINE_COIL_LEN_FRAC; // 寸法は一定=絵を潰さない
+            vScaleLen = vLen * VINE_COIL_LEN_FRAC; // (溜めは下で画素スケール基準に描くため参照されない)
           } else {
             // v0.25.3090: 実行(220ms)で切らず、**硬直へ持ち越して**ゆっくり消す(社長「余韻がほしい」)。
             // 尺は latchFx が自前時計で回す(硬直の実長を推測しない=v3077型の事故を作らない)。
@@ -15019,7 +15030,12 @@ export class PixiScene {
             const vs = this.atkArtSprite(view, ATK_ART_VINE, texName);
             if (vs) {
               vs.anchor.set(0, 0.5);   // 根元(左端)をボス側に置く=素材の並びどおり
-              const sc = vScaleLen / (vs.texture.width || 1);
+              // v0.25.3097(社長「回すところだけ大きいのがおかしい。伸ばした時と太さ揃えて」):
+              // 溜めのコマは素材の切り出し幅が伸び切りと違う(256px前後 vs 1012px)ため、
+              // 「コマ幅で割る」と**同じ蔓なのに線の太さが変わって**しまっていた。
+              // ⇒ **伸び切りの素材を基準にした1つの画素スケール**を溜めにも使う=太さが揃う。
+              const fullW = getTexture('fx/vine-whip-full')?.width || 1012;
+              const sc = vW ? (vLen / fullW) : (vScaleLen / (vs.texture.width || 1));
               // 長さ(x)は帯どおり、**太さ(y)だけ**盛る=赤帯とズレずに存在感だけ上げる。
               vs.scale.set(sc, sc * VINE_THICK_MULT);
               vs.rotation = vAng + vSpin;
