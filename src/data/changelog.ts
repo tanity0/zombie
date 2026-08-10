@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3116',
+    items: [
+      'ステージ3の遠くの森の手前の雲を、はっきり見えるようにしました。',
+    ],
+  },
+  {
     version: '0.25.3115',
     items: [
       '薙ぎ払い(蔓のムチ・コウモリの羽・氷の衝撃波・大砲)が、カウンターを決めた後も最後まで演出しきるようになりました。',
