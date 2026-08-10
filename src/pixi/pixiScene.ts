@@ -353,7 +353,9 @@ const ZOOM_CLOUD_LAYERS = [
   // 森1がステージ/ズームで動いても**森1との距離が保たれる**(画面基準だと森1から離れたり被ったりする)。
   // bottomFrac は farH からの**下がり**(画面高比)=大きいほど森1から手前(下)へ離れる。
   // 実機で詰めるツマミ: `?s3cloud=`(濃さ) `?s3cloudy=`(森1からの距離) `?s3cloudh=`(高さ)。
-  { place: 'near', heightFrac: 0.14, bottomFrac: 0.20, alpha: 1, driftPxS: 7, paraX: 0.35, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
+  // v0.25.3129(社長指示「境界線から20px下」): near層だけ **bottomFrac を使わない**。
+  // 縦位置は `S3_CLOUD_TOP_PX`(境界線=farH からの**絶対px**)で置く=画面サイズや機種で動かない。
+  { place: 'near', heightFrac: 0.14, bottomFrac: 0, alpha: 1, driftPxS: 7, paraX: 0.35, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
   { place: 'front', heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
   { place: 'front', heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
 ] as const;
@@ -391,7 +393,9 @@ const tsNum = (key: string, def: number): number => {
 // ステージ3の追加雲(near層)を実機で詰めるツマミ(v0.25.3116/3117)。NaN=未指定(表の値を使う)。
 // **ビルドし直さずに**濃さ・森1からの距離・高さを詰めるための道具(遠景の層隠しツマミと同趣旨)。
 const S3_CLOUD_ALPHA_OVERRIDE = tsNum('s3cloud', NaN);
-const S3_CLOUD_BOTTOM_OVERRIDE = tsNum('s3cloudy', NaN); // farH(森1の足元)からの下がり・画面高比
+// ★縦位置は「境界線(farH=遠景の下端=森1の足元)から下へ何px」で置く(社長指示v0.25.3129「境界線から20px下」)。
+// 画面高の比ではなく**絶対px**にしたのは、指示が px で来ているから=どの機種でも同じ見え方になる。
+const S3_CLOUD_TOP_PX = tsNum('s3cloudy', 20); // 雲の**上端**を境界線から何px下げるか(?s3cloudy=で調整)
 const S3_CLOUD_HEIGHT_OVERRIDE = tsNum('s3cloudh', NaN); // 帯の高さ・画面高比
 /**
  * ★v0.25.2785(社長報告「ステージ1の遠景に1pxの切れ目」・v2631時点で既に発生): 遠景の層を1枚ずつ隠す診断ツマミ。
@@ -6879,12 +6883,12 @@ export class PixiScene {
         const bob = Math.sin(now * 0.00035 + cfg.bobPhase) * cfg.bobAmp;
         // far層は地平線(farH)基準=遠景の下端に少し掛かる高さで、森/世界の裏に流れる。front層は画面下部。
         // v0.25.3117: near層も**farH基準**にした(社長「遠景森1から相対的に距離をはなして」)。
-        // farH=遠景森1の足元なので、bottomFrac ぶん下げる=**森1から手前へ一定距離**を保てる。
-        const nearBFrac = Number.isFinite(S3_CLOUD_BOTTOM_OVERRIDE) ? S3_CLOUD_BOTTOM_OVERRIDE : cfg.bottomFrac;
+        // v0.25.3129: さらに位置指定を**絶対px**へ(社長「境界線から20px下」)。
+        // farH=境界線(遠景の下端=森1の足元)。そこから S3_CLOUD_TOP_PX 下げた所が雲の**上端**。
         const cloudBottom = cfg.place === 'far'
           ? this.farBackdropHeight() + this.screenH * cfg.bottomFrac
           : isNear
-            ? this.farBackdropHeight() + this.screenH * nearBFrac
+            ? this.farBackdropHeight() + S3_CLOUD_TOP_PX + ch // 上端=境界線+20px(下端はそこから帯の高さぶん)
             : this.screenH * cfg.bottomFrac;
         zc.position.set(-this.screenW * 0.03, cloudBottom - ch + bob);
         // 霧と同じく流れる: 自走ドリフト(層ごとに速度差・蓄積式)+カメラパララックス(手前ほど速い)。
