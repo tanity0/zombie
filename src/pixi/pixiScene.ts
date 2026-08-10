@@ -3152,6 +3152,10 @@ export class PixiScene {
   private windNow = 0;
   private battlefieldStage = false; // ステージ5(farBackdrop'stage5'): 敵絵=戦場セット・木なし(残骸プロップに置換)
   private stage5Stage = false; // ステージ5(farBackdrop'stage5'): 近景森(戦場の残骸)を下げる
+  // ステージ7(farBackdrop'stage7'=グレン): 薙ぎ払いの絵を赤い結晶にする(v0.25.3119)。
+  // 判定源は他ステージと同じ**storeのfarBackdrop**に揃える(currentFarKey=適用済みの遠景キーと
+  // 混ぜない。「同じ意味の判定を2通り書く」事故の予防=v3089の'stage3'型)。
+  private glenStage = false;
   // ステージ5の戦争照明(社長指示v0.25.1980「上部を爆発フラッシュ/炎のゆらめきで照らす」)。加算・上部のみ。
   // v0.25.2663(LIGHT_REWORK §3 #2): ステージ5の炎のゆらめき。共有カーブ→ソフトカーブ、**αは不変**。
   // ★注意: これは点光源ではなく**画面幅1.4倍の横長の"空気"**(`filteredWorld` の外=画面固定)。
@@ -6057,6 +6061,7 @@ export class PixiScene {
     this.snowStage = s.farBackdrop === 'snow';
     this.battlefieldStage = s.farBackdrop === 'stage5';
     this.stage5Stage = s.farBackdrop === 'stage5';
+    this.glenStage = s.farBackdrop === 'stage7';
     this.isLabStage = s.stageTheme === 'lab';
     this.horizonForestUpNow = HORIZON_FOREST_UP_BY_STAGE[getSelectedStageId()] ?? 0; // 遠景森1のステージ別上移動(?mXup=)。1回/フレーム=無視できるコスト。
     // vignetteの明るい部分を狭めるのはステージ2だけ(他ステージは既定0.55の通常版)。差分時のみ差し替え。
@@ -15205,7 +15210,9 @@ export class PixiScene {
       //        判定が出る瞬間に**元の長さへ伸ばし戻す**=「バサーー!」。既存素材 fx/wing-swipe を流用。
       //      ステージ1限定(遠景も昼(stage-3)も雪(4)も戦場(5)も洋館でもない=既定の森)。
       {
-        const wingOk = !this.daylight && !this.snowStage && !this.battlefieldStage
+        // v0.25.3119: ステージ7(グレン)は赤い結晶の薙ぎ払いを持ったので、羽の catch-all から外す
+        // (監査で挙がった「stage-7/ex1へ羽が漏れていた」の stage-7 分。ex1は素材未支給のため据え置き)。
+        const wingOk = !this.daylight && !this.snowStage && !this.battlefieldStage && !this.glenStage
           && this.currentFarKey !== 'lab' && this.currentFarKey !== 'mansion';
         // ★v0.25.3115(蔓ムチと同じ直し): 共通時計へ移す=カウンターで消えても最後まで描き切る。
         const wClk = wingOk
@@ -15252,8 +15259,12 @@ export class PixiScene {
         //   =溜めで斬られても最後まで描き切る。氷だけ「残る時間」があるので post の長さが他と違う。
         const iTotal = GIANT_SWEEP_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT
           + SWEEP_ICE_HOLD_MS + SWEEP_ICE_AFTERGLOW_MS;
-        const iClk = this.snowStage ? this.sweepArtClock(e, gph, gameTime, now, cx, cy, iTotal) : null;
-        if (iClk) {
+        // ★v0.25.3119(社長支給素材+指示「ステージ7の薙ぎ払い素材。**これを氷のやつ同様に並べて使う**」):
+        // 立てる絵だけを差し替えて、並べ方・波・残り・砕け・余韻のキラキラは**氷とまったく同じ**にする
+        // (同じ動作は同じ実装経路に載せる=片方だけ直る事故を作らない。CLAUDE.mdの掟)。
+        const standTex = this.snowStage ? 'skadi-ice-block' : this.glenStage ? 'fx/glen-crystal' : null;
+        const iClk = standTex ? this.sweepArtClock(e, gph, gameTime, now, cx, cy, iTotal) : null;
+        if (iClk && standTex) {
           const ifx = iClk.fx, ify = iClk.fy, itx = iClk.tx, ity = iClk.ty;
           const iAng = Math.atan2(ity - ify, itx - ifx);
           const iLen = Math.hypot(itx - ifx, ity - ify) || 1;
@@ -15313,7 +15324,7 @@ export class PixiScene {
             //   =社長指示「余韻だけ」。旧は余韻いっぱいをかけてただ薄くなるだけだった。
             const brk = Math.max(0, Math.min(1, ag / SWEEP_ICE_BREAK_FRAC)); // 0=無傷 1=砕けきった
             if (brk < 1) {
-              const sp = this.atkArtSprite(view, ATK_ART_ICE_0 + i, 'skadi-ice-block');
+              const sp = this.atkArtSprite(view, ATK_ART_ICE_0 + i, standTex);
               if (sp) {
                 sp.anchor.set(0.5, 0.92);              // 氷塊は下端が接地(スカジ側と同じ作法)
                 // ★小から大へのグラデーション: 先端ほど大きい。砕ける間は少し縦に潰れる。

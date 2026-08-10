@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3119',
+    items: [
+      'グレンの薙ぎ払いに赤い結晶が付きました。地面から小さいものから大きいものへ結晶がせり上がり、しばらく残ってから砕けて散ります。',
+    ],
+  },
+  {
     version: '0.25.3118',
     items: [
       'グレンの虚無の三唱が、詠唱を止めても唱いかけの1唱を最後まで見せてから消えるようになりました。',
