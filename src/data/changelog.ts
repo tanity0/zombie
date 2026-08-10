@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3138',
+    items: [
+      'ボスモードでは武器商人が出なくなりました。',
+      'グレンの触手の予告が少し長くなりました(3連発のリズムは変わりません)。',
+    ],
+  },
+  {
     version: '0.25.3137',
     items: [
       'ステージ7(ボスモードを含む)は、開幕で目の前に宝箱が置かれるようになりました。中身は強めの銃1丁と、レベルアップ3回ぶんです。',
