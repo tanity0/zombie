@@ -357,7 +357,12 @@ const ZOOM_CLOUD_LAYERS = [
   // 縦位置は `S3_CLOUD_TOP_PX`(境界線=farH からの**絶対px**)で置く=画面サイズや機種で動かない。
   // heightFrac は帯の高さ=そのままタイルの拡大率になるので、**下げると雲そのものが小さくなる**
   // (0.14 → 0.0933 = 2/3)。横幅は画面いっぱいのままで、雲の粒が小さく密に流れる。
-  { place: 'near', heightFrac: 0.0933, bottomFrac: 0, alpha: 0.5, driftPxS: 7, paraX: 0.35, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
+  // ★v0.25.3133(社長報告「他ステージにある霧とは仕様が違っちゃってるみたい。ズームで位置がズレてる。
+  // (霧はズレない)」): **paraX を 0 にした**のが本修正。霧(fogLayers)は位置に**カメラを一切入れず**、
+  // 自走ドリフト(tilePosition)だけで流れる。near雲だけ `-camera.x * paraX` を入れていたため、
+  // 引くとカメラの動く量が変わり、**景色に対して雲が滑る**=「ズレる」の正体だった。
+  // far/front層は「高い所から見ている」感を出す演出なので視差は据え置き(=near層だけ霧に合わせる)。
+  { place: 'near', heightFrac: 0.0933, bottomFrac: 0, alpha: 0.5, driftPxS: 7, paraX: 0, blur: 3, bobAmp: 4, bobPhase: 2.4, tileOfs: 520 },
   { place: 'front', heightFrac: 0.20, bottomFrac: 1.00, alpha: 0.85, driftPxS: 10, paraX: 1.0, blur: 0, bobAmp: 6, bobPhase: 0.6, tileOfs: 0 },
   { place: 'front', heightFrac: 0.30, bottomFrac: 1.06, alpha: 0.55, driftPxS: 24, paraX: 1.3, blur: 5, bobAmp: 9, bobPhase: 1.9, tileOfs: 380 },
 ] as const;
@@ -397,7 +402,10 @@ const tsNum = (key: string, def: number): number => {
 const S3_CLOUD_ALPHA_OVERRIDE = tsNum('s3cloud', NaN);
 // ★縦位置は「境界線(farH=遠景の下端=森1の足元)から下へ何px」で置く(社長指示v0.25.3129「境界線から20px下」)。
 // 画面高の比ではなく**絶対px**にしたのは、指示が px で来ているから=どの機種でも同じ見え方になる。
-const S3_CLOUD_TOP_PX = tsNum('s3cloudy', 0); // 雲の**上端**を境界線から何px下げるか(?s3cloudy=で調整)
+// 負=**上へ**(社長指示v0.25.3133「境界線から上に5px」)。雲の**上端**の位置を境界線からの絶対pxで置く。
+const S3_CLOUD_TOP_PX = tsNum('s3cloudy', -5);
+// 霧(fogLayers)と同じ横幅の作法=画面の2.2倍を中央寄せ(端の揺れで縁が出ない)。
+const FOG_LIKE_WIDTH_FRAC = 2.2;
 const S3_CLOUD_HEIGHT_OVERRIDE = tsNum('s3cloudh', NaN); // 帯の高さ・画面高比
 /**
  * ★v0.25.2785(社長報告「ステージ1の遠景に1pxの切れ目」・v2631時点で既に発生): 遠景の層を1枚ずつ隠す診断ツマミ。
@@ -6876,7 +6884,9 @@ export class PixiScene {
         zc.visible = true;
         const hFrac = isNear && Number.isFinite(S3_CLOUD_HEIGHT_OVERRIDE) ? S3_CLOUD_HEIGHT_OVERRIDE : cfg.heightFrac;
         const ch = this.screenH * hFrac;
-        zc.width = this.screenW * 1.06; // 端の揺れ/ドリフトで縁が出ないよう少し広く
+        // v0.25.3133: near層は**霧と同じ寸法の作法**(画面の2.2倍幅・中央寄せ)にする。
+        // far/front は従来どおり(1.06倍・左へ3%ずらし)=引きの時しか出ない層なので不変。
+        zc.width = this.screenW * (isNear ? FOG_LIKE_WIDTH_FRAC : 1.06);
         zc.height = ch;
         zc.tileScale.set(ch / Math.max(1, zc.texture.height));
         this.clampTilingV(zc); // ★縦の継ぎ目対策(縦はちょうど1枚)
@@ -6892,7 +6902,7 @@ export class PixiScene {
           : isNear
             ? this.farBackdropHeight() + S3_CLOUD_TOP_PX + ch // 上端=境界線+20px(下端はそこから帯の高さぶん)
             : this.screenH * cfg.bottomFrac;
-        zc.position.set(-this.screenW * 0.03, cloudBottom - ch + bob);
+        zc.position.set(isNear ? (this.screenW - zc.width) / 2 : -this.screenW * 0.03, cloudBottom - ch + bob);
         // 霧と同じく流れる: 自走ドリフト(層ごとに速度差・蓄積式)+カメラパララックス(手前ほど速い)。
         const periodC = Math.max(1, zc.texture.width * zc.tileScale.x);
         const driftC = this.zoomCloudDriftAcc[ci];

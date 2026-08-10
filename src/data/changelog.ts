@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3133',
+    items: [
+      'ステージ3の雲が、引きの時に景色に対してずれて流れていたのを直しました。他ステージの霧と同じ流れ方になります。',
+    ],
+  },
+  {
     version: '0.25.3132',
     items: [
       'ステージ3の雲を境界線に接する位置へ下ろし、濃さを半分にしました。',
