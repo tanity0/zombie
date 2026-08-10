@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3102',
+    items: [
+      '滑空の溜めの枝が、これから薙ぐ道筋に沿って並ぶようになりました。手前から順に浮かび上がるので、どこを通るのかが分かります。',
+    ],
+  },
+  {
     version: '0.25.3101',
     items: [
       '滑空の溜めの枝が目立つようになりました。大きく早く現れ、飛び出す直前ほど葉が激しく揺れます。',

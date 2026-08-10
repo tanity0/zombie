@@ -2197,10 +2197,10 @@ const ATK_ART_GUN_R = 8;   // 三連射: 右(中くらい)
 const ATK_ART_GUN_C = 9;   // 三連射: 中央=三拍目(長い銃)
 const ATK_ART_VINE = 10;   // v0.25.3088: 樹木管理員の蔓ムチ(薙ぎ払い)
 const ATK_ART_GLIDE_BRANCH = 17; // v0.25.3099: 滑空の溜めの枝(1枚)
-// 枝の表示サイズ(px)と、本体からどれだけ前へ置くか。
-const GLIDE_BRANCH_PX = 340;   // v0.25.3101: 210→340(社長「もっと目立たせて」)
+// 枝1枚の表示サイズ(px)と、帯に沿って並べる枚数。
+const GLIDE_BRANCH_PX = 210;   // v0.25.3102: 帯に沿って並べる形になったので1枚あたりは戻す
+const GLIDE_BRANCH_N = 4;      // 帯に沿って何枚並べるか
 const GLIDE_BRANCH_WOBBLE_RAD = 0.09; // 溜め中の揺れ幅(rad)
-const GLIDE_BRANCH_AHEAD_PX = 96;
 const ATK_ART_ICE_0 = 11;  // v0.25.3095: 衛生兵の氷の衝撃波(薙ぎ払い)。11..16 の6枠
 // 氷塊を帯に何個並べるか/根元と先端の大きさ(px)。**小から大へのグラデーション**(社長指示)。
 const SWEEP_ICE_N = 6;
@@ -15196,17 +15196,26 @@ export class PixiScene {
             bGrow = 1;
           }
           if (bAlpha > 0.01) {
-            const bs = this.atkArtSprite(view, ATK_ART_GLIDE_BRANCH, 'fx/glide-branch');
-            if (bs) {
+            // v0.25.3102(社長「ラインに沿って並べるんだよ」): 1枚を前に置くのではなく、
+            // **滑空の帯(aiFrom→aiTarget)に沿って並べる**=これから薙ぐ道筋そのものが見える。
+            // 根元から先端へ少しずつ遅れて出す(道が伸びていくように読める)。
+            const bLen = Math.hypot(btx0 - bfx0, bty0 - bfy0) || 1;
+            for (let bi = 0; bi < GLIDE_BRANCH_N; bi++) {
+              const bf = (bi + 0.5) / GLIDE_BRANCH_N;            // 帯の上の位置(根元→先端)
+              // 先の方ほど遅れて出る(根元から順に道が伸びる)。
+              const stagger = Math.max(0, Math.min(1, (bAlpha * 1.6) - bf * 0.7));
+              if (stagger <= 0.02) continue;
+              const bs = this.atkArtSprite(view, ATK_ART_GLIDE_BRANCH + bi, 'fx/glide-branch');
+              if (!bs) continue;
               bs.anchor.set(0.5, 0.5);
               const bsz = GLIDE_BRANCH_PX * bGrow;
               const bsc = bsz / Math.max(1, bs.texture.height);
-              bs.scale.set(bsc, bsc);
-              bs.rotation = bAng + bWobble;       // 滑空の向きへ寝かせる(+溜めの揺れ)
-              // 本体の少し前(これから薙ぐ方向)へ置く=進行方向が読める。
-              bs.position.set(bfx0 + Math.cos(bAng) * GLIDE_BRANCH_AHEAD_PX,
-                bfy0 + Math.sin(bAng) * GLIDE_BRANCH_AHEAD_PX);
-              bs.alpha = artFade * bAlpha;
+              // 1枚ごとに向きを少しずらす=同じ絵の繰り返しに見せない。
+              const jitter = ((bi * 2654435761) % 1000 / 1000 - 0.5) * 0.5;
+              bs.scale.set(bsc, bsc * (bi % 2 === 0 ? 1 : -1)); // 1つ置きに上下反転=単調さの解消
+              bs.rotation = bAng + bWobble + jitter;
+              bs.position.set(bfx0 + Math.cos(bAng) * bLen * bf, bfy0 + Math.sin(bAng) * bLen * bf);
+              bs.alpha = artFade * bAlpha * Math.min(1, stagger);
             }
           }
         }
