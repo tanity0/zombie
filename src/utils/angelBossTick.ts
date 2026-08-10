@@ -339,6 +339,9 @@ const bodyOverlapNow = (boss: Enemy): { overlap: boolean; counterActive: boolean
 // 概算(isBossCounterableNowApprox=語尾判定)との差分は次の2つだけ(全9tickの分岐を全数確認済み):
 //  - jibril 'warp-recover': プレイヤー不可の州(カウンター分岐なし)→ 明示除外(判定を広げない)。
 //  - acrasiel 'warp-out': プレイヤー可だが語尾に載らない → ゴーストの請求自体が積まれない(狭い側=許容)。
+//  - v0.25.3131追加: jibril 'lantern' / 'volley' も**プレイヤー可になった**が語尾に載らない
+//    → 上と同じ「狭い側」。守護霊はこの2州でカウンターを取らない(取り逃すだけ=誤爆はしない)。
+//    広げるには概算(語尾判定)ではなく州名リストの集約が要るので、ここでは記録に留める(★未決のまま)。
 // 同フレームにプレイヤーの成立(overlap&&窓)が立っている時はプレイヤー優先(体験を1bitも変えない)。
 const takeGhostAngelCounter = (boss: Enemy): GhostCounterFire | null => {
   if (!isBossCounterableNowApprox(boss.aiPhase, boss.bossState)) return null;
@@ -969,20 +972,30 @@ export const runJibrilTick = (
       patch.bossStateUntil = newGameTime + shots * gap + 200;
     }
   } else if (st === 'volley') {
-    retreatMove();
-    const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
-    const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
-    if (jr.shots < shots && newGameTime >= jr.nextShotAt) {
-      const aim = jibrilLockedAim();
-      const proj = createEnemyProjectile(jibril, player, aim.x, aim.y);
-      if (jr.volleyMode === 'snipe') proj.speed *= JIBRIL_SNIPE_SPEED_MULT;
-      useGameStore.getState().addProjectile(proj);
-      jr.shots += 1;
-      jr.nextShotAt = newGameTime + gap;
-    }
-    if (jr.shots >= shots && newGameTime >= (jibril.bossStateUntil ?? 0)) {
-      patch.bossState = 'volley-recover';
-      patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_VOLLEY_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
+    // v0.25.3131(案A・ランタンと同じ穴): 連射中も体当たりカウンターで**撃つのを止められる**。
+    // ランタンだけ直すと「同じ形の技なのに片方だけ止まる」になるので、ジブリルの2技を同時に直す
+    // (CLAUDE.md「同じ動作を持つ全員に付ける」)。**既に飛んだ弾は残る**(打ち返しは弾側の役目)。
+    const { overlap, counterActive } = bodyOverlapNow(jibril);
+    if (overlap && counterActive) {
+      jibrilCounterHit(jcx, jcy);
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
+    } else {
+      retreatMove();
+      const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
+      const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
+      if (jr.shots < shots && newGameTime >= jr.nextShotAt) {
+        const aim = jibrilLockedAim();
+        const proj = createEnemyProjectile(jibril, player, aim.x, aim.y);
+        if (jr.volleyMode === 'snipe') proj.speed *= JIBRIL_SNIPE_SPEED_MULT;
+        useGameStore.getState().addProjectile(proj);
+        jr.shots += 1;
+        jr.nextShotAt = newGameTime + gap;
+      }
+      if (jr.shots >= shots && newGameTime >= (jibril.bossStateUntil ?? 0)) {
+        patch.bossState = 'volley-recover';
+        patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_VOLLEY_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
+      }
     }
   } else if (st === 'volley-recover') {
     const { overlap, counterActive } = bodyOverlapNow(jibril);
@@ -1006,19 +1019,33 @@ export const runJibrilTick = (
       jr.nextFireAt = newGameTime;
     }
   } else if (st === 'lantern') {
-    // §6.28-6「その後5000msの設置中も静止【変更: 現状は後退しながら】」= retreatMoveを呼ばない。
-    if (newGameTime >= jr.nextFireAt) {
-      const aim = jibrilLockedAim();
-      const ghost = aim.side === 'ghost'
-        ? store.summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === jibril.id)
-        : undefined;
-      const fpx = aim.x, fpy = ghost ? ghost.y + ghost.height : player.y + player.height;
-      useGameStore.getState().spawnBossFire(fpx, fpy, newGameTime, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS + JIBRIL_FIRE_LIFE_MS);
-      jr.nextFireAt = newGameTime + JIBRIL_FIRE_GAP_MS;
-    }
-    if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
-      patch.bossState = 'lantern-recover';
-      patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_LANTERN_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
+    // ★v0.25.3131(社長報告「ジブリルのランタン攻撃、カウンターできない気がするけど?」→ 案A採択):
+    // **設置中(5秒)も体当たりカウンターを効かせ、成立したら設置を中断する**。
+    // 旧: 溜め(700ms)と硬直(750ms)にしかカウンター判定が無く、しかもどちらも体当たり=
+    // 後退しながら戦う遠距離ボスに密着している必要があった=**実質カウンター不能**だった。
+    // ジブリルの技は危険が**別エンティティ**(火/弾)なので、本体に殴りに行く以外の掛かりどころが無い。
+    // ⇒「リスクを負って接近すれば止められる」を成立させる。**既に置かれた火は残る**
+    //   (別エンティティ=各自の寿命で消える)。止まるのは**これ以降の設置**。
+    const { overlap, counterActive } = bodyOverlapNow(jibril);
+    if (overlap && counterActive) {
+      jibrilCounterHit(jcx, jcy);
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
+    } else {
+      // §6.28-6「その後5000msの設置中も静止【変更: 現状は後退しながら】」= retreatMoveを呼ばない。
+      if (newGameTime >= jr.nextFireAt) {
+        const aim = jibrilLockedAim();
+        const ghost = aim.side === 'ghost'
+          ? store.summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === jibril.id)
+          : undefined;
+        const fpx = aim.x, fpy = ghost ? ghost.y + ghost.height : player.y + player.height;
+        useGameStore.getState().spawnBossFire(fpx, fpy, newGameTime, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS + JIBRIL_FIRE_LIFE_MS);
+        jr.nextFireAt = newGameTime + JIBRIL_FIRE_GAP_MS;
+      }
+      if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
+        patch.bossState = 'lantern-recover';
+        patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_LANTERN_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
+      }
     }
   } else if (st === 'lantern-recover') {
     const { overlap, counterActive } = bodyOverlapNow(jibril);
