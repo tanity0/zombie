@@ -2210,7 +2210,9 @@ const SWEEP_ICE_MAX_PX = 96;
 // この進行度までは全部出したまま残し、以降で6個そろって消える(社長「さいごにフェードアウトで合わせる」)。
 const SWEEP_ICE_FADE_FROM = 0.78;
 // 消え際に氷塊のまわりで瞬く粒の数(1個あたり)。
-const SWEEP_ICE_TWINKLE_N = 4;
+const SWEEP_ICE_TWINKLE_N = 6;
+// キラキラを始める進行度(氷が出そろった直後)。旧: 消え際だけ=約0.15秒しかなく見えなかった。
+const SWEEP_ICE_TWINKLE_FROM = 0.45;
 // 帯の終端で弾けるキラキラの数(波が端まで届いた合図)。
 const SWEEP_ICE_END_TWINKLE_N = 14;
 // 銃1挺ぶんの見せ方(社長指示v0.25.2939「シュッとフェードインしてきてバン!っと撃つと
@@ -15131,17 +15133,17 @@ export class PixiScene {
           const run = iA ? (iLatch ? iLatch.t : 1) : 0; // 0=まだ走っていない 1=走り切り
           // v0.25.3104(社長「赤い真っ直ぐラインの氷塊衝撃波の終わりにもキラキラ追加」):
           // 個々の氷のまわり(v3100)に加えて、**帯の終端**でもまとめて弾ける。波が端まで届いた合図。
-          if (iA && run > SWEEP_ICE_FADE_FROM) {
-            const endT = (run - SWEEP_ICE_FADE_FROM) / (1 - SWEEP_ICE_FADE_FROM); // 0→1
+          if (iA && run > SWEEP_ICE_TWINKLE_FROM) {
+            const endT = (run - SWEEP_ICE_TWINKLE_FROM) / (1 - SWEEP_ICE_TWINKLE_FROM); // 0→1
             const tipX = ifx + Math.cos(iAng) * iLen, tipY = ify + Math.sin(iAng) * iLen;
             for (let k = 0; k < SWEEP_ICE_END_TWINKLE_N; k++) {
               const h = ((k * 2654435761) % 1000) / 1000;
               const ang = h * Math.PI * 2;
               // 終端から外へ広がりながら薄れる=「弾けて散った」に見せる。
               const rad = SWEEP_ICE_MAX_PX * (0.25 + 0.9 * endT) * (0.4 + h * 0.8);
-              const a = Math.max(0, 1 - endT) * (0.55 + 0.45 * Math.sin(now / (60 + h * 70) + h * 7));
+              const a = Math.sin(Math.PI * Math.min(1, endT * 1.1)) * (0.6 + 0.4 * Math.abs(Math.sin(now / (60 + h * 70) + h * 7)));
               if (a <= 0.02) continue;
-              const r = 2.6 + h * 3.2;
+              const r = 3.6 + h * 4.2;
               o.ellipse(tipX + Math.cos(ang) * rad, tipY + Math.sin(ang) * rad * 0.6, r, r)
                 .fill({ color: 0xf0fbff, alpha: a });
             }
@@ -15169,8 +15171,13 @@ export class PixiScene {
             sp.alpha = artFade * Math.min(1, grow) * (iW ? 0.55 + 0.45 * wpI : 1) * fadeOut;
             // v0.25.3100(社長「最後少しキラキラして消えて」): 消え際だけ、氷塊のまわりで細かく瞬く。
             // 描画側のGraphicsで完結(storeへは書かない=描画は読むだけの掟)。判定ゼロ。
-            if (iA && fadeOut < 1 && fadeOut > 0.02) {
-              const twinkle = 1 - fadeOut;               // 消えるほど強く瞬く
+            // v0.25.3106(社長「氷ラインの後キラキラしてないか、みえない」): 旧実装は**消え際の
+            // 約0.15秒だけ**、しかも sin の正の半周期しか光らない計算で、実質見えていなかった。
+            // ⇒ ①窓を大幅に広げる(進行度0.45から=氷が出そろった直後から) ②常に下限の明るさを持たせる
+            //   ③粒を大きく・数を増やす。
+            if (iA && run > SWEEP_ICE_TWINKLE_FROM) {
+              const tw = (run - SWEEP_ICE_TWINKLE_FROM) / (1 - SWEEP_ICE_TWINKLE_FROM); // 0→1
+              const twinkle = Math.sin(Math.PI * Math.min(1, tw * 1.15)); // 中盤が一番強い山
               const bx = sp.position.x, by = sp.position.y;
               for (let k = 0; k < SWEEP_ICE_TWINKLE_N; k++) {
                 // 位置は決定的(乱数だとフレームごとに飛び回る)。氷ごと・粒ごとに散らす。
@@ -15178,9 +15185,9 @@ export class PixiScene {
                 const ang = h * Math.PI * 2;
                 const rad = size * (0.25 + h * 0.5);
                 const ph = Math.sin(now / (70 + h * 60) + h * 9);
-                const a = Math.max(0, ph) * twinkle * 0.9;
-                if (a <= 0.02) continue;
-                const r = 2.2 + h * 2.6;
+                const a = (0.45 + 0.55 * Math.abs(ph)) * twinkle; // 消灯させない(常に見える)
+                if (a <= 0.03) continue;
+                const r = 3.4 + h * 3.8;
                 o.ellipse(bx + Math.cos(ang) * rad, by - size * 0.45 + Math.sin(ang) * rad * 0.6, r, r)
                   .fill({ color: 0xe8f8ff, alpha: a });
               }
