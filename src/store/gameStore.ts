@@ -2017,7 +2017,12 @@ export const airMoveFor = (phase: string | undefined): AirMoveSpec | undefined =
 // --- 第二形態の通常技: 尻尾の叩きつけ → 弾の連射(社長指示v0.25.3139) ---
 // 「赤ライン予兆から発動」「尻尾の長さに連動」「(叩きつけ)からの弾連射(すでに出てる弾の機能を意図的に連射)」。
 // ★射程は定数で持たない。`glenTailReach(enemy)` が唯一の出どころ=**見えている尻尾の長さがそのまま判定**。
-export const GLEN_TAILSLAM_WINDUP_MS = 840;    // 実効700ms・赤ラインを出して静止(既存の帯技と同じ読みの長さ)
+// v0.25.3146: 実効700ms → **1050ms**。理由2つ:
+//  ①社長指示「ちゃんと振り上げて叩きつける動作入れて」= 振り上げ→落とすの2挙動を見せる尺が要る。
+//  ②回避可能性の走査(v0.25.3146)でこの技が**NG**と出た: 帯半幅46 ⇒ 抜けるのに 46+14=60px、
+//    素の足87px/sで690ms + 反応250ms = **940msが下限**。700msでは反応込みで間に合わなかった。
+//    1050msで余裕+12%。
+export const GLEN_TAILSLAM_WINDUP_MS = 1260;   // 実効1050ms・赤ラインを出して尻尾を振り上げる
 export const GLEN_TAILSLAM_ACTIVE_MS = 264;    // 実効220ms・叩きつけの瞬間(=GIANT_SWEEP_ACTIVE_MSと同値)
 export const GLEN_TAILSLAM_HALF_WIDTH = 46;    // 帯の半幅(尻尾の太さぶん。sweepの40より少し太い)
 // 叩きつけの直後に、**既にある胴体弾(glenVolleyShots)をそのまま連射**する。弾の性能・見た目・

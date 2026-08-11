@@ -48,7 +48,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
   GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH,
   // v0.25.3139(社長指示): 第二形態の通常技「尻尾の叩きつけ→弾の連射」の赤ライン予兆。
-  GLEN_TAILSLAM_WINDUP_MS, GLEN_TAILSLAM_HALF_WIDTH,
+  GLEN_TAILSLAM_WINDUP_MS, GLEN_TAILSLAM_ACTIVE_MS, GLEN_TAILSLAM_HALF_WIDTH,
   // v0.25.2483(社長指示): フルランプ速度線のゲート=「移動速度+10%以上のステータス」判定に、
   // movePlayerがランプへ渡す「対象倍率の積P」と同じ純関数を使う(判定の二重実装をしない)。
   skillRunnerSpeedMult, marksmanSpeedMult, skillWarmUpSpeedMult,
@@ -2225,6 +2225,19 @@ const CLAW_SLASH_HOLD_MS = 620; // 刻まれた痕が濃いまま残る時間
 const CLAW_SLASH_OUT_MS = 380;  // そこから薄れて消えるまで
 // (WING_SWING_MS は撤去: 翼撃は判定の active 窓そのもので一周するようになった・v0.25.2863)
 const REACH_HOLD_MS = 340;     // 触手が伸び切ってから引っ込むまで
+// ── 尻尾の叩きつけ(g-tailslam)の絵(社長指示v0.25.3146「ちゃんと振り上げて叩きつける動作」)。
+// **視覚のみ**(判定は store の帯が正本)。伸ばす先は帯の終点まで=はみ出さない(分類①)。
+// 溜め/実行の長さは store の定数(GLEN_TAILSLAM_*_MS)を1.2で割った実効値。ここに書く2つは
+// **絵の時計をそこへ合わせるための写し**なので、store側を変えたらここも合わせること。
+const TAILSLAM_WINDUP_EFF_MS = GLEN_TAILSLAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+const TAILSLAM_ACTIVE_EFF_MS = GLEN_TAILSLAM_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
+const TAILSLAM_SETTLE_MS = 900;   // 余韻(叩きつけた尻尾がゆっくり戻る)。連射中もずっと見えている長さ
+const TAILSLAM_LIFT_PX = 54;      // 振り上げの高さ(先端ほど高く上がる)
+const TAILSLAM_OVERSHOOT_PX = 10; // 叩きつけで地面より少し下まで行き過ぎる量
+const TAILSLAM_BOUNCE_PX = 7;     // 余韻の跳ね返り
+const TAILSLAM_SWELL = 0.14;      // 振り上げ中の拡大(手前に来た感じ)
+const TAILSLAM_PART_LAG = 0.13;   // 先のパーツほど遅れて動く量(ムチの波)
+const TAILSLAM_DUST_ALONG = 0.65; // 砂埃/地割れを置く位置(帯の何割の所を尻尾が叩くか)
 // 討伐の崩壊中に出し続ける画面揺れの振幅(社長指示v0.25.3125「消え切るまで画面揺れで」)。
 // 一撃の揺れ(討伐の瞬間=6 / 大技=15)と違い**2.6秒鳴り続ける**ので、強すぎると画面が読めなくなる。
 // 崩れが進むほど強くする(×0.7→×1.3)=最後にひときわ大きく揺れて、消えると同時に止む。
@@ -13518,7 +13531,8 @@ export class PixiScene {
       view.sprite.visible = true;
       // ラスボス第二形態の連結パーツ(HPで真ん中から欠ける)。第二形態でない時は隠すだけ。
       this.syncGlenParts(view, glenP2 ? glenPartCountFull(e.maxHealth > 0 ? e.health / e.maxHealth : 1) : 0,
-        fb.footX, fb.footY, Math.abs(scaleX) * tex.width / 2, sc, artFade, now);
+        fb.footX, fb.footY, Math.abs(scaleX) * tex.width / 2, sc, artFade, now,
+        glenP2 ? this.glenTailSlamPose(e, gameTime, now) : null);
       // PACING_PUZZLE.md §5.15 M15: レア(色付き)個体は本体を専用色でtint(サイズ拡大はネームド専売
       // なのでここでは触らない)。抽選なし/フラグ無効時は明示的に等倍(0xffffff)へ戻す
       // (敵の描画ビューはid単位でプール再利用されるため、リセットしないと別個体へtintが残る)。
@@ -15059,6 +15073,9 @@ export class PixiScene {
         const dustMove = gph === 'g-stomp-windup' ? 'stomp'
           : gph === 'g-jump-air' ? 'jump'          // 着地=滞空の終わりが着弾(トールのjump-attackと同じ作法)
           : gph === 'g-dive-windup' ? 'dive'       // V1(2): 急降下の着地(従来は爆発FXのみで砂埃なし)
+          // v0.25.3146: 尻尾の叩きつけも**地面を叩く動作**=同じ集合に入れる(CLAUDE.md「同じ"動作"を
+          // 持つ全員に付ける」)。付け忘れると「叩きつけたのに土埃も割れ目も出ない」になる。
+          : gph === 'g-tailslam-windup' ? 'tailslam'
           : gph === 'g-slam-windup' ? 'slam' : null;
         // 溜めの残り(=着弾までの時間)。latchFx は arming の瞬間しか durMs を読まないので、
         // ここで毎フレーム計算しても実際に使われるのは立ち上がりの1回だけ。
@@ -15067,12 +15084,19 @@ export class PixiScene {
           // 中心と大きさは技ごとに変える。着地(jump/dive)は着地点(溜め開始でロック済み。aiTargetは
           // 左上座標なので中心へ寄せる=g-dive-windupの予告円と同じ式)、それ以外は足元。
           const lands = dustMove === 'jump' || dustMove === 'dive';
-          const dx = lands ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
-          const dy = lands ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
+          // 尻尾は**帯の先の方**が地面を叩く(本体の足元ではない)。帯の65%地点に置く。
+          const tail = dustMove === 'tailslam';
+          const dx = tail ? cx + ((e.aiTargetX ?? cx) - cx) * TAILSLAM_DUST_ALONG
+            : lands ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
+          const dy = tail ? cy + ((e.aiTargetY ?? cy) - cy) * TAILSLAM_DUST_ALONG
+            : lands ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
           // 踏み鳴らしだけ大きく外へ出す(社長指示v0.25.2408・絵に隠れて見えないため)。
-          const scale = dustMove === 'stomp' ? DUST_STOMP_SCALE : DUST_SCALE;
+          // 尻尾も踏み鳴らしと同じ扱いで大きく出す(巨体の足元が中心=判定と同じ大きさだと本体に隠れて
+          // 100%見えない。CLAUDE.md「迷ったら派手側に倒す」)。
+          const scale = (dustMove === 'stomp' || dustMove === 'tailslam') ? DUST_STOMP_SCALE : DUST_SCALE;
           const dr = (dustMove === 'jump' ? (e.gJumpRadius ?? GIANT_JUMP_RADIUS)
             : dustMove === 'dive' ? GIANT_DIVE_RADIUS
+            : dustMove === 'tailslam' ? GLEN_TAILSLAM_HALF_WIDTH
             : dustMove === 'slam' ? GIANT_SLAM_HALF_WIDTH : (e.gStompRadius ?? GIANT_STOMP_RADIUS)) * scale;
           // 4つ目=「この latch 全体のうち、どこが着弾の瞬間か」。溜め中は砂埃を出さないための境目。
           const impactFrac = (toImpact + DUST_MS) > 0 ? toImpact / (toImpact + DUST_MS) : 0;
@@ -15086,11 +15110,18 @@ export class PixiScene {
         // (対象は上の dustMove と同じ集合=砂埃が出る所には必ず割れ目も出る)。
         this.latchGroundCrack(`${e.id}:crack`, dustMove !== null, toImpact, now, () => {
           const lands = dustMove === 'jump' || dustMove === 'dive';
-          const dx = lands ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
-          const dy = lands ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
-          const scale = dustMove === 'stomp' ? DUST_STOMP_SCALE : DUST_SCALE;
+          // 尻尾は**帯の先の方**が地面を叩く(本体の足元ではない)。帯の65%地点に置く。
+          const tail = dustMove === 'tailslam';
+          const dx = tail ? cx + ((e.aiTargetX ?? cx) - cx) * TAILSLAM_DUST_ALONG
+            : lands ? (e.aiTargetX ?? cx) + e.width / 2 : cx;
+          const dy = tail ? cy + ((e.aiTargetY ?? cy) - cy) * TAILSLAM_DUST_ALONG
+            : lands ? (e.aiTargetY ?? cy) + e.height / 2 : cy;
+          // 尻尾も踏み鳴らしと同じ扱いで大きく出す(巨体の足元が中心=判定と同じ大きさだと本体に隠れて
+          // 100%見えない。CLAUDE.md「迷ったら派手側に倒す」)。
+          const scale = (dustMove === 'stomp' || dustMove === 'tailslam') ? DUST_STOMP_SCALE : DUST_SCALE;
           const dr = (dustMove === 'jump' ? (e.gJumpRadius ?? GIANT_JUMP_RADIUS)
             : dustMove === 'dive' ? GIANT_DIVE_RADIUS
+            : dustMove === 'tailslam' ? GLEN_TAILSLAM_HALF_WIDTH
             : dustMove === 'slam' ? GIANT_SLAM_HALF_WIDTH : (e.gStompRadius ?? GIANT_STOMP_RADIUS)) * scale;
           return [dx, dy, dr];
         });
@@ -17954,9 +17985,62 @@ export class PixiScene {
    * **視覚のみ・判定なし**。本体より後ろに描く。スプライトのプール添字は**スロット番号**
    * (同じ絵を複数スロットが使うためパーツ番号では持てない)。
    */
+  /**
+   * 尻尾の叩きつけ(g-tailslam-*)の**尻尾のポーズ**(社長指示v0.25.3146「ちゃんと振り上げて叩きつける
+   * 動作入れて。あとこの時は尻尾伸ばして。叩きつけた後に3連射。で、余韻も入れて」)。
+   *
+   * 返すのは「軌跡どおりの位置」と「帯に沿って一直線に伸ばした位置」の**混ぜ具合**と、**持ち上げ量**。
+   * 実際の配置は syncGlenParts が行う(=パーツの並べ方の正本は1箇所のまま)。
+   *
+   * ★伸ばす先は**帯の終点まで**(それ以上伸ばさない)。パーツの連結距離 `dists[i]` をそのまま
+   * 帯の向きへ置くと、最後のパーツが**ちょうど帯の先端**に来る(判定の射程 `glenTailReach` が
+   * 同じ `glenChainDistances` から出ているため)。⇒ CLAUDE.md 分類①(判定に揃える絵)を満たす。
+   * **見栄えのために伸ばし足さないこと**——「尻尾より遠くまで殴る」絵になる。
+   */
+  private glenTailSlamPose(e: Enemy, gameTime: number, now: number):
+    { blend: number; lift: number; swell: number; ang: number } | null {
+    const gph = e.aiPhase;
+    const isWind = gph === 'g-tailslam-windup';
+    const isPost = gph === 'g-tailslam-active' || gph === 'g-tailslam-volley' || gph === 'g-tailslam-recover';
+    if (!isWind && !isPost) return null;
+    const fx = e.aiFromX ?? 0, fy = e.aiFromY ?? 0;
+    const tx = e.aiTargetX ?? 0, ty = e.aiTargetY ?? 0;
+    const ang = Math.atan2(ty - fy, tx - fx);
+    if (isWind) {
+      // 振り上げ: 溜めの進行で「軌跡どおり → 帯に沿って一直線」へ寄せつつ、上へ持ち上げる。
+      const windEff = TAILSLAM_WINDUP_EFF_MS;
+      const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / windEff));
+      const ease = 1 - Math.pow(1 - p, 2); // 後半ほどゆっくり=溜めの「タメ」
+      return { blend: ease, lift: TAILSLAM_LIFT_PX * ease, swell: 1 + TAILSLAM_SWELL * ease, ang };
+    }
+    // 叩きつけ〜余韻: activeの立ち上がりで焼いた時計を使う(volley/recoverへ移っても続く=余韻が切れない)。
+    const L = this.latchFx(`${e.id}:tailslampose`, gph === 'g-tailslam-active',
+      TAILSLAM_ACTIVE_EFF_MS + TAILSLAM_SETTLE_MS, now, () => [ang]);
+    if (!L) return null;
+    const hitF = TAILSLAM_ACTIVE_EFF_MS / (TAILSLAM_ACTIVE_EFF_MS + TAILSLAM_SETTLE_MS);
+    if (L.t < hitF) {
+      // 叩きつけ中: 持ち上げた尻尾が一気に落ちる(3乗=最後が速い)。地面より少し下まで行き過ぎる。
+      const q = L.t / hitF;
+      const drop = Math.pow(q, 3);
+      return {
+        blend: 1, lift: TAILSLAM_LIFT_PX * (1 - drop) - TAILSLAM_OVERSHOOT_PX * drop,
+        swell: 1 + TAILSLAM_SWELL * (1 - drop), ang: L.d[0],
+      };
+    }
+    // 余韻: 伸ばした尻尾が跳ね返って、ゆっくり軌跡どおりへ戻る。
+    const r = (L.t - hitF) / (1 - hitF);
+    const settle = Math.pow(1 - r, 2);
+    const bounce = Math.sin(r * Math.PI * 2.2) * settle; // 一度だけ跳ねて収まる
+    return {
+      blend: settle, lift: -TAILSLAM_OVERSHOOT_PX * settle + bounce * TAILSLAM_BOUNCE_PX,
+      swell: 1, ang: L.d[0],
+    };
+  }
+
   private syncGlenParts(
     view: ActorView, visibleCount: number,
     footX: number, footY: number, bodyHalfW: number, sc: number, alpha: number, now: number,
+    slam?: { blend: number; lift: number; swell: number; ang: number } | null,
   ): void {
     if (!view.glenParts && visibleCount <= 0) return; // 一度も出していなければ何もしない(全敵毎フレームの無駄を避ける)
     if (!view.glenParts) view.glenParts = [];
@@ -17988,9 +18072,26 @@ export class PixiScene {
       if (sp.texture !== tex) sp.texture = tex;
       const pt = sampleGlenTrail(trail, footX, footY, dists[i]);
       const bob = Math.sin(now / 520 + slot * 1.7) * 3;
-      sp.scale.set(sc, sc);
-      sp.rotation = Math.sin(now / 700 + slot * 2.1) * 0.03;
-      sp.position.set(Math.round(pt.x), Math.round(pt.y - bob));
+      let px = pt.x, py = pt.y - bob, pscale = sc, prot = Math.sin(now / 700 + slot * 2.1) * 0.03;
+      if (slam) {
+        // 尻尾の叩きつけ(v0.25.3146): 軌跡どおりの位置と「帯に沿って一直線」の位置を混ぜる。
+        // ★**先のパーツほど遅れて動く**(ムチの波)。根元は早く、尾は最後に振られて叩きつく。
+        //   遅れは0.18ずつで、尾(i=5)でも混ぜ切れるよう 1/(1-0.18*最終) で正規化しない——
+        //   代わりに blend を i ぶん先読みして clamp する(早い段階では根元だけが動く)。
+        const lag = i * TAILSLAM_PART_LAG;
+        const b = Math.max(0, Math.min(1, (slam.blend - lag) / Math.max(0.001, 1 - lag)));
+        const ex = footX + Math.cos(slam.ang) * dists[i];
+        const ey = footY + Math.sin(slam.ang) * dists[i];
+        px = pt.x + (ex - pt.x) * b;
+        py = (pt.y - bob) + (ey - (pt.y - bob)) * b;
+        // 持ち上げは「伸ばし切っているパーツほど大きく」= 根元は上がらず、先が高く振り上がる。
+        py -= slam.lift * b * (0.35 + 0.65 * (i / Math.max(1, show.length - 1)));
+        pscale = sc * (1 + (slam.swell - 1) * b);
+        prot += slam.ang * 0.05 * b; // わずかに帯の向きへ傾ぐ(倒し切らない=絵は立ったまま)
+      }
+      sp.scale.set(pscale, pscale);
+      sp.rotation = prot;
+      sp.position.set(Math.round(px), Math.round(py));
       sp.alpha = alpha;
       sp.visible = true;
     }
