@@ -21058,13 +21058,18 @@ export class PixiScene {
     const cyC = Math.min(Math.max(toScreenY(pC.y), marginTop), this.screenH - marginBottom);
     const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 220);
     for (const p of pickups) {
-      if (!p.worldDrop) continue;
-      const colorStr = AMMO_INDICATOR_COLOR[p.type];
+      // v0.25.3161(社長指示「ステージ7の宝箱は下のギリギリ画面外に設置(マークが出るくらいのとこ)」):
+      // 開幕の宝箱は**画面外に置くのが仕様**なので、マーカーが出ないと存在に気づけない。
+      // ①worldDrop(拾い物として落ちた物)でなくても通す ②距離で切らない(置き場所が仕様で決まっており、
+      // 「近くにある時だけ」の弾の作法を当てはめる意味が無い)。色は宝物と同じ金。
+      const isStartChest = p.type === 'chest' && p.chestKind === 'boss-start';
+      if (!isStartChest && !p.worldDrop) continue;
+      const colorStr = isStartChest ? '#facc15' : AMMO_INDICATOR_COLOR[p.type];
       if (!colorStr) continue;
       const tx = toScreenX(p.x + 8); // 監査v0.25.3008(A-1): post-zoom実画面座標
       const ty = toScreenY(p.y + 8);
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;
-      if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue; // 弾は近く(500px以内)のものだけ矢印表示(社長指示)
+      if (!isStartChest && Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue; // 弾は近く(500px以内)のものだけ矢印表示(社長指示)
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;

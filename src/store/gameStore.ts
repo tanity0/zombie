@@ -320,8 +320,13 @@ const buildBloodBurst = (x: number, y: number, angle: number, count: number, now
 export const XP_GAIN_MULT = 1 / 3;
 // ステージ7の開幕宝箱で与えるレベルアップ回数(社長指示v0.25.3137「3レベルアップ」)。
 export const BOSS_START_CHEST_LEVELS = 3;
-// 同・宝箱をプレイヤーの何px「目の前」に置くか(上=画面の奥方向。開幕でカメラ中央のすぐ上に見える)。
-export const BOSS_START_CHEST_AHEAD_PX = 96;
+// 同・宝箱を置く位置(社長指示v0.25.3161「下のギリギリ画面外に設置(マークが出るくらいのとこ)」)。
+// **プレイヤーの下=手前方向**へ、画面の下端をわずかに越えた所へ置く。
+//   画面の下端まで = gameBounds.height / 2(カメラはプレイヤー中心)
+//   そこへ BOSS_START_CHEST_BELOW_MARGIN_PX 足して**画面外**にする=最初は見えず、
+//   画面端マーカーだけが出る(下の pixiScene 側で宝箱にもマーカーを出すようにした)。
+// ※旧: 上へ96px(開幕でカメラ中央のすぐ上に見える)。
+export const BOSS_START_CHEST_BELOW_MARGIN_PX = 60;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
 export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 60, shotgun: 18, rifle: 24, phill: 24 };
 // How much a world/melee ammo pickup grants for each family (enemy drops, air
@@ -14122,7 +14127,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         runPickups.push({
           id: 'stage7-start-chest',
           x: spawnTL.x,
-          y: spawnTL.y - BOSS_START_CHEST_AHEAD_PX,
+          // 画面の下端(=カメラ中心からgameBounds.height/2)を少しだけ越えた所=ギリギリ画面外。
+          y: spawnTL.y + state.gameBounds.height / 2 + BOSS_START_CHEST_BELOW_MARGIN_PX,
           type: 'chest',
           value: 1,
           chestKind: 'boss-start',

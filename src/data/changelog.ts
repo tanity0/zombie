@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3161',
+    items: [
+      'ステージ7の開幕の宝箱は、画面の下端をわずかに越えた画面外に置かれるようになりました。画面端に金色のマークが出るので、それを追って拾いに行けます。',
+    ],
+  },
+  {
     version: '0.25.3160',
     items: [
       'グレンの触手は、前の1本がまだ溜めている間に次の1本が生えるようになりました。2本が同時に迫る場面が生まれます。',
