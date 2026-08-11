@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3144',
+    items: [
+      'グレンの「虚無の三唱」から逃げ切れるようになりました。詠唱をさらに長くしています(これまでは走り続けても円の外に出られませんでした)。',
+    ],
+  },
+  {
     version: '0.25.3143',
     items: [
       'グレンの触手が避けられるようになりました。1発ごとの溜めを大幅に長くしています(これまでは走っていても構造的に抜けられませんでした)。',
