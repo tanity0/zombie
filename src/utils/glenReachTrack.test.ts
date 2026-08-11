@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import {
   stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT,
   glenReachSwayRad, GLEN_REACH_SWAY_RAD,
+  glenReachBandOffsetRad, GLEN_REACH_START_OFFSET_RAD,
 } from './mimirLaserTrack';
 
 const V = 104.4;          // プレイヤーの実効歩行速度(bossTelegraph.PLAYER_WALK_PX_PER_SEC)
@@ -23,7 +24,7 @@ const caps = glenReachTrackCaps(V);
 
 /** 溜めの間ずっと追尾させ、発動の瞬間の「照準と自分のズレ」を返す(px)。 */
 const missAtFire = (playerAt: (tMs: number) => { x: number; y: number }): number => {
-  let aim = { x: 0, y: 0, vx: 0, vy: 0 }; // 照準は自分の真上から始まる(store側と同じ)
+  let aim = { x: 0, y: 0, vx: 0, vy: 0 }; // 照準は相手の真上から始まる(store側と同じ)
   for (let t = 0; t < WINDUP_MS; t += DT * 1000) {
     const p = playerAt(t);
     aim = stepLaserAim(aim, p.x, p.y, DT, caps.maxPxS, caps.accel, t / WINDUP_MS, GLEN_REACH_OVERSHOOT);
@@ -106,5 +107,40 @@ describe('触手の振り回し(ぶるーん)', () => {
   });
   it('⑤乱数を使っていない(同じ状況なら同じ振り方=読める)', () => {
     expect(glenReachSwayRad(0.5, 700)).toBe(glenReachSwayRad(0.5, 700));
+  });
+});
+
+// v0.25.3155(社長指示「離れたところからスタートして」): 帯は横を向いた状態から始まり、
+// 狙いへ寄ってくる。★**照準は動かさない**(照準をずらす案は掃引で全滅=走り続けるだけで避けられた)。
+describe('触手の帯: 離れた所から寄ってくる + ぶるーん(合計オフセット)', () => {
+  it('①溜めの開始では大きく横を向いている(=離れた所から始まる)', () => {
+    expect(Math.abs(glenReachBandOffsetRad(0, 0, 0))).toBeCloseTo(GLEN_REACH_START_OFFSET_RAD, 6);
+  });
+  it('②振り切り窓が始まるまでに0へ閉じる(寄り切ってから振り回しへ渡す)', () => {
+    const { from } = GLEN_REACH_OVERSHOOT;
+    // 進行が進むほど開きは小さくなる(単調に寄ってくる=途中で開き直さない)
+    let prev = Infinity;
+    for (let p = 0; p < from; p += 0.01) {
+      const approach = Math.abs(glenReachBandOffsetRad(p, 0, 0) - glenReachSwayRad(p, 0));
+      expect(approach).toBeLessThanOrEqual(prev + 1e-9);
+      prev = approach;
+    }
+  });
+  it('★③最後は必ず0(帯が照準そのものを指す=最後の向きが運にならない)', () => {
+    for (const p of [0.78, 0.9, 1.0]) {
+      for (const t of [0, 250, 800, 1499]) {
+        for (const i of [0, 1, 2]) expect(glenReachBandOffsetRad(p, t, i)).toBe(0);
+      }
+    }
+  });
+  it('④発ごとに左右が入れ替わる(3連発が同じ動きに見えない)', () => {
+    const a = glenReachBandOffsetRad(0, 0, 0), b = glenReachBandOffsetRad(0, 0, 1);
+    expect(Math.sign(a)).toBe(-Math.sign(b));
+    expect(Math.sign(glenReachBandOffsetRad(0, 0, 2))).toBe(Math.sign(a)); // 3発目は1発目と同じ側
+  });
+  it('⑤窓の中では振り回しがそのまま乗る(寄せの段は終わっている)', () => {
+    for (const p of [0.3, 0.5, 0.7]) {
+      expect(glenReachBandOffsetRad(p, 300, 0)).toBeCloseTo(glenReachSwayRad(p, 300), 6);
+    }
   });
 });

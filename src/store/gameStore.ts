@@ -184,7 +184,7 @@ import {
   mimirLaserBreakOnMeleeHit,
   // v0.25.3145(社長指示「触手はミーミルレーザーと同じく切り返しで避ける」): 触手の溜め中の
   // 追尾照準は**レーザーと同じ物理**で動かす。数値・式をこちらへ複製しない(文法を1本に保つ)。
-  mimirLaserPhase, stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT, glenReachSwayRad,
+  mimirLaserPhase, stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT, glenReachBandOffsetRad,
 } from '../utils/mimirLaserTrack';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
@@ -9370,8 +9370,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiTargetX: ecx + lockDirX * GLEN_REACH_LENGTH, aiTargetY: ecy + lockDirY * GLEN_REACH_LENGTH,
                   aiStartedAt: gameTime, hateTarget: aim.side,
                   gReachIndex: 0, // 3連発の1発目(社長指示v0.25.3126)
-                  // v0.25.3145: 追尾照準は**相手の真上から**始める(=最初は完全にロックオンされている。
-                  // そこから逃げると慣性ぶん遅れて付いてくる)。速度0スタート=「じわじわ加速」が効く。
+                  // 追尾照準は相手の真上から・速度0で始める(=「じわじわ加速」が効く)。
+                  // ★「離れた所から始まる」見た目は**帯の角度**側で作る(glenReachBandOffsetRad)。
+                  //   照準をずらす案は掃引で全滅した(走り続けるだけで避けられる)=v0.25.3155の記録。
                   gReachAimX: aim.x, gReachAimY: aim.y, gReachAimVX: 0, gReachAimVY: 0,
                 };
               case 'tailslam': {
@@ -10235,8 +10236,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                   // 帯の向きに**振り回し**を足す。★足すのは帯の角度だけで、照準(gReachAim)は
                   // 動かさない=追尾の慣性・切り返しの読みは1ミリも変わらない。
                   // 振り回しは狙いが固まる前に必ず0へ戻る(=最後にどこを向くかが運にならない)。
-                  const rSway = glenReachSwayRad(rProg, gameTime - (enemy.aiStartedAt ?? gameTime));
-                  const rAng = Math.atan2(rStep.y - ecy, rStep.x - ecx) + rSway;
+                  // v0.25.3155: 「離れた所から寄ってくる」+「ぶるーんぶるーん」の合計。発ごとに左右交互。
+                  const rOfs = glenReachBandOffsetRad(
+                    rProg, gameTime - (enemy.aiStartedAt ?? gameTime), enemy.gReachIndex ?? 0,
+                  );
+                  const rAng = Math.atan2(rStep.y - ecy, rStep.x - ecx) + rOfs;
                   return {
                     ...enemy, ...phaseFields, vx: 0, vy: 0,
                     gReachAimX: rStep.x, gReachAimY: rStep.y, gReachAimVX: rStep.vx, gReachAimVY: rStep.vy,

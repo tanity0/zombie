@@ -118,6 +118,23 @@ export const GLEN_REACH_SWAY_RAD = 0.22;
 export const GLEN_REACH_SWAY_HZ = 2.4;
 
 /**
+ * 帯が「離れた所から始まる」ための開き角(rad)(社長指示v0.25.3155「離れたところからスタートして」)。
+ * 溜めの開始でこの角度だけ横を向いていて、振り切り窓が始まるまでに0へ閉じる(=狙いへ寄ってくる)。
+ *
+ * ★**照準(gReachAim)そのものは動かさない。動かすのは帯の角度だけ**——ここが肝。
+ *   最初に照準を横へずらす案を実装して掃引したが、**どの角度でも成立しなかった**:
+ *     開始角0.2rad → 立ち止まりが安全(80px) / 0.4rad以上 → **走り続けるだけで避けられる**(48〜104px)
+ *   照準が最初に失った距離は取り戻せないので、「離れた所から始める」と追尾が根本的に弱くなる。
+ *   振り切り窓の終わりを早めて収束時間を稼ぐ案も2軸で掃引したが、成立する組み合わせは無かった。
+ *   ⇒ **見た目(帯)と追尾(照準)を分ける**。振り回し(GLEN_REACH_SWAY_RAD)と同じ考え方で、
+ *     プレイヤーが見る動きは大きくしつつ、捕まる/避けられるの文法は1ミリも変えない。
+ *
+ * ★左右は**発ごとに交互**(乱数を使わない=同じ状況なら同じ動き)。3連発が
+ * 「左から→右から→左から」と入ってきて、**3発とも同じに見えない**。
+ */
+export const GLEN_REACH_START_OFFSET_RAD = 0.85; // 約49°
+
+/**
  * 触手の帯に足す振り回しの角度(rad)。`progress01` は溜めの進行(0..1)、`elapsedMs` は溜め開始からの経過。
  * 振り切り窓(GLEN_REACH_OVERSHOOT)の内側でだけ振れ、窓の中央で最大・両端で0になる。
  * 乱数なし=同じ状況なら同じ振り方(プレイヤーが読める)。
@@ -128,6 +145,25 @@ export const glenReachSwayRad = (progress01: number, elapsedMs: number): number 
   const u = (progress01 - from) / (to - from);       // 窓の中での位置 0..1
   const envelope = Math.sin(Math.PI * u);            // 山なり(両端0=繋ぎ目で跳ねない)
   return Math.sin((elapsedMs / 1000) * GLEN_REACH_SWAY_HZ * Math.PI * 2) * GLEN_REACH_SWAY_RAD * envelope;
+};
+
+/**
+ * 帯に足す角度の**合計**(rad) = 「離れた所から寄ってくる」+「ぶるーんぶるーん」。
+ * store はこれ1本だけを呼ぶ(2つを別々に足す形にすると、片方だけ掛け忘れる)。
+ *
+ * 時系列: 進行0 で ±0.85rad(約49°)横 → 振り切り窓の開始(0.22)までに0へ閉じる
+ *        → 窓の中で約2往復ぶるーん → 窓の終わり(0.78)で0 → 以後ロックまで0のまま。
+ * ★**最後は必ず0**(=帯が照準そのものを指す)。ここが崩れると最後の向きが運になり予告が成立しない。
+ */
+export const glenReachBandOffsetRad = (
+  progress01: number, elapsedMs: number, shotIndex: number,
+): number => {
+  const { from } = GLEN_REACH_OVERSHOOT;
+  const side = shotIndex % 2 === 0 ? 1 : -1;
+  // 寄ってくる段: 進行0→from で 1→0 へ。二乗イージング=最初は大きく開いていて、寄る時は滑らかに収まる。
+  const approach = progress01 >= from ? 0
+    : GLEN_REACH_START_OFFSET_RAD * side * Math.pow(1 - progress01 / from, 2);
+  return approach + glenReachSwayRad(progress01, elapsedMs);
 };
 
 export const stepLaserAim = (
