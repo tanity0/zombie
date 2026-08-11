@@ -184,7 +184,7 @@ import {
   mimirLaserBreakOnMeleeHit,
   // v0.25.3145(社長指示「触手はミーミルレーザーと同じく切り返しで避ける」): 触手の溜め中の
   // 追尾照準は**レーザーと同じ物理**で動かす。数値・式をこちらへ複製しない(文法を1本に保つ)。
-  mimirLaserPhase, stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT, glenReachAimStart,
+  stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT, glenReachAimStart,
 } from '../utils/mimirLaserTrack';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
@@ -1946,6 +1946,12 @@ export const GLEN_REACH_CD_MS = 9600;               // 実効8.0s
 // ⇒ **長さを理由にこの数を減らさないこと。** 学習点④「回数で読ませる」の一族でもある
 //   (三連突進/虚無の三唱と同じく固定3=数えられる)。
 export const GLEN_REACH_SHOTS = 3;                  // 何発撃つか(固定3=数えられる)
+// ★社長指示v0.25.3159b「触手2.3秒のところで次の触手発動(つまり少し被る)」。
+// 溜め(実効2600ms)より**短い**間隔なので、**前の触手がまだ溜めている間に次が生える**
+// =同時に2本が存在する。1本ずつの状態機械では表現できないため、技の間だけ
+// `enemy.gReachShots` で複数本を持ち回る形にした(v0.25.3159b)。
+// 被り時間 = 2600 − 2300 = **300ms**。
+export const GLEN_REACH_INTERVAL_MS = 2760;         // 実効2300ms(次の触手が生えるまで)
 export const GLEN_REACH_GAP_MS = 288;               // 実効240ms(次の溜めまでの「間」。赤い帯は出ない)
 export const GLEN_REACH_LENGTH = 900;               // 設計書どおり(長さ900)
 export const GLEN_REACH_HALF_WIDTH = 28;            // 設計書どおり(半幅28)
@@ -9373,9 +9379,12 @@ export const useGameStore = create<GameState>((set, get) => ({
                   giantDelayedHits: [...(giantDelayedHits ?? []), ...pools],
                 };
               }
-              case 'reach':
-                // 伸びる触手: 細く長いT3帯(長さ900/半幅28)が一直線に伸びる。即時単発カプセルヒット
-                // (bite/slamと同型=windup終わりにpumpkinBlastsへ1回だけ積む。giantDelayedHitsは使わない)。
+              case 'reach': {
+                // 伸びる触手: 細く長いT3帯(長さ900/半幅28)。溜めの間ずっと照準が振り子のように振れ、
+                // 溜め終わりに1本ぶんのカプセルヒットを積む。v0.25.3159bから**複数本が同時に存在する**
+                // (gReachShots)。aiPhaseUntil は「最初の1本が判定を出す時刻」で、以後は
+                // g-reach-windup 側が gReachShots を見て技の終わりを決める。
+                const st0 = glenReachAimStart(ecx, ecy, aim.x, aim.y, 0);
                 return {
                   aiPhase: 'g-reach-windup', aiPhaseUntil: atkUntil(GLEN_REACH_WINDUP_MS),
                   aiFromX: ecx, aiFromY: ecy,
@@ -9385,9 +9394,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                   // v0.25.3157: 照準は**狙いから横へ離した位置**・速度0で始まる=振り子の初期位置。
                   // ここが0だと振り子は始まらない(位置エネルギーが無い)。溜めの長さ・振り子モードと
                   // **3つセット**で成立している(どれか1つ欠けると掃引どおり破綻する)。
-                  ...(() => { const st = glenReachAimStart(ecx, ecy, aim.x, aim.y, 0);
-                    return { gReachAimX: st.x, gReachAimY: st.y, gReachAimVX: 0, gReachAimVY: 0 }; })(),
+                  gReachShots: [{ t0: gameTime, ax: st0.x, ay: st0.y, avx: 0, avy: 0, idx: 0 }],
                 };
+              }
               case 'tailslam': {
                 // v0.25.3139(社長指示): 尻尾の叩きつけ。**赤ライン予兆から発動**・**尻尾の長さに連動**。
                 // 射程は `glenTailReach`(=胴体パーツの連結距離の末端)だけを読む。定数で持たないので
@@ -10209,73 +10218,72 @@ export const useGameStore = create<GameState>((set, get) => ({
 
             // ==== M67: stage-7限定「伸びる触手」(reach) ====
             case 'g-reach-windup': {
-              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                const rfx = enemy.aiFromX ?? ecx, rfy = enemy.aiFromY ?? ecy;
-                const rtx = enemy.aiTargetX ?? ecx, rty = enemy.aiTargetY ?? ecy;
-                pumpkinBlasts.push({
-                  x: (rfx + rtx) / 2, y: (rfy + rty) / 2, radius: GLEN_REACH_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-reach',
-                  capsule: { fx: rfx, fy: rfy, tx: rtx, ty: rty, halfWidth: GLEN_REACH_HALF_WIDTH },
-                });
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-active', aiPhaseUntil: atkUntil(GLEN_REACH_ACTIVE_MS) };
+              // ★v0.25.3159b: このcaseは「触手の技that全体」を回す。**複数本が同時に存在する**ので、
+              // 1本ずつ windup→active→recover と進む形をやめ、ここで全部の本を面倒見る。
+              //   ①間隔(2.3秒)ごとに次の1本を生やす(最大 GLEN_REACH_SHOTS 本)
+              //   ②溜め中の本は毎tick照準を進める(振り子)
+              //   ③溜め(2.6秒)を過ぎた本は判定を1回積んで fired にする
+              //   ④全部 fired になったら硬直へ
+              const rEffWind = GLEN_REACH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+              const rEffGap = GLEN_REACH_INTERVAL_MS / ENEMY_ATTACK_SPEED_MULT;
+              const rCaps = glenReachTrackCaps((player.speed ?? PLAYER_BASE_SPEED) * GAME_SPEED);
+              const rAim = resolveBossHateAim(enemy, { x: pcx, y: pcy }, summons, gameTime);
+              const shots = [...(enemy.gReachShots ?? [])];
+              // ① 次の1本を生やす(前の本が生えてから rEffGap 経過・本数上限まで)
+              const rLast = shots[shots.length - 1];
+              if (shots.length < GLEN_REACH_SHOTS && rLast && gameTime - rLast.t0 >= rEffGap) {
+                // ★本ごとに狙いを取り直す(社長指示v0.25.3126「ターゲティングしなおして」)。
+                // 開始位置は左右交互=同じ動きに見えない。
+                const stN = glenReachAimStart(ecx, ecy, rAim.x, rAim.y, shots.length);
+                shots.push({ t0: gameTime, ax: stN.x, ay: stN.y, avx: 0, avy: 0, idx: shots.length });
               }
-              // ★v0.25.3145(社長指示「ミーミルレーザーと同じく切り返しで避ける」): 溜め中は照準が
-              // **慣性を持って追いかけてくる**。更新は `stepLaserAim` を**そのまま**呼ぶ(ミーミルと同じ物理)。
-              // 終盤 MIMIR_LASER_LOCK_MS は動かさない(=「もう狙いは変わらない」の合図。これもレーザーと同じ)。
-              {
-                const rUntil = enemy.aiPhaseUntil ?? 0;
-                if (mimirLaserPhase(gameTime, rUntil) === 'track') {
-                  // 狙う相手はヘイト対象(=召喚物へ向くこともある)。lockDirと同じ解決関数を使う。
-                  const rAim = resolveBossHateAim(enemy, { x: pcx, y: pcy }, summons, gameTime);
-                  // 追尾キャップは**対象の実効速度**でスケール(速度ビルドでも「走るだけで振り切れる」に
-                  // ならない)。★キャップは**触手専用**(v0.25.3152・社長指示で速度↑/慣性↑)。
-                  // ミーミルの掃引済みの値を触手の都合で動かさないための分離=物理は共有・数値は技ごと。
-                  const rCaps = glenReachTrackCaps((player.speed ?? PLAYER_BASE_SPEED) * GAME_SPEED);
-                  const rEffWind = GLEN_REACH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
-                  const rProg = Math.max(0, Math.min(1, 1 - (rUntil - gameTime) / rEffWind));
-                  const rStep = stepLaserAim(
-                    {
-                      x: enemy.gReachAimX ?? rAim.x, y: enemy.gReachAimY ?? rAim.y,
-                      vx: enemy.gReachAimVX ?? 0, vy: enemy.gReachAimVY ?? 0,
-                    },
-                    rAim.x, rAim.y, deltaTime, rCaps.maxPxS, rCaps.accel, rProg,
-                    // v0.25.3153(社長指示「もっと追い越す動きが必要。追い越してくれないと避けれない」):
-                    // 振り切りの窓をミーミルより広く・後ろまで・ほぼノーブレーキに。
-                    GLEN_REACH_OVERSHOOT,
-                  );
-                  // 赤い帯の終点は**照準から毎tick導出**する(帯は本体から照準の向きへ長さ900)。
-                  // 絵と判定はどちらもこの aiFrom/aiTarget を読む=「赤いのに当たらない」を作らない。
-                  // v0.25.3154(社長指示「もっとぶるーんぶるーんってはみ出す動きを大きく」):
-                  // 帯の向きに**振り回し**を足す。★足すのは帯の角度だけで、照準(gReachAim)は
-                  // 動かさない=追尾の慣性・切り返しの読みは1ミリも変わらない。
-                  // 振り回しは狙いが固まる前に必ず0へ戻る(=最後にどこを向くかが運にならない)。
-                  // ★帯は**照準そのもの**を指す。ここに飾りの角度を足さないこと(v0.25.3156):
-                  // v0.25.3154/3155 で「ぶるーん(サイン波)」と「開始角を台本で閉じる」を足したが、
-                  // **社長の実機判断は「慣性がわざとらしい」=不採用**。物理で動いていない飾りは、
-                  // 大きく動かすほど嘘に見える。慣性の見え方は追尾の数値(速度/加速度)だけで作る。
-                  const rAng = Math.atan2(rStep.y - ecy, rStep.x - ecx);
-                  return {
-                    ...enemy, ...phaseFields, vx: 0, vy: 0,
-                    gReachAimX: rStep.x, gReachAimY: rStep.y, gReachAimVX: rStep.vx, gReachAimVY: rStep.vy,
-                    aiFromX: ecx, aiFromY: ecy,
-                    aiTargetX: ecx + Math.cos(rAng) * GLEN_REACH_LENGTH,
-                    aiTargetY: ecy + Math.sin(rAng) * GLEN_REACH_LENGTH,
-                  };
+              // ②③ 各本を進める
+              let rNewest: typeof shots[number] | undefined;
+              for (let i = 0; i < shots.length; i++) {
+                const sh = shots[i];
+                if (sh.fired) continue;
+                const age = gameTime - sh.t0;
+                if (age >= rEffWind) {
+                  // 溜め終わり=判定。帯は**その瞬間の照準の向き**へ長さ900(絵と判定は同じ値を読む)。
+                  const ang = Math.atan2(sh.ay - ecy, sh.ax - ecx);
+                  const tx = ecx + Math.cos(ang) * GLEN_REACH_LENGTH;
+                  const ty = ecy + Math.sin(ang) * GLEN_REACH_LENGTH;
+                  pumpkinBlasts.push({
+                    x: (ecx + tx) / 2, y: (ecy + ty) / 2, radius: GLEN_REACH_HALF_WIDTH,
+                    damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-reach',
+                    capsule: { fx: ecx, fy: ecy, tx, ty, halfWidth: GLEN_REACH_HALF_WIDTH },
+                  });
+                  shots[i] = { ...sh, fired: true };
+                  continue;
                 }
+                const stp = stepLaserAim(
+                  { x: sh.ax, y: sh.ay, vx: sh.avx, vy: sh.avy },
+                  rAim.x, rAim.y, deltaTime, rCaps.maxPxS, rCaps.accel,
+                  Math.max(0, Math.min(1, age / rEffWind)),
+                  GLEN_REACH_OVERSHOOT,
+                );
+                shots[i] = { ...sh, ax: stp.x, ay: stp.y, avx: stp.vx, avy: stp.vy };
+                rNewest = shots[i];
               }
-              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
-            }
-            case 'g-reach-active': {
-              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-                // v0.25.3126: まだ撃つ弾が残っていれば**短い「間」**へ(次の溜めまでの待ち)。
-                // 最後の1発だけ本来の硬直=反撃窓へ入る。
-                const rMore = (enemy.gReachIndex ?? 0) + 1 < GLEN_REACH_SHOTS;
+              // ④ 全部撃ち終わったら硬直(=反撃窓)へ
+              if (shots.length >= GLEN_REACH_SHOTS && shots.every(sh => sh.fired)) {
                 return {
-                  ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-recover',
-                  aiPhaseUntil: atkUntil(rMore ? GLEN_REACH_GAP_MS : scriptRestMs(GLEN_REACH_RECOVER_MS)),
+                  ...enemy, ...phaseFields, vx: 0, vy: 0, gReachShots: undefined,
+                  aiPhase: 'g-reach-recover', aiPhaseUntil: atkUntil(scriptRestMs(GLEN_REACH_RECOVER_MS)),
                 };
               }
-              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+              // aiFrom/aiTarget は**最新の1本**を写す(既存の描画・ゴースト・記録がここを読む)。
+              const rShow = rNewest ?? shots.find(sh => !sh.fired);
+              const rAng = rShow ? Math.atan2(rShow.ay - ecy, rShow.ax - ecx) : 0;
+              return {
+                ...enemy, ...phaseFields, vx: 0, vy: 0, gReachShots: shots,
+                gReachIndex: shots.length - 1,
+                aiFromX: ecx, aiFromY: ecy,
+                ...(rShow ? {
+                  aiTargetX: ecx + Math.cos(rAng) * GLEN_REACH_LENGTH,
+                  aiTargetY: ecy + Math.sin(rAng) * GLEN_REACH_LENGTH,
+                } : {}),
+              };
             }
             case 'g-reach-recover': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {

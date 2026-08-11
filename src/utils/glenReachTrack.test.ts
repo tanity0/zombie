@@ -13,7 +13,9 @@ import { describe, it, expect } from 'vitest';
 import {
   stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT, glenReachAimStart,
 } from './mimirLaserTrack';
-import { GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
+import {
+  GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH, ENEMY_ATTACK_SPEED_MULT, GLEN_REACH_INTERVAL_MS,
+} from '../store/gameStore';
 
 const V = 104.4;          // プレイヤーの実効歩行速度(bossTelegraph.PLAYER_WALK_PX_PER_SEC)
 // ★実装の定数を**そのまま読む**(テストに写すと、調整した時に片方だけ古くなって嘘の合格になる)。
@@ -59,6 +61,14 @@ describe('触手の追尾: 避け方が「切り返し」一択になってい�
   it('④早すぎる反転は再捕捉される(「とりあえず反転」では避けられない)', () => {
     // 溜めが長くなった(v0.25.3157)ので「早すぎ」は 2000ms 前より前。
     expect(missAtFire(cutBack(2000))).toBeLessThan(ESCAPE_PX);
+  });
+
+  // v0.25.3159b(社長指示「触手2.3秒のところで次の触手発動(つまり少し被る)」)
+  it('⑧次の触手は前の触手の溜めが終わる前に生える(=必ず被る)', () => {
+    const windEff = GLEN_REACH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+    const gapEff = GLEN_REACH_INTERVAL_MS / ENEMY_ATTACK_SPEED_MULT;
+    expect(gapEff).toBeLessThan(windEff);          // 被らないと社長指示を満たさない
+    expect(windEff - gapEff).toBeGreaterThan(100); // 「少し」でも見て分かる長さはある
   });
 
   it('⑤遅すぎる反転は間に合わない(見てからでは遅い)', () => {

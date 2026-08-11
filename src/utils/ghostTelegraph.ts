@@ -104,7 +104,7 @@ put(LEDGER, [
   'g-quad-breath-windup', 'g-quad-breath-active', 'g-wing-windup', 'g-wing-active',
   'g-trishot-windup', 'g-trishot-active',
   'g-sweepbeam-windup', 'g-sweepbeam-active', 'g-talon-windup', 'g-boon-windup',
-  'g-reach-windup', 'g-reach-active',
+  'g-reach-windup', // v0.25.3159b: 触手は同時に複数本出るが、帯の始点/終点は最新の1本を写す
   'g-tailslam-windup', 'g-tailslam-active', // v0.25.3139: 尻尾の叩きつけ(帯=aiFrom→aiTarget)
   // bossState 系(トール/天使/裏ボス/idol): 語尾 '-windup' を既存表が帯として拾う。
   'mdash-windup', 'harai-windup', 'tate-windup', 'sweep-windup', 'downslash-windup',

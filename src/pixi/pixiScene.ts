@@ -46,7 +46,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   GIANT_BOLT_WINDUP_MS, GIANT_BOLT_BURST_GAP_MS, GIANT_BOLT_FAN_STEP_RAD, // v0.25.3034/3046: 掃射SMG/咆哮弾の銃の絵
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
-  GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH, GLEN_REACH_LENGTH,
+  GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH, GLEN_REACH_LENGTH, GLEN_REACH_SHOTS,
   // v0.25.3139(社長指示): 第二形態の通常技「尻尾の叩きつけ→弾の連射」の赤ライン予兆。
   GLEN_TAILSLAM_WINDUP_MS, GLEN_TAILSLAM_ACTIVE_MS, GLEN_TAILSLAM_HALF_WIDTH, GLEN_TAILSLAM_VOLLEY_GAP_MS,
   // v0.25.2483(社長指示): フルランプ速度線のゲート=「移動速度+10%以上のステータス」判定に、
@@ -2279,7 +2279,7 @@ const ATK_ART_BITE_LOWER = 1;
 const ATK_ART_CLAW = 2;
 const ATK_ART_WING_L = 3;
 const ATK_ART_WING_R = 4;
-const ATK_ART_TENTACLE = 5;
+// (5番は空き。触手は同時複数本になったため ATK_ART_TENTACLE_0 の連番枠へ移した=v0.25.3159b)
 const ATK_ART_FIST = 6;
 const ATK_ART_GUN_L = 7;   // 三連射: 左(短い銃)
 const ATK_ART_GUN_R = 8;   // 三連射: 右(中くらい)
@@ -2333,6 +2333,10 @@ const ATK_ART_ICE_END_SPARK_0 = ATK_ART_ICE_SPARK_0 + SWEEP_ICE_N * SWEEP_ICE_SP
 const ATK_ART_BOLT_GUN_0 = ATK_ART_ICE_END_SPARK_0 + SWEEP_ICE_END_SPARK_N;          // 咆哮弾: 3挺
 const ATK_ART_SWEEPBEAM_GUN = ATK_ART_BOLT_GUN_0 + 3;                                // 掃射: 1挺
 const ATK_ART_NIHIL = ATK_ART_SWEEPBEAM_GUN + 1;                                     // 虚無の三唱: 円1枚
+// v0.25.3159b: 触手は**同時に最大 GLEN_REACH_SHOTS 本**出る(社長指示「2.3秒で次=少し被る」)。
+// ★1枠を共有すると最後に描いた1本しか出ない。**本数ぶんの連番枠**を末尾に確保する
+//   (ATK_ART_TENTACLE(=5)の隣は既に拳/銃が使っているので、そこから連番にはできない)。
+const ATK_ART_TENTACLE_0 = ATK_ART_NIHIL + 1;
 // 虚無の三唱の円形素材(社長支給v0.25.3123)。唱1/2/3で `fx/nihil-1` `-2` `-3` を差し替える。
 // **絵そのものが寄っていく**(1=広い墓地を遠くから → 2=近づいて大きくなる → 3=同じ構図が血で染まる)。
 // 社長「段々寄っていく感じ / どん!どん!どん!って」= 寄りは絵が担い、衝撃は下の踏み込み+画面揺れが担う。
@@ -15961,47 +15965,34 @@ export class PixiScene {
           }
         }
       }
-      // (4) 伸びる触手(g-reach)。**カプセル判定に沿って回転・伸長**(台帳の指定)。溜めの進行に
-      // 合わせて根元から先端へ伸び、溜め終わり(=判定が出る瞬間)にちょうど帯の全長へ届く。
+      // (4) 伸びる触手(g-reach)。**カプセル判定に沿って回転・伸長**(台帳の指定)。
+      // ★v0.25.3159b: **同時に複数本**あるので、本ごとに1枚ずつ描く(latchのキーも本ごと)。
+      // ★v0.25.3159(社長指示「溜めの時は少ししか伸びず、当たり判定の時に一気に触手を伸ばす」):
+      //   溜め中は全長の REACH_WINDUP_EXTEND までしか伸ばさず、判定が出た瞬間に REACH_SNAP_MS で
+      //   一気に全長へ。溜め中に伸び切っていると「もう届いている」ように見えて発動の瞬間が立たない。
       {
-        const reachWind = gph === 'g-reach-windup';
-        const reachTo = reachWind ? Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime) : 0;
-        const reachTotal = reachTo + REACH_HOLD_MS;
-        const rcL = this.latchFx(`${e.id}:reachart`, reachWind, reachTotal, now, () => {
-          const rfx2 = e.aiFromX ?? cx, rfy2 = e.aiFromY ?? cy;
-          const rtx2 = e.aiTargetX ?? cx, rty2 = e.aiTargetY ?? cy;
-          return [rfx2, rfy2, Math.atan2(rty2 - rfy2, rtx2 - rfx2), Math.hypot(rtx2 - rfx2, rty2 - rfy2) || 1,
-            reachTotal > 0 ? reachTo / reachTotal : 0,
-            reachTotal]; // d[5]=latch全体の長さ(ms)。伸び切る時間を「割合」へ換算するのに使う
-        });
-        if (rcL) {
-          // ★v0.25.3145: 触手は溜め中ずっと**照準が追尾して帯が動く**ようになった(store側)。
-          // latchFx は立ち上がりで1回しか焼かないので、そのままだと**絵だけ最初の向きに置き去り**になる
-          // =CLAUDE.md分類①(判定に揃える絵)の違反。溜め中は毎フレーム焼き直す。
-          // (`d` は latch が保持している配列そのものなので、書き換えると**発動後の残光もこの最終の向き**
-          //  =「当たった向きに触手が残る」になる。残光が動かないのは従来どおり。)
-          if (reachWind) {
-            const rfx3 = e.aiFromX ?? cx, rfy3 = e.aiFromY ?? cy;
-            const rtx3 = e.aiTargetX ?? cx, rty3 = e.aiTargetY ?? cy;
-            rcL.d[0] = rfx3; rcL.d[1] = rfy3;
-            rcL.d[2] = Math.atan2(rty3 - rfy3, rtx3 - rfx3);
-            rcL.d[3] = Math.hypot(rtx3 - rfx3, rty3 - rfy3) || 1;
+        const rWindEff2 = GLEN_REACH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+        const rTotal = rWindEff2 + REACH_HOLD_MS;
+        const rHitF = rTotal > 0 ? rWindEff2 / rTotal : 0;
+        const rSnapF = rTotal > 0 ? REACH_SNAP_MS / rTotal : 1;
+        for (let ri = 0; ri < GLEN_REACH_SHOTS; ri++) {
+          const sh = (e.gReachShots ?? []).find(x => x.idx === ri);
+          const live = sh !== undefined && !sh.fired;
+          const rcL = this.latchFx(`${e.id}:reachart${ri}`, live, rTotal, now, () => [cx, cy, 0, 1]);
+          if (!rcL) continue;
+          // 溜め中は毎フレーム焼き直す(照準が動くので、焼きっぱなしだと絵だけ置き去りになる)。
+          // 発動後はここを通らない=**当たった向きのまま**残光が消えていく。
+          if (live && sh) {
+            rcL.d[0] = cx; rcL.d[1] = cy;
+            rcL.d[2] = Math.atan2(sh.ay - cy, sh.ax - cx);
+            rcL.d[3] = GLEN_REACH_LENGTH;
           }
-          const hitF = rcL.d[4];
-          // ★v0.25.3159(社長指示「溜めの時は少ししか伸びず、当たり判定の時に一気に触手を伸ばす」):
-          // 溜め中は REACH_WINDUP_EXTEND(全長の2割)までしか伸ばさず、**判定が出た瞬間に
-          // REACH_SNAP_MS で一気に全長へ**。溜め中に伸び切っていると「もう届いている」ように見えて、
-          // 発動の瞬間が立たない(=どこが当たる瞬間か分からない)。
-          // ※赤い帯は従来どおり**最初から全長**で出る=「どこまで届くか」の情報は減らない
-          //   (CLAUDE.md: 危険を伝える絵=赤い帯 と 武器の絵=触手 は役割が別)。
-          const snapF = (1 - hitF) > 0
-            ? Math.min(1, REACH_SNAP_MS / Math.max(1, rcL.d[5])) : 1; // latch全体に対する snap の割合
-          const grow = rcL.t < hitF
-            ? REACH_WINDUP_EXTEND * (hitF > 0 ? rcL.t / hitF : 1)
+          const grow = rcL.t < rHitF
+            ? REACH_WINDUP_EXTEND * (rHitF > 0 ? rcL.t / rHitF : 1)
             : Math.min(1, REACH_WINDUP_EXTEND
-                + (1 - REACH_WINDUP_EXTEND) * (snapF > 0 ? (rcL.t - hitF) / snapF : 1));
-          const fade = rcL.t < hitF ? 1 : Math.max(0, 1 - (rcL.t - hitF) / (1 - hitF));
-          this.drawTentacle(view, rcL.d[0], rcL.d[1], rcL.d[2], rcL.d[3] * grow,
+                + (1 - REACH_WINDUP_EXTEND) * (rSnapF > 0 ? (rcL.t - rHitF) / rSnapF : 1));
+          const fade = rcL.t < rHitF ? 1 : Math.max(0, 1 - (rcL.t - rHitF) / (1 - rHitF));
+          this.drawTentacle(view, ri, rcL.d[0], rcL.d[1], rcL.d[2], rcL.d[3] * grow,
             GLEN_REACH_HALF_WIDTH, artFade * fade);
         }
       }
@@ -16194,43 +16185,42 @@ export class PixiScene {
             sbFarY = sbfy + Math.sin(sbCurAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH);
           drawGiantCapsuleZone(sbNearX, sbNearY, sbFarX, sbFarY, GIANT_SWEEPBEAM_HALF_WIDTH, 0.34, 0.6);
         }
-      } else if (gph === 'g-reach-windup' || gph === 'g-reach-active') {
+      } else if (gph === 'g-reach-windup') {
         // M67 stage-7「伸びる触手」(reach): bite/slamと同じ意匠の細長い帯(長さ900/半幅28)。
         // 見た目の間合いより遥かに遠くまで届く=社長裁定の学習点③そのもの(帯の長さ自体で表現)。
-        const rfx = e.aiFromX ?? cx, rfy = e.aiFromY ?? cy;
-        const rtx = e.aiTargetX ?? cx, rty = e.aiTargetY ?? cy;
-        const rprog = gph === 'g-reach-windup'
-          ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GLEN_REACH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
-          : 1;
-        const rFill = gph === 'g-reach-active' ? 0.3 : (0.12 + 0.22 * rprog) + 0.08 * gPulse;
-        drawGiantCapsuleZone(rfx, rfy, rtx, rty, GLEN_REACH_HALF_WIDTH, rFill, (0.32 + 0.4 * rprog) + 0.15 * gPulse);
-        // ★v0.25.3147(社長指示「触手にもミーミルみたいに発射タイミングがわかるやつ入れて」):
-        // カラオケの物差し。**ミーミルのレーザーと同じ作法**(§6.33・v0.25.2951社長指示):
-        //  - 塗りが根元→**プレイヤーの足元**へ伸び、**先端(白い印)が自分に触れた瞬間=発動**。
-        //    満杯の位置が「自分自身」なので見失わない(線の途中に目盛りを置くと分かりづらい)。
-        //  - **線そのものは全長のまま**。プレイヤー位置で切ると、その先が「赤くないのに当たる」に
-        //    なって掟違反(塗り=表示だけの時計・判定は1ミリも変えていない)。
-        //  - 終盤(狙いが固定される LOCK 段)は帯全体が白くフラッシュ=「もう避ける向きは変わらない」。
-        // 色は**赤系**にする(レーザーは紫=カウンター不可。触手は従来どおり赤の文法)。
-        if (gph === 'g-reach-windup') {
-          const rlen = Math.hypot(rtx - rfx, rty - rfy) || 1;
-          const rux = (rtx - rfx) / rlen, ruy = (rty - rfy) / rlen;
-          const plyR = useGameStore.getState().player;
-          const rpd = Math.min(
-            Math.hypot(plyR.x + plyR.width / 2 - rfx, plyR.y + plyR.height / 2 - rfy),
-            GLEN_REACH_LENGTH,
-          );
-          const rtipX = rfx + rux * rpd * rprog, rtipY = rfy + ruy * rpd * rprog;
+        // ★v0.25.3159b: **同時に複数本**が存在する(社長指示「2.3秒のところで次の触手発動=少し被る」)。
+        // 1本ずつ aiFrom/aiTarget を読む形をやめ、store が持つ `gReachShots` を全部なめて描く。
+        // 判定も store が同じ配列から出すので、本数がズレることは無い。
+        const rWindEff = GLEN_REACH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+        const plyR = useGameStore.getState().player;
+        const plyCX = plyR.x + plyR.width / 2, plyCY = plyR.y + plyR.height / 2;
+        for (const sh of e.gReachShots ?? []) {
+          if (sh.fired) continue;
+          const rprog = Math.max(0, Math.min(1, (gameTime - sh.t0) / rWindEff));
+          const rang = Math.atan2(sh.ay - cy, sh.ax - cx);
+          const rfx = cx, rfy = cy;
+          const rtx = cx + Math.cos(rang) * GLEN_REACH_LENGTH, rty = cy + Math.sin(rang) * GLEN_REACH_LENGTH;
+          const rFill = (0.12 + 0.22 * rprog) + 0.08 * gPulse;
+          drawGiantCapsuleZone(rfx, rfy, rtx, rty, GLEN_REACH_HALF_WIDTH, rFill, (0.32 + 0.4 * rprog) + 0.15 * gPulse);
+          // ★v0.25.3147(社長指示「触手にもミーミルみたいに発射タイミングがわかるやつ入れて」):
+          // カラオケの物差し。**ミーミルのレーザーと同じ作法**(§6.33・v0.25.2951社長指示):
+          //  - 塗りが根元→**プレイヤーの足元**へ伸び、**先端(白い印)が自分に触れた瞬間=発動**。
+          //    満杯の位置が「自分自身」なので見失わない(線の途中に目盛りを置くと分かりづらい)。
+          //  - **線そのものは全長のまま**。プレイヤー位置で切ると、その先が「赤くないのに当たる」に
+          //    なって掟違反(塗り=表示だけの時計・判定は1ミリも変えていない)。
+          //  - 終盤(狙いが固定される LOCK 段)は帯全体が白くフラッシュ=「もう避ける向きは変わらない」。
+          // 色は**赤系**にする(レーザーは紫=カウンター不可。触手は従来どおり赤の文法)。
           // ★描く先は `o`(=tele)ではなく **overlayTop**(v0.25.3150・社長報告「触手のカラオケ見えない。
           // 恐らく裏にいるのかも」): 触手の絵(atkArtSprite)は container の末尾に積まれるので
-          // tele/overlay より**上**に来る=ゲージが絵の下に完全に隠れていた。**見えないゲージは
-          // 存在しないのと同じ**なので、この線だけ最前面のレイヤーへ移す。
+          // tele/overlay より**上**に来る=ゲージが絵の下に完全に隠れていた。
           // (赤い帯そのものは移さない。移すと触手の絵が赤で塗り潰されて何の武器か分からなくなる。)
+          const rpd = Math.min(Math.hypot(plyCX - rfx, plyCY - rfy), GLEN_REACH_LENGTH);
+          const rtipX = rfx + Math.cos(rang) * rpd * rprog, rtipY = rfy + Math.sin(rang) * rpd * rprog;
           const ot = view.overlayTop;
           ot.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 8, color: 0xff6b6b, alpha: 0.9, cap: 'round' });
           ot.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 3, color: 0xffffff, alpha: 0.95, cap: 'round' });
           ot.circle(rtipX, rtipY, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
-          if ((e.aiPhaseUntil ?? gameTime) - gameTime <= LASER_TRACK_LOCK_MS) {
+          if (rWindEff * (1 - rprog) <= LASER_TRACK_LOCK_MS) {
             const rflick = 0.5 + 0.5 * Math.sin(now / 45);
             ot.moveTo(rfx, rfy).lineTo(rtx, rty).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * rflick, cap: 'round' });
           }
@@ -18532,9 +18522,11 @@ export class PixiScene {
    * 幅 = 現在の伸び(0→判定の長さ)、高さ = 判定の太さ(2*halfWidth)そのもの。
    * 根元は素材の左端なので、アンカーを帯の始点に置けば「根元から先端へ伸びる」がそのまま出る。
    */
-  private drawTentacle(view: ActorView, fx: number, fy: number, angle: number, len: number, halfWidth: number, alpha: number): void {
+  // v0.25.3159b: 触手は**同時に複数本**出るので、本ごとに別のスプライト枠(slot)を使う
+  // (1枠を共有すると、最後に描いた1本しか出ない=他が消える)。
+  private drawTentacle(view: ActorView, slot: number, fx: number, fy: number, angle: number, len: number, halfWidth: number, alpha: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01 || len <= 1) return;
-    const sp = this.atkArtSprite(view, ATK_ART_TENTACLE, 'fx/tentacle-reach');
+    const sp = this.atkArtSprite(view, ATK_ART_TENTACLE_0 + slot, 'fx/tentacle-reach');
     if (!sp) return;
     sp.anchor.set(TENTACLE_ANCHOR_X, TENTACLE_ANCHOR_Y);
     sp.rotation = angle;

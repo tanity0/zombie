@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3160',
+    items: [
+      'グレンの触手は、前の1本がまだ溜めている間に次の1本が生えるようになりました。2本が同時に迫る場面が生まれます。',
+    ],
+  },
+  {
     version: '0.25.3159',
     items: [
       'グレンの触手は、溜めの間は少ししか伸びず、当たる瞬間に一気に伸び切るようになりました。赤い予告は今までどおり最初から全長で出ます。',

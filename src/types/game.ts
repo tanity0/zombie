@@ -435,7 +435,7 @@ export interface Enemy {
   //   g-boon-windup/g-boon-recover                                 = 血の弧(boon・Phase1〜。5個の
   //     T5遅延円もwindup開始と同時に積む。爆ぜた後はfloorUntilまで床として残り、接触ダメージが続く
   //     =combatTick.tsのapplyGlenFloorDamageが毎フレーム判定)
-  //   g-reach-windup/g-reach-active/g-reach-recover                 = 伸びる触手(reach・Phase1〜。
+  //   g-reach-windup/g-reach-recover                                = 伸びる触手(reach・Phase1〜。
   //     immediate単発カプセルヒット=bite/slamと同型。activeはactive時間の見た目のみ)
   //   g-nihil-chant1/g-nihil-chant2/g-nihil-chant3/g-nihil-recover  = 虚無の三唱(nihil・大技・
   //     Phase2=HP60%〜。3つの明示ステートを固定シーケンスで遷移=学習点④「数える」。予告SEの
@@ -461,7 +461,7 @@ export interface Enemy {
     | 'g-sweepbeam-windup' | 'g-sweepbeam-active' | 'g-sweepbeam-recover'
     | 'g-talon-windup' | 'g-talon-recover'
     | 'g-boon-windup' | 'g-boon-recover'
-    | 'g-reach-windup' | 'g-reach-active' | 'g-reach-recover'
+    | 'g-reach-windup' | 'g-reach-recover' // v0.25.3159b: activeは廃止(複数本を同時に回すため)
     | 'g-nihil-chant1' | 'g-nihil-chant2' | 'g-nihil-chant3' | 'g-nihil-recover'
     // v0.25.3139(社長指示): グレン第二形態の通常技「尻尾の叩きつけ→弾の連射」。
     // 叩きつけの射程は**尻尾(連結パーツ)の長さそのもの**=パーツが減れば短くなる(見たまま=判定)。
@@ -538,6 +538,14 @@ export interface Enemy {
   // v0.25.3126(社長指示「触手は1秒置きにターゲティングしなおして発動3連発」): 触手の何発目か(0始まり)。
   // 三連突進(gQuadIndex)と同じ作法=1つの技の中で反復する回数を敵が持ち回る。
   gReachIndex?: number;
+  /**
+   * v0.25.3159b(社長指示「触手2.3秒のところで次の触手発動(つまり少し被る)」):
+   * **同時に存在する触手**の配列。溜め(2.6秒)より短い間隔(2.3秒)で次を出すため、
+   * 1本ずつの状態機械では表現できなくなった=技の間だけボスが複数本を持ち回る。
+   * t0=この触手が生えた gameTime / a*=追尾照準の位置と速度 / idx=何本目 / fired=判定を出し終えたか。
+   * ※`aiFromX/aiTargetX` は**最新の1本**を写す(既存の描画・ゴースト・記録がそこを読むため)。
+   */
+  gReachShots?: { t0: number; ax: number; ay: number; avx: number; avy: number; idx: number; fired?: boolean }[];
   // v0.25.3145(社長指示「触手、ミーミルレーザーと同じく切り返しで避ける3連技に変更」):
   // 溜め中に**慣性を持って追いかけてくる照準**の位置と速度。ミーミルのレーザーと同じ
   // `stepLaserAim`(mimirLaserTrack.ts)で更新する=避け方の文法を1本に保つ。
