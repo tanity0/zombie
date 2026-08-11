@@ -126,7 +126,8 @@ export type SfxKey =
   | 'screamer-cry'   // 変異体(叫喚型)の叫喚(発動)SE
   | 'gate-clear'     // 強襲(関所)を生きて凌いだ時の突破ジングル
   | 'thor-sweep'     // 裏ボス トールの払い(横払い)SE(社長提供)
-  | 'thor-thrust';   // 裏ボス トールの突きSE(社長提供)
+  | 'thor-thrust'    // 裏ボス トールの突きSE(社長提供)
+  | 'glen-nihil';    // グレン「虚無の三唱」(お墓技)SE(社長提供・壊れたラジオ加工)。長尺→フェードで止める
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // UI選択音(社長提供SE)。レベルアップの選択肢タップ等に使用。
@@ -353,6 +354,20 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // トール(ステージ5裏ボス)の払い/突きSE(社長提供)。攻撃実行タイミングで1回。
   'thor-sweep': { src: `${import.meta.env.BASE_URL}audio/sfx/thor-sweep.mp3`, volume: 1.0, minIntervalMs: 60 },
   'thor-thrust': { src: `${import.meta.env.BASE_URL}audio/sfx/thor-thrust.mp3`, volume: 1.0, minIntervalMs: 60 },
+  // グレン「虚無の三唱」(お墓技)のSE(社長提供・v0.25.3141)。壊れたラジオから流れる籠った音に加工済み
+  // (低音カット+2.2kHz以上カット+歪み+不規則な音量の揺れ+砂嵐/放電音、テンポ112%)。
+  // ★元クリップは15.7秒の曲で、技は約3.8秒(詠唱0.8×3 + 硬直1.4)しかない。社長裁定=B案
+  // 「曲のまま鳴らして技が終わったらフェードアウトで止める」⇒ maxDurationMs で技の尺に切り、
+  // fadeOutMs で硬直中に消える。**heli-intro と同じ作法**(上限を切らないとフェードは曲尾=15秒後に
+  // 掛かり、技中には一度も聞こえない)。
+  // 詠唱ごとの「どん!どん!どん!」(hunter-alert + 画面揺れ + 3段階の絵)は従来どおり。これはその下に敷く層。
+  'glen-nihil': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/glen-nihil.mp3`,
+    volume: 0.75,
+    minIntervalMs: 400,
+    maxDurationMs: 3800,
+    fadeOutMs: 1200,
+  },
   // ヘリコプター登場シーンのSE(社長提供・登場開始時に1回)。飛び去り(末尾)でフェードアウト(社長指示)。
   // ★元クリップは長尺(数十秒)。maxDurationMs 無しだと fadeOutMs はクリップ末尾(数十秒後)に掛かり
   //   登場シーン(約3秒)中には聞こえない=「フェードアウトしない」。登場尺に合わせて上限を切り、

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3141',
+    items: [
+      'グレンの「虚無の三唱」に専用の音が付きました。壊れたラジオから流れているような、籠った音です。',
+    ],
+  },
+  {
     version: '0.25.3140',
     items: [
       '【不具合修正】グレン第二形態の新技「尻尾の叩きつけ」が一度も出ていませんでした。出るようになりました。',

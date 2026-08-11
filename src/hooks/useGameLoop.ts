@@ -7735,6 +7735,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             || gPhase === 'g-nihil-chant1' || gPhase === 'g-nihil-chant2' || gPhase === 'g-nihil-chant3';
           if (isGiantWindupNow && giantWindupSfxRef.current !== gPhase) {
             playSfx('hunter-alert');
+            // v0.25.3141(社長支給素材): 虚無の三唱(お墓技)だけ、専用SE(壊れたラジオ)を**下に敷く**。
+            // ★1唱目だけで鳴らす(chant2/3では鳴らさない)——15.7秒の曲なので、詠唱ごとに鳴らすと
+            //   3本重なって濁る。「どん!どん!どん!」(hunter-alert+画面揺れ+3段階の絵)は上の1行と
+            //   既存の演出のままなので、社長指示「いまのどん!どん!どん!は残したい」を崩さない。
+            // 尺の始末(技3.8秒 < 曲15.7秒)は audioManager 側の maxDurationMs/fadeOutMs が持つ
+            // =B案「曲のまま鳴らして技が終わったらフェードアウト」。
+            if (gPhase === 'g-nihil-chant1') playSfx('glen-nihil');
           }
           giantWindupSfxRef.current = isGiantWindupNow ? gPhase : undefined;
         }
