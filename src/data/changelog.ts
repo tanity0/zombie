@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3156',
+    items: [
+      'グレンの触手から、左右に振り回す動きと、横を向いた状態から始まる動きを取り消しました。狙いの動きは追尾そのものだけで決まります。',
+    ],
+  },
+  {
     version: '0.25.3155',
     items: [
       'グレンの触手が、大きく横を向いた状態から始まって狙いへ寄ってくるようになりました。3連発は左から・右から・左からと入れ替わります。',
