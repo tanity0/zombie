@@ -85,7 +85,7 @@ import {
 } from '../utils/idolScript';
 import {
   MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED,
-  ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS, ACRASIEL_WARP_TELEGRAPH_MS,
+  ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS, ACRASIEL_WARP_TELEGRAPH_MS, ACRASIEL_BURST_WINDUP_MS,
   MIGUEL_DASH_WINDUP_MS, MIGUEL_DASH_MOVE_MS, MIGUEL_DASH_STRIKE_MS,
   URI_THRUST_WINDUP_MS, URI_THRUST_MOVE_MS, URI_THRUST_STRIKE_MS,
 } from '../utils/angelBossTick';
@@ -14305,8 +14305,12 @@ export class PixiScene {
       }
       // ---- ラフィ(§6.28-8 #2・理不尽修正・CLAUDE.md「明確なバグ修正」の例外=?rafiscript=0でも
       // 直ったまま): 飛び掛かりの着地予告(T2)。トール専用ブロックに閉じていたため天使には出ていなかった
-      // 欠陥の修正(§6.28-1-3欠陥4)。着地点はjump-windup/jump-attack共通でaiTargetX/Yに既にロックされて
-      // いる(新旧どちらの実装も同じ式=gameStore側の値は変えていない)。半径はTHOR_JUMP_RADIUSと同値(=70)。
+      // 欠陥の修正(§6.28-1-3欠陥4)。半径はTHOR_JUMP_RADIUSと同値(=70)。
+      // ★このコメントは**v0.25.3148まで嘘だった**: 「着地点はjump-windup/jump-attack共通でロック済み」と
+      // 書いてあったが、実装(angelBossTick)は **jump-attackへの遷移時**にロックしており、
+      // 溜め700msの間ここが描いていた円は**前の技の残留座標=まったく別の場所**だった
+      // (回避可能性の走査v0.25.3146で発覚)。v0.25.3148で**実装を溜め開始ロックへ直した**ので、
+      // 今はこの記述どおりになっている。**コメントと実装が食い違ったら実装を疑うのではなく両方見る**。
       else if (e.type === 'rafi' && (bs === 'jump-windup' || bs === 'jump-attack')) {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
@@ -14457,18 +14461,32 @@ export class PixiScene {
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, ACRASIEL_SPEAR_RADIUS, 0xff3b3b, 0.2 + 0.45 * t + 0.12 * pulse);
         else o.ellipse(tx, ty, ACRASIEL_SPEAR_RADIUS, ACRASIEL_SPEAR_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
       }
-      // ---- アクラシエル: 収縮→爆発=T2大円(即時)。「最大の反撃窓」(§6.28-19) ----
-      else if (scriptActive && e.type === 'acrasiel' && bs === 'burst') {
+      // ---- アクラシエル: 収縮→爆発=T2大円。「最大の反撃窓」(§6.28-19) ----
+      // ★v0.25.3148(バグ修正): **溜め(burst-windup 1200ms)の間、赤い円が一度も出ていなかった**。
+      // 判定は実行(burst)の1フレーム目から成立するので、**赤い円が出た瞬間=もう当たっている**
+      // =予告0msだった(回避可能性の走査v0.25.3146で発覚)。溜めからも円を出す。
+      // 円は**本体中心**(狙いのロックが要らない)ので、溜め中に出しても位置がズレることはない。
+      // 塗りは他の溜めと同じく進行で濃くする=「今どのくらい溜まったか」が読める。
+      else if (scriptActive && e.type === 'acrasiel' && (bs === 'burst' || bs === 'burst-windup')) {
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-        o.ellipse(cx, cy, ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).fill({ color: 0xff2a2a, alpha: (0.18 + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
+        const bwind = bs === 'burst-windup';
+        const bprog = bwind
+          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_BURST_WINDUP_MS))
+          : 1;
+        o.ellipse(cx, cy, ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).fill({ color: 0xff2a2a, alpha: ((bwind ? 0.06 + 0.12 * bprog : 0.18) + 0.12 * pulse) * TELEGRAPH_FILL_MULT });
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
-        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, ACRASIEL_BURST_RADIUS_VIS, 0xff3b3b, 0.5 + 0.3 * pulse);
-        else o.ellipse(cx, cy, ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.5 + 0.3 * pulse });
+        const bring = (bwind ? 0.2 + 0.3 * bprog : 0.5) + 0.3 * pulse;
+        if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, ACRASIEL_BURST_RADIUS_VIS, 0xff3b3b, bring);
+        else o.ellipse(cx, cy, ACRASIEL_BURST_RADIUS_VIS, ACRASIEL_BURST_RADIUS_VIS).stroke({ width: 2, color: 0xff3b3b, alpha: bring });
         // FX-V2b #2: 結晶の槍の断片が4〜6片(ACRASIEL_BURST_FRAG_COUNT)放射する(既存リングに添える・②)。
-        const burstActiveT = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_BURST_ACTIVE_MS_VIS));
-        for (let i = 0; i < ACRASIEL_BURST_FRAG_COUNT; i++) {
-          const fragAng = (Math.PI * 2 / ACRASIEL_BURST_FRAG_COUNT) * i;
-          this.drawAcrasielBurstFragment(view, i, cx, cy, fragAng, burstActiveT);
+        // ※断片は**実行中だけ**(溜め中に破片が飛ぶと「もう爆発した」に見える)。
+        const burstActiveT = bwind ? -1
+          : Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / ACRASIEL_BURST_ACTIVE_MS_VIS));
+        if (burstActiveT >= 0) {
+          for (let i = 0; i < ACRASIEL_BURST_FRAG_COUNT; i++) {
+            const fragAng = (Math.PI * 2 / ACRASIEL_BURST_FRAG_COUNT) * i;
+            this.drawAcrasielBurstFragment(view, i, cx, cy, fragAng, burstActiveT);
+          }
         }
       }
       // ---- アクラシエル: 単眼レーザー(小技)=T6線。唯一「図形を出す」小技(§6.28-19「向きが無い」の例外) ----

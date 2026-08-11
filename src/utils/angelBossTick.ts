@@ -247,7 +247,10 @@ const ACRASIEL_WARP_WINDUP_MS = 800;
 export const ACRASIEL_WARP_TELEGRAPH_MS = 1000; // export=描画(pixiScene)が同じ値を読む(v0.25.2893で二重管理を廃止)
 const ACRASIEL_WARP_RECOVER_MS = withRecoverFloor(600);
 const ACRASIEL_WARP_IMPACT_RADIUS = 92;   // ★未決事項: 「衝撃」の半径は設計書に無い(GRENADE_BLAST_RADIUS流用)。
-const ACRASIEL_BURST_WINDUP_MS = 1200;
+// export=描画(pixiScene)が同じ値を読む。v0.25.3148で溜め中も赤円を出すようになったため
+// (それまで溜めの絵が無く、この値は判定側にしか使われていなかった)。手写しのミラーを作らないこと
+// ——ACRASIEL_WARP_TELEGRAPH_MS で実際に事故った型(v0.25.2893)。
+export const ACRASIEL_BURST_WINDUP_MS = 1200;
 const ACRASIEL_BURST_ACTIVE_MS = 300;
 const ACRASIEL_BURST_RECOVER_MS = withRecoverFloor(900);
 const ACRASIEL_BURST_RADIUS = 140;        // ★未決事項: 「大円」の半径は設計書に無い叩き台。
@@ -1293,6 +1296,15 @@ export const runRafiTick = (
         } else {
           patch.bossState = 'jump-windup';
           patch.bossStateUntil = newGameTime + RAFI_JUMP_WINDUP_MS;
+          // ★v0.25.3148(バグ修正): **着地点は溜め(jump-windup)の開始でロックする**。
+          // 旧実装は jump-attack への遷移時にロックしていたため、溜め700msの間に描かれる赤い円が
+          // **前の技の残留 aiTargetX/Y=まったく別の場所**を指していた(回避可能性の走査v0.25.3146で
+          // 発覚。pixiScene側のコメントは「windupでロック済み」と書いてあり実装と食い違っていた)。
+          // ⇒ 予告時間が実質360ms(滞空ぶん)しか無く、しかもその前の700msは**嘘の位置**だった。
+          // 掟W4「予告を出したら向きは変えない」= 出す時にロックする、が正しい形。
+          const jaim = rafiHateAim();
+          patch.aiFromX = rcx; patch.aiFromY = rcy;
+          patch.aiTargetX = jaim.x; patch.aiTargetY = jaim.y; patch.hateTarget = jaim.side;
         }
       }
     }
@@ -1336,16 +1348,20 @@ export const runRafiTick = (
         rr.rejumps += 1;
         patch.bossState = 'jump-windup';
         patch.bossStateUntil = newGameTime + RAFI_JUMP_WINDUP_MS;
+        // 再ジャンプも「溜め開始でロック」(v0.25.3148・上と同じ理由)。
+        const rjAim = rafiHateAim();
+        patch.aiFromX = rcx; patch.aiFromY = rcy;
+        patch.aiTargetX = rjAim.x; patch.aiTargetY = rjAim.y; patch.hateTarget = rjAim.side;
       } else {
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
       }
     } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
       patch.bossState = 'jump-attack';
       patch.bossStateUntil = newGameTime + RAFI_JUMP_MS;
+      // ★着地点(aiTargetX/Y)は**溜め開始でロック済み**なので、ここでは狙い直さない
+      // (v0.25.3148。狙い直すと「赤い円を見て避けた先へ追ってくる」=予告が嘘になる)。
+      // 飛び出し位置(aiFromX/Y)だけは実際に飛ぶ瞬間の位置へ更新する=弧の始点。
       patch.aiFromX = rcx; patch.aiFromY = rcy;
-      // BOT_AND_GHOST.md §2.8 G2.5: 着地点=pcx/pcyの代わりにヘイト対象の中心。
-      const jumpAim = resolveBossHateAim(rafi, { x: pcx, y: pcy }, store.summons, newGameTime);
-      patch.aiTargetX = jumpAim.x; patch.aiTargetY = jumpAim.y; patch.hateTarget = jumpAim.side;
     }
   } else if (st === 'jump-attack') {
     const fx0 = rafi.aiFromX ?? rcx, fy0 = rafi.aiFromY ?? rcy;
@@ -1478,6 +1494,9 @@ export const runRafiTickLegacy = (
       } else {
         patch.bossState = 'jump-windup';
         patch.bossStateUntil = newGameTime + RAFI_JUMP_WINDUP_MS;
+        // v0.25.3148: 旧実装側も同じ形に揃える(片方だけ直すと ?rafiscript=0 で嘘の円が残る)。
+        patch.aiFromX = rcx; patch.aiFromY = rcy;
+        patch.aiTargetX = pcx; patch.aiTargetY = pcy;
       }
     }
   } else if (st === 'bone') {
@@ -1501,14 +1520,16 @@ export const runRafiTickLegacy = (
         rr.rejumps += 1;
         patch.bossState = 'jump-windup';
         patch.bossStateUntil = newGameTime + RAFI_JUMP_WINDUP_MS;
+        patch.aiFromX = rcx; patch.aiFromY = rcy;
+        patch.aiTargetX = pcx; patch.aiTargetY = pcy;
       } else {
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, rafi);
       }
     } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
       patch.bossState = 'jump-attack';
       patch.bossStateUntil = newGameTime + RAFI_JUMP_MS;
+      // 着地点は溜め開始でロック済み(v0.25.3148)。飛び出し位置だけ更新。
       patch.aiFromX = rcx; patch.aiFromY = rcy;
-      patch.aiTargetX = pcx; patch.aiTargetY = pcy;
     }
   } else if (st === 'jump-attack') {
     const fx0 = rafi.aiFromX ?? rcx, fy0 = rafi.aiFromY ?? rcy;
