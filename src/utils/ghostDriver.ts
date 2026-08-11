@@ -37,6 +37,12 @@ import {
   punishWindowsOpen, activePunishContext, punishModeStat, PUNISH_DEFAULT_MODE,
   type PunishContext, type PunishMode, type PunishProfile,
 } from './punishWindow'; // GHOST-CMD-2A(§2.18追補): 隙の窓判定は計測側と共有の純関数
+// GHOST-COUNTER-PARITY(社長指示「プレイヤーと揃えろ」): カウンターが成立しうるスイングの周期は
+// プレイヤーの COUNTER_WINDOW+COUNTER_COOLDOWN と**同じ値**にする。値を手写しすると変更時にズレる
+// (CLAUDE.md の前例)ため、定数そのものを import する。GHOST_MELEE_RANGE(store非依存の複製値)とは
+// 事情が違う: あちらは「意思決定側の間合いの目安」で多少ズレても実害が小さいが、こちらは社長が
+// 明示的に「プレイヤーの値と揃えろ」と指示した数値なので複製ではなくimportを選ぶ。
+import { COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore';
 
 // ---- プロファイル(playerTraits.PlayerProfileと同じノブ形。循環import回避のため型は独立定義) ----
 export interface GhostProfile {
@@ -236,7 +242,14 @@ export const GHOST_LEASH_PX = 600;      // これを超えたらプレイヤー�
 // MELEE_RADIUS(gameStore.ts)=74 の複製値。store非依存を保つため import せず複製する
 // (playerTraits.ts / playtestBot.ts の MELEE_ENGAGE_DIST と同じ前例)。
 export const GHOST_MELEE_RANGE = 74;
-const GHOST_MELEE_COOLDOWN_MS = 600;   // 叩き台(実機調整前提)
+const GHOST_MELEE_COOLDOWN_MS = 600;   // 叩き台(実機調整前提)。通常近接スイングの間隔=不変(社長指示)。
+/**
+ * GHOST-COUNTER-PARITY: カウンターが成立しうるスイングだけの周期(プレイヤーの820ms=
+ * COUNTER_WINDOW+COUNTER_COOLDOWNをimportして加算。値そのものを手写ししない)。
+ * **通常近接(GHOST_MELEE_COOLDOWN_MS=600)には掛けない**——掛けると通常近接まで遅くなってしまい、
+ * 社長指示「通常近接まで遅くしてはいけない」に反する。ゲートは下の counterMeleeReady のみに使う。
+ */
+export const GHOST_COUNTER_MELEE_PERIOD_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
 const GHOST_MOVE_BAND_PX = 40;         // preferredDistの許容帯(叩き台)
 // v0.25.2470(社長裁定「雑魚は基本的に避けつつボスと戦う」): 雑魚回避の反発半径と混合の強さ(叩き台)。
 export const GHOST_MOB_AVOID_PX = 90;
@@ -521,6 +534,11 @@ export interface GhostSelf {
   lastMeleeAt: number;  // ms
   counterPendingAt?: number;    // カウンター相当の機会が開いた時刻(undefined=機会なし)
   counterWillAttempt?: boolean; // その機会で抽選済みの「試みるか」
+  /**
+   * GHOST-COUNTER-PARITY: 最後に「カウンターするつもりで」melee actionを出した時刻(ms・Date.now基準)。
+   * 通常近接の lastMeleeAt とは別枠(通常近接まで遅くしないため)。undefined=まだ一度も試みていない。
+   */
+  lastCounterAttemptAt?: number;
   moveRoll?: GhostMoveRoll;     // G4b: 進行中の技への反応ロール(undefined=技なし/フォールバック運転)
   /** §2.12(1): 危険(予告/脅威)を最初に認知した時刻。reactionMs後に回避を開始する。undefined=危険なし。 */
   dangerSeenAt?: number;
@@ -582,6 +600,15 @@ export interface GhostDecision {
   lastMeleeAt: number;
   counterPendingAt?: number;
   counterWillAttempt?: boolean;
+  lastCounterAttemptAt?: number; // GHOST-COUNTER-PARITY: 次tickへ持ち越す(GhostSelfと同じ意味)
+  /**
+   * GHOST-COUNTER-PARITY(掟3「意図しないスイングで請求を積まない」): この tick の action==='melee' が
+   * **カウンターするつもりの振り**だったか。true の時だけ呼び出し側(useGameLoop)は請求(claim)を積む。
+   * counterWatching分岐(意図してカウンターへ行った)経由でのみ true。meleeBias抽選/punishRushの
+   * 通常近接では常に false(ボスがたまたま「成立しうる状態」でも、ghostDriverが狙って振ったのでなければ
+   * 請求を積まない=意図と請求を一致させる)。
+   */
+  meleeIsCounterAttempt: boolean;
   moveRoll?: GhostMoveRoll; // G4b: 次tickへ持ち越す(技の解決でundefinedに戻る)
   dangerSeenAt?: number;    // §2.12(1): 次tickへ持ち越す(記憶が切れたらundefinedに戻る)
   dangerLastAt?: number;    // GHOST-BULLET-TECH A: 最後に危険が見えた時刻(記憶の失効起点)
@@ -614,6 +641,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       facing: ux !== 0 ? (ux > 0 ? 1 : -1) : ghost.facing,
       lastShotAt: ghost.lastShotAt, lastMeleeAt: ghost.lastMeleeAt,
       counterPendingAt: undefined, counterWillAttempt: false,
+      lastCounterAttemptAt: ghost.lastCounterAttemptAt, meleeIsCounterAttempt: false,
       moveRoll: undefined, dangerSeenAt: undefined, dangerLastAt: undefined, orbitSign: ghost.orbitSign,
       // 弾技のtank記憶は持ち越す(標的が1tick居ないだけで在弾は飛び続けているため。期限で自然に切れる)。
       tankedBulletKey: ghost.tankedBulletKey, tankedBulletUntil: ghost.tankedBulletUntil,
@@ -798,12 +826,21 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // 攻撃判定。
   const meleeReady = nowMs - ghost.lastMeleeAt >= GHOST_MELEE_COOLDOWN_MS;
   const gunReady = nowMs - ghost.lastShotAt >= weapon.gunIntervalMs;
+  // GHOST-COUNTER-PARITY(社長指示1「CDを820ms周期へ。プレイヤーのCOUNTER_WINDOW/COUNTER_COOLDOWNを
+  // importして足す」): カウンターが成立しうるスイングだけをこの周期で塞ぐ。通常近接(meleeReady=
+  // 600ms)はこのゲートの対象外=不変(「通常近接まで遅くしてはいけない」)。
+  const counterMeleeReady = ghost.lastCounterAttemptAt === undefined
+    || nowMs - ghost.lastCounterAttemptAt >= GHOST_COUNTER_MELEE_PERIOD_MS;
 
   let action: GhostDecision['action'] = 'none';
   let lastShotAt = ghost.lastShotAt;
   let lastMeleeAt = ghost.lastMeleeAt;
   let counterPendingAt = ghost.counterPendingAt;
   let counterWillAttempt = ghost.counterWillAttempt ?? false;
+  let lastCounterAttemptAt = ghost.lastCounterAttemptAt;
+  // GHOST-COUNTER-PARITY(社長指示3「意図しないスイングで請求を積まない」): この tick の melee が
+  // 「カウンターするつもりの振り」だった時だけ true にする(counterWatching分岐の成立時のみ)。
+  let meleeIsCounterAttempt = false;
 
   if (counterWatching) {
     // カウンター相当: reactionMs(反応遅延・clamp済み)+counterChance(試行確率)で抽選
@@ -829,9 +866,10 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
           ghostAimLeadMs(ghostAimSlowness01(reactionMs, GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS)),
         )
       : nowMs - counterPendingAt >= reactionMs;
-    if (counterWillAttempt && meleeReady && aimReady) {
-      action = 'melee'; lastMeleeAt = nowMs;
+    if (counterWillAttempt && meleeReady && aimReady && counterMeleeReady) {
+      action = 'melee'; lastMeleeAt = nowMs; lastCounterAttemptAt = nowMs;
       counterPendingAt = undefined; counterWillAttempt = false;
+      meleeIsCounterAttempt = true;
     }
   } else {
     // 窓が無い、または**見切った**(§2.12: 約1秒待って成立しなければ離脱)。見切りの時は
@@ -856,6 +894,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   return {
     moveX, moveY, action, targetId: target.id, facing,
     lastShotAt, lastMeleeAt, counterPendingAt, counterWillAttempt,
+    lastCounterAttemptAt, meleeIsCounterAttempt,
     moveRoll, dangerSeenAt, dangerLastAt, orbitSign, tankedBulletKey, tankedBulletUntil,
     // GHOST-CMD-2A: 隙の文脈とモードを次tickへ持ち越す(窓が閉じたら両方undefined=通常へ戻る)。
     punishContext: punishContext ?? undefined, punishMode,

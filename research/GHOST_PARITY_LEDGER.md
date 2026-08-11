@@ -72,13 +72,39 @@ COUNTER_CRIT_LEDGER.md §1・§9.3・§10 が正本。ゴースト側は`ghostCo
 | # | 系統 | プレイヤー成立条件/場所 | ゴースト現状 | メモ |
 |---|---|---|---|---|
 | 4-1 | 弾反射(窓400ms中の敵弾反射) | `combatTick.ts:447`(`applyEnemyProjectileHits`) | ✅**同一(v0.25.2525)** | **GHOST-REFLECT-MELEE-SUBS 発注A で解消**: 反射1回分を `applyCounterReflect(projId, now, subject, tunables, ghostId?)` へ主語引数化し、守護霊は `Summon.ghostCounterWindowEnd`(近接スイング起点・`COUNTER_WINDOW`)中の被弾を同じ反射弾生成で打ち返す。反射のたびの窓延長(`COUNTER_EXTEND_PER_HIT`)も同一。反射弾は `ghost-reflect` 帰属=計測除外/ヘイト'ghost'/倍率の主語=疑似Player。 |
-| 4-2 | ブラストパリィ(着地/爆発AoE無効化+反撃) | `combatTick.ts:223-321` | **部分(giantbat系のみ)** | `ghostCounter.ts`のTTL窓(150ms・`GHOST_COUNTER_CLAIM_TTL_MS`)を使ったパリィがCRIT-UNIFY実装(COUNTER_CRIT_LEDGER §9.7末尾)でgiantbat/pumpkin系の着地爆発に追加された。**crit=trueで確定クリ**(§9.3裁定どおり)。他ボス族(裏4/天使6/idol)のブラスト技への適用は個別確認が必要(未検証)。 |
+| 4-2 | ブラストパリィ(着地/爆発AoE無効化+反撃) | `combatTick.ts:223-321` | **部分(giantbat系のみ)** | `ghostCounter.ts`のTTL窓(150ms・`GHOST_COUNTER_CLAIM_TTL_MS`)を使ったパリィがCRIT-UNIFY実装(COUNTER_CRIT_LEDGER §9.7末尾)でgiantbat/pumpkin系の着地爆発に追加された。**crit=trueで確定クリ**(§9.3裁定どおり)。他ボス族(裏4/天使6/idol)のブラスト技への適用は個別確認が必要(未検証)。**★2026-08-11「プレイヤーと揃えろ」対応で再調査(下記「CDパリティ対応」節★未決参照): `applyPumpkinBlastDamage`(`combatTick.ts:250`)の`inAttackZone: true`は、v0.25.2597で社長報告(「離れた位置でカウンター」)を受けて意図的に追加された設計であり、単純に外すと「ボスが動かず衝撃波だけ飛ばす技(踏み鳴らし等)」がどの距離からも弾けなくなる=カウンター不能側に倒れるリスクがあるため、今回は変更を保留・社長裁定待ち。** |
 | 4-3 | 接触パリィ(dashParried=突進/硬直/気絶中敵) | `combatTick.ts:678-807` | **部分** | giantbat系は`combatTick.applyGhostBossParry`(568-655)で対応。気絶パリィ(気絶中ボスへの接触無効化)はCOUNTER_CRIT_LEDGER §9.7★1で「ゴーストに該当する接触被弾経路自体が存在しないためクローズ」= 仕様上N/A判定済み(欠落ではない)。 |
 | 4-4 | per-boss体当てカウンター(thor/裏3/idol/天使6) | `useGameLoop.ts`各ブロック+`angelBossTick.ts:280` | **同一** | `ghostCounter.ts`のconsumeGhostCounterClaimを各per-bossハンドラのghost分岐が消費し、プレイヤー成立と同じ機械的効果(技中断+確定クリ+bumpBossCrit)を与える(v0.25.2480実装・BOT_AND_GHOST.md §8)。 |
 | 4-5 | 気絶パリィの副作用(気絶解除) | `combatTick.ts`(dashParriedEnemyPatchが`stunUntil: undefined`) | **N/A(対象経路なし)** | COUNTER_CRIT_LEDGER §9.7★1で確認済み。 |
 | 4-6 | カウンター反撃ダメージ式 | プレイヤー: `borrowedGun.damage × BOSS_CRIT_DAMAGE_MULT`(装備/スキル倍率あり) | **部分(スキル倍率なし)** | `ghostCounter.ts:72-75`(`ghostCounterDamage`)は`(borrowedGunDamage ?? 12) × BOSS_CRIT_DAMAGE_MULT`のみ。equipBonus/skillCritMult/skillOutgoingDamageMultは明記コメントで「乗せない(v0.25.2459方針)」=**§10訂正で再検討が必要な箇所**。 |
 | 4-7 | 成立時の付与無敵(INVULN_MS) | プレイヤー: `invulnerable+invulnerableTime` | **同一** | `ghostCounter.ts:112-119`が専用フィールド`ghostInvulnUntil`へINVULN_MS付与(v0.25.2489で追加・パリティ漏れ修正済み)。 |
 | 4-8 | 演出(青Counter!+金クリ層+SE) | `triggerCounter`系 | **同一** | `applyGhostCounterEffect`(ghostCounter.ts:97-127)がプレイヤーと同型の視覚(リング/バースト/glow/コールアウト)+SE(距離減衰)を出す。 |
+
+### 実装ログ: CDパリティ対応(社長指示「プレイヤーと揃えろ」・2026-08-11・実装チャット)
+
+守護霊のカウンターが「プレイヤーのクールダウンを一切見ておらず連発できる」実機報告を受け、4差分のうち3つを解消。
+
+1. **CD(旧: 600ms・近接と共用 → 新: 820ms・カウンター試行専用)**: `ghostDriver.ts`に
+   `GHOST_COUNTER_MELEE_PERIOD_MS = COUNTER_WINDOW + COUNTER_COOLDOWN`(プレイヤーの定数を**import**、
+   手写ししない)を追加。新フィールド`GhostSelf.lastCounterAttemptAt`/`GhostDecision.lastCounterAttemptAt`
+   (永続化=`Summon.ghostLastCounterAttemptAt`)でカウンター試行の起点だけを別枠管理し、`counterWatching`
+   分岐の発火条件に`counterMeleeReady`を追加。**通常近接(`GHOST_MELEE_COOLDOWN_MS=600`・§3-1/line394の
+   `lastMeleeAt`)は変更していない**(社長指示「通常近接まで遅くしてはいけない」)。
+2. **位置条件(旧: `GHOST_MELEE_RANGE=74px`の距離判定 → 新: 矩形オーバーラップ)**:
+   `ghostCounter.ts`の`peekGhostCounterClaim`(接触型=既定の位置ゲート)を、プレイヤーの
+   `checkPlayerEnemyCollisions`と同じ2関数(`collisionUtils.playerHitbox`をexport化+既存`enemyContactBox`)
+   による`checkCollision`判定へ置換。74pxの距離閾値は撤去。
+3. **請求の積まれ方(旧: `useGameLoop.ts`が独立に`isBossCounterableNowApprox`を再計算→通常近接でも
+   請求が積まれていた → 新: ghostDriverの意図フラグを使う)**: `GhostDecision.meleeIsCounterAttempt`を
+   新設し、`counterWatching`分岐で実際にカウンター狙いで振った時だけtrueにする。`useGameLoop.ts`の
+   2箇所の`wasCounterMelee`はこのフラグをそのまま見る形に変更(ボス状態の独立再計算を廃止)。
+4. **ブラストパリィの間合いスキップ(4-2参照)**: **変更を保留**。`inAttackZone: true`は
+   v0.25.2597の意図的な設計(ゾーン型攻撃はボスの体の距離と無関係に成立させる)であり、単純に外すと
+   「ボスが動かず衝撃波だけ飛ばす技」を守護霊が原理的に一度も弾けなくなる恐れがある。仕様変更の判断が
+   要るため実装せず、社長裁定を仰ぐ。
+
+テスト: `ghostDriver.test.ts`(GHOST-COUNTER-PARITY節・820ms周期/通常近接不変/意図フラグ)、
+`ghostCounter.test.ts`(位置条件=矩形オーバーラップ節)に追加。`npm run typecheck`/`npm run lint`= エラー0。
 
 ---
 
@@ -393,6 +419,10 @@ molotov / first-aid-kit / support-sniper / homing / striker-quick-mag。
 - プレイヤーの `counterCooldownEnd` 延長(刀の一閃がカウンターCDを食う)に**対応するフィールドはゴーストに無い**
   =ゴーストの近接間隔は `ghostDriver` の `lastMeleeAt`(GHOST_MELEE_COOLDOWN_MS)が持ち、一閃自体のCDは
   共有の `katanaDashCooldownEnd` が持つ。新規フィールドを作らずこの2本で閉じている。
+  **★2026-08-11 更新**: この節が指摘した「対応するフィールドが無い」ギャップが実機で「カウンター連発」
+  バグとして顕在化したため、上の「4. カウンター家系」節末尾の実装ログで専用CD
+  (`lastCounterAttemptAt`/`GHOST_COUNTER_MELEE_PERIOD_MS`)を新設して解消した。`lastMeleeAt`
+  (通常近接=600ms)は本節の記述どおり不変。
 - 刀ビルドのゴーストの**間合い**は `profile.preferredDist`(計測値)のまま。スロットはビルドと動きが一体
   (§2.10)なので刀ランのゴーストは近い間合いを持つが、行動品質の詰めは §2.12 のバッチで扱う。
 - 描画(pixiScene)は無改変=ゴーストが刀/ワイヤーを持っている絵(刀身・ワイヤー線・アンカー)は出ない。

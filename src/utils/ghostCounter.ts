@@ -21,9 +21,12 @@ import {
   useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage,
   COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   COUNTER_HITSTOP_MS, COUNTER_ZOOM_MAG, GHOST_ZOOM_TRIAL_ENABLED, LATE_COUNTER_ENABLED,
-  enemyMeleeDist,
 } from '../store/gameStore';
-import { GHOST_MELEE_RANGE } from './ghostDriver'; // 成立の間合い=意思決定側と同じ定数(二重定義しない)
+// GHOST-COUNTER-PARITY(社長指示2「位置条件をプレイヤーと同じ『矩形が重なっている』へ。74pxの緩さを
+// 無くす」): 旧実装は GHOST_MELEE_RANGE(74px・敵の縁からの距離)で判定していたが、プレイヤーの接触
+// カウンター(combatTick.ts の checkPlayerEnemyCollisions+counterActiveNow)は「体が重なっている」
+// (矩形オーバーラップ)が必須。同じ2つの矩形生成関数を import して同じ幾何を使う(二重実装しない)。
+import { checkCollision, playerHitbox, enemyContactBox } from './collisionUtils';
 
 // (useGameLoop v0.25.2479 から移設: angelBossTick/combatTickのゴースト分岐も同じゲートを見るため)
 // 守護霊の戦闘フィードバック(社長指示「カウンターとかキルとかは守護霊にもちゃんと入れて。全部だよ全部」):
@@ -108,12 +111,14 @@ export const peekGhostCounterClaim = (nowMs: number, opts?: GhostClaimGateOpts):
   // 接触型のジャンプまで無条件成立になっていた=社長が見た「赤サークルから離れてカウンター」。
   // よって判定は型ではなく **`opts.inAttackZone`(呼び出し側がゾーンの幾何で確認済みか)** で切り替える。
   // ボスが見つからない(撃破直後等)場合は従来どおり通す=厳しくするのは「離れている」と確認できた時だけ。
+  // GHOST-COUNTER-PARITY(社長指示2「位置条件をプレイヤーと同じ『矩形が重なっている』へ。74pxの緩さを
+  // 無くす」): 旧実装は GHOST_MELEE_RANGE=74px(敵の縁からの距離)という独自の緩い間合いだった。
+  // プレイヤーの接触型カウンター(checkPlayerEnemyCollisions)は playerHitbox(2/3スケール矩形)と
+  // enemyContactBox(敵の当たり判定帯)が**実際に重なっている**ことを要求する——同じ2関数を守護霊にも
+  // 適用し、距離の閾値を持たない(74pxの手写しも二重定義もしない)。
   if (!opts?.inAttackZone && ghost) {
     const boss = st.enemies.find(e => e.id === pendingClaim!.bossId);
-    if (boss) {
-      const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
-      if (enemyMeleeDist(gcx, gcy, boss) > GHOST_MELEE_RANGE) return null;
-    }
+    if (boss && !checkCollision(playerHitbox(ghost), enemyContactBox(boss))) return null;
   }
   return pendingClaim;
 };

@@ -27,7 +27,10 @@ export const checkCollision = (
 // clip — only used for taking damage (enemy contact, hostile bolts), not for
 // picking things up. 2/3 of the full body, centered.
 const PLAYER_HIT_SCALE = 2 / 3;
-const playerHitbox = (player: { x: number; y: number; width: number; height: number }) => {
+// GHOST-COUNTER-PARITY(社長指示2「位置条件をプレイヤーと同じ『矩形が重なっている』へ」):
+// ghostCounter.ts のカウンター成立位置判定が checkPlayerEnemyCollisions と同じ矩形を再利用できるよう
+// export する(スケール値2/3を守護霊側に手写ししない=二重管理の温床を作らない)。
+export const playerHitbox = (player: { x: number; y: number; width: number; height: number }) => {
   const w = player.width * PLAYER_HIT_SCALE;
   const h = player.height * PLAYER_HIT_SCALE;
   return {

@@ -15,12 +15,14 @@ import {
   GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS, GHOST_WINDUP_SAFE_MARGIN_PX,
   GHOST_COUNTER_WAIT_MS, GHOST_DEFAULT_STATIONARY_FRAC, GHOST_APPROACH_MIN_CHANCE,
   GHOST_ORBIT_BASE_FRAC, GHOST_ORBIT_IDLE_FRAC, GHOST_ORBIT_TANK_FRAC, GHOST_BOSS_BODY_AVOID_PX,
+  GHOST_COUNTER_MELEE_PERIOD_MS, // GHOST-COUNTER-PARITY(社長指示1)
   type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
 } from './ghostDriver';
 import { jumpDodge, botSkillProfile } from './botSkill';
 import { resetGhostCommandBags } from './commandBag';
 import { resetModeBags } from './modeBag'; // GHOST-CMD-2A: 隙コマンドの2モード袋(ラン単位)
 import { PUNISH_AFTER_COUNTER_MS } from './punishWindow';
+import { COUNTER_WINDOW, COUNTER_COOLDOWN } from '../store/gameStore'; // GHOST-COUNTER-PARITY: 定数を写さずimportして検証する
 import type { Enemy, Projectile } from '../types/game';
 
 // §2.18(GHOST-CMD-1): 技への反応の決定はラン単位の袋(モジュールシングルトン)から引くようになった。
@@ -1265,5 +1267,90 @@ describe('decideGhost GHOST-CMD-2A: 隙コマンド(punish)の消費', () => {
     expect(at(1000, 1500).punishContext).toBe('afterCounter');
     expect(at(1000, 1000 + PUNISH_AFTER_COUNTER_MS).punishContext).toBeUndefined();
     expect(at(undefined, 1500).punishContext).toBeUndefined();
+  });
+});
+
+// GHOST-COUNTER-PARITY(社長指示「プレイヤーと揃えろ」・実装タスク): 守護霊のカウンターを
+// プレイヤーと機械的に揃える4差分のうち、ghostDriver純関数側で検証できる2つ(①CD周期 ③意図フラグ)。
+describe('GHOST-COUNTER-PARITY: カウンター成立可能なCDをプレイヤーと揃える(社長指示1・3)', () => {
+  it('GHOST_COUNTER_MELEE_PERIOD_MS はプレイヤーのCOUNTER_WINDOW+COUNTER_COOLDOWNをimportした値そのもの(手写ししない)', () => {
+    expect(GHOST_COUNTER_MELEE_PERIOD_MS).toBe(COUNTER_WINDOW + COUNTER_COOLDOWN);
+    expect(GHOST_COUNTER_MELEE_PERIOD_MS).toBe(820); // 現行値の固定(400+420)。値そのものが変わったら要再確認。
+  });
+
+  it('カウンターするつもりで振ったスイングは820ms周期でしか成立できない(通常近接CD=600msだけでは再試行できない)', () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const ghost0 = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
+
+    // 1回目: reactionMs(200)経過後に成立(既存挙動と同じ)。
+    const opened = decideGhost(baseDriverInput({ ghost: ghost0, enemies: [boss], nowMs: 0 }));
+    expect(opened.counterPendingAt).toBe(0);
+    expect(opened.counterWillAttempt).toBe(true);
+    const first = decideGhost(baseDriverInput({
+      ghost: { ...ghost0, counterPendingAt: opened.counterPendingAt, counterWillAttempt: opened.counterWillAttempt },
+      enemies: [boss], nowMs: 250,
+    }));
+    expect(first.action).toBe('melee');
+    expect(first.meleeIsCounterAttempt).toBe(true);
+    expect(first.lastCounterAttemptAt).toBe(250);
+    expect(first.lastMeleeAt).toBe(250);
+
+    // 2回目の機会: 通常近接CD(600ms)は明けたが、カウンター周期(820ms)はまだ明けていない区間
+    // (250+600=850 <= t < 250+820=1070)。meleeReady/aimReadyは満たしていてもブロックされる。
+    const blocked = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 0, y: 0, width: 10, height: 10,
+        lastMeleeAt: first.lastMeleeAt, lastCounterAttemptAt: first.lastCounterAttemptAt,
+        counterPendingAt: 600, counterWillAttempt: true, // reactionMs(200)は850-600=250で経過済み
+      }),
+      enemies: [boss], nowMs: 850,
+    }));
+    expect(blocked.action).toBe('none'); // 成立しうるスイング自体が出ない(請求も積みようがない)
+    expect(blocked.counterPendingAt).toBe(600); // 見切ってもいない(次tickでまた狙える)
+    expect(blocked.counterWillAttempt).toBe(true);
+
+    // 820ms周期が明けた瞬間(250+820=1070)からは同じ入力で成立する。
+    const reopened = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 0, y: 0, width: 10, height: 10,
+        lastMeleeAt: first.lastMeleeAt, lastCounterAttemptAt: first.lastCounterAttemptAt,
+        counterPendingAt: 600, counterWillAttempt: true,
+      }),
+      enemies: [boss], nowMs: 1070,
+    }));
+    expect(reopened.action).toBe('melee');
+    expect(reopened.meleeIsCounterAttempt).toBe(true);
+    expect(reopened.lastCounterAttemptAt).toBe(1070);
+  });
+
+  it('通常近接スイングの間隔(600ms)はカウンター周期の新設で変わっていない(非カウンター局面)', () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'chase' }); // 非カウンター局面
+    const ghost = mkGhost({
+      x: 0, y: 0, width: 10, height: 10,
+      lastMeleeAt: 0, lastCounterAttemptAt: 0, // 両CDの起点を同時刻にして「820msの影響が漏れていないか」を見る
+    });
+    const profile: GhostProfile = { ...PROFILE, meleeBias: 1 };
+
+    const tooSoon = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 599 }));
+    expect(tooSoon.action).not.toBe('melee'); // 通常CD(600)未経過
+
+    // ちょうど600ms: 通常CDだけで振れる(カウンター周期820msの影響を受けていない証明)。
+    const onTime = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 600 }));
+    expect(onTime.action).toBe('melee');
+    expect(onTime.meleeIsCounterAttempt).toBe(false); // 通常近接=カウンター試行ではない
+  });
+
+  it('ボスが「成立しうる状態」でも、ghostDriverが見切って通常近接で振った時はmeleeIsCounterAttempt=falseのまま(意図しないスイングで請求を積まない)', () => {
+    // bossState='issen-windup' はisBossCounterableNowApprox上は「成立しうる」状態のまま(見切り後も変わらない)。
+    // 旧実装(useGameLoop側でボス状態を独立に再計算)だとここが誤ってtrueになっていた(社長指示3の対象バグ)。
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-windup' });
+    const ghost = mkGhost({
+      x: 0, y: 0, width: 10, height: 10,
+      counterPendingAt: 0, counterWillAttempt: false, // GHOST_COUNTER_WAIT_MS経過で見切り済みにする
+    });
+    const profile: GhostProfile = { ...PROFILE, counterChance: 0, meleeBias: 1 };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: GHOST_COUNTER_WAIT_MS }));
+    expect(d.action).toBe('melee'); // 見切り後の通常近接(meleeBias=1)で振っている
+    expect(d.meleeIsCounterAttempt).toBe(false); // が、カウンターするつもりの振りではない
   });
 });

@@ -7965,6 +7965,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   lastMeleeAt: ghostNow.ghostLastMeleeAt ?? 0,
                   counterPendingAt: ghostNow.ghostCounterPendingAt,
                   counterWillAttempt: ghostNow.ghostCounterWillAttempt,
+                  // GHOST-COUNTER-PARITY: カウンター試行だけの周期(820ms)の起点を持ち越す。
+                  lastCounterAttemptAt: ghostNow.ghostLastCounterAttemptAt,
                   moveRoll: prevMoveRoll,
                   // §2.12(1) 反応遅延 + GHOST-BULLET-TECH A: 危険エピソード(認知時刻+最後に見えた時刻)の
                   // 持ち越し(記憶が切れたらdecideGhostがundefinedを返す)。
@@ -8069,6 +8071,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostReloadEndsAt,
                   ghostReloadingWeaponId,
                   ghostCounterPendingAt: decision.counterPendingAt, ghostCounterWillAttempt: decision.counterWillAttempt,
+                  // GHOST-COUNTER-PARITY: カウンター試行専用CDの起点を持ち越す(通常近接CDとは別枠)。
+                  ghostLastCounterAttemptAt: decision.lastCounterAttemptAt,
                   // G4b: 技への反応ロールを持ち越す(技の解決=decideGhostがundefinedを返したらクリア)。
                   ghostMoveRollKey: decision.moveRoll?.moveKey,
                   ghostMoveRollDecision: decision.moveRoll?.decision,
@@ -8218,7 +8222,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const btcx = boundBoss.x + boundBoss.width / 2;
                 const bccy = boundBoss.y + boundBoss.height / 2;
                 const gmcx = resolved.x + ghostNow.width / 2, gmcy = resolved.y + ghostNow.height / 2;
-                const wasCounterMelee = isBossCounterableNowApprox(boundBoss.aiPhase, boundBoss.bossState);
+                // GHOST-COUNTER-PARITY(社長指示3): 「意図しないスイングで請求を積まない」——
+                // ghostDriverが実際にカウンター狙いで振ったか(decision.meleeIsCounterAttempt)だけを見る。
+                // 旧: isBossCounterableNowApprox(boss状態)を独立に再計算していたため、通常近接
+                // (meleeBias抽選/punishRush)で振った時もボスが「成立しうる状態」なら真になり、
+                // 意図と無関係に請求が積まれていた(実質600ms毎に必ず1回請求が飛ぶ状態)。
+                const wasCounterMelee = decision.meleeIsCounterAttempt;
                 const katanaState = useGameStore.getState();
                 const katanaArena = katanaState.activeEvent && katanaState.activeEvent.kind !== 'rescue'
                   && katanaState.activeEvent.confinesPlayer !== false
@@ -8292,11 +8301,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   * (ghostMeleeCrit ? skillCritMult(ghostOwner, CRIT_DAMAGE_MULT) : 1)
                   * skillOutgoingDamageMult(ghostOwner),
                 ));
-                // このスイングがカウンター試行だったか(**演出の出し分けのみに使用**・判定/ダメージ不変)。
-                // decideGhost は counterable(=射程内 && isBossCounterableNowApprox)の時だけカウンター経路の
-                // melee を出し、通常 melee は !counterable の時だけ出す。action==='melee' なら射程内は確定
-                // なので、同じフレームのボス状態から同じ近似を再計算すれば正確に判別できる(ghostDriver不変)。
-                const wasCounterMelee = isBossCounterableNowApprox(boundBoss.aiPhase, boundBoss.bossState);
+                // このスイングがカウンター試行だったか(**演出の出し分け+請求を積むか、の両方に使用**)。
+                // GHOST-COUNTER-PARITY(社長指示3): ボス状態の近似を独立に再計算するのをやめ、
+                // ghostDriverが実際にカウンター狙いで振ったかどうか(decision.meleeIsCounterAttempt)を
+                // そのまま見る。旧実装は「射程内かつボスが成立しうる状態」なら通常近接(meleeBias抽選)の
+                // 振りにも真になっていたため、狙っていないスイングでも請求が積まれていた。
+                const wasCounterMelee = decision.meleeIsCounterAttempt;
                 // BOT_AND_GHOST.md §2.8 G2.5: ヘイト計測用にゴースト起因と明示する(damageChannelは
                 // 従来どおりnull=botTelemetryのプレイヤー計測は汚さない・独立したパラメータ)。
                 // フィニッシュ成立時はダメージ/数字を共有アクションが既に出しているので二重に出さない。

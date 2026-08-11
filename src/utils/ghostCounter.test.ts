@@ -96,3 +96,43 @@ describe('位置ゲート: 接触型は間合い必須・ゾーン型は素通�
     expect(consumeGhostCounterClaim(BOSS_ID, now, { inAttackZone: true })?.dmg).toBe(60);
   });
 });
+
+// GHOST-COUNTER-PARITY(社長指示2「位置条件をプレイヤーと同じ『矩形が重なっている』へ。74pxの緩さを
+// 無くす」): 接触型(既定=inAttackZoneなし)の位置ゲートが、旧GHOST_MELEE_RANGE=74px(距離)ではなく
+// checkPlayerEnemyCollisionsと同じ矩形オーバーラップになったことの固定。
+describe('位置条件: 接触型は矩形オーバーラップが必須(74pxの距離だけでは成立しない)', () => {
+  const BOSS_ID = 'boss-thor';
+  // isHiddenBossType(thor)はenemyContactBoxが生のAABB({x,y,width,height})をそのまま返すので、
+  // 座標計算がシンプルになる(spawnEnemyAtのアセット依存な帯計算を避ける)。
+  const setupThor = (ghostX: number, ghostY: number, nowMs: number) => {
+    useGameStore.getState().resetGame('warrior');
+    const boss = spawnEnemyAt('thor', 0, 0, useGameStore.getState().gameTime);
+    boss.id = BOSS_ID;
+    boss.x = 0; boss.y = 0; boss.width = 40; boss.height = 40; // 矩形: [0,40]x[0,40]
+    const ghost: Summon = {
+      id: 'ghost-test', x: ghostX, y: ghostY, width: 20, height: 20, speed: 200,
+      health: 100, maxHealth: 100, damage: 0, kind: 'ghost-ally', reusedType: 'zombie', level: 1,
+      createdAt: nowMs, lastHit: 0, ghostBossId: BOSS_ID,
+    };
+    useGameStore.setState({ enemies: [boss], summons: [ghost] });
+    setGhostCounterClaim({ bossId: BOSS_ID, ghostX, ghostY, dmg: 60, atMs: nowMs });
+  };
+
+  beforeEach(() => clearGhostCounterClaim());
+
+  it('旧基準(ボス縁から74px以内)を満たしても、矩形が重なっていなければ成立しない', () => {
+    const now = Date.now();
+    // ボス右端(x=40)から50px(<74px)離れた位置。旧GHOST_MELEE_RANGE基準なら成立していたはず。
+    setupThor(90, 20, now);
+    expect(peekGhostCounterClaim(now)).toBeNull();
+    expect(consumeGhostCounterClaim(BOSS_ID, now)).toBeNull();
+  });
+
+  it('プレイヤーと同じ矩形(playerHitbox×enemyContactBox)が重なっていれば成立する', () => {
+    const now = Date.now();
+    // ゴースト[20,40]x[20,40]はボス[0,40]x[0,40]と大きく重なる。
+    setupThor(20, 20, now);
+    expect(peekGhostCounterClaim(now)?.bossId).toBe(BOSS_ID);
+    expect(consumeGhostCounterClaim(BOSS_ID, now)?.dmg).toBe(60);
+  });
+});
