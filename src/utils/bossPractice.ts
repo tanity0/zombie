@@ -185,13 +185,17 @@ export const practiceSlotByKey = (slotKey: string): PracticeSlot | undefined =>
 // ---------------------------------------------------------------------------------------------
 /**
  * 枠のHP。**引けない枠は null**(画面は「—」を出す)。
- * ★storyBoss(stage-7 グレン / stage-ex1)は `stageBossHealthFor` を通らず、`enemyUtils` の
- *   base(500)のまま戦っている。表の 6000 を出すと**12倍の嘘**になるので出さない。
- *   ボス側のHPを変えるのはバランス変更なのでここではやらない(§20-2)。
+ * ※v0.25.3164(社長決定「ボスのHPは増やす台本を適用しよう」)で、**stage-7のグレンは台帳どおり
+ *   6000で戦うようになった**ので、そのまま表示してよくなった。
+ *   旧: storyBossは台帳を通らず実効2500で戦っており、表の6000を出すと嘘になるので出していなかった
+ *   (当時のコメントは「base(500)のまま/12倍の嘘」と書いていたが、**×ENEMY_HP_MULT(5)を見落とした
+ *    誤り**。正しくは2500で2.4倍のズレだった)。
+ * ★**stage-ex1 は台帳に行が無い**ので従来どおり実効2500=表示できない(null)。
  */
 export const practiceBossHealth = (slot: PracticeSlot): number | null => {
   if (slot.bossType === 'giantbat') {
-    if (getStage(slot.stageId)?.storyBossOnly) return null; // 実際のHPと表が違う
+    // 台帳に行があれば、その値で戦っている(v0.25.3164でストーリーボスも台帳を通るようになった)。
+    // 行が無い枠(stage-ex1)だけは実際のHPと表が違うので出さない。
     return STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId] ?? null;
   }
   const gate = (GATE_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];

@@ -122,7 +122,7 @@ import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
-import { stageBossHealthFor } from '../config/bossHealth';
+import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
 import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
@@ -2616,6 +2616,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const storyStageId = getSelectedStageId();
             boss.isStoryBoss = true;
             boss.storyBossVariant = storyStageId === 'stage-7' ? 'stage-7' : 'stage-ex1';
+            // ★v0.25.3164(社長決定「ボスのHPは増やす台本を適用しよう」): ストーリーボスにも
+            // ボスHPの台帳(config/bossHealth.ts)を適用する。
+            // 旧: この経路は台帳を通らず、enemyUtils の素の値(500)×ENEMY_HP_MULT(5)=**2500**で戦っていた
+            //     ——台帳には 'stage-7': 6000 と書いてあり「ラスボスへ適用する」とコメントまであるのに、
+            //     適用しているのは**城ボスの出現経路だけ**だった(:2545)。ラスボスの1形態が
+            //     ステージ1の城ボス(3500)より弱い状態。
+            // ※台帳に**行がある stage だけ**適用する(stage-ex1 は行が無く、既定へフォールバックさせると
+            //   誰も決めていない値になるので触らない=従来どおり2500)。
+            if (STAGE_BOSS_HEALTH_BY_STAGE[storyStageId] !== undefined) {
+              boss.health = boss.maxHealth = stageBossHealthFor(storyStageId);
+            }
             // v0.25.3029(社長裁定「二体」): stage-7のグレンは形態フラグを持つ。通常は形態1から。
             // ボスモードの「グレン 第二形態」枠は**最初から形態2の個体**をフルHPでスポーン
             // (旧「HP60%から開始」は二体構成化で廃止)。
@@ -2693,6 +2704,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               e2.isStoryBoss = true;
               e2.storyBossVariant = 'stage-7';
               e2.glenForm = 2;
+              // v0.25.3164: 形態2も台帳のHPで出す(形態1と同額)。ここも台帳を通っていなかった。
+              e2.health = e2.maxHealth = stageBossHealthFor('stage-7');
               // 形態1と同じM7の2倍化(当たり判定込み・中心維持)。
               const ow2 = e2.width, oh2 = e2.height;
               e2.width = ow2 * 2; e2.height = oh2 * 2;

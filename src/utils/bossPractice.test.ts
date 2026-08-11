@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { GLEN_PHASE2_SLOT_KEY, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth } from './bossPractice';
 import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
+import { STAGE_BOSS_HEALTH_BY_STAGE } from '../config/bossHealth';
 import { STAGES, getStage } from '../data/campaign';
 
 describe('ボスラッシュの台帳', () => {
@@ -83,11 +84,13 @@ describe('ボスラッシュの台帳', () => {
 });
 
 describe('練習画面のHP表示', () => {
-  // ★storyBoss は stageBossHealthFor を通らず base(500)のまま戦っている。表の 6000 を出すと
-  // 12倍の嘘になるので出さない(ボス側のHPを変えるのはバランス変更なのでやらない)。
-  it('storyBoss(stage-7 / ex1)の城ボスはHPを出さない', () => {
+  // v0.25.3164(社長決定「ボスのHPは増やす台本を適用しよう」): ストーリーボスも台帳のHPで戦うように
+  // なったので、**台帳に行がある枠は表示してよい**。行が無い枠(stage-ex1)だけ「—」のまま。
+  // ※旧コメントは「base(500)のまま/12倍の嘘」と書いていたが、×ENEMY_HP_MULT(5)を見落とした誤り
+  //   (正しくは実効2500=2.4倍のズレ)。同じ見落としを繰り返さないよう経緯を残す。
+  it('台帳に行が無い枠(stage-ex1)だけHPを出さない', () => {
     for (const slot of PRACTICE_SLOTS.filter(s => s.bossType === 'giantbat')) {
-      if (getStage(slot.stageId)?.storyBossOnly) {
+      if (STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId] === undefined) {
         expect(practiceBossHealth(slot), slot.slotKey).toBeNull();
       }
     }

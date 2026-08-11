@@ -47,8 +47,9 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   pumpkin:   { width: 40, height: 40, speed: 55,  health: 150,  damage: 16,  experienceValue: 8 },
   // 新型(lich・ステージ4): 速度はゴースト(90)の1.2倍=108。旋回しながら詰めてくる(AIは store)。
   lich:      { width: 30, height: 30, speed: 108, health: 36,   damage: 12,  experienceValue: 4 },
-  // 城ボス(ジャイアント)。ここは生成時の互換値(×ENEMY_HP_MULT=実効2500)。通常の城ボスは
-  // useGameLoopでstage別HP(3500→6000)へ置換する。storyBossOnlyのgiantbatは個別仕様を守り互換値のまま。
+  // 城ボス(ジャイアント)。ここは生成時の互換値(×ENEMY_HP_MULT=実効2500)。**出現時に台帳の値へ置換される**
+  // ので、この500が最終的なHPになることは無い(置換は useGameLoop:2545 城ボス / :2620 ストーリーボス)。
+  // ※v0.25.3164まで**ストーリーボス(グレン/EX)だけ置換を通っておらず、実効2500のまま戦っていた**。
   giantbat:  { width: 60, height: 60, speed: 70,  health: 500,  damage: 19,  experienceValue: 30 },
   reaper:    { width: 80, height: 80, speed: 130, health: 4000, damage: 999, experienceValue: 0 },
   // 研究所専用ゾンビ(通常敵データ参考)。Lv1=雑魚〜 / Lv2=変異(中) / Lv3=巨体(パンプキン相当)。動きは通常チェイス。
