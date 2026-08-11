@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3150',
+    items: [
+      '【不具合修正】グレンの触手の発動タイミングの目盛りが、触手の絵の下に完全に隠れて見えていませんでした。絵より上に出るようになりました。',
+    ],
+  },
+  {
     version: '0.25.3149',
     items: [
       'グレンの尻尾の叩きつけが勢いよくなりました。より高く振り上げ、最後の一瞬で一気に落ちて、地面を叩いた瞬間に画面が揺れます。',

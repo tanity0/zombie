@@ -2575,6 +2575,11 @@ interface ActorView {
   // オブジェクトだけ二枚に割っている。z順は container の子順 [.., sprite, hitFlash, tele, overlay] で担保。
   tele: Graphics;
   overlay: Graphics; // above the sprite (health bar, boss marker, event marker)
+  // ★**攻撃の絵より上**に出す図形専用(v0.25.3150)。overlay は container 生成時こそ最前面だが、
+  // 武器/エフェクトの絵(atkArtSprite)は後から addChild されるので**上に乗ってしまう**。
+  // 「見えないと機能しないゲージ」(触手のカラオケ塗り等)だけをここへ描く。
+  // ※普通の予告(赤い帯/円)はここへ移さないこと——武器の絵が赤で塗り潰されて読めなくなる。
+  overlayTop: Graphics;
   // 予告円の「輪」だけを担う焼き済みスプライト(社長支給素材 A-1・v0.25.2395)。
   // 面(内側の赤い塗り)は従来どおり overlay の Graphics が描き、輪だけをこの1枚に置き換える。
   // 素材は**外周がキャンバス端に一致する真円**に正規化済みなので、幅=高さ=直径 に合わせるだけで
@@ -5151,9 +5156,10 @@ export class PixiScene {
     hitFlash.visible = false;
     const tele = new Graphics();
     const overlay = new Graphics();
-    container.addChild(reticle, sprite, hitFlash, tele, overlay);
+    const overlayTop = new Graphics();
+    container.addChild(reticle, sprite, hitFlash, tele, overlay, overlayTop);
     this.L.actorLayer.addChild(container);
-    return { container, light, reticle, sprite, hitFlash, tele, overlay };
+    return { container, light, reticle, sprite, hitFlash, tele, overlay, overlayTop };
   }
 
   private makeProp(): PropView {
@@ -13663,6 +13669,7 @@ export class PixiScene {
     const o = view.tele;
     o.clear();
     view.overlay.clear();
+    view.overlayTop.clear(); // 攻撃の絵より上に出すゲージ(v0.25.3150)
     // 予告の輪スプライト(A-1)は既定で消しておき、必要な分岐だけが drawTelegraphRing で点ける
     // (o.clear() と同じ役割。消し忘れて前フレームの輪が残るのを構造的に防ぐ)。
     if (view.rings) for (const s of view.rings) s.visible = false;
@@ -16199,12 +16206,18 @@ export class PixiScene {
             GLEN_REACH_LENGTH,
           );
           const rtipX = rfx + rux * rpd * rprog, rtipY = rfy + ruy * rpd * rprog;
-          o.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 8, color: 0xff6b6b, alpha: 0.9, cap: 'round' });
-          o.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 3, color: 0xffffff, alpha: 0.95, cap: 'round' });
-          o.circle(rtipX, rtipY, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
+          // ★描く先は `o`(=tele)ではなく **overlayTop**(v0.25.3150・社長報告「触手のカラオケ見えない。
+          // 恐らく裏にいるのかも」): 触手の絵(atkArtSprite)は container の末尾に積まれるので
+          // tele/overlay より**上**に来る=ゲージが絵の下に完全に隠れていた。**見えないゲージは
+          // 存在しないのと同じ**なので、この線だけ最前面のレイヤーへ移す。
+          // (赤い帯そのものは移さない。移すと触手の絵が赤で塗り潰されて何の武器か分からなくなる。)
+          const ot = view.overlayTop;
+          ot.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 8, color: 0xff6b6b, alpha: 0.9, cap: 'round' });
+          ot.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 3, color: 0xffffff, alpha: 0.95, cap: 'round' });
+          ot.circle(rtipX, rtipY, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
           if ((e.aiPhaseUntil ?? gameTime) - gameTime <= LASER_TRACK_LOCK_MS) {
             const rflick = 0.5 + 0.5 * Math.sin(now / 45);
-            o.moveTo(rfx, rfy).lineTo(rtx, rty).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * rflick, cap: 'round' });
+            ot.moveTo(rfx, rfy).lineTo(rtx, rty).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * rflick, cap: 'round' });
           }
         }
       } else if (gph === 'g-tailslam-windup' || gph === 'g-tailslam-active') {
@@ -18426,6 +18439,9 @@ export class PixiScene {
       sp = new Sprite(tex);
       view.container.addChild(sp);
       view.atkArt[idx] = sp;
+      // 攻撃の絵は container の末尾に積まれる=overlayTop より上に来てしまう。
+      // 追加した時だけ overlayTop を最前面へ戻す(v0.25.3150。毎フレームではないので安い)。
+      if (view.overlayTop) view.container.setChildIndex(view.overlayTop, view.container.children.length - 1);
     }
     if (sp.texture !== tex) sp.texture = tex;
     sp.visible = true;
