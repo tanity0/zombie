@@ -701,8 +701,11 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'skater':       { name: 'スケーター',     desc: '移動速度3倍。ただし慣性が強くなり操作が難しくなる', rarity: 'super' },
   'overclock':    { name: 'オーバークロック', desc: 'サブウェポン発動時、20%の確率でクールダウンを即リセット(Lvで25%/30%)', rarity: 'super' },
   'guardian-spirit': { name: '守護霊',       desc: 'ボス戦が始まると、自分の過去のプレイを写した霊が現れる。ボスHP×1.6、獲得ゴールド×0.5', rarity: 'super' },
-  'ghost-helper':    { name: '助っ人の霊',   desc: 'ボス戦で他のプレイヤーの霊をランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.7', rarity: 'normal' },
-  'ghost-slayer':    { name: '討伐者の霊',   desc: 'ボス戦で評点上位20%の霊からランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.5', rarity: 'normal' },
+  // 社長決定v0.25.3163: 3つとも「誰の守護霊か」が違うだけなので、**守護霊(◯◯)の形で揃える**。
+  // 括弧の中は**別の軸**を指す: 有志=手を貸してくれた誰か(意志) / 猛者=腕の立つ誰か(実力)。
+  // 旧名「助っ人の霊」「討伐者の霊」は、作中に裏付けの無い「霊」がシステム語のまま表に出ていた。
+  'ghost-helper':    { name: '守護霊(有志)', desc: 'ボス戦で他のプレイヤーの守護霊をランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.7', rarity: 'normal' },
+  'ghost-slayer':    { name: '守護霊(猛者)', desc: 'ボス戦で評点上位20%の守護霊からランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.5', rarity: 'normal' },
   // レア
   'crit-up':      { name: 'クリティカルダメージ上昇', desc: 'クリティカルダメージ ×1.5→×2.0(ボス ×5→×5.5)', rarity: 'rare' },
   'knight':       { name: 'ナイト',         desc: '被ダメージ-20%。盾/召喚の最大HP+50%', rarity: 'rare' },

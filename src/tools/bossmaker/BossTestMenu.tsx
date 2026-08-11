@@ -31,8 +31,8 @@ const PARAM_NOTE: Record<BossTestEntry['param'], string> = {
 const GHOST_MODES: readonly { key: BossTestGhostMode | null; label: string; note: string }[] = [
   { key: null, label: 'なし', note: 'ソロ' },
   { key: 'own', label: '守護霊', note: '自分' },
-  { key: 'random', label: '助っ人の霊', note: 'ランダム' },
-  { key: 'top', label: '討伐者の霊', note: '評点上位20%' },
+  { key: 'random', label: '守護霊(有志)', note: 'ランダム' },
+  { key: 'top', label: '守護霊(猛者)', note: '評点上位20%' },
 ];
 
 interface Props { onClose?: () => void }
