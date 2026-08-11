@@ -47,6 +47,8 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
   GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH,
+  // v0.25.3139(社長指示): 第二形態の通常技「尻尾の叩きつけ→弾の連射」の赤ライン予兆。
+  GLEN_TAILSLAM_WINDUP_MS, GLEN_TAILSLAM_HALF_WIDTH,
   // v0.25.2483(社長指示): フルランプ速度線のゲート=「移動速度+10%以上のステータス」判定に、
   // movePlayerがランプへ渡す「対象倍率の積P」と同じ純関数を使う(判定の二重実装をしない)。
   skillRunnerSpeedMult, marksmanSpeedMult, skillWarmUpSpeedMult,
@@ -14977,7 +14979,7 @@ export class PixiScene {
         (gph === 'g-stomp-windup' || gph === 'g-sweep-windup' || gph === 'g-dash-windup' || gph === 'g-bolt-windup' || gph === 'g-jump-air'
           || gph === 'g-bite-windup' || gph === 'g-bite-hold' || gph === 'g-slam-windup' || gph === 'g-glide-windup'
           || gph === 'g-quad-windup' || gph === 'g-quad-breath-windup' || gph === 'g-nova-windup' || gph === 'g-wing-windup' || gph === 'g-trishot-windup' || gph === 'g-sweepbeam-windup'
-          || gph === 'g-talon-windup' || gph === 'g-boon-windup' || gph === 'g-reach-windup' || gph === 'g-trijump-air'
+          || gph === 'g-talon-windup' || gph === 'g-boon-windup' || gph === 'g-reach-windup' || gph === 'g-tailslam-windup' || gph === 'g-trijump-air'
           || gph === 'g-nihil-chant1' || gph === 'g-nihil-chant2' || gph === 'g-nihil-chant3')
           ? (e.aiPhaseUntil ?? gameTime) - gameTime : null;
       const gFlash = gFlashRemain !== null ? thorFlashTint(gFlashRemain, now) : null;
@@ -14987,6 +14989,7 @@ export class PixiScene {
         || gph === 'g-bite-recover' || gph === 'g-slam-recover' || gph === 'g-glide-recover' || gph === 'g-dive-recover'
         || gph === 'g-quad-recover' || gph === 'g-nova-recover' || gph === 'g-wing-recover' || gph === 'g-trishot-recover' || gph === 'g-sweepbeam-recover'
         || gph === 'g-talon-recover' || gph === 'g-boon-recover' || gph === 'g-reach-recover' || gph === 'g-nihil-recover'
+        || gph === 'g-tailslam-recover'
         || gph === 'g-trijump-recover') {
         // 硬直=反撃窓(翻訳規則(d)): 赤ではない色(青白)=「今なら殴れる」の合図。
         view.sprite.tint = 0xbfe8ff;
@@ -16111,6 +16114,18 @@ export class PixiScene {
           : 1;
         const rFill = gph === 'g-reach-active' ? 0.3 : (0.12 + 0.22 * rprog) + 0.08 * gPulse;
         drawGiantCapsuleZone(rfx, rfy, rtx, rty, GLEN_REACH_HALF_WIDTH, rFill, (0.32 + 0.4 * rprog) + 0.15 * gPulse);
+      } else if (gph === 'g-tailslam-windup' || gph === 'g-tailslam-active') {
+        // v0.25.3139 尻尾の叩きつけ(tailslam): 社長指示「叩きつけは赤ライン予兆から発動。尻尾の長さに連動」。
+        // ★分類①(危険を伝える絵)なので、**判定カプセルと厳密に同じ寸法**を描く。長さは store 側が
+        // `glenTailReach`(連結パーツの末端)で焼いた aiFrom→aiTarget をそのまま読むだけ=
+        // 「見えている尻尾より長く殴る/短く殴る」がここでも起きない(寸法の正本を2つ持たない)。
+        const tfx = e.aiFromX ?? cx, tfy = e.aiFromY ?? cy;
+        const ttx = e.aiTargetX ?? cx, tty = e.aiTargetY ?? cy;
+        const tprog = gph === 'g-tailslam-windup'
+          ? Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GLEN_TAILSLAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)))
+          : 1;
+        const tFill = gph === 'g-tailslam-active' ? 0.32 : (0.12 + 0.22 * tprog) + 0.08 * gPulse;
+        drawGiantCapsuleZone(tfx, tfy, ttx, tty, GLEN_TAILSLAM_HALF_WIDTH, tFill, (0.32 + 0.4 * tprog) + 0.15 * gPulse);
       }
       // 咆哮弾(g-bolt-*)は図形を出さない(社長裁定=小技はT4の一拍のみ。画面が赤で埋まると大技の赤が効かなくなる)。
       // ★この位置(帯を描く if 連鎖の**後**)でなければならない(v0.25.2417のバグ修正)。

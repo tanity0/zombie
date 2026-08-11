@@ -7731,6 +7731,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             || gPhase === 'g-dive-windup' || gPhase === 'g-quad-windup' || gPhase === 'g-quad-breath-windup'
             || gPhase === 'g-nova-windup' || gPhase === 'g-wing-windup' || gPhase === 'g-sweepbeam-windup'
             || gPhase === 'g-talon-windup' || gPhase === 'g-boon-windup' || gPhase === 'g-reach-windup'
+            || gPhase === 'g-tailslam-windup'
             || gPhase === 'g-nihil-chant1' || gPhase === 'g-nihil-chant2' || gPhase === 'g-nihil-chant3';
           if (isGiantWindupNow && giantWindupSfxRef.current !== gPhase) {
             playSfx('hunter-alert');

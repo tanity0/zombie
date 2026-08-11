@@ -700,6 +700,7 @@ const GIANT_PARRYABLE_PHASES: readonly string[] = [
   'g-trishot-recover', 'g-sweepbeam-recover',
   // M67(グレン専用技)の硬直(v0.25.3050)
   'g-trijump-recover', 'g-talon-recover', 'g-boon-recover', 'g-reach-recover', 'g-nihil-recover',
+  'g-tailslam-recover', // v0.25.3139: 尻尾の叩きつけ→弾連射の硬直=反撃窓
 ];
 
 /** プレイヤーの接触パリィ(dashParried)が成立しうるフェーズか。applyContactDamage内の3分岐

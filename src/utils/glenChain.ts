@@ -128,6 +128,23 @@ export const glenRemovedPartAnchors = (
   return out;
 };
 
+/**
+ * ★尻尾の届く距離(本体の足元から**尾の先端**まで・v0.25.3139)。
+ * 社長指示「叩きつけは**尻尾の長さに連動**」の唯一の出どころ。**判定も予告もここを読む**ので、
+ * 「見えている尻尾の長さ=殴られる距離」が構造的にズレない(パーツが減れば射程も短くなる)。
+ * 計算式は胴体弾(glenVolleyShots)と**同じ連結距離**をそのまま使う=絵と1pxもズレない。
+ */
+export const glenTailReach = (boss: Enemy): number => {
+  const hpFrac = boss.maxHealth > 0 ? boss.health / boss.maxHealth : 1;
+  const show = GLEN_VISIBLE_BY_COUNT[Math.min(GLEN_SLOT_COUNT, glenPartCountFull(hpFrac))];
+  const fb = enemyFootBox(boss);
+  const sc = Math.min(fb.boxW / GLEN_BODY_TEX_W, fb.boxH / GLEN_BODY_TEX_H);
+  const bodyHalfW = (GLEN_BODY_TEX_W * sc) / 2;
+  if (show.length === 0) return bodyHalfW;
+  const dists = glenChainDistances(bodyHalfW, show, (slot) => GLEN_PART_TEX_W[GLEN_CHAIN[slot]] * sc);
+  return dists[dists.length - 1];
+};
+
 export interface GlenVolleyShot { ox: number; oy: number; tx: number; ty: number }
 
 /** 1斉射ぶんの弾(発射点+到達点)。可視の胴体パーツ(尾を除く)×2発(進行方向±45°)。

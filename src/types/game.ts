@@ -462,7 +462,10 @@ export interface Enemy {
     | 'g-talon-windup' | 'g-talon-recover'
     | 'g-boon-windup' | 'g-boon-recover'
     | 'g-reach-windup' | 'g-reach-active' | 'g-reach-recover'
-    | 'g-nihil-chant1' | 'g-nihil-chant2' | 'g-nihil-chant3' | 'g-nihil-recover';
+    | 'g-nihil-chant1' | 'g-nihil-chant2' | 'g-nihil-chant3' | 'g-nihil-recover'
+    // v0.25.3139(社長指示): グレン第二形態の通常技「尻尾の叩きつけ→弾の連射」。
+    // 叩きつけの射程は**尻尾(連結パーツ)の長さそのもの**=パーツが減れば短くなる(見たまま=判定)。
+    | 'g-tailslam-windup' | 'g-tailslam-active' | 'g-tailslam-volley' | 'g-tailslam-recover';
   aiPhaseUntil?: number; // 現フェーズの終了 gameTime
   aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
   aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)
@@ -535,6 +538,9 @@ export interface Enemy {
   // v0.25.3126(社長指示「触手は1秒置きにターゲティングしなおして発動3連発」): 触手の何発目か(0始まり)。
   // 三連突進(gQuadIndex)と同じ作法=1つの技の中で反復する回数を敵が持ち回る。
   gReachIndex?: number;
+  // v0.25.3139: 尻尾叩きつけ後の弾連射で「あと何回撃つか」。0で連射終了→硬直へ。
+  gTailVolleyLeft?: number;
+  gTailVolleyAt?: number; // 次の斉射の gameTime
   // v0.25.3075: 滑空(glide)の**実際の飛び出し位置**(実行に入った瞬間の座標)。
   // aiFromX/Y は溜め開始でロックした「予告の線の始点」で、溜め中の後退りぶんズレる。
   // 移動をaiFromから始めると飛び出しの瞬間に前へワープする(=カクつきの主因)ため、
@@ -547,7 +553,7 @@ export interface Enemy {
   // M67(PACING_PUZZLE.md §6.26-12・stage-7のグレン限定)専用: 血の爪痕/血の弧/伸びる触手/虚無の三唱の
   // 個別クールダウン(gStageReadyAtと同じ作法で別フィールドに分離=通常城ボスのgStageReadyAtには
   // 一切書き込まない=互いに独立)。
-  gGlenReadyAt?: Partial<Record<'talon' | 'boon' | 'reach' | 'nihil' | 'trijump', number>>;
+  gGlenReadyAt?: Partial<Record<'talon' | 'boon' | 'reach' | 'nihil' | 'trijump' | 'tailslam', number>>;
   // v0.25.3029(社長裁定「二体」): stage-7ラスボスの形態。1=第一形態(倒すと討伐アテンションの後に
   // 形態2が湧く・ミッション進行は確定しない)/2=第二形態(変身後の姿+連結パーツ+胴体弾。
   // 倒すと従来どおりクリア)。stage-7のstoryBossスポーン経路でのみ立つ(EX/イベント産は undefined)。

@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3139',
+    items: [
+      'グレン第二形態に新しい通常技「尻尾の叩きつけ」が入りました。赤いラインの予告が出た後、尻尾の届く範囲を薙ぎ、そのまま弾を3連射します。',
+      '叩きつけの届く距離は尻尾の長さそのものです。パーツを削るほど短くなります。',
+    ],
+  },
+  {
     version: '0.25.3138',
     items: [
       'ボスモードでは武器商人が出なくなりました。',

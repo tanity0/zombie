@@ -48,6 +48,7 @@ export const GIANT_IMPACT_AT_WINDUP_END: readonly string[] = [
   'g-wing-windup',    // 翼撃
   'g-trishot-windup', // 三連射(stage-5)
   'g-reach-windup',   // 伸びる触手(グレン)
+  'g-tailslam-windup', // 尻尾の叩きつけ(グレン第二形態。v0.25.3139)
 ];
 
 /**

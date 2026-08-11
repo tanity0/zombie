@@ -1,5 +1,37 @@
 # Development Log
 
+## v0.25.3139 — グレン第二形態の新通常技「尻尾の叩きつけ→弾連射」(社長指示)【2026-08-11 09:03 JST】
+社長「グレン第二形態の通常技に、尻尾(連結パーツ)の叩きつけ、からの弾連射(すでに出てる弾の機能を意図的に連射)技を
+実装。叩きつけは赤ライン予兆から発動。尻尾の長さに連動。」の3件目。
+### 技の形(aiPhase 4段)
+`g-tailslam-windup`(実効700ms・赤ライン) → `g-tailslam-active`(実効220ms・叩きつけ) →
+`g-tailslam-volley`(実効300ms間隔で**3回**) → `g-tailslam-recover`(実効800ms=反撃窓)。CD実効7.0秒。
+帯の半幅46(薙ぎ払いの40より少し太い=尻尾の太さ)。判定は既存の帯技と同型で、**windup終わりに
+pumpkinBlasts へカプセルを1回積むだけ**(bite/slam/reach と同じ経路)。
+### ★「尻尾の長さに連動」の作り方
+射程を定数で持たず、`glenChain.glenTailReach(boss)`(=胴体パーツの連結距離の末端。既存の
+`glenVolleyShots` と同じ式)だけを読む。⇒ **パーツを削れば射程も短くなる**、が構造的に保証される
+(見えている尻尾より長く殴る/短く殴るが起きない)。予告の描画も store が焼いた `aiFrom→aiTarget` を
+そのまま読むので、**寸法の正本は1つ**(CLAUDE.md 分類①=危険を伝える絵は判定と厳密一致)。
+### 「すでに出てる弾の機能を意図的に連射」
+社長の言葉どおり、連射するのは**既存の胴体弾(V字斉射・`glenVolleyShots`)そのもの**。発射も既存経路
+(`glenVolleyFires` → post-set)に相乗りさせ、弾の性能・見た目・カウンター可否を1つも変えていない
+(全ボス共通の赤い二重丸=打ち返せる、という読みが崩れない)。周期斉射との二重発射は起きない
+(`shouldGlenVolley` が「技中は撃たない」で既にゲート済み)。
+### 台帳への配線(v0.25.2426の教訓「同じ動作を持つ全員に付ける」= 今回は「新フェーズを全表に載せる」)
+新しい aiPhase を足す時に漏れやすい**6箇所**を全部通した:
+`combatTick.GIANT_PARRYABLE_PHASES`(recover=接触パリィ可) / `ghostTelegraph.LEDGER`(windup+active=帯・
+volley=図形なし・recover=none) / `ghostCounterAim.GIANT_IMPACT_AT_WINDUP_END`(着弾は溜め終わり) /
+`moveReaction.MOVE_REACTION_KEYS`(`g-tailslam`) / `useGameLoop` の予告SE / pixiScene の予告フラッシュ+硬直の青白。
+### 自己点検
+憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)への抵触なし——stage-7のグレン第二形態限定の追加で、
+序盤ステージのスクリプト・湧き・報酬には触れていない。
+### 変更ファイル
+`src/types/game.ts` / `src/utils/glenChain.ts` / `src/utils/giantScript.ts`(+test) / `src/store/gameStore.ts` /
+`src/pixi/pixiScene.ts` / `src/utils/combatTick.ts` / `src/utils/ghostTelegraph.ts` / `src/utils/ghostCounterAim.ts` /
+`src/utils/moveReaction.ts`
+検証: typecheck OK / lint エラー0。
+
 ## v0.25.3138 — ボスモードの商人を撤去/触手の予告を延長(社長指示)【2026-08-11 08:58 JST】
 社長指示3件のうち**2件**。3件目(グレン第二形態の尻尾叩きつけ→弾連射)は新技=別バッチで実装する。
 ### ①ボスモードでは武器商人を設置しない

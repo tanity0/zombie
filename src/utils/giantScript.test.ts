@@ -601,8 +601,8 @@ describe('GIANT_STAGE_MOVE_RANGE — 表の実値を固定するリグレッシ�
 // ============================================================================================
 
 const noGiantReady: Record<GiantMove, boolean> = { stomp: false, sweep: false, jump: false, dash: false, bolt: false };
-const allGlenReady: Record<GlenMoveId, boolean> = { talon: true, boon: true, reach: true, nihil: true, trijump: true };
-const noGlenReady: Record<GlenMoveId, boolean> = { talon: false, boon: false, reach: false, nihil: false, trijump: false };
+const allGlenReady: Record<GlenMoveId, boolean> = { talon: true, boon: true, reach: true, nihil: true, trijump: true, tailslam: true };
+const noGlenReady: Record<GlenMoveId, boolean> = { talon: false, boon: false, reach: false, nihil: false, trijump: false, tailslam: false };
 
 describe('glenScriptApplies — 受け入れ条件: stage-7のグレンだけが新技を選ぶ(通常城ボス/ex1では絶対に選ばれない)', () => {
   it('true only for isStoryBoss=true & storyBossVariant="stage-7" & enabled', () => {

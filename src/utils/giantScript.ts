@@ -378,8 +378,8 @@ export const GIANT_QUAD_ICE_COUNT = 3;
 // (既存5技のみ)に戻る。
 // ============================================================================================
 
-export type GlenMoveId = 'talon' | 'boon' | 'reach' | 'nihil' | 'trijump';
-const GLEN_MOVES: GlenMoveId[] = ['talon', 'boon', 'reach', 'nihil', 'trijump'];
+export type GlenMoveId = 'talon' | 'boon' | 'reach' | 'nihil' | 'trijump' | 'tailslam';
+const GLEN_MOVES: GlenMoveId[] = ['talon', 'boon', 'reach', 'nihil', 'trijump', 'tailslam'];
 
 // 連続ジャンプ(社長指示v0.25.2430「ジャンプ着地後すぐに次のジャンプ、3回連続」)。
 // **回数は3固定**(乱数にしない)。これは §6.28 の学習装置③「回数で読ませる」の実装で、
@@ -402,6 +402,9 @@ export const GLEN_MOVE_RANGE: Record<GlenMoveId, { min: number; max: number }> =
   nihil: { min: 0, max: Infinity },
   // 連続ジャンプは「離れたら飛んで詰める」技。密着では出さない(踏み鳴らし等の近接技の領分)。
   trijump: { min: 200, max: Infinity },
+  // v0.25.3139: 尻尾の叩きつけ。**射程は尻尾の長さ**なので、間合いも「尻尾が届く範囲」に合わせる。
+  // 上限は満タン時の尻尾長さの目安(実測ベース。届かない距離で振らせない=見た目と抽選を一致させる)。
+  tailslam: { min: 0, max: 460 },
 };
 
 /**
@@ -435,6 +438,9 @@ export const GLEN_SPECIAL_WEIGHT_MULT: Record<GlenMoveId, number> = {
   reach: 1.5,
   nihil: 1.8,
   trijump: 1.6,
+  // v0.25.3139: 第二形態の**通常技**(社長指示)なので、大技(nihil/trijump)より軽く、
+  // 爪痕(1.4)と同格に置く=「よく見る技」の側。
+  tailslam: 1.4,
 };
 
 // この個体が「グレン専用スクリプト」の対象かどうかの門番(社長指示「対象はstage-7のグレンだけ」)。

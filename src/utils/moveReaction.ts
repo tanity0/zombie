@@ -28,6 +28,7 @@ export const MOVE_REACTION_KEYS = [
   'g-stomp', 'g-sweep', 'g-jump', 'g-dash', 'g-bolt',
   'g-trijump', 'g-bite', 'g-slam', 'g-glide', 'g-dive', 'g-quad', 'g-nova', 'g-wing', 'g-sweepbeam',
   'g-talon', 'g-boon', 'g-reach', 'g-nihil',
+  'g-tailslam', // v0.25.3139: 尻尾の叩きつけ→弾連射(帯の一撃。連射する弾は既存の胴体弾='g-parts')
   'thor-issen', 'thor-tsuki', 'thor-harai', 'thor-jump',
   // v0.25.2603(社長指示「ちゃんと広げて揃えましょう」): **残り全ボスの近接/AoE技**。
   // ここが城ボス+トールだけで止まっていたため、天使6体/アイドル/裏ボス3体は「弾を撃つ技」しか

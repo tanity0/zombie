@@ -105,6 +105,7 @@ put(LEDGER, [
   'g-trishot-windup', 'g-trishot-active',
   'g-sweepbeam-windup', 'g-sweepbeam-active', 'g-talon-windup', 'g-boon-windup',
   'g-reach-windup', 'g-reach-active',
+  'g-tailslam-windup', 'g-tailslam-active', // v0.25.3139: 尻尾の叩きつけ(帯=aiFrom→aiTarget)
   // bossState 系(トール/天使/裏ボス/idol): 語尾 '-windup' を既存表が帯として拾う。
   'mdash-windup', 'harai-windup', 'tate-windup', 'sweep-windup', 'downslash-windup',
   'thrust-windup', 'ring-move-windup', 'ring-beam-windup', 'dash-windup', 'laser-windup',
@@ -183,7 +184,7 @@ put(LEDGER, [
   'g-stomp-recover', 'g-sweep-recover', 'g-jump-recover', 'g-dash-recover', 'g-bolt-recover',
   'g-bite-recover', 'g-slam-recover', 'g-glide-recover', 'g-dive-recover', 'g-quad-recover',
   'g-nova-recover', 'g-wing-recover', 'g-trishot-recover', 'g-sweepbeam-recover', 'g-talon-recover', 'g-boon-recover',
-  'g-reach-recover', 'g-trijump-recover', 'g-nihil-recover',
+  'g-reach-recover', 'g-trijump-recover', 'g-nihil-recover', 'g-tailslam-recover',
   'bite-recover', 'bolt-recover', 'bone-recover', 'burst-recover', 'cage-recover', 'coil-recover',
   'consecrate-recover', 'dash-recover', 'downslash-recover', 'gaze-recover', 'harai-recover',
   'idol-aim-recover', 'idol-fan-recover', 'idol-punch-recover', 'idol-roll-recover',
@@ -199,6 +200,7 @@ put(LEDGER, [
 put(LEDGER, [
   'aim-burst', 'aim-radial', 'radial', 'volley', 'volley-windup', 'bolt', 'bolt-windup',
   'gaze-windup', 'idol-aim-windup', 'idol-fan-windup', 'idol-orb-windup', 'g-bolt-windup', 'g-bolt-burst',
+  'g-tailslam-volley', // v0.25.3139: 叩きつけの後の弾連射(胴体弾と同じ弾)=地面に図形は出ない
 ], {
   coverage: 'none',
   note: '弾を撃つだけの技=地面に図形が出ない。飛んだ弾は projectileDodge が別経路で避ける。',

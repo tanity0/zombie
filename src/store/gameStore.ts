@@ -119,7 +119,7 @@ import {
 } from '../utils/giantScript';
 // v0.25.3027: グレン第二形態の胴体弾(連結パーツからのV字斉射・社長裁定)。台帳と式は描画と共有。
 import {
-  pushGlenTrail, shouldGlenVolley, glenVolleyShots, GLEN_VOLLEY_CD_MS, type GlenTrailPoint,
+  pushGlenTrail, shouldGlenVolley, glenVolleyShots, glenTailReach, GLEN_VOLLEY_CD_MS, type GlenTrailPoint,
 } from '../utils/glenChain';
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
@@ -1972,6 +1972,18 @@ export const AIR_MOVES: readonly AirMoveSpec[] = [
 /** aiPhase から跳ぶ技を引く。表に無い=その技は跳んでいない(浮かせない)。 */
 export const airMoveFor = (phase: string | undefined): AirMoveSpec | undefined =>
   phase === undefined ? undefined : AIR_MOVES.find(m => m.phase === phase);
+// --- 第二形態の通常技: 尻尾の叩きつけ → 弾の連射(社長指示v0.25.3139) ---
+// 「赤ライン予兆から発動」「尻尾の長さに連動」「(叩きつけ)からの弾連射(すでに出てる弾の機能を意図的に連射)」。
+// ★射程は定数で持たない。`glenTailReach(enemy)` が唯一の出どころ=**見えている尻尾の長さがそのまま判定**。
+export const GLEN_TAILSLAM_WINDUP_MS = 840;    // 実効700ms・赤ラインを出して静止(既存の帯技と同じ読みの長さ)
+export const GLEN_TAILSLAM_ACTIVE_MS = 264;    // 実効220ms・叩きつけの瞬間(=GIANT_SWEEP_ACTIVE_MSと同値)
+export const GLEN_TAILSLAM_HALF_WIDTH = 46;    // 帯の半幅(尻尾の太さぶん。sweepの40より少し太い)
+// 叩きつけの直後に、**既にある胴体弾(glenVolleyShots)をそのまま連射**する。弾の性能・見た目・
+// カウンター可否は1つも変えない=「すでに出てる弾の機能を意図的に連射」(社長の言葉どおり)。
+export const GLEN_TAILSLAM_VOLLEYS = 3;        // 斉射の回数
+export const GLEN_TAILSLAM_VOLLEY_GAP_MS = 360; // 実効300ms・斉射の間隔
+export const GLEN_TAILSLAM_RECOVER_MS = 960;   // 実効800ms・硬直=反撃窓
+export const GLEN_TAILSLAM_CD_MS = 8400;       // 実効7.0s(通常技なので大技より短い)
 export const GLEN_TRIJUMP_CD_MS = 18000;      // 実効15.0s
 export const GLEN_TRIJUMP_RADIUS = 110;       // 1跳びの着地AoE半径(城ボスの飛び掛かり100より少し大きい)
 
@@ -9306,6 +9318,18 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiStartedAt: gameTime, hateTarget: aim.side,
                   gReachIndex: 0, // 3連発の1発目(社長指示v0.25.3126)
                 };
+              case 'tailslam': {
+                // v0.25.3139(社長指示): 尻尾の叩きつけ。**赤ライン予兆から発動**・**尻尾の長さに連動**。
+                // 射程は `glenTailReach`(=胴体パーツの連結距離の末端)だけを読む。定数で持たないので
+                // **見えている尻尾より長く殴る/短く殴る**が構造的に起きない(パーツが減れば射程も減る)。
+                const tailLen = glenTailReach(enemy);
+                return {
+                  aiPhase: 'g-tailslam-windup', aiPhaseUntil: atkUntil(GLEN_TAILSLAM_WINDUP_MS),
+                  aiFromX: ecx, aiFromY: ecy,
+                  aiTargetX: ecx + lockDirX * tailLen, aiTargetY: ecy + lockDirY * tailLen,
+                  aiStartedAt: gameTime, hateTarget: aim.side,
+                };
+              }
               case 'nihil':
               default:
                 // 虚無の三唱: 3唱固定(学習点④=数える)。狙い点(固定ヘイト対象の足元)は1唱目の開始時に
@@ -10162,6 +10186,68 @@ export const useGameStore = create<GameState>((set, get) => ({
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
 
+            // ==== v0.25.3139: 第二形態の通常技「尻尾の叩きつけ → 弾の連射」 ====
+            case 'g-tailslam-windup': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                // 叩きつけ=帯(カプセル)の一撃。**溜め開始で焼いた線と同じ寸法**をそのまま判定にする
+                // (bite/slam/reachと同型=windup終わりにpumpkinBlastsへ1回だけ積む)。
+                const tfx = enemy.aiFromX ?? ecx, tfy = enemy.aiFromY ?? ecy;
+                const ttx = enemy.aiTargetX ?? ecx, tty = enemy.aiTargetY ?? ecy;
+                pumpkinBlasts.push({
+                  x: (tfx + ttx) / 2, y: (tfy + tty) / 2, radius: GLEN_TAILSLAM_HALF_WIDTH,
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-tailslam',
+                  capsule: { fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: GLEN_TAILSLAM_HALF_WIDTH },
+                });
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-tailslam-active', aiPhaseUntil: atkUntil(GLEN_TAILSLAM_ACTIVE_MS),
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-tailslam-active': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                // 叩きつけ切ったら、そのまま**弾の連射**へ。1発目は即。
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-tailslam-volley',
+                  aiPhaseUntil: atkUntil(GLEN_TAILSLAM_VOLLEY_GAP_MS * GLEN_TAILSLAM_VOLLEYS),
+                  gTailVolleyLeft: GLEN_TAILSLAM_VOLLEYS, gTailVolleyAt: gameTime,
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-tailslam-volley': {
+              // ★「すでに出てる弾の機能を意図的に連射」(社長の言葉どおり): 胴体弾の斉射
+              // (glenVolleyShots)を**そのまま**間隔をあけて撃つ。弾の性能・見た目・カウンター可否は
+              // 1つも変えない=プレイヤーの読み(打ち返せる通常弾)が崩れない。
+              // 実際の発射は set 後(glenVolleyFires)=既存の胴体弾と同じ経路に相乗りする。
+              const tvLeft = enemy.gTailVolleyLeft ?? 0;
+              if (tvLeft > 0 && gameTime >= (enemy.gTailVolleyAt ?? 0)) {
+                glenVolleyFires.push(enemy.id);
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  gTailVolleyLeft: tvLeft - 1,
+                  gTailVolleyAt: gameTime + GLEN_TAILSLAM_VOLLEY_GAP_MS / ENEMY_ATTACK_SPEED_MULT,
+                };
+              }
+              if (tvLeft <= 0) {
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0,
+                  aiPhase: 'g-tailslam-recover',
+                  aiPhaseUntil: atkUntil(scriptRestMs(GLEN_TAILSLAM_RECOVER_MS)),
+                  gTailVolleyLeft: undefined, gTailVolleyAt: undefined,
+                };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+            case 'g-tailslam-recover': {
+              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+                return { ...enemy, ...phaseFields, vx: 0, vy: 0, ...finishGlenMove('tailslam', GLEN_TAILSLAM_CD_MS) };
+              }
+              return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
+            }
+
             // ==== M67: stage-7限定「虚無の三唱」(nihil・大技) ====
             case 'g-nihil-chant1': {
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
@@ -10262,6 +10348,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                     reach: false,
                     nihil: glenBigMoves && gameTime >= (enemy.gGlenReadyAt?.nihil ?? 0),
                     trijump: glenBigMoves && gameTime >= (enemy.gGlenReadyAt?.trijump ?? 0),
+                    // v0.25.3139: 尻尾の叩きつけは**第二形態の通常技**(尻尾が生えている形態でしか成立しない)。
+                    tailslam: glenBigMoves && gameTime >= (enemy.gGlenReadyAt?.tailslam ?? 0),
                   };
                   const queued = enemy.bossScriptQueue?.[0];
                   const move = (queued as GiantMove | GlenMoveId | undefined) ?? pickGiantMoveWithGlen(dist, phase, ready, glenReady);
