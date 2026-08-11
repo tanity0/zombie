@@ -2,9 +2,10 @@ import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType
 import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, skillWarmUpCritBonus, skillWarmUpReloadMult } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { aimEnemyDist2 } from './enemyUtils';
+import { zoomCompensatedWorldDistance } from './cameraZoom';
 
-// プレイヤー中心→敵 の二乗距離。裏ボスは巨体で「当たり判定=足元の帯(AABB)」なので、中心ではなく
-// 帯の最近点で測る(中心基準だと帯の縁にいる時に銃の射程判定に入らない=社長報告「銃が中心にしか届かない」)。
+// プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
+// 社長指示「当たり判定の四隅でみて」)。中心基準だと巨体の縁に立っていても射程外扱いになる。
 // v0.25.2567: 式の正本は enemyUtils.aimEnemyDist2 へ移設(守護霊の銃射程ゲートと同じ1本を使うため)。
 const aimDist2 = aimEnemyDist2;
 
@@ -309,6 +310,22 @@ export const RANGE_BY_CATEGORY: Record<AmmoType, number> = {
   phill: 260 // 手動照準の精密射撃。自動射程判定には使わない(自動射撃しない)。
 };
 
+/**
+ * ★射程のズーム補正(社長指示v0.25.3170「ズームが引になると明らかに射程距離が短く感じてしまうので、
+ * 体感あまり変わらない様に調整したい」)。
+ *
+ * `RANGE_BY_CATEGORY` は**等倍画面で決めた値**なので、ボス交戦でカメラが引くと同じワールド距離が
+ * 画面上では zoom 倍に縮む(最大引き `ZOOM_MIN_ABS=0.40` なら**画面上の射程は4割**)。撃つ/撃たないは
+ * 目で測るので、これが「明らかに射程が短い」の正体。⇒ **画面上の射程が変わらないよう**ワールド距離へ
+ * 戻す。式は既に `bossEngagementDistancePx`(交戦域)と湧き範囲が使っている
+ * `zoomCompensatedWorldDistance` と**同じ1本**(寄り方向=zoom>1では伸ばさない)。
+ *
+ * 射程だけを伸ばすので、引いている間は相対的に銃が強くなる(ハンドガン176→最大440)。
+ * 数字が過剰なら `zoomCompensatedWorldDistance` ではなく上限付きに変えるのが調整点。
+ */
+export const zoomedGunRange = (basePx: number): number =>
+  zoomCompensatedWorldDistance(basePx, useGameStore.getState().viewZoom);
+
 // A stunned enemy is a low-priority target — the player should be putting
 // rounds into the threats that are still moving, not the one already frozen
 // for a melee finish.
@@ -446,7 +463,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // Range gate: hold fire (and ammo) unless an enemy is within reach. Don't
   // advance lastFired here so the gun fires the instant a target enters range.
   // (マークスマンは射程UP→移動速度UPに変更したため、射程倍率は廃止)
-  const gunRange = RANGE_BY_CATEGORY[weapon.ammoType];
+  const gunRange = zoomedGunRange(RANGE_BY_CATEGORY[weapon.ammoType]);
   if (nearestEnemyDistance(player, enemies) > gunRange) {
     return [];
   }

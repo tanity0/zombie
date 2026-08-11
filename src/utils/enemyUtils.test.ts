@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2 } from './enemyUtils';
 import { isEngageableBoss } from './bossEngagement';
 import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
@@ -318,6 +318,44 @@ describe('usesBossCrit (クリをボス式で受ける型・社長指示v0.25.31
     expect(isEngageableBoss('hunter')).toBe(false);
     expect(usesBossCrit('reaper')).toBe(true);
     expect(usesBossCrit('hunter')).toBe(true);
+  });
+});
+
+// ★社長指示v0.25.3170「そもそも、ボスの中心からの距離しか見てなく無い？ 当たり判定の四隅でみて」。
+// 旧実装は isHiddenBoss(裏ボス4+天使6+idol)だけが最近点で、giantbat / pumpkin / lab-zombie-3 /
+// hunter / reaper は**中心基準**だった=巨体の縁に立っていても射程外になる。
+describe('aimEnemyDist2 (銃の照準/射程を測る距離・社長指示v0.25.3170)', () => {
+  const at = (type: EnemyType, x: number, y: number, w = 60, h = 60): Enemy =>
+    ({ type, x, y, width: w, height: h } as Enemy);
+
+  it('★giantbat(城ボス)は中心ではなく当たり判定の縁で測る', () => {
+    const e = at('giantbat', 0, 0);
+    const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
+    const px = cx + 200;
+    const centerDist = 200;
+    const d = Math.sqrt(aimEnemyDist2(px, cy, e));
+    expect(d).toBeLessThan(centerDist);            // 中心基準より必ず近い(=射程が届く)
+    expect(centerDist - d).toBeGreaterThan(20);    // 帯の半幅ぶん(約38px)取り戻している
+  });
+
+  it('pumpkin / lab-zombie-3 / hunter / reaper も同じく縁で測る(旧: 中心)', () => {
+    for (const type of ['pumpkin', 'lab-zombie-3', 'hunter', 'reaper'] as EnemyType[]) {
+      const e = at(type, 0, 0);
+      const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
+      const d = Math.sqrt(aimEnemyDist2(cx + 200, cy, e));
+      expect(d, type).toBeLessThan(200);
+    }
+  });
+
+  it('裏ボスは従来どおり生のAABBの最近点(挙動不変)', () => {
+    const e = at('mimir', 0, 0, 300, 200);
+    // 矩形の真横 100px → 最近点は右辺 ⇒ ちょうど100
+    expect(Math.sqrt(aimEnemyDist2(400, 100, e))).toBeCloseTo(100, 5);
+  });
+
+  it('矩形の中に居るときは距離0(縁の内側=必ず射程内)', () => {
+    const e = at('giantbat', 0, 0);
+    expect(aimEnemyDist2(e.x + 30, e.y + 40, e)).toBe(0);
   });
 });
 

@@ -58,7 +58,10 @@ describe('CRIT-UNIFY §9.3: 接触パリィ(dashParried)の反撃はcrit=true', 
 });
 
 describe('CRIT-UNIFY §9.3: ブラストパリィ(パンプキン着地爆発)の反撃はcrit=true', () => {
-  it('非交戦ボス級(pumpkin)へのブラストパリィは体勢システム対象外', () => {
+  // ★v0.25.3169(社長指示「パンプキン、クリティカルもちゃんと固まるように。紫は無い。ボスでは無いので」):
+  // pumpkin はボス式クリ(=固まらず移動半減 bossSlowUntil)の対象外になった。体勢システム(紫)の
+  // 対象外なのは従来どおりで、**クリの効果が「半減」から「気絶」へ**変わる。
+  it('非交戦ボス級(pumpkin)は体勢システム対象外のまま、クリで気絶する(半減ではない)', () => {
     setupPlayerAt(0, 0, 400);
     const player = useGameStore.getState().player;
     const boss = spawnEnemyAt('pumpkin', 400, 400, useGameStore.getState().gameTime);
@@ -72,7 +75,10 @@ describe('CRIT-UNIFY §9.3: ブラストパリィ(パンプキン着地爆発)�
 
     const after = useGameStore.getState().enemies.find(e => e.id === boss.id);
     expect(after).toBeTruthy();
-    expect(after!.bossPosture).toBeUndefined();
-    expect(after!.bossSlowUntil).toBeGreaterThan(useGameStore.getState().gameTime);
+    expect(after!.bossPosture).toBeUndefined();      // 紫(体勢)は従来どおり無い
+    expect(after!.bossSlowUntil).toBeUndefined();    // ★v0.25.3169: ボス式の「移動半減」も付かなくなった
+    // 気絶が残らないのは**パリィのノックバック仕様**(dashParriedEnemyPatch が凍結系を解除する・
+    // v0.25.3127)であって、クリの扱いとは別。クリ=気絶になったことは通常のクリ経路で担保する。
+    expect(after!.stunUntil).toBeUndefined();
   });
 });

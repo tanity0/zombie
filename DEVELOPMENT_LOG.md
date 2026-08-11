@@ -1,5 +1,45 @@
 # Development Log
 
+## v0.25.3170 — 射程は「当たり判定の四隅」で測る+引きズームぶんの補正(社長指示)【2026-08-12 00:52 JST】
+社長「やはりズームが引になると明らかに射程距離が短く感じてしまうので、体感あまり変わらない様に調整したい。
+そもそも、ボスの中心からの距離しか見てなく無い？ 当たり判定の四隅でみて」。**社長の読みが当たっていた。**
+
+### ① 中心基準だった(=射程が実質短くなっていた)
+銃の照準/射程ゲート `aimEnemyDist2`(enemyUtils・プレイヤーと守護霊の共通1本)は、
+**`isHiddenBoss`(裏ボス4+天使6+idol)だけ**が矩形の最近点で、それ以外は**中心基準**だった。
+落ちていたのは **giantbat(城ボス/グレン)・pumpkin・lab-zombie-3・hunter・reaper の5型**——
+どれも巨体で、**体の縁に立っていても中心までの距離で射程外**になっていた。
+v0.25.2567 で「銃が中心にしか届かない」を是正した時、**裏ボスだけ直して他が残った**取りこぼし。
+- 数字: giantbat の判定帯は約76×70px ⇒ 横からだと**約38px**損。ハンドガン射程176pxの**2割強**。
+- 直し: **全ての敵で当たり判定矩形の最近点**まで測る。矩形の選び方は `enemyRangeRect` に一本化し、
+  **近接(`enemyMeleeDist`)と銃が同じ相手を測る**ようにした(2箇所で同じ判断を書かない)。
+
+### ② 引きズームぶんの射程補正(体感を揃える)
+`RANGE_BY_CATEGORY` は**等倍画面で決めた値**なので、ボス交戦で引くと画面上の射程が zoom 倍に縮む
+(最大引き `ZOOM_MIN_ABS=0.40` なら**画面上4割**)。撃つ/撃たないは目で測るので、これが体感の正体。
+⇒ **画面上の射程が変わらないよう**ワールド距離へ戻す(`zoomedGunRange`)。式は交戦域
+(`bossEngagementDistancePx`)と湧き範囲が既に使っている `zoomCompensatedWorldDistance` と**同じ1本**。
+- 画角は **store の新フィールド `viewZoom`**(useGameLoop が描画と同じ純関数で推定している値を写す。
+  変化0.005未満は書かない=per-frame churn を作らない)。**PixiJSの`worldGroup.scale`は読まない**(掟)。
+- **守護霊も同じ1本**を通す(引いている間だけ守護霊の射程が取り残される、を作らない)。
+- ★**数字の注意**: 完全補正なので最大引きでハンドガン **176→440**。過剰なら上限付きへ変えるのが調整点
+  (`zoomedGunRange` の1行)。近接(`MELEE_RADIUS`)・刀は**触っていない**——指示が「射程」だったのと、
+  カウンター半径は挙動への影響が大きいため。要るなら指示ください(74→最大185)。
+
+### 直したテスト(2件は v0.25.3169 由来・CIが赤くなる手前で回収)
+- `ghostDriver.test.ts`「giantbat は中心基準のまま」= **今回の是正対象そのもの**だったので更新+遠距離の番人を追加。
+- `sim.test.ts`(bossCritCdMult の代表を pumpkin→giantbat へ)/`combatCritParity.test.ts`
+  (pumpkin のブラストパリィは bossSlowUntil ではなくなった)。**この2件は v0.25.3169 の変更で壊れていた**
+  ——あの時は運用どおり typecheck+lint+enemyUtils しか回していなかったため見えていなかった。
+
+### 変更ファイル
+`src/utils/enemyUtils.ts`(enemyRangeRect 新設・aimEnemyDist2)/ `src/store/gameStore.ts`(enemyMeleeDist 統合・viewZoom)/
+`src/hooks/useGameLoop.ts`(viewZoom 書き込み・守護霊の射程)/ `src/utils/weaponUtils.ts`(zoomedGunRange)/
+テスト4本 / `package.json` / `src/data/changelog.ts`
+
+負荷 1/10(矩形1回+比較1回。ズーム書き込みは変化時のみ)。
+検証: typecheck OK / lint エラー0 / **全テスト 3154 passed**(社長指示の無い回だが、射程は戦闘の芯なので通した)。
+
 ## v0.25.3169 — パンプキン/研究所Lv3はクリで「固まる」へ(ボス式クリの対象外に)【2026-08-12 00:34 JST】
 社長「パンプキン、クリティカルもちゃんと固まるように。紫は無い。ボスでは無いので。研究所レベル3も同じく。」
 

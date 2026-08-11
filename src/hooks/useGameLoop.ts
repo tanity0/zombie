@@ -319,7 +319,7 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
-import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, zoomedGunRange, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
@@ -6271,6 +6271,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               * (1 - Math.exp(-baseDeltaTime / BOSS_DISTANCE_ZOOM_RETURN_TAU));
             est.v = 0;
           }
+          // ★v0.25.3170: いまの画角を store へ写す(銃の射程ゲートがワールド距離へ戻すのに使う)。
+          // **毎フレーム書かない**——変化が 0.005 未満なら書かない(store の per-frame churn を作らない
+          // ためのゲート。CLAUDE.md「React re-render discipline」)。
+          if (Math.abs(useGameStore.getState().viewZoom - est.z) >= 0.005) {
+            useGameStore.setState({ viewZoom: est.z });
+          }
           // §6.37 v7(社長指示「左右みたいに上下もカメラを寄せて」): 縦のボス先読み。横(描画側の
           // bossViewBiasX=中心差の半分)と同じ狙いを、縦は**カメラ本体**で寄せる(描画側のパンだと
           // 床上端が地平線から剥がれて「上の地面切れ」が再発するため)。入り0.5s/戻り1.0s=横と同系。
@@ -8002,8 +8008,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   gunDamage: gun?.damage ?? 0,
                   gunIntervalMs: gun ? effectiveFireCooldown(gun, ghostOwner) : 500,
                   // 刀モードは銃を撃たない(プレイヤーと同じ封印)ので射程0=意思決定側でも銃を選ばせない。
+                  // v0.25.3170: 射程のズーム補正もプレイヤーと同じ1本(zoomedGunRange)を通す
+                  // =引いている間だけ守護霊の射程だけが取り残される、を作らない(パリティ)。
                   gunRangePx: gun && !ghostKatana && !ghostReloadingWeaponId && (gun.magazine ?? 0) > 0
-                    ? RANGE_BY_CATEGORY[gun.category ?? 'handgun'] : 0,
+                    ? zoomedGunRange(RANGE_BY_CATEGORY[gun.category ?? 'handgun']) : 0,
                   meleeDamage: meleeWeapon?.damage ?? 6,
                 },
                 gameTime, nowMs,

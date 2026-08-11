@@ -989,11 +989,22 @@ describe('v0.25.2564: 縁基準の近接射程(パリティ=プレイヤーのen
     expect(d.action).toBe('shoot');
   });
 
-  it('銃: 裏ボス以外はプレイヤーと同じ中心基準のまま(縁で緩めない)', () => {
-    // giantbat(城ボス=isHiddenBossでない)を射程ちょうど外の中心距離に置く: 縁なら射程内でも撃たない。
+  // ★v0.25.3170(社長指示「当たり判定の四隅でみて」): giantbat(城ボス)等も**縁基準**へ変更。
+  // 旧テストはここで 'none'(中心基準のまま)を固定していたが、それが是正対象そのものだった。
+  it('銃: giantbat(城ボス)も縁基準=中心基準なら射程外の位置から撃てる', () => {
     const giant = mkBoss({ type: 'giantbat' as Enemy['type'], x: 400, y: 0, bossState: 'chase' });
     const d = decideGhost(baseDriverInput({
-      ghost: mkGhost({ x: 0, y: 0 }), // 中心(10,10)→giantbat中心(420,20)=中心間410 > 400
+      ghost: mkGhost({ x: 0, y: 0 }), // 中心(10,10)→giantbat中心(420,20)=中心間410 > 射程400
+      enemies: [giant],
+      profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.action).toBe('shoot'); // 帯の左辺までは約384px=射程内
+  });
+
+  it('銃: 縁で測っても遠ければ従来どおり撃たない(射程が無限になったわけではない)', () => {
+    const giant = mkBoss({ type: 'giantbat' as Enemy['type'], x: 900, y: 0, bossState: 'chase' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
       enemies: [giant],
       profile: { ...PROFILE, meleeBias: 0 },
     }));

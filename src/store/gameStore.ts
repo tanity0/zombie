@@ -97,7 +97,7 @@ import {
 } from '../utils/eventQuest';
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
-import { isBossType, isHiddenBoss, usesBossCrit, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill } from '../utils/enemyUtils';
 import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
@@ -886,9 +886,8 @@ export const MELEE_RADIUS = 74;
 export const enemyMeleeDist = (px: number, py: number, e: Enemy): number => {
   // 当たり判定=「帯」方式(社長指示)。通常敵は足元の帯(幅=影と同規格=実描画幅×0.55 / 高さ=e.height)、
   // 裏ボスは生の帯。その最近点までの距離で判定する。絵は別経路(enemyFootBox)で帯から大きく伸びる=見た目≠判定。
-  const r = isHiddenBoss(e.type)
-    ? { x: e.x, y: e.y, width: e.width, height: e.height }
-    : enemyHitStrip(e);
+  // v0.25.3170: 矩形の選び方は `enemyRangeRect`(enemyUtils)へ一本化=**銃と近接が同じ相手を測る**。
+  const r = enemyRangeRect(e);
   const nx = Math.max(r.x, Math.min(px, r.x + r.width));
   const ny = Math.max(r.y, Math.min(py, r.y + r.height));
   return Math.hypot(px - nx, py - ny);
@@ -3738,6 +3737,11 @@ interface GameState {
   zoomTargetY: number;
   // KILLズームだけの連発防止CD(社長指示)。スロー/揺れには適用しない=ズームだけ間引く。
   lastKillZoomAt: number;
+  // ★いまの画角(ボス交戦の引きズーム。1=等倍、小さいほど引き)。**描画からは書かない**——
+  // useGameLoop が描画側と同じ純関数・同じ時定数で推定している値(camBossZoomRef)をここへ写すだけ。
+  // 用途は「画面上の距離で決まっている値」をワールド距離へ戻すこと(v0.25.3170: 銃の射程ゲート)。
+  // 判定に使うので**シミュレーション側が持つのが正**(PixiJSのworldGroup.scaleを読みに行かない)。
+  viewZoom: number;
   // Whip hurricane: a fixed suction point at the whip tip. While active, nearby
   // enemies are pulled toward (rootX,rootY) each tick. null when inactive.
   hurricane: {
@@ -4551,6 +4555,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   zoomTargetX: 0,
   zoomTargetY: 0,
   lastKillZoomAt: 0,
+  viewZoom: 1,
   danceTapLog: [],
   hurricane: null,
   summons: [],
@@ -14462,6 +14467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         zoomTargetX: 0,
         zoomTargetY: 0,
         lastKillZoomAt: 0,
+        viewZoom: 1,
         hurricane: null,
         summons: [],
         rescueSurvivors: [],

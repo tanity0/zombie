@@ -265,7 +265,9 @@ describe('headless simulation invariants', () => {
 
   it('CRIT-UNIFY §9.2: bossCritCdMult=クリ窓中のボスは次行動CDに×2、窓外・非ボスは×1', () => {
     const t = 10_000;
-    const boss = spawnEnemyAt('pumpkin', 0, 0, 0);
+    // ★v0.25.3169(社長指示): 旧テストは pumpkin をボス代表に使っていたが、pumpkin/lab-zombie-3 は
+    // 「ボス式クリ」の対象外になった(クリで固まる側)。代表は城ボス(giantbat)へ差し替える。
+    const boss = spawnEnemyAt('giantbat', 0, 0, 0);
     // 窓が無い(bossSlowUntil未設定)ボスは×1。
     expect(bossCritCdMult(boss, t)).toBe(1);
     // 窓中(bossSlowUntil > t)のボスは×2。
@@ -278,6 +280,11 @@ describe('headless simulation invariants', () => {
     // 非ボス(zombie)は同じbossSlowUntilが立っていても常に×1(ボス以外には無関係のフィールド)。
     const zombie = { ...spawnEnemyAt('zombie', 0, 0, 0), bossSlowUntil: t + 3000 };
     expect(bossCritCdMult(zombie, t)).toBe(1);
+    // ★v0.25.3169: pumpkin / lab-zombie-3 も雑魚と同じ扱い(ボス式クリの対象外=CD2倍は乗らない)。
+    for (const type of ['pumpkin', 'lab-zombie-3'] as const) {
+      const e = { ...spawnEnemyAt(type, 0, 0, 0), bossSlowUntil: t + 3000 };
+      expect(bossCritCdMult(e, t), type).toBe(1);
+    }
   });
 
   it('CRIT-UNIFY §9.2同梱修正: 刀のクリ気絶にもstunDurationMult(気絶時間アップ)が乗る(旧実装漏れ)', () => {

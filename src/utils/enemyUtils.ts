@@ -2,6 +2,9 @@ import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, P
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
 import { projectileMoveKeyForEnemy } from './moveReaction'; // GHOST-BULLET-TECH: 弾へ載せる技キー(記録専用)
 import { GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
+// 当たり判定の「帯」(視覚と分離した gameplay の矩形)。射程を測る相手の矩形として使う。
+// renderSpec は utils を逆輸入しない(types と cameraZoom だけ)ので循環しない。
+import { enemyHitStrip } from '../pixi/renderSpec';
 
 // 固定ビュー矩形からの「画面外」バンド(px・社長指示Bで具体値決め直し)。全辺一律で「画面端から○px外」を意味する。
 // 固定ビューにしたので画面サイズ比ではなく固定px。SPAWN<RECYCLE のヒステリシスで湧いた敵が即リサイクルされない。実機で微調整可。
@@ -114,19 +117,31 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
 // 基本値がそのまま実効値になる。§6.28-1-1)・updateEnemiesの通常AIからの除外は今のうちに揃えておく。
 export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol';
 
+/**
+ * ★**射程を測る相手の矩形 = その敵の当たり判定そのもの**(唯一の出どころ)。
+ * 裏ボス/天使/idol は生のAABB、それ以外は足元の「帯」(`enemyHitStrip`)。
+ * 近接(`gameStore.enemyMeleeDist`)も銃(`aimEnemyDist2`)もここを見る=**測る相手が1つ**になる。
+ */
+export const enemyRangeRect = (e: Enemy): { x: number; y: number; width: number; height: number } =>
+  isHiddenBoss(e.type)
+    ? { x: e.x, y: e.y, width: e.width, height: e.height }
+    : enemyHitStrip(e);
+
 // 銃の照準/射程ゲート用の二乗距離(v0.25.2567でweaponUtils.aimDist2の中身をここへ移設=正本)。
-// 裏ボスは巨体で「当たり判定=帯(AABB)」なので中心ではなく最近点で測る(中心基準だと帯の縁に居ても
-// 射程外になる=社長報告「銃が中心にしか届かない」の是正)。他の敵は中心。プレイヤー(weaponUtils)と
-// 守護霊(ghostDriver)が**同じこの1本**を使う(§2.11追補ドクトリン: ルール=式は共有・二重実装しない)。
+// プレイヤー(weaponUtils)と守護霊(ghostDriver)が**同じこの1本**を使う
+// (§2.11追補ドクトリン: ルール=式は共有・二重実装しない)。
+//
+// ★v0.25.3170(社長指摘「そもそも、ボスの中心からの距離しか見てなく無い？ 当たり判定の四隅でみて」):
+// **全ての敵で「当たり判定の矩形の最近点」まで**測る。旧実装は `isHiddenBoss`(裏ボス4+天使6+idol)
+// **だけ**が最近点で、**giantbat(城ボス/グレン)・pumpkin・lab-zombie-3・hunter・reaper は中心基準**
+// だった。この5つは巨体なので、体の縁に立っていても中心までの距離で弾かれる=**射程が実質短くなる**
+// (giantbat の帯は約76×70pxなので横からだと約38px、ハンドガン射程176pxの2割強を損していた)。
+// v0.25.2567 の是正が「裏ボスだけ」で止まっていた取りこぼし。
 export const aimEnemyDist2 = (pcx: number, pcy: number, e: Enemy): number => {
-  if (isHiddenBoss(e.type)) {
-    const nx = Math.max(e.x, Math.min(pcx, e.x + e.width));
-    const ny = Math.max(e.y, Math.min(pcy, e.y + e.height));
-    return (pcx - nx) * (pcx - nx) + (pcy - ny) * (pcy - ny);
-  }
-  const dx = e.x + e.width / 2 - pcx;
-  const dy = e.y + e.height / 2 - pcy;
-  return dx * dx + dy * dy;
+  const r = enemyRangeRect(e);
+  const nx = Math.max(r.x, Math.min(pcx, r.x + r.width));
+  const ny = Math.max(r.y, Math.min(pcy, r.y + r.height));
+  return (pcx - nx) * (pcx - nx) + (pcy - ny) * (pcy - ny);
 };
 
 // ゲート2の天使ボス(ミゲル/ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)。裏ボスの部分集合=
