@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3142',
+    items: [
+      'グレンの触手の溜め(赤い予告が出てから当たるまで)がさらに長くなりました。3連発のリズムは変わりません。',
+    ],
+  },
+  {
     version: '0.25.3141',
     items: [
       'グレンの「虚無の三唱」に専用の音が付きました。壊れたラジオから流れているような、籠った音です。',
