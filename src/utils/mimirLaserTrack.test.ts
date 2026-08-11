@@ -7,6 +7,7 @@ import {
   MIMIR_LASER_WINDUP_MS, MIMIR_LASER_RAMP_MAX, MIMIR_LASER_TRACK_MAX_PX_S, MIMIR_LASER_TRACK_ACCEL,
   MIMIR_LASER_LOCK_MS, MIMIR_LASER_WEAK_MS, MIMIR_LASER_BROKEN_MS, MIMIR_LASER_INTERRUPTED_CD_MS,
   mimirLaserPhase, mimirLaserFill01, stepLaserAim, canInterruptMimirLaser, mimirLaserBreakOnMeleeHit, mimirLaserTrackCaps,
+  glenReachTrackCaps, GLEN_REACH_TRACK_MAX_MULT,
   type MimirLaserAim,
 } from './mimirLaserTrack';
 import { PLAYER_WALK_PX_PER_SEC, PLAYER_ATTACK_CYCLE_MS, minWindupMs } from './bossTelegraph';
@@ -200,5 +201,31 @@ describe('mimirLaserTrack: 中断(弱点窓)', () => {
     expect(r!.patch.bossState).toBe('laser-broken');
     expect(r!.patch.bossPosture).toBeUndefined();
     expect(r!.postureTriggered).toBe(false);
+  });
+});
+
+// v0.25.3152(社長指示「触手の速度あげて慣性もっと強められる?」): 触手専用キャップ。
+// ★このテストの主眼は数値そのものではなく、**ミーミルを巻き込んでいないこと**の固定。
+describe('glenReachTrackCaps — 触手専用の追尾キャップ(ミーミルと分離)', () => {
+  it('ミーミルより速く、かつ曲がりにくい(=慣性が強い)', () => {
+    const v = 104.4;
+    const m = mimirLaserTrackCaps(v), g = glenReachTrackCaps(v);
+    expect(g.maxPxS).toBeGreaterThan(m.maxPxS);  // 速度は上
+    expect(g.accel).toBeLessThan(m.accel);       // 加速度は下=慣性は強い
+  });
+  it('全反転にかかる時間が触手の方が長い(2×最高速/加速度)', () => {
+    const v = 104.4;
+    const turn = (c: { maxPxS: number; accel: number }) => 2 * c.maxPxS / c.accel;
+    expect(turn(glenReachTrackCaps(v))).toBeGreaterThan(turn(mimirLaserTrackCaps(v)));
+  });
+  it('★ミーミル側の値は従来のまま(触手の調整で巻き込まれていない)', () => {
+    const c = mimirLaserTrackCaps(104.4);
+    expect(c.maxPxS).toBeCloseTo(104.4 * 1.5, 6);
+    expect(c.accel).toBeCloseTo(104.4 * 3, 6);
+  });
+  it('プレイヤーが速いビルドでも比率を保つ(基準速以下では素の値)', () => {
+    const fast = glenReachTrackCaps(200), base = glenReachTrackCaps(50);
+    expect(fast.maxPxS / fast.accel).toBeCloseTo(base.maxPxS / base.accel, 6);
+    expect(base.maxPxS).toBeCloseTo(104.4 * GLEN_REACH_TRACK_MAX_MULT, 6); // 104.4未満は104.4扱い
   });
 });

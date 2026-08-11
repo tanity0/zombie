@@ -184,7 +184,7 @@ import {
   mimirLaserBreakOnMeleeHit,
   // v0.25.3145(社長指示「触手はミーミルレーザーと同じく切り返しで避ける」): 触手の溜め中の
   // 追尾照準は**レーザーと同じ物理**で動かす。数値・式をこちらへ複製しない(文法を1本に保つ)。
-  mimirLaserPhase, stepLaserAim, mimirLaserTrackCaps,
+  mimirLaserPhase, stepLaserAim, glenReachTrackCaps,
 } from '../utils/mimirLaserTrack';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
@@ -10214,8 +10214,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                   // 狙う相手はヘイト対象(=召喚物へ向くこともある)。lockDirと同じ解決関数を使う。
                   const rAim = resolveBossHateAim(enemy, { x: pcx, y: pcy }, summons, gameTime);
                   // 追尾キャップは**対象の実効速度**でスケール(速度ビルドでも「走るだけで振り切れる」に
-                  // ならない)。ミーミルの `mimirLaserTrackCaps` をそのまま使う=同じ比率。
-                  const rCaps = mimirLaserTrackCaps((player.speed ?? PLAYER_BASE_SPEED) * GAME_SPEED);
+                  // ならない)。★キャップは**触手専用**(v0.25.3152・社長指示で速度↑/慣性↑)。
+                  // ミーミルの掃引済みの値を触手の都合で動かさないための分離=物理は共有・数値は技ごと。
+                  const rCaps = glenReachTrackCaps((player.speed ?? PLAYER_BASE_SPEED) * GAME_SPEED);
                   const rEffWind = GLEN_REACH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
                   const rProg = Math.max(0, Math.min(1, 1 - (rUntil - gameTime) / rEffWind));
                   const rStep = stepLaserAim(

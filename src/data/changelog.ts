@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3152',
+    items: [
+      'グレンの触手の狙いが速く・重くなりました。走って逃げても以前より速く追いつかれますが、そのぶん切り返した時に大きく振り切れます。',
+    ],
+  },
+  {
     version: '0.25.3151',
     items: [
       'ゲーム内容の変更はありません(ボスの予告時間を測る基準を、コードに文書として固定しました)。',

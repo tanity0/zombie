@@ -127,6 +127,30 @@ export const mimirLaserTrackCaps = (playerEffSpeedPxS: number): { maxPxS: number
   return { maxPxS: v * 1.5, accel: v * 3 };
 };
 
+/**
+ * グレンの触手(reach)の追尾キャップ(社長指示v0.25.3152「触手の速度あげて慣性もっと強められる?」)。
+ *
+ * ★**ミーミルと別の関数にしてある理由**: `mimirLaserTrackCaps` をそのまま強くすると
+ * **ミーミルのレーザーまで変わる**。あちらは実測掃引で「反転が効く窓=発射600〜1800ms前」を
+ * 作り込んである(v0.25.2946/2949)ので、触手の都合で動かしてはいけない。
+ * **物理(stepLaserAim)は共有・キャップだけ技ごと**、が正しい分け方。
+ *
+ * ミーミルとの違い(倍率で書いてあるので、プレイヤーがどんな速度ビルドでも比率が保たれる):
+ *   最高速  ×1.5 → **×1.9**  = 走って逃げても**より速く追いつかれる**
+ *   加速度  ×3.0 → **×2.4**  = 曲がりにくい=**慣性が強い**
+ * 全反転にかかる時間 = 2×最高速/加速度 で、ミーミル 1.00秒 → 触手 **1.58秒**。
+ * ⇒ 「走り続けは捕まる」が強くなり、同時に「切り返しだけが振り切れる」も強くなる
+ *    (=社長の狙いどおり、避け方が**切り返し一択**に寄る)。
+ * ※溜め(GLEN_REACH_WINDUP_MS 実効1500ms)より全反転が長いのは**意図的**。
+ *   溜めの中で振り切るには「全部反転し切る」必要はなく、**帯の半幅ぶん(42px)ズレれば足りる**。
+ */
+export const GLEN_REACH_TRACK_MAX_MULT = 1.9;
+export const GLEN_REACH_TRACK_ACCEL_MULT = 2.4;
+export const glenReachTrackCaps = (playerEffSpeedPxS: number): { maxPxS: number; accel: number } => {
+  const v = Math.max(104.4, Number.isFinite(playerEffSpeedPxS) ? playerEffSpeedPxS : 104.4);
+  return { maxPxS: v * GLEN_REACH_TRACK_MAX_MULT, accel: v * GLEN_REACH_TRACK_ACCEL_MULT };
+};
+
 /** 中断可能か=laser-windup中かつ発射前WEAK_MS以内(弱点露出窓)。窓外・発射後はfalse。 */
 export const canInterruptMimirLaser = (
   type: string,
