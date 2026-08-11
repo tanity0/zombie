@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3151',
+    items: [
+      'ゲーム内容の変更はありません(ボスの予告時間を測る基準を、コードに文書として固定しました)。',
+    ],
+  },
+  {
     version: '0.25.3150',
     items: [
       '【不具合修正】グレンの触手の発動タイミングの目盛りが、触手の絵の下に完全に隠れて見えていませんでした。絵より上に出るようになりました。',
