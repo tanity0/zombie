@@ -201,7 +201,7 @@ import { labIdolSpotForDoc, type LabIdolSpot } from '../world/labIdolSpot';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { clampFinishKillOnlyHealth } from '../utils/finishKillOnly';
-import { stunnedMeleeOutcome, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS } from '../utils/meleeExecute';
+import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS } from '../utils/meleeExecute';
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
@@ -5774,7 +5774,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil
         && !isBossPostureBroken(enemy, gameTime);
       if (stunned) {
-        if (isBossType(enemy.type)) {
+        // v0.25.3171(案A): 「ボスか否か」は usesBossStunnedMelee(=isBossTypeから強個体を除く)。
+        if (usesBossStunnedMelee(enemy.type)) {
           bossFinishHit = true;
           const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
@@ -6196,7 +6197,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // オート斬撃(allowFinisher=false)はスタン敵にも通常ダメージだけ与え、
       // スタンは消さない(一閃で仕留める余地を残す)。
       if (stunned && allowFinisher) {
-        if (isBossType(enemy.type)) {
+        // v0.25.3171(案A): 強個体(pumpkin/lab-zombie-3)はボス枝へ落とさない。
+        if (usesBossStunnedMelee(enemy.type)) {
           // Same boss rule as the knife: 5× damage, no execute。ただし裏ボスの完全気絶(紫)中は
           // 気絶を解除せずタイマー切れまで5×を“し放題”(社長指示)。通常の気絶は従来どおり1発で解除。
           const fatal = !isGhost ? applyBrokenMeleeFatal(enemy, baseDamage * damageMult, gameTime) : null;
@@ -6468,7 +6470,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 近接フィニッシュ: スタン敵は即時処刑(ボスは5×でスタン解除。§6.22 M47でネームド/questTarget/
         // pumpkin/lab-zombie-3はHP50%以上なら即死せず×3+気絶解除に変更=旧§5.21-追補7の「ネームドは
         // 通常敵扱い=即時処刑」を上書き)。
-        if (isBossType(enemy.type)) {
+        // v0.25.3171(案A): 強個体(pumpkin/lab-zombie-3)はボス枝へ落とさない。
+        if (usesBossStunnedMelee(enemy.type)) {
           bossFinishHit = true;
           const fatal = applyBrokenMeleeFatal(enemy, meleeBase * whipMult, gameTime);
           const dmg = fatal?.damage ?? meleeBase * whipMult * BOSS_MELEE_STUN_MULT;

@@ -1,6 +1,6 @@
 // PACING_PUZZLE.md §6.22 M47仕様①のユニットテスト。境界50%両側+全強個体種別を確認。
 import { describe, it, expect } from 'vitest';
-import { stunnedMeleeOutcome, resolveStunnedMeleeHit, ELITE_EXECUTE_HP_RATIO, ELITE_MELEE_STUN_MULT } from './meleeExecute';
+import { stunnedMeleeOutcome, resolveStunnedMeleeHit, usesBossStunnedMelee, ELITE_EXECUTE_HP_RATIO, ELITE_MELEE_STUN_MULT } from './meleeExecute';
 import type { EnemyType } from '../types/game';
 
 const enemy = (over: Partial<{
@@ -71,20 +71,33 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
       .toEqual({ kind: 'boss', dmg: 50, keepStun: false });
   });
 
-  // 注: pumpkin/lab-zombie-3 は isBossType にも含まれるためボス分岐が先に勝つ(プレイヤーの既存
-  // 分岐順のまま)。'heavy' に到達するのは**非ボス型の強個体フラグ**(isNamed/questTarget)。
+  // ★v0.25.3171(社長裁定・案A): pumpkin / lab-zombie-3 は **ボス分岐へ落とさない**。
+  // 旧: isBossType が先に勝ち、M47がこの2体を名指ししていた強個体規定が一度も届いていなかった。
+  it('★pumpkin / lab-zombie-3 は強個体として裁定される(ボスの5×ではない)', () => {
+    for (const type of ['pumpkin', 'lab-zombie-3'] as EnemyType[]) {
+      // HP50%以上 → 即死せず ×3
+      expect(resolveStunnedMeleeHit(stunned({ type, health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT), type)
+        .toEqual({ kind: 'heavy', dmg: 30 });
+      // HP50%未満 → 即時処刑
+      expect(resolveStunnedMeleeHit(stunned({ type, health: 49, maxHealth: 100 }), 10, 500, BOSS_MULT), type)
+        .toEqual({ kind: 'execute' });
+    }
+  });
+
+  it('usesBossStunnedMelee = isBossType − 強個体(呼び出し側はこれだけを見る)', () => {
+    expect(usesBossStunnedMelee('giantbat')).toBe(true);
+    expect(usesBossStunnedMelee('mimir')).toBe(true);
+    expect(usesBossStunnedMelee('pumpkin')).toBe(false);
+    expect(usesBossStunnedMelee('lab-zombie-3')).toBe(false);
+    expect(usesBossStunnedMelee('zombie')).toBe(false);
+  });
+
+  // 'heavy' には**非ボス型の強個体フラグ**(isNamed/questTarget)からも到達する。
   it('強個体(HP50%以上)は ×ELITE_MELEE_STUN_MULT / HP50%未満は即時処刑', () => {
     expect(resolveStunnedMeleeHit(stunned({ type: 'zombie', isNamed: true, health: 50, maxHealth: 100 }), 10, 500, BOSS_MULT))
       .toEqual({ kind: 'heavy', dmg: 30 });
     expect(resolveStunnedMeleeHit(stunned({ type: 'zombie', isNamed: true, health: 49, maxHealth: 100 }), 10, 500, BOSS_MULT))
       .toEqual({ kind: 'execute' });
-  });
-
-  it('pumpkin/lab-zombie-3 はボス扱いが先(強個体分岐より優先=プレイヤーの既存順)', () => {
-    expect(resolveStunnedMeleeHit(stunned({ type: 'pumpkin', health: 50, maxHealth: 100 }), 10, 500, BOSS_MULT)?.kind)
-      .toBe('boss');
-    expect(resolveStunnedMeleeHit(stunned({ type: 'lab-zombie-3', health: 50, maxHealth: 100 }), 10, 500, BOSS_MULT)?.kind)
-      .toBe('boss');
   });
 
   it('雑魚は無条件で即時処刑', () => {
