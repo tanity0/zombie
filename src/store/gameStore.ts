@@ -184,7 +184,7 @@ import {
   mimirLaserBreakOnMeleeHit,
   // v0.25.3145(社長指示「触手はミーミルレーザーと同じく切り返しで避ける」): 触手の溜め中の
   // 追尾照準は**レーザーと同じ物理**で動かす。数値・式をこちらへ複製しない(文法を1本に保つ)。
-  mimirLaserPhase, stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT,
+  mimirLaserPhase, stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT, glenReachSwayRad,
 } from '../utils/mimirLaserTrack';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
@@ -10231,13 +10231,18 @@ export const useGameStore = create<GameState>((set, get) => ({
                   );
                   // 赤い帯の終点は**照準から毎tick導出**する(帯は本体から照準の向きへ長さ900)。
                   // 絵と判定はどちらもこの aiFrom/aiTarget を読む=「赤いのに当たらない」を作らない。
-                  const rdl = Math.hypot(rStep.x - ecx, rStep.y - ecy) || 1;
+                  // v0.25.3154(社長指示「もっとぶるーんぶるーんってはみ出す動きを大きく」):
+                  // 帯の向きに**振り回し**を足す。★足すのは帯の角度だけで、照準(gReachAim)は
+                  // 動かさない=追尾の慣性・切り返しの読みは1ミリも変わらない。
+                  // 振り回しは狙いが固まる前に必ず0へ戻る(=最後にどこを向くかが運にならない)。
+                  const rSway = glenReachSwayRad(rProg, gameTime - (enemy.aiStartedAt ?? gameTime));
+                  const rAng = Math.atan2(rStep.y - ecy, rStep.x - ecx) + rSway;
                   return {
                     ...enemy, ...phaseFields, vx: 0, vy: 0,
                     gReachAimX: rStep.x, gReachAimY: rStep.y, gReachAimVX: rStep.vx, gReachAimVY: rStep.vy,
                     aiFromX: ecx, aiFromY: ecy,
-                    aiTargetX: ecx + (rStep.x - ecx) / rdl * GLEN_REACH_LENGTH,
-                    aiTargetY: ecy + (rStep.y - ecy) / rdl * GLEN_REACH_LENGTH,
+                    aiTargetX: ecx + Math.cos(rAng) * GLEN_REACH_LENGTH,
+                    aiTargetY: ecy + Math.sin(rAng) * GLEN_REACH_LENGTH,
                   };
                 }
               }

@@ -95,6 +95,41 @@ const MIMIR_OVERSHOOT: OvershootConfig = {
  */
 export const GLEN_REACH_OVERSHOOT: OvershootConfig = { from: 0.22, to: 0.78, floor: 0.92 };
 
+// ── 触手の「振り回し」(社長指示v0.25.3154「もっとぶるーんぶるーんってはみ出す動きを大きく」) ──
+//
+// ★なぜ追尾の数値では作れないか(実測):
+//   seek+慣性のモデルでは、はみ出し幅 = v²/2a・1往復 = 4v/a で、**どちらも同じ v/a で決まる**。
+//     最高速×1.9 加速度×2.4 → はみ出し  94px / 1往復 3167ms
+//     最高速×2.3 加速度×2.0 → はみ出し 166px / 1往復 4600ms
+//     最高速×2.3 加速度×8.0 → はみ出し  41px / 1往復 1150ms
+//   溜めは実効1500msしかないので、**大きくはみ出す=往復が間に合わない**(1回通過して終わり)。
+//   慣性を弱めれば往復するが、今度は「切り返しで振り切れる」(v0.25.3145の設計)が壊れる。
+//   ⇒ **追尾はそのまま**にして、振り回しを**別の動き**として足す。両立できないものを1つの数値で
+//      無理に取らない(取ろうとすると、どちらの狙いも中途半端になる)。
+//
+// 中身: 帯の向きを左右に振る角度。**照準そのもの(gReachAim)は動かさない**ので、
+// 追尾の慣性・切り返しの読みは1ミリも変わらない。振れるのは**描く帯と判定の向き**だけ。
+// ★包絡線(envelope)で**山なりに増えて、狙いが固まる前に必ず0へ戻る**。
+//   終わりに0でないと「最後にどこを向くかが運」になり、予告として成立しない(掟の根幹)。
+/** 振れ幅(rad)。帯の先端(長さ900)では ±約200px 振れる。 */
+export const GLEN_REACH_SWAY_RAD = 0.22;
+/** 振れる速さ(Hz)。窓は溜め実効1500msの0.22〜0.78=840msなので、2.4Hzで**約2往復**
+ *  =社長の言う「ぶるーん**ぶるーん**」(1往復だと片振りにしか見えない)。 */
+export const GLEN_REACH_SWAY_HZ = 2.4;
+
+/**
+ * 触手の帯に足す振り回しの角度(rad)。`progress01` は溜めの進行(0..1)、`elapsedMs` は溜め開始からの経過。
+ * 振り切り窓(GLEN_REACH_OVERSHOOT)の内側でだけ振れ、窓の中央で最大・両端で0になる。
+ * 乱数なし=同じ状況なら同じ振り方(プレイヤーが読める)。
+ */
+export const glenReachSwayRad = (progress01: number, elapsedMs: number): number => {
+  const { from, to } = GLEN_REACH_OVERSHOOT;
+  if (progress01 <= from || progress01 >= to) return 0;
+  const u = (progress01 - from) / (to - from);       // 窓の中での位置 0..1
+  const envelope = Math.sin(Math.PI * u);            // 山なり(両端0=繋ぎ目で跳ねない)
+  return Math.sin((elapsedMs / 1000) * GLEN_REACH_SWAY_HZ * Math.PI * 2) * GLEN_REACH_SWAY_RAD * envelope;
+};
+
 export const stepLaserAim = (
   aim: MimirLaserAim, tgtX: number, tgtY: number, dtSec: number,
   maxPxS: number = MIMIR_LASER_TRACK_MAX_PX_S, accel: number = MIMIR_LASER_TRACK_ACCEL,

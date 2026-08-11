@@ -10,7 +10,10 @@
 // ※ここは「何px逃げたか」の絶対値は固定しない(調整のたびにテストが壊れて意味を失う)。
 //   **当たるか/避けられるか**だけを見る。境界は帯の半幅+自機半径=42px。
 import { describe, it, expect } from 'vitest';
-import { stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT } from './mimirLaserTrack';
+import {
+  stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT,
+  glenReachSwayRad, GLEN_REACH_SWAY_RAD,
+} from './mimirLaserTrack';
 
 const V = 104.4;          // プレイヤーの実効歩行速度(bossTelegraph.PLAYER_WALK_PX_PER_SEC)
 const WINDUP_MS = 1500;   // GLEN_REACH_WINDUP_MS(1800) / ENEMY_ATTACK_SPEED_MULT(1.2)
@@ -62,5 +65,46 @@ describe('触手の追尾: 避け方が「切り返し」一択になってい�
     for (const flip of [300, 600, 900, 1200]) {
       expect(missAtFire(cutBack(flip))).toBeGreaterThanOrEqual(ESCAPE_PX);
     }
+  });
+});
+
+// v0.25.3154(社長指示「もっとぶるーんぶるーんってはみ出す動きを大きく」): 帯の振り回し。
+// ★この機構の生命線は「**最後に必ず0へ戻る**」こと。戻らないと最後にどこを向くかが運になり、
+//   予告として成立しない(CLAUDE.md「赤いのに当たらない」の根幹)。ここを機械で固定する。
+describe('触手の振り回し(ぶるーん)', () => {
+  it('①狙いが固まる前に必ず0へ戻る(最後の向きが運にならない)', () => {
+    for (const p of [0.78, 0.85, 0.95, 1.0]) {
+      for (const t of [0, 137, 400, 900, 1499]) {
+        expect(glenReachSwayRad(p, t)).toBe(0);
+      }
+    }
+  });
+  it('②溜めの入り口でも0(出た瞬間にガクッと跳ねない)', () => {
+    for (const p of [0, 0.1, 0.22]) expect(glenReachSwayRad(p, 300)).toBe(0);
+  });
+  it('③窓の中では左右どちらにも振れ、振れ幅は指定値を超えない', () => {
+    let seenPlus = false, seenMinus = false, peak = 0;
+    for (let t = 0; t < 1500; t += 5) {
+      const r = glenReachSwayRad(t / 1500, t);
+      if (r > 0.02) seenPlus = true;
+      if (r < -0.02) seenMinus = true;
+      peak = Math.max(peak, Math.abs(r));
+    }
+    expect(seenPlus).toBe(true);
+    expect(seenMinus).toBe(true);
+    expect(peak).toBeLessThanOrEqual(GLEN_REACH_SWAY_RAD + 1e-9);
+    expect(peak).toBeGreaterThan(GLEN_REACH_SWAY_RAD * 0.6); // 山の頂点まで届いている
+  });
+  it('④「ぶるーんぶるーん」=溜めの中で2回以上振れる(1回だけの片振りではない)', () => {
+    let crossings = 0, prev = 0;
+    for (let t = 0; t < 1500; t += 5) {
+      const r = glenReachSwayRad(t / 1500, t);
+      if (prev !== 0 && Math.sign(r) !== 0 && Math.sign(r) !== Math.sign(prev)) crossings += 1;
+      if (r !== 0) prev = r;
+    }
+    expect(crossings).toBeGreaterThanOrEqual(2);
+  });
+  it('⑤乱数を使っていない(同じ状況なら同じ振り方=読める)', () => {
+    expect(glenReachSwayRad(0.5, 700)).toBe(glenReachSwayRad(0.5, 700));
   });
 });
