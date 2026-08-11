@@ -97,7 +97,7 @@ import {
 } from '../utils/eventQuest';
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
-import { isBossType, isHiddenBoss, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill } from '../utils/enemyUtils';
 import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
@@ -856,8 +856,11 @@ export const BOSS_CRIT_SLOW_MULT = 0.5;            // 「動きが半減」(社�
  * クリがボスに入った時の差分。**ボス以外には何もしない**(通常敵のスタンは完全に不変)。
  * 呼び出し側は「スタンを設定する代わりに」これを使う。
  */
+// v0.25.3169: 対象は `isBossType` ではなく **`usesBossCrit`**(=isBossType から pumpkin /
+// lab-zombie-3 を除いたもの)。この2体は紫にならないので「固まらない」だけを受けていた。理由は
+// enemyUtils.ts の usesBossCrit のコメントに集約してある。
 export const bossCritSlowPatch = (enemy: Enemy, gameTime: number): Partial<Enemy> | null =>
-  isBossType(enemy.type) ? { bossSlowUntil: gameTime + BOSS_CRIT_SLOW_MS } : null;
+  usesBossCrit(enemy.type) ? { bossSlowUntil: gameTime + BOSS_CRIT_SLOW_MS } : null;
 /** ボスの移動速度に掛ける倍率(半減中なら0.5)。ボス以外・非半減中は1。 */
 export const bossSlowMult = (enemy: Enemy, gameTime: number): number =>
   (enemy.bossSlowUntil !== undefined && gameTime < enemy.bossSlowUntil) ? BOSS_CRIT_SLOW_MULT : 1;
@@ -867,7 +870,7 @@ export const bossSlowMult = (enemy: Enemy, gameTime: number): number =>
 export const BOSS_CRIT_CD_MULT = 2; // 「攻撃間隔が2倍に」(社長裁定の文言そのまま)
 /** ボスの「次行動までのCD」に掛ける倍率(クリ窓中なら2倍)。ボス以外・窓外は1=無改変。 */
 export const bossCritCdMult = (enemy: Enemy, gameTime: number): number =>
-  (isBossType(enemy.type) && enemy.bossSlowUntil !== undefined && gameTime < enemy.bossSlowUntil) ? BOSS_CRIT_CD_MULT : 1;
+  (usesBossCrit(enemy.type) && enemy.bossSlowUntil !== undefined && gameTime < enemy.bossSlowUntil) ? BOSS_CRIT_CD_MULT : 1;
 
 // 分身(サブウェポン): その場で 1秒ごとに5秒間(=計5回)近接攻撃を繰り返し、消滅後にクールダウン。
 // クールダウンはレベルで短縮(Lv1=3s / Lv2=2s / Lv3=1s)。index は subWeaponLevels(1..3)。

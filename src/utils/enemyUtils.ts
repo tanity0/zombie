@@ -141,6 +141,22 @@ export const isBossType = (t: EnemyType): boolean =>
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' ||
   t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'hunter';
 
+/**
+ * ★クリティカルを「ボス式」(=固まらず**移動半減+CD2倍**・v0.25.2422/CRIT-UNIFY §9.2)で受ける型か。
+ *
+ * 社長指示v0.25.3169「パンプキン、クリティカルもちゃんと固まるように。紫は無い。ボスでは無いので。
+ * 研究所レベル3も同じく」。**pumpkin / lab-zombie-3 は `isBossType` には入るが厳密にはボスではない。**
+ *
+ * なぜこの2体だけ外すのか(後任が「ボスなのに揃っていない」と言って戻さないように):
+ * ボス式クリは「5秒の完全停止だとソウル式の**技を読む**戦いが成立しない」という理由で入れた仕組みで、
+ * **紫(完全気絶=`applyBossPostureDamage`)へ向かう読み合いとセット**の設計。その紫の入口である
+ * `isEngageableBoss` に、この2体は**そもそも入っていない**(=何をしても紫にならない)。
+ * つまり「固まらない」不利だけを受け取り、見返りの紫が無い状態だった。⇒ 通常敵と同じ
+ * 「クリ=固まる」へ戻す。**ここが唯一の出どころ**(半減窓とCD2倍の両方がこれを見る)。
+ */
+export const usesBossCrit = (t: EnemyType): boolean =>
+  isBossType(t) && t !== 'pumpkin' && t !== 'lab-zombie-3';
+
 /** 「最終ボスを討伐した」扱いにしてよいキルか(v0.25.3029・社長裁定「二体」)。
  * グレン形態1(glenForm===1)の死はミッション進行を確定させない(討伐アテンションの後に形態2が湧く)。
  * 従来の散在パターン(type==='giantbat' && !fromEvent)の**唯一の後継**——finaleDefeated/bossKilled/

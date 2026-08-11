@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit } from './enemyUtils';
+import { isEngageableBoss } from './bossEngagement';
 import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
 
@@ -282,6 +283,41 @@ describe('getsDeathAttention (討伐時の時間停止+カメラ寄り・社長�
   it('ただしネームド/クエスト対象なら演出は残る(型だけで切らない)', () => {
     expect(getsDramaticDeath({ type: 'pumpkin', isNamed: true } as Enemy)).toBe(true);
     expect(getsDramaticDeath({ type: 'pumpkin', questTarget: true } as Enemy)).toBe(true);
+  });
+});
+
+// ★社長指示v0.25.3169「パンプキン、クリティカルもちゃんと固まるように。紫は無い。ボスでは無いので。
+// 研究所レベル3も同じく」。ボス式クリ(固まらず移動半減)は**紫へ向かう読み合いとセット**の設計なので、
+// 紫にならないこの2体には適用しない=通常敵と同じ「クリ=固まる」に戻す。
+describe('usesBossCrit (クリをボス式で受ける型・社長指示v0.25.3169)', () => {
+  it('★pumpkin / lab-zombie-3 は isBossType でも「ボス式クリ」の対象外=クリで固まる', () => {
+    expect(isBossType('pumpkin')).toBe(true);
+    expect(isBossType('lab-zombie-3')).toBe(true);
+    expect(usesBossCrit('pumpkin')).toBe(false);
+    expect(usesBossCrit('lab-zombie-3')).toBe(false);
+  });
+
+  it('その2体以外のボスは従来どおりボス式(固まらず移動半減)', () => {
+    for (const type of BOSS_TYPES) {
+      if (type === 'pumpkin' || type === 'lab-zombie-3') continue;
+      expect(usesBossCrit(type), type).toBe(true);
+    }
+  });
+
+  it('雑魚は元から対象外(通常のクリスタン)', () => {
+    for (const type of ['zombie', 'bat', 'skeleton', 'plant', 'ghost'] as EnemyType[]) {
+      expect(usesBossCrit(type), type).toBe(false);
+    }
+  });
+
+  // ★未裁定の記録(勝手に直さないための固定): reaper / hunter も「紫にならないのにボス式クリ」で、
+  // pumpkin / lab-zombie-3 と同じ形の不一致が残っている。**社長が名指ししたのはこの2体だけ**なので
+  // 現状維持にしてある。動かすには社長指示が要る=このテストが番人。
+  it('reaper / hunter は現状維持(名指しされていないので触らない)', () => {
+    expect(isEngageableBoss('reaper')).toBe(false);
+    expect(isEngageableBoss('hunter')).toBe(false);
+    expect(usesBossCrit('reaper')).toBe(true);
+    expect(usesBossCrit('hunter')).toBe(true);
   });
 });
 
