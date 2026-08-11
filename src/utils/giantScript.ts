@@ -381,6 +381,17 @@ export const GIANT_QUAD_ICE_COUNT = 3;
 export type GlenMoveId = 'talon' | 'boon' | 'reach' | 'nihil' | 'trijump' | 'tailslam';
 const GLEN_MOVES: GlenMoveId[] = ['talon', 'boon', 'reach', 'nihil', 'trijump', 'tailslam'];
 
+/**
+ * 抽選で出た技IDが「グレン専用技」か(=`beginGlenMove` へ振り分けるべきか)。
+ *
+ * ★この関数がある理由(v0.25.3140の実バグ): gameStore 側が**同じ判定を手書きの or 連鎖で持っていた**
+ * ため、tailslam を足した時にそこだけ書き忘れ、**抽選では当たっているのに実行側へ渡らず握り潰される**
+ * =「新技が一度も出ない」になった。台帳(GLEN_MOVES)から導出する形にして、
+ * **技を足した瞬間に振り分けも自動で効く**ようにしてある。**判定をここ以外に書かないこと。**
+ */
+export const isGlenMoveId = (move: string): move is GlenMoveId =>
+  (GLEN_MOVES as string[]).includes(move);
+
 // 連続ジャンプ(社長指示v0.25.2430「ジャンプ着地後すぐに次のジャンプ、3回連続」)。
 // **回数は3固定**(乱数にしない)。これは §6.28 の学習装置③「回数で読ませる」の実装で、
 // 三連突進(GIANT_QUAD_DASH_COUNT=3)・虚無の三唱(GLEN_NIHIL_CHANT_COUNT=3)と同じ一族。

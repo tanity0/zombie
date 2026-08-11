@@ -15,6 +15,7 @@ import {
   type GiantStageMoveId,
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用の新技4つ。
   glenScriptApplies, glenMoveEligible, pickGiantMoveWithGlen, GLEN_MOVE_RANGE, GLEN_NIHIL_CHANT_COUNT,
+  isGlenMoveId,
   type GlenMoveId,
 } from './giantScript';
 
@@ -604,6 +605,29 @@ const noGiantReady: Record<GiantMove, boolean> = { stomp: false, sweep: false, j
 const allGlenReady: Record<GlenMoveId, boolean> = { talon: true, boon: true, reach: true, nihil: true, trijump: true, tailslam: true };
 const noGlenReady: Record<GlenMoveId, boolean> = { talon: false, boon: false, reach: false, nihil: false, trijump: false, tailslam: false };
 
+// v0.25.3140(実バグの機械化・CLAUDE.md「教訓は即機械化」): tailslam を足した時、gameStore 側の
+// 「グレン技か?」判定が**手書きの or 連鎖**だったため書き忘れ、抽選では当たっているのに実行側
+// (beginGlenMove)へ渡らず**新技が一度も出なかった**。判定を台帳から導出する `isGlenMoveId` に
+// 一本化した上で、**技を足したらこのテストが自動的にその技も検査する**形にしておく。
+describe('isGlenMoveId — 受け入れ条件: 全グレン技が振り分けに乗る(1つでも漏れるとその技は出ない)', () => {
+  it('全 GlenMoveId が true(allGlenReady のキー=台帳の全数)', () => {
+    for (const m of Object.keys(allGlenReady) as GlenMoveId[]) {
+      expect(isGlenMoveId(m)).toBe(true);
+    }
+  });
+  it('城ボス標準5技は false(=beginGiantMove 側へ流す)', () => {
+    for (const m of Object.keys(noGiantReady)) expect(isGlenMoveId(m)).toBe(false);
+  });
+  it('抽選が返しうる技は必ずどちらかの経路に振り分けられる(未知の技IDが素通りしない)', () => {
+    const known = new Set([...Object.keys(allGlenReady), ...Object.keys(noGiantReady)]);
+    for (let i = 0; i < 200; i++) {
+      const move = pickGiantMoveWithGlen(300, 2, { stomp: true, sweep: true, jump: true, dash: true, bolt: true },
+        allGlenReady, () => ((i * 2654435761) % 1000) / 1000);
+      if (move) expect(known.has(move)).toBe(true);
+    }
+  });
+});
+
 describe('glenScriptApplies — 受け入れ条件: stage-7のグレンだけが新技を選ぶ(通常城ボス/ex1では絶対に選ばれない)', () => {
   it('true only for isStoryBoss=true & storyBossVariant="stage-7" & enabled', () => {
     expect(glenScriptApplies(true, 'stage-7', true)).toBe(true);
@@ -707,10 +731,11 @@ describe('pickGiantMoveWithGlen — 受け入れ条件: 既存5技の選択が�
     expect(pickGiantStoryCombo('stomp', 1300, false, () => 0)).toBe('dash');
   });
   // v0.25.2430: 距離350では連続ジャンプ(min=200)も間合いに入る=候補に加わるのが正しい。
-  it('only offers talon/boon/trijump at distance 350 when the existing 5 techs are all unready', () => {
+  // v0.25.3139: 尻尾の叩きつけ(tailslam・range 0〜460)も距離350の間合いに入る=候補に加わるのが正しい。
+  it('only offers talon/boon/trijump/tailslam at distance 350 when the existing 5 techs are all unready', () => {
     for (let i = 0; i < 20; i++) {
       const move = pickGiantMoveWithGlen(350, 1, noGiantReady, allGlenReady, () => i / 20);
-      expect(['talon', 'boon', 'trijump']).toContain(move);
+      expect(['talon', 'boon', 'trijump', 'tailslam']).toContain(move);
     }
   });
   it('returns null when nothing is ready/eligible at all', () => {

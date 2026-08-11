@@ -114,7 +114,7 @@ import {
   GIANT_STAGE_UNIQUE_MOVE, GIANT_STAGE_ULT_MOVE,
   giantQuadDashComplete,
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用の新技4つの純関数。
-  pickGiantMoveWithGlen, glenScriptApplies, type GlenMoveId, GLEN_NIHIL_CHANT_COUNT,
+  pickGiantMoveWithGlen, glenScriptApplies, isGlenMoveId, type GlenMoveId, GLEN_NIHIL_CHANT_COUNT,
   GIANT_PHASE_HP_THRESHOLD, glenTriJumpPoints, GLEN_TRIJUMP_COUNT,
 } from '../utils/giantScript';
 // v0.25.3027: グレン第二形態の胴体弾(連結パーツからのV字斉射・社長裁定)。台帳と式は描画と共有。
@@ -10354,7 +10354,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                   const queued = enemy.bossScriptQueue?.[0];
                   const move = (queued as GiantMove | GlenMoveId | undefined) ?? pickGiantMoveWithGlen(dist, phase, ready, glenReady);
                   if (move) {
-                    const isGlenMove = move === 'talon' || move === 'boon' || move === 'reach' || move === 'nihil' || move === 'trijump';
+                    // ★手書きの or 連鎖にしないこと(v0.25.3140の実バグ): tailslam を足した時に
+                    // ここだけ書き忘れ、**抽選では当たっているのに beginGiantMove 側へ流れて握り潰され**、
+                    // 「新技が一度も出ない」になった。判定は台帳(GLEN_MOVES)から導出する。
+                    const isGlenMove = isGlenMoveId(move);
                     return {
                       ...enemy, ...phaseFields, vx: 0, vy: 0,
                       bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('glen', move, phase, { glenBigMoves }).slice(1),

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3140',
+    items: [
+      '【不具合修正】グレン第二形態の新技「尻尾の叩きつけ」が一度も出ていませんでした。出るようになりました。',
+    ],
+  },
+  {
     version: '0.25.3139',
     items: [
       'グレン第二形態に新しい通常技「尻尾の叩きつけ」が入りました。赤いラインの予告が出た後、尻尾の届く範囲を薙ぎ、そのまま弾を3連射します。',
