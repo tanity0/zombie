@@ -72,11 +72,34 @@ export const MIMIR_LASER_RAMP_MAX = 1.2;   // 進行30%以降: 素の最高速×
  * ギリギリの切り返し(発射600〜1800ms前の反転)は従来どおり慣性で振り切れる。 */
 export const MIMIR_LASER_OVERSHOOT_FROM = 0.3;
 export const MIMIR_LASER_OVERSHOOT_TO = 0.5;
+/** 振り切り中の突っ込み速度の床(最高速に対する割合)。1.0=完全ノーブレーキ。 */
+export const MIMIR_LASER_OVERSHOOT_FLOOR = 0.75;
+
+/** 振り切り(オーバーシュート)の設定。技ごとに変えられるよう stepLaserAim の引数にしてある。 */
+export interface OvershootConfig { from: number; to: number; floor: number }
+const MIMIR_OVERSHOOT: OvershootConfig = {
+  from: MIMIR_LASER_OVERSHOOT_FROM, to: MIMIR_LASER_OVERSHOOT_TO, floor: MIMIR_LASER_OVERSHOOT_FLOOR,
+};
+
+/**
+ * グレンの触手(reach)の振り切り設定(社長指示v0.25.3153「もっと追い越す動きが必要。
+ * 追い越してくれないと避けれない」)。
+ *
+ * ミーミル(0.30〜0.50・床0.75)より**窓を広く・後ろまで・床を高く**する:
+ *   - 窓を後ろへ伸ばす(→0.78)ことで、**発動が近い時間帯でも針が通り過ぎている**
+ *     =切り返した時に「追い越して置いていかれる」が実際に起きる。
+ *   - 床0.92=ほぼノーブレーキ。減速せずに突っ込むので**はっきり通り過ぎる**。
+ * ★窓の終わり(0.78)以降は通常の減速へ戻す=**立ち止まりは最後に捕まる**の憲法を守る
+ *   (最後まで振り切り続けると「棒立ちが安全」になり、技の意味が消える)。
+ *   実効1500msの溜めなら、最後の約330msで収束する。
+ */
+export const GLEN_REACH_OVERSHOOT: OvershootConfig = { from: 0.22, to: 0.78, floor: 0.92 };
 
 export const stepLaserAim = (
   aim: MimirLaserAim, tgtX: number, tgtY: number, dtSec: number,
   maxPxS: number = MIMIR_LASER_TRACK_MAX_PX_S, accel: number = MIMIR_LASER_TRACK_ACCEL,
   progress01 = 1,
+  os: OvershootConfig = MIMIR_OVERSHOOT,
 ): MimirLaserAim => {
   const dx = tgtX - aim.x, dy = tgtY - aim.y;
   const dist = Math.hypot(dx, dy);
@@ -89,7 +112,7 @@ export const stepLaserAim = (
   // 振り切れて「早すぎる反転は再捕捉」の憲法が壊れる(実測掃引: 1600/2000ms前が75/57px逃げ)。
   // 速度と旋回力を同率で上げれば旋回時間が保存され、逃げ窓はギリギリ(終盤)だけに残る。
   const accelEff = accel * ramp;
-  const overshoot = progress01 >= MIMIR_LASER_OVERSHOOT_FROM && progress01 < MIMIR_LASER_OVERSHOOT_TO;
+  const overshoot = progress01 >= os.from && progress01 < os.to;
   // 到着済み(デッドゾーン内・ほぼ静止)なら保持=対象が動き出すまで静かに張り付く。
   // 振り切り窓中は保持しない(通り過ぎるのが仕様)。
   if (!overshoot && dist <= MIMIR_LASER_AIM_DEADZONE_PX && speed <= accelEff * dtSec) {
@@ -103,7 +126,7 @@ export const stepLaserAim = (
   // 振り切り中の突っ込み速度は最高速の75%を床にする(完全ノーブレーキだと、スパイク中の反転まで
   // 振り切れて逃げ穴になる。75%でも針は対象を約25px通り過ぎ=「一瞬追い越す」は見える)。
   const desiredSpeed = overshoot && closing
-    ? Math.min(maxEff, Math.max(maxEff * 0.75, Math.sqrt(2 * accelEff * dist)))
+    ? Math.min(maxEff, Math.max(maxEff * os.floor, Math.sqrt(2 * accelEff * dist)))
     : Math.min(maxEff, Math.sqrt(2 * accelEff * dist));
   const inv = dist > 1e-6 ? 1 / dist : 0;
   const dvx = dx * inv * desiredSpeed - aim.vx;

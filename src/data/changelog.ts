@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3153',
+    items: [
+      'グレンの触手の狙いが、はっきり自分を追い越すようになりました。切り返すと大きく置いていけます(走り続け・立ち止まりは従来どおり捕まります)。',
+    ],
+  },
+  {
     version: '0.25.3152',
     items: [
       'グレンの触手の狙いが速く・重くなりました。走って逃げても以前より速く追いつかれますが、そのぶん切り返した時に大きく振り切れます。',

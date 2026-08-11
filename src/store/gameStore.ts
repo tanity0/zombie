@@ -184,7 +184,7 @@ import {
   mimirLaserBreakOnMeleeHit,
   // v0.25.3145(社長指示「触手はミーミルレーザーと同じく切り返しで避ける」): 触手の溜め中の
   // 追尾照準は**レーザーと同じ物理**で動かす。数値・式をこちらへ複製しない(文法を1本に保つ)。
-  mimirLaserPhase, stepLaserAim, glenReachTrackCaps,
+  mimirLaserPhase, stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT,
 } from '../utils/mimirLaserTrack';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
@@ -10225,6 +10225,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                       vx: enemy.gReachAimVX ?? 0, vy: enemy.gReachAimVY ?? 0,
                     },
                     rAim.x, rAim.y, deltaTime, rCaps.maxPxS, rCaps.accel, rProg,
+                    // v0.25.3153(社長指示「もっと追い越す動きが必要。追い越してくれないと避けれない」):
+                    // 振り切りの窓をミーミルより広く・後ろまで・ほぼノーブレーキに。
+                    GLEN_REACH_OVERSHOOT,
                   );
                   // 赤い帯の終点は**照準から毎tick導出**する(帯は本体から照準の向きへ長さ900)。
                   // 絵と判定はどちらもこの aiFrom/aiTarget を読む=「赤いのに当たらない」を作らない。
