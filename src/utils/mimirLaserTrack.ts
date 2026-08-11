@@ -76,7 +76,20 @@ export const MIMIR_LASER_OVERSHOOT_TO = 0.5;
 export const MIMIR_LASER_OVERSHOOT_FLOOR = 0.75;
 
 /** 振り切り(オーバーシュート)の設定。技ごとに変えられるよう stepLaserAim の引数にしてある。 */
-export interface OvershootConfig { from: number; to: number; floor: number }
+export interface OvershootConfig {
+  from: number; to: number; floor: number;
+  /**
+   * ★true = 振り子(v0.25.3157・社長案「遠くから離して、強めの慣性があれば、振り子の様になる」)。
+   * 窓の中では**遠ざかっている間も到着減速を切る**。
+   *
+   * 既定(false)の挙動は「対象へ向かっている間だけ減速を切る」で、遠ざかり始めた瞬間に
+   * √(2ad) の到着減速が効く=**臨界制動**。つまり **既定では構造的に振動しない**
+   * (実測: 開始角/溜め/速度/加速度/窓を1152通り掃引して、**1つも振り子にならなかった**)。
+   * 振り子が要る技はこれを true にして、遠くから始める(=位置エネルギーを与える)。
+   * ※窓を抜けたら通常の到着減速へ戻るので、**発動までに必ず収束する**(狙いが運にならない)。
+   */
+  swing?: boolean;
+}
 const MIMIR_OVERSHOOT: OvershootConfig = {
   from: MIMIR_LASER_OVERSHOOT_FROM, to: MIMIR_LASER_OVERSHOOT_TO, floor: MIMIR_LASER_OVERSHOOT_FLOOR,
 };
@@ -93,7 +106,30 @@ const MIMIR_OVERSHOOT: OvershootConfig = {
  *   (最後まで振り切り続けると「棒立ちが安全」になり、技の意味が消える)。
  *   実効1500msの溜めなら、最後の約330msで収束する。
  */
-export const GLEN_REACH_OVERSHOOT: OvershootConfig = { from: 0.22, to: 0.78, floor: 0.92 };
+export const GLEN_REACH_OVERSHOOT: OvershootConfig = { from: 0, to: 0.8, floor: 0.92, swing: true };
+
+/**
+ * 触手の照準の**開始位置**(社長案v0.25.3157「遠くから離して、強めの慣性があれば、振り子の様になる」)。
+ * ボスを中心に、狙いから **GLEN_REACH_START_OFFSET_RAD** だけ横へ回した位置(距離は同じ)から始める。
+ * = 振り子に**位置エネルギー**を与える役。ここが0だと振り子は始まらない(その場から動かない)。
+ *
+ * ★左右は**発ごとに交互**(乱数なし)=3連発が「左から→右から→左から」で同じに見えない。
+ * ※v0.25.3155で一度この案を実装して掃引で全滅させているが、**あれは振り子モードが無い状態**
+ *   だった(到着減速で振動が殺されるため、開始をずらしても"遅れて寄るだけ"になり追尾が弱るだけ)。
+ *   振り子モード(swing)+長い溜めと**セット**でないと成立しない。3つで1つの設計。
+ */
+export const GLEN_REACH_START_OFFSET_RAD = 0.35; // 約20°
+
+export const glenReachAimStart = (
+  bossX: number, bossY: number, targetX: number, targetY: number, shotIndex: number,
+): { x: number; y: number } => {
+  const dx = targetX - bossX, dy = targetY - bossY;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-6) return { x: targetX, y: targetY };
+  const side = shotIndex % 2 === 0 ? 1 : -1;
+  const ang = Math.atan2(dy, dx) + GLEN_REACH_START_OFFSET_RAD * side;
+  return { x: bossX + Math.cos(ang) * dist, y: bossY + Math.sin(ang) * dist };
+};
 
 // ── 触手の見た目について(v0.25.3156・社長実機判断で**不採用**になった案の記録) ──────────
 // v0.25.3154「ぶるーんぶるーん」= 帯の角度にサイン波を足す
@@ -136,6 +172,18 @@ export const stepLaserAim = (
   const closing = (aim.vx * dx + aim.vy * dy) >= 0;
   // 振り切り中の突っ込み速度は最高速の75%を床にする(完全ノーブレーキだと、スパイク中の反転まで
   // 振り切れて逃げ穴になる。75%でも針は対象を約25px通り過ぎ=「一瞬追い越す」は見える)。
+  // ★振り子モード: **速度を目標に合わせるのをやめ、対象へ一定の力で引かれるだけ**にする。
+  // 既存の制御は「望みの速度」を作って差を詰める形(=ステアリング)で、これは遠ざかる時に必ず
+  // ブレーキが掛かる=**構造的に振動しない**。振り子は「力で引かれて、行き過ぎて、戻る」なので、
+  // 速度目標を捨てて加速度だけを与える必要がある。
+  if (overshoot && os.swing === true) {
+    const inv0 = dist > 1e-6 ? 1 / dist : 0;
+    let vx0 = aim.vx + dx * inv0 * accelEff * dtSec;
+    let vy0 = aim.vy + dy * inv0 * accelEff * dtSec;
+    const sp0 = Math.hypot(vx0, vy0);
+    if (sp0 > maxEff) { const k0 = maxEff / sp0; vx0 *= k0; vy0 *= k0; }
+    return { x: aim.x + vx0 * dtSec, y: aim.y + vy0 * dtSec, vx: vx0, vy: vy0 };
+  }
   const desiredSpeed = overshoot && closing
     ? Math.min(maxEff, Math.max(maxEff * os.floor, Math.sqrt(2 * accelEff * dist)))
     : Math.min(maxEff, Math.sqrt(2 * accelEff * dist));
@@ -178,8 +226,10 @@ export const mimirLaserTrackCaps = (playerEffSpeedPxS: number): { maxPxS: number
  * ※溜め(GLEN_REACH_WINDUP_MS 実効1500ms)より全反転が長いのは**意図的**。
  *   溜めの中で振り切るには「全部反転し切る」必要はなく、**帯の半幅ぶん(42px)ズレれば足りる**。
  */
-export const GLEN_REACH_TRACK_MAX_MULT = 1.9;
-export const GLEN_REACH_TRACK_ACCEL_MULT = 2.4;
+// v0.25.3157: 振り子にするため作り直した(掃引で成立した組)。速度も引く力も上がっているが、
+// 「慣性が弱くなった」わけではない——**振り子の見え方は振れ幅と周期で決まる**(下の掟を参照)。
+export const GLEN_REACH_TRACK_MAX_MULT = 2.8;
+export const GLEN_REACH_TRACK_ACCEL_MULT = 4.5;
 export const glenReachTrackCaps = (playerEffSpeedPxS: number): { maxPxS: number; accel: number } => {
   const v = Math.max(104.4, Number.isFinite(playerEffSpeedPxS) ? playerEffSpeedPxS : 104.4);
   return { maxPxS: v * GLEN_REACH_TRACK_MAX_MULT, accel: v * GLEN_REACH_TRACK_ACCEL_MULT };

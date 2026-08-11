@@ -207,17 +207,14 @@ describe('mimirLaserTrack: 中断(弱点窓)', () => {
 // v0.25.3152(社長指示「触手の速度あげて慣性もっと強められる?」): 触手専用キャップ。
 // ★このテストの主眼は数値そのものではなく、**ミーミルを巻き込んでいないこと**の固定。
 describe('glenReachTrackCaps — 触手専用の追尾キャップ(ミーミルと分離)', () => {
-  it('ミーミルより速く、かつ曲がりにくい(=慣性が強い)', () => {
+  it('ミーミルより速く動く(振り子として振れるための速度)', () => {
     const v = 104.4;
-    const m = mimirLaserTrackCaps(v), g = glenReachTrackCaps(v);
-    expect(g.maxPxS).toBeGreaterThan(m.maxPxS);  // 速度は上
-    expect(g.accel).toBeLessThan(m.accel);       // 加速度は下=慣性は強い
+    expect(glenReachTrackCaps(v).maxPxS).toBeGreaterThan(mimirLaserTrackCaps(v).maxPxS);
   });
-  it('全反転にかかる時間が触手の方が長い(2×最高速/加速度)', () => {
-    const v = 104.4;
-    const turn = (c: { maxPxS: number; accel: number }) => 2 * c.maxPxS / c.accel;
-    expect(turn(glenReachTrackCaps(v))).toBeGreaterThan(turn(mimirLaserTrackCaps(v)));
-  });
+  // ※v0.25.3152では「加速度はミーミルより低い=慣性が強い」を条件にしていたが、
+  //   v0.25.3157の振り子化で**設計意図が変わった**ので削除した。
+  //   振り子の"重さ"は旋回の遅さではなく**振れ幅と周期**で出る(遠くから始める+swingモード)。
+  //   触手の避け方が壊れていないことは glenReachTrack.test.ts が実挙動で押さえている。
   it('★ミーミル側の値は従来のまま(触手の調整で巻き込まれていない)', () => {
     const c = mimirLaserTrackCaps(104.4);
     expect(c.maxPxS).toBeCloseTo(104.4 * 1.5, 6);

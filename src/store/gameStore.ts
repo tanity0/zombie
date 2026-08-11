@@ -184,7 +184,7 @@ import {
   mimirLaserBreakOnMeleeHit,
   // v0.25.3145(社長指示「触手はミーミルレーザーと同じく切り返しで避ける」): 触手の溜め中の
   // 追尾照準は**レーザーと同じ物理**で動かす。数値・式をこちらへ複製しない(文法を1本に保つ)。
-  mimirLaserPhase, stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT,
+  mimirLaserPhase, stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT, glenReachAimStart,
 } from '../utils/mimirLaserTrack';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
@@ -1921,7 +1921,15 @@ export const GLEN_BOON_ARC_SPREAD_RAD = Math.PI / 3; // 叩き台(60°)。5個�
 //   溜めは実効 **1500ms**: 照準の全反転にかかる慣性が約1.0秒なので、**それ以上の長さが要る**
 //   (短いと反転する時間そのものが無く、新しい避け方が成立しない)。ミーミルの実測では
 //   「発射600〜1800ms前の反転」が振り切れる窓なので、1500msなら**発射600ms前まで**が有効窓になる。
-export const GLEN_REACH_WINDUP_MS = 1800;           // 実効1500ms・静止(照準は追尾で動く)
+// v0.25.3157(社長案「遠くから離して、強めの慣性があれば、振り子の様になる」): 実効1500→**2600ms**。
+// 振り子は**時間が要る**。掃引で「振り子になる×立ち止まり/走り続けは捕まる×切り返しで振り切れる
+// ×その窓が広い」を全部満たす組を探し、この長さに落ち着いた(1500msでは1つも成立しない)。
+// 実測(この設定): 振れ幅171px・照準が狙いを2回横切る・立ち止まり9px/走り続け22pxで捕まる
+//                 ・切り返しは発動200〜1700ms前で振り切れる(**途切れの無い**1500msの窓)。
+// ★もっと大きく振れる組(振れ幅421px)もあったが、**窓が飛び飛び**(直前は避けられ、中盤は捕まり、
+//   序盤はまた避けられる)になった。**振れ幅より窓が連続していることを優先**する
+//   ——避け方が読めないのは、地味なのより悪い。
+export const GLEN_REACH_WINDUP_MS = 3120;           // 実効2600ms・静止(照準が振り子のように振れる)
 export const GLEN_REACH_ACTIVE_MS = GIANT_SWEEP_ACTIVE_MS; // 叩き台=既存sweepの実行時間を流用(設計書に明記なし)
 export const GLEN_REACH_RECOVER_MS = 840;           // 実効700ms
 export const GLEN_REACH_CD_MS = 9600;               // 実効8.0s
@@ -9370,11 +9378,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiTargetX: ecx + lockDirX * GLEN_REACH_LENGTH, aiTargetY: ecy + lockDirY * GLEN_REACH_LENGTH,
                   aiStartedAt: gameTime, hateTarget: aim.side,
                   gReachIndex: 0, // 3連発の1発目(社長指示v0.25.3126)
-                  // 追尾照準は相手の真上から・速度0で始める(=「じわじわ加速」が効く)。
-                  // ★**照準の開始位置を横へずらさないこと**(v0.25.3155で試して掃引で全滅):
-                  //   0.2radで「立ち止まりが安全」、0.4rad以上で「走り続けるだけで避けられる」。
-                  //   照準が最初に失った距離は取り戻せないので、追尾が根本から弱くなる。
-                  gReachAimX: aim.x, gReachAimY: aim.y, gReachAimVX: 0, gReachAimVY: 0,
+                  // v0.25.3157: 照準は**狙いから横へ離した位置**・速度0で始まる=振り子の初期位置。
+                  // ここが0だと振り子は始まらない(位置エネルギーが無い)。溜めの長さ・振り子モードと
+                  // **3つセット**で成立している(どれか1つ欠けると掃引どおり破綻する)。
+                  ...(() => { const st = glenReachAimStart(ecx, ecy, aim.x, aim.y, 0);
+                    return { gReachAimX: st.x, gReachAimY: st.y, gReachAimVX: 0, gReachAimVY: 0 }; })(),
                 };
               case 'tailslam': {
                 // v0.25.3139(社長指示): 尻尾の叩きつけ。**赤ライン予兆から発動**・**尻尾の長さに連動**。
@@ -10282,7 +10290,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                     aiTargetX: ecx + rdx * GLEN_REACH_LENGTH, aiTargetY: ecy + rdy * GLEN_REACH_LENGTH,
                     aiStartedAt: gameTime, hateTarget: rAim.side, gReachIndex: rIdx + 1,
                     // 追尾照準も**発ごとに引き直す**(前の発の勢いを持ち越さない=3発とも同じ読みで避けられる)。
-                    gReachAimX: rAim.x, gReachAimY: rAim.y, gReachAimVX: 0, gReachAimVY: 0,
+                    // 開始は発ごとに左右交互=3連発が「左から→右から→左から」で同じに見えない。
+                    ...(() => { const st = glenReachAimStart(ecx, ecy, rAim.x, rAim.y, rIdx + 1);
+                      return { gReachAimX: st.x, gReachAimY: st.y, gReachAimVX: 0, gReachAimVY: 0 }; })(),
                   };
                 }
                 return {
