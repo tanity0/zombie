@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3166',
+    items: [
+      '【不具合修正】ボスの名前が城ボス全員で同じ(変異体(飛行型))になっていた箇所を直しました。ステージごとの名前が出ます。',
+    ],
+  },
+  {
     version: '0.25.3165',
     items: [
       '守護霊のカウンターがプレイヤーと同じ条件になりました。連発できていたのが直り、間隔も、届く距離も、自分と同じです。',

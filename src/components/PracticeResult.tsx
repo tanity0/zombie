@@ -10,6 +10,7 @@ import React, { useState } from 'react';
 import { useGameStore, enemyDeathLabel } from '../store/gameStore';
 import { practiceActiveSlot, practiceBossType } from '../utils/bossPractice';
 import { bossIconSrc } from '../utils/bossIcon';
+import { bossCutinName } from '../data/bossCutin';
 import { getSelectedStageId } from '../data/progress';
 
 const mmss = (ms: number): string => {
@@ -30,7 +31,10 @@ export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) 
   const [elapsed] = useState(() => useGameStore.getState().gameTime);
   const boss = practiceBossType();
   const slot = practiceActiveSlot();
-  const bossName = slot?.label ?? (boss ? enemyDeathLabel(boss) : 'ボス');
+  // ★v0.25.3166: 枠(slot)が無い経路(URL直リンク)では種類から引くしかないが、**種類だけでは
+  // 城ボスが全員同じ名前になる**(stage1〜5もグレンも 'giantbat')。ステージ別の台帳を先に引く。
+  const bossName = slot?.label
+    ?? (boss ? (bossCutinName(boss, getSelectedStageId()) ?? enemyDeathLabel(boss)) : 'ボス');
   const icon = boss ? bossIconSrc(boss, getSelectedStageId(), slot?.glenForm2 ? 'phase2' : undefined) : null;
 
   return (

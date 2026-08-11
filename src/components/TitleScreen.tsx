@@ -10,6 +10,7 @@ import { getLoadProgress, subscribeLoadProgress } from '../utils/loadProgress';
 import { normalizeNamedNamesInText } from '../utils/namedEnemy';
 import { parseBossTestMode, BOSS_TEST_ENTRIES } from '../utils/bossTest';
 import { enemyDeathLabel } from '../store/gameStore';
+import { bossCutinName } from '../data/bossCutin';
 
 // 現在モード(社長指示2026-07-31「いまどのモード(通常含めて)になってるか出しといて」)。
 // 強制出現フラグはモジュールロード時定数なので、**読込時のURL**をモジュールロード時に1回だけ写して
@@ -19,7 +20,12 @@ const loadedModeLabel = (): string => {
   if (!LOADED_MODE.active) return 'モード: 通常';
   const entry = BOSS_TEST_ENTRIES.find(e =>
     LOADED_MODE.params.includes(e.param) && (LOADED_MODE.stageId === null || e.stageId === LOADED_MODE.stageId));
-  const boss = entry ? enemyDeathLabel(entry.boss) : LOADED_MODE.params.join('+') || 'クイックスタート';
+  // ★v0.25.3166(社長報告「討伐した時のボスの名前が間違えてる。全部同じかも」):
+  // `enemyDeathLabel` は**敵の種類**から引くが、城ボスはステージ1〜5もグレンも全部 'giantbat' なので
+  // **全員が同じ名前('変異体(飛行型)')になる**。ステージ別の呼び名は bossCutin.ts の台帳が正本。
+  const boss = entry
+    ? (bossCutinName(entry.boss, entry.stageId) ?? enemyDeathLabel(entry.boss))
+    : LOADED_MODE.params.join('+') || 'クイックスタート';
   const ghostLabel = LOADED_MODE.ghostMode === 'random' ? '守護霊(有志)'
     : LOADED_MODE.ghostMode === 'top' ? '守護霊(猛者)'
       : LOADED_MODE.ghostMode === 'own' ? '守護霊' : null;
