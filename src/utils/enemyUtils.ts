@@ -162,7 +162,13 @@ export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && t 
 // ボス系は全員対象。ネームド/クエスト対象も従来どおり劇的な討伐を維持する。
 // isNamed は型ではなく個体フラグなので Enemy を受け取る(isHiddenBoss/isBossTypeはEnemyType引数)。
 export const getsDramaticDeath = (enemy: Enemy): boolean =>
-  !!enemy.isNamed || !!enemy.questTarget || isBossType(enemy.type);
+  !!enemy.isNamed || !!enemy.questTarget || (isBossType(enemy.type) && enemy.type !== 'pumpkin');
+// ★社長指示v0.25.3168「パンプキンは厳密にはボスではないので討伐イベントいらない」:
+// pumpkin を**討伐イベントごと**除外する(崩壊/バナー「◯◯を討伐」/閃光/リング/シェイク/スロー)。
+// 旧: v0.25.2879 では「時間停止+カメラ寄り(getsDeathAttention)」だけを外し、崩壊やバナーは残していた。
+//     今回はその残りも要らない、という裁定。
+// ※**ネームド/クエスト対象は先に true になる**ので、宿敵化したpumpkin等が居ても演出は残る
+//   (型だけで切ると、そちらまで巻き添えで地味になる)。
 
 // Stage director: which enemy types are eligible at this gameTime, and how
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.

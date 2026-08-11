@@ -6251,7 +6251,16 @@ export class PixiScene {
       const cel = realNow - s.bossCorpse.diedAt - (s.bossCorpse.holdMs ?? 0);
       if (cel >= 0 && cel < BOSS_CORPSE_CRUMBLE_MS) {
         const ct = cel / BOSS_CORPSE_CRUMBLE_MS;
-        const cmag = CORPSE_SHAKE_MAG * (0.7 + 0.6 * ct) * SHAKE_GLOBAL_MULT;
+        // ★ズーム割り戻し(社長報告v0.25.3168「討伐時、たまに画面が揺れない」の正体)。
+        // sx/sy が効くのは `world`=**worldGroup(ズーム倍率が掛かる親)の中**なので、この揺れは
+        // **画面に出る前に zoom 倍される**。討伐アテンションはヒットストップ中で `now` が凍る=
+        // ズームも凍る(zdt=0)ため、**倒した瞬間の画角がそのまま2.6秒間固定**される。よって
+        // 遠くから巨大ボスを倒す(引き 0.40〜0.6)と画面上の振幅が 4〜6割まで縮み、
+        // 近くで倒した時(≒1.0)と比べて「揺れていない」ように見えていた=距離次第の"たまに"。
+        // ⇒ その場の zoom で割り戻し、**どの画角でも画面上の揺れ幅を一定**にする。
+        // (通常シェイクも同じ性質を持つが、そちらは既存の意図なので触らない。)
+        const wz = this.L.worldGroup.scale.x || 1;
+        const cmag = CORPSE_SHAKE_MAG * (0.7 + 0.6 * ct) * SHAKE_GLOBAL_MULT / wz;
         sx += (Math.random() * 2 - 1) * cmag;
         sy += (Math.random() * 2 - 1) * cmag;
       }
@@ -7091,7 +7100,9 @@ export class PixiScene {
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
     this.drawSupportSniper(s.supportSniperNpc, s.gameTime); // 援護射撃NPC(非出撃の軍人立ち絵・画面縁のスライドイン→発射→後退)
-    this.syncBossCorpse(s.bossCorpse, now);
+    // ★realNow を渡す(v0.25.3168): 崩壊は**ヒットストップ中**に見せる演出なので、凍る `now` を
+    // 渡すと死体自身の揺れ(sin)と明滅が**固定値**になり「揺れて崩れる」(v0.25.3072)が死ぬ。
+    this.syncBossCorpse(s.bossCorpse, realNow);
     this.syncGiantDive(s.enemies, s.gameTime);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
     this.syncDeepZoneGrade(
@@ -18665,6 +18676,8 @@ export class PixiScene {
     sp.zIndex = footY + 1; // アクターと同じ y-sort 帯
   }
 
+  // `now` は**実時間(Date.now)を渡すこと**(呼び出し側でrealNow)。崩壊はヒットストップ中に
+  // 見せる演出なので、凍結時計を渡すと下の明滅sin/揺れsinが固定値になり「揺れて崩れる」が止まる。
   private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean } | null, now: number) {
     const sp = this.bossCorpseSprite;
     if (!corpse) { if (sp.visible) sp.visible = false; return; }

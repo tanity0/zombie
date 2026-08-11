@@ -247,9 +247,10 @@ const BOSS_TYPES: EnemyType[] = [
 ];
 
 describe('boss defeat cinematic eligibility', () => {
-  it('routes every boss type through the shared crumble death path', () => {
+  it('routes every boss type through the shared crumble death path (pumpkinを除く)', () => {
     for (const type of BOSS_TYPES) {
-      expect(getsDramaticDeath({ type } as Enemy), type).toBe(true);
+      // v0.25.3168(社長指示): pumpkin は「厳密にはボスではない」ので討伐イベントごと対象外。
+      expect(getsDramaticDeath({ type } as Enemy), type).toBe(type !== 'pumpkin');
     }
     expect(getsDramaticDeath({ type: 'zombie' } as Enemy)).toBe(false);
   });
@@ -273,8 +274,14 @@ describe('getsDeathAttention (討伐時の時間停止+カメラ寄り・社長�
     }
   });
 
-  it('★崩壊演出(getsDramaticDeath)は pumpkin でも残る=手応えは維持したまま進行だけ止めない', () => {
-    expect(getsDramaticDeath({ type: 'pumpkin' } as Enemy)).toBe(true);
+  // ★v0.25.3168(社長指示「パンプキンは厳密にはボスではないので討伐イベントいらない」):
+  // 旧v0.25.2879は「時間停止+カメラ寄りだけ外し、崩壊/バナーは残す」だったが、**残りも不要**という裁定。
+  it('★pumpkin は討伐イベントごと対象外(崩壊/バナー/閃光/シェイク/スローを出さない)', () => {
+    expect(getsDramaticDeath({ type: 'pumpkin' } as Enemy)).toBe(false);
+  });
+  it('ただしネームド/クエスト対象なら演出は残る(型だけで切らない)', () => {
+    expect(getsDramaticDeath({ type: 'pumpkin', isNamed: true } as Enemy)).toBe(true);
+    expect(getsDramaticDeath({ type: 'pumpkin', questTarget: true } as Enemy)).toBe(true);
   });
 });
 
