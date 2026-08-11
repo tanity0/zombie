@@ -247,6 +247,13 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           // v0.25.2597: inAttackZone=この直上の `inBlastGhost` が「ゴーストが爆風/帯の中に居る」ことを
           // ゾーンの幾何で確かめ済み=**ゾーン型**。ボスの体の間合い判定は掛けない(掛けると、ボスが
           // その場から動かず衝撃波だけ飛ばす技を離れた位置でカウンターできなくなる=社長の実運用を壊す)。
+          // ★社長裁定v0.25.3167「守護霊パリィは推薦で」= **現状維持**(この `inAttackZone: true` を残す)。
+          //   経緯: v0.25.3165 で守護霊のカウンターをプレイヤーへ揃えた際、位置条件を
+          //   「矩形が重なる」へ厳しくしたが、**ここだけは揃えなかった**。揃えると踏み鳴らし等の
+          //   ゾーン型の技を守護霊が**原理上一度も弾けなくなる**ため。
+          //   プレイヤー側もこの技には「ボスの体との距離」判定が無く(ゾーンの幾何だけ)、
+          //   **実質すでに同条件**というのが判断の根拠。
+          //   ⇒ **「パリティが揃っていない」という理由でここを直さないこと。**
           const gClaim = consumeGhostCounterClaim(b.enemyId, Date.now(), { inAttackZone: true });
           if (gClaim) {
             applyGhostCounterEffect(owner, gacx, gacy, { claim: gClaim, sfxGain: npcSfxDistGain(gacx, gacy, bpcx, bpcy, useGameStore.getState().camera, useGameStore.getState().gameBounds) }, (key, gain) => fx.playSfx(key, gain));

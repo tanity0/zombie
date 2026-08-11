@@ -72,7 +72,7 @@ COUNTER_CRIT_LEDGER.md §1・§9.3・§10 が正本。ゴースト側は`ghostCo
 | # | 系統 | プレイヤー成立条件/場所 | ゴースト現状 | メモ |
 |---|---|---|---|---|
 | 4-1 | 弾反射(窓400ms中の敵弾反射) | `combatTick.ts:447`(`applyEnemyProjectileHits`) | ✅**同一(v0.25.2525)** | **GHOST-REFLECT-MELEE-SUBS 発注A で解消**: 反射1回分を `applyCounterReflect(projId, now, subject, tunables, ghostId?)` へ主語引数化し、守護霊は `Summon.ghostCounterWindowEnd`(近接スイング起点・`COUNTER_WINDOW`)中の被弾を同じ反射弾生成で打ち返す。反射のたびの窓延長(`COUNTER_EXTEND_PER_HIT`)も同一。反射弾は `ghost-reflect` 帰属=計測除外/ヘイト'ghost'/倍率の主語=疑似Player。 |
-| 4-2 | ブラストパリィ(着地/爆発AoE無効化+反撃) | `combatTick.ts:223-321` | **部分(giantbat系のみ)** | `ghostCounter.ts`のTTL窓(150ms・`GHOST_COUNTER_CLAIM_TTL_MS`)を使ったパリィがCRIT-UNIFY実装(COUNTER_CRIT_LEDGER §9.7末尾)でgiantbat/pumpkin系の着地爆発に追加された。**crit=trueで確定クリ**(§9.3裁定どおり)。他ボス族(裏4/天使6/idol)のブラスト技への適用は個別確認が必要(未検証)。**★2026-08-11「プレイヤーと揃えろ」対応で再調査(下記「CDパリティ対応」節★未決参照): `applyPumpkinBlastDamage`(`combatTick.ts:250`)の`inAttackZone: true`は、v0.25.2597で社長報告(「離れた位置でカウンター」)を受けて意図的に追加された設計であり、単純に外すと「ボスが動かず衝撃波だけ飛ばす技(踏み鳴らし等)」がどの距離からも弾けなくなる=カウンター不能側に倒れるリスクがあるため、今回は変更を保留・社長裁定待ち。** |
+| 4-2 | ブラストパリィ(着地/爆発AoE無効化+反撃) | `combatTick.ts:223-321` | **部分(giantbat系のみ)** | `ghostCounter.ts`のTTL窓(150ms・`GHOST_COUNTER_CLAIM_TTL_MS`)を使ったパリィがCRIT-UNIFY実装(COUNTER_CRIT_LEDGER §9.7末尾)でgiantbat/pumpkin系の着地爆発に追加された。**crit=trueで確定クリ**(§9.3裁定どおり)。他ボス族(裏4/天使6/idol)のブラスト技への適用は個別確認が必要(未検証)。**★2026-08-11「プレイヤーと揃えろ」対応で再調査(下記「CDパリティ対応」節★未決参照): `applyPumpkinBlastDamage`(`combatTick.ts:250`)の`inAttackZone: true`は、v0.25.2597で社長報告(「離れた位置でカウンター」)を受けて意図的に追加された設計であり、単純に外すと「ボスが動かず衝撃波だけ飛ばす技(踏み鳴らし等)」がどの距離からも弾けなくなる=カウンター不能側に倒れるリスクがあるため、★**社長裁定v0.25.3167で『現状維持』に決着**(ゾーン型は距離を見ないのが正=プレイヤーと実質同条件。この1点は差分として再提起しないこと)。** |
 | 4-3 | 接触パリィ(dashParried=突進/硬直/気絶中敵) | `combatTick.ts:678-807` | **部分** | giantbat系は`combatTick.applyGhostBossParry`(568-655)で対応。気絶パリィ(気絶中ボスへの接触無効化)はCOUNTER_CRIT_LEDGER §9.7★1で「ゴーストに該当する接触被弾経路自体が存在しないためクローズ」= 仕様上N/A判定済み(欠落ではない)。 |
 | 4-4 | per-boss体当てカウンター(thor/裏3/idol/天使6) | `useGameLoop.ts`各ブロック+`angelBossTick.ts:280` | **同一** | `ghostCounter.ts`のconsumeGhostCounterClaimを各per-bossハンドラのghost分岐が消費し、プレイヤー成立と同じ機械的効果(技中断+確定クリ+bumpBossCrit)を与える(v0.25.2480実装・BOT_AND_GHOST.md §8)。 |
 | 4-5 | 気絶パリィの副作用(気絶解除) | `combatTick.ts`(dashParriedEnemyPatchが`stunUntil: undefined`) | **N/A(対象経路なし)** | COUNTER_CRIT_LEDGER §9.7★1で確認済み。 |
@@ -98,10 +98,12 @@ COUNTER_CRIT_LEDGER.md §1・§9.3・§10 が正本。ゴースト側は`ghostCo
    請求が積まれていた → 新: ghostDriverの意図フラグを使う)**: `GhostDecision.meleeIsCounterAttempt`を
    新設し、`counterWatching`分岐で実際にカウンター狙いで振った時だけtrueにする。`useGameLoop.ts`の
    2箇所の`wasCounterMelee`はこのフラグをそのまま見る形に変更(ボス状態の独立再計算を廃止)。
-4. **ブラストパリィの間合いスキップ(4-2参照)**: **変更を保留**。`inAttackZone: true`は
-   v0.25.2597の意図的な設計(ゾーン型攻撃はボスの体の距離と無関係に成立させる)であり、単純に外すと
-   「ボスが動かず衝撃波だけ飛ばす技」を守護霊が原理的に一度も弾けなくなる恐れがある。仕様変更の判断が
-   要るため実装せず、社長裁定を仰ぐ。
+4. **ブラストパリィの間合いスキップ(4-2参照)**: ★**社長裁定v0.25.3167 =「現状維持」で決着**
+   (指示「守護霊パリィは推薦で」)。`inAttackZone: true` は**残す**。
+   理由: v0.25.2597の意図的な設計(ゾーン型攻撃はボスの体の距離と無関係に成立させる)であり、外すと
+   「ボスが動かず衝撃波だけ飛ばす技(踏み鳴らし等)」を守護霊が**原理的に一度も弾けなくなる**。
+   プレイヤー側もこの技には「ボスの体との距離」判定が無く(ゾーンの幾何だけ)、**実質すでに同条件**。
+   ⇒ **この1点は「パリティ未達」ではなく「揃っている」と扱う。今後ここを差分として再提起しないこと。**
 
 テスト: `ghostDriver.test.ts`(GHOST-COUNTER-PARITY節・820ms周期/通常近接不変/意図フラグ)、
 `ghostCounter.test.ts`(位置条件=矩形オーバーラップ節)に追加。`npm run typecheck`/`npm run lint`= エラー0。

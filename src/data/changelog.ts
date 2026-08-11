@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3167',
+    items: [
+      'ゲーム内容の変更はありません(守護霊の爆風パリィを現状のままとする決定を記録しました)。',
+    ],
+  },
+  {
     version: '0.25.3166',
     items: [
       '【不具合修正】ボスの名前が城ボス全員で同じ(変異体(飛行型))になっていた箇所を直しました。ステージごとの名前が出ます。',
