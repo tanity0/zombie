@@ -46,7 +46,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   GIANT_BOLT_WINDUP_MS, GIANT_BOLT_BURST_GAP_MS, GIANT_BOLT_FAN_STEP_RAD, // v0.25.3034/3046: 掃射SMG/咆哮弾の銃の絵
   // M67(PACING_PUZZLE.md §6.26-12): グレン(stage-7)専用「伸びる触手」(reach)の予告描画に使う定数
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
-  GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH,
+  GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH, GLEN_REACH_LENGTH,
   // v0.25.3139(社長指示): 第二形態の通常技「尻尾の叩きつけ→弾の連射」の赤ライン予兆。
   GLEN_TAILSLAM_WINDUP_MS, GLEN_TAILSLAM_ACTIVE_MS, GLEN_TAILSLAM_HALF_WIDTH,
   // v0.25.2483(社長指示): フルランプ速度線のゲート=「移動速度+10%以上のステータス」判定に、
@@ -16157,6 +16157,31 @@ export class PixiScene {
           : 1;
         const rFill = gph === 'g-reach-active' ? 0.3 : (0.12 + 0.22 * rprog) + 0.08 * gPulse;
         drawGiantCapsuleZone(rfx, rfy, rtx, rty, GLEN_REACH_HALF_WIDTH, rFill, (0.32 + 0.4 * rprog) + 0.15 * gPulse);
+        // ★v0.25.3147(社長指示「触手にもミーミルみたいに発射タイミングがわかるやつ入れて」):
+        // カラオケの物差し。**ミーミルのレーザーと同じ作法**(§6.33・v0.25.2951社長指示):
+        //  - 塗りが根元→**プレイヤーの足元**へ伸び、**先端(白い印)が自分に触れた瞬間=発動**。
+        //    満杯の位置が「自分自身」なので見失わない(線の途中に目盛りを置くと分かりづらい)。
+        //  - **線そのものは全長のまま**。プレイヤー位置で切ると、その先が「赤くないのに当たる」に
+        //    なって掟違反(塗り=表示だけの時計・判定は1ミリも変えていない)。
+        //  - 終盤(狙いが固定される LOCK 段)は帯全体が白くフラッシュ=「もう避ける向きは変わらない」。
+        // 色は**赤系**にする(レーザーは紫=カウンター不可。触手は従来どおり赤の文法)。
+        if (gph === 'g-reach-windup') {
+          const rlen = Math.hypot(rtx - rfx, rty - rfy) || 1;
+          const rux = (rtx - rfx) / rlen, ruy = (rty - rfy) / rlen;
+          const plyR = useGameStore.getState().player;
+          const rpd = Math.min(
+            Math.hypot(plyR.x + plyR.width / 2 - rfx, plyR.y + plyR.height / 2 - rfy),
+            GLEN_REACH_LENGTH,
+          );
+          const rtipX = rfx + rux * rpd * rprog, rtipY = rfy + ruy * rpd * rprog;
+          o.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 8, color: 0xff6b6b, alpha: 0.9, cap: 'round' });
+          o.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 3, color: 0xffffff, alpha: 0.95, cap: 'round' });
+          o.circle(rtipX, rtipY, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
+          if ((e.aiPhaseUntil ?? gameTime) - gameTime <= LASER_TRACK_LOCK_MS) {
+            const rflick = 0.5 + 0.5 * Math.sin(now / 45);
+            o.moveTo(rfx, rfy).lineTo(rtx, rty).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * rflick, cap: 'round' });
+          }
+        }
       } else if (gph === 'g-tailslam-windup' || gph === 'g-tailslam-active') {
         // v0.25.3139 尻尾の叩きつけ(tailslam): 社長指示「叩きつけは赤ライン予兆から発動。尻尾の長さに連動」。
         // ★分類①(危険を伝える絵)なので、**判定カプセルと厳密に同じ寸法**を描く。長さは store 側が
