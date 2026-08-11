@@ -355,7 +355,14 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'thor-sweep': { src: `${import.meta.env.BASE_URL}audio/sfx/thor-sweep.mp3`, volume: 1.0, minIntervalMs: 60 },
   'thor-thrust': { src: `${import.meta.env.BASE_URL}audio/sfx/thor-thrust.mp3`, volume: 1.0, minIntervalMs: 60 },
   // グレン「虚無の三唱」(お墓技)のSE(社長提供・v0.25.3141)。壊れたラジオから流れる籠った音に加工済み
-  // (低音カット+2.2kHz以上カット+歪み+不規則な音量の揺れ+砂嵐/放電音、テンポ112%)。
+  // (低音カット+高音カット+歪み+不規則な音量の揺れ+砂嵐/放電音、テンポ112%)。
+  // ★v0.25.3162(社長報告「お経聞こえない」): 初版は**2.2kHz以上を落としていて実機で聞こえなかった**。
+  // 音量メーターでは他のSEと同等(-20dB)だったが、**スマホのスピーカーが一番よく鳴る2〜5kHzを
+  // 丸ごと削っていた**ため、数字が同じでも耳には届かない。⇒ 上限を3.2kHzへ広げ、2.6kHzに
+  // 存在感の山を作り、コンプ+6dBで底上げした(全体 -20.2→-13.9dB / 2kHz以上 -39.8→-27.7dB)。
+  // 籠りの芯である**低音カット(420Hz以下)は据え置き**なので「ラジオ」の character は変えていない。
+  // ⇒ 教訓: **音が聞こえるかを平均音量(RMS)だけで判断しない。**帯域を削る加工をしたら
+  //   「削った帯域が再生機で効く所ではないか」を必ず見る。
   // ★元クリップは15.7秒の曲で、技はその1/4しかない。社長裁定=B案「曲のまま鳴らして技が終わったら
   // フェードアウトで止める」⇒ 尺で切って fadeOutMs で硬直中に消す。**heli-intro と同じ作法**
   // (上限を切らないとフェードは曲尾=15秒後に掛かり、技中には一度も聞こえない)。
@@ -365,7 +372,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // 詠唱ごとの「どん!どん!どん!」(hunter-alert + 画面揺れ + 3段階の絵)は従来どおり。これはその下に敷く層。
   'glen-nihil': {
     src: `${import.meta.env.BASE_URL}audio/sfx/glen-nihil.mp3`,
-    volume: 0.75,
+    // v0.25.3162: 0.75→1.0(社長報告「お経聞こえない」)。素材側も作り直した(下記)。
+    volume: 1.0,
     minIntervalMs: 400,
     maxDurationMs: 3800,
     fadeOutMs: 1200,

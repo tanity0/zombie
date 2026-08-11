@@ -12,7 +12,11 @@
 #   6) aecho             … 小さい箱鳴り
 #   7) ヒス+パチパチ     … ピンクノイズの砂嵐 + ホワイトノイズを深いゲートに通した放電音
 #   8) ★最後に一括で帯域制限 … highpass420(低音を全部落とす=小型スピーカー)
-#                          + lowpass2200×4(高音を落とす=籠り)。
+#                          + lowpass3200(高音を落とす=籠り)+ コンプで底上げ。
+#      ★v0.25.3162: 上限は初版2200だったが**実機で聞こえなかった**(社長報告)。
+#        スマホのスピーカーが一番よく鳴る2〜5kHzを丸ごと削っていたため、平均音量が
+#        他のSEと同じでも耳に届かない。3200へ広げ、2.6kHzに存在感の山を作った。
+#        **低音カット(420Hz)は籠りの芯なので据え置き**=ラジオらしさは失っていない。
 #      ※ノイズを混ぜた**後**に掛けるのが肝。先に掛けるとノイズだけ帯域外に出て
 #        「籠らせたはずが逆に明るくなる」(この加工で実際に一度踏んだ)。
 set -e
@@ -27,6 +31,7 @@ ffmpeg -v error -y -i "$SRC" \
  -filter_complex "\
 [0:a]aformat=channel_layouts=mono,atempo=${TEMPO},\
 equalizer=f=1150:width_type=o:width=1.4:g=6,\
+equalizer=f=2600:width_type=o:width=1.0:g=5,\
 volume=6dB,asoftclip=type=tanh:threshold=0.35,\
 tremolo=f=0.37:d=0.45,tremolo=f=1.7:d=0.18,\
 vibrato=f=5.5:d=0.10,\
@@ -35,8 +40,9 @@ aecho=0.85:0.6:35:0.20,volume=1.4[voice];\
 [2:a]aformat=channel_layouts=mono,agate=threshold=0.55:ratio=9000:attack=1:release=40,volume=-17dB[crackle];\
 [voice][hiss][crackle]amix=inputs=3:duration=first:dropout_transition=0:normalize=0,\
 highpass=f=420,highpass=f=420,\
-lowpass=f=2200,lowpass=f=2200,lowpass=f=2200,lowpass=f=2200,\
-alimiter=limit=0.93,volume=5dB,\
+lowpass=f=3200,lowpass=f=3200,\
+acompressor=threshold=0.12:ratio=4:attack=15:release=180:makeup=2,\
+alimiter=limit=0.97,volume=6dB,\
 afade=t=in:st=0:d=0.05,afade=t=out:st=${FADE}:d=0.12[out]" \
  -map "[out]" -ac 1 -ar 44100 -b:a 96k "$OUT"
 echo "$OUT ($(ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUT")s)"
