@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3159',
+    items: [
+      'グレンの触手は、溜めの間は少ししか伸びず、当たる瞬間に一気に伸び切るようになりました。赤い予告は今までどおり最初から全長で出ます。',
+    ],
+  },
+  {
     version: '0.25.3158',
     items: [
       'ゲーム内容の変更はありません(グレンの触手を3連発のまま据え置く決定を記録しました)。',

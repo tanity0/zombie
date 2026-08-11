@@ -2225,6 +2225,9 @@ const CLAW_SLASH_HOLD_MS = 620; // 刻まれた痕が濃いまま残る時間
 const CLAW_SLASH_OUT_MS = 380;  // そこから薄れて消えるまで
 // (WING_SWING_MS は撤去: 翼撃は判定の active 窓そのもので一周するようになった・v0.25.2863)
 const REACH_HOLD_MS = 340;     // 触手が伸び切ってから引っ込むまで
+// v0.25.3159(社長指示「溜めの時は少ししか伸びず、当たり判定の時に一気に触手を伸ばす」)。
+const REACH_WINDUP_EXTEND = 0.2; // 溜め中に伸びる長さ(全長に対する割合)
+const REACH_SNAP_MS = 70;        // 判定が出てから全長へ伸び切るまで(=「一気に」の速さ)
 // ── 尻尾の叩きつけ(g-tailslam)の絵(社長指示v0.25.3146「ちゃんと振り上げて叩きつける動作」)。
 // **視覚のみ**(判定は store の帯が正本)。伸ばす先は帯の終点まで=はみ出さない(分類①)。
 // 溜め/実行の長さは store の定数(GLEN_TAILSLAM_*_MS)を1.2で割った実効値。ここに書く2つは
@@ -15968,7 +15971,8 @@ export class PixiScene {
           const rfx2 = e.aiFromX ?? cx, rfy2 = e.aiFromY ?? cy;
           const rtx2 = e.aiTargetX ?? cx, rty2 = e.aiTargetY ?? cy;
           return [rfx2, rfy2, Math.atan2(rty2 - rfy2, rtx2 - rfx2), Math.hypot(rtx2 - rfx2, rty2 - rfy2) || 1,
-            reachTotal > 0 ? reachTo / reachTotal : 0];
+            reachTotal > 0 ? reachTo / reachTotal : 0,
+            reachTotal]; // d[5]=latch全体の長さ(ms)。伸び切る時間を「割合」へ換算するのに使う
         });
         if (rcL) {
           // ★v0.25.3145: 触手は溜め中ずっと**照準が追尾して帯が動く**ようになった(store側)。
@@ -15984,7 +15988,18 @@ export class PixiScene {
             rcL.d[3] = Math.hypot(rtx3 - rfx3, rty3 - rfy3) || 1;
           }
           const hitF = rcL.d[4];
-          const grow = hitF > 0 ? Math.min(1, rcL.t / hitF) : 1;
+          // ★v0.25.3159(社長指示「溜めの時は少ししか伸びず、当たり判定の時に一気に触手を伸ばす」):
+          // 溜め中は REACH_WINDUP_EXTEND(全長の2割)までしか伸ばさず、**判定が出た瞬間に
+          // REACH_SNAP_MS で一気に全長へ**。溜め中に伸び切っていると「もう届いている」ように見えて、
+          // 発動の瞬間が立たない(=どこが当たる瞬間か分からない)。
+          // ※赤い帯は従来どおり**最初から全長**で出る=「どこまで届くか」の情報は減らない
+          //   (CLAUDE.md: 危険を伝える絵=赤い帯 と 武器の絵=触手 は役割が別)。
+          const snapF = (1 - hitF) > 0
+            ? Math.min(1, REACH_SNAP_MS / Math.max(1, rcL.d[5])) : 1; // latch全体に対する snap の割合
+          const grow = rcL.t < hitF
+            ? REACH_WINDUP_EXTEND * (hitF > 0 ? rcL.t / hitF : 1)
+            : Math.min(1, REACH_WINDUP_EXTEND
+                + (1 - REACH_WINDUP_EXTEND) * (snapF > 0 ? (rcL.t - hitF) / snapF : 1));
           const fade = rcL.t < hitF ? 1 : Math.max(0, 1 - (rcL.t - hitF) / (1 - hitF));
           this.drawTentacle(view, rcL.d[0], rcL.d[1], rcL.d[2], rcL.d[3] * grow,
             GLEN_REACH_HALF_WIDTH, artFade * fade);
