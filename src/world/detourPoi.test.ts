@@ -15,8 +15,9 @@ const seq = (...values: number[]) => {
 };
 
 describe('DETOUR_DIST(距離=区域の中点で固定)', () => {
-  it('警察署2250 < 武器庫4000 < 病院6250(価値の並び=深さと一致・固定)', () => {
-    expect(DETOUR_DIST.police).toBe((AREA_THRESHOLDS[0] + AREA_THRESHOLDS[1]) / 2);
+  it('警察署3500 < 武器庫4000 < 病院6250(価値の並び=深さと一致・固定)', () => {
+    // v0.25.3172: 警察署は 2250(研究対象区域の中点)→ 3500(デンジャーゾーンの手前寄り)。
+    expect(DETOUR_DIST.police).toBe(AREA_THRESHOLDS[1] + (AREA_THRESHOLDS[2] - AREA_THRESHOLDS[1]) * 0.25);
     expect(DETOUR_DIST.armory).toBe((AREA_THRESHOLDS[1] + AREA_THRESHOLDS[2]) / 2);
     expect(DETOUR_DIST.hospital).toBe((AREA_THRESHOLDS[2] + AREA_THRESHOLDS[3]) / 2);
     expect(DETOUR_DIST.police).toBeLessThan(DETOUR_DIST.armory);

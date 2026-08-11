@@ -2,7 +2,7 @@
 // 距離・アリーナ方式・報酬(専用スキル1つランダム)・入場コストは名称変更の前後で不変)。
 //
 // 仕様:
-// - 研究対象区域のほぼ中間(2250)に1つ立つ寄り道POI。4方角のうち、裏ボス/病院/武器庫と
+// - デンジャーゾーンの手前寄り(3500)に1つ立つ寄り道POI。4方角のうち、裏ボス/病院/武器庫と
 //   被らないセクターへ毎ランランダムに配置される(world/detourPoi.ts が割り当てを決める)。
 // - 病院/武器庫と違いサークル+滞在ではなく**既存の囲いイベント(アリーナ)をそのまま流用**する
 //   (§6.24 F1)。近づくと囲いが発生 → 全滅させると専用スキルを1つランダム入手。
@@ -13,8 +13,9 @@
 import { footRect, resolveAabb, type Rect } from './obstacles';
 import { DETOUR_DIST, detourPosForSector } from './detourPoi';
 
-/** 研究対象区域(AREA_THRESHOLDS[0]〜[1])のほぼ中間。§6.24: 警察署方面=2250。 */
-export const POLICE_DIST = DETOUR_DIST.police; // = 2250
+/** デンジャーゾーン(AREA_THRESHOLDS[1]〜[2])の手前寄り。v0.25.3172で 2250(研究対象区域の中点)から移動。
+ * 理由: 矢印を出す拠点が3200(デンジャー内)にあるのに、POIが2250=**来た道を戻る位置**にあった。 */
+export const POLICE_DIST = DETOUR_DIST.police; // = 3500
 
 // 囲いイベント(アリーナ)の半径。既存の ARENA_EVENT_RADIUS(useGameLoop.ts)と同じ値=240(§6.24 F1)。
 // useGameLoop.ts 自身も同名の定数をローカルに持つ(playtestDriver.ts が既に同じ値を独立して持つのと

@@ -10,9 +10,12 @@ import { detourPosForSector } from './detourPoi';
 import { poiSectorIndex } from './pois';
 
 describe('policePos(研究対象区域の中間・§6.24)', () => {
-  it('距離は研究対象区域の中間(2250)', () => {
-    expect(POLICE_DIST).toBe((AREA_THRESHOLDS[0] + AREA_THRESHOLDS[1]) / 2);
-    expect(POLICE_DIST).toBe(2250);
+  // v0.25.3172(社長指示「警察署はデンジャーに寄せる」): 拠点(3200)より内側にあると
+  // 「矢印が出た瞬間に来た道を戻らされる」ため、デンジャーゾーンの手前寄りへ移した。
+  it('距離はデンジャーゾーンの手前寄り(3500)=拠点(3200)より外', () => {
+    expect(POLICE_DIST).toBe(AREA_THRESHOLDS[1] + (AREA_THRESHOLDS[2] - AREA_THRESHOLDS[1]) * 0.25);
+    expect(POLICE_DIST).toBe(3500);
+    expect(POLICE_DIST).toBeGreaterThan(3200); // BASE_SITE_RADIUS
     for (const sector of [0, 1, 2, 3]) {
       expect(Math.hypot(policePos(sector).x, policePos(sector).y)).toBeCloseTo(POLICE_DIST, 6);
     }
