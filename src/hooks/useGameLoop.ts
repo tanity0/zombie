@@ -74,6 +74,7 @@ import {
   SKATER_LOCK_ENABLED,
   RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX,
   BOSS_TEST_RUN, // ボス戦テスト/ボスメーカー出撃か(チュートリアル抑止に使う)
+  GLEN_NIHIL_SE_MS, // 虚無の三唱の専用SEを鳴らす長さ(技の定数から導出・v0.25.3143)
 } from '../store/gameStore';
 import { glenScriptApplies } from '../utils/giantScript';
 import { glenPartCountFull, glenRemovedPartAnchors } from '../utils/glenChain';
@@ -7741,7 +7742,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             //   既存の演出のままなので、社長指示「いまのどん!どん!どん!は残したい」を崩さない。
             // 尺の始末(技3.8秒 < 曲15.7秒)は audioManager 側の maxDurationMs/fadeOutMs が持つ
             // =B案「曲のまま鳴らして技が終わったらフェードアウト」。
-            if (gPhase === 'g-nihil-chant1') playSfx('glen-nihil');
+            // 尺(GLEN_NIHIL_SE_MS)は**技の定数から導出**して渡す。audioManager側に直書きすると
+            // 詠唱の長さを変えた時に「技はまだ続いているのにSEだけ先に消える」(v0.25.3143)。
+            if (gPhase === 'g-nihil-chant1') playSfx('glen-nihil', 1, GLEN_NIHIL_SE_MS);
           }
           giantWindupSfxRef.current = isGiantWindupNow ? gPhase : undefined;
         }
