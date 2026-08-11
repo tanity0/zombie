@@ -784,10 +784,23 @@ export const isDashParryCounterPhase = (enemy: Pick<Enemy, 'type' | 'aiPhase'>):
 /** dashParried成立時の敵側変換(技の中断+攻め手から弾き飛ばすノックバック)。
  * applyContactDamageのプレイヤー経路と守護霊経路(applyGhostBossParry)の両方がこの1本を使う
  * (v0.25.2480でプレイヤー経路のインライン実装をここへ切り出し・挙動同一)。 */
+/**
+ * カウンターを受けても**技を中断しない**フェーズ(社長指示v0.25.3145「尻尾攻撃、カウンターで中断しないで」)。
+ * 尻尾の叩きつけ→弾の連射は「叩きつけたら必ず撃ち切る」1つの技として設計されているので、
+ * 途中でカウンターが刺さっても**フェーズを消さない**(=残りの連射が出る)。
+ * カウンター自体は従来どおり成立する(ダメージ・確定クリ・ノックバックは入る)——**報酬は消さず、
+ * 技の完走だけを守る**。「薙ぎ払いは出し切る」(社長指示v0.25.3106)と同じ思想の、判定側での実装。
+ */
+const COUNTER_UNINTERRUPTIBLE_PHASES: readonly string[] = [
+  'g-tailslam-windup', 'g-tailslam-active', 'g-tailslam-volley', 'g-tailslam-recover',
+];
+
 export const dashParriedEnemyPatch = (
   e: Enemy, originX: number, originY: number, pnow: number, gameTimeNow: number,
 ): Enemy => {
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+  // 中断しない技は、フェーズ関連のフィールドを**1つも触らない**で返す(下の一括クリアを免除)。
+  const keepPhase = e.aiPhase !== undefined && COUNTER_UNINTERRUPTIBLE_PHASES.includes(e.aiPhase);
   // ジャンプ同様、突進中の敵は攻め手に重なって向きが潰れることがある。
   // 距離が小さいときは突進してきた向き(aiFrom→現在)の逆=「来た方へ弾き返す」を使う。
   let ndx = ecx - originX, ndy = ecy - originY;
@@ -801,11 +814,16 @@ export const dashParriedEnemyPatch = (
   const ux = ndx / d, uy = ndy / d;
   return {
     ...e,
-    aiPhase: undefined, // 突進/ジャンプ中断
-    aiPhaseUntil: undefined, aiStartedAt: undefined,
-    aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-    aiReadyAt: gameTimeNow + 1200, // 少し間を空ける(giantbat は gbDashReadyAt 側で管理)
+    // 突進/ジャンプ中断。※ COUNTER_UNINTERRUPTIBLE_PHASES の技だけは技を消さない(社長指示v0.25.3145)。
+    ...(keepPhase ? {} : {
+      aiPhase: undefined,
+      aiPhaseUntil: undefined, aiStartedAt: undefined,
+      aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+      aiReadyAt: gameTimeNow + 1200, // 少し間を空ける(giantbat は gbDashReadyAt 側で管理)
+    }),
     // 即時に弾き飛ばし+凍結系/ノックバック無敵を全解除(ジャンプカウンターと同根の対策)。
+    // ★中断しない技でも位置は動く(弾き返しの手応えは残す)。帯は溜め開始で焼いた aiFrom→aiTarget を
+    //   そのまま使うので、本体が押されても**赤い予告と判定はズレない**(判定の正本は焼いた座標)。
     x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
     y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
     vx: 0, vy: 0,

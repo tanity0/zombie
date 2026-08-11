@@ -538,6 +538,14 @@ export interface Enemy {
   // v0.25.3126(社長指示「触手は1秒置きにターゲティングしなおして発動3連発」): 触手の何発目か(0始まり)。
   // 三連突進(gQuadIndex)と同じ作法=1つの技の中で反復する回数を敵が持ち回る。
   gReachIndex?: number;
+  // v0.25.3145(社長指示「触手、ミーミルレーザーと同じく切り返しで避ける3連技に変更」):
+  // 溜め中に**慣性を持って追いかけてくる照準**の位置と速度。ミーミルのレーザーと同じ
+  // `stepLaserAim`(mimirLaserTrack.ts)で更新する=避け方の文法を1本に保つ。
+  // ※これは「狙い点」で、赤い帯の終点(aiTargetX/Y)はここから毎tick導出する(絵と判定は同じ座標)。
+  gReachAimX?: number;
+  gReachAimY?: number;
+  gReachAimVX?: number;
+  gReachAimVY?: number;
   // v0.25.3139: 尻尾叩きつけ後の弾連射で「あと何回撃つか」。0で連射終了→硬直へ。
   gTailVolleyLeft?: number;
   gTailVolleyAt?: number; // 次の斉射の gameTime

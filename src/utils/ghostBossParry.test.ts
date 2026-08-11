@@ -78,3 +78,32 @@ describe('dashParriedEnemyPatch: 技の中断+攻め手から弾き飛ばす変�
     expect(r.knockbackVx).toBeCloseTo(COUNTER_KNOCKBACK_SPEED, 6);
   });
 });
+
+// v0.25.3145(社長指示「尻尾攻撃、カウンターで中断しないで」): 尻尾の叩きつけ→弾の連射は
+// 「叩きつけたら必ず撃ち切る」1つの技。カウンターは**成立するが技は止めない**。
+describe('dashParriedEnemyPatch: 中断しない技(尻尾の叩きつけ→弾連射)', () => {
+  const TAILSLAM = ['g-tailslam-windup', 'g-tailslam-active', 'g-tailslam-volley', 'g-tailslam-recover'];
+  it('尻尾の全フェーズで技の状態を1つも消さない(残りの連射が出る)', () => {
+    for (const ph of TAILSLAM as Enemy['aiPhase'][]) {
+      const e = enemy({ aiPhase: ph, aiPhaseUntil: 999, aiTargetX: 1, aiTargetY: 2, aiFromX: 3, aiFromY: 4, aiStartedAt: 7 } as Partial<Enemy>);
+      const r = dashParriedEnemyPatch(e, 20, 120, 5000, 3000);
+      expect(r.aiPhase).toBe(ph);
+      expect(r.aiPhaseUntil).toBe(999);
+      expect(r.aiStartedAt).toBe(7);
+      // 帯の座標(=判定の正本)も残す。消すと予告と判定がズレる。
+      expect([r.aiFromX, r.aiFromY, r.aiTargetX, r.aiTargetY]).toEqual([3, 4, 1, 2]);
+    }
+  });
+  it('カウンターの報酬(弾き飛ばし)は従来どおり入る=「技を止めない」だけの免除', () => {
+    const e = enemy({ aiPhase: 'g-tailslam-volley' } as Partial<Enemy>);
+    const r = dashParriedEnemyPatch(e, 20, 120, 5000, 3000);
+    expect(r.x).toBeCloseTo(100 + COUNTER_KNOCKBACK_LAUNCH, 6); // 攻め手の反対(+x)へ
+    expect(r.knockbackUntil).toBe(5000 + KNOCKBACK_DURATION);
+    expect(r.knockbackVx).toBeCloseTo(COUNTER_KNOCKBACK_SPEED, 6);
+  });
+  it('他の技は従来どおり中断される(免除は尻尾だけ)', () => {
+    for (const ph of ['g-reach-recover', 'g-talon-recover', 'charge'] as Enemy['aiPhase'][]) {
+      expect(dashParriedEnemyPatch(enemy({ aiPhase: ph } as Partial<Enemy>), 20, 120, 5000, 3000).aiPhase).toBeUndefined();
+    }
+  });
+});

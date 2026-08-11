@@ -15908,6 +15908,18 @@ export class PixiScene {
             reachTotal > 0 ? reachTo / reachTotal : 0];
         });
         if (rcL) {
+          // ★v0.25.3145: 触手は溜め中ずっと**照準が追尾して帯が動く**ようになった(store側)。
+          // latchFx は立ち上がりで1回しか焼かないので、そのままだと**絵だけ最初の向きに置き去り**になる
+          // =CLAUDE.md分類①(判定に揃える絵)の違反。溜め中は毎フレーム焼き直す。
+          // (`d` は latch が保持している配列そのものなので、書き換えると**発動後の残光もこの最終の向き**
+          //  =「当たった向きに触手が残る」になる。残光が動かないのは従来どおり。)
+          if (reachWind) {
+            const rfx3 = e.aiFromX ?? cx, rfy3 = e.aiFromY ?? cy;
+            const rtx3 = e.aiTargetX ?? cx, rty3 = e.aiTargetY ?? cy;
+            rcL.d[0] = rfx3; rcL.d[1] = rfy3;
+            rcL.d[2] = Math.atan2(rty3 - rfy3, rtx3 - rfx3);
+            rcL.d[3] = Math.hypot(rtx3 - rfx3, rty3 - rfy3) || 1;
+          }
           const hitF = rcL.d[4];
           const grow = hitF > 0 ? Math.min(1, rcL.t / hitF) : 1;
           const fade = rcL.t < hitF ? 1 : Math.max(0, 1 - (rcL.t - hitF) / (1 - hitF));

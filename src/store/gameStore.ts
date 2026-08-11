@@ -180,7 +180,12 @@ import {
   tickBossPosture, type BossPostureImpact,
 } from '../utils/bossPosture';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): ミーミルのレーザー弱点窓=近接ヒットで中断(近接3経路が呼ぶ)。
-import { mimirLaserBreakOnMeleeHit } from '../utils/mimirLaserTrack';
+import {
+  mimirLaserBreakOnMeleeHit,
+  // v0.25.3145(社長指示「触手はミーミルレーザーと同じく切り返しで避ける」): 触手の溜め中の
+  // 追尾照準は**レーザーと同じ物理**で動かす。数値・式をこちらへ複製しない(文法を1本に保つ)。
+  mimirLaserPhase, stepLaserAim, mimirLaserTrackCaps,
+} from '../utils/mimirLaserTrack';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
@@ -1904,21 +1909,19 @@ export const GLEN_BOON_ARC_SPREAD_RAD = Math.PI / 3; // 叩き台(60°)。5個�
 // 900px を 267ms で伸び切る=約3375px/s。**当たり判定は伸び切った瞬間に全長900pxで1回出る**ので、
 // 判定の出るタイミングもこの値と一致したまま3倍速くなる(絵と判定はズレない)。予告帯は従来どおり
 // 1フレーム目から全長900pxで出るが、**見えてから当たるまでが1/3**になる。
-// v0.25.3138 実効300→420ms / v0.25.3142 420→540ms(いずれも社長指示で延長)。
-// ★v0.25.3143(社長指示「触手は**1発ずつの溜め**をのばしたい。最初の設定だと**走ってても避けきれない**」):
-//   実効540ms → **850ms**。ここまでの2回は「3連発の周期(実効1.0秒)を守る」ために伸ばした分を
-//   **間(GAP)から引いていた**が、それでは**1発あたりの猶予が実質増えない**=社長の体感どおり
-//   避けられないままだった。**周期を守るのをやめ、溜めだけを伸ばす**(周期は伸びる)。
-//
-//   必要な溜めの算数(この技が「避けられる」ための下限):
-//     帯を抜けるのに必要な横移動 = 帯半幅28 + プレイヤーの半分14 = **42px**
-//     素の足(PLAYER_BASE_SPEED=87px/s)で42px = **483ms**かかる
-//     人間の反応(約250ms)を足すと **約730msが下限**。540msでは 540−250=290ms=25pxしか進めず
-//     42pxに届かない=**構造的に避けられない**(社長の報告と一致)。
-//   850msなら 850−250=600ms=52px > 42px で、**素の足のまま・反応込みで**抜けられる(余裕24%)。
-//   ※狙いは毎回**その場のプレイヤー**に付け直される(3連発の各溜めで再ロック)ので、
-//     「1回避ければ残り2発も避けられる」ではない。毎回この余裕が要る。
-export const GLEN_REACH_WINDUP_MS = 1020;           // 実効850ms・静止
+// v0.25.3138 実効300→420ms / v0.25.3142 420→540ms / v0.25.3143 540→850ms(社長指示で段階的に延長)。
+// ★v0.25.3145(社長指示「触手、**ミーミルレーザーと同じく切り返しで避ける**3連技に変更」):
+//   **避け方の設計そのものを差し替えた**。
+//   - 旧: 溜め開始で狙いを固定 ⇒ 避け方=「**帯の外まで走り抜ける**」。
+//         この形は溜めの長さが足りないと**構造的に避けられない**(v3143でその穴を塞いだばかり)。
+//   - 新: 溜め中ずっと**慣性を持った照準が追いかけてくる** ⇒ 避け方=「**切り返す(反転する)**」。
+//         走り続けても追いつかれる/立ち止まりも捕まる。**反転だけが慣性で振り切れる**。
+//   実装は `stepLaserAim`(mimirLaserTrack.ts)を**そのまま呼ぶ**=ミーミルのレーザーと同じ物理・
+//   同じ「じわじわ加速→追い越して振り切れる」カーブ。数値をこちらへ複製しない(=文法が1本に保たれる)。
+//   溜めは実効 **1500ms**: 照準の全反転にかかる慣性が約1.0秒なので、**それ以上の長さが要る**
+//   (短いと反転する時間そのものが無く、新しい避け方が成立しない)。ミーミルの実測では
+//   「発射600〜1800ms前の反転」が振り切れる窓なので、1500msなら**発射600ms前まで**が有効窓になる。
+export const GLEN_REACH_WINDUP_MS = 1800;           // 実効1500ms・静止(照準は追尾で動く)
 export const GLEN_REACH_ACTIVE_MS = GIANT_SWEEP_ACTIVE_MS; // 叩き台=既存sweepの実行時間を流用(設計書に明記なし)
 export const GLEN_REACH_RECOVER_MS = 840;           // 実効700ms
 export const GLEN_REACH_CD_MS = 9600;               // 実効8.0s
@@ -9356,6 +9359,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                   aiTargetX: ecx + lockDirX * GLEN_REACH_LENGTH, aiTargetY: ecy + lockDirY * GLEN_REACH_LENGTH,
                   aiStartedAt: gameTime, hateTarget: aim.side,
                   gReachIndex: 0, // 3連発の1発目(社長指示v0.25.3126)
+                  // v0.25.3145: 追尾照準は**相手の真上から**始める(=最初は完全にロックオンされている。
+                  // そこから逃げると慣性ぶん遅れて付いてくる)。速度0スタート=「じわじわ加速」が効く。
+                  gReachAimX: aim.x, gReachAimY: aim.y, gReachAimVX: 0, gReachAimVY: 0,
                 };
               case 'tailslam': {
                 // v0.25.3139(社長指示): 尻尾の叩きつけ。**赤ライン予兆から発動**・**尻尾の長さに連動**。
@@ -10188,6 +10194,38 @@ export const useGameStore = create<GameState>((set, get) => ({
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-reach-active', aiPhaseUntil: atkUntil(GLEN_REACH_ACTIVE_MS) };
               }
+              // ★v0.25.3145(社長指示「ミーミルレーザーと同じく切り返しで避ける」): 溜め中は照準が
+              // **慣性を持って追いかけてくる**。更新は `stepLaserAim` を**そのまま**呼ぶ(ミーミルと同じ物理)。
+              // 終盤 MIMIR_LASER_LOCK_MS は動かさない(=「もう狙いは変わらない」の合図。これもレーザーと同じ)。
+              {
+                const rUntil = enemy.aiPhaseUntil ?? 0;
+                if (mimirLaserPhase(gameTime, rUntil) === 'track') {
+                  // 狙う相手はヘイト対象(=召喚物へ向くこともある)。lockDirと同じ解決関数を使う。
+                  const rAim = resolveBossHateAim(enemy, { x: pcx, y: pcy }, summons, gameTime);
+                  // 追尾キャップは**対象の実効速度**でスケール(速度ビルドでも「走るだけで振り切れる」に
+                  // ならない)。ミーミルの `mimirLaserTrackCaps` をそのまま使う=同じ比率。
+                  const rCaps = mimirLaserTrackCaps((player.speed ?? PLAYER_BASE_SPEED) * GAME_SPEED);
+                  const rEffWind = GLEN_REACH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+                  const rProg = Math.max(0, Math.min(1, 1 - (rUntil - gameTime) / rEffWind));
+                  const rStep = stepLaserAim(
+                    {
+                      x: enemy.gReachAimX ?? rAim.x, y: enemy.gReachAimY ?? rAim.y,
+                      vx: enemy.gReachAimVX ?? 0, vy: enemy.gReachAimVY ?? 0,
+                    },
+                    rAim.x, rAim.y, deltaTime, rCaps.maxPxS, rCaps.accel, rProg,
+                  );
+                  // 赤い帯の終点は**照準から毎tick導出**する(帯は本体から照準の向きへ長さ900)。
+                  // 絵と判定はどちらもこの aiFrom/aiTarget を読む=「赤いのに当たらない」を作らない。
+                  const rdl = Math.hypot(rStep.x - ecx, rStep.y - ecy) || 1;
+                  return {
+                    ...enemy, ...phaseFields, vx: 0, vy: 0,
+                    gReachAimX: rStep.x, gReachAimY: rStep.y, gReachAimVX: rStep.vx, gReachAimVY: rStep.vy,
+                    aiFromX: ecx, aiFromY: ecy,
+                    aiTargetX: ecx + (rStep.x - ecx) / rdl * GLEN_REACH_LENGTH,
+                    aiTargetY: ecy + (rStep.y - ecy) / rdl * GLEN_REACH_LENGTH,
+                  };
+                }
+              }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
             case 'g-reach-active': {
@@ -10218,9 +10256,15 @@ export const useGameStore = create<GameState>((set, get) => ({
                     aiFromX: ecx, aiFromY: ecy,
                     aiTargetX: ecx + rdx * GLEN_REACH_LENGTH, aiTargetY: ecy + rdy * GLEN_REACH_LENGTH,
                     aiStartedAt: gameTime, hateTarget: rAim.side, gReachIndex: rIdx + 1,
+                    // 追尾照準も**発ごとに引き直す**(前の発の勢いを持ち越さない=3発とも同じ読みで避けられる)。
+                    gReachAimX: rAim.x, gReachAimY: rAim.y, gReachAimVX: 0, gReachAimVY: 0,
                   };
                 }
-                return { ...enemy, ...phaseFields, vx: 0, vy: 0, gReachIndex: undefined, ...finishGlenMove('reach', GLEN_REACH_CD_MS) };
+                return {
+                  ...enemy, ...phaseFields, vx: 0, vy: 0, gReachIndex: undefined,
+                  gReachAimX: undefined, gReachAimY: undefined, gReachAimVX: undefined, gReachAimVY: undefined,
+                  ...finishGlenMove('reach', GLEN_REACH_CD_MS),
+                };
               }
               return { ...enemy, ...phaseFields, vx: 0, vy: 0 };
             }
