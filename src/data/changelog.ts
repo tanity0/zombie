@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3158',
+    items: [
+      'ゲーム内容の変更はありません(グレンの触手を3連発のまま据え置く決定を記録しました)。',
+    ],
+  },
+  {
     version: '0.25.3157',
     items: [
       'グレンの触手の狙いが振り子のように動くようになりました。離れた所から振れてきて、自分を追い越し、また戻ってきます。',
