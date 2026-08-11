@@ -2024,6 +2024,10 @@ export const airMoveFor = (phase: string | undefined): AirMoveSpec | undefined =
 //    1050msで余裕+12%。
 export const GLEN_TAILSLAM_WINDUP_MS = 1260;   // 実効1050ms・赤ラインを出して尻尾を振り上げる
 export const GLEN_TAILSLAM_ACTIVE_MS = 264;    // 実効220ms・叩きつけの瞬間(=GIANT_SWEEP_ACTIVE_MSと同値)
+// v0.25.3149(社長指示「もっと勢いよく」): 叩きつけの瞬間の画面揺れ。虚無の三唱(15)ほどではないが
+// 「重い物が地面を叩いた」と体で分かる強さ。踏み鳴らし系と同じ短さ(尾を引かせない)。
+export const GLEN_TAILSLAM_SHAKE_MS = 260;
+export const GLEN_TAILSLAM_SHAKE_MAG = 11;
 export const GLEN_TAILSLAM_HALF_WIDTH = 46;    // 帯の半幅(尻尾の太さぶん。sweepの40より少し太い)
 // 叩きつけの直後に、**既にある胴体弾(glenVolleyShots)をそのまま連射**する。弾の性能・見た目・
 // カウンター可否は1つも変えない=「すでに出てる弾の機能を意図的に連射」(社長の言葉どおり)。
@@ -8583,6 +8587,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 拾って set 後に大きく揺らす(set内でのネスト発火回避=pumpkinLandedと同じ作法)。
     // **絵の切り替えと同じ瞬間**に揺らすため、判定/演出の起点は唱の遷移そのものに置く。
     let glenNihilChanted = false;
+    // v0.25.3149(社長指示「尻尾叩きつけるときもっと勢いよく」): 叩きつけた瞬間に画面を揺らす。
+    let glenTailSlammed = false;
     // 着地爆発イベント(ice=スカジ氷=青FX・capsule=M51薙ぎ払い)。
     // ★**空から作らない**(v0.25.2629・社長報告「殴り、狙撃線は何も食らってない」の原因):
     // このローカル配列は最後に `return { ..., pumpkinBlasts }` で **state を丸ごと差し替える**。
@@ -10286,6 +10292,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-tailslam',
                   capsule: { fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: GLEN_TAILSLAM_HALF_WIDTH },
                 });
+                glenTailSlammed = true; // 叩きつけた瞬間(set後に画面を揺らす)
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
                   aiPhase: 'g-tailslam-active', aiPhaseUntil: atkUntil(GLEN_TAILSLAM_ACTIVE_MS),
@@ -11011,6 +11018,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 虚無の三唱: 1唱ごとに**大きく**揺らす(社長指示v0.25.3122)。全技中で最大級の振幅=
     // 「数える3回」を体で分からせる合図。判定・秒数・ダメージには一切関与しない(描画のみ)。
     if (glenNihilChanted) get().triggerShake(GLEN_NIHIL_SHAKE_MS, GLEN_NIHIL_SHAKE_MAG);
+    if (glenTailSlammed) get().triggerShake(GLEN_TAILSLAM_SHAKE_MS, GLEN_TAILSLAM_SHAKE_MAG);
     // M51: ジャイアント新スクリプトの咆哮弾(set() 内は再入set禁止のため post-set で発射)。
     // 弾自体の性能(速度/サイズ/ダメージ)は getEnemyFireProfile('giantbat') のプロファイルを
     // createEnemyProjectile が使う=現行不変(6.26-6)。錬金術の召喚ターゲットも既存どおり考慮する。

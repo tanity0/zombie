@@ -48,7 +48,7 @@ import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRID
   // (talon/boon/nihilはgiantDelayedHitsの既存フェードイン円/帯ループがそのまま描くので新規importは不要)。
   GLEN_REACH_WINDUP_MS, GLEN_REACH_HALF_WIDTH, GLEN_REACH_LENGTH,
   // v0.25.3139(社長指示): 第二形態の通常技「尻尾の叩きつけ→弾の連射」の赤ライン予兆。
-  GLEN_TAILSLAM_WINDUP_MS, GLEN_TAILSLAM_ACTIVE_MS, GLEN_TAILSLAM_HALF_WIDTH,
+  GLEN_TAILSLAM_WINDUP_MS, GLEN_TAILSLAM_ACTIVE_MS, GLEN_TAILSLAM_HALF_WIDTH, GLEN_TAILSLAM_VOLLEY_GAP_MS,
   // v0.25.2483(社長指示): フルランプ速度線のゲート=「移動速度+10%以上のステータス」判定に、
   // movePlayerがランプへ渡す「対象倍率の積P」と同じ純関数を使う(判定の二重実装をしない)。
   skillRunnerSpeedMult, marksmanSpeedMult, skillWarmUpSpeedMult,
@@ -2232,8 +2232,15 @@ const REACH_HOLD_MS = 340;     // 触手が伸び切ってから引っ込むま�
 const TAILSLAM_WINDUP_EFF_MS = GLEN_TAILSLAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
 const TAILSLAM_ACTIVE_EFF_MS = GLEN_TAILSLAM_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
 const TAILSLAM_SETTLE_MS = 900;   // 余韻(叩きつけた尻尾がゆっくり戻る)。連射中もずっと見えている長さ
-const TAILSLAM_LIFT_PX = 54;      // 振り上げの高さ(先端ほど高く上がる)
-const TAILSLAM_OVERSHOOT_PX = 10; // 叩きつけで地面より少し下まで行き過ぎる量
+const TAILSLAM_LIFT_PX = 76;      // 振り上げの高さ(先端ほど高く上がる)。v0.25.3149: 54→76=高い所から落とす
+const TAILSLAM_OVERSHOOT_PX = 18; // 叩きつけで地面より少し下まで行き過ぎる量。v0.25.3149: 10→18
+const TAILSLAM_DROP_POW = 5;      // 落下カーブ。v0.25.3149: 3→5=最後の一瞬でほぼ全部落ちる(鋭い)
+// 弾を1発撃つたびの反動(社長指示v0.25.3149「大きく震える。撃ってる感じ」)。**先のパーツほど大きい**。
+const TAILSLAM_KICK_MS = 220;       // 1発ぶんの震えが収まるまで
+const TAILSLAM_KICK_BACK_PX = 16;   // 撃った反動で帯の逆へ押し戻される量
+const TAILSLAM_KICK_SHAKE_PX = 9;   // 震えの振幅
+const TAILSLAM_KICK_SHAKE_MS = 18;  // 震えの速さ(小さいほど細かい)
+const TAILSLAM_KICK_SWELL = 0.10;   // 撃った瞬間だけ少し膨らむ
 const TAILSLAM_BOUNCE_PX = 7;     // 余韻の跳ね返り
 const TAILSLAM_SWELL = 0.14;      // 振り上げ中の拡大(手前に来た感じ)
 const TAILSLAM_PART_LAG = 0.13;   // 先のパーツほど遅れて動く量(ムチの波)
@@ -18041,7 +18048,7 @@ export class PixiScene {
    * **見栄えのために伸ばし足さないこと**——「尻尾より遠くまで殴る」絵になる。
    */
   private glenTailSlamPose(e: Enemy, gameTime: number, now: number):
-    { blend: number; lift: number; swell: number; ang: number } | null {
+    { blend: number; lift: number; swell: number; ang: number; kick: number } | null {
     const gph = e.aiPhase;
     const isWind = gph === 'g-tailslam-windup';
     const isPost = gph === 'g-tailslam-active' || gph === 'g-tailslam-volley' || gph === 'g-tailslam-recover';
@@ -18054,7 +18061,9 @@ export class PixiScene {
       const windEff = TAILSLAM_WINDUP_EFF_MS;
       const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / windEff));
       const ease = 1 - Math.pow(1 - p, 2); // 後半ほどゆっくり=溜めの「タメ」
-      return { blend: ease, lift: TAILSLAM_LIFT_PX * ease, swell: 1 + TAILSLAM_SWELL * ease, ang };
+      // v0.25.3149: 落とす直前に**もう一段持ち上げる**(引き絞り)。勢いは「速く落ちる」だけでなく
+      // 「どこから落ちたか」で決まるので、振り上げの頂点を高くしておく。
+      return { blend: ease, lift: TAILSLAM_LIFT_PX * ease, swell: 1 + TAILSLAM_SWELL * ease, ang, kick: 0 };
     }
     // 叩きつけ〜余韻: activeの立ち上がりで焼いた時計を使う(volley/recoverへ移っても続く=余韻が切れない)。
     const L = this.latchFx(`${e.id}:tailslampose`, gph === 'g-tailslam-active',
@@ -18064,10 +18073,12 @@ export class PixiScene {
     if (L.t < hitF) {
       // 叩きつけ中: 持ち上げた尻尾が一気に落ちる(3乗=最後が速い)。地面より少し下まで行き過ぎる。
       const q = L.t / hitF;
-      const drop = Math.pow(q, 3);
+      // v0.25.3149(社長指示「もっと勢いよく」): 5乗=**最後の一瞬でほぼ全部落ちる**(3乗より鋭い)。
+      // 頭は止まって見え、最後にドン、と落ちる=溜めてから叩きつけた印象になる。
+      const drop = Math.pow(q, TAILSLAM_DROP_POW);
       return {
         blend: 1, lift: TAILSLAM_LIFT_PX * (1 - drop) - TAILSLAM_OVERSHOOT_PX * drop,
-        swell: 1 + TAILSLAM_SWELL * (1 - drop), ang: L.d[0],
+        swell: 1 + TAILSLAM_SWELL * (1 - drop), ang: L.d[0], kick: 0,
       };
     }
     // 余韻: 伸ばした尻尾が跳ね返って、ゆっくり軌跡どおりへ戻る。
@@ -18076,14 +18087,30 @@ export class PixiScene {
     const bounce = Math.sin(r * Math.PI * 2.2) * settle; // 一度だけ跳ねて収まる
     return {
       blend: settle, lift: -TAILSLAM_OVERSHOOT_PX * settle + bounce * TAILSLAM_BOUNCE_PX,
-      swell: 1, ang: L.d[0],
+      swell: 1, ang: L.d[0], kick: this.glenTailVolleyKick(e, gameTime),
     };
+  }
+
+  /**
+   * 弾を1発撃つたびの尻尾の反動(社長指示v0.25.3149「弾を打つたびに尻尾が大きく震える。撃ってる感じ」)。
+   * 0=静止 / 1=撃った瞬間。撃ってから TAILSLAM_KICK_MS かけて 0 へ落ちる。
+   *
+   * ★**状態を持たない**: 次の発射時刻(`gTailVolleyAt`)が store にあるので、「間隔 − 残り時間」で
+   * 「前に撃ってから何ms経ったか」が引ける。latch を1発ごとに焼くと**発ごとにキーが増えて漏れる**
+   * (latchFx は active が立ちっぱなしだと解放されない)ので、この形にしてある。
+   */
+  private glenTailVolleyKick(e: Enemy, gameTime: number): number {
+    if (e.aiPhase !== 'g-tailslam-volley' || e.gTailVolleyAt === undefined) return 0;
+    const gapEff = GLEN_TAILSLAM_VOLLEY_GAP_MS / ENEMY_ATTACK_SPEED_MULT;
+    const since = gapEff - Math.max(0, Math.min(gapEff, e.gTailVolleyAt - gameTime));
+    if (since >= TAILSLAM_KICK_MS) return 0;
+    return 1 - since / TAILSLAM_KICK_MS;
   }
 
   private syncGlenParts(
     view: ActorView, visibleCount: number,
     footX: number, footY: number, bodyHalfW: number, sc: number, alpha: number, now: number,
-    slam?: { blend: number; lift: number; swell: number; ang: number } | null,
+    slam?: { blend: number; lift: number; swell: number; ang: number; kick: number } | null,
   ): void {
     if (!view.glenParts && visibleCount <= 0) return; // 一度も出していなければ何もしない(全敵毎フレームの無駄を避ける)
     if (!view.glenParts) view.glenParts = [];
@@ -18131,6 +18158,18 @@ export class PixiScene {
         py -= slam.lift * b * (0.35 + 0.65 * (i / Math.max(1, show.length - 1)));
         pscale = sc * (1 + (slam.swell - 1) * b);
         prot += slam.ang * 0.05 * b; // わずかに帯の向きへ傾ぐ(倒し切らない=絵は立ったまま)
+        // v0.25.3149: 弾を1発撃つたびの反動。**先のパーツほど大きく震える**(付け根は踏ん張り、
+        // 先が跳ねる)。向きは「帯の逆=撃った反動で押し戻される」+ 上下の細かい震え。
+        if (slam.kick > 0) {
+          const tipW = 0.4 + 0.6 * (i / Math.max(1, show.length - 1));
+          const k = slam.kick * tipW;
+          px -= Math.cos(slam.ang) * TAILSLAM_KICK_BACK_PX * k;
+          py -= Math.sin(slam.ang) * TAILSLAM_KICK_BACK_PX * k;
+          py += Math.sin(now / TAILSLAM_KICK_SHAKE_MS + i * 1.9) * TAILSLAM_KICK_SHAKE_PX * k;
+          px += Math.cos(now / TAILSLAM_KICK_SHAKE_MS * 1.3 + i * 2.7) * TAILSLAM_KICK_SHAKE_PX * 0.6 * k;
+          prot += Math.sin(now / TAILSLAM_KICK_SHAKE_MS + i) * 0.10 * k;
+          pscale *= 1 + TAILSLAM_KICK_SWELL * k;
+        }
       }
       sp.scale.set(pscale, pscale);
       sp.rotation = prot;
