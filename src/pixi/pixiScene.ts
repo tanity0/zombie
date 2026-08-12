@@ -11763,10 +11763,14 @@ export class PixiScene {
     for (const f of fires) {
       if (gameTime >= f.expireAt) continue;
       if (gameTime < f.activateAt) {
-        // 予告=赤い当たり判定フェードイン(社長指示「0.7秒で発動」)。
+        // 予告=当たり判定フェードイン(社長指示「0.7秒で発動」)。
+        // ★紫に変更(社長指摘v0.25.3193「トラップランタンって結局カウンターできないんじゃなかった?
+        // 赤サークルになってるけど」): 火のダメージ判定(tickAngelBossFires)にはカウンター/パリィの
+        // 分岐が無い=**避けるだけの攻撃**。色文法(赤=カウンター可・紫=不可)に従い紫へ。
+        // v0.25.3131でカウンター可になったのは**設置中のジブリル本体**であって、火ではない。
         const p = Math.max(0, Math.min(1, (gameTime - f.spawnAt) / Math.max(1, f.activateAt - f.spawnAt)));
-        g.circle(f.x, f.y, HITR).fill({ color: 0xff2a2a, alpha: (0.08 + 0.20 * p) * TELEGRAPH_FILL_MULT });
-        g.circle(f.x, f.y, HITR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.35 + 0.4 * p });
+        g.circle(f.x, f.y, HITR).fill({ color: 0x9333ea, alpha: (0.10 + 0.24 * p) * TELEGRAPH_FILL_MULT });
+        g.circle(f.x, f.y, HITR).stroke({ width: 2, color: 0xa855f7, alpha: 0.4 + 0.45 * p });
       } else {
         // 有効=紫の火(色は紫・大きさは火炎瓶相当)。終盤フェードアウト。
         const life = Math.max(0, Math.min(1, 1 - (gameTime - f.activateAt) / Math.max(1, f.expireAt - f.activateAt)));
