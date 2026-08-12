@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3240',
+    items: [
+      '開発: B5(枠光+難易度係数切替)の発注文を設計書§21に記録。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3239',
     items: [
       'スキルビルド刷新(第4弾): 同行者(守護霊)が専用枠になりました(装備メニューで1体選択)。スキルビルドの枠は消費しません。',

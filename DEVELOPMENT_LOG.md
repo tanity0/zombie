@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.3240 — B5発注文(§21)を記録・Sonnetへ発注【2026-08-13 04:53 JST】
+§21=B5の発注文: 枠光(バーサーカー金=HP70%未満・強度∝失HP/オーバークロック青=proc後800ms・
+視覚のみ・HUD再描画規律厳守)+DDA係数切替(runBuild.length×0.5・cap+3.0。切替後も新旧並記ログ継続)。
+計測(6枠TTK・充足率)はB5着地後に設計チャットが実行。受け入れ条件4点。文書のみ=typecheck省略。
+
 ## v0.25.3239 — B4着地: 同行者枠の正式化+配線バグ2件修正(Sonnet納品・検収済み)【2026-08-13 04:52 JST】
 - companionSkill: SkillKey|null(単一選択・localStorage永続・migrateCompanionFromLegacy純関数)。
   pendingSkills/setPendingSkills廃止。COMPANION_SKILL_KEYS新設(campaign.ts=唯一の出どころ)。
