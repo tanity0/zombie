@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3178',
+    items: [
+      '【不具合修正】一度ボスモードで遊ぶと、そのあと通常プレイを終えてメニューへ戻るたびにボス一覧が開いてしまっていたのを直しました。',
+    ],
+  },
+  {
     version: '0.25.3177',
     items: [
       '【不具合修正】パンプキンがほとんど出てこなかったのを直しました。台本に書かれた顔ぶれが、倒す速さに関係なく順番どおり出てきます。',

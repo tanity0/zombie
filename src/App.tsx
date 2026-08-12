@@ -207,6 +207,15 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     pendingBenchmarkRef.current = benchmark;
     setBenchmarkMode(benchmark);
     setBenchmarkResult(null);
+    // ★v0.25.3178(社長報告「通常プレイした後、なぜかボスモードに戻ってきちゃう」):
+    // メニューの初期画面指定(`menuScreen`)を**出撃のたびに捨てる**。
+    // 原因: `leavePracticeToList` が 'bossrush' を立てたまま**誰も戻さなかった**ため、その後に
+    // 通常出撃 → リザルト → 「メニューへ」で MissionSelect が再マウントされると、
+    // `initialScreen='bossrush'` が生きていてボス一覧が開いていた(練習ランは既に抜けているのに)。
+    // 出撃は練習/通常のどちらも必ずここを通るので、ここで捨てれば漏れない。
+    // 練習の導線は壊れない: 戻り先の指定は**リザルトの「ボスを選ぶ」を押した時**に
+    // `leavePracticeToList` が改めて立てるため(出撃前に立てておく必要が無い)。
+    setMenuScreen(null);
     // 素材ロード完了を待ってからゲーム開始(通常はタイトルのローディング段階で既に完了)。
     await ensurePreload();
     // 屋内(研究施設)ステージか。resetGame が labMap で初期化するため reset 前に渡す。ベンチは除外。
