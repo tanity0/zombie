@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3238',
+    items: [
+      '開発: B4(同行者枠の正式化)の発注文を設計書§20に記録。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3237',
     items: [
       'スキルビルド刷新(第3弾): 初期所持スキルが9種になりました(ノーマル5+レア4)。ガチャなしでも「9種から6枠」のビルド選択が毎ランできます。',

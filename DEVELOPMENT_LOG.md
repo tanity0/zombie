@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.3238 — B4発注文(§20)を記録・Sonnetへ発注【2026-08-13 04:25 JST】
+§20=B4の発注文: 同行者枠の正式化(companionSkill専用フィールド・B1暫定のpendingSkills流用を置換)/
+旧セーブ移行/配線全列挙(bossTestGhostSkill/selectedRunSkills含む)/runTelemetry追従。
+受け入れ条件6点(fixedGuardians無改変・ビルド写しにラン中取得を含む等)。文書のみ=typecheck省略。
+
 ## v0.25.3237 — B3着地: レア度表+初期9種+flashy+新スキル台帳(Sonnet納品・検収済み)【2026-08-13 04:24 JST】
 - campaign.ts: §4新表へ差し替え(crit-up/sniper超・sharpshooter/ricochet/punisher/benkei/reflexノ)。
   DEFAULT_OWNED_SKILLSへ初期9種。GACHA_EXCLUDEDへscrap-builder/warm-up+眠り9種。新スキル9種を
