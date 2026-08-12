@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3211',
+    items: [
+      '開発: スキルビルド設計の監査6巡目(12件)を受領。「装備は武器箱へ」案を検討中。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3210',
     items: [
       '開発: スキルビルド設計に「ラン中スキルレベルアップ(ハイブリッド)」を正式採用し、監査5巡目21件を反映。ゲーム内容の変更はありません。',
