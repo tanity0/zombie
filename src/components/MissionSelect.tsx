@@ -1665,7 +1665,7 @@ const DevTools: React.FC<{
       {/* ガチャだけ初手へ戻す(進行リセットはガチャ状態を消さないので別ボタン)。
           「初戦の稼ぎで2回引ける」等の初回体験を実機で試すため(社長指示v0.25.2347)。 */}
       <div className="mt-2 flex gap-2">
-        <button type="button" onClick={() => { useGameStore.getState().resetGachaProgress(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-fuchsia-400/10 text-fuchsia-50/85 active:bg-fuchsia-400/20">ガチャリセット(所持スキル・G・階段)</button>
+        <button type="button" onClick={() => { useGameStore.getState().resetGachaProgress(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-fuchsia-400/10 text-fuchsia-50/85 active:bg-fuchsia-400/20">ガチャリセット(所持スキル・サブ装備・G・階段)</button>
       </div>
     </div>
   );

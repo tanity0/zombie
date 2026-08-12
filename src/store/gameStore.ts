@@ -12637,14 +12637,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 消すもの = 所持スキル / そのLv / 被り回数 / pity / **階段の累計pull数** / ゴールド残高 /
   //            装備中スキル(所持が消えるので一緒に外す)。
   resetGachaProgress: () => {
+    // v0.25.3183(社長指示「ガチャリセットにサブウェポンもリセットを追加」): 装備メニューで
+    // 選んだサブウェポン(LOADOUT_SUBS_KEY / pendingLoadout)も一緒に初手(未装備)へ戻す。
     for (const k of [OWNED_SKILLS_KEY, OWNED_SKILL_LEVELS_KEY, GACHA_DUPES_KEY, GACHA_PITY_KEY,
-      GACHA_PULLS_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY]) {
+      GACHA_PULLS_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY, LOADOUT_SUBS_KEY]) {
       try { localStorage.removeItem(k); } catch { /* ignore */ }
     }
     set({
       // 「初手」にも守護霊は入っている(G3: 最初から所持)ので、リセット後も欠けさせない。
       ownedSkills: ensureDefaultOwnedSkills([]), ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
-      gachaPullsTotal: 0, goldBalance: 0, pendingSkills: [],
+      gachaPullsTotal: 0, goldBalance: 0, pendingSkills: [], pendingLoadout: [],
     });
   },
   // 強化訓練を1回引く(逐次)。レア度をpityから抽選→pity更新(super=リセット/他=+1)→

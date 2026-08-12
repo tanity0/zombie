@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3183',
+    items: [
+      '開発メニューの「ガチャリセット」が、装備中のサブウェポンも一緒に外すようになりました(所持スキル・ゴールド・値段の段に加えて)。',
+    ],
+  },
+  {
     version: '0.25.3182',
     items: [
       '作戦地域(ステージ選択)の各ステージに、そのステージでの自己最高ランク(七つの大罪)が表示されるようになりました。',
