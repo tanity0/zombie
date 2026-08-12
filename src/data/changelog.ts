@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3225',
+    items: [
+      '開発: スキルビルド設計書に§13を追加(商人=指名買いカタログ化/ボット購買ポリシー/計測分離/特殊装備POIのセクター設計/B2受け入れ条件)。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3224',
     items: [
       '開発: 新スキル9種の台帳(Lv1〜3)を設計書に記録(被り査定で2件差し替え済み)。実装は後日。ゲーム内容の変更はありません。',
