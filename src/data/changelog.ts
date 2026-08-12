@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3228',
+    items: [
+      '開発: スキルビルドの裁定4件を記録(持ち込み廃止/Lv3覚醒/リロール・バニッシュ追加)し、B1(ドラフト実装)の発注文を確定。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3227',
     items: [
       '開発: スキルビルド設計の監査8巡目結果を反映(設計の穴8件+軽微10件を§16で確定)。ゲーム内容の変更はありません。',
