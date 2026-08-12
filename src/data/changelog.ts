@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3221',
+    items: [
+      '開発: スキルビルド設計の裁定2件を記録(武将装備=毎ラン3種確定/練習ランは初期装備)。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3220',
     items: [
       'ジブリルの射撃一本化を訂正: 残すのは「弾が遅い方」でした。0.5秒間隔・通常弾速の5連射に統一(前版の1秒間隔・高速弾を差し替え)。',
