@@ -22,7 +22,10 @@ import {
   skillCritMult, skillOutgoingDamageMult, skillComboMasterMult, sniperGunMult,
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, PUMPKIN_EXPLOSION_RADIUS, HUNTER_VISION_RANGE,
   GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH, BASE_CAPTURE_RADIUS,
+  SHOP_MEDKIT_COST, // SKILL_BUILD_REDESIGN.md §15-1(B0): ボット購買ポリシーの救急価格
 } from '../store/gameStore';
+// SKILL_BUILD_REDESIGN.md §13-2(B0発注文): ボットの商人購買ポリシー(乱数なし・決定的な純関数)。
+import { decideBotShopPurchase } from './botShopPolicy';
 import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey } from './weaponUtils';
 import { pickAmmoDropType } from './ammoDrop';
 import { ammoDirectorRate } from './ammoDirector';
@@ -426,10 +429,19 @@ const buildObjectiveWorld = (_obj: BotObjective): ObjectiveWorld => {
 export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): void => {
   const { persona, tickIndex, wanderSeed, dt, rusherState, skill, objective, onObjective } = opts;
   const store = useGameStore.getState();
-  // 武器商人ショップの自動クローズ(実機botと同じ保険・v0.25.1732): 近接スイングが商人の
-  // 圏内(58px)に入るとショップが開いて isPaused=true になる。ヘッドレスも正規 closeShop()
-  // (reopen遅延1.5s付き)で即閉じ、詰み/計測停止を防ぐ。
-  if (store.showShopMenu) store.closeShop();
+  // 武器商人ショップの自動購買→クローズ(実機botと同じ保険・v0.25.1732の「開いたら閉じる」に、
+  // SKILL_BUILD_REDESIGN.md §13-2(B0発注文)+設計チャットの追補で「購買→閉じる」を追加)。
+  // 近接スイングが商人の圏内(58px)に入るとショップが開いて isPaused=true になる。決定的な
+  // 純関数(botShopPolicy.ts)に判定を委ね、購入は正規の buyShopItem() 経由(telemetryはbuyShopItem
+  // 側で記録=二重記録しない)。正規 closeShop()(reopen遅延1.5s付き)で閉じ、詰み/計測停止を防ぐ。
+  if (store.showShopMenu) {
+    const shopAction = decideBotShopPurchase({
+      playerHealth: store.player.health, playerMaxHealth: store.player.maxHealth,
+      straps: store.player.straps, medkitCost: SHOP_MEDKIT_COST,
+    });
+    if (shopAction.kind === 'buy-medkit') store.buyShopItem('medkit');
+    store.closeShop();
+  }
   const t = store.gameTime + dt * 1000;
   store.setGameTime(t);
 

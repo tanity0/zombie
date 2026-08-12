@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3229',
+    items: [
+      '開発: スキルビルドB0=計測器を実装(ラン計測台帳/ボスメーカー注入口/ボット購買)。通常プレイのゲーム内容に変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3228',
     items: [
       '開発: スキルビルドの裁定4件を記録(持ち込み廃止/Lv3覚醒/リロール・バニッシュ追加)し、B1(ドラフト実装)の発注文を確定。ゲーム内容の変更はありません。',

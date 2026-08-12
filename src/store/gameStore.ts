@@ -16,7 +16,7 @@ import {
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
-  DashLocomotionState
+  DashLocomotionState, EquipLoadout
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
@@ -147,7 +147,13 @@ import {
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { setFlowersDisabled } from '../world/forestDecor';
-import { bossTestGhostSkill, isBossMakerRun } from '../utils/bossTest';
+import { bossTestGhostSkill, isBossMakerRun, getBossTestSkillInjection } from '../utils/bossTest';
+// SKILL_BUILD_REDESIGN.md §15(B0発注文): 1ランぶんの計測台帳(読むだけ・挙動は変えない)。
+import {
+  resetRunTelemetry, recordBossEntry, recordUpgradeOffered, recordUpgradeSelected,
+  recordKnifeTierFromBox, recordScrapIncome, recordMerchantPurchase, recordDdaCoefficients,
+  type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
+} from '../utils/runTelemetry';
 import { isPracticeRun, practiceBossType } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
 import { clearDestroyedObstacles } from '../world/destructibles';
@@ -169,12 +175,12 @@ import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
-import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
+import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
   advanceBossDisengageGrace, bossLeashDistancePx, isLeashableBoss, BOSS_DISENGAGE_GRACE_MS,
-  bossEngagedNow, facilitiesLocked,
+  bossEngagedNow, facilitiesLocked, isEngageableBoss,
   BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
 } from '../utils/bossEngagement';
 import {
@@ -2505,6 +2511,17 @@ const pickupWithDropScatter = (pickup: Pickup): Pickup => {
     throwDuration: DROP_THROW_DURATION_MS
   };
 };
+// SKILL_BUILD_REDESIGN.md §15-1(B0発注文)+設計チャットの追補: ボス突入スナップショット用の
+// 装備スロット→(Tier/系統/特殊フラグ)変換。読むだけ(挙動不変)。
+const equipSlotTelemetrySnapshot = (id: string | null): RunTelemetryEquipSlotSnapshot => {
+  const def = equipmentById(id);
+  return def ? { tier: def.tier, line: def.line, special: def.special } : { tier: 0, line: null, special: false };
+};
+const equipTelemetrySnapshot = (loadout: EquipLoadout): RunTelemetryEquipSnapshot => ({
+  body: equipSlotTelemetrySnapshot(loadout.body),
+  arms: equipSlotTelemetrySnapshot(loadout.arms),
+  accessory: equipSlotTelemetrySnapshot(loadout.accessory),
+});
 const strapDropValues = (totalValue: number): number[] => {
   const total = Math.max(0, Math.floor(totalValue));
   if (total <= 0) return [];
@@ -4029,6 +4046,10 @@ interface GameState {
   gachaPitySinceSuper: number;                          // 直近superからのpull数(レア度ソフト天井・永続)
   gachaPullsTotal: number;                              // これまでに引いた累計回数(階段式価格の段・永続)
   grantSkill: (key: SkillKey) => void;                  // ガチャ当選で所持解禁(重複は無視)
+  // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の9: ownedSkills/ownedSkillLevelsのヘッドレス上書き口。
+  // 計測スクリプト(greedyボット30ラン等)がガチャを経由せず所持スキル/Lvを直接指定するための
+  // テスト専用アクション(UIからは呼ばない・実プレイの挙動には一切関与しない)。
+  setOwnedSkillsForTest: (skills: SkillKey[], levels: Partial<Record<SkillKey, number>>) => void;
   resetGachaProgress: () => void;                       // 開発用: ガチャ状態(所持/Lv/被り/pity/累計/金)を初手へ
   pullGacha: () => GachaPullResult | null;              // 強化訓練を1回引く(レア度pity→Lv抽選→付与/返金。逐次状態更新)
   goldBalance: number;                                  // 永続ゴールド残高(ガチャ通貨。in-run strap とは別)
@@ -7655,6 +7676,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
+    // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の2: レベルアップ提示回数(ボス開始チェストの3連続も
+    // levelUp()を3回通るので、この1箇所で自然に3回とも数えられる=§11-1 A-5の設計どおり)。
+    recordUpgradeOffered();
     // 演出: 時間スロー＋押しのけリング＋キャラを派手に光らせる(社長指示)。メニューは intro 後に開く。
     get().triggerTimeSlow(0.25, LEVELUP_INTRO_MS);
     const lp = get().player;
@@ -7760,6 +7784,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   selectUpgrade: (upgrade) => {
+    // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の2: 選択内訳counter。upgrade.typeは呼び出し引数から
+    // 直接分かるのでset()の内部を読む必要がない(set()内は再入set禁止=telemetryは外側で呼ぶ)。
+    recordUpgradeSelected(upgrade.type);
+    if (upgrade.type === 'scrap') {
+      // §15-1の4: レベルアップ③枠(常設スクラップ+50)の収入(下のset()内の'scrap'分岐と同じ式)。
+      recordScrapIncome('levelup', upgrade.level > 0 ? upgrade.level : 50);
+    }
     set(state => {
       const { player } = state;
 
@@ -8013,10 +8044,14 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   buyShopItem: (key, ammoType) => {
     let purchased = false;
+    // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の5: 商人購入ログ用の価格の控え(set()内は再入set禁止
+    // なのでpost-setで記録する=既存のpumpkinLanded等と同じ作法)。
+    let purchaseCost = 0;
     set(state => {
       const spend = (cost: number, playerPatch: Partial<Player>) => {
         if (state.player.straps < cost) return {};
         purchased = true;
+        purchaseCost = cost;
         return {
           player: {
             ...state.player,
@@ -8108,12 +8143,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (purchased) {
       const p = get().player;
       get().spawnCallout(p.x + p.width / 2, p.y - 12, 'BUY', '#fde68a');
+      // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の5: 商人購入ログ(品目/価格/残straps/時刻)。
+      // 価格0(buy-phillの無料配布)も「購入」として記録する=挙動には影響しない読むだけの計測。
+      recordMerchantPurchase(key, purchaseCost, p.straps, get().gameTime);
     }
     return purchased;
   },
 
   buySkillCardFromShop: (key) => {
     let purchased = false;
+    // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の5: 商人購入ログ用の価格の控え(post-setで記録)。
+    let purchaseCost = 0;
     set(state => {
       const unlockedLevel = Math.max(0, Math.min(3, state.unlockedShopSkillCards[key] ?? 0));
       const currentLevel = state.player.subWeaponLevels[key] ?? 0;
@@ -8121,6 +8161,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : key === 'alchemy' ? SHOP_ALCHEMY_COST : key === 'turret' ? SHOP_TURRET_COST : key === 'shijin' ? SHOP_SHIJIN_COST : key === 'sage-stone' ? SHOP_SAGE_STONE_COST : SHOP_CLASS_SKILL_COST;
       if (state.player.straps < cost) return {};
       purchased = true;
+      purchaseCost = cost;
       const nextPlayer = {
         ...applySubWeaponCard(state.player, key),
         straps: state.player.straps - cost
@@ -8143,6 +8184,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (purchased) {
       const p = get().player;
       get().spawnCallout(p.x + p.width / 2, p.y - 12, 'SKILL', '#bfdbfe');
+      // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の5: 商人購入ログ。
+      recordMerchantPurchase(key, purchaseCost, p.straps, get().gameTime);
     }
     return purchased;
   },
@@ -8682,6 +8725,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.3079: 爆発直前の「ピカッ」を出す位置(set後にspawnGlow。判定ゼロの派手枠)。
     const iceFlashAt: { x: number; y: number }[] = [];   // v0.25.3042: 冷気ブレス追従のキラキラ粉雪(社長支給素材・set後にspawnEffect)。v0.25.3049: 三連突進の軌跡も同じ籠で撒く。v0.25.3071: スカジの氷技(氷刃の軌跡/氷塊の冷気と砕け)も同じ籠。
     let bossLeashWarning = false;
+    // SKILL_BUILD_REDESIGN.md §15-1(B0発注文): ボス交戦フラグの立ち上がり(false→true)を検知する
+    // だけのフラグ(set()内は再入set禁止=既存のpumpkinLanded等と同じ作法。post-setでtelemetryへ記録)。
+    let bossEntryDetected = false;
     set(state => {
       // ★上の注記のとおり、**このフレームに他所から積まれた判定を先に引き継ぐ**。
       // set の中で読む=引き継ぎ元は必ず最新の state(get()のタイミングずれを作らない)。
@@ -11100,6 +11146,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // v0.25.3054: ボス交戦フラグ(施設ロック/描画フェードの正本)。ヒステリシスは
       // bossEngagedNow(ENTER900/EXIT1400)が持つ=前回値を渡すだけ。
       const bossFightNowNext = bossEngagedNow(finalEnemies, pcx, pcy, state.bossFightNow);
+      // SKILL_BUILD_REDESIGN.md §15-1(B0発注文): 交戦フラグの立ち上がり(このtickで新たに交戦へ
+      // 入った)=「ボス突入」の瞬間。post-setでtelemetryへ記録する(判定・挙動には一切使わない)。
+      bossEntryDetected = !state.bossFightNow && bossFightNowNext;
       // v0.25.3055: 城ボス(giantbat・非ストーリー)だけの交戦フラグ(移動半径の制限用)。
       // ストーリーボス(stage-7グレン等)は専用ステージで区域構造が無いため対象外。
       const castleFightNowNext = bossEngagedNow(
@@ -11121,6 +11170,22 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...(screamerActivatedAt.length > 0 ? { screamerBuffUntil: gameTime + SCREAMER_BUFF_MS } : {}),
       };
     });
+    // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)+設計チャットの追補: ボス突入スナップショット
+    // (装備スキル/Lv/プレイヤーLv/装備スロット別Tier+系統+特殊フラグ/straps)。イベント時のみ
+    // (per-frame走査ではない=この呼び出し自体が「交戦フラグが立った1フレーム」でしか起きない)。
+    if (bossEntryDetected) {
+      const bs = get();
+      const engagedBoss = bs.enemies.find(e => isEngageableBoss(e.type) && e.dormant !== true) ?? null;
+      recordBossEntry({
+        bossType: engagedBoss ? engagedBoss.type : null,
+        gameTimeMs: bs.gameTime,
+        playerLevel: bs.player.level,
+        skills: bs.player.skills,
+        skillLevels: bs.player.skillLevels,
+        equip: equipTelemetrySnapshot(bs.player.equipment),
+        straps: bs.player.straps,
+      });
+    }
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
     // 虚無の三唱: 1唱ごとに**大きく**揺らす(社長指示v0.25.3122)。全技中で最大級の振幅=
     // 「数える3回」を体で分からせる合図。判定・秒数・ダメージには一切関与しない(描画のみ)。
@@ -11509,7 +11574,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
       get().addPickup({
         id: `rescue-strap-${now}`, x: ae.x, y: ae.y,
-        type: 'strap', value: saved * 20,
+        type: 'strap', value: saved * 20, scrapSource: 'poi', // SKILL_BUILD_REDESIGN.md §13-3(B0): 救助イベント報酬
         worldDrop: true, scatterRadius: ae.radius * 0.5,
       });
       // 成功アウトロへ突入: 攻撃者退場、survivor はハート→フェードしつつ円の外へ走って退場(savedAt+外向き速度)。
@@ -11946,15 +12011,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           } : {}),
         }));
         break;
-      case 'strap':
+      case 'strap': {
+        // SKILL_BUILD_REDESIGN.md §13-3(B0発注文): 実際に加算されたstraps量をtelemetryへ流路別で
+        // 記録する(set()内は再入set禁止なのでpost-setで呼ぶ=既存のpumpkinLanded等と同じ作法)。
+        let strapGranted = 0;
         set(state => {
           // §6.10 M33⑪: ゴールドラッシュはin-runスクラップ拾得から撤去(永続ゴールド獲得へ移動)。
+          strapGranted = Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * skillScrapBuilderGainMult(state.player)));
           return {
           player: {
             ...state.player,
             // スクラップ獲得数アップ(パッシブ): 取得量を scrapMult 倍に(+30%/回)。
             // スキル: スクラップビルダー = 取得量 ×1.1/1.2/1.3(Lv・§6.9 M32。四捨五入は既存のMath.round)。
-            straps: state.player.straps + Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * skillScrapBuilderGainMult(state.player)))
+            straps: state.player.straps + strapGranted
           },
           gameStats: {
             ...state.gameStats,
@@ -11962,7 +12031,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           };
         });
+        recordScrapIncome(pickup.scrapSource ?? 'other', strapGranted);
         break;
+      }
       case 'treasure':
         set(state => ({
           lastWeaponGet: {
@@ -12077,7 +12148,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           {
             const pc = get().player;
             const meleeTier = pc.weapons.find(w => w.isMelee)?.tier ?? 1;
-            get().grantWeapon(openCrate(areaIndexForPos(pc.x + pc.width / 2, pc.y + pc.height / 2), meleeTier));
+            const droppedKey = openCrate(areaIndexForPos(pc.x + pc.width / 2, pc.y + pc.height / 2), meleeTier);
+            get().grantWeapon(droppedKey);
+            // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の3: 武器箱から出たのがナイフだった時だけ計測
+            // (読むだけ・grantWeaponの挙動には触れない)。
+            const droppedDef = createWeapon(droppedKey);
+            if (droppedDef.isMelee) recordKnifeTierFromBox(droppedDef.tier ?? 1);
           }
         }
         strapDropValues(WEAPON_CRATE_STRAP_DROP_MIN + Math.floor(Math.random() * WEAPON_CRATE_STRAP_DROP_VARIANCE))
@@ -12088,6 +12164,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               y: pickup.y,
               type: 'strap',
               value,
+              scrapSource: 'box', // SKILL_BUILD_REDESIGN.md §13-3(B0): 武器箱由来
               scatterRadius: WEAPON_CRATE_SCATTER_RADIUS
             });
           });
@@ -12298,6 +12375,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         x: cx,
         y: cy,
         type: 'strap',
+        // SKILL_BUILD_REDESIGN.md §13-3(B0)の流路タグ。松明(壊せる小物)は「箱」でも「POI」でもない
+        // 探索ドロップなので'other'に分類する(叩き台=最終報告に明記のうえ検収者判断を仰ぐ)。
+        scrapSource: 'other',
         value
       });
     });
@@ -12681,6 +12761,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const next = [...owned, key];
     saveStringArray(OWNED_SKILLS_KEY, next);
     set({ ownedSkills: next });
+  },
+  // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の9: ヘッドレス計測スクリプト専用の上書き口。
+  // **意図的にlocalStorageへ永続化しない**(grantSkill等の実プレイ経路と違い、計測ラン限りの
+  // in-memory上書き=実機の保存データを汚染しない)。呼んだ直後は resetGame を呼び直すこと
+  // (pendingSkills/ownedSkillLevelsを読むのはresetGameの出撃時点のみ)。
+  setOwnedSkillsForTest: (skills, levels) => {
+    set({ ownedSkills: [...skills], ownedSkillLevels: { ...levels } });
   },
   // 開発用: ガチャ関連の永続状態だけを初手へ戻す(社長指示v0.25.2347)。
   // **`resetProgress()`(進行リセット)はガチャ状態を消さない**ので、「初戦の稼ぎ20gで2回引ける」等の
@@ -13968,6 +14055,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // resetPlayerTraits()が保留ごと破棄する(=破棄と同じ・安全側の仕様)。
     // M35(§6.12): ボット計測カウンタをラン開始でリセット(実機/ヘッドレス両ハーネス共通の合流点)。
     resetBotTelemetry();
+    // SKILL_BUILD_REDESIGN.md §15(B0発注文): 1ランぶんの計測台帳もラン開始でリセット(同じ合流点)。
+    resetRunTelemetry();
     // BOT_AND_GHOST.md G1: 前ランの未確定セッション(交戦中に終了した場合等)+未決算の保留バッファを
     // 持ち越さない。
     resetPlayerTraits();
@@ -13990,7 +14079,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     clearGhostBuildCache();
     // G6: 1ランにつき1回だけ非同期取得。実プレイヤー候補が取れなければ召喚側で固定20人を使う。
     const testGhostSkill = bossTestGhostSkill();
-    const selectedRunSkills = testGhostSkill ? [testGhostSkill] : state.pendingSkills;
+    // SKILL_BUILD_REDESIGN.md §15-1の2(B0発注文): ボスメーカーの部屋(isBossMakerRun)に限り、
+    // スキル/Lv/装備Tier/プレイヤーLvの注入口(bossTest.ts)を読む。通常出撃(injection=null)は
+    // 従来どおり pendingSkills / bossTestGhostSkill のまま=挙動不変。
+    const skillInjection = isBossMakerRun() ? getBossTestSkillInjection() : null;
+    const selectedRunSkills = skillInjection
+      ? skillInjection.skills
+      : (testGhostSkill ? [testGhostSkill] : state.pendingSkills);
     beginGhostOnlineRun(selectedRunSkills, getSelectedStageId());
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
@@ -14037,8 +14132,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     const profile = PLAYER_PROFILES[validClass] ?? PLAYER_PROFILES.warrior;
     // 装備の持ち帰り: localStorage の1件を該当部位へ装備して run 開始(死亡で破棄=ロード時に空なら無装備)。
     const runLoadout = emptyEquipLoadout();
-    const carried = equipmentById(loadCarriedEquip());
-    if (carried) runLoadout[carried.slot] = carried.id;
+    if (skillInjection) {
+      // SKILL_BUILD_REDESIGN.md §15-1の2(B0発注文): 基礎装備のスロット別Tierを注入する。系統(line)は
+      // 各スロットの先頭系統で固定(体=protection/腕=firepower/アクセ=crit。TTK計測は火力寄りを既定にする
+      // 叩き台=bossTest.tsのBossTestSkillInjection.equipTierコメント参照)。持ち帰り(loadCarriedEquip)は
+      // ボスメーカーの部屋では従来から不使用のため、ここでは触らない。
+      (['body', 'arms', 'accessory'] as const).forEach(slot => {
+        const tier = skillInjection.equipTier[slot];
+        if (!tier || tier <= 0) return;
+        const line = EQUIP_LINES_BY_SLOT[slot][0];
+        const def = equipmentDef(slot, line, Math.min(EQUIP_TIER_MAX, tier));
+        if (def) runLoadout[slot] = def.id;
+      });
+    } else {
+      const carried = equipmentById(loadCarriedEquip());
+      if (carried) runLoadout[carried.slot] = carried.id;
+    }
     // 持ち帰りは run 開始で「銀行から引き出し」=永続キーを空に。再度貯めるのは帰還/クリア時のみ
     // (=途中離脱や死亡では失う。死亡時は damagePlayer でも明示クリア)。
     saveCarriedEquip(null);
@@ -14047,7 +14156,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const maxHealth = profile.maxHp + equipMaxHealthOf(runLoadout);
     // 固有スキル(クラス標準サブ武器)を最初から Lv1 所持で開始する。
     const innateSub = classSubWeaponFor(validClass);
-    
+    // SKILL_BUILD_REDESIGN.md §15-1の2(B0発注文)+§12-2#7: ボスメーカーの部屋はXPが入らないため
+    // プレイヤーLvの注入が前提。levelUp()と同じ式(utils/levelCurve.ts)をLv1から反復適用して
+    // experienceToNextLevelを算出する(カーブの式を複製しない=TEST_DESIGN.md 型Aの予防と同じ理由)。
+    const runPlayerLevel = skillInjection && skillInjection.playerLevel > 1
+      ? Math.floor(skillInjection.playerLevel) : 1;
+    let runExpToNextLevel = 5; // Lv1の初期しきい値(通常出撃と同じ既定値)
+    for (let lv = 2; lv <= runPlayerLevel; lv++) runExpToNextLevel = nextLevelThreshold(lv, runExpToNextLevel);
+
     set(state => {
       // 出撃時の所持サブ = クラス固有(デフォルト)サブは常に所持 + 装備選択で選んだサブ。
       // フリー/メイン/(将来の)サブクエスト共通の経路。固有サブが落ちないようにする(社長指示)。
@@ -14064,12 +14180,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         : state.pendingFarBackdrop === 'tutorial' ? []
         : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup]));
       // 装備スキル(別枠アクティブ・最大2)。出撃時に player.skills へ反映(効果は今後配線)。
+      // SKILL_BUILD_REDESIGN.md §15-1の2(B0発注文): ボスメーカーの注入(skillInjection)がある時だけ
+      // slice(0,2)を通さない(想定最強6枠ビルドのTTK計測専用の測定路。MAX_EQUIPPED_SKILLS=2は
+      // 通常出撃に対して無改変のまま=skillInjectionがnullなら従来と1ビットも変わらない)。
       const runSkills: SkillKey[] = state.danceTestMode
         ? []
-        : Array.from(new Set<SkillKey>(selectedRunSkills)).slice(0, 2);
-      // 装備スキルのLvは所持Lv(ownedSkillLevels)を反映(未設定=1、最大Lvでクランプ)。
+        : skillInjection
+          ? Array.from(new Set<SkillKey>(selectedRunSkills))
+          : Array.from(new Set<SkillKey>(selectedRunSkills)).slice(0, 2);
+      // 装備スキルのLvは所持Lv(ownedSkillLevels)を反映(未設定=1、最大Lvでクランプ)。注入時は
+      // skillInjection.skillLevelsを優先する(未指定キーはownedSkillLevelsへフォールバック)。
       const runSkillLevels: Partial<Record<SkillKey, number>> = Object.fromEntries(
-        runSkills.map(k => [k, Math.max(1, Math.min(skillMaxLevel(k), state.ownedSkillLevels[k] ?? 1))])
+        runSkills.map(k => [k, Math.max(1, Math.min(
+          skillMaxLevel(k), skillInjection?.skillLevels[k] ?? state.ownedSkillLevels[k] ?? 1,
+        ))])
       );
       // スキル: スクラップビルダー = 出撃開始時の初期スクラップ +50/100/150(Lv)。
       const scrapBuilderLv = runSkills.includes('scrap-builder') ? (runSkillLevels['scrap-builder'] ?? 1) : 0;
@@ -14312,8 +14436,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           health: maxHealth,
           maxHealth,
           experience: 0,
-          level: 1,
-          experienceToNextLevel: 5,
+          level: runPlayerLevel,
+          experienceToNextLevel: runExpToNextLevel,
           weapons: startingWeapons,
           activeWeaponId: startingWeapons.find(w => !w.isMelee)?.id ?? '',
           characterClass: validClass,
@@ -14563,8 +14687,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         rescueSurvivors: [],
       };
     });
+    // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)+§13-4: DDA係数の新旧並記ログ。player.skillsは
+    // 現行仕様(pre-B1)ではラン中変化しない(出撃時に1回だけ決まる)ため、ここでラン1回だけ記録すれば
+    // 足りる(per-frame走査ではない)。B0時点のcountは装備スキル数(player.skills.length)で代用
+    // (runBuildはB1以降)。
+    recordDdaCoefficients(get().player.skills.length, get().gameTime);
   },
-  
+
   setCameraPosition: (x, y) => {
     // Infinite world: the camera follows the player one-to-one with no clamp.
     set({ camera: { x, y } });

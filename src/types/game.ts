@@ -1357,6 +1357,10 @@ export interface Pickup {
   // §2.11追補3「霊体は世界の物に触れない」の裏返しで、これは世界のドロップではなく本人の設置物
   // なので本人だけが拾える(プレイヤーの拾得判定からは除外し、守護霊は自分のだけを拾う)。
   ownerGhostId?: string;
+  // SKILL_BUILD_REDESIGN.md §13-3(B0発注文): type='strap'の発生元タグ(計測専用・挙動には一切
+  // 使わない)。生成時に発生源が分かる箇所でだけ付ける最小の変更(pickupの発生元をここ以外から
+  // 逆引きする手段が無いため)。未設定=計測対象外(現状すべての 'strap' 生成箇所にタグ済み)。
+  scrapSource?: 'kill' | 'box' | 'poi' | 'levelup' | 'other';
 }
 
 export interface BreakableProp {

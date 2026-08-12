@@ -75,6 +75,7 @@ import {
   RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX,
   BOSS_TEST_RUN, // ボス戦テスト/ボスメーカー出撃か(チュートリアル抑止に使う)
   GLEN_NIHIL_SE_MS, // 虚無の三唱の専用SEを鳴らす長さ(技の定数から導出・v0.25.3143)
+  SHOP_MEDKIT_COST, // SKILL_BUILD_REDESIGN.md §15-1(B0): ボット購買ポリシーの救急価格
 } from '../store/gameStore';
 import { glenScriptApplies } from '../utils/giantScript';
 import { glenPartCountFull, glenRemovedPartAnchors } from '../utils/glenChain';
@@ -282,6 +283,9 @@ import {
   getPhaseKillDebug, snapshotKillTotals, snapshotSpawns
 } from '../utils/killTelemetryState';
 import { recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel } from '../utils/botTelemetry';
+// SKILL_BUILD_REDESIGN.md §15(B0発注文): 計測台帳の最終記録(読むだけ)+ボット購買ポリシー(実機オートパイロット側)。
+import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
+import { decideBotShopPurchase } from '../utils/botShopPolicy';
 import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement, recordPhillHeadshot, recordHomingHold } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, ghostIsMovingNow, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
@@ -1583,6 +1587,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // M35(§6.12): goldはgoldBalance読み(リザルト画面が加算する前=常に0)を廃止し、リザルト画面と同じ
     // 計算式(calculateResultScore+ゴールドラッシュ倍率=GameOverScreenのgoldEarnedと同値)を終了時点で評価。
     const botTele = getBotTelemetry();
+    // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の6+§11-1 A-7: ラン終了時点の最終スナップショットを
+    // runTelemetryへ記録し、既存の__BOT_REPORT__へそのまま埋め込む(新規の窓口を増やさない)。
+    recordRunFinal({
+      outcome,
+      playerLevel: s.player.level,
+      maxAreaReached: s.gameStats.maxAreaReached,
+      runTimeMs: Math.round(s.gameTime),
+    });
     const report = {
       persona: BOT_PERSONA,
       outcome,
@@ -1614,6 +1626,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       finisherKills: botTele.finisherKills,
       meleeSwings: botTele.meleeSwings,
       meleeHits: botTele.meleeHits,
+      // SKILL_BUILD_REDESIGN.md §15-1(B0発注文): B0計測器の10出力(§12-2#6+§13-4)を丸ごと同梱。
+      runTelemetry: getRunTelemetrySnapshot(),
     };
     console.log('[BOT_REPORT]', JSON.stringify(report));
     (window as unknown as Record<string, unknown>).__BOT_REPORT__ = report;
@@ -2001,11 +2015,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // BOT_PERSONA=null(通常プレイ)ではこのブロックは丸ごと素通り(挙動不変)。
       if (BOT_PERSONA) {
         const bs = useGameStore.getState();
-        // 武器商人ショップの自動クローズ(依頼#3実測バグ・v0.25.1732): M38の松明フォレージで
-        // 商人付近の近接スイング→ショップが開き2ランが15分停止。下の60秒保険は shopReopenAt を
-        // 設定せず閉じるため「即再オープン→また60秒」のループに入り得る。開いた瞬間に正規の
-        // closeShop()(reopen遅延1.5s付き)で閉じるのが本修正。
-        if (bs.showShopMenu) bs.closeShop();
+        // 武器商人ショップの自動購買→クローズ(依頼#3実測バグ・v0.25.1732の「開いたら閉じる」保険に、
+        // SKILL_BUILD_REDESIGN.md §13-2(B0発注文)+設計チャットの追補で「購買→閉じる」を追加)。
+        // 決定的な純関数(botShopPolicy.ts)に判定を委ね、購入は正規の buyShopItem() 経由(telemetryは
+        // buyShopItem側で記録=二重記録しない)。open→close自体は従来どおり同フレームで完結する
+        // (reopen遅延1.5s付きのcloseShop()は不変)。
+        if (bs.showShopMenu) {
+          const shopAction = decideBotShopPurchase({
+            playerHealth: bs.player.health, playerMaxHealth: bs.player.maxHealth,
+            straps: bs.player.straps, medkitCost: SHOP_MEDKIT_COST,
+          });
+          if (shopAction.kind === 'buy-medkit') bs.buyShopItem('medkit');
+          bs.closeShop();
+        }
         // レベルアップの自動選択(ポリシーはヘッドレスStep1と共用の純関数・決定的乱数)。
         if (bs.showUpgradeMenu && bs.upgradeOptions.length > 0) {
           // M49-4(§6.25): 段階(skilled/master)は一様ランダムでなく greedy ポリシーで選ぶ

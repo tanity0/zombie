@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.3229 — B0着地: 計測器runTelemetry+ボスメーカー注入口+ボット購買(Sonnet納品・検収済み)【2026-08-13 02:12 JST】
+- 新規 runTelemetry.ts(+test13): 1ラン計測台帳(killTelemetryState型踏襲・スナップショットは
+  ディープコピー)。10出力+追補の装備到達Tier: ボス突入スナップショット(bossFightNowエッジで記録・
+  スロット別Tier/系統/特殊フラグ含む)/提示・選択内訳/箱ナイフTier/scrap流路別収支
+  (Pickup.scrapSourceタグ新設: box/poi/other。killは現行ゲームに経路なし=0が正)/商人購入ログ/
+  最終記録/DDA新旧並記(旧1.0はdifficultyScaler不触のため手動ミラー・コメントで注意書き)/
+  枠充足タイミング(B1から)/setOwnedSkillsForTest(メモリのみ・セーブ不触)/同行者=既存ghostMode流用。
+- 新規 botShopPolicy.ts(+test7): 決定的購買(HP<50%で救急・購入後straps≥100=ARMORY_SCRAP_COST
+  参照で温存)。playtestDriverと実機?botオートパイロットの両方に適用(即閉じ→購買後閉じ)。
+- bossTest.ts: BossTestSkillInjection(スキル複数+Lv+装備Tier+プレイヤーLv注入)。ボスメーカー時のみ
+  2枠capを越えて注入可(通常プレイ・通常ボステストは不変)。装備系統は暫定firstライン(火力寄り)。
+- 検収: typecheck 0/lint 0(warning8既存)。関連69テストファイル1348 passed(既存失敗2件は
+  ベースラインでも同一=無関係)。※vitest relatedはこの環境で全入力エラー(既存問題)のため手動収集。
+- 注意(納品報告より): §15-2の30ラン計測スクリプトはrecordRunFinal/reset/snapshotを自分で呼ぶ必要
+  あり(playtestDriverに自動フック無し)。次=基準線計測→B1発注(§17)。
+
 ## v0.25.3228 — ★4件裁定(持ち込み廃止/Lv3覚醒/リロール・バニッシュ/枯渇はB0待ち)+B1発注文【2026-08-13 02:04 JST】
 社長裁定(§16-10): ★A「持ち込まないでやってみようか」=**持ち込み0**(裁定記録1「1枠」を上書き。
 出撃前スキルUIは復活可能な形で撤去・ガチャ価値は超レア解禁+開始Lvに一本化・pity/曲線が全員に働く)。

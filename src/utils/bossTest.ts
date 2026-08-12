@@ -157,6 +157,38 @@ export const BOSS_MAKER_STAGE = 'stage-1'; // 森(平地)。広さ無限・木�
 export const isBossMakerRun = (): boolean =>
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bossmaker') === '1';
 
+// ---- ボスメーカーのスキル/装備/Lv注入口(SKILL_BUILD_REDESIGN.md §15-1の2・§12-2#7) --------------
+// 「スキル(複数)+各Lv+装備Tier+プレイヤーLv」の注入口。**数値の受け渡しにURLは使わない**
+// (社長明示「?パラメータは回りくどい」・上のbossMakerQueryの注記と同じ理由)。URLは部屋へ入るため
+// だけに使う=注入はこのモジュール内の設定(モジュール変数)で行い、ボスメーカーのTTK計測スクリプト/
+// テストは resetGame を呼ぶ前に setBossTestSkillInjection を呼ぶ。
+// **プレイヤー本人の枠**(bossTestGhostSkillと同じ型の思想を踏襲=同行者スキルの注入とは別枠。
+// 同行者あり/なしの切替は既存の ghostMode を使う=このAPIはプレイヤー自身のビルドだけを扱う)。
+export interface BossTestSkillInjection {
+  /** 装備スキルの複数キー。将来の6枠ビルド(SKILL_BUILD_REDESIGN.md §1-1)を見越して上限を設けない。
+   *  現行(B0時点)の gameStore は装備2枠が仕様(MAX_EQUIPPED_SKILLS・無改変)だが、ボスメーカーの
+   *  部屋(isBossMakerRun)に限り、この注入だけはその枠を通さず player.skills へそのまま反映する
+   *  (TTK計測の対象は「想定最強6枠ビルド」=実プレイヤーの持ち込み経路とは別の専用測定路)。 */
+  skills: SkillKey[];
+  /** 各スキルのLv(未指定キー=Lv1)。skillMaxLevelでクランプする。 */
+  skillLevels: Partial<Record<SkillKey, number>>;
+  /** 基礎装備のスロット別Tier(0=未装備・1..5)。系統(line)は各スロットの先頭系統で固定
+   *  (体=protection/腕=firepower/アクセ=crit。TTK計測は火力寄りの系統をデフォルトにする叩き台)。 */
+  equipTier: { body?: number; arms?: number; accessory?: number };
+  /** プレイヤーLv。ボスメーカーの部屋はXPが入らないため注入が前提(§12-2#7)。 */
+  playerLevel: number;
+}
+
+let bossTestSkillInjection: BossTestSkillInjection | null = null;
+
+/** テスト/計測スクリプトから呼ぶ。resetGame より前に呼ぶこと。null=注入解除(通常のボスメーカー出撃)。 */
+export const setBossTestSkillInjection = (injection: BossTestSkillInjection | null): void => {
+  bossTestSkillInjection = injection;
+};
+
+/** gameStore.resetGame が読む。ボスメーカーの部屋(isBossMakerRun)以外では無視される。 */
+export const getBossTestSkillInjection = (): BossTestSkillInjection | null => bossTestSkillInjection;
+
 export const bossMakerQuery = (opts: BossTestOptions): string => {
   const p = new URLSearchParams();
   p.set('smoke', '1');
