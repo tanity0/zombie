@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3201',
+    items: [
+      '開発: スキルビルド設計書の監査4巡目(12件)を反映。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3200',
     items: [
       'スリィエル後半戦: 環が2つに増えるのに合わせて「環の射出」のレーザーも2本になりました。2本目の環は別の場所(狙いの横合い)へ展開し、それぞれの位置からこちらを狙ってきます。',
