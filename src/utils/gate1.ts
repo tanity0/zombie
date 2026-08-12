@@ -31,5 +31,8 @@ export const effectiveReaperRiskFloor = (
 // resolveGate1ChaffPlan(強制プラン関数)は削除済み — 雑魚の湧き数はディレクター任せに戻す。
 
 // §5.21-追補7(社長決定v0.25.1574): 旧「ゲート1台本=紫tint+×5倍加算+finishKillOnly」は廃止。
-// ゲート1台本は赤レア相当(spawnEnemyAtWithTier(...,'red'))の色倍率のみで強さを表現する
-// (GATE1_FORMATION_STRENGTH_MULT は削除・useGameLoop.ts のゲート1布陣配置箇所参照)。
+// ゲート1台本は**レア色倍率のみ**で強さを表現する(GATE1_FORMATION_STRENGTH_MULT は削除・
+// useGameLoop.ts のゲート1布陣配置箇所参照)。
+// ★社長指示v0.25.3175「第一ゲートの敵は紫に降格で」: その色は **紫**(攻×2/HP×3)。
+// v0.25.1574で赤(攻×3/HP×5)へ上げたぶんを戻した=**最初の関所に最上位レアは重すぎる**という裁定。
+// 機構(色倍率だけで強さを出す)は追補7のまま=紫tintや×5加算の旧実装が戻ったわけではない。

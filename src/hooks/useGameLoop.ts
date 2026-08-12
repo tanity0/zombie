@@ -2849,9 +2849,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const n = counts[type];
               for (let i = 0; i < n; i++) {
                 const pos = placeGateRing();
-                // §5.21-追補7(社長決定v0.25.1574): 全個体を赤レア相当(強制tier='red')で配置。
-                // レア色倍率(攻×3/HP×5)がそのまま強さになる=専用の×5倍加算(GATE1_FORMATION_STRENGTH_MULT)は廃止。
-                const e = spawnEnemyAtWithTier(type, pos.x - 20, pos.y - 20, newGameTime, 'red');
+                // §5.21-追補7(社長決定v0.25.1574): 全個体をレア相当(強制tier)で配置。
+                // レア色倍率がそのまま強さになる=専用の×5倍加算(GATE1_FORMATION_STRENGTH_MULT)は廃止。
+                // ★社長指示v0.25.3175「第一ゲートの敵は紫に降格で」: 'red'(攻×3/HP×5)→ 'purple'(攻×2/HP×3)。
+                //   最初の関所が赤=最上位レアなのは重すぎる、という裁定(赤は以後の山に取っておく)。
+                const e = spawnEnemyAtWithTier(type, pos.x - 20, pos.y - 20, newGameTime, 'purple');
                 e.fromEvent = true;
                 e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0;
                 addEnemy(e);

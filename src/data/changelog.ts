@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3175',
+    items: [
+      '第一ゲート(囲い)の敵が赤から紫へ下がりました。攻撃力が3倍→2倍、HPが5倍→3倍になり、最初の関所が越えやすくなります。',
+    ],
+  },
+  {
     version: '0.25.3174',
     items: [
       'パンプキンが少し大きくなりました(絵が約1割・足元の当たり判定も同じ割合)。ゾンビより小さく見えていたのを、エリートらしい大きさにしています。',

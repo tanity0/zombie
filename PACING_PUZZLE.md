@@ -1290,6 +1290,7 @@ M10(バランス走査)の拡張。実装前のアイデアを試せるのが肝
 
 **C. ゲート1布陣=赤レア相当(×5廃止)**(`src/hooks/useGameLoop.ts` gate1 spawn)
 - `spawnEnemyAtWithTier(type, ..., 'purple')` の `'purple'` → `'red'`。`GATE1_FORMATION_STRENGTH_MULT`(×5)の3行削除。→ 布陣は赤レア(攻×3/HP×5・赤tint)。弾も赤の攻撃×3が自動追従。
+  - ★**v0.25.3175で赤→紫へ差し戻し**(社長指示「第一ゲートの敵は紫に降格で」)。**最初の関所に最上位レアは重すぎる**という裁定で、色は **紫(攻×2/HP×3)**。**機構(色倍率だけで強さを出す)はこの追補7のまま**——`GATE1_FORMATION_STRENGTH_MULT`(×5加算)や `finishKillOnly` が戻ったわけではない。
 - `GATE1_FORMATION_STRENGTH_MULT` 定数(gate1.ts)+ import 削除。
 
 **城ボス(ゲート2 giantbat)= finishKillOnly除去のみ、他は不変**
