@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3180',
+    items: [
+      'ゲーム内容の変更はありません(設計議論の資料を追加しました)。',
+    ],
+  },
+  {
     version: '0.25.3179',
     items: [
       '召喚したユニット(錬金術・使役)が金色の半透明になりました。敵と見分けが付きます(透明度は守護霊と同じ)。',
