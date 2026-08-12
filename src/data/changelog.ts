@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3214',
+    items: [
+      '開発: スキルビルド設計§12完成(レベルアップ=スキル専業/基礎装備・回復=商人/特殊装備=POI)。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3213',
     items: [
       '開発: 特殊装備は専用POI3つ(方角ランダム・拠点解放で判明)へ移す方針を設計書に記録。実装はPOI素材の支給後。ゲーム内容の変更はありません。',
