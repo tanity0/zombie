@@ -11343,6 +11343,9 @@ export class PixiScene {
         view = this.makeActor();
         this.enemies.set(e.id, view);
       }
+      // v0.25.3206: 既定OFFは try/catch の**外**(=drawEnemy本体が例外を投げても必ず今フレーム分が
+      // 反映される場所)で先に済ませる。詳細は resetActorFxDefaults のコメント。
+      this.resetActorFxDefaults(view, e);
       try { this.drawEnemy(view, e, gameTime, now); } catch (err) {
         if (!PixiScene.enemyDrawErrLogged) { PixiScene.enemyDrawErrLogged = true; console.error('[pixiScene] drawEnemy error (suppressed):', err); }
       }
@@ -13220,6 +13223,60 @@ export class PixiScene {
   // を増やさず、共有ドット配置を軽量Graphicsで描く(HUDアイコン
   // と同じデザイン)。赤い鞘・少し反り・縦やや斜め。村雨は刀身シルバー。
 
+  // v0.25.3206(残留描画バグの構造修正・調査継続だったDEVELOPMENT_LOG v0.25.3205の結論):
+  // 「予告/技FXの既定OFF」を drawEnemy 本体(3000行超・下で try/catch に包まれる)から切り離し、
+  // syncActors のループでその try/catch より**前**に必ず1回走らせる。理由: drawEnemy は
+  // enemy-typeごとの分岐が非常に多く、将来どこかで例外が出ると(現状の網羅確認では見つからないが、
+  // 個別敵タイプ専用の分岐が今後も増え続ける構造なので再発しうる)catch されて丸ごとスキップされ、
+  // ここから下にあった「既定OFF」も一緒に飛んで前フレームのFXスプライトが画面に焼き付いたまま残る
+  // (CLAUDE.md「ズーム対応はレイヤーごとに漏れて潜伏する」と同型の地雷)。
+  // ここで初期化するのは view.* の見た目状態だけ(store読み書きなし=CLAUDE.md「PixiJSは描画のみ」)。
+  private resetActorFxDefaults(view: ActorView, e: Enemy): void {
+    // Above-sprite layer(前半): 攻撃予告(赤い線/帯/円/扇)。**tele レイヤー**へ描く。
+    // 体力バー/ボスマーカーは同じ描画順のまま overlay(後半・drawHealthBar 以降)へ分けた。
+    // 分けている理由は alpha だけ(予告は自分の位置でフェードする=TELEGRAPH_OWN_FADE)。
+    view.tele.clear();
+    view.overlay.clear();
+    view.overlayTop.clear(); // 攻撃の絵より上に出すゲージ(v0.25.3150)
+    // 予告の輪スプライト(A-1)は既定で消しておき、必要な分岐だけが drawTelegraphRing で点ける
+    // (tele.clear() と同じ役割。消し忘れて前フレームの輪が残るのを構造的に防ぐ)。
+    if (view.rings) for (const s of view.rings) s.visible = false;
+    if (view.bands) for (const s of view.bands) s.visible = false;
+    if (view.slash) view.slash.visible = false;
+    if (view.clawMarks) for (const s of view.clawMarks) s.visible = false;
+    // ★glenParts(ラスボス第二形態の連結パーツ)はここで消さない(v0.25.2955・社長報告「パーツが
+    // くっついてない。本体しかいない」の実バグ)。パーツは攻撃予告ではなく**本体の一部**で、
+    // syncGlenParts(この関数より前に実行)が表示した直後にこの行が毎フレーム非表示へ戻していた=
+    // 導入(v0.25.2918)から一度も画面に出ていなかった。既定OFFの役目は syncGlenParts 自身の先頭で
+    // 果たしている(count=0で全消し)ので、ここから外して重複させない。
+    if (view.shockwaves) for (const s of view.shockwaves) s.visible = false;
+    // FX-V3V4: 物理の攻撃絵(牙/爪/翼/触手/拳)も同じ作法で既定OFF。点けるのは各技の分岐だけ。
+    if (view.atkArt) for (const s of view.atkArt) if (s) s.visible = false;
+    // FX-V2b: アクラシエルの棘の突き上げ/爆ぜの破片も同じ作法で既定OFF。
+    if (view.spikeThrust) for (const s of view.spikeThrust) if (s) s.visible = false;
+    if (view.burstFrag) for (const s of view.burstFrag) if (s) s.visible = false;
+    // FX-V2c: 突進の風圧も同じ作法で既定OFF。点けるのは下のdrawDashWind呼び出しのみ。
+    if (view.dashWind) view.dashWind.visible = false;
+    // FX-V2d: coilの胴体も同じ作法で既定OFF。点けるのは下のdrawJormCoilBody呼び出しのみ。
+    if (view.coilBody) view.coilBody.visible = false;
+    // ゲート2ボス6体専用の武器/ランタン/構えスプライト(Mapで個体id管理)も同じ作法で既定OFF。
+    // 該当ステートの分岐だけが下(drawEnemy側)で再表示する。
+    if (isGate2AngelBoss(e.type)) {
+      const slashFx = this.miguelSlashFx.get(e.id);
+      if (slashFx) slashFx.visible = false;
+      const uriFx = this.uriSlashFx.get(e.id);
+      if (uriFx) uriFx.visible = false;
+      const rafiFx = this.rafiSlashFx.get(e.id);
+      if (rafiFx) rafiFx.visible = false;
+      const lanternSp = this.jibrilLanternSprites.get(e.id);
+      if (lanternSp) lanternSp.visible = false;
+      // v0.25.3204: 飛行中ランタン(ランス3本)は既定OFF→下のランス分岐だけが点ける。
+      for (const [lk, lsp] of this.jibrilLanceLanternPool) if (lk.startsWith(`${e.id}:`)) lsp.visible = false;
+      const spearReadySp = this.acrasielSpearReadySprites.get(e.id);
+      if (spearReadySp) spearReadySp.visible = false;
+    }
+  }
+
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
     const fb = enemyFootBox(e);
     // ステージ3(daylight=farBackdrop'city')は廃都セット、ステージ4(snowStage='snow')は雪原セットに敵絵を
@@ -13725,31 +13782,11 @@ export class PixiScene {
     // Above-sprite layer(前半): 攻撃予告(赤い線/帯/円/扇)。**tele レイヤー**へ描く。
     // 体力バー/ボスマーカーは同じ描画順のまま overlay(後半・下の drawHealthBar 以降)へ分けた。
     // 分けている理由は alpha だけ(予告は自分の位置でフェードする=TELEGRAPH_OWN_FADE)。
+    // ★既定OFF(tele/overlay/overlayTopのclear + rings/bands/...の非表示化)は
+    // resetActorFxDefaults(view, e) へ移設(v0.25.3206)。syncActors がこの drawEnemy を
+    // try/catch で包む**前**に必ず1回呼ぶ構造にして、本体側で例外が出ても既定OFFだけは
+    // 必ず今フレーム分が反映されるようにした(残留描画の再発防止・詳細はそのメソッドのコメント)。
     const o = view.tele;
-    o.clear();
-    view.overlay.clear();
-    view.overlayTop.clear(); // 攻撃の絵より上に出すゲージ(v0.25.3150)
-    // 予告の輪スプライト(A-1)は既定で消しておき、必要な分岐だけが drawTelegraphRing で点ける
-    // (o.clear() と同じ役割。消し忘れて前フレームの輪が残るのを構造的に防ぐ)。
-    if (view.rings) for (const s of view.rings) s.visible = false;
-    if (view.bands) for (const s of view.bands) s.visible = false;
-    if (view.slash) view.slash.visible = false;
-    if (view.clawMarks) for (const s of view.clawMarks) s.visible = false;
-    // ★glenParts(ラスボス第二形態の連結パーツ)はここで消さない(v0.25.2955・社長報告「パーツが
-    // くっついてない。本体しかいない」の実バグ)。パーツは攻撃予告ではなく**本体の一部**で、
-    // syncGlenParts(この関数より前に実行)が表示した直後にこの行が毎フレーム非表示へ戻していた=
-    // 導入(v0.25.2918)から一度も画面に出ていなかった。既定OFFの役目は syncGlenParts 自身の先頭で
-    // 果たしている(count=0で全消し)ので、ここから外して重複させない。
-    if (view.shockwaves) for (const s of view.shockwaves) s.visible = false;
-    // FX-V3V4: 物理の攻撃絵(牙/爪/翼/触手/拳)も同じ作法で既定OFF。点けるのは各技の分岐だけ。
-    if (view.atkArt) for (const s of view.atkArt) if (s) s.visible = false;
-    // FX-V2b: アクラシエルの棘の突き上げ/爆ぜの破片も同じ作法で既定OFF。
-    if (view.spikeThrust) for (const s of view.spikeThrust) if (s) s.visible = false;
-    if (view.burstFrag) for (const s of view.burstFrag) if (s) s.visible = false;
-    // FX-V2c: 突進の風圧も同じ作法で既定OFF。点けるのは下のdrawDashWind呼び出しのみ。
-    if (view.dashWind) view.dashWind.visible = false;
-    // FX-V2d: coilの胴体も同じ作法で既定OFF。点けるのは下のdrawJormCoilBody呼び出しのみ。
-    if (view.coilBody) view.coilBody.visible = false;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
     if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       // §6.33(監査指摘7): 新挙動では線の向きを判定と同じ式(aiTarget−現在のボス中心)で引く。
@@ -14255,19 +14292,8 @@ export class PixiScene {
       } else {
         view.sprite.tint = 0xffffff;
       }
-      // 武器スプライトの既定非表示(専用Mapとも、該当ステートのみ下で表示する)。
-      const slashFx = this.miguelSlashFx.get(e.id);
-      if (slashFx) slashFx.visible = false;
-      const uriFx = this.uriSlashFx.get(e.id);
-      if (uriFx) uriFx.visible = false;
-      const rafiFx = this.rafiSlashFx.get(e.id);
-      if (rafiFx) rafiFx.visible = false;
-      const lanternSp = this.jibrilLanternSprites.get(e.id);
-      if (lanternSp) lanternSp.visible = false;
-      // v0.25.3204: 飛行中ランタン(ランス3本)は既定OFF→下のランス分岐だけが点ける。
-      for (const [lk, lsp] of this.jibrilLanceLanternPool) if (lk.startsWith(`${e.id}:`)) lsp.visible = false;
-      const spearReadySp = this.acrasielSpearReadySprites.get(e.id);
-      if (spearReadySp) spearReadySp.visible = false;
+      // 武器スプライトの既定非表示は resetActorFxDefaults(view, e) 側へ移設済み(v0.25.3206・
+      // 専用Mapとも、該当ステートのみ下で表示する)。
 
       // ★v0.25.3120(監査A): 手持ちの武器絵2つを**else-ifの技チェーンの外**へ出す。
       // チェーンの中だと「今どの技か」に絵の生死が縛られ、カウンターで州が飛んだ瞬間に消えていた。
