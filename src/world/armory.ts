@@ -4,7 +4,8 @@
 // - デンジャーゾーンのほぼ中間(4000)に1つ立つ寄り道POI。4方角のうち、裏ボス/病院/警察署と
 //   被らないセクターへ毎ランランダムに配置される(world/detourPoi.ts が割り当てを決める)。
 // - 病院と同じ「近づく→サークル→3秒滞在」の枠組み(world/hospital.ts と対の実装)。
-// - 3秒滞在すると **200スクラップ を払って Tier3装備を確定入手**(スクラップ不足なら何も起きない
+// - 3秒滞在すると **100スクラップ を払って Tier3装備を確定入手**(社長指示v0.25.2425で200→100。
+//   社長確認v0.25.3173「武器庫は100です」)。スクラップ不足なら何も起きない
 //   =サークルを出入りすれば再挑戦できる。既存の dwell 挙動をそのまま流用)。
 // - 入手すると武器庫はフェードアウトして消える(そのランでは再取得できない)。
 //
@@ -13,7 +14,7 @@
 import { footRect, resolveAabb, type Rect } from './obstacles';
 import { DETOUR_DIST, DETOUR_CIRCLE_RADIUS, DETOUR_DWELL_MS, detourPosForSector } from './detourPoi';
 
-/** デンジャーゾーン(AREA_THRESHOLDS[1]〜[2])のほぼ中間。§6.24: 武器庫方面=4000。 */
+/** デンジャーゾーン(AREA_THRESHOLDS[1]〜[2])の中点。§6.24: 武器庫方面=4000(不変)。 */
 export const ARMORY_DIST = DETOUR_DIST.armory; // = 4000
 
 /** 近づくと出るサークルの半径/滞在時間。病院と同じ値(§6.24 A4)。 */

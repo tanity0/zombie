@@ -1,7 +1,8 @@
 // 病院オブジェクト(社長指示v0.25.2331)。
 //
 // 仕様:
-// - 通常ステージに1つだけ立つ廃病院。**未確認汚染エリアのほぼ中間**(5000〜7500の中央=6250)に置く。
+// - 通常ステージに1つだけ立つ廃病院。**デンジャーゾーンの一番奥**(3000〜5000の75%地点=4500)に置く
+//   (社長裁定v0.25.3173。旧: 未確認汚染エリアの中間=6250)。
 // - **拠点を解放するとその方角のマークが出る**(裏ボスと同じ=既存のPOI仕組みに相乗り。`pois.ts`)。
 // - 近づくとサークルが出る。**3秒とどまるとワクチンを入手**(既存アイテム=死亡時に一度だけ復活)。
 // - 入手すると病院はフェードアウトして消える(そのランでは再取得できない)。
@@ -11,8 +12,10 @@
 import { footRect, resolveAabb, type Rect } from './obstacles';
 import { DETOUR_DIST, DETOUR_CIRCLE_RADIUS, DETOUR_DWELL_MS, detourPosForSector } from './detourPoi';
 
-/** 未確認汚染エリア(AREA_THRESHOLDS[2]〜[3])のほぼ中間。社長指示「未確認のほぼ中間らへんに」。 */
-export const HOSPITAL_DIST = DETOUR_DIST.hospital; // = 6250
+/** デンジャーゾーン(AREA_THRESHOLDS[1]〜[2])の75%地点=帯の一番奥。
+ * v0.25.3173で 6250(未確認汚染の中点)から移動。理由は detourPoi.ts のコメント②
+ * (報酬=ワクチン=初心者救済なのに、救済を深部に置くと救済にならない)。 */
+export const HOSPITAL_DIST = DETOUR_DIST.hospital; // = 4500
 
 /** 近づくと出るサークルの半径(px)。帰還サークル(95)と同値=プレイヤーに馴染んだ大きさ。
  * §6.24 M48で武器庫も同じ値(DETOUR_CIRCLE_RADIUS)を共有するようになった=世界に1つの定義に統一。 */
@@ -36,7 +39,7 @@ export const HOSPITAL_HITBOX_H = 80;
  * このランで病院に割り当てられたセクター番号(world/detourPoi.ts の assignDetourSectors。
  * gameStore の resetGame が1度だけ乱数を引いて確定させる)を受け取り、位置だけを計算する
  * 純関数(乱数はここでは引かない=呼び出し側と2箇所で結果がズレない)。
- * 距離は未確認汚染の中間(HOSPITAL_DIST)で固定。
+ * 距離は HOSPITAL_DIST(デンジャーゾーンの一番奥)で固定。
  */
 export const hospitalPos = (sector: number): { x: number; y: number } => detourPosForSector('hospital', sector);
 

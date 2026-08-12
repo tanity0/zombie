@@ -35,8 +35,8 @@ describe('armoryPos(デンジャーゾーンの中間・§6.24)', () => {
 });
 
 describe('ARMORY_SCRAP_COST(§6.24 E1)', () => {
-  it('200スクラップ(社長裁定v0.25.2350)', () => {
-    expect(ARMORY_SCRAP_COST).toBe(100); // 社長指示v0.25.2425(200→100)
+  it('100スクラップ(社長裁定v0.25.2350の200→社長指示v0.25.2425で100・v0.25.3173で再確認)', () => {
+    expect(ARMORY_SCRAP_COST).toBe(100);
   });
 });
 

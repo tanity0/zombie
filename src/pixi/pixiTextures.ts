@@ -252,7 +252,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'hospital', scaleMode: 'nearest' }, // 通常ステージの廃病院(ワクチン入手・社長指示v0.25.2331)
       // §6.24 M48: 寄り道POIの一般化(社長支給素材v0.25.2352・アルファ透過あり)。
       { name: 'police', scaleMode: 'nearest' }, // 警察署(専用スキル入手・アリーナ方式)
-      { name: 'armory', scaleMode: 'nearest' }, // 武器庫(200スクラップでTier3装備確定入手)
+      { name: 'armory', scaleMode: 'nearest' }, // 武器庫(100スクラップでTier3装備確定入手)
       { name: 'magic-circle' },        // 既定(linear)のまま
       { name: 'whip-hurricane' },      // 既定のまま
       { name: 'whip' },                // 既定のまま

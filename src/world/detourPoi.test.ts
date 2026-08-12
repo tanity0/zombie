@@ -15,11 +15,21 @@ const seq = (...values: number[]) => {
 };
 
 describe('DETOUR_DIST(距離=区域の中点で固定)', () => {
-  it('警察署3500 < 武器庫4000 < 病院6250(価値の並び=深さと一致・固定)', () => {
-    // v0.25.3172: 警察署は 2250(研究対象区域の中点)→ 3500(デンジャーゾーンの手前寄り)。
-    expect(DETOUR_DIST.police).toBe(AREA_THRESHOLDS[1] + (AREA_THRESHOLDS[2] - AREA_THRESHOLDS[1]) * 0.25);
-    expect(DETOUR_DIST.armory).toBe((AREA_THRESHOLDS[1] + AREA_THRESHOLDS[2]) / 2);
-    expect(DETOUR_DIST.hospital).toBe((AREA_THRESHOLDS[2] + AREA_THRESHOLDS[3]) / 2);
+  // v0.25.3172/3173(社長決定): 3種ともデンジャーゾーン(3000〜5000)の中へ。帯を4等分して 25/50/75%。
+  it('★3種ともデンジャーゾーンの中に入る(拠点3200の外・帯からはみ出さない)', () => {
+    const lo = AREA_THRESHOLDS[1], hi = AREA_THRESHOLDS[2];
+    for (const kind of ['police', 'armory', 'hospital'] as const) {
+      expect(DETOUR_DIST[kind], kind).toBeGreaterThan(3200); // BASE_SITE_RADIUS=矢印を出す拠点
+      expect(DETOUR_DIST[kind], kind).toBeGreaterThan(lo);
+      expect(DETOUR_DIST[kind], kind).toBeLessThan(hi);
+    }
+  });
+
+  it('警察署3500 < 武器庫4000 < 病院4500(価値の並び=帯の中の順・固定)', () => {
+    const lo = AREA_THRESHOLDS[1], span = AREA_THRESHOLDS[2] - AREA_THRESHOLDS[1];
+    expect(DETOUR_DIST.police).toBe(lo + span * 0.25);
+    expect(DETOUR_DIST.armory).toBe(lo + span * 0.50);
+    expect(DETOUR_DIST.hospital).toBe(lo + span * 0.75);
     expect(DETOUR_DIST.police).toBeLessThan(DETOUR_DIST.armory);
     expect(DETOUR_DIST.armory).toBeLessThan(DETOUR_DIST.hospital);
   });

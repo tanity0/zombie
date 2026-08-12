@@ -11,18 +11,21 @@ import { getRunPois, poiSectorIndex } from './pois';
 
 const player = (cx: number, cy: number) => ({ x: cx - 14, y: cy - 14, width: 28, height: 28 });
 
-describe('hospitalPos(未確認汚染のほぼ中間・§6.24でセクター引数へ変更)', () => {
-  it('距離は未確認汚染エリアの中間(社長指示「未確認のほぼ中間らへんに」)', () => {
-    expect(HOSPITAL_DIST).toBe((AREA_THRESHOLDS[2] + AREA_THRESHOLDS[3]) / 2);
+// v0.25.3173(社長裁定「廃病院もデンジャーにしよう」): 報酬=ワクチン(復活)=初心者救済なのに
+// 6250(未確認汚染)に置くと、行ける人はもう困っていない=救済にならなかった。デンジャー帯の一番奥へ。
+describe('hospitalPos(デンジャーゾーンの一番奥・v0.25.3173で6250から移動)', () => {
+  it('距離はデンジャーゾーンの75%地点(4500)', () => {
+    expect(HOSPITAL_DIST).toBe(AREA_THRESHOLDS[1] + (AREA_THRESHOLDS[2] - AREA_THRESHOLDS[1]) * 0.75);
+    expect(HOSPITAL_DIST).toBe(4500);
     for (const sector of [0, 1, 2, 3]) {
       const p = hospitalPos(sector);
       expect(Math.hypot(p.x, p.y)).toBeCloseTo(HOSPITAL_DIST, 6);
     }
   });
 
-  it('未確認汚染エリアの内側にある(隣のエリアへはみ出さない)', () => {
-    expect(HOSPITAL_DIST).toBeGreaterThan(AREA_THRESHOLDS[2]);
-    expect(HOSPITAL_DIST).toBeLessThan(AREA_THRESHOLDS[3]);
+  it('デンジャーゾーンの内側にある(隣のエリアへはみ出さない)', () => {
+    expect(HOSPITAL_DIST).toBeGreaterThan(AREA_THRESHOLDS[1]);
+    expect(HOSPITAL_DIST).toBeLessThan(AREA_THRESHOLDS[2]);
   });
 
   it('detourPoi.ts の detourPosForSector(hospital, sector) と一致する(=単一の位置計算式)', () => {

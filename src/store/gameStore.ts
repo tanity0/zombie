@@ -4110,7 +4110,7 @@ interface GameState {
   hospitalTakenAt: number;                              // 入手した gameTime(描画のフェードアウト用)
   updateHospital: (deltaTime: number) => void;          // 毎フレーム: サークル内滞在を計測し3秒でワクチン付与
   // PACING_PUZZLE.md §6.24 M48: 寄り道POI(病院の一般化)。武器庫=デンジャーゾーンの中間。
-  // 拠点を解放するとその方角の矢印が出る(病院と同じ POI 仕組み)。3秒とどまり200スクラップを
+  // 拠点を解放するとその方角の矢印が出る(病院と同じ POI 仕組み)。3秒とどまり100スクラップを
   // 払うとTier3装備を確定入手。位置は毎ラン、裏ボス/病院/警察署と被らないセクターへランダムに割り当て。
   armory: { x: number; y: number } | null;              // この出撃の武器庫の位置(null=この出撃には無い)
   armoryDwellMs: number;                                // サークル内の連続滞在時間(ms)。外れると0へ戻る
@@ -12952,7 +12952,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // 武器庫(PACING_PUZZLE.md §6.24 M48): サークル内滞在を計測。3秒到達時にスクラップが足りていれば
-  // 200スクラップを払ってTier3装備(空きスロット優先/満杯なら最低Tierを置換)を確定入手し、建物は
+  // 100スクラップを払ってTier3装備(空きスロット優先/満杯なら最低Tierを置換)を確定入手し、建物は
   // フェードアウトして消える。**足りない場合は何も起きない**(既存のdwell挙動をそのまま流用=
   // サークルを出入りすれば再挑戦できる。新しい「不足時専用」の分岐は作らない)。
   // 判定の中身は world/armory.ts の純関数 + data/equipment.ts の rollEquipment/armoryTargetSlot。
