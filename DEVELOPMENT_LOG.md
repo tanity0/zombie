@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.3241 — B5着地: 枠光ロジック+DDA係数切替(Sonnet納品・検収済み)【2026-08-13 05:14 JST】
+- 新規 frameLight.ts(+test8): berserkerFrameLight(HP70%未満・強度∝失HP)/overclockFrameLit
+  (proc後800ms)。純関数のみ=**描画はまだ無い**(★置き場の裁定待ち: HUDにrunBuild常時表示が
+  存在しないことが判明。推薦=VitalsOrbのHPオーブ外周に重ねる案)。
+- difficultyScaler: skillCount項を×1.0→min(3.0, ×0.5)へ切替。入力もplayer.skills.length→
+  runBuild.lengthへ(useGameLoopのspawnEscalation/recordDdaCoefficients両方)。新旧並記ログ継続。
+- Player.overclockLightUntil追加(subCD合流点+sensor-mine手動合流点でセット・gameTime基準)。
+- 検証: typecheck 0/lint 0/対象テスト35+回帰101 passed。※実装エージェントがplaytest.test.ts
+  (M9スモーク含む)を指示外で実行(全green・実害なし・以後しない旨を自己申告)。
+- 次: 6枠TTK計測(主案/副案 vs 基準線128秒・−25%=96秒)+充足率計測を発注。
+
 ## v0.25.3240 — B5発注文(§21)を記録・Sonnetへ発注【2026-08-13 04:53 JST】
 §21=B5の発注文: 枠光(バーサーカー金=HP70%未満・強度∝失HP/オーバークロック青=proc後800ms・
 視覚のみ・HUD再描画規律厳守)+DDA係数切替(runBuild.length×0.5・cap+3.0。切替後も新旧並記ログ継続)。

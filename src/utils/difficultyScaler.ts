@@ -19,15 +19,22 @@ export interface DdaPowerInputs {
   weaponTierSum: number; // 所持武器の tier 合計(T1=1..)。
   maxHealth: number;
   equippedCount: number; // 装備している部位数(0..3)。
-  skillCount: number;    // 装備スキル数。
+  skillCount: number;    // ラン中ビルド枠数(runBuild.length)。B5切替(§21-1/§11-1 A-8)。
 }
+
+// B5切替(SKILL_BUILD_REDESIGN.md §21-1点2・§11-0裁定どおり): skillCount項の係数。
+// 旧式(skillCount×1.0・cap無し)はrunTelemetry.tsに比較用として残す(このモジュールは触らない=
+// 「値の意味は不変・意図せず変えない」の対象は旧式そのものではなく、旧式→新式への切替は
+// この発注文で明示指示されている)。
+export const DDA_SKILLCOUNT_COEFF = 0.5;
+export const DDA_SKILLCOUNT_CAP = 3.0; // 6枠フル(6×0.5)で頭打ち。保険条項=通常はここまで届かない。
 
 export const playerPower = (i: DdaPowerInputs): number =>
   i.level
   + i.weaponTierSum
   + Math.max(0, i.maxHealth / DDA_BASE_MAX_HP - 1) * 4
   + i.equippedCount * 1.5
-  + i.skillCount * 1.0;
+  + Math.min(DDA_SKILLCOUNT_CAP, i.skillCount * DDA_SKILLCOUNT_COEFF);
 
 // その時刻に「順調なビルド」が持つはずの PP(私案の直線カーブ)。7分アークで再較正前提。
 const DDA_EXPECTED_P0 = 4;        // 開始時の順調PP(Lv1+初期武器T1+固有スキル ≒ 4)

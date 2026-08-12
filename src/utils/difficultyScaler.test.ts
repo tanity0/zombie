@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { expectedPower, powerMargin, escalation01, spawnEscalation, gateLiveCorrection, GATE_TARGET_END_HP } from './difficultyScaler';
+import {
+  expectedPower, powerMargin, escalation01, spawnEscalation, gateLiveCorrection, GATE_TARGET_END_HP,
+  playerPower, DDA_SKILLCOUNT_COEFF, DDA_SKILLCOUNT_CAP,
+} from './difficultyScaler';
 
 describe('difficultyScaler — power margin & escalation (step 3)', () => {
   it('escalation is 0 for on-track / under-built players (floor preserved)', () => {
@@ -40,6 +43,29 @@ describe('difficultyScaler — power margin & escalation (step 3)', () => {
     const esc = spawnEscalation({ level: 25, weaponTierSum: 6, maxHealth: 200, equippedCount: 3, skillCount: 2 }, 180_000, true);
     expect(esc).toBeGreaterThan(0.3);
     expect(esc).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('playerPower — skillCount term (SKILL_BUILD_REDESIGN.md §21-1 point 2, B5 DDA switch)', () => {
+  const base = { level: 0, weaponTierSum: 0, maxHealth: 0, equippedCount: 0 };
+  // maxHealth=0 makes the equippedCount/maxHealth terms 0 (Math.max(0, 0/120-1)*4 = 0), isolating skillCount.
+
+  it('contributes 0 for an empty runBuild (0 slots)', () => {
+    expect(playerPower({ ...base, skillCount: 0 })).toBe(0);
+  });
+
+  it('contributes exactly +3.0 (the cap) for a full 6-slot runBuild', () => {
+    expect(playerPower({ ...base, skillCount: 6 })).toBeCloseTo(DDA_SKILLCOUNT_CAP, 6);
+    expect(6 * DDA_SKILLCOUNT_COEFF).toBeCloseTo(DDA_SKILLCOUNT_CAP, 6); // 6×0.5=3.0(不変条件)
+  });
+
+  it('does not overshoot the cap beyond 6 slots (insurance clause, §11-1 B-18)', () => {
+    expect(playerPower({ ...base, skillCount: 10 })).toBeCloseTo(DDA_SKILLCOUNT_CAP, 6);
+  });
+
+  it('scales linearly below the cap at the new 0.5 coefficient', () => {
+    expect(playerPower({ ...base, skillCount: 2 })).toBeCloseTo(1.0, 6);
+    expect(playerPower({ ...base, skillCount: 4 })).toBeCloseTo(2.0, 6);
   });
 });
 

@@ -157,6 +157,8 @@ import {
   type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
 } from '../utils/runTelemetry';
 import { isPracticeRun, practiceBossType } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c
+// SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
+import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
@@ -3412,7 +3414,11 @@ const placeSensorMineOnSwing = (
   // 除外4(運用系): 計測は**プレイヤーの設置だけ**積む(守護霊起因はテレメトリへ混ぜない)。
   if (ghostId === undefined) {
     recordSubUse('sensor-mine'); // M35計測: setSubWeaponCooldown経由をやめたため手動合流点
-    if (smCd.overclockProc) recordOverclockProc(); // §6.13: 成立=そのチャージを即再準備(smDuration=0で表現済み)
+    if (smCd.overclockProc) {
+      recordOverclockProc(); // §6.13: 成立=そのチャージを即再準備(smDuration=0で表現済み)
+      // §21(B5)枠光: 視覚のみ。手動合流点なのでここでも点ける(setSubWeaponCooldown経由と同じ扱い)。
+      useGameStore.setState(s => ({ player: { ...s.player, overclockLightUntil: s.gameTime + OVERCLOCK_LIGHT_MS } }));
+    }
   }
   return true;
 };
@@ -4424,6 +4430,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
     knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
     seekerUntil: 0, seekerCdUntil: 0,
+    overclockLightUntil: 0,
     huntingChargeStartedAt: 0,
     huntingCharged: false,
     // 刀の一閃/ワイヤーの状態は共通型(DashLocomotionState)の初期値=全ゼロ。値は従来と同一。
@@ -8117,7 +8124,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const cd = applySubCooldownSkills(skillOverclockChance(state.player), skillCooldownMult(state.player), delta);
       if (cd.overclockProc) {
         recordOverclockProc(); // M35: 成立回数の計測のみ
-        return {};
+        // §21(B5)枠光: 視覚のみ・判定/CDには不干渉(CDは元々「即再使用可」のまま=返り値以外は従来どおり)。
+        return { player: { ...state.player, overclockLightUntil: state.gameTime + OVERCLOCK_LIGHT_MS } };
       }
       // Δが無変換ならreadyAtをそのまま使う(gameTime+Δの再合成による浮動小数の揺れも入れない=従来と同一)。
       const effReadyAt = cd.deltaMs === delta ? readyAt : state.gameTime + cd.deltaMs;
@@ -14704,6 +14712,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
           knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
           seekerUntil: 0, seekerCdUntil: 0,
+          overclockLightUntil: 0,
           subWeaponLevels: runLevels,
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
@@ -14919,11 +14928,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         rescueSurvivors: [],
       };
     });
-    // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)+§13-4: DDA係数の新旧並記ログ。player.skillsは
-    // 現行仕様(pre-B1)ではラン中変化しない(出撃時に1回だけ決まる)ため、ここでラン1回だけ記録すれば
-    // 足りる(per-frame走査ではない)。B0時点のcountは装備スキル数(player.skills.length)で代用
-    // (runBuildはB1以降)。
-    recordDdaCoefficients(get().player.skills.length, get().gameTime);
+    // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)+§13-4+§21-1(B5): DDA係数の新旧並記ログ。
+    // B5でcountの入力を、実際にspawnEscalation()へ渡している値(runBuild.length)へ揃えた
+    // (旧: player.skills.length=pre-B1の代用値)。出撃時点の1回だけ記録すれば足りる点は
+    // 従来どおり(per-frame走査ではない)。
+    recordDdaCoefficients(get().runBuild.length, get().gameTime);
   },
 
   setCameraPosition: (x, y) => {

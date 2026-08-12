@@ -217,6 +217,8 @@ import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
+// SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
+import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from '../utils/aiDirector';
 import { resetDirectorSamples } from '../utils/aiDirectorDebug';
 import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '../utils/directorRank';
@@ -7130,7 +7132,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 常に正なので抽選条件も従来の無条件抽選と等価)。
             const ssCd = applySubCooldownSkills(
               skillOverclockChance(subWeaponPlayer), skillCooldownMult(subWeaponPlayer), ssTick.cdRemainingMs);
-            if (ssCd.overclockProc) recordOverclockProc(); // M35: 援護射撃タイマー側の成立計測
+            if (ssCd.overclockProc) {
+              recordOverclockProc(); // M35: 援護射撃タイマー側の成立計測
+              // §21(B5)枠光: 視覚のみ。専用タイマー式=手動合流点なので他2箇所と同じくここでも点ける。
+              useGameStore.setState(s => ({ player: { ...s.player, overclockLightUntil: s.gameTime + OVERCLOCK_LIGHT_MS } }));
+            }
             ssCdNext = ssCd.deltaMs;
           }
           if (ssCdNext !== ssState.supportSniperCdMs) {
@@ -10870,6 +10876,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const normalSpawnCap = computeNormalSpawnCap(labTheme, MAX_ENEMIES, dirCountCap, relaxAdj.capMult);
         // 難易度③(戦力連動): 過剰育成(戦力マージン>1)なら escalation で強さ(色)/種類(重い型)を底上げ。
         // esc=0 は現状据え置き=順調/未育成は無変化。関所(gate)で強め・余裕(buildup)は弱め。?dda=0 で無効。屋内/ラボは対象外。
+        // B5(SKILL_BUILD_REDESIGN.md §21-1点2/§11-1 A-8): skillCountの入力をplayer.skills.length→
+        // runBuild.lengthへ切替(係数もdifficultyScaler.ts側で1.0→0.5・cap+3.0へ切替済み)。
         const ddaActive = DDA_ENABLED && !labTheme && !indoor;
         const buildEsc = ddaActive
           ? spawnEscalation({
@@ -10877,7 +10885,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               weaponTierSum: player.weapons.reduce((s, w) => s + (w.tier ?? 1), 0),
               maxHealth: player.maxHealth,
               equippedCount: [player.equipment.body, player.equipment.arms, player.equipment.accessory].filter(Boolean).length,
-              skillCount: player.skills.length,
+              skillCount: useGameStore.getState().runBuild.length,
             }, gameTime, curPhase.kind === 'gate')
           : 0;
         // 難易度④(関所ライブ補正): 関所中だけ、プレイヤーのHP推移を目標帯へ寄せる escalation 補正を平滑化して加える。

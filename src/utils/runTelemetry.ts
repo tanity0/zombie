@@ -18,8 +18,8 @@
 //     → recordScrapIncome / recordScrapExpense(recordMerchantPurchaseが内部で呼ぶ)
 //  5. 商人購入ログ(品目/価格/残straps/時刻) → recordMerchantPurchase
 //  6. 最終(プレイヤーLv・到達エリア・ラン時間・結果) → recordRunFinal
-//  7. DDA係数の新旧並記ログ(現行式の値 vs 新式 would-be値。B0時点のcountは装備スキル数で代用と
-//     明記=§15-1) → recordDdaCoefficients
+//  7. DDA係数の新旧並記ログ(採用中の値 vs 旧式=比較専用値。B5以降countはrunBuild.length・
+//     B0〜B4は装備スキル数で代用していた=§15-1/§21-1) → recordDdaCoefficients
 //  8. 枠充足タイミング → recordSlotFilled(src/store/gameStore.ts selectUpgradeのskill/new分岐で呼ぶ。
 //     B0はフィールドのみ用意していた=B1でrunBuildができたので記録を開始)
 //  9. ownedSkills/ownedSkillLevelsのヘッドレス上書き口 → このモジュールの外
@@ -27,6 +27,7 @@
 //  10. 同行者あり・なし切替口 → このモジュールの外(既存 src/utils/bossTest.ts の
 //      BossTestOptions.ghostMode を流用。own/random/top=同行あり、null=同行なし。新設不要)
 import type { EquipLine, SkillKey, UpgradeOption } from '../types/game';
+import { DDA_SKILLCOUNT_COEFF, DDA_SKILLCOUNT_CAP } from './difficultyScaler';
 
 export type ScrapFlowSource = 'kill' | 'box' | 'poi' | 'levelup' | 'other';
 
@@ -76,9 +77,9 @@ export interface MerchantPurchaseLogEntry {
 
 export interface DdaCoefficientSample {
   gameTimeMs: number;
-  skillCount: number; // B0時点は装備スキル数(player.skills.length)で代用(§15-1明記。runBuildはB1以降)。
-  oldValue: number;   // 現行式: skillCount × 1.0(difficultyScaler.ts playerPower()の現在の係数のミラー)
-  newValue: number;   // 新式 would-be値: skillCount × 0.5, cap +3.0(社長裁定★3・v0.25.3201節)
+  skillCount: number; // B5以降: runBuild.length(§21-1点2)。B0〜B4は装備スキル数(player.skills.length)で代用していた。
+  oldValue: number;   // 旧式(B5切替前): skillCount × 1.0・cap無し。比較専用。
+  newValue: number;   // 採用中の式(B5切替後): skillCount × 0.5, cap +3.0(difficultyScaler.tsが実式)
 }
 
 export interface RunFinalTelemetry {
@@ -183,16 +184,16 @@ export const recordRunFinal = (final: RunFinalTelemetry): void => {
 };
 
 // ---- 7. DDA係数の新旧並記 ------------------------------------------------------------------
-// 現行式の係数(difficultyScaler.ts playerPower()の `i.skillCount * 1.0` のミラー・読み取り専用。
-// あちらの値を変えたらここも合わせる=CLAUDE.md「仕様変更のルール」によりdifficultyScaler.ts自体は
-// 触らない=このモジュール側にミラーを持つ)。
-export const DDA_OLD_SKILLCOUNT_COEFF = 1.0;
-// 新式 would-be 係数(社長裁定★3・SKILL_BUILD_REDESIGN.md §10節「×3までで。つまり2枠で1上がる」)。
-export const DDA_NEW_SKILLCOUNT_COEFF = 0.5;
-export const DDA_NEW_SKILLCOUNT_CAP = 3.0; // 6枠フル(6×0.5)で頭打ち。保険条項=通常は効かない。
+// B5(SKILL_BUILD_REDESIGN.md §21-1点2)で実式が切替済み: 採用中の式は difficultyScaler.ts の
+// DDA_SKILLCOUNT_COEFF/DDA_SKILLCOUNT_CAP(旧「would-be新式」のミラーを実式へ昇格・§21-1「旧式の
+// 値はミラー定数を実式に昇格させる形で整理してよい」の指示どおり)。ここでは**旧式(切替前・
+// skillCount×1.0・cap無し)を比較用に保持**し、新旧を並記する(B6の比較材料)。
+export const DDA_OLD_SKILLCOUNT_COEFF = 1.0; // 旧式(B5切替前の係数)。比較専用・以後は増減しない。
+export const DDA_NEW_SKILLCOUNT_COEFF = DDA_SKILLCOUNT_COEFF; // 実式(difficultyScaler.ts)を再輸出
+export const DDA_NEW_SKILLCOUNT_CAP = DDA_SKILLCOUNT_CAP;     // 同上
 
 export const ddaSkillCountWouldBeValue = (skillCount: number): number =>
-  Math.min(DDA_NEW_SKILLCOUNT_CAP, Math.max(0, skillCount) * DDA_NEW_SKILLCOUNT_COEFF);
+  Math.min(DDA_SKILLCOUNT_CAP, Math.max(0, skillCount) * DDA_SKILLCOUNT_COEFF);
 
 export const recordDdaCoefficients = (skillCount: number, gameTimeMs: number): void => {
   state.dda.push({

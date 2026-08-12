@@ -170,6 +170,10 @@ export interface Player extends DashLocomotionState {
   benkeiCdUntil: number;       // 弁慶: 再発動CD(gameTime)
   seekerUntil: number;         // シーカー: 半透明化＋通常敵から狙われない 効果終了(gameTime)
   seekerCdUntil: number;       // シーカー: 再発動CD(gameTime)
+  // 枠光(SKILL_BUILD_REDESIGN.md §21 B5・視覚専用): オーバークロックのCDリセットprocが立った
+  // 時刻+800ms(gameTime基準)。判定はsrc/utils/frameLight.tsのoverclockFrameLitへ渡すだけで、
+  // この値自体はゲームプレイ(判定・数値)に一切影響しない。既定0。
+  overclockLightUntil: number;
   // キャラ固有スキル(characterClass で自動有効。装備スキル枠は消費しない)の状態フィールド。
   scavengerBuffUntil: number;   // スカベンジャー(necromancer): 弾薬取得で銃ダメ+10%(gameTime)
   marksmanMovingSince: number;  // マークスマン(mage): 連続移動の開始gameTime。0=停止中

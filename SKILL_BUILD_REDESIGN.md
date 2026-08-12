@@ -940,3 +940,28 @@ range外として持ち越した下記3件は、検収で以下のとおり確�
 2. HUDに毎フレーム再描画を持ち込まない(購読はプリミティブ/shallow・点灯は分離コンポーネント)。
 3. DDA: runBuild=6種でちょうど+3.0(cap)・0種で+0(テスト)。切替後もrunTelemetryに新旧両値が載る。
 4. typecheck/lint 0エラー。既存テスト(difficultyScaler系)を新式に更新して全通過。
+
+### 21-3. ★B5実装中の未決(実装チャット・2026-08-13)
+- **枠光の描画先が存在しない**: 事前調査の指示どおり「B1でUpgradeMenu/HUD系に入ったrunBuild表示」を
+  探したが、常時表示のゲーム内HUDに「ラン中ビルド(runBuild)6枠」を表示するコンポーネントは
+  **存在しない**(`UpgradeMenu.tsx`のrunBuild参照はレベルアップ時の抽選ポップアップのみで常時表示ではない。
+  `GameHUD.tsx`の`equippedSkills`はサブウェポンのチップ表示で、スキル枠=runBuildとは別物)。
+  指示(「無ければ★未決に書いて枠光の土台だけ純関数+テストで用意」)に従い、**今回は描画コンポーネントを
+  新規に追加していない**。用意したのは:
+  - `src/utils/frameLight.ts`: `berserkerFrameLight(hasBerserker, health, maxHealth)` /
+    `overclockFrameLit(hasOverclock, lightUntil, gameTime)` の純関数2本+定数
+    (`BERSERKER_LIGHT_HP_FRAC=0.7` / `OVERCLOCK_LIGHT_MS=800`)。テスト済み。
+  - `player.overclockLightUntil`(Playerの状態フィールド。既定0)。オーバークロックのCDリセットproc
+    3箇所(`setSubWeaponCooldown`合流点/sensor-mine手動合流点/support-sniper手動合流点)全てで
+    `gameTime + OVERCLOCK_LIGHT_MS`をセット済み(実プレイヤーのみ・守護霊は対象外=既存の計測除外4と同じ扱い)。
+  - バーサーカーはHP/maxHealthが既存フィールドなので追加の状態は不要(`berserkerFrameLight`へその場で渡すだけ)。
+  - **未着手**: 実際にHUDへ描く場所・レイアウト(どのHUD要素の「枠」を光らせるか)。候補として
+    `VitalsOrb.tsx`のHPオーブ外周(既存の「オーブ縁」=コード上も"枠"に相当する唯一の常時表示要素)への
+    アタッチが最有力だが、レイアウト決定はUI設計判断のため実装チャットでは行わない。
+  - **社長/設計チャットへの選択肢**: ①`VitalsOrb`のオーブ縁に重ねて光らせる(既存要素の流用・追加レイアウト
+    コスト最小) ②新規に「ラン中ビルド6枠」の常時表示行をHUDへ新設し、その各アイコン枠を光らせる
+    (§12-2#11の原文「HUD枠表示」に最も忠実だが新規UI設計が要る) ③保留(B6計測完了までHUD非表示のまま
+    土台だけ置く)。**推薦は①**(視覚のみの小さな変更で受け入れ条件1・2を満たせ、新規レイアウト設計を
+    要しない)。
+  - 受け入れ条件1の「描画そのものは実機確認」・受け入れ条件2(分離コンポーネント)は、上記の描画先が
+    決まってから満たす(今回は純関数側の状態遷移テストのみ緑)。
