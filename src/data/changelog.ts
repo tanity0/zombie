@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3185',
+    items: [
+      '開発施設のサブウェポン陳列レベル解放が有料になりました(Lv1解放=20G / Lv2=50G / Lv3=100G。スキル強化訓練と同じゴールドを使います)。',
+    ],
+  },
+  {
     version: '0.25.3184',
     items: [
       'スキル強化訓練の10連演出で、撃たれた的が1発ごとに仰け反って揺れるようになりました(発砲・破片と同じリズムの反動)。',

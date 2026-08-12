@@ -2156,9 +2156,15 @@ const SkillGacha: React.FC = () => {
 };
 
 // === 開発施設(スキルショップ) ==========================================
+// サブウェポン陳列レベル解放のゴールド価格(社長指示v0.25.3185「20G 50G 100G」)。
+// index = 現在Lv(0→1 / 1→2 / 2→3)。通貨はガチャと同じ永続ゴールド(goldBalance/spendGold)。
+const SHELF_UNLOCK_COST_BY_LEVEL = [20, 50, 100] as const;
+
 const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const unlockedShopSkillCards = useGameStore(s => s.unlockedShopSkillCards);
   const setUnlockedShopSkillCard = useGameStore(s => s.setUnlockedShopSkillCard);
+  const goldBalance = useGameStore(s => s.goldBalance);
+  const spendGold = useGameStore(s => s.spendGold);
   const startWithTestStraps = useGameStore(s => s.startWithTestStraps);
   const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
   return (
@@ -2177,11 +2183,15 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         {SUB_WEAPON_KEYS.map(skillKey => {
           const level = unlockedShopSkillCards[skillKey] ?? 0;
           const maxed = level >= 3;
+          // v0.25.3185(社長指示): 解放は有料(20G/50G/100G)。支払いはガチャと同じ永続ゴールド。
+          const cost = maxed ? 0 : SHELF_UNLOCK_COST_BY_LEVEL[level] ?? 0;
+          const cantPay = !maxed && goldBalance < cost;
           return (
-            <button key={skillKey} type="button" disabled={maxed} onClick={() => setUnlockedShopSkillCard(skillKey, Math.min(3, level + 1))}
-              className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''}`}>
+            <button key={skillKey} type="button" disabled={maxed || cantPay}
+              onClick={() => { if (!maxed && spendGold(cost)) { playSfx('ui-select'); setUnlockedShopSkillCard(skillKey, Math.min(3, level + 1)); } }}
+              className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''} ${cantPay ? 'opacity-60' : ''}`}>
               <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">陳列 Lv{level} → Lv{Math.min(3, level + 1)}</span></span>
-              <span className="shrink-0 text-[10px] text-white/45">{maxed ? 'MAX' : '解放'}</span>
+              <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
             </button>
           );
         })}
