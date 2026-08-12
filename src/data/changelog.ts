@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3217',
+    items: [
+      '開発: 素材受領=猫耳アバター2点+武将装備POI3社(兜・鎧・小手)を切り出して取り込みました。表示の実装は次版から。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3216',
     items: [
       '開発: スキルビルド設計の監査7巡目(10件)を受領。ゲーム内容の変更はありません。',
