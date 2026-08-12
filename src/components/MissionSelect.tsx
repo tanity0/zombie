@@ -269,6 +269,11 @@ const RARITY_TEXT: Record<SkillRarity, string> = {
   normal: 'text-white/60', rare: 'text-sky-300', super: 'text-amber-300',
 };
 
+// SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止)+§1-3(同行者は枠外): 出撃前スキル持ち込みUIは
+// 撤去した。装備メニューに残るのは「同行者」選択(守護霊系3種)のみ=専用の同行者UI(B4)ができるまでの
+// 暫定として、既存のpendingSkills/setPendingSkillsをこの3種だけに絞って流用する。
+const COMPANION_SKILL_KEYS: SkillKey[] = ['guardian-spirit', 'ghost-helper', 'ghost-slayer'];
+
 // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-3: ミッション種別ラベル。文字で識別できるように
 // し、色だけに依存しない(「色だけに依存せず、文字でも識別可能にする」)。stage.kind から導出する
 // (追補1のStoryMissionType 'main'/'sub'/'ex' は新設せず、既存のStage.kindで代用=マッピング確定)。
@@ -507,7 +512,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {/* BOSS_MAKER.md §20(社長指示「ボスラッシュを正式にメニュー化。作戦室にならぶ形」)。
             一度戦ったことのあるボスと何度でも練習できる。進行・記録・所持金には一切残らない。 */}
         <HubButton icon={<Skull size={18} />} label="ボスラッシュ" desc="戦ったボスと練習する" onClick={goBossRush} delay={25} />
-        <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン1 / スキル最大${MAX_EQUIPPED_SKILLS}`} onClick={() => setScreen({ name: 'loadout' })} delay={50} />
+        {/* SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止): スキルの持ち込みは撤去。ここで選ぶのは
+            サブウェポンと同行者(守護霊)のみ。ラン中のスキルは全てレベルアップの抽選で組む。 */}
+        <HubButton icon={<Check size={18} />} label="装備" desc="サブウェポン1 / 同行者選択" onClick={() => setScreen({ name: 'loadout' })} delay={50} />
         <HubButton icon={<ShoppingBag size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={100} />
         <HubButton icon={<BookOpen size={18} />} label="資料室" desc="記録・変異体資料" onClick={goArchive} delay={150} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
         {/* BOT_AND_GHOST.md §2.14(社長裁定「独立メニュー化しよう」): 守護霊=名前の決定+討伐の保持記録。
@@ -934,7 +941,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   };
 
   // ====================================================================
-  // 装備メニュー(トップから独立) — サブウェポン + スキル(最大2)。store に永続。出撃時に反映。
+  // 装備メニュー(トップから独立) — サブウェポン + 同行者。store に永続。出撃時に反映。
+  // SKILL_BUILD_REDESIGN.md §16-10 ★A: スキルの持ち込みは廃止(ラン中は全てレベルアップの抽選で
+  // 組む)。ここに残るのは「同行者」(守護霊系3種)の選択のみ。
   // ====================================================================
   const renderLoadout = () => {
     // サブウェポンは1つだけ選択(単一選択=選び直しで置き換え。同じものを再タップで解除)。
@@ -955,22 +964,22 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     };
     return (
       <>
-        <Header title="装備" subtitle="全作戦共通。サブウェポンとスキルを選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />
+        <Header title="装備" subtitle="全作戦共通。サブウェポンと同行者を選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />
         <div className="p-3 space-y-4">
-          {/* スキル(別枠・最大2)。装備候補はガチャで解禁済み(ownedSkills)のみ。 */}
+          {/* 同行者(守護霊系3種のみ・最大2枠=排他は選択優先順で解決)。持ち込みスキルUIは撤去済み。 */}
           <div>
             <div className="flex items-center justify-between px-1 mb-1.5">
-              <span className="text-[11px] uppercase tracking-widest text-fuchsia-200/70">スキル</span>
+              <span className="text-[11px] uppercase tracking-widest text-fuchsia-200/70">同行者</span>
               <span className="text-[11px] text-white/45">{equippedSkills.length}/{MAX_EQUIPPED_SKILLS}</span>
             </div>
             {ownedSkills.length === 0 ? (
               <p className="rounded-none bg-purple-400/5 px-3 py-3 text-[11px] leading-snug text-white/50">
-                解禁済みのスキルがありません。開発施設の強化訓練でゴールドを使って解禁してください。
+                解禁済みの同行者がありません。
               </p>
             ) : (
               <div className="menu-stagger grid grid-cols-2 gap-2">
-                {/* SKILL_KEYS 順に、所持済みのみ表示(レア度色付き)。 */}
-                {SKILL_KEYS.filter(k => ownedSkills.includes(k)).map(k => {
+                {/* 同行者候補(守護霊系3種)のみ表示(レア度色付き)。 */}
+                {SKILL_KEYS.filter(k => COMPANION_SKILL_KEYS.includes(k) && ownedSkills.includes(k)).map(k => {
                   const on = equippedSkills.includes(k);
                   const full = !on && equippedSkills.length >= MAX_EQUIPPED_SKILLS;
                   const rarity = SKILLS[k].rarity;
@@ -1047,7 +1056,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </div>
           </div>
           <p className="text-[11px] text-white/45 text-center">
-            スキル: {equippedSkills.length === 0 ? 'なし' : equippedSkills.map(k => SKILLS[k].name).join(' / ')}
+            同行者: {equippedSkills.length === 0 ? 'なし' : equippedSkills.map(k => SKILLS[k].name).join(' / ')}
             {' ／ '}サブ: {equippedSubs.length === 0 ? 'なし' : equippedSubs.map(k => subWeaponDisplayName(k)).join(' / ')}
             {' ／ '}アバター: {avatarId ? AVATARS[avatarId].name : 'なし'}
           </p>

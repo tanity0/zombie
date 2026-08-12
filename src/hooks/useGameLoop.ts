@@ -2033,7 +2033,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // M49-4(§6.25): 段階(skilled/master)は一様ランダムでなく greedy ポリシーで選ぶ
           // (novice/casualはupgradePolicy='random'=pickUpgradeと完全に同一結果=挙動不変)。
           bs.selectUpgrade(pickUpgradeByPolicy(
-            bs.upgradeOptions, botRandRef.current, botSkillProfile(BOT_SKILL).upgradePolicy, bs.player));
+            bs.upgradeOptions, botRandRef.current, botSkillProfile(BOT_SKILL).upgradePolicy, bs.player, bs.runBuild.length));
         }
         // 終了レポート: 勝利/帰還(死亡は triggerPlayerDeath 側で発火)。
         if (bs.gameWon) { emitBotReport('clear'); logKomaSummary(); }
@@ -2057,7 +2057,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const bs = useGameStore.getState();
         if (bs.showUpgradeMenu && bs.upgradeOptions.length > 0) {
           bs.selectUpgrade(pickUpgradeByPolicy(
-            bs.upgradeOptions, botRandRef.current, 'greedy', bs.player));
+            bs.upgradeOptions, botRandRef.current, 'greedy', bs.player, bs.runBuild.length));
         }
       }
       // Skip updates if game is paused. Read fresh from the store (not the

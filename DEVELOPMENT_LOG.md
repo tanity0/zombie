@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.3231 — B1着地: スキルドラフト+レベルアップ専業化(Sonnet納品・検収済み)【2026-08-13 02:48 JST】
+- 新規 runSkillDraft.ts(+test23): 枠(超1/レア2/ノ3)/§1-2b曲線/pity(カテゴリロール優先)/
+  §12-2#2抽選手順/リロール価格系列(50,100,150…)/バニッシュ上限2/RUN_DRAFT_EXCLUDED_SKILLS
+  (守護霊3+poi3+scrap-builder+warm-up。dog-runは犬装備時のみ動的解禁)。
+- gameStore: runBuild/vanishedSkills/rerollsUsedThisRun/skillAwakenAt(覚醒フック=絵はB7)。
+  levelUp=スキル専業3択+常設スクラップ択。M0はメニュー非表示(自動+50)。resetGameで持ち込み0化。
+- UI: UpgradeMenuスキルカード(レア度バッジ/残枠/除外ボタン/リロール)。MissionSelectの持ち込み欄は
+  「同行者」(守護霊3種のみ・pendingSkills流用の暫定=B4で正式UI)に縮小。復活可能な形で撤去済み。
+- runTelemetry: recordSlotFilled/recordSpecialEquipAt配線(§13-4の枠充足タイミングが生きた)。
+- 検収§17-3: 初期9種とflashy×2は**B3が正**(B1の漏れではない)。バニッシュ=1枚差し替え・pity掛け
+  直しなしを設計として追認。検証: typecheck 0/lint 0/対象テスト89 passed。
+- ★基準線の汚染対策: 再計測がB1編集中ツリーを読んだ疑いがあるため中止。v0.25.3230のクリーンな
+  worktreeで取り直す(このエントリの後に実施)。
+
 ## v0.25.3230 — B0基準線計測スクリプト追加(b0Baseline.test.ts)【2026-08-13 02:16 JST】
 - 新規 src/store/b0Baseline.test.ts: greedyボット(skill='master'・persona='standard')30ラン×15分相当の
   到達Lv分布計測。B0_BASELINE=1の明示実行専用(it.runIfゲート=CI/npm testでは走らない)。

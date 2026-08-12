@@ -111,4 +111,40 @@ describe('pickUpgradeByPolicy (M49-4: 段階つき強化選択ポリシー)', ()
   it('空配列を渡してもクラッシュしない(pickUpgradeへフォールバック)', () => {
     expect(() => pickUpgradeByPolicy([], () => 0, 'greedy', player())).not.toThrow();
   });
+
+  // SKILL_BUILD_REDESIGN.md §12-2#5/§17-2条件4: runBuild充足<4は新規最優先、4以降はLv+1優先。
+  // スクラップ択は「取るものが無い時のみ」選ばれる。
+  describe('greedy: スキル専業レベルアップ画面(runBuildLength引数)', () => {
+    const skillOpt = (kind: 'new' | 'levelup', id: string): UpgradeOption =>
+      opt({ id, type: 'skill', skillCardKind: kind, skillKey: id as UpgradeOption['skillKey'] });
+
+    it('充足<4: 新規カードを最優先(Lv+1・scrapより上)', () => {
+      const options = [
+        opt({ id: 'scrap', type: 'scrap' }),
+        skillOpt('levelup', 'lv'),
+        skillOpt('new', 'new'),
+      ];
+      expect(pickUpgradeByPolicy(options, () => 0, 'greedy', player(), 2).id).toBe('new');
+    });
+
+    it('充足>=4: Lv+1カードを最優先', () => {
+      const options = [
+        opt({ id: 'scrap', type: 'scrap' }),
+        skillOpt('new', 'new'),
+        skillOpt('levelup', 'lv'),
+      ];
+      expect(pickUpgradeByPolicy(options, () => 0, 'greedy', player(), 4).id).toBe('lv');
+    });
+
+    it('スキルカードが無い(スクラップのみ)時だけscrapを選ぶ', () => {
+      const options = [opt({ id: 'scrap', type: 'scrap' })];
+      expect(pickUpgradeByPolicy(options, () => 0, 'greedy', player(), 2).id).toBe('scrap');
+    });
+
+    it('runBuildLength省略時は既定0(=新規優先扱い)で動作しクラッシュしない', () => {
+      const options = [skillOpt('new', 'new'), skillOpt('levelup', 'lv')];
+      expect(() => pickUpgradeByPolicy(options, () => 0, 'greedy', player())).not.toThrow();
+      expect(pickUpgradeByPolicy(options, () => 0, 'greedy', player()).id).toBe('new');
+    });
+  });
 });

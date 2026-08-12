@@ -20,7 +20,8 @@
 //  6. 最終(プレイヤーLv・到達エリア・ラン時間・結果) → recordRunFinal
 //  7. DDA係数の新旧並記ログ(現行式の値 vs 新式 would-be値。B0時点のcountは装備スキル数で代用と
 //     明記=§15-1) → recordDdaCoefficients
-//  8. 枠充足タイミング → フィールドのみ用意(B0では空。B1でrunBuildができてから記録)
+//  8. 枠充足タイミング → recordSlotFilled(src/store/gameStore.ts selectUpgradeのskill/new分岐で呼ぶ。
+//     B0はフィールドのみ用意していた=B1でrunBuildができたので記録を開始)
 //  9. ownedSkills/ownedSkillLevelsのヘッドレス上書き口 → このモジュールの外
 //     (src/store/gameStore.ts の setOwnedSkillsForTest。store状態の直接上書きなので store 側の責務)
 //  10. 同行者あり・なし切替口 → このモジュールの外(既存 src/utils/bossTest.ts の
@@ -200,6 +201,15 @@ export const recordDdaCoefficients = (skillCount: number, gameTimeMs: number): v
     oldValue: Math.max(0, skillCount) * DDA_OLD_SKILLCOUNT_COEFF,
     newValue: ddaSkillCountWouldBeValue(skillCount),
   });
+};
+
+// ---- 8. 枠充足タイミング(§13-4・B1でrunBuildができたため記録を開始) ------------------------
+// runBuildへ新規スキルが1枠埋まるたびに呼ぶ(Lv+1適用では呼ばない=「枠」の充足だけを数える)。
+export const recordSlotFilled = (gameTimeMs: number, level: number): void => {
+  state.slotFillTiming.filledAt.push({ gameTimeMs, level });
+};
+export const recordSpecialEquipAt = (slot: string, gameTimeMs: number): void => {
+  state.slotFillTiming.specialEquipAt.push({ slot, gameTimeMs });
 };
 
 // ---- 読み出し(ディープコピー。実装精度の規律3) -------------------------------------------

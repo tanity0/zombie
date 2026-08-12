@@ -1441,15 +1441,23 @@ export interface UpgradeOption {
   name: string;
   description: string;
   // 'equipment'=装備取得(選択肢①進化/②補完・特殊)、'scrap'=スクラップ+50(選択肢③)、
-  // 'heal'=HP30%回復(①②カンスト時の代替)、'knife'=ナイフを次Tierへ強化(選択肢③の25%置換)。
+  // 'heal'=HP30%回復(①②カンスト時の代替)、'knife'=ナイフを次Tierへ強化(選択肢③の25%置換)、
+  // 'skill'=SKILL_BUILD_REDESIGN.md §12-1のスキル専業レベルアップ(新規取得 or Lv+1)。
   // 'weapon'/'passive'/'subWeapon' は旧仕様の残置。
-  type: 'weapon' | 'passive' | 'subWeapon' | 'equipment' | 'scrap' | 'heal' | 'knife';
+  type: 'weapon' | 'passive' | 'subWeapon' | 'equipment' | 'scrap' | 'heal' | 'knife' | 'skill';
   weaponType?: WeaponType;
   passiveType?: PassiveType;
   subWeaponKey?: SubWeaponKey;
   equipDefId?: string; // type==='equipment' のとき装備定義ID(data/equipment.ts)
   knifeKey?: string;   // type==='knife' のとき置換する次Tierナイフの CATALOG キー
-  level: number;       // 装備=ランク(特殊=0)、scrap=獲得量、knife=次Tier
+  level: number;       // 装備=ランク(特殊=0)、scrap=獲得量、knife=次Tier。skillは使わない(常に0)。
+  // type==='skill' 専用フィールド(§12-2軽微「levelを流用せず専用フィールドskillLv」)。
+  skillKey?: SkillKey;
+  skillCardKind?: 'new' | 'levelup'; // 新規取得 or 所持済みのLv+1
+  skillRarity?: 'normal' | 'rare' | 'super'; // data/campaign.ts SkillRarity と同じ値域(循環import回避のため再掲)
+  skillFromLv?: number; // 表示用の遷移元Lv(新規=0、Lv+1=現在Lv)
+  skillLv?: number;     // このカードを取ると到達するLv
+  skillPity?: boolean;  // 超レアpity発火で確定混入したカードか(表示用)
 }
 
 export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'magSize' | 'reloadSpeed' | 'critChance' | 'stunDuration' | 'ammoDrop' | 'scrapGain';

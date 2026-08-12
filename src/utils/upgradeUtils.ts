@@ -1,12 +1,14 @@
-import { UpgradeOption, Player, EquipSlot, EquipmentDef } from '../types/game';
+import { UpgradeOption, Player, EquipSlot, EquipmentDef, SkillKey } from '../types/game';
 import {
   EQUIP_SLOTS, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, SPECIAL_EQUIP_CHANCE,
   equipmentById, equipmentDef, specialEquipmentForSlot, equipmentDescription
 } from '../data/equipment';
+import { SKILLS, skillDescForLevel } from '../data/campaign';
+import { draftRunSkillCards, draftReplacementSkillCard, type DraftedSkillCard, type RunSkillDraftInput } from './runSkillDraft';
 // v0.25.3212(社長指示「取り急ぎ、ナイフは武器箱に移す」): レベルアップ3枠目のナイフ提示
 // (旧: Tier5未満なら25%で次Tierナイフ)は廃止し、ナイフ強化は武器箱(weaponDrop.openCrate)へ移した。
 // 3枠目は常設スクラップ+50に戻る。
-const SCRAP_REWARD = 50;
+export const SCRAP_REWARD = 50;
 const scrapOption = (): UpgradeOption =>
   ({ id: 'lvl-scrap', name: `スクラップ +${SCRAP_REWARD}`, description: `スクラップを ${SCRAP_REWARD} 獲得`, type: 'scrap', level: SCRAP_REWARD });
 
@@ -90,4 +92,44 @@ export const generateEquipmentChoices = (player: Player): UpgradeOption[] => {
 
 // 旧「直接パッシブ強化」報酬(generateUpgradeOptions / getPassiveDisplayName など)は確定版で全面廃止し、
 // 上の装備3選択肢へ置換した。装填数(magSize/magBonus)は候補から除外(player の magBonus フィールドは残置)。
+
+// ============================================================================================
+// SKILL_BUILD_REDESIGN.md §12-1/§17: レベルアップ = スキル専業3択(新規∪Lv+1)+常設4枚目
+// 「スクラップ+50」。装備カードはここでは出さない(装備は商人=B2)。generateEquipmentChoicesは
+// ボスドロップ宝箱(§16-2「維持」)専用に残る=このファイル内で共存する。
+// ============================================================================================
+
+const cardToUpgradeOption = (card: DraftedSkillCard): UpgradeOption => ({
+  id: `skill-${card.cardKind}-${card.key}`,
+  name: SKILLS[card.key].name,
+  description: skillDescForLevel(card.key, card.toLevel),
+  type: 'skill',
+  level: 0, // §12-2軽微: スキルLvは level を流用しない(専用フィールドskillLvを使う)
+  skillKey: card.key,
+  skillCardKind: card.cardKind,
+  skillRarity: card.rarity,
+  skillFromLv: card.fromLevel,
+  skillLv: card.toLevel,
+  skillPity: card.pity,
+});
+
+/** レベルアップのスキル3択+常設スクラップ+50を生成する(§16-9点6: 3枚未満の提示を許容し、
+ * 埋め合わせの複製スクラップカードは作らない=常設4枚目1枚だけを追加する)。 */
+export const generateSkillUpgradeChoices = (
+  input: RunSkillDraftInput, count = 3, rng: () => number = Math.random,
+): UpgradeOption[] => {
+  const cards = draftRunSkillCards(input, count, rng);
+  const options = cards.map(cardToUpgradeOption);
+  options.push(scrapOption());
+  return options;
+};
+
+/** バニッシュ/差し替え: 現在表示中の他カードのキーを dealtSeed に渡し、1枚だけ引き直す。
+ * 差し替えできなければ null(呼び出し側はそのスロットを空表示にする=§16-9点6)。 */
+export const generateReplacementSkillOption = (
+  input: RunSkillDraftInput, dealtSeed: readonly SkillKey[], rng: () => number = Math.random,
+): UpgradeOption | null => {
+  const card = draftReplacementSkillCard(input, dealtSeed, rng);
+  return card ? cardToUpgradeOption(card) : null;
+};
 // selectUpgrade 側の passive 分岐は型網羅のため残置(この経路は今後生成されない)。

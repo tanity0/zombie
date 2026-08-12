@@ -3,7 +3,16 @@ import { useGameStore } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
 import { hasEquipIcon, equipIconName, equipmentById } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
+import { SKILLS, RARITY_LABEL } from '../data/campaign';
+import { runBuildCapacity, rerollPrice, MAX_BANISH_PER_RUN } from '../utils/runSkillDraft';
 import type { UpgradeOption } from '../types/game';
+
+// SKILL_BUILD_REDESIGN.md §17-1点3/§16-10 ★C: スキルカードのレア度バッジ色。
+const SKILL_RARITY_BADGE: Record<'normal' | 'rare' | 'super', string> = {
+  normal: 'bg-slate-400/30 text-slate-100',
+  rare: 'bg-purple-600/30 text-purple-100',
+  super: 'bg-amber-400/30 text-amber-100',
+};
 
 // 装備アイコン1個(画像が無ければ絵文字フォールバック=特殊は🏯/通常は🛡️)。確認ダイアログ用。
 const EquipIcon: React.FC<{ defId: string }> = ({ defId }) => {
@@ -21,6 +30,19 @@ const EquipIcon: React.FC<{ defId: string }> = ({ defId }) => {
 const UpgradeMenu: React.FC = () => {
   const upgradeOptions = useGameStore(state => state.upgradeOptions);
   const selectUpgrade = useGameStore(state => state.selectUpgrade);
+  // SKILL_BUILD_REDESIGN.md §17-1点3: スキル専業レベルアップの残枠表示+リロール/バニッシュ。
+  // React再描画規律: いずれも「毎フレーム変わらない」プリミティブ/小配列だけを購読する
+  // (upgradeOptions自体も既存どおりレベルアップ時にしか変わらない)。
+  const runBuild = useGameStore(state => state.runBuild);
+  const straps = useGameStore(state => state.player.straps);
+  const rerollsUsedThisRun = useGameStore(state => state.rerollsUsedThisRun);
+  const vanishedCount = useGameStore(state => state.vanishedSkills.length);
+  const rerollUpgradeOptions = useGameStore(state => state.rerollUpgradeOptions);
+  const banishSkillFromRun = useGameStore(state => state.banishSkillFromRun);
+  const isSkillDraft = upgradeOptions.some(o => o.type === 'skill');
+  const rerollCost = rerollPrice(rerollsUsedThisRun);
+  const canReroll = straps >= rerollCost;
+  const canBanish = vanishedCount < MAX_BANISH_PER_RUN;
   // 既装備の部位に「違うカテゴリー(系統)」の装備を選んだ時だけ確認する(現装備アイコン→新装備アイコン)。
   const [confirm, setConfirm] = useState<{ upgrade: UpgradeOption; oldId: string; newId: string } | null>(null);
 
@@ -56,6 +78,48 @@ const UpgradeMenu: React.FC = () => {
         </div>
         <div className="px-3 pb-4 flex flex-col gap-2 overflow-y-auto min-h-0 overscroll-contain touch-pan-y">
           {upgradeOptions.map(upgrade => {
+            // SKILL_BUILD_REDESIGN.md §12-1/§17-1点3: スキル専業レベルアップ(新規取得 or Lv+1)。
+            // 既存の装備/scrap/heal/knifeカードとは別レイアウト(レア度バッジ+残枠+除外ボタン)。
+            if (upgrade.type === 'skill' && upgrade.skillKey) {
+              const rarity = upgrade.skillRarity ?? 'normal';
+              const isNew = upgrade.skillCardKind === 'new';
+              const remaining = Math.max(0, runBuildCapacity(rarity) - runBuild.filter(k => SKILLS[k].rarity === rarity).length);
+              const skillKey = upgrade.skillKey;
+              return (
+                <div
+                  key={upgrade.id}
+                  className="flex items-start gap-2 rounded-none bg-purple-400/5 p-3 upgrade-menu-option"
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(upgrade)}
+                    className="flex-1 min-w-0 text-left flex items-start gap-3 active:opacity-70"
+                  >
+                    <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10">✨</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <h3 className="text-[15px] font-semibold text-white truncate">{upgrade.name}</h3>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${SKILL_RARITY_BADGE[rarity]}`}>
+                          {isNew ? `NEW・${RARITY_LABEL[rarity]}` : `Lv${upgrade.skillFromLv}→${upgrade.skillLv}`}
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-white/70 leading-snug mt-0.5">{upgrade.description}</p>
+                      {isNew && (
+                        <p className="text-[10px] text-white/40 mt-1">{RARITY_LABEL[rarity]}枠 残り{remaining}</p>
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canBanish}
+                    onClick={() => { if (canBanish) { playSfx('ui-select'); banishSkillFromRun(skillKey); } }}
+                    className="shrink-0 self-start text-[10px] px-2 py-1 rounded-none bg-rose-500/15 text-rose-200/80 active:bg-rose-500/30 disabled:opacity-30"
+                  >
+                    除外
+                  </button>
+                </div>
+              );
+            }
             // 装備=特殊(level0)は金枠、通常はランク表示。scrap/heal は専用アイコン。
             const isSpecial = upgrade.type === 'equipment' && upgrade.level === 0;
             const icon = upgrade.type === 'scrap' ? '🔩'
@@ -106,6 +170,20 @@ const UpgradeMenu: React.FC = () => {
             );
           })}
         </div>
+        {/* SKILL_BUILD_REDESIGN.md §16-10 ★C: リロール(有料・全引き直し)。スキル専業画面でのみ出す
+            (装備3択=ボスドロップ宝箱にはリロール/バニッシュを作らない=既存仕様のまま)。 */}
+        {isSkillDraft && (
+          <div className="px-3 pb-4 shrink-0">
+            <button
+              type="button"
+              disabled={!canReroll}
+              onClick={() => { if (canReroll) { playSfx('ui-select'); rerollUpgradeOptions(); } }}
+              className="w-full py-2.5 rounded-none bg-purple-400/10 text-white/85 font-semibold text-[13px] tracking-wide active:bg-purple-400/20 disabled:opacity-30"
+            >
+              リロール({rerollCost} スクラップ)
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 既装備の部位を別系統で上書きする時だけ: 現装備→新装備 のアイコンを見せて YES/NO で確認(テキストなし)。 */}

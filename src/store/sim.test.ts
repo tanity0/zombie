@@ -402,15 +402,56 @@ describe('headless simulation invariants', () => {
     expect(left).toEqual(['giantbat', 'jormungand']); // ボス系は生存・雑魚は消滅
   });
 
-  it('scrap-builder grants bonus initial scrap by level at deploy', () => {
-    // No skill → baseline 0 initial scrap.
+  it('SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止): pendingSkillsはもうplayer.skillsへ反映されない', () => {
+    // 旧仕様(持ち込み1〜2枠)ではpendingSkills(scrap-builder)がplayer.skillsへ写り、出撃時の
+    // 初期スクラップ加算(scrapBuilderBonus)が発生していた。B1で持ち込みは0化=pendingSkillsは
+    // 同行者選択(beginGhostOnlineRun)の入力に転用されただけで、runSkills(=player.skills初期値)
+    // にはもう反映されない。scrap-builder自体もRUN_DRAFT_EXCLUDED_SKILLSでラン中ドラフトからも
+    // 除外される(§17-1点6のB-19全数洗い)ため、通常プレイでこの加算に到達する経路は無い。
     useGameStore.setState({ ownedSkills: [], ownedSkillLevels: {}, pendingSkills: [], startWithTestStraps: false });
     useGameStore.getState().resetGame('warrior');
     expect(useGameStore.getState().player.straps).toBe(0);
-    // Equip scrap-builder Lv2 → +100 initial scrap.
     useGameStore.setState({ ownedSkills: ['scrap-builder'], ownedSkillLevels: { 'scrap-builder': 2 }, pendingSkills: ['scrap-builder'], startWithTestStraps: false });
     useGameStore.getState().resetGame('warrior');
-    expect(useGameStore.getState().player.straps).toBe(100);
+    expect(useGameStore.getState().player.straps).toBe(0);
+    expect(useGameStore.getState().player.skills).not.toContain('scrap-builder');
+  });
+
+  it('SKILL_BUILD_REDESIGN.md §17: levelUp()はスキル専業3択+常設スクラップを提示し、resetGameがrunBuild台帳をリセットする', () => {
+    useGameStore.setState({
+      ownedSkills: ['attack-shooter', 'sharpshooter', 'exploder'],
+      ownedSkillLevels: { 'attack-shooter': 1, sharpshooter: 1, exploder: 1 },
+      pendingSkills: [], startWithTestStraps: false,
+    });
+    useGameStore.getState().resetGame('warrior');
+    expect(useGameStore.getState().runBuild).toEqual([]);
+    expect(useGameStore.getState().vanishedSkills).toEqual([]);
+    expect(useGameStore.getState().rerollsUsedThisRun).toBe(0);
+    useGameStore.getState().levelUp();
+    const opts = useGameStore.getState().upgradeOptions;
+    expect(opts.length).toBeGreaterThan(0);
+    expect(opts.some(o => o.type === 'scrap')).toBe(true); // 常設4枚目
+    const skillCard = opts.find(o => o.type === 'skill');
+    expect(skillCard).toBeTruthy();
+    if (skillCard) {
+      useGameStore.getState().selectUpgrade(skillCard);
+      const s = useGameStore.getState();
+      expect(s.runBuild).toContain(skillCard.skillKey);
+      expect(s.player.skills).toContain(skillCard.skillKey);
+      expect(s.runBuild.length).toBeLessThanOrEqual(6); // §1-1の総枠
+    }
+  });
+
+  it('SKILL_BUILD_REDESIGN.md §16-4/§17-1点5: M0(訓練)はレベルアップメニューを出さず自動でスクラップを付与する', () => {
+    useGameStore.getState().resetGame('warrior');
+    useGameStore.setState({ farBackdrop: 'tutorial', levelUpIntroUntil: 0, showUpgradeMenu: false, upgradeOptions: [] });
+    const strapsBefore = useGameStore.getState().player.straps;
+    useGameStore.getState().levelUp();
+    const s = useGameStore.getState();
+    expect(s.showUpgradeMenu).toBe(false); // メニューは開かない(無演出)
+    expect(s.levelUpIntroUntil).toBe(0);   // 新しいintroもスケジュールしない
+    expect(s.upgradeOptions).toEqual([]);  // スキル専業3択は生成しない
+    expect(s.player.straps).toBe(strapsBefore + 50);
   });
 
   it('pullGacha updates pity/dupe state sequentially and keeps invariants', () => {

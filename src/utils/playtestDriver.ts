@@ -595,7 +595,7 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
       // M49-4(§6.25): 段階(skilled/master)は greedy ポリシーで選ぶ(novice/casualは'random'=
       // 既存のpickUpgradeと完全に同一結果=挙動不変)。
       menu.selectUpgrade(pickUpgradeByPolicy(
-        menu.upgradeOptions, refs.growth.rand, botSkillProfile(skill).upgradePolicy, menu.player));
+        menu.upgradeOptions, refs.growth.rand, botSkillProfile(skill).upgradePolicy, menu.player, menu.runBuild.length));
     }
     // 保留レベルアップの再チェック(useGameLoop.ts:7894-7901の写し): 赤ライン当たり判定内でXPが
     // 閾値を跨いだ場合、イベント駆動のチェックだけでは取りこぼす=毎tick再チェックして発動させる。

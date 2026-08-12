@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { TutorialSlide } from '../data/tutorials';
 import { isAvatarId, type AvatarId } from '../data/avatars';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
-import { generateEquipmentChoices } from '../utils/upgradeUtils';
+import { generateEquipmentChoices, generateSkillUpgradeChoices, generateReplacementSkillOption, SCRAP_REWARD as LEVELUP_SCRAP_REWARD } from '../utils/upgradeUtils';
+import { canAcquireRunSkill, rerollPrice, MAX_BANISH_PER_RUN, MAX_CARRY_SKILLS, type RunSkillDraftInput } from '../utils/runSkillDraft';
 import { shouldEmitThrottled } from '../utils/emitThrottle';
 import { airHopEase01, airHopEaseD01 } from '../utils/airHop';
 import { bladeNativeAngle } from '../utils/bladeArt';
@@ -151,7 +152,8 @@ import { bossTestGhostSkill, isBossMakerRun, getBossTestSkillInjection } from '.
 // SKILL_BUILD_REDESIGN.md §15(B0発注文): 1ランぶんの計測台帳(読むだけ・挙動は変えない)。
 import {
   resetRunTelemetry, recordBossEntry, recordUpgradeOffered, recordUpgradeSelected,
-  recordKnifeTierFromBox, recordScrapIncome, recordMerchantPurchase, recordDdaCoefficients,
+  recordKnifeTierFromBox, recordScrapIncome, recordScrapExpense, recordMerchantPurchase, recordDdaCoefficients,
+  recordSlotFilled,
   type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
 } from '../utils/runTelemetry';
 import { isPracticeRun, practiceBossType } from '../utils/bossPractice'; // BOSS_MAKER.md §20-7-c
@@ -4038,10 +4040,26 @@ interface GameState {
   setIntroDialogueLines: (lines: IntroLine[]) => void; // 出撃ごとの会話を設定(選択ミッション/フリー)
   pendingLoadout: SubWeaponKey[];                       // 装備メニューで選んだサブ(出撃時に resetGame が所持へ反映・永続)
   setPendingLoadout: (keys: SubWeaponKey[]) => void;
-  pendingSkills: SkillKey[];                            // 装備メニューで選んだスキル(最大2・永続)
+  // SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止・確定): このフィールドはもう「スキル持ち込み」
+  // には使わない(resetGameのruns Skills計算はpendingSkillsを読まない=MAX_CARRY_SKILLS=0)。
+  // 引き続き**同行者モード選択の入力**としてbeginGhostOnlineRunへ渡る(§1-3の同行者専用UIはB4まで
+  // 未実装のため、暫定でこの場を流用する。守護霊系3種のみをMissionSelect.tsxが表示する)。
+  pendingSkills: SkillKey[];                            // 同行者モード選択(守護霊/有志/猛者。最大2枠・永続)
   setPendingSkills: (keys: SkillKey[]) => void;
-  ownedSkills: SkillKey[];                              // ガチャで解禁済みスキル(永続)。装備候補はここから。
+  ownedSkills: SkillKey[];                              // ガチャで解禁済みスキル(永続)。ラン中ドラフトの候補元。
   ownedSkillLevels: Partial<Record<SkillKey, number>>;  // 所持スキルのLv(ガチャ重複で上昇・永続)
+  // SKILL_BUILD_REDESIGN.md §17(B1): ラン内ビルドの台帳(store・ラン内限定)。
+  // 入るのはドラフト取得(新規カード)だけ=レア度枠(1/2/3)の対象そのもの。
+  // 警察署報酬(poi-*)/同行者(守護霊系)は player.skills には入るが runBuild には入れない(§8点1)。
+  runBuild: SkillKey[];
+  // ラン中にバニッシュ(除外)したスキル(最大2件・ラン終了でリセット)。
+  vanishedSkills: SkillKey[];
+  // レベルアップ画面でのリロール回数(ラン単位で累積・価格の階段に使う)。
+  rerollsUsedThisRun: number;
+  // Lv3(覚醒)到達フラグ+SE用フック(絵の実装はB7)。key→到達時刻(Date.now)。resetGameでリセット。
+  skillAwakenAt: Partial<Record<SkillKey, number>>;
+  rerollUpgradeOptions: () => void;             // スクラップを払い、表示中の3枚を全引き直し(スクラップ択は残置)
+  banishSkillFromRun: (key: SkillKey) => void;  // 無料・ラン中2回まで。そのスキルを以後の抽選から除外
   gachaDupeCounts: Partial<Record<SkillKey, number>>;   // ガチャのスキル別「被り回数」(Lv抽選表の参照・永続)
   gachaPitySinceSuper: number;                          // 直近superからのpull数(レア度ソフト天井・永続)
   gachaPullsTotal: number;                              // これまでに引いた累計回数(階段式価格の段・永続)
@@ -4473,6 +4491,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 読み込み時に無ければ追加するマイグレーション(ensureDefaultOwnedSkills)。
   ownedSkills: ensureDefaultOwnedSkills((loadStringArray(OWNED_SKILLS_KEY) as SkillKey[]).filter(k => !POLICE_REWARD_SKILLS.includes(k))),
   ownedSkillLevels: loadSkillLevels(),
+  runBuild: [],           // resetGameで実出撃時に確定させる(初期値はSSR/未出撃時の安全値)
+  vanishedSkills: [],
+  rerollsUsedThisRun: 0,
+  skillAwakenAt: {},
   gachaDupeCounts: loadDupeCounts(),
   gachaPitySinceSuper: loadNumber(GACHA_PITY_KEY, 0),
   gachaPullsTotal: Math.max(0, Math.floor(loadNumber(GACHA_PULLS_KEY, 0))),
@@ -7620,6 +7642,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   levelUp: () => {
+    // SKILL_BUILD_REDESIGN.md §16-4/§17-1点5: M0(訓練)はスキル提示が成立しない(§2-4)ため、
+    // 装備カードも廃止した後のスキル専業3択は必ず空になる。メニュー自体を出さず、自動で
+    // スクラップ+50相当を付与する(無演出=下のFX/telemetryも呼ばない)。
+    const isTutorialStage = get().farBackdrop === 'tutorial';
     set(state => {
       const { player } = state;
       // レベルアップ: 周辺の敵を強制ノックバック(2倍相当)。メニューで即ポーズするので velocity だと
@@ -7649,12 +7675,36 @@ export const useGameStore = create<GameState>((set, get) => ({
       // v0.25.3137: 式は utils/levelCurve.ts へ移した(宝箱の「3レベルアップ」が同じ式を要るため。
       // 同じ値を2箇所に持たない=TEST_DESIGN.md 型Aの予防)。値・挙動は1ビットも変えていない。
       const newExpToNextLevel = nextLevelThreshold(newLevel, player.experienceToNextLevel);
-      
-      // Generate upgrade options when leveling up
-      const upgradeOptions = generateEquipmentChoices(player);
-      
+
       // Update max level in stats if needed
       const newMaxLevel = Math.max(state.gameStats.maxLevel, newLevel);
+
+      if (isTutorialStage) {
+        return {
+          player: {
+            ...player,
+            level: newLevel,
+            experienceToNextLevel: newExpToNextLevel,
+            experience: Math.max(0, player.experience - player.experienceToNextLevel),
+            straps: player.straps + LEVELUP_SCRAP_REWARD,
+          },
+          enemies: shovedEnemies,
+          gameStats: { ...state.gameStats, maxLevel: newMaxLevel },
+        };
+      }
+
+      // SKILL_BUILD_REDESIGN.md §12-1: レベルアップ=スキル専業3択(新規∪Lv+1)+常設スクラップ+50。
+      // 装備カードは出さない(装備は商人=B2)。
+      const draftInput: RunSkillDraftInput = {
+        owned: state.ownedSkills,
+        ownedLevels: state.ownedSkillLevels,
+        runSkills: state.runBuild,
+        runSkillLevels: player.skillLevels,
+        playerLevel: newLevel,
+        excluded: state.vanishedSkills,
+        dogEquipped: player.subWeapons.includes('dog'),
+      };
+      const upgradeOptions = generateSkillUpgradeChoices(draftInput);
 
       // No automatic ammo resupply on level-up — ammo is managed entirely
       // through reserves/reloads and scarce pickups. Level-ups grant upgrades.
@@ -7676,6 +7726,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
+    if (isTutorialStage) {
+      // §16-4/§17-1点5: 無演出。メニューを出していないのでtelemetryの「提示」にも数えない
+      // (自動付与は選択行動ではないため)。スクラップ収支だけ流路別に記録する。
+      recordScrapIncome('levelup', LEVELUP_SCRAP_REWARD);
+      return;
+    }
     // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の2: レベルアップ提示回数(ボス開始チェストの3連続も
     // levelUp()を3回通るので、この1箇所で自然に3回とも数えられる=§11-1 A-5の設計どおり)。
     recordUpgradeOffered();
@@ -7791,8 +7847,35 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §15-1の4: レベルアップ③枠(常設スクラップ+50)の収入(下のset()内の'scrap'分岐と同じ式)。
       recordScrapIncome('levelup', upgrade.level > 0 ? upgrade.level : 50);
     }
+    if (upgrade.type === 'skill' && upgrade.skillCardKind === 'new') {
+      // §13-4/§17: 枠充足タイミング(この1枚でrunBuildが何枠目まで埋まったか)。
+      recordSlotFilled(get().gameTime, get().player.level);
+    }
     set(state => {
       const { player } = state;
+
+      // SKILL_BUILD_REDESIGN.md §12-1/§17: スキル専業レベルアップの取得(新規取得 or Lv+1)。
+      if (upgrade.type === 'skill' && upgrade.skillKey) {
+        const key = upgrade.skillKey;
+        const isNew = upgrade.skillCardKind === 'new';
+        const nextLv = Math.max(1, Math.floor(upgrade.skillLv ?? 1));
+        const prevLv = player.skillLevels[key] ?? 1;
+        // canAcquireRunSkillが「枠判定の唯一の出どころ」(§2-1)。抽選側(draftRunSkillCards)も
+        // 同じ関数の枠チェックを通っているが、取得の最終ゲートとしてここでも通す(二重の守り)。
+        const nextRunBuild = isNew && canAcquireRunSkill(state.runBuild, key) ? [...state.runBuild, key] : state.runBuild;
+        const nextPlayerSkills = isNew && !player.skills.includes(key) ? [...player.skills, key] : player.skills;
+        const nextSkillLevels = { ...player.skillLevels, [key]: nextLv };
+        // §16-10 ★B: Lv3(覚醒)到達のフラグ+SE用フックのみ(演出はB7)。新規取得でいきなりLv3が
+        // 出るケース(pity超レア等)は「覚醒」ではない=Lv+1でmaxへ到達した時だけ立てる。
+        const awakened = !isNew && prevLv < skillMaxLevel(key) && nextLv >= skillMaxLevel(key);
+        return {
+          player: { ...player, skills: nextPlayerSkills, skillLevels: nextSkillLevels },
+          runBuild: nextRunBuild,
+          ...(awakened ? { skillAwakenAt: { ...state.skillAwakenAt, [key]: Date.now() } } : {}),
+          showUpgradeMenu: false,
+          isPaused: false,
+        };
+      }
 
       if (upgrade.type === 'subWeapon' && upgrade.subWeaponKey) {
         const nextPlayer = applySubWeaponCard(player, upgrade.subWeaponKey, upgrade.level);
@@ -7922,6 +8005,58 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().levelUp();
       }
     }
+  },
+
+  // SKILL_BUILD_REDESIGN.md §16-10 ★C/§17: リロール(有料・表示中の3枚を全引き直し。常設スクラップ
+  // 択は据え置き=そもそも生成対象に含めない)。価格は rerollsUsedThisRun(ラン単位で累積)から算出。
+  rerollUpgradeOptions: () => {
+    const state = get();
+    if (!state.showUpgradeMenu) return;
+    const price = rerollPrice(state.rerollsUsedThisRun);
+    if (state.player.straps < price) return;
+    const draftInput: RunSkillDraftInput = {
+      owned: state.ownedSkills,
+      ownedLevels: state.ownedSkillLevels,
+      runSkills: state.runBuild,
+      runSkillLevels: state.player.skillLevels,
+      playerLevel: state.player.level,
+      excluded: state.vanishedSkills,
+      dogEquipped: state.player.subWeapons.includes('dog'),
+    };
+    const nextOptions = generateSkillUpgradeChoices(draftInput);
+    recordScrapExpense('reroll', price);
+    set(s => ({
+      player: { ...s.player, straps: s.player.straps - price },
+      upgradeOptions: nextOptions,
+      rerollsUsedThisRun: s.rerollsUsedThisRun + 1,
+    }));
+  },
+
+  // SKILL_BUILD_REDESIGN.md §16-10 ★C/§17: バニッシュ(無料・ラン中2回まで)。そのスキルを以後の
+  // 抽選から除外し、表示中のそのカードだけ1枚差し替える(他の2枚・常設スクラップ択は据え置き)。
+  banishSkillFromRun: (key) => {
+    const state = get();
+    if (!state.showUpgradeMenu) return;
+    if (state.vanishedSkills.includes(key)) return;
+    if (state.vanishedSkills.length >= MAX_BANISH_PER_RUN) return;
+    const nextVanished = [...state.vanishedSkills, key];
+    const otherKeys = state.upgradeOptions
+      .filter(o => o.type === 'skill' && o.skillKey !== key)
+      .map(o => o.skillKey as SkillKey);
+    const draftInput: RunSkillDraftInput = {
+      owned: state.ownedSkills,
+      ownedLevels: state.ownedSkillLevels,
+      runSkills: state.runBuild,
+      runSkillLevels: state.player.skillLevels,
+      playerLevel: state.player.level,
+      excluded: nextVanished,
+      dogEquipped: state.player.subWeapons.includes('dog'),
+    };
+    const replacement = generateReplacementSkillOption(draftInput, otherKeys);
+    const nextOptions = state.upgradeOptions
+      .filter(o => !(o.type === 'skill' && o.skillKey === key))
+      .concat(replacement ? [replacement] : []);
+    set({ vanishedSkills: nextVanished, upgradeOptions: nextOptions });
   },
 
   setSubWeaponCooldown: (key, readyAt) => {
@@ -14179,15 +14314,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         // (クラス固有サブ・装備サブとも)。レベルアップ候補/商人陳列も所持サブ基準なので自動で絞られる。
         : state.pendingFarBackdrop === 'tutorial' ? []
         : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup]));
-      // 装備スキル(別枠アクティブ・最大2)。出撃時に player.skills へ反映(効果は今後配線)。
-      // SKILL_BUILD_REDESIGN.md §15-1の2(B0発注文): ボスメーカーの注入(skillInjection)がある時だけ
-      // slice(0,2)を通さない(想定最強6枠ビルドのTTK計測専用の測定路。MAX_EQUIPPED_SKILLS=2は
-      // 通常出撃に対して無改変のまま=skillInjectionがnullなら従来と1ビットも変わらない)。
+      // 装備スキル(出撃時に player.skills へ反映)。
+      // SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止・確定=MAX_CARRY_SKILLS=0): 通常出撃は
+      // ラン内ドラフトのみでruntime skillsを組む=開始0件。selectedRunSkills/pendingSkillsは
+      // 同行者モード選択(上のbeginGhostOnlineRun呼び出し=無改変)の入力としてはそのまま使うが、
+      // プレイヤー本人の開始スキルにはもう使わない(同行者はplayer.skillsに入らない=§1-3/§8点1)。
+      // ボスメーカーの注入(skillInjection)は計測用の測定路としてそのまま残す(§17-1点4)。
       const runSkills: SkillKey[] = state.danceTestMode
         ? []
         : skillInjection
           ? Array.from(new Set<SkillKey>(selectedRunSkills))
-          : Array.from(new Set<SkillKey>(selectedRunSkills)).slice(0, 2);
+          // MAX_CARRY_SKILLS=0 なので常に空配列になる(定数を残すことで「復活可能な形」を保つ=
+          // 将来MAX_CARRY_SKILLSを戻すだけでこの経路がそのまま生き返る)。
+          : Array.from(new Set<SkillKey>(selectedRunSkills)).slice(0, MAX_CARRY_SKILLS);
       // 装備スキルのLvは所持Lv(ownedSkillLevels)を反映(未設定=1、最大Lvでクランプ)。注入時は
       // skillInjection.skillLevelsを優先する(未指定キーはownedSkillLevelsへフォールバック)。
       const runSkillLevels: Partial<Record<SkillKey, number>> = Object.fromEntries(
@@ -14495,6 +14634,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           equipment: runLoadout,
           equipBonus: runEquipBonus
         }, soloGhostRequested() ? loadPlayerProfile()?.snapshot : undefined),
+        // SKILL_BUILD_REDESIGN.md §17(B1): ラン内ビルド台帳+リロール/バニッシュ/覚醒フックを
+        // ラン開始でリセット(§8点8「resetGameで必ずリセット」と同じ型=足し忘れ再発防止)。
+        runBuild: [...runSkills],
+        vanishedSkills: [],
+        rerollsUsedThisRun: 0,
+        skillAwakenAt: {},
         // 登場演出をアーム(初フレームで終了時刻確定)。練習モードは演出なし。
         // チュートリアル(地下洞窟)もヘリ降下演出なし(社長指示v0.25.1818「何もかも無し。全てイベントで特別仕様のみ」)。
         // 洋館(corridorMode)はヘリ登場なし=走り込み入場(v0.25.2110・社長指示)。

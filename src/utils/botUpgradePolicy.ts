@@ -41,23 +41,35 @@ const equipTierUpgrade = (opt: UpgradeOption, player: Pick<Player, 'equipment'>)
  * 段階(botSkill.upgradePolicy)に応じた強化選択。
  * **`policy==='random'` は `pickUpgrade` と完全に同一の結果を返す**(既存の実測値と比較できるよう)。
  * `policy==='greedy'` は優先度バケツ(小さいほど優先)で最良の1件(複数あれば rand)を選ぶ。
+ * `runBuildLength`(SKILL_BUILD_REDESIGN.md §12-2#5): スキル専業レベルアップ画面(type==='skill')の
+ * 優先度に使う。runBuild充足<4は新規取得を最優先、4以降はLv+1を優先。スクラップ択は
+ * 「取るものが無い時のみ」選ばれるよう常に最下位に置く。省略時0=既存の装備/宝箱画面には無関係
+ * (type==='skill'が無い限りこの引数は読まれない)。
  */
 export const pickUpgradeByPolicy = <T extends UpgradeOption>(
   options: readonly T[],
   rand: () => number,
   policy: UpgradePolicy,
   player: Pick<Player, 'equipment' | 'health' | 'maxHealth'>,
+  runBuildLength = 0,
 ): T => {
   if (policy === 'random' || options.length === 0) return pickUpgrade(options, rand);
 
   const bucket = (opt: T): number => {
     if (equipTierUpgrade(opt, player) !== null) return 0; // ①装備Tier上げ(最も高いTierを優先)
     if (opt.type === 'knife') return 1;                   // ②ナイフを次Tierへ
+    if (opt.type === 'skill') {
+      // §12-2#5: 充足<4の間は新規取得カードを最優先(新規が無ければLv+1)。充足後はLv+1優先。
+      if (opt.skillCardKind === 'new') return runBuildLength < 4 ? 0 : 1;
+      if (opt.skillCardKind === 'levelup') return runBuildLength < 4 ? 1 : 0;
+      return 2;
+    }
     if (opt.type === 'heal') {
       // ③回復は現在HPが最大の50%未満の時だけ優先。それ以外は⑤その他と同格へ落とす。
       return player.maxHealth > 0 && player.health / player.maxHealth < 0.5 ? 2 : 4;
     }
-    if (opt.type === 'scrap') return 3; // ④スクラップ
+    // ④スクラップ(スキル画面では「取るものが無い時のみ」選ばれる最下位=skillの0/1より必ず大きい)。
+    if (opt.type === 'scrap') return 3;
     return 4;                           // ⑤上記以外(装備の格下・特殊など)
   };
 
