@@ -88,7 +88,7 @@ import {
   ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS, ACRASIEL_WARP_TELEGRAPH_MS, ACRASIEL_BURST_WINDUP_MS,
   MIGUEL_DASH_WINDUP_MS, MIGUEL_DASH_MOVE_MS, MIGUEL_DASH_STRIKE_MS,
   URI_THRUST_WINDUP_MS, URI_THRUST_MOVE_MS, URI_THRUST_STRIKE_MS,
-  JIBRIL_LANCE_MIN_WINDUP_MS, JIBRIL_LANCE_WINDUP_CAP_MS, JIBRIL_LANCE_BEAM_MS, JIBRIL_LANCE_HALF_WIDTH_PX,
+  JIBRIL_LANCE_MIN_WINDUP_MS, JIBRIL_LANCE_BEAM_MS, JIBRIL_LANCE_HALF_WIDTH_PX,
 } from '../utils/angelBossTick';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -2969,6 +2969,8 @@ export class PixiScene {
   // (「投げて地面に置く」=火床の中心にランタン絵を残す)。fire.id keyed。新しい描画方式は追加せず、
   // 既存のsyncBossFires(共有Graphics)へスプライトを添えるだけ。
   private jibrilLanternFirePool = new Map<string, Sprite>();
+  // v0.25.3204: ランス(1秒置きに3本)の飛行中ランタン。キー=`${enemyId}:${index}`。
+  private jibrilLanceLanternPool = new Map<string, Sprite>();
   // §6.28-16: アクラシエルの結晶の槍(spear-windup中の構えプレビュー用・単純な1枚Sprite)。
   private acrasielSpearReadySprites = new Map<string, Sprite>();
   // §6.28-18(バッチM62): スリィエルの環(suriel-ring)。待機中も頭上に浮遊描画するため、boss.idごとに
@@ -11370,6 +11372,10 @@ export class PixiScene {
         if (rafiFx) { rafiFx.destroy({ children: true }); this.rafiSlashFx.delete(id); }
         const lanternSp = this.jibrilLanternSprites.get(id);
         if (lanternSp) { lanternSp.destroy(); this.jibrilLanternSprites.delete(id); }
+        // v0.25.3204: 飛行中ランタン(ランス3本)のプールも個体退場と同時に破棄(討伐後の残像防止)。
+        for (const [lk, lsp] of this.jibrilLanceLanternPool) {
+          if (lk.startsWith(`${id}:`)) { lsp.destroy(); this.jibrilLanceLanternPool.delete(lk); }
+        }
         const spearReadySp = this.acrasielSpearReadySprites.get(id);
         if (spearReadySp) { spearReadySp.destroy(); this.acrasielSpearReadySprites.delete(id); }
         const ringSp = this.surielRingSprites.get(id);
@@ -14258,6 +14264,8 @@ export class PixiScene {
       if (rafiFx) rafiFx.visible = false;
       const lanternSp = this.jibrilLanternSprites.get(e.id);
       if (lanternSp) lanternSp.visible = false;
+      // v0.25.3204: 飛行中ランタン(ランス3本)は既定OFF→下のランス分岐だけが点ける。
+      for (const [lk, lsp] of this.jibrilLanceLanternPool) if (lk.startsWith(`${e.id}:`)) lsp.visible = false;
       const spearReadySp = this.acrasielSpearReadySprites.get(e.id);
       if (spearReadySp) spearReadySp.visible = false;
 
@@ -14351,22 +14359,29 @@ export class PixiScene {
       // 予告は当たり判定と同じ半幅26pxのカプセル(分類①=赤いのに当たらない、を作らない)。
       // aiTarget=飛行中のランタン現在地(angelBossTickが毎tick更新)なので、線は読むだけで伸びていく。
       else if (scriptActive && e.type === 'jibril' && (bs === 'lance-windup' || bs === 'lance')) {
-        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
-        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        // 手元のランタン(常時表示スプライト)を飛行位置=線の先端へ移す(=「ランタンが飛んでいく」絵)。
-        const flySp = this.jibrilLanternSprites.get(e.id);
-        if (flySp) flySp.position.set(tx, ty);
-        if (bs === 'lance-windup') {
-          const elapsed = JIBRIL_LANCE_WINDUP_CAP_MS - ((e.bossStateUntil ?? gameTime) - gameTime);
-          const prog = Math.max(0, Math.min(1, elapsed / JIBRIL_LANCE_MIN_WINDUP_MS));
-          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, JIBRIL_LANCE_HALF_WIDTH_PX, prog, now);
-        } else {
-          // 光条: 判定幅の赤+白芯。起爆(判定)はカプセル側=絵は判定幅と同じ(分類①)。
-          const lt = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JIBRIL_LANCE_BEAM_MS));
-          const a = 1 - lt * 0.7;
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: JIBRIL_LANCE_HALF_WIDTH_PX * 2, color: 0xff3b3b, alpha: 0.6 * a });
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 6, color: 0xffffff, alpha: 0.9 * a });
-        }
+        // v0.25.3204(社長指示「1秒置きに3本発射」): 各ランタン(e.lanceLanterns)ごとに
+        // 飛行中=赤カプセル線(本体→ランタン現在地)+ランタンスプライト / 発射済み=光条(140msフェード)。
+        const lanceTex = getTexture('jibril-lantern');
+        (e.lanceLanterns ?? []).forEach((L, li) => {
+          if (L.firedUntil !== undefined) {
+            // 光条: 判定幅の赤+白芯。起爆(判定)はカプセル側=絵は判定幅と同じ(分類①)。
+            const lt = Math.max(0, Math.min(1, 1 - (L.firedUntil - gameTime) / JIBRIL_LANCE_BEAM_MS));
+            const a = 1 - lt * 0.7;
+            o.moveTo(cx, cy).lineTo(L.x, L.y).stroke({ width: JIBRIL_LANCE_HALF_WIDTH_PX * 2, color: 0xff3b3b, alpha: 0.6 * a });
+            o.moveTo(cx, cy).lineTo(L.x, L.y).stroke({ width: 6, color: 0xffffff, alpha: 0.9 * a });
+            return;
+          }
+          const prog = Math.max(0, Math.min(1, (gameTime - L.bornAt) / JIBRIL_LANCE_MIN_WINDUP_MS));
+          this.drawAngelZoneCapsule(view, o, cx, cy, L.x, L.y, JIBRIL_LANCE_HALF_WIDTH_PX, prog, now);
+          if (lanceTex) {
+            const key = `${e.id}:${li}`;
+            let sp = this.jibrilLanceLanternPool.get(key);
+            if (!sp) { sp = new Sprite(lanceTex); sp.anchor.set(0.5, 0.5); this.L.effectLayer.addChild(sp); this.jibrilLanceLanternPool.set(key, sp); }
+            sp.scale.set(JIBRIL_LANTERN_VIS_H / Math.max(1, lanceTex.height));
+            sp.position.set(L.x, L.y);
+            sp.visible = true;
+          }
+        });
       }
       // ---- ジブリル(§6.28-16 ①): ランタンを常に手元に掲げる(windup/実行/硬直=消さない・掟W9) ----
       // ---- ラフィ(§6.28-8・M57新規): 薙ぎ(Phase2)=T3帯+骨刃を振る絵 ----
@@ -21673,6 +21688,7 @@ export class PixiScene {
     for (const o of this.rafiSlashFx.values()) o.destroy({ children: true });
     for (const o of this.jibrilLanternSprites.values()) o.destroy();
     for (const o of this.jibrilLanternFirePool.values()) o.destroy();
+    for (const o of this.jibrilLanceLanternPool.values()) o.destroy();
     for (const o of this.acrasielSpearReadySprites.values()) o.destroy();
     for (const o of this.surielRingSprites.values()) { o.ring1.destroy(); o.ring2.destroy(); }
     for (const o of this.surielSweepStreakFx.values()) o.destroy();

@@ -740,6 +740,10 @@ export interface Enemy {
   // §6.28-19(バッチM63): アクラシエル放射棘の「空きセクター」を溜め開始時にロックするビットマスク
   // (8方向=bit0..7、1=空き)。掟W4(テルを出したら必ず撃つ)のため実行まで固定する。
   spikeGapMask?: number;
+  // v0.25.3204(社長指示「ランタン、1秒置きに3本発射」): ジブリルのランス=飛行中ランタンの一覧。
+  // dir=進行方向(rad)・bornAt=射出時刻・firedUntil=ビーム表示終了時刻(undefined=まだ飛行中)。
+  // 更新はangelBossTick(lance-windup)のみ。pixiSceneは読んで赤ライン/ランタン/ビームを描くだけ。
+  lanceLanterns?: { x: number; y: number; dir: number; bornAt: number; firedUntil?: number }[];
   // トール専用: 旋回方向(1=時計回り/既定 -1=逆回転)。払いの予告中だけ一時的に反転する。
   bossCircleDir?: number;
   // ミゲル(ゲート2ボス)専用: 直近に「近接」ダメージを受けた gameTime(ms)。gameStore.ts の近接

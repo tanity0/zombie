@@ -152,7 +152,11 @@ export const JIBRIL_LANCE_HALF_WIDTH_PX = 26;
 export const JIBRIL_LANCE_LANTERN_SPEED = 275;    // ランタンの飛行速度(px/s)=1100の1/4
 export const JIBRIL_LANCE_TURN_RATE = 0.8;        // 追従の旋回上限(rad/s)=3.2の1/4(旋回半径維持)
 export const JIBRIL_LANCE_MIN_WINDUP_MS = 360;    // 最短溜め(縁に早く着いてもこれ未満では撃たない)
-export const JIBRIL_LANCE_WINDUP_CAP_MS = 8000;   // 安全上限(万一縁に着けなくてもここで発射)=2000の4倍
+export const JIBRIL_LANCE_WINDUP_CAP_MS = 8000;   // 安全上限(万一縁に着けなくてもここで全弾発射)
+// v0.25.3204(社長指示「ランタン、1秒置きに3本発射」): 1回のランスでランタンを3本、1秒間隔で射出。
+// 各ランタンは独立に追従・独立に縁到着で発射(先発のビームと後発の飛行が重なる)。
+export const JIBRIL_LANCE_COUNT = 3;
+export const JIBRIL_LANCE_INTERVAL_MS = 1000;
 const JIBRIL_LANTERN_CHANCE_LEGACY = 0.4; // 旧専用。新は jibrilScript.ts の JIBRIL_LANTERN_CHANCE。
 const JIBRIL_LANTERN_MS = 5000;
 const JIBRIL_FIRE_GAP_MS = 700;
@@ -292,7 +296,7 @@ const ACRASIEL_GAZE_RECOVER_MS = withRecoverFloor(500);
 export interface AngelBossState {
   miguelSlow: { slowUntil: number; nextAt: number };
   miguelVolley: { nextShotAt: number; shots: number };
-  jibril: { hits: number; lastHitSeen: number; lastWarpHits: number; volleyMode: 'snipe' | 'close'; lastScriptMove: 'lantern' | 'consecrate' | 'volley' | 'lance' | undefined; shots: number; nextShotAt: number; nextFireAt: number; edgeSince: number | undefined; lanceDirX: number; lanceDirY: number; lanceStartAt: number };
+  jibril: { hits: number; lastHitSeen: number; lastWarpHits: number; volleyMode: 'snipe' | 'close'; lastScriptMove: 'lantern' | 'consecrate' | 'volley' | 'lance' | undefined; shots: number; nextShotAt: number; nextFireAt: number; edgeSince: number | undefined; lanceStartAt: number; lanceLaunched: number };
   rafi: { rejumps: number; boneLeft: number; boneNextAt: number; nextStepAt: number; stepUntil: number; stepDx: number; stepDy: number };
   uri: { shots: number; nextShotAt: number };
   suriel: Record<string, never>; // (環の位置はEnemy側のringX/Y等に永続化=専用のラン内状態は不要)
@@ -300,7 +304,7 @@ export interface AngelBossState {
 export const createAngelBossState = (): AngelBossState => ({
   miguelSlow: { slowUntil: 0, nextAt: 0 },
   miguelVolley: { nextShotAt: 0, shots: 0 },
-  jibril: { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', lastScriptMove: undefined, shots: 0, nextShotAt: 0, nextFireAt: 0, edgeSince: undefined, lanceDirX: 1, lanceDirY: 0, lanceStartAt: 0 },
+  jibril: { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', lastScriptMove: undefined, shots: 0, nextShotAt: 0, nextFireAt: 0, edgeSince: undefined, lanceStartAt: 0, lanceLaunched: 0 },
   rafi: { rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 },
   uri: { shots: 0, nextShotAt: 0 },
   suriel: {},
@@ -1008,18 +1012,20 @@ export const runJibrilTick = (
         patch.bossStateUntil = newGameTime + JIBRIL_LANTERN_WINDUP_MS;
         patch.hateTarget = aim.side;
       } else if (move === 'lance') {
-        // v0.25.3199(社長指示・仕様変更): ランタンが本体からサークルの端へ高速で飛び、その間に
-        // 赤ラインを引いていく。ランタンは発射まで旋回制限つきでプレイヤーを追従(掟W4の例外=
-        // ミーミル追尾レーザーと同じ「追尾型テレグラフ」。表示中のラインと最終判定は常に一致)。
+        // v0.25.3199(社長指示・仕様変更): ランタンが本体からサークルの端へ飛び、その間に赤ラインを
+        // 引いていく(旋回制限つき追従=ミーミル追尾レーザーと同じ「追尾型テレグラフ」)。
+        // v0.25.3204(社長指示): 1秒置きに3本。1本目はここで即射出、以降はlance-windup内で追加射出。
         const aim = jibrilHateAim();
-        const dl0 = Math.hypot(aim.x - jcx, aim.y - jcy) || 1;
-        jr.lanceDirX = (aim.x - jcx) / dl0; jr.lanceDirY = (aim.y - jcy) / dl0;
         jr.lanceStartAt = newGameTime;
-        patch.aiFromX = jcx; patch.aiFromY = jcy;
-        patch.aiTargetX = jcx; patch.aiTargetY = jcy; // ランタンは本体から出発
+        jr.lanceLaunched = 1;
+        patch.lanceLanterns = [{
+          x: jcx, y: jcy,
+          dir: Math.atan2(aim.y - jcy, aim.x - jcx),
+          bornAt: newGameTime,
+        }];
         patch.hateTarget = aim.side;
         patch.bossState = 'lance-windup';
-        patch.bossStateUntil = newGameTime + JIBRIL_LANCE_WINDUP_CAP_MS; // 安全上限(通常は縁到着で発射)
+        patch.bossStateUntil = newGameTime + JIBRIL_LANCE_WINDUP_CAP_MS; // 安全上限(通常は各自縁到着で発射)
       } else {
         const aim = jibrilHateAim();
         // 灯籠で足場を縛った後は遠距離狙撃、聖別で接近を強いた後は近距離連射へつなぐ。
@@ -1091,46 +1097,64 @@ export const runJibrilTick = (
     const { overlap, counterActive } = bodyOverlapNow(jibril);
     if (overlap && counterActive) {
       jibrilCounterHit(jcx, jcy);
+      patch.lanceLanterns = []; // 中断=未発射のランタンごと消す(予告だけ残さない)
       patch.bossState = 'chase';
       patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
     } else {
-      // ランタンを旋回制限つきでプレイヤーへ追従させながら高速直進。サークル(アリーナ円)の縁で
-      // 頭打ち=縁の上を滑って追従は続く。縁に居て最短溜めを過ぎたら発射(安全上限でも発射)。
-      const lx = jibril.aiTargetX ?? jcx, ly = jibril.aiTargetY ?? jcy;
-      const desired = Math.atan2(pcy - ly, pcx - lx);
-      let cur = Math.atan2(jr.lanceDirY, jr.lanceDirX);
-      let dAng = desired - cur;
-      while (dAng > Math.PI) dAng -= Math.PI * 2;
-      while (dAng < -Math.PI) dAng += Math.PI * 2;
-      const maxTurn = JIBRIL_LANCE_TURN_RATE * deltaTime;
-      cur += Math.max(-maxTurn, Math.min(maxTurn, dAng));
-      jr.lanceDirX = Math.cos(cur); jr.lanceDirY = Math.sin(cur);
-      let nx = lx + jr.lanceDirX * JIBRIL_LANCE_LANTERN_SPEED * deltaTime;
-      let ny = ly + jr.lanceDirY * JIBRIL_LANCE_LANTERN_SPEED * deltaTime;
-      const rdx = nx - jHomeX, rdy = ny - jHomeY;
-      const rd = Math.hypot(rdx, rdy);
-      const atRim = rd >= GATE_ARENA_RADIUS;
-      if (atRim) { nx = jHomeX + (rdx / rd) * GATE_ARENA_RADIUS; ny = jHomeY + (rdy / rd) * GATE_ARENA_RADIUS; }
-      patch.aiFromX = jcx; patch.aiFromY = jcy; // 線の根本は常に本体(ワープ等で動いても追随)
-      patch.aiTargetX = nx; patch.aiTargetY = ny;
+      // v0.25.3204: 3本を1秒間隔で射出し、各ランタンが独立に追従・独立に発射する。
+      // 各機: 旋回制限つきでプレイヤーへ追従しながら直進→アリーナ円の縁で頭打ち(縁上を滑って
+      // 追従継続)→縁に居て射出からJIBRIL_LANCE_MIN_WINDUP_MSを過ぎたら発射(安全上限で全弾発射)。
       const elapsed = newGameTime - jr.lanceStartAt;
-      if ((atRim && elapsed >= JIBRIL_LANCE_MIN_WINDUP_MS) || newGameTime >= (jibril.bossStateUntil ?? 0)) {
-        // 実体=起爆カプセル(本体↔ランタンの間を挟むレーザー)。**ブラストパリィ経路がそのままカウンター**。
-        useGameStore.setState(state => ({
-          pumpkinBlasts: [...state.pumpkinBlasts, {
-            x: (jcx + nx) / 2, y: (jcy + ny) / 2, radius: JIBRIL_LANCE_HALF_WIDTH_PX,
-            damage: jibril.damage, enemyId: jibril.id,
-            capsule: { fx: jcx, fy: jcy, tx: nx, ty: ny, halfWidth: JIBRIL_LANCE_HALF_WIDTH_PX },
-          }],
-        }));
-        patch.bossState = 'lance';
-        patch.bossStateUntil = newGameTime + JIBRIL_LANCE_BEAM_MS;
+      const capHit = newGameTime >= (jibril.bossStateUntil ?? 0);
+      let lanterns = (jibril.lanceLanterns ?? []).map(L => ({ ...L }));
+      // 追加射出(1秒置き・計3本)。1本目はbegin側で射出済み(jr.lanceLaunched=1)。
+      const shouldHave = Math.min(JIBRIL_LANCE_COUNT, 1 + Math.floor(elapsed / JIBRIL_LANCE_INTERVAL_MS));
+      while (jr.lanceLaunched < shouldHave) {
+        const aim = jibrilLockedAim(); // 狙いは射出時点のヘイト対象の現在地
+        lanterns.push({ x: jcx, y: jcy, dir: Math.atan2(aim.y - jcy, aim.x - jcx), bornAt: newGameTime });
+        jr.lanceLaunched += 1;
+        sfx.alert();
       }
-    }
-  } else if (st === 'lance') {
-    if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
-      patch.bossState = 'lance-recover';
-      patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_LANCE_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
+      const next: typeof lanterns = [];
+      for (const L of lanterns) {
+        if (L.firedUntil !== undefined) {
+          // 発射済み: ビーム表示が終わったら回収。
+          if (newGameTime < L.firedUntil) next.push(L);
+          continue;
+        }
+        const desired = Math.atan2(pcy - L.y, pcx - L.x);
+        let dAng = desired - L.dir;
+        while (dAng > Math.PI) dAng -= Math.PI * 2;
+        while (dAng < -Math.PI) dAng += Math.PI * 2;
+        const maxTurn = JIBRIL_LANCE_TURN_RATE * deltaTime;
+        L.dir += Math.max(-maxTurn, Math.min(maxTurn, dAng));
+        let nx = L.x + Math.cos(L.dir) * JIBRIL_LANCE_LANTERN_SPEED * deltaTime;
+        let ny = L.y + Math.sin(L.dir) * JIBRIL_LANCE_LANTERN_SPEED * deltaTime;
+        const rdx = nx - jHomeX, rdy = ny - jHomeY;
+        const rd = Math.hypot(rdx, rdy);
+        const atRim = rd >= GATE_ARENA_RADIUS;
+        if (atRim) { nx = jHomeX + (rdx / rd) * GATE_ARENA_RADIUS; ny = jHomeY + (rdy / rd) * GATE_ARENA_RADIUS; }
+        L.x = nx; L.y = ny;
+        if ((atRim && newGameTime - L.bornAt >= JIBRIL_LANCE_MIN_WINDUP_MS) || capHit) {
+          // 発射: 実体=起爆カプセル(本体↔ランタンの間を挟むレーザー)。**ブラストパリィがそのままカウンター**。
+          useGameStore.setState(state => ({
+            pumpkinBlasts: [...state.pumpkinBlasts, {
+              x: (jcx + nx) / 2, y: (jcy + ny) / 2, radius: JIBRIL_LANCE_HALF_WIDTH_PX,
+              damage: jibril.damage, enemyId: jibril.id,
+              capsule: { fx: jcx, fy: jcy, tx: nx, ty: ny, halfWidth: JIBRIL_LANCE_HALF_WIDTH_PX },
+            }],
+          }));
+          L.firedUntil = newGameTime + JIBRIL_LANCE_BEAM_MS;
+        }
+        next.push(L);
+      }
+      lanterns = next;
+      patch.lanceLanterns = lanterns;
+      // 全弾(3本)射出済みで場に残りが無くなったら硬直へ。
+      if (jr.lanceLaunched >= JIBRIL_LANCE_COUNT && lanterns.length === 0) {
+        patch.bossState = 'lance-recover';
+        patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_LANCE_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
+      }
     }
   } else if (st === 'lance-recover') {
     const { overlap, counterActive } = bodyOverlapNow(jibril);
