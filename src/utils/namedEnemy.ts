@@ -9,63 +9,69 @@ import { isHiddenBoss } from './enemyUtils';
 // 社長決定v0.25.1481→v0.25.1482(候補は多いほど良い=32名に増量): 裏ボス=北欧の神々を
 // 予約するため、ネームドはギリシャ神話の怪物から取る(名前空間を神話ごとに分離)。
 // PACING_PUZZLE.md §6.20 バッチM45(社長指示v0.25.1755): 表示を「CODE:ローマ字」表記へ現代化。
+// v0.25.3199(社長指示「CODE削除」): 接頭辞「CODE:」を全廃し素のローマ字名にする。永続データに
+// 残る旧「CODE:◯◯」は下の normalizeNamedName / normalizeNamedNamesInText が読み時に剥がす。
 export const NAMED_ENEMY_NAMES: readonly string[] = [
-  'CODE:CERBERUS', 'CODE:ORTHRUS', 'CODE:HYDRA', 'CODE:CHIMERA', 'CODE:MEDUSA', 'CODE:STHENO', 'CODE:EURYALE', 'CODE:MINOTAUR',
-  'CODE:HARPY', 'CODE:SCYLLA', 'CODE:CHARYBDIS', 'CODE:ECHIDNA', 'CODE:TYPHON', 'CODE:LAMIA', 'CODE:EMPUSA', 'CODE:MORMO',
-  'CODE:LYCAON', 'CODE:PYTHON', 'CODE:LADON', 'CODE:GERYON', 'CODE:CACUS', 'CODE:ARGOS', 'CODE:TALOS', 'CODE:SIREN',
-  'CODE:CETO', 'CODE:SPHINX', 'CODE:CYCLOPS', 'CODE:POLYPHEMUS', 'CODE:ANTAEUS', 'CODE:NEMEA', 'CODE:STYMPHALOS', 'CODE:HYPNOS',
+  'CERBERUS', 'ORTHRUS', 'HYDRA', 'CHIMERA', 'MEDUSA', 'STHENO', 'EURYALE', 'MINOTAUR',
+  'HARPY', 'SCYLLA', 'CHARYBDIS', 'ECHIDNA', 'TYPHON', 'LAMIA', 'EMPUSA', 'MORMO',
+  'LYCAON', 'PYTHON', 'LADON', 'GERYON', 'CACUS', 'ARGOS', 'TALOS', 'SIREN',
+  'CETO', 'SPHINX', 'CYCLOPS', 'POLYPHEMUS', 'ANTAEUS', 'NEMEA', 'STYMPHALOS', 'HYPNOS',
 ];
 
-// 旧カタカナ名→新表記(CODE:ローマ字)の正規化マップ(§6.20)。天使3+裏ボス4+宿敵32名の全37名。
+// 旧カタカナ名→新表記(ローマ字)の正規化マップ(§6.20)。天使3+裏ボス4+宿敵32名の全37名。
 // localStorage 永続済みの宿敵(namedFoe.name)・年表等で旧名が来ても表示層で新表記に変換するための
 // 読み時正規化ヘルパー。永続データ自体の書き換えは不要(このマップは表示直前にだけ通す)。
 const NAMED_NAME_LEGACY_MAP: Readonly<Record<string, string>> = {
   // 天使(ゲート2ボス)
-  'ミゲル': 'CODE:MIGUEL',
-  'ジブリル': 'CODE:JIBRIL',
-  'ラフィ': 'CODE:RAFI',
+  'ミゲル': 'MIGUEL',
+  'ジブリル': 'JIBRIL',
+  'ラフィ': 'RAFI',
   // 裏ボス
-  'ミーミル': 'CODE:MIMIR',
-  'ヨルムンガルド': 'CODE:JORMUNGAND',
-  'スカジ': 'CODE:SKADI',
-  'トール': 'CODE:THOR',
+  'ミーミル': 'MIMIR',
+  'ヨルムンガルド': 'JORMUNGAND',
+  'スカジ': 'SKADI',
+  'トール': 'THOR',
   // 宿敵/クエストネームド(32名)
-  'ケルベロス': 'CODE:CERBERUS',
-  'オルトロス': 'CODE:ORTHRUS',
-  'ヒュドラ': 'CODE:HYDRA',
-  'キマイラ': 'CODE:CHIMERA',
-  'メデューサ': 'CODE:MEDUSA',
-  'ステンノ': 'CODE:STHENO',
-  'エウリュアレ': 'CODE:EURYALE',
-  'ミノタウロス': 'CODE:MINOTAUR',
-  'ハルピュイア': 'CODE:HARPY',
-  'スキュラ': 'CODE:SCYLLA',
-  'カリュブディス': 'CODE:CHARYBDIS',
-  'エキドナ': 'CODE:ECHIDNA',
-  'テュポン': 'CODE:TYPHON',
-  'ラミア': 'CODE:LAMIA',
-  'エンプーサ': 'CODE:EMPUSA',
-  'モルモ': 'CODE:MORMO',
-  'リュカオン': 'CODE:LYCAON',
-  'ピュトン': 'CODE:PYTHON',
-  'ラドン': 'CODE:LADON',
-  'ゲリュオン': 'CODE:GERYON',
-  'カクス': 'CODE:CACUS',
-  'アルゴス': 'CODE:ARGOS',
-  'タロス': 'CODE:TALOS',
-  'セイレーン': 'CODE:SIREN',
-  'ケートー': 'CODE:CETO',
-  'スフィンクス': 'CODE:SPHINX',
-  'キュクロプス': 'CODE:CYCLOPS',
-  'ポリュペモス': 'CODE:POLYPHEMUS',
-  'アンタイオス': 'CODE:ANTAEUS',
-  'ネメア': 'CODE:NEMEA',
-  'スティンファロス': 'CODE:STYMPHALOS',
-  'ヒュプノス': 'CODE:HYPNOS',
+  'ケルベロス': 'CERBERUS',
+  'オルトロス': 'ORTHRUS',
+  'ヒュドラ': 'HYDRA',
+  'キマイラ': 'CHIMERA',
+  'メデューサ': 'MEDUSA',
+  'ステンノ': 'STHENO',
+  'エウリュアレ': 'EURYALE',
+  'ミノタウロス': 'MINOTAUR',
+  'ハルピュイア': 'HARPY',
+  'スキュラ': 'SCYLLA',
+  'カリュブディス': 'CHARYBDIS',
+  'エキドナ': 'ECHIDNA',
+  'テュポン': 'TYPHON',
+  'ラミア': 'LAMIA',
+  'エンプーサ': 'EMPUSA',
+  'モルモ': 'MORMO',
+  'リュカオン': 'LYCAON',
+  'ピュトン': 'PYTHON',
+  'ラドン': 'LADON',
+  'ゲリュオン': 'GERYON',
+  'カクス': 'CACUS',
+  'アルゴス': 'ARGOS',
+  'タロス': 'TALOS',
+  'セイレーン': 'SIREN',
+  'ケートー': 'CETO',
+  'スフィンクス': 'SPHINX',
+  'キュクロプス': 'CYCLOPS',
+  'ポリュペモス': 'POLYPHEMUS',
+  'アンタイオス': 'ANTAEUS',
+  'ネメア': 'NEMEA',
+  'スティンファロス': 'STYMPHALOS',
+  'ヒュプノス': 'HYPNOS',
 };
 
-// 旧カタカナ名→新表記(CODE:ローマ字)への正規化(§6.20)。未知の名前(既に新表記/該当なし)はそのまま返す。
-export const normalizeNamedName = (name: string): string => NAMED_NAME_LEGACY_MAP[name] ?? name;
+// 旧名→新表記(素のローマ字)への正規化(§6.20/v0.25.3199)。旧カタカナと旧「CODE:◯◯」の両方を
+// 受け、未知の名前(既に新表記/該当なし)はそのまま返す。
+export const normalizeNamedName = (name: string): string => {
+  const bare = name.startsWith('CODE:') ? name.slice('CODE:'.length) : name;
+  return NAMED_NAME_LEGACY_MAP[bare] ?? bare;
+};
 
 // 文章内の旧名を全置換する正規化(§6.20追補・社長指示v0.25.1756)。年表などlocalStorageに
 // 「記録時の文言」が焼き込まれている行の表示用(保存データは書き換えない)。
@@ -80,7 +86,9 @@ export const normalizeNamedNamesInText = (text: string): string => {
     const modern = NAMED_NAME_LEGACY_MAP[legacy];
     out = out.split(`天使${legacy}`).join(modern).split(legacy).join(modern);
   }
-  return out;
+  // v0.25.3199: 旧表記「CODE:◯◯」が焼き込まれた記録は接頭辞だけ剥がす(名前はこのゲームでは
+  // 「CODE:」の直後に続く形しか存在しないので、単純除去で衝突しない)。
+  return out.split('CODE:').join('');
 };
 
 export const NAMED_HP_MULT = 2;

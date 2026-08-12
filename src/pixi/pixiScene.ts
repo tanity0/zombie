@@ -22,7 +22,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
@@ -88,7 +88,7 @@ import {
   ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS, ACRASIEL_WARP_TELEGRAPH_MS, ACRASIEL_BURST_WINDUP_MS,
   MIGUEL_DASH_WINDUP_MS, MIGUEL_DASH_MOVE_MS, MIGUEL_DASH_STRIKE_MS,
   URI_THRUST_WINDUP_MS, URI_THRUST_MOVE_MS, URI_THRUST_STRIKE_MS,
-  JIBRIL_LANCE_WINDUP_MS, JIBRIL_LANCE_BEAM_MS, JIBRIL_LANCE_HALF_WIDTH_PX,
+  JIBRIL_LANCE_MIN_WINDUP_MS, JIBRIL_LANCE_WINDUP_CAP_MS, JIBRIL_LANCE_BEAM_MS, JIBRIL_LANCE_HALF_WIDTH_PX,
 } from '../utils/angelBossTick';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -1471,6 +1471,8 @@ const ACRASIEL_SPEAR_VIS_LEN = 70; // 実行中(地面に刺さった状態)の�
 
 // ジブリルのランタン(jibril-lantern.png)。振らずに常に手元へ「掲げたまま」表示する(§6.28-16 ①)。
 const JIBRIL_LANTERN_VIS_H = 46; // 画面上の高さ(px)
+// v0.25.3199(社長指示): 骨刃/氷刃の進路赤ラインを発射のこの時間前から出す(視覚のみ・判定/発射時刻は不変)。
+const SKADI_BLADE_LINE_PRE_MS = 350;
 
 // スリィエルの環(suriel-ring.png=304×512)。待機中も頭上に浮遊し、攻撃時は本体から離れて飛ぶ
 // (§6.28-18「武器絵が読みの主役になる唯一のボス」)。katanaSlash系ではなく単純な回転スプライト。
@@ -11494,7 +11496,7 @@ export class PixiScene {
   // 氷刃=設置中は薄く方向表示→発射後はくっきり、常に向きへ回転。effectLayer=world座標。
   private syncSkadiHazards(
     markers: { id: string; x: number; y: number; bornAt: number; fireAt: number }[],
-    blades: { id: string; x: number; y: number; angle: number; launched: boolean; expireAt: number; visual?: 'ice' | 'bone' }[],
+    blades: { id: string; x: number; y: number; angle: number; launched: boolean; launchAt: number; expireAt: number; visual?: 'ice' | 'bone' }[],
     gameTime: number,
   ) {
     const g = this.skadiHazardGfx;
@@ -11529,16 +11531,21 @@ export class PixiScene {
       const btex = b.visual === 'bone' ? boneTex : iceTex;
       if (!btex) continue;
       seen.add(b.id);
-      // v0.25.3198(社長指示): 発射中(=飛んでいる間)だけ、進路の赤ラインを刃の現在位置から残り飛距離ぶん引く。
-      // 順番待ち(設置中)は出さない。幅=命中半径×2(赤=判定と厳密一致の掟。氷塊円と同じく自機半径ぶんは足さない)。
-      // 刃が進むほどラインは短くなり、寿命/命中で刃ごと消える=表示は一瞬。骨刃(ラフィ)・氷刃(スカジ)共通。
-      if (b.launched) {
-        const remainPx = Math.max(0, (b.expireAt - gameTime) / 1000) * SKADI_BLADE_SPEED;
-        if (remainPx > 1) {
+      // v0.25.3198(社長指示): 飛んでいる間、進路の赤ラインを刃の現在位置から残り飛距離ぶん引く。
+      // v0.25.3199(社長指示「もう少し早く出現」): 発射の350ms前からフェードインで前倒し表示。
+      // 狙い角は設置時に確定済みなので、前倒しでも「赤=実際の進路」は崩れない(判定と厳密一致の掟)。
+      // 幅=命中半径×2(氷塊円と同じく自機半径ぶんは足さない)。骨刃(ラフィ)・氷刃(スカジ)共通。
+      const preMs = b.launchAt - gameTime; // 発射までの残りms(発射後は負)
+      if (b.launched || preMs <= SKADI_BLADE_LINE_PRE_MS) {
+        const remainPx = b.launched
+          ? Math.max(0, (b.expireAt - gameTime) / 1000) * SKADI_BLADE_SPEED
+          : (SKADI_BLADE_LIFE_MS / 1000) * SKADI_BLADE_SPEED;
+        const fadeIn = b.launched ? 1 : Math.max(0, Math.min(1, 1 - preMs / SKADI_BLADE_LINE_PRE_MS));
+        if (remainPx > 1 && fadeIn > 0) {
           const ex = b.x + Math.cos(b.angle) * remainPx;
           const ey = b.y + Math.sin(b.angle) * remainPx;
-          g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: (0.30 + 0.15 * pulse) * TELEGRAPH_FILL_MULT });
-          g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: 2, color: 0xff6b6b, alpha: 0.5 });
+          g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: (0.30 + 0.15 * pulse) * TELEGRAPH_FILL_MULT * fadeIn });
+          g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: 2, color: 0xff6b6b, alpha: 0.5 * fadeIn });
         }
       }
       let sp = this.skadiBladePool.get(b.id);
@@ -14334,13 +14341,18 @@ export class PixiScene {
           e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, recoverStyle, 1,
         );
       }
-      // ---- ジブリル(v0.25.3197・社長指示): ランス=細い赤ライン(溜め)→光条(140ms) ----
+      // ---- ジブリル(v0.25.3199・社長指示): ランス=ランタンが縁へ飛びながら赤ラインを引く→光条(140ms) ----
       // 予告は当たり判定と同じ半幅26pxのカプセル(分類①=赤いのに当たらない、を作らない)。
+      // aiTarget=飛行中のランタン現在地(angelBossTickが毎tick更新)なので、線は読むだけで伸びていく。
       else if (scriptActive && e.type === 'jibril' && (bs === 'lance-windup' || bs === 'lance')) {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        // 手元のランタン(常時表示スプライト)を飛行位置=線の先端へ移す(=「ランタンが飛んでいく」絵)。
+        const flySp = this.jibrilLanternSprites.get(e.id);
+        if (flySp) flySp.position.set(tx, ty);
         if (bs === 'lance-windup') {
-          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JIBRIL_LANCE_WINDUP_MS));
+          const elapsed = JIBRIL_LANCE_WINDUP_CAP_MS - ((e.bossStateUntil ?? gameTime) - gameTime);
+          const prog = Math.max(0, Math.min(1, elapsed / JIBRIL_LANCE_MIN_WINDUP_MS));
           this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, JIBRIL_LANCE_HALF_WIDTH_PX, prog, now);
         } else {
           // 光条: 判定幅の赤+白芯。起爆(判定)はカプセル側=絵は判定幅と同じ(分類①)。

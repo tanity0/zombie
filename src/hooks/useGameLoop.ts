@@ -5449,7 +5449,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 if (Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr) {
-                  const died = damagePlayer(MIMIR_LASER_DAMAGE, 'CODE:MIMIR のレーザー', cxp, cyp);
+                  const died = damagePlayer(MIMIR_LASER_DAMAGE, 'MIMIR のレーザー', cxp, cyp);
                   if (died) triggerPlayerDeath(ppx, ppy);
                 }
                 // G4b(§2.9): ビーム帯はゴースト(守護霊)にも当たる(同じ線分±半太さ・同じダメージ。
@@ -5597,7 +5597,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'CODE:THOR の一閃', cxp, cyp, undefined, undefined, 'thor-issen'); // G4a計測タグ(記録専用)
+                    const died = damagePlayer(boss.damage, 'THOR の一閃', cxp, cyp, undefined, undefined, 'thor-issen'); // G4a計測タグ(記録専用)
                     useGameStore.getState().spawnImageMark(cxp, cyp, 'zan', { scale: 1.0, duration: 1000 }); // 社長指示: 食らうと「斬」
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
@@ -5655,7 +5655,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'CODE:THOR の突き', cxp, cyp, undefined, undefined, 'thor-tsuki'); // G4a計測タグ(記録専用)
+                    const died = damagePlayer(boss.damage, 'THOR の突き', cxp, cyp, undefined, undefined, 'thor-tsuki'); // G4a計測タグ(記録専用)
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
@@ -5692,7 +5692,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'CODE:THOR の払い', cxp, cyp, undefined, undefined, 'thor-harai'); // G4a計測タグ(記録専用)
+                    const died = damagePlayer(boss.damage, 'THOR の払い', cxp, cyp, undefined, undefined, 'thor-harai'); // G4a計測タグ(記録専用)
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }

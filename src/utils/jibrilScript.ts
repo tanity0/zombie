@@ -7,8 +7,8 @@ export type JibrilMove = 'volley' | 'lantern' | 'consecrate' | 'lance';
 export type JibrilVolleyMode = 'close' | 'snipe';
 
 export const JIBRIL_HANDGUN_DIST = 300;      // ≤300=近接射(close) / >300=狙撃(snipe)
-export const JIBRIL_LANTERN_CHANCE = 0.3;    // v0.25.3197: ランス追加に伴い 0.4→0.3(射撃40%は維持)
-export const JIBRIL_LANCE_CHANCE = 0.3;      // 社長指示v0.25.3197の新技「ランス」(細い光条)。比率は叩き台
+export const JIBRIL_LANTERN_CHANCE = 0.25;   // v0.25.3199(社長指示): 0.3→0.25(ランタンを少し下げる)
+export const JIBRIL_LANCE_CHANCE = 0.35;     // v0.25.3199(社長指示): 0.3→0.35(下げた分をランスへ)。射撃40%は維持
 export const JIBRIL_CONSECRATE_RANGE = 200;  // 聖別が撃てる密着帯(§6.28-6 #4)
 export const JIBRIL_PHASE_HP_THRESHOLD = 0.6;
 export const JIBRIL_COMBO_CHANCE = 0.4;      // ランタン→狙撃 / 聖別→近接射(共通・§6.28-6フェーズ表)
