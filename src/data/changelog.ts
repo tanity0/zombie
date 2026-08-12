@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3215',
+    items: [
+      '開発: アバターシステム(試験・第1弾=猫耳セット)の仕様を記録。実装は素材受領後。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3214',
     items: [
       '開発: スキルビルド設計§12完成(レベルアップ=スキル専業/基礎装備・回復=商人/特殊装備=POI)。ゲーム内容の変更はありません。',
