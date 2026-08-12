@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3206',
+    items: [
+      '開発: スキルビルド設計の残り裁定3件(初期スキル5種/バーサーカー・オーバークロックの枠光/難易度係数)を確定。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3205',
     items: [
       '洋館跡地(EX1)の背景をステージ7の視覚設定一式(星雲遠景+森シルエット帯+地平線位置)の丸ごと流用にしました(仮対応)。',
