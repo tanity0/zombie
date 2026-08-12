@@ -124,7 +124,7 @@ import {
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
-  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, BESTIARY,
+  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, OBTAINABLE_SKILL_KEYS, MAX_EQUIPPED_SKILLS, BESTIARY,
   gachaPullCostFor, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, type SkillRarity, type Stage
 } from '../data/campaign';
@@ -2195,7 +2195,7 @@ const SkillGacha: React.FC = () => {
         <span className="text-white/55">{pityLeft > 0 ? `天井まであと ${pityLeft}` : `天井(${RARITY_LABEL.super}最大)`}</span>
       </div>
       <p className="mt-2 text-[10px] leading-snug text-white/50">
-        引くほど超レアが出やすく、被るほど高Lvが出やすい。既存Lv以下/上限は返金。解禁済み {ownedCount}/{SKILL_KEYS.length}
+        引くほど超レアが出やすく、被るほど高Lvが出やすい。既存Lv以下/上限は返金。解禁済み {ownedCount}/{OBTAINABLE_SKILL_KEYS.length}
       </p>
     </div>
   );

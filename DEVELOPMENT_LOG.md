@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.3237 — B3着地: レア度表+初期9種+flashy+新スキル台帳(Sonnet納品・検収済み)【2026-08-13 04:24 JST】
+- campaign.ts: §4新表へ差し替え(crit-up/sniper超・sharpshooter/ricochet/punisher/benkei/reflexノ)。
+  DEFAULT_OWNED_SKILLSへ初期9種。GACHA_EXCLUDEDへscrap-builder/warm-up+眠り9種。新スキル9種を
+  台帳掲載(FLASHY_SKILLS/NEW_SLEEPING_SKILLS/OBTAINABLE_SKILL_KEYS新設)。
+- runSkillDraft: flashy×2重み(新規・pity・差し替えの全経路)。眠り9種をドラフト除外。
+- 検収§19-3: 自主追加2件追認(ガチャ画面分母=OBTAINABLE/枠上限テストの実挙動写し修正)。
+- ガチャ再シム(N=1500): 全種所持117→124pulls(+6%)/全種MAX 387→435(+12.6%)・返金率上昇。
+  原因=初期9種が抽選プールに残る被り返金(§16-9点2の意図どおり)。調整はせず社長裁定待ち。
+- ★裁定待ち2件: ①scrap-builder/warm-upの新効果差し替え ②ガチャ完走コスト増の扱い。
+- 検証: typecheck 0/lint 0/対象テスト418 passed(fixedGuardians/constitution無改変で通過)。
+
 ## v0.25.3236 — B3発注文(§19)を記録・Sonnetへ発注【2026-08-13 03:59 JST】
 §19=B3の発注文: レア度表を§4の新表へ差し替え(ガチャも同表・確率/価格/pityのコードは不変)/
 flashy×2重み/初期所持9種(ガチャ除外に入れない)/新スキル9種の台帳先行掲載(ドラフト・ガチャ両方

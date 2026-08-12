@@ -8,7 +8,7 @@ import {
   RUN_DRAFT_EXCLUDED_SKILLS, RUN_BUILD_CAPACITY,
   type RunSkillDraftInput,
 } from './runSkillDraft';
-import { SKILLS, type SkillRarity } from '../data/campaign';
+import { SKILLS, FLASHY_SKILLS, NEW_SLEEPING_SKILLS, type SkillRarity } from '../data/campaign';
 import type { SkillKey } from '../types/game';
 
 // 決定的な疑似乱数(mulberry32と同型。draftRunSkillCards等はrng引数を必ず注入するのでテストにも使える)。
@@ -120,7 +120,15 @@ describe('候補プール(newSkillCandidates/levelUpCandidates・§12-2#1)', () 
 });
 
 describe('draftRunSkillCards(§12-2#2 抽選手順)', () => {
-  it('枠を一度も超えない(大量ドラフトの反復でも)', () => {
+  // §4でcrit-up/sniperが同時に超レアへ昇格したことで、超レア枠(cap=1)を巡って2枚が同じ
+  // 1回の3択(draftRunSkillCards(input, 3, ...))に同時に候補として出ることがあり得る(意図どおり=
+  // 「crit-upかsniperか」を選ばせる画面。他レア度も同様に3枚が"offer"であって"全取得"ではない)。
+  // 実際のプレイでは3択のうち1枚だけを選ぶ(upgradeUtils.generateSkillUpgradeChoices→
+  // gameStore.ts selectUpgrade)。選択のガードは `canAcquireRunSkill(state.runBuild, key)` が
+  // 唯一の出どころ(§2-1)で、埋まった枠のカードを選んでも無効(no-op)になるだけで枠は超えない
+  // (gameStore.ts:7872と同じ形をここでも模す)。よってこのテストは「3枚を全部順番に取得できる」
+  // ことではなく、「そのガードを通して適用し続けても枠を一度も超えない」ことを検証する。
+  it('枠を一度も超えない(大量ドラフトの反復でも。gameStore.selectUpgradeの実ガードを模して適用)', () => {
     const rng = mulberry32(1);
     let runSkills: SkillKey[] = [];
     let runSkillLevels: Partial<Record<SkillKey, number>> = {};
@@ -129,7 +137,7 @@ describe('draftRunSkillCards(§12-2#2 抽選手順)', () => {
       const cards = draftRunSkillCards(input, 3, rng);
       for (const c of cards) {
         if (c.cardKind === 'new') {
-          expect(canAcquireRunSkill(runSkills, c.key)).toBe(true);
+          if (!canAcquireRunSkill(runSkills, c.key)) continue; // gameStore.ts:7872と同じガード=no-op
           runSkills = [...runSkills, c.key];
           runSkillLevels = { ...runSkillLevels, [c.key]: c.toLevel };
         } else {
@@ -208,5 +216,57 @@ describe('リロール価格(rerollPrice・§16-10 ★C)', () => {
 describe('バニッシュ上限(MAX_BANISH_PER_RUN)', () => {
   it('2である', () => {
     expect(MAX_BANISH_PER_RUN).toBe(2);
+  });
+});
+
+// SKILL_BUILD_REDESIGN.md §4/§19-1点2・3: ノーマル抽選でflashyタグ持ちの重みを2倍。
+// 付与対象は§4表の(flashy)表記どおり3種のみ。
+describe('flashyタグの重み(§19-2点2: ノーマル抽選でflashy:非flashy=2:1)', () => {
+  it('FLASHY_SKILLSは§4表の(flashy)表記どおり sharpshooter/ricochet/punisher の3種', () => {
+    expect([...FLASHY_SKILLS].sort()).toEqual(['punisher', 'ricochet', 'sharpshooter']);
+  });
+
+  it('ノーマル抽選で、flashyと非flashyのノーマルが2枚だけなら flashy:非flashy ≒ 2:1 になる', () => {
+    const flashyKey: SkillKey = 'sharpshooter';
+    const plainKey: SkillKey = 'runner';
+    expect(FLASHY_SKILLS).toContain(flashyKey);
+    expect(FLASHY_SKILLS).not.toContain(plainKey);
+    expect(SKILLS[flashyKey].rarity).toBe('normal');
+    expect(SKILLS[plainKey].rarity).toBe('normal');
+
+    // playerLevel=2 → {normal:85, rare:15, super:0}。owned をこの2枚だけにすると
+    // rare/superの候補が無いためレア度ロールが必ずnormalへカスケードし、以後は
+    // pickWeightedSkill(flashy×2/非flashy×1)の重みだけが結果を左右する。
+    const input = baseInput({ owned: [flashyKey, plainKey], runSkills: [], runSkillLevels: {}, playerLevel: 2 });
+    let flashyCount = 0;
+    let total = 0;
+    for (let seed = 0; seed < 4000; seed++) {
+      const cards = draftRunSkillCards(input, 1, mulberry32(seed));
+      if (cards.length !== 1 || cards[0].cardKind !== 'new') continue;
+      total++;
+      if (cards[0].key === flashyKey) flashyCount++;
+    }
+    expect(total).toBeGreaterThan(3000); // ほぼ全試行が'new'側に落ちることの確認(前提が崩れていないか)
+    const ratio = flashyCount / total;
+    expect(ratio).toBeGreaterThan(0.6); // 理論値2/3=0.667
+    expect(ratio).toBeLessThan(0.73);
+  });
+});
+
+// SKILL_BUILD_REDESIGN.md §14/§19-1点4: 新スキル9種はB3時点で台帳掲載のみ。ドラフトからは
+// RUN_DRAFT_EXCLUDED_SKILLS経由で完全に除外される(効果配線はB7)。
+describe('NEW_SLEEPING_SKILLS(§14新9種)はドラフトから絶対に出ない(§19-2点4)', () => {
+  it('RUN_DRAFT_EXCLUDED_SKILLSに9種すべてが含まれる', () => {
+    for (const k of NEW_SLEEPING_SKILLS) expect(RUN_DRAFT_EXCLUDED_SKILLS).toContain(k);
+    expect(NEW_SLEEPING_SKILLS).toHaveLength(9);
+  });
+
+  it('所持していてもnewSkillCandidates/draftRunSkillCardsのどちらからも出ない', () => {
+    const input = baseInput({ owned: [...NORMAL_SKILLS, ...RARE_SKILLS, ...SUPER_SKILLS, ...NEW_SLEEPING_SKILLS] });
+    expect(newSkillCandidates(input).some(k => NEW_SLEEPING_SKILLS.includes(k))).toBe(false);
+    for (let seed = 0; seed < 30; seed++) {
+      const cards = draftRunSkillCards(input, 3, mulberry32(seed));
+      for (const c of cards) expect(NEW_SLEEPING_SKILLS).not.toContain(c.key);
+    }
   });
 });

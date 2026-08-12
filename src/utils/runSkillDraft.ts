@@ -7,7 +7,7 @@
 // 覚醒・リロール/バニッシュ)。矛盾する記述は §16(監査8巡目)側が最終。
 
 import type { SkillKey } from '../types/game';
-import { SKILLS, type SkillRarity, skillMaxLevel } from '../data/campaign';
+import { SKILLS, type SkillRarity, skillMaxLevel, FLASHY_SKILLS, NEW_SLEEPING_SKILLS } from '../data/campaign';
 
 // ---- 1. 枠(§1-1・社長指定・確定) -------------------------------------------------------
 export const RUN_BUILD_CAPACITY: Record<SkillRarity, number> = { super: 1, rare: 2, normal: 3 };
@@ -27,10 +27,13 @@ export const MAX_CARRY_SKILLS = 0;
 // - warm-up: 「出撃から60秒間」の効果窓が gameTime(出撃時刻起点)に固定されており、取得時点で
 //   窓の大半〜全部が経過済みになりやすい(Lv2以降にしか出せない)。取得しても実質0〜わずかしか
 //   効かない=説明文が嘘になりやすいため除外。
+// - NEW_SLEEPING_SKILLS(SKILL_BUILD_REDESIGN.md §14の新9種): B3=台帳掲載のみで効果配線が無い
+//   (B7待ち)。取っても何も起きない=完全に眠らせる(§19-1点4)。
 export const RUN_DRAFT_EXCLUDED_SKILLS: SkillKey[] = [
   'guardian-spirit', 'ghost-helper', 'ghost-slayer',
   'poi-bombing', 'poi-guard', 'poi-thrall',
   'scrap-builder', 'warm-up',
+  ...NEW_SLEEPING_SKILLS,
 ];
 
 // ---- 4. 枠判定(§2-1「唯一の出どころ」) -----------------------------------------------------
@@ -129,6 +132,23 @@ const rollRarityCascade = (
   return null;
 };
 
+// ---- 8b. ノーマル抽選のflashy重み(§4/§19-1点2「ノーマル抽選でflashyタグ持ちの重みを2倍」) -------
+// flashy以外(super/rare含む全て)は重み1=既存の一様抽選と完全に同じ挙動。flashyはSKILL_KEYS中
+// ノーマルの3種のみ(FLASHY_SKILLS)なので、実際に2倍が効くのは新規カードのノーマル抽選時だけ。
+const skillDraftWeight = (key: SkillKey): number => (FLASHY_SKILLS.includes(key) ? 2 : 1);
+
+/** 候補プールから重み付きで1件選ぶ(flashy×2)。プールが空の呼び出しは想定しない(呼び出し側で長さ確認済み)。 */
+const pickWeightedSkill = (pool: readonly SkillKey[], rng: () => number): SkillKey => {
+  const weights = pool.map(skillDraftWeight);
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = rng() * total;
+  for (let i = 0; i < pool.length; i++) {
+    if (r < weights[i]) return pool[i];
+    r -= weights[i];
+  }
+  return pool[pool.length - 1];
+};
+
 // ---- 9. ドラフト結果(1カード) ---------------------------------------------------------------
 export interface DraftedSkillCard {
   key: SkillKey;
@@ -166,7 +186,7 @@ export const draftRunSkillCards = (
       pityPending = false; // 1ドラフトにつき1回だけ試みる(成立可否によらず以降は通常ロール)
       const superPool = newSkillCandidates(input, dealt).filter(k => SKILLS[k].rarity === 'super');
       if (superPool.length > 0) {
-        const key = superPool[Math.floor(rng() * superPool.length)];
+        const key = pickWeightedSkill(superPool, rng);
         cards.push({ key, cardKind: 'new', rarity: 'super', fromLevel: 0, toLevel: clampedOwnedLevel(key, input.ownedLevels), pity: true });
         dealt.push(key);
         continue;
@@ -205,7 +225,7 @@ export const draftRunSkillCards = (
       continue;
     }
     const pool = rarityPool(rarity);
-    const key = pool[Math.floor(rng() * pool.length)];
+    const key = pickWeightedSkill(pool, rng);
     cards.push({ key, cardKind: 'new', rarity, fromLevel: 0, toLevel: clampedOwnedLevel(key, input.ownedLevels), pity: false });
     dealt.push(key);
   }
@@ -237,7 +257,7 @@ export const draftReplacementSkillCard = (
   const rarity = rollRarityCascade(weights, isViable, rng);
   if (!rarity) return null;
   const pool = rarityPool(rarity);
-  const key = pool[Math.floor(rng() * pool.length)];
+  const key = pickWeightedSkill(pool, rng);
   return { key, cardKind: 'new', rarity, fromLevel: 0, toLevel: clampedOwnedLevel(key, input.ownedLevels), pity: false };
 };
 

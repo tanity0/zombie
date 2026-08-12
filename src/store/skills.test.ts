@@ -14,7 +14,7 @@ import type { Pickup } from '../types/game';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
   gachaPullCost, gachaPullCostFor, GACHA_PRICE_STEPS, GACHA_PULL_COST_CAP, GACHA_REFUND_BY_RARITY,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel,
-  rollGachaSkill, GACHA_EXCLUDED_SKILLS,
+  rollGachaSkill, GACHA_EXCLUDED_SKILLS, SKILLS,
   DEFAULT_OWNED_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
 import type { Player, SkillKey } from '../types/game';
 
@@ -433,8 +433,9 @@ describe('gacha excludes the reaper skill (死神は撃破でのみ習得)', () 
 });
 
 // BOT_AND_GHOST.md G3(社長指示「守護霊スキルは最初から解禁しとこうか」): 守護霊は最初から所持。
+// SKILL_BUILD_REDESIGN.md §12-3★2/§19-1点3(社長裁定): ノーマル5+レア4の初期9種も同じ経路で追加。
 // 新規セーブ(空)・既存セーブ(欠けあり)の両方を読み込み時マイグレーションで補う。
-describe('ensureDefaultOwnedSkills(守護霊の初期所持マイグレーション)', () => {
+describe('ensureDefaultOwnedSkills(守護霊+初期9種の所持マイグレーション)', () => {
   it('DEFAULT_OWNED_SKILLS に guardian-spirit が入っている', () => {
     expect(DEFAULT_OWNED_SKILLS).toContain('guardian-spirit');
     expect(DEFAULT_OWNED_SKILLS).toContain('ghost-helper');
@@ -448,12 +449,92 @@ describe('ensureDefaultOwnedSkills(守護霊の初期所持マイグレーショ
   it('既存セーブ(欠けあり)には末尾へ補い、既存の並びは変えない', () => {
     const owned: SkillKey[] = ['runner', 'seeker'];
     const next = ensureDefaultOwnedSkills(owned);
-    expect(next).toEqual(['runner', 'seeker', 'guardian-spirit', 'ghost-helper', 'ghost-slayer']);
+    expect(next).toEqual([
+      'runner', 'seeker',
+      'guardian-spirit', 'ghost-helper', 'ghost-slayer',
+      'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
+      'fire-shooter', 'bomb-counter', 'exploder', 'knight',
+    ]);
     expect(owned).toEqual(['runner', 'seeker']); // 引数は破壊しない(純関数)
   });
 
   it('既に持っていれば何も変えない(同一参照のまま)', () => {
-    const owned: SkillKey[] = ['guardian-spirit', 'ghost-helper', 'ghost-slayer', 'runner'];
+    const owned: SkillKey[] = [
+      'guardian-spirit', 'ghost-helper', 'ghost-slayer',
+      'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
+      'fire-shooter', 'bomb-counter', 'exploder', 'knight',
+      'runner',
+    ];
     expect(ensureDefaultOwnedSkills(owned)).toBe(owned);
+  });
+
+  // §19-2点3: 新規プレイヤーで9種所持・超レア0(守護霊系は「枠外」の同行者なので9種のカウントから除く)。
+  it('新規プレイヤーは守護霊系とは別にノーマル5+レア4の9種を持ち、超レアは0(§12-3★2/§19-1点3)', () => {
+    const initial = ensureDefaultOwnedSkills([]);
+    const companionKeys: SkillKey[] = ['guardian-spirit', 'ghost-helper', 'ghost-slayer'];
+    const nonCompanion = initial.filter(k => !companionKeys.includes(k));
+    expect(nonCompanion).toHaveLength(9);
+    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'normal')).toHaveLength(5);
+    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'rare')).toHaveLength(4);
+    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'super')).toHaveLength(0);
+    expect(nonCompanion.sort()).toEqual(
+      ['sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher', 'fire-shooter', 'bomb-counter', 'exploder', 'knight'].sort(),
+    );
+  });
+});
+
+// SKILL_BUILD_REDESIGN.md §4(社長承認v0.25.3192・確定)のレア度再算出。
+describe('§4 レア度表の差し替え(campaign.ts SKILLS)', () => {
+  it('crit-up/sniperは超レアへ昇格', () => {
+    expect(SKILLS['crit-up'].rarity).toBe('super');
+    expect(SKILLS['sniper'].rarity).toBe('super');
+  });
+  it('sharpshooter/ricochet/punisher/benkei/reflexはノーマルへ降格', () => {
+    for (const k of ['sharpshooter', 'ricochet', 'punisher', 'benkei', 'reflex'] as const) {
+      expect(SKILLS[k].rarity, k).toBe('normal');
+    }
+  });
+  it('exploder/fire-shooter/bomber/bomb-counter/knife-master/combo-master/knight/rescue-signalはレアのまま', () => {
+    for (const k of ['exploder', 'fire-shooter', 'bomber', 'bomb-counter', 'knife-master', 'combo-master', 'knight', 'rescue-signal'] as const) {
+      expect(SKILLS[k].rarity, k).toBe('rare');
+    }
+  });
+});
+
+// SKILL_BUILD_REDESIGN.md §19-1点5(§17-3検収の再確認の結論): 持ち込み廃止によりscrap-builder/
+// warm-upはラン中に効果の柱が発火不能。B3でガチャ排出からも除外する(死に景品化の防止)。
+describe('§19-1点5 scrap-builder/warm-upのガチャ除外', () => {
+  it('GACHA_EXCLUDED_SKILLSに含まれる', () => {
+    expect(GACHA_EXCLUDED_SKILLS).toContain('scrap-builder');
+    expect(GACHA_EXCLUDED_SKILLS).toContain('warm-up');
+  });
+});
+
+// SKILL_BUILD_REDESIGN.md §14/§19-1点4: 新スキル9種は台帳に存在するが、ドラフト・ガチャの
+// どちらからも絶対に出ない(効果配線はB7)。
+describe('§19-1点4 新スキル9種(NEW_SLEEPING_SKILLS)は完全に眠っている', () => {
+  const NEW_SKILLS: SkillKey[] = [
+    'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
+    'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
+  ];
+
+  it('台帳(SKILLS)には存在する', () => {
+    for (const k of NEW_SKILLS) {
+      expect(SKILLS[k], k).toBeDefined();
+      expect(SKILLS[k].name.length, k).toBeGreaterThan(0);
+      expect(SKILLS[k].desc.length, k).toBeGreaterThan(0);
+      expect(SKILLS[k].desc, k).not.toContain('準備中'); // 台帳上は完成形の文章(§19-1点4)
+    }
+  });
+
+  it('ガチャからは絶対に出ない(GACHA_EXCLUDED_SKILLS+多数ロールでの実地確認)', () => {
+    for (const k of NEW_SKILLS) expect(GACHA_EXCLUDED_SKILLS).toContain(k);
+    let seq = 1;
+    const rng = () => { seq = (seq * 9301 + 49297) % 233280; return seq / 233280; };
+    for (let pity = 0; pity <= 60; pity++) {
+      for (let i = 0; i < 200; i++) {
+        expect(NEW_SKILLS).not.toContain(rollGachaSkill(pity, rng));
+      }
+    }
   });
 });

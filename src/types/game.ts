@@ -1123,20 +1123,25 @@ export interface EscortSoldier {
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
 // レア度: normal/rare/super(超レア=死神/バーサーカー/スケーター)。
 export type SkillKey =
-  // 超レア
-  | 'reaper' | 'berserker' | 'skater' | 'overclock'
+  // 超レア。SKILL_BUILD_REDESIGN.md §4(社長承認・確定): crit-up/sniperはここへ昇格。
+  | 'reaper' | 'berserker' | 'skater' | 'overclock' | 'crit-up' | 'sniper'
   // BOT_AND_GHOST.md G3: 守護霊(ゴースト助っ人)。ガチャからは出ない+最初から所持(社長指示)。
   | 'guardian-spirit' | 'ghost-helper' | 'ghost-slayer'
   // レア
-  | 'crit-up' | 'knight' | 'exploder' | 'sharpshooter' | 'sniper' | 'ricochet'
-  | 'bomber' | 'fire-shooter' | 'bomb-counter' | 'punisher' | 'combo-master'
-  | 'knife-master' | 'benkei' | 'reflex' | 'rescue-signal'
-  // 通常
+  | 'knight' | 'exploder'
+  | 'bomber' | 'fire-shooter' | 'bomb-counter' | 'combo-master'
+  | 'knife-master' | 'rescue-signal'
+  // 通常。§4: sharpshooter/ricochet/punisher(flashy)/benkei/reflexはここへ降格。
+  | 'sharpshooter' | 'ricochet' | 'punisher' | 'benkei' | 'reflex'
   | 'gold-rush' | 'time-keeper' | 'ghost-shooter' | 'dog-run' | 'counter-master' | 'slasher'
   | 'attack-shooter' | 'runner' | 'seeker' | 'scrap-builder'
   | 'magnet' | 'last-magazine' | 'warm-up'
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ専用(ガチャからは絶対に出ない・GACHA_EXCLUDED_SKILLS)。
-  | 'poi-bombing' | 'poi-guard' | 'poi-thrall';
+  | 'poi-bombing' | 'poi-guard' | 'poi-thrall'
+  // SKILL_BUILD_REDESIGN.md §14(社長承認2026-08-13)・新スキル9種。B3=台帳掲載のみ(先行掲載)。
+  // ドラフト・ガチャの両方から除外して眠らせている(NEW_SLEEPING_SKILLS・効果配線はB7)。
+  | 'big-bullet' | 'ice-shot' | 'vampire' | 'incendiary-round' | 'execution-shock'
+  | 'gravity-shot' | 'echo-shot' | 'barrage-king' | 'blood-treads';
 
 // 四神舞(リズム)サブウェポン。リズム入力(タップ/フリック)で戦い、フリック4本パターンで
 // 四神技(朱雀/玄武/青龍/白虎)を発動。状態は store に持ち、攻撃実行は useGameLoop が担う。

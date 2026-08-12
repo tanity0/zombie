@@ -689,15 +689,25 @@ export const SKILL_KEYS: SkillKey[] = [
   // BOT_AND_GHOST.md G3: 守護霊。ガチャからは出ない(GACHA_EXCLUDED_SKILLS)+最初から所持
   // (社長指示v0.25.2452「守護霊スキルは最初から解禁しとこうか」→DEFAULT_OWNED_SKILLS)。
   'guardian-spirit', 'ghost-helper', 'ghost-slayer',
-  'crit-up', 'knight', 'exploder', 'sharpshooter', 'sniper', 'ricochet',
-  'bomber', 'fire-shooter', 'bomb-counter', 'punisher', 'combo-master',
-  'knife-master', 'benkei', 'reflex', 'rescue-signal',
+  // SKILL_BUILD_REDESIGN.md §4(社長承認・確定): crit-up/sniperは超レアへ昇格。
+  'crit-up', 'sniper',
+  'knight', 'exploder',
+  'bomber', 'fire-shooter', 'bomb-counter', 'combo-master',
+  'knife-master', 'rescue-signal',
+  // §4: sharpshooter/ricochet/punisherはノーマルへ降格(flashyタグ=FLASHY_SKILLS)。benkei/reflexも
+  // ノーマルへ降格(flashyタグ無し)。
+  'sharpshooter', 'ricochet', 'punisher', 'benkei', 'reflex',
   'gold-rush', 'time-keeper', 'ghost-shooter', 'dog-run', 'counter-master', 'slasher',
   'attack-shooter', 'runner', 'seeker', 'scrap-builder',
   'magnet', 'last-magazine', 'warm-up',
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ専用(reaperと同じくガチャからは絶対に出ない=
   // GACHA_EXCLUDED_SKILLSで除外。この場所でしか手に入らないことが存在理由)。
   'poi-bombing', 'poi-guard', 'poi-thrall',
+  // SKILL_BUILD_REDESIGN.md §14(社長承認2026-08-13「全て採用」)・B3=台帳掲載のみ(先行掲載)。
+  // 効果配線はB7。B3時点ではドラフト(RUN_DRAFT_EXCLUDED_SKILLS)・ガチャ(GACHA_EXCLUDED_SKILLS)の
+  // 両方から除外して完全に眠らせる(効果の無い当たりを引かせない・§19-1点4)。
+  'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
+  'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
 ];
 export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: SkillRarity }> = {
   // 超レア
@@ -711,23 +721,28 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   // 旧名「助っ人の霊」「討伐者の霊」は、作中に裏付けの無い「霊」がシステム語のまま表に出ていた。
   'ghost-helper':    { name: '守護霊(有志)', desc: 'ボス戦で他のプレイヤーの守護霊をランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.7', rarity: 'normal' },
   'ghost-slayer':    { name: '守護霊(猛者)', desc: 'ボス戦で評点上位20%の守護霊からランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.5', rarity: 'normal' },
+  // SKILL_BUILD_REDESIGN.md §4(社長承認v0.25.3192・確定): ボスクリ×5→5.5+全クリ倍率/停止・遠距離
+  // 実効+100%×2軸=ボス直撃の最上位として超レアへ昇格。
+  'crit-up':      { name: 'クリティカルダメージ上昇', desc: 'クリティカルダメージ ×1.5→×2.0(ボス ×5→×5.5)', rarity: 'super' },
+  'sniper':       { name: 'スナイパー',     desc: '銃ダメージが停止中の敵/遠距離ほど増加', rarity: 'super' },
   // レア
-  'crit-up':      { name: 'クリティカルダメージ上昇', desc: 'クリティカルダメージ ×1.5→×2.0(ボス ×5→×5.5)', rarity: 'rare' },
   'knight':       { name: 'ナイト',         desc: '被ダメージ-20%。盾/召喚の最大HP+50%', rarity: 'rare' },
   'exploder':     { name: 'エクスプローダー', desc: '全ての爆発の範囲とダメージ+20%', rarity: 'rare' },
-  'sharpshooter': { name: 'シャープシューター', desc: '銃弾の貫通+1', rarity: 'rare' },
-  'sniper':       { name: 'スナイパー',     desc: '銃ダメージが停止中の敵/遠距離ほど増加', rarity: 'rare' },
-  'ricochet':     { name: '跳弾',           desc: '命中弾が20%で近くの別の敵へ跳ねる(0.5倍)', rarity: 'rare' },
   'bomber':       { name: 'ボマー',         desc: '手榴弾の爆発時にミニ手榴弾を3個撒く', rarity: 'rare' },
   'fire-shooter': { name: 'ファイアシューター', desc: '発射の20%が爆発弾になる(裏CDあり)', rarity: 'rare' },
   'bomb-counter': { name: 'ボムカウンター', desc: 'カウンターの反射弾が爆発する', rarity: 'rare' },
-  'punisher':     { name: 'パニッシャー',   desc: 'ノックバック中の敵が他の敵に当たると巻き込む(近接の半分ダメージ＋2倍ノックバック)', rarity: 'rare' },
   'combo-master': { name: 'コンボマスター', desc: '近接フィニッシュのコンボ窓延長＋コンボ中は全攻撃のダメージ増加', rarity: 'rare' },
   'knife-master': { name: 'ナイフマスター', desc: '近接ダメージのコンボでダメージ増加(+2%/hit, 最大+60%)。近接クリ率+20%。ただし弾薬ドロップ0%', rarity: 'rare' },
-  'benkei':       { name: '弁慶',           desc: '武器を切り替えると10秒間クリティカル率+10%', rarity: 'rare' },
-  'reflex':       { name: '反射神経',       desc: '被弾時に反撃の爆発(CDあり)', rarity: 'rare' },
   'rescue-signal':{ name: '救難信号',       desc: '近接ヒット時、一定確率で味方が援護攻撃(必中・倍率1)。ズーム演出', rarity: 'rare' },
   // 通常
+  // SKILL_BUILD_REDESIGN.md §4: ボス中立の4チャネル系=積ませて派手にする側としてノーマルへ降格。
+  // flashyタグ(FLASHY_SKILLS)対象=§4表の(flashy)表記どおり3種のみ。
+  'sharpshooter': { name: 'シャープシューター', desc: '銃弾の貫通+1', rarity: 'normal' },
+  'ricochet':     { name: '跳弾',           desc: '命中弾が20%で近くの別の敵へ跳ねる(0.5倍)', rarity: 'normal' },
+  'punisher':     { name: 'パニッシャー',   desc: 'ノックバック中の敵が他の敵に当たると巻き込む(近接の半分ダメージ＋2倍ノックバック)', rarity: 'normal' },
+  // §4: 条件付き小強化としてノーマルへ降格(flashyタグ無し)。
+  'benkei':       { name: '弁慶',           desc: '武器を切り替えると10秒間クリティカル率+10%', rarity: 'normal' },
+  'reflex':       { name: '反射神経',       desc: '被弾時に反撃の爆発(CDあり)', rarity: 'normal' },
   'gold-rush':    { name: 'ゴールドラッシュ', desc: 'ゴールドの獲得量+20%(Lvで+35%/+50%)。リザルト・宿敵討伐・クエスト報酬が対象', rarity: 'normal' },
   'time-keeper':  { name: 'タイムキーパー', desc: 'サブウェポンのクールダウン-30%', rarity: 'normal' },
   'ghost-shooter':{ name: 'ゴーストシューター', desc: '20%の確率で弾を消費しない', rarity: 'normal' },
@@ -745,6 +760,17 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'poi-bombing':  { name: '爆撃',   desc: '3秒に1度、近くの敵にグレネードランチャーを自動発射', rarity: 'super' },
   'poi-guard':    { name: '防衛',   desc: 'プレイヤーの周りをブーメランが常に周回し、触れた敵弾もかき消す', rarity: 'super' },
   'poi-thrall':   { name: '使役',   desc: '倒した敵の20%を仲間(ゾンビ)として復活させる。最大1体・死ぬまで追従', rarity: 'super' },
+  // SKILL_BUILD_REDESIGN.md §14(社長承認2026-08-13「全て採用」)・新スキル9種。B3=台帳掲載のみ
+  // (先行掲載)。RUN_DRAFT_EXCLUDED_SKILLS/GACHA_EXCLUDED_SKILLSで完全に眠らせている(効果配線はB7)。
+  'big-bullet':      { name: 'ビッグバレット',       desc: '弾のサイズを拡大(見た目と当たり判定を同時に拡大。貫通数・跳弾回数・壁衝突は変化しない)', rarity: 'normal' },
+  'ice-shot':        { name: 'アイスショット',       desc: '命中した敵を鈍足化(ボスは対象外)。キル時に氷片を3個飛ばす(通常弾の0.3倍ダメージ)', rarity: 'normal' },
+  'vampire':         { name: '吸血',                 desc: 'キル時、一定確率でHPを回復(発動率は固定)', rarity: 'normal' },
+  'incendiary-round':{ name: '延焼弾',               desc: '被弾させた敵を燃焼させる(秒間ダメージ)', rarity: 'rare' },
+  'execution-shock': { name: '処刑の衝撃波',         desc: '近接フィニッシュ時、周囲に衝撃波を放つ(近接攻撃の表示ダメージ基準・ノックバック付き)', rarity: 'rare' },
+  'gravity-shot':    { name: 'グラビティショット',   desc: 'キル時、一定確率で周囲の敵を中心へ引き寄せる爆縮を発生させる', rarity: 'rare' },
+  'echo-shot':       { name: 'エコーショット',       desc: 'クリティカル時、一定確率で弾を複製して追加発射する', rarity: 'super' },
+  'barrage-king':    { name: '弾幕の王',             desc: 'カウンターの反射弾のダメージと体勢削りを強化する', rarity: 'super' },
+  'blood-treads':    { name: '血の履帯',             desc: '移動軌跡に棘を残し、触れた敵に継続ダメージを与える', rarity: 'super' },
 };
 
 // レベル別の説明。共通説明(base)は必ず残し、現在のLvの具体値(lv[])を併記する
@@ -759,7 +785,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'guardian-spirit': { base: 'ボス戦で自分の過去のプレイを写した霊が現れる。ボスHP×1.6、獲得ゴールド×0.5' },
   'ghost-helper':    { base: '他のプレイヤーの霊をランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.7' },
   'ghost-slayer':    { base: '評点上位20%の霊からランダムに呼ぶ。ボスHP×1.6、獲得ゴールド×0.5' },
-  // レア
+  // レア(§4でsharpshooter/ricochet/punisher/benkei/reflexはノーマルへ降格済み。値は無改変)
   'crit-up':      { base: 'クリティカルダメージが上昇（ボスにも適用）', lv: ['×1.5', '×1.75', '×2.0'] },
   'knight':       { base: '被ダメージ減少＋盾/召喚の最大HP増加', lv: ['被ダメ-20%／召喚HP+50%', '被ダメ-30%／召喚HP+75%', '被ダメ-40%／召喚HP+100%'] },
   'exploder':     { base: '全ての爆発の範囲とダメージが増加', lv: ['+20%', '+35%', '+50%'] },
@@ -793,6 +819,17 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'poi-bombing':  { base: '3秒に1度、近くの敵にグレネードランチャーを自動発射' },
   'poi-guard':    { base: 'プレイヤーの周りをブーメランが常に周回し、触れた敵弾もかき消す' },
   'poi-thrall':   { base: '倒した敵の20%を仲間(ゾンビ)として復活させる。最大1体・死ぬまで追従' },
+  // SKILL_BUILD_REDESIGN.md §14/§16-5(叩き台の数値。効果配線はB7で確定)。B3では眠っており誰も
+  // 到達しないが、台帳としては完成形の文章にする(末尾に「準備中」等は付けない・§19-1点4)。
+  'big-bullet':      { base: '弾のサイズを拡大(見た目と当たり判定を同時に拡大。貫通数・跳弾回数・壁衝突は変化しない)', lv: ['×1.3', '×1.5', '×1.7'] },
+  'ice-shot':        { base: '命中した敵を鈍足化(ボスは対象外)。キル時に氷片3個(通常弾の0.3倍)を飛ばす', lv: ['鈍足20%・1秒', '鈍足30%・1秒', '鈍足40%・1.5秒'] },
+  'vampire':         { base: 'キル時、一定確率でHPを回復(発動率は固定)', lv: ['HP+2', 'HP+4', 'HP+6'] },
+  'incendiary-round':{ base: '被弾させた敵を燃焼させる(秒間ダメージ)', lv: ['秒2×3秒', '秒2×3秒＋着弾地点に小さな炎床', '秒4×4秒＋炎床(大)'] },
+  'execution-shock': { base: '近接フィニッシュ時、周囲に衝撃波を放つ(近接攻撃の表示ダメージ基準・ノックバック付き)', lv: ['半径80・近接30%', '半径100・40%', '半径120・50%'] },
+  'gravity-shot':    { base: 'キル時、一定確率で周囲の敵を中心へ引き寄せる爆縮を発生させる', lv: ['発動20%・半径100', '発動30%・半径120', '発動40%・半径140'] },
+  'echo-shot':       { base: 'クリティカル時、一定確率で弾を複製して追加発射する', lv: ['複製50%', '複製75%', '複製100%'] },
+  'barrage-king':    { base: 'カウンターの反射弾のダメージと体勢削りを強化する', lv: ['×1.5', '×1.75', '×2.0'] },
+  'blood-treads':    { base: '移動軌跡に棘を残し、触れた敵に継続ダメージを与える', lv: ['2秒間・秒2', '3秒間・秒3', '4秒間・秒4'] },
 };
 // 現在Lvに即した説明。共通説明＋「Lv○：具体値」を併記。Lv変化なしは共通説明のみ。
 export const skillDescForLevel = (key: SkillKey, level: number): string => {
@@ -875,15 +912,50 @@ export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル
 // ランダムで1つ。増えてきたら選択式も検討」)。順序に意味はない(表示/抽選用の単なる列挙)。
 export const POLICE_REWARD_SKILLS: SkillKey[] = ['poi-bombing', 'poi-guard', 'poi-thrall'];
 
+// SKILL_BUILD_REDESIGN.md §14(社長承認2026-08-13)・新スキル9種のキー一覧。B3時点では
+// 台帳掲載のみ(先行掲載)で、効果配線(B7)まではドラフト・ガチャの両方から完全に除外する
+// (§19-1点4「効果の無い当たりを引かせない」)。
+export const NEW_SLEEPING_SKILLS: SkillKey[] = [
+  'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
+  'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
+];
+// 装備画面の「解禁済み X/Y」表示(SkillGacha)の分母。NEW_SLEEPING_SKILLSは誰にも到達できない
+// (§19-1点4)ため、SKILL_KEYS.length をそのまま分母にすると新9種ぶんだけ永久に埋まらないカウンターに
+// なってしまう(B3で新規に踏む回帰)。到達可能な全種のみを分母にし、100%完了が引き続き成立するように
+// する(B7で効果配線され次第、自動的に分母へ含まれる)。
+export const OBTAINABLE_SKILL_KEYS: SkillKey[] = SKILL_KEYS.filter(k => !NEW_SLEEPING_SKILLS.includes(k));
+
+// SKILL_BUILD_REDESIGN.md §4/§19-1点2・3: ノーマル抽選(runSkillDraft.ts)で重み×2になるタグ。
+// 付与対象は§4表の(flashy)表記どおり3種のみ(社長指示「flashyタグの付与対象は§4の表の(flashy)
+// 表記どおり」=§2-5の6種案を上書き確定)。ボス中立4チャネル系を積ませて派手にする側。
+export const FLASHY_SKILLS: SkillKey[] = ['sharpshooter', 'ricochet', 'punisher'];
+
 // ガチャ(強化訓練)からは出さないスキル。死神(reaper)は「死神を倒すと習得」専用(社長指示)。
 // 警察署アリーナ3種も同じ理由で除外(そこでしか手に入らないことが寄り道の存在理由・§6.24)。
 // 守護霊(guardian-spirit)は最初から全員所持(下のDEFAULT_OWNED_SKILLS)なのでガチャに出す意味が無い。
-export const GACHA_EXCLUDED_SKILLS: SkillKey[] = ['reaper', 'guardian-spirit', 'ghost-helper', 'ghost-slayer', ...POLICE_REWARD_SKILLS];
+// scrap-builder/warm-up(§19-1点5): ラン中ドラフトから既に除外済み(取得時点で効果の柱が発火不能=
+// RUN_DRAFT_EXCLUDED_SKILLS)だが、持ち込みが0になった今はガチャで引いても到達経路が無い死に景品
+// になるため、B3でガチャ排出からも除外する(§17-3検収の再確認の結論)。
+// NEW_SLEEPING_SKILLS(§14の新9種)は台帳掲載のみで効果配線がB7まで無いため、ここでも除外して
+// 完全に眠らせる。
+export const GACHA_EXCLUDED_SKILLS: SkillKey[] = [
+  'reaper', 'guardian-spirit', 'ghost-helper', 'ghost-slayer', ...POLICE_REWARD_SKILLS,
+  'scrap-builder', 'warm-up',
+  ...NEW_SLEEPING_SKILLS,
+];
 
 // BOT_AND_GHOST.md G3(社長指示v0.25.2452「守護霊スキルは最初から解禁しとこうか」):
 // 最初から所持済みのスキル。新規セーブ・既存セーブの両方で、ownedSkills 読み込み時に
 // 無ければ追加するマイグレーション(ensureDefaultOwnedSkills)をgameStoreの初期化が通す。
-export const DEFAULT_OWNED_SKILLS: SkillKey[] = ['guardian-spirit', 'ghost-helper', 'ghost-slayer'];
+// SKILL_BUILD_REDESIGN.md §12-3★2/§19-1点3(社長裁定「ヴァンサバみたいに、初期をもう少し
+// ビルド増やせば?」): 守護霊系(同行者枠・枠外)に加えて、ノーマル5+レア4=9種を初期所持へ追加。
+// ガチャ0回でも「9種から6枠を組む」実選択が毎ラン発生する(超レアは0=ガチャ専用のまま不変)。
+// ガチャ除外には入れない(§16-9点2=ガチャで被った場合のLv上げ経路を残す)。
+export const DEFAULT_OWNED_SKILLS: SkillKey[] = [
+  'guardian-spirit', 'ghost-helper', 'ghost-slayer',
+  'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
+  'fire-shooter', 'bomb-counter', 'exploder', 'knight',
+];
 /** ownedSkills に既定所持スキルが欠けていれば末尾へ補って返す(純関数。欠けが無ければそのまま)。 */
 export const ensureDefaultOwnedSkills = (owned: SkillKey[]): SkillKey[] => {
   const missing = DEFAULT_OWNED_SKILLS.filter(k => !owned.includes(k));
