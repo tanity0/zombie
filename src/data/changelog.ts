@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3190',
+    items: [
+      'ゲーム内容の変更はありません(スキルのラン中取得ビルドの設計書を追加しました。監査中)。',
+    ],
+  },
+  {
     version: '0.25.3189',
     items: [
       'サブウェポンのラン中の強化上限が、開発施設で買った陳列レベルで決まるようになりました(20G=装備可能 / 50G=商人でLv2まで / 100G=Lv3まで)。キャラ固有サブも、陳列を買うまではラン中に強化できません。',
