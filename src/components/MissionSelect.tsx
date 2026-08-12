@@ -93,6 +93,7 @@ import {
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
+import { AVATARS, AVATAR_IDS, type AvatarId } from '../data/avatars';
 import { spritePath } from '../utils/spriteLoader';
 import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
@@ -372,6 +373,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const ownedSkillLevels = useGameStore(state => state.ownedSkillLevels);
   const setPendingLoadout = useGameStore(state => state.setPendingLoadout);
   const setPendingSkills = useGameStore(state => state.setPendingSkills);
+  // アバターシステム(試験・第1弾)。装備メニュー内の独立枠。プリミティブ(string|null)購読のみ=React再描画規律に沿う。
+  const avatarId = useGameStore(state => state.avatarId);
+  const setAvatarId = useGameStore(state => state.setAvatarId);
   const [cleared, setCleared] = useState<Set<string>>(() => getClearedStages());
 
   // PACING_PUZZLE.md §6.18 バッチM41: 資料室(未読バッジ+閲覧)+「資料が追加されました」ポップアップ。
@@ -1020,9 +1024,32 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               })}
             </div>
           </div>
+          {/* アバター(試験・第1弾)。トグル選択式(なし/猫耳セット)。見た目は既存の装備欄に合わせる=磨き込み不要(試験機能)。 */}
+          <div>
+            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-sky-200/70">アバター（試験）</div>
+            <div className="menu-stagger grid grid-cols-2 gap-2">
+              {([null, ...AVATAR_IDS] as (AvatarId | null)[]).map(id => {
+                const on = avatarId === id;
+                const label = id === null ? 'なし' : AVATARS[id].name;
+                return (
+                  <button
+                    key={id ?? 'none'}
+                    onClick={() => { playSfx('ui-select'); setAvatarId(id); }}
+                    className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2.5 text-left transition-[filter] ${
+                      on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
+                    }`}
+                  >
+                    <span className="block truncate text-[13px] font-semibold">{label}</span>
+                    {on && <Check size={15} className="shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <p className="text-[11px] text-white/45 text-center">
             スキル: {equippedSkills.length === 0 ? 'なし' : equippedSkills.map(k => SKILLS[k].name).join(' / ')}
             {' ／ '}サブ: {equippedSubs.length === 0 ? 'なし' : equippedSubs.map(k => subWeaponDisplayName(k)).join(' / ')}
+            {' ／ '}アバター: {avatarId ? AVATARS[avatarId].name : 'なし'}
           </p>
         </div>
       </>

@@ -216,6 +216,10 @@ export const ensureTextures = (): Promise<void> => {
       // サブウェポンの表示スプライト(社長提供・色キー済みPNG=通常ロードでOK)。ドット絵調なので nearest。
       { name: 'drone-boomerang', scaleMode: 'nearest' }, // ドローンブーメラン(回転する投擲刃)
       { name: 'first-aid-kit', scaleMode: 'nearest' },   // 救急鞄(空鞄投擲の見た目)
+      // アバターシステム(試験・第1弾「猫耳セット」・社長支給v0.25.3217)。名前は src/data/avatars.ts の
+      // AvatarPart.tex と一致させる(視覚専用・判定なし)。ドット絵タッチ=nearest。
+      { name: 'avatar-cat-ears', scaleMode: 'nearest' }, // 100×48
+      { name: 'avatar-cat-tail', scaleMode: 'nearest' }, // 76×128
       // 裏ボス スカジの氷ハザード(氷塊テレグラフ / 飛ぶ氷の刃)。ピクセルアート=nearest。
       { name: 'skadi-ice-block', scaleMode: 'nearest' },
       { name: 'skadi-ice-blade', scaleMode: 'nearest' },

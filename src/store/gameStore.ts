@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { TutorialSlide } from '../data/tutorials';
+import { isAvatarId, type AvatarId } from '../data/avatars';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { generateEquipmentChoices } from '../utils/upgradeUtils';
 import { shouldEmitThrottled } from '../utils/emitThrottle';
@@ -777,6 +778,19 @@ const saveCarriedEquip = (defId: string | null): void => {
 
 // 次ランへ持ち越す装備ID(localStorage)。キャラ選択画面の「持ち越し装備」表示などから参照する。
 export const getCarriedEquipId = (): string | null => loadCarriedEquip();
+
+// アバターシステム(試験・第1弾)。選択中アバターid(または未装備=null)を1キーで永続(視覚のみ・
+// resetGame では消さない=carriedEquipと違い「ラン単位の持ち越し」ではなく恒久設定)。
+const AVATAR_KEY = 'zombie:avatar';
+const loadAvatarId = (): AvatarId | null => {
+  try { const r = localStorage.getItem(AVATAR_KEY); return isAvatarId(r) ? r : null; } catch { return null; }
+};
+const saveAvatarId = (id: AvatarId | null): void => {
+  try {
+    if (id) localStorage.setItem(AVATAR_KEY, id);
+    else localStorage.removeItem(AVATAR_KEY);
+  } catch { /* ignore */ }
+};
 
 // 装備を該当スロットへ装着した新 Player を返す純関数(同スロットは置換=破棄)。最大体力の増減は
 // player.maxHealth へベイクし、増分ぶんだけ現HPも底上げ(減少時は上限へクランプ)。
@@ -3998,6 +4012,8 @@ interface GameState {
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   purchasedSubLevels: Partial<Record<SubWeaponKey, number>>; // 開発施設で購入した陳列Lv(永続)。装備条件=Lv1以上
   setPurchasedSubLevel: (key: SubWeaponKey, level: number) => void;
+  avatarId: AvatarId | null; // アバターシステム(試験・第1弾)。選択中のアバター(視覚のみ・永続・resetGameで消えない)
+  setAvatarId: (id: AvatarId | null) => void;
   setStartWithTestStraps: (enabled: boolean) => void;
   setShowStatsOverlay: (enabled: boolean) => void;
   stampPlayerIntro: () => void; // 登場演出の開始(初フレームで終了時刻を確定)
@@ -4427,6 +4443,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
   purchasedSubLevels: loadSubShelfLevels(),
+  avatarId: loadAvatarId(),
   pendingLoadout: loadStringArray(LOADOUT_SUBS_KEY) as SubWeaponKey[],
   // 警察署のpoi専用スキルは「プレイ中のみ付与」(社長指示v0.25.2451)。旧実装が恒久所持
   // (grantSkill)で書いていたため、汚染済みセーブから読み込み時に自動除去する(装備枠も同様)。
@@ -12603,6 +12620,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       saveSubShelfLevels(next);
       return { purchasedSubLevels: next };
     });
+  },
+
+  setAvatarId: (id) => {
+    saveAvatarId(id);
+    set({ avatarId: id });
   },
 
   setStartWithTestStraps: (enabled) => {

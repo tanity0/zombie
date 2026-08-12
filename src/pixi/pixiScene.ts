@@ -151,6 +151,7 @@ import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
 import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
+import { AVATARS, type AvatarPart } from '../data/avatars'; // アバターシステム(試験・第1弾)。台帳は renderer-agnostic、ここは読んで描くだけ。
 import {
   glowFalloff, glowLenMult, glowScore, explosionSilAlpha, ambientSilAlpha,
   pickExplSlot, rankFade, shouldFreezeGeom,
@@ -3188,6 +3189,11 @@ export class PixiScene {
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
   private playerSkateboard = new Sprite();                 // スケボー乗車中に足元へ敷く板(プレイヤー背面=足の下)
   private playerSkateboardAttached = false;                // playerView.container へ親子付け済みか
+  // アバターシステム(試験・第1弾): 台帳(src/data/avatars.ts)のパーツをレイヤー別にプール。
+  // above=本体スプライトより前面(addChild=末尾) / below=本体より背面(addChildAt index1・katana/skateboardと同じ位置)。
+  // パーツ数は将来のアバター追加で増える想定なので固定2枠にせず配列を都度必要数まで伸ばす(syncAvatarPartLayer)。
+  private playerAvatarAbove: Sprite[] = [];
+  private playerAvatarBelow: Sprite[] = [];
   private playerKnife = new Sprite();                      // 近接スイング1枚目(ダガー画像 knife-swing-1・装備絵が無い時のフォールバック)
   private playerKnifeSlash = new Sprite();                 // 近接スイング2枚目(弧のみ knife-swing-2)
   private playerKnifeTrail = new Sprite();                 // 近接スイング3枚目(弧の残光 knife-swing-3)
@@ -12636,6 +12642,52 @@ export class PixiScene {
     this.ghostMuzzlePrevFired = 0;
   }
 
+  // アバターシステム(試験・第1弾)。台帳(src/data/avatars.ts)の1レイヤーぶんのパーツをプールへ流し込む
+  // 汎用ループ(パーツ種別ごとの特別分岐なし=新しいアバターは台帳に1エントリ足すだけで描ける)。
+  // above=本体スプライトより前面(addChild=末尾に追加=常に最前面)/ below=本体より背面
+  // (addChildAt index1=katana-item/skateboardと同じ「reticleとspriteの間」)。
+  // スプライトは一度作ったら使い回す(生成は初回のみ・毎フレームは位置/スケール更新だけ=プール済み)。
+  private syncAvatarPartLayer(
+    pool: Sprite[], parts: AvatarPart[], above: boolean, container: Container,
+    fb: { footX: number; footY: number; boxW: number; boxH: number },
+    dsc: number, bob: number, introOffX: number, introOffY: number, actOffX: number, actOffY: number,
+    bodyAlpha: number, face: number,
+  ): void {
+    for (let i = 0; i < parts.length; i++) {
+      let sp = pool[i];
+      if (!sp) {
+        sp = new Sprite();
+        sp.visible = false;
+        if (above) container.addChild(sp);      // 本体より前面(上)
+        else container.addChildAt(sp, 1);        // 本体より背面(下・reticleとspriteの間)
+        pool[i] = sp;
+      }
+      const part = parts[i];
+      const tex = getTexture(part.tex);
+      if (!tex || tex.width === 0) { sp.visible = false; continue; }
+      sp.texture = tex;
+      sp.anchor.set(part.anchorX, part.anchorY);
+      const srcPx = part.sizeBasis === 'width' ? tex.width : tex.height;
+      const targetPx = (part.sizeBasis === 'width' ? fb.boxW : fb.boxH) * dsc * part.sizeFrac;
+      const sc = srcPx > 0 ? targetPx / srcPx : 0;
+      const mirror = part.flipWithFacing && face < 0;
+      sp.scale.set(mirror ? -sc : sc, sc);
+      const ox = part.offsetXFrac * fb.boxW * dsc * (part.flipWithFacing ? face : 1);
+      const oy = part.offsetYFrac * fb.boxH * dsc;
+      sp.position.set(
+        this.snapToScreenPixel(fb.footX + ox, this.L.world.position.x) + introOffX + actOffX,
+        this.snapToScreenPixel(fb.footY - bob + oy, this.L.world.position.y) + introOffY + actOffY,
+      );
+      sp.alpha = bodyAlpha;
+      sp.visible = sp.alpha > 0.01;
+    }
+    // 選択中アバターが変わってパーツ数が減った場合、余ったプール分は隠すだけ(destroyしない=使い回し)。
+    for (let i = parts.length; i < pool.length; i++) {
+      const sp = pool[i];
+      if (sp) sp.visible = false;
+    }
+  }
+
   private drawPlayer(view: ActorView, p: Player, gameTime: number, now: number) {
     const fb = playerFootBox(p);
     // スケボー乗車中は歩きアニメを止める(社長指示): 待機フレームで板に立つ。歩行の上下バウンド(bob)/
@@ -12917,6 +12969,22 @@ export class PixiScene {
       sb.alpha = view.sprite.alpha;
     } else {
       sb.visible = false;
+    }
+    // アバターシステム(試験・第1弾): 選択中セット(なければ非表示)の全パーツを台帳から汎用ループで描く。
+    // 判定/座標には一切影響しない(視覚のみ)。表示可否は本体と同じ alpha(死亡フェード/ヘリ登場/被弾点滅/
+    // シーカー半透明/廊下フェード込み)に揃えるので、本体が消える場面ではアバターも一緒に消える。
+    {
+      const avatarId = useGameStore.getState().avatarId;
+      const avatarDef = avatarId ? AVATARS[avatarId] : null;
+      const parts = avatarDef ? avatarDef.parts : [];
+      this.syncAvatarPartLayer(
+        this.playerAvatarAbove, parts.filter(pt => pt.layer === 'above'), true, view.container,
+        fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face,
+      );
+      this.syncAvatarPartLayer(
+        this.playerAvatarBelow, parts.filter(pt => pt.layer === 'below'), false, view.container,
+        fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face,
+      );
     }
     // 救急鞄スキル発動: 「鞄を頭上へ掲げる」一拍(振り抜きポーズと同じ窓・描画のみ・判定不変)。
     // 立ち上がりでせり上がり→保持→引きでフェードアウト。向きで左右反転・本体の傾きへ軽く追従。

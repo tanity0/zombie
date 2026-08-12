@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.3223 — アバターシステム(試験)第1弾「猫耳セット」実装(Sonnet納品・検収済み)【2026-08-13 00:57 JST】
+- 新規 src/data/avatars.ts: アバター台帳(1アバター=パーツ配列。tex/layer(above|below)/anchor/
+  offsetFrac/sizeFrac/flipWithFacing)。追加はここに1エントリ+pixiTextures登録のみ(コード不要)。
+- gameStore: avatarId(localStorage 'zombie:avatar'永続)+setAvatarId。リセット系では消えない恒久設定。
+- pixiScene: プール2本+汎用syncAvatarPartLayer。耳=above(最前面)・尻尾=below(katana-item/
+  skateboardと同じ挿入位置)。位置/スケールはfb.boxW/boxH+depthScale=既存実証経路の踏襲(ズーム掟OK)。
+  可視性はview.sprite.alpha連動=本体が消える場面(死亡/登場/廊下フェード)は一緒に消える。
+- MissionSelect: 装備メニューに「アバター(試験)」枠(なし/猫耳セット)。プリミティブ購読で再描画規律遵守。
+- 検収: 差分121行全て追加のみ/typecheck 0/lint 0(発注元でも再実行して確認)。
+- ★叩き台(実機調整前提): 耳offsetYFrac=-0.92/尻尾offsetXFrac=-0.35。武将フル装備中も常時表示
+  (指示どおり)。気になれば1行で切替可能(納品報告に記載)。
+
 ## v0.25.3222 — ★2裁定=初期所持9種へ拡張(ヴァンサバ式)・監査7巡目の裁定完了【2026-08-13 00:55 JST】
 社長「ヴァンサバみたいに、初期をもう少しビルド増やせば?」→採用: 初期所持5種→9種
 (ノーマル5: 貫通/跳弾/パニッシャー/アタックシューター/スラッシャー、レア4: ファイアシューター/
