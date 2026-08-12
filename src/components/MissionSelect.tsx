@@ -2203,7 +2203,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <button key={skillKey} type="button" disabled={maxed || cantPay}
               onClick={() => { if (!maxed && spendGold(cost)) { playSfx('ui-select'); setPurchasedSubLevel(skillKey, Math.min(3, level + 1)); } }}
               className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''} ${cantPay ? 'opacity-60' : ''}`}>
-              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">陳列 Lv{level} → Lv{Math.min(3, level + 1)}</span></span>
+              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">{level === 0 ? '解放して装備可能に' : `商人の陳列上限 Lv${level} → Lv${Math.min(3, level + 1)}`}</span></span>
               <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
             </button>
           );
