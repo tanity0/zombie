@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3208',
+    items: [
+      '開発: スキルビルド設計書の監査5巡目(21件・不合格)を受領。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3207',
     items: [
       '敵の描画処理でエラーが起きた際、前フレームの攻撃エフェクト(赤ライン等)が画面に焼き付いたまま残る構造を修正しました(アクラシエルの残留ライン対策の第1弾)。',
