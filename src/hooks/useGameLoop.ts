@@ -2609,7 +2609,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // cine実験台(?cine=1 & stage-7)ではストーリーボス(グレン)を出さない=クリーンな映像確認(社長v0.25.1879)。
           // ?nospawn=1 でもストーリーボスを出さない(=イベント不発火。社長指示v0.25.1995・QAのクリーン撮影用)。
           const cineSuppress = CINE_TESTBED && getSelectedStageId() === 'stage-7';
-          if (!storyBossSpawnedRef.current && introDone && glenSpawnOk && !cineSuppress && (!noSpawn || practiceWantsCastleBoss())) {
+          // v0.25.3203(社長報告「アクラシエル、技がすべて壊れてる…もうめちゃくちゃ」の主因):
+          // アクラシエルのボスモードは stage-ex1(storyBossOnly)で ?gateboss=1 起動するため、
+          // **ストーリーボス(未確認変異体=巨人)がアクラシエルと同時に湧いて**いた。
+          // 3方向の赤ライン・予兆なしのダメージは同席した巨人の技。ゲート2練習(?gateboss=1)中は
+          // ストーリーボスを出さない(通常のstage-ex1出撃は不変)。
+          if (!storyBossSpawnedRef.current && introDone && glenSpawnOk && !cineSuppress && !FORCE_GATEBOSS && (!noSpawn || practiceWantsCastleBoss())) {
             storyBossSpawnedRef.current = true;
             const scx = player.x + player.width / 2;
             const scy = player.y + player.height / 2 - STORY_BOSS_SPAWN_DIST;

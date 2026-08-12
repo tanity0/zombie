@@ -503,6 +503,8 @@ export const STAGES: Stage[] = [
     timeLabel: '数日後／未明', // 統合正本5.2: 表示上の時間経過(数値日時へ変換しない)
     locationTitle: '旧市街地・洋館跡地',
     storyBossOnly: true, // 開始通信なし・現地到着後いきなり未確認変異体が出現し即戦闘(統合正本10.2)
+    farBackdrop: 'stage7', // ★仮(社長指示v0.25.3203「一旦仮でステージ7の背景にしておいて」): 専用遠景が無く壊れて見えるため星雲を仮置き
+
     subs: [],
     main: {
       code: 'EX1',
