@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3179',
+    items: [
+      '召喚したユニット(錬金術・使役)が金色の半透明になりました。敵と見分けが付きます(透明度は守護霊と同じ)。',
+    ],
+  },
+  {
     version: '0.25.3178',
     items: [
       '【不具合修正】一度ボスモードで遊ぶと、そのあと通常プレイを終えてメニューへ戻るたびにボス一覧が開いてしまっていたのを直しました。',

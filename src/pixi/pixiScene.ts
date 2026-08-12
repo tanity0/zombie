@@ -12147,12 +12147,14 @@ export class PixiScene {
     const shakeX = hitT > 0 ? Math.sin(sinceHit / 16) * HIT_SHAKE_PX * hitT : 0;
     view.sprite.position.set(Math.round(fb.footX + shakeX), Math.round(fb.footY));
     view.container.zIndex = fb.footY;
-    view.container.alpha = 1;
+    // v0.25.3179(社長指示): 召喚は**金色半透明**。透明度は守護霊と同じ(GHOST_ALLY_ALPHA=0.7)に
+    // 揃える=「半透明の金色=味方」という1つの文法にする(敵は常に不透明なので混ざらない)。
+    view.container.alpha = GHOST_ALLY_ALPHA;
     if (tex) {
       view.sprite.texture = tex;
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
       view.sprite.scale.set(sc, sc);
-      // 被弾直後は赤白フラッシュ、それ以外は味方識別のシアン。
+      // 被弾直後は赤白フラッシュ、それ以外は味方識別の金色(v0.25.3179)。
       view.sprite.tint = hitT > 0.35 ? 0xffd0d0 : ALCHEMY_SUMMON_TINT;
       view.sprite.visible = true;
     } else {
@@ -12165,8 +12167,9 @@ export class PixiScene {
       const cx = s.x + s.width / 2;
       const cy = s.y + s.height / 2;
       const pulse = 0.5 + 0.3 * Math.sin(now / 200);
-      r.circle(cx, cy, s.width * 0.62).stroke({ color: 0x38bdf8, alpha: 0.5 * pulse, width: 2 });
-      r.circle(cx, cy, s.width * 0.42).stroke({ color: 0xbae6fd, alpha: 0.4 * pulse, width: 1.5 });
+      // v0.25.3179: 本体の金色化に合わせて渦の輪も金系へ(シアンの輪+金の本体だと別物に見える)。
+      r.circle(cx, cy, s.width * 0.62).stroke({ color: 0xf5c542, alpha: 0.5 * pulse, width: 2 });
+      r.circle(cx, cy, s.width * 0.42).stroke({ color: 0xffe9a3, alpha: 0.4 * pulse, width: 1.5 });
     }
     // 前面: 通常個体のHPバー。
     const o = view.overlay;
