@@ -187,6 +187,8 @@ import {
   stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT, glenReachAimStart,
 } from '../utils/mimirLaserTrack';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
+// 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
+import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
   clampRectToPlayableArea,
@@ -10751,11 +10753,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (phase === 'zpause') {
             return { ...enemy, vx: 0, vy: 0, aiPhase: phase, aiPhaseUntil: phaseUntil }; // 停止
           }
-          const zSpeed = enemy.speed * ZOMBIE_SPEED_MULT * (phase === 'zrush' ? ZOMBIE_RUSH_SPEED_MULT : 1) * rnSpeedMult * screamSpeedMult;
+          // v0.25.3176(案4+案3): 個体差(±12%)と役割(直進/回り込み/遅れて来る)をゾンビにも掛ける。
+          // フラフラ(既存)は**この上に**乗るので、蛇行の意図は変わらない。
+          const zTraits = chaffTraits(enemy.id);
+          const zSpeed = enemy.speed * ZOMBIE_SPEED_MULT * (phase === 'zrush' ? ZOMBIE_RUSH_SPEED_MULT : 1)
+            * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, distance);
           // フラフラ: 進行方向に直交する成分を時間で揺らす(個体ごとに位相をずらす)。
           let h = 0;
           for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;
-          const ux = dx / distance, uy = dy / distance;
+          const zHead = chaffHeading(dx / distance, dy / distance, zTraits, distance);
+          const ux = zHead.x, uy = zHead.y;
           const wob = Math.sin(gameTime / 200 + (h % 628) / 100) * ZOMBIE_WOBBLE;
           const hx = ux + (-uy) * wob, hy = uy + ux * wob;
           const hl = Math.max(0.001, Math.hypot(hx, hy));
@@ -10769,6 +10776,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           * bossSlowMult(enemy, gameTime);
         let tvx = (dx / distance) * speed;
         let tvy = (dy / distance) * speed;
+        // ★v0.25.3176(社長指示「雑魚敵の動きが単調」・案4+案3): チャフ(=ここを通るのは bat/skeleton。
+        // zombie は上で早期returnしている)に**個体差**と**役割**を掛ける。役割は追尾の向きと速さを
+        // 曲げるだけ=ターゲット選択・攻撃・判定は不変。回り込みの角度は距離とともに0へ収束する。
+        if (isChaffType(enemy.type)) {
+          const traits = chaffTraits(enemy.id);
+          const head = chaffHeading(dx / distance, dy / distance, traits, distance);
+          const chaffSpeed = speed * chaffSpeedMult(traits, distance);
+          tvx = head.x * chaffSpeed;
+          tvy = head.y * chaffSpeed;
+        }
         // 新型(lich): プレイヤーの周囲を旋回しながら徐々に詰める。放射(内向き)+接線(旋回)を合成し、
         // 遠いほど接線寄り(円を描く)・近いほど放射寄り(詰める)。旋回向きは個体ごとに固定。視覚演出なし=軽量。
         if (enemy.type === 'lich') {
@@ -10864,7 +10881,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, vx: svx, vy: svy, x: smoved.x, y: smoved.y, screamNextAt: nextScream };
         }
 
-        const alpha = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed));
+        // v0.25.3176(案4): 曲がる速さ(慣性tau)にも個体差を入れる。チャフの既存tauは0.30〜0.41sなので
+        // ×0.75〜1.60 = **0.22〜0.65s** の幅になる=同じ型でも曲がり方が揃わない(壁で来なくなる)。
+        const alpha = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed)
+          * (isChaffType(enemy.type) ? chaffTraits(enemy.id).turnTauMult : 1));
         const vx = (enemy.vx ?? tvx) + (tvx - (enemy.vx ?? tvx)) * alpha;
         const vy = (enemy.vy ?? tvy) + (tvy - (enemy.vy ?? tvy)) * alpha;
 
