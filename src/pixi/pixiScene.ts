@@ -712,7 +712,7 @@ const M4_HORIZON_FOREST_UP_PX = tsNum('m4up', 0);
 const M5_HORIZON_FOREST_UP_PX = tsNum('m5up', 0);
 const M6_HORIZON_FOREST_UP_PX = tsNum('m6up', 0);
 const M7_HORIZON_FOREST_UP_PX = tsNum('m7up', 60); // M1と同じく40→60(社長v0.25.1942「m7のも同時に」)
-const EX1_HORIZON_FOREST_UP_PX = tsNum('ex1up', 0);
+const EX1_HORIZON_FOREST_UP_PX = tsNum('ex1up', 60); // v0.25.3205: stage-7の視覚一式を仮流用(m7up=60と同値)
 const EX2_HORIZON_FOREST_UP_PX = tsNum('ex2up', 0);
 const HORIZON_FOREST_UP_BY_STAGE: Record<string, number> = {
   'stage-tutorial': M0_HORIZON_FOREST_UP_PX,
