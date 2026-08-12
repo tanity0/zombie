@@ -88,9 +88,23 @@ export const nextSpecialDeficit = (area: number, alive: Partial<Record<SpecialTy
   return null;
 };
 
-export const nextNuisanceDeficit = (target: NuisanceCounts, alive: NuisanceCounts): NuisanceType | null => {
+/**
+ * ★次に投入すべき邪魔者(いなければ null)。**基準は「その台本でまだ出していない数」**
+ * (`spawnedForScript`)であって、**生存数ではない**(社長裁定v0.25.3177)。
+ *
+ * なぜ生存数をやめたか(社長報告「ステージ4を4:48・R7まで遊んでパンプキンが一度も出なかった」の真因):
+ * 走査は `NUISANCE_TYPES = [plant, werewolf, pumpkin]` の**先頭優先**なので、**パンプキンは常に最後尾**。
+ * 旧実装は生存数を見ていたため、プレイヤーが弾/犬を1体倒すたびに行列が先頭へ戻っていた。
+ * 実測 **205撃破/288秒=1.4秒に1体** に対し投入は **3秒に1体**(`NUISANCE_CD_MS`)——
+ * **倒す速度が補充速度の約2倍**なので、行列は永遠に先頭で止まり最後尾には順番が回らなかった。
+ * 台本のノルマを1体ずつ消化する形にすれば、倒す速さに関係なく**台本どおりの並び**になる。
+ *
+ * 副産物として `isScriptCleared`(片付き判定)と**同じ基準**になる。旧実装は
+ * 「補充=生存数 / 片付き=出した数」で食い違っており、それ自体が事故の温床だった。
+ */
+export const nextNuisanceDeficit = (target: NuisanceCounts, spawnedForScript: NuisanceCounts): NuisanceType | null => {
   for (const t of NUISANCE_TYPES) {
-    if (alive[t] < target[t]) return t;
+    if (spawnedForScript[t] < target[t]) return t;
   }
   return null;
 };
@@ -129,8 +143,10 @@ export interface BoardMaintenanceInput {
   cdElapsedMs: number;              // 最後の基本湧きからの経過ms
   cdMs: number;                     // 実効基本CD(rankAssessor.tickPuzzleClockの結果を渡す)
   nuisanceElapsedMs: number;        // 最後の邪魔者投入からの経過ms
-  nuisanceTargetCounts: NuisanceCounts; // RELAX等のオーバーライドを適用済みの実効目標
-  aliveNuisance: NuisanceCounts;
+  nuisanceTargetCounts: NuisanceCounts; // 現台本のノルマ(緩コマは ZERO_NUISANCE=新規投入なし)
+  // v0.25.3177: 邪魔者の欠員判定は**この台本で既に出した数**で見る(生存数ではない)。理由は
+  // nextNuisanceDeficit のコメント(最後尾のパンプキンに順番が回らなかった件)。
+  nuisanceSpawnedCounts: NuisanceCounts;
   specialElapsedMs: number;
   area: number;                     // RELAX中は-1を渡せば特別枠は自然に不適格になる(呼び出し側の慣習)
   aliveSpecial: Partial<Record<SpecialType, number>>;
@@ -145,7 +161,7 @@ export const decideNextSpawn = (input: BoardMaintenanceInput): PuzzleSpawnDecisi
   if (input.cdElapsedMs < input.cdMs) return null;
   const guardActive = input.msSinceLastHit < POST_HIT_GUARD_MS;
   if (!guardActive && input.nuisanceElapsedMs >= NUISANCE_CD_MS) {
-    const t = nextNuisanceDeficit(input.nuisanceTargetCounts, input.aliveNuisance);
+    const t = nextNuisanceDeficit(input.nuisanceTargetCounts, input.nuisanceSpawnedCounts);
     if (t) return { type: t, slot: 'nuisance' };
   }
   if (!guardActive && input.specialElapsedMs >= SPECIAL_CD_MS) {
@@ -155,9 +171,10 @@ export const decideNextSpawn = (input: BoardMaintenanceInput): PuzzleSpawnDecisi
   return { type: pickChaffType(input.chaffWeights, input.tieBreakRandom), slot: 'chaff' };
 };
 
-// RELAX/HARVEST共通: 邪魔者枠は「新規補充のみ停止・在席は残す」= 実効目標を現在の在籍数に固定する
-// (nextNuisanceDeficitは常にnullを返すようになる=補充されない。倒せば自然に減る)。
-export const noNewSupplyNuisanceTarget = (alive: NuisanceCounts): NuisanceCounts => ({ ...alive });
+// v0.25.3177: 旧 `noNewSupplyNuisanceTarget(alive)`(緩コマで実効目標=在籍数にして欠員を消す小道具)は
+// **削除**。欠員判定が「出した数 < ノルマ」に変わったので、緩コマは **ZERO_NUISANCE をノルマとして渡す**
+// だけで新規投入が止まる(0を下回る出した数は無い)。盤面目標側は呼び出し元が
+// `Math.max(ノルマ, 在籍数)` を取るので、在席ぶんの枠は従来どおり確保される=挙動は同じ。
 
 // ---- M6 §4-C: 4コマサイクル(リラックス→ハーベスト→通常→ピーク)【旧4-C(RELAX⇄HARVEST交互)は廃止】
 

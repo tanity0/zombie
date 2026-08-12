@@ -67,7 +67,7 @@ import {
   type KomaAssessmentInput, type RankPaceState, type PuzzleRank,
 } from './rankAssessor';
 import {
-  nuisanceTarget, decideNextSpawn, noNewSupplyNuisanceTarget,
+  nuisanceTarget, decideNextSpawn,
   ZERO_NUISANCE, NUISANCE_TYPES,
   nextKomaKind, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
   chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp,
@@ -497,9 +497,12 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     holdIncrease: koma.kind !== 'harvest' && msSinceLastHit < 10000, // §3-A被弾ホールド(盛り演出のハーベストは対象外)
   });
   // 邪魔者/特別枠は通常・ピークのみ供給(緩コマは新規補充停止=在席は自然消化)。
+  // v0.25.3177: 緩コマ(relax/harvest)は**ノルマ0**を渡すだけで新規投入が止まる(欠員判定が
+  // 「出した数 < ノルマ」になったため)。在席ぶんの盤面枠は下の Math.max(ノルマ, 在籍数) が確保する
+  // =旧 noNewSupplyNuisanceTarget と同じ結果。
   const nuisanceTargetCounts = inScriptKoma && koma.script
     ? nuisanceTarget(koma.script)
-    : noNewSupplyNuisanceTarget(aliveNuisance);
+    : ZERO_NUISANCE;
   const areaForSpecial = inScriptKoma ? playerAreaIdx : -1;
   const wantedNuisance = NUISANCE_TYPES.reduce((s, t) => s + Math.max(nuisanceTargetCounts[t], aliveNuisance[t]), 0);
   const wantedSpecial = (aliveSpecial.screamer ?? 0) + (aliveSpecial.ghost ?? 0)
@@ -528,7 +531,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     cdMs,
     nuisanceElapsedMs: gameTime - puzzleCdRef.current.lastNuisanceSpawnAt,
     nuisanceTargetCounts,
-    aliveNuisance,
+    // ★v0.25.3177: 欠員は「この台本で出した数」で見る(生存数ではない)。倒す速さに関係なく
+    // 台本どおりの並びになる=最後尾のパンプキンにも順番が回る。
+    nuisanceSpawnedCounts: koma.scriptSpawned,
     specialElapsedMs: gameTime - puzzleCdRef.current.lastSpecialSpawnAt,
     area: areaForSpecial,
     aliveSpecial,

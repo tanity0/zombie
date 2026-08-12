@@ -3,7 +3,7 @@ import {
   FORMATION_TABLE, HARVEST_PATTERN, patternsForRank, nuisanceTarget, selectPattern, allPatternsSeen,
   SPECIAL_SLOTS, eligibleSpecialSlots, nextSpecialDeficit, nextNuisanceDeficit,
   NUISANCE_CD_MS, SPECIAL_CD_MS, POST_HIT_GUARD_MS, pickChaffType, CHAFF_WEIGHTS_DEFAULT,
-  decideNextSpawn, noNewSupplyNuisanceTarget,
+  decideNextSpawn,
   nextKomaKind, KOMA_ORDER, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
   chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp,
   isScriptCleared, selectRotationPattern, LOWER_MIX_CHANCE, LOWER_MIX_CHANCE_HIT,
@@ -84,14 +84,35 @@ describe('special slots (distance-gated)', () => {
   });
 });
 
-describe('nextNuisanceDeficit', () => {
-  it('returns null when alive already meets or exceeds target for every type', () => {
+// ★v0.25.3177(社長裁定): 欠員の基準は「その台本で**まだ出していない数**」。生存数ではない。
+describe('nextNuisanceDeficit(基準=その台本で出した数)', () => {
+  it('ノルマを出し切っていれば null', () => {
     const target: NuisanceCounts = { plant: 1, werewolf: 0, pumpkin: 2 };
     expect(nextNuisanceDeficit(target, { plant: 1, werewolf: 0, pumpkin: 2 })).toBeNull();
   });
-  it('returns a deficit type when alive is short', () => {
+  it('まだ出していない型を返す', () => {
     const target: NuisanceCounts = { plant: 0, werewolf: 0, pumpkin: 2 };
     expect(nextNuisanceDeficit(target, ZERO_NUISANCE)).toBe('pumpkin');
+  });
+
+  // ここが今回の本丸(社長報告「R7まで遊んでパンプキンが一度も出なかった」の再発防止)。
+  it('★倒されても行列は先頭へ戻らない=最後尾のパンプキンに必ず順番が回る', () => {
+    const target: NuisanceCounts = { plant: 0, werewolf: 3, pumpkin: 2 }; // R7-A相当
+    // 犬を3体出した時点で、たとえ全員倒されて生存0でも次はパンプキン。
+    expect(nextNuisanceDeficit(target, { plant: 0, werewolf: 3, pumpkin: 0 })).toBe('pumpkin');
+    // 旧実装(生存数基準)ならここは 'werewolf' を返し続けていた。
+  });
+
+  it('ノルマを出し切ったら、倒されても同じ型を補充しない(片付き判定と同じ基準)', () => {
+    const target: NuisanceCounts = { plant: 0, werewolf: 3, pumpkin: 2 };
+    expect(nextNuisanceDeficit(target, { plant: 0, werewolf: 3, pumpkin: 2 })).toBeNull();
+  });
+
+  it('先頭優先の順(plant→werewolf→pumpkin)自体は不変', () => {
+    const target: NuisanceCounts = { plant: 1, werewolf: 1, pumpkin: 1 };
+    expect(nextNuisanceDeficit(target, ZERO_NUISANCE)).toBe('plant');
+    expect(nextNuisanceDeficit(target, { plant: 1, werewolf: 0, pumpkin: 0 })).toBe('werewolf');
+    expect(nextNuisanceDeficit(target, { plant: 1, werewolf: 1, pumpkin: 0 })).toBe('pumpkin');
   });
 });
 
@@ -108,7 +129,7 @@ describe('pickChaffType', () => {
 describe('decideNextSpawn', () => {
   const base = {
     boardCount: 0, boardTarget: 10, cdElapsedMs: 99999, cdMs: 500,
-    nuisanceElapsedMs: 99999, nuisanceTargetCounts: ZERO_NUISANCE, aliveNuisance: ZERO_NUISANCE,
+    nuisanceElapsedMs: 99999, nuisanceTargetCounts: ZERO_NUISANCE, nuisanceSpawnedCounts: ZERO_NUISANCE,
     specialElapsedMs: 99999, area: 0, aliveSpecial: {},
     msSinceLastHit: 99999, chaffWeights: CHAFF_WEIGHTS_DEFAULT, tieBreakRandom: 0.5,
   };
@@ -157,11 +178,11 @@ describe('decideNextSpawn', () => {
   });
 });
 
-describe('noNewSupplyNuisanceTarget (緩コマの邪魔者補充停止)', () => {
-  it('pins the effective target to the current alive count (no new spawns, existing stay)', () => {
-    const alive: NuisanceCounts = { plant: 1, werewolf: 0, pumpkin: 2 };
-    const target = noNewSupplyNuisanceTarget(alive);
-    expect(nextNuisanceDeficit(target, alive)).toBeNull();
+// v0.25.3177: 旧 noNewSupplyNuisanceTarget は削除。緩コマは**ノルマ0**を渡すだけで新規投入が止まる。
+describe('緩コマ(relax/harvest)の邪魔者補充停止', () => {
+  it('ノルマ0なら、何体出していようが新規投入は起きない', () => {
+    expect(nextNuisanceDeficit(ZERO_NUISANCE, ZERO_NUISANCE)).toBeNull();
+    expect(nextNuisanceDeficit(ZERO_NUISANCE, { plant: 1, werewolf: 0, pumpkin: 2 })).toBeNull();
   });
 });
 
