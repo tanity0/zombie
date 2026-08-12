@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3227',
+    items: [
+      '開発: スキルビルド設計の監査8巡目結果を反映(設計の穴8件+軽微10件を§16で確定)。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3226',
     items: [
       '開発: スキルビルドの実装を開始(B0=計測器バッチの発注文を設計書§15に記録)。ゲーム内容の変更はありません。',
