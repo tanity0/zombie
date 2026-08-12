@@ -9423,9 +9423,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ('ghost-reflect'・v0.25.2525)だけヘイトの起因を'ghost'にする(escort等それ以外は既定
           // 'player'=「1つの財布」の側という扱い・本バッチのスコープ外)。
           const hateShotSource: HateSide = isGhostShot ? 'ghost' : 'player';
+          // v0.25.3219(社長指示): カウンターで打ち返した弾(reflected)の命中は体勢ゲージを少し削る。
           const enemyKilled = damageEnemy(
             enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource,
-            directPlayerGun && hitCrit ? 'gun-crit' : null,
+            projectile?.reflected ? 'reflect' : directPlayerGun && hitCrit ? 'gun-crit' : null,
           );
           // 護衛NPC/守護霊(ghost-gun・v0.25.2525で反射弾'ghost-reflect'も)の弾の被弾音も、発砲音と
           // 同じ距離減衰をかける(遠い味方の攻撃は被弾音も小さく/画面外は無音)。プレイヤー自身の弾は等倍(gain=1)。

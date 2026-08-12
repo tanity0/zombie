@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.3219 — カウンター弾(反射弾)の命中で体勢ゲージを削る(社長指示)【2026-08-13 00:40 JST】
+- bossPosture.ts: BossPostureImpactに'reflect'追加=0.05(「少し」=gun-critと同格の叩き台。
+  1カウンターで複数枚打ち返せるためcounter(0.20)より大幅に軽く)。
+- useGameLoop 弾→敵命中: projectile.reflected なら postureImpact='reflect' を damageEnemy へ
+  (対象は isEngageableBoss=既存の体勢システムの敵のみ。守護霊の反射弾も同経路=同様に削れる)。
+- 旧・案C(ジブリル限定)はこの全ボス版で置き換え=クローズ。
+検証: typecheck OK / lint 0エラー / bossFullStunCoverage+critPenalty 33件パス。
+
 ## v0.25.3218 — ジブリル射撃の一本化(狙撃テンポへ統一・社長指示)【2026-08-13 00:25 JST】
 社長指示「近接射と狙撃の台本を一本化する。ゆっくりの方を残す」: volleyのclose/snipe分岐を廃止し、
 常に狙撃テンポ(JIBRIL_SNIPE_GAP_MS=1秒間隔・狙い弾は常に×2速)。距離300px閾値と

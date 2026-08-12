@@ -1,7 +1,7 @@
 import type { Enemy, EnemyType } from '../types/game';
 import { isEngageableBoss } from './bossEngagement';
 
-export type BossPostureImpact = 'counter' | 'melee' | 'heavy' | 'gun-crit';
+export type BossPostureImpact = 'counter' | 'melee' | 'heavy' | 'gun-crit' | 'reflect';
 
 export const BOSS_POSTURE_BREAK_MS = 5000; // v0.25.3036(社長指示「紫は5秒に延長」・旧2200)
 export const BOSS_POSTURE_RECOVERY_DELAY_MS = 8000;
@@ -14,6 +14,10 @@ const IMPACT_RATIO: Record<BossPostureImpact, number> = {
   melee: 0.04,
   heavy: 0.10,
   'gun-crit': 0.05,
+  // v0.25.3219(社長指示「カウンター弾でも体勢値を少し削れる様にして」): 打ち返した弾の命中。
+  // 「少し」=gun-critと同格の0.05(叩き台)。反射はカウンター由来だが1アクションで複数枚
+  // 返せる(弾幕を纏めて打ち返す)ため、counter(0.20)より大幅に軽くする。
+  reflect: 0.05,
 };
 
 export const bossPostureMax = (type: EnemyType): number => {
