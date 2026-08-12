@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3233',
+    items: [
+      '開発: スキルビルドの基準線計測②(現行最強2枠ビルドのボス撃破時間=中央値128秒)を記録。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3232',
     items: [
       '開発: スキルビルドの基準線計測①(ボット30ランの到達Lv分布=中央値Lv10)を記録。ゲーム内容の変更はありません。',
