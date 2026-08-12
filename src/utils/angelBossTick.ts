@@ -1043,10 +1043,11 @@ export const runJibrilTick = (
       patch.bossState = 'chase';
       patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
     } else if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
-      const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
+      // v0.25.3218(社長指示「近接射と狙撃の台本を一本化する。ゆっくりの方を残す」):
+      // 距離・連携によるclose/snipeの分岐を廃止し、常に狙撃テンポ(1秒間隔・狙い弾×2速)で撃つ。
       jr.shots = 0; jr.nextShotAt = newGameTime;
       patch.bossState = 'volley';
-      patch.bossStateUntil = newGameTime + JIBRIL_VOLLEY_SHOTS * gap + 200;
+      patch.bossStateUntil = newGameTime + JIBRIL_VOLLEY_SHOTS * JIBRIL_SNIPE_GAP_MS + 200;
     }
   } else if (st === 'volley') {
     // v0.25.3131(案A・ランタンと同じ穴): 連射中も体当たりカウンターで**撃つのを止められる**。
@@ -1059,13 +1060,14 @@ export const runJibrilTick = (
       patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
     } else {
       retreatMove();
-      const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
+      // v0.25.3218(一本化): 間隔は常に狙撃テンポ、狙い弾は常に×2速(close分岐は廃止)。
+      const gap = JIBRIL_SNIPE_GAP_MS;
       if (jr.shots < JIBRIL_VOLLEY_SHOTS && newGameTime >= jr.nextShotAt) {
         // v0.25.3197(社長指示): 奇数発目(1/3/5)=狙い弾、偶数発目(2/4)=全方位リング8発。
         if (jr.shots % 2 === 0) {
           const aim = jibrilLockedAim();
           const proj = createEnemyProjectile(jibril, player, aim.x, aim.y);
-          if (jr.volleyMode === 'snipe') proj.speed *= JIBRIL_SNIPE_SPEED_MULT;
+          proj.speed *= JIBRIL_SNIPE_SPEED_MULT;
           useGameStore.getState().addProjectile(proj);
         } else {
           for (let k = 0; k < JIBRIL_OMNI_BULLETS; k++) {

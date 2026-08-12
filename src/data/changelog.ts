@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3218',
+    items: [
+      'ジブリルの射撃を一本化: 近接時の速射(0.5秒間隔)を廃止し、常に狙撃テンポ(1秒間隔・狙い弾は速い)で撃つようになりました。',
+    ],
+  },
+  {
     version: '0.25.3217',
     items: [
       '開発: 素材受領=猫耳アバター2点+武将装備POI3社(兜・鎧・小手)を切り出して取り込みました。表示の実装は次版から。ゲーム内容の変更はありません。',
