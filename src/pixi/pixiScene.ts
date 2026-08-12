@@ -2362,9 +2362,11 @@ const FX_RING_ENABLED = typeof window === 'undefined'
 // 赤くないのに当たる」は発生しない(縁取りと白芯は従来の濃さのまま残るので、帯の存在自体は消えない)。
 // 対象は予告の赤い塗り全て(帯5経路+遅延起爆の帯+踏み鳴らし/着地/翼撃/急降下/連続ジャンプ等の円+扇)。
 // `?bandfill=1` で従来の濃さに戻せる(実機比較用)。
+// v0.25.3186(社長指示「予告の赤をもう少し薄くして」): 0.5 → 0.4。履歴: 1.0 → 帯のみ0.75(v3068)
+// → 全種0.5(v3093) → 0.4(今回)。縁取り・白芯・予告線が濃さを保つ限り「赤いのに当たらない」は起きない。
 const TELEGRAPH_FILL_MULT = typeof window === 'undefined'
-  ? 0.5
-  : Number(new URLSearchParams(window.location.search).get('bandfill') ?? 0.5) || 0.5;
+  ? 0.4
+  : Number(new URLSearchParams(window.location.search).get('bandfill') ?? 0.4) || 0.4;
 
 // v0.25.3083(社長指示「マシンガンみたいに銃口から速射して流れ撃ってくエフェクト」・掃射=stage-5の大技):
 // 絵だけの値。判定・秒数・角度には一切関わらない。

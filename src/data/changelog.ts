@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3186',
+    items: [
+      'ボスの攻撃予告の赤い塗りをもう一段薄くしました(縁取り・中心の白芯・予告線の濃さはそのまま。範囲やタイミングも変わりません)。',
+    ],
+  },
+  {
     version: '0.25.3185',
     items: [
       '開発施設のサブウェポン陳列レベル解放が有料になりました(Lv1解放=20G / Lv2=50G / Lv3=100G。スキル強化訓練と同じゴールドを使います)。',
