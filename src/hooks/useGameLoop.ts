@@ -518,7 +518,11 @@ const EVENT_SPAWN_AGGRO_RANGE = 300;
 // --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
 const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通常10→20。終了で10へ戻す)
 const ARENA_EVENT_RADIUS = 240;        // 囲い半径(閉じ込め円)。社長指示で少し拡大: 210→240(horde/boss/egg 共通)
-const GATE_ARENA_RADIUS = 300;         // §5.21-追補7: ゲート1/ゲート2専用の広め半径(240→300・ゲート限定)。他イベント(horde/boss/egg)は ARENA_EVENT_RADIUS のまま。
+const GATE_ARENA_RADIUS = 300;         // §5.21-追補7: ゲート2専用の広め半径(240→300・ゲート限定)。他イベント(horde/boss/egg)は ARENA_EVENT_RADIUS のまま。
+// ゲート1専用半径(社長指示v0.25.3188「ゲート1の広さを1.5倍に」): 300→450。ゲート2は据え置き
+// (ミゲルの周回半径250=GATE_ARENA_RADIUS基準の式が生きているため、共用のまま広げると巻き添えになる)。
+// 拘束・縁湧き・脱走判定は activeEvent.radius(イベントに保存した値)を読むので、生成箇所だけで揃う。
+const GATE1_ARENA_RADIUS = Math.round(GATE_ARENA_RADIUS * 1.5); // = 450
 const GATE_FAIL_KNOCKBACK_MARGIN = 400; // §5.21-追補6: ゲート失敗時に境界より内側へ押し戻す距離(叩き台・実機調整)
 // 大量発生(horde)の段階スポーン(1秒に1体・計18体)は、湧き位置をイベント中心(=開始時のプレイヤー位置で固定)
 // からの距離だけで決めていたため、~18秒かけてプレイヤーが円内を動くと、現在地の近くへ偶然湧いて
@@ -2832,7 +2836,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const gpcx = player.x + player.width / 2, gpcy = player.y + player.height / 2;
             const placeGateRing = (): { x: number; y: number } => {
               const ang = Math.random() * Math.PI * 2;
-              const dist = GATE_ARENA_RADIUS * (0.4 + Math.random() * 0.52);
+              const dist = GATE1_ARENA_RADIUS * (0.4 + Math.random() * 0.52);
               return { x: gpcx + Math.cos(ang) * dist, y: gpcy + Math.sin(ang) * dist };
             };
             // 社長指示(v0.25.1523「やはり出れない囲いに」)でゲート1もハード(出られない)へ変更。
@@ -2842,7 +2846,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // chaffが境界を越えて円内へ流れ込めるようにする。gameStore.ts の arenaConfiningFlee 参照)。
             // 重要: beginArenaEvent は呼び出し時点で周辺の非固定敵を一掃するため、必ず「敵を配置する前」に
             // 呼ぶこと(逆順にすると配置直後の台本の敵まで一掃されてしまうバグを実機v0.25.1522で確認)。
-            const gateEvent = { kind: 'horde' as const, x: gpcx, y: gpcy, radius: GATE_ARENA_RADIUS, startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS, permeable: true };
+            const gateEvent = { kind: 'horde' as const, x: gpcx, y: gpcy, radius: GATE1_ARENA_RADIUS, startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS, permeable: true };
             useGameStore.getState().beginArenaEvent(gateEvent);
             let gateSpawnedCount = 0;
             (Object.keys(counts) as NuisanceType[]).forEach(type => {
@@ -2870,8 +2874,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({ eventBannerText: '境界ゲート出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             playSfx('event-start');
             const gateRingColor = 'rgba(168,85,247,0.9)'; // 紫=レア波を示唆
-            spawnRing(gpcx, gpcy, GATE_ARENA_RADIUS * 0.2, GATE_ARENA_RADIUS, gateRingColor, 6, 700);
-            spawnRing(gpcx, gpcy, GATE_ARENA_RADIUS, GATE_ARENA_RADIUS + 30, gateRingColor, 3, 760);
+            spawnRing(gpcx, gpcy, GATE1_ARENA_RADIUS * 0.2, GATE1_ARENA_RADIUS, gateRingColor, 6, 700);
+            spawnRing(gpcx, gpcy, GATE1_ARENA_RADIUS, GATE1_ARENA_RADIUS + 30, gateRingColor, 3, 760);
             spawnFlash('rgba(88,28,135,0.24)', 360);
             useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
             useGameStore.getState().triggerTimeSlow(0.4, 520);
