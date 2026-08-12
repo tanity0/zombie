@@ -23,6 +23,7 @@ import {
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, PUMPKIN_EXPLOSION_RADIUS, HUNTER_VISION_RANGE,
   GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH, BASE_CAPTURE_RADIUS,
   SHOP_MEDKIT_COST, // SKILL_BUILD_REDESIGN.md §15-1(B0): ボット購買ポリシーの救急価格
+  EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の7: ボット購買ポリシー②(装備区画)の価格表
 } from '../store/gameStore';
 // SKILL_BUILD_REDESIGN.md §13-2(B0発注文): ボットの商人購買ポリシー(乱数なし・決定的な純関数)。
 import { decideBotShopPurchase } from './botShopPolicy';
@@ -430,16 +431,24 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   const { persona, tickIndex, wanderSeed, dt, rusherState, skill, objective, onObjective } = opts;
   const store = useGameStore.getState();
   // 武器商人ショップの自動購買→クローズ(実機botと同じ保険・v0.25.1732の「開いたら閉じる」に、
-  // SKILL_BUILD_REDESIGN.md §13-2(B0発注文)+設計チャットの追補で「購買→閉じる」を追加)。
-  // 近接スイングが商人の圏内(58px)に入るとショップが開いて isPaused=true になる。決定的な
-  // 純関数(botShopPolicy.ts)に判定を委ね、購入は正規の buyShopItem() 経由(telemetryはbuyShopItem
-  // 側で記録=二重記録しない)。正規 closeShop()(reopen遅延1.5s付き)で閉じ、詰み/計測停止を防ぐ。
+  // SKILL_BUILD_REDESIGN.md §13-2(B0発注文)+設計チャットの追補+§18-1の7(B2)で「購買→閉じる」を
+  // 追加)。近接スイングが商人の圏内(58px)に入るとショップが開いて isPaused=true になる。決定的な
+  // 純関数(botShopPolicy.ts)に判定を委ね、購入は正規の buyShopItem()/buyEquipmentFromShop() 経由
+  // (telemetryは各アクション側で記録=二重記録しない)。②(装備区画)は1回のショップ来訪で複数個
+  // 買えるため close が返るまでループする(guardは安全上限=枠3+救急1に余裕を持たせた値)。
+  // 正規 closeShop()(reopen遅延1.5s付き)で閉じ、詰み/計測停止を防ぐ。
   if (store.showShopMenu) {
-    const shopAction = decideBotShopPurchase({
-      playerHealth: store.player.health, playerMaxHealth: store.player.maxHealth,
-      straps: store.player.straps, medkitCost: SHOP_MEDKIT_COST,
-    });
-    if (shopAction.kind === 'buy-medkit') store.buyShopItem('medkit');
+    for (let guard = 0; guard < 8; guard++) {
+      const s = useGameStore.getState();
+      const shopAction = decideBotShopPurchase({
+        playerHealth: s.player.health, playerMaxHealth: s.player.maxHealth,
+        straps: s.player.straps, medkitCost: SHOP_MEDKIT_COST,
+        equipment: s.player.equipment, equipShopCostByTier: EQUIP_SHOP_COST_BY_TIER,
+      });
+      if (shopAction.kind === 'buy-medkit') { s.buyShopItem('medkit'); continue; }
+      if (shopAction.kind === 'buy-equip') { s.buyEquipmentFromShop(shopAction.slot, shopAction.defId); continue; }
+      break;
+    }
     store.closeShop();
   }
   const t = store.gameTime + dt * 1000;

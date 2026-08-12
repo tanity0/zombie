@@ -113,7 +113,8 @@ const sanitizeSnapshot = (raw) => {
     speed: clamp(raw.speed, 1, 1000),
     level: int(raw.level, 1, 250),
     gunKeys,
-    skills: listOf(raw.skills, SKILLS, 8),
+    // SKILL_BUILD_REDESIGN.md §18-1の6: 初期所持9種(§12-3★2)に合わせサーバ上限8→9。
+    skills: listOf(raw.skills, SKILLS, 9),
     skillLevels: sanitizeLevelMap(raw.skillLevels, SKILLS, 3),
     equipment: {
       body: sanitizeEquipmentId(equipmentRaw.body, 'body'),

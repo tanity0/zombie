@@ -76,6 +76,7 @@ import {
   BOSS_TEST_RUN, // ボス戦テスト/ボスメーカー出撃か(チュートリアル抑止に使う)
   GLEN_NIHIL_SE_MS, // 虚無の三唱の専用SEを鳴らす長さ(技の定数から導出・v0.25.3143)
   SHOP_MEDKIT_COST, // SKILL_BUILD_REDESIGN.md §15-1(B0): ボット購買ポリシーの救急価格
+  EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の7: ボット購買ポリシー②(装備区画)の価格表
 } from '../store/gameStore';
 import { glenScriptApplies } from '../utils/giantScript';
 import { glenPartCountFull, glenRemovedPartAnchors } from '../utils/glenChain';
@@ -2016,16 +2017,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       if (BOT_PERSONA) {
         const bs = useGameStore.getState();
         // 武器商人ショップの自動購買→クローズ(依頼#3実測バグ・v0.25.1732の「開いたら閉じる」保険に、
-        // SKILL_BUILD_REDESIGN.md §13-2(B0発注文)+設計チャットの追補で「購買→閉じる」を追加)。
-        // 決定的な純関数(botShopPolicy.ts)に判定を委ね、購入は正規の buyShopItem() 経由(telemetryは
-        // buyShopItem側で記録=二重記録しない)。open→close自体は従来どおり同フレームで完結する
-        // (reopen遅延1.5s付きのcloseShop()は不変)。
+        // SKILL_BUILD_REDESIGN.md §13-2(B0発注文)+設計チャットの追補+§18-1の7(B2)で「購買→閉じる」を
+        // 追加)。決定的な純関数(botShopPolicy.ts)に判定を委ね、購入は正規の
+        // buyShopItem()/buyEquipmentFromShop() 経由(telemetryは各アクション側で記録=二重記録しない)。
+        // ②(装備区画)は1回の来訪で複数個買えるためcloseが返るまでループ(guardは安全上限)。
+        // open→close自体は従来どおり同フレームで完結する(reopen遅延1.5s付きのcloseShop()は不変)。
         if (bs.showShopMenu) {
-          const shopAction = decideBotShopPurchase({
-            playerHealth: bs.player.health, playerMaxHealth: bs.player.maxHealth,
-            straps: bs.player.straps, medkitCost: SHOP_MEDKIT_COST,
-          });
-          if (shopAction.kind === 'buy-medkit') bs.buyShopItem('medkit');
+          for (let guard = 0; guard < 8; guard++) {
+            const s = useGameStore.getState();
+            const shopAction = decideBotShopPurchase({
+              playerHealth: s.player.health, playerMaxHealth: s.player.maxHealth,
+              straps: s.player.straps, medkitCost: SHOP_MEDKIT_COST,
+              equipment: s.player.equipment, equipShopCostByTier: EQUIP_SHOP_COST_BY_TIER,
+            });
+            if (shopAction.kind === 'buy-medkit') { s.buyShopItem('medkit'); continue; }
+            if (shopAction.kind === 'buy-equip') { s.buyEquipmentFromShop(shopAction.slot, shopAction.defId); continue; }
+            break;
+          }
           bs.closeShop();
         }
         // レベルアップの自動選択(ポリシーはヘッドレスStep1と共用の純関数・決定的乱数)。

@@ -17,7 +17,7 @@ import {
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
-  DashLocomotionState, EquipLoadout
+  DashLocomotionState, EquipLoadout, EquipSlot
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
@@ -177,7 +177,7 @@ import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
-import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
+import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
 import {
@@ -380,6 +380,9 @@ export const SHOP_CLASS_SKILL_COST = 100;
 export const SHOP_MEDKIT_COST = 50;
 export const SHOP_VACCINE_COST = 500;
 export const SHOP_SUBWEAPON_SELL_VALUE = 100; // 商人: サブウェポン換金額(1個=100s)
+// SKILL_BUILD_REDESIGN.md §18-1の2(商人の装備区画・価格表): Tier1→5。叩き台・B6計測で調整前提。
+// 置き場は既存SHOP_*定数群(§16-9の5=台帳を2箇所に割らない=campaign.ts側には置かない)。
+export const EQUIP_SHOP_COST_BY_TIER: readonly number[] = [40, 80, 120, 160, 200];
 // PACING_PUZZLE.md §6.24 M48「使役」(D1): 通常敵を倒した時に仲間として復活させる確率。
 export const POI_THRALL_CHANCE = 0.20;
 // 救急セット: 最大HPの30%回復(社長指示・固定20から変更)。
@@ -3932,6 +3935,10 @@ interface GameState {
   updateHuntingCharge: (startedAt: number, charged: boolean) => void;
   buyShopItem: (key: ShopItemKey, ammoType?: AmmoType) => boolean;
   buySkillCardFromShop: (key: SubWeaponKey) => boolean;
+  // SKILL_BUILD_REDESIGN.md §13-1+§16-7+§18-1: 商人の装備区画(指名買いカタログ)。defIdは
+  // merchantEquipStepForSlot(slot)が現在提示している候補と一致する時だけ購入が成立する
+  // (UIの表示ズレ・古いdefIdでの誤購入を弾く=正規経路)。
+  buyEquipmentFromShop: (slot: EquipSlot, defId: string) => boolean;
   sellSubWeapon: (key: SubWeaponKey) => boolean;
   closeShop: () => void;
   returnToBase: () => void;                              // 商人「帰還」=任意撤収(スコア計上・進行なし・装備持ち帰り)
@@ -8281,6 +8288,38 @@ export const useGameStore = create<GameState>((set, get) => ({
       // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の5: 商人購入ログ(品目/価格/残straps/時刻)。
       // 価格0(buy-phillの無料配布)も「購入」として記録する=挙動には影響しない読むだけの計測。
       recordMerchantPurchase(key, purchaseCost, p.straps, get().gameTime);
+    }
+    return purchased;
+  },
+
+  // SKILL_BUILD_REDESIGN.md §13-1+§16-7+§18-1: 商人の装備区画。棚は生成しない固定カタログ
+  // (merchantEquipStepForSlot)なので、購入は「今そのスロットに出ている段だけ」を受け付ける。
+  buyEquipmentFromShop: (slot, defId) => {
+    let purchased = false;
+    let purchaseCost = 0;
+    set(state => {
+      const step = merchantEquipStepForSlot(state.player.equipment, slot);
+      if (step.kind === 'sold-out') return {}; // 特殊装備 or 最上段=売り切れ
+      const def = step.kind === 'choose'
+        ? step.options.find(o => o.id === defId)
+        : (step.def.id === defId ? step.def : undefined);
+      if (!def) return {}; // UIの表示と一致しない古いdefId=拒否
+      const cost = EQUIP_SHOP_COST_BY_TIER[def.tier - 1];
+      if (cost === undefined || state.player.straps < cost) return {};
+      purchased = true;
+      purchaseCost = cost;
+      const nextPlayer = { ...equipDefOnPlayer(state.player, def.id), straps: state.player.straps - cost };
+      return {
+        player: nextPlayer,
+        gameStats: { ...state.gameStats, strapsSpent: state.gameStats.strapsSpent + cost }
+      };
+    });
+
+    if (purchased) {
+      const p = get().player;
+      get().spawnCallout(p.x + p.width / 2, p.y - 12, 'EQUIP', '#bfdbfe');
+      // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の5と同じ購入ログ経路。品目はdefId(例: 'body-protection-3')。
+      recordMerchantPurchase(defId, purchaseCost, p.straps, get().gameTime);
     }
     return purchased;
   },

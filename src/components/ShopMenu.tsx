@@ -10,11 +10,13 @@ import {
   SHOP_MEDKIT_COST,
   SHOP_SUBWEAPON_SELL_VALUE,
   SHOP_VACCINE_COST,
+  EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の2: 商人の装備区画価格表(Tier1→5)
   subWeaponDisplayName,
   useGameStore
 } from '../store/gameStore';
-import type { AmmoType, ShopItemKey, SubWeaponKey } from '../types/game';
+import type { AmmoType, EquipSlot, ShopItemKey, SubWeaponKey } from '../types/game';
 import { CHARACTER_SUBWEAPON_KEYS } from '../data/campaign';
+import { merchantEquipShelf, equipmentById, equipmentDescription } from '../data/equipment';
 import { playSfx } from '../audio/audioManager';
 
 type ShopEntry = {
@@ -33,6 +35,18 @@ type SkillShopEntry = {
   description: string;
   cost: number;
   disabled?: boolean;
+};
+
+// SKILL_BUILD_REDESIGN.md §13-1+§16-7+§18-1: 商人の装備区画(指名買いカタログ)の1枚。
+// defId=null は売り切れ(特殊装備 or 最上段到達)を表す=押せない。
+type EquipShopEntry = {
+  key: string;
+  slot: EquipSlot;
+  defId: string | null;
+  name: string;
+  description: string;
+  cost: number;
+  disabled: boolean;
 };
 
 const ammoLabel: Record<AmmoType, string> = {
@@ -63,7 +77,8 @@ const ShopMenu: React.FC = () => {
       ammoHandgun: state.player.ammoHandgun,
       ammoShotgun: state.player.ammoShotgun,
       ammoRifle: state.player.ammoRifle,
-      ammoPhill: state.player.ammoPhill
+      ammoPhill: state.player.ammoPhill,
+      equipment: state.player.equipment // 商人の装備区画用(購入時以外は同一参照=再描画規律)
     }),
     shallow
   );
@@ -76,6 +91,7 @@ const ShopMenu: React.FC = () => {
   const vaccinePurchased = useGameStore(state => state.vaccinePurchased);
   const buyShopItem = useGameStore(state => state.buyShopItem);
   const buySkillCardFromShop = useGameStore(state => state.buySkillCardFromShop);
+  const buyEquipmentFromShop = useGameStore(state => state.buyEquipmentFromShop);
   const sellSubWeapon = useGameStore(state => state.sellSubWeapon);
   const closeShop = useGameStore(state => state.closeShop);
   const returnToBase = useGameStore(state => state.returnToBase);
@@ -141,6 +157,32 @@ const ShopMenu: React.FC = () => {
     }
   ];
 
+  // SKILL_BUILD_REDESIGN.md §13-1+§16-7+§18-1: 商人の装備区画(指名買いカタログ・棚は生成しない)。
+  // 未装備スロット=両系統Tier1を2枚/装備済み(Tier<5)=次の一段1枚/特殊 or 最上段=売り切れ表示。
+  const equipEntries: EquipShopEntry[] = merchantEquipShelf(player.equipment).flatMap((step): EquipShopEntry[] => {
+    if (step.kind === 'sold-out') {
+      const cur = equipmentById(player.equipment[step.slot]);
+      return [{
+        key: `equip-${step.slot}-soldout`, slot: step.slot, defId: null,
+        name: cur?.name ?? '???', description: '売り切れ', cost: 0, disabled: true,
+      }];
+    }
+    const defs = step.kind === 'next' ? [step.def] : step.options;
+    return defs.map((def): EquipShopEntry => {
+      const cost = EQUIP_SHOP_COST_BY_TIER[def.tier - 1] ?? Infinity;
+      return {
+        key: `equip-${step.slot}-${def.id}`, slot: step.slot, defId: def.id,
+        name: def.name, description: equipmentDescription(def), cost, disabled: player.straps < cost,
+      };
+    });
+  });
+
+  const handleBuyEquip = (entry: EquipShopEntry) => {
+    playSfx('ui-select');
+    if (entry.disabled || !entry.defId) return;
+    buyEquipmentFromShop(entry.slot, entry.defId);
+  };
+
   // サブウェポン換金: 装備中(選択した)サブを自動で売却。ロードアウトはサブ1枠なので通常は1個。
   // 職固有スキル(CHARACTER_SUBWEAPON_KEYS)は売れない。複数所持時は先頭(=選択したロードアウト)から。
   const sellTarget: SubWeaponKey | undefined =
@@ -204,6 +246,37 @@ const ShopMenu: React.FC = () => {
               </button>
             );
           })}
+        </div>
+
+        <div className="px-4 pb-3">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-amber-200/55 mb-1.5">装備</div>
+          <div className="grid grid-cols-2 gap-2">
+            {equipEntries.map(entry => {
+              const canBuy = !entry.disabled;
+              return (
+                <button
+                  key={entry.key}
+                  onClick={() => handleBuyEquip(entry)}
+                  disabled={!canBuy}
+                  className={`rounded-none border px-3 py-2 text-left transition ${
+                    canBuy
+                      ? 'bg-purple-400/8 border-purple-400/15 active:scale-[0.98]'
+                      : 'bg-purple-400/[0.03] border-purple-400/8 opacity-45'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-bold text-white truncate">{entry.name}</div>
+                      <div className="text-[10px] leading-tight text-white/50">{entry.description}</div>
+                    </div>
+                    <div className="text-[12px] font-black text-amber-200 tabular-nums whitespace-nowrap">
+                      {entry.defId === null ? '—' : `${entry.cost}s`}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {sellTarget && (

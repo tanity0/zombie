@@ -214,18 +214,46 @@ export const hasFullWarlordSet = (loadout: EquipLoadout): boolean =>
 // 「空きスロット優先→全部埋まっていればいちばんTierが低い部位を置換」。
 // 空きが複数ある時の優先順位は仕様に明記が無いため、既存の空き埋め(generateEquipmentChoices の
 // randPick(emptySlots))と同じくランダムに1つ選ぶ(rngは既定Math.random・テストで注入可能)。
-export const armoryTargetSlot = (loadout: EquipLoadout, rng: () => number = Math.random): EquipSlot => {
+// SKILL_BUILD_REDESIGN.md §16-3/§18-1の4(★1裁定「毎ラン3種確定」を黙って壊さないための機械的修正):
+// 特殊装備が入ったスロットは置換候補から除外する。全スロットが特殊(空きなし)なら null=売り切れ。
+// 呼び出し側の注意: 本関数は現在 gameStore.ts のどこからも呼ばれていない(v0.25.2533で武器庫の
+// 報酬が装備→Tier3銃へ切り替わったため=SKILL_BUILD_REDESIGN.md §18実装中の★未決を参照)。
+export const armoryTargetSlot = (loadout: EquipLoadout, rng: () => number = Math.random): EquipSlot | null => {
   const empty = EQUIP_SLOTS.filter(slot => !loadout[slot]);
   if (empty.length > 0) return empty[Math.floor(rng() * empty.length)];
-  let worst: EquipSlot = EQUIP_SLOTS[0];
+  const candidates = EQUIP_SLOTS.filter(slot => !equipmentById(loadout[slot])?.special);
+  if (candidates.length === 0) return null; // 全スロット特殊=売り切れ
+  let worst: EquipSlot = candidates[0];
   let worstTier = Infinity;
-  for (const slot of EQUIP_SLOTS) {
+  for (const slot of candidates) {
     const def = equipmentById(loadout[slot]);
-    const tier = def ? (def.special ? 0 : def.tier) : -1; // 特殊(tier0)は最も低い扱い=真っ先に置換対象
+    const tier = def ? def.tier : -1;
     if (tier < worstTier) { worstTier = tier; worst = slot; }
   }
   return worst;
 };
+
+// SKILL_BUILD_REDESIGN.md §13-1+§16-7: 商人の装備区画=「指名買いカタログ」(ランダム性ゼロ)。
+// 未装備スロット=両系統のTier1を2枚並べる(初回だけ系統選択)。装備済みスロット=現在系統の
+// 「次の一段」1枚のみ(系統乗り換えは商人では不可)。特殊装備が入ったスロット/最上段到達スロットは
+// 売り切れ表示。
+export type MerchantEquipStep =
+  | { kind: 'choose'; slot: EquipSlot; options: [EquipmentDef, EquipmentDef] } // 未装備: 両系統Tier1
+  | { kind: 'next'; slot: EquipSlot; def: EquipmentDef }                       // 装備済み: 次の一段
+  | { kind: 'sold-out'; slot: EquipSlot };                                     // 特殊装備 or 最上段
+
+export const merchantEquipStepForSlot = (loadout: EquipLoadout, slot: EquipSlot): MerchantEquipStep => {
+  const cur = equipmentById(loadout[slot]);
+  if (!cur) {
+    const [lineA, lineB] = EQUIP_LINES_BY_SLOT[slot];
+    return { kind: 'choose', slot, options: [equipmentDef(slot, lineA, 1)!, equipmentDef(slot, lineB, 1)!] };
+  }
+  if (cur.special || cur.tier >= EQUIP_TIER_MAX) return { kind: 'sold-out', slot };
+  return { kind: 'next', slot, def: equipmentDef(slot, cur.line, cur.tier + 1)! };
+};
+
+export const merchantEquipShelf = (loadout: EquipLoadout): MerchantEquipStep[] =>
+  EQUIP_SLOTS.map(slot => merchantEquipStepForSlot(loadout, slot));
 
 // 専用アイコン画像(public/sprites/equip/<defId>.png)が用意済みの装備ID。
 // 社長から素材を受領するたびにここへ追加していく。未登録IDはUI側で絵文字フォールバック。

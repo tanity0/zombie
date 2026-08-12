@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.3235 — B2着地: 商人装備区画+価格表(Sonnet納品・検収済み)【2026-08-13 03:57 JST】
+- equipment.ts: merchantEquipShelf(rngなし固定カタログ=装備済み→次の一段1枚/未装備→両系統Tier1
+  2枚/特殊・Tier5→売り切れ)。armoryTargetSlotの特殊除外(※死コードと判明→18-3参照)。
+- gameStore: EQUIP_SHOP_COST_BY_TIER=[40,80,120,160,200](SHOP_*群・叩き台)+buyEquipmentFromShop
+  (棚検証・正規購入・runTelemetry記録)。ShopMenu: 「装備」区画(shallow購読のみ)。
+- upgradeUtils: 宝箱の特殊5%/10%混入を撤去(基礎3択は維持・回帰テスト付き)。
+- botShopPolicy: ②装備購買(最安の次の一段・straps100温存・決定的)。playtestDriver/実機botは
+  購買ループ(上限8)→close。ghostSanitize上限8→9。
+- 検収§18-3: 条件10=**対象消滅により充足**(武器庫報酬はv0.25.2533から銃=armoryTargetSlotは
+  死コード。監査8指摘7は死コードへの指摘だった。純関数の特殊除外は将来復活時の保険として残置)。
+- 検証: typecheck 0/lint 0/対象テスト53 passed。次=B3(レア度表+初期9種+flashy+ガチャ再シム)発注。
+
 ## v0.25.3234 — B2発注文(§18)を記録・Sonnetへ発注【2026-08-13 03:35 JST】
 §18=B2(商人装備区画+価格表)の発注文: 装備済み=現系統の次の一段1枚/未装備=両系統Tier1を2枚/
 特殊・最上段=売り切れ/価格表EQUIP_SHOP_COST_BY_TIER=[40,80,120,160,200](叩き台・B6調整前提・

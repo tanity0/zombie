@@ -1,7 +1,7 @@
 import { UpgradeOption, Player, EquipSlot, EquipmentDef, SkillKey } from '../types/game';
 import {
-  EQUIP_SLOTS, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, SPECIAL_EQUIP_CHANCE,
-  equipmentById, equipmentDef, specialEquipmentForSlot, equipmentDescription
+  EQUIP_SLOTS, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX,
+  equipmentById, equipmentDef, equipmentDescription
 } from '../data/equipment';
 import { SKILLS, skillDescForLevel } from '../data/campaign';
 import { draftRunSkillCards, draftReplacementSkillCard, type DraftedSkillCard, type RunSkillDraftInput } from './runSkillDraft';
@@ -12,14 +12,13 @@ export const SCRAP_REWARD = 50;
 const scrapOption = (): UpgradeOption =>
   ({ id: 'lvl-scrap', name: `スクラップ +${SCRAP_REWARD}`, description: `スクラップを ${SCRAP_REWARD} 獲得`, type: 'scrap', level: SCRAP_REWARD });
 
-// レベルアップ報酬 = 装備の3選択肢(確定版 仕様4章)。
+// レベルアップ報酬 = 装備の3選択肢(確定版 仕様4章。現在はボスドロップ宝箱専用=下の注記参照)。
 //   ①進化  : スロット抽選→次ランク提示(未装備/特殊スロットはランク1=特殊から通常へ戻せる)。
-//   ②補完/特殊: 未装備スロットからランダム1個。空きありは95%空き埋め/5%特殊、空き無しは特殊10%。
+//   ②補完: 空きスロットへランダム1個(通常装備のみ。SKILL_BUILD_REDESIGN.md §16-2/§18-1の3で
+//     特殊装備混入=旧・空きあり5%/空きなし10%は撤去済み。特殊装備はPOI専任)。
 //   ③スクラップ: 常設 +50(特殊で置換しない)。
 //   枯渇で①or②は消滅。①②両方カンスト時のみ「HP30%回復」を追加提示。
 //   系統分岐は引き(出たカードから選ぶ)。選択は即時反映・同スロット既存は入れ替え(破棄)。
-const SPECIAL_CHANCE_NO_EMPTY = 0.10; // 空きスロット無しでの特殊出現率
-
 const randPick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
 const equipOption = (def: EquipmentDef, tag: string): UpgradeOption => ({
@@ -54,30 +53,23 @@ export const generateEquipmentChoices = (player: Player): UpgradeOption[] => {
   }
   if (evoDef) options.push(equipOption(evoDef, 'evo'));
 
-  // 選択肢②: 補完(空き埋め)/特殊。
+  // 選択肢②: 補完(空き埋め)。SKILL_BUILD_REDESIGN.md §16-2/§18-1の3: 特殊装備混入(旧: 空きあり5%/
+  // 空きなし10%)はボスドロップ宝箱経路でも撤去(特殊はPOI専任・§12冒頭の裁定を宝箱にも適用)。
+  // 空きスロットが無ければ②自体が出ない(旧仕様の「空きなし10%特殊」に代わる提示は無い)。
   const emptySlots = EQUIP_SLOTS.filter(s => !loadout[s]);
-  const unownedSpecials = EQUIP_SLOTS
-    .map(specialEquipmentForSlot)
-    .filter(sp => loadout[sp.slot] !== sp.id); // まだ装備していない特殊のみ
   let compDef: EquipmentDef | null = null;
   if (emptySlots.length > 0) {
-    if (Math.random() < SPECIAL_EQUIP_CHANCE && unownedSpecials.length > 0) {
-      compDef = randPick(unownedSpecials);
-    } else {
-      const slot = randPick(emptySlots);
-      const line = randPick(EQUIP_LINES_BY_SLOT[slot]);
-      let d = equipmentDef(slot, line, 1)!;
-      // ①と完全重複(同スロット同系統R1)なら別系統へ振り直し。
-      if (evoDef && d.id === evoDef.id) {
-        const other = EQUIP_LINES_BY_SLOT[slot].find(l => l !== line);
-        if (other) d = equipmentDef(slot, other, 1)!;
-      }
-      compDef = d;
+    const slot = randPick(emptySlots);
+    const line = randPick(EQUIP_LINES_BY_SLOT[slot]);
+    let d = equipmentDef(slot, line, 1)!;
+    // ①と完全重複(同スロット同系統R1)なら別系統へ振り直し。
+    if (evoDef && d.id === evoDef.id) {
+      const other = EQUIP_LINES_BY_SLOT[slot].find(l => l !== line);
+      if (other) d = equipmentDef(slot, other, 1)!;
     }
-  } else if (Math.random() < SPECIAL_CHANCE_NO_EMPTY && unownedSpecials.length > 0) {
-    compDef = randPick(unownedSpecials);
+    compDef = d;
   }
-  if (compDef) options.push(equipOption(compDef, compDef.special ? 'sp' : 'fill'));
+  if (compDef) options.push(equipOption(compDef, 'fill'));
 
   // 選択肢③: 常設スクラップ +50(v0.25.3212: ナイフ提示は武器箱へ移設)。
   options.push(scrapOption());
