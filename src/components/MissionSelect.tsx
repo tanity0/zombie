@@ -129,8 +129,11 @@ import {
 } from '../data/campaign';
 import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore,
-  getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, type SelectedMission
+  getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission
 } from '../data/progress';
+// ステージ別の自己最高ランク表示(社長指示v0.25.3182)。rankLabel=「ランクn 罪名」の唯一の出どころ。
+import { rankLabel } from '../utils/wallProgress';
+import { clampRank } from '../utils/rankAssessor';
 import { subsAllCompletedFromMeta, revisitCardState, canShowEx } from '../utils/storyProgress';
 import {
   ARCHIVE_RECORDS, getArchiveRecord, loadStoryArchive, markRecordRead, consumeLatestUnlocked,
@@ -599,6 +602,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const unlocked = isStageUnlocked(stage, cleared);
     const done = cleared.has(stage.id);
     const hiScore = getStageHighScore(stage.id);
+    // 自己最高ランク(社長指示v0.25.3182「ステージ選ぶところに現状のランクを表示」)。
+    // ランク自体はラン内の値(毎回R1から)なので、ここに出す「現状」=**このステージの自己最高**
+    // (wallMeta.selfHighestRank=リザルトの断面図と同じ正本)。未出撃(記録なし)の初期値は1なので、
+    // 一度もランクを上げた記録が無いステージ(rankReachedが全false)では出さない=空欄。
+    const wallMeta = unlocked ? getWallMeta(stage.id) : null;
+    const bestRank = wallMeta && wallMeta.rankReached.some(Boolean) ? clampRank(wallMeta.selfHighestRank) : null;
     // 任意サブ(二人組クエスト)の納品状況(表示用CLEAR)。メニュー描画時のみのlocalStorage読取。
     const subQuestDone = stage.subs.length > 0 && getEventQuestMeta(stage.id).sub;
     // 洋館［SUB］再訪(stage-6のみ・統合正本9章)。ここでは行の状態表示のみ(導線は詳細ページ)。
@@ -647,6 +656,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               <>
                 {done && <span className="shrink-0 text-[10px] text-emerald-300/90">CLEAR</span>}
                 {hiScore > 0 && <span className="shrink-0 text-[10px] text-amber-300/85 tabular-nums">HI {hiScore}</span>}
+                {bestRank !== null && (
+                  <span className="shrink-0 text-[10px] tabular-nums" style={{ color: '#ff6a55' }}>{rankLabel(bestRank)}</span>
+                )}
               </>
             )}
             {subTotal > 0 && missionLine(

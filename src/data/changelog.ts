@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3182',
+    items: [
+      '作戦地域(ステージ選択)の各ステージに、そのステージでの自己最高ランク(七つの大罪)が表示されるようになりました。',
+    ],
+  },
+  {
     version: '0.25.3181',
     items: [
       'ゲーム内容の変更はありません(設計議論の資料を書き直しました)。',
