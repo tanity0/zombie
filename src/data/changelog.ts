@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3191',
+    items: [
+      'ゲーム内容の変更はありません(スキルビルド設計書に監査指摘15件を反映しました)。',
+    ],
+  },
+  {
     version: '0.25.3190',
     items: [
       'ゲーム内容の変更はありません(スキルのラン中取得ビルドの設計書を追加しました。監査中)。',
