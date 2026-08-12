@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3230',
+    items: [
+      '開発: スキルビルドB0の基準線計測スクリプトを追加(明示実行専用・CIでは走りません)。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3229',
     items: [
       '開発: スキルビルドB0=計測器を実装(ラン計測台帳/ボスメーカー注入口/ボット購買)。通常プレイのゲーム内容に変更はありません。',

@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.3230 — B0基準線計測スクリプト追加(b0Baseline.test.ts)【2026-08-13 02:16 JST】
+- 新規 src/store/b0Baseline.test.ts: greedyボット(skill='master'・persona='standard')30ラン×15分相当の
+  到達Lv分布計測。B0_BASELINE=1の明示実行専用(it.runIfゲート=CI/npm testでは走らない)。
+  既存playtest.test.tsのrunOnePlaytestの骨格を写した簡約版(フェイクタイマー同期含む)。
+- 実行はバックグラウンドで進行中(目安15〜20分)。結果は完了後にこのログへ転記する。
+- 並行: B1(スキルドラフト)Sonnetエージェント作業中=そのファイル群は本コミットに含めない。
+- 検証: typecheck 0/lint 0エラー。
+
 ## v0.25.3229 — B0着地: 計測器runTelemetry+ボスメーカー注入口+ボット購買(Sonnet納品・検収済み)【2026-08-13 02:12 JST】
 - 新規 runTelemetry.ts(+test13): 1ラン計測台帳(killTelemetryState型踏襲・スナップショットは
   ディープコピー)。10出力+追補の装備到達Tier: ボス突入スナップショット(bossFightNowエッジで記録・
