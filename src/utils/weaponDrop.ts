@@ -1,5 +1,5 @@
 import { AmmoType } from '../types/game';
-import { GUN_KEYS_BY_CATEGORY, MELEE_KEYS } from './weaponUtils';
+import { GUN_KEYS_BY_CATEGORY, MELEE_KEYS, nextKnifeKey } from './weaponUtils';
 
 // WWZ-style loot: enemies rarely drop a weapon outright, and mid-bosses always
 // drop a weapon crate that rolls one. Tier率はエリア(距離)で決まる(社長指定): 奥ほど高Tier。
@@ -55,9 +55,14 @@ export const rollTier23Gun = (rand: () => number = Math.random): string => {
   return keys[idx];
 };
 
-// A crate always yields a gun (the melee path is reserved for rarer world
-// drops) so opening one feels like a firepower reward. `area` = 0..4。
-export const openCrate = (area: number): string => {
+// v0.25.3212(社長指示「取り急ぎ、ナイフは武器箱に移す」): レベルアップ3枠目に居たナイフ強化
+// (Tier5未満で25%)を武器箱へ移設。currentMeleeTier(所持ナイフのTier)がTier5未満なら25%で
+// 「1段階上のナイフ」を返し、それ以外は従来どおり銃(エリア別Tier率)。率25%は旧レベルアップ側の
+// KNIFE_OFFER_RATEをそのまま引き継いだ叩き台。
+const CRATE_KNIFE_RATE = 0.25;
+export const openCrate = (area: number, currentMeleeTier = 5): string => {
+  const knifeKey = nextKnifeKey(currentMeleeTier);
+  if (knifeKey && Math.random() < CRATE_KNIFE_RATE) return knifeKey;
   const tier = pickTier(area);
   const category = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
   const keys = GUN_KEYS_BY_CATEGORY[category];

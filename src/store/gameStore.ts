@@ -12056,9 +12056,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           });
         } else {
           // 屋外: エリア(距離)別Tier率で銃を抽選して装備(社長指定)。
+          // v0.25.3212(社長指示): ナイフ強化(旧レベルアップ3枠目)も武器箱から出る(25%・Tier5未満のみ)。
           {
             const pc = get().player;
-            get().grantWeapon(openCrate(areaIndexForPos(pc.x + pc.width / 2, pc.y + pc.height / 2)));
+            const meleeTier = pc.weapons.find(w => w.isMelee)?.tier ?? 1;
+            get().grantWeapon(openCrate(areaIndexForPos(pc.x + pc.width / 2, pc.y + pc.height / 2), meleeTier));
           }
         }
         strapDropValues(WEAPON_CRATE_STRAP_DROP_MIN + Math.floor(Math.random() * WEAPON_CRATE_STRAP_DROP_VARIANCE))
