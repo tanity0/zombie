@@ -112,6 +112,9 @@ export const MIGUEL_DASH_MOVE_MS = 230;         // 溜め後の斬り抜けは�
 export const MIGUEL_DASH_STRIKE_MS = MIGUEL_HARAI_ACTIVE_MS; // 「MIGUEL_HARAI_ACTIVE_MS相当の斬り抜け」(設計書指定どおり)
 const MIGUEL_DASH_RECOVER_MS = withRecoverFloor(800);
 const MIGUEL_DASH_CD_MS = 6000;
+// v0.25.3195(社長指示「カウンターでノックバック+中断位置戻し」): 突進カウンター成立時に
+// プレイヤー中心から突進方向の逆へ弾き返す距離(px)。絵ではなく実位置=素通り事故の根治。
+const MIGUEL_DASH_COUNTER_PUSHBACK_PX = 150;
 // ジブリル(社長指示v0.25.1663)
 const JIBRIL_RETREAT_SPEED = 55;
 const JIBRIL_RETREAT_FAST_MULT = 1.7;
@@ -177,17 +180,17 @@ const RAFI_STEP_MIN_GAP_MS_P2 = 1400;
 const RAFI_STEP_MAX_GAP_MS_P2 = 2800;
 
 // --- ウリ(§6.28-17・バッチM61・新規) ---------------------------------------------------------
-const URI_SWEEP_WINDUP_MS = 1100;
+const URI_SWEEP_WINDUP_MS = 550;   // 社長指示v0.25.3195「ウリの攻撃が遅い。溜を半分に」: 1100→550
 const URI_SWEEP_ACTIVE_MS = 130;          // ★振り速度2倍(社長指示v0.25.2885): 260→130。pixiScene.tsの同名と同値必須
 const URI_SWEEP_RECOVER_MS = withRecoverFloor(580);
-const URI_DOWNSLASH_WINDUP_MS = 1000;
+const URI_DOWNSLASH_WINDUP_MS = 500; // 社長指示v0.25.3195: 1000→500
 const URI_DOWNSLASH_ACTIVE_MS = 100;      // ★振り速度2倍(社長指示v0.25.2885): 200→100。pixiScene.tsの同名と同値必須
 const URI_DOWNSLASH_RECOVER_MS = withRecoverFloor(900);
-export const URI_THRUST_WINDUP_MS = 900;
+export const URI_THRUST_WINDUP_MS = 450; // 社長指示v0.25.3195: 900→450
 export const URI_THRUST_MOVE_MS = 230;           // ミゲル踏み込みと同値。溜め後の実行だけ高速化。
 export const URI_THRUST_STRIKE_MS = 220;
 const URI_THRUST_RECOVER_MS = withRecoverFloor(580);
-const URI_BOLT_WINDUP_MS = 450;
+const URI_BOLT_WINDUP_MS = 225;    // 社長指示v0.25.3195: 450→225
 const URI_BOLT_RECOVER_MS = withRecoverFloor(500);
 const URI_SWEEP_RANGE_PX = 310;           // =THOR_HARAI_RANGE(流用・§6.28-17「新しい描画方式を作らない」の精神)
 const URI_SWEEP_HALF_WIDTH_PX = 40;       // =THOR_HARAI_HALF_WIDTH(流用)
@@ -614,6 +617,33 @@ export const runMiguelTick = (
   } else if (st === 'mdash-move') {
     const fx0 = miguel.aiFromX ?? mcx, fy0 = miguel.aiFromY ?? mcy;
     const tx0 = miguel.aiTargetX ?? mcx, ty0 = miguel.aiTargetY ?? mcy;
+    // ★v0.25.3195(社長報告「突進、カウンターしても素通りなので攻撃くらっちゃう事故が多い」+
+    // 指示「カウンターでノックバック+中断位置戻し」): カウンター成立時の共通処理。
+    // ①技を中断 ②**来た方向へ弾き返す**(プレイヤー中心から突進方向の逆へ MIGUEL_DASH_COUNTER_PUSHBACK_PX)
+    // =体を素通りして背後から斬る、を物理的に不可能にする。位置はアリーナ内へクランプ。
+    const dashCountered = (hx: number, hy: number): void => {
+      miguelCounterHit(hx, hy);
+      let bdx = tx0 - fx0, bdy = ty0 - fy0;
+      const bl = Math.hypot(bdx, bdy) || 1; bdx /= bl; bdy /= bl;
+      let px2 = pcx - bdx * MIGUEL_DASH_COUNTER_PUSHBACK_PX;
+      let py2 = pcy - bdy * MIGUEL_DASH_COUNTER_PUSHBACK_PX;
+      const rel = Math.hypot(px2 - mHomeX, py2 - mHomeY);
+      const maxRm = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - miguel.height / 2;
+      if (rel > maxRm) { px2 = mHomeX + ((px2 - mHomeX) / rel) * maxRm; py2 = mHomeY + ((py2 - mHomeY) / rel) * maxRm; }
+      patch.x = px2 - miguel.width / 2; patch.y = py2 - miguel.height / 2;
+      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
+      patch.mDashReadyAt = newGameTime + MIGUEL_DASH_CD_MS * freshCritCdMult(miguel.id, newGameTime);
+    };
+    // ★突進の通過中もカウンターを取れる(旧: 到達時の斬り抜けカプセルでしか判定せず、
+    // 体が重なった瞬間に構えていても「素通り」していた)。
+    {
+      const { overlap, counterActive } = bodyOverlapNow(miguel);
+      if (overlap && counterActive) {
+        dashCountered(mcx, mcy);
+        applyPatch(miguel.id, patch);
+        return;
+      }
+    }
     const elapsed = newGameTime - (miguel.aiStartedAt ?? newGameTime);
     const moveT = Math.max(0, Math.min(1, elapsed / MIGUEL_DASH_MOVE_MS));
     const nx = fx0 + (tx0 - fx0) * moveT, ny = fy0 + (ty0 - fy0) * moveT;
@@ -629,10 +659,8 @@ export const runMiguelTick = (
       if (distToSegment({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }) <= MIGUEL_HARAI_HALF_WIDTH + pr) {
         const cp = useGameStore.getState().player;
         if (Date.now() <= cp.counterWindowEnd) {
-          miguelCounterHit((sx + ex) / 2, (sy + ey) / 2);
+          dashCountered((sx + ex) / 2, (sy + ey) / 2);
           countered = true;
-          // v0.25.3128(案A): 技を中断=カウンター1回につき1成立に揃える。
-          patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
         } else {
           const died = useGameStore.getState().damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の踏み込み`, pcx, pcy);
           if (died) onPlayerDeath(pcx, pcy);
@@ -1421,6 +1449,17 @@ export const runRafiTick = (
     }
   } else {
     patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+  }
+
+  // ★v0.25.3195(社長報告「ラフィがよくサークルの外に出ちゃってて致命の一撃を与えられない」):
+  // どの経路で外に出たとしても(カウンターの小ノックバック/技の移動の累積等)、**tickの最後に必ず
+  // アリーナ内へ戻す**。chase/横ステップはclampArena済みだったが、位置を書く他の経路と外力には
+  // 掛かっていなかった。プレイヤーはサークルに拘束されるので、外に居るボスには紫中でも届かない。
+  {
+    const fcx = (patch.x !== undefined ? patch.x : rafi.x) + rafi.width / 2;
+    const fcy = (patch.y !== undefined ? patch.y : rafi.y) + rafi.height / 2;
+    const fc = clampArena(fcx, fcy);
+    if (fc.x !== fcx || fc.y !== fcy) { patch.x = fc.x - rafi.width / 2; patch.y = fc.y - rafi.height / 2; }
   }
 
   applyPatch(rafi.id, patch);

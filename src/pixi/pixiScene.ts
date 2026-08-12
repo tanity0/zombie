@@ -1480,9 +1480,9 @@ const SURIEL_RING_VIS_D = 54; // 画面上の直径(px・叩き台)
 // MIGUEL_HARAI_VIS_HALFWIDTH=40を再利用=新しい太さを発明しない)。値はangelBossTick.tsの同名定数と一致
 // (「一致」コメント義務=既存のMIGUEL_HARAI_WINDUP_MS等と同じ流儀)。
 const RAFI_SWEEP_WINDUP_MS_VIS = 700;
-const URI_SWEEP_WINDUP_MS_VIS = 1100;
+const URI_SWEEP_WINDUP_MS_VIS = 550;   // 社長指示v0.25.3195「溜を半分に」: angelBossTickと同値必須
 const URI_SWEEP_ACTIVE_MS = 130;          // 振り速度2倍(v0.25.2885)。angelBossTick.tsの同名と一致
-const URI_DOWNSLASH_WINDUP_MS_VIS = 1000;
+const URI_DOWNSLASH_WINDUP_MS_VIS = 500; // 社長指示v0.25.3195: 同上
 const URI_DOWNSLASH_ACTIVE_MS = 100;      // 振り速度2倍(v0.25.2885)。angelBossTick.tsの同名と一致
 const SURIEL_SWEEP_WINDUP_MS_VIS = 800;
 const SURIEL_RINGSHOT_BEAM_WINDUP_MS_VIS = 700;

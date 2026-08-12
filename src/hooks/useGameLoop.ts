@@ -4499,7 +4499,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const gbType = GATE2_BOSS_TYPE_BY_STAGE[getSelectedStageId()];
           if (gbType) {
             gatebossForceRef.current = true;
-            const gcx = player.x + player.width / 2, gcy = player.y + player.height / 2;
+            const gcx = player.x + player.width / 2;
+            // ★v0.25.3195(社長報告「スリィエルのボスモード時、スタートの下に移動できないので実質半分
+            // しか移動可能な部分がない」): 洋館通路(corridorMode)はスタート地点が移動可能帯の南端。
+            // 中心をプレイヤー位置に置くとサークルの下半分が移動不能域に食い込む=実質半円になる。
+            // ⇒ 通路では中心を**北へ radius ぶんずらして**、円全体が歩ける側に載るようにする
+            //   (南端に少し余白 CORRIDOR_GATEBOSS_SOUTH_PX を残す=開始位置が円のふち)。他ステージは従来どおり。
+            const CORRIDOR_GATEBOSS_SOUTH_PX = 60;
+            const gcy = (player.y + player.height / 2)
+              - (useGameStore.getState().corridorMode ? GATE_ARENA_RADIUS - CORRIDOR_GATEBOSS_SOUTH_PX : 0);
             // 拘束サークル=中心=プレイヤー開始位置(実ゲート2と同じ。プレイヤーは円内に留まりミゲルと戦える)。
             const gEvent = { kind: 'boss' as const, x: gcx, y: gcy, radius: GATE_ARENA_RADIUS, startedAt: newGameTime, endsAt: newGameTime + GATE2_BOSS_DURATION_MS };
             useGameStore.getState().beginArenaEvent(gEvent); // 敵一掃を含むのでボス配置の前に呼ぶ
