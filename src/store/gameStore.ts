@@ -175,7 +175,7 @@ import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled }
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
+import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
@@ -727,6 +727,9 @@ const loadAmmoPickupAmounts = (): Record<AmmoType, number> => {
 
 // 装備メニュー(サブ/スキル)の永続化。トップメニューで選んだ装備を localStorage に保存し、起動時に復元する。
 const LOADOUT_SUBS_KEY = 'zombie:loadoutSubs';
+// SKILL_BUILD_REDESIGN.md §20(B4): 旧キー。B1の暫定でpendingSkills(=同行者選択の入力)の保存先として
+// 流用していた。B4でcompanionSkill専用キー(COMPANION_SKILL_KEY)へ正式移行。移行読み出し
+// (loadCompanionSkill)のためだけにキー名を残す(新規書き込みはもうしない)。
 const LOADOUT_SKILLS_KEY = 'zombie:loadoutSkills';
 const loadStringArray = (key: string): string[] => {
   try {
@@ -801,6 +804,40 @@ const saveAvatarId = (id: AvatarId | null): void => {
     if (id) localStorage.setItem(AVATAR_KEY, id);
     else localStorage.removeItem(AVATAR_KEY);
   } catch { /* ignore */ }
+};
+
+// SKILL_BUILD_REDESIGN.md §20(B4発注文20-1点1/2): 同行者(守護霊系3種)の正式フィールド。
+// B1まではpendingSkills(旧・出撃前スキル持ち込みUI用フィールド)を暫定で「同行者選択の入力」に
+// 流用していた(MissionSelect.tsxのCOMPANION_SKILL_KEYS絞り込みコメント参照)。B4でここへ切り出す。
+const COMPANION_SKILL_KEY = 'zombie:companionSkill';
+const isCompanionSkillKey = (v: unknown): v is SkillKey =>
+  typeof v === 'string' && (COMPANION_SKILL_KEYS as readonly string[]).includes(v);
+const saveCompanionSkill = (key: SkillKey | null): void => {
+  try {
+    if (key) localStorage.setItem(COMPANION_SKILL_KEY, key);
+    else localStorage.removeItem(COMPANION_SKILL_KEY);
+  } catch { /* ignore */ }
+};
+// §20-1点2(移行)+実装精度の規律4(配線ロジックは純関数に切り出してテスト): 旧pendingSkills配列
+// (守護霊系以外が混ざっていてもよい)から移行先の同行者キーを決める判定だけを純関数へ切り出す。
+// 優先度はselectedGhostMode(ghostOnline.ts)と同じ(own>top>random)= 旧セーブで複数残っていても、
+// 旧仕様が実際に効かせていたモードと同じ結果になる。該当なし(空/守護霊系以外のみ)はnull=無視。
+export const migrateCompanionFromLegacy = (legacy: readonly SkillKey[]): SkillKey | null =>
+  legacy.includes('guardian-spirit') ? 'guardian-spirit'
+    : legacy.includes('ghost-slayer') ? 'ghost-slayer'
+      : legacy.includes('ghost-helper') ? 'ghost-helper'
+        : null;
+// 新キーに値が無ければ旧キー(LOADOUT_SKILLS_KEY=旧pendingSkills保存先)を読み、移行先が決まれば
+// 新キーへ書き移す(以後は新キーが正)。旧セーブでクラッシュ/消失は起きない(壊れた値は素通りせず無視)。
+const loadCompanionSkill = (): SkillKey | null => {
+  try {
+    const raw = localStorage.getItem(COMPANION_SKILL_KEY);
+    if (isCompanionSkillKey(raw)) return raw;
+    const legacy = loadStringArray(LOADOUT_SKILLS_KEY) as SkillKey[];
+    const migrated = migrateCompanionFromLegacy(legacy);
+    if (migrated) saveCompanionSkill(migrated); // 一度だけ移行して新キーへ確定させる(以後は新キーが正)
+    return migrated;
+  } catch { return null; }
 };
 
 // 装備を該当スロットへ装着した新 Player を返す純関数(同スロットは置換=破棄)。最大体力の増減は
@@ -4047,17 +4084,18 @@ interface GameState {
   setIntroDialogueLines: (lines: IntroLine[]) => void; // 出撃ごとの会話を設定(選択ミッション/フリー)
   pendingLoadout: SubWeaponKey[];                       // 装備メニューで選んだサブ(出撃時に resetGame が所持へ反映・永続)
   setPendingLoadout: (keys: SubWeaponKey[]) => void;
-  // SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止・確定): このフィールドはもう「スキル持ち込み」
-  // には使わない(resetGameのruns Skills計算はpendingSkillsを読まない=MAX_CARRY_SKILLS=0)。
-  // 引き続き**同行者モード選択の入力**としてbeginGhostOnlineRunへ渡る(§1-3の同行者専用UIはB4まで
-  // 未実装のため、暫定でこの場を流用する。守護霊系3種のみをMissionSelect.tsxが表示する)。
-  pendingSkills: SkillKey[];                            // 同行者モード選択(守護霊/有志/猛者。最大2枠・永続)
-  setPendingSkills: (keys: SkillKey[]) => void;
+  // SKILL_BUILD_REDESIGN.md §1-3/§20(B4・同行者枠の正式化): 守護霊系3種(guardian-spirit/ghost-helper/
+  // ghost-slayer)専用の単一選択枠。runBuild/レア度枠を消費しない・player.skillsにも入らない(§8点1・
+  // 効果配線はdirectorTick.ts/ghostOnline.tsがこのフィールドを読む=player.skills経由の暗黙参照は廃止)。
+  // B1まではpendingSkills(旧スキル持ち込みフィールド)をこの用途に暫定流用していた(置き換え済み)。
+  companionSkill: SkillKey | null;                      // 同行者(守護霊/有志/猛者のいずれか1つ。永続)
+  setCompanionSkill: (key: SkillKey | null) => void;
   ownedSkills: SkillKey[];                              // ガチャで解禁済みスキル(永続)。ラン中ドラフトの候補元。
   ownedSkillLevels: Partial<Record<SkillKey, number>>;  // 所持スキルのLv(ガチャ重複で上昇・永続)
   // SKILL_BUILD_REDESIGN.md §17(B1): ラン内ビルドの台帳(store・ラン内限定)。
   // 入るのはドラフト取得(新規カード)だけ=レア度枠(1/2/3)の対象そのもの。
-  // 警察署報酬(poi-*)/同行者(守護霊系)は player.skills には入るが runBuild には入れない(§8点1)。
+  // 警察署報酬(poi-*)は player.skills には入るが runBuild には入れない(§8点1)。同行者(守護霊系)は
+  // §20(B4)でcompanionSkill専用フィールドへ正式化済み=player.skillsにもrunBuildにも入らない。
   runBuild: SkillKey[];
   // ラン中にバニッシュ(除外)したスキル(最大2件・ラン終了でリセット)。
   vanishedSkills: SkillKey[];
@@ -4491,9 +4529,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   purchasedSubLevels: loadSubShelfLevels(),
   avatarId: loadAvatarId(),
   pendingLoadout: loadStringArray(LOADOUT_SUBS_KEY) as SubWeaponKey[],
-  // 警察署のpoi専用スキルは「プレイ中のみ付与」(社長指示v0.25.2451)。旧実装が恒久所持
-  // (grantSkill)で書いていたため、汚染済みセーブから読み込み時に自動除去する(装備枠も同様)。
-  pendingSkills: (loadStringArray(LOADOUT_SKILLS_KEY) as SkillKey[]).filter(k => !POLICE_REWARD_SKILLS.includes(k)).slice(0, 2),
+  // SKILL_BUILD_REDESIGN.md §20-1点2(移行): 新キー優先・無ければ旧pendingSkillsキーから守護霊系だけを
+  // 拾う(loadCompanionSkill内でCOMPANION_SKILL_KEYS判定済みなので、poi-*等の紛れ込みは自然に弾かれる)。
+  companionSkill: loadCompanionSkill(),
   // BOT_AND_GHOST.md G3: 守護霊(guardian-spirit)は最初から所持(社長指示)。新規セーブ・既存セーブとも
   // 読み込み時に無ければ追加するマイグレーション(ensureDefaultOwnedSkills)。
   ownedSkills: ensureDefaultOwnedSkills((loadStringArray(OWNED_SKILLS_KEY) as SkillKey[]).filter(k => !POLICE_REWARD_SKILLS.includes(k))),
@@ -12923,10 +12961,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     saveStringArray(LOADOUT_SUBS_KEY, keys);
     set({ pendingLoadout: keys });
   },
-  setPendingSkills: (keys) => {
-    const capped = keys.slice(0, 2); // 装備は最大2
-    saveStringArray(LOADOUT_SKILLS_KEY, capped);
-    set({ pendingSkills: capped });
+  setCompanionSkill: (key) => {
+    const safe = isCompanionSkillKey(key) ? key : null;
+    saveCompanionSkill(safe);
+    set({ companionSkill: safe });
   },
 
   grantSkill: (key) => {
@@ -12939,7 +12977,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の9: ヘッドレス計測スクリプト専用の上書き口。
   // **意図的にlocalStorageへ永続化しない**(grantSkill等の実プレイ経路と違い、計測ラン限りの
   // in-memory上書き=実機の保存データを汚染しない)。呼んだ直後は resetGame を呼び直すこと
-  // (pendingSkills/ownedSkillLevelsを読むのはresetGameの出撃時点のみ)。
+  // (companionSkill/ownedSkillLevelsを読むのはresetGameの出撃時点のみ)。
   setOwnedSkillsForTest: (skills, levels) => {
     set({ ownedSkills: [...skills], ownedSkillLevels: { ...levels } });
   },
@@ -12952,14 +12990,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   resetGachaProgress: () => {
     // v0.25.3183(社長指示「ガチャリセットにサブウェポンもリセットを追加」): 装備メニューで
     // 選んだサブウェポン(LOADOUT_SUBS_KEY / pendingLoadout)も一緒に初手(未装備)へ戻す。
+    // SKILL_BUILD_REDESIGN.md §20(B4): 装備中の同行者(companionSkill)も所持スキルの消去と一緒に外す
+    // (LOADOUT_SKILLS_KEYは旧キーの残骸掃除。COMPANION_SKILL_KEYが正=新キー)。
     for (const k of [OWNED_SKILLS_KEY, OWNED_SKILL_LEVELS_KEY, GACHA_DUPES_KEY, GACHA_PITY_KEY,
-      GACHA_PULLS_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY, LOADOUT_SUBS_KEY, SUB_SHELF_KEY]) {
+      GACHA_PULLS_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY, COMPANION_SKILL_KEY, LOADOUT_SUBS_KEY, SUB_SHELF_KEY]) {
       try { localStorage.removeItem(k); } catch { /* ignore */ }
     }
     set({
       // 「初手」にも守護霊は入っている(G3: 最初から所持)ので、リセット後も欠けさせない。
       ownedSkills: ensureDefaultOwnedSkills([]), ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
-      gachaPullsTotal: 0, goldBalance: 0, pendingSkills: [], pendingLoadout: [], purchasedSubLevels: {},
+      gachaPullsTotal: 0, goldBalance: 0, companionSkill: null, pendingLoadout: [], purchasedSubLevels: {},
     });
   },
   // 強化訓練を1回引く(逐次)。レア度をpityから抽選→pity更新(super=リセット/他=+1)→
@@ -14254,13 +14294,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     // G6: 1ランにつき1回だけ非同期取得。実プレイヤー候補が取れなければ召喚側で固定20人を使う。
     const testGhostSkill = bossTestGhostSkill();
     // SKILL_BUILD_REDESIGN.md §15-1の2(B0発注文): ボスメーカーの部屋(isBossMakerRun)に限り、
-    // スキル/Lv/装備Tier/プレイヤーLvの注入口(bossTest.ts)を読む。通常出撃(injection=null)は
-    // 従来どおり pendingSkills / bossTestGhostSkill のまま=挙動不変。
+    // スキル/Lv/装備Tier/プレイヤーLvの注入口(bossTest.ts)を読む。
     const skillInjection = isBossMakerRun() ? getBossTestSkillInjection() : null;
-    const selectedRunSkills = skillInjection
-      ? skillInjection.skills
-      : (testGhostSkill ? [testGhostSkill] : state.pendingSkills);
-    beginGhostOnlineRun(selectedRunSkills, getSelectedStageId());
+    // SKILL_BUILD_REDESIGN.md §20(B4・配線全列挙): 同行者の選択元はcompanionSkill(正式フィールド・
+    // §1-3)。ボスモードのURL注入(testGhostSkill=bossTestGhostSkill())が最優先
+    // (bossTest.tsのBossTestSkillInjectionコメント「同行者あり/なしの切替は既存のghostModeを使う=
+    // このAPIはプレイヤー本人ビルドだけを扱う」どおり=skillInjectionの有無に関係なくtestGhostSkillが
+    // 効く。旧実装はskillInjection側でtestGhostSkillを無視していた=修正対象の黙って壊れる箇所)。
+    // 永続保存はしない(下のset()でこのラン限りの実効値として上書きするだけ=装備メニューの選択を汚さない)。
+    const selectedCompanionSkill: SkillKey | null = testGhostSkill ?? state.companionSkill;
+    beginGhostOnlineRun(selectedCompanionSkill ? [selectedCompanionSkill] : [], getSelectedStageId());
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
     // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。
@@ -14277,6 +14320,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       namedFoeRunResolved: false,
       lastDamagerType: null,
       lastDamagerWasNamed: false,
+      // SKILL_BUILD_REDESIGN.md §20(B4): このランの実効同行者(testGhostSkill優先・無ければ永続選択)を
+      // 確定させる。directorTick.ts/ghostOnline.tsはこのフィールドだけを読む(player.skills経由の
+      // 暗黙参照は廃止)。ここでの上書きはstate限定でlocalStorageへは書かない(setCompanionSkillと違う)。
+      companionSkill: selectedCompanionSkill,
       // BOT_AND_GHOST.md G3: 守護霊の発動フラグ(スコア×0.5の根拠)はラン単位でリセット。
       ghostSummonedThisRun: false,
       ghostSourceThisRun: null,
@@ -14355,17 +14402,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup]));
       // 装備スキル(出撃時に player.skills へ反映)。
       // SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止・確定=MAX_CARRY_SKILLS=0): 通常出撃は
-      // ラン内ドラフトのみでruntime skillsを組む=開始0件。selectedRunSkills/pendingSkillsは
-      // 同行者モード選択(上のbeginGhostOnlineRun呼び出し=無改変)の入力としてはそのまま使うが、
-      // プレイヤー本人の開始スキルにはもう使わない(同行者はplayer.skillsに入らない=§1-3/§8点1)。
-      // ボスメーカーの注入(skillInjection)は計測用の測定路としてそのまま残す(§17-1点4)。
+      // ラン内ドラフトのみでruntime skillsを組む=開始0件。同行者(companionSkill/selectedCompanionSkill)
+      // はプレイヤー本人の開始スキルには使わない(同行者はplayer.skillsに入らない=§1-3/§8点1・
+      // §20-1点3の配線全列挙で確定)。ボスメーカーの注入(skillInjection)はプレイヤー本人ビルドの
+      // 計測用測定路としてそのまま残す(§17-1点4。同行者とは別枠=bossTest.tsのコメントどおり)。
       const runSkills: SkillKey[] = state.danceTestMode
         ? []
         : skillInjection
-          ? Array.from(new Set<SkillKey>(selectedRunSkills))
+          ? Array.from(new Set<SkillKey>(skillInjection.skills))
           // MAX_CARRY_SKILLS=0 なので常に空配列になる(定数を残すことで「復活可能な形」を保つ=
-          // 将来MAX_CARRY_SKILLSを戻すだけでこの経路がそのまま生き返る)。
-          : Array.from(new Set<SkillKey>(selectedRunSkills)).slice(0, MAX_CARRY_SKILLS);
+          // 将来MAX_CARRY_SKILLSを戻すだけでこの経路がそのまま生き返る)。持ち込み候補の出どころは
+          // B1で既に0化済み(元pendingSkills)=companionSkillは同行者専用でここには混ぜない。
+          : Array.from(new Set<SkillKey>()).slice(0, MAX_CARRY_SKILLS);
       // 装備スキルのLvは所持Lv(ownedSkillLevels)を反映(未設定=1、最大Lvでクランプ)。注入時は
       // skillInjection.skillLevelsを優先する(未指定キーはownedSkillLevelsへフォールバック)。
       const runSkillLevels: Partial<Record<SkillKey, number>> = Object.fromEntries(

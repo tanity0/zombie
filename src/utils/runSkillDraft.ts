@@ -18,8 +18,9 @@ export const MAX_CARRY_SKILLS = 0;
 
 // ---- 3. B-19全数洗い(§11-1 B-19・§9点6)の受け皿 ------------------------------------------
 // 「ラン中に取ると即機能しない/説明文が嘘になる」スキルは提示除外(受け皿=この専用定数)。
-// - guardian-spirit/ghost-helper/ghost-slayer: 同行者枠(§1-3の「枠外」)。player.skillsには入るが
-//   runBuild(=このドラフトの対象)には入れない=最初からドラフト候補にならない。
+// - guardian-spirit/ghost-helper/ghost-slayer: 同行者枠(§1-3の「枠外」)。B4でgameStore.companionSkill
+//   (単一選択の専用フィールド)へ正式化済み=player.skillsにもrunBuild(=このドラフトの対象)にも
+//   入らない。最初からドラフト候補にならない(=念のための二重の守り)。
 // - poi-bombing/poi-guard/poi-thrall: 施設報酬専任(§1-3「枠外」・警察署アリーナでのみ直接付与)。
 // - scrap-builder: 「出撃開始時の初期スクラップ+50/100/150」が効果の柱だが、ラン内ドラフトは
 //   Lv2以降にしか発生しない=出撃開始の瞬間は必ず過ぎている。取得しても柱が永久に発火しない

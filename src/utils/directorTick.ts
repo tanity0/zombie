@@ -17,7 +17,7 @@ import { clampRectToPlayableArea } from '../world/playableArea';
 import {
   isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES_EN, rankLabel,
 } from './wallProgress';
-import type { ActiveEvent, Enemy, EnemyType, GameBounds, Player, PlayerBuildSnapshot, Summon } from '../types/game';
+import type { ActiveEvent, Enemy, EnemyType, GameBounds, Player, PlayerBuildSnapshot, SkillKey, Summon } from '../types/game';
 import {
   generateEnemy,
   getEnemyFireProfile,
@@ -640,9 +640,13 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   if (!engagedNow) pendingRemoteGhostSlot = null;
 
   const ghostActive = state.summons.some(s => s.kind === 'ghost-ally');
-  // G3: このランでゴースト系を有効にするか = `?ghost=1`(開発用) OR 守護霊(guardian-spirit)装備。
+  // G3: このランでゴースト系を有効にするか = `?ghost=1`(開発用) OR 守護霊系を同行者に選択。
   // 同じ判定が計測停止(§2.7 制約1)にもそのまま使われる(ゴーストが出うるランは丸ごと測らない)。
-  const ghostRunActive = ghostRunEnabled(ghostDebugEnabled, player.skills);
+  // SKILL_BUILD_REDESIGN.md §20(B4・配線全列挙): 同行者はplayer.skillsに入らない(§8点1)ため、
+  // 判定はstate.companionSkill(gameStore.resetGameがこのランの実効値を確定させる)を読む
+  // (player.skills経由の暗黙参照は廃止=旧実装はMAX_CARRY_SKILLS=0で常に空になり死んでいた経路)。
+  const companionSkills: SkillKey[] = state.companionSkill ? [state.companionSkill] : [];
+  const ghostRunActive = ghostRunEnabled(ghostDebugEnabled, companionSkills);
 
   // G1: 計測(純関数へ委譲。この関数自体はplayerTraitsが必要とする値をstoreから集めて渡すだけ)。
   tickPlayerTraits({
@@ -726,7 +730,9 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // G5(BOT_AND_GHOST.md §2.10 仕様5): 軸1プロファイルが有れば、紐付くボスのスロット(bossStyles)を
   // ノブ単位で優先合成する(effectiveGhostProfile。スロットが無い/そのノブがnullなら軸1へフォールバック)。
   const localSlot = bossStyleSlotKey(boss.type, getSelectedStageId());
-  const requestedMode = selectedGhostMode(player.skills);
+  // SKILL_BUILD_REDESIGN.md §20(B4・配線全列挙): companionSkillsを唯一の出どころにする(上のghostRunActive
+  // と同じ理由。player.skillsは同行者を含まない=旧実装のplayer.skills参照は死んでいた)。
+  const requestedMode = selectedGhostMode(companionSkills);
   const onlineMode = requestedMode === 'random' || requestedMode === 'top';
   const pickPending = onlineMode && isGhostOnlinePickPending();
   if (rising && pickPending) {

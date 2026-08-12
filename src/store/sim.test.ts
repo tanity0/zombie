@@ -8,6 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   useGameStore, PUMPKIN_JUMP_MAX_DIST,
   bossCritCdMult, BOSS_CRIT_CD_MULT, STUN_DURATION_MS, canShoveEnemy,
+  migrateCompanionFromLegacy,
 } from './gameStore';
 import type { Enemy } from '../types/game';
 
@@ -402,26 +403,61 @@ describe('headless simulation invariants', () => {
     expect(left).toEqual(['giantbat', 'jormungand']); // ボス系は生存・雑魚は消滅
   });
 
-  it('SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止): pendingSkillsはもうplayer.skillsへ反映されない', () => {
+  it('SKILL_BUILD_REDESIGN.md §20(B4・同行者枠の正式化): companionSkillはplayer.skillsへ反映されない', () => {
     // 旧仕様(持ち込み1〜2枠)ではpendingSkills(scrap-builder)がplayer.skillsへ写り、出撃時の
-    // 初期スクラップ加算(scrapBuilderBonus)が発生していた。B1で持ち込みは0化=pendingSkillsは
-    // 同行者選択(beginGhostOnlineRun)の入力に転用されただけで、runSkills(=player.skills初期値)
-    // にはもう反映されない。scrap-builder自体もRUN_DRAFT_EXCLUDED_SKILLSでラン中ドラフトからも
-    // 除外される(§17-1点6のB-19全数洗い)ため、通常プレイでこの加算に到達する経路は無い。
-    useGameStore.setState({ ownedSkills: [], ownedSkillLevels: {}, pendingSkills: [], startWithTestStraps: false });
+    // 初期スクラップ加算(scrapBuilderBonus)が発生していた。B1で持ち込みは0化、B4で同行者は
+    // companionSkill専用フィールドへ正式化(§8点1)=どちらの経路からもplayer.skillsへは反映されない。
+    // scrap-builder自体もRUN_DRAFT_EXCLUDED_SKILLSでラン中ドラフトから除外される(§17-1点6)ため、
+    // 通常プレイでこの加算に到達する経路は無い。
+    useGameStore.setState({ ownedSkills: [], ownedSkillLevels: {}, companionSkill: null, startWithTestStraps: false });
     useGameStore.getState().resetGame('warrior');
     expect(useGameStore.getState().player.straps).toBe(0);
-    useGameStore.setState({ ownedSkills: ['scrap-builder'], ownedSkillLevels: { 'scrap-builder': 2 }, pendingSkills: ['scrap-builder'], startWithTestStraps: false });
+    useGameStore.setState({ ownedSkills: ['guardian-spirit'], ownedSkillLevels: {}, companionSkill: 'guardian-spirit', startWithTestStraps: false });
     useGameStore.getState().resetGame('warrior');
     expect(useGameStore.getState().player.straps).toBe(0);
-    expect(useGameStore.getState().player.skills).not.toContain('scrap-builder');
+    expect(useGameStore.getState().player.skills).not.toContain('guardian-spirit');
+  });
+
+  it('SKILL_BUILD_REDESIGN.md §20-2点1: 同行者はrunBuild/レア度枠を消費しない', () => {
+    useGameStore.setState({
+      ownedSkills: ['guardian-spirit', 'ghost-helper', 'ghost-slayer'],
+      ownedSkillLevels: {},
+      companionSkill: 'guardian-spirit',
+      startWithTestStraps: false,
+    });
+    useGameStore.getState().resetGame('warrior');
+    // 同行者はrunBuild(レア度枠1/2/3の対象そのもの)に一切現れない=枠を消費しない。
+    expect(useGameStore.getState().runBuild).toEqual([]);
+    expect(useGameStore.getState().companionSkill).toBe('guardian-spirit'); // 選択自体は維持される
+  });
+
+  it('SKILL_BUILD_REDESIGN.md §20-2点3(移行純関数): migrateCompanionFromLegacyは旧pendingSkills配列から優先度どおりに1つだけ選ぶ', () => {
+    // 優先度=selectedGhostMode(ghostOnline.ts)と同じ own > top(ghost-slayer) > random(ghost-helper)。
+    expect(migrateCompanionFromLegacy(['guardian-spirit', 'ghost-slayer'])).toBe('guardian-spirit');
+    expect(migrateCompanionFromLegacy(['ghost-helper', 'ghost-slayer'])).toBe('ghost-slayer');
+    expect(migrateCompanionFromLegacy(['ghost-helper'])).toBe('ghost-helper');
+    // 守護霊系以外(旧・持ち込みスキルの残骸)が入っていても無視するだけ=クラッシュ/消失なし。
+    expect(migrateCompanionFromLegacy(['scrap-builder', 'warm-up'])).toBeNull();
+    expect(migrateCompanionFromLegacy([])).toBeNull();
+  });
+
+  it('SKILL_BUILD_REDESIGN.md §20-2点4: 通常出撃はcompanionSkill(永続選択)がこのランの実効同行者になる', () => {
+    // testGhostSkill(bossTestGhostSkill・URL注入)はresetGame内で `testGhostSkill ?? state.companionSkill`
+    // としてcompanionSkillへ反映される(§20実装)。このテスト環境はnode環境(windowが無い)のため
+    // bossTestGhostSkill()は常にnullを返す=URL注入の優先度そのものはヘッドレスでは再現できないが、
+    // 「注入が無ければ永続選択がそのまま実効値になる」経路はここで固定できる。
+    useGameStore.setState({
+      ownedSkills: ['ghost-helper'], ownedSkillLevels: {}, companionSkill: 'ghost-helper', startWithTestStraps: false,
+    });
+    useGameStore.getState().resetGame('warrior');
+    expect(useGameStore.getState().companionSkill).toBe('ghost-helper');
   });
 
   it('SKILL_BUILD_REDESIGN.md §17: levelUp()はスキル専業3択+常設スクラップを提示し、resetGameがrunBuild台帳をリセットする', () => {
     useGameStore.setState({
       ownedSkills: ['attack-shooter', 'sharpshooter', 'exploder'],
       ownedSkillLevels: { 'attack-shooter': 1, sharpshooter: 1, exploder: 1 },
-      pendingSkills: [], startWithTestStraps: false,
+      companionSkill: null, startWithTestStraps: false,
     });
     useGameStore.getState().resetGame('warrior');
     expect(useGameStore.getState().runBuild).toEqual([]);

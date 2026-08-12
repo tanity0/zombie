@@ -124,7 +124,7 @@ import {
 
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
-  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, OBTAINABLE_SKILL_KEYS, MAX_EQUIPPED_SKILLS, BESTIARY,
+  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, OBTAINABLE_SKILL_KEYS, COMPANION_SKILL_KEYS, BESTIARY,
   gachaPullCostFor, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, type SkillRarity, type Stage
 } from '../data/campaign';
@@ -269,10 +269,9 @@ const RARITY_TEXT: Record<SkillRarity, string> = {
   normal: 'text-white/60', rare: 'text-sky-300', super: 'text-amber-300',
 };
 
-// SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止)+§1-3(同行者は枠外): 出撃前スキル持ち込みUIは
-// 撤去した。装備メニューに残るのは「同行者」選択(守護霊系3種)のみ=専用の同行者UI(B4)ができるまでの
-// 暫定として、既存のpendingSkills/setPendingSkillsをこの3種だけに絞って流用する。
-const COMPANION_SKILL_KEYS: SkillKey[] = ['guardian-spirit', 'ghost-helper', 'ghost-slayer'];
+// SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止)+§1-3/§20(B4・同行者枠の正式化): 出撃前スキル
+// 持ち込みUIは撤去済み。装備メニューに残るのは「同行者」選択(守護霊系3種=COMPANION_SKILL_KEYS。
+// 単一選択=gameStore.companionSkill/setCompanionSkillが正式フィールド。候補列挙のみここで使う)。
 
 // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-3: ミッション種別ラベル。文字で識別できるように
 // し、色だけに依存しない(「色だけに依存せず、文字でも識別可能にする」)。stage.kind から導出する
@@ -373,11 +372,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const [freeMode, setFreeMode] = useState(false);               // 出撃がフリー(周回・会話なし)か
   // 装備(サブ/スキル)はトップの独立「装備メニュー」で選び、store に永続。出撃時に resetGame が反映。
   const equippedSubs = useGameStore(state => state.pendingLoadout);
-  const equippedSkills = useGameStore(state => state.pendingSkills);
+  const companionSkill = useGameStore(state => state.companionSkill);
   const ownedSkills = useGameStore(state => state.ownedSkills);
   const ownedSkillLevels = useGameStore(state => state.ownedSkillLevels);
   const setPendingLoadout = useGameStore(state => state.setPendingLoadout);
-  const setPendingSkills = useGameStore(state => state.setPendingSkills);
+  const setCompanionSkill = useGameStore(state => state.setCompanionSkill);
   // アバターシステム(試験・第1弾)。装備メニュー内の独立枠。プリミティブ(string|null)購読のみ=React再描画規律に沿う。
   const avatarId = useGameStore(state => state.avatarId);
   const setAvatarId = useGameStore(state => state.setAvatarId);
@@ -956,21 +955,21 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       playSfx('ui-select');
       setPendingLoadout(equippedSubs.includes(k) ? [] : [k]);
     };
-    const toggleSkill = (k: SkillKey) => {
+    // SKILL_BUILD_REDESIGN.md §20(B4): 同行者は単一選択(companionSkill: SkillKey|null)。
+    // 選択中を再タップで解除、別の候補をタップで置き換え(アバター選択と同じ単一選択パターン)。
+    const toggleCompanion = (k: SkillKey) => {
       playSfx('ui-select');
-      if (equippedSkills.includes(k)) { setPendingSkills(equippedSkills.filter(x => x !== k)); return; }
-      if (equippedSkills.length >= MAX_EQUIPPED_SKILLS) return; // 最大2(満杯なら無視)
-      setPendingSkills([...equippedSkills, k]);
+      setCompanionSkill(companionSkill === k ? null : k);
     };
     return (
       <>
         <Header title="装備" subtitle="全作戦共通。サブウェポンと同行者を選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />
         <div className="p-3 space-y-4">
-          {/* 同行者(守護霊系3種のみ・最大2枠=排他は選択優先順で解決)。持ち込みスキルUIは撤去済み。 */}
+          {/* 同行者(守護霊系3種のみ・単一選択)。持ち込みスキルUIは撤去済み。 */}
           <div>
             <div className="flex items-center justify-between px-1 mb-1.5">
               <span className="text-[11px] uppercase tracking-widest text-fuchsia-200/70">同行者</span>
-              <span className="text-[11px] text-white/45">{equippedSkills.length}/{MAX_EQUIPPED_SKILLS}</span>
+              <span className="text-[11px] text-white/45">{companionSkill ? '1/1' : '0/1'}</span>
             </div>
             {ownedSkills.length === 0 ? (
               <p className="rounded-none bg-purple-400/5 px-3 py-3 text-[11px] leading-snug text-white/50">
@@ -980,18 +979,14 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               <div className="menu-stagger grid grid-cols-2 gap-2">
                 {/* 同行者候補(守護霊系3種)のみ表示(レア度色付き)。 */}
                 {SKILL_KEYS.filter(k => COMPANION_SKILL_KEYS.includes(k) && ownedSkills.includes(k)).map(k => {
-                  const on = equippedSkills.includes(k);
-                  const full = !on && equippedSkills.length >= MAX_EQUIPPED_SKILLS;
+                  const on = companionSkill === k;
                   const rarity = SKILLS[k].rarity;
                   return (
                     <button
                       key={k}
-                      onClick={() => toggleSkill(k)}
-                      disabled={full}
+                      onClick={() => toggleCompanion(k)}
                       className={`ff7r-fade-right flex flex-col items-start gap-0.5 rounded-none px-3 py-2.5 text-left transition-[filter] ${
-                        on ? 'is-on text-white'
-                          : full ? 'is-off text-white/40'
-                          : 'text-white/85 active:brightness-110'
+                        on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
                       }`}
                     >
                       <span className="flex w-full items-center justify-between gap-2">
@@ -1056,7 +1051,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </div>
           </div>
           <p className="text-[11px] text-white/45 text-center">
-            同行者: {equippedSkills.length === 0 ? 'なし' : equippedSkills.map(k => SKILLS[k].name).join(' / ')}
+            同行者: {companionSkill ? SKILLS[companionSkill].name : 'なし'}
             {' ／ '}サブ: {equippedSubs.length === 0 ? 'なし' : equippedSubs.map(k => subWeaponDisplayName(k)).join(' / ')}
             {' ／ '}アバター: {avatarId ? AVATARS[avatarId].name : 'なし'}
           </p>

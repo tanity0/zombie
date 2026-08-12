@@ -944,6 +944,11 @@ export const GACHA_EXCLUDED_SKILLS: SkillKey[] = [
   ...NEW_SLEEPING_SKILLS,
 ];
 
+// SKILL_BUILD_REDESIGN.md §1-3/§20(B4・同行者枠の正式化): 守護霊系3種=同行者枠(runBuild/レア度枠の
+// 外)。gameStore.companionSkill(単一選択・SkillKey|null)の妥当値チェックと、装備メニュー(同行者UI)の
+// 候補列挙が共通で使う唯一の出どころ(ここ以外に同じ3種のリテラルを持つ場所を増やさない)。
+export const COMPANION_SKILL_KEYS: readonly SkillKey[] = ['guardian-spirit', 'ghost-helper', 'ghost-slayer'];
+
 // BOT_AND_GHOST.md G3(社長指示v0.25.2452「守護霊スキルは最初から解禁しとこうか」):
 // 最初から所持済みのスキル。新規セーブ・既存セーブの両方で、ownedSkills 読み込み時に
 // 無ければ追加するマイグレーション(ensureDefaultOwnedSkills)をgameStoreの初期化が通す。

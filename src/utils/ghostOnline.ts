@@ -119,6 +119,9 @@ export const fixedGhostFeedbackTarget = (guardianId: string, localSlot: string):
   kind: 'fixed', guardianId, slot: ghostNetworkSlotKey(localSlot), eventId: createFeedbackEventId(),
 });
 
+// SKILL_BUILD_REDESIGN.md §20(B4・同行者枠の正式化): `skills` は player.skills ではなく
+// gameStore.companionSkill(単一選択)を1件配列に包んだもの(呼び出し側=gameStore.resetGame/
+// directorTick.ts)。関数自体は引数だけを見る汎用のまま(優先度=own>top>random は据え置き)。
 export const selectedGhostMode = (skills: readonly SkillKey[]): 'own' | 'random' | 'top' | null => {
   if (skills.includes('guardian-spirit')) return 'own';
   if (skills.includes('ghost-slayer')) return 'top';

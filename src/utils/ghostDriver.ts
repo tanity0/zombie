@@ -191,6 +191,10 @@ export const GHOST_SKILLS: ReadonlySet<SkillKey> = new Set([
  * このランでゴースト系を有効にするか(召喚ゲート)。`?ghost=1`(開発用・従来どおり装備なしでも動く)
  * OR 守護霊(guardian-spirit)を装備している。**計測停止(§2.7 制約1)も同じ判定を使う**
  * =「ゴーストが出うるランは丸ごと測らない」(装備中のボス戦は必ず召喚が起きるので同値・§2.7)。
+ *
+ * SKILL_BUILD_REDESIGN.md §20(B4・同行者枠の正式化): `equippedSkills` は player.skills ではなく
+ * gameStore.companionSkill を1件配列に包んだもの(呼び出し側=directorTick.tsのrunGhostAndTraitsStep)。
+ * 同行者はplayer.skillsに入らない(§8点1)ため、この関数自体は引数だけを見る(汎用のまま据え置き)。
  */
 export const ghostRunEnabled = (ghostDebugEnabled: boolean, equippedSkills: readonly SkillKey[]): boolean =>
   ghostDebugEnabled || equippedSkills.some(skill => GHOST_SKILLS.has(skill));

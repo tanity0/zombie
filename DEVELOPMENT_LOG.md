@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.3239 — B4着地: 同行者枠の正式化+配線バグ2件修正(Sonnet納品・検収済み)【2026-08-13 04:52 JST】
+- companionSkill: SkillKey|null(単一選択・localStorage永続・migrateCompanionFromLegacy純関数)。
+  pendingSkills/setPendingSkills廃止。COMPANION_SKILL_KEYS新設(campaign.ts=唯一の出どころ)。
+- 配線全列挙: directorTickの召喚ゲート/selectedGhostMode/resetGameのbeginGhostOnlineRun/
+  ボスモード注入(bossTestGhostSkill)をcompanionSkill参照へ統一。
+- **配線バグ修正(検収§20-3で追認)**: B1以降、同行者召喚が通常プレイで発火不能だった
+  (player.skillsが常に空)+ボスメーカー注入時にURL注入が握り潰される件。機能復活・数値不変。
+- MissionSelect: 同行者欄=1体選択に磨き込み。runTelemetryの同行者スイッチ追従。
+- 検証: typecheck 0/lint 0/対象テスト441 passed(fixedGuardians/constitution無改変)。
+- 実機確認: 同行者を選んでボス戦で召喚されること(HP×1.6等は既存の意図値のまま)。
+
 ## v0.25.3238 — B4発注文(§20)を記録・Sonnetへ発注【2026-08-13 04:25 JST】
 §20=B4の発注文: 同行者枠の正式化(companionSkill専用フィールド・B1暫定のpendingSkills流用を置換)/
 旧セーブ移行/配線全列挙(bossTestGhostSkill/selectedRunSkills含む)/runTelemetry追従。
