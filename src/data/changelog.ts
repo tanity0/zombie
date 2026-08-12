@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3210',
+    items: [
+      '開発: スキルビルド設計に「ラン中スキルレベルアップ(ハイブリッド)」を正式採用し、監査5巡目21件を反映。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3209',
     items: [
       '開発: スキルビルド設計の裁定2件反映(バーサーカー=金の枠光/TTK予算は監視のみ)+ラン中Lv上げの難易度算定。ゲーム内容の変更はありません。',
