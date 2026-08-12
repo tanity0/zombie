@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3234',
+    items: [
+      '開発: B2(商人装備区画)の発注文を設計書§18に記録。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3233',
     items: [
       '開発: スキルビルドの基準線計測②(現行最強2枠ビルドのボス撃破時間=中央値128秒)を記録。ゲーム内容の変更はありません。',
