@@ -145,10 +145,14 @@ const JIBRIL_SNIPE_SPEED_MULT = 2;
 export const JIBRIL_LANCE_BEAM_MS = 140;
 const JIBRIL_LANCE_RECOVER_MS = withRecoverFloor(600);
 export const JIBRIL_LANCE_HALF_WIDTH_PX = 26;
-export const JIBRIL_LANCE_LANTERN_SPEED = 1100;   // ランタンの飛行速度(px/s・高速)
-export const JIBRIL_LANCE_TURN_RATE = 3.2;        // 追従の旋回上限(rad/s)。振り切り=回避の余地
+// v0.25.3202(社長指示「飛んでいく速度を4倍の長さに」): 速度1/4=同じ距離を4倍の時間かけて飛ぶ。
+// ★速度だけ1/4にすると旋回半径(=速度/旋回率)が1/4に縮み、プレイヤーを通り過ぎた後に
+// きつく旋回して周回=縁に着けない壊れ方をする。旋回率も同率1/4にして**軌道は従来のまま**
+// 所要時間だけ4倍にする(旋回半径344px維持=「振り切れる」も不変)。安全上限も同率4倍。
+export const JIBRIL_LANCE_LANTERN_SPEED = 275;    // ランタンの飛行速度(px/s)=1100の1/4
+export const JIBRIL_LANCE_TURN_RATE = 0.8;        // 追従の旋回上限(rad/s)=3.2の1/4(旋回半径維持)
 export const JIBRIL_LANCE_MIN_WINDUP_MS = 360;    // 最短溜め(縁に早く着いてもこれ未満では撃たない)
-export const JIBRIL_LANCE_WINDUP_CAP_MS = 2000;   // 安全上限(万一縁に着けなくてもここで発射)
+export const JIBRIL_LANCE_WINDUP_CAP_MS = 8000;   // 安全上限(万一縁に着けなくてもここで発射)=2000の4倍
 const JIBRIL_LANTERN_CHANCE_LEGACY = 0.4; // 旧専用。新は jibrilScript.ts の JIBRIL_LANTERN_CHANCE。
 const JIBRIL_LANTERN_MS = 5000;
 const JIBRIL_FIRE_GAP_MS = 700;

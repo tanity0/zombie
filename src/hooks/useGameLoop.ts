@@ -4712,9 +4712,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // ボスは updateEnemies を早期returnで素通りするため、ここで明示的に判定する。
               // 裏ボスの完全気絶(紫・5クリ)中は攻撃も移動も完全停止(通常の気絶=歩行半速のみ とは別・社長指示)。
               const bossFullStun = boss.bossFullStunUntil !== undefined && newGameTime < boss.bossFullStunUntil;
-              const frozen = warping
-                || (boss.rootUntil !== undefined && newGameTime < boss.rootUntil)
-                || bossFullStun;
+              // v0.25.3202(社長裁定「行動を止められるのはいいんだが、技は止まらない」): トラップ拘束(root)は
+              // **移動だけ**止め、技(状態機械)は完走させる。旧実装はroot中も毎フレーム'chase'へ強制リセット
+              // +次行動2.6秒先送りだったため、マークスマンの自動トラップが巨体ボスへ掛かり続けると
+              // 溜め1〜2秒の弾技(aim-burst/aim-radial)が一度も発射へ到達しなかった
+              // (「SEは鳴ってるのに一切弾を打たない」の正体)。紫(完全気絶)/ワープの完全停止は従来どおり。
+              const rootedNow = boss.rootUntil !== undefined && newGameTime < boss.rootUntil;
+              const frozen = warping || bossFullStun;
               // v0.25.2895: 気絶中の歩行半減(旧walkMult/BOSS_STUN_SPEED_MULT)は死コードだったため削除。
               // 通常気絶(stunUntil)がボスに入る経路は既にbossSlowUntilへ置き換え済みで、唯一stunUntilを
               // 立てていた紫(完全気絶)はこの上のfrozenで先に全停止する——結果walkMultは常に1で、
@@ -4746,6 +4750,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // spd省略時は自身のspeed(mimir/jormungand/skadi/通常敵の既定)。トールの接近だけ
               // 社長指示でTHOR_APPROACH_SPEED(プレイヤーの1/2速度)を明示的に渡す。
               const moveToward = (mult: number, spd: number = speed) => {
+                if (rootedNow) { bs.vx = 0; bs.vy = 0; return; } // v0.25.3202: 拘束中は歩かない(技のタイマーは進む)
                 const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
                 const dl = Math.hypot(dpx, dpy) || 1;
                 const desVx = (dpx / dl) * spd * mult;

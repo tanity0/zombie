@@ -8149,7 +8149,7 @@ export class PixiScene {
   // 完全m0のまま通常描画で上に乗る(背景のみ・ゲーム状態への書き込みなし)。travel=player.y に1:1連動
   // =前進すると通路がプレイヤーの速度そのもので流れる。幾何はcorridorLayer側のCFG(footYr=0.744)で
   // プレイヤー=画面中央前提に再調整済み(プレビューのCORRIDOR_CFGは不変)。
-  private syncCorridorBackdrop(now: number) {
+  private syncCorridorBackdrop(now: number, shakeY = 0) {
     const s = useGameStore.getState();
     const on = s.corridorMode && !s.indoorMode;
     if (!on) {
@@ -8169,6 +8169,12 @@ export class PixiScene {
     const gz = this.L.worldGroup.scale.x || 1;
     const worldZeroScreenX = this.L.world.position.x * gz + this.L.worldGroup.position.x;
     this.corridorBackdrop.container.x = worldZeroScreenX - this.screenW / 2;
+    // v0.25.3202(社長報告「スリィエル討伐時、本人だけ揺れてる。カメラ揺れてない」の正体):
+    // 通路背景は横シェイクだけ上のworldZeroScreenX経由で追従し、**縦は画面固定のまま**だった。
+    // 通常ステージは地面ごと揺れる=「カメラの揺れ」に見えるが、洋館では画面の大半(通路背景)が
+    // 動かず**アクターだけがジッタ**して見える。縦シェイク(sy×ズーム)を背景にも掛けて揃える
+    // (討伐崩壊シェイクに限らず、カウンター等の全シェイクが対象。視覚のみ・判定/カメラ不変)。
+    this.corridorBackdrop.container.y = shakeY * gz;
     this.corridorBackdrop.update(-s.player.y, this.screenW, this.screenH, now);
   }
 

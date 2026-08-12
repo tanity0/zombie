@@ -9,10 +9,22 @@
 //
 // レンダラ非依存の純関数(src/utils)=ヘッドレスでユニットテスト可能。
 import type { Enemy } from '../types/game';
+import { enemyRangeRect, isBossType } from './enemyUtils';
 
-/** トラップ中心から敵の「体の縁」までの距離。負なら中心が既に円の内側。 */
-export const trapEdgeDistance = (trapCx: number, trapCy: number, enemy: Enemy): number =>
-  Math.hypot(enemy.x + enemy.width / 2 - trapCx, enemy.y + enemy.height / 2 - trapCy) - enemy.width / 2;
+/** トラップ中心から敵の「体の縁」までの距離。負なら中心が既に円の内側。
+ * v0.25.3202(社長報告「トラップが密着してなくても関係なく必中になってる」): ボス系は幅/2の円近似を
+ * やめ、**当たり判定矩形(enemyRangeRect)の最近点**までの距離にする。巨体(例: ヨルムンガルド)は
+ * 幅/2が150px超になり、円近似では離れていても常に「触れている」扱い=事実上の必中だった。
+ * 近接/銃の射程と同じ「測る相手は判定矩形」(v0.25.3170)へ揃える。通常敵は従来どおり(挙動不変)。 */
+export const trapEdgeDistance = (trapCx: number, trapCy: number, enemy: Enemy): number => {
+  if (isBossType(enemy.type)) {
+    const r = enemyRangeRect(enemy);
+    const nx = Math.max(r.x, Math.min(trapCx, r.x + r.width));
+    const ny = Math.max(r.y, Math.min(trapCy, r.y + r.height));
+    return Math.hypot(trapCx - nx, trapCy - ny);
+  }
+  return Math.hypot(enemy.x + enemy.width / 2 - trapCx, enemy.y + enemy.height / 2 - trapCy) - enemy.width / 2;
+};
 
 /** 体が円に触れているか(=捕獲対象か)。 */
 export const trapReachesEnemy = (trapCx: number, trapCy: number, radius: number, enemy: Enemy): boolean =>
