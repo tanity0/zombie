@@ -2053,6 +2053,16 @@ export const runSurielTick = (
       const elapsed = newGameTime - (suriel.aiStartedAt ?? newGameTime);
       const t = Math.max(0, Math.min(1, elapsed / SURIEL_RINGSHOT_MOVE_MS));
       patch.ringX = fx0 + (tx0 - fx0) * t; patch.ringY = fy0 + (ty0 - fy0) * t;
+      // v0.25.3200(社長指示「後半武器が2つに増えるのであれば、レーザーも2つに増えて。配置を
+      // それぞれ別の場所から狙ってくる感じ」): Phase2は2本目の環を**狙い点の周りへ90°回した別の場所**へ
+      // 同時展開する(1本目=対象の反対側/2本目=横合い=別角度から挟む)。展開先は
+      // 「到達点=2×狙い−本体中心」の逆算で毎tick決まる(本体はringshot中静止=値は安定)。
+      if (surielRingCount(phase) === 2) {
+        const aimx = (tx0 + scx) / 2, aimy = (ty0 + scy) / 2;
+        const rvx = tx0 - aimx, rvy = ty0 - aimy;
+        const r2tx = aimx - rvy, r2ty = aimy + rvx; // 狙い点まわり+90°
+        patch.ring2X = fx0 + (r2tx - fx0) * t; patch.ring2Y = fy0 + (r2ty - fy0) * t;
+      }
       if (elapsed >= SURIEL_RINGSHOT_MOVE_MS) {
         patch.bossState = 'ring-beam-windup';
         patch.bossStateUntil = newGameTime + SURIEL_RINGSHOT_BEAM_WINDUP_MS;
@@ -2081,6 +2091,23 @@ export const runSurielTick = (
       else {
         const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy);
         if (died) onPlayerDeath(pcx, pcy);
+      }
+    }
+    // v0.25.3200: Phase2の2本目のビーム(2本目の環→同じロック対象)。判定・威力・カウンターとも1本目と同一。
+    // 二重ヒットは被弾i-frameが吸収する(1本目と同じ経路)。
+    if (!countered && suriel.ring2X !== undefined && suriel.ring2Y !== undefined) {
+      const f2x = suriel.ring2X, f2y = suriel.ring2Y;
+      let d2x = tx0 - f2x, d2y = ty0 - f2y; const dl2 = Math.hypot(d2x, d2y) || 1; d2x /= dl2; d2y /= dl2;
+      const e2x = f2x + d2x * SURIEL_BEAM_RANGE, e2y = f2y + d2y * SURIEL_BEAM_RANGE;
+      if (distToSegment({ x: pcx, y: pcy }, { x: f2x, y: f2y }, { x: e2x, y: e2y }) <= SURIEL_BEAM_HALF_WIDTH + pr) {
+        const cp2 = useGameStore.getState().player;
+        if (Date.now() <= cp2.counterWindowEnd) {
+          surielCounterHit(pcx, pcy); countered = true;
+          patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
+        } else {
+          const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy);
+          if (died) onPlayerDeath(pcx, pcy);
+        }
       }
     }
     if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
@@ -2174,15 +2201,31 @@ export const runSurielTick = (
     const hp = surielHoverPoint(scx, scy); patch.ringX = hp.x; patch.ringY = hp.y;
   }
 
-  // §6.28-18 Phase2「環が2つ」: 2本目は1本目に追従する視覚専用の環(★未決事項に記録=独立した
-  // 攻撃判定は持たせない簡略化。1本目の進行方向に直交オフセットして「並んで飛ぶ」見た目にする)。
-  if (surielRingCount(phase) === 2) {
-    const r1x = patch.ringX ?? suriel.ringX ?? scx, r1y = patch.ringY ?? suriel.ringY ?? scy;
-    let dx = r1x - scx, dy = r1y - scy; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-    patch.ring2X = r1x + (-dy) * SURIEL_RING2_OFFSET_PX;
-    patch.ring2Y = r1y + dx * SURIEL_RING2_OFFSET_PX;
-  } else if (suriel.ring2X !== undefined || suriel.ring2Y !== undefined) {
-    patch.ring2X = undefined; patch.ring2Y = undefined;
+  // §6.28-18 Phase2「環が2つ」: 平時の2本目は1本目に追従する環。
+  // v0.25.3200(社長指示): ringshot中は追従させない——2本目は独立した展開位置へ飛び、そこから
+  // **2本目のビーム**を撃つ(展開/判定は上のringshot各州が書く)。技が終わったら高速で1本目の横へ帰投する
+  // (瞬間移動だと「消えて湧いた」に見えるため。既に横に居る平時は従来どおり毎tick即位置=挙動不変)。
+  {
+    const inRingshot = st === 'ring-move-windup' || st === 'ring-beam-windup' || st === 'ring-active' || st === 'ring-recover'
+      || patch.bossState === 'ring-move-windup';
+    if (surielRingCount(phase) === 2) {
+      if (!inRingshot) {
+        const r1x = patch.ringX ?? suriel.ringX ?? scx, r1y = patch.ringY ?? suriel.ringY ?? scy;
+        let dx = r1x - scx, dy = r1y - scy; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+        const t2x = r1x + (-dy) * SURIEL_RING2_OFFSET_PX, t2y = r1y + dx * SURIEL_RING2_OFFSET_PX;
+        const c2x = suriel.ring2X ?? t2x, c2y = suriel.ring2Y ?? t2y;
+        const dd2 = Math.hypot(t2x - c2x, t2y - c2y);
+        const step2 = SURIEL_RING_RETURN_SPEED * 2 * bossMoveDt;
+        if (dd2 > Math.max(step2, 1)) {
+          patch.ring2X = c2x + ((t2x - c2x) / dd2) * step2;
+          patch.ring2Y = c2y + ((t2y - c2y) / dd2) * step2;
+        } else {
+          patch.ring2X = t2x; patch.ring2Y = t2y;
+        }
+      }
+    } else if (suriel.ring2X !== undefined || suriel.ring2Y !== undefined) {
+      patch.ring2X = undefined; patch.ring2Y = undefined;
+    }
   }
 
   applyPatch(suriel.id, patch);

@@ -14478,11 +14478,16 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         let dirx = tx - fx, diry = ty - fy; const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
         const ex = fx + dirx * MIMIR_LASER_VIS_RANGE, ey = fy + diry * MIMIR_LASER_VIS_RANGE;
-        if (bs === 'ring-beam-windup') {
-          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SURIEL_RINGSHOT_BEAM_WINDUP_MS_VIS));
-          this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, prog, now);
-        } else {
-          this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, 1, now);
+        const beamProg = bs === 'ring-beam-windup'
+          ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SURIEL_RINGSHOT_BEAM_WINDUP_MS_VIS))
+          : 1;
+        this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, beamProg, now);
+        // v0.25.3200(社長指示): Phase2は2本目の環からも同じ対象へもう1本(判定と同幅・同尺=分類①)。
+        if (e.ring2X !== undefined && e.ring2Y !== undefined) {
+          let d2x = tx - e.ring2X, d2y = ty - e.ring2Y; const dl2 = Math.hypot(d2x, d2y) || 1; d2x /= dl2; d2y /= dl2;
+          this.drawAngelBeamLine(o, e.ring2X, e.ring2Y,
+            e.ring2X + d2x * MIMIR_LASER_VIS_RANGE, e.ring2Y + d2y * MIMIR_LASER_VIS_RANGE,
+            THIN_BEAM_VIS_HALFWIDTH, beamProg, now);
         }
       }
       // ---- スリィエル: 環の回転斬(近接拒否)=T2円(即時)。環自体はsyncSurielRingが本体周りへ描く ----
@@ -14728,11 +14733,21 @@ export class PixiScene {
         let bdx = swordTx - swordFx, bdy = swordTy - swordFy;
         const bdl = Math.hypot(bdx, bdy) || 1; bdx /= bdl; bdy /= bdl;
         const beamEx = swordFx + bdx * MIMIR_LASER_VIS_RANGE, beamEy = swordFy + bdy * MIMIR_LASER_VIS_RANGE;
+        // v0.25.3200: ラッチにも2本目(Phase2)の端点を積む(無い時はNaN=描かない)。中断後の完走描画で
+        // 2本目だけ突然消える「絵が消えた」事故を作らない(掟W9)。
         const beamL = this.latchFx(
           `${e.id}:suriel-beam-complete`, beamWind || beamActive,
           (beamWind ? swordRemain : 0) + (beamWind ? SURIEL_RINGSHOT_ACTIVE_MS_VIS : beamActive ? swordRemain : SURIEL_RINGSHOT_ACTIVE_MS_VIS),
           now,
-          () => [beamWind ? swordRemain : 0, beamWind ? SURIEL_RINGSHOT_ACTIVE_MS_VIS : Math.max(1, swordRemain), swordFx, swordFy, beamEx, beamEy],
+          () => {
+            let b2: [number, number, number, number] = [NaN, NaN, NaN, NaN];
+            if (e.ring2X !== undefined && e.ring2Y !== undefined) {
+              let d2x = swordTx - e.ring2X, d2y = swordTy - e.ring2Y;
+              const dl2 = Math.hypot(d2x, d2y) || 1; d2x /= dl2; d2y /= dl2;
+              b2 = [e.ring2X, e.ring2Y, e.ring2X + d2x * MIMIR_LASER_VIS_RANGE, e.ring2Y + d2y * MIMIR_LASER_VIS_RANGE];
+            }
+            return [beamWind ? swordRemain : 0, beamWind ? SURIEL_RINGSHOT_ACTIVE_MS_VIS : Math.max(1, swordRemain), swordFx, swordFy, beamEx, beamEy, ...b2];
+          },
         );
         if (beamL && !(beamWind || beamActive || bs === 'ring-recover')) {
           const elapsed = now - beamL.t0, impactAt = beamL.d[0], activeMs = Math.max(1, beamL.d[1]);
@@ -14741,6 +14756,9 @@ export class PixiScene {
             this.fxLatches.delete(`${e.id}:suriel-beam-complete`);
           } else if (elapsed < impactAt + activeMs) {
             this.drawAngelBeamLine(o, beamL.d[2], beamL.d[3], beamL.d[4], beamL.d[5], THIN_BEAM_VIS_HALFWIDTH, 1, now);
+            if (Number.isFinite(beamL.d[6])) {
+              this.drawAngelBeamLine(o, beamL.d[6], beamL.d[7], beamL.d[8], beamL.d[9], THIN_BEAM_VIS_HALFWIDTH, 1, now);
+            }
           }
         }
 
