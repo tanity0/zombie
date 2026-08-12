@@ -88,6 +88,7 @@ import {
   ACRASIEL_SPEAR_RADIUS, SURIEL_RINGSPIN_RADIUS, ACRASIEL_WARP_TELEGRAPH_MS, ACRASIEL_BURST_WINDUP_MS,
   MIGUEL_DASH_WINDUP_MS, MIGUEL_DASH_MOVE_MS, MIGUEL_DASH_STRIKE_MS,
   URI_THRUST_WINDUP_MS, URI_THRUST_MOVE_MS, URI_THRUST_STRIKE_MS,
+  JIBRIL_LANCE_WINDUP_MS, JIBRIL_LANCE_BEAM_MS, JIBRIL_LANCE_HALF_WIDTH_PX,
 } from '../utils/angelBossTick';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -14320,6 +14321,22 @@ export class PixiScene {
         this.drawMiguelKatanaReady(
           e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, tx, ty, swordAlpha, recoverStyle, 1,
         );
+      }
+      // ---- ジブリル(v0.25.3197・社長指示): ランス=細い赤ライン(溜め)→光条(140ms) ----
+      // 予告は当たり判定と同じ半幅26pxのカプセル(分類①=赤いのに当たらない、を作らない)。
+      else if (scriptActive && e.type === 'jibril' && (bs === 'lance-windup' || bs === 'lance')) {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (bs === 'lance-windup') {
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JIBRIL_LANCE_WINDUP_MS));
+          this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, JIBRIL_LANCE_HALF_WIDTH_PX, prog, now);
+        } else {
+          // 光条: 判定幅の赤+白芯。起爆(判定)はカプセル側=絵は判定幅と同じ(分類①)。
+          const lt = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / JIBRIL_LANCE_BEAM_MS));
+          const a = 1 - lt * 0.7;
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: JIBRIL_LANCE_HALF_WIDTH_PX * 2, color: 0xff3b3b, alpha: 0.6 * a });
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 6, color: 0xffffff, alpha: 0.9 * a });
+        }
       }
       // ---- ジブリル(§6.28-16 ①): ランタンを常に手元に掲げる(windup/実行/硬直=消さない・掟W9) ----
       // ---- ラフィ(§6.28-8・M57新規): 薙ぎ(Phase2)=T3帯+骨刃を振る絵 ----

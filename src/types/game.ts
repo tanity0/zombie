@@ -683,6 +683,7 @@ export interface Enemy {
     | 'volley-windup' | 'volley-recover' | 'tate-recover' | 'mdash-windup' | 'mdash-move' | 'mdash-recover'
     | 'lantern-windup' | 'lantern-recover' | 'consecrate' | 'consecrate-windup' | 'consecrate-recover' | 'warp-windup'
     | 'bone-windup' | 'bone-recover'
+    | 'lance-windup' | 'lance' | 'lance-recover'
     | 'sweep' | 'sweep-windup' | 'sweep-recover' | 'downslash' | 'downslash-windup' | 'downslash-recover'
     | 'thrust' | 'thrust-windup' | 'thrust-recover' | 'bolt' | 'bolt-windup' | 'bolt-recover'
     | 'ring-move-windup' | 'ring-beam-windup' | 'ring-active' | 'ring-recover'

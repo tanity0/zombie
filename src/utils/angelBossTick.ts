@@ -121,10 +121,26 @@ const JIBRIL_RETREAT_FAST_MULT = 1.7;
 const JIBRIL_HITS_FASTER = 3;
 const JIBRIL_HITS_WARP = 10;
 const JIBRIL_HANDGUN_DIST = 300;
+// 社長指示v0.25.3197「ジブリルの射撃を 1発、全方位、1発、全方位、1発 の5連射にする」:
+// 射撃(volley)は近接射/狙撃の両モードとも**5連射**になり、偶数発目(2発目・4発目)は
+// **全方位リング(8方向)**を撃つ。狙い撃ちの弾速倍率(狙撃×2)は奇数発目=狙い弾にのみ掛かる。
+const JIBRIL_VOLLEY_SHOTS = 5;
+const JIBRIL_OMNI_BULLETS = 8;
+// 旧フォールバック(runJibrilTickLegacy・?jibrilscript=0)専用の据え置き値。新実装は使わない。
 const JIBRIL_SNIPE_SHOTS = 3;
+const JIBRIL_CLOSE_SHOTS = 5;
 const JIBRIL_SNIPE_GAP_MS = 1000;
 const JIBRIL_SNIPE_SPEED_MULT = 2;
-const JIBRIL_CLOSE_SHOTS = 5;
+// 社長指示v0.25.3197「新技で、赤ラインの細目レーザーを打つ。速射だがギリギリ歩いて避けれて、
+// カウンターも可能にする」= 新技「ランス」(細い光条)。
+// - 溜め420ms: 物差し(歩き104.4px/s)で半幅26+体半径≒36px を約345msで抜けられる=ギリギリ。
+// - 実体は起爆カプセル(pumpkinBlasts)=**ブラストパリィでカウンター可能**(赤=カウンター可の文法。
+//   ライン上でカウンター窓を合わせれば弾ける既存経路。パリィ→確定クリ+体勢'counter'も既存どおり)。
+export const JIBRIL_LANCE_WINDUP_MS = 420;
+export const JIBRIL_LANCE_BEAM_MS = 140;
+const JIBRIL_LANCE_RECOVER_MS = withRecoverFloor(600);
+export const JIBRIL_LANCE_RANGE_PX = 760;
+export const JIBRIL_LANCE_HALF_WIDTH_PX = 26;
 const JIBRIL_LANTERN_CHANCE_LEGACY = 0.4; // 旧専用。新は jibrilScript.ts の JIBRIL_LANTERN_CHANCE。
 const JIBRIL_LANTERN_MS = 5000;
 const JIBRIL_FIRE_GAP_MS = 700;
@@ -264,7 +280,7 @@ const ACRASIEL_GAZE_RECOVER_MS = withRecoverFloor(500);
 export interface AngelBossState {
   miguelSlow: { slowUntil: number; nextAt: number };
   miguelVolley: { nextShotAt: number; shots: number };
-  jibril: { hits: number; lastHitSeen: number; lastWarpHits: number; volleyMode: 'snipe' | 'close'; lastScriptMove: 'lantern' | 'consecrate' | 'volley' | undefined; shots: number; nextShotAt: number; nextFireAt: number; edgeSince: number | undefined };
+  jibril: { hits: number; lastHitSeen: number; lastWarpHits: number; volleyMode: 'snipe' | 'close'; lastScriptMove: 'lantern' | 'consecrate' | 'volley' | 'lance' | undefined; shots: number; nextShotAt: number; nextFireAt: number; edgeSince: number | undefined };
   rafi: { rejumps: number; boneLeft: number; boneNextAt: number; nextStepAt: number; stepUntil: number; stepDx: number; stepDy: number };
   uri: { shots: number; nextShotAt: number };
   suriel: Record<string, never>; // (環の位置はEnemy側のringX/Y等に永続化=専用のラン内状態は不要)
@@ -979,6 +995,16 @@ export const runJibrilTick = (
         patch.bossState = 'lantern-windup';
         patch.bossStateUntil = newGameTime + JIBRIL_LANTERN_WINDUP_MS;
         patch.hateTarget = aim.side;
+      } else if (move === 'lance') {
+        // v0.25.3197: ランス。狙いは溜め開始でロック(掟W4「予告を出したら向きは変えない」)。
+        const aim = jibrilHateAim();
+        const dl0 = Math.hypot(aim.x - jcx, aim.y - jcy) || 1;
+        patch.aiFromX = jcx; patch.aiFromY = jcy;
+        patch.aiTargetX = jcx + ((aim.x - jcx) / dl0) * JIBRIL_LANCE_RANGE_PX;
+        patch.aiTargetY = jcy + ((aim.y - jcy) / dl0) * JIBRIL_LANCE_RANGE_PX;
+        patch.hateTarget = aim.side;
+        patch.bossState = 'lance-windup';
+        patch.bossStateUntil = newGameTime + JIBRIL_LANCE_WINDUP_MS;
       } else {
         const aim = jibrilHateAim();
         // 灯籠で足場を縛った後は遠距離狙撃、聖別で接近を強いた後は近距離連射へつなぐ。
@@ -996,11 +1022,10 @@ export const runJibrilTick = (
       patch.bossState = 'chase';
       patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
     } else if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
-      const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
       const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
       jr.shots = 0; jr.nextShotAt = newGameTime;
       patch.bossState = 'volley';
-      patch.bossStateUntil = newGameTime + shots * gap + 200;
+      patch.bossStateUntil = newGameTime + JIBRIL_VOLLEY_SHOTS * gap + 200;
     }
   } else if (st === 'volley') {
     // v0.25.3131(案A・ランタンと同じ穴): 連射中も体当たりカウンターで**撃つのを止められる**。
@@ -1013,22 +1038,66 @@ export const runJibrilTick = (
       patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
     } else {
       retreatMove();
-      const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
       const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
-      if (jr.shots < shots && newGameTime >= jr.nextShotAt) {
-        const aim = jibrilLockedAim();
-        const proj = createEnemyProjectile(jibril, player, aim.x, aim.y);
-        if (jr.volleyMode === 'snipe') proj.speed *= JIBRIL_SNIPE_SPEED_MULT;
-        useGameStore.getState().addProjectile(proj);
+      if (jr.shots < JIBRIL_VOLLEY_SHOTS && newGameTime >= jr.nextShotAt) {
+        // v0.25.3197(社長指示): 奇数発目(1/3/5)=狙い弾、偶数発目(2/4)=全方位リング8発。
+        if (jr.shots % 2 === 0) {
+          const aim = jibrilLockedAim();
+          const proj = createEnemyProjectile(jibril, player, aim.x, aim.y);
+          if (jr.volleyMode === 'snipe') proj.speed *= JIBRIL_SNIPE_SPEED_MULT;
+          useGameStore.getState().addProjectile(proj);
+        } else {
+          for (let k = 0; k < JIBRIL_OMNI_BULLETS; k++) {
+            const ang = (Math.PI * 2 * k) / JIBRIL_OMNI_BULLETS;
+            useGameStore.getState().addProjectile(
+              createEnemyProjectile(jibril, player, jcx + Math.cos(ang) * 100, jcy + Math.sin(ang) * 100));
+          }
+        }
         jr.shots += 1;
         jr.nextShotAt = newGameTime + gap;
       }
-      if (jr.shots >= shots && newGameTime >= (jibril.bossStateUntil ?? 0)) {
+      if (jr.shots >= JIBRIL_VOLLEY_SHOTS && newGameTime >= (jibril.bossStateUntil ?? 0)) {
         patch.bossState = 'volley-recover';
         patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_VOLLEY_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
       }
     }
   } else if (st === 'volley-recover') {
+    const { overlap, counterActive } = bodyOverlapNow(jibril);
+    if (overlap && counterActive) {
+      jibrilCounterHit(jcx, jcy);
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
+    } else if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = scriptOrNeutralAt(newGameTime, jibril);
+    }
+  } else if (st === 'lance-windup') {
+    // v0.25.3197: 細い光条。溜め中は体当たりカウンターでも中断できる(他の州と同じ作法)。
+    const { overlap, counterActive } = bodyOverlapNow(jibril);
+    if (overlap && counterActive) {
+      jibrilCounterHit(jcx, jcy);
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = nextActionDelay(newGameTime, jibril);
+    } else if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
+      const fx0 = jibril.aiFromX ?? jcx, fy0 = jibril.aiFromY ?? jcy;
+      const tx0 = jibril.aiTargetX ?? jcx, ty0 = jibril.aiTargetY ?? jcy;
+      // 実体=起爆カプセル。**ブラストパリィ経路がそのままカウンター**(ライン上+窓で弾ける)。
+      useGameStore.setState(state => ({
+        pumpkinBlasts: [...state.pumpkinBlasts, {
+          x: (fx0 + tx0) / 2, y: (fy0 + ty0) / 2, radius: JIBRIL_LANCE_HALF_WIDTH_PX,
+          damage: jibril.damage, enemyId: jibril.id,
+          capsule: { fx: fx0, fy: fy0, tx: tx0, ty: ty0, halfWidth: JIBRIL_LANCE_HALF_WIDTH_PX },
+        }],
+      }));
+      patch.bossState = 'lance';
+      patch.bossStateUntil = newGameTime + JIBRIL_LANCE_BEAM_MS;
+    }
+  } else if (st === 'lance') {
+    if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
+      patch.bossState = 'lance-recover';
+      patch.bossStateUntil = newGameTime + choreographyRecoverMs(JIBRIL_LANCE_RECOVER_MS, (jibril.bossScriptQueue?.length ?? 0) > 0);
+    }
+  } else if (st === 'lance-recover') {
     const { overlap, counterActive } = bodyOverlapNow(jibril);
     if (overlap && counterActive) {
       jibrilCounterHit(jcx, jcy);
@@ -1761,6 +1830,26 @@ export const runUriTick = (
     }
   } else if (st === 'thrust') {
     const fx0 = uri.aiFromX ?? ucx, fy0 = uri.aiFromY ?? ucy, tx0 = uri.aiTargetX ?? ucx, ty0 = uri.aiTargetY ?? ucy;
+    // ★v0.25.3197(社長指示「ウリの突進もミゲル同様にカウンターしても事故るので、ノックバックさせて」):
+    // ミゲル dashCountered と同型。①中断 ②来た方向へ弾き返す(プレイヤー中心から突進方向の逆へ150px)
+    // ③アリーナ内クランプ。
+    const thrustCountered = (hx: number, hy: number): void => {
+      uriCounterHit(hx, hy);
+      let bdx = tx0 - fx0, bdy = ty0 - fy0;
+      const bl = Math.hypot(bdx, bdy) || 1; bdx /= bl; bdy /= bl;
+      const pushed = clampArena(pcx - bdx * MIGUEL_DASH_COUNTER_PUSHBACK_PX, pcy - bdy * MIGUEL_DASH_COUNTER_PUSHBACK_PX);
+      patch.x = pushed.x - uri.width / 2; patch.y = pushed.y - uri.height / 2;
+      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
+    };
+    // ★突進の通過中もカウンターを取れる(ミゲルv0.25.3195と同じ「素通り」対策)。
+    {
+      const { overlap, counterActive } = bodyOverlapNow(uri);
+      if (overlap && counterActive) {
+        thrustCountered(ucx, ucy);
+        applyPatch(uri.id, patch);
+        return;
+      }
+    }
     const elapsed = newGameTime - (uri.aiStartedAt ?? newGameTime);
     const moveT = Math.max(0, Math.min(1, elapsed / URI_THRUST_MOVE_MS));
     const nx = fx0 + (tx0 - fx0) * moveT, ny = fy0 + (ty0 - fy0) * moveT;
@@ -1773,9 +1862,7 @@ export const runUriTick = (
       if (distToSegment({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }) <= URI_THRUST_HALF_WIDTH_PX + pr) {
         const cp = useGameStore.getState().player;
         if (Date.now() <= cp.counterWindowEnd) {
-          uriCounterHit((sx + ex) / 2, (sy + ey) / 2); countered = true;
-          // v0.25.3128(案A): 技を中断=カウンター1回につき1成立に揃える。
-          patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
+          thrustCountered((sx + ex) / 2, (sy + ey) / 2); countered = true;
         }
         else {
           const died = useGameStore.getState().damagePlayer(uri.damage, `${enemyDeathLabel(uri.type)}の踏み込み突き`, pcx, pcy);
