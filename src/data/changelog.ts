@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3226',
+    items: [
+      '開発: スキルビルドの実装を開始(B0=計測器バッチの発注文を設計書§15に記録)。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3225',
     items: [
       '開発: スキルビルド設計書に§13を追加(商人=指名買いカタログ化/ボット購買ポリシー/計測分離/特殊装備POIのセクター設計/B2受け入れ条件)。ゲーム内容の変更はありません。',
