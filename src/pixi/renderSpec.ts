@@ -21,7 +21,10 @@ const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   plant: 2.15,
   ghost: 2.0,
   werewolf: 2.05,
-  pumpkin: 1.75,
+  // 社長指示v0.25.3174「パンプキンの大きさを少しだけ大きく」: 1.75→1.95(絵の幅 105→117px)。
+  // ★この倍率は**足元の判定帯(enemyHitStrip)にも同じ割合で効く**(帯=影=見えている足元の幅、という
+  // ENEMY_SHADOW_WIDTH_FRAC の規格)。旧: ゾンビ(113px)より小さい絵だったのでエリートに見えなかった。
+  pumpkin: 1.95,
   giantbat: 1.55,
   reaper: 1.45,
   hunter: 1.9, // ハンター変異体(ミニボス級の存在感)
