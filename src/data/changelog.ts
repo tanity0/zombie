@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3222',
+    items: [
+      '開発: スキルビルド設計の最終裁定を記録(初期所持スキルを9種へ拡張=ヴァンサバ式)。監査7巡目の裁定が全て揃いました。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.3221',
     items: [
       '開発: スキルビルド設計の裁定2件を記録(武将装備=毎ラン3種確定/練習ランは初期装備)。ゲーム内容の変更はありません。',
