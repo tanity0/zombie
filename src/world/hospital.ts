@@ -41,7 +41,7 @@ export const HOSPITAL_HITBOX_H = 80;
  * 純関数(乱数はここでは引かない=呼び出し側と2箇所で結果がズレない)。
  * 距離は HOSPITAL_DIST(デンジャーゾーンの一番奥)で固定。
  */
-export const hospitalPos = (sector: number): { x: number; y: number } => detourPosForSector('hospital', sector);
+export const hospitalPos = (sector: number, offsetRad = 0): { x: number; y: number } => detourPosForSector('hospital', sector, offsetRad);
 
 /** 建物の当たり判定(足元基準・obstacles.tsの規約どおり)。 */
 export const hospitalRect = (pos: { x: number; y: number }): Rect =>

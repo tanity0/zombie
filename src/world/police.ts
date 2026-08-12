@@ -49,7 +49,7 @@ export const POLICE_HITBOX_H = 56;
 export const POLICE_REARM_RADIUS = POLICE_ARENA_RADIUS + 120; // = 360
 
 /** 警察署の立ち位置。割り当てられたセクター番号から位置だけを計算する純関数(乱数はここで引かない)。 */
-export const policePos = (sector: number): { x: number; y: number } => detourPosForSector('police', sector);
+export const policePos = (sector: number, offsetRad = 0): { x: number; y: number } => detourPosForSector('police', sector, offsetRad);
 
 /** 建物の当たり判定(足元基準・obstacles.tsの規約どおり)。 */
 export const policeRect = (pos: { x: number; y: number }): Rect =>

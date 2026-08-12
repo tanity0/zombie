@@ -152,6 +152,7 @@ import { BOSS_CUTIN_MS, shouldIgnoreAttention, type AttentionCutin } from '../ut
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
+import { detourAngleOffset } from '../world/detourPoi';
 import { armoryPos as armorySpot, resolveArmoryCollision, isInArmoryCircle, tickArmoryDwell, ARMORY_SCRAP_COST } from '../world/armory';
 import { policePos as policeSpot, resolvePoliceCollision } from '../world/police';
 import { assignDetourSectors } from '../world/detourPoi';
@@ -736,6 +737,19 @@ const loadSkillLevels = (): Partial<Record<SkillKey, number>> => {
 const saveSkillLevels = (m: Partial<Record<SkillKey, number>>): void => {
   try { localStorage.setItem(OWNED_SKILL_LEVELS_KEY, JSON.stringify(m)); } catch { /* ignore */ }
 };
+// ★サブウェポンの陳列レベル購入(開発施設・20/50/100G)の永続化(社長指示v0.25.3187)。
+// 旧: 開発施設のボタンは unlockedShopSkillCards(=**ラン内値**。resetGameが毎出撃上書き)へ書いており
+// **購入が永続していなかった**。社長報告「サブウェポンが買ってないのに全種装備できちゃう」を機に、
+// 購入を専用キーで永続化し、**装備メニューの装備条件(Lv1以上=購入済み)**として使う。
+const SUB_SHELF_KEY = 'zombie:subShelfLevels';
+const loadSubShelfLevels = (): Partial<Record<SubWeaponKey, number>> => {
+  try { const r = localStorage.getItem(SUB_SHELF_KEY); const o = r ? JSON.parse(r) : {}; return (o && typeof o === 'object') ? o : {}; }
+  catch { return {}; }
+};
+const saveSubShelfLevels = (m: Partial<Record<SubWeaponKey, number>>): void => {
+  try { localStorage.setItem(SUB_SHELF_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+};
+
 // ガチャの永続状態: スキル別「被り回数(dupeCount)」と「直近superからのpull数(pity)」。
 const GACHA_DUPES_KEY = 'zombie:gachaDupeCounts';
 const GACHA_PITY_KEY = 'zombie:gachaPitySinceSuper';
@@ -3981,6 +3995,8 @@ interface GameState {
   setPaused: (paused: boolean) => void;
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
+  purchasedSubLevels: Partial<Record<SubWeaponKey, number>>; // 開発施設で購入した陳列Lv(永続)。装備条件=Lv1以上
+  setPurchasedSubLevel: (key: SubWeaponKey, level: number) => void;
   setStartWithTestStraps: (enabled: boolean) => void;
   setShowStatsOverlay: (enabled: boolean) => void;
   stampPlayerIntro: () => void; // 登場演出の開始(初フレームで終了時刻を確定)
@@ -4409,6 +4425,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   meleeAmmoDropPercent: DEFAULT_MELEE_DROP_PCT, // v0.25.2152: UI撤去=コード既定で固定(適正値はテスト算出中)
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
+  purchasedSubLevels: loadSubShelfLevels(),
   pendingLoadout: loadStringArray(LOADOUT_SUBS_KEY) as SubWeaponKey[],
   // 警察署のpoi専用スキルは「プレイ中のみ付与」(社長指示v0.25.2451)。旧実装が恒久所持
   // (grantSkill)で書いていたため、汚染済みセーブから読み込み時に自動除去する(装備枠も同様)。
@@ -12575,6 +12592,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  setPurchasedSubLevel: (key, level) => {
+    const nextLevel = Math.max(0, Math.min(3, Math.round(level)));
+    set(state => {
+      const next = { ...state.purchasedSubLevels };
+      if (nextLevel <= 0) delete next[key]; else next[key] = nextLevel;
+      saveSubShelfLevels(next);
+      return { purchasedSubLevels: next };
+    });
+  },
+
   setStartWithTestStraps: (enabled) => {
     set({ startWithTestStraps: enabled });
   },
@@ -12640,13 +12667,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.3183(社長指示「ガチャリセットにサブウェポンもリセットを追加」): 装備メニューで
     // 選んだサブウェポン(LOADOUT_SUBS_KEY / pendingLoadout)も一緒に初手(未装備)へ戻す。
     for (const k of [OWNED_SKILLS_KEY, OWNED_SKILL_LEVELS_KEY, GACHA_DUPES_KEY, GACHA_PITY_KEY,
-      GACHA_PULLS_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY, LOADOUT_SUBS_KEY]) {
+      GACHA_PULLS_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY, LOADOUT_SUBS_KEY, SUB_SHELF_KEY]) {
       try { localStorage.removeItem(k); } catch { /* ignore */ }
     }
     set({
       // 「初手」にも守護霊は入っている(G3: 最初から所持)ので、リセット後も欠けさせない。
       ownedSkills: ensureDefaultOwnedSkills([]), ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
-      gachaPullsTotal: 0, goldBalance: 0, pendingSkills: [], pendingLoadout: [],
+      gachaPullsTotal: 0, goldBalance: 0, pendingSkills: [], pendingLoadout: [], purchasedSubLevels: {},
     });
   },
   // 強化訓練を1回引く(逐次)。レア度をpityから抽選→pity更新(super=リセット/他=+1)→
@@ -14001,7 +14028,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // フリー/メイン/(将来の)サブクエスト共通の経路。固有サブが落ちないようにする(社長指示)。
       // 商人(unlockedShopSkillCards)とレベルアップ候補(generateUpgradeOptions)もこの所持サブに絞られる。
       // 装備サブは1つだけ採用(重複除去のうえ先頭1件)。クラス固有サブは別途常時所持。
-      const loDedup = state.pendingLoadout.filter((k, i) => state.pendingLoadout.indexOf(k) === i).slice(0, 1);
+      // v0.25.3187(社長報告「買ってないのに全種装備できちゃう」): 未購入(陳列Lv0)のサブは出撃時にも
+      // 落とす(装備メニュー側のロックと二重の守り。古い保存が残っていても素通りさせない)。
+      const loPurchased = state.pendingLoadout.filter(k => (state.purchasedSubLevels[k] ?? 0) >= 1);
+      const loDedup = loPurchased.filter((k, i) => loPurchased.indexOf(k) === i).slice(0, 1);
       const runSubs: SubWeaponKey[] = state.danceTestMode
         ? ['shijin']
         // チュートリアル: 銃と近接以外は強制的に無し(社長指示v0.25.1825)=サブウェポン0
@@ -14202,15 +14232,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         hiddenBossDefeated: false,
         // 病院/武器庫/警察署は通常ステージ(屋外・森スキン・通路/ダンステストでない)にだけ立つ。
         // §6.24 M48: 位置はこのランで確定した detourSectors(裏ボスのセクターを避けた3割り当て)を使う。
-        hospital: detourSectors ? hospitalSpot(detourSectors.hospital) : null,
+        // v0.25.3187: 角度を±30°散らす(セクター中心=拠点の延長線上に並ぶのをやめる)。乱数はここで
+        // 1度だけ引いて位置を確定(pois/矢印は store の実位置を読むので自動で一致する)。
+        hospital: detourSectors ? hospitalSpot(detourSectors.hospital, detourAngleOffset(Math.random())) : null,
         hospitalDwellMs: 0,
         hospitalTaken: false,
         hospitalTakenAt: 0,
-        armory: detourSectors ? armorySpot(detourSectors.armory) : null,
+        armory: detourSectors ? armorySpot(detourSectors.armory, detourAngleOffset(Math.random())) : null,
         armoryDwellMs: 0,
         armoryTaken: false,
         armoryTakenAt: 0,
-        police: detourSectors ? policeSpot(detourSectors.police) : null,
+        police: detourSectors ? policeSpot(detourSectors.police, detourAngleOffset(Math.random())) : null,
         policeTaken: false,
         policeTakenAt: 0,
         poiIntelShown: emptyPoiIntelShown(), // §6.24-UX: 進入時の通信は「1ラン1回/種」=新ランで戻す

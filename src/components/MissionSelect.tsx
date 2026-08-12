@@ -934,7 +934,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   const renderLoadout = () => {
     // サブウェポンは1つだけ選択(単一選択=選び直しで置き換え。同じものを再タップで解除)。
+    // v0.25.3187(社長報告「買ってないのに全種装備できちゃう」): 開発施設で陳列Lv1を購入したサブだけ
+    // 装備できる(未購入はロック表示)。出撃時にも resetGame が同じ条件で落とす=二重の守り。
+    const purchasedSubLevels = useGameStore.getState().purchasedSubLevels;
+    const subOwned = (k: SubWeaponKey) => (purchasedSubLevels[k] ?? 0) >= 1;
     const toggleSub = (k: SubWeaponKey) => {
+      if (!subOwned(k)) return;
       playSfx('ui-select');
       setPendingLoadout(equippedSubs.includes(k) ? [] : [k]);
     };
@@ -995,16 +1000,21 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               {/* キャラ固有スキル(職スキル枠)はトップの装備メニューには載せない(自動付与・選択不可)。 */}
               {SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k)).map(k => {
                 const on = equippedSubs.includes(k);
+                const owned = subOwned(k);
                 return (
                   <button
                     key={k}
+                    disabled={!owned}
                     onClick={() => toggleSub(k)}
                     className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2.5 text-left transition-[filter] ${
-                      on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
+                      on ? 'is-on text-white' : owned ? 'text-white/85 active:brightness-110' : 'text-white/35'
                     }`}
                   >
-                    <span className="text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
-                    {on && <Check size={15} className="shrink-0" />}
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
+                      {!owned && <span className="block text-[10px] text-white/40">未解放（開発施設で解放）</span>}
+                    </span>
+                    {owned ? (on && <Check size={15} className="shrink-0" />) : <Lock size={13} className="shrink-0 text-white/35" />}
                   </button>
                 );
               })}
@@ -2161,8 +2171,10 @@ const SkillGacha: React.FC = () => {
 const SHELF_UNLOCK_COST_BY_LEVEL = [20, 50, 100] as const;
 
 const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const unlockedShopSkillCards = useGameStore(s => s.unlockedShopSkillCards);
-  const setUnlockedShopSkillCard = useGameStore(s => s.setUnlockedShopSkillCard);
+  // v0.25.3187: 陳列解放の正本を purchasedSubLevels(永続)へ。旧 unlockedShopSkillCards は
+  // ラン内値(resetGameが毎出撃上書き)で、ここで買っても次の出撃で消えていた。
+  const purchasedSubLevels = useGameStore(s => s.purchasedSubLevels);
+  const setPurchasedSubLevel = useGameStore(s => s.setPurchasedSubLevel);
   const goldBalance = useGameStore(s => s.goldBalance);
   const spendGold = useGameStore(s => s.spendGold);
   const startWithTestStraps = useGameStore(s => s.startWithTestStraps);
@@ -2181,14 +2193,15 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           <span className="text-[10px] text-white/45">{startWithTestStraps ? 'ON' : 'OFF'}</span>
         </button>
         {SUB_WEAPON_KEYS.map(skillKey => {
-          const level = unlockedShopSkillCards[skillKey] ?? 0;
+          const level = purchasedSubLevels[skillKey] ?? 0;
           const maxed = level >= 3;
           // v0.25.3185(社長指示): 解放は有料(20G/50G/100G)。支払いはガチャと同じ永続ゴールド。
+          // v0.25.3187: Lv1解放が**装備の条件**になった(未購入のサブは装備メニューでロック)。
           const cost = maxed ? 0 : SHELF_UNLOCK_COST_BY_LEVEL[level] ?? 0;
           const cantPay = !maxed && goldBalance < cost;
           return (
             <button key={skillKey} type="button" disabled={maxed || cantPay}
-              onClick={() => { if (!maxed && spendGold(cost)) { playSfx('ui-select'); setUnlockedShopSkillCard(skillKey, Math.min(3, level + 1)); } }}
+              onClick={() => { if (!maxed && spendGold(cost)) { playSfx('ui-select'); setPurchasedSubLevel(skillKey, Math.min(3, level + 1)); } }}
               className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''} ${cantPay ? 'opacity-60' : ''}`}>
               <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">陳列 Lv{level} → Lv{Math.min(3, level + 1)}</span></span>
               <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>

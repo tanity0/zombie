@@ -46,9 +46,19 @@ export const DETOUR_DWELL_MS = 3000;
 const SECTOR_ANGLE_STEP = (Math.PI * 2) / POI_SECTORS;
 export const sectorAngle = (sector: number): number => sector * SECTOR_ANGLE_STEP;
 
-// セクター番号 → ワールド座標(kind の固定距離・セクター中心の角度)。
-export const detourPosForSector = (kind: DetourKind, sector: number): { x: number; y: number } => {
-  const a = sectorAngle(sector);
+// ★セクター中心からの角度散らし(社長報告v0.25.3187「施設がデンジャーゾーン横軸の真ん中にあることが
+// 多く、拠点で示す意味があまりない」)。旧: 3種とも**セクター中心角ちょうど**=拠点(3200)と同一直線上に
+// 並ぶため、拠点へ歩くだけで見つかり、「拠点解放→矢印で示す」仕組みが仕事をしていなかった。
+// ±30°(セクター半幅45°に対し余裕15°)の範囲で毎ランずらす=**矢印を見て初めて方向が分かる**。
+// 30°に留める理由: poiSectorIndex(最寄りセクターへの丸め)が絶対に隣へ倒れない余裕を残す
+// (境界ちょうどだと矢印の解放判定と実体のセクターがズレる)。乱数は resetGame が1度だけ引いて
+// 位置を確定させる(この層は純関数のまま=注入)。
+export const DETOUR_ANGLE_SCATTER_RAD = Math.PI / 6; // ±30°
+export const detourAngleOffset = (rand: number): number => (rand * 2 - 1) * DETOUR_ANGLE_SCATTER_RAD;
+
+// セクター番号 → ワールド座標(kind の固定距離・セクター中心角+散らしオフセット)。
+export const detourPosForSector = (kind: DetourKind, sector: number, offsetRad = 0): { x: number; y: number } => {
+  const a = sectorAngle(sector) + offsetRad;
   const d = DETOUR_DIST[kind];
   return { x: Math.cos(a) * d, y: Math.sin(a) * d };
 };

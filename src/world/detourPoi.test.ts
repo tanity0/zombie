@@ -3,9 +3,9 @@
 // 「距離は必ず区域の中点」「3種とも毎ラン必ず出る(抽選しない)」。
 import { describe, it, expect } from 'vitest';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
+import { poiSectorIndex } from './pois';
 import {
-  DETOUR_DIST, detourPosForSector, assignDetourSectors, sectorAngle,
-} from './detourPoi';
+  DETOUR_DIST, detourPosForSector, assignDetourSectors, sectorAngle, DETOUR_ANGLE_SCATTER_RAD, detourAngleOffset } from './detourPoi';
 import { POI_SECTORS, sectorIndexForAngle } from './pois';
 
 // 決定的な乱数列を注入するためのヘルパー(Fisher-Yatesの各引きを固定値で消費する)。
@@ -97,5 +97,29 @@ describe('assignDetourSectors(不変条件・発注メモ4)', () => {
 describe('POI_SECTORS(4方角=4枠・§6.24 A2)', () => {
   it('4方角=4枠', () => {
     expect(POI_SECTORS).toBe(4);
+  });
+});
+
+// v0.25.3187(社長報告「施設がセクター中心の直線上にあって拠点で示す意味が無い」): 角度±30°散らし。
+describe('detourAngleOffset(角度散らし・v0.25.3187)', () => {
+  it('オフセットは±DETOUR_ANGLE_SCATTER_RAD(30°)に収まる', () => {
+    expect(detourAngleOffset(0)).toBeCloseTo(-DETOUR_ANGLE_SCATTER_RAD, 10);
+    expect(detourAngleOffset(0.5)).toBeCloseTo(0, 10);
+    expect(detourAngleOffset(1)).toBeCloseTo(DETOUR_ANGLE_SCATTER_RAD, 10);
+  });
+
+  it('★最大まで散らしてもセクターが変わらない(矢印の解放判定と実体が一致し続ける)', () => {
+    for (const sector of [0, 1, 2, 3]) {
+      for (const kind of ['police', 'armory', 'hospital'] as const) {
+        for (const off of [-DETOUR_ANGLE_SCATTER_RAD, 0, DETOUR_ANGLE_SCATTER_RAD]) {
+          expect(poiSectorIndex(detourPosForSector(kind, sector, off)), `${kind} s${sector}`).toBe(sector);
+        }
+      }
+    }
+  });
+
+  it('散らしても距離(デンジャー帯の中)は不変', () => {
+    const p = detourPosForSector('hospital', 2, DETOUR_ANGLE_SCATTER_RAD);
+    expect(Math.hypot(p.x, p.y)).toBeCloseTo(DETOUR_DIST.hospital, 6);
   });
 });

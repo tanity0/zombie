@@ -39,7 +39,7 @@ export const ARMORY_HITBOX_W = 260;
 export const ARMORY_HITBOX_H = 80;
 
 /** 武器庫の立ち位置。割り当てられたセクター番号から位置だけを計算する純関数(乱数はここで引かない)。 */
-export const armoryPos = (sector: number): { x: number; y: number } => detourPosForSector('armory', sector);
+export const armoryPos = (sector: number, offsetRad = 0): { x: number; y: number } => detourPosForSector('armory', sector, offsetRad);
 
 /** 建物の当たり判定(足元基準・obstacles.tsの規約どおり)。 */
 export const armoryRect = (pos: { x: number; y: number }): Rect =>
