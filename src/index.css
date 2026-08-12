@@ -291,6 +291,18 @@
   75% { transform: translate(-1px, -2px); }
 }
 .gacha-hitshake { animation: gacha-hitshake 0.09s linear infinite; }
+/* v0.25.3184(社長指示「撃たれたターゲットが動かない。ちゃんと反動が欲しい」):
+   的そのものの1発ごとの反動。連射は SHOT_STAGGER(200ms)等間隔なので、**この1周期を200msにして
+   発数ぶん繰り返す**と各ショットと厳密に同期する(duration/delay/回数はインラインstyleで注入)。
+   台座を軸に殴られて仰け反る→戻る、を1発ごとに繰り返す(transform-originは下端寄り)。 */
+@keyframes gacha-target-recoil {
+  0%   { transform: translateY(0) rotate(0deg) scale(1); }
+  10%  { transform: translateY(-7px) rotate(-2.4deg) scale(0.982); } /* 被弾の瞬間: 突き飛ばされる */
+  38%  { transform: translateY(-2px) rotate(1.5deg) scale(0.994); }  /* 揺り戻し */
+  70%  { transform: translateY(-0.5px) rotate(-0.5deg) scale(1); }
+  100% { transform: translateY(0) rotate(0deg) scale(1); }
+}
+.gacha-target-recoil { transform-origin: 50% 88%; animation: gacha-target-recoil 0.2s ease-out both; }
 /* super 特別演出: パーティクルが中心から四方へ散る(--tx/--ty 方向)。加算で光る。 */
 @keyframes gacha-super-particle {
   0%   { opacity: 0; transform: translate(0, 0) scale(1.2); }

@@ -1823,7 +1823,10 @@ const SkillGacha: React.FC = () => {
           })}
           <div className={`relative flex items-center justify-center ${isSuper ? 'gacha-burst-shake' : 'gacha-hitshake'}`} style={{ width: '70%', maxWidth: 340, aspectRatio: '3 / 4' }}>
             {isSuper && <span className="gacha-burst-glow absolute inset-[-30%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(251,191,36,0.5), rgba(251,191,36,0) 70%)', animationDelay: `${intro}ms` }} />}
-            <img src={targetSrc} alt="" draggable={false} className="absolute inset-0 h-full w-full object-contain" />
+            {/* v0.25.3184: 的の1発ごとの反動。1周期=SHOT_STAGGER・発数ぶん反復=各ショットのフラッシュ/
+                破片/SE(同じ delay 式)と厳密に同期する。既存の微振動(hitshake)は親に残す=反動の上に乗る。 */}
+            <img src={targetSrc} alt="" draggable={false} className="gacha-target-recoil absolute inset-0 h-full w-full object-contain"
+              style={{ animationDuration: `${SHOT_STAGGER}ms`, animationDelay: `${intro}ms`, animationIterationCount: shotCount }} />
             {/* 連打: 各ショットで素早いフラッシュ＋破片を的中心に重ねる(superは導入後=intro遅延)。 */}
             {Array.from({ length: shotCount }).map((_, s) => {
               const delay = intro + s * SHOT_STAGGER;

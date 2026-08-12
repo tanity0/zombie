@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3184',
+    items: [
+      'スキル強化訓練の10連演出で、撃たれた的が1発ごとに仰け反って揺れるようになりました(発砲・破片と同じリズムの反動)。',
+    ],
+  },
+  {
     version: '0.25.3183',
     items: [
       '開発メニューの「ガチャリセット」が、装備中のサブウェポンも一緒に外すようになりました(所持スキル・ゴールド・値段の段に加えて)。',
