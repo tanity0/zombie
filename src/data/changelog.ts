@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3196',
+    items: [
+      'ゲーム内容の変更はありません(スキルビルド設計書に監査3巡目の13件を反映しました)。',
+    ],
+  },
+  {
     version: '0.25.3195',
     items: [
       '【不具合修正】ラフィがサークルの外へ出てしまい、紫(完全気絶)でも致命の一撃が届かないことがあったのを直しました。毎フレーム必ずアリーナ内へ戻ります。',
