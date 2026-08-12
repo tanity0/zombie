@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3198',
+    items: [
+      'ラフィの骨刃・スカジの氷刃が飛んでくる瞬間、進路に赤ラインが表示されるようになりました(順番待ちで浮いている間は出ません=飛ぶ一瞬だけ)。',
+    ],
+  },
+  {
     version: '0.25.3197',
     items: [
       'ウリの突進もカウンターで止まるようになりました(ミゲルと同じ: 通過中でも成立し、来た方向へ弾き返します)。',

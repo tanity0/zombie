@@ -22,7 +22,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
@@ -11494,7 +11494,7 @@ export class PixiScene {
   // 氷刃=設置中は薄く方向表示→発射後はくっきり、常に向きへ回転。effectLayer=world座標。
   private syncSkadiHazards(
     markers: { id: string; x: number; y: number; bornAt: number; fireAt: number }[],
-    blades: { id: string; x: number; y: number; angle: number; launched: boolean; visual?: 'ice' | 'bone' }[],
+    blades: { id: string; x: number; y: number; angle: number; launched: boolean; expireAt: number; visual?: 'ice' | 'bone' }[],
     gameTime: number,
   ) {
     const g = this.skadiHazardGfx;
@@ -11529,6 +11529,18 @@ export class PixiScene {
       const btex = b.visual === 'bone' ? boneTex : iceTex;
       if (!btex) continue;
       seen.add(b.id);
+      // v0.25.3198(社長指示): 発射中(=飛んでいる間)だけ、進路の赤ラインを刃の現在位置から残り飛距離ぶん引く。
+      // 順番待ち(設置中)は出さない。幅=命中半径×2(赤=判定と厳密一致の掟。氷塊円と同じく自機半径ぶんは足さない)。
+      // 刃が進むほどラインは短くなり、寿命/命中で刃ごと消える=表示は一瞬。骨刃(ラフィ)・氷刃(スカジ)共通。
+      if (b.launched) {
+        const remainPx = Math.max(0, (b.expireAt - gameTime) / 1000) * SKADI_BLADE_SPEED;
+        if (remainPx > 1) {
+          const ex = b.x + Math.cos(b.angle) * remainPx;
+          const ey = b.y + Math.sin(b.angle) * remainPx;
+          g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: (0.30 + 0.15 * pulse) * TELEGRAPH_FILL_MULT });
+          g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: 2, color: 0xff6b6b, alpha: 0.5 });
+        }
+      }
       let sp = this.skadiBladePool.get(b.id);
       if (!sp) { sp = new Sprite(btex); sp.anchor.set(0.5, 0.5); this.skadiHazardContainer.addChild(sp); this.skadiBladePool.set(b.id, sp); }
       if (sp.texture !== btex) sp.texture = btex; // 差し替え(プール再利用時の保険)
