@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3244',
+    items: [
+      '開発: スキル抽選の中立デッキ化(社長裁定)を設計書§22に記録し、簡素化バッチを発注。ゲーム内容の変更はありません(実装は次版)。',
+    ],
+  },
+  {
     version: '0.25.3243',
     items: [
       'HUDにプレイヤーの立ち絵チップを追加(HPオーブの隣)。バーサーカー所持中はHP70%未満で枠が金色に光り(失ったHPほど強く)、オーバークロック発動の瞬間は青く光ります。',
