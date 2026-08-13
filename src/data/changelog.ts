@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3287',
+    items: [
+      'オブジェクト(テント・プロップ・木など)の影が浮いて見える問題を軽減: 影を本体の裾へ食い込ませるようにしました(幅の10%・最大20px)。',
+    ],
+  },
+  {
     version: '0.25.3286',
     items: [
       'ヨルムンガルドの影の位置を修正しました(体の重心の下に来るように)。',

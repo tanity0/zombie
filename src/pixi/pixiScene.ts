@@ -2076,6 +2076,13 @@ const SHADOW_FLOAT_SHRINK = 0.35;       // 小さく: ×(1-0.35t)
 const SHADOW_FLOAT_FADE = 0.5;          // 薄く: ×(1-0.5t)
 /** 高さ(=論理の足元Yと実際の描画足元Yの差)の不感帯(px)。これ以下は高さ0扱い。 */
 const SHADOW_HEIGHT_DEADZONE_PX = 6;
+// 社長裁定GO(v0.25.3287)「影をオブジェクト中心に食い込ませる」: 静物(木/壁/プロップ/建物=isStatic)の
+// 影全体を、伸び方向と逆へ「表示幅の10%(上限20px)」だけ引き込む。幅の広いオブジェクト(ステージ4の
+// テント等)で「裾と影の間に地面が見える」継ぎ目を、接地アウター(丸影)が本体の下に食い込んで覆う。
+// `?shadowtuck=<percent>` で実機調整(0=無効・既定10)。負荷=配置オフセットのみ(ゼロ)。
+// アクター/拾い物は対象外(歩行・浮遊で動くため食い込ませる意味が無い)。
+const SHADOW_TUCK_FRAC = Math.max(0, tsNum('shadowtuck', 10)) / 100;
+const SHADOW_TUCK_MAX_PX = 20;
 
 // ---- 地平線帯の詰め(昼のみ実質的に効く。§3-9-B確定) -----------------------------------------
 const SHADOW_HORIZON_TRIM_DEADZONE_PX = 12;
@@ -11138,7 +11145,14 @@ export class PixiScene {
       ? rawFootXOffset
       : prevFootXOffset + (rawFootXOffset - prevFootXOffset) * footXTrimLerp;
     this.shadowFootXOffsetState.set(req.id, footXOffset);
-    const footX = req.x + footXOffset, footY = req.y + height;
+    let footX = req.x + footXOffset, footY = req.y + height;
+    // 静物の食い込み(上の SHADOW_TUCK_FRAC 参照): 影の錨点を伸び方向と逆へ引き込む=影の根元と
+    // 接地丸影が本体の裾の下へ潜る。シルエット・接地2枚・光収集がまとめて同じだけ動く(ズレない)。
+    if (req.isStatic && SHADOW_TUCK_FRAC > 0) {
+      const tuck = Math.min(req.rawW * SHADOW_TUCK_FRAC, SHADOW_TUCK_MAX_PX);
+      footX -= ambDirX * tuck;
+      footY -= ambDirY * tuck;
+    }
 
     const staticFade = req.isStatic ? this.shadowStaticFade(footX, footY) : 1;
     const totalAlpha = alpha * floatFade * staticFade;
