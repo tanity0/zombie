@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3256',
+    items: [
+      'レベルアップの3択に出る消費カードは1枚までになりました(残りは必ずスキル。スキルを取り切った後は例外的に複数出ます)。',
+    ],
+  },
+  {
     version: '0.25.3255',
     items: [
       '猫耳アバターの調整: 耳を頭にフィットする位置へ下げ、耳・尻尾とも約半分のサイズに縮小しました。',

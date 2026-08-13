@@ -132,6 +132,8 @@ const pickUniform = <T,>(pool: readonly T[], rng: () => number): T =>
 // 重み0にして残りへ按分する(旧実装の「片方枯渇なら他方100%」の3択版・一般化しただけで新しい仕様の
 // 発明はしていない)。全プール枯渇はnull(呼び出し側がドラフト打ち切り=既存挙動と同じ)。
 type DraftCategory = 'new' | 'levelup' | 'consumable';
+// 社長裁定v0.25.3256「出てくる消費アイテム枠は一枠まで。あとは必ずスキル(カンスト後は別だが)」
+export const MAX_CONSUMABLES_PER_DRAFT = 1;
 const rollCategory = (
   newLen: number, lvLen: number, consumableLen: number, rng: () => number,
 ): DraftCategory | null => {
@@ -203,7 +205,11 @@ export const draftRunSkillCards = (
     const newPool = newSkillCandidates(input, dealt);
     const lvPool = levelUpCandidates(input, dealt);
     const cPool = consumableCandidates(input, dealtConsumables);
-    const category = rollCategory(newPool.length, lvPool.length, cPool.length, rng);
+    // 社長裁定v0.25.3256「出てくる消費アイテム枠は一枠まで。あとは必ずスキル(カンスト後は別)」:
+    // 同一ドラフト内の消費カードは1枚まで。スキル側(新規+Lv+1)が両方枯渇している時だけ例外的に
+    // 2枚目以降の消費カードを許す。
+    const consumableCapped = dealtConsumables.length >= MAX_CONSUMABLES_PER_DRAFT && (newPool.length + lvPool.length > 0);
+    const category = rollCategory(newPool.length, lvPool.length, consumableCapped ? 0 : cPool.length, rng);
     if (category === null) break; // 全プール枯渇=このドラフトはここで打ち切り
 
     if (category === 'levelup') {
@@ -236,7 +242,9 @@ export const draftReplacementSkillCard = (
   const newPool = newSkillCandidates(input, dealt);
   const lvPool = levelUpCandidates(input, dealt);
   const cPool = consumableCandidates(input, dealtConsumables);
-  const category = rollCategory(newPool.length, lvPool.length, cPool.length, rng);
+  // 1ドラフト消費1枚まで(v0.25.3256)は差し替えでも守る(場に残る消費カードを数えて上限判定)。
+  const consumableCapped = dealtConsumables.length >= MAX_CONSUMABLES_PER_DRAFT && (newPool.length + lvPool.length > 0);
+  const category = rollCategory(newPool.length, lvPool.length, consumableCapped ? 0 : cPool.length, rng);
   if (category === null) return null;
   if (category === 'levelup') return levelUpCard(pickUniform(lvPool, rng), input);
   if (category === 'consumable') return consumableCard(pickUniform(cPool, rng));

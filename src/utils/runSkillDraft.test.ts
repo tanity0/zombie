@@ -431,3 +431,30 @@ describe('§23-2条件3 カテゴリロール比率(新規40:Lv+1 40:消費20・
     }
   });
 });
+
+// 社長裁定v0.25.3256: 1ドラフトに消費カードは1枚まで(スキル側が枯渇していれば例外)。
+import { MAX_CONSUMABLES_PER_DRAFT } from './runSkillDraft';
+describe('消費カードの1ドラフト上限(v0.25.3256)', () => {
+  it('スキル候補が残っている限り、3枚中の消費カードは常に1枚以下', () => {
+    const input = baseInput({});
+    for (let seed = 0; seed < 500; seed++) {
+      const rng = mulberry32(seed);
+      const cards = draftRunSkillCards(input, 3, rng);
+      const consumables = cards.filter(c => c.cardKind === 'consumable').length;
+      expect(consumables).toBeLessThanOrEqual(MAX_CONSUMABLES_PER_DRAFT);
+    }
+  });
+  it('スキル側が完全枯渇(全取得+全Lv3)なら消費カードが複数並べる(カンスト後の例外)', () => {
+    // 所持=取得済み5種のみ・全てLv3(新規プールもLv+1プールも空)。ノーマル枠は2/3=1つ空けておく
+    // (案Bの枠会計: ノーマル満杯だと消費カード自体が出ないため、例外が観測できる盤面にする)。
+    const owned: SkillKey[] = ['sharpshooter', 'ricochet', 'fire-shooter', 'bomb-counter', 'crit-up'];
+    const runLevels = Object.fromEntries(owned.map(k => [k, 3])) as Partial<Record<SkillKey, number>>;
+    const input = baseInput({ owned, runSkills: owned, runSkillLevels: runLevels, ownedLevels: runLevels });
+    let sawMulti = false;
+    for (let seed = 0; seed < 200 && !sawMulti; seed++) {
+      const cards = draftRunSkillCards(input, 3, mulberry32(seed));
+      if (cards.filter(c => c.cardKind === 'consumable').length >= 2) sawMulti = true;
+    }
+    expect(sawMulti).toBe(true);
+  });
+});
