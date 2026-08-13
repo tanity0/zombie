@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.3265 — パニッシャー巻き込みで画面シェイク(社長指示)【2026-08-13 14:11 JST】
+punisherHits成立の瞬間にtriggerShake(200ms・mag4=近接スイングと竜巻の中間・叩き台)。描画のみ。
+同フレーム複数ヒットでも上書き式なので1回に纏まる。検証: typecheck 0/lint 0。
+
 ## v0.25.3264 — KILL吹き飛び着地: 死体が50px飛びパニッシャー弾になる(Sonnet納品・検収済み)【2026-08-13 13:45 JST】
 - Enemy.corpseUntil(約0.28秒)+isCorpse/corpseEligible(ボス/ネームド/クエスト対象は従来どおり即消滅)。
   buildCorpseFromKill=攻撃者→敵方向へ実距離50px。銃/接触/爆発キル(damageEnemy)と近接キル

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3265',
+    items: [
+      'パニッシャーの巻き込みが発生した瞬間に画面が短く揺れるようになりました。',
+    ],
+  },
+  {
     version: '0.25.3264',
     items: [
       '倒した敵が約0.3秒だけ死体として残り、攻撃方向へ50px吹き飛んでから消えるようになりました。飛んでいる死体はパニッシャーの巻き込み対象=「先頭を倒して群れを薙ぐ」が成立します。',

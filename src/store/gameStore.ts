@@ -1045,6 +1045,9 @@ export const KNOCKBACK_DURATION = 280;
 export const SLASHER_LUNGE_PX = 20;
 // パニッシャーの巻き込み判定の拡張幅(社長指示v0.25.3260「広めに」・叩き台)。
 export const PUNISHER_HIT_PAD_PX = 16;
+// パニッシャー巻き込み成立時の画面シェイク(社長指示v0.25.3265・描画のみ・叩き台)。
+export const PUNISHER_SHAKE_MS = 200;
+export const PUNISHER_SHAKE_MAG = 4;
 export const SLASHER_LUNGE_MS = 160;
 // ジャンプ/ダッシュ攻撃をカウンターした時の「弾き飛ばし」。速度ノックバックは updateEnemies が
 // 翌フレーム以降に適用するため、着地で付与される stun/lift に上書きされ「その場で痺れる」だけに
@@ -11795,6 +11798,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // パニッシャーの巻き込みダメージ(近接の半分)を正規経路で適用(死亡処理/演出込み)。
     if (punisherHits.length > 0 && punisherDmg > 0) {
+      // v0.25.3265 社長指示「パニッシュが起きたら画面揺れ」: 巻き込み成立の瞬間に短いシェイク
+      // (描画のみ。同フレーム複数ヒットでも1回=triggerShakeは上書き式なので自然に纏まる)。
+      get().triggerShake(PUNISHER_SHAKE_MS, PUNISHER_SHAKE_MAG);
       for (const id of punisherHits) {
         const e = get().enemies.find(en => en.id === id);
         if (!e) continue;
