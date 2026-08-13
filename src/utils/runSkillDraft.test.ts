@@ -254,13 +254,14 @@ describe('draftRunSkillCards(§12-2#2 抽選手順)', () => {
     }
   });
 
-  it('取得Lvは所持Lv(ownedLevels)にクランプされる(§10点12①のクランプ式)', () => {
+  it('v0.25.3307「スキルは全てレベル1からの取得」: 新規カードの取得Lvは所持Lvに関わらず常に1', () => {
     const key = NORMAL_SKILLS[0];
-    const input = baseInput({ owned: [key], ownedLevels: { [key]: 9 } }); // 異常値でも上限クランプ
+    const input = baseInput({ owned: [key], ownedLevels: { [key]: 3 } }); // 所持Lv3でも取得はLv1
     const cards = draftRunSkillCards(input, 1, () => 0); // rng=0固定 → rollCategoryは常に'new'(重みnew>0が先頭)
     const c0 = cards[0];
     if (c0.cardKind === 'consumable') throw new Error('unexpected consumable card (rng=0 should pick new)');
-    expect(c0.toLevel).toBeLessThanOrEqual(3);
+    expect(c0.toLevel).toBe(1);
+    expect(c0.fromLevel).toBe(0);
   });
 });
 

@@ -184,11 +184,13 @@ export interface DraftedConsumableCard {
 export type DraftedCard = DraftedSkillCard | DraftedConsumableCard;
 
 /** 所持Lv(取得時に付くLv)。既存出撃経路(gameStore.ts resetGame)と同じクランプ式(§10点12①)。 */
-const clampedOwnedLevel = (key: SkillKey, ownedLevels: Partial<Record<SkillKey, number>>): number =>
-  Math.max(1, Math.min(skillMaxLevel(key), ownedLevels[key] ?? 1));
+// 社長指示v0.25.3307「(ゲーム中の)スキルは全てレベル1からの取得」: 新規カードの取得Lvは常に1。
+// 所持Lv(ガチャ)は取得時Lvへ影響しない——Lv2/Lv3(覚醒)へはラン中のLv+1カードで育てて到達する。
+// (旧: clampedOwnedLevel=ガチャ所持Lvがそのまま付いていた)
+const RUN_ACQUIRE_LEVEL = 1;
 
-const newCard = (key: SkillKey, input: RunSkillDraftInput): DraftedSkillCard =>
-  ({ key, cardKind: 'new', rarity: SKILLS[key].rarity, fromLevel: 0, toLevel: clampedOwnedLevel(key, input.ownedLevels) });
+const newCard = (key: SkillKey): DraftedSkillCard =>
+  ({ key, cardKind: 'new', rarity: SKILLS[key].rarity, fromLevel: 0, toLevel: RUN_ACQUIRE_LEVEL });
 const levelUpCard = (key: SkillKey, input: RunSkillDraftInput): DraftedSkillCard => {
   const from = input.runSkillLevels[key] ?? 1;
   return { key, cardKind: 'levelup', rarity: SKILLS[key].rarity, fromLevel: from, toLevel: from + 1 };
@@ -232,7 +234,7 @@ export const draftRunSkillCards = (
       dealtConsumables.push(key);
     } else {
       const key = pickUniform(newPool, rng);
-      cards.push(newCard(key, input));
+      cards.push(newCard(key));
       dealt.push(key);
     }
   }
@@ -258,7 +260,7 @@ export const draftReplacementSkillCard = (
   if (category === null) return null;
   if (category === 'levelup') return levelUpCard(pickUniform(lvPool, rng), input);
   if (category === 'consumable') return consumableCard(pickUniform(cPool, rng));
-  return newCard(pickUniform(newPool, rng), input);
+  return newCard(pickUniform(newPool, rng));
 };
 
 // ---- 8. リロール価格(社長裁定2026-08-13「20にして」=一律20・値上がり廃止) --------------------

@@ -13998,14 +13998,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { key, rarity, rolledLevel: 1, newLevel: prevLevel, prevLevel, dupeCount, firstAcquire: false, promoted: false, refund };
     }
 
-    // 社長指示v0.25.3305「スキルは全てレベル1からの取得で」: 初取得は必ずLv1(開始Lv抽選を廃止)。
-    // 被りによる昇格抽選(Lv2/Lv3)は従来どおり=覚醒(Lv3)は育てて到達する。
-    const rolledLevel = firstAcquire ? 1 : rollSkillLevel(rarity, dupeCount, maxLv);
+    // v0.25.3307: v3305の「初取得=Lv1固定」は指示の誤解釈だったため撤回(社長「ガチャって意味では無い。
+    // ゲーム中の話」)。ガチャは従来どおり開始Lvを抽選する。※所持Lvはラン中の取得Lvには影響しなくなった
+    // (runSkillDraft側=新規カードは常にLv1)。所持Lvの今後の用途は★裁定待ち。
+    const rolledLevel = rollSkillLevel(rarity, dupeCount, maxLv);
     let newLevel = prevLevel;
     let promoted = false;
     let refund = 0;
     if (firstAcquire) {
-      newLevel = 1; // 初取得=常にLv1
+      newLevel = Math.max(1, Math.min(maxLv, rolledLevel)); // 初取得=比較なしで付与
       promoted = true;
     } else if (rolledLevel > prevLevel && prevLevel < maxLv) {
       newLevel = Math.min(maxLv, rolledLevel);              // 現Lv超え=昇格
