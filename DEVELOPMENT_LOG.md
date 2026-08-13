@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.3252 — 覚醒演出+本体オーラ着地(Sonnet納品・検収済み)【2026-08-13 11:55 JST】
+- 新規 awakenCutin.ts/AwakenCutin.tsx(黒帯+金文字1.2秒・ゲーム非停止)。gameStore: Lv3到達で
+  金リング3連+強glow2発(noShadow)+粒子+awakenCutin(多重は1.2秒窓で1回)。SE=heavy-impact+
+  event-clear(ガチャ超レア確定と同組・useGameLoopで再生)。
+- 本体オーラ(§24-3): pixiSceneにpooled sprite 2枚=バーサーカー金(常時・強度∝失HP・判定は
+  frameLight.ts)/オーバークロック青(proc後800ms1発)。
+- spawnGlow noShadowフラグ新設(投影影の支配光に不参加=実測教訓に忠実)。既存呼び出しは無変更。
+- 検証: typecheck 0/lint 0/対象テスト162 passed(ヘッドレスでLv1→2不発・pause/slow不変を固定)。
+- 実機確認: 覚醒3点セット/?zoomlock=0.4でリング(最大330px)破綻なし/オーラ2種/SEのトンマナ。
+- 次: スラッシャー改修バッチ(§25)を発注。
+
 ## v0.25.3251 — 消費カード残秒HUDを右上へ移動(社長指示)【2026-08-13 11:49 JST】
 ConsumableHud: 左上(+116px)→**右上**(スクラップ表示とサブクエピルの下=+68px・右寄せ)へ。
 社長予告「左側には今後サブクエ未完リストが入る」をコードコメントに記録(左へ戻さない)。

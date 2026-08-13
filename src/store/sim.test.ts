@@ -18,7 +18,8 @@ declare const process: { env?: Record<string, string | undefined> } | undefined;
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { runClocks } from '../utils/runClocks';
 import { applyBossPostureDamage, BOSS_POSTURE_BREAK_MS } from '../utils/bossPosture';
-import type { InputState, Projectile, EnemyType } from '../types/game';
+import type { InputState, Projectile, EnemyType, SkillKey, UpgradeOption } from '../types/game';
+import { SKILLS } from '../data/campaign';
 
 const finite = (n: number | undefined) => n === undefined || Number.isFinite(n);
 
@@ -476,6 +477,34 @@ describe('headless simulation invariants', () => {
       expect(s.player.skills).toContain(skillCard.skillKey);
       expect(s.runBuild.length).toBeLessThanOrEqual(6); // §1-1の総枠
     }
+  });
+
+  it('SKILL_BUILD_REDESIGN.md §24: スキルがLv3(覚醒)へ到達した瞬間だけ skillAwakenAt/awakenCutin が立つ(Lv1→2では立たない)', () => {
+    useGameStore.getState().resetGame('warrior');
+    const key: SkillKey = 'knight'; // skillMaxLevel既定=3(SKILL_MAX_LEVELの上書き対象外)
+    useGameStore.setState(s => ({
+      runBuild: [key],
+      player: { ...s.player, skills: [...s.player.skills, key], skillLevels: { ...s.player.skillLevels, [key]: 1 } },
+    }));
+    const lvUp = (skillLv: number): UpgradeOption => ({
+      id: `test-${key}-${skillLv}`, name: '', description: '', type: 'skill', level: 0,
+      skillKey: key, skillCardKind: 'levelup', skillLv,
+    });
+    // Lv1→2: まだ覚醒しない。
+    useGameStore.getState().selectUpgrade(lvUp(2));
+    expect(useGameStore.getState().skillAwakenAt[key]).toBeUndefined();
+    expect(useGameStore.getState().awakenCutin).toBeNull();
+    // Lv2→3: 覚醒する(skillAwakenAt+awakenCutinが立ち、名称はSKILLS台帳と一致)。
+    const beforeAt = Date.now();
+    useGameStore.getState().selectUpgrade(lvUp(3));
+    const s = useGameStore.getState();
+    expect(s.player.skillLevels[key]).toBe(3);
+    expect(s.skillAwakenAt[key]).toBeGreaterThanOrEqual(beforeAt);
+    expect(s.awakenCutin?.skillKey).toBe(key);
+    expect(s.awakenCutin?.skillName).toBe(SKILLS[key].name);
+    // ゲームプレイ無影響(§24-2条件2): スロー/ポーズを一切起こさない。
+    expect(s.isPaused).toBe(false);
+    expect(s.timeSlowUntil).toBeLessThanOrEqual(Date.now());
   });
 
   it('SKILL_BUILD_REDESIGN.md §16-4/§17-1点5: M0(訓練)はレベルアップメニューを出さず自動でスクラップを付与する', () => {

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { TutorialSlide } from '../data/tutorials';
 import { isAvatarId, type AvatarId } from '../data/avatars';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
+import { AWAKEN_CUTIN_MS } from '../utils/awakenCutin'; // SKILL_BUILD_REDESIGN.md §24
 import { generateEquipmentChoices, generateSkillUpgradeChoices, generateReplacementSkillOption, SCRAP_REWARD as LEVELUP_SCRAP_REWARD } from '../utils/upgradeUtils';
 import { canAcquireRunSkill, rerollPrice, MAX_BANISH_PER_RUN, MAX_CARRY_SKILLS, type RunSkillDraftInput } from '../utils/runSkillDraft';
 import { shouldEmitThrottled } from '../utils/emitThrottle';
@@ -4174,6 +4175,10 @@ interface GameState {
   rerollsUsedThisRun: number;
   // Lv3(覚醒)到達フラグ+SE用フック(絵の実装はB7)。key→到達時刻(Date.now)。resetGameでリセット。
   skillAwakenAt: Partial<Record<SkillKey, number>>;
+  // SKILL_BUILD_REDESIGN.md §24: 覚醒カットイン帯(DOM)の駆動イベント。単一オブジェクト(キューでは
+  // ない)なので、表示中に新しい覚醒が起きても「1回に纏める」(古い表示が新しいatで上書きされるだけ・
+  // 演出/SEは選択直後にset外で1回だけ発火。§24実装側のデバウンスと対で使う)。resetGameでnullへ。
+  awakenCutin: { skillKey: SkillKey; skillName: string; at: number } | null;
   rerollUpgradeOptions: () => void;             // スクラップを払い、表示中の3枚を全引き直し(スクラップ択は残置)
   banishSkillFromRun: (key: SkillKey) => void;  // 無料・ラン中2回まで。そのスキルを以後の抽選から除外
   gachaDupeCounts: Partial<Record<SkillKey, number>>;   // ガチャのスキル別「被り回数」(Lv抽選表の参照・永続)
@@ -4388,7 +4393,8 @@ interface GameState {
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
   spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
-  spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
+  // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
+  spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number, noShadow?: boolean) => void;
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
   spawnFlash: (color: string, duration?: number) => void;
   // §5.23 M22 C3: 「N HITS」バナー(頭上・bitmap-text)+小フラッシュ。registerMultiHitから相乗りで呼ぶ。
@@ -4614,6 +4620,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   vanishedSkills: [],
   rerollsUsedThisRun: 0,
   skillAwakenAt: {},
+  awakenCutin: null,
   gachaDupeCounts: loadDupeCounts(),
   gachaPitySinceSuper: loadNumber(GACHA_PITY_KEY, 0),
   gachaPullsTotal: Math.max(0, Math.floor(loadNumber(GACHA_PULLS_KEY, 0))),
@@ -7975,6 +7982,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §13-4/§17: 枠充足タイミング(この1枚でrunBuildが何枠目まで埋まったか)。
       recordSlotFilled(get().gameTime, get().player.level);
     }
+    // SKILL_BUILD_REDESIGN.md §24: 覚醒(Lv3到達)演出のトリガー値。set()の内側で判定するawakenedと
+    // 同じ条件をここへ写す場所は無い(set内のconstはコールバックローカル)ので、set()の中で拾って
+    // このクロージャ変数へ書く(set後に発火する他のパターン=reaperDefeated/bossFullStunAt等と同型)。
+    let awakenedFx: { key: SkillKey; skillName: string } | null = null;
     set(state => {
       const { player } = state;
 
@@ -7994,6 +8005,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §16-10 ★B: Lv3(覚醒)到達のフラグ+SE用フックのみ(演出はB7)。新規取得でいきなりLv3が
         // 出るケース(pity超レア等)は「覚醒」ではない=Lv+1でmaxへ到達した時だけ立てる。
         const awakened = !isNew && prevLv < skillMaxLevel(key) && nextLv >= skillMaxLevel(key);
+        if (awakened) awakenedFx = { key, skillName: SKILLS[key].name }; // §24: set後にburst+帯を発火
         return {
           player: { ...player, skills: nextPlayerSkills, skillLevels: nextSkillLevels },
           runBuild: nextRunBuild,
@@ -8132,6 +8144,34 @@ export const useGameStore = create<GameState>((set, get) => ({
         isPaused: false
       };
     });
+    // SKILL_BUILD_REDESIGN.md §24: 覚醒(Lv3到達)演出。set()の外=levelUp()のイントロ演出
+    // (triggerTimeSlow/spawnRing/spawnGlow直呼び)と同じ型。視覚のみ・判定/速度/スロー無し
+    // (§24-2条件2)。SEはaudioManager非依存を保つ既存方針のため鳴らさない(useGameLoopが
+    // awakenCutinの変化を検知して鳴らす)。
+    if (awakenedFx) {
+      const prevCutin = get().awakenCutin;
+      // 多重発火は1回に纏める(社長指示・理論上のリロール連打等): 直前のカットインがまだ
+      // 表示中(AWAKEN_CUTIN_MS以内)なら、絵/帯を重ねて出さない。
+      if (!prevCutin || Date.now() - prevCutin.at >= AWAKEN_CUTIN_MS) {
+        const { key: awakenedKey, skillName } = awakenedFx;
+        const ap = get().player;
+        const acx = ap.x + ap.width / 2, acy = ap.y + ap.height / 2;
+        // ①金の拡散リング3連(大きく・画面を覆う勢いでよい=派手さの絵・判定ゼロ)。
+        get().spawnRing(acx, acy, 16, 190, 'rgba(253,224,71,0.95)', 5, 620);
+        get().spawnRing(acx, acy, 16, 260, 'rgba(255,215,0,0.75)', 4, 760);
+        get().spawnRing(acx, acy, 16, 330, 'rgba(255,236,153,0.55)', 3, 900);
+        // 本体の強glow(強glowの「絵」は無料=惜しまない)。ただし投影影を落とすイベントライト
+        // (支配光=pixiScene.tsのsyncShadowsV9)には乗せない=noShadow=trueで参加だけを断つ
+        // (絵は変わらない・CLAUDE.mdの計測でコストの正体と確定した方だけを避ける)。
+        get().spawnGlow(acx, acy, GLOW_R_XXL, 'rgba(253,224,71,', 700, true);
+        get().spawnGlow(acx, acy, GLOW_R_L, 'rgba(255,255,255,', 500, true);
+        // 金粒子の吹き上げ。
+        get().spawnBurst(acx, acy, '#fde047', 40);
+        get().spawnBurst(acx, acy, '#fff7cc', 20);
+        // ②HUDカットイン帯(AwakenCutin.tsxが購読・約1.2秒・ゲームは止めない)。
+        set({ awakenCutin: { skillKey: awakenedKey, skillName, at: Date.now() } });
+      }
+    }
     // バンクしたEXPがまだレベル分あれば、次のレベルアップ(メニュー)へ連鎖。ダンス中は保留のまま。
     if (!get().rhythm.active) {
       const { player: p, enemies } = get();
@@ -14827,6 +14867,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         vanishedSkills: [],
         rerollsUsedThisRun: 0,
         skillAwakenAt: {},
+        awakenCutin: null,
         // 登場演出をアーム(初フレームで終了時刻確定)。練習モードは演出なし。
         // チュートリアル(地下洞窟)もヘリ降下演出なし(社長指示v0.25.1818「何もかも無し。全てイベントで特別仕様のみ」)。
         // 洋館(corridorMode)はヘリ登場なし=走り込み入場(v0.25.2110・社長指示)。
@@ -15426,7 +15467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  spawnGlow: (x, y, radius, color, duration = 320) => {
+  spawnGlow: (x, y, radius, color, duration = 320, noShadow = false) => {
     const now = Date.now();
     const small = radius < STRONG_GLOW_RADIUS;
     const tunedRadius = small ? radius * SMALL_GLOW_RADIUS_SCALE : radius;
@@ -15439,7 +15480,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         id: `fx-glow-${now}-${Math.random().toString(36).slice(2, 6)}`,
         x, y, radius: tunedRadius, color,
         createdAt: now,
-        duration: tunedDuration
+        duration: tunedDuration,
+        ...(noShadow ? { noShadow: true as const } : {}),
       }];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };

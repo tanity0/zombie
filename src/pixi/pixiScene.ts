@@ -160,6 +160,10 @@ import {
 } from '../utils/shadowSlots';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
+// SKILL_BUILD_REDESIGN.md §21(B5)/§24(社長指示2026-08-13): 枠光の判定は純関数のまま(pixiは読むだけ・
+// 判定を書かない)。バーサーカー=HP依存の常時オーラ、オーバークロック=proc起点の800msフラッシュ。
+import { berserkerFrameLight, overclockFrameLit, OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
+import { GLOW_R_M, GLOW_R_L, GLOW_R_XL } from '../utils/glowTiers';
 import { FONT_STACK } from '../config/font';
 import {
   enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX, bossBehindFadeApplies,
@@ -3183,6 +3187,11 @@ export class PixiScene {
   // αは触らない(LIGHT_CURVE_ALPHA_GAIN=1.0=ピーク保存)。**形だけが変わる。**塗り面積も不変。
   private playerLight = new Sprite(getSoftGlowTexture());
   private playerGroundPool = new Sprite(getSoftGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
+  // §24(社長指示2026-08-13): 枠光のフィールド版オーラ。判定はframeLight.tsの純関数のみ(pixiは読むだけ)。
+  // pooled sprite 1枚ずつ(per-frame Graphics禁止)。effects[]を経由しない専用スプライトなので
+  // syncLocalEventLighting(投影影)の走査対象にも入らない=「投影影を落とすイベントライトは使わない」を満たす。
+  private playerAuraGold = new Sprite(getSoftGlowTexture()); // バーサーカー: HP70%未満で常時点灯・強度は失HP比例
+  private playerAuraBlue = new Sprite(getSoftGlowTexture()); // オーバークロック: proc後800msのワンショットフラッシュ
   /** ★§4手順1: 強glowが地面に落とす光だまり(加算・プール済み=作っては壊さない)。 */
   private glowGroundLayer = new Container();
   private glowGroundPool: Sprite[] = [];
@@ -3973,6 +3982,15 @@ export class PixiScene {
     this.playerGroundPool.tint = LIGHT_POOL_TINT;
     this.playerGroundPool.blendMode = 'add';
     this.playerGroundPool.visible = LIGHT_POOL_ENABLED && LIGHT_POOL_ALPHA > 0;
+    // §24: 枠光オーラ(バーサーカー=金/オーバークロック=青)。既定は非表示、syncが毎フレーム判定する。
+    this.playerAuraGold.anchor.set(0.5);
+    this.playerAuraGold.blendMode = 'add';
+    this.playerAuraGold.tint = 0xfde047;
+    this.playerAuraGold.visible = false;
+    this.playerAuraBlue.anchor.set(0.5);
+    this.playerAuraBlue.blendMode = 'add';
+    this.playerAuraBlue.tint = 0x60a5fa;
+    this.playerAuraBlue.visible = false;
     // 登場演出のヘリ。danceUiLayer(filteredWorld外=被写界深度でボケない/world座標で追従)に置く。
     // ぼかさない要件のため effectLayer(=tilt-shiftでボケる)からこちらへ移動。画像登場時のみ表示。
     this.helicopter.anchor.set(0.5);
@@ -4016,6 +4034,8 @@ export class PixiScene {
       this.glowGroundLayer, // ★§4手順1: 強glowの光だまり(プレイヤーの光だまりより下=先に敷く)
       this.playerGroundPool,
       this.playerLight,
+      this.playerAuraGold,
+      this.playerAuraBlue,
       this.alchemyCircle,
       this.castleSummonCircle,
       this.shadowContainer,
@@ -7254,6 +7274,33 @@ export class PixiScene {
       this.playerGroundPool.width = this.playerGroundPool.height = LIGHT_POOL_RADIUS * 2 * lightScale;
     }
 
+    // §24(社長指示2026-08-13): 枠光=本体オーラ。判定はframeLight.tsの純関数(pixiは読むだけ)。
+    // ①バーサーカー(金): HP70%未満で常時点灯・強度(0..1)は失HP比例。
+    const hasBerserker = s.player.skills.includes('berserker');
+    const berserkerAura = berserkerFrameLight(hasBerserker, s.player.health, s.player.maxHealth);
+    if (berserkerAura.lit) {
+      this.playerAuraGold.position.set(lx, ly);
+      const auraR = (GLOW_R_M + (GLOW_R_XL - GLOW_R_M) * berserkerAura.intensity) * lightScale;
+      this.playerAuraGold.width = this.playerAuraGold.height = auraR * 2;
+      this.playerAuraGold.alpha = (0.22 + 0.4 * berserkerAura.intensity) * (0.9 + 0.1 * Math.sin(now / 260));
+      this.playerAuraGold.visible = true;
+    } else {
+      this.playerAuraGold.visible = false;
+    }
+    // ②オーバークロック(青): proc(player.overclockLightUntil)から800msのワンショットフラッシュ。
+    const hasOverclock = s.player.skills.includes('overclock');
+    const overclockLit = overclockFrameLit(hasOverclock, s.player.overclockLightUntil, s.gameTime);
+    if (overclockLit) {
+      const elapsed = OVERCLOCK_LIGHT_MS - (s.player.overclockLightUntil - s.gameTime);
+      const life = Math.max(0, Math.min(1, 1 - elapsed / OVERCLOCK_LIGHT_MS));
+      this.playerAuraBlue.position.set(lx, ly);
+      this.playerAuraBlue.width = this.playerAuraBlue.height = GLOW_R_L * 2 * lightScale;
+      this.playerAuraBlue.alpha = life * 0.85;
+      this.playerAuraBlue.visible = life > 0.01;
+    } else {
+      this.playerAuraBlue.visible = false;
+    }
+
     this.applyHideLayers();
     this.syncAlchemyCircle(s.player, s.gameTime, now);
     this.syncWhipHurricane(s.hurricane, now);
@@ -10174,7 +10221,8 @@ export class PixiScene {
     const glowLights: { key: string; x: number; y: number; reach: number; life: number }[] = [];
     if (LOCAL_EVENT_GLOW_SHADOW_ENABLED) {
       for (const e of effects) {
-        if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
+        // §24: noShadow(視覚専用フラグ)は支配光への参加=投影影コストだけを断つ(絵はそのまま)。
+        if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS || e.noShadow) continue;
         const life = 1 - Math.min(1, (now - e.createdAt) / e.duration);
         if (life <= 0) continue;
         glowLights.push({ key: e.id, x: e.x, y: e.y, reach: e.radius * SHADOW_GLOW_REACH_MULT, life });

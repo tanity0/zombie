@@ -135,7 +135,7 @@ import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisi
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
 import { rollWeaponKey } from '../utils/weaponDrop';
-import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey, Summon } from '../types/game';
+import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey, Summon, SkillKey } from '../types/game';
 import {
   checkCollision,
   enemyContactBox,
@@ -1372,6 +1372,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // How many of the scripted supply weapon-crates have dropped this run.
   const cratesDroppedRef = useRef(0);
   const prevLevelRef = useRef(1);
+  // SKILL_BUILD_REDESIGN.md §24: 直前に鳴らしたawakenCutinの参照(SEエッジ検出用・新規発火だけ拾う)。
+  const prevAwakenCutinRef = useRef<{ skillKey: SkillKey; skillName: string; at: number } | null>(null);
   const prevCounterSuccessRef = useRef(0);
   const prevHealthRef = useRef(0);
   const gameOverTriggeredRef = useRef(false);
@@ -11431,6 +11433,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           prevLevelRef.current = currentPlayer.level;
         } else if (currentPlayer.level < prevLevelRef.current) {
           prevLevelRef.current = currentPlayer.level; // reset after game over
+        }
+
+        // SKILL_BUILD_REDESIGN.md §24: 覚醒(スキルLv3到達)のSEエッジ検出。バースト(pixi)とHUD帯の
+        // 発火/多重デバウンスはgameStore.selectUpgrade側(levelUp()のイントロ演出=triggerTimeSlow/
+        // spawnRing/spawnGlow直呼びと同じ型・ヘッドレスで検証できる)で確定済み。ここは`awakenCutin`
+        // (参照が変わる=新規発火の時だけ)を見てSEだけ鳴らす(gameStoreはaudioManagerに依存しない
+        // 既存方針=playSfxを一切importしないため、SE再生はここが唯一の持ち場)。
+        {
+          const cutin = useGameStore.getState().awakenCutin;
+          if (cutin && cutin !== prevAwakenCutinRef.current) {
+            prevAwakenCutinRef.current = cutin;
+            // SE: 専用素材が届くまで既存の最も派手な金系(MissionSelect.tsxのガチャ super 確定と
+            // 同じ組み合わせ=heavy-impact本体+event-clearの号砲)を流用。差し替えは1行。
+            playSfx('heavy-impact');
+            playSfx('event-clear');
+          }
         }
 
         // Detect successful-counter edge: gold burst + ring(視覚のみ)。

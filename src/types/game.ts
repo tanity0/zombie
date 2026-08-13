@@ -1643,6 +1643,10 @@ export type VisualEffect =
       color: string;          // base rgb, e.g. 'rgba(251,191,36,'  — alpha appended
       createdAt: number;
       duration: number;
+      // SKILL_BUILD_REDESIGN.md §24: 強glowの「絵」(半径・α)はそのまま出しつつ、pixiScene.ts の
+      // 支配光(syncShadowsV9のglowLights=CLAUDE.md「投影影」)への参加だけを断つオプトアウト。
+      // 既定undefined(=false)なので既存の呼び出しは1件も挙動が変わらない(視覚専用フラグ)。
+      noShadow?: boolean;
     }
   | {
       // 銃弾ヒット時、被弾敵の背中側(=弾の出口方向)へ生やす火の破裂(2コマ flipbook の立ち絵)。

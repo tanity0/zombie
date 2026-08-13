@@ -14,6 +14,7 @@ import StatsHud from './StatsHud';
 import ConsumableHud from './ConsumableHud';
 import DanceTapMeter from './DanceTapMeter';
 import WallBand from './WallBand';
+import AwakenCutin from './AwakenCutin'; // SKILL_BUILD_REDESIGN.md §24: 覚醒カットイン帯(非ブロッキング)
 import WallInscription from './WallInscription';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
@@ -236,6 +237,8 @@ const Game: React.FC<GameProps> = ({
       {/* PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出(中格=帯/大格=銘打ち)。 */}
       <WallBand />
       <WallInscription />
+      {/* SKILL_BUILD_REDESIGN.md §24: スキル覚醒(Lv3到達)のカットイン帯。ゲームは止めない。 */}
+      <AwakenCutin />
       {/* 撃破/DMG/SCRAP + FPS/負荷表示は TOP画面のトグルで有り/無し(既定=無し)。 */}
       {showStatsOverlay && <StatsHud />}
       {showStatsOverlay && <PerfOverlay fps={fps} />}
