@@ -2559,10 +2559,9 @@ export const isGameTimeStopped = (): boolean => {
  */
 export const isAttackLocked = (): boolean => {
   const s = useGameStore.getState();
-  // v0.25.2589(社長指示「ゴール入ると敵は入れないのに、こっちは一方的に攻撃してる」): 帰還サークル内も
-  // 攻撃禁止。旧は triggerKatanaDash(刀の一閃)だけが個別に見ていて、銃/近接/サブは撃ち放題だった
-  // =敵が入れない安全地帯からの一方的な攻撃が成立していた。ここへ集約して全攻撃に効かせる。
-  return isInputLocked() || s.attention !== null || isInReturnCircle(s.player, s.returnCircle);
+  // v0.25.3318(社長指示): 帰還サークル(ゴール)の「敵が入れない+攻撃禁止」は撤廃。指を離せば
+  // 即ゴールする現仕様では安全地帯ハメが成立しないため(旧v0.25.2589の対策はセットで不要になった)。
+  return isInputLocked() || s.attention !== null;
 };
 
 export const isInputLocked = (): boolean => {
@@ -5555,8 +5554,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       showShopMenu, showUpgradeMenu,
       shopReopenAt
     } = get();
-    // 帰還サークル内では攻撃停止(置き攻撃の出入りハメ防止)。
-    if (isInReturnCircle(player, get().returnCircle)) return { swung: false, hit: false, finish: false, killed: 0 };
+    // 帰還サークル内の攻撃停止は撤廃(社長指示v0.25.3318: 指離せば即ゴールなので不要)。
     // MOVEMENT_REWORK.md 仕様2(社長確定v0.25.2442): スケーター乗車中は攻撃封印(例外なし)。
     // この早期returnで近接/カウンター/ここから発動する各種サブ(ドローンブーメラン/センサー地雷/
     // フレアガン/ジャンクウェポン)もまとめて止まる。降車は既存トグルのまま即時=「降りて即反撃」は成立。
@@ -7759,7 +7757,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = combatActorPlayer(ghostId);
     if (!player) return false;
     if (!isKatanaMode(player) || isPaused) return false;
-    if (isInReturnCircle(player, get().returnCircle)) return false; // 帰還サークル内は攻撃停止
     // 発動中(移動中)〜着地後の硬直中は新しい一閃を出せない = モーション
     // キャンセル不可 + 後隙。村雨でも共通(連発は硬直0.2sぶん間隔が空く)。
     if (now < player.katanaRecoveryUntil) return false;
@@ -7908,7 +7905,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = combatActorPlayer(ghostId);
     if (!player) return false;
     if (isPaused) return false;
-    if (isInReturnCircle(player, get().returnCircle)) return false; // 帰還サークル内は攻撃停止
     if (!player.subWeapons.includes('wire-anchor')) return false;
     if (subWeaponBlockedByKatana(player, 'wire-anchor')) return false;
     // 刺し待ち〜移動中は新しいフリックを受けない。CD 中も不可。
@@ -8507,7 +8503,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { player } = get();
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== 'phill-revolver') return;
-    if (isInReturnCircle(player, get().returnCircle)) return; // 帰還サークル内は攻撃停止
     // 社長指示v0.25.3300 シーカー仕様変更: 半透明中は攻撃できない(覚醒Lv3は可)。
     if (isSeekerActive(player, get().gameTime) && skillLevel(player, 'seeker') < 3) return;
     // 吸い付き中の敵(movePlayer が算出した phillSnapEnemyId)を発砲時点で確認。
@@ -9847,18 +9842,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               state.police, state.policeTaken,
             );
           }
-          // 帰還サークルには敵を入れない: 中心から radius+敵サイズ分の外へ押し出す(セーフゾーン)。
-          const rc = state.returnCircle;
-          if (rc) {
-            const ecx = pos.x + enemy.width / 2, ecy = pos.y + enemy.height / 2;
-            const dx = ecx - rc.x, dy = ecy - rc.y;
-            const dist = Math.hypot(dx, dy);
-            const minDist = rc.radius + Math.max(enemy.width, enemy.height) * 0.4;
-            if (dist < minDist) {
-              const ang = dist > 0.001 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
-              pos = { x: rc.x + Math.cos(ang) * minDist - enemy.width / 2, y: rc.y + Math.sin(ang) * minDist - enemy.height / 2 };
-            }
-          }
+          // 帰還サークルの「敵を入れない」押し出しは撤廃(社長指示v0.25.3318: 指離せば即ゴールなので
+          // セーフゾーンが不要になった。旧v0.25.2589の攻撃禁止側と同時に撤去)。
           // 囲い系イベント中: イベント敵(fromEvent)を囲い円の中に閉じ込める(社長報告のバグ修正)。
           // パンプキン等は射程外へ距離を取るため円の外=地平線の上(透明化ゾーン)へ出て見えなくなり、
           // fromEvent が 0 にならず「誰もいないのに終わらない(時間切れ待ち)」状態になっていた。プレイヤー同様アリーナに閉じ込める。

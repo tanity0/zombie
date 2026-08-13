@@ -57,7 +57,7 @@ import {
   // v0.25.2514(GHOST-BUILD-1): 近接/カウンター反撃の唯一の式(プレイヤーと守護霊で共有)。
   meleeSwingBaseDamage, meleeHitCritChance, counterReplyDamage,
   skillMagnetAmmoRangeMult, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
-  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isGameTimeStopped, enemyMeleeDist,
+  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isGameTimeStopped, enemyMeleeDist,
   isAttackLocked, // v0.25.2589: 死亡モーション中/アテンション演出中は自動攻撃を止める共通ゲート
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
@@ -6521,13 +6521,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // 刀装備中は他のサブウェポンを発動させない(許可制、現状すべて停止)。
         const subWeaponPlayer = useGameStore.getState().player;
-        // 帰還サークル内では攻撃停止=設置/投擲系サブも発動しない(置き攻撃の出入りハメ防止)。
-        // MOVEMENT_REWORK.md 仕様2(社長確定v0.25.2442)でスケーター乗車中のサブウェポン発動封印も
-        // ここへ合流させた(以下このブロック内の全サブ=heavy-grenade/marksman-trap/striker-quick-mag/
+        // MOVEMENT_REWORK.md 仕様2(社長確定v0.25.2442): スケーター乗車中のサブウェポン発動封印
+        // (以下このブロック内の全サブ=heavy-grenade/marksman-trap/striker-quick-mag/
         // dog/decoy/shield/turret/molotov/support-sniper/first-aid-kit/fire-knife/homingロック取得が
         // 共通でこの1変数のnot判定を通る=「サブ発動入口」を1箇所で塞ぐ)。`?skaterlock=0`で復帰。
-        const inReturnCircle = isInReturnCircle(subWeaponPlayer, useGameStore.getState().returnCircle) ||
-          (SKATER_LOCK_ENABLED && subWeaponPlayer.skaterRiding);
+        // 社長指示v0.25.3318: 帰還サークル(ゴール)内の攻撃停止は撤廃(指離せば即ゴールなので不要)。
+        const inReturnCircle = (SKATER_LOCK_ENABLED && subWeaponPlayer.skaterRiding);
 
         // G2.6(BOT_AND_GHOST.md §2.8): サブウェポン発動の入口はオーナー(座標・向き・受け手)に対して
         // 解決する。既定オーナー=プレイヤー(この場合、従来の挙動と1bitも変わらない)。ゴースト
