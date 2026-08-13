@@ -136,7 +136,7 @@ import { CASTLE_FIGHT_MAX_DIST } from '../world/playableArea'; // v0.25.3055: �
 import {
   bossEngagementDistancePx, isEngageableBoss,
 } from '../utils/bossEngagement';
-import { bossPostureMax, bossPostureNow, isBossPostureBroken } from '../utils/bossPosture';
+import { bossPostureMax, bossPostureNow, isBossPostureBroken, usesPostureSystem } from '../utils/bossPosture';
 import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
 import {
   HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
@@ -1923,7 +1923,9 @@ const SHADOW_PENUMBRA_HARD_MULT = tsNum('penumbrahard', 0.25);
 /** a_soft のぼかし = 基準ぼかし×これ(「縁からの距離」の代用)。 */
 const SHADOW_PENUMBRA_SOFT_MULT = tsNum('penumbrasoft', 3.0);
 /** 半影の幅 k(t) = K0 + (K1-K0)×t^POW。t=0 足元(硬い)/ t=1 先端(広い)。 */
-const SHADOW_PENUMBRA_K0 = tsNum('penumbrak0', 0.06);
+// v0.25.3295(社長指示「丸(接地丸影)のように外周側がソフトになれば。今は影の枠がくっきりしている」):
+// 根元側の半影幅K0を0.06→0.30へ。足元付近の輪郭にも接地丸影と同系の柔らかい縁が付く(先端は従来どおり広い)。
+const SHADOW_PENUMBRA_K0 = tsNum('penumbrak0', 0.30);
 const SHADOW_PENUMBRA_K1 = tsNum('penumbrak1', 0.86);
 const SHADOW_PENUMBRA_POW = tsNum('penumbrapow', 1.15);
 
@@ -11094,10 +11096,18 @@ export class PixiScene {
     const tex = view.sprite.texture;
     let w: number, h: number;
     if (view.shadowScale !== undefined && tex && tex.width > 0 && tex.height > 0) {
-      // ★検収差し戻し(中11)対応: sprite.width/height は「今のフレームの見た目」(呼吸/被弾スカッシュ/
-      // crouch・jump込み)。影の寸法はそれらを含まない「素の」表示実寸(shadowScale)から算出する。
-      w = tex.width * view.shadowScale * s;
-      h = tex.height * view.shadowScale * s;
+      // ★中11(素の寸法)→v0.25.3295で社長指示「呼吸も揃えて」により反転: sprite.width/height=
+      // 「今のフレームの見た目」(呼吸/歩行/被弾スカッシュ/crouch込み)を使い、影が本体のゆがみと
+      // 一緒に伸縮する。スプライトの生値が壊れている時だけ素の寸法(shadowScale)へフォールバック。
+      const liveW = Math.abs(view.sprite.width) * s;
+      const liveH = Math.abs(view.sprite.height) * s;
+      if (liveW > 0 && liveH > 0) {
+        w = liveW;
+        h = liveH;
+      } else {
+        w = tex.width * view.shadowScale * s;
+        h = tex.height * view.shadowScale * s;
+      }
     } else {
       w = Math.abs(view.sprite.width) * s;
       h = Math.abs(view.sprite.height) * s;
@@ -16949,7 +16959,8 @@ export class PixiScene {
   }
 
   private drawHealthBar(g: Graphics, e: Enemy, now: number, gameTime: number) {
-    const postureBoss = isEngageableBoss(e.type);
+    // v0.25.3295: 体勢ゲージは紫システム保有者全員(交戦ボス+パンプキン等の強敵=usesPostureSystem)。
+    const postureBoss = usesPostureSystem(e.type);
     const postureMax = postureBoss ? bossPostureMax(e.type) : 0;
     const posture = postureBoss ? bossPostureNow(e) : postureMax;
     if (e.health >= e.maxHealth && (!postureBoss || posture >= postureMax)) return;

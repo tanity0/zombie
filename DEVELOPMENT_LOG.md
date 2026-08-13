@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.3295 — 強敵に紫システム+影の呼吸連動+影輪郭のソフト化【2026-08-13 20:45 JST】
+3件とも社長指示。
+- **「パンプキンなどの強敵にも紫システムだけ追加」**: bossPosture.ts に POSTURE_ELITE_TYPES
+  (pumpkin / lab-zombie-3=usesBossCritから除外されていた2体)+usesPostureSystem を新設し、
+  体勢系ゲート3箇所(applyBossPostureDamage/isBossPostureBroken/tickBossPosture)と体勢ゲージ表示
+  (drawHealthBar)をこれへ。**「だけ」を厳守**: isEngageableBoss(ボスカメラ/湧きリラックス)と
+  usesBossCrit(クリ減速)には入れない。体勢値=60(叩き台・城ボス80より軽い)。紫中の凍結は既存の
+  stunUntil経路(9742の purpleNow ゲート=committed中も凍結)が自動で効く。
+- **「呼吸も揃えて」(影の連動)**: actorDisplaySize の「素の寸法」(中11)を反転し、影の寸法を
+  **生きた表示寸**(呼吸/歩行スカッシュ/被弾つぶれ/crouch込み)へ。プレイヤー・敵とも影が本体の
+  ゆがみと一緒に伸縮する。生値が壊れている時のみ素の寸法へフォールバック。
+- **「影の枠がくっきり→丸のように外周をソフトに」**: 半影の根元側幅 SHADOW_PENUMBRA_K0
+  0.06→**0.30**(?penumbrak0=で調整可)。先端側(K1=0.86)は従来どおり。
+- 検証: typecheck 0 / lint 0 / bossFullStunCoverage等21件通過。実機確認: パンプキンにゲージ+紫が
+  出るか(カメラは引かないこと)・歩行/呼吸で影が動くか・影の縁の柔らかさ。
+
 ## v0.25.3294 — 武器箱の無言ナイフ付与にトースト+盾ブロックで連続突進を中断【2026-08-13 20:34 JST】
 - **「宝箱が光るだけで何も起きない」(社長報告・1問確認で普通の武器箱と特定)**: 正体=武器箱の25%
   ナイフ強化(v0.25.3212〜)で、**grantWeaponの近接枝だけ取得トーストが無かった**(銃は新規/重複とも

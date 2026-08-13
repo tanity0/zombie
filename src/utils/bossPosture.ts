@@ -1,6 +1,13 @@
 import type { Enemy, EnemyType } from '../types/game';
 import { isEngageableBoss } from './bossEngagement';
 
+// 社長指示v0.25.3295「パンプキンなどの強敵にも紫システムだけ追加」: 交戦ボスに加え、この強敵2体
+// (isBossTypeだがボス交戦システム=カメラ/湧き制御を持たない)も体勢値→紫の完全気絶を持つ。
+// **「だけ」の意味**: クリ減速(usesBossCrit)・ボスカメラ・湧きリラックス(isEngageableBoss)には
+// 入れない。体勢値の蓄積と紫だけをこの表で足す。
+export const POSTURE_ELITE_TYPES = new Set<EnemyType>(['pumpkin', 'lab-zombie-3']);
+export const usesPostureSystem = (t: EnemyType): boolean => isEngageableBoss(t) || POSTURE_ELITE_TYPES.has(t);
+
 export type BossPostureImpact = 'counter' | 'melee' | 'heavy' | 'gun-crit' | 'reflect';
 
 export const BOSS_POSTURE_BREAK_MS = 5000; // v0.25.3036(社長指示「紫は5秒に延長」・旧2200)
@@ -21,6 +28,7 @@ const IMPACT_RATIO: Record<BossPostureImpact, number> = {
 };
 
 export const bossPostureMax = (type: EnemyType): number => {
+  if (POSTURE_ELITE_TYPES.has(type)) return 60; // 強敵2体(v0.25.3295叩き台・城ボス80より軽い)
   if (type === 'giantbat') return 80;
   if (type === 'mimir' || type === 'jormungand' || type === 'skadi' || type === 'thor') return 120;
   return 100;
@@ -30,7 +38,7 @@ export const bossPostureNow = (enemy: Enemy): number =>
   Math.max(0, Math.min(bossPostureMax(enemy.type), enemy.bossPosture ?? bossPostureMax(enemy.type)));
 
 export const isBossPostureBroken = (enemy: Enemy, gameTime: number): boolean =>
-  isEngageableBoss(enemy.type)
+  usesPostureSystem(enemy.type)
   && enemy.bossFullStunUntil !== undefined
   && gameTime < enemy.bossFullStunUntil;
 
@@ -42,7 +50,7 @@ export const applyBossPostureDamage = (
   // 倍率(×1.5/1.75/2.0)。既定1=他の全impact/未所持は無改変。
   impactMult = 1,
 ): { patch: Partial<Enemy>; triggered: boolean } | null => {
-  if (!isEngageableBoss(enemy.type) || isBossPostureBroken(enemy, gameTime)) return null;
+  if (!usesPostureSystem(enemy.type) || isBossPostureBroken(enemy, gameTime)) return null;
   if (gameTime < (enemy.bossPostureLockUntil ?? 0)) return null;
   const max = bossPostureMax(enemy.type);
   const before = bossPostureNow(enemy);
@@ -80,7 +88,7 @@ export const applyBossPostureDamage = (
 };
 
 export const tickBossPosture = (enemy: Enemy, gameTime: number, deltaTime: number): Partial<Enemy> | null => {
-  if (!isEngageableBoss(enemy.type)) return null;
+  if (!usesPostureSystem(enemy.type)) return null;
   const max = bossPostureMax(enemy.type);
   if (enemy.bossFullStunUntil !== undefined) {
     if (gameTime < enemy.bossFullStunUntil) return null;
