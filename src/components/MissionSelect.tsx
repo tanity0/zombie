@@ -2223,7 +2223,9 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           <span><span className="block text-[13px] font-semibold">1000スクラップ開始</span><span className="block text-[11px] text-white/50">{startWithTestStraps ? '次の開始時に1000s所持' : 'テスト用。無料'}</span></span>
           <span className="text-[10px] text-white/45">{startWithTestStraps ? 'ON' : 'OFF'}</span>
         </button>
-        {SUB_WEAPON_KEYS.map(skillKey => {
+        {/* 社長指示v0.25.3323: 固定(クラス固有)サブは自クラス専用+最初から上限解放(v0.25.3322)のため
+            陳列解放リストから除外(買っても意味のないG消費を並べない)。 */}
+        {SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k)).map(skillKey => {
           const level = purchasedSubLevels[skillKey] ?? 0;
           const maxed = level >= 3;
           // v0.25.3185(社長指示): 解放は有料(20G/50G/100G)。支払いはガチャと同じ永続ゴールド。
