@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3269',
+    items: [
+      '開発: B7(新スキル9種の効果実装+スターター入り+弾幕の王に貫通1+ボムカウンター大爆発)の発注文を設計書§28に記録。ゲーム内容の変更はありません(実装は次版)。',
+    ],
+  },
+  {
     version: '0.25.3268',
     items: [
       'シーカーの半透明中はボスからも狙われなくなりました(旧: 通常敵のみ)。',
