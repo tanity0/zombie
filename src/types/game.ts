@@ -1466,7 +1466,6 @@ export interface UpgradeOption {
   skillRarity?: 'normal' | 'rare' | 'super'; // data/campaign.ts SkillRarity と同じ値域(循環import回避のため再掲)
   skillFromLv?: number; // 表示用の遷移元Lv(新規=0、Lv+1=現在Lv)
   skillLv?: number;     // このカードを取ると到達するLv
-  skillPity?: boolean;  // 超レアpity発火で確定混入したカードか(表示用)
 }
 
 export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'magSize' | 'reloadSpeed' | 'critChance' | 'stunDuration' | 'ammoDrop' | 'scrapGain';

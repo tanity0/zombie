@@ -102,7 +102,6 @@ const cardToUpgradeOption = (card: DraftedSkillCard): UpgradeOption => ({
   skillRarity: card.rarity,
   skillFromLv: card.fromLevel,
   skillLv: card.toLevel,
-  skillPity: card.pity,
 });
 
 /** レベルアップのスキル3択+常設スクラップ+50を生成する(§16-9点6: 3枚未満の提示を許容し、

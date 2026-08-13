@@ -694,8 +694,9 @@ export const SKILL_KEYS: SkillKey[] = [
   'knight', 'exploder',
   'bomber', 'fire-shooter', 'bomb-counter', 'combo-master',
   'knife-master', 'rescue-signal',
-  // §4: sharpshooter/ricochet/punisherはノーマルへ降格(flashyタグ=FLASHY_SKILLS)。benkei/reflexも
-  // ノーマルへ降格(flashyタグ無し)。
+  // §4: sharpshooter/ricochet/punisherはノーマルへ降格(旧仕様では重み付けタグの付与対象だったが、
+  // §22裁定(中立デッキ化)でそのタグ・重み用途とも定数ごと削除済み)。benkei/reflexもノーマルへ降格
+  // (旧仕様でもタグ無し)。
   'sharpshooter', 'ricochet', 'punisher', 'benkei', 'reflex',
   'gold-rush', 'time-keeper', 'ghost-shooter', 'dog-run', 'counter-master', 'slasher',
   'attack-shooter', 'runner', 'seeker', 'scrap-builder',
@@ -736,11 +737,11 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'rescue-signal':{ name: '救難信号',       desc: '近接ヒット時、一定確率で味方が援護攻撃(必中・倍率1)。ズーム演出', rarity: 'rare' },
   // 通常
   // SKILL_BUILD_REDESIGN.md §4: ボス中立の4チャネル系=積ませて派手にする側としてノーマルへ降格。
-  // flashyタグ(FLASHY_SKILLS)対象=§4表の(flashy)表記どおり3種のみ。
+  // 旧仕様の重み付けタグ(§4表の(flashy)表記どおり3種のみ対象)は§22裁定で定数ごと削除済み(重み用途廃止)。
   'sharpshooter': { name: 'シャープシューター', desc: '銃弾の貫通+1', rarity: 'normal' },
   'ricochet':     { name: '跳弾',           desc: '命中弾が20%で近くの別の敵へ跳ねる(0.5倍)', rarity: 'normal' },
   'punisher':     { name: 'パニッシャー',   desc: 'ノックバック中の敵が他の敵に当たると巻き込む(近接の半分ダメージ＋2倍ノックバック)', rarity: 'normal' },
-  // §4: 条件付き小強化としてノーマルへ降格(flashyタグ無し)。
+  // §4: 条件付き小強化としてノーマルへ降格(旧flashyタグ無し)。
   'benkei':       { name: '弁慶',           desc: '武器を切り替えると10秒間クリティカル率+10%', rarity: 'normal' },
   'reflex':       { name: '反射神経',       desc: '被弾時に反撃の爆発(CDあり)', rarity: 'normal' },
   'gold-rush':    { name: 'ゴールドラッシュ', desc: 'ゴールドの獲得量+20%(Lvで+35%/+50%)。リザルト・宿敵討伐・クエスト報酬が対象', rarity: 'normal' },
@@ -924,11 +925,6 @@ export const NEW_SLEEPING_SKILLS: SkillKey[] = [
 // なってしまう(B3で新規に踏む回帰)。到達可能な全種のみを分母にし、100%完了が引き続き成立するように
 // する(B7で効果配線され次第、自動的に分母へ含まれる)。
 export const OBTAINABLE_SKILL_KEYS: SkillKey[] = SKILL_KEYS.filter(k => !NEW_SLEEPING_SKILLS.includes(k));
-
-// SKILL_BUILD_REDESIGN.md §4/§19-1点2・3: ノーマル抽選(runSkillDraft.ts)で重み×2になるタグ。
-// 付与対象は§4表の(flashy)表記どおり3種のみ(社長指示「flashyタグの付与対象は§4の表の(flashy)
-// 表記どおり」=§2-5の6種案を上書き確定)。ボス中立4チャネル系を積ませて派手にする側。
-export const FLASHY_SKILLS: SkillKey[] = ['sharpshooter', 'ricochet', 'punisher'];
 
 // ガチャ(強化訓練)からは出さないスキル。死神(reaper)は「死神を倒すと習得」専用(社長指示)。
 // 警察署アリーナ3種も同じ理由で除外(そこでしか手に入らないことが寄り道の存在理由・§6.24)。

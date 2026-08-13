@@ -1,14 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   runBuildCapacity, canAcquireRunSkill, canAcquireRarity,
-  rarityWeightsForPlayerLevel, isSuperPityArmed,
   newSkillCandidates, levelUpCandidates,
   draftRunSkillCards, draftReplacementSkillCard,
   rerollPrice, MAX_BANISH_PER_RUN, MAX_CARRY_SKILLS,
   RUN_DRAFT_EXCLUDED_SKILLS, RUN_BUILD_CAPACITY,
   type RunSkillDraftInput,
 } from './runSkillDraft';
-import { SKILLS, FLASHY_SKILLS, NEW_SLEEPING_SKILLS, type SkillRarity } from '../data/campaign';
+import { SKILLS, NEW_SLEEPING_SKILLS, type SkillRarity } from '../data/campaign';
 import type { SkillKey } from '../types/game';
 
 // 決定的な疑似乱数(mulberry32と同型。draftRunSkillCards等はrng引数を必ず注入するのでテストにも使える)。
@@ -66,31 +65,84 @@ describe('MAX_CARRY_SKILLS(§16-10 ★A: 持ち込み廃止)', () => {
   });
 });
 
-describe('§1-2b 進行曲線(rarityWeightsForPlayerLevel)', () => {
-  it('Lv2〜4: 超レア0%', () => {
-    expect(rarityWeightsForPlayerLevel(2)).toEqual({ normal: 85, rare: 15, super: 0 });
-    expect(rarityWeightsForPlayerLevel(4)).toEqual({ normal: 85, rare: 15, super: 0 });
+// SKILL_BUILD_REDESIGN.md §22(社長裁定「デッキで採用」2026-08-13): ラン中ドラフトの新規スキル抽選は
+// レア度重み・プレイヤーLv曲線・pity・flashy重みを全廃し、適格候補(newSkillCandidates)から完全均等に
+// 引く「中立デッキ」方式へ書き換え。旧§1-2b進行曲線テスト/pityテストはこの節に置き換える。
+describe('§22-1 新規側の抽選は完全均等(中立デッキ・レア度重み/pity/flashy廃止)', () => {
+  it('同一レア度・複数種の候補から出現頻度が統計的に均等になる(seed固定)', () => {
+    const pool = NORMAL_SKILLS.slice(0, 5);
+    const input = baseInput({ owned: pool, runSkills: [], runSkillLevels: {}, playerLevel: 2 });
+    const counts: Record<string, number> = Object.fromEntries(pool.map(k => [k, 0]));
+    const trials = 5000;
+    for (let seed = 0; seed < trials; seed++) {
+      const cards = draftRunSkillCards(input, 1, mulberry32(seed));
+      expect(cards).toHaveLength(1);
+      expect(cards[0].cardKind).toBe('new');
+      counts[cards[0].key]++;
+    }
+    const expected = trials / pool.length;
+    for (const k of pool) {
+      // 統計的均等性の検証(±25%の許容)。厳密な一様性の数学的証明ではない。
+      expect(counts[k]).toBeGreaterThan(expected * 0.75);
+      expect(counts[k]).toBeLessThan(expected * 1.25);
+    }
   });
-  it('Lv5〜7', () => {
-    expect(rarityWeightsForPlayerLevel(5)).toEqual({ normal: 60, rare: 32, super: 8 });
-    expect(rarityWeightsForPlayerLevel(7)).toEqual({ normal: 60, rare: 32, super: 8 });
-  });
-  it('Lv8以降', () => {
-    expect(rarityWeightsForPlayerLevel(8)).toEqual({ normal: 45, rare: 38, super: 17 });
-    expect(rarityWeightsForPlayerLevel(99)).toEqual({ normal: 45, rare: 38, super: 17 });
+
+  it('超/レア/ノーマルが1種ずつ混在していてもレア度で重みがつかない(playerLevel=2でも約1/3ずつ)', () => {
+    // 旧仕様なら playerLevel=2 は超レア0%/ノーマル85%で大きく偏っていたはず。§22裁定後は
+    // 3種とも同じ「デッキの1枚」として扱われ、出現確率は種数に対してのみ均等になる。
+    const superKey = SUPER_SKILLS[0], rareKey = RARE_SKILLS[0], normalKey = NORMAL_SKILLS[0];
+    const input = baseInput({ owned: [superKey, rareKey, normalKey], runSkills: [], runSkillLevels: {}, playerLevel: 2 });
+    const counts: Record<string, number> = { [superKey]: 0, [rareKey]: 0, [normalKey]: 0 };
+    const trials = 6000;
+    for (let seed = 0; seed < trials; seed++) {
+      const cards = draftRunSkillCards(input, 1, mulberry32(seed));
+      expect(cards).toHaveLength(1);
+      counts[cards[0].key]++;
+    }
+    const expected = trials / 3;
+    for (const k of [superKey, rareKey, normalKey]) {
+      expect(counts[k]).toBeGreaterThan(expected * 0.8);
+      expect(counts[k]).toBeLessThan(expected * 1.2);
+    }
   });
 });
 
-describe('§1-2b 超レアpity(isSuperPityArmed)', () => {
-  it('Lv8未満は常に不成立', () => {
-    expect(isSuperPityArmed(7, [])).toBe(false);
+// §22-3受け入れ条件2: レア度枠フィルタ(canAcquireRarity)は§22裁定でも不変(触っていない)。
+describe('§22-3#2 レア度枠フィルタの回帰(枠が埋まったレア度は出ない)', () => {
+  it('レア枠2が埋まっていれば、新規カードにレアは出ない', () => {
+    const rareA = RARE_SKILLS[0], rareB = RARE_SKILLS[1];
+    const input = baseInput({ runSkills: [rareA, rareB], runSkillLevels: { [rareA]: 1, [rareB]: 1 } });
+    for (let seed = 0; seed < 50; seed++) {
+      const cards = draftRunSkillCards(input, 3, mulberry32(seed));
+      for (const c of cards) {
+        if (c.cardKind === 'new') expect(c.rarity).not.toBe('rare');
+      }
+    }
   });
-  it('Lv8以降・超レア枠が空なら成立', () => {
-    expect(isSuperPityArmed(8, [])).toBe(true);
-    expect(isSuperPityArmed(20, NORMAL_SKILLS.slice(0, 3))).toBe(true);
+
+  it('超レア枠1が埋まっていれば、新規カードに超レアは出ない', () => {
+    const input = baseInput({ runSkills: [SUPER_SKILLS[0]], runSkillLevels: { [SUPER_SKILLS[0]]: 1 } });
+    for (let seed = 0; seed < 50; seed++) {
+      const cards = draftRunSkillCards(input, 3, mulberry32(seed));
+      for (const c of cards) {
+        if (c.cardKind === 'new') expect(c.rarity).not.toBe('super');
+      }
+    }
   });
-  it('Lv8以降でも超レア枠が既に埋まっていれば不成立', () => {
-    expect(isSuperPityArmed(8, [SUPER_SKILLS[0]])).toBe(false);
+});
+
+// §22-3受け入れ条件3: 裁定6(序盤=超レア0%)は§22で撤回。超レア所持デッキはLv2初ドラフトから出うる。
+describe('§22-3#3 超レア所持デッキはLv2初ドラフトから超レアが出うる(裁定6の撤回)', () => {
+  it('playerLevel=2でも超レア所持ならdraftRunSkillCardsから出うる', () => {
+    const superKey = SUPER_SKILLS[0];
+    const input = baseInput({ owned: [superKey], runSkills: [], runSkillLevels: {}, playerLevel: 2 });
+    let sawSuper = false;
+    for (let seed = 0; seed < 50 && !sawSuper; seed++) {
+      const cards = draftRunSkillCards(input, 3, mulberry32(seed));
+      if (cards.some(c => c.rarity === 'super')) sawSuper = true;
+    }
+    expect(sawSuper).toBe(true);
   });
 });
 
@@ -179,12 +231,6 @@ describe('draftRunSkillCards(§12-2#2 抽選手順)', () => {
     }
   });
 
-  it('Lv8以降・超レア未所持ならpity発火で確定混入する(超レア候補がある場合)', () => {
-    const input = baseInput({ playerLevel: 8 });
-    const cards = draftRunSkillCards(input, 3, mulberry32(42));
-    expect(cards.some(c => c.pity && c.rarity === 'super')).toBe(true);
-  });
-
   it('取得Lvは所持Lv(ownedLevels)にクランプされる(§10点12①のクランプ式)', () => {
     const key = NORMAL_SKILLS[0];
     const input = baseInput({ owned: [key], ownedLevels: { [key]: 9 } }); // 異常値でも上限クランプ
@@ -219,39 +265,9 @@ describe('バニッシュ上限(MAX_BANISH_PER_RUN)', () => {
   });
 });
 
-// SKILL_BUILD_REDESIGN.md §4/§19-1点2・3: ノーマル抽選でflashyタグ持ちの重みを2倍。
-// 付与対象は§4表の(flashy)表記どおり3種のみ。
-describe('flashyタグの重み(§19-2点2: ノーマル抽選でflashy:非flashy=2:1)', () => {
-  it('FLASHY_SKILLSは§4表の(flashy)表記どおり sharpshooter/ricochet/punisher の3種', () => {
-    expect([...FLASHY_SKILLS].sort()).toEqual(['punisher', 'ricochet', 'sharpshooter']);
-  });
-
-  it('ノーマル抽選で、flashyと非flashyのノーマルが2枚だけなら flashy:非flashy ≒ 2:1 になる', () => {
-    const flashyKey: SkillKey = 'sharpshooter';
-    const plainKey: SkillKey = 'runner';
-    expect(FLASHY_SKILLS).toContain(flashyKey);
-    expect(FLASHY_SKILLS).not.toContain(plainKey);
-    expect(SKILLS[flashyKey].rarity).toBe('normal');
-    expect(SKILLS[plainKey].rarity).toBe('normal');
-
-    // playerLevel=2 → {normal:85, rare:15, super:0}。owned をこの2枚だけにすると
-    // rare/superの候補が無いためレア度ロールが必ずnormalへカスケードし、以後は
-    // pickWeightedSkill(flashy×2/非flashy×1)の重みだけが結果を左右する。
-    const input = baseInput({ owned: [flashyKey, plainKey], runSkills: [], runSkillLevels: {}, playerLevel: 2 });
-    let flashyCount = 0;
-    let total = 0;
-    for (let seed = 0; seed < 4000; seed++) {
-      const cards = draftRunSkillCards(input, 1, mulberry32(seed));
-      if (cards.length !== 1 || cards[0].cardKind !== 'new') continue;
-      total++;
-      if (cards[0].key === flashyKey) flashyCount++;
-    }
-    expect(total).toBeGreaterThan(3000); // ほぼ全試行が'new'側に落ちることの確認(前提が崩れていないか)
-    const ratio = flashyCount / total;
-    expect(ratio).toBeGreaterThan(0.6); // 理論値2/3=0.667
-    expect(ratio).toBeLessThan(0.73);
-  });
-});
+// SKILL_BUILD_REDESIGN.md §4/§19-1点2・3で導入されたノーマル抽選のタグ別2倍重みは§22裁定(中立
+// デッキ化)で廃止され、専用の重みタグ定数ごと削除済み(campaign.tsにこの種の識別子は存在しない)。
+// 均等抽選の検証は上の「§22-1 新規側の抽選は完全均等」節に統合した。
 
 // SKILL_BUILD_REDESIGN.md §14/§19-1点4: 新スキル9種はB3時点で台帳掲載のみ。ドラフトからは
 // RUN_DRAFT_EXCLUDED_SKILLS経由で完全に除外される(効果配線はB7)。
