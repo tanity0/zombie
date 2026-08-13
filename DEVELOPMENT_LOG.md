@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.3290 — グレネードガン3種(武器庫限定・第4枠=社長裁定)+弾ドット絵【2026-08-13 20:10 JST】
+- **素材**: 社長支給シート(816×264)から glauncher-t1/t2/t3(weapons/)+弾 fx/grenade-ball(56×56)を切り出し。
+- **新カテゴリ 'glauncher'(第4枠=AskUserQuestionで社長裁定)**: WeaponCategory拡張。
+  **弾はライフル弾共用**(AMMO_FIELD.glauncher='ammoRifle'・専用弾経済は作らない=叩き台)。
+  Record<AmmoType>の全網羅表9箇所(AMMO_MAX/INITIAL/PICKUP/ShopMenu 3表/BASE_CRIT/GUN_KEYS/
+  ammoPickupAmounts)へ追記=typecheck駆動で漏れなし。
+- **入手=武器庫のみ**: armoryGrantKeys(新純関数+テスト6/6)——既存3カテゴリ=t3確定(§6.24-W裁定
+  維持)+glauncherは**1段ずつ昇格**(唯一の入手経路でt1/t2を死なせない)。武器箱/商人/ドロップの
+  抽選には非掲載。
+- **性能(叩き台・rifle-t3=95/1400起点)**: t1=85/1500/装弾3 t2=110/1350/4 t3=140/1200/5。
+  射程312(rifle同)・基礎クリ0.20系。着弾爆発=rifle-t3と同じGRENADE経路(isGrenadeGunKeyで
+  発火・despawn判定も同関数へ)。爆発flipbook/SEも自動で同じ。
+- **弾の絵**: drawProjectileでglauncher弾+手榴弾('grenade')を fx/grenade-ball でスタンプ
+  (Graphics.texture・未ロード時は従来描画へフォールバック。手榴弾の跳ねアニメ/影/ゴースト青白tintは維持)。
+- 検証: armoryGun.test 6/6・typecheck 0・lint 0。実機確認: 武器庫でグレネードガンが出るか(4候補の
+  抽選)・第4枠として銃と併存するか・弾の絵・着弾爆発。
+
 ## v0.25.3289 — 武器15点をドット絵へ同名差し替え(社長支給素材)【2026-08-13 19:53 JST】
 - 社長支給の横並びシート(4260×264=284pxセル×15・透過済み)を島検出で15分割し、
   `public/sprites/weapons/` の同名PNGへタイトクロップで差し替え。並びは事前に渡した一覧

@@ -24,6 +24,7 @@ const BASE_CRIT_BY_CATEGORY: Record<AmmoType, number> = {
   shotgun: 0.05,
   rifle: 0.20,
   phill: 0, // PHILL銃のクリ(ヘッドショット)は命中位置で確定付与。基礎クリ率は0。
+  glauncher: 0.20, // ライフル系準拠(v0.25.3290叩き台)
 };
 
 // ---------------------------------------------------------------------------
@@ -83,7 +84,15 @@ const CATALOG: Record<string, WeaponDef> = {
 
   // 研究所専用リボルバー「ＰＨＩＬＬ-銃」。狙って撃つ手動武器(自動射撃しない)。頭部命中で確定ヘッドショット、
   // 胴体は通常ダメージ＋2倍ノックバック。攻撃力2倍(社長指示)=ダメージ80。ステージ2敵HP2倍と釣り合う。射撃CD=1秒。
-  'phill-revolver':   { key: 'phill-revolver', name: 'ＰＨＩＬＬ-銃', type: 'phill-bullet', category: 'phill', tier: 1, damage: 80, cooldown: 1000, projectileSpeed: 640, projectileSize: 9, count: 1, magSize: 6, reloadMs: 900 }
+  'phill-revolver':   { key: 'phill-revolver', name: 'ＰＨＩＬＬ-銃', type: 'phill-bullet', category: 'phill', tier: 1, damage: 80, cooldown: 1000, projectileSpeed: 640, projectileSize: 9, count: 1, magSize: 6, reloadMs: 900 },
+
+  // 社長指示v0.25.3290: 武器庫からのみ排出されるグレネード系銃器(第4枠=社長裁定)。
+  // 他の入手経路(武器箱rollWeaponKey/openCrate/商人/ドロップ)には載せない=GUN_KEYS_BY_CATEGORY非掲載。
+  // 弾はライフル弾共用。着弾爆発はrifle-t3と同じGRENADE_WEAPON_KEY経路(isGrenadeGunKeyで判定)。
+  // 数値は叩き台: rifle-t3(95/1400)を起点にtierで伸ばす。武器庫1回=1tierずつ昇格(armoryGrantKeys)。
+  'glauncher-t1': { key: 'glauncher-t1', name: 'グレネードガン',   type: 'rifle', category: 'glauncher', tier: 1, damage: 85,  cooldown: 1500, projectileSpeed: 420, projectileSize: 14, count: 1, magSize: 3, reloadMs: 2200, passthrough: true },
+  'glauncher-t2': { key: 'glauncher-t2', name: 'グレネードガンⅡ', type: 'rifle', category: 'glauncher', tier: 2, damage: 110, cooldown: 1350, projectileSpeed: 440, projectileSize: 15, count: 1, magSize: 4, reloadMs: 2100, passthrough: true },
+  'glauncher-t3': { key: 'glauncher-t3', name: 'グレネードガンⅢ', type: 'rifle', category: 'glauncher', tier: 3, damage: 140, cooldown: 1200, projectileSpeed: 460, projectileSize: 16, count: 1, magSize: 5, reloadMs: 2000, passthrough: true }
 };
 
 const weaponBaseCritChance = (def: WeaponDef): number | undefined => {
@@ -96,7 +105,8 @@ export const GUN_KEYS_BY_CATEGORY: Record<AmmoType, string[]> = {
   handgun: ['handgun-t1', 'handgun-t2', 'handgun-t3'],
   shotgun: ['shotgun-t1', 'shotgun-t2', 'shotgun-t3'],
   rifle:   ['rifle-t1', 'rifle-t2', 'rifle-t3'],
-  phill:   ['phill-revolver'] // 屋内固定銃。ドロップ/商人の銃ラインには出ない(weaponDrop は handgun/shotgun/rifle のみ抽選)。
+  phill:   ['phill-revolver'], // 屋内固定銃。ドロップ/商人の銃ラインには出ない(weaponDrop は handgun/shotgun/rifle のみ抽選)。
+  glauncher: ['glauncher-t1', 'glauncher-t2', 'glauncher-t3'] // 武器庫からのみ排出(v0.25.3290)。weaponDropの抽選3カテゴリに含まれない。
 };
 // CRIT-UNIFY §9.4: 「プレイヤー直接武器」の銃10種(全カテゴリ合算)。着弾時ロール(トラップ+10%/
 // 弱点+10%)をこの集合の弾だけに限定するための判定(escort/ghost-gun/タレット/ホーミング/跳弾/
@@ -133,7 +143,8 @@ export const AMMO_FIELD: Record<AmmoType, 'ammoHandgun' | 'ammoShotgun' | 'ammoR
   handgun: 'ammoHandgun',
   shotgun: 'ammoShotgun',
   rifle: 'ammoRifle',
-  phill: 'ammoPhill'
+  phill: 'ammoPhill',
+  glauncher: 'ammoRifle' // グレネードガンはライフル弾共用(v0.25.3290・専用弾経済は作らない)
 };
 
 let weaponSeq = 0;
@@ -194,6 +205,25 @@ export const armoryUpgradableGunCategories = (
     const own = weapons.find(w => !w.isMelee && w.category === cat);
     return !own || (own.tier ?? 1) < 3;
   });
+
+// 社長指示v0.25.3290: 武器庫の付与候補を**具体的なキー**で列挙する。
+// ①既存3カテゴリ=従来どおりTier3確定(§6.24-W裁定を維持) ②グレネードガン(第4枠・武器庫のみの
+// 排出元)=t1→t2→t3と**1段ずつ**昇格(唯一の入手経路なのでいきなりt3にするとt1/t2が死ぬ)。
+// 空配列=全て最高位=返金ケース(従来と同じ)。
+export const armoryGrantKeys = (
+  weapons: Pick<Weapon, 'isMelee' | 'category' | 'tier'>[],
+): string[] => {
+  const keys: string[] = armoryUpgradableGunCategories(weapons).map(cat => `${cat}-t3`);
+  const gl = weapons.find(w => !w.isMelee && w.category === 'glauncher');
+  const glTier = gl?.tier ?? 0;
+  if (glTier < 3) keys.push(`glauncher-t${glTier + 1}`);
+  return keys;
+};
+
+// グレネード系の着弾爆発を起こす銃キーか(rifle-t3=既存グレネードランチャー+武器庫限定glauncher 3種)。
+// useGameLoopの着弾爆発ブロック(GRENADE_WEAPON_KEY経路)がこの判定で分岐する。
+export const isGrenadeGunKey = (key: string | undefined | null): boolean =>
+  key === 'rifle-t3' || key === 'glauncher-t1' || key === 'glauncher-t2' || key === 'glauncher-t3';
 
 // Player-state RESERVE pool value for an ammo type.
 export const ammoPoolFor = (player: Player, type: AmmoType): number =>
@@ -296,6 +326,7 @@ export const WEAPON_ICON_KEYS: ReadonlySet<string> = new Set<string>([
   // 近接(ナイフ系)アイコン。名前に近い見た目を割当(社長指示)。攻撃モーション用ではなく
   // 銃と同じピックアップ/HUDアイコン。
   'knife-t1', 'hatchet-t2', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5',
+  'glauncher-t1', 'glauncher-t2', 'glauncher-t3', // 武器庫限定グレネード系銃器(v0.25.3290)
 ]);
 export const hasWeaponIcon = (key: string | undefined | null): boolean => !!key && WEAPON_ICON_KEYS.has(key);
 export const weaponIconName = (key: string): string => `weapons/${key}`;
@@ -307,7 +338,8 @@ export const RANGE_BY_CATEGORY: Record<AmmoType, number> = {
   handgun: 176,
   shotgun: 120,
   rifle: 312,
-  phill: 260 // 手動照準の精密射撃。自動射程判定には使わない(自動射撃しない)。
+  phill: 260, // 手動照準の精密射撃。自動射程判定には使わない(自動射撃しない)。
+  glauncher: 312 // グレネードガン=rifle-t3(グレネードランチャー)と同じ自動射程(v0.25.3290叩き台)
 };
 
 /**

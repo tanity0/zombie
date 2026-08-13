@@ -53,14 +53,16 @@ const ammoLabel: Record<AmmoType, string> = {
   handgun: 'ハンドガン弾',
   shotgun: 'ショットガン弾',
   rifle: 'ライフル弾',
-  phill: 'ＰＨＩＬＬ弾'
+  phill: 'ＰＨＩＬＬ弾',
+  glauncher: 'ライフル弾' // グレネードガンはライフル弾共用(v0.25.3290)
 };
 
 const ammoShopKey: Record<AmmoType, ShopItemKey> = {
   handgun: 'ammo-handgun',
   shotgun: 'ammo-shotgun',
   rifle: 'ammo-rifle',
-  phill: 'ammo-phill'
+  phill: 'ammo-phill',
+  glauncher: 'ammo-rifle'
 };
 
 const ShopMenu: React.FC = () => {
@@ -84,7 +86,8 @@ const ShopMenu: React.FC = () => {
   );
   // 弾がMAXのタイプは購入不可(disabled)。
   const ammoNow: Record<AmmoType, number> = {
-    handgun: player.ammoHandgun, shotgun: player.ammoShotgun, rifle: player.ammoRifle, phill: player.ammoPhill
+    handgun: player.ammoHandgun, shotgun: player.ammoShotgun, rifle: player.ammoRifle, phill: player.ammoPhill,
+    glauncher: player.ammoRifle
   };
   const ammoPickupAmounts = useGameStore(state => state.ammoPickupAmounts);
   const unlockedShopSkillCards = useGameStore(state => state.unlockedShopSkillCards);

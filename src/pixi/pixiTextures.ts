@@ -537,6 +537,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/explosion-3', scaleMode: 'nearest' as const },
       { name: 'fx/explosion-4', scaleMode: 'nearest' as const },
       { name: 'fx/explosion-5', scaleMode: 'nearest' as const },
+      // グレネード弾(社長支給ドット素材v0.25.3290・56×56)。手榴弾+グレネードガン(武器庫限定)の弾。
+      { name: 'fx/grenade-ball', scaleMode: 'nearest' as const },
       // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
       // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },

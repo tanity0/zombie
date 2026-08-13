@@ -339,7 +339,7 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
-import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, zoomedGunRange, isDirectGunWeaponKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, zoomedGunRange, isDirectGunWeaponKey, isGrenadeGunKey, GHOST_REFLECT_WEAPON_KEY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
@@ -9590,7 +9590,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
 
           if (
-            projectile?.weaponKey === GRENADE_WEAPON_KEY &&
+            isGrenadeGunKey(projectile?.weaponKey) && // v0.25.3290: rifle-t3+武器庫限定glauncher 3種
             enemyForFx &&
             !grenadeExplodedThisFrame.has(projectileId)
           ) {
@@ -9893,7 +9893,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           //  - everything else: stop on first hit.
           if (projectile) {
             const removeIt =
-              projectile.weaponKey === GRENADE_WEAPON_KEY
+              isGrenadeGunKey(projectile.weaponKey) // v0.25.3290: グレネード系銃の弾は着弾で必ず消える(爆発済み)
                 ? true
                 : projectile.pierce !== undefined
                 ? projectile.hitEnemies.length > projectile.pierce

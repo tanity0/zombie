@@ -1031,7 +1031,9 @@ export interface Weapon {
 }
 
 // Gun families. Each shares an ammo pool with the matching AmmoType.
-export type WeaponCategory = 'handgun' | 'shotgun' | 'rifle' | 'phill';
+// 'glauncher' = 武器庫からのみ排出されるグレネード系銃器(社長指示v0.25.3290・第4枠)。
+// 弾薬はライフル弾を共用(AMMO_FIELDでammoRifleへマップ=専用弾経済は作らない・叩き台)。
+export type WeaponCategory = 'handgun' | 'shotgun' | 'rifle' | 'phill' | 'glauncher';
 export type AmmoType = WeaponCategory;
 
 // Projectile/weapon kinds. Guns use their category as the projectile type;

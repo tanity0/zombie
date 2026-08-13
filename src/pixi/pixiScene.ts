@@ -19499,6 +19499,17 @@ export class PixiScene {
     const placedObject = p.weaponType === 'grenade' || p.weaponType === 'trap' || p.weaponType === 'decoy';
     const depthD = placedObject ? this.depthScale(drawY + p.height) : 1;
 
+    // 社長指示v0.25.3290: グレネードガン(武器庫限定glauncher系)の弾は支給ドット弾(fx/grenade-ball)。
+    // weaponTypeはrifle(トレーサー用)だが、弾の絵だけ専用に差し替える。未ロード時は従来描画へ。
+    if (p.weaponKey === 'glauncher-t1' || p.weaponKey === 'glauncher-t2' || p.weaponKey === 'glauncher-t3') {
+      const ballTex = getTexture('fx/grenade-ball');
+      if (ballTex) {
+        const r = Math.max(5, p.width * 0.85);
+        g.texture(ballTex, 0xffffff, -r, -r, r * 2, r * 2);
+        return;
+      }
+    }
+
     if (p.reflected) {
       g.circle(0, 0, Math.max(p.width, p.height) * 0.7).fill({ color: 0xfcd34d });
     }
@@ -19556,9 +19567,17 @@ export class PixiScene {
         const hop = Math.abs(Math.sin(t * Math.PI * 5.2)) * 9 * hopEnvelope;
         g.ellipse(0, 4, Math.max(3, p.width * 0.48), Math.max(1.2, p.height * 0.14))
           .fill({ color: 0x000000, alpha: 0.28 });
-        // v0.25.2472: ownerGhost(守護霊が投げた手榴弾)は青白の霊体色(視覚のみ・判定/挙動不変)。
-        g.circle(0, -hop, Math.max(3, p.width / 2)).fill({ color: p.ownerGhost ? 0x9fd8ff : 0x1f2937 });
-        g.circle(-1, -hop - 1, Math.max(1.5, p.width / 5)).fill({ color: p.ownerGhost ? 0xe0f2fe : 0x9ca3af, alpha: 0.55 });
+        // 社長指示v0.25.3290「この弾の絵を手榴弾にも流用」: 支給ドット弾(fx/grenade-ball)を
+        // 跳ねアニメはそのままスタンプ。素材未ロード時は従来の手続き円へフォールバック。
+        // v0.25.2472: ownerGhost(守護霊が投げた手榴弾)は青白tint(視覚のみ・判定/挙動不変)。
+        const ballTex = getTexture('fx/grenade-ball');
+        const br = Math.max(4, p.width * 0.75);
+        if (ballTex) {
+          g.texture(ballTex, p.ownerGhost ? 0x9fd8ff : 0xffffff, -br, -hop - br, br * 2, br * 2);
+        } else {
+          g.circle(0, -hop, Math.max(3, p.width / 2)).fill({ color: p.ownerGhost ? 0x9fd8ff : 0x1f2937 });
+          g.circle(-1, -hop - 1, Math.max(1.5, p.width / 5)).fill({ color: p.ownerGhost ? 0xe0f2fe : 0x9ca3af, alpha: 0.55 });
+        }
         break;
       }
       case 'drone-boomerang-projectile': {

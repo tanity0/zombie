@@ -92,7 +92,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryUpgradableGunCategories, beginWeaponReload, finishWeaponReload, refillWeaponMagazine } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -240,7 +240,7 @@ const initialRhythm = (): RhythmState => ({
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
 // stocked) but ammo is hard to find, so the run is a slow drain on it.
-export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 24, rifle: 36, phill: 48 };
+export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 24, rifle: 36, phill: 48, glauncher: 36 }; // glauncher=ライフル弾共用(実プールはammoRifle・v0.25.3290)
 // PACING_PUZZLE.md §5.5 M5(RE4式弾ドロップ・既定ON): ?ammosmart=0で従来(構え銃の弾種)へ。
 // useGameLoop側の銃キル経路と同名パラメータ(各自読む=既存camNum等と同じ流儀)。
 const AMMO_SMART_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ammosmart') !== '0';
@@ -355,11 +355,11 @@ export const BOSS_START_CHEST_LEVELS = 3;
 // ※旧: 上へ96px(開幕でカメラ中央のすぐ上に見える)。
 export const BOSS_START_CHEST_BELOW_MARGIN_PX = 60;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
-export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 60, shotgun: 18, rifle: 24, phill: 24 };
+export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 60, shotgun: 18, rifle: 24, phill: 24, glauncher: 24 };
 // How much a world/melee ammo pickup grants for each family (enemy drops, air
 // drops, and the boxes melee kills now drop). Modest relative to the reserve
 // cap — resupply is scarce。phill=1ピックアップ/購入で6発。
-export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 40, shotgun: 10, rifle: 20, phill: 6 };
+export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 40, shotgun: 10, rifle: 20, phill: 6, glauncher: 20 };
 
 // Player-tunable melee ammo-drop rate (percent), set on the start screen and
 // persisted across reloads. A melee kill drops ammo at this rate; a melee
@@ -733,7 +733,8 @@ const loadAmmoPickupAmounts = (): Record<AmmoType, number> => {
       handgun: clampAmmoPickupAmount(parsed.handgun ?? AMMO_PICKUP.handgun),
       shotgun: clampAmmoPickupAmount(parsed.shotgun ?? AMMO_PICKUP.shotgun),
       rifle: clampAmmoPickupAmount(parsed.rifle ?? AMMO_PICKUP.rifle),
-      phill: clampAmmoPickupAmount(parsed.phill ?? AMMO_PICKUP.phill)
+      phill: clampAmmoPickupAmount(parsed.phill ?? AMMO_PICKUP.phill),
+      glauncher: clampAmmoPickupAmount(parsed.glauncher ?? AMMO_PICKUP.glauncher)
     };
   } catch {
     return { ...AMMO_PICKUP };
@@ -14014,7 +14015,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 報酬=Tier3の銃1挺確定。Tier3未満のカテゴリ(未所持含む)からランダムに1つ選び、
         // そのカテゴリのTier3を付与する。付与はset後の grantWeapon=既存規則(カテゴリごと1挺・
         // 高Tier優先)+武器取得トーストをそのまま通す(§6.24-UX要件2は武器取得UIそのもので満たす)。
-        const upgradable = armoryUpgradableGunCategories(state.player.weapons);
+        // 社長指示v0.25.3290: 付与候補=既存3カテゴリのTier3(従来)+グレネードガン(武器庫のみの
+        // 排出元・1段ずつ昇格)。候補が空=全て最高位=返金(従来と同じ)。
+        const upgradable = armoryGrantKeys(state.player.weapons);
         unlocked = true;
         if (upgradable.length === 0) {
           // 全カテゴリ最高位=「返金されて終わり」: スクラップを消費せず取引完了として武器庫は消える
@@ -14031,7 +14034,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             wallBandColor: 'white' as const,
           };
         }
-        grantGunKey = `${upgradable[Math.floor(Math.random() * upgradable.length)]}-t3`;
+        grantGunKey = upgradable[Math.floor(Math.random() * upgradable.length)];
         return {
           ...intel,
           armoryDwellMs: dwellMs,
