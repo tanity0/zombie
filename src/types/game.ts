@@ -170,6 +170,14 @@ export interface Player extends DashLocomotionState {
   benkeiCdUntil: number;       // 弁慶: 再発動CD(gameTime)
   seekerUntil: number;         // シーカー: 半透明化＋通常敵から狙われない 効果終了(gameTime)
   seekerCdUntil: number;       // シーカー: 再発動CD(gameTime)
+  // SKILL_BUILD_REDESIGN.md §23: 消費カード5種の発動終了時刻(gameTime)。取得で即座に gameTime+60000
+  // へセット(温存不可・延長なし=再取得しても常に60秒に固定)。同時に複数種類が併存可(各自が
+  // ノーマル枠を1つ占有)。ゴースト(buildPseudoPlayer)へは持ち越さない(utils/playerBuild.ts参照)。
+  consumableScrapUntil: number;      // スクラップブースト: スクラップ入手+50%
+  consumableAttackUntil: number;     // アタックドーピング: 攻撃力+20%
+  consumableSpeedUntil: number;      // スピードブースト: 移動速度+15%
+  consumableXpUntil: number;         // 経験値ブースト: 経験値×1.5
+  consumableProtectionUntil: number; // プロテクション: 被ダメージ-30%
   // 枠光(SKILL_BUILD_REDESIGN.md §21 B5・視覚専用): オーバークロックのCDリセットprocが立った
   // 時刻+800ms(gameTime基準)。判定はsrc/utils/frameLight.tsのoverclockFrameLitへ渡すだけで、
   // この値自体はゲームプレイ(判定・数値)に一切影響しない。既定0。
@@ -1147,6 +1155,11 @@ export type SkillKey =
   | 'big-bullet' | 'ice-shot' | 'vampire' | 'incendiary-round' | 'execution-shock'
   | 'gravity-shot' | 'echo-shot' | 'barrage-king' | 'blood-treads';
 
+// SKILL_BUILD_REDESIGN.md §23(消費カード5種・社長裁定2026-08-13「案B・30%60秒・あとは推薦で」):
+// ガチャ外・デッキ所持に依存しない=全プレイヤー共通。ノーマル枠を1つ占有し、取得で即発動・
+// 60秒で自動失効(温存不可)。名前・数値は全て叩き台(実機調整前提)。台帳は data/consumables.ts。
+export type ConsumableKey = 'scrap-boost' | 'attack-doping' | 'speed-boost' | 'xp-boost' | 'protection';
+
 // 四神舞(リズム)サブウェポン。リズム入力(タップ/フリック)で戦い、フリック4本パターンで
 // 四神技(朱雀/玄武/青龍/白虎)を発動。状態は store に持ち、攻撃実行は useGameLoop が担う。
 export type RhythmArrow = 'up' | 'down' | 'left' | 'right';
@@ -1451,21 +1464,24 @@ export interface UpgradeOption {
   description: string;
   // 'equipment'=装備取得(選択肢①進化/②補完・特殊)、'scrap'=スクラップ+50(選択肢③)、
   // 'heal'=HP30%回復(①②カンスト時の代替)、'knife'=ナイフを次Tierへ強化(選択肢③の25%置換)、
-  // 'skill'=SKILL_BUILD_REDESIGN.md §12-1のスキル専業レベルアップ(新規取得 or Lv+1)。
+  // 'skill'=SKILL_BUILD_REDESIGN.md §12-1のスキル専業レベルアップ(新規取得 or Lv+1)、
+  // 'consumable'=§23の消費カード(取得で即発動・60秒・ノーマル枠を1つ占有)。
   // 'weapon'/'passive'/'subWeapon' は旧仕様の残置。
-  type: 'weapon' | 'passive' | 'subWeapon' | 'equipment' | 'scrap' | 'heal' | 'knife' | 'skill';
+  type: 'weapon' | 'passive' | 'subWeapon' | 'equipment' | 'scrap' | 'heal' | 'knife' | 'skill' | 'consumable';
   weaponType?: WeaponType;
   passiveType?: PassiveType;
   subWeaponKey?: SubWeaponKey;
   equipDefId?: string; // type==='equipment' のとき装備定義ID(data/equipment.ts)
   knifeKey?: string;   // type==='knife' のとき置換する次Tierナイフの CATALOG キー
-  level: number;       // 装備=ランク(特殊=0)、scrap=獲得量、knife=次Tier。skillは使わない(常に0)。
+  level: number;       // 装備=ランク(特殊=0)、scrap=獲得量、knife=次Tier。skill/consumableは使わない(常に0)。
   // type==='skill' 専用フィールド(§12-2軽微「levelを流用せず専用フィールドskillLv」)。
   skillKey?: SkillKey;
   skillCardKind?: 'new' | 'levelup'; // 新規取得 or 所持済みのLv+1
   skillRarity?: 'normal' | 'rare' | 'super'; // data/campaign.ts SkillRarity と同じ値域(循環import回避のため再掲)
   skillFromLv?: number; // 表示用の遷移元Lv(新規=0、Lv+1=現在Lv)
   skillLv?: number;     // このカードを取ると到達するLv
+  // type==='consumable' 専用フィールド(§23)。
+  consumableKey?: ConsumableKey;
 }
 
 export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'magSize' | 'reloadSpeed' | 'critChance' | 'stunDuration' | 'ammoDrop' | 'scrapGain';

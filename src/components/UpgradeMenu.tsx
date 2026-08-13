@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, activeConsumableCount } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
 import { hasEquipIcon, equipIconName, equipmentById } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
@@ -39,6 +39,10 @@ const UpgradeMenu: React.FC = () => {
   const vanishedCount = useGameStore(state => state.vanishedSkills.length);
   const rerollUpgradeOptions = useGameStore(state => state.rerollUpgradeOptions);
   const banishSkillFromRun = useGameStore(state => state.banishSkillFromRun);
+  // SKILL_BUILD_REDESIGN.md §23-2条件1: ノーマル枠の残り表示は消費中バフの占有分も含める(派生した
+  // プリミティブ数値だけを購読=React再描画規律。s.playerの参照は毎フレーム変わるがこの値自体は
+  // メニュー表示中(ポーズ中でgameTimeが進まない)は変わらない)。
+  const activeConsumables = useGameStore(s => activeConsumableCount(s.player, s.gameTime));
   const isSkillDraft = upgradeOptions.some(o => o.type === 'skill');
   const rerollCost = rerollPrice(rerollsUsedThisRun);
   const canReroll = straps >= rerollCost;
@@ -83,7 +87,9 @@ const UpgradeMenu: React.FC = () => {
             if (upgrade.type === 'skill' && upgrade.skillKey) {
               const rarity = upgrade.skillRarity ?? 'normal';
               const isNew = upgrade.skillCardKind === 'new';
-              const remaining = Math.max(0, runBuildCapacity(rarity) - runBuild.filter(k => SKILLS[k].rarity === rarity).length);
+              // §23-2条件1: ノーマル枠は消費中バフの占有分も差し引く(枠会計をUIにも反映)。
+              const occupiedExtra = rarity === 'normal' ? activeConsumables : 0;
+              const remaining = Math.max(0, runBuildCapacity(rarity) - runBuild.filter(k => SKILLS[k].rarity === rarity).length - occupiedExtra);
               const skillKey = upgrade.skillKey;
               return (
                 <div
@@ -118,6 +124,31 @@ const UpgradeMenu: React.FC = () => {
                     除外
                   </button>
                 </div>
+              );
+            }
+            // SKILL_BUILD_REDESIGN.md §23: 消費カード(取得で即発動・60秒・ノーマル枠を1つ占有)。
+            // バニッシュ対象外(vanishedSkillsはSkillKey専用の仕組みなので混ぜない)。
+            if (upgrade.type === 'consumable' && upgrade.consumableKey) {
+              const remaining = Math.max(0, runBuildCapacity('normal') - runBuild.filter(k => SKILLS[k].rarity === 'normal').length - activeConsumables);
+              return (
+                <button
+                  key={upgrade.id}
+                  type="button"
+                  onClick={() => handleSelect(upgrade)}
+                  className="text-left p-3 rounded-none active:bg-amber-400/10 transition-colors flex items-start gap-3 upgrade-menu-option bg-amber-400/5"
+                >
+                  <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-amber-400/10">⏱️</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <h3 className="text-[15px] font-semibold text-white truncate">{upgrade.name}</h3>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/25 text-amber-100 shrink-0">
+                        60秒
+                      </span>
+                    </div>
+                    <p className="text-[12px] text-white/70 leading-snug mt-0.5">{upgrade.description}</p>
+                    <p className="text-[10px] text-white/40 mt-1">{RARITY_LABEL.normal}枠 残り{remaining}</p>
+                  </div>
+                </button>
               );
             }
             // 装備=特殊(level0)は金枠、通常はランク表示。scrap/heal は専用アイコン。

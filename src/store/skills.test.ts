@@ -5,22 +5,38 @@ import { describe, it, expect } from 'vitest';
 import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
   skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive,
   skillMagnetAmmoRangeMult, skillOverclockChance, skillLastMagazineMult,
-  skillWarmUpSpeedMult, skillWarmUpReloadMult, skillWarmUpCritBonus, WARM_UP_DURATION_MS,
-  RUNNER_RELOAD_BONUS_MULT, skillScrapBuilderGainMult, applyRescueSignalProc,
-  skillOutgoingDamageMult, skillGoldRushMult } from './gameStore';
+  RUNNER_RELOAD_BONUS_MULT, applyRescueSignalProc,
+  skillOutgoingDamageMult, skillGoldRushMult, skillIncomingDamageMult,
+  // SKILL_BUILD_REDESIGN.md §23: 消費カード5種の倍率フック(旧skillScrapBuilderGainMult/
+  // skillWarmUp*は§23-1裁定で退役=削除済み)。
+  consumableScrapMult, consumableAttackMult, consumableSpeedMult, consumableXpMult, consumableProtectionMult,
+  activeConsumableCount, activeConsumableKeys, applyConsumableCard,
+  CONSUMABLE_SCRAP_MULT, CONSUMABLE_ATTACK_MULT, CONSUMABLE_SPEED_MULT, CONSUMABLE_XP_MULT, CONSUMABLE_PROTECTION_MULT,
+} from './gameStore';
 import { vi } from 'vitest';
 import { checkPlayerPickupCollisions } from '../utils/collisionUtils';
 import type { Pickup } from '../types/game';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
   gachaPullCost, gachaPullCostFor, GACHA_PRICE_STEPS, GACHA_PULL_COST_CAP, GACHA_REFUND_BY_RARITY,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel,
-  rollGachaSkill, GACHA_EXCLUDED_SKILLS, SKILLS,
+  rollGachaSkill, GACHA_EXCLUDED_SKILLS, SKILLS, RETIRED_SKILLS,
   DEFAULT_OWNED_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
-import type { Player, SkillKey } from '../types/game';
+import { CONSUMABLE_DURATION_MS } from '../data/consumables';
+import type { Player, SkillKey, ConsumableKey } from '../types/game';
 
 // Minimal player carrying one leveled skill (for the simple multiplier skills).
 const withSkill = (key: SkillKey, level: number): Player =>
   ({ skills: [key], skillLevels: { [key]: level } } as unknown as Player);
+
+// SKILL_BUILD_REDESIGN.md §23: 消費カードは全プレイヤー共通(ガチャ外)=skills配列とは無関係。
+// Untilフィールド1つだけをセットした最小Player(他4種は0=非アクティブ)。
+const withConsumableUntil = (field: 'consumableScrapUntil' | 'consumableAttackUntil' | 'consumableSpeedUntil' | 'consumableXpUntil' | 'consumableProtectionUntil', until: number): Player =>
+  ({
+    skills: [], skillLevels: {}, maxHealth: 100, health: 100, characterClass: 'soldier',
+    consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
+    consumableXpUntil: 0, consumableProtectionUntil: 0,
+    [field]: until,
+  } as unknown as Player);
 
 // Minimal player shape for skillMeleeComboMult (reads skills + skillLevels + knifeCombo* only).
 const knifeMaster = (count: number, level = 1, until = 10_000): Player =>
@@ -276,22 +292,10 @@ describe('last-magazine: final round damage mult (×2.0/2.5/3.0) (§6.8 M31)', (
   });
 });
 
-describe('scrap-builder: scrap pickup gain mult (+10/20/30%) (§6.9 M32)', () => {
-  it('scales by level and is ×1.0 without the skill(初期スクラップ効果は別枠=この関数は取得量のみ)', () => {
-    expect(skillScrapBuilderGainMult({ skills: [], skillLevels: {} } as unknown as Player)).toBeCloseTo(1.0);
-    expect(skillScrapBuilderGainMult(withSkill('scrap-builder', 1))).toBeCloseTo(1.1);
-    expect(skillScrapBuilderGainMult(withSkill('scrap-builder', 2))).toBeCloseTo(1.2);
-    expect(skillScrapBuilderGainMult(withSkill('scrap-builder', 3))).toBeCloseTo(1.3);
-  });
-  it('収集式(Math.round=四捨五入)と合成した取得量の例: 5スクラップ×Lv3=7(6.5→7)', () => {
-    const gain = (value: number, lv: number) =>
-      Math.max(1, Math.round(value * 1 * skillScrapBuilderGainMult(withSkill('scrap-builder', lv))));
-    expect(gain(5, 1)).toBe(6);  // 5.5 → 6
-    expect(gain(5, 2)).toBe(6);  // 6.0
-    expect(gain(5, 3)).toBe(7);  // 6.5 → 7(四捨五入)
-    expect(gain(1, 3)).toBe(1);  // 1.3 → 1
-  });
-});
+// scrap-builder(旧: scrap pickup gain mult +10/20/30%)は SKILL_BUILD_REDESIGN.md §23-1裁定で
+// 消費カードへ転生し退役。skillScrapBuilderGainMultの効果コードは削除済み(所持していても現在は
+// 中立=1.0で、そもそもscrap-builder自体を新規取得する経路も無い)。退役の検証は下の
+// 「§23-1 退役」describeと、枠会計込みの回帰は runSkillDraft.test.ts 側にある。
 
 describe('rescue-signal: 発動中(アライ存命中)は再発動しない (§6.9 M32)', () => {
   // applyRescueSignalProc(get, player, dmg, hitIds, pcx, pcy)。Math.random=0固定=確率は必ず成功side。
@@ -355,22 +359,122 @@ describe('gold-rush: 永続ゴールド獲得倍率(×1.2/1.35/1.5)(§6.10 M33�
   });
 });
 
-describe('warm-up: first 60s buffs (move+10% / reload×0.80 / crit+20%) (§6.8 M31)', () => {
-  const p = withSkill('warm-up', 1);
-  it('gameTime<60000 の間だけ効く(境界: 60000ちょうどで切れる)', () => {
-    expect(skillWarmUpSpeedMult(p, 0)).toBeCloseTo(1.10);
-    expect(skillWarmUpReloadMult(p, 0)).toBeCloseTo(0.80);
-    expect(skillWarmUpCritBonus(p, 0)).toBeCloseTo(0.20);
-    expect(skillWarmUpSpeedMult(p, WARM_UP_DURATION_MS - 1)).toBeCloseTo(1.10);
-    expect(skillWarmUpSpeedMult(p, WARM_UP_DURATION_MS)).toBeCloseTo(1.0);
-    expect(skillWarmUpReloadMult(p, WARM_UP_DURATION_MS)).toBeCloseTo(1.0);
-    expect(skillWarmUpCritBonus(p, WARM_UP_DURATION_MS)).toBe(0);
+// warm-up(旧: 出撃60秒間 移動+10%/リロード×0.80/クリ+20%)も §23-1裁定で消費カードへ転生し退役。
+// skillWarmUpSpeedMult/skillWarmUpReloadMult/skillWarmUpCritBonus/WARM_UP_*定数は削除済み
+// (effectiveReloadMs/gunShotCritChance/meleeHitCritChance/movePlayerの各合流点からも項ごと削除)。
+// 「§23-1 退役」describeと、消費カード「スピードブースト」の新テストで置き換えている。
+
+describe('§23-1 退役(RETIRED_SKILLS=旧scrap-builder/warm-up)の効果コード削除', () => {
+  it('所持していても消費カード側の倍率フックには一切現れない(効果コードは別関数=consumable*Mult)', () => {
+    // 旧scrap-builder/warm-up所持者の効果は「常に中立」になる(効果コード自体を削除したため、
+    // これらのスキルを持っていても持っていなくても他の倍率フックの挙動は変わらない=回帰確認)。
+    const withRetired = { skills: [...RETIRED_SKILLS], skillLevels: { 'scrap-builder': 3, 'warm-up': 1 },
+      consumableScrapUntil: 0, consumableSpeedUntil: 0, consumableProtectionUntil: 0 } as unknown as Player;
+    expect(consumableScrapMult(withRetired, 0)).toBeCloseTo(1.0);
+    expect(consumableSpeedMult(withRetired, 0)).toBeCloseTo(1.0);
   });
-  it('非装備は60秒以内でも中立(完全不変)', () => {
-    const none = { skills: [], skillLevels: {} } as unknown as Player;
-    expect(skillWarmUpSpeedMult(none, 0)).toBeCloseTo(1.0);
-    expect(skillWarmUpReloadMult(none, 0)).toBeCloseTo(1.0);
-    expect(skillWarmUpCritBonus(none, 0)).toBe(0);
+});
+
+// SKILL_BUILD_REDESIGN.md §23-2条件2: 5種の効果が各倍率フックに正しく乗るユニットテスト。
+describe('§23-2条件2 消費カード5種の倍率フック', () => {
+  it('スクラップブースト: gameTime<Untilの間だけ×1.5(境界: ちょうどUntilで切れる)', () => {
+    const p = withConsumableUntil('consumableScrapUntil', 60_000);
+    expect(consumableScrapMult(p, 0)).toBeCloseTo(CONSUMABLE_SCRAP_MULT);
+    expect(consumableScrapMult(p, 0)).toBeCloseTo(1.5);
+    expect(consumableScrapMult(p, 59_999)).toBeCloseTo(1.5);
+    expect(consumableScrapMult(p, 60_000)).toBeCloseTo(1.0); // Until==gameTimeは非アクティブ(>で判定)
+  });
+
+  it('アタックドーピング: ×1.2', () => {
+    const p = withConsumableUntil('consumableAttackUntil', 60_000);
+    expect(consumableAttackMult(p, 0)).toBeCloseTo(CONSUMABLE_ATTACK_MULT);
+    expect(consumableAttackMult(p, 0)).toBeCloseTo(1.2);
+    expect(consumableAttackMult(p, 60_000)).toBeCloseTo(1.0);
+  });
+
+  it('スピードブースト: ×1.15', () => {
+    const p = withConsumableUntil('consumableSpeedUntil', 60_000);
+    expect(consumableSpeedMult(p, 0)).toBeCloseTo(CONSUMABLE_SPEED_MULT);
+    expect(consumableSpeedMult(p, 0)).toBeCloseTo(1.15);
+    expect(consumableSpeedMult(p, 60_000)).toBeCloseTo(1.0);
+  });
+
+  it('経験値ブースト: ×1.5', () => {
+    const p = withConsumableUntil('consumableXpUntil', 60_000);
+    expect(consumableXpMult(p, 0)).toBeCloseTo(CONSUMABLE_XP_MULT);
+    expect(consumableXpMult(p, 0)).toBeCloseTo(1.5);
+    expect(consumableXpMult(p, 60_000)).toBeCloseTo(1.0);
+  });
+
+  it('プロテクション: 被ダメ×0.7(-30%)。skillIncomingDamageMultへも合流する', () => {
+    const p = withConsumableUntil('consumableProtectionUntil', 60_000);
+    expect(consumableProtectionMult(p, 0)).toBeCloseTo(CONSUMABLE_PROTECTION_MULT);
+    expect(consumableProtectionMult(p, 0)).toBeCloseTo(0.7);
+    expect(consumableProtectionMult(p, 60_000)).toBeCloseTo(1.0);
+    // 唯一の被ダメ合流点(skillIncomingDamageMult)にも正しく乗る(ナイト/バーサーカー無しなら単独で0.7)。
+    expect(skillIncomingDamageMult(p, 0)).toBeCloseTo(0.7);
+    expect(skillIncomingDamageMult(p, 60_000)).toBeCloseTo(1.0);
+  });
+
+  it('非アクティブ(全Until=0)なら全て中立(×1.0/被ダメ変化なし)', () => {
+    const none = withConsumableUntil('consumableScrapUntil', 0);
+    expect(consumableScrapMult(none, 0)).toBeCloseTo(1.0);
+    expect(consumableAttackMult(none, 0)).toBeCloseTo(1.0);
+    expect(consumableSpeedMult(none, 0)).toBeCloseTo(1.0);
+    expect(consumableXpMult(none, 0)).toBeCloseTo(1.0);
+    expect(consumableProtectionMult(none, 0)).toBeCloseTo(1.0);
+  });
+});
+
+describe('activeConsumableCount/activeConsumableKeys(§23-2条件1の枠会計が読む数)', () => {
+  it('0個・複数個を正しく数える', () => {
+    const none = withConsumableUntil('consumableScrapUntil', 0);
+    expect(activeConsumableCount(none, 1000)).toBe(0);
+    expect(activeConsumableKeys(none, 1000)).toEqual([]);
+
+    const two = { ...none, consumableScrapUntil: 5000, consumableXpUntil: 5000 } as unknown as Player;
+    expect(activeConsumableCount(two, 1000)).toBe(2);
+    expect(activeConsumableKeys(two, 1000).sort()).toEqual(['scrap-boost', 'xp-boost'].sort());
+  });
+
+  it('境界: gameTime===Untilは非アクティブ扱い', () => {
+    const p = { skills: [], skillLevels: {}, consumableScrapUntil: 5000, consumableAttackUntil: 0,
+      consumableSpeedUntil: 0, consumableXpUntil: 0, consumableProtectionUntil: 0 } as unknown as Player;
+    expect(activeConsumableCount(p, 5000)).toBe(0);
+    expect(activeConsumableCount(p, 4999)).toBe(1);
+  });
+});
+
+describe('applyConsumableCard(取得で即発動・§23-1)', () => {
+  it('取得した種類のUntilだけを gameTime+60000 にセットし、他は変えない', () => {
+    const base = withConsumableUntil('consumableScrapUntil', 0);
+    const next = applyConsumableCard(base, 'attack-doping', 10_000);
+    expect(next.consumableAttackUntil).toBe(10_000 + CONSUMABLE_DURATION_MS);
+    expect(next.consumableScrapUntil).toBe(0);
+    expect(next.consumableSpeedUntil).toBe(0);
+    expect(next.consumableXpUntil).toBe(0);
+    expect(next.consumableProtectionUntil).toBe(0);
+  });
+
+  it('全5種のキーで正しいフィールドが更新される', () => {
+    const fieldByKey: Record<ConsumableKey, keyof Player> = {
+      'scrap-boost': 'consumableScrapUntil',
+      'attack-doping': 'consumableAttackUntil',
+      'speed-boost': 'consumableSpeedUntil',
+      'xp-boost': 'consumableXpUntil',
+      'protection': 'consumableProtectionUntil',
+    };
+    for (const key of Object.keys(fieldByKey) as ConsumableKey[]) {
+      const base = withConsumableUntil('consumableScrapUntil', 0);
+      const next = applyConsumableCard(base, key, 0) as unknown as Record<string, number>;
+      expect(next[fieldByKey[key]]).toBe(CONSUMABLE_DURATION_MS);
+    }
+  });
+
+  it('再取得は延長せず常に60秒に固定される(温存不可)', () => {
+    const base = withConsumableUntil('consumableSpeedUntil', 55_000); // 残り55秒
+    const next = applyConsumableCard(base, 'speed-boost', 10_000); // 再取得(10000起点)
+    expect(next.consumableSpeedUntil).toBe(10_000 + CONSUMABLE_DURATION_MS); // 55000のままでも延長ではない
   });
 });
 

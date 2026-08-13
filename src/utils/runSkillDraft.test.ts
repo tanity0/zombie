@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
   runBuildCapacity, canAcquireRunSkill, canAcquireRarity,
-  newSkillCandidates, levelUpCandidates,
+  newSkillCandidates, levelUpCandidates, consumableCandidates,
   draftRunSkillCards, draftReplacementSkillCard,
   rerollPrice, MAX_BANISH_PER_RUN, MAX_CARRY_SKILLS,
   RUN_DRAFT_EXCLUDED_SKILLS, RUN_BUILD_CAPACITY,
   type RunSkillDraftInput,
 } from './runSkillDraft';
-import { SKILLS, NEW_SLEEPING_SKILLS, type SkillRarity } from '../data/campaign';
-import type { SkillKey } from '../types/game';
+import { SKILLS, NEW_SLEEPING_SKILLS, RETIRED_SKILLS, retiredSkillsRefundTotal, GACHA_REFUND_BY_RARITY, type SkillRarity } from '../data/campaign';
+import { CONSUMABLE_KEYS } from '../data/consumables';
+import type { SkillKey, ConsumableKey } from '../types/game';
 
 // 決定的な疑似乱数(mulberry32と同型。draftRunSkillCards等はrng引数を必ず注入するのでテストにも使える)。
 const mulberry32 = (seed: number): (() => number) => {
@@ -73,14 +74,20 @@ describe('§22-1 新規側の抽選は完全均等(中立デッキ・レア度�
     const pool = NORMAL_SKILLS.slice(0, 5);
     const input = baseInput({ owned: pool, runSkills: [], runSkillLevels: {}, playerLevel: 2 });
     const counts: Record<string, number> = Object.fromEntries(pool.map(k => [k, 0]));
-    const trials = 5000;
+    const trials = 8000;
+    let newDraws = 0;
     for (let seed = 0; seed < trials; seed++) {
       const cards = draftRunSkillCards(input, 1, mulberry32(seed));
-      expect(cards).toHaveLength(1);
-      expect(cards[0].cardKind).toBe('new');
-      counts[cards[0].key]++;
+      if (cards.length === 0) continue;
+      const c = cards[0];
+      // §23でカテゴリロールに「消費」が加わったため、ここでは新規側(cardKind==='new')の一様性だけを
+      // 抽出して見る(カテゴリの出現比率そのものは§23-2条件3の専用describeで検証)。
+      if (c.cardKind !== 'new') continue;
+      newDraws++;
+      counts[c.key]++;
     }
-    const expected = trials / pool.length;
+    expect(newDraws).toBeGreaterThan(trials * 0.2); // カテゴリロールが機能していること自体の健全性チェック
+    const expected = newDraws / pool.length;
     for (const k of pool) {
       // 統計的均等性の検証(±25%の許容)。厳密な一様性の数学的証明ではない。
       expect(counts[k]).toBeGreaterThan(expected * 0.75);
@@ -94,13 +101,18 @@ describe('§22-1 新規側の抽選は完全均等(中立デッキ・レア度�
     const superKey = SUPER_SKILLS[0], rareKey = RARE_SKILLS[0], normalKey = NORMAL_SKILLS[0];
     const input = baseInput({ owned: [superKey, rareKey, normalKey], runSkills: [], runSkillLevels: {}, playerLevel: 2 });
     const counts: Record<string, number> = { [superKey]: 0, [rareKey]: 0, [normalKey]: 0 };
-    const trials = 6000;
+    const trials = 10000;
+    let newDraws = 0;
     for (let seed = 0; seed < trials; seed++) {
       const cards = draftRunSkillCards(input, 1, mulberry32(seed));
-      expect(cards).toHaveLength(1);
-      counts[cards[0].key]++;
+      if (cards.length === 0) continue;
+      const c = cards[0];
+      if (c.cardKind !== 'new') continue; // §23: カテゴリ比率自体は別describeで検証。ここはレア度非依存の一様性だけ。
+      newDraws++;
+      counts[c.key]++;
     }
-    const expected = trials / 3;
+    expect(newDraws).toBeGreaterThan(trials * 0.2);
+    const expected = newDraws / 3;
     for (const k of [superKey, rareKey, normalKey]) {
       expect(counts[k]).toBeGreaterThan(expected * 0.8);
       expect(counts[k]).toBeLessThan(expected * 1.2);
@@ -140,7 +152,7 @@ describe('§22-3#3 超レア所持デッキはLv2初ドラフトから超レア�
     let sawSuper = false;
     for (let seed = 0; seed < 50 && !sawSuper; seed++) {
       const cards = draftRunSkillCards(input, 3, mulberry32(seed));
-      if (cards.some(c => c.rarity === 'super')) sawSuper = true;
+      if (cards.some(c => c.cardKind !== 'consumable' && c.rarity === 'super')) sawSuper = true;
     }
     expect(sawSuper).toBe(true);
   });
@@ -188,6 +200,7 @@ describe('draftRunSkillCards(§12-2#2 抽選手順)', () => {
       const input = baseInput({ runSkills, runSkillLevels, playerLevel: 2 + i });
       const cards = draftRunSkillCards(input, 3, rng);
       for (const c of cards) {
+        if (c.cardKind === 'consumable') continue; // §23: このテストはSkillKey枠会計だけを見る(対象外)
         if (c.cardKind === 'new') {
           if (!canAcquireRunSkill(runSkills, c.key)) continue; // gameStore.ts:7872と同じガード=no-op
           runSkills = [...runSkills, c.key];
@@ -210,16 +223,26 @@ describe('draftRunSkillCards(§12-2#2 抽選手順)', () => {
     }
   });
 
-  it('新規候補が0件ならLv+1のみになる', () => {
+  it('新規候補が0件・消費カードも枯渇させればLv+1のみになる', () => {
+    // §23: 新規0件でも消費カードの枠が空いていれば30%はconsumableが出る(仕様どおり)。
+    // この確定挙動テストでは消費カードを全て発動中にして中立化する(比率自体は別describeで検証)。
     const input = baseInput({
       owned: [], runSkills: RARE_SKILLS.slice(0, 1), runSkillLevels: { [RARE_SKILLS[0]]: 1 },
+      activeConsumables: CONSUMABLE_KEYS,
     });
     const cards = draftRunSkillCards(input, 3, mulberry32(3));
     expect(cards.every(c => c.cardKind === 'levelup')).toBe(true);
   });
 
-  it('新規・Lv+1とも0件なら空配列(常設スクラップのみになる=呼び出し側の責務)', () => {
-    const input = baseInput({ owned: [], runSkills: [] });
+  it('§23: 新規候補が0件でも消費カードに空きがあればconsumableで埋まる(スクラップ落ちにならない)', () => {
+    const input = baseInput({ owned: [], runSkills: RARE_SKILLS.slice(0, 1), runSkillLevels: { [RARE_SKILLS[0]]: 1 } });
+    const cards = draftRunSkillCards(input, 3, mulberry32(3));
+    expect(cards.length).toBeGreaterThan(0);
+    for (const c of cards) expect(['levelup', 'consumable']).toContain(c.cardKind);
+  });
+
+  it('新規・Lv+1・消費カードの全て0件なら空配列(常設スクラップのみになる=呼び出し側の責務)', () => {
+    const input = baseInput({ owned: [], runSkills: [], activeConsumables: CONSUMABLE_KEYS });
     expect(draftRunSkillCards(input, 3, mulberry32(3))).toEqual([]);
   });
 
@@ -234,8 +257,10 @@ describe('draftRunSkillCards(§12-2#2 抽選手順)', () => {
   it('取得Lvは所持Lv(ownedLevels)にクランプされる(§10点12①のクランプ式)', () => {
     const key = NORMAL_SKILLS[0];
     const input = baseInput({ owned: [key], ownedLevels: { [key]: 9 } }); // 異常値でも上限クランプ
-    const cards = draftRunSkillCards(input, 1, () => 0);
-    expect(cards[0].toLevel).toBeLessThanOrEqual(3);
+    const cards = draftRunSkillCards(input, 1, () => 0); // rng=0固定 → rollCategoryは常に'new'(重みnew>0が先頭)
+    const c0 = cards[0];
+    if (c0.cardKind === 'consumable') throw new Error('unexpected consumable card (rng=0 should pick new)');
+    expect(c0.toLevel).toBeLessThanOrEqual(3);
   });
 });
 
@@ -244,18 +269,17 @@ describe('draftReplacementSkillCard(バニッシュ/1枠差し替え)', () => {
     const other = NORMAL_SKILLS[0];
     const input = baseInput({ owned: [other, NORMAL_SKILLS[1], NORMAL_SKILLS[2]] });
     for (let seed = 0; seed < 20; seed++) {
-      const card = draftReplacementSkillCard(input, [other], mulberry32(seed));
+      const card = draftReplacementSkillCard(input, [other], [], mulberry32(seed));
       if (card) expect(card.key).not.toBe(other);
     }
   });
 });
 
-describe('リロール価格(rerollPrice・§16-10 ★C)', () => {
-  it('初回50・以後50ずつ値上がり', () => {
-    expect(rerollPrice(0)).toBe(50);
-    expect(rerollPrice(1)).toBe(100);
-    expect(rerollPrice(2)).toBe(150);
-    expect(rerollPrice(5)).toBe(300);
+describe('リロール価格(rerollPrice・社長裁定2026-08-13=一律20)', () => {
+  it('何回目でも一律20(値上がりしない)', () => {
+    expect(rerollPrice(0)).toBe(20);
+    expect(rerollPrice(1)).toBe(20);
+    expect(rerollPrice(5)).toBe(20);
   });
 });
 
@@ -283,6 +307,127 @@ describe('NEW_SLEEPING_SKILLS(§14新9種)はドラフトから絶対に出な�
     for (let seed = 0; seed < 30; seed++) {
       const cards = draftRunSkillCards(input, 3, mulberry32(seed));
       for (const c of cards) expect(NEW_SLEEPING_SKILLS).not.toContain(c.key);
+    }
+  });
+});
+
+// SKILL_BUILD_REDESIGN.md §23(消費カード裁定と発注文・社長裁定2026-08-13「案B・30%60秒・
+// あとは推薦で」)。§23-2の6条件のうち、純関数(runSkillDraft.ts/campaign.ts)側で検証できる
+// 1〜4をここに置く(5=UI表示/6=typecheck・lintは実装報告側)。
+describe('§23-1 退役(RETIRED_SKILLS=旧scrap-builder/warm-up)', () => {
+  it('RUN_DRAFT_EXCLUDED_SKILLSに両方含まれる(ドラフトから絶対に出ない)', () => {
+    expect(RETIRED_SKILLS).toEqual(['scrap-builder', 'warm-up']);
+    for (const k of RETIRED_SKILLS) expect(RUN_DRAFT_EXCLUDED_SKILLS).toContain(k);
+  });
+
+  it('所持していてもnewSkillCandidates/draftRunSkillCardsのどちらからも出ない', () => {
+    const input = baseInput({ owned: [...NORMAL_SKILLS, ...RARE_SKILLS, ...SUPER_SKILLS, ...RETIRED_SKILLS] });
+    expect(newSkillCandidates(input).some(k => RETIRED_SKILLS.includes(k))).toBe(false);
+    for (let seed = 0; seed < 30; seed++) {
+      const cards = draftRunSkillCards(input, 3, mulberry32(seed));
+      for (const c of cards) expect(RETIRED_SKILLS).not.toContain(c.key as SkillKey);
+    }
+  });
+});
+
+describe('§23-2条件4 retiredSkillsRefundTotal(所持者への一括返却・ガチャの被り返金と同額)', () => {
+  it('両方とも normal rarity なので返金は 10+10=20', () => {
+    for (const k of RETIRED_SKILLS) expect(SKILLS[k].rarity).toBe('normal');
+    expect(retiredSkillsRefundTotal(['scrap-builder', 'warm-up'])).toBe(20);
+  });
+  it('片方だけ所持なら10、どちらも未所持なら0', () => {
+    expect(retiredSkillsRefundTotal(['scrap-builder'])).toBe(GACHA_REFUND_BY_RARITY.normal);
+    expect(retiredSkillsRefundTotal(['warm-up'])).toBe(GACHA_REFUND_BY_RARITY.normal);
+    expect(retiredSkillsRefundTotal([])).toBe(0);
+    expect(retiredSkillsRefundTotal(NORMAL_SKILLS)).toBe(0); // 退役2種を含まないリストは無関係
+  });
+});
+
+describe('§23-2条件1 枠会計(消費中バフがノーマル枠を占有し、期限切れで枠が空く)', () => {
+  it('canAcquireRarity: extraNormalOccupiedはnormal枠にだけ加算される', () => {
+    // ノーマル枠cap=3。実スキル2つ+消費中バフ1つ=3=満杯 → 4つ目は不可。
+    const twoNormals = NORMAL_SKILLS.slice(0, 2);
+    expect(canAcquireRarity(twoNormals, 'normal', 1)).toBe(false);
+    expect(canAcquireRarity(twoNormals, 'normal', 0)).toBe(true);
+    // rare/superにはextraNormalOccupiedを適用しない(消費カードは常にノーマル枠専用のため)。
+    const oneRare = [RARE_SKILLS[0]];
+    expect(canAcquireRarity(oneRare, 'rare', 5)).toBe(true); // rare cap=2、まだ1つ
+  });
+
+  it('consumableCandidates: ノーマル枠が満杯なら空配列(=提示されない)', () => {
+    const twoNormals = NORMAL_SKILLS.slice(0, 2);
+    const inputFull = baseInput({ runSkills: twoNormals, activeConsumables: ['scrap-boost'] });
+    expect(consumableCandidates(inputFull)).toEqual([]);
+    const inputRoom = baseInput({ runSkills: twoNormals, activeConsumables: [] });
+    expect(consumableCandidates(inputRoom).length).toBeGreaterThan(0);
+  });
+
+  it('newSkillCandidates(normal)もアクティブな消費カード数だけ枠が狭まる', () => {
+    const twoNormals = NORMAL_SKILLS.slice(0, 2);
+    const withoutBuff = baseInput({ runSkills: twoNormals, runSkillLevels: {}, activeConsumables: [] });
+    const withBuff = baseInput({ runSkills: twoNormals, runSkillLevels: {}, activeConsumables: ['scrap-boost'] });
+    // 枠がまだ1つ空いている(実2+消費0<3)ので通常のnormal候補が出る。
+    expect(newSkillCandidates(withoutBuff).some(k => SKILLS[k].rarity === 'normal')).toBe(true);
+    // 実2+消費1=3=満杯なのでnormal候補は一切出ない。
+    expect(newSkillCandidates(withBuff).some(k => SKILLS[k].rarity === 'normal')).toBe(false);
+  });
+});
+
+describe('§23-2条件3 カテゴリロール比率(新規40:Lv+1 40:消費20・新規枯渇時はLv+1 70:消費30)', () => {
+  it('新規候補が豊富な時、約40:40:20(±25%許容・seed固定)', () => {
+    const input = baseInput({ runSkills: [RARE_SKILLS[0]], runSkillLevels: { [RARE_SKILLS[0]]: 1 } });
+    const counts = { new: 0, levelup: 0, consumable: 0 };
+    const trials = 6000;
+    for (let seed = 0; seed < trials; seed++) {
+      const cards = draftRunSkillCards(input, 1, mulberry32(seed));
+      expect(cards).toHaveLength(1);
+      counts[cards[0].cardKind]++;
+    }
+    expect(counts.new).toBeGreaterThan(trials * 0.4 * 0.75);
+    expect(counts.new).toBeLessThan(trials * 0.4 * 1.25);
+    expect(counts.levelup).toBeGreaterThan(trials * 0.4 * 0.75);
+    expect(counts.levelup).toBeLessThan(trials * 0.4 * 1.25);
+    expect(counts.consumable).toBeGreaterThan(trials * 0.2 * 0.75);
+    expect(counts.consumable).toBeLessThan(trials * 0.2 * 1.25);
+  });
+
+  it('新規候補が枯渇(owned=[])している時、約70:30(Lv+1:消費)でnewは出ない', () => {
+    const input = baseInput({ owned: [], runSkills: [RARE_SKILLS[0]], runSkillLevels: { [RARE_SKILLS[0]]: 1 } });
+    const counts = { new: 0, levelup: 0, consumable: 0 };
+    const trials = 6000;
+    for (let seed = 0; seed < trials; seed++) {
+      const cards = draftRunSkillCards(input, 1, mulberry32(seed));
+      expect(cards).toHaveLength(1);
+      counts[cards[0].cardKind]++;
+    }
+    expect(counts.new).toBe(0);
+    expect(counts.levelup).toBeGreaterThan(trials * 0.7 * 0.8);
+    expect(counts.levelup).toBeLessThan(trials * 0.7 * 1.2);
+    expect(counts.consumable).toBeGreaterThan(trials * 0.3 * 0.8);
+    expect(counts.consumable).toBeLessThan(trials * 0.3 * 1.2);
+  });
+
+  it('同種バフ発動中はその消費カードを再提示しない(異種は候補に残る)', () => {
+    const active: ConsumableKey[] = ['scrap-boost', 'attack-doping'];
+    const input = baseInput({ activeConsumables: active });
+    const pool = consumableCandidates(input);
+    for (const k of active) expect(pool).not.toContain(k);
+    expect(pool.length).toBe(CONSUMABLE_KEYS.length - active.length);
+    for (let seed = 0; seed < 200; seed++) {
+      const cards = draftRunSkillCards(input, 3, mulberry32(seed));
+      for (const c of cards) {
+        if (c.cardKind === 'consumable') expect(active).not.toContain(c.key);
+      }
+    }
+  });
+
+  it('1ドラフト内で同じ消費カードが2枚並ばない', () => {
+    // 新規/Lv+1候補を枯渇させ、消費カードだけが出るようにして重複チェックしやすくする。
+    const input = baseInput({ owned: [], runSkills: [] });
+    for (let seed = 0; seed < 30; seed++) {
+      const cards = draftRunSkillCards(input, 3, mulberry32(seed));
+      const consumableKeys = cards.filter(c => c.cardKind === 'consumable').map(c => c.key);
+      expect(new Set(consumableKeys).size).toBe(consumableKeys.length);
     }
   });
 });

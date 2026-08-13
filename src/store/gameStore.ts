@@ -17,7 +17,7 @@ import {
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
-  DashLocomotionState, EquipLoadout, EquipSlot
+  DashLocomotionState, EquipLoadout, EquipSlot, ConsumableKey
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
@@ -177,8 +177,9 @@ import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled }
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS } from '../data/campaign';
+import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, GACHA_REFUND_BY_RARITY, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
 import type { SkillRarity } from '../data/campaign';
+import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { isPassThroughPhase, isPassThroughBossState, createAvoidState, stepAvoid } from '../utils/enemyMotion';
@@ -780,6 +781,24 @@ const saveDupeCounts = (m: Partial<Record<SkillKey, number>>): void => {
   try { localStorage.setItem(GACHA_DUPES_KEY, JSON.stringify(m)); } catch { /* ignore */ }
 };
 const GOLD_BALANCE_KEY = 'zombie:goldBalance';
+// SKILL_BUILD_REDESIGN.md §23-2条件4: scrap-builder/warm-up退役の所持者一括返却(冪等・1回きり)。
+// localStorageのフラグで二重実行を防ぐ(loadCompanionSkillの「一度だけ移行」と同じ作法)。返却額は
+// retiredSkillsRefundTotal(ガチャの被り返金と同額)。store作成前(初期goldBalanceの算出時)に呼ぶため
+// addGoldアクションは使わず、ここで直接 goldBalance の初期値へ合算する。
+const RETIRED_SKILLS_REFUNDED_KEY = 'zombie:retiredSkillsRefunded';
+const loadGoldBalanceWithRetiredRefund = (): number => {
+  const raw = loadNumber(GOLD_BALANCE_KEY, 0);
+  let refund = 0;
+  try {
+    if (localStorage.getItem(RETIRED_SKILLS_REFUNDED_KEY) !== '1') {
+      refund = retiredSkillsRefundTotal(loadStringArray(OWNED_SKILLS_KEY) as SkillKey[]);
+      localStorage.setItem(RETIRED_SKILLS_REFUNDED_KEY, '1'); // 先に立てる(次回ロードで再返却しない)
+    }
+  } catch { /* ignore */ }
+  const next = raw + refund;
+  if (refund > 0) saveNumber(GOLD_BALANCE_KEY, next);
+  return next;
+};
 // 装備の持ち帰り: 商人帰還/クリア時に1つだけ次run へ引き継ぐ(死亡で破棄)。defId 1件のみ保存。
 const CARRIED_EQUIP_KEY = 'zombie:carriedEquip';
 const loadCarriedEquip = (): string | null => {
@@ -1287,9 +1306,13 @@ export const heavyGunnerExplosionMult = (player: Player, gameTime: number): numb
 
 // --- 装備スキルの数値補正ヘルパ(effect層・全て純粋関数) -------------------
 // ナイト: 被ダメ×0.8/0.7/0.6(Lv) / バーサーカー: 被ダメ×1.2(固定)。両立可(乗算)。
-export const skillIncomingDamageMult = (player: Player): number => {
+// §23: 消費カード「プロテクション」(被ダメ-30%・60秒)もここへ合流(damagePlayer/守護霊被弾の
+// 唯一の出どころ=既存スキルと同じ合流点)。ゴースト(buildPseudoPlayer)へは持ち越さない
+// (consumableProtectionUntilを0で渡すのでconsumableProtectionMultは自動的に中立になる)。
+export const skillIncomingDamageMult = (player: Player, gameTime: number): number => {
   const kl = skillLevel(player, 'knight');
-  return (kl ? [1, 0.8, 0.7, 0.6][kl] : 1) * (hasSkill(player, 'berserker') ? 1.2 : 1);
+  return (kl ? [1, 0.8, 0.7, 0.6][kl] : 1) * (hasSkill(player, 'berserker') ? 1.2 : 1)
+    * consumableProtectionMult(player, gameTime);
 };
 // バーサーカー: 全攻撃 ×(1 + 失ったHP割合×係数[Lv1:1.0/Lv2:1.25/Lv3:1.5])。被ダメ×1.2は固定。
 export const skillOutgoingDamageMult = (player: Player): number => {
@@ -1419,12 +1442,6 @@ export const skillGoldRushMult = (player: Player): number => {
   const lv = skillLevel(player, 'gold-rush');
   return lv ? [1, 1.2, 1.35, 1.5][lv] : 1;
 };
-// スクラップビルダー追記(§6.9 M32): スクラップ(strap)ピックアップ収集時の取得量 ×1.1/1.2/1.3(Lv)。
-// 既存効果(出撃開始時の初期スクラップ+50/100/150)は別枠のまま不変。端数は収集側の Math.round(四捨五入)。
-export const skillScrapBuilderGainMult = (player: Player): number => {
-  const lv = skillLevel(player, 'scrap-builder');
-  return lv ? [1, 1.1, 1.2, 1.3][lv] : 1;
-};
 // マグネット: 弾薬ピックアップのみ拾得矩形を中心基準で ×1.1/1.2/1.3(Lv)。弾薬以外は従来どおり(§6.8 M31)。
 export const skillMagnetAmmoRangeMult = (player: Player): number => {
   const lv = skillLevel(player, 'magnet');
@@ -1442,19 +1459,66 @@ export const skillLastMagazineMult = (player: Player, magazineBeforeShot: number
   const lv = skillLevel(player, 'last-magazine');
   return lv && magazineBeforeShot === 1 ? [0, 2.0, 2.5, 3.0][lv] : 1;
 };
-// ウォームアップ: 出撃から60秒間(gameTime<60000)、移動+10%・リロード時間×0.80・クリ率+20%(全Lv同値・§6.8 M31)。
-export const WARM_UP_DURATION_MS = 60000;
-export const WARM_UP_SPEED_MULT = 1.10;
-export const WARM_UP_RELOAD_MULT = 0.80;
-export const WARM_UP_CRIT_BONUS = 0.20;
-export const isWarmUpActive = (player: Player, gameTime: number): boolean =>
-  hasSkill(player, 'warm-up') && gameTime < WARM_UP_DURATION_MS;
-export const skillWarmUpSpeedMult = (player: Player, gameTime: number): number =>
-  isWarmUpActive(player, gameTime) ? WARM_UP_SPEED_MULT : 1;
-export const skillWarmUpReloadMult = (player: Player, gameTime: number): number =>
-  isWarmUpActive(player, gameTime) ? WARM_UP_RELOAD_MULT : 1;
-export const skillWarmUpCritBonus = (player: Player, gameTime: number): number =>
-  isWarmUpActive(player, gameTime) ? WARM_UP_CRIT_BONUS : 0;
+// scrap-builder/warm-up(§23-1裁定・退役): 消費カードへ転生し、効果コードは削除した(所持者には
+// 一括コイン返却=loadGoldBalanceWithRetiredRefund/store初期化を参照)。旧 skillScrapBuilderGainMult /
+// WARM_UP_*定数・isWarmUpActive・skillWarmUpSpeedMult・skillWarmUpReloadMult・skillWarmUpCritBonus
+// はここにあった(既存所持者にも二度と効果は発生しない。RUN_DRAFT_EXCLUDED_SKILLS/GACHA_EXCLUDED_SKILLS
+// で取得経路も既に無い=§19-1点5)。
+
+// --- 消費カード5種(§23・社長裁定2026-08-13「案B・30%60秒・あとは推薦で」) -----------------------
+// ガチャ外・デッキ所持に依存しない=全プレイヤー共通。ノーマル枠を1つ占有し、取得で即発動・60秒で
+// 自動失効(温存不可・延長なし)。台帳(名前/説明文)は data/consumables.ts、抽選・枠会計は
+// utils/runSkillDraft.ts(consumableCandidates/canAcquireRarityのextraNormalOccupied)を参照。
+// 数値は全て叩き台(実機調整前提・§23-1)。
+export const CONSUMABLE_SCRAP_MULT = 1.5;       // スクラップブースト: スクラップ入手+50%
+export const CONSUMABLE_ATTACK_MULT = 1.2;      // アタックドーピング: 攻撃力+20%
+export const CONSUMABLE_SPEED_MULT = 1.15;      // スピードブースト: 移動速度+15%
+export const CONSUMABLE_XP_MULT = 1.5;          // 経験値ブースト: 経験値×1.5
+export const CONSUMABLE_PROTECTION_MULT = 0.7;  // プロテクション: 被ダメージ-30%(×0.7)
+
+export const consumableScrapMult = (player: Player, gameTime: number): number =>
+  player.consumableScrapUntil > gameTime ? CONSUMABLE_SCRAP_MULT : 1;
+// §23実装スコープ(実装報告参照): 「攻撃力+20%」はアタックシューターと同じ合流点(銃の発射ダメージ=
+// gunShotBaseDamage/フィル銃/援護狙撃)へ適用する。berserker(skillOutgoingDamageMult)の近接/爆発
+// 系convergenceは呼び出し箇所が12箇所超と広く、既存スキル効果への波及リスクが高いためこのバッチの
+// スコープ外とした(近接特化ビルドには本カードの効果が乗らない=既知の制約として報告に明記)。
+export const consumableAttackMult = (player: Player, gameTime: number): number =>
+  player.consumableAttackUntil > gameTime ? CONSUMABLE_ATTACK_MULT : 1;
+export const consumableSpeedMult = (player: Player, gameTime: number): number =>
+  player.consumableSpeedUntil > gameTime ? CONSUMABLE_SPEED_MULT : 1;
+export const consumableXpMult = (player: Player, gameTime: number): number =>
+  player.consumableXpUntil > gameTime ? CONSUMABLE_XP_MULT : 1;
+export const consumableProtectionMult = (player: Player, gameTime: number): number =>
+  player.consumableProtectionUntil > gameTime ? CONSUMABLE_PROTECTION_MULT : 1;
+
+/** 現在アクティブな消費カードの数(=占有中のノーマル枠数。§23-2条件1の枠会計に渡す)。 */
+export const activeConsumableCount = (player: Player, gameTime: number): number =>
+  activeConsumableKeys(player, gameTime).length;
+
+/** 現在アクティブな消費カードのキー一覧(draftRunSkillCards入力=同種の再提示を避ける・§23-1)。 */
+export const activeConsumableKeys = (player: Player, gameTime: number): ConsumableKey[] => {
+  const out: ConsumableKey[] = [];
+  if (player.consumableScrapUntil > gameTime) out.push('scrap-boost');
+  if (player.consumableAttackUntil > gameTime) out.push('attack-doping');
+  if (player.consumableSpeedUntil > gameTime) out.push('speed-boost');
+  if (player.consumableXpUntil > gameTime) out.push('xp-boost');
+  if (player.consumableProtectionUntil > gameTime) out.push('protection');
+  return out;
+};
+
+/** 消費カード取得: 即時発動(gameTime+60秒)。既に発動中でも常に60秒に固定(延長しない=温存不可の
+ * 仕様どおり)。draftRunSkillCards側が同種発動中は再提示しないので通常は上書きにはならない。 */
+export const applyConsumableCard = (player: Player, key: ConsumableKey, gameTime: number): Player => {
+  const until = gameTime + CONSUMABLE_DURATION_MS;
+  switch (key) {
+    case 'scrap-boost': return { ...player, consumableScrapUntil: until };
+    case 'attack-doping': return { ...player, consumableAttackUntil: until };
+    case 'speed-boost': return { ...player, consumableSpeedUntil: until };
+    case 'xp-boost': return { ...player, consumableXpUntil: until };
+    case 'protection': return { ...player, consumableProtectionUntil: until };
+  }
+};
+
 // シーカー: 被弾時、CD明け＆抽選成功で3秒間半透明＋通常敵から狙われなくなる。CD10秒。
 export const SEEKER_DURATION_MS = 3000;
 export const SEEKER_COOLDOWN_MS = 10000;
@@ -2443,7 +2507,8 @@ const TRAP_ROOT_CRIT_BONUS = 0.10;
 /**
  * 近接ヒットの実効クリ率(唯一の式・v0.25.2514で4箇所の同型コードから抽出=値は不変)。
  *  = min(1, 武器基礎 + 本体(レベルアップ)+ トラップ拘束(+10%)+ 弱点(近接+10%)
- *           + 弁慶 + ウォームアップ + ナイフマスター) に敵側クリペナルティを適用。
+ *           + 弁慶 + ナイフマスター) に敵側クリペナルティを適用。
+ * (旧ウォームアップ項は§23-1裁定で退役=削除済み)
  * ナイフ/分身/刀/鞭のスイングと**守護霊の近接スイング**が同じ1本を通る
  * (BOT_AND_GHOST.md §2.11補足「写すな、共通化しろ」=ゴースト用に式を複製しない)。
  */
@@ -2455,7 +2520,7 @@ export const meleeHitCritChance = (
 ): number => {
   const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
   const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-  return applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+  return applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
 };
 
 /**
@@ -4430,6 +4495,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
     knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
     seekerUntil: 0, seekerCdUntil: 0,
+    consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
+    consumableXpUntil: 0, consumableProtectionUntil: 0,
     overclockLightUntil: 0,
     huntingChargeStartedAt: 0,
     huntingCharged: false,
@@ -4550,7 +4617,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gachaDupeCounts: loadDupeCounts(),
   gachaPitySinceSuper: loadNumber(GACHA_PITY_KEY, 0),
   gachaPullsTotal: Math.max(0, Math.floor(loadNumber(GACHA_PULLS_KEY, 0))),
-  goldBalance: loadNumber(GOLD_BALANCE_KEY, 0),
+  goldBalance: loadGoldBalanceWithRetiredRefund(), // §23-2条件4: 退役スキル所持者への一括返却込み(冪等・1回きり)
   namedFoe: loadNamedFoe(),
   namedFoeRunEligible: false, // 実際の抽選はresetGame開始時(初回マウント時点ではまだラン開始前)
   namedFoeSpawnedThisRun: false,
@@ -4748,22 +4815,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         // スキル: スケーター = 通常歩行の移動速度 ×3(特殊ロコモーションは対象外。社長指示で段階的に
         // 強化: 2→3=1.5倍)。乗車という自前の条件+慣性が個性=ランプ対象外(即時のまま)。
         // マークスマン(mage)=×1.2 / ランナー=通常+10/15/20%(Lv・リロード中さらに+10%・§6.8 M31)/
-        // ウォームアップ=出撃60秒間+10%(§6.8 M31)/ 装備(体・機動系)の移動速度倍率 → これらは
-        // 「対象倍率の積 P」として MOVEMENT_REWORK.md 仕様1のランプに乗る(同方向へ RAMP_FULL_MS
-        // 走り続けてボーナス満額。75°以上の切り返し/停止でゼロへ)。基礎速度(player.speed)・
-        // RELOAD_MOVE_SPEED_MULT・スケーター×3はランプ対象外=即応のまま。
+        // 消費カード「スピードブースト」=+15%・60秒(§23。旧ウォームアップ+10%/60秒は§23-1裁定で
+        // 退役=削除済み)/ 装備(体・機動系)の移動速度倍率 → これらは「対象倍率の積 P」として
+        // MOVEMENT_REWORK.md 仕様1のランプに乗る(同方向へ RAMP_FULL_MS 走り続けてボーナス満額。
+        // 75°以上の切り返し/停止でゼロへ)。基礎速度(player.speed)・RELOAD_MOVE_SPEED_MULT・
+        // スケーター×3はランプ対象外=即応のまま。
         // マークスマンの旧個別条件(2秒連続移動で即発動)はこの共通ランプへ統合して廃止した
         // (marksmanSpeedMultはもう時間を見ない・立ち上がりはランプが担う)。`?speedramp=0`で
         // 旧挙動(ボーナス即時全開)へ復帰。
         : reloading
         ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) *
           rampedBonusMult(
-            skillRunnerSpeedMult(player, true) * marksmanSpeedMult(player) * skillWarmUpSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1),
+            skillRunnerSpeedMult(player, true) * marksmanSpeedMult(player) * consumableSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1),
             rampFrac,
           )
         : player.speed * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) *
           rampedBonusMult(
-            skillRunnerSpeedMult(player) * marksmanSpeedMult(player) * skillWarmUpSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1),
+            skillRunnerSpeedMult(player) * marksmanSpeedMult(player) * consumableSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1),
             rampFrac,
           );
 
@@ -7030,7 +7098,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // プレイヤーと同じ純関数で受ける。主語は**計測時ビルド**の疑似Player(スキルはその撃破ランのもの)。
           // 錬金術召喚(kind='normal')は対象外=従来どおり素通し(パリティの対象は守護霊のみ)。
           const dealt = (s.kind === 'ghost-ally' && amount > 0)
-            ? amount * skillIncomingDamageMult(buildPseudoPlayer(s.ghostBuild, livePlayer))
+            ? amount * skillIncomingDamageMult(buildPseudoPlayer(s.ghostBuild, livePlayer), gtNow)
             : amount;
           // v0.25.2514(監査項目7・§2.11): 被弾ノックバック。プレイヤーのdamagePlayerと同式
           // (ダメージ源から離れる向き × PLAYER_KNOCKBACK_SPEED を PLAYER_KNOCKBACK_MS かけて減衰)。
@@ -7481,8 +7549,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (player.invulnerable) return false;
 
-    // スキル: ナイト(×0.8)/バーサーカー(×1.2) の被ダメ補正。amount>0 のみ補正。
-    const skilled = rawAmount > 0 ? rawAmount * skillIncomingDamageMult(player) : rawAmount;
+    // スキル: ナイト(×0.8)/バーサーカー(×1.2)/消費カード「プロテクション」(×0.7・§23) の被ダメ補正。
+    // amount>0 のみ補正。
+    const skilled = rawAmount > 0 ? rawAmount * skillIncomingDamageMult(player, get().gameTime) : rawAmount;
     // 訓練(M0)は**死なない**(社長指示v0.25.2302「チュートリアルではHPは1になるけど死なない。
     // 衛生兵が1秒後には回復しちゃう」)。ハンターのジャンプ攻撃のような大ダメージでもHP1で踏みとどまる。
     // 教習の途中でゲームオーバーになると台本が最初からやり直しになり、教える順序が成立しない。
@@ -7664,7 +7733,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   gainExperience: (amount) => {
-    const gained = amount * XP_GAIN_MULT; // 全体調整: 経験値1/3
+    // 消費カード「経験値ブースト」(×1.5・60秒・§23)をここへ合流(経験値付与の唯一の出どころ)。
+    const gained = amount * XP_GAIN_MULT * consumableXpMult(get().player, get().gameTime); // 全体調整: 経験値1/3
     set(state => {
       const { player, gameStats } = state;
       const newExperience = player.experience + gained;
@@ -7755,6 +7825,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         playerLevel: newLevel,
         excluded: state.vanishedSkills,
         dogEquipped: player.subWeapons.includes('dog'),
+        activeConsumables: activeConsumableKeys(player, state.gameTime), // §23-2条件1/条件3
       };
       const upgradeOptions = generateSkillUpgradeChoices(draftInput);
 
@@ -7839,7 +7910,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // GAME_AUDIT #10: 通常射撃(weaponUtils)と同じダメージ倍率を適用する。従来は連射装備だけ
     // 効いてダメージ装備・スキル・スカベンジャーが素通りだった(速くなるが強くならない非対称)。
     // スキル: ラストマガジン = 弾倉最後の1発 ×2.0/2.5/3.0(PHILLも対象・§6.8 M31)。
-    const phillDamage = weapon.damage * scavengerGunMult(player, get().gameTime) * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
+    // 消費カード「アタックドーピング」(+20%・60秒・§23)もアタックシューターと同じ合流点へ乗せる。
+    const phillDamage = weapon.damage * scavengerGunMult(player, get().gameTime) * skillAttackShooterGunMult(player) * consumableAttackMult(player, get().gameTime) * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     if (snapEnemy) {
@@ -7914,7 +7986,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         const prevLv = player.skillLevels[key] ?? 1;
         // canAcquireRunSkillが「枠判定の唯一の出どころ」(§2-1)。抽選側(draftRunSkillCards)も
         // 同じ関数の枠チェックを通っているが、取得の最終ゲートとしてここでも通す(二重の守り)。
-        const nextRunBuild = isNew && canAcquireRunSkill(state.runBuild, key) ? [...state.runBuild, key] : state.runBuild;
+        // §23-2条件1: アクティブな消費カードもノーマル枠の占有分としてここへ含める。
+        const nextRunBuild = isNew && canAcquireRunSkill(state.runBuild, key, activeConsumableCount(player, state.gameTime))
+          ? [...state.runBuild, key] : state.runBuild;
         const nextPlayerSkills = isNew && !player.skills.includes(key) ? [...player.skills, key] : player.skills;
         const nextSkillLevels = { ...player.skillLevels, [key]: nextLv };
         // §16-10 ★B: Lv3(覚醒)到達のフラグ+SE用フックのみ(演出はB7)。新規取得でいきなりLv3が
@@ -7924,6 +7998,15 @@ export const useGameStore = create<GameState>((set, get) => ({
           player: { ...player, skills: nextPlayerSkills, skillLevels: nextSkillLevels },
           runBuild: nextRunBuild,
           ...(awakened ? { skillAwakenAt: { ...state.skillAwakenAt, [key]: Date.now() } } : {}),
+          showUpgradeMenu: false,
+          isPaused: false,
+        };
+      }
+
+      // SKILL_BUILD_REDESIGN.md §23: 消費カード(取得で即発動・60秒・温存不可)。
+      if (upgrade.type === 'consumable' && upgrade.consumableKey) {
+        return {
+          player: applyConsumableCard(player, upgrade.consumableKey, state.gameTime),
           showUpgradeMenu: false,
           isPaused: false,
         };
@@ -8074,6 +8157,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       playerLevel: state.player.level,
       excluded: state.vanishedSkills,
       dogEquipped: state.player.subWeapons.includes('dog'),
+      activeConsumables: activeConsumableKeys(state.player, state.gameTime), // §23-2条件1/条件3
     };
     const nextOptions = generateSkillUpgradeChoices(draftInput);
     recordScrapExpense('reroll', price);
@@ -8095,6 +8179,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const otherKeys = state.upgradeOptions
       .filter(o => o.type === 'skill' && o.skillKey !== key)
       .map(o => o.skillKey as SkillKey);
+    // §23: 現在表示中の消費カードも「この1回のドラフト内で既出」として避ける(同じ3択内で重複しない)。
+    const otherConsumables = state.upgradeOptions
+      .filter(o => o.type === 'consumable')
+      .map(o => o.consumableKey as ConsumableKey);
     const draftInput: RunSkillDraftInput = {
       owned: state.ownedSkills,
       ownedLevels: state.ownedSkillLevels,
@@ -8103,8 +8191,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       playerLevel: state.player.level,
       excluded: nextVanished,
       dogEquipped: state.player.subWeapons.includes('dog'),
+      activeConsumables: activeConsumableKeys(state.player, state.gameTime), // §23-2条件1/条件3
     };
-    const replacement = generateReplacementSkillOption(draftInput, otherKeys);
+    const replacement = generateReplacementSkillOption(draftInput, otherKeys, otherConsumables);
     const nextOptions = state.upgradeOptions
       .filter(o => !(o.type === 'skill' && o.skillKey === key))
       .concat(replacement ? [replacement] : []);
@@ -12237,7 +12326,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         let strapGranted = 0;
         set(state => {
           // §6.10 M33⑪: ゴールドラッシュはin-runスクラップ拾得から撤去(永続ゴールド獲得へ移動)。
-          strapGranted = Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * skillScrapBuilderGainMult(state.player)));
+          // 旧スクラップビルダーの取得量+10/20/30%は§23-1裁定で退役=削除。消費カード「スクラップ
+          // ブースト」(§23・+50%・60秒)がここへ合流する。
+          strapGranted = Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * consumableScrapMult(state.player, state.gameTime)));
           return {
           player: {
             ...state.player,
@@ -14429,9 +14520,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           skillMaxLevel(k), skillInjection?.skillLevels[k] ?? state.ownedSkillLevels[k] ?? 1,
         ))])
       );
-      // スキル: スクラップビルダー = 出撃開始時の初期スクラップ +50/100/150(Lv)。
-      const scrapBuilderLv = runSkills.includes('scrap-builder') ? (runSkillLevels['scrap-builder'] ?? 1) : 0;
-      const scrapBuilderBonus = scrapBuilderLv ? [0, 50, 100, 150][scrapBuilderLv] : 0;
+      // 旧スキル: スクラップビルダー(出撃開始時の初期スクラップ+50/100/150)は§23-1裁定で退役=削除。
       const runLevels: Partial<Record<SubWeaponKey, number>> = state.danceTestMode
         ? { shijin: state.danceTestLevel }
         : Object.fromEntries(runSubs.map(k => [k, 1])) as Partial<Record<SubWeaponKey, number>>;
@@ -14712,6 +14801,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
           knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
           seekerUntil: 0, seekerCdUntil: 0,
+          consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
+          consumableXpUntil: 0, consumableProtectionUntil: 0,
           overclockLightUntil: 0,
           subWeaponLevels: runLevels,
           subWeaponCooldowns: {},
@@ -14725,7 +14816,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           skaterStopUntil: 0,
           skaterRiding: false,
           skaterRideStartAt: 0,
-          straps: (state.startWithTestStraps ? 1000 : 0) + scrapBuilderBonus,
+          straps: state.startWithTestStraps ? 1000 : 0,
           vaccineRevives: 0,
           equipment: runLoadout,
           equipBonus: runEquipBonus

@@ -920,23 +920,42 @@ export const NEW_SLEEPING_SKILLS: SkillKey[] = [
   'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
   'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
 ];
+
+// SKILL_BUILD_REDESIGN.md §23-1裁定(2026-08-13): scrap-builder/warm-upは消費カードへ転生し、
+// スキル台帳から退役。ドラフト(RUN_DRAFT_EXCLUDED_SKILLS)・ガチャ(GACHA_EXCLUDED_SKILLS)からは
+// §19-1点5で既に除外済み=このバッチで新たに追加されるのは「所持者への一括返却」のみ(gameStore.ts)。
+// 型(SkillKey)からは削除しない(Record<SkillKey,...>の全テーブルに波及する大工事のため。§23実装報告
+// 参照)。台帳(SKILLS)には残すが、OBTAINABLE_SKILL_KEYSの分母からは外す(=図鑑上「解禁対象」ではない
+// 扱いにする。効果コード自体もgameStore.ts側で削除済み=既存所持者にも二度と効果は発生しない)。
+export const RETIRED_SKILLS: SkillKey[] = ['scrap-builder', 'warm-up'];
+
+/** 退役スキルの所持者へ返すコイン総額(ガチャの被り返金と同額=§23-2条件4「既存規則を流用」)。
+ * 呼び出し側(gameStore.ts)が localStorage フラグで1回きりの適用を保証する(この関数自体は純粋・冪等)。 */
+export const retiredSkillsRefundTotal = (owned: readonly SkillKey[]): number =>
+  RETIRED_SKILLS
+    .filter(k => owned.includes(k))
+    .reduce((sum, k) => sum + GACHA_REFUND_BY_RARITY[SKILLS[k].rarity], 0);
+
 // 装備画面の「解禁済み X/Y」表示(SkillGacha)の分母。NEW_SLEEPING_SKILLSは誰にも到達できない
 // (§19-1点4)ため、SKILL_KEYS.length をそのまま分母にすると新9種ぶんだけ永久に埋まらないカウンターに
-// なってしまう(B3で新規に踏む回帰)。到達可能な全種のみを分母にし、100%完了が引き続き成立するように
-// する(B7で効果配線され次第、自動的に分母へ含まれる)。
-export const OBTAINABLE_SKILL_KEYS: SkillKey[] = SKILL_KEYS.filter(k => !NEW_SLEEPING_SKILLS.includes(k));
+// なってしまう(B3で新規に踏む回帰)。RETIRED_SKILLS(§23)も同じ理由で分母から外す(誰も新たに
+// 到達できない=退役済み)。到達可能な全種のみを分母にし、100%完了が引き続き成立するようにする
+// (B7で効果配線され次第、自動的に分母へ含まれる)。
+export const OBTAINABLE_SKILL_KEYS: SkillKey[] =
+  SKILL_KEYS.filter(k => !NEW_SLEEPING_SKILLS.includes(k) && !RETIRED_SKILLS.includes(k));
 
 // ガチャ(強化訓練)からは出さないスキル。死神(reaper)は「死神を倒すと習得」専用(社長指示)。
 // 警察署アリーナ3種も同じ理由で除外(そこでしか手に入らないことが寄り道の存在理由・§6.24)。
 // 守護霊(guardian-spirit)は最初から全員所持(下のDEFAULT_OWNED_SKILLS)なのでガチャに出す意味が無い。
-// scrap-builder/warm-up(§19-1点5): ラン中ドラフトから既に除外済み(取得時点で効果の柱が発火不能=
-// RUN_DRAFT_EXCLUDED_SKILLS)だが、持ち込みが0になった今はガチャで引いても到達経路が無い死に景品
-// になるため、B3でガチャ排出からも除外する(§17-3検収の再確認の結論)。
+// RETIRED_SKILLS(§23-1・旧scrap-builder/warm-up §19-1点5): ラン中ドラフトから既に除外済み(取得時点で
+// 効果の柱が発火不能=RUN_DRAFT_EXCLUDED_SKILLS)だが、持ち込みが0になった今はガチャで引いても到達経路が
+// 無い死に景品になるため、B3でガチャ排出からも除外している(§17-3検収の再確認の結論)。§23で消費カードへ
+// 転生し完全退役。
 // NEW_SLEEPING_SKILLS(§14の新9種)は台帳掲載のみで効果配線がB7まで無いため、ここでも除外して
 // 完全に眠らせる。
 export const GACHA_EXCLUDED_SKILLS: SkillKey[] = [
   'reaper', 'guardian-spirit', 'ghost-helper', 'ghost-slayer', ...POLICE_REWARD_SKILLS,
-  'scrap-builder', 'warm-up',
+  ...RETIRED_SKILLS,
   ...NEW_SLEEPING_SKILLS,
 ];
 

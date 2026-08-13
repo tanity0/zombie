@@ -1,5 +1,5 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, skillWarmUpCritBonus, skillWarmUpReloadMult } from '../store/gameStore';
+import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { aimEnemyDist2 } from './enemyUtils';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
@@ -208,11 +208,10 @@ const RELOAD_TIME_MULT = 2;
 
 // Reload duration including the global multiplier and the player's リロード時間
 // 短縮 upgrade.
+// 旧ウォームアップ(出撃60秒間リロード時間×0.80)は§23-1裁定で退役=削除済み。
 export const effectiveReloadMs = (w: Weapon, p: Player): number =>
   // 装備(腕・取り回し系)のリロード短縮を乗算(中立=1)。
-  // スキル: ウォームアップ = 出撃から60秒間リロード時間 ×0.80(§6.8 M31。gameTimeはstoreから直読み=
-  // startReload/SE長/リロードバーの全呼び出しで自動的に同じ値になる)。
-  Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult * (p.equipBonus?.reloadMult ?? 1) * skillWarmUpReloadMult(p, useGameStore.getState().gameTime));
+  Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult * (p.equipBonus?.reloadMult ?? 1));
 
 // 装備(腕)込みの実効発射間隔。プレイヤーと守護霊が同じ1本を使う。
 export const effectiveFireCooldown = (w: Weapon, p: Player): number =>
@@ -423,17 +422,20 @@ export const projectileFlightStats = (
 // GHOST-BUILD-1(共通ヘルパ・BOT_AND_GHOST.md §2.11補足「写すな、共通化しろ」): 発射時の素ダメージ。
 // fireWeaponの `shotDamage` の式を値を変えずに抽出しただけ。プレイヤーの発射と守護霊の射撃
 // (buildGhostGunShots=計測時ビルドの疑似Playerを渡す)が**同じ1本の式**を通る。
-//  = 武器damage × スカベンジャー(キャラ固有) × アタックシューター × 装備(火力)ダメージ倍率 × ラストマガジン
+//  = 武器damage × スカベンジャー(キャラ固有) × アタックシューター × 消費カード「アタックドーピング」
+//    (§23・+20%・60秒=アタックシューターと同じ合流点) × 装備(火力)ダメージ倍率 × ラストマガジン
 export const gunShotBaseDamage = (
   weapon: Pick<Weapon, 'damage' | 'magazine'>,
   player: Player,
   gameTime: number,
 ): number =>
   weapon.damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player)
+  * consumableAttackMult(player, gameTime)
   * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
 
 // GHOST-BUILD-1(共通ヘルパ): 発射時のクリ率(0..1)。fireWeaponの `critChance` の式を値を変えずに抽出。
-//  = 武器基礎 + 本体(レベルアップ)+ 装備(クリ系)+ クイックマガジン + 弁慶 + ウォームアップ
+//  = 武器基礎 + 本体(レベルアップ)+ 装備(クリ系)+ クイックマガジン + 弁慶(旧ウォームアップ項は
+//    §23-1裁定で退役=削除済み)
 // 命中時は projectileHitCritChance(ボスは×0.5+下限5%)でロールされる=呼び出し側は数値を運ぶだけ。
 export const gunShotCritChance = (
   weapon: Pick<Weapon, 'critChance'>,
@@ -442,7 +444,7 @@ export const gunShotCritChance = (
 ): number => Math.min(1,
   (weapon.critChance ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0)
   + (player.quickMagCritUntil > gameTime ? 0.10 : 0)
-  + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime));
+  + skillBenkeiCritBonus(player, gameTime));
 
 // Fire a single weapon this tick (cooldown- and ammo-aware). Melee weapons
 // never fire here — they're handled by the counter. Guns auto-target the
@@ -570,7 +572,7 @@ export const buildSupportSniperShot = (
   const def = CATALOG['rifle-t2'];
   const size = def.projectileSize || 8;
   const speed = (def.projectileSpeed || 520) * PROJECTILE_SPEED_MULT;
-  const shotDamage = CATALOG['rifle-t1'].damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1) * 0.5;
+  const shotDamage = CATALOG['rifle-t1'].damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player) * consumableAttackMult(player, gameTime) * (player.equipBonus?.damageMult ?? 1) * 0.5;
   return {
     id: `proj-support-sniper-${Date.now()}`,
     x: x - size / 2,

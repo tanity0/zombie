@@ -11,6 +11,7 @@ import DebugOverlay from './DebugOverlay';
 import GhostDamageLog from './GhostDamageLog';
 import DirectorOverlay from './DirectorOverlay';
 import StatsHud from './StatsHud';
+import ConsumableHud from './ConsumableHud';
 import DanceTapMeter from './DanceTapMeter';
 import WallBand from './WallBand';
 import WallInscription from './WallInscription';
@@ -230,6 +231,8 @@ const Game: React.FC<GameProps> = ({
       {!isTouch && <MouseControls />}
 
       {!makerHideHud && <GameHUD />}
+      {/* SKILL_BUILD_REDESIGN.md §23-2条件5: 消費カード発動中は残秒を常時表示(統計トグルとは独立)。 */}
+      {!makerHideHud && <ConsumableHud />}
       {/* PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出(中格=帯/大格=銘打ち)。 */}
       <WallBand />
       <WallInscription />

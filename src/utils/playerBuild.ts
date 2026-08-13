@@ -123,5 +123,12 @@ export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: P
     scavengerBuffUntil: 0,
     knifeComboCount: 0,
     knifeComboUntil: 0,
+    // SKILL_BUILD_REDESIGN.md §23: 消費カード(実プレイヤー限定・ガチャ外)も同じ理由で中立化する。
+    // 本人が取得したバフがゴーストにも乗ると二重取りになる(上のコメントと同じ原則)。
+    consumableScrapUntil: 0,
+    consumableAttackUntil: 0,
+    consumableSpeedUntil: 0,
+    consumableXpUntil: 0,
+    consumableProtectionUntil: 0,
   };
 };

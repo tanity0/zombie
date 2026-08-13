@@ -1,10 +1,11 @@
-import { UpgradeOption, Player, EquipSlot, EquipmentDef, SkillKey } from '../types/game';
+import { UpgradeOption, Player, EquipSlot, EquipmentDef, SkillKey, ConsumableKey } from '../types/game';
 import {
   EQUIP_SLOTS, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX,
   equipmentById, equipmentDef, equipmentDescription
 } from '../data/equipment';
 import { SKILLS, skillDescForLevel } from '../data/campaign';
-import { draftRunSkillCards, draftReplacementSkillCard, type DraftedSkillCard, type RunSkillDraftInput } from './runSkillDraft';
+import { CONSUMABLES, consumableCardDescription } from '../data/consumables';
+import { draftRunSkillCards, draftReplacementSkillCard, type DraftedCard, type RunSkillDraftInput } from './runSkillDraft';
 // v0.25.3212(社長指示「取り急ぎ、ナイフは武器箱に移す」): レベルアップ3枠目のナイフ提示
 // (旧: Tier5未満なら25%で次Tierナイフ)は廃止し、ナイフ強化は武器箱(weaponDrop.openCrate)へ移した。
 // 3枠目は常設スクラップ+50に戻る。
@@ -91,20 +92,34 @@ export const generateEquipmentChoices = (player: Player): UpgradeOption[] => {
 // ボスドロップ宝箱(§16-2「維持」)専用に残る=このファイル内で共存する。
 // ============================================================================================
 
-const cardToUpgradeOption = (card: DraftedSkillCard): UpgradeOption => ({
-  id: `skill-${card.cardKind}-${card.key}`,
-  name: SKILLS[card.key].name,
-  description: skillDescForLevel(card.key, card.toLevel),
-  type: 'skill',
-  level: 0, // §12-2軽微: スキルLvは level を流用しない(専用フィールドskillLvを使う)
-  skillKey: card.key,
-  skillCardKind: card.cardKind,
-  skillRarity: card.rarity,
-  skillFromLv: card.fromLevel,
-  skillLv: card.toLevel,
+// §23: 消費カード(取得で即発動・60秒・温存不可)のUpgradeOption化。カード面に「60秒・使い切り」を
+// 必ず載せる(§23-2条件5)。
+const consumableCardToUpgradeOption = (key: ConsumableKey): UpgradeOption => ({
+  id: `consumable-${key}`,
+  name: CONSUMABLES[key].name,
+  description: consumableCardDescription(key),
+  type: 'consumable',
+  level: 0,
+  consumableKey: key,
 });
 
-/** レベルアップのスキル3択+常設スクラップ+50を生成する(§16-9点6: 3枚未満の提示を許容し、
+const cardToUpgradeOption = (card: DraftedCard): UpgradeOption => {
+  if (card.cardKind === 'consumable') return consumableCardToUpgradeOption(card.key);
+  return {
+    id: `skill-${card.cardKind}-${card.key}`,
+    name: SKILLS[card.key].name,
+    description: skillDescForLevel(card.key, card.toLevel),
+    type: 'skill',
+    level: 0, // §12-2軽微: スキルLvは level を流用しない(専用フィールドskillLvを使う)
+    skillKey: card.key,
+    skillCardKind: card.cardKind,
+    skillRarity: card.rarity,
+    skillFromLv: card.fromLevel,
+    skillLv: card.toLevel,
+  };
+};
+
+/** レベルアップのスキル/消費カード3択+常設スクラップ+50を生成する(§16-9点6: 3枚未満の提示を許容し、
  * 埋め合わせの複製スクラップカードは作らない=常設4枚目1枚だけを追加する)。 */
 export const generateSkillUpgradeChoices = (
   input: RunSkillDraftInput, count = 3, rng: () => number = Math.random,
@@ -115,12 +130,15 @@ export const generateSkillUpgradeChoices = (
   return options;
 };
 
-/** バニッシュ/差し替え: 現在表示中の他カードのキーを dealtSeed に渡し、1枚だけ引き直す。
- * 差し替えできなければ null(呼び出し側はそのスロットを空表示にする=§16-9点6)。 */
+/** バニッシュ/差し替え: 現在表示中の他カードのキー(スキル/消費カードそれぞれ)を dealtSeed に渡し、
+ * 1枚だけ引き直す。差し替えできなければ null(呼び出し側はそのスロットを空表示にする=§16-9点6)。 */
 export const generateReplacementSkillOption = (
-  input: RunSkillDraftInput, dealtSeed: readonly SkillKey[], rng: () => number = Math.random,
+  input: RunSkillDraftInput,
+  dealtSeed: readonly SkillKey[],
+  dealtConsumableSeed: readonly ConsumableKey[] = [],
+  rng: () => number = Math.random,
 ): UpgradeOption | null => {
-  const card = draftReplacementSkillCard(input, dealtSeed, rng);
+  const card = draftReplacementSkillCard(input, dealtSeed, dealtConsumableSeed, rng);
   return card ? cardToUpgradeOption(card) : null;
 };
 // selectUpgrade 側の passive 分岐は型網羅のため残置(この経路は今後生成されない)。
