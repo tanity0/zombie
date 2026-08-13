@@ -154,7 +154,7 @@ import type { SceneLayers } from './layers';
 import {
   getTexture, PLAYER_ART_BASE_W,
   FLAME_SHEET, FLAME_FRAMES, FLAME_FRAME_W, FLAME_FRAME_H, FLAME_LIGHT_FRAC, TORCH_STAND_RIM_ABOVE_FOOT,
-  avatarHeadDeltaPx,
+  avatarHeadDeltaPx, avatarBodyCxDeltaPx,
 } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
@@ -12572,15 +12572,17 @@ export class PixiScene {
       const gWarlordKatana = warlordFullGhost && hasMurasame(fakeGhost);
       const gBaselineTexName = avatarHeadBaselineTexName(gcls, warlordFullGhost, gWarlordKatana);
       const gHeadDeltaY = tex ? avatarHeadDeltaPx(bodyTexName2, gBaselineTexName) * Math.abs(view.sprite.scale.y) : 0;
+      // v0.25.3278: 本体(drawPlayer)と同じ横中心追従(走り絵の前傾)を守護霊にも(同じ式の共有)。
+      const gBodyDeltaX = tex ? avatarBodyCxDeltaPx(bodyTexName2, gBaselineTexName) * view.sprite.scale.x : 0;
       const gAvatarAlpha = tex ? GHOST_ALLY_ALPHA * lifecycleAlpha : 0;
       this.syncAvatarPartLayer(
         this.ghostAvatarAbove, gParts.filter(pt => pt.layer === 'above'), true, this.L.actorLayer,
-        { footX, footY, boxW, boxH }, dsc, 0, 0, 0, actOffX, actOffY, gAvatarAlpha, faceSign, gHeadDeltaY,
+        { footX, footY, boxW, boxH }, dsc, 0, 0, 0, actOffX, actOffY, gAvatarAlpha, faceSign, gHeadDeltaY, gBodyDeltaX,
         { tint: GHOST_ALLY_TINT, zIndexBase: footY },
       );
       this.syncAvatarPartLayer(
         this.ghostAvatarBelow, gParts.filter(pt => pt.layer === 'below'), false, this.L.actorLayer,
-        { footX, footY, boxW, boxH }, dsc, 0, 0, 0, actOffX, actOffY, gAvatarAlpha, faceSign, gHeadDeltaY,
+        { footX, footY, boxW, boxH }, dsc, 0, 0, 0, actOffX, actOffY, gAvatarAlpha, faceSign, gHeadDeltaY, gBodyDeltaX,
         { tint: GHOST_ALLY_TINT, zIndexBase: footY },
       );
     }
@@ -12858,6 +12860,9 @@ export class PixiScene {
     dsc: number, bob: number, introOffX: number, introOffY: number, actOffX: number, actOffY: number,
     bodyAlpha: number, face: number,
     headDeltaY = 0, // 頭頂追従(v0.25.3271): followsHeadなパーツのYへ加算する画面px差分(現在コマ−基準コマ)
+    // v0.25.3278(社長報告「走ってる時はズレる」): 絵の実体の横中心差分(画面px・符号付きscale.x適用済み)。
+    // 走り絵の前傾で体がボックス内を前方へ寄るぶん、**全パーツ**のXへ加算する(耳も尻尾も体ごと寄る)。
+    bodyDeltaX = 0,
     opts?: { tint?: number; zIndexBase?: number }, // 守護霊描画用(青白tint+cross-actor zIndexソート)
   ): void {
     for (let i = 0; i < parts.length; i++) {
@@ -12880,7 +12885,7 @@ export class PixiScene {
       const sc = srcPx > 0 ? targetPx / srcPx : 0;
       const mirror = part.flipWithFacing && face < 0;
       sp.scale.set(mirror ? -sc : sc, sc);
-      const ox = part.offsetXFrac * fb.boxW * dsc * (part.flipWithFacing ? face : 1);
+      const ox = part.offsetXFrac * fb.boxW * dsc * (part.flipWithFacing ? face : 1) + bodyDeltaX;
       const oy = part.offsetYFrac * fb.boxH * dsc + (part.followsHead ? headDeltaY : 0);
       sp.position.set(
         this.snapToScreenPixel(fb.footX + ox, this.L.world.position.x) + introOffX + actOffX,
@@ -13197,13 +13202,16 @@ export class PixiScene {
       // 掛けて画面px化する。計測失敗/未計測は差分0(=現状と同じ表示)。
       const baselineTexName = avatarHeadBaselineTexName(p.characterClass, warlordFull, warlordKatana);
       const headDeltaY = avatarHeadDeltaPx(bodyTexName, baselineTexName) * Math.abs(view.sprite.scale.y);
+      // v0.25.3278: 走り絵の前傾(体がボックス内で前方へ寄る)を全パーツのXへ追従。符号付きscale.x
+      // を掛けるのでミラー(左向き)時は自動で逆向きに寄る。
+      const bodyDeltaX = avatarBodyCxDeltaPx(bodyTexName, baselineTexName) * view.sprite.scale.x;
       this.syncAvatarPartLayer(
         this.playerAvatarAbove, parts.filter(pt => pt.layer === 'above'), true, view.container,
-        fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY,
+        fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY, bodyDeltaX,
       );
       this.syncAvatarPartLayer(
         this.playerAvatarBelow, parts.filter(pt => pt.layer === 'below'), false, view.container,
-        fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY,
+        fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY, bodyDeltaX,
       );
     }
     // 救急鞄スキル発動: 「鞄を頭上へ掲げる」一拍(振り抜きポーズと同じ窓・描画のみ・判定不変)。

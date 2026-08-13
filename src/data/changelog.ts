@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3278',
+    items: [
+      'アバター(耳・尻尾)が走り中に体からズレる問題を修正しました(前傾ぶん横にも追従します)。',
+    ],
+  },
+  {
     version: '0.25.3277',
     items: [
       '武器箱が10%の確率で「秘密兵器箱」に変化するようになりました(金色に光ります)。拾うと大表示とともに武器抽選3回+赤経験値20個を広範囲にばらまきます。',
