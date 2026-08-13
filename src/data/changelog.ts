@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3293',
+    items: [
+      '手榴弾・グレネードガンの弾が半透明で表示される問題を修正しました(完全不透明に)。',
+    ],
+  },
+  {
     version: '0.25.3292',
     items: [
       'オブジェクトの接地丸影を「見た目で対象の約1.2倍幅」に拡大しました(グラデーションで縁が溶けて実際より狭く見えていたぶんを補正)。',

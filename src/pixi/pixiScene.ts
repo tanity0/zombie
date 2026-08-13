@@ -19506,6 +19506,7 @@ export class PixiScene {
       const ballTex = getTexture('fx/grenade-ball');
       if (ballTex) {
         const r = Math.max(5, p.width * 0.85);
+        g.fillStyle = { color: 0xffffff, alpha: 1 }; // v0.25.3293: fillスタイルalphaの引き継ぎ対策(手榴弾と同じ)
         g.texture(ballTex, 0xffffff, -r, -r, r * 2, r * 2);
         return;
       }
@@ -19574,6 +19575,9 @@ export class PixiScene {
         const ballTex = getTexture('fx/grenade-ball');
         const br = Math.max(4, p.width * 0.75);
         if (ballTex) {
+          // v0.25.3293(社長報告「半透明になってる」): Graphics.texture()は直前のfillスタイルの
+          // alphaを引き継ぐ(上の影楕円のalpha 0.28が弾に乗っていた)。スタンプ前に必ずリセット。
+          g.fillStyle = { color: 0xffffff, alpha: 1 };
           g.texture(ballTex, p.ownerGhost ? 0x9fd8ff : 0xffffff, -br, -hop - br, br * 2, br * 2);
         } else {
           g.circle(0, -hop, Math.max(3, p.width / 2)).fill({ color: p.ownerGhost ? 0x9fd8ff : 0x1f2937 });
