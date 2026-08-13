@@ -24,9 +24,12 @@ describe('pickJibrilMove', () => {
   it('prefers consecrate whenever eligible, regardless of the roll', () => {
     expect(pickJibrilMove(2, 100, true, () => 0.99)).toBe('consecrate');
   });
-  it('falls back to the lantern/volley split when consecrate is not eligible', () => {
+  it('falls back to the lantern/lance/volley split when consecrate is not eligible', () => {
+    // v0.25.3221(社長指示): lantern 0.25 / lance 0.35 / volley 0.40 の3択(旧2択テストは仕様ドリフト
+    // でv0.25.3269まで赤いままだった=検収時に現仕様へ更新)。
     expect(pickJibrilMove(1, 100, true, () => 0)).toBe('lantern');
-    expect(pickJibrilMove(1, 100, true, () => JIBRIL_LANTERN_CHANCE + 0.01)).toBe('volley');
+    expect(pickJibrilMove(1, 100, true, () => JIBRIL_LANTERN_CHANCE + 0.01)).toBe('lance');
+    expect(pickJibrilMove(1, 100, true, () => 0.99)).toBe('volley');
   });
 });
 

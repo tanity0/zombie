@@ -29,8 +29,9 @@ export const MAX_CARRY_SKILLS = 0;
 //   しない=出撃開始の瞬間は必ず過ぎている。warm-upは「出撃から60秒間」の効果窓が gameTime(出撃
 //   時刻起点)に固定されており、取得時点で窓の大半〜全部が経過済みになりやすい。取得しても実質
 //   0〜わずかしか効かない=説明文が嘘になりやすいため除外(§19-1点5)。§23で効果コード自体も削除済み。
-// - NEW_SLEEPING_SKILLS(SKILL_BUILD_REDESIGN.md §14の新9種): B3=台帳掲載のみで効果配線が無い
-//   (B7待ち)。取っても何も起きない=完全に眠らせる(§19-1点4)。
+// - NEW_SLEEPING_SKILLS(SKILL_BUILD_REDESIGN.md §14の新9種): §28(B7)で効果配線+スターター入り
+//   済みのため定数は空配列(=このスプレッドは現在no-op)。将来また眠らせるスキルが出た時のための
+//   受け皿として残置(RETIRED_SKILLSと対の仕組み)。
 export const RUN_DRAFT_EXCLUDED_SKILLS: SkillKey[] = [
   'guardian-spirit', 'ghost-helper', 'ghost-slayer',
   'poi-bombing', 'poi-guard', 'poi-thrall',

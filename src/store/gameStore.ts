@@ -18,12 +18,21 @@ import {
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
-  DashLocomotionState, EquipLoadout, EquipSlot, ConsumableKey
+  DashLocomotionState, EquipLoadout, EquipSlot, ConsumableKey,
+  BloodSpike, GravityWell // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯/グラビティショットの状態
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
   isEnemyInGroundFire,
 } from '../utils/molotov';
+// SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の判定叩き台(純関数群)。
+import {
+  BLOOD_TREADS_RADIUS_PX, BLOOD_TREADS_TICK_MS, bloodTreadsParams,
+  GRAVITY_SHOT_PULL_SPEED, GRAVITY_SHOT_PULL_MS, rollGravityShotWell,
+  rollVampireHeal,
+  INCENDIARY_BURN_TICK_MS,
+  executionShockParams,
+} from '../utils/skillEffectsB7';
 import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
 import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE_CHARGE_COOLDOWN_MS, sensorMineChargesReady, consumeSensorMineCharge } from '../utils/sensorMine';
 import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/supportSniper';
@@ -972,6 +981,12 @@ export const BOSS_CRIT_CD_MULT = 2; // 「攻撃間隔が2倍に」(社長裁定
 export const bossCritCdMult = (enemy: Enemy, gameTime: number): number =>
   (usesBossCrit(enemy.type) && enemy.bossSlowUntil !== undefined && gameTime < enemy.bossSlowUntil) ? BOSS_CRIT_CD_MULT : 1;
 
+// SKILL_BUILD_REDESIGN.md §28(B7): アイスショット(ice-shot)の鈍足。ボスは対象外(§28-2)。
+// 移動速度に掛ける倍率(鈍足中なら1-iceSlowPct)。ボス・非鈍足中は1=無改変。
+export const iceSlowMult = (enemy: Enemy, gameTime: number): number =>
+  (!isBossType(enemy.type) && enemy.iceSlowUntil !== undefined && gameTime < enemy.iceSlowUntil)
+    ? Math.max(0, 1 - (enemy.iceSlowPct ?? 0)) : 1;
+
 // 分身(サブウェポン): その場で 1秒ごとに5秒間(=計5回)近接攻撃を繰り返し、消滅後にクールダウン。
 // クールダウンはレベルで短縮(Lv1=3s / Lv2=2s / Lv3=1s)。index は subWeaponLevels(1..3)。
 export const SHADOW_CLONE_COOLDOWN_MS_BY_LEVEL = [3000, 3000, 2000, 1000];
@@ -1041,6 +1056,9 @@ export const COUNTER_EXTEND_PER_HIT = 200;
 // Counter knockback (additional effect on top of the bullet reflect).
 export const KNOCKBACK_SPEED = 133; // melee counter shove。ずらす速さを約2/3に(200→133。社長指示)
 export const KNOCKBACK_DURATION = 280;
+// 社長指示v0.25.3270: 反射神経の反撃爆発・ボムカウンターのカウンター成立時自機中心爆発、
+// 両方とも被弾した敵への実距離50pxノックバックで揃える(knockbackSpeedFor(50, KNOCKBACK_DURATION)相当)。
+export const SKILL_BLAST_KB_PX = 50;
 // スラッシャーのチェーン攻撃時の踏み込み(社長指示v0.25.3258「連続攻撃は20px前進(慣性入れて)」)。
 export const SLASHER_LUNGE_PX = 20;
 // パニッシャーの巻き込み判定の拡張幅(社長指示v0.25.3260「広めに」・叩き台)。
@@ -1068,7 +1086,9 @@ const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
 const SHIELD_BASH_DAMAGE_MULT = 3;
 const SHIELD_BASH_SHOVE_DISTANCE = 80;        // バッシュの飛び出し距離(社長指示: 100→80 で気持ち短く。ノックバックは据え置き)
 const SHIELD_BASH_DURABILITY_COST = 5;        // バッシュ1回で減る耐久(0以下で破壊)
-const SHIELD_BASH_KNOCKBACK_SPEED = 4800; // バッシュのノックバック距離(社長指示で倍: 2400→4800)。距離∝速度。
+// 実距離100px(社長指示v0.25.3270・knockbackSpeedFor(100,280)相当)。モジュール初期化順の都合で
+// knockbackSpeedFor呼び出しはしない(この定数の定義が同関数の定義より前方にあるため)。
+const SHIELD_BASH_KNOCKBACK_SPEED = 714;
 // スケボー新仕様(社長指示): ダブルタップ乗車→指離しで投擲。1秒以上乗車で発動、未満は消えるだけ。
 const SKATER_RIDE_MIN_MS = 1000;        // 投擲発動に必要な最低乗車時間(1秒)
 const SKATEBOARD_SPEED = 900;           // 投擲したスケボーの飛翔速度(px/s・私案)
@@ -2244,6 +2264,8 @@ let sensorMineSeq = 0;  // センサー地雷(sensor-mine)の一意id採番(プ�
 let flareGunSeq = 0;    // フレアガン(flare-gun)のフレアの一意id採番(プール/差分の安定キー)
 let bossFireSeq = 0;    // ジブリルのランタン火の一意id採番(プール/差分の安定キー)
 let acrasielSpearSeq = 0; // §6.28-19: アクラシエルの結晶の槍の一意id採番(プール/差分の安定キー)
+let bloodSpikeSeq = 0;  // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘の一意id採番
+let gravityWellSeq = 0; // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショット(gravity-shot)爆縮の一意id採番
 // v0.25.3027: グレン第二形態の胴体弾用・sim側の足元軌跡(描画のview.glenTrailとは別台帳。
 // 監査指摘どおりresetGameで明示クリアし、個体idが変われば作り直す。ストーリーボスは同時1体)。
 let glenSimTrail: { id: string; trail: GlenTrailPoint[] } | null = null;
@@ -3175,6 +3197,9 @@ export const applyRescueSignalProc = (
 // スキル: リーパー(super) = 近接フィニッシュを決めた瞬間、その近接攻撃範囲(プレイヤー中心の
 // 同じスイング範囲)内の敵全員にもフィニッシュ(即死)を波及。ボスは即死せず、近接フィニッシュ
 // 相当ダメージ(スタン中ボスへの近接と同じ ×BOSS_MELEE_STUN_MULT)。reaper型(特殊敵)は対象外。
+// SKILL_BUILD_REDESIGN.md §28(B7) スキル: 処刑の衝撃波(execution-shock、rare)も同じ合流点に乗せる
+// (近接4武器=ナイフ/刀/鞭/分身の全経路がこの1関数を通るため=CLAUDE.md「同じ動作を持つ全員に付ける」)。
+// 半径80/100/120(Lv)・近接表示ダメ(baseMeleeDamage)基準の30/40/50%・KB共通。プレイヤー中心。
 // finisherOccurred=このスイングで finisher:true が1体でも出たか。範囲内のみで有界。
 const applyMeleeFinishSkillSpread = (
   get: () => GameState,
@@ -3185,28 +3210,56 @@ const applyMeleeFinishSkillSpread = (
   range: number,
   baseMeleeDamage: number,
 ) => {
-  if (!hasSkill(player, 'reaper') || !finisherOccurred) return;
-  const r2 = range * range;
-  for (const e of get().enemies) {
-    if (e.type === 'reaper' && !e.reaperChaser) continue; // 不倒の通常リーパーは対象外。深奥チェイサーは近接対象(ボス級)なので含める
-    if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象選定から除外
-    const ecx = e.x + e.width / 2;
-    const ecy = e.y + e.height / 2;
-    if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
-    get().spawnSlash(ecx, ecy, 'rgba(168,85,247,0.95)');
-    get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫=プレイヤーへ向かって飛ぶ(v0.25.2026)
-    if (isBossType(e.type)) {
-      // ボスは即死しない=近接フィニッシュ相当ダメージ(×5)。フィニッシュ波及なのでviaMeleeFinish=true
-      // (§5.21-追補4: finishKillOnlyボスもこの経路でならトドメを刺せる)。
-      const dmg = Math.max(1, Math.round(baseMeleeDamage * BOSS_MELEE_STUN_MULT));
-      get().damageEnemy(e.id, dmg, false, false, true);
-      get().spawnDamageNumber(ecx, e.y, dmg, true);
-      get().spawnBurst(ecx, ecy, '#a855f7', 10);
-    } else {
-      const killed = get().damageEnemy(e.id, e.health + 1, false, false, true); // 即死(フィニッシュ波及)
-      if (killed) {
-        get().spawnBurst(ecx, ecy, '#a855f7', 14);
-        get().dropEnemyXp(e, ecx, ecy, 'pickup-xp-reaper');
+  if (!finisherOccurred) return;
+  if (hasSkill(player, 'reaper')) {
+    const r2 = range * range;
+    for (const e of get().enemies) {
+      if (e.type === 'reaper' && !e.reaperChaser) continue; // 不倒の通常リーパーは対象外。深奥チェイサーは近接対象(ボス級)なので含める
+      if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象選定から除外
+      const ecx = e.x + e.width / 2;
+      const ecy = e.y + e.height / 2;
+      if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
+      get().spawnSlash(ecx, ecy, 'rgba(168,85,247,0.95)');
+      get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫=プレイヤーへ向かって飛ぶ(v0.25.2026)
+      if (isBossType(e.type)) {
+        // ボスは即死しない=近接フィニッシュ相当ダメージ(×5)。フィニッシュ波及なのでviaMeleeFinish=true
+        // (§5.21-追補4: finishKillOnlyボスもこの経路でならトドメを刺せる)。
+        const dmg = Math.max(1, Math.round(baseMeleeDamage * BOSS_MELEE_STUN_MULT));
+        get().damageEnemy(e.id, dmg, false, false, true);
+        get().spawnDamageNumber(ecx, e.y, dmg, true);
+        get().spawnBurst(ecx, ecy, '#a855f7', 10);
+      } else {
+        const killed = get().damageEnemy(e.id, e.health + 1, false, false, true); // 即死(フィニッシュ波及)
+        if (killed) {
+          get().spawnBurst(ecx, ecy, '#a855f7', 14);
+          get().dropEnemyXp(e, ecx, ecy, 'pickup-xp-reaper');
+        }
+      }
+    }
+  }
+  const shockLv = skillLevel(player, 'execution-shock');
+  if (shockLv) {
+    const { radius, pct } = executionShockParams(shockLv);
+    const dmg = Math.max(1, Math.round(baseMeleeDamage * pct));
+    const r2 = radius * radius;
+    get().spawnRing(pcx, pcy, 8, radius, 'rgba(249,115,22,0.85)', 4, 320);
+    get().spawnBurst(pcx, pcy, '#f97316', 16);
+    get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(249,115,22,', 320);
+    for (const e of get().enemies) {
+      if (e.type === 'reaper' && !e.reaperChaser) continue;
+      if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象外
+      const ecx = e.x + e.width / 2;
+      const ecy = e.y + e.height / 2;
+      const dx = ecx - pcx, dy = ecy - pcy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > r2) continue;
+      const killedE = get().damageEnemy(e.id, dmg, true); // 爆風系と同じくボス系には非致死
+      get().spawnDamageNumber(ecx, e.y, dmg, false);
+      if (!killedE) {
+        const dist = Math.max(0.001, Math.sqrt(d2));
+        get().knockbackEnemy(e.id, dx / dist, dy / dist); // KB共通(既定値=通常のノックバック)
+      } else {
+        get().spawnBurst(ecx, ecy, '#f97316', 10);
       }
     }
   }
@@ -3768,6 +3821,12 @@ interface GameState {
   skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string; visual?: 'ice' | 'bone' }[];
   // 火炎瓶(molotov)が設置した地面の火だまり。lifetime/DoTは tickGroundFires が処理、描画は pixiScene が直読み。
   groundFires: GroundFire[];
+  // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘。lifetime/DoTは tickBloodSpikes が
+  // 処理、描画は pixiScene が直読み(groundFiresと同じ流儀)。
+  bloodSpikes: BloodSpike[];
+  // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショット(gravity-shot)のキル時爆縮。lifetime/吸引は
+  // tickGravityWells が処理(判定なし=見た目のみ・分類②)。
+  gravityWells: GravityWell[];
   // ジブリルのランタン攻撃の紫の単発火(プレイヤー被弾)。判定/寿命は useGameLoop、描画は pixiScene が直読み。
   bossFires: BossFire[];
   // §6.28-19(バッチM63): アクラシエルの結晶の槍(設置→2秒後に円形AoEへ一度だけ起爆)。
@@ -4063,8 +4122,17 @@ interface GameState {
   // 寿命の回収は useGameLoop(pruneFlares)、描画は pixiScene が直読み。ダメージ無し。
   flareGunFlares: FlareGunFlare[];
   setFlareGunFlares: (flares: readonly FlareGunFlare[]) => void; // useGameLoop が pruneFlares の結果を反映するだけ
-  spawnGroundFire: (x: number, y: number, ghostId?: string) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー)
+  spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
+  // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)の燃焼DoT。命中した敵個体が持つ
+  // burnUntil/burnDpsTickを毎フレーム消化する(groundFiresとは別チャンネル=床ではなく敵に付く状態異常)。
+  tickBurningEnemies: () => void;
+  // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘。groundFireと同じ流儀。
+  spawnBloodSpike: (x: number, y: number) => void;
+  tickBloodSpikes: () => void;
+  // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショット(gravity-shot)のキル時爆縮(0.4s・引き寄せのみ・判定なし)。
+  spawnGravityWell: (x: number, y: number, radius: number) => void;
+  tickGravityWells: () => void;
   spawnBossFire: (x: number, y: number, spawnAt: number, activateAt: number, expireAt: number) => void; // ジブリルの紫の単発火を1つ設置(useGameLoopから呼ぶ)
   setBossFires: (fires: BossFire[]) => void;                   // ジブリル火の配列を差し替え(useGameLoopのtickが枝刈り/被弾処理後に反映)
   spawnAcrasielSpear: (x: number, y: number, angle: number, bornAt: number, fireAt: number, damage: number, enemyId: string) => void; // §6.28-19: 結晶の槍を1本設置(angelBossTick.tsから呼ぶ)
@@ -4166,7 +4234,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null) => boolean;
+  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number) => boolean; // postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -4606,6 +4674,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     skills: [],
     skillLevels: {},
     fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0, slasherQueuedTap: false,
+    bloodTreadNextAt: 0, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の次の棘設置可能gameTime
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
@@ -4635,6 +4704,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   skadiIceMarkers: [],
   skadiIceBlades: [],
   groundFires: [],
+  bloodSpikes: [],
+  gravityWells: [],
   bossFires: [],
   acrasielSpears: [],
   gateActive: false,
@@ -6282,12 +6353,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
   setFirstAidKitState: (state) => set({ firstAidKitState: state }),
 
-  spawnGroundFire: (x, y, ghostId) => {
+  spawnGroundFire: (x, y, ghostId, radius) => {
     set(state => ({
       groundFires: [...state.groundFires, {
         id: `gfire-${groundFireSeq++}`, x, y, createdAt: state.gameTime,
         // v0.25.2563: 置いた主語(未指定=プレイヤー=従来と1bit同じ)。
         ...(ghostId !== undefined ? { ownerGhostId: ghostId } : {}),
+        // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)Lv3の炎床(大)専用の半径上書き。
+        // 未指定=molotovの半径のまま(従来と1bit同じ)。
+        ...(radius !== undefined ? { radius } : {}),
       }],
     }));
   },
@@ -6334,7 +6408,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (gameTime - (e.lastFireHitAt ?? -Infinity) < MOLOTOV_DOT_INTERVAL_MS) continue;
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
-        if (isEnemyInGroundFire(ecx, ecy, ownerFires, MOLOTOV_FIRE_RADIUS * gfExMult)) {
+        if (isEnemyInGroundFire(ecx, ecy, ownerFires, MOLOTOV_FIRE_RADIUS, gfExMult)) {
           alreadyHit.add(e.id);
           hits.push({ id: e.id, x: ecx, y: ecy, dmg: gfDotDmg });
         }
@@ -6352,6 +6426,110 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().damageEnemy(h.id, h.dmg);
       get().spawnDamageNumber(h.x, h.y, h.dmg);
     }
+  },
+
+  // SKILL_BUILD_REDESIGN.md §28(B7) スキル: 延焼弾(incendiary-round)の燃焼DoT。命中した敵個体
+  // (burnUntil/burnDpsTick)を250ms(INCENDIARY_BURN_TICK_MS=molotovのDOT_INTERVALと揃えた既存踏襲)
+  // ごとに消化する。既存のdamageEnemyを再利用=キル報酬/演出/統計は他の攻撃経路と揃う。
+  tickBurningEnemies: () => {
+    const { enemies, gameTime } = get();
+    const hits: { id: string; x: number; y: number; dmg: number }[] = [];
+    for (const e of enemies) {
+      if (e.burnUntil === undefined || gameTime >= e.burnUntil) continue;
+      if (gameTime - (e.lastBurnTickAt ?? -Infinity) < INCENDIARY_BURN_TICK_MS) continue;
+      const dps = e.burnDpsTick ?? 0;
+      if (dps <= 0) continue;
+      hits.push({ id: e.id, x: e.x + e.width / 2, y: e.y, dmg: dps });
+    }
+    if (hits.length === 0) return;
+    set(state => ({
+      enemies: state.enemies.map(e => hits.some(h => h.id === e.id) ? { ...e, lastBurnTickAt: gameTime } : e),
+    }));
+    for (const h of hits) {
+      get().damageEnemy(h.id, h.dmg);
+      get().spawnDamageNumber(h.x, h.y, h.dmg);
+    }
+  },
+
+  // SKILL_BUILD_REDESIGN.md §28(B7) スキル: 血の履帯(blood-treads) = 移動軌跡に棘を残す。
+  // groundFires(molotov)と同じ「set()で置く→毎フレームtickで寿命切れ回収+DoT」の流儀。
+  // 判定を持つ床=分類①(判定に絵を揃える・大きくしない・§28-2)。プレイヤー専用。
+  spawnBloodSpike: (x, y) => {
+    set(state => ({
+      bloodSpikes: [...state.bloodSpikes, { id: `bspike-${bloodSpikeSeq++}`, x, y, createdAt: state.gameTime }],
+    }));
+  },
+  tickBloodSpikes: () => {
+    const { bloodSpikes, gameTime, enemies, player } = get();
+    if (bloodSpikes.length === 0) return;
+    const lv = skillLevel(player, 'blood-treads');
+    const { durationMs, dps } = bloodTreadsParams(lv);
+    const aliveSpikes = bloodSpikes.filter(s => gameTime < s.createdAt + durationMs);
+    const hits: { id: string; x: number; y: number; dmg: number }[] = [];
+    if (dps > 0 && aliveSpikes.length > 0) {
+      const r2 = BLOOD_TREADS_RADIUS_PX * BLOOD_TREADS_RADIUS_PX;
+      for (const e of enemies) {
+        if (gameTime - (e.lastSpikeHitAt ?? -Infinity) < BLOOD_TREADS_TICK_MS) continue;
+        const ecx = e.x + e.width / 2;
+        const ecy = e.y + e.height / 2;
+        let inSpike = false;
+        for (const s of aliveSpikes) {
+          const dx = ecx - s.x, dy = ecy - s.y;
+          if (dx * dx + dy * dy <= r2) { inSpike = true; break; }
+        }
+        if (inSpike) hits.push({ id: e.id, x: ecx, y: ecy, dmg: dps });
+      }
+    }
+    if (aliveSpikes.length !== bloodSpikes.length || hits.length > 0) {
+      set(state => ({
+        bloodSpikes: aliveSpikes,
+        enemies: hits.length > 0
+          ? state.enemies.map(e => hits.some(h => h.id === e.id) ? { ...e, lastSpikeHitAt: gameTime } : e)
+          : state.enemies,
+      }));
+    }
+    for (const h of hits) {
+      get().damageEnemy(h.id, h.dmg);
+      get().spawnDamageNumber(h.x, h.y, h.dmg);
+    }
+  },
+
+  // SKILL_BUILD_REDESIGN.md §28(B7) スキル: グラビティショット(gravity-shot) = キル時に一定確率で
+  // 爆縮(引き寄せ120px/s×0.4s)を発生させる。判定なし(ダメージ無し・純粋な引き寄せ)=絵は分類②
+  // (派手に)。alchemyのレア吸引(summonUtils.ts)と同じknockbackVx/Vyベースの吸引を流用。
+  spawnGravityWell: (x, y, radius) => {
+    set(state => ({
+      gravityWells: [...state.gravityWells, { id: `gwell-${gravityWellSeq++}`, x, y, radius, createdAt: state.gameTime }],
+    }));
+  },
+  tickGravityWells: () => {
+    const { gravityWells, gameTime, enemies } = get();
+    if (gravityWells.length === 0) return;
+    const aliveWells = gravityWells.filter(w => gameTime < w.createdAt + GRAVITY_SHOT_PULL_MS);
+    if (aliveWells.length !== gravityWells.length) set({ gravityWells: aliveWells });
+    if (aliveWells.length === 0) return;
+    let changed = false;
+    const nextEnemies = enemies.map(e => {
+      if (isCorpse(e) || (e.type === 'reaper' && !e.reaperChaser)) return e;
+      const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+      let best: GravityWell | null = null;
+      let bestD2 = Infinity;
+      for (const w of aliveWells) {
+        const dx = w.x - ecx, dy = w.y - ecy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= w.radius * w.radius && d2 < bestD2) { bestD2 = d2; best = w; }
+      }
+      if (!best) return e;
+      const dist = Math.max(0.001, Math.sqrt(bestD2));
+      changed = true;
+      return {
+        ...e,
+        knockbackVx: ((best.x - ecx) / dist) * GRAVITY_SHOT_PULL_SPEED,
+        knockbackVy: ((best.y - ecy) / dist) * GRAVITY_SHOT_PULL_SPEED,
+        knockbackUntil: gameTime + 120,
+      };
+    });
+    if (changed) set({ enemies: nextEnemies });
   },
 
   // スキル 救難信号: applyRescueSignalProc の発動判定を受けて一過性アライを1体積む。
@@ -7824,7 +8002,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnRing(pcx, pcy, 10, radius, 'rgba(56,189,248,0.85)', 5, 360);
         get().spawnBurst(pcx, pcy, '#38bdf8', 18);
         get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(56,189,248,', 360);
-        const kbMult = (KNOCKBACK_SPEED * 2) / BULLET_KNOCKBACK_SPEED;
+        // 社長指示v0.25.3270: ノックバックは実距離50px基準に統一(knockbackSpeedFor(50,280)/BULLET_KNOCKBACK_SPEED)。
+        const kbMult = knockbackSpeedFor(SKILL_BLAST_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED;
         for (const e of get().enemies) {
           if (e.type === 'reaper' && !e.reaperChaser) continue;
           if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 反射神経の反撃爆発の対象から除外
@@ -8881,7 +9060,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null) => {
+  damageEnemy: (id, amount, _nonLethalBoss = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null, postureImpactMult = 1) => {
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
@@ -8892,6 +9071,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     let appliedDamage = 0; // §6.21 M46計測用: 実際に加算された生ダメージ(HP床クランプ前・紅き夜補正後=既存damageDealtと同値)
     let thrallCandidate: Enemy | null = null; // §6.24 M48「使役」: 倒した通常敵(20%抽選はset後に行う)
     let bossClearedType: EnemyType | null = null; // BOT_AND_GHOST.md §2.10 G5: 撃破ボスの型(set後にnotifyBossClear)
+    // SKILL_BUILD_REDESIGN.md §28(B7): キルの瞬間に判定するスキル2種(poi-thrallと同じ「set()内で
+    // 候補だけ拾い、実際の抽選/適用はset()の外側で行う」流儀)。
+    let killedAt: { x: number; y: number } | null = null; // 吸血/グラビティショットの発生位置(set後に判定)
 
     set(state => {
       const { enemies, gameStats } = state;
@@ -8931,7 +9113,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, newHealth, viaMeleeFinish);
       // 裏ボス: クリを規定回数当てると完全気絶(紫)。倒しきれなかったクリのみカウント。
       const resolvedImpact = postureImpact ?? ((crit && damageChannel === 'gun' && hateSource === 'player') ? 'gun-crit' : null);
-      const critBump = (resolvedImpact && newHealth > 0) ? applyBossPostureDamage(enemy, resolvedImpact, state.gameTime) : null;
+      const critBump = (resolvedImpact && newHealth > 0) ? applyBossPostureDamage(enemy, resolvedImpact, state.gameTime, postureImpactMult) : null;
       if (critBump?.triggered) bossFullStunAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
       // CRIT-UNIFY §9.2(中央適用): クリがボスに入った時の移動半減(bossSlowUntil)をここで一括適用する。
       // 呼び出し元(銃弾/per-bossカウンター/ゴーストカウンター等)はcrit=trueを渡すだけでよく、個別に
@@ -8962,6 +9144,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // v0.25.3029: グレン形態1は撃破記録に通知しない(melee経路と同じゲート・監査指摘)。
         bossClearedType = (enemy.type === 'giantbat' && enemy.glenForm === 1) ? null : enemy.type; // BOT_AND_GHOST.md §2.10 G5: 撃破通知用(set後にnotifyBossClear。非対象typeはnotifyBossClear内で無視)
         if (enemy.type === 'reaper') reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
+        // SKILL_BUILD_REDESIGN.md §28(B7): 吸血/グラビティショットはキル全般が対象(仕様上ボス/宿敵の
+        // 除外指定なし=poi-thrallと違い型を絞らない)。位置だけ拾い、抽選/適用はset()の外側で行う。
+        killedAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
         if (enemy.isNamed) namedFoeKilled = enemy; // §5.14 M13: 宿敵討伐
         // §6.24 M48「使役」: 通常敵(ボス/裏ボス/ネームド/エリートは対象外=D1)を倒した時だけ候補にする。
         // 実際の20%抽選/先着1体維持(D3)は set() の外側(post section)でownedの現在値を見て行う。
@@ -9072,6 +9257,34 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnGlow(tx, ty, GLOW_R_S, 'rgba(56,189,248,', 360);
         get().spawnBurst(tx, ty, '#38bdf8', 18);
         get().spawnCallout(tx, ty - 20, '使役！', '#38bdf8');
+      }
+    }
+
+    // SKILL_BUILD_REDESIGN.md §28(B7) スキル: 吸血 = キルの20%(率固定)でHP+2/+4/+6(Lv)。
+    // 絵は分類②(既存の被回復FXで十分・新規描画は足さない)。
+    if (killedAt) {
+      const vampLv = skillLevel(get().player, 'vampire');
+      const heal = rollVampireHeal(vampLv);
+      if (heal > 0) {
+        set(state => ({
+          player: { ...state.player, health: Math.min(state.player.maxHealth, state.player.health + heal) },
+        }));
+        const p = get().player;
+        get().spawnCallout(p.x + p.width / 2, p.y - 20, `+${heal}`, '#4ade80');
+      }
+    }
+
+    // SKILL_BUILD_REDESIGN.md §28(B7) スキル: グラビティショット = キルの20/30/40%(Lv)で爆縮
+    // (引き寄せ120px/s×0.4s・半径100/120/140)。判定なし=絵は分類②(派手に・既存プールで)。
+    if (killedAt) {
+      const gravLv = skillLevel(get().player, 'gravity-shot');
+      const well = rollGravityShotWell(gravLv);
+      if (well) {
+        const p = killedAt as { x: number; y: number };
+        get().spawnGravityWell(p.x, p.y, well.radius);
+        get().spawnRing(p.x, p.y, 6, well.radius, 'rgba(168,85,247,0.75)', 3, 420);
+        get().spawnBurst(p.x, p.y, '#a855f7', 16);
+        get().spawnGlow(p.x, p.y, GLOW_R_M, 'rgba(168,85,247,', 420);
       }
     }
 
@@ -11351,7 +11564,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // フラフラ(既存)は**この上に**乗るので、蛇行の意図は変わらない。
           const zTraits = chaffTraits(enemy.id);
           const zSpeed = enemy.speed * ZOMBIE_SPEED_MULT * (phase === 'zrush' ? ZOMBIE_RUSH_SPEED_MULT : 1)
-            * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, distance);
+            * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, distance) * iceSlowMult(enemy, gameTime);
           // フラフラ: 進行方向に直交する成分を時間で揺らす(個体ごとに位相をずらす)。
           let h = 0;
           for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;
@@ -11367,7 +11580,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         // ボスのクリ半減(v0.25.2422)。ボス以外・非半減中は1なので通常敵の速度は完全に不変。
         const speed = (enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed) * rnSpeedMult * screamSpeedMult
-          * bossSlowMult(enemy, gameTime);
+          * bossSlowMult(enemy, gameTime) * iceSlowMult(enemy, gameTime);
         let tvx = (dx / distance) * speed;
         let tvy = (dy / distance) * speed;
         // ★v0.25.3176(社長指示「雑魚敵の動きが単調」・案4+案3): チャフ(=ここを通るのは bat/skeleton。
@@ -15034,6 +15247,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           skills: runSkills,
           skillLevels: runSkillLevels,
           fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0, slasherQueuedTap: false,
+    bloodTreadNextAt: 0, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の次の棘設置可能gameTime
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
@@ -15088,10 +15302,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         homingLocks: [],
         shadowClone: null,
         groundFires: [],
-  bossFires: [],
-  acrasielSpears: [],
-  gateActive: false,
-  deepZoneLocked: false,
+        bloodSpikes: [],
+        gravityWells: [],
+        bossFires: [],
+        acrasielSpears: [],
+        gateActive: false,
+        deepZoneLocked: false,
         rescueAllies: [],
         thrownBags: [],
         molotovCycle: null,

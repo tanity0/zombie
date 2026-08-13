@@ -46,6 +46,7 @@ import {
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, STUN_DURATION_MS,
   GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_GLIDE_HALF_WIDTH,
   bossCritCdMult,
+  REFLECT_DAMAGE_MULTIPLIER, // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王の倍率計算に使う基準値
 } from '../store/gameStore';
 import { distToSegment } from './levelUpGate';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
@@ -54,6 +55,8 @@ import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD
 import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出
 import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
 import { applyBossPostureDamage } from './bossPosture'; // v0.25.2946: 裏ボス体当たりの受け流し(体幹削り)
+// SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王(barrage-king)=反射弾のダメ・体勢削り倍率+貫通1。
+import { barrageKingMult, BARRAGE_KING_PIERCE } from './skillEffectsB7';
 
 // v0.25.2946(社長裁定「体勢値は削ってあげたら?」): 裏ボス系の**追跡中の体当たり**への受け流し。
 // `?bossparry=0` で無効(従来=カウンター窓中でも接触ダメージ素通し)へ完全復帰。
@@ -507,7 +510,19 @@ const applyCounterReflect = (
   tunables: Pick<CombatTunables, 'grenadeBlastRadius' | 'grenadeBlastDamageMult'>,
   ghostId?: string,
 ): void => {
-  useGameStore.getState().reflectProjectile(projId, undefined, ghostId !== undefined ? GHOST_REFLECT_WEAPON_KEY : undefined);
+  // SKILL_BUILD_REDESIGN.md §28(B7/§28-1) スキル: 弾幕の王(barrage-king) = 反射弾のダメ・体勢削り
+  // ×1.5/1.75/2.0(全Lv)。既存の反射倍率(REFLECT_DAMAGE_MULTIPLIER)に加算(乗算)する。
+  const bkLv = skillLevel(subject, 'barrage-king');
+  const reflectMult = bkLv ? REFLECT_DAMAGE_MULTIPLIER * barrageKingMult(bkLv) : undefined;
+  useGameStore.getState().reflectProjectile(projId, reflectMult, ghostId !== undefined ? GHOST_REFLECT_WEAPON_KEY : undefined);
+  // §28-1追加: 弾幕の王は反射弾に貫通1を持たせ(全Lv共通)、体勢削り倍率も弾へ載せて命中時に運ぶ
+  // (postureMult。damageEnemyの呼び出し側=useGameLoopの命中処理がprojectile.postureMultを読む)。
+  if (bkLv) {
+    const postureMult = barrageKingMult(bkLv);
+    useGameStore.setState(state => ({
+      projectiles: state.projectiles.map(p => p.id === projId ? { ...p, pierce: BARRAGE_KING_PIERCE, postureMult } : p),
+    }));
+  }
   // スキル: ボムカウンター = 反射弾がランチャー弾化し、命中で GRENADE_* 爆発。
   const bcLv = skillLevel(subject, 'bomb-counter');
   if (bcLv) {

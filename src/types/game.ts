@@ -231,6 +231,9 @@ export interface Player extends DashLocomotionState {
   // 装備3点から集計した効果(消費側はここを読む)。装備変更/run開始時のみ再計算。
   // 最大体力は player.maxHealth へ加算ベイクするためここには含めない(二重計上防止)。
   equipBonus: EquipBonus;
+  // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の次の棘設置が許可されるgameTime。
+  // molotovのcycle/cooldown系と同じ「本人固定」の状態フィールド(0=即設置可)。
+  bloodTreadNextAt: number;
 }
 
 /**
@@ -786,6 +789,17 @@ export interface Enemy {
   // 雑魚(非ボス)専用のゴーストヘイト終了時刻(gameTime基準)。damageEnemyがhateSource='ghost'の
   // 被弾のたびに更新し、resolveEnemyTargetが期限内ならゴーストを狙わせる。ボスはG2.5のバケツ側(上)。
   ghostHateUntil?: number;
+  // SKILL_BUILD_REDESIGN.md §28(B7): アイスショット(ice-shot)の鈍足(ボスは対象外・§28-2)。
+  // gameTime < iceSlowUntil の間、移動速度に (1 - iceSlowPct) を掛ける(updateEnemies)。
+  iceSlowUntil?: number;
+  iceSlowPct?: number;
+  // B7: 延焼弾(incendiary-round)の燃焼DoT。gameTime < burnUntil の間、250ms tickでburnDpsTick分の
+  // ダメージを受ける(tickBurningEnemies・gameStore.ts)。lastBurnTickAtがそのスロットル打刻。
+  burnUntil?: number;
+  burnDpsTick?: number;
+  lastBurnTickAt?: number;
+  // B7: 血の履帯(blood-treads)の棘(tickBloodSpikes)のDoTスロットル打刻(250ms・molotovのlastFireHitAtと同じ流儀)。
+  lastSpikeHitAt?: number;
 }
 
 // 'ghost-ally' = BOT_AND_GHOST.md G2(ゴースト助っ人・デバッグ召喚 `?ghost=1`)。**'ghost-ally'という
@@ -1071,6 +1085,33 @@ export interface GroundFire {
   // GHOST-SUBS-FINAL(v0.25.2563): 置いた主語(守護霊のsummon.id)。undefined=プレイヤー。
   // 世界に置かれる物の配列は1本のまま(センサー地雷と同じ流儀)で、ダメージ倍率の評価だけ主語ごとに行う。
   ownerGhostId?: string;
+  // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)Lv2/3の炎床は「小・モロトフ資産流用」
+  // (§16-5)なので、molotovの火と**同じ配列/同じ描画/同じ寿命・DoT定数**に相乗りする。
+  // 未指定=モロトフの半径(MOLOTOV_FIRE_RADIUS)のまま。指定時(Lv3の「炎床(大)」)だけ個体ごとに
+  // 半径を上書きする(判定=絵は分類①なので、pixiScene側もradiusに比例して見た目を追従させる)。
+  radius?: number;
+}
+
+// SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)が移動軌跡に残す棘。groundFire(molotov)と
+// 同じ「set()で置く→毎フレームtickで寿命切れ回収+DoT」の流儀(1本の配列・判定を持つ床=分類①)。
+// プレイヤー専用(molotovの「本人固定」と同じ扱い。守護霊対応は★未決)。
+export interface BloodSpike {
+  id: string;
+  x: number;
+  y: number;
+  createdAt: number; // gameTime(ms)
+}
+
+// SKILL_BUILD_REDESIGN.md §28(B7): グラビティショット(gravity-shot)のキル時爆縮。中心固定の
+// 「引き寄せ点」で、alchemyのレア吸引(summonUtils.ts)と同じknockbackVx/Vyベースの吸引を
+// GRAVITY_SHOT_PULL_MS(0.4s)だけ適用する(判定なし=絵は分類②で派手に。CLAUDE.md負荷ルール=
+// event-onlyの短命オブジェクトなので無料に近い)。
+export interface GravityWell {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  createdAt: number; // gameTime(ms)
 }
 
 // ジブリルのランタン攻撃が足元に落とす紫の単発火(社長指示v0.25.1664)。groundFire(molotov)と違い
@@ -1160,8 +1201,8 @@ export type SkillKey =
   | 'magnet' | 'last-magazine' | 'warm-up'
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ専用(ガチャからは絶対に出ない・GACHA_EXCLUDED_SKILLS)。
   | 'poi-bombing' | 'poi-guard' | 'poi-thrall'
-  // SKILL_BUILD_REDESIGN.md §14(社長承認2026-08-13)・新スキル9種。B3=台帳掲載のみ(先行掲載)。
-  // ドラフト・ガチャの両方から除外して眠らせている(NEW_SLEEPING_SKILLS・効果配線はB7)。
+  // SKILL_BUILD_REDESIGN.md §14(社長承認2026-08-13)・新スキル9種。§28(B7)で効果配線+
+  // スターター入り済み(眠らせる仕組みNEW_SLEEPING_SKILLSは現在空配列)。
   | 'big-bullet' | 'ice-shot' | 'vampire' | 'incendiary-round' | 'execution-shock'
   | 'gravity-shot' | 'echo-shot' | 'barrage-king' | 'blood-treads';
 
@@ -1344,6 +1385,12 @@ export interface Projectile {
   // スキル弾フラグ。
   // ricochet: リコシェスキルで生成した跳弾。true の弾はもう跳ねない(二次跳弾を禁止)。
   ricochet?: boolean;
+  // SKILL_BUILD_REDESIGN.md §28(B7): エコーショット(echo-shot)が複製した弾か。複製弾自身のクリ命中
+  // では再複製しない(無限連鎖防止・跳弾のricochetフラグと同じ役割)。
+  echoed?: boolean;
+  // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王(barrage-king)が反射弾に載せる体勢削り倍率
+  // (×1.5/1.75/2.0)。damageEnemyのpostureImpactMultへそのまま渡す(既定1=無改変)。
+  postureMult?: number;
   // explodeOnHit: 命中時に小爆発を起こす弾(ファイアシューター/ボムカウンター)。
   // explodeRadius/explodeDamageMult で爆発半径・周囲ダメージ倍率を指定。
   explodeOnHit?: boolean;

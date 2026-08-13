@@ -48,6 +48,7 @@ import {
   bossSlowMult,
   bossCritCdMult,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
+  knockbackSpeedFor, BULLET_KNOCKBACK_SPEED, SKILL_BLAST_KB_PX, // 社長指示v0.25.3270: 反射神経/ボムカウンターの実距離50pxノックバック
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   // v0.25.2514(GHOST-BUILD-1): 近接/カウンター反撃の唯一の式(プレイヤーと守護霊で共有)。
   meleeSwingBaseDamage, meleeHitCritChance, counterReplyDamage,
@@ -102,6 +103,17 @@ import {
   applyGlenFloorDamage, applyGhostAllyCapsuleHit, applyGhostBossParry,
   type CombatEffects, type CombatTunables,
 } from '../utils/combatTick';
+// SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の判定値・確率テーブル(純関数・rng注入でテスト済み)。
+// vampire/gravity-shot/execution-shock/blood-treadsの判定はgameStore.ts側(damageEnemy/
+// applyMeleeFinishSkillSpread/tickBloodSpikesという既存の合流点)に乗せてあるので、ここでは
+// 弾(big-bullet相当)・命中(ice-shot/incendiary-round/echo-shot)・移動軌跡の設置口だけを使う。
+import {
+  iceShotSlowParams, ICE_SHOT_SHARD_COUNT, ICE_SHOT_SHARD_DMG_MULT,
+  incendiaryBurnParams, INCENDIARY_FLOOR_CD_MS,
+  rollEchoShot,
+  BLOOD_TREADS_SPAWN_INTERVAL_MS,
+  BOMB_COUNTER_SELF_BLAST_RADIUS_MULT, // §28-1: ボムカウンターの自機中心爆発を大爆発に(半径×1.8)
+} from '../utils/skillEffectsB7';
 // v0.25.2480(★未決1解消): 守護霊カウンターの請求(スイング側が積み、per-bossハンドラが消費)。
 // GHOST_FX_SHAKE_ENABLED(ゴースト演出のシェイク一括ゲート+ズーム/停止/スロー禁止の掟)もここへ移設。
 import {
@@ -1155,6 +1167,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const flareReadyRef = useRef(true); // フレアガンのCD明け検出(同上・ブーメラン型の一瞬通知)
   const playerKillTimesRef = useRef<number[]>([]); // プレイヤーの撃破時刻(無双判定の直近ウィンドウ)
   const fireJetEnemyAtRef = useRef<Map<string, number>>(new Map()); // 敵ID→直近の背中火spawn時刻(ショットガン等の多弾を1本に間引く)
+  // SKILL_BUILD_REDESIGN.md §28(B7)★未決: 延焼弾(incendiary-round)Lv2/3の炎床は「命中のたび」に
+  // 無条件で置くと連射武器で無制限に湧く(CLAUDE.mdの負荷ルール=bounded/event-onlyに反する)。
+  // 仕様に数値指定が無いため、fireJetEnemyAtRef等と同じ「直近spawn時刻を覚えて間引く」流儀の
+  // 裏CD(INCENDIARY_FLOOR_CD_MS)で安全側に倒す。
+  const incendiaryFloorNextAtRef = useRef(0);
   const benkeiReadyRef = useRef(true); // 弁慶: 再発動CD明け検出(false→true で「閃き」フラッシュ)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
@@ -7092,6 +7109,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // SKILL_BUILD_REDESIGN.md §28(B7) スキル: 血の履帯(blood-treads) = 移動軌跡に棘を残す
+        // (幅24px・tick250ms・§16-5)。molotovと同じ「本人が移動中のみ足元へ置く」型(プレイヤー固定。
+        // ゴースト対応は★未決)。★未決: 設置間隔は仕様に数値指定が無いため、tick(250ms)を流用して
+        // 1本化した(BLOOD_TREADS_SPAWN_INTERVAL_MS)。
+        if (!inReturnCircle && hasSkill(subWeaponPlayer, 'blood-treads') && subWeaponPlayer.isMoving) {
+          if (gameTime >= subWeaponPlayer.bloodTreadNextAt) {
+            const footX = ownerCenterX(playerOwner);
+            const footY = ownerFootY(playerOwner);
+            useGameStore.getState().spawnBloodSpike(footX, footY);
+            useGameStore.setState(state => ({
+              player: { ...state.player, bloodTreadNextAt: gameTime + BLOOD_TREADS_SPAWN_INTERVAL_MS },
+            }));
+          }
+        }
+
         // 援護射撃(support-sniper): 移動中のみCDが進み、CD毎(Lv1=6s/Lv2=5s/Lv3=4s・v0.25.1726調整)にNPC1人が
         // 「狙う敵と反対側の画面縁」からスライドイン→プレイヤーと同性能のスナイパー弾(rifle-t2・
         // 既存プレイヤー弾パイプライン)を最寄り敵へ発射→向きを変えず後退して消える(PACING_PUZZLE.md §6.5 M28)。
@@ -8488,6 +8520,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 火炎瓶(molotov): 設置済みの地面の火の寿命切れ回収 + 敵への接触DoTを毎フレーム更新
         // (設置自体は上の molotov ブロックが行う。ここは置いた後の面倒を見るだけ)。
         useGameStore.getState().tickGroundFires();
+        // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾の燃焼DoT/血の履帯の棘/グラビティショットの
+        // 爆縮吸引も同じ毎フレーム更新(設置・付与は各スキルの発火点=命中/キル/移動軌跡が行う。
+        // ここは寿命切れ回収+ダメージ/吸引の消化のみ)。
+        useGameStore.getState().tickBurningEnemies();
+        useGameStore.getState().tickBloodSpikes();
+        useGameStore.getState().tickGravityWells();
 
         // ジブリルのランタン火(紫の単発火): M26 Step3で angelBossTick.ts へ移設(挙動不変・ヘッドレス共用)。
         tickAngelBossFires(newGameTime, triggerPlayerDeath);
@@ -9467,9 +9505,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 'player'=「1つの財布」の側という扱い・本バッチのスコープ外)。
           const hateShotSource: HateSide = isGhostShot ? 'ghost' : 'player';
           // v0.25.3219(社長指示): カウンターで打ち返した弾(reflected)の命中は体勢ゲージを少し削る。
+          // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王が載せたpostureMult(既定1)をそのまま運ぶ。
           const enemyKilled = damageEnemy(
             enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource,
             projectile?.reflected ? 'reflect' : directPlayerGun && hitCrit ? 'gun-crit' : null,
+            projectile?.postureMult ?? 1,
           );
           // 護衛NPC/守護霊(ghost-gun・v0.25.2525で反射弾'ghost-reflect'も)の弾の被弾音も、発砲音と
           // 同じ距離減衰をかける(遠い味方の攻撃は被弾音も小さく/画面外は無音)。プレイヤー自身の弾は等倍(gain=1)。
@@ -9697,6 +9737,79 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 ricochet: true,
               });
               spawnBurst(ox, oy, '#fcd34d', 5);
+            }
+          }
+
+          // SKILL_BUILD_REDESIGN.md §28(B7) スキル: エコーショット = クリ時50/75/100%(Lv)で同方向・
+          // 同ダメの弾を複製して追加発射する。複製弾自身(echoed)は再複製しない(無限連鎖防止=
+          // ricochetフラグと同じ役割)。反射弾/爆発弾/グレネードは対象外(跳弾と同じ除外方針)。
+          const echoLv = skillLevel(skillPlayer, 'echo-shot');
+          if (
+            projectile && enemyForFx && hitCrit && !projectile.echoed && !projectile.reflected &&
+            !projectile.explodeOnHit && projectile.weaponKey !== GRENADE_WEAPON_KEY &&
+            echoLv && rollEchoShot(echoLv)
+          ) {
+            addProjectile({
+              ...projectile,
+              id: `proj-echo-${projectileId}-${Date.now()}`,
+              createdAt: Date.now(),
+              hitEnemies: [],
+              echoed: true,
+            });
+            spawnBurst(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2, '#67e8f9', 6);
+          }
+
+          // SKILL_BUILD_REDESIGN.md §28(B7) スキル: アイスショット = 命中した敵(ボス以外)を鈍足化。
+          // 絵の分類②(氷片)/判定のみ(鈍足自体)。鈍足はupdateEnemies(gameStore.ts)のiceSlowMultが読む。
+          const iceLv = skillLevel(skillPlayer, 'ice-shot');
+          if (iceLv && enemyForFx && !isBossType(enemyForFx.type) && dmg > 0) {
+            const iceSlow = iceShotSlowParams(iceLv);
+            const iceGameTime = gameTime;
+            useGameStore.setState(state => ({
+              enemies: state.enemies.map(e =>
+                e.id === enemyId ? { ...e, iceSlowUntil: iceGameTime + iceSlow.ms, iceSlowPct: iceSlow.pct } : e),
+            }));
+          }
+          // アイスショット: キル時に氷片3個(直前ヒットのdmgの0.3倍・全Lv共通)を放射状に飛ばす。
+          // 派手側(分類②)=既存の弾/バーストプールで安く描く(新規per-frame Graphicsなし)。
+          if (iceLv && enemyKilled && enemyForFx && !isBossType(enemyForFx.type)) {
+            const shardDmg = Math.max(1, Math.round(dmg * ICE_SHOT_SHARD_DMG_MULT));
+            const kx = enemyForFx.x + enemyForFx.width / 2, ky = enemyForFx.y + enemyForFx.height / 2;
+            for (let k = 0; k < ICE_SHOT_SHARD_COUNT; k++) {
+              const ang = (Math.PI * 2 * k) / ICE_SHOT_SHARD_COUNT + Math.random() * 0.5;
+              addProjectile({
+                id: `proj-iceshard-${enemyId}-${Date.now()}-${k}`,
+                x: kx - 4, y: ky - 4, width: 8, height: 8,
+                speed: 480,
+                damage: shardDmg,
+                direction: { x: Math.cos(ang), y: Math.sin(ang) },
+                weaponType: 'handgun', weaponKey: 'skill-ice-shot',
+                duration: 700, createdAt: Date.now(),
+                passthrough: false, hitEnemies: [], hostile: false, reflected: false,
+              });
+            }
+            spawnBurst(kx, ky, '#bae6fd', 14);
+            spawnBurst(kx, ky, '#e0f2fe', 8);
+            useGameStore.getState().spawnGlow(kx, ky, GLOW_R_S, 'rgba(125,211,252,', 260);
+          }
+
+          // SKILL_BUILD_REDESIGN.md §28(B7) スキル: 延焼弾 = 命中で燃焼(継続ダメージ)。Lv2から
+          // 着弾地点に炎床(小=モロトフ資産流用)/Lv3は炎床(大)。炎床は「判定を持つ床」=分類①
+          // (判定に絵を揃える・大きくしない=groundFires/molotovの資産に相乗りする・§28-2)。
+          const incLv = skillLevel(skillPlayer, 'incendiary-round');
+          if (incLv && enemyForFx && dmg > 0) {
+            const burn = incendiaryBurnParams(incLv);
+            const incGameTime = gameTime;
+            useGameStore.setState(state => ({
+              enemies: state.enemies.map(e =>
+                e.id === enemyId ? { ...e, burnUntil: incGameTime + burn.durationMs, burnDpsTick: burn.dps } : e),
+            }));
+            if (burn.floorRadius !== null && incGameTime >= incendiaryFloorNextAtRef.current) {
+              incendiaryFloorNextAtRef.current = incGameTime + INCENDIARY_FLOOR_CD_MS;
+              useGameStore.getState().spawnGroundFire(
+                enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2,
+                undefined, burn.floorRadius,
+              );
             }
           }
 
@@ -11473,6 +11586,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             12
           );
           // スキル: ボムカウンター = カウンター成立の瞬間にもプレイヤー中心で爆発ダメージ。
+          // SKILL_BUILD_REDESIGN.md §28-1(社長指示・全Lv): 自分中心爆発を大爆発に(半径×1.8=叩き台)。
           const bcLv2 = skillLevel(currentPlayer, 'bomb-counter');
           if (bcLv2) {
             const bcRadiusMult = [0, 1, 1.15, 1.3][bcLv2];
@@ -11480,7 +11594,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bcx = currentPlayer.x + currentPlayer.width / 2;
             const bcy = currentPlayer.y + currentPlayer.height / 2;
             const exMult = skillExplosionMult(currentPlayer);
-            const radius = GRENADE_BLAST_RADIUS * exMult * bcRadiusMult;
+            const radius = GRENADE_BLAST_RADIUS * exMult * bcRadiusMult * BOMB_COUNTER_SELF_BLAST_RADIUS_MULT;
             // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)をボムカウンター爆発にも乗算。
             const base = BOMB_COUNTER_BLAST_DAMAGE * exMult * bcDmgMult * (currentPlayer.equipBonus?.damageMult ?? 1) * skillOutgoingDamageMult(currentPlayer);
             spawnRing(bcx, bcy, 10, radius, 'rgba(251,146,60,0.85)', 5, 380);
@@ -11488,6 +11602,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(bcx, bcy, '#7f1d1d', 8);
             useGameStore.getState().spawnGlow(bcx, bcy, GLOW_R_S, 'rgba(251,146,60,', 380);
             playSfx('bomb');
+            // 社長指示v0.25.3270: 反射神経と揃えて実距離50pxノックバック(mult/maxStrength両方に同じ値=
+            // 既定cap3で頭打ちになる罠を回避。v0.25.3257の教訓)。
+            const bcKbMult = knockbackSpeedFor(SKILL_BLAST_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED;
             for (const e of useGameStore.getState().enemies) {
               if ((e.type === 'reaper' && !e.reaperChaser) || e.aiPhase === 'jump') continue; // 深奥チェイサーは対象・空中無敵は対象外
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
@@ -11495,8 +11612,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (dist > radius) continue;
               const falloff = 1 - dist / radius;
               const dmg = Math.max(1, Math.round(base * (0.55 + falloff * 0.45)));
-              damageEnemy(e.id, dmg, true); // 爆発=ボス系には非致死
+              const killedE = damageEnemy(e.id, dmg, true); // 爆発=ボス系には非致死
               spawnDamageNumber(ecx, e.y, dmg, false);
+              if (!killedE) {
+                const nrm = Math.max(0.001, dist);
+                useGameStore.getState().knockbackEnemy(e.id, (ecx - bcx) / nrm, (ecy - bcy) / nrm, bcKbMult, bcKbMult);
+              }
             }
             // §6.10 M33③: ボマー = ボムカウンター爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
             if (hasSkill(currentPlayer, 'bomber')) {

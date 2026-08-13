@@ -184,7 +184,11 @@ describe('B: 気絶敵への近接フィニッシュ(台帳§3-3)', () => {
     const r = useGameStore.getState().applyGhostMeleeFinisher(GID, 'e1');
     expect(r?.kind).toBe('execute');
     expect(r?.killed).toBe(true);
-    expect(useGameStore.getState().enemies.find(e => e.id === 'e1')).toBeUndefined();
+    // v0.25.3264(KILL吹き飛び): 撃破後は即消滅ではなく約0.28秒「死体」(corpseUntil)として残って
+    // 吹き飛んでから消える。処刑=killedの検証はr.killedで済んでおり、盤面上は死体化を確認する。
+    const executed = useGameStore.getState().enemies.find(e => e.id === 'e1');
+    expect(executed === undefined || executed.corpseUntil !== undefined).toBe(true);
+    if (executed) expect(executed.health).toBe(0);
   });
 
   it('気絶したボスは即死せず近接×5+気絶解除+浮き(プレイヤーのナイフと同じ値)', () => {

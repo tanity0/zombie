@@ -57,6 +57,10 @@ const SKILLS = new Set([
   'gold-rush', 'time-keeper', 'ghost-shooter', 'dog-run', 'counter-master', 'slasher', 'attack-shooter',
   'runner', 'seeker', 'scrap-builder', 'magnet', 'last-magazine', 'warm-up',
   'poi-bombing', 'poi-guard', 'poi-thrall',
+  // SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の効果配線+スターター入り。ホワイトリストへ追加を
+  // 忘れると霊のスキルが黙って落ちる(§28-2点3)。
+  'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
+  'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
 ]);
 const SUB_WEAPONS = new Set([
   'heavy-grenade', 'marksman-trap', 'striker-quick-mag', 'striker-hunting', 'dog', 'katana', 'murasame',
@@ -113,8 +117,9 @@ const sanitizeSnapshot = (raw) => {
     speed: clamp(raw.speed, 1, 1000),
     level: int(raw.level, 1, 250),
     gunKeys,
-    // SKILL_BUILD_REDESIGN.md §18-1の6: 初期所持9種(§12-3★2)に合わせサーバ上限8→9。
-    skills: listOf(raw.skills, SKILLS, 9),
+    // SKILL_BUILD_REDESIGN.md §28-2点3(B7): スターター18種(旧9+新9)+同行者枠3=最大21種所持に
+    // なったため、サーバ上限を9→21+余裕(24)へ引き上げる(据え置くと霊のスキルが黙って落ちる)。
+    skills: listOf(raw.skills, SKILLS, 24),
     skillLevels: sanitizeLevelMap(raw.skillLevels, SKILLS, 3),
     equipment: {
       body: sanitizeEquipmentId(equipmentRaw.body, 'body'),

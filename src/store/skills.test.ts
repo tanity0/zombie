@@ -20,8 +20,10 @@ import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
   gachaPullCost, gachaPullCostFor, GACHA_PRICE_STEPS, GACHA_PULL_COST_CAP, GACHA_REFUND_BY_RARITY,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel,
   rollGachaSkill, GACHA_EXCLUDED_SKILLS, SKILLS, RETIRED_SKILLS,
-  DEFAULT_OWNED_SKILLS, ensureDefaultOwnedSkills } from '../data/campaign';
+  DEFAULT_OWNED_SKILLS, ensureDefaultOwnedSkills,
+  NEW_SLEEPING_SKILLS, OBTAINABLE_SKILL_KEYS } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
+import { RUN_DRAFT_EXCLUDED_SKILLS, newSkillCandidates } from '../utils/runSkillDraft';
 import type { Player, SkillKey, ConsumableKey } from '../types/game';
 
 // Minimal player carrying one leveled skill (for the simple multiplier skills).
@@ -558,6 +560,9 @@ describe('ensureDefaultOwnedSkills(守護霊+初期9種の所持マイグレー�
       'guardian-spirit', 'ghost-helper', 'ghost-slayer',
       'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
       'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
+      'big-bullet', 'ice-shot', 'vampire',
+      'incendiary-round', 'execution-shock', 'gravity-shot',
+      'echo-shot', 'barrage-king', 'blood-treads',
     ]);
     expect(owned).toEqual(['runner', 'seeker']); // 引数は破壊しない(純関数)
   });
@@ -567,22 +572,33 @@ describe('ensureDefaultOwnedSkills(守護霊+初期9種の所持マイグレー�
       'guardian-spirit', 'ghost-helper', 'ghost-slayer',
       'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
       'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
+      'big-bullet', 'ice-shot', 'vampire',
+      'incendiary-round', 'execution-shock', 'gravity-shot',
+      'echo-shot', 'barrage-king', 'blood-treads',
       'runner',
     ];
     expect(ensureDefaultOwnedSkills(owned)).toBe(owned);
   });
 
-  // §19-2点3: 新規プレイヤーで9種所持・超レア0(守護霊系は「枠外」の同行者なので9種のカウントから除く)。
-  it('新規プレイヤーは守護霊系とは別にノーマル5+レア4の9種を持ち、超レアは0(§12-3★2/§19-1点3)', () => {
+  // SKILL_BUILD_REDESIGN.md §28-3受け入れ条件2(B7・社長指示「台帳だけになってるスキルは実装して
+  // スターターに入れて」): 新規プレイヤーは守護霊系(枠外の同行者)とは別に、旧9種+新9種=18種
+  // (ノ8/レア7/超3)を持つ。旧仕様の「初期所持は超レア0」(§12-3★2)はこの指示で撤回されている。
+  it('新規プレイヤーは守護霊系とは別にノ8/レア7/超3=18種を持つ(§28-3受け入れ条件2)', () => {
     const initial = ensureDefaultOwnedSkills([]);
     const companionKeys: SkillKey[] = ['guardian-spirit', 'ghost-helper', 'ghost-slayer'];
     const nonCompanion = initial.filter(k => !companionKeys.includes(k));
-    expect(nonCompanion).toHaveLength(9);
-    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'normal')).toHaveLength(5);
-    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'rare')).toHaveLength(4);
-    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'super')).toHaveLength(0);
+    expect(nonCompanion).toHaveLength(18);
+    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'normal')).toHaveLength(8);
+    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'rare')).toHaveLength(7);
+    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'super')).toHaveLength(3);
     expect(nonCompanion.sort()).toEqual(
-      ['sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher', 'fire-shooter', 'bomb-counter', 'knife-master', 'knight'].sort(),
+      [
+        'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
+        'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
+        'big-bullet', 'ice-shot', 'vampire',
+        'incendiary-round', 'execution-shock', 'gravity-shot',
+        'echo-shot', 'barrage-king', 'blood-treads',
+      ].sort(),
     );
   });
 });
@@ -614,31 +630,58 @@ describe('§19-1点5 scrap-builder/warm-upのガチャ除外', () => {
   });
 });
 
-// SKILL_BUILD_REDESIGN.md §14/§19-1点4: 新スキル9種は台帳に存在するが、ドラフト・ガチャの
-// どちらからも絶対に出ない(効果配線はB7)。
-describe('§19-1点4 新スキル9種(NEW_SLEEPING_SKILLS)は完全に眠っている', () => {
+// SKILL_BUILD_REDESIGN.md §28(B7発注文): 眠り9種は効果配線+スターター入りが完了し、
+// NEW_SLEEPING_SKILLSが空になったことで自動的にドラフト・ガチャの両方に解禁されている
+// (§28-3受け入れ条件2「ドラフト・ガチャに9種が出る(眠り解除)テスト」)。
+describe('§28 新スキル9種はB7で目覚めている(NEW_SLEEPING_SKILLSが空)', () => {
   const NEW_SKILLS: SkillKey[] = [
     'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
     'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
   ];
 
-  it('台帳(SKILLS)には存在する', () => {
+  it('NEW_SLEEPING_SKILLSは空配列(§28-2点3)', () => {
+    expect(NEW_SLEEPING_SKILLS).toEqual([]);
+  });
+
+  it('台帳(SKILLS)には完成形の文章で存在する', () => {
     for (const k of NEW_SKILLS) {
       expect(SKILLS[k], k).toBeDefined();
       expect(SKILLS[k].name.length, k).toBeGreaterThan(0);
       expect(SKILLS[k].desc.length, k).toBeGreaterThan(0);
-      expect(SKILLS[k].desc, k).not.toContain('準備中'); // 台帳上は完成形の文章(§19-1点4)
+      expect(SKILLS[k].desc, k).not.toContain('準備中');
     }
   });
 
-  it('ガチャからは絶対に出ない(GACHA_EXCLUDED_SKILLS+多数ロールでの実地確認)', () => {
-    for (const k of NEW_SKILLS) expect(GACHA_EXCLUDED_SKILLS).toContain(k);
+  it('OBTAINABLE_SKILL_KEYS(図鑑分母)に含まれる', () => {
+    for (const k of NEW_SKILLS) expect(OBTAINABLE_SKILL_KEYS).toContain(k);
+  });
+
+  it('RUN_DRAFT_EXCLUDED_SKILLS/GACHA_EXCLUDED_SKILLSのどちらからも外れている', () => {
+    for (const k of NEW_SKILLS) {
+      expect(RUN_DRAFT_EXCLUDED_SKILLS).not.toContain(k);
+      expect(GACHA_EXCLUDED_SKILLS).not.toContain(k);
+    }
+  });
+
+  it('多数ガチャロールで実地に出現する', () => {
     let seq = 1;
     const rng = () => { seq = (seq * 9301 + 49297) % 233280; return seq / 233280; };
+    const drawn = new Set<SkillKey>();
     for (let pity = 0; pity <= 60; pity++) {
-      for (let i = 0; i < 200; i++) {
-        expect(NEW_SKILLS).not.toContain(rollGachaSkill(pity, rng));
-      }
+      for (let i = 0; i < 200; i++) drawn.add(rollGachaSkill(pity, rng));
     }
+    for (const k of NEW_SKILLS) expect(drawn.has(k), k).toBe(true);
+  });
+
+  it('ドラフト(newSkillCandidates)にも所持していれば候補として出る', () => {
+    const input = {
+      owned: NEW_SKILLS,
+      ownedLevels: {},
+      runSkills: [],
+      runSkillLevels: {},
+      playerLevel: 1,
+    };
+    const pool = newSkillCandidates(input);
+    for (const k of NEW_SKILLS) expect(pool).toContain(k);
   });
 });

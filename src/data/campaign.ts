@@ -616,7 +616,10 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
     gear: 'マグナム ＋ ナイフ',
     skillKey: 'marksman-trap',
     skillDesc: '足元に起爆トラップを設置して足止め＆爆破',
-    charSkillDesc: '3秒以上移動を続けると移動速度が20%アップ。止まると解除',
+    // 社長指摘v0.25.3270: 実装は共通速度ランプ(src/utils/speedRamp.ts・RAMP_FULL_MS=1500msで満額・
+    // 75°以上の方向転換でリセット)に統合済みで、「3秒しきい値・止まると解除のみ」は旧文面のまま
+    // 残っていた(効果コードは無改変・説明文のみ修正)。
+    charSkillDesc: '移動を続けるとだんだん加速し、最大20%アップ。停止や急な方向転換でリセット',
     portraitNudgeY: 0,
     profile: '一撃の精度を信条とする狙撃手。トラップで戦場を区切り、確実に仕留める。',
   },
@@ -731,7 +734,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'exploder':     { name: 'エクスプローダー', desc: '全ての爆発の範囲とダメージ+20%', rarity: 'rare' },
   'bomber':       { name: 'ボマー',         desc: '手榴弾の爆発時にミニ手榴弾を3個撒く', rarity: 'rare' },
   'fire-shooter': { name: 'ファイアシューター', desc: '発射の20%が爆発弾になる(裏CDあり)', rarity: 'rare' },
-  'bomb-counter': { name: 'ボムカウンター', desc: 'カウンターの反射弾が爆発する', rarity: 'rare' },
+  'bomb-counter': { name: 'ボムカウンター', desc: 'カウンターの反射弾が爆発する＋成立時に自分中心でも大爆発', rarity: 'rare' },
   'combo-master': { name: 'コンボマスター', desc: '近接フィニッシュのコンボ窓延長＋コンボ中は全攻撃のダメージ増加', rarity: 'rare' },
   'knife-master': { name: 'ナイフマスター', desc: '近接ダメージのコンボでダメージ増加(+2%/hit, 最大+60%)。近接クリ率+20%。ただし弾薬ドロップ0%', rarity: 'rare' },
   'rescue-signal':{ name: '救難信号',       desc: '近接ヒット時、一定確率で味方が援護攻撃(必中・倍率1)。ズーム演出', rarity: 'rare' },
@@ -770,7 +773,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'execution-shock': { name: '処刑の衝撃波',         desc: '近接フィニッシュ時、周囲に衝撃波を放つ(近接攻撃の表示ダメージ基準・ノックバック付き)', rarity: 'rare' },
   'gravity-shot':    { name: 'グラビティショット',   desc: 'キル時、一定確率で周囲の敵を中心へ引き寄せる爆縮を発生させる', rarity: 'rare' },
   'echo-shot':       { name: 'エコーショット',       desc: 'クリティカル時、一定確率で弾を複製して追加発射する', rarity: 'super' },
-  'barrage-king':    { name: '弾幕の王',             desc: 'カウンターの反射弾のダメージと体勢削りを強化する', rarity: 'super' },
+  'barrage-king':    { name: '弾幕の王',             desc: 'カウンターの反射弾のダメージと体勢削りを強化し、貫通を持たせる', rarity: 'super' },
   'blood-treads':    { name: '血の履帯',             desc: '移動軌跡に棘を残し、触れた敵に継続ダメージを与える', rarity: 'super' },
 };
 
@@ -795,7 +798,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'ricochet':     { base: '命中弾が一定確率で近くの別の敵へ跳ねる', lv: ['20%・跳弾×0.5', '30%・×0.6', '40%・×0.7'] },
   'bomber':       { base: '手榴弾の爆発時にミニ手榴弾を3個撒く' },
   'fire-shooter': { base: '発射が一定確率で爆発弾になる（裏CDあり）', lv: ['20%', '25%', '30%'] },
-  'bomb-counter': { base: 'カウンターの反射弾が爆発＋成立時に自分中心でも爆発', lv: ['ダメージ×1.0／範囲×1.0', '×1.25／×1.15', '×1.5／×1.3'] },
+  'bomb-counter': { base: 'カウンターの反射弾が爆発＋成立時に自分中心でも大爆発(範囲×1.8)', lv: ['ダメージ×1.0／範囲×1.0', '×1.25／×1.15', '×1.5／×1.3'] },
   'punisher':     { base: 'ノックバック中の敵が他の敵に当たると巻き込む（近接ダメージ＋ノックバック）', lv: ['ダメージ50%／KB×2', '70%／×2.5', '90%／×3'] },
   'combo-master': { base: '近接フィニッシュのコンボ窓延長＋コンボ中は全攻撃のダメージ増加', lv: ['+2%/combo(上限+50%)・窓+1.0s', '+3%/combo(上限+60%)・窓+1.5s', '+4%/combo(上限+70%)・窓+2.0s'] },
   'knife-master': { base: '近接コンボでダメージ増加＋近接クリ率上昇。ただし弾薬ドロップ0%', lv: ['+2%/hit(上限+40%)・近接クリ+10%', '+2%/hit(上限+50%)・+15%', '+4%/hit(上限+60%)・+20%'] },
@@ -820,8 +823,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'poi-bombing':  { base: '3秒に1度、近くの敵にグレネードランチャーを自動発射' },
   'poi-guard':    { base: 'プレイヤーの周りをブーメランが常に周回し、触れた敵弾もかき消す' },
   'poi-thrall':   { base: '倒した通常敵の20%を仲間(ゾンビ)として復活させる（ボスは対象外）。最大1体・死ぬまで追従' },
-  // SKILL_BUILD_REDESIGN.md §14/§16-5(叩き台の数値。効果配線はB7で確定)。B3では眠っており誰も
-  // 到達しないが、台帳としては完成形の文章にする(末尾に「準備中」等は付けない・§19-1点4)。
+  // SKILL_BUILD_REDESIGN.md §14/§16-5(叩き台の数値)。§28(B7)で効果配線+スターター入り済み。
   'big-bullet':      { base: '弾のサイズを拡大(見た目と当たり判定を同時に拡大。貫通数・跳弾回数・壁衝突は変化しない)', lv: ['×1.3', '×1.5', '×1.7'] },
   'ice-shot':        { base: '命中した敵を鈍足化(ボスは対象外)。キル時に氷片3個(通常弾の0.3倍)を飛ばす', lv: ['鈍足20%・1秒', '鈍足30%・1秒', '鈍足40%・1.5秒'] },
   'vampire':         { base: 'キル時、一定確率でHPを回復(発動率は固定)', lv: ['HP+2', 'HP+4', 'HP+6'] },
@@ -829,7 +831,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'execution-shock': { base: '近接フィニッシュ時、周囲に衝撃波を放つ(近接攻撃の表示ダメージ基準・ノックバック付き)', lv: ['半径80・近接30%', '半径100・40%', '半径120・50%'] },
   'gravity-shot':    { base: 'キル時、一定確率で周囲の敵を中心へ引き寄せる爆縮を発生させる', lv: ['発動20%・半径100', '発動30%・半径120', '発動40%・半径140'] },
   'echo-shot':       { base: 'クリティカル時、一定確率で弾を複製して追加発射する', lv: ['複製50%', '複製75%', '複製100%'] },
-  'barrage-king':    { base: 'カウンターの反射弾のダメージと体勢削りを強化する', lv: ['×1.5', '×1.75', '×2.0'] },
+  'barrage-king':    { base: 'カウンターの反射弾のダメージと体勢削りを強化し、貫通1を持たせる(貫通は全Lv共通)', lv: ['×1.5', '×1.75', '×2.0'] },
   'blood-treads':    { base: '移動軌跡に棘を残し、触れた敵に継続ダメージを与える', lv: ['2秒間・秒2', '3秒間・秒3', '4秒間・秒4'] },
 };
 // 現在Lvに即した説明。共通説明＋「Lv○：具体値」を併記。Lv変化なしは共通説明のみ。
@@ -914,12 +916,13 @@ export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル
 export const POLICE_REWARD_SKILLS: SkillKey[] = ['poi-bombing', 'poi-guard', 'poi-thrall'];
 
 // SKILL_BUILD_REDESIGN.md §14(社長承認2026-08-13)・新スキル9種のキー一覧。B3時点では
-// 台帳掲載のみ(先行掲載)で、効果配線(B7)まではドラフト・ガチャの両方から完全に除外する
+// 台帳掲載のみ(先行掲載)で、効果配線(B7)まではドラフト・ガチャの両方から完全に除外していた
 // (§19-1点4「効果の無い当たりを引かせない」)。
-export const NEW_SLEEPING_SKILLS: SkillKey[] = [
-  'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
-  'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
-];
+// §28(B7発注文・社長裁定): 効果配線が完了したので**空にして目覚めさせる**。この定数は
+// RUN_DRAFT_EXCLUDED_SKILLS/GACHA_EXCLUDED_SKILLSの両方へ ...NEW_SLEEPING_SKILLS でスプレッド
+// されているだけなので、ここを空にするだけで両方から自動的に外れる(§28-2点3)。
+// 型(定数)自体は将来また眠らせるスキルが出た時のために残す(RETIRED_SKILLSと対の仕組み)。
+export const NEW_SLEEPING_SKILLS: SkillKey[] = [];
 
 // SKILL_BUILD_REDESIGN.md §23-1裁定(2026-08-13): scrap-builder/warm-upは消費カードへ転生し、
 // スキル台帳から退役。ドラフト(RUN_DRAFT_EXCLUDED_SKILLS)・ガチャ(GACHA_EXCLUDED_SKILLS)からは
@@ -971,6 +974,12 @@ export const COMPANION_SKILL_KEYS: readonly SkillKey[] = ['guardian-spirit', 'gh
 // ビルド増やせば?」): 守護霊系(同行者枠・枠外)に加えて、ノーマル5+レア4=9種を初期所持へ追加。
 // ガチャ0回でも「9種から6枠を組む」実選択が毎ラン発生する(超レアは0=ガチャ専用のまま不変)。
 // ガチャ除外には入れない(§16-9点2=ガチャで被った場合のLv上げ経路を残す)。
+//
+// §28(B7発注文・社長裁定「台帳だけになってるスキルは実装してスターターに入れて」・2026-08-13):
+// 眠り9種(§14)の効果配線が完了したので、そのままスターターへ追加する。**超レア3種
+// (echo-shot/barrage-king/blood-treads)が初期所持に入る=「初期所持は超レア0=ガチャの縦軸」
+// (§12-3★2)の骨格はこの指示により撤回**(§28-1)。ガチャの価値=開始Lv+被りLv上げに一本化。
+// 内訳: 旧9種(ノ5/レア4)+新9種(ノ3/レア3/超3)=**ノ8/レア7/超3=計18種**(§28-3受け入れ条件2)。
 export const DEFAULT_OWNED_SKILLS: SkillKey[] = [
   'guardian-spirit', 'ghost-helper', 'ghost-slayer',
   'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
@@ -978,6 +987,11 @@ export const DEFAULT_OWNED_SKILLS: SkillKey[] = [
   // 無いと空振り)→knife-master(無条件で機能・初期のslasher/カウンターと即噛む)へ差し替え。
   // 「攻撃が爆発に変わる系」はfire-shooter/bomb-counterが既に担っている。
   'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
+  // §28: 新9種(ノ: big-bullet/ice-shot/vampire / レア: incendiary-round/execution-shock/gravity-shot /
+  // 超: echo-shot/barrage-king/blood-treads)。
+  'big-bullet', 'ice-shot', 'vampire',
+  'incendiary-round', 'execution-shock', 'gravity-shot',
+  'echo-shot', 'barrage-king', 'blood-treads',
 ];
 /** ownedSkills に既定所持スキルが欠けていれば末尾へ補って返す(純関数。欠けが無ければそのまま)。 */
 export const ensureDefaultOwnedSkills = (owned: SkillKey[]): SkillKey[] => {

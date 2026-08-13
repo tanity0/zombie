@@ -38,12 +38,15 @@ export const applyBossPostureDamage = (
   enemy: Enemy,
   impact: BossPostureImpact,
   gameTime: number,
+  // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王(barrage-king)が'reflect'の体勢削りに掛ける
+  // 倍率(×1.5/1.75/2.0)。既定1=他の全impact/未所持は無改変。
+  impactMult = 1,
 ): { patch: Partial<Enemy>; triggered: boolean } | null => {
   if (!isEngageableBoss(enemy.type) || isBossPostureBroken(enemy, gameTime)) return null;
   if (gameTime < (enemy.bossPostureLockUntil ?? 0)) return null;
   const max = bossPostureMax(enemy.type);
   const before = bossPostureNow(enemy);
-  const after = Math.max(0, before - max * IMPACT_RATIO[impact]);
+  const after = Math.max(0, before - max * IMPACT_RATIO[impact] * impactMult);
   let recoveryCap = enemy.bossPostureRecoveryCap ?? max;
   for (const checkpoint of [0.75, 0.50, 0.25]) {
     const value = max * checkpoint;

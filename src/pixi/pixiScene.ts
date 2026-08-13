@@ -21,6 +21,7 @@ import { shadowProbeCount, shadowProbeMode, shadowProbeStretch, noteShadowProbeF
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
+  BloodSpike, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
 } from '../types/game';
 import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
@@ -94,6 +95,9 @@ import {
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
+import { MOLOTOV_FIRE_RADIUS } from '../utils/molotov';
+// SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘。判定=絵は分類①(判定に厳密一致)。
+import { BLOOD_TREADS_RADIUS_PX } from '../utils/skillEffectsB7';
 import {
   SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_SLIDE_START_OUT, SUPPORT_SNIPER_INSET,
   type SupportSniperNpcState,
@@ -2952,6 +2956,10 @@ export class PixiScene {
   // 火炎瓶(molotov)の地面の火: 松明と同じ炎Graphics(drawFlameShape流用)+ 小さめの暖色ライト。
   // 状態(寿命/DoT)は gameStore.groundFires が持つ。ここは描画のみ(CLAUDE.md「Pixiは描画専門」)。
   private groundFireViews = new Map<string, { container: Container; flameArt: Sprite; flame: Graphics; light: Sprite }>();
+  // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘。判定を持つ床=分類①なので、
+  // 半径をBLOOD_TREADS_RADIUS_PX(判定そのもの)に厳密一致させる。bossFireGfxと同じ「共有Graphics
+  // 1枚へ一括描画」方式(数個〜十数個・一過性=軽い。新規per-frame Graphicsの生成はしない)。
+  private bloodSpikeGfx = new Graphics();
   private bossFireGfx = new Graphics();                    // ジブリルのランタン火(紫の単発火)を一括描画(予告=赤円/有効=紫火)
   private sensorMineGfx = new Graphics();                  // センサー地雷(sensor-mine)を一括描画(待機=ディスク+ランプ/感知=赤点滅テレグラフ)
   private supportSniperSprite: Sprite | null = null;       // 援護射撃(support-sniper)のNPC(同時1人・護衛軍人スプライト流用のプールSprite)
@@ -7084,6 +7092,7 @@ export class PixiScene {
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
+    this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
     this.syncSensorMines(s.sensorMines, s.gameTime, now); // センサー地雷(待機ディスク/感知後2秒の赤点滅テレグラフ)
     this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
@@ -11708,15 +11717,19 @@ export class PixiScene {
       if (!visible) { view.flame.clear(); continue; }
 
       // 揺らぎ/形は松明(drawBreakableProp)と同じ式を再利用(見た目の一貫性)。
+      // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)Lv3の炎床(大)はfire.radiusが
+      // molotov既定(MOLOTOV_FIRE_RADIUS)より大きい個体として置かれる。判定=絵は分類①(判定に
+      // 厳密一致・大きくしすぎない)なので、絵もこの比率で追従させる(未指定=従来と1bit同じ=比率1)。
+      const fireRadiusRatio = (fire.radius ?? MOLOTOV_FIRE_RADIUS) / MOLOTOV_FIRE_RADIUS;
       const pulse = 0.80 + 0.13 * Math.sin(now / 125 + fire.x * 0.03) + 0.07 * Math.sin(now / 53 + fire.y * 0.05);
-      const r = GROUND_FIRE_FLAME_R * d * pulse;
+      const r = GROUND_FIRE_FLAME_R * d * pulse * fireRadiusRatio;
       const sway = Math.sin(now / 160 + fire.x * 0.015) * r * 0.55;
       const flameX = Math.round(fire.x);
       const flameY = Math.round(fire.y);
 
       view.light.position.set(fire.x, fire.y);
       view.light.tint = 0xffb45f;
-      view.light.width = view.light.height = GROUND_FIRE_LIGHT_RADIUS * d * pulse;
+      view.light.width = view.light.height = GROUND_FIRE_LIGHT_RADIUS * d * pulse * fireRadiusRatio;
       view.light.alpha = 0.16 * horizonAlpha * pulse;
 
       view.flame.clear();
@@ -11737,6 +11750,28 @@ export class PixiScene {
         view.container.destroy({ children: true });
         this.groundFireViews.delete(id);
       }
+    }
+  }
+
+  // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘。状態(寿命/DoT)は
+  // gameStore.bloodSpikes/tickBloodSpikes が持つ(ここは読んで描くだけ)。判定を持つ床=分類①
+  // なので、半径はBLOOD_TREADS_RADIUS_PX(判定そのもの)に厳密一致させ、大きくしない。
+  private syncBloodSpikes(spikes: BloodSpike[], gameTime: number, now: number) {
+    const g = this.bloodSpikeGfx;
+    if (!g.parent) { this.L.groundLayer.addChild(g); }
+    g.clear();
+    for (const s of spikes) {
+      const viewportDistance = this.distanceOutsideViewport(s.x, s.y, GROUND_FIRE_VIEWPORT_MARGIN);
+      const horizonAlpha = this.horizonActorAlpha(s.y);
+      if (viewportDistance > 0 || horizonAlpha <= 0) continue;
+      const d = this.depthScale(s.y);
+      const age = gameTime - s.createdAt;
+      const fadeIn = Math.min(1, age / 80); // 一瞬でフェードイン(判定発生と同時に見える)
+      const pulse = 0.8 + 0.2 * Math.sin(now / 90 + s.x * 0.05);
+      const r = BLOOD_TREADS_RADIUS_PX * d;
+      const a = 0.6 * fadeIn * pulse * horizonAlpha;
+      g.circle(s.x, s.y, r).fill({ color: 0x7f1d1d, alpha: a });
+      g.circle(s.x, s.y, r * 0.5).fill({ color: 0xdc2626, alpha: a * 0.95 });
     }
   }
 

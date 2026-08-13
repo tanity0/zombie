@@ -74,17 +74,21 @@ export const computeMolotovTick = ({
 
 // DoT当たり判定: 敵の中心が、生存中の火のいずれかの半径内にあるか(円形距離判定。
 // 障害物のAABB規約とは別系統=爆風/オーラ系の既存踏襲: pumpkinBlasts/skadi等と同じ Math.hypot 方式)。
+// radiusMult: エクスプローダー等の倍率(呼び出し側から一律に渡す)。個々の火が独自半径(fire.radius。
+// SKILL_BUILD_REDESIGN.md §28延焼弾の炎床(大)等)を持つ場合はそちらを基準に掛け算する
+// (未指定=既定radius引数=molotovの値、のままでこの倍率だけを乗じる=従来と1bit同じ)。
 export const isEnemyInGroundFire = (
   enemyCx: number,
   enemyCy: number,
-  fires: readonly { x: number; y: number }[],
+  fires: readonly { x: number; y: number; radius?: number }[],
   radius: number = MOLOTOV_FIRE_RADIUS,
+  radiusMult: number = 1,
 ): boolean => {
-  const r2 = radius * radius;
   for (const f of fires) {
+    const r = (f.radius ?? radius) * radiusMult;
     const dx = enemyCx - f.x;
     const dy = enemyCy - f.y;
-    if (dx * dx + dy * dy <= r2) return true;
+    if (dx * dx + dy * dy <= r * r) return true;
   }
   return false;
 };

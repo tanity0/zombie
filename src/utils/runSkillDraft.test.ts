@@ -293,21 +293,29 @@ describe('バニッシュ上限(MAX_BANISH_PER_RUN)', () => {
 // デッキ化)で廃止され、専用の重みタグ定数ごと削除済み(campaign.tsにこの種の識別子は存在しない)。
 // 均等抽選の検証は上の「§22-1 新規側の抽選は完全均等」節に統合した。
 
-// SKILL_BUILD_REDESIGN.md §14/§19-1点4: 新スキル9種はB3時点で台帳掲載のみ。ドラフトからは
-// RUN_DRAFT_EXCLUDED_SKILLS経由で完全に除外される(効果配線はB7)。
-describe('NEW_SLEEPING_SKILLS(§14新9種)はドラフトから絶対に出ない(§19-2点4)', () => {
-  it('RUN_DRAFT_EXCLUDED_SKILLSに9種すべてが含まれる', () => {
-    for (const k of NEW_SLEEPING_SKILLS) expect(RUN_DRAFT_EXCLUDED_SKILLS).toContain(k);
-    expect(NEW_SLEEPING_SKILLS).toHaveLength(9);
+// SKILL_BUILD_REDESIGN.md §28(B7発注文): 眠り9種は効果配線+スターター入りが完了し、
+// NEW_SLEEPING_SKILLSが空になったことでドラフトにも解禁されている(§28-3受け入れ条件2)。
+describe('新スキル9種はB7でドラフトに解禁されている(NEW_SLEEPING_SKILLSが空)', () => {
+  const NEW_SKILLS: SkillKey[] = [
+    'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
+    'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
+  ];
+
+  it('NEW_SLEEPING_SKILLSは空配列でRUN_DRAFT_EXCLUDED_SKILLSからも外れている', () => {
+    expect(NEW_SLEEPING_SKILLS).toEqual([]);
+    for (const k of NEW_SKILLS) expect(RUN_DRAFT_EXCLUDED_SKILLS).not.toContain(k);
   });
 
-  it('所持していてもnewSkillCandidates/draftRunSkillCardsのどちらからも出ない', () => {
-    const input = baseInput({ owned: [...NORMAL_SKILLS, ...RARE_SKILLS, ...SUPER_SKILLS, ...NEW_SLEEPING_SKILLS] });
-    expect(newSkillCandidates(input).some(k => NEW_SLEEPING_SKILLS.includes(k))).toBe(false);
-    for (let seed = 0; seed < 30; seed++) {
+  it('所持していればnewSkillCandidates/draftRunSkillCardsのどちらからも出る', () => {
+    const input = baseInput({ owned: NEW_SKILLS });
+    const pool = newSkillCandidates(input);
+    for (const k of NEW_SKILLS) expect(pool).toContain(k);
+    let seenAny = false;
+    for (let seed = 0; seed < 200 && !seenAny; seed++) {
       const cards = draftRunSkillCards(input, 3, mulberry32(seed));
-      for (const c of cards) expect(NEW_SLEEPING_SKILLS).not.toContain(c.key);
+      if (cards.some(c => c.cardKind !== 'consumable' && NEW_SKILLS.includes(c.key as SkillKey))) seenAny = true;
     }
+    expect(seenAny).toBe(true);
   });
 });
 

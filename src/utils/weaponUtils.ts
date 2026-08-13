@@ -3,6 +3,7 @@ import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skill
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { aimEnemyDist2, isCorpse } from './enemyUtils';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
+import { bigBulletSizeMult } from './skillEffectsB7';
 
 // プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
 // 社長指示「当たり判定の四隅でみて」)。中心基準だと巨体の縁に立っていても射程外扱いになる。
@@ -494,6 +495,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   //   スキル ラストマガジン: 弾倉最後の1発(この発射で空になるトリガー1回分=発射前の残弾1)×2.0/2.5/3.0。
   //   ショットガンは最終シェルの全ペレットに乗る(shotDamage共通)。命中時の他倍率とは乗算(§6.8 M31)。
   const shotDamage = gunShotBaseDamage(weapon, player, gtFire);
+  // スキル: ビッグバレット = 弾サイズ×1.3/1.5/1.7(見た目と当たり判定を同時拡大。速度・貫通数・
+  // 跳弾回数・壁衝突は不変=§28-2)。プレイヤー自身の銃弾のみ(ghost-gun/support-sniperは対象外)。
+  const shotSize = size * bigBulletSizeMult(skillLevel(player, 'big-bullet'));
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
@@ -505,10 +509,10 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     const critChance = gunShotCritChance(weapon, player, gt);
     projectiles.push({
       id: `proj-${weapon.id}-${now}-${i}`,
-      x: player.x + player.width / 2 - size / 2,
-      y: player.y + player.height / 2 - size / 2,
-      width: size,
-      height: size,
+      x: player.x + player.width / 2 - shotSize / 2,
+      y: player.y + player.height / 2 - shotSize / 2,
+      width: shotSize,
+      height: shotSize,
       speed,
       // Base damage only — the crit multiplier is applied at hit time so it can
       // scale differently against bosses (×5) vs normal enemies (×1.5).
