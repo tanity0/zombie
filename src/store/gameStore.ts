@@ -10818,7 +10818,13 @@ export const useGameStore = create<GameState>((set, get) => ({
               const hitShield = shieldRects.length > 0 && shieldRects.some(s => rectsOverlap({ x: cmoved.x, y: cmoved.y, width: enemy.width, height: enemy.height }, s));
               const blocked = Math.abs(cmoved.x - rawX) > 0.5 || Math.abs(cmoved.y - rawY) > 0.5;
               if (hitShield || blocked) {
-                if (hitShield) shieldBlocks.push({ x: cmoved.x + enemy.width / 2, y: cmoved.y + enemy.height / 2, kind: 'dash' });
+                if (hitShield) {
+                  // 社長指示v0.25.3294「盾で防いだ後、即次の技が飛んできて逆に危ない。強制的に一瞬
+                  // 立ち止まらせるか」: 盾ブロック時は連続突進の続行(onDashFinished=即次の突進)を
+                  // 打ち切り、通常の突進後と同じ隙(g-dash-recover)へ。壁ヒットは従来どおり連鎖続行。
+                  shieldBlocks.push({ x: cmoved.x + enemy.width / 2, y: cmoved.y + enemy.height / 2, kind: 'dash' });
+                  return { ...enemy, ...phaseFields, x: cmoved.x, y: cmoved.y, vx: 0, vy: 0, aiPhase: 'g-dash-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_DASH_RECOVER_MS)) };
+                }
                 return { ...enemy, ...phaseFields, x: cmoved.x, y: cmoved.y, vx: 0, vy: 0, ...onDashFinished() };
               }
               return { ...enemy, ...phaseFields, vx: cvx, vy: cvy, x: cmoved.x, y: cmoved.y };
@@ -13348,7 +13354,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (current && (weapon.tier ?? 1) < (current.tier ?? 1)) return {};
         const weapons = [...player.weapons];
         if (idx >= 0) weapons[idx] = weapon; else weapons.push(weapon);
-        return { player: { ...player, weapons } };
+        // v0.25.3294(社長報告「武器箱が光るだけで何も起きない時がある」の正体): 近接の付与だけ
+        // 取得トーストが無く、武器箱の25%ナイフ強化(v0.25.3212〜)が無言でHUD差し替えのみだった。
+        // 銃と同じ取得表示を出す。
+        return {
+          player: { ...player, weapons },
+          lastWeaponGet: {
+            name: `${weaponTierLabel(weapon.tier)} ${weapon.name}`,
+            at: Date.now(),
+            color: weaponTierColor(weapon.tier),
+            kind: 'weapon',
+            weaponKey: weapon.key
+          }
+        };
       }
 
       // Guns: one per category (max 3). A new category is added to the
