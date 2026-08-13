@@ -1174,3 +1174,30 @@ Enemy.corpseUntil(number・期限)を新設し、以下の全系統から死体�
   が既に担っており、3枚目の変わる系は現行台帳に存在しない(bomberは手榴弾前提=初期不向き)。
 - 初期9種(確定): ノーマル5=sharpshooter/ricochet/punisher/attack-shooter/slasher、
   レア4=fire-shooter/bomb-counter/**knife-master**/knight。exploderはガチャ排出のまま。
+
+## 27. スキル棚卸しと整理案(2026-08-13・走査=Sonnet/分類=設計チャット)
+
+### 27-1. 棚卸しの要点(全47キー・実装コード根拠。全表は走査報告=DEVELOPMENT_LOG v0.25.3263参照)
+- **死骸/不整合(裁定不要のバグ級)**: ①fixedGuardians.ts:305の守護霊ビルドが退役済みwarm-upを装備
+  し続けている(効果ゼロの死にスロット) ②weaponUtils.ts:503付近のコメントが削除済みwarm-upに言及
+  ③seekerの説明文に「ボスには効かない」記載なし(実装はisBossType除外) ④poi-thrallの説明文に
+  「通常敵限定」記載なし(実装はボス撃破でトリガーしない)。
+- **前提が無いと空振りする系**: exploder(爆発源が別途必要)/bomber(手榴弾orボムカウンター爆発が
+  トリガー)。dog-runは既に動的ゲート済み(手本)。
+- **消費カードと同チャネル**: attack-shooter↔攻撃ドーピング(同じ合流点)/runner↔スピードブースト/
+  knight↔プロテクション(同じ被ダメ式)。いずれも恒久vs60秒で役割は分離=統合不要と判断。
+- **地味系(FXなし純ステータス)**: ghost-shooter/gold-rush/magnet/time-keeper/benkei/attack-shooter/
+  crit-up/sniper等。中立デッキ化でハズレ感が直撃する層。
+- 近接積み上げ2枚(knife-master/combo-master)は乗算共存の設計=統合しない(ビルドの積み重ね要素)。
+
+### 27-2. 整理案(4分類・★=社長裁定待ち)
+- **A. 即修正(バグ級・裁定不要)**: 上記①〜④。①のwarm-up差し替え先は同ビルドの文脈から
+  runner(無条件系)を充てる(守護霊の挙動実質不変=死にスロットが生きるだけ)。
+- **★B. 動的ゲート化(推薦)**: exploder=「爆発源(手榴弾装備 or fire-shooter/bomb-counter/bomber/
+  reflex取得済み)がある時のみドラフト提示」/bomber=「手榴弾装備 or bomb-counter取得済みの時のみ」。
+  dog-runと同じRunSkillDraftInputの拡張=小バッチ。
+- **C. 様子見(v2検討リスト・今は触らない)**: benkei(操作前提で地味)/seeker(ボス無効)/経済系の
+  可視化(取得中の効果をリザルト等で見せる)。実機の手応え待ち。
+- **★D. v2提案「デッキ編集」**: 図鑑/ガチャ画面で所持スキルのラン抽選ON/OFFを切り替えられる機能。
+  中立デッキの恒久整理レバー=「引きたくない物は自分で山から抜く」(ヴァンサバの封印相当)。
+  バニッシュ(ラン中2回)の恒久版。実装はB6後の独立バッチ。
