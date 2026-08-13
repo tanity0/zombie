@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3316',
+    items: [
+      'ゲーム内容の変更はありません(異常動作レシピの禁止条件=キャラ固有/サブ依存スキル不使用を明文化)。',
+    ],
+  },
+  {
     version: '0.25.3315',
     items: [
       'ゲーム内容の変更はありません(異常動作レシピ: メタビルド化していた5件を「意味は通るが普通は組まない」組へ差し替え)。',
