@@ -5471,6 +5471,8 @@ export class PixiScene {
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + 200);
       case 'ring':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.endRadius);
+      case 'explosion':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.radius * 2);
       case 'glow':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.radius);
       case 'slash':
@@ -20302,6 +20304,8 @@ export class PixiScene {
         this.drawParticleSprite(e, now);
       } else if (e.kind === 'ring') {
         this.drawRingSprite(e, now);
+      } else if (e.kind === 'explosion') {
+        this.drawExplosionSprite(e, now);
       } else if (e.kind === 'trail') {
         this.drawTrailSprite(e, now);
       } else if (e.kind === 'drain') {
@@ -20440,6 +20444,35 @@ export class PixiScene {
     sp.tint = this.glowTint(e.color);
     sp.alpha = (1 - t) * this.cssAlpha(e.color);
     sp.visible = len > 0.5;
+  }
+
+  // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。プールsprite1枚をコマ差し替え。
+  // 幅=判定直径×1.1(判定を持つ絵=サイズは判定準拠・僅かなはみ出しのみ)。プルームの根元を爆心の
+  // 下端(y+radius)に置き、上へ立ち上る。終盤の煙コマは素材側で消えていくのでαは終端だけ軽く抜く。
+  private drawExplosionSprite(e: Extract<VisualEffect, { kind: 'explosion' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let sprite = this.effects.get(e.id);
+    if (!(sprite instanceof Sprite) || !(sprite as { __explFx?: boolean }).__explFx) {
+      if (sprite) sprite.destroy();
+      const sp = new Sprite();
+      (sp as unknown as { __explFx?: boolean }).__explFx = true;
+      sp.anchor.set(0.5, 1);
+      this.L.effectLayer.addChild(sp);
+      this.effects.set(e.id, sp);
+      sprite = sp;
+    }
+    const sp = sprite as Sprite;
+    const frame = Math.min(5, Math.floor(t * 6));
+    const tex = getTexture(`fx/explosion-${frame}`);
+    if (!tex) { sp.visible = false; return; }
+    sp.texture = tex;
+    const width = e.radius * 2 * 1.1;
+    const sc = width / Math.max(1, tex.width);
+    sp.scale.set(sc);
+    sp.position.set(e.x, e.y + e.radius);
+    if (e.tint !== undefined) sp.tint = e.tint;
+    sp.alpha = t > 0.85 ? Math.max(0, (1 - t) / 0.15) : 1;
+    sp.visible = true;
   }
 
   // SKILL_BUILD_REDESIGN.md §28(B7) 吸血の吸収演出(社長指示v0.25.3276「攻撃したときの血の

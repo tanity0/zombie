@@ -1788,6 +1788,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnBurst(bx, by, '#f87171', 20);
           spawnBurst(bx, by, '#7f1d1d', 8);
           useGameStore.getState().spawnGlow(bx, by, GLOW_R_S, 'rgba(248,113,113,', fxMs);
+          useGameStore.getState().spawnExplosionFx(bx, by, blastR); // v0.25.3283: 爆発flipbook(全爆発共通)
           for (const e of useGameStore.getState().enemies) {
             if (e.type === 'reaper' && !e.reaperChaser) continue;
             const dist = Math.hypot(e.x + e.width / 2 - bx, e.y + e.height / 2 - by);
@@ -8631,10 +8632,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const tBlastR = TURRET_EXPLOSION_RADIUS * tExMult;
               // v0.25.2472: ゴースト発(ownerGhost)の消滅爆発FXは青白系(視覚のみ・判定/ダメージ不変)。
               if (turret.ownerGhost) {
+                useGameStore.getState().spawnExplosionFx(tcx, tcy, tBlastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
                 spawnRing(tcx, tcy, 8, tBlastR, 'rgba(159,216,255,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
                 spawnBurst(tcx, tcy, '#9fd8ff', 16);
                 useGameStore.getState().spawnGlow(tcx, tcy, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               } else {
+                useGameStore.getState().spawnExplosionFx(tcx, tcy, tBlastR); // v0.25.3283: 爆発flipbook
                 spawnRing(tcx, tcy, 8, tBlastR, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
                 spawnBurst(tcx, tcy, '#f97316', 16);
                 useGameStore.getState().spawnGlow(tcx, tcy, GLOW_R_XS, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
@@ -8768,10 +8771,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const dBlastR = DECOY_LV3_EXPLOSION_RADIUS * dExMult;
             // v0.25.2472: ゴースト発(ownerGhost)はシアン→青白へ(視覚のみ・判定/ダメージ不変)。
             if (decoy.ownerGhost) {
+              useGameStore.getState().spawnExplosionFx(dcx, dcy, dBlastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
               spawnRing(dcx, dcy, 8, dBlastR, 'rgba(159,216,255,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(dcx, dcy, '#9fd8ff', 16);
               useGameStore.getState().spawnGlow(dcx, dcy, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             } else {
+              useGameStore.getState().spawnExplosionFx(dcx, dcy, dBlastR); // v0.25.3283: 爆発flipbook
               spawnRing(dcx, dcy, 8, dBlastR, 'rgba(56,189,248,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(dcx, dcy, '#38bdf8', 16);
               useGameStore.getState().spawnGlow(dcx, dcy, GLOW_R_XS, 'rgba(56,189,248,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
@@ -8863,11 +8868,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(gx, gy, '#9fd8ff', 20);
             spawnBurst(gx, gy, '#1e3a5f', 8);
             useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(159,216,255,', fxMs);
+            useGameStore.getState().spawnExplosionFx(gx, gy, blastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
           } else {
             spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
             spawnBurst(gx, gy, '#f97316', 20);
             spawnBurst(gx, gy, '#7f1d1d', 8);
             useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(251,146,60,', fxMs);
+            useGameStore.getState().spawnExplosionFx(gx, gy, blastR); // v0.25.3283: 爆発flipbook(全爆発共通)
           }
           const gWalls = aoeWalls(gx, gy);
           for (const enemy of useGameStore.getState().enemies) {
@@ -8958,6 +8965,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(mine.x, mine.y, '#f97316', 20);
               spawnBurst(mine.x, mine.y, '#7f1d1d', 8);
               useGameStore.getState().spawnGlow(mine.x, mine.y, GLOW_R_S, 'rgba(251,146,60,', smFxMs);
+              useGameStore.getState().spawnExplosionFx(mine.x, mine.y, smBlastR); // v0.25.3283: 爆発flipbook
               const smWalls = aoeWalls(mine.x, mine.y);
               let smHitCount = 0;
               for (const enemy of useGameStore.getState().enemies) {
@@ -9038,11 +9046,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               // v0.25.2472: ゴースト発(ownerGhost)の爆発FXは青白系(視覚のみ・判定/ダメージ不変)。
               if (knife.ownerGhost) {
+                useGameStore.getState().spawnExplosionFx(bx, by, blastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
                 spawnRing(bx, by, 8, blastR, 'rgba(159,216,255,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
                 spawnBurst(bx, by, '#9fd8ff', 18);
                 spawnBurst(bx, by, '#1e3a5f', 8);
                 useGameStore.getState().spawnGlow(bx, by, snapGlowRadius(blastR * 0.68), 'rgba(159,216,255,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
               } else {
+                useGameStore.getState().spawnExplosionFx(bx, by, blastR); // v0.25.3283: 爆発flipbook
                 spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
                 spawnBurst(bx, by, '#f97316', 18);
                 spawnBurst(bx, by, '#7f1d1d', 8);
@@ -9596,6 +9606,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnRing(blastX, blastY, 10, exRadius, 'rgba(251,146,60,0.82)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
             spawnBurst(blastX, blastY, '#f97316', 24);
             spawnBurst(blastX, blastY, '#7f1d1d', 10);
+            useGameStore.getState().spawnExplosionFx(blastX, blastY, exRadius); // v0.25.3283: 爆発flipbook
             useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
 
             const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT * exMult;
@@ -9648,12 +9659,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(blastX, blastY, 8, exRadius, 'rgba(159,216,255,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(blastX, blastY, '#9fd8ff', 16);
               spawnBurst(blastX, blastY, '#1e3a5f', 6);
+              useGameStore.getState().spawnExplosionFx(blastX, blastY, exRadius, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
               useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             } else {
               spawnRing(blastX, blastY, 8, exRadius, 'rgba(251,146,60,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(blastX, blastY, '#f97316', 16);
               spawnBurst(blastX, blastY, '#7f1d1d', 6);
               useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_XS, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              useGameStore.getState().spawnExplosionFx(blastX, blastY, exRadius); // v0.25.3283: 爆発flipbook
             }
             const splashBase = dmg * (projectile.explodeDamageMult ?? 1) * exMult;
             const exWalls = aoeWalls(blastX, blastY);
@@ -10087,6 +10100,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(ex0, ey0, '#ef4444', 14);
               spawnBurst(ex0, ey0, '#7f1d1d', 8);
               useGameStore.getState().spawnGlow(ex0, ey0, 42, 'rgba(248,113,113,', 300);
+              useGameStore.getState().spawnExplosionFx(ex0, ey0, EGG_BLAST_RADIUS); // v0.25.3283: 爆発flipbook(全爆発共通)
               const egP = useGameStore.getState().player;
               const egPcx = egP.x + egP.width / 2, egPcy = egP.y + egP.height / 2;
               const egPHalf = Math.max(egP.width, egP.height) / 2;
@@ -10188,6 +10202,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const ox = o.x + o.width / 2, oy = o.y + o.height / 2;
                   return Math.hypot(ox - ecx, oy - ecy) <= WIRE_PASS_BOMB_RADIUS + Math.max(o.width, o.height) / 2;
                 });
+                useGameStore.getState().spawnExplosionFx(ecx, ecy, WIRE_PASS_BOMB_RADIUS); // v0.25.3283: 爆発flipbook
                 aoe.forEach(o => {
                   const oxc = o.x + o.width / 2, oyc = o.y + o.height / 2;
                   const killed = useGameStore.getState().damageEnemy(o.id, dmg, true, false, false, wireChannel, wireHate); // 爆発=ボス非致死
@@ -11609,6 +11624,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(bcx, bcy, '#f97316', 20);
             spawnBurst(bcx, bcy, '#7f1d1d', 8);
             useGameStore.getState().spawnGlow(bcx, bcy, GLOW_R_S, 'rgba(251,146,60,', 380);
+            useGameStore.getState().spawnExplosionFx(bcx, bcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
             playSfx('bomb');
             // 社長指示v0.25.3270: 反射神経と揃えて実距離50pxノックバック(mult/maxStrength両方に同じ値=
             // 既定cap3で頭打ちになる罠を回避。v0.25.3257の教訓)。

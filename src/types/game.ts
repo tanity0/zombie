@@ -1671,6 +1671,17 @@ export type VisualEffect =
       duration: number;
     }
   | {
+      // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
+      // 絵の幅は判定直径に合わせる(判定を持つ絵=サイズは判定準拠・派手側の多少のはみ出しは許容)。
+      kind: 'explosion';
+      id: string;
+      x: number; y: number;
+      radius: number;
+      createdAt: number;
+      duration: number;
+      tint?: number; // 守護霊発は青白等(未指定=素のまま)
+    }
+  | {
       kind: 'flash';
       id: string;
       color: string;          // e.g. 'rgba(255,255,255,0.8)' — overlays whole screen

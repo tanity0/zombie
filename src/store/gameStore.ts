@@ -3273,6 +3273,7 @@ const applyMeleeFinishSkillSpread = (
     get().spawnBurst(pcx, pcy, '#f97316', 20);
     get().spawnBurst(pcx, pcy, '#7f1d1d', 8);
     get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(251,146,60,', 440);
+    get().spawnExplosionFx(pcx, pcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
     for (const e of get().enemies) {
       if (e.type === 'reaper' && !e.reaperChaser) continue;
       if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象外
@@ -4601,6 +4602,8 @@ interface GameState {
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
   spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
+  // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
+  spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
   // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number, noShadow?: boolean) => void;
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
@@ -8051,6 +8054,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnRing(pcx, pcy, 10, radius, 'rgba(56,189,248,0.85)', 5, 360);
         get().spawnBurst(pcx, pcy, '#38bdf8', 18);
         get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(56,189,248,', 360);
+        get().spawnExplosionFx(pcx, pcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
         // 社長指示v0.25.3270: ノックバックは実距離50px基準に統一(knockbackSpeedFor(50,280)/BULLET_KNOCKBACK_SPEED)。
         const kbMult = knockbackSpeedFor(SKILL_BLAST_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED;
         for (const e of get().enemies) {
@@ -15957,6 +15961,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       const next = [...state.effects, effect];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
+    });
+  },
+
+  // 爆発の6コマflipbook(社長支給v0.25.3283「爆発 全部用」)。全ての爆発FXがこれを呼ぶ
+  // (手榴弾/タレット/ドローン/地雷/ランチャー/ファイアシューター/ボムカウンター/反射神経/処刑の爆発/朱雀)。
+  spawnExplosionFx: (x, y, radius, tint) => {
+    get().spawnEffect({
+      kind: 'explosion', id: `fx-expl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      x, y, radius, createdAt: Date.now(), duration: 460, tint,
     });
   },
 

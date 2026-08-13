@@ -529,6 +529,14 @@ export const ensureTextures = (): Promise<void> => {
       // 赤(危険)/青白(硬直)に染める。全ボスの円テレグラフで使い回す共通部品なので `fx/` 配下に置く。
       // 縮小して使う(512→直径108〜260)ので linear。
       { name: 'fx/telegraph-ring', scaleMode: 'linear' as const },
+      // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」・324×264×6・透過済み)。
+      // 全ての爆発(手榴弾/タレット/ドローン/地雷/処刑の爆発/ボムカウンター等)がこれを使う。
+      { name: 'fx/explosion-0', scaleMode: 'nearest' as const },
+      { name: 'fx/explosion-1', scaleMode: 'nearest' as const },
+      { name: 'fx/explosion-2', scaleMode: 'nearest' as const },
+      { name: 'fx/explosion-3', scaleMode: 'nearest' as const },
+      { name: 'fx/explosion-4', scaleMode: 'nearest' as const },
+      { name: 'fx/explosion-5', scaleMode: 'nearest' as const },
       // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
       // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
