@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3268',
+    items: [
+      'シーカーの半透明中はボスからも狙われなくなりました(旧: 通常敵のみ)。',
+    ],
+  },
+  {
     version: '0.25.3267',
     items: [
       'エクスプローダーとボマーは、爆発源(手榴弾装備や爆発を生むスキル)を持っている時だけレベルアップに出るようになりました(空振り防止)。',

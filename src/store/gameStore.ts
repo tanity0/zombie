@@ -11301,8 +11301,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 錬金術: aggro範囲内に通常召喚がいればそれを、いなければプレイヤーを狙う(中心同士)。
         // 救助イベントの攻撃者(escortTarget持ち)は survivor を狙う。ただし「プレイヤーが近接ダメージを
         // 与えた敵(meleeAggro)」はプレイヤーへターゲットを切り替える(社長指示)。死んでいたら最寄りNPCへ。
-        // シーカー: プレイヤー半透明中は通常敵(ボス/死神/イベントボス級を除く)から狙われない。
-        const playerHidden = isSeekerActive(player, gameTime) && !isBossType(enemy.type);
+        // シーカー: プレイヤー半透明中は敵から狙われない(社長裁定v0.25.3268「シーカーはボスも対象」
+        // =旧・ボス除外を撤去。ボスの技の照準・台本は各コントローラ側の判定=ここはチェイス/射撃の的のみ)。
+        const playerHidden = isSeekerActive(player, gameTime);
         let tgt = resolveEnemyTarget(enemy, player, targetSummons, ALCHEMY_AGGRO_RANGE, playerHidden, gameTime); // v0.25.2490: 雑魚ヘイトのラッチ判定にgameTimeを渡す
         if (enemy.escortTarget && !enemy.meleeAggro && rescueSurvivors.length > 0) {
           let sv = rescueSurvivors.find(s => s.id === enemy.escortTarget);
@@ -11726,7 +11727,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const bTargetSummons = bFlareTargets.length > 0 ? [...get().summons, ...bFlareTargets] : get().summons;
       for (const ge of giantBoltFires) {
         const liveGe = get().enemies.find(e => e.id === ge.id) ?? ge;
-        const hidden = isSeekerActive(bp, bGameTime) && !isBossType(liveGe.type); // giantbatはisBossType=true=常にfalse
+        const hidden = isSeekerActive(bp, bGameTime); // v0.25.3268: ボス除外を撤去(シーカーはボスも対象)
         // 通常召喚/フレアの既存挑発は維持し、どちらも選ばれなかった時だけG2.5の固定ヘイト側へ撃つ。
         const utilityTargets = bTargetSummons.filter(s => s.kind !== 'ghost-ally');
         const utilityTgt = resolveEnemyTarget(liveGe, bp, utilityTargets, ALCHEMY_AGGRO_RANGE, hidden, bGameTime);
