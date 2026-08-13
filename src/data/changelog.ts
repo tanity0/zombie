@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3260',
+    items: [
+      'ノックバック距離を元の値に戻しました(50px化と底上げを撤回。スラッシャーの踏み込み20pxは継続)。',
+      'パニッシャーの巻き込み当たり判定を広くしました(飛んでいる敵の判定を全周+16px)。',
+    ],
+  },
+  {
     version: '0.25.3259',
     items: [
       'カウンターマスターのノックバックを新基準に底上げ(Lv1=100px/Lv2=125px/Lv3=150px。素のスイング50pxの2〜3倍)。',

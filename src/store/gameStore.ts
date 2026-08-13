@@ -1041,12 +1041,10 @@ export const COUNTER_EXTEND_PER_HIT = 200;
 // Counter knockback (additional effect on top of the bullet reflect).
 export const KNOCKBACK_SPEED = 133; // melee counter shove。ずらす速さを約2/3に(200→133。社長指示)
 export const KNOCKBACK_DURATION = 280;
-// 通常の近接スイングのずらし距離(社長指示v0.25.3257「近接スイングを50pxにしてみて」)。
-// 減衰(1→0直線)込みの実距離指定=初速はknockbackSpeedForで換算(50px/280ms≈357px/s)。
-// カウンターマスター/パリィ弾き(COUNTER_KNOCKBACK_*)は従来のKNOCKBACK_SPEED基準のまま(Aだけ変更)。
-export const MELEE_SWING_KNOCKBACK_PX = 50;
 // スラッシャーのチェーン攻撃時の踏み込み(社長指示v0.25.3258「連続攻撃は20px前進(慣性入れて)」)。
 export const SLASHER_LUNGE_PX = 20;
+// パニッシャーの巻き込み判定の拡張幅(社長指示v0.25.3260「広めに」・叩き台)。
+export const PUNISHER_HIT_PAD_PX = 16;
 export const SLASHER_LUNGE_MS = 160;
 // ジャンプ/ダッシュ攻撃をカウンターした時の「弾き飛ばし」。速度ノックバックは updateEnemies が
 // 翌フレーム以降に適用するため、着地で付与される stun/lift に上書きされ「その場で痺れる」だけに
@@ -3230,9 +3228,8 @@ const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, 
     const d2 = dx * dx + dy * dy;
     if (d2 > reach2) continue;
     const dist = Math.max(0.001, Math.sqrt(d2));
-    // v0.25.3259 社長指示「カウンターマスターも底上げ」: 基準を新スイング(実距離50px)に揃え、
-    // その kbScale 倍(Lv1×2=100px/Lv2×2.5=125px/Lv3×3=150px)。knockbackEnemyはBULLET基準なので比率換算。
-    const mult = (knockbackSpeedFor(MELEE_SWING_KNOCKBACK_PX, KNOCKBACK_DURATION) * kbScale) / BULLET_KNOCKBACK_SPEED;
+    // KNOCKBACK_SPEED の kbScale 倍相当(v0.25.3260: 底上げ(3259)も含めて社長指示で従来値へ戻し)。
+    const mult = (KNOCKBACK_SPEED * kbScale) / BULLET_KNOCKBACK_SPEED;
     get().knockbackEnemy(e.id, dx / dist, dy / dist, mult, mult);
   }
 };
@@ -3535,8 +3532,7 @@ const applySlasherChainStrike = (
   const nextStep = step + 1;
   // Lv3(maxHits=3)の最終段(nextStep===maxHits=この一撃で使い切る)のみノックバック大。
   const isFinalBigKbStep = slLv === 3 && nextStep === maxHits;
-  // v0.25.3257: チェーン各段=通常スイングと同じ50px基準(§25「各段=従来どおり」の従来が50pxへ変わったため追従)。
-  const kbMult = (knockbackSpeedFor(MELEE_SWING_KNOCKBACK_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
+  const kbMult = (KNOCKBACK_SPEED / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1); // v0.25.3260: 従来値へ戻し
   const r2 = meleeRange * meleeRange;
   let killed = 0;
   let hit = false;
@@ -5724,8 +5720,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
         const falloff = 1 - dist / meleeRange;
-        // v0.25.3257: 至近50px(実距離・減衰込み)を基準に、リーチ端で半減の従来falloffを維持。
-        const speed = knockbackSpeedFor(MELEE_SWING_KNOCKBACK_PX, KNOCKBACK_DURATION) * (0.5 + falloff * 0.5);
+        const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5); // v0.25.3260: 50px化(3257)を社長指示で撤回=従来値へ
         survivors.push({
           ...enemy,
           health: newHealth,
@@ -6072,8 +6067,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
         const falloff = 1 - dist / meleeRange;
-        // v0.25.3257: 至近50px(実距離・減衰込み)を基準に、リーチ端で半減の従来falloffを維持。
-        const speed = knockbackSpeedFor(MELEE_SWING_KNOCKBACK_PX, KNOCKBACK_DURATION) * (0.5 + falloff * 0.5);
+        const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5); // v0.25.3260: 50px化(3257)を社長指示で撤回=従来値へ
         survivors.push({
           ...enemy, health: nh, lastHit: now, stunUntil,
           knockbackVx: (dx / norm) * speed, knockbackVy: (dy / norm) * speed,
@@ -11411,8 +11405,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           if ((cleared.type === 'reaper' && !cleared.reaperChaser) || bKbActive) return cleared; // 不倒の通常リーパーは除外。深奥チェイサーは巻き込み対象(ボス級)。KB中(被弾側/連鎖元)は新規付与しない
           for (const a of movers) {
             if (a.id === cleared.id) continue;
+            // v0.25.3260 社長指示「パニッシャー時のノックバック当たり判定は広めに」: 飛んでいる敵の
+            // 判定箱をPUNISHER_HIT_PAD_PXずつ全周拡大して巻き込みを取りやすくする(叩き台16px)。
             if (!rectsOverlap(
-              { x: a.x, y: a.y, width: a.width, height: a.height },
+              { x: a.x - PUNISHER_HIT_PAD_PX, y: a.y - PUNISHER_HIT_PAD_PX, width: a.width + PUNISHER_HIT_PAD_PX * 2, height: a.height + PUNISHER_HIT_PAD_PX * 2 },
               { x: cleared.x, y: cleared.y, width: cleared.width, height: cleared.height },
             )) continue;
             const d = Math.max(0.001, Math.hypot(a.knockbackVx ?? 0, a.knockbackVy ?? 0));
