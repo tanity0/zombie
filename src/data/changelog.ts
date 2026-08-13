@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3304',
+    items: [
+      'スケーターの投擲着弾SEを整理: 非覚醒=バッシュの音(盾バッシュと同じ)/覚醒=爆発音。',
+    ],
+  },
+  {
     version: '0.25.3303',
     items: [
       'カウンターマスターの覚醒(Lv3)効果を追加: カウンター成立直後3秒間、全攻撃力+30%(弾反射・パリィ・ボスカウンター全種で発動)。',

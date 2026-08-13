@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.3304 — スケーター投擲の非覚醒SE=バッシュ音(社長指示)【2026-08-13 22:54 JST】
+- SEを板の着弾検出(useGameLoop)へ一本化: 覚醒=bomb / 非覚醒=heavy-impact(盾バッシュと同じ音)。
+  skaterBoardHit側のbashHitFxAt(heavy-impactトリガ)は立てない=覚醒時の二重再生(bomb+heavy-impact)も
+  同時に解消。盾バッシュ本体(6214)のbashHitFxAt経路は不変。
+- 検証: typecheck 0 / lint 0。実機確認: 非覚醒着弾でバッシュ音・覚醒着弾で爆発音が各1回。
+
 ## v0.25.3303 — カウンターマスター覚醒=成立後3秒間 全攻撃+30%(社長裁定)【2026-08-13 22:48 JST】
 - 相談していた「弾接近スロー」案は取り下げ、「カウンター直後3秒間 全攻撃力30%アップ」に確定。
 - **実装**: Player.counterMasterBuffUntil(gameTime・optional=疑似Playerへ波及させない)。付与=

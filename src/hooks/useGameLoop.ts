@@ -9406,9 +9406,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hit = bEnemies.some(e => e.aiPhase !== 'jump' && checkCollision(b, e));
               if (hit) {
                 hitBoardIds.add(b.id);
-                // スケーター覚醒(Lv3・v0.25.3302): 着弾は爆発仕様=爆発SEもここで鳴らす
-                // (gameStoreはaudioManager非依存の方針のため、SEは呼び出し側=ループが持つ)。
-                if (skillLevel(useGameStore.getState().player, 'skater') >= 3) playSfx('bomb');
+                // スケーターSE(v0.25.3302/3304・社長指示): 覚醒=爆発音(bomb)/非覚醒=バッシュの音
+                // (heavy-impact=盾バッシュと同じ)。gameStoreはaudioManager非依存の方針のため、
+                // SEは呼び出し側=ループが持つ(store側のbashHitFxAtは立てない=二重再生防止)。
+                playSfx(skillLevel(useGameStore.getState().player, 'skater') >= 3 ? 'bomb' : 'heavy-impact');
                 useGameStore.getState().skaterBoardHit(b.x + b.width / 2, b.y + b.height / 2, b.direction.x, b.direction.y);
               }
             }

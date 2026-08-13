@@ -5519,7 +5519,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().registerMultiHit(hitAt.length);    // 爆発仕様: ヘビーガンナーの2体以上ヒット計上(M33⑤)
     }
     for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
-    if (hitAt.length > 0) { get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0); set({ bashHitFxAt: Date.now() }); }
+    // SE(v0.25.3304): bashHitFxAt(heavy-impact)は立てない——スケボーのSEは呼び出し側(useGameLoop)が
+    // 覚醒=bomb/非覚醒=heavy-impactを着弾の瞬間に直接鳴らす(命中0でも板が当たった音は出す・二重再生防止)。
+    if (hitAt.length > 0) { get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0); }
   },
 
   setSwipeDirection: (direction, strength) => {
