@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3310',
+    items: [
+      'ゲーム内容の変更はありません(異常動作の設計台帳を更新: 裁定14/25種)。',
+    ],
+  },
+  {
     version: '0.25.3309',
     items: [
       'ゲーム内容の変更はありません(サブウェポン「異常動作」システムの設計台帳を追加)。',
