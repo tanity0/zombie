@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3273',
+    items: [
+      '敵のジャンプ攻撃が綺麗な放物線の弧を描くようになりました(旧「フワッ…ダン!」の3拍カーブを置き換え)。',
+    ],
+  },
+  {
     version: '0.25.3272',
     items: [
       '不具合修正: KILL!フィニッシュ(スローモーション)中に倒した敵の吹き飛び距離が縮んで見えたのを修正(スローに関係なく50px飛びます・終わり際がゆるやかに止まる慣性カーブに)。',

@@ -3,30 +3,27 @@ import {
   airHopEase01, airHopEaseD01, airHopHeight01, AIR_HOP_RISE_END, AIR_HOP_FALL_START,
 } from './airHop';
 
-describe('airHopHeight01 — 「フワッ……ダン!」の高さ曲線(社長指示v0.25.3077)', () => {
+describe('airHopHeight01 — 綺麗な放物線(社長指示v0.25.3273。旧「フワッ……ダン!」v0.25.3077を上書き)', () => {
   it('★不変条件: 出発と着地はぴったり接地(浮いたまま着地しない)', () => {
     expect(airHopHeight01(0)).toBe(0);
     expect(airHopHeight01(1)).toBe(0);
     expect(airHopHeight01(1.4)).toBe(0);
   });
 
-  it('飛び上がりは早い: 全体の1/4で頂点まで上がる(旧sin(t·π)は半分かかっていた)', () => {
-    expect(airHopHeight01(AIR_HOP_RISE_END)).toBeCloseTo(1, 6);
-    expect(airHopHeight01(0.13)).toBeGreaterThan(0.6); // 序盤で既に高い
-    expect(Math.sin(0.13 * Math.PI)).toBeLessThan(0.45); // 旧曲線との差(この時点ではまだ低かった)
-  });
-
-  it('滞空(フワッ)がある: 上りきってから落ち始めるまで、高さが頂点付近に留まる', () => {
-    for (let x = AIR_HOP_RISE_END; x <= AIR_HOP_FALL_START; x += 0.02) {
-      expect(airHopHeight01(x)).toBeGreaterThan(0.9);
+  it('頂点は中央(t=0.5)で高さ1=左右対称の弧', () => {
+    expect(airHopHeight01(0.5)).toBeCloseTo(1, 6);
+    expect(AIR_HOP_RISE_END).toBe(0.5);
+    expect(AIR_HOP_FALL_START).toBe(0.5);
+    for (let x = 0; x <= 0.5; x += 0.05) {
+      expect(airHopHeight01(x)).toBeCloseTo(airHopHeight01(1 - x), 6); // 対称性
     }
-    expect(AIR_HOP_FALL_START - AIR_HOP_RISE_END).toBeGreaterThan(0.3); // 滞空が全体の3割以上
   });
 
-  it('落下は加速する(ダン!): 後半ほど1コマあたりの落ち幅が大きい', () => {
-    const d1 = airHopHeight01(0.72) - airHopHeight01(0.76);
-    const d2 = airHopHeight01(0.94) - airHopHeight01(0.98);
-    expect(d2).toBeGreaterThan(d1 * 2);
+  it('放物線(自由落下と同型): 高さは1-(2t-1)^2 に一致', () => {
+    for (let x = 0; x <= 1; x += 0.1) {
+      const c = 2 * x - 1;
+      expect(airHopHeight01(x)).toBeCloseTo(1 - c * c, 6);
+    }
   });
 });
 
