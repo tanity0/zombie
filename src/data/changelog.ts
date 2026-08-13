@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3258',
+    items: [
+      'スラッシャーの連続攻撃時、敵に向かって20px踏み込むようになりました(慣性つきの滑らかな前進)。',
+    ],
+  },
+  {
     version: '0.25.3257',
     items: [
       '近接スイングのノックバック距離を約19px→50pxに強化(スラッシャーの連撃も同基準・Lv3最終段は100px)。カウンターマスターとパリィの弾き飛ばしは従来のまま。',

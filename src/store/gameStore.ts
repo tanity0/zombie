@@ -1045,6 +1045,9 @@ export const KNOCKBACK_DURATION = 280;
 // 減衰(1→0直線)込みの実距離指定=初速はknockbackSpeedForで換算(50px/280ms≈357px/s)。
 // カウンターマスター/パリィ弾き(COUNTER_KNOCKBACK_*)は従来のKNOCKBACK_SPEED基準のまま(Aだけ変更)。
 export const MELEE_SWING_KNOCKBACK_PX = 50;
+// スラッシャーのチェーン攻撃時の踏み込み(社長指示v0.25.3258「連続攻撃は20px前進(慣性入れて)」)。
+export const SLASHER_LUNGE_PX = 20;
+export const SLASHER_LUNGE_MS = 160;
 // ジャンプ/ダッシュ攻撃をカウンターした時の「弾き飛ばし」。速度ノックバックは updateEnemies が
 // 翌フレーム以降に適用するため、着地で付与される stun/lift に上書きされ「その場で痺れる」だけに
 // なっていた。→ パリィ成立の瞬間に即時で位置を飛ばす(LAUNCH)+その後も速く滑らせる(SPEED)。
@@ -3536,12 +3539,15 @@ const applySlasherChainStrike = (
   const r2 = meleeRange * meleeRange;
   let killed = 0;
   let hit = false;
+  let nearestDx = 0, nearestDy = 0, nearestD2 = Infinity; // 前進(ランジ)方向=最寄りのヒット敵
   for (const e of get().enemies) {
     if (e.type === 'reaper' && !e.reaperChaser) continue;
     const ecx = e.x + e.width / 2;
     const ecy = e.y + e.height / 2;
     const dx = ecx - pcx, dy = ecy - pcy;
-    if (dx * dx + dy * dy > r2) continue;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > r2) continue;
+    if (d2 < nearestD2) { nearestD2 = d2; nearestDx = dx; nearestDy = dy; }
     hit = true;
     const k = get().damageEnemy(e.id, dmg);
     get().spawnDamageNumber(ecx, e.y, dmg, false);
@@ -3556,6 +3562,25 @@ const applySlasherChainStrike = (
     }
   }
   get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃
+  // v0.25.3258 社長指示「連続攻撃は20px前進(慣性入れて)」: チェーン攻撃ごとにプレイヤーが
+  // 20px踏み込む。既存の被弾ノックバック機構(減衰スライド=慣性)を自前方向で流用。
+  // 方向=最寄りのヒット敵(ヒット無しなら現在の移動方向。どちらも無ければ前進しない)。
+  {
+    const st = get().player;
+    let lx = 0, ly = 0;
+    if (hit && nearestD2 > 0.0001) { const d = Math.sqrt(nearestD2); lx = nearestDx / d; ly = nearestDy / d; }
+    else if (Math.hypot(st.vx, st.vy) > 1) { const d = Math.hypot(st.vx, st.vy); lx = st.vx / d; ly = st.vy / d; }
+    if (lx !== 0 || ly !== 0) {
+      const lungeSpeed = knockbackSpeedFor(SLASHER_LUNGE_PX, SLASHER_LUNGE_MS);
+      useGameStore.setState(state => ({
+        player: {
+          ...state.player,
+          knockbackVx: lx * lungeSpeed, knockbackVy: ly * lungeSpeed,
+          knockbackUntil: Date.now() + SLASHER_LUNGE_MS, knockbackMs: SLASHER_LUNGE_MS,
+        },
+      }));
+    }
+  }
   // スキル: ナイフマスターのコンボ加算(§6.10 M33⑧: スラッシャー追撃のヒットでも貯める。倍率は既に乗っている)。
   {
     const slKnifeCombo = computeKnifeCombo(player, gameTime, hit);
