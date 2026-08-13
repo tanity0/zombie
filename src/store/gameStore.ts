@@ -1041,6 +1041,10 @@ export const COUNTER_EXTEND_PER_HIT = 200;
 // Counter knockback (additional effect on top of the bullet reflect).
 export const KNOCKBACK_SPEED = 133; // melee counter shove。ずらす速さを約2/3に(200→133。社長指示)
 export const KNOCKBACK_DURATION = 280;
+// 通常の近接スイングのずらし距離(社長指示v0.25.3257「近接スイングを50pxにしてみて」)。
+// 減衰(1→0直線)込みの実距離指定=初速はknockbackSpeedForで換算(50px/280ms≈357px/s)。
+// カウンターマスター/パリィ弾き(COUNTER_KNOCKBACK_*)は従来のKNOCKBACK_SPEED基準のまま(Aだけ変更)。
+export const MELEE_SWING_KNOCKBACK_PX = 50;
 // ジャンプ/ダッシュ攻撃をカウンターした時の「弾き飛ばし」。速度ノックバックは updateEnemies が
 // 翌フレーム以降に適用するため、着地で付与される stun/lift に上書きされ「その場で痺れる」だけに
 // なっていた。→ パリィ成立の瞬間に即時で位置を飛ばす(LAUNCH)+その後も速く滑らせる(SPEED)。
@@ -3527,7 +3531,8 @@ const applySlasherChainStrike = (
   const nextStep = step + 1;
   // Lv3(maxHits=3)の最終段(nextStep===maxHits=この一撃で使い切る)のみノックバック大。
   const isFinalBigKbStep = slLv === 3 && nextStep === maxHits;
-  const kbMult = (KNOCKBACK_SPEED / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
+  // v0.25.3257: チェーン各段=通常スイングと同じ50px基準(§25「各段=従来どおり」の従来が50pxへ変わったため追従)。
+  const kbMult = (knockbackSpeedFor(MELEE_SWING_KNOCKBACK_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
   const r2 = meleeRange * meleeRange;
   let killed = 0;
   let hit = false;
@@ -3547,7 +3552,7 @@ const applySlasherChainStrike = (
       get().spawnBurst(ecx, ecy, '#bef264', 10);
     } else {
       const d = Math.max(0.001, Math.hypot(dx, dy));
-      get().knockbackEnemy(e.id, dx / d, dy / d, kbMult); // 追撃が当たった敵のみノックバック(Lv3最終段のみ大)
+      get().knockbackEnemy(e.id, dx / d, dy / d, kbMult, kbMult); // 追撃が当たった敵のみノックバック(Lv3最終段のみ大)。maxStrengthも渡す(既定cap=3で頭打ちになる罠・v0.25.3257)
     }
   }
   get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃
@@ -5693,7 +5698,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
         const falloff = 1 - dist / meleeRange;
-        const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
+        // v0.25.3257: 至近50px(実距離・減衰込み)を基準に、リーチ端で半減の従来falloffを維持。
+        const speed = knockbackSpeedFor(MELEE_SWING_KNOCKBACK_PX, KNOCKBACK_DURATION) * (0.5 + falloff * 0.5);
         survivors.push({
           ...enemy,
           health: newHealth,
@@ -6040,7 +6046,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
         const falloff = 1 - dist / meleeRange;
-        const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
+        // v0.25.3257: 至近50px(実距離・減衰込み)を基準に、リーチ端で半減の従来falloffを維持。
+        const speed = knockbackSpeedFor(MELEE_SWING_KNOCKBACK_PX, KNOCKBACK_DURATION) * (0.5 + falloff * 0.5);
         survivors.push({
           ...enemy, health: nh, lastHit: now, stunUntil,
           knockbackVx: (dx / norm) * speed, knockbackVy: (dy / norm) * speed,

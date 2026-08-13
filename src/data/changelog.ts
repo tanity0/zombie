@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3257',
+    items: [
+      '近接スイングのノックバック距離を約19px→50pxに強化(スラッシャーの連撃も同基準・Lv3最終段は100px)。カウンターマスターとパリィの弾き飛ばしは従来のまま。',
+    ],
+  },
+  {
     version: '0.25.3256',
     items: [
       'レベルアップの3択に出る消費カードは1枚までになりました(残りは必ずスキル。スキルを取り切った後は例外的に複数出ます)。',
