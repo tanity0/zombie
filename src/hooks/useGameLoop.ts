@@ -9857,9 +9857,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(icx, icy, '#bae6fd', 8);
             spawnBurst(icx, icy, '#f0f9ff', 4);
           }
-          // アイスショット: キル時に氷片3個(直前ヒットのdmgの0.3倍・全Lv共通)を放射状に飛ばす。
+          // アイスショット: キル時に氷片3個(直前ヒットのdmgの0.3倍)を放射状に飛ばす。
+          // 社長指示v0.25.3301: 全Lv共通→**覚醒(Lv3)の効果**に変更。
           // 派手側(分類②)=既存の弾/バーストプールで安く描く(新規per-frame Graphicsなし)。
-          if (iceLv && enemyKilled && enemyForFx && !isBossType(enemyForFx.type)) {
+          if (iceLv >= 3 && enemyKilled && enemyForFx && !isBossType(enemyForFx.type)) {
             const shardDmg = Math.max(1, Math.round(dmg * ICE_SHOT_SHARD_DMG_MULT));
             const kx = enemyForFx.x + enemyForFx.width / 2, ky = enemyForFx.y + enemyForFx.height / 2;
             for (let k = 0; k < ICE_SHOT_SHARD_COUNT; k++) {
