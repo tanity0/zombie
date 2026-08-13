@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3296',
+    items: [
+      '伸びる影の輪郭ぼかしをさらに広げました(丸影はそのまま)。',
+    ],
+  },
+  {
     version: '0.25.3295',
     items: [
       'パンプキンなどの強敵(研究所の大型個体含む)にも紫システムを追加: クリティカルなどで体勢値を削り切ると紫の完全気絶になります(体勢ゲージも表示)。ボス用のカメラ・クリ減速はそのまま対象外。',

@@ -1920,13 +1920,14 @@ const SHADOW_BAKE_MAX_LONG_EDGE = 512;
 const SHADOW_PENUMBRA = tsBool('penumbra', true);
 /** a_hard のぼかし = 基準ぼかし×これ(外形を決める硬い方)。 */
 const SHADOW_PENUMBRA_HARD_MULT = tsNum('penumbrahard', 0.25);
-/** a_soft のぼかし = 基準ぼかし×これ(「縁からの距離」の代用)。 */
-const SHADOW_PENUMBRA_SOFT_MULT = tsNum('penumbrasoft', 3.0);
+/** a_soft のぼかし = 基準ぼかし×これ(「縁からの距離」の代用)。
+ *  v0.25.3296(社長指示「伸びる方の影だけもっと輪郭広くぼかす」): 3.0→4.0=フェザーの届く幅自体を拡張。 */
+const SHADOW_PENUMBRA_SOFT_MULT = tsNum('penumbrasoft', 4.0);
 /** 半影の幅 k(t) = K0 + (K1-K0)×t^POW。t=0 足元(硬い)/ t=1 先端(広い)。 */
-// v0.25.3295(社長指示「丸(接地丸影)のように外周側がソフトになれば。今は影の枠がくっきりしている」):
-// 根元側の半影幅K0を0.06→0.30へ。足元付近の輪郭にも接地丸影と同系の柔らかい縁が付く(先端は従来どおり広い)。
-const SHADOW_PENUMBRA_K0 = tsNum('penumbrak0', 0.30);
-const SHADOW_PENUMBRA_K1 = tsNum('penumbrak1', 0.86);
+// v0.25.3295「丸のように外周側をソフトに」→v0.25.3296「もっと輪郭広く」: 根元K0 0.30→0.55、
+// 先端K1 0.86→1.0(上限)。この組はシルエット影(伸びる影)専用=接地丸影のカーブには影響しない。
+const SHADOW_PENUMBRA_K0 = tsNum('penumbrak0', 0.55);
+const SHADOW_PENUMBRA_K1 = tsNum('penumbrak1', 1.0);
 const SHADOW_PENUMBRA_POW = tsNum('penumbrapow', 1.15);
 
 // ---- ★v12 §3-9-C ★D-2: 素材の下側の空白を、焼く時に切り詰める ---------------------------------
