@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3314',
+    items: [
+      'ゲーム内容の変更はありません(異常動作のレシピ台帳をアンカー方式=意味の通る1つ+意外な2つ、に改訂)。',
+    ],
+  },
+  {
     version: '0.25.3313',
     items: [
       'ゲーム内容の変更はありません(異常動作: 全20種の裁定完了・レシピ台帳案を追加)。',
