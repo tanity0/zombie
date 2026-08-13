@@ -10,6 +10,7 @@
 // 武器(weapons/activeWeaponId)の復元だけは createWeapon(weaponUtils→gameStore)が必要でここには
 // 置けない(headless縛り)。武器を載せる最後の一手は ghostBuild.ts が担当する。
 import type { CharacterClass, Player, PlayerBuildSnapshot, Summon } from '../types/game';
+import type { AvatarId } from '../data/avatars';
 
 /**
  * 同行守護霊の写し(BOT_AND_GHOST.md §2.15「討伐に付き合ってくれた人のビルドとステータス」/
@@ -51,10 +52,13 @@ export const ghostAllySnapshot = (ghost: Summon | undefined | null): GhostAllySn
  * 現在のプレイヤーから「ビルドの写し」を1枚取る(純粋なコピー=生きた参照を持たない。
  * CLAUDE.md 実装精度の規律3)。旧snapshot(maxHealth/speed/level)の上位互換。
  * phill=そのランのPHILL計測(発射数/ヘッドショット数)。母数0なら率は載せない(=未記録)。
+ * avatarId=記録時に選択していたアバター(gameStore.avatarId・視覚のみ)。省略/undefinedはnullとして
+ * 記録する(=「アバターなし」。呼び出し側がstoreへアクセスできない旧経路/テストの後方互換)。
  */
 export const snapshotPlayerBuild = (
   p: Player,
   phill?: { shots: number; headshots: number },
+  avatarId?: AvatarId | null,
 ): PlayerBuildSnapshot => {
   const guns = p.weapons.filter(w => !w.isMelee);
   const active = guns.find(w => w.id === p.activeWeaponId) ?? guns[0];
@@ -76,6 +80,7 @@ export const snapshotPlayerBuild = (
     subWeapons: [...p.subWeapons],
     subWeaponLevels: { ...p.subWeaponLevels },
     characterClass: p.characterClass,
+    avatarId: avatarId ?? null,
     ...(phill && phill.shots > 0
       ? { phillShots: phill.shots, phillHeadshots: phill.headshots, phillHeadshotRate: phill.headshots / phill.shots }
       : {}),

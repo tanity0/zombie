@@ -151,6 +151,7 @@ import type { SceneLayers } from './layers';
 import {
   getTexture, PLAYER_ART_BASE_W,
   FLAME_SHEET, FLAME_FRAMES, FLAME_FRAME_W, FLAME_FRAME_H, FLAME_LIGHT_FRAC, TORCH_STAND_RIM_ABOVE_FOOT,
+  avatarHeadDeltaPx,
 } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
@@ -1185,6 +1186,13 @@ const playerTextureName = (p: Player, frame: number, walking = true, running = f
     : p.characterClass === 'necromancer' ? `player-striker-walk-${frame}`
     : p.characterClass === 'rogue' ? `player-scavenger-walk-${frame}`
     : 'player';
+};
+// アバター頭頂追従(v0.25.3271)の基準(=待機絵)テクスチャ名。avatars.ts のoffsetYFracはこの絵を
+// 見ながら調整されている前提なので、耳の頭頂差分は「いまのコマ」からこの絵の頭頂を引いて求める。
+// 武将フル装備中は待機絵が無い(playerTextureNameがframe0=歩き絵を返す)ので、そのframe0を基準にする。
+const avatarHeadBaselineTexName = (characterClass: Player['characterClass'], warlordFull: boolean, warlordKatana: boolean): string => {
+  if (warlordFull) return warlordKatana ? 'player-warlord-katana-walk-0' : 'player-warlord-gun-walk-0';
+  return PLAYER_IDLE_SPRITE[characterClass] ?? 'player';
 };
 // 立ち絵のベース拡大率(クラス絵=幅基準 / 武将立ち絵=高さ基準 / 不明クラス=枠内接)。分身と共有。
 // クラス絵は表示基準幅 PLAYER_ART_BASE_W(78px)へ正規化(社長決定v0.25.1763・エリオット式=NPC方式):
@@ -2901,6 +2909,12 @@ export class PixiScene {
   // playerKatanaBack と同じ絵・同じ式)。武将フル装備の立ち絵中は一枚絵に武器が描かれているので隠す。
   private ghostKatanaBack = new Sprite();
   private ghostKatanaBackSetup = false;
+  // アバター(耳/尻尾など・v0.25.3271「守護霊へのアバター記録」): プレイヤー本体の
+  // playerAvatarAbove/Below と同じ形のプールだが、親は actorLayer(katana-back/knifeと同じ理由=
+  // 守護霊消滅時の view.container.destroy に巻き込まれない)。syncAvatarPartLayer 汎用ループが
+  // 生成/位置更新の両方を担当(パーツ種別ごとの特別分岐なし)。
+  private ghostAvatarAbove: Sprite[] = [];
+  private ghostAvatarBelow: Sprite[] = [];
   private ghostDeathLatchAt = 0; // 直近ラッチした GhostDeathPose.atMs(変わった時だけ差し替える)
   private ghostDeathPoseRec: GhostDeathPose | null = null;
   // 守護霊の銃口フラッシュ(プレイヤーの muzzleSprite とは別に1枚・latch方式=v0.25.2455と同型)。
@@ -12341,11 +12355,16 @@ export class PixiScene {
     };
     const warlordFullGhost = hasFullWarlordSet(fakeGhost.equipment);
     const frame = playerWalkFrame(fakeGhost, now, walking, false);
-    let tex = getTexture(playerTextureName(fakeGhost, frame, walking, false))
+    // アバター頭頂追従(v0.25.3271)用に「いま体に表示中のテクスチャ名」も追う(本体と同じ作法)。
+    let bodyTexName2 = playerTextureName(fakeGhost, frame, walking, false);
+    let tex = getTexture(bodyTexName2)
       ?? getTexture(PLAYER_IDLE_SPRITE[gcls] ?? 'player-shotgun-idle') ?? getTexture('player');
     if (departureElapsed >= 0 && departureElapsed < RESCUE_ALLY_CROUCH_MS) {
       const crouchPrefix = MELEE_POSE_PREFIX[gcls];
-      if (crouchPrefix) tex = getTexture(`${crouchPrefix}-ready`) ?? tex;
+      if (crouchPrefix) {
+        const crouchTex = getTexture(`${crouchPrefix}-ready`);
+        if (crouchTex) { tex = crouchTex; bodyTexName2 = `${crouchPrefix}-ready`; }
+      }
     }
 
     // ③ 発砲(ghostLastShotAt起点・視覚のみ): latch=発砲の瞬間に「実際に生まれた弾(ghost-gun)の射線」と
@@ -12438,6 +12457,32 @@ export class PixiScene {
       } else if (this.ghostKatanaBackSetup) {
         kb.visible = false;
       }
+    }
+
+    // アバター(耳/尻尾など・v0.25.3271「守護霊へのアバター記録」): 記録時に選択していたアバター
+    // (ghostBuild.avatarId)を本体と同じ汎用ループ(syncAvatarPartLayer)で重ねる。旧データ
+    // (avatarId無し=undefined)は非表示のまま(parts=[]でプールを隠すだけ・クラッシュしない)。
+    // 頭頂追従も本体(drawPlayer)と同じ関数=1つの式を共有(★品質監査「同じ動作は同じ経路で」)。
+    // 親は actorLayer(katana-back/knifeと同じ理由=守護霊消滅時のview.container.destroyに
+    // 巻き込まれない)。ghost色調(青白tint+半透明)は syncAvatarPartLayer の opts で耳/尻尾にも掛かる。
+    {
+      const gAvatarId = s.ghostBuild?.avatarId ?? null;
+      const gAvatarDef = gAvatarId ? AVATARS[gAvatarId] : null;
+      const gParts = gAvatarDef ? gAvatarDef.parts : [];
+      const gWarlordKatana = warlordFullGhost && hasMurasame(fakeGhost);
+      const gBaselineTexName = avatarHeadBaselineTexName(gcls, warlordFullGhost, gWarlordKatana);
+      const gHeadDeltaY = tex ? avatarHeadDeltaPx(bodyTexName2, gBaselineTexName) * Math.abs(view.sprite.scale.y) : 0;
+      const gAvatarAlpha = tex ? GHOST_ALLY_ALPHA * lifecycleAlpha : 0;
+      this.syncAvatarPartLayer(
+        this.ghostAvatarAbove, gParts.filter(pt => pt.layer === 'above'), true, this.L.actorLayer,
+        { footX, footY, boxW, boxH }, dsc, 0, 0, 0, actOffX, actOffY, gAvatarAlpha, faceSign, gHeadDeltaY,
+        { tint: GHOST_ALLY_TINT, zIndexBase: footY },
+      );
+      this.syncAvatarPartLayer(
+        this.ghostAvatarBelow, gParts.filter(pt => pt.layer === 'below'), false, this.L.actorLayer,
+        { footX, footY, boxW, boxH }, dsc, 0, 0, 0, actOffX, actOffY, gAvatarAlpha, faceSign, gHeadDeltaY,
+        { tint: GHOST_ALLY_TINT, zIndexBase: footY },
+      );
     }
 
     // ④ 近接スイング(ghostLastMeleeAt起点): 分身syncShadowCloneのcloneKnife群と同一の3コマ差し替え+
@@ -12688,6 +12733,9 @@ export class PixiScene {
       this.ghostKnifeTrail.visible = false; this.ghostMeleeWpn.visible = false;
     }
     if (this.ghostKatanaBackSetup) this.ghostKatanaBack.visible = false; // v0.25.2602: 背負い刀も消す
+    // v0.25.3271: アバター(耳/尻尾など)も一緒に消す(destroyしない=次の召喚で使い回す)。
+    for (const sp of this.ghostAvatarAbove) sp.visible = false;
+    for (const sp of this.ghostAvatarBelow) sp.visible = false;
     this.hideGhostMuzzle();
     if (this.ghostNameLabel) this.ghostNameLabel.visible = false; // 頭上名も一緒に消す(v0.25.2477)
     if (this.ghostCounterRing) this.ghostCounterRing.visible = false; // 窓リングも一緒に消す(v0.25.2532)
@@ -12698,22 +12746,28 @@ export class PixiScene {
 
   // アバターシステム(試験・第1弾)。台帳(src/data/avatars.ts)の1レイヤーぶんのパーツをプールへ流し込む
   // 汎用ループ(パーツ種別ごとの特別分岐なし=新しいアバターは台帳に1エントリ足すだけで描ける)。
-  // above=本体スプライトより前面(addChild=末尾に追加=常に最前面)/ below=本体より背面
-  // (addChildAt index1=katana-item/skateboardと同じ「reticleとspriteの間」)。
+  // above=本体スプライトより前面 / below=本体より背面。
+  // プレイヤー本体呼び出し(opts省略): addChild=末尾に追加(above)/addChildAt index1=katana-item/
+  //   skateboardと同じ「reticleとspriteの間」(below)。container=view.container(1体専用)。
+  // 守護霊呼び出し(opts.zIndexBase指定): container=共有actorLayer(全アクター)なので前後は
+  //   ghostKatanaBackと同じくzIndexで決める(addChild末尾+zIndex=footY±0.5)。
   // スプライトは一度作ったら使い回す(生成は初回のみ・毎フレームは位置/スケール更新だけ=プール済み)。
   private syncAvatarPartLayer(
     pool: Sprite[], parts: AvatarPart[], above: boolean, container: Container,
     fb: { footX: number; footY: number; boxW: number; boxH: number },
     dsc: number, bob: number, introOffX: number, introOffY: number, actOffX: number, actOffY: number,
     bodyAlpha: number, face: number,
+    headDeltaY = 0, // 頭頂追従(v0.25.3271): followsHeadなパーツのYへ加算する画面px差分(現在コマ−基準コマ)
+    opts?: { tint?: number; zIndexBase?: number }, // 守護霊描画用(青白tint+cross-actor zIndexソート)
   ): void {
     for (let i = 0; i < parts.length; i++) {
       let sp = pool[i];
       if (!sp) {
         sp = new Sprite();
         sp.visible = false;
-        if (above) container.addChild(sp);      // 本体より前面(上)
-        else container.addChildAt(sp, 1);        // 本体より背面(下・reticleとspriteの間)
+        if (opts?.zIndexBase !== undefined) container.addChild(sp); // 共有actorLayer=zIndexで前後を決める
+        else if (above) container.addChild(sp);      // 本体より前面(上)
+        else container.addChildAt(sp, 1);             // 本体より背面(下・reticleとspriteの間)
         pool[i] = sp;
       }
       const part = parts[i];
@@ -12727,13 +12781,15 @@ export class PixiScene {
       const mirror = part.flipWithFacing && face < 0;
       sp.scale.set(mirror ? -sc : sc, sc);
       const ox = part.offsetXFrac * fb.boxW * dsc * (part.flipWithFacing ? face : 1);
-      const oy = part.offsetYFrac * fb.boxH * dsc;
+      const oy = part.offsetYFrac * fb.boxH * dsc + (part.followsHead ? headDeltaY : 0);
       sp.position.set(
         this.snapToScreenPixel(fb.footX + ox, this.L.world.position.x) + introOffX + actOffX,
         this.snapToScreenPixel(fb.footY - bob + oy, this.L.world.position.y) + introOffY + actOffY,
       );
       sp.alpha = bodyAlpha;
       sp.visible = sp.alpha > 0.01;
+      if (opts?.tint !== undefined) sp.tint = opts.tint;
+      if (opts?.zIndexBase !== undefined) sp.zIndex = opts.zIndexBase + (above ? 0.5 : -0.5);
     }
     // 選択中アバターが変わってパーツ数が減った場合、余ったプール分は隠すだけ(destroyしない=使い回し)。
     for (let i = parts.length; i < pool.length; i++) {
@@ -12753,9 +12809,14 @@ export class PixiScene {
     // 武将セット(特殊3点)フル装備時は立ち絵を差し替え。小烏丸(村雨)も装備していれば刀バージョン、
     // 揃っていなければ通常クラス絵へ戻す。立ち絵は高さ基準で正規化する(刀が横に伸びても体の大きさを保つ)。
     const warlordFull = hasFullWarlordSet(p.equipment);
+    const warlordKatana = warlordFull && hasMurasame(p);
     const textureName = playerTextureName(p, frame, walking, running);
     const tex = getTexture(textureName) ?? getTexture('player');
     view.sprite.texture = tex ?? view.sprite.texture;
+    // アバター頭頂追従(v0.25.3271)用: 「いま体に表示中のテクスチャ名」を追う(この後の近接ポーズ/
+    // 死亡固定絵の差し替えで更新される)。取得失敗時のフォールバック('player'等)は追わない=
+    // その場合は頭頂キャッシュに無い名前になり avatarHeadDeltaPx が自動的に差分0へ落ちる。
+    let bodyTexName = textureName;
     const walkCycle = running && usesRunAnimation(p) ? PLAYER_RUN_CYCLE_MS : playerWalkCycleMs(p);
     const phase = walking ? (now / walkCycle) * Math.PI * 2 : 0;
     const step = Math.sin(phase);
@@ -12844,13 +12905,13 @@ export class PixiScene {
     const sinceFirstAid = now - (p.firstAidPoseAt || 0);
     const firstAidActive = p.firstAidPoseAt > 0 && sinceFirstAid >= 0 && sinceFirstAid < PLAYER_FIRSTAID_POSE_MS;
     if (meleePosePrefix && !warlordFull && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
-      const poseTex = getTexture((sinceSwing / swingWindowMs) < MELEE_POSE_READY_FRAC
-        ? `${meleePosePrefix}-ready` : `${meleePosePrefix}-swing`);
-      if (poseTex) view.sprite.texture = poseTex;
+      const poseSuffix = (sinceSwing / swingWindowMs) < MELEE_POSE_READY_FRAC ? '-ready' : '-swing';
+      const poseTex = getTexture(`${meleePosePrefix}${poseSuffix}`);
+      if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}${poseSuffix}`; }
     } else if (meleePosePrefix && !warlordFull && firstAidActive) {
       // 救急鞄発動: 本体を振り抜き絵(-swing)へ差し替え(社長指示v0.25.1656)。近接スイング中はそちら優先。
       const poseTex = getTexture(`${meleePosePrefix}-swing`);
-      if (poseTex) view.sprite.texture = poseTex;
+      if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-swing`; }
     }
     // v0.25.2595(社長報告「死にモーション、強制されてないからか、攻撃モーションとかほかの動きが
     // 優先されてて しゃがみ絵になってない」): **死亡中は何より優先してしゃがみ絵(-ready)へ固定**。
@@ -12858,7 +12919,7 @@ export class PixiScene {
     // 直前に振っていた/歩いていた絵のまま倒れるのを防ぐ(死んだと分かる絵を寄りズームの間ずっと出す)。
     if (p.health <= 0 && meleePosePrefix) {
       const downTex = getTexture(`${meleePosePrefix}-ready`);
-      if (downTex) view.sprite.texture = downTex;
+      if (downTex) { view.sprite.texture = downTex; bodyTexName = `${meleePosePrefix}-ready`; }
     }
     if (PLAYER_MOTION_FX && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const t = sinceSwing / swingWindowMs;
@@ -13031,13 +13092,18 @@ export class PixiScene {
       const avatarId = useGameStore.getState().avatarId;
       const avatarDef = avatarId ? AVATARS[avatarId] : null;
       const parts = avatarDef ? avatarDef.parts : [];
+      // 頭頂追従(v0.25.3271): 「いま表示中のコマ」と「基準(待機絵)コマ」の頭頂差分(art px)に、
+      // 本体の実表示スケール(baseScale×depthScale×演出squash込み=view.sprite.scale.yそのもの)を
+      // 掛けて画面px化する。計測失敗/未計測は差分0(=現状と同じ表示)。
+      const baselineTexName = avatarHeadBaselineTexName(p.characterClass, warlordFull, warlordKatana);
+      const headDeltaY = avatarHeadDeltaPx(bodyTexName, baselineTexName) * Math.abs(view.sprite.scale.y);
       this.syncAvatarPartLayer(
         this.playerAvatarAbove, parts.filter(pt => pt.layer === 'above'), true, view.container,
-        fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face,
+        fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY,
       );
       this.syncAvatarPartLayer(
         this.playerAvatarBelow, parts.filter(pt => pt.layer === 'below'), false, view.container,
-        fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face,
+        fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY,
       );
     }
     // 救急鞄スキル発動: 「鞄を頭上へ掲げる」一拍(振り抜きポーズと同じ窓・描画のみ・判定不変)。

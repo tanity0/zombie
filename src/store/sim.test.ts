@@ -561,16 +561,18 @@ describe('headless simulation invariants', () => {
     }
   });
 
-  it('攻撃モーション中(zrush)はノックバックで中断されない／気絶では中断される', () => {
+  it('v0.25.3271: 攻撃モーション中(windup)の雑魚もノックバックで位置は滑る(committed=charge/jumpだけ滑らない)／気絶では中断される', () => {
     const store = useGameStore.getState();
     const px = store.player.x, py = store.player.y;
     const t0 = store.gameTime + 1000;
     store.setGameTime(t0);
 
-    // プレイヤーの右220px(近接外)に、突進中(zrush)＋右向き(離れる向き)ノックバック付きのゾンビ。
+    // ① 非committed(windup=溜め・予備動作): プレイヤーの右220px(近接外)に、溜め中＋右向き
+    //   (離れる向き)ノックバック付きのゾンビ。v0.25.3271裁定:技(aiPhase)は中断しないが、
+    //   位置はノックバックで滑る=ズレた位置から技を実行する。
     const z = spawnEnemyAt('zombie', px + 220, py, t0);
-    z.aiPhase = 'zrush';
-    z.aiPhaseUntil = t0 + 5000;             // 突進継続中(gameTime基準)
+    z.aiPhase = 'windup';
+    z.aiPhaseUntil = t0 + 5000;             // 溜め継続中(gameTime基準)
     z.knockbackVx = 1000; z.knockbackVy = 0; // 右=プレイヤーから離れる向き
     z.knockbackUntil = Date.now() + 2000;    // ノックバック有効(実時間基準)
     useGameStore.setState({ enemies: [z] });
@@ -580,15 +582,29 @@ describe('headless simulation invariants', () => {
     for (let i = 0; i < 5; i++) { t += 1000 / 60; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(1 / 60); }
     const after = useGameStore.getState().enemies[0];
     expect(after).toBeTruthy();
-    // ノックバック(右/離れる)で押し出されず、突進でプレイヤー側(左)へ寄る=距離が縮む。
-    expect(Math.abs(after.x - px)).toBeLessThan(distBefore);
-    expect(after.aiPhase).toBe('zrush');
+    // ノックバック(右/離れる)で位置が押し出される=距離が伸びる。技(aiPhase)自体は中断されない。
+    expect(Math.abs(after.x - px)).toBeGreaterThan(distBefore);
+    expect(after.aiPhase).toBe('windup');
 
-    // 気絶は例外: zrush中でも中断される(aiPhase解除)。
+    // ② committed(charge=ダッシュ突進中)は従来どおりノックバックで滑らない。ノックバックの早期return
+    //   を通らない=通常のチェイス/突進AIへフォールスルーしてプレイヤー側(左)へ寄る=距離が縮む。
     const z2 = spawnEnemyAt('zombie', px + 220, py, t);
-    z2.aiPhase = 'zrush'; z2.aiPhaseUntil = t + 5000;
-    z2.stunUntil = t + 2000; // gameTime基準で気絶中
+    z2.aiPhase = 'charge';
+    z2.aiPhaseUntil = t + 5000;
+    z2.knockbackVx = 1000; z2.knockbackVy = 0; // ①と同じ「離れる向き」のノックバックを与えても効かないはず
+    z2.knockbackUntil = Date.now() + 2000;
     useGameStore.setState({ enemies: [z2] });
+    const distBefore2 = Math.abs(useGameStore.getState().enemies[0].x - px);
+    for (let i = 0; i < 5; i++) { t += 1000 / 60; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(1 / 60); }
+    const after2 = useGameStore.getState().enemies[0];
+    expect(after2).toBeTruthy();
+    expect(Math.abs(after2.x - px)).toBeLessThan(distBefore2);
+
+    // ③ 気絶は例外: windup中でも中断される(aiPhase解除・v0.25.3271でも不変)。
+    const z3 = spawnEnemyAt('zombie', px + 220, py, t);
+    z3.aiPhase = 'windup'; z3.aiPhaseUntil = t + 5000;
+    z3.stunUntil = t + 2000; // gameTime基準で気絶中
+    useGameStore.setState({ enemies: [z3] });
     t += 1000 / 60; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(1 / 60);
     expect(useGameStore.getState().enemies[0].aiPhase).toBeUndefined();
   });

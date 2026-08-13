@@ -9581,14 +9581,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           );
           return { ...enemy, x: kb.x, y: kb.y };
         }
-        // 攻撃モーションを「全う」するフェーズの扱い(社長指示・更新):
-        // ・どの敵も「攻撃モーションに入ったら(aiPhase あり=溜め/zpause/zrush/突進/ジャンプ等)やり切る」。
-        //   →通常ノックバックでは中断しない(範囲外に押し出されても完遂する)。= inAttackMotion ガード。
+        // 攻撃モーションを「全う」するフェーズの扱い(社長指示・v0.25.3271裁定で更新):
+        // ・どの敵も「攻撃モーションに入ったら(aiPhase あり=溜め/zpause/zrush/突進/ジャンプ等)技自体は
+        //   やり切る」(中断しない=予告した攻撃は必ず実行される。掟W4は不変)。
+        // ・v0.25.3271: ただし**位置はノックバックで滑る**(committed=空中ジャンプ・ダッシュ突進、だけは
+        //   従来どおり滑らせない=軌道が壊れるため)。溜め・予備動作・硬直中の雑魚は押されると、
+        //   ズレた位置から同じ技を実行する。旧仕様(inAttackMotion=aiPhaseありなら丸ごと滑らせない)は廃止。
         // ・例外として気絶(stun)/パリィは中断できる: stun は committed(空中ジャンプ/突進中)以外を解除、
         //   パリィは aiPhase を先に解除してから弾くのでこのガードに掛からない。
         // committed = 中断不可の実行中(空中ジャンプ・ダッシュ突進)。stun/lift もこの間は受け付けない。
         const committed = enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge';
-        const inAttackMotion = enemy.aiPhase !== undefined; // 溜め/予備動作も含む=ノックバックで中断しない
         // CRIT-UNIFY §9.2: 次行動CD専用のatkUntil。クリ窓中のボスは×2(bossCritCdMult)。
         // windup/active/recoverの各durationは従来のatkUntilのまま(予告のリード時間は変えない)。
         const atkCdUntil = (ms: number) => gameTime + (ms / ENEMY_ATTACK_SPEED_MULT) * bossCritCdMult(enemy, gameTime);
@@ -9615,16 +9617,17 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         // Knockback overrides chase AI: while it's active, slide outward
         // with linearly-decaying velocity instead of seeking the player.
-        // ただし攻撃モーション中(inAttackMotion)はノックバックで中断/スライドさせない(やり切る)。
+        // v0.25.3271裁定: 攻撃モーション中(aiPhase あり)の雑魚も**位置はスライドする**
+        // (technique自体は中断しない=やり切る。滑らせないのは committed=空中ジャンプ/ダッシュ突進だけ)。
         // v0.25.2607(社長裁定「2にしよう」): **ボスは通常の殴り/弾では押されない。押し道具(鞭・
         // シールドバッシュ)だけ効く。** 直した不格好さは2つ:
-        //  ① 紫の完全気絶中、殴るたびに巨体がズルズル動く(気絶は技を解除する=下のinAttackMotionが
+        //  ① 紫の完全気絶中、殴るたびに巨体がズルズル動く(気絶は技を解除する=下のcommittedガードが
         //     外れるので押しが通っていた)。
         //  ② 天使がイベントのサークルから押し出され、次フレームのクランプ(上のfromEvent閉じ込め)に
         //     引き戻される綱引き=「押される→すぐ戻る」。押す力を消せば綱引きも起きない。
         // 通常敵はこのガードと無関係=従来どおり全ての手段で押される。
         const bossShoveOk = canShoveEnemy(enemy, now);
-        if (!inAttackMotion && bossShoveOk && enemy.knockbackUntil && now < enemy.knockbackUntil) {
+        if (!committed && bossShoveOk && enemy.knockbackUntil && now < enemy.knockbackUntil) {
           const remaining = enemy.knockbackUntil - now;
           const decay = Math.max(0, remaining / KNOCKBACK_DURATION); // 1 → 0
           const kb = resolveMove(
@@ -9651,7 +9654,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 適用ブロックはbossShoveOk(canShoveEnemyのガード=押し道具だけ)を通ってから来るので、
         // ここより手前で抜けると押し道具が11体に永遠に届かない(直った不具合)。以降(liftUntil等の
         // 通常追跡AI)は従来どおり専用コントローラに任せて抜ける。
-        // 注意: inAttackMotion は aiPhase 基準なので、bossState系(裏ボス/天使/idol)の攻撃中は
+        // 注意: committed は aiPhase 基準なので、bossState系(裏ボス/天使/idol)の攻撃中は
         // このガードに掛からず、押し道具が攻撃中でも通る。押し道具は単発の意図的な技のため仕様として許容する。
         if (isHiddenBoss(enemy.type)) return enemy;
 

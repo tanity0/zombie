@@ -69,6 +69,81 @@ const isSoftClassSprite = (name: string): boolean => SPRITE_SMOOTH && isClassSpr
 //   (トリリニア補間が常に隣画素/mip間をブレンドする)。詳細は ENGINEERING_NOTES.md。
 export const PLAYER_ART_BASE_W = 78;
 
+// ---- アバターの頭頂キャッシュ(社長指示「猫耳の頭追従」・v0.25.3271) ------------------------------
+// 猫耳(avatars.ts の 'above' パーツ)は表示ボックス基準の固定オフセットで置かれているため、歩き/
+// しゃがみ/攻撃などでスプライトの頭が上下に動くとズレる。ここで**プレイヤー関連の全シート・全コマの
+// 「頭頂(最上端の不透明ピクセル行・alpha>16)」をロード時に1回だけ計測してキャッシュ**し、
+// pixiScene側(syncAvatarPartLayer)が「いま表示中のコマ」と「基準コマ(待機絵)」の頭頂差分を
+// 耳のYオフセットへ加算する。計測は読み込み済み画像を新規Imageで再取得(ブラウザキャッシュ即応)
+// して canvas 2d(drawImage→getImageData)で行う。**PixiJSのTexture内部/extractには依存しない**
+// (loadKeyed/loadEdgeSoftened と同じ安全な作法)。実行時(pixiScene)は参照のみ=per-frameコストゼロ。
+const HEAD_TOP_ALPHA_THRESHOLD = 16;
+// 名前 → 最上端の不透明ピクセル行(art px・top-origin)。計測失敗/全行透明/未計測は null
+// (呼び出し側 avatarHeadDeltaPx は null を「差分0」にフォールバックする=現状と同じ表示)。
+const headTopCache = new Map<string, number | null>();
+
+const measureHeadTop = async (name: string): Promise<void> => {
+  try {
+    const img = new Image();
+    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = spritePath(name); });
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h) { headTopCache.set(name, null); return; }
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    if (!ctx) { headTopCache.set(name, null); return; }
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, w, h).data;
+    for (let y = 0; y < h; y++) {
+      const rowBase = y * w * 4;
+      for (let x = 0; x < w; x++) {
+        if (d[rowBase + x * 4 + 3] > HEAD_TOP_ALPHA_THRESHOLD) { headTopCache.set(name, y); return; }
+      }
+    }
+    headTopCache.set(name, null); // 全行透明(想定外の素材)
+  } catch (e) {
+    console.warn(`[pixiTextures] failed to measure head-top "${name}":`, e);
+    headTopCache.set(name, null);
+  }
+};
+
+// クラス→立ち絵接頭辞(playerTextureName/PLAYER_IDLE_SPRITEと同じ対応・入れ替えない)。
+const AVATAR_HEAD_TRACK_CLASS_PREFIXES = ['magnum', 'shotgun', 'striker', 'scavenger'];
+// 走りコマ数はクラスにより4種5コマ/ヘビーガンナー(shotgun)だけ6コマ(RUN_SEQ_6・playerWalkSheets参照)。
+const AVATAR_HEAD_TRACK_NAMES: string[] = [
+  ...AVATAR_HEAD_TRACK_CLASS_PREFIXES.flatMap((prefix) => [
+    `player-${prefix}-idle`,
+    `player-${prefix}-walk-0`, `player-${prefix}-walk-1`, `player-${prefix}-walk-2`, `player-${prefix}-walk-3`, `player-${prefix}-walk-4`,
+    // しゃがみ(死亡固定絵)/攻撃ポーズ(近接構え→振り抜き。死亡固定絵は`-ready`を共有)。
+    `player-${prefix}-melee-ready`, `player-${prefix}-melee-swing`,
+    ...(prefix === 'shotgun'
+      ? ['player-shotgun-run-0', 'player-shotgun-run-1', 'player-shotgun-run-2', 'player-shotgun-run-3', 'player-shotgun-run-4', 'player-shotgun-run-5']
+      : [`player-${prefix}-run-0`, `player-${prefix}-run-1`, `player-${prefix}-run-2`, `player-${prefix}-run-3`, `player-${prefix}-run-4`]),
+  ]),
+  // 武将セット(特殊3点フル装備)立ち絵。frame0=待機相当(playerWalkFrameは!walkingでframe0を返す)。
+  'player-warlord-gun-walk-0', 'player-warlord-gun-walk-1', 'player-warlord-gun-walk-2',
+  'player-warlord-katana-walk-0', 'player-warlord-katana-walk-1', 'player-warlord-katana-walk-2',
+];
+
+/** 頭頂キャッシュを1回だけ埋める(ensureTextures内部から並列で叩かれる)。 */
+const measureAllAvatarHeadTops = (): Promise<void> =>
+  Promise.all(AVATAR_HEAD_TRACK_NAMES.map(measureHeadTop)).then(() => {});
+
+/** 計測済みの頭頂行(art px)。未計測/計測失敗は null。 */
+export const getHeadTopRow = (name: string): number | null => headTopCache.get(name) ?? null;
+
+/**
+ * 「いま表示中のテクスチャ」と「基準(待機絵)テクスチャ」の頭頂差分(art px・下=正)。
+ * どちらか一方でも未計測/計測失敗なら 0(=現状と同じ表示・フォールバック)。
+ * 呼び出し側(pixiScene)がこれに実際の表示スケール(depthScale込み)を掛けて画面pxへ変換する。
+ */
+export const avatarHeadDeltaPx = (currentTexName: string, baselineTexName: string): number => {
+  const cur = headTopCache.get(currentTexName);
+  const base = headTopCache.get(baselineTexName);
+  if (cur == null || base == null) return 0;
+  return cur - base;
+};
+
 // Load the atlas + player image and slice every named frame. Idempotent: the
 // first caller kicks off the load, later callers await the same promise.
 export const ensureTextures = (): Promise<void> => {
@@ -607,6 +682,9 @@ export const ensureTextures = (): Promise<void> => {
     };
 
     await Promise.all([
+      // アバターの頭頂キャッシュ(上記参照)。standaloneの読み込みとは独立(loadProgressの総数計算に
+      // 影響させないため loadProgressDone は呼ばない=読み込み%バーの分母はここまでの計算のまま)。
+      measureAllAvatarHeadTops(),
       // アトラス(敵/木/一部拾い物)。読めたらフレームを切り出す。失敗時はその絵だけ欠落。
       (async () => {
         const atlas = await loadOne('atlas');

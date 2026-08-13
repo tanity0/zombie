@@ -24,6 +24,7 @@
 //   旧実装とビット一致)か全破棄を行う。リザルトを経由しない終了(ブラウザ閉じ等)は保留のまま消える
 //   =破棄と同じ(安全側)。
 import type { Enemy, EnemyType, Player, PlayerBuildSnapshot } from '../types/game';
+import type { AvatarId } from '../data/avatars';
 import { getBotTelemetry, snapshotBotTelemetry, type BotTelemetry } from './botTelemetry';
 // §2.11 裁定1: 計測時ビルドの写し(純関数・store非依存)/ §2.16 A: 同行守護霊の写し(共通の1枚)
 import { snapshotPlayerBuild, type GhostAllySnapshot } from './playerBuild';
@@ -627,6 +628,8 @@ export interface PlayerTraitsTickInput {
   /** v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元になる本人オブジェクト。
    * 省略可(旧呼び出し/テスト)=その場合はビルド項目なしの旧snapshot相当だけを記録する。 */
   buildSource?: Player;
+  /** v0.25.3271: 記録時に選択していたアバター(gameStore.avatarId・視覚のみ)。省略/undefinedはnull扱い。 */
+  avatarId?: AvatarId | null;
   enemies: readonly Enemy[];
   /** このtickにプレイヤーの移動入力(上下左右いずれか)があったか。 */
   movementInput: boolean;
@@ -653,9 +656,13 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   if (input.buildSource) {
     // v0.25.2514(§2.11 裁定1): ビルド丸ごと(武器ロードアウト/スキル+Lv/装備+集計効果/クリ率/サブ)を
     // 純粋コピーで控える。PHILL率はendSessionで焼く(ラン累計が母数なので確定はセッション終わり)。
-    sessionSnapshot = snapshotPlayerBuild(input.buildSource);
+    // v0.25.3271: アバター(視覚のみ)も同じスナップショットへ載せる。
+    sessionSnapshot = snapshotPlayerBuild(input.buildSource, undefined, input.avatarId);
   } else if (input.player.speed !== undefined && input.player.level !== undefined) { // v0.25.2468(旧経路)
-    sessionSnapshot = { maxHealth: input.player.maxHealth, speed: input.player.speed, level: input.player.level };
+    sessionSnapshot = {
+      maxHealth: input.player.maxHealth, speed: input.player.speed, level: input.player.level,
+      avatarId: input.avatarId ?? null,
+    };
   }
   const s = session;
   const prevGameTime = s.lastGameTime;

@@ -32,6 +32,12 @@ export interface AvatarPart {
   sizeBasis: 'width' | 'height';
   /** true = プレイヤーの向きに合わせて左右反転(耳のように反転不要なパーツは false で固定)。 */
   flipWithFacing: boolean;
+  /**
+   * true = 頭頂追従を行う(社長報告「耳が動きとズレる」対策・v0.25.3271)。歩き/しゃがみ/攻撃などで
+   * スプライトの頭が上下する差分(pixiScene の頭頂キャッシュ計測値)を offsetYFrac に加算する。
+   * 耳のような「頭に付くパーツ」だけ true にする(尻尾など頭と無関係なパーツは省略=false相当)。
+   */
+  followsHead?: boolean;
 }
 
 export interface AvatarDef {
@@ -58,6 +64,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         sizeFrac: 0.45,
         sizeBasis: 'width',
         flipWithFacing: false, // 耳は左右対称の絵なので反転不要
+        followsHead: true, // v0.25.3271: 頭頂追従(歩き/しゃがみ/攻撃で頭が動いてもズレない)
       },
       {
         tex: 'avatar-cat-tail', // 76×128

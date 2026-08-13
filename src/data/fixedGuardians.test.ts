@@ -104,8 +104,8 @@ describe('固定の先人守護霊20体', () => {
     expect(byName('ユキ').profile.mobility).toBe(1);
     expect(byName('遠見').profile.preferredDist).toBe(420);
     expect(byName('早瀬').profile.snapshot?.equipBonus?.fireRateMult).toBe(1.1);
-    expect(byName('早瀬').profile.snapshot?.skills).toEqual(['attack-shooter', 'warm-up']);
-    expect(byName('早瀬').profile.snapshot?.skillLevels?.['warm-up']).toBe(1);
+    expect(byName('早瀬').profile.snapshot?.skills).toEqual(['attack-shooter', 'runner']); // v0.25.3267: warm-up退役に伴う差し替え
+    expect(byName('早瀬').profile.snapshot?.skillLevels?.['runner']).toBe(1);
     expect(byName('番匠').profile.subUsesPerMin).toBe(16);
     expect(byName('フィル').profile.snapshot?.activeGunKey).toBe('handgun-t3');
     expect(byName('フィル').profile.snapshot?.phillHeadshotRate).toBeUndefined();
@@ -134,7 +134,7 @@ describe('固定の先人守護霊20体', () => {
       '遠見': ['rifle-t2', 'machete-t3', 'sniper', 'attack-shooter'],
       '静': ['rifle-t2', 'machete-t3', 'sniper', 'crit-up'],
       'ハツネ': ['rifle-t3', 'machete-t3', 'bomber', 'exploder'],
-      '早瀬': ['handgun-t3', 'tactical-knife-t4', 'attack-shooter', 'warm-up'],
+      '早瀬': ['handgun-t3', 'tactical-knife-t4', 'attack-shooter', 'runner'],
       'ばんび': ['shotgun-t3', 'tactical-knife-t4', 'last-magazine', 'attack-shooter'],
       'クロエ': ['handgun-t2', 'machete-t3', 'crit-up', 'attack-shooter'],
       '番匠': ['rifle-t3', 'tactical-knife-t4', 'overclock', 'attack-shooter'],

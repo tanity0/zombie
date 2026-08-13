@@ -50,6 +50,12 @@ const KNOB_RANGES = Object.freeze({
 export const GHOST_KNOB_NAMES = Object.freeze(Object.keys(KNOB_RANGES));
 
 const CLASSES = new Set(['warrior', 'mage', 'rogue', 'necromancer']);
+// アバターシステム(試験・第1弾・v0.25.3271「守護霊へのアバター記録」)。src/data/avatars.ts の
+// AVATAR_IDS と同じ内容を手で複製している(このファイルの他のホワイトリストと同じ作法・
+// server側はビルド無しでこの.mjsを直接importするためTS側から自動生成できない)。
+// ★新しいアバターを足す時はここにも追加すること。忘れると sanitizeSnapshot が黙って null に落とす
+// (この節のコメント=CLAUDE.md「既知の地雷」参照)。
+const AVATAR_IDS = new Set(['cat-set']);
 const SKILLS = new Set([
   'reaper', 'berserker', 'skater', 'overclock', 'guardian-spirit', 'ghost-helper', 'ghost-slayer',
   'crit-up', 'knight', 'exploder', 'sharpshooter', 'sniper', 'ricochet', 'bomber', 'fire-shooter',
@@ -146,6 +152,9 @@ const sanitizeSnapshot = (raw) => {
   if (finite(raw.phillShots)) out.phillShots = int(raw.phillShots, 0, 1_000_000);
   if (finite(raw.phillHeadshots)) out.phillHeadshots = int(raw.phillHeadshots, 0, out.phillShots ?? 1_000_000);
   if (finite(raw.phillHeadshotRate)) out.phillHeadshotRate = clamp(raw.phillHeadshotRate, 0, 1);
+  // v0.25.3271(守護霊へのアバター記録): 既知アバター以外(改造/旧データ/未来のID)はnull化。
+  // isAvatarId(src/data/avatars.ts)相当の検証をこの信頼境界でも独立に行う。
+  out.avatarId = (typeof raw.avatarId === 'string' && AVATAR_IDS.has(raw.avatarId)) ? raw.avatarId : null;
   return out;
 };
 

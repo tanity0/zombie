@@ -665,6 +665,7 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     // v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元。写し取りはplayerTraits側の
     // 純関数(snapshotPlayerBuild)がボス交戦中のtickだけ行う=ここは本人オブジェクトを渡すだけ。
     buildSource: player,
+    avatarId: state.avatarId, // v0.25.3271: 守護霊へのアバター記録(記録時に選択していたアバター)
     enemies: state.enemies,
     movementInput: state.inputState.up || state.inputState.down || state.inputState.left || state.inputState.right,
   });

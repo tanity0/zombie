@@ -51,6 +51,27 @@ test('shared profile sanitizer clamps hostile data and rejects slot mismatch', (
   assert.equal(sanitizeSharedProfile(profile('thor'), 'skadi'), null);
 });
 
+// v0.25.3256(守護霊へのアバター記録)の既知の地雷対策: sanitizeSnapshot のホワイトリストへ
+// avatarId を足し忘れると online publish/consume の経路で黙って落ちる。ここで機械的に固定する。
+test('shared profile sanitizer passes known avatarId through and nulls unknown/missing values', () => {
+  const withKnownAvatar = profile();
+  withKnownAvatar.bossStyles.thor.snapshot.avatarId = 'cat-set';
+  const safeKnown = sanitizeSharedProfile(withKnownAvatar, 'thor');
+  assert.ok(safeKnown);
+  assert.equal(safeKnown.bossStyles.thor.snapshot.avatarId, 'cat-set'); // 既知のアバターIDはそのまま通る
+
+  const withForgedAvatar = profile();
+  withForgedAvatar.bossStyles.thor.snapshot.avatarId = 'admin-mode'; // 改造/未知IDはnull化
+  const safeForged = sanitizeSharedProfile(withForgedAvatar, 'thor');
+  assert.ok(safeForged);
+  assert.equal(safeForged.bossStyles.thor.snapshot.avatarId, null);
+
+  const withoutAvatar = profile(); // 欠損(旧データ)もnull化=非表示・クラッシュなし
+  const safeMissing = sanitizeSharedProfile(withoutAvatar, 'thor');
+  assert.ok(safeMissing);
+  assert.equal(safeMissing.bossStyles.thor.snapshot.avatarId, null);
+});
+
 const pickEnv = (realCount) => ({
   GHOST_DB: {
     prepare(sql) {

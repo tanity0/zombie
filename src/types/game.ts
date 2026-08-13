@@ -4,6 +4,7 @@
 // そのまま指す。utils/molotov.ts・utils/firstAidKit.ts はどちらも import を1つも持たない=循環しない。
 import type { MolotovCycleState } from '../utils/molotov';
 import type { FirstAidKitState } from '../utils/firstAidKit';
+import type { AvatarId } from '../data/avatars'; // アバターシステム(試験・第1弾)。依存ゼロの純データモジュール(循環しない)。
 
 // Game state types
 export type GameState = 'title' | 'menu' | 'loading' | 'playing' | 'paused' | 'gameOver' | 'victory' | 'returned' | 'ending';
@@ -274,6 +275,11 @@ export interface PlayerBuildSnapshot {
   phillHeadshots?: number;
   /** phillHeadshots / phillShots(0..1)。母数0なら未記録=undefined。 */
   phillHeadshotRate?: number;
+  /**
+   * v0.25.3271(社長GO「守護霊へのアバター記録」): 記録時に選択していたアバター(視覚のみ・
+   * src/data/avatars.ts)。無選択=null。欠損(旧データ)は消費側で null 扱い(非表示・クラッシュなし)。
+   */
+  avatarId?: AvatarId | null;
 }
 
 // 装備部位 / 系統 / ステータスキー。

@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.3271 — アバター改善+KB裁定(a)着地(Sonnet納品・検収済み)【2026-08-13 16:11 JST】
+- **耳の頭追従**: pixiTexturesロード時にプレイヤー関連59シート(4クラス×idle/walk/melee/run+warlord)の
+  頭頂行をcanvas 2dで1回計測しキャッシュ。pixiSceneが表示中テクスチャ名を追跡し、待機絵基準の差分×
+  実表示スケールを耳Yへ加算(AvatarPart.followsHead)。実行時=参照のみ・per-frameコストゼロ。
+- **守護霊アバター記録**: PlayerBuildSnapshot.avatarId+snapshotPlayerBuild/playerTraits/directorTick配線。
+  ghostSanitizeにAVATAR_IDSホワイトリスト(未知値null化・serverテスト12/12)。ghost-ally描画に
+  アバタープール(青白tint+alpha追従・頭追従も有効)。旧データ互換=非表示。
+- **KB裁定(a)相乗り**: updateEnemiesのガード`!inAttackMotion`→`!committed`=溜め/予備動作/硬直中も
+  ノックバックで滑る(jump/chargeは滑らない・技は中断しない・ボスは押し道具のみのまま)。
+  回帰テスト3ケース(windup滑る/charge滑らない/stun中断)。
+- 検収時修正: src/data/fixedGuardians.test.tsのwarm-up期待値2件をrunnerへ(v0.25.3267の私の追従漏れ=
+  CI赤の原因。store側テストのみ回して見逃した)。
+- 検証: typecheck 0/lint 0/対象テスト48+関連全pass・server 12/12。
+- 実機確認: 耳の追従(歩き/しゃがみ/攻撃/武将)・守護霊の耳・攻撃モーション中の敵が押せる体感。
+
 ## v0.25.3270 — B7着地: 新スキル9種実装+スターター18種+相乗り6件(Sonnet納品・検収済み)【2026-08-13 15:44 JST】
 - 新規 skillEffectsB7.ts(+test28): 9種の判定・確率の純関数。効果配線は既存の型に乗せた
   (氷=鈍足フィールド+チェイス式2箇所/燃焼・血の棘=tickGroundFires型/吸血・爆縮=damageEnemyキル分岐
