@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3266',
+    items: [
+      '不具合修正: スラッシャーの踏み込みが空振り時にほぼ発動しなかったのを修正。空振りでも最寄りの敵(300px内)へ踏み込みます。',
+    ],
+  },
+  {
     version: '0.25.3265',
     items: [
       'パニッシャーの巻き込みが発生した瞬間に画面が短く揺れるようになりました。',

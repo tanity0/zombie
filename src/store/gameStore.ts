@@ -1049,6 +1049,7 @@ export const PUNISHER_HIT_PAD_PX = 16;
 export const PUNISHER_SHAKE_MS = 200;
 export const PUNISHER_SHAKE_MAG = 4;
 export const SLASHER_LUNGE_MS = 160;
+export const SLASHER_LUNGE_SEEK_PX = 300; // 空振り時に踏み込み先の敵を探す半径(v0.25.3266)
 // ジャンプ/ダッシュ攻撃をカウンターした時の「弾き飛ばし」。速度ノックバックは updateEnemies が
 // 翌フレーム以降に適用するため、着地で付与される stun/lift に上書きされ「その場で痺れる」だけに
 // なっていた。→ パリィ成立の瞬間に即時で位置を飛ばす(LAUNCH)+その後も速く滑らせる(SPEED)。
@@ -3582,7 +3583,22 @@ const applySlasherChainStrike = (
     const st = get().player;
     let lx = 0, ly = 0;
     if (hit && nearestD2 > 0.0001) { const d = Math.sqrt(nearestD2); lx = nearestDx / d; ly = nearestDy / d; }
-    else if (Math.hypot(st.vx, st.vy) > 1) { const d = Math.hypot(st.vx, st.vy); lx = st.vx / d; ly = st.vy / d; }
+    else {
+      // v0.25.3266 社長報告「前に進む時と進まない時がある」: 慣性0のため攻撃時(指を離した瞬間)は
+      // vx/vyがほぼ常に0で旧フォールバックが死んでいた。空振り時は**最寄りの敵(死体除外・300px内)へ
+      // 踏み込む**へ変更(敵もいなければ前進しない=進む先が無いので許容)。
+      let bd2 = SLASHER_LUNGE_SEEK_PX * SLASHER_LUNGE_SEEK_PX;
+      for (const e of get().enemies) {
+        if (e.corpseUntil !== undefined) continue;
+        if (e.type === 'reaper' && !e.reaperChaser) continue;
+        const dx = e.x + e.width / 2 - pcx, dy = e.y + e.height / 2 - pcy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bd2 && d2 > 0.0001) { bd2 = d2; const d = Math.sqrt(d2); lx = dx / d; ly = dy / d; }
+      }
+      if (lx === 0 && ly === 0 && Math.hypot(st.vx, st.vy) > 1) {
+        const d = Math.hypot(st.vx, st.vy); lx = st.vx / d; ly = st.vy / d;
+      }
+    }
     if (lx !== 0 || ly !== 0) {
       const lungeSpeed = knockbackSpeedFor(SLASHER_LUNGE_PX, SLASHER_LUNGE_MS);
       useGameStore.setState(state => ({
