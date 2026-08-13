@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.3302 — スケーター覚醒の降車投擲を爆発仕様に統一(社長指示)【2026-08-13 22:40 JST】
+- 「普通に爆発の仕様に載せて。当然SEも」: 覚醒(Lv3)の着弾を「全ての爆発」規約へ。
+  半径=×1.8×skillExplosionMult×heavyGunnerExplosionMult / ダメージ=×skillExplosionMult×
+  skillOutgoingDamageMult+距離減衰(0.55〜1.0) / registerMultiHit計上 / SE=playSfx('bomb')を
+  呼び出し側(useGameLoopの板ヒット検出)で再生(gameStoreはaudioManager非依存の方針を維持)。
+- 非覚醒のバッシュは従来どおり(等倍・減衰なし・SEなし)。キル経路(grantMeleeKillRewards)と
+  強制ノックバック(押し道具=ボスにも効く)は覚醒でも維持=バッシュの性格は残す。
+- ダメージ計測/統計は個別減衰対応のため合計(dealtSum)で積む形へ(channel='other'は不変)。
+- 検証: typecheck 0 / lint 0。実機確認: 覚醒スケボー着弾で爆発音+減衰ダメージ+エクスプローダーが乗るか。
+
 ## v0.25.3301 — アイスショットのキル時氷片を覚醒(Lv3)効果へ変更(社長指示)【2026-08-13 22:21 JST】
 - 「その追加効果は覚醒の効果に変更で」: 全Lv共通だったキル時氷片3個(0.3倍)を `iceLv >= 3` に変更。
   Lv1/2は鈍足のみ。台帳(SKILLS desc / SKILL_LEVEL_INFO)も氷片の記載をLv3の覚醒行へ移動。

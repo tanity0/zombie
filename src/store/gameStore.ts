@@ -5443,14 +5443,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = get().player;
     const melee = player.weapons.find(w => w.isMelee);
     const meleeDamage = meleeSwingBaseDamage(melee, player);
-    const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
     const now = Date.now();
-    // 社長指示v0.25.3300 スケーター覚醒(Lv3): 降車投擲の着弾バッシュが大爆発になる(範囲×1.8+爆発FX)。
+    // 社長指示v0.25.3300/3302 スケーター覚醒(Lv3): 降車投擲の着弾が**爆発仕様**の大爆発になる。
+    // 「全ての爆発」規約に載せる: 半径=×1.8×エクスプローダー×ヘビーガンナー / ダメージ=×エクスプローダー×
+    // skillOutgoingDamageMult+距離減衰(0.55〜1.0) / 爆発flipbook / SE=呼び出し側(useGameLoop)がbomb。
+    // 非覚醒は従来バッシュ(等倍・減衰なし)のまま。キル経路/強制ノックバック(押し道具)はバッシュの
+    // アイデンティティとして両者共通で維持。
     const skAwaken = skillLevel(player, 'skater') >= 3;
-    const bashRange = SKATEBOARD_BASH_RANGE * (skAwaken ? SKATER_AWAKEN_BLAST_RADIUS_MULT : 1);
+    const skExMult = skAwaken ? skillExplosionMult(player) : 1;
+    const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT * skExMult * (skAwaken ? skillOutgoingDamageMult(player) : 1);
+    const bashRange = SKATEBOARD_BASH_RANGE * (skAwaken ? SKATER_AWAKEN_BLAST_RADIUS_MULT * skExMult * heavyGunnerExplosionMult(player, get().gameTime) : 1);
     const r2 = bashRange * bashRange;
     const killedList: { enemy: Enemy; finisher: boolean }[] = [];
     const hitAt: { x: number; y: number }[] = [];
+    let dealtSum = 0; // 覚醒=距離減衰で個別ダメージになるため合計を積む(計測/統計用)
     set(s => {
       const out: Enemy[] = [];
       for (const enemy of s.enemies) {
@@ -5461,8 +5467,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         const d2 = (ecx - x) * (ecx - x) + (ecy - y) * (ecy - y);
         if (d2 > r2) { out.push(enemy); continue; }
         hitAt.push({ x: ecx, y: enemy.y });
+        // 覚醒: 爆発の距離減衰(中心1.0〜外周0.55)。非覚醒: 従来どおり等倍。
+        const eDmg = skAwaken
+          ? Math.max(1, Math.round(dmg * (0.55 + (1 - Math.sqrt(d2) / bashRange) * 0.45)))
+          : dmg;
+        dealtSum += eDmg;
         // §5.21-追補4: 投擲スケボーのバッシュもフィニッシュではない=finishKillOnlyはHP1で踏みとどまる。
-        const nh = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
+        const nh = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - eDmg), false);
         if (nh <= 0) { killedList.push({ enemy, finisher: false }); continue; }
         out.push({
           ...enemy, health: nh, lastHit: now, meleeAggro: true,
@@ -5479,17 +5490,20 @@ export const useGameStore = create<GameState>((set, get) => ({
           enemiesKilled: s.gameStats.enemiesKilled + killedList.length,
           eliteKills: s.gameStats.eliteKills + killedList.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
           bossKills: s.gameStats.bossKills + killedList.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
-          damageDealt: s.gameStats.damageDealt + dmg * hitAt.length,
+          damageDealt: s.gameStats.damageDealt + dealtSum,
         },
         finaleDefeated: s.finaleDefeated || bossKilled,
       };
     });
     // §6.21 M46: スキル(投擲スケボー着弾バッシュ)によるダメージ計測。channel='other'。
-    if (hitAt.length > 0) recordDamageDealt('other', dmg * hitAt.length);
+    if (hitAt.length > 0) recordDamageDealt('other', dealtSum);
     if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
     get().spawnRing(x, y, 8, bashRange, 'rgba(190,242,100,0.62)', 4, 260);
     get().spawnBurst(x, y, '#bef264', 14);
-    if (skAwaken) get().spawnExplosionFx(x, y, bashRange); // 覚醒: 爆発flipbook(全爆発共通・v0.25.3283系)
+    if (skAwaken) {
+      get().spawnExplosionFx(x, y, bashRange); // 覚醒: 爆発flipbook(全爆発共通・v0.25.3283系)
+      get().registerMultiHit(hitAt.length);    // 爆発仕様: ヘビーガンナーの2体以上ヒット計上(M33⑤)
+    }
     for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
     if (hitAt.length > 0) { get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0); set({ bashHitFxAt: Date.now() }); }
   },
