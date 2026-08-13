@@ -27,9 +27,15 @@ const NORMAL_SKILLS = (Object.keys(SKILLS) as SkillKey[]).filter(k => SKILLS[k].
 const RARE_SKILLS = (Object.keys(SKILLS) as SkillKey[]).filter(k => SKILLS[k].rarity === 'rare' && notExcluded(k));
 const SUPER_SKILLS = (Object.keys(SKILLS) as SkillKey[]).filter(k => SKILLS[k].rarity === 'super' && notExcluded(k));
 
+// v0.25.3308「ガチャ=レベル上限の解放」: ownedLevels未設定は上限Lv1になったため、テスト既定は
+// 全スキル所持Lv3(=上限が縛らない従来挙動)にする。上限の挙動そのものは専用テストで見る。
+const ALL_OWNED_LV3: Partial<Record<SkillKey, number>> = Object.fromEntries(
+  (Object.keys(SKILLS) as SkillKey[]).map(k => [k, 3]),
+);
+
 const baseInput = (over: Partial<RunSkillDraftInput> = {}): RunSkillDraftInput => ({
   owned: [...NORMAL_SKILLS, ...RARE_SKILLS, ...SUPER_SKILLS],
-  ownedLevels: {},
+  ownedLevels: ALL_OWNED_LV3,
   runSkills: [],
   runSkillLevels: {},
   playerLevel: 2,
@@ -180,6 +186,18 @@ describe('候補プール(newSkillCandidates/levelUpCandidates・§12-2#1)', () 
     expect(levelUpCandidates(input2)).toContain(key);
     const input3 = baseInput({ runSkills: [key], runSkillLevels: { [key]: 1 }, excluded: [key] });
     expect(levelUpCandidates(input3)).not.toContain(key); // バニッシュ除外
+  });
+
+  it('v0.25.3308「ガチャ=レベル上限の解放」: 所持Lvがラン中の育成上限になる', () => {
+    const key = RARE_SKILLS[0];
+    // 所持Lv1(未設定含む): ラン中Lv1止まり=Lv+1カードが出ない
+    expect(levelUpCandidates(baseInput({ runSkills: [key], runSkillLevels: { [key]: 1 }, ownedLevels: {} }))).not.toContain(key);
+    expect(levelUpCandidates(baseInput({ runSkills: [key], runSkillLevels: { [key]: 1 }, ownedLevels: { [key]: 1 } }))).not.toContain(key);
+    // 所持Lv2: Lv2までは育つがLv3(覚醒)には届かない
+    expect(levelUpCandidates(baseInput({ runSkills: [key], runSkillLevels: { [key]: 1 }, ownedLevels: { [key]: 2 } }))).toContain(key);
+    expect(levelUpCandidates(baseInput({ runSkills: [key], runSkillLevels: { [key]: 2 }, ownedLevels: { [key]: 2 } }))).not.toContain(key);
+    // 所持Lv3: 覚醒まで育てられる
+    expect(levelUpCandidates(baseInput({ runSkills: [key], runSkillLevels: { [key]: 2 }, ownedLevels: { [key]: 3 } }))).toContain(key);
   });
 });
 

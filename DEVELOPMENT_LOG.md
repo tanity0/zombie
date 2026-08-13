@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.3308 — ガチャ所持Lv=ラン中の育成上限(社長裁定「ガチャはレベル上限の解放」)【2026-08-13 23:57 JST】
+- v3307の★裁定待ちが確定(案1採用): **所持Lv=ラン中に育てられる上限**。
+  runLevelCap(key, ownedLevels)=min(skillMaxLevel, 所持Lv??1) を新設し、levelUpCandidatesの上限を
+  skillMaxLevel→runLevelCapへ。所持Lv1=Lv1止まり/所持Lv2=Lv2まで/所持Lv3=覚醒(Lv3)まで。
+- これでスキル育成の全体像が確定: **取得は常にLv1(v3307)→ラン中のLv+1カードで育成→上限はガチャ所持Lv
+  (本版)→Lv3=覚醒**。ガチャの開始Lv抽選(復元済み)が「上限解放の抽選」として意味を持つ。
+- テスト: 上限挙動の専用ケース追加(所持1/2/3の境界)。既定baseInputは全所持Lv3(上限が縛らない
+  従来挙動)へ変更。runSkillDraft/skills 120件通過。
+- 検証: typecheck 0 / lint 0。実機確認: 所持Lv1のスキルにLv+1カードが出ないこと・所持Lv3で覚醒まで
+  育つこと。
+
 ## v0.25.3307 — ラン中スキル取得=常にLv1(社長訂正「ガチャの話ではなくゲーム中の話」)【2026-08-13 23:53 JST】
 - **本来の指示の実装**: レベルアップ選択の新規カード(runSkillDraft.newCard)のtoLevelを
   clampedOwnedLevel(=ガチャ所持Lvがそのまま付く)→**常に1**へ。Lv2/Lv3(覚醒)へはラン中のLv+1カードで

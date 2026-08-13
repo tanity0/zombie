@@ -61,7 +61,8 @@ export const canAcquireRunSkill = (
 export interface RunSkillDraftInput {
   /** ownedSkills(入手経路は問わない。除外はRUN_DRAFT_EXCLUDED_SKILLSのみ)。 */
   owned: readonly SkillKey[];
-  /** 所持スキルのLv(ガチャ等で確定した「取得時に付くLv」の出どころ)。 */
+  /** 所持スキルのLv。社長裁定v0.25.3308「ガチャはレベル上限の解放」:
+   * ラン中に育てられる上限=min(skillMaxLevel, 所持Lv)。取得時Lvには影響しない(常にLv1で入る)。 */
   ownedLevels: Partial<Record<SkillKey, number>>;
   /** 現在のrunBuild(=このランでドラフト取得済みのスキル。枠判定の対象そのもの)。 */
   runSkills: readonly SkillKey[];
@@ -108,7 +109,12 @@ export const newSkillCandidates = (
   );
 };
 
-/** Lv+1候補(§12-2#1: runBuild内・現Lv<skillMaxLevel、以外を出さない)。
+/** ラン中にそのスキルを育てられる上限(社長裁定v0.25.3308「ガチャはレベル上限の解放」)。
+ * 所持Lv1=ラン中Lv1止まり / 所持Lv2=Lv2まで / 所持Lv3=覚醒(Lv3)まで。未設定=1。 */
+export const runLevelCap = (key: SkillKey, ownedLevels: Partial<Record<SkillKey, number>>): number =>
+  Math.max(1, Math.min(skillMaxLevel(key), ownedLevels[key] ?? 1));
+
+/** Lv+1候補(§12-2#1: runBuild内・現Lv<上限、以外を出さない)。上限=runLevelCap(所持Lvが天井)。
  * バニッシュ(excluded)は新規側だけでなくLv+1側からも外す(「ラン中の抽選から除外」を全面適用)。 */
 export const levelUpCandidates = (
   input: RunSkillDraftInput, dealtThisDraft: readonly SkillKey[] = [],
@@ -116,7 +122,7 @@ export const levelUpCandidates = (
   input.runSkills.filter(k =>
     !dealtThisDraft.includes(k) &&
     !(input.excluded ?? []).includes(k) &&
-    (input.runSkillLevels[k] ?? 1) < skillMaxLevel(k),
+    (input.runSkillLevels[k] ?? 1) < runLevelCap(k, input.ownedLevels),
   );
 
 /** 消費カード候補(§23-1/§23-2条件1・条件3): ノーマル枠に空きがあり(実スキル+アクティブな消費カード
