@@ -557,7 +557,7 @@ describe('ensureDefaultOwnedSkills(守護霊+初期9種の所持マイグレー�
       'runner', 'seeker',
       'guardian-spirit', 'ghost-helper', 'ghost-slayer',
       'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
-      'fire-shooter', 'bomb-counter', 'exploder', 'knight',
+      'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
     ]);
     expect(owned).toEqual(['runner', 'seeker']); // 引数は破壊しない(純関数)
   });
@@ -566,7 +566,7 @@ describe('ensureDefaultOwnedSkills(守護霊+初期9種の所持マイグレー�
     const owned: SkillKey[] = [
       'guardian-spirit', 'ghost-helper', 'ghost-slayer',
       'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
-      'fire-shooter', 'bomb-counter', 'exploder', 'knight',
+      'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
       'runner',
     ];
     expect(ensureDefaultOwnedSkills(owned)).toBe(owned);
@@ -582,7 +582,7 @@ describe('ensureDefaultOwnedSkills(守護霊+初期9種の所持マイグレー�
     expect(nonCompanion.filter(k => SKILLS[k].rarity === 'rare')).toHaveLength(4);
     expect(nonCompanion.filter(k => SKILLS[k].rarity === 'super')).toHaveLength(0);
     expect(nonCompanion.sort()).toEqual(
-      ['sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher', 'fire-shooter', 'bomb-counter', 'exploder', 'knight'].sort(),
+      ['sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher', 'fire-shooter', 'bomb-counter', 'knife-master', 'knight'].sort(),
     );
   });
 });

@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.3262 — 初期9種: exploder→knife-masterへ差し替え(社長指摘)【2026-08-13 13:23 JST】
+社長指摘「初期に爆発アップがいるが爆発物が少ない」: exploder(爆発+20%=爆発源が無いと空振り)を
+初期所持から外しknife-master(無条件で機能・slasher/カウンターと即噛む)へ。「攻撃が爆発に変わる系」
+はfire-shooter/bomb-counterが既に初期セットで担っている(bomberは手榴弾前提=初期不向き)。
+exploderはガチャ排出のまま。§12-5に記録。既存セーブ: ensureDefaultOwnedSkillsの差分補充で
+knife-masterが自動追加(exploder所持済みの人はそのまま所持継続=没収しない)。
+検証: typecheck 0/lint 0/skillsテスト69 passed。
+
 ## v0.25.3261 — KILL吹き飛び=死体を飛ばす方式で発注(§26・社長裁定)【2026-08-13 13:20 JST】
 社長裁定(2択の推薦どおり): KILLされた通常敵は約0.28秒「死体」として残り50px吹き飛んでから消える。
 **死体はパニッシャーの巻き込み弾になる**(倒す→死体が群れに刺さる遊び)。ボス/ネームドは対象外。

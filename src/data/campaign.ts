@@ -974,7 +974,10 @@ export const COMPANION_SKILL_KEYS: readonly SkillKey[] = ['guardian-spirit', 'gh
 export const DEFAULT_OWNED_SKILLS: SkillKey[] = [
   'guardian-spirit', 'ghost-helper', 'ghost-slayer',
   'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
-  'fire-shooter', 'bomb-counter', 'exploder', 'knight',
+  // v0.25.3262 社長指摘「初期に爆発アップがいるが爆発物が少ない」: exploder(爆発+20%=爆発源が
+  // 無いと空振り)→knife-master(無条件で機能・初期のslasher/カウンターと即噛む)へ差し替え。
+  // 「攻撃が爆発に変わる系」はfire-shooter/bomb-counterが既に担っている。
+  'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
 ];
 /** ownedSkills に既定所持スキルが欠けていれば末尾へ補って返す(純関数。欠けが無ければそのまま)。 */
 export const ensureDefaultOwnedSkills = (owned: SkillKey[]): SkillKey[] => {

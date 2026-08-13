@@ -1166,3 +1166,11 @@ Enemy.corpseUntil(number・期限)を新設し、以下の全系統から死体�
 3. パニッシャー所持時、死体moverが隣の敵を巻き込む(テスト)。
 4. ボス/ネームドの死亡演出は不変。既存テスト(sim/skills/playtestInvariants関連)全通過。
 5. typecheck/lint 0エラー。負荷: 増分ゼロ(既存enemies配列の一時滞留のみ)。
+
+### 12-5. 初期9種の入れ替え(社長指摘 2026-08-13「初期に爆発アップは空振り」)
+- exploder(全ての爆発+20%=爆発源が無い初期ビルドでは機能しない)を初期所持から外し、
+  **knife-master**(無条件で機能・初期のslasher/カウンターと即噛む近接軸)を代わりに入れる。
+- 「攻撃が爆発に変わる系」は初期セットのfire-shooter(発射20%が爆発弾)/bomb-counter(反射弾が爆発)
+  が既に担っており、3枚目の変わる系は現行台帳に存在しない(bomberは手榴弾前提=初期不向き)。
+- 初期9種(確定): ノーマル5=sharpshooter/ricochet/punisher/attack-shooter/slasher、
+  レア4=fire-shooter/bomb-counter/**knife-master**/knight。exploderはガチャ排出のまま。
