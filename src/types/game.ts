@@ -811,6 +811,12 @@ export interface Enemy {
   punisherPendingAt?: number;
   punisherPendingVx?: number;
   punisherPendingVy?: number;
+  // v0.25.3300「覚醒(Lv3)で2連まで巻き込める」: 連鎖の深度(1=巻き込まれた敵/2=その敵が巻き込んだ敵)。
+  // moversの資格判定(深度<上限)に使い、KB終了時にpunisherHoppedと一緒に解除。
+  punisherHopDepth?: number;
+  // 社長指示v0.25.3300 ボムカウンター覚醒(Lv3): 爆発で飛ばされた敵に付く1段パニッシュ効果の窓。
+  // この時刻まではパニッシャー未所持でも巻き込み元になれる(巻き込まれた側=深度1は連鎖しない)。
+  bombPunishUntil?: number;
   // 社長指示v0.25.3280「グラヴィティはボスも減速させて」: 渦の半径内のボスに付く移動半減の窓。
   // tickGravityWellsが毎フレーム上書きし、bossSlowMult(全ボス移動経路の共通チョーク)が読む。
   gravitySlowUntil?: number;
@@ -1135,6 +1141,9 @@ export interface GravityWell {
   y: number;
   radius: number;
   createdAt: number; // gameTime(ms)
+  // 社長指示v0.25.3300 グラビティショット覚醒(Lv3): 2倍の長さで引き寄せ続ける。
+  // 未指定=従来のGRAVITY_SHOT_PULL_MS(0.4s)。tick/描画の両方がこれを読む。
+  durationMs?: number;
 }
 
 // ジブリルのランタン攻撃が足元に落とす紫の単発火(社長指示v0.25.1664)。groundFire(molotov)と違い
@@ -1408,6 +1417,12 @@ export interface Projectile {
   // スキル弾フラグ。
   // ricochet: リコシェスキルで生成した跳弾。true の弾はもう跳ねない(二次跳弾を禁止)。
   ricochet?: boolean;
+  // 社長指示v0.25.3300 跳弾覚醒(Lv3): 跳弾からもう1回だけ抽選できる。二次跳弾(ricochet2)で打ち止め。
+  ricochet2?: boolean;
+  // 社長指示v0.25.3300 覚醒(Lv3)の延焼付き弾: ラストマガジン覚醒(弾倉最後の1セット)と
+  // エコーショット覚醒(複製弾)が立てる。命中処理が延焼弾(incendiary-round)Lv1相当の燃焼を適用する
+  // (延焼弾も所持していればそちらのLvが勝つ)。
+  bonusIncendiary?: boolean;
   // SKILL_BUILD_REDESIGN.md §28(B7): エコーショット(echo-shot)が複製した弾か。複製弾自身のクリ命中
   // では再複製しない(無限連鎖防止・跳弾のricochetフラグと同じ役割)。
   echoed?: boolean;

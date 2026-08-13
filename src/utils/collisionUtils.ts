@@ -210,13 +210,16 @@ export const checkEnemySummonCollisions = (
 };
 
 // Check collisions between player and pickups
-// ammoRangeMult: スキル マグネット(§6.8 M31)= 弾薬ピックアップのみ拾得矩形を中心基準で
-// ×1.1/1.2/1.3 に拡大(呼び出し側が skillMagnetAmmoRangeMult で算出)。既定1=従来どおり。
-// XP/回復/武器/トレジャー/スクラップ等の非弾薬は常に従来の矩形。
+// ammoRangeMult: スキル マグネット= 拾得矩形を中心基準で ×1.1/1.2/1.3 に拡大(呼び出し側が
+// skillMagnetAmmoRangeMult で算出)。既定1=従来どおり。
+// 社長指示v0.25.3300 マグネット仕様変更: 拡大対象は弾薬+コイン(スクラップ/トレジャー)。
+// magnetAwaken(覚醒Lv3)=アイテム(回復/磁石/爆弾/クイックマガジン)と経験値も拡大対象に加える。
+// 武器箱/宝箱/カードキー等の設置物・クエスト品は常に従来の矩形(遠くから誤って開かない)。
 export const checkPlayerPickupCollisions = (
   player: Player,
   pickups: Pickup[],
-  ammoRangeMult = 1
+  ammoRangeMult = 1,
+  magnetAwaken = false
 ): string[] => {
   // Slight magnet around the player so collection feels snappy without
   // hoovering pickups from across the screen.
@@ -236,8 +239,10 @@ export const checkPlayerPickupCollisions = (
         height: expandedPlayer.height * ammoRangeMult
       }
     : expandedPlayer;
-  const isAmmoPickup = (t: Pickup['type']): boolean =>
-    t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-phill';
+  const isMagnetPickup = (t: Pickup['type']): boolean =>
+    t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-phill' ||
+    t === 'strap' || t === 'treasure' ||
+    (magnetAwaken && (t === 'experience' || t === 'health' || t === 'magnet' || t === 'bomb' || t === 'quick-magazine'));
 
   // Pickups don't carry width/height in the type, so treat them as the
   // 16×16 sprite the renderer draws.
@@ -254,7 +259,7 @@ export const checkPlayerPickupCollisions = (
         return false;
       }
       const pos = pickupDisplayPosition(pickup, now);
-      return checkCollision(isAmmoPickup(pickup.type) ? ammoExpandedPlayer : expandedPlayer, {
+      return checkCollision(isMagnetPickup(pickup.type) ? ammoExpandedPlayer : expandedPlayer, {
         x: pos.x,
         y: pos.y,
         width: PICKUP_SIZE,

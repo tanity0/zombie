@@ -519,8 +519,10 @@ const applyCounterReflect = (
   // (postureMult。damageEnemyの呼び出し側=useGameLoopの命中処理がprojectile.postureMultを読む)。
   if (bkLv) {
     const postureMult = barrageKingMult(bkLv);
+    // 社長指示v0.25.3300 弾幕の王 覚醒(Lv3): 反射弾の貫通が無限になる(通常はBARRAGE_KING_PIERCE=1)。
+    const bkPierce = bkLv >= 3 ? Number.POSITIVE_INFINITY : BARRAGE_KING_PIERCE;
     useGameStore.setState(state => ({
-      projectiles: state.projectiles.map(p => p.id === projId ? { ...p, pierce: BARRAGE_KING_PIERCE, postureMult } : p),
+      projectiles: state.projectiles.map(p => p.id === projId ? { ...p, pierce: bkPierce, postureMult } : p),
     }));
   }
   // スキル: ボムカウンター = 反射弾がランチャー弾化し、命中で GRENADE_* 爆発。

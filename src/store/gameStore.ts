@@ -33,6 +33,8 @@ import {
   GRAVITY_SHOT_BOSS_SLOW_MULT, GRAVITY_SHOT_BOSS_SLOW_REFRESH_MS,
   rollVampireHeal,
   INCENDIARY_BURN_TICK_MS,
+  incendiaryBurnParams, // v0.25.3300 延焼弾覚醒(感染)の燃焼パラメータ
+  iceShotSlowParams, ICE_SHOT_BOSS_EFFECT_MULT, // v0.25.3300 血の履帯覚醒(鈍足)=アイスLv1相当
   executionShockParams,
 } from '../utils/skillEffectsB7';
 import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
@@ -40,7 +42,7 @@ import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE
 import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/supportSniper';
 import { FlareGunFlare, activeFlareTargets, FLARE_GUN_CD_MS_BY_LEVEL, FLARE_GUN_FLIGHT_MS, FLARE_GUN_DURATION_MS } from '../utils/flareGun';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
-import { buildBomberMinis } from '../utils/bomberScatter';
+import { buildBomberMinis, bomberMiniCount } from '../utils/bomberScatter';
 import {
   recordSubUse, recordOverclockProc, resetBotTelemetry,
   recordDamageDealt, recordFinisherKill, recordMeleeSwing,
@@ -72,7 +74,7 @@ import { beginGhostOnlineRun, type GhostFeedbackTarget, type GhostSource } from 
 import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/dashLocomotion';
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
-import { stepSpeedRamp, effectiveRampFrac, rampedBonusMult } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
+import { stepSpeedRamp, effectiveRampFrac, rampedBonusMult, RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -92,7 +94,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -1028,9 +1030,13 @@ export const ZOMBIE_PAUSE_MS = 1000;        // 1秒停止
 export const ZOMBIE_RUSH_MS = 2000;         // 2秒間突進
 export const ZOMBIE_WOBBLE = 0.38;          // フラフラ(横揺れ)の強さ
 export const huntingMeleeRadius = (player: Player): number => {
-  if (!player.huntingCharged) return MELEE_RADIUS;
+  // 社長指示v0.25.3300 ナイフマスター覚醒(Lv3): 近接範囲が常にハンティングと同じ間合いになる。
+  // その場合ハンティング(溜め)はさらにそこから相対的に伸びる(ボーナスがもう1段乗る)。
+  // 参照Lv=ハンティング所持ならそのLv、未所持はLv1相当(subWeaponLevels未設定→1)。
   const level = Math.max(1, Math.min(3, player.subWeaponLevels['striker-hunting'] ?? 1));
-  return MELEE_RADIUS + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[level];
+  const kmBase = skillLevel(player, 'knife-master') >= 3 ? HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[level] : 0;
+  if (!player.huntingCharged) return MELEE_RADIUS + kmBase;
+  return MELEE_RADIUS + kmBase + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[level];
 };
 
 // 調査用: 一時的に爆弾(ボム)ピックアップを出さない(社長指示・後で true に戻す)。爆弾は画面内のボス以外を
@@ -1072,6 +1078,43 @@ export const KNOCKBACK_DURATION = 280;
 // 社長指示v0.25.3270: 反射神経の反撃爆発・ボムカウンターのカウンター成立時自機中心爆発、
 // 両方とも被弾した敵への実距離50pxノックバックで揃える(knockbackSpeedFor(50, KNOCKBACK_DURATION)相当)。
 export const SKILL_BLAST_KB_PX = 50;
+// ---- 社長指示v0.25.3300: 覚醒(Lv3)効果の定数群 ----
+// ボムカウンター覚醒: 爆発ノックバックの実距離(通常時=SKILL_BLAST_KB_PX 50)。
+export const BOMB_COUNTER_AWAKEN_KB_PX = 100;
+// ナイト覚醒: 被ダメージ完全無効化の確率(社長「10%でもいいかも?バランス次第」=ここで調整)。
+export const KNIGHT_AWAKEN_NULLIFY_CHANCE = 0.2;
+// スケーター覚醒: 降車投擲の着弾バッシュが大爆発になる(範囲×1.8=「大爆発」の共通倍率)。
+const SKATER_AWAKEN_BLAST_RADIUS_MULT = 1.8;
+// クリティカルアップ覚醒: 既にクリで体勢が削れる命中(直撃銃クリ等)の削り量の倍率。
+export const CRIT_UP_AWAKEN_POSTURE_MULT = 1.5;
+// スナイパー覚醒: 距離ボーナスが従来の70%の距離で上限に到達する(100px条件なら70pxで達成)。
+export const SNIPER_AWAKEN_DIST_FRAC = 0.7;
+// エクスプローダー覚醒: 爆発系ノックバックの距離倍率。
+export const EXPLODER_AWAKEN_KB_MULT = 1.5;
+// コンボマスター覚醒: コンボが途切れても攻撃力を維持する時間(次のコンボ開始で自然リセット)。
+export const COMBO_MASTER_AWAKEN_HOLD_MS = 20000;
+// 救難信号覚醒: 着弾のたびに、さらに連続してもう1体現れる確率。
+export const RESCUE_SIGNAL_AWAKEN_CHAIN_CHANCE = 0.2;
+// ゴールドラッシュ覚醒: スクラップ取得量+50%。
+export const GOLD_RUSH_AWAKEN_SCRAP_MULT = 1.5;
+// 延焼弾覚醒: 感染判定の接触パッド(燃焼中の敵の判定箱をこの分だけ広げて接触を取る)。
+const INCENDIARY_SPREAD_PAD_PX = 4;
+// 延焼弾覚醒: 感染判定のスロットル打刻(gameTime基準。ランをまたいでも|差|で判定するので実害なし)。
+let burnSpreadLastAt = 0;
+// 吸血覚醒: 近接ヒット1スイングごとの回復(最大HP比)。
+export const VAMPIRE_AWAKEN_MELEE_HEAL_FRAC = 0.01;
+// ランナー覚醒: 加速中の被ダメージ20%軽減。「加速中」=速度ボーナスのランプが半分以上
+// 立ち上がっている間(叩き台。RAMP_FULL_MS=1.5秒の半分=同方向へ0.75秒走り続けた状態)。
+export const RUNNER_AWAKEN_DR_MULT = 0.8;
+export const RUNNER_AWAKEN_RAMP_FRAC_MIN = 0.5;
+export const runnerAwakenDamageMult = (player: Player): number =>
+  skillLevel(player, 'runner') >= 3 &&
+  Math.min(1, player.speedRampSustainMs / RAMP_FULL_MS) >= RUNNER_AWAKEN_RAMP_FRAC_MIN
+    ? RUNNER_AWAKEN_DR_MULT
+    : 1;
+// エクスプローダー覚醒(Lv3)の爆発KB距離倍率(主語=その爆発の持ち主)。全爆発KB地点がこれを乗算する。
+export const skillExplosionKbMult = (player: Player): number =>
+  skillLevel(player, 'exploder') >= 3 ? EXPLODER_AWAKEN_KB_MULT : 1;
 // スラッシャーのチェーン攻撃時の踏み込み(社長指示v0.25.3258「連続攻撃は20px前進(慣性入れて)」)。
 export const SLASHER_LUNGE_PX = 20;
 // パニッシャーの巻き込み判定の拡張幅(社長指示v0.25.3260「広めに」・叩き台)。
@@ -1380,6 +1423,11 @@ export const skillCooldownMult = (player: Player): number => {
   const tl = skillLevel(player, 'time-keeper');
   return tl ? [1, 0.9, 0.8, 0.7][tl] : 1;
 };
+// 社長指示v0.25.3300 タイムキーパー覚醒(Lv3): 近接武器(カウンター)のクールダウンも-10%。
+// 近接の再使用可能時刻(counterCooldownEnd)を張る全地点(通常スイング/刀/鞭/スラッシャー終了)が乗算する。
+export const TIME_KEEPER_AWAKEN_MELEE_CD_MULT = 0.9;
+export const meleeCooldownMult = (player: Player): number =>
+  skillLevel(player, 'time-keeper') >= 3 ? TIME_KEEPER_AWAKEN_MELEE_CD_MULT : 1;
 // エクスプローダー: 全爆発の半径/ダメージ ×1.2/1.35/1.5(Lv)。賢者の石はハリケーン等に別途+20%。
 export const skillExplosionMult = (player: Player): number => {
   const el = skillLevel(player, 'exploder');
@@ -1420,7 +1468,13 @@ export const skillMeleeComboMult = (player: Player, gameTime: number, finishComb
 // ※ knife-master は近接専用なので含めない。銃ヒット処理は本関数だけを使う。
 export const skillComboMasterMult = (player: Player, gameTime: number, finishComboCount: number, finishComboUntil: number): number => {
   const cl = skillLevel(player, 'combo-master');
-  if (!cl || finishComboUntil < gameTime) return 1;
+  if (!cl) return 1;
+  // 社長指示v0.25.3300 覚醒(Lv3): コンボが途切れても20秒間は上がっていた攻撃力を維持する。
+  // カウンタ(finishComboCount)は途切れても消えず「次のコンボ開始」で1から取り直される仕様なので、
+  // 窓切れ後もカウンタをそのまま読めば「途切れた時点の攻撃力の維持」になり、再開時は自然にリセットされる。
+  const withinWindow = finishComboUntil >= gameTime;
+  const held = cl >= 3 && !withinWindow && finishComboUntil > 0 && gameTime < finishComboUntil + COMBO_MASTER_AWAKEN_HOLD_MS;
+  if (!withinWindow && !held) return 1;
   const rate = [0, 0.02, 0.03, 0.04][cl];
   const cap = [0, 0.50, 0.60, 0.70][cl];
   return 1 + Math.min(cap, finishComboCount * rate);
@@ -1462,7 +1516,9 @@ export const sniperGunMult = (
   const ecx = enemy.x + enemy.width / 2;
   const ecy = enemy.y + enemy.height / 2;
   const dist = Math.hypot(ecx - pcx, ecy - pcy);
-  const distBonus = Math.min(distMax, (dist / (SNIPER_REF_DIST * 0.85)) * distMax);
+  // 社長指示v0.25.3300 スナイパー覚醒(Lv3): 距離条件が従来の70%の距離で到達(100px条件なら70pxで達成)。
+  const awakenFrac = sl >= 3 ? SNIPER_AWAKEN_DIST_FRAC : 1;
+  const distBonus = Math.min(distMax, (dist / (SNIPER_REF_DIST * 0.85 * awakenFrac)) * distMax);
   return 1 + (stopped ? stopMax : 0) + distBonus;
 };
 
@@ -3217,6 +3273,30 @@ export const applyRescueSignalProc = (
   );
 };
 
+// 社長指示v0.25.3300 吸血覚醒(Lv3): 近接攻撃のヒットでも最大HPの1%回復。粒度は救難信号と同じ
+// 「1スイング1回」(複数体を同時に斬っても1回)。吸収エフェクトは控えめ=drain1本を短めに流すだけで
+// +数字のcalloutは出さない(キル時の既存演出との差別化)。
+const applyVampireMeleeHeal = (
+  get: () => GameState,
+  player: Player,
+  hitEnemyIds: string[],
+  fallbackX: number,
+  fallbackY: number,
+) => {
+  if (hitEnemyIds.length === 0) return;
+  if (skillLevel(player, 'vampire') < 3) return;
+  const heal = Math.max(1, Math.round(get().player.maxHealth * VAMPIRE_AWAKEN_MELEE_HEAL_FRAC));
+  useGameStore.setState(state => ({
+    player: { ...state.player, health: Math.min(state.player.maxHealth, state.player.health + heal) },
+  }));
+  const src = get().enemies.find(e => e.id === hitEnemyIds[0]);
+  get().spawnEffect({
+    kind: 'drain', id: `vamp-melee-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    fromX: src ? src.x + src.width / 2 : fallbackX, fromY: src ? src.y + src.height / 2 : fallbackY,
+    createdAt: Date.now(), duration: 460,
+  });
+};
+
 // スキル: リーパー(super) = 近接フィニッシュを決めた瞬間、その近接攻撃範囲(プレイヤー中心の
 // 同じスイング範囲)内の敵全員にもフィニッシュ(即死)を波及。ボスは即死せず、近接フィニッシュ
 // 相当ダメージ(スタン中ボスへの近接と同じ ×BOSS_MELEE_STUN_MULT)。reaper型(特殊敵)は対象外。
@@ -3288,7 +3368,14 @@ const applyMeleeFinishSkillSpread = (
       get().spawnDamageNumber(ecx, e.y, dmg, false);
       if (!killedE) {
         const dist = Math.max(0.001, Math.sqrt(d2));
-        get().knockbackEnemy(e.id, dx / dist, dy / dist); // KB共通(既定値=通常のノックバック)
+        // KB共通(既定値=通常のノックバック)。エクスプローダー覚醒(Lv3)は爆発KB距離×1.5(v0.25.3300)。
+        // 処刑(execution-shock)覚醒(Lv3・v0.25.3300): 巻き込んだ敵を強くノックバック
+        // (実距離50px=反射神経/ボムカウンターと同じ「スキル爆発の強KB」規格)。
+        const exKb = skillExplosionKbMult(player);
+        const shockKb = shockLv >= 3
+          ? knockbackSpeedFor(SKILL_BLAST_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED
+          : 1;
+        get().knockbackEnemy(e.id, dx / dist, dy / dist, shockKb * exKb, Math.max(3, shockKb) * exKb);
       } else {
         get().spawnBurst(ecx, ecy, '#f97316', 10);
       }
@@ -3588,7 +3675,8 @@ const placeSensorMineOnSwing = (
     if (smCd.overclockProc) {
       recordOverclockProc(); // §6.13: 成立=そのチャージを即再準備(smDuration=0で表現済み)
       // §21(B5)枠光: 視覚のみ。手動合流点なのでここでも点ける(setSubWeaponCooldown経由と同じ扱い)。
-      useGameStore.setState(s => ({ player: { ...s.player, overclockLightUntil: s.gameTime + OVERCLOCK_LIGHT_MS } }));
+      // 覚醒(Lv3・v0.25.3300): proc成立時に銃もクイックリロード(3地点共通の1本)。
+      useGameStore.setState(s => ({ player: { ...s.player, overclockLightUntil: s.gameTime + OVERCLOCK_LIGHT_MS, ...overclockAwakenReloadPatch(s.player) } }));
     }
   }
   return true;
@@ -3711,7 +3799,8 @@ const applySlasherChainStrike = (
   } else {
     // 連数使い切り → この瞬間から通常の近接CD(COUNTER_WINDOW+COUNTER_COOLDOWN)へ復帰。
     useGameStore.setState(state => ({
-      player: { ...state.player, counterCooldownEnd: Date.now() + COUNTER_WINDOW + COUNTER_COOLDOWN },
+      // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
+      player: { ...state.player, counterCooldownEnd: Date.now() + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player) },
     }));
     get().setSlasherCombo(0, 0);
   }
@@ -3791,6 +3880,23 @@ export interface PumpkinBlast {
  */
 export const knockbackSpeedFor = (distancePx: number, ms: number): number =>
   (Math.max(0, distancePx) * 2) / Math.max(0.001, ms / 1000);
+
+// 社長指示v0.25.3300 オーバークロック覚醒(Lv3): リセット(proc)成立時に構えている銃も即クイックリロード
+// (リザーブから瞬時に満タン装填。リロード中だったら完了扱いで解除)。リザーブが空なら何も起きない。
+// 3つのproc地点(setSubWeaponCooldown合流点/センサー地雷/援護射撃タイマー)が全てこの1本を通す。
+export const overclockAwakenReloadPatch = (p: Player): Partial<Player> => {
+  if (skillLevel(p, 'overclock') < 3) return {};
+  const gun = getActiveGun(p);
+  if (!gun?.ammoType) return {};
+  const field = AMMO_FIELD[gun.ammoType];
+  const filled = refillWeaponMagazine(gun, p, p[field]);
+  if (filled.moved <= 0) return {};
+  return {
+    weapons: p.weapons.map(w => (w.id === gun.id ? filled.weapon : w)),
+    [field]: filled.reserve,
+    ...(p.reloadingWeaponId === gun.id ? { reloadingWeaponId: '', reloadEndsAt: 0 } : {}),
+  } as Partial<Player>;
+};
 
 // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-1): 死体が攻撃者→敵方向へ飛ぶ実距離(px)。
 export const KILL_LAUNCH_DIST_PX = 50;
@@ -4167,7 +4273,7 @@ interface GameState {
   spawnBloodSpike: (x: number, y: number) => void;
   tickBloodSpikes: () => void;
   // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショット(gravity-shot)のキル時爆縮(0.4s・引き寄せのみ・判定なし)。
-  spawnGravityWell: (x: number, y: number, radius: number) => void;
+  spawnGravityWell: (x: number, y: number, radius: number, durationMs?: number) => void; // durationMs=覚醒(Lv3)の2倍渦
   tickGravityWells: () => void;
   spawnBossFire: (x: number, y: number, spawnAt: number, activateAt: number, expireAt: number) => void; // ジブリルの紫の単発火を1つ設置(useGameLoopから呼ぶ)
   setBossFires: (fires: BossFire[]) => void;                   // ジブリル火の配列を差し替え(useGameLoopのtickが枝刈り/被弾処理後に反映)
@@ -5339,7 +5445,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeDamage = meleeSwingBaseDamage(melee, player);
     const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
     const now = Date.now();
-    const r2 = SKATEBOARD_BASH_RANGE * SKATEBOARD_BASH_RANGE;
+    // 社長指示v0.25.3300 スケーター覚醒(Lv3): 降車投擲の着弾バッシュが大爆発になる(範囲×1.8+爆発FX)。
+    const skAwaken = skillLevel(player, 'skater') >= 3;
+    const bashRange = SKATEBOARD_BASH_RANGE * (skAwaken ? SKATER_AWAKEN_BLAST_RADIUS_MULT : 1);
+    const r2 = bashRange * bashRange;
     const killedList: { enemy: Enemy; finisher: boolean }[] = [];
     const hitAt: { x: number; y: number }[] = [];
     set(s => {
@@ -5378,8 +5487,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // §6.21 M46: スキル(投擲スケボー着弾バッシュ)によるダメージ計測。channel='other'。
     if (hitAt.length > 0) recordDamageDealt('other', dmg * hitAt.length);
     if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
-    get().spawnRing(x, y, 8, SKATEBOARD_BASH_RANGE, 'rgba(190,242,100,0.62)', 4, 260);
+    get().spawnRing(x, y, 8, bashRange, 'rgba(190,242,100,0.62)', 4, 260);
     get().spawnBurst(x, y, '#bef264', 14);
+    if (skAwaken) get().spawnExplosionFx(x, y, bashRange); // 覚醒: 爆発flipbook(全爆発共通・v0.25.3283系)
     for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
     if (hitAt.length > 0) { get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0); set({ bashHitFxAt: Date.now() }); }
   },
@@ -5422,6 +5532,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // フレアガン/ジャンクウェポン)もまとめて止まる。降車は既存トグルのまま即時=「降りて即反撃」は成立。
     // 復帰フラグ `?skaterlock=0`。
     if (SKATER_LOCK_ENABLED && player.skaterRiding) return { swung: false, hit: false, finish: false, killed: 0 };
+    // 社長指示v0.25.3300 シーカー仕様変更: 半透明中は攻撃できない(覚醒Lv3は半透明中も攻撃可)。
+    if (isSeekerActive(player, gameTime) && skillLevel(player, 'seeker') < 3) return { swung: false, hit: false, finish: false, killed: 0 };
     // 訓練(M0)の封印(社長指示v0.25.2293): **近接チュートリアルで解禁されるまで振れない**。
     // 教わっていない技が先に暴発すると、説明と体験の順序が崩れる(=台本が成立しない)。
     if (!get().m0Unlocked.melee) return { swung: false, hit: false, finish: false, killed: 0 };
@@ -5570,7 +5682,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (成立エフェクトはループ側の lastCounterSuccessTime エッジ検出が担当)。
     if (isKatanaMode(player)) {
       // 村雨は打ち返し(カウンター)もクールダウン無しで連発可能。刀は通常CD。
-      const counterCd = hasMurasame(player) ? now : now + counterWindowMs + COUNTER_COOLDOWN;
+      // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
+      const counterCd = hasMurasame(player) ? now : now + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(player);
       set(state => ({
         player: {
           ...state.player,
@@ -5601,7 +5714,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         player: {
           ...state.player,
           counterWindowEnd: now + counterWindowMs,
-          counterCooldownEnd: now + counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS,
+          // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
+          counterCooldownEnd: now + (counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS) * meleeCooldownMult(player),
         }
       }));
       set({ whipSwingFxAt: now }); // 鞭を振る音SEのトリガ(命中の有無に関わらず鳴る)
@@ -6004,7 +6118,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...state.player,
         meleeSwingAt: now, // 近接スイング演出の起点(描画のみ)。この set はスイング確定時のみ走る。
         counterWindowEnd: now + counterWindowMs,
-        counterCooldownEnd: now + counterWindowMs + COUNTER_COOLDOWN,
+        // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
+        counterCooldownEnd: now + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
         huntingCharged: false,
         huntingChargeStartedAt: 0,
         knifeComboCount: knifeCombo.count,
@@ -6140,6 +6255,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, meleeRange, meleeDamage);
     // スキル: 救難信号(近接ヒット時、一定確率で味方が援護攻撃=必中・倍率1)。
     applyRescueSignalProc(get, player, meleeDamage, meleeHitEnemyIds, pcx, pcy);
+    // 吸血覚醒(Lv3・v0.25.3300): 近接ヒットでも1%回復(1スイング1回・控えめdrain)。
+    applyVampireMeleeHeal(get, player, meleeHitEnemyIds, pcx, pcy);
     get().registerMultiHit(slashAt.length); // キャラ固有 ヘビーガンナー: 近接が2体以上に当たれば爆発範囲バフ
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
       counterMasterKnockback(get, pcx, pcy, counterMasterKbScale(player));
@@ -6340,6 +6457,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) counterMasterKnockback(get, ccx, ccy, counterMasterKbScale(player));
     // スキル: 救難信号(§6.10 M33⑦: 分身のヒットでも発動判定。基本近接/刀と同条件・索敵起点は分身中心)。
     applyRescueSignalProc(get, player, meleeDamage, cloneHitEnemyIds, ccx, ccy);
+    // 吸血覚醒(Lv3・v0.25.3300): 分身の近接ヒットでも1%回復(同じ動作を持つ全員に付ける)。
+    if (!isGhost) applyVampireMeleeHeal(get, player, cloneHitEnemyIds, ccx, ccy);
   },
 
   // 毎フレーム: 分身の自動近接(1秒ごと×最大5回)を進め、寿命(5秒)到達 or 回数上限で消滅。
@@ -6485,6 +6604,36 @@ export const useGameStore = create<GameState>((set, get) => ({
   // ごとに消化する。既存のdamageEnemyを再利用=キル報酬/演出/統計は他の攻撃経路と揃う。
   tickBurningEnemies: () => {
     const { enemies, gameTime } = get();
+    // 社長指示v0.25.3300 延焼弾覚醒(Lv3): 延焼が敵同士の接触で移る(感染)。燃焼tickと同じ250ms間隔で
+    // だけ判定する(燃焼中×全敵の走査をフレーム毎に回さない=有界)。感染は延焼弾Lvの燃焼を新規付与。
+    const incLv = skillLevel(get().player, 'incendiary-round');
+    if (incLv >= 3 && Math.abs(gameTime - burnSpreadLastAt) >= INCENDIARY_BURN_TICK_MS) {
+      burnSpreadLastAt = gameTime;
+      const burning = enemies.filter(e => e.burnUntil !== undefined && gameTime < e.burnUntil && !isCorpse(e));
+      if (burning.length > 0) {
+        const burn = incendiaryBurnParams(incLv);
+        const infected: string[] = [];
+        for (const t of enemies) {
+          if (t.burnUntil !== undefined && gameTime < t.burnUntil) continue; // 既に燃えている
+          if (isCorpse(t) || (t.type === 'reaper' && !t.reaperChaser)) continue;
+          for (const b of burning) {
+            if (b.id === t.id) continue;
+            if (!rectsOverlap(
+              { x: b.x - INCENDIARY_SPREAD_PAD_PX, y: b.y - INCENDIARY_SPREAD_PAD_PX, width: b.width + INCENDIARY_SPREAD_PAD_PX * 2, height: b.height + INCENDIARY_SPREAD_PAD_PX * 2 },
+              t,
+            )) continue;
+            infected.push(t.id);
+            break;
+          }
+        }
+        if (infected.length > 0) {
+          const iSet = new Set(infected);
+          set(state => ({
+            enemies: state.enemies.map(e => iSet.has(e.id) ? { ...e, burnUntil: gameTime + burn.durationMs, burnDpsTick: burn.dps } : e),
+          }));
+        }
+      }
+    }
     const hits: { id: string; x: number; y: number; dmg: number }[] = [];
     for (const e of enemies) {
       if (e.burnUntil === undefined || gameTime >= e.burnUntil) continue;
@@ -6533,10 +6682,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
     if (aliveSpikes.length !== bloodSpikes.length || hits.length > 0) {
+      // 社長指示v0.25.3300 血の履帯覚醒(Lv3): 棘に触れた敵へ鈍足も付与(アイスショットLv1相当=
+      // 40%×2秒・既存のiceSlowチャンネルへ合流。ボスはbossSlowMult側で効果半分の既存規格)。
+      const spikeSlow = lv >= 3 ? iceShotSlowParams(1) : null;
       set(state => ({
         bloodSpikes: aliveSpikes,
         enemies: hits.length > 0
-          ? state.enemies.map(e => hits.some(h => h.id === e.id) ? { ...e, lastSpikeHitAt: gameTime } : e)
+          ? state.enemies.map(e => hits.some(h => h.id === e.id)
+              ? { ...e, lastSpikeHitAt: gameTime, ...(spikeSlow ? { iceSlowUntil: gameTime + spikeSlow.ms, iceSlowPct: isBossType(e.type) ? spikeSlow.pct * ICE_SHOT_BOSS_EFFECT_MULT : spikeSlow.pct } : {}) }
+              : e)
           : state.enemies,
       }));
     }
@@ -6549,15 +6703,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   // SKILL_BUILD_REDESIGN.md §28(B7) スキル: グラビティショット(gravity-shot) = キル時に一定確率で
   // 爆縮(引き寄せ120px/s×0.4s)を発生させる。判定なし(ダメージ無し・純粋な引き寄せ)=絵は分類②
   // (派手に)。alchemyのレア吸引(summonUtils.ts)と同じknockbackVx/Vyベースの吸引を流用。
-  spawnGravityWell: (x, y, radius) => {
+  spawnGravityWell: (x, y, radius, durationMs) => {
     set(state => ({
-      gravityWells: [...state.gravityWells, { id: `gwell-${gravityWellSeq++}`, x, y, radius, createdAt: state.gameTime }],
+      gravityWells: [...state.gravityWells, { id: `gwell-${gravityWellSeq++}`, x, y, radius, createdAt: state.gameTime, ...(durationMs !== undefined ? { durationMs } : {}) }],
     }));
   },
   tickGravityWells: () => {
     const { gravityWells, gameTime, enemies } = get();
     if (gravityWells.length === 0) return;
-    const aliveWells = gravityWells.filter(w => gameTime < w.createdAt + GRAVITY_SHOT_PULL_MS);
+    // 覚醒(Lv3・v0.25.3300)の渦は durationMs=2倍で置かれる(未指定=従来0.4s)。
+    const aliveWells = gravityWells.filter(w => gameTime < w.createdAt + (w.durationMs ?? GRAVITY_SHOT_PULL_MS));
     if (aliveWells.length !== gravityWells.length) set({ gravityWells: aliveWells });
     if (aliveWells.length === 0) return;
     let changed = false;
@@ -6642,6 +6797,25 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().dropEnemyCurrency(target, tcx, tcy);
         get().dropEnemyXp(target, tcx, tcy, 'pickup-xp-rescue');
       }
+      // 社長指示v0.25.3300 救難信号覚醒(Lv3): 着弾のたび、さらに20%の確率で連続してもう1体現れる
+      // (成立が続く限り数珠つなぎ=各回20%の抽選。対象は従来と同じハンドガン射程内の生存敵)。
+      const chainP = get().player;
+      if (skillLevel(chainP, 'rescue-signal') >= 3 && Math.random() < RESCUE_SIGNAL_AWAKEN_CHAIN_CHANCE) {
+        const pcx = chainP.x + chainP.width / 2, pcy = chainP.y + chainP.height / 2;
+        const chainTarget = selectRescueSignalTarget(a.targetEnemyId, get().enemies, pcx, pcy, RANGE_BY_CATEGORY.handgun);
+        if (chainTarget) {
+          const klass = pickRescueSignalAllyClass(chainP.characterClass);
+          const ld = chainP.lastDirection;
+          const lm = ld ? Math.hypot(ld.x, ld.y) : 0;
+          const dir = lm > 0.01 ? { x: ld!.x / lm, y: ld!.y / lm } : { x: 0, y: 1 };
+          get().spawnRescueAlly(
+            klass,
+            pcx - dir.x * RESCUE_ALLY_SPAWN_DIST, pcy - dir.y * RESCUE_ALLY_SPAWN_DIST,
+            { id: chainTarget.id, x: chainTarget.x + chainTarget.width / 2, y: chainTarget.y + chainTarget.height / 2, footY: chainTarget.y + chainTarget.height },
+            a.damage,
+          );
+        }
+      }
     }
   },
 
@@ -6688,7 +6862,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const baseDmg = b.damage * exMult * skillOutgoingDamageMult(get().player); // b.damage=FIRST_AID_KIT_THROW_DAMAGE(爆発中心の基準)
       // §6.10 M33③: ボマー = 救急鞄の爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
       if (hasSkill(get().player, 'bomber')) {
-        for (const mini of buildBomberMinis(cx, cy, `bag-${b.id}`)) get().addProjectile(mini);
+        // ボマー覚醒(Lv3・v0.25.3300): ミニ手榴弾4つ(通常3つ)。
+        for (const mini of buildBomberMinis(cx, cy, `bag-${b.id}`, undefined, undefined, bomberMiniCount(get().player))) get().addProjectile(mini);
         get().spawnBurst(cx, cy, '#fbbf24', 8);
       }
       get().spawnRing(cx, cy, 12, radius, 'rgba(255,170,70,0.9)', 5, 400);
@@ -6712,7 +6887,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           || e.type === 'reaper' || isHiddenBoss(e.type);
         if (!killed && !knockbackImmune) {
           const nrm = Math.max(0.001, dist);
-          get().knockbackEnemy(e.id, dx / nrm, dy / nrm, FIRST_AID_KIT_THROW_KNOCKBACK_MULT);
+          // エクスプローダー覚醒(Lv3): 爆発KB距離×1.5(v0.25.3300)。
+          const bagKb = skillExplosionKbMult(get().player);
+          get().knockbackEnemy(e.id, dx / nrm, dy / nrm, FIRST_AID_KIT_THROW_KNOCKBACK_MULT * bagKb, 3 * bagKb);
         }
         if (killed) {
           get().dropEnemyXp(e, ecx, ecy, `pickup-xp-first-aid-kit-${b.id}-${e.id}`);
@@ -6989,6 +7166,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 計算した素ダメージ(通常近接のmeleeDamageと同じ「倍率1」の考え方)。
     if (allowFinisher) {
       applyRescueSignalProc(get, player, baseDamage * damageMult, katanaHitEnemyIds, pcx, pcy);
+      // 吸血覚醒(Lv3・v0.25.3300): 刀のヒットでも1%回復。
+      applyVampireMeleeHeal(get, player, katanaHitEnemyIds, pcx, pcy);
     }
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
@@ -7175,6 +7354,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // スキル: 救難信号(§6.10 M33⑦: 鞭のヒットでも発動判定。基本近接/刀と同条件。アライの一撃は
     // 鞭の通常打撃基準=meleeBase×WHIP_DAMAGE_MULT を素通し)。
     applyRescueSignalProc(get, player, meleeBase * WHIP_DAMAGE_MULT, whipHitEnemyIds, pcx, pcy);
+    // 吸血覚醒(Lv3・v0.25.3300): 鞭のヒットでも1%回復。
+    applyVampireMeleeHeal(get, player, whipHitEnemyIds, pcx, pcy);
     if (finisherHit || bossFinishHit) {
       const [ztx, zty] = whipBossFatalHits[0]
         ? [whipBossFatalHits[0].x, whipBossFatalHits[0].y]
@@ -7932,9 +8113,21 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (player.invulnerable) return false;
 
+    // 社長指示v0.25.3300 ナイト覚醒(Lv3): 一定確率(KNIGHT_AWAKEN_NULLIFY_CHANCE=20%。
+    // 社長「10%でもいいかも?バランス次第」)で被ダメージを完全無効化。盾色の小フラッシュだけ出す
+    // (既存粒子プールのみ・判定は「無効化された」の1bit)。
+    if (rawAmount > 0 && skillLevel(player, 'knight') >= 3 && Math.random() < KNIGHT_AWAKEN_NULLIFY_CHANCE) {
+      const kcx = player.x + player.width / 2, kcy = player.y + player.height / 2;
+      get().spawnRing(kcx, kcy, 10, 36, 'rgba(147,197,253,0.9)', 3, 260);
+      get().spawnBurst(kcx, kcy, '#93c5fd', 6);
+      return false;
+    }
+
     // スキル: ナイト(×0.8)/バーサーカー(×1.2)/消費カード「プロテクション」(×0.7・§23) の被ダメ補正。
-    // amount>0 のみ補正。
-    const skilled = rawAmount > 0 ? rawAmount * skillIncomingDamageMult(player, get().gameTime) : rawAmount;
+    // ランナー覚醒(Lv3・v0.25.3300): 加速中は×0.8。amount>0 のみ補正。
+    const skilled = rawAmount > 0
+      ? rawAmount * skillIncomingDamageMult(player, get().gameTime) * runnerAwakenDamageMult(player)
+      : rawAmount;
     // 訓練(M0)は**死なない**(社長指示v0.25.2302「チュートリアルではHPは1になるけど死なない。
     // 衛生兵が1秒後には回復しちゃう」)。ハンターのジャンプ攻撃のような大ダメージでもHP1で踏みとどまる。
     // 教習の途中でゲームオーバーになると台本が最初からやり直しになり、教える順序が成立しない。
@@ -8066,7 +8259,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(56,189,248,', 360);
         get().spawnExplosionFx(pcx, pcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
         // 社長指示v0.25.3270: ノックバックは実距離50px基準に統一(knockbackSpeedFor(50,280)/BULLET_KNOCKBACK_SPEED)。
-        const kbMult = knockbackSpeedFor(SKILL_BLAST_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED;
+        // エクスプローダー覚醒(Lv3): 爆発KB距離×1.5(v0.25.3300)。
+        const kbMult = knockbackSpeedFor(SKILL_BLAST_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED * skillExplosionKbMult(p);
         for (const e of get().enemies) {
           if (e.type === 'reaper' && !e.reaperChaser) continue;
           if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 反射神経の反撃爆発の対象から除外
@@ -8284,6 +8478,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== 'phill-revolver') return;
     if (isInReturnCircle(player, get().returnCircle)) return; // 帰還サークル内は攻撃停止
+    // 社長指示v0.25.3300 シーカー仕様変更: 半透明中は攻撃できない(覚醒Lv3は可)。
+    if (isSeekerActive(player, get().gameTime) && skillLevel(player, 'seeker') < 3) return;
     // 吸い付き中の敵(movePlayer が算出した phillSnapEnemyId)を発砲時点で確認。
     const snapEnemy = player.phillSnapEnemyId != null
       ? get().enemies.find(e => e.id === player.phillSnapEnemyId)
@@ -8293,7 +8489,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
-    if (now - weapon.lastFired < (weapon.cooldown ?? 1000) / (player.equipBonus?.fireRateMult ?? 1)) return;
+    // バーサーカー覚醒(Lv3・v0.25.3300): HP40%以下は連射+10%(通常射撃と同じ倍率をPHILLにも適用)。
+    if (now - weapon.lastFired < (weapon.cooldown ?? 1000) / ((player.equipBonus?.fireRateMult ?? 1) * berserkerAwakenFireRateMult(player))) return;
     // GAME_AUDIT #10: 通常射撃(weaponUtils)と同じダメージ倍率を適用する。従来は連射装備だけ
     // 効いてダメージ装備・スキル・スカベンジャーが素通りだった(速くなるが強くならない非対称)。
     // スキル: ラストマガジン = 弾倉最後の1発 ×2.0/2.5/3.0(PHILLも対象・§6.8 M31)。
@@ -8636,7 +8833,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (cd.overclockProc) {
         recordOverclockProc(); // M35: 成立回数の計測のみ
         // §21(B5)枠光: 視覚のみ・判定/CDには不干渉(CDは元々「即再使用可」のまま=返り値以外は従来どおり)。
-        return { player: { ...state.player, overclockLightUntil: state.gameTime + OVERCLOCK_LIGHT_MS } };
+        // 覚醒(Lv3・v0.25.3300): proc成立時に銃もクイックリロード(3地点共通の1本)。
+        return { player: { ...state.player, overclockLightUntil: state.gameTime + OVERCLOCK_LIGHT_MS, ...overclockAwakenReloadPatch(state.player) } };
       }
       // Δが無変換ならreadyAtをそのまま使う(gameTime+Δの再合成による浮動小数の揺れも入れない=従来と同一)。
       const effReadyAt = cd.deltaMs === delta ? readyAt : state.gameTime + cd.deltaMs;
@@ -9175,8 +9373,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 経由(viaMeleeFinish)以外ではHPを0にできない(HP1で踏みとどまる)。
       newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, newHealth, viaMeleeFinish);
       // 裏ボス: クリを規定回数当てると完全気絶(紫)。倒しきれなかったクリのみカウント。
-      const resolvedImpact = postureImpact ?? ((crit && damageChannel === 'gun' && hateSource === 'player') ? 'gun-crit' : null);
-      const critBump = (resolvedImpact && newHealth > 0) ? applyBossPostureDamage(enemy, resolvedImpact, state.gameTime, postureImpactMult) : null;
+      // 社長指示v0.25.3300 クリティカルアップ覚醒(Lv3): クリティカルで体勢(耐久値)も少し削れるようになる
+      // (元々削れないクリ→'gun-crit'基準量で削る/既に削れるクリ→削り量×CRIT_UP_AWAKEN_POSTURE_MULT)。
+      const critUpAwaken = crit && hateSource === 'player' && skillLevel(state.player, 'crit-up') >= 3;
+      const baseImpact = postureImpact ?? ((crit && damageChannel === 'gun' && hateSource === 'player') ? 'gun-crit' : null);
+      const resolvedImpact = baseImpact ?? (critUpAwaken ? 'gun-crit' : null);
+      const critBump = (resolvedImpact && newHealth > 0)
+        ? applyBossPostureDamage(enemy, resolvedImpact, state.gameTime,
+            postureImpactMult * (critUpAwaken && baseImpact ? CRIT_UP_AWAKEN_POSTURE_MULT : 1))
+        : null;
       if (critBump?.triggered) bossFullStunAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
       // CRIT-UNIFY §9.2(中央適用): クリがボスに入った時の移動半減(bossSlowUntil)をここで一括適用する。
       // 呼び出し元(銃弾/per-bossカウンター/ゴーストカウンター等)はcrit=trueを渡すだけでよく、個別に
@@ -9350,7 +9555,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const well = rollGravityShotWell(gravLv);
       if (well) {
         const p = killedAt as { x: number; y: number };
-        get().spawnGravityWell(p.x, p.y, well.radius);
+        // 覚醒(Lv3・v0.25.3300): 2倍の長さで引き寄せ続ける。
+        get().spawnGravityWell(p.x, p.y, well.radius, gravLv >= 3 ? GRAVITY_SHOT_PULL_MS * 2 : undefined);
         get().spawnRing(p.x, p.y, 6, well.radius, 'rgba(168,85,247,0.75)', 3, 420);
         get().spawnBurst(p.x, p.y, '#a855f7', 16);
         get().spawnGlow(p.x, p.y, GLOW_R_M, 'rgba(168,85,247,', 420);
@@ -11809,12 +12015,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ただし「巻き込まれて」飛んだ敵(punisherHopped)は movers から除外=連鎖しない(1次まで・社長指示)。
       let finalEnemies = updatedEnemies;
       const punisherLv = skillLevel(player, 'punisher');
-      if (punisherLv) {
+      // 社長指示v0.25.3300 ボムカウンター覚醒: 爆発で飛ばされた敵(bombPunishUntil)はパニッシャー未所持
+      // でも1段だけ巻き込み元になる。二拍目(pending)の消化があるのでフラグ失効後も発火待ちが残る間は回す。
+      const bombPunishActive = updatedEnemies.some(e =>
+        (e.bombPunishUntil !== undefined && now < e.bombPunishUntil) || e.punisherPendingAt !== undefined);
+      if (punisherLv || bombPunishActive) {
         const melee = player.weapons.find(w => w.isMelee);
-        const punisherDmgMult = [0, 0.5, 0.7, 0.9][punisherLv];
+        const punisherDmgMult = [0.5, 0.5, 0.7, 0.9][punisherLv]; // 未所持(ボムカウンター覚醒経由)はLv1相当の50%
         punisherDmg = Math.max(1, Math.round((melee?.damage ?? 6) * strikerMeleeMult(player) * punisherDmgMult));
         // 二拍目の発火(v0.25.3299): 一拍の遅延を消化した被害者へ、ダメージ(punisherHits)+
         // 継承ノックバックを適用する。
+        // 社長指示v0.25.3300「覚醒(Lv3)すると2連まで巻き込める」: 巻き込まれて飛んだ敵(深度1)も、
+        // 覚醒中はもう一度だけ巻き込み元になれる(深度2まで)。Lv1/2は従来どおり1次まで。
+        const punisherChainMax = punisherLv >= 3 ? 2 : 1;
         let punisherBase = updatedEnemies;
         const punisherArmed = punisherBase.some(e => e.punisherPendingAt !== undefined && now >= e.punisherPendingAt);
         if (punisherArmed) {
@@ -11831,12 +12044,20 @@ export const useGameStore = create<GameState>((set, get) => ({
           });
         }
         const movers = punisherBase.filter(e =>
-          e.knockbackUntil !== undefined && now < e.knockbackUntil && !e.punisherHopped &&
+          e.knockbackUntil !== undefined && now < e.knockbackUntil &&
+          // パニッシャー未所持時はボムカウンター覚醒で飛ばされた敵(bombPunishUntil)だけが元になれる(1段)。
+          (punisherLv > 0 || (e.bombPunishUntil !== undefined && now < e.bombPunishUntil)) &&
+          (e.punisherHopDepth ?? 0) < punisherChainMax && // 覚醒=深度1(巻き込まれた敵)も1回だけ元になれる
+          e.punisherPendingAt === undefined && // 一拍目のフリーズ中は元にならない(発火後の飛行中のみ)
           Math.hypot(e.knockbackVx ?? 0, e.knockbackVy ?? 0) > 30);
         finalEnemies = punisherBase.map(b => {
           const bKbActive = b.knockbackUntil !== undefined && now < b.knockbackUntil;
+          // ボムカウンター覚醒の1段パニッシュ印は期限切れで掃除(比較は常にnow基準なので残っても無害だが明示)。
+          const cleared0 = (b.bombPunishUntil !== undefined && now >= b.bombPunishUntil && !bKbActive)
+            ? { ...b, bombPunishUntil: undefined } : b;
           // ノックバックが切れたら hop 印を解除(次に直接ノックバックされたら再び巻き込み元になれる)。
-          const cleared = (b.punisherHopped && !bKbActive) ? { ...b, punisherHopped: false } : b;
+          const cleared = (cleared0.punisherHopped && !bKbActive && cleared0.punisherPendingAt === undefined)
+            ? { ...cleared0, punisherHopped: false, punisherHopDepth: undefined } : cleared0;
           // KILL吹き飛び(死体・§26-1「死体自身は巻き込みの被害者にはならない」): bKbActive経由で
           // 飛行中は既に除外されるが、KB終了直後〜期限除去までの1フレームの隙間も塞ぐため明示ガード。
           if ((cleared.type === 'reaper' && !cleared.reaperChaser) || bKbActive || isCorpse(cleared)) return cleared; // 不倒の通常リーパーは除外。深奥チェイサーは巻き込み対象(ボス級)。KB中(被弾側/連鎖元)は新規付与しない
@@ -11854,7 +12075,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             punisherContacts.push({ x: cleared.x + cleared.width / 2, y: cleared.y + cleared.height / 2 });
             return {
               ...cleared,
-              punisherHopped: true, // 連鎖防止の印
+              punisherHopped: true, // 巻き込まれ中の印(KB終了で解除)
+              punisherHopDepth: (a.punisherHopDepth ?? 0) + 1, // 連鎖深度(覚醒時は2まで元になれる)
               punisherPendingAt: now + PUNISHER_TWO_BEAT_MS,
               punisherPendingVx: a.knockbackVx ?? 0,
               punisherPendingVy: a.knockbackVy ?? 0,
@@ -12895,7 +13117,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // §6.10 M33⑪: ゴールドラッシュはin-runスクラップ拾得から撤去(永続ゴールド獲得へ移動)。
           // 旧スクラップビルダーの取得量+10/20/30%は§23-1裁定で退役=削除。消費カード「スクラップ
           // ブースト」(§23・+50%・60秒)がここへ合流する。
-          strapGranted = Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * consumableScrapMult(state.player, state.gameTime)));
+          // 社長指示v0.25.3300 ゴールドラッシュ覚醒(Lv3): スクラップ取得量も+50%。
+          const goldRushScrapMult = skillLevel(state.player, 'gold-rush') >= 3 ? GOLD_RUSH_AWAKEN_SCRAP_MULT : 1;
+          strapGranted = Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * consumableScrapMult(state.player, state.gameTime) * goldRushScrapMult));
           return {
           player: {
             ...state.player,
@@ -13488,16 +13712,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       // スキル: 弁慶 = 武器切替で10s crit率+10%。終了後3sのCD中は再発動しない。
       const gt = state.gameTime;
       const benkeiMs = skillBenkeiBuffMs(state.player); // 10/12/15s(Lv)
-      const benkei =
-        changed && hasSkill(state.player, 'benkei') && gt >= state.player.benkeiCdUntil
-          ? { benkeiBuffUntil: gt + benkeiMs, benkeiCdUntil: gt + benkeiMs + 3000 }
-          : {};
+      const benkeiProc = changed && hasSkill(state.player, 'benkei') && gt >= state.player.benkeiCdUntil;
+      const benkei = benkeiProc
+        ? { benkeiBuffUntil: gt + benkeiMs, benkeiCdUntil: gt + benkeiMs + 3000 }
+        : {};
+      // 社長指示v0.25.3300: 弁慶は切替先の弾倉が0でも弾が入った状態になる(全Lv=1発・覚醒Lv3=2発)。
+      // 発動条件はcritバフと同じ(切替+CD明け)=切替連打での無限装填を防ぐ。リザーブは消費しない
+      // (0の時の応急装填という趣旨・叩き台)。
+      const benkeiRounds = skillLevel(state.player, 'benkei') >= 3 ? 2 : 1;
+      const benkeiWeapons = benkeiProc && (target.magazine ?? 0) <= 0
+        ? state.player.weapons.map(w => (w.id === id ? { ...w, magazine: benkeiRounds } : w))
+        : null;
       return {
         player: {
           ...state.player,
           activeWeaponId: id,
           reloadingWeaponId: '',
           reloadEndsAt: 0,
+          ...(benkeiWeapons ? { weapons: benkeiWeapons } : {}),
           ...benkei
         }
       };

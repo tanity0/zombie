@@ -47,8 +47,11 @@ import {
   BOSS_MELEE_STUN_MULT,
   bossSlowMult,
   bossCritCdMult,
-  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
+  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, KNOCKBACK_SPEED,
   knockbackSpeedFor, BULLET_KNOCKBACK_SPEED, SKILL_BLAST_KB_PX, // 社長指示v0.25.3270: 反射神経/ボムカウンターの実距離50pxノックバック
+  // v0.25.3300 覚醒(Lv3): ボムカウンターKB100px+1段パニッシュ / エクスプローダー爆発KB×1.5 /
+  // オーバークロックproc時クイックリロード / シーカー半透明中の攻撃封印(覚醒で解除)。
+  BOMB_COUNTER_AWAKEN_KB_PX, skillExplosionKbMult, overclockAwakenReloadPatch, isSeekerActive,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   // v0.25.2514(GHOST-BUILD-1): 近接/カウンター反撃の唯一の式(プレイヤーと守護霊で共有)。
   meleeSwingBaseDamage, meleeHitCritChance, counterReplyDamage,
@@ -167,7 +170,7 @@ import {
   SUPPORT_SNIPER_CD_MS_BY_LEVEL, SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_INSET,
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
-import { buildBomberMinis } from '../utils/bomberScatter';
+import { buildBomberMinis, bomberMiniCount } from '../utils/bomberScatter';
 import { computeFirstAidKitTick, isFirstAidKitEmpty, createFirstAidKitState, type FirstAidKitAmmoType, type FirstAidKitState } from '../utils/firstAidKit';
 
 // GHOST-SUBS-FINAL(v0.25.2563): 守護霊の救急鞄の初期在庫。**型はプレイヤーと同じ**FirstAidKitStateで、
@@ -6461,8 +6464,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const skaterLocked = SKATER_LOCK_ENABLED && postReloadPlayer.skaterRiding;
         // v0.25.2589(社長指示): 死亡モーション中・アテンション演出中は攻撃しない(共通ゲート)。
         const attackLocked = isAttackLocked();
+        // 社長指示v0.25.3300 シーカー仕様変更: 半透明中は攻撃できない(覚醒Lv3は半透明中も攻撃可)。
+        const seekerLocked = isSeekerActive(postReloadPlayer, gameTime) && skillLevel(postReloadPlayer, 'seeker') < 3;
         // PHILL銃は自動射撃しない(指離しの手動発砲のみ=firePhillShot)。
-        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && activeGun.category !== 'phill') {
+        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !seekerLocked && activeGun.category !== 'phill') {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             // handgun系のうちマシンピストル(=サブマシンガン, handgun-t3)だけ専用音、それ以外(ハンドガン/二丁)はhandgun-fire。
@@ -7174,7 +7179,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (ssCd.overclockProc) {
               recordOverclockProc(); // M35: 援護射撃タイマー側の成立計測
               // §21(B5)枠光: 視覚のみ。専用タイマー式=手動合流点なので他2箇所と同じくここでも点ける。
-              useGameStore.setState(s => ({ player: { ...s.player, overclockLightUntil: s.gameTime + OVERCLOCK_LIGHT_MS } }));
+              // 覚醒(Lv3・v0.25.3300): proc成立時に銃もクイックリロード(3地点共通の1本)。
+              useGameStore.setState(s => ({ player: { ...s.player, overclockLightUntil: s.gameTime + OVERCLOCK_LIGHT_MS, ...overclockAwakenReloadPatch(s.player) } }));
             }
             ssCdNext = ssCd.deltaMs;
           }
@@ -8799,11 +8805,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnDamageNumber(ex, enemy.y, dmg, false);
               if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
                 const norm = Math.max(0.001, dist);
+                // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5。
+                const dKbEx = skillExplosionKbMult(useGameStore.getState().player);
                 useGameStore.getState().knockbackEnemy(
                   enemy.id,
                   (ex - dcx) / norm,
                   (ey - dcy) / norm,
-                  DECOY_LV3_KNOCKBACK_MULT * (0.55 + falloff * 0.45)
+                  DECOY_LV3_KNOCKBACK_MULT * (0.55 + falloff * 0.45) * dKbEx,
+                  3 * dKbEx
                 );
               }
               if (killed) {
@@ -8900,11 +8909,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               enemy.type !== 'pumpkin'
             ) {
               const norm = Math.max(0.001, dist);
+              // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5(maxStrengthも同率で引き上げ)。
+              const hgKbEx = skillExplosionKbMult(useGameStore.getState().player);
               useGameStore.getState().knockbackEnemy(
                 enemy.id,
                 (ex - gx) / norm,
                 (ey - gy) / norm,
-                HEAVY_GRENADE_KNOCKBACK_MULT * (0.55 + falloff * 0.45)
+                HEAVY_GRENADE_KNOCKBACK_MULT * (0.55 + falloff * 0.45) * hgKbEx,
+                3 * hgKbEx
               );
             }
             if (killed) {
@@ -8939,8 +8951,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // スキル: ボマー = 起爆時にミニ手榴弾3個散布(手榴弾と同じ子グレネード処理。子は再散布しない)。
               if (hasSkill(smActor, 'bomber')) {
                 const nowB = Date.now();
-                for (let k = 0; k < 3; k++) {
-                  const ang = (Math.PI * 2 * k) / 3 + Math.random() * 0.5;
+                const smMiniN = bomberMiniCount(smActor); // ボマー覚醒(Lv3・v0.25.3300)=4つ
+                for (let k = 0; k < smMiniN; k++) {
+                  const ang = (Math.PI * 2 * k) / smMiniN + Math.random() * 0.5;
                   addProjectile({
                     id: `proj-bomber-mini-${mine.id}-${nowB}-${k}`,
                     x: mine.x - 5, y: mine.y - 5, width: 10, height: 10,
@@ -8991,11 +9004,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnBurst(ex, ey, '#b91c1c', 4);
                 if (!smKilled && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
                   const norm = Math.max(0.001, dist);
+                  // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5(主語=置いた本人)。
+                  const smKbEx = skillExplosionKbMult(smActor);
                   useGameStore.getState().knockbackEnemy(
                     enemy.id,
                     (ex - mine.x) / norm,
                     (ey - mine.y) / norm,
-                    HEAVY_GRENADE_KNOCKBACK_MULT * (0.55 + falloff * 0.45)
+                    HEAVY_GRENADE_KNOCKBACK_MULT * (0.55 + falloff * 0.45) * smKbEx,
+                    3 * smKbEx
                   );
                 }
                 if (smKilled) {
@@ -9043,7 +9059,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playSfx('bomb');
               // §6.10 M33③: ボマー = 発火ナイフの爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
               if (hasSkill(useGameStore.getState().player, 'bomber')) {
-                for (const mini of buildBomberMinis(bx, by, `fk-${knife.id}`)) {
+                // ボマー覚醒(Lv3・v0.25.3300)=4つ
+                for (const mini of buildBomberMinis(bx, by, `fk-${knife.id}`, undefined, undefined, bomberMiniCount(useGameStore.getState().player))) {
                   addProjectile({ ...mini, ownerGhost: knife.ownerGhost }); // 視覚専用: ゴースト発は子も青白
                 }
                 spawnBurst(bx, by, knife.ownerGhost ? '#9fd8ff' : '#fbbf24', 8);
@@ -9078,7 +9095,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnBurst(ex, ey, '#b91c1c', 4);
                 if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
                   const norm = Math.max(0.001, dist);
-                  useGameStore.getState().knockbackEnemy(enemy.id, (ex - bx) / norm, (ey - by) / norm, FIRE_KNIFE_KNOCKBACK_MULT * (0.55 + falloff * 0.45));
+                  {
+                    // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5。
+                    const fkKbEx = skillExplosionKbMult(useGameStore.getState().player);
+                    useGameStore.getState().knockbackEnemy(enemy.id, (ex - bx) / norm, (ey - by) / norm, FIRE_KNIFE_KNOCKBACK_MULT * (0.55 + falloff * 0.45) * fkKbEx, 3 * fkKbEx);
+                  }
                 }
                 if (killed) {
                   playEnemyDeath();
@@ -9507,11 +9528,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // カウンター弾(反射弾)で一撃死するのはプラントだけ(社長指示)。それ以外は通常の反射ダメージで、
           // ボス含め普通に死にうる(社長指示で「プラント以外は死なない」protectionは廃止)。
           const plantCounterKill = !!projectile?.reflected && enemyForFx?.type === 'plant';
+          // 社長指示v0.25.3300: 貫通全般は1体貫通するごとにダメージ-20%(乗算×0.8^n)。hitEnemiesは
+          // 衝突検出時にpush済み(collisionUtils)なのでindexOf=「この敵より前に貫いた数」。
+          // シャープシューター覚醒(Lv3)は減衰無効=スキルの貫通は100%ダメージに戻る。
+          const pierceIndex = projectile ? Math.max(0, projectile.hitEnemies.indexOf(enemyId)) : 0;
+          const pierceDecayMult = pierceIndex > 0 && skillLevel(shotOwner, 'sharpshooter') < 3
+            ? Math.pow(0.8, pierceIndex)
+            : 1;
           const dmg = plantCounterKill
             ? (enemyForFx?.maxHealth ?? 1) + 1
             : isAllyOwnedShot
-              ? damage * critMult
-              : damage * critMult * skillOutgoingDamageMult(shotOwner) * sniperGunMult(shotOwner, enemyForFx) * comboMasterMult;
+              ? damage * critMult * pierceDecayMult
+              : damage * critMult * pierceDecayMult * skillOutgoingDamageMult(shotOwner) * sniperGunMult(shotOwner, enemyForFx) * comboMasterMult;
           // §6.21 M46: gun/otherチャネル分類(護衛NPC弾はnull=計測除外)。純関数=classifyProjectileDamageChannel。
           const dmgChannel = classifyProjectileDamageChannel(projectile?.weaponType, projectile?.weaponKey);
           // BOT_AND_GHOST.md §2.8 G2.5: ゴースト銃弾(weaponKey='ghost-gun')と守護霊の反射弾
@@ -9639,7 +9667,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // §6.10 M33③: ボマー = グレネードランチャー弾(メインT3/タレットランチャー弾)の着弾爆発でも
             // 子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
             if (hasSkill(skillPlayer, 'bomber')) {
-              for (const mini of buildBomberMinis(blastX, blastY, `gl-${projectileId}`)) addProjectile(mini);
+              // ボマー覚醒(Lv3・v0.25.3300)=4つ
+              for (const mini of buildBomberMinis(blastX, blastY, `gl-${projectileId}`, undefined, undefined, bomberMiniCount(skillPlayer))) addProjectile(mini);
               spawnBurst(blastX, blastY, '#fbbf24', 8);
             }
           }
@@ -9693,6 +9722,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
             useGameStore.getState().registerMultiHit(exHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
+            // 社長指示v0.25.3300 ボムカウンター覚醒(Lv3): 反射弾の爆発がノックバック実距離100pxを持ち、
+            // 飛ばされた敵に1段パニッシュ効果が付く(パニッシャー未所持でも1次だけ巻き込む=
+            // gameStore側のbombPunishUntilをmoversの資格に使う)。ボス系/重量級は従来どおり押さない。
+            // エクスプローダー覚醒はこの爆発KBにも×1.5(距離)を乗せる。
+            if (projectile.reflected && skillLevel(shotOwner, 'bomb-counter') >= 3) {
+              const bpNow = Date.now();
+              const bpSpeed = knockbackSpeedFor(BOMB_COUNTER_AWAKEN_KB_PX * skillExplosionKbMult(shotOwner), KNOCKBACK_DURATION);
+              useGameStore.setState(state => ({
+                enemies: state.enemies.map(en => {
+                  if ((en.type === 'reaper' && !en.reaperChaser) || en.type === 'giantbat' || en.type === 'pumpkin') return en;
+                  if (isBossType(en.type) || en.corpseUntil !== undefined || en.aiPhase === 'jump') return en;
+                  const ecx = en.x + en.width / 2, ecy = en.y + en.height / 2;
+                  const bd = Math.hypot(ecx - blastX, ecy - blastY);
+                  if (bd > exRadius || bd < 0.001) return en;
+                  if (exWalls.length > 0 && segmentBlocked(blastX, blastY, ecx, ecy, exWalls)) return en;
+                  if (bpNow < (en.knockbackImmuneUntil ?? 0)) return en;
+                  return {
+                    ...en,
+                    knockbackVx: ((ecx - blastX) / bd) * bpSpeed,
+                    knockbackVy: ((ecy - blastY) / bd) * bpSpeed,
+                    knockbackUntil: bpNow + KNOCKBACK_DURATION,
+                    knockbackImmuneUntil: bpNow + KNOCKBACK_IMMUNE_MS,
+                    bombPunishUntil: bpNow + KNOCKBACK_DURATION,
+                  };
+                }),
+              }));
+            }
             // スキル: ボマー = ホーミング弾命中時にも子グレネード3発を散布。
             if (hasSkill(skillPlayer, 'bomber') && projectile.weaponType === 'homing-missile' && !projectile.bomberSpawned) {
               const nowB = Date.now();
@@ -9701,8 +9757,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   p.id === projectileId ? { ...p, bomberSpawned: true } : p
                 ),
               }));
-              for (let k = 0; k < 3; k++) {
-                const ang = (Math.PI * 2 * k) / 3 + Math.random() * 0.5;
+              const homingMiniN = bomberMiniCount(skillPlayer); // ボマー覚醒(Lv3・v0.25.3300)=4つ
+              for (let k = 0; k < homingMiniN; k++) {
+                const ang = (Math.PI * 2 * k) / homingMiniN + Math.random() * 0.5;
                 addProjectile({
                   id: `proj-bomber-mini-${projectileId}-${nowB}-${k}`,
                   x: blastX - 5, y: blastY - 5, width: 10, height: 10,
@@ -9722,9 +9779,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // スキル: リコシェ = 通常銃弾命中時に20%で最寄りの別の敵へ ×0.5 の跳弾を1発。
           // 二次跳弾は禁止(ricochet フラグ)。グレネード/反射弾/爆発弾/既跳弾は対象外。1バウンドで有界。
+          // 社長指示v0.25.3300 覚醒(Lv3): 跳弾からもう1回だけ抽選が入る(二次跳弾=ricochet2で打ち止め)。
           const ricochetLv = skillLevel(skillPlayer, 'ricochet');
           if (
-            projectile && enemyForFx && !projectile.ricochet && !projectile.reflected &&
+            projectile && enemyForFx &&
+            (!projectile.ricochet || (ricochetLv >= 3 && !projectile.ricochet2)) && !projectile.reflected &&
             !projectile.explodeOnHit && !isGrenadeGunKey(projectile.weaponKey) && // v0.25.3291: グレネード系全キー除外
             ricochetLv && Math.random() < [0, 0.2, 0.3, 0.4][ricochetLv]
           ) {
@@ -9752,6 +9811,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 duration: 900, createdAt: Date.now(),
                 passthrough: false, hitEnemies: [], hostile: false, reflected: false,
                 ricochet: true,
+                ...(projectile.ricochet ? { ricochet2: true } : {}), // 覚醒の二次跳弾=これ以上跳ねない
               });
               spawnBurst(ox, oy, '#fcd34d', 5);
             }
@@ -9772,6 +9832,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               createdAt: Date.now(),
               hitEnemies: [],
               echoed: true,
+              // 社長指示v0.25.3300 エコーショット覚醒(Lv3): 複製弾に延焼を付与(延焼弾Lv1相当・命中側が適用)。
+              ...(echoLv >= 3 ? { bonusIncendiary: true } : {}),
             });
             spawnBurst(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2, '#67e8f9', 6);
           }
@@ -9822,8 +9884,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 着弾地点に炎床(小=モロトフ資産流用)/Lv3は炎床(大)。炎床は「判定を持つ床」=分類①
           // (判定に絵を揃える・大きくしない=groundFires/molotovの資産に相乗りする・§28-2)。
           const incLv = skillLevel(skillPlayer, 'incendiary-round');
-          if (incLv && enemyForFx && dmg > 0) {
-            const burn = incendiaryBurnParams(incLv);
+          // 社長指示v0.25.3300 覚醒の延焼付き弾(ラストマガジン=最後の1セット/エコーショット=複製弾):
+          // 延焼弾Lv1相当の燃焼を付与。延焼弾も所持していればそちらのLvの燃焼が勝つ。炎床は延焼弾Lv2+のみ。
+          const bonusBurn = !!projectile?.bonusIncendiary;
+          if ((incLv || bonusBurn) && enemyForFx && dmg > 0) {
+            const burn = incendiaryBurnParams(incLv > 0 ? incLv : 1);
             const incGameTime = gameTime;
             useGameStore.setState(state => ({
               enemies: state.enemies.map(e =>
@@ -9864,12 +9929,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // PHILL銃の胴体(非ヘッドショット)命中は通常の2倍ノックバック。
             const phillBody = projectile.weaponType === 'phill-bullet' && headshot !== true;
             const baseKb = Math.min(3, hitCount * pelletKnockback);
-            useGameStore.getState().knockbackEnemy(
-              enemyId,
-              projectile.direction.x,
-              projectile.direction.y,
-              phillBody ? baseKb * 2 : baseKb
-            );
+            // 社長指示v0.25.3300 アタックシューター覚醒(Lv3): 銃弾のノックバックが近接と同じになる
+            // (速度=KNOCKBACK_SPEED・免疫CD=KNOCKBACK_IMMUNE_MSも近接と同じ)。免疫CD中は従来の
+            // 小突きノックバックに落とす(近接同様「CD中はKB無し」だと弾の手応えが消えるため)。
+            const asAwakenKb = !isAllyOwnedShot && skillLevel(shotOwner, 'attack-shooter') >= 3
+              && Date.now() >= (enemyForFx.knockbackImmuneUntil ?? 0);
+            if (asAwakenKb) {
+              const asNow = Date.now();
+              const asDirX = projectile.direction.x, asDirY = projectile.direction.y;
+              useGameStore.setState(state => ({
+                enemies: state.enemies.map(en =>
+                  en.id === enemyId && en.corpseUntil === undefined && asNow >= (en.knockbackImmuneUntil ?? 0)
+                    ? {
+                        ...en,
+                        knockbackVx: asDirX * KNOCKBACK_SPEED,
+                        knockbackVy: asDirY * KNOCKBACK_SPEED,
+                        knockbackUntil: asNow + KNOCKBACK_DURATION,
+                        knockbackImmuneUntil: asNow + KNOCKBACK_IMMUNE_MS,
+                      }
+                    : en),
+              }));
+            } else {
+              useGameStore.getState().knockbackEnemy(
+                enemyId,
+                projectile.direction.x,
+                projectile.direction.y,
+                phillBody ? baseKb * 2 : baseKb
+              );
+            }
           }
 
           // Crit that didn't outright kill → stun the target so it can be
@@ -10298,7 +10385,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 着地は全Lvで周囲の敵を「強制ノックバック」(無敵無視で必ず弾く・社長指示)。
             // 直前のすり抜けで knockbackImmuneUntil が立つため、ゲートすると着地で弾かなくなっていた。
             // Lv3 はさらに範囲ダメージ(ボス系は非致死)。
-            const kbSpeed = WIRE_LAND_KNOCKBACK_SPEED * (explode ? 1.5 : 1);
+            // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5(爆撃=explode時のみ。Lv1/2の弾きは対象外)。
+            const kbSpeed = WIRE_LAND_KNOCKBACK_SPEED * (explode ? 1.5 * skillExplosionKbMult(wp) : 1);
             const hits = useGameStore.getState().enemies.filter(e => {
               if (e.aiPhase === 'jump') return false; // 空中無敵は対象外
               if (isCorpse(e)) return false; // KILL吹き飛び(死体・§26-2): 着地の強制ノックバック対象から除外
@@ -10431,7 +10519,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (守護霊は世界の物に触れない/プレイヤーは守護霊の物を取らない=2人分が独立)。
         // 守護霊が居ないランでは1件も該当しない=従来と1bit同じ。
         const collPickups = useGameStore.getState().pickups.filter(p => p.ownerGhostId === undefined);
-        const pickupCollisions = checkPlayerPickupCollisions(collPlayer, collPickups, skillMagnetAmmoRangeMult(collPlayer));
+        // マグネット仕様変更(v0.25.3300): 拡大対象=弾薬+コイン。覚醒(Lv3)=アイテム・経験値も。
+        const pickupCollisions = checkPlayerPickupCollisions(collPlayer, collPickups, skillMagnetAmmoRangeMult(collPlayer), skillLevel(collPlayer, 'magnet') >= 3);
 
         if (pickupCollisions.length > 0) {
           const collidedPickups = pickupCollisions
@@ -11636,7 +11725,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             playSfx('bomb');
             // 社長指示v0.25.3270: 反射神経と揃えて実距離50pxノックバック(mult/maxStrength両方に同じ値=
             // 既定cap3で頭打ちになる罠を回避。v0.25.3257の教訓)。
-            const bcKbMult = knockbackSpeedFor(SKILL_BLAST_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED;
+            // 社長指示v0.25.3300 ボムカウンター覚醒(Lv3): KBが実距離100pxになり、飛ばされた敵に
+            // 1段パニッシュ効果(bombPunishUntil)が付く。エクスプローダー覚醒はさらに距離×1.5。
+            const bcAwaken = bcLv2 >= 3;
+            const bcKbPx = (bcAwaken ? BOMB_COUNTER_AWAKEN_KB_PX : SKILL_BLAST_KB_PX) * skillExplosionKbMult(currentPlayer);
+            const bcKbMult = knockbackSpeedFor(bcKbPx, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED;
+            const bcPunishIds: string[] = [];
             for (const e of useGameStore.getState().enemies) {
               if ((e.type === 'reaper' && !e.reaperChaser) || e.aiPhase === 'jump') continue; // 深奥チェイサーは対象・空中無敵は対象外
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
@@ -11649,11 +11743,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (!killedE) {
                 const nrm = Math.max(0.001, dist);
                 useGameStore.getState().knockbackEnemy(e.id, (ecx - bcx) / nrm, (ecy - bcy) / nrm, bcKbMult, bcKbMult);
+                // 覚醒: ボス/重量級以外に1段パニッシュ印(飛行中だけ巻き込み元になれる)。
+                if (bcAwaken && !isBossType(e.type) && e.type !== 'giantbat' && e.type !== 'pumpkin') bcPunishIds.push(e.id);
               }
+            }
+            if (bcPunishIds.length > 0) {
+              const bpUntil = Date.now() + KNOCKBACK_DURATION;
+              const bpSet = new Set(bcPunishIds);
+              useGameStore.setState(state => ({
+                enemies: state.enemies.map(en => bpSet.has(en.id) ? { ...en, bombPunishUntil: bpUntil } : en),
+              }));
             }
             // §6.10 M33③: ボマー = ボムカウンター爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
             if (hasSkill(currentPlayer, 'bomber')) {
-              for (const mini of buildBomberMinis(bcx, bcy, `bc-${currentPlayer.lastCounterSuccessTime}`)) addProjectile(mini);
+              // ボマー覚醒(Lv3・v0.25.3300)=4つ
+              for (const mini of buildBomberMinis(bcx, bcy, `bc-${currentPlayer.lastCounterSuccessTime}`, undefined, undefined, bomberMiniCount(currentPlayer))) addProjectile(mini);
               spawnBurst(bcx, bcy, '#fbbf24', 8);
             }
           }

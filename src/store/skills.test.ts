@@ -5,6 +5,9 @@ import { describe, it, expect } from 'vitest';
 import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
   skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive,
   skillMagnetAmmoRangeMult, skillOverclockChance, skillLastMagazineMult,
+  // v0.25.3300 覚醒(Lv3)効果の純関数
+  skillComboMasterMult, huntingMeleeRadius, runnerAwakenDamageMult, skillExplosionKbMult,
+  sniperGunMult, MELEE_RADIUS,
   RUNNER_RELOAD_BONUS_MULT, applyRescueSignalProc,
   skillOutgoingDamageMult, skillGoldRushMult, skillIncomingDamageMult,
   // SKILL_BUILD_REDESIGN.md §23: 消費カード5種の倍率フック(旧skillScrapBuilderGainMult/
@@ -15,6 +18,9 @@ import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
 } from './gameStore';
 import { vi } from 'vitest';
 import { checkPlayerPickupCollisions } from '../utils/collisionUtils';
+import { berserkerAwakenFireRateMult } from '../utils/weaponUtils';
+import { bomberMiniCount, buildBomberMinis } from '../utils/bomberScatter';
+import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import type { Pickup } from '../types/game';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
   gachaPullCost, gachaPullCostFor, GACHA_PRICE_STEPS, GACHA_PULL_COST_CAP, GACHA_REFUND_BY_RARITY,
@@ -259,16 +265,77 @@ describe('magnet: ammo pickup range mult (+10/20/30%) (§6.8 M31)', () => {
     expect(skillMagnetAmmoRangeMult(withSkill('magnet', 2))).toBeCloseTo(1.2);
     expect(skillMagnetAmmoRangeMult(withSkill('magnet', 3))).toBeCloseTo(1.3);
   });
-  it('checkPlayerPickupCollisions: 弾薬だけ拡大矩形で拾い、非弾薬(xp)は従来のまま', () => {
+  it('checkPlayerPickupCollisions: 弾薬+コインを拡大矩形で拾い、経験値は覚醒時のみ(v0.25.3300仕様変更)', () => {
     // プレイヤー32×32 @ (0,0) → 基準拾得矩形 = (-16,-16)〜(48,48)。
     const player = { x: 0, y: 0, width: 32, height: 32 } as unknown as Player;
     // 基準矩形の右端(48)の少し外・×1.3矩形(右端57.6)の内側に置く。
     const ammo = { id: 'a', x: 50, y: 8, type: 'ammo-rifle', value: 10 } as unknown as Pickup;
-    const xp = { id: 'x', x: 50, y: 8, type: 'xp', value: 1 } as unknown as Pickup;
-    // mult=1(非装備): どちらも拾わない=従来挙動
-    expect(checkPlayerPickupCollisions(player, [ammo, xp])).toEqual([]);
-    // mult=1.3(Lv3): 弾薬だけ拾う。xpは従来矩形のまま
-    expect(checkPlayerPickupCollisions(player, [ammo, xp], 1.3)).toEqual(['a']);
+    const coin = { id: 'c', x: 50, y: 8, type: 'strap', value: 1 } as unknown as Pickup;
+    const xp = { id: 'x', x: 50, y: 8, type: 'experience', value: 1 } as unknown as Pickup;
+    const crate = { id: 'w', x: 50, y: 8, type: 'weapon-crate', value: 1 } as unknown as Pickup;
+    // mult=1(非装備): どれも拾わない=従来挙動
+    expect(checkPlayerPickupCollisions(player, [ammo, coin, xp, crate])).toEqual([]);
+    // mult=1.3(Lv3・非覚醒): 弾薬+コインだけ拾う。経験値・武器箱は従来矩形のまま
+    expect(checkPlayerPickupCollisions(player, [ammo, coin, xp, crate], 1.3)).toEqual(['a', 'c']);
+    // 覚醒(Lv3): 経験値も拡大対象。武器箱(設置物)は常に従来矩形
+    expect(checkPlayerPickupCollisions(player, [ammo, coin, xp, crate], 1.3, true)).toEqual(['a', 'c', 'x']);
+  });
+});
+
+// 社長指示v0.25.3300: 覚醒(Lv3)効果の純関数群。
+describe('覚醒(Lv3)効果 v0.25.3300', () => {
+  it('combo-master覚醒: 窓切れ後も20秒間は倍率を維持する(Lv1/2は従来どおり即1)', () => {
+    const p3 = { ...withSkill('combo-master', 3) } as Player;
+    const p2 = { ...withSkill('combo-master', 2) } as Player;
+    // 窓内: 通常どおり
+    expect(skillComboMasterMult(p3, 1000, 10, 2000)).toBeCloseTo(1.4);
+    // 窓切れ直後〜+20s: 覚醒は維持、Lv2は1
+    expect(skillComboMasterMult(p3, 3000, 10, 2000)).toBeCloseTo(1.4);
+    expect(skillComboMasterMult(p3, 2000 + 19_999, 10, 2000)).toBeCloseTo(1.4);
+    expect(skillComboMasterMult(p2, 3000, 10, 2000)).toBeCloseTo(1.0);
+    // +20s経過後は覚醒でも1
+    expect(skillComboMasterMult(p3, 2000 + 20_001, 10, 2000)).toBeCloseTo(1.0);
+  });
+  it('berserker覚醒: HP40%以下で連射+10%(×1.1)。HPが高い/非覚醒は×1', () => {
+    const low = { ...withSkill('berserker', 3), health: 40, maxHealth: 100 } as Player;
+    const high = { ...withSkill('berserker', 3), health: 41, maxHealth: 100 } as Player;
+    const lv2 = { ...withSkill('berserker', 2), health: 10, maxHealth: 100 } as Player;
+    expect(berserkerAwakenFireRateMult(low)).toBeCloseTo(1.1);
+    expect(berserkerAwakenFireRateMult(high)).toBeCloseTo(1.0);
+    expect(berserkerAwakenFireRateMult(lv2)).toBeCloseTo(1.0);
+  });
+  it('knife-master覚醒: 近接範囲が常にハンティング相当。溜め中はさらに相対的に伸びる', () => {
+    const base = { subWeaponLevels: {}, huntingCharged: false, skills: [], skillLevels: {} } as unknown as Player;
+    const km3 = { ...base, skills: ['knife-master'], skillLevels: { 'knife-master': 3 } } as unknown as Player;
+    const km3Charged = { ...km3, huntingCharged: true } as Player;
+    expect(huntingMeleeRadius(base)).toBe(MELEE_RADIUS);
+    expect(huntingMeleeRadius(km3)).toBe(MELEE_RADIUS + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[1]);
+    expect(huntingMeleeRadius(km3Charged)).toBe(MELEE_RADIUS + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[1] * 2);
+  });
+  it('bomber覚醒: ミニ手榴弾4つ(通常3つ)', () => {
+    expect(bomberMiniCount(withSkill('bomber', 2))).toBe(3);
+    expect(bomberMiniCount(withSkill('bomber', 3))).toBe(4);
+    expect(buildBomberMinis(0, 0, 't', 1000, () => 0.5, 4)).toHaveLength(4);
+  });
+  it('runner覚醒: 加速中(ランプ半分以上)は被ダメ×0.8', () => {
+    const fast = { ...withSkill('runner', 3), speedRampSustainMs: 800 } as Player;
+    const slow = { ...withSkill('runner', 3), speedRampSustainMs: 700 } as Player;
+    const lv2 = { ...withSkill('runner', 2), speedRampSustainMs: 1500 } as Player;
+    expect(runnerAwakenDamageMult(fast)).toBeCloseTo(0.8);
+    expect(runnerAwakenDamageMult(slow)).toBeCloseTo(1.0);
+    expect(runnerAwakenDamageMult(lv2)).toBeCloseTo(1.0);
+  });
+  it('exploder覚醒: 爆発KB距離×1.5(非覚醒は×1)', () => {
+    expect(skillExplosionKbMult(withSkill('exploder', 3))).toBeCloseTo(1.5);
+    expect(skillExplosionKbMult(withSkill('exploder', 2))).toBeCloseTo(1.0);
+  });
+  it('sniper覚醒: 距離条件が70%の距離で上限到達', () => {
+    const mk = (lv: number) => ({ ...withSkill('sniper', lv), x: 0, y: 0, width: 0, height: 0 }) as Player;
+    const enemyAt = (d: number) => ({ x: d, y: 0, width: 0, height: 0, vx: 100, vy: 0 });
+    // Lv3(覚醒): 480×0.85×0.7 ≈ 285.6px で距離ボーナス上限(+1.0)に到達
+    expect(sniperGunMult(mk(3), enemyAt(480 * 0.85 * 0.7))).toBeCloseTo(2.0);
+    // 覚醒前(Lv2)は同距離では上限(+0.75)未達
+    expect(sniperGunMult(mk(2), enemyAt(480 * 0.85 * 0.7))).toBeLessThan(1.75);
   });
 });
 
@@ -506,8 +573,10 @@ describe('skillDescForLevel (keeps common text + level-specific value)', () => {
   });
   it('Lv1-fixed skills show only the common description (no level suffix)', () => {
     expect(skillDescForLevel('reaper', 1)).not.toContain('Lv');
-    expect(skillDescForLevel('bomber', 1)).not.toContain('Lv');
     expect(skillDescForLevel('guardian-spirit', 1)).not.toContain('Lv'); // G3: Lvの概念なし
+  });
+  it('bomber: v0.25.3300で覚醒(Lv3=4個)が付きLv表記に昇格', () => {
+    expect(skillDescForLevel('bomber', 3)).toContain('覚醒');
   });
   it('clamps out-of-range / missing level to a valid bucket', () => {
     expect(skillDescForLevel('runner', 0)).toContain('+10%'); // 0 → Lv1

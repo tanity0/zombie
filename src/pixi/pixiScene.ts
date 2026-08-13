@@ -20639,7 +20639,7 @@ export class PixiScene {
     const SPIRAL = 8;
     const seen = new Set<string>();
     for (const w of wells) {
-      const t = Math.max(0, Math.min(1, (gameTime - w.createdAt) / GRAVITY_SHOT_PULL_MS));
+      const t = Math.max(0, Math.min(1, (gameTime - w.createdAt) / (w.durationMs ?? GRAVITY_SHOT_PULL_MS))); // 覚醒=2倍渦(v0.25.3300)
       seen.add(w.id);
       let c = this.gravityWellViews.get(w.id);
       if (!c) {

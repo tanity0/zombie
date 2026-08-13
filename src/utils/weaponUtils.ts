@@ -242,9 +242,17 @@ export const effectiveReloadMs = (w: Weapon, p: Player): number =>
   // 装備(腕・取り回し系)のリロード短縮を乗算(中立=1)。
   Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult * (p.equipBonus?.reloadMult ?? 1));
 
+// 社長指示v0.25.3300 バーサーカー覚醒(Lv3): HP40%以下の間、銃の連射速度+10%(実効cooldown÷1.1)。
+export const BERSERKER_AWAKEN_HP_FRAC = 0.4;
+export const BERSERKER_AWAKEN_FIRE_RATE_MULT = 1.1;
+export const berserkerAwakenFireRateMult = (p: Player): number =>
+  skillLevel(p, 'berserker') >= 3 && p.maxHealth > 0 && p.health <= p.maxHealth * BERSERKER_AWAKEN_HP_FRAC
+    ? BERSERKER_AWAKEN_FIRE_RATE_MULT
+    : 1;
+
 // 装備(腕)込みの実効発射間隔。プレイヤーと守護霊が同じ1本を使う。
 export const effectiveFireCooldown = (w: Weapon, p: Player): number =>
-  w.cooldown / (p.equipBonus?.fireRateMult ?? 1);
+  w.cooldown / ((p.equipBonus?.fireRateMult ?? 1) * berserkerAwakenFireRateMult(p));
 
 // Is this specific gun currently mid-reload?
 export const isReloading = (p: Player, weaponId: string): boolean =>
@@ -518,6 +526,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     useGameStore.setState(state => ({ player: { ...state.player, fireShooterCdUntil: gtFire + 3000 } }));
   }
   const FIRE_SHOOTER_RADIUS = 66; // = HEAVY_GRENADE_RADIUS
+  // 社長指示v0.25.3300 ファイアシューター覚醒(Lv3): 爆発弾が大爆発になる(半径×1.8=
+  // ボムカウンター自分中心大爆発と同じ「大爆発」倍率)。
+  const FIRE_SHOOTER_AWAKEN_RADIUS_MULT = 1.8;
   // 発射時の素ダメージ(GHOST-BUILD-1で共通ヘルパへ抽出=式・値は不変):
   //   キャラ固有 スカベンジャー(necromancer): 弾薬取得後3秒は銃ダメージ ×1.1。
   //   スキル アタックシューター: 銃ダメージ +10/20/30%(Lv)。
@@ -568,7 +579,17 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       critChance,
       // スキル: ファイアシューターの爆発弾。直撃ダメージ ×0.3、命中で半径66の小爆発。
       ...(fireShooterShot
-        ? { explodeOnHit: true, explodeRadius: FIRE_SHOOTER_RADIUS, explodeDamageMult: 1, damage: shotDamage * 0.3 }
+        ? {
+            explodeOnHit: true,
+            explodeRadius: FIRE_SHOOTER_RADIUS * (fireShooterLv >= 3 ? FIRE_SHOOTER_AWAKEN_RADIUS_MULT : 1),
+            explodeDamageMult: 1,
+            damage: shotDamage * 0.3,
+          }
+        : {}),
+      // 社長指示v0.25.3300 ラストマガジン覚醒(Lv3): 弾倉最後の1セット(発射前の残弾1=倍率と同じ条件)に
+      // 延焼が付く(ショットガンは全ペレット)。命中側(useGameLoop)がこのフラグで燃焼を適用する。
+      ...(skillLevel(player, 'last-magazine') >= 3 && (weapon.magazine ?? 0) === 1
+        ? { bonusIncendiary: true }
         : {}),
     });
   }
@@ -577,16 +598,27 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // for EVERY family, including the shotgun (a shell fires the whole pellet
   // spread for a single round).
   // スキル: ゴーストシューター = 10%/20%/30%(Lv)で弾を消費しない。
-  useGameStore.setState(state => ({
-    player: {
-      ...state.player,
-      weapons: state.player.weapons.map(w =>
-        w.id === weapon.id
-          ? weaponAfterGunShot(w, player, now)
-          : w
-      )
-    }
-  }));
+  // 社長指示v0.25.3300 覚醒(Lv3): 「消費しない」ではなく「30%で消費した弾をリザーブから即補填」に変わる
+  // (弾倉は減らないがリザーブは減る=総弾数が増えるわけではない。リザーブ0なら補填されず普通に消費)。
+  const gsAwaken = skillLevel(player, 'ghost-shooter') >= 3;
+  const gsRefillProc = gsAwaken && Math.random() < 0.30;
+  useGameStore.setState(state => {
+    const gsField = weapon.ammoType ? AMMO_FIELD[weapon.ammoType] : null;
+    const gsReserve = gsField ? state.player[gsField] : 0;
+    const doRefill = gsRefillProc && gsField !== null && gsReserve > 0;
+    return {
+      player: {
+        ...state.player,
+        weapons: state.player.weapons.map(w => {
+          if (w.id !== weapon.id) return w;
+          // 覚醒時はrand=1固定で内部の非消費抽選を潰す(=必ず消費)→ 補填でmagazineを戻す。
+          const shot = gsAwaken ? weaponAfterGunShot(w, player, now, () => 1) : weaponAfterGunShot(w, player, now);
+          return doRefill ? { ...shot, magazine: (shot.magazine ?? 0) + 1 } : shot;
+        }),
+        ...(doRefill && gsField ? ({ [gsField]: gsReserve - 1 } as Partial<Player>) : {}),
+      },
+    };
+  });
 
   return projectiles;
 };
