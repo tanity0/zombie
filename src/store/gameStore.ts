@@ -15246,14 +15246,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ステージIDで判定すれば1つの条件で両方を満たす(練習かどうかを別途見に行かない=分岐を増やさない)。
       // 中身は宝箱の受け取り側(case 'chest')が持つ: tier2-3の銃1丁 + 3レベルアップ。
       if (getSelectedStageId() === 'stage-7') {
+        // 社長指示v0.25.3298「ステージ7の宝箱廃止。代わりに秘密箱設置(グレネードも出ることになる)」:
+        // 旧: chest(boss-start)=tier2-3銃+3レベルアップ → 新: **秘密兵器箱**(secret:true固定=
+        // 10%抽選を通さない)。中身は秘密兵器箱の共通仕様(大表示+武器抽選3回=glauncher含む4カテゴリ+
+        // 赤経験値20個+スクラップ10倍)。位置=従来どおり画面下ギリギリ外。
         runPickups.push({
           id: 'stage7-start-chest',
           x: spawnTL.x,
-          // 画面の下端(=カメラ中心からgameBounds.height/2)を少しだけ越えた所=ギリギリ画面外。
           y: spawnTL.y + state.gameBounds.height / 2 + BOSS_START_CHEST_BELOW_MARGIN_PX,
-          type: 'chest',
+          type: 'weapon-crate',
           value: 1,
-          chestKind: 'boss-start',
+          secret: true,
         });
       }
 

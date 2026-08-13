@@ -19548,12 +19548,14 @@ export class PixiScene {
         const len = Math.max(p.width, 6) * (p.weaponType === 'rifle' ? 2.6 : 1.7);
         const hh = Math.max(2, p.height / 2);
         // v0.25.2472: ownerGhost(ゴースト設置タレットの弾)は青白(視覚のみ)。プレイヤー弾は従来色。
-        const bulletColor = p.ownerGhost ? 0xcfe8ff : p.crit ? 0xfde047 : 0xfef3c7;
+        // 社長裁定v0.25.3298「エコーショットはシアン残像で採用」: 複製弾(echoed)はシアンの残像色=
+        // 元弾と一目で区別できる(発生時のシアンバーストと同系色)。
+        const bulletColor = p.echoed ? 0x67e8f9 : p.ownerGhost ? 0xcfe8ff : p.crit ? 0xfde047 : 0xfef3c7;
         // A2弾トレーサー: 弾本体(既存の伸びた矩形)の後方にもう一段薄く長い尾を敷くだけ
         // (同じpooled Graphicsへの追加fill1回=新規オブジェクトなし)。
         if (BULLET_TRACER_ENABLED) {
-          const tailLen = len * 2;
-          g.rect(-len / 2 - tailLen, -hh / 3, tailLen, hh * 0.66).fill({ color: bulletColor, alpha: 0.25 });
+          const tailLen = len * (p.echoed ? 3 : 2); // 残像=尾を少し長く
+          g.rect(-len / 2 - tailLen, -hh / 3, tailLen, hh * 0.66).fill({ color: bulletColor, alpha: p.echoed ? 0.35 : 0.25 });
         }
         g.rect(-len / 2, -hh / 2, len, hh).fill({ color: bulletColor });
         break;

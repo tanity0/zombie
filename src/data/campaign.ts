@@ -913,6 +913,27 @@ export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 10,
 // レア度ごとの表示ラベルと色(装備UI/ガチャ結果で共用)。
 export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル', rare: 'レア', super: '超レア' };
 
+// 社長指示v0.25.3298「装備してるスキルを左下にアイコンで表示」「選択時にもアイコンを合わせて表示。
+// 画像は最後に確定してから差し替えを検討」: スキルごとの絵文字プレースホルダ台帳(1箇所)。
+// 左下HUD(RunHud)とレベルアップ選択(UpgradeMenu)が同じ台帳を引く。画像素材が来たらここを
+// 画像パスの台帳に差し替えるだけで両方に反映される。未定義キーは✨フォールバック。
+export const SKILL_ICON: Partial<Record<SkillKey, string>> = {
+  reaper: '💀', berserker: '😡', skater: '🛹', overclock: '⏩',
+  'guardian-spirit': '👻', 'ghost-helper': '🤝', 'ghost-slayer': '🗡️',
+  'crit-up': '⚡', sniper: '🔭', knight: '🛡️', exploder: '💥', bomber: '🧨',
+  'fire-shooter': '🔥', 'bomb-counter': '💣', 'combo-master': '🔗', 'knife-master': '🔪',
+  'rescue-signal': '📡', sharpshooter: '🎯', ricochet: '🔀', punisher: '👊',
+  benkei: '🥋', reflex: '🌀', 'gold-rush': '💰', 'time-keeper': '⏱️',
+  'ghost-shooter': '🔫', 'dog-run': '🐕', 'counter-master': '🥊', slasher: '💫',
+  'attack-shooter': '🔫', runner: '👟', seeker: '🧭', 'scrap-builder': '🔩',
+  magnet: '🧲', 'last-magazine': '🔚', 'warm-up': '🤸',
+  'poi-bombing': '🛩️', 'poi-guard': '🏰', 'poi-thrall': '🧟',
+  'big-bullet': '⚫', 'ice-shot': '❄️', vampire: '🩸', 'incendiary-round': '♨️',
+  'execution-shock': '💢', 'gravity-shot': '🕳️', 'echo-shot': '🔁',
+  'barrage-king': '👑', 'blood-treads': '🐾',
+};
+export const skillIcon = (key: SkillKey): string => SKILL_ICON[key] ?? '✨';
+
 // PACING_PUZZLE.md §6.24 M48: 警察署アリーナの討伐報酬3種(社長裁定v0.25.2348「一旦この中から
 // ランダムで1つ。増えてきたら選択式も検討」)。順序に意味はない(表示/抽選用の単なる列挙)。
 export const POLICE_REWARD_SKILLS: SkillKey[] = ['poi-bombing', 'poi-guard', 'poi-thrall'];

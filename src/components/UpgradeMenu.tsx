@@ -3,7 +3,7 @@ import { useGameStore, activeConsumableCount } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
 import { hasEquipIcon, equipIconName, equipmentById } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
-import { SKILLS, RARITY_LABEL } from '../data/campaign';
+import { SKILLS, RARITY_LABEL, skillIcon } from '../data/campaign';
 import { runBuildCapacity, rerollPrice, MAX_BANISH_PER_RUN } from '../utils/runSkillDraft';
 import type { UpgradeOption } from '../types/game';
 
@@ -103,7 +103,7 @@ const UpgradeMenu: React.FC = () => {
                     onClick={() => handleSelect(upgrade)}
                     className="flex-1 min-w-0 text-left flex items-start gap-3 active:opacity-70"
                   >
-                    <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10">✨</div>
+                    <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10">{skillIcon(skillKey)}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <h3 className="text-[15px] font-semibold text-white truncate">{upgrade.name}</h3>
