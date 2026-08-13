@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3292',
+    items: [
+      'オブジェクトの接地丸影を「見た目で対象の約1.2倍幅」に拡大しました(グラデーションで縁が溶けて実際より狭く見えていたぶんを補正)。',
+    ],
+  },
+  {
     version: '0.25.3291',
     items: [
       'ライフルTier3を入れ替え: グレネードランチャーを廃止し(グレネードガンと役割被り)、爆発しない貫通スナイパー「対物ライフル」になりました(新ドット絵)。',
