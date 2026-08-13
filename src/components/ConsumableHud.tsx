@@ -33,11 +33,14 @@ const ConsumableHud: React.FC = () => {
   if (active.length === 0) return null;
 
   return (
+    // 右上寄せ(社長指示v0.25.3251「左は他UIと被って見づらい。右側にして」)。右上の先客=スクラップ
+    // (top+8px)とサブクエピル(top+34px)の下に置く。※左側には今後サブクエ未完リストが入る予定
+    // (社長予告)なので、このHUDを左へ戻さないこと。
     <div
-      className="absolute flex flex-col gap-1"
+      className="absolute flex flex-col items-end gap-1"
       style={{
-        left: 'max(env(safe-area-inset-left), 12px)',
-        top: 'calc(max(env(safe-area-inset-top), 8px) + 116px)',
+        right: 'max(env(safe-area-inset-right), 12px)',
+        top: 'calc(max(env(safe-area-inset-top), 8px) + 68px)',
       }}
     >
       {active.map(a => (

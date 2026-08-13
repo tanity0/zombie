@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3251',
+    items: [
+      '消費カードの残り秒数表示を画面右上(スクラップ表示の下)へ移動(左側は他のUIと被って見づらいため)。',
+    ],
+  },
+  {
     version: '0.25.3250',
     items: [
       '開発: スラッシャー改修(タイミング撃ち廃止→単純連続攻撃・Lv=2/3/4回)の発注文を設計書§25に記録。ゲーム内容の変更はありません(実装は次版以降)。',
