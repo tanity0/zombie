@@ -15379,15 +15379,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? { shijin: state.danceTestLevel }
         : Object.fromEntries(runSubs.map(k => [k, 1])) as Partial<Record<SubWeaponKey, number>>;
       // 商人の陳列=この出撃のサブのみ。★上限は開発施設で買った陳列Lv(社長裁定v0.25.3189
-      // 「スキル上限をGで買う形が正解」): 旧は装備サブを一律Lv3で陳列していたが、
-      // **20G=装備権(Lv1) / 50G=ラン中Lv2まで / 100G=Lv3まで** の階段に変更。
-      // 未購入(Lv0)は陳列しない=クラス固有サブも陳列Lvを買うまでラン中強化できない。
+      // 「スキル上限をGで買う形が正解」): **20G=装備権(Lv1) / 50G=ラン中Lv2まで / 100G=Lv3まで**。
+      // 社長指示v0.25.3322「固定スキルと固定サブウェポンは最初から上限まで解放」:
+      // **クラス固有(固定)サブは購入不要で常にLv3まで陳列**(自クラスの標準装備は経済の外)。
+      // 装備選択サブ(他クラスの固定サブを借りる場合を含む)は従来どおり購入Lvが上限。
       // 賢者の石/村雨等のラン中解禁(maybeUnlock系)は従来どおりこの台帳へ後から追記される=不変。
       const runShopUnlocks: Partial<Record<SubWeaponKey, number>> = state.danceTestMode
         ? {}
         : Object.fromEntries(
             runSubs
-              .map(k => [k, Math.min(3, state.purchasedSubLevels[k] ?? 0)] as const)
+              .map(k => [k, k === innateSub ? 3 : Math.min(3, state.purchasedSubLevels[k] ?? 0)] as const)
               .filter(([, lv]) => lv >= 1)
           ) as Partial<Record<SubWeaponKey, number>>;
       // 屋内(研究施設)ステージ初期化。選択ステージが indoor なら labMap から構築。
