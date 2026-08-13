@@ -388,7 +388,9 @@ const hitFireLen = (weaponType: string | undefined, shotgunPelletHits: number): 
 // ショットガンのペレットや跳弾が別方向から当たっても、最初の1本だけ残す→「2本/別方向に出る」を防ぐ。
 const FIRE_JET_DEDUP_MS = 180;
 
-const GRENADE_WEAPON_KEY = 'rifle-t3';
+// v0.25.3291: 旧'rifle-t3'(グレネードランチャー)は対物ライフル=非爆発へ入れ替え。タレット10%弾/
+// 朱雀/爆撃が流用する「着弾爆発する弾」の名義はglauncher-t1(武器庫限定グレネードガン)へ移す。
+const GRENADE_WEAPON_KEY = 'glauncher-t1';
 const SMG_WEAPON_KEY = 'handgun-t3'; // マシンピストル(=サブマシンガン)。発射音を通常ハンドガンと分けるのに使用。
 const PHILL_WEAPON_KEY = 'phill-revolver'; // 研究所リボルバー。守護霊のヘッドショット率再現(§2.11 裁定4)で参照。
 const GRENADE_BLAST_RADIUS = 92;
@@ -6466,8 +6468,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // handgun系のうちマシンピストル(=サブマシンガン, handgun-t3)だけ専用音、それ以外(ハンドガン/二丁)はhandgun-fire。
             if (activeGun.category === 'handgun') playSfx(activeGun.key === SMG_WEAPON_KEY ? 'smg-fire' : 'handgun-fire');
             if (activeGun.category === 'shotgun') playSfx('shotgun-fire');
-            // rifle系のうちグレネードランチャー(rifle-t3)だけ専用の発射音、それ以外(マグナム/スナイパー)はrifle-fire。
-            if (activeGun.category === 'rifle') playSfx(activeGun.key === GRENADE_WEAPON_KEY ? 'grenade-launcher-fire' : 'rifle-fire');
+            // rifle系はrifle-fire(旧rifle-t3特例はv0.25.3291で廃止)。グレネードガン(glauncher)は専用の発射音。
+            if (activeGun.category === 'rifle') playSfx('rifle-fire');
+            if (activeGun.category === 'glauncher') playSfx('grenade-launcher-fire');
             // Muzzle flash at the gun, pointed along the shot.
             if (MUZZLE_FLASH_ENABLED) {
               const md = newProjectiles[0].direction;
@@ -8317,8 +8320,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (gGain > 0) {
                   playSfx(
                     gun.category === 'shotgun' ? 'shotgun-fire'
-                      : gun.category === 'rifle' ? (gun.key === GRENADE_WEAPON_KEY ? 'grenade-launcher-fire' : 'rifle-fire')
-                        : (gun.key === SMG_WEAPON_KEY ? 'smg-fire' : 'handgun-fire'),
+                      : gun.category === 'rifle' ? 'rifle-fire'
+                        : gun.category === 'glauncher' ? 'grenade-launcher-fire'
+                          : (gun.key === SMG_WEAPON_KEY ? 'smg-fire' : 'handgun-fire'),
                     gGain,
                   );
                 }
@@ -9721,7 +9725,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const ricochetLv = skillLevel(skillPlayer, 'ricochet');
           if (
             projectile && enemyForFx && !projectile.ricochet && !projectile.reflected &&
-            !projectile.explodeOnHit && projectile.weaponKey !== GRENADE_WEAPON_KEY &&
+            !projectile.explodeOnHit && !isGrenadeGunKey(projectile.weaponKey) && // v0.25.3291: グレネード系全キー除外
             ricochetLv && Math.random() < [0, 0.2, 0.3, 0.4][ricochetLv]
           ) {
             const ox = enemyForFx.x + enemyForFx.width / 2;
@@ -9759,7 +9763,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const echoLv = skillLevel(skillPlayer, 'echo-shot');
           if (
             projectile && enemyForFx && hitCrit && !projectile.echoed && !projectile.reflected &&
-            !projectile.explodeOnHit && projectile.weaponKey !== GRENADE_WEAPON_KEY &&
+            !projectile.explodeOnHit && !isGrenadeGunKey(projectile.weaponKey) && // v0.25.3291: グレネード系全キー除外
             echoLv && rollEchoShot(echoLv)
           ) {
             addProjectile({
@@ -10005,7 +10009,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   y: enemy.y + enemy.height / 2 - 8 + 16,
                   type: 'weapon-drop',
                   value: 0,
-                  weaponKey: rollWeaponKey(areaZoneIndexFor(Math.hypot(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2))),
+                  // v0.25.3291: 近接が当たった時は「装備tier+1」を落とす(rollWeaponKey側の新仕様)。
+                  weaponKey: rollWeaponKey(
+                    areaZoneIndexFor(Math.hypot(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2)),
+                    useGameStore.getState().player.weapons.find(w => w.isMelee)?.tier ?? 1,
+                  ),
                   worldDrop: true
                 });
               }

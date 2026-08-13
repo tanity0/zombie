@@ -71,7 +71,10 @@ const CATALOG: Record<string, WeaponDef> = {
   // one enemy; higher tiers pierce freely.
   'rifle-t1':         { key: 'rifle-t1',   name: 'マグナム',       type: 'rifle',   category: 'rifle',   tier: 1, damage: 30, cooldown: 800,  projectileSpeed: 700,  projectileSize: 9,  count: 1, magSize: 6, reloadMs: 1500, passthrough: true, pierce: 1 },
   'rifle-t2':         { key: 'rifle-t2',   name: 'スナイパー',     type: 'rifle',   category: 'rifle',   tier: 2, damage: 55, cooldown: 1100, projectileSpeed: 1000, projectileSize: 8,  count: 1, passthrough: true, magSize: 5, reloadMs: 2000 },
-  'rifle-t3':         { key: 'rifle-t3',   name: 'グレネードランチャー', type: 'rifle', category: 'rifle', tier: 3, damage: 95, cooldown: 1400, projectileSpeed: 420, projectileSize: 14, count: 1, passthrough: true, magSize: 3, reloadMs: 2200 }, // 装填2→3(社長指示v0.25.2341)
+  // 社長指示v0.25.3291「スナイプのtier3入れ替え(グレネード被りなので廃止 爆発もしない)」:
+  // 旧rifle-t3=グレネードランチャーは武器庫限定glauncher系と役割被りのため廃止し、スナイパー上位の
+  // **対物ライフル**へ差し替え(爆発しない・貫通スナイパー)。数値は叩き台: t2スナイパー(55/1100)の上位。
+  'rifle-t3':         { key: 'rifle-t3',   name: '対物ライフル',   type: 'rifle',   category: 'rifle',   tier: 3, damage: 110, cooldown: 1300, projectileSpeed: 1100, projectileSize: 9, count: 1, passthrough: true, magSize: 4, reloadMs: 2200 },
 
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
   // Each carries a fixed crit chance that rises with tier. Tier はレベルアップ
@@ -220,10 +223,11 @@ export const armoryGrantKeys = (
   return keys;
 };
 
-// グレネード系の着弾爆発を起こす銃キーか(rifle-t3=既存グレネードランチャー+武器庫限定glauncher 3種)。
-// useGameLoopの着弾爆発ブロック(GRENADE_WEAPON_KEY経路)がこの判定で分岐する。
+// グレネード系の着弾爆発を起こす銃キーか(武器庫限定glauncher 3種のみ。旧rifle-t3は
+// v0.25.3291で対物ライフル=非爆発へ入れ替え済み)。タレット/朱雀/爆撃の流用弾は
+// weaponKey='glauncher-t1'(useGameLoopのGRENADE_WEAPON_KEY)を名乗ってこの経路に乗る。
 export const isGrenadeGunKey = (key: string | undefined | null): boolean =>
-  key === 'rifle-t3' || key === 'glauncher-t1' || key === 'glauncher-t2' || key === 'glauncher-t3';
+  key === 'glauncher-t1' || key === 'glauncher-t2' || key === 'glauncher-t3';
 
 // Player-state RESERVE pool value for an ammo type.
 export const ammoPoolFor = (player: Player, type: AmmoType): number =>

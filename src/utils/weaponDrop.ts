@@ -1,5 +1,5 @@
 import { AmmoType } from '../types/game';
-import { GUN_KEYS_BY_CATEGORY, MELEE_KEYS, nextKnifeKey } from './weaponUtils';
+import { GUN_KEYS_BY_CATEGORY, nextKnifeKey } from './weaponUtils';
 
 // WWZ-style loot: enemies rarely drop a weapon outright, and mid-bosses always
 // drop a weapon crate that rolls one. Tier率はエリア(距離)で決まる(社長指定): 奥ほど高Tier。
@@ -28,14 +28,16 @@ const pickTier = (area: number): number => {
 
 // Roll a random gun key (used for both world drops and crates). Melee weapons
 // are rarer so the player mostly upgrades their firearm. `area` = 0..4。
-export const rollWeaponKey = (area: number): string => {
+// 社長指示v0.25.3291「ドロップのナイフは必ず自分の装備してるtierより1つ上」:
+// 旧=エリアTier連動(装備より低いナイフが落ちて無意味)→ 現装備tier+1固定(nextKnifeKey)。
+// Tier5(最上位)所持なら近接は落とさず銃へ振り替える。
+export const rollWeaponKey = (area: number, currentMeleeTier = 1): string => {
   const tier = pickTier(area);
 
   // ~15% of rolls produce a melee weapon instead of a gun.
   if (Math.random() < 0.15) {
-    // Melee tier index lines up with the gun tier roll (clamped to range).
-    const idx = Math.min(MELEE_KEYS.length - 1, tier - 1);
-    return MELEE_KEYS[idx];
+    const knife = nextKnifeKey(currentMeleeTier);
+    if (knife) return knife;
   }
 
   const category = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];

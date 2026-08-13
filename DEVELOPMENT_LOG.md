@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.3291 — rifle-t3を対物ライフルへ入れ替え+ナイフドロップ=装備tier+1【2026-08-13 20:15 JST】
+- **社長指示「スナイプのtier3入れ替え(グレネード被りなので廃止 爆発もしない)」**:
+  rifle-t3=グレネードランチャー廃止 → **対物ライフル**(非爆発・貫通スナイパー。叩き台:
+  110dmg/CD1300/弾速1100/装弾4=t2スナイパー55/1100の上位)。新ドット絵を同名差し替え。
+  - **流用キーの移転**: タレット10%弾/朱雀/爆撃が「着弾爆発する弾」の名義に使っていた
+    GRENADE_WEAPON_KEY を 'rifle-t3'→'glauncher-t1' へ(挙動不変・弾絵はドット球に揃う)。
+    isGrenadeGunKeyからrifle-t3を除去(跳弾/エコーの除外判定も同関数へ=glauncher全キー除外)。
+  - SFX: rifle系は常にrifle-fire・glauncher系はgrenade-launcher-fire(本人+守護霊の両分岐)。
+- **社長指示「ドロップのナイフは必ず自分の装備してるtierより1つ上」**: rollWeaponKeyの近接枝を
+  エリアTier連動→nextKnifeKey(装備tier+1)へ。Tier5所持時は近接を落とさず銃へ振り替え。
+  武器箱(openCrate)は既に+1仕様だったので変更なし。呼び出し側(敵ドロップ)が装備tierを渡す。
+- 検証: weaponUtils/armoryGun 17件通過・typecheck 0・lint 0。実機確認: rifle-t3が爆発しない
+  スナイパーになっているか・タレット/朱雀/爆撃の爆発が従来どおりか・ナイフドロップのtier。
+
 ## v0.25.3290 — グレネードガン3種(武器庫限定・第4枠=社長裁定)+弾ドット絵【2026-08-13 20:10 JST】
 - **素材**: 社長支給シート(816×264)から glauncher-t1/t2/t3(weapons/)+弾 fx/grenade-ball(56×56)を切り出し。
 - **新カテゴリ 'glauncher'(第4枠=AskUserQuestionで社長裁定)**: WeaponCategory拡張。
