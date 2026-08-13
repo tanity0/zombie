@@ -2,7 +2,7 @@
 // §26-3: ①死体がKB付きで残り期限で消える ②死体は接触ダメージを与えない/受けない
 // ③パニッシャー所持時、死体moverが隣の敵を巻き込む ④ボス/ネームドの死亡演出は不変。
 import { describe, it, expect, vi } from 'vitest';
-import { useGameStore, KNOCKBACK_DURATION, KILL_LAUNCH_DIST_PX, knockbackSpeedFor } from './gameStore';
+import { useGameStore, KNOCKBACK_DURATION, KILL_LAUNCH_DIST_PX, knockbackSpeedFor, PUNISHER_TWO_BEAT_MS } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { checkPlayerEnemyCollisions } from '../utils/collisionUtils';
 import { isCorpse } from '../utils/enemyUtils';
@@ -131,7 +131,16 @@ describe('KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26)', () => {
     useGameStore.getState().damageEnemy(victimId, 999); // victim→死体化(mover候補)
     expect(isCorpse(useGameStore.getState().enemies.find(e => e.id === victimId)!)).toBe(true);
 
-    useGameStore.getState().updateEnemies(1 / 60); // moversの巻き込み判定+ダメージ適用(post-set)
+    useGameStore.getState().updateEnemies(1 / 60); // moversの巻き込み判定=一拍目(接触フリーズ・v0.25.3299の二拍化)
+
+    // 一拍目: 接触の瞬間はその場で固まる(punisherPendingAt予約)だけでダメージはまだ入らない。
+    const bystanderPending = useGameStore.getState().enemies.find(e => e.id === bystanderId)!;
+    expect(bystanderPending.punisherPendingAt).toBeDefined();
+    expect(bystanderPending.health).toBe(999);
+
+    // 二拍目(PUNISHER_TWO_BEAT_MS後): 発火パスがダメージ+継承ノックバックを適用する。
+    now += PUNISHER_TWO_BEAT_MS + 20;
+    useGameStore.getState().updateEnemies(1 / 60);
 
     const bystanderAfter = useGameStore.getState().enemies.find(e => e.id === bystanderId)!;
     expect(bystanderAfter.health).toBeLessThan(999); // 死体moverに巻き込まれてダメージを受けた

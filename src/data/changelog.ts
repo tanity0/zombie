@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3319',
+    items: [
+      'ゲーム内容の変更はありません(CI赤の修復: 仕様変更に未追従だったテスト4件を更新)。',
+    ],
+  },
+  {
     version: '0.25.3318',
     items: [
       '帰還サークル(ゴール)の「敵が入ってこない」「中では攻撃できない」を撤廃しました。指を離せば即ゴールする現仕様では不要になったため、サークル内でも通常どおり戦えます。',

@@ -498,14 +498,16 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
   });
 
   it('敵弾の生成箇所の数は固定(新しい発射経路を足したらこのテストが落ちる=分類してから入れる)', () => {
-    // 内訳(v0.25.3027時点・全数):
+    // 内訳(v0.25.3319時点・全数):
     //   gameStore.ts   3 = 咆哮弾の連射(burst)/扇(fan)/**グレン胴体弾のV字斉射**(v0.25.3027・
     //                      'g-parts'=専用aiPhase無しのため生成後にsrcMoveKeyを後付けする経路)
     //   useGameLoop.ts 1 = 裏ボス fireBullet(idolはv0.25.2613でidolTick.tsへ移設)
-    //   angelBossTick  7 = miguel×2(台本/旧)・jibril×2(台本/旧)・uri・suriel・acrasiel
+    //   angelBossTick  8 = miguel×2(台本/旧)・jibril×3(台本volleyの狙い弾+**全方位リング**
+    //                      (v0.25.3197: 偶数発目=リング8発の追加射出口。状態は同じ'volley'=技キー分類済み)・旧)・
+    //                      uri・suriel・acrasiel
     //   combatTick.ts  1 = 汎用発砲(plant等の非ボス。?giantscript=0のgiantbat旧経路も同じ口)
     //   idolTick.ts    3 = idolの通常弾(aim/fan)/ 追尾弾(orb)/ **射撃部品の斉射**(v0.25.2638)
-    // 合計15。増えたら「そのボスのその状態」をBULLET_STATE_TO_MOVEへ足すこと(足さないと
+    // 合計16。増えたら「そのボスのその状態」をBULLET_STATE_TO_MOVEへ足すこと(足さないと
     // その弾だけ技キーが付かず、記録にも守護霊の再現にも一生乗らない)。
     // ※射撃部品は1箇所(fireShotVolley)で8枠ぶんを撃つので、枠を増やしても発射箇所は増えない。
     let sites = 0;
@@ -516,6 +518,6 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
         sites += (line.match(/createEnemyProjectile\(/g) ?? []).length;
       }
     }
-    expect(sites).toBe(15);
+    expect(sites).toBe(16);
   });
 });
