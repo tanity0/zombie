@@ -2495,6 +2495,14 @@ const WEAPON_CRATE_STRAP_DROP_VARIANCE = 21;
 const GOLD_STRAP_VALUE = 10;
 const DROP_SCATTER_RADIUS = 42;
 const WEAPON_CRATE_SCATTER_RADIUS = 92;
+// 社長指示v0.25.3277「武器箱が10%の確率で[秘密兵器箱]に変化」: 拾うと大表示+武器抽選3回+
+// 赤経験値20個ばらまき(松明壊し=DROP_SCATTER_RADIUS 42より広く)。屋内(研究所)は武器が
+// 出ない箱(トレジャー箱)なので対象外。
+const SECRET_CRATE_RATE = 0.10;
+const SECRET_CRATE_WEAPON_ROLLS = 3;
+const SECRET_CRATE_XP_COUNT = 20;
+const SECRET_CRATE_XP_VALUE = 5;            // value>=5 = 赤経験値(pixiSceneの色分けしきい値)
+const SECRET_CRATE_XP_SCATTER_RADIUS = 150; // 松明(42)・武器箱スクラップ(92)より広く
 const DROP_THROW_DURATION_MS = 360;
 const TREASURE_DROP_CHANCE_BY_RANK = {
   strong: 0.02,
@@ -12688,6 +12696,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Pickup actions
   addPickup: (pickup) => {
     set(state => {
+      // 社長指示v0.25.3277: 武器箱は10%で「秘密兵器箱」へ変化(全スポーン経路の合流点=ここで一度だけ
+      // 抽選)。屋内(研究所)は武器の出ない箱なので対象外。既にsecretが決まっている箱は再抽選しない。
+      if (pickup.type === 'weapon-crate' && !state.indoorMode && pickup.secret === undefined && Math.random() < SECRET_CRATE_RATE) {
+        pickup = { ...pickup, secret: true };
+      }
       const scattered = pickupWithDropScatter(pickup);
       // 社長指示(v0.25.2391)「ステージ2に限らず、移動不可エリアにアイテムも敵も沸かないで」。
       // ドロップ散らばり(pickupWithDropScatter)の**後**に着地点だけを帯の内側へ寄せる(順序が
@@ -12927,15 +12940,37 @@ export const useGameStore = create<GameState>((set, get) => ({
         } else {
           // 屋外: エリア(距離)別Tier率で銃を抽選して装備(社長指定)。
           // v0.25.3212(社長指示): ナイフ強化(旧レベルアップ3枠目)も武器箱から出る(25%・Tier5未満のみ)。
+          // 社長指示v0.25.3277: 秘密兵器箱は武器抽選3回。
           {
-            const pc = get().player;
-            const meleeTier = pc.weapons.find(w => w.isMelee)?.tier ?? 1;
-            const droppedKey = openCrate(areaIndexForPos(pc.x + pc.width / 2, pc.y + pc.height / 2), meleeTier);
-            get().grantWeapon(droppedKey);
-            // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の3: 武器箱から出たのがナイフだった時だけ計測
-            // (読むだけ・grantWeaponの挙動には触れない)。
-            const droppedDef = createWeapon(droppedKey);
-            if (droppedDef.isMelee) recordKnifeTierFromBox(droppedDef.tier ?? 1);
+            const rolls = pickup.secret ? SECRET_CRATE_WEAPON_ROLLS : 1;
+            for (let r = 0; r < rolls; r++) {
+              const pc = get().player;
+              const meleeTier = pc.weapons.find(w => w.isMelee)?.tier ?? 1;
+              const droppedKey = openCrate(areaIndexForPos(pc.x + pc.width / 2, pc.y + pc.height / 2), meleeTier);
+              get().grantWeapon(droppedKey);
+              // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の3: 武器箱から出たのがナイフだった時だけ計測
+              // (読むだけ・grantWeaponの挙動には触れない)。
+              const droppedDef = createWeapon(droppedKey);
+              if (droppedDef.isMelee) recordKnifeTierFromBox(droppedDef.tier ?? 1);
+            }
+          }
+          // 社長指示v0.25.3277: 秘密兵器箱=大表示+赤経験値20個ばらまき(松明より広く)+派手な取得FX。
+          if (pickup.secret) {
+            get().triggerWallBand('秘密兵器箱!!', 'gold', 2600);
+            for (let i = 0; i < SECRET_CRATE_XP_COUNT; i++) {
+              get().addPickup({
+                id: `pickup-xp-secret-${pickup.id}-${i}`,
+                x: pickup.x, y: pickup.y,
+                type: 'experience', value: SECRET_CRATE_XP_VALUE,
+                scatterRadius: SECRET_CRATE_XP_SCATTER_RADIUS,
+              });
+            }
+            // 取得FX(分類②=派手側): 金の二重リング+大バースト+グロー(noShadow=投影影に参加させない)。
+            get().spawnRing(pickup.x, pickup.y, 8, 170, 'rgba(251,191,36,0.9)', 4, 520);
+            get().spawnRing(pickup.x, pickup.y, 8, 110, 'rgba(253,224,71,0.85)', 3, 380);
+            get().spawnBurst(pickup.x, pickup.y, '#fbbf24', 32);
+            get().spawnBurst(pickup.x, pickup.y, '#fef3c7', 14);
+            get().spawnGlow(pickup.x, pickup.y, GLOW_R_M, 'rgba(251,191,36,', 520, true);
           }
         }
         strapDropValues(WEAPON_CRATE_STRAP_DROP_MIN + Math.floor(Math.random() * WEAPON_CRATE_STRAP_DROP_VARIANCE))

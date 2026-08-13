@@ -22,6 +22,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
   BloodSpike, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
+  GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショットの渦(v0.25.3276)
 } from '../types/game';
 import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
@@ -68,7 +69,7 @@ import {
   BOSS_RECOVER_TINT,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
 } from '../utils/bossScript';
-import { spriteFootRow, spriteTopRow } from '../utils/spriteFoot';
+import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): カラオケ塗り/ロック/弱点窓の進行は純関数から引く(判定と同じ式)。
@@ -78,7 +79,9 @@ import {
   MIMIR_LASER_WEAK_MS as LASER_TRACK_WEAK_MS,
 } from '../utils/mimirLaserTrack';
 import { enemyMotionSpec, enemyMotionPose, ENEMY_TURN_MS, GIANTBAT_MOTION_BY_BACKDROP } from './enemyMotion';
-import { contentSpanFrac, needsContentTrim, contentTrimFrameY } from '../utils/shadowBake';
+import {
+  contentSpanFrac, needsContentTrim, contentTrimFrameY, contentTrimFrameX, contentCenterFrac,
+} from '../utils/shadowBake';
 import { horizontalShadowCorners } from '../utils/shadowProjection';
 import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
 import {
@@ -97,7 +100,7 @@ import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust'
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import { MOLOTOV_FIRE_RADIUS } from '../utils/molotov';
 // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘。判定=絵は分類①(判定に厳密一致)。
-import { BLOOD_TREADS_RADIUS_PX } from '../utils/skillEffectsB7';
+import { BLOOD_TREADS_RADIUS_PX, GRAVITY_SHOT_PULL_MS } from '../utils/skillEffectsB7';
 import {
   SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_SLIDE_START_OUT, SUPPORT_SNIPER_INSET,
   type SupportSniperNpcState,
@@ -1233,7 +1236,8 @@ const KNOCKBACK_HOP_MS = 260;
 // 延焼中の敵の薄い赤点滅(社長指示v0.25.3272・視覚のみ。判定=storeのburnUntil)
 const BURN_FLASH_TINT = 0xff5a3c;
 const BURN_FLASH_ALPHA = 0.28; // 「薄く」=被弾白(0.85相当)よりずっと弱く
-const BURN_FLASH_PERIOD_MS = 520;  // 跳ねアークの所要時間(敵=被弾lastHit起点 / プレイヤー=knockbackUntil逆算)
+const BURN_FLASH_PERIOD_MS = 520;
+const ICE_FLASH_TINT = 0x7fd4ff; // 氷鈍化中の薄い水色(v0.25.3276・α/周期は延焼と共通)
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
 const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するスカッシュ量
@@ -2077,6 +2081,11 @@ const SHADOW_HEIGHT_DEADZONE_PX = 6;
 const SHADOW_HORIZON_TRIM_DEADZONE_PX = 12;
 const SHADOW_HORIZON_TRIM_SMOOTH_MS = 180;
 
+// ---- ★D-2b: footX の横寄せ(絵の実体の中心へ)の平滑時定数 -------------------------------------
+// `shadowFootXOffsetState` のコメント参照。歩行アニメ(複数コマ差し替え)の脚振りより十分遅く、
+// かつ単一テクスチャ(ジョルムンガルド/花等)が「体感で一瞬」に収まる程度の速さ、の中間値。
+const SHADOW_FOOTX_SMOOTH_MS = 900;
+
 // ---- キャッシュ/ベイク予算(§3-9-B確定・実測前提の見積り) --------------------------------------
 const SHADOW_SIL_CACHE_BUDGET_BYTES = 32 * 1024 * 1024;
 const SHADOW_BAKE_BUDGET_PER_FRAME = 4;
@@ -2092,6 +2101,8 @@ const SHADOW_MESH_GC_MS = 4000;
 
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure', 'lab-clear-item']);
+// 社長指示v0.25.3277: 武器箱/武器ドロップの頭上マークを出す「近く」の半径(px)。
+const PICKUP_MARK_NEAR_PX = 600;
 
 // 研究所ゾンビのテクスチャ名(Lv1 は敵idで男女を固定振り分け、Lv2/Lv3 は1種)。lab以外は null。
 // ★Lv2 は v0.25.2914 で男女を廃止して1種へ(社長指示「男女の区別は無くして一種類」・新アート)。
@@ -2634,6 +2645,9 @@ interface ActorView {
   // 気絶/拘束/紫/休眠で動きが止まれば揺れも勝手に静まる=状態を個別に見なくてよい)。
   motPrevX?: number; motPrevY?: number; motPrevAt?: number;
   motSpeed?: number; motVx?: number;
+  // 氷鈍化中に歩行テンポを落とすための仮想時計(ms蓄積)。位相が飛ばないよう実時計の代わりに
+  // これをenemyMotionPoseへ渡す(社長指示v0.25.3277「動きモーションもスローにならないとわからん」)。
+  motClock?: number;
   // ③振り向き: 現在の表示向き(+1=素の向き/-1=ミラー)と遷移の開始値・開始時刻。
   motFace?: number; motFaceFrom?: number; motFaceAt?: number;
   // ラスボス第二形態の連結パーツ(v0.25.2918)。添字=パーツ番号(0砲身/1中間/2尾)で固定。
@@ -2707,6 +2721,9 @@ interface PickupView {
   // 旧: 均一fillの円を4枚重ねて**毎フレーム描き直し**(禁止事項1+per-frame Graphics)。
   glowHalo?: Sprite;
   glowCore?: Sprite;
+  // 社長指示v0.25.3277「武器箱はドロップなどもマーク表示(近くにいたら)」: 頭上の金の逆三角
+  // (作成時に1回だけ描くGraphics=per-frame再描画なし)。近距離の武器箱/武器ドロップだけ表示。
+  mark?: Container;
 }
 
 type EffectView = Container | Graphics | Text | Sprite;
@@ -3056,9 +3073,18 @@ export class PixiScene {
   private shadowGlowScratch: { key: string; dirX: number; dirY: number; falloff: number; score: number; dist: number; reach: number; inRange: boolean }[] = [];
   // 地平線帯の詰め(§3-9-B確定)の平滑後の長さ。キャスターid別。
   private shadowHorizonTrimState = new Map<string, number>();
-  // ★検収差し戻し(中12): テクスチャのαの実体bbox(0..1、テクスチャ高さに対する割合)。1回だけ測って
-  // キャッシュ(裁定Dのベイクとは別物=軽いのでLRU無し。マップは小さい数値だけなのでメモリ圧は無視できる)。
-  private textureContentCache = new Map<Texture, { top: number; bottom: number }>();
+  // ★D-2b: footX の横寄せオフセット(平滑後)。キャスターid別。★なぜ平滑が要るか: プレイヤー/NPC/犬の
+  // 歩行は複数枚のスプライトを差し替えるアニメーションで、脚が前後に振れる各コマごとに実体bboxの
+  // 左右非対称量が変わる(=最大30%級)。生の値をそのまま使うと**歩くたびに影が左右へ揺れる**新規の
+  // 見た目バグになる(実測: `player-striker-walk-2.png` は左33.3%/右19.2%の非対称)。ジョルムンガルド
+  // /花のような単一テクスチャ(コマ替えなし)は毎フレーム同じ値に収束するので、平滑後も最終的に
+  // 正しい位置へ落ち着く(=1回だけ滑らかに動いて止まる。既存の `shadowHorizonTrimState` と同じ作法)。
+  private shadowFootXOffsetState = new Map<string, number>();
+  // ★検収差し戻し(中12)+★D-2b: テクスチャのαの実体bbox(0..1、テクスチャ幅/高さに対する割合)。
+  // 1回だけ測ってキャッシュ(裁定Dのベイクとは別物=軽いのでLRU無し。マップは小さい数値だけなので
+  // メモリ圧は無視できる)。left/right(★D-2b・横)は top/bottom(縦)と**同じ1回の`extract.pixels`**
+  // から一緒に測る(GPU読み戻しを2回にしない)。
+  private textureContentCache = new Map<Texture, { top: number; bottom: number; left: number; right: number }>();
   // ★v12 §3-9-C ★A: 内側フェザーの合成フィルタ(1個だけ作って全ベイクで使い回す)。
   private penumbraFilter: Filter | null = null;
   private penumbraFilterFailed = false; // シェーダが通らない環境で旧経路へ落ちたか(再試行しない)
@@ -5461,6 +5487,8 @@ export class PixiScene {
       case 'trail':
         return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
           this.isPointNearViewport(e.toX, e.toY, camera);
+      case 'drain':
+        return true; // 終点=プレイヤー(常に画面内)なので出しっぱなしで良い
       case 'whip':
         return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
           this.isPointNearViewport(e.toX, e.toY, camera);
@@ -7180,6 +7208,7 @@ export class PixiScene {
     this.syncSummons(s.summons, now);
     this.syncEventBloom(s.effects, fxNow);
     this.syncEffects(s.effects, s.camera, fxNow); // v0.25.3038: 光系は停止中も進む
+    this.syncGravityWells(s.gravityWells, s.gameTime); // §28(B7) グラビティショットの渦(v0.25.3276)
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, s.camera, now);
     this.syncLocalEventLighting(
       s.effects,
@@ -10231,6 +10260,12 @@ export class PixiScene {
     const dt = this.lastShadowLdomNow ? Math.min(0.1, (now - this.lastShadowLdomNow) / 1000) : 0;
     this.lastShadowLdomNow = now;
     const horizonTrimLerp = 1 - Math.exp(-dt / (SHADOW_HORIZON_TRIM_SMOOTH_MS / 1000));
+    // ★D-2b: footX の横寄せは `SHADOW_HORIZON_TRIM_SMOOTH_MS`(180ms)より**ずっと遅く**平滑する
+    // (`shadowFootXOffsetState` のコメント参照: 歩行アニメの脚振りが1〜数コマ=100〜150ms級で
+    // 入れ替わるため、180msだと揺れが残る)。歩行1サイクル(往復)より長い時定数にすることで、
+    // 前後に振れる脚の非対称が平均化されてほぼ相殺され(=現状どおり無補正に近い)、単一テクスチャ
+    // (ジョルムンガルド/花等)は少し遅れて絵の実体中心へ収束する(数百ms=体感では一瞬)。
+    const footXTrimLerp = 1 - Math.exp(-dt / (SHADOW_FOOTX_SMOOTH_MS / 1000));
 
     // ステージ光の向き(正規化)・伸び比率・濃さ倍率は1フレーム1回だけ計算(全キャスター共通)。
     const lighting = this.lighting();
@@ -10261,7 +10296,7 @@ export class PixiScene {
 
     const seen = new Set<string>();
     const place = (req: ShadowCasterReq) =>
-      this.placeShadowV9(req, seen, now, horizonTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
+      this.placeShadowV9(req, seen, now, horizonTrimLerp, footXTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
 
     // ---- プレイヤー ----
     // §3-9-B: 登場演出中も影を出す(旧実装の「introActive中はスキップ」を撤廃)。
@@ -10542,6 +10577,7 @@ export class PixiScene {
     }
     this.shadowPoolV9.clear();
     this.shadowHorizonTrimState.clear();
+    this.shadowFootXOffsetState.clear();
   }
 
   // ---- シルエットのベイク(裁定D/E/F/G) --------------------------------------
@@ -10652,11 +10688,13 @@ export class PixiScene {
   }
 
   /**
-   * 1テクスチャぶんのシルエットを焼く(裁定E/F + ★v12 §3-9-C ★A/★D-2)。
+   * 1テクスチャぶんのシルエットを焼く(裁定E/F + ★v12 §3-9-C ★A/★D-2/★D-2b)。
    *
    * ★D-2: 焼く前に**元テクスチャを「絵のある範囲」へ縦に切り詰める**(下側の透明な空白が
-   * そのまま影の足元側に来て、株元と影の間に隙間が空くため)。空白の無い素材(610枚)は
+   * そのまま影の足元側に来て、株元と影の間に隙間が空くため)。空白の無い素材は
    * `needsContentTrim` が false になり**1pxも変わらない**。
+   * ★D-2b: 横も同じ理屈で切り詰める(左右に余白のある素材はシルエットの形が中央へ寄る)。
+   * `footX` 自体を絵の実体の中心へ寄せる方は `placeShadowV9`(`shadowContentCenterFracX`)側。
    *
    * ★A: 半影(内側フェザー)。
    *   1. a_hard = 黒シルエット + blur(blurPx × 0.25) → RT
@@ -10672,23 +10710,33 @@ export class PixiScene {
     const bakeStart = performance.now();
     let trimmed: Texture | null = null;
     try {
-      // ---- ★D-2: 絵のある範囲へ縦に切り詰める ----
+      // ---- ★D-2(縦)+★D-2b(横): 絵のある範囲へ切り詰める ----
       const content = SHADOW_TRIM_CONTENT ? this.textureContentCache.get(src) : undefined;
       let bakeSrc = src;
       let contentFrac = 1;
-      // ★top/bottom は `extract.pixels(src)` の**表示上の高さ**に対する割合なので、frame と表示寸法が
-      // 一致するテクスチャ(=単体PNG)にだけ適用する。アトラスの trim/回転が入っているものは触らない。
+      // ★top/bottom/left/right は `extract.pixels(src)` の**表示上の幅・高さ**に対する割合なので、
+      // frame と表示寸法が縦横とも一致するテクスチャ(=単体PNG)にだけ適用する。アトラスの
+      // trim/回転が入っているものは触らない。
       const trimSafe = this.shadowTrimSafe(src);
-      if (trimSafe && content && needsContentTrim(content.top, content.bottom)) {
-        const f = src.frame;
-        const box = contentTrimFrameY(f.y, f.height, content.top, content.bottom);
-        trimmed = new Texture({
-          source: src.source,
-          frame: new Rectangle(f.x, box.y, f.width, box.height),
-          label: 'shadow-trim',
-        });
-        bakeSrc = trimmed;
-        contentFrac = contentSpanFrac(content.top, content.bottom);
+      if (trimSafe && content) {
+        const trimY = needsContentTrim(content.top, content.bottom);
+        const trimX = needsContentTrim(content.left, content.right); // ★D-2b
+        if (trimY || trimX) {
+          const f = src.frame;
+          const boxY = trimY ? contentTrimFrameY(f.y, f.height, content.top, content.bottom)
+            : { y: Math.round(f.y), height: Math.round(f.height) };
+          const boxX = trimX ? contentTrimFrameX(f.x, f.width, content.left, content.right)
+            : { x: Math.round(f.x), width: Math.round(f.width) };
+          trimmed = new Texture({
+            source: src.source,
+            frame: new Rectangle(boxX.x, boxY.y, boxX.width, boxY.height),
+            label: 'shadow-trim',
+          });
+          bakeSrc = trimmed;
+          // ★D-2b: 長さ(contentFrac)は縦だけ(§D-2直し2「絵の高さ×比率」)。横trimはシルエットの
+          // "形"だけを絞る=近/遠の半幅(nearHalf/farHalf)は req.rawW 基準のまま(★未決欄参照)。
+          contentFrac = trimY ? contentSpanFrac(content.top, content.bottom) : 1;
+        }
       }
 
       const rawW = Math.round(bakeSrc.width), rawH = Math.round(bakeSrc.height);
@@ -10861,11 +10909,16 @@ export class PixiScene {
     if (!this.renderer || !tex || tex.width <= 1 || tex.height <= 1) return 1;
     try {
       const { pixels, width, height } = this.renderer.extract.pixels(tex);
-      // 行ごとの不透明画素数(下端の判定と、下の「取り残された断片」判定の両方で使う)。
+      // 行ごと/列ごとの不透明画素数(縦=下端/上端の判定+「取り残された断片」判定、
+      // ★D-2b=横=左右端の判定に使う)。**同じ1回の`extract.pixels`から両方作る**
+      // (GPU読み戻しを2回にしない=毎フレーム経路ではないが、それでも1回で済むものを2回にしない)。
       const rowCount = new Array<number>(height).fill(0);
+      const colCount = new Array<number>(width).fill(0);
       for (let y = 0; y < height; y++) {
         let n = 0;
-        for (let x = 0; x < width; x++) if (pixels[(y * width + x) * 4 + 3] >= SHADOW_FOOT_ALPHA_THRESHOLD) n++;
+        for (let x = 0; x < width; x++) {
+          if (pixels[(y * width + x) * 4 + 3] >= SHADOW_FOOT_ALPHA_THRESHOLD) { n++; colCount[x]++; }
+        }
         rowCount[y] = n;
       }
       // ★v0.25.2776(社長報告「まだいた」): 判定は `src/utils/spriteFoot.ts` の純関数へ切り出した
@@ -10874,7 +10927,13 @@ export class PixiScene {
       const foundBottom = spriteFootRow(rowCount);
       const top = foundTop < 0 ? 0 : foundTop / height;
       const bottom = foundBottom < 0 ? 1 : (foundBottom + 1) / height;
-      this.textureContentCache.set(tex, { top, bottom });
+      // ★D-2b: 横(左右)は spriteLeftCol/spriteRightCol(単純な最外周・断片フィルタ無し。理由は
+      // `spriteFoot.ts` のコメント参照)。
+      const foundLeft = spriteLeftCol(colCount);
+      const foundRight = spriteRightCol(colCount);
+      const left = foundLeft < 0 ? 0 : foundLeft / width;
+      const right = foundRight < 0 ? 1 : (foundRight + 1) / width;
+      this.textureContentCache.set(tex, { top, bottom, left, right });
       return bottom;
     } catch (err) {
       console.error('[shadow-v9] textureContentBottomFrac failed (suppressed):', err);
@@ -10895,12 +10954,28 @@ export class PixiScene {
   }
 
   /**
-   * ★D-2: 切り詰めてよいテクスチャか。`top`/`bottom` は `extract.pixels` の**表示上の高さ**に対する
-   * 割合なので、`frame` と表示寸法が一致するもの(=単体PNG)にだけ適用する。
-   * アトラスの trim / 回転が入っているものは**触らない**(座標系が食い違って絵がズレるため)。
+   * ★D-2b「やること3」: この素材の「絵の実体が横に占める中心」(0..1、0.5=無補正)。
+   * `placeShadowV9` が `footX` をここへ寄せる(§D-2b「影の起点を絵の足元の中央にする」の横側)。
+   * `shadowContentFrac` と同じ作法(キャッシュを読むだけ・未実測/切り詰めOFF/左右に余白が無ければ
+   * 0.5=**footXを1pxも動かさない**)。
+   */
+  private shadowContentCenterFracX(tex: Texture | null): number {
+    if (!SHADOW_TRIM_CONTENT || !tex || !this.shadowTrimSafe(tex)) return 0.5;
+    const c = this.textureContentCache.get(tex);
+    if (!c || !needsContentTrim(c.left, c.right)) return 0.5;
+    return contentCenterFrac(c.left, c.right);
+  }
+
+  /**
+   * ★D-2/D-2b: 切り詰めてよいテクスチャか。`top`/`bottom`/`left`/`right` は `extract.pixels` の
+   * **表示上の幅・高さ**に対する割合なので、`frame` と表示寸法が縦横とも一致するもの(=単体PNG)
+   * にだけ適用する。アトラスの trim / 回転が入っているものは**触らない**(座標系が食い違って
+   * 絵がズレるため)。
    */
   private shadowTrimSafe(tex: Texture): boolean {
-    return !tex.trim && !tex.rotate && Math.round(tex.frame.height) === Math.round(tex.height);
+    return !tex.trim && !tex.rotate
+      && Math.round(tex.frame.height) === Math.round(tex.height)
+      && Math.round(tex.frame.width) === Math.round(tex.width);
   }
 
   // ---- 支配光(Ldom)。裁定K/M/N + 社長実機フィードバック裁定S-3/S-4/S-5 -------------------------
@@ -11028,7 +11103,7 @@ export class PixiScene {
    */
   private placeShadowV9(
     req: ShadowCasterReq, seen: Set<string>, now: number,
-    horizonTrimLerp: number,
+    horizonTrimLerp: number, footXTrimLerp: number,
     ambDirX: number, ambDirY: number, lenRatio: number, densityMult: number,
     glowLights: { key: string; x: number; y: number; reach: number; life: number }[],
   ) {
@@ -11043,7 +11118,27 @@ export class PixiScene {
     const t = Math.min(1, height / (req.rawH * SHADOW_FLOAT_T_HEIGHT_MULT));
     const shrink = 1 - SHADOW_FLOAT_SHRINK * t;
     const floatFade = 1 - SHADOW_FLOAT_FADE * t;
-    const footX = req.x, footY = req.y + height;
+    // ★D-2b「やること3」(社長指示v0.25.2815「縦横両方ね。絵の、ではなく絵の足元の」):
+    // footX を「絵の実体が横に占める中心」へ寄せる。req.x は呼び出し側が渡す幾何中心
+    // (アンカー0.5相当)なので、左右に余白のある素材だとそこは絵の実体の中心と一致しない。
+    // 左右に余白の無い素材(≒ほぼ全素材)は shadowContentCenterFracX が 0.5 を返す=オフセット0
+    // (D-2の「610枚は1pxも変わらない」と同じ形の受け入れ条件)。flip時はテクスチャ座標の左右が
+    // 画面上で鏡映しになるため符号を反転する(uSignと同じ考え方)。
+    // ★footY は動かさない: 裏ボス(shadowGroundY)・森の花(anchor調整)は既に呼び出し側で
+    // 絵の実体下端に個別対応済みなので、ここでさらに寄せると二重補正になる(D-2bで新規に
+    // 必要なのは横だけ=「D-2bの1/3」)。
+    const centerFracX = this.shadowContentCenterFracX(req.texture);
+    const rawFootXOffset = (centerFracX - 0.5) * req.rawW * (req.flip ? -1 : 1);
+    // ★歩行アニメ(プレイヤー/NPC/犬)はコマ替えのたびに実体bboxの左右非対称量が変わる
+    // (脚が前後に振れるため=最大30%級)。生の値だと**歩くたびに影が左右へ揺れる**新規バグになるので
+    // `shadowHorizonTrimState` と同じ作法で平滑する(単一テクスチャの素材は最終的に同じ値へ収束する
+    // ので結果は変わらない=1回だけ滑らかに動いて止まる)。
+    const prevFootXOffset = this.shadowFootXOffsetState.get(req.id);
+    const footXOffset = prevFootXOffset === undefined
+      ? rawFootXOffset
+      : prevFootXOffset + (rawFootXOffset - prevFootXOffset) * footXTrimLerp;
+    this.shadowFootXOffsetState.set(req.id, footXOffset);
+    const footX = req.x + footXOffset, footY = req.y + height;
 
     const staticFade = req.isStatic ? this.shadowStaticFade(footX, footY) : 1;
     const totalAlpha = alpha * floatFade * staticFade;
@@ -11346,6 +11441,7 @@ export class PixiScene {
           this.shadowHorizonTrimState.delete(`${id}#${i}`);
         }
         this.shadowPoolV9.delete(id);
+        this.shadowFootXOffsetState.delete(id); // ★D-2b
       }
     }
   }
@@ -13763,13 +13859,18 @@ export class PixiScene {
         view.motVx = (view.motVx ?? 0) + (instVx - (view.motVx ?? 0)) * k;
       }
       view.motPrevX = e.x; view.motPrevY = e.y; view.motPrevAt = now;
+      // 氷鈍化中は歩幅のテンポ(コマ送り相当)も遅くする(社長指示v0.25.3277「動きモーションも
+      // スローにならないとわからん」)。実時計をそのまま使うと減速切替の瞬間に位相が飛ぶので、
+      // 鈍化倍率を掛けたdtを蓄積する仮想時計をenemyMotionPoseへ渡す(視覚のみ・判定不変)。
+      const iceTempoMul = (e.iceSlowUntil ?? 0) > gameTime ? 1 - (e.iceSlowPct ?? 0) : 1;
+      view.motClock = (view.motClock ?? now) + Math.max(0, Math.min(400, dtMs)) * iceTempoMul;
       if (spec.kind !== 'none') {
         // hover(浮遊)は移動に関係なく常にゆらぐ。それ以外は全速=1として実速度に比例。
         const walk = spec.kind === 'hover' ? 1 : Math.min(1.25, (view.motSpeed ?? 0) / Math.max(20, e.speed));
         // 技のモーション中(aiPhase=しゃがみ/ジャンプ/突進/g-*)は既存のaiSq系に譲って歩行は消す。
         // 式は enemyMotion.ts の共有関数。個体位相はIDハッシュ(stablePhase)=群れが同期行進しない。
         if (e.aiPhase === undefined) {
-          const pose = enemyMotionPose(spec, stablePhase(e.id), now, walk);
+          const pose = enemyMotionPose(spec, stablePhase(e.id), view.motClock, walk);
           motRot = pose.rot; motBob = pose.bob; motSqX = pose.sqX; motSqY = pose.sqY;
         }
       }
@@ -13895,11 +13996,13 @@ export class PixiScene {
       const hf = view.hitFlash;
       const flashT = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1
         ? Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS) : 0;
-      // 延焼中の薄い赤点滅(社長指示v0.25.3272)。被弾フラッシュと同じシルエット機構を流用し、
-      // 被弾(白)が出ていない間だけ赤の弱い明滅を乗せる(読むだけ・判定はstoreのburnUntil)。
-      const burning = view.sprite.visible && (e.burnUntil ?? 0) > gameTime &&
-        view.sprite.texture && view.sprite.texture.width > 1;
-      if (flashT > 0.01 || burning) {
+      // 延焼中の薄い赤点滅(社長指示v0.25.3272)/氷鈍化中の薄い水色点滅(社長指示v0.25.3276)。
+      // 被弾フラッシュと同じシルエット機構を流用し、被弾(白)が出ていない間だけ弱い明滅を乗せる
+      // (読むだけ・判定はstoreのburnUntil/iceSlowUntil)。優先: 白(被弾)>赤(延焼)>水色(氷)。
+      const texOk = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1;
+      const burning = texOk && (e.burnUntil ?? 0) > gameTime;
+      const iced = texOk && (e.iceSlowUntil ?? 0) > gameTime;
+      if (flashT > 0.01 || burning || iced) {
         // 真っ白シルエットを加算で重ねる(暗い敵でも全面が白く光る)。未ベイク時は元テクスチャにフォールバック。
         hf.texture = this.whiteSilhouette(view.sprite.texture) ?? view.sprite.texture;
         hf.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
@@ -13911,7 +14014,7 @@ export class PixiScene {
           hf.tint = 0xffffff;
           hf.alpha = flashT * ENEMY_HIT_FLASH_STRENGTH * artFade;
         } else {
-          hf.tint = BURN_FLASH_TINT; // 薄い赤
+          hf.tint = burning ? BURN_FLASH_TINT : ICE_FLASH_TINT; // 赤(延焼)>水色(氷)
           const pulse = 0.5 + 0.5 * Math.sin(now / BURN_FLASH_PERIOD_MS * Math.PI * 2);
           hf.alpha = BURN_FLASH_ALPHA * pulse * artFade;
         }
@@ -19963,6 +20066,27 @@ export class PixiScene {
       last.rawH = tex.height * sc;
     };
 
+    // 社長指示v0.25.3277「武器箱はドロップなどもマーク表示(近くにいたら)」: 武器箱/武器ドロップの
+    // 頭上に金の逆三角を跳ねさせる(プレイヤーから600px以内のみ)。Graphicsは作成時に1回だけ描く。
+    if (p.type === 'weapon-crate' || p.type === 'weapon-drop') {
+      const nearDist = Math.hypot(cx - this.seeThroughPlayer.cx, footY - this.seeThroughPlayer.footY);
+      if (nearDist < PICKUP_MARK_NEAR_PX) {
+        if (!entry.mark) {
+          const mc = new Container();
+          const tri = new Graphics();
+          tri.poly([-7, -12, 7, -12, 0, 0]).fill({ color: 0xfacc15 });
+          tri.poly([-4, -19, 4, -19, 0, -14]).fill({ color: 0xfacc15, alpha: 0.7 }); // 小さな二段目=視線を引く
+          mc.addChild(tri);
+          entry.container.addChild(mc);
+          entry.mark = mc;
+        }
+        const bounce = Math.abs(Math.sin(now / 260)) * 6;
+        entry.mark.visible = true;
+        entry.mark.position.set(Math.round(cx), Math.round(footY + floatOffset - size * 1.6 * d - 8 - bounce));
+        entry.mark.alpha = 0.95;
+      } else if (entry.mark) entry.mark.visible = false;
+    } else if (entry.mark) entry.mark.visible = false;
+
     // weapon-drop: ドロップした具体的な銃のスプライト(weaponKey 別)。素材がある銃のみ。
     if (p.type === 'weapon-drop' && hasWeaponIcon(p.weaponKey)) {
       const tex = getTexture(weaponIconName(p.weaponKey!));
@@ -20027,6 +20151,33 @@ export class PixiScene {
             core.position.set(gx, gy);
             core.width = core.height = r * 0.40 * 2;
             core.alpha = GEM_BODY_GLOW_ALPHA * 0.22;
+          }
+        } else if (p.type === 'weapon-crate' && p.secret) {
+          // 社長指示v0.25.3277「箱を光らせて差別」: 秘密兵器箱は金色の脈動ハローで普通の武器箱と
+          // 区別する(視覚のみ。XPジェムと同じプール済みソフトグロー2枚=per-frame Graphicsなし・
+          // 投影影には参加しない)。
+          if (!entry.glowHalo) {
+            const halo = new Sprite(getSoftGlowTexture());
+            halo.anchor.set(0.5); halo.blendMode = 'add'; halo.eventMode = 'none';
+            const core = new Sprite(getSoftGlowTexture());
+            core.anchor.set(0.5); core.blendMode = 'add'; core.eventMode = 'none'; core.tint = 0xffffff;
+            entry.container.addChildAt(halo, 0);
+            entry.container.addChildAt(core, 1);
+            entry.glowHalo = halo; entry.glowCore = core;
+          }
+          const halo = entry.glowHalo, core = entry.glowCore;
+          if (halo && core) {
+            const pulse = 0.75 + 0.25 * Math.sin(now / 200 + p.x * 0.013);
+            const gx = Math.round(cx);
+            const gy = Math.round(footY + floatOffset - size * 0.5 * d);
+            halo.visible = true; core.visible = true;
+            halo.tint = 0xfbbf24;
+            halo.position.set(gx, gy);
+            halo.width = halo.height = size * 2.7 * d * pulse;
+            halo.alpha = 0.5 * pulse;
+            core.position.set(gx, gy);
+            core.width = core.height = size * 0.9 * d;
+            core.alpha = 0.26 * pulse;
           }
         } else if (entry.glowHalo) {
           // 経験値以外の拾い物では出さない(旧実装と同じ=glow.clear() 相当)。
@@ -20171,6 +20322,8 @@ export class PixiScene {
         this.drawRingSprite(e, now);
       } else if (e.kind === 'trail') {
         this.drawTrailSprite(e, now);
+      } else if (e.kind === 'drain') {
+        this.drawDrainSprite(e, now);
       } else if (e.kind === 'multiHit') {
         this.drawMultiHitBanner(e, now);
       }
@@ -20305,6 +20458,128 @@ export class PixiScene {
     sp.tint = this.glowTint(e.color);
     sp.alpha = (1 - t) * this.cssAlpha(e.color);
     sp.visible = len > 0.5;
+  }
+
+  // SKILL_BUILD_REDESIGN.md §28(B7) 吸血の吸収演出(社長指示v0.25.3276「攻撃したときの血の
+  // エフェクトがプレイヤーに吸収されていくような」)。キル地点から**毎フレームの生きている
+  // プレイヤー中心**へ、血粒が弧を描きながら加速して吸い込まれる(=終点ホーミング。trailの固定
+  // 終点では追従できないため専用kind)。分類②=派手側・判定なし。
+  // 負荷1/10: キルの20%のみ・620ms・プールsprite(血粒8+到達パルス1)・per-frame Graphicsなし。
+  private drawDrainSprite(e: Extract<VisualEffect, { kind: 'drain' }>, now: number) {
+    const DROPS = 8;
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let view = this.effects.get(e.id);
+    if (!(view instanceof Container) || !(view as { __drainFx?: boolean }).__drainFx) {
+      if (view) view.destroy({ children: true });
+      const c = new Container();
+      (c as unknown as { __drainFx?: boolean }).__drainFx = true;
+      for (let i = 0; i < DROPS; i++) {
+        const sp = new Sprite(getSoftGlowTexture());
+        sp.anchor.set(0.5);
+        sp.blendMode = 'add';
+        sp.tint = i % 3 === 0 ? 0xef4444 : 0xb91c1c; // 血の赤(粒ごとに濃淡)
+        c.addChild(sp);
+      }
+      const pulse = new Sprite(getSoftGlowTexture());
+      pulse.anchor.set(0.5); pulse.blendMode = 'add'; pulse.tint = 0xef4444;
+      c.addChild(pulse);
+      this.L.effectLayer.addChild(c);
+      this.effects.set(e.id, c);
+      view = c;
+    }
+    const c = view as Container;
+    c.visible = true;
+    // 生きているプレイヤー中心(毎フレーム更新済みの足元矩形から得る=描画は読むだけ)
+    const px = this.seeThroughPlayer.cx;
+    const py = (this.seeThroughPlayer.top + this.seeThroughPlayer.footY) / 2;
+    const dx = px - e.fromX, dy = py - e.fromY;
+    const dist = Math.hypot(dx, dy) || 1;
+    const nx = -dy / dist, ny = dx / dist; // 進行直交方向(粒の膨らみ用)
+    for (let i = 0; i < DROPS; i++) {
+      const sp = c.children[i] as Sprite;
+      // 粒を時間差で発進させ、終端へ向けて加速(ease-in=「吸い込まれる」)
+      const stagger = (i / DROPS) * 0.45;
+      const u = Math.max(0, Math.min(1, (t - stagger) / 0.55));
+      const k = u * u; // ease-in
+      const side = (i % 2 === 0 ? 1 : -1) * (0.35 + (i % 3) * 0.3);
+      const bow = Math.sin(Math.PI * u) * dist * 0.2 * side; // 弧を描いて収束
+      sp.position.set(e.fromX + dx * k + nx * bow, e.fromY + dy * k + ny * bow);
+      const sz = (10 - 5 * u) * (i % 3 === 0 ? 1.3 : 1);
+      sp.width = sz; sp.height = sz;
+      sp.alpha = u <= 0 || u >= 1 ? 0 : 0.9 * Math.min(1, u * 6) * Math.min(1, (1 - u) * 8);
+    }
+    // 到達パルス: 終盤、プレイヤーが赤くひと呼吸ふくらむ(回復した実感)
+    const pulse = c.children[DROPS] as Sprite;
+    const pt = Math.max(0, (t - 0.55) / 0.45);
+    pulse.position.set(px, py);
+    const pr = 18 + 26 * pt;
+    pulse.width = pr * 2; pulse.height = pr * 2;
+    pulse.alpha = pt <= 0 ? 0 : 0.5 * Math.sin(Math.PI * pt);
+  }
+
+  // SKILL_BUILD_REDESIGN.md §28(B7) グラビティショットの渦(社長指示v0.25.3276「グラビティの絵を
+  // 発生させて」)。着弾時のリング/バーストだけでは引き寄せ本体(0.4秒)の絵が無かったので、吸引の
+  // 間じゅう「紫のリングが中心へ縮む+粒が螺旋で吸い込まれる+中心が暗く沈む」渦を出す(分類②=派手側)。
+  // 時計=gameTime(引き寄せ判定 tickGravityWells と同じ=ポーズ/ヒットストップで一緒に止まる)。
+  // 負荷1/10: キル時20〜40%のみ・400ms・同時最大でも数個・プールsprite(暗芯1+リング2+粒8)/渦・
+  // per-frame Graphicsなし・投影影(強glow)には参加しない。
+  private gravityWellViews = new Map<string, Container>();
+  private syncGravityWells(wells: GravityWell[], gameTime: number) {
+    if (wells.length === 0 && this.gravityWellViews.size === 0) return;
+    const SPIRAL = 8;
+    const seen = new Set<string>();
+    for (const w of wells) {
+      const t = Math.max(0, Math.min(1, (gameTime - w.createdAt) / GRAVITY_SHOT_PULL_MS));
+      seen.add(w.id);
+      let c = this.gravityWellViews.get(w.id);
+      if (!c) {
+        c = new Container();
+        const dark = new Sprite(getSoftGlowTexture());
+        dark.anchor.set(0.5); dark.tint = 0x120522; dark.alpha = 0; // 通常ブレンド=重力の中心を暗く沈める
+        c.addChild(dark);
+        let base = RING_TEX_BASES[RING_TEX_BASES.length - 1];
+        for (const b of RING_TEX_BASES) { if (w.radius <= b * 1.42) { base = b; break; } }
+        for (let i = 0; i < 2; i++) {
+          const ring = new Sprite(getRingTexture(base));
+          ring.anchor.set(0.5); ring.blendMode = 'add'; ring.tint = 0xa855f7;
+          ring.alpha = 0;
+          c.addChild(ring);
+        }
+        for (let i = 0; i < SPIRAL; i++) {
+          const sp = new Sprite(getSoftGlowTexture());
+          sp.anchor.set(0.5); sp.blendMode = 'add';
+          sp.tint = i % 2 === 0 ? 0xc084fc : 0x7c3aed; // 既存の紫リング/バーストと同系色
+          c.addChild(sp);
+        }
+        c.position.set(w.x, w.y);
+        this.L.effectLayer.addChild(c);
+        this.gravityWellViews.set(w.id, c);
+      }
+      const fade = Math.min(1, t * 5) * Math.min(1, (1 - t) * 3); // 出現/消滅を短くなじませる
+      const dark = c.children[0] as Sprite;
+      const dr = w.radius * (0.5 - 0.2 * t);
+      dark.width = dr * 2; dark.height = dr * 2;
+      dark.alpha = 0.45 * fade;
+      for (let i = 0; i < 2; i++) {
+        const ring = c.children[1 + i] as Sprite;
+        const rt = Math.max(0, Math.min(1, t * 1.25 - i * 0.25)); // 2枚を時間差で縮める
+        const rr = Math.max(6, w.radius * (1 - 0.85 * rt));
+        ring.width = rr * 2; ring.height = rr * 2;
+        ring.alpha = (rt <= 0 || rt >= 1 ? 0 : 0.7 * Math.sin(Math.PI * Math.min(1, rt + 0.15))) * fade;
+      }
+      for (let i = 0; i < SPIRAL; i++) {
+        const sp = c.children[3 + i] as Sprite;
+        const th = (i / SPIRAL) * Math.PI * 2 + t * 7;   // 回りながら
+        const rr = w.radius * 0.95 * (1 - 0.9 * t);      // 中心へ吸い込まれる
+        sp.position.set(Math.cos(th) * rr, Math.sin(th) * rr);
+        const sz = 9 - 4 * t;
+        sp.width = sz; sp.height = sz;
+        sp.alpha = 0.85 * fade;
+      }
+    }
+    for (const [id, c] of this.gravityWellViews) {
+      if (!seen.has(id)) { c.destroy({ children: true }); this.gravityWellViews.delete(id); }
+    }
   }
 
   private glowTint(color: string) {

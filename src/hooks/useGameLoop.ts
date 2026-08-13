@@ -9769,6 +9769,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               enemies: state.enemies.map(e =>
                 e.id === enemyId ? { ...e, iceSlowUntil: iceGameTime + iceSlow.ms, iceSlowPct: iceSlow.pct } : e),
             }));
+            // 社長指示v0.25.3277「アイスショットは発動したら氷のキラキラを(発動時だけね)」:
+            // 鈍足が付いた瞬間だけ、氷色+白の小さな煌めきを一拍(分類②・既存粒子プールのみ)。
+            const icx = enemyForFx.x + enemyForFx.width / 2, icy = enemyForFx.y + enemyForFx.height / 2;
+            spawnBurst(icx, icy, '#bae6fd', 8);
+            spawnBurst(icx, icy, '#f0f9ff', 4);
           }
           // アイスショット: キル時に氷片3個(直前ヒットのdmgの0.3倍・全Lv共通)を放射状に飛ばす。
           // 派手側(分類②)=既存の弾/バーストプールで安く描く(新規per-frame Graphicsなし)。

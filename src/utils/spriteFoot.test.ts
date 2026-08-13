@@ -1,7 +1,7 @@
 // 「花が浮く」は3回再発している(素材の余白 / 薄いゴースト画素 / 取り残された不透明な断片)。
 // 実測で確認した不変条件をここに固定して、4回目を止める。
 import { describe, it, expect } from 'vitest';
-import { spriteFootRow, spriteTopRow } from './spriteFoot';
+import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from './spriteFoot';
 
 /** 行ごとの不透明画素数を組み立てるヘルパ。[開始行, 行数, 1行あたりの画素数] の並びで指定する。 */
 const rows = (height: number, blocks: [start: number, len: number, px: number][]): number[] => {
@@ -77,5 +77,30 @@ describe('spriteTopRow: 絵の上端', () => {
   });
   it('上端は断片を飛ばさない(足元合わせに使わないので素直に最初の行)', () => {
     expect(spriteTopRow(rows(300, [[5, 1, 1], [100, 100, 50]]))).toBe(5);
+  });
+});
+
+// ★D-2b: 横方向(左右)。spriteTopRow と同じ「単純な最初/最後の非空列」でよい(§D-2b実装コメント参照)。
+// `rows()` ヘルパをそのまま列カウント配列としても使える(1次元配列に意味を持たせているだけ)。
+describe('spriteLeftCol / spriteRightCol: 絵の左右端', () => {
+  it('最初/最後に不透明画素が現れる列を返す', () => {
+    expect(spriteLeftCol(rows(300, [[40, 100, 10]]))).toBe(40);
+    expect(spriteRightCol(rows(300, [[40, 100, 10]]))).toBe(139);
+  });
+
+  it('中身が無ければ -1', () => {
+    expect(spriteLeftCol(rows(50, []))).toBe(-1);
+    expect(spriteRightCol(rows(50, []))).toBe(-1);
+  });
+
+  it('★jormungand相当: 左右端いっぱいまで絵がある(=左右の余白は0)', () => {
+    const r = rows(1024, [[0, 1024, 24]]); // 実測どおり列0〜1023すべてに実体
+    expect(spriteLeftCol(r)).toBe(0);
+    expect(spriteRightCol(r)).toBe(1023);
+  });
+
+  it('断片(離れた小さな塊)も飛ばさない(横は縦と違って再発報告が無いため単純な最外周でよい)', () => {
+    expect(spriteLeftCol(rows(300, [[5, 1, 1], [100, 100, 50]]))).toBe(5);
+    expect(spriteRightCol(rows(300, [[5, 1, 1], [100, 100, 50]]))).toBe(199);
   });
 });

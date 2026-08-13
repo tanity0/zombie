@@ -73,3 +73,21 @@ export const spriteTopRow = (rowCount: readonly number[]): number => {
   for (let y = 0; y < rowCount.length; y++) if (rowCount[y] > 0) return y;
   return -1;
 };
+
+// ---- ★D-2b: 横方向(左右)の実体列 ----------------------------------------------------------
+// 縦(spriteFootRow)は「取り残された断片(書き出しノイズ)」を飛ばす3条件フィルタを持つが、
+// 横はそのような再発報告が無い(花の"浮き"は常に下端=書き出し時の下方向トリミング由来)ため、
+// spriteTopRow と同じ**単純な最初/最後の非空列**で十分(社長裁定が要る複雑さを増やさない)。
+// 影の起点(footX)を「絵の実体の中心」へ寄せるのに使う(§D-2b「やること1」)。
+
+/** 絵の左端の列(不透明画素が最初に現れる列)。中身が無ければ -1。 */
+export const spriteLeftCol = (colCount: readonly number[]): number => {
+  for (let x = 0; x < colCount.length; x++) if (colCount[x] > 0) return x;
+  return -1;
+};
+
+/** 絵の右端の列(不透明画素が最後に現れる列)。中身が無ければ -1。 */
+export const spriteRightCol = (colCount: readonly number[]): number => {
+  for (let x = colCount.length - 1; x >= 0; x--) if (colCount[x] > 0) return x;
+  return -1;
+};

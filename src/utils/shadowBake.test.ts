@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  SHADOW_CONTENT_FRAC_MIN, contentSpanFrac, needsContentTrim, contentTrimFrameY, penumbraWidth,
+  SHADOW_CONTENT_FRAC_MIN, contentSpanFrac, needsContentTrim, contentTrimFrameY, contentTrimFrameX,
+  contentCenterFrac, penumbraWidth,
 } from './shadowBake';
 
 // research/LIGHT_REWORK.md §3-9-C ★D-2 の受け入れ条件を機械化する。
@@ -62,6 +63,53 @@ describe('contentTrimFrameY — 焼く時に使う frame 矩形', () => {
       expect(r.y).toBeGreaterThanOrEqual(7);
       expect(r.y + r.height).toBeLessThanOrEqual(107);
     }
+  });
+});
+
+// research/LIGHT_REWORK.md ★D-2b「影の起点を絵の足元の中央にする(縦横両方)」の受け入れ条件。
+// 横(left/right)は縦(top/bottom)と全く同じ式を共有しているので、既存の縦のテスト(上)が
+// そのまま横の正しさの根拠にもなる——ここでは横専用の関数(contentTrimFrameX/contentCenterFrac)
+// と、jormungand/flower等の実測値を横方向の入力として流した時の形だけ追加で固定する。
+describe('contentTrimFrameX — contentTrimFrameY の横版(式は共通)', () => {
+  it('左右に余白が無ければ元の frame と同じ', () => {
+    expect(contentTrimFrameX(0, 512, 0, 1)).toEqual({ x: 0, width: 512 });
+  });
+
+  it('縦(contentTrimFrameY)と入力が同じなら結果の形も同じ(x/width ⇔ y/height)', () => {
+    const y = contentTrimFrameY(100, 342, 0, (342 - 54) / 342);
+    const x = contentTrimFrameX(100, 342, 0, (342 - 54) / 342);
+    expect(x).toEqual({ x: y.y, width: y.height });
+  });
+
+  it('どんな入力でも幅1px以上・frame の外へ出ない', () => {
+    for (const [left, right] of [[0, 0], [1, 1], [-5, 5], [0.9999, 1], [0.5, 0.5]] as const) {
+      const r = contentTrimFrameX(7, 100, left, right);
+      expect(r.width).toBeGreaterThanOrEqual(1);
+      expect(r.x).toBeGreaterThanOrEqual(7);
+      expect(r.x + r.width).toBeLessThanOrEqual(107);
+    }
+  });
+});
+
+describe('contentCenterFrac — 影の起点(footX/footY)を絵の実体の中心へ寄せる量', () => {
+  it('左右(上下)に余白が無ければ、ちょうど中央=0.5(★オフセット0=1pxも変わらない)', () => {
+    expect(contentCenterFrac(0, 1)).toBe(0.5);
+  });
+
+  it('片側だけ余白がある素材は中心が0.5からズレる(オフセットが生まれる)', () => {
+    // 右に30%の余白 ⇒ 実体は [0, 0.7] ⇒ 中心=0.35(左へ寄る)
+    expect(contentCenterFrac(0, 0.7)).toBeCloseTo(0.35, 6);
+    // 左に30%の余白 ⇒ 実体は [0.3, 1] ⇒ 中心=0.65(右へ寄る)
+    expect(contentCenterFrac(0.3, 1)).toBeCloseTo(0.65, 6);
+  });
+
+  it('中身が測れなかった時(NaN)は無補正(0.5)へフォールバックする', () => {
+    expect(contentCenterFrac(NaN, 1)).toBe(0.5);
+  });
+
+  it('範囲外の入力はクランプされる(0..1の外へは出ない)', () => {
+    expect(contentCenterFrac(-5, 5)).toBe(0.5); // クランプ後 [0,1] ⇒ 中心0.5
+    expect(contentCenterFrac(2, 3)).toBe(1);    // クランプ後 [1,1] ⇒ 中心1
   });
 });
 

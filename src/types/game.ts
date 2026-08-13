@@ -1431,6 +1431,9 @@ export interface Pickup {
   // (as opposed to dropping where an enemy died). These get a VS-style edge
   // arrow pointing the player toward them while they're off-screen.
   worldDrop?: boolean;
+  // 社長指示v0.25.3277: 武器箱(weapon-crate)が10%で「秘密兵器箱」に変化。金色に光って差別化し、
+  // 拾うと大表示+武器抽選3回+赤経験値20個ばらまき。抽選はaddPickup(屋外のみ)で一度だけ行う。
+  secret?: boolean;
   // v0.25.3137(社長指示「ステージ7(ボスモードも)は、最初に宝箱が目の前に初期設置」):
   // 宝箱(type='chest')の**中身の種類**。未設定=従来のボスドロップ(装備の選択メニュー)。
   // 'boss-start' = ステージ7の開幕宝箱(tier2-3の銃1丁 + 3レベルアップ)。
