@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3261',
+    items: [
+      '開発: KILL吹き飛び(死体が50px飛んでパニッシャーの巻き込み弾になる)の発注文を設計書§26に記録。ゲーム内容の変更はありません(実装は次版)。',
+    ],
+  },
+  {
     version: '0.25.3260',
     items: [
       'ノックバック距離を元の値に戻しました(50px化と底上げを撤回。スラッシャーの踏み込み20pxは継続)。',
