@@ -5,6 +5,10 @@ import { GUN_KEYS_BY_CATEGORY, nextKnifeKey } from './weaponUtils';
 // drop a weapon crate that rolls one. Tier率はエリア(距離)で決まる(社長指定): 奥ほど高Tier。
 
 const CATEGORIES: AmmoType[] = ['handgun', 'shotgun', 'rifle'];
+// 社長訂正v0.25.3297「(グレネードガンは)普通に武器箱から出るようにして。武器庫だけだとtier1-2が
+// 出ない」: 武器箱/敵ドロップの銃抽選にglauncherを4カテゴリ目として追加(エリア別Tier率が掛かるので
+// 序盤=t1・奥=t2/t3が自然に出る)。ステージ7開幕宝箱(rollTier23Gun)は従来の3カテゴリのまま。
+const DROP_CATEGORIES: AmmoType[] = ['handgun', 'shotgun', 'rifle', 'glauncher'];
 
 // エリア別 武器箱Tier率(社長指定)。添字=エリア(0 軍備 / 1 研究 / 2 デンジャー / 3 未確認 / 4 深層)。
 const TIER_WEIGHTS_BY_AREA: [number, number, number][] = [
@@ -40,7 +44,7 @@ export const rollWeaponKey = (area: number, currentMeleeTier = 1): string => {
     if (knife) return knife;
   }
 
-  const category = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+  const category = DROP_CATEGORIES[Math.floor(Math.random() * DROP_CATEGORIES.length)];
   const keys = GUN_KEYS_BY_CATEGORY[category];
   const idx = Math.min(keys.length - 1, tier - 1);
   return keys[idx];
@@ -66,7 +70,7 @@ export const openCrate = (area: number, currentMeleeTier = 5): string => {
   const knifeKey = nextKnifeKey(currentMeleeTier);
   if (knifeKey && Math.random() < CRATE_KNIFE_RATE) return knifeKey;
   const tier = pickTier(area);
-  const category = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+  const category = DROP_CATEGORIES[Math.floor(Math.random() * DROP_CATEGORIES.length)];
   const keys = GUN_KEYS_BY_CATEGORY[category];
   const idx = Math.min(keys.length - 1, tier - 1);
   return keys[idx];

@@ -16904,6 +16904,19 @@ export class PixiScene {
     // なので従来どおりアクターの位置フェード(artFade)に従う。
     const ov = view.overlay;
     this.drawHealthBar(ov, e, now, gameTime);
+    // 社長指示v0.25.3297「トラップの効果中は敵の頭上に小さいターゲットマークを表示」:
+    // 拘束(rootUntil)中、頭上に小さな照準マーク(円+十字4ティック+中心点)。トラップ本体と同じ
+    // シアン系=罠の効果だと読める。overlayは毎フレーム描き直しの既存Graphics=数図形の追加のみ。
+    if (e.rootUntil !== undefined && gameTime < e.rootUntil) {
+      const mr = 6;
+      const my = e.y - 10;
+      const pulse = 0.7 + 0.3 * Math.sin(now / 160);
+      ov.circle(cx, my, mr).stroke({ color: 0x38bdf8, alpha: 0.9 * pulse, width: 1.5 });
+      for (const [tx, ty] of [[mr + 2, 0], [-mr - 2, 0], [0, mr + 2], [0, -mr - 2]] as const) {
+        ov.moveTo(cx + tx * 0.6, my + ty * 0.6).lineTo(cx + tx, my + ty).stroke({ color: 0x38bdf8, alpha: 0.9 * pulse, width: 1.5 });
+      }
+      ov.circle(cx, my, 1.4).fill({ color: 0x7dd3fc, alpha: pulse });
+    }
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(ov, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
     }
@@ -20582,18 +20595,26 @@ export class PixiScene {
     const dx = px - e.fromX, dy = py - e.fromY;
     const dist = Math.hypot(dx, dy) || 1;
     const nx = -dy / dist, ny = dx / dist; // 進行直交方向(粒の膨らみ用)
+    // 社長指示v0.25.3297「もっと弧を描いて、血の塊の液体が飛んでくる感じ」: 弧の膨らみを0.2→0.45へ、
+    // 粒を進行方向へ引き伸ばして(rotation+横長スケール)「飛んでいる液体の塊」に見せる。
     for (let i = 0; i < DROPS; i++) {
       const sp = c.children[i] as Sprite;
       // 粒を時間差で発進させ、終端へ向けて加速(ease-in=「吸い込まれる」)
       const stagger = (i / DROPS) * 0.45;
       const u = Math.max(0, Math.min(1, (t - stagger) / 0.55));
       const k = u * u; // ease-in
-      const side = (i % 2 === 0 ? 1 : -1) * (0.35 + (i % 3) * 0.3);
-      const bow = Math.sin(Math.PI * u) * dist * 0.2 * side; // 弧を描いて収束
+      const side = (i % 2 === 0 ? 1 : -1) * (0.45 + (i % 3) * 0.35);
+      const bowAmp = dist * 0.45 * side;
+      const bow = Math.sin(Math.PI * u) * bowAmp; // 大きく弧を描いて収束
       sp.position.set(e.fromX + dx * k + nx * bow, e.fromY + dy * k + ny * bow);
-      const sz = (10 - 5 * u) * (i % 3 === 0 ? 1.3 : 1);
-      sp.width = sz; sp.height = sz;
-      sp.alpha = u <= 0 || u >= 1 ? 0 : 0.9 * Math.min(1, u * 6) * Math.min(1, (1 - u) * 8);
+      // 経路の解析微分=瞬間の飛行方向。塊をこの向きへ引き伸ばす(液体感)。
+      const vdx = dx * 2 * u + nx * Math.PI * Math.cos(Math.PI * u) * bowAmp;
+      const vdy = dy * 2 * u + ny * Math.PI * Math.cos(Math.PI * u) * bowAmp;
+      sp.rotation = Math.atan2(vdy, vdx);
+      const sz = (13 - 5 * u) * (i % 3 === 0 ? 1.35 : 1); // 塊を一回り大きく
+      sp.width = sz * (1.4 + u * 0.9); // 加速するほど長く伸びる
+      sp.height = sz * 0.72;
+      sp.alpha = u <= 0 || u >= 1 ? 0 : 0.95 * Math.min(1, u * 6) * Math.min(1, (1 - u) * 8);
     }
     // 到達パルス: 終盤、プレイヤーが赤くひと呼吸ふくらむ(回復した実感)
     const pulse = c.children[DROPS] as Sprite;

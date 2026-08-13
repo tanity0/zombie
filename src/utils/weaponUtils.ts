@@ -89,10 +89,10 @@ const CATALOG: Record<string, WeaponDef> = {
   // 胴体は通常ダメージ＋2倍ノックバック。攻撃力2倍(社長指示)=ダメージ80。ステージ2敵HP2倍と釣り合う。射撃CD=1秒。
   'phill-revolver':   { key: 'phill-revolver', name: 'ＰＨＩＬＬ-銃', type: 'phill-bullet', category: 'phill', tier: 1, damage: 80, cooldown: 1000, projectileSpeed: 640, projectileSize: 9, count: 1, magSize: 6, reloadMs: 900 },
 
-  // 社長指示v0.25.3290: 武器庫からのみ排出されるグレネード系銃器(第4枠=社長裁定)。
-  // 他の入手経路(武器箱rollWeaponKey/openCrate/商人/ドロップ)には載せない=GUN_KEYS_BY_CATEGORY非掲載。
-  // 弾はライフル弾共用。着弾爆発はrifle-t3と同じGRENADE_WEAPON_KEY経路(isGrenadeGunKeyで判定)。
-  // 数値は叩き台: rifle-t3(95/1400)を起点にtierで伸ばす。武器庫1回=1tierずつ昇格(armoryGrantKeys)。
+  // 社長指示v0.25.3290→訂正v0.25.3297: グレネード系銃器(第4枠)。**武器箱/敵ドロップから
+  // 4カテゴリ目として普通に出る**(エリアTier率でt1〜t3)。武器庫のTier3化対象にも含む。
+  // 弾はライフル弾共用。着弾爆発は旧rifle-t3と同じGRENADE経路(isGrenadeGunKeyで判定)。
+  // 数値は叩き台: 旧グレネードランチャー(95/1400)を起点にtierで伸ばす。
   'glauncher-t1': { key: 'glauncher-t1', name: 'グレネードガン',   type: 'rifle', category: 'glauncher', tier: 1, damage: 85,  cooldown: 1500, projectileSpeed: 420, projectileSize: 14, count: 1, magSize: 3, reloadMs: 2200, passthrough: true },
   'glauncher-t2': { key: 'glauncher-t2', name: 'グレネードガンⅡ', type: 'rifle', category: 'glauncher', tier: 2, damage: 110, cooldown: 1350, projectileSpeed: 440, projectileSize: 15, count: 1, magSize: 4, reloadMs: 2100, passthrough: true },
   'glauncher-t3': { key: 'glauncher-t3', name: 'グレネードガンⅢ', type: 'rifle', category: 'glauncher', tier: 3, damage: 140, cooldown: 1200, projectileSpeed: 460, projectileSize: 16, count: 1, magSize: 5, reloadMs: 2000, passthrough: true }
@@ -109,7 +109,7 @@ export const GUN_KEYS_BY_CATEGORY: Record<AmmoType, string[]> = {
   shotgun: ['shotgun-t1', 'shotgun-t2', 'shotgun-t3'],
   rifle:   ['rifle-t1', 'rifle-t2', 'rifle-t3'],
   phill:   ['phill-revolver'], // 屋内固定銃。ドロップ/商人の銃ラインには出ない(weaponDrop は handgun/shotgun/rifle のみ抽選)。
-  glauncher: ['glauncher-t1', 'glauncher-t2', 'glauncher-t3'] // 武器庫からのみ排出(v0.25.3290)。weaponDropの抽選3カテゴリに含まれない。
+  glauncher: ['glauncher-t1', 'glauncher-t2', 'glauncher-t3'] // v0.25.3297: 武器箱/ドロップの4カテゴリ目(DROP_CATEGORIES)。
 };
 // CRIT-UNIFY §9.4: 「プレイヤー直接武器」の銃10種(全カテゴリ合算)。着弾時ロール(トラップ+10%/
 // 弱点+10%)をこの集合の弾だけに限定するための判定(escort/ghost-gun/タレット/ホーミング/跳弾/
@@ -199,7 +199,8 @@ export const getActiveGun = (player: Player): Weapon | undefined => {
 // §6.24-W(社長裁定v0.25.2533「武器庫は武器にして。全部tier3だった場合は返金されて終わり」):
 // 武器庫で「Tier3へ昇格できる」銃カテゴリの列挙。銃はカテゴリごと1挺・高Tier優先(grantWeapon)
 // なので、Tier3未満の所持カテゴリと未所持カテゴリが昇格対象。空配列=全カテゴリ最高位=返金ケース。
-export const ARMORY_GUN_CATEGORIES = ['handgun', 'shotgun', 'rifle'] as const;
+// v0.25.3297: glauncherも武器庫のTier3化対象に含める(通常入手は武器箱/ドロップ=社長訂正)。
+export const ARMORY_GUN_CATEGORIES = ['handgun', 'shotgun', 'rifle', 'glauncher'] as const;
 export type ArmoryGunCategory = typeof ARMORY_GUN_CATEGORIES[number];
 export const armoryUpgradableGunCategories = (
   weapons: Pick<Weapon, 'isMelee' | 'category' | 'tier'>[],
@@ -209,19 +210,12 @@ export const armoryUpgradableGunCategories = (
     return !own || (own.tier ?? 1) < 3;
   });
 
-// 社長指示v0.25.3290: 武器庫の付与候補を**具体的なキー**で列挙する。
-// ①既存3カテゴリ=従来どおりTier3確定(§6.24-W裁定を維持) ②グレネードガン(第4枠・武器庫のみの
-// 排出元)=t1→t2→t3と**1段ずつ**昇格(唯一の入手経路なのでいきなりt3にするとt1/t2が死ぬ)。
-// 空配列=全て最高位=返金ケース(従来と同じ)。
+// v0.25.3297(社長訂正): グレネードガンの通常入手は**武器箱/敵ドロップ**(エリアTier率でt1〜t3)。
+// 武器庫は従来の§6.24-W(Tier3未満カテゴリのTier3化・全て最高位なら返金)のまま、対象カテゴリに
+// glauncherを含めた4カテゴリ。付与キーはカテゴリのTier3。
 export const armoryGrantKeys = (
   weapons: Pick<Weapon, 'isMelee' | 'category' | 'tier'>[],
-): string[] => {
-  const keys: string[] = armoryUpgradableGunCategories(weapons).map(cat => `${cat}-t3`);
-  const gl = weapons.find(w => !w.isMelee && w.category === 'glauncher');
-  const glTier = gl?.tier ?? 0;
-  if (glTier < 3) keys.push(`glauncher-t${glTier + 1}`);
-  return keys;
-};
+): string[] => armoryUpgradableGunCategories(weapons).map(cat => `${cat}-t3`);
 
 // グレネード系の着弾爆発を起こす銃キーか(武器庫限定glauncher 3種のみ。旧rifle-t3は
 // v0.25.3291で対物ライフル=非爆発へ入れ替え済み)。タレット/朱雀/爆撃の流用弾は
@@ -533,7 +527,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   const shotDamage = gunShotBaseDamage(weapon, player, gtFire);
   // スキル: ビッグバレット = 弾サイズ×1.3/1.5/1.7(見た目と当たり判定を同時拡大。速度・貫通数・
   // 跳弾回数・壁衝突は不変=§28-2)。プレイヤー自身の銃弾のみ(ghost-gun/support-sniperは対象外)。
-  const shotSize = size * bigBulletSizeMult(skillLevel(player, 'big-bullet'));
+  // 社長指示v0.25.3297「ビッグバレットが地味なのでアタックシューターと統合」: 弾サイズ拡大は
+  // attack-shooterのLvで発動(big-bulletはRETIRED)。倍率表(×1.3/1.5/1.7)はそのまま流用。
+  const shotSize = size * bigBulletSizeMult(skillLevel(player, 'attack-shooter'));
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {

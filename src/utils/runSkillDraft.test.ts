@@ -296,8 +296,9 @@ describe('バニッシュ上限(MAX_BANISH_PER_RUN)', () => {
 // SKILL_BUILD_REDESIGN.md §28(B7発注文): 眠り9種は効果配線+スターター入りが完了し、
 // NEW_SLEEPING_SKILLSが空になったことでドラフトにも解禁されている(§28-3受け入れ条件2)。
 describe('新スキル9種はB7でドラフトに解禁されている(NEW_SLEEPING_SKILLSが空)', () => {
+  // v0.25.3297: big-bulletはattack-shooterへ統合(RETIRED)=この検証群から除外。
   const NEW_SKILLS: SkillKey[] = [
-    'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
+    'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
     'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
   ];
 
@@ -324,7 +325,7 @@ describe('新スキル9種はB7でドラフトに解禁されている(NEW_SLEEP
 // 1〜4をここに置く(5=UI表示/6=typecheck・lintは実装報告側)。
 describe('§23-1 退役(RETIRED_SKILLS=旧scrap-builder/warm-up)', () => {
   it('RUN_DRAFT_EXCLUDED_SKILLSに両方含まれる(ドラフトから絶対に出ない)', () => {
-    expect(RETIRED_SKILLS).toEqual(['scrap-builder', 'warm-up']);
+    expect(RETIRED_SKILLS).toEqual(['scrap-builder', 'warm-up', 'big-bullet']); // v0.25.3297: 統合により退役
     for (const k of RETIRED_SKILLS) expect(RUN_DRAFT_EXCLUDED_SKILLS).toContain(k);
   });
 

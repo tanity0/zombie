@@ -560,7 +560,7 @@ describe('ensureDefaultOwnedSkills(守護霊+初期9種の所持マイグレー�
       'guardian-spirit', 'ghost-helper', 'ghost-slayer',
       'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
       'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
-      'big-bullet', 'ice-shot', 'vampire',
+      'ice-shot', 'vampire',
       'incendiary-round', 'execution-shock', 'gravity-shot',
       'echo-shot', 'barrage-king', 'blood-treads',
     ]);
@@ -572,7 +572,7 @@ describe('ensureDefaultOwnedSkills(守護霊+初期9種の所持マイグレー�
       'guardian-spirit', 'ghost-helper', 'ghost-slayer',
       'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
       'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
-      'big-bullet', 'ice-shot', 'vampire',
+      'ice-shot', 'vampire',
       'incendiary-round', 'execution-shock', 'gravity-shot',
       'echo-shot', 'barrage-king', 'blood-treads',
       'runner',
@@ -583,19 +583,20 @@ describe('ensureDefaultOwnedSkills(守護霊+初期9種の所持マイグレー�
   // SKILL_BUILD_REDESIGN.md §28-3受け入れ条件2(B7・社長指示「台帳だけになってるスキルは実装して
   // スターターに入れて」): 新規プレイヤーは守護霊系(枠外の同行者)とは別に、旧9種+新9種=18種
   // (ノ8/レア7/超3)を持つ。旧仕様の「初期所持は超レア0」(§12-3★2)はこの指示で撤回されている。
-  it('新規プレイヤーは守護霊系とは別にノ8/レア7/超3=18種を持つ(§28-3受け入れ条件2)', () => {
+  // v0.25.3297: big-bulletはattack-shooterへ統合(RETIRED)=ノ8→7・18種→17種。
+  it('新規プレイヤーは守護霊系とは別にノ7/レア7/超3=17種を持つ(§28-3受け入れ条件2+v0.25.3297統合)', () => {
     const initial = ensureDefaultOwnedSkills([]);
     const companionKeys: SkillKey[] = ['guardian-spirit', 'ghost-helper', 'ghost-slayer'];
     const nonCompanion = initial.filter(k => !companionKeys.includes(k));
-    expect(nonCompanion).toHaveLength(18);
-    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'normal')).toHaveLength(8);
+    expect(nonCompanion).toHaveLength(17);
+    expect(nonCompanion.filter(k => SKILLS[k].rarity === 'normal')).toHaveLength(7);
     expect(nonCompanion.filter(k => SKILLS[k].rarity === 'rare')).toHaveLength(7);
     expect(nonCompanion.filter(k => SKILLS[k].rarity === 'super')).toHaveLength(3);
     expect(nonCompanion.sort()).toEqual(
       [
         'sharpshooter', 'ricochet', 'punisher', 'attack-shooter', 'slasher',
         'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
-        'big-bullet', 'ice-shot', 'vampire',
+        'ice-shot', 'vampire',
         'incendiary-round', 'execution-shock', 'gravity-shot',
         'echo-shot', 'barrage-king', 'blood-treads',
       ].sort(),
@@ -634,8 +635,9 @@ describe('§19-1点5 scrap-builder/warm-upのガチャ除外', () => {
 // NEW_SLEEPING_SKILLSが空になったことで自動的にドラフト・ガチャの両方に解禁されている
 // (§28-3受け入れ条件2「ドラフト・ガチャに9種が出る(眠り解除)テスト」)。
 describe('§28 新スキル9種はB7で目覚めている(NEW_SLEEPING_SKILLSが空)', () => {
+  // v0.25.3297: big-bulletはattack-shooterへ統合(RETIRED)=この検証群から除外。
   const NEW_SKILLS: SkillKey[] = [
-    'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
+    'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
     'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
   ];
 

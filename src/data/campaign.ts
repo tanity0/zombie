@@ -753,7 +753,8 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'dog-run':      { name: 'ドッグラン',     desc: '犬のクールダウン0・射程制限解除(犬装備時)', rarity: 'normal' },
   'counter-master':{ name: 'カウンターマスター', desc: 'カウンター成立で構えのクールダウンを払い戻し＋成功時に周囲を強ノックバック', rarity: 'normal' },
   'slasher':      { name: 'スラッシャー',   desc: '近接攻撃を連続で振れる(最大4連・各2/3減衰・ノックバック。Lv3は最終段のみノックバック大)', rarity: 'normal' },
-  'attack-shooter':{ name: 'アタックシューター', desc: '銃ダメージ+10%(Lvで+20%/+30%)', rarity: 'normal' },
+  // v0.25.3297(社長指示): big-bullet(弾サイズ拡大)を統合。ダメージと弾サイズが同時に伸びる。
+  'attack-shooter':{ name: 'アタックシューター', desc: '銃ダメージ+10%(Lvで+20%/+30%)+弾のサイズ拡大(×1.3/1.5/1.7・見た目と判定を同時に拡大)', rarity: 'normal' },
   'runner':       { name: 'ランナー',       desc: '移動速度+10%(Lvで+15%/+20%)。リロード中はさらに+10%', rarity: 'normal' },
   'seeker':       { name: 'シーカー',       desc: '被弾時に一定確率で3秒間半透明化し、敵から狙われなくなる(CD10秒)', rarity: 'normal' },
   'scrap-builder':{ name: 'スクラップビルダー', desc: '出撃開始時の初期スクラップ+50(Lvで+100/+150)。スクラップ取得量+10%(Lvで+20%/+30%)', rarity: 'normal' },
@@ -813,7 +814,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'dog-run':      { base: '犬のクールダウン短縮（犬装備時）', lv: ['CD-50%', 'CD0', 'CD0＋射程制限解除'] },
   'counter-master':{ base: 'カウンター成立で構えのクールダウンを払い戻し＋成功時に周囲を強ノックバック', lv: ['払い戻し40%／KB×2', '70%／×2.5', '100%／×3'] },
   'slasher':      { base: '近接攻撃を連続で振れる（各2/3減衰・ノックバック）', lv: ['2連', '3連', '4連（最終段はノックバック大）'] },
-  'attack-shooter':{ base: '銃ダメージが上昇', lv: ['+10%', '+20%', '+30%'] },
+  'attack-shooter':{ base: '銃ダメージが上昇し、弾のサイズも拡大(見た目と判定を同時に)', lv: ['+10%・弾×1.3', '+20%・弾×1.5', '+30%・弾×1.7'] },
   'runner':       { base: '移動速度が上昇。リロード中はさらに+10%（Lv不問）', lv: ['+10%', '+15%', '+20%'] },
   'seeker':       { base: '被弾時に一定確率で3秒間半透明化し、敵から狙われなくなる（CD10秒）', lv: ['発動30%', '40%', '50%'] },
   'scrap-builder':{ base: '出撃開始時の初期スクラップが増え、スクラップ取得量も増加', lv: ['初期+50・取得+10%', '初期+100・取得+20%', '初期+150・取得+30%'] },
@@ -931,7 +932,7 @@ export const NEW_SLEEPING_SKILLS: SkillKey[] = [];
 // 型(SkillKey)からは削除しない(Record<SkillKey,...>の全テーブルに波及する大工事のため。§23実装報告
 // 参照)。台帳(SKILLS)には残すが、OBTAINABLE_SKILL_KEYSの分母からは外す(=図鑑上「解禁対象」ではない
 // 扱いにする。効果コード自体もgameStore.ts側で削除済み=既存所持者にも二度と効果は発生しない)。
-export const RETIRED_SKILLS: SkillKey[] = ['scrap-builder', 'warm-up'];
+export const RETIRED_SKILLS: SkillKey[] = ['scrap-builder', 'warm-up', 'big-bullet']; // big-bullet=v0.25.3297でattack-shooterへ統合
 
 /** 退役スキルの所持者へ返すコイン総額(ガチャの被り返金と同額=§23-2条件4「既存規則を流用」)。
  * 呼び出し側(gameStore.ts)が localStorage フラグで1回きりの適用を保証する(この関数自体は純粋・冪等)。 */
@@ -990,7 +991,8 @@ export const DEFAULT_OWNED_SKILLS: SkillKey[] = [
   'fire-shooter', 'bomb-counter', 'knife-master', 'knight',
   // §28: 新9種(ノ: big-bullet/ice-shot/vampire / レア: incendiary-round/execution-shock/gravity-shot /
   // 超: echo-shot/barrage-king/blood-treads)。
-  'big-bullet', 'ice-shot', 'vampire',
+  // big-bulletはv0.25.3297でattack-shooterへ統合(RETIRED)=スターターから除外(ノ7へ)。
+  'ice-shot', 'vampire',
   'incendiary-round', 'execution-shock', 'gravity-shot',
   'echo-shot', 'barrage-king', 'blood-treads',
 ];

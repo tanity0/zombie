@@ -3603,6 +3603,7 @@ export const SLASHER_CHAIN_TIMEOUT_MS = 2000; // CD明けからこの時間タ�
 export const SLASHER_MAX_HITS = 3;      // 追撃の最大連数(初撃を除く。Lvでmin適用)
 export const SLASHER_MULTS = [1, 2 / 3, (2 / 3) * (2 / 3)]; // 各追撃のダメージ倍率
 export const SLASHER_FINAL_KB_MULT = 2; // Lv3最終段のみ適用するノックバック倍率(叩き台)
+export const SLASHER_FORCE_KB_PX = 25;  // 社長指示v0.25.3297: スラッシャーの強制ノックバック実距離(免疫CD無視)
 const applySlasherChainStrike = (
   get: () => GameState,
   player: Player,
@@ -3631,7 +3632,9 @@ const applySlasherChainStrike = (
   const nextStep = step + 1;
   // Lv3(maxHits=3)の最終段(nextStep===maxHits=この一撃で使い切る)のみノックバック大。
   const isFinalBigKbStep = slLv === 3 && nextStep === maxHits;
-  const kbMult = (KNOCKBACK_SPEED / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1); // v0.25.3260: 従来値へ戻し
+  // 社長指示v0.25.3297「スラッシャーの時だけ25px強制ノックバック(CD無視)」: 実距離25px固定
+  // (最終段はSLASHER_FINAL_KB_MULT倍=50px)。knockbackEnemyは免疫CDを見ない=連撃中も毎段飛ぶ。
+  const kbMult = (knockbackSpeedFor(SLASHER_FORCE_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
   const r2 = meleeRange * meleeRange;
   let killed = 0;
   let hit = false;
@@ -5903,10 +5906,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         : enemy.stunUntil;
       // Knockback, unless this enemy was shoved recently (debounce to avoid
       // locking it in an infinite stagger). Damage still landed above.
-      if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
+      // 社長指示v0.25.3297「スラッシャーの時だけ25px強制ノックバック(CD無視)」: スラッシャー所持中の
+      // 近接は免疫CD(1.75s)を無視して毎回、実距離25px固定で飛ばす(連撃の各段と初撃で手応えを揃える)。
+      const slasherForce = skillLevel(player, 'slasher') > 0;
+      if (slasherForce || now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
         const falloff = 1 - dist / meleeRange;
-        const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5); // v0.25.3260: 50px化(3257)を社長指示で撤回=従来値へ
+        const speed = slasherForce
+          ? knockbackSpeedFor(SLASHER_FORCE_KB_PX, KNOCKBACK_DURATION)
+          : KNOCKBACK_SPEED * (0.5 + falloff * 0.5); // v0.25.3260: 50px化(3257)を社長指示で撤回=従来値へ
         survivors.push({
           ...enemy,
           health: newHealth,
@@ -11802,7 +11810,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (punisherLv) {
         const melee = player.weapons.find(w => w.isMelee);
         const punisherDmgMult = [0, 0.5, 0.7, 0.9][punisherLv];
-        const punisherKbMult = [0, 2, 2.5, 3][punisherLv];
         punisherDmg = Math.max(1, Math.round((melee?.damage ?? 6) * strikerMeleeMult(player) * punisherDmgMult));
         const movers = updatedEnemies.filter(e =>
           e.knockbackUntil !== undefined && now < e.knockbackUntil && !e.punisherHopped &&
@@ -11822,13 +11829,14 @@ export const useGameStore = create<GameState>((set, get) => ({
               { x: a.x - PUNISHER_HIT_PAD_PX, y: a.y - PUNISHER_HIT_PAD_PX, width: a.width + PUNISHER_HIT_PAD_PX * 2, height: a.height + PUNISHER_HIT_PAD_PX * 2 },
               { x: cleared.x, y: cleared.y, width: cleared.width, height: cleared.height },
             )) continue;
-            const d = Math.max(0.001, Math.hypot(a.knockbackVx ?? 0, a.knockbackVy ?? 0));
             punisherHits.push(cleared.id); // ダメージは set 後に damageEnemy で適用(死亡処理を正規経路に)
+            // 社長指示v0.25.3297「当たった敵も同じだけノックバックされるように」: 発生源(飛んでいる
+            // 死体/敵)の速度ベクトルをそのまま継承+フル窓=同方向へ同じ勢いで飛ぶ(旧: Lv倍率の弱いKB)。
             return {
               ...cleared,
               punisherHopped: true, // 連鎖防止の印
-              knockbackVx: ((a.knockbackVx ?? 0) / d) * KNOCKBACK_SPEED * punisherKbMult,
-              knockbackVy: ((a.knockbackVy ?? 0) / d) * KNOCKBACK_SPEED * punisherKbMult,
+              knockbackVx: a.knockbackVx ?? 0,
+              knockbackVy: a.knockbackVy ?? 0,
               knockbackUntil: now + KNOCKBACK_DURATION,
             };
           }
