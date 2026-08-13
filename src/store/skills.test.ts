@@ -165,9 +165,9 @@ describe('ガチャ価格とゴールドのシンク', () => {
 });
 
 describe('skill level table (per-skill dupe count)', () => {
-  it('reaper/bomber are Lv1-only; others cap at Lv3', () => {
+  it('reaper is Lv1-only; bomber caps at Lv3 (v0.25.3305: 覚醒=ミニ4個へ到達可能に); others cap at Lv3', () => {
     expect(skillMaxLevel('reaper')).toBe(1);
-    expect(skillMaxLevel('bomber')).toBe(1);
+    expect(skillMaxLevel('bomber')).toBe(3);
     expect(skillMaxLevel('knife-master')).toBe(3);
   });
 

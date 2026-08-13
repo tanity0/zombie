@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.3305 — スキル初取得=常にLv1+bomberのLv3解禁(社長指示)【2026-08-13 22:58 JST】
+- 「スキルは全てレベル1からの取得で」: pullGachaSkillの初取得分岐を rolledLevel→常に1へ
+  (開始Lv抽選を廃止。被り昇格抽選=levelWeightsForは従来どおり残す=覚醒Lv3は育てて到達する)。
+- **bomberをSKILL_MAX_LEVELのLv1固定から除外**(Lv3上限へ): v0.25.3300の覚醒(ミニ4個)がLv1固定のせいで
+  **原理上発動不能**だった自己バグの修正。Lv2は効果据え置き(昇格の道中)。
+- 覚醒監査(「Lv1しかないスキル以外は揃った?」への回答): 未設定は**反射神経(reflex)のみ**。
+  スラッシャーはLv3固有の「4連+最終段KB大」が既にあるため覚醒相当として扱っている(裁定あれば変更)。
+- テスト: skillMaxLevel('bomber')=3へ期待値更新。skills/runSkillDraft 119件通過。
+- 検証: typecheck 0 / lint 0。
+
 ## v0.25.3304 — スケーター投擲の非覚醒SE=バッシュ音(社長指示)【2026-08-13 22:54 JST】
 - SEを板の着弾検出(useGameLoop)へ一本化: 覚醒=bomb / 非覚醒=heavy-impact(盾バッシュと同じ音)。
   skaterBoardHit側のbashHitFxAt(heavy-impactトリガ)は立てない=覚醒時の二重再生(bomb+heavy-impact)も

@@ -13989,7 +13989,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const dupeCount = dupes[key] ?? 0;        // Lv抽選表の参照(今回より前の被り回数)
     const firstAcquire = prevLevel === 0;
 
-    // Lv上限固定(reaper/bomber=Lv1)で既に所持 → 被りで回数を進めず常に返金。
+    // Lv上限固定(reaper等=Lv1。bomberはv0.25.3305で覚醒対応=Lv3上限へ昇格済み)で既に所持 → 常に返金。
     if (maxLv === 1 && !firstAcquire) {
       const refund = GACHA_REFUND_BY_RARITY[rarity];
       saveNumber(GACHA_PITY_KEY, nextPity);
@@ -13998,12 +13998,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { key, rarity, rolledLevel: 1, newLevel: prevLevel, prevLevel, dupeCount, firstAcquire: false, promoted: false, refund };
     }
 
-    const rolledLevel = rollSkillLevel(rarity, dupeCount, maxLv);
+    // 社長指示v0.25.3305「スキルは全てレベル1からの取得で」: 初取得は必ずLv1(開始Lv抽選を廃止)。
+    // 被りによる昇格抽選(Lv2/Lv3)は従来どおり=覚醒(Lv3)は育てて到達する。
+    const rolledLevel = firstAcquire ? 1 : rollSkillLevel(rarity, dupeCount, maxLv);
     let newLevel = prevLevel;
     let promoted = false;
     let refund = 0;
     if (firstAcquire) {
-      newLevel = Math.max(1, Math.min(maxLv, rolledLevel)); // 初取得=比較なしで付与
+      newLevel = 1; // 初取得=常にLv1
       promoted = true;
     } else if (rolledLevel > prevLevel && prevLevel < maxLv) {
       newLevel = Math.min(maxLv, rolledLevel);              // 現Lv超え=昇格

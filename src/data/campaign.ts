@@ -1052,7 +1052,9 @@ export const gachaPityRemaining = (pity: number): number => Math.max(0, GACHA_PI
 
 // スキルの最大Lv。一部スキルはLv1固定(効果表でLv2/3が none のもの)。
 // guardian-spirit=Lvの概念なし(ガチャ重複によるLvアップ経路が無い=G3)。
-export const SKILL_MAX_LEVEL: Partial<Record<SkillKey, number>> = { reaper: 1, bomber: 1, 'warm-up': 1, 'guardian-spirit': 1, 'ghost-helper': 1, 'ghost-slayer': 1 }; // warm-up=全Lv同値(固定)のためLv1止まり(§6.8 M31)
+// v0.25.3305: bomberをLv1固定から外す(覚醒Lv3=ミニ4個が社長指示v0.25.3300で入ったため。
+// Lv2は据え置き効果=昇格の道中としてのみ存在)。
+export const SKILL_MAX_LEVEL: Partial<Record<SkillKey, number>> = { reaper: 1, 'warm-up': 1, 'guardian-spirit': 1, 'ghost-helper': 1, 'ghost-slayer': 1 }; // warm-up=全Lv同値(固定)のためLv1止まり(§6.8 M31)
 export const skillMaxLevel = (key: SkillKey): number => SKILL_MAX_LEVEL[key] ?? 3;
 // Lv抽選: スキルごとの「被り回数(dupeCount)」とレア度で [Lv1,Lv2,Lv3] の重みを決める。
 // 0回=初取得。被るほど高Lvが出やすくなる(社長確定表)。

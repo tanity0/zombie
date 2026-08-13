@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3305',
+    items: [
+      'ガチャのスキル初取得は必ずLv1になりました(開始Lv抽選を廃止。被りによるLv2/Lv3昇格は従来どおり=覚醒は育てて到達)。',
+      'ボマーがLv3まで育つようになりました(覚醒=ミニ手榴弾4個に到達可能に。旧仕様ではLv1固定で覚醒に届かなかった修正)。',
+    ],
+  },
+  {
     version: '0.25.3304',
     items: [
       'スケーターの投擲着弾SEを整理: 非覚醒=バッシュの音(盾バッシュと同じ)/覚醒=爆発音。',
