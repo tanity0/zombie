@@ -10,10 +10,17 @@ export const BOMBER_MINI_COUNT = 3;
 export const BOMBER_MINI_AWAKEN_COUNT = 4;
 // 散布数の唯一の出どころ(主語=散布の持ち主。手動散布ループも含め全散布箇所がこれを通す)。
 // ※skillLevel(gameStore)をimportすると循環参照になるため、同じ式(所持ならskillLevels??1)をここに書く。
+const bomberLevelOf = (owner: Player): number =>
+  owner.skills.includes('bomber') ? (owner.skillLevels?.['bomber'] ?? 1) : 0;
 export const bomberMiniCount = (owner: Player): number =>
-  (owner.skills.includes('bomber') ? (owner.skillLevels?.['bomber'] ?? 1) : 0) >= 3
-    ? BOMBER_MINI_AWAKEN_COUNT
-    : BOMBER_MINI_COUNT;
+  bomberLevelOf(owner) >= 3 ? BOMBER_MINI_AWAKEN_COUNT : BOMBER_MINI_COUNT;
+// 社長指示v0.25.3306: ボマーの散布は確率発動(Lv1:30%/Lv2:40%/Lv3:50%)。
+// 全散布箇所(手榴弾/地雷/ランチャー弾/火炎ナイフ/救急鞄/ボムカウンター/ホーミング)がこの1本で抽選する。
+export const BOMBER_PROC_CHANCE_BY_LEVEL = [0, 0.3, 0.4, 0.5] as const;
+export const rollBomberScatter = (owner: Player, rng: () => number = Math.random): boolean => {
+  const lv = Math.min(3, bomberLevelOf(owner));
+  return lv > 0 && rng() < BOMBER_PROC_CHANCE_BY_LEVEL[lv];
+};
 export const BOMBER_MINI_DAMAGE = 42 / 3;        // = HEAVY_GRENADE_DAMAGE / 3
 export const BOMBER_MINI_SPEED = 118 * 0.8;      // = HEAVY_GRENADE_SPEED × 0.8
 export const BOMBER_MINI_BLAST_RADIUS = 66 * 0.6; // = HEAVY_GRENADE_RADIUS × 0.6(下の爆発が explodeRadius を参照)

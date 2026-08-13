@@ -42,7 +42,7 @@ import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE
 import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/supportSniper';
 import { FlareGunFlare, activeFlareTargets, FLARE_GUN_CD_MS_BY_LEVEL, FLARE_GUN_FLIGHT_MS, FLARE_GUN_DURATION_MS } from '../utils/flareGun';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
-import { buildBomberMinis, bomberMiniCount } from '../utils/bomberScatter';
+import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
   recordSubUse, recordOverclockProc, resetBotTelemetry,
   recordDamageDealt, recordFinisherKill, recordMeleeSwing,
@@ -6891,7 +6891,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を爆発ダメージにも乗算。
       const baseDmg = b.damage * exMult * skillOutgoingDamageMult(get().player); // b.damage=FIRST_AID_KIT_THROW_DAMAGE(爆発中心の基準)
       // §6.10 M33③: ボマー = 救急鞄の爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
-      if (hasSkill(get().player, 'bomber')) {
+      if (rollBomberScatter(get().player)) { // v0.25.3306: 確率発動(30/40/50%)
         // ボマー覚醒(Lv3・v0.25.3300): ミニ手榴弾4つ(通常3つ)。
         for (const mini of buildBomberMinis(cx, cy, `bag-${b.id}`, undefined, undefined, bomberMiniCount(get().player))) get().addProjectile(mini);
         get().spawnBurst(cx, cy, '#fbbf24', 8);

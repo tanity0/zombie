@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3306',
+    items: [
+      'ボマーを確率発動に変更: 爆発時にLv1=30%/Lv2=40%/Lv3=50%でミニ手榴弾を散布(全散布対象=手榴弾/地雷/ランチャー弾/火炎ナイフ/救急鞄/ボムカウンター/ホーミング共通)。覚醒(Lv3)のミニ4個は継続。',
+    ],
+  },
+  {
     version: '0.25.3305',
     items: [
       'ガチャのスキル初取得は必ずLv1になりました(開始Lv抽選を廃止。被りによるLv2/Lv3昇格は従来どおり=覚醒は育てて到達)。',
