@@ -1401,12 +1401,26 @@ export const skillIncomingDamageMult = (player: Player, gameTime: number): numbe
   return (kl ? [1, 0.8, 0.7, 0.6][kl] : 1) * (hasSkill(player, 'berserker') ? 1.2 : 1)
     * consumableProtectionMult(player, gameTime);
 };
+// 社長指示v0.25.3303 カウンターマスター覚醒(Lv3): カウンター成立直後3秒間、全攻撃力+30%。
+// バフの付与=カウンター成立の全7箇所(refundCounterCooldownを呼ぶ場所)がplayerパッチに広げる。
+export const COUNTER_MASTER_AWAKEN_BUFF_MS = 3000;
+export const COUNTER_MASTER_AWAKEN_DMG_MULT = 1.3;
+export const counterMasterAwakenBuffPatch = (player: Player, gameTime: number): Partial<Player> =>
+  skillLevel(player, 'counter-master') >= 3
+    ? { counterMasterBuffUntil: gameTime + COUNTER_MASTER_AWAKEN_BUFF_MS }
+    : {};
 // バーサーカー: 全攻撃 ×(1 + 失ったHP割合×係数[Lv1:1.0/Lv2:1.25/Lv3:1.5])。被ダメ×1.2は固定。
+// カウンターマスター覚醒バフ(+30%)もこの「全攻撃」合流点に乗せる。gameTimeは20超の呼び出し箇所へ
+// 引数を配る代わりにここでstoreから読む(実行時のみ呼ばれる関数。ヘッドレステストはstoreのgameTimeを設定する)。
 export const skillOutgoingDamageMult = (player: Player): number => {
+  const cmMult = (player.counterMasterBuffUntil ?? 0) > useGameStore.getState().gameTime
+    && skillLevel(player, 'counter-master') >= 3
+    ? COUNTER_MASTER_AWAKEN_DMG_MULT
+    : 1;
   const bl = skillLevel(player, 'berserker');
-  if (!bl || player.maxHealth <= 0) return 1;
+  if (!bl || player.maxHealth <= 0) return cmMult;
   const k = [0, 1, 1.25, 1.5][bl];
-  return 1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth) * k;
+  return cmMult * (1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth) * k);
 };
 // クリティカルD上昇: crit倍率 +0.5/0.75/1.0(Lv)。
 export const skillCritMult = (player: Player, base: number): number => {
@@ -4822,7 +4836,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
-    knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
+    knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0, counterMasterBuffUntil: 0,
     seekerUntil: 0, seekerCdUntil: 0,
     consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
     consumableXpUntil: 0, consumableProtectionUntil: 0,
@@ -15653,7 +15667,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
-          knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
+          knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0, counterMasterBuffUntil: 0,
           seekerUntil: 0, seekerCdUntil: 0,
           consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
           consumableXpUntil: 0, consumableProtectionUntil: 0,

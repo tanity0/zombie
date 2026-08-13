@@ -170,6 +170,9 @@ export interface Player extends DashLocomotionState {
   knifeComboUntil: number;     // ナイフマスター: コンボ持続(gameTime)
   benkeiBuffUntil: number;     // 弁慶: crit率バフ終了(gameTime)
   benkeiCdUntil: number;       // 弁慶: 再発動CD(gameTime)
+  // 社長指示v0.25.3303 カウンターマスター覚醒(Lv3): カウンター成立後3秒の全攻撃+30%バフ終了(gameTime)。
+  // optional=疑似Player(守護霊ビルド)や既存スナップショットに波及させないため(未設定=バフ無し)。
+  counterMasterBuffUntil?: number;
   seekerUntil: number;         // シーカー: 半透明化＋通常敵から狙われない 効果終了(gameTime)
   seekerCdUntil: number;       // シーカー: 再発動CD(gameTime)
   // SKILL_BUILD_REDESIGN.md §23: 消費カード5種の発動終了時刻(gameTime)。取得で即座に gameTime+60000

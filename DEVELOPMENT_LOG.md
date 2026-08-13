@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.3303 — カウンターマスター覚醒=成立後3秒間 全攻撃+30%(社長裁定)【2026-08-13 22:48 JST】
+- 相談していた「弾接近スロー」案は取り下げ、「カウンター直後3秒間 全攻撃力30%アップ」に確定。
+- **実装**: Player.counterMasterBuffUntil(gameTime・optional=疑似Playerへ波及させない)。付与=
+  counterMasterAwakenBuffPatch を**カウンター成立の全7箇所**(refundCounterCooldownを呼ぶ場所:
+  弾反射/ジャンプパリィ/突進パリィ/トール/裏ボス3体/idol/天使)のplayerパッチに展開。
+  倍率=skillOutgoingDamageMult(「全攻撃」の唯一の合流点=銃/近接/爆発/サブ全部に乗る)へ
+  COUNTER_MASTER_AWAKEN_DMG_MULT(1.3)を乗算。gameTimeは呼び出し20超へ引数を配る代わりに
+  この関数内でstoreから読む(実行時のみ呼ばれる・テストはstoreのgameTimeを設定)。
+- テスト: パッチのLv3限定+バフ中×1.3/切れ×1.0(skills.test)。既存counterMaster/simも通過。
+- 検証: typecheck 0 / lint 0。実機確認: カウンター成立→3秒間ダメージが上がるか(全カウンター種別)。
+
 ## v0.25.3302 — スケーター覚醒の降車投擲を爆発仕様に統一(社長指示)【2026-08-13 22:40 JST】
 - 「普通に爆発の仕様に載せて。当然SEも」: 覚醒(Lv3)の着弾を「全ての爆発」規約へ。
   半径=×1.8×skillExplosionMult×heavyGunnerExplosionMult / ダメージ=×skillExplosionMult×

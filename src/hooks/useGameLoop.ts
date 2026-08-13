@@ -52,6 +52,7 @@ import {
   // v0.25.3300 覚醒(Lv3): ボムカウンターKB100px+1段パニッシュ / エクスプローダー爆発KB×1.5 /
   // オーバークロックproc時クイックリロード / シーカー半透明中の攻撃封印(覚醒で解除)。
   BOMB_COUNTER_AWAKEN_KB_PX, skillExplosionKbMult, overclockAwakenReloadPatch, isSeekerActive,
+  counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   // v0.25.2514(GHOST-BUILD-1): 近接/カウンター反撃の唯一の式(プレイヤーと守護霊で共有)。
   meleeSwingBaseDamage, meleeHitCritChance, counterReplyDamage,
@@ -4918,6 +4919,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.setState(stt => ({ player: {
                   ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
                   counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
+                  // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
+                  ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
                 } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
@@ -4980,6 +4983,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.setState(stt => ({ player: {
                   ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
                   counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
+                  // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
+                  ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
                 } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);

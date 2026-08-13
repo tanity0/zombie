@@ -9,7 +9,7 @@
 import type { Enemy } from '../types/game';
 import { GLOW_R_L } from './glowTiers';
 import {
-  useGameStore, counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT,
+  useGameStore, counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT, counterMasterAwakenBuffPatch,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossCritCdMult, bossSlowMult, enemyDeathLabel,
   knockbackSpeedFor,
@@ -304,6 +304,8 @@ export const runIdolTick = (
       useGameStore.setState(stt => ({ player: {
         ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
         counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
+        // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
+        ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
       } }));
       const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT);
       useGameStore.getState().damageEnemy(idol.id, dmg, false, true, false, 'other', 'player', 'counter');

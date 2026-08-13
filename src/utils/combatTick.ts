@@ -47,6 +47,7 @@ import {
   GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_GLIDE_HALF_WIDTH,
   bossCritCdMult,
   REFLECT_DAMAGE_MULTIPLIER, // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王の倍率計算に使う基準値
+  counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
 } from '../store/gameStore';
 import { distToSegment } from './levelUpGate';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
@@ -289,6 +290,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       player: {
         ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
         counterCooldownEnd: refundCounterCooldown(st.player.counterCooldownEnd, pnow, skillLevel(st.player, 'counter-master')),
+        // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
+        ...counterMasterAwakenBuffPatch(st.player, st.gameTime),
       },
       enemies: st.enemies.map(e => {
         const hit = parriedEnemyIds.find(p => p.id === e.id);
@@ -553,6 +556,8 @@ const applyCounterReflect = (
         // counter-master v2: カウンター成立(弾反射)時のみCDリファンド(未所持は無変換)。
         counterCooldownEnd: refundCounterCooldown(
           state.player.counterCooldownEnd, now, skillLevel(state.player, 'counter-master')),
+        // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
+        ...counterMasterAwakenBuffPatch(state.player, state.gameTime),
       }
     }));
     return;
@@ -1120,6 +1125,8 @@ export const applyContactDamage = (
       player: {
         ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
         counterCooldownEnd: refundCounterCooldown(st.player.counterCooldownEnd, pnow, skillLevel(st.player, 'counter-master')),
+        // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
+        ...counterMasterAwakenBuffPatch(st.player, st.gameTime),
       },
       // v0.25.2480: 中断+ノックバック変換を dashParriedEnemyPatch へ切り出し(守護霊経路と共有・挙動同一)。
       enemies: st.enemies.map(e => dashParried.includes(e.id) ? dashParriedEnemyPatch(e, ppx, ppy, pnow, st.gameTime) : e),

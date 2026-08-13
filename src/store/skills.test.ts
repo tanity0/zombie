@@ -8,6 +8,8 @@ import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
   // v0.25.3300 覚醒(Lv3)効果の純関数
   skillComboMasterMult, huntingMeleeRadius, runnerAwakenDamageMult, skillExplosionKbMult,
   sniperGunMult, MELEE_RADIUS,
+  // v0.25.3303 カウンターマスター覚醒
+  counterMasterAwakenBuffPatch, COUNTER_MASTER_AWAKEN_BUFF_MS, useGameStore,
   RUNNER_RELOAD_BONUS_MULT, applyRescueSignalProc,
   skillOutgoingDamageMult, skillGoldRushMult, skillIncomingDamageMult,
   // SKILL_BUILD_REDESIGN.md §23: 消費カード5種の倍率フック(旧skillScrapBuilderGainMult/
@@ -328,6 +330,17 @@ describe('覚醒(Lv3)効果 v0.25.3300', () => {
   it('exploder覚醒: 爆発KB距離×1.5(非覚醒は×1)', () => {
     expect(skillExplosionKbMult(withSkill('exploder', 3))).toBeCloseTo(1.5);
     expect(skillExplosionKbMult(withSkill('exploder', 2))).toBeCloseTo(1.0);
+  });
+  it('counter-master覚醒: 成立後3秒間 全攻撃×1.3(パッチ+skillOutgoingDamageMult合流)', () => {
+    // パッチ: Lv3のみ付与
+    expect(counterMasterAwakenBuffPatch(withSkill('counter-master', 3), 1000)).toEqual({ counterMasterBuffUntil: 1000 + COUNTER_MASTER_AWAKEN_BUFF_MS });
+    expect(counterMasterAwakenBuffPatch(withSkill('counter-master', 2), 1000)).toEqual({});
+    // 倍率: storeのgameTimeを基準に読む(バフ中×1.3/切れたら×1)
+    useGameStore.setState({ gameTime: 2000 });
+    const buffed = { ...withSkill('counter-master', 3), counterMasterBuffUntil: 4000, maxHealth: 100, health: 100 } as Player;
+    expect(skillOutgoingDamageMult(buffed)).toBeCloseTo(1.3);
+    useGameStore.setState({ gameTime: 5000 });
+    expect(skillOutgoingDamageMult(buffed)).toBeCloseTo(1.0);
   });
   it('sniper覚醒: 距離条件が70%の距離で上限到達', () => {
     const mk = (lv: number) => ({ ...withSkill('sniper', lv), x: 0, y: 0, width: 0, height: 0 }) as Player;

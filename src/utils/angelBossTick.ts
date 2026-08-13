@@ -18,7 +18,7 @@
 import type { Enemy } from '../types/game';
 import { GLOW_R_L } from './glowTiers';
 import {
-  useGameStore, counterReplyDamage, skillLevel, enemyDeathLabel,
+  useGameStore, counterReplyDamage, skillLevel, enemyDeathLabel, counterMasterAwakenBuffPatch,
   BOSS_CRIT_DAMAGE_MULT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult, bossCritCdMult,
 } from '../store/gameStore';
@@ -353,6 +353,8 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   useGameStore.setState(stt => ({ player: {
     ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
     counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
+    // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
+    ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
   } }));
   const counterBase = getActiveGun(cp)?.damage ?? 12;
   const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
