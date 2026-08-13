@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3289',
+    items: [
+      '武器の絵15点(銃10+近接5)をドット絵に一新しました(拾い物・HUD・宝箱表示すべて)。',
+    ],
+  },
+  {
     version: '0.25.3288',
     items: [
       '影の改善2点: ①オブジェクトの接地丸影を横に広げて(表示幅いっぱい)、トラック・テントなど斜め向き素材の影の隙間を覆うように ②全キャラ・全オブジェクトの影を数px上へ食い込ませて「浮き」を解消。',
