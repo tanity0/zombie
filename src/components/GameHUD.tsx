@@ -6,6 +6,7 @@ import { formatTime } from '../utils/renderUtils';
 import { hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { spritePath } from '../utils/spriteLoader';
 import VitalsOrb from './VitalsOrb';
+import PlayerPortraitFrame from './PlayerPortraitFrame';
 import { NpcDialogue } from './NpcDialogue';
 import { LowHpVignette } from './LowHpVignette';
 import type { AmmoType } from '../types/game';
@@ -226,7 +227,11 @@ const GameHUD: React.FC = () => {
           left: 'max(env(safe-area-inset-left), 12px)'
         }}
       >
-        <VitalsOrb />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <VitalsOrb />
+          {/* 立ち絵チップ+枠光(§12-2#11・社長意図「枠線=立ち絵」。点灯条件はframeLight.ts) */}
+          <PlayerPortraitFrame />
+        </div>
       </div>
 
       {/* 右側にまとめた装備UI: 装備スキル(詳細) + 武器(アイコンのみ・銃はタップで切替)。下端から上へ縦並び。 */}

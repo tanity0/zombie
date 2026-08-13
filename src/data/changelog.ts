@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3243',
+    items: [
+      'HUDにプレイヤーの立ち絵チップを追加(HPオーブの隣)。バーサーカー所持中はHP70%未満で枠が金色に光り(失ったHPほど強く)、オーバークロック発動の瞬間は青く光ります。',
+    ],
+  },
+  {
     version: '0.25.3242',
     items: [
       '開発: 6枠ビルドのボス撃破時間を計測(TTK予算内=壊れなし)。超レアの出現曲線が実ランでは遅すぎる課題を検出(調整は検討中)。ゲーム内容の変更はありません。',

@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.3243 — 枠光の実装完了: HUD立ち絵チップ(社長裁定「枠線=立ち絵」)【2026-08-13 09:59 JST】
+- 新規 PlayerPortraitFrame.tsx: 立ち絵チップ56px(portraits.tsの全身絵をobject-position:topで顔寄せ)。
+  GameHUDのVitalsOrb隣(flex行)に配置=叩き台。
+- 点灯: バーサーカー金=枠線+box-shadowグロー(frameLight.ts純関数・強度∝失HP)/オーバークロック青=
+  overclockLightUntilの値をkeyにしたCSSアニメ800ms1発(gameTime購読なし=毎フレーム再描画なし)。
+- 購読は全プリミティブ(runBuild.includesの派生boolean含む)。負荷1/10。§21-5に記録・裁定③決着。
+- 検証: typecheck 0/lint 0。実機確認: 立ち絵の見え方(顔の切り取り位置)・金/青の光り方。
+
 ## v0.25.3242 — B5計測完了: TTK予算合格・超レア充足0%を検出【2026-08-13 05:31 JST】
 - 新規 b5TtkMeasure.test.ts(B5_TTK=1)/b5FillMeasure.test.ts(B5_FILL=1)(Sonnet納品・検収済み・
   既存ファイル無変更・typecheck 0)。
