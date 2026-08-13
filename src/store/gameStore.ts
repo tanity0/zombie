@@ -3794,6 +3794,8 @@ export const buildCorpseFromKill = (
     ...enemy,
     health: 0,
     corpseUntil: now + KNOCKBACK_DURATION,
+    corpseStartX: enemy.x, // v0.25.3272: 実時間の解析積分用の発射起点(スロー中でも飛距離50pxを保証)
+    corpseStartY: enemy.y,
     aiPhase: undefined,
     aiPhaseUntil: undefined,
     stunUntil: undefined,
@@ -9573,11 +9575,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         // KB終了後は位置を凍らせる(期限切れの除去はfinalEnemies側=このmapでは消さない)。
         if (isCorpse(enemy)) {
           if (enemy.knockbackUntil === undefined || now >= enemy.knockbackUntil) return enemy;
-          const remaining = enemy.knockbackUntil - now;
-          const decay = Math.max(0, remaining / KNOCKBACK_DURATION);
+          // v0.25.3272(社長報告「KILL時のノックバックの方が短い」): 死体の飛びをdeltaTime積分から
+          // **実時間の解析積分**へ変更。KILL!フィニッシュのスロー中はdeltaTimeが縮む一方で
+          // knockbackUntilは実時間で燃えるため、飛距離がスロー倍率ぶん縮んでいた。
+          // 起点(corpseStart)+方向×50px×ease-out進捗(線形減衰速度の積分=1-(1-t)^2)で描けば、
+          // スローに関係なく必ず50px飛ぶ。ついでに「出始め一瞬・終わりゆるく」の慣性標準にも一致する。
+          const t = Math.max(0, Math.min(1, 1 - (enemy.knockbackUntil - now) / KNOCKBACK_DURATION));
+          const frac = 1 - (1 - t) * (1 - t);
+          const kvx = enemy.knockbackVx ?? 0, kvy = enemy.knockbackVy ?? 0;
+          const kvl = Math.hypot(kvx, kvy);
+          if (kvl <= 0.001) return enemy;
+          const sx = enemy.corpseStartX ?? enemy.x, sy = enemy.corpseStartY ?? enemy.y;
           const kb = resolveMove(
-            enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
-            enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,
+            sx + (kvx / kvl) * KILL_LAUNCH_DIST_PX * frac,
+            sy + (kvy / kvl) * KILL_LAUNCH_DIST_PX * frac,
           );
           return { ...enemy, x: kb.x, y: kb.y };
         }

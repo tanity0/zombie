@@ -1229,7 +1229,11 @@ const PLAYER_WALK_BOB_PX = 0.8;
 // ノックバック時の小さな縦の跳ね(社長指示「少し跳ねる感じ」)。敵・プレイヤー共通。視覚のみ=
 // 当たり判定/位置(store)は不変。1回のノックバックで sin の1山ぶんポンと跳ねて着地する。
 const KNOCKBACK_HOP_PX = 12;   // 跳ねの高さ(px・社長指示でもっと分かりやすく: 6→12)
-const KNOCKBACK_HOP_MS = 260;  // 跳ねアークの所要時間(敵=被弾lastHit起点 / プレイヤー=knockbackUntil逆算)
+const KNOCKBACK_HOP_MS = 260;
+// 延焼中の敵の薄い赤点滅(社長指示v0.25.3272・視覚のみ。判定=storeのburnUntil)
+const BURN_FLASH_TINT = 0xff5a3c;
+const BURN_FLASH_ALPHA = 0.28; // 「薄く」=被弾白(0.85相当)よりずっと弱く
+const BURN_FLASH_PERIOD_MS = 520;  // 跳ねアークの所要時間(敵=被弾lastHit起点 / プレイヤー=knockbackUntil逆算)
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
 const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するスカッシュ量
@@ -13891,7 +13895,11 @@ export class PixiScene {
       const hf = view.hitFlash;
       const flashT = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1
         ? Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS) : 0;
-      if (flashT > 0.01) {
+      // 延焼中の薄い赤点滅(社長指示v0.25.3272)。被弾フラッシュと同じシルエット機構を流用し、
+      // 被弾(白)が出ていない間だけ赤の弱い明滅を乗せる(読むだけ・判定はstoreのburnUntil)。
+      const burning = view.sprite.visible && (e.burnUntil ?? 0) > gameTime &&
+        view.sprite.texture && view.sprite.texture.width > 1;
+      if (flashT > 0.01 || burning) {
         // 真っ白シルエットを加算で重ねる(暗い敵でも全面が白く光る)。未ベイク時は元テクスチャにフォールバック。
         hf.texture = this.whiteSilhouette(view.sprite.texture) ?? view.sprite.texture;
         hf.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
@@ -13899,9 +13907,17 @@ export class PixiScene {
         hf.scale.set(view.sprite.scale.x, view.sprite.scale.y);
         hf.skew.set(view.sprite.skew.x, view.sprite.skew.y);
         hf.rotation = view.sprite.rotation;
-        hf.alpha = flashT * ENEMY_HIT_FLASH_STRENGTH * artFade;
+        if (flashT > 0.01) {
+          hf.tint = 0xffffff;
+          hf.alpha = flashT * ENEMY_HIT_FLASH_STRENGTH * artFade;
+        } else {
+          hf.tint = BURN_FLASH_TINT; // 薄い赤
+          const pulse = 0.5 + 0.5 * Math.sin(now / BURN_FLASH_PERIOD_MS * Math.PI * 2);
+          hf.alpha = BURN_FLASH_ALPHA * pulse * artFade;
+        }
         hf.visible = true;
       } else if (hf.visible) {
+        hf.tint = 0xffffff;
         hf.visible = false;
       }
     }
