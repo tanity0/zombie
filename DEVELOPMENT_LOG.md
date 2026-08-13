@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.3267 — 棚卸しA即修正4件+B動的ゲート化(社長裁定)【2026-08-13 14:27 JST】
+- A: ①fixedGuardiansのwarm-up死にスロット→runner ②weaponUtilsの古いコメント修正
+  ③seeker説明文に「ボスは対象外」明記 ④poi-thrall説明文に「通常敵限定」明記。
+- ★B: isDraftEligibleにゲート追加=exploder(手榴弾装備 or fire-shooter/bomb-counter/bomber/reflexを
+  ラン中取得済みの時のみ提示)/bomber(手榴弾装備 or bomb-counter取得済みの時のみ)。
+  RunSkillDraftInput.grenadeEquipped新設(gameStoreの3呼び出し点でheavy-grenade装備を注入)。
+- 検証: typecheck 0/lint 0/対象テスト106 passed。★D(デッキ編集)はv2のまま裁定待ち。
+
 ## v0.25.3266 — スラッシャー踏み込みの不発修正(社長報告「進む時と進まない時がある」)【2026-08-13 14:24 JST】
 原因: PLAYER_INERTIA_TAU=0のため攻撃(指を離した)瞬間はvx/vyがほぼ常に0で、「空振り時は移動方向へ」
 のフォールバックが死んでいた=ヒット時しか踏み込まなかった。

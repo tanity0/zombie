@@ -752,7 +752,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'slasher':      { name: 'スラッシャー',   desc: '近接攻撃を連続で振れる(最大4連・各2/3減衰・ノックバック。Lv3は最終段のみノックバック大)', rarity: 'normal' },
   'attack-shooter':{ name: 'アタックシューター', desc: '銃ダメージ+10%(Lvで+20%/+30%)', rarity: 'normal' },
   'runner':       { name: 'ランナー',       desc: '移動速度+10%(Lvで+15%/+20%)。リロード中はさらに+10%', rarity: 'normal' },
-  'seeker':       { name: 'シーカー',       desc: '被弾時に一定確率で3秒間半透明化し、通常敵から狙われなくなる(CD10秒)', rarity: 'normal' },
+  'seeker':       { name: 'シーカー',       desc: '被弾時に一定確率で3秒間半透明化し、通常敵から狙われなくなる(CD10秒・ボスは対象外)', rarity: 'normal' },
   'scrap-builder':{ name: 'スクラップビルダー', desc: '出撃開始時の初期スクラップ+50(Lvで+100/+150)。スクラップ取得量+10%(Lvで+20%/+30%)', rarity: 'normal' },
   'magnet':       { name: 'マグネット',     desc: '弾薬ピックアップの拾得範囲+10%(Lvで+20%/+30%)', rarity: 'normal' },
   'last-magazine':{ name: 'ラストマガジン', desc: '弾倉最後の1発のダメージ×2.0(Lvで×2.5/×3.0)。ショットガンは最終シェルの全ペレット', rarity: 'normal' },
@@ -760,7 +760,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ討伐報酬(3種から毎回ランダムで1つ)。
   'poi-bombing':  { name: '爆撃',   desc: '3秒に1度、近くの敵にグレネードランチャーを自動発射', rarity: 'super' },
   'poi-guard':    { name: '防衛',   desc: 'プレイヤーの周りをブーメランが常に周回し、触れた敵弾もかき消す', rarity: 'super' },
-  'poi-thrall':   { name: '使役',   desc: '倒した敵の20%を仲間(ゾンビ)として復活させる。最大1体・死ぬまで追従', rarity: 'super' },
+  'poi-thrall':   { name: '使役',   desc: '倒した通常敵の20%を仲間(ゾンビ)として復活させる(ボスは対象外)。最大1体・死ぬまで追従', rarity: 'super' },
   // SKILL_BUILD_REDESIGN.md §14(社長承認2026-08-13「全て採用」)・新スキル9種。B3=台帳掲載のみ
   // (先行掲載)。RUN_DRAFT_EXCLUDED_SKILLS/GACHA_EXCLUDED_SKILLSで完全に眠らせている(効果配線はB7)。
   'big-bullet':      { name: 'ビッグバレット',       desc: '弾のサイズを拡大(見た目と当たり判定を同時に拡大。貫通数・跳弾回数・壁衝突は変化しない)', rarity: 'normal' },
@@ -811,7 +811,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'slasher':      { base: '近接攻撃を連続で振れる（各2/3減衰・ノックバック）', lv: ['2連', '3連', '4連（最終段はノックバック大）'] },
   'attack-shooter':{ base: '銃ダメージが上昇', lv: ['+10%', '+20%', '+30%'] },
   'runner':       { base: '移動速度が上昇。リロード中はさらに+10%（Lv不問）', lv: ['+10%', '+15%', '+20%'] },
-  'seeker':       { base: '被弾時に一定確率で3秒間半透明化し、通常敵から狙われなくなる（CD10秒）', lv: ['発動30%', '40%', '50%'] },
+  'seeker':       { base: '被弾時に一定確率で3秒間半透明化し、通常敵から狙われなくなる（CD10秒・ボスは対象外）', lv: ['発動30%', '40%', '50%'] },
   'scrap-builder':{ base: '出撃開始時の初期スクラップが増え、スクラップ取得量も増加', lv: ['初期+50・取得+10%', '初期+100・取得+20%', '初期+150・取得+30%'] },
   'magnet':       { base: '弾薬ピックアップの拾得範囲が拡大（弾薬以外は従来どおり）', lv: ['+10%', '+20%', '+30%'] },
   'last-magazine':{ base: '弾倉最後の1発のダメージが増加（ショットガンは最終シェルの全ペレット）', lv: ['×2.0', '×2.5', '×3.0'] },
@@ -819,7 +819,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ報酬(いずれもLv変化なし=Lv1固定)。
   'poi-bombing':  { base: '3秒に1度、近くの敵にグレネードランチャーを自動発射' },
   'poi-guard':    { base: 'プレイヤーの周りをブーメランが常に周回し、触れた敵弾もかき消す' },
-  'poi-thrall':   { base: '倒した敵の20%を仲間(ゾンビ)として復活させる。最大1体・死ぬまで追従' },
+  'poi-thrall':   { base: '倒した通常敵の20%を仲間(ゾンビ)として復活させる（ボスは対象外）。最大1体・死ぬまで追従' },
   // SKILL_BUILD_REDESIGN.md §14/§16-5(叩き台の数値。効果配線はB7で確定)。B3では眠っており誰も
   // 到達しないが、台帳としては完成形の文章にする(末尾に「準備中」等は付けない・§19-1点4)。
   'big-bullet':      { base: '弾のサイズを拡大(見た目と当たり判定を同時に拡大。貫通数・跳弾回数・壁衝突は変化しない)', lv: ['×1.3', '×1.5', '×1.7'] },

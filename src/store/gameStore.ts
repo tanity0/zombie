@@ -7969,6 +7969,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         playerLevel: newLevel,
         excluded: state.vanishedSkills,
         dogEquipped: player.subWeapons.includes('dog'),
+        grenadeEquipped: player.subWeapons.includes('heavy-grenade'),
         activeConsumables: activeConsumableKeys(player, state.gameTime), // §23-2条件1/条件3
       };
       const upgradeOptions = generateSkillUpgradeChoices(draftInput);
@@ -8334,6 +8335,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       playerLevel: state.player.level,
       excluded: state.vanishedSkills,
       dogEquipped: state.player.subWeapons.includes('dog'),
+      grenadeEquipped: state.player.subWeapons.includes('heavy-grenade'),
       activeConsumables: activeConsumableKeys(state.player, state.gameTime), // §23-2条件1/条件3
     };
     const nextOptions = generateSkillUpgradeChoices(draftInput);
@@ -8368,6 +8370,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       playerLevel: state.player.level,
       excluded: nextVanished,
       dogEquipped: state.player.subWeapons.includes('dog'),
+      grenadeEquipped: state.player.subWeapons.includes('heavy-grenade'),
       activeConsumables: activeConsumableKeys(state.player, state.gameTime), // §23-2条件1/条件3
     };
     const replacement = generateReplacementSkillOption(draftInput, otherKeys, otherConsumables);

@@ -501,7 +501,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     const gt = useGameStore.getState().gameTime;
     // 発射時のクリ率(GHOST-BUILD-1で共通ヘルパへ抽出=式・値は不変):
     //   武器基礎 + 本体(レベルアップ)+ 装備(アクセ・クリ系。player.critChanceとは別枠で加算)
-    //   + クイックマガジン + 弁慶 + ウォームアップ(出撃から60秒間+20%・§6.8 M31)。
+    //   + クイックマガジン + 弁慶(ウォームアップは退役済み=v0.25.3248でこの式から削除)。
     const critChance = gunShotCritChance(weapon, player, gt);
     projectiles.push({
       id: `proj-${weapon.id}-${now}-${i}`,

@@ -302,7 +302,7 @@ export const FIXED_GUARDIANS: readonly FixedGuardian[] = [
     preferredDist: 135, meleeBias: 0.45, mobility: 1, stationaryFrac: 0.02,
     approachPerMin: 10, subUsesPerMin: 12,
     equipment: gear('special-body', 'arms-firepower-5', 'accessory-crit-5'),
-    skills: skillBuild('attack-shooter', 'warm-up', 3, 1),
+    skills: skillBuild('attack-shooter', 'runner', 3, 1), // warm-up退役(v0.25.3248)に伴う死にスロット差し替え(§27-2 A・v0.25.3267)
   }),
   fixedGuardian({
     id: 'bambi', name: 'ばんび', classId: 'rogue', role: 'rapid', reaction: 'rock',

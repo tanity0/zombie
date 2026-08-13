@@ -71,6 +71,8 @@ export interface RunSkillDraftInput {
   excluded?: readonly SkillKey[];
   /** dog-runの発動条件(§1-2④・犬サブウェポン装備中のみ提示。出撃時に確定=ラン中不変)。 */
   dogEquipped?: boolean;
+  /** 手榴弾(heavy-grenade)装備か(§27-2★B: exploder/bomberの動的ゲート・v0.25.3267)。 */
+  grenadeEquipped?: boolean;
   /** §23: 現在アクティブな消費カードのキー(同種は再提示しない・§23-1「同種バフ発動中は提示しない」)。
    * 個数はそのままノーマル枠の占有分(canAcquireRarityのextraNormalOccupied)としても使う。 */
   activeConsumables?: readonly ConsumableKey[];
@@ -80,6 +82,12 @@ const isDraftEligible = (input: RunSkillDraftInput, key: SkillKey): boolean => {
   if (RUN_DRAFT_EXCLUDED_SKILLS.includes(key)) return false;
   if ((input.excluded ?? []).includes(key)) return false;
   if (key === 'dog-run' && !input.dogEquipped) return false; // §1-2④「発動条件を満たせる」の実対象
+  // §27-2★B(社長裁定「ゲート化して」v0.25.3267): 前提が無いと空振りする爆発系はデッキに乗せない。
+  // exploder=爆発源(手榴弾装備 or 爆発を生むスキルをラン中取得済み)がある時のみ。
+  if (key === 'exploder' && !(input.grenadeEquipped ||
+    (['fire-shooter', 'bomb-counter', 'bomber', 'reflex'] as SkillKey[]).some(k => input.runSkills.includes(k)))) return false;
+  // bomber=トリガー(手榴弾装備 or ボムカウンター取得済み)がある時のみ。
+  if (key === 'bomber' && !(input.grenadeEquipped || input.runSkills.includes('bomb-counter'))) return false;
   return true;
 };
 
