@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3285',
+    items: [
+      '爆発アニメの発生位置を修正: 絵の下辺(発生源)が爆心に揃うようにしました(低すぎたのを上へ)。',
+    ],
+  },
+  {
     version: '0.25.3284',
     items: [
       '開発: 守護霊スキル整合の一括見直しを設計書§31に棚入れ(スキル整理2.0後に実施)。ゲーム内容の変更はありません。',

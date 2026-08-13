@@ -20469,7 +20469,9 @@ export class PixiScene {
     const width = e.radius * 2 * 1.1;
     const sc = width / Math.max(1, tex.width);
     sp.scale.set(sc);
-    sp.position.set(e.x, e.y + e.radius);
+    // 社長指示v0.25.3285「絵的に下辺が発生源っぽい。発生源の下辺同士で揃える」: 絵の下辺(anchor 1)を
+    // **爆心そのもの**に置く(旧=爆心の下端y+radiusでは低すぎた)。プルームは爆心から上へ立ち上る。
+    sp.position.set(e.x, e.y);
     if (e.tint !== undefined) sp.tint = e.tint;
     sp.alpha = t > 0.85 ? Math.max(0, (1 - t) / 0.15) : 1;
     sp.visible = true;
