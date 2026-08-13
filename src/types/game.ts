@@ -806,6 +806,11 @@ export interface Enemy {
   // gameTime < iceSlowUntil の間、移動速度に (1 - iceSlowPct) を掛ける(updateEnemies)。
   iceSlowUntil?: number;
   iceSlowPct?: number;
+  // 社長指示v0.25.3299「ダン!ダン!の二段遅延」: パニッシャー巻き込みの二拍目(ダメージ+継承KB)を
+  // 一拍(150ms)遅らせるための予約。At=発火時刻/Vx,Vy=発生源から継承する速度(発火時に適用)。
+  punisherPendingAt?: number;
+  punisherPendingVx?: number;
+  punisherPendingVy?: number;
   // 社長指示v0.25.3280「グラヴィティはボスも減速させて」: 渦の半径内のボスに付く移動半減の窓。
   // tickGravityWellsが毎フレーム上書きし、bossSlowMult(全ボス移動経路の共通チョーク)が読む。
   gravitySlowUntil?: number;

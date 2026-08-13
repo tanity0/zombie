@@ -1077,6 +1077,7 @@ export const SLASHER_LUNGE_PX = 20;
 // パニッシャーの巻き込み判定の拡張幅(社長指示v0.25.3260「広めに」・叩き台)。
 export const PUNISHER_HIT_PAD_PX = 16;
 // パニッシャー巻き込み成立時の画面シェイク(社長指示v0.25.3265・描画のみ・叩き台)。
+export const PUNISHER_TWO_BEAT_MS = 150; // 社長指示v0.25.3299「ダン!ダン!と二段当たってるのがわかる遅延」: 接触→パニッシャー発火までの一拍
 export const PUNISHER_SHAKE_MS = 200;
 export const PUNISHER_SHAKE_MAG = 4;
 export const SLASHER_LUNGE_MS = 160;
@@ -9497,6 +9498,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const glenVolleyFires: string[] = []; // v0.25.3027: グレン第二形態の胴体弾(パーツV字斉射)。post-set で発射。
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
+    const punisherContacts: { x: number; y: number }[] = []; // v0.25.3299: 一拍目(接触)のFX用座標
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
@@ -11811,10 +11813,27 @@ export const useGameStore = create<GameState>((set, get) => ({
         const melee = player.weapons.find(w => w.isMelee);
         const punisherDmgMult = [0, 0.5, 0.7, 0.9][punisherLv];
         punisherDmg = Math.max(1, Math.round((melee?.damage ?? 6) * strikerMeleeMult(player) * punisherDmgMult));
-        const movers = updatedEnemies.filter(e =>
+        // 二拍目の発火(v0.25.3299): 一拍の遅延を消化した被害者へ、ダメージ(punisherHits)+
+        // 継承ノックバックを適用する。
+        let punisherBase = updatedEnemies;
+        const punisherArmed = punisherBase.some(e => e.punisherPendingAt !== undefined && now >= e.punisherPendingAt);
+        if (punisherArmed) {
+          punisherBase = punisherBase.map(e => {
+            if (e.punisherPendingAt === undefined || now < e.punisherPendingAt) return e;
+            punisherHits.push(e.id);
+            return {
+              ...e,
+              punisherPendingAt: undefined, punisherPendingVx: undefined, punisherPendingVy: undefined,
+              knockbackVx: e.punisherPendingVx ?? 0,
+              knockbackVy: e.punisherPendingVy ?? 0,
+              knockbackUntil: now + KNOCKBACK_DURATION,
+            };
+          });
+        }
+        const movers = punisherBase.filter(e =>
           e.knockbackUntil !== undefined && now < e.knockbackUntil && !e.punisherHopped &&
           Math.hypot(e.knockbackVx ?? 0, e.knockbackVy ?? 0) > 30);
-        finalEnemies = updatedEnemies.map(b => {
+        finalEnemies = punisherBase.map(b => {
           const bKbActive = b.knockbackUntil !== undefined && now < b.knockbackUntil;
           // ノックバックが切れたら hop 印を解除(次に直接ノックバックされたら再び巻き込み元になれる)。
           const cleared = (b.punisherHopped && !bKbActive) ? { ...b, punisherHopped: false } : b;
@@ -11829,15 +11848,19 @@ export const useGameStore = create<GameState>((set, get) => ({
               { x: a.x - PUNISHER_HIT_PAD_PX, y: a.y - PUNISHER_HIT_PAD_PX, width: a.width + PUNISHER_HIT_PAD_PX * 2, height: a.height + PUNISHER_HIT_PAD_PX * 2 },
               { x: cleared.x, y: cleared.y, width: cleared.width, height: cleared.height },
             )) continue;
-            punisherHits.push(cleared.id); // ダメージは set 後に damageEnemy で適用(死亡処理を正規経路に)
-            // 社長指示v0.25.3297「当たった敵も同じだけノックバックされるように」: 発生源(飛んでいる
-            // 死体/敵)の速度ベクトルをそのまま継承+フル窓=同方向へ同じ勢いで飛ぶ(旧: Lv倍率の弱いKB)。
+            // 社長指示v0.25.3299「ダン!(発生源)…ダン!(パニッシャー)と二段当たってるのがわかる遅延」:
+            // 接触の瞬間は**一拍だけその場で固まる**(KB上書き速度0=一拍目の衝撃)。150ms後に下の
+            // pending発火パスがダメージ+継承ノックバック(v0.25.3297「同じだけ飛ぶ」)を適用する(二拍目)。
+            punisherContacts.push({ x: cleared.x + cleared.width / 2, y: cleared.y + cleared.height / 2 });
             return {
               ...cleared,
               punisherHopped: true, // 連鎖防止の印
-              knockbackVx: a.knockbackVx ?? 0,
-              knockbackVy: a.knockbackVy ?? 0,
-              knockbackUntil: now + KNOCKBACK_DURATION,
+              punisherPendingAt: now + PUNISHER_TWO_BEAT_MS,
+              punisherPendingVx: a.knockbackVx ?? 0,
+              punisherPendingVy: a.knockbackVy ?? 0,
+              knockbackVx: 0,
+              knockbackVy: 0,
+              knockbackUntil: now + PUNISHER_TWO_BEAT_MS,
             };
           }
           return cleared;
@@ -12116,6 +12139,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().triggerShake(260, 10);
     }
     // パニッシャーの巻き込みダメージ(近接の半分)を正規経路で適用(死亡処理/演出込み)。
+    // v0.25.3299 一拍目(接触)の小FX: ぶつかった衝撃の読み。二拍目(下)の大シェイク/数字と区別する。
+    for (const c of punisherContacts) get().spawnBurst(c.x, c.y, '#fca5a5', 6);
     if (punisherHits.length > 0 && punisherDmg > 0) {
       // v0.25.3265 社長指示「パニッシュが起きたら画面揺れ」: 巻き込み成立の瞬間に短いシェイク
       // (描画のみ。同フレーム複数ヒットでも1回=triggerShakeは上書き式なので自然に纏まる)。
