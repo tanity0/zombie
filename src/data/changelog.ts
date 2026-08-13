@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3309',
+    items: [
+      'ゲーム内容の変更はありません(サブウェポン「異常動作」システムの設計台帳を追加)。',
+    ],
+  },
+  {
     version: '0.25.3308',
     items: [
       'ガチャの所持Lvは「ラン中に育てられる上限」になりました: 所持Lv1=ラン中Lv1止まり/所持Lv2=Lv2まで/所持Lv3で覚醒(Lv3)まで育成可能。取得は常にLv1から(前版)+上限解放がガチャの価値、という形に確定。',
