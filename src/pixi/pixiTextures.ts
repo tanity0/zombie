@@ -81,42 +81,54 @@ const HEAD_TOP_ALPHA_THRESHOLD = 16;
 // 名前 → 最上端の不透明ピクセル行(art px・top-origin)。計測失敗/全行透明/未計測は null
 // (呼び出し側 avatarHeadDeltaPx は null を「差分0」にフォールバックする=現状と同じ表示)。
 const headTopCache = new Map<string, number | null>();
-// v0.25.3278(社長報告「走ってる時はズレる」): 走り絵は体が前傾してボックス内で前方へ寄るため、
-// 縦(頭頂)だけの追従では尻尾/耳が取り残される。**絵の実体(不透明bbox)の横中心**も同じ走査で
-// 計測してキャッシュし、pixiScene側が「現在コマ−基準コマ」の横差分を全パーツのXへ加算する。
-const bodyCxCache = new Map<string, number | null>();
+// v0.25.3278→3282(社長報告「走ってる時はズレる」→「悪化した」の実測やり直し): 走り絵は体が前傾して
+// 頭がフレーム内を前方へ寄る。v0.25.3278は**全体bboxの横中心**で追ったが、マークスマンのライフルが
+// フレーム全幅を占めるため中心がほぼ動かず(idle 37.0→run 38.5px)、前傾を全く拾えていなかった。
+// 実測で前傾を正しく表すのは**頭部帯(コンテンツ上部18%)の横中心**(idle 39.0→run 47.5〜48.5px)。
+// 値は**フレーム中心基準(cx − w/2)**で持つ=キャンバス幅が違う素材どうしでも差分が座標系として成立。
+const headCxCache = new Map<string, number | null>();
+const HEAD_BAND_FRAC = 0.18; // 頭部帯=コンテンツ高さの上から18%(実測でマークスマンの頭部を覆う)
 
 const measureHeadTop = async (name: string): Promise<void> => {
   try {
     const img = new Image();
     await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = spritePath(name); });
     const w = img.naturalWidth, h = img.naturalHeight;
-    if (!w || !h) { headTopCache.set(name, null); bodyCxCache.set(name, null); return; }
+    if (!w || !h) { headTopCache.set(name, null); headCxCache.set(name, null); return; }
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
     const ctx = cv.getContext('2d');
-    if (!ctx) { headTopCache.set(name, null); bodyCxCache.set(name, null); return; }
+    if (!ctx) { headTopCache.set(name, null); headCxCache.set(name, null); return; }
     ctx.drawImage(img, 0, 0);
     const d = ctx.getImageData(0, 0, w, h).data;
-    // 1回の全走査で「最上端の不透明行(頭頂)」と「不透明bboxの横中心」を同時に取る(ロード時1回のみ)。
-    let top: number | null = null;
-    let minX = w, maxX = -1;
+    // 走査1: 頭頂(最上端の不透明行)とコンテンツ最下行。
+    let top: number | null = null, bottom = -1;
     for (let y = 0; y < h; y++) {
       const rowBase = y * w * 4;
       for (let x = 0; x < w; x++) {
+        if (d[rowBase + x * 4 + 3] > HEAD_TOP_ALPHA_THRESHOLD) { if (top === null) top = y; bottom = y; break; }
+      }
+    }
+    headTopCache.set(name, top);
+    if (top === null) { headCxCache.set(name, null); return; }
+    // 走査2: 頭部帯(top〜コンテンツ高さ18%)だけの横bbox中心。ライフル等の低い位置の突起に
+    // 引っ張られない=前傾(頭の横移動)を正しく拾う。フレーム中心基準で保存。
+    const band = Math.max(2, Math.round((bottom - top + 1) * HEAD_BAND_FRAC));
+    let minX = w, maxX = -1;
+    for (let y = top; y < Math.min(h, top + band); y++) {
+      const rowBase = y * w * 4;
+      for (let x = 0; x < w; x++) {
         if (d[rowBase + x * 4 + 3] > HEAD_TOP_ALPHA_THRESHOLD) {
-          if (top === null) top = y;
           if (x < minX) minX = x;
           if (x > maxX) maxX = x;
         }
       }
     }
-    headTopCache.set(name, top);
-    bodyCxCache.set(name, maxX >= minX ? (minX + maxX) / 2 : null);
+    headCxCache.set(name, maxX >= minX ? (minX + maxX) / 2 - w / 2 : null);
   } catch (e) {
     console.warn(`[pixiTextures] failed to measure head-top "${name}":`, e);
     headTopCache.set(name, null);
-    bodyCxCache.set(name, null);
+    headCxCache.set(name, null);
   }
 };
 
@@ -158,14 +170,14 @@ export const avatarHeadDeltaPx = (currentTexName: string, baselineTexName: strin
 };
 
 /**
- * v0.25.3278: 「いま表示中のテクスチャ」と「基準(待機絵)」の**絵の実体の横中心差分**(art px・
- * 未ミラー素材基準・右=正)。走り絵の前傾で体がボックス内を前方へ寄るぶんを全アバターパーツの
- * Xへ追従させるのに使う。呼び出し側は本体スプライトの**符号付き** scale.x を掛けて画面px化する
- * (ミラー時は符号が反転して向きが自動的に合う)。未計測/計測失敗は 0(=現状と同じ表示)。
+ * v0.25.3282: 「いま表示中のテクスチャ」と「基準(待機絵)」の**頭部帯の横中心差分**(art px・
+ * フレーム中心基準・未ミラー素材で右=正)。走り絵の前傾で頭がフレーム内を前方へ寄るぶんを
+ * 全アバターパーツのXへ追従させる。呼び出し側は本体スプライトの**符号付き** scale.x を掛けて
+ * 画面px化する(ミラー時は符号が反転して向きが自動的に合う)。未計測/計測失敗は 0(=現状表示)。
  */
-export const avatarBodyCxDeltaPx = (currentTexName: string, baselineTexName: string): number => {
-  const cur = bodyCxCache.get(currentTexName);
-  const base = bodyCxCache.get(baselineTexName);
+export const avatarHeadCxDeltaPx = (currentTexName: string, baselineTexName: string): number => {
+  const cur = headCxCache.get(currentTexName);
+  const base = headCxCache.get(baselineTexName);
   if (cur == null || base == null) return 0;
   return cur - base;
 };

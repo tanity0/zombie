@@ -2515,6 +2515,7 @@ const SECRET_CRATE_WEAPON_ROLLS = 3;
 const SECRET_CRATE_XP_COUNT = 20;
 const SECRET_CRATE_XP_VALUE = 5;            // value>=5 = 赤経験値(pixiSceneの色分けしきい値)
 const SECRET_CRATE_XP_SCATTER_RADIUS = 150; // 松明(42)・武器箱スクラップ(92)より広く
+const SECRET_CRATE_STRAP_MULT = 10;         // 社長指示v0.25.3282「秘密箱、スクラップも10倍で」
 const DROP_THROW_DURATION_MS = 360;
 const TREASURE_DROP_CHANCE_BY_RANK = {
   strong: 0.02,
@@ -3259,12 +3260,19 @@ const applyMeleeFinishSkillSpread = (
   }
   const shockLv = skillLevel(player, 'execution-shock');
   if (shockLv) {
-    const { radius, pct } = executionShockParams(shockLv);
-    const dmg = Math.max(1, Math.round(baseMeleeDamage * pct));
+    // 社長指示v0.25.3281「衝撃波が新しい要素になっちゃうので、爆発で揃えて」: 独自の"衝撃波"を
+    // やめ、既存の**爆発**要素に統一。①絵=手榴弾の爆発FXと同じ組(橙リング幅5+橙バースト20+
+    // 暗赤バースト8+橙グロー) ②判定=「全ての爆発」規約どおり skillExplosionMult を半径/ダメージ
+    // に乗算(エクスプローダーが効く)。Lv別の基礎値(半径80/100/120・30/40/50%)は不変。
+    const { radius: baseRadius, pct } = executionShockParams(shockLv);
+    const exMult = skillExplosionMult(player);
+    const radius = baseRadius * exMult;
+    const dmg = Math.max(1, Math.round(baseMeleeDamage * pct * exMult));
     const r2 = radius * radius;
-    get().spawnRing(pcx, pcy, 8, radius, 'rgba(249,115,22,0.85)', 4, 320);
-    get().spawnBurst(pcx, pcy, '#f97316', 16);
-    get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(249,115,22,', 320);
+    get().spawnRing(pcx, pcy, 8, radius, 'rgba(251,146,60,0.82)', 5, 440);
+    get().spawnBurst(pcx, pcy, '#f97316', 20);
+    get().spawnBurst(pcx, pcy, '#7f1d1d', 8);
+    get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(251,146,60,', 440);
     for (const e of get().enemies) {
       if (e.type === 'reaper' && !e.reaperChaser) continue;
       if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象外
@@ -13004,7 +13012,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             get().spawnGlow(pickup.x, pickup.y, GLOW_R_M, 'rgba(251,191,36,', 520, true);
           }
         }
-        strapDropValues(WEAPON_CRATE_STRAP_DROP_MIN + Math.floor(Math.random() * WEAPON_CRATE_STRAP_DROP_VARIANCE))
+        strapDropValues((WEAPON_CRATE_STRAP_DROP_MIN + Math.floor(Math.random() * WEAPON_CRATE_STRAP_DROP_VARIANCE))
+          * (pickup.secret ? SECRET_CRATE_STRAP_MULT : 1)) // 社長指示v0.25.3282: 秘密兵器箱はスクラップ10倍
           .forEach((value, index) => {
             get().addPickup({
               id: `pickup-strap-crate-${pickup.id}-${index}`,

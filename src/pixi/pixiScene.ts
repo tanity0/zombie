@@ -154,7 +154,7 @@ import type { SceneLayers } from './layers';
 import {
   getTexture, PLAYER_ART_BASE_W,
   FLAME_SHEET, FLAME_FRAMES, FLAME_FRAME_W, FLAME_FRAME_H, FLAME_LIGHT_FRAC, TORCH_STAND_RIM_ABOVE_FOOT,
-  avatarHeadDeltaPx, avatarBodyCxDeltaPx,
+  avatarHeadDeltaPx, avatarHeadCxDeltaPx,
 } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
@@ -2101,8 +2101,6 @@ const SHADOW_MESH_GC_MS = 4000;
 
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure', 'lab-clear-item']);
-// 社長指示v0.25.3277: 武器箱/武器ドロップの頭上マークを出す「近く」の半径(px)。
-const PICKUP_MARK_NEAR_PX = 600;
 
 // 研究所ゾンビのテクスチャ名(Lv1 は敵idで男女を固定振り分け、Lv2/Lv3 は1種)。lab以外は null。
 // ★Lv2 は v0.25.2914 で男女を廃止して1種へ(社長指示「男女の区別は無くして一種類」・新アート)。
@@ -2721,9 +2719,6 @@ interface PickupView {
   // 旧: 均一fillの円を4枚重ねて**毎フレーム描き直し**(禁止事項1+per-frame Graphics)。
   glowHalo?: Sprite;
   glowCore?: Sprite;
-  // 社長指示v0.25.3277「武器箱はドロップなどもマーク表示(近くにいたら)」: 頭上の金の逆三角
-  // (作成時に1回だけ描くGraphics=per-frame再描画なし)。近距離の武器箱/武器ドロップだけ表示。
-  mark?: Container;
 }
 
 type EffectView = Container | Graphics | Text | Sprite;
@@ -12573,7 +12568,7 @@ export class PixiScene {
       const gBaselineTexName = avatarHeadBaselineTexName(gcls, warlordFullGhost, gWarlordKatana);
       const gHeadDeltaY = tex ? avatarHeadDeltaPx(bodyTexName2, gBaselineTexName) * Math.abs(view.sprite.scale.y) : 0;
       // v0.25.3278: 本体(drawPlayer)と同じ横中心追従(走り絵の前傾)を守護霊にも(同じ式の共有)。
-      const gBodyDeltaX = tex ? avatarBodyCxDeltaPx(bodyTexName2, gBaselineTexName) * view.sprite.scale.x : 0;
+      const gBodyDeltaX = tex ? avatarHeadCxDeltaPx(bodyTexName2, gBaselineTexName) * view.sprite.scale.x : 0;
       const gAvatarAlpha = tex ? GHOST_ALLY_ALPHA * lifecycleAlpha : 0;
       this.syncAvatarPartLayer(
         this.ghostAvatarAbove, gParts.filter(pt => pt.layer === 'above'), true, this.L.actorLayer,
@@ -13204,7 +13199,7 @@ export class PixiScene {
       const headDeltaY = avatarHeadDeltaPx(bodyTexName, baselineTexName) * Math.abs(view.sprite.scale.y);
       // v0.25.3278: 走り絵の前傾(体がボックス内で前方へ寄る)を全パーツのXへ追従。符号付きscale.x
       // を掛けるのでミラー(左向き)時は自動で逆向きに寄る。
-      const bodyDeltaX = avatarBodyCxDeltaPx(bodyTexName, baselineTexName) * view.sprite.scale.x;
+      const bodyDeltaX = avatarHeadCxDeltaPx(bodyTexName, baselineTexName) * view.sprite.scale.x;
       this.syncAvatarPartLayer(
         this.playerAvatarAbove, parts.filter(pt => pt.layer === 'above'), true, view.container,
         fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY, bodyDeltaX,
@@ -20074,27 +20069,6 @@ export class PixiScene {
       last.rawH = tex.height * sc;
     };
 
-    // 社長指示v0.25.3277「武器箱はドロップなどもマーク表示(近くにいたら)」: 武器箱/武器ドロップの
-    // 頭上に金の逆三角を跳ねさせる(プレイヤーから600px以内のみ)。Graphicsは作成時に1回だけ描く。
-    if (p.type === 'weapon-crate' || p.type === 'weapon-drop') {
-      const nearDist = Math.hypot(cx - this.seeThroughPlayer.cx, footY - this.seeThroughPlayer.footY);
-      if (nearDist < PICKUP_MARK_NEAR_PX) {
-        if (!entry.mark) {
-          const mc = new Container();
-          const tri = new Graphics();
-          tri.poly([-7, -12, 7, -12, 0, 0]).fill({ color: 0xfacc15 });
-          tri.poly([-4, -19, 4, -19, 0, -14]).fill({ color: 0xfacc15, alpha: 0.7 }); // 小さな二段目=視線を引く
-          mc.addChild(tri);
-          entry.container.addChild(mc);
-          entry.mark = mc;
-        }
-        const bounce = Math.abs(Math.sin(now / 260)) * 6;
-        entry.mark.visible = true;
-        entry.mark.position.set(Math.round(cx), Math.round(footY + floatOffset - size * 1.6 * d - 8 - bounce));
-        entry.mark.alpha = 0.95;
-      } else if (entry.mark) entry.mark.visible = false;
-    } else if (entry.mark) entry.mark.visible = false;
-
     // weapon-drop: ドロップした具体的な銃のスプライト(weaponKey 別)。素材がある銃のみ。
     if (p.type === 'weapon-drop' && hasWeaponIcon(p.weaponKey)) {
       const tex = getTexture(weaponIconName(p.weaponKey!));
@@ -21678,7 +21652,11 @@ export class PixiScene {
       // ①worldDrop(拾い物として落ちた物)でなくても通す ②距離で切らない(置き場所が仕様で決まっており、
       // 「近くにある時だけ」の弾の作法を当てはめる意味が無い)。色は宝物と同じ金。
       const isStartChest = p.type === 'chest' && p.chestKind === 'boss-start';
-      if (!isStartChest && !p.worldDrop) continue;
+      // 社長指示v0.25.3281「(武器箱は)弾薬と同じ仕様にそろえて」: 武器箱/武器ドロップは空輸
+      // (worldDrop)でなくても——中ボスドロップ等でも——弾薬と同じ「近く(500px)にある時だけ
+      // 画面端の方向矢印」を出す。色は既存のAMMO_INDICATOR_COLORの武器色のまま。
+      const isWeaponPickup = p.type === 'weapon-crate' || p.type === 'weapon-drop';
+      if (!isStartChest && !p.worldDrop && !isWeaponPickup) continue;
       const colorStr = isStartChest ? '#facc15' : AMMO_INDICATOR_COLOR[p.type];
       if (!colorStr) continue;
       const tx = toScreenX(p.x + 8); // 監査v0.25.3008(A-1): post-zoom実画面座標

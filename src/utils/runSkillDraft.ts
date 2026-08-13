@@ -85,8 +85,9 @@ const isDraftEligible = (input: RunSkillDraftInput, key: SkillKey): boolean => {
   if (key === 'dog-run' && !input.dogEquipped) return false; // §1-2④「発動条件を満たせる」の実対象
   // §27-2★B(社長裁定「ゲート化して」v0.25.3267): 前提が無いと空振りする爆発系はデッキに乗せない。
   // exploder=爆発源(手榴弾装備 or 爆発を生むスキルをラン中取得済み)がある時のみ。
+  // v0.25.3281: execution-shock(処刑の爆発)は爆発要素へ統一されたので爆発源に数える(社長指示の帰結)。
   if (key === 'exploder' && !(input.grenadeEquipped ||
-    (['fire-shooter', 'bomb-counter', 'bomber', 'reflex'] as SkillKey[]).some(k => input.runSkills.includes(k)))) return false;
+    (['fire-shooter', 'bomb-counter', 'bomber', 'reflex', 'execution-shock'] as SkillKey[]).some(k => input.runSkills.includes(k)))) return false;
   // bomber=トリガー(手榴弾装備 or ボムカウンター取得済み)がある時のみ。
   if (key === 'bomber' && !(input.grenadeEquipped || input.runSkills.includes('bomb-counter'))) return false;
   return true;
