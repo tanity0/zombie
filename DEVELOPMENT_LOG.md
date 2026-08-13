@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.3253 — スラッシャー改修着地: タップ連打のCD式チェーンへ(Sonnet納品+検収時修正)【2026-08-13 12:09 JST】
+- gameStore: SLASHER_RING/JUST機構を全撤去(grep 0件)→SLASHER_CHAIN_CD_MS=500のチェーンへ。
+  連数=Lv1:2/Lv2:3/Lv3:4(最終段KB×2=SLASHER_FINAL_KB_MULT)。減衰2/3維持。使い切りで通常CD復帰。
+  早すぎるタップは不発扱い(連数は減らない)。pixiSceneの縮小リング描画も撤去。
+- 検収時修正(★未決の解決): **チェーン時間切れ2秒**(SLASHER_CHAIN_TIMEOUT_MS・CD明けから2秒無入力で
+  破棄→次は通常の初撃)。放置後の一振りが2/3減衰のまま残る欠陥の防止。
+- campaign.ts説明文更新(秒数は本文に書かない)。
+- 検証: typecheck 0/lint 0/対象テスト105+74 passed。実機確認: タップ連打の手応え・4段目の大KB・
+  0.5秒間隔の体感。
+
 ## v0.25.3252 — 覚醒演出+本体オーラ着地(Sonnet納品・検収済み)【2026-08-13 11:55 JST】
 - 新規 awakenCutin.ts/AwakenCutin.tsx(黒帯+金文字1.2秒・ゲーム非停止)。gameStore: Lv3到達で
   金リング3連+強glow2発(noShadow)+粒子+awakenCutin(多重は1.2秒窓で1回)。SE=heavy-impact+

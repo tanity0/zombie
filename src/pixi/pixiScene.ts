@@ -22,7 +22,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
 } from '../types/game';
-import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+import { useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS,
@@ -3122,7 +3122,6 @@ export class PixiScene {
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
   private homingLockGfx = new Graphics();   // ホーミング弾ロックインジケーター(ロック済み敵の頭上マーカー)
   private flareReadyGfx = new Graphics();   // フレアガンのチャージ完了マーク(プレイヤー頭上の小さな炎・v0.25.2154)
-  private slasherRingGfx = new Graphics();  // スラッシャー: アクティブリロード型タイミングリング(描画のみ)
   // ロックオンサークルの出現アニメ(敵ID→開始時刻+ロック数)。ズームアウト→イン+フェードインの起点。
   private lockAnim = new Map<string, { startedAt: number; count: number }>();
   private localEventShadeGfx = new Graphics();
@@ -4069,7 +4068,6 @@ export class PixiScene {
     this.L.effectLayer.addChild(this.skadiHazardContainer); // 氷塊/氷刃スプライト
     this.L.effectLayer.addChild(this.homingLockGfx);
     this.L.effectLayer.addChild(this.flareReadyGfx);
-    this.L.effectLayer.addChild(this.slasherRingGfx);
     this.marksmanMarkGfx.blendMode = 'add';
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
     // 通常合成(光らせない=加算しない)。アンカーは竜巻の根元(地面の渦)= 吸引中心。
@@ -7082,7 +7080,6 @@ export class PixiScene {
     this.updateFlareReadyMark(s.player, now);     // フレアガンCD明けの頭上炎マーク(一瞬・ブーメラン型)
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
-    this.syncSlasherRing(s.player, s.realGameTime);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
@@ -11533,33 +11530,6 @@ export class PixiScene {
     }
     // ロックが外れた敵のアニメ状態を破棄。
     for (const id of [...this.lockAnim.keys()]) if (!seen.has(id)) this.lockAnim.delete(id);
-  }
-
-  // スラッシャー: タイミングリング(描画のみ・当たり判定に影響なし)。縮むリングがゴールに重なる瞬間=ジャスト。
-  // gameTime ベースで判定と同じ時計を使う(ストア側の追撃判定とズレない)。単一リングなので軽量。
-  private syncSlasherRing(player: Player, realGameTime: number) {
-    const g = this.slasherRingGfx;
-    g.clear();
-    const start = player.slasherRingStartAt;
-    if (!start || start <= 0) return;
-    const elapsed = realGameTime - start;
-    if (elapsed < 0 || elapsed > SLASHER_RING_MS + SLASHER_JUST_MS) return; // 寿命外は描かない
-    const cx = player.x + player.width / 2;
-    const cy = player.y + player.height / 2;
-    const base = huntingMeleeRadius(player);
-    const rGoal = base * 0.5;
-    const rStart = base * 1.6;
-    const t = Math.min(1, elapsed / SLASHER_RING_MS);
-    const ease = 1 - Math.pow(1 - t, 2);              // ズームイン(縮む)
-    const shrinkR = rStart + (rGoal - rStart) * ease;
-    const fade = Math.min(1, t * 1.4);                // フェードイン
-    const justNow = elapsed >= SLASHER_RING_MS - SLASHER_JUST_MS;
-    // ゴールサークル(薄く・固定)。
-    g.circle(cx, cy, rGoal).stroke({ width: 2, color: 0xbef264, alpha: 0.35 });
-    // 縮むサークル(フェードイン)。ジャスト窓では白く強調。
-    const col = justNow ? 0xffffff : 0xbef264;
-    g.circle(cx, cy, shrinkR).stroke({ width: justNow ? 3.5 : 2.5, color: col, alpha: (justNow ? 0.95 : 0.7) * fade });
-    if (justNow) g.circle(cx, cy, rGoal).stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 }); // ジャスト合図
   }
 
   // スカジの氷ハザード描画(判定はstore)。氷塊マーカー=赤いテレグラフ円の2秒フェードイン+氷塊スプライトせり上がり。

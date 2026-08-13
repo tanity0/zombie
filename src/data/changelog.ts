@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3253',
+    items: [
+      'スラッシャーを改修: タイミングリングを廃止し、タップ連打で近接攻撃を連続で振れるようになりました(Lv1=2連/Lv2=3連/Lv3=4連・最終段は大きくノックバック)。',
+    ],
+  },
+  {
     version: '0.25.3252',
     items: [
       '覚醒演出を追加: スキルがLv3(最大)に到達した瞬間、金のバースト+「覚醒」カットイン帯+決めSEが出ます。',

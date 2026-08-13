@@ -161,8 +161,8 @@ export interface Player extends DashLocomotionState {
   // 装備スキルの状態フィールド(状態を持つスキルのみ。全て number・既定0。resetGame で初期化)。
   fireShooterCdUntil: number;  // ファイアシューター: 爆発弾化の裏CD(gameTime)
   reflexCdUntil: number;       // 反射神経: 反撃CD(gameTime)
-  slasherRingStartAt: number;  // スラッシャー: タイミングリング開始 realGameTime(slow-mo非依存。0=非アクティブ)
-  slasherStrikeStep: number;   // スラッシャー: 既に出した追撃回数(0..3)
+  slasherChainReadyAt: number; // スラッシャー: 次のチェーン攻撃が撃てる realGameTime(slow-mo非依存。0=非アクティブ)
+  slasherStrikeStep: number;   // スラッシャー: 既に出した追撃回数(0..2)
   slasherReach: number;        // スラッシャー: 追撃に使う近接射程(初撃時の射程を記録=溜め延長が消費されても追撃は伸びたまま。0=未設定)
   knifeComboCount: number;     // ナイフマスター: 近接ダメージコンボ数
   knifeComboUntil: number;     // ナイフマスター: コンボ持続(gameTime)

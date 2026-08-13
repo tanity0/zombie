@@ -3489,30 +3489,28 @@ const placeSensorMineOnSwing = (
   return true;
 };
 
-// スキル: スラッシャー = アクティブリロード型のタイミングリング追撃(最大3連)。
-// 近接が当たるとプレイヤーへ縮むリングが出て(描画は pixiScene)、ゴールに重なるジャスト窓(±50ms=SLASHER_JUST_MS)で
-// タップすると追撃が出る。成功で次のリングを再生成、最大3連。窓を外す/未入力でコンボ終了。
-// ダメージは追撃ごとに ×2/3 減衰(1.0 / 0.667 / 0.444)。当たった敵のみ通常ノックバック。
-export const SLASHER_RING_MS = 500;   // リングが縮みきる(=ジャストの瞬間)までの時間
-export const SLASHER_JUST_MS = 50;    // ジャスト窓 ±50ms(社長指示で入力幅を0.1秒短縮=幅200→100ms)
-export const SLASHER_MAX_HITS = 3;    // 追撃の最大連数
+// スキル: スラッシャー = 近接命中後、チェーン間CD0.5秒で連続して振れる(社長指示2026-08-13・
+// SKILL_BUILD_REDESIGN.md §25。旧・タイミングリングのジャストタップ追撃は廃止)。
+// 連数はレベル依存: Lv1=2回/Lv2=3回/Lv3=4回(初撃+追撃)。使い切ったら通常の近接CDへ戻る。
+// ダメージは追撃ごとに ×2/3 減衰(1.0 / 0.667 / 0.444・旧仕様のまま維持)。
+// Lv3の最終段(4段目)のみノックバック大(叩き台2倍)。それ以外の追撃は通常ノックバック。
+export const SLASHER_CHAIN_CD_MS = 500; // チェーン攻撃間のクールダウン(タップで消化。タイミング精度は問わない)
+export const SLASHER_CHAIN_TIMEOUT_MS = 2000; // CD明けからこの時間タップが無ければチェーン破棄(叩き台・検収時追加)
+export const SLASHER_MAX_HITS = 3;      // 追撃の最大連数(初撃を除く。Lvでmin適用)
 export const SLASHER_MULTS = [1, 2 / 3, (2 / 3) * (2 / 3)]; // 各追撃のダメージ倍率
-const applySlasherTimedStrike = (
+export const SLASHER_FINAL_KB_MULT = 2; // Lv3最終段のみ適用するノックバック倍率(叩き台)
+const applySlasherChainStrike = (
   get: () => GameState,
   player: Player,
   gameTime: number,
   realGameTime: number,
 ): CounterTriggerResult => {
-  // リングのジャスト判定は slow-mo 非依存の realGameTime で測る(A案)。コンボ倍率や窓は
-  // 従来どおり gameTime 基準(ポーズ整合)。
-  const elapsed = realGameTime - player.slasherRingStartAt;
   const step = player.slasherStrikeStep;
-  // 連数の上限はレベル依存: Lv1 1連 / Lv2 2連 / Lv3 3連。
+  // 連数の上限はレベル依存: Lv1 1連(追撃) / Lv2 2連 / Lv3 3連(=初撃と合わせて2/3/4回)。
   const slLv = skillLevel(player, 'slasher');
   const maxHits = slLv ? Math.min(SLASHER_MAX_HITS, slLv) : SLASHER_MAX_HITS;
-  const just = elapsed >= SLASHER_RING_MS - SLASHER_JUST_MS && elapsed <= SLASHER_RING_MS + SLASHER_JUST_MS;
-  // 窓を外した / 連数を使い切った → コンボ終了(追撃なし)。
-  if (!just || step >= maxHits) {
+  // 連数を使い切っていたら追撃なし(ここに来るのはチェーンCD明けのタップのみ=下のゲートで保証済みだが安全側)。
+  if (step >= maxHits) {
     get().setSlasherCombo(0, 0);
     return { swung: false, hit: false, finish: false, killed: 0 };
   }
@@ -3526,7 +3524,10 @@ const applySlasherTimedStrike = (
   const meleeDamage = meleeSwingBaseDamage(melee, player);
   const comboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
   const dmg = meleeDamage * SLASHER_MULTS[step] * skillOutgoingDamageMult(player) * comboMult;
-  const kbMult = KNOCKBACK_SPEED / BULLET_KNOCKBACK_SPEED; // 通常近接相当のノックバック
+  const nextStep = step + 1;
+  // Lv3(maxHits=3)の最終段(nextStep===maxHits=この一撃で使い切る)のみノックバック大。
+  const isFinalBigKbStep = slLv === 3 && nextStep === maxHits;
+  const kbMult = (KNOCKBACK_SPEED / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
   const r2 = meleeRange * meleeRange;
   let killed = 0;
   let hit = false;
@@ -3546,7 +3547,7 @@ const applySlasherTimedStrike = (
       get().spawnBurst(ecx, ecy, '#bef264', 10);
     } else {
       const d = Math.max(0.001, Math.hypot(dx, dy));
-      get().knockbackEnemy(e.id, dx / d, dy / d, kbMult); // 追撃が当たった敵のみノックバック
+      get().knockbackEnemy(e.id, dx / d, dy / d, kbMult); // 追撃が当たった敵のみノックバック(Lv3最終段のみ大)
     }
   }
   get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃
@@ -3559,11 +3560,15 @@ const applySlasherTimedStrike = (
       }));
     }
   }
-  // 追撃のジャスト成立フィードバック(ダンスの「JUST!」と同じコールアウト)。頭上に一瞬。
-  get().spawnCallout(pcx, player.y - 24, 'JUST!', '#bef264', { scale: 1.2 });
-  const nextStep = step + 1;
-  if (nextStep < maxHits) get().setSlasherCombo(realGameTime, nextStep); // 次のリングを再生成(realGameTime基準)
-  else get().setSlasherCombo(0, 0);                                  // 連数完了
+  if (nextStep < maxHits) {
+    get().setSlasherCombo(realGameTime + SLASHER_CHAIN_CD_MS, nextStep); // 次のチェーンCDを開始
+  } else {
+    // 連数使い切り → この瞬間から通常の近接CD(COUNTER_WINDOW+COUNTER_COOLDOWN)へ復帰。
+    useGameStore.setState(state => ({
+      player: { ...state.player, counterCooldownEnd: Date.now() + COUNTER_WINDOW + COUNTER_COOLDOWN },
+    }));
+    get().setSlasherCombo(0, 0);
+  }
   return { swung: true, hit, finish: false, killed };
 };
 
@@ -4078,7 +4083,7 @@ interface GameState {
   rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
   openCounterWindow: () => void;
-  setSlasherCombo: (startAt: number, step: number) => void;
+  setSlasherCombo: (readyAt: number, step: number) => void;
   markMeleeSwingFx: () => void; // 近接スイング演出の起点を更新(描画のみ)。追撃など別経路から呼ぶ。
   markFirstAidPoseFx: () => void; // 救急鞄スキル発動演出の起点を更新(描画のみ)。払い出しの瞬間に呼ぶ。
   markCastleBossSpawned: () => void;
@@ -4495,7 +4500,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeaponCooldowns: {},
     skills: [],
     skillLevels: {},
-    fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0, slasherReach: 0,
+    fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
@@ -5204,13 +5209,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 訓練(M0)の封印(社長指示v0.25.2293): **近接チュートリアルで解禁されるまで振れない**。
     // 教わっていない技が先に暴発すると、説明と体験の順序が崩れる(=台本が成立しない)。
     if (!get().m0Unlocked.melee) return { swung: false, hit: false, finish: false, killed: 0 };
-    // スキル スラッシャー: タイミングリングが生きている間は、タップを追撃判定へ回す(CD有無に関わらず優先)。
-    // ジャストで追撃→次のリング、外す/3連終了でコンボ終了。寿命を過ぎたリングは無視して通常スイングへ。
-    if (
-      hasSkill(player, 'slasher') && player.slasherRingStartAt > 0 &&
-      realGameTime <= player.slasherRingStartAt + SLASHER_RING_MS + SLASHER_JUST_MS
-    ) {
-      return applySlasherTimedStrike(get, player, gameTime, realGameTime);
+    // スキル スラッシャー: 使い切っていないチェーンが有効な間は、タップをチェーン継続へ回す
+    // (通常CDより短い専用CD=SLASHER_CHAIN_CD_MSだけで消化。タイミング精度は問わない=CD明けなら即成立)。
+    // チェーンCD中のタップは通常の近接CDと同じ「不発」扱い(連数は減らない・コンボは終わらない)。
+    if (hasSkill(player, 'slasher') && player.slasherChainReadyAt > 0) {
+      // 時間切れ(検収時追加・叩き台2秒): チェーンを放置したら破棄して通常の初撃に戻す。
+      // これが無いと、初撃の数十秒後の次の一振りまで「2撃目」扱い=2/3減衰のままになってしまう
+      // (旧リングの寿命~550msに相当する脱出口)。
+      if (realGameTime >= player.slasherChainReadyAt + SLASHER_CHAIN_TIMEOUT_MS) {
+        get().setSlasherCombo(0, 0); // 破棄して下の通常経路へ(通常CDは自然に明けている時間帯)
+      } else if (realGameTime < player.slasherChainReadyAt) {
+        return { swung: false, hit: false, finish: false, killed: 0 }; // チェーンCD中
+      } else {
+        return applySlasherChainStrike(get, player, gameTime, realGameTime);
+      }
     }
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) {
@@ -5770,9 +5782,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         huntingChargeStartedAt: 0,
         knifeComboCount: knifeCombo.count,
         knifeComboUntil: knifeCombo.until,
-        // スキル スラッシャー: この近接が命中(slashAt有)したらタイミングリングを開始(step=0)。
-        // 命中しなければ非アクティブ(リング無し)。以後の追撃はタップのジャスト判定で出す。
-        slasherRingStartAt: hasSkill(state.player, 'slasher') && slashAt.length > 0 ? state.realGameTime : 0,
+        // スキル スラッシャー: この近接が命中(slashAt有)したらチェーンを開始(step=0・0.5秒後にチェーンCD明け)。
+        // 命中しなければ非アクティブ(チェーン無し)。以後の追撃はチェーンCD明けのタップで出す。
+        slasherChainReadyAt: hasSkill(state.player, 'slasher') && slashAt.length > 0
+          ? state.realGameTime + SLASHER_CHAIN_CD_MS
+          : 0,
         slasherStrikeStep: 0,
         // 追撃用に「初撃時点の射程」を記録(state.player は更新前=huntingCharged がまだ true なので溜め延長を含む)。
         slasherReach: hasSkill(state.player, 'slasher') && slashAt.length > 0 ? huntingMeleeRadius(state.player) : 0,
@@ -5903,8 +5917,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
       counterMasterKnockback(get, pcx, pcy, counterMasterKbScale(player));
     }
-    // スキル スラッシャーのリング開始はこの近接スイングの set()(player.slasherRingStartAt)で行う。
-    // 追撃自体は「リングのジャスト窓でのタップ」で applySlasherTimedStrike が出す(自動ではない)。
+    // スキル スラッシャーのチェーン開始はこの近接スイングの set()(player.slasherChainReadyAt)で行う。
+    // 追撃自体は「チェーンCD明けのタップ」で applySlasherChainStrike が出す(自動ではない)。
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
     const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, meleeDamage * 2.5);
@@ -11695,9 +11709,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  // スキル: スラッシャーのタイミングリング状態を設定(startAt=0 でコンボ終了)。
-  setSlasherCombo: (startAt, step) => {
-    set(state => ({ player: { ...state.player, slasherRingStartAt: startAt, slasherStrikeStep: step } }));
+  // スキル: スラッシャーのチェーン状態を設定(readyAt=0 でチェーン終了=通常CDへ復帰)。
+  setSlasherCombo: (readyAt, step) => {
+    set(state => ({ player: { ...state.player, slasherChainReadyAt: readyAt, slasherStrikeStep: step } }));
   },
 
   markMeleeSwingFx: () => {
@@ -14835,7 +14849,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           subWeapons: runSubs,
           skills: runSkills,
           skillLevels: runSkillLevels,
-          fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0, slasherReach: 0,
+          fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
