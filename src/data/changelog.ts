@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3321',
+    items: [
+      'ゲーム内容の変更はありません(異常動作のビジュアル方針=全種ド派手な専用演出を用意、を台帳へ記録)。',
+    ],
+  },
+  {
     version: '0.25.3320',
     items: [
       'ゲーム内容の変更はありません(異常動作: 犬レシピ=ドッグラン+バーサーカー+吸血へ改訂)。',
