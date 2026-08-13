@@ -2083,6 +2083,15 @@ const SHADOW_HEIGHT_DEADZONE_PX = 6;
 // アクター/拾い物は対象外(歩行・浮遊で動くため食い込ませる意味が無い)。
 const SHADOW_TUCK_FRAC = Math.max(0, tsNum('shadowtuck', 10)) / 100;
 const SHADOW_TUCK_MAX_PX = 20;
+// 社長裁定v0.25.3288「丸影をオブジェクト幅分横にだけ伸ばす」: 静物の接地アウターを表示幅いっぱい
+// (既定105%)へ**横方向のみ**拡大(縦はそのまま=平たく裾を覆う)。芯はその66%。斜め向き素材
+// (トラック/テント等)の対角の接地線も、幅いっぱいの丸影がまとめて覆う=素材ごとの手調整不要。
+// `?shadowblob=<percent>`(0=無効・既定105)。
+const SHADOW_STATIC_BLOB_W_FRAC = Math.max(0, tsNum('shadowblob', 105)) / 100;
+// 社長報告v0.25.3288「プレイヤー影もよく見ると少し浮いてる=全キャラ浮いてる」: 影全体(接地2枚+
+// シルエット根元)を数px上へ食い込ませる。旧Canvas経路に居た -2px 相当の復活(v9裁定Cで一度
+// 落とした値だが、実機で浮きが見えるため戻す)。`?shadowlift=<px>`(0=無効・既定2)。
+const SHADOW_CONTACT_LIFT_PX = Math.max(0, tsNum('shadowlift', 2));
 
 // ---- 地平線帯の詰め(昼のみ実質的に効く。§3-9-B確定) -----------------------------------------
 const SHADOW_HORIZON_TRIM_DEADZONE_PX = 12;
@@ -11153,6 +11162,8 @@ export class PixiScene {
       footX -= ambDirX * tuck;
       footY -= ambDirY * tuck;
     }
+    // 全キャスターの「浮き」対策(v0.25.3288): 影全体を数px上へ=足/裾に食い込ませる。
+    footY -= SHADOW_CONTACT_LIFT_PX;
 
     const staticFade = req.isStatic ? this.shadowStaticFade(footX, footY) : 1;
     const totalAlpha = alpha * floatFade * staticFade;
@@ -11231,10 +11242,16 @@ export class PixiScene {
       if (st > gbest) { gbest = st; gdirX = sl.dirX; gdirY = sl.dirY; }
     }
     const scaleMult = req.scaleMult ?? 1;
-    const coreW = req.rawW * Math.max(SHADOW_CORE_MIN_W_FRAC, SHADOW_FOOT_NARROW * SHADOW_CORE_W_MULT) * scaleMult * shrink;
+    let coreW = req.rawW * Math.max(SHADOW_CORE_MIN_W_FRAC, SHADOW_FOOT_NARROW * SHADOW_CORE_W_MULT) * scaleMult * shrink;
     const coreH = coreW * SHADOW_CORE_ASPECT;
-    const outerW = coreW * SHADOW_OUTER_SCALE;
+    let outerW = coreW * SHADOW_OUTER_SCALE;
     const outerH = coreH * SHADOW_OUTER_SCALE;
+    // 社長裁定v0.25.3288: 静物は接地丸影を**横にだけ**表示幅いっぱいへ(縦=coreH/outerHはそのまま)。
+    // 斜め素材の対角接地線を幅広の平たい丸影で覆う(上の SHADOW_STATIC_BLOB_W_FRAC 参照)。
+    if (req.isStatic && SHADOW_STATIC_BLOB_W_FRAC > 0) {
+      outerW = Math.max(outerW, req.rawW * SHADOW_STATIC_BLOB_W_FRAC);
+      coreW = Math.max(coreW, req.rawW * SHADOW_STATIC_BLOB_W_FRAC * 0.66);
+    }
     const nonExplLen = req.rawH * lenRatio;
     const a = Math.max(1, outerW / 2), b = Math.max(1, outerH / 2);
     const dirDenom = Math.hypot(gdirX / a, gdirY / b) || 1;
