@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3286',
+    items: [
+      'ヨルムンガルドの影の位置を修正しました(体の重心の下に来るように)。',
+    ],
+  },
+  {
     version: '0.25.3285',
     items: [
       '爆発アニメの発生位置を修正: 絵の下辺(発生源)が爆心に揃うようにしました(低すぎたのを上へ)。',
