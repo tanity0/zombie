@@ -3494,7 +3494,7 @@ const placeSensorMineOnSwing = (
 // 連数はレベル依存: Lv1=2回/Lv2=3回/Lv3=4回(初撃+追撃)。使い切ったら通常の近接CDへ戻る。
 // ダメージは追撃ごとに ×2/3 減衰(1.0 / 0.667 / 0.444・旧仕様のまま維持)。
 // Lv3の最終段(4段目)のみノックバック大(叩き台2倍)。それ以外の追撃は通常ノックバック。
-export const SLASHER_CHAIN_CD_MS = 500; // チェーン攻撃間のクールダウン(タップで消化。タイミング精度は問わない)
+export const SLASHER_CHAIN_CD_MS = 300; // チェーン攻撃間のクールダウン(社長指示v0.25.3254「0.3秒で」)
 export const SLASHER_CHAIN_TIMEOUT_MS = 2000; // CD明けからこの時間タップが無ければチェーン破棄(叩き台・検収時追加)
 export const SLASHER_MAX_HITS = 3;      // 追撃の最大連数(初撃を除く。Lvでmin適用)
 export const SLASHER_MULTS = [1, 2 / 3, (2 / 3) * (2 / 3)]; // 各追撃のダメージ倍率
@@ -4084,6 +4084,7 @@ interface GameState {
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
   openCounterWindow: () => void;
   setSlasherCombo: (readyAt: number, step: number) => void;
+  pumpSlasherQueuedTap: () => void; // スラッシャー先行入力の自動発動(毎フレーム・useGameLoopから)
   markMeleeSwingFx: () => void; // 近接スイング演出の起点を更新(描画のみ)。追撃など別経路から呼ぶ。
   markFirstAidPoseFx: () => void; // 救急鞄スキル発動演出の起点を更新(描画のみ)。払い出しの瞬間に呼ぶ。
   markCastleBossSpawned: () => void;
@@ -4500,7 +4501,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeaponCooldowns: {},
     skills: [],
     skillLevels: {},
-    fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0,
+    fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0, slasherQueuedTap: false,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
@@ -5218,8 +5219,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (旧リングの寿命~550msに相当する脱出口)。
       if (realGameTime >= player.slasherChainReadyAt + SLASHER_CHAIN_TIMEOUT_MS) {
         get().setSlasherCombo(0, 0); // 破棄して下の通常経路へ(通常CDは自然に明けている時間帯)
+        set(state => ({ player: { ...state.player, slasherQueuedTap: false } }));
       } else if (realGameTime < player.slasherChainReadyAt) {
-        return { swung: false, hit: false, finish: false, killed: 0 }; // チェーンCD中
+        // 先行入力バッファ(社長指示v0.25.3254): CD中のタップは捨てずに予約し、CD明けに自動発動する
+        // (発動はuseGameLoopのpumpSlasherQueuedTap)。連数は減らない。
+        set(state => ({ player: { ...state.player, slasherQueuedTap: true } }));
+        return { swung: false, hit: false, finish: false, killed: 0 }; // チェーンCD中(予約済み)
       } else {
         return applySlasherChainStrike(get, player, gameTime, realGameTime);
       }
@@ -11710,8 +11715,23 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // スキル: スラッシャーのチェーン状態を設定(readyAt=0 でチェーン終了=通常CDへ復帰)。
+  pumpSlasherQueuedTap: () => {
+    // 先行入力の自動発動(社長指示v0.25.3254「0.3以内に次がタップされてれば自動発動」)。
+    // useGameLoopが毎フレーム呼ぶ。予約なし/チェーン無し/CD中は即return=実質ゼロコスト。
+    const s0 = get();
+    const p = s0.player;
+    if (!p.slasherQueuedTap || p.slasherChainReadyAt <= 0) return;
+    if (s0.realGameTime < p.slasherChainReadyAt) return;
+    set(state => ({ player: { ...state.player, slasherQueuedTap: false } }));
+    if (s0.realGameTime >= p.slasherChainReadyAt + SLASHER_CHAIN_TIMEOUT_MS) {
+      get().setSlasherCombo(0, 0); // 予約したまま長時間止まっていた(ポーズ等)場合は破棄
+      return;
+    }
+    applySlasherChainStrike(get, get().player, s0.gameTime, s0.realGameTime);
+  },
   setSlasherCombo: (readyAt, step) => {
-    set(state => ({ player: { ...state.player, slasherChainReadyAt: readyAt, slasherStrikeStep: step } }));
+    // readyAt=0(チェーン終了/破棄)の時は先行入力の予約も一緒に破棄する(持ち越さない)。
+    set(state => ({ player: { ...state.player, slasherChainReadyAt: readyAt, slasherStrikeStep: step, ...(readyAt === 0 ? { slasherQueuedTap: false } : {}) } }));
   },
 
   markMeleeSwingFx: () => {
@@ -14849,7 +14869,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           subWeapons: runSubs,
           skills: runSkills,
           skillLevels: runSkillLevels,
-          fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0,
+          fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0, slasherQueuedTap: false,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,

@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.3254 — スラッシャー: CD0.3秒化+先行入力バッファ(社長指示・設計チャット直接実装)【2026-08-13 12:37 JST】
+- 社長質問「0.3以内に次が1度でもタップされてれば自動発動するよね?」→現状は捨てていた=先行入力を実装:
+  CD中のタップは`player.slasherQueuedTap`に予約し、useGameLoopの`pumpSlasherQueuedTap()`(毎フレーム・
+  予約なしは即return)がCD明けに自動発動。チェーン終了/破棄(setSlasherCombo(0,0))で予約も破棄。
+  ポーズ等で予約のままタイムアウト(2秒)を跨いだ場合は破棄。
+- SLASHER_CHAIN_CD_MS 500→**300**。
+- 検証: typecheck 0/lint 0/対象テスト105 passed。実機確認: 連打の追従感(0.3秒+先行入力で
+  「連打すれば途切れず出る」体感になっているか)。
+
 ## v0.25.3253 — スラッシャー改修着地: タップ連打のCD式チェーンへ(Sonnet納品+検収時修正)【2026-08-13 12:09 JST】
 - gameStore: SLASHER_RING/JUST機構を全撤去(grep 0件)→SLASHER_CHAIN_CD_MS=500のチェーンへ。
   連数=Lv1:2/Lv2:3/Lv3:4(最終段KB×2=SLASHER_FINAL_KB_MULT)。減衰2/3維持。使い切りで通常CD復帰。

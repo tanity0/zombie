@@ -164,6 +164,7 @@ export interface Player extends DashLocomotionState {
   slasherChainReadyAt: number; // スラッシャー: 次のチェーン攻撃が撃てる realGameTime(slow-mo非依存。0=非アクティブ)
   slasherStrikeStep: number;   // スラッシャー: 既に出した追撃回数(0..2)
   slasherReach: number;        // スラッシャー: 追撃に使う近接射程(初撃時の射程を記録=溜め延長が消費されても追撃は伸びたまま。0=未設定)
+  slasherQueuedTap: boolean;   // スラッシャー: チェーンCD中の先行入力予約(CD明けに自動発動・v0.25.3254)
   knifeComboCount: number;     // ナイフマスター: 近接ダメージコンボ数
   knifeComboUntil: number;     // ナイフマスター: コンボ持続(gameTime)
   benkeiBuffUntil: number;     // 弁慶: crit率バフ終了(gameTime)
