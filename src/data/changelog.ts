@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3279',
+    items: [
+      'グラビティショットの吸引力を仕様どおりに修正しました(実効約2.2倍=しっかり引き寄せられます。渦が消えた後は自然に減速して止まります)。',
+    ],
+  },
+  {
     version: '0.25.3278',
     items: [
       'アバター(耳・尻尾)が走り中に体からズレる問題を修正しました(前傾ぶん横にも追従します)。',

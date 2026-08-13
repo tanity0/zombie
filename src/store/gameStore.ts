@@ -6536,7 +6536,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...e,
         knockbackVx: ((best.x - ecx) / dist) * GRAVITY_SHOT_PULL_SPEED,
         knockbackVy: ((best.y - ecy) / dist) * GRAVITY_SHOT_PULL_SPEED,
-        knockbackUntil: gameTime + 120,
+        // 社長裁定v0.25.3279(案A): 旧+120msだと消費側の減衰(残り÷KNOCKBACK_DURATION)が常に
+        // ×0.43掛かり、実効≈51px/s(仕様§16-5の120px/sと乖離)だった。毎フレーム書き直す前提で
+        // フル窓を与えると減衰≈1=実効が仕様どおりになり、渦が消えた後は自然に減衰する尾が付く。
+        knockbackUntil: gameTime + KNOCKBACK_DURATION,
       };
     });
     if (changed) set({ enemies: nextEnemies });
