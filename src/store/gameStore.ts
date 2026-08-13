@@ -23,12 +23,14 @@ import {
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
+  MOLOTOV_IGNITE_BURN_MS,
   isEnemyInGroundFire,
 } from '../utils/molotov';
 // SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の判定叩き台(純関数群)。
 import {
   BLOOD_TREADS_RADIUS_PX, BLOOD_TREADS_TICK_MS, bloodTreadsParams,
   GRAVITY_SHOT_PULL_SPEED, GRAVITY_SHOT_PULL_MS, rollGravityShotWell,
+  GRAVITY_SHOT_BOSS_SLOW_MULT, GRAVITY_SHOT_BOSS_SLOW_REFRESH_MS,
   rollVampireHeal,
   INCENDIARY_BURN_TICK_MS,
   executionShockParams,
@@ -971,8 +973,18 @@ export const BOSS_CRIT_SLOW_MULT = 0.5;            // 「動きが半減」(社�
 export const bossCritSlowPatch = (enemy: Enemy, gameTime: number): Partial<Enemy> | null =>
   usesBossCrit(enemy.type) ? { bossSlowUntil: gameTime + BOSS_CRIT_SLOW_MS } : null;
 /** ボスの移動速度に掛ける倍率(半減中なら0.5)。ボス以外・非半減中は1。 */
-export const bossSlowMult = (enemy: Enemy, gameTime: number): number =>
-  (enemy.bossSlowUntil !== undefined && gameTime < enemy.bossSlowUntil) ? BOSS_CRIT_SLOW_MULT : 1;
+export const bossSlowMult = (enemy: Enemy, gameTime: number): number => {
+  const crit = (enemy.bossSlowUntil !== undefined && gameTime < enemy.bossSlowUntil) ? BOSS_CRIT_SLOW_MULT : 1;
+  // 社長指示v0.25.3280「グラヴィティはボスも減速させて」: 渦内のボスは移動半減。この関数は
+  // 全ボス移動経路(城ボス/天使/追跡式の計13箇所)の共通チョークなので、ここに乗せれば全員に効く。
+  // 重なった時は強い方だけ(乗算だと過剰)。CD2倍(bossCritCdMult)には乗せない。
+  const grav = (enemy.gravitySlowUntil !== undefined && gameTime < enemy.gravitySlowUntil) ? GRAVITY_SHOT_BOSS_SLOW_MULT : 1;
+  // 社長裁定v0.25.3280: アイスショットのボス解禁(強度半分は適用側でpctに掛けて書き込み済み)。
+  // ボスだけここで読む(通常敵はiceSlowMult側=二重掛け防止でisBossTypeで排他)。
+  const ice = (isBossType(enemy.type) && enemy.iceSlowUntil !== undefined && gameTime < enemy.iceSlowUntil)
+    ? Math.max(0, 1 - (enemy.iceSlowPct ?? 0)) : 1;
+  return Math.min(crit, grav, ice);
+};
 
 // CRIT-UNIFY §9.2(社長裁定・クリ再設計確定仕様): ①クリ効果=移動半減(上)+次行動CD2倍。
 // 窓はbossSlowMultと同じ`bossSlowUntil`(=既存の半減窓・5秒)を共用する(新しいフィールドを増やさない)。
@@ -6425,16 +6437,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
     if (aliveFires.length !== groundFires.length || hits.length > 0) {
+      // 社長指示v0.25.3280「一度踏むと延焼にする」: 即時ダメージ(damageEnemy)を廃止し、触れた敵に
+      // 延焼(burnUntil/burnDpsTick)を付ける。刻むのは既存のtickBurningEnemies(500ms)=赤点滅も
+      // ダメージ数字もそちらが出す。既に強い延焼が付いていたら下書きしない(Math.max)。
+      // 踏み続けている間はlastFireHitAtスロットル(500ms)ごとに窓が更新される=離れてから3秒燃える。
       set(state => ({
         groundFires: aliveFires,
         enemies: hits.length > 0
-          ? state.enemies.map(e => hits.some(h => h.id === e.id) ? { ...e, lastFireHitAt: gameTime } : e)
+          ? state.enemies.map(e => {
+              const h = hits.find(hh => hh.id === e.id);
+              if (!h) return e;
+              return {
+                ...e,
+                lastFireHitAt: gameTime,
+                burnUntil: Math.max(e.burnUntil ?? 0, gameTime + MOLOTOV_IGNITE_BURN_MS),
+                burnDpsTick: Math.max(e.burnDpsTick ?? 0, h.dmg),
+              };
+            })
           : state.enemies,
       }));
-    }
-    for (const h of hits) {
-      get().damageEnemy(h.id, h.dmg);
-      get().spawnDamageNumber(h.x, h.y, h.dmg);
     }
   },
 
@@ -6530,6 +6551,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (d2 <= w.radius * w.radius && d2 < bestD2) { bestD2 = d2; best = w; }
       }
       if (!best) return e;
+      // 社長指示v0.25.3280: ボスは吸引の代わりに移動半減(bossSlowMultが読む窓を毎フレーム上書き。
+      // 渦から出る/渦が消えると~150msで切れる)。吸引の書き込みはボスには元々効かない(押し道具ガード)
+      // ので、ボスは減速だけにして意味の無いknockback書き換えをやめる。
+      if (isBossType(e.type)) {
+        changed = true;
+        return { ...e, gravitySlowUntil: gameTime + GRAVITY_SHOT_BOSS_SLOW_REFRESH_MS };
+      }
       const dist = Math.max(0.001, Math.sqrt(bestD2));
       changed = true;
       return {

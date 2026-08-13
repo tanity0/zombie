@@ -1,5 +1,24 @@
 # Development Log
 
+## v0.25.3280 — グラビティのボス減速+アイス強化&ボス解禁+火炎瓶の延焼化【2026-08-13 17:44 JST】
+3件とも社長指示(チャット)。
+- **グラビティ=ボスも減速**: ボスは吸引不可(押し道具ガード)なので、渦内のボスに移動半減
+  (GRAVITY_SHOT_BOSS_SLOW_MULT=0.5・クリ減速と同値の叩き台)。Enemy.gravitySlowUntil を
+  tickGravityWells が毎フレーム上書き(150ms窓=離脱で自然に切れる)し、**bossSlowMult(全ボス
+  移動経路13箇所の共通チョーク)**で消費=城ボス/天使/裏ボス全員に効く。クリのCD2倍には乗せない。
+  重複時は強い方だけ(乗算で1/4にしない)。
+- **アイス裁定「Lv1 40%2秒/Lv2 50%2.5秒/Lv3 60%3秒。ボスは半分の効果」**: ICE_SHOT_SLOW_BY_LEVEL
+  更新+ボス解禁(強度のみ×ICE_SHOT_BOSS_EFFECT_MULT=0.5・時間はそのまま)。消費は通常敵=
+  iceSlowMult(従来)/ボス=bossSlowMult(isBossTypeで排他=二重掛け防止)。水色点滅・キラキラ・
+  モーションテンポ減速はボスにもそのまま出る。※「当たれば必ず?」→必ず(確率なし・持続は上書き)。
+- **火炎瓶「一度踏むと延焼」**: tickGroundFiresの即時ダメージ(damageEnemy+数字)を廃止し、触れた敵に
+  延焼(burnUntil=+MOLOTOV_IGNITE_BURN_MS 3000 / burnDpsTick=旧tickダメージ5・倍率込み・Math.maxで
+  下書き防止)。刻みは既存tickBurningEnemies(500ms)=赤点滅/数字もそちら。総量は旧仕様と同水準
+  (3秒踏み=30 → 着火1回=30)。踏み続けると窓更新=離れてから3秒。血の履帯(踏んでる間ダメージ床)
+  と役割分離。延焼弾(incendiary)の炎床も同じ経路=「炎床は着火するもの」に統一。
+- テスト: bossSlowMult.test.ts 6件(グラビティ/アイス排他/従来クリ不変)+skillEffectsB7.test.ts
+  期待値更新+ghostSubsFinal.test.ts の火床テストを延焼仕様へ書き換え。計96+34通過・typecheck 0/lint 0。
+
 ## v0.25.3279 — グラビティ吸引の実効値を仕様へ修正(社長裁定=案A)【2026-08-13 17:34 JST】
 - **裁定**: 「グラヴィティは推薦で」=案A採用。tickGravityWells が書く knockbackUntil を
   +120ms→+KNOCKBACK_DURATION(280ms)へ。毎フレーム書き直す前提で消費側の減衰(残り÷280)が

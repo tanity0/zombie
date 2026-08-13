@@ -108,7 +108,7 @@ import {
 // applyMeleeFinishSkillSpread/tickBloodSpikesという既存の合流点)に乗せてあるので、ここでは
 // 弾(big-bullet相当)・命中(ice-shot/incendiary-round/echo-shot)・移動軌跡の設置口だけを使う。
 import {
-  iceShotSlowParams, ICE_SHOT_SHARD_COUNT, ICE_SHOT_SHARD_DMG_MULT,
+  iceShotSlowParams, ICE_SHOT_SHARD_COUNT, ICE_SHOT_SHARD_DMG_MULT, ICE_SHOT_BOSS_EFFECT_MULT,
   incendiaryBurnParams, INCENDIARY_FLOOR_CD_MS,
   rollEchoShot,
   BLOOD_TREADS_SPAWN_INTERVAL_MS,
@@ -9759,15 +9759,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2, '#67e8f9', 6);
           }
 
-          // SKILL_BUILD_REDESIGN.md §28(B7) スキル: アイスショット = 命中した敵(ボス以外)を鈍足化。
-          // 絵の分類②(氷片)/判定のみ(鈍足自体)。鈍足はupdateEnemies(gameStore.ts)のiceSlowMultが読む。
+          // SKILL_BUILD_REDESIGN.md §28(B7) スキル: アイスショット = 命中した敵を鈍足化。
+          // 社長裁定v0.25.3280: ボスも対象(強度のみ半分=ICE_SHOT_BOSS_EFFECT_MULT・時間はそのまま)。
+          // 絵の分類②(氷片)/判定のみ(鈍足自体)。鈍足は通常敵=iceSlowMult(updateEnemies)・
+          // ボス=bossSlowMult(全ボス移動経路の共通チョーク)が読む。
           const iceLv = skillLevel(skillPlayer, 'ice-shot');
-          if (iceLv && enemyForFx && !isBossType(enemyForFx.type) && dmg > 0) {
+          if (iceLv && enemyForFx && dmg > 0) {
             const iceSlow = iceShotSlowParams(iceLv);
+            const icePct = isBossType(enemyForFx.type) ? iceSlow.pct * ICE_SHOT_BOSS_EFFECT_MULT : iceSlow.pct;
             const iceGameTime = gameTime;
             useGameStore.setState(state => ({
               enemies: state.enemies.map(e =>
-                e.id === enemyId ? { ...e, iceSlowUntil: iceGameTime + iceSlow.ms, iceSlowPct: iceSlow.pct } : e),
+                e.id === enemyId ? { ...e, iceSlowUntil: iceGameTime + iceSlow.ms, iceSlowPct: icePct } : e),
             }));
             // 社長指示v0.25.3277「アイスショットは発動したら氷のキラキラを(発動時だけね)」:
             // 鈍足が付いた瞬間だけ、氷色+白の小さな煌めきを一拍(分類②・既存粒子プールのみ)。

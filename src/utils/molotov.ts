@@ -12,8 +12,13 @@ export const MOLOTOV_CYCLE_MS = 10000;        // サイクル長。次サイク�
 export const MOLOTOV_DROP_INTERVAL_MS = 1000; // 火の設置間隔(移動中のみ進む)
 export const MOLOTOV_FIRE_LIFETIME_MS = 3000; // 1個の火の生存時間
 export const MOLOTOV_FIRE_RADIUS = 22;        // 火のダメージ半径(px)。当たり判定=敵の中心がこの円内
-export const MOLOTOV_DOT_DAMAGE = 5;          // 1tickあたりのダメージ
-export const MOLOTOV_DOT_INTERVAL_MS = 500;   // 敵1体あたりのダメージ間隔(スロットル。複数の火に重なっても二重取りしない)
+export const MOLOTOV_DOT_DAMAGE = 5;          // 延焼1tickあたりのダメージ(v0.25.3280から着火時にburnDpsTickへ書かれる)
+export const MOLOTOV_DOT_INTERVAL_MS = 500;   // 敵1体あたりの着火(更新)間隔(スロットル。複数の火に重なっても二重取りしない)
+// 社長指示v0.25.3280「火炎瓶を変える。踏んでる間ダメージではなく、一度踏むと延焼にする」:
+// 血の履帯(=踏んでいる間だけダメージの床)との差別化。火に触れた敵は延焼(burnUntil/burnDpsTick)が
+// 付き、離れても燃え続ける。総量は旧仕様と同水準(旧=踏み続け3秒で5×6tick=30 → 新=一度触れて
+// 3秒燃えて5×6tick=30)。踏み続けている間は窓が更新され続ける=離れた時点から3秒。
+export const MOLOTOV_IGNITE_BURN_MS = 3000;
 
 // このサイクルの投下進捗。null=アイドル(次サイクルはクールダウン明けで開始)。
 export interface MolotovCycleState {

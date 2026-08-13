@@ -16,15 +16,19 @@ const clampLv = (level: number): number => Math.max(0, Math.min(3, Math.floor(le
 export const BIG_BULLET_SIZE_MULT_BY_LEVEL: readonly number[] = [1, 1.3, 1.5, 1.7];
 export const bigBulletSizeMult = (level: number): number => BIG_BULLET_SIZE_MULT_BY_LEVEL[clampLv(level)];
 
-// ---- アイスショット(normal): 命中で鈍足(ボスは対象外)+キル時氷片3(0.3倍・全Lv) ----
+// ---- アイスショット(normal): 命中で鈍足+キル時氷片3(0.3倍・全Lv) ----
+// 社長裁定v0.25.3280「レベル1で40% 2秒/2で50% 2.5秒/3で60% 3秒。ボスは半分の効果で発動」:
+// 旧(20%/30%/40%・1s/1s/1.5s・ボス対象外)から強化+ボス解禁(強度のみ半分・時間はそのまま)。
 export interface IceShotSlow { pct: number; ms: number }
 export const ICE_SHOT_SLOW_BY_LEVEL: readonly IceShotSlow[] = [
   { pct: 0, ms: 0 },
-  { pct: 0.2, ms: 1000 },
-  { pct: 0.3, ms: 1000 },
-  { pct: 0.4, ms: 1500 },
+  { pct: 0.4, ms: 2000 },
+  { pct: 0.5, ms: 2500 },
+  { pct: 0.6, ms: 3000 },
 ];
 export const iceShotSlowParams = (level: number): IceShotSlow => ICE_SHOT_SLOW_BY_LEVEL[clampLv(level)];
+// ボスへの鈍足強度倍率(「半分の効果で発動」)。適用側(useGameLoop)がpctに掛けて書き込む。
+export const ICE_SHOT_BOSS_EFFECT_MULT = 0.5;
 export const ICE_SHOT_SHARD_COUNT = 3;         // 全Lv共通(§28-2)
 export const ICE_SHOT_SHARD_DMG_MULT = 0.3;    // 全Lv共通(§28-2)。基準=キル時のこの1発のdmg。
 
@@ -78,6 +82,11 @@ export const GRAVITY_SHOT_BY_LEVEL: readonly GravityShotProc[] = [
 ];
 export const GRAVITY_SHOT_PULL_SPEED = 120; // px/s(§16-5判定叩き台。全Lv共通)
 export const GRAVITY_SHOT_PULL_MS = 400;    // 0.4s(全Lv共通)
+// 社長指示v0.25.3280「グラヴィティはボスも減速させて」: ボスは吸引できない(押し道具ガード)ので、
+// 渦の半径内にいる間**移動半減**にする(値はクリ減速と同じ0.5=既存の語彙に揃えた叩き台)。
+// 消費は bossSlowMult(全ボス経路13箇所が読む共通チョーク)。クリのCD2倍(bossCritCdMult)には乗せない。
+export const GRAVITY_SHOT_BOSS_SLOW_MULT = 0.5;
+export const GRAVITY_SHOT_BOSS_SLOW_REFRESH_MS = 150; // 渦内で毎フレーム上書き→離脱/渦消滅から~150msで切れる
 /** キル1回ぶんのグラビティショット判定。発動しなければnull。rng注入で決定的にテスト可能。 */
 export const rollGravityShotWell = (level: number, rng: () => number = Math.random): { radius: number } | null => {
   const lv = clampLv(level);

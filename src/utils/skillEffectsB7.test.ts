@@ -28,9 +28,10 @@ describe('big-bullet: 弾サイズ×1.3/1.5/1.7', () => {
 });
 
 describe('ice-shot: 鈍足20%/30%/40%・1s/1s/1.5s', () => {
-  it('Lv1', () => expect(iceShotSlowParams(1)).toEqual({ pct: 0.2, ms: 1000 }));
-  it('Lv2', () => expect(iceShotSlowParams(2)).toEqual({ pct: 0.3, ms: 1000 }));
-  it('Lv3', () => expect(iceShotSlowParams(3)).toEqual({ pct: 0.4, ms: 1500 }));
+  // 社長裁定v0.25.3280: 40%/50%/60%・2s/2.5s/3s(ボスは強度のみ半分=ICE_SHOT_BOSS_EFFECT_MULT)。
+  it('Lv1', () => expect(iceShotSlowParams(1)).toEqual({ pct: 0.4, ms: 2000 }));
+  it('Lv2', () => expect(iceShotSlowParams(2)).toEqual({ pct: 0.5, ms: 2500 }));
+  it('Lv3', () => expect(iceShotSlowParams(3)).toEqual({ pct: 0.6, ms: 3000 }));
   it('氷片は全Lv共通3個・0.3倍', () => {
     expect(ICE_SHOT_SHARD_COUNT).toBe(3);
     expect(ICE_SHOT_SHARD_DMG_MULT).toBeCloseTo(0.3);

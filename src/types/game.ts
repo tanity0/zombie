@@ -806,6 +806,9 @@ export interface Enemy {
   // gameTime < iceSlowUntil の間、移動速度に (1 - iceSlowPct) を掛ける(updateEnemies)。
   iceSlowUntil?: number;
   iceSlowPct?: number;
+  // 社長指示v0.25.3280「グラヴィティはボスも減速させて」: 渦の半径内のボスに付く移動半減の窓。
+  // tickGravityWellsが毎フレーム上書きし、bossSlowMult(全ボス移動経路の共通チョーク)が読む。
+  gravitySlowUntil?: number;
   // B7: 延焼弾(incendiary-round)の燃焼DoT。gameTime < burnUntil の間、250ms tickでburnDpsTick分の
   // ダメージを受ける(tickBurningEnemies・gameStore.ts)。lastBurnTickAtがそのスロットル打刻。
   burnUntil?: number;

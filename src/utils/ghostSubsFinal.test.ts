@@ -352,14 +352,18 @@ describe('4. 主語ごとの帳簿(プレイヤーを汚さない)', () => {
     expect(fires[1].ownerGhostId).toBe(GID);
   });
 
-  it('tickGroundFires: プレイヤーだけの盤面は従来どおり1パス(火に触れた敵だけがDoTを受ける)', () => {
+  it('tickGroundFires: 火に触れた敵は延焼が付く(即時ダメージではない・社長指示v0.25.3280)', () => {
     useGameStore.getState().resetGame('warrior');
     useGameStore.getState().spawnGroundFire(500, 500);
     useGameStore.setState({ enemies: [enemyAt('in', 500 - 12, 500 - 12), enemyAt('out', 1500, 1500)] });
     useGameStore.getState().tickGroundFires();
     const es = useGameStore.getState().enemies;
-    expect(es.find(e => e.id === 'in')!.health).toBeLessThan(100);
-    expect(es.find(e => e.id === 'out')!.health).toBe(100);
+    const inE = es.find(e => e.id === 'in')!;
+    expect(inE.health).toBe(100);                 // 即時ダメージは廃止(踏んでる間ダメージ→着火)
+    expect(inE.burnUntil ?? 0).toBeGreaterThan(0); // 延焼が付く
+    expect(es.find(e => e.id === 'out')!.burnUntil).toBeUndefined();
+    useGameStore.getState().tickBurningEnemies(); // 延焼tick(既存経路)がダメージを刻む
+    expect(useGameStore.getState().enemies.find(e => e.id === 'in')!.health).toBeLessThan(100);
   });
 });
 
