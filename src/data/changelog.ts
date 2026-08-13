@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3315',
+    items: [
+      'ゲーム内容の変更はありません(異常動作レシピ: メタビルド化していた5件を「意味は通るが普通は組まない」組へ差し替え)。',
+    ],
+  },
+  {
     version: '0.25.3314',
     items: [
       'ゲーム内容の変更はありません(異常動作のレシピ台帳をアンカー方式=意味の通る1つ+意外な2つ、に改訂)。',
