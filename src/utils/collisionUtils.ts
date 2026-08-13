@@ -1,5 +1,6 @@
 import { Player, Enemy, Projectile, Pickup, Summon } from '../types/game';
 import { enemyFootBox, enemyHitStrip } from '../pixi/renderSpec';
+import { isCorpse } from './enemyUtils';
 
 // 当たり判定=「帯」方式(社長指示)。通常敵は足元の帯(幅=影と同規格=実描画幅×0.55 / 高さ=e.height)で判定。
 // 裏ボスは従来どおり生の帯(AABB=ENEMY_STATS の w×h、BOSS_SPRITE_FIT で絵を追従)。絵は別経路で帯より大きく描く。
@@ -127,6 +128,10 @@ export const checkProjectileEnemyCollisions = (
       // (盾は別経路=敵AIの shield 判定で処理されるので影響しない)。
       if (enemy.aiPhase === 'jump') return;
 
+      // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 死体は弾をすり抜けさせる(貫通弾のpierce/
+      // passthroughを消費させない・死体に攻撃が吸われる事故を防ぐ)。
+      if (isCorpse(enemy)) return;
+
       // (v0.25.2469のゴースト弾すり抜けは v0.25.2471 で撤回=社長指示「だったら弾はすりぬけなくていい」。
       //  雑魚回避(v0.25.2470)で射線が通るようになったため、弾は通常どおり最初に触れた敵に当たる。)
 
@@ -179,7 +184,8 @@ export const checkPlayerEnemyCollisions = (
   enemies: Enemy[]
 ): Enemy[] => {
   const hit = playerHitbox(player);
-  return enemies.filter(enemy => checkCollision(hit, enemyContactBox(enemy)));
+  // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 死体は接触ダメージを与えない(唯一の合流点)。
+  return enemies.filter(enemy => !isCorpse(enemy) && checkCollision(hit, enemyContactBox(enemy)));
 };
 
 // 敵 ↔ 召喚ユニット(通常個体+ghost-ally)の接触。各重なりにつき敵の damage を返す。
@@ -194,6 +200,7 @@ export const checkEnemySummonCollisions = (
   if (summons.length === 0) return [];
   const out: { enemyId: string; summonId: string; damage: number }[] = [];
   for (const enemy of enemies) {
+    if (isCorpse(enemy)) continue; // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 召喚への接触ダメージから除外
     for (const s of summons) {
       if (s.kind !== 'normal' && s.kind !== 'ghost-ally') continue;
       if (checkCollision(enemyContactBox(enemy), s)) out.push({ enemyId: enemy.id, summonId: s.id, damage: enemy.damage });

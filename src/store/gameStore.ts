@@ -100,7 +100,7 @@ import {
 } from '../utils/eventQuest';
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
-import { isBossType, isHiddenBoss, usesBossCrit, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible } from '../utils/enemyUtils';
 import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
@@ -2996,6 +2996,16 @@ const grantMeleeKillRewards = (
   // このヘルパーを通るので、ここ1箇所で拾える(gun/接触/爆発側は damageEnemy 内で同様に処理)。
   const screamerCutPatch = screamerBuffCutOnKillPatch(killed.map(k => k.enemy.type), get().screamerBuffUntil, get().gameTime);
   if ('screamerBuffUntil' in screamerCutPatch) useGameStore.setState(screamerCutPatch);
+  // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-1): 近接全キル経路(triggerCounter/katana/
+  // whip/shadowClone/skaterBoardHit)はこのヘルパーを通るので死体化もここ1箇所で拾える。呼び出し元の
+  // set() は既にこの敵を state.enemies から外している(survivorsに積んでいない)ため、対象を選んで
+  // 死体として書き戻す。attacker=このスイングの実行者(プレイヤー本体 or 守護霊の疑似Player)。
+  const corpseAdds = killed
+    .filter(k => corpseEligible(k.enemy))
+    .map(k => buildCorpseFromKill(k.enemy, player));
+  if (corpseAdds.length > 0) {
+    useGameStore.setState(state => ({ enemies: [...state.enemies, ...corpseAdds] }));
+  }
   for (const { enemy, finisher } of killed) {
     // PACING_REDESIGN.mdバッチ2(計測): 近接全経路のキルを種別+スタイル集計へ記録(挙動には影響しない)。
     // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
@@ -3175,6 +3185,7 @@ const applyMeleeFinishSkillSpread = (
   const r2 = range * range;
   for (const e of get().enemies) {
     if (e.type === 'reaper' && !e.reaperChaser) continue; // 不倒の通常リーパーは対象外。深奥チェイサーは近接対象(ボス級)なので含める
+    if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象選定から除外
     const ecx = e.x + e.width / 2;
     const ecy = e.y + e.height / 2;
     if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
@@ -3221,6 +3232,7 @@ const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, 
   const reach2 = reach * reach;
   for (const e of get().enemies) {
     if (e.type === 'reaper' && !e.reaperChaser) continue; // 不倒の通常リーパーは対象外。深奥チェイサーはノックバック対象(ボス級・他の近接系と統一)
+    if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体の飛びを上書きしない
     const ecx = e.x + e.width / 2;
     const ecy = e.y + e.height / 2;
     const dx = ecx - pcx;
@@ -3539,6 +3551,7 @@ const applySlasherChainStrike = (
   let nearestDx = 0, nearestDy = 0, nearestD2 = Infinity; // 前進(ランジ)方向=最寄りのヒット敵
   for (const e of get().enemies) {
     if (e.type === 'reaper' && !e.reaperChaser) continue;
+    if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は追撃対象から除外
     const ecx = e.x + e.width / 2;
     const ecy = e.y + e.height / 2;
     const dx = ecx - pcx, dy = ecy - pcy;
@@ -3672,6 +3685,51 @@ export interface PumpkinBlast {
  */
 export const knockbackSpeedFor = (distancePx: number, ms: number): number =>
   (Math.max(0, distancePx) * 2) / Math.max(0.001, ms / 1000);
+
+// KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-1): 死体が攻撃者→敵方向へ飛ぶ実距離(px)。
+export const KILL_LAUNCH_DIST_PX = 50;
+
+/**
+ * KILLされた通常敵を「死体」(corpseUntil付きEnemy)に変換する(§26-1)。攻撃者→敵の方向へ
+ * KILL_LAUNCH_DIST_PXだけ実距離で吹き飛ぶノックバックを持たせ、KNOCKBACK_DURATION後に消える
+ * 期限(corpseUntil)を立てる。aiPhase/stunUntilは解除する(死体はAI/攻撃状態機械から完全に除外
+ * =updateEnemiesのKBスライド以外の全処理を通らない)。
+ *
+ * 呼び出し側が対象(ボス/ネームド/クエスト対象=getsDramaticDeath系)を`corpseEligible`で選別してから
+ * 渡すこと——このヘルパー自身は判定しない(damageEnemyの銃/接触/爆発キルと、grantMeleeKillRewards
+ * 経由の全近接キル経路(triggerCounter/katana/whip/shadowClone/skaterBoardHit)の2箇所が呼ぶ)。
+ *
+ * attacker位置: damageEnemyの汎用キル経路(銃/接触/爆発/DoT/リーパースキル等)は攻撃者を特定できる
+ * 引数を持たないため、近似としてプレイヤー座標を渡す(★未決事項参照。守護霊/召喚起因のキルも同様)。
+ * 近接キル経路(grantMeleeKillRewards)は実際の攻撃者(プレイヤー or 守護霊の疑似Player)を渡せる。
+ */
+export const buildCorpseFromKill = (
+  enemy: Enemy,
+  attacker: { x: number; y: number; width: number; height: number },
+): Enemy => {
+  const now = Date.now();
+  const acx = attacker.x + attacker.width / 2;
+  const acy = attacker.y + attacker.height / 2;
+  const ecx = enemy.x + enemy.width / 2;
+  const ecy = enemy.y + enemy.height / 2;
+  const rawDx = ecx - acx;
+  const rawDy = ecy - acy;
+  const rawLen = Math.hypot(rawDx, rawDy);
+  const dirX = rawLen > 0.001 ? rawDx / rawLen : 0;
+  const dirY = rawLen > 0.001 ? rawDy / rawLen : -1;
+  const speed = knockbackSpeedFor(KILL_LAUNCH_DIST_PX, KNOCKBACK_DURATION);
+  return {
+    ...enemy,
+    health: 0,
+    corpseUntil: now + KNOCKBACK_DURATION,
+    aiPhase: undefined,
+    aiPhaseUntil: undefined,
+    stunUntil: undefined,
+    knockbackVx: dirX * speed,
+    knockbackVy: dirY * speed,
+    knockbackUntil: now + KNOCKBACK_DURATION,
+  };
+};
 
 interface TutorialPopupPayload {
   title: string;
@@ -5080,6 +5138,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const stage3 = state.farBackdrop === 'city';
         for (const e of state.enemies) {
           if (e.type === 'reaper' && !e.reaperChaser) continue;
+          if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): PHILL手動照準のスナップ対象から除外
           const fb = enemyFootBox(e);
           const hx = fb.footX;
           const hy = enemyHeadY(e, stage3); // 実描画の縦範囲に基づく頭付近(横長素材でも頭に乗る)
@@ -5160,6 +5219,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       for (const enemy of s.enemies) {
         if (enemy.aiPhase === 'jump') { out.push(enemy); continue; }
         if (enemy.type === 'reaper' && !enemy.reaperChaser) { out.push(enemy); continue; }
+        if (isCorpse(enemy)) { out.push(enemy); continue; } // KILL吹き飛び(死体・§26-2): バッシュ対象から除外
         const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
         const d2 = (ecx - x) * (ecx - x) + (ecy - y) * (ecy - y);
         if (d2 > r2) { out.push(enemy); continue; }
@@ -5469,6 +5529,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const targetIds: string[] = [];
       for (const e of enemies) {
         if (e.type === 'reaper' && !e.reaperChaser) continue; // 深奥チェイサーは近接対象(ボス級)
+        if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 鞭の標的選定から除外
         const ex = e.x + e.width / 2 - pcx;
         const ey = e.y + e.height / 2 - pcy;
         const along = ex * ux + ey * uy;
@@ -5607,6 +5668,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     for (const enemy of enemies) {
       if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; } // 深奥チェイサーは近接対象(ボス級)
+      if (isCorpse(enemy)) { survivors.push(enemy); continue; } // KILL吹き飛び(死体・§26-2): 近接カウンター対象から除外
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
       // ノックバック方向用の中心差分(距離は enemyMeleeDist を使うが、向きは中心→敵で算出)。
@@ -6013,6 +6075,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     for (const enemy of enemies) {
       if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; }
+      if (isCorpse(enemy)) { survivors.push(enemy); continue; } // KILL吹き飛び(死体・§26-2): 分身の攻撃対象から除外
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
       // ノックバック方向用の中心差分(分身中心→敵)。
@@ -6375,6 +6438,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 半径内の敵に falloff ダメージ+押し出し(中心=b.fromX/Yではなく着弾点基準)。
       for (const e of get().enemies) {
         if (e.type === 'reaper' && !e.reaperChaser) continue;
+        if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 救急鞄爆発の対象から除外
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
         const dx = ecx - cx, dy = ecy - cy;
@@ -6436,7 +6500,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const enemy of enemies) {
       // ジャンプ攻撃中(空中)はあらゆる近接の当たり判定を外す(=無敵。盾は敵AI側で別処理)。
       if (enemy.aiPhase === 'jump') { survivors.push(enemy); continue; }
-      if (!targetIds.includes(enemy.id) || (enemy.type === 'reaper' && !enemy.reaperChaser)) {
+      if (!targetIds.includes(enemy.id) || (enemy.type === 'reaper' && !enemy.reaperChaser) || isCorpse(enemy)) {
+        // KILL吹き飛び(死体・§26-2): 死体は標的から除外(targetIds選定側で既に除いてあるが二重ガード)
         survivors.push(enemy);
         continue;
       }
@@ -6707,7 +6772,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
 
     for (const enemy of enemies) {
-      if (!targetIds.includes(enemy.id) || (enemy.type === 'reaper' && !enemy.reaperChaser)) {
+      if (!targetIds.includes(enemy.id) || (enemy.type === 'reaper' && !enemy.reaperChaser) || isCorpse(enemy)) {
+        // KILL吹き飛び(死体・§26-2): 死体は標的から除外(targetIds選定側で既に除いてあるが二重ガード)
         survivors.push(enemy);
         continue;
       }
@@ -7042,8 +7108,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         const rcy = s0.y + s0.height / 2;
         const pr2 = ALCHEMY_RARE_SUCTION_PULL_RANGE * ALCHEMY_RARE_SUCTION_PULL_RANGE;
         const inRange = enemiesNext
-          .map((e, i) => ({ i, d2: (e.x + e.width / 2 - rcx) ** 2 + (e.y + e.height / 2 - rcy) ** 2, reaper: e.type === 'reaper' && !e.reaperChaser }))
-          .filter(o => !o.reaper && o.d2 <= pr2)
+          .map((e, i) => ({ i, d2: (e.x + e.width / 2 - rcx) ** 2 + (e.y + e.height / 2 - rcy) ** 2, reaper: e.type === 'reaper' && !e.reaperChaser, corpse: isCorpse(e) }))
+          .filter(o => !o.reaper && !o.corpse && o.d2 <= pr2) // KILL吹き飛び(死体・§26-2): 吸引対象から除外
           .sort((a, b) => a.d2 - b.d2)
           .slice(0, ALCHEMY_RARE_SUCTION_MAX_TARGETS);
         if (inRange.length > 0) {
@@ -7072,6 +7138,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const rareDmg = Math.round(ALCHEMY_RARE_MELEE_DAMAGE * rareDamageMult); // 賢者の石: +50%
           for (const e of enemiesNext) {
             if (e.type === 'reaper' && !e.reaperChaser) continue;
+            if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死神オーラの対象から除外
             const d2 = (e.x + e.width / 2 - rcx) ** 2 + (e.y + e.height / 2 - rcy) ** 2;
             if (d2 > aura2) continue;
             attackHits.push({ id: e.id, amount: rareDmg, x: e.x + e.width / 2, y: e.y });
@@ -7096,6 +7163,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           let hitAny = false;
           for (const e of enemiesNext) {
             if (e.type === 'reaper' && !e.reaperChaser) continue;
+            if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 賢者の石AoEの対象から除外
             const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
             if (d2 > aoe2) continue;
             attackHits.push({ id: e.id, amount: s.damage, x: e.x + e.width / 2, y: e.y });
@@ -7108,6 +7176,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           let nx = 0, ny = 0;
           for (const e of enemiesNext) {
             if (e.type === 'reaper' && !e.reaperChaser) continue;
+            if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 通常召喚の接触対象から除外
             const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
             if (d2 <= nd2) { nd2 = d2; nearestId = e.id; nx = e.x + e.width / 2; ny = e.y; }
           }
@@ -7239,6 +7308,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const targetIds: string[] = [];
     for (const e of enemies) {
       if (e.type === 'reaper' && !e.reaperChaser) continue;
+      if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 一閃ダッシュの標的選定から除外
       const ex = e.x + e.width / 2 - pcx;
       const ey = e.y + e.height / 2 - pcy;
       const along = ex * ux + ey * uy;
@@ -7393,6 +7463,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       let bestProj = Infinity;
       for (const e of get().enemies) {
         if (e.aiPhase === 'jump') continue;           // 空中無敵は刺さらない
+        if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): ワイヤーの刺さり先から除外
         const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
         const rx = ecx - pcx, ry = ecy - pcy;
         const proj = rx * ux + ry * uy;               // フリック方向の前方距離
@@ -7737,6 +7808,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const kbMult = (KNOCKBACK_SPEED * 2) / BULLET_KNOCKBACK_SPEED;
         for (const e of get().enemies) {
           if (e.type === 'reaper' && !e.reaperChaser) continue;
+          if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 反射神経の反撃爆発の対象から除外
           const ecx = e.x + e.width / 2;
           const ecy = e.y + e.height / 2;
           const dx = ecx - pcx;
@@ -8805,6 +8877,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       if (!enemy) return { enemies };
 
+      // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2-3): 死体は既に死んでいる=早期return で
+      // 二重キル/多重ダメージを禁止する(他の全フィールドも不変のまま)。
+      if (isCorpse(enemy)) return { enemies };
+
       // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間は無敵。被弾もヒット表示もしない。
       // 溜め(crouch)・着地後(recover)は通常どおり被弾する(空中だけ無敵)。
       if (enemy.aiPhase === 'jump') return { enemies };
@@ -8892,8 +8968,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossKills: gameStats.bossKills + (isScoreBoss(enemy.type) ? 1 : 0)     // 同 giantbat
         };
 
+        // KILL吹き飛び(死体・§26-1): 通常敵(corpseEligible)は即消滅させず、攻撃者(近似=プレイヤー
+        // 座標・★未決事項参照)→敵方向へ吹き飛ぶ死体として残す。ボス/ネームド/クエスト対象は
+        // 従来どおり即除去(getsDramaticDeath/bossCorpse演出はそのまま・挙動不変)。
+        const enemiesAfterKill = corpseEligible(enemy)
+          ? updatedEnemies.map(e => e.id === id ? buildCorpseFromKill(e, state.player) : e)
+          : updatedEnemies.filter(e => e.id !== id);
         return {
-          enemies: updatedEnemies.filter(e => e.id !== id),
+          enemies: enemiesAfterKill,
           gameStats: newStats,
           ...(questKillNext !== null ? { eventQuestKills: questKillNext } : {}),
           // The giantbat is the run's finale boss — defeating it triggers the return phase.
@@ -9251,6 +9333,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           return pos;
         };
+        // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2-1): 死体はAI/移動/攻撃/索敵から完全に
+        // 除外し、KBスライドだけを適用する(判定は他の全ブロックの手前=ここで確実に止める)。
+        // KB終了後は位置を凍らせる(期限切れの除去はfinalEnemies側=このmapでは消さない)。
+        if (isCorpse(enemy)) {
+          if (enemy.knockbackUntil === undefined || now >= enemy.knockbackUntil) return enemy;
+          const remaining = enemy.knockbackUntil - now;
+          const decay = Math.max(0, remaining / KNOCKBACK_DURATION);
+          const kb = resolveMove(
+            enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
+            enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,
+          );
+          return { ...enemy, x: kb.x, y: kb.y };
+        }
         // 攻撃モーションを「全う」するフェーズの扱い(社長指示・更新):
         // ・どの敵も「攻撃モーションに入ったら(aiPhase あり=溜め/zpause/zrush/突進/ジャンプ等)やり切る」。
         //   →通常ノックバックでは中断しない(範囲外に押し出されても完遂する)。= inAttackMotion ガード。
@@ -11402,7 +11497,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           const bKbActive = b.knockbackUntil !== undefined && now < b.knockbackUntil;
           // ノックバックが切れたら hop 印を解除(次に直接ノックバックされたら再び巻き込み元になれる)。
           const cleared = (b.punisherHopped && !bKbActive) ? { ...b, punisherHopped: false } : b;
-          if ((cleared.type === 'reaper' && !cleared.reaperChaser) || bKbActive) return cleared; // 不倒の通常リーパーは除外。深奥チェイサーは巻き込み対象(ボス級)。KB中(被弾側/連鎖元)は新規付与しない
+          // KILL吹き飛び(死体・§26-1「死体自身は巻き込みの被害者にはならない」): bKbActive経由で
+          // 飛行中は既に除外されるが、KB終了直後〜期限除去までの1フレームの隙間も塞ぐため明示ガード。
+          if ((cleared.type === 'reaper' && !cleared.reaperChaser) || bKbActive || isCorpse(cleared)) return cleared; // 不倒の通常リーパーは除外。深奥チェイサーは巻き込み対象(ボス級)。KB中(被弾側/連鎖元)は新規付与しない
           for (const a of movers) {
             if (a.id === cleared.id) continue;
             // v0.25.3260 社長指示「パニッシャー時のノックバック当たり判定は広めに」: 飛んでいる敵の
@@ -11539,6 +11636,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         const others = breakableProps.filter(p => !p.id.startsWith('egg-gc-'));
         const capped = carriers.length > EGGCARRIER_MAX_EGGS ? carriers.slice(carriers.length - EGGCARRIER_MAX_EGGS) : carriers;
         nextBreakables = [...others, ...capped];
+      }
+      // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2-1/26-2-4): 期限切れの死体を配列から除去。
+      // 消失ログは'kill'(既にキル時点で打刻済みの理由の再掲=カリング'cap'等と混同しないように)。
+      // 280msの一時滞留のみ=湧き上限/盤面不変条件への実害は無い(除去は必ずここ1箇所で行う)。
+      if (finalEnemies.some(e => isCorpse(e) && now >= (e.corpseUntil ?? 0))) {
+        finalEnemies = finalEnemies.filter(e => {
+          if (isCorpse(e) && now >= (e.corpseUntil ?? 0)) { tagRemove(e.id, 'kill'); return false; }
+          return true;
+        });
       }
       // v0.25.3054: ボス交戦フラグ(施設ロック/描画フェードの正本)。ヒステリシスは
       // bossEngagedNow(ENTER900/EXIT1400)が持つ=前回値を渡すだけ。
@@ -11721,8 +11827,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const strength = Math.max(0, Math.min(maxStrength, multiplier));
     set(state => ({
+      // KILL吹き飛び(死体・§26-2): 死体の飛び方はKILL時に1回だけ決める(buildCorpseFromKill)。
+      // 他の全ノックバック発生源(反射神経/救急鞄/ドッグ/しかりの汎用この関数の全呼び出し元)から
+      // 死体を除外し、死体自身の吹き飛びを上書きさせない。
       enemies: state.enemies.map(e =>
-        e.id === id
+        (e.id === id && !isCorpse(e))
           ? {
               ...e,
               knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,

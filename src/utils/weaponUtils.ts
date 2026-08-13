@@ -1,7 +1,7 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { aimEnemyDist2 } from './enemyUtils';
+import { aimEnemyDist2, isCorpse } from './enemyUtils';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
 
 // プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
@@ -343,6 +343,7 @@ const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null => {
   let bestStunned: Enemy | null = null;
   let bestStunnedD2 = Infinity;
   for (const e of enemies) {
+    if (isCorpse(e)) continue; // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 銃の自動照準対象から除外
     const d2 = aimDist2(pcx, pcy, e);
     if (isStunned(e, gameTime)) {
       if (d2 < bestStunnedD2) { bestStunnedD2 = d2; bestStunned = e; }

@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.3264 — KILL吹き飛び着地: 死体が50px飛びパニッシャー弾になる(Sonnet納品・検収済み)【2026-08-13 13:45 JST】
+- Enemy.corpseUntil(約0.28秒)+isCorpse/corpseEligible(ボス/ネームド/クエスト対象は従来どおり即消滅)。
+  buildCorpseFromKill=攻撃者→敵方向へ実距離50px。銃/接触/爆発キル(damageEnemy)と近接キル
+  (grantMeleeKillRewards)の両経路。
+- 除外配線約20箇所+中央ガード2本(二重キル禁止/死に飛行の上書き禁止)。弾は死体を貫通。接触ダメージ
+  両方向なし。パニッシャーのmover扱い(被害者にはならない)=「先頭を倒して群れを薙ぐ」成立。
+- 検収§26-4: 攻撃者座標の近似(汎用キル経路=プレイヤー基準)と化粧品級の残渣を追認。
+- 検証: typecheck 0/lint 0/新規killCorpse.test 7+関連232 passed。
+- 実機確認: 死体の飛び(?zoomlock=0.4でも)/パニッシャー巻き込み連鎖/パンプキン等ボス級の即消滅不変。
+
 ## v0.25.3263 — スキル棚卸し完了(47キー・実装コード根拠)+整理案§27【2026-08-13 13:36 JST】
 走査(Sonnet・読み取り専用)の要点: 死骸4件(fixedGuardiansのwarm-up死にスロット/weaponUtilsの
 古いコメント/seeker・poi-thrallの説明文にボス除外・通常敵限定の記載漏れ)/前提空振り系=exploder・

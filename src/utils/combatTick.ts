@@ -28,7 +28,7 @@ import type { Enemy, Player } from '../types/game';
 import { GLOW_R_L } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
-  isBossType, isHiddenBoss, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile,
+  isBossType, isHiddenBoss, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
 } from './enemyUtils';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { activeFlareTargets } from './flareGun';
@@ -451,6 +451,8 @@ export const applyEnemyFire = (now: number): void => {
     ? [...useGameStore.getState().summons, ...liveFlareTargets]
     : useGameStore.getState().summons;
   liveEnemies.forEach(enemy => {
+    // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2-2): 死体は発砲しない。
+    if (isCorpse(enemy)) return;
     // 裏ボスの発砲(3連発/全方位16発)は専用コントローラが直接撃つので汎用ループからは除外。
     if (isHiddenBoss(enemy.type)) return;
     // M51: 新スクリプト有効時の giantbat は咆哮弾(g-bolt-*)を自前で発射する(gameStore.ts の

@@ -351,6 +351,15 @@ export interface Enemy {
   knockbackVx?: number;
   knockbackVy?: number;
   /**
+   * KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26)。KILLされた通常敵(ボス/ネームド/クエスト
+   * 対象=getsDramaticDeath系は対象外)を即消滅させず、この時刻(Date.now()基準)まで「死体」として
+   * 残す。死体は knockbackVx/Vy/knockbackUntil で攻撃者→敵方向へ50px吹き飛びながらKBスライドのみ
+   * 適用される(updateEnemies)。この間、通常のAI/攻撃/索敵/被弾/照準対象選定からは完全に除外する
+   * (isCorpse=corpseUntil!==undefinedが唯一の判定)。期限切れで配列から除去される。
+   * パニッシャー(スキル)の巻き込み弾(mover)にはなる=死体自身は被害者にならない。
+   */
+  corpseUntil?: number;
+  /**
    * v0.25.2607(社長裁定): **押し道具(鞭・シールドバッシュ)による押し**の有効期限。
    * ボスは通常の殴り/弾では押されず、このフラグが立っている間だけ押される(updateEnemiesの
    * ノックバック適用ガード)。通常敵はこのフラグと無関係に従来どおり押される。

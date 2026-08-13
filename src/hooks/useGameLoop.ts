@@ -183,7 +183,8 @@ import {
   AREA_ZONE_NAMES,
   areaIndexForPos,
   AREA_THRESHOLDS,
-  OFFSCREEN_SPAWN_MARGIN
+  OFFSCREEN_SPAWN_MARGIN,
+  isCorpse
 } from '../utils/enemyUtils';
 import {
   isCounterablePhase, phaseJustChanged, BOSS_ALERT_SFX_KEY,
@@ -10156,6 +10157,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const kbSpeed = WIRE_LAND_KNOCKBACK_SPEED * (explode ? 1.5 : 1);
             const hits = useGameStore.getState().enemies.filter(e => {
               if (e.aiPhase === 'jump') return false; // 空中無敵は対象外
+              if (isCorpse(e)) return false; // KILL吹き飛び(死体・§26-2): 着地の強制ノックバック対象から除外
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
               return Math.hypot(ecx - pcx, ecy - pcy) <= wireBombR + Math.max(e.width, e.height) / 2;
             });

@@ -194,6 +194,16 @@ export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && t 
 // isNamed は型ではなく個体フラグなので Enemy を受け取る(isHiddenBoss/isBossTypeはEnemyType引数)。
 export const getsDramaticDeath = (enemy: Enemy): boolean =>
   !!enemy.isNamed || !!enemy.questTarget || (isBossType(enemy.type) && enemy.type !== 'pumpkin');
+
+// KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26): この個体が「死体」(corpseUntil付き)か。
+// これが唯一の判定=AI/攻撃/照準/被弾/対象選定の全経路がこの1関数で除外する(§26-2)。
+export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUntil !== undefined;
+
+// KILLされた通常敵が「死体化」の対象になり得るか(ボス系/ネームド/クエスト対象=getsDramaticDeath系は
+// 従来どおり対象外・§26-1)。判定は「型」ではなく getsDramaticDeath と同じ安全側の合わせ技:
+// isBossType は pumpkin(getsDramaticDeathは false)も含むため、ボス系は型だけで丸ごと除外する。
+export const corpseEligible = (enemy: Pick<Enemy, 'type' | 'isNamed' | 'questTarget'>): boolean =>
+  !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget;
 // ★社長指示v0.25.3168「パンプキンは厳密にはボスではないので討伐イベントいらない」:
 // pumpkin を**討伐イベントごと**除外する(崩壊/バナー「◯◯を討伐」/閃光/リング/シェイク/スロー)。
 // 旧: v0.25.2879 では「時間停止+カメラ寄り(getsDeathAttention)」だけを外し、崩壊やバナーは残していた。
