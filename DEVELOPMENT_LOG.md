@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.3259 — カウンターマスターのノックバック底上げ(社長指示)【2026-08-13 13:05 JST】
+counterMasterKnockback: 基準を旧KNOCKBACK_SPEED(実距離19px)→新スイング基準(実距離50px)へ。
+kbScale(Lv1×2/Lv2×2.5/Lv3×3)は不変=実距離100/125/150px。v0.25.3257の逆転(Lv1がスイングより弱い)
+はこれで解消。パリィ弾き(COUNTER_KNOCKBACK_*)は従来のまま(指示対象外)。
+検証: typecheck 0/lint 0。
+
 ## v0.25.3258 — スラッシャー連撃に20px踏み込み(慣性つき・社長指示)【2026-08-13 13:03 JST】
 - applySlasherChainStrike: チェーン攻撃ごとにプレイヤーが20px前進(SLASHER_LUNGE_PX=20/160ms)。
   既存の被弾ノックバック機構(減衰スライド)を流用=knockbackSpeedFor換算で実距離指定・自然な慣性。

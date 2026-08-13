@@ -3230,8 +3230,9 @@ const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, 
     const d2 = dx * dx + dy * dy;
     if (d2 > reach2) continue;
     const dist = Math.max(0.001, Math.sqrt(d2));
-    // KNOCKBACK_SPEED の kbScale 倍相当。knockbackEnemy は BULLET_KNOCKBACK_SPEED 基準なので比率換算。
-    const mult = (KNOCKBACK_SPEED * kbScale) / BULLET_KNOCKBACK_SPEED;
+    // v0.25.3259 社長指示「カウンターマスターも底上げ」: 基準を新スイング(実距離50px)に揃え、
+    // その kbScale 倍(Lv1×2=100px/Lv2×2.5=125px/Lv3×3=150px)。knockbackEnemyはBULLET基準なので比率換算。
+    const mult = (knockbackSpeedFor(MELEE_SWING_KNOCKBACK_PX, KNOCKBACK_DURATION) * kbScale) / BULLET_KNOCKBACK_SPEED;
     get().knockbackEnemy(e.id, dx / dist, dy / dist, mult, mult);
   }
 };

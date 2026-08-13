@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3259',
+    items: [
+      'カウンターマスターのノックバックを新基準に底上げ(Lv1=100px/Lv2=125px/Lv3=150px。素のスイング50pxの2〜3倍)。',
+    ],
+  },
+  {
     version: '0.25.3258',
     items: [
       'スラッシャーの連続攻撃時、敵に向かって20px踏み込むようになりました(慣性つきの滑らかな前進)。',
