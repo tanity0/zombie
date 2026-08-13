@@ -559,10 +559,10 @@ const AREA_SECTOR_ENTER_DIST = 1200;   // 担当エリア進入セリフ(neglect
 const ARENA_FIRE_AFTER_MS = 120000;    // 初回発火時刻(=ゲーム開始2分)
 const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示)
 // 紅き夜の発火判定時刻は「5分以上でランダム」(社長指示)。出撃ごとに 5〜9分の範囲で1回だけ抽選時刻を決める。
-const RED_NIGHT_FIRE_MIN_MS = 300000;    // 最短(5分)
-const RED_NIGHT_FIRE_SPREAD_MS = 240000; // 上振れ幅(+0〜4分)=実質5〜9分
-const rollRedNightFireAt = (): number => RED_NIGHT_FIRE_MIN_MS + Math.random() * RED_NIGHT_FIRE_SPREAD_MS;
-const RED_NIGHT_RUN_CHANCE = 0.3;        // 出撃ごとの発生確率(社長指示で 0.5→0.3)。1=必ず / 0=出ない
+// 社長指示v0.25.3317: 紅き月は**7:00固定発動・毎ラン確定**(旧: 5〜9分ランダム判定×発生率30%を廃止)。
+// 城ボス(5:00)後の延長帯に入った者への洗礼という位置づけ。条件(デンジャーゾーン以深/緩コマ/
+// ボス・裏ボス中は延期)は従来どおり=満たすまで毎フレーム再判定で自然に遅延する。
+const RED_NIGHT_FIRE_AT_MS = 420000; // 7:00
 // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): 追補2の「円内10体burst配置(ambient)」は撤去。
 // ゲート1の基本沸きは通常沸き(koma maintenance)の無限流入方式へ置き換え(permeable=trueで境界を
 // 越えて流入)。§5.21-追補4(v0.25.1553): koma目標/CDをピーク・CD0に強制する分岐は撤回済み=
@@ -1385,8 +1385,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const hunterKillsRef = useRef<{ t: number; total: number }[]>([]); // 撃破数の時系列(優勢判定の直近20s/6s集計)
   const hunterPrevHpRef = useRef(-1);   // 前フレームHP(被弾検出)
   const hunterLastDmgAtRef = useRef(-1e9); // 最後に被弾した gameTime
-  const redNightFiredRef = useRef(false); // 紅き夜は1ラン1回のみ判定。判定済みフラグ。
-  const redNightFireAtRef = useRef(rollRedNightFireAt()); // この出撃の発火判定時刻(5〜9分でランダム)。
+  const redNightFiredRef = useRef(false); // 紅き夜は1ラン1回のみ。発火済みフラグ。
+  const redNightFireAtRef = useRef(RED_NIGHT_FIRE_AT_MS); // 発火時刻(7:00固定・v0.25.3317)。
   const lastSeenGameTimeRef = useRef(0);
   // Air-dropped supply timer. Tracks the gameTime of the last map ammo drop
   // and the (randomized) wait until the next one, so resupply crates appear at
@@ -2438,7 +2438,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           hordeSpawnRef.current = { spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT };
           gateEventPendingRef.current = null; // バッチ5追補も新ランでリセット
           redNightFiredRef.current = false;
-          redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
+          redNightFireAtRef.current = RED_NIGHT_FIRE_AT_MS; // 新ランでも7:00固定(v0.25.3317)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
           tutorialConvoQueuedRef.current = false; // チュートリアルM0序盤会話も新ランで再有効化
           runStageIdRef.current = null;          // ステージidのキャッシュも新ランで読み直す(§6.24-UX)
@@ -3383,14 +3383,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           } else if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
               && !rnGs.enemies.some(e => isHiddenBoss(e.type)) // 裏ボス存命中は紅き夜を発火させない(イベント抑止と同基準)
               && areaZoneIndexFor(rnDepth) >= 2 && rnProducerOk) {
-            // 3分後 かつ デンジャーゾーン以降で、出撃に一度だけ抽選。当たれば発火、外れたらこの出撃は紅き夜なし
-            // (社長指示で頻度を下げる=必ず→確率)。redNightFiredRef は当落どちらでも立てて以降は判定しない。
+            // 社長指示v0.25.3317: 7:00固定・毎ラン確定(発生率の抽選は廃止)。条件が塞がっている間は
+            // このelse-ifが通らない=満たした瞬間に発火する(自然遅延は従来どおり)。
             redNightFiredRef.current = true;
-            if (Math.random() < RED_NIGHT_RUN_CHANCE) {
-              rnGs.beginRedNightWarning(newGameTime);
-              spawnFlash('rgba(120,0,0,0.18)', 380);
-              playSfx('event-start');
-            }
+            rnGs.beginRedNightWarning(newGameTime);
+            spawnFlash('rgba(120,0,0,0.18)', 380);
+            playSfx('event-start');
           } else if (rn) {
             if (rn.phase === 'warning' && newGameTime >= rn.activeAt) {
               // 警告 → 本番移行
