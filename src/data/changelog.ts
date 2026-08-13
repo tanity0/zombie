@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3320',
+    items: [
+      'ゲーム内容の変更はありません(異常動作: 犬レシピ=ドッグラン+バーサーカー+吸血へ改訂)。',
+    ],
+  },
+  {
     version: '0.25.3319',
     items: [
       'ゲーム内容の変更はありません(CI赤の修復: 仕様変更に未追従だったテスト4件を更新)。',
