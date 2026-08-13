@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3255',
+    items: [
+      '猫耳アバターの調整: 耳を頭にフィットする位置へ下げ、耳・尻尾とも約半分のサイズに縮小しました。',
+    ],
+  },
+  {
     version: '0.25.3254',
     items: [
       'スラッシャー調整: 連続攻撃の間隔を0.3秒に短縮。さらに間隔中にタップしてあれば、間隔明けに自動で次の一撃が出るようになりました(先行入力)。',

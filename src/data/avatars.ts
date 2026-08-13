@@ -52,8 +52,10 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         layer: 'above',
         anchorX: 0.5, anchorY: 1, // 素材下端中央=頭頂に置く基準点
         offsetXFrac: 0,
-        offsetYFrac: -0.92, // 表示ボックス上端よりやや下(髪の生え際に少し埋める=浮いて見えない)
-        sizeFrac: 0.9,
+        // v0.25.3255 社長実機報告「ズレてる・もっと小さく」: 浮いて見えたため頭頂へ下げ(−0.92→−0.76)、
+        // 幅も半分に(0.9→0.45)。
+        offsetYFrac: -0.76,
+        sizeFrac: 0.45,
         sizeBasis: 'width',
         flipWithFacing: false, // 耳は左右対称の絵なので反転不要
       },
@@ -61,9 +63,9 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         tex: 'avatar-cat-tail', // 76×128
         layer: 'below',
         anchorX: 0.5, anchorY: 1, // 素材下端中央=足元に置く基準点(木/障害物と同じ足元アンカー規約)
-        offsetXFrac: -0.35, // 右向き基準で後方(左)へ。左向き時は flipWithFacing で符号反転=常に背後
+        offsetXFrac: -0.28, // 右向き基準で後方(左)へ。左向き時は flipWithFacing で符号反転=常に背後
         offsetYFrac: 0,
-        sizeFrac: 0.6,
+        sizeFrac: 0.42, // v0.25.3255「もっと小さく」: 0.6→0.42
         sizeBasis: 'height',
         flipWithFacing: true,
       },
