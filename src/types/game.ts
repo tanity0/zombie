@@ -1683,6 +1683,16 @@ export type VisualEffect =
       duration: number;
     }
   | {
+      // SKILL_BUILD_REDESIGN.md §28(B7) 吸血: キル地点から**生きているプレイヤー位置へ**吸い込まれて
+      // いく血粒(社長指示v0.25.3276)。終点は描画側が毎フレームのプレイヤー中心を読む(=ホーミング。
+      // trailの固定終点では追従できないため専用kind)。視覚のみ・判定なし=分類②。
+      kind: 'drain';
+      id: string;
+      fromX: number; fromY: number;
+      createdAt: number;
+      duration: number;
+    }
+  | {
       // 鞭: 全長を即表示してフェードする太い帯(=当たり範囲)+ 明るい芯。
       kind: 'whip';
       id: string;

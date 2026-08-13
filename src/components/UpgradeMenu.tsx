@@ -76,9 +76,11 @@ const UpgradeMenu: React.FC = () => {
       style={{ background: 'rgba(11, 11, 18, 0.55)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
     >
       <div className="glass-panel rounded-none w-full max-w-md overflow-hidden upgrade-menu-panel flex flex-col max-h-[88dvh]">
-        <div className="px-5 pt-5 pb-3 text-center shrink-0">
+        <div className="px-5 pt-5 pb-3 text-center shrink-0 relative">
           <h2 className="text-xl font-semibold tracking-tight text-white">レベルアップ</h2>
           <p className="text-xs text-white/60 mt-1">強化を選んでください</p>
+          {/* 所持スクラップ(社長指示v0.25.3276)。リロール代の判断材料なので常時見せる。 */}
+          <span className="absolute right-4 top-5 text-[12px] text-white/75 tabular-nums">🔩 {straps}</span>
         </div>
         <div className="px-3 pb-4 flex flex-col gap-2 overflow-y-auto min-h-0 overscroll-contain touch-pan-y">
           {upgradeOptions.map(upgrade => {

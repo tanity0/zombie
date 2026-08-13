@@ -9263,7 +9263,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // SKILL_BUILD_REDESIGN.md §28(B7) スキル: 吸血 = キルの20%(率固定)でHP+2/+4/+6(Lv)。
-    // 絵は分類②(既存の被回復FXで十分・新規描画は足さない)。
+    // 絵は分類②(派手側)。キル地点からプレイヤーへ血粒が吸い込まれるdrainエフェクト
+    // (社長指示v0.25.3276「攻撃したときの血のエフェクトがプレイヤーに吸収されていくような」)。
     if (killedAt) {
       const vampLv = skillLevel(get().player, 'vampire');
       const heal = rollVampireHeal(vampLv);
@@ -9272,7 +9273,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           player: { ...state.player, health: Math.min(state.player.maxHealth, state.player.health + heal) },
         }));
         const p = get().player;
-        get().spawnCallout(p.x + p.width / 2, p.y - 20, `+${heal}`, '#4ade80');
+        const src = killedAt as { x: number; y: number };
+        get().spawnEffect({
+          kind: 'drain', id: `vamp-drain-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          fromX: src.x, fromY: src.y, createdAt: Date.now(), duration: 620,
+        });
+        get().spawnCallout(p.x + p.width / 2, p.y - 20, `+${heal}`, '#f87171');
       }
     }
 
