@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3335',
+    items: [
+      'ゲーム内容の変更はありません(全68技のモーション予兆の棚卸し台帳を追加。実装はこれから)。',
+    ],
+  },
+  {
     version: '0.25.3334',
     items: [
       'ゲーム内容の変更はありません(設計メモ更新: 予兆モーションの線引き補足=銃を使う技も対象・「構え」を予兆語彙に追加)。',
