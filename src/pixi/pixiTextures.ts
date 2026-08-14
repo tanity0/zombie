@@ -549,6 +549,9 @@ export const ensureTextures = (): Promise<void> => {
       // 単眼(社長支給v0.25.3340・紫・352×328)。各天使のgaze系「構え=目の発光」予兆に流用する
       // (スリィエル/アクラシエルのgaze等・配線は予兆バッチで)。
       { name: 'fx/angel-eye', scaleMode: 'nearest' as const },
+      // 賞金首・遠距離型(砲手)本体(社長支給v0.25.3347・592×800)。バス停と同化した個体。
+      // §7-9の賞金首3種の1体目。実装(スポーン/AI/体勢)は賞金首バッチで。
+      { name: 'bounty-ranged', scaleMode: 'nearest' as const },
       // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
       // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
