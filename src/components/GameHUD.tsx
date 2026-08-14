@@ -156,10 +156,17 @@ const GameHUD: React.FC = () => {
           }}
         >
           <div
-            className="glass-pill px-3 py-1 text-[13px] font-bold tracking-wide"
+            // §6.38 B4「退場通知」: 賞金首の退場だけ、出現バナーより控えめな小さい見た目にする
+            // (社長指示「小さく『賞金首は去った』通知」)。他のバナーは既存の見た目のまま
+            // (色分けの既存規約=text内容キーで判定する流儀に1本追加しただけ・新機構は作らない)。
+            className={eventBannerText === '賞金首は去った'
+              ? 'glass-pill px-2 py-0.5 text-[11px] font-semibold tracking-wide'
+              : 'glass-pill px-3 py-1 text-[13px] font-bold tracking-wide'}
             style={{
-              color: /成功|達成|救難|凌いだ/.test(eventBannerText) ? '#bbf7d0' : /危険|デンジャー|汚染|深層|検知/.test(eventBannerText) ? '#fecaca' : '#bae6fd',
-              border: `1px solid ${/成功|達成|救難|凌いだ/.test(eventBannerText) ? 'rgba(74,222,128,0.6)' : /危険|デンジャー|汚染|深層|検知/.test(eventBannerText) ? 'rgba(239,68,68,0.6)' : 'rgba(56,189,248,0.6)'}`,
+              color: eventBannerText === '賞金首は去った' ? 'rgba(186,230,253,0.75)'
+                : /成功|達成|救難|凌いだ/.test(eventBannerText) ? '#bbf7d0' : /危険|デンジャー|汚染|深層|検知/.test(eventBannerText) ? '#fecaca' : '#bae6fd',
+              border: `1px solid ${eventBannerText === '賞金首は去った' ? 'rgba(56,189,248,0.35)'
+                : /成功|達成|救難|凌いだ/.test(eventBannerText) ? 'rgba(74,222,128,0.6)' : /危険|デンジャー|汚染|深層|検知/.test(eventBannerText) ? 'rgba(239,68,68,0.6)' : 'rgba(56,189,248,0.6)'}`,
               textShadow: '0 1px 0 rgba(0,0,0,0.9)',
             }}
           >

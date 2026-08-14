@@ -5,11 +5,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   bountyEngagedNow, bountyLingerExpired, bountySpawnBlocked, pickActiveBounty, bountyMaxHealth,
-  runBountyTick, createBountyTickState,
+  runBountyTick, createBountyTickState, anyBountyEngaged, bountyNaturalSpawnReady,
   BOUNTY_LINGER_MS, BOUNTY_HIT_ENGAGE_MS, BOUNTY_BASE_HP, BOUNTY_DEPART_FADE_MS, BOUNTY_WAKE_FX_MS,
+  BOUNTY_NATURAL_FIRST_MS, BOUNTY_NATURAL_MAX_COUNT, BOUNTY_NATURAL_CD_MS,
   BR_ESCORT_COUNT as BR_ESCORT_COUNT_FOR_TEST,
   MK_REPOSE_MS, MK_SUIU_RADIUS, MK_SUIU_HOP_INTERVAL_CHOICES, MK_SUIU_HOP_TRAVEL_MS,
 } from './bountyTick';
+import { bossLeashDistancePx } from './bossEngagement';
 import { usesMimirLaser } from './mimirLaserTrack';
 import { AOE_TELEGRAPH_AUDIT, minWindupMs } from './bossTelegraph';
 import { useGameStore } from '../store/gameStore';
@@ -52,7 +54,7 @@ describe('bountyLingerExpired — 滞在1分(gameTime基準・§2)', () => {
   });
 });
 
-describe('bountySpawnBlocked — 抑止ゲート(B1では用意+テストのみ・配線はB4)', () => {
+describe('bountySpawnBlocked — 抑止ゲート(B1で用意・B4でuseGameLoop.tsの自然湧きへ配線)', () => {
   const ok = (): Parameters<typeof bountySpawnBlocked>[0] => ({
     bossFightNow: false, activeEvent: false, hiddenBossAlive: false, redNightActive: false,
     area: 2, storyBossOnly: false, labTheme: false, corridorMode: false, tutorialStage: false,
@@ -74,6 +76,63 @@ describe('bountySpawnBlocked — 抑止ゲート(B1では用意+テストのみ�
   });
   it('area>=2なら初心者ゾーン条件には掛からない', () => {
     expect(bountySpawnBlocked({ ...ok(), area: 2 })).toBe(false);
+  });
+});
+
+describe('anyBountyEngaged — v6 A-2(B4): 3系統(囲い/紅き夜/叫喚)先送りの束ね関数', () => {
+  const mkBounty = (patch: Partial<Enemy> = {}): Enemy => ({
+    ...spawnEnemyAt('bounty-ranged', 0, 0, 0),
+    id: 'b1', dormant: false, lastHit: -999999, ...patch,
+  });
+  const player = { x: 0, y: 0, width: 32, height: 32 };
+
+  it('賞金首が場に居なければfalse(他イベントを妨げない)', () => {
+    expect(anyBountyEngaged([], player, 0)).toBe(false);
+  });
+  it('dormant中はfalse(交戦していない)', () => {
+    expect(anyBountyEngaged([mkBounty({ dormant: true, x: 0, y: 0 })], player, 0)).toBe(false);
+  });
+  it('リーシュ半径未満に居れば交戦中=true', () => {
+    const leash = bossLeashDistancePx('bounty-ranged', false);
+    const b = mkBounty({ x: leash - 50, y: 0 });
+    expect(anyBountyEngaged([b], player, 0)).toBe(true);
+  });
+  it('リーシュ半径の外でも直近3秒以内の被弾があれば交戦中=true', () => {
+    const leash = bossLeashDistancePx('bounty-ranged', false);
+    const b = mkBounty({ x: leash + 5000, y: 0, lastHit: 1000 });
+    expect(anyBountyEngaged([b], player, 1000 + BOUNTY_HIT_ENGAGE_MS)).toBe(true);
+    expect(anyBountyEngaged([b], player, 1000 + BOUNTY_HIT_ENGAGE_MS + 1)).toBe(false);
+  });
+});
+
+describe('bountyNaturalSpawnReady — 自然湧きの頻度ゲート(§2「頻度」・v2 F・B4)', () => {
+  const ok = (): Parameters<typeof bountyNaturalSpawnReady>[0] => ({
+    gameTime: BOUNTY_NATURAL_FIRST_MS, spawnCount: 0, nextEligibleAt: 0,
+    bountyAlive: false, spawnBlocked: false, calmOk: true,
+  });
+  it('全条件クリアなら発火してよい', () => {
+    expect(bountyNaturalSpawnReady(ok())).toBe(true);
+  });
+  it('初回は5:00未満なら不可', () => {
+    expect(bountyNaturalSpawnReady({ ...ok(), gameTime: BOUNTY_NATURAL_FIRST_MS - 1 })).toBe(false);
+  });
+  it('1ランに最大2回=spawnCountが上限に達したら不可', () => {
+    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: BOUNTY_NATURAL_MAX_COUNT })).toBe(false);
+    expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: BOUNTY_NATURAL_MAX_COUNT - 1 })).toBe(true);
+  });
+  it('2回目までのCD90秒が明けるまでは不可', () => {
+    expect(bountyNaturalSpawnReady({ ...ok(), nextEligibleAt: BOUNTY_NATURAL_FIRST_MS + 1 })).toBe(false);
+    expect(bountyNaturalSpawnReady({ ...ok(), nextEligibleAt: BOUNTY_NATURAL_FIRST_MS })).toBe(true);
+    expect(BOUNTY_NATURAL_CD_MS).toBe(90000);
+  });
+  it('同時1体まで=既に賞金首が場に居るなら不可', () => {
+    expect(bountyNaturalSpawnReady({ ...ok(), bountyAlive: true })).toBe(false);
+  });
+  it('抑止ゲート(bountySpawnBlocked)が掛かっていれば不可', () => {
+    expect(bountyNaturalSpawnReady({ ...ok(), spawnBlocked: true })).toBe(false);
+  });
+  it('緩コマ中は告知しない=calmOk falseなら不可', () => {
+    expect(bountyNaturalSpawnReady({ ...ok(), calmOk: false })).toBe(false);
   });
 });
 

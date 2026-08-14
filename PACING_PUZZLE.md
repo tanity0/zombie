@@ -6334,6 +6334,14 @@ DPSの並走は**スキルに背負わせない**: 床=武器Tier(時間追従�
     `?bountynow`のpracticeForces相乗り/遭遇解放(既存isEngageableBoss+bossStyleSlotKeyで無配線動作を
     確認)/bossHints4種追記/BossRush種別表示「賞金首」追加。**ローテーション・頻度ゲート・自然湧き
     producer・E-5先送り3系統配線・退場通知はB4の残作業として未着手のまま**(このバッチの対象外)。
+  - **B4残作業【実装済み v0.25.3416・Sonnet実装バッチ】**: 自然湧きproducer配線(初回5:00以降・
+    最大2回/ラン・CD90秒・同時1体・緩コマ中は告知しない=bountySpawnBlockedを実配線・出現位置/演出は
+    デバッグ経路と共用=`spawnBountyEncounter`1関数)+4種重複なしローテ(`store.bountyRotation`・
+    `resetGame`でリセット・全種消化で自動再抽選=`takeNextBountyRotationType`)+E-5先送り3系統配線
+    (新規純関数`anyBountyEngaged`→囲い/レスキュー・紅き夜・叫喚の3箇所)+退場通知(GameHUDで出現
+    バナーより小さく控えめな見た目)+金箱価値式の葉モジュール一本化(新規`utils/bountyValue.ts`・
+    ドリフト検知テストを参照同一性テストへ置き換え)。テスト77件緑・★未決なし。
+    **これで賞金首パイプライン(§6.38)完成**。
 - テスト(同コミット): bountyTickの技抽選・距離帯・タイマー(純関数)/保護の不変条件(即死経路3本)/
   ローテ重複なし/抑止ゲート。描画はテスト対象外(掟)。
 - 負荷スコア: **3/10**(常時コスト=フィールドに最大1体+取り巻き2。スキャン/ホロはpooled flipbook。

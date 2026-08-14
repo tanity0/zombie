@@ -82,6 +82,7 @@ import {
   GLEN_NIHIL_SE_MS, // 虚無の三唱の専用SEを鳴らす長さ(技の定数から導出・v0.25.3143)
   SHOP_MEDKIT_COST, // SKILL_BUILD_REDESIGN.md §15-1(B0): ボット購買ポリシーの救急価格
   EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の7: ボット購買ポリシー②(装備区画)の価格表
+  takeNextBountyRotationType, // §6.38 v2 F(B4): 賞金首4種の重複なしローテ(純関数・storeフィールドと対)
 } from '../store/gameStore';
 import { glenScriptApplies } from '../utils/giantScript';
 import { glenPartCountFull, glenRemovedPartAnchors } from '../utils/glenChain';
@@ -147,6 +148,8 @@ import { canForceGateBossNow } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
+  bountySpawnBlocked, bountyNaturalSpawnReady, anyBountyEngaged,
+  BOUNTY_NATURAL_CD_MS,
   type BountySfx,
 } from '../utils/bountyTick';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -1507,6 +1510,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // §6.38 B2a: 賞金首のラン内状態(照準速度/懲罰タイマ/コンボ進行/取り巻き召喚済みか)。
   // idolStateRefと同じ流儀(idolTick.tsを手本・bountyTick.ts参照)。同時1体なので単一refでよい。
   const bountyStateRef = useRef(createBountyTickState());
+  // §6.38 v2 F(B4): 賞金首の自然湧き回数+CD(gameTime基準)。他producer(nextArenaAtRef等)と同じく
+  // ephemeralなタイマー状態なのでrefに置く(rotationだけがstoreフィールド=ラン間で意味を持たない)。
+  const bountyNaturalRef = useRef({ count: 0, nextEligibleAt: 0 });
   // 警察署アリーナ(§6.24 M48)の再発動ガード(社長報告v0.25.2389)。発動でfalse、警察署から
   // POLICE_REARM_RADIUS(360)より離れたらtrueへ戻る。失敗(時間切れ)直後はプレイヤーが必ず
   // 発動半径(240)の内側に居るため、これが無いと即再発動+円内クランプで抜け出せなくなる。
@@ -2547,6 +2553,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           bountyStateRef.current = createBountyTickState(); // 賞金首のラン内状態も新ランでリセット(§6.38 B2a)
+          bountyNaturalRef.current = { count: 0, nextEligibleAt: 0 }; // 自然湧きの回数/CDも新ランでリセット(§6.38 B4)
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
           bossMakerReadyRef.current = false;
           idolStateRef.current = createIdolTickState(); // idolのストリング/懲罰タイマも新ランでリセット
@@ -3067,8 +3074,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
             const pendingGE = GATE_PROGRAM_ENABLED ? gateEventPendingRef.current : null;
-            const gateEventReady = pendingGE != null && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && !redNightActiveNow;
-            const arenaReady = gateEventReady || ((FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && arenaProducerOk);
+            // §6.38 v6 A-2(B4配線): 賞金首交戦中は囲い/レスキューを先送りする(bountyEngagedNow純関数を
+            // 束ねたanyBountyEngaged。賞金首が居ない/dormantならfalse=通常どおり動く)。
+            const bountyBlocksArena = anyBountyEngaged(useGameStore.getState().enemies, player, Date.now());
+            const gateEventReady = pendingGE != null && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && !redNightActiveNow && !bountyBlocksArena;
+            const arenaReady = gateEventReady || ((FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && arenaProducerOk && !bountyBlocksArena);
             if (arenaReady) {
               const pcx = player.x + player.width / 2;
               const pcy = player.y + player.height / 2;
@@ -3384,7 +3394,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // バッチ7(憲法第5条): 囲い/ハンターと重ねない+ピンチ猶予、かつ緩フェーズ中にしか開始しない
           // (山=関所中に窓が開いても抽選を消費せず次の緩まで毎フレーム再判定=自然に遅延)。
           // ?events=0で本ゲートを無効化(従来どおり時間+デンジャーゾーンだけで判定)。
-          const rnBigEventActive = !!(rnGs.activeEvent && rnGs.activeEvent.kind !== 'rescue') || hunterRef.current.phase !== 'idle';
+          // §6.38 v6 A-2(B4配線): 賞金首交戦中は紅き夜を先送りする(他の大イベントと同じ「重ねない」扱い)。
+          const rnBigEventActive = !!(rnGs.activeEvent && rnGs.activeEvent.kind !== 'rescue') || hunterRef.current.phase !== 'idle'
+            || anyBountyEngaged(rnGs.enemies, player, Date.now());
           // 社長裁定(v0.25.1380「2:コマ基準で」): パズル方式ON時の「緩フェーズ中にしか開始しない」は
           // 旧PHASES時刻表ではなくコマで判定する(緩コマ=relax/harvest中のみ開始可。通常/ピーク中に
           // 窓が開いても抽選を消費せず次の緩コマまで毎フレーム再判定=従来と同じ自然遅延)。
@@ -3821,7 +3833,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const aliveScreamer = sS.enemies.some(e => e.type === 'screamer');
           const sCinematic = sS.bossChasing || !!sS.attention || sS.redNight?.phase === 'active'
             || sS.enemies.some(e => e.type === 'giantbat' || e.type === 'reaper');
-          const sBlocked = sCinematic || !!sS.activeEvent;
+          // §6.38 v6 A-2(B4配線): 賞金首交戦中は叫喚型を先送りする。
+          const sBlocked = sCinematic || !!sS.activeEvent || anyBountyEngaged(sS.enemies, player, Date.now());
           // バッチ7: 叫び(screamer)は関所中のみ発火(バッチ3のpressure≥0.80解禁と統合するまでの
           // 先行導入=フェーズ種別だけで判定)+ピンチ猶予。?events=0で従来(いつでも発火)に復帰。
           const screamerProducerOk = !EVENTS_ENABLED || (
@@ -3840,6 +3853,82 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             addEnemy(sc);
             useGameStore.setState({ eventBannerText: '叫喚型 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             screamerRef.current.nextEligibleAt = newGameTime + SCREAMER_RESPAWN_CD_MS;
+          }
+        }
+
+        // §6.38 B4: 賞金首(BOUNTY)の出現位置・演出を、デバッグ経路(`?bountynow=1`)と自然湧きの
+        // 両方から共用する唯一の関数(二重実装しない)。中身は旧デバッグ経路の実装をそのまま関数化した
+        // だけ(§2「告知」=RESCUE式の距離700〜1000px+アテンション+紫サークル相当の出現バナー)。
+        const spawnBountyEncounter = (bType: EnemyType, atGameTime: number): void => {
+          const pcx1 = player.x + player.width / 2, pcy1 = player.y + player.height / 2;
+          const bAng = Math.random() * Math.PI * 2;
+          const bDist = 700 + Math.random() * 300; // 絶対700〜1000px(§2)
+          const bx0 = pcx1 + Math.cos(bAng) * bDist, by0 = pcy1 + Math.sin(bAng) * bDist;
+          const bountyE = spawnEnemyAt(bType, bx0 - 22, by0 - 22, atGameTime);
+          const bClamped = clampRectToPlayableArea(bountyE.x, bountyE.y, bountyE.width, bountyE.height, {
+            farBackdrop: useGameStore.getState().farBackdrop,
+            labTheme,
+            corridorMode: useGameStore.getState().corridorMode,
+            m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
+            corridorRunInActive: useGameStore.getState().corridorRunInActive,
+          });
+          bountyE.x = bClamped.x; bountyE.y = bClamped.y;
+          bountyE.dormant = true;
+          bountyE.aggroRange = BOUNTY_AGGRO_RANGE_DEFAULT;
+          bountyE.homeX = bountyE.x; bountyE.homeY = bountyE.y;
+          const bArea = areaIndexForPos(bountyE.x + bountyE.width / 2, bountyE.y + bountyE.height / 2);
+          const bHp = bountyMaxHealth(bArea, atGameTime);
+          bountyE.health = bHp; bountyE.maxHealth = bHp;
+          // 同時1体まで(§2)=既存の賞金首を消してから出す(idolの複数体対策と同じ作法)。
+          useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => !isBountyType(e.type)) }));
+          addEnemy(bountyE);
+          // B1.5-5(v2 C仕様): 出現告知3点はスポーン時に発火する(起床時ではない)。カットインは無し。
+          playSfx('boss-appear');
+          useGameStore.getState().triggerAttention(bx0, by0);
+          useGameStore.setState({ eventBannerText: '賞金首出現', eventBannerUntil: atGameTime + BOUNTY_APPEAR_BANNER_MS });
+        };
+
+        // --- 賞金首(BOUNTY)自然湧き(§6.38 §2「頻度」・v2 F・B4) ---------------------------------
+        // イベントproducer(eventGateOk相当)への相乗り=抑止ゲート(bountySpawnBlocked)+緩コマ不可
+        // (第5条「緩を荒らさない」)+専用の回数/CDゲート(bountyNaturalSpawnReady)。抽選は4種ローテ
+        // (store.bountyRotation・重複なし・全種消化で再抽選)。出現位置・演出はspawnBountyEncounter共用。
+        if (!danceTest && !indoor && !storyBoss && !tutorialStage && !noSpawn) {
+          const bgs = useGameStore.getState();
+          const bountyAliveNow = bgs.enemies.some(e => isBountyType(e.type));
+          const bHiddenBossAlive = bgs.enemies.some(e => isHiddenBoss(e.type));
+          const bAreaForGate = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
+          const bBlocked = bountySpawnBlocked({
+            bossFightNow: bgs.bossFightNow,
+            activeEvent: !!bgs.activeEvent,
+            hiddenBossAlive: bHiddenBossAlive,
+            redNightActive: bgs.redNight?.phase === 'active',
+            area: bAreaForGate,
+            storyBossOnly: storyBoss,
+            labTheme,
+            corridorMode: bgs.corridorMode,
+            tutorialStage,
+          });
+          // 緩コマ中は告知しない(通常コマで出す。第5条)。パズル方式ONはコマのkindで判定
+          // (通常=komaKind'normal'のみ可。緩=relax/harvest、ピークは別枠なのでどちらも不可)。
+          // OFF(?puzzle=0)時は紅き夜と同じ旧phase基準(redNightPhaseGateOk="gateフェーズでない")を流用する。
+          const bountyCalmOk = puzzleActiveNow
+            ? puzzleKomaRef.current.kind === 'normal'
+            : redNightPhaseGateOk(phaseAt(newGameTime).kind);
+          const bReady = bountyNaturalSpawnReady({
+            gameTime: newGameTime,
+            spawnCount: bountyNaturalRef.current.count,
+            nextEligibleAt: bountyNaturalRef.current.nextEligibleAt,
+            bountyAlive: bountyAliveNow,
+            spawnBlocked: bBlocked,
+            calmOk: bountyCalmOk,
+          });
+          if (bReady) {
+            const { picked, rest } = takeNextBountyRotationType(bgs.bountyRotation);
+            useGameStore.setState({ bountyRotation: rest });
+            // B-4裁定: 出現した個体は討伐/退場を問わず回数とローテ枠を消費(=消費は出現の瞬間に確定)。
+            bountyNaturalRef.current.count += 1;
+            bountyNaturalRef.current.nextEligibleAt = newGameTime + BOUNTY_NATURAL_CD_MS;
+            spawnBountyEncounter(picked, newGameTime);
           }
         }
 
@@ -6005,35 +6094,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 直リンク検証用にそのまま残す。practiceBossType()はactiveSlot.bossTypeを返す)。
             const practiceType = practiceBossType();
             const bType = (practiceType && isBountyType(practiceType)) ? practiceType : bountyTypeOf(FORCE_BOUNTY_TYPE);
-            const pcx1 = player.x + player.width / 2, pcy1 = player.y + player.height / 2;
-            const bAng = Math.random() * Math.PI * 2;
-            const bDist = 700 + Math.random() * 300; // 絶対700〜1000px(§2)
-            const bx0 = pcx1 + Math.cos(bAng) * bDist, by0 = pcy1 + Math.sin(bAng) * bDist;
-            const bountyE = spawnEnemyAt(bType, bx0 - 22, by0 - 22, newGameTime);
-            // B1.5-7: 手作りのnull/false決め打ちをやめ、store実値を使う(spawn位置がクランプ帯の
-            // 境界近くでズレる事故の防止=idol force-spawn等と同じ「今のstateを読む」流儀)。
-            const bClamped = clampRectToPlayableArea(bountyE.x, bountyE.y, bountyE.width, bountyE.height, {
-              farBackdrop: useGameStore.getState().farBackdrop,
-              labTheme,
-              corridorMode: useGameStore.getState().corridorMode,
-              m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
-              corridorRunInActive: useGameStore.getState().corridorRunInActive,
-            });
-            bountyE.x = bClamped.x; bountyE.y = bClamped.y;
-            bountyE.dormant = true;
-            bountyE.aggroRange = BOUNTY_AGGRO_RANGE_DEFAULT;
-            bountyE.homeX = bountyE.x; bountyE.homeY = bountyE.y;
-            const bArea = areaIndexForPos(bountyE.x + bountyE.width / 2, bountyE.y + bountyE.height / 2);
-            const bHp = bountyMaxHealth(bArea, newGameTime);
-            bountyE.health = bHp; bountyE.maxHealth = bHp;
-            // 同時1体まで(§2)=既存の賞金首を消してから出す(idolの複数体対策と同じ作法)。
-            useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => !isBountyType(e.type)) }));
-            addEnemy(bountyE);
-            // B1.5-5(v2 C仕様・所属バッチ未定義だった穴を埋める): 出現告知3点はスポーン時に発火する
-            // (起床時ではない)。カットインは無し(§6.38「カットインは無し」)。
-            playSfx('boss-appear');
-            useGameStore.getState().triggerAttention(bx0, by0);
-            useGameStore.setState({ eventBannerText: '賞金首出現', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+            // §6.38 B4: 出現位置・演出はspawnBountyEncounter(自然湧きと共用・二重実装しない)。
+            spawnBountyEncounter(bType, newGameTime);
           }
           // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋を立てて相手を1体だけ出す。休眠は使わない(即戦闘)。
           if (BOSS_MAKER && !bossMakerReadyRef.current) {

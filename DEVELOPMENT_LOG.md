@@ -1,5 +1,74 @@
 # Development Log
 
+## v0.25.3416 — §6.38 B4(最終): 自然湧きproducer配線+4種ローテ+E-5先送り3系統+退場通知+葉一本化(Sonnet実装バッチ)【2026-08-15 02:55 JST】
+PACING_PUZZLE.md §6.38 §2(出現・滞在・退場)・v2 B/C/F項・v6 A-2の実装。**これで賞金首パイプライン完成**。
+
+### 1. 自然湧きproducer配線
+- `bountyTick.ts`に新規純関数`bountyNaturalSpawnReady(input)`(初回5:00以降・1ランに最大2回・
+  同時1体・CD90秒・抑止ゲート・緩コマ不可、を1本の式に集約)+定数
+  `BOUNTY_NATURAL_FIRST_MS=300000`/`BOUNTY_NATURAL_MAX_COUNT=2`/`BOUNTY_NATURAL_CD_MS=90000`。
+- `useGameLoop.ts`のスクリーマー発生源直後に新セクション追加。B1で用意済みだった`bountySpawnBlocked`
+  (未配線)をここで初めて実配線(bossFightNow/activeEvent/裏ボス存命/紅き夜/初心者ゾーン/
+  storyBossOnly/labTheme/corridorMode/tutorialStageの全入力を実stateから組み立て)。
+- **緩コマ中は告知しない(第5条)**: パズル方式ON時は`puzzleKomaRef.current.kind === 'normal'`
+  (=緩(relax/harvest)・ピークのどちらでもない「通常コマ」だけ可)、OFF(`?puzzle=0`)時は紅き夜と
+  同じ`redNightPhaseGateOk`(旧phase基準)を流用——新しい判定系を発明していない。
+- **出現位置・演出はデバッグ経路と共用**(二重実装しない): 旧デバッグ専用コードをそのまま
+  `spawnBountyEncounter(bType, atGameTime)`という1関数へ切り出し、`?bountynow=1`経路と自然湧き
+  経路の両方がこれを呼ぶ形に統一(RESCUE式700〜1000px+アテンション+出現バナー)。
+
+### 2. 4種重複なしローテ
+- `gameStore.ts`に`BOUNTY_ROTATION_TYPES`(4種の並び)・`shuffleBountyRotation()`(Fisher-Yates)・
+  `takeNextBountyRotationType(rotation)`(純関数。空なら自動で再抽選してから1個返す=§2「全種消化後
+  は再抽選」)を追加。storeフィールド`bountyRotation: EnemyType[]`を新設し、初期状態+`resetGame`の
+  両方で`shuffleBountyRotation()`を積む(ラン内ローテ=次ランへ持ち越さない)。
+- **B-4裁定**: 出現した個体は討伐/退場を問わず回数(`bountyNaturalRef.current.count`)とローテ枠を
+  消費——消費は「取り出した時点(=出現の瞬間)」で確定し、討伐/退場を待たない。
+
+### 3. E-5先送り3系統配線(v6 A-2)
+- `bountyTick.ts`に新規純関数`anyBountyEngaged(enemies, player, nowMs)`(既存の`pickActiveBounty`+
+  `bountyEngagedNow`をそのまま束ねただけ・判定を複製しない)。
+- `useGameLoop.ts`の3箇所へ配線: ①囲い/レスキュー(`gateEventReady`/`arenaReady`に`!bountyBlocksArena`
+  を追加) ②紅き夜(`rnBigEventActive`へ`|| anyBountyEngaged(...)`を追加=他の大イベントと同じ
+  「重ねない」枠に合流) ③叫喚(`sBlocked`へ`|| anyBountyEngaged(...)`を追加)。
+  賞金首が居ない/dormant中はfalseを返すので、通常時の挙動は不変(この3系統のテストは全て緑のまま)。
+
+### 4. 退場通知
+- 1分退場のフェード時の「賞金首は去った」バナー(B1.5-5で既存)自体は変更なし。**出現バナーより
+  控えめ**にする要件は`GameHUD.tsx`のeventBanner描画側で対応: `eventBannerText === '賞金首は去った'`
+  の時だけ小さいフォント(11px)・薄い枠色・低い不透明度を適用(既存の「文言キーで色を変える」規約に
+  1分岐追加しただけ・新しい通知機構は作っていない)。
+
+### 5. クリーンアップ(金箱価値式の葉モジュール一本化)
+- 新規`utils/bountyValue.ts`(依存=`enemyUtils.ts`+`timeDifficulty.ts`のみ。どちらも
+  gameStore.ts/bountyTick.tsへ逆import しないため循環にならない=`bountyDims.ts`ほどの
+  「完全ゼロimport」までは不要と判断)に`bountyEffectiveValueMult`の本体を1本化。
+  `gameStore.ts`の`bountyChestValueMult`と`bountyTick.ts`の`bountyEffectiveValueMult`は、
+  どちらもこの1関数を直接import(`bountyTick.ts`は既存消費者のためnamed re-export)する形に
+  変更——B3で発生していた「同じ式の複製」を解消。
+- `bountyGoldChest.test.ts`のドリフト検知テスト(値の一致比較)を、参照同一性(`toBe`)の検証へ
+  置き換え(「たまたま一致」ではなく「同じ関数を指している」ことを保証)。
+
+### テスト
+- `bountyTick.test.ts`: `anyBountyEngaged`(4件)・`bountyNaturalSpawnReady`(7件)を追加。
+- 新規`store/bountyRotation.test.ts`(5件): シャッフルの重複なし・ローテ消化の重複なし・
+  全種消化後の自動再抽選・純関数性(入力を書き換えない)・`resetGame`後の初期化。
+- `bountyGoldChest.test.ts`: ドリフト検知テストを参照同一性テストへ更新。
+- 実行結果: `bountyTick.test.ts`(52件)+`bountyGoldChest.test.ts`(6件)+`bountyRotation.test.ts`
+  (5件)=**77件全緑**。typecheck 0エラー・lint 0エラー(既存warningのみ)・madge循環は既知の1件
+  (`gameStore.ts > ghostBuild.ts > weaponUtils.ts`)のみ・増加なし。
+
+### 負荷スコア
+自然湧き判定=イベントproducerの抽選に相乗りする形の追加(enemies配列の`.some()`スキャン1〜2回+
+定数比較のみ・毎フレーム)。E-5配線=既存の3系統それぞれへ`anyBountyEngaged`(pickActiveBounty内の
+線形スキャン+距離計算1回)を1呼び出し追加。**1/10**(境界付き・イベント抽選と同じ頻度=毎フレームだが
+軽量・敵配列は元々このゲームの規模で小さい・新規の永続ループも重い描画も追加していない)。
+
+### ★未決事項
+なし。B4の範囲(§2/v2 B・C・F項/v6 A-2)は全て実装済み。
+
+---
+
 ## v0.25.3415 — B3検収(良)→B4(最終)発注【2026-08-15 07:15 JST】
 - v0.25.3414検収: 金箱(両死亡経路・クランプ・マグネット・閃光開封・実効ランク価値)+E-1完遂
   (ELITE_EXECUTE_HP_RATIO撤去)。テスト6+書き直し一式緑・★未決なし。§6.38のB3ステータス更新。

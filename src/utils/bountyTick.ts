@@ -37,9 +37,12 @@ export {
   BOUNTY_BASE_HP,
 };
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
-import { isBountyType, AREA_BASE_DIFFICULTY, createEnemyProjectile, spawnEnemyAt } from './enemyUtils';
-import { effectiveDifficultyArea, lerpAreaTable } from './timeDifficulty';
+import { isBountyType, createEnemyProjectile, spawnEnemyAt } from './enemyUtils';
 import { EVENT_BANNER_MS } from './directorTick';
+// §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存=enemyUtils+timeDifficultyのみの
+// 葉)へ一本化した。ここはnamed re-exportだけ残す(既存の消費者=gameStore.ts/テストを壊さないため)。
+import { bountyEffectiveValueMult } from './bountyValue';
+export { bountyEffectiveValueMult };
 import {
   bossLeashDistancePx, advanceBossDisengageGrace,
   BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
@@ -63,14 +66,9 @@ import {
   MIMIR_LASER_WINDUP_MS as BR_LASER_WINDUP_MS,
 } from './mimirLaserTrack';
 
-/**
- * §3/v2 F項(実効難易度倍率の唯一の出どころ): HP・金箱の価値のどちらも「基準値×この倍率」で計算する。
- * CONSTANT_STRENGTH_TYPES(=fixed)なのでbuildEnemy自体は倍率を掛けない(色/距離/時間で自動スケール
- * しない型のため)。呼び出し側がスポーン後パッチ/pickup生成時に明示的に掛ける
- * (AREA_BASE_DIFFICULTYは他の通常敵と同じ表=値の出どころを1つに保つ)。
- */
-export const bountyEffectiveValueMult = (area: number, gameTimeMs: number): number =>
-  lerpAreaTable(AREA_BASE_DIFFICULTY, effectiveDifficultyArea(area, gameTimeMs));
+// §3/v2 F項(実効難易度倍率の唯一の出どころ): 式の本体はbountyValue.ts(B4で一本化・上でimport&
+// re-export済み)。CONSTANT_STRENGTH_TYPES(=fixed)なのでbuildEnemy自体は倍率を掛けない(色/距離/
+// 時間で自動スケールしない型のため)。呼び出し側がスポーン後パッチ/pickup生成時に明示的に掛ける。
 
 /** §3「HP: 基準2000(叩き台)×スポーン時の実効難易度倍率」。 */
 export const bountyMaxHealth = (area: number, gameTimeMs: number): number =>
@@ -101,6 +99,25 @@ const ARRIVE_EPS_PX = 2;
 export interface BountyEngagedSignals { dormant: boolean; distance: number; msSinceHit: number }
 export const bountyEngagedNow = (sig: BountyEngagedSignals, leashRadiusPx: number): boolean =>
   !sig.dormant && (sig.distance < leashRadiusPx || sig.msSinceHit <= BOUNTY_HIT_ENGAGE_MS);
+
+/**
+ * §6.38 v6 A-2(B4配線): useGameLoop.tsの3系統(囲い/レスキュー・紅き夜・叫喚)が賞金首の交戦中に
+ * 割り込まないためのゲート。pickActiveBounty+bountyEngagedNowをそのまま束ねただけ(判定を複製しない)。
+ * 賞金首が居ない/dormantなら false(=他イベントを妨げない)。
+ */
+export const anyBountyEngaged = (
+  enemies: readonly Enemy[],
+  player: { x: number; y: number; width: number; height: number },
+  nowMs: number,
+): boolean => {
+  const bounty = pickActiveBounty(enemies);
+  if (!bounty) return false;
+  const bcx = bounty.x + bounty.width / 2, bcy = bounty.y + bounty.height / 2;
+  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+  const dist = Math.hypot(bcx - pcx, bcy - pcy);
+  const leashRadius = bossLeashDistancePx(bounty.type, false);
+  return bountyEngagedNow({ dormant: !!bounty.dormant, distance: dist, msSinceHit: nowMs - bounty.lastHit }, leashRadius);
+};
 
 /**
  * 滞在1分が満了したか(gameTime基準)。`lastEngagedAt` 未設定ならスポーン時刻(`spawnedAt`)を起点にする
@@ -1267,3 +1284,31 @@ export interface BountySpawnBlockInput {
 export const bountySpawnBlocked = (input: BountySpawnBlockInput): boolean =>
   input.bossFightNow || input.activeEvent || input.hiddenBossAlive || input.redNightActive
   || input.area <= 1 || input.storyBossOnly || input.labTheme || input.corridorMode || input.tutorialStage;
+
+// ---------------------------------------------------------------------------------------------
+// 自然湧きの頻度ゲート(§2「頻度(叩き台)」・B4配線)。イベントproducer(eventGateOk)への相乗りに
+// 加えて確認する専用の回数/CD条件。producer側(useGameLoop.ts)がgameTime/回数/CD/同時数/抑止ゲート/
+// 緩コマ判定を集めてこの純関数へ渡すだけにし、判定ロジック自体はここへ1本化する。
+// ---------------------------------------------------------------------------------------------
+/** 初回は5:00(ゲーム内時計)以降。 */
+export const BOUNTY_NATURAL_FIRST_MS = 300000;
+/** 1ランに最大2回(叩き台)。 */
+export const BOUNTY_NATURAL_MAX_COUNT = 2;
+/** 2回目までのCD=90秒(叩き台)。1回目に消費した瞬間から数える。 */
+export const BOUNTY_NATURAL_CD_MS = 90000;
+
+export interface BountyNaturalSpawnInput {
+  gameTime: number;
+  spawnCount: number;     // このランで自然湧きした回数(消費済み・討伐/退場を問わない=B-4裁定)
+  nextEligibleAt: number; // CD明け時刻(gameTime基準。1回目は0でよい=即時)
+  bountyAlive: boolean;   // 同時1体まで(既に賞金首が場に居る)
+  spawnBlocked: boolean;  // bountySpawnBlockedの結果(ボス戦中/初心者ゾーン等)
+  calmOk: boolean;        // 緩コマでない(=告知してよいコマ。第5条「緩を荒らさない」)
+}
+export const bountyNaturalSpawnReady = (input: BountyNaturalSpawnInput): boolean =>
+  input.gameTime >= BOUNTY_NATURAL_FIRST_MS
+  && input.spawnCount < BOUNTY_NATURAL_MAX_COUNT
+  && input.gameTime >= input.nextEligibleAt
+  && !input.bountyAlive
+  && !input.spawnBlocked
+  && input.calmOk;

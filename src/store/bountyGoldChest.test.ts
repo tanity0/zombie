@@ -5,7 +5,8 @@ import {
   useGameStore, rollBountyChestReward, bountyChestValueMult, BOUNTY_CHEST_TREASURE_COUNT,
 } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { bountyEffectiveValueMult } from '../utils/bountyTick';
+import { bountyEffectiveValueMult as bountyEffectiveValueMultFromLeaf } from '../utils/bountyValue';
+import { bountyEffectiveValueMult as bountyEffectiveValueMultFromBountyTick } from '../utils/bountyTick';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 
 describe('damageEnemy/grantMeleeKillRewards — 賞金首討伐で金箱(bounty-chest)が1個ドロップする(§6.38 B3①)', () => {
@@ -107,10 +108,12 @@ describe('collectPickup(bounty-chest) — 開封の中身(§6.38 B3②中身が�
     expect(highMin).toBeGreaterThanOrEqual(lowMax);
   });
 
-  it('bountyChestValueMultはbountyTick.bountyEffectiveValueMult(HPスケールと同じ式)と一致し続ける', () => {
-    // 循環import回避のためgameStore.ts側に式を複製している(コメント参照)。ドリフト検知用の固定テスト。
-    for (const [area, gt] of [[0, 0], [1, 60_000], [2, 240_000], [3, 500_000], [4, 999_999]] as const) {
-      expect(bountyChestValueMult(area, gt)).toBeCloseTo(bountyEffectiveValueMult(area, gt), 10);
-    }
+  it('§6.38 B4(クリーンアップ): bountyChestValueMultは複製ではなく、bountyTick.tsと同じ実importである', () => {
+    // B3では循環import回避のためgameStore.ts側に式を複製し、ドリフト検知テスト(値の一致)で監視していた。
+    // B4でbountyValue.ts(依存=enemyUtils+timeDifficultyのみの葉)へ一本化し、gameStore.ts/bountyTick.ts
+    // の両方がそこから直接importする形にした。もう「別々の式がたまたま一致する」ではなく「同じ関数を
+    // 指している」ことを検証する(参照同一性=これがドリフトしなくなったことの証明)。
+    expect(bountyChestValueMult).toBe(bountyEffectiveValueMultFromLeaf);
+    expect(bountyEffectiveValueMultFromBountyTick).toBe(bountyEffectiveValueMultFromLeaf);
   });
 });
