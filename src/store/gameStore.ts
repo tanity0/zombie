@@ -380,8 +380,9 @@ const CASTLE_FOOT_OFFSET_Y = 38;
 const MERCHANT_INTERACT_RADIUS = 58;
 const MERCHANT_REOPEN_DELAY_MS = 1500;
 // 武器商人: サークル内に連続滞在でショップが開くまでの時間(社長指示v0.25.1842「サークルに3秒滞在で
-// 話しかけれる」=旧・近接スイング開店を置換)。帰還/クエスト円の3秒滞在と同じ操作感。
-export const MERCHANT_TALK_DWELL_MS = 3000;
+// 話しかけれる」=旧・近接スイング開店を置換)。
+// 社長指示v0.25.3326「武器商人開くの2秒に変更」: 3000→2000(商人のみ。帰還/クエスト円の3秒は不変)。
+export const MERCHANT_TALK_DWELL_MS = 2000;
 const EVENT_NPC_MIN_DISTANCE = 460;
 const EVENT_NPC_MAX_DISTANCE = 950;
 const EVENT_NPC_INTERACT_RADIUS = 64;

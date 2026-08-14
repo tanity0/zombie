@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3326',
+    items: [
+      '武器商人のショップが開くまでのサークル滞在時間を3秒→2秒に短縮しました。',
+    ],
+  },
+  {
     version: '0.25.3325',
     items: [
       'スキル「処刑」の爆発が、プレイヤーの位置ではなくフィニッシュした敵の位置で発生するようになりました。',
