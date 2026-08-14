@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3349',
+    items: [
+      'ゲーム内容の変更はありません(設計メモ更新: 賞金首・遠距離型の歩行=バス停は静止・体だけ引きずる2レイヤー方式。分離素材を依頼中)。',
+    ],
+  },
+  {
     version: '0.25.3348',
     items: [
       'ゲーム内容の変更はありません(設計メモ更新: 賞金首・遠距離型は移動可=後退カイトで確定)。',
