@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3401',
+    items: [
+      'ゲーム内容の変更はありません(将来の検討メモを設計書に記録)。',
+    ],
+  },
+  {
     version: '0.25.3400',
     items: [
       'スラッシャーの踏み込みを「相手が実際にノックバックした時だけ」に変更しました(空振りやノックバックしない相手には前進しません)。',
