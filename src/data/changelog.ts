@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3348',
+    items: [
+      'ゲーム内容の変更はありません(設計メモ更新: 賞金首・遠距離型は移動可=後退カイトで確定)。',
+    ],
+  },
+  {
     version: '0.25.3347',
     items: [
       'ゲーム内容の変更はありません(賞金首・遠距離型の本体素材「バス停と同化した個体」を取り込み。登場はまだ)。',
