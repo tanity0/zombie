@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3359',
+    items: [
+      'ゲーム内容の変更はありません(賞金首「舞妓(変異)」の武器素材=手毬を取り込みました。登場はまだ)。',
+    ],
+  },
+  {
     version: '0.25.3358',
     items: [
       '拠点の「ボスラッシュ」を「変異体対策室」に改名しました。今後は賞金首(小ボス)も並ぶ予定です(掲載は賞金首の実装と同時)。',
