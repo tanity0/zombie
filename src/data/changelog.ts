@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3389',
+    items: [
+      'ゲーム内容の変更はありません(クリティカル頻度の計測を開始し、CD案を含む調整レバーを設計書に整理)。',
+    ],
+  },
+  {
     version: '0.25.3388',
     items: [
       'ゲーム内容の変更はありません(体勢削りの方針を組み直し: 今の速さは体勢ビルドの到達点に再定義し、基礎は絞る方向。実機テスト後に確定)。',
