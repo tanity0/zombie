@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.3365 — 鋏(変異)の武器素材=巨大な裁ち鋏の取り込み=武器4本完備【2026-08-14 19:00 JST】
+- 社長支給(IMG_7447・392×256・血染めの裁ち鋏・透過)→ public/sprites/bounty-balance-scissors.png+
+  pixiTextures登録(nearest)。武器素材台帳へ追記。★鋏の用途と「錨の薙ぎ(v2設計)」との関係は指示待ち
+  (本体絵の錨を鋏に差し替えるか)。
+- 並行: B0着地済み(v0.25.3364)・B1実装中。
+
 ## v0.25.3364 — §6.38 B0(先行抽出バッチ): ミーミルレーザー型ゲート一般化+懲罰狙撃の純関数抽出【2026-08-14 18:04 JST】
 - **B0-1 ミーミル型レーザーの型ゲート一般化**: `usesMimirLaser(type)`(型集合`MIMIR_LASER_TYPES`・
   現状mimirのみ)を`src/utils/mimirLaserTrack.ts`に新設し、レーザーの**判定・描画・中断**に関わる
