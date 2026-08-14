@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3413',
+    items: [
+      'ゲーム内容の変更はありません(賞金首ボス化(B-Rebuild)の検収記録。次=金箱の実装へ)。',
+    ],
+  },
+  {
     version: '0.25.3412',
     items: [
       '賞金首が完全に「ボス」扱いになり、クリティカルの出方(止まらず動きが遅くなる)ととどめの挙動が城ボスと同じ規格に統一されました。',
