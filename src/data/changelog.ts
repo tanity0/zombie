@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3402',
+    items: [
+      'ゲーム内容の変更はありません(賞金首の実機フィードバック6件を設計書に記録し、修正を発注)。',
+    ],
+  },
+  {
     version: '0.25.3401',
     items: [
       'ゲーム内容の変更はありません(将来の検討メモを設計書に記録)。',
