@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3330',
+    items: [
+      'ゲーム内容の変更はありません(バランス再設計メモの更新: 賞金首は専用新規3種のローテーションに決定・裁定パッケージの詳細化)。',
+    ],
+  },
+  {
     version: '0.25.3329',
     items: [
       'ゲーム内容の変更はありません(未使用の内部フラグ「フィニッシュ以外では死なない」の削除と、バランス再設計の設計メモ追記)。',
