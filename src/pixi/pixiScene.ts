@@ -12680,11 +12680,13 @@ export class PixiScene {
       this.syncAvatarPartLayer(
         this.ghostAvatarAbove, gParts.filter(pt => pt.layer === 'above'), true, this.L.actorLayer,
         { footX, footY, boxW, boxH }, dsc, 0, 0, 0, actOffX, actOffY, gAvatarAlpha, faceSign, gHeadDeltaY, gBodyDeltaX,
+        1, actSqY, // v0.25.3346: 守護霊の本体scale(sc×actSqY)と同じ反動スカッシュをパーツへも
         { tint: GHOST_ALLY_TINT, zIndexBase: footY },
       );
       this.syncAvatarPartLayer(
         this.ghostAvatarBelow, gParts.filter(pt => pt.layer === 'below'), false, this.L.actorLayer,
         { footX, footY, boxW, boxH }, dsc, 0, 0, 0, actOffX, actOffY, gAvatarAlpha, faceSign, gHeadDeltaY, gBodyDeltaX,
+        1, actSqY,
         { tint: GHOST_ALLY_TINT, zIndexBase: footY },
       );
     }
@@ -12965,6 +12967,9 @@ export class PixiScene {
     // v0.25.3278(社長報告「走ってる時はズレる」): 絵の実体の横中心差分(画面px・符号付きscale.x適用済み)。
     // 走り絵の前傾で体がボックス内を前方へ寄るぶん、**全パーツ**のXへ加算する(耳も尻尾も体ごと寄る)。
     bodyDeltaX = 0,
+    // v0.25.3346(社長報告「絵の揺れと合ってない」): 本体の演出スカッシュ(歩きの伸縮/反動/登場)を
+    // パーツにも掛ける。位置(offset)とサイズの両方に適用=体が縮む瞬間は耳も一緒に沈んで縮む。
+    sqX = 1, sqY = 1,
     opts?: { tint?: number; zIndexBase?: number }, // 守護霊描画用(青白tint+cross-actor zIndexソート)
   ): void {
     for (let i = 0; i < parts.length; i++) {
@@ -12986,9 +12991,9 @@ export class PixiScene {
       const targetPx = (part.sizeBasis === 'width' ? fb.boxW : fb.boxH) * dsc * part.sizeFrac;
       const sc = srcPx > 0 ? targetPx / srcPx : 0;
       const mirror = part.flipWithFacing && face < 0;
-      sp.scale.set(mirror ? -sc : sc, sc);
-      const ox = part.offsetXFrac * fb.boxW * dsc * (part.flipWithFacing ? face : 1) + bodyDeltaX;
-      const oy = part.offsetYFrac * fb.boxH * dsc + (part.followsHead ? headDeltaY : 0);
+      sp.scale.set((mirror ? -sc : sc) * sqX, sc * sqY);
+      const ox = part.offsetXFrac * fb.boxW * dsc * sqX * (part.flipWithFacing ? face : 1) + bodyDeltaX;
+      const oy = part.offsetYFrac * fb.boxH * dsc * sqY + (part.followsHead ? headDeltaY : 0);
       sp.position.set(
         this.snapToScreenPixel(fb.footX + ox, this.L.world.position.x) + introOffX + actOffX,
         this.snapToScreenPixel(fb.footY - bob + oy, this.L.world.position.y) + introOffY + actOffY,
@@ -13307,13 +13312,18 @@ export class PixiScene {
       // v0.25.3278: 走り絵の前傾(体がボックス内で前方へ寄る)を全パーツのXへ追従。符号付きscale.x
       // を掛けるのでミラー(左向き)時は自動で逆向きに寄る。
       const bodyDeltaX = avatarHeadCxDeltaPx(bodyTexName, baselineTexName) * view.sprite.scale.x;
+      // v0.25.3346: 本体のscaleに掛かっている演出スカッシュ(intro×walk×act)をパーツへも渡す。
+      const avSqX = introSqX * walkSqX * actSqX;
+      const avSqY = introSqY * walkSqY * actSqY;
       this.syncAvatarPartLayer(
         this.playerAvatarAbove, parts.filter(pt => pt.layer === 'above'), true, view.container,
         fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY, bodyDeltaX,
+        avSqX, avSqY,
       );
       this.syncAvatarPartLayer(
         this.playerAvatarBelow, parts.filter(pt => pt.layer === 'below'), false, view.container,
         fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY, bodyDeltaX,
+        avSqX, avSqY,
       );
     }
     // 救急鞄スキル発動: 「鞄を頭上へ掲げる」一拍(振り抜きポーズと同じ窓・描画のみ・判定不変)。
