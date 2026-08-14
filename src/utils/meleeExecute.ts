@@ -1,8 +1,11 @@
-// PACING_PUZZLE.md §6.22 M47仕様①: 気絶中近接の即死に「強個体」しきい値を設ける。
+// PACING_PUZZLE.md §6.22 M47仕様①→§6.38 B3(E-1裁定・社長宣言による既存behavior変更)。
 // 雑魚は無条件即死(弾切れ救済ループ=不変)。強個体(タイプ/フラグ判定。ランタイムHPの絶対値
-// では判定しない=深部の雑魚を巻き込まない)は HP < maxHealth×ELITE_EXECUTE_HP_RATIO のときのみ
-// 即死し、HP >= しきい値のときは即死せず近接ダメージ×ELITE_MELEE_STUN_MULT を与えて気絶解除
-// (ボス5×打と同じ「フィニッシュ経路」扱い=crit扱いの金数字表示)。
+// では判定しない=深部の雑魚を巻き込まない)は**HPに関わらず即死しない**——常に近接ダメージ×
+// ELITE_MELEE_STUN_MULTを与えて気絶解除する(ボス5×打と同じ「フィニッシュ経路」扱い=crit扱いの
+// 金数字表示)。
+// ★E-1確定(社長裁定v0.25.3171「パンプキンもだけど即死無しだよ。致命の一撃ではあるけど」・
+// PACING_PUZZLE.md §6.38 v3裁定): 旧仕様(HP<maxHealth×ELITE_EXECUTE_HP_RATIOなら即死)は撤去。
+// パンプキン/lab-zombie-3/isNamed/questTargetの瀕死処刑を廃止=強個体は削り切る(HP0)以外で死なない。
 // 呼び出し側(gameStore.ts の finisher 3箇所+ここ)の「ボスか否か」は **usesBossStunnedMelee** で
 // 判定する(v0.25.3171・案A)。旧コメントは「isBossType 分岐より後段に置くこと」だったが、
 // それだと pumpkin / lab-zombie-3 に強個体規定が永久に届かなかった。
@@ -10,14 +13,14 @@
 import type { EnemyType } from '../types/game';
 import { isBossType } from './enemyUtils';
 
-export const ELITE_EXECUTE_HP_RATIO = 0.5;
 export const ELITE_MELEE_STUN_MULT = 3;
 
 // 強個体の定義: pumpkin/lab-zombie-3(タイプ) または isNamed/questTarget(個体フラグ)。
 // §6.38 v7(社長裁定「城ボスをコピーして作り直して」): 賞金首4型は旧v6 A-1でここへ名指し追加
 // されていたが、v7でisBossTypeへフル編入されたため撤去(=賞金首は下のusesBossStunnedMeleeで
 // 普通に「ボス」として扱われ、致命の一撃はboss式×BOSS_MELEE_STUN_MULT・keepStunもboss枝が担う。
-// 二重登録の解消)。E-1(強個体処刑の撤去=パンプキン/lab-zombie-3側)はB3の別裁定=そちらは触らない。
+// 二重登録の解消)。E-1(強個体処刑の撤去=パンプキン/lab-zombie-3側)は§6.38 B3で実施済み
+// (このファイル内=stunnedMeleeOutcomeのHP閾値撤去)。
 const isEliteType = (t: EnemyType): boolean => t === 'pumpkin' || t === 'lab-zombie-3';
 
 /**
@@ -46,10 +49,10 @@ export const stunnedMeleeOutcome = (enemy: StunnedMeleeEnemy): StunnedMeleeOutco
   // §6.38 v7: 旧v6 B1.5-1の「賞金首は全HP帯でexecuteを返さない」早期returnは撤去。
   // v7で賞金首はisBossType(=usesBossStunnedMelee)側へ入るため、この関数(強個体/雑魚の裁定)
   // には到達しなくなった(呼び出し側は必ずusesBossStunnedMeleeを先に見る=下のコメントどおり)。
-  // パンプキン/lab-zombie-3の50%閾値(下の行)はB3の別裁定=ここでは変更しない。
+  // §6.38 B3(E-1確定): 強個体(pumpkin/lab-zombie-3/isNamed/questTarget)はHPに関わらずexecuteを
+  // 返さない(常にheavy)。旧HP50%閾値は撤去=瀕死処刑の廃止(既存behavior変更=社長宣言による)。
   const isElite = isEliteType(enemy.type) || !!enemy.isNamed || !!enemy.questTarget;
-  if (!isElite) return 'execute'; // 雑魚は無条件即死
-  return enemy.health < enemy.maxHealth * ELITE_EXECUTE_HP_RATIO ? 'execute' : 'heavy';
+  return isElite ? 'heavy' : 'execute'; // 雑魚は無条件即死・強個体は常にheavy(即死しない)
 };
 
 // ---------------------------------------------------------------------------
@@ -71,9 +74,12 @@ export type StunnedMeleeHit =
    * なったため、その特例パッチは撤去した(=このboss枝1本で全ボス共通に正しく動く)。
    */
   | { kind: 'boss'; dmg: number; keepStun: boolean }
-  /** 強個体(pumpkin/lab-zombie-3・HP50%以上)/isNamed・questTarget: 即死せず近接ダメージ×ELITE_MELEE_STUN_MULT+気絶解除(1発で解除・keepStunなし)。 */
+  /**
+   * 強個体(pumpkin/lab-zombie-3)/isNamed・questTarget: §6.38 B3(E-1確定)によりHPに関わらず
+   * 即死しない=常に近接ダメージ×ELITE_MELEE_STUN_MULT+気絶解除(1発で解除・keepStunなし)。
+   */
   | { kind: 'heavy'; dmg: number }
-  /** 雑魚/HP50%未満の強個体: 即時処刑(即死)。 */
+  /** 雑魚(強個体以外): 即時処刑(即死)。強個体はどのHPでもここに来ない(B3で瀕死処刑を撤去)。 */
   | { kind: 'execute' };
 
 /** 気絶判定+フィニッシュ裁定。null=気絶していない(呼び出し側は通常ヒット経路へ)。 */

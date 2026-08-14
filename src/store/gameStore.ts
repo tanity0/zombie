@@ -113,7 +113,11 @@ import {
 } from '../utils/eventQuest';
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
-import { isBossType, isHiddenBoss, usesBossCrit, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isArenaSweepProtected } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isArenaSweepProtected, AREA_BASE_DIFFICULTY } from '../utils/enemyUtils';
+// §6.38 B3(賞金首の金箱): 実効難易度倍率(bountyTick.bountyEffectiveValueMultと同じ式)をここでも
+// 組み立てるための依存ゼロの葉。bountyTick.tsを直接importすると「gameStore→bountyTick→gameStore」の
+// 循環import(v0.25.3390型の起動全損)になるため、素材(表/純関数)だけをここへ持ってくる。
+import { effectiveDifficultyArea, lerpAreaTable } from '../utils/timeDifficulty';
 import { escortAdvance } from '../utils/escortAdvance';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
@@ -2711,6 +2715,31 @@ const treasureValueForRank = (rank?: DifficultyRank): number => {
 };
 const treasureVariantForValue = (value: number): number =>
   TREASURE_VARIANTS_BY_RARITY[Math.max(0, Math.min(TREASURE_VARIANTS_BY_RARITY.length - 1, value - 1))];
+
+// §6.38 B3(賞金首の金箱・§3/v2 F項): 実効難易度倍率(bountyTick.bountyEffectiveValueMultと同一式=
+// HPと同じ表を使う)。export=テストが「bountyTick版と一致し続けるか」を検査できるようにするため
+// (2箇所に組み立てが分かれている=循環import回避の代償。ここが唯一の追加テスト対象)。
+export const bountyChestValueMult = (area: number, gameTimeMs: number): number =>
+  lerpAreaTable(AREA_BASE_DIFFICULTY, effectiveDifficultyArea(area, gameTimeMs));
+
+/** §6.38 B3受け入れ条件②のテスト用にexport。 */
+export interface BountyChestReward { treasureValues: number[]; strapValues: number[]; }
+export const BOUNTY_CHEST_TREASURE_COUNT = 2;
+// 中身=トレジャー(danger表×実効倍率で価値抽選)×2+スクラップ(WEAPON_CRATE_STRAP系×実効倍率)。
+// 武器は入れない(§3・v2 F「武器経済は箱Tierレールが担う。金箱=換金の稼ぎ頭」)。
+// 価値はpickup生成時(=開封時。倒した個体はもう存在しないことがある)に実効エリアrankで直接計算する
+// (enemy.difficultyRank非依存=唯一の出どころはbountyChestValueMult)。
+export const rollBountyChestReward = (area: number, gameTimeMs: number): BountyChestReward => {
+  const mult = bountyChestValueMult(area, gameTimeMs);
+  const treasureValues = Array.from(
+    { length: BOUNTY_CHEST_TREASURE_COUNT },
+    () => Math.max(1, Math.round(treasureValueForRank('danger') * mult)),
+  );
+  const strapTotal = Math.max(1, Math.round(
+    (WEAPON_CRATE_STRAP_DROP_MIN + Math.random() * WEAPON_CRATE_STRAP_DROP_VARIANCE) * mult,
+  ));
+  return { treasureValues, strapValues: strapDropValues(strapTotal) };
+};
 // 研究所(屋内)の武器庫(weapon-crate)はトレジャー+スクラップのみ(武器は出さない)。
 // 1回限りのロック部屋報酬なので価値はやや高め(=スコア treasureValue*10000)。
 const LAB_CRATE_TREASURE_VALUE = 3;
@@ -3229,6 +3258,17 @@ const grantMeleeKillRewards = (
         value: 0
       });
       get().spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+    }
+    // §6.38 B3(賞金首の金箱): 討伐で1個ドロップ(専用pickup)。中身はcollectPickup側で開封時に
+    // 実効エリアrankから計算する(pickup生成=このaddPickup自体はvalue未使用=weapon-crateと同型)。
+    if (isBountyType(enemy.type)) {
+      get().addPickup({
+        id: `pickup-bounty-chest-${enemy.id}`,
+        x: ex - 8, y: ey - 8 - 18,
+        type: 'bounty-chest',
+        value: 0
+      });
+      get().spawnRing(ex, ey, 10, 90, 'rgba(251,191,36,0.75)', 3, 520);
     }
     // §5.23 M22 C1: 血しぶきの方向=攻撃者(プレイヤー)→敵の延長線(spawnDeathPopと同じ考え方)。
     const bdx = ex - (player.x + player.width / 2);
@@ -9427,6 +9467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let namedFoeKilled: Enemy | null = null; // §5.14 M13: 宿敵討伐(set後にREVENGE演出+報酬)
     let deathPopAt: { ex: number; ey: number; fromX: number; fromY: number } | null = null; // §5.23 M22 A3(set後に発火)
     let dramaticDeathAt: { enemy: Enemy; x: number; y: number } | null = null; // juice: FF風クランブル(set後に発火)
+    let bountyChestAt: { id: string; x: number; y: number } | null = null; // §6.38 B3: 賞金首討伐=金箱ドロップ(set後にaddPickup)
     let appliedDamage = 0; // §6.21 M46計測用: 実際に加算された生ダメージ(HP床クランプ前・紅き夜補正後=既存damageDealtと同値)
     let thrallCandidate: Enemy | null = null; // §6.24 M48「使役」: 倒した通常敵(20%抽選はset後に行う)
     let bossClearedType: EnemyType | null = null; // BOT_AND_GHOST.md §2.10 G5: 撃破ボスの型(set後にnotifyBossClear)
@@ -9522,6 +9563,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         // juice: FF風クランブル統一演出(ネームド/裏ボス/giantbat/hunter討伐)。銃/接触/爆発キル経路。
         if (getsDramaticDeath(enemy)) dramaticDeathAt = { enemy, x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+        // §6.38 B3(賞金首の金箱): 銃/接触/爆発/DoTキル経路もここ1箇所で拾える(近接経路は
+        // grantMeleeKillRewards側で同様に付与=両経路とも「討伐で1個」を満たす)。
+        if (isBountyType(enemy.type)) {
+          bountyChestAt = { id: enemy.id, x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+        }
         deathPopAt = {
           ex: enemy.x + enemy.width / 2, ey: enemy.y + enemy.height / 2,
           fromX: state.player.x + state.player.width / 2, fromY: state.player.y + state.player.height / 2,
@@ -9674,6 +9720,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (dramaticDeathAt) {
       const d = dramaticDeathAt as { enemy: Enemy; x: number; y: number };
       triggerDramaticDeath(get, d.enemy, d.x, d.y);
+    }
+
+    // §6.38 B3(賞金首の金箱): 銃/接触/爆発/DoTキル経路。中身はcollectPickup側で開封時に計算する
+    // (pickup生成=このaddPickup自体はvalue未使用=grantMeleeKillRewards側の近接経路と同型)。
+    if (bountyChestAt) {
+      const b = bountyChestAt as { id: string; x: number; y: number };
+      get().addPickup({
+        id: `pickup-bounty-chest-${b.id}`,
+        x: b.x - 8, y: b.y - 8 - 18,
+        type: 'bounty-chest',
+        value: 0
+      });
+      get().spawnRing(b.x, b.y, 10, 90, 'rgba(251,191,36,0.75)', 3, 520);
     }
 
     // §5.23 M22 A3: 銃/接触/爆発キルの死亡ポップ。
@@ -13396,6 +13455,36 @@ export const useGameStore = create<GameState>((set, get) => ({
             });
           });
         break;
+      case 'bounty-chest': {
+        // §6.38 B3: 秘密兵器箱の開封機構を流用するが**武器は入れない**(openCrate/grantWeaponを
+        // 呼ばない=§3・v2 F「武器経済は箱Tierレールが担う」)。開き絵も無い(社長裁定「金箱は閃光で」
+        // =useGameLoop側のFXスイッチが白フラッシュ+バーストを出すだけ。ここは中身の付与のみ)。
+        // 価値=pickup生成時(開封時)に実効エリアrankで直接計算する(enemy.difficultyRank非依存=
+        // 倒した個体はもう存在しない可能性がある。bountyChestValueMultが唯一の出どころ)。
+        const area = areaIndexForPos(pickup.x, pickup.y);
+        const reward = rollBountyChestReward(area, get().gameTime);
+        reward.treasureValues.forEach((value, index) => {
+          get().addPickup({
+            id: `pickup-bounty-treasure-${pickup.id}-${index}`,
+            x: pickup.x, y: pickup.y,
+            type: 'treasure',
+            value,
+            variant: treasureVariantForValue(value),
+            scatterRadius: WEAPON_CRATE_SCATTER_RADIUS,
+          });
+        });
+        reward.strapValues.forEach((value, index) => {
+          get().addPickup({
+            id: `pickup-bounty-strap-${pickup.id}-${index}`,
+            x: pickup.x, y: pickup.y,
+            type: 'strap',
+            value,
+            scrapSource: 'box',
+            scatterRadius: WEAPON_CRATE_SCATTER_RADIUS,
+          });
+        });
+        break;
+      }
       case 'quick-magazine': {
         let movedAmount = 0;
         set(state => {

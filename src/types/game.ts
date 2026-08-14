@@ -1597,7 +1597,10 @@ export type PickupType =
   | 'strap' | 'treasure'
   | 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle'
   | 'weapon-drop' | 'weapon-crate' | 'quick-magazine'
-  | 'card-key' | 'lab-clear-item' | 'ammo-phill';
+  | 'card-key' | 'lab-clear-item' | 'ammo-phill'
+  // §6.38 B3(賞金首の金箱): 討伐で1個ドロップする専用pickup。見た目=gold-chest素材。
+  // 開封=秘密兵器箱の開封機構を流用するが武器は入れない(トレジャー×2+スクラップのみ)。
+  | 'bounty-chest';
 
 // 屋内(研究施設)ステージのギミック状態。
 export interface LabDoor { id: string; rect: { x: number; y: number; width: number; height: number }; open: boolean; }

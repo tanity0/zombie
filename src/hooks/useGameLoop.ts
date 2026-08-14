@@ -10761,6 +10761,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   spawnBurst(pk.x + 8, pk.y + 8, '#bfdbfe', 18);
                   useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 42, 'rgba(191,219,254,', 340);
                   break;
+                case 'bounty-chest':
+                  // §6.38 B3(社長裁定「金箱は閃光で」): 開き絵は作らず、白フラッシュ+バーストの
+                  // 閃光だけで開封を表現する(秘密兵器箱の演出機構=リング/バースト/グローは流用しつつ、
+                  // 色だけ武器箱の青ではなく白+金に差し替え)。
+                  spawnFlash('rgba(255,255,255,0.8)', 260);
+                  spawnRing(
+                    player.x + player.width / 2,
+                    player.y + player.height / 2,
+                    10, 130, 'rgba(251,191,36,0.9)', 5, 460
+                  );
+                  spawnBurst(pk.x + 8, pk.y + 8, '#fef3c7', 22);
+                  spawnBurst(pk.x + 8, pk.y + 8, '#fbbf24', 12);
+                  useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 44, 'rgba(251,191,36,', 360);
+                  break;
                 case 'quick-magazine':
                   playSfx('reload', 1, 800); // 即時リロードの流用: 長尺音源になったため800msで切る
                   spawnBurst(pk.x + 8, pk.y + 8, '#cbd5e1', 10);

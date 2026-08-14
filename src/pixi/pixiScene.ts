@@ -2166,7 +2166,7 @@ const SHADOW_STATIC_FADE_RANGE_PX = 250;  // ここからさらにこの距離�
 const SHADOW_MESH_GC_MS = 4000;
 
 
-const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure', 'lab-clear-item']);
+const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure', 'lab-clear-item', 'bounty-chest']);
 
 // 研究所ゾンビのテクスチャ名(Lv1 は敵idで男女を固定振り分け、Lv2/Lv3 は1種)。lab以外は null。
 // ★Lv2 は v0.25.2914 で男女を廃止して1種へ(社長指示「男女の区別は無くして一種類」・新アート)。
@@ -20772,6 +20772,8 @@ export class PixiScene {
               ? `treasure-${Math.max(1, Math.min(6, p.variant ?? p.value ?? 1))}`
           : p.type === 'weapon-crate'
             ? 'pickup-chest'
+          : p.type === 'bounty-chest'
+            ? 'gold-chest'
           : p.type === 'lab-clear-item'
             ? 'lab-clear-item'
             : `pickup-${p.type}`;
@@ -20849,7 +20851,8 @@ export class PixiScene {
           entry.container.addChild(entry.sprite);
         }
         entry.sprite.texture = tex;
-        const itemBox = p.type === 'lab-clear-item' ? size * 2.4 : size; // クリアアイテムは目立つよう大きめ
+        // §6.38 B3: gold-chest素材(424×256)は他のpickupアイコンより大判なので実表示は縮小する。
+        const itemBox = p.type === 'lab-clear-item' ? size * 2.4 : p.type === 'bounty-chest' ? size * 0.85 : size; // クリアアイテムは目立つよう大きめ
         const sc = containScale(itemBox, itemBox, tex.width, tex.height) * d;
         entry.sprite.scale.set(sc);
         entry.sprite.position.set(Math.round(cx), Math.round(footY + floatOffset));

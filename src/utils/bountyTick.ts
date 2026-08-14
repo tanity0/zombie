@@ -64,12 +64,17 @@ import {
 } from './mimirLaserTrack';
 
 /**
- * §3「HP: 基準2000(叩き台)×スポーン時の実効難易度倍率」。CONSTANT_STRENGTH_TYPES(=fixed)なので
- * buildEnemy自体は倍率を掛けない(色/距離/時間で自動スケールしない型のため)。ここでスポーン後パッチ
- * として明示的に計算する(AREA_BASE_DIFFICULTYは他の通常敵と同じ表=値の出どころを1つに保つ)。
+ * §3/v2 F項(実効難易度倍率の唯一の出どころ): HP・金箱の価値のどちらも「基準値×この倍率」で計算する。
+ * CONSTANT_STRENGTH_TYPES(=fixed)なのでbuildEnemy自体は倍率を掛けない(色/距離/時間で自動スケール
+ * しない型のため)。呼び出し側がスポーン後パッチ/pickup生成時に明示的に掛ける
+ * (AREA_BASE_DIFFICULTYは他の通常敵と同じ表=値の出どころを1つに保つ)。
  */
+export const bountyEffectiveValueMult = (area: number, gameTimeMs: number): number =>
+  lerpAreaTable(AREA_BASE_DIFFICULTY, effectiveDifficultyArea(area, gameTimeMs));
+
+/** §3「HP: 基準2000(叩き台)×スポーン時の実効難易度倍率」。 */
 export const bountyMaxHealth = (area: number, gameTimeMs: number): number =>
-  Math.round(BOUNTY_BASE_HP * lerpAreaTable(AREA_BASE_DIFFICULTY, effectiveDifficultyArea(area, gameTimeMs)));
+  Math.round(BOUNTY_BASE_HP * bountyEffectiveValueMult(area, gameTimeMs));
 
 /** 滞在1分(§2)。dormantのまま(=交戦していない)これだけ経つと退場する。gameTime基準(ポーズで進まない)。 */
 export const BOUNTY_LINGER_MS = 60000;

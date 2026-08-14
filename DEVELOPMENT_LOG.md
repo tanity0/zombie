@@ -1,5 +1,62 @@
 # Development Log
 
+## v0.25.3414 — §6.38 B3: 金箱ドロップ・開封+E-1強個体処刑の撤去(Sonnet実装バッチ)【2026-08-15 02:29 JST】
+PACING_PUZZLE.md §6.38 §3(強さ・保護・報酬)・v2 F項(金箱規約)・v3 E-1裁定・「金箱は閃光で」確定の実装。
+
+### 1. 金箱ドロップ
+- `types/game.ts`: `PickupType`へ`'bounty-chest'`を追加(専用pickup)。
+- ドロップ経路2本: `grantMeleeKillRewards`(近接キル=knife/katana/whip/shadow-clone等が通る共通経路。
+  pumpkin/giantbatの`weapon-crate`ドロップと同じ場所に追加)/`damageEnemy`(銃/接触/爆発/DoTキル経路。
+  `dramaticDeathAt`等と同じ「set()内でローカル変数に控え、set後にaddPickup」作法)。両経路とも
+  `isBountyType(enemy.type)`で分岐し、`get().addPickup(...)`を通す=**clampRectToPlayableArea/
+  障害物押し出しは全pickup共通で自動的に適用される**(v2 F「プレイアブル帯」要件はaddPickup自体の
+  既存挙動に乗るだけで満たせた・追加実装不要)。
+- 見た目: `gold-chest`テクスチャ(実表示は`size*0.85`に縮小)。`SPRITE_PICKUPS`へ登録。
+  マグネット挙動はv2 F「既存treasureと同じ規約」どおり`collisionUtils.isMagnetPickup`へ`treasure`/
+  `strap`と同枠で追加(weapon-crate/chest等の「設置物」枠=常に狭い矩形、ではなくコイン系拡大の対象)。
+
+### 2. 開封(秘密兵器箱の開封機構を流用・武器は入れない)
+- `collectPickup`の`case 'bounty-chest':`は`weapon-crate`ケースの構造(トレジャー+スクラップの
+  `addPickup`パターン)を流用しつつ、`openCrate`/`grantWeapon`は一切呼ばない(武器なし=§3・v2 F)。
+- 価値の計算式(新規・gameStore.tsに実装・exportしてテスト): `bountyChestValueMult(area, gameTime) =
+  lerpAreaTable(AREA_BASE_DIFFICULTY, effectiveDifficultyArea(area, gameTime))`
+  ——bountyTick.bountyEffectiveValueMult(HPスケールと同じ式)と**同一**。circular import回避のため
+  gameStore.ts側に式を再構成しているが、素材(lerpAreaTable/effectiveDifficultyArea/
+  AREA_BASE_DIFFICULTY)はいずれも既存の単一の出どころのままなので複製ではない(ドリフト検知テスト
+  で一致を固定)。
+- `rollBountyChestReward(area, gameTime)`: トレジャー×`BOUNTY_CHEST_TREASURE_COUNT`(=2、danger表
+  `weightedTreasureValue([[3,40],[4,30],[5,20],[6,10]])`×mult・四捨五入)+スクラップ
+  (`WEAPON_CRATE_STRAP_DROP_MIN/VARIANCE`のロール×mult→`strapDropValues`で金/銀へ分割)。
+  **価値はpickup生成時(=開封時。chestのx/yから`areaIndexForPos`+開封時のgameTimeで算出)に実効
+  エリアrankから直接計算**——`enemy.difficultyRank`は参照しない(倒した個体は開封時にはもう
+  存在しないことがあるため。v2 F「enemy.difficultyRank非依存」)。
+- 演出: 開き絵は作らない(社長裁定「金箱は閃光で」)。`useGameLoop.ts`のpickup衝突FXスイッチへ
+  `case 'bounty-chest':`を追加し、白フラッシュ+金バースト+リング(秘密兵器箱の演出機構=
+  リング/バースト/グローの構造を流用しつつ色だけ白+金に差し替え)。
+
+### 3. E-1(強個体処刑の撤去)
+- `meleeExecute.ts`の`ELITE_EXECUTE_HP_RATIO`分岐を撤去。`stunnedMeleeOutcome`は強個体
+  (pumpkin/lab-zombie-3/isNamed/questTarget)を**HPに関わらず常に'heavy'**(=即死しない・
+  ×ELITE_MELEE_STUN_MULTの致命の一撃)として裁定するよう単純化。雑魚(強個体以外)は従来どおり
+  無条件'execute'=即死のまま不変。`ELITE_EXECUTE_HP_RATIO`定数は他箇所から未参照だったため削除。
+- この関数は`meleeExecute.ts`内の1箇所が唯一の出どころ(`resolveStunnedMeleeHit`経由)なので、
+  呼び出し元(gameStore.tsのナイフ/守護霊フィニッシュ+katana/whip/shadow-cloneの独自実装3箇所も
+  最終的に`stunnedMeleeOutcome`を呼ぶ)は無改修で自動的に新挙動になる。
+
+### 検証
+- `npm run typecheck`・`npm run lint`ともにエラー0(warningは既存分のみ)。
+- `npx madge --circular`は既知の1本のみ(新規循環なし)。
+- 新規/更新テスト: `src/store/bountyGoldChest.test.ts`(新規6件・受け入れ条件①②を直接検証:
+  近接/銃接触爆発の両ドロップ経路・clampRectToPlayableAreaの適用・開封の中身の型と個数・
+  実効ランクによるスケーリング・bountyChestValueMultのドリフト検知)/`src/utils/meleeExecute.ts`
+  +`meleeExecute.test.ts`(E-1=強個体4カテゴリ+賞金首の即死経路不変条件を全面書き直し=受け入れ条件③)。
+  `constitution.test.ts`は無関係(抵触なし=受け入れ条件④)。
+  触れた範囲+関連27ファイル(bountyTick/bossPosture/bossFullStunCoverage/enemyUtils/bossTest/
+  killCorpse/slasherChain/ghostReflectMeleeSubs/punishWindow/bountyEscortCleanup/
+  bountyEventSweep/bountyMoveCollision/sim.test.tsほか)は全green。test/buildフルは社長指示が
+  無いため未実行(規約どおり)。
+- ★未決なし。
+
 ## v0.25.3413 — B-Rebuild検収(良)→B3(金箱)発注【2026-08-15 06:30 JST】
 - v0.25.3412検収: isBossType編入・特例撤去・連鎖40箇所監査★未決ゼロ・FB8根治・リーパー波及/ボムの
   即死経路も自動で閉じた(B3予定分の前倒し解消)。§6.38 v7に実装済み注記。

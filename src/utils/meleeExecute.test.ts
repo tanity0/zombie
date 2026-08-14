@@ -1,6 +1,6 @@
-// PACING_PUZZLE.md §6.22 M47仕様①のユニットテスト。境界50%両側+全強個体種別を確認。
+// PACING_PUZZLE.md §6.22 M47仕様①→§6.38 B3(E-1確定=瀕死処刑の撤去)のユニットテスト。
 import { describe, it, expect } from 'vitest';
-import { stunnedMeleeOutcome, resolveStunnedMeleeHit, usesBossStunnedMelee, ELITE_EXECUTE_HP_RATIO, ELITE_MELEE_STUN_MULT } from './meleeExecute';
+import { stunnedMeleeOutcome, resolveStunnedMeleeHit, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT } from './meleeExecute';
 import type { EnemyType } from '../types/game';
 
 const enemy = (over: Partial<{
@@ -14,26 +14,32 @@ describe('stunnedMeleeOutcome', () => {
     expect(stunnedMeleeOutcome(enemy({ type: 'bat', health: 100, maxHealth: 100 }))).toBe('execute');
   });
 
-  it('pumpkin: 境界50%の両側', () => {
-    expect(stunnedMeleeOutcome(enemy({ type: 'pumpkin', health: 49, maxHealth: 100 }))).toBe('execute');
+  // §6.38 B3(E-1確定・社長裁定v0.25.3171「パンプキンもだけど即死無しだよ」): 旧HP50%閾値を撤去。
+  // 強個体はHPに関わらず常にheavy(即死しない)。
+  it('★pumpkin: HPに関わらず常にheavy(瀕死処刑の撤去)', () => {
+    expect(stunnedMeleeOutcome(enemy({ type: 'pumpkin', health: 1, maxHealth: 100 }))).toBe('heavy');
+    expect(stunnedMeleeOutcome(enemy({ type: 'pumpkin', health: 49, maxHealth: 100 }))).toBe('heavy');
     expect(stunnedMeleeOutcome(enemy({ type: 'pumpkin', health: 50, maxHealth: 100 }))).toBe('heavy');
-    expect(stunnedMeleeOutcome(enemy({ type: 'pumpkin', health: 51, maxHealth: 100 }))).toBe('heavy');
+    expect(stunnedMeleeOutcome(enemy({ type: 'pumpkin', health: 100, maxHealth: 100 }))).toBe('heavy');
   });
 
-  it('lab-zombie-3: 境界50%の両側', () => {
-    expect(stunnedMeleeOutcome(enemy({ type: 'lab-zombie-3', health: 159, maxHealth: 320 }))).toBe('execute');
+  it('★lab-zombie-3: HPに関わらず常にheavy(瀕死処刑の撤去)', () => {
+    expect(stunnedMeleeOutcome(enemy({ type: 'lab-zombie-3', health: 1, maxHealth: 320 }))).toBe('heavy');
+    expect(stunnedMeleeOutcome(enemy({ type: 'lab-zombie-3', health: 159, maxHealth: 320 }))).toBe('heavy');
     expect(stunnedMeleeOutcome(enemy({ type: 'lab-zombie-3', health: 160, maxHealth: 320 }))).toBe('heavy');
-    expect(stunnedMeleeOutcome(enemy({ type: 'lab-zombie-3', health: 161, maxHealth: 320 }))).toBe('heavy');
+    expect(stunnedMeleeOutcome(enemy({ type: 'lab-zombie-3', health: 320, maxHealth: 320 }))).toBe('heavy');
   });
 
-  it('isNamed: 境界50%の両側(型は雑魚でもフラグで強個体扱い)', () => {
-    expect(stunnedMeleeOutcome(enemy({ type: 'zombie', isNamed: true, health: 49, maxHealth: 100 }))).toBe('execute');
-    expect(stunnedMeleeOutcome(enemy({ type: 'zombie', isNamed: true, health: 50, maxHealth: 100 }))).toBe('heavy');
+  it('★isNamed: HPに関わらず常にheavy(型は雑魚でもフラグで強個体扱い・瀕死処刑の撤去)', () => {
+    expect(stunnedMeleeOutcome(enemy({ type: 'zombie', isNamed: true, health: 1, maxHealth: 100 }))).toBe('heavy');
+    expect(stunnedMeleeOutcome(enemy({ type: 'zombie', isNamed: true, health: 49, maxHealth: 100 }))).toBe('heavy');
+    expect(stunnedMeleeOutcome(enemy({ type: 'zombie', isNamed: true, health: 100, maxHealth: 100 }))).toBe('heavy');
   });
 
-  it('questTarget: 境界50%の両側(型は雑魚でもフラグで強個体扱い)', () => {
-    expect(stunnedMeleeOutcome(enemy({ type: 'zombie', questTarget: true, health: 49, maxHealth: 100 }))).toBe('execute');
-    expect(stunnedMeleeOutcome(enemy({ type: 'zombie', questTarget: true, health: 50, maxHealth: 100 }))).toBe('heavy');
+  it('★questTarget: HPに関わらず常にheavy(型は雑魚でもフラグで強個体扱い・瀕死処刑の撤去)', () => {
+    expect(stunnedMeleeOutcome(enemy({ type: 'zombie', questTarget: true, health: 1, maxHealth: 100 }))).toBe('heavy');
+    expect(stunnedMeleeOutcome(enemy({ type: 'zombie', questTarget: true, health: 49, maxHealth: 100 }))).toBe('heavy');
+    expect(stunnedMeleeOutcome(enemy({ type: 'zombie', questTarget: true, health: 100, maxHealth: 100 }))).toBe('heavy');
   });
 
   it('isNamed=false/questTarget=falseは強個体扱いにしない(通常型と同じ即死)', () => {
@@ -41,7 +47,6 @@ describe('stunnedMeleeOutcome', () => {
   });
 
   it('定数値が仕様どおり', () => {
-    expect(ELITE_EXECUTE_HP_RATIO).toBe(0.5);
     expect(ELITE_MELEE_STUN_MULT).toBe(3);
   });
 
@@ -85,14 +90,14 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
 
   // ★v0.25.3171(社長裁定・案A): pumpkin / lab-zombie-3 は **ボス分岐へ落とさない**。
   // 旧: isBossType が先に勝ち、M47がこの2体を名指ししていた強個体規定が一度も届いていなかった。
-  it('★pumpkin / lab-zombie-3 は強個体として裁定される(ボスの5×ではない)', () => {
+  // §6.38 B3(E-1確定): 旧HP50%閾値(未満なら即死)は撤去。HPに関わらず常にheavy=即死しない。
+  it('★pumpkin / lab-zombie-3 は強個体として裁定される(ボスの5×ではなく常にheavy・HPに関わらず即死しない)', () => {
     for (const type of ['pumpkin', 'lab-zombie-3'] as EnemyType[]) {
-      // HP50%以上 → 即死せず ×3
       expect(resolveStunnedMeleeHit(stunned({ type, health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT), type)
         .toEqual({ kind: 'heavy', dmg: 30 });
-      // HP50%未満 → 即時処刑
-      expect(resolveStunnedMeleeHit(stunned({ type, health: 49, maxHealth: 100 }), 10, 500, BOSS_MULT), type)
-        .toEqual({ kind: 'execute' });
+      // ★E-1: HP1(瀕死)でもexecuteを返さない(瀕死処刑の撤去)。
+      expect(resolveStunnedMeleeHit(stunned({ type, health: 1, maxHealth: 100 }), 10, 500, BOSS_MULT), type)
+        .toEqual({ kind: 'heavy', dmg: 30 });
     }
   });
 
@@ -139,11 +144,14 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
   });
 
   // 'heavy' には**非ボス型の強個体フラグ**(isNamed/questTarget)からも到達する。
-  it('強個体(HP50%以上)は ×ELITE_MELEE_STUN_MULT / HP50%未満は即時処刑', () => {
+  // §6.38 B3(E-1確定): HPに関わらず常にheavy(旧HP50%閾値の即時処刑=瀕死処刑は撤去)。
+  it('★強個体(isNamed/questTarget)はHPに関わらず ×ELITE_MELEE_STUN_MULT(即死しない)', () => {
     expect(resolveStunnedMeleeHit(stunned({ type: 'zombie', isNamed: true, health: 50, maxHealth: 100 }), 10, 500, BOSS_MULT))
       .toEqual({ kind: 'heavy', dmg: 30 });
-    expect(resolveStunnedMeleeHit(stunned({ type: 'zombie', isNamed: true, health: 49, maxHealth: 100 }), 10, 500, BOSS_MULT))
-      .toEqual({ kind: 'execute' });
+    expect(resolveStunnedMeleeHit(stunned({ type: 'zombie', isNamed: true, health: 1, maxHealth: 100 }), 10, 500, BOSS_MULT))
+      .toEqual({ kind: 'heavy', dmg: 30 });
+    expect(resolveStunnedMeleeHit(stunned({ type: 'zombie', questTarget: true, health: 1, maxHealth: 100 }), 10, 500, BOSS_MULT))
+      .toEqual({ kind: 'heavy', dmg: 30 });
   });
 
   it('雑魚は無条件で即時処刑', () => {
