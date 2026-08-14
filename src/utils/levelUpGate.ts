@@ -11,14 +11,14 @@ import { MIMIR_LASER_HALF_WIDTH } from './mimirLaserTrack';
 // (gameStore.ts/angelBossTick.ts/combatTick.ts/idolTick.ts)は変更不要=ここから引き続き再exportする。
 import { distToSegment } from './geometry';
 export { distToSegment };
-// §6.38 B2b: 鋏(bounty-balance)/舞妓(bounty-maiko)の技の寸法はbountyTick.tsが実体=単一の出どころ
-// (社長指摘2026-08-14「写し定数はGIANT_STOMP_RADIUS_MIRRORが反面教師。実定数をexportして同一ソースを
-// import」)。bountyTick.tsがdistToSegmentをgeometry.tsから直接importする形にしたことで循環が無くなり、
-// ここから安全にimportできる。
+// §6.38 B2b: 鋏(bounty-balance)/舞妓(bounty-maiko)の技の寸法は依存ゼロの葉bountyDims.tsが正
+// (単一の出どころ規約は不変)。★bountyTick.tsからimportしてはいけない——gameStore→levelUpGate→
+// bountyTick→gameStoreの循環importになり、本番バンドルでTDZ=起動直後真っ暗を起こした
+// (v0.25.3390ホットフィックス。詳細はbountyDims.ts冒頭)。
 import {
   BB_SWEEP_HALFWIDTH, BB_LEAP_RADIUS,
   MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS, MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
-} from './bountyTick';
+} from './bountyDims';
 
 export interface TelegraphEnemy {
   type: string;

@@ -1880,7 +1880,9 @@ export const PUMPKIN_LAND_SHAKE_MAG = 9;
 export const SHIELD_BLOCK_SHAKE_MS = 140;
 export const SHIELD_BLOCK_SHAKE_MAG = 5;
 // パンプキン(/lab-zombie-3)のジャンプ攻撃は着地時に爆発攻撃。範囲は狭め(半径px)。ダメージは各敵の damage。
-export const PUMPKIN_EXPLOSION_RADIUS = 54; // 爆撃範囲を少し狭く(66→54。社長指示)
+// ★定義はbountyDims.ts(依存ゼロの葉)へ移動(v0.25.3390・循環import起動全損の修正)。値54は不変。
+import { PUMPKIN_EXPLOSION_RADIUS } from '../utils/bountyDims';
+export { PUMPKIN_EXPLOSION_RADIUS };
 
 // ==== M51: 城ボス「ジャイアント」新行動スクリプト(PACING_PUZZLE.md §6.26・裁定済み6.26-9) ====
 // `?giantscript=0` で旧挙動(このセクションを使わず、上の GIANTBAT_*/WEREWOLF_*/PUMPKIN_* 経由の

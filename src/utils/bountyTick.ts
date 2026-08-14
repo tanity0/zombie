@@ -20,8 +20,19 @@ import {
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, knockbackSpeedFor, enemyDeathLabel,
   WEREWOLF_WINDUP_MS, WEREWOLF_CHARGE_MAX_MS, WEREWOLF_CHARGE_SPEED_MULT,
-  PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_EXPLOSION_RADIUS,
+  PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS,
 } from '../store/gameStore';
+// ★予告寸法は依存ゼロの葉(bountyDims.ts)が正=ここでは使うだけ+従来の消費者(pixiScene/テスト)の
+// ために named re-export する。gameStoreから直接importしない理由はbountyDims.ts冒頭を読むこと
+// (循環import起動全損 v0.25.3390 の再発防止)。
+import {
+  BB_SWEEP_HALFWIDTH, BB_LEAP_RADIUS,
+  MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS, MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
+} from './bountyDims';
+export {
+  BB_SWEEP_HALFWIDTH, BB_LEAP_RADIUS,
+  MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS, MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
+};
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { isBountyType, AREA_BASE_DIFFICULTY, createEnemyProjectile, spawnEnemyAt } from './enemyUtils';
 import { effectiveDifficultyArea, lerpAreaTable } from './timeDifficulty';
@@ -630,7 +641,6 @@ const tickMelee = (
 
 // ---- 鋏(bounty-balance): 距離帯+技の定数(ER §1-4型・近=薙ぎ払い/遠=跳びかかり) --------------------
 const BB_NEAR_MAX = 170;
-export const BB_SWEEP_HALFWIDTH = 40;
 const BB_SWEEP_RANGE = 150;
 export const BB_SWEEP_WINDUP_MS = 750;
 const BB_SWEEP_DAMAGE = 18;
@@ -640,7 +650,6 @@ const BB_SWEEP_RECOVER_MS = withRecoverFloor(900);
 export const BB_LEAP_WINDUP_MS = PUMPKIN_CROUCH_MS;
 export const BB_LEAP_AIR_MS = PUMPKIN_JUMP_MS;
 const BB_LEAP_RECOVER_MS = PUMPKIN_RECOVER_MS;
-export const BB_LEAP_RADIUS = PUMPKIN_EXPLOSION_RADIUS;
 const BB_LEAP_DAMAGE = 22;
 
 const tickBalance = (
@@ -733,7 +742,6 @@ const MK_FAR_MIN = 380; // 手毬打ちの間合い
 const MK_PHASE_HP_FRAC = 0.5;
 export const MK_REPOSE_MS = 500; // 型切替時の舞い直し(短硬直・無敵なし)
 // 毬の薙ぎ(型A単発・windup=2択ランダム=変則ディレイ)。
-export const MK_NAGINATA_HALFWIDTH = 30;
 const MK_NAGINATA_RANGE = 140;
 export const MK_NAGINATA_WINDUP_CHOICES: readonly [number, number] = [700, 1150];
 const MK_NAGINATA_DAMAGE = 16;
@@ -743,7 +751,6 @@ export const MK_NAGINATA1_WINDUP_CHOICES: readonly [number, number] = [550, 750]
 export const MK_NAGINATA2_WINDUP_CHOICES: readonly [number, number] = [900, 1300]; // 遅(2段目)
 const MK_NAGINATA_STEP_RECOVER_MS = 220;
 // 毬回し(自分中心円・windup=2択ランダム)。★AOE_TELEGRAPH_AUDIT登録対象(escapeMs=短い方=800)。
-export const MK_SPIN_RADIUS = 90;
 export const MK_SPIN_WINDUP_CHOICES: readonly [number, number] = [800, 1300];
 export const MK_SPIN_ACTIVE_MS = 500;
 const MK_SPIN_DAMAGE = 14;
@@ -753,8 +760,6 @@ const MK_SPIN_RECOVER_MS = withRecoverFloor(900);
 // 最終段のみ大円。ホップ中の毬に接触判定なし=着地円のみ(v5承認)。乱舞後は長め硬直(パニッシュ窓)。
 export const MK_SUIU_HOP_INTERVAL_CHOICES: readonly [number, number] = [400, 600]; // 予告(telegraph)分
 export const MK_SUIU_HOP_TRAVEL_MS = 260; // 着地直前の移動(予告は継続表示=escapeMsに含む)
-export const MK_SUIU_RADIUS = 50;
-export const MK_SUIU_FINAL_RADIUS_MULT = 1.8;
 const MK_SUIU_DAMAGE = 16;
 const MK_SUIU_OFFSET_RANGE = 90;
 const MK_SUIU_RECOVER_MS = withRecoverFloor(1500);

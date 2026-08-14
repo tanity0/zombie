@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.3390 — 【緊急】起動全損(真っ暗)ホットフィックス=循環importのTDZ【2026-08-15 03:15 JST】
+- 社長報告「最初から真っ暗でなにも映らない」→ コンテナ内でビルド+headless起動して再現:
+  `ReferenceError: Cannot access 'Qc' before initialization`(ページ例外)。madgeで循環4本を検出、
+  うち3本がB2b新規(`gameStore → levelUpGate → bountyTick → gameStore/directorTick…`)。
+  bountyTickモジュール初期化時の`BB_LEAP_RADIUS = PUMPKIN_EXPLOSION_RADIUS`(gameStore未初期化const)が
+  本番バンドルの評価順でTDZ=起動全損。**build/typecheck/testは全て素通りする型の事故**。
+- 修正: 予告寸法を依存ゼロの葉 `src/utils/bountyDims.ts` へ移動(PUMPKIN_EXPLOSION_RADIUS=54の定義ごと
+  移動・値不変・gameStoreはimport+re-export)。levelUpGateはbountyDimsを直接import(bountyTickへの枝を
+  切断)。bountyTickはre-exportで既存消費者(pixiScene/テスト)無変更。madge=B2b新規の環3本消滅
+  (残りは既知の無害な1本)。headless起動でタイトル画面の描画を確認(ページ例外0)。
+- 検証: typecheck 0 / lint 0エラー / bountyTick+levelUpGateテスト89本緑 / build成功+起動確認。
+- 教訓をENGINEERING_NOTESに機械化(循環importの症状・madgeの回し方・葉モジュールの掟)。
+  ★提案(未実施): madgeをdevDep+CIに「循環が増えたら赤」ガードを足せる(社長裁定待ち)。
+
 ## v0.25.3389 — §7-11(8)クリティカル塩梅を新設(計測中・CD案追加)【2026-08-15 02:30 JST】
 - 社長発議: クリ頻度が高い体感(特にボス戦・絞りが入っているはずなのに)→ Sonnet走査で計測中
   (発生源台帳/絞りの式/実効クリ率とクリ回数/秒/1万試行検算)。

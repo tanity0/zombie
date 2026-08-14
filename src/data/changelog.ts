@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3390',
+    items: [
+      '起動直後に画面が真っ暗になり何も映らない不具合を修正しました(v0.25.3384で混入)。',
+    ],
+  },
+  {
     version: '0.25.3389',
     items: [
       'ゲーム内容の変更はありません(クリティカル頻度の計測を開始し、CD案を含む調整レバーを設計書に整理)。',

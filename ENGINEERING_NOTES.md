@@ -653,3 +653,29 @@ player-striker-*)は既存仕様。取込み先を間違えないこと(campaign
 **★重要**: **v0.25.2690 より前のベンチ数値は全部この壊れた計測器で取られている。**
 CLAUDE.md の「Empirical render budget」節と `research/LIGHT_REWORK.md` の数値表がこれに当たる。
 新しい計測器で取り直すまで、過去の数値は**順位の目安**として扱い、絶対値を根拠にしない。
+
+---
+
+## 循環importはbuild/typecheck/testを素通りして「起動直後に真っ暗」を起こす(v0.25.3390)
+
+**事故**: B2b(v0.25.3384)で levelUpGate.ts が bountyTick.ts から予告寸法をimportした結果、
+`gameStore → levelUpGate → bountyTick → gameStore` の循環が成立。bountyTick の**モジュール初期化時**の
+`BB_LEAP_RADIUS = PUMPKIN_EXPLOSION_RADIUS`(gameStoreの未初期化const読み)が、本番バンドルの評価順で
+**TDZ(`ReferenceError: Cannot access 'X' before initialization`)→起動直後に真っ暗**になった。
+
+**なぜ検知網を全部すり抜けたか**:
+- `tsc`は循環importを平気で通す(型の解決に評価順は関係ない)。
+- vitest はファイル単位でモジュールを解決するため、テストの入口からだと評価順が変わり顕在化しない。
+- `vite build` も成功する(バンドルは作れる。壊れるのは**実行時の評価順**)。
+- つまり **「全部緑なのに起動しない」が循環importの典型症状**。起動確認だけが検知手段。
+
+**診断の型**: ①黒画面+consoleに `Cannot access 'X' before initialization` → ほぼ循環import。
+② `npx madge --circular --extensions ts,tsx src` で環を列挙(このリポジトリに既知の無害な環が1本ある:
+`gameStore > ghostBuild > weaponUtils`。**増えていないか**を見る)。③今回の修正=寸法定数を依存ゼロの葉
+`src/utils/bountyDims.ts` へ移動し、gameStore側からの到達枝(levelUpGate→bountyTick)を切った。
+
+**掟**:
+- **gameStore(または他の巨大ハブ)がimportするファイルに、gameStoreをimportするファイルをimportさせない。**
+  新しいimportを足す時は「この枝でハブに戻る道ができないか」を考える。迷ったら madge を1回回す(8秒)。
+- 複数モジュールが共有する定数は、ハブに置かず**依存ゼロの葉モジュール**に置く(bountyDims.tsが手本)。
+- 「単一の出どころ」規約(写し定数禁止)と両立する: 葉に定義→全員がそこをimport(re-export可)。
