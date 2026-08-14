@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3358',
+    items: [
+      '拠点の「ボスラッシュ」を「変異体対策室」に改名しました。今後は賞金首(小ボス)も並ぶ予定です(掲載は賞金首の実装と同時)。',
+    ],
+  },
+  {
     version: '0.25.3357',
     items: [
       'ゲーム内容の変更はありません(舞妓(変異)の技セットを設計確定: 型切替+変則ディレイ+水鳥乱舞。再監査へ)。',

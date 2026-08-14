@@ -509,8 +509,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <div className="p-3 space-y-2">
         <HubButton icon={<Swords size={18} />} label="作戦準備" desc="作戦地域を選ぶ" onClick={goStageSelect} accent delay={0} />
         {/* BOSS_MAKER.md §20(社長指示「ボスラッシュを正式にメニュー化。作戦室にならぶ形」)。
-            一度戦ったことのあるボスと何度でも練習できる。進行・記録・所持金には一切残らない。 */}
-        <HubButton icon={<Skull size={18} />} label="ボスラッシュ" desc="戦ったボスと練習する" onClick={goBossRush} delay={25} />
+            一度戦ったことのあるボスと何度でも練習できる。進行・記録・所持金には一切残らない。
+            v0.25.3358 社長指示: 名称「ボスラッシュ」→「変異体対策室」(賞金首=小ボスも並べる方針とセット)。 */}
+        <HubButton icon={<Skull size={18} />} label="変異体対策室" desc="戦った変異体と練習する" onClick={goBossRush} delay={25} />
         {/* SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止): スキルの持ち込みは撤去。ここで選ぶのは
             サブウェポンと同行者(守護霊)のみ。ラン中のスキルは全てレベルアップの抽選で組む。 */}
         <HubButton icon={<Check size={18} />} label="装備" desc="サブウェポン1 / 同行者選択" onClick={() => setScreen({ name: 'loadout' })} delay={50} />
@@ -1303,7 +1304,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // useGameLoop のモジュールロード時定数なので React 遷移では効かない・BOSS_MAKER.md §20-7)。
   const renderBossRush = () => (
     <>
-      <Header title="ボスラッシュ" subtitle="練習 / 記録には残りません" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
+      <Header title="変異体対策室" subtitle="練習 / 記録には残りません" onBack={() => { playSfx('ui-select'); setScreen({ name: 'home' }); }} />
       <BossRush
         clearedSlotKeys={new Set(ghostAlbum.map(card => card.slotKey))}
         onStartPractice={onStartPractice}
