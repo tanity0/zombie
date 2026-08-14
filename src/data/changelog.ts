@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3357',
+    items: [
+      'ゲーム内容の変更はありません(舞妓(変異)の技セットを設計確定: 型切替+変則ディレイ+水鳥乱舞。再監査へ)。',
+    ],
+  },
+  {
     version: '0.25.3356',
     items: [
       'ゲーム内容の変更はありません(賞金首・イレギュラー種「舞妓(変異)」の本体素材を取り込み=4種の素材が完備。登場はまだ)。',
