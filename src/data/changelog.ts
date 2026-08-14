@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3409',
+    items: [
+      'ゲーム内容の変更はありません(賞金首の討伐時に武器が残る実測を記録し、修正条件に追加)。',
+    ],
+  },
+  {
     version: '0.25.3408',
     items: [
       'ゲーム内容の変更はありません(賞金首の武器表示の仕様を「技の間だけ表示」=ボス共通規約に確定し、修正バッチへ反映指示)。',
