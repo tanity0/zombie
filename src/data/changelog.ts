@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3332',
+    items: [
+      'ゲーム内容の変更はありません(設計メモ更新: 賞金首3種=近距離・遠距離・バランス型で確定+各体にボス技を1つ輸入して学習の場に/体勢スキル拡張はA+Bで確定)。',
+    ],
+  },
+  {
     version: '0.25.3331',
     items: [
       'ゲーム内容の変更はありません(設計メモ更新: 賞金首3種へのエルデンリング未使用パターン割り当て私案・体勢スキル拡張方針)。',
