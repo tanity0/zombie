@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3393',
+    items: [
+      'ゲーム内容の変更はありません(バランス裁定(4)(5)は実機テスト後に確定、と記録)。',
+    ],
+  },
+  {
     version: '0.25.3392',
     items: [
       'ゲーム内容の変更はありません(開発ルールの追記のみ)。',
