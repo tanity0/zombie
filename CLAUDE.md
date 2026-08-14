@@ -278,6 +278,9 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   response with `v0.25.xxx`). This is a hard rule — never omit it, even for
   questions, doc-only changes, or replies with no code change. After bumping,
   quote the new version.
+- **止まっている作業は「なぜ止まっているか」を必ず書く(社長指示v0.25.3392)**: 進行報告・状態整理で
+  タスクを列挙する時、待ち/停止中の項目には**停止理由(何を待っているか・誰のボールか)を毎回明記**する。
+  「実行中」「待ち」だけの箇条書きは禁止(理由が書けない停止は、段取りが説明できていないサイン)。
 
 ## Branch lock (READ FIRST — overrides everything)
 - **The ONLY development branch is `claude/chat-context-continuity-saxlH`.**

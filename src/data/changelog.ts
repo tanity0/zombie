@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3392',
+    items: [
+      'ゲーム内容の変更はありません(開発ルールの追記のみ)。',
+    ],
+  },
+  {
     version: '0.25.3391',
     items: [
       '変異体対策室に賞金首4種が並ぶようになりました(本編で遭遇すると解放)。',
