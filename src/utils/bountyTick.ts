@@ -1,14 +1,18 @@
-// PACING_PUZZLE.md §6.38「BOUNTY」B1: 賞金首(バス停/馬乗り/鋏/舞妓・変異)のコントローラ骨格。
-// idolTick.ts を手本にした純関数群+専用コントローラ(useGameLoop.ts から天使コントローラと同位置で呼ぶ)。
-// B1では技を持たない(dormant→chase追跡+リーシュ+帰巣+滞在1分のみ)。技はB2でbossState機構へ追加する。
+// PACING_PUZZLE.md §6.38「BOUNTY」B1(+B1.5修正バッチ): 賞金首(バス停/馬乗り/鋏/舞妓・変異)の
+// コントローラ骨格。idolTick.ts を手本にした純関数群+専用コントローラ(useGameLoop.ts から
+// 天使コントローラと同位置で呼ぶ)。B1では技を持たない(dormant→chase追跡+リーシュ+帰巣+滞在1分のみ)。
+// 技はB2でbossState機構へ追加する。
 //
 // レンダラ非依存・store書き込みはidolTick/angelBossTickと同じ「stateを読んでpatchをsetState」流儀。
-// 掟(CLAUDE.md「Y方向に何かを動かす時の必須チェック」): 移動は必ず clampRectToPlayableArea を通す。
+// 掟(CLAUDE.md「Y方向に何かを動かす時の必須チェック」): 移動は必ず①障害物衝突(resolveBountyMove・
+// B1.5-4)→②clampRectToPlayableAreaの順で通す。気絶・拘束・浮き・ノックバック中は移動も状態進行も
+// 一切止める(isFrozen・B1.5-2・idolTick.ts:228/236と同型のガード)。
 import type { Enemy } from '../types/game';
-import { useGameStore, HUNTER_LEAVE_FADE_MS } from '../store/gameStore';
+import { useGameStore, HUNTER_LEAVE_FADE_MS, resolveBountyMove } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { isBountyType, AREA_BASE_DIFFICULTY } from './enemyUtils';
 import { effectiveDifficultyArea, lerpAreaTable } from './timeDifficulty';
+import { EVENT_BANNER_MS } from './directorTick';
 import {
   bossLeashDistancePx, advanceBossDisengageGrace,
   BOSS_LEASH_REGEN_PER_SEC, BOSS_LEASH_RETURN_SPEED_MULT,
@@ -23,17 +27,15 @@ export const BOUNTY_BASE_HP = 2000;
 export const bountyMaxHealth = (area: number, gameTimeMs: number): number =>
   Math.round(BOUNTY_BASE_HP * lerpAreaTable(AREA_BASE_DIFFICULTY, effectiveDifficultyArea(area, gameTimeMs)));
 
-export interface BountySfx { wake: () => void }
-export const NOOP_BOUNTY_SFX: BountySfx = { wake: () => {} };
-
 /** 滞在1分(§2)。dormantのまま(=交戦していない)これだけ経つと退場する。gameTime基準(ポーズで進まない)。 */
 export const BOUNTY_LINGER_MS = 60000;
 /** 交戦の定義(v6 B「純関数化」)のうち「直近○秒以内に被弾」の窓。壁時計(enemy.lastHit=Date.now()基準)。 */
 export const BOUNTY_HIT_ENGAGE_MS = 3000;
 /** 起床演出(holo-circle 1周)の長さ。v2 C裁定の「約700ms」。 */
 export const BOUNTY_WAKE_FX_MS = 700;
-/** 出現バナー「賞金首出現」の表示時間。他イベントバナーの既定値(EVENT_BANNER_MS)と同値。 */
-export const BOUNTY_WAKE_BANNER_MS = 3500;
+/** §6.38 B1.5-7: 手写しをやめEVENT_BANNER_MS(directorTick.ts)を直接参照する(値の出どころを1つに保つ)。
+ * B1.5-5: 出現バナー「賞金首出現」はスポーン時(useGameLoop.ts)へ移設=ここでは退場バナーだけが使う。 */
+export const BOUNTY_DEPART_BANNER_MS = EVENT_BANNER_MS;
 /** 退場フェード+「賞金首は去った」通知の長さ。ハンター立ち去りの既存値を流用(値の出どころを1つに保つ)。 */
 export const BOUNTY_DEPART_FADE_MS = HUNTER_LEAVE_FADE_MS;
 /** dormant起床の索敵範囲の既定値(叩き台)。= useGameLoop.ts の GIANT_AGGRO_RANGE(380)を流用(§2)。
@@ -78,7 +80,14 @@ const applyPatch = (id: string, patch: Partial<Enemy>): void => {
   useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => (e.id === id ? { ...e, ...patch } : e)) }));
 };
 
-const clampMove = (x: number, y: number, e: Enemy): { x: number; y: number } => {
+/**
+ * 希望移動量(nx,ny)を「実際に立てる場所」へ解決する。§6.38 B1.5-4(重要・致命級ではないが必須):
+ * ①障害物衝突(木/建物/城/街プロップ/病院/武器庫/警察署=resolveBountyMove。城ボスと同じ「当たる」側。
+ *   判定はstore側=CLAUDE.md「判定はworld/store側に置く」掟) → ②行ける帯クランプ
+ *   (clampRectToPlayableArea・CLAUDE.md「Y方向に何かを動かす時の必須チェック」)、の順で通す。
+ */
+const resolveMove = (nx: number, ny: number, e: Enemy): { x: number; y: number } => {
+  const collided = resolveBountyMove(nx, ny, { width: e.width, height: e.height });
   const st0 = useGameStore.getState();
   const ctx: PlayableAreaCtx = {
     farBackdrop: st0.farBackdrop,
@@ -87,12 +96,29 @@ const clampMove = (x: number, y: number, e: Enemy): { x: number; y: number } => 
     m0AdvanceLimitX: st0.m0AdvanceLimitX,
     corridorRunInActive: st0.corridorRunInActive,
   };
-  return clampRectToPlayableArea(x, y, e.width, e.height, ctx);
+  return clampRectToPlayableArea(collided.x, collided.y, e.width, e.height, ctx);
 };
+
+/**
+ * 気絶・拘束・浮き・ノックバックのいずれかが有効か(§6.38 B1.5-2・致命)。
+ * idolTick.ts:228/236の教訓(v0.25.2895)と同型のガード——他の全ボス(裏ボス/天使/idol)は
+ * このいずれかの間、移動・状態進行を止めている。bountyTickだけこれを持たず「紫にしても歩き続ける」
+ * 実バグになっていた。**体勢崩し→フィニッシュの正規ルート**が通るために必須。
+ * bossFullStunUntil/stunUntil/rootUntilはgameTime基準、liftUntil/knockbackUntilはDate.now基準
+ * (types/game.tsの既存注記+gameStore.tsの設定箇所に倣う)。
+ */
+const isFrozen = (bounty: Enemy, newGameTime: number, nowMs: number): boolean =>
+  (bounty.bossFullStunUntil !== undefined && newGameTime < bounty.bossFullStunUntil)
+  || (bounty.stunUntil !== undefined && newGameTime < bounty.stunUntil)
+  || (bounty.rootUntil !== undefined && newGameTime < bounty.rootUntil)
+  || (bounty.liftUntil !== undefined && nowMs < bounty.liftUntil)
+  || (bounty.knockbackUntil !== undefined && nowMs < bounty.knockbackUntil);
 
 /**
  * 賞金首1体を1tick進める。B1の状態は3つだけ: 休眠(dormant)/追跡(chase)/帰巣(リーシュ発火後)。
  * 技(bossState技)はB2で追加するため、ここでは`bounty-wake`(起床演出)以外のbossStateは書かない。
+ * §6.38 B1.5-5: 出現告知(triggerAttention+バナー「賞金首出現」+SE)はスポーン時(呼び出し側=
+ * useGameLoop.ts)へ移設した。ここで残すのは**起床演出(holo-circle)の起点**のみ(見た目だけの合図)。
  */
 export const runBountyTick = (
   bounty: Enemy,
@@ -100,7 +126,6 @@ export const runBountyTick = (
   deltaTime: number,
   moveSpeedMult: number,
   nowMs: number,
-  sfx: BountySfx,
 ): void => {
   const player = useGameStore.getState().player;
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
@@ -111,15 +136,13 @@ export const runBountyTick = (
   if (bounty.dormant) {
     const ar = bounty.aggroRange ?? BOUNTY_AGGRO_RANGE_DEFAULT;
     if (dist <= ar) {
-      // 起床(§2「dormant→交戦」): 演出はここではFX/SEの起点だけ立てる(実際の見た目=pixiSceneが
+      // 起床(§2「dormant→交戦」): holo-circleの起点だけ立てる(実際の見た目=pixiSceneが
       // bossState==='bounty-wake'を読んで描く。判定はテスト対象外=描画側の掟どおり)。
       patch.dormant = false;
       patch.bossState = 'bounty-wake';
       patch.bossStateUntil = newGameTime + BOUNTY_WAKE_FX_MS;
       patch.bountyLastEngagedAt = newGameTime;
       patch.bountyDepartAt = undefined;
-      sfx.wake();
-      useGameStore.setState({ eventBannerText: '賞金首出現', eventBannerUntil: newGameTime + BOUNTY_WAKE_BANNER_MS });
       applyPatch(bounty.id, patch);
       return;
     }
@@ -127,7 +150,7 @@ export const runBountyTick = (
     if (bounty.bountyDepartAt === undefined) {
       if (bountyLingerExpired(newGameTime, bounty.bountyLastEngagedAt, bounty.spawnedAt)) {
         patch.bountyDepartAt = newGameTime;
-        useGameStore.setState({ eventBannerText: '賞金首は去った', eventBannerUntil: newGameTime + BOUNTY_DEPART_FADE_MS });
+        useGameStore.setState({ eventBannerText: '賞金首は去った', eventBannerUntil: newGameTime + BOUNTY_DEPART_BANNER_MS });
       }
     } else if (newGameTime - bounty.bountyDepartAt >= BOUNTY_DEPART_FADE_MS) {
       // フェード完了=消滅(描画側はbountyDepartAtからの経過でαを落とす)。
@@ -135,6 +158,14 @@ export const runBountyTick = (
       return;
     }
     applyPatch(bounty.id, patch);
+    return;
+  }
+
+  // ---- 気絶・拘束・浮き・ノックバックのガード(B1.5-2・致命) ------------------------------------
+  // 座標もbossStateも一切書かない(カウンターのノックバック座標を上書きしない)。交戦中とみなして
+  // 滞在タイマーだけ更新する(戦っている最中に消えない=既存の「戦闘中リセット」と同じ扱い)。
+  if (isFrozen(bounty, newGameTime, nowMs)) {
+    applyPatch(bounty.id, { bountyLastEngagedAt: newGameTime });
     return;
   }
 
@@ -172,7 +203,7 @@ export const runBountyTick = (
         } else {
           nx = hx; ny = hy;
         }
-        const clamped = clampMove(nx, ny, bounty);
+        const clamped = resolveMove(nx, ny, bounty);
         patch.x = clamped.x; patch.y = clamped.y; patch.vx = 0; patch.vy = 0;
         patch.health = Math.min(bounty.maxHealth, bounty.health + BOSS_LEASH_REGEN_PER_SEC * deltaTime);
         const arrivedNow = Math.hypot(hx - clamped.x, hy - clamped.y) <= ARRIVE_EPS_PX;
@@ -197,7 +228,7 @@ export const runBountyTick = (
   if (dist > 1) {
     const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
     const spd = bounty.speed * deltaTime * moveSpeedMult;
-    const clamped = clampMove(bounty.x + ux * spd, bounty.y + uy * spd, bounty);
+    const clamped = resolveMove(bounty.x + ux * spd, bounty.y + uy * spd, bounty);
     patch.x = clamped.x; patch.y = clamped.y; patch.vx = ux * bounty.speed; patch.vy = uy * bounty.speed;
   }
 

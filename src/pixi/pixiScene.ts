@@ -135,7 +135,7 @@ const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(巨大ボス遠
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType } from '../utils/enemyUtils';
 import { BOUNTY_WAKE_FX_MS, BOUNTY_DEPART_FADE_MS } from '../utils/bountyTick';
-import { isMarkedBoss, isEngagedBoss, bossMarkFor, type MarkBox } from '../utils/bossMarker';
+import { isMarkedBossVisible, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import { CASTLE_FIGHT_MAX_DIST } from '../world/playableArea'; // v0.25.3055: 城ボス戦の移動制限ライン(描画は読むだけ)
 import {
   bossEngagementDistancePx, isEngageableBoss,
@@ -7307,8 +7307,10 @@ export class PixiScene {
     // 交戦中のボス(社長指示v0.25.2657「(ゲーム中も)ボス交戦中は画面外のボスマーク表示」/
     // v0.25.2658「**交戦中だけ**」)。誰がボスか・交戦中かの定義は utils/bossMarker.ts に1本化
     // (pixiSceneは判定を持たない)。時計は lastHit と同じ Date.now 基準。
+    // §6.38 B1.5-5(賞金首): isMarkedBossVisibleへ1本化(賞金首だけ有効距離1200pxのゲートも内包)。
     const markNow = Date.now();
-    const markedBosses = s.enemies.filter(e => e.health > 0 && isMarkedBoss(e) && isEngagedBoss(e, markNow));
+    const markPcx = s.player.x + s.player.width / 2, markPcy = s.player.y + s.player.height / 2;
+    const markedBosses = s.enemies.filter(e => e.health > 0 && isMarkedBossVisible(e, markNow, markPcx, markPcy));
     const revealedPois = getRunPois(s.hiddenBoss, detourPois)
       .filter(p => !(p.kind === 'boss' && s.hiddenBossDefeated))
       // 裏ボスが実際に出ている間は、巣のPOI矢印を下げてボスマークへ一本化する(同じ座標=下の .map で

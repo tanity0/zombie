@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3377',
+    items: [
+      'ゲーム内容の変更はありません(賞金首イベントの土台に監査で見つかった不具合の修正を反映しました。まだ通常プレイでは出現しません=デバッグ限定です)。',
+    ],
+  },
+  {
     version: '0.25.3376',
     items: [
       'ゲーム内容の変更はありません(賞金首B1の品質監査で見つかった修正点を設計書に反映し、修正バッチを発注しました)。',

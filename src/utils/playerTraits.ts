@@ -28,7 +28,7 @@ import type { AvatarId } from '../data/avatars';
 import { getBotTelemetry, snapshotBotTelemetry, type BotTelemetry } from './botTelemetry';
 // §2.11 裁定1: 計測時ビルドの写し(純関数・store非依存)/ §2.16 A: 同行守護霊の写し(共通の1枚)
 import { snapshotPlayerBuild, type GhostAllySnapshot } from './playerBuild';
-import { isEngageableBoss, isGhostEligibleBoss } from './bossEngagement';
+import { isGhostEligibleBoss } from './bossEngagement';
 import { bossClockDurationMs } from './bossClock'; // v0.25.2577: 撃破タイム=ボスごと交戦時計(共有)
 import { isBossCounterableNowApprox } from './bossScript';
 import { isHiddenBoss } from './enemyUtils';
@@ -387,11 +387,13 @@ const bossBandDist = (px: number, py: number, e: Enemy): number => {
   return Math.hypot(px - nx, py - ny);
 };
 
+// §6.38 B1.5-6(賞金首): isEngageableBoss→isGhostEligibleBossへ(この計測は最終的にbossStyles経由で
+// notifyBossClearへ流れ込むため、賞金首を早い入口(ここ)で既に除いておく=下流ゲートの二重管理を防ぐ)。
 const nearestEngagedBoss = (pcx: number, pcy: number, enemies: readonly Enemy[]): Enemy | null => {
   let best: Enemy | null = null;
   let bestD = Infinity;
   for (const e of enemies) {
-    if (!isEngageableBoss(e.type) || e.dormant === true) continue;
+    if (!isGhostEligibleBoss(e.type) || e.dormant === true) continue;
     const d = Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy);
     if (d < bestD) { bestD = d; best = e; }
   }

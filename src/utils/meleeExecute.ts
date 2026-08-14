@@ -16,8 +16,9 @@ export const ELITE_MELEE_STUN_MULT = 3;
 // 強個体の定義: pumpkin/lab-zombie-3(タイプ) または isNamed/questTarget(個体フラグ)。
 // PACING_PUZZLE.md §6.38 v6 A-1(賞金首): 賞金首4型もここへ名指しで追加。isBossTypeでもisEliteTypeでも
 // ないと、現行の雑魚枝(stunnedMeleeOutcomeの!isElite分岐)で無条件即死してしまう(実バグ)。
-// ここに載ることで pumpkin/lab-zombie-3 と同じ「強個体」裁定(HP50%以上=×3の致命の一撃・
-// HP50%未満=即死)を受ける。E-1(強個体処刑の撤去)はB3の別途裁定=ここでは変更しない。
+// ここに載ることで pumpkin/lab-zombie-3 と同じ「強個体」判定の対象に入る。ただし賞金首は
+// **HP閾値を見ない**(下のstunnedMeleeOutcomeで先に確定=B1.5-1)。E-1(強個体処刑の撤去=
+// パンプキン/lab-zombie-3側)はB3の別裁定=そちらは触らない。
 const isEliteType = (t: EnemyType): boolean => t === 'pumpkin' || t === 'lab-zombie-3' || isBountyType(t);
 
 /**
@@ -43,6 +44,10 @@ export interface StunnedMeleeEnemy {
 export type StunnedMeleeOutcome = 'execute' | 'heavy';
 
 export const stunnedMeleeOutcome = (enemy: StunnedMeleeEnemy): StunnedMeleeOutcome => {
+  // PACING_PUZZLE.md §6.38 B1.5-1(致命・確定済み範囲=社長再裁定不要): 賞金首は全HP帯でexecuteを
+  // 返さない(常に致命の一撃×ELITE_MELEE_STUN_MULT)。即死はHP0(通常のdamageEnemy死亡経路)のみ。
+  // パンプキン/lab-zombie-3の50%閾値(下の行)はB3の別裁定=ここでは変更しない。
+  if (isBountyType(enemy.type)) return 'heavy';
   const isElite = isEliteType(enemy.type) || !!enemy.isNamed || !!enemy.questTarget;
   if (!isElite) return 'execute'; // 雑魚は無条件即死
   return enemy.health < enemy.maxHealth * ELITE_EXECUTE_HP_RATIO ? 'execute' : 'heavy';

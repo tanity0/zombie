@@ -45,13 +45,13 @@ describe('stunnedMeleeOutcome', () => {
     expect(ELITE_MELEE_STUN_MULT).toBe(3);
   });
 
-  // PACING_PUZZLE.md §6.38 v6 A-1(賞金首): meleeExecute.isEliteTypeへ4型を名指しで追加。
-  // pumpkin/lab-zombie-3と同じ「強個体」裁定(境界50%)を受ける=B1時点の受け入れ条件。
-  it('賞金首4型: 境界50%の両側(pumpkin/lab-zombie-3と同じ強個体裁定)', () => {
+  // PACING_PUZZLE.md §6.38 B1.5-1(致命・確定済み範囲): 賞金首は全HP帯でexecuteを返さない
+  // (パンプキン/lab-zombie-3のような50%閾値を持たない。即死はHP0のみ=別経路)。
+  it('★賞金首4型: 全HP帯でexecuteを返さない(HP1でもheavy)', () => {
     for (const type of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
-      expect(stunnedMeleeOutcome(enemy({ type, health: 49, maxHealth: 100 })), type).toBe('execute');
-      expect(stunnedMeleeOutcome(enemy({ type, health: 50, maxHealth: 100 })), type).toBe('heavy');
-      expect(stunnedMeleeOutcome(enemy({ type, health: 51, maxHealth: 100 })), type).toBe('heavy');
+      expect(stunnedMeleeOutcome(enemy({ type, health: 100, maxHealth: 100 })), type).toBe('heavy');
+      expect(stunnedMeleeOutcome(enemy({ type, health: 49, maxHealth: 100 })), type).toBe('heavy');
+      expect(stunnedMeleeOutcome(enemy({ type, health: 1, maxHealth: 100 })), type).toBe('heavy');
     }
   });
 });
@@ -104,13 +104,16 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
     expect(usesBossStunnedMelee('bounty-ranged')).toBe(false);
   });
 
-  // ★B1受け入れ条件(PACING_PUZZLE.md §6.38 A-1): resolveStunnedMeleeHitが賞金首にexecuteを
-  // 返さない不変条件(=雑魚の無条件即死経路に落ちない。HP50%以上なら必ず'heavy')。
-  it('★賞金首4型: HP50%以上ではexecuteを返さない(強個体として裁定される)', () => {
+  // ★B1.5-1受け入れ条件(致命・PACING_PUZZLE.md §6.38): resolveStunnedMeleeHitが賞金首に
+  // executeを返さない不変条件(=雑魚の無条件即死経路に落ちない。**全HP帯**で必ず'heavy')。
+  it('★賞金首4型: 全HP帯でexecuteを返さない(HP1でもheavy=強個体として裁定される)', () => {
     for (const type of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
-      const r = resolveStunnedMeleeHit(stunned({ type, health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT);
-      expect(r, type).toEqual({ kind: 'heavy', dmg: 30 });
-      expect(r?.kind, type).not.toBe('execute');
+      const rHigh = resolveStunnedMeleeHit(stunned({ type, health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT);
+      expect(rHigh, type).toEqual({ kind: 'heavy', dmg: 30 });
+      expect(rHigh?.kind, type).not.toBe('execute');
+      const rLow = resolveStunnedMeleeHit(stunned({ type, health: 1, maxHealth: 100 }), 10, 500, BOSS_MULT);
+      expect(rLow, type).toEqual({ kind: 'heavy', dmg: 30 });
+      expect(rLow?.kind, type).not.toBe('execute');
     }
   });
 

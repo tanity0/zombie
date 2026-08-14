@@ -29,6 +29,13 @@ const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   reaper: 1.45,
   hunter: 1.9, // ハンター変異体(ミニボス級の存在感)
   screamer: 1.95, // 変異体(叫喚型・やや大きめの存在感)
+  // PACING_PUZZLE.md §6.38 B1.5-7(賞金首): 未登録だと既定値2.0(パンプキン1.95〜werewolf2.05の
+  // ヘビー級帯からわずかに外れる)にフォールバックしていた。4型とも同じ体格(ENEMY_STATS)なので
+  // 一律1.95(パンプキン相当)を叩き台として明示登録する。
+  'bounty-ranged': 1.95,
+  'bounty-melee': 1.95,
+  'bounty-balance': 1.95,
+  'bounty-maiko': 1.95,
 };
 
 // A foot-anchored draw box in WORLD space. `footX/footY` is the bottom-centre

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isMarkedBoss, isEngagedBoss, BOSS_ENGAGE_GRACE_MS, projectToEdge, bossMarkFor, type MarkBox } from './bossMarker';
+import { isMarkedBoss, isEngagedBoss, isMarkedBossVisible, BOUNTY_MARK_MAX_DIST_PX, BOSS_ENGAGE_GRACE_MS, projectToEdge, bossMarkFor, type MarkBox } from './bossMarker';
 import type { Enemy } from '../types/game';
 
 const BOX: MarkBox = { w: 400, h: 300, marginX: 26, marginTop: 60, marginBottom: 30 };
@@ -21,6 +21,36 @@ describe('誰にマークを出すか(「ボス交戦中」の定義)', () => {
     expect(isMarkedBoss(mk('hunter'))).toBe(false);     // 「検知された時だけ」の赤矢印が既にある
     expect(isMarkedBoss(mk('pumpkin'))).toBe(false);    // 同時に複数湧く=画面端が渋滞する
     expect(isMarkedBoss(mk('zombie'))).toBe(false);
+  });
+
+  // PACING_PUZZLE.md §6.38 B1.5-5(賞金首): 4型もマーク対象に追加。
+  it('賞金首4型にはマークを出す', () => {
+    for (const t of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko']) {
+      expect(isMarkedBoss(mk(t)), t).toBe(true);
+    }
+  });
+});
+
+describe('isMarkedBossVisible(§6.38 B1.5-5・賞金首だけ有効距離1200pxのゲートを追加で通す)', () => {
+  const NOW = 1_000_000;
+  const mkFull = (t: string, extra: Partial<Enemy> = {}): Pick<Enemy, 'type' | 'isStoryBoss' | 'bossState' | 'lastHit' | 'x' | 'y' | 'width' | 'height'> =>
+    ({ type: t as Enemy['type'], bossState: 'chase' as Enemy['bossState'], lastHit: NOW, x: 0, y: 0, width: 10, height: 10, ...extra });
+
+  it('賞金首: 1200px以内なら出る・超えると出ない', () => {
+    expect(isMarkedBossVisible(mkFull('bounty-ranged', { x: BOUNTY_MARK_MAX_DIST_PX - 10, y: 0 }), NOW, 0, 0)).toBe(true);
+    expect(isMarkedBossVisible(mkFull('bounty-ranged', { x: BOUNTY_MARK_MAX_DIST_PX + 10, y: 0 }), NOW, 0, 0)).toBe(false);
+  });
+
+  it('賞金首以外(裏ボス等)には距離ゲートが掛からない(遠くても出る)', () => {
+    expect(isMarkedBossVisible(mkFull('mimir', { x: 999999, y: 0 }), NOW, 0, 0)).toBe(true);
+  });
+
+  it('交戦中でなければ距離に関わらず出ない(isEngagedBossが先に効く)', () => {
+    expect(isMarkedBossVisible(mkFull('bounty-ranged', { bossState: 'return' as Enemy['bossState'], lastHit: 0, x: 0, y: 0 }), NOW, 0, 0)).toBe(false);
+  });
+
+  it('マーク対象外の型(雑魚)は常に出ない', () => {
+    expect(isMarkedBossVisible(mkFull('zombie'), NOW, 0, 0)).toBe(false);
   });
 });
 

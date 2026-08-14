@@ -8,7 +8,7 @@
 // 「誰がボスか」「画面のどこへ置くか」「距離はいくつか」は全部ここで決め、テストで固定する。
 // pixiScene は返ってきた座標に**絵を描くだけ**(描画は読むだけ=CLAUDE.md Rendering vs. game logic)。
 import type { Enemy } from '../types/game';
-import { isHiddenBoss } from './enemyUtils';
+import { isHiddenBoss, isBountyType } from './enemyUtils';
 
 /**
  * 画面端マークを出す「ボス」の定義 = **一騎打ちのボス**。
@@ -20,9 +20,32 @@ import { isHiddenBoss } from './enemyUtils';
  *   - hunter は「検知された時だけ赤矢印」が既にある(常時表示にすると意味が変わる)。
  *   - pumpkin 等は複数同時に湧くので、全部にボスマークを出すと画面端が渋滞する。
  *   足す場合は社長判断(=ここ1箇所を変えれば全経路に効く)。
+ *
+ * §6.38 B1.5-5(賞金首): 賞金首4型も対象に追加(1分で会わずにいると去る=見つけやすくする必要がある)。
+ * ただし賞金首だけ有効距離1200px(`BOUNTY_MARK_MAX_DIST_PX`)のゲートが追加で掛かる
+ * (`isMarkedBossVisible`側)。他の一騎打ちボスに距離ゲートは無い=既存仕様のまま。
  */
 export const isMarkedBoss = (e: Pick<Enemy, 'type' | 'isStoryBoss'>): boolean =>
-  isHiddenBoss(e.type) || e.isStoryBoss === true;
+  isHiddenBoss(e.type) || e.isStoryBoss === true || isBountyType(e.type);
+
+/** 賞金首の矢印マーカー有効距離(§6.38 B1.5-5)。この型だけの距離ゲート。 */
+export const BOUNTY_MARK_MAX_DIST_PX = 1200;
+
+/**
+ * マーカーを実際に出すか(`isMarkedBoss` + `isEngagedBoss` + 賞金首専用の距離ゲート、を1箇所に集約)。
+ * pixiScene側はこれ1本を呼ぶだけにする(CLAUDE.md 実装精度の規律4=配線に判定を直書きしない)。
+ */
+export const isMarkedBossVisible = (
+  e: Pick<Enemy, 'type' | 'isStoryBoss' | 'bossState' | 'lastHit' | 'x' | 'y' | 'width' | 'height'>,
+  now: number,
+  playerCx: number,
+  playerCy: number,
+): boolean => {
+  if (!isMarkedBoss(e) || !isEngagedBoss(e, now)) return false;
+  if (!isBountyType(e.type)) return true;
+  const d = Math.hypot((e.x + e.width / 2) - playerCx, (e.y + e.height / 2) - playerCy);
+  return d <= BOUNTY_MARK_MAX_DIST_PX;
+};
 
 /**
  * 殴り合いが途切れてから「交戦中」を保つ猶予(ms)。

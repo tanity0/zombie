@@ -146,7 +146,7 @@ import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import {
-  runBountyTick, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT, type BountySfx,
+  runBountyTick, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
 } from '../utils/bountyTick';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
@@ -300,6 +300,9 @@ import {
   computeDirCountCap, computeEnemyCap, computeNormalSpawnCap,
   runPityUpkeep, runKomaBoardMaintenance, runOffscreenRecycleAndCull, runDirectorSignalStep,
   runGhostAndTraitsStep,
+  // 賞金首(§6.38 B1.5-5)の出現バナー用。useGameLoop.ts側の同名ローカル定数(既存・別件・値は同じ3500)
+  // と衝突するため別名でimportする(そちらを触るのは本発注の範囲外)。
+  EVENT_BANNER_MS as BOUNTY_APPEAR_BANNER_MS,
 } from '../utils/directorTick';
 import { debtFor, debtTempoEaseMult, CAST_DEBT_MAX } from '../utils/boardDebt';
 import { resetPityDrop } from '../utils/pityState';
@@ -755,8 +758,6 @@ const IDOL_SFX: IdolSfx = {
   counter: (gain = 1) => playSfx('counter', gain),
   reward: (gain = 1) => playSfx('headshot', gain),
 };
-// 賞金首(§6.38 B1)の音。起床=既存ボス出現SEを流用(社長F節「音=出現boss-appear流用」)。
-const BOUNTY_SFX: BountySfx = { wake: () => playSfx('boss-appear') };
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
 const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/速度)。?scenes=0 で無効化(素の分布・等速)。
@@ -5976,10 +5977,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             addEnemy(idolE);
             useGameStore.getState().triggerAttention(ix, iy, bossCutinPayload('idol')); // §6.36 監査指摘7: 練習出撃も実戦と同じカットイン
           }
-          // PACING_PUZZLE.md §6.38 B1(賞金首): デバッグ出現専用(`?bountynow=1`+`?bountytype=`)。
+          // PACING_PUZZLE.md §6.38 B1(賞金首・B1.5で修正): デバッグ出現専用(`?bountynow=1`+`?bountytype=`)。
           // 位置=プレイヤーから絶対700〜1000px(§2)+clampRectToPlayableArea。dormant:true+aggroRange+
           // homeX/Y(=城ボスと同じdormant→交戦の経路)。HP=2000×スポーン時の実効難易度倍率(§3)。
           // 抑止ゲート(bountySpawnBlocked)はB4で配線=デバッグ出現はここを経由せず常に出す(検証を止めない)。
+          // B1.5-3(重要): fromEvent=true を撤去(イベント終了一掃/救助の攻撃者カウント/NPC逃走・射撃対象/
+          // 囲い円クランプへの混入原因だった。保護は既存のisEngageableBoss/isEnemyCapProtectedで足りる)。
           if (FORCE_BOUNTY && !bountyForceRef.current) {
             bountyForceRef.current = true;
             const bountyTypeOf = (raw: string | null): 'bounty-ranged' | 'bounty-melee' | 'bounty-balance' | 'bounty-maiko' => {
@@ -5994,15 +5997,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bDist = 700 + Math.random() * 300; // 絶対700〜1000px(§2)
             const bx0 = pcx1 + Math.cos(bAng) * bDist, by0 = pcy1 + Math.sin(bAng) * bDist;
             const bountyE = spawnEnemyAt(bType, bx0 - 22, by0 - 22, newGameTime);
+            // B1.5-7: 手作りのnull/false決め打ちをやめ、store実値を使う(spawn位置がクランプ帯の
+            // 境界近くでズレる事故の防止=idol force-spawn等と同じ「今のstateを読む」流儀)。
             const bClamped = clampRectToPlayableArea(bountyE.x, bountyE.y, bountyE.width, bountyE.height, {
               farBackdrop: useGameStore.getState().farBackdrop,
               labTheme,
               corridorMode: useGameStore.getState().corridorMode,
-              m0AdvanceLimitX: null,
-              corridorRunInActive: false,
+              m0AdvanceLimitX: useGameStore.getState().m0AdvanceLimitX,
+              corridorRunInActive: useGameStore.getState().corridorRunInActive,
             });
             bountyE.x = bClamped.x; bountyE.y = bClamped.y;
-            bountyE.fromEvent = true; // 賞金首も他のデバッグ召喚と同じ作法(×5は掛けない)
             bountyE.dormant = true;
             bountyE.aggroRange = BOUNTY_AGGRO_RANGE_DEFAULT;
             bountyE.homeX = bountyE.x; bountyE.homeY = bountyE.y;
@@ -6012,6 +6016,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 同時1体まで(§2)=既存の賞金首を消してから出す(idolの複数体対策と同じ作法)。
             useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => !isBountyType(e.type)) }));
             addEnemy(bountyE);
+            // B1.5-5(v2 C仕様・所属バッチ未定義だった穴を埋める): 出現告知3点はスポーン時に発火する
+            // (起床時ではない)。カットインは無し(§6.38「カットインは無し」)。
+            playSfx('boss-appear');
+            useGameStore.getState().triggerAttention(bx0, by0);
+            useGameStore.setState({ eventBannerText: '賞金首出現', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
           }
           // ボスメーカー(BOSS_MAKER.md): 一騎打ちの部屋を立てて相手を1体だけ出す。休眠は使わない(即戦闘)。
           if (BOSS_MAKER && !bossMakerReadyRef.current) {
@@ -6110,7 +6119,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          try {
           const activeBounty = pickActiveBounty(useGameStore.getState().enemies);
           if (activeBounty) {
-            runBountyTick(activeBounty, newGameTime, deltaTime, MOVE_SPEED_MULT, Date.now(), BOUNTY_SFX);
+            runBountyTick(activeBounty, newGameTime, deltaTime, MOVE_SPEED_MULT, Date.now());
           }
          } catch (err) {
           if (!bountyCtrlErrLogged) { bountyCtrlErrLogged = true; console.error('[bounty] controller error (suppressed after first):', err); }

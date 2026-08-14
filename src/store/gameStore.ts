@@ -4759,7 +4759,9 @@ interface GameState {
 // プレイヤーの移動が使っている遮蔽物の連鎖を**そのまま**関数化したもので、アイテムの着地点も同じ関数を通す。
 // **プレイヤーが立てない場所にはアイテムも落ちない**、という一文で説明できる状態にするのが目的。
 // (同じ判定を2箇所に書くと必ず片方だけ古くなる——v0.25.2383/2387/2389 で3回起きた型。)
-const resolveOutOfSolids = (
+// §6.38 B1.5-4(賞金首): export化してbountyTick.tsのresolveBountyMove(下)からも再利用する
+// (updateEnemiesのresolveMoveと同じ遮蔽物連鎖=城ボスと同じ「当たる」側)。
+export const resolveOutOfSolids = (
   rect: { x: number; y: number; width: number; height: number },
   ctx: {
     labTheme: boolean; farBackdrop: string; solidProps: BreakableProp[];
@@ -4794,6 +4796,31 @@ const resolveOutOfSolids = (
   const rgn = [cityResolved.x - 120, cityResolved.y - 120, cityResolved.x + w + 120, cityResolved.y + h + 120] as const;
   const walls = [...labWallsInRegion(...rgn).map(wallRect), ...labPropsInRegion(...rgn).map(propRect)];
   return resolveAabb({ x: cityResolved.x, y: cityResolved.y, width: w, height: h }, walls);
+};
+
+// PACING_PUZZLE.md §6.38 B1.5-4(賞金首): bountyTick.tsの追跡/帰巣移動に障害物衝突を通す
+// (updateEnemiesのresolveMoveと同じ遮蔽物連鎖=木/松明/城/街プロップ/病院/武器庫/警察署に当たる。
+// 城ボスと同じ「当たる」側)。判定はstore側(resolveOutOfSolids)に置き、bountyTick側は希望移動量
+// (nx,ny)を渡すだけ=「判定はworld/store側に置く」掟。resetGameでのラン跨ぎリセットは不要
+// (readのみ・状態を持たない純粋な変換)。
+export const resolveBountyMove = (
+  nx: number, ny: number, box: { width: number; height: number },
+): { x: number; y: number } => {
+  const s = useGameStore.getState();
+  const labTheme = s.stageTheme === 'lab' && !s.indoorMode;
+  return resolveOutOfSolids(
+    { x: nx, y: ny, width: box.width, height: box.height },
+    {
+      labTheme,
+      farBackdrop: s.farBackdrop,
+      solidProps: s.breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar'),
+      castleEvent: s.castleEvent,
+      hospital: s.hospital, hospitalTaken: s.hospitalTaken,
+      armory: s.armory, armoryTaken: s.armoryTaken,
+      police: s.police, policeTaken: s.policeTaken,
+      facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
+    },
+  );
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -10034,7 +10061,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 事故で全部消えることもない。
             // 速度は**裏ボスと同じ既存定数を流用**(BOSS_REGEN_PER_SEC=10/秒。社長が40→10へ調整済み)。
             // 新しい数字を発明しない=バランスの出どころを1つに保つ。
-            if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss) {
+            // §6.38 B1.5-6(賞金首): isLeashableBossはSet化で賞金首4型も含む(bountyTick.tsが直接
+            // bossLeashDistancePx等の同じ土管を読むため=D-3裁定)が、この城ボス専用インライン処理
+            // 自体は**通らない**——賞金首はこのmapへ入る前(isHiddenBoss/isBountyTypeの早期return)で
+            // 既に抜けている。ただし「isLeashableBossに載っている=いつかこの分岐へ来る」という誤解に
+            // よる将来の事故を防ぐため、暗黙の早期returnに依存せずここでも明示的に除外しておく。
+            if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss && !isBountyType(enemy.type)) {
               // ★城へゆっくり歩いて帰る(社長指示v0.25.2419)。巣=出現地点(useGameLoopがhomeX/homeYを設定)。
               // 追跡時の速度のままだと「猛然と帰っていく」絵になるので半分にする。歩きなので障害物は
               // 通常どおり resolveMove で解決する(ダッシュではない=貫通しない)。
@@ -10069,7 +10101,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ストーリーボス(stage-7グレン/ex1)は**リーシュしない**(社長指示v0.25.2420「実質逃げれない
         // ようにする」)。雑魚が出ないステージなので、待機に戻したら逃げ切りが成立してしまう。
         // 代わりに無限ジャンプ(giantScript.ts)で、どこまで逃げても飛んで追ってくる。
-        if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss) {
+        // §6.38 B1.5-6(賞金首): 離脱警告バナー(下のbossLeashWarning=true)は「逃げてよい相手」の
+        // 賞金首には出さない。isBountyTypeを明示的に除外する(暗黙の早期return依存をやめる=上と同じ理由)。
+        if (isLeashableBoss(enemy.type) && !enemy.isStoryBoss && !isBountyType(enemy.type)) {
           const leashDistance = Math.hypot(pcx - (enemy.x + enemy.width / 2), pcy - (enemy.y + enemy.height / 2));
           const leashLimit = bossLeashDistancePx(enemy.type, false);
           // v0.25.3052(社長報告「滑空系でまだ『離脱しようとしている』が出るやつある」): 急降下

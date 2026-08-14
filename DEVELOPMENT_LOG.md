@@ -1,5 +1,53 @@
 # Development Log
 
+## v0.25.3377 — §6.38 B1.5: B1成果物監査の指摘7項目を反映(致命2件含む)【2026-08-14 19:37 JST】
+B0/B1(v0.25.3364/3373)へのOpus監査指摘をPACING_PUZZLE.md §6.38「B1.5」節どおりに反映。B2着手前の必須修正。
+
+1. **【致命】meleeExecute: 賞金首は全HP帯でexecuteを返さない**。`stunnedMeleeOutcome`の先頭に
+   `isBountyType`専用分岐を追加(常に'heavy'=×ELITE_MELEE_STUN_MULTの致命の一撃。即死はHP0のみ)。
+   パンプキン/lab-zombie-3の50%閾値(E-1撤去=B3)は無改変。テストを「HP1でもexecuteを返さない」に戻した。
+2. **【致命】bountyTick.tsへ気絶・拘束・浮き・ノックバックのガード追加**(`isFrozen`・idolTick.ts:228/236
+   と同型)。bossFullStunUntil/stunUntil(gameTime基準)+rootUntil/liftUntil/knockbackUntil(Date.now基準)の
+   いずれかが有効な間は座標もbossStateも一切書かず、滞在タイマーだけ更新して即return
+   (カウンターのKB座標を上書きしない)。テスト: 紫中・ノックバック中に座標が動かないことを固定。
+3. **【重要】デバッグ出現の`fromEvent:true`を撤去**(useGameLoop.ts)。保護はisEngageableBoss/
+   isEnemyCapProtectedで足りている。イベント終了一掃(`endArenaEvent`)で消えないテストを新設
+   (`src/store/bountyEventSweep.test.ts`)。
+4. **【重要】bountyTickの移動に障害物衝突を通す**。`gameStore.ts`の`resolveOutOfSolids`(アイテム着地点と
+   同じ「そこに立てるか」唯一の関数)をexport化し、新設`resolveBountyMove(nx,ny,box)`ラッパから再利用
+   (判定はstore側=CLAUDE.md掟)。bountyTick.tsは希望移動量を渡すだけ。テスト新設
+   (`src/store/bountyMoveCollision.test.ts`=病院の壁で押し返されることを確認)。
+5. **出現告知3点をスポーン時へ**(v2 C仕様の穴埋め): triggerAttention+eventBanner「賞金首出現」+
+   boss-appear SEをデバッグ出現の瞬間(useGameLoop.ts)へ移設(旧: 起床=dormant解除の瞬間だった)。
+   起床時に残るのはholo-circle演出の起点のみ。矢印マーカーは`bossMarker.isMarkedBoss`へ賞金首4型を
+   追加し、新設`isMarkedBossVisible`で賞金首だけ有効距離1200px(`BOUNTY_MARK_MAX_DIST_PX`)のゲートを
+   追加(他の一騎打ちボスに距離ゲートは無い=既存仕様のまま)。pixiScene.tsの呼び出しを1本化。
+6. **漏れの機械化**:
+   - `runBountyTick`状態機械のテストを新設(idolTick.test.tsと同じ「resetGame→盤面→tick手動進行」の
+     作法。1分退場でenemiesから消える/交戦中は退場しない/帰巣完了→dormant+新しい1分、の3本+紫・KB
+     フリーズの2本=`bountyTick.test.ts`に19テスト追加)。
+   - 距離リサイクル免除(directorTick.ts)を`isEngageableBoss`経由の暗黙相乗りから`isBountyType`の
+     明示条件へ分離+統合テスト(`runOffscreenRecycleAndCull`を実際に回して位置不変を確認)。
+   - 離脱警告バナー(gameStore.ts・`isLeashableBoss`の2箇所)へ`!isBountyType`を明示追加
+     (現状はisHiddenBoss/isBountyTypeの早期returnで到達しないため実害は無いが、「isLeashableBossに
+     載っている=いつか通る」という誤解による将来の事故を防ぐ防御的ゲート。専用テストは今回見送り=
+     到達不能コードのため統合テストの費用対効果が低いと判断)。
+   - `playerTraits.ts`の`nearestEngagedBoss`を`isEngageableBoss`→`isGhostEligibleBoss`へ
+     (bossStyles計測の入口で賞金首を除く=下流ゲートの二重管理を防ぐ)。
+7. **小物**: `BOUNTY_WAKE_BANNER_MS`の手写しを撤去し`directorTick.EVENT_BANNER_MS`を直接参照
+   (`BOUNTY_DEPART_BANNER_MS`に改名・退場バナー専用に)/`renderSpec.ts`の`ENEMY_VISUAL_SCALE`へ
+   賞金首4型を1.95(パンプキン相当)で登録(未登録時のフォールバック2.0はヘビー級帯からわずかに外れていた)/
+   デバッグ出現のplayableArea clampをm0AdvanceLimitX/corridorRunInActiveの決め打ち(null/false)から
+   store実値へ変更。
+- ★未決なし。
+- 検証: `npm run typecheck`(0)/`npm run lint`(0エラー・warning8=既存分のみ)/
+  touched・新規テストファイルを個別実行して全緑(bountyTick.test.ts 19 / bossMarker.test.ts 19 /
+  directorTick.test.ts 6 / meleeExecute.test.ts 16 / bountyEventSweep.test.ts 1 /
+  bountyMoveCollision.test.ts 2 / playerTraits.test.ts 87 / 既存のenemyUtils/bossEngagement/
+  bossPosture/cameraZoom/bossTest/constitution/duoRecords/ghostOnline/idolTick/idolScript/
+  mimirLaserTrack/bossSkeleton/killCorpse も再実行して回帰なしを確認)。
+- 次: B2(bountyTick.tsへ4体の技+予兆モーション)。
+
 ## v0.25.3376 — B0+B1成果物監査(Opus)の結果反映=B1.5修正バッチ発注【2026-08-14 21:40 JST】
 - 監査結論: 受け入れ条件未達2件+実バグ級2件+漏れ4件。**①賞金首がHP50%未満で即死する**(テストが
   50%以上しか見ない形に弱められていた) **②気絶/拘束/浮き/KBのガードがbountyTickに無い**(idolTick:228の

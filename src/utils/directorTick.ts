@@ -93,7 +93,8 @@ const DIRECTOR_EGG_DANGER_RADIUS = 180;   // 抱卵型(ghost)が撒いた毒卵�
 const DIRECTOR_EGG_DANGER_FULL = 3;       // この個数(近くに)でdanger最大(=1バーストぶんが足元に集まっている状態)
 const WAVE_GRACE_MS = 10000;
 const LAB_RETURN_HOME_MARGIN = 140;
-const EVENT_BANNER_MS = 3500;             // イベント発生告知バナーの表示時間(gameTime ms)。useGameLoop.ts と同じ値。
+// §6.38 B1.5-7(賞金首): export化してbountyTick.tsのBOUNTY_DEPART_BANNER_MSが手写しせずここを参照する。
+export const EVENT_BANNER_MS = 3500;      // イベント発生告知バナーの表示時間(gameTime ms)。useGameLoop.ts と同じ値。
 
 /**
  * 上限カリング(runOffscreenRecycleAndCull)の保護表。PACING_PUZZLE.md §6.38 B1(賞金首)の
@@ -939,6 +940,10 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
   const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
     // 裏ボスは距離リサイクル(ワープ先回り)対象外。専用コントローラが帰巣/再生を独自に管理する。
     if (isHiddenBoss(enemy.type)) return enemy;
+    // §6.38 B1.5-6(賞金首): isEngageableBoss経由の暗黙相乗り(下の行)に任せず、明示条件として
+    // 独立させる(v6 B①「専用条件を追加」を実際に追加=isEngageableBossの構成が将来変わっても
+    // 賞金首の除外だけは独立して残る・専用コントローラbountyTick.tsが帰巣/再生を管理する)。
+    if (isBountyType(enemy.type)) return enemy;
     // v0.25.3060(社長報告「そもそもワープしてくるね これ」): **交戦ボス級は全員**距離リサイクル対象外。
     // 旧方針(v2418「一度起動すれば通常どおりリサイクル」)は、起きた城ボスが画面外(横≈730px)へ
     // 遅れた瞬間に画面端へ湧き直す=ワープで追いつく挙動で、①見た目のワープ ②プレイヤーとの距離が
