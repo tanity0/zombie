@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3338',
+    items: [
+      '魔法陣ホログラム素材(出現8コマ/分析7コマ/簡易6コマ)を取り込みました(表示への配線はまだ)。',
+    ],
+  },
+  {
     version: '0.25.3337',
     items: [
       'ゲーム内容の変更はありません(魔法陣ホログラム素材の用途割り当てメモを追加)。',

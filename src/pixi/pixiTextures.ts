@@ -539,6 +539,13 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/explosion-5', scaleMode: 'nearest' as const },
       // グレネード弾(社長支給ドット素材v0.25.3290・56×56)。手榴弾+グレネードガン(武器庫限定)の弾。
       { name: 'fx/grenade-ball', scaleMode: 'nearest' as const },
+      // 魔法陣ホログラム(社長支給v0.25.3338・紫マゼンタ・304×264/コマ)。3アニメ:
+      // holo-circle 0-7=出現魔法陣(賞金首出現/warp着地/volleyの構え/異常動作・用途は§7裁定待ち)
+      // holo-scan   0-6=分析画面(ボスに半透明で被せるスキャン演出)
+      // holo-mini   0-5=簡易出現(召喚・設置・瞬間移動ワープ等の頻用軽量枠・社長指示)
+      ...Array.from({ length: 8 }, (_, i) => ({ name: `fx/holo-circle-${i}`, scaleMode: 'nearest' as const })),
+      ...Array.from({ length: 7 }, (_, i) => ({ name: `fx/holo-scan-${i}`, scaleMode: 'nearest' as const })),
+      ...Array.from({ length: 6 }, (_, i) => ({ name: `fx/holo-mini-${i}`, scaleMode: 'nearest' as const })),
       // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
       // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
