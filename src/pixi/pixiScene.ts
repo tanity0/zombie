@@ -17335,7 +17335,26 @@ export class PixiScene {
     // fill/判定/タイミングは無改変・alpha計算式もstroke分岐と同一(strokeA)のまま渡すだけ。
     if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, strokeA, idx);
     else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
-    o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' });
+    // v0.25.3345(社長指摘「帯のラインが流星になってない」): 中心ラインを流星化。
+    // 帯の文法(合意済み): 薄い全域(fill+縁)は最初から表示=危険域の読みは不変。**中心の明るい線だけ**が
+    // 進行方向(fx→tx)へ溜め同期で流れ、prog=1(技の出始め)で描き切る。
+    const zp = Math.max(0, Math.min(1, prog));
+    const Z_TAIL = 0.28;
+    const zDrawn = Math.max(0, zp - Z_TAIL);
+    if (zDrawn > 0) {
+      o.moveTo(fx, fy).lineTo(fx + ddx * zDrawn, fy + ddy * zDrawn)
+        .stroke({ width: 1 + 2 * zp, color: 0xffe0e0, alpha: 0.3 + 0.3 * zp, cap: 'round' });
+    }
+    const Z_SEGS = 8;
+    for (let i = 0; i < Z_SEGS; i++) {
+      const s0 = zDrawn + (zp - zDrawn) * (i / Z_SEGS);
+      const s1 = zDrawn + (zp - zDrawn) * ((i + 1) / Z_SEGS);
+      if (s1 - s0 <= 0.0005) continue;
+      const k = (i + 1) / Z_SEGS;
+      o.moveTo(fx + ddx * s0, fy + ddy * s0).lineTo(fx + ddx * s1, fy + ddy * s1)
+        .stroke({ width: 1 + 3 * k, color: 0xffe0e0, alpha: 0.25 + 0.55 * k * k, cap: 'round' });
+    }
+    o.circle(fx + ddx * zp, fy + ddy * zp, 2.5 + 1.5 * pulse).fill({ color: 0xffffff, alpha: 0.85 });
   }
 
   // §6.28共通(T1): 赤ライン+終点リング(ジャイアント突進と同じ意匠)。ミゲル踏み込み/ウリ踏み込み突きで再利用。
