@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3381',
+    items: [
+      'ゲーム内容の変更はありません(金箱の開封演出は閃光で組むと確定=開き絵素材は不要に)。',
+    ],
+  },
+  {
     version: '0.25.3380',
     items: [
       'ゲーム内容の変更はありません(構えSEの裁定=クイックマガジン音の流用を記録。バランス裁定用の現状指標を設計書に整理しました)。',
