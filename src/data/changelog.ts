@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3341',
+    items: [
+      'ゲーム内容の変更はありません(魔法陣ホログラムの用途裁定を記録: 弾発射=分析ホロ被せ/ワープ=簡易魔法陣/その他出現系=出現魔法陣)。',
+    ],
+  },
+  {
     version: '0.25.3340',
     items: [
       '単眼(紫の目)素材を取り込みました(天使のにらみ系予兆に流用予定。表示への配線はまだ)。',

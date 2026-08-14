@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.3341 — 魔法陣ホロの用途裁定を記録(社長裁定)【2026-08-14 14:02 JST】
+- 【済】**弾発射(volley・銃技の構え)=B分析ホロ(holo-scan・本体被せ)/ワープ=C簡易(holo-mini)/
+  その他出現系=A出現魔法陣(holo-circle)**。TELL_MOTION_LEDGER.md §4に確定反映(私案メモは参考残置)。
+- 文書のみ。
+
+
 ## v0.25.3340 — 単眼(紫の目)素材の取り込み【2026-08-14 13:58 JST】
 - 社長再送(uploads/aimegliospritesheet_78・352×328)→ public/sprites/fx/angel-eye.png+pixiTextures登録
   (nearest)。**各天使のgaze系「構え=目の発光」予兆に流用**予定(スリィエル/アクラシエルgaze等)。
