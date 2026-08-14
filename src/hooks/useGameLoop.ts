@@ -10111,6 +10111,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   weaponKey: rollWeaponKey(
                     areaZoneIndexFor(Math.hypot(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2)),
                     useGameStore.getState().player.weapons.find(w => w.isMelee)?.tier ?? 1,
+                    newGameTime, // v0.25.3328: Tier率も時間で迫る(8:00で最深部相当)
                   ),
                   worldDrop: true
                 });

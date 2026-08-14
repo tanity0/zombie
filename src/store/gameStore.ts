@@ -13284,7 +13284,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             for (let r = 0; r < rolls; r++) {
               const pc = get().player;
               const meleeTier = pc.weapons.find(w => w.isMelee)?.tier ?? 1;
-              const droppedKey = openCrate(areaIndexForPos(pc.x + pc.width / 2, pc.y + pc.height / 2), meleeTier);
+              const droppedKey = openCrate(areaIndexForPos(pc.x + pc.width / 2, pc.y + pc.height / 2), meleeTier, get().gameTime); // v0.25.3328: Tier率も時間で迫る
               get().grantWeapon(droppedKey);
               // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の3: 武器箱から出たのがナイフだった時だけ計測
               // (読むだけ・grantWeaponの挙動には触れない)。

@@ -2,6 +2,7 @@ import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, P
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
 import { projectileMoveKeyForEnemy } from './moveReaction'; // GHOST-BULLET-TECH: 弾へ載せる技キー(記録専用)
 import { GATE_BOSS_HEALTH, HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
+import { effectiveDifficultyArea, lerpAreaTable } from './timeDifficulty';
 // 当たり判定の「帯」(視覚と分離した gameplay の矩形)。射程を測る相手の矩形として使う。
 // renderSpec は utils を逆輸入しない(types と cameraZoom だけ)ので循環しない。
 import { enemyHitStrip } from '../pixi/renderSpec';
@@ -509,16 +510,24 @@ const buildEnemy = (
   const fixed = constant || LAB_FIXED_TYPES.has(type);
   const area = areaIndexForPos(x, y);
   const distanceZone = area; // 互換フィールド(0-4)
-  const difficultyRank = difficultyRankForArea(area); // トレジャー抽選用(エリアベース)
+  // トレジャー抽選用ランク。社長指示v0.25.3328「比例して、アイテムのTier抽選率も」: 時間でも上がる
+  // (実効エリアの整数部で段が進む=2:00/4:00/6:00で1段ずつ)。固定強度タイプは従来どおり実エリア。
+  const difficultyRank = difficultyRankForArea(
+    fixed ? area : Math.floor(effectiveDifficultyArea(area, gameTime)),
+  );
   // 色付き(固定難易度タイプには付かない)。色ごとの倍率を強さに乗せる。
   // §5.21-追補7: 攻撃/HPを別倍率で分離(colorDmgMult/colorHpMult → diffDmg/diffHp)。
   const colorTier = fixed ? undefined : (forcedColorTier ?? rollColorTierForArea(area, esc, rareMult));
   const colorDmgMult = colorTier ? COLOR_TIER_DMG_MULT[colorTier] : 1;
   const colorHpMult = colorTier ? COLOR_TIER_HP_MULT[colorTier] : 1;
-  // 最終倍率 = エリア基礎難易度 × 色付き倍率(社長指定・時間スケールは廃止)。固定難易度タイプ = 1。
-  const areaBase = fixed ? 1 : AREA_BASE_DIFFICULTY[area];
-  // 社長指定v0.25.2317: エリアが深いほど動きが速くなる(固定強度タイプは対象外)。
-  const areaSpeed = fixed ? 1 : (AREA_SPEED_MULT[area] ?? 1);
+  // 最終倍率 = エリア基礎難易度 × 色付き倍率。固定難易度タイプ = 1。
+  // 社長指示v0.25.3328: 時間でも距離の強さ軸に合わせにいく=実効エリア max(実エリア, 仮想エリア(時間))
+  // で強さ/速度のテーブルを引く(8:00で最深部相当)。**色付き(レア)率は上の rollColorTierForArea が
+  // 実エリアのまま引いている=エリア固定(社長指示)。**
+  const effArea = fixed ? area : effectiveDifficultyArea(area, gameTime);
+  const areaBase = fixed ? 1 : lerpAreaTable(AREA_BASE_DIFFICULTY, effArea);
+  // 社長指定v0.25.2317: エリアが深いほど動きが速くなる(固定強度タイプは対象外)。時間軸も同様に迫る。
+  const areaSpeed = fixed ? 1 : lerpAreaTable(AREA_SPEED_MULT, effArea);
   const diffDmg = areaBase * colorDmgMult;
   const diffHp = areaBase * colorHpMult;
   // Reaper は終端個体で別管理。giant/ラボ等の固定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
@@ -735,8 +744,11 @@ export const createEnemyProjectile = (
   const dir = { x: dx / dist, y: dy / dist };
   // 社長指定v0.25.2317: 弾速もエリアで上がる(移動速度と同じ倍率)。撃った個体の湧きエリア
   // (distanceZone)で決まる=生成時に固定。固定強度タイプ(ジャイアント/裏ボス等)は対象外。
+  // 社長指示v0.25.3328: 時間軸も同様(個体の湧き時刻 spawnedAt 基準=本体速度と同じ焼き込み)。
   const shooterFixed = CONSTANT_STRENGTH_TYPES.has(enemy.type) || LAB_FIXED_TYPES.has(enemy.type);
-  const areaSpeed = shooterFixed ? 1 : (AREA_SPEED_MULT[enemy.distanceZone ?? 0] ?? 1);
+  const areaSpeed = shooterFixed
+    ? 1
+    : lerpAreaTable(AREA_SPEED_MULT, effectiveDifficultyArea(enemy.distanceZone ?? 0, enemy.spawnedAt ?? 0));
 
   return {
     id: `proj-enemy-${enemy.id}-${Date.now()}-${Math.random()}`,

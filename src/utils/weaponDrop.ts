@@ -1,5 +1,6 @@
 import { AmmoType } from '../types/game';
 import { GUN_KEYS_BY_CATEGORY, nextKnifeKey } from './weaponUtils';
+import { effectiveDifficultyArea } from './timeDifficulty';
 
 // WWZ-style loot: enemies rarely drop a weapon outright, and mid-bosses always
 // drop a weapon crate that rolls one. Tier率はエリア(距離)で決まる(社長指定): 奥ほど高Tier。
@@ -19,8 +20,19 @@ const TIER_WEIGHTS_BY_AREA: [number, number, number][] = [
   [0,  35, 65],  // 深層域
 ];
 
-const pickTier = (area: number): number => {
-  const w = TIER_WEIGHTS_BY_AREA[area] ?? TIER_WEIGHTS_BY_AREA[0];
+// 社長指示v0.25.3328「比例して、アイテムのTier抽選率も」: 実効エリア(=max(実エリア, 時間の仮想
+// エリア・8:00で最深部相当))の連続値で重み3列をそれぞれ線形補間する。gameTimeMs=0なら従来と完全一致。
+const tierWeightsAt = (virtualArea: number): [number, number, number] => {
+  const i = Math.max(0, Math.min(TIER_WEIGHTS_BY_AREA.length - 1, virtualArea));
+  const lo = Math.floor(i);
+  const hi = Math.min(TIER_WEIGHTS_BY_AREA.length - 1, lo + 1);
+  const f = i - lo;
+  const a = TIER_WEIGHTS_BY_AREA[lo], b = TIER_WEIGHTS_BY_AREA[hi];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+};
+
+const pickTier = (area: number, gameTimeMs = 0): number => {
+  const w = tierWeightsAt(effectiveDifficultyArea(area, gameTimeMs));
   const total = w[0] + w[1] + w[2];
   let r = Math.random() * total;
   for (let i = 0; i < 3; i++) {
@@ -35,8 +47,8 @@ const pickTier = (area: number): number => {
 // 社長指示v0.25.3291「ドロップのナイフは必ず自分の装備してるtierより1つ上」:
 // 旧=エリアTier連動(装備より低いナイフが落ちて無意味)→ 現装備tier+1固定(nextKnifeKey)。
 // Tier5(最上位)所持なら近接は落とさず銃へ振り替える。
-export const rollWeaponKey = (area: number, currentMeleeTier = 1): string => {
-  const tier = pickTier(area);
+export const rollWeaponKey = (area: number, currentMeleeTier = 1, gameTimeMs = 0): string => {
+  const tier = pickTier(area, gameTimeMs);
 
   // ~15% of rolls produce a melee weapon instead of a gun.
   if (Math.random() < 0.15) {
@@ -66,10 +78,10 @@ export const rollTier23Gun = (rand: () => number = Math.random): string => {
 // 「1段階上のナイフ」を返し、それ以外は従来どおり銃(エリア別Tier率)。率25%は旧レベルアップ側の
 // KNIFE_OFFER_RATEをそのまま引き継いだ叩き台。
 const CRATE_KNIFE_RATE = 0.25;
-export const openCrate = (area: number, currentMeleeTier = 5): string => {
+export const openCrate = (area: number, currentMeleeTier = 5, gameTimeMs = 0): string => {
   const knifeKey = nextKnifeKey(currentMeleeTier);
   if (knifeKey && Math.random() < CRATE_KNIFE_RATE) return knifeKey;
-  const tier = pickTier(area);
+  const tier = pickTier(area, gameTimeMs);
   const category = DROP_CATEGORIES[Math.floor(Math.random() * DROP_CATEGORIES.length)];
   const keys = GUN_KEYS_BY_CATEGORY[category];
   const idx = Math.min(keys.length - 1, tier - 1);
