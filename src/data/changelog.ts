@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3380',
+    items: [
+      'ゲーム内容の変更はありません(構えSEの裁定=クイックマガジン音の流用を記録。バランス裁定用の現状指標を設計書に整理しました)。',
+    ],
+  },
+  {
     version: '0.25.3379',
     items: [
       'ゲーム内容の変更はありません(連続技の後段4件は追加の予兆モーション不要と確定=現状のままで完)。',
