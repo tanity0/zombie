@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3404',
+    items: [
+      'ゲーム内容の変更はありません(賞金首の土台を城ボスと同じ「フルボス扱い」に作り直す方針を確定)。',
+    ],
+  },
+  {
     version: '0.25.3403',
     items: [
       'ゲーム内容の変更はありません(帯予告の流星をライン予告と同一仕様に統一する指示を設計書に確定し、実装中のバッチへ追加発注)。',
