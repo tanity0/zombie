@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.3340 — 単眼(紫の目)素材の取り込み【2026-08-14 13:58 JST】
+- 社長再送(uploads/aimegliospritesheet_78・352×328)→ public/sprites/fx/angel-eye.png+pixiTextures登録
+  (nearest)。**各天使のgaze系「構え=目の発光」予兆に流用**予定(スリィエル/アクラシエルgaze等)。
+  配線は予兆モーションバッチで。TELL_MOTION_LEDGER.mdにも記録(gaze行の「要素材」はこれで充足)。
+- 検証: typecheck 0 / lint 0エラー。
+
+
 ## v0.25.3339 — ダッシュ系ライン予告を「流星ライン」へ(社長指示・試験導入)【2026-08-14 13:56 JST】
 - `drawAngelDashLine`(pixiScene)を流星式に改修: 下地ライン(経路全体)+終点リングは**従来どおり常時表示**
   (①危険を伝える絵=判定の読みは不変)。明るい芯だけを「頭+グラデーション尾が900ms周期で

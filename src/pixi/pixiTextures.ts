@@ -546,6 +546,9 @@ export const ensureTextures = (): Promise<void> => {
       ...Array.from({ length: 8 }, (_, i) => ({ name: `fx/holo-circle-${i}`, scaleMode: 'nearest' as const })),
       ...Array.from({ length: 7 }, (_, i) => ({ name: `fx/holo-scan-${i}`, scaleMode: 'nearest' as const })),
       ...Array.from({ length: 6 }, (_, i) => ({ name: `fx/holo-mini-${i}`, scaleMode: 'nearest' as const })),
+      // 単眼(社長支給v0.25.3340・紫・352×328)。各天使のgaze系「構え=目の発光」予兆に流用する
+      // (スリィエル/アクラシエルのgaze等・配線は予兆バッチで)。
+      { name: 'fx/angel-eye', scaleMode: 'nearest' as const },
       // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
       // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
