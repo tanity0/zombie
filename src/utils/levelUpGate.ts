@@ -6,6 +6,7 @@
 //   別に存在しない(汎用の接触ダメージ)ため、敵の幅を経路の当たり半径として近似する。
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(src/utils)。最小インターフェースにして
 // フルの Enemy 型に依存しない(enemyCulling.ts と同じ方針)。
+import { MIMIR_LASER_HALF_WIDTH } from './mimirLaserTrack';
 
 interface Point { x: number; y: number }
 
@@ -20,6 +21,9 @@ export interface TelegraphEnemy {
   // (=シミュ側の命中判定・描画側の赤円と同じ値を読むことでドリフトを防ぐ。他タイプには影響しない)。
   gStompRadius?: number;
   gJumpRadius?: number;
+  // PACING_PUZZLE.md §6.38 v6 C-3: bossState系(aiPhaseを使わないコントローラ=idol/賞金首等)の
+  // 突進/レーザーもここで拾えるよう追加。aiPhase系との衝突は無い(別フィールド・別分岐)。
+  bossState?: string;
 }
 
 const JUMP_TELEGRAPH_TYPES = new Set(['pumpkin', 'lab-zombie-3', 'giantbat', 'hunter']);
@@ -28,6 +32,12 @@ const DASH_TELEGRAPH_TYPES = new Set(['werewolf', 'lab-zombie-2', 'giantbat', 'h
 // 新スクリプトは 'g-' 接頭辞の専用値を使うため、ここに別枠で追加する(他タイプの判定には影響しない)。
 const GIANT_JUMP_TELEGRAPH_PHASES = new Set(['g-jump-windup', 'g-jump-air']);
 const GIANT_SWEEP_TELEGRAPH_PHASES = new Set(['g-sweep-windup', 'g-sweep-active']);
+// PACING_PUZZLE.md §6.38 v6 C-3: 賞金首(bossState系コントローラ=aiPhaseを使わない)の突進/レーザー。
+// 型集合はbountyTick.tsがこのファイルのdistToSegmentをimportしているため複製する(循環回避)が、
+// 半太さは実体(mimirLaserTrack.ts)を直接importする——写し定数(*_MIRROR)にしない
+// (社長指摘2026-08-14「GIANT_STOMP_RADIUS_MIRRORは反面教師。実定数をexportして同一ソースをimport」)。
+const BOUNTY_CHARGE_TELEGRAPH_TYPES = new Set(['bounty-melee']);
+const BOUNTY_LASER_TELEGRAPH_TYPES = new Set(['bounty-ranged']); // = mimirLaserTrack.usesMimirLaserの対象と同値
 
 // combatTick.ts(M51: 薙ぎ払いのカプセル判定)からも使うため export。
 export const distToSegment = (p: Point, a: Point, b: Point): number => {
@@ -86,6 +96,20 @@ export const isPlayerInAttackTelegraph = (
       // 薙ぎ払いは aiFromX/Y・aiTargetX/Y の両方が中心座標(gameStore.ts の beginGiantMove('sweep'))。
       const fx = e.aiFromX ?? (e.x + e.width / 2), fy = e.aiFromY ?? (e.y + e.height / 2);
       if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: e.aiTargetX, y: e.aiTargetY }) <= giantSweepHalfWidth + pr) return true;
+    } else if (
+      // PACING_PUZZLE.md §6.38 v6 C-3: 賞金首(bossState系)の突進/レーザーもここで拾う。
+      e.bossState === 'bm-charge-windup' && BOUNTY_CHARGE_TELEGRAPH_TYPES.has(e.type) &&
+      e.aiTargetX !== undefined && e.aiTargetY !== undefined
+    ) {
+      const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+      const half = e.width / 2 + pr; // werewolf系ダッシュと同じ近似(敵の幅を経路の当たり半径とする)
+      if (distToSegment({ x: pcx, y: pcy }, { x: ex, y: ey }, { x: e.aiTargetX, y: e.aiTargetY }) <= half) return true;
+    } else if (
+      e.bossState === 'laser-windup' && BOUNTY_LASER_TELEGRAPH_TYPES.has(e.type) &&
+      e.aiTargetX !== undefined && e.aiTargetY !== undefined
+    ) {
+      const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+      if (distToSegment({ x: pcx, y: pcy }, { x: ex, y: ey }, { x: e.aiTargetX, y: e.aiTargetY }) <= MIMIR_LASER_HALF_WIDTH + pr) return true;
     }
   }
   return false;

@@ -24,10 +24,12 @@ export const mimirTrackEnabled = (): boolean =>
  * PACING_PUZZLE.md §6.38 B0(先行抽出バッチ): 「ミーミル型レーザーを使う型」の集合。
  * 直書きの `type === 'mimir'` のうち**レーザーの判定・描画・中断だけ**をここへ寄せる
  * (mimirScript のフェーズ管理・スコア系・噛みつき/突進等の他技は対象外=挙動不変)。
- * 当面は mimir のみ(§6.38 B2で賞金首・遠距離型が輸入予定だが、B0では型集合を用意するだけで
- * 追加はしない=挙動不変)。
+ * §6.38 B2: バス停(変異・bounty-ranged)がここへ輸入(§4「輸入=ミーミル型レーザー」)。
+ * 同じ状態名('laser-windup'/'laser-fire'/'laser-broken')を使うことで、gameStore.ts の
+ * 近接中断(mimirLaserBreakOnMeleeHit)とpixiScene.tsの描画がバス停にもそのまま効く
+ * (=「見た目・予告・タイミングを本物と完全同一」をコードの重複なしで満たす)。
  */
-const MIMIR_LASER_TYPES = new Set<EnemyType>(['mimir']);
+const MIMIR_LASER_TYPES = new Set<EnemyType>(['mimir', 'bounty-ranged']);
 export const usesMimirLaser = (type: string): boolean => MIMIR_LASER_TYPES.has(type as EnemyType);
 
 /** レーザー溜め時間(ms)。useGameLoop.ts の状態機械もこの値を使う(単位は実効ms=壁時計系)。 */
@@ -51,6 +53,15 @@ export const MIMIR_LASER_WEAK_MS = 900;
 export const MIMIR_LASER_BROKEN_MS = 1700;
 /** 中断された時だけレーザーへ課すCD(ms)。密着で撃たせて殴り続ける農場の防止。通常成功時はCDなし。 */
 export const MIMIR_LASER_INTERRUPTED_CD_MS = 8000;
+/**
+ * レーザーの半太さ(px)。判定(useGameLoop.ts)/描画(pixiScene.ts)/§6.38 B2の輸入元(levelUpGate.ts・
+ * bountyTick.ts)が共通で読む**唯一の出どころ**。社長指摘(2026-08-14「写し定数はGIANT_STOMP_RADIUS_MIRRORが
+ * 反面教師。実定数をexportして同一ソースをimportすること」)を受け、B2で新規に必要になった箇所
+ * (levelUpGate.ts/bountyTick.ts)はここをimportする形にした。useGameLoop.ts/pixiScene.tsの既存の
+ * 私有定数(MIMIR_LASER_HALF_WIDTH/MIMIR_LASER_VIS_HALFWIDTH)はB0以前からの既存実装でB2の範囲外
+ * (触るとミーミル本体の無改変原則に反する)。ズレたらmimirLaserTrack.test.tsが検知する。
+ */
+export const MIMIR_LASER_HALF_WIDTH = 34;
 
 export type MimirLaserPhase = 'track' | 'lock';
 

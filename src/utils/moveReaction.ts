@@ -49,6 +49,9 @@ export const MOVE_REACTION_KEYS = [
   'idol-roll', 'idol-punch',
   // v0.25.2613(バッチ3・idolのMAX化): 狙撃線=帯の近接技。追尾弾は弾台帳(下)へ。
   'idol-snipe',
+  // PACING_PUZZLE.md §6.38 B2a(賞金首・bountyTick.ts): バス停/馬乗りの近接/レーザー技。
+  'br-push', 'br-laser',
+  'bm-charge', 'bm-combo1', 'bm-combo2', 'bm-combo3', 'bm-snipe',
 ] as const;
 
 // ---- 弾技の台帳(GHOST-BULLET-TECH・v0.25.2543) -------------------------------------------------
@@ -189,6 +192,21 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
     'idol-roll-windup': 'idol-roll', 'idol-roll': 'idol-roll', 'idol-roll-recover': 'idol-roll',
     'idol-punch-windup': 'idol-punch', 'idol-punch-recover': 'idol-punch',
     'idol-snipe-windup': 'idol-snipe', 'idol-snipe': 'idol-snipe', 'idol-snipe-recover': 'idol-snipe',
+  },
+  // ---- 賞金首(§6.38 B2a・bountyTick.ts) ----
+  // 'laser-windup'/'laser-fire'/'laser-recover'/'laser-broken' はミーミルと状態名を共有する
+  // (usesMimirLaser経由の輸入=§4②)。ここはtypeでゲートしているのでミーミル側('mimir-laser')とは
+  // 衝突しない=別の技キーへ集計される。
+  'bounty-ranged': {
+    'br-push-windup': 'br-push', 'br-push': 'br-push', 'br-push-recover': 'br-push',
+    'laser-windup': 'br-laser', 'laser-fire': 'br-laser', 'laser-recover': 'br-laser', 'laser-broken': 'br-laser',
+  },
+  'bounty-melee': {
+    'bm-charge-windup': 'bm-charge', 'bm-charge': 'bm-charge', 'bm-charge-recover': 'bm-charge',
+    'bm-combo1-windup': 'bm-combo1', 'bm-combo1-recover': 'bm-combo1',
+    'bm-combo2-windup': 'bm-combo2', 'bm-combo2-recover': 'bm-combo2',
+    'bm-combo3-windup': 'bm-combo3', 'bm-combo3-recover': 'bm-combo3',
+    'bm-snipe-windup': 'bm-snipe', 'bm-snipe': 'bm-snipe', 'bm-snipe-recover': 'bm-snipe',
   },
 };
 

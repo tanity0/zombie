@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3383',
+    items: [
+      'ゲーム内容の変更はありません(賞金首「バス停(変異)」「馬乗り(変異)」の技を実装。まだ通常プレイでは出現しません=デバッグ限定です)。',
+    ],
+  },
+  {
     version: '0.25.3382',
     items: [
       'ゲーム内容の変更はありません(バランス裁定(1)TTKを案Cで確定=素銃12秒/テク込み4秒/ビルド成立後2秒。適用は§7実装フェーズで)。',

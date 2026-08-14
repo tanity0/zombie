@@ -1,5 +1,41 @@
 # Development Log
 
+## v0.25.3383 — §6.38 B2a: 賞金首バス停/馬乗りの技を実装【2026-08-14 20:28 JST】
+- **バス停(bounty-ranged)**: ①後退カイト+通常のポツポツ撃ち(共通弾・予兆不要)②取り巻き召喚
+  (交戦開始1回だけzombie×2・fromEventは立てない・退場/フェード完了で一緒に片付ける)③近接されたら
+  押しのけ(小KB・カウンター可・`br-push-*`)④**輸入=ミーミル型レーザー**:
+  `mimirLaserTrack.MIMIR_LASER_TYPES`へ`bounty-ranged`を追加し、`laser-windup/laser-fire/laser-broken`
+  という**ミーミルと同じ状態名**を使うことで、gameStore.tsの近接中断(mimirLaserBreakOnMeleeHit)と
+  pixiScene.tsの描画(usesMimirLaser経由)がそのまま効く(コード重複なし)。半太さは
+  `mimirLaserTrack.MIMIR_LASER_HALF_WIDTH`を単一の出どころとしてimport(写し定数を作らない)。
+- **馬乗り(bounty-melee)**: ①突進(輸入=werewolfのWEREWOLF_WINDUP_MS/CHARGE_MAX_MS/CHARGE_SPEED_MULT
+  を直接importして再利用・`bm-charge-*`)②3段コンボ速→速→遅(bossSkeletonの流儀=最大3段+終端確定
+  パニッシュ窓・`bm-combo{1,2,3}-*`)③**輸入=懲罰狙撃**(idolScriptのsnipe値を複製=完全同一・
+  `bossSkeleton.advanceLingerMs`で遠距離2秒の懲罰シグナルを積む・`bm-snipe-*`)。
+- **共通基盤**: `BountyTickState`(idolTick.IdolTickStateと同型のラン内状態=照準速度/懲罰タイマ/
+  コンボ進行/取り巻き召喚済みフラグ)を新設し`runBountyTick`の第2引数へ追加(useGameLoop.tsに
+  `bountyStateRef`を新設して配線・新ランでリセット)。カウンター成立=技中断+chase復帰(v3128の掟・
+  レーザーは紫=カウンター不可のため対象外=mimirの中断機構に一任)。
+- **描画(pixiScene.ts)**: 押しのけ/3段コンボ/懲罰狙撃は`drawAngelZoneCapsule`、突進は
+  `drawAngelDashLine`(T1流星文法)を流用。windup長はbountyTick.tsの実定数をimportして描画側の
+  進行度を導出(`*_VIS`複製定数は作らない=v6 C-1)。
+- **levelUpGate.ts(v6 C-3)**: `TelegraphEnemy`へ`bossState`を追加し、馬乗りの突進(`bm-charge-windup`)・
+  バス停のレーザー(`laser-windup`)をレベルアップ保留の判定に追加登録。
+- **moveReaction.ts(v6 C-4)**: `br-push`/`br-laser`/`bm-charge`/`bm-combo1〜3`/`bm-snipe`を
+  `MOVE_REACTION_KEYS`と`MELEE_STATE_TO_MOVE`(`bounty-ranged`/`bounty-melee`エントリ)へ登録。
+- **社長指摘対応**: 「写し定数はGIANT_STOMP_RADIUS_MIRRORが反面教師」の指摘を受け、
+  levelUpGate.tsで一度`BOUNTY_LASER_HALFWIDTH_MIRROR`(複製リテラル)を作りかけたのを撤回し、
+  `mimirLaserTrack.MIMIR_LASER_HALF_WIDTH`を新設して両ファイルが同一ソースをimportする形に修正
+  (ズレたらmimirLaserTrack.test.tsが検知)。BR_LASER_RANGE/FIRE_MSはuseGameLoop.ts側が私有定数の
+  まま(B0以前からの既存実装=B2の範囲外)のため複製コメント明記のみに留めた(1行報告)。
+- **鋏(bounty-balance)/舞妓(bounty-maiko)は無改変**(B1と同じ単純追跡のまま=B2bで技を追加)。
+- テスト: `bountyTick.test.ts`にB2a技の状態機械14件を追加(押しのけ発火/完走/カウンター中断・
+  取り巻き召喚1回のみ・レーザー輸入のwindup→fire→recover一巡+usesMimirLaser経由の確認・
+  3段コンボ発火/完走・懲罰狙撃の2秒発火・突進の距離短縮)。typecheck/lint(0エラー・警告8=既存分)+
+  タッチしたテストファイル(bountyTick/mimirLaserTrack/levelUpGate/moveReaction/bossTelegraph/
+  bossScript/fixedGuardians)全て緑を確認。`npm test`/`npm run build`フルは未実行(社長指示があれば実施)。
+- 次バッチ(B2b・鋏=bounty-balance/舞妓=bounty-maiko)は別途発注待ち。
+
 ## v0.25.3382 — §7-11(1)TTK裁定=案C確定【2026-08-14 23:45 JST】
 - 社長「Cで」: TTK 3点=**素銃12秒/テク込み4秒/ビルド成立後2秒**(案C)。現状実測比=素銃×1.15・
   テク込み×0.65(テクの報酬側を強化する形)。適用は§7実装フェーズ(初期武器ダメージの逆算・敵HP不変)。

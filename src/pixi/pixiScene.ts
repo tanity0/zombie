@@ -134,7 +134,11 @@ import {
 const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(巨大ボス遠距離を含む)を基準にする
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType } from '../utils/enemyUtils';
-import { BOUNTY_WAKE_FX_MS, BOUNTY_DEPART_FADE_MS } from '../utils/bountyTick';
+import {
+  BOUNTY_WAKE_FX_MS, BOUNTY_DEPART_FADE_MS,
+  BR_PUSH_WINDUP_MS, BR_PUSH_HALFWIDTH,
+  BM_COMBO_WINDUP_MS, BM_COMBO_HALFWIDTH, BM_SNIPE_WINDUP_MS, BM_SNIPE_ACTIVE_MS, BM_SNIPE_HALFWIDTH,
+} from '../utils/bountyTick';
 import { isMarkedBossVisible, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import { CASTLE_FIGHT_MAX_DIST } from '../world/playableArea'; // v0.25.3055: 城ボス戦の移動制限ライン(描画は読むだけ)
 import {
@@ -14263,6 +14267,36 @@ export class PixiScene {
       if (e.bossState === 'bounty-wake') {
         const bProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BOUNTY_WAKE_FX_MS));
         this.drawBountyWakeCircle(e.id, bFootX, bFootY, bR * 2, bProg, 0.9);
+      }
+    }
+    // PACING_PUZZLE.md §6.38 B2a: バス停(押しのけ)/馬乗り(突進・3段コンボ・懲罰狙撃)の技。
+    // 判定と同じ2点(aiFromX/Y→aiTargetX/Y・bountyTick.ts側の掟)・同じ半幅を読むので
+    // 「赤いのに当たらない/赤くないのに当たる」は起きない。windup長はbountyTick.tsの定数を
+    // そのままimportして使う(*_VISの複製定数は作らない=v6 C-1)。輸入=ミーミル型レーザーは
+    // usesMimirLaser経由で下のブロックがそのまま効くのでここには書かない。
+    if (isBountyType(e.type)) {
+      const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
+      const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
+      const bs2 = e.bossState;
+      if (bs2 === 'br-push-windup') {
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BR_PUSH_WINDUP_MS));
+        this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BR_PUSH_HALFWIDTH, prog, now);
+      } else if (bs2 === 'bm-combo1-windup' || bs2 === 'bm-combo2-windup' || bs2 === 'bm-combo3-windup') {
+        const step = bs2 === 'bm-combo1-windup' ? 0 : bs2 === 'bm-combo2-windup' ? 1 : 2;
+        const dur = BM_COMBO_WINDUP_MS[step];
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / dur));
+        this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BM_COMBO_HALFWIDTH, prog, now, step);
+      } else if (bs2 === 'bm-snipe-windup') {
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_SNIPE_WINDUP_MS));
+        this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BM_SNIPE_HALFWIDTH, prog, now);
+      } else if (bs2 === 'bm-snipe') {
+        // 実行中: 判定と同じ線を実線で維持(予告と同じ2点・半幅)。
+        const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / BM_SNIPE_ACTIVE_MS));
+        o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: BM_SNIPE_HALFWIDTH * 2, color: 0xff2a2a, alpha: 0.35 * life, cap: 'round' });
+        o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: 4, color: 0xffe0e0, alpha: 0.9 * life, cap: 'round' });
+      } else if (bs2 === 'bm-charge-windup') {
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / WEREWOLF_WINDUP_MS));
+        this.drawAngelDashLine(o, bfx, bfy, btx, bty, now, prog);
       }
     }
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。

@@ -5,9 +5,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   bountyEngagedNow, bountyLingerExpired, bountySpawnBlocked, pickActiveBounty, bountyMaxHealth,
-  runBountyTick,
+  runBountyTick, createBountyTickState,
   BOUNTY_LINGER_MS, BOUNTY_HIT_ENGAGE_MS, BOUNTY_BASE_HP, BOUNTY_DEPART_FADE_MS, BOUNTY_WAKE_FX_MS,
+  BR_ESCORT_COUNT as BR_ESCORT_COUNT_FOR_TEST,
 } from './bountyTick';
+import { usesMimirLaser } from './mimirLaserTrack';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import { setTreesDisabled } from '../world/trees';
@@ -134,11 +136,12 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
       player: { ...s.player, x: 50000 + 5000, y: 50000, health: 9999, maxHealth: 9999 }, // 索敵範囲外に配置
     }));
     let gt = START_GT;
+    const s = createBountyTickState();
     const step = (ms: number): void => {
       gt += ms;
       useGameStore.setState({ gameTime: gt });
       const cur = useGameStore.getState().enemies.find(x => x.id === e.id);
-      if (cur) runBountyTick(cur, gt, ms / 1000, 1, gt); // headlessではDate.now基準の代わりにgtを流用(相対時間だけ使う)
+      if (cur) runBountyTick(cur, s, gt, ms / 1000, 1, gt); // headlessではDate.now基準の代わりにgtを流用(相対時間だけ使う)
     };
     return { id: e.id, step, gt: () => gt };
   };
@@ -245,5 +248,166 @@ describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
     expect(useGameStore.getState().enemies.find(e => e.id === id)?.bountyDepartAt).toBeDefined();
     step(BOUNTY_DEPART_FADE_MS + 100);
     expect(useGameStore.getState().enemies.find(e => e.id === id)).toBeUndefined();
+  });
+});
+
+// =================================================================================================
+// §6.38 B2a: バス停(bounty-ranged)/馬乗り(bounty-melee)の技。runBountyTickの状態機械を実際に回す
+// (idolTick.test.tsと同じ作法)。描画はテスト対象外(掟)。
+// =================================================================================================
+describe('runBountyTick — B2a 技の状態機械', () => {
+  beforeEach(() => {
+    setTreesDisabled(true);
+    setTorchesDisabled(true);
+    useGameStore.getState().resetGame('assault');
+  });
+
+  const START_GT = 10_000_000;
+
+  /** setupと同型だが型を選べる(バス停/馬乗りの技テスト用)。 */
+  const setupType = (type: EnemyType, playerOffset: { x: number; y: number }, over: Partial<Enemy> = {}) => {
+    const e = spawnEnemyAt(type, 50000, 50000, START_GT);
+    e.dormant = false; // 技テストは交戦中から始める(起床演出待ちを省く)
+    e.homeX = e.x; e.homeY = e.y;
+    e.aggroRange = 200;
+    e.lastHit = START_GT; // 交戦(bountyEngagedNow)を確実に成立させる
+    Object.assign(e, over);
+    useGameStore.setState(s => ({
+      enemies: [e],
+      player: { ...s.player, x: e.x + playerOffset.x, y: e.y + playerOffset.y, health: 9999, maxHealth: 9999 },
+    }));
+    let gt = START_GT;
+    const s = createBountyTickState();
+    const step = (ms: number): void => {
+      gt += ms;
+      useGameStore.setState({ gameTime: gt });
+      const cur = useGameStore.getState().enemies.find(x => x.id === e.id);
+      if (cur) runBountyTick(cur, s, gt, ms / 1000, 1, gt);
+    };
+    return { id: e.id, step, gt: () => gt, state: s };
+  };
+
+  describe('バス停(bounty-ranged)', () => {
+    it('近すぎると押しのけ(br-push-windup)を発火する', () => {
+      const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 }); // BR_PUSH_RANGE(110)未満
+      step(16);
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-push-windup');
+    });
+
+    it('押しのけ完走: windup→push→recoverを経てchaseへ戻り、pumpkinBlastsへ判定を積む(判定=絵の一致)', () => {
+      // プレイヤーが動かないため押しのけ→chase→(再び近接)押しのけ…が回り続ける想定の盤面。
+      // 「一度でもchaseへ戻ったか」を見る(押しのけ範囲に居続ける限り再発火するのは仕様どおり)。
+      const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 });
+      const before = useGameStore.getState().pumpkinBlasts.length;
+      const seen = new Set<string | undefined>();
+      for (let i = 0; i < 60; i++) { // 500ms windup+120ms active+700ms recoverを1周ぶん十分上回る
+        step(50);
+        seen.add(useGameStore.getState().enemies.find(e => e.id === id)?.bossState);
+      }
+      expect(seen.has('chase')).toBe(true); // windup→push→recoverを経てchaseへ復帰した
+      expect(useGameStore.getState().pumpkinBlasts.length).toBeGreaterThan(before);
+    });
+
+    it('押しのけはカウンター可能(windup中のカウンター成立でchaseへ即復帰=v3128の掟)', () => {
+      const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 });
+      step(16);
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-push-windup');
+      // カウンター成立の条件(rectsOverlap+counterWindowEnd)を満たす: プレイヤーを重ねてカウンター窓を開く。
+      const bounty = useGameStore.getState().enemies.find(e => e.id === id)!;
+      useGameStore.setState(s => ({
+        player: { ...s.player, x: bounty.x, y: bounty.y, counterWindowEnd: Date.now() + 5000 },
+      }));
+      const hpBefore = useGameStore.getState().enemies.find(e => e.id === id)!.health;
+      step(16);
+      const after = useGameStore.getState().enemies.find(e => e.id === id);
+      expect(after?.bossState).toBe('chase'); // 技が中断されchaseへ復帰(v3128)
+      expect(after!.health).toBeLessThan(hpBefore); // カウンター反撃ダメージが入っている
+    });
+
+    it('取り巻き召喚: 交戦開始1回だけ2体・再召喚なし', () => {
+      const { step } = setupType('bounty-ranged', { x: 700, y: 0 }); // kite圏内=押しのけ/レーザーどちらも発火しない距離
+      const before = useGameStore.getState().enemies.length;
+      step(16);
+      const afterFirst = useGameStore.getState().enemies.length;
+      expect(afterFirst).toBe(before + BR_ESCORT_COUNT_FOR_TEST);
+      for (let i = 0; i < 20; i++) step(50);
+      expect(useGameStore.getState().enemies.length).toBe(afterFirst); // 増え続けない=再召喚なし
+    });
+
+    it('輸入=ミーミル型レーザー: usesMimirLaser経由で共有状態(laser-windup→laser-fire→laser-recover)を回す', () => {
+      const { id, step } = setupType('bounty-ranged', { x: 600, y: 0 }, { mimirLaserReadyAt: 0 });
+      // kite圏内(BR_KITE_MIN=340超)+押しのけ範囲外(110超)+レーザーCD明け=laser-windupへ入る。
+      step(16);
+      const afterFirst = useGameStore.getState().enemies.find(e => e.id === id);
+      expect(afterFirst?.bossState).toBe('laser-windup');
+      expect(usesMimirLaser(afterFirst!.type)).toBe(true); // §4②「輸入」がB0の型ゲートを実際に使っている
+      // windup(3000ms)+fire(1500ms)+recover(900)を十分上回るまで刻む。
+      for (let i = 0; i < 120; i++) step(50);
+      const after = useGameStore.getState().enemies.find(e => e.id === id);
+      expect(after?.bossState).toBe('chase');
+      expect(after?.mimirLaserReadyAt).toBeGreaterThan(useGameStore.getState().gameTime - 1); // 通常CDが課される
+    });
+  });
+
+  describe('馬乗り(bounty-melee)', () => {
+    it('密着帯(BM_MELEE_MAX以内)で3段コンボ(速→速→遅)を発火する', () => {
+      const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
+      step(16);
+      const s1 = useGameStore.getState().enemies.find(e => e.id === id);
+      expect(s1?.bossState).toBe('bm-combo1-windup');
+    });
+
+    it('3段コンボ完走: 1→2→3段目まで進み、各段でpumpkinBlastsへ判定を積んでからchaseへ戻る(終端=パニッシュ窓)', () => {
+      const { id, step } = setupType('bounty-melee', { x: 80, y: 0 });
+      const seenStates = new Set<string | undefined>();
+      let blastCount = 0;
+      for (let i = 0; i < 80; i++) {
+        step(50);
+        const cur = useGameStore.getState().enemies.find(e => e.id === id);
+        seenStates.add(cur?.bossState);
+        blastCount = Math.max(blastCount, useGameStore.getState().pumpkinBlasts.length);
+      }
+      expect(seenStates.has('bm-combo1-windup')).toBe(true);
+      expect(seenStates.has('bm-combo2-windup')).toBe(true);
+      expect(seenStates.has('bm-combo3-windup')).toBe(true);
+      expect(seenStates.has('bm-combo3-recover')).toBe(true);
+      expect(blastCount).toBeGreaterThanOrEqual(3); // 3段=3回の判定
+      // プレイヤーが動かないため終端(chase)後に再び密着帯へ入って次のコンボが再発火する想定の盤面
+      // (押しのけ同様「一度でもchaseへ戻ったか」を見る=終端パニッシュ窓が実在することの確認)。
+      expect(seenStates.has('chase')).toBe(true);
+    });
+
+    it('輸入=懲罰狙撃: 遠距離に2秒(BM_FAR_MS)留まると自動発火する(§4③「近寄らざるを得ない」)', () => {
+      // 突進の間合い(BM_CHARGE_REACH=420)より十分遠くから始める(近づくにつれ突進帯に入るより先に
+      // 懲罰が発火することを見るため。bounty.speed=50px/s×2sで100px縮まっても420pxより遠いまま)。
+      const { id, step } = setupType('bounty-melee', { x: 700, y: 0 });
+      // 2秒未満ではまだ発火しない。
+      for (let i = 0; i < 39; i++) step(50); // 1950ms
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).not.toBe('bm-snipe-windup');
+      step(100); // 2050ms到達
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('bm-snipe-windup');
+    });
+
+    it('突進(輸入=werewolf windup→charge): windup後、突進中は距離が縮む', () => {
+      const { id, step } = setupType('bounty-melee', { x: 350, y: 0 }); // コンボ帯外・懲罰帯未満(近くも遠くもない)
+      // 中立からbossNextActionAt到達で突進を選ぶ(BOUNTY_NEUTRAL_MSは350ms=下の刻みで十分超える)。
+      let sawChargeWindup = false;
+      let sawCharge = false;
+      let distAtChargeStart = Infinity;
+      let distAfterCharge = -Infinity;
+      for (let i = 0; i < 200; i++) {
+        step(30);
+        const cur = useGameStore.getState().enemies.find(e => e.id === id);
+        if (!cur) break;
+        const p = useGameStore.getState().player;
+        const d = Math.hypot((p.x + p.width / 2) - (cur.x + cur.width / 2), (p.y + p.height / 2) - (cur.y + cur.height / 2));
+        if (cur.bossState === 'bm-charge-windup' && !sawChargeWindup) { sawChargeWindup = true; distAtChargeStart = d; }
+        if (cur.bossState === 'bm-charge') { sawCharge = true; distAfterCharge = d; }
+        if (sawCharge && cur.bossState !== 'bm-charge') break; // 突進が終わったら打ち切り
+      }
+      expect(sawChargeWindup).toBe(true);
+      expect(sawCharge).toBe(true);
+      expect(distAfterCharge).toBeLessThan(distAtChargeStart); // 突進で距離が縮んでいる
+    });
   });
 });

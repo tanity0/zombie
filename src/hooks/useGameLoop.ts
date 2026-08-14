@@ -146,7 +146,8 @@ import { withRecoverFloor } from '../utils/bossTelegraph';
 import { canForceGateBossNow } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import {
-  runBountyTick, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
+  runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
+  type BountySfx,
 } from '../utils/bountyTick';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
@@ -755,6 +756,14 @@ const ANGEL_SFX: AngelSfx = {
 // idol(stage-2隠しボス)の音。予告SEは全ボス共通の hunter-alert 流用(§6.26-9 #5)。
 const IDOL_SFX: IdolSfx = {
   alert: () => playSfx(BOSS_ALERT_SFX_KEY),
+  counter: (gain = 1) => playSfx('counter', gain),
+  reward: (gain = 1) => playSfx('headshot', gain),
+};
+// 賞金首(§6.38 B2a)の音。予兆SEは全ボス共通のhunter-alert流用(§6.26-9 #5)。fireはレーザー発射の
+// 一撃SE(ミーミルと同じ'heavy-impact'流用=useGameLoop.tsのlaser-windup→laser-fire遷移箇所と同一)。
+const BOUNTY_SFX: BountySfx = {
+  alert: () => playSfx(BOSS_ALERT_SFX_KEY),
+  fire: () => playSfx('heavy-impact'),
   counter: (gain = 1) => playSfx('counter', gain),
   reward: (gain = 1) => playSfx('headshot', gain),
 };
@@ -1503,6 +1512,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const idolForceRef = useRef(false);
   // ?bountynow=1 診断(§6.38 B1): ラン開始後に1回だけ賞金首をforce-spawnしたかどうか。
   const bountyForceRef = useRef(false);
+  // §6.38 B2a: 賞金首のラン内状態(照準速度/懲罰タイマ/コンボ進行/取り巻き召喚済みか)。
+  // idolStateRefと同じ流儀(idolTick.tsを手本・bountyTick.ts参照)。同時1体なので単一refでよい。
+  const bountyStateRef = useRef(createBountyTickState());
   // 警察署アリーナ(§6.24 M48)の再発動ガード(社長報告v0.25.2389)。発動でfalse、警察署から
   // POLICE_REARM_RADIUS(360)より離れたらtrueへ戻る。失敗(時間切れ)直後はプレイヤーが必ず
   // 発動半径(240)の内側に居るため、これが無いと即再発動+円内クランプで抜け出せなくなる。
@@ -2540,6 +2552,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
+          bountyStateRef.current = createBountyTickState(); // 賞金首のラン内状態も新ランでリセット(§6.38 B2a)
           policeArmedRef.current = true; // 警察署アリーナの再発動ガードも新ランで解除(§6.24 M48・v0.25.2389)
           bossMakerReadyRef.current = false;
           idolStateRef.current = createIdolTickState(); // idolのストリング/懲罰タイマも新ランでリセット
@@ -6119,7 +6132,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          try {
           const activeBounty = pickActiveBounty(useGameStore.getState().enemies);
           if (activeBounty) {
-            runBountyTick(activeBounty, newGameTime, deltaTime, MOVE_SPEED_MULT, Date.now());
+            runBountyTick(
+              activeBounty, bountyStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT, Date.now(),
+              BOUNTY_SFX, BOSS_COUNTER_ENABLED,
+            );
           }
          } catch (err) {
           if (!bountyCtrlErrLogged) { bountyCtrlErrLogged = true; console.error('[bounty] controller error (suppressed after first):', err); }

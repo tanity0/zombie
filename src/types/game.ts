@@ -743,7 +743,19 @@ export interface Enemy {
     | 'idol-orb-windup' | 'idol-orb-recover'
     | 'idol-rest'
     // PACING_PUZZLE.md §6.38(賞金首・B1): 起床演出(holo-circle 1周)の間だけ立つ。技は無い(B2で追加)。
-    | 'bounty-wake';
+    | 'bounty-wake'
+    // PACING_PUZZLE.md §6.38 B2: バス停(変異・bounty-ranged)の技。
+    // laser-windup/laser-fire/laser-recover/laser-broken は usesMimirLaser 経由でミーミルと共有
+    // (§6.38 B0のLASER-TRACK一般化。同じ状態名を使うことでgameStore側の中断/描画が両者へ自動で効く)。
+    // br-push-* = 近接されたら押しのけ(小KB・カウンター可)。
+    | 'br-push-windup' | 'br-push' | 'br-push-recover'
+    // PACING_PUZZLE.md §6.38 B2: 馬乗り(変異・bounty-melee)の技。
+    // bm-charge-* = 突進(werewolfのwindup→charge流用・流星ライン予告・カウンター可)。
+    // bm-combo{1,2,3}-* = 3段コンボ(速→速→遅)。bm-snipe-* = 輸入=懲罰狙撃(idolのsnipe流用)。
+    | 'bm-charge-windup' | 'bm-charge' | 'bm-charge-recover'
+    | 'bm-combo1-windup' | 'bm-combo1-recover' | 'bm-combo2-windup' | 'bm-combo2-recover'
+    | 'bm-combo3-windup' | 'bm-combo3-recover'
+    | 'bm-snipe-windup' | 'bm-snipe' | 'bm-snipe-recover';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   // 攻撃開始時に確定した短い連携台本の残り。各recoverで先頭を消費し、空になった時だけ通常硬直へ戻る。
@@ -754,6 +766,9 @@ export interface Enemy {
   bountyLastEngagedAt?: number;
   // 滞在満了→帰巣完了後にフェード退場を開始した gameTime。未設定=退場中でない。
   bountyDepartAt?: number;
+  // PACING_PUZZLE.md §6.38 B2(バス停「取り巻き召喚」): この敵が賞金首の取り巻きなら親bounty.idを持つ
+  // (交戦開始時に1回だけ2体・再召喚なし)。bountyTick.tsが賞金首の退場時にこのidを一緒に片付ける。
+  bountyEscortId?: string;
   bossBurstLeft?: number;    // 3連発の残弾
   bossBurstNextAt?: number;  // 次の1発の gameTime(ms)
   // PACING_PUZZLE.md §6.28-21(バッチM53/M55/M57・ロットL2): ミゲル/ジブリル/ラフィへ追加した新技1つずつの
