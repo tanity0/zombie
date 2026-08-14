@@ -9073,14 +9073,14 @@ export class PixiScene {
         continue;
       }
       // ダッシュ突進予告(犬/lab-zombie-2/ジャイアントバット): 溜め中(windup)に移動先まで赤ラインで距離表示。
-      if (e.aiPhase === 'windup' && (e.type === 'werewolf' || e.type === 'lab-zombie-2' || e.type === 'giantbat' || e.type === 'hunter')
-          && e.aiTargetX !== undefined && e.aiTargetY !== undefined) {
-        const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-        const tx = e.aiTargetX, ty = e.aiTargetY; // dash の狙い点は中心座標
-        // v0.25.3339→3342: 流星ライン(溜め進行と同期して伸び、発動と同時に描き切る)へ統一。
+      if (e.type === 'werewolf' || e.type === 'lab-zombie-2' || e.type === 'giantbat' || e.type === 'hunter') {
+        // v0.25.3339→3343: 流星ライン。溜め中は進行同期で伸び、完走後は始点から蒸発(dashLineTick)。
         // aiPhaseUntilはatkUntil(=gameTime基準・速度倍率適用済み)なので、総時間も同じ式で割る。
-        const cprog = 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (WEREWOLF_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT);
-        this.drawAngelDashLine(g, ex, ey, tx, ty, now, cprog);
+        const chOn = e.aiPhase === 'windup' && e.aiTargetX !== undefined && e.aiTargetY !== undefined;
+        const chRemain = (e.aiPhaseUntil ?? gameTime) - gameTime;
+        const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+        this.dashLineTick(g, `${e.id}:charge`, chOn, chRemain, ex, ey, e.aiTargetX ?? ex, e.aiTargetY ?? ey, now,
+          1 - chRemain / (WEREWOLF_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT));
       }
     }
   }
@@ -14479,11 +14479,13 @@ export class PixiScene {
         view.sprite.tint = 0xffffff;
       }
       // T1(§6.28-3語彙表): 突進=赤ライン+終点リング(既存の欠陥7=旧はテル無。ジャイアント/ミゲルと同じ意匠)。
-      if (bs === 'dash-windup') {
+      {
+        // v0.25.3342→3343: 溜め進行と同期して伸び、完走後は始点から蒸発(dashLineTickが消えも管理)。
+        const dashWindOn = bs === 'dash-windup';
+        const dRemain = (e.bossStateUntil ?? gameTime) - gameTime;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        // v0.25.3342: 溜め進行と同期(BOSS_DASH_WINDUP_MS=1000の写し。生成側はスケール無しの直値)。
-        const dprog = 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BOSS_DASH_WINDUP_MS_VIS;
-        this.drawAngelDashLine(o, cx, cy, tx, ty, now, dprog);
+        this.dashLineTick(o, `${e.id}:hbdash`, dashWindOn, dRemain, cx, cy, tx, ty, now,
+          1 - dRemain / BOSS_DASH_WINDUP_MS_VIS);
       }
       // T2: ミーミル「群体の噛みつき」(§6.28-5/§6.28-15) = 足元の即時赤円(giant踏み鳴らしと同じ意匠)。
       if (e.type === 'mimir' && bs === 'bite-windup') {
@@ -14724,12 +14726,13 @@ export class PixiScene {
       else if (scriptActive && e.type === 'miguel' && (bs === 'mdash-windup' || bs === 'mdash-move')) {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        // v0.25.3342: 溜め中は進行同期で線が伸び、踏み込み(mdash-move)中は描き切った線を維持。
+        // v0.25.3342→3343: 溜め中は進行同期で伸び、踏み込み中は**始点から蒸発**(走者が線を食う)。
+        const elapsed = gameTime - (e.aiStartedAt ?? gameTime);
         const mprog = bs === 'mdash-windup'
           ? 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_DASH_WINDUP_MS
           : 1;
-        this.drawAngelDashLine(o, cx, cy, tx, ty, now, mprog);
-        const elapsed = gameTime - (e.aiStartedAt ?? gameTime);
+        const merase = bs === 'mdash-windup' ? 0 : Math.min(1, elapsed / MIGUEL_DASH_MOVE_MS);
+        this.drawAngelDashLine(o, cx, cy, tx, ty, now, mprog, merase);
         if (bs === 'mdash-windup' || elapsed < MIGUEL_DASH_MOVE_MS) {
           const remaining = (e.bossStateUntil ?? gameTime) - gameTime;
           const swordAlpha = bs === 'mdash-windup'
@@ -14870,14 +14873,15 @@ export class PixiScene {
       else if (scriptActive && e.type === 'uri' && (bs === 'thrust-windup' || bs === 'thrust' || bs === 'thrust-recover')) {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        // v0.25.3342: 溜め中は進行同期、突き(thrust)中は描き切った線を維持。
+        // v0.25.3342→3343: 溜め中は進行同期、突き中は始点から蒸発(走者が線を食う)。
+        const elapsed = gameTime - (e.aiStartedAt ?? gameTime);
         if (bs !== 'thrust-recover') {
           const uprog = bs === 'thrust-windup'
             ? 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / URI_THRUST_WINDUP_MS
             : 1;
-          this.drawAngelDashLine(o, cx, cy, tx, ty, now, uprog);
+          const uerase = bs === 'thrust-windup' ? 0 : Math.min(1, elapsed / URI_THRUST_MOVE_MS);
+          this.drawAngelDashLine(o, cx, cy, tx, ty, now, uprog, uerase);
         }
-        const elapsed = gameTime - (e.aiStartedAt ?? gameTime);
         if (bs === 'thrust-windup' || (bs === 'thrust' && elapsed < URI_THRUST_MOVE_MS)) {
           const remaining = (e.bossStateUntil ?? gameTime) - gameTime;
           const swordAlpha = bs === 'thrust-windup'
@@ -16500,6 +16504,15 @@ export class PixiScene {
             GLEN_REACH_HALF_WIDTH, artFade * fade);
         }
       }
+      // v0.25.3343: 突進系の流星ライン(g-dash=赤 / g-quad三連=紫)。溜め中は伸び、完走後は始点から蒸発。
+      {
+        const gRemain = (e.aiPhaseUntil ?? gameTime) - gameTime;
+        const gdtx = e.aiTargetX ?? cx, gdty = e.aiTargetY ?? cy;
+        this.dashLineTick(o, `${e.id}:gdash`, gph === 'g-dash-windup', gRemain, cx, cy, gdtx, gdty, now,
+          1 - gRemain / (GIANT_DASH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT));
+        this.dashLineTick(o, `${e.id}:gquad`, gph === 'g-quad-windup', gRemain, cx, cy, gdtx, gdty, now,
+          1 - gRemain / (GIANT_QUAD_DASH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT), 0xa855f7, 0xc084fc, 0xf0e0ff);
+      }
       if (gph === 'g-stomp-windup') {
         // T2(赤円・自身の足元)。半径=GIANT_STOMP_RADIUS(社長裁定6.26-9 #3)。
         // M65: windup開始時にgameStore.tsが確定させたe.gStompRadius(ステージ別倍率込み)を読む。
@@ -16531,11 +16544,6 @@ export class PixiScene {
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, Math.min(1, (0.32 + 0.4 * gprog) + 0.15 * gPulse + 0.2));
         else o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * gprog) + 0.15 * gPulse });
         o.moveTo(gfx, gfy).lineTo(gtx, gty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: 0.35 + 0.35 * gprog, cap: 'round' });
-      } else if (gph === 'g-dash-windup') {
-        // T1(赤ライン+終点リング)。v0.25.3339→3342: 流星ライン(溜め進行と同期して伸びる)へ統一。
-        const gtx = e.aiTargetX ?? cx, gty = e.aiTargetY ?? cy;
-        const gdprog = 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_DASH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT);
-        this.drawAngelDashLine(o, cx, cy, gtx, gty, now, gdprog);
       } else if (gph === 'g-jump-windup' || gph === 'g-jump-air') {
         // T2(赤円・着地点)。溜め開始からロック済みの着地点(社長裁定6.26-9 #1)。着地AoE半径の生値は
         // PUMPKIN_EXPLOSION_RADIUS(6.26-6「現行不変」=定数そのものは変えない)。M65: windup開始時に
@@ -16604,10 +16612,7 @@ export class PixiScene {
         // v0.25.3049(社長裁定「カウンター不能技に。紫線に変更で」): 突進の体当たりはパリィ表外=
         // カウンター不可の技として確定。色の文法②(紫=カウンターできない攻撃・ミーミルのレーザーと
         // 同じ読み分け)に従い、予告を赤→紫にする(判定と線の一致=掟はそのまま)。
-        const qtx = e.aiTargetX ?? cx, qty = e.aiTargetY ?? cy;
-        // v0.25.3342: 紫のまま流星ライン化(溜め進行と同期。色の文法②=紫は不変)。
-        const qprog = 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_QUAD_DASH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT);
-        this.drawAngelDashLine(o, cx, cy, qtx, qty, now, qprog, 0xa855f7, 0xc084fc, 0xf0e0ff);
+        // v0.25.3343: g-quadの流星ラインはチェーン外のdashLineTick(下)へ移設(消えアニメも管理)。
       } else if (gph === 'g-quad-breath-windup' || gph === 'g-quad-breath-active') {
         // M66 stage-4「氷の横薙ぎ」: T3扇(帯が回転)。windupは最終的に薙ぐ全域(120°)を薄く先出し
         // (掟W1)、activeは「その瞬間」の細い帯だけを判定と同寸で描く(図形=判定の一致)。
@@ -17085,20 +17090,24 @@ export class PixiScene {
   // 頭の直後はグラデーションの尾、通過済みの区間は「描かれた線」として残る(=発動時に経路全体が
   // 表示されている。①危険を伝える絵の掟は発動時点で満たす)。技が終わって州が変われば線ごと消える。
   // 色は引数(赤=既定/紫=カウンター不可のg-quad等)。負荷1/10: 予告中のみ+約12ストローク/本。
+  // erase: 0→1で「描き切った線がスタート地点側から消えていく」(社長指摘v0.25.3343「出きった線が
+  // スタート地点から消えていかないと流星にならない」)。可視区間=[erase, prog]。
   private drawAngelDashLine(
     o: Graphics, fx: number, fy: number, tx: number, ty: number, now: number, prog: number,
-    base = 0xff2a2a, core = 0xff5a5a, head = 0xffe3e3,
+    erase = 0, base = 0xff2a2a, core = 0xff5a5a, head = 0xffe3e3,
   ) {
     const p = Math.max(0, Math.min(1, prog));
+    const er = Math.max(0, Math.min(1, erase));
+    if (p - er <= 0.001) return; // 消し切った(or まだ何も無い)
     const pulse = 0.5 + 0.5 * Math.sin(now / 110);
     const dx = tx - fx, dy = ty - fy;
     const TAIL = 0.28; // 流星の尾の長さ(線に対する割合)
-    // 通過済み=描かれた線(尾より後ろ)。prog=1で線全体がこの状態=表示しきる。
-    const drawn = Math.max(0, p - TAIL);
-    if (drawn > 0) {
-      o.moveTo(fx, fy).lineTo(fx + dx * drawn, fy + dy * drawn)
+    // 通過済み=描かれた線(尾より後ろ・可視区間にクリップ)。prog=1で線全体=技の出始めに表示しきる。
+    const drawn = Math.max(er, p - TAIL);
+    if (drawn > er) {
+      o.moveTo(fx + dx * er, fy + dy * er).lineTo(fx + dx * drawn, fy + dy * drawn)
         .stroke({ width: 6, color: base, alpha: 0.3 + 0.14 * pulse, cap: 'round' });
-      o.moveTo(fx, fy).lineTo(fx + dx * drawn, fy + dy * drawn)
+      o.moveTo(fx + dx * er, fy + dy * er).lineTo(fx + dx * drawn, fy + dy * drawn)
         .stroke({ width: 2, color: core, alpha: 0.55 + 0.25 * pulse, cap: 'round' });
     }
     // 流星の尾: drawn→p をグラデーション(頭ほど明るく太く)。
@@ -17111,11 +17120,35 @@ export class PixiScene {
       o.moveTo(fx + dx * s0, fy + dy * s0).lineTo(fx + dx * s1, fy + dy * s1)
         .stroke({ width: 2 + 4 * k, color: core, alpha: 0.3 + 0.6 * k * k, cap: 'round' });
     }
-    // 頭の輝点。
-    o.circle(fx + dx * p, fy + dy * p, 3 + 2 * pulse).fill({ color: head, alpha: 0.9 });
-    // 終点リング: 溜め後半で立ち上がる(到達の予告)。
-    const ringA = Math.max(0, (p - 0.5) * 2) * (0.45 + 0.4 * pulse);
+    // 頭の輝点(溜め中=先端を走る。消え段階ではゴールに留まる)。
+    o.circle(fx + dx * p, fy + dy * p, 3 + 2 * pulse).fill({ color: head, alpha: 0.9 * (1 - er) });
+    // 終点リング: 溜め後半で立ち上がり、消え段階では薄れていく。
+    const ringA = Math.max(0, (p - 0.5) * 2) * (0.45 + 0.4 * pulse) * (1 - er);
     if (ringA > 0.02) o.circle(tx, ty, 9 + 3 * pulse).stroke({ width: 2, color: core, alpha: ringA });
+  }
+
+  // 溜め完走→「描き切った線が始点から蒸発する」消えアニメの管理(v0.25.3343)。
+  // windup中は毎フレーム残り時間+座標を控え、溜めを**完走した**立ち下がりだけ latchFx で消えを再生する
+  // (カウンター中断=完走していない場合は即消し。「赤いのに当たらない」を残さない)。
+  private dashLineArm = new Map<string, number[]>();
+  private static readonly DASHLINE_ERASE_MS = 320;
+  private dashLineTick(
+    o: Graphics, key: string, windupOn: boolean, remainMs: number,
+    fx: number, fy: number, tx: number, ty: number, now: number, prog: number,
+    base = 0xff2a2a, core = 0xff5a5a, head = 0xffe3e3,
+  ): void {
+    if (windupOn) {
+      this.dashLineArm.set(key, [fx, fy, tx, ty]);
+      // 完走判定用に残りを控える(最後に見た残りが小さい=完走して技へ進んだ)。
+      this.dashLineArm.get(key)!.push(remainMs);
+      this.drawAngelDashLine(o, fx, fy, tx, ty, now, prog, 0, base, core, head);
+      return;
+    }
+    const armed = this.dashLineArm.get(key);
+    const completed = armed !== undefined && (armed[4] ?? 1e9) < 60;
+    const el = this.latchFx(key, completed, PixiScene.DASHLINE_ERASE_MS, now, () => armed!);
+    if (armed) this.dashLineArm.delete(key);
+    if (el) this.drawAngelDashLine(o, el.d[0], el.d[1], el.d[2], el.d[3], now, 1, el.t, base, core, head);
   }
 
   // §6.28共通(T6): 溜めで太くなる赤ライン(ミーミルのレーザーと同じ意匠)。スリィエル環の射出/
