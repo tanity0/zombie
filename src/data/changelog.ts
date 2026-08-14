@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3394',
+    items: [
+      'ゲーム内容の変更はありません(バランス実機テスト用ツマミ一式の仕様を確定し、実装を発注)。',
+    ],
+  },
+  {
     version: '0.25.3393',
     items: [
       'ゲーム内容の変更はありません(バランス裁定(4)(5)は実機テスト後に確定、と記録)。',
