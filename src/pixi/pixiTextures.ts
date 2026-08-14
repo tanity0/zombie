@@ -556,6 +556,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'bounty-melee', scaleMode: 'nearest' as const },
       // 賞金首・バランス型(教官)本体(社長支給v0.25.3352・膝立ちで巨大な錨を持つ個体)。これで3種完備。
       { name: 'bounty-balance', scaleMode: 'nearest' as const },
+      // 賞金首・イレギュラー種「舞妓(変異)」本体(社長支給v0.25.3356・4本腕の舞妓)。4種完備。
+      { name: 'bounty-maiko', scaleMode: 'nearest' as const },
       // 予告帯の意匠(社長支給素材 A-2・v0.25.2396)。同じくグレースケール+透過で tint 着色。
       // 帯は技ごとに縦横比が違う(薙ぎ払い3.9:1 / 噛みつき1.2:1 / のしかかり2.1:1)ので伸縮前提=linear。
       { name: 'fx/telegraph-band', scaleMode: 'linear' as const },
