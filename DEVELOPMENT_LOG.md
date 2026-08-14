@@ -1,5 +1,28 @@
 # Development Log
 
+## v0.25.3364 — §6.38 B0(先行抽出バッチ): ミーミルレーザー型ゲート一般化+懲罰狙撃の純関数抽出【2026-08-14 18:04 JST】
+- **B0-1 ミーミル型レーザーの型ゲート一般化**: `usesMimirLaser(type)`(型集合`MIMIR_LASER_TYPES`・
+  現状mimirのみ)を`src/utils/mimirLaserTrack.ts`に新設し、レーザーの**判定・描画・中断**に関わる
+  直書き`type === 'mimir'`だけを置換(挙動不変)。対象: `canInterruptMimirLaser`本体/
+  `useGameLoop.ts`のレーザー中断・laserOnCd・W7カウンター窓・旧抽選経路(4箇所・元発注書の
+  5000/5112/5173/5324)/`pixiScene.ts`のレーザー描画ブロック(14243)+弱点tint(14562)。
+  **触らなかったもの(意図的)**: `hiddenScriptOn`(5012)・mimirScriptのフェーズ選択(5290/5300)・
+  噛みつき(bite-windup)描画(14612/14626)・突進tint(15626・3ボス共通)・体力バー色(17292・フェーズ系)
+  =mimirScriptのフェーズ管理/スコア系/レーザー以外の技のため対象外。
+- **B0-2 アイドル懲罰狙撃の純関数抽出**: `advanceLingerMs(prevMs, holding, stepMs)`を
+  `src/utils/bossSkeleton.ts`(`punishTrigger`の隣)に新設。idolTick.tsのfarSince/meleeSince/
+  angleSinceの3箇所(旧: インライン三項演算子)を置換(挙動不変)。`punishTrigger`は元々ジェネリック
+  (`PunishConfig<M>`)で賞金首からも呼べる形だったため、抽出が必要だったのは「積み上げ」側のみ。
+  テスト: `bossSkeleton.test.ts`に3件追加(積み上げ/リセット/punishTriggerとの組み合わせで
+  「遠距離2秒で即発火」を再現)。
+- **B0-3 カプセル帯判定の共通関数の確認**: `distToSegment`(`src/utils/levelUpGate.ts`)が既に
+  唯一の実装で、combatTick.ts/angelBossTick.ts/idolTick.ts/gameStore.tsから共通で呼ばれていることを
+  確認。**コード変更なし**(既に共通化済み)。
+- 検証: `npm run typecheck`(0)/`npm run lint`(0エラー・warning8=既存分のみ)/
+  `npx vitest run src/utils/mimirLaserTrack.test.ts src/utils/bossSkeleton.test.ts
+  src/utils/idolScript.test.ts src/utils/idolTick.test.ts`(全緑・125 tests)。
+- ★未決なし。次: B1(賞金首EnemyType4種+器一式)。
+
 ## v0.25.3363 — 馬乗り(変異)の武器素材=ワイヤー鞭の取り込み【2026-08-14 18:45 JST】
 - 社長支給(IMG_7445・248×384・ケーブルを編んだ長鞭・透過)→ public/sprites/bounty-melee-whip.png+
   pixiTextures登録(nearest)。§6.38武器素材台帳へ追記(用途は指示待ち)。

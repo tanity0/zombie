@@ -123,6 +123,16 @@ export const punishTrigger = <M extends string>(
   return { move: null, flipStrafe };
 };
 
+/**
+ * PACING_PUZZLE.md §6.38 B0(先行抽出バッチ): `PunishSignals` の各値(farMs/meleeMs/sameAngleMs)は
+ * どれも同じ式で積み上がる——「条件を満たしている間は加算、途切れたら0へリセット」。
+ * idolTick.ts はこれをインラインで3回書いていた(s.farSince/s.meleeSince/s.angleSince)。
+ * 賞金首(近接型・輸入=懲罰狙撃=遠距離に2秒留まると即発火)からも同じ式で`farMs`を積めるよう
+ * ここへ抽出する(idol の挙動は不変・呼び出し側を差し替えただけ)。
+ */
+export const advanceLingerMs = (prevMs: number, holding: boolean, stepMs: number): number =>
+  holding ? prevMs + stepMs : 0;
+
 // ---- 公平性の歯止め(社長指示「MAXは密度で作る。読めなさで作らない」) ---------------------------
 // 分類(監査レポート§2): A=歩くだけで確実に避けられる / B=歩けるが余裕が小さい(位置取りが要る) /
 // C=歩いて避けられない=別の答え(カウンター/密着)が要る。

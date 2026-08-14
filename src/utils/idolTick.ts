@@ -23,7 +23,7 @@ import { rectsOverlap } from '../world/obstacles';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { distToSegment } from './levelUpGate';
 import { isCounterablePhase, phaseJustChanged } from './bossScript';
-import { neutralVerb, pickStringScript, restMsFor, punishTrigger, type NeutralVerb } from './bossSkeleton';
+import { neutralVerb, pickStringScript, restMsFor, punishTrigger, advanceLingerMs, type NeutralVerb } from './bossSkeleton';
 import { resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from './bossHate';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { refundCounterCooldown } from './counterMaster';
@@ -572,14 +572,14 @@ export const runIdolTick = (
     else if (verb === 'retreat') { patch.x = idol.x - ux * spd; patch.y = idol.y - uy * spd; }
     else { patch.x = idol.x + (-uy * s.strafeDir) * spd; patch.y = idol.y + (ux * s.strafeDir) * spd; }
 
-    // 懲罰シグナルの積み上げ(ER原則⑤)。
+    // 懲罰シグナルの積み上げ(ER原則⑤・§6.38 B0で純関数抽出=advanceLingerMs)。
     const stepMs = deltaTime * 1000;
-    s.farSince = dist > IDOL_NEUTRAL_BAND.max ? s.farSince + stepMs : 0;
-    s.meleeSince = zone === 'melee' ? s.meleeSince + stepMs : 0;
+    s.farSince = advanceLingerMs(s.farSince, dist > IDOL_NEUTRAL_BAND.max, stepMs);
+    s.meleeSince = advanceLingerMs(s.meleeSince, zone === 'melee', stepMs);
     const ang = Math.atan2(pcy - icy, pcx - icx);
     let dAng = Math.abs(ang - s.lastAngle);
     while (dAng > Math.PI) dAng = Math.abs(dAng - Math.PI * 2);
-    s.angleSince = dAng <= (IDOL_TUNING.sameAngleDeg * Math.PI) / 180 ? s.angleSince + stepMs : 0;
+    s.angleSince = advanceLingerMs(s.angleSince, dAng <= (IDOL_TUNING.sameAngleDeg * Math.PI) / 180, stepMs);
     s.lastAngle = ang;
 
     if (verbHold === null && newGameTime >= (idol.bossNextActionAt ?? 0)) {

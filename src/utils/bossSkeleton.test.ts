@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  zoneForDistance, neutralVerb, stringMaxLen, pickStringScript, restMsFor, punishTrigger,
+  zoneForDistance, neutralVerb, stringMaxLen, pickStringScript, restMsFor, punishTrigger, advanceLingerMs,
   fairnessViolations, classMix, counterPressWindowMs,
   MIN_COUNTER_TELEGRAPH_MS, HUMAN_REACTION_MS,
   type ZoneEdges, type NeutralBand, type StringScript, type MoveFairness,
@@ -98,6 +98,24 @@ describe('punishTrigger — 懲罰の規則化(ER原則⑤)', () => {
   it('同角度の長居 → 旋回反転(技の発火とは独立に立つ)', () => {
     expect(punishTrigger({ farMs: 0, meleeMs: 0, sameAngleMs: 4000 }, cfg)).toEqual({ move: null, flipStrafe: true });
     expect(punishTrigger({ farMs: 2000, meleeMs: 0, sameAngleMs: 4000 }, cfg)).toEqual({ move: 'snipe', flipStrafe: true });
+  });
+});
+
+describe('advanceLingerMs — 懲罰シグナルの積み上げ(§6.38 B0で純関数抽出。idolTick s.farSince等と同式)', () => {
+  it('条件を満たしている間は加算する', () => {
+    expect(advanceLingerMs(0, true, 16)).toBe(16);
+    expect(advanceLingerMs(1000, true, 500)).toBe(1500);
+  });
+  it('条件が途切れたら0へリセットする(積み上げ中でも即0)', () => {
+    expect(advanceLingerMs(1800, false, 16)).toBe(0);
+  });
+  it('punishTriggerと組み合わせて「遠距離2秒で即発火」を再現できる(賞金首の懲罰狙撃が呼ぶ形)', () => {
+    const cfg = { farMs: 2000, farMove: 'snipe' as const, meleeMs: Infinity, meleeMove: 'snipe' as const, sameAngleMs: Infinity };
+    let farMs = 0;
+    for (let i = 0; i < 124; i++) farMs = advanceLingerMs(farMs, true, 16); // 124*16=1984ms
+    expect(punishTrigger({ farMs, meleeMs: 0, sameAngleMs: 0 }, cfg).move).toBeNull();
+    farMs = advanceLingerMs(farMs, true, 16); // 2000ms
+    expect(punishTrigger({ farMs, meleeMs: 0, sameAngleMs: 0 }, cfg).move).toBe('snipe');
   });
 });
 

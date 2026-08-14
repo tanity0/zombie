@@ -74,7 +74,7 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { MIMIR_BITE_RADIUS } from '../utils/bodyCenteredAoe';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): カラオケ塗り/ロック/弱点窓の進行は純関数から引く(判定と同じ式)。
 import {
-  mimirLaserFill01, mimirTrackEnabled,
+  mimirLaserFill01, mimirTrackEnabled, usesMimirLaser,
   MIMIR_LASER_LOCK_MS as LASER_TRACK_LOCK_MS,
   MIMIR_LASER_WEAK_MS as LASER_TRACK_WEAK_MS,
 } from '../utils/mimirLaserTrack';
@@ -14240,7 +14240,7 @@ export class PixiScene {
     // 必ず今フレーム分が反映されるようにした(残留描画の再発防止・詳細はそのメソッドのコメント)。
     const o = view.tele;
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
-    if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
+    if (usesMimirLaser(e.type) && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
       // §6.33(監査指摘7): 新挙動では線の向きを判定と同じ式(aiTarget−現在のボス中心)で引く。
       // 判定(useGameLoop laser-fire)は現在中心を原点にするため、溜め中にボスが押されると
       // aiFrom基準の旧式ではズレて「赤=判定厳密一致」が破れる。旧挙動(?mimirtrack=0)は従来式のまま。
@@ -14559,7 +14559,7 @@ export class PixiScene {
         // §6.33(監査指摘4): ミーミルのレーザー弱点窓(発射前900ms)は全身を青白く=「今殴れば止められる」。
         // T4赤フラッシュ(末尾400ms)より弱点表示を優先する(設計書「露出窓とぴったり同期」。
         // 「来る」の合図はロックの白フラッシュ+カラオケ塗りが担っている)。
-        const laserWeak = MIMIR_TRACK_VIS_ENABLED && e.type === 'mimir' && bs === 'laser-windup'
+        const laserWeak = MIMIR_TRACK_VIS_ENABLED && usesMimirLaser(e.type) && bs === 'laser-windup'
           && remain <= LASER_TRACK_WEAK_MS && remain > 0;
         view.sprite.tint = laserWeak ? 0xbfefff : (flash !== null ? flash : 0xffffff);
       } else {

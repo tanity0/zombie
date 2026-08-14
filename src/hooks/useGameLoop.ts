@@ -214,7 +214,7 @@ import {
 // PACING_PUZZLE.md §6.33(LASER-TRACK): 追尾予告レーザーの純関数群+定数の正本。
 import {
   MIMIR_LASER_WINDUP_MS, MIMIR_LASER_BROKEN_MS, MIMIR_LASER_INTERRUPTED_CD_MS,
-  mimirLaserPhase, stepLaserAim, mimirTrackEnabled, canInterruptMimirLaser, mimirLaserTrackCaps,
+  mimirLaserPhase, stepLaserAim, mimirTrackEnabled, canInterruptMimirLaser, mimirLaserTrackCaps, usesMimirLaser,
 } from '../utils/mimirLaserTrack';
 import {
   jormungandPhaseForHealth, pickJormungandMove, jormRadialSpinAngle, type JormungandMove,
@@ -4997,7 +4997,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // §6.33 案G(社長裁定): 新挙動のレーザー溜め中の体当てカウンター成立は、chaseではなく
                 // 中断の正規フロー(laser-broken+中断CD)へ合流させる=近接ヒット中断と同じ扱い。
                 // 「発射直前だけ阻止できる」の約束と農場防止(8000ms CD)がW7経由でも貫通する。
-                if (MIMIR_TRACK_ENABLED && boss.type === 'mimir' && st === 'laser-windup') {
+                if (MIMIR_TRACK_ENABLED && usesMimirLaser(boss.type) && st === 'laser-windup') {
                   patch.bossState = 'laser-broken';
                   patch.bossStateUntil = newGameTime + MIMIR_LASER_BROKEN_MS;
                   patch.mimirLaserReadyAt = newGameTime + MIMIR_LASER_INTERRUPTED_CD_MS;
@@ -5109,7 +5109,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const [next, ...rest] = boss.bossScriptQueue ?? [];
                 patch.bossScriptQueue = rest;
                 // §6.33-2-4: 中断CD中のレーザーは連携追撃(radial→laser)でも撃てない=不発でchaseへ。
-                const laserOnCd = next === 'laser' && boss.type === 'mimir'
+                const laserOnCd = next === 'laser' && usesMimirLaser(boss.type)
                   && newGameTime < (boss.mimirLaserReadyAt ?? 0);
                 if (laserOnCd) { patch.bossScriptQueue = []; patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); } // 残りの連携ごと潰す(監査指摘11)
                 else if (next && boss.type === 'mimir') beginMimirMove(next as MimirMove);
@@ -5170,7 +5170,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 && (isCounterablePhase(st, HIDDEN_BOSS_COUNTER_WINDUPS, HIDDEN_BOSS_COUNTER_RECOVERS) || st === 'dash')
                 // §6.33 案G(社長裁定): 新挙動のレーザー溜めは弱点窓(発射前900ms)の間だけ体当て
                 // カウンター可(窓外3000ms全域で潰せた既存W7の穴を塞ぐ)。旧挙動(?mimirtrack=0)は従来どおり。
-                && !(MIMIR_TRACK_ENABLED && boss.type === 'mimir' && st === 'laser-windup'
+                && !(MIMIR_TRACK_ENABLED && usesMimirLaser(boss.type) && st === 'laser-windup'
                   && !canInterruptMimirLaser(boss.type, st, newGameTime, boss.bossStateUntil));
               let hiddenBossCountered = false;
               if (hiddenBossCounterableNow) {
@@ -5321,7 +5321,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       patch.bossScriptQueue = planBossChoreography('skadi', move, phase).slice(1);
                       beginSkadiMove(move);
                     }
-                  } else if (boss.type === 'mimir' && Math.random() < MIMIR_LASER_CHANCE
+                  } else if (usesMimirLaser(boss.type) && Math.random() < MIMIR_LASER_CHANCE
                       && newGameTime >= (boss.mimirLaserReadyAt ?? 0)) { // §6.33-2-4: 中断CDはこの旧抽選経路にも効かせる(監査指摘10)
                     // 旧挙動(?mimirscript=0)。
                     const aim = lockAttackAim();

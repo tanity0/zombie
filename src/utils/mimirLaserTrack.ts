@@ -8,7 +8,7 @@
 // **発射600〜1800ms前の反転(切り返し)だけが照準を振り切れる**(実測: それより早い反転は再捕捉され、
 // 遅い反転は間に合わない=マタドール)。終段250msでロック(以後発射終了まで固定)。
 // 発射前900msは弱点露出=近接ヒットで中断できる。
-import type { Enemy } from '../types/game';
+import type { Enemy, EnemyType } from '../types/game';
 import { applyBossPostureDamage } from './bossPosture';
 import { telegraphProgress01 } from './bossTelegraph';
 
@@ -19,6 +19,16 @@ import { telegraphProgress01 } from './bossTelegraph';
  */
 export const mimirTrackEnabled = (): boolean =>
   typeof window === 'undefined' || new URLSearchParams(window.location.search).get('mimirtrack') !== '0';
+
+/**
+ * PACING_PUZZLE.md §6.38 B0(先行抽出バッチ): 「ミーミル型レーザーを使う型」の集合。
+ * 直書きの `type === 'mimir'` のうち**レーザーの判定・描画・中断だけ**をここへ寄せる
+ * (mimirScript のフェーズ管理・スコア系・噛みつき/突進等の他技は対象外=挙動不変)。
+ * 当面は mimir のみ(§6.38 B2で賞金首・遠距離型が輸入予定だが、B0では型集合を用意するだけで
+ * 追加はしない=挙動不変)。
+ */
+const MIMIR_LASER_TYPES = new Set<EnemyType>(['mimir']);
+export const usesMimirLaser = (type: string): boolean => MIMIR_LASER_TYPES.has(type as EnemyType);
 
 /** レーザー溜め時間(ms)。useGameLoop.ts の状態機械もこの値を使う(単位は実効ms=壁時計系)。 */
 export const MIMIR_LASER_WINDUP_MS = 3000;
@@ -242,7 +252,7 @@ export const canInterruptMimirLaser = (
   nowMs: number,
   untilMs: number | undefined,
 ): boolean =>
-  type === 'mimir'
+  usesMimirLaser(type)
   && bossState === 'laser-windup'
   && untilMs !== undefined
   && untilMs - nowMs > 0
