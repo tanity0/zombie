@@ -1,7 +1,7 @@
 {
   "baseUrl": "local",
   "runMs": 900000,
-  "headless": true,
+  "headless": false,
   "viewport": {
     "width": 1280,
     "height": 800
