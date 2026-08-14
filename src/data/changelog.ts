@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3398',
+    items: [
+      'スラッシャーの連続攻撃(2撃目以降)が、敵に届いているように見えて当たっていないことがある不具合を修正しました(追撃だけ古い距離判定が残っていました)。',
+    ],
+  },
+  {
     version: '0.25.3397',
     items: [
       'ゲーム内容の変更はありません(クリティカル計測のテスト依頼を作成。ボットランナーにラン別URLパラメータ対応を追加=開発用)。',

@@ -3767,7 +3767,6 @@ const applySlasherChainStrike = (
   // 社長指示v0.25.3297「スラッシャーの時だけ25px強制ノックバック(CD無視)」: 実距離25px固定
   // (最終段はSLASHER_FINAL_KB_MULT倍=50px)。knockbackEnemyは免疫CDを見ない=連撃中も毎段飛ぶ。
   const kbMult = (knockbackSpeedFor(SLASHER_FORCE_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
-  const r2 = meleeRange * meleeRange;
   let killed = 0;
   let hit = false;
   let nearestDx = 0, nearestDy = 0, nearestD2 = Infinity; // 前進(ランジ)方向=最寄りのヒット敵
@@ -3778,7 +3777,11 @@ const applySlasherChainStrike = (
     const ecy = e.y + e.height / 2;
     const dx = ecx - pcx, dy = ecy - pcy;
     const d2 = dx * dx + dy * dy;
-    if (d2 > r2) continue;
+    // ★距離は初撃と同じ enemyMeleeDist(判定帯の最近点)で測る(v0.25.3398バグ修正)。
+    // 旧: 中心距離のまま v0.25.3170 の一本化から取り残され、「初撃は届くのに追撃は身体の
+    // 厚みぶん届かない」帯域が生まれていた(+追撃ごとの強制KB25pxがそこへ押し出す)=
+    // 2撃目以降が系統的に空振り(社長報告2026-08-15「振りは出るが当たらない」)。
+    if (enemyMeleeDist(pcx, pcy, e) > meleeRange) continue;
     if (d2 < nearestD2) { nearestD2 = d2; nearestDx = dx; nearestDy = dy; }
     hit = true;
     const k = get().damageEnemy(e.id, dmg);
