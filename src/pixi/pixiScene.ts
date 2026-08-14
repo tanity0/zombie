@@ -77,6 +77,11 @@ import {
   mimirLaserFill01, mimirTrackEnabled, usesMimirLaser,
   MIMIR_LASER_LOCK_MS as LASER_TRACK_LOCK_MS,
   MIMIR_LASER_WEAK_MS as LASER_TRACK_WEAK_MS,
+  // §6.38 B2b: 寸法/溜め/発射時間はmimirLaserTrack.tsが正本(旧private定数から移設・値は無改変)。
+  MIMIR_LASER_RANGE as MIMIR_LASER_VIS_RANGE,
+  MIMIR_LASER_HALF_WIDTH as MIMIR_LASER_VIS_HALFWIDTH,
+  MIMIR_LASER_WINDUP_MS,
+  MIMIR_LASER_FIRE_MS,
 } from '../utils/mimirLaserTrack';
 import { enemyMotionSpec, enemyMotionPose, ENEMY_TURN_MS, GIANTBAT_MOTION_BY_BACKDROP } from './enemyMotion';
 import {
@@ -138,7 +143,13 @@ import {
   BOUNTY_WAKE_FX_MS, BOUNTY_DEPART_FADE_MS,
   BR_PUSH_WINDUP_MS, BR_PUSH_HALFWIDTH,
   BM_COMBO_WINDUP_MS, BM_COMBO_HALFWIDTH, BM_SNIPE_WINDUP_MS, BM_SNIPE_ACTIVE_MS, BM_SNIPE_HALFWIDTH,
+  // §6.38 B2b: 鋏(bounty-balance)/舞妓(bounty-maiko)の技の寸法・タイミング。
+  BB_SWEEP_HALFWIDTH, BB_SWEEP_WINDUP_MS, BB_LEAP_WINDUP_MS, BB_LEAP_AIR_MS, BB_LEAP_RADIUS,
+  MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS,
+  MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
+  MK_BOOM_HITRADIUS, MK_BOOM_WINDUP_MS, MK_BOOM_OUT_MS, MK_BOOM_BACK_MS,
 } from '../utils/bountyTick';
+import { telegraphProgress01 } from '../utils/bossTelegraph';
 import { isMarkedBossVisible, bossMarkFor, type MarkBox } from '../utils/bossMarker';
 import { CASTLE_FIGHT_MAX_DIST } from '../world/playableArea'; // v0.25.3055: 城ボス戦の移動制限ライン(描画は読むだけ)
 import {
@@ -1379,13 +1390,9 @@ const GIANT_PHASE2_BAR_COLOR = 0xf97316; // orange-500
 // 裏ボスの影: 当たり判定より一回り大きく見せる倍率＋鮮やかめの赤(社長指示)。
 const BOSS_SHADOW_SCALE = 1.35;  // 当たり判定(w×h)に対する影の拡大率
 const BOSS_SHADOW_TINT = 0x9a0000; // 暗赤(0x5a0000)→より赤く
-// ミーミルのレーザー描画(視覚・useGameLoop のゲームプレイ値と揃える)。
-const MIMIR_LASER_VIS_RANGE = 2600;     // 描画上のビーム長(px)
-const MIMIR_LASER_VIS_HALFWIDTH = 34;   // 描画上のビーム半太さ(当たり判定と同じ)
-const MIMIR_LASER_WINDUP_MS = 3000;     // 溜め時間(進行度の算出用・mimirLaserTrack.ts と一致)
+// ミーミルのレーザー描画(寸法/溜め/発射時間はmimirLaserTrack.tsからimport=上のMIMIR_LASER_VIS_RANGE等)。
 // §6.33(LASER-TRACK)の描画ゲート。フラグの正本は mimirLaserTrack.ts(状態機械/中断と同じ1本)。
 const MIMIR_TRACK_VIS_ENABLED = mimirTrackEnabled();
-const MIMIR_LASER_FIRE_MS = 1500;       // 発射本体の表示時間(フェード用・useGameLoop と一致)
 // トール(ステージ5裏ボス)の独自攻撃の描画(視覚・useGameLoop のゲームプレイ値と揃える)。
 const THOR_ISSEN_WINDUP_MS = 3000;      // 一閃の溜め時間(進行度の算出用)
 const THOR_ISSEN_DASH_MS = 280;         // 一閃の高速移動そのものの所要時間(フェード用)
@@ -3089,6 +3096,17 @@ export class PixiScene {
   private angelEyeSprites = new Map<string, Sprite>();   // 単眼の凝視(gaze)構え: 頭上〜中心
   // PACING_PUZZLE.md §6.38 B1(賞金首): 起床演出(holo-circle・全8コマ)。足元に1周(約700ms)。
   private bountyWakeSprites = new Map<string, Sprite>();
+  // §6.38 B2b(持ち越し①・社長指摘「武器1本使い回し=判定が正しくても絵が出ていなければ未達」):
+  // 賞金首4体の武器スプライト(バス停=標識/馬乗り=鞭/鋏=裁ち鋏/舞妓=毬)。boss.idごとに1枚のpooled
+  // sprite=全技この1本を使い回す(§6.38武器素材台帳の原則どおり)。位置/角度/表示のON-OFFは
+  // drawEnemy側の各技分岐が毎フレーム更新する(既定OFFはresetActorFxDefaults)。
+  private bountyWeaponSprites = new Map<string, Sprite>();
+  // 馬乗り3段コンボの鞭スミア(fx/whip-smear-0/1/2・段対応)。コンボ段ごとに1枚のpooled sprite。
+  private bountyWhipSmearSprites = new Map<string, Sprite>();
+  // 舞妓の桜の花びら(fx/petal-0)。水鳥各着地/手毬打ちヒット/型切替で散らす(派手側=量産可)。
+  // 固定サイズのpoolで使い回す(CLAUDE.md負荷ルール: 新規オブジェクトを毎フレーム生成しない)。
+  private petalPool: { sp: Sprite; active: boolean; bornAt: number; life: number; vx: number; vy: number; vr: number }[] = [];
+  private lastPetalStepAt: number | null = null; // stepPetals用の簡易delta算出(タブ非表示等の飛びはクランプ)
   // §6.28-18(バッチM62): スリィエルの環(suriel-ring)。待機中も頭上に浮遊描画するため、boss.idごとに
   // 環1本目/2本目(Phase2)の2枚のSpriteを持つ(常時表示=Container不要・単純な位置更新のみ)。
   private surielRingSprites = new Map<string, { ring1: Sprite; ring2: Sprite }>();
@@ -7202,6 +7220,10 @@ export class PixiScene {
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.updateFlareReadyMark(s.player, now);     // フレアガンCD明けの頭上炎マーク(一瞬・ブーメラン型)
     this.syncActors(s.player, s.enemies, s.gameTime, now);
+    // §6.38 B2b: 舞妓の花びらpool更新(全体で1回・enemyループの外)。
+    const petalDtSec = this.lastPetalStepAt === null ? 0 : Math.min(0.1, Math.max(0, (now - this.lastPetalStepAt) / 1000));
+    this.lastPetalStepAt = now;
+    if (petalDtSec > 0) this.stepPetals(now, petalDtSec);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime, now);
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
@@ -13703,9 +13725,18 @@ export class PixiScene {
       if (holoMiniSp) holoMiniSp.visible = false;
       const eyeSp = this.angelEyeSprites.get(e.id);
       if (eyeSp) eyeSp.visible = false;
-      // §6.38 B1(賞金首): 起床演出も同じ作法で既定OFF。
+    }
+    // §6.38 B1/B2b(賞金首): 起床演出+武器スプライト+鞭スミアも同じ作法で既定OFF。
+    // ★v0.25.3383のバグ修正: この一群は元々isGate2AngelBoss(e.type)ブロックの中に置かれていたため、
+    // 賞金首(ゲート2天使ではない)には一度も適用されていなかった(=bounty-wake演出の輪が技終了後も
+    // 消えずに残り続ける未発見バグ。社長指摘「絵が消えない/出ない」の類例として発見時に併修)。
+    if (isBountyType(e.type)) {
       const bountyWakeSp = this.bountyWakeSprites.get(e.id);
       if (bountyWakeSp) bountyWakeSp.visible = false;
+      const weaponSp = this.bountyWeaponSprites.get(e.id);
+      if (weaponSp) weaponSp.visible = false;
+      const smearSp = this.bountyWhipSmearSprites.get(e.id);
+      if (smearSp) smearSp.visible = false;
     }
   }
 
@@ -14269,15 +14300,35 @@ export class PixiScene {
         this.drawBountyWakeCircle(e.id, bFootX, bFootY, bR * 2, bProg, 0.9);
       }
     }
-    // PACING_PUZZLE.md §6.38 B2a: バス停(押しのけ)/馬乗り(突進・3段コンボ・懲罰狙撃)の技。
-    // 判定と同じ2点(aiFromX/Y→aiTargetX/Y・bountyTick.ts側の掟)・同じ半幅を読むので
-    // 「赤いのに当たらない/赤くないのに当たる」は起きない。windup長はbountyTick.tsの定数を
-    // そのままimportして使う(*_VISの複製定数は作らない=v6 C-1)。輸入=ミーミル型レーザーは
+    // PACING_PUZZLE.md §6.38 B2(バス停/馬乗り/鋏/舞妓)の技。判定と同じ2点(aiFromX/Y→aiTargetX/Y・
+    // bountyTick.ts側の掟)・同じ半幅/半径を読むので「赤いのに当たらない/赤くないのに当たる」は
+    // 起きない。windup長はbountyTick.tsの定数をそのままimportして使う(*_VISの複製定数は作らない=
+    // v6 C-1)。変則ディレイ技(舞妓の毬の薙ぎ/毬回し)はbossWindupStartAtからtelegraphProgress01で
+    // 導出する(固定長の技は従来どおりbossStateUntilだけで足りる)。輸入=ミーミル型レーザーは
     // usesMimirLaser経由で下のブロックがそのまま効くのでここには書かない。
+    // §6.38 B2b(持ち越し①): 武器スプライト(バス停=標識/馬乗り=鞭/鋏=裁ち鋏/舞妓=毬)を各技へ配線する
+    // (「判定が正しくても絵が出ていなければ未達」。派手側に倒す=大きめのlengthPx)。
     if (isBountyType(e.type)) {
       const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
       const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
       const bs2 = e.bossState;
+      const aimAng = Math.atan2(bty - bfy, btx - bfx);
+      if (e.type === 'bounty-ranged' && !e.dormant) {
+        // 標識(構え=通常技全般で保持。武器素材台帳「全技の得物: 通常射撃・レーザーの構え=標識を構える/
+        // 押しのけ=標識の薙ぎ」)。押しのけの瞬間だけ薙ぎ角度、それ以外はプレイヤー方向を向く。
+        const holdAng = (bs2 === 'br-push-windup' || bs2 === 'br-push') ? aimAng
+          : Math.atan2((e.aiTargetY ?? cy + 1) - cy, (e.aiTargetX ?? cx + 1) - cx);
+        this.drawBountyWeapon(e.id, 'bounty-ranged-sign', cx, cy - e.height * 0.15, holdAng, 130, 0.95);
+      } else if (e.type === 'bounty-melee' && !e.dormant && bs2 !== 'bm-combo1-windup' && bs2 !== 'bm-combo2-windup'
+        && bs2 !== 'bm-combo3-windup' && bs2 !== 'bm-snipe-windup' && bs2 !== 'bm-snipe' && bs2 !== 'bm-charge-windup') {
+        // 鞭(常時保持。個別技の分岐が既に描いている間は二重描画しない=下のelse-ifで上書きしない)。
+        const vAng = (e.vx ?? 0) !== 0 || (e.vy ?? 0) !== 0 ? Math.atan2(e.vy ?? 0, e.vx ?? 1) : 0;
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, vAng, 150, 0.9);
+      } else if (e.type === 'bounty-balance' && !e.dormant && bs2 !== 'bb-sweep-windup' && bs2 !== 'leap-windup'
+        && bs2 !== 'leap-air' && bs2 !== 'leap-recover') {
+        // 裁ち鋏(常時保持)。
+        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy, 0, 150, 0.85);
+      }
       if (bs2 === 'br-push-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BR_PUSH_WINDUP_MS));
         this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BR_PUSH_HALFWIDTH, prog, now);
@@ -14286,17 +14337,47 @@ export class PixiScene {
         const dur = BM_COMBO_WINDUP_MS[step];
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / dur));
         this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BM_COMBO_HALFWIDTH, prog, now, step);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.95);
+        this.drawBountyWhipSmear(e.id, step as 0 | 1 | 2, bfx, bfy, btx, bty, 0.5 + 0.5 * prog);
       } else if (bs2 === 'bm-snipe-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_SNIPE_WINDUP_MS));
         this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BM_SNIPE_HALFWIDTH, prog, now);
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9);
       } else if (bs2 === 'bm-snipe') {
         // 実行中: 判定と同じ線を実線で維持(予告と同じ2点・半幅)。
         const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / BM_SNIPE_ACTIVE_MS));
         o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: BM_SNIPE_HALFWIDTH * 2, color: 0xff2a2a, alpha: 0.35 * life, cap: 'round' });
         o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: 4, color: 0xffe0e0, alpha: 0.9 * life, cap: 'round' });
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9);
       } else if (bs2 === 'bm-charge-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / WEREWOLF_WINDUP_MS));
         this.drawAngelDashLine(o, bfx, bfy, btx, bty, now, prog);
+        // 引きずり構え(武器素材台帳「突進=鞭を引きずる構え→振り抜き」): 溜めで後方へ引く。
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx - Math.cos(aimAng) * 30 * prog, cy - Math.sin(aimAng) * 30 * prog, aimAng + Math.PI, 170, 0.9);
+      } else if (bs2 === 'bm-charge') {
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.95);
+      } else if (bs2 === 'bb-sweep-windup') {
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BB_SWEEP_WINDUP_MS));
+        this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BB_SWEEP_HALFWIDTH, prog, now);
+        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy, aimAng, 160, 0.95);
+      } else if (bs2 === 'leap-windup' || bs2 === 'leap-air') {
+        const untilW = e.bossStateUntil ?? gameTime;
+        const prog = bs2 === 'leap-windup'
+          ? Math.max(0, Math.min(1, 1 - (untilW - gameTime) / BB_LEAP_WINDUP_MS))
+          : 1;
+        // 跳びかかりの着地円(T5式=水鳥/ジャイアント跳躍と同じ収縮リング文法。しゃがみ→着地円)。
+        const lx = e.aiTargetX ?? cx, ly = e.aiTargetY ?? cy;
+        o.circle(lx, ly, BB_LEAP_RADIUS).fill({ color: 0xff2a2a, alpha: (0.15 + 0.25 * prog) * TELEGRAPH_FILL_MULT });
+        o.circle(lx, ly, BB_LEAP_RADIUS).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.4 + 0.4 * prog });
+        if (bs2 === 'leap-air') {
+          const airProg = Math.max(0, Math.min(1, 1 - (untilW - gameTime) / BB_LEAP_AIR_MS));
+          o.circle(lx, ly, BB_LEAP_RADIUS * (1.6 - 0.6 * airProg)).stroke({ width: 2, color: 0xffe0e0, alpha: 0.5 * (1 - airProg) });
+        }
+        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy - e.height * (bs2 === 'leap-air' ? 0.4 : 0.1), 0, 160, 0.95);
+      } else if (bs2 === 'leap-recover') {
+        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy, 0, 160, 0.9);
+      } else if (e.type === 'bounty-maiko' && !e.dormant) {
+        this.drawMaikoState(view, o, e, bs2, cx, cy, bfx, bfy, btx, bty, gameTime, now);
       }
     }
     // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
@@ -21729,6 +21810,204 @@ export class PixiScene {
     sp.visible = true;
   }
 
+  // §6.38 B2b(持ち越し①): 賞金首の武器スプライト(バス停=標識/馬乗り=鞭/鋏=裁ち鋏/舞妓=毬)。
+  // pooled sprite(1体1枚=全技この1本を使い回す・武器素材台帳の原則どおり)。中心アンカーで
+  // 位置(px,py)へ置き、角度(angleRad)へ向ける単純な仕様(thor-katanaほどの握り位置精度は持たない=
+  // 「見せる」ことを優先した簡略版。見た目は派手側に倒す=大きめのlengthPxで存在感を出す)。
+  private drawBountyWeapon(
+    id: string, texName: string, px: number, py: number, angleRad: number,
+    lengthPx: number, alpha: number,
+  ) {
+    const tex = getTexture(texName);
+    if (!tex) return;
+    let sp = this.bountyWeaponSprites.get(id);
+    if (!sp) {
+      sp = new Sprite(tex); sp.anchor.set(0.5, 0.5);
+      this.L.effectLayer.addChild(sp); this.bountyWeaponSprites.set(id, sp);
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    const longSide = Math.max(1, Math.max(tex.width, tex.height));
+    sp.scale.set(lengthPx / longSide);
+    sp.position.set(px, py);
+    sp.rotation = angleRad;
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
+  // 馬乗り3段コンボの鞭スミア(fx/whip-smear-0/1/2)。段(0/1/2)ごとに絵が変わる=「段対応」。
+  // 攻撃の帯(fx→tx)に沿わせて置く簡易版(判定はcapsule・これは絵だけの派手さ担当=分類2)。
+  private drawBountyWhipSmear(
+    id: string, step: 0 | 1 | 2, fx: number, fy: number, tx: number, ty: number, alpha: number,
+  ) {
+    const tex = getTexture(`fx/whip-smear-${step}`);
+    if (!tex) return;
+    let sp = this.bountyWhipSmearSprites.get(id);
+    if (!sp) {
+      sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
+      this.L.effectLayer.addChild(sp); this.bountyWhipSmearSprites.set(id, sp);
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    const dx = tx - fx, dy = ty - fy;
+    const len = Math.hypot(dx, dy) || 1;
+    sp.rotation = Math.atan2(dy, dx);
+    sp.scale.set(Math.max(60, len) / Math.max(1, tex.width));
+    sp.position.set((fx + tx) / 2, (fy + ty) / 2);
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
+  // §6.38 B2b: 舞妓(bounty-maiko)専用の技描画。全技の得物=毬(v5.1)。待機中は毬をオービット
+  // (判定なし・武器の存在を常時提示)、技中は毬を判定図形の位置へ合わせて飛ばす(v5「毬が技を再現」)。
+  // 変則ディレイの技はbossWindupStartAtからtelegraphProgress01で進行度を導出する(v6 C-1)。
+  private bountyPetalFxKey = new Map<string, string>();
+  private triggerPetalOnce(id: string, key: string, x: number, y: number, count: number, now: number): void {
+    if (this.bountyPetalFxKey.get(id) === key) return;
+    this.bountyPetalFxKey.set(id, key);
+    this.spawnPetals(x, y, count, now);
+  }
+  private drawMaikoState(
+    view: ActorView, o: Graphics, e: Enemy, bs: string | undefined,
+    cx: number, cy: number, bfx: number, bfy: number, btx: number, bty: number,
+    gameTime: number, now: number,
+  ): void {
+    const orbitR = 46;
+    const orbitAng = (now / 500) % (Math.PI * 2);
+    const idleX = cx + Math.cos(orbitAng) * orbitR, idleY = cy + Math.sin(orbitAng) * orbitR * 0.55;
+
+    if (bs === 'mk-naginata-windup' || bs === 'mk-naginata1-windup' || bs === 'mk-naginata2-windup') {
+      const prog = telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil);
+      this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, MK_NAGINATA_HALFWIDTH, prog, now);
+      const tk = Math.min(1, prog * 1.15);
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bfx + (btx - bfx) * tk, bfy + (bty - bfy) * tk, now / 100, 58, 0.95);
+      return;
+    }
+    if (bs === 'mk-naginata-recover' || bs === 'mk-naginata1-recover' || bs === 'mk-naginata2-recover') {
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', btx, bty, now / 100, 58, 0.9);
+      return;
+    }
+    if (bs === 'mk-spin-windup' || bs === 'mk-spin') {
+      const prog = bs === 'mk-spin-windup' ? telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil) : 1;
+      const pulse = 0.5 + 0.5 * Math.sin(now / 90);
+      o.circle(cx, cy, MK_SPIN_RADIUS).fill({ color: 0xff2a2a, alpha: (0.12 + 0.22 * prog) * TELEGRAPH_FILL_MULT * (0.7 + 0.3 * pulse) });
+      o.circle(cx, cy, MK_SPIN_RADIUS).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: 0.35 + 0.4 * prog });
+      // 毬が周囲を高速で回る(判定=円そのもの。速い周回で「回している」感=派手側)。
+      const spinAng = now / (bs === 'mk-spin' ? 40 : 90);
+      this.drawBountyWeapon(
+        e.id, 'bounty-maiko-temari',
+        cx + Math.cos(spinAng) * MK_SPIN_RADIUS * 0.85, cy + Math.sin(spinAng) * MK_SPIN_RADIUS * 0.85,
+        spinAng, 56, 0.95,
+      );
+      return;
+    }
+    if (bs === 'mk-spin-recover') {
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', idleX, idleY, orbitAng, 56, 0.9);
+      return;
+    }
+    if (bs === 'mk-suiu-windup' || bs === 'mk-suiu-hop1' || bs === 'mk-suiu-hop2' || bs === 'mk-suiu-hop3') {
+      const lx = e.aiTargetX ?? cx, ly = e.aiTargetY ?? cy;
+      if (bs === 'mk-suiu-windup') {
+        this.drawBountyWeapon(e.id, 'bounty-maiko-temari', idleX, idleY, orbitAng, 56, 0.9);
+        return;
+      }
+      const isFinal = bs === 'mk-suiu-hop3';
+      const radius = isFinal ? MK_SUIU_RADIUS * MK_SUIU_FINAL_RADIUS_MULT : MK_SUIU_RADIUS;
+      // 変則ディレイ(区間=予告+移動の合算)の内訳を描画側は知らないため、着地円は静的な強い表示で
+      // 出す(位置/半径=判定と厳密一致。ズレるのはフィルの立ち上がり演出だけ=安全上は無関係)。
+      const pulse = 0.55 + 0.45 * Math.sin(now / 70);
+      o.circle(lx, ly, radius).fill({ color: 0xff2a2a, alpha: 0.3 * pulse * TELEGRAPH_FILL_MULT });
+      o.circle(lx, ly, radius).stroke({ width: isFinal ? 4 : 2.5, color: 0xff3b3b, alpha: 0.7 });
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', lx, ly - 30, now / 60, isFinal ? 80 : 60, 0.95);
+      // 花びら: 着地(このホップ表示に入った瞬間)に1回だけ散らす(型B・派手側=多め)。
+      this.triggerPetalOnce(e.id, `suiu:${bs}:${e.bossStateUntil ?? 0}`, lx, ly, isFinal ? 14 : 8, now);
+      return;
+    }
+    if (bs === 'mk-suiu-recover') {
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', idleX, idleY, orbitAng, 56, 0.9);
+      return;
+    }
+    if (bs === 'mk-boom-windup') {
+      const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MK_BOOM_WINDUP_MS));
+      this.drawAngelDashLine(o, bfx, bfy, btx, bty, now, prog);
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bfx + (btx - bfx) * 0.12 * prog, bfy + (bty - bfy) * 0.12 * prog, now / 60, 58, 0.95);
+      return;
+    }
+    if (bs === 'mk-boom-out' || bs === 'mk-boom-back') {
+      const total = bs === 'mk-boom-out' ? MK_BOOM_OUT_MS : MK_BOOM_BACK_MS;
+      const remain = (e.bossStateUntil ?? gameTime) - gameTime;
+      const t = Math.max(0, Math.min(1, 1 - remain / total));
+      const px = bs === 'mk-boom-out' ? bfx + (btx - bfx) * t : btx + (bfx - btx) * t;
+      const py = bs === 'mk-boom-out' ? bfy + (bty - bfy) * t : bty + (bfy - bty) * t;
+      o.circle(px, py, MK_BOOM_HITRADIUS).fill({ color: 0xff2a2a, alpha: 0.35 * TELEGRAPH_FILL_MULT });
+      o.circle(px, py, MK_BOOM_HITRADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: 0.6 });
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', px, py, now / 30, 62, 0.98);
+      if (bs === 'mk-boom-out' && t >= 0.98) this.triggerPetalOnce(e.id, `boom-out:${e.bossStateUntil ?? 0}`, px, py, 6, now);
+      return;
+    }
+    if (bs === 'mk-boom-recover') {
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', idleX, idleY, orbitAng, 56, 0.9);
+      return;
+    }
+    if (bs === 'mk-repose') {
+      // 型切替の舞い直し: 花びらを1回まとめて散らす(型A→B切替の合図・派手側)。
+      this.triggerPetalOnce(e.id, `repose:${e.bossStateUntil ?? 0}`, cx, cy, 16, now);
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', idleX, idleY, orbitAng, 56, 0.95);
+      return;
+    }
+    // 既定(待機/移動中/その他): 毬はオービット(判定なし=武器の存在提示のみ)。
+    this.drawBountyWeapon(e.id, 'bounty-maiko-temari', idleX, idleY, orbitAng, 56, 0.9);
+  }
+
+  // §6.38 B2b: 舞妓の桜の花びら(fx/petal-0)。固定サイズpool(24枚)から未使用スロットを取って散らす
+  // (負荷ルール: 毎フレームnewしない・上限あり=有限プール)。回転+縮小+フェードで自然消滅する。
+  private static readonly PETAL_POOL_SIZE = 24;
+  private static readonly PETAL_LIFE_MS = 700;
+  private ensurePetalPool(): void {
+    if (this.petalPool.length > 0) return;
+    for (let i = 0; i < PixiScene.PETAL_POOL_SIZE; i++) {
+      const sp = new Sprite(); sp.anchor.set(0.5, 0.5); sp.visible = false;
+      this.L.effectLayer.addChild(sp);
+      this.petalPool.push({ sp, active: false, bornAt: 0, life: PixiScene.PETAL_LIFE_MS, vx: 0, vy: 0, vr: 0 });
+    }
+  }
+  /** 花びらをcount枚、(x,y)から散らす(水鳥各着地/手毬打ちヒット/型切替=派手側に倒す)。 */
+  private spawnPetals(x: number, y: number, count: number, now: number): void {
+    const tex = getTexture('fx/petal-0');
+    if (!tex) return;
+    this.ensurePetalPool();
+    let spawned = 0;
+    for (const p of this.petalPool) {
+      if (spawned >= count) break;
+      if (p.active) continue;
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 40 + Math.random() * 70;
+      p.sp.texture = tex;
+      p.sp.position.set(x, y);
+      p.sp.rotation = Math.random() * Math.PI * 2;
+      p.sp.alpha = 1;
+      p.sp.visible = true;
+      p.active = true;
+      p.bornAt = now;
+      p.vx = Math.cos(ang) * spd; p.vy = Math.sin(ang) * spd - 20; // 少し上へ舞う
+      p.vr = (Math.random() - 0.5) * 6;
+      spawned++;
+    }
+  }
+  /** 毎フレーム1回(syncActorsから呼ぶ)。花びらの物理+フェード更新。 */
+  private stepPetals(now: number, deltaSec: number): void {
+    for (const p of this.petalPool) {
+      if (!p.active) continue;
+      const age = now - p.bornAt;
+      if (age >= p.life) { p.active = false; p.sp.visible = false; continue; }
+      const t = age / p.life;
+      p.sp.x += p.vx * deltaSec; p.sp.y += p.vy * deltaSec;
+      p.vy += 60 * deltaSec; // 軽い重力
+      p.sp.rotation += p.vr * deltaSec;
+      const s = (14 * (1 - t * 0.5)) / 128; // 14px級まで縮小しながらフェード
+      p.sp.scale.set(s);
+      p.sp.alpha = 1 - t;
+    }
+  }
+
   // ★予兆一括バッチ(v0.25.3344・裁定済み単眼素材fx/angel-eye受領2026-08-14): 単眼の凝視(gaze)構え=
   // 目がボス頭上〜中心に現れて発光(フェードイン+微パルス)。窓は判定ゼロの②(派手側)なので、
   // 判定線(drawAngelBeamLine)より目立ってよい。
@@ -22819,6 +23098,9 @@ export class PixiScene {
     for (const o of this.holoMiniSprites.values()) o.destroy();
     for (const o of this.angelEyeSprites.values()) o.destroy();
     for (const o of this.bountyWakeSprites.values()) o.destroy();
+    for (const o of this.bountyWeaponSprites.values()) o.destroy();
+    for (const o of this.bountyWhipSmearSprites.values()) o.destroy();
+    for (const p of this.petalPool) p.sp.destroy();
     for (const o of this.surielRingSprites.values()) { o.ring1.destroy(); o.ring2.destroy(); }
     for (const o of this.surielSweepStreakFx.values()) o.destroy();
     for (const o of this.acrasielSpearPool.values()) o.destroy();

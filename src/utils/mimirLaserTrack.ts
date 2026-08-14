@@ -54,14 +54,16 @@ export const MIMIR_LASER_BROKEN_MS = 1700;
 /** 中断された時だけレーザーへ課すCD(ms)。密着で撃たせて殴り続ける農場の防止。通常成功時はCDなし。 */
 export const MIMIR_LASER_INTERRUPTED_CD_MS = 8000;
 /**
- * レーザーの半太さ(px)。判定(useGameLoop.ts)/描画(pixiScene.ts)/§6.38 B2の輸入元(levelUpGate.ts・
- * bountyTick.ts)が共通で読む**唯一の出どころ**。社長指摘(2026-08-14「写し定数はGIANT_STOMP_RADIUS_MIRRORが
- * 反面教師。実定数をexportして同一ソースをimportすること」)を受け、B2で新規に必要になった箇所
- * (levelUpGate.ts/bountyTick.ts)はここをimportする形にした。useGameLoop.ts/pixiScene.tsの既存の
- * 私有定数(MIMIR_LASER_HALF_WIDTH/MIMIR_LASER_VIS_HALFWIDTH)はB0以前からの既存実装でB2の範囲外
- * (触るとミーミル本体の無改変原則に反する)。ズレたらmimirLaserTrack.test.tsが検知する。
+ * レーザーの寸法・発射時間。判定(useGameLoop.ts)/描画(pixiScene.ts)/§6.38 B2の輸入元
+ * (levelUpGate.ts・bountyTick.ts)が共通で読む**唯一の出どころ**。社長指摘(2026-08-14
+ * 「写し定数はGIANT_STOMP_RADIUS_MIRRORが反面教師。実定数をexportして同一ソースをimportすること」)
+ * を受け、B2aでHALF_WIDTHをここへ集約した後、B2bでRANGE/FIRE_MSも
+ * useGameLoop.ts/pixiScene.tsの私有定数からここへ移設(値・挙動は無改変。移動のみ=
+ * 「B0のレーザーゲート一般化の続き」として社長許可)。ズレたらmimirLaserTrack.test.tsが検知する。
  */
-export const MIMIR_LASER_HALF_WIDTH = 34;
+export const MIMIR_LASER_HALF_WIDTH = 34;     // レーザーの半太さ(px。判定/描画とも太め)
+export const MIMIR_LASER_RANGE = 2600;        // レーザーの長さ(px)
+export const MIMIR_LASER_FIRE_MS = 1500;      // 発射本体の表示/判定時間(この間ゆっくり追尾しながら揺れる)
 
 export type MimirLaserPhase = 'track' | 'lock';
 

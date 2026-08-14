@@ -1,5 +1,62 @@
 # Development Log
 
+## v0.25.3384 — §6.38 B2b: 賞金首鋏/舞妓の技+B2a持ち越し3点を実装【2026-08-14 21:04 JST】
+- **鋏(bounty-balance)**: ①薙ぎ払い(近距離・`bb-sweep-*`・drawAngelZoneCapsule+T3・カウンター可)
+  ②跳びかかり(遠距離・輸入=pumpkin。`PUMPKIN_CROUCH_MS/JUMP_MS/RECOVER_MS/EXPLOSION_RADIUS`を
+  直接importして`leap-windup/-air/-recover`としてbossState側に再実装=v2 A節の掟どおり複製せず読む)。
+- **舞妓(bounty-maiko)**: 全技の得物=毬(v5.1)。型A(HP>50%)=①毬の薙ぎ単発(`mk-naginata-*`・
+  windup700/1150msの2択=変則ディレイ)②毬回し(自分中心円・`mk-spin-*`・windup800/1300ms2択・
+  AOE_TELEGRAPH_AUDIT登録=escapeMs短い方の800ms・密着への懲罰技として意図的に下限未満で据え置き)。
+  型B(HP<=50%で1回だけ切替=`mk-repose`短硬直経由・以後は片道)=①'毬の薙ぎ・連(速→遅2段・
+  `mk-naginata1/2-*`・各段個別に2択抽選)②毬回し(共通)③水鳥乱舞(`mk-suiu-windup/hop1/2/3/recover`・
+  3連バウンド・着地点=プレイヤー現在位置+抽選オフセット・clampRectToPlayableArea適用・最終段のみ
+  大円・ホップ間隔2択(400/600ms)+移動260ms=escapeMs660〜860ms>換算式②の必要613ms=回避猶予保証・
+  乱舞後は長め硬直1500ms)。遠距離=手毬打ち(`mk-boom-*`・打ち出し→戻るブーメラン・判定=毬の絵に
+  揃える=共通弾ではない・流星ライン予告溜め同期)。変則ディレイは技の発動ごとに`Math.random()`で
+  独立抽選(連続同値も許す・状態は持ち越さない)し、実際に選んだ値を`bossStateUntil`へ書く。
+  ★予告同期の実装規約(v6 C-1)対応: 変則ディレイの進行度計算に`bossStateUntil`だけでは実際の溜め長を
+  逆算できない問題があり、新設した`Enemy.bossWindupStartAt`(windup開始gameTime)を併記し、描画側は
+  `telegraphProgress01(now, bossWindupStartAt, bossStateUntil)`で導出する(`*_VIS`複製定数は作らない)。
+- **B2a持ち越し3点(省略不可・全て解消)**:
+  1. **武器スプライト配線(4体全部)**: `pixiScene.ts`にpooled sprite(`bountyWeaponSprites`/
+     `bountyWhipSmearSprites`/花びら用`petalPool`)を新設。バス停=標識(構え=常時保持・押しのけ=薙ぎ)/
+     馬乗り=鞭(常時保持・3段コンボは`fx/whip-smear-0/1/2`を段対応で重ねる・突進は引きずり構え→振り抜き)/
+     鋏=裁ち鋏(常時保持)/舞妓=毬(常時オービット・全技で判定図形の位置へ追従)。花びら(`fx/petal-0`)は
+     水鳥各着地/手毬打ちヒット/型切替で散らす(固定24枚pool・毎フレームnewしない)。派手側に倒した
+     (控えめ禁止の指示どおり・存在提示を優先)。
+     ついでに発見した既存バグを修正: `resetActorFxDefaults`の`bountyWakeSp`(起床演出の既定OFF)が
+     誤って`isGate2AngelBoss`ブロックの中に置かれており、賞金首(ゲート2天使ではない)には一度も
+     適用されていなかった(=起床の輪が技終了後も消えずに残り続ける未発見バグ)。独立した
+     `isBountyType(e.type)`ブロックへ移し、新設スプライトの既定OFFも同じ場所へ揃えた。
+  2. **賞金首死亡時のescort一掃**: `gameStore.ts`の`damageEnemy`(`corpseEligible`falseの即除去分岐)に
+     `!(isBountyType(enemy.type) && e.bountyEscortId === id)`を追加。退場時(`bountyTick.clearBountyEscorts`)
+     と同じ「一緒にフェード撤去」を討伐経路にも揃えた。新規テスト`src/store/bountyEscortCleanup.test.ts`
+     (討伐で取り巻きも消える/取り巻き自身の死亡は本体に波及しない/賞金首以外への誤爆が無いことを確認)。
+  3. **BR_LASER_RANGE/FIRE_MSのコメント写し解消**: `useGameLoop.ts`の私有定数
+     `MIMIR_LASER_RANGE/HALF_WIDTH/FIRE_MS`を`mimirLaserTrack.ts`へ移設・export化(値・挙動は無改変=
+     B0「レーザーゲート一般化」の続きとして許可された範囲)。`useGameLoop.ts`/`pixiScene.ts`/
+     `bountyTick.ts`の3箇所とも同一ソースをimportする形に統一(写しテストではなく実importで固定)。
+     ついでに`levelUpGate.ts`が賞金首(鋏/舞妓)の技の実寸法を`bountyTick.ts`から直接importできるよう、
+     `distToSegment`を依存ゼロの新設`src/utils/geometry.ts`へ切り出し、`bountyTick.ts`はそこから直接
+     import(旧: `levelUpGate.ts`経由で循環していた)。`levelUpGate.ts`は後方互換のため`distToSegment`を
+     引き続き再export(gameStore.ts/angelBossTick.ts/combatTick.ts/idolTick.tsの既存import文は無改変)。
+- **levelUpGate.ts(v6 C-3)**: 鋏の跳躍(`leap-windup`・着地点中心円)/薙ぎ払い(`bb-sweep-windup`・帯)、
+  舞妓の毬の薙ぎ(単発/2連)/毬回し(自分中心円)/水鳥(各ホップ着地円)を追加登録(発注文が名指しした
+  「跳躍/突進/薙ぎ/レーザー+舞妓4技」を過不足なく充足。手毬打ちは名指しされていないため対象外)。
+- **moveReaction.ts(v6 C-4)**: `bb-sweep`/`bb-leap`/`mk-naginata`/`mk-naginata1`/`mk-naginata2`/
+  `mk-spin`/`mk-suiu`/`mk-boom`を`MOVE_REACTION_KEYS`と`MELEE_STATE_TO_MOVE`
+  (`bounty-balance`/`bounty-maiko`エントリ)へ登録(手毬打ちも含め技を洩れなく登録)。
+- テスト: `bountyTick.test.ts`に鋏3件・舞妓8件を追加(計39件)。`levelUpGate.test.ts`にB2a/B2b賞金首
+  分岐9件を追加(既存分は未着手だったB2a分もここでまとめて追加=登録漏れの発見的修正)。
+  `bossTelegraph.ts`のAOE_TELEGRAPH_AUDITへ`bounty-maiko-spin`を登録(意図的に下限未満・理由付き)。
+  typecheck/lint(0エラー・警告8=既存分)+タッチしたテストファイル全19本(413件)が緑を確認。
+  `npm test`/`npm run build`フルは未実行(社長指示があれば実施)。
+- ディスクロージャ(簡略化した箇所・1行報告): 武器スプライトはthor-katanaほどの握り位置精度
+  (フラクション座標での正確なピボット)は持たない=中心アンカーで角度だけ合わせる簡易版(判定の
+  正確性には影響しない・見た目の精緻さのみの妥協)。水鳥乱舞のホップ内訳(予告/移動の個別時間)は
+  bossStateUntilから逆算できないため、着地円は「位置/半径=判定と厳密一致・フィルの立ち上がり
+  演出のみ簡略化(静的表示)」とした(安全上は無関係)。
+
 ## v0.25.3383 — §6.38 B2a: 賞金首バス停/馬乗りの技を実装【2026-08-14 20:28 JST】
 - **バス停(bounty-ranged)**: ①後退カイト+通常のポツポツ撃ち(共通弾・予兆不要)②取り巻き召喚
   (交戦開始1回だけzombie×2・fromEventは立てない・退場/フェード完了で一緒に片付ける)③近接されたら

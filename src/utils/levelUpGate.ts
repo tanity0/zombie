@@ -7,8 +7,18 @@
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(src/utils)。最小インターフェースにして
 // フルの Enemy 型に依存しない(enemyCulling.ts と同じ方針)。
 import { MIMIR_LASER_HALF_WIDTH } from './mimirLaserTrack';
-
-interface Point { x: number; y: number }
+// §6.38 B2b: distToSegmentはgeometry.ts(依存ゼロ)へ移設した(下のコメント参照)。既存の呼び出し側
+// (gameStore.ts/angelBossTick.ts/combatTick.ts/idolTick.ts)は変更不要=ここから引き続き再exportする。
+import { distToSegment } from './geometry';
+export { distToSegment };
+// §6.38 B2b: 鋏(bounty-balance)/舞妓(bounty-maiko)の技の寸法はbountyTick.tsが実体=単一の出どころ
+// (社長指摘2026-08-14「写し定数はGIANT_STOMP_RADIUS_MIRRORが反面教師。実定数をexportして同一ソースを
+// import」)。bountyTick.tsがdistToSegmentをgeometry.tsから直接importする形にしたことで循環が無くなり、
+// ここから安全にimportできる。
+import {
+  BB_SWEEP_HALFWIDTH, BB_LEAP_RADIUS,
+  MK_NAGINATA_HALFWIDTH, MK_SPIN_RADIUS, MK_SUIU_RADIUS, MK_SUIU_FINAL_RADIUS_MULT,
+} from './bountyTick';
 
 export interface TelegraphEnemy {
   type: string;
@@ -38,15 +48,13 @@ const GIANT_SWEEP_TELEGRAPH_PHASES = new Set(['g-sweep-windup', 'g-sweep-active'
 // (社長指摘2026-08-14「GIANT_STOMP_RADIUS_MIRRORは反面教師。実定数をexportして同一ソースをimport」)。
 const BOUNTY_CHARGE_TELEGRAPH_TYPES = new Set(['bounty-melee']);
 const BOUNTY_LASER_TELEGRAPH_TYPES = new Set(['bounty-ranged']); // = mimirLaserTrack.usesMimirLaserの対象と同値
-
-// combatTick.ts(M51: 薙ぎ払いのカプセル判定)からも使うため export。
-export const distToSegment = (p: Point, a: Point, b: Point): number => {
-  const abx = b.x - a.x, aby = b.y - a.y;
-  const abLenSq = abx * abx + aby * aby;
-  if (abLenSq < 1e-6) return Math.hypot(p.x - a.x, p.y - a.y);
-  const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / abLenSq));
-  return Math.hypot(p.x - (a.x + abx * t), p.y - (a.y + aby * t));
-};
+// §6.38 B2b: 鋏(跳躍/薙ぎ払い)・舞妓(薙ぎ/薙ぎ連/水鳥)の型集合(同じ理由で複製=循環回避)。
+const BOUNTY_LEAP_TELEGRAPH_TYPES = new Set(['bounty-balance']);
+const BOUNTY_SWEEP_TELEGRAPH_TYPES = new Set(['bounty-balance']);
+const BOUNTY_NAGINATA_TELEGRAPH_TYPES = new Set(['bounty-maiko']);
+const BOUNTY_SPIN_TELEGRAPH_TYPES = new Set(['bounty-maiko']);
+const BOUNTY_SUIU_TELEGRAPH_TYPES = new Set(['bounty-maiko']);
+const BOUNTY_SUIU_HOP_STATES = new Set(['mk-suiu-hop1', 'mk-suiu-hop2', 'mk-suiu-hop3']);
 
 export const isPlayerInAttackTelegraph = (
   player: { x: number; y: number; width: number; height: number },
@@ -110,6 +118,39 @@ export const isPlayerInAttackTelegraph = (
     ) {
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       if (distToSegment({ x: pcx, y: pcy }, { x: ex, y: ey }, { x: e.aiTargetX, y: e.aiTargetY }) <= MIMIR_LASER_HALF_WIDTH + pr) return true;
+    } else if (
+      // §6.38 B2b: 鋏の跳びかかり(輸入=pumpkin。着地点=locked aiTargetX/Y=JUMP_TELEGRAPH_TYPESと同型)。
+      e.bossState === 'leap-windup' && BOUNTY_LEAP_TELEGRAPH_TYPES.has(e.type) &&
+      e.aiTargetX !== undefined && e.aiTargetY !== undefined
+    ) {
+      if (Math.hypot(pcx - e.aiTargetX, pcy - e.aiTargetY) <= BB_LEAP_RADIUS + pr) return true;
+    } else if (
+      // 鋏の薙ぎ払い(帯・aiFromX/Y→aiTargetX/Y)。
+      e.bossState === 'bb-sweep-windup' && BOUNTY_SWEEP_TELEGRAPH_TYPES.has(e.type) &&
+      e.aiTargetX !== undefined && e.aiTargetY !== undefined
+    ) {
+      const fx = e.aiFromX ?? (e.x + e.width / 2), fy = e.aiFromY ?? (e.y + e.height / 2);
+      if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: e.aiTargetX, y: e.aiTargetY }) <= BB_SWEEP_HALFWIDTH + pr) return true;
+    } else if (
+      // 舞妓の毬の薙ぎ(単発/2連いずれも同じ帯判定)。
+      (e.bossState === 'mk-naginata-windup' || e.bossState === 'mk-naginata1-windup' || e.bossState === 'mk-naginata2-windup')
+      && BOUNTY_NAGINATA_TELEGRAPH_TYPES.has(e.type) && e.aiTargetX !== undefined && e.aiTargetY !== undefined
+    ) {
+      const fx = e.aiFromX ?? (e.x + e.width / 2), fy = e.aiFromY ?? (e.y + e.height / 2);
+      if (distToSegment({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: e.aiTargetX, y: e.aiTargetY }) <= MK_NAGINATA_HALFWIDTH + pr) return true;
+    } else if (
+      // 舞妓の毬回し(自分中心円=敵の現在位置が中心。跳躍/レーザーと異なりaiTargetXを使わない)。
+      e.bossState === 'mk-spin-windup' && BOUNTY_SPIN_TELEGRAPH_TYPES.has(e.type)
+    ) {
+      const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+      if (Math.hypot(pcx - ex, pcy - ey) <= MK_SPIN_RADIUS + pr) return true;
+    } else if (
+      // 舞妓の水鳥乱舞(各ホップの着地円=locked aiTargetX/Y。最終段のみ大円)。
+      e.bossState !== undefined && BOUNTY_SUIU_HOP_STATES.has(e.bossState) && BOUNTY_SUIU_TELEGRAPH_TYPES.has(e.type) &&
+      e.aiTargetX !== undefined && e.aiTargetY !== undefined
+    ) {
+      const radius = e.bossState === 'mk-suiu-hop3' ? MK_SUIU_RADIUS * MK_SUIU_FINAL_RADIUS_MULT : MK_SUIU_RADIUS;
+      if (Math.hypot(pcx - e.aiTargetX, pcy - e.aiTargetY) <= radius + pr) return true;
     }
   }
   return false;

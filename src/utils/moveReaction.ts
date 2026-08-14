@@ -52,6 +52,9 @@ export const MOVE_REACTION_KEYS = [
   // PACING_PUZZLE.md §6.38 B2a(賞金首・bountyTick.ts): バス停/馬乗りの近接/レーザー技。
   'br-push', 'br-laser',
   'bm-charge', 'bm-combo1', 'bm-combo2', 'bm-combo3', 'bm-snipe',
+  // PACING_PUZZLE.md §6.38 B2b(賞金首・bountyTick.ts): 鋏/舞妓の技。
+  'bb-sweep', 'bb-leap',
+  'mk-naginata', 'mk-naginata1', 'mk-naginata2', 'mk-spin', 'mk-suiu', 'mk-boom',
 ] as const;
 
 // ---- 弾技の台帳(GHOST-BULLET-TECH・v0.25.2543) -------------------------------------------------
@@ -207,6 +210,19 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
     'bm-combo2-windup': 'bm-combo2', 'bm-combo2-recover': 'bm-combo2',
     'bm-combo3-windup': 'bm-combo3', 'bm-combo3-recover': 'bm-combo3',
     'bm-snipe-windup': 'bm-snipe', 'bm-snipe': 'bm-snipe', 'bm-snipe-recover': 'bm-snipe',
+  },
+  'bounty-balance': {
+    'bb-sweep-windup': 'bb-sweep', 'bb-sweep-recover': 'bb-sweep',
+    'leap-windup': 'bb-leap', 'leap-air': 'bb-leap', 'leap-recover': 'bb-leap',
+  },
+  'bounty-maiko': {
+    'mk-naginata-windup': 'mk-naginata', 'mk-naginata-recover': 'mk-naginata',
+    'mk-naginata1-windup': 'mk-naginata1', 'mk-naginata1-recover': 'mk-naginata1',
+    'mk-naginata2-windup': 'mk-naginata2', 'mk-naginata2-recover': 'mk-naginata2',
+    'mk-spin-windup': 'mk-spin', 'mk-spin': 'mk-spin', 'mk-spin-recover': 'mk-spin',
+    'mk-suiu-windup': 'mk-suiu', 'mk-suiu-hop1': 'mk-suiu', 'mk-suiu-hop2': 'mk-suiu',
+    'mk-suiu-hop3': 'mk-suiu', 'mk-suiu-recover': 'mk-suiu',
+    'mk-boom-windup': 'mk-boom', 'mk-boom-out': 'mk-boom', 'mk-boom-back': 'mk-boom', 'mk-boom-recover': 'mk-boom',
   },
 };
 

@@ -755,8 +755,30 @@ export interface Enemy {
     | 'bm-charge-windup' | 'bm-charge' | 'bm-charge-recover'
     | 'bm-combo1-windup' | 'bm-combo1-recover' | 'bm-combo2-windup' | 'bm-combo2-recover'
     | 'bm-combo3-windup' | 'bm-combo3-recover'
-    | 'bm-snipe-windup' | 'bm-snipe' | 'bm-snipe-recover';
+    | 'bm-snipe-windup' | 'bm-snipe' | 'bm-snipe-recover'
+    // PACING_PUZZLE.md §6.38 B2b: 鋏(変異・bounty-balance)の技。
+    // bb-sweep-* = 薙ぎ払い(近・drawAngelZoneCapsule+T3・カウンター可)。
+    // leap-windup/-air/-recover = 跳びかかり(遠・pumpkinの数値を読みbossState側で再実装=v2 A節の掟
+    // 「跳躍はpumpkinのaiPhase機構を流用せず-windup/-air/-recoverとしてbossState側に再実装」)。
+    | 'bb-sweep-windup' | 'bb-sweep' | 'bb-sweep-recover'
+    | 'leap-windup' | 'leap-air' | 'leap-recover'
+    // PACING_PUZZLE.md §6.38 B2b: 舞妓(変異・bounty-maiko)の技。全技=毬(v5.1)。
+    // mk-naginata* = 毬の薙ぎ(型A単発/型B2連=mk-naginata1・mk-naginata2)。mk-spin* = 毬回し
+    // (自分中心円・AOE_TELEGRAPH_AUDIT登録対象)。mk-suiu* = 水鳥乱舞(型B専用・3連バウンド)。
+    // mk-boom* = 手毬打ち(遠距離・ブーメラン軌道)。mk-repose = HP50%型切替時の短い舞い直し硬直。
+    | 'mk-naginata-windup' | 'mk-naginata-recover'
+    | 'mk-naginata1-windup' | 'mk-naginata1-recover' | 'mk-naginata2-windup' | 'mk-naginata2-recover'
+    | 'mk-spin-windup' | 'mk-spin' | 'mk-spin-recover'
+    | 'mk-suiu-windup' | 'mk-suiu-hop1' | 'mk-suiu-hop2' | 'mk-suiu-hop3' | 'mk-suiu-recover'
+    | 'mk-boom-windup' | 'mk-boom-out' | 'mk-boom-back' | 'mk-boom-recover'
+    | 'mk-repose';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
+  // PACING_PUZZLE.md §6.38 B2b(v6 C-1・変則ディレイの予告同期): 抽選した溜め時間が技ごとに変わる
+  // 技(舞妓の毬の薙ぎ/毬回し=マルギット型2択ランダム)は、bossStateUntilだけでは実際の溜め長を
+  // 逆算できない(=描画が進行度を出せない)。この技だけ、windup開始時のgameTimeを併記する。
+  // 描画はtelegraphProgress01(now, bossWindupStartAt, bossStateUntil)で導出する(*_VIS複製定数を
+  // 作らない・v6 C-1の掟)。固定長のwindupはbossStateUntilだけで足りるため未設定のままでよい。
+  bossWindupStartAt?: number;
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   // 攻撃開始時に確定した短い連携台本の残り。各recoverで先頭を消費し、空になった時だけ通常硬直へ戻る。
   bossScriptQueue?: string[];

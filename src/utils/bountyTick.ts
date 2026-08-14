@@ -20,6 +20,7 @@ import {
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, knockbackSpeedFor, enemyDeathLabel,
   WEREWOLF_WINDUP_MS, WEREWOLF_CHARGE_MAX_MS, WEREWOLF_CHARGE_SPEED_MULT,
+  PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_EXPLOSION_RADIUS,
 } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { isBountyType, AREA_BASE_DIFFICULTY, createEnemyProjectile, spawnEnemyAt } from './enemyUtils';
@@ -31,8 +32,10 @@ import {
 } from './bossEngagement';
 import { withRecoverFloor } from './bossTelegraph';
 import { advanceLingerMs } from './bossSkeleton';
-import { isCounterablePhase } from './bossScript';
-import { distToSegment } from './levelUpGate';
+import { isCounterablePhase, phaseJustChanged } from './bossScript';
+// §6.38 B2b: distToSegmentはgeometry.ts(依存ゼロ)から直接import(levelUpGate.ts経由をやめた)。
+// levelUpGate.tsが賞金首の技の実寸法をbountyTick.tsからimportする際、逆import(循環)を作らないため。
+import { distToSegment } from './geometry';
 import { rectsOverlap } from '../world/obstacles';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { refundCounterCooldown } from './counterMaster';
@@ -41,6 +44,7 @@ import { GLOW_R_L } from './glowTiers';
 // §4②輸入=ミーミル型レーザー: mimirLaserTrack.tsの純関数をそのまま使う(複製しない=誤学習防止)。
 import {
   mimirLaserPhase, stepLaserAim, mimirLaserTrackCaps, MIMIR_LASER_HALF_WIDTH,
+  MIMIR_LASER_RANGE, MIMIR_LASER_FIRE_MS,
   MIMIR_LASER_WINDUP_MS as BR_LASER_WINDUP_MS,
 } from './mimirLaserTrack';
 
@@ -162,12 +166,18 @@ export interface BountyTickState {
   farMs: number;   // 馬乗り: 遠距離に居続けた時間(懲罰狙撃の起点。bossSkeleton.advanceLingerMs式)
   comboStep: 0 | 1 | 2 | 3; // 馬乗り: 3段コンボの進行(0=未着手)
   escortsSummoned: boolean; // バス停: 取り巻き召喚済みか(交戦1回につき1度・再召喚なし)
+  // §6.38 B2b: 舞妓(水鳥乱舞のホップ管理・接触判定はホップ間隔中に無いためbountyTick側の
+  // 純スカラー状態で足りる=Enemyフィールドを増やさない)。
+  suiuHopIdx: 0 | 1 | 2 | 3; // 現在ホップ(0=未開始)
+  suiuTx: number; suiuTy: number; // 現ホップの着地点(playerPos+抽選オフセット・clamp済み)
 }
 export const createBountyTickState = (): BountyTickState => ({
   activeId: null, aimVX: 0, aimVY: 0, farMs: 0, comboStep: 0, escortsSummoned: false,
+  suiuHopIdx: 0, suiuTx: 0, suiuTy: 0,
 });
 const resetBountyRunState = (s: BountyTickState): void => {
   s.aimVX = 0; s.aimVY = 0; s.farMs = 0; s.comboStep = 0; s.escortsSummoned = false;
+  s.suiuHopIdx = 0; s.suiuTx = 0; s.suiuTy = 0;
 };
 
 // ---- カウンター(全4体で共通の1本。W7=windup中/硬直中の接触=可) --------------------------------
@@ -175,9 +185,13 @@ const resetBountyRunState = (s: BountyTickState): void => {
 // mimirLaserBreakOnMeleeHitが別枠で処理する専用の「弱点を突いて壊す」機構=標準カウンターとは別物)。
 const BOUNTY_WINDUP_STATES: readonly string[] = [
   'br-push-windup', 'bm-charge-windup', 'bm-combo1-windup', 'bm-combo2-windup', 'bm-combo3-windup', 'bm-snipe-windup',
+  'bb-sweep-windup', 'leap-windup',
+  'mk-naginata-windup', 'mk-naginata1-windup', 'mk-naginata2-windup', 'mk-spin-windup', 'mk-suiu-windup', 'mk-boom-windup',
 ];
 const BOUNTY_RECOVER_STATES: readonly string[] = [
   'br-push-recover', 'bm-charge-recover', 'bm-combo1-recover', 'bm-combo2-recover', 'bm-combo3-recover', 'bm-snipe-recover',
+  'bb-sweep-recover', 'leap-recover',
+  'mk-naginata-recover', 'mk-naginata1-recover', 'mk-naginata2-recover', 'mk-spin-recover', 'mk-suiu-recover', 'mk-boom-recover',
 ];
 
 /** カウンター成立の演出(idolTick.ts/angelBossTick.tsのcounterHit/angelCounterHitと同型)。 */
@@ -224,13 +238,12 @@ export const BR_PUSH_HALFWIDTH = 34;
 const BR_PUSH_DAMAGE = 8;
 const BR_PUSH_KB = { distPx: 100, ms: 240 } as const;
 const BR_PUSH_RECOVER_MS = withRecoverFloor(700);
-// 輸入=ミーミル型レーザー(§4②)。寸法・溜め・発射時間は本物の複製(=完全同一)。半太さ・溜めは
-// mimirLaserTrack.tsの実定数をそのままimportして使う(社長指摘2026-08-14「写し定数は実体をexportして
-// 同一ソースをimportすること」)。RANGE/FIRE_MSはuseGameLoop.ts側が私有定数のまま(B0以前からの既存
-// 実装=B2の範囲外)のため、ここは複製のコメント明記に留める(値がズレたらbountyTick.test.tsで検知)。
-export const BR_LASER_RANGE = 2600; // = useGameLoop.ts MIMIR_LASER_RANGE(複製・詳細は上のコメント)
-export const BR_LASER_HALFWIDTH = MIMIR_LASER_HALF_WIDTH; // mimirLaserTrack.tsが実体=単一の出どころ
-export const BR_LASER_FIRE_MS = 1500; // = useGameLoop.ts MIMIR_LASER_FIRE_MS(複製・詳細は上のコメント)
+// 輸入=ミーミル型レーザー(§4②)。寸法・溜め・発射時間は本物の複製(=完全同一)。§6.38 B2bで
+// RANGE/HALF_WIDTH/FIRE_MSの全てをmimirLaserTrack.tsの実定数からimportする形に統一した
+// (旧: useGameLoop.ts側の私有定数をコメントで手写ししていたのを撤去。社長指摘対応=単一の出どころ)。
+export const BR_LASER_RANGE = MIMIR_LASER_RANGE;
+export const BR_LASER_HALFWIDTH = MIMIR_LASER_HALF_WIDTH;
+export const BR_LASER_FIRE_MS = MIMIR_LASER_FIRE_MS;
 const BR_LASER_RECOVER_MS = withRecoverFloor(900);
 const BR_LASER_DAMAGE = 24; // 弱体化可(v6裁定)。本家42の約6割
 // バス停は抽選(mimirScriptのstring抽選)を持たないため、頻度は専用CDで作る(叩き台)。
@@ -615,9 +628,420 @@ const tickMelee = (
   }
 };
 
+// ---- 鋏(bounty-balance): 距離帯+技の定数(ER §1-4型・近=薙ぎ払い/遠=跳びかかり) --------------------
+const BB_NEAR_MAX = 170;
+export const BB_SWEEP_HALFWIDTH = 40;
+const BB_SWEEP_RANGE = 150;
+export const BB_SWEEP_WINDUP_MS = 750;
+const BB_SWEEP_DAMAGE = 18;
+const BB_SWEEP_RECOVER_MS = withRecoverFloor(900);
+// 跳びかかり(輸入=pumpkin。値はgameStore.PUMPKIN_*を直接importして使う=複製しない。v2 A節の掟
+// 「跳躍はpumpkinのaiPhase機構を流用せず-windup/-air/-recoverとしてbossState側に再実装」)。
+export const BB_LEAP_WINDUP_MS = PUMPKIN_CROUCH_MS;
+export const BB_LEAP_AIR_MS = PUMPKIN_JUMP_MS;
+const BB_LEAP_RECOVER_MS = PUMPKIN_RECOVER_MS;
+export const BB_LEAP_RADIUS = PUMPKIN_EXPLOSION_RADIUS;
+const BB_LEAP_DAMAGE = 22;
+
+const tickBalance = (
+  bounty: Enemy, _s: BountyTickState, newGameTime: number, deltaTime: number, moveSpeedMult: number,
+  dist: number, pcx: number, pcy: number, bcx: number, bcy: number, sfx: BountySfx,
+  patch: Partial<Enemy>,
+): void => {
+  const st = bounty.bossState ?? 'chase';
+
+  if (st === 'chase') {
+    if (dist <= BB_NEAR_MAX) {
+      sfx.alert();
+      const ang = Math.atan2(pcy - bcy, pcx - bcx);
+      patch.aiFromX = bcx; patch.aiFromY = bcy;
+      patch.aiTargetX = bcx + Math.cos(ang) * BB_SWEEP_RANGE;
+      patch.aiTargetY = bcy + Math.sin(ang) * BB_SWEEP_RANGE;
+      patch.bossState = 'bb-sweep-windup';
+      patch.bossStateUntil = newGameTime + BB_SWEEP_WINDUP_MS;
+      return;
+    }
+    if (newGameTime >= (bounty.bossNextActionAt ?? 0)) {
+      sfx.alert();
+      // 着地点=溜め開始時のプレイヤー位置スナップ(pumpkinと同じ「狙って置かれる」型)。
+      patch.aiTargetX = pcx; patch.aiTargetY = pcy;
+      patch.bossState = 'leap-windup';
+      patch.bossStateUntil = newGameTime + BB_LEAP_WINDUP_MS;
+      return;
+    }
+    if (dist > 1) {
+      const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
+      const spd = bounty.speed * deltaTime * moveSpeedMult;
+      const c = resolveMove(bounty.x + ux * spd, bounty.y + uy * spd, bounty);
+      patch.x = c.x; patch.y = c.y; patch.vx = ux * bounty.speed; patch.vy = uy * bounty.speed;
+    }
+    return;
+  }
+
+  if (st === 'bb-sweep-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
+      const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+      hitCapsule(bounty, fx, fy, tx, ty, BB_SWEEP_HALFWIDTH, BB_SWEEP_DAMAGE);
+      patch.bossState = 'bb-sweep-recover';
+      patch.bossStateUntil = newGameTime + BB_SWEEP_RECOVER_MS;
+    }
+    return;
+  }
+  if (st === 'bb-sweep-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    }
+    return;
+  }
+  if (st === 'leap-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'leap-air';
+      patch.bossStateUntil = newGameTime + BB_LEAP_AIR_MS;
+    }
+    return;
+  }
+  if (st === 'leap-air') {
+    // 空中移動(見た目のみ。判定は着地の瞬間の円=下)。着地点は溜め開始時にロック済み(aiTargetX/Y)。
+    const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+    const airMs = BB_LEAP_AIR_MS;
+    const remain = (bounty.bossStateUntil ?? newGameTime) - newGameTime;
+    const t = Math.max(0, Math.min(1, 1 - remain / airMs));
+    patch.x = (bcx + (tx - bcx) * t) - bounty.width / 2;
+    patch.y = (bcy + (ty - bcy) * t) - bounty.height / 2;
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      hitCapsule(bounty, tx, ty, tx, ty, BB_LEAP_RADIUS, BB_LEAP_DAMAGE);
+      patch.vx = 0; patch.vy = 0;
+      patch.bossState = 'leap-recover';
+      patch.bossStateUntil = newGameTime + BB_LEAP_RECOVER_MS;
+    }
+    return;
+  }
+  if (st === 'leap-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    }
+    return;
+  }
+};
+
+// ---- 舞妓(bounty-maiko): 全技の得物=毬(v5.1)。型A(HP>50%)/型B(HP<=50%・1回だけ切替) -------------
+const MK_NEAR_MAX = 150;
+const MK_FAR_MIN = 380; // 手毬打ちの間合い
+const MK_PHASE_HP_FRAC = 0.5;
+export const MK_REPOSE_MS = 500; // 型切替時の舞い直し(短硬直・無敵なし)
+// 毬の薙ぎ(型A単発・windup=2択ランダム=変則ディレイ)。
+export const MK_NAGINATA_HALFWIDTH = 30;
+const MK_NAGINATA_RANGE = 140;
+export const MK_NAGINATA_WINDUP_CHOICES: readonly [number, number] = [700, 1150];
+const MK_NAGINATA_DAMAGE = 16;
+const MK_NAGINATA_RECOVER_MS = withRecoverFloor(900);
+// 毬の薙ぎ・連(型B・2連・速→遅の順固定=レラーナ経験則。各段が独立して2択から抽選=個別予告)。
+export const MK_NAGINATA1_WINDUP_CHOICES: readonly [number, number] = [550, 750]; // 速(1段目)
+export const MK_NAGINATA2_WINDUP_CHOICES: readonly [number, number] = [900, 1300]; // 遅(2段目)
+const MK_NAGINATA_STEP_RECOVER_MS = 220;
+// 毬回し(自分中心円・windup=2択ランダム)。★AOE_TELEGRAPH_AUDIT登録対象(escapeMs=短い方=800)。
+export const MK_SPIN_RADIUS = 90;
+export const MK_SPIN_WINDUP_CHOICES: readonly [number, number] = [800, 1300];
+export const MK_SPIN_ACTIVE_MS = 500;
+const MK_SPIN_DAMAGE = 14;
+const MK_SPIN_RECOVER_MS = withRecoverFloor(900);
+// 水鳥乱舞(型B専用大技・毬3連バウンド・マレニア§2-4)。着地点=プレイヤー現在位置+抽選オフセット
+// (clampRectToPlayableArea適用)。ホップ間隔=2種ランダム(=各ホップの予告時間そのもの)。
+// 最終段のみ大円。ホップ中の毬に接触判定なし=着地円のみ(v5承認)。乱舞後は長め硬直(パニッシュ窓)。
+export const MK_SUIU_HOP_INTERVAL_CHOICES: readonly [number, number] = [400, 600]; // 予告(telegraph)分
+export const MK_SUIU_HOP_TRAVEL_MS = 260; // 着地直前の移動(予告は継続表示=escapeMsに含む)
+export const MK_SUIU_RADIUS = 50;
+export const MK_SUIU_FINAL_RADIUS_MULT = 1.8;
+const MK_SUIU_DAMAGE = 16;
+const MK_SUIU_OFFSET_RANGE = 90;
+const MK_SUIU_RECOVER_MS = withRecoverFloor(1500);
+// 手毬打ち(遠距離・打ち出し→戻るブーメラン軌道。判定=毬の絵に揃える=共通弾ではない)。
+export const MK_BOOM_RANGE = 500;
+export const MK_BOOM_HITRADIUS = 30;
+export const MK_BOOM_WINDUP_MS = 750;
+export const MK_BOOM_OUT_MS = 420;
+export const MK_BOOM_BACK_MS = 420;
+const MK_BOOM_DAMAGE = 14;
+const MK_BOOM_RECOVER_MS = withRecoverFloor(900);
+
+/** 変則ディレイ(§4 v4「マルギット型」): 2値から毎回独立に抽選(連続同値も許す=乱数を持ち越さない)。 */
+const pick2 = (choices: readonly [number, number]): number => (Math.random() < 0.5 ? choices[0] : choices[1]);
+
+const tickMaiko = (
+  bounty: Enemy, s: BountyTickState, newGameTime: number, deltaTime: number, moveSpeedMult: number,
+  dist: number, pcx: number, pcy: number, bcx: number, bcy: number, sfx: BountySfx,
+  patch: Partial<Enemy>,
+): void => {
+  const st = bounty.bossState ?? 'chase';
+  const phase: 1 | 2 = bounty.bossPhase === 2 ? 2 : 1;
+
+  if (st === 'chase') {
+    // 型切替(v6 C-5「実行中の技は完走してから」=chaseに戻ってから判定するので自然に満たす。1回だけ)。
+    const hpFrac = bounty.maxHealth > 0 ? bounty.health / bounty.maxHealth : 1;
+    if (phase === 1 && hpFrac <= MK_PHASE_HP_FRAC) {
+      patch.bossPhase = 2;
+      if (phaseJustChanged(bounty.bossPhase, 2)) patch.bossPhaseFlashUntil = newGameTime + 1200;
+      patch.bossState = 'mk-repose';
+      patch.bossStateUntil = newGameTime + MK_REPOSE_MS;
+      return;
+    }
+
+    if (dist <= MK_NEAR_MAX) {
+      sfx.alert();
+      const ang = Math.atan2(pcy - bcy, pcx - bcx);
+      patch.aiFromX = bcx; patch.aiFromY = bcy;
+      patch.aiTargetX = bcx + Math.cos(ang) * MK_NAGINATA_RANGE;
+      patch.aiTargetY = bcy + Math.sin(ang) * MK_NAGINATA_RANGE;
+      patch.bossWindupStartAt = newGameTime; // v6 C-1: 変則ディレイは開始時刻を併記(描画側の進行度算出用)
+      if (phase === 1) {
+        const w = pick2(MK_NAGINATA_WINDUP_CHOICES);
+        patch.bossState = 'mk-naginata-windup';
+        patch.bossStateUntil = newGameTime + w;
+      } else {
+        s.comboStep = 1;
+        const w = pick2(MK_NAGINATA1_WINDUP_CHOICES);
+        patch.bossState = 'mk-naginata1-windup';
+        patch.bossStateUntil = newGameTime + w;
+      }
+      return;
+    }
+
+    if (newGameTime >= (bounty.bossNextActionAt ?? 0)) {
+      const roll = Math.random();
+      if (phase === 2 && roll < 0.4) {
+        sfx.alert();
+        s.suiuHopIdx = 0;
+        patch.bossState = 'mk-suiu-windup';
+        patch.bossStateUntil = newGameTime + 500;
+        return;
+      }
+      if (dist > MK_FAR_MIN && roll < (phase === 2 ? 0.75 : 0.7)) {
+        sfx.alert();
+        patch.aiFromX = bcx; patch.aiFromY = bcy;
+        const dl = dist || 1;
+        patch.aiTargetX = bcx + ((pcx - bcx) / dl) * MK_BOOM_RANGE;
+        patch.aiTargetY = bcy + ((pcy - bcy) / dl) * MK_BOOM_RANGE;
+        patch.bossState = 'mk-boom-windup';
+        patch.bossStateUntil = newGameTime + MK_BOOM_WINDUP_MS;
+        return;
+      }
+      sfx.alert();
+      patch.bossWindupStartAt = newGameTime;
+      patch.bossState = 'mk-spin-windup';
+      patch.bossStateUntil = newGameTime + pick2(MK_SPIN_WINDUP_CHOICES);
+      return;
+    }
+    if (dist > 1) {
+      const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
+      const spd = bounty.speed * deltaTime * moveSpeedMult * 0.6; // 舞妓は他3体よりにじり寄りを控えめに
+      const c = resolveMove(bounty.x + ux * spd, bounty.y + uy * spd, bounty);
+      patch.x = c.x; patch.y = c.y;
+    }
+    return;
+  }
+
+  if (st === 'mk-repose') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    }
+    return;
+  }
+
+  // ---- 毬の薙ぎ(型A単発) ------------------------------------------------------------------------
+  if (st === 'mk-naginata-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
+      const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+      hitCapsule(bounty, fx, fy, tx, ty, MK_NAGINATA_HALFWIDTH, MK_NAGINATA_DAMAGE);
+      patch.bossState = 'mk-naginata-recover';
+      patch.bossStateUntil = newGameTime + MK_NAGINATA_RECOVER_MS;
+    }
+    return;
+  }
+  if (st === 'mk-naginata-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    }
+    return;
+  }
+  // ---- 毬の薙ぎ・連(型B・速→遅の2連) -----------------------------------------------------------
+  if (st === 'mk-naginata1-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
+      const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+      hitCapsule(bounty, fx, fy, tx, ty, MK_NAGINATA_HALFWIDTH, MK_NAGINATA_DAMAGE);
+      patch.bossState = 'mk-naginata1-recover';
+      patch.bossStateUntil = newGameTime + MK_NAGINATA_STEP_RECOVER_MS;
+    }
+    return;
+  }
+  if (st === 'mk-naginata1-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      s.comboStep = 2;
+      const ang = Math.atan2(pcy - bcy, pcx - bcx);
+      patch.aiFromX = bcx; patch.aiFromY = bcy;
+      patch.aiTargetX = bcx + Math.cos(ang) * MK_NAGINATA_RANGE;
+      patch.aiTargetY = bcy + Math.sin(ang) * MK_NAGINATA_RANGE;
+      patch.bossWindupStartAt = newGameTime;
+      patch.bossState = 'mk-naginata2-windup';
+      patch.bossStateUntil = newGameTime + pick2(MK_NAGINATA2_WINDUP_CHOICES);
+    }
+    return;
+  }
+  if (st === 'mk-naginata2-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
+      const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+      hitCapsule(bounty, fx, fy, tx, ty, MK_NAGINATA_HALFWIDTH, MK_NAGINATA_DAMAGE);
+      s.comboStep = 0;
+      patch.bossState = 'mk-naginata2-recover';
+      patch.bossStateUntil = newGameTime + MK_NAGINATA_RECOVER_MS;
+    }
+    return;
+  }
+  if (st === 'mk-naginata2-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    }
+    return;
+  }
+  // ---- 毬回し(自分中心円) -----------------------------------------------------------------------
+  if (st === 'mk-spin-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'mk-spin';
+      patch.bossStateUntil = newGameTime + MK_SPIN_ACTIVE_MS;
+    }
+    return;
+  }
+  if (st === 'mk-spin') {
+    if (Math.hypot(pcx - bcx, pcy - bcy) <= MK_SPIN_RADIUS + Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2) {
+      useGameStore.getState().damagePlayer(MK_SPIN_DAMAGE, `${enemyDeathLabel(bounty.type)}の毬回し`, pcx, pcy);
+    }
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'mk-spin-recover';
+      patch.bossStateUntil = newGameTime + MK_SPIN_RECOVER_MS;
+    }
+    return;
+  }
+  if (st === 'mk-spin-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    }
+    return;
+  }
+  // ---- 水鳥乱舞(型B専用・3連バウンド) -----------------------------------------------------------
+  if (st === 'mk-suiu-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      const off = MK_SUIU_OFFSET_RANGE;
+      const ox = (Math.random() * 2 - 1) * off, oy = (Math.random() * 2 - 1) * off;
+      const raw = { x: pcx + ox, y: pcy + oy };
+      const st0 = useGameStore.getState();
+      const ctx: PlayableAreaCtx = {
+        farBackdrop: st0.farBackdrop, labTheme: st0.stageTheme === 'lab' && !st0.indoorMode,
+        corridorMode: st0.corridorMode, m0AdvanceLimitX: st0.m0AdvanceLimitX,
+        corridorRunInActive: st0.corridorRunInActive,
+      };
+      const clamped = clampRectToPlayableArea(raw.x - bounty.width / 2, raw.y - bounty.height / 2, bounty.width, bounty.height, ctx);
+      s.suiuTx = clamped.x + bounty.width / 2; s.suiuTy = clamped.y + bounty.height / 2;
+      s.suiuHopIdx = 1;
+      patch.aiFromX = bcx; patch.aiFromY = bcy;
+      patch.aiTargetX = s.suiuTx; patch.aiTargetY = s.suiuTy;
+      patch.bossState = 'mk-suiu-hop1';
+      patch.bossStateUntil = newGameTime + pick2(MK_SUIU_HOP_INTERVAL_CHOICES) + MK_SUIU_HOP_TRAVEL_MS;
+    }
+    return;
+  }
+  if (st === 'mk-suiu-hop1' || st === 'mk-suiu-hop2' || st === 'mk-suiu-hop3') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      const hopIdx = st === 'mk-suiu-hop1' ? 1 : st === 'mk-suiu-hop2' ? 2 : 3;
+      const isFinal = hopIdx === 3;
+      const radius = isFinal ? MK_SUIU_RADIUS * MK_SUIU_FINAL_RADIUS_MULT : MK_SUIU_RADIUS;
+      hitCapsule(bounty, s.suiuTx, s.suiuTy, s.suiuTx, s.suiuTy, radius, MK_SUIU_DAMAGE);
+      if (isFinal) {
+        s.suiuHopIdx = 0;
+        patch.bossState = 'mk-suiu-recover';
+        patch.bossStateUntil = newGameTime + MK_SUIU_RECOVER_MS;
+        return;
+      }
+      // 次のホップの着地点を再抽選(プレイヤー現在位置+抽選オフセット・clamp)。
+      const off = MK_SUIU_OFFSET_RANGE;
+      const ox = (Math.random() * 2 - 1) * off, oy = (Math.random() * 2 - 1) * off;
+      const raw = { x: pcx + ox, y: pcy + oy };
+      const st0 = useGameStore.getState();
+      const ctx: PlayableAreaCtx = {
+        farBackdrop: st0.farBackdrop, labTheme: st0.stageTheme === 'lab' && !st0.indoorMode,
+        corridorMode: st0.corridorMode, m0AdvanceLimitX: st0.m0AdvanceLimitX,
+        corridorRunInActive: st0.corridorRunInActive,
+      };
+      const clamped = clampRectToPlayableArea(raw.x - bounty.width / 2, raw.y - bounty.height / 2, bounty.width, bounty.height, ctx);
+      const fromX = s.suiuTx, fromY = s.suiuTy;
+      s.suiuTx = clamped.x + bounty.width / 2; s.suiuTy = clamped.y + bounty.height / 2;
+      s.suiuHopIdx = (hopIdx + 1) as 1 | 2 | 3;
+      patch.aiFromX = fromX; patch.aiFromY = fromY;
+      patch.aiTargetX = s.suiuTx; patch.aiTargetY = s.suiuTy;
+      patch.bossState = hopIdx === 1 ? 'mk-suiu-hop2' : 'mk-suiu-hop3';
+      patch.bossStateUntil = newGameTime + pick2(MK_SUIU_HOP_INTERVAL_CHOICES) + MK_SUIU_HOP_TRAVEL_MS;
+    }
+    return;
+  }
+  if (st === 'mk-suiu-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    }
+    return;
+  }
+  // ---- 手毬打ち(遠距離・ブーメラン) -------------------------------------------------------------
+  if (st === 'mk-boom-windup') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'mk-boom-out';
+      patch.bossStateUntil = newGameTime + MK_BOOM_OUT_MS;
+    }
+    return;
+  }
+  if (st === 'mk-boom-out' || st === 'mk-boom-back') {
+    // 判定=毬の絵に揃える(分類1): 溜め開始でロックした2点(aiFromX/Y→aiTargetX/Y)の間を毬が往復する。
+    // 現在位置(往路=from→to/復路=to→from)に円判定を置く。共通弾(赤二重丸)ではない=専用の絵(pixiScene)。
+    const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
+    const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+    const total = st === 'mk-boom-out' ? MK_BOOM_OUT_MS : MK_BOOM_BACK_MS;
+    const remain = (bounty.bossStateUntil ?? newGameTime) - newGameTime;
+    const t = Math.max(0, Math.min(1, 1 - remain / total));
+    const px2 = st === 'mk-boom-out' ? fx + (tx - fx) * t : tx + (fx - tx) * t;
+    const py2 = st === 'mk-boom-out' ? fy + (ty - fy) * t : ty + (fy - ty) * t;
+    const pr = Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2;
+    if (Math.hypot(pcx - px2, pcy - py2) <= MK_BOOM_HITRADIUS + pr) {
+      useGameStore.getState().damagePlayer(MK_BOOM_DAMAGE, `${enemyDeathLabel(bounty.type)}の手毬打ち`, pcx, pcy);
+    }
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      if (st === 'mk-boom-out') {
+        patch.bossState = 'mk-boom-back';
+        patch.bossStateUntil = newGameTime + MK_BOOM_BACK_MS;
+      } else {
+        patch.bossState = 'mk-boom-recover';
+        patch.bossStateUntil = newGameTime + MK_BOOM_RECOVER_MS;
+      }
+    }
+    return;
+  }
+  if (st === 'mk-boom-recover') {
+    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + BOUNTY_NEUTRAL_MS;
+    }
+    return;
+  }
+};
+
 /**
- * 賞金首1体を1tick進める。B1の状態(休眠/追跡/帰巣)に加え、B2aでバス停/馬乗りの技を追加した。
- * 鋏/馬乗りはB2bで技を追加するまで従来どおりのB1追跡のみ。
+ * 賞金首1体を1tick進める。B1の状態(休眠/追跡/帰巣)に加え、B2a/B2bで4体全ての技を追加した。
  * §6.38 B1.5-5: 出現告知(triggerAttention+バナー「賞金首出現」+SE)はスポーン時(呼び出し側=
  * useGameLoop.ts)へ移設した。ここで残すのは**起床演出(holo-circle)の起点**のみ(見た目だけの合図)。
  */
@@ -756,12 +1180,10 @@ export const runBountyTick = (
       tickRanged(bounty, s, newGameTime, deltaTime, moveSpeedMult, dist, pcx, pcy, bcx, bcy, sfx, patch);
     } else if (bounty.type === 'bounty-melee') {
       tickMelee(bounty, s, newGameTime, deltaTime, moveSpeedMult, dist, pcx, pcy, bcx, bcy, sfx, patch);
-    } else if (dist > 1) {
-      // 鋏/舞妓(B2bで技を追加するまでの暫定): B1と同じ単純追跡。
-      const ux = (pcx - bcx) / dist, uy = (pcy - bcy) / dist;
-      const spd = bounty.speed * deltaTime * moveSpeedMult;
-      const clamped = resolveMove(bounty.x + ux * spd, bounty.y + uy * spd, bounty);
-      patch.x = clamped.x; patch.y = clamped.y; patch.vx = ux * bounty.speed; patch.vy = uy * bounty.speed;
+    } else if (bounty.type === 'bounty-balance') {
+      tickBalance(bounty, s, newGameTime, deltaTime, moveSpeedMult, dist, pcx, pcy, bcx, bcy, sfx, patch);
+    } else if (bounty.type === 'bounty-maiko') {
+      tickMaiko(bounty, s, newGameTime, deltaTime, moveSpeedMult, dist, pcx, pcy, bcx, bcy, sfx, patch);
     }
   }
 

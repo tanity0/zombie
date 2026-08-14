@@ -94,3 +94,48 @@ describe('isPlayerInAttackTelegraph — M51ジャイアント新テレグラフ'
     expect(isPlayerInAttackTelegraph(player, enemies, RADIUS, STOMP_R, SWEEP_HW)).toBe(false);
   });
 });
+
+// PACING_PUZZLE.md §6.38 v6 C-3: 賞金首(bossState系コントローラ)の技もレベルアップ保留の対象に
+// 拾えること。B2a=バス停の突進/レーザー、B2b=鋏の跳躍/薙ぎ払い・舞妓の薙ぎ/毬回し/水鳥。
+describe('isPlayerInAttackTelegraph — 賞金首(bossState系・§6.38 B2a/B2b)', () => {
+  it('馬乗り(bounty-melee)の突進(bm-charge-windup)は経路上の線分判定', () => {
+    const enemies = [mk({ type: 'bounty-melee', x: 90, y: 0, bossState: 'bm-charge-windup', aiTargetX: -100, aiTargetY: 10 })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(true);
+  });
+  it('突進でも対象外の型(bounty-ranged)はfalse(型ゲート)', () => {
+    const enemies = [mk({ type: 'bounty-ranged', x: 90, y: 0, bossState: 'bm-charge-windup', aiTargetX: -100, aiTargetY: 10 })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(false);
+  });
+  it('バス停(bounty-ranged)のレーザー(laser-windup)は経路上の線分判定(半太さ=MIMIR_LASER_HALF_WIDTH)', () => {
+    const enemies = [mk({ type: 'bounty-ranged', x: 90, y: 0, bossState: 'laser-windup', aiTargetX: -100, aiTargetY: 10 })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(true);
+  });
+  it('鋏(bounty-balance)の跳びかかり(leap-windup)は着地点(aiTargetX/Y)中心の円', () => {
+    const enemies = [mk({ type: 'bounty-balance', bossState: 'leap-windup', aiTargetX: 0, aiTargetY: 0 })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(true);
+    const far = [mk({ type: 'bounty-balance', bossState: 'leap-windup', aiTargetX: 900, aiTargetY: 900 })];
+    expect(isPlayerInAttackTelegraph(player, far, RADIUS)).toBe(false);
+  });
+  it('鋏の薙ぎ払い(bb-sweep-windup)は経路上の帯判定', () => {
+    const enemies = [mk({ type: 'bounty-balance', x: 90, y: 0, bossState: 'bb-sweep-windup', aiTargetX: -100, aiTargetY: 10 })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(true);
+  });
+  it('舞妓(bounty-maiko)の毬の薙ぎ(単発/2連いずれも)は経路上の帯判定', () => {
+    for (const bossState of ['mk-naginata-windup', 'mk-naginata1-windup', 'mk-naginata2-windup'] as const) {
+      const enemies = [mk({ type: 'bounty-maiko', x: 90, y: 0, bossState, aiTargetX: -100, aiTargetY: 10 })];
+      expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(true);
+    }
+  });
+  it('舞妓の毬回し(mk-spin-windup)は自分中心円(敵の現在位置が中心・aiTargetXは不要)', () => {
+    const enemies = [mk({ type: 'bounty-maiko', x: 0, y: 0, bossState: 'mk-spin-windup' })];
+    expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(true);
+    const far = [mk({ type: 'bounty-maiko', x: 900, y: 900, bossState: 'mk-spin-windup' })];
+    expect(isPlayerInAttackTelegraph(player, far, RADIUS)).toBe(false);
+  });
+  it('舞妓の水鳥乱舞(mk-suiu-hop1/2/3)は着地点(aiTargetX/Y)中心の円', () => {
+    for (const bossState of ['mk-suiu-hop1', 'mk-suiu-hop2', 'mk-suiu-hop3'] as const) {
+      const enemies = [mk({ type: 'bounty-maiko', bossState, aiTargetX: 0, aiTargetY: 0 })];
+      expect(isPlayerInAttackTelegraph(player, enemies, RADIUS)).toBe(true);
+    }
+  });
+});

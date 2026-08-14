@@ -139,4 +139,11 @@ export const AOE_TELEGRAPH_AUDIT: readonly AoeTelegraphEntry[] = [
       + '詰められないため、大円は「近寄り過ぎるな」の唯一の担い手。★未決: 社長裁定待ち(1400msへ延ばすか、'
       + '半径を125pxへ縮めるかの二択。判定と赤円は同じ定数なのでどちらでも図形と判定は一致する)。',
   },
+  // PACING_PUZZLE.md §6.38 B2b: bountyTick.ts MK_SPIN_WINDUP_CHOICES([800,1300])の短い方を登録
+  // (社長指示「escapeMs=短い方」)/ MK_SPIN_RADIUS=90 → 必要約996ms。
+  {
+    name: 'bounty-maiko-spin(舞妓・毬回し)', escapeMs: 800, radiusPx: 90,
+    intentionallyUnavoidable: '密着帯への懲罰技(mimir-bite/suriel-ringspinと同じ思想=「近寄り過ぎたら'
+      + '巻き込まれる」を教える技)。不足196ms(必要値の80%)。密着を選んだ側への間合い喚起として据え置く。',
+  },
 ] as const;

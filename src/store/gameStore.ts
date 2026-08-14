@@ -9505,9 +9505,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // KILL吹き飛び(死体・§26-1): 通常敵(corpseEligible)は即消滅させず、攻撃者(近似=プレイヤー
         // 座標・★未決事項参照)→敵方向へ吹き飛ぶ死体として残す。ボス/ネームド/クエスト対象は
         // 従来どおり即除去(getsDramaticDeath/bossCorpse演出はそのまま・挙動不変)。
+        // §6.38 B2b(持ち越し②): 賞金首の討伐でも退場時と同じく取り巻き(bountyEscortId一致)を
+        // 一緒に片付ける(退場時のclearBountyEscortsと対=削除経路が2本に割れて片方だけ残る事故の防止)。
         const enemiesAfterKill = corpseEligible(enemy)
           ? updatedEnemies.map(e => e.id === id ? buildCorpseFromKill(e, state.player) : e)
-          : updatedEnemies.filter(e => e.id !== id);
+          : updatedEnemies.filter(e => e.id !== id && !(isBountyType(enemy.type) && e.bountyEscortId === id));
         return {
           enemies: enemiesAfterKill,
           gameStats: newStats,

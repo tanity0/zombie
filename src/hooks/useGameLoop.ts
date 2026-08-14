@@ -217,8 +217,10 @@ import {
   mimirPhaseForHealth, pickMimirMove, type MimirMove,
 } from '../utils/mimirScript';
 // PACING_PUZZLE.md §6.33(LASER-TRACK): 追尾予告レーザーの純関数群+定数の正本。
+// §6.38 B2b: RANGE/HALF_WIDTH/FIRE_MSもここが正本(旧private定数から移設・値/挙動は無改変)。
 import {
   MIMIR_LASER_WINDUP_MS, MIMIR_LASER_BROKEN_MS, MIMIR_LASER_INTERRUPTED_CD_MS,
+  MIMIR_LASER_RANGE, MIMIR_LASER_HALF_WIDTH, MIMIR_LASER_FIRE_MS,
   mimirLaserPhase, stepLaserAim, mimirTrackEnabled, canInterruptMimirLaser, mimirLaserTrackCaps, usesMimirLaser,
 } from '../utils/mimirLaserTrack';
 import {
@@ -948,10 +950,8 @@ const MIMIR_LASER_CHANCE = 0.34;                     // chase からの行動抽
 // §6.33(LASER-TRACK・v0.25.2937): 溜め時間の正本は mimirLaserTrack.ts(3000ms)。溜め中の挙動は
 // MIMIR_TRACK_ENABLED で分岐: 新=前段2700msが物理追尾+終段300msロック / 旧=開始時ロック(方向固定)。
 const MIMIR_LASER_AIM_TRACK = 1.5;                   // 【旧挙動?mimirtrack=0専用】発射中の照準追尾レート(小さいほど遅い)
-const MIMIR_LASER_FIRE_MS = 1500;                    // レーザー本体の表示/判定時間(この間ゆっくり追尾しながら揺れる)
+// MIMIR_LASER_FIRE_MS/RANGE/HALF_WIDTHはmimirLaserTrack.tsからimport(§6.38 B2b・旧private定数から移設)。
 const MIMIR_LASER_SHAKE_MAG = 5;                     // 発射中の画面シェイク振幅(社長指示)
-const MIMIR_LASER_RANGE = 2600;                      // レーザーの長さ(px)
-const MIMIR_LASER_HALF_WIDTH = 34;                   // レーザーの半太さ(当たり判定/描画。太め)
 const MIMIR_LASER_DAMAGE = 42;                       // レーザー被弾ダメージ(直撃)
 const BOSS_FADE_MS = 2600;                           // 討伐時のFF風フェードアウト時間(描画側で使用)
 // 裏ボスが障害物を踏み潰した時の爆破FX/SE/シェイク。森を突っ切ると同時破壊が多発しうるので「スロットル」で

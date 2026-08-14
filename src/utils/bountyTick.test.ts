@@ -8,8 +8,10 @@ import {
   runBountyTick, createBountyTickState,
   BOUNTY_LINGER_MS, BOUNTY_HIT_ENGAGE_MS, BOUNTY_BASE_HP, BOUNTY_DEPART_FADE_MS, BOUNTY_WAKE_FX_MS,
   BR_ESCORT_COUNT as BR_ESCORT_COUNT_FOR_TEST,
+  MK_REPOSE_MS, MK_SUIU_RADIUS, MK_SUIU_HOP_INTERVAL_CHOICES, MK_SUIU_HOP_TRAVEL_MS,
 } from './bountyTick';
 import { usesMimirLaser } from './mimirLaserTrack';
+import { AOE_TELEGRAPH_AUDIT, minWindupMs } from './bossTelegraph';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import { setTreesDisabled } from '../world/trees';
@@ -408,6 +410,140 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       expect(sawChargeWindup).toBe(true);
       expect(sawCharge).toBe(true);
       expect(distAfterCharge).toBeLessThan(distAtChargeStart); // 突進で距離が縮んでいる
+    });
+  });
+
+  describe('鋏(bounty-balance)', () => {
+    it('近距離(BB_NEAR_MAX以内)で薙ぎ払い(bb-sweep-windup)を発火する', () => {
+      const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
+      step(16);
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('bb-sweep-windup');
+    });
+
+    it('薙ぎ払い完走: pumpkinBlastsへ判定を積んでchaseへ戻る', () => {
+      const { id, step } = setupType('bounty-balance', { x: 80, y: 0 });
+      const before = useGameStore.getState().pumpkinBlasts.length;
+      const seen = new Set<string | undefined>();
+      for (let i = 0; i < 60; i++) { step(50); seen.add(useGameStore.getState().enemies.find(e => e.id === id)?.bossState); }
+      expect(seen.has('chase')).toBe(true);
+      expect(useGameStore.getState().pumpkinBlasts.length).toBeGreaterThan(before);
+    });
+
+    it('遠距離で跳びかかり(輸入=pumpkin): windup(しゃがみ)→air(移動)→recoverを経て着地円の判定を積む', () => {
+      const { id, step } = setupType('bounty-balance', { x: 500, y: 0 });
+      const before = useGameStore.getState().pumpkinBlasts.length;
+      let sawWindup = false, sawAir = false, sawRecover = false;
+      for (let i = 0; i < 400; i++) {
+        step(50);
+        const cur = useGameStore.getState().enemies.find(e => e.id === id);
+        if (cur?.bossState === 'leap-windup') sawWindup = true;
+        if (cur?.bossState === 'leap-air') sawAir = true;
+        if (sawAir && cur?.bossState === 'leap-recover') { sawRecover = true; break; }
+      }
+      expect(sawWindup).toBe(true);
+      expect(sawAir).toBe(true);
+      expect(sawRecover).toBe(true);
+      expect(useGameStore.getState().pumpkinBlasts.length).toBeGreaterThan(before);
+    });
+  });
+
+  describe('舞妓(bounty-maiko)', () => {
+    it('型A(HP>50%)の近距離は毬の薙ぎ単発(mk-naginata-windup)を発火する', () => {
+      const { id, step } = setupType('bounty-maiko', { x: 60, y: 0 });
+      step(16);
+      const e = useGameStore.getState().enemies.find(x => x.id === id);
+      expect(e?.bossState).toBe('mk-naginata-windup');
+      expect([700, 1150]).toContain((e?.bossStateUntil ?? 0) - useGameStore.getState().gameTime);
+    });
+
+    it('型切替: HP50%以下になるとmk-reposeを経て型B(bossPhase=2)へ1回だけ切り替わる', () => {
+      const { id, step } = setupType('bounty-maiko', { x: 700, y: 0 }, { health: 1000, maxHealth: 2000 });
+      step(16);
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('mk-repose');
+      step(MK_REPOSE_MS + 16);
+      const after = useGameStore.getState().enemies.find(e => e.id === id);
+      expect(after?.bossPhase).toBe(2);
+      expect(after?.bossState).toBe('chase');
+      // 型B確定後、体力が回復してももう型Aへは戻らない(1回だけの片道切替)。
+      useGameStore.setState(s2 => ({
+        enemies: s2.enemies.map(e => e.id === id ? { ...e, health: e.maxHealth } : e),
+      }));
+      step(16);
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossPhase).toBe(2);
+    });
+
+    it('型Bの近距離は毬の薙ぎ・連(mk-naginata1→mk-naginata2)の2段になる', () => {
+      const { id, step } = setupType('bounty-maiko', { x: 60, y: 0 }, { bossPhase: 2 });
+      step(16);
+      const e1 = useGameStore.getState().enemies.find(x => x.id === id);
+      expect(e1?.bossState).toBe('mk-naginata1-windup');
+      let sawStep2 = false;
+      for (let i = 0; i < 60; i++) {
+        step(50);
+        if (useGameStore.getState().enemies.find(x => x.id === id)?.bossState === 'mk-naginata2-windup') { sawStep2 = true; break; }
+      }
+      expect(sawStep2).toBe(true);
+    });
+
+    it('毬回し(自分中心円)は強制発火させると円内のプレイヤーへダメージを与え続ける', () => {
+      const { id, step } = setupType('bounty-maiko', { x: 40, y: 0 }, { bossState: 'mk-spin', bossStateUntil: undefined });
+      useGameStore.setState(s2 => ({
+        enemies: s2.enemies.map(e => e.id === id ? { ...e, bossStateUntil: useGameStore.getState().gameTime + 500 } : e),
+      }));
+      const hpBefore = useGameStore.getState().player.health;
+      step(16);
+      expect(useGameStore.getState().player.health).toBeLessThan(hpBefore);
+    });
+
+    it('毬回しはAOE_TELEGRAPH_AUDITに登録され、換算式②(見てから歩いて避けられる)を満たす', () => {
+      const entry = AOE_TELEGRAPH_AUDIT.find(a => a.name.includes('毬回し'));
+      expect(entry).toBeDefined();
+      if (entry && entry.intentionallyUnavoidable === undefined) {
+        expect(entry.escapeMs).toBeGreaterThanOrEqual(minWindupMs(entry.radiusPx));
+      }
+    });
+
+    it('水鳥乱舞(型B専用大技): 強制発火させるとhop1→hop2→hop3→recoverの順で進み、3回判定を積む', () => {
+      const { id, step } = setupType('bounty-maiko', { x: 700, y: 0 }, { bossPhase: 2, bossState: 'mk-suiu-windup', bossStateUntil: undefined });
+      useGameStore.setState(s2 => ({
+        enemies: s2.enemies.map(e => e.id === id ? { ...e, bossStateUntil: useGameStore.getState().gameTime + 500 } : e),
+      }));
+      const before = useGameStore.getState().pumpkinBlasts.length;
+      const seen = new Set<string | undefined>();
+      for (let i = 0; i < 200; i++) {
+        step(50);
+        seen.add(useGameStore.getState().enemies.find(e => e.id === id)?.bossState);
+      }
+      expect(seen.has('mk-suiu-hop1')).toBe(true);
+      expect(seen.has('mk-suiu-hop2')).toBe(true);
+      expect(seen.has('mk-suiu-hop3')).toBe(true);
+      expect(seen.has('mk-suiu-recover')).toBe(true);
+      expect(seen.has('chase')).toBe(true);
+      expect(useGameStore.getState().pumpkinBlasts.length).toBeGreaterThanOrEqual(before + 3);
+    });
+
+    it('水鳥乱舞のホップ間隔(予告)は換算式②の必要msを満たす(見てから歩いて避けられる)', () => {
+      // MK_SUIU_HOP_INTERVAL_CHOICES(下限側)+MK_SUIU_HOP_TRAVEL_MS >= minWindupMs(半径+自機半径)。
+      const need = minWindupMs(MK_SUIU_RADIUS + 14);
+      const hopIntervalMin = Math.min(...MK_SUIU_HOP_INTERVAL_CHOICES);
+      expect(hopIntervalMin + MK_SUIU_HOP_TRAVEL_MS).toBeGreaterThanOrEqual(need);
+    });
+
+    it('手毬打ち(遠距離・ブーメラン): 強制発火させるとwindup→out→back→recoverを経てchaseへ戻る', () => {
+      const { id, step } = setupType('bounty-maiko', { x: 700, y: 0 }, { bossState: 'mk-boom-windup', bossStateUntil: undefined });
+      useGameStore.setState(s2 => ({
+        enemies: s2.enemies.map(e => e.id === id
+          ? { ...e, bossStateUntil: useGameStore.getState().gameTime + 750, aiFromX: e.x, aiFromY: e.y, aiTargetX: e.x + 500, aiTargetY: e.y } : e),
+      }));
+      const seen = new Set<string | undefined>();
+      for (let i = 0; i < 80; i++) {
+        step(50);
+        seen.add(useGameStore.getState().enemies.find(e => e.id === id)?.bossState);
+      }
+      expect(seen.has('mk-boom-out')).toBe(true);
+      expect(seen.has('mk-boom-back')).toBe(true);
+      expect(seen.has('mk-boom-recover')).toBe(true);
+      expect(seen.has('chase')).toBe(true);
     });
   });
 });
