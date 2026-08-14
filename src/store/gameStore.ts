@@ -229,7 +229,6 @@ import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB
 import { labIdolSpotForDoc, type LabIdolSpot } from '../world/labIdolSpot';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { GAME_SPEED } from '../config/gameSpeed';
-import { clampFinishKillOnlyHealth } from '../utils/finishKillOnly';
 import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS } from '../utils/meleeExecute';
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
@@ -3352,7 +3351,6 @@ const applyMeleeFinishSkillSpread = (
       get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫=プレイヤーへ向かって飛ぶ(v0.25.2026)
       if (isBossType(e.type)) {
         // ボスは即死しない=近接フィニッシュ相当ダメージ(×5)。フィニッシュ波及なのでviaMeleeFinish=true
-        // (§5.21-追補4: finishKillOnlyボスもこの経路でならトドメを刺せる)。
         const dmg = Math.max(1, Math.round(baseMeleeDamage * BOSS_MELEE_STUN_MULT));
         get().damageEnemy(e.id, dmg, false, false, true);
         get().spawnDamageNumber(ecx, e.y, dmg, true);
@@ -5501,8 +5499,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? Math.max(1, Math.round(dmg * (0.55 + (1 - Math.sqrt(d2) / bashRange) * 0.45)))
           : dmg;
         dealtSum += eDmg;
-        // §5.21-追補4: 投擲スケボーのバッシュもフィニッシュではない=finishKillOnlyはHP1で踏みとどまる。
-        const nh = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - eDmg), false);
+        const nh = Math.max(0, enemy.health - eDmg);
         if (nh <= 0) { killedList.push({ enemy, finisher: false }); continue; }
         out.push({
           ...enemy, health: nh, lastHit: now, meleeAggro: true,
@@ -5978,8 +5975,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
         recordShieldBashDamage(dmg); // G4a(§2.9(3)・記録専用): バッシュ与ダメの様式カウンタ
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
-        // §5.21-追補4: シールドバッシュはフィニッシュではない。finishKillOnly個体はHP1で踏みとどまる。
-        const newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
+        const newHealth = Math.max(0, enemy.health - dmg);
         if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
         survivors.push({
           ...enemy,
@@ -6013,7 +6009,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6 });
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
-        // そのもの(finisher:trueの即時処刑に相当)なのでfinishKillOnlyでも clamp しない。
+        // そのもの(finisher:trueの即時処刑に相当)。
         const newHealth = Math.max(0, enemy.health - dmg);
         if (newHealth <= 0) {
           killed.push({ enemy, finisher: false });
@@ -6041,8 +6037,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
-      // §5.21-追補4: 非スタン(=非フィニッシュ)の通常近接チップダメージ。finishKillOnly個体はHP1で踏みとどまる。
-      const newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
+      const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
         killed.push({ enemy, finisher: false });
         continue;
@@ -6414,8 +6409,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
-      // §5.21-追補4: 非スタンの通常近接チップ(分身の自動攻撃)。finishKillOnly個体はHP1で踏みとどまる。
-      const nh = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
+      const nh = Math.max(0, enemy.health - dmg);
       if (nh <= 0) { killed.push({ enemy, finisher: false }); continue; }
       if (crit) critStunAt.push({ x: ecx, y: ecy });
       // CRIT-UNIFY §9.4(現行漏れの解消): 分身のクリも銃/ナイフ/刀と同じく裏ボスの完全気絶カウントに乗せる。
@@ -7048,8 +7042,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
-      // §5.21-追補4: 非フィニッシュの通常斬撃(オート斬撃 or 非スタン)。finishKillOnly個体はHP1で踏みとどまる。
-      const newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
+      const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
         killed.push({ enemy, finisher: false });
         continue;
@@ -7304,8 +7297,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
-      // §5.21-追補4: 非スタンの通常鞭打ち。finishKillOnly個体はHP1で踏みとどまる。
-      const newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, Math.max(0, enemy.health - dmg), false);
+      const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
       if (crit) critStunAt.push({ x: ecx, y: ecy });
       // §9.4(v0.25.2502・CRIT-UNIFY★未決2の解消): 鞭のクリも紫カウントへ(発生枠=近接系共通。
@@ -8094,7 +8086,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (hit.kind === 'execute') {
       // 即時処刑(プレイヤーの killed{finisher:true} 相当)。viaMeleeFinish=true=§5.21-追補4の
-      // finishKillOnly個体にもこの経路でならトドメを刺せる。数字は出さない(プレイヤーの処刑と同じ)。
+      // 数字は出さない(プレイヤーの処刑と同じ)。
       const killed = get().damageEnemy(enemyId, enemy.health + 1, false, false, true, null, 'ghost');
       if (killed) {
         // 「Kill!」の文字はプレイヤーの処刑と同じ(社長裁定v0.25.2528「文字は出して欲しい」=
@@ -9408,11 +9400,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
       const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
       appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)
-      let newHealth = Math.max(0, enemy.health - eff);
+      const newHealth = Math.max(0, enemy.health - eff);
       // nonLethalBoss: 廃止(v0.25.1571) 爆発もボスを倒せる。互換のため引数は残置
-      // PACING_PUZZLE.md §5.21-追補4: ゲート1台本/ゲート2ボス(finishKillOnly)は近接フィニッシュ
-      // 経由(viaMeleeFinish)以外ではHPを0にできない(HP1で踏みとどまる)。
-      newHealth = clampFinishKillOnlyHealth(enemy.finishKillOnly, newHealth, viaMeleeFinish);
+      // ★finishKillOnly(フィニッシュ以外では死なない)は v0.25.3329 で削除(未使用の死んだ旗・社長指示)。
       // 裏ボス: クリを規定回数当てると完全気絶(紫)。倒しきれなかったクリのみカウント。
       // 社長指示v0.25.3300 クリティカルアップ覚醒(Lv3): クリティカルで体勢(耐久値)も少し削れるようになる
       // (元々削れないクリ→'gun-crit'基準量で削る/既に削れるクリ→削り量×CRIT_UP_AWAKEN_POSTURE_MULT)。

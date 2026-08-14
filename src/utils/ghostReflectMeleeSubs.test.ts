@@ -178,9 +178,9 @@ describe('B: 気絶敵への近接フィニッシュ(台帳§3-3)', () => {
     expect(useGameStore.getState().applyGhostMeleeFinisher(GID, 'e1')).toBeNull();
   });
 
-  it('気絶した雑魚は即時処刑(finishKillOnly個体にも通る viaMeleeFinish 経路)', () => {
+  it('気絶した雑魚は即時処刑(viaMeleeFinish 経路)', () => {
     place(snap([]));
-    putEnemy('zombie', { stunUntil: useGameStore.getState().gameTime + 5000, finishKillOnly: true });
+    putEnemy('zombie', { stunUntil: useGameStore.getState().gameTime + 5000 });
     const r = useGameStore.getState().applyGhostMeleeFinisher(GID, 'e1');
     expect(r?.kind).toBe('execute');
     expect(r?.killed).toBe(true);

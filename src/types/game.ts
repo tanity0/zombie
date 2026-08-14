@@ -425,11 +425,8 @@ export interface Enemy {
   // カリング/リサイクル/イベント一掃の対象外(討伐が条件のため消えてはいけない)。
   questTarget?: boolean;
   questName?: string; // questTarget の頭上表示名(宿敵と同じ神話名プールから抽選)
-  // PACING_PUZZLE.md §5.21-追補4: ゲート1台本/ゲート2ボス専用。この個体は近接フィニッシュ
-  // (スタン即時処刑 or ボス5×スタン打撃=どちらもMELEE_FINISH演出の対象)以外ではHPを0にできない
-  // (damageEnemyのviaMeleeFinish/直近接スイングのfinisher系分岐がガード。通常の銃/接触/爆発/
-  // 非フィニッシュ近接はHP1で踏みとどまる)。
-  finishKillOnly?: boolean;
+  // ★finishKillOnly(旧§5.21-追補4「フィニッシュ以外では死なない」)は v0.25.3329 で削除
+  // (v0.25.1574のゲート1台本改定以降どこも設定しておらず死んだ旗だった。社長指示「使ってないはずなので削除」)。
   // DISTRIBUTION_REDESIGN.md①: 台本シーンのfeatured床(FEATURED_MIN_AREA_WEIGHT)で、本来その
   // エリアでは出現しない型が選ばれた時に立つ。距離リサイクルの「エリア不適合→強制回収」を免除する
   // (免除しないとシーンで出した直後に5秒で消される=ghost消失バグと同型の再発)。画面外に離れた時の

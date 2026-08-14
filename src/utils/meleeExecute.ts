@@ -2,7 +2,7 @@
 // 雑魚は無条件即死(弾切れ救済ループ=不変)。強個体(タイプ/フラグ判定。ランタイムHPの絶対値
 // では判定しない=深部の雑魚を巻き込まない)は HP < maxHealth×ELITE_EXECUTE_HP_RATIO のときのみ
 // 即死し、HP >= しきい値のときは即死せず近接ダメージ×ELITE_MELEE_STUN_MULT を与えて気絶解除
-// (ボス5×打と同じ「フィニッシュ経路」扱い=finishKillOnly個体でもclampしない・crit扱いの金数字表示)。
+// (ボス5×打と同じ「フィニッシュ経路」扱い=crit扱いの金数字表示)。
 // 呼び出し側(gameStore.ts の finisher 3箇所+ここ)の「ボスか否か」は **usesBossStunnedMelee** で
 // 判定する(v0.25.3171・案A)。旧コメントは「isBossType 分岐より後段に置くこと」だったが、
 // それだと pumpkin / lab-zombie-3 に強個体規定が永久に届かなかった。

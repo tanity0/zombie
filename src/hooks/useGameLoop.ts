@@ -10368,8 +10368,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const tcx = tgt.x + tgt.width / 2, tcy = tgt.y + tgt.height / 2;
                 if (isBossType(tgt.type)) {
                   const bdmg = Math.max(1, Math.round(meleeDmg * BOSS_MELEE_STUN_MULT));
-                  // §5.21-追補4: フィニッシュ相当ダメージなのでviaMeleeFinish=true(finishKillOnlyボスの
-                  // 通常許容と同じ。nonLethalBoss=trueで即死自体は元々しない)。
+                  // §5.21-追補4: フィニッシュ相当ダメージなのでviaMeleeFinish=true
+                  // (nonLethalBoss=trueで即死自体は元々しない)。
                   const postureFatal = wireHate === 'player' && isBossPostureBroken(tgt, gameTime);
                   const wireHitDamage = postureFatal ? meleeDmg : bdmg;
                   useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, true, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null); // ボス非致死
