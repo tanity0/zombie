@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3353',
+    items: [
+      'ゲーム内容の変更はありません(賞金首イベントの設計書§6.38を作成・品質監査中)。',
+    ],
+  },
+  {
     version: '0.25.3352',
     items: [
       'ゲーム内容の変更はありません(賞金首・バランス型の本体素材を取り込み=3種の素材が揃いました。登場はまだ)。',
