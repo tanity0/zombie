@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3406',
+    items: [
+      'ゲーム内容の変更はありません(検討メモ「スキルのデッキ化」をレール給仕で代替として取り下げ)。',
+    ],
+  },
+  {
     version: '0.25.3405',
     items: [
       'ゲーム内容の変更はありません(賞金首の実機フィードバック1件を追加記録し、修正バッチへ追加発注)。',
