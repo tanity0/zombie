@@ -1,5 +1,80 @@
 # Development Log
 
+## v0.25.3411 — 賞金首 実機FB1〜8 一括修正(Sonnet実装バッチ)【2026-08-15 01:44 JST】
+PACING_PUZZLE.md §6.38「実機フィードバック」節1〜8番の修正。設計判断は加えていない
+(v7=isBossTypeフル編入の器作り直しは対象外=別バッチ「B-Rebuild」)。
+
+- **FB4(致命・体勢ブレイク中の近接が発動しない)**: 原因は仮説と異なり、`isBossType`分岐の迂回では
+  なく `meleeExecute.resolveStunnedMeleeHit` の`'heavy'`kindが**keepStunを持たなかった**こと。
+  紫(bossFullStunUntil)成立中の最初の1発だけ致命の一撃(×3)になり、`stunUntil`が即`undefined`へ
+  落ちるため**2発目以降は紫が続いていても通常ダメージへ戻っていた**(headless再現で確認: swing1=
+  dmg42/finish:true→swing2=dmg21/finish:false)。`heavy`kindにも`keepStun`(賞金首かつ紫中のみtrue)を
+  追加し、`gameStore.ts`の2呼び出し元(プレイヤー近接/守護霊フィニッシュ)を追随。pumpkin/lab-zombie-3
+  はisBountyType外なので挙動不変(E-1の別裁定=触っていない)。
+- **FB5/FB6(紫が解除されない/スタンで予告が残る)**: `bountyTick.ts`のisFrozenは移動・進行を止めるだけで
+  bossStateを一切書き換えておらず、フルスタン中も実行中の技(windup)がbossStateに残ったままだった
+  (=予告が残る/凍結明けにstale windupが暴発 or 止まって見える)。idolTick.tsのfullStun分岐と同型で、
+  `bossFullStunUntil`成立中は毎フレーム`bossState='chase'`+`bossStateUntil=undefined`+
+  `bossNextActionAt=+中立時間`へ強制し(カウンター中断と同じ「技中断」扱い)、凍結明けはchaseから
+  即座に再開できるようにした。座標/knockback系は無改修(B1.5-2の掟のまま)。
+- **FB7(帯メテオの統一)+FB2(押しのけの赤ラインずれ)**: `drawAngelZoneCapsule`に`erase`引数を追加し、
+  `dashLineTick`と同型の`zoneCapsuleTick`(`zoneCapsuleArm`)を新設。windup完走時は
+  DASHLINE_ERASE_MS(320ms)かけて始点側から消える「完走保証」ラッチ、カウンター等で完走前に中断
+  されれば即消滅(dashLineArmと同じ`completed`判定=最後に見たremainMs<60msかで判定)。適用対象は
+  賞金首4体の全帯技(br-push/bm-combo/bm-snipe/bb-sweep/mk-naginata)+線技2本(bm-charge/mk-boom、
+  dashLineTickへ変更)。FB2の実体は「windupの最終フレームがprog<1のまま次stateへ切り替わり、流星が
+  ゴールへ描き切る前に消えていた」ことと判断(hitCapsuleの座標・半幅自体はdrawAngelZoneCapsuleと
+  完全一致=幾何ズレは無かった)。天使/城ボス側の同関数の残り約12呼び出しは、今回のFB修正の対象
+  (賞金首)ではなく未着手のまま(erase既定0=挙動不変)——横展開は別途裁定を推薦(下記参照)。
+- **FB1(武器出っ放し・社長裁定で仕様上書き)**: 「技の予兆〜攻撃の間だけ表示」(boss-gun/jibrilLantern
+  と同型)へ作り直し。バス停(標識)・馬乗り(鞭)・鋏(裁ち鋏)の3本は各技のwindup/active/recover
+  ブランチだけがdrawBountyWeaponを呼ぶ形に変更(旧: windup以外なら常時表示のブラックリスト方式を撤去)。
+  バス停の通常射撃(専用bossStateを持たない)だけは発射直後260msの残心フラッシュ(boss-gunの反動と
+  同じ考え方)。舞妓の毬は例外どおり常時オービット維持(v5)。
+  **討伐時の残存(社長実測追記)**: `bountyWakeSprites`/`bountyWeaponSprites`/`bountyWhipSmearSprites`
+  の3プールが、他ゲート2ボス専用プール(jibrilLanternSprites等)と同じmark-and-sweepクリーンアップ
+  ループに**入っていなかった**ため、討伐(=`enemies`から即除去。賞金首はcorpseEligible外)後も
+  最後のフレームの表示状態のまま残り続けていた。3プール+`bountyPetalFxKey`を退場時クリーンアップへ追加。
+- **FB3(予告の消え残り・横断)**: 技完走/カウンター中断はFB7のzoneCapsuleTick/dashLineTickが機械的に
+  解消(完走判定に基づくerase-or-即消滅)。退場/帰巣はA-3(技実行中は帰巣化を延期)により帰巣開始時点で
+  既にbossState='chase'=残留なし(既存仕様のまま・追加修正不要と確認)。
+- **横断確認(馬乗り/鋏/舞妓)**: 4体とも同じ`isFrozen`/`resolveStunnedMeleeHit`/`resetActorFxDefaults`/
+  カウンター経路を共有しているため、FB4〜FB6の修正は型ごとの個別分岐なしに4体へ一律で効く
+  (テストは代表としてbounty-rangedのwindup=br-push-windupで機械化)。FB7は帯を持つ舞妓の
+  mk-naginata/mk-boomにも同型の穴があったため同時に直した(mk-spin/mk-suiu/leapは円/固定表示で
+  メテオではないため対象外)。
+- **FB8(黄色サークル常時表示)**: 正体を特定。`bounty.stunUntil`が立っている間、`pixiScene.ts`の
+  `drawStunReticle`が黄(紫=紫スタン中のみ)の輪を描く既存の汎用「クリ気絶」演出。賞金首は
+  `usesBossCrit`(=`isBossType`かつ非isEliteType)に入っていないため、**クリが入るたびに
+  `bossCritSlowPatch`が`null`を返し、ボスの「半減のみ」ではなく雑魚と同じ`STUN_DURATION_MS`
+  (5000ms)フル気絶を毎回受けてしまう**(headless確認: クリ1発でstunUntil=+5000ms)。攻撃頻度・
+  クリ率次第でこの黄リングがほぼ途切れず再発火し続け、「常時出ている」ように見える。
+  **候補(a)(意図的な金リング=別物)ではなく候補(b)寄りだが、「消し忘れ」ではなく「賞金首が
+  isBossType/usesBossCrit外のためクリの通常気絶ペナルティを免除されていない」という
+  §6.38 v7が名指しする既知ギャップ(「クリ率絞り(×0.5+floor=critPenalty)…isBossType編入で自動化
+  される」)そのもの。このバッチでは実装せず**——crit時の被弾挙動(半減 vs フル気絶)を変えるのは
+  賞金首の戦闘バランスに触れる仕様変更であり、v7(isBossTypeフル編入)が同じ問題を構造的に解決する
+  予定のため、v7と別々に2度直すのは二度手間かつ衝突の元と判断。v7へ委ねることを推薦(必要なら
+  v7を待たず`usesBossCrit`へ賞金首を先行登録する案もあるが、影響範囲(ボスカメラ等)の精査が要るため
+  社長裁定を仰ぐべき★未決として報告)。
+- **posturechip検証(コード確認のみ)**: `?posturechip=`(`bossPosture.ts`の`POSTURE_CHIP_MULT`)は
+  `applyBossPostureDamage`内の1箇所でtype非依存に乗算されており、`usesPostureSystem`(=`isEngageableBoss`
+  経由で賞金首も含む)なら全て対象。**賞金首にも既に効いている=変更不要**。
+- 変更ファイル: `src/utils/meleeExecute.ts`(+test)/`src/utils/bountyTick.ts`(+test)/
+  `src/store/gameStore.ts`/`src/pixi/pixiScene.ts`/`package.json`/`src/data/changelog.ts`/
+  本ファイル。PACING_PUZZLE.mdは設計チャットが並行更新中のため未編集(ステータス反映は設計チャットへ委任)。
+- 検証: `npm run typecheck`・`npm run lint`ともにエラー0(lint warningは既存分のみ)。
+  `npx madge --circular`は既知の1本のみ(新規循環なし)。触れた範囲のユニットテスト
+  (`bountyTick.test.ts`/`meleeExecute.test.ts`/`bossPosture.test.ts`/`bossFullStunCoverage.test.ts`/
+  `sim.test.ts`/`slasherChain.test.ts`/`killCorpse.test.ts`/`ghostReflectMeleeSubs.test.ts`/
+  `punishWindow.test.ts`/`bossTest.test.ts`)は全green。test/buildフルは社長指示が無いため未実行
+  (規約どおり)。
+- ★未決: FB8の根本原因(賞金首がクリの通常気絶ペナルティ免除を受けていない)をこのバッチの前倒しで
+  直すか、v7(isBossTypeフル編入)まで待つか。**推薦=v7待ち**(バランスに触れる変更を2箇所に分けたくない)。
+- 引継ぎ: 天使/城ボス側drawAngelZoneCapsuleの残り約12呼び出し(jormungand/idol/miguel/jibril/thor系)は
+  今回未着手(erase既定0=無改修)。FB7と同じ「windup完走の最後のフレームが欠ける」性質を理論上共有する
+  ため、実機で同様の指摘が出たら同じzoneCapsuleTickへ寄せる横展開を検討(社長判断)。
+
 ## v0.25.3410 — 『the ONE』ストーリー全面改稿案を文書化【2026-08-15 01:29 JST】
 - 社長指示「改定案をGitHubに上げて」: `THE_ONE_STORY_REWRITE_DRAFT.md`を提案稿として追加。
 - 内容: OP〜M7、通常Ending、洋館再訪SUB、EX、資料室、UI文言、人物知識、正史監査を一つの文書へ統合。既存実装・採用済み正史は変更していない。

@@ -66,8 +66,13 @@ export const stunnedMeleeOutcome = (enemy: StunnedMeleeEnemy): StunnedMeleeOutco
 export type StunnedMeleeHit =
   /** ボス: 即死しない=近接ダメージ×BOSS_MELEE_STUN_MULT。keepStun=完全気絶(紫)中は気絶を解除しない。 */
   | { kind: 'boss'; dmg: number; keepStun: boolean }
-  /** 強個体(HP50%以上): 即死せず近接ダメージ×ELITE_MELEE_STUN_MULT+気絶解除。 */
-  | { kind: 'heavy'; dmg: number }
+  /**
+   * 強個体(HP50%以上)/賞金首: 即死せず近接ダメージ×ELITE_MELEE_STUN_MULT。
+   * keepStun=賞金首が体勢ブレイク(紫・bossFullStunUntil)中のときだけtrue(§6.38実機FB4)。
+   * 'boss'のkeepStunと同じ意味=紫が続く間は気絶を解除しない=何度でもこの致命の一撃を受け続けられる。
+   * パンプキン/lab-zombie-3(bossFullStunUntilを持たない)は常にfalse=挙動不変(1発で気絶解除・据え置き)。
+   */
+  | { kind: 'heavy'; dmg: number; keepStun: boolean }
   /** 雑魚/HP50%未満の強個体: 即時処刑(即死)。 */
   | { kind: 'execute' };
 
@@ -80,13 +85,21 @@ export const resolveStunnedMeleeHit = (
 ): StunnedMeleeHit | null => {
   const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
   if (!stunned) return null;
+  // 「完全気絶(紫・bossFullStunUntil)中か」はboss/heavyの両kindで共通に使う(下)。
+  const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
   if (usesBossStunnedMelee(enemy.type)) {
     // 通常の気絶は1発で解除するが、裏ボスの「完全気絶(紫)」中は解除せずタイマー切れまで5×し放題。
-    const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
     return { kind: 'boss', dmg: baseDamage * bossStunMult, keepStun: bossFull };
   }
   if (stunnedMeleeOutcome(enemy) === 'heavy') {
-    return { kind: 'heavy', dmg: baseDamage * ELITE_MELEE_STUN_MULT };
+    // §6.38実機FB4(致命の一撃が発動しない): 賞金首は紫(bossFullStunUntil)中もkeepStun=trueにして
+    // 'boss'kindと同じ「タイマー切れまで何度でも致命の一撃」を受けられるようにする(受け入れ条件
+    // 「keepStun同等の既存作法」)。旧実装は常にkeepStun相当=falseで、紫中の最初の1発でstunUntilが
+    // undefinedへ落ち、残り5秒弱は通常ダメージへ戻っていた(実機で「発動しない」と見える主因)。
+    // ★pumpkin/lab-zombie-3もPOSTURE_ELITE_TYPESでbossFullStunUntilを持つ(紫になる)ため、
+    // bossFullだけで判定すると2体の挙動まで変わってしまう(1発で気絶解除=既存仕様に触れない)。
+    // isBountyType限定で絞り、賞金首以外は従来どおりkeepStun=false(この2体はB3の別裁定=触らない)。
+    return { kind: 'heavy', dmg: baseDamage * ELITE_MELEE_STUN_MULT, keepStun: isBountyType(enemy.type) && bossFull };
   }
   return { kind: 'execute' };
 };

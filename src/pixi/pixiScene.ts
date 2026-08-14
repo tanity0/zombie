@@ -141,7 +141,7 @@ import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOA
 import { getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType } from '../utils/enemyUtils';
 import {
   BOUNTY_WAKE_FX_MS, BOUNTY_DEPART_FADE_MS,
-  BR_PUSH_WINDUP_MS, BR_PUSH_HALFWIDTH,
+  BR_PUSH_WINDUP_MS, BR_PUSH_HALFWIDTH, BR_SHOT_INTERVAL_MS, BR_SHOT_RECOIL_VIS_MS,
   BM_COMBO_WINDUP_MS, BM_COMBO_HALFWIDTH, BM_SNIPE_WINDUP_MS, BM_SNIPE_ACTIVE_MS, BM_SNIPE_HALFWIDTH,
   // §6.38 B2b: 鋏(bounty-balance)/舞妓(bounty-maiko)の技の寸法・タイミング。
   BB_SWEEP_HALFWIDTH, BB_SWEEP_WINDUP_MS, BB_LEAP_WINDUP_MS, BB_LEAP_AIR_MS, BB_LEAP_RADIUS,
@@ -11685,6 +11685,19 @@ export class PixiScene {
         if (sweepStreakSp) { sweepStreakSp.destroy(); this.surielSweepStreakFx.delete(id); }
         const nameLabel = this.namedFoeLabels.get(id);
         if (nameLabel) { nameLabel.destroy(); this.namedFoeLabels.delete(id); }
+        // §6.38実機FB1追記(社長実測2026-08-15「討伐時に武器スプライトが消えず残った」・v0.25.3408):
+        // 賞金首はcorpseEligible外=死亡と同時に`enemies`から即除去される(triggerDramaticDeathは
+        // 除去前のスナップショットで動く別系統のFXなので、この個体視点のスプライトは巻き込まれない)。
+        // 他のゲート2ボス専用スプライト(jibrilLanternSprites等・上のブロック)と同じく、退場・討伐の
+        // 両方でここ(mark-and-sweep)を通るのに、賞金首の3プールだけ元々このループに入っていなかった
+        // =討伐後も最後のフレームの表示状態(visible/位置)のまま残り続けていた欠落。
+        const bountyWakeSp = this.bountyWakeSprites.get(id);
+        if (bountyWakeSp) { bountyWakeSp.destroy(); this.bountyWakeSprites.delete(id); }
+        const bountyWeaponSp = this.bountyWeaponSprites.get(id);
+        if (bountyWeaponSp) { bountyWeaponSp.destroy(); this.bountyWeaponSprites.delete(id); }
+        const bountyWhipSp = this.bountyWhipSmearSprites.get(id);
+        if (bountyWhipSp) { bountyWhipSp.destroy(); this.bountyWhipSmearSprites.delete(id); }
+        this.bountyPetalFxKey.delete(id);
       }
     }
   }
@@ -14313,35 +14326,65 @@ export class PixiScene {
       const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
       const bs2 = e.bossState;
       const aimAng = Math.atan2(bty - bfy, btx - bfx);
-      if (e.type === 'bounty-ranged' && !e.dormant) {
-        // 標識(構え=通常技全般で保持。武器素材台帳「全技の得物: 通常射撃・レーザーの構え=標識を構える/
-        // 押しのけ=標識の薙ぎ」)。押しのけの瞬間だけ薙ぎ角度、それ以外はプレイヤー方向を向く。
-        const holdAng = (bs2 === 'br-push-windup' || bs2 === 'br-push') ? aimAng
-          : Math.atan2((e.aiTargetY ?? cy + 1) - cy, (e.aiTargetX ?? cx + 1) - cx);
-        this.drawBountyWeapon(e.id, 'bounty-ranged-sign', cx, cy - e.height * 0.15, holdAng, 130, 0.95);
-      } else if (e.type === 'bounty-melee' && !e.dormant && bs2 !== 'bm-combo1-windup' && bs2 !== 'bm-combo2-windup'
-        && bs2 !== 'bm-combo3-windup' && bs2 !== 'bm-snipe-windup' && bs2 !== 'bm-snipe' && bs2 !== 'bm-charge-windup') {
-        // 鞭(常時保持。個別技の分岐が既に描いている間は二重描画しない=下のelse-ifで上書きしない)。
-        const vAng = (e.vx ?? 0) !== 0 || (e.vy ?? 0) !== 0 ? Math.atan2(e.vy ?? 0, e.vx ?? 1) : 0;
-        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, vAng, 150, 0.9);
-      } else if (e.type === 'bounty-balance' && !e.dormant && bs2 !== 'bb-sweep-windup' && bs2 !== 'leap-windup'
-        && bs2 !== 'leap-air' && bs2 !== 'leap-recover') {
-        // 裁ち鋏(常時保持)。
-        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy, 0, 150, 0.85);
+      // §6.38実機FB1(社長裁定2026-08-15「小ボスの武器の扱いは城ボス/ゲートボスと同じ」・v0.25.3408):
+      // **武器スプライトは技の予兆〜攻撃(硬直まで)の間だけ表示**する(boss-gun/jibrilLantern等と同じ
+      // 「技スコープ表示」)。B2bの「常時携行」(bs2 !== windup系なら出す、というブラックリスト方式)は
+      // 誤り=撤去。ここから下の各分岐が持つ場面だけが drawBountyWeapon を呼ぶ(=呼ばれなければ
+      // resetActorFxDefaults の既定OFFのまま消えている)。例外は舞妓の毬(常時オービット・別枝)。
+      // バス停の通常射撃(専用bossStateを持たない=chaseのまま撃つ)だけは、発射直後の短い残心
+      // (BR_SHOT_RECOIL_VIS_MS)だけ標識を構えた絵にする=boss-gunの反動フェードと同じ考え方。
+      if (e.type === 'bounty-ranged' && !e.dormant && (bs2 === undefined || bs2 === 'chase')) {
+        const sinceShot = BR_SHOT_INTERVAL_MS - Math.max(0, Math.min(BR_SHOT_INTERVAL_MS, (e.bossNextActionAt ?? gameTime) - gameTime));
+        if (sinceShot >= 0 && sinceShot <= BR_SHOT_RECOIL_VIS_MS) {
+          const holdAng = Math.atan2((e.aiTargetY ?? cy + 1) - cy, (e.aiTargetX ?? cx + 1) - cx);
+          this.drawBountyWeapon(e.id, 'bounty-ranged-sign', cx, cy - e.height * 0.15, holdAng, 130, 0.95 * (1 - sinceShot / BR_SHOT_RECOIL_VIS_MS));
+        }
+      }
+      // §6.38実機FB7(社長指示2026-08-15・v0.25.34xx): 帯メテオ(中心流星)を赤ラインと同じ
+      // 「完走→始点から消える」ラッチ(zoneCapsuleTick)に統一する。dashLineTickと同じ理由で
+      // **if分岐の外=毎フレーム無条件で呼ぶ**(windupOn=falseへ落ちた1フレームをlatchに渡し損ねると
+      // 消えアニメが起動しない=dashLineArmと同型の掟)。bm-charge-windupの流星ライン(drawAngelDashLine
+      // 直呼び)も同時にdashLineTickへ寄せる(同じ穴=カウンター/完走を問わず最後のフレームで
+      // prog<1のまま次stateへ切り替わり得た)。
+      {
+        const pushWindupOn = bs2 === 'br-push-windup';
+        const pushRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+        const pushProg = Math.max(0, Math.min(1, 1 - pushRemain / BR_PUSH_WINDUP_MS));
+        this.zoneCapsuleTick(view, o, `${e.id}:br-push`, pushWindupOn, pushRemain, bfx, bfy, btx, bty, BR_PUSH_HALFWIDTH, now, pushProg);
+        const comboWindupOn = bs2 === 'bm-combo1-windup' || bs2 === 'bm-combo2-windup' || bs2 === 'bm-combo3-windup';
+        const comboStep = bs2 === 'bm-combo2-windup' ? 1 : bs2 === 'bm-combo3-windup' ? 2 : 0;
+        const comboRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+        const comboProg = Math.max(0, Math.min(1, 1 - comboRemain / BM_COMBO_WINDUP_MS[comboStep]));
+        this.zoneCapsuleTick(view, o, `${e.id}:bm-combo`, comboWindupOn, comboRemain, bfx, bfy, btx, bty, BM_COMBO_HALFWIDTH, now, comboProg, comboStep);
+        const snipeWindupOn = bs2 === 'bm-snipe-windup';
+        const snipeRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+        const snipeProg = Math.max(0, Math.min(1, 1 - snipeRemain / BM_SNIPE_WINDUP_MS));
+        this.zoneCapsuleTick(view, o, `${e.id}:bm-snipe`, snipeWindupOn, snipeRemain, bfx, bfy, btx, bty, BM_SNIPE_HALFWIDTH, now, snipeProg);
+        const sweepWindupOn = bs2 === 'bb-sweep-windup';
+        const sweepRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+        const sweepProg = Math.max(0, Math.min(1, 1 - sweepRemain / BB_SWEEP_WINDUP_MS));
+        this.zoneCapsuleTick(view, o, `${e.id}:bb-sweep`, sweepWindupOn, sweepRemain, bfx, bfy, btx, bty, BB_SWEEP_HALFWIDTH, now, sweepProg);
+        const chargeWindupOn = bs2 === 'bm-charge-windup';
+        const chargeRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+        const chargeProg = Math.max(0, Math.min(1, 1 - chargeRemain / WEREWOLF_WINDUP_MS));
+        this.dashLineTick(o, `${e.id}:bm-charge`, chargeWindupOn, chargeRemain, bfx, bfy, btx, bty, now, chargeProg);
       }
       if (bs2 === 'br-push-windup') {
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BR_PUSH_WINDUP_MS));
-        this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BR_PUSH_HALFWIDTH, prog, now);
+        this.drawBountyWeapon(e.id, 'bounty-ranged-sign', cx, cy - e.height * 0.15, aimAng, 130, 0.95);
+      } else if (bs2 === 'br-push' || bs2 === 'br-push-recover') {
+        this.drawBountyWeapon(e.id, 'bounty-ranged-sign', cx, cy - e.height * 0.15, aimAng, 130, 0.9);
+      } else if (bs2 === 'laser-windup' || bs2 === 'laser-fire' || bs2 === 'laser-recover') {
+        // ビーム本体は下のusesMimirLaserブロック(このifチェーンの外)が描く。ここは武器(標識=構え)のみ。
+        const holdAng = Math.atan2((e.aiTargetY ?? cy + 1) - cy, (e.aiTargetX ?? cx + 1) - cx);
+        this.drawBountyWeapon(e.id, 'bounty-ranged-sign', cx, cy - e.height * 0.15, holdAng, 130, 0.95);
       } else if (bs2 === 'bm-combo1-windup' || bs2 === 'bm-combo2-windup' || bs2 === 'bm-combo3-windup') {
         const step = bs2 === 'bm-combo1-windup' ? 0 : bs2 === 'bm-combo2-windup' ? 1 : 2;
-        const dur = BM_COMBO_WINDUP_MS[step];
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / dur));
-        this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BM_COMBO_HALFWIDTH, prog, now, step);
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_COMBO_WINDUP_MS[step]));
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.95);
         this.drawBountyWhipSmear(e.id, step as 0 | 1 | 2, bfx, bfy, btx, bty, 0.5 + 0.5 * prog);
+      } else if (bs2 === 'bm-combo1-recover' || bs2 === 'bm-combo2-recover' || bs2 === 'bm-combo3-recover') {
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9);
       } else if (bs2 === 'bm-snipe-windup') {
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BM_SNIPE_WINDUP_MS));
-        this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BM_SNIPE_HALFWIDTH, prog, now);
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9);
       } else if (bs2 === 'bm-snipe') {
         // 実行中: 判定と同じ線を実線で維持(予告と同じ2点・半幅)。
@@ -14349,17 +14392,20 @@ export class PixiScene {
         o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: BM_SNIPE_HALFWIDTH * 2, color: 0xff2a2a, alpha: 0.35 * life, cap: 'round' });
         o.moveTo(bfx, bfy).lineTo(btx, bty).stroke({ width: 4, color: 0xffe0e0, alpha: 0.9 * life, cap: 'round' });
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9);
+      } else if (bs2 === 'bm-snipe-recover') {
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9);
       } else if (bs2 === 'bm-charge-windup') {
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / WEREWOLF_WINDUP_MS));
-        this.drawAngelDashLine(o, bfx, bfy, btx, bty, now, prog);
         // 引きずり構え(武器素材台帳「突進=鞭を引きずる構え→振り抜き」): 溜めで後方へ引く。
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx - Math.cos(aimAng) * 30 * prog, cy - Math.sin(aimAng) * 30 * prog, aimAng + Math.PI, 170, 0.9);
       } else if (bs2 === 'bm-charge') {
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.95);
+      } else if (bs2 === 'bm-charge-recover') {
+        this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, Math.atan2((e.vy ?? 0), (e.vx ?? 1) || 1), 170, 0.9);
       } else if (bs2 === 'bb-sweep-windup') {
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / BB_SWEEP_WINDUP_MS));
-        this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, BB_SWEEP_HALFWIDTH, prog, now);
         this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy, aimAng, 160, 0.95);
+      } else if (bs2 === 'bb-sweep-recover') {
+        this.drawBountyWeapon(e.id, 'bounty-balance-scissors', cx, cy, aimAng, 160, 0.9);
       } else if (bs2 === 'leap-windup' || bs2 === 'leap-air') {
         const untilW = e.bossStateUntil ?? gameTime;
         const prog = bs2 === 'leap-windup'
@@ -17464,36 +17510,47 @@ export class PixiScene {
   // ウリの内径(§6.28-17)は「くり抜き」ではなく、呼び出し側(angelBossTick.ts)が始点(fx,fy)そのものを
   // 溜め開始時に内径ぶん前へ出す方式に統一した(社長裁定・差し戻し対応)ため、ここは常に単純な
   // 「始点→終点の通常カプセル」を描くだけでよい=図形と判定が完全に同一形状になる。
+  // §6.38実機FB7(社長指示2026-08-15「帯の中心流星を赤ラインと同一仕様に統一」・v0.25.34xx):
+  // erase(既定0)を追加。0の間は従来どおり(薄い帯面・縁を毎フレーム描く=windup中の絵はノータッチ)。
+  // erase>0は「溜め完走後の消えアニメ」専用モード(zoneCapsuleTickだけが渡す)——帯面・縁は
+  // **描かない**(windup限定の絵という位置づけは変えない)。中心の流星だけをdrawAngelDashLineと
+  // 同じ[erase,1]区間へ描き、始点側から消えていく。呼び出し側(drawEnemy)は直接この関数を呼ばず、
+  // 必ず下のzoneCapsuleTick経由で使うこと(素の呼び出しのまま残すと、旧不具合=「windupが終わった
+  // 最後のフレームがprog<1のまま描画されずに消える」がまた起きる)。
   private drawAngelZoneCapsule(
     view: ActorView, o: Graphics, fx: number, fy: number, tx: number, ty: number, halfWidth: number,
-    prog: number, now: number, idx = 0,
+    prog: number, now: number, idx = 0, erase = 0,
   ) {
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
     const ddx = tx - fx, ddy = ty - fy;
     const ddl = Math.hypot(ddx, ddy) || 1;
     const nx = -ddy / ddl, ny = ddx / ddl;
     const ux = ddx / ddl, uy = ddy / ddl;
-    const zoneFill = (0.12 + 0.22 * prog) + 0.08 * pulse;
-    const pts = [
-      fx - ux * halfWidth + nx * halfWidth, fy - uy * halfWidth + ny * halfWidth,
-      tx + ux * halfWidth + nx * halfWidth, ty + uy * halfWidth + ny * halfWidth,
-      tx + ux * halfWidth - nx * halfWidth, ty + uy * halfWidth - ny * halfWidth,
-      fx - ux * halfWidth - nx * halfWidth, fy - uy * halfWidth - ny * halfWidth,
-    ];
-    const strokeA = (0.32 + 0.4 * prog) + 0.15 * pulse;
-    o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT });
-    // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436・城ボスと同じ意匠を残りのボスへ横展開)。
-    // fill/判定/タイミングは無改変・alpha計算式もstroke分岐と同一(strokeA)のまま渡すだけ。
-    if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, strokeA, idx);
-    else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
-    // v0.25.3345(社長指摘「帯のラインが流星になってない」): 中心ラインを流星化。
-    // 帯の文法(合意済み): 薄い全域(fill+縁)は最初から表示=危険域の読みは不変。**中心の明るい線だけ**が
-    // 進行方向(fx→tx)へ溜め同期で流れ、prog=1(技の出始め)で描き切る。
-    const zp = Math.max(0, Math.min(1, prog));
+    const er = Math.max(0, Math.min(1, erase));
+    if (er <= 0) {
+      const zoneFill = (0.12 + 0.22 * prog) + 0.08 * pulse;
+      const pts = [
+        fx - ux * halfWidth + nx * halfWidth, fy - uy * halfWidth + ny * halfWidth,
+        tx + ux * halfWidth + nx * halfWidth, ty + uy * halfWidth + ny * halfWidth,
+        tx + ux * halfWidth - nx * halfWidth, ty + uy * halfWidth - ny * halfWidth,
+        fx - ux * halfWidth - nx * halfWidth, fy - uy * halfWidth - ny * halfWidth,
+      ];
+      const strokeA = (0.32 + 0.4 * prog) + 0.15 * pulse;
+      o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT });
+      // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436・城ボスと同じ意匠を残りのボスへ横展開)。
+      // fill/判定/タイミングは無改変・alpha計算式もstroke分岐と同一(strokeA)のまま渡すだけ。
+      if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, strokeA, idx);
+      else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
+    }
+    // v0.25.3345(社長指摘「帯のラインが流星になってない」)+§6.38実機FB7(v0.25.34xx・帯版ラッチ):
+    // 中心ラインの流星化。進行(fx→tx)へ溜め同期で流れ、prog=1(技の出始め)で描き切る。
+    // erase>0の間はdrawAngelDashLineと同じ「[erase,1]区間だけ描く=始点側から消えていく」。
+    const zp = er > 0 ? 1 : Math.max(0, Math.min(1, prog));
+    if (zp - er <= 0.001) return; // 消し切った(or まだ何も無い)
     const Z_TAIL = 0.28;
-    const zDrawn = Math.max(0, zp - Z_TAIL);
-    if (zDrawn > 0) {
-      o.moveTo(fx, fy).lineTo(fx + ddx * zDrawn, fy + ddy * zDrawn)
+    const zDrawn = Math.max(er, zp - Z_TAIL);
+    if (zDrawn > er) {
+      o.moveTo(fx + ddx * er, fy + ddy * er).lineTo(fx + ddx * zDrawn, fy + ddy * zDrawn)
         .stroke({ width: 1 + 2 * zp, color: 0xffe0e0, alpha: 0.3 + 0.3 * zp, cap: 'round' });
     }
     const Z_SEGS = 8;
@@ -17505,7 +17562,34 @@ export class PixiScene {
       o.moveTo(fx + ddx * s0, fy + ddy * s0).lineTo(fx + ddx * s1, fy + ddy * s1)
         .stroke({ width: 1 + 3 * k, color: 0xffe0e0, alpha: 0.25 + 0.55 * k * k, cap: 'round' });
     }
-    o.circle(fx + ddx * zp, fy + ddy * zp, 2.5 + 1.5 * pulse).fill({ color: 0xffffff, alpha: 0.85 });
+    o.circle(fx + ddx * zp, fy + ddy * zp, 2.5 + 1.5 * pulse).fill({ color: 0xffffff, alpha: 0.85 * (1 - er) });
+  }
+
+  // §6.38実機FB7(社長指示2026-08-15): drawAngelZoneCapsuleのdashLineTick相当ラッチ。
+  // ①windupOn中は毎フレーム焼き直し(fx/fy/tx/ty/halfWidth/idx+残りms)、erase=0でそのまま描く
+  // (=従来どおり。溜め進行と同期して描き切る)。
+  // ②windupOnが明けた瞬間: 「完走したか」(最後に見たremainMsがほぼ0=技が発火した)を見て、
+  //   完走していればDASHLINE_ERASE_MS掛けて始点側から消える erase latch を焼く(prog=1固定で描く=
+  //   「技の出始めと同時に描き切り済み」を保証)。**カウンター中断などで完走していなければ latch を
+  //   焼かない=即消滅**(「赤いのに当たらない」を残さない・FB7④)。
+  // dashLineArmと同じMap形状(配列末尾にremainMsを積む)だが、キーの名前空間を分けて衝突を避ける
+  // (drawAngelDashLine系とdrawAngelZoneCapsule系は別の技に使われるため共用しない)。
+  private zoneCapsuleArm = new Map<string, number[]>();
+  private zoneCapsuleTick(
+    view: ActorView, o: Graphics, key: string, windupOn: boolean, remainMs: number,
+    fx: number, fy: number, tx: number, ty: number, halfWidth: number, now: number, prog: number, idx = 0,
+  ): void {
+    if (windupOn) {
+      this.zoneCapsuleArm.set(key, [fx, fy, tx, ty, halfWidth, idx]);
+      this.zoneCapsuleArm.get(key)!.push(remainMs);
+      this.drawAngelZoneCapsule(view, o, fx, fy, tx, ty, halfWidth, prog, now, idx, 0);
+      return;
+    }
+    const armed = this.zoneCapsuleArm.get(key);
+    const completed = armed !== undefined && (armed[6] ?? 1e9) < 60;
+    const el = this.latchFx(key, completed, PixiScene.DASHLINE_ERASE_MS, now, () => armed!);
+    if (armed) this.zoneCapsuleArm.delete(key);
+    if (el) this.drawAngelZoneCapsule(view, o, el.d[0], el.d[1], el.d[2], el.d[3], el.d[4], 1, now, el.d[5], el.t);
   }
 
   // §6.28共通(T1): 赤ライン+終点リング(ジャイアント突進と同じ意匠)。ミゲル踏み込み/ウリ踏み込み突きで再利用。
@@ -21874,9 +21958,23 @@ export class PixiScene {
     const orbitAng = (now / 500) % (Math.PI * 2);
     const idleX = cx + Math.cos(orbitAng) * orbitR, idleY = cy + Math.sin(orbitAng) * orbitR * 0.55;
 
+    // §6.38実機FB2/FB7横断確認(社長指示「馬乗り/鋏/舞妓にも同型の穴が無いか確認」・v0.25.34xx):
+    // 舞妓の毬の薙ぎ(変則ディレイ・naginata)/手毬打ち(boom)もbountyTick.tsの他3体と同じ「帯/線の
+    // メテオが完走前に消える」穴を持っていた。毎フレーム無条件で呼ぶ(dashLineArm/zoneCapsuleArmと
+    // 同じ理由=windupOnが明けた1フレームを取り逃すとlatchのoffエッジが起動しない)。
+    {
+      const naginataWindupOn = bs === 'mk-naginata-windup' || bs === 'mk-naginata1-windup' || bs === 'mk-naginata2-windup';
+      const naginataRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+      const naginataProg = naginataWindupOn ? telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil) : 0;
+      this.zoneCapsuleTick(view, o, `${e.id}:mk-naginata`, naginataWindupOn, naginataRemain, bfx, bfy, btx, bty, MK_NAGINATA_HALFWIDTH, now, naginataProg);
+      const boomWindupOn = bs === 'mk-boom-windup';
+      const boomRemain = (e.bossStateUntil ?? gameTime) - gameTime;
+      const boomProg = Math.max(0, Math.min(1, 1 - boomRemain / MK_BOOM_WINDUP_MS));
+      this.dashLineTick(o, `${e.id}:mk-boom`, boomWindupOn, boomRemain, bfx, bfy, btx, bty, now, boomProg);
+    }
+
     if (bs === 'mk-naginata-windup' || bs === 'mk-naginata1-windup' || bs === 'mk-naginata2-windup') {
       const prog = telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil);
-      this.drawAngelZoneCapsule(view, o, bfx, bfy, btx, bty, MK_NAGINATA_HALFWIDTH, prog, now);
       const tk = Math.min(1, prog * 1.15);
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bfx + (btx - bfx) * tk, bfy + (bty - bfy) * tk, now / 100, 58, 0.95);
       return;
@@ -21927,7 +22025,6 @@ export class PixiScene {
     }
     if (bs === 'mk-boom-windup') {
       const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MK_BOOM_WINDUP_MS));
-      this.drawAngelDashLine(o, bfx, bfy, btx, bty, now, prog);
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bfx + (btx - bfx) * 0.12 * prog, bfy + (bty - bfy) * 0.12 * prog, now / 60, 58, 0.95);
       return;
     }

@@ -326,6 +326,53 @@ describe('runBountyTick — B2a 技の状態機械', () => {
       expect(after!.health).toBeLessThan(hpBefore); // カウンター反撃ダメージが入っている
     });
 
+    // §6.38実機FB5/FB6(致命): 体勢ブレイク(紫・bossFullStunUntil)が実行中の技を「技中断」扱いで
+    // 即キャンセルすること(v3128のカウンター中断と同型)。裁定: フルスタン成立で即bossState='chase'
+    // へ戻し、予告(windup系bossState)を消す。旧実装はbossStateを一切書き換えず、紫の間ずっと
+    // 予告が残り続け(FB6)、凍結明けにstale windupがそのまま暴発する/止まって見える(FB5)。
+    it('★FB6: フルスタン(紫)成立でwindup中の技が即chaseへ中断される(予告が消える)', () => {
+      const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 }); // BR_PUSH_RANGE未満=windup開始
+      step(16);
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('br-push-windup');
+      const gtNow = useGameStore.getState().gameTime;
+      useGameStore.setState(s => ({
+        enemies: s.enemies.map(e => e.id === id
+          ? { ...e, bossFullStunUntil: gtNow + 5000, stunUntil: gtNow + 5000 } : e),
+      }));
+      step(16);
+      const during = useGameStore.getState().enemies.find(e => e.id === id)!;
+      expect(during.bossState).toBe('chase'); // windupが技中断され即chaseへ(=予告も消える)
+      expect(during.bossStateUntil).toBeUndefined();
+      // 紫が続く間、毎フレームchaseのまま(新しい技は出ない=座標も進行も止まる=B1.5-2と両立)。
+      step(16);
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('chase');
+    });
+
+    it('★FB5: 紫が明けるとchaseから正常に再開し、また技を出せる(stale windupの暴発/停止なし)', () => {
+      const { id, step } = setupType('bounty-ranged', { x: 60, y: 0 });
+      step(16);
+      const gtNow = useGameStore.getState().gameTime;
+      useGameStore.setState(s => ({
+        enemies: s.enemies.map(e => e.id === id
+          ? { ...e, bossFullStunUntil: gtNow + 300, stunUntil: gtNow + 300 } : e),
+      }));
+      step(16); // 中断確認
+      expect(useGameStore.getState().enemies.find(e => e.id === id)?.bossState).toBe('chase');
+      // 紫の時間(300ms)を刻み切る。
+      step(300);
+      // 紫解除は他系統(tickBossPosture)の責務なのでここで模す(gameFullStunUntilを手動で外す)。
+      useGameStore.setState(s => ({
+        enemies: s.enemies.map(e => e.id === id ? { ...e, bossFullStunUntil: undefined, stunUntil: undefined } : e),
+      }));
+      // 解除後、複数tick進めれば再びwindupを発火できる(=止まったままにならない)。
+      let sawWindupAgain = false;
+      for (let i = 0; i < 10; i++) {
+        step(50);
+        if (useGameStore.getState().enemies.find(e => e.id === id)?.bossState === 'br-push-windup') sawWindupAgain = true;
+      }
+      expect(sawWindupAgain).toBe(true);
+    });
+
     it('取り巻き召喚: 交戦開始1回だけ2体・再召喚なし', () => {
       const { step } = setupType('bounty-ranged', { x: 700, y: 0 }); // kite圏内=押しのけ/レーザーどちらも発火しない距離
       const before = useGameStore.getState().enemies.length;

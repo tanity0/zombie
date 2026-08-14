@@ -87,7 +87,7 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
     for (const type of ['pumpkin', 'lab-zombie-3'] as EnemyType[]) {
       // HP50%以上 → 即死せず ×3
       expect(resolveStunnedMeleeHit(stunned({ type, health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT), type)
-        .toEqual({ kind: 'heavy', dmg: 30 });
+        .toEqual({ kind: 'heavy', dmg: 30, keepStun: false });
       // HP50%未満 → 即時処刑
       expect(resolveStunnedMeleeHit(stunned({ type, health: 49, maxHealth: 100 }), 10, 500, BOSS_MULT), type)
         .toEqual({ kind: 'execute' });
@@ -109,18 +109,43 @@ describe('resolveStunnedMeleeHit(気絶敵フィニッシュの裁定・プレ�
   it('★賞金首4型: 全HP帯でexecuteを返さない(HP1でもheavy=強個体として裁定される)', () => {
     for (const type of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
       const rHigh = resolveStunnedMeleeHit(stunned({ type, health: 60, maxHealth: 100 }), 10, 500, BOSS_MULT);
-      expect(rHigh, type).toEqual({ kind: 'heavy', dmg: 30 });
+      expect(rHigh, type).toEqual({ kind: 'heavy', dmg: 30, keepStun: false });
       expect(rHigh?.kind, type).not.toBe('execute');
       const rLow = resolveStunnedMeleeHit(stunned({ type, health: 1, maxHealth: 100 }), 10, 500, BOSS_MULT);
-      expect(rLow, type).toEqual({ kind: 'heavy', dmg: 30 });
+      expect(rLow, type).toEqual({ kind: 'heavy', dmg: 30, keepStun: false });
       expect(rLow?.kind, type).not.toBe('execute');
+    }
+  });
+
+  // §6.38実機FB4(致命の一撃が発動しない): 賞金首は紫(bossFullStunUntil)中はkeepStun=trueになり、
+  // 'boss'kindと同じく「タイマー切れまで何度でも致命の一撃」を受けられる(体勢ブレイク中の近接=heavy
+  // が毎回出る・executeは返らない、が受け入れ条件)。紫が切れていれば従来どおりkeepStun=false。
+  it('★賞金首: 紫(bossFullStunUntil)中はkeepStun=true(体勢ブレイク中は何度でもheavy)', () => {
+    for (const type of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
+      const purple = resolveStunnedMeleeHit(
+        stunned({ type, health: 9999, maxHealth: 9999, bossFullStunUntil: 900 }), 10, 500, BOSS_MULT);
+      expect(purple, type).toEqual({ kind: 'heavy', dmg: 30, keepStun: true });
+      // 紫が切れていれば1発で気絶解除(従来どおり)。
+      const expired = resolveStunnedMeleeHit(
+        stunned({ type, health: 9999, maxHealth: 9999, bossFullStunUntil: 400 }), 10, 500, BOSS_MULT);
+      expect(expired, type).toEqual({ kind: 'heavy', dmg: 30, keepStun: false });
+    }
+  });
+
+  // ★pumpkin/lab-zombie-3もbossFullStunUntil(紫)を持ちうるが(POSTURE_ELITE_TYPES)、この2体は
+  // isBountyTypeではないのでkeepStunは常にfalse=挙動不変(E-1の別裁定=このバッチでは触らない)。
+  it('pumpkin/lab-zombie-3は紫中でもkeepStun=false(賞金首限定の挙動・波及なし)', () => {
+    for (const type of ['pumpkin', 'lab-zombie-3'] as EnemyType[]) {
+      const r = resolveStunnedMeleeHit(
+        stunned({ type, health: 60, maxHealth: 100, bossFullStunUntil: 900 }), 10, 500, BOSS_MULT);
+      expect(r, type).toEqual({ kind: 'heavy', dmg: 30, keepStun: false });
     }
   });
 
   // 'heavy' には**非ボス型の強個体フラグ**(isNamed/questTarget)からも到達する。
   it('強個体(HP50%以上)は ×ELITE_MELEE_STUN_MULT / HP50%未満は即時処刑', () => {
     expect(resolveStunnedMeleeHit(stunned({ type: 'zombie', isNamed: true, health: 50, maxHealth: 100 }), 10, 500, BOSS_MULT))
-      .toEqual({ kind: 'heavy', dmg: 30 });
+      .toEqual({ kind: 'heavy', dmg: 30, keepStun: false });
     expect(resolveStunnedMeleeHit(stunned({ type: 'zombie', isNamed: true, health: 49, maxHealth: 100 }), 10, 500, BOSS_MULT))
       .toEqual({ kind: 'execute' });
   });

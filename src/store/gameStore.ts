@@ -6069,7 +6069,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           survivors.push({
             ...enemy,
             health: newHealth,
-            stunUntil: stunnedHit.kind === 'boss' && stunnedHit.keepStun ? enemy.stunUntil : undefined,
+            // §6.38実機FB4: keepStunは'boss'(裏ボス5x)と'heavy'(強個体/賞金首3x)の両kindが持つ
+            // (賞金首は紫=bossFullStunUntil中だけtrue。meleeExecute.resolveStunnedMeleeHit参照)。
+            stunUntil: (stunnedHit.kind === 'boss' || stunnedHit.kind === 'heavy') && stunnedHit.keepStun ? enemy.stunUntil : undefined,
             lastHit: now,
             liftUntil: now + MELEE_STUN_LIFT_MS,
             ...(fatal?.patch ?? {}),
@@ -8169,7 +8171,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         enemies: s.enemies.map(e => e.id === enemyId
           ? {
             ...e,
-            stunUntil: hit.kind === 'boss' && hit.keepStun ? e.stunUntil : undefined,
+            // §6.38実機FB4: 守護霊の気絶敵フィニッシュもプレイヤーと同じ裁定(keepStunは'boss'/'heavy'共通)。
+            stunUntil: (hit.kind === 'boss' || hit.kind === 'heavy') && hit.keepStun ? e.stunUntil : undefined,
             liftUntil: now + MELEE_STUN_LIFT_MS,
           }
           : e),

@@ -244,7 +244,11 @@ const BR_KITE_MIN = 340;  // これより近いと後退(引き撃ちの帯を�
 const BR_KITE_MAX = 560;  // これより遠いと詰める(リーシュ圏内を保つ・遠すぎて発見されない事故の防止)
 const BR_PUSH_RANGE = 110; // 近接されたら押しのけの発動距離(§4「近接されたら押しのけ」)
 // 通常のポツポツ撃ち(§7-12「銃弾以外」の除外=予兆不要。共通弾)。
-const BR_SHOT_INTERVAL_MS = 1100;
+// exportはpixiScene(FB1・武器スプライトの技スコープ表示)が発射直後の残心ウィンドウを
+// 算出するために読む(bossNextActionAtから逆算=新規フィールドを増やさない)。
+export const BR_SHOT_INTERVAL_MS = 1100;
+// 発射直後、標識を構えた絵を残す時間(boss-gunの反動フェードと同じ考え方。判定には無関係=見た目専用)。
+export const BR_SHOT_RECOIL_VIS_MS = 260;
 const BR_SHOT_PROFILE = { speed: 260, damage: 10, size: 10 } as const;
 // 押しのけ(小KB・カウンター可・分類1=判定に揃える。得物=標識の薙ぎ)
 export const BR_PUSH_WINDUP_MS = 500;
@@ -1099,6 +1103,29 @@ export const runBountyTick = (
       return;
     }
     applyPatch(bounty.id, patch);
+    return;
+  }
+
+  // ---- フルスタン(紫・bossFullStunUntil)成立中は実行中の技を即中断(§6.38実機FB5/FB6) -----------
+  // 裁定: スタン=カウンター中断(v3128)と同じ「技中断」扱いに統一する。idolTick.tsのfullStun分岐
+  // (idolTick.ts:546-556)と同型——毎フレーム bossState を'chase'へ戻し bossNextActionAt を
+  // 更新し続けることで、①予告(windup/recover系bossState)がその場で消える(pixiSceneはbossStateを
+  // 読んで予告を描くため=FB6「赤ラインが残り続ける」の直接の直し方) ②凍結明け
+  // (bossFullStunUntilが尽きた瞬間)は既に'chase'かつ真新しいbossNextActionAtから即座に再開できる
+  // (旧実装はbossState/bossStateUntilを一切書き換えなかったため、凍結明けに newGameTime が
+  // 遥か過去のbossStateUntilを追い越しており、stale windupがその場で即着弾→即座に次phaseへ
+  // 連鎖するか、着地/次行動が起きないまま止まって見える=FB5「紫が解除されない」の実体)。
+  // x/yやknockbackVx/Vy等の座標系は一切書かない(カウンターのノックバック座標を上書きしない=
+  // B1.5-2の掟のまま)。
+  const fullStunNow = bounty.bossFullStunUntil !== undefined && newGameTime < bounty.bossFullStunUntil;
+  if (fullStunNow) {
+    s.comboStep = 0; // 馬乗り3段コンボの進行も中断(=次にchaseへ戻ってからcomboStep=1で仕切り直す)
+    applyPatch(bounty.id, {
+      bossState: 'chase',
+      bossStateUntil: undefined,
+      bossNextActionAt: newGameTime + BOUNTY_NEUTRAL_MS,
+      bountyLastEngagedAt: newGameTime,
+    });
     return;
   }
 
