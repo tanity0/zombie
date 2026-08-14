@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3336',
+    items: [
+      'ゲーム内容の変更はありません(調査台帳の誤記修正: ミゲル/ジブリルの連射は骨刃ではなく全ボス共通弾)。',
+    ],
+  },
+  {
     version: '0.25.3335',
     items: [
       'ゲーム内容の変更はありません(全68技のモーション予兆の棚卸し台帳を追加。実装はこれから)。',
