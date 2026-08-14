@@ -3767,22 +3767,40 @@ const applySlasherChainStrike = (
   // 社長指示v0.25.3297「スラッシャーの時だけ25px強制ノックバック(CD無視)」: 実距離25px固定
   // (最終段はSLASHER_FINAL_KB_MULT倍=50px)。knockbackEnemyは免疫CDを見ない=連撃中も毎段飛ぶ。
   const kbMult = (knockbackSpeedFor(SLASHER_FORCE_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
+  // ★v0.25.3399 社長指示「移動後に判定しないと絶対当たらない。敵は25動いてるのに」:
+  // 順序を**踏み込み→判定**へ変更。①先に踏み込み方向(最寄りの敵・死体除外・300px内。いなければ
+  // 現在の移動方向)を決め、②判定は**踏み込み完了後の位置(20px先)**から行う。前段の強制KB25pxで
+  // 離れた敵に、踏み込みで追いついてから振る=「連撃で押しながら切り進む」が成立する。
+  // (見た目の滑り=既存の減衰スライドはそのまま。判定だけ着地点を先取りする)
+  let lx = 0, ly = 0;
+  {
+    let bd2 = SLASHER_LUNGE_SEEK_PX * SLASHER_LUNGE_SEEK_PX;
+    for (const e of get().enemies) {
+      if (e.corpseUntil !== undefined) continue;
+      if (e.type === 'reaper' && !e.reaperChaser) continue;
+      const dx = e.x + e.width / 2 - pcx, dy = e.y + e.height / 2 - pcy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bd2 && d2 > 0.0001) { bd2 = d2; const d = Math.sqrt(d2); lx = dx / d; ly = dy / d; }
+    }
+    if (lx === 0 && ly === 0 && Math.hypot(player.vx, player.vy) > 1) {
+      const d = Math.hypot(player.vx, player.vy); lx = player.vx / d; ly = player.vy / d;
+    }
+  }
+  // 判定の基準点=踏み込み完了後の位置。
+  const jx = pcx + lx * SLASHER_LUNGE_PX;
+  const jy = pcy + ly * SLASHER_LUNGE_PX;
   let killed = 0;
   let hit = false;
-  let nearestDx = 0, nearestDy = 0, nearestD2 = Infinity; // 前進(ランジ)方向=最寄りのヒット敵
   for (const e of get().enemies) {
     if (e.type === 'reaper' && !e.reaperChaser) continue;
     if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は追撃対象から除外
     const ecx = e.x + e.width / 2;
     const ecy = e.y + e.height / 2;
-    const dx = ecx - pcx, dy = ecy - pcy;
-    const d2 = dx * dx + dy * dy;
+    const dx = ecx - jx, dy = ecy - jy;
     // ★距離は初撃と同じ enemyMeleeDist(判定帯の最近点)で測る(v0.25.3398バグ修正)。
     // 旧: 中心距離のまま v0.25.3170 の一本化から取り残され、「初撃は届くのに追撃は身体の
-    // 厚みぶん届かない」帯域が生まれていた(+追撃ごとの強制KB25pxがそこへ押し出す)=
-    // 2撃目以降が系統的に空振り(社長報告2026-08-15「振りは出るが当たらない」)。
-    if (enemyMeleeDist(pcx, pcy, e) > meleeRange) continue;
-    if (d2 < nearestD2) { nearestD2 = d2; nearestDx = dx; nearestDy = dy; }
+    // 厚みぶん届かない」帯域が生まれていた=2撃目以降が系統的に空振り。
+    if (enemyMeleeDist(jx, jy, e) > meleeRange) continue;
     hit = true;
     const k = get().damageEnemy(e.id, dmg);
     get().spawnDamageNumber(ecx, e.y, dmg, false);
@@ -3796,40 +3814,18 @@ const applySlasherChainStrike = (
       get().knockbackEnemy(e.id, dx / d, dy / d, kbMult, kbMult); // 追撃が当たった敵のみノックバック(Lv3最終段のみ大)。maxStrengthも渡す(既定cap=3で頭打ちになる罠・v0.25.3257)
     }
   }
-  get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃
-  // v0.25.3258 社長指示「連続攻撃は20px前進(慣性入れて)」: チェーン攻撃ごとにプレイヤーが
-  // 20px踏み込む。既存の被弾ノックバック機構(減衰スライド=慣性)を自前方向で流用。
-  // 方向=最寄りのヒット敵(ヒット無しなら現在の移動方向。どちらも無ければ前進しない)。
-  {
-    const st = get().player;
-    let lx = 0, ly = 0;
-    if (hit && nearestD2 > 0.0001) { const d = Math.sqrt(nearestD2); lx = nearestDx / d; ly = nearestDy / d; }
-    else {
-      // v0.25.3266 社長報告「前に進む時と進まない時がある」: 慣性0のため攻撃時(指を離した瞬間)は
-      // vx/vyがほぼ常に0で旧フォールバックが死んでいた。空振り時は**最寄りの敵(死体除外・300px内)へ
-      // 踏み込む**へ変更(敵もいなければ前進しない=進む先が無いので許容)。
-      let bd2 = SLASHER_LUNGE_SEEK_PX * SLASHER_LUNGE_SEEK_PX;
-      for (const e of get().enemies) {
-        if (e.corpseUntil !== undefined) continue;
-        if (e.type === 'reaper' && !e.reaperChaser) continue;
-        const dx = e.x + e.width / 2 - pcx, dy = e.y + e.height / 2 - pcy;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < bd2 && d2 > 0.0001) { bd2 = d2; const d = Math.sqrt(d2); lx = dx / d; ly = dy / d; }
-      }
-      if (lx === 0 && ly === 0 && Math.hypot(st.vx, st.vy) > 1) {
-        const d = Math.hypot(st.vx, st.vy); lx = st.vx / d; ly = st.vy / d;
-      }
-    }
-    if (lx !== 0 || ly !== 0) {
-      const lungeSpeed = knockbackSpeedFor(SLASHER_LUNGE_PX, SLASHER_LUNGE_MS);
-      useGameStore.setState(state => ({
-        player: {
-          ...state.player,
-          knockbackVx: lx * lungeSpeed, knockbackVy: ly * lungeSpeed,
-          knockbackUntil: Date.now() + SLASHER_LUNGE_MS, knockbackMs: SLASHER_LUNGE_MS,
-        },
-      }));
-    }
+  get().spawnRing(jx, jy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃(踏み込み先で出す)
+  // v0.25.3258 社長指示「連続攻撃は20px前進(慣性入れて)」: 見た目の踏み込みスライドは従来どおり
+  // (減衰スライド=慣性)。判定は上で先取り済みなので、ここは絵と実座標の追いつきだけ。
+  if (lx !== 0 || ly !== 0) {
+    const lungeSpeed = knockbackSpeedFor(SLASHER_LUNGE_PX, SLASHER_LUNGE_MS);
+    useGameStore.setState(state => ({
+      player: {
+        ...state.player,
+        knockbackVx: lx * lungeSpeed, knockbackVy: ly * lungeSpeed,
+        knockbackUntil: Date.now() + SLASHER_LUNGE_MS, knockbackMs: SLASHER_LUNGE_MS,
+      },
+    }));
   }
   // スキル: ナイフマスターのコンボ加算(§6.10 M33⑧: スラッシャー追撃のヒットでも貯める。倍率は既に乗っている)。
   {

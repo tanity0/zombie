@@ -5992,10 +5992,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if ((FORCE_BOUNTY || practiceForces('bountynow')) && !bountyForceRef.current) {
             bountyForceRef.current = true;
             const bountyTypeOf = (raw: string | null): 'bounty-ranged' | 'bounty-melee' | 'bounty-balance' | 'bounty-maiko' => {
+              if (raw === 'ranged') return 'bounty-ranged';
               if (raw === 'melee') return 'bounty-melee';
               if (raw === 'balance') return 'bounty-balance';
               if (raw === 'maiko') return 'bounty-maiko';
-              return 'bounty-ranged';
+              // ★種別未指定(?bountynow=1のみ)は4種からランダム(v0.25.3399・社長報告
+              // 「遠距離しか出てこない」=旧: ranged固定既定は誤解を生んだ)。
+              const all = ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as const;
+              return all[Math.floor(Math.random() * all.length)];
             };
             // 練習枠(変異体対策室)が型を指定していればそれを優先する(既存URL経路?bountytype=は
             // 直リンク検証用にそのまま残す。practiceBossType()はactiveSlot.bossTypeを返す)。
