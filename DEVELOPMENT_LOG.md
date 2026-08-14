@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.3342 — 流星ライン作り直し: 溜め進行と同期・発動と同時に描き切る(社長実機指摘)【2026-08-14 14:10 JST】
+- 社長指摘「ライン自体が流星のように出てきて消えていかないと。今は常に出ちゃってる。タイミングも
+  合ってない。技の出始めと同時に表示しきって」→ v3339の「常時下地+周回する芯」を廃止し、
+  **prog(溜め進行0→1)引数で駆動**する方式へ: 頭がスタート→ゴールへ進み、後ろにグラデーションの尾、
+  通過済み区間は「描かれた線」として残る。**prog=1=技の出始めでちょうど線全体を描き切る**。
+  州が変われば線ごと消える(常時表示なし)。終点リングは溜め後半でフェードイン。
+- 配線6箇所(各サイトの実溜め時間で同期): 裏ボスdash(BOSS_DASH_WINDUP_MS_VIS=1000の写し新設)/
+  ミゲルmdash(MIGUEL_DASH_WINDUP_MS・move中はprog=1維持)/ウリthrust(同型)/城ボスg-dash
+  (GIANT_DASH_WINDUP_MS÷ENEMY_ATTACK_SPEED_MULT)/三連突進g-quad(紫のまま色引数で流星化)/
+  犬・lab-zombie-2・ハンター・旧giantbatのcharge(WEREWOLF_WINDUP_MS÷同)。
+- syncPumpkinTelegraphへgameTime引数追加(充charge進行の時計。aiPhaseUntilと同じgameTime基準)。
+- 負荷 1/10: 予告中のみ+約12ストローク/本(v3339と同等)。
+- 検証: typecheck 0 / lint 0エラー。
+
+
 ## v0.25.3341 — 魔法陣ホロの用途裁定を記録(社長裁定)【2026-08-14 14:02 JST】
 - 【済】**弾発射(volley・銃技の構え)=B分析ホロ(holo-scan・本体被せ)/ワープ=C簡易(holo-mini)/
   その他出現系=A出現魔法陣(holo-circle)**。TELL_MOTION_LEDGER.md §4に確定反映(私案メモは参考残置)。
