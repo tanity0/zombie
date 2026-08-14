@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.3366',
+    items: [
+      'ゲーム内容の変更はありません(賞金首の設計を訂正: バランス型の得物は錨ではなく鋏。技は各個体とも武器1本を使い回す方針を確定)。',
+    ],
+  },
+  {
     version: '0.25.3365',
     items: [
       'ゲーム内容の変更はありません(賞金首「鋏(変異)」の武器素材=巨大な裁ち鋏を取り込み、4種の武器素材が揃いました。登場はまだ)。',
